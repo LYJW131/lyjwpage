@@ -191,7 +191,7 @@ Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天�
 
 ### 报错与性能交给 Sentry
 
-站点（浏览器与 Vercel 函数）、`api` Worker（请求、API 定时任务、两个 Durable Object）和采集 Worker（各定时任务，失败上报 Sentry；逐任务 cron 报到由 `SENTRY_CRON_CHECKINS` 控制，见 [`workers/collector/README.md`](./workers/collector/README.md)）各报到一个 Sentry 项目；上报入口 Worker 和 `api` 同报一个项目，事件带 `worker: ingress` 标签。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。API 定时任务定时报心跳（周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`），`lyjw.me` 有在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts)、[`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)、[`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts) 与 [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
+站点（浏览器与 Vercel 函数）、`api` Worker（请求、API 定时任务、两个 Durable Object）和采集 Worker（各定时任务，失败上报 Sentry；逐任务 cron 报到由 `SENTRY_CRON_CHECKINS` 控制，见 [`workers/collector/README.md`](./workers/collector/README.md)）各报到一个 Sentry 项目；上报入口与 AI Worker 和 `api` 同报一个项目，事件分别带 `worker:ingress`、`worker:ai` 标签。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。API 定时任务定时报心跳（周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`），`lyjw.me` 有在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts)、[`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)、[`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts)、[`workers/ai/src/sentry.ts`](./workers/ai/src/sentry.ts) 与 [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `NEXT_PUBLIC_SENTRY_DEV=true`。
 
 Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取回站点与后端（api、采集两个 Worker 项目合计）的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，写进可滞后层给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是 Vercel 上的静态路由，只说明前端还在出页面；`API` 那行看 api Worker 的 cron 心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
 
@@ -209,6 +209,8 @@ Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取�
 | 页面托管与分发 | Vercel · 阿里云 ESA |
 | 报错与性能监控 | Sentry |
 
+AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md) 执行；公开地址经 api 转发，状态数据仍经 api 的只读接口读取。Pulse Coding 评分仍由 api 编排。
+
 ## 从哪里读源码
 
 | 想了解什么 | 阅读入口 |
@@ -220,13 +222,14 @@ Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取�
 | 网页播放器与歌词如何工作 | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
 | 上报如何鉴权、校验与按数据层拆分 | [`workers/ingress/`](./workers/ingress/) |
 | 状态存储、实时推送与公开 API 如何组织 | [`workers/api/`](./workers/api/) |
+| 首页对话、MCP 与模型工具如何运行 | [`workers/ai/`](./workers/ai/) |
 | 各类设备与服务如何接入 | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
 | 原生 iOS App 如何读站点、如何上报 | [`apps/ios/`](./apps/ios/) |
 | 在线访客如何统计 | [`workers/api/src/live-census.ts`](./workers/api/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
 
 Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) 独立维护，通过 Git submodule 接入 `reporters/mac-telemetry-hub/`。
 
-本地开发时 `pnpm dev:worker` 用一个 `wrangler dev` 进程起四个 Worker：`workers/dev-router`（拿 8788 端口、按路径分发）、`api`、上报入口 `ingress` 和采集 Worker `collector`，四者共用本地的状态目录与 KV，上报打 `/api/ingest/<来源>` 走上报入口；`/__dev/collector/run?job=<任务>` 立刻跑一个采集任务，`/cdn-cgi/local/scheduled` 让采集 Worker 跑这一分钟到期的任务。步骤见 [`workers/api/README.md`](./workers/api/README.md) 的「本地开发」与 [`workers/collector/README.md`](./workers/collector/README.md)。
+本地开发时 `pnpm dev:worker` 用一个 `wrangler dev` 进程起本地 Worker 栈：`workers/dev-router`（拿 8788 端口、按路径分发）、`api`、`ai`、上报入口 `ingress` 和采集 Worker `collector`，状态保存在本地；AI 经只读 Service Binding 查询 api，上报打 `/api/ingest/<来源>` 走上报入口；`/__dev/collector/run?job=<任务>` 立刻跑一个采集任务，`/cdn-cgi/local/scheduled` 让采集 Worker 跑这一分钟到期的任务。步骤见 [`workers/api/README.md`](./workers/api/README.md) 的「本地开发」与 [`workers/collector/README.md`](./workers/collector/README.md)。
 
 ## 进一步了解
 

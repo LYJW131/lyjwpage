@@ -1,1 +1,1 @@
-export const MCP_PATH = "/mcp";
+export { MCP_PATH } from "./ai-paths";

@@ -191,7 +191,7 @@ On `lyjw.me`, a rewrite in `next.config.ts` proxies `/img/*` to R2's public orig
 
 ### Errors and performance go to Sentry
 
-The site (browser and Vercel functions), the `api` Worker (requests, the minute cron and both Durable Objects) and the collector Worker (its scheduled jobs, each with a cron monitor `collector-<job>`) each report to their own Sentry project; the ingress Worker reports to the `api` project with a `worker: ingress` tag. The browser reports through the same-origin `/relay`, so visitors with ad blockers or no route to sentry.io still get through; Session Replay is a separate chunk loaded only after the page goes idle, and keeps only the part with the error. The minute cron reports a heartbeat on a schedule, and `lyjw.me` gets an uptime check. Sampling is set to fit the free tier; entry points are [`src/lib/sentry.ts`](./src/lib/sentry.ts), [`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts), [`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts) and [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts). Local development doesn't report by default; to try it, set `NEXT_PUBLIC_SENTRY_DEV=true` in `.env.local`.
+The site (browser and Vercel functions), the `api` Worker (requests, the minute cron and both Durable Objects) and the collector Worker (its scheduled jobs, each with a cron monitor `collector-<job>`) each report to their own Sentry project; the ingress and AI Workers report to the `api` project with `worker:ingress` and `worker:ai` tags. The browser reports through the same-origin `/relay`, so visitors with ad blockers or no route to sentry.io still get through; Session Replay is a separate chunk loaded only after the page goes idle, and keeps only the part with the error. The minute cron reports a heartbeat on a schedule, and `lyjw.me` gets an uptime check. Sampling is set to fit the free tier; entry points are [`src/lib/sentry.ts`](./src/lib/sentry.ts), [`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts), [`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts), [`workers/ai/src/sentry.ts`](./workers/ai/src/sentry.ts) and [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts). Local development doesn't report by default; to try it, set `NEXT_PUBLIC_SENTRY_DEV=true` in `.env.local`.
 
 Data in Sentry also comes back to the page: using a read-only token, the collector Worker fetches on a schedule the error counts of the site and of the backend (the `api` and collector Worker projects combined), real-visitor Web Vitals, uptime checks and cron heartbeats, and writes them to the lag-tolerant KV layer for the site card (`/api/status/sentry`). Uptime has two rows: the `lyjw.me` row checks a static route on Vercel, which only shows the frontend is still serving pages; the `API` row follows the cron heartbeat, where every run passes through the Worker, the Durable Object and KV, covering the backend side. When investigating production errors, agents first gather evidence through the Sentry MCP before reading code; the rules are in [`AGENTS.md`](./AGENTS.md).
 
@@ -209,6 +209,8 @@ Data in Sentry also comes back to the page: using a read-only token, the collect
 | Hosting and delivery | Vercel · Alibaba Cloud ESA |
 | Error and performance monitoring | Sentry |
 
+AI chat, MCP and GitHub issue tools run in [`workers/ai`](./workers/ai/README.md). Public URLs pass through api, and AI reads status through api's read-only interface. Pulse Coding scoring remains in api.
+
 ## Where to start reading
 
 | If you want to know | Start here |
@@ -220,11 +222,14 @@ Data in Sentry also comes back to the page: using a read-only token, the collect
 | How the web player and lyrics work | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
 | How reports are authenticated, validated and split by data layer | [`workers/ingress/`](./workers/ingress/) |
 | How state storage, live push and the public API are organized | [`workers/api/`](./workers/api/) |
+| How homepage chat, MCP and model tools run | [`workers/ai/`](./workers/ai/) |
 | How each device and service is connected | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
 | How the native iOS app reads the site and reports | [`apps/ios/`](./apps/ios/) |
 | How online visitors are counted | [`workers/api/src/live-census.ts`](./workers/api/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
 
 The Mac collector [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) is maintained separately and included as a Git submodule at `reporters/mac-telemetry-hub/`.
+
+For local development, `pnpm dev:worker` starts the local Worker stack in one Wrangler process: `workers/dev-router` on port 8788, `api`, `ai`, `ingress` and `collector`. AI reads api through a read-only Service Binding, and reports go to ingress at `/api/ingest/<source>`. See the local development instructions in [`workers/api/README.md`](./workers/api/README.md) and [`workers/collector/README.md`](./workers/collector/README.md).
 
 ## Further reading
 

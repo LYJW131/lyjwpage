@@ -1,4 +1,4 @@
-export const GITHUB_ISSUE_PATH = "/api/github/issue";
+export { GITHUB_ISSUE_PATH } from "./ai-paths";
 export const GITHUB_ISSUE_REPO = "LYJW131/lyjwpage";
 // GitHub App LYJW131 的 Client ID（公开值），与 .github/workflows/avatar-sync.yml 用的是同一个 App。
 export const GITHUB_APP_CLIENT_ID = "Iv23liSmKTDKh0bxIfzB";

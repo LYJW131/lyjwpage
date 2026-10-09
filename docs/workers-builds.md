@@ -2,81 +2,69 @@
 
 > 类型：reference
 
-仓库 `LYJW131/lyjwpage` 的三个 Worker（`api`、`ingress`、`collector`）连接 Cloudflare Workers Builds，生产分支均为 `main`。
-GitHub Actions 负责 lint、类型检查、单测与 CodeQL；Worker 发布由 Cloudflare GitHub App 触发，
-构建状态通过 GitHub check run 回传。Vercel 和 GitHub Pages 保持各自原生集成与现有工作流。
+Worker 的运行时配置在各目录的 `wrangler.toml`，Workers Builds 的连接、命令和监视路径需在 Cloudflare 控制台设置。下表是与仓库代码配套的配置；已核对的远端状态见 [仓库外事实](./ops-facts.md)。接入 `ai` 及聊天命名空间切换按 [AI Worker 首次迁移](./ai-worker-migration.md) 执行，提交代码不会自动配置连接、Secret 或监视路径。
+
+GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 Cloudflare GitHub App 触发，构建状态通过 GitHub check run 回传。Vercel 和 GitHub Pages 保持各自原生集成与现有工作流。
 
 ## 构建配置
 
-| Worker | 根目录 | 构建命令 | 部署命令 |
+生产分支为 `main`，根目录均为 `/`；共享根目录的 `pnpm-lock.yaml` 与工作区，Wrangler 版本以各包为准。
+
+| Worker | 构建命令 | 生产部署命令 | 分支预览命令 |
 | --- | --- | --- | --- |
-| `api` | `/` | `pnpm --dir workers/api typecheck` | `pnpm --dir workers/api exec wrangler deploy` |
-| `ingress` | `/` | `pnpm --dir workers/ingress typecheck` | `pnpm --dir workers/ingress exec wrangler deploy` |
-| `collector` | `/` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy` |
+| `api` | `pnpm --dir workers/api typecheck` | `pnpm --dir workers/api exec wrangler deploy` | `node workers/api/scripts/deploy-preview.mjs --worker-name api` |
+| `ai` | `pnpm --dir workers/ai typecheck` | `pnpm --dir workers/ai exec wrangler deploy` | `node workers/api/scripts/deploy-preview.mjs --worker-name ai` |
+| `ingress` | `pnpm --dir workers/ingress typecheck` | `pnpm --dir workers/ingress exec wrangler deploy` | 关闭 |
+| `collector` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy` | 关闭 |
 
-Workers Builds 在构建命令之前安装依赖。三个都使用根目录 `pnpm-lock.yaml` 与工作区，Wrangler 使用对应包锁定的版本。
-三个生产 Worker 均启用构建缓存，生产版本只从 `main` 用 `wrangler deploy` 发布。
-`collector` 的分支预览构建和非生产分支构建都关掉：它的 `CORE` Service Binding 指向生产 `api`，
-预览版一跑就会往生产状态里写；非生产分支的默认命令还会把版本传到生产脚本上。
-`ingress` 同理，两项都关：它的 `CORE` 指向生产 `api`，预览版收下的上报会直接写进生产状态；
-`wrangler.toml` 的 `[previews.vars]` 另设了 `PREVIEW_WORKER`，万一有预览版本跑起来也只会拒收（上报 403、部署通知 404）。
-`ingress` 没有 secret，公开变量与绑定全在它的 `wrangler.toml`，自定义域名 `ingest.homepage.lyjw.llc` 也写在那里：
-Workers Builds 里 `wrangler deploy` 会直接接管挂在别的 Worker 上的自定义域名，见 [上报入口 README](../workers/ingress/README.md)「上线与域名」。
+`ingress` 和 `collector` 的分支预览及非生产分支构建保持关闭：它们的 `CORE` 指向生产状态核心，预览写入会影响生产。`workers/dev-router` 仅用于本地，不连接 Builds。
 
-`workers/dev-router` 只给本地 `pnpm dev:worker` 用，没有 `package.json`，不连 Workers Builds。
+`api` 是现有公开 API 域名的入口，AI 路径由 `shared/ai-paths.ts#AI_HTTP_PATHS` 限定，经 `AI_SERVICE` 原样转发到 `ai`，不缓存或聚合流式正文。`ai` 不配置生产域名，关闭默认 `workers.dev` 地址；`preview_urls` 用于分支 Preview 的地址。`PUBLIC_STATUS` 只绑定 api 的 `PublicStatus`，不是含写操作和凭据方法的 `StateCore`。
 
 ## 分支预览
 
-`api` 按 [Worker Previews](https://developers.cloudflare.com/workers/previews/) 的文档配置：设置 → 构建里打开了 Worker 预览的构建。推 `main` 执行 `pnpm --dir workers/api exec wrangler deploy`，不换 `api.homepage.lyjw.llc`。其他分支执行预览命令 `node workers/api/scripts/deploy-preview.mjs`，里面跑的是 `wrangler preview`。Durable Object 每个 Preview 自动有自己的空库。
+[Cloudflare Preview 的 Service Binding 指向目标 Worker 的生产部署](https://developers.cloudflare.com/workers/previews/resources/#service-bindings)，不能用生产 Service Binding 配置连接同名分支。因此预览采用专用组合入口 `workers/api/src/preview-entry.ts`，在一个 Preview 内运行 api 与 ai，并注入本实例内的状态读取和请求转发。生产入口不导入这个组合模块。
 
-分支名里的 `/` 会收成短横线后再传给 `--name`，这样地址和 Vercel 预览写进页面的一致。文档允许自定义预览命令，只要实际执行的是 `wrangler preview`。
+api 和 ai 的 Builds 都调用同一个预览脚本，各自发布到自己的 parent Worker。无论哪个触发，Preview 都包含本提交的状态与 AI 代码。它们的命名与地址算法在 `scripts/preview-worker-name.mjs`；分支名中的 `/` 收成短横线，过长时截断并带 hash。
 
-预览命令不直接读 `wrangler.toml`，而是按它生成一份临时的 `workers/api/wrangler.preview.json`，交给 `wrangler preview --config`，跑完即删。与生产只差两处：
+`deploy-preview.mjs` 读取 api 的 `wrangler.toml`，生成临时 `workers/api/wrangler.preview.json`，执行 `wrangler preview` 后删除。它明确设置：
 
-- 迁移：每个 Preview 的 Durable Object 是空库，wrangler 会把全部迁移从头上传。v1、v2 是从旧 `ingest` 搬数据的历史步骤，v1 里 `OnlineCounterRoom` 既是新建目标又是转移目标，从头执行会被拒（10021）。Preview 把这两步折成一步，直接新建 `LivePushRoom`、`StateHub`，标签仍用 `v2-split-online-counter`，之后新增的迁移原样追加。
-- 兼容开关：多加 `global_fetch_strictly_public`。同账号 zone 上的域名默认绕过其上的 Worker 直连源站，`api.homepage.lyjw.llc` 是自定义域、没有源站，不加这个开关，`UPSTREAM_API_URL` 的请求一律 522，Preview 取不到生产数据。
+- `main` 为组合入口，parent 名为命令的 `--worker-name`；普通与预览的 `services` 都清空，不连生产 Service Binding。
+- 空库迁移从 `PREVIEW_BASELINE` 开始，再创建聊天 DO；不重放生产的命名空间转移。
+- `global_fetch_strictly_public`：让 `UPSTREAM_API_URL` 能访问同账号的生产自定义域，避免绕过 Worker 后返回 522。
+- `PREVIEW_COMMIT_SHA` 为 Builds 当前提交；组合入口仅在 `PREVIEW_WORKER=true` 时工作，并提供 `PREVIEW_REVISION_PATH` 供构建校验。
 
-`workers/api` 的 Wrangler 版本见 `workers/api/package.json`。v1 迁移里补了 `OnlineCounterRoom` 的 `new_sqlite_classes`，Wrangler 4 才能接受后面那条已经生效的删除；这个标签不会再次执行。
+预览绑定由 api 配置的 `[previews]` 段提供，状态与聊天 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入和存储导入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
 
-Preview 的地址与预览名的算法在 `scripts/preview-worker-name.mjs`（`previewWorkerOrigin`），Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1，也不复制 Secret。存储导入直接拒绝；上报不经过 `api`（在 `ingress`，它不开预览）。分支上要试的端点需要 Secret 时，只设在本分支的 Preview 上：`pnpm --dir workers/api exec wrangler preview secret put <KEY> --name <预览名> --worker-name api`（预览名按 `scripts/preview-worker-name.mjs#previewWorkerName`），值从标准输入读；Preview 要先由一次推送建出来。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
+Vercel 和 Worker 构建并行。`scripts/build.mjs` 在预览构建里等待本分支 api、ai 两个候选地址，`scripts/preview-backend.mjs#findMatchingPreview` 只接受 revision 与 `VERCEL_GIT_COMMIT_SHA` 一致且状态读取就绪的候选。等待上限见 `WAIT_MS`；没有匹配时这次构建用生产，不能误用旧提交的 Preview。结果通过 `PREVIEW_BACKEND_URL` 传给 Next 配置。
 
-`api` 的监视路径不放宽，否则无关的 `main` 提交也会重新发布生产版本。只改了监视路径以外的文件的分支不会触发 Preview 构建。
+AI 端点需要的 Secret 只设在实际使用的 parent 的本分支 Preview；例如 api parent：
 
-Vercel 与 Workers Builds 并行，新分支第一次推送时 Vercel 常常先到。`pnpm build`（`scripts/build.mjs`）在 Vercel 预览构建里先轮询本分支 Preview 的 `/api/status/listening/now`，最多等 `scripts/build.mjs#WAIT_MS`：就绪就连它；等不到（Preview 还没发出来，或这个分支从没触发过 Preview 构建）这次构建连生产，页面和浏览器都用生产 API，下一次推送再重新判断。结果经 `PREVIEW_BACKEND_URL` 交给 `next.config.ts`，配置文件里不做网络等待。
+```sh
+pnpm --dir workers/api exec wrangler preview secret put CHAT_HISTORY_SECRET --name <预览名> --worker-name api
+```
 
-PR 关闭时 `.github/workflows/preview-api-worker.yml` 经 `workers/api/scripts/delete-preview.mjs` 执行 `wrangler preview delete`。仓库 Secret `CLOUDFLARE_API_TOKEN` 需要能管理这个 Worker 的 Preview。没配令牌时工作流跳过。
+ai parent 使用 `--worker-name ai`，其他所需变量见 `workers/ai/.dev.vars.example`。值从标准输入输入，不复制生产凭据；缺少密钥的聊天端点返回 503，MCP 公开状态工具仍可验证。两个候选都存在时，要验证付费对话，直接使用已配置 Secret 的候选，或分别配置两份隔离密钥。
 
-改过已有端点、而生产仍返回 `ok: true` 的计算，预览页看到的还是生产结果。写入路径不会在 Preview 的空库里发生，因为没有上报进来。
+PR 关闭时 `.github/workflows/preview-api-worker.yml` 调 `delete-preview.mjs` 清理两个 parent 的分支 Preview；不存在的候选跳过，未配置清理令牌时不执行。分支删除只清理 Preview，不改生产 Worker。
 
 ## 构建监视路径
 
-路径相对于 Git 仓库根目录。Cloudflare 的末尾 `*` 覆盖该目录下的所有文件，包含子目录；除 `api` 外排除路径均为空。
+路径相对于仓库根目录，Cloudflare 的目录末尾 `*` 包含子目录。监视路径跟随生产运行依赖；组合 Preview 不要求两个 Worker 互相监视实现目录。
 
-- `api`：`workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`；排除 `shared/ingest/*`。
-- `ingress`：`workers/ingress/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
-- `collector`：`workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`。
+| Worker | 包含路径 | 排除路径 |
+| --- | --- | --- |
+| `api` | `workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | `shared/ingest/*`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/mcp.ts` |
+| `ai` | `workers/ai/*`、`shared/ai-paths.ts`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/mcp.ts`、`shared/http-origins.ts`、`shared/public-status.ts`、`src/lib/status-views.ts`、`src/lib/site.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | 无 |
+| `ingress` | `workers/ingress/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/mcp.ts` |
+| `collector` | `workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/mcp.ts` |
 
-API 的共享状态代码变化必须触发发布。
-上报的校验与收敛（`shared/ingest/`）只打包进 `ingress`：`api` 的运行时只
-`import type` 这里的命令类型（`eslint.config.mjs` 按规则挡住值导入），所以 `api` 排除这个目录，改校验不重新发布带
-Durable Object 的 `api`、不断开页面的 WebSocket。命令的形状变了（新字段、新模块）要同时改 `workers/api/src/stores/` 的
-commit 那一半，`api` 照样会因为自己的目录变化而发布；上线顺序是 `api` 先、`ingress` 后，契约只能加不能改，见 `shared/state-core.ts`。
-上报入口还打包 `src/lib` 的收敛工具（`json`、`agent-limits-parse`、`trophies` 等）和 `shared/` 的契约（`state-core.ts`、`lag.ts`、
-`credentials.ts`、`history-ingest.ts`），这些变化要触发它的发布。
-采集 Worker 直接打包 `src/lib` 的取数模块和 `shared/` 的契约（`state-core.ts`、`lag.ts`、`collector.ts`），
-这些变化同样要触发它的发布；D1 表结构归 `workers/api/migrations`，新表先在 api 那边 apply 再发布它。
-增加共享依赖或移动文件时，同步调整 Cloudflare 的监视路径与本文。
+AI 的提示词、SDK 使用和工具编排留在 `workers/ai`，仅面向浏览器的对话契约保留在所排除的共享文件。公开路径单独定义在 `shared/ai-paths.ts`，路径变化仍触发 api；其他文件只重导出这些路径。eslint 阻止 api 的生产实现导入 AI 业务契约或运行时，防止排除路径后悄悄漏发。
+
+共享状态代码变化仍要发布 api。`shared/ingest/` 的校验只打包进 ingress，api 只能 type-import；命令形状变更要同时改 api 提交阶段，按被调用方先发布的顺序执行。增加共享依赖或移动文件时，同步核对包含与排除规则。
 
 ## 配置与验收
 
-连接、命令和监视路径保存在 Cloudflare 控制台的 Worker → 设置 → 构建。
-运行时 Secret、Durable Objects、KV、R2、域名和 Cron 沿用现有 Worker 配置，构建不复制运行时 Secret。
-Wrangler 文件仍是公开变量与绑定的配置来源。
+发布后核对该提交的 Cloudflare check run 与构建历史，再验证受影响的生产状态 API、WebSocket 或 AI 入口。构建成功不代表业务验收完成，不另加 GitHub Actions 发布同一个 Worker。
 
-发布后检查对应提交的 Cloudflare check run，并在 Worker 的构建历史中确认成功和提交 SHA。
-然后检查受影响的生产状态 API、WebSocket 或定时上报。仅推送成功或构建通过不代表业务验收完成。
-不重新启用另一条自动发布流水线向同一个 Worker 重复发布。
-
-官方参考：[GitHub 集成](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/)、
-[构建配置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)、
-[监视路径](https://developers.cloudflare.com/workers/ci-cd/builds/build-watch-paths/)。
+官方参考：[GitHub 集成](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/)、[构建配置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)、[监视路径](https://developers.cloudflare.com/workers/ci-cd/builds/build-watch-paths/)。
