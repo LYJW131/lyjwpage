@@ -38,7 +38,7 @@ Workers Builds 里 `wrangler deploy` 会直接接管挂在别的 Worker 上的�
 
 `workers/api` 的 Wrangler 版本见 `workers/api/package.json`。v1 迁移里补了 `OnlineCounterRoom` 的 `new_sqlite_classes`，Wrangler 4 才能接受后面那条已经生效的删除；这个标签不会再次执行。
 
-Preview 的地址与预览名的算法在 `scripts/preview-worker-name.mjs`（`previewWorkerOrigin`），Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1，也不复制 Secret。存储导入直接拒绝；上报不经过 `api`（在 `ingress`，它不开预览）。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
+Preview 的地址与预览名的算法在 `scripts/preview-worker-name.mjs`（`previewWorkerOrigin`），Vercel 预览构建用同一份。Preview 配置在 `workers/api/wrangler.toml` 的 `[previews.vars]`：`UPSTREAM_API_URL` 指向生产 API，生产已经返回 `ok: true` 的端点用生产的，生产没有的端点用本分支的。不挂 cron、生产域名、KV、D1，也不复制 Secret。存储导入直接拒绝；上报不经过 `api`（在 `ingress`，它不开预览）。分支上要试的端点需要 Secret 时，只设在本分支的 Preview 上：`pnpm --dir workers/api exec wrangler preview secret put <KEY> --name <预览名> --worker-name api`（预览名按 `scripts/preview-worker-name.mjs#previewWorkerName`），值从标准输入读；Preview 要先由一次推送建出来。MusicKit 令牌、歌词、动态封面转给生产，并带上浏览器的 `Origin`。空库第一次公开读取时只把初始化标记写成完成。WebSocket 转发生产房间的事件。
 
 `api` 的监视路径不放宽，否则无关的 `main` 提交也会重新发布生产版本。只改了监视路径以外的文件的分支不会触发 Preview 构建。
 
