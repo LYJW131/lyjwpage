@@ -25,7 +25,7 @@ export async function handleGithubIssue(request: Request, env: Env, ip: string):
   const parsed = parseGithubIssueRequest(await readJsonBody(request, MAX_BODY_BYTES));
   if (!parsed) return fail(400, "The issue needs a title, and both fields must fit their limits.");
 
-  const token = await exchangeCode(parsed.code, secret);
+  const token = await exchangeCode(parsed.code, parsed.codeVerifier, secret);
   if (!token) return fail(401, "GitHub sign-in didn't go through. Try again.");
   try {
     const res = await fetch(`${GITHUB_API}/repos/${GITHUB_ISSUE_REPO}/issues`, {

@@ -31,6 +31,7 @@
 | --- | --- |
 | `lyjw.me` 站点在 Vercel，生产随 `main` 自动部署；预览构建把后端源改成该分支的影子 Worker，生产构建用面板里的值 | 核对于 未记录，方式：迁自 `docs/state-storage.md` 与 `docs/workers-builds.md` |
 | 项目环境变量（只记名字）：`NEXT_PUBLIC_BACKEND_URL`（构建期写入前端，状态、推送、在线人数同源）、`REVALIDATE_SECRET`（只有 Worker 与 Vercel 两边有）、`R2_PUBLIC_BASE_URL`（`/img/*` rewrite 的目的地与首屏图标内联的来源，生产只配在 Vercel）、可选 `GITHUB_TOKEN`（构建期读最近提交）；参照根 `.env.example` | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
+| `REVALIDATE_SECRET` 两边（Vercel 的 Production 与 Preview、api Worker 的 Secret）同一个值，2026-10-09 轮换过：旧值可能随 Sentry 采样到的 `/api/revalidate` transaction 外泄；换值后 Vercel 要新部署才生效 | 核对于 2026-10-09，方式：`vercel env ls`、`wrangler secret list`，生产上 Worker 发出的失效请求被站点接受 <!-- allow: 核对戳 --> |
 | 主账号与小账号各有一个生产项目，Production 与 Preview 的 `NEXT_PUBLIC_BACKEND_URL` 都指向 API 域名 | 核对于 2026-09-07，方式：迁自 [核验记录](./reporter-endpoints.md) |
 
 ## Cloudflare 账号里的资源
@@ -45,7 +46,7 @@
 | D1 `lyjwpage-history`（binding `HISTORY`）：Workers Builds 不跑迁移，部署带这个绑定的版本之前要先手动 apply，命令见 `workers/api/README.md` | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
 | R2 图片桶：上报器用只写该桶的访问密钥直传，上报入口以 `IMAGES` 绑定只做 HEAD；对外只以 `/img/<objectKey>` 同源路径出现 | 核对于 未记录，方式：迁自 `reporters/emby-reporter/README.md` 与 `workers/ingress/README.md` |
 | Turnstile 组件「lyjwpage chat」（managed 模式，域名 `lyjw.me`、`lyjw131.com`、`localhost`），挡首页对话卡片发往 api Worker 的 `POST /api/chat`；site key 进站点环境变量 `NEXT_PUBLIC_TURNSTILE_SITE_KEY`（构建期内联），secret 是 api Worker 的 Secret `TURNSTILE_SECRET_KEY` | 核对于 2026-10-08，方式：Cloudflare API `challenges/widgets` 创建并列出 <!-- allow: 核对戳 --> |
-| 首页对话的 Anthropic 用量独占 Console 工作空间 `lyjwpage-chat`（`wrkspc_01XtFZvJDphpQ4LT6X1fVQXF`），工作空间月花费上限 US$60；api Worker 的 Secret `ANTHROPIC_API_KEY` 是该空间里不过期的 key `lyjwpage-chat-prod` | 核对于 2026-10-09，方式：Claude Console 工作空间 Spend limits 页与 API keys 页 <!-- allow: 核对戳 --> |
+| 首页对话的 Anthropic 用量独占 Console 工作空间 `lyjwpage-chat`（`wrkspc_01XtFZvJDphpQ4LT6X1fVQXF`），工作空间月花费上限 US$60；api Worker 的 Secret `ANTHROPIC_API_KEY` 是该空间里不过期的 key `lyjwpage-chat-prod-2`（前一把 `lyjwpage-chat-prod` 可能随 Sentry 事件外泄，已停用未删除） | 核对于 2026-10-09，方式：Claude Console 工作空间 Spend limits 页与 API keys 页（轮换后看过 key 状态）、`wrangler deployments` 最新一版为 secret 更新 <!-- allow: 核对戳 --> |
 | api Worker 的 Rate Limiting 绑定（`CHAT_USAGE_LIMIT`、`GITHUB_ISSUE_LIMIT`、`MCP_LIMIT`）在生产实测拦不住单 IP：同一 IP、同一机房（NRT）对 `POST /mcp` 突发并发 200 次、再按每分钟约 100 次持续两分钟，对 `GET /api/chat/usage` 十秒内连发 50 次，全部 200、没有一次 429；绑定在线上版本里，代码也走到了 `limit()`。Cloudflare 文档说它按机房计数、最终一致、刻意宽松，所以只当尽力而为，不当硬闸 | 核对于 2026-10-09，方式：`wrangler versions view` 看绑定，curl 连发后统计状态码 <!-- allow: 核对戳 --> |
 | Workers 运行时在流式响应途中不把访客断开传给 api Worker：预览上用 HTTP/1.1 与 HTTP/2 客户端中途断开，`request.signal`（已开 `enable_request_signal`）与响应流的 `cancel()` 都没触发，`AnthropicEgress` 照样把 Anthropic 的流读到结束，这次调用到响应发完才记为 canceled；本地 workerd 会立刻传 | 核对于 2026-10-09，方式：预览部署加临时诊断日志，用 Workers Observability 查询 API 看日志，Anthropic Console 日志看 499 前的生成量 <!-- allow: 核对戳 --> |
 

@@ -9,7 +9,9 @@ export const GITHUB_SIGN_IN_MESSAGE = "github-sign-in";
 export const GITHUB_ISSUE_LIMITS = { titleChars: 256, bodyChars: 8000 } as const;
 
 export type GithubIssueDraft = { title: string; body: string };
-export type GithubIssueRequest = GithubIssueDraft & { code: string };
+// codeVerifier 是 PKCE（RFC 7636，S256）的原文：浏览器每次提交现生成，授权 URL 只带它的 SHA-256，兑换 token 时 Worker 原样转给 GitHub。
+export type GithubSignIn = { code: string; codeVerifier: string };
+export type GithubIssueRequest = GithubIssueDraft & GithubSignIn;
 export type GithubIssueResult = { url: string; number: number };
 
 export function parseIssueDraft(value: unknown): GithubIssueDraft | null {
@@ -21,9 +23,15 @@ export function parseIssueDraft(value: unknown): GithubIssueDraft | null {
   return { title: trimmed, body: body.trim() };
 }
 
+export function parseGithubSignIn(value: unknown): GithubSignIn | null {
+  const { code, codeVerifier } = (value ?? {}) as { code?: unknown; codeVerifier?: unknown };
+  if (typeof code !== "string" || !/^[\w-]{1,100}$/.test(code)) return null;
+  if (typeof codeVerifier !== "string" || !/^[A-Za-z0-9\-._~]{43,128}$/.test(codeVerifier)) return null;
+  return { code, codeVerifier };
+}
+
 export function parseGithubIssueRequest(value: unknown): GithubIssueRequest | null {
   const draft = parseIssueDraft(value);
-  const code = (value as { code?: unknown } | null)?.code;
-  if (!draft || typeof code !== "string" || !/^[\w-]{1,100}$/.test(code)) return null;
-  return { ...draft, code };
+  const signIn = parseGithubSignIn(value);
+  return draft && signIn ? { ...draft, ...signIn } : null;
 }

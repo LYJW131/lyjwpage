@@ -14,7 +14,7 @@
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
 | [页面效果图、GIF 与架构图产物](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图重生成 |
 | [/build 改站 routine](./build-routine.md) | runbook | `/build` 页面经 Claude Code routine 改站开 PR：建 routine、提示词、环境变量与限额 |
-| [/build 交接](./build-handoff.md) | runbook | `/build` 未完成的事：合 main（PKCE 冲突）、轮换可能外泄的令牌、CI 凭据暴露、额度与冒烟 PR |
+| [/build 交接](./build-handoff.md) | runbook | `/build` 未完成的事：CI 凭据暴露、额度、冒烟 PR 与小问题 |
 | [iOS App 上机验证](./ios-app-handoff.md) | runbook | `apps/ios` 的系统音乐、健康上报、小组件、快捷指令及后台设备验收 |
 | [iOS App 验证记录](./ios-app-verification.md) | record | SDK 构建、模拟器端到端验证与签名装机的核验快照 |
 | [讲解动画](./explainer/README.md) | runbook | `/explainer` 页面源、预览、渲染配乐与发布 |

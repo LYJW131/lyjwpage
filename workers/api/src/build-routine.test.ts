@@ -216,19 +216,24 @@ test("routine 拒绝时把上游的错误原因带回页面", async () => {
   assert.match(((await response.json()) as { error: string }).error, /Fire limit reached/);
 });
 
+const SIGN_IN = { code: "abc123", codeVerifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk" };
+
 test("登录换出身份后立刻撤销访客令牌，签发的会话能直接用", async () => {
   const calls: string[] = [];
   const response = await withGlobalFetch(async (input, init) => {
     const url = String(input);
     calls.push(`${init?.method ?? "GET"} ${url}`);
-    if (url === "https://github.com/login/oauth/access_token") return Response.json({ access_token: "ghu_visitor" });
+    if (url === "https://github.com/login/oauth/access_token") {
+      assert.equal((JSON.parse(String(init?.body)) as { code_verifier?: string }).code_verifier, SIGN_IN.codeVerifier);
+      return Response.json({ access_token: "ghu_visitor" });
+    }
     if (url === "https://api.github.com/user") {
       assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer ghu_visitor");
       return Response.json({ login: "octocat", id: 583231, name: "The Octocat" });
     }
     if (url.endsWith("/token") && init?.method === "DELETE") return new Response(null, { status: 204 });
     throw new Error(`unexpected ${url}`);
-  }, () => handleBuildSession(post({ code: "abc123" }), CONFIGURED));
+  }, () => handleBuildSession(post(SIGN_IN), CONFIGURED));
 
   assert.equal(response.status, 200);
   assert.ok(calls.some((call) => call.startsWith("DELETE ") && call.endsWith("/token")), "访客令牌必须撤销");
@@ -241,9 +246,17 @@ test("登录换出身份后立刻撤销访客令牌，签发的会话能直接�
 test("GitHub 换不出令牌时不签发会话", async () => {
   const response = await withGlobalFetch(
     async () => Response.json({ error: "bad_verification_code" }),
-    () => handleBuildSession(post({ code: "abc123" }), CONFIGURED),
+    () => handleBuildSession(post(SIGN_IN), CONFIGURED),
   );
   assert.equal(response.status, 401);
+});
+
+test("登录不带 PKCE verifier 时不去 GitHub 换令牌", async () => {
+  const response = await withGlobalFetch(
+    async () => assert.fail("不该请求 GitHub"),
+    () => handleBuildSession(post({ code: "abc123" }), CONFIGURED),
+  );
+  assert.equal(response.status, 400);
 });
 
 test("规划历史只留盖过章的整对，章绑定账号，伪造的助手回复丢掉", async () => {

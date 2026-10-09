@@ -29,11 +29,11 @@ export function IssuePanel({ draft, onClose }: { draft: GithubIssueDraft; onClos
     }
     setStatus({ kind: "working" });
     try {
-      const code = await signInWithGithub();
+      const { code, codeVerifier } = await signInWithGithub();
       const res = await fetch(ISSUE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, title, body }),
+        body: JSON.stringify({ code, codeVerifier, title, body }),
       });
       const data = (await res.json().catch(() => null)) as (GithubIssueResult & { error?: string }) | null;
       if (!res.ok || !data?.url) throw new Error(data?.error ?? "Couldn't open the issue. Try again.");

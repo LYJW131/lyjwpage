@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import {
   GOD_CHAT_QUOTA,
+  GOD_CHAT_ROUTE_LIMIT,
   GOD_CHAT_TIERS,
   downgradeChain,
   type GodChatTier,
@@ -15,6 +16,10 @@ import type { Env } from "../runtime";
 const visitorKey = (ip: string) => `v:${ip}`;
 const tierVisitorKey = (tier: GodChatTier, ip: string) => `t:${tier}:${ip}`;
 const tierAllKey = (tier: GodChatTier) => `a:${tier}`;
+const ROUTE_KEY = "r:all";
+
+// visitor 是这位访客自己的名额用完，site 是全站忙；对话端点据此回不同的 429 文案。
+export type VisitorAdmission = "ok" | "visitor" | "site";
 
 // 全站一个实例，所有对话的计数在这里串行：每次调用先清掉窗口外的命中，再数再记，读和扣在同一个同步事务里。
 export class ChatQuota extends DurableObject<Env> {
@@ -54,14 +59,22 @@ export class ChatQuota extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT INTO hits (key, at) VALUES (?, ?)", key, now);
   }
 
-  // 两步分开调：访客总量在 Clef 之前扣，超额的访客不再触发路由；档位等 Clef 选完再扣。enforce 为 false 时只记账不拦（本地调试开关）。
-  admitVisitor(ip: string, enforce = true): boolean {
+  // 两步分开调：这一步在付费的 Clef 之前，只看有没有空位、不占档位，档位等 Clef 选完在 admitTier 扣；被拒的一条都不记。
+  // enforce 为 false 时只记账不拦（本地调试开关）。
+  admitVisitor(ip: string, enforce = true): VisitorAdmission {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       this.prune(now);
-      if (enforce && this.count(visitorKey(ip)) >= GOD_CHAT_QUOTA.visitor) return false;
+      if (enforce) {
+        if (this.count(visitorKey(ip)) >= GOD_CHAT_QUOTA.visitor) return "visitor";
+        const open = GOD_CHAT_TIERS.filter((tier) => this.count(tierVisitorKey(tier, ip)) < GOD_CHAT_QUOTA.tiers[tier].visitor);
+        if (!open.length) return "visitor";
+        if (this.count(ROUTE_KEY) >= GOD_CHAT_ROUTE_LIMIT) return "site";
+        if (!open.some((tier) => this.count(tierAllKey(tier)) < GOD_CHAT_QUOTA.tiers[tier].everyone)) return "site";
+      }
       this.hit(visitorKey(ip), now);
-      return true;
+      this.hit(ROUTE_KEY, now);
+      return "ok";
     });
   }
 
@@ -88,8 +101,8 @@ export class ChatQuota extends DurableObject<Env> {
     return this.ctx.storage.sql.exec(`SELECT MIN(at) AS at FROM hits WHERE ${where}`, ...bindings).one().at as number | null;
   }
 
-  // 倒计时到下一次「这位访客看到的数会变」：自己最早的一条命中过期，或某档全站已满时它最早的一条过期。
-  // 全站没满的档不算进来，否则站上一忙，面板就几乎每秒重取一次。
+  // 倒计时到下一次「这位访客看到的数会变」：自己最早的一条命中过期，或某档全站、全站路由次数已满时它最早的一条过期。
+  // 没满的不算进来，否则站上一忙，面板就几乎每秒重取一次。路由次数不单列在面板上，满了只体现在倒计时里。
   usage(ip: string): GodChatUsage {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
@@ -99,6 +112,7 @@ export class ChatQuota extends DurableObject<Env> {
         ...GOD_CHAT_TIERS.filter((tier) => this.count(tierAllKey(tier)) >= GOD_CHAT_QUOTA.tiers[tier].everyone).map((tier) =>
           this.oldest("key = ?", tierAllKey(tier)),
         ),
+        ...(this.count(ROUTE_KEY) >= GOD_CHAT_ROUTE_LIMIT ? [this.oldest("key = ?", ROUTE_KEY)] : []),
       ].filter((at): at is number => at != null);
       const oldest = expiries.length ? Math.min(...expiries) : null;
       const tiers = Object.fromEntries(

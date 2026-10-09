@@ -246,11 +246,11 @@ export function BuildConsole() {
     setError(null);
     setConnecting(true);
     try {
-      const code = await signInWithGithub();
+      const signIn = await signInWithGithub();
       const response = await fetch(SESSION_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify(signIn),
       });
       const data = (await response.json().catch(() => null)) as (BuildSession & { error?: string }) | null;
       if (!response.ok || !data?.session) throw new Error(data?.error ?? `GitHub sign-in failed (HTTP ${response.status}).`);

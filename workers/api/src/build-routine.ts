@@ -7,6 +7,7 @@ import {
   type BuildPlan,
   type BuildSession,
 } from "@shared/build-routine";
+import { parseGithubSignIn } from "@shared/github-issue";
 
 import { fromBase64Url, toBase64Url } from "./base64url";
 import { readJsonBody } from "./chat/guard";
@@ -110,11 +111,10 @@ export async function handleBuildSession(request: Request, env: Env): Promise<Re
   if (!configured(env)) return fail(404, "Not found.");
   if (request.method !== "POST") return fail(405, "Method not allowed.");
 
-  const body = (await readJsonBody(request, MAX_BODY_BYTES)) as { code?: unknown } | null;
-  const code = typeof body?.code === "string" && /^[\w-]{1,100}$/.test(body.code) ? body.code : null;
-  if (!code) return fail(400, "Missing GitHub sign-in code.");
+  const signIn = parseGithubSignIn(await readJsonBody(request, MAX_BODY_BYTES));
+  if (!signIn) return fail(400, "Missing GitHub sign-in code.");
 
-  const token = await exchangeCode(code, env.GITHUB_APP_CLIENT_SECRET);
+  const token = await exchangeCode(signIn.code, signIn.codeVerifier, env.GITHUB_APP_CLIENT_SECRET);
   if (!token) return fail(401, "GitHub sign-in didn't go through. Try again.");
   let user: { login?: unknown; id?: unknown; name?: unknown } | null;
   try {
