@@ -46,6 +46,7 @@ type Reply = {
   tier?: GodChatTier | null;
   downgradedFrom?: GodChatTier;
   servedBy?: string;
+  thinking?: string;
   lookups?: string[];
   docs?: DocRead[];
   searches?: string[];
@@ -225,6 +226,7 @@ export function GodChat({ className }: { className?: string }) {
           if (!line) continue;
           const event = JSON.parse(line) as GodChatEvent;
           if (event.type === "text") reply += event.text;
+          else if (event.type === "thinking") meta = { ...meta, thinking: (meta.thinking ?? "") + event.text };
           else if (event.type === "route") {
             meta = { ...meta, tier: event.tier, downgradedFrom: event.downgradedFrom };
             if (event.tier === "fable" && sessionRef.current === session) summon();
@@ -424,6 +426,17 @@ export function GodChat({ className }: { className?: string }) {
                   )}
                 >
                   {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
+                  {message.thinking && (
+                    <details open={live && !message.content} className="mb-1.5">
+                      <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
+                        {live && !message.content ? "Thinking…" : "Thought process"}
+                      </summary>
+                      {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
+                      <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
+                        <ChatMarkdown>{live ? stableMarkdown(message.thinking) : message.thinking}</ChatMarkdown>
+                      </div>
+                    </details>
+                  )}
                   {message.lookups?.length ? (
                     <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">
                       Looked at {message.lookups.join(", ")}
