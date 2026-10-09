@@ -22,7 +22,7 @@ export default function NotFound() {
 
       <main className="flex flex-1 items-center justify-center py-12">
         <div className="mx-auto w-[calc(100%-2rem)] max-w-md">
-          <Card label="NOT FOUND" tone="off">
+          <Card label="404 · NOT FOUND" tone="off">
             <div className="flex flex-col items-center p-6 text-center sm:p-8">
               <div className="label-mono text-3xl font-bold tracking-widest text-foreground sm:text-4xl">
                 404
