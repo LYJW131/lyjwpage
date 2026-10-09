@@ -67,8 +67,11 @@ test("站点数据工具只认登记过的视图，去重并封顶", () => {
   assert.match(many.notes.join(" "), /call again for: coding, limits\./);
 });
 
-test("Clef 路由：只接受已知档位或 refuse，输入只带最近几条上下文", () => {
+test("Clef 路由：只接受已知选项，输入只带最近几条上下文", () => {
   assert.equal(parseRouterAnswer({ answers: { route: { choice: "fable" } } }), "fable");
+  assert.equal(parseRouterAnswer({ answers: { route: { choice: "haiku-high" } } }), "haiku-high");
+  assert.equal(parseRouterAnswer({ answers: { route: { choice: "haiku" } } }), null);
+  assert.equal(parseRouterAnswer({ answers: { route: { choice: "toString" } } }), null);
   assert.equal(parseRouterAnswer({ answers: { route: { choice: "refuse" } } }), "refuse");
   assert.equal(parseRouterAnswer({ answers: { route: { choice: "gpt" } } }), null);
   assert.equal(parseRouterAnswer(null), null);

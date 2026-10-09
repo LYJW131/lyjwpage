@@ -2,8 +2,11 @@ export const GOD_CHAT_TIERS = ["haiku", "opus", "fable"] as const;
 export type GodChatTier = (typeof GOD_CHAT_TIERS)[number];
 export type GodChatRoute = GodChatTier | "refuse";
 
-// 有意的取舍：回复上限随档位放大，思考强度不跟档位走，Fable、Opus 用 low 控成本和等待，Haiku 用 medium 补足。
-export type GodChatTierInfo = { model: string; label: string; persona: string; effort: "low" | "medium" | "high"; maxTokens: number };
+export type GodChatEffort = "low" | "medium" | "high";
+
+// 有意的取舍：回复上限随档位放大，思考强度不跟档位走，Fable、Opus 用 low 控成本和等待。effort 是默认值：
+// Clef 选 Haiku 时连强度一起选（workers/api/src/chat/router.ts#CLEF_CHOICES），降级、强制档位或 Clef 不可用时才用这里的。
+export type GodChatTierInfo = { model: string; label: string; persona: string; effort: GodChatEffort; maxTokens: number };
 
 export const GOD_CHAT_TIER_INFO: Record<GodChatTier, GodChatTierInfo> = {
   haiku: { model: "claude-haiku-5-5", label: "Haiku 5.5", persona: "Small Fry", effort: "medium", maxTokens: 2048 },
