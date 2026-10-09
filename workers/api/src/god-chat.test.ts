@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, parseGodChatRequest } from "@shared/god-chat";
-import { downgradeChain, modelLabel } from "@shared/god-chat-tiers";
+import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, downgradeChain, modelLabel } from "@shared/god-chat-tiers";
 import { readJsonBody, turnstilePassed } from "./chat/guard.ts";
 import { toModelMessages } from "./chat/history.ts";
 import { parseRouterAnswer, routerInput } from "./chat/router.ts";
 import { claimDoc, parseProjectDocInput, readProjectDoc, sliceDoc } from "./chat/project-docs.ts";
-import { claimViews, parseSiteStatusInput } from "./chat/site-status.ts";
+import { claimViews, parseSiteStatusInput, webSearchTool } from "./chat/site-status.ts";
 
 const user = (content: string) => ({ role: "user" as const, content });
 const assistant = (content: string) => ({ role: "assistant" as const, content });
@@ -182,6 +182,13 @@ test("兜底模型的展示名从 id 推，本档模型用本档的名字", () =
   assert.equal(modelLabel("claude-opus-5"), "Opus 5");
   assert.equal(modelLabel("claude-opus-4-8-20260115"), "Opus 4.8");
   assert.equal(modelLabel("claude-fable-5-1"), "Fable 5.1");
+});
+
+test("联网搜索只有 Haiku 用基础版，其余档都用带动态过滤的版本", () => {
+  for (const tier of GOD_CHAT_TIERS) {
+    const expected = tier === "haiku" ? "web_search_20250305" : "web_search_20260318";
+    assert.equal(webSearchTool(GOD_CHAT_TIER_INFO[tier].model, 1).type, expected, tier);
+  }
 });
 
 test("项目文档工具只认白名单里的文档键，章节名去空白", () => {
