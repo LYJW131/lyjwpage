@@ -121,29 +121,30 @@ function headings(lines: string[]): Heading[] {
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}\n…[truncated]` : text);
 
-export function sliceDoc(markdown: string, section?: string): string {
+export function sliceDoc(markdown: string, section?: string): { text: string; heading?: string } {
   const lines = markdown.split("\n");
   const all = headings(lines);
   const outline = `Outline:\n${all.map((h) => `${"  ".repeat(h.level - 1)}- ${h.title}`).join("\n")}`;
   if (!section) {
-    if (markdown.length <= MAX_DOC_CHARS) return markdown;
+    if (markdown.length <= MAX_DOC_CHARS) return { text: markdown };
     const opening = Math.max(0, MAX_DOC_CHARS - outline.length);
-    return `${outline}\n\nOpening:\n${clip(markdown, opening)}\n\nCall again with section set to a heading above to read that part.`;
+    return { text: `${outline}\n\nOpening:\n${clip(markdown, opening)}\n\nCall again with section set to a heading above to read that part.` };
   }
   const wanted = normalize(section);
   const start = all.find((h) => normalize(h.title) === wanted) ?? all.find((h) => normalize(h.title).includes(wanted));
-  if (!start) return `No heading matches "${section}".\n\n${clip(outline, MAX_DOC_CHARS)}`;
+  if (!start) return { text: `No heading matches "${section}".\n\n${clip(outline, MAX_DOC_CHARS)}` };
   const end = all.find((h) => h.line > start.line && h.level <= start.level)?.line ?? lines.length;
-  return clip(lines.slice(start.line, end).join("\n"), MAX_DOC_CHARS);
+  return { text: clip(lines.slice(start.line, end).join("\n"), MAX_DOC_CHARS), heading: start.title };
 }
 
-export async function readProjectDoc(read: ReadDoc, request: ProjectDocRequest): Promise<string> {
+export async function readProjectDoc(read: ReadDoc, request: ProjectDocRequest): Promise<{ text: string; heading?: string }> {
   const header = `Source: ${projectDocUrl(request.doc, "blob")}`;
   try {
     const response = await read(projectDocUrl(request.doc, "raw"));
-    if (!response.ok) return `${header}\n\n${JSON.stringify({ error: `HTTP ${response.status}` })}`;
-    return `${header}\n\n${sliceDoc(await response.text(), request.section)}`;
+    if (!response.ok) return { text: `${header}\n\n${JSON.stringify({ error: `HTTP ${response.status}` })}` };
+    const { text, heading } = sliceDoc(await response.text(), request.section);
+    return { text: `${header}\n\n${text}`, heading };
   } catch {
-    return `${header}\n\n${JSON.stringify({ error: "unavailable" })}`;
+    return { text: `${header}\n\n${JSON.stringify({ error: "unavailable" })}` };
   }
 }
