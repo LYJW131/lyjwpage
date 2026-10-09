@@ -28,7 +28,7 @@ export default function NotFound() {
                 404
               </div>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                The page you requested doesn’t exist or has been removed.
+                This page doesn’t exist or has been removed.
               </p>
               <div className="mt-6">
                 <Link
