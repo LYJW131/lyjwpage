@@ -122,8 +122,8 @@ export class McpEventHub extends DurableObject<Env> {
     }
   }
 
-  subscribe(principal: string, params: unknown): Promise<EventRpcReply> {
-    return this.reply(() => this.store.subscribe(principal, params));
+  subscribe(principal: string, params: unknown, credentialExpiresAt?: number): Promise<EventRpcReply> {
+    return this.reply(() => this.store.subscribe(principal, params, credentialExpiresAt));
   }
 
   unsubscribe(principal: string, params: unknown): Promise<EventRpcReply> {

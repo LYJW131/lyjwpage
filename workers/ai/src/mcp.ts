@@ -123,7 +123,7 @@ async function callTool(params: Params, io: ToolIO) {
   return { content: [{ type: "text", text }], isError };
 }
 
-async function dispatch(era: Era, method: string, params: Params, io: ToolIO, serverInfo: object, events?: McpEventAccess | null) {
+async function dispatch(era: Era, method: string, params: Params, io: ToolIO, serverInfo: object, events?: McpEventAccess | null, eventsEnabled = false) {
   switch (method) {
     case "initialize": {
       const requested = params.protocolVersion;
@@ -138,7 +138,7 @@ async function dispatch(era: Era, method: string, params: Params, io: ToolIO, se
       if (era !== "modern") break;
       return {
         supportedVersions: SUPPORTED_VERSIONS,
-        capabilities: { tools: {}, ...(events && { events: {} }) },
+        capabilities: { tools: {}, ...((events || eventsEnabled) && { events: {} }) },
         instructions: INSTRUCTIONS,
         ttlMs: 0,
         cacheScope: "private",
@@ -168,7 +168,7 @@ async function dispatch(era: Era, method: string, params: Params, io: ToolIO, se
   throw new RpcError(METHOD_NOT_FOUND, `Method not found: ${method}`, era === "modern" ? 404 : 200);
 }
 
-export async function handleMcp(request: Request, io: ToolIO, version: string, events?: McpEventAccess | null): Promise<Response> {
+export async function handleMcp(request: Request, io: ToolIO, version: string, events?: McpEventAccess | null, eventsEnabled = false): Promise<Response> {
   if (request.method !== "POST") {
     return new Response("MCP endpoint (Streamable HTTP). Send JSON-RPC with POST. Public tools; authenticated events.\n", {
       status: 405,
@@ -192,7 +192,7 @@ export async function handleMcp(request: Request, io: ToolIO, version: string, e
   const serverInfo = { name: "lyjwpage", title: site.name, version, websiteUrl: site.url };
   try {
     const era = eraOf(request, method, params);
-    const result = await dispatch(era, method, params, io, serverInfo, events);
+    const result = await dispatch(era, method, params, io, serverInfo, events, eventsEnabled);
     return rpcResponse(200, {
       jsonrpc: "2.0",
       id,

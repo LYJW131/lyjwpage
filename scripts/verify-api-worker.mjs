@@ -8,7 +8,7 @@ import { createServer as httpServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createRequire } from 'node:module';
-import { createHash, createHmac } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { stripVTControlCharacters } from 'node:util';
 import { createDevAccess } from './dev-access.mjs';
@@ -34,8 +34,22 @@ Object.assign(access.vars.ACCESS_CLIENTS, {
 const verifyBuild = process.argv.includes('--build');
 const verifyMcpClient = process.argv.includes('--mcp-client');
 const verifyMcpEvents = process.argv.includes('--mcp-events');
-const eventToken = 'isolated-mcp-events-primary-token-00000001';
-const otherEventToken = 'isolated-mcp-events-secondary-token-00000002';
+const eventIssuer = 'https://oauth.example.com';
+const eventResource = 'https://mcp.example.com/mcp';
+const eventJwksUrl = `${eventIssuer}/jwks`;
+const eventScope = 'mcp:events';
+const eventKeys = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+const eventJwk = { ...await crypto.subtle.exportKey('jwk', eventKeys.publicKey), kid: 'isolated-rsa-key', alg: 'RS256', use: 'sig' };
+async function eventJwt(subject, overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'at+jwt', kid: eventJwk.kid })).toString('base64url');
+  const claims = Buffer.from(JSON.stringify({ iss: eventIssuer, aud: eventResource, sub: subject, scope: eventScope, iat: now, exp: now + 24 * 3600, ...overrides })).toString('base64url');
+  const unsigned = `${header}.${claims}`;
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', eventKeys.privateKey, new TextEncoder().encode(unsigned));
+  return `${unsigned}.${Buffer.from(signature).toString('base64url')}`;
+}
+const eventToken = await eventJwt('isolated-primary-subject');
+const otherEventToken = await eventJwt('isolated-secondary-subject');
 const callbackHost = 'mcp-events.example.com';
 const eventSecret = `whsec_${Buffer.alloc(32, 1).toString('base64')}`;
 const rotatedEventSecret = `whsec_${Buffer.alloc(32, 2).toString('base64')}`;
@@ -118,11 +132,14 @@ try {
   if (verifyMcpEvents) {
     const eventsMain = join(temporary, 'ai-events.mjs');
     await writeFile(eventsMain, `export { default, ChatQuota, AnthropicEgress } from ${JSON.stringify(join(root, 'workers/ai/src/index.ts'))};
-export { McpEventHub, McpEventTestReceiver, EventVerification } from ${JSON.stringify(join(root, 'scripts/fixtures/mcp-events.mjs'))};`);
+import { installEventJwks } from ${JSON.stringify(join(root, 'scripts/fixtures/mcp-events.mjs'))};
+export { McpEventHub, McpEventTestReceiver, EventVerification } from ${JSON.stringify(join(root, 'scripts/fixtures/mcp-events.mjs'))};
+installEventJwks(${JSON.stringify(eventJwksUrl)}, ${JSON.stringify({ keys: [eventJwk] })});`);
     ai.main = eventsMain;
+    ai.vars.MCP_EVENT_AUTH = JSON.stringify({ issuer: eventIssuer, resource: eventResource, jwksUrl: eventJwksUrl });
     ai.vars.MCP_EVENT_CLIENTS = JSON.stringify([
-      { principal: 'isolated_primary', tokenSha256: createHash('sha256').update(eventToken).digest('hex') },
-      { principal: 'isolated_secondary', tokenSha256: createHash('sha256').update(otherEventToken).digest('hex') },
+      { principal: 'isolated_primary', subject: 'isolated-primary-subject' },
+      { principal: 'isolated_secondary', subject: 'isolated-secondary-subject' },
     ]);
     ai.vars.MCP_EVENT_CALLBACK_HOSTS = callbackHost;
     ai.durable_objects.bindings.push({ name: 'MCP_EVENT_TEST_RECEIVER', class_name: 'McpEventTestReceiver' });
@@ -222,6 +239,13 @@ export default { fetch(request, env) {
     });
     assert.equal(response.status, status, await response.clone().text());
     assert.equal(response.headers.get('access-control-allow-origin'), aiHeaders.Origin);
+    if (verifyMcpEvents && (status === 401 || status === 403)) {
+      const challenge = response.headers.get('www-authenticate');
+      assert.match(challenge, /^Bearer /);
+      assert.ok(challenge.includes('resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"'));
+      assert.ok(challenge.includes(`scope="${eventScope}"`));
+      if (status === 403) assert.ok(challenge.includes('error="insufficient_scope"'));
+    }
     const body = await response.json();
     if (body.result) assert.equal(body.result.resultType, 'complete');
     return body;
@@ -232,15 +256,33 @@ export default { fetch(request, env) {
   const tools = (await mcp('tools/list')).result.tools;
   assert.deepEqual(tools.map(tool => tool.name).sort(), ['get_site_status', 'read_project_doc']);
   assert.ok(tools.every(tool => tool.annotations.readOnlyHint));
+  for (const path of ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp']) {
+    const metadataResponse = await fetch(`${worker}${path}`, { headers: { Origin: 'https://oauth-client.example.com' } });
+    assert.equal(metadataResponse.status, verifyMcpEvents ? 200 : 404, path);
+    const preflight = await fetch(`${worker}${path}`, { method: 'OPTIONS' });
+    assert.equal(preflight.status, verifyMcpEvents ? 204 : 404, path);
+    if (verifyMcpEvents) {
+      assert.equal(metadataResponse.headers.get('cache-control'), 'no-store');
+      assert.equal(metadataResponse.headers.get('access-control-allow-origin'), '*');
+      const metadata = await metadataResponse.json();
+      assert.equal(metadata.resource, eventResource);
+      assert.deepEqual(metadata.authorization_servers, [eventIssuer]);
+      assert.deepEqual(metadata.scopes_supported, [eventScope]);
+      assert.deepEqual(metadata.bearer_methods_supported, ['header']);
+      assert.match(preflight.headers.get('access-control-allow-methods'), /GET/);
+      assert.equal((await fetch(`${worker}${path}`, { method: 'POST' })).status, 405);
+    }
+  }
+  console.log(`PASS: OAuth protected resource metadata traverses the API gateway and ${verifyMcpEvents ? 'advertises the fixed issuer, resource and scope' : 'stays unavailable when Events are unconfigured'}`);
   const discovered = (await modernMcp('server/discover')).result;
-  assert.deepEqual(discovered.capabilities, { tools: {} });
+  assert.deepEqual(discovered.capabilities, { tools: {}, ...(verifyMcpEvents ? { events: {} } : {}) });
   assert.equal(discovered.cacheScope, 'private');
   assert.equal(discovered.ttlMs, 0);
   assert.equal((await modernMcp('events/list', {}, undefined, 401)).error.code, -32012);
   assert.equal((await modernMcp('events/list', {}, 'invalid-token-long-enough-for-auth-0000', 401)).error.code, -32012);
   assert.equal((await mcp('events/list')).error.code, -32601);
   if (!verifyMcpEvents) assert.equal((await modernMcp('events/list', {}, eventToken, 401)).error.code, -32012);
-  console.log(`PASS: modern discovery hides Events from anonymous clients; invalid-auth and legacy Events requests fail closed${verifyMcpEvents ? '' : '; Events remain disabled without configuration'}`);
+  console.log(`PASS: modern discovery advertises only configured capabilities; invalid-auth and legacy Events requests fail closed${verifyMcpEvents ? '' : '; Events remain disabled without configuration'}`);
   for (const path of ['/api/chat', '/api/github/issue']) {
     const response = await fetch(`${worker}${path}`, { method: 'POST', headers: aiHeaders, body: '{}' });
     assert.equal(response.status, 503, path);
@@ -576,8 +618,11 @@ export default { fetch(request, env) {
       const timestamp = record.headers['webhook-timestamp'];
       assert.ok(id);
       assert.match(timestamp, /^\d+$/);
-      const expected = createHmac('sha256', Buffer.from(secret.slice(6), 'base64')).update(`${id}.${timestamp}.${record.body}`).digest('base64');
-      assert.ok(record.headers['webhook-signature'].split(' ').includes(`v1,${expected}`));
+      const secrets = Array.isArray(secret) ? secret : [secret];
+      assert.ok(secrets.some(key => {
+        const expected = createHmac('sha256', Buffer.from(key.slice(6), 'base64')).update(`${id}.${timestamp}.${record.body}`).digest('base64');
+        return record.headers['webhook-signature'].split(' ').includes(`v1,${expected}`);
+      }));
       assert.match(record.headers['x-mcp-subscription-id'], /^sub_/);
     }
     const authenticated = (await modernMcp('server/discover', {}, eventToken)).result;
@@ -586,6 +631,20 @@ export default { fetch(request, env) {
     assert.deepEqual(catalog.events.map(event => event.name), ['watching-now']);
     assert.deepEqual(catalog.events[0].delivery, ['webhook']);
     assert.equal(catalog.cacheScope, 'private');
+    const [tokenHeader, tokenClaims, tokenSignature] = eventToken.split('.');
+    const corruptedSignature = Buffer.from(tokenSignature, 'base64url');
+    corruptedSignature[0] ^= 1;
+    const invalidSignatureToken = `${tokenHeader}.${tokenClaims}.${corruptedSignature.toString('base64url')}`;
+    const now = Math.floor(Date.now() / 1000);
+    const invalidTokens = [
+      invalidSignatureToken,
+      await eventJwt('unregistered-subject'),
+      ...await Promise.all([
+        { exp: now - 60 }, { nbf: now + 3600 }, { iss: 'https://untrusted.example.com' }, { aud: 'https://another-resource.example.com/mcp' },
+      ].map(claims => eventJwt('isolated-primary-subject', claims))),
+    ];
+    for (const token of invalidTokens) assert.equal((await modernMcp('events/list', {}, token, 401)).error.code, -32012);
+    assert.equal((await modernMcp('events/list', {}, await eventJwt('isolated-primary-subject', { scope: 'openid' }), 403)).error.code, -32012);
     assert.equal((await modernMcp('events/list', { cursor: 'unknown' }, eventToken)).error.code, -32602);
     for (const url of ['http://mcp-events.example.com/hook', 'https://127.0.0.1/hook', 'https://unlisted.example.com/hook']) {
       const rejected = await modernMcp('events/subscribe', { ...parameters('/events'), delivery: { mode: 'webhook', url, secret: eventSecret } }, eventToken);
@@ -598,12 +657,17 @@ export default { fetch(request, env) {
     await fixture('configure', { path: '/events', statuses: [503, 204] });
     const original = await subscribe(parameters('/events'));
     assert.equal((await subscribe(parameters('/events'))).id, original.id);
+    const refreshedToken = await eventJwt('isolated-primary-subject', { jti: crypto.randomUUID() });
+    assert.equal((await subscribe(parameters('/events'), refreshedToken)).id, original.id, 'OAuth token rotation must preserve the subject subscription identity');
     const secondary = await subscribe(parameters('/events'), otherEventToken);
     assert.notEqual(secondary.id, original.id);
     await unsubscribe(parameters('/events'), otherEventToken);
     await unsubscribe(parameters('/events'), otherEventToken);
     await subscribe(parameters('/paused', { arguments: { change: 'paused' } }));
     await subscribe(parameters('/expired', { ttlMs: 1000 }));
+    const tokenExpiry = Math.floor(Date.now() / 1000) + 30;
+    const shortLived = await subscribe(parameters('/token-expiry', { ttlMs: 3600_000 }), await eventJwt('isolated-primary-subject', { exp: tokenExpiry }));
+    assert.equal(Date.parse(shortLived.refreshBefore), tokenExpiry * 1000, 'subscription TTL must not outlive its OAuth access token');
     await advance(0);
     assert.equal((await deliveries('/events')).length, 0, 'subscription baseline must not replay current state');
     const playing = {
@@ -626,6 +690,7 @@ export default { fetch(request, env) {
     verifySignature(first, eventSecret);
     assert.equal((await deliveries('/paused')).length, 0);
     assert.equal((await deliveries('/expired')).length, 0);
+    assert.equal((await deliveries('/token-expiry')).length, 0);
     const stopped = once(workerChild, 'exit');
     workerChild.kill('SIGTERM');
     await stopped;
@@ -653,12 +718,11 @@ export default { fetch(request, env) {
     verifySignature(paused, eventSecret);
     assert.equal((await deliveries('/paused')).length, 1);
     assert.equal((await deliveries('/expired')).length, 0, 'expired subscription must remain inactive after restart');
+    assert.equal((await deliveries('/token-expiry')).length, 0, 'OAuth token expiry must stop delivery across restart');
     assert.equal((await deliveries('/challenge-failure')).length, 0, 'failed verification must never activate a subscription');
     for (const record of await records()) {
       if (JSON.parse(record.body).type === 'verification') {
-        const key = record.headers['webhook-signature'].includes(`v1,${createHmac('sha256', Buffer.from(rotatedEventSecret.slice(6), 'base64')).update(`${record.headers['webhook-id']}.${record.headers['webhook-timestamp']}.${record.body}`).digest('base64')}`)
-          ? rotatedEventSecret : eventSecret;
-        verifySignature(record, key);
+        verifySignature(record, [eventSecret, rotatedEventSecret]);
       }
     }
     await unsubscribe(parameters('/events'));
@@ -668,7 +732,7 @@ export default { fetch(request, env) {
     assert.equal((await post(worker, '/api/ingest/emby', { playing: null })).status, 202);
     await advance(60_001);
     assert.equal((await records()).length, deliveredCount, 'cancellation must stop deliveries');
-    console.log('PASS: raw modern Events discovery, signed challenge, principal isolation, StateCore → PublicStatus → durable outbox → webhook, restart/retry deduplication, progress suppression, filtering, rotation, renewal, expiry and cancellation');
+    console.log('PASS: raw modern Events discovery, OAuth JWT validation and token renewal, signed challenge, principal isolation, StateCore → PublicStatus → durable outbox → webhook, restart/retry deduplication, progress suppression, filtering, rotation, renewal, expiry and cancellation');
   }
   if (verifyMcpClient) {
     async function inspect(era, method, args = []) {
@@ -700,6 +764,12 @@ export default { fetch(request, env) {
       assert.equal(called.isError, false);
       assert.match(called.content[0].text, /Asia\/Singapore/);
       console.log(`PASS: MCP Inspector ${era} negotiation (${initialized.protocolVersion}), strict tools/list and get_site_status(timezone)`);
+    }
+    if (verifyMcpEvents) {
+      const authenticated = await inspect('modern', 'initialize', ['--header', `Authorization: Bearer ${eventToken}`]);
+      assert.equal(authenticated.protocolVersion, '2026-07-28');
+      assert.deepEqual(authenticated.capabilities, { tools: {} });
+      console.log('PASS: MCP Inspector modern core discovery accepts an OAuth bearer header; its SDK strips the Events extension, which is verified using raw JSON');
     }
   }
   if (verifyBuild) {

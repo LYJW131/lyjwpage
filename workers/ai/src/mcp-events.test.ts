@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { registerHooks } from "node:module";
 import test from "node:test";
 
@@ -39,9 +39,11 @@ const post = async (method: string, params: Record<string, unknown> = {}, events
   return { response, body: await response.json() as RpcBody };
 };
 
-test("only authenticated modern discovery advertises webhook events with private cache hints", async () => {
+test("modern discovery advertises configured webhook support while the catalog requires authorization", async () => {
   assert.deepEqual((await post("server/discover")).body.result.capabilities, { tools: {}, events: {} });
   assert.deepEqual((await post("server/discover", {}, null)).body.result.capabilities, { tools: {} });
+  const enabled = await handleMcp(request("server/discover"), io, "test", null, true);
+  assert.deepEqual((await enabled.json() as RpcBody).result.capabilities, { tools: {}, events: {} });
   assert.equal((await post("server/discover")).body.result.cacheScope, "private");
   const listing = (await post("events/list")).body.result;
   assert.equal(listing.resultType, "complete");
@@ -77,25 +79,42 @@ test("subscriptions use server-authenticated identity and retain the ChatGPT pro
   assert.equal((await post("events/unsubscribe")).body.result.resultType, "complete");
 });
 
-test("worker gates durable object access behind configured bearer authentication", async () => {
-  const token = "synthetic-worker-mcp-event-token-0001";
+test("worker gates durable object access behind configured OAuth JWT authentication", async () => {
+  const { privateKey, publicKey } = await generateKeyPair("RS256");
+  const jwk = { ...await exportJWK(publicKey), kid: "mcp-worker-unit", alg: "RS256", use: "sig" };
+  const issuer = "https://issuer.example.com";
+  const resource = "https://mcp.example.com/mcp";
+  const jwksUrl = `${issuer}/.well-known/jwks.json`;
+  const token = await new SignJWT({ scope: "mcp:events" }).setProtectedHeader({ alg: "RS256", kid: jwk.kid })
+    .setIssuer(issuer).setAudience(resource).setSubject("user-alice").setIssuedAt().setExpirationTime("5m").sign(privateKey);
   let opens = 0;
   const env = {
     PUBLIC_STATUS: { readStatus: io.readStatus },
-    MCP_EVENT_CLIENTS: JSON.stringify([{ principal: "alice", tokenSha256: createHash("sha256").update(token).digest("hex") }]),
+    MCP_EVENT_AUTH: JSON.stringify({ issuer, resource, jwksUrl }),
+    MCP_EVENT_CLIENTS: JSON.stringify([{ principal: "alice", subject: "user-alice" }]),
     MCP_EVENT_CALLBACK_HOSTS: "callback.example.com",
     MCP_EVENTS: { idFromName: () => "test", get: () => { opens++; return access; } },
   } as unknown as Env;
-  const anonymous = await worker.fetch(request("events/list"), env);
-  assert.equal(anonymous.status, 401);
-  assert.equal(opens, 0);
-  const invalid = await worker.fetch(request("events/list", {}, false, "Bearer invalid-synthetic-token-00000001"), env);
-  assert.equal(invalid.status, 401);
-  assert.equal(opens, 0);
-  const authed = await worker.fetch(request("events/list", {}, false, `Bearer ${token}`), env);
-  assert.equal(authed.status, 200);
-  assert.equal(opens, 1);
-  const revoked = await worker.fetch(request("events/subscribe", {}, false, `Bearer ${token}`), { ...env, MCP_EVENT_CLIENTS: "[]" });
-  assert.equal(revoked.status, 401);
-  assert.equal(opens, 1);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(String(input), jwksUrl);
+    return Response.json({ keys: [jwk] });
+  }) as typeof fetch;
+  try {
+    const anonymous = await worker.fetch(request("events/list"), env);
+    assert.equal(anonymous.status, 401);
+    assert.match(anonymous.headers.get("WWW-Authenticate") ?? "", /resource_metadata=/);
+    assert.equal(opens, 0);
+    const invalid = await worker.fetch(request("events/list", {}, false, "Bearer invalid-synthetic-token-00000001"), env);
+    assert.equal(invalid.status, 401);
+    assert.equal(opens, 0);
+    const authed = await worker.fetch(request("events/list", {}, false, `Bearer ${token}`), env);
+    assert.equal(authed.status, 200);
+    assert.equal(opens, 1);
+    const revoked = await worker.fetch(request("events/subscribe", {}, false, `Bearer ${token}`), { ...env, MCP_EVENT_CLIENTS: "[]" });
+    assert.equal(revoked.status, 401);
+    assert.equal(opens, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

@@ -33,7 +33,7 @@ It is both my personal homepage and a personal telemetry system that keeps evolv
 
 The interface is built on grayscale, hairline borders and cards, with tabular figures keeping live metrics steady. Color and motion mostly serve media, state changes and interaction feedback.
 
-The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoint (Streamable HTTP, no auth). Add it to any MCP client (in ChatGPT, set authentication to No authentication) to read the live data behind every card and this project's design docs; the Talk to God card uses the very same tools. MCP Events webhook subscriptions require separate authentication and callback configuration and are disabled by default; see [MCP Events](./docs/mcp-events.md) for the event contract and activation requirements.
+The same data is open to AI agents: `https://lyjw.me/mcp` provides public MCP tools (Streamable HTTP, no auth). Add it to any MCP client (in ChatGPT, select No authentication for public tools) to read the live data behind every card and this project's design docs; the Talk to God card uses the very same tools. MCP Events webhook subscriptions are disabled by default and require an external OAuth authorization server and callback configuration. Once enabled, the ChatGPT event connection must use OAuth and the configured canonical resource URL; see [MCP Events](./docs/mcp-events.md) for the event contract and deployment acceptance requirements.
 
 ## Screenshots
 

@@ -3,6 +3,17 @@ import { McpEventHub as ProductionMcpEventHub } from '../../workers/ai/src/mcp-e
 
 const receiver = env => env.MCP_EVENT_TEST_RECEIVER.get(env.MCP_EVENT_TEST_RECEIVER.idFromName('receiver'));
 
+export function installEventJwks(jwksUrl, jwks) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url !== jwksUrl) return originalFetch(input, init);
+    const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+    if (method !== 'GET') return Promise.resolve(new Response(null, { status: 405 }));
+    return Promise.resolve(Response.json(jwks, { headers: { 'Cache-Control': 'public, max-age=60' } }));
+  };
+}
+
 export class McpEventHub extends ProductionMcpEventHub {
   constructor(ctx, env) {
     super(ctx, env);

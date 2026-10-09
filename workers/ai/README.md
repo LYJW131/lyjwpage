@@ -12,6 +12,7 @@
 | GET | `/api/chat/usage` | 当前访客与全站的对话配额，只读不扣额度 |
 | POST | `/api/github/issue` | 访客确认草稿并完成 GitHub 授权后提交 issue |
 | POST | `/mcp` | 公开工具与需鉴权的 webhook 事件，Streamable HTTP MCP |
+| GET | `/.well-known/oauth-protected-resource/mcp` | 已配置的 MCP OAuth 资源元数据，根 well-known 路径提供同文档别名 |
 
 这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
 
@@ -47,11 +48,11 @@
 
 ## MCP
 
-`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的 MCP 端点，工具读取无鉴权，事件方法要求专用 Bearer 凭据。站点在根目录 `next.config.ts` 中将 `/mcp` 用 307 跳到 `NEXT_PUBLIC_BACKEND_URL` 对应的 api，api 再经 Service Binding 交给本 Worker。307 保留 POST 与请求体；不用 Vercel rewrite，避免 `CF-Connecting-IP` 变成共用的 Vercel 出口 IP。公开访问域名见 `docs/ops-facts.md`。
+`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的 MCP 端点，工具读取无鉴权，事件目录和操作要求外部 OAuth 授权服务器签发的访问令牌。站点在根目录 `next.config.ts` 中将 `/mcp` 用 307 跳到 `NEXT_PUBLIC_BACKEND_URL` 对应的 api，api 再经 Service Binding 交给本 Worker。307 保留 POST 与请求体；不用 Vercel rewrite，避免 `CF-Connecting-IP` 变成共用的 Vercel 出口 IP。公开访问域名见 `docs/ops-facts.md`；OAuth 连接应使用事件配置里的规范 Worker 资源地址，配置契约见下文。
 
 - 工具就是 `src/tools/registry.ts#SITE_TOOLS`，和首页对话同一份定义与执行。这里只放只读、只读公开模型的工具：`draft_github_issue`（要访客在卡片里确认）、`show_card`（只对对话卡片有意义）和 `web_search`（Anthropic 服务端工具）只在对话里。每次调用各开一本账本，单次调用的视图数与截断长度和对话相同，跨调用不累计。
 - 协议：HTTP 无会话，只回 JSON，不发会话 ID，不开 SSE（GET、DELETE 回 405），JSON-RPC 批量请求回 400。两代工具客户端都收：`_meta` 里带版本的新协议（`MODERN_VERSIONS`）逐个请求核对 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头与正文一致，`server/discover`、`tools/list` 带缓存提示（`CACHE_HINTS`，缺了 Claude Code 整张工具表都不认）；旧协议（`LEGACY_VERSIONS`）先 `initialize` 握手。事件仅对现代协议开放，订阅独立持久化，不依赖 HTTP 会话。
-- 事件：具备事件绑定且通过鉴权的连接可发现 `events` 能力并调用 `events/list`、`events/subscribe`、`events/unsubscribe`。`watching-now` 只报告采样检测到的播放条目或暂停状态变化，不发送进度刷新。`McpEventHub` 经 `PUBLIC_STATUS` 读公开模型，SQLite 持久化订阅、基线与待投递通知。配置、事件 schema、采样缺口、回调安全、重试和部署验收要求统一见 [MCP Events](../../docs/mcp-events.md)。未配置事件鉴权或回调白名单时事件关闭，公开工具仍可用。
+- 事件：配置完整且具备事件绑定时公开 `events` 能力；`events/list`、`events/subscribe`、`events/unsubscribe` 仍要求 OAuth。资源元数据和 HTTP 认证 challenge 引导客户端授权，AI Worker 验证受信任发行方的 JWT，不托管账号或签发令牌。`watching-now` 只报告采样检测到的播放条目或暂停状态变化，不发送进度刷新。`McpEventHub` 经 `PUBLIC_STATUS` 读公开模型，SQLite 持久化订阅、基线与待投递通知。外部授权服务器前提、配置、事件 schema、采样缺口、回调安全、重试和未完成的真实接入验收统一见 [MCP Events](../../docs/mcp-events.md)。未配置事件鉴权或回调白名单时事件关闭，公开工具仍可用。
 - 限流与来源：按 `CF-Connecting-IP` 过 Rate Limiting 绑定 `MCP_LIMIT`，拦下时回 429 带 `Retry-After`；和 `CHAT_USAGE_LIMIT` 一样只是尽力而为，核验记录见 `docs/ops-facts.md`。带 `Origin` 的请求按 `ALLOWED_ORIGINS` 校验（与 `/api/*` 同口径），不在名单里回 403；服务端和桌面端的 MCP 客户端不带 `Origin`，不受影响。
 - 验证：`src/mcp.test.ts` 覆盖两代握手与报错，但客户端会按自己的 schema 严格校验结果，单测验不出这类不兼容；改了协议处理，起 `pnpm dev:worker` 后用真实客户端各连一次：`claude -p --strict-mcp-config --mcp-config '{"mcpServers":{"lyjw":{"type":"http","url":"http://localhost:8788/mcp"}}}' "…"` 走新协议，`npx @modelcontextprotocol/inspector --cli http://localhost:8788/mcp --transport http --method tools/list` 走旧协议握手。
 

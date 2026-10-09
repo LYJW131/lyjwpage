@@ -144,6 +144,14 @@ export class McpEventStore {
     if (!this.io.allowed(principal)) throw new EventRpcError(-32012, 'Event access denied');
   }
 
+  private grantExpiration(ttl: number, credentialExpiresAt?: number): number {
+    const now = this.io.now();
+    if (credentialExpiresAt !== undefined && (!Number.isSafeInteger(credentialExpiresAt) || credentialExpiresAt <= now)) {
+      throw new EventRpcError(-32012, 'Event credential expired or invalid');
+    }
+    return Math.min(now + ttl, credentialExpiresAt ?? Infinity);
+  }
+
   private async identity(principal: string, value: unknown, requireAllowed = true): Promise<Identity> {
     const params = object(value);
     if (params.name !== EVENT_NAME) throw new EventRpcError(-32011, 'Unknown event');
@@ -192,7 +200,7 @@ export class McpEventStore {
     return operation;
   }
 
-  subscribe(principal: string, value: unknown): Promise<Record<string, unknown>> {
+  subscribe(principal: string, value: unknown, credentialExpiresAt?: number): Promise<Record<string, unknown>> {
     return this.run(async () => {
       this.authorize(principal);
       const params = object(value);
@@ -205,6 +213,7 @@ export class McpEventStore {
         throw new EventRpcError(-32602, 'Invalid maxAgeMs');
       }
       const ttl = duration(params.ttlMs, MCP_EVENT_LIMITS.defaultTtlMs);
+      const expiresAt = this.grantExpiration(ttl, credentialExpiresAt);
       const identity = await this.identity(principal, params);
       if (typeof delivery.secret !== 'string') throw new EventRpcError(-32602, 'Invalid webhook signing secret');
       this.io.validateSecret(delivery.secret);
@@ -219,14 +228,14 @@ export class McpEventStore {
         secret: delivery.secret,
         previousSecret: old && old.secret !== delivery.secret ? old.secret : old?.previousSecret ?? null,
         previousUntil: old && old.secret !== delivery.secret ? now + MCP_EVENT_LIMITS.rotationMs : old?.previousUntil ?? null,
-        expiresAt: now + ttl,
+        expiresAt,
         verifiedAt: cached?.verifiedAt ?? now,
       };
       if (!cached) await this.io.verify(subscription);
       this.authorize(principal);
+      subscription.expiresAt = this.grantExpiration(ttl, credentialExpiresAt);
       this.prune();
       this.assertCapacity(identity);
-      subscription.expiresAt = this.io.now() + ttl;
       if (!cached) subscription.verifiedAt = this.io.now();
       if (old && old.expiresAt <= this.io.now()) {
         subscription.previousSecret = null;

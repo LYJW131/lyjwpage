@@ -1,17 +1,15 @@
-import { GITHUB_ISSUE_PATH } from "@shared/github-issue";
 import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "@shared/http-origins";
 import { MCP_PATH } from "@shared/mcp";
+import { AI_HTTP_PATHS, MCP_RESOURCE_METADATA_PATH, MCP_RESOURCE_METADATA_ROOT_PATH } from "@shared/ai-paths";
 
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
-import { authenticateEventPrincipal } from "./mcp-event-auth";
+import { eventAuthentication, eventAuthChallenge, eventResourceMetadata, eventsConfigured } from "./mcp-event-auth";
 import type { Env } from "./runtime";
 import { fetchProjectDoc } from "./tools/project-docs";
 import type { ToolIO } from "./tools/registry";
-
-const PATHS = new Set([GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH, GITHUB_ISSUE_PATH, MCP_PATH]);
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -20,14 +18,35 @@ function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
+function resourceMetadataResponse(request: Request, env: Env): Response {
+  const headers = new Headers({
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Accept, Content-Type",
+    "Cache-Control": "no-store",
+  });
+  const metadata = eventResourceMetadata(env);
+  if (!metadata) return new Response("Not found", { status: 404, headers });
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
+  if (request.method !== "GET") {
+    headers.set("Allow", "GET, OPTIONS");
+    return new Response("Method not allowed", { status: 405, headers });
+  }
+  return jsonResponse(metadata, { headers });
+}
+
 const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
-    if (!PATHS.has(pathname)) return new Response("Not found", { status: 404 });
+    if (!AI_HTTP_PATHS.has(pathname)) return new Response("Not found", { status: 404 });
+    if (pathname === MCP_RESOURCE_METADATA_PATH || pathname === MCP_RESOURCE_METADATA_ROOT_PATH) {
+      return resourceMetadataResponse(request, env);
+    }
 
     const cors = getCorsHeaders(request, env);
     if (pathname === MCP_PATH) {
       cors.set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name");
+      cors.set("Access-Control-Expose-Headers", "WWW-Authenticate");
     }
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
@@ -55,13 +74,22 @@ const worker = {
       if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
         return jsonResponse({ error: "Too many requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
       }
-      const principal = env.MCP_EVENTS ? await authenticateEventPrincipal(request, env) : null;
+      const authentication = await eventAuthentication(request, env);
+      const principal = authentication.principal;
       const events = principal && env.MCP_EVENTS ? env.MCP_EVENTS.get(env.MCP_EVENTS.idFromName("mcp-events-v1")) : null;
       response = await handleMcp(request, tools, env.CF_VERSION_METADATA?.id ?? "dev", events && principal ? {
         principal,
-        subscribe: (owner, params) => events.subscribe(owner, params),
+        subscribe: (owner, params) => events.subscribe(owner, params, authentication.expiresAt ?? undefined),
         unsubscribe: (owner, params) => events.unsubscribe(owner, params),
-      } : null);
+      } : null, Boolean(env.MCP_EVENTS && eventsConfigured(env)));
+      if (response.status === 401) {
+        const failure = authentication.failure;
+        const error = failure === "invalid_token" || failure === "insufficient_scope" ? failure : undefined;
+        const challenge = eventAuthChallenge(env, error);
+        const headers = new Headers(response.headers);
+        if (challenge) headers.set("WWW-Authenticate", challenge);
+        response = new Response(response.body, { status: failure === "insufficient_scope" ? 403 : 401, headers });
+      }
     } else {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       response = pathname === GOD_CHAT_PATH

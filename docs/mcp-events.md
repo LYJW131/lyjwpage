@@ -2,7 +2,7 @@
 
 > 类型：reference
 
-AI Worker 在现有 `/mcp` 上提供 webhook 事件订阅。公开工具继续无鉴权；事件发现、订阅、续期和取消要求专用 Bearer 凭据。事件对象只读取既有 `PUBLIC_STATUS`，不读取 StateHub 的内部表、不写入站点状态，也不运行模型或调度用户任务。
+AI Worker 在现有 `/mcp` 上提供 webhook 事件订阅。公开工具继续无鉴权；事件目录、订阅、续期和取消要求外部 OAuth 授权服务器签发的访问令牌。这里实现资源服务器、元数据与令牌验证，不托管账号、登录页或令牌签发。事件对象只读取既有 `PUBLIC_STATUS`，不读取 StateHub 的内部表、不写入站点状态，也不运行模型或调度用户任务。
 
 ## 协议依据
 
@@ -10,7 +10,7 @@ AI Worker 在现有 `/mcp` 上提供 webhook 事件订阅。公开工具继续�
 
 事件错误采用 ChatGPT webhook profile 的编号组（`NotFound`、`Forbidden`、`ResourceExhausted`、`Unsupported`、`CallbackEndpointError` 对应 `-32011` 至 `-32015`），与 [改号前草案](https://github.com/modelcontextprotocol/experimental-ext-triggers-events/blob/6682596d65eec778fe0b8b1f43b4e89d2fe2c546/docs/design-sketch-proposal.md)一致。回调验证错误遵循 OpenAI 文档的 `-32015`；固定核对版本 [d5316be 的草案](https://github.com/modelcontextprotocol/experimental-ext-triggers-events/blob/d5316be214be2e76e51462069c1d67e00a5a7619/docs/design-sketch-proposal.md)使用 `-32027`，不把二者静默混用。其他不支持的传输或 replay 请求直接报错。服务器没有采用尚未支持这份扩展的 SDK schema 来宣称事件兼容性。
 
-协议处理在 `workers/ai/src/mcp.ts#handleMcp`。现有工具的旧协议握手仍然可用；事件方法仅对现代协议开放。只有通过事件鉴权并具备事件对象绑定的连接，才在 `server/discover` 看见 `capabilities.events`。现代 discovery 和 `events/list` 返回私有、不可复用的缓存提示；匿名事件请求返回 HTTP 401 / `-32012`。
+协议处理在 `workers/ai/src/mcp.ts#handleMcp`。现有工具的旧协议握手仍然可用；事件方法仅对现代协议开放。完整配置并具备事件对象绑定时，`server/discover` 向匿名客户端公开 `capabilities.events`，让客户端可以继续发现 OAuth；事件目录及操作仍要求鉴权。现代 discovery 和 `events/list` 返回私有、不可复用的缓存提示。
 
 ## 事件契约
 
@@ -58,15 +58,22 @@ AI Worker 在现有 `/mcp` 上提供 webhook 事件订阅。公开工具继续�
 
 | 配置 | 内容与边界 |
 | --- | --- |
-| `MCP_EVENT_CLIENTS` | JSON 数组，每项仅含 `principal` 和 `tokenSha256`；保存 Bearer token 的 SHA-256 小写十六进制摘要，不保存 token 原文 |
+| `MCP_EVENT_AUTH` | JSON 对象，仅含 `issuer`、`resource`、`jwksUrl`；固定受信任发行方、本站公开 `/mcp` 资源标识及验证公钥地址 |
+| `MCP_EVENT_CLIENTS` | JSON 数组，每项仅含 `principal` 和 `subject`；把受信任发行方的 JWT `sub` 映射到本站稳定订阅主体 |
 | `MCP_EVENT_CALLBACK_HOSTS` | 逗号分隔的精确小写回调主机名，不接受通配符、URL 或端口 |
 | `MCP_EVENTS` | 指向 `McpEventHub` 的 Durable Object 绑定 |
 
-这是供受信任插件连接使用的静态 Bearer 凭据，不是 OAuth 登录流程。默认缺少配置即关闭事件入口；无凭据的既有工具仍可用。部署管理员须为不同连接分配不同主体和凭据；共享同一主体的连接共享订阅命名空间。禁止把 token、签名密钥、完整回调 URL 或验证 challenge 写入日志、Sentry 或公开响应。
+默认缺少配置即关闭事件入口；无凭据的既有工具仍可用。访问令牌须为受信任 JWKS 的 RS256 JWT，验证签名、发行方、本站 audience、有效期、签发时间、可选生效时间、`mcp:events` scope 和允许的 subject。公钥地址由部署配置指定，不从未经验证的令牌或请求中接受。Bearer 访问令牌不持久化；订阅通过映射后的主体隔离，共享同一主体的连接共享订阅命名空间。禁止把 token、签名密钥、完整回调 URL 或验证 challenge 写入日志、Sentry 或公开响应。
+
+OAuth 资源元数据通过 API → `AI_SERVICE` 转发到 AI Worker 的公开 GET 提供，路径为 `/.well-known/oauth-protected-resource/mcp`，根路径 `/.well-known/oauth-protected-resource` 是同文档别名；两者均为 `no-store` 并允许跨域 GET 及预检，未配置时返回 404。元数据中的 `resource` 是配置的规范标识，`authorization_servers` 指向受信任 issuer，scope 为 `mcp:events`，不使用来访 Host 构造身份或资源标识。
+
+事件请求没有令牌或令牌无效时返回 HTTP 401 / `-32012`，携带指向规范元数据 URL 的 `WWW-Authenticate`；经过签名和声明验证但 scope 不足时返回 HTTP 403，并带 `insufficient_scope` challenge。坏令牌不关闭仍可匿名读取的工具。
 
 订阅 ID 由认证主体、回调 URL、事件名和规范化参数确定。同一身份重复订阅会续期；另一主体不能续期或取消该订阅。取消按同样的事件、参数和回调地址识别订阅，重复取消安全，并移除待投递项。移除允许主体或订阅到期后同样清理订阅和待投递项。
 
-有效期、全局与每主体订阅上限取 `MCP_EVENT_LIMITS`。省略 `ttlMs` 使用默认时长；请求更长时长或无限期会受最大时长限制。客户端应在响应的 `refreshBefore` 前重发订阅续期。签名密钥轮换会重新验证回调，并在受限窗口内携带新旧密钥签名。
+有效期、全局与每主体订阅上限取 `MCP_EVENT_LIMITS`。省略 `ttlMs` 使用默认时长；请求更长时长或无限期会受最大时长限制。实际授权截至访问令牌到期与订阅 TTL 中较早的时刻，到期后停止投递并清理待投递项。客户端应在响应的 `refreshBefore` 前使用有效访问令牌重发订阅；持新的令牌可延长同一订阅。签名密钥轮换会重新验证回调，并在受限窗口内携带新旧密钥签名。
+
+JWT 在资源服务器本地验签，不逐次向发行方查询撤销状态，不能实时获知第三方撤权。变更或移除配置中的发行方、资源或 subject / principal 映射会令旧订阅主体失效并清理；其他撤销以令牌到期边界为准。
 
 创建订阅前先验证 HTTPS 回调地址和签名密钥，再发一次无应用数据的签名 challenge；只在成功状态码及常量时间比较 challenge 通过后激活。验证缓存同时限定主体、回调 URL、密钥和时效，不能由别的主体复用。签名使用 Standard Webhooks 格式，验证和应用通知都经过同一出站安全检查。
 
@@ -78,7 +85,15 @@ AI Worker 在现有 `/mcp` 上提供 webhook 事件订阅。公开工具继续�
 
 真实 ChatGPT 回调在部署环境中的 DNS、TLS 和网络可达性没有通过本地 mock 证明，不能把单元测试或配置完成称为 ChatGPT 端到端通过。生产接入前须使用获准的接收端验证回调 challenge、投递签名、续期与取消；网络不兼容时保持入口关闭。
 
-启用需要追加部署 `McpEventHub` 的 DO 迁移与绑定，再配置管理员批准的主体摘要和精确回调主机。仓库不提供真实凭据或生产订阅；这些配置不应提交到 Git。Worker 发布遵循 [Workers 构建](./workers-builds.md)，不得用本地验证脚本代替发布或擅自配置生产回调。
+启用需要部署 `McpEventHub` 的 DO 迁移与绑定，再配置管理员批准的发行方、资源标识、JWKS、subject 映射和精确回调主机。仓库不提供已配置的真实发行方、账号、访问令牌或生产订阅；私有环境配置不应提交到 Git。Worker 发布遵循 [Workers 构建](./workers-builds.md)，不得用本地验证脚本代替发布或擅自配置生产回调。
+
+## 外部 OAuth 授权服务器前提
+
+按 2026-10-09 核对的 [OpenAI 身份提供商接入要求](https://developers.openai.com/plugins/build/auth#choosing-an-identity-provider)，ChatGPT 连接应选择 OAuth，授权码交换使用 PKCE S256；外部授权服务器负责账号、授权同意及访问和刷新令牌签发。其 OAuth / OIDC discovery 必须公开授权与令牌端点并声明 `code_challenge_methods_supported` 包含 `S256`，将客户端请求的 `resource` 绑定到访问令牌 audience。客户端注册可使用 CIMD、DCR 或预注册，OAuth redirect URI 必须从 ChatGPT 连接管理页原样登记，不能猜测。<!-- allow: 官方 OAuth 兼容性依据核对日期 -->
+
+部署时把 ChatGPT 的 MCP 地址直接设置为 `MCP_EVENT_AUTH.resource` 对应的公开 Worker `/mcp`，保证元数据、授权请求的 resource 和 JWT audience 一致。站点 `/mcp` 的匿名工具重定向入口不代替这个 OAuth 资源标识。访问令牌须满足上面的 JWT 验证契约，不能用 ID token 或自定义静态 API key 代替。
+
+代码实现的是官方允许的授权服务器与资源服务器分离模式。外部发行方配置、ChatGPT 的 OAuth 连接界面以及授权后 Events 投递均未进行真实端到端验收；本地合成 JWT、JWKS 与 webhook 测试只证明资源服务器行为。生产启用前需获准选择和配置授权服务器，再验证真实授权、续期、撤销主体和 webhook 回调；不因本地测试通过就宣称现有 ChatGPT 连接已可使用事件。
 
 ## 本地检查
 
@@ -92,4 +107,4 @@ pnpm docs:check
 node scripts/verify-api-worker.mjs --build --mcp-client --mcp-events
 ```
 
-隔离集成脚本使用临时配置、本地状态和合成数据；不要为验证创建真实持久凭据、生产订阅或部署生产。真实 ChatGPT webhook 注册与投递仍需单独验收。
+隔离集成脚本使用临时配置、本地状态、合成 JWT / JWKS 和回调；不要为验证创建真实持久凭据、生产订阅或部署生产。真实外部 OAuth 授权与 ChatGPT webhook 注册、投递仍需单独验收。

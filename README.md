@@ -33,7 +33,7 @@
 
 界面以灰阶、细线边界和卡片布局为基础，用等宽数字稳定动态指标的排版。颜色与动效主要服务于媒体内容、状态变化和交互反馈。
 
-这些数据也开放给 AI：`https://lyjw.me/mcp` 是公开的 MCP 端点（Streamable HTTP，无需鉴权），加进任意 MCP 客户端（ChatGPT 里身份验证选「无身份验证」），就能读到每张卡片背后的实时数据、查阅本项目的设计文档；与神对话用的正是同一套工具。 MCP Events 的 webhook 订阅需要独立鉴权和回调配置，默认关闭；事件语义与启用边界见 [MCP Events](./docs/mcp-events.md)。
+这些数据也开放给 AI：`https://lyjw.me/mcp` 提供公开的 MCP 工具（Streamable HTTP，无需鉴权），加进任意 MCP 客户端（只用公开工具时，ChatGPT 身份验证选「无身份验证」），就能读到每张卡片背后的实时数据、查阅本项目的设计文档；与神对话用的正是同一套工具。MCP Events 的 webhook 订阅默认关闭，需接入外部 OAuth 授权服务器并配置回调；启用后的 ChatGPT 事件连接应选择 OAuth，使用配置的规范资源地址。事件语义和部署验收前提见 [MCP Events](./docs/mcp-events.md)。
 
 ## 页面效果
 

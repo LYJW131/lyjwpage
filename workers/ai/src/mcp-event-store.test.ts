@@ -140,6 +140,66 @@ test('verification failure leaves existing subscription, expiry and pending deli
   assert.deepEqual(f.db.prepare('SELECT * FROM mcp_event_outbox').all(), pending);
 });
 
+test('access token expiration caps every subscription grant and a renewed token extends the same identity', async () => {
+  const f = fixture();
+  const tokenExpiresAt = f.now + 120_000;
+  const first = await f.store.subscribe('alice', params(), tokenExpiresAt);
+  assert.equal(Date.parse(first.refreshBefore as string), tokenExpiresAt);
+  const noExpiry = await f.store.subscribe('alice', params('/callback', { ttlMs: null }), tokenExpiresAt);
+  assert.equal(Date.parse(noExpiry.refreshBefore as string), tokenExpiresAt);
+  f.advance();
+  const newTokenExpiresAt = f.now + 2 * MCP_EVENT_LIMITS.defaultTtlMs;
+  const renewed = await f.store.subscribe('alice', params(), newTokenExpiresAt);
+  assert.equal(renewed.id, first.id);
+  assert.equal(Date.parse(renewed.refreshBefore as string), f.now + MCP_EVENT_LIMITS.defaultTtlMs);
+  const shortRequest = await f.store.subscribe('alice', params('/short', { ttlMs: 1000 }), newTokenExpiresAt);
+  assert.equal(Date.parse(shortRequest.refreshBefore as string), f.now + 1000);
+});
+
+test('invalid or expired access token deadlines are rejected before callback verification', async () => {
+  const f = fixture();
+  for (const expiration of [f.now, f.now - 1, NaN, Infinity, f.now + 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(f.store.subscribe('alice', params(), expiration), (error: unknown) => error instanceof EventRpcError && error.code === -32012);
+  }
+  assert.equal(f.verifies, 0);
+  assert.equal(f.subscriptions, 0);
+});
+
+test('a token expiring during callback verification cannot replace a still-valid subscription or pending event', async () => {
+  const f = fixture();
+  await f.store.subscribe('alice', params(), f.now + MCP_EVENT_LIMITS.defaultTtlMs);
+  await f.store.alarm();
+  f.advance();
+  f.state(playing());
+  f.status(503);
+  await f.store.alarm();
+  const old = f.db.prepare('SELECT * FROM mcp_event_subscriptions').get();
+  const pending = f.db.prepare('SELECT * FROM mcp_event_outbox').all();
+  f.verification(async () => { f.advance(2000); });
+  const rotated = params('/callback', { delivery: { mode: 'webhook', url: 'https://receiver.example.com/callback', secret: replacement } });
+  await assert.rejects(f.store.subscribe('alice', rotated, f.now + 1000), (error: unknown) => error instanceof EventRpcError && error.code === -32012);
+  assert.deepEqual(f.db.prepare('SELECT * FROM mcp_event_subscriptions').get(), old);
+  assert.deepEqual(f.db.prepare('SELECT * FROM mcp_event_outbox').all(), pending);
+});
+
+test('pending retries stop and stored secrets are removed when the granting token expires', async () => {
+  const f = fixture();
+  await f.store.subscribe('alice', params(), f.now + 120_000);
+  await f.store.alarm();
+  f.advance();
+  f.state(playing());
+  f.status(503);
+  await f.store.alarm();
+  assert.equal(f.pending, 1);
+  f.advance();
+  f.restart();
+  await f.store.alarm();
+  assert.equal(f.sent.length, 1);
+  assert.equal(f.pending, 0);
+  assert.equal(f.subscriptions, 0);
+  assert.equal(f.alarmAt, null);
+});
+
 test('verification cache is principal, URL and secret scoped and expires', async () => {
   const f = fixture();
   await f.store.subscribe('alice', params());
