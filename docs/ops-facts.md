@@ -31,6 +31,7 @@
 | --- | --- |
 | `lyjw.me` 站点在 Vercel，生产随 `main` 自动部署；预览构建把后端源改成该分支的影子 Worker，生产构建用面板里的值 | 核对于 未记录，方式：迁自 `docs/state-storage.md` 与 `docs/workers-builds.md` |
 | 项目环境变量（只记名字）：`NEXT_PUBLIC_BACKEND_URL`（构建期写入前端，状态、推送、在线人数同源）、`REVALIDATE_SECRET`（只有 Worker 与 Vercel 两边有）、`R2_PUBLIC_BASE_URL`（`/img/*` rewrite 的目的地与首屏图标内联的来源，生产只配在 Vercel）、可选 `GITHUB_TOKEN`（构建期读最近提交）；参照根 `.env.example` | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
+| `REVALIDATE_SECRET` 两边（Vercel 的 Production 与 Preview、api Worker 的 Secret）同一个值，2026-10-09 轮换过：旧值可能随 Sentry 采样到的 `/api/revalidate` transaction 外泄；换值后 Vercel 要新部署才生效 | 核对于 2026-10-09，方式：`vercel env ls`、`wrangler secret list`，生产上 Worker 发出的失效请求被站点接受 <!-- allow: 核对戳 --> |
 | 主账号与小账号各有一个生产项目，Production 与 Preview 的 `NEXT_PUBLIC_BACKEND_URL` 都指向 API 域名 | 核对于 2026-09-07，方式：迁自 [核验记录](./reporter-endpoints.md) |
 
 ## Cloudflare 账号里的资源
