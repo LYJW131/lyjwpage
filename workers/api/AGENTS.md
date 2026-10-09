@@ -31,6 +31,6 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 ## 本地开发与验证
 
 - `pnpm dev:worker`（仓库根）用一个 `wrangler dev` 进程起 dev-router、api、ingress、collector 四个 Worker；本地 api 的名字必须是 `api`，Service Binding 按生产名字互相找。`pnpm dev:worker:init` 只需一次，状态在 `.wrangler/dev-state`，想清库就删它再 init。
-- 本地是空库：`.dev.vars` 配 `UPSTREAM_API_URL` 后生产为主、本地补缺；测上报链路要把它注释掉。`DEV_OVERRIDES=true` 才开假数据注入端点，夹具里的时间戳用 `"$now"` 令牌（用法见 `pnpm dev:override --help`）。
+- 本地是空库：`.dev.vars` 配 `UPSTREAM_API_URL` 后按端点整份兜底：生产 `ok:true` 的端点整份用生产的，已有端点的新字段本地看不到，要用 `pnpm dev:override` 注入（见 `README.md`「本地开发」）；测上报链路要把它注释掉。`DEV_OVERRIDES=true` 才开假数据注入端点，夹具里的时间戳用 `"$now"` 令牌（用法见 `pnpm dev:override --help`）。
 - 验证：`pnpm --dir workers/api typecheck`、`pnpm --dir workers/api test`、`node scripts/verify-api-worker.mjs --build`（隔离链路，不碰生产绑定和凭据）。
 - 改了 `src/mcp.ts` 的协议处理，单测之外要用真实客户端连一次本地（命令见 `README.md`「MCP」）：客户端按自己的 schema 严格校验结果，不合就整张工具表不认。
