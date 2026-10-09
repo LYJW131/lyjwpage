@@ -25,7 +25,7 @@ export type GodChatMessage = { role: "user" | "assistant"; content: string; trac
 export type GodChatSource = { url: string; title: string };
 
 // 响应体是 NDJSON，每行一个事件；首行总是 route（refuse 时 tier 为 null），views 是 get_site_status 读取的视图键。
-// served 只在 Anthropic 的拒答兜底换了模型、且这一轮最终没被拒时出现，model 是实际作答的模型 id。
+// served 只在给出最终答案的那一轮由 Anthropic 的拒答兜底模型答成（没被拒）时出现，回复末尾一次，model 是那个模型的 id。
 export type GodChatEvent =
   | { type: "route"; route: GodChatRoute; tier: GodChatTier | null; downgradedFrom?: GodChatTier }
   | { type: "served"; model: string }
