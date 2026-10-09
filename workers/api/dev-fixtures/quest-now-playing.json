@@ -4,7 +4,6 @@
     "available": true,
     "observedAt": "$now",
     "receivedAt": "$now",
-    "discordStatus": "online",
     "playing": {
       "name": "Beat Saber",
       "platform": "meta_quest",

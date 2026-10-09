@@ -20,9 +20,7 @@ export async function commitPreparedQuestReport({ presence, receivedAt }: Prepar
   if (previous && presence.observedAt <= previous.observedAt) return { changed: false };
   const before = previous ? questNow(previous, receivedAt) : null;
   const after = questNow(presence, receivedAt);
-  const changed = !before?.available
-    || previous?.discordStatus !== presence.discordStatus
-    || JSON.stringify(previous?.playing) !== JSON.stringify(presence.playing);
+  const changed = !before?.available || JSON.stringify(previous?.playing) !== JSON.stringify(presence.playing);
   const writes: Promise<unknown>[] = [questMirror.put(presence)];
   if (after.playing) writes.push(recordStateObservation("gaming", receivedAt, questGamingFacts(after.playing)));
   // 按上一份存的「在玩」收尾、不看它新不新鲜：上报器断过一阵再回来报停玩，也要把那段 Quest 收住。
