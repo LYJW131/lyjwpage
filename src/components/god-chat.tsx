@@ -413,7 +413,8 @@ export function GodChat({ className }: { className?: string }) {
               <div key={index} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
                 <div
                   className={cn(
-                    "min-w-0 max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]",
+                    "min-w-0 rounded-lg px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]",
+                    message.role === "user" ? "max-w-[85%]" : "max-w-full sm:max-w-[85%]",
                     message.role === "user"
                       ? "whitespace-pre-wrap bg-foreground text-background"
                       : message.tier === "fable"
