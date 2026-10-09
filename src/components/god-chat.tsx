@@ -192,7 +192,8 @@ export function GodChat({ className }: { className?: string }) {
     stickRef.current = true;
     if (!messages.length) reveal();
     show();
-    setDraft("");
+    // 等验证期间输入框还能改，回调发的是排队时那条；框里已经不是它就别清，免得吞掉访客新改的草稿。
+    setDraft((current) => (current === text ? "" : current));
     setError(null);
     setStreaming(true);
     setToken(null);
