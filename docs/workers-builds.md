@@ -36,7 +36,7 @@ api 和 ai 的 Builds 都调用同一个预览脚本，各自发布到自己的 
 
 预览绑定由 api 配置的 `[previews]` 段提供，状态与聊天 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入和存储导入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
 
-Vercel 和 Worker 构建并行。`scripts/build.mjs` 在预览构建里等待本分支 api、ai 两个候选地址，`scripts/preview-backend.mjs#findMatchingPreview` 只接受 revision 与 `VERCEL_GIT_COMMIT_SHA` 一致且状态读取就绪的候选；两份都是本提交时固定选 api（ai 先就绪也再等 api 一小段，见 `PREFERRED_GRACE_MS`），只改了 AI 代码的分支只有 ai 那份。等待上限见 `WAIT_MS`；没有匹配时这次构建用生产，不能误用旧提交的 Preview。结果通过 `PREVIEW_BACKEND_URL` 传给 Next 配置。
+Vercel 和 Worker 构建并行。`scripts/build.mjs` 在预览构建里等待本分支 api、ai 两个候选地址，`scripts/preview-backend.mjs#findMatchingPreview` 只接受 revision 与 `VERCEL_GIT_COMMIT_SHA` 一致且状态读取就绪的候选；两份都是本提交时固定选 api：ai 先就绪时，在 `PREFERRED_GRACE_MS` 内反复重查 api（它常常晚到，之前还挂着旧提交）。只改了 AI 代码的分支没有 api 的新 Preview，会多等这一段再用 ai。等待上限见 `WAIT_MS`；没有匹配时这次构建用生产，不能误用旧提交的 Preview。结果通过 `PREVIEW_BACKEND_URL` 传给 Next 配置。
 
 AI 端点需要的 Secret 只设在实际使用的 parent 的本分支 Preview；例如 api parent：
 

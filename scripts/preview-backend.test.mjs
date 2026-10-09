@@ -14,7 +14,7 @@ test("AI-only 分支使用同一提交的 ai Preview，跳过 api 的旧版本",
       return Response.json({ commitSha: url.startsWith(origins[0]) ? "old-sha" : "new-sha" });
     }
     return Response.json({ ok: true });
-  });
+  }, 30, 5);
   assert.equal(found, origins[1]);
   assert.equal(calls.includes(`${origins[0]}/api/status/listening/now`), false);
   assert.equal(calls.includes(`${origins[1]}/api/status/listening/now`), true);
@@ -29,6 +29,27 @@ test("两个候选同时检查，失联的 api 只多等一小段就用 ai", asy
   }, 20);
   assert.equal(found, origins[1]);
   assert.deepEqual(calls.slice(0, 2), origins.map((origin) => `${origin}${PREVIEW_REVISION_PATH}`));
+});
+
+test("api 还挂着旧提交时在宽限期里重查，换到本提交就选 api", async () => {
+  let apiChecks = 0;
+  const found = await findMatchingPreview(origins, "sha", async (url) => {
+    if (url.startsWith(origins[0]) && url.endsWith(PREVIEW_REVISION_PATH)) {
+      apiChecks++;
+      return Response.json({ commitSha: apiChecks < 3 ? "old-sha" : "sha" });
+    }
+    return Response.json(url.endsWith(PREVIEW_REVISION_PATH) ? { commitSha: "sha" } : { ok: true });
+  }, 1_000, 10);
+  assert.equal(found, origins[0]);
+  assert.equal(apiChecks, 3);
+});
+
+test("api 整个宽限期都是旧提交时用 ai", async () => {
+  const found = await findMatchingPreview(origins, "sha", async (url) => {
+    if (url.startsWith(origins[0]) && url.endsWith(PREVIEW_REVISION_PATH)) return Response.json({ commitSha: "old-sha" });
+    return Response.json(url.endsWith(PREVIEW_REVISION_PATH) ? { commitSha: "sha" } : { ok: true });
+  }, 50, 10);
+  assert.equal(found, origins[1]);
 });
 
 test("两个候选都是本提交时固定选 api，即使 ai 先就绪", async () => {
