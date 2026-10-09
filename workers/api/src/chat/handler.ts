@@ -18,6 +18,7 @@ import { getAllowedOrigins } from "../origins";
 import type { Env } from "../runtime";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
+import { billedOutputTokens, usageHops } from "./billing";
 import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
@@ -110,11 +111,11 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
     return fail(403, "Human verification failed. Please try again.");
   }
   if (abort.signal.aborted) return gone();
-  // 验过人才计数，计数在 Clef 之前：超额的访客不再触发付费的路由调用。
+  // 验过人才计数，计数在 Clef 之前：访客自己超额、全站路由满或哪一档都排不上时，不再触发付费的路由调用。
   const enforce = devSwitch("CHAT_RATE_LIMIT") !== "off";
-  if (!(await quota.admitVisitor(ip, enforce))) {
-    return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
-  }
+  const admission = await quota.admitVisitor(ip, enforce);
+  if (admission === "visitor") return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
+  if (admission === "site") return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
@@ -218,7 +219,8 @@ async function converse({
   const ownModel = (id: string) => id === model || id.startsWith(`${model}-`);
   let servedBy: string | undefined;
   // max_tokens 只管单次请求；工具循环每轮都给满会让一条回复花掉几倍上限，所以整条回复合计不超过本档 maxTokens，
-  // 剩下的不够 MIN_ROUND_TOKENS 就不再续。
+  // 剩下的不够 MIN_ROUND_TOKENS 就不再续，每轮按 billedOutputTokens 扣。有意接受的溢出：同一请求里本档写到一半被拒，
+  // 兜底模型还能再用满一次 max_tokens；fallbacks: "default" 不能按跳设上限，要设就得自己列出并维护兜底型号链。
   let outputLeft = maxTokens;
   const shownSearches = new Set<string>();
   const showSearch = (id: string, input: unknown) => {
@@ -296,7 +298,8 @@ async function converse({
     }
     const final = await stream.finalMessage();
     servedBy = final.stop_reason !== "refusal" ? fallbackModel : undefined;
-    outputLeft -= final.usage.output_tokens;
+    const billed = billedOutputTokens(final.usage);
+    outputLeft -= billed;
     searches += final.usage.server_tool_use?.web_search_requests ?? 0;
     for (const block of final.content) {
       if (block.type === "server_tool_use" && block.name === "web_search") showSearch(block.id, block.input);
@@ -307,7 +310,18 @@ async function converse({
         }
       }
     }
-    console.info("[god-chat] usage", JSON.stringify({ tier, round, ...final.usage, iterations: undefined }));
+    const fellBack = final.usage.iterations?.some((iteration) => iteration.type === "fallback_message");
+    console.info(
+      "[god-chat] usage",
+      JSON.stringify({
+        tier,
+        round,
+        ...final.usage,
+        iterations: undefined,
+        billedOutputTokens: billed,
+        ...(fellBack && { hops: usageHops(final.usage.iterations) }),
+      }),
+    );
     if (final.stop_reason === "refusal") {
       emit({ type: "text", text: "\n\n[The heavens decline to answer this one.]" });
       refused = true;

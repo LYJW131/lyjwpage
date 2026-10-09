@@ -21,11 +21,11 @@ function fail(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-async function exchangeCode(code: string, secret: string): Promise<string | null> {
+async function exchangeCode(code: string, codeVerifier: string, secret: string): Promise<string | null> {
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": API_HEADERS["User-Agent"] },
-    body: JSON.stringify({ client_id: GITHUB_APP_CLIENT_ID, client_secret: secret, code }),
+    body: JSON.stringify({ client_id: GITHUB_APP_CLIENT_ID, client_secret: secret, code, code_verifier: codeVerifier }),
   });
   const data = (await res.json().catch(() => null)) as { access_token?: string; error?: string } | null;
   if (!data?.access_token) console.warn("[github-issue] code exchange failed", res.status, data?.error);
@@ -52,7 +52,7 @@ export async function handleGithubIssue(request: Request, env: Env, ip: string):
   const parsed = parseGithubIssueRequest(await readJsonBody(request, MAX_BODY_BYTES));
   if (!parsed) return fail(400, "The issue needs a title, and both fields must fit their limits.");
 
-  const token = await exchangeCode(parsed.code, secret);
+  const token = await exchangeCode(parsed.code, parsed.codeVerifier, secret);
   if (!token) return fail(401, "GitHub sign-in didn't go through. Try again.");
   try {
     const res = await fetch(`${GITHUB_API}/repos/${GITHUB_ISSUE_REPO}/issues`, {
