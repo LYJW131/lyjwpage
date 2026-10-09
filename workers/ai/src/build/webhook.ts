@@ -40,15 +40,13 @@ export async function applyGithubWebhook(env: Env, event: string, payload: Webho
   } else if (event === "check_run" && payload.check_run) {
     const check = payload.check_run;
     runId = (await coordinator.findRun(check.head_sha))?.state.runId ?? null;
-    if (/vercel/i.test(`${check.name} ${check.app?.slug}`)) patch.preview = { state: check.conclusion ?? check.status, url: check.details_url, updatedAt: Date.parse(check.completed_at ?? check.started_at ?? "") || Date.now() };
-    // A single check cannot establish the aggregate CI result; reconciliation reads every check on the current head.
+    // A single event cannot establish aggregate CI or Preview; reconciliation reads every signal on the current head.
     patch.reconciledAt = 0;
   } else if (event === "check_suite" && payload.check_suite) {
     runId = (await coordinator.findRun(payload.check_suite.head_sha))?.state.runId ?? null;
     patch.reconciledAt = 0;
   } else if (event === "status" && payload.sha) {
     runId = (await coordinator.findRun(payload.sha))?.state.runId ?? null;
-    if (/vercel/i.test(payload.context ?? "")) patch.preview = { state: payload.state ?? "unknown", url: payload.target_url, updatedAt: Date.parse(payload.updated_at ?? "") || Date.now() };
     patch.reconciledAt = 0;
   }
   if (runId) await coordinator.updateRun(runId, patch);

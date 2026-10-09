@@ -37,6 +37,10 @@ Worker 先原子占用上传令牌，再执行请求体、文件数、单文件/
 
 GitHub webhook 按原始正文验证 `X-Hub-Signature-256`，并核对目标仓库与 run 分支，处理成功后才登记 delivery ID 去重，处理失败保留重投机会。订阅事件为 `check_run`、`check_suite`、`status`、`issue_comment`、`pull_request`。检查、预览与评论是独立状态；`claude[bot]` 的评论只供参考，不能授权代码或合并。卡片注明此边界。
 
+Claude review 卡片通过 `src/lib/build-review-summary.ts#buildReviewSummary` 将可识别的审查结论显示为 No issues 或 Issues found；缺失、失败或无法识别的结论显示 Unknown。评论正文不直接显示，链接仍指向 GitHub 原评论；本地保存的会话也使用同一展示规则。
+
+CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类和汇总：Vercel 与 Workers Builds 的明确部署信号只计入 Preview，Vercel Preview Comments 辅助检查不计入两栏。Preview 汇总所有部署，失败优先于等待，链接指向决定当前结果的部署；读取失败或不完整时显示未知。检查与部署 webhook 只标记状态需要重新对账，单条事件不能覆盖整体结论。
+
 卡片可见且构建未到终态时轮询；`merged`、`closed`、`blocked`、`failed`、`timeout` 停止轮询，`merged` / `closed` 不再调用 GitHub 对账。其他已有 PR 的陈旧状态按 `BUILD_RECONCILE_MS` 限制对账频率，通过 GitHub API 查询 PR、检查和预览状态。无法读取 PR 时保留最后观测到的事实；PR 查询成功后，读取失败或不完整的检查、预览与审查结果显示未知，不用 routine 的预算耗尽或会话结束推断结果。对账按 head SHA 与 GitHub 更新时间防止旧结果覆盖新提交。状态访问需要绑定 runId 的签名 token。
 
 浏览器用 localStorage 保存多个会话，包括历史签章、设计/计划令牌和构建 runId/状态令牌。`/clear` 与 `/new` 新开会话，旧会话仍可切换、删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化；容量策略由 `src/lib/chat-archive.ts` 维护。过期计划按钮禁用；localStorage 不可用时退回内存，刷新后不承诺恢复。

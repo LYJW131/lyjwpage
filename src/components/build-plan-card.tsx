@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { IssuePanel } from "@/components/github-issue-panel";
+import { buildReviewSummary } from "@/lib/build-review-summary";
 import { createBuildStatusPoller, isBuildTerminal } from "@/lib/build-status-polling";
 import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
@@ -142,7 +143,7 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted-foreground">
         <dt>CI</dt><dd><Signal signal={savedRun?.ci} /></dd>
         <dt>Preview</dt><dd><Signal signal={savedRun?.preview} /></dd>
-        <dt>Claude review</dt><dd><Signal signal={savedRun?.review} /></dd>
+        <dt>Claude review</dt><dd><Signal signal={savedRun?.review} label={buildReviewSummary(savedRun?.review?.state)} /></dd>
       </dl>
       <p className="text-[10px] text-muted-foreground">Claude review is advisory. {terminal ? "This build has finished; automatic refresh is off." : "Status refreshes while this card is visible."}</p>
       <details className="text-[10px] text-muted-foreground"><summary className="cursor-pointer">Build details</summary><p className="mt-1 break-all font-mono">{build.runId}</p></details>
@@ -151,7 +152,7 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
   );
 }
 
-function Signal({ signal }: { signal?: BuildSignal }) {
+function Signal({ signal, label = signal?.state }: { signal?: BuildSignal; label?: string }) {
   if (!signal) return <>Unknown</>;
-  return signal.url ? <a href={signal.url} target="_blank" rel="noreferrer noopener" className="break-words underline underline-offset-2">{signal.state}</a> : <>{signal.state}</>;
+  return signal.url ? <a href={signal.url} target="_blank" rel="noreferrer noopener" className="break-words underline underline-offset-2">{label}</a> : <>{label}</>;
 }
