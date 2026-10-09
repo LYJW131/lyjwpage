@@ -23,14 +23,15 @@ import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
-import { handleBuildFire, handleBuildSession } from "./build-routine";
+import { handleBuildChat } from "./build-chat";
+import { handleBuildFire, handleBuildSession, type AdmitBuild } from "./build-routine";
 import { anthropicFetch } from "./chat/egress";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
 import { fetchProjectDoc } from "./tools/project-docs";
 import type { ToolIO } from "./tools/registry";
 import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
-import { BUILD_PATH, BUILD_SESSION_PATH } from "@shared/build-routine";
+import { BUILD_CHAT_PATH, BUILD_PATH, BUILD_SESSION_PATH } from "@shared/build-routine";
 import { GITHUB_ISSUE_PATH } from "@shared/github-issue";
 import { MCP_PATH } from "@shared/mcp";
 import type { Env } from "./runtime";
@@ -415,11 +416,15 @@ const worker = {
       return new Response(response.body, { status: response.status, headers });
     }
 
-    if (url.pathname === BUILD_PATH || url.pathname === BUILD_SESSION_PATH) {
+    if (url.pathname === BUILD_PATH || url.pathname === BUILD_SESSION_PATH || url.pathname === BUILD_CHAT_PATH) {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
+      const send = anthropicFetch(env) ?? fetch;
+      const admit: AdmitBuild = async (kind, account) => (await quotaStub(env)?.admitBuild(kind, account)) ?? false;
       const response = url.pathname === BUILD_PATH
-        ? await handleBuildFire(request, env, anthropicFetch(env) ?? fetch)
-        : await handleBuildSession(request, env);
+        ? await handleBuildFire(request, env, send, admit)
+        : url.pathname === BUILD_CHAT_PATH
+          ? await handleBuildChat(request, env, { send, admit, io: tools })
+          : await handleBuildSession(request, env);
       const headers = new Headers(response.headers);
       cors.forEach((value, name) => headers.set(name, value));
       return new Response(response.body, { status: response.status, headers });

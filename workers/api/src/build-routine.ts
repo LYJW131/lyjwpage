@@ -1,9 +1,10 @@
 import {
-  BUILD_REQUEST_MAX_CHARS,
   branchForRun,
   fireText,
   newRunId,
+  parseBuildPlan,
   type BuildFireResult,
+  type BuildPlan,
   type BuildSession,
 } from "@shared/build-routine";
 
@@ -14,35 +15,51 @@ import type { Env } from "./runtime";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PLAN_TTL_MS = 60 * 60 * 1000;
 const SESSION_TAG = "build-session-v1";
+const PLAN_TAG = "build-plan-v1";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 export type Connected = { login: string; id: number; name: string | null; exp: number };
+export type SignedPlan = { plan: BuildPlan; id: number; exp: number };
+
+export type BuildQuotaKind = "chat" | "fire";
+// 额度缺绑定时调用方返回 false：计数失效时宁可拒绝也不放行。
+export type AdmitBuild = (kind: BuildQuotaKind, account: number) => Promise<boolean>;
 
 type BuildEnv = Pick<Env, "ROUTINE_FIRE_URL" | "ROUTINE_FIRE_TOKEN" | "BUILD_SESSION_SECRET" | "GITHUB_APP_CLIENT_SECRET">;
 type Configured = Required<BuildEnv>;
 
-function fail(status: number, error: string): Response {
+export function fail(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-// 这几样只设在分支预览上：生产 Worker 没有它们，两个端点在生产上就当不存在。
-function configured(env: BuildEnv): env is Configured {
+// 这几样只设在分支预览上：生产 Worker 没有它们，构建的几个端点在生产上就当不存在。
+export function configured(env: BuildEnv): env is Configured {
   return !!(env.ROUTINE_FIRE_URL && env.ROUTINE_FIRE_TOKEN && env.BUILD_SESSION_SECRET && env.GITHUB_APP_CLIENT_SECRET);
 }
 
-function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+let cached: { secret: string; key: Promise<CryptoKey> } | undefined;
+
+export function hmacKey(secret: string): Promise<CryptoKey> {
+  if (cached?.secret !== secret) {
+    cached = {
+      secret,
+      key: crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]),
+    };
+  }
+  return cached.key;
 }
 
-export async function signSession(secret: string, connected: Connected): Promise<string> {
-  const body = toBase64Url(encoder.encode(JSON.stringify([SESSION_TAG, connected])));
+// 会话与计划共用一把密钥，靠 tag 区分：一种 token 拿不去冒充另一种。
+async function signToken(secret: string, tag: string, value: unknown): Promise<string> {
+  const body = toBase64Url(encoder.encode(JSON.stringify([tag, value])));
   const signature = await crypto.subtle.sign("HMAC", await hmacKey(secret), encoder.encode(body));
   return `${body}.${toBase64Url(signature)}`;
 }
 
-export async function readSession(secret: string, token: unknown, now = Date.now()): Promise<Connected | null> {
+async function readToken(secret: string, tag: string, token: unknown): Promise<Record<string, unknown> | null> {
   if (typeof token !== "string") return null;
   const parts = token.split(".");
   if (parts.length !== 2) return null;
@@ -52,13 +69,35 @@ export async function readSession(secret: string, token: unknown, now = Date.now
   if (!signature || !raw) return null;
   if (!(await crypto.subtle.verify("HMAC", await hmacKey(secret), signature, encoder.encode(body)))) return null;
   try {
-    const [tag, value] = JSON.parse(decoder.decode(raw)) as [unknown, Partial<Connected>];
-    if (tag !== SESSION_TAG || typeof value?.login !== "string" || typeof value.id !== "number") return null;
-    if (typeof value.exp !== "number" || value.exp <= now) return null;
-    return { login: value.login, id: value.id, name: typeof value.name === "string" ? value.name : null, exp: value.exp };
+    const [found, value] = JSON.parse(decoder.decode(raw)) as [unknown, unknown];
+    return found === tag && value && typeof value === "object" ? (value as Record<string, unknown>) : null;
   } catch {
     return null;
   }
+}
+
+export function signSession(secret: string, connected: Connected): Promise<string> {
+  return signToken(secret, SESSION_TAG, connected);
+}
+
+export async function readSession(secret: string, token: unknown, now = Date.now()): Promise<Connected | null> {
+  const value = await readToken(secret, SESSION_TAG, token);
+  if (typeof value?.login !== "string" || typeof value.id !== "number") return null;
+  if (typeof value.exp !== "number" || value.exp <= now) return null;
+  return { login: value.login, id: value.id, name: typeof value.name === "string" ? value.name : null, exp: value.exp };
+}
+
+export function signPlan(secret: string, plan: BuildPlan, id: number, now = Date.now()): Promise<string> {
+  return signToken(secret, PLAN_TAG, { plan, id, exp: now + PLAN_TTL_MS } satisfies SignedPlan);
+}
+
+// now 传 null 时不看过期：规划对话的历史里回读旧计划给模型看，只要签名对得上就行。
+export async function readPlan(secret: string, token: unknown, now: number | null = Date.now()): Promise<SignedPlan | null> {
+  const value = await readToken(secret, PLAN_TAG, token);
+  const plan = parseBuildPlan(value?.plan);
+  if (!plan || typeof value?.id !== "number" || typeof value.exp !== "number") return null;
+  if (now !== null && value.exp <= now) return null;
+  return { plan, id: value.id, exp: value.exp };
 }
 
 // 用 GitHub 的 noreply 地址：不需要 email 权限，GitHub 也照样把合著者认到这个账号上。
@@ -102,17 +141,17 @@ export async function handleBuildSession(request: Request, env: Env): Promise<Re
   return Response.json(result, { headers: { "Cache-Control": "no-store" } });
 }
 
-export async function handleBuildFire(request: Request, env: Env, send: typeof fetch): Promise<Response> {
+// 只收规划对话签出的计划 token，不收访客自己写的文字：交给 routine 的需求只能出自规划模型。
+export async function handleBuildFire(request: Request, env: Env, send: typeof fetch, admit: AdmitBuild): Promise<Response> {
   if (!configured(env)) return fail(404, "Not found.");
   if (request.method !== "POST") return fail(405, "Method not allowed.");
 
-  const body = (await readJsonBody(request, MAX_BODY_BYTES)) as { request?: unknown; session?: unknown } | null;
+  const body = (await readJsonBody(request, MAX_BODY_BYTES)) as { plan?: unknown; session?: unknown } | null;
   const connected = await readSession(env.BUILD_SESSION_SECRET, body?.session);
   if (!connected) return fail(401, "Connect GitHub to start a build.");
-  const text = typeof body?.request === "string" ? body.request.trim() : "";
-  if (!text || text.length > BUILD_REQUEST_MAX_CHARS) {
-    return fail(400, `Describe the change in 1–${BUILD_REQUEST_MAX_CHARS} characters.`);
-  }
+  const signed = await readPlan(env.BUILD_SESSION_SECRET, body?.plan);
+  if (!signed || signed.id !== connected.id) return fail(400, "This plan has expired. Ask the planner to propose it again.");
+  if (!(await admit("fire", connected.id))) return fail(429, "Build limit reached for now. Try again later.");
 
   const runId = newRunId();
   const res = await send(env.ROUTINE_FIRE_URL, {
@@ -122,7 +161,7 @@ export async function handleBuildFire(request: Request, env: Env, send: typeof f
       "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text: fireText(runId, text, coauthorLine(connected)) }),
+    body: JSON.stringify({ text: fireText(runId, signed.plan, coauthorLine(connected)) }),
   });
   const data = (await res.json().catch(() => null)) as
     | { claude_code_session_url?: string; error?: { message?: string } }

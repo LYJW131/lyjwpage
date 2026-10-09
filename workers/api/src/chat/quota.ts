@@ -7,7 +7,9 @@ import {
   type GodChatTier,
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
+import { BUILD_QUOTA } from "@shared/build-routine";
 
+import type { BuildQuotaKind } from "../build-routine";
 import type { Env } from "../runtime";
 
 const visitorKey = (ip: string) => `v:${ip}`;
@@ -21,6 +23,23 @@ export class ChatQuota extends DurableObject<Env> {
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS hits (key TEXT NOT NULL, at INTEGER NOT NULL)");
     ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS hits_key_at ON hits (key, at)");
     ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS hits_at ON hits (at)");
+    // /build 的窗口是一小时，和对话的一分钟窗口分表：prune 各按各的窗口清。
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS build_hits (key TEXT NOT NULL, at INTEGER NOT NULL)");
+    ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS build_hits_key_at ON build_hits (key, at)");
+  }
+
+  admitBuild(kind: BuildQuotaKind, account: number): boolean {
+    const now = Date.now();
+    const own = `${kind}:${account}`;
+    const all = `${kind}:*`;
+    const count = (key: string) => Number(this.ctx.storage.sql.exec("SELECT COUNT(*) AS n FROM build_hits WHERE key = ?", key).one().n);
+    return this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM build_hits WHERE at <= ?", now - BUILD_QUOTA.windowMs);
+      const limits = BUILD_QUOTA[kind];
+      if (count(own) >= limits.account || count(all) >= limits.everyone) return false;
+      this.ctx.storage.sql.exec("INSERT INTO build_hits (key, at) VALUES (?, ?), (?, ?)", own, now, all, now);
+      return true;
+    });
   }
 
   private prune(now: number): void {

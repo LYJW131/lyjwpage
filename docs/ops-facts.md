@@ -70,8 +70,8 @@
 
 | 事实 | 核对 |
 | --- | --- |
-| claude.ai 账号下的 routine `lyjwpage /build`（`trig_014sUCU54BW4Bd39UmcWjLK6`）只有 API 触发器，模型 `claude-opus-5-5`，仓库 `LYJW131/lyjwpage`，云端环境 `lyjwpage-build`（`env_014uCQ1YF1gu2qTf1K5vJKqR`，Trusted 网络，无环境变量与 setup script，只给它用），不挂连接器，Auto-fix 关闭；`/build` 页面经 api Worker 触发它，见 [build-routine.md](./build-routine.md) | 核对于 2026-10-09，方式：本机会话在 Chrome 里新建后用 RemoteTrigger `get` 核对 <!-- allow: 核对戳 --> |
-| 它的 API 令牌（不记值）是 api Worker 分支预览 `claude-claude-code-agent-sdk-6fc50c` 的 Secret `ROUTINE_FIRE_TOKEN`，本机另存于该 worktree 的 `workers/api/.dev.vars`；轮换在 routine 的 API 触发器弹窗点 Regenerate，两处一起换。同一个预览上的 `BUILD_SESSION_SECRET` 只用来签 `/build` 的 GitHub 会话，随机生成、同样另存于该 `.dev.vars`；换掉它只会让已连接的会话失效 | 核对于 2026-10-09，方式：令牌经剪贴板写入，未显示；`wrangler preview secret list` 只核对名称 <!-- allow: 核对戳 --> |
+| claude.ai 账号下的 routine `lyjwpage /build`（`trig_014sUCU54BW4Bd39UmcWjLK6`）只有 API 触发器，模型 `claude-opus-5-5`，仓库 `LYJW131/lyjwpage`，云端环境 `lyjwpage-build`（`env_014uCQ1YF1gu2qTf1K5vJKqR`，Trusted 网络，无环境变量与 setup script，只给它用），不挂连接器，Auto-fix 关闭，`allowed_tools` 只有 Bash、Read、Write、Edit、Glob、Grep；`/build` 页面经 api Worker 触发它，见 [build-routine.md](./build-routine.md) | 核对于 2026-10-09，方式：本机会话在 Chrome 里新建后用 RemoteTrigger `get` 核对 <!-- allow: 核对戳 --> |
+| 它的 API 令牌（不记值）是 api Worker 分支预览 `claude-claude-code-agent-sdk-6fc50c` 的 Secret `ROUTINE_FIRE_TOKEN`，本机另存于该 worktree 的 `workers/api/.dev.vars`；轮换在 routine 的 API 触发器弹窗点 Regenerate，两处一起换。同一个预览上的 `BUILD_SESSION_SECRET` 只用来签 `/build` 的 GitHub 会话、计划 token 和对话历史的章，随机生成，本机 `.dev.vars` 里另有一把不同的，本地签的会话到预览上无效；换掉它只会让已连接的会话和未触发的计划失效。预览上的 `ANTHROPIC_API_KEY` 给规划对话用，值取自 worktree `site-chat-integration-abca95` 的 `workers/api/.dev.vars`，同一份也写进了 `claude-code-agent-sdk-6fc50c` 的 `.dev.vars`；它属于哪个 Console 工作空间未核对 | 核对于 2026-10-09，方式：令牌经剪贴板写入，未显示；`wrangler preview secret list` 只核对名称 <!-- allow: 核对戳 --> |
 
 ## 机器与部署位置
 

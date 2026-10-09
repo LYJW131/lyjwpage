@@ -13,7 +13,7 @@ APPLE_MUSIC_STOREFRONT=cn
 HEARTBEAT_WINDOW_MS=300000
 CHARGER_PUSH_INTERVAL_MS=30000
 
-# 可选。/build 触发的 Claude Code routine（API 触发器的 URL 与令牌）和签 GitHub 会话用的随机密钥；线上只设在分支预览，见 docs/build-routine.md。
+# 可选。/build 触发的 Claude Code routine（API 触发器的 URL 与令牌）和签会话、计划用的随机密钥；规划对话另要 ANTHROPIC_API_KEY，连 GitHub 另要 GITHUB_APP_CLIENT_SECRET。线上只设在分支预览，本地 URL 指向不存在的 routine 就不会真起会话，见 docs/build-routine.md。
 ROUTINE_FIRE_URL=
 ROUTINE_FIRE_TOKEN=
 BUILD_SESSION_SECRET=
