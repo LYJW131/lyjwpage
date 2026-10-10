@@ -318,6 +318,11 @@ button.paper-card {
   display: none;
 }
 
+/* 插队时离场行变成第 9 个子节点。收起窗口内若仍 display:none，退出动画被裁掉，行会直接跳没。 */
+.recent-tracks.is-reflowing .recent-tracks-track > :nth-child(n + 9) {
+  display: revert;
+}
+
 @media (min-width: 48rem) {
   .live-media-pair,
   .live-media-pair.is-disconnected {
@@ -745,5 +750,10 @@ html.offscreen-revealed .defer-offscreen-always,
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* 上面把动画收到 0.01ms 且只播一次；progress-run 的 forwards 会停在 100%。 */
+  .progress-run {
+    animation: none !important;
   }
 }

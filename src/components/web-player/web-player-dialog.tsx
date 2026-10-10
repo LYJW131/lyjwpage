@@ -1,5 +1,6 @@
 "use client";
 
+import { useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ExternalLink, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 
@@ -7,6 +8,7 @@ import { SyncPlaybackButton } from "@/components/web-player/sync-playback-button
 import { Modal } from "@/components/ui/modal";
 import { PlayerCover } from "@/components/web-player/player-cover";
 import { PlayerLyrics } from "@/components/web-player/player-lyrics";
+import { usePlaybackProgressEase } from "@/hooks/use-playback-progress";
 import type { WebPlayer } from "@/hooks/use-web-player";
 import { PLAYBACK_STATE } from "@/lib/musickit";
 import { catalogItemId } from "@/lib/playing-queue";
@@ -120,6 +122,8 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
   const durationMs = isItemActive ? activeDurationMs : 0;
   const percent =
     durationMs > 0 ? Math.min(100, Math.max(0, (positionMs / durationMs) * 100)) : 0;
+  const reduced = useReducedMotion();
+  const easePlayback = usePlaybackProgressEase(percent, durationMs, 1_000, reduced);
 
   useEffect(() => {
     return () => {
@@ -267,7 +271,10 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                 <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted transition-[height] duration-150 group-hover:h-1.5">
                   <div
                     className={cn(
-                      "h-full rounded-full transition-all",
+                      "h-full rounded-full",
+                      !isDragging &&
+                        easePlayback &&
+                        "transition-[width] duration-150 ease-linear motion-reduce:transition-none",
                       isPlaying ? "bg-live" : "bg-muted-foreground",
                     )}
                     style={{ width: `${percent}%` }}
@@ -276,7 +283,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
 
                 <div
                   className={cn(
-                    "pointer-events-none absolute size-2.5 -translate-x-1/2 rounded-full bg-foreground shadow-sm ring-2 ring-surface transition-all duration-150",
+                    "pointer-events-none absolute size-2.5 -translate-x-1/2 rounded-full bg-foreground shadow-sm ring-2 ring-surface transition-[opacity,transform] duration-150 motion-reduce:transition-none",
                     isDragging
                       ? "scale-125 opacity-100"
                       : "opacity-80 sm:opacity-0 sm:group-hover:opacity-100 sm:group-hover:scale-110",

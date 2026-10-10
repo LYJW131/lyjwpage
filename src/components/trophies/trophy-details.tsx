@@ -217,7 +217,8 @@ function useRowSnap(topKey: string | undefined) {
         const rowHeight = el.clientHeight / VISIBLE_ROWS;
         const target = Math.round(el.scrollTop / rowHeight) * rowHeight;
         if (Math.abs(target - el.scrollTop) < 0.5) return;
-        el.scrollTo({ top: target, behavior: "smooth" });
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        el.scrollTo({ top: target, behavior: reducedMotion ? "auto" : "smooth" });
       }, SETTLE_DELAY_MS);
     };
 
