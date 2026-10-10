@@ -3,7 +3,7 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_REPO, BUILD_TIMEOUT_MS, branchForRun, type BuildFireResult, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildFireResult, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { BuildPullRequestRejectedError, createBuildPullRequest, GithubBuildApi, reconcileBuild } from "./build/github.ts";
@@ -212,15 +212,16 @@ test("upload rejection records confirmed PR failure and branch removal for the c
   assert.match(instance.readRun(runId)?.state.reason ?? "", /branch was removed/);
 });
 
-test("uploads outside approved plan paths are blocked with the rejected path and no GitHub request", async (t) => {
+test("uploads with too many paths outside the plan are blocked with the paths and no GitHub request", async (t) => {
   const { instance, env, db } = coordinator();
   t.after(() => db.close());
   instance.reserveRun(await stored(), "scope-plan", Date.now() + 60_000);
   const denied: typeof fetch = async () => assert.fail("Unapproved paths must be rejected before GitHub access");
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: [{ ...upload.files[0], path: "src/lib/unplanned.ts" }] }, uploadToken), env, denied);
+  const unplanned = Array.from({ length: BUILD_UPLOAD_LIMITS.outsidePlanFiles + 1 }, (_, index) => ({ ...upload.files[0], path: `src/lib/unplanned-${index}.ts` }));
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: unplanned }, uploadToken), env, denied);
   assert.equal(response.status, 400);
   assert.equal(instance.readRun(runId)?.state.phase, "blocked");
-  assert.match(instance.readRun(runId)?.state.reason ?? "", /src\/lib\/unplanned\.ts.*outside the approved plan paths/);
+  assert.match(instance.readRun(runId)?.state.reason ?? "", /outside the approved plan paths.*src\/lib\/unplanned-0\.ts/);
 });
 
 for (const phase of ["merged", "closed"] as const) {

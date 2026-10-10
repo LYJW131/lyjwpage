@@ -42,6 +42,10 @@ function withinBuildPlan(path: string, planPaths: readonly string[]): boolean {
   });
 }
 
+export function outsidePlanPaths(upload: Pick<BuildUpload, "files" | "deletions">, planPaths: readonly string[]): string[] {
+  return [...upload.files.map((file) => file.path), ...upload.deletions].filter((path) => !withinBuildPlan(path, planPaths));
+}
+
 export function parseBuildUpload(value: unknown, planPaths: readonly string[]): BuildUpload {
   if (!value || typeof value !== "object") throw new Error("Invalid upload payload.");
   const { baseSha, message, files, deletions } = value as Record<string, unknown>;
@@ -52,7 +56,6 @@ export function parseBuildUpload(value: unknown, planPaths: readonly string[]): 
   let total = 0;
   const checkPath = (path: unknown): string => {
     if (typeof path !== "string" || !allowedBuildPath(path)) throw new Error("A changed path is outside the allowed scope.");
-    if (!withinBuildPlan(path, planPaths)) throw new Error(`Changed path "${path}" is outside the approved plan paths.`);
     if (paths.has(path)) throw new Error("Duplicate changed path.");
     paths.add(path);
     return path;
@@ -69,5 +72,8 @@ export function parseBuildUpload(value: unknown, planPaths: readonly string[]): 
     return { path: cleanPath, mode, content };
   });
   if (total > BUILD_UPLOAD_LIMITS.totalBytes) throw new Error("Upload exceeds the total size limit.");
-  return { baseSha, message: message.trim(), files: cleanFiles, deletions: deletions.map(checkPath) };
+  const result = { baseSha, message: message.trim(), files: cleanFiles, deletions: deletions.map(checkPath) };
+  const outside = outsidePlanPaths(result, planPaths);
+  if (outside.length > BUILD_UPLOAD_LIMITS.outsidePlanFiles) throw new Error(`${outside.length} changed paths are outside the approved plan paths (at most ${BUILD_UPLOAD_LIMITS.outsidePlanFiles}): ${outside.join(", ")}`);
+  return result;
 }

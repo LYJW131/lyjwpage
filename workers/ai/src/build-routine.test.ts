@@ -212,6 +212,10 @@ test("GitHub publishing retains the base tree and binds parent, branch, ready PR
   assert.match(String(calls.find((call) => call.path.endsWith("/git/commits"))?.body?.message), /Co-authored-by: Visitor <1\+visitor@users.noreply.github.com>/);
   assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.draft, false);
   assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.base, "main");
+  assert.doesNotMatch(String(calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /outside the approved plan/);
+  const extra = githubFixture();
+  await createBuildPullRequest(new GithubBuildApi("fixture", extra.fetcher), await stored(), { ...upload, files: [...upload.files, { path: "src/lib/extra.ts", mode: "100644", content: btoa("export {};") }] });
+  assert.match(String(extra.calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /## Changed outside the approved plan\n- `src\/lib\/extra\.ts`/);
 });
 
 test("base must be an ancestor of main, with comparison in the correct direction", async () => {

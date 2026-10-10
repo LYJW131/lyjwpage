@@ -12,7 +12,8 @@ export const BUILD_STATUS_TTL_MS = 30 * 24 * 60 * 60_000;
 export const BUILD_RECONCILE_MS = 60_000;
 export const BUILD_PLAN_LIMITS = { titleChars: 100, specChars: 6000, acceptanceItems: 8, acceptanceChars: 300, paths: 30 } as const;
 export const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone: 10 } } as const;
-export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000 } as const;
+// outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个，PR 正文单独列出交给审查。
+export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;
 
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
 export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number };
