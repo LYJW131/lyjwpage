@@ -213,7 +213,7 @@ async function normalize(
     id,
     title: attributes.name ?? "",
     artist: attributes.artistName ?? attributes.curatorName ?? "",
-    artwork: fromLibrary ?? attributes.artwork?.url ?? null,
+    artworkUrl: fromLibrary ?? attributes.artwork?.url ?? null,
     link: attributes.url ?? null,
     palette: artworkPalette(attributes.artwork),
     durationMs: null,

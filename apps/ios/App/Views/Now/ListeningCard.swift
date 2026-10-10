@@ -45,7 +45,7 @@ private struct LiveTrackRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            RemoteImage(url: AssetURL.appleArtwork(item?.artwork ?? track.artworkUrl, points: 88))
+            RemoteImage(url: AssetURL.appleArtwork(item?.artworkUrl ?? track.artworkUrl, points: 88))
                 .frame(width: 88, height: 88)
                 .clipShape(.rect(cornerRadius: 12, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
@@ -99,7 +99,7 @@ private struct RecentHero: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            RemoteImage(url: AssetURL.appleArtwork(item.artwork, points: 88))
+            RemoteImage(url: AssetURL.appleArtwork(item.artworkUrl, points: 88))
                 .frame(width: 88, height: 88)
                 .clipShape(.rect(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
@@ -125,7 +125,7 @@ private struct RecentRow: View {
 
     var body: some View {
         let row = HStack(spacing: 12) {
-            RemoteImage(url: AssetURL.appleArtwork(item.artwork, points: 44))
+            RemoteImage(url: AssetURL.appleArtwork(item.artworkUrl, points: 44))
                 .frame(width: 44, height: 44)
                 .clipShape(.rect(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {

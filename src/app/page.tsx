@@ -153,7 +153,7 @@ export default async function Home() {
       : null;
 
   const listeningArtworks = listening.ok
-    ? listening.data.items.map((item) => item.artwork)
+    ? listening.data.items.map((item) => item.artworkUrl)
     : [];
   const nowMusic = nowListening.ok && !nowListening.data.idle ? nowListening.data.music : null;
   const liveHeroArtwork = liveTrack(nowMusic)?.artworkUrl ?? null;

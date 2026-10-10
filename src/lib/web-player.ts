@@ -241,7 +241,7 @@ export async function fetchCatalogSongAlbum(
     id: albumId,
     title: song.attributes?.albumName ?? "",
     artist: song.attributes?.artistName ?? "",
-    artwork: song.attributes?.artwork?.url ?? null,
+    artworkUrl: song.attributes?.artwork?.url ?? null,
     link,
     palette: [],
     durationMs: null,

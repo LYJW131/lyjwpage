@@ -148,6 +148,30 @@ test("正在听：Mac 掉线时换成 HomePod 还在放的那首", () => {
   assert.equal(next.alternate, null);
 });
 
+test("正在听：Mac 掉线后接班的是同一首且没有视频时，沿用已经显示的", () => {
+  const video = { videoUrl: "https://mvod.itunes.apple.com/mac.m3u8", colors: null };
+  const pod = song("homepod", "Same");
+  const next = liveNowListening(
+    nowListening({
+      music: song("apple-music", "Same"),
+      songId: "same-song",
+      motion: video,
+      alternate: {
+        music: pod,
+        id: "pod-album",
+        link: "https://music.apple.com/pod",
+        songId: "same-song",
+        upcomingSongIds: [],
+        hasLyrics: false,
+        motion: null,
+      },
+    }),
+    true,
+  );
+  assert.equal(next.songId, "same-song");
+  assert.deepEqual(next.motion, video);
+});
+
 test("正在听：选中的是 HomePod 时不看 Mac 的存活", () => {
   const payload = nowListening({ music: song("homepod", "HomePod") });
   assert.equal(liveNowListening(payload, true), payload);

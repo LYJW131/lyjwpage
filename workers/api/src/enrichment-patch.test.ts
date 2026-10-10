@@ -186,10 +186,33 @@ test("HomePod 补丁同样按 trackKey 校验", async (t) => {
   assert.equal(stored?.receivedAt, NOW);
 });
 
+test("同一首歌动态封面这次没查出时，已存视频留在状态和推送里", async (t) => {
+  const kv = isolated(t);
+  seedFirst(kv);
+  const { command } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW)));
+  await inRequest(() => collectIngestEffects(() => commitPreparedIngest(command)));
+  const video = { videoUrl: "https://mvod/x.m3u8", colors: null };
+  assert.deepEqual((await inRequest(() => telemetryMirror.get()))?.musicEnrichment?.motion, video);
+
+  kv.values.delete(`lyjwpage:${motionArtworkCacheKey(parseAppleMusicUrl(LINK)!)}`);
+  const { command: again, followUp } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW + 1_000)));
+  assert.equal(followUp?.outcome.catalogKnown, true);
+  assert.equal(followUp?.outcome.motionKnown, false);
+  assert.equal(followUp?.outcome.enrichment.motion, null);
+  const committed = await inRequest(() => collectIngestEffects(() => commitPreparedIngest(again)));
+  assert.equal(committed.ok, true);
+  const stored = await inRequest(() => telemetryMirror.get());
+  assert.deepEqual(stored?.musicEnrichment?.motion, video);
+  assert.equal(stored?.musicEnrichment?.songId, "1501");
+  const listening = committed.effects.find((effect) => effect.kind === "listening");
+  assert.equal(listening?.kind, "listening");
+  if (listening?.kind === "listening") assert.deepEqual(listening.mac?.enrichment?.motion, video);
+});
+
 test("最近播放首项动态封面查询失败时沿用已存的，不算列表变化", async (t) => {
   isolated(t);
   const item: ListeningItem = {
-    id: "1501", title: "First", artist: "Artist", artwork: null, link: LINK, palette: [], durationMs: null,
+    id: "1501", title: "First", artist: "Artist", artworkUrl: null, link: LINK, palette: [], durationMs: null,
     motion: { videoUrl: "https://mvod/x.m3u8", colors: null },
   };
   await inRequest(() => recentMirror.put({ items: [item], fetchedAt: NOW }));

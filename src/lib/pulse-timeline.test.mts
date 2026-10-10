@@ -186,6 +186,12 @@ test("listening observation: Mac facts hold ten minutes; HomePod facts stay open
   const paused = { music: { ...long.music, state: "paused" as const, positionMs: 5 * M }, receivedAt: T };
   assert.equal(listeningObservation({ mac: null, macObserved: true, homePod: paused }, offline, T + 12 * M)?.facts.state, "paused");
   assert.deepEqual(listeningObservation({ mac: null, macObserved: true, homePod: paused }, offline, T + 12 * M)?.hold, { until: T + 20 * M, endsBy: T + 15 * M });
+  const late = {
+    music: { ...long.music, observedAt: T - 10 * M },
+    receivedAt: T,
+  };
+  assert.deepEqual(listeningObservation({ mac: null, macObserved: true, homePod: late }, offline, T)?.hold, { until: T + 15 * M, endsBy: T + 10 * M },
+    "a report that arrives late must not replay the remaining duration from receipt");
 });
 
 test("listening observation: an offline Mac without a live HomePod is unknown, not idle", () => {

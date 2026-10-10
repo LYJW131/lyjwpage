@@ -141,6 +141,22 @@ import Testing
         #expect(looping.positionMs(at: Date(epochMilliseconds: 3_000)) == 2_000)
     }
 
+    @Test func lateHomePodAnchorDropsAfterItsOwnEnd() {
+        let observedAt = 1_000_000.0
+        let track = LocalNowPlaying(
+            source: .homepod, state: .playing, title: "t", artist: nil, album: nil, trackId: nil,
+            artworkUrl: nil, positionMs: 2_000, durationMs: 203_000, repeatOne: false, observedAt: observedAt
+        )
+        let end = observedAt + (203_000 - 2_000)
+        #expect(track.homepodStillVisible(at: Date(epochMilliseconds: end + 5 * 60 * 1000)))
+        #expect(!track.homepodStillVisible(at: Date(epochMilliseconds: end + 5 * 60 * 1000 + 1)))
+        let paused = LocalNowPlaying(
+            source: .homepod, state: .paused, title: "t", artist: nil, album: nil, trackId: nil,
+            artworkUrl: nil, positionMs: 2_000, durationMs: 203_000, repeatOne: false, observedAt: observedAt
+        )
+        #expect(paused.homepodStillVisible(at: Date(epochMilliseconds: end + 5 * 60 * 1000 + 1)))
+    }
+
     @Test func staleRulesMatchSite() {
         let now = Date(epochMilliseconds: 1_000_000)
         #expect(!Freshness.isStale(now: now, at: nil, windowMs: 10))

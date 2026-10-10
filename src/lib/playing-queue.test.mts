@@ -55,6 +55,43 @@ test("最后一首后面是空的", () => {
   assert.deepEqual(upcomingQueueTracks(queue, "D"), []);
 });
 
+test("丢掉没标题的行之后，index 仍指向原来那首", () => {
+  const queue = normalizePlayingQueue({
+    index: 2,
+    tracks: [
+      { title: "  " },
+      { title: "A" },
+      { title: "B" },
+      { title: null },
+      { title: "C" },
+    ],
+  });
+  assert.deepEqual(queue, {
+    index: 1,
+    tracks: [
+      { title: "A", artist: null, album: null },
+      { title: "B", artist: null, album: null },
+      { title: "C", artist: null, album: null },
+    ],
+  });
+  assert.deepEqual(
+    upcomingQueueTracks(queue, "B").map((track) => track.title),
+    ["C"],
+  );
+});
+
+test("index 落在被丢掉的行上时不改指到别的歌", () => {
+  const queue = normalizePlayingQueue({
+    index: 0,
+    tracks: [{ title: "" }, { title: "A" }, { title: "B" }],
+  });
+  assert.equal(queue?.index, null);
+  assert.deepEqual(
+    upcomingQueueTracks(queue, "A").map((track) => track.title),
+    ["B"],
+  );
+});
+
 test("MusicKit 条目 ID 去掉 i. 再对 songId", () => {
   assert.equal(catalogItemId("i.1690036415"), "1690036415");
   assert.equal(mediaItemIndex([{ id: "111" }, { id: "i.222" }], "222"), 1);

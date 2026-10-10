@@ -34,7 +34,7 @@ extension LiveStore {
     }
 
     func liveTrack(now: Date) -> LocalNowPlaying? {
-        guard let music = liveListening(now: now)?.music, music.isLive else { return nil }
+        guard let music = liveListening(now: now)?.music, music.isLive, music.homepodStillVisible(at: now) else { return nil }
         return music
     }
 

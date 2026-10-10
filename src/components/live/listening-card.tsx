@@ -44,6 +44,7 @@ import {
   STATIC_VARIANTS,
 } from "@/lib/motion";
 import { LISTENING_PATH, NOW_LISTENING_PATH } from "@/lib/paths";
+import { rememberLookup, shownMotion, withHeldMotion } from "@/lib/track-enrichment";
 import { trackPositionMs } from "@/lib/track-position";
 import type {
   ListeningItem,
@@ -58,6 +59,8 @@ import type {
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import { liveTrack } from "@/lib/home-layout";
+import { homePodVisibleUntil } from "@/lib/homepod-store";
+import { RECENT_VISIBLE_ROWS, RECENT_WIDE_SLOTS, recentTrackSnap } from "@/lib/recent-tracks";
 import { fetchCatalogSongAlbum, queueOptionsFor } from "@/lib/web-player";
 import { cn } from "@/lib/utils";
 
@@ -66,8 +69,7 @@ const EMPTY_UPCOMING: string[] = [];
 const EMPTY_REFRESH_MS = 60_000;
 const MUSIC_REFRESH_MS = 60_000;
 
-// VISIBLE_ROWS × 2 须与 globals.css 的 recent-tracks-track nth-child 上限对齐。
-const VISIBLE_ROWS = 4;
+const VISIBLE_ROWS = RECENT_VISIBLE_ROWS;
 const MIN_ROW_HEIGHT_PX = 56;
 
 function formatDuration(milliseconds: number) {
@@ -322,14 +324,14 @@ function TrackRow({
             decoding="sync"
           />
         )}
-        {track.artwork && (
+        {track.artworkUrl && (
           <Image
-            src={appleArtwork(track.artwork, 44 * ARTWORK_SCALE)!}
+            src={appleArtwork(track.artworkUrl, 44 * ARTWORK_SCALE)!}
             alt=""
             fill
             sizes="44px"
             className="object-cover"
-            unoptimized={!needsOptimizing(track.artwork)}
+            unoptimized={!needsOptimizing(track.artworkUrl)}
           />
         )}
       </div>
@@ -343,7 +345,7 @@ function TrackRow({
   );
 
   const className =
-    "flex h-full items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-surface-hover";
+    "flex h-full items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-surface-hover focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-live";
 
   if (onOpen) {
     return (
@@ -576,6 +578,14 @@ export function ListeningCard({
   const localMusic = live?.idle ? null : live?.music ?? null;
   const localTrack = liveTrack(localMusic);
   const localActive = Boolean(localTrack);
+  const homepodVisibleUntil =
+    localTrack?.source === "homepod" &&
+    localTrack.state === "playing" &&
+    !localTrack.repeatOne &&
+    localTrack.durationMs > 0 &&
+    localTrack.observedAt > 0
+      ? homePodVisibleUntil({ music: localTrack, receivedAt: localTrack.observedAt })
+      : null;
 
   // 推断的别处播放没有上报来续命：和源站一样按时长放完再留 LISTENING_ELSEWHERE_HOLD_MS 等下一首被推过来，到点就撤下并重新取一次。
   const mountedAt = useMountedAt();
@@ -585,6 +595,15 @@ export function ListeningCard({
   const inferredEnd = inferred ? inferred.startedAt + inferred.durationMs : null;
   const inferredUntil = inferredEnd == null ? null : inferredEnd + LISTENING_ELSEWHERE_HOLD_MS;
   const handoffAt = inferred?.next?.durationMs ? inferredEnd : null;
+  // HomePod 只在状态变化时推送，曲终不会再来一封；可见期限到点必须重取。
+  useEffect(() => {
+    if (homepodVisibleUntil == null) return;
+    const timer = window.setTimeout(
+      () => void mutate(NOW_LISTENING_PATH),
+      Math.max(250, homepodVisibleUntil - Date.now() + 250),
+    );
+    return () => window.clearTimeout(timer);
+  }, [homepodVisibleUntil, mutate]);
   useEffect(() => {
     if (inferredUntil == null) return;
     const timer = window.setTimeout(() => {
@@ -621,30 +640,9 @@ export function ListeningCard({
   const trackKey = localTrack
     ? `${localTrack.title ?? ""}|${localTrack.artist ?? ""}|${localTrack.album ?? ""}`
     : null;
-  const [lookupLatch, setLookupLatch] = useState<{
-    key: string;
-    id: string | null;
-    songId: string;
-    link: string | null;
-    upcomingSongIds: string[];
-    hasLyrics: boolean;
-    motion: TrackMotion | null;
-  } | null>(null);
-  if (
-    live?.songId &&
-    trackKey &&
-    (lookupLatch?.key !== trackKey || lookupLatch.songId !== live.songId)
-  ) {
-    setLookupLatch({
-      key: trackKey,
-      id: live.id,
-      songId: live.songId,
-      link: live.link,
-      upcomingSongIds: live.upcomingSongIds,
-      hasLyrics: live.hasLyrics,
-      motion: live.motion,
-    });
-  }
+  const [lookupLatch, setLookupLatch] = useState<ReturnType<typeof rememberLookup>>(null);
+  const nextLatch = rememberLookup(trackKey, live, lookupLatch);
+  if (nextLatch !== lookupLatch) setLookupLatch(nextLatch);
   const latched = trackKey && lookupLatch?.key === trackKey ? lookupLatch : null;
   const resolvedSongId = live?.songId ?? latched?.songId ?? null;
   const resolvedUpcoming = useMemo(
@@ -715,7 +713,7 @@ export function ListeningCard({
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
         durationMs: null,
         track: localTrack,
-        motion: live?.songId ? live.motion : latched?.motion ?? null,
+        motion: shownMotion(live, latched),
       }
     : elsewhere
       ? {
@@ -748,7 +746,7 @@ export function ListeningCard({
     : latest
       ? {
           key: latest.id,
-          artwork: latest.artwork,
+          artwork: latest.artworkUrl,
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
@@ -770,13 +768,13 @@ export function ListeningCard({
     ([, songId]) => fetchCatalogSongAlbum(songId),
     { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false, shouldRetryOnError: false },
   );
-  const heroItem: ListeningItem | null | undefined = localActive && hero?.track
+  const heroItemBase: ListeningItem | null | undefined = localActive && hero?.track
     ? data?.items.find((item) => item.id === heroResourceId) ??
       (heroResourceId && hero.link ? {
         id: heroResourceId,
         title: hero.track.album || hero.title,
         artist: hero.subtitle,
-        artwork: hero.artwork,
+        artworkUrl: hero.artwork,
         link: hero.link,
         palette: hero.palette,
         durationMs: null,
@@ -786,6 +784,7 @@ export function ListeningCard({
         ? data?.items.find((item) => item.id === elsewhereAlbum.id) ?? elsewhereAlbum
         : null
       : latest;
+  const heroItem = heroItemBase && localActive ? withHeldMotion(heroItemBase, hero?.motion) : heroItemBase;
   const canOpenHero = Boolean(heroItem && canOpenInPlayer(heroItem));
 
   const rest = dedupeListeningItems(
@@ -796,7 +795,7 @@ export function ListeningCard({
   const preloadArtworks = Array.from(
     new Set(
       [heroItem, ...rest].flatMap((entry) =>
-        entry?.artwork && canOpenInPlayer(entry) ? [entry.artwork] : [],
+        entry?.artworkUrl && canOpenInPlayer(entry) ? [entry.artworkUrl] : [],
       ),
     ),
   );
@@ -1051,6 +1050,7 @@ export function ListeningCard({
                 "absolute inset-0",
                 "recent-tracks",
                 wide && "is-wide",
+                wide && rest.length > RECENT_WIDE_SLOTS && "has-more",
                 reflowing && "is-reflowing",
                 "scroll-smooth",
                 // 新条目插到顶部时，滚动锚定会自动推走第一行，因此关闭它。
@@ -1061,33 +1061,44 @@ export function ListeningCard({
               <div className="recent-tracks-track">
                 {rest.length > 0 ? (
                   <AnimatePresence initial={false} mode="popLayout">
-                    {rest.map((item, index) => (
-                      <motion.div
-                        key={restKeys[index]}
-                        layout={!reduced}
-                        variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
-                        initial="initial"
-                        animate="animate"
-                        exit="exit"
-                        transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                        className={cn("min-w-0", index % VISIBLE_ROWS === 0 && "snap-start")}
-                      >
-                        <TrackRow
-                          track={item}
-                          placeholder={
-                            item.artwork
-                              ? artworkPlaceholders.rows[item.artwork]
-                              : undefined
-                          }
-                          onOpen={canOpenInPlayer(item) ? () => openInPlayer(item) : undefined}
-                        />
-                      </motion.div>
-                    ))}
+                    {rest.map((item, index) => {
+                      const snap = recentTrackSnap(index, rest.length, VISIBLE_ROWS);
+                      return (
+                        <motion.div
+                          key={restKeys[index]}
+                          layout={!reduced}
+                          variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
+                          initial="initial"
+                          animate="animate"
+                          exit="exit"
+                          transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+                          className={cn(
+                            "min-w-0",
+                            snap === "start" && "snap-start",
+                            snap === "end" && "snap-end",
+                          )}
+                        >
+                          <TrackRow
+                            track={item}
+                            placeholder={
+                              item.artworkUrl
+                                ? artworkPlaceholders.rows[item.artworkUrl]
+                                : undefined
+                            }
+                            onOpen={canOpenInPlayer(item) ? () => openInPlayer(item) : undefined}
+                          />
+                        </motion.div>
+                      );
+                    })}
                   </AnimatePresence>
                 ) : isLoading ? (
                   Array.from({ length: VISIBLE_ROWS }, (_, i) => (
                     <SkeletonRow key={i} />
                   ))
+                ) : hero && !error ? (
+                  <p className="flex h-full items-center px-2 text-sm text-muted-foreground">
+                    Nothing else played recently
+                  </p>
                 ) : null}
               </div>
             </div>

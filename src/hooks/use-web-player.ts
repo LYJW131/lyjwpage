@@ -177,7 +177,7 @@ function syncItemForSource(source: SyncSource, previous?: ListeningItem | null):
     id: "listen-along",
     title: track?.title || previousTrack?.title || "Listen Along",
     artist: track?.artist || previousTrack?.artist || "",
-    artwork: track?.artworkUrl ?? previousTrack?.artwork ?? null,
+    artworkUrl: track?.artworkUrl ?? previousTrack?.artworkUrl ?? null,
     link:
       songId != null
         ? `https://music.apple.com/song/${encodeURIComponent(songId)}`
@@ -193,7 +193,7 @@ function sameSyncItem(a: ListeningItem | null, b: ListeningItem): boolean {
       a.id === b.id &&
       a.title === b.title &&
       a.artist === b.artist &&
-      a.artwork === b.artwork &&
+      a.artworkUrl === b.artworkUrl &&
       a.link === b.link &&
       a.durationMs === b.durationMs,
   );

@@ -159,7 +159,8 @@ export function liveNowListening(payload: NowListeningPayload, macOffline: boole
     songId: next?.songId ?? null,
     upcomingSongIds: next?.upcomingSongIds ?? [],
     hasLyrics: next?.hasLyrics ?? false,
-    motion: next?.motion ?? null,
+    // 接班的是同一首但没带视频时，沿用 Mac 上已经显示的；换了 songId 不能把上一首的视频留在新曲目上。
+    motion: next?.motion ?? (next?.songId && next.songId === payload.songId ? payload.motion : null),
     expiresInMs: null,
     alternate: null,
   };

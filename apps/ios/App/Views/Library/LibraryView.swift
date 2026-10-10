@@ -134,7 +134,7 @@ private struct AlbumTile: View {
 
     var body: some View {
         let tile = VStack(alignment: .leading, spacing: 6) {
-            RemoteImage(url: AssetURL.appleArtwork(item.artwork, points: 180))
+            RemoteImage(url: AssetURL.appleArtwork(item.artworkUrl, points: 180))
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(.rect(cornerRadius: 12, style: .continuous))
             Text(item.title).font(.subheadline.weight(.medium)).lineLimit(1)

@@ -150,8 +150,8 @@ export function mergeEnrichment(
   return { ...catalog, motion, upcomingSongIds };
 }
 
-// 同一曲目这次目录没查到（失败、超时）时沿用已存的目录与动态封面，不让一次失败抹掉卡片的链接与封面；
-// 队列 ID 跟本次上报的队列走，只有队列没变且已存的查出更多时才沿用。
+// 同一曲目这次目录没查到（失败、超时）时沿用已存的目录。动态封面的 null 同时表示「确定没有」和「这次没查出」，
+// 同一 songId 上不能用 null 换掉已经存下的视频；换了 songId 才丢掉旧视频。队列 ID 跟本次上报的队列走，只有队列没变且已存的查出更多时才沿用。
 export function keepEnrichment(
   music: LocalNowPlaying | null | undefined,
   next: TrackEnrichment | null | undefined,
@@ -166,7 +166,70 @@ export function keepEnrichment(
   const upcomingSongIds = queueMatches && same.upcomingSongIds.length > next.upcomingSongIds.length
     ? same.upcomingSongIds
     : next.upcomingSongIds;
-  return catalog === next && upcomingSongIds === next.upcomingSongIds ? next : { ...catalog, upcomingSongIds };
+  const motion = catalog.motion ?? (catalog.songId != null && catalog.songId === same.songId ? same.motion : null);
+  if (catalog === next && upcomingSongIds === next.upcomingSongIds && motion === next.motion) return next;
+  return { ...catalog, upcomingSongIds, motion: motion ?? null };
+}
+
+export type ShownLookup = {
+  key: string;
+  id: string | null;
+  songId: string;
+  link: string | null;
+  upcomingSongIds: string[];
+  hasLyrics: boolean;
+  motion: TrackMotion | null;
+};
+
+// 卡片只在第一次看见这个 songId 时记下解析结果。之后同一首查出视频，要补进这份记录；换曲才整份换掉。
+export function rememberLookup(
+  trackKey: string | null,
+  live: {
+    id: string | null;
+    songId: string | null;
+    link: string | null;
+    upcomingSongIds: string[];
+    hasLyrics: boolean;
+    motion: TrackMotion | null;
+  } | null | undefined,
+  previous: ShownLookup | null,
+): ShownLookup | null {
+  if (!live?.songId || !trackKey) return previous;
+  if (!previous || previous.key !== trackKey || previous.songId !== live.songId) {
+    return {
+      key: trackKey,
+      id: live.id,
+      songId: live.songId,
+      link: live.link,
+      upcomingSongIds: live.upcomingSongIds,
+      hasLyrics: live.hasLyrics,
+      motion: live.motion,
+    };
+  }
+  if (live.motion && previous.motion?.videoUrl !== live.motion.videoUrl) return { ...previous, motion: live.motion };
+  return previous;
+}
+
+// 有 songId 时优先用这次的视频；这次是 null 就留着同一首已经显示过的。换了 songId 禁止沿用。
+export function shownMotion(
+  live: { songId: string | null; motion: TrackMotion | null } | null | undefined,
+  latched: { songId: string; motion: TrackMotion | null } | null,
+): TrackMotion | null {
+  if (live?.songId) return live.motion ?? (latched?.songId === live.songId ? latched.motion : null);
+  return latched?.motion ?? null;
+}
+
+export function heldVideoUrl(
+  stored: TrackMotion | null | undefined,
+  fetched: { hasMotion: boolean; videoUrl: string | null } | null | undefined,
+): string | null {
+  if (stored?.videoUrl) return stored.videoUrl;
+  return fetched?.hasMotion ? fetched.videoUrl : null;
+}
+
+export function withHeldMotion<T extends { motion?: TrackMotion | null }>(item: T, held: TrackMotion | null | undefined): T {
+  if (item.motion?.videoUrl || !held?.videoUrl) return item;
+  return { ...item, motion: held };
 }
 
 export function candidateFrom(

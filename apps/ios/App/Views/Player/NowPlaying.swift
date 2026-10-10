@@ -11,7 +11,7 @@ struct MiniPlayer: View {
                 let item = store.listeningItem(for: store.liveListening(now: context.date))
                 Button(action: onOpen) {
                     HStack(spacing: 10) {
-                        RemoteImage(url: AssetURL.appleArtwork(item?.artwork ?? track.artworkUrl, points: 32))
+                        RemoteImage(url: AssetURL.appleArtwork(item?.artworkUrl ?? track.artworkUrl, points: 32))
                             .frame(width: 32, height: 32)
                             .clipShape(.rect(cornerRadius: 6, style: .continuous))
                         VStack(alignment: .leading, spacing: 0) {
@@ -54,7 +54,7 @@ struct NowPlayingView: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let live = store.liveListening(now: context.date)
                 let item = store.listeningItem(for: live)
-                let artwork = AssetURL.appleArtwork(item?.artwork ?? live?.music?.artworkUrl, points: 400)
+                let artwork = AssetURL.appleArtwork(item?.artworkUrl ?? live?.music?.artworkUrl, points: 400)
                 ZStack {
                     backdrop(artwork)
                     VStack(spacing: 0) {

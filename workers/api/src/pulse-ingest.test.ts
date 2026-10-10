@@ -325,7 +325,7 @@ test("iPhone activity keeps raw five-minute buckets, rewrites only from the firs
 
 test("Recently played song changes become listening traces with lengths; the first list, unchanged polls, stale copies and the album list do not", withStorage(async (storage) => {
   const track = (id: string, title: string): RecentTrack => ({ id, title, artist: "YOASOBI", album: "THE BOOK 3" });
-  const album = (id: string, title: string) => ({ id, title, artist: "YOASOBI", artwork: null, link: null, palette: [], durationMs: null } as ListeningItem);
+  const album = (id: string, title: string) => ({ id, title, artist: "YOASOBI", artworkUrl: null, link: null, palette: [], durationMs: null } as ListeningItem);
   const realNow = Date.now;
   let clock = T0;
   Date.now = () => clock;
