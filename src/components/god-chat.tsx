@@ -7,11 +7,11 @@ import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-reac
 import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
-import { AskCard } from "@/components/ask-card";
+import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
-import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
+import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -126,6 +126,8 @@ function Conversation({ className, archive, session: conversation }: { className
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
   const pendingRef = useRef<string | null>(null);
+  // 选项卡的回答以文本发给模型，界面上按这份结构画成卡片；Turnstile 延后发送时按文本对上。
+  const answersRef = useRef<{ text: string; answers: ChatAnswer[] } | null>(null);
   const verifyStateRef = useRef<"ok" | "failed" | "unavailable">("ok");
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expiredRef = useRef(false);
@@ -230,7 +232,9 @@ function Conversation({ className, archive, session: conversation }: { className
     const content = text.trim();
     if (!content) return;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
-    const user: Bubble & { id: string } = { id: crypto.randomUUID(), role: "user", content };
+    const answers = answersRef.current?.text.trim() === content ? answersRef.current.answers : undefined;
+    answersRef.current = null;
+    const user: Bubble & { id: string } = { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
     const shown: Bubble[] = [...messages, user];
     const history: GodChatMessage[] = fitHistory(
       shown
@@ -407,6 +411,12 @@ function Conversation({ className, archive, session: conversation }: { className
     ask(text);
   }
 
+  function answer(answers: ChatAnswer[]) {
+    const text = askAnswerText(answers);
+    answersRef.current = { text, answers };
+    ask(text);
+  }
+
   function ask(text: string) {
     if (!text.trim() || streaming) return;
     setUsage(null);
@@ -523,7 +533,9 @@ function Conversation({ className, archive, session: conversation }: { className
                 <div
                   className={cn(
                     "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
-                    message.role === "user"
+                    message.role === "user" && message.answers
+                      ? "max-w-[85%]"
+                      : message.role === "user"
                       ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
                       : "w-full text-foreground",
                   )}
@@ -554,10 +566,12 @@ function Conversation({ className, archive, session: conversation }: { className
                   ))}
                   {message.role === "assistant" ? (
                     <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} />
+                  ) : message.answers ? (
+                    <AnswerCard answers={message.answers} />
                   ) : (
                     message.content
                   )}
-                  {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={submit} /> : null}
+                  {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={answer} /> : null}
                   {message.proposals?.map((proposal, proposalIndex) => (
                     <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
                       if (!conversation) return;
