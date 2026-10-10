@@ -9,7 +9,8 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
-import { NOW_WATCHING_PATH } from "@/lib/paths";
+import { NOW_WATCHING_PATH, WATCHING_PATH } from "@/lib/paths";
+import { currentWatchingItem } from "@/lib/watching";
 import { describeDevice, describeMedia } from "@/lib/watching-media";
 import { formatClock } from "@/lib/web-player";
 import type { StatusResponse, WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
@@ -107,7 +108,7 @@ function NowWatchingHero({
         {image ? (
           <Image
             src={image}
-            alt={item?.title ?? ""}
+            alt=""
             fill
             sizes="(min-width: 768px) 208px, (min-width: 640px) 176px, 128px"
             loading="eager"
@@ -179,15 +180,23 @@ function NowWatchingHero({
 
 export function NowWatchingCard({
   nowFallback,
+  listFallback,
 }: {
   nowFallback: StatusResponse<NowWatchingPayload>;
+  listFallback: StatusResponse<{ items: WatchingItem[] }>;
 }) {
   useLiveEvents();
   const { data: live } = useStatus<NowWatchingPayload>(NOW_WATCHING_PATH, NOW_REFRESH_MS, {
     fallback: nowFallback,
   });
+  // 列表由 WatchingRow 轮询；这里只读同一份缓存，避免再开一路请求。
+  const { data: list } = useStatus<{ items: WatchingItem[] }>(WATCHING_PATH, 0, {
+    fallback: listFallback,
+    revalidateOnMount: false,
+  });
   const reduced = useReducedMotion();
   const nowPlaying = live?.nowPlaying ?? null;
+  const item = currentWatchingItem(live?.current ?? null, list?.items ?? [], nowPlaying?.itemId);
 
   return (
     <AnimatePresence initial={false}>
@@ -207,7 +216,7 @@ export function NowWatchingCard({
               action="Emby"
               className="scroll-mt-28"
             >
-              <NowWatchingHero nowPlaying={nowPlaying} item={live?.current ?? null} />
+              <NowWatchingHero nowPlaying={nowPlaying} item={item} />
             </Card>
           </div>
         </motion.div>

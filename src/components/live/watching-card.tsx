@@ -9,7 +9,13 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { NOW_WATCHING_PATH, WATCHING_PATH } from "@/lib/paths";
 import { stableKeys } from "@/lib/keys";
-import { isNowWatching, pinNowWatching, watchingIdentity } from "@/lib/watching";
+import {
+  isNowWatching,
+  pinNowWatching,
+  watchProgressLabel,
+  watchRunStyle,
+  watchingIdentity,
+} from "@/lib/watching";
 import {
   LIST_DURATION,
   LIST_TRANSITION,
@@ -66,37 +72,32 @@ function Tile({
   durationMs: number | null;
   eager?: boolean;
 }) {
+  const reduced = useReducedMotion();
   const progress = live && liveProgress != null ? liveProgress : item.progress;
+  const percentLabel = watchProgressLabel(progress);
+  const showBar = live || percentLabel != null;
+  const runStyle = watchRunStyle({
+    progress,
+    live,
+    paused,
+    positionMs,
+    durationMs,
+    reducedMotion: Boolean(reduced),
+  });
+  const className = cn(
+    "paper-card group relative flex h-full w-full flex-col overflow-hidden rounded-md",
+    "border border-line-strong bg-surface",
+    live && "border-live/40",
+  );
+  const image = item.backdrop ?? item.poster;
 
-  const runStyle =
-    live && positionMs != null && durationMs
-      ? {
-          width: `${Math.round(progress)}%`,
-          animationName: "progress-run",
-          animationDuration: `${durationMs}ms`,
-          animationTimingFunction: "linear",
-          animationDelay: `-${positionMs}ms`,
-          animationFillMode: "forwards" as const,
-          animationPlayState: (paused ? "paused" : "running") as "paused" | "running",
-        }
-      : { width: `${Math.round(progress)}%` };
-
-  return (
-    <a
-      href={item.link ?? "#"}
-      target="_blank"
-      rel="noreferrer noopener"
-      className={cn(
-        "paper-card group relative flex h-full w-full flex-col overflow-hidden rounded-md",
-        "border border-line-strong bg-surface",
-        live && "border-live/40",
-      )}
-    >
+  const body = (
+    <>
       <div className="relative aspect-video overflow-hidden bg-muted">
-        {item.backdrop || item.poster ? (
+        {image ? (
           <Image
-            src={(item.backdrop ?? item.poster)!}
-            alt={item.title}
+            src={image}
+            alt=""
             fill
             sizes="216px"
             loading={eager ? "eager" : "lazy"}
@@ -114,15 +115,23 @@ function Tile({
           </span>
         )}
 
-        <div className="absolute inset-x-0 bottom-0 h-1">
-          <div
-            className={cn(
-              "h-full bg-live",
-              !live && "transition-[width] duration-700",
-            )}
-            style={runStyle}
-          />
-        </div>
+        {percentLabel && (
+          <span className="label-mono absolute bottom-3 right-2 border border-line bg-background/85 px-1.5 py-1 text-foreground">
+            {percentLabel}
+          </span>
+        )}
+
+        {showBar && (
+          <div className="absolute inset-x-0 bottom-0 h-1 bg-background/45" aria-hidden>
+            <div
+              className={cn(
+                "h-full bg-live",
+                !live && "transition-[width] duration-700",
+              )}
+              style={runStyle}
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-0.5 px-3 py-2.5">
@@ -136,7 +145,15 @@ function Tile({
           {item.subtitle || "—"}
         </div>
       </div>
+    </>
+  );
+
+  return item.link ? (
+    <a href={item.link} target="_blank" rel="noreferrer noopener" className={className}>
+      {body}
     </a>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }
 

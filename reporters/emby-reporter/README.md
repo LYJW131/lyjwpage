@@ -14,6 +14,8 @@
 | 海报（`Items/{id}/Images/...`） | 跟着上面两条走 | 上报器一次压成 WebP 并直传 R2；只把对象键推给站点，按 Emby 的 ImageTag 判变 |
 | 接收 Emby 的播放通知 | 事件驱动 | 通知只当触发器，本身不进站点：叫醒会话轮询，暂停 / 停止后催一下续播列表；「停止」直接清掉站点的播放状态 |
 
+续播进度按 `PlaybackPositionTicks / RunTimeTicks` 算。`Items/Resume` 不显式要 `RunTimeTicks` 时，`PlayedPercentage` 经常是 0，不能拿它覆盖 ticks；`UserDataLastPlayedDate` 也要显式要，否则 `playedAt` 一直是空。
+
 **Emby 的 webhook 发给这个代理，不直发站点。** Emby 后台那个配置项加不了
 自定义请求头，直发站点就只能开一个不鉴权的入口；所以通知只在局域网里到代理，
 站点收到的上报一律由代理带着这个来源自己的 Access service token 发出。

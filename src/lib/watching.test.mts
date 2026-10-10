@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { WatchingItem } from "./types.ts";
-import { isNowWatching, pinNowWatching, watchingIdentity } from "./watching.ts";
+import {
+  currentWatchingItem,
+  isNowWatching,
+  pinNowWatching,
+  watchProgressLabel,
+  watchRunStyle,
+  watchingIdentity,
+} from "./watching.ts";
 
 function item(partial: Partial<WatchingItem> & Pick<WatchingItem, "id" | "title">): WatchingItem {
   return {
@@ -122,6 +129,43 @@ test("正在播按 Id 或同一部的另一个版本来认", () => {
   assert.equal(isNowWatching(current, "21840", current), true);
   assert.equal(isNowWatching(resume, "21840", current), true);
   assert.equal(isNowWatching(resume, "21840", null), false);
+});
+
+test("进度读数四舍五入，0 不显示", () => {
+  assert.equal(watchProgressLabel(0), null);
+  assert.equal(watchProgressLabel(0.4), null);
+  assert.equal(watchProgressLabel(31.012), "31%");
+  assert.equal(watchProgressLabel(70.368), "70%");
+  assert.equal(watchProgressLabel(Number.NaN), null);
+  assert.equal(watchProgressLabel(140), "100%");
+});
+
+test("减弱动效或没有时长时进度条停在当前百分比，不跑向 100%", () => {
+  const live = {
+    progress: 36.2,
+    live: true,
+    paused: false,
+    positionMs: 514_000,
+    durationMs: 1_421_000,
+    reducedMotion: false,
+  };
+  assert.equal(watchRunStyle(live).animationName, "progress-run");
+  assert.equal(watchRunStyle(live).animationDelay, "-514000ms");
+  assert.equal(watchRunStyle(live).width, "36%");
+  assert.equal(watchRunStyle({ ...live, reducedMotion: true }).animationName, undefined);
+  assert.equal(watchRunStyle({ ...live, reducedMotion: true }).width, "36%");
+  assert.equal(watchRunStyle({ ...live, live: false }).animationName, undefined);
+  assert.equal(watchRunStyle({ ...live, durationMs: null }).animationName, undefined);
+  assert.equal(watchRunStyle({ ...live, paused: true }).animationPlayState, "paused");
+});
+
+test("此刻详情还没到时，用续播列表里同一个 Id 的那一集", () => {
+  const listed = item({ id: "22099", title: "我推的孩子", poster: "/img/abc.webp" });
+  const current = item({ id: "22099", title: "我推的孩子", poster: "/img/from-session.webp" });
+  assert.equal(currentWatchingItem(current, [listed], "22099")?.poster, "/img/from-session.webp");
+  assert.equal(currentWatchingItem(null, [listed], "22099")?.poster, "/img/abc.webp");
+  assert.equal(currentWatchingItem(null, [listed], "999"), null);
+  assert.equal(currentWatchingItem(null, [listed], undefined), null);
 });
 
 test("不同集不合并", () => {

@@ -196,7 +196,7 @@ export default async function Home() {
 
               {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}
               <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>
-                <NowWatchingCard nowFallback={nowWatching} />
+                <NowWatchingCard nowFallback={nowWatching} listFallback={watching} />
               </CardBoundary>
               <CardBoundary label="Now Playing" silent paths={READS.questNow}>
                 <QuestNowCard nowFallback={questNow} />
