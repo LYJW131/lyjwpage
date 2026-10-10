@@ -48,13 +48,16 @@ export async function plannerHistory(history: GodChatMessage[], env: Env): Promi
   }));
 }
 
-// 设计回复要在一条回复里装下 medium 强度的思考、读文档的几轮和一份完整计划（spec 上限见 BUILD_PLAN_LIMITS）；
+// 设计回复要在一条回复里装下 medium 强度的思考、读文档与源码的多轮和一份完整计划（spec 上限见 BUILD_PLAN_LIMITS）；
 // 按 GOD_CHAT_TIER_INFO.opus 的 maxTokens 给时思考加读文档就用完了，propose_build 来不及调用。
-export const DESIGN_MAX_TOKENS = 12_288;
-// 读文档要两三轮，提问或提交计划还要一轮，被拒后改一次又是一轮；普通对话的轮数不够规划者用完一个来回。
-export const DESIGN_TOOL_ROUNDS = 6;
+export const DESIGN_MAX_TOKENS = 20_480;
+// 开会话那条回复由规划者从零读起：文档两三轮、源码三四轮（路径猜错还要再找一轮），提问或提交计划一轮，被拒后改一次又是一轮。
+// 6 轮时实测读完源码就到收尾轮，只能把问题写成正文。
+export const DESIGN_TOOL_ROUNDS = 10;
 // 规划要看真实代码、文档和外部开发文档，读取额度比普通对话宽；抓网页按 max_content_tokens 封顶，输入花费有数。
-export const DESIGN_READ_LIMITS = { docs: 8, webSearches: 4, webFetches: 4 } as const;
+export const DESIGN_READ_LIMITS = { docs: 12, webSearches: 4, webFetches: 4 } as const;
+// 收尾轮只收走读取类工具：提问和交计划是这条回复的出口，收走了规划者只能把选项写成正文。
+export const DESIGN_FINAL_ROUND_NOTE = "No reading tools remain for this reply. Use what you have: ask with ask_visitor, propose with propose_build, or answer in text. If a tool call was rejected, say what went wrong and what you will do next.";
 
 export const PLANNER_PROMPT = `You are the build planner in the conversation on LYJW's personal homepage (lyjw.me), whose public repository is github.com/${BUILD_REPO}.
 Help the visitor turn one worthwhile change to this site into a small, clear, reviewable plan. The visitor can open an issue or start a cloud build from a plan card. The build creates a pull request; nothing is merged or deployed automatically.

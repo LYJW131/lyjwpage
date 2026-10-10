@@ -14,7 +14,7 @@ import { signBuildToken } from "./build/token.ts";
 import { readPlan } from "./build/plan.ts";
 import { sealedHistory } from "./chat/seal.ts";
 import { DESIGN_EFFORT } from "./chat/router.ts";
-import { DESIGN_MAX_TOKENS, DESIGN_TOOL_ROUNDS } from "./chat/design.ts";
+import { DESIGN_FINAL_ROUND_NOTE, DESIGN_MAX_TOKENS, DESIGN_TOOL_ROUNDS } from "./chat/design.ts";
 
 // Node 不提供 cloudflare:workers；这里只替换基类，SDK 与流式序列化使用真实实现。
 registerHooks({
@@ -363,11 +363,27 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   const token = await signBuildToken({ kind: "design", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!);
   const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
   assert.equal(requests.length, DESIGN_TOOL_ROUNDS + 1);
-  assert.deepEqual(requests.at(-1)?.tools, []);
+  assert.deepEqual(requests.at(-1)?.tools?.map((tool) => "name" in tool && tool.name), ["ask_visitor", "propose_build"]);
   assert.ok(requests.every((request) => request.mcp_servers === undefined));
-  assert.ok(requests.at(-1)?.messages.some((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("No tools remain")));
+  assert.ok(requests.at(-1)?.messages.some((m) => m.role === "system" && m.content === DESIGN_FINAL_ROUND_NOTE));
   assert.ok(!events.some((event) => event.type === "plan"));
   assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
+});
+
+test("设计会话的收尾轮只收走读取工具，规划者仍能用 ask_visitor 出选择卡片", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const questions = [{ header: "Scope", question: "Remember consent?", multiSelect: false, options: [{ label: "Once", description: "Store it" }, { label: "Every time", description: "Ask again" }] }];
+  const { env, requests, sessions } = designEnv((body, index) => modelStream(body.model, index < DESIGN_TOOL_ROUNDS ? true : { name: "ask_visitor", input: { questions } }));
+  const id = crypto.randomUUID();
+  sessions.set(id, 1);
+  const token = await signBuildToken({ kind: "design", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!);
+  const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
+  assert.equal(requests.length, DESIGN_TOOL_ROUNDS + 1);
+  assert.deepEqual(events.filter((event) => event.type === "ask"), [{ type: "ask", questions }]);
+  assert.ok(!events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
+  assert.ok(events.some((event) => event.type === "seal"));
 });
 
 function upgradeEnv(sonnetFree: boolean) {

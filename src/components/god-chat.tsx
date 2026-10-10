@@ -755,10 +755,16 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 function DesignStatus({ design }: { design: ChatDesign }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+  const minutes = Math.ceil(Math.max(0, design.expiresAt - now) / 60_000);
   return (
     <p className="mb-2 flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
       <PencilRuler className="size-3 shrink-0" />
-      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left</span>
+      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns · {minutes <= 1 ? "<1" : minutes} min left</span>
     </p>
   );
 }

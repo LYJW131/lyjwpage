@@ -5,7 +5,7 @@ import { site } from "@/lib/site";
 import type { ReadDoc } from "../tools/project-docs";
 
 // 只给设计会话：规划者要看到真实代码才能列准路径。仓库本来公开，读的是 main 上的原文件。
-export const REPO_FILE_LIMITS = { chars: 12_000, readsPerReply: 8, pathChars: 240 } as const;
+export const REPO_FILE_LIMITS = { chars: 12_000, readsPerReply: 12, pathChars: 240 } as const;
 
 export const READ_REPO_FILE_TOOL: Anthropic.Beta.BetaTool = {
   name: "read_repo_file",

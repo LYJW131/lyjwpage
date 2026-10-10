@@ -31,7 +31,7 @@ import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { issuePass, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, DESIGN_READ_LIMITS, DESIGN_TOOL_ROUNDS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
+import { admitDesign, ASK_VISITOR_TOOL, DESIGN_FINAL_ROUND_NOTE, DESIGN_MAX_TOKENS, DESIGN_READ_LIMITS, DESIGN_TOOL_ROUNDS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webFetchTool, webSearchTool } from "./web-search";
@@ -305,10 +305,10 @@ async function converse({
       break;
     }
     const lastRound = round - roundBase >= (design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds);
-    if (lastRound && round > roundBase) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
+    if (lastRound && round > roundBase) messages.push({ role: "system", content: design ? DESIGN_FINAL_ROUND_NOTE : FINAL_ROUND_NOTE });
     const searchesLeft = (design ? DESIGN_READ_LIMITS.webSearches : GOD_CHAT_LIMITS.maxWebSearches) - searches;
     const fetchesLeft = DESIGN_READ_LIMITS.webFetches - fetches;
-    const tools = lastRound ? [] : design
+    const tools = lastRound ? (design ? [ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL] : []) : design
       ? [...DESIGN_SITE_TOOL_DEFS, READ_REPO_FILE_TOOL, ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL,
         ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : []),
         ...(fetchesLeft > 0 ? [webFetchTool(fetchesLeft)] : [])]
@@ -425,7 +425,7 @@ async function converse({
       if (final.stop_reason === "max_tokens") emit({ type: "text", text: " …" });
       break;
     }
-    if (lastRound) {
+    if (lastRound && !design) {
       emit({ type: "text", text: " …" });
       break;
     }
@@ -469,8 +469,9 @@ async function converse({
           const request = parseRepoFileInput(call.input);
           if (!request) return result("Invalid path. Give a repository-relative file path such as workers/ai/src/chat/handler.ts.", true);
           if (repoReads >= REPO_FILE_LIMITS.readsPerReply) return result(`Not read, this reply may read at most ${REPO_FILE_LIMITS.readsPerReply} files or ranges.`, true);
-          repoReads += 1;
           const { ok, text } = await readRepoFile(io.readDoc, request);
+          // 猜错路径不占读取额度，轮数上限照样兜住反复试探。
+          if (ok) repoReads += 1;
           if (ok) emit({ type: "doc", doc: "repo", path: request.path, url: repoFileUrl(request.path, "blob") });
           return result(text, !ok);
         }
@@ -522,7 +523,7 @@ async function converse({
       console.info("[god-chat] tool", JSON.stringify({ tier, round, name: call.name, error: outcome.is_error, ...(outcome.is_error && { reason: String(outcome.content).slice(0, 200) }) }));
       results.push(outcome);
     }
-    if (planToken || asked) break;
+    if (planToken || asked || lastRound) break;
     if (designStarted && tier !== GOD_CHAT_DESIGN_TIER) {
       // 同一条回复里换规划者接着做：历史按规划者重建，开会话这一轮的思考与工具调用不带过去（签名只对原模型有效）；
       // 轮数、输出与读文档额度按设计会话重新起算，开会话时已扣过一次设计轮数，这里不再扣。
