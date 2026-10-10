@@ -175,17 +175,19 @@ const agent = {
   custom: (id: string, name: string, input: unknown): Scripted => ({ type: "agent.custom_tool_use", id, name, input, processed_at: at }),
   idle: (stop_reason: Scripted): Scripted => ({ type: "session.status_idle", id: "sevt_idle", processed_at: at, stop_reason, stop_details: null }),
   waiting: (...event_ids: string[]): Scripted => agent.idle({ type: "requires_action", event_ids }),
+  visitor: (id: string, text: string): Scripted => ({ type: "user.message", id, content: [{ type: "text", text }], processed_at: at }),
+  result: (id: string, toolId: string, text: string): Scripted => ({ type: "user.custom_tool_result", id, custom_tool_use_id: toolId, content: [{ type: "text", text }], is_error: false, processed_at: at }),
 };
 
 const sse = (events: Scripted[]) => new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
 
 // 假的 Anthropic 出站：/v1/messages 给 Sonnet，/v1/sessions* 扮演 Managed Agents；每开一次事件流按顺序吐下一段脚本。
-type DesignSetup = { reply?: (body: Anthropic.Beta.MessageCreateParamsStreaming, index: number) => Response; turns?: Scripted[][]; pending?: string[]; createFails?: boolean };
-function designEnv({ reply = (body) => modelStream(body.model, false), turns = [], pending = [], createFails = false }: DesignSetup = {}) {
+type DesignSetup = { reply?: (body: Anthropic.Beta.MessageCreateParamsStreaming, index: number) => Response; turns?: Scripted[][]; pending?: string[]; history?: Scripted[]; createFails?: boolean };
+function designEnv({ reply = (body) => modelStream(body.model, false), turns = [], pending = [], history = [], createFails = false }: DesignSetup = {}) {
   const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
   const created: Record<string, unknown>[] = [];
   const sent: Scripted[] = [];
-  const counters = { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 0, streams: 0 };
+  const counters = { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 0, streams: 0, peeked: 0 };
   const sessions = new Map<string, number>();
   const env: Env = {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
@@ -216,6 +218,11 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
         sessions.set(id, count + 1);
         return { status: "ok", remaining: BUILD_DESIGN_LIMITS.maxTurns - count - 1 };
       },
+      peekDesign: async (id) => {
+        counters.peeked++;
+        const count = sessions.get(id);
+        return count === undefined ? { status: "expired", remaining: 0 } : { status: "ok", remaining: BUILD_DESIGN_LIMITS.maxTurns - count };
+      },
     }),
     ANTHROPIC_EGRESS: binding<AnthropicEgress>({
       fetch: async (request: Request) => {
@@ -240,6 +247,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
           return Response.json({ data: body.events });
         }
         if (pathname === "/v1/sessions/sesn_test/events") {
+          if (![...new URL(request.url).searchParams.keys()].some((key) => key.startsWith("types"))) return Response.json({ data: [...history].reverse(), next_page: null });
           return Response.json({ data: pending.length ? [agent.waiting(...pending)] : [], next_page: null });
         }
         if (pathname === "/v1/sessions/sesn_test") return Response.json({ id: "sesn_test", type: "session", status: "idle" });
@@ -250,8 +258,8 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
   return { env, requests, created, sent, counters, sessions };
 }
 
-function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role: "user", content: "Please improve the music card." }]) {
-  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages, ...(designToken && { designToken }) }) });
+function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role: "user", content: "Please improve the music card." }], resume = false) {
+  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages, ...(designToken && { designToken }), ...(resume && { resume }) }) });
 }
 const toolIO = { readStatus: async () => Response.json({ ok: true, data: { timezone: "Asia/Singapore" } }), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
@@ -307,7 +315,7 @@ test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并�
   assert.ok(seal?.type === "seal");
   assert.equal(seal.planToken, proposed.token);
   assert.deepEqual({ tier: seal.trace?.tier, design: seal.trace?.design, plan: seal.trace?.plan }, { tier: "opus", design: true, plan: true });
-  assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1, streams: 1 });
+  assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1, streams: 1, peeked: 0 });
   const reply = textOf(events);
   const history: GodChatMessage[] = [
     { role: "user", content: "Please improve the music card." },
@@ -323,7 +331,7 @@ test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并�
   assert.deepEqual(next.sent, [{ type: "user.custom_tool_result", custom_tool_use_id: "ctu_plan", content: [{ type: "text", text: "The visitor replied:\nMake the empty label shorter." }], is_error: false }]);
   assert.equal(textOf(answered), "Shortened.");
   assert.deepEqual(next.requests, []);
-  assert.deepEqual(next.counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1, streams: 1 });
+  assert.deepEqual(next.counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1, streams: 1, peeked: 0 });
   const sealed = answered.find((event) => event.type === "seal");
   assert.ok(sealed?.type === "seal" && sealed.trace?.design && !sealed.planToken);
 });
@@ -369,6 +377,69 @@ test("规划者的自定义工具：站点状态当场回结果，不合规的�
   assert.equal(textOf(events), "请在下面选一下。");
   const seal = events.find((event) => event.type === "seal");
   assert.ok(seal?.type === "seal" && seal.trace?.views?.includes("timezone"));
+});
+
+test("断线补发：会话已停在等访客时，从访客那条回答起重推错过的文字、读过的文件和题目并盖章，不发事件给会话也不扣轮数", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const questions = [{ header: "Scope", question: "How much should the card show?", multiSelect: false, options: [{ label: "Summary", description: "Simplest" }, { label: "Showcase", description: "More work" }] }];
+  const { env, sent, sessions, counters } = designEnv({ history: [
+    agent.visitor("sevt_old", "Earlier message."),
+    ...agent.say("sevt_old_reply", "Earlier reply.").slice(2),
+    agent.result("sevt_kick", "ctu_prev", "The visitor replied:\nMake it smaller."),
+    agent.running,
+    agent.tool("tu_read", "read", { file_path: "/workspace/lyjwpage/src/components/live/music-card.tsx" }),
+    agent.custom("ctu_status", "get_site_status", { views: ["timezone"] }),
+    agent.result("sevt_status", "ctu_status", "{\"timezone\":\"Asia/Singapore\"}"),
+    ...agent.say("sevt_m", "One question first.").slice(2),
+    agent.custom("ctu_ask", "ask_visitor", { questions }),
+    agent.waiting("ctu_ask"),
+  ] });
+  const token = await designToken(env, sessions);
+  const messages: GodChatMessage[] = [{ role: "user", content: "Make it smaller." }];
+  const events = await parseEvents(await handleChat(chatRequest(token, messages, true), env, toolIO));
+  assert.equal(textOf(events), "One question first.");
+  assert.ok(events.some((event) => event.type === "doc" && event.path === "src/components/live/music-card.tsx"));
+  assert.deepEqual(events.filter((event) => event.type === "ask"), [{ type: "ask", questions }]);
+  assert.ok(events.some((event) => event.type === "design" && event.remaining === BUILD_DESIGN_LIMITS.maxTurns - 1));
+  const seal = events.find((event) => event.type === "seal");
+  assert.ok(seal?.type === "seal");
+  assert.equal((await sealedHistory([...messages, { role: "assistant", content: textOf(events), seal: seal.seal, trace: seal.trace }, { role: "user", content: "Summary." }], env.CHAT_HISTORY_SECRET!)).length, 3);
+  assert.deepEqual(sent, []);
+  assert.deepEqual({ admitted: counters.admitted, peeked: counters.peeked }, { admitted: 0, peeked: 1 });
+});
+
+test("断线补发：回合还在跑时先重推已有的，再跟着事件流到停下，重复的事件只推一次；挂起的计划重新签发", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const first = agent.say("sevt_m1", "Reading the card.");
+  const { env, sent, sessions } = designEnv({
+    history: [agent.visitor("sevt_kick", "Shorten the label."), agent.running, first[2]],
+    turns: [[first[2], agent.tool("tu_grep", "grep", { pattern: "label" }), ...agent.say("sevt_m2", "Here is the plan."), agent.custom("ctu_plan", "propose_build", plan), agent.waiting("ctu_plan")]],
+  });
+  const events = await parseEvents(await handleChat(chatRequest(await designToken(env, sessions), [{ role: "user", content: "Shorten the label." }], true), env, toolIO));
+  assert.equal(textOf(events), "Reading the card.\n\nHere is the plan.");
+  assert.deepEqual(events.filter((event) => event.type === "step").map((event) => event.type === "step" && event.text), ["Searched the code for “label”"]);
+  const proposed = events.find((event) => event.type === "plan");
+  assert.ok(proposed?.type === "plan");
+  assert.deepEqual((await readPlan(env, proposed.token))?.plan, plan);
+  const seal = events.find((event) => event.type === "seal");
+  assert.ok(seal?.type === "seal" && seal.planToken === proposed.token);
+  assert.deepEqual(sent, []);
+});
+
+test("断线补发：最近一回合不是访客最新那条消息时拒绝，不重推上一回合；没有设计令牌的补发请求无效", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const { env, sessions, counters } = designEnv({ history: [agent.visitor("sevt_kick", "Earlier message."), ...agent.say("sevt_m", "Earlier reply.").slice(2), agent.idle({ type: "end_turn" })] });
+  const response = await handleChat(chatRequest(await designToken(env, sessions), [{ role: "user", content: "A message that never arrived." }], true), env, toolIO);
+  assert.equal(response.status, 409);
+  assert.equal((await response.json() as { code: string }).code, "nothing_to_resume");
+  assert.equal(counters.streams, 0);
+  assert.equal((await handleChat(chatRequest(undefined, undefined, true), env, toolIO)).status, 400);
 });
 
 test("规划者到预算上限时说明并结束；会话被终止时不盖章", async (t) => {
@@ -421,7 +492,7 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
   assert.equal(response.status, 200);
   const events = await parseEvents(response);
   assert.ok(events.some((event) => event.type === "design" && event.remaining === BUILD_DESIGN_LIMITS.maxTurns - 2));
-  assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1, streams: 1 });
+  assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1, streams: 1, peeked: 0 });
   for (const invalid of [
     `${token.slice(0, -2)}xx`,
     await signBuildToken({ kind: "design", id, expiresAt: Date.now() - 1, sessionId: "sesn_test" }, env.BUILD_SESSION_SECRET!),
