@@ -8,6 +8,8 @@ const CODING_BUNDLE_IDS = new Set([
   "com.apple.Terminal",
   "com.googlecode.iterm2",
   "dev.warp.Warp-Stable",
+  "com.openai.codex",
+  "ai.opencode.desktop",
 ]);
 
 export function isCodingApp(
@@ -39,6 +41,10 @@ export function isCodingApp(
     name.includes("antigravity") ||
     name.includes("ghostty") ||
     name.includes("claude") ||
+    name.includes("opencode") ||
+    name === "codex" ||
+    name === "grok" ||
+    name === "grok build" ||
     name === "code" ||
     name === "visual studio code" ||
     name === "xcode" ||

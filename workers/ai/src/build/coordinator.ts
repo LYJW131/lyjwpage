@@ -81,6 +81,11 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
+  peekDesign(id: string): { status: "ok" | "expired"; remaining: number } {
+    const session = this.get<{ turns: number; expiresAt: number }>(`design:${id}`);
+    return session ? { status: "ok", remaining: Math.max(0, BUILD_DESIGN_LIMITS.maxTurns - session.turns) } : { status: "expired", remaining: 0 };
+  }
+
   claimPlan(id: string, expiresAt: number): boolean {
     return this.ctx.storage.transactionSync(() => {
       this.prune();

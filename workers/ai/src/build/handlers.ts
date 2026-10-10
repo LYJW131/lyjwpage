@@ -4,6 +4,7 @@ import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
+import { withPreviewShare } from "./preview-share";
 import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestAgentReviews } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
@@ -177,7 +178,7 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
         if (!await coordinator.completePublication(runId, pr)) throw new Error("The implementation publication could not be recorded.");
         run = (await coordinator.readRun(runId))!;
       }
-      const patch = await reconcileBuild(await installationApi(env, fetcher, true), run.state);
+      const patch = await withPreviewShare(env, run.state, await reconcileBuild(await installationApi(env, fetcher, true), run.state), fetcher);
       let state = await coordinator.updateRun(runId, patch, run.state.pr!.headSha);
       if (state?.phase === "pr_open" && state.pr?.draft && state.ci?.state === "success") {
         const current = (await coordinator.readRun(runId))!;

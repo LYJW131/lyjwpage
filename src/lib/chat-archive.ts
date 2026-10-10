@@ -1,6 +1,6 @@
 import type { BuildFireResult, BuildProposal, BuildRun } from "@shared/build-routine";
-import { parseQuestions, type GodChatCard, type GodChatMessage, type GodChatQuestion, type GodChatSource } from "@shared/god-chat";
-import type { GodChatTier } from "@shared/god-chat-tiers";
+import { isGodChatCard, parseQuestions, type GodChatCard, type GodChatMessage, type GodChatQuestion, type GodChatSource } from "@shared/god-chat";
+import { isGodChatServedTier, type GodChatServedTier } from "@shared/god-chat-tiers";
 import type { GithubIssueResult } from "@shared/github-issue";
 
 export const CHAT_ARCHIVE_KEY = "lyjw.chat.v1";
@@ -15,19 +15,24 @@ export function designSessionEnded(code: unknown): boolean {
 }
 
 export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; build?: BuildFireResult; run?: BuildRun };
+export type ChatAnswer = { header: string; question: string; answer: string };
 export type ChatBubble = GodChatMessage & {
   id?: string;
-  tier?: GodChatTier | null;
-  downgradedFrom?: GodChatTier;
+  tier?: GodChatServedTier | null;
+  downgradedFrom?: GodChatServedTier;
   servedBy?: string;
   thinking?: string;
   lookups?: string[];
   docs?: { doc: string; path: string; url: string; section?: string }[];
   searches?: string[];
+  steps?: string[];
   sources?: GodChatSource[];
   cards?: { card: GodChatCard; at: number }[];
+  // 同一条回复里开了设计会话、换规划者接手时正文已有的长度，分隔线画在这里。
+  designAt?: number;
   proposals?: ChatProposal[];
   asks?: GodChatQuestion[];
+  answers?: ChatAnswer[];
 };
 export type ChatSession = {
   id: string;
@@ -61,7 +66,7 @@ function validRun(value: unknown): boolean {
 
 function validBubble(value: unknown): value is ChatBubble {
   if (!object(value) || !["user", "assistant"].includes(String(value.role)) || typeof value.content !== "string") return false;
-  if (value.cards !== undefined && (!Array.isArray(value.cards) || !value.cards.every((card) => object(card) && ["music", "watching", "gaming", "fitness"].includes(String(card.card)) && typeof card.at === "number"))) return false;
+  if (value.cards !== undefined && (!Array.isArray(value.cards) || !value.cards.every((card) => object(card) && typeof card.card === "string" && typeof card.at === "number"))) return false;
   if (value.proposals !== undefined && (!Array.isArray(value.proposals) || !value.proposals.every((proposal) => {
     if (!object(proposal) || typeof proposal.token !== "string" || typeof proposal.expiresAt !== "number" || !object(proposal.plan)) return false;
     const plan = proposal.plan;
@@ -71,10 +76,21 @@ function validBubble(value: unknown): value is ChatBubble {
     return proposal.run === undefined || validRun(proposal.run);
   }))) return false;
   if (value.asks !== undefined && !parseQuestions(value.asks)) return false;
-  if (["lookups", "searches"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
+  if (value.designAt !== undefined && typeof value.designAt !== "number") return false;
+  if (value.answers !== undefined && (!Array.isArray(value.answers) || !value.answers.every((answer) => object(answer) && ["header", "question", "answer"].every((key) => typeof answer[key] === "string")))) return false;
+  if (["lookups", "searches", "steps"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every((source) => object(source) && typeof source.url === "string" && typeof source.title === "string"))) return false;
-  return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || ["haiku", "opus", "fable"].includes(String(value.tier))) && (value.downgradedFrom === undefined || ["haiku", "opus", "fable"].includes(String(value.downgradedFrom)));
+  return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || isGodChatServedTier(value.tier)) && (value.downgradedFrom === undefined || isGodChatServedTier(value.downgradedFrom));
+}
+
+// 卡片清单会变：存档里已不登记的卡片只是不再画，整段对话照留。
+function dropRetiredCards(session: ChatSession): ChatSession {
+  if (!session.messages.some((message) => message.cards?.some(({ card }) => !isGodChatCard(card)))) return session;
+  return { ...session, messages: session.messages.map(({ cards, ...message }) => {
+    const kept = cards?.filter(({ card }) => isGodChatCard(card));
+    return kept?.length ? { ...message, cards: kept } : message;
+  }) };
 }
 
 export function readChatArchive(raw: string | null): ChatArchive {
@@ -89,7 +105,7 @@ export function readChatArchive(raw: string | null): ChatArchive {
       ids.add(session.id);
       return true;
     });
-    return boundChatArchive({ version: 1, activeId: typeof value.activeId === "string" ? value.activeId : "", sessions });
+    return boundChatArchive({ version: 1, activeId: typeof value.activeId === "string" ? value.activeId : "", sessions: sessions.map(dropRetiredCards) });
   } catch {
     return EMPTY_CHAT_ARCHIVE;
   }
@@ -120,10 +136,11 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
     if (!archive) {
       try { archive = readChatArchive(storage()?.getItem(CHAT_ARCHIVE_KEY) ?? null); }
       catch { archive = EMPTY_CHAT_ARCHIVE; memoryOnly = true; }
-      if (!archive.sessions.length) {
+      const resumed = archive.sessions.find((session) => session.id === archive?.activeId);
+      if (!archive.sessions.length || !activeChatDesign(resumed?.design, now())) {
         const time = now();
         const id = newId();
-        archive = { version: 1, activeId: id, sessions: [{ id, title: "New conversation", createdAt: time, updatedAt: time, messages: [] }] };
+        archive = { version: 1, activeId: id, sessions: [{ id, title: "New conversation", createdAt: time, updatedAt: time, messages: [] }, ...archive.sessions.filter((session) => session.messages.length)] };
       }
     }
     return archive;

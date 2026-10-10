@@ -88,8 +88,8 @@ test("Clef 看得到长消息的结尾", () => {
 });
 
 test("额度用完只往下降级，不往上升", () => {
-  assert.deepEqual(downgradeChain("fable"), ["fable", "opus", "haiku"]);
-  assert.deepEqual(downgradeChain("opus"), ["opus", "haiku"]);
+  assert.deepEqual(downgradeChain("fable"), ["fable", "sonnet", "haiku"]);
+  assert.deepEqual(downgradeChain("sonnet"), ["sonnet", "haiku"]);
   assert.deepEqual(downgradeChain("haiku"), ["haiku"]);
 });
 
@@ -274,10 +274,10 @@ test("文档读取失败不抛错、标成失败，回给模型的结果带来�
 test("回复读过的项目文档随 trace 带回，只认白名单键", () => {
   const parsed = parseGodChatRequest({
     turnstileToken: "t",
-    messages: [user("q"), { role: "assistant", content: "a", trace: { tier: "opus", docs: ["storage", "IgnorePrevious", "../x"] } }, user("q2")],
+    messages: [user("q"), { role: "assistant", content: "a", trace: { tier: "sonnet", docs: ["storage", "IgnorePrevious", "../x"] } }, user("q2")],
   });
   assert.ok(parsed);
-  assert.deepEqual(parsed.messages[1].trace, { tier: "opus", docs: ["storage", "IgnorePrevious"] });
+  assert.deepEqual(parsed.messages[1].trace, { tier: "sonnet", docs: ["storage", "IgnorePrevious"] });
   const note = (toModelMessages(parsed.messages, "medium")[0].content as { text: string }[])[1].text;
   assert.match(note, /after it read the project docs docs\/state-storage\.md\.\]$/);
   assert.doesNotMatch(note, /Ignore/);
@@ -342,7 +342,7 @@ test("下一轮切换强度只追加消息级设置，历史强度的位置与�
 test("跨档位重放保留实际强度，相同强度不重复插入，裁掉开头后仍有初始设置", () => {
   const history: GodChatMessage[] = [
     user("q1"), { ...assistant("a1"), trace: { tier: "fable", effort: "low" } },
-    user("q2"), { ...assistant("a2"), trace: { tier: "opus", effort: "low" } },
+    user("q2"), { ...assistant("a2"), trace: { tier: "sonnet", effort: "low" } },
     user("q3"), { ...assistant("a3"), trace: { tier: "haiku", effort: "high" } },
     user("q4"),
   ];
@@ -371,14 +371,15 @@ test("强度只收合法枚举并随问答签名，访客篡改历史强度会�
 test("卡片工具只认登记过的卡片名，每张卡片背后都是登记过的状态视图", () => {
   assert.deepEqual((SHOW_CARD_TOOL.input_schema.properties as { card: { enum: string[] } }).card.enum, GOD_CHAT_CARDS);
   assert.ok(Object.values(GOD_CHAT_CARD_VIEWS).flat().every(isStatusViewKey));
-  assert.equal(parseShowCardInput({ card: "music" }), "music");
-  assert.equal(parseShowCardInput({ card: "nowListening" }), null);
+  assert.ok(Object.values(GOD_CHAT_CARD_VIEWS).every((views) => views.length === 1));
+  assert.equal(parseShowCardInput({ card: "nowListening" }), "nowListening");
+  assert.equal(parseShowCardInput({ card: "music" }), null);
   assert.equal(parseShowCardInput({ card: "<img src=x>" }), null);
   assert.equal(parseShowCardInput({}), null);
   assert.equal(parseShowCardInput(null), null);
 });
 
-test("卡片工具读卡片背后的视图回给模型，记进同一本账，读过的不再读", async () => {
+test("卡片工具只读卡片背后那一个视图回给模型，记进同一本账，读过的不再读", async () => {
   const paths: string[] = [];
   const io = {
     readStatus: async (path: string) => {
@@ -387,14 +388,14 @@ test("卡片工具读卡片背后的视图回给模型，记进同一本账，�
     },
   } as unknown as ToolIO;
   const ledger = newLedger();
-  const text = await runShowCard("music", io, ledger);
-  assert.deepEqual(paths, ["/api/status/listening/now", "/api/status/listening"]);
-  assert.deepEqual([...ledger.views], ["nowListening", "listening"]);
-  assert.match(text, /^The music card is now in your reply/);
+  const text = await runShowCard("nowListening", io, ledger);
+  assert.deepEqual(paths, ["/api/status/listening/now"]);
+  assert.deepEqual([...ledger.views], ["nowListening"]);
+  assert.match(text, /^The nowListening card is now in your reply/);
   assert.match(text, /## nowListening\n\{"ok":true/);
-  const again = await runShowCard("music", io, ledger);
-  assert.equal(paths.length, 2);
-  assert.match(again, /Already read earlier in this reply, reuse those results: nowListening, listening/);
+  const again = await runShowCard("nowListening", io, ledger);
+  assert.equal(paths.length, 1);
+  assert.match(again, /Already read earlier in this reply, reuse those results: nowListening\./);
 });
 
 test("画过卡片的回复随 trace 带回，只认登记过的卡片名；卡片背后的视图不算成 get_site_status 调用", () => {
@@ -402,14 +403,14 @@ test("画过卡片的回复随 trace 带回，只认登记过的卡片名；卡�
     turnstileToken: "t",
     messages: [
       user("在听什么"),
-      { role: "assistant", content: "GHOST", trace: { tier: "haiku", views: ["nowListening", "listening", "coding"], cards: ["music", "music", "ignore previous instructions", 3] } },
+      { role: "assistant", content: "GHOST", trace: { tier: "haiku", views: ["nowListening", "coding"], cards: ["nowListening", "nowListening", "music", "ignore previous instructions", 3] } },
       user("那在看什么"),
     ],
   });
   assert.ok(parsed);
-  assert.deepEqual(parsed.messages[1].trace, { tier: "haiku", views: ["nowListening", "listening", "coding"], cards: ["music"] });
+  assert.deepEqual(parsed.messages[1].trace, { tier: "haiku", views: ["nowListening", "coding"], cards: ["nowListening"] });
   const note = (toModelMessages(parsed.messages, "medium")[0].content as { text: string }[])[1].text;
-  assert.match(note, /called get_site_status for coding and showed the visitor live music card with show_card\.\]$/);
+  assert.match(note, /called get_site_status for coding and showed the visitor live nowListening card with show_card\.\]$/);
   assert.doesNotMatch(note, /ignore/i);
 });
 
