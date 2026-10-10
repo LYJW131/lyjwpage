@@ -22,6 +22,7 @@ const todoWrite = (status, args, result) => ({
 
 test("只认行首的 /cursor 指令", () => {
   assert.deepEqual(parseCommand("/cursor 把标题改成英文\n顺便补测试"), { request: "把标题改成英文\n顺便补测试" });
+  assert.deepEqual(parseCommand("/cursor 第一行\r\n第二行"), { request: "第一行\n第二行" });
   assert.deepEqual(parseCommand("  /cursor"), { request: "" });
   assert.equal(parseCommand("/cursorx do it"), null);
   assert.equal(parseCommand("please /cursor do it"), null);
