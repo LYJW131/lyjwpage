@@ -19,7 +19,7 @@ export function GithubConsent({ action, checked, onChange, disabled }: {
       <p className="font-semibold text-foreground">Before you connect GitHub</p>
       <ul id={termsId} className="list-disc space-y-1 break-words pl-4">
         <li><span className="text-foreground">Why:</span> GitHub sign-in confirms which GitHub account is making this request.</li>
-        <li><span className="text-foreground">What happens:</span> GitHub gives this site only a one-time authorization code. Our server exchanges it for a short-lived token, uses it for this single action, then revokes it immediately. The token is never stored.</li>
+        <li><span className="text-foreground">What happens:</span> GitHub gives this site only a one-time authorization code. Our server exchanges it for a short-lived token, uses it for this single action, then asks GitHub to revoke it right away. The token is never stored.</li>
         {action === "issue" ? (
           <li><span className="text-foreground">Issue:</span> a public issue containing the plan and acceptance criteria is created in {GITHUB_ISSUE_REPO} under your GitHub account.</li>
         ) : (
