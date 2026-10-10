@@ -157,11 +157,41 @@ function contains(value: unknown, needle: string): boolean {
   return false;
 }
 
+// 热力图类视图是 origin 起逐日的数值数组，模型按下标数日期既费步数又容易数错，所以附上按月合计，键为 `<数组名>ByMonth`。
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function monthlyTotals(origin: string, values: number[]): Record<string, number> {
+  const start = Date.parse(`${origin}T00:00:00Z`);
+  const totals: Record<string, number> = {};
+  values.forEach((value, index) => {
+    const month = new Date(start + index * 86_400_000).toISOString().slice(0, 7);
+    totals[month] = (totals[month] ?? 0) + value;
+  });
+  return totals;
+}
+
+export function withMonthlyTotals(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withMonthlyTotals);
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  const start = typeof record.from === "string" && DAY.test(record.from) ? record.from : record.origin;
+  const out = Object.fromEntries(Object.entries(record).map(([key, child]) => [key, withMonthlyTotals(child)]));
+  if (typeof start !== "string" || !DAY.test(start)) return out;
+  for (const [key, child] of Object.entries(record)) {
+    if (Array.isArray(child) && child.length && child.every((item) => typeof item === "number")) out[`${key}ByMonth`] = monthlyTotals(start, child);
+  }
+  return out;
+}
+
+const isScalarList = (value: unknown[]) => value.length > 0 && value.every((item) => item === null || typeof item !== "object");
+
 type PagedList = { path: string; total: number; before: number };
 
 // 只处理最外层的数组（不在别的数组项里的）：搜到的条目整项保留，项里的子列表不再按 query 过滤或分页，
 // 否则「游戏名匹配」会把这个游戏的奖杯列表筛空，嵌套列表也没法和外层共用同一个位置。
+// 纯数值、字符串数组（逐日序列）整份保留：按下标对应日期，分页或筛选都会打乱对应关系，体积靠 MAX_CHARS_PER_VIEW 兜底。
 function collectLists(value: unknown, path: string, needle: string, lists: PagedList[]): unknown {
+  if (Array.isArray(value) && isScalarList(value)) return value;
   if (Array.isArray(value)) {
     const items = needle ? value.filter((item) => contains(item, needle)) : value;
     if (needle || value.length > PAGE_SIZE) lists.push({ path: path || "(root)", total: items.length, before: value.length });
@@ -176,7 +206,7 @@ type ViewResult = { section: string; outOfRange?: true };
 function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: Cursor | undefined): ViewResult {
   const needle = normalize(page.query);
   const lists: PagedList[] = [];
-  const filtered = collectLists(page.detail === "summary" ? strip(data) : data, "", needle, lists);
+  const filtered = collectLists(withMonthlyTotals(page.detail === "summary" ? strip(data) : data), "", needle, lists);
   const longest = Math.max(0, ...lists.map((list) => list.total));
   if (page.offset > 0 && page.offset >= longest) return { section: "", outOfRange: true };
   const totals = lists.map((list) => list.total);
