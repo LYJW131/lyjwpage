@@ -6,7 +6,8 @@ import { SITE_STATUS_TOOL, type ReadStatus } from "./site-status";
 export type ToolIO = { readStatus: ReadStatus; readDoc: ReadDoc };
 
 // 读取额度的账本：首页对话一条回复共用一本，所有调用累计；MCP 每次调用各开一本新的。
-export type ToolLedger = { views: Set<StatusViewKey>; docs: Set<string>; docLimit?: number };
+// views 是读过的视图集合（进 trace）；reads 是「视图 + 位置 + query + detail」的读取键，额度按它计。
+export type ToolLedger = { views: Set<StatusViewKey>; reads?: Set<string>; docs: Set<string>; docLimit?: number };
 
 export type ToolOutcome = {
   text: string;
@@ -33,4 +34,4 @@ export type SiteTool = {
 // 这里的工具全部经无鉴权的 /mcp 公开，同时是首页对话的工具：只放只读、且只读公开模型的工具。
 export const SITE_TOOLS: readonly SiteTool[] = [SITE_STATUS_TOOL, PROJECT_DOC_TOOL];
 
-export const newLedger = (): ToolLedger => ({ views: new Set(), docs: new Set() });
+export const newLedger = (): ToolLedger => ({ views: new Set(), reads: new Set(), docs: new Set() });

@@ -107,6 +107,15 @@ test("读站点状态：只读登记过的视图，每次调用各算各的额�
   assert.equal(none.body?.result?.isError, true);
 });
 
+test("tools/list 里 get_site_status 的参数全是可选的 views、detail、query、cursor，没有 limit", async () => {
+  const list = await post({ jsonrpc: "2.0", id: 2, method: "tools/list" }, { "MCP-Protocol-Version": "2025-06-18" });
+  const tool = list.body?.result?.tools?.find((candidate) => candidate.name === "get_site_status");
+  const schema = tool?.inputSchema as { properties: Record<string, { enum?: string[] }>; required: string[] };
+  assert.deepEqual(Object.keys(schema.properties).sort(), ["cursor", "detail", "query", "views"]);
+  assert.deepEqual(schema.properties.detail.enum, ["summary", "full"]);
+  assert.deepEqual(schema.required, []);
+});
+
 test("读项目文档：未知文档是工具错误，不是协议错误", async () => {
   const ok = await post({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "read_project_doc", arguments: { doc: "overview" } } });
   assert.equal(ok.body?.result?.isError, false);
