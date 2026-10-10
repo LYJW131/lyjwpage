@@ -212,22 +212,31 @@ function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role:
 const toolIO = { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
 
-test("改站请求由 Sonnet 判断，start_design 签会话并结束这条回复，下一轮由 Opus 规划：读数据、文档、源码与外部文档并提计划，计划进历史签章", async (t) => {
+test("改站请求由 Sonnet 判断，start_design 签会话后同一条回复交给 Opus 接着规划；之后带会话令牌的回合直接由 Opus 读数据、文档、源码与外部文档并提计划，计划进历史签章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const opening = designEnv((body) => modelStream(body.model, { name: "start_design", input: {} }));
+  const opening = designEnv((body, index) => modelStream(body.model, index === 0 ? { name: "start_design", input: {} } : { name: "propose_build", input: plan }));
   const openEvents = await parseEvents(await handleChat(chatRequest(), opening.env, toolIO));
   const design = openEvents.find((event) => event.type === "design");
   assert.ok(design?.type === "design");
   assert.equal(design.remaining, BUILD_DESIGN_LIMITS.maxTurns - 1);
   assert.ok(design.expiresAt > Date.now() && design.expiresAt <= Date.now() + BUILD_DESIGN_LIMITS.ttlMs);
-  assert.equal(opening.requests.length, 1);
-  assert.equal(opening.requests[0].model, GOD_CHAT_TIER_INFO.sonnet.model);
+  assert.deepEqual(opening.requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.sonnet.model, GOD_CHAT_TIER_INFO.opus.model]);
   assert.equal(opening.requests[0].max_tokens, GOD_CHAT_TIER_INFO.sonnet.maxTokens);
   assert.deepEqual(opening.requests[0].messages.filter((m) => m.role === "system").map((m) => m.output_config?.effort), [GOD_CHAT_TIER_INFO.sonnet.effort]);
-  assert.ok(openEvents.some((event) => event.type === "text" && event.text.includes("design session")));
-  assert.ok(!openEvents.some((event) => event.type === "plan"));
+  const handoff = opening.requests[1];
+  assert.equal(handoff.max_tokens, DESIGN_MAX_TOKENS);
+  assert.ok(handoff.tools?.some((tool) => "name" in tool && tool.name === "propose_build"));
+  assert.ok(!handoff.tools?.some((tool) => "name" in tool && tool.name === "start_design"));
+  assert.ok(!handoff.messages.some((m) => Array.isArray(m.content) && m.content.some((block) => block.type === "tool_use" || block.type === "tool_result")));
+  assert.equal(handoff.messages.at(-1)?.role, "system");
+  assert.deepEqual(openEvents.filter((event) => event.type === "route").map((event) => event.type === "route" && event.tier), ["sonnet", "opus"]);
+  const opened = openEvents.find((event) => event.type === "seal");
+  assert.ok(opened?.type === "seal");
+  assert.equal(opened.trace?.tier, "opus");
+  assert.equal(opened.trace?.design, true);
+  assert.ok(opened.planToken);
   assert.deepEqual(opening.counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1 });
 
   const { env, requests, counters, sessions } = designEnv((body) => modelStream(body.model, { name: "propose_build", input: plan }));
