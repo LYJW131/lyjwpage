@@ -38,7 +38,7 @@ import { webFetchTool, webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
-const DESIGN_STARTED_LEAD = "The design session is open. Describe the change you have in mind.";
+const DESIGN_HANDOFF_NOTE = "The Prophet judged the visitor's latest message a worthwhile change to this site and opened this design session; its short lead-in is already shown. Plan that change now in this reply, starting from what the visitor already said; do not ask them to describe it again.";
 const UPGRADE_NOTE = "The Small Fry judged this message beyond its rank and handed it to you. Nothing of its draft is shown to the visitor; answer the visitor's latest message fully yourself.";
 const UPGRADE_TOOL: Anthropic.Beta.BetaTool = {
   name: "request_upgrade",
@@ -59,7 +59,7 @@ For AI industry news (new models, products, papers, what is hot today or this we
 You can see what LYJW is doing through the get_site_status tool: music, video, games, coding agents, devices, workouts, servers and this site's own health. When a visitor asks about LYJW or the site, look it up instead of guessing, then answer naturally; never dump raw JSON. Don't claim the site shows or publishes anything you haven't looked up: the tool's view list is a menu, not a record of what is public.
 For music, watching, gaming or fitness, use show_card instead: it puts a live card in your reply and returns the same data, so add a sentence or two rather than listing what the card shows. Now and recent are separate cards; show the one that was asked about.
 This site is open source, and the read_project_doc tool reads its design docs. When a visitor asks how the site works, why it is built a certain way, or how a card gets its data, read the relevant doc first, answer from it in the visitor's language, and link the doc's source URL.
-When a visitor wants to change or fix this site, judge whether the idea is useful and feasible. If start_design is available and the idea is worthwhile, call it to begin a bounded planning conversation. If it is inappropriate, explain briefly without starting. Only a signed plan can become an issue or build, and the visitor must choose that action in the interface.
+When a visitor wants to change or fix this site, judge whether the idea is useful and feasible. If start_design is available and the idea is worthwhile, write at most one short sentence and call it: the planner (Claude Opus) then continues this same reply with a bounded planning conversation. If it is inappropriate, explain briefly without starting. Only a signed plan can become an issue or build, and the visitor must choose that action in the interface.
 Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
 
 const PERSONA: Record<GodChatTier, string> = {
@@ -252,7 +252,7 @@ async function converse({
     // Haiku 不支持服务端拒答兜底参数，其余两档都开。
     ...(served !== "haiku" ? (["server-side-fallback-2026-07-01"] as const) : []),
   ];
-  const messages = toModelMessages(await plannerHistory(history, env), effort);
+  let messages = toModelMessages(await plannerHistory(history, env), effort);
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
@@ -260,6 +260,7 @@ async function converse({
   let planToken: string | undefined;
   let asked = false;
   let designStarted = false;
+  let roundBase = 0;
   // 模型只调工具不写正文时补的一句话，跟着计划或题目的语言走。
   let lead: string | undefined;
   const cards = new Set<GodChatCard>();
@@ -303,8 +304,8 @@ async function converse({
       emit({ type: "text", text: " …" });
       break;
     }
-    const lastRound = round >= (design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds);
-    if (lastRound && round > 0) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
+    const lastRound = round - roundBase >= (design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds);
+    if (lastRound && round > roundBase) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
     const searchesLeft = (design ? DESIGN_READ_LIMITS.webSearches : GOD_CHAT_LIMITS.maxWebSearches) - searches;
     const fetchesLeft = DESIGN_READ_LIMITS.webFetches - fetches;
     const tools = lastRound ? [] : design
@@ -412,7 +413,7 @@ async function converse({
     if (final.stop_reason === "pause_turn") {
       const roundLimit = design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds;
       const webLeft = design ? searches < DESIGN_READ_LIMITS.webSearches || fetches < DESIGN_READ_LIMITS.webFetches : searches < GOD_CHAT_LIMITS.maxWebSearches;
-      if (round + 1 < roundLimit && webLeft) {
+      if (round + 1 - roundBase < roundLimit && webLeft) {
         messages.push({ role: "assistant", content: final.content });
         continue;
       }
@@ -461,9 +462,8 @@ async function converse({
           if ("error" in started) return result(started.error, true);
           design = started.session;
           designStarted = true;
-          lead = DESIGN_STARTED_LEAD;
           emit({ type: "design", ...design });
-          return result("The design session is open and the planner takes over from the visitor's next message. End this reply now with one or two sentences, in the visitor's language, saying you opened a planning session and inviting them to describe the change.", false);
+          return result("The design session is open; the planner takes over this reply.", false);
         }
         if (call.name === READ_REPO_FILE_TOOL.name) {
           const request = parseRepoFileInput(call.input);
@@ -522,11 +522,26 @@ async function converse({
       console.info("[god-chat] tool", JSON.stringify({ tier, round, name: call.name, error: outcome.is_error, ...(outcome.is_error && { reason: String(outcome.content).slice(0, 200) }) }));
       results.push(outcome);
     }
-    if (planToken || asked || designStarted) break;
+    if (planToken || asked) break;
+    if (designStarted && tier !== GOD_CHAT_DESIGN_TIER) {
+      // 同一条回复里换规划者接着做：历史按规划者重建，开会话这一轮的思考与工具调用不带过去（签名只对原模型有效）；
+      // 轮数、输出与读文档额度按设计会话重新起算，开会话时已扣过一次设计轮数，这里不再扣。
+      tier = GOD_CHAT_DESIGN_TIER;
+      effort = GOD_CHAT_TIER_INFO[tier].effort;
+      upgradeOpen = false;
+      outputLeft = DESIGN_MAX_TOKENS;
+      ledger.docLimit = DESIGN_READ_LIMITS.docs;
+      roundBase = round + 1;
+      console.info("[god-chat] design handoff", JSON.stringify({ round }));
+      emit({ type: "route", route: "sonnet", tier });
+      messages = toModelMessages(await plannerHistory(history, env), effort);
+      messages.push({ role: "system", content: DESIGN_HANDOFF_NOTE });
+      continue;
+    }
     messages.push({ role: "user", content: results });
   }
   // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。
-  if (!refused && finalRound > 0 && !finalRoundText && !planToken && !asked && !designStarted) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
+  if (!refused && finalRound > roundBase && !finalRoundText && !planToken && !asked) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({

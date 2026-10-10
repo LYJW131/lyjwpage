@@ -26,6 +26,8 @@ export type ChatBubble = GodChatMessage & {
   searches?: string[];
   sources?: GodChatSource[];
   cards?: { card: GodChatCard; at: number }[];
+  // 同一条回复里开了设计会话、换规划者接手时正文已有的长度，分隔线画在这里。
+  designAt?: number;
   proposals?: ChatProposal[];
   asks?: GodChatQuestion[];
 };
@@ -71,6 +73,7 @@ function validBubble(value: unknown): value is ChatBubble {
     return proposal.run === undefined || validRun(proposal.run);
   }))) return false;
   if (value.asks !== undefined && !parseQuestions(value.asks)) return false;
+  if (value.designAt !== undefined && typeof value.designAt !== "number") return false;
   if (["lookups", "searches"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every((source) => object(source) && typeof source.url === "string" && typeof source.title === "string"))) return false;

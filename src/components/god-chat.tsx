@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, History, Plus, Square, Trash2 } from "lucide-react";
+import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
 import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown } from "@/components/chat-markdown";
@@ -50,6 +50,8 @@ type ShownCard = { card: GodChatCard; at: number };
 type Reply = Omit<ChatBubble, "role" | "content">;
 type Bubble = ChatBubble;
 const EMPTY_MESSAGES: Bubble[] = [];
+// 须与 globals.css 里 .design-halo 的动画总时长一致。
+const DESIGN_HALO_MS = 2_400;
 
 const CHAT_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
 const OFFLINE = "The oracle is offline.";
@@ -114,6 +116,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const [armed, setArmed] = useState(false);
   const [warm, setWarm] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
+  const [designHalo, setDesignHalo] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -313,6 +316,13 @@ function Conversation({ className, archive, session: conversation }: { className
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
           } else if (event.type === "design" && conversation) {
             chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) }, { persist: false });
+            if (!designToken && meta.designAt === undefined) {
+              meta = { ...meta, designAt: reply.length };
+              if (sessionRef.current === session) {
+                setDesignHalo(true);
+                setTimeout(() => setDesignHalo(false), DESIGN_HALO_MS);
+              }
+            }
           } else if (event.type === "ask") {
             meta = { ...meta, asks: event.questions };
           } else if (event.type === "plan") {
@@ -450,11 +460,12 @@ function Conversation({ className, archive, session: conversation }: { className
     <Card
       data-sentry-mask
       label="Talk to God"
-      action={conversation?.design ? <span>Design · Opus</span> : <RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
+      action={conversation?.design ? <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400"><PencilRuler className="size-3" />Design · Opus</span> : <RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
       className={cn(
         "transition-[height,box-shadow] duration-700 ease-out motion-reduce:transition-none",
         expanded ? "h-[calc(100dvh-var(--chat-inset))]" : "h-[25rem] sm:h-[22rem]",
         godSpeaking && "god-halo",
+        designHalo && !godSpeaking && "design-halo",
         className,
       )}
       style={{ "--chat-inset": `${headerHeight + 2 * EDGE_GAP_PX}px` } as CSSProperties}
@@ -540,7 +551,7 @@ function Conversation({ className, archive, session: conversation }: { className
                     </div>
                   ))}
                   {message.role === "assistant" ? (
-                    <ReplyBody content={message.content} cards={message.cards} live={live} />
+                    <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} />
                   ) : (
                     message.content
                   )}
@@ -744,16 +755,38 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 function DesignStatus({ design }: { design: ChatDesign }) {
-  return <p className="mb-2 text-[11px] text-muted-foreground">Design with Opus · {design.remaining.toLocaleString("en-US")} turns left</p>;
+  return (
+    <p className="mb-2 flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
+      <PencilRuler className="size-3 shrink-0" />
+      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left</span>
+    </p>
+  );
 }
 
-function ReplyBody({ content, cards = [], live }: { content: string; cards?: ShownCard[]; live: boolean }) {
+function DesignDivider() {
+  return (
+    <div role="separator" aria-label="Design session started" className="design-divider flex items-center gap-2 py-1 text-sky-600 dark:text-sky-400">
+      <span className="h-px flex-1 bg-sky-500/40" />
+      <span className="label-mono flex shrink-0 items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-1 text-[10px]">
+        <PencilRuler className="size-3" />
+        Design session · {GOD_CHAT_TIER_INFO.opus.persona} takes over
+      </span>
+      <span className="h-px flex-1 bg-sky-500/40" />
+    </div>
+  );
+}
+
+function ReplyBody({ content, cards = [], designAt, live }: { content: string; cards?: ShownCard[]; designAt?: number; live: boolean }) {
   const parts: ReactNode[] = [];
   let from = 0;
-  for (const { card, at } of cards) {
+  const marks = [
+    ...cards.map(({ card, at }) => ({ at, node: <ChatCard key={card} card={card} /> })),
+    ...(designAt === undefined ? [] : [{ at: designAt, node: <DesignDivider key="design" /> }]),
+  ].sort((a, b) => a.at - b.at);
+  for (const { at, node } of marks) {
     const text = content.slice(from, at);
     if (text.trim()) parts.push(<ChatMarkdown key={`text-${from}`}>{text}</ChatMarkdown>);
-    parts.push(<ChatCard key={card} card={card} />);
+    parts.push(node);
     from = at;
   }
   const rest = content.slice(from);
@@ -775,10 +808,11 @@ function RankLabel({ reply }: { reply: Reply }) {
   }
   if (!reply.tier) return null;
   const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
+  const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.sonnet : undefined;
   return (
     <div className="mb-1.5">
       <div className={cn("label-mono text-[10px]", RANK_TONE[reply.tier])}>
-        {persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
+        {opener && `${opener.persona} · ${opener.label} → `}{persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
       </div>
       {reply.downgradedFrom && (
         <div className="label-mono text-[10px] text-muted-foreground">
