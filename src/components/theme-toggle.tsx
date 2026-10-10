@@ -31,22 +31,22 @@ function applyTheme(setTheme: (theme: string) => void, next: string) {
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const current = OPTIONS.find((option) => option.value === theme) ?? OPTIONS[2];
 
   return (
     <button
       type="button"
-      aria-label="Toggle theme (light / dark / system)"
+      aria-label={`Switch theme. Current theme: ${current.label}.`}
       onClick={() => {
-        const currentChoice = theme ?? "system";
-        const index = OPTIONS.findIndex((option) => option.value === currentChoice);
+        const index = OPTIONS.findIndex((option) => option.value === current.value);
         const next = OPTIONS[(index + 1) % OPTIONS.length].value;
         applyTheme(setTheme, next);
       }}
       className="paper-card relative flex size-8 items-center justify-center rounded-md border border-line-strong bg-surface text-muted-foreground hover:bg-surface-hover hover:text-foreground after:absolute after:-inset-1"
     >
-      <Sun className="theme-toggle-icon theme-toggle-icon-light size-4" />
-      <Moon className="theme-toggle-icon theme-toggle-icon-dark size-4" />
-      <Monitor className="theme-toggle-icon theme-toggle-icon-system size-4" />
+      <Sun className="theme-toggle-icon theme-toggle-icon-light size-4" aria-hidden />
+      <Moon className="theme-toggle-icon theme-toggle-icon-dark size-4" aria-hidden />
+      <Monitor className="theme-toggle-icon theme-toggle-icon-system size-4" aria-hidden />
     </button>
   );
 }

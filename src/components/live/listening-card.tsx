@@ -29,6 +29,7 @@ import { useWebPlayer } from "@/components/web-player/web-player-provider";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useLyrics, type LyricsFallback } from "@/hooks/use-lyrics";
 import { useMountedAt } from "@/hooks/use-mounted-at";
+import { usePlaybackProgressEase } from "@/hooks/use-playback-progress";
 import { useLiveNowListening } from "@/hooks/use-stale";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
@@ -139,8 +140,9 @@ const BAR_PERIODS = [0.9, 1.15, 1.4];
 type BarsState = "playing" | "paused" | "idle";
 
 function Bars({ state }: { state: BarsState }) {
+  const reduced = useReducedMotion();
   const idleHeights = ["h-2", "h-3", "h-1.5"];
-  const animated = state !== "idle";
+  const animated = state !== "idle" && !reduced;
 
   const alignPhase = useCallback(
     (node: HTMLSpanElement | null) => {
@@ -216,7 +218,9 @@ function HeroProgress({
   const reduced = useReducedMotion();
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
+  const [lineAt, setLineAt] = useState(0);
   const now = ticked || mountedAt;
+  const lineNow = Math.max(now, lineAt);
 
   useEffect(() => {
     if (!playing) return;
@@ -226,21 +230,23 @@ function HeroProgress({
 
   const position = trackPositionMs(track, now);
   const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
+  const ease = usePlaybackProgressEase(percent, track.durationMs, 1_000, reduced);
   const gradient = palette && palette.length >= 2 ? paletteGradient(palette) : undefined;
 
   const { observedAt, positionMs, durationMs, repeatOne } = track;
   useEffect(() => {
     if (!playing || !lyrics) return;
     const anchor = { state: "playing" as const, observedAt, positionMs, durationMs, repeatOne };
-    const at = trackPositionMs(anchor, Math.max(now, Date.now()));
+    const at = trackPositionMs(anchor, Math.max(lineNow, Date.now()));
     const { until } = cueAt(lyrics, at);
     const target = until ?? (repeatOne && durationMs > 0 ? durationMs : null);
     if (target == null) return;
-    const timer = window.setTimeout(() => setTicked(Date.now()), Math.max(16, target - at + 8));
+    const timer = window.setTimeout(() => setLineAt(Date.now()), Math.max(16, target - at + 8));
     return () => window.clearTimeout(timer);
-  }, [playing, lyrics, now, observedAt, positionMs, durationMs, repeatOne]);
+  }, [playing, lyrics, lineNow, observedAt, positionMs, durationMs, repeatOne]);
 
-  const cue = lyrics ? cueAt(lyrics, position) : NO_CUE;
+  const linePosition = trackPositionMs(track, lineNow);
+  const cue = lyrics ? cueAt(lyrics, linePosition) : NO_CUE;
   const current = cue.index >= 0 ? lyrics![cue.index] : null;
   const line = current?.text ?? null;
 
@@ -288,7 +294,10 @@ function HeroProgress({
       </div>
       <div className="mt-1.5 h-0.75 overflow-hidden bg-muted">
         <PaletteBar
-          className="h-full transition-[width] duration-700 ease-linear"
+          className={cn(
+            "h-full",
+            ease && "transition-[width] duration-700 ease-linear motion-reduce:transition-none",
+          )}
           base={playing ? gradient : undefined}
           motion={playing ? motionGradient : undefined}
           idleClassName={playing ? "bg-live" : "bg-muted-foreground"}
@@ -792,7 +801,8 @@ export function ListeningCard({
     localActive || elsewhere ? (data?.items ?? []) : tail,
     localActive ? (live?.id ?? null) : null,
   );
-  const restKeys = stableKeys(rest.map((item) => item.id));
+  const queue = rest.slice(0, VISIBLE_ROWS * 2);
+  const restKeys = stableKeys(queue.map((item) => item.id));
   const preloadArtworks = Array.from(
     new Set(
       [heroItem, ...rest].flatMap((entry) =>
@@ -1059,9 +1069,9 @@ export function ListeningCard({
               )}
             >
               <div className="recent-tracks-track">
-                {rest.length > 0 ? (
+                {queue.length > 0 ? (
                   <AnimatePresence initial={false} mode="popLayout">
-                    {rest.map((item, index) => (
+                    {queue.map((item, index) => (
                       <motion.div
                         key={restKeys[index]}
                         layout={!reduced}

@@ -118,7 +118,9 @@ function Tile({
           <div
             className={cn(
               "h-full bg-live",
-              !live && "transition-[width] duration-700",
+              live && positionMs != null && durationMs
+                ? "progress-run"
+                : !live && "transition-[width] duration-700 motion-reduce:transition-none",
             )}
             style={runStyle}
           />
