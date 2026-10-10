@@ -20,6 +20,8 @@ import { aiDevEnabled, type Env } from "../runtime";
 import { PLAN_LABELS, planLanguage } from "@shared/build-routine";
 import { issuePlan } from "../build/plan";
 import { checkBuildPlan } from "../build/validation";
+import { MAX_DOC_READS_PER_REPLY } from "../tools/project-docs";
+import { parseRepoFileInput, READ_REPO_FILE_TOOL, readRepoFile, REPO_FILE_LIMITS, repoFileUrl } from "./repo-file";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { billedOutputTokens, usageHops } from "./billing";
@@ -27,10 +29,10 @@ import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, DESIGN_TOOL_ROUNDS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
+import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, DESIGN_READ_LIMITS, DESIGN_TOOL_ROUNDS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
 import { CLEF_CHOICES, DESIGN_EFFORT, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
-import { webSearchTool } from "./web-search";
+import { webFetchTool, webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
@@ -62,6 +64,13 @@ function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
 }
 
 const REFUSAL = "The temple gates stay closed for this one. Ask something else.";
+
+const DESIGN_SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map(({ name, description, replyCap, inputSchema }) => ({
+  name,
+  description: replyCap ? `${description}\n${replyCap.replace(`at most ${MAX_DOC_READS_PER_REPLY} `, `at most ${DESIGN_READ_LIMITS.docs} `)}` : description,
+  input_schema: inputSchema,
+  strict: true,
+}));
 
 const SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map(({ name, description, replyCap, inputSchema }) => ({
   name,
@@ -249,6 +258,16 @@ async function converse({
     emit({ type: "search", query });
   };
   let searches = 0;
+  let fetches = 0;
+  let repoReads = 0;
+  const shownFetches = new Set<string>();
+  const showFetch = (id: string, input: unknown) => {
+    const url = (input as { url?: unknown } | null)?.url;
+    if (shownFetches.has(id) || typeof url !== "string" || !/^https?:\/\//.test(url)) return;
+    shownFetches.add(id);
+    emit({ type: "doc", doc: "web", path: url, url });
+  };
+  if (design) ledger.docLimit = DESIGN_READ_LIMITS.docs;
   let wroteText = false;
   let wroteThinking = false;
   let finalRound = 0;
@@ -262,9 +281,12 @@ async function converse({
     }
     const lastRound = round >= (design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds);
     if (lastRound && round > 0) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
-    const searchesLeft = GOD_CHAT_LIMITS.maxWebSearches - searches;
+    const searchesLeft = (design ? DESIGN_READ_LIMITS.webSearches : GOD_CHAT_LIMITS.maxWebSearches) - searches;
+    const fetchesLeft = DESIGN_READ_LIMITS.webFetches - fetches;
     const tools = lastRound ? [] : design
-      ? [...SITE_TOOL_DEFS.filter((tool) => tool.name === "read_project_doc"), ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL]
+      ? [...DESIGN_SITE_TOOL_DEFS, READ_REPO_FILE_TOOL, ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL,
+        ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : []),
+        ...(fetchesLeft > 0 ? [webFetchTool(fetchesLeft)] : [])]
       : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
         ...(canStartDesign && designAvailable(env) ? [START_DESIGN_TOOL] : []),
         ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : [])];
@@ -285,7 +307,7 @@ async function converse({
       },
       { signal },
     );
-    const searchInputs = new Map<number, { id: string; json: string }>();
+    const searchInputs = new Map<number, { id: string; name: string; json: string }>();
     let fallbackModel: string | undefined;
     // 每轮请求的文字各自成段：上一轮说完「我查一下」、调完工具再接着说时补一个空行，免得两句粘在一起。
     let roundText = false;
@@ -297,8 +319,8 @@ async function converse({
       else if (event.type === "content_block_start") {
         const block = event.content_block;
         if (block.type === "fallback") fallbackModel = block.to.model;
-        else if (block.type === "server_tool_use" && block.name === "web_search") {
-          searchInputs.set(event.index, { id: block.id, json: "" });
+        else if (block.type === "server_tool_use" && (block.name === "web_search" || block.name === "web_fetch")) {
+          searchInputs.set(event.index, { id: block.id, name: block.name, json: "" });
         }
       } else if (event.type === "content_block_delta") {
         if (event.delta.type === "text_delta") {
@@ -314,9 +336,9 @@ async function converse({
           searchInputs.get(event.index)!.json += event.delta.partial_json;
         }
       } else if (event.type === "content_block_stop" && searchInputs.has(event.index)) {
-        const { id, json } = searchInputs.get(event.index)!;
+        const { id, name, json } = searchInputs.get(event.index)!;
         try {
-          showSearch(id, JSON.parse(json));
+          (name === "web_fetch" ? showFetch : showSearch)(id, JSON.parse(json));
         } catch {}
       }
     }
@@ -325,8 +347,10 @@ async function converse({
     const billed = billedOutputTokens(final.usage);
     outputLeft -= billed;
     searches += final.usage.server_tool_use?.web_search_requests ?? 0;
+    fetches += final.usage.server_tool_use?.web_fetch_requests ?? 0;
     for (const block of final.content) {
       if (block.type === "server_tool_use" && block.name === "web_search") showSearch(block.id, block.input);
+      if (block.type === "server_tool_use" && block.name === "web_fetch") showFetch(block.id, block.input);
       if (block.type !== "text") continue;
       for (const citation of block.citations ?? []) {
         if (citation.type === "web_search_result_location" && !sources.has(citation.url)) {
@@ -353,7 +377,9 @@ async function converse({
     }
     // 续跑暂停的回合得带着搜索工具才能接上：搜索次数已用完、或下一轮就是不带工具的收尾轮时不再续，答到哪算哪。
     if (final.stop_reason === "pause_turn") {
-      if (round + 1 < GOD_CHAT_LIMITS.maxToolRounds && searches < GOD_CHAT_LIMITS.maxWebSearches) {
+      const roundLimit = design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds;
+      const webLeft = design ? searches < DESIGN_READ_LIMITS.webSearches || fetches < DESIGN_READ_LIMITS.webFetches : searches < GOD_CHAT_LIMITS.maxWebSearches;
+      if (round + 1 < roundLimit && webLeft) {
         messages.push({ role: "assistant", content: final.content });
         continue;
       }
@@ -387,8 +413,18 @@ async function converse({
           if ("error" in started) return result(started.error, true);
           design = started.session;
           outputLeft += DESIGN_MAX_TOKENS - maxTokens;
+          ledger.docLimit = DESIGN_READ_LIMITS.docs;
           emit({ type: "design", ...design });
           return result("The design session is active. Clarify material questions and use propose_build when a complete plan is ready. The visitor chooses whether to open an issue or start a build.", false);
+        }
+        if (call.name === READ_REPO_FILE_TOOL.name) {
+          const request = parseRepoFileInput(call.input);
+          if (!request) return result("Invalid path. Give a repository-relative file path such as workers/ai/src/chat/handler.ts.", true);
+          if (repoReads >= REPO_FILE_LIMITS.readsPerReply) return result(`Not read, this reply may read at most ${REPO_FILE_LIMITS.readsPerReply} files or ranges.`, true);
+          repoReads += 1;
+          const { ok, text } = await readRepoFile(io.readDoc, request);
+          if (ok) emit({ type: "doc", doc: "repo", path: request.path, url: repoFileUrl(request.path, "blob") });
+          return result(text, !ok);
         }
         if (call.name === ASK_VISITOR_TOOL.name) {
           if (asked) return result("Questions were already shown in this reply.", true);
