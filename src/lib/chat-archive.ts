@@ -24,6 +24,7 @@ export type ChatBubble = GodChatMessage & {
   lookups?: string[];
   docs?: { doc: string; path: string; url: string; section?: string }[];
   searches?: string[];
+  steps?: string[];
   sources?: GodChatSource[];
   cards?: { card: GodChatCard; at: number }[];
   // 同一条回复里开了设计会话、换规划者接手时正文已有的长度，分隔线画在这里。
@@ -74,7 +75,7 @@ function validBubble(value: unknown): value is ChatBubble {
   }))) return false;
   if (value.asks !== undefined && !parseQuestions(value.asks)) return false;
   if (value.designAt !== undefined && typeof value.designAt !== "number") return false;
-  if (["lookups", "searches"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
+  if (["lookups", "searches", "steps"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every((source) => object(source) && typeof source.url === "string" && typeof source.title === "string"))) return false;
   return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || isGodChatServedTier(value.tier)) && (value.downgradedFrom === undefined || isGodChatServedTier(value.downgradedFrom));

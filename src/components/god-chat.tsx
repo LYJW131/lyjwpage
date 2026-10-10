@@ -309,6 +309,7 @@ function Conversation({ className, archive, session: conversation }: { className
             const { doc, path, url, section } = event;
             meta = { ...meta, docs: [...(meta.docs ?? []), { doc, path, url, section }] };
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
+          else if (event.type === "step") meta = { ...meta, steps: [...(meta.steps ?? []), event.text] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
           else if (event.type === "pass") writePass({ pass: event.pass, expiresAt: event.expiresAt });
           else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace, planToken: event.planToken };
@@ -545,6 +546,7 @@ function Conversation({ className, archive, session: conversation }: { className
                     </div>
                   ) : null}
                   {message.docs?.length ? <DocReads docs={message.docs} /> : null}
+                  {message.steps?.length ? <PlannerSteps steps={message.steps} live={live} /> : null}
                   {message.searches?.map((query, i) => (
                     <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
                       Searched “{query}”
@@ -712,6 +714,19 @@ function DocRead({ read, prefix }: { read: NonNullable<ChatBubble["docs"]>[numbe
       </a>
       {read.section && <> › {read.section}</>}
     </div>
+  );
+}
+
+function PlannerSteps({ steps, live }: { steps: string[]; live: boolean }) {
+  return (
+    <details className="mb-1.5">
+      <summary className={`label-mono cursor-pointer truncate text-[10px] text-muted-foreground ${live ? "normal-case" : ""}`}>
+        {live ? steps[steps.length - 1] : `${steps.length.toLocaleString("en-US")} step${steps.length > 1 ? "s" : ""} in the sandbox`}
+      </summary>
+      <ol className="mt-1 space-y-0.5 pl-3 text-[10px] text-muted-foreground">
+        {steps.map((step, i) => <li key={i} className="label-mono normal-case leading-snug [overflow-wrap:anywhere]">{step}</li>)}
+      </ol>
+    </details>
   );
 }
 

@@ -1,15 +1,12 @@
 import type { GodChatMessage } from "@shared/god-chat";
-import { GOD_CHAT_TIER_INFO, type GodChatEffort, type GodChatTier } from "@shared/god-chat-tiers";
+import type { GodChatEffort, GodChatTier } from "@shared/god-chat-tiers";
 
 const CLEF_MODEL = "@cf/cloudflare/clef";
 const CLEF_TIMEOUT_MS = 5_000;
 export const ROUTER_FALLBACK: GodChatTier = "haiku";
 
-// 设计会话开启后的每一轮由 Opus 作答，强度取 GOD_CHAT_TIER_INFO.opus；开启那一轮由 Sonnet 判断值不值得做。
-export const DESIGN_EFFORT: GodChatEffort = GOD_CHAT_TIER_INFO.opus.effort;
-
 // Clef 的选项把 Haiku 按思考强度再拆两档：简单问题少想、省等待，稍难的让它多想而不必升到 Sonnet。Sonnet、Fable 不拆，
-// 强度取 GOD_CHAT_TIER_INFO 的默认值（成本与等待的取舍写在那里），设计用 DESIGN_EFFORT。
+// 强度取 GOD_CHAT_TIER_INFO 的默认值（成本与等待的取舍写在那里）。
 export const CLEF_CHOICES = {
   "haiku-low": { route: "haiku", effort: "low" },
   "haiku-medium": { route: "haiku", effort: "medium" },
