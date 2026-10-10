@@ -58,6 +58,7 @@ import type {
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import { liveTrack } from "@/lib/home-layout";
+import { homePodVisibleUntil } from "@/lib/homepod-store";
 import { fetchCatalogSongAlbum, queueOptionsFor } from "@/lib/web-player";
 import { cn } from "@/lib/utils";
 
@@ -576,6 +577,14 @@ export function ListeningCard({
   const localMusic = live?.idle ? null : live?.music ?? null;
   const localTrack = liveTrack(localMusic);
   const localActive = Boolean(localTrack);
+  const homepodVisibleUntil =
+    localTrack?.source === "homepod" &&
+    localTrack.state === "playing" &&
+    !localTrack.repeatOne &&
+    localTrack.durationMs > 0 &&
+    localTrack.observedAt > 0
+      ? homePodVisibleUntil({ music: localTrack, receivedAt: localTrack.observedAt })
+      : null;
 
   // 推断的别处播放没有上报来续命：和源站一样按时长放完再留 LISTENING_ELSEWHERE_HOLD_MS 等下一首被推过来，到点就撤下并重新取一次。
   const mountedAt = useMountedAt();
@@ -585,6 +594,15 @@ export function ListeningCard({
   const inferredEnd = inferred ? inferred.startedAt + inferred.durationMs : null;
   const inferredUntil = inferredEnd == null ? null : inferredEnd + LISTENING_ELSEWHERE_HOLD_MS;
   const handoffAt = inferred?.next?.durationMs ? inferredEnd : null;
+  // HomePod 只在状态变化时推送，曲终不会再来一封；可见期限到点必须重取。
+  useEffect(() => {
+    if (homepodVisibleUntil == null) return;
+    const timer = window.setTimeout(
+      () => void mutate(NOW_LISTENING_PATH),
+      Math.max(250, homepodVisibleUntil - Date.now() + 250),
+    );
+    return () => window.clearTimeout(timer);
+  }, [homepodVisibleUntil, mutate]);
   useEffect(() => {
     if (inferredUntil == null) return;
     const timer = window.setTimeout(() => {

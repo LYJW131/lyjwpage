@@ -56,6 +56,13 @@ struct LocalNowPlaying: Decodable, Sendable, Equatable {
 
     // 须与站点 `src/lib/home-layout.ts#liveTrack` 同一判断。
     var isLive: Bool { title?.isEmpty == false && state != .stopped }
+
+    // 播放中的 HomePod 过了可见期限就不再当正在听。须与 `src/lib/homepod-store.ts#homePodVisibleUntil` 一致：从 observedAt 起算剩余时长，再加 `src/lib/homepod-store.ts#SILENCE_GRACE_MS`。暂停、单曲循环和没有时长的仍交给下一次读取。
+    func homepodStillVisible(at now: Date) -> Bool {
+        guard source == .homepod, state == .playing, !repeatOne, durationMs > 0, observedAt > 0 else { return true }
+        let end = observedAt + max(0, durationMs - positionMs)
+        return now.epochMilliseconds <= end + 5 * 60 * 1000
+    }
 }
 
 struct NowListeningAlternate: Decodable, Sendable, Equatable {
