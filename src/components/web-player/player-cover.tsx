@@ -12,7 +12,7 @@ export function PlayerCover({ item }: { item: ListeningItem | null }) {
   const reduced = useReducedMotion();
   return (
     <HeroMotionArtwork
-      artwork={item?.artwork ?? null}
+      artwork={item?.artworkUrl ?? null}
       title={item?.title ?? ""}
       videoUrl={data?.hasMotion ? data.videoUrl : null}
       reduced={Boolean(reduced)}

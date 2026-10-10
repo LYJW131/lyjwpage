@@ -101,8 +101,8 @@ struct ListeningItem: Decodable, Sendable, Equatable, Identifiable {
     let id: String
     let title: String
     let artist: String
-    // 带 {w}x{h} 占位的模板，要先展开。
-    let artwork: String?
+    // 带 {w}x{h} 占位的模板，要先展开。与此刻 LocalNowPlaying.artworkUrl 同一字段。
+    let artworkUrl: String?
     let link: String?
     // #rrggbb：背景色 + 四档文字色。
     let palette: [String]

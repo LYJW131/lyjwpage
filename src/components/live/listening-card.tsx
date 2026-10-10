@@ -322,14 +322,14 @@ function TrackRow({
             decoding="sync"
           />
         )}
-        {track.artwork && (
+        {track.artworkUrl && (
           <Image
-            src={appleArtwork(track.artwork, 44 * ARTWORK_SCALE)!}
+            src={appleArtwork(track.artworkUrl, 44 * ARTWORK_SCALE)!}
             alt=""
             fill
             sizes="44px"
             className="object-cover"
-            unoptimized={!needsOptimizing(track.artwork)}
+            unoptimized={!needsOptimizing(track.artworkUrl)}
           />
         )}
       </div>
@@ -748,7 +748,7 @@ export function ListeningCard({
     : latest
       ? {
           key: latest.id,
-          artwork: latest.artwork,
+          artwork: latest.artworkUrl,
           title: latest.title,
           subtitle: latest.artist,
           link: latest.link,
@@ -776,7 +776,7 @@ export function ListeningCard({
         id: heroResourceId,
         title: hero.track.album || hero.title,
         artist: hero.subtitle,
-        artwork: hero.artwork,
+        artworkUrl: hero.artwork,
         link: hero.link,
         palette: hero.palette,
         durationMs: null,
@@ -1075,8 +1075,8 @@ export function ListeningCard({
                         <TrackRow
                           track={item}
                           placeholder={
-                            item.artwork
-                              ? artworkPlaceholders.rows[item.artwork]
+                            item.artworkUrl
+                              ? artworkPlaceholders.rows[item.artworkUrl]
                               : undefined
                           }
                           onOpen={canOpenInPlayer(item) ? () => openInPlayer(item) : undefined}

@@ -189,7 +189,7 @@ test("HomePod 补丁同样按 trackKey 校验", async (t) => {
 test("最近播放首项动态封面查询失败时沿用已存的，不算列表变化", async (t) => {
   isolated(t);
   const item: ListeningItem = {
-    id: "1501", title: "First", artist: "Artist", artwork: null, link: LINK, palette: [], durationMs: null,
+    id: "1501", title: "First", artist: "Artist", artworkUrl: null, link: LINK, palette: [], durationMs: null,
     motion: { videoUrl: "https://mvod/x.m3u8", colors: null },
   };
   await inRequest(() => recentMirror.put({ items: [item], fetchedAt: NOW }));

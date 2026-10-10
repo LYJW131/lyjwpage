@@ -47,7 +47,7 @@ struct ListeningProvider: TimelineProvider {
 
         if let track = live?.music, track.isLive {
             let item = items.first { $0.id == live?.id }
-            let artwork = await download(AssetURL.appleArtwork(item?.artwork ?? track.artworkUrl, points: 160, scale: 2))
+            let artwork = await download(AssetURL.appleArtwork(item?.artworkUrl ?? track.artworkUrl, points: 160, scale: 2))
             return ListeningEntry(
                 date: now, title: track.title, artist: track.artist, source: track.source,
                 playing: track.state == .playing, artwork: artwork, tint: item?.palette.first
@@ -56,7 +56,7 @@ struct ListeningProvider: TimelineProvider {
         guard let last = items.first else {
             return ListeningEntry(date: now, title: nil, artist: nil, source: nil, playing: false, artwork: nil, tint: nil)
         }
-        let artwork = await download(AssetURL.appleArtwork(last.artwork, points: 160, scale: 2))
+        let artwork = await download(AssetURL.appleArtwork(last.artworkUrl, points: 160, scale: 2))
         return ListeningEntry(
             date: now, title: last.title, artist: last.artist, source: nil,
             playing: false, artwork: artwork, tint: last.palette.first

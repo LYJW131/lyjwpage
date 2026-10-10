@@ -278,7 +278,7 @@ function ListeningCard() {
       {items?.length ? (
         <Strip label="Recently played">
           {items.map((item) => (
-            <Tile key={item.id} href={item.link} image={<Thumb {...artwork(item.artwork)} />} title={item.title} subtitle={item.artist} />
+            <Tile key={item.id} href={item.link} image={<Thumb {...artwork(item.artworkUrl)} />} title={item.title} subtitle={item.artist} />
           ))}
         </Strip>
       ) : (
