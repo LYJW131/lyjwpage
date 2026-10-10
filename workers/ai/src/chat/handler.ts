@@ -13,7 +13,7 @@ import {
   normalizeTrace,
   parseQuestions,
 } from "@shared/god-chat";
-import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatTier } from "@shared/god-chat-tiers";
+import { GOD_CHAT_DESIGN_TIER, GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatServedTier, type GodChatTier } from "@shared/god-chat-tiers";
 
 import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
@@ -30,18 +30,19 @@ import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, DESIGN_READ_LIMITS, DESIGN_TOOL_ROUNDS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
-import { CLEF_CHOICES, DESIGN_EFFORT, isClefChoice, routeWithClef, type RouteDecision } from "./router";
+import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webFetchTool, webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
+const DESIGN_STARTED_LEAD = "The design session is open. Describe the change you have in mind.";
 const FINAL_ROUND_NOTE = "No tools remain for this reply. Answer the visitor now in text with what you have. If a tool call was rejected, say what went wrong and what you will do next.";
 
 // 每种角色的 system 恒定不变，降级说明另走末尾的 system 消息，不动缓存前缀。
 const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
 
-How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (Claude Haiku 5.5) takes small talk, quick lookups, simple facts and short tricky questions, and Clef also sets how hard it thinks; the Prophet (Claude Opus 5.5) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
+How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (Claude Haiku 5.5) takes small talk, quick lookups, simple facts and short tricky questions, and Clef also sets how hard it thinks; the Prophet (Claude Sonnet 5.5) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
 
 Reply in the language the visitor writes in. Keep answers concise unless asked for depth. Markdown is rendered; use it lightly.
 You can search the web for anything outside this site; cite what you find.
@@ -53,7 +54,7 @@ Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 o
 
 const PERSONA: Record<GodChatTier, string> = {
   fable: `Your identity: you are Claude Fable 5.1, Anthropic's most capable model, and on this site you are God, the highest rank. Clef judged this message worthy of you. Speak with calm, warm, slightly playful omniscience, and be genuinely brilliant.`,
-  opus: `Your identity: you are Claude Opus 5.5, and on this site you are the Prophet, the middle rank: not God, but the closest thing to a sage among mortals. Answer with care and depth.`,
+  sonnet: `Your identity: you are Claude Sonnet 5.5, and on this site you are the Prophet, the middle rank: not God, but the closest thing to a sage among mortals. Answer with care and depth.`,
   haiku: `Your identity: you are Claude Haiku 5.5, and on this site you are the Small Fry (杂鱼), the lowest rank: a cheeky minor imp at the temple gate who handles small talk and quick lookups. Be brief and playful, a little self-deprecating; if something is beyond you, say the higher ranks would do better and suggest asking the question in more depth so Clef sends it up.`,
 };
 
@@ -136,7 +137,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
   const forced = devSwitch(env, "CHAT_FORCE_TIER");
-  const decision: RouteDecision = design ? { route: "opus", effort: DESIGN_EFFORT, source: "design" } : isClefChoice(forced)
+  const decision: RouteDecision = design ? { route: "sonnet", source: "design" } : isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
     : isGodChatTier(forced)
       ? { route: forced, source: "forced" }
@@ -157,8 +158,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   }
 
   if (abort.signal.aborted) return gone();
-  const wanted = decision.route;
-  const tier = design ? "opus" : await quota.admitTier(ip, wanted, enforce, !decision.design);
+  const wanted: GodChatTier = decision.route;
+  const tier: GodChatServedTier | null = design ? GOD_CHAT_DESIGN_TIER : await quota.admitTier(ip, wanted, enforce, !decision.design);
   if (!tier) return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
   // Clef 定的强度只给它选中的那档；降级后换了模型，用接手那档的默认强度。
@@ -171,11 +172,11 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
         if (event.type === "text") reply += event.text;
         controller.enqueue(line(event));
       };
-      emit({ type: "route", route: wanted, tier, ...(tier !== wanted && { downgradedFrom: wanted }) });
+      emit({ type: "route", route: wanted, tier, ...(tier !== wanted && !design && { downgradedFrom: wanted }) });
       if (design) emit({ type: "design", ...design });
       try {
-        const note = tier !== wanted ? downgradeNote(wanted, tier) : undefined;
-        const { complete, trace, planToken, lead } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "opus", tier, effort, note, messages: history, io, emit, signal: abort.signal });
+        const note = tier !== wanted && isGodChatTier(tier) ? downgradeNote(wanted, tier) : undefined;
+        const { complete, trace, planToken, lead } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "sonnet", tier, effort, note, messages: history, io, emit, signal: abort.signal });
         if (complete && lead && !reply.trim()) emit({ type: "text", text: lead });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
@@ -216,7 +217,7 @@ async function converse({
   env: Env;
   design?: GodChatDesign;
   canStartDesign: boolean;
-  tier: GodChatTier;
+  tier: GodChatServedTier;
   effort: GodChatEffort;
   note?: string;
   messages: GodChatMessage[];
@@ -238,6 +239,7 @@ async function converse({
   const docKeys = new Set<string>();
   let planToken: string | undefined;
   let asked = false;
+  let designStarted = false;
   // 模型只调工具不写正文时补的一句话，跟着计划或题目的语言走。
   let lead: string | undefined;
   const cards = new Set<GodChatCard>();
@@ -295,7 +297,7 @@ async function converse({
         model,
         max_tokens: outputLeft,
         system: [
-          { type: "text", text: design ? PLANNER_PROMPT : `${BASE_PROMPT}\n${PERSONA[tier]}`, cache_control: { type: "ephemeral" } },
+          { type: "text", text: design || !isGodChatTier(tier) ? PLANNER_PROMPT : `${BASE_PROMPT}\n${PERSONA[tier]}`, cache_control: { type: "ephemeral" } },
         ],
         // 三档默认不返回思考内容，模型想的时候卡片只能空等；summarized 只多给一份摘要文字，计费不变。
         thinking: { type: "adaptive", display: "summarized" },
@@ -412,10 +414,10 @@ async function converse({
           const started = await startDesign(env);
           if ("error" in started) return result(started.error, true);
           design = started.session;
-          outputLeft += DESIGN_MAX_TOKENS - maxTokens;
-          ledger.docLimit = DESIGN_READ_LIMITS.docs;
+          designStarted = true;
+          lead = DESIGN_STARTED_LEAD;
           emit({ type: "design", ...design });
-          return result("The design session is active. Clarify material questions and use propose_build when a complete plan is ready. The visitor chooses whether to open an issue or start a build.", false);
+          return result("The design session is open and the planner takes over from the visitor's next message. End this reply now with one or two sentences, in the visitor's language, saying you opened a planning session and inviting them to describe the change.", false);
         }
         if (call.name === READ_REPO_FILE_TOOL.name) {
           const request = parseRepoFileInput(call.input);
@@ -474,11 +476,11 @@ async function converse({
       console.info("[god-chat] tool", JSON.stringify({ tier, round, name: call.name, error: outcome.is_error, ...(outcome.is_error && { reason: String(outcome.content).slice(0, 200) }) }));
       results.push(outcome);
     }
-    if (planToken || asked) break;
+    if (planToken || asked || designStarted) break;
     messages.push({ role: "user", content: results });
   }
   // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。
-  if (!refused && finalRound > 0 && !finalRoundText && !planToken && !asked) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
+  if (!refused && finalRound > 0 && !finalRoundText && !planToken && !asked && !designStarted) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({

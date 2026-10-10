@@ -29,7 +29,7 @@ import {
   GOD_CHAT_TIER_INFO,
   modelLabel,
   type GodChatCount,
-  type GodChatTier,
+  type GodChatServedTier,
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
 
@@ -727,8 +727,9 @@ function ReplyBody({ content, cards = [], live }: { content: string; cards?: Sho
   return <div className="space-y-2">{parts}</div>;
 }
 
-const RANK_TONE: Record<GodChatTier, string> = {
+const RANK_TONE: Record<GodChatServedTier, string> = {
   fable: "god-aura bg-clip-text text-transparent font-bold",
+  sonnet: "text-foreground",
   opus: "text-foreground",
   haiku: "text-muted-foreground opacity-70",
 };
