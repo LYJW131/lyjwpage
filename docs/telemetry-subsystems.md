@@ -276,17 +276,16 @@ payload: >-
 - `reporters/server-reporter` 部署于云端 Linux 节点（TypeScript / Node，和 agents-reporter 同一套结构），采集 `/proc/stat` 与 `/proc/net/dev`，上报 CPU、内存及网络吞吐，节奏固定（`INTERVAL_MS`，见它的 README「节奏」）；前端在下一次预期上报后几秒去取。
 - 上报必带网卡上的公网 IP（`publicIp`，入口校验它是 IPv4），但它不公开：上报入口写可滞后层、状态接口读出时都经 `shared/server.ts#publicServer` 只留公开字段，KV 里存量带的也读不出去。
 
-### 按人数调频（agents-reporter）
-为节省外部 API 配额，`agents-reporter` 按在线人数分三档（`server-reporter` 固定每分钟一推、不参与调频，理由见它的 README「节奏」）：
+### 按使用情况调频（agents-reporter）
+为节省外部 API 配额，`agents-reporter` 按 agent 是否在用分两档（`server-reporter` 固定每分钟一推、不参与调频，理由见它的 README「节奏」）。判据是公开的 `/api/status/coding/now`，与页面人数无关：
 
-| 触发条件 | 说明 | 间隔（`reporters/agents-reporter/src/config.ts`） |
-| --- | --- | --- |
-| `online > 0` | 存在处于**前台可见**状态的访问者页面 | `LIVE_INTERVAL_MS` |
-| `connections > 0` | 无前台可见页面，但存在**后台打开**的标签页 | `OPEN_INTERVAL_MS` |
-| 两个指标均为 0 | 全网无任何活跃页面连接（无人值守） | `IDLE_INTERVAL_MS` |
+| 触发条件 | 间隔（`reporters/agents-reporter/src/config.ts`） |
+| --- | --- |
+| 取限额的任一家在任一来源的 `lastActivityAt` 落在 `reporters/agents-reporter/src/cadence.ts#ACTIVE_WINDOW_MS` 内 | `ACTIVE_INTERVAL_MS` |
+| 其他 | `IDLE_INTERVAL_MS` |
 
-- **单向降级安全**：若查询在线人数接口超时或失败，默认计数降为 0，调频节奏仅会变慢而不会雪崩加速。
-- **分段休眠响应**：常驻上报器将长间隔休眠拆分为短周期轮询，一旦有新用户进入页面，能够迅速在下一个短周期内提升采样频率。
+- **单向降级安全**：活动接口超时或失败当作没在用，节奏只会变慢而不会雪崩加速。
+- **分段休眠响应**：闲档的长休眠拆成 `ACTIVE_INTERVAL_MS` 的短周期重查，开始使用后在下一个短周期内提速。
 
 ### PlayStation
 `reporters/playstation-reporter` 在 n100 上直接探测局域网里的 PS5（UDP 9302），不问在线人数，也不用 Home Assistant 的电源决定节奏。醒着按 `reporters/playstation-reporter/src/cadence.ts#AWAKE_TICK_INTERVAL_MS`，休息或连续探测不到按 `reporters/playstation-reporter/src/cadence.ts#IDLE_TICK_INTERVAL_MS`。醒着和没醒对调时立刻打一轮。PSN 前面的 CDN 回拒绝页或网关错误时按连败次数退避（`reporters/playstation-reporter/src/state.ts#backoffMs`），成功一轮清零。细节见它的 README。

@@ -34,7 +34,7 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | `/ws?visible=1\|0` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；切可见性时发 `visible` / `hidden`；使用 `ALLOWED_ORIGINS` 校验来源 |
-| GET | `/count` | `{ ok, connections, online }`：开着的页面数（判中档）与此刻可见的页面数（判快档） |
+| GET | `/count` | `{ ok, connections, online }`：开着的页面数与此刻可见的页面数 |
 | GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
 | POST | `/api/chat` | 经 `AI_SERVICE` 转发首页对话，见 [AI Worker](../ai/README.md#首页对话) |
 | POST | `/mcp` | 经 `AI_SERVICE` 转发公开 MCP，见 [AI Worker](../ai/README.md#mcp) |
@@ -462,7 +462,7 @@ AI 模型、验人、对话签名与 issue 提交凭据见 [AI Worker](../ai/REA
 
 站点配置 `NEXT_PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc` 与相同的
 `REVALIDATE_SECRET`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
-上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点。PlayStation 的游戏数据也走这一条：`reporters/playstation-reporter` POST 原始信封。按人数调频的是 agents-reporter，读此源 `/count` 的 `connections` 与 `online`；server-reporter 节奏固定，PlayStation 按局域网发现包调频，都不读它。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
+上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点。PlayStation 的游戏数据也走这一条：`reporters/playstation-reporter` POST 原始信封。agents-reporter 按此源公开的 `/api/status/coding/now` 判断 agent 在不在用来调频；server-reporter 节奏固定，PlayStation 按局域网发现包调频；上报器都不读 `/count`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`（`shared/ingest/` 除外，校验改了只发布上报入口）、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署，见 [原生部署配置](../../docs/workers-builds.md)。

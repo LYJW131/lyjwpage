@@ -16,21 +16,21 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 
 ## 它做什么
 
-启动立即采集一轮，之后按页面人数选档：有页面可见走快档，仅后台开着走中档，无人打开走闲档。三档间隔见 `src/config.ts#config.cadence`。每轮：
+启动立即采集一轮，之后按 agent 的使用情况选档：在用走快档，闲着走闲档。两档间隔见 `src/config.ts#config.cadence`。每轮：
 
 1. 需要的话刷新 Claude 的 OAuth
 2. 五家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）；同时并行拉 Cursor 的用量事件，产出 `codingUsage` / `codingActivity` / `codingTokenBuckets`
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
 4. POST 到站点
 
-每轮收尾读 `SITE_URL/count`：`online`（有页面**可见**）大于 0 走快档；否则
-`connections`（有页面**开着**，含后台标签页）大于 0 走中档，否则走闲档。分档见 `src/cadence.ts#nextDelay`，调的是打各家限额接口的频率。PlayStation 上报器不读人数，按局域网探测到的主机状态调频。
-计数超时、非成功响应、格式错误一律当 0（某个字段不合法只降它自己），不触发上报失败重试。
+每轮收尾读站点公开的 `SITE_URL/api/status/coding/now`：本容器取限额的那几家（`AGENT_IDS`）里，任何一家在任何来源
+（Mac 日志、Claude Code 云端、Cursor 账号）的 `lastActivityAt` 落在 `src/cadence.ts#ACTIVE_WINDOW_MS` 内就走快档，否则走闲档。
+分档见 `src/cadence.ts#nextDelay`，调的是打各家限额接口的频率；不看有没有人开着页面。PlayStation 上报器按局域网探测到的主机状态调频。
+活动接口超时、非成功响应、形状不对一律当没在用，只会变慢，不触发上报失败重试。
 未配 `SITE_URL` 时使用 `src/config.ts#config.cadence.idleIntervalMs`。
 
-长档按 `src/config.ts#config.cadence.liveIntervalMs` 重查人数（`src/cadence.ts#waitForNextRound`），发现更快档立即采集；人数减少不延后已经定好的下一轮。
-只查公开计数口，不带 ingest 密钥，也不在这些检查里访问厂商限额接口。
-`SITE_URL` 使用统一 API Worker，所有连接该 Worker 的页面都计入人数。
+闲档按 `src/config.ts#config.cadence.activeIntervalMs` 重查活动（`src/cadence.ts#waitForNextRound`），开始使用立即采集；停用不延后已经定好的下一轮。
+只读公开状态接口，不带 ingest 密钥，也不在这些检查里访问厂商限额接口。
 
 默认清单见 `src/config.ts#agentIds`。一家失败只影响那一行。
 
@@ -40,14 +40,13 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SITE_URL` | | API Worker 的源 `https://api.homepage.lyjw.llc`，只用来读推送连接数 `/count` |
+| `SITE_URL` | | API Worker 的源 `https://api.homepage.lyjw.llc`，只用来读 agent 活动 `/api/status/coding/now` |
 | `SITE_INGEST_URL` | ✅ | 上报端点 `https://ingest.homepage.lyjw.llc/api/ingest/agents` |
 | `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-agents` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
-| `LIVE_INTERVAL_MS` | | 有可见页面时的间隔，也是长档重查人数的间隔。默认见 `src/config.ts#config.cadence` |
-| `OPEN_INTERVAL_MS` | | 只有后台页面时的间隔。默认见 `src/config.ts#config.cadence` |
-| `IDLE_INTERVAL_MS` | | 无人打开时的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `src/lib/freshness.ts#AGENT_LIMITS_STALE_MS` |
-| `COUNT_TIMEOUT_MS` | | 每个计数请求的超时。默认见 `src/config.ts#config.cadence` |
+| `ACTIVE_INTERVAL_MS` | | agent 在用时的间隔，也是闲档重查活动的间隔。默认见 `src/config.ts#config.cadence` |
+| `IDLE_INTERVAL_MS` | | 都没在用时的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `src/lib/freshness.ts#AGENT_LIMITS_STALE_MS` |
+| `ACTIVITY_TIMEOUT_MS` | | 每个活动请求的超时。默认见 `src/config.ts#config.cadence` |
 | `CURSOR_NOW_FAST_INTERVAL_MS` | | Cursor 在用时查最近用量事件的间隔，要小于活动窗口 `src/cursor-now.ts#ACTIVE_WINDOW_MS`。默认见 `src/config.ts#config.cursorNow` |
 | `CURSOR_NOW_MAX_INTERVAL_MS` | | 没新事件时间隔翻倍拉长的上限。默认见 `src/config.ts#config.cursorNow` |
 | `PUSH_TIMEOUT_MS` | | 上报超时。默认见 `src/config.ts#config` |
@@ -148,7 +147,7 @@ Mac 上的 ccusage 一样在线取 `https://models.dev/api.json`（只认官方�
 同时产出 `codingActivity` 和范围 `[now - RECENT_MS 向下对齐到桶边界, now)` 的 `codingTokenBuckets`，Pulse 才看得到
 Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺手看；看到 `ACTIVE_WINDOW_MS` 内有事件才起快循环：有新事件就每
 `CURSOR_NOW_FAST_INTERVAL_MS` 查一次，没有就翻倍拉长、封顶 `CURSOR_NOW_MAX_INTERVAL_MS`，超过 `ACTIVE_WINDOW_MS`
-没新事件或没人开着页面就停，交回限额那一轮。快循环那几封只带 `codingActivity` 和 `codingTokenBuckets`，不带限额；
+没新事件就停，交回限额那一轮。快循环那几封只带 `codingActivity` 和 `codingTokenBuckets`，不带限额；
 每次查完都发，内容没变也发：活动的 `collectedAt` 前进就是采集器还活着，桶范围里没有事件也是一句有用的话（那一段确认没用）。
 
 快循环宽松解析：一条缺 token 分列的怪事件只丢它自己，桶报告里 Cursor 标 `partial`，活动和别的事件照出。拉历史那条路
@@ -249,8 +248,8 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 
 - 单家失败发错误行；整轮采集或上报失败才退避，进程不退。
 - 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
-- 整轮采集 / 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查人数。单家失败仍照发错误行，成功上报后按三档等下一轮。
+- 整轮采集 / 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查活动。单家失败仍照发错误行，成功上报后按两档等下一轮。
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
 
-`SITE_URL/count` 一次回 `online`（判快档）与 `connections`（判中档）。计数 URL 由 `src/config.ts#config.cadence.countUrl` 生成。
+活动 URL 由 `src/config.ts#config.cadence.activityUrl` 生成。
