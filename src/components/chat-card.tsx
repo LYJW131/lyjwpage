@@ -84,9 +84,10 @@ export function ChatCard({ card }: { card: GodChatCard }) {
   }
 }
 
-function Frame({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+// 卡片按内容收缩，不铺满对话宽度；此刻卡的歌名专辑名可以很长，另设上限，超出就截断。
+function Frame({ title, aside, compact = false, children }: { title: string; aside?: ReactNode; compact?: boolean; children: ReactNode }) {
   return (
-    <section className="w-full overflow-hidden border border-line bg-surface">
+    <section className={cn("w-fit min-w-[min(100%,20rem)] overflow-hidden border border-line bg-surface", compact ? "max-w-[min(100%,32rem)]" : "max-w-full")}>
       <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
         <span className="label-mono text-[10px] text-muted-foreground">{title}</span>
         {aside && <span className="label-mono min-w-0 truncate text-[10px] text-muted-foreground">{aside}</span>}
@@ -263,7 +264,7 @@ function NowListeningCard() {
   }
 
   return (
-    <Frame title="Music" aside="Apple Music">
+    <Frame compact title="Music" aside="Apple Music">
       {body}
     </Frame>
   );
@@ -294,7 +295,7 @@ function NowWatchingCard() {
   const device = playing ? (playing.deviceName ?? playing.client) : null;
 
   return (
-    <Frame title="Watching" aside="Emby">
+    <Frame compact title="Watching" aside="Emby">
       {playing ? (
         <Hero
           image={<Thumb src={current?.backdrop ?? current?.poster ?? null} wide />}
@@ -364,7 +365,7 @@ function PlayingNowCard() {
   }
 
   return (
-    <Frame title="Gaming" aside="PlayStation">
+    <Frame compact title="Gaming" aside="PlayStation">
       {body}
     </Frame>
   );
