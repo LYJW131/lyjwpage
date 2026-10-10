@@ -29,7 +29,6 @@ export const metadata: Metadata = {
     type: "website",
   },
   appleWebApp: { capable: true, title: site.shortName, statusBarStyle: "default" },
-  robots: { index: true, follow: true },
 };
 
 export const viewport: Viewport = {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <script>
@@ -8,7 +8,38 @@
   if (/^https?:$/.test(location.protocol) && !/\/$|\.html$/.test(location.pathname)) document.write('<base href="' + location.pathname + '/">');
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>lyjw.me 运行原理</title>
+<title>How lyjw.me works</title>
+<meta name="description" content="How lyjw.me collects live device, music, media and AI coding status onto one page.">
+<meta property="og:title" content="How lyjw.me works">
+<meta property="og:description" content="How lyjw.me collects live device, music, media and AI coding status onto one page.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://lyjw.me/explainer">
+<meta property="og:image" content="https://lyjw.me/opengraph-image">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta name="twitter:card" content="summary_large_image">
+<script>
+  // 语言规则与 film.js 一致：只有 ?lang=en 是英文。静态标签给不跑脚本的抓取器一份英文门面。
+  window.__explainerFacade = function (lang) {
+    var en = lang === "en";
+    var title = en ? "How lyjw.me works" : "lyjw.me 运行原理";
+    var description = en
+      ? "How lyjw.me collects live device, music, media and AI coding status onto one page."
+      : "lyjw.me 怎么把设备、音乐、媒体和 AI 编程的实时状态收到同一页。";
+    document.documentElement.lang = en ? "en" : "zh-CN";
+    document.title = title;
+    var set = function (selector, value) {
+      var el = document.head.querySelector(selector);
+      if (el) el.setAttribute("content", value);
+    };
+    set('meta[name="description"]', description);
+    set('meta[property="og:title"]', title);
+    set('meta[property="og:description"]', description);
+    set('meta[property="og:locale"]', en ? "en_US" : "zh_CN");
+    set('meta[property="og:locale:alternate"]', en ? "zh_CN" : "en_US");
+  };
+  window.__explainerFacade(new URLSearchParams(location.search).get("lang") === "en" ? "en" : "zh");
+</script>
 <style>
 @font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Regular.woff2) format("woff2");font-weight:400}
 @font-face{font-family:"Geist Mono";src:url(../fonts/GeistMono-Medium.woff2) format("woff2");font-weight:500}

@@ -11,6 +11,8 @@ import { Card } from "@/components/ui/card";
 import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { site } from "@/lib/site";
 
+const description = "An unexpected error occurred while rendering this page. Try reloading.";
+
 export default function Error({
   error,
   reset,
@@ -27,6 +29,8 @@ export default function Error({
   return (
     <>
       <title>{`Something went wrong — ${site.name}`}</title>
+      <meta name="description" content={description} />
+      <meta name="robots" content="noindex, nofollow" />
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm">
         <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl py-3 sm:py-4">
           <div className="flex min-h-10 items-center justify-between gap-3">
@@ -43,9 +47,7 @@ export default function Error({
               <div className="label-mono text-3xl font-bold tracking-widest text-foreground sm:text-4xl">
                 Something went wrong
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                An unexpected error occurred while rendering this page. Try reloading.
-              </p>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{description}</p>
               <div className="mt-6 flex items-center justify-center gap-3">
                 <button
                   type="button"

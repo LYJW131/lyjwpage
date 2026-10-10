@@ -150,8 +150,12 @@
     $("lang").textContent = I18N.tr("ui.lang");
     scrub.querySelectorAll(".lab").forEach((l) => (l.textContent = I18N.tr(l.dataset.key)));
   }
+  function useLang(lang) {
+    I18N.set(lang);
+    if (window.__explainerFacade) window.__explainerFacade(I18N.lang);
+  }
   $("play").onclick = () => (playing ? pause() : play());
-  $("lang").onclick = () => { I18N.set(I18N.lang === "zh" ? "en" : "zh"); dirty = true; ui(); };
+  $("lang").onclick = () => { useLang(I18N.lang === "zh" ? "en" : "zh"); dirty = true; ui(); };
   let dragging = false;
   const scrubTo = (e) => { const r = scrub.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * DURATION); };
   scrub.addEventListener("pointerdown", (e) => { dragging = true; scrub.setPointerCapture(e.pointerId); scrubTo(e); });
@@ -183,7 +187,7 @@
 
   const FONTS = ['500 20px Geist', '600 20px Geist', '700 20px Geist', '400 20px "Geist Mono"', '500 20px "Geist Mono"', '600 20px "Geist Mono"', '700 20px "Geist Mono"', '20px "Geist Pixel"'];
   window.__ready = (async () => {
-    I18N.set(params.get("lang") === "en" ? "en" : "zh");
+    useLang(params.get("lang") === "en" ? "en" : "zh");
     await Promise.all(FONTS.map((f) => document.fonts.load(f, "Ag")));
     await document.fonts.load('600 20px "PingFang SC"', "中文");
     fit();

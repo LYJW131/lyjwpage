@@ -1,12 +1,14 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Footer } from "@/components/footer";
 import { HomeLink } from "@/components/home-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui/card";
+import { facadeMetadata } from "@/lib/facade-metadata";
 
-export const metadata: Metadata = { title: "404" };
+const description = "The page you requested doesn’t exist or has been removed.";
+
+export const metadata = facadeMetadata("Page not found", description);
 
 export default function NotFound() {
   return (
@@ -27,9 +29,7 @@ export default function NotFound() {
               <div className="label-mono text-3xl font-bold tracking-widest text-foreground sm:text-4xl">
                 404
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                The page you requested doesn’t exist or has been removed.
-              </p>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{description}</p>
               <div className="mt-6">
                 <Link
                   href="/"

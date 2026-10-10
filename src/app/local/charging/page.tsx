@@ -1,11 +1,7 @@
-import type { Metadata } from "next";
-
+import { facadeMetadata } from "@/lib/facade-metadata";
 import { LOCAL_CHARGING_STORAGE_KEY } from "@/lib/local-charging-arm";
 
-export const metadata: Metadata = {
-  title: "Local Charging",
-  robots: { index: false, follow: false },
-};
+export const metadata = facadeMetadata("Local Charging", "Arms the local charging preview, then returns home.");
 
 export default function LocalChargingArmPage() {
   return (

@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
@@ -56,6 +58,10 @@ import {
 } from "@/lib/paths";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
+
+export const metadata: Metadata = {
+  robots: { index: true, follow: true },
+};
 
 const SLOT = {
   activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]",

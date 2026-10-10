@@ -8,7 +8,7 @@ import { ImageResponse } from "next/og";
 import { githubAvatarPng, pngResponse } from "@/lib/github-avatar-icon";
 import { site } from "@/lib/site";
 
-export const alt = `${site.name} — live status of devices, music, media and AI coding`;
+export const alt = `${site.name} — live status of devices, apps, music, media and AI coding`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
