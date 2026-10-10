@@ -192,3 +192,15 @@ test("只换状态：在存着的视图上改那几格，结果和整份重算�
   assert.equal(cursorMac?.collectedAt, NOW - 10_000);
   assert.equal(applyCodingUsageStatus(view, "agents-otlp", { claude: failed }), null, "no such row: the caller rebuilds");
 });
+
+test("上下文档位标记并进基础模型：[1m] 与无标记的同名模型合计、排名、年度都算一个", () => {
+  const { view, year } = build({
+    mac: { claude: ledger("claude", [day("2026-09-28", 100, [["claude-opus-5-5", 30], ["gpt-6", 50]])]) },
+    "agents-otlp": { claude: ledger("claude", [day("2026-09-28", 40, [["claude-opus-5-5[1m]", 40]])]) },
+  });
+  assert.deepEqual(view.topModels, [{ model: "claude-opus-5-5", tokens: 70 }, { model: "gpt-6", tokens: 50 }]);
+  assert.deepEqual(view.agents[0].models, ["claude-opus-5-5", "gpt-6"]);
+  assert.deepEqual(year.days["2026-09-28"].models, [["claude-opus-5-5", 70], ["gpt-6", 50]]);
+  const [agent] = buildCodingNowAgents({ "agents-otlp": { agents: [{ id: "claude", lastActivityAt: NOW, model: "claude-opus-5-5[1m]" }] } });
+  assert.equal(agent.activity[0].model, "claude-opus-5-5");
+});

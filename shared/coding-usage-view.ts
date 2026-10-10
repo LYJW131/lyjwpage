@@ -9,7 +9,7 @@ import type {
   CodingUsageTotals,
 } from "@/lib/types";
 
-import { isVisibleCodingModel } from "./coding-models";
+import { codingModelName, isVisibleCodingModel } from "./coding-models";
 import type { CodingUsageAgent, CodingUsageDay } from "./coding-usage";
 import {
   CODING_USAGE_SOURCE_NAMES,
@@ -69,7 +69,9 @@ function addDay(into: DayTotals, day: CodingUsageDay): void {
   into.apiEquivalentCostUSD += day.apiEquivalentCostUSD;
   if (day.totalTokens > 0 && !day.costComplete) into.costComplete = false;
   for (const { model, tokens } of day.models) {
-    if (isVisibleCodingModel(model)) into.models.set(model, (into.models.get(model) ?? 0) + tokens);
+    if (!isVisibleCodingModel(model)) continue;
+    const name = codingModelName(model);
+    into.models.set(name, (into.models.get(name) ?? 0) + tokens);
   }
 }
 
@@ -213,7 +215,7 @@ export function buildCodingNowAgents(activities: Partial<Record<CodingUsageSourc
     for (const agent of activities[source]?.agents ?? []) {
       if (agent.lastActivityAt == null) continue;
       const entries = byId.get(agent.id) ?? [];
-      entries.push({ source, lastActivityAt: agent.lastActivityAt, model: isVisibleCodingModel(agent.model) ? agent.model : null });
+      entries.push({ source, lastActivityAt: agent.lastActivityAt, model: isVisibleCodingModel(agent.model) ? codingModelName(agent.model) : null });
       byId.set(agent.id, entries);
     }
   }
