@@ -11,6 +11,7 @@ import {
   type GodChatSource,
   type GodChatTrace,
   normalizeTrace,
+  parseQuestions,
 } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatTier } from "@shared/god-chat-tiers";
 
@@ -24,7 +25,7 @@ import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { admitDesign, DESIGN_MAX_TOKENS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
+import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
 import { CLEF_CHOICES, DESIGN_EFFORT, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
@@ -162,8 +163,9 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       if (design) emit({ type: "design", ...design });
       try {
         const note = tier !== wanted ? downgradeNote(wanted, tier) : undefined;
-        const { complete, trace, planToken } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "opus", tier, effort, note, messages: history, io, emit, signal: abort.signal });
+        const { complete, trace, planToken, asked } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "opus", tier, effort, note, messages: history, io, emit, signal: abort.signal });
         if (complete && planToken && !reply.trim()) emit({ type: "text", text: "Here is the plan for your review." });
+        if (complete && asked && !reply.trim()) emit({ type: "text", text: "Pick your answers below." });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace, planToken), ...(trace && { trace }), ...(planToken && { planToken }) });
@@ -210,7 +212,7 @@ async function converse({
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
-}): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string }> {
+}): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string; asked: boolean }> {
   const { model, maxTokens } = GOD_CHAT_TIER_INFO[tier];
   // Haiku 不支持服务端拒答兜底参数，其余两档都开。
   const fallback = tier !== "haiku";
@@ -224,6 +226,7 @@ async function converse({
   const ledger = newLedger();
   const docKeys = new Set<string>();
   let planToken: string | undefined;
+  let asked = false;
   const cards = new Set<GodChatCard>();
   let refused = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
@@ -254,7 +257,7 @@ async function converse({
     const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
     const searchesLeft = GOD_CHAT_LIMITS.maxWebSearches - searches;
     const tools = lastRound ? [] : design
-      ? [...SITE_TOOL_DEFS.filter((tool) => tool.name === "read_project_doc"), PROPOSE_BUILD_TOOL]
+      ? [...SITE_TOOL_DEFS.filter((tool) => tool.name === "read_project_doc"), ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL]
       : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
         ...(canStartDesign && designAvailable(env) ? [START_DESIGN_TOOL] : []),
         ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : [])];
@@ -378,6 +381,14 @@ async function converse({
           emit({ type: "design", ...design });
           return result("The design session is active. Clarify material questions and use propose_build when a complete plan is ready. The visitor chooses whether to open an issue or start a build.", false);
         }
+        if (call.name === ASK_VISITOR_TOOL.name) {
+          if (asked) return result("Questions were already shown in this reply.", true);
+          const questions = parseQuestions((call.input as { questions?: unknown } | null)?.questions);
+          if (!questions) return result("Invalid questions. Respect the counts and length limits in the tool description, with distinct option labels.", true);
+          asked = true;
+          emit({ type: "ask", questions });
+          return result("The questions are shown as clickable choices. End the reply now; the visitor's next message carries the answers.", false);
+        }
         if (call.name === PROPOSE_BUILD_TOOL.name) {
           if (planToken) return result("A plan was already proposed in this reply.", true);
           const plan = parseBuildPlan(call.input);
@@ -413,7 +424,7 @@ async function converse({
       };
       results.push(await run());
     }
-    if (planToken) break;
+    if (planToken || asked) break;
     messages.push({ role: "user", content: results });
   }
   if (servedBy) emit({ type: "served", model: servedBy });
@@ -429,5 +440,5 @@ async function converse({
     plan: Boolean(planToken),
     cards: [...cards],
   });
-  return { complete: !refused, trace, ...(planToken && { planToken }) };
+  return { complete: !refused, trace, asked, ...(planToken && { planToken }) };
 }

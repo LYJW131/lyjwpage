@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 
 import { BuildCoordinator } from '../../workers/ai/src/build/coordinator.ts';
-import { handleBuild, handleBuildProgress, handleBuildSession, handleBuildStatus, handleBuildUpload, handleGithubWebhook } from '../../workers/ai/src/build/handlers.ts';
+import { handleBuild, handleBuildProgress, handleBuildStatus, handleBuildUpload, handleGithubWebhook } from '../../workers/ai/src/build/handlers.ts';
 import { issuePlan } from '../../workers/ai/src/build/plan.ts';
 
 export { BuildCoordinator };
@@ -110,7 +110,6 @@ const fixtureWorker = {
       const stub = env.BUILD_COORDINATOR.getByName(name);
       return json(await stub[method](...args));
     }
-    if (path === '/api/build/session') return handleBuildSession(request, env, fetcher);
     if (path === '/api/build') return handleBuild(request, env, fetcher);
     if (path === '/api/build/status') return handleBuildStatus(request, env, fetcher);
     if (path === '/api/build/upload') return handleBuildUpload(request, env, fetcher);

@@ -13,7 +13,7 @@ Clef 将站点改动请求路由给 Opus；Opus 先判断是否值得做，只�
 计划卡的两个出口互斥：
 
 - **Open issue**：浏览器完成 GitHub PKCE 授权，将授权码、verifier 和计划 token 提交；Worker 从签名计划生成正文，以访客身份创建 issue，然后撤销访客 token。
-- **Start build**：浏览器先连接 GitHub，Worker 兑换并验证账号后撤销访客 token，只签发有限期的账号会话。发起构建时原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。
+- **Start build**：每次都弹窗连接 GitHub，与 Open issue 一样把授权码随计划一起交给 Worker，不签发、不保存任何会话凭据。Worker 先确认计划未被使用，再兑换授权码、查 `/user` 拿账号名、用户 ID 与显示名，随即撤销访客 token（失败路径也撤销），然后原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。
 
 计划的使用记录在 DO 中。issue 在 OAuth 换票成功后、创建 issue 前消费计划；构建先检查计划是否已使用，再用 App 的只读安装令牌读取 main，成功后原子消费计划与额度。读取 main 失败或构建额度拒绝不消费计划，消费后即使后续请求失败也不能重用。GitHub 请求结果不确定时先查 GitHub，不能把网络失败当成「没有创建」。构建频率取 `BUILD_QUOTA`；设计、账号和状态令牌使用不同用途标签，不能互换。
 
@@ -51,7 +51,7 @@ CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类�
 
 | 性质 | 约束 | 依据与边界 |
 | --- | --- | --- |
-| 硬约束 | 计划、会话和状态 token 验签，上传 token 只存哈希并只能消费一次 | `workers/ai/src/build/token.ts`、`workers/ai/src/build/plan.ts`、`BuildCoordinator`；签名不保证计划语义安全 |
+| 硬约束 | 计划、设计会话和状态 token 验签，上传 token 只存哈希并只能消费一次 | `workers/ai/src/build/token.ts`、`workers/ai/src/build/plan.ts`、`BuildCoordinator`；签名不保证计划语义安全 |
 | 硬约束 | 设计轮数、全站设计会话、账号/全站构建限额 | DO 中原子计数；入口 Rate Limiting 只是额外保护 |
 | 硬约束 | 上传路径、mode、字节数、文件数和 baseSha | Worker 校验后才调用 GitHub 写 API；拒绝项不能被 routine 提示词覆盖 |
 | 配置保证 | routine 无仓库挂载和推送凭据，网络只允许约定域名 | 必须在 claude.ai 配置并实测；仓库代码不能证明远端环境已设置 |

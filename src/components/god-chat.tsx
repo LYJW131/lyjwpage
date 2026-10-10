@@ -7,6 +7,7 @@ import { ArrowUp, History, Plus, Square, Trash2 } from "lucide-react";
 import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
+import { AskCard } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
@@ -271,6 +272,8 @@ function Conversation({ className, archive, session: conversation }: { className
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
           } else if (event.type === "design" && conversation) {
             chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) }, { persist: false });
+          } else if (event.type === "ask") {
+            meta = { ...meta, asks: event.questions };
           } else if (event.type === "plan") {
             meta = { ...meta, proposals: [...(meta.proposals ?? []), { plan: event.plan, token: event.token, expiresAt: event.expiresAt }] };
           }
@@ -281,7 +284,7 @@ function Conversation({ className, archive, session: conversation }: { className
       if (!controller.signal.aborted) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
     } finally {
       if (sessionRef.current === session) {
-        const kept = reply || meta.cards?.length || meta.proposals?.length;
+        const kept = reply || meta.cards?.length || meta.proposals?.length || meta.asks?.length;
         setMessages(replyMessages(kept ? bubble() : undefined));
         if (!kept) setDraft((current) => current || content);
       }
@@ -517,6 +520,7 @@ function Conversation({ className, archive, session: conversation }: { className
                   ) : (
                     message.content
                   )}
+                  {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={submit} /> : null}
                   {message.proposals?.map((proposal, proposalIndex) => (
                     <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
                       if (!conversation) return;
