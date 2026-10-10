@@ -6,6 +6,7 @@ import {
   BUILD_STATUS_PATH,
   BUILD_UPLOAD_PATH,
   BUILD_PROGRESS_PATH,
+  BUILD_SCREENSHOT_PATH,
   BUILD_WEBHOOK_PATH,
 } from "@shared/ai-paths";
 import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
@@ -15,7 +16,7 @@ import { MCP_PATH } from "@shared/mcp";
 import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
 import { anthropicFetch } from "./chat/egress";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
-import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleGithubWebhook } from "./build/handlers";
+import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
 import type { Env } from "./runtime";
@@ -27,9 +28,10 @@ const BUILD_HANDLERS = new Map([
   [BUILD_STATUS_PATH, handleBuildStatus],
   [BUILD_UPLOAD_PATH, handleBuildUpload],
   [BUILD_PROGRESS_PATH, handleBuildProgress],
+  [BUILD_SCREENSHOT_PATH, handleBuildScreenshot],
   [BUILD_WEBHOOK_PATH, handleGithubWebhook],
 ]);
-const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_WEBHOOK_PATH]);
+const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH]);
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);

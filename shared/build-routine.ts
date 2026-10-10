@@ -1,4 +1,4 @@
-export { BUILD_PATH, BUILD_STATUS_PATH, BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_WEBHOOK_PATH } from "./ai-paths";
+export { BUILD_PATH, BUILD_STATUS_PATH, BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH } from "./ai-paths";
 
 export const BUILD_REPO = "LYJW131/lyjwpage";
 
@@ -13,6 +13,8 @@ export const BUILD_PLAN_LIMITS = { titleChars: 100, specChars: 6000, acceptanceI
 export const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone: 10 } } as const;
 // outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。
 export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;
+// 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。
+export const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;
 
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
 export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number };
@@ -36,6 +38,7 @@ export type BuildRun = {
   reconciledAt?: number;
   githubUpdatedAt?: number;
 };
+export type BuildScreenshot = { objectKey: string; caption: string };
 export type BuildUpload = { baseSha: string; message: string; files: { path: string; content: string; mode: "100644" | "100755" }[]; deletions: string[] };
 
 export function newRunId(): string { return crypto.randomUUID().replaceAll("-", ""); }
@@ -68,6 +71,8 @@ export const PLAN_LABELS = {
     issueFooter: "_Filed from the [homepage chat](https://lyjw.me)._",
     planReady: "Here is the plan for your review.",
     askReady: "Pick your answers below.",
+    screenshots: "Screenshots",
+    screenshotsNote: "Captured by the build routine on its local dev server before upload; the Vercel preview is the deployed result.",
   },
   zh: {
     acceptance: "验收标准",
@@ -79,6 +84,8 @@ export const PLAN_LABELS = {
     issueFooter: "_提交自[首页对话](https://lyjw.me)。_",
     planReady: "方案如下，请过目。",
     askReady: "请在下面选一下。",
+    screenshots: "截图",
+    screenshotsNote: "由构建 routine 在上传前于本地开发服务器截取；部署后的效果以 Vercel 预览为准。",
   },
   ja: {
     acceptance: "受け入れ基準",
@@ -90,6 +97,8 @@ export const PLAN_LABELS = {
     issueFooter: "_[ホームページのチャット](https://lyjw.me)から作成されました。_",
     planReady: "プランを用意しました。ご確認ください。",
     askReady: "下から選んでください。",
+    screenshots: "スクリーンショット",
+    screenshotsNote: "ビルド routine がアップロード前にローカルの開発サーバーで撮影したものです。デプロイ後の表示は Vercel のプレビューで確認してください。",
   },
 } as const satisfies Record<PlanLanguage, unknown>;
 
