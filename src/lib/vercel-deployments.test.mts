@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LAG_KEYS, type LagEntry } from "@shared/lag";
 import { installLagStoreForTests } from "./lag-store.ts";
-import { fetchVercelDeployments, getVercelDeployments, parseVercelDeployment } from "./vercel-deployments.ts";
+import { VERCEL_FETCH_TIMEOUT_MS, fetchVercelDeployments, getVercelDeployments, parseVercelDeployment } from "./vercel-deployments.ts";
 
 const deployment = (id = "active", state = "READY", created = 1000) => ({
   id, state, created, target: "production", buildingAt: 1100, ready: 1500,
@@ -47,6 +47,26 @@ test("an empty project is distinct from an upstream permission error", async (t)
   t.mock.restoreAll();
   t.mock.method(globalThis, "fetch", async () => Response.json({ error: { message: "private upstream detail" } }, { status: 403 }));
   await assert.rejects(fetchVercelDeployments("p", "t", "s"), /Vercel 查询失败 \(403\)/);
+});
+
+test("each Vercel request times out on its own so a slow list cannot abort the production lookup", async (t) => {
+  const signals: AbortSignal[] = [];
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    assert.equal(ms, VERCEL_FETCH_TIMEOUT_MS);
+    const controller = new AbortController();
+    signals.push(controller.signal);
+    return controller.signal;
+  });
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("/projects/")) return Response.json({ targets: { production: { id: "active" } } });
+    if (url.includes("/v6/deployments")) return Response.json({ deployments: [deployment("recent", "READY", 2000)] });
+    return Response.json(deployment());
+  });
+  const result = await fetchVercelDeployments("project-test", "team-test", "test-secret");
+  assert.equal(result.production?.id, "active");
+  assert.equal(signals.length, 3);
+  assert.equal(new Set(signals).size, 3);
 });
 
 test("the public payload composes three lag keys; metrics and PageSpeed are optional, deployments are not", async (t) => {

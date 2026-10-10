@@ -41,6 +41,13 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
   return GOD_CHAT_CARDS.includes(value as GodChatCard);
 }
 
+export function readGodChatRoute(tier: unknown, downgradedFrom?: unknown): { tier: GodChatServedTier | null; downgradedFrom?: GodChatServedTier } | undefined {
+  if (tier === null) return { tier: null };
+  if (!isGodChatServedTier(tier)) return undefined;
+  const from = isGodChatServedTier(downgradedFrom) ? downgradedFrom : undefined;
+  return { tier, ...(from && { downgradedFrom: from }) };
+}
+
 // 浏览器只回传文字，工具调用的原始结果不回传；trace 记下那条回复由哪一档作答、查过哪些视图与项目文档、搜了几次、
 // 是否由拒答兜底的模型代答。Worker 据此告诉模型那条回复当时用过工具，否则它会以为自己当时是在编。
 // trace 由 Worker 在回复结束时随 seal 事件下发，浏览器原样带回；只收枚举与计数，不收任何自由文本（搜索词、文档章节名不回传）。

@@ -45,12 +45,14 @@ export function parseVercelDeployment(raw: unknown): VercelDeployment {
   };
 }
 
+export const VERCEL_FETCH_TIMEOUT_MS = 8_000;
+
 export async function fetchVercelDeployments(project: string, team: string, token: string): Promise<VercelDeploymentsPayload> {
-  const signal = AbortSignal.timeout(8_000);
+  // 每条请求单独计时。共用一个 AbortSignal 时，列表查询花掉的时间会把随后的生产版本查询提前掐掉。
   const request = async (path: string, params: Record<string, string> = {}) => {
     const url = new URL(path, "https://api.vercel.com");
     url.search = new URLSearchParams({ teamId: team, ...params }).toString();
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, "User-Agent": "lyjwpage-deployment-status" }, signal });
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, "User-Agent": "lyjwpage-deployment-status" }, signal: AbortSignal.timeout(VERCEL_FETCH_TIMEOUT_MS) });
     if (!response.ok) throw new Error(`Vercel 查询失败 (${response.status})`);
     return record(await response.json());
   };
