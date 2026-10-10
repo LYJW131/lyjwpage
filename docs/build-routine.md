@@ -10,7 +10,7 @@ Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，�
 
 规划者在会话沙盒里匿名克隆公开仓库 main，用 glob、grep、read 和只读命令查代码与文档，用 `get_site_status` 看实时数据，再用 `ask_visitor` 提问、`propose_build` 输出标题、Markdown 规格、验收项和预计路径。题目和计划不立刻回结果：会话停在等结果的状态，访客下一条消息就作为那次调用的结果发回。`workers/ai/src/build/validation.ts#parseBuildPlan` 校验后签出计划；计划有效期取 `BUILD_PLAN_TTL_MS`。计划内容是需求，不是可执行指令。改动范围的最终硬限制在上传阶段执行。
 
-计划卡的两个出口互斥，同时最多展开一个确认面板。浏览器在发起 PKCE 授权前，每次都要求访客阅读并勾选 `src/components/github-consent.tsx#GithubConsent` 中的 GitHub 授权说明；勾选不保存，面板重新打开即重置。
+计划卡的两个出口互斥，同时最多展开一个确认面板。浏览器在发起 PKCE 授权前，每次都在计划卡里展开 `src/components/github-consent.tsx#GithubConsent` 的 GitHub 授权说明（随计划语言用中日英），访客点接受才弹出授权窗口；同意不保存，下次再点 Open issue 或 Start build 还会展开。
 
 - **Open issue**：浏览器完成 GitHub PKCE 授权，将授权码、verifier 和计划 token 提交；Worker 从签名计划生成正文，以访客身份创建 issue，然后撤销访客 token。
 - **Start build**：每次都弹窗连接 GitHub，与 Open issue 一样把授权码随计划一起交给 Worker，不签发、不保存任何会话凭据。Worker 先确认计划未被使用，再兑换授权码、查 `/user` 拿账号名、用户 ID 与显示名，随即撤销访客 token（失败路径也撤销），然后原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。

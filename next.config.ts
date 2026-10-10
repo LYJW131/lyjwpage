@@ -5,6 +5,7 @@ import { execSync } from "node:child_process";
 import { IMAGE_PATH_PREFIX } from "./src/lib/asset-url";
 import { MCP_PATH } from "./shared/mcp";
 import { previewWorkerOrigin } from "./scripts/preview-worker-name.mjs";
+import { chatCodeVersion } from "./scripts/chat-code-version.mjs";
 
 // 不可放宽成任意路径代理，否则整个 R2 桶都会暴露在站点域名下。
 const R2_ORIGIN = process.env.R2_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
@@ -37,6 +38,7 @@ function resolveCommitSha(): string {
 const nextConfig: NextConfig = {
   env: {
     BUILD_TIME,
+    CHAT_CODE_VERSION: chatCodeVersion(process.cwd()),
     COMMIT_SHA: resolveCommitSha(),
     NEXT_PUBLIC_BACKEND_URL: resolvePublicBackendUrl(),
     SENTRY_ENVIRONMENT: process.env.VERCEL_ENV ?? "development",
