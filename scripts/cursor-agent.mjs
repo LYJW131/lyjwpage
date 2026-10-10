@@ -508,7 +508,10 @@ export async function runCursorAgent({
         }
         if (todos || activity || event.event === "status") writer.schedule(render());
       }
-      if (!terminal) reconnects += 1;
+      if (!terminal && !stopped) {
+        reconnects += 1;
+        await sleep(Math.min(30_000, 1_000 * 2 ** Math.min(reconnects, 5)));
+      }
     } catch (error) {
       if (stopped) break;
       if (error instanceof HttpError && (error.status === 410 || error.status === 400)) {
@@ -543,7 +546,8 @@ export async function runCursorAgent({
   }
 
   state.status = final.status;
-  state.summary = final.result ?? terminal?.text;
+  // 刚结束时 GET run 的 result 可能还是空串，流里 result 事件的 text 已经齐了。
+  state.summary = final.result || terminal?.text;
   state.durationMs = final.durationMs ?? terminal?.durationMs;
   if (final.status === "FINISHED" && state.todos.length) {
     state.todos = state.todos.map((todo) => (todo.status === "inProgress" ? { ...todo, status: "completed" } : todo));
