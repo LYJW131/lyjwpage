@@ -2,17 +2,17 @@
 
 import Script from "next/script";
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, History, Plus, Square, Trash2 } from "lucide-react";
+import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
 import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
-import { AskCard } from "@/components/ask-card";
+import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, chatConsentLanguage, type ChatConsentLanguage } from "@/lib/chat-consent";
-import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
+import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -30,7 +30,7 @@ import {
   GOD_CHAT_TIER_INFO,
   modelLabel,
   type GodChatCount,
-  type GodChatTier,
+  type GodChatServedTier,
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
 
@@ -50,7 +50,11 @@ declare global {
 type ShownCard = { card: GodChatCard; at: number };
 type Reply = Omit<ChatBubble, "role" | "content">;
 type Bubble = ChatBubble;
+type Resumed = { user: Bubble & { id: string }; before: Bubble[]; handoff: boolean };
+const RESUME_DELAY_MS = 2000;
 const EMPTY_MESSAGES: Bubble[] = [];
+// 须与 globals.css 里 .design-halo 的动画总时长一致。
+const DESIGN_HALO_MS = 2_400;
 
 const CHAT_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
 const OFFLINE = "The oracle is offline.";
@@ -59,9 +63,29 @@ const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 // 排着队的消息等组件渲染出来的最长时间；组件出来之后（可能在等访客点验证）交给 Turnstile 自己的超时回调。
 const VERIFY_LOAD_TIMEOUT_MS = 15_000;
 const VERIFY_UNAVAILABLE = "Human verification couldn't load. Check your connection or ad blocker, then reload the page.";
+const PASS_KEY = "lyjw.chat.pass";
+const PASS_MARGIN_MS = 30_000;
+type HumanPass = { pass: string; expiresAt: number };
+
+function readPass(): HumanPass | null {
+  try {
+    const value: unknown = JSON.parse(window.sessionStorage.getItem(PASS_KEY) ?? "null");
+    if (value && typeof value === "object" && typeof (value as HumanPass).pass === "string" && typeof (value as HumanPass).expiresAt === "number" && (value as HumanPass).expiresAt - PASS_MARGIN_MS > Date.now()) return value as HumanPass;
+  } catch {}
+  return null;
+}
+
+function writePass(pass: HumanPass | null) {
+  try {
+    if (pass) window.sessionStorage.setItem(PASS_KEY, JSON.stringify(pass));
+    else window.sessionStorage.removeItem(PASS_KEY);
+  } catch {}
+}
+
 const COMMANDS = [
   { name: "/clear", aliases: ["/new"], description: "Start a new conversation with empty context" },
   { name: "/usage", aliases: [], description: "Show your quota in the current window" },
+  { name: "/exit", aliases: [], description: "Leave design mode and return to ordinary chat" },
 ] as const;
 
 type Command = (typeof COMMANDS)[number];
@@ -94,9 +118,11 @@ function Conversation({ className, archive, session: conversation }: { className
   const [usage, setUsage] = useState<FetchedUsage | "loading" | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
+  const [warm, setWarm] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
   const consented = useSyncExternalStore(chatConsent.subscribe, chatConsent.getSnapshot, chatConsent.getServerSnapshot);
   const [consentPending, setConsentPending] = useState<string | null>(null);
+  const [designHalo, setDesignHalo] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -106,10 +132,14 @@ function Conversation({ className, archive, session: conversation }: { className
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
   const pendingRef = useRef<string | null>(null);
+  // 选项卡的回答以文本发给模型，界面上按这份结构画成卡片；Turnstile 延后发送时按文本对上。
+  const answersRef = useRef<{ text: string; answers: ChatAnswer[] } | null>(null);
   const verifyStateRef = useRef<"ok" | "failed" | "unavailable">("ok");
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expiredRef = useRef(false);
   const sessionRef = useRef(0);
-  const sendRef = useRef<(text: string, token: string) => void>(() => {});
+  const sendRef = useRef<(text: string, token?: string) => void>(() => {});
+  const resumeRef = useRef<() => void>(() => {});
   const conversationId = conversation?.id;
   const design = conversation?.design;
 
@@ -142,7 +172,12 @@ function Conversation({ className, archive, session: conversation }: { className
           setToken(value);
         }
       },
-      "expired-callback": () => setToken(null),
+      // token 约 5 分钟过期；默认自动续会让开着页面的访客隔几分钟就在后台重跑一次挑战，改为下次发送时才重新验。
+      "refresh-expired": "manual",
+      "expired-callback": () => {
+        expiredRef.current = true;
+        setToken(null);
+      },
       "error-callback": () => {
         setToken(null);
         verificationFailed("Human verification failed. Send again to retry.", "failed");
@@ -180,6 +215,19 @@ function Conversation({ className, archive, session: conversation }: { className
   }, [messages]);
 
   useEffect(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        if (!readPass()) setWarm(true);
+        observer.disconnect();
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const header = document.querySelector<HTMLElement>("header.sticky");
     if (!header) return;
     const observer = new ResizeObserver(() => setHeaderHeight(header.offsetHeight));
@@ -187,12 +235,14 @@ function Conversation({ className, archive, session: conversation }: { className
     return () => observer.disconnect();
   }, []);
 
-  async function send(text: string, usedToken: string) {
-    const content = text.trim();
+  async function send(text: string, usedToken?: string, resumed?: Resumed) {
+    const content = resumed?.user.content ?? text.trim();
     if (!content) return;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
-    const user: Bubble & { id: string } = { id: crypto.randomUUID(), role: "user", content };
-    const shown: Bubble[] = [...messages, user];
+    const answers = !resumed && answersRef.current?.text.trim() === content ? answersRef.current.answers : undefined;
+    if (!resumed) answersRef.current = null;
+    const user: Bubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
+    const shown: Bubble[] = [...(resumed?.before ?? messages), user];
     const history: GodChatMessage[] = fitHistory(
       shown
         .filter(({ content }) => content.trim())
@@ -201,7 +251,8 @@ function Conversation({ className, archive, session: conversation }: { className
         ),
     );
     let reply = "";
-    let meta: Reply = {};
+    // 补发只取回规划者那一段，交接回合里 Sonnet 的开场白拿不回来，分隔线画在最前面。
+    let meta: Reply = resumed?.handoff ? { designAt: 0 } : {};
     const session = sessionRef.current;
     const bubble = (): Bubble => ({ role: "assistant", content: reply, ...meta });
     const replyMessages = (next?: Bubble) => chatReplyMessages(
@@ -216,32 +267,40 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!messages.length) reveal();
     show();
     // 等验证期间输入框还能改，回调发的是排队时那条；框里已经不是它就别清，免得吞掉访客新改的草稿。
-    setDraft((current) => (current === text ? "" : current));
+    if (!resumed) setDraft((current) => (current === text ? "" : current));
     setError(null);
     setStreaming(true);
-    setToken(null);
-    if (widgetId.current) window.turnstile?.reset(widgetId.current);
+    if (usedToken) {
+      setToken(null);
+      if (widgetId.current) window.turnstile?.reset(widgetId.current);
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
+    let designToken: string | undefined;
+    let answered = false;
+    let dropped = false;
     try {
       if (!CHAT_URL) throw new Error(OFFLINE);
-      const designToken = activeChatDesign(conversation?.design)?.token;
+      const humanPass = usedToken ? null : readPass();
+      designToken = activeChatDesign(conversation?.design)?.token;
       if (conversation?.design && !designToken) chatArchive.update(conversation.id, { design: undefined }, { persist: false });
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, turnstileToken: usedToken, ...(designToken && { designToken }) }),
+        body: JSON.stringify({ messages: history, ...(usedToken ? { turnstileToken: usedToken } : { humanPass: humanPass?.pass }), ...(designToken && { designToken }), ...(resumed && { resume: true }) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
         const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+        if (data?.code === "human_pass_expired") writePass(null);
         if (conversation && designSessionEnded(data?.code)) {
           chatArchive.update(conversation.id, { design: undefined }, { persist: false });
           throw new Error("Design session ended. Send your message again to continue in ordinary chat.");
         }
         throw new Error(data?.error ?? OFFLINE);
       }
+      answered = true;
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
       let buffer = "";
       for (;;) {
@@ -266,12 +325,22 @@ function Conversation({ className, archive, session: conversation }: { className
             const { doc, path, url, section } = event;
             meta = { ...meta, docs: [...(meta.docs ?? []), { doc, path, url, section }] };
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
+          else if (event.type === "step") meta = { ...meta, steps: [...(meta.steps ?? []), event.text] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
+          else if (event.type === "pass") writePass({ pass: event.pass, expiresAt: event.expiresAt });
           else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace, planToken: event.planToken };
           else if (event.type === "card") {
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
           } else if (event.type === "design" && conversation) {
-            chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) }, { persist: false });
+            // 连同访客这条一起存下：刷新或断线后要靠它补发规划者的回复。
+            chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) });
+            if (!designToken && meta.designAt === undefined) {
+              meta = { ...meta, designAt: reply.length };
+              if (sessionRef.current === session) {
+                setDesignHalo(true);
+                setTimeout(() => setDesignHalo(false), DESIGN_HALO_MS);
+              }
+            }
           } else if (event.type === "ask") {
             meta = { ...meta, asks: event.questions };
           } else if (event.type === "plan") {
@@ -281,26 +350,57 @@ function Conversation({ className, archive, session: conversation }: { className
         show();
       }
     } catch (err) {
-      if (!controller.signal.aborted) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
+      // 设计会话里请求已到 Worker 后断线，规划者那一回合照样跑完、轮数也扣了：留住访客这条，稍后补发错过的回复。
+      if (!controller.signal.aborted) {
+        if ((designToken && err instanceof TypeError) || (answered && (designToken || meta.designAt !== undefined))) dropped = true;
+        else setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
+      }
     } finally {
       if (sessionRef.current === session) {
         const kept = reply || meta.cards?.length || meta.proposals?.length || meta.asks?.length;
-        setMessages(replyMessages(kept ? bubble() : undefined));
-        if (!kept) setDraft((current) => current || content);
+        if (dropped) {
+          setMessages([...replyMessages(), user, ...(kept ? [bubble()] : [])]);
+          if (resumed) setError("The connection dropped. Reload the page to get the rest of the reply.");
+          else setTimeout(() => resumeRef.current(), RESUME_DELAY_MS);
+        } else {
+          setMessages(replyMessages(kept ? bubble() : undefined));
+          if (!kept) setDraft((current) => current || content);
+        }
       }
       setStreaming(false);
       abortRef.current = null;
     }
   }
 
+  // 设计会话里最后一条访客消息还没拿到盖了章的回复：从会话里取回它错过的那一回合。
+  function resume() {
+    // 补发不走 Turnstile：没有有效通行证时留着那两条，等访客自己再发。
+    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass()) return;
+    const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
+    if (!current || !activeChatDesign(current.design)) return;
+    const list = current.messages;
+    const at = list.map((message) => message.role).lastIndexOf("user");
+    if (at < 0 || at < list.length - 2 || list[at + 1]?.seal) return;
+    const user = { ...list[at], id: list[at].id ?? crypto.randomUUID() };
+    if (!list[at].id) setMessages([...list.slice(0, at), user, ...list.slice(at + 1)], false);
+    void send(user.content, undefined, { user, before: list.slice(0, at), handoff: list[at + 1]?.designAt !== undefined });
+  }
+
   useEffect(() => {
     sendRef.current = (text, value) => void send(text, value);
+    resumeRef.current = resume;
   });
+
+  useEffect(() => {
+    const timer = setTimeout(() => resumeRef.current(), 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const typing = draft.trimStart();
   const paletteOpen = typing.startsWith("/") && !/\s/.test(typing.trim());
   const query = typing.trim().toLowerCase();
-  const matches = paletteOpen ? COMMANDS.filter((c) => commandNames(c).some((n) => n.startsWith(query))) : [];
+  const commands = COMMANDS.filter((c) => c.name !== "/exit" || design);
+  const matches = paletteOpen ? commands.filter((c) => commandNames(c).some((n) => n.startsWith(query))) : [];
   const active = matches.length ? Math.min(selected, matches.length - 1) : 0;
 
   function runCommand(name: string) {
@@ -308,6 +408,15 @@ function Conversation({ className, archive, session: conversation }: { className
     setSelected(0);
     if (name === "/usage") {
       void showUsage();
+      return;
+    }
+    if (name === "/exit") {
+      if (!conversation?.design) return;
+      if (streaming) {
+        sessionRef.current += 1;
+        abortRef.current?.abort();
+      }
+      chatArchive.update(conversation.id, { design: undefined });
       return;
     }
     if (name === "/clear") {
@@ -346,12 +455,18 @@ function Conversation({ className, archive, session: conversation }: { className
 
   function submit(text: string) {
     if (text.trim().startsWith("/")) {
-      const exact = COMMANDS.find((c) => commandNames(c).includes(text.trim().toLowerCase()));
+      const exact = commands.find((c) => commandNames(c).includes(text.trim().toLowerCase()));
       const pick = exact ?? matches[active];
       if (pick) runCommand(pick.name);
       else setError(`Unknown command ${text.trim().split(/\s+/)[0]}.`);
       return;
     }
+    ask(text);
+  }
+
+  function answer(answers: ChatAnswer[]) {
+    const text = askAnswerText(answers);
+    answersRef.current = { text, answers };
     ask(text);
   }
 
@@ -370,11 +485,16 @@ function Conversation({ className, archive, session: conversation }: { className
       setError(SITE_KEY ? VERIFY_UNAVAILABLE : OFFLINE);
       return;
     }
+    if (readPass()) {
+      void send(text);
+      return;
+    }
     if (token) {
       void send(text, token);
       return;
     }
-    if (verifyStateRef.current === "failed" && widgetId.current) window.turnstile?.reset(widgetId.current);
+    if ((verifyStateRef.current === "failed" || expiredRef.current) && widgetId.current) window.turnstile?.reset(widgetId.current);
+    expiredRef.current = false;
     verifyStateRef.current = "ok";
     setError(null);
     pendingRef.current = text;
@@ -426,11 +546,12 @@ function Conversation({ className, archive, session: conversation }: { className
     <Card
       data-sentry-mask
       label="Talk to God"
-      action={conversation?.design ? <span>Design · Opus</span> : <RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
+      action={conversation?.design ? <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400"><PencilRuler className="size-3" />Design · Opus</span> : <RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
       className={cn(
         "transition-[height,box-shadow] duration-700 ease-out motion-reduce:transition-none",
         expanded ? "h-[calc(100dvh-var(--chat-inset))]" : "h-[25rem] sm:h-[22rem]",
         godSpeaking && "god-halo",
+        designHalo && !godSpeaking && "design-halo",
         className,
       )}
       style={{ "--chat-inset": `${headerHeight + 2 * EDGE_GAP_PX}px` } as CSSProperties}
@@ -442,7 +563,7 @@ function Conversation({ className, archive, session: conversation }: { className
         <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
       </div>
       {historyOpen && <SessionList archive={archive} />}
-      {armed && (
+      {(armed || warm) && (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
           strategy="afterInteractive"
@@ -487,7 +608,9 @@ function Conversation({ className, archive, session: conversation }: { className
                 <div
                   className={cn(
                     "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
-                    message.role === "user"
+                    message.role === "user" && message.answers
+                      ? "max-w-[85%]"
+                      : message.role === "user"
                       ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
                       : "w-full text-foreground",
                   )}
@@ -509,18 +632,15 @@ function Conversation({ className, archive, session: conversation }: { className
                       Looked at {message.lookups.join(", ")}
                     </div>
                   ) : null}
-                  {message.docs?.length ? <DocReads docs={message.docs} /> : null}
-                  {message.searches?.map((query, i) => (
-                    <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
-                      Searched “{query}”
-                    </div>
-                  ))}
+                  {message.designAt === undefined && <PlannerActivity message={message} live={live} />}
                   {message.role === "assistant" ? (
-                    <ReplyBody content={message.content} cards={message.cards} live={live} />
+                    <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} handoff={<PlannerActivity message={message} live={live} />} />
+                  ) : message.answers ? (
+                    <AnswerCard answers={message.answers} />
                   ) : (
                     message.content
                   )}
-                  {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={submit} /> : null}
+                  {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={answer} /> : null}
                   {message.proposals?.map((proposal, proposalIndex) => (
                     <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
                       if (!conversation) return;
@@ -681,6 +801,35 @@ function DocRead({ read, prefix }: { read: NonNullable<ChatBubble["docs"]>[numbe
   );
 }
 
+// 交接回合的文档、沙盒步骤和搜索跟规划者的回复放在一起，画在交接分隔线下面。
+function PlannerActivity({ message, live }: { message: ChatBubble; live: boolean }) {
+  if (!message.docs?.length && !message.steps?.length && !message.searches?.length) return null;
+  return (
+    <div>
+      {message.docs?.length ? <DocReads docs={message.docs} /> : null}
+      {message.steps?.length ? <PlannerSteps steps={message.steps} live={live} /> : null}
+      {message.searches?.map((query, i) => (
+        <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
+          Searched “{query}”
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PlannerSteps({ steps, live }: { steps: string[]; live: boolean }) {
+  return (
+    <details className="mb-1.5">
+      <summary className={`label-mono cursor-pointer truncate text-[10px] text-muted-foreground ${live ? "normal-case" : ""}`}>
+        {live ? steps[steps.length - 1] : `${steps.length.toLocaleString("en-US")} step${steps.length > 1 ? "s" : ""} in the sandbox`}
+      </summary>
+      <ol className="mt-1 space-y-0.5 pl-3 text-[10px] text-muted-foreground">
+        {steps.map((step, i) => <li key={i} className="label-mono normal-case leading-snug [overflow-wrap:anywhere]">{step}</li>)}
+      </ol>
+    </details>
+  );
+}
+
 function DocReads({ docs }: { docs: NonNullable<ChatBubble["docs"]> }) {
   if (docs.length === 1) return <div className="mb-1.5"><DocRead read={docs[0]} prefix /></div>;
   return (
@@ -792,16 +941,38 @@ function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: 
 }
 
 function DesignStatus({ design }: { design: ChatDesign }) {
-  return <p className="mb-2 text-[11px] text-muted-foreground">Design with Opus · {design.remaining.toLocaleString("en-US")} turns left</p>;
+  return (
+    <p className="mb-2 flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
+      <PencilRuler className="size-3 shrink-0" />
+      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left</span>
+    </p>
+  );
 }
 
-function ReplyBody({ content, cards = [], live }: { content: string; cards?: ShownCard[]; live: boolean }) {
+function DesignDivider() {
+  return (
+    <div role="separator" aria-label="Design session started" className="design-divider flex items-center gap-2 py-1 text-sky-600 dark:text-sky-400">
+      <span className="h-px flex-1 bg-sky-500/40" />
+      <span className="label-mono flex shrink-0 items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-1 text-[10px]">
+        <PencilRuler className="size-3" />
+        Design session · {GOD_CHAT_TIER_INFO.opus.persona} takes over
+      </span>
+      <span className="h-px flex-1 bg-sky-500/40" />
+    </div>
+  );
+}
+
+function ReplyBody({ content, cards = [], designAt, live, handoff }: { content: string; cards?: ShownCard[]; designAt?: number; live: boolean; handoff?: ReactNode }) {
   const parts: ReactNode[] = [];
   let from = 0;
-  for (const { card, at } of cards) {
+  const marks = [
+    ...cards.map(({ card, at }) => ({ at, node: <ChatCard key={card} card={card} /> })),
+    ...(designAt === undefined ? [] : [{ at: designAt, node: <Fragment key="design"><DesignDivider />{handoff}</Fragment> }]),
+  ].sort((a, b) => a.at - b.at);
+  for (const { at, node } of marks) {
     const text = content.slice(from, at);
     if (text.trim()) parts.push(<ChatMarkdown key={`text-${from}`}>{text}</ChatMarkdown>);
-    parts.push(<ChatCard key={card} card={card} />);
+    parts.push(node);
     from = at;
   }
   const rest = content.slice(from);
@@ -810,8 +981,9 @@ function ReplyBody({ content, cards = [], live }: { content: string; cards?: Sho
   return <div className="space-y-2">{parts}</div>;
 }
 
-const RANK_TONE: Record<GodChatTier, string> = {
+const RANK_TONE: Record<GodChatServedTier, string> = {
   fable: "god-aura bg-clip-text text-transparent font-bold",
+  sonnet: "text-foreground",
   opus: "text-foreground",
   haiku: "text-muted-foreground opacity-70",
 };
@@ -822,10 +994,11 @@ function RankLabel({ reply }: { reply: Reply }) {
   }
   if (!reply.tier) return null;
   const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
+  const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.sonnet : undefined;
   return (
     <div className="mb-1.5">
       <div className={cn("label-mono text-[10px]", RANK_TONE[reply.tier])}>
-        {persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
+        {opener && `${opener.persona} · ${opener.label} → `}{persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
       </div>
       {reply.downgradedFrom && (
         <div className="label-mono text-[10px] text-muted-foreground">

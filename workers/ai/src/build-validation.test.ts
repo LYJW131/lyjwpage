@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BUILD_UPLOAD_LIMITS, type BuildPlan, type BuildUpload } from "@shared/build-routine";
-import { allowedBuildPath, outsidePlanPaths, parseBuildPlan, parseBuildUpload } from "./build/validation.ts";
+import { BUILD_PLAN_LIMITS, BUILD_UPLOAD_LIMITS, type BuildPlan, type BuildUpload } from "@shared/build-routine";
+import { allowedBuildPath, checkBuildPlan, outsidePlanPaths, parseBuildPlan, parseBuildUpload } from "./build/validation.ts";
 
 const plan: BuildPlan = { title: "Improve the card", spec: "Show card details.", acceptance: ["Details fit on mobile."], paths: ["src/components/card.tsx"] };
 const upload: BuildUpload = {
@@ -52,6 +52,9 @@ test("upload allows a few files outside the plan, counts them, and rejects more"
     const parsed = parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, plan.paths);
     assert.deepEqual(outsidePlanPaths(parsed, plan.paths), [path]);
   }
+  const docs = ["workers/ai/README.md", "README.md", "apps/ios/README.md", "docs/a.md", "src/x.md", "workers/api/NOTES.md"];
+  assert.equal(parseBuildUpload({ ...upload, files: docs.map((path) => ({ ...upload.files[0], path })) }, plan.paths).files.length, docs.length);
+  for (const path of ["AGENTS.md", "workers/ai/AGENTS.md", "CLAUDE.md", ".github/README.md", "reporters/server-reporter/README.md"]) assert.equal(allowedBuildPath(path), false, path);
   const allowed = outside.slice(0, BUILD_UPLOAD_LIMITS.outsidePlanFiles);
   assert.equal(parseBuildUpload({ ...upload, files: [], deletions: allowed }, plan.paths).deletions.length, allowed.length);
   assert.throws(() => parseBuildUpload({ ...upload, files: [], deletions: outside.slice(0, BUILD_UPLOAD_LIMITS.outsidePlanFiles + 1) }, plan.paths), /outside the approved plan paths \(at most/);
@@ -70,4 +73,13 @@ test("approved directory plans permit descendants and keep sibling prefixes outs
   const broadPlan = parseBuildPlan({ ...plan, paths: ["src/"] });
   assert.ok(broadPlan);
   assert.equal(parseBuildUpload(upload, broadPlan.paths).files[0].path, plan.paths[0]);
+});
+
+test("plan rejections name the exact problem so the planner can fix it", () => {
+  const reason = (value: unknown) => { const checked = checkBuildPlan(value); return "error" in checked ? checked.error : null; };
+  assert.match(reason({ ...plan, spec: "x".repeat(BUILD_PLAN_LIMITS.specChars + 1) }) ?? "", /spec must be 1 to \d+ characters; it has \d+/);
+  assert.match(reason({ ...plan, spec: "Follow the rules in workers/ai/AGENTS.md." }) ?? "", /names "workers\/ai\/AGENTS\.md\.?", a protected file/);
+  assert.match(reason({ ...plan, paths: ["package.json"] }) ?? "", /Path "package\.json" is not allowed/);
+  assert.match(reason({ ...plan, acceptance: [] }) ?? "", /Give 1 to \d+ acceptance checks; there are 0/);
+  assert.equal(reason(plan), null);
 });

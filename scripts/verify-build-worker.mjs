@@ -189,7 +189,7 @@ try {
   assert.equal(status.ci.state, 'success');
   assert.equal(status.preview.state, 'success');
   assert.match(status.review.state, /Fixture review/);
-  console.log('PASS: actual PKCE session/fire/progress/upload/status handlers create one mocked PR with verified App JWT and co-author');
+  console.log('PASS: actual per-build PKCE sign-in, fire, progress, upload and status handlers create one mocked PR with verified App JWT and co-author');
 
   const newHead = '9'.repeat(40);
   async function webhook(event, payload, delivery, valid = true) {
@@ -231,7 +231,7 @@ try {
   ]) {
     await post('/__fixture/configure', scenario);
     const nextPlan = await (await post('/__fixture/plan', plan)).json();
-    const nextResponse = await post('/api/build', { session, planToken: nextPlan.token });
+    const nextResponse = await post('/api/build', { ...signIn, planToken: nextPlan.token });
     assert.equal(nextResponse.status, 202);
     const nextBuild = await nextResponse.json();
     const nextFire = (await inspect()).fires.find((entry) => entry.runId === nextBuild.runId);

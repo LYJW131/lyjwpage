@@ -30,11 +30,28 @@ jobs:
         with:
           fetch-depth: 1
 
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # 先按 main 的锁文件装好；PR 分支的锁文件不同时，Claude 自己会再装一次。
+      - run: pnpm install --frozen-lockfile
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
           additional_permissions: |
             actions: read
+
+          # 与访客构建的云端 routine 对齐：任意 Bash（装依赖、跑检查）、读写文件、查外部文档。
+          # 只有对仓库有写权限的人 @claude 才会触发（Action 自带检查），跑的是 PR 分支上的代码。
+          claude_args: |
+            --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,WebSearch,WebFetch"
