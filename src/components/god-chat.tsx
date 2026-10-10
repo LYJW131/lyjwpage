@@ -219,7 +219,7 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!el) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
-        if (!readPass()) setWarm(true);
+        if (!readPass() && chatConsent.getSnapshot()) setWarm(true);
         observer.disconnect();
       }
     });
@@ -374,8 +374,8 @@ function Conversation({ className, archive, session: conversation }: { className
 
   // 设计会话里最后一条访客消息还没拿到盖了章的回复：从会话里取回它错过的那一回合。
   function resume() {
-    // 补发不走 Turnstile：没有有效通行证时留着那两条，等访客自己再发。
-    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass()) return;
+    // 补发不走 Turnstile：没有有效通行证或对话代码变了还没重新同意时留着那两条，等访客自己再发。
+    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass() || !chatConsent.getSnapshot()) return;
     const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
     if (!current || !activeChatDesign(current.design)) return;
     const list = current.messages;
@@ -882,6 +882,7 @@ const CONSENT_COPY: Record<ChatConsentLanguage, ConsentCopy> = {
       { name: "Cloudflare Turnstile", detail: "checks that you're human and receives your IP address." },
       { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message plus short excerpts of a few earlier ones to pick which Claude model answers. Cloudflare doesn't store this or use it for training." },
       { name: "Anthropic (Claude API)", detail: "receives the whole conversation to write the reply and runs any web searches. Anthropic keeps API data for 30 days and may access it for safety review (longer if flagged); it isn't used for training." },
+      { name: "AI HOT (aihot.news)", detail: "receives the search terms Claude picks from your message when it looks up AI news. Anthropic connects to it on the site's behalf." },
       { name: "Sentry", detail: "receives error reports; chat text is masked in session replays and request bodies aren't sent." },
       { name: "GitHub", detail: "only if you file a build plan: it becomes a public issue or pull request, and a build also sends the plan to Anthropic's Claude Code." },
       { name: "This browser", detail: "saves your conversations and this consent." },
@@ -900,6 +901,7 @@ const CONSENT_COPY: Record<ChatConsentLanguage, ConsentCopy> = {
       { name: "Cloudflare Turnstile", detail: "验证你是真人，会收到你的 IP 地址。" },
       { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取你最新的消息和前几条消息的简短摘录，决定由哪个 Claude 模型回答。Cloudflare 不存储这些内容，也不用于训练。" },
       { name: "Anthropic（Claude API）", detail: "收到完整对话来生成回复，并执行联网搜索。Anthropic 保留 API 数据 30 天，可因安全原因查看，被标记的会保留更久；不用于训练。" },
+      { name: "AI HOT（aihot.news）", detail: "Claude 查 AI 资讯时，会收到它从你的消息里提炼的搜索词。由 Anthropic 代本站连接。" },
       { name: "Sentry", detail: "接收错误报告；会话录像里对话文字被遮住，也不上传请求正文。" },
       { name: "GitHub", detail: "仅当你提交构建计划时：计划会成为公开的 issue 或 pull request，发起构建还会把计划发给 Anthropic 的 Claude Code。" },
       { name: "这个浏览器", detail: "保存你的对话和这次同意。" },
