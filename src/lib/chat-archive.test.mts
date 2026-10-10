@@ -18,16 +18,27 @@ const messages: ChatBubble[] = [
   }] },
 ];
 
-test("restores signed history, design, plans and build identities after reload", () => {
+test("reload resumes the active conversation only while a design session is live", () => {
   const data = storage();
   const first = createChatArchiveStore(() => data, () => "one", () => 123);
   const id = first.getSnapshot().activeId;
   const design = { token: "signed-design", expiresAt: 1800000, remaining: 11 };
   first.update(id, { messages, design });
-  const restored = createChatArchiveStore(() => data).getSnapshot();
+  const restored = createChatArchiveStore(() => data, () => "fresh", () => 123).getSnapshot();
   assert.equal(restored.activeId, id);
   assert.deepEqual(restored.sessions[0].messages, messages);
   assert.deepEqual(restored.sessions[0].design, design);
+});
+
+test("reload starts a fresh conversation and keeps the previous one in history when not in design mode", () => {
+  const data = storage();
+  const first = createChatArchiveStore(() => data, () => "one", () => 123);
+  first.update("one", { messages });
+  const restored = createChatArchiveStore(() => data, () => "fresh", () => 456).getSnapshot();
+  assert.equal(restored.activeId, "fresh");
+  assert.deepEqual(restored.sessions.map((session) => session.id), ["fresh", "one"]);
+  assert.deepEqual(restored.sessions[0].messages, []);
+  assert.deepEqual(restored.sessions[1].messages, messages);
 });
 
 test("new conversations retain history, switching restores it, and deletion repairs selection", () => {
@@ -134,7 +145,7 @@ test("streaming publishes each fragment without serializing or writing until the
   store.update(id, { messages: [messages[0], tracked] });
   assert.equal(writes, 1);
   assert.ok(encoded > 0);
-  assert.equal(createChatArchiveStore(() => data).getSnapshot().sessions[0].messages[1].content, "x".repeat(100));
+  assert.equal(createChatArchiveStore(() => data).getSnapshot().sessions.find((session) => session.id === id)?.messages[1].content, "x".repeat(100));
 });
 
 test("expired and exhausted design sessions omit tokens while ordinary rate limits preserve a valid design", () => {
@@ -174,4 +185,15 @@ test("streaming keeps one current turn and fresh build status after a concurrent
   assert.equal(current().at(-1)?.content, "Complete reply");
   store.update(id, { messages: chatReplyMessages(current(), user) });
   assert.deepEqual(current().map((message) => message.content), messages.map((message) => message.content));
+});
+
+test("cards no longer registered are dropped without losing the conversation", () => {
+  const raw = JSON.stringify({ version: 1, activeId: "s", sessions: [{ id: "s", title: "Music", createdAt: 1, updatedAt: 2, messages: [
+    { role: "user", content: "What is LYJW listening to?" },
+    { role: "assistant", content: "This.", cards: [{ card: "music", at: 0 }, { card: "nowListening", at: 0 }] },
+    { role: "user", content: "And before?" },
+    { role: "assistant", content: "That.", cards: [{ card: "gaming", at: 0 }] },
+  ] }] });
+  const [session] = readChatArchive(raw).sessions;
+  assert.deepEqual(session.messages.map((message) => message.cards), [undefined, [{ card: "nowListening", at: 0 }], undefined, undefined]);
 });

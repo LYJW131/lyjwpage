@@ -12,6 +12,7 @@
 | [Worker 数据后端与首屏缓存](./state-storage.md) | reference | 状态分层存储（DO / KV / D1）、公开数据边界、首屏缓存与失效、配置 |
 | [Workers 原生 Git 部署](./workers-builds.md) | reference | Worker 的 Workers Builds 构建配置、监视路径与分支预览 |
 | [访客协作构建](./build-routine.md) | runbook | 首页设计对话、一次性上传、GitHub App、状态观察与 routine 配置 |
+| [CodeQL 告警自动修复](./codeql-autofix.md) | runbook | CodeQL 扫描后每条未关闭告警派一个 Cursor 云端 agent 修复并各开一个 PR |
 | [AI Worker 首次迁移](./ai-worker-migration.md) | runbook | 公开状态 RPC、聊天 DO 转移、密钥与构建配置的有序切换 |
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
 | [页面效果图、GIF 与架构图产物](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图重生成 |

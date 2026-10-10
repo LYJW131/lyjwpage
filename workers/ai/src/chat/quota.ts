@@ -59,7 +59,7 @@ export class ChatQuota extends DurableObject<Env> {
     });
   }
 
-  // 设计候选必须由 Opus 判断，禁用降级时不能消耗 Haiku 名额。
+  // 设计候选必须由 Sonnet 判断，禁用降级时不能消耗 Haiku 名额。
   admitTier(ip: string, wanted: GodChatTier, enforce = true, allowDowngrade = true): GodChatTier | null {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {

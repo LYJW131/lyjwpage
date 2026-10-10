@@ -29,7 +29,7 @@ It is both my personal homepage and a personal telemetry system that keeps evolv
 | **Games** | PlayStation online status, game history and trophy progress; expand a game card for per-trophy details. |
 | **Pulse** | A factual 24-hour timeline for coding, listening, watching, playing, charging and physical activity: coding split into coding app / agent / both plus a token-rate lane, listening, watching and playing drawn as playing, paused or idle with the track or title, watts for charging, steps and workouts for activity. Hover any segment to see its state and title. |
 | **The site itself** | Site version, GitHub repository stats and recent commits (with signature status); 30-day uptime rows for the site and the API, rolling medians of PageSpeed lab scores and a real-visitor performance score; request stats and 12-hour error counts for Vercel and Cloudflare Workers, plus push counts, round-trip latency and live versions of the two resident reporters on the exit node. |
-| **Talk to God** | A chat card where Clef routes each message by difficulty to Haiku (small fry), Opus (prophet) or Fable (God, with a descent effect), or refuses it; the model can read the live data behind every card, look up this project's design docs, and search the web with cited sources; `/new` starts a new conversation while retaining local session archives, with Markdown replies; visitors can plan site changes and confirm a signed plan to open an issue or start a build, then follow its PR, checks and preview; each message passes Cloudflare Turnstile, and requests are rate-limited per visitor with capped context and output length. |
+| **Talk to God** | A chat card where Clef routes each message by difficulty to Haiku (small fry), Sonnet (prophet) or Fable (God, with a descent effect), or refuses it; the model can read the live data behind every card, look up this project's design docs, and search the web with cited sources; `/new` starts a new conversation while retaining local session archives, with Markdown replies; visitors can plan site changes and confirm a signed plan to open an issue or start a build, then follow its PR, checks and preview; each message passes Cloudflare Turnstile, and requests are rate-limited per visitor with capped context and output length. |
 
 The interface is built on grayscale, hairline borders and cards, with tabular figures keeping live metrics steady. Color and motion mostly serve media, state changes and interaction feedback.
 
@@ -134,7 +134,7 @@ The system has three parts: **collectors adapt to each source, Cloudflare manage
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img src="docs/architecture-light.png" alt="Architecture: multi-device collectors, the Cloudflare state hub and the Next.js frontend" width="100%">
+  <img src="docs/architecture-light.png" alt="Architecture: multi-device collectors, the Cloudflare state hub, the AI Worker for chat and visitor builds, and the Next.js frontend" width="100%">
 </picture>
 
 [Open the interactive architecture diagram](https://lyjw131.github.io/lyjwpage/)

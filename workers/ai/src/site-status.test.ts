@@ -177,7 +177,7 @@ test("没有 reads 的旧账本第一次使用时再初始化", async () => {
 
 test("show_card 回给模型的是精简后的第一页，带摘要与 nextCursor", async () => {
   const io = fakeIO(() => ({ games: games(60) }));
-  const text = await runShowCard("gaming", io, newLedger());
+  const text = await runShowCard("playing", io, newLedger());
   const { summary, json } = section(text, "playing");
   assert.match(summary, /nextCursor: /);
   const parsed = JSON.parse(json);
