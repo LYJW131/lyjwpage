@@ -64,6 +64,18 @@ test("默认精简第一页，沿 nextCursor 读到最后一页没有 nextCursor
   assert.deepEqual([...ledger.views], ["playing"]);
 });
 
+test("逐日数值数组整份返回不分页，并附按月合计，一次读取就能答出本月总数", async () => {
+  const counts = Array.from({ length: 371 }, (_, i) => i % 3);
+  const io = fakeIO(() => ({ ok: true, data: { origin: "2025-10-05", counts } }));
+  const { summary, json } = section((await run({ views: ["githubChart"] }, io)).text, "githubChart");
+  const parsed = JSON.parse(json);
+  assert.deepEqual(parsed.data.counts, counts);
+  assert.match(summary, /no paged lists/);
+  assert.equal(parsed.data.countsByMonth["2025-10"], counts.slice(0, 27).reduce((a, b) => a + b, 0));
+  assert.equal(parsed.data.countsByMonth["2026-10"], counts.slice(361).reduce((a, b) => a + b, 0));
+  assert.equal(Object.keys(parsed.data.countsByMonth).length, 13);
+});
+
 test("detail=full 保留图片字段，短列表保持原样", async () => {
   const io = fakeIO(() => ({ games: games(3), iconUrl: "https://cdn.example/a.webp" }));
   const full = JSON.parse(section((await run({ views: ["playing"], detail: "full" }, io)).text, "playing").json);
