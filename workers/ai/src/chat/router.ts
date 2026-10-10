@@ -5,13 +5,16 @@ const CLEF_MODEL = "@cf/cloudflare/clef";
 const CLEF_TIMEOUT_MS = 5_000;
 export const ROUTER_FALLBACK: GodChatTier = "haiku";
 
+// 设计会话（开启那一轮与之后每一轮）要定范围、写计划，Opus 临时从默认的 low 提到 medium。
+export const DESIGN_EFFORT: GodChatEffort = "medium";
+
 // Clef 的选项把 Haiku 按思考强度再拆两档：简单问题少想、省等待，稍难的让它多想而不必升到 Opus。Opus、Fable 不拆，
-// 强度取 GOD_CHAT_TIER_INFO 的默认值（成本与等待的取舍写在那里）。
+// 强度取 GOD_CHAT_TIER_INFO 的默认值（成本与等待的取舍写在那里），设计用 DESIGN_EFFORT。
 export const CLEF_CHOICES = {
   "haiku-low": { route: "haiku", effort: "low" },
   "haiku-medium": { route: "haiku", effort: "medium" },
   opus: { route: "opus" },
-  design: { route: "opus", design: true },
+  design: { route: "opus", effort: DESIGN_EFFORT, design: true },
   fable: { route: "fable" },
   refuse: { route: "refuse" },
 } as const satisfies Record<string, { route: GodChatRoute; effort?: GodChatEffort; design?: true }>;

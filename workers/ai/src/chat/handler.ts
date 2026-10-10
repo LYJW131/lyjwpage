@@ -11,12 +11,17 @@ import {
   type GodChatSource,
   type GodChatTrace,
   normalizeTrace,
+  parseQuestions,
 } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatTier } from "@shared/god-chat-tiers";
 
 import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
-import { issuePlan, parseBuildPlan } from "../build/plan";
+import { PLAN_LABELS, planLanguage } from "@shared/build-routine";
+import { issuePlan } from "../build/plan";
+import { checkBuildPlan } from "../build/validation";
+import { MAX_DOC_READS_PER_REPLY } from "../tools/project-docs";
+import { parseRepoFileInput, READ_REPO_FILE_TOOL, readRepoFile, REPO_FILE_LIMITS, repoFileUrl } from "./repo-file";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { billedOutputTokens, usageHops } from "./billing";
@@ -24,13 +29,14 @@ import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { admitDesign, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
-import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
+import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, DESIGN_READ_LIMITS, DESIGN_TOOL_ROUNDS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
+import { CLEF_CHOICES, DESIGN_EFFORT, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
-import { webSearchTool } from "./web-search";
+import { webFetchTool, webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
+const FINAL_ROUND_NOTE = "No tools remain for this reply. Answer the visitor now in text with what you have. If a tool call was rejected, say what went wrong and what you will do next.";
 
 // 每种角色的 system 恒定不变，降级说明另走末尾的 system 消息，不动缓存前缀。
 const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
@@ -58,6 +64,13 @@ function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
 }
 
 const REFUSAL = "The temple gates stay closed for this one. Ask something else.";
+
+const DESIGN_SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map(({ name, description, replyCap, inputSchema }) => ({
+  name,
+  description: replyCap ? `${description}\n${replyCap.replace(`at most ${MAX_DOC_READS_PER_REPLY} `, `at most ${DESIGN_READ_LIMITS.docs} `)}` : description,
+  input_schema: inputSchema,
+  strict: true,
+}));
 
 const SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map(({ name, description, replyCap, inputSchema }) => ({
   name,
@@ -123,7 +136,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
   const forced = devSwitch(env, "CHAT_FORCE_TIER");
-  const decision: RouteDecision = design ? { route: "opus", source: "design" } : isClefChoice(forced)
+  const decision: RouteDecision = design ? { route: "opus", effort: DESIGN_EFFORT, source: "design" } : isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
     : isGodChatTier(forced)
       ? { route: forced, source: "forced" }
@@ -162,8 +175,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       if (design) emit({ type: "design", ...design });
       try {
         const note = tier !== wanted ? downgradeNote(wanted, tier) : undefined;
-        const { complete, trace, planToken } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "opus", tier, effort, note, messages: history, io, emit, signal: abort.signal });
-        if (complete && planToken && !reply.trim()) emit({ type: "text", text: "Here is the plan for your review." });
+        const { complete, trace, planToken, lead } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "opus", tier, effort, note, messages: history, io, emit, signal: abort.signal });
+        if (complete && lead && !reply.trim()) emit({ type: "text", text: lead });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace, planToken), ...(trace && { trace }), ...(planToken && { planToken }) });
@@ -210,7 +223,7 @@ async function converse({
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
-}): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string }> {
+}): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string }> {
   const { model, maxTokens } = GOD_CHAT_TIER_INFO[tier];
   // Haiku 不支持服务端拒答兜底参数，其余两档都开。
   const fallback = tier !== "haiku";
@@ -224,6 +237,9 @@ async function converse({
   const ledger = newLedger();
   const docKeys = new Set<string>();
   let planToken: string | undefined;
+  let asked = false;
+  // 模型只调工具不写正文时补的一句话，跟着计划或题目的语言走。
+  let lead: string | undefined;
   const cards = new Set<GodChatCard>();
   let refused = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
@@ -233,7 +249,7 @@ async function converse({
   // max_tokens 只管单次请求；工具循环每轮都给满会让一条回复花掉几倍上限，所以整条回复合计不超过本档 maxTokens，
   // 剩下的不够 MIN_ROUND_TOKENS 就不再续，每轮按 billedOutputTokens 扣。有意接受的溢出：同一请求里本档写到一半被拒，
   // 兜底模型还能再用满一次 max_tokens；fallbacks: "default" 不能按跳设上限，要设就得自己列出并维护兜底型号链。
-  let outputLeft = maxTokens;
+  let outputLeft = design ? DESIGN_MAX_TOKENS : maxTokens;
   const shownSearches = new Set<string>();
   const showSearch = (id: string, input: unknown) => {
     const query = (input as { query?: unknown } | null)?.query;
@@ -242,8 +258,20 @@ async function converse({
     emit({ type: "search", query });
   };
   let searches = 0;
+  let fetches = 0;
+  let repoReads = 0;
+  const shownFetches = new Set<string>();
+  const showFetch = (id: string, input: unknown) => {
+    const url = (input as { url?: unknown } | null)?.url;
+    if (shownFetches.has(id) || typeof url !== "string" || !/^https?:\/\//.test(url)) return;
+    shownFetches.add(id);
+    emit({ type: "doc", doc: "web", path: url, url });
+  };
+  if (design) ledger.docLimit = DESIGN_READ_LIMITS.docs;
   let wroteText = false;
   let wroteThinking = false;
+  let finalRound = 0;
+  let finalRoundText = false;
 
   for (let round = 0; ; round++) {
     signal.throwIfAborted();
@@ -251,10 +279,14 @@ async function converse({
       emit({ type: "text", text: " …" });
       break;
     }
-    const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
-    const searchesLeft = GOD_CHAT_LIMITS.maxWebSearches - searches;
+    const lastRound = round >= (design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds);
+    if (lastRound && round > 0) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
+    const searchesLeft = (design ? DESIGN_READ_LIMITS.webSearches : GOD_CHAT_LIMITS.maxWebSearches) - searches;
+    const fetchesLeft = DESIGN_READ_LIMITS.webFetches - fetches;
     const tools = lastRound ? [] : design
-      ? [...SITE_TOOL_DEFS.filter((tool) => tool.name === "read_project_doc"), PROPOSE_BUILD_TOOL]
+      ? [...DESIGN_SITE_TOOL_DEFS, READ_REPO_FILE_TOOL, ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL,
+        ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : []),
+        ...(fetchesLeft > 0 ? [webFetchTool(fetchesLeft)] : [])]
       : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
         ...(canStartDesign && designAvailable(env) ? [START_DESIGN_TOOL] : []),
         ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : [])];
@@ -275,23 +307,25 @@ async function converse({
       },
       { signal },
     );
-    const searchInputs = new Map<number, { id: string; json: string }>();
+    const searchInputs = new Map<number, { id: string; name: string; json: string }>();
     let fallbackModel: string | undefined;
     // 每轮请求的文字各自成段：上一轮说完「我查一下」、调完工具再接着说时补一个空行，免得两句粘在一起。
     let roundText = false;
+    finalRound = round;
+    finalRoundText = false;
     let roundThinking = false;
     for await (const event of stream) {
       if (event.type === "message_start" && !ownModel(event.message.model)) fallbackModel = event.message.model;
       else if (event.type === "content_block_start") {
         const block = event.content_block;
         if (block.type === "fallback") fallbackModel = block.to.model;
-        else if (block.type === "server_tool_use" && block.name === "web_search") {
-          searchInputs.set(event.index, { id: block.id, json: "" });
+        else if (block.type === "server_tool_use" && (block.name === "web_search" || block.name === "web_fetch")) {
+          searchInputs.set(event.index, { id: block.id, name: block.name, json: "" });
         }
       } else if (event.type === "content_block_delta") {
         if (event.delta.type === "text_delta") {
           if (!roundText && wroteText) emit({ type: "text", text: "\n\n" });
-          roundText = wroteText = true;
+          roundText = wroteText = finalRoundText = true;
           emit({ type: "text", text: event.delta.text });
         } else if (event.delta.type === "thinking_delta" && event.delta.thinking) {
           if (!roundThinking && wroteThinking) emit({ type: "thinking", text: "\n\n" });
@@ -302,9 +336,9 @@ async function converse({
           searchInputs.get(event.index)!.json += event.delta.partial_json;
         }
       } else if (event.type === "content_block_stop" && searchInputs.has(event.index)) {
-        const { id, json } = searchInputs.get(event.index)!;
+        const { id, name, json } = searchInputs.get(event.index)!;
         try {
-          showSearch(id, JSON.parse(json));
+          (name === "web_fetch" ? showFetch : showSearch)(id, JSON.parse(json));
         } catch {}
       }
     }
@@ -313,8 +347,10 @@ async function converse({
     const billed = billedOutputTokens(final.usage);
     outputLeft -= billed;
     searches += final.usage.server_tool_use?.web_search_requests ?? 0;
+    fetches += final.usage.server_tool_use?.web_fetch_requests ?? 0;
     for (const block of final.content) {
       if (block.type === "server_tool_use" && block.name === "web_search") showSearch(block.id, block.input);
+      if (block.type === "server_tool_use" && block.name === "web_fetch") showFetch(block.id, block.input);
       if (block.type !== "text") continue;
       for (const citation of block.citations ?? []) {
         if (citation.type === "web_search_result_location" && !sources.has(citation.url)) {
@@ -341,7 +377,9 @@ async function converse({
     }
     // 续跑暂停的回合得带着搜索工具才能接上：搜索次数已用完、或下一轮就是不带工具的收尾轮时不再续，答到哪算哪。
     if (final.stop_reason === "pause_turn") {
-      if (round + 1 < GOD_CHAT_LIMITS.maxToolRounds && searches < GOD_CHAT_LIMITS.maxWebSearches) {
+      const roundLimit = design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds;
+      const webLeft = design ? searches < DESIGN_READ_LIMITS.webSearches || fetches < DESIGN_READ_LIMITS.webFetches : searches < GOD_CHAT_LIMITS.maxWebSearches;
+      if (round + 1 < roundLimit && webLeft) {
         messages.push({ role: "assistant", content: final.content });
         continue;
       }
@@ -374,14 +412,36 @@ async function converse({
           const started = await startDesign(env);
           if ("error" in started) return result(started.error, true);
           design = started.session;
+          outputLeft += DESIGN_MAX_TOKENS - maxTokens;
+          ledger.docLimit = DESIGN_READ_LIMITS.docs;
           emit({ type: "design", ...design });
           return result("The design session is active. Clarify material questions and use propose_build when a complete plan is ready. The visitor chooses whether to open an issue or start a build.", false);
         }
+        if (call.name === READ_REPO_FILE_TOOL.name) {
+          const request = parseRepoFileInput(call.input);
+          if (!request) return result("Invalid path. Give a repository-relative file path such as workers/ai/src/chat/handler.ts.", true);
+          if (repoReads >= REPO_FILE_LIMITS.readsPerReply) return result(`Not read, this reply may read at most ${REPO_FILE_LIMITS.readsPerReply} files or ranges.`, true);
+          repoReads += 1;
+          const { ok, text } = await readRepoFile(io.readDoc, request);
+          if (ok) emit({ type: "doc", doc: "repo", path: request.path, url: repoFileUrl(request.path, "blob") });
+          return result(text, !ok);
+        }
+        if (call.name === ASK_VISITOR_TOOL.name) {
+          if (asked) return result("Questions were already shown in this reply.", true);
+          const questions = parseQuestions((call.input as { questions?: unknown } | null)?.questions);
+          if (!questions) return result("Invalid questions. Respect the counts and length limits in the tool description, with distinct option labels.", true);
+          asked = true;
+          lead = PLAN_LABELS[planLanguage({ title: "", spec: questions.map((question) => `${question.question}\n${question.options.map((option) => `${option.label} ${option.description}`).join("\n")}`).join("\n"), acceptance: [] })].askReady;
+          emit({ type: "ask", questions });
+          return result("The questions are shown as clickable choices. End the reply now; the visitor's next message carries the answers.", false);
+        }
         if (call.name === PROPOSE_BUILD_TOOL.name) {
           if (planToken) return result("A plan was already proposed in this reply.", true);
-          const plan = parseBuildPlan(call.input);
-          if (!plan) return result("Invalid plan. Respect the title, specification, acceptance, and path limits; use permitted repository file paths only.", true);
-          const proposal = await issuePlan(env, plan);
+          const checked = checkBuildPlan(call.input);
+          if ("error" in checked) return result(`Plan rejected: ${checked.error} Fix it and call propose_build again.`, true);
+          const proposal = await issuePlan(env, checked.plan).catch((error: unknown) => error instanceof Error ? error : new Error("The plan could not be signed."));
+          if (proposal instanceof Error) return result(`Plan rejected: ${proposal.message}`, true);
+          lead = PLAN_LABELS[planLanguage(checked.plan)].planReady;
           planToken = proposal.token;
           emit({ type: "plan", ...proposal });
           return result("The plan is displayed. The visitor can choose Open issue or Start build; nothing has been submitted.", false);
@@ -410,11 +470,15 @@ async function converse({
         }
         return result(text, isError);
       };
-      results.push(await run());
+      const outcome = await run();
+      console.info("[god-chat] tool", JSON.stringify({ tier, round, name: call.name, error: outcome.is_error, ...(outcome.is_error && { reason: String(outcome.content).slice(0, 200) }) }));
+      results.push(outcome);
     }
-    if (planToken) break;
+    if (planToken || asked) break;
     messages.push({ role: "user", content: results });
   }
+  // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。
+  if (!refused && finalRound > 0 && !finalRoundText && !planToken && !asked) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({
@@ -428,5 +492,5 @@ async function converse({
     plan: Boolean(planToken),
     cards: [...cards],
   });
-  return { complete: !refused, trace, ...(planToken && { planToken }) };
+  return { complete: !refused, trace, lead, ...(planToken && { planToken }) };
 }

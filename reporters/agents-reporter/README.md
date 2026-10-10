@@ -103,6 +103,8 @@ Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的
 ## cursor / antigravity
 
 五个 CLI 装进镜像：用于登录，Claude 与 `agy` 安装包还提供 OAuth 配置。限额运行时直打接口。
+CLI 各占一层、排在源码之前，按 `Dockerfile#CLI_EPOCH` 刷新：CI 默认给 ISO 周，所以只改源码时复用缓存，CLI 最多旧一周；
+要立刻装最新版，手动运行 `build-reporters.yml` 并填 `cli_epoch`。
 
 **cursor。** Linux 上 `agent login` 把 JWT 写到 `/data/.config/cursor/auth.json` 的 `accessToken`（也可
 用 `CURSOR_AUTH_TOKEN` 直接注入）。限额打 `api2.cursor.sh` 的
