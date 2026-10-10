@@ -22,7 +22,7 @@ import type {
 import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from "@shared/coding-buckets";
 import { codingBucketsKey } from "@shared/coding-store";
 import { CODING_BUCKET_MS } from "@shared/coding-usage";
-import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
+import { CODING_USAGE_SOURCE_NAMES, resolveCodingUsageSources, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { cloudAgentActivity, codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 import type { Coverage } from "@shared/pulse-features";
@@ -182,7 +182,42 @@ function coverageEnd(source: CodingUsageSource, store: StoredCodingBuckets, at: 
   return coveringPart(store.coverage, at)?.to ?? null;
 }
 
+function reportedAgentIds(store: StoredCodingBuckets): Set<string> {
+  const ids = new Set(store.agents.map((agent) => agent.id));
+  for (const bucket of store.windows) for (const row of bucket.agents) ids.add(row.id);
+  return ids;
+}
+
+function tokenContributors(stores: TokenBucketSources): Map<string, ReadonlySet<CodingUsageSource>> {
+  const present = new Map<string, CodingUsageSource[]>();
+  for (const source of CODING_USAGE_SOURCE_NAMES) {
+    const store = stores[source];
+    if (!store) continue;
+    for (const id of reportedAgentIds(store)) {
+      const sources = present.get(id) ?? [];
+      sources.push(source);
+      present.set(id, sources);
+    }
+  }
+  return new Map([...present].map(([id, sources]) => [id, new Set(resolveCodingUsageSources(sources).contributing)]));
+}
+
+function sourceCoversTail(
+  source: CodingUsageSource,
+  store: StoredCodingBuckets,
+  contributors: Map<string, ReadonlySet<CodingUsageSource>>,
+  at: number,
+): boolean {
+  const end = source === "agents-otlp" ? store.receivedAt : Math.max(0, ...store.coverage.map((part) => part.to));
+  if (end < at) return false;
+  const ids = reportedAgentIds(store);
+  if (ids.size === 0) return true;
+  for (const id of ids) if (contributors.get(id)?.has(source)) return true;
+  return false;
+}
+
 export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow): PulseTokensLane {
+  const contributors = tokenContributors(stores);
   const sums = new Map<number, { fresh: number; output: number; cacheRead: number; end: number }>();
   for (const source of CODING_USAGE_SOURCE_NAMES) {
     const store = stores[source];
@@ -193,6 +228,7 @@ export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow):
       if (end == null) continue;
       let fresh = 0, output = 0, cacheRead = 0;
       for (const row of bucket.agents) {
+        if (!contributors.get(row.id)?.has(source)) continue;
         fresh += row.inputTokens + row.outputTokens + row.cacheCreationTokens;
         output += row.outputTokens;
         cacheRead += row.cacheReadTokens;
@@ -214,11 +250,10 @@ export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow):
       return [{ ...span(window, from, to), to, perMinute: sum.fresh / ((to - from) / 60_000), fresh: sum.fresh, output: sum.output, cacheRead: sum.cacheRead }];
     });
   const last = rows.at(-1);
+  const tail = window.to - TOKEN_CURRENT_MS;
   const seen = CODING_USAGE_SOURCE_NAMES.some((source) => {
     const store = stores[source];
-    if (!store) return false;
-    const end = source === "agents-otlp" ? store.receivedAt : Math.max(0, ...store.coverage.map((part) => part.to));
-    return end >= window.to - TOKEN_CURRENT_MS;
+    return store ? sourceCoversTail(source, store, contributors, tail) : false;
   });
   return {
     kind: "tokens",

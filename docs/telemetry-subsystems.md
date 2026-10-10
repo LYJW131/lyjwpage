@@ -317,7 +317,7 @@ payload: >-
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
   （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code 的 token 桶）现算。Clef 只给 Coding 打十五分钟强度与模式，
   只在悬停里出现；别的道不再有模型分。
-- Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（不含 cache read），不带模型名和来源；
+- Tokens 道按 `shared/coding-usage-sources.ts#resolveCodingUsageSources` 合并三个来源的 5 分钟 token 桶后画速率（不含 cache read）：同一 agent 有账号级来源就只用它，否则本机与云端相加；不带模型名和来源；
   取桶规则见 `src/lib/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
 - 这些事实由 API 定时任务按归档水位写入 D1 的事实表（迁移 `0007_history_pulse.sql`；周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）。

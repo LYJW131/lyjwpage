@@ -215,7 +215,7 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后自己�
 细灰线，未知只剩虚线轨道。
 
 **只有媒体与游戏标题公开**；应用名、模型名、充电设备名不出这个端点，Coding 只给三色带和
-Clef 的强度、模式。token 只以各来源、各 agent、各模型相加后的五分钟桶出现（Tokens 道），不带模型名和来源：
+Clef 的强度、模式。token 只以按 agent 取舍来源（`shared/coding-usage-sources.ts#resolveCodingUsageSources`）后再跨 agent、跨模型相加的五分钟桶出现（Tokens 道），不带模型名和来源：
 Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那一桶只数了一截），被 24 小时窗口截断的首桶不画，
 末桶截到这一桶里有数的来源里最晚的覆盖终点（云端 OTLP 用最后一封的收到时刻），不足 60 秒不画，只出有用量的桶。
 
