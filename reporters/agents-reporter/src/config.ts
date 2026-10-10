@@ -49,11 +49,10 @@ export const config = {
   },
 
   cadence: {
-    liveIntervalMs: ms("LIVE_INTERVAL_MS", 300_000),
-    openIntervalMs: ms("OPEN_INTERVAL_MS", 600_000),
+    activeIntervalMs: ms("ACTIVE_INTERVAL_MS", 300_000),
     idleIntervalMs: ms("IDLE_INTERVAL_MS", 3_600_000),
-    countUrl: siteUrl ? `${trimSlash(siteUrl)}/count` : "",
-    countTimeoutMs: ms("COUNT_TIMEOUT_MS", 2_500),
+    activityUrl: siteUrl ? `${trimSlash(siteUrl)}/api/status/coding/now` : "",
+    activityTimeoutMs: ms("ACTIVITY_TIMEOUT_MS", 2_500),
   },
   pushTimeoutMs: ms("PUSH_TIMEOUT_MS", 30_000),
 

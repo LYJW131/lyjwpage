@@ -1,6 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { nextDelay } from "./cadence.js";
 import { bucketStart, type CodingActivityReport, type CodingTokenBucketReport } from "./coding-usage.js";
 import { config } from "./config.js";
 import {
@@ -65,15 +64,10 @@ export async function fetchCursorRecent(now = Date.now(), fetchPage?: typeof fet
   return recentReports(rows, from, now);
 }
 
-async function anyoneWatching(): Promise<boolean> {
-  return (await nextDelay()) < config.cadence.idleIntervalMs;
-}
-
 async function track(): Promise<string> {
   let interval = config.cursorNow.fastIntervalMs;
   for (;;) {
     await sleep(interval);
-    if (!(await anyoneWatching())) return "没人开着页面";
     let sawNewEvent = false;
     try {
       const recent = await fetchCursorRecent();

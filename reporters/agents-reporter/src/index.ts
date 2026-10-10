@@ -80,7 +80,7 @@ async function main() {
   info(
     config.dryRun
       ? "DRY_RUN：打印请求体然后退出"
-      : `agents-reporter 启动，三档 ${config.cadence.liveIntervalMs} / ${config.cadence.openIntervalMs} / ${config.cadence.idleIntervalMs}ms`,
+      : `agents-reporter 启动，在用 / 闲置 ${config.cadence.activeIntervalMs} / ${config.cadence.idleIntervalMs}ms`,
   );
   if (!config.dryRun && !config.limitsFixture && config.site.ingestUrl) void runCursorNowLoop();
   let backoff = RETRY_MS;
