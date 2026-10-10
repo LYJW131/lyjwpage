@@ -16,21 +16,40 @@ export function allowedBuildPath(path: string): boolean {
   const segments = path.split("/");
   if (segments.some((part) => !part || part === "." || part === "..")) return false;
   if (segments.some(protectedPathSegment)) return false;
-  return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path);
+  return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path) || markdownDoc(path);
+}
+
+// 文档改了也只是文字，PR 里单列给人审；agent 指令文件已被受保护名挡掉，上报器单独部署不放开。
+export function markdownDoc(path: string): boolean {
+  return /\.md$/i.test(path) && !path.split("/").some((segment) => segment.toLowerCase() === "reporters");
+}
+
+// 拒绝原因原样回给规划者：笼统的「计划无效」会让它不知道改哪里，一条回复的工具轮数就这样耗完。
+export function checkBuildPlan(value: unknown): { plan: BuildPlan } | { error: string } {
+  const limits = BUILD_PLAN_LIMITS;
+  if (!value || typeof value !== "object") return { error: "The plan must be an object with title, spec, acceptance and paths." };
+  const { title, spec, acceptance, paths } = value as Record<string, unknown>;
+  if (typeof title !== "string" || typeof spec !== "string" || !Array.isArray(acceptance) || !Array.isArray(paths)) return { error: "title and spec must be strings; acceptance and paths must be arrays." };
+  const cleanTitle = title.replace(/\s+/g, " ").trim();
+  if (!cleanTitle || cleanTitle.length > limits.titleChars) return { error: `title must be 1 to ${limits.titleChars} characters; it has ${cleanTitle.length}.` };
+  if (!spec.trim() || spec.length > limits.specChars) return { error: `spec must be 1 to ${limits.specChars} characters; it has ${spec.length}. Shorten it.` };
+  if (!acceptance.length || acceptance.length > limits.acceptanceItems) return { error: `Give 1 to ${limits.acceptanceItems} acceptance checks; there are ${acceptance.length}.` };
+  const badCheck = acceptance.findIndex((item) => typeof item !== "string" || !item.trim() || item.length > limits.acceptanceChars);
+  if (badCheck >= 0) return { error: `Acceptance check ${badCheck + 1} must be a non-empty string of at most ${limits.acceptanceChars} characters.` };
+  if (!paths.length || paths.length > limits.paths) return { error: `List 1 to ${limits.paths} paths; there are ${paths.length}.` };
+  const badPath = paths.find((path) => typeof path !== "string" || !allowedBuildPath(path.replace(/\/$/, "/_")));
+  if (badPath !== undefined) return { error: `Path ${JSON.stringify(badPath)} is not allowed. Use repository paths under src/, public/, docs/, shared/ or workers/*/src/ that avoid protected names.` };
+  const text = `${cleanTitle}\n${spec}\n${acceptance.join("\n")}`;
+  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.toml|next\.config\.[\w]+|vercel\.json|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
+  // 句末标点会被一起匹配进最后一段（「…/AGENTS.md.」），比对前去掉，否则加个句号就能绕过。
+  const protectedMention = mentionedPaths.find((path) => path.split("/").map((segment) => segment.replace(/[.,;:]+$/, "")).some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters"));
+  if (protectedMention) return { error: `The title, spec or acceptance names ${JSON.stringify(protectedMention)}, a protected file or directory. Describe the behavior without naming agent instructions, dependency manifests, CI, scripts, deploy config or reporters.` };
+  return { plan: { title: cleanTitle, spec: spec.trim(), acceptance: acceptance.map((item) => (item as string).trim()), paths: [...new Set(paths as string[])] } };
 }
 
 export function parseBuildPlan(value: unknown): BuildPlan | null {
-  if (!value || typeof value !== "object") return null;
-  const { title, spec, acceptance, paths } = value as Record<string, unknown>;
-  if (typeof title !== "string" || typeof spec !== "string" || !Array.isArray(acceptance) || !Array.isArray(paths)) return null;
-  const cleanTitle = title.replace(/\s+/g, " ").trim();
-  if (!cleanTitle || cleanTitle.length > BUILD_PLAN_LIMITS.titleChars || !spec.trim() || spec.length > BUILD_PLAN_LIMITS.specChars) return null;
-  if (!acceptance.length || acceptance.length > BUILD_PLAN_LIMITS.acceptanceItems || acceptance.some((item) => typeof item !== "string" || !item.trim() || item.length > BUILD_PLAN_LIMITS.acceptanceChars)) return null;
-  if (!paths.length || paths.length > BUILD_PLAN_LIMITS.paths || paths.some((path) => typeof path !== "string" || !allowedBuildPath(path.replace(/\/$/, "/_")))) return null;
-  const text = `${cleanTitle}\n${spec}\n${acceptance.join("\n")}`;
-  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.toml|next\.config\.[\w]+|vercel\.json|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
-  if (mentionedPaths.some((path) => path.split("/").some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters"))) return null;
-  return { title: cleanTitle, spec: spec.trim(), acceptance: acceptance.map((item) => (item as string).trim()), paths: [...new Set(paths as string[])] };
+  const checked = checkBuildPlan(value);
+  return "plan" in checked ? checked.plan : null;
 }
 
 function withinBuildPlan(path: string, planPaths: readonly string[]): boolean {
@@ -40,6 +59,10 @@ function withinBuildPlan(path: string, planPaths: readonly string[]): boolean {
     if (planned.endsWith("/")) return path.startsWith(planned);
     return path === planned || testFile && directory === planned.slice(0, planned.lastIndexOf("/"));
   });
+}
+
+export function outsidePlanPaths(upload: Pick<BuildUpload, "files" | "deletions">, planPaths: readonly string[]): string[] {
+  return [...upload.files.map((file) => file.path), ...upload.deletions].filter((path) => !withinBuildPlan(path, planPaths));
 }
 
 export function parseBuildUpload(value: unknown, planPaths: readonly string[]): BuildUpload {
@@ -52,7 +75,6 @@ export function parseBuildUpload(value: unknown, planPaths: readonly string[]): 
   let total = 0;
   const checkPath = (path: unknown): string => {
     if (typeof path !== "string" || !allowedBuildPath(path)) throw new Error("A changed path is outside the allowed scope.");
-    if (!withinBuildPlan(path, planPaths)) throw new Error(`Changed path "${path}" is outside the approved plan paths.`);
     if (paths.has(path)) throw new Error("Duplicate changed path.");
     paths.add(path);
     return path;
@@ -69,5 +91,9 @@ export function parseBuildUpload(value: unknown, planPaths: readonly string[]): 
     return { path: cleanPath, mode, content };
   });
   if (total > BUILD_UPLOAD_LIMITS.totalBytes) throw new Error("Upload exceeds the total size limit.");
-  return { baseSha, message: message.trim(), files: cleanFiles, deletions: deletions.map(checkPath) };
+  const result = { baseSha, message: message.trim(), files: cleanFiles, deletions: deletions.map(checkPath) };
+  const outside = outsidePlanPaths(result, planPaths);
+  const counted = outside.filter((path) => !markdownDoc(path));
+  if (counted.length > BUILD_UPLOAD_LIMITS.outsidePlanFiles) throw new Error(`${counted.length} changed paths are outside the approved plan paths (at most ${BUILD_UPLOAD_LIMITS.outsidePlanFiles}, documentation excluded): ${counted.join(", ")}`);
+  return result;
 }

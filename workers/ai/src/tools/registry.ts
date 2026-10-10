@@ -6,7 +6,7 @@ import { SITE_STATUS_TOOL, type ReadStatus } from "./site-status";
 export type ToolIO = { readStatus: ReadStatus; readDoc: ReadDoc };
 
 // 读取额度的账本：首页对话一条回复共用一本，所有调用累计；MCP 每次调用各开一本新的。
-export type ToolLedger = { views: Set<StatusViewKey>; docs: Set<string> };
+export type ToolLedger = { views: Set<StatusViewKey>; docs: Set<string>; docLimit?: number };
 
 export type ToolOutcome = {
   text: string;

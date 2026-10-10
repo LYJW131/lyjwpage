@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type BuildPlan, type BuildUpload } from "@shared/build-routine";
-import { allowedBuildPath, parseBuildPlan, parseBuildUpload } from "./build/validation.ts";
+import { BUILD_PLAN_LIMITS, BUILD_UPLOAD_LIMITS, type BuildPlan, type BuildUpload } from "@shared/build-routine";
+import { allowedBuildPath, checkBuildPlan, outsidePlanPaths, parseBuildPlan, parseBuildUpload } from "./build/validation.ts";
 
 const plan: BuildPlan = { title: "Improve the card", spec: "Show card details.", acceptance: ["Details fit on mobile."], paths: ["src/components/card.tsx"] };
 const upload: BuildUpload = {
@@ -46,17 +46,19 @@ test("upload permits approved files, deletions, and test files in the same direc
   }
 });
 
-test("upload rejects unrelated files and tests outside the approved file directory", () => {
-  for (const path of ["src/components/other.tsx", "src/card.tsx", "src/card.test.tsx", "src/components/nested/card.test.tsx", "src/components/card.tsx/child.ts", "src/components/card.test.tsx.json", "docs/card.md"]) {
-    for (const change of [{ files: [{ ...upload.files[0], path }], deletions: [] }, { files: [], deletions: [path] }]) {
-      assert.throws(() => parseBuildUpload({ ...upload, ...change }, plan.paths), (error) => {
-        assert.ok(error instanceof Error);
-        assert.equal(error.message, `Changed path "${path}" is outside the approved plan paths.`);
-        return true;
-      });
-    }
+test("upload allows a few files outside the plan, counts them, and rejects more", () => {
+  const outside = ["src/components/other.tsx", "src/card.tsx", "src/card.test.tsx", "src/components/nested/card.test.tsx", "src/components/card.tsx/child.ts", "src/components/card.test.tsx.json", "docs/card.md"];
+  for (const path of outside) {
+    const parsed = parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, plan.paths);
+    assert.deepEqual(outsidePlanPaths(parsed, plan.paths), [path]);
   }
-  assert.throws(() => parseBuildUpload(upload, []), /outside the approved plan paths/);
+  const docs = ["workers/ai/README.md", "README.md", "apps/ios/README.md", "docs/a.md", "src/x.md", "workers/api/NOTES.md"];
+  assert.equal(parseBuildUpload({ ...upload, files: docs.map((path) => ({ ...upload.files[0], path })) }, plan.paths).files.length, docs.length);
+  for (const path of ["AGENTS.md", "workers/ai/AGENTS.md", "CLAUDE.md", ".github/README.md", "reporters/server-reporter/README.md"]) assert.equal(allowedBuildPath(path), false, path);
+  const allowed = outside.slice(0, BUILD_UPLOAD_LIMITS.outsidePlanFiles);
+  assert.equal(parseBuildUpload({ ...upload, files: [], deletions: allowed }, plan.paths).deletions.length, allowed.length);
+  assert.throws(() => parseBuildUpload({ ...upload, files: [], deletions: outside.slice(0, BUILD_UPLOAD_LIMITS.outsidePlanFiles + 1) }, plan.paths), /outside the approved plan paths \(at most/);
+  assert.deepEqual(outsidePlanPaths(parseBuildUpload(upload, plan.paths), plan.paths), []);
 });
 
 test("approved directory plans permit descendants and keep sibling prefixes outside the scope", () => {
@@ -66,9 +68,18 @@ test("approved directory plans permit descendants and keep sibling prefixes outs
     assert.equal(parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, directoryPlan.paths).files[0].path, path);
   }
   for (const path of ["src/components-extra/card.tsx", "src/components.test.ts", "src/other/card.test.ts", "workers/ai/src/tools-extra/lookup.ts"]) {
-    assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, directoryPlan.paths), /outside the approved plan paths/);
+    assert.deepEqual(outsidePlanPaths({ files: [{ ...upload.files[0], path }], deletions: [] }, directoryPlan.paths), [path]);
   }
   const broadPlan = parseBuildPlan({ ...plan, paths: ["src/"] });
   assert.ok(broadPlan);
   assert.equal(parseBuildUpload(upload, broadPlan.paths).files[0].path, plan.paths[0]);
+});
+
+test("plan rejections name the exact problem so the planner can fix it", () => {
+  const reason = (value: unknown) => { const checked = checkBuildPlan(value); return "error" in checked ? checked.error : null; };
+  assert.match(reason({ ...plan, spec: "x".repeat(BUILD_PLAN_LIMITS.specChars + 1) }) ?? "", /spec must be 1 to \d+ characters; it has \d+/);
+  assert.match(reason({ ...plan, spec: "Follow the rules in workers/ai/AGENTS.md." }) ?? "", /names "workers\/ai\/AGENTS\.md\.?", a protected file/);
+  assert.match(reason({ ...plan, paths: ["package.json"] }) ?? "", /Path "package\.json" is not allowed/);
+  assert.match(reason({ ...plan, acceptance: [] }) ?? "", /Give 1 to \d+ acceptance checks; there are 0/);
+  assert.equal(reason(plan), null);
 });

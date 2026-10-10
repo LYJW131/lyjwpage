@@ -3,7 +3,7 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_REPO, BUILD_TIMEOUT_MS, branchForRun, type BuildFireResult, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildFireResult, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { BuildPullRequestRejectedError, createBuildPullRequest, GithubBuildApi, reconcileBuild } from "./build/github.ts";
@@ -34,11 +34,12 @@ function coordinator() {
   } };
   const transactionSync = <T>(fn: () => T): T => { db.exec("BEGIN"); try { const value = fn(); db.exec("COMMIT"); return value; } catch (error) { db.exec("ROLLBACK"); throw error; } };
   const instance = new BuildCoordinator({ storage: { sql, transactionSync } } as unknown as DurableObjectState, {} as Env);
-  const env = { BUILD_COORDINATOR: { getByName: () => instance }, BUILD_SESSION_SECRET: "local-review-fixture", GITHUB_APP_PRIVATE_KEY: privatePem, GITHUB_WEBHOOK_SECRET: "local-webhook-fixture", ROUTINE_FIRE_URL: "https://fixture.invalid/fire", ROUTINE_FIRE_TOKEN: "local-fire-fixture" } as unknown as Env;
+  const env = { BUILD_COORDINATOR: { getByName: () => instance }, BUILD_SESSION_SECRET: "local-review-fixture", GITHUB_APP_PRIVATE_KEY: privatePem, GITHUB_WEBHOOK_SECRET: "local-webhook-fixture", ROUTINE_FIRE_URL: "https://fixture.invalid/fire", ROUTINE_FIRE_TOKEN: "local-fire-fixture", GITHUB_APP_CLIENT_SECRET: "local-oauth-fixture" } as unknown as Env;
   return { db, instance, env };
 }
 
 const sessionUrl = "https://claude.ai/code/session_01Fixture";
+const signIn = { code: "github-code", codeVerifier: "a".repeat(43) };
 
 async function stored(): Promise<StoredRun> {
   const now = Date.now();
@@ -59,6 +60,9 @@ function githubFixture(override: (call: GithubCall) => Response | undefined = ()
     const response = override(call);
     if (response) return response;
     if (url.hostname === "fixture.invalid" && call.path === "/fire") return Response.json({ claude_code_session_url: sessionUrl });
+    if (url.hostname === "github.com" && call.path === "/login/oauth/access_token") return Response.json({ access_token: "oauth-fixture" });
+    if (call.path === "/user") return Response.json({ id: 1, login: "visitor", name: "Visitor" });
+    if (call.method === "DELETE" && call.path.startsWith("/applications/")) return new Response(null, { status: 204 });
     assert.equal(url.hostname, "api.github.com");
     if (call.path.endsWith("/installation")) return Response.json({ id: 1 });
     if (call.path === "/app/installations/1/access_tokens") return Response.json({ token: "installation-fixture" });
@@ -79,7 +83,6 @@ test("build reads main with a read-only installation token before consuming the 
   const { env, instance, db } = coordinator();
   t.after(() => db.close());
   const proposal = await issuePlan(env, plan);
-  const session = await signBuildToken({ kind: "session", account: "visitor", userId: 1, name: "Visitor", expiresAt: Date.now() + 60_000 }, env.BUILD_SESSION_SECRET!);
   const fixture = githubFixture((call) => {
     if (!call.path.endsWith("/git/ref/heads/main")) return;
     assert.equal(call.headers.get("Authorization"), "Bearer installation-fixture");
@@ -87,7 +90,7 @@ test("build reads main with a read-only installation token before consuming the 
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_records WHERE key LIKE 'plan:%'").get()?.n, 0);
     return Response.json({ object: { sha: baseSha } });
   });
-  const response = await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, fixture.fetcher);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher);
   assert.equal(response.status, 202);
   const result = await response.json() as BuildFireResult;
   assert.equal(instance.readRun(result.runId)?.baseSha, baseSha);
@@ -99,13 +102,12 @@ test("main lookup failure leaves the signed plan and build quota available for r
   const { env, db } = coordinator();
   t.after(() => db.close());
   const proposal = await issuePlan(env, plan);
-  const session = await signBuildToken({ kind: "session", account: "visitor", userId: 1, name: null, expiresAt: Date.now() + 60_000 }, env.BUILD_SESSION_SECRET!);
   const fixture = githubFixture((call) => call.path.endsWith("/git/ref/heads/main") ? Response.json({}, { status: 403 }) : undefined);
-  assert.equal((await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, fixture.fetcher)).status, 502);
+  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).status, 502);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_hits WHERE kind = 'fire'").get()?.n, 0);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_records WHERE key LIKE 'plan:%' OR key LIKE 'run:%'").get()?.n, 0);
   assert.equal(fixture.calls.some((call) => call.path === "/fire"), false);
-  assert.equal((await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, githubFixture().fetcher)).status, 202);
+  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, githubFixture().fetcher)).status, 202);
 });
 
 for (const useEgress of [true, false]) {
@@ -134,15 +136,14 @@ for (const useEgress of [true, false]) {
     const abort = new AbortController();
     t.mock.method(AbortSignal, "timeout", () => abort.signal);
     const proposal = await issuePlan(env, plan);
-    const session = await signBuildToken({ kind: "session", account: "visitor", userId: 1, name: "Visitor", expiresAt: Date.now() + 60_000 }, env.BUILD_SESSION_SECRET!);
-    const response = await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, fetcher);
+    const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
     assert.equal(response.status, 202);
     const result = await response.json() as BuildFireResult;
     assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
     assert.equal(instance.readRun(result.runId)?.state.reason, undefined);
     assert.equal(instance.readRun(result.runId)?.sessionUrl, sessionUrl);
     assert.deepEqual(egressRequests.map((request) => request.url), useEgress ? [env.ROUTINE_FIRE_URL] : []);
-    assert.deepEqual(directRequests.map((request) => new URL(request.url).hostname), ["api.github.com", "api.github.com", "api.github.com", ...(useEgress ? [] : ["api.anthropic.com"])]);
+    assert.deepEqual(directRequests.map((request) => new URL(request.url).hostname), ["github.com", "api.github.com", "api.github.com", "api.github.com", "api.github.com", "api.github.com", ...(useEgress ? [] : ["api.anthropic.com"])]);
     assert.ok(github.calls.some((call) => call.path.endsWith("/git/ref/heads/main")));
     const fire = useEgress ? egressRequests[0] : directRequests.at(-1)!;
     assert.equal(fire.url, env.ROUTINE_FIRE_URL);
@@ -212,15 +213,16 @@ test("upload rejection records confirmed PR failure and branch removal for the c
   assert.match(instance.readRun(runId)?.state.reason ?? "", /branch was removed/);
 });
 
-test("uploads outside approved plan paths are blocked with the rejected path and no GitHub request", async (t) => {
+test("uploads with too many paths outside the plan are blocked with the paths and no GitHub request", async (t) => {
   const { instance, env, db } = coordinator();
   t.after(() => db.close());
   instance.reserveRun(await stored(), "scope-plan", Date.now() + 60_000);
   const denied: typeof fetch = async () => assert.fail("Unapproved paths must be rejected before GitHub access");
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: [{ ...upload.files[0], path: "src/lib/unplanned.ts" }] }, uploadToken), env, denied);
+  const unplanned = Array.from({ length: BUILD_UPLOAD_LIMITS.outsidePlanFiles + 1 }, (_, index) => ({ ...upload.files[0], path: `src/lib/unplanned-${index}.ts` }));
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: unplanned }, uploadToken), env, denied);
   assert.equal(response.status, 400);
   assert.equal(instance.readRun(runId)?.state.phase, "blocked");
-  assert.match(instance.readRun(runId)?.state.reason ?? "", /src\/lib\/unplanned\.ts.*outside the approved plan paths/);
+  assert.match(instance.readRun(runId)?.state.reason ?? "", /outside the approved plan paths.*src\/lib\/unplanned-0\.ts/);
 });
 
 for (const phase of ["merged", "closed"] as const) {

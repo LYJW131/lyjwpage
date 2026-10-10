@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, buildIssueBody, planLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url } from "./build/token.ts";
@@ -16,7 +16,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
   return { url: "data:text/javascript,export class DurableObject{constructor(ctx,env){this.ctx=ctx;this.env=env}}", shortCircuit: true };
 } });
-const { handleBuild, handleBuildProgress, handleBuildSession, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
+const { handleBuild, handleBuildProgress, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
 const { BuildCoordinator } = await import("./build/coordinator.ts");
 const plan: BuildPlan = { title: "Improve the page", spec: "Improve the public layout.", acceptance: ["Mobile layout fits."], paths: ["src/card.tsx"] };
 const sha = "a".repeat(40);
@@ -27,6 +27,7 @@ const uploadToken = "f".repeat(64);
 const privateKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const privatePem = privateKeys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
 const json = (value: unknown, status = 200) => Response.json(value, { status });
+const signIn = { code: "github-code", codeVerifier: "a".repeat(43) };
 const upload: BuildUpload = { baseSha: sha, message: "feat: improve the page", files: [{ path: "src/card.tsx", mode: "100644", content: btoa("export default true;") }], deletions: [] };
 
 function coordinator() {
@@ -123,6 +124,19 @@ test("build quotas atomically cap accounts and the site without consuming denied
   assert.equal(instance.reserveRun(await stored("e".repeat(32), "new-user"), "site-overflow", Date.now() + 60_000), "site");
 });
 
+test("a blocked report consumes the upload token and stops the run", async () => {
+  const { env, instance } = coordinator();
+  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "x".repeat(601), blocked: true }, uploadToken), env)).status, 400);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Plan needs shared/collector.ts", blocked: true }, uploadToken), env)).status, 200);
+  const run = instance.readRun(runId)!;
+  assert.equal(run.state.phase, "blocked");
+  assert.equal(run.uploadUsed, true);
+  assert.match(run.state.reason ?? "", /shared\/collector\.ts/);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Still working" }, uploadToken), env)).status, 401);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), env, githubFixture().fetcher)).status, 401);
+});
+
 test("upload claim is atomic, progress cannot consume it and timeout is unknown", async (t) => {
   const { instance } = coordinator();
   const run = await stored();
@@ -168,11 +182,11 @@ test("GitHub JWT supports PKCS8 and GitHub PKCS1 PEM with verifiable RS256 signa
 });
 
 function githubFixture(extra: (path: string, body: Record<string, unknown> | null) => Response | undefined = () => undefined) {
-  const calls: { path: string; body: Record<string, unknown> | null }[] = [];
+  const calls: { path: string; body: Record<string, unknown> | null; auth?: string }[] = [];
   const fetcher: typeof fetch = async (input, init) => {
     const path = String(input).replace("https://api.github.com", "");
     const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null;
-    calls.push({ path, body });
+    calls.push({ path, body, auth: (init?.headers as Record<string, string> | undefined)?.Authorization });
     const override = extra(path, body);
     if (override) return override;
     if (path.endsWith("/installation")) return json({ id: 1 });
@@ -184,6 +198,10 @@ function githubFixture(extra: (path: string, body: Record<string, unknown> | nul
     if (path.endsWith("/git/refs")) return json({ ref: `refs/heads/${branchForRun(runId)}` }, 201);
     if (path.endsWith("/pulls")) return json({ number: 12, html_url: `https://github.com/${BUILD_REPO}/pull/12`, head: { sha: headSha } }, 201);
     if (path.endsWith("/git/ref/heads/main")) return json({ object: { sha } });
+    if (path === "https://github.com/login/oauth/access_token") return json({ access_token: "oauth-fixture" });
+    if (path === "/user") return json({ id: 1, login: "visitor", name: "Visitor" });
+    if (path.startsWith("/applications/") && init?.method === "DELETE") return new Response(null, { status: 204 });
+    if (path.endsWith("/issues/12/comments")) return json({ id: 1 }, 201);
     throw new Error(`Unexpected fixture request: ${path}`);
   };
   return { fetcher, calls };
@@ -198,6 +216,24 @@ test("GitHub publishing retains the base tree and binds parent, branch, ready PR
   assert.match(String(calls.find((call) => call.path.endsWith("/git/commits"))?.body?.message), /Co-authored-by: Visitor <1\+visitor@users.noreply.github.com>/);
   assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.draft, false);
   assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.base, "main");
+  assert.doesNotMatch(String(calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /Review closely/);
+  assert.equal(calls.some((call) => call.path.endsWith("/pulls/12")), false);
+  const extra = githubFixture((path) => path.endsWith("/pulls/12") ? json({ number: 12 }) : undefined);
+  const extraFiles = [{ path: "src/lib/extra.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "shared/collector.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "workers/ai/README.md", mode: "100644" as const, content: btoa("# ai") }];
+  await createBuildPullRequest(new GithubBuildApi("fixture", extra.fetcher), await stored(), { ...upload, files: [...upload.files, ...extraFiles] });
+  assert.match(String(extra.calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /## Review closely\n- `src\/lib\/extra\.ts` — outside the plan\n- `shared\/collector\.ts` — outside the plan, shared contract\n- `workers\/ai\/README\.md` — outside the plan, documentation outside docs\//);
+  const patched = String(extra.calls.find((call) => call.path.endsWith("/pulls/12"))?.body?.body);
+  assert.match(patched, /\[`src\/lib\/extra\.ts`\]\(https:\/\/github\.com\/LYJW131\/lyjwpage\/pull\/12\/files#diff-[0-9a-f]{64}\)/);
+});
+
+test("issue and PR labels follow the plan language", () => {
+  const zh: BuildPlan = { title: "加一张原神卡片", spec: "在首页游戏区新增只读卡片，数据来自 workers/collector/src/jobs/genshin-profile.ts 与 shared/collector.ts。", acceptance: ["手机端 375px 单列显示"], paths: ["src/components/live/genshin-card.tsx"] };
+  const ja: BuildPlan = { ...zh, title: "原神カードを追加する", spec: "ホームのゲーム欄に読み取り専用のカードを追加します。", acceptance: ["スマホでも一列で表示される"] };
+  const en: BuildPlan = { ...plan, spec: "Show the song 星街すいせい GHOST in the card title when it is playing." };
+  assert.deepEqual([planLanguage(zh), planLanguage(ja), planLanguage(plan), planLanguage(en)], ["zh", "ja", "en", "en"]);
+  assert.match(buildIssueBody(zh), /## 验收标准[\s\S]*## 计划路径/);
+  assert.match(buildIssueBody(ja), /## 受け入れ基準/);
+  assert.match(buildIssueBody(plan), /## Acceptance criteria/);
 });
 
 test("base must be an ancestor of main, with comparison in the correct direction", async () => {
@@ -237,6 +273,25 @@ test("valid upload creates and returns a confirmed PR without secret fields", as
   assert.equal("plan" in body, false);
 });
 
+test("an opened PR asks Codex and Cursor to review it with the owner's token, and a failed request keeps the PR", async () => {
+  for (const [token, status] of [[undefined, 201], ["owner-fixture", 201], ["owner-fixture", 500]] as const) {
+    const { env, instance } = coordinator();
+    instance.reserveRun(await stored(), "p", Date.now() + 60_000);
+    const { fetcher, calls } = githubFixture((path) => status === 500 && path.endsWith("/comments") ? json({}, 500) : undefined);
+    const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), { ...env, CODEX_REVIEW_GITHUB_TOKEN: token }, fetcher);
+    assert.equal(response.status, 201);
+    assert.equal((await response.json() as BuildRun).phase, "pr_open");
+    const comments = calls.filter((call) => call.path.endsWith("/comments"));
+    assert.equal(comments.length, token ? 2 : 0);
+    if (!token) continue;
+    for (const comment of comments) {
+      assert.equal(comment.path, `/repos/${BUILD_REPO}/issues/12/comments`);
+      assert.equal(comment.auth, "Bearer owner-fixture");
+    }
+    assert.deepEqual(comments.map((comment) => String(comment.body?.body).split(/\s/)[0]).sort(), ["@codex", "@cursoragent"]);
+  }
+});
+
 test("webhooks verify exact bytes, reject invalid signatures and deduplicate deliveries", async () => {
   const { env, instance } = coordinator();
   const run = await stored();
@@ -259,43 +314,41 @@ test("webhooks verify exact bytes, reject invalid signatures and deduplicate del
   assert.equal(instance.readRun(runId)?.state.pr?.number, 12);
 });
 
-test("GitHub session is PKCE-bound, accepts any account and revokes OAuth token", async () => {
-  const { env } = coordinator();
-  const calls: { url: string; body: Record<string, unknown> | null }[] = [];
-  const fetcher: typeof fetch = async (input, init) => {
-    const url = String(input); const body = init?.body ? JSON.parse(String(init.body)) : null;
-    calls.push({ url, body });
-    if (url.includes("access_token")) return json({ access_token: "oauth-fixture" });
-    if (url.endsWith("/user")) return json({ id: 432, login: "any-visitor", name: "Any Visitor" });
-    return new Response(null, { status: 204 });
-  };
-  const response = await handleBuildSession(post("/api/build/session", { code: "github-code", codeVerifier: "a".repeat(43) }), env, fetcher);
-  assert.equal(response.status, 200);
-  const body = await response.json() as { session: string; login: string };
-  assert.equal(body.login, "any-visitor");
-  assert.equal(calls[0].body?.code_verifier, "a".repeat(43));
-  assert.equal(calls.at(-1)?.body?.access_token, "oauth-fixture");
-  assert.equal(JSON.stringify(body).includes("oauth-fixture"), false);
+test("every build signs in with PKCE, accepts any account, uses the identity once and revokes the OAuth token", async () => {
+  const { env, instance } = coordinator();
+  const proposal = await issuePlan(env, plan);
+  const { fetcher, calls } = githubFixture((path) => path === "/user" ? json({ id: 432, login: "any-visitor", name: "Any Visitor" }) : undefined);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
+  assert.equal(response.status, 202);
+  const { runId: started } = await response.json() as { runId: string };
+  assert.equal(calls.find((call) => call.path.includes("access_token") && call.path.startsWith("https://github.com"))?.body?.code_verifier, signIn.codeVerifier);
+  assert.equal(calls.find((call) => call.path.startsWith("/applications/"))?.body?.access_token, "oauth-fixture");
+  assert.equal(instance.readRun(started)?.account, "any-visitor");
+  assert.equal(instance.readRun(started)?.coauthor, "Any Visitor <432+any-visitor@users.noreply.github.com>");
+  assert.equal((await handleBuild(post("/api/build", { planToken: proposal.token, session: "old-session-ticket" }), env, fetcher)).status, 400);
+  const denied = githubFixture((path) => path.includes("login/oauth") ? json({ error: "bad_verification_code" }) : undefined);
+  const fresh = await issuePlan(env, plan);
+  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: fresh.token }), env, denied.fetcher)).status, 401);
+  assert.equal(denied.calls.some((call) => call.path === "/fire" || call.path.endsWith("/git/ref/heads/main")), false);
 });
 
 test("dispatch includes the upload capability only in routine input and accepts late upload after uncertain dispatch", async () => {
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);
-  const session = await signBuildToken({ kind: "session", account: "visitor", userId: 1, name: "Visitor", expiresAt: Date.now() + 60_000 }, env.BUILD_SESSION_SECRET!);
   let fireText: Record<string, unknown> | undefined;
   const fixture = githubFixture();
   const fetcher: typeof fetch = async (input, init) => {
     if (String(input) === env.ROUTINE_FIRE_URL) { fireText = JSON.parse(JSON.parse(String(init?.body)).text); throw new Error("Network response was lost"); }
     return fixture.fetcher(input, init);
   };
-  const response = await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, fetcher);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
   assert.equal(response.status, 202);
   const result = await response.json() as { runId: string; statusToken: string };
   assert.equal(fireText?.baseSha, sha);
   assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
   assert.equal("uploadToken" in result, false);
   assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${result.runId}`, { message: "Working" }, fireText?.uploadToken as string), env)).status, 200);
-  assert.equal((await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, fetcher)).status, 409);
+  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher)).status, 409);
   const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env);
   assert.equal(status.status, 200);
   assert.equal((await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}&token=${result.statusToken}`), env)).status, 401);
@@ -378,9 +431,8 @@ test("a replayed build never reaches GitHub and account renames do not reset quo
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);
   await consumePlan(env, proposal.token);
-  const session = await signBuildToken({ kind: "session", account: "visitor", userId: 1, name: null, expiresAt: Date.now() + 60_000 }, env.BUILD_SESSION_SECRET!);
   const denied: typeof fetch = async () => assert.fail("Replay must be rejected before network access");
-  assert.equal((await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, denied)).status, 409);
+  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, denied)).status, 409);
   for (let n = 0; n < 3; n += 1) {
     const run = await stored(n.toString().padStart(32, "0"), `renamed-${n}`);
     run.accountId = 1;

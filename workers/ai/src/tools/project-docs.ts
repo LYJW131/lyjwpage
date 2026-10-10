@@ -6,7 +6,7 @@ export type ReadDoc = (url: string) => Promise<Response>;
 
 const HUB_REPO = "https://github.com/LYJW131/MacTelemetryHub";
 
-// 白名单只收讲设计的现状文档；文档在运行时从公开仓库的 main 读，改文档不用重发 Worker，新增条目才要改这里。
+// 白名单只收讲设计的现状文档和各 Worker 的成对修改规则（构建规划要据此列全路径）；文档在运行时从公开仓库的 main 读，改文档不用重发 Worker，新增条目才要改这里。
 const PROJECT_DOCS = {
   overview: { path: "README.en.md", note: "Project overview (English): every card, architecture, key design choices, tech stack, where to start reading the source" },
   conventions: { path: "AGENTS.md", note: "Engineering rules: API naming and cross-client contracts, deploy flow, docs and comment conventions" },
@@ -14,6 +14,10 @@ const PROJECT_DOCS = {
   storage: { path: "docs/state-storage.md", note: "Worker data backend: Durable Object / KV / D1 storage, public data boundary, first-paint cache and invalidation" },
   workersDeploy: { path: "docs/workers-builds.md", note: "How the Workers deploy through Cloudflare Workers Builds, watch paths, branch previews" },
   facts: { path: "docs/explainer/FACTS.md", note: "Fact sheet behind the site's explainer animation: each endpoint and number with its source" },
+  apiRules: { path: "workers/api/AGENTS.md", note: "API Worker invariants and the files that must change together (section 须成对修改)" },
+  aiRules: { path: "workers/ai/AGENTS.md", note: "AI Worker invariants and the files that must change together (section 迁移与成对修改)" },
+  collectorRules: { path: "workers/collector/AGENTS.md", note: "Collector Worker invariants and the files that must change together (section 须成对修改)" },
+  ingressRules: { path: "workers/ingress/AGENTS.md", note: "Ingest Worker invariants and what a new report source must change together (section 新增来源要一起做)" },
   apiWorker: { path: "workers/api/README.md", note: "API Worker (state core): endpoints, StateHub, WebSocket push, cron and public status reads" },
   aiWorker: { path: "workers/ai/README.md", note: "AI Worker: the Talk to God chat, model routing, quotas, site tools and public MCP" },
   visitorBuild: { path: "docs/build-routine.md", note: "Visitor collaboration: design sessions, signed plans, allowed paths, routine uploads, build status and security boundaries" },
@@ -34,7 +38,7 @@ const DOC_KEYS = Object.keys(PROJECT_DOCS) as ProjectDocKey[];
 // 文档进上下文就是输入 token 花费，且多为中文：一次读取最多 MAX_DOC_CHARS，一条回复合计最多读 MAX_DOC_READS_PER_REPLY 次，
 // 长文档先给目录再按章节读，不整篇塞进去。
 const MAX_DOC_CHARS = 8_000;
-const MAX_DOC_READS_PER_REPLY = 4;
+export const MAX_DOC_READS_PER_REPLY = 4;
 const MAX_SECTION_CHARS = 120;
 // 与 raw.githubusercontent.com 返回的 max-age 对齐：访客连问不重复回源，main 上的改动几分钟内可见。
 const DOC_CACHE_SECONDS = 300;
@@ -71,11 +75,11 @@ export function parseProjectDocInput(input: unknown): ProjectDocRequest | null {
 const normalize = (text: string) => text.replace(/[`*_]/g, "").trim().toLowerCase();
 
 // 同步调用：同一轮并行的几次调用按顺序先占好额度再并行去读，与 site-status.ts#claimViews 同理。
-export function claimDoc(request: ProjectDocRequest, read: Set<string>): { read: boolean; note?: string } {
+export function claimDoc(request: ProjectDocRequest, read: Set<string>, limit = MAX_DOC_READS_PER_REPLY): { read: boolean; note?: string } {
   const key = `${request.doc}#${normalize(request.section ?? "")}`;
   if (read.has(key)) return { read: false, note: "Already read earlier in this reply, reuse that result." };
-  if (read.size >= MAX_DOC_READS_PER_REPLY) {
-    return { read: false, note: `Not read, this reply may read at most ${MAX_DOC_READS_PER_REPLY} docs or sections.` };
+  if (read.size >= limit) {
+    return { read: false, note: `Not read, this reply may read at most ${limit} docs or sections.` };
   }
   read.add(key);
   return { read: true };
@@ -159,7 +163,7 @@ export const PROJECT_DOC_TOOL: SiteTool = {
   async run(input, { readDoc }, ledger) {
     const request = parseProjectDocInput(input);
     if (!request) return { text: "Unknown doc; the valid docs are listed in the tool description.", isError: true };
-    const claim = claimDoc(request, ledger.docs);
+    const claim = claimDoc(request, ledger.docs, ledger.docLimit);
     if (!claim.read) return { text: claim.note ?? "Not read.", isError: true };
     const { ok, text, heading } = await readProjectDoc(readDoc, request);
     return { text, isError: !ok, ...(ok && { doc: { key: request.doc, ...(heading && { heading }) } }) };

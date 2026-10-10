@@ -1,4 +1,4 @@
-import { BUILD_TOKEN_MAX_CHARS, buildIssueBody } from "@shared/build-routine";
+import { BUILD_TOKEN_MAX_CHARS, buildIssueBody, PLAN_LABELS, planLanguage } from "@shared/build-routine";
 import { GITHUB_ISSUE_REPO, parseGithubIssueRequest, type GithubIssueResult } from "@shared/github-issue";
 
 import { exchangeCode, revoke } from "./build/github-oauth";
@@ -7,7 +7,6 @@ import { readJsonBody } from "./chat/guard";
 import type { Env } from "./runtime";
 
 const MAX_BODY_BYTES = BUILD_TOKEN_MAX_CHARS + 4096;
-const FOOTER = "\n\n---\n_Filed from the [homepage chat](https://lyjw.me)._";
 const GITHUB_API = "https://api.github.com";
 
 function fail(status: number, error: string): Response {
@@ -39,7 +38,7 @@ export async function handleGithubIssue(request: Request, env: Env, ip: string):
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ title: plan.title, body: `${buildIssueBody(plan)}${FOOTER}` }),
+      body: JSON.stringify({ title: plan.title, body: `${buildIssueBody(plan)}\n\n---\n${PLAN_LABELS[planLanguage(plan)].issueFooter}` }),
       signal: AbortSignal.timeout(15_000),
     });
     const data = (await res.json().catch(() => null)) as { html_url?: unknown; number?: unknown } | null;

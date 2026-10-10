@@ -13,6 +13,8 @@ import type { BuildCoordinator } from "./build/coordinator.ts";
 import { signBuildToken } from "./build/token.ts";
 import { readPlan } from "./build/plan.ts";
 import { sealedHistory } from "./chat/seal.ts";
+import { DESIGN_EFFORT } from "./chat/router.ts";
+import { DESIGN_MAX_TOKENS, DESIGN_TOOL_ROUNDS } from "./chat/design.ts";
 
 // Node 不提供 cloudflare:workers；这里只替换基类，SDK 与流式序列化使用真实实现。
 registerHooks({
@@ -207,7 +209,7 @@ function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role:
 const toolIO = { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
 
-test("改站请求由 Opus 判断，start_design 签会话，规划者只读文档与提计划，计划进历史签章", async (t) => {
+test("改站请求由 Opus 判断，start_design 签会话，规划者可读数据、文档、源码与外部文档并提计划，计划进历史签章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
@@ -228,9 +230,13 @@ test("改站请求由 Opus 判断，start_design 签会话，规划者只读文�
   assert.ok(seal?.type === "seal");
   assert.equal(seal.planToken, proposed.token);
   assert.equal(seal.trace?.plan, true);
+  assert.equal(seal.trace?.effort, DESIGN_EFFORT);
+  for (const body of requests) assert.deepEqual(body.messages.filter((m) => m.role === "system").map((m) => m.output_config?.effort), [DESIGN_EFFORT]);
+  assert.equal(requests[0].max_tokens, GOD_CHAT_TIER_INFO.opus.maxTokens);
+  assert.ok(requests[1].max_tokens > GOD_CHAT_TIER_INFO.opus.maxTokens);
   assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1 });
   assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.opus.model, GOD_CHAT_TIER_INFO.opus.model]);
-  assert.deepEqual(requests[1].tools?.map((tool) => "name" in tool && tool.name), ["read_project_doc", "propose_build"]);
+  assert.deepEqual(requests[1].tools?.map((tool) => "name" in tool && tool.name), ["get_site_status", "read_project_doc", "read_repo_file", "ask_visitor", "propose_build", "web_search", "web_fetch"]);
   const reply = events.flatMap((event) => event.type === "text" ? [event.text] : []).join("");
   const history: GodChatMessage[] = [
     { role: "user", content: "Please improve the music card." },
@@ -255,6 +261,26 @@ test("Opus 可以不开设计会话；模型未获授工具不能偷开会话或
   }
 });
 
+test("规划者用 ask_visitor 提问：发出 ask 事件并结束这条回复，不合规的题目报错让模型重试", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const questions = [{ header: "内容", question: "卡片显示多少内容？", multiSelect: false, options: [{ label: "只显示概况", description: "最简单" }, { label: "概况加展柜", description: "要维护对照表" }] }];
+  const bad = [{ ...questions[0], options: [questions[0].options[0]] }];
+  const { env, requests, sessions } = designEnv((body, index) => modelStream(body.model, index === 0
+    ? { name: "ask_visitor", input: { questions: bad } }
+    : index === 1 ? { name: "ask_visitor", input: { questions } } : false));
+  const id = crypto.randomUUID();
+  sessions.set(id, 1);
+  const token = await signBuildToken({ kind: "design", id, expiresAt: Date.now() + BUILD_DESIGN_LIMITS.ttlMs }, env.BUILD_SESSION_SECRET!);
+  const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
+  assert.ok(requests[0].tools?.some((tool) => "name" in tool && tool.name === "ask_visitor"));
+  assert.equal(requests.length, 2);
+  assert.deepEqual(events.filter((event) => event.type === "ask"), [{ type: "ask", questions }]);
+  assert.ok(events.some((event) => event.type === "text" && event.text === "请在下面选一下。"));
+  assert.ok(events.some((event) => event.type === "seal"));
+});
+
 test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属额度，伪造、过期、耗尽不调模型", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
@@ -269,6 +295,8 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
   assert.ok(events.some((event) => event.type === "design" && event.remaining === BUILD_DESIGN_LIMITS.maxTurns - 2));
   assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1 });
   assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].messages.filter((m) => m.role === "system").map((m) => m.output_config?.effort), [DESIGN_EFFORT]);
+  assert.equal(requests[0].max_tokens, DESIGN_MAX_TOKENS);
   for (const invalid of [`${token.slice(0, -2)}xx`, await signBuildToken({ kind: "design", id, expiresAt: Date.now() - 1 }, env.BUILD_SESSION_SECRET!), await signBuildToken({ kind: "plan", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!)]) {
     const rejected = await handleChat(chatRequest(invalid), env, toolIO);
     assert.equal(rejected.status, 400);
@@ -313,7 +341,9 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   sessions.set(id, 1);
   const token = await signBuildToken({ kind: "design", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!);
   const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, DESIGN_TOOL_ROUNDS + 1);
   assert.deepEqual(requests.at(-1)?.tools, []);
+  assert.ok(requests.at(-1)?.messages.some((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("No tools remain")));
   assert.ok(!events.some((event) => event.type === "plan"));
+  assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
 });

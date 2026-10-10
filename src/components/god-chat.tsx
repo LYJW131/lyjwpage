@@ -7,6 +7,7 @@ import { ArrowUp, History, Plus, Square, Trash2 } from "lucide-react";
 import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
+import { AskCard } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
@@ -67,11 +68,12 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
+// 站主要求示例用中文，是「界面文案英文」的例外；四条依次展示实时状态卡片、项目文档、联网搜索、改站规划与构建。
 const SUGGESTIONS = [
-  "What's LYJW listening to?",
-  "How does this site get its live data?",
-  "What's new in AI this week?",
-  "Help me improve this site",
+  "LYJW 正在听什么歌？",
+  "这个网站的实时数据是怎么来的？",
+  "帮我搜一下这周 AI 圈的新闻",
+  "我想给这个网站加个小功能",
 ];
 
 export function GodChat({ className }: { className?: string }) {
@@ -267,6 +269,8 @@ function Conversation({ className, archive, session: conversation }: { className
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
           } else if (event.type === "design" && conversation) {
             chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) }, { persist: false });
+          } else if (event.type === "ask") {
+            meta = { ...meta, asks: event.questions };
           } else if (event.type === "plan") {
             meta = { ...meta, proposals: [...(meta.proposals ?? []), { plan: event.plan, token: event.token, expiresAt: event.expiresAt }] };
           }
@@ -277,7 +281,7 @@ function Conversation({ className, archive, session: conversation }: { className
       if (!controller.signal.aborted) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
     } finally {
       if (sessionRef.current === session) {
-        const kept = reply || meta.cards?.length || meta.proposals?.length;
+        const kept = reply || meta.cards?.length || meta.proposals?.length || meta.asks?.length;
         setMessages(replyMessages(kept ? bubble() : undefined));
         if (!kept) setDraft((current) => current || content);
       }
@@ -409,7 +413,7 @@ function Conversation({ className, archive, session: conversation }: { className
       <div ref={anchorRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <FableDescent descent={descent} />
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs text-muted-foreground">
-        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{archive.sessions.length > 0 ? ` (${archive.sessions.length})` : ""}</span></button>
+        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedSessions(archive).length > 0 ? ` (${savedSessions(archive).length})` : ""}</span></button>
         <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
       </div>
       {historyOpen && <SessionList archive={archive} />}
@@ -457,14 +461,10 @@ function Conversation({ className, archive, session: conversation }: { className
               <div key={index} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
                 <div
                   className={cn(
-                    "min-w-0 rounded-lg px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]",
-                    message.role === "user" ? "max-w-[85%]" : "max-w-full sm:max-w-[85%]",
-                    (message.cards?.length || message.proposals?.length) && "w-full",
+                    "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
                     message.role === "user"
-                      ? "whitespace-pre-wrap bg-foreground text-background"
-                      : message.tier === "fable"
-                        ? "border border-[#f5c542] bg-muted text-foreground shadow-[0_0_24px_-8px_rgba(245,197,66,0.8)]"
-                        : "border border-line bg-muted text-foreground",
+                      ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
+                      : "w-full text-foreground",
                   )}
                 >
                   {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
@@ -484,20 +484,7 @@ function Conversation({ className, archive, session: conversation }: { className
                       Looked at {message.lookups.join(", ")}
                     </div>
                   ) : null}
-                  {message.docs?.map((read, i) => (
-                    <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
-                      Read{" "}
-                      <a
-                        href={read.url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="underline underline-offset-2 hover:text-foreground"
-                      >
-                        {read.path}
-                      </a>
-                      {read.section && <> › {read.section}</>}
-                    </div>
-                  ))}
+                  {message.docs?.length ? <DocReads docs={message.docs} /> : null}
                   {message.searches?.map((query, i) => (
                     <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
                       Searched “{query}”
@@ -508,6 +495,7 @@ function Conversation({ className, archive, session: conversation }: { className
                   ) : (
                     message.content
                   )}
+                  {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={submit} /> : null}
                   {message.proposals?.map((proposal, proposalIndex) => (
                     <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
                       if (!conversation) return;
@@ -650,7 +638,37 @@ function Conversation({ className, archive, session: conversation }: { className
   );
 }
 
+// 存储层总留一条空会话给输入框当草稿；只有带消息的会话才算存档，列表与计数都不含草稿。
+function savedSessions(archive: ChatArchive): ChatSession[] {
+  return archive.sessions.filter((session) => session.messages.length > 0);
+}
+
+function DocRead({ read, prefix }: { read: NonNullable<ChatBubble["docs"]>[number]; prefix: boolean }) {
+  return (
+    <div className="label-mono text-[10px] text-muted-foreground">
+      {prefix && "Read "}
+      <a href={read.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2 hover:text-foreground">
+        {read.path}
+      </a>
+      {read.section && <> › {read.section}</>}
+    </div>
+  );
+}
+
+function DocReads({ docs }: { docs: NonNullable<ChatBubble["docs"]> }) {
+  if (docs.length === 1) return <div className="mb-1.5"><DocRead read={docs[0]} prefix /></div>;
+  return (
+    <details className="mb-1.5">
+      <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">Read {docs.length} docs</summary>
+      <div className="mt-1 space-y-1 pl-3">
+        {docs.map((read, i) => <DocRead key={i} read={read} prefix={false} />)}
+      </div>
+    </details>
+  );
+}
+
 function SessionList({ archive }: { archive: ChatArchive }) {
+  const sessions = savedSessions(archive);
   function remove(id: string) {
     chatArchive.remove(id);
     if (!chatArchive.getSnapshot().sessions.length) chatArchive.start();
@@ -658,11 +676,11 @@ function SessionList({ archive }: { archive: ChatArchive }) {
   return (
     <div data-sentry-block className="border-b border-line bg-muted px-3 py-2">
       <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span>Saved in this browser</span>
-        <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-red-500">Clear all conversations</button>
+        <span>{sessions.length ? "Saved in this browser" : "No saved conversations yet"}</span>
+        {sessions.length > 0 && <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-red-500">Clear all conversations</button>}
       </div>
-      <ul className="scrollbar-none max-h-36 snap-y snap-mandatory overflow-y-auto [&::-webkit-scrollbar]:hidden">
-        {archive.sessions.map((session) => (
+      {sessions.length > 0 && <ul className="scrollbar-none max-h-36 snap-y snap-mandatory overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        {sessions.map((session) => (
           <li key={session.id} className="flex h-11 snap-start items-center gap-2">
             <button type="button" aria-current={session.id === archive.activeId ? "true" : undefined} onClick={() => chatArchive.select(session.id)} className={cn("flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs", session.id === archive.activeId ? "bg-surface text-foreground" : "text-muted-foreground hover:bg-surface-hover")}>
               <span className="truncate">{session.title}</span>
@@ -671,7 +689,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
             <button type="button" aria-label={`Delete conversation: ${session.title}`} onClick={() => remove(session.id)} className="p-2 text-muted-foreground hover:text-red-500"><Trash2 className="size-3.5" /></button>
           </li>
         ))}
-      </ul>
+      </ul>}
     </div>
   );
 }
