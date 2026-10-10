@@ -6,6 +6,7 @@ import { useId, type ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { activityDayCount, activityDistanceKm } from "@/lib/activity-display";
 import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { ACTIVITY_PATH } from "@/lib/paths";
 import type { ActivityPayload, StatusResponse } from "@/lib/types";
@@ -227,25 +228,19 @@ export function ActivityCard({
 
   const rings = ringValues(data, current);
 
-  const extras: Extra[] = !data
-    ? [
-        { label: "Steps", value: null },
-        { label: "Distance", value: null },
-        { label: "Flights", value: null },
-      ]
-    : [
-        { label: "Steps", value: <NumberFlow value={!current ? 0 : (data.steps ?? 0)} /> },
-        {
-          label: "Distance",
-          value: `${((!current ? 0 : (data.distanceMeters ?? 0)) / 1000).toFixed(2)} km`,
-        },
-        { label: "Flights", value: <NumberFlow value={!current ? 0 : (data.flightsClimbed ?? 0)} /> },
-      ];
+  const steps = data ? activityDayCount(current, data.steps) : null;
+  const distance = data ? activityDistanceKm(current, data.distanceMeters) : null;
+  const flights = data ? activityDayCount(current, data.flightsClimbed) : null;
+  const extras: Extra[] = [
+    { label: "Steps", value: steps == null ? null : <NumberFlow value={steps} locales="en-US" /> },
+    { label: "Distance", value: distance },
+    { label: "Flights", value: flights == null ? null : <NumberFlow value={flights} locales="en-US" /> },
+  ];
 
   return (
     <Card label="Activity" action={stale ? "Unavailable" : "Apple Watch"} className={cn("h-full", className)}>
       <div className="grid min-w-0 md:grid-cols-2">
-      <div className="grid min-h-44 md:h-[207px] lg:h-[215px] grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 lg:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5">
+      <div className="grid min-h-44 grid-cols-[auto_minmax(0,1fr)] items-center justify-items-center gap-3 p-4 md:min-h-[207px] lg:h-[215px] lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] lg:gap-4 lg:p-5">
         <Rings rings={rings} className="size-32 shrink-0 md:size-36 lg:size-40" />
 
         <div className="min-w-0">
@@ -261,7 +256,7 @@ export function ActivityCard({
                 </div>
                 <div className="truncate font-mono text-lg tabular-nums">
                   {data ? (
-                    <NumberFlow value={Math.round(ring.value)} />
+                    <NumberFlow value={Math.round(ring.value)} locales="en-US" />
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
@@ -274,7 +269,8 @@ export function ActivityCard({
           </div>
         </div>
 
-        <div className="hidden min-w-0 gap-1.5 lg:grid">
+        {/* 窄屏把步数放在圆环下；lg 起回到第三列，才能和右侧训练列表共用固定行高。 */}
+        <div className="col-span-2 grid w-full min-w-0 grid-cols-3 justify-self-stretch gap-3 lg:col-span-1 lg:col-start-3 lg:row-start-1 lg:grid-cols-1 lg:gap-1.5">
           {extras.map((item) => (
             <div key={item.label} className="min-w-0">
               <div className="label-mono text-muted-foreground">{item.label}</div>

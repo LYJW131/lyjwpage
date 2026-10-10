@@ -78,7 +78,7 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
     };
   }, [items.length]);
   return (
-    <section id="workouts" aria-label="Recent workouts" className="@container flex min-w-0 flex-col justify-center border-t border-line md:border-t-0 md:border-l">
+    <section id="workouts" aria-label="Recent workouts" className="@container flex h-full min-w-0 flex-col justify-center border-t border-line md:border-t-0 md:border-l">
       {!data ? (
         <p className="p-4 text-sm text-muted-foreground">{error ? "Workout history unavailable" : "Awaiting workout report"}</p>
       ) : data.items.length === 0 ? (

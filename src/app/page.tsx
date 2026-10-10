@@ -58,7 +58,7 @@ import { STATUS_VIEWS } from "@/lib/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
 
 const SLOT = {
-  activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]",
+  activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_460px] md:[contain-intrinsic-size:auto_253px]",
   server: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_245px]",
   agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
   vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1372px]",
