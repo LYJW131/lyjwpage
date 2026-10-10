@@ -19,6 +19,7 @@ const fail = (status: number, error: string) => Response.json({ error }, { statu
 const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const bearer = (request: Request) => /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(request.headers.get("Authorization") ?? "")?.[1] ?? null;
 const validRunId = (id: string | null): id is string => !!id && /^[a-f0-9]{32}$/.test(id);
+const BUILD_BLOCK_REASON_CHARS = 600;
 const validSessionUrl = (url: string) => /^https:\/\/claude\.ai\/code\/[\w-]{1,200}$/.test(url);
 
 export async function handleBuildSession(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
@@ -156,9 +157,14 @@ export async function handleBuildProgress(request: Request, env: Env): Promise<R
   const runId = new URL(request.url).searchParams.get("runId");
   const token = bearer(request);
   if (!validRunId(runId) || !token) return fail(401, "Invalid progress authorization.");
-  const data = object(await readJsonBody(request, 1024));
-  if (!data || typeof data.message !== "string" || !data.message.trim() || data.message.length > 200) return fail(400, "Invalid progress message.");
-  const accepted = await env.BUILD_COORDINATOR.getByName("global").progress(runId, await hashToken(token), data.message.trim());
+  const data = object(await readJsonBody(request, 2048));
+  const blocked = data?.blocked === true;
+  if (!data || typeof data.message !== "string" || !data.message.trim() || data.message.length > (blocked ? BUILD_BLOCK_REASON_CHARS : 200)) return fail(400, "Invalid progress message.");
+  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const hash = await hashToken(token);
+  const accepted = blocked
+    ? await coordinator.blockRun(runId, hash, `The builder stopped without uploading: ${data.message.trim()}`)
+    : await coordinator.progress(runId, hash, data.message.trim());
   return accepted ? Response.json({ accepted: true }, { headers: noStore }) : fail(401, "Progress authorization was used or expired.");
 }
 

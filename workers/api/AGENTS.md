@@ -28,7 +28,7 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 
 - 浏览器与 Worker 共用 `shared/live-heartbeat.ts#LIVE_HEARTBEAT_MS`；可见连接失活窗口从这个间隔推导。
 - 改 Coding 评估的判据要升 `shared/pulse-assessment.ts#PULSE_ASSESSMENT_VERSION`（升版本会让最近 24 小时全部重评），先用 `scripts/clef-probe.mts` 试。
-- 状态端点新增或改形：登记表 `src/lib/status-views.ts`、loader 表 `src/lib/status-loaders.ts`、站点读取侧 `src/lib/status-reads.ts`、首屏 `src/lib/first-screen.ts` 一起看，推送事件和端点含义保持一致。
+- 状态端点新增或改形：登记表 `src/lib/status-views.ts`、loader 表 `src/lib/status-loaders.ts`、站点读取侧 `src/lib/status-reads.ts`、首屏 `src/lib/first-screen.ts` 一起看，推送事件和端点含义保持一致；新增视图还要在 `workers/ai/src/tools/site-status.ts#VIEW_NOTES` 写一行说明，否则 ai 的类型检查失败。
 
 ## 本地开发与验证
 

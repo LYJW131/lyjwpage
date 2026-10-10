@@ -123,6 +123,18 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
+  // 计划路径不够、只能靠断言或放宽测试才能完成时，routine 用它停下：同样占用上传令牌，停下后不能再上传。
+  blockRun(runId: string, hash: string, reason: string): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.uploadUsed || run.uploadHash !== hash || run.uploadExpiresAt <= Date.now() || !["triggered", "running"].includes(run.state.phase)) return false;
+      run.uploadUsed = true;
+      run.state = { ...run.state, phase: "blocked", reason, progress: undefined, updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return true;
+    });
+  }
+
   updateRun(runId: string, patch: Partial<BuildRun>, expectedHeadSha?: string): BuildRun | null {
     return this.ctx.storage.transactionSync(() => {
       const run = this.readRun(runId);

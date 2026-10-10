@@ -123,6 +123,19 @@ test("build quotas atomically cap accounts and the site without consuming denied
   assert.equal(instance.reserveRun(await stored("e".repeat(32), "new-user"), "site-overflow", Date.now() + 60_000), "site");
 });
 
+test("a blocked report consumes the upload token and stops the run", async () => {
+  const { env, instance } = coordinator();
+  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "x".repeat(601), blocked: true }, uploadToken), env)).status, 400);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Plan needs shared/collector.ts", blocked: true }, uploadToken), env)).status, 200);
+  const run = instance.readRun(runId)!;
+  assert.equal(run.state.phase, "blocked");
+  assert.equal(run.uploadUsed, true);
+  assert.match(run.state.reason ?? "", /shared\/collector\.ts/);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Still working" }, uploadToken), env)).status, 401);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), env, githubFixture().fetcher)).status, 401);
+});
+
 test("upload claim is atomic, progress cannot consume it and timeout is unknown", async (t) => {
   const { instance } = coordinator();
   const run = await stored();
