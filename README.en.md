@@ -134,7 +134,7 @@ The system has three parts: **collectors adapt to each source, Cloudflare manage
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img src="docs/architecture-light.png" alt="Architecture: multi-device collectors, the Cloudflare state hub and the Next.js frontend" width="100%">
+  <img src="docs/architecture-light.png" alt="Architecture: multi-device collectors, the Cloudflare state hub, the AI Worker for chat and visitor builds, and the Next.js frontend" width="100%">
 </picture>
 
 [Open the interactive architecture diagram](https://lyjw131.github.io/lyjwpage/)
