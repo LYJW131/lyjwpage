@@ -717,16 +717,21 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 // 站主要求隐私说明跟随访客消息的语言（中文或英文），是「界面文案英文」的例外。
-const CONSENT_COPY: Record<ChatConsentLanguage, { lang: string; label: string; intro: string; points: string[]; accept: string; decline: string; remember: string; declined: string }> = {
+// destinations 须列全对话数据的每个出站去向；新增模型供应商、第三方工具或日志出口时同步改两种语言。
+type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
+const CONSENT_COPY: Record<ChatConsentLanguage, ConsentCopy> = {
   en: {
     lang: "en",
     label: "Privacy notice",
-    intro: "Before the oracle answers, please accept how this chat handles your data:",
-    points: [
-      "Your messages and this conversation's history are sent through this site's Cloudflare Worker to Anthropic's Claude models.",
-      "Cloudflare Turnstile checks that you're human, and your IP address counts toward rate limits.",
-      "The site keeps no transcripts; conversations are saved only in this browser.",
-      "Build plans you choose to file become public on GitHub.",
+    intro: "Before the oracle answers, please accept where this chat sends your data:",
+    destinations: [
+      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and this conversation's history, and keeps your IP address for the rate-limit window. No transcripts are stored; logs hold request metadata, usage counts and errors, not your message text." },
+      { name: "Cloudflare Turnstile", detail: "checks that you're human and receives your IP address." },
+      { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message plus short excerpts of a few earlier ones to pick which Claude model answers." },
+      { name: "Anthropic (Claude API)", detail: "receives the whole conversation to write the reply and runs any web searches. Anthropic keeps API data for up to 30 days, longer if flagged for safety review, and doesn't train on it." },
+      { name: "Sentry", detail: "receives error reports; chat text is masked in session replays and request bodies aren't sent." },
+      { name: "GitHub", detail: "only if you file a build plan: it becomes a public issue or pull request, and a build also sends the plan to Anthropic's Claude Code." },
+      { name: "This browser", detail: "saves your conversations and this consent." },
     ],
     accept: "Accept",
     decline: "Decline",
@@ -736,12 +741,15 @@ const CONSENT_COPY: Record<ChatConsentLanguage, { lang: string; label: string; i
   zh: {
     lang: "zh-CN",
     label: "隐私说明",
-    intro: "神谕作答之前，请先确认这个对话如何处理你的数据：",
-    points: [
-      "你的消息和本次对话的历史会经本站的 Cloudflare Worker 发送给 Anthropic 的 Claude 模型。",
-      "Cloudflare Turnstile 会验证你是真人，你的 IP 地址会计入限流。",
-      "本站不保存对话记录，对话只存在这个浏览器里。",
-      "你主动提交的构建计划会公开在 GitHub 上。",
+    intro: "神谕作答之前，请先确认这个对话会把你的数据发到哪里：",
+    destinations: [
+      { name: "Cloudflare Workers（本站后端）", detail: "转发你的消息和本次对话的历史，并在限流窗口内保留你的 IP 地址。不保存对话记录，日志里只有请求元数据、用量计数和错误，没有消息原文。" },
+      { name: "Cloudflare Turnstile", detail: "验证你是真人，会收到你的 IP 地址。" },
+      { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取你最新的消息和前几条消息的简短摘录，决定由哪个 Claude 模型回答。" },
+      { name: "Anthropic（Claude API）", detail: "收到完整对话来生成回复，并执行联网搜索。Anthropic 最多保留 API 数据 30 天，被安全审查标记的会更久，且不用于训练。" },
+      { name: "Sentry", detail: "接收错误报告；会话录像里对话文字被遮住，也不上传请求正文。" },
+      { name: "GitHub", detail: "仅当你提交构建计划时：计划会成为公开的 issue 或 pull request，发起构建还会把计划发给 Anthropic 的 Claude Code。" },
+      { name: "这个浏览器", detail: "保存你的对话和这次同意。" },
     ],
     accept: "接受",
     decline: "拒绝",
@@ -760,8 +768,14 @@ function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: 
       <div role="group" aria-label={copy.label} lang={copy.lang} className="w-full text-sm leading-relaxed text-foreground">
         <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">{copy.label}</div>
         <p>{copy.intro}</p>
-        <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
-          {copy.points.map((point) => <li key={point}>{point}</li>)}
+        <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+          {copy.destinations.map(({ name, detail }) => (
+            <li key={name}>
+              <span className="font-medium text-foreground">{name}</span>
+              {copy.lang === "en" ? ": " : "："}
+              {detail}
+            </li>
+          ))}
         </ul>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">{copy.accept}</button>
