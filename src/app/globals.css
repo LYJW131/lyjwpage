@@ -290,7 +290,7 @@ button.paper-card {
   grid-template-rows: 0fr;
 }
 
-/* nth-child 上限须与 listening-card 的 VISIBLE_ROWS × 2 对齐。 */
+/* 不滚动的宽屏两列只放得下 RECENT_WIDE_SLOTS；超出由 .has-more 分页。其余宽度不裁条目。 */
 .recent-tracks {
   overflow-x: auto;
   overflow-y: hidden;
@@ -312,10 +312,6 @@ button.paper-card {
   grid-template-rows: repeat(var(--recent-track-rows), minmax(0, 1fr));
   grid-auto-columns: 100%;
   grid-auto-rows: auto;
-}
-
-.recent-tracks-track > :nth-child(n + 9) {
-  display: none;
 }
 
 @media (min-width: 48rem) {
@@ -345,15 +341,24 @@ button.paper-card {
     left: 0;
   }
 
-  .recent-tracks.is-wide {
+  .recent-tracks.is-wide:not(.has-more) {
     overflow: hidden;
     overscroll-behavior: auto;
     scroll-snap-type: none;
   }
 
-  .recent-tracks.is-wide .recent-tracks-track {
+  .recent-tracks.is-wide:not(.has-more) .recent-tracks-track {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-auto-columns: auto;
+  }
+
+  .recent-tracks.is-wide:not(.has-more) .recent-tracks-track > :nth-child(n + 9) {
+    display: none;
+  }
+
+  .recent-tracks.is-wide.has-more .recent-tracks-track {
+    grid-template-columns: none;
+    grid-auto-columns: 50%;
   }
 }
 

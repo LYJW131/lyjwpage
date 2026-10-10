@@ -272,7 +272,8 @@ function NowListeningCard() {
 
 function ListeningCard() {
   const recent = useCardView<ListeningPayload>("listening");
-  const items = recent.data?.items.slice(0, RECENT_LIMIT);
+  // 最近播放有几条就展示几条。观看和游戏仍用 RECENT_LIMIT。
+  const items = recent.data?.items;
   return (
     <Frame title="Music" aside="Apple Music">
       {items?.length ? (

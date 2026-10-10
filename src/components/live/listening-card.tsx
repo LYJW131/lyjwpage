@@ -58,6 +58,7 @@ import type {
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import { liveTrack } from "@/lib/home-layout";
+import { RECENT_VISIBLE_ROWS, RECENT_WIDE_SLOTS, recentTrackSnap } from "@/lib/recent-tracks";
 import { fetchCatalogSongAlbum, queueOptionsFor } from "@/lib/web-player";
 import { cn } from "@/lib/utils";
 
@@ -66,8 +67,7 @@ const EMPTY_UPCOMING: string[] = [];
 const EMPTY_REFRESH_MS = 60_000;
 const MUSIC_REFRESH_MS = 60_000;
 
-// VISIBLE_ROWS × 2 须与 globals.css 的 recent-tracks-track nth-child 上限对齐。
-const VISIBLE_ROWS = 4;
+const VISIBLE_ROWS = RECENT_VISIBLE_ROWS;
 const MIN_ROW_HEIGHT_PX = 56;
 
 function formatDuration(milliseconds: number) {
@@ -343,7 +343,7 @@ function TrackRow({
   );
 
   const className =
-    "flex h-full items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-surface-hover";
+    "flex h-full items-center gap-2.5 rounded-md px-2 transition-colors hover:bg-surface-hover focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-live";
 
   if (onOpen) {
     return (
@@ -1051,6 +1051,7 @@ export function ListeningCard({
                 "absolute inset-0",
                 "recent-tracks",
                 wide && "is-wide",
+                wide && rest.length > RECENT_WIDE_SLOTS && "has-more",
                 reflowing && "is-reflowing",
                 "scroll-smooth",
                 // 新条目插到顶部时，滚动锚定会自动推走第一行，因此关闭它。
@@ -1061,33 +1062,44 @@ export function ListeningCard({
               <div className="recent-tracks-track">
                 {rest.length > 0 ? (
                   <AnimatePresence initial={false} mode="popLayout">
-                    {rest.map((item, index) => (
-                      <motion.div
-                        key={restKeys[index]}
-                        layout={!reduced}
-                        variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
-                        initial="initial"
-                        animate="animate"
-                        exit="exit"
-                        transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                        className={cn("min-w-0", index % VISIBLE_ROWS === 0 && "snap-start")}
-                      >
-                        <TrackRow
-                          track={item}
-                          placeholder={
-                            item.artwork
-                              ? artworkPlaceholders.rows[item.artwork]
-                              : undefined
-                          }
-                          onOpen={canOpenInPlayer(item) ? () => openInPlayer(item) : undefined}
-                        />
-                      </motion.div>
-                    ))}
+                    {rest.map((item, index) => {
+                      const snap = recentTrackSnap(index, rest.length, VISIBLE_ROWS);
+                      return (
+                        <motion.div
+                          key={restKeys[index]}
+                          layout={!reduced}
+                          variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
+                          initial="initial"
+                          animate="animate"
+                          exit="exit"
+                          transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
+                          className={cn(
+                            "min-w-0",
+                            snap === "start" && "snap-start",
+                            snap === "end" && "snap-end",
+                          )}
+                        >
+                          <TrackRow
+                            track={item}
+                            placeholder={
+                              item.artwork
+                                ? artworkPlaceholders.rows[item.artwork]
+                                : undefined
+                            }
+                            onOpen={canOpenInPlayer(item) ? () => openInPlayer(item) : undefined}
+                          />
+                        </motion.div>
+                      );
+                    })}
                   </AnimatePresence>
                 ) : isLoading ? (
                   Array.from({ length: VISIBLE_ROWS }, (_, i) => (
                     <SkeletonRow key={i} />
                   ))
+                ) : hero && !error ? (
+                  <p className="flex h-full items-center px-2 text-sm text-muted-foreground">
+                    Nothing else played recently
+                  </p>
                 ) : null}
               </div>
             </div>
