@@ -82,6 +82,7 @@ function writePass(pass: HumanPass | null) {
 const COMMANDS = [
   { name: "/clear", aliases: ["/new"], description: "Start a new conversation with empty context" },
   { name: "/usage", aliases: [], description: "Show your quota in the current window" },
+  { name: "/exit", aliases: [], description: "Leave design mode and return to ordinary chat" },
 ] as const;
 
 type Command = (typeof COMMANDS)[number];
@@ -356,7 +357,8 @@ function Conversation({ className, archive, session: conversation }: { className
   const typing = draft.trimStart();
   const paletteOpen = typing.startsWith("/") && !/\s/.test(typing.trim());
   const query = typing.trim().toLowerCase();
-  const matches = paletteOpen ? COMMANDS.filter((c) => commandNames(c).some((n) => n.startsWith(query))) : [];
+  const commands = COMMANDS.filter((c) => c.name !== "/exit" || design);
+  const matches = paletteOpen ? commands.filter((c) => commandNames(c).some((n) => n.startsWith(query))) : [];
   const active = matches.length ? Math.min(selected, matches.length - 1) : 0;
 
   function runCommand(name: string) {
@@ -364,6 +366,15 @@ function Conversation({ className, archive, session: conversation }: { className
     setSelected(0);
     if (name === "/usage") {
       void showUsage();
+      return;
+    }
+    if (name === "/exit") {
+      if (!conversation?.design) return;
+      if (streaming) {
+        sessionRef.current += 1;
+        abortRef.current?.abort();
+      }
+      chatArchive.update(conversation.id, { design: undefined });
       return;
     }
     if (name === "/clear") {
@@ -402,7 +413,7 @@ function Conversation({ className, archive, session: conversation }: { className
 
   function submit(text: string) {
     if (text.trim().startsWith("/")) {
-      const exact = COMMANDS.find((c) => commandNames(c).includes(text.trim().toLowerCase()));
+      const exact = commands.find((c) => commandNames(c).includes(text.trim().toLowerCase()));
       const pick = exact ?? matches[active];
       if (pick) runCommand(pick.name);
       else setError(`Unknown command ${text.trim().split(/\s+/)[0]}.`);
