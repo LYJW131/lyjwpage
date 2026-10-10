@@ -589,11 +589,11 @@ misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个
 
 `GET /api/status/workouts` 返回 `{ items, pushedAt }` 的标准状态信封，信封带 `updatedAt`。训练列表是可滞后层的一条（KV `workouts:v1`，`{ updatedAt, data: { items } }`），由上报入口在这封 iPhone 上报的状态核心那一半成功之后整份写入；上报带的心率摘要只进历史归档，写入和读出都经 `shared/workouts.ts#publicWorkout` 只留公开字段；`pushedAt` 就是 `updatedAt`，读时补上。状态核心只留 Pulse 活动道要的训练区间（`pulse:v2:workouts`）。训练是历史事实，列表不设过期阈值，只有取数失败时卡片注明同步延迟。首页 `workouts` 缓存标签只在训练那一块换占位（没收到过 / 一条都读不出 / 有训练）时失效，条目增减交给定时重建；浏览器按 `STATUS_VIEWS.workouts.cadenceMs` 排期轮询（`nextLagDelay`），不新增推送事件。
 
-活动圆环（`modules.activity` 里的当天圆环）同理：读数在 KV `activity:v1`（`{ updatedAt, data: ActivityStatus }`），只在这封带了当天圆环时写，只带五分钟统计桶的上报不碰它；五分钟桶是 Pulse 的输入，留在状态核心。`GET /api/status/activity` 读 KV，`pushedAt` 取 `updatedAt`，「手表那边还是不是这一天」（`currentAtSource`）在读时按源站的钟现算。卡片超过 `ACTIVITY_STALE_MS` 没有新读数就写 Unavailable，版面不动。
+活动圆环（`modules.activity` 里的当天圆环）同理：读数在 KV `activity:v1`（`{ updatedAt, data: ActivityStatus }`），只在这封带了当天圆环时写，只带五分钟统计桶的上报不碰它；五分钟桶是 Pulse 的输入，留在状态核心。`GET /api/status/activity` 读 KV，`pushedAt` 取 `updatedAt`，「手表那边还是不是这一天」（`currentAtSource`）在读时按源站的钟现算。首屏会把这个布尔冻住，页面用 `src/lib/freshness.ts#activityDisplayedCurrent` 按 `date` 与 `secondsFromGMT` 重算，跨过 `activityDateEndsAt` 就不再当今天。卡片超过 `ACTIVITY_STALE_MS` 没有新读数就写 Unavailable，版面不动。
 
 本地预览：`pnpm dev:override /api/status/workouts workouts.json`，夹具仅供开发环境，启用时页面显示 Fake data。真实记录需要安装 iOS 27 上报器并允许训练读取。
 
-`workouts.json` 是从真机读取的最近一批训练快照（剑术、骑行、滑冰），保留原日期与观测指标，UUID 替换为演示标识。信封的 `updatedAt` 与 `pushedAt` 注入时更新，但训练时间不变；圆环夹具 `activity-afternoon.json` 同样带信封级 `updatedAt`。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
+`workouts.json` 是从真机读取的最近一批训练快照（剑术、骑行、滑冰），保留原日期与观测指标，UUID 替换为演示标识。信封的 `updatedAt` 与 `pushedAt` 注入时更新，但训练时间不变；圆环夹具 `activity-afternoon.json` 的 `date` 用 `$today`，信封级 `updatedAt` 注入时更新。剑术不把步行距离当成主要成绩；滑冰没有距离就不显示速度；网页每项最多两个指标：有距离时显示时长与距离，否则显示时长与活动消耗；不展示心率或均速。
 
 网页卡片按页横向吸附滚动（每页条数与页数由 `src/components/live/workouts-strip.tsx` 定），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 `WORKOUT_LIMIT` 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。
 

@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { Rings, ringValues } from "@/components/live/activity-card";
 import { mediaApp, mergeVariants, playTime } from "@/components/live/playstation-card";
 import { StatusDot } from "@/components/ui/status-dot";
-import { useLiveNowListening, useStale } from "@/hooks/use-stale";
+import { useActivityCurrent, useLiveNowListening, useStale } from "@/hooks/use-stale";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
@@ -398,7 +398,7 @@ function ActivityCard() {
   const activity = useCardView<ActivityPayload>("activity");
   const stale = useStale(activity.updatedAt ?? activity.data?.pushedAt, ACTIVITY_STALE_MS);
   const data = stale ? undefined : activity.data;
-  const current = Boolean(data?.currentAtSource);
+  const current = useActivityCurrent(data);
   const rings = ringValues(data, current);
 
   return (

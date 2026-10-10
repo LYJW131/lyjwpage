@@ -266,7 +266,7 @@ payload: >-
 - **原生读取真实目标**：通过原生 Swift 代码从 `HKActivitySummary` 读取用户当天的真实目标卡路里、锻炼时长与站立次数（非预设常量）。
 - **设备时区为准**：上报日期取 Apple Watch 当地自然日（`YYYY-MM-DD`）与 `secondsFromGMT`。跨时区旅行过日界线时，按手表本地日推进，服务端不做时区矫正。
 - **iOS 后台节流容忍**：iOS 系统对 HealthKit 数据的后台推送存在约每小时一次的系统级节流，因此该模块不建立 WebSocket 推送，前端按 `STATUS_VIEWS.activity.cadenceMs` 排期在下一次预期上报后取，逾期后按 `nextLagDelay` 退避重试。
-- **读数与训练在可滞后层**：圆环读数（KV `activity:v1`）与最近训练（KV `workouts:v1`）由上报入口在状态核心那一半成功之后写入，状态核心只留 Pulse 用的五分钟统计桶和训练区间。圆环超过 `ACTIVITY_STALE_MS` 没有新读数时卡片写 Unavailable；训练是历史事实，不设过期。
+- **读数与训练在可滞后层**：圆环读数（KV `activity:v1`）与最近训练（KV `workouts:v1`）由上报入口在状态核心那一半成功之后写入，状态核心只留 Pulse 用的五分钟统计桶和训练区间。圆环超过 `ACTIVITY_STALE_MS` 没有新读数时卡片写 Unavailable。读数的日期过了源站当地日，页面按 `src/lib/freshness.ts#activityDisplayedCurrent` 把环清零，不把冻住的 `currentAtSource` 继续当成今天。训练是历史事实，不设过期。
 
 ---
 

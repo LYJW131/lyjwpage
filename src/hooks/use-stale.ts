@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { usePageActive } from "@/hooks/use-status";
 import {
+  activityDateEndsAt,
+  activityDisplayedCurrent,
   HEARTBEAT_WINDOW_MS,
   RESUME_REFETCH_GRACE_MS,
   chargingFeedClockStale,
@@ -20,7 +22,7 @@ import {
   type ChargingFeed,
   type ResumeState,
 } from "@/lib/freshness";
-import type { NowListeningPayload, ReporterPresence } from "@/lib/types";
+import type { ActivityPayload, NowListeningPayload, ReporterPresence } from "@/lib/types";
 
 // isStale 使用严格大于；闹钟必须越过边界，否则不会判旧也不会再推进。
 function deadlineOf(at: number | null | undefined, windowMs: number): number | null {
@@ -66,6 +68,15 @@ function useClockStale(at: number | null | undefined, windowMs: number, servedAt
 
 export function useStale(at: number | null | undefined, windowMs: number, servedAt?: number) {
   return useClockStale(at, windowMs, servedAt).stale;
+}
+
+export function useActivityCurrent(
+  data: Pick<ActivityPayload, "date" | "secondsFromGMT" | "currentAtSource"> | undefined,
+  servedAt?: number,
+): boolean {
+  const endsAt = data ? activityDateEndsAt(data.date, data.secondsFromGMT) : null;
+  const { now } = useClock(servedAt, endsAt);
+  return data ? activityDisplayedCurrent(data, now) : false;
 }
 
 export function useConfirmedStale(stale: boolean, validating: boolean, settled = true): boolean {
