@@ -1,4 +1,4 @@
-import { BUILD_REPO, buildIssueBody, PLAN_LABELS, planLanguage, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_REPO, branchForRun, buildIssueBody, PLAN_LABELS, planLanguage, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import { GITHUB_APP_CLIENT_ID } from "@shared/github-issue";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
@@ -54,7 +54,7 @@ export async function installationApi(env: Env, fetcher: typeof fetch = fetch, r
   const app = new GithubBuildApi(await githubAppJwt(env.GITHUB_APP_PRIVATE_KEY), fetcher);
   const installation = await app.repo<{ id: number; permissions?: Record<string, string> }>("/installation");
   if (!Number.isSafeInteger(installation.id)) throw new Error("GitHub installation is unavailable.");
-  const data = await app.request<{ token: string }>(`/app/installations/${installation.id}/access_tokens`, "POST", { repositories: [BUILD_REPO.split("/")[1]], permissions: { contents: readOnly ? "read" : "write", pull_requests: readOnly ? "read" : "write", issues: "read", ...(readOnly && installation.permissions?.checks && { checks: "read" }), ...(readOnly && installation.permissions?.statuses && { statuses: "read" }) } });
+  const data = await app.request<{ token: string }>(`/app/installations/${installation.id}/access_tokens`, "POST", { repositories: [BUILD_REPO.split("/")[1]], permissions: { contents: readOnly ? "read" : "write", pull_requests: readOnly ? "read" : "write", issues: "read", ...(installation.permissions?.checks && { checks: "read" }), ...(installation.permissions?.statuses && { statuses: "read" }) } });
   if (typeof data.token !== "string") throw new Error("GitHub installation authorization failed.");
   return new GithubBuildApi(data.token, fetcher);
 }
@@ -89,6 +89,7 @@ export async function validateBuildBase(api: GithubBuildApi, run: StoredRun, upl
   const changed = new Set([...upload.files.map((file) => file.path), ...upload.deletions]);
   for (const path of changed) {
     const entry = existing.get(path);
+    if (path === `builds/${run.state.runId}.md` && entry) throw new BuildBlockedError("The build plan path already exists in main.");
     if (entry && (entry.type !== "blob" || !["100644", "100755"].includes(entry.mode))) throw new BuildBlockedError("Replacing directories, symlinks or submodules is blocked.");
     const parts = path.split("/");
     for (let index = 1; index < parts.length; index += 1) {
@@ -130,8 +131,138 @@ async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, upload: BuildUpload, validatedBaseTree?: string): Promise<NonNullable<BuildRun["pr"]>> {
-  const baseTree = validatedBaseTree ?? await validateBuildBase(api, run, upload);
+type GithubPullRequest = {
+  number: number; node_id: string; html_url: string; state: string; merged: boolean; draft: boolean; body: string; updated_at: string;
+  head: { sha: string; ref: string; repo: { full_name: string } };
+  base: { ref: string; repo: { full_name: string } };
+  user: { id: number; login: string; type: string };
+};
+type GithubCommit = { sha: string; tree: { sha: string }; parents: { sha: string }[] };
+const BUILD_COMMIT_IDENTITY = { name: "lyjw131[bot]", email: "338272049+lyjw131[bot]@users.noreply.github.com" };
+
+function buildMarker(run: Pick<BuildRun, "runId">): string { return `<!-- build-run:${run.runId} -->`; }
+function planPath(run: StoredRun): string { return `builds/${run.state.runId}.md`; }
+function assertBuildIdentity(run: StoredRun): void {
+  if (!/^[a-f0-9]{32}$/.test(run.state.runId) || run.state.branch !== branchForRun(run.state.runId) || !validSha(run.baseSha)) throw new BuildBlockedError("The build branch identity is invalid.");
+}
+function confirmedPullRequest(pr: GithubPullRequest, run: BuildRun, allowedHeads?: readonly string[], allowLegacyMarker = false): NonNullable<BuildRun["pr"]> {
+  const marker = pr.body?.includes(buildMarker(run));
+  const legacy = !marker && allowLegacyMarker && Object.values(PLAN_LABELS).some((labels) => pr.body?.includes(labels.buildRun(run.runId)));
+  if (!Number.isSafeInteger(pr.number) || pr.number < 1 || pr.html_url !== `https://github.com/${BUILD_REPO}/pull/${pr.number}` || !validSha(pr.head?.sha)
+    || pr.head.ref !== run.branch || pr.head.repo?.full_name !== BUILD_REPO || pr.base?.ref !== "main" || pr.base.repo?.full_name !== BUILD_REPO
+    || pr.user?.id !== 338272049 || pr.user.login !== BUILD_COMMIT_IDENTITY.name || pr.user.type !== "Bot"
+    || !marker && !legacy || run.pr && pr.number !== run.pr.number || allowedHeads && !allowedHeads.includes(pr.head.sha)) throw new BuildBlockedError("The pull request does not match this build.");
+  return { number: pr.number, url: pr.html_url, headSha: pr.head.sha, ...(!legacy && { draft: pr.draft }) };
+}
+async function branchHead(api: GithubBuildApi, branch: string): Promise<string | null> {
+  try {
+    const ref = await api.repo<{ ref: string; object: { sha: string } }>(`/git/ref/heads/${branch}`);
+    if (ref.ref !== `refs/heads/${branch}` || !validSha(ref.object?.sha)) throw new BuildBlockedError("The build branch could not be verified.");
+    return ref.object.sha;
+  } catch (error) {
+    if (error instanceof GithubRequestError && error.status === 404) return null;
+    throw error;
+  }
+}
+async function existingPullRequest(api: GithubBuildApi, run: StoredRun): Promise<GithubPullRequest | null> {
+  if (run.state.pr) return api.repo<GithubPullRequest>(`/pulls/${run.state.pr.number}`);
+  const head = encodeURIComponent(`${BUILD_REPO.split("/")[0]}:${run.state.branch}`);
+  const prs = await api.repo<GithubPullRequest[]>(`/pulls?state=all&head=${head}&base=main&per_page=100`);
+  if (!Array.isArray(prs) || prs.length > 1) throw new BuildBlockedError("The build branch has an ambiguous pull request history.");
+  return prs[0] ?? null;
+}
+function assertOpenDraft(pr: GithubPullRequest): void {
+  if (pr.state !== "open" || pr.merged || pr.draft !== true) throw new BuildBlockedError("The build pull request is no longer an open draft.");
+}
+
+export async function prepareBuildPullRequest(api: GithubBuildApi, run: StoredRun): Promise<{ pr: NonNullable<BuildRun["pr"]>; planCommitSha: string }> {
+  assertBuildIdentity(run);
+  const path = planPath(run);
+  const baseTree = await validateBuildBase(api, run, { baseSha: run.baseSha, message: "", files: [{ path, mode: "100644", content: "" }], deletions: [] });
+  const contents = `# ${run.plan.title}\n\n${buildIssueBody(run.plan)}\n`;
+  const blob = await api.repo<{ sha: string }>("/git/blobs", "POST", { encoding: "utf-8", content: contents });
+  if (!validSha(blob.sha)) throw new Error("GitHub plan blob confirmation is unavailable.");
+  const tree = await api.repo<{ sha: string }>("/git/trees", "POST", { base_tree: baseTree, tree: [{ path, mode: "100644", type: "blob", sha: blob.sha }] });
+  if (!validSha(tree.sha) || tree.sha === baseTree) throw new BuildBlockedError("The build plan must create a new file difference.");
+  const identity = { ...BUILD_COMMIT_IDENTITY, date: new Date(run.state.createdAt).toISOString() };
+  const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `docs: record build plan ${run.state.runId}`, tree: tree.sha, parents: [run.baseSha], author: identity, committer: identity });
+  if (!validSha(commit.sha) || run.planCommitSha && run.planCommitSha !== commit.sha) throw new BuildBlockedError("GitHub plan commit confirmation does not match this build.");
+  let head = await branchHead(api, run.state.branch);
+  if (!head) {
+    try { await api.repo("/git/refs", "POST", { ref: `refs/heads/${run.state.branch}`, sha: commit.sha }); }
+    catch (error) {
+      head = await branchHead(api, run.state.branch);
+      if (!head) throw error;
+    }
+    head = await branchHead(api, run.state.branch);
+  }
+  if (head !== commit.sha) throw new BuildBlockedError("The build branch contains an unexpected commit.");
+  let pr = await existingPullRequest(api, run);
+  if (!pr) {
+    try {
+      pr = await api.repo<GithubPullRequest>("/pulls", "POST", { title: run.plan.title, head: run.state.branch, base: "main", draft: true, body: `${buildIssueBody(run.plan)}\n\n${buildMarker(run.state)}`.replaceAll("@", "@\u200b") });
+    } catch (error) {
+      pr = await existingPullRequest(api, run);
+      if (!pr) {
+        if (error instanceof GithubRequestError && error.status >= 400 && error.status < 500 && error.status !== 408) throw new BuildPullRequestRejectedError("GitHub rejected draft pull request creation; the build branch was preserved for retry.");
+        throw error;
+      }
+    }
+  }
+  const confirmed = confirmedPullRequest(pr, run.state, [commit.sha]);
+  assertOpenDraft(pr);
+  return { pr: confirmed, planCommitSha: commit.sha };
+}
+
+async function preparedCommit(api: GithubBuildApi, run: StoredRun): Promise<GithubCommit> {
+  assertBuildIdentity(run);
+  if (!validSha(run.planCommitSha) || !run.state.pr) throw new BuildBlockedError("The build draft has not been prepared.");
+  const commit = await api.repo<GithubCommit>(`/git/commits/${run.planCommitSha}`);
+  if (commit.sha !== run.planCommitSha || !validSha(commit.tree?.sha) || commit.parents?.length !== 1 || commit.parents[0].sha !== run.baseSha) throw new BuildBlockedError("The plan commit does not match the assigned base commit.");
+  return commit;
+}
+
+async function confirmedPublication(api: GithubBuildApi, run: StoredRun, pr: GithubPullRequest): Promise<NonNullable<BuildRun["pr"]>> {
+  const confirmed = confirmedPullRequest(pr, run.state, [run.implementationHeadSha!]);
+  if (pr.state !== "open" || pr.merged || typeof pr.draft !== "boolean") throw new BuildBlockedError("The build pull request is no longer open.");
+  if (await branchHead(api, run.state.branch) !== run.implementationHeadSha) throw new BuildBlockedError("The build branch contains an unexpected commit.");
+  if (pr.draft === false && pr.body !== run.publicationBody) throw new BuildBlockedError("The published pull request review details do not match this build.");
+  return confirmed;
+}
+
+export async function recoverBuildPublication(api: GithubBuildApi, run: StoredRun): Promise<NonNullable<BuildRun["pr"]>> {
+  await preparedCommit(api, run);
+  if (!validSha(run.implementationHeadSha)) throw new BuildBlockedError("The implementation commit has not been recorded.");
+  const implementation = await api.repo<GithubCommit>(`/git/commits/${run.implementationHeadSha}`);
+  if (implementation.sha !== run.implementationHeadSha || implementation.parents?.length !== 1 || implementation.parents[0].sha !== run.planCommitSha) throw new BuildBlockedError("The implementation commit does not continue this build plan.");
+  const pr = await existingPullRequest(api, run);
+  if (!pr) throw new BuildBlockedError("The build pull request is unavailable.");
+  confirmedPullRequest(pr, run.state, [run.planCommitSha!, run.implementationHeadSha]);
+  if (!run.publicationBody?.includes(buildMarker(run.state))) throw new BuildBlockedError("The implementation review details have not been recorded.");
+  if (pr.draft === false) return confirmedPublication(api, run, pr);
+  assertOpenDraft(pr);
+  await api.repo(`/pulls/${pr.number}`, "PATCH", { body: run.publicationBody });
+  const head = await branchHead(api, run.state.branch);
+  if (head !== run.planCommitSha && head !== run.implementationHeadSha) throw new BuildBlockedError("The build branch contains an unexpected commit.");
+  if (head !== run.implementationHeadSha) {
+    try { await api.repo(`/git/refs/heads/${run.state.branch}`, "PATCH", { sha: run.implementationHeadSha, force: false }); }
+    catch (error) { if (await branchHead(api, run.state.branch) !== run.implementationHeadSha) throw error; }
+  }
+  const updated = await existingPullRequest(api, run);
+  if (!updated) throw new Error("GitHub pull request confirmation is unavailable.");
+  return confirmedPublication(api, run, updated);
+}
+
+export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, upload: BuildUpload, validatedBaseTree: string | undefined, recordImplementationHead: (sha: string, body: string) => Promise<void>): Promise<NonNullable<BuildRun["pr"]>> {
+  if (run.implementationHeadSha) return recoverBuildPublication(api, run);
+  if (!validatedBaseTree) await validateBuildBase(api, run, upload);
+  if (upload.baseSha !== run.baseSha || [...upload.files.map((file) => file.path), ...upload.deletions].some((path) => path === planPath(run) || path.startsWith("builds/"))) throw new BuildBlockedError("The upload cannot replace the recorded build plan.");
+  const planCommit = await preparedCommit(api, run);
+  const existing = await existingPullRequest(api, run);
+  if (!existing) throw new BuildBlockedError("The build draft is unavailable.");
+  confirmedPullRequest(existing, run.state, [run.planCommitSha!]);
+  assertOpenDraft(existing);
+  if (await branchHead(api, run.state.branch) !== run.planCommitSha) throw new BuildBlockedError("The build branch contains an unexpected commit.");
   const entries: { path: string; mode: string; type: "blob"; sha: string | null }[] = [];
   for (const file of upload.files) {
     const blob = await api.repo<{ sha: string }>("/git/blobs", "POST", { encoding: "base64", content: file.content });
@@ -139,33 +270,19 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
     entries.push({ path: file.path, mode: file.mode, type: "blob", sha: blob.sha });
   }
   for (const path of upload.deletions) entries.push({ path, mode: "100644", type: "blob", sha: null });
-  const tree = await api.repo<{ sha: string }>("/git/trees", "POST", { base_tree: baseTree, tree: entries });
-  if (!validSha(tree.sha)) throw new Error("GitHub tree confirmation is unavailable.");
+  const tree = await api.repo<{ sha: string }>("/git/trees", "POST", { base_tree: planCommit.tree.sha, tree: entries });
+  if (!validSha(tree.sha) || tree.sha === planCommit.tree.sha) throw new BuildBlockedError("The upload does not contain implementation changes.");
   const message = upload.message.split(/\r\n?|\n/).filter((line) => !/^\s*(co-authored-by|claude-session)\s*:/i.test(line)).join("\n").trim() || run.plan.title;
   const trailers = [`Co-authored-by: ${run.coauthor}`, `Co-Authored-By: ${BUILD_CLAUDE_COAUTHOR}`, ...(run.sessionUrl ? [`Claude-Session: ${run.sessionUrl}`] : [])].join("\n");
-  const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `${message}\n\n${trailers}`, tree: tree.sha, parents: [upload.baseSha] });
+  const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `${message}\n\n${trailers}`, tree: tree.sha, parents: [run.planCommitSha] });
   if (!validSha(commit.sha)) throw new Error("GitHub commit confirmation is unavailable.");
-  await api.repo("/git/refs", "POST", { ref: `refs/heads/${run.state.branch}`, sha: commit.sha });
+  const pr = run.state.pr!;
   const labels = PLAN_LABELS[planLanguage(run.plan)];
   const review = reviewPaths(upload, run.plan.paths);
-  // GitHub can still turn a backslash-escaped @ into a mention.
-  const body = (links: Map<string, string>) => `${buildIssueBody(run.plan)}${reviewSection(review, labels, links)}\n\n---\n${labels.requestedBy(run.account)}\n\n${trailers}\n\n${labels.buildRun(run.state.runId)}`.replaceAll("@", "@\u200b");
-  let pr: { number: number; html_url: string; head: { sha: string } };
-  try {
-    pr = await api.repo("/pulls", "POST", { title: run.plan.title, head: run.state.branch, base: "main", draft: false, body: body(new Map()) });
-  } catch (error) {
-    if (!(error instanceof GithubRequestError) || error.status < 400 || error.status >= 500 || error.status === 408) throw error;
-    try { await api.repo(`/git/refs/heads/${run.state.branch}`, "DELETE"); }
-    catch { throw new BuildPullRequestRejectedError("GitHub rejected pull request creation; the build branch could not be removed."); }
-    throw new BuildPullRequestRejectedError("GitHub rejected pull request creation; the build branch was removed.");
-  }
-  if (!Number.isSafeInteger(pr.number) || pr.number < 1 || pr.html_url !== `https://github.com/${BUILD_REPO}/pull/${pr.number}` || !validSha(pr.head?.sha)) throw new Error("GitHub pull request confirmation is unavailable.");
-  if (review.length) {
-    const links = new Map(await Promise.all(review.map(async ({ path }) => [path, `${pr.html_url}/files#diff-${await sha256Hex(path)}`] as const)));
-    // 链接要等 PR 号码确定后才能写；补不上时正文里仍有不带链接的清单。
-    await api.repo(`/pulls/${pr.number}`, "PATCH", { body: body(links) }).catch(() => undefined);
-  }
-  return { number: pr.number, url: pr.html_url, headSha: pr.head.sha };
+  const links = new Map(await Promise.all(review.map(async ({ path }) => [path, `${pr.url}/files#diff-${await sha256Hex(path)}`] as const)));
+  const body = `${buildIssueBody(run.plan)}${reviewSection(review, labels, links)}\n\n---\n${labels.requestedBy(run.account)}\n\n${trailers}\n\n${labels.buildRun(run.state.runId)}\n\n${buildMarker(run.state)}`.replaceAll("@", "@\u200b");
+  await recordImplementationHead(commit.sha, body);
+  return recoverBuildPublication(api, { ...run, implementationHeadSha: commit.sha, publicationBody: body });
 }
 
 // Codex and Cursor ignore bot-authored PRs, so the owner's token asks for them. Keep these fixed strings:
@@ -263,8 +380,9 @@ async function latestReview(api: GithubBuildApi, number: number): Promise<Review
 
 export async function reconcileBuild(api: GithubBuildApi, run: BuildRun): Promise<Partial<BuildRun>> {
   if (!run.pr || ["merged", "closed"].includes(run.phase)) return {};
-  const pr = await api.repo<{ state: string; merged: boolean; head: { sha: string }; html_url: string; number: number; updated_at: string }>(`/pulls/${run.pr.number}`);
-  const result: Partial<BuildRun> = { phase: pr.merged ? "merged" : pr.state === "closed" ? "closed" : "pr_open", pr: { number: pr.number, url: pr.html_url, headSha: pr.head.sha }, reconciledAt: Date.now(), githubUpdatedAt: Date.parse(pr.updated_at) || undefined };
+  const pr = await api.repo<GithubPullRequest>(`/pulls/${run.pr.number}`);
+  const confirmed = confirmedPullRequest(pr, run, undefined, run.pr.draft === undefined);
+  const result: Partial<BuildRun> = { phase: pr.merged ? "merged" : pr.state === "closed" ? "closed" : run.phase, pr: confirmed, reconciledAt: Date.now(), githubUpdatedAt: Date.parse(pr.updated_at) || undefined };
   if (result.phase === "merged" || result.phase === "closed") return result;
   result.ci = { state: "unknown", updatedAt: Date.now() };
   result.preview = { state: "unknown", updatedAt: Date.now() };
@@ -293,4 +411,37 @@ export async function reconcileBuild(api: GithubBuildApi, run: BuildRun): Promis
     if (comment) result.review = { state: comment.body.slice(0, 600), url: comment.html_url, updatedAt: Date.now() };
   }
   return result;
+}
+
+export async function markBuildReady(api: GithubBuildApi, run: StoredRun): Promise<NonNullable<BuildRun["pr"]> | null> {
+  if (run.state.phase !== "pr_open" || !run.uploadUsed || !validSha(run.implementationHeadSha) || run.state.pr?.headSha !== run.implementationHeadSha || run.state.ci?.state !== "success") return null;
+  await preparedCommit(api, run);
+  const pr = await existingPullRequest(api, run);
+  if (!pr) throw new BuildBlockedError("The build pull request is unavailable.");
+  const confirmed = confirmedPullRequest(pr, run.state, [run.implementationHeadSha]);
+  if (pr.state !== "open" || pr.merged) return null;
+  if (!pr.draft) return confirmed;
+  const [checks, statuses] = await Promise.all([
+    allCheckRuns(api, run.implementationHeadSha),
+    api.repo<{ statuses: GithubStatus[]; total_count: number }>(`/commits/${run.implementationHeadSha}/status?per_page=100`),
+  ]);
+  if (!Number.isSafeInteger(statuses.total_count) || statuses.total_count > statuses.statuses.length) return null;
+  const ciChecks = checks.filter((check) => checkKind(check) === "ci");
+  if (!ciChecks.some((check) => check.name === "check" && check.app?.slug === "github-actions" && check.status === "completed" && check.conclusion === "success")
+    || aggregateState([...ciChecks.map(checkState), ...statuses.statuses.filter((item) => !isPreviewStatus(item)).map((item) => item.state)]) !== "success") return null;
+  const latest = await existingPullRequest(api, run);
+  if (!latest) return null;
+  confirmedPullRequest(latest, run.state, [run.implementationHeadSha]);
+  if (latest.state !== "open" || latest.merged || !latest.node_id) return null;
+  if (!latest.draft) return confirmedPullRequest(latest, run.state, [run.implementationHeadSha]);
+  const mutation = await api.request<{ data?: { markPullRequestReadyForReview?: { pullRequest: { isDraft: boolean; headRefOid: string; number: number } } }; errors?: unknown[] }>("/graphql", "POST", {
+    query: "mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft headRefOid number}}}", variables: { id: latest.node_id },
+  });
+  const ready = mutation.data?.markPullRequestReadyForReview?.pullRequest;
+  if (ready && ready.headRefOid !== run.implementationHeadSha) {
+    await api.request("/graphql", "POST", { query: "mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){pullRequest{isDraft}}}", variables: { id: latest.node_id } });
+    throw new BuildBlockedError("The pull request head changed while confirming readiness.");
+  }
+  if (mutation.errors?.length || !ready || ready.isDraft || ready.number !== confirmed.number) throw new Error("GitHub did not confirm readiness for review.");
+  return { ...confirmed, draft: false };
 }

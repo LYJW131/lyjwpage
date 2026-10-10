@@ -16,7 +16,7 @@ export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalByte
 
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
 export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number };
-export type BuildFireResult = { runId: string; branch: string; statusToken: string };
+export type BuildFireResult = { runId: string; branch: string; statusToken: string; run?: BuildRun };
 export type BuildPhase = "triggered" | "running" | "uploaded" | "validated" | "blocked" | "pr_open" | "merged" | "closed" | "timeout" | "failed";
 export type BuildSignal = { state: string; url?: string; updatedAt: number };
 export type BuildRun = {
@@ -27,7 +27,7 @@ export type BuildRun = {
   updatedAt: number;
   reason?: string;
   progress?: string;
-  pr?: { number: number; url: string; headSha: string };
+  pr?: { number: number; url: string; headSha: string; draft?: boolean };
   ci?: BuildSignal;
   preview?: BuildSignal;
   review?: BuildSignal;

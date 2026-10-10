@@ -6,7 +6,8 @@ import test from "node:test";
 import { BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildFireResult, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
-import { BuildPullRequestRejectedError, createBuildPullRequest, GithubBuildApi, reconcileBuild } from "./build/github.ts";
+import { BuildPullRequestRejectedError, createBuildPullRequest as publishBuild, prepareBuildPullRequest, validateBuildBase, GithubBuildApi, reconcileBuild } from "./build/github.ts";
+import { buildGithubFixture, FIXTURE_PLAN_SHA } from "./build/testing/github-fixture.ts";
 import { issuePlan } from "./build/plan.ts";
 import { hashToken, signBuildToken } from "./build/token.ts";
 
@@ -52,31 +53,18 @@ function post(path: string, body: unknown, token?: string): Request {
 
 type GithubCall = { path: string; method: string; headers: Headers; body: Record<string, unknown> | null };
 function githubFixture(override: (call: GithubCall) => Response | undefined = () => undefined) {
-  const calls: GithubCall[] = [];
-  const fetcher: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const call = { path: url.pathname + url.search, method: init?.method ?? "GET", headers: new Headers(init?.headers), body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null };
-    calls.push(call);
-    const response = override(call);
-    if (response) return response;
-    if (url.hostname === "fixture.invalid" && call.path === "/fire") return Response.json({ claude_code_session_url: sessionUrl });
-    if (url.hostname === "github.com" && call.path === "/login/oauth/access_token") return Response.json({ access_token: "oauth-fixture" });
-    if (call.path === "/user") return Response.json({ id: 1, login: "visitor", name: "Visitor" });
-    if (call.method === "DELETE" && call.path.startsWith("/applications/")) return new Response(null, { status: 204 });
-    assert.equal(url.hostname, "api.github.com");
-    if (call.path.endsWith("/installation")) return Response.json({ id: 1 });
-    if (call.path === "/app/installations/1/access_tokens") return Response.json({ token: "installation-fixture" });
-    if (call.path.endsWith("/git/ref/heads/main")) return Response.json({ object: { sha: baseSha } });
-    if (call.path.includes("/compare/")) return Response.json({ status: "ahead", merge_base_commit: { sha: baseSha } });
-    if (call.path.endsWith(`/git/commits/${baseSha}`)) return Response.json({ tree: { sha: treeSha } });
-    if (call.path.includes("/git/trees/") && call.path.includes("recursive=1")) return Response.json({ truncated: false, tree: [] });
-    if (["/git/blobs", "/git/trees", "/git/commits"].some((path) => call.path.endsWith(path))) return Response.json({ sha: headSha }, { status: 201 });
-    if (call.path.endsWith("/git/refs")) return Response.json({ ref: `refs/heads/${branchForRun(runId)}` }, { status: 201 });
-    if (call.method === "DELETE" && call.path.includes("/git/refs/heads/")) return new Response(null, { status: 204 });
-    if (call.path.endsWith("/pulls")) return Response.json({ number: 12, html_url: `https://github.com/${BUILD_REPO}/pull/12`, head: { sha: headSha } }, { status: 201 });
-    assert.fail(`Unexpected fixture request: ${call.method} ${call.path}`);
-  };
-  return { calls, fetcher };
+  return buildGithubFixture({ runId, baseSha, baseTree: treeSha, headSha, override });
+}
+
+async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, changed: BuildUpload, validatedBaseTree?: string) {
+  const baseTree = validatedBaseTree ?? await validateBuildBase(api, run, changed);
+  const prepared = await prepareBuildPullRequest(api, run);
+  run.planCommitSha = prepared.planCommitSha;
+  run.state.pr = prepared.pr;
+  return publishBuild(api, run, changed, baseTree, async (sha, body) => {
+    run.implementationHeadSha = sha;
+    run.publicationBody = body;
+  });
 }
 
 test("build reads main with a read-only installation token before consuming the plan and quota", async (t) => {
@@ -94,7 +82,7 @@ test("build reads main with a read-only installation token before consuming the 
   assert.equal(response.status, 202);
   const result = await response.json() as BuildFireResult;
   assert.equal(instance.readRun(result.runId)?.baseSha, baseSha);
-  assert.deepEqual(fixture.calls.find((call) => call.path.endsWith("/access_tokens"))?.body?.permissions, { contents: "read", pull_requests: "read", issues: "read" });
+  assert.deepEqual(fixture.calls.find((call) => call.path.endsWith("/access_tokens"))?.body?.permissions, { contents: "read", pull_requests: "read", issues: "read", checks: "read", statuses: "read" });
   assert.equal(fixture.calls.filter((call) => call.path === "/fire").length, 1);
 });
 
@@ -143,7 +131,13 @@ for (const useEgress of [true, false]) {
     assert.equal(instance.readRun(result.runId)?.state.reason, undefined);
     assert.equal(instance.readRun(result.runId)?.sessionUrl, sessionUrl);
     assert.deepEqual(egressRequests.map((request) => request.url), useEgress ? [env.ROUTINE_FIRE_URL] : []);
-    assert.deepEqual(directRequests.map((request) => new URL(request.url).hostname), ["github.com", "api.github.com", "api.github.com", "api.github.com", "api.github.com", "api.github.com", ...(useEgress ? [] : ["api.anthropic.com"])]);
+    const externalHosts = directRequests.map((request) => new URL(request.url).hostname);
+    assert.equal(externalHosts[0], "github.com");
+    assert.equal(externalHosts.filter((host) => host === "api.anthropic.com").length, useEgress ? 0 : 1);
+    assert.ok(externalHosts.slice(1, useEgress ? undefined : -1).every((host) => host === "api.github.com"));
+    const prepared = instance.readRun(result.runId)!;
+    assert.equal(prepared.state.pr?.draft, true);
+    assert.equal(prepared.planCommitSha, FIXTURE_PLAN_SHA);
     assert.ok(github.calls.some((call) => call.path.endsWith("/git/ref/heads/main")));
     const fire = useEgress ? egressRequests[0] : directRequests.at(-1)!;
     assert.equal(fire.url, env.ROUTINE_FIRE_URL);
@@ -160,27 +154,33 @@ for (const useEgress of [true, false]) {
   });
 }
 
-test("publishing opens a regular PR, replaces supplied trailers and neutralizes body mentions", async () => {
+test("publishing keeps the prepared PR draft, replaces supplied trailers and neutralizes body mentions", async () => {
   const run = { ...await stored(), sessionUrl };
   run.plan = { ...plan, spec: "Ask @someone and \\@another", acceptance: ["Review by @team/name"], paths: ["src/@scope/card.tsx"] };
   const fixture = githubFixture();
   await createBuildPullRequest(new GithubBuildApi("fixture", fixture.fetcher), run, { ...upload, message: "feat: card\r\n\r\nCo-authored-by: Forged <forged@example.test>\n  co-AUTHORED-by: Other <other@example.test>\nClaude-Session: https://claude.ai/code/session_forged\nKeep this detail." }, treeSha);
-  const message = String(fixture.calls.find((call) => call.path.endsWith("/git/commits"))?.body?.message);
+  const message = String(fixture.calls.filter((call) => call.path.endsWith("/git/commits") && call.method === "POST").at(-1)?.body?.message);
   assert.equal(message, `feat: card\n\nKeep this detail.\n\nCo-authored-by: ${run.coauthor}\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: ${sessionUrl}`);
-  const pr = fixture.calls.find((call) => call.path.endsWith("/pulls"))?.body;
-  assert.equal(pr?.draft, false);
+  const creation = fixture.calls.find((call) => call.path.endsWith("/pulls") && call.method === "POST")?.body;
+  assert.equal(creation?.draft, true);
+  const pr = fixture.calls.find((call) => call.path.endsWith("/pulls/12") && call.method === "PATCH")?.body;
   assert.doesNotMatch(String(pr?.body), /@[A-Za-z0-9]/);
   assert.match(String(pr?.body), /@\u200bsomeone/);
   assert.match(String(pr?.body), /@\u200bteam\/name/);
 });
 
 for (const status of [400, 401, 403, 422, 429]) {
-  test(`PR rejection ${status} deletes the created branch and accepts GitHub's empty 204 response`, async () => {
+  test(`PR rejection ${status} preserves the plan branch and can retry without duplicating its ref`, async () => {
     const run = await stored();
-    const fixture = githubFixture((call) => call.path.endsWith("/pulls") ? Response.json({}, { status }) : undefined);
-    await assert.rejects(() => createBuildPullRequest(new GithubBuildApi("fixture", fixture.fetcher), run, upload, treeSha), (error) => error instanceof BuildPullRequestRejectedError && /branch was removed/.test(error.message));
-    assert.equal(fixture.calls.at(-1)?.method, "DELETE");
-    assert.equal(fixture.calls.at(-1)?.path, `/repos/${BUILD_REPO}/git/refs/heads/${run.state.branch}`);
+    let rejected = true;
+    const fixture = githubFixture((call) => rejected && call.method === "POST" && call.path.endsWith("/pulls") ? Response.json({}, { status }) : undefined);
+    await assert.rejects(() => createBuildPullRequest(new GithubBuildApi("fixture", fixture.fetcher), run, upload, treeSha), (error) => error instanceof BuildPullRequestRejectedError && /branch was preserved/.test(error.message));
+    assert.equal(fixture.calls.some((call) => call.method === "DELETE" && call.path.includes("/git/refs/")), false);
+    assert.equal(fixture.refs.get(run.state.branch), FIXTURE_PLAN_SHA);
+    rejected = false;
+    await createBuildPullRequest(new GithubBuildApi("fixture", fixture.fetcher), run, upload, treeSha);
+    assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/git/refs")).length, 1);
+    assert.equal(fixture.refs.get(run.state.branch), headSha);
   });
 }
 
@@ -193,16 +193,16 @@ for (const status of [408, 500, 502]) {
   });
 }
 
-test("a PR request timeout preserves the branch while a failed cleanup reports its distinct result", async () => {
+test("PR timeout and explicit rejection both preserve the plan branch without cleanup", async () => {
   const run = await stored();
   const timeout = githubFixture((call) => { if (call.path.endsWith("/pulls")) throw new DOMException("Timed out", "TimeoutError"); return undefined; });
   await assert.rejects(() => createBuildPullRequest(new GithubBuildApi("fixture", timeout.fetcher), run, upload, treeSha), /Timed out/);
   assert.equal(timeout.calls.some((call) => call.method === "DELETE"), false);
   const denied = githubFixture((call) => call.path.endsWith("/pulls") || call.method === "DELETE" ? Response.json({}, { status: 422 }) : undefined);
-  await assert.rejects(() => createBuildPullRequest(new GithubBuildApi("fixture", denied.fetcher), run, upload, treeSha), /branch could not be removed/);
+  await assert.rejects(() => createBuildPullRequest(new GithubBuildApi("fixture", denied.fetcher), run, upload, treeSha), /branch was preserved/);
 });
 
-test("upload rejection records confirmed PR failure and branch removal for the card", async (t) => {
+test("a legacy upload records draft PR rejection and preserves its plan branch for inspection", async (t) => {
   const { instance, env, db } = coordinator();
   t.after(() => db.close());
   instance.reserveRun(await stored(), "upload-plan", Date.now() + 60_000);
@@ -210,7 +210,7 @@ test("upload rejection records confirmed PR failure and branch removal for the c
   const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), env, fixture.fetcher);
   assert.equal(response.status, 502);
   assert.equal(instance.readRun(runId)?.state.phase, "failed");
-  assert.match(instance.readRun(runId)?.state.reason ?? "", /branch was removed/);
+  assert.match(instance.readRun(runId)?.state.reason ?? "", /branch was preserved/);
 });
 
 test("uploads with too many paths outside the plan are blocked with the paths and no GitHub request", async (t) => {
@@ -259,6 +259,7 @@ test("webhook processing failures do not consume delivery IDs and successful ret
   const run = await stored();
   run.uploadUsed = true;
   run.state.phase = "validated";
+  run.state.pr = { number: 12, url: `https://github.com/${BUILD_REPO}/pull/12`, headSha };
   instance.reserveRun(run, "webhook-plan", Date.now() + 60_000);
   const text = JSON.stringify({ repository: { full_name: BUILD_REPO }, pull_request: { number: 12, state: "open", merged: false, html_url: `https://github.com/${BUILD_REPO}/pull/12`, head: { ref: run.state.branch, sha: headSha, repo: { full_name: BUILD_REPO } }, base: { ref: "main" }, updated_at: new Date().toISOString() } });
   const signature = `sha256=${createHmac("sha256", env.GITHUB_WEBHOOK_SECRET!).update(text).digest("hex")}`;
@@ -272,4 +273,265 @@ test("webhook processing failures do not consume delivery IDs and successful ret
   assert.equal(instance.readRun(runId)?.state.phase, "pr_open");
   t.mock.method(instance, "updateRun", () => assert.fail("Successful delivery must not be applied twice"));
   assert.equal((await handleGithubWebhook(request(), env)).status, 200);
+});
+
+test("the draft link is returned while routine dispatch continues in the execution context", async (t) => {
+  const { env, instance, db } = coordinator();
+  t.after(() => db.close());
+  const proposal = await issuePlan(env, plan);
+  const fixture = githubFixture();
+  let finishFire!: () => void;
+  const firePending = new Promise<void>((resolve) => { finishFire = resolve; });
+  const jobs: Promise<unknown>[] = [];
+  const fetcher: typeof fetch = async (input, init) => {
+    if (String(input) === env.ROUTINE_FIRE_URL) {
+      await firePending;
+      return Response.json({ claude_code_session_url: sessionUrl });
+    }
+    return fixture.fetcher(input, init);
+  };
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher, { waitUntil(job) { jobs.push(job); } });
+  const result = await response.json() as BuildFireResult;
+  assert.equal(response.status, 202);
+  assert.equal(result.run?.pr?.draft, true);
+  assert.equal(result.run?.pr?.url, `https://github.com/${BUILD_REPO}/pull/12`);
+  assert.equal(result.run?.phase, "triggered");
+  assert.equal(jobs.length, 1);
+  assert.equal(instance.readRun(result.runId)?.sessionUrl, undefined);
+  assert.equal("uploadHash" in result.run!, false);
+  finishFire();
+  await Promise.all(jobs);
+  assert.equal(instance.readRun(result.runId)?.sessionUrl, sessionUrl);
+});
+
+test("concurrent clicks and same-account retry share one run, quota hit, branch, PR and dispatch", async (t) => {
+  const { env, db } = coordinator();
+  t.after(() => db.close());
+  const proposal = await issuePlan(env, plan);
+  const fixture = githubFixture();
+  const responses = await Promise.all(Array.from({ length: 8 }, () => handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)));
+  const results = await Promise.all(responses.map((response) => response.json() as Promise<BuildFireResult>));
+  assert.ok(responses.every((response) => response.status === 202));
+  assert.equal(new Set(results.map((result) => result.runId)).size, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_hits WHERE kind = 'fire'").get()?.n, 1);
+  assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/pulls")).length, 1);
+  assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/git/refs")).length, 1);
+  assert.equal(fixture.calls.filter((call) => call.path === "/fire").length, 1);
+  const other: typeof fetch = (input, init) => String(input).endsWith("/user")
+    ? Promise.resolve(Response.json({ id: 2, login: "another-visitor", name: null }))
+    : fixture.fetcher(input, init);
+  const denied = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, other);
+  assert.equal(denied.status, 409);
+  assert.equal("runId" in (await denied.json() as Record<string, unknown>), false);
+});
+
+test("status recovers draft creation failure without dispatching early or marking the plan ready", async (t) => {
+  const { env, instance, db } = coordinator();
+  t.after(() => db.close());
+  const proposal = await issuePlan(env, plan);
+  let rejectPr = true;
+  const fixture = githubFixture((call) => rejectPr && call.path.endsWith("/pulls") && call.method === "POST" ? Response.json({}, { status: 422 }) : undefined);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher);
+  const result = await response.json() as BuildFireResult;
+  assert.equal(result.run?.phase, "triggered");
+  assert.equal(result.run?.pr, undefined);
+  assert.match(result.run?.reason ?? "", /routine was not started/);
+  assert.equal(fixture.refs.get(result.branch), FIXTURE_PLAN_SHA);
+  assert.equal(fixture.calls.filter((call) => call.path === "/fire").length, 0);
+  rejectPr = false;
+  const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, fixture.fetcher);
+  const state = await status.json() as BuildRun;
+  assert.equal(state.phase, "triggered");
+  assert.equal(state.pr?.draft, true);
+  assert.equal(state.ci?.state, "success");
+  assert.equal(state.reason, undefined);
+  assert.equal(fixture.calls.filter((call) => call.path === "/graphql").length, 0);
+  assert.equal(fixture.calls.filter((call) => call.path === "/fire").length, 1);
+  assert.equal(instance.readRun(result.runId)?.dispatchAttempted, true);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_hits WHERE kind = 'fire'").get()?.n, 1);
+});
+
+test("recorded implementation and review body recover after a GitHub write failure without reopening or replaying upload", async (t) => {
+  const { env, instance, db } = coordinator();
+  t.after(() => db.close());
+  const proposal = await issuePlan(env, plan);
+  let rejectBody = true;
+  const fixture = githubFixture((call) => rejectBody && call.path.endsWith("/pulls/12") && call.method === "PATCH" ? Response.json({}, { status: 503 }) : undefined);
+  const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
+  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  const changed: BuildUpload = { ...upload, files: [...upload.files, { path: "shared/fixture.ts", mode: "100644", content: btoa("export const fixture = true;") }] };
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, changed, fire.uploadToken), env, fixture.fetcher);
+  assert.equal(response.status, 502);
+  const pending = instance.readRun(result.runId)!;
+  assert.equal(pending.state.phase, "failed");
+  assert.equal(pending.state.pr?.draft, true);
+  assert.equal(pending.implementationHeadSha, headSha);
+  assert.match(pending.publicationBody ?? "", /shared contract/);
+  assert.equal(fixture.refs.get(result.branch), FIXTURE_PLAN_SHA);
+  rejectBody = false;
+  const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, fixture.fetcher);
+  const state = await status.json() as BuildRun;
+  assert.equal(state.phase, "pr_open");
+  assert.equal(state.pr?.headSha, headSha);
+  assert.equal(state.pr?.draft, false);
+  assert.equal(state.reason, undefined);
+  assert.equal(fixture.refs.get(result.branch), headSha);
+  assert.equal(fixture.calls.filter((call) => call.path.endsWith("/pulls") && call.method === "POST").length, 1);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, changed, fire.uploadToken), env, fixture.fetcher)).status, 401);
+  assert.equal(JSON.stringify(state).includes(fire.uploadToken), false);
+  assert.equal("publicationBody" in state, false);
+});
+
+function holdFinalPublicationRead(fixture: ReturnType<typeof githubFixture>, branch: string, loseResponse: boolean) {
+  let release!: () => void;
+  let reached!: () => void;
+  let holding = false;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const held = new Promise<void>((resolve) => { reached = resolve; });
+  const fetcher: typeof fetch = async (input, init) => {
+    if (!holding && String(input).endsWith("/pulls/12") && init?.method === "GET" && fixture.refs.get(branch) === headSha) {
+      holding = true;
+      reached();
+      await pending;
+      if (loseResponse) throw new Error("Publication response was lost.");
+    }
+    return fixture.fetcher(input, init);
+  };
+  return { fetcher, held, release };
+}
+
+for (const loseResponse of [false, true]) test(`status completion survives a late upload ${loseResponse ? "failure" : "confirmation"}`, async (t) => {
+  const { env, instance, db } = coordinator();
+  t.after(() => db.close());
+  const proposal = await issuePlan(env, plan);
+  const fixture = githubFixture();
+  const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
+  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  const delayed = holdFinalPublicationRead(fixture, result.branch, loseResponse);
+  t.after(delayed.release);
+  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, fire.uploadToken), env, delayed.fetcher);
+  await delayed.held;
+  assert.equal(instance.readRun(result.runId)?.state.phase, "validated");
+  const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, fixture.fetcher);
+  const ready = await status.json() as BuildRun;
+  assert.equal(ready.phase, "pr_open");
+  assert.equal(ready.pr?.draft, false);
+  delayed.release();
+  const response = await uploading;
+  assert.equal(response.status, 201);
+  const state = await response.json() as BuildRun;
+  assert.equal(state.phase, "pr_open");
+  assert.equal(state.pr?.draft, false);
+  assert.equal(state.pr?.headSha, headSha);
+  assert.equal(instance.readRun(result.runId)?.state.reason, undefined);
+});
+
+test("a frozen draft publication confirmation cannot replace readiness completed by status", async (t) => {
+  const { env, instance, db } = coordinator();
+  t.after(() => db.close());
+  const proposal = await issuePlan(env, plan);
+  const fixture = githubFixture();
+  const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
+  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  let release!: () => void;
+  let reached!: () => void;
+  let holding = false;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const held = new Promise<void>((resolve) => { reached = resolve; });
+  t.after(() => release());
+  const original = instance.completePublication.bind(instance);
+  const delayedCoordinator = new Proxy(instance, { get(target, key) {
+    if (key === "completePublication") return async (id: string, pr: NonNullable<BuildRun["pr"]>) => {
+      if (!holding) {
+        holding = true;
+        assert.equal(pr.draft, true);
+        reached();
+        await pending;
+      }
+      return original(id, pr);
+    };
+    const value = Reflect.get(target, key);
+    return typeof value === "function" ? value.bind(target) : value;
+  } });
+  const delayedEnv = { ...env, BUILD_COORDINATOR: { getByName: () => delayedCoordinator } } as unknown as Env;
+  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, fire.uploadToken), delayedEnv, fixture.fetcher);
+  await held;
+  const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, fixture.fetcher);
+  const ready = await status.json() as BuildRun;
+  assert.equal(ready.pr?.draft, false);
+  assert.equal(ready.ci?.state, "success");
+  release();
+  const response = await uploading;
+  assert.equal(response.status, 201);
+  const completed = await response.json() as BuildRun;
+  assert.equal(completed.phase, "pr_open");
+  assert.equal(completed.pr?.draft, false);
+  assert.deepEqual(completed.ci, ready.ci);
+  assert.equal(instance.readRun(result.runId)?.state.pr?.draft, false);
+});
+
+test("a late reconciliation rejection cannot overwrite a concurrently confirmed upload", async (t) => {
+  const { env, instance, db } = coordinator();
+  t.after(() => db.close());
+  const proposal = await issuePlan(env, plan);
+  const fixture = githubFixture();
+  const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
+  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  const delayed = holdFinalPublicationRead(fixture, result.branch, false);
+  t.after(delayed.release);
+  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, fire.uploadToken), env, delayed.fetcher);
+  await delayed.held;
+  let releaseStatus!: () => void;
+  let reachedStatus!: () => void;
+  const statusPending = new Promise<void>((resolve) => { releaseStatus = resolve; });
+  const statusHeld = new Promise<void>((resolve) => { reachedStatus = resolve; });
+  t.after(() => releaseStatus());
+  const staleFetcher: typeof fetch = async (input, init) => {
+    const response = await fixture.fetcher(input, init);
+    if (String(input).endsWith("/pulls/12") && init?.method === "GET") {
+      const snapshot = await response.json() as Record<string, unknown>;
+      reachedStatus();
+      await statusPending;
+      return Response.json({ ...snapshot, state: "closed" });
+    }
+    return response;
+  };
+  const checking = handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, staleFetcher);
+  await statusHeld;
+  delayed.release();
+  assert.equal((await uploading).status, 201);
+  releaseStatus();
+  const state = await (await checking).json() as BuildRun;
+  assert.equal(state.phase, "pr_open");
+  assert.equal(state.reason, undefined);
+  assert.equal(instance.readRun(result.runId)?.state.phase, "pr_open");
+});
+
+test("webhook-confirmed publication requests reviews once through status while the upload response is lost", async (t) => {
+  const { env, instance, db } = coordinator();
+  t.after(() => db.close());
+  env.CODEX_REVIEW_GITHUB_TOKEN = "owner-fixture";
+  const proposal = await issuePlan(env, plan);
+  const fixture = githubFixture();
+  const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
+  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  const delayed = holdFinalPublicationRead(fixture, result.branch, true);
+  t.after(delayed.release);
+  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, fire.uploadToken), env, delayed.fetcher);
+  await delayed.held;
+  const pullRequest = await (await fixture.fetcher(`https://api.github.com/repos/${BUILD_REPO}/pulls/12`)).json();
+  const body = JSON.stringify({ repository: { full_name: BUILD_REPO }, pull_request: pullRequest });
+  const signature = `sha256=${createHmac("sha256", env.GITHUB_WEBHOOK_SECRET!).update(body).digest("hex")}`;
+  assert.equal((await handleGithubWebhook(new Request("https://api.test/api/build/webhook", { method: "POST", body, headers: { "X-Hub-Signature-256": signature, "X-GitHub-Delivery": "published-before-response", "X-GitHub-Event": "pull_request" } }), env)).status, 200);
+  assert.equal(instance.readRun(result.runId)?.state.phase, "pr_open");
+  assert.equal(instance.readRun(result.runId)?.reviewRequested, undefined);
+  const statusRequest = () => new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } });
+  assert.equal((await handleBuildStatus(statusRequest(), env, fixture.fetcher)).status, 200);
+  assert.equal(instance.readRun(result.runId)?.reviewRequested, true);
+  assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/comments")).length, 2);
+  assert.equal((await handleBuildStatus(statusRequest(), env, fixture.fetcher)).status, 200);
+  delayed.release();
+  assert.equal((await uploading).status, 201);
+  assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/comments")).length, 2);
+  assert.equal(instance.readRun(result.runId)?.state.phase, "pr_open");
 });

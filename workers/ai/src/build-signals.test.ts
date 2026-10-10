@@ -3,6 +3,7 @@ import test from "node:test";
 import { BUILD_REPO, type BuildRun } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import { GithubBuildApi, reconcileBuild } from "./build/github.ts";
+import { fixturePullRequest } from "./build/testing/github-fixture.ts";
 import { applyGithubWebhook } from "./build/webhook.ts";
 
 const headSha = "a".repeat(40);
@@ -22,7 +23,7 @@ function githubFixture(checks: object[], statuses: object[], options: { checkErr
     assert.equal(init?.method, "GET");
     const url = new URL(String(input));
     assert.equal(url.hostname, "api.github.com");
-    if (url.pathname.endsWith("/pulls/12")) return Response.json({ number: 12, html_url: run.pr!.url, head: { sha: headSha }, state: "open", merged: false, updated_at: "2026-10-10T00:00:00Z" });
+    if (url.pathname.endsWith("/pulls/12")) return Response.json(fixturePullRequest(run.runId, headSha, { head: { sha: headSha, ref: run.branch, repo: { full_name: BUILD_REPO } }, updated_at: "2026-10-10T00:00:00Z" }));
     if (url.pathname.endsWith(`/commits/${headSha}/check-runs`)) return Response.json({ total_count: options.checkCount ?? checks.length, check_runs: checks }, { status: options.checkError ? 403 : 200 });
     if (url.pathname.endsWith(`/commits/${headSha}/status`)) return Response.json({ total_count: options.statusCount ?? statuses.length, statuses }, { status: options.statusError ? 403 : 200 });
     if (url.pathname.endsWith("/issues/12/comments")) return Response.json([]);

@@ -16,7 +16,7 @@ const BUILD_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_PATH);
 const STATUS_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
 
 const phaseLabels: Record<BuildPhase, string> = {
-  triggered: "Build requested",
+  triggered: "Preparing build",
   running: "In progress",
   uploaded: "Changes uploaded",
   validated: "Changes validated",
@@ -31,11 +31,12 @@ const phaseLabels: Record<BuildPhase, string> = {
 export function BuildPlanCard({ proposal, onChange, inactive = false }: { proposal: ChatProposal; onChange: (proposal: ChatProposal) => void; inactive?: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   const [issueOpen, setIssueOpen] = useState(false);
-  const [working, setWorking] = useState(false);
+  const [working, setWorking] = useState<"signing_in" | "preparing" | null>(null);
+  const startingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const expired = now >= proposal.expiresAt;
   const used = Boolean(proposal.issue || proposal.build);
-  const disabled = expired || used || working || inactive;
+  const disabled = expired || used || working !== null || inactive;
 
   useEffect(() => {
     const timer = setTimeout(() => setNow(Date.now()), Math.max(0, proposal.expiresAt - Date.now()) + 20);
@@ -43,19 +44,22 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   }, [proposal.expiresAt]);
 
   async function startBuild() {
-    if (disabled) return;
-    setWorking(true);
+    if (disabled || startingRef.current) return;
+    startingRef.current = true;
+    setWorking("signing_in");
     setError(null);
     try {
       if (!BUILD_URL) throw new Error("Builds are offline right now.");
       const signIn = await signInWithGithub();
+      setWorking("preparing");
       const response = await fetch(BUILD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...signIn, planToken: proposal.token }) });
       const result = await response.json() as BuildFireResult & { error?: string };
       if (!response.ok || !result.runId || !result.statusToken) throw new Error(result.error ?? "Couldn't start the build.");
-      onChange({ ...proposal, build: { runId: result.runId, branch: result.branch, statusToken: result.statusToken } });
+      onChange({ ...proposal, build: { runId: result.runId, branch: result.branch, statusToken: result.statusToken }, run: result.run });
     } catch (err) {
+      startingRef.current = false;
       setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't reach the server.");
-    } finally { setWorking(false); }
+    } finally { setWorking(null); }
   }
 
   return (
@@ -74,14 +78,14 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
       {proposal.issue ? (
         <p className="text-xs">Opened <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
       ) : proposal.build ? (
-        <BuildStatusCard build={proposal.build} savedRun={proposal.run} onRun={(run) => onChange({ ...proposal, run })} />
+        <BuildStatusCard key={proposal.build.runId} build={proposal.build} savedRun={proposal.run} onRun={(run) => onChange({ ...proposal, run })} />
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Open issue</button>
-            <button type="button" onClick={() => void startBuild()} disabled={disabled || issueOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">{working ? "Connecting to GitHub…" : "Start build"}</button>
+            <button type="button" onClick={() => void startBuild()} disabled={disabled || issueOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">{working === "signing_in" ? "Connecting to GitHub…" : working === "preparing" ? "Preparing draft PR…" : "Start build"}</button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Choose one destination. Builds create a public pull request with your GitHub account as co-author.</p>
+          <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {issueOpen && <IssuePanel proposal={proposal} disabled={disabled} onClose={() => setIssueOpen(false)} onCreated={(issue) => onChange({ ...proposal, issue })} />}
         </>
@@ -94,55 +98,91 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
 function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; savedRun?: BuildRun; onRun: (run: BuildRun) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshRef = useRef<AbortController | null>(null);
   const onRunRef = useRef(onRun);
   const terminal = isBuildTerminal(savedRun?.phase);
   useEffect(() => { onRunRef.current = onRun; });
+  useEffect(() => () => { refreshRef.current?.abort(); }, []);
+
+  async function refreshStatus() {
+    if (!STATUS_URL || refreshRef.current) return;
+    const controller = new AbortController();
+    refreshRef.current = controller;
+    setRefreshing(true);
+    try {
+      const run = await loadBuildRun(build.runId, build.statusToken, controller.signal);
+      if (controller.signal.aborted) return;
+      onRunRef.current(run);
+      setError(null);
+    } catch (err) {
+      if (!controller.signal.aborted) setError(statusError(err));
+    } finally {
+      if (!controller.signal.aborted) setRefreshing(false);
+      refreshRef.current = null;
+    }
+  }
 
   useEffect(() => {
     const element = ref.current;
-    if (!element || !STATUS_URL || terminal) return;
+    if (!element || !STATUS_URL || terminal || refreshing) return;
     let visible = false;
     const polling = createBuildStatusPoller({
-      load: async (signal) => {
-        const url = new URL(STATUS_URL!);
-        url.searchParams.set("runId", build.runId);
-        const response = await fetch(url, { headers: { Authorization: `Bearer ${build.statusToken}` }, signal, cache: "no-store", referrerPolicy: "no-referrer" });
-        const run = await response.json() as BuildRun & { error?: string };
-        if (!response.ok || !run.phase) throw new Error(run.error ?? "Build status is unknown.");
-        return run;
-      },
+      load: (signal) => loadBuildRun(build.runId, build.statusToken, signal),
       onRun: (run) => {
         onRunRef.current(run);
         setError(null);
       },
-      onError: (err) => setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't refresh the build. Showing the last known status."),
+      onError: (err) => setError(statusError(err)),
     });
     const refresh = () => { void polling.setVisible(visible && document.visibilityState === "visible"); };
     const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; refresh(); });
     observer.observe(element);
     document.addEventListener("visibilitychange", refresh);
     return () => { observer.disconnect(); document.removeEventListener("visibilitychange", refresh); polling.stop(); };
-  }, [build.runId, build.statusToken, terminal]);
+  }, [build.runId, build.statusToken, terminal, refreshing]);
 
   return (
     <div ref={ref} className="space-y-2 border-t border-line pt-3 text-xs" aria-label="Build status" aria-live="polite">
-      <p className="font-semibold">{savedRun ? phaseLabels[savedRun.phase] ?? "Status unknown" : "Status unknown · checking…"}</p>
+      <p className="font-semibold">{buildStatusLabel(savedRun)}</p>
       {savedRun && <BuildProgress run={savedRun} />}
       {savedRun?.reason && <p>{savedRun.reason}</p>}
-      {savedRun?.pr && <a href={savedRun.pr.url} target="_blank" rel="noreferrer noopener" className="inline-block underline underline-offset-2">View pull request #{savedRun.pr.number}</a>}
+      {savedRun?.pr && <a href={savedRun.pr.url} target="_blank" rel="noreferrer noopener" className="inline-block underline underline-offset-2">View {savedRun.pr.draft ? "draft PR" : "pull request"} #{savedRun.pr.number}</a>}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted-foreground">
         <dt>CI</dt><dd><Signal signal={savedRun?.ci} /></dd>
         <dt>Preview</dt><dd><Signal signal={savedRun?.preview} /></dd>
         <dt>Claude review</dt><dd><Signal signal={savedRun?.review} label={buildReviewSummary(savedRun?.review?.state)} /></dd>
       </dl>
-      <p className="text-[10px] text-muted-foreground">Claude review is advisory. {terminal ? "This build has finished; automatic refresh is off." : "Status refreshes while this card is visible."}</p>
+      <p className="text-[10px] text-muted-foreground">Claude review is advisory. {terminal ? "Automatic refresh is off. Refresh to check for updates." : "Status refreshes while this card is visible."}</p>
+      {(terminal || error) && <button type="button" onClick={() => void refreshStatus()} disabled={refreshing} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">{refreshing ? "Refreshing…" : "Refresh status"}</button>}
       <details className="text-[10px] text-muted-foreground"><summary className="cursor-pointer">Build details</summary><p className="mt-1 break-all font-mono">{build.runId}</p></details>
       {error && <p role="status" className="text-red-500">{error}</p>}
     </div>
   );
 }
 
-const STEPS = ["Queued", "Building", "Uploaded", "PR"] as const;
+async function loadBuildRun(runId: string, statusToken: string, signal: AbortSignal): Promise<BuildRun> {
+  const url = new URL(STATUS_URL!);
+  url.searchParams.set("runId", runId);
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${statusToken}` }, signal, cache: "no-store", referrerPolicy: "no-referrer" });
+  const run = await response.json() as BuildRun & { error?: string };
+  if (!response.ok || !run.phase) throw new Error(run.error ?? "Build status is unknown.");
+  return run;
+}
+
+function buildStatusLabel(run?: BuildRun): string {
+  if (!run) return "Status unknown · checking…";
+  if (run.phase === "triggered" && run.pr) return "Draft PR opened · starting build";
+  if (run.phase === "pr_open" && run.pr?.draft === true) return "Draft PR · awaiting checks";
+  if (run.phase === "pr_open" && run.pr?.draft === false) return "Ready for review";
+  return phaseLabels[run.phase] ?? "Status unknown";
+}
+
+function statusError(error: unknown): string {
+  return error instanceof Error && error.message !== "Failed to fetch" ? error.message : "Couldn't refresh the build. Showing the last known status.";
+}
+
+const STEPS = ["Draft PR", "Building", "Checks", "Ready"] as const;
 const STEP_OF: Record<BuildPhase, number> = { triggered: 0, running: 1, uploaded: 2, validated: 2, blocked: 2, failed: 2, timeout: 1, pr_open: 3, merged: 3, closed: 3 };
 const ACTIVE_PHASES: readonly BuildPhase[] = ["triggered", "running", "uploaded", "validated"];
 const FAILED_PHASES: readonly BuildPhase[] = ["blocked", "failed", "timeout"];
@@ -158,7 +198,7 @@ function elapsed(ms: number): string {
 function BuildProgress({ run }: { run: BuildRun }) {
   const active = ACTIVE_PHASES.includes(run.phase);
   const failed = FAILED_PHASES.includes(run.phase);
-  const current = STEP_OF[run.phase] ?? 0;
+  const current = (run.phase === "pr_open" && run.pr?.draft !== false || run.phase === "closed" && run.pr?.draft) ? 2 : STEP_OF[run.phase] ?? 0;
   const [now, setNow] = useState(() => Date.now());
   const [log, setLog] = useState<string[]>(() => run.progress ? [run.progress] : []);
   const [lastProgress, setLastProgress] = useState(run.progress);
