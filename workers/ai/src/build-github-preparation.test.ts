@@ -19,7 +19,7 @@ function fixture() {
   const calls: Call[] = [];
   const trees = new Map<string, Entry[]>([[baseTree, []]]);
   const commits = new Map<string, { sha: string; tree: { sha: string }; parents: { sha: string }[] }>([[baseSha, { sha: baseSha, tree: { sha: baseTree }, parents: [] }]]);
-  const sha = (value: unknown) => createHash("sha1").update(JSON.stringify(value)).digest("hex");
+  const sha = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 40);
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
     const path = url.pathname.replace(`/repos/${BUILD_REPO}`, "") + url.search;

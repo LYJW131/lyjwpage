@@ -66,7 +66,7 @@ export function buildGithubFixture(options: {
     if (path.startsWith(`${repoPath}/compare/`)) return Response.json({ status: "ahead", merge_base_commit: { sha: options.baseSha } });
     if (path === `${repoPath}/git/blobs` && call.method === "POST") {
       const content = String(body.content);
-      const sha = createHash("sha1").update(content).digest("hex");
+      const sha = createHash("sha256").update(content).digest("hex").slice(0, 40);
       blobs.set(sha, content);
       return Response.json({ sha }, { status: 201 });
     }

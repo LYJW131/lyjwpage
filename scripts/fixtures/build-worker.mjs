@@ -11,8 +11,8 @@ const baseSha = 'a'.repeat(40);
 const baseTree = 'b'.repeat(40);
 const initialTree = [{ path: 'src', type: 'tree', mode: '040000' }, { path: 'src/components', type: 'tree', mode: '040000' }];
 async function objectSha(value) {
-  const hash = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(JSON.stringify(value)));
-  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));
+  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('').slice(0, 40);
 }
 const json = (value, status = 200) => Response.json(value, { status });
 
