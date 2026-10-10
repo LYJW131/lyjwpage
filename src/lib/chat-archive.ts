@@ -1,5 +1,5 @@
 import type { BuildFireResult, BuildProposal, BuildRun } from "@shared/build-routine";
-import type { GodChatCard, GodChatMessage, GodChatSource } from "@shared/god-chat";
+import { parseQuestions, type GodChatCard, type GodChatMessage, type GodChatQuestion, type GodChatSource } from "@shared/god-chat";
 import type { GodChatTier } from "@shared/god-chat-tiers";
 import type { GithubIssueResult } from "@shared/github-issue";
 
@@ -27,6 +27,7 @@ export type ChatBubble = GodChatMessage & {
   sources?: GodChatSource[];
   cards?: { card: GodChatCard; at: number }[];
   proposals?: ChatProposal[];
+  asks?: GodChatQuestion[];
 };
 export type ChatSession = {
   id: string;
@@ -69,6 +70,7 @@ function validBubble(value: unknown): value is ChatBubble {
     if (proposal.build && (!object(proposal.build) || typeof proposal.build.runId !== "string" || typeof proposal.build.statusToken !== "string" || typeof proposal.build.branch !== "string")) return false;
     return proposal.run === undefined || validRun(proposal.run);
   }))) return false;
+  if (value.asks !== undefined && !parseQuestions(value.asks)) return false;
   if (["lookups", "searches"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every((source) => object(source) && typeof source.url === "string" && typeof source.title === "string"))) return false;

@@ -236,7 +236,7 @@ test("改站请求由 Opus 判断，start_design 签会话，规划者只读文�
   assert.ok(requests[1].max_tokens > GOD_CHAT_TIER_INFO.opus.maxTokens);
   assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1 });
   assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.opus.model, GOD_CHAT_TIER_INFO.opus.model]);
-  assert.deepEqual(requests[1].tools?.map((tool) => "name" in tool && tool.name), ["read_project_doc", "propose_build"]);
+  assert.deepEqual(requests[1].tools?.map((tool) => "name" in tool && tool.name), ["read_project_doc", "ask_visitor", "propose_build"]);
   const reply = events.flatMap((event) => event.type === "text" ? [event.text] : []).join("");
   const history: GodChatMessage[] = [
     { role: "user", content: "Please improve the music card." },
@@ -259,6 +259,26 @@ test("Opus 可以不开设计会话；模型未获授工具不能偷开会话或
     assert.ok(!events.some((event) => event.type === "plan" || event.type === "design"));
     assert.ok(events.some((event) => event.type === "seal"));
   }
+});
+
+test("规划者用 ask_visitor 提问：发出 ask 事件并结束这条回复，不合规的题目报错让模型重试", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const questions = [{ header: "内容", question: "卡片显示多少内容？", multiSelect: false, options: [{ label: "只显示概况", description: "最简单" }, { label: "概况加展柜", description: "要维护对照表" }] }];
+  const bad = [{ ...questions[0], options: [questions[0].options[0]] }];
+  const { env, requests, sessions } = designEnv((body, index) => modelStream(body.model, index === 0
+    ? { name: "ask_visitor", input: { questions: bad } }
+    : index === 1 ? { name: "ask_visitor", input: { questions } } : false));
+  const id = crypto.randomUUID();
+  sessions.set(id, 1);
+  const token = await signBuildToken({ kind: "design", id, expiresAt: Date.now() + BUILD_DESIGN_LIMITS.ttlMs }, env.BUILD_SESSION_SECRET!);
+  const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
+  assert.ok(requests[0].tools?.some((tool) => "name" in tool && tool.name === "ask_visitor"));
+  assert.equal(requests.length, 2);
+  assert.deepEqual(events.filter((event) => event.type === "ask"), [{ type: "ask", questions }]);
+  assert.ok(events.some((event) => event.type === "text" && event.text === "Pick your answers below."));
+  assert.ok(events.some((event) => event.type === "seal"));
 });
 
 test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属额度，伪造、过期、耗尽不调模型", async (t) => {
