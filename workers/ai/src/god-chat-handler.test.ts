@@ -104,6 +104,9 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
         assert.equal(body.model, GOD_CHAT_TIER_INFO[tier].model);
         assert.ok(body.tools?.every((tool) => !("name" in tool) || !["draft_github_issue", "start_design", "propose_build"].includes(tool.name)));
         assert.equal(body.output_config, undefined);
+        assert.deepEqual(body.mcp_servers, [{ type: "url", name: "aihot", url: "https://aihot.news/api/mcp" }]);
+        assert.ok(body.tools?.some((tool) => "type" in tool && tool.type === "mcp_toolset" && tool.mcp_server_name === "aihot" && tool.default_config?.enabled === false));
+        assert.ok(headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
         assert.deepEqual(body.thinking, { type: "adaptive", display: "summarized" });
         assert.ok(headers.get("anthropic-beta")?.includes("mid-conversation-output-config-2026-07-01"));
         assert.equal(headers.get("anthropic-beta")?.includes("server-side-fallback-2026-07-01"), tier !== "haiku");
@@ -352,6 +355,7 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
   assert.equal(requests.length, DESIGN_TOOL_ROUNDS + 1);
   assert.deepEqual(requests.at(-1)?.tools, []);
+  assert.ok(requests.every((request) => request.mcp_servers === undefined));
   assert.ok(requests.at(-1)?.messages.some((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("No tools remain")));
   assert.ok(!events.some((event) => event.type === "plan"));
   assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
