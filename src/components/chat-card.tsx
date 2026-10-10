@@ -31,6 +31,8 @@ import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";
 import type { GodChatCard } from "@shared/god-chat";
 
 const TILE_PX = 80;
+const HERO_PX = 96;
+const HERO_WIDE_PX = 128;
 const RECENT_LIMIT = 8;
 
 const readStatus = async <T,>(path: string) => guardPolled(path, await fetchStatus<T>(path));
@@ -63,20 +65,29 @@ function useNow(intervalMs: number | null) {
 
 export function ChatCard({ card }: { card: GodChatCard }) {
   switch (card) {
-    case "music":
-      return <MusicCard />;
+    case "nowListening":
+      return <NowListeningCard />;
+    case "listening":
+      return <ListeningCard />;
+    case "nowWatching":
+      return <NowWatchingCard />;
     case "watching":
       return <WatchingCard />;
-    case "gaming":
-      return <GamingCard />;
-    case "fitness":
-      return <FitnessCard />;
+    case "playingNow":
+      return <PlayingNowCard />;
+    case "playing":
+      return <PlayingCard />;
+    case "activity":
+      return <ActivityCard />;
+    case "workouts":
+      return <WorkoutsCard />;
   }
 }
 
-function Frame({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+// 卡片按内容收缩，不铺满对话宽度；此刻卡的歌名专辑名可以很长，另设上限，超出就截断。
+function Frame({ title, aside, compact = false, children }: { title: string; aside?: ReactNode; compact?: boolean; children: ReactNode }) {
   return (
-    <section className="w-full overflow-hidden border border-line bg-surface">
+    <section className={cn("w-fit min-w-[min(100%,20rem)] overflow-hidden border border-line bg-surface", compact ? "max-w-[min(100%,32rem)]" : "max-w-full")}>
       <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
         <span className="label-mono text-[10px] text-muted-foreground">{title}</span>
         {aside && <span className="label-mono min-w-0 truncate text-[10px] text-muted-foreground">{aside}</span>}
@@ -94,15 +105,24 @@ function Placeholder({ failed, children }: { failed: boolean; children?: ReactNo
   );
 }
 
-function Thumb({ src, optimize = false, wide = false, poster = false }: { src: string | null; optimize?: boolean; wide?: boolean; poster?: boolean }) {
+function Idle({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-3">
+      <StatusDot tone="off" />
+      <span className="label-mono text-[10px] text-muted-foreground">{children}</span>
+    </div>
+  );
+}
+
+function Thumb({ src, optimize = false, wide = false, poster = false, px = wide ? HERO_WIDE_PX : TILE_PX }: { src: string | null; optimize?: boolean; wide?: boolean; poster?: boolean; px?: number }) {
   return (
     <div
       className={cn(
         "relative shrink-0 overflow-hidden border border-line bg-muted",
-        poster ? "aspect-[2/3] w-full" : wide ? "aspect-video w-24" : "aspect-square w-full",
+        poster ? "aspect-[2/3] w-full" : wide ? "aspect-video w-32" : "aspect-square w-full",
       )}
     >
-      {src && <Image src={src} alt="" fill sizes={wide ? "96px" : `${TILE_PX}px`} className="object-cover" unoptimized={!optimize} />}
+      {src && <Image src={src} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!optimize} />}
     </div>
   );
 }
@@ -197,25 +217,24 @@ function clock(ms: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function artwork(url: string | null | undefined) {
-  return url ? { src: appleArtwork(url, TILE_PX * ARTWORK_SCALE), optimize: needsOptimizing(url) } : { src: null };
+function artwork(url: string | null | undefined, px = TILE_PX) {
+  return url ? { src: appleArtwork(url, px * ARTWORK_SCALE), px, optimize: needsOptimizing(url) } : { src: null };
 }
 
-function MusicCard() {
+function NowListeningCard() {
   const now = useCardView<NowListeningPayload>("nowListening");
-  const recent = useCardView<ListeningPayload>("listening");
   const live = useLiveNowListening(now.data, { validating: now.validating });
   const music = live && !live.idle ? live.music : null;
   const inferred = !music ? (live?.elsewhere ?? null) : null;
   const tick = useNow(music?.state === "playing" || inferred ? 1_000 : null);
   const elsewhere = inferred && tick < inferred.startedAt + inferred.durationMs + LISTENING_ELSEWHERE_HOLD_MS ? inferred : null;
 
-  let hero: ReactNode;
+  let body: ReactNode;
   if (music) {
     const position = trackPositionMs(music, tick);
-    hero = (
+    body = (
       <Hero
-        image={<div className="w-14"><Thumb {...artwork(music.artworkUrl)} /></div>}
+        image={<div className="w-24"><Thumb {...artwork(music.artworkUrl, HERO_PX)} /></div>}
         tone={music.state === "playing" ? "live" : "idle"}
         status={`${music.state === "playing" ? "Now playing" : "Paused"} · ${music.source === "homepod" ? "HomePod" : "Mac"}`}
         title={music.title ?? "Unknown track"}
@@ -227,9 +246,9 @@ function MusicCard() {
     );
   } else if (elsewhere) {
     const position = Math.min(elsewhere.durationMs, tick - elsewhere.startedAt);
-    hero = (
+    body = (
       <Hero
-        image={<div className="w-14"><Thumb {...artwork(elsewhere.artworkUrl)} /></div>}
+        image={<div className="w-24"><Thumb {...artwork(elsewhere.artworkUrl, HERO_PX)} /></div>}
         tone="live"
         status="Playing elsewhere"
         title={elsewhere.title}
@@ -238,35 +257,45 @@ function MusicCard() {
         meta={`~${clock(position)} / ${clock(elsewhere.durationMs)}`}
       />
     );
-  } else if (!live) {
-    hero = <Placeholder failed={now.failed} />;
+  } else if (live) {
+    body = <Idle>Nothing playing right now</Idle>;
+  } else {
+    body = <Placeholder failed={now.failed} />;
   }
 
-  const items = recent.data?.items.slice(0, RECENT_LIMIT) ?? [];
+  return (
+    <Frame compact title="Music" aside="Apple Music">
+      {body}
+    </Frame>
+  );
+}
+
+function ListeningCard() {
+  const recent = useCardView<ListeningPayload>("listening");
+  const items = recent.data?.items.slice(0, RECENT_LIMIT);
   return (
     <Frame title="Music" aside="Apple Music">
-      {hero}
-      {items.length > 0 && (
+      {items?.length ? (
         <Strip label="Recently played">
           {items.map((item) => (
             <Tile key={item.id} href={item.link} image={<Thumb {...artwork(item.artwork)} />} title={item.title} subtitle={item.artist} />
           ))}
         </Strip>
+      ) : (
+        <Placeholder failed={recent.failed}>{items ? "Nothing played recently." : undefined}</Placeholder>
       )}
     </Frame>
   );
 }
 
-function WatchingCard() {
+function NowWatchingCard() {
   const now = useCardView<NowWatchingPayload>("nowWatching");
-  const recent = useCardView<WatchingPayload>("watching");
   const playing = now.data?.nowPlaying ?? null;
   const current = now.data?.current ?? null;
   const device = playing ? (playing.deviceName ?? playing.client) : null;
 
-  const items = recent.data?.items.slice(0, RECENT_LIMIT) ?? [];
   return (
-    <Frame title="Watching" aside="Emby">
+    <Frame compact title="Watching" aside="Emby">
       {playing ? (
         <Hero
           image={<Thumb src={current?.backdrop ?? current?.poster ?? null} wide />}
@@ -277,46 +306,77 @@ function WatchingCard() {
           href={current?.link}
           progress={playing.positionMs != null && playing.durationMs ? (playing.positionMs / playing.durationMs) * 100 : (playing.progress ?? current?.progress ?? null)}
         />
-      ) : now.data ? null : (
+      ) : now.data ? (
+        <Idle>Nothing playing right now</Idle>
+      ) : (
         <Placeholder failed={now.failed} />
-      )}
-      {items.length > 0 && (
-        <Strip label="Recently watched">
-          {items.map((item) => (
-            <Tile key={item.id} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} />
-          ))}
-        </Strip>
       )}
     </Frame>
   );
 }
 
-function GamingCard() {
+function WatchingCard() {
+  const recent = useCardView<WatchingPayload>("watching");
+  const items = recent.data?.items.slice(0, RECENT_LIMIT);
+  return (
+    <Frame title="Watching" aside="Emby">
+      {items?.length ? (
+        <Strip label="Recently watched">
+          {items.map((item) => (
+            <Tile key={item.id} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} />
+          ))}
+        </Strip>
+      ) : (
+        <Placeholder failed={recent.failed}>{items ? "Nothing watched recently." : undefined}</Placeholder>
+      )}
+    </Frame>
+  );
+}
+
+function recentGames(payload: PlaystationPlayingPayload | undefined) {
+  return mergeVariants((payload?.items ?? []).filter((game) => !mediaApp(game.category)));
+}
+
+function PlayingNowCard() {
   const presence = useCardView<PlaystationPresencePayload>("playingNow");
+  // 只借来补图标和游玩时长，没有它卡片照样画。
   const recent = useCardView<PlaystationPlayingPayload>("playing");
   const status = presence.data;
-  const games = mergeVariants((recent.data?.items ?? []).filter((game) => !mediaApp(game.category))).slice(0, RECENT_LIMIT);
-  const playingGame = status?.playing ? games.find((game) => game.titleIds.includes(status.playing!.titleId)) : undefined;
+  const tick = useNow(status && !status.online ? 60_000 : null);
+  const playingGame = status?.playing ? recentGames(recent.data).find((game) => game.titleIds.includes(status.playing!.titleId)) : undefined;
 
-  let hero: ReactNode;
+  let body: ReactNode;
   if (status?.playing) {
-    hero = (
+    body = (
       <Hero
-        image={<div className="w-14"><Thumb src={playstationImage(status.playing.iconUrl ?? playingGame?.imageUrl, 56 * PLAYSTATION_IMAGE_SCALE)} /></div>}
+        image={<div className="w-24"><Thumb src={playstationImage(status.playing.iconUrl ?? playingGame?.imageUrl, HERO_PX * PLAYSTATION_IMAGE_SCALE)} px={HERO_PX} /></div>}
         tone="live"
         status={`Playing · ${status.playing.launchPlatform ?? status.platform ?? "PlayStation"}`}
         title={status.playing.title}
         subtitle={playingGame ? playTime(playingGame.playDurationMs, playingGame.playCount) : null}
       />
     );
-  } else if (!status) {
-    hero = <Placeholder failed={presence.failed} />;
+  } else if (status?.online) {
+    body = <Idle>{`Online${status.platform ? ` · ${status.platform}` : ""} · not in a game`}</Idle>;
+  } else if (status) {
+    body = <Idle>{status.lastOnlineAt ? `Offline · last online ${formatRelativeTime(status.lastOnlineAt, tick)}` : "Offline"}</Idle>;
+  } else {
+    body = <Placeholder failed={presence.failed} />;
   }
 
   return (
+    <Frame compact title="Gaming" aside="PlayStation">
+      {body}
+    </Frame>
+  );
+}
+
+function PlayingCard() {
+  const recent = useCardView<PlaystationPlayingPayload>("playing");
+  const games = recent.data ? recentGames(recent.data).slice(0, RECENT_LIMIT) : undefined;
+  return (
     <Frame title="Gaming" aside="PlayStation">
-      {hero}
-      {games.length > 0 && (
+      {games?.length ? (
         <Strip label="Recently played">
           {games.map((game) => (
             <Tile
@@ -327,20 +387,19 @@ function GamingCard() {
             />
           ))}
         </Strip>
+      ) : (
+        <Placeholder failed={recent.failed}>{games ? "No games played recently." : undefined}</Placeholder>
       )}
     </Frame>
   );
 }
 
-function FitnessCard() {
+function ActivityCard() {
   const activity = useCardView<ActivityPayload>("activity");
-  const workouts = useCardView<WorkoutsPayload>("workouts");
-  const tick = useNow(60_000);
   const stale = useStale(activity.updatedAt ?? activity.data?.pushedAt, ACTIVITY_STALE_MS);
   const data = stale ? undefined : activity.data;
   const current = Boolean(data?.currentAtSource);
   const rings = ringValues(data, current);
-  const recent = workouts.data?.items.slice(0, 3) ?? [];
 
   return (
     <Frame title="Fitness" aside="Apple Watch">
@@ -371,8 +430,19 @@ function FitnessCard() {
       ) : (
         <Placeholder failed={activity.failed}>{activity.data && stale ? "No recent activity reported." : undefined}</Placeholder>
       )}
-      {recent.length > 0 && (
-        <div className="border-t border-line">
+    </Frame>
+  );
+}
+
+function WorkoutsCard() {
+  const workouts = useCardView<WorkoutsPayload>("workouts");
+  const tick = useNow(60_000);
+  const recent = workouts.data?.items.slice(0, 3);
+
+  return (
+    <Frame title="Fitness" aside="Apple Watch">
+      {recent?.length ? (
+        <div>
           <div className="label-mono px-3 pt-2 text-[10px] text-muted-foreground">Recent workouts</div>
           <ul className="px-3 pb-2">
             {recent.map((workout) => (
@@ -388,6 +458,8 @@ function FitnessCard() {
             ))}
           </ul>
         </div>
+      ) : (
+        <Placeholder failed={workouts.failed}>{recent ? "No recent workouts." : undefined}</Placeholder>
       )}
     </Frame>
   );

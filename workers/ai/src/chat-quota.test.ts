@@ -120,7 +120,7 @@ test("三档全站都满时新访客回 site", () => {
 test("只要还有一档两道都有空就放行", () => {
   const { chat } = quota();
   fillTierEveryone(chat, "fable");
-  fillTierEveryone(chat, "opus");
+  fillTierEveryone(chat, "sonnet");
   assert.equal(chat.admitVisitor("3.3.3.3"), "ok");
 });
 
@@ -135,7 +135,7 @@ test("访客自己三档名额都满回 visitor，即便访客总量还有余", 
 test("访客空着的档全站已满、其余档自己用满时回 site", () => {
   const { chat } = quota();
   for (let i = 0; i < GOD_CHAT_QUOTA.tiers.haiku.visitor; i++) assert.equal(chat.admitTier("5.5.5.5", "haiku"), "haiku");
-  fillTierEveryone(chat, "opus");
+  fillTierEveryone(chat, "sonnet");
   fillTierEveryone(chat, "fable");
   assert.equal(chat.admitVisitor("5.5.5.5"), "site");
 });
@@ -149,12 +149,12 @@ test("enforce 为 false 时满了也放行，照样记账", () => {
   assert.equal(hits("v:6.6.6.6"), 1);
 });
 
-test("设计候选请求需要 Opus：该档用满不占用较低档的额度", () => {
+test("设计候选请求需要 Sonnet：该档用满不占用较低档的额度", () => {
   const { chat, hits } = quota();
-  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.opus.visitor; i++) assert.equal(chat.admitTier("designer", "opus"), "opus");
+  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.sonnet.visitor; i++) assert.equal(chat.admitTier("designer", "sonnet"), "sonnet");
   const before = hits();
-  assert.equal(chat.admitTier("designer", "opus", true, false), null);
+  assert.equal(chat.admitTier("designer", "sonnet", true, false), null);
   assert.equal(hits(), before);
   assert.equal(hits("t:haiku:designer"), 0);
-  assert.equal(chat.admitTier("designer", "opus"), "haiku");
+  assert.equal(chat.admitTier("designer", "sonnet"), "haiku");
 });

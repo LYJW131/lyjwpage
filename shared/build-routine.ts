@@ -11,7 +11,7 @@ export const BUILD_STATUS_TTL_MS = 30 * 24 * 60 * 60_000;
 export const BUILD_RECONCILE_MS = 60_000;
 export const BUILD_PLAN_LIMITS = { titleChars: 100, specChars: 6000, acceptanceItems: 8, acceptanceChars: 300, paths: 30 } as const;
 export const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone: 10 } } as const;
-// outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个，PR 正文单独列出交给审查。
+// outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。
 export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;
 
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
@@ -31,6 +31,8 @@ export type BuildRun = {
   ci?: BuildSignal;
   preview?: BuildSignal;
   review?: BuildSignal;
+  // Vercel 预览的公开分享链接：preview.url 在部署成功后换成 url；expiresAt 为 epoch 毫秒。
+  previewShare?: { deploymentId: string; url: string; expiresAt: number };
   reconciledAt?: number;
   githubUpdatedAt?: number;
 };
@@ -59,26 +61,35 @@ export const PLAN_LABELS = {
   en: {
     acceptance: "Acceptance criteria",
     paths: "Planned paths",
-    outside: "Changed outside the approved plan",
+    review: "Review closely",
+    reasons: { outside: "outside the plan", contract: "shared contract", auth: "build or auth code", prompt: "chat prompts", docs: "documentation outside docs/" },
     requestedBy: (account: string) => `Requested by @${account}.`,
     buildRun: (runId: string) => `Build run: \`${runId}\`. Claude review is advisory; it does not authorize merging.`,
     issueFooter: "_Filed from the [homepage chat](https://lyjw.me)._",
+    planReady: "Here is the plan for your review.",
+    askReady: "Pick your answers below.",
   },
   zh: {
     acceptance: "验收标准",
     paths: "计划路径",
-    outside: "计划外改动",
+    review: "重点审查",
+    reasons: { outside: "计划外", contract: "共享契约", auth: "构建或授权代码", prompt: "对话提示词", docs: "docs/ 之外的文档" },
     requestedBy: (account: string) => `由 @${account} 发起。`,
     buildRun: (runId: string) => `构建编号：\`${runId}\`。Claude 的审查仅供参考，不代表可以合并。`,
     issueFooter: "_提交自[首页对话](https://lyjw.me)。_",
+    planReady: "方案如下，请过目。",
+    askReady: "请在下面选一下。",
   },
   ja: {
     acceptance: "受け入れ基準",
     paths: "変更予定のパス",
-    outside: "計画外の変更",
+    review: "重点レビュー",
+    reasons: { outside: "計画外", contract: "共有コントラクト", auth: "ビルド・認証コード", prompt: "チャットのプロンプト", docs: "docs/ 以外のドキュメント" },
     requestedBy: (account: string) => `@${account} さんのリクエストです。`,
     buildRun: (runId: string) => `ビルド ID：\`${runId}\`。Claude のレビューは参考情報で、マージを承認するものではありません。`,
     issueFooter: "_[ホームページのチャット](https://lyjw.me)から作成されました。_",
+    planReady: "プランを用意しました。ご確認ください。",
+    askReady: "下から選んでください。",
   },
 } as const satisfies Record<PlanLanguage, unknown>;
 

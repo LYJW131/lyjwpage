@@ -8,6 +8,10 @@ preview_urls = true
 [vars]
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
+# 设计会话的 Managed Agents 壳，必须与 ANTHROPIC_API_KEY 在同一个 Console 工作空间（见 docs/ops-facts.md）。
+DESIGN_AGENT_ID = "agent_01A9iz5Qv92DM3v6AgZvwo59"
+DESIGN_ENVIRONMENT_ID = "env_01P1faxn2fwzNE596uk9JzgM"
+VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
 
 [version_metadata]
 binding = "CF_VERSION_METADATA"
