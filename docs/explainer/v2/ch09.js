@@ -1,62 +1,56 @@
 (() => {
   function make() {
     const { css } = G;
-    const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, rect, dashed, stamp, spark, roundRect, checkbox, measure, pathAt, pathLen, trailOn } = K;
+    const { E, prog, clamp, lerp, text, FONT, line, polyline, rect, dashed, stamp, spark, checkbox, measure } = K;
     I18N.add({
-      "ch09.title": ["发布", "Release"],
-      "ch09.diff": ["这次改到的路径", "Paths changed in this push"],
-      "ch09.n1a": ["推到 main，几条流水线同时触发；", "A push to main fans out at once;"],
-      "ch09.n1b": ["设了监视路径的，没改到就不跑。", "watch paths decide who sits out."],
-      "ch09.always": ["每次推到 main", "every push to main"],
-      "ch09.skip": ["没改到", "untouched"],
-      "ch09.t.hub": ["Hub 发布", "Hub release"],
-      "ch09.t.img": ["上报器镜像", "Reporter images"],
-      "ch09.pA": ["检查", "Checks"],
-      "ch09.pA.sub": ["GitHub Actions · 每次推到 main 都跑", "GitHub Actions · on every push to main"],
-      "ch09.a.tc": ["全部工作区", "every workspace"],
-      "ch09.a.test": ["站点 · Worker · 上报器 · 脚本", "site · Workers · reporters · scripts"],
-      "ch09.a.docs": ["文档与注释的漂移", "doc and comment drift"],
-      "ch09.a.act": ["工作流本身", "the workflows themselves"],
-      "ch09.a.weekly": ["另有每周一次定时扫描", "plus a weekly scheduled scan"],
-      "ch09.a.nobuild": ["不跑 next build：Vercel 每次都会构建", "No next build here: Vercel builds every push"],
-      "ch09.a.cancel": ["同一分支连推几次，只留最后一次", "Rapid pushes to one branch: only the last one runs"],
-      "ch09.n2a": ["CI 和 CodeQL 只检查、不发布；", "CI and CodeQL check but never ship;"],
-      "ch09.n2b": ["next build 留给 Vercel 去跑。", "next build is left to Vercel."],
-      "ch09.pB": ["Worker", "Workers"],
-      "ch09.b.ingest": ["改上报校验不会重新发布 api：Durable Object 不重启", "Ingest validation changes skip api: the DO keeps running"],
-      "ch09.b.miss": ["没改到：不构建，线上仍是上一版", "Untouched: no build, the live version stays"],
-      "ch09.b.deps": ["四个都另盯着根目录的依赖与配置", "All four also watch the root deps and config"],
-      "ch09.n3a": ["Worker 各自构建、互不等待：", "Each Worker builds on its own;"],
-      "ch09.n3b": ["契约只加不改，新接口先发被调用方。", "APIs only grow; ship the callee first."],
-      "ch09.pC": ["上报器", "Reporters"],
-      "ch09.c.img": ["容器镜像", "Container images"],
-      "ch09.c.ssh": ["受限密钥，只跑部署脚本", "restricted deploy key"],
-      "ch09.c.lan": ["内网两台：手动更新", "LAN hosts: by hand"],
-      "ch09.c.ptr": ["子模块指针", "submodule pointer"],
-      "ch09.c.sign": ["Developer ID 签名", "Developer ID signing"],
-      "ch09.c.notar": ["notarytool 公证", "notarize (notarytool)"],
-      "ch09.c.staple": ["stapler 钉上票据", "staple ticket"],
-      "ch09.c.run": ["hub-build-<运行号>", "hub-build-<run no.>"],
-      "ch09.n4a": ["上报器的镜像推到 GHCR；", "Reporter images go to GHCR;"],
-      "ch09.n4b": ["Mac 的 Hub 签名、公证后发 Release。", "the Hub is notarized, then released."],
-      "ch09.m.esa": ["阿里云 ESA", "Alibaba Cloud ESA"],
-      "ch09.m.card": ["GitHub Actions · 部署成功之后", "GitHub Actions · after a green deploy"],
-      "ch09.m.r1": ["刷新 ESA 首页并预热", "Purge the ESA home page, then warm it"],
-      "ch09.m.r2": ["等两个域名的 /api/version 都答出 c47d2a1", "Wait until both domains serve c47d2a1"],
-      "ch09.m.r2s": ["等不到也照常通知，最坏只是不弹提示", "Times out? Notify anyway; worst case, no prompt"],
-      "ch09.m.r3": ["通知上报入口（ingress Worker）", "Notify the ingress Worker"],
-      "ch09.m.retry": ["失败重试，最长 10 分钟", "retries for up to 10 min"],
-      "ch09.n5a": ["部署成功才刷新 ESA 首页；", "ESA is purged only after the deploy;"],
-      "ch09.n5b": ["先等两个域名换好，再通知页面。", "pages hear after both are polled."],
-      "ch09.p.room": ["推送房间", "push room"],
-      "ch09.p.bare": ["不带数据", "no payload"],
-      "ch09.p.fg": ["前台", "Foreground"],
-      "ch09.p.bg": ["后台标签页", "Hidden tab"],
-      "ch09.p.reload": ["自己刷新", "reloads itself"],
-      "ch09.p.foot1": ["收不到通知也没关系：", "No push? Pages still ask"],
-      "ch09.p.foot2": ["每 30 分钟、切回前台时各问一次", "every 30 min and on refocus."],
-      "ch09.n6a": ["页面收到 version，自己去问版本：", "Pages hear “version” and re-check:"],
-      "ch09.n6b": ["前台弹出提示，后台的旧页自己刷新。", "visible: a prompt; hidden: a reload."],
+      "ch09.title": ["对话", "Chat"],
+      "ch09.msg1": ["你最近在听什么？", "What are you listening to?"],
+      "ch09.c.label": ["隐私说明", "PRIVACY NOTICE"],
+      "ch09.c.intro": ["先确认对话数据会发到哪里：", "Where this chat sends your data:"],
+      "ch09.c.browser": ["这个浏览器", "This browser"],
+      "ch09.c.accept": ["接受", "Accept"],
+      "ch09.c.decline": ["拒绝", "Decline"],
+      "ch09.n1a": ["发第一句之前，先说清数据去哪；", "First, a notice of where data goes;"],
+      "ch09.n1b": ["点了接受，才去验人、发请求。", "nothing is sent until you accept."],
+      "ch09.g.human": ["验人", "Human check"],
+      "ch09.g.humanSub": ["通行证 · Turnstile", "pass · Turnstile"],
+      "ch09.q.r1": ["访客自己的总量", "Your own total"],
+      "ch09.q.r2": ["全站路由次数", "Site-wide routing"],
+      "ch09.q.r3": ["至少一档还有空位", "A tier with room"],
+      "ch09.q.foot": ["挡下：回 429，不调 Clef", "Blocked: a 429, Clef never runs"],
+      "ch09.n2a": ["花钱之前先过闸：验人，再数额度；", "Before any spend: a human check,"],
+      "ch09.n2b": ["被挡下就回 429，不再调 Clef。", "then quotas; blocked means a 429."],
+      "ch09.k.sub": ["Workers AI 上的路由模型", "a router on Workers AI"],
+      "ch09.k.full": ["满了", "Full"],
+      "ch09.k.down": ["往下降一档", "Step down"],
+      "ch09.k.refuse": ["refuse：不调模型，回一句关门话", "refuse: no model, just a closing line"],
+      "ch09.n3a": ["Clef 看问题挑一档模型；", "Clef picks a model tier;"],
+      "ch09.n3b": ["那一档满了，就往下降一档。", "if it's full, it steps down one."],
+      "ch09.t.note": ["只读公开模型", "Read-only, public model"],
+      "ch09.t.same": ["和浏览器看到的同一份", "The same data the browser gets"],
+      "ch09.t.client": ["外部 AI 客户端", "External AI client"],
+      "ch09.n4a": ["工具只读公开模型，和浏览器同一份；", "Tools read the same public model;"],
+      "ch09.n4b": ["同一套工具也挂在 /mcp 上。", "the same tools are served on /mcp."],
+      "ch09.reply": ["YOASOBI 的「アイドル」，正在放。", "YOASOBI's アイドル, playing now."],
+      "ch09.seal": ["盖章：下一轮只认盖过章的历史", "Sealed: only sealed turns go back in"],
+      "ch09.msg2": ["给在听卡加个歌词按钮", "Add a lyrics button to Now Playing"],
+      "ch09.s.box": ["Claude Managed Agents · 只读沙盒", "Claude Managed Agents · read-only sandbox"],
+      "ch09.s.repo": ["main · 匿名克隆", "main · anonymous clone"],
+      "ch09.s.net": ["网络：只放行 github.com", "Network: github.com only"],
+      "ch09.a.q": ["按钮放在哪？", "Where should the button go?"],
+      "ch09.a.o1": ["封面右上角", "Cover, top right"],
+      "ch09.a.o2": ["曲名旁边", "Next to the title"],
+      "ch09.p.title": ["在听卡加歌词按钮", "Lyrics button on Now Playing"],
+      "ch09.p.rows": ["规格 · 验收 3 项", "Spec · 3 acceptance checks"],
+      "ch09.p.gh": ["先看 GitHub 授权说明", "GitHub consent first"],
+      "ch09.n5a": ["想改站，Sonnet 开一个设计会话；", "Site ideas open a design session;"],
+      "ch09.n5b": ["Opus 只读仓库，出题、出计划。", "Opus reads the repo, asks, plans."],
+      "ch09.b.routine": ["不持有推送凭据", "holds no push credentials"],
+      "ch09.b.upload": ["上传改动，Worker 校验后提交", "Uploads; the Worker checks, commits"],
+      "ch09.b.review": ["审查只作参考", "Reviews are advisory"],
+      "ch09.b.owner": ["合不合并：站长决定", "Merging: the owner decides"],
+      "ch09.n6a": ["构建在新分支上开 draft PR，", "A build opens a draft PR;"],
+      "ch09.n6b": ["合不合并，由站长决定。", "merging is the owner's call."],
     });
     const tr = (k) => I18N.tr(k);
     const TAU = Math.PI * 2;
@@ -65,78 +59,42 @@
     const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
     const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
 
+    // 拍位和 music/ch09.js 是同一张表。
     const AT = {
-      type: 0.25, stroke: 0.0625, enter: 1.0, pull: [1.45, 1.9], fan: [1.5, 1.95], gate0: 2.0, gateStep: 0.0625,
-      ci: [4.0, 4.25, 4.5, 4.75], ciLamp: 5.0, cq: [4.375, 4.875], cqLamp: 5.25,
-      api: [6.0, 6.5], apiLamp: 7.0, miss: [6.25, 6.75, 6.375],
-      img: [8.0, 8.25, 8.5, 8.75], imgLamp: 9.0, hub: [9.25, 9.625, 9.675], notarized: 9.625, hubLamp: 9.75,
-      land: 10.0, status: 10.25, purge: 10.5, warm: [10.75, 10.95], r1: 10.9, dom: [11.0, 11.25], r2: 11.5,
-      notify: 12.0, ingress: 12.5, core: 12.75, ring: 13.0, ask: 13.5, card: 14.0, reload: 14.5,
-      full: [15.0, 15.3], dive: [15.5, 15.92], fade: [15.5, 15.85],
+      morph: [0.05, 0.6], type1: [0.6, 0.95], send1: 1.0, consent: 1.1, accept: 2.0, verify: [2.1, 2.45], leave: 2.5,
+      human: 3.25, quota: [3.75, 4.0, 4.25], block: 4.5, pass: 4.75,
+      clef: 6.0, full: 6.25, down: 6.5, haiku: 6.75,
+      call: 8.25, data: 8.5, mcp: 9.0, reply: 10.0, seal: 10.25,
+      send2: 10.75, design: 11.0, clone: 11.5, ask: 12.0, answer: 12.25, plan: 12.5, gh: 13.0, build: 13.25,
+      planCommit: 13.75, pr: 14.0, upload: 14.25, implCommit: 14.5, review: 14.75, owner: 15.0,
+      fade: [15.4, 15.85], fin: [15.3, 15.92],
     };
-    const SHA_OLD = "5939ef8", SHA_NEW = "c47d2a1";
 
-    const Y0 = 540;
-    const HEAD = [1350, Y0];
-    const COMMITS = [1250, 1050, 850, 650, 450, 250, 50];
+    const C = { x: 0, y: -1160, w: 1400, h: 1200 };
+    const IY = -20;
+    const MSG_TOP = C.y + 104, MSG_BOT = IY - 120;
+    const LANE = -500;
 
-    const GATE_X = 1720, LAMP_X = 3000, BRACKET_X = 3110;
-    const MX = 4000;
-    const O = [MX + 400, Y0], ESA = [MX + 1400, 840], L = [MX + 2400, Y0], C = [MX + 2400, 840], BEND = [MX + 700, 840];
-    const NEXT_BUILD_X = 4060;
-    const TRACKS = [
-      { id: "hub", y: -90, name: "ch09.t.hub", gate: "reporters/mac-telemetry-hub", on: true, pips: AT.hub, lamp: AT.hubLamp },
-      { id: "img", y: 60, name: "ch09.t.img", gate: "reporters/server-reporter/…", on: true, pips: AT.img, lamp: AT.imgLamp },
-      { id: "codeql", y: 240, name: "CodeQL", gate: null, on: true, pips: AT.cq, lamp: AT.cqLamp },
-      { id: "ci", y: 390, name: "CI", gate: null, on: true, pips: AT.ci, lamp: AT.ciLamp },
-      { id: "vercel", y: Y0, name: "Vercel", gate: null, on: true, pips: [], lamp: AT.land },
-      { id: "api", y: 690, name: "api", gate: "workers/api/…", on: true, pips: AT.api, lamp: AT.apiLamp },
-      { id: "ingress", y: 810, name: "ingress", gate: "", on: false },
-      { id: "collector", y: 930, name: "collector", gate: "", on: false },
-      { id: "ai", y: 1050, name: "ai", gate: "", on: false },
-    ];
-    function branchPts(y, x1) {
-      const pts = [[HEAD[0], Y0], [1440, Y0]];
-      if (y !== Y0) for (let i = 1; i <= 18; i++) {
-        const t = i / 18, u = 1 - t;
-        pts.push([u * u * u * 1440 + 3 * u * u * t * 1545 + 3 * u * t * t * 1545 + t * t * t * 1650, u * u * u * Y0 + 3 * u * u * t * Y0 + 3 * u * t * t * y + t * t * t * y]);
-      }
-      pts.push([x1, y]);
-      return pts;
-    }
-    for (const [i, tk] of TRACKS.entries()) {
-      tk.pts = branchPts(tk.y, tk.id === "vercel" ? O[0] - 30 : LAMP_X - 26);
-      tk.len = pathLen(tk.pts);
-      tk.dGate = pathLen(branchPts(tk.y, GATE_X));
-      tk.tGate = AT.gate0 + i * AT.gateStep;
-      const n = tk.pips ? tk.pips.length : 0;
-      tk.pipX = Array.from({ length: n }, (_, j) => lerp(GATE_X + 260, LAMP_X - 200, n === 1 ? 0.5 : j / (n - 1)));
-    }
-    const dAtX = (tk, px) => tk.dGate + (px - GATE_X);
+    // 末帧与 ch10.js 首帧相同：main 线、提交圆点与 HEAD 的屏幕位置照抄 ch10.js 的 Y0、HEAD、COMMITS（它们又跟着 ch08.js 的心电图几何）。
+    const ML = 1500, FIN_X = 1700;
+    const scr = (sx) => FIN_X + sx - 960;
+    const HEAD = [scr(1350), ML];
+    const COMMITS = [1250, 1050, 850, 650, 450, 250, 50].map(scr);
 
-    const PANEL_Y = 1600, PANEL_W = 1900, PANEL_H = 840;
-    const PA = { x: 350, y: PANEL_Y, w: PANEL_W, h: PANEL_H }, PB = { x: 2450, y: PANEL_Y, w: PANEL_W, h: PANEL_H }, PC = { x: 4550, y: PANEL_Y, w: PANEL_W, h: PANEL_H };
-
-    const CARD = { x: MX + 950, y: -200, w: 1420, h: 500 };
-    const CARD_ROW = (j) => CARD.y + 176 + j * 118;
-    const ING = { x: MX + 2450, y: 70, w: 400, h: 100 }, CORE = { x: MX + 3250, y: 70, w: 400, h: 100 }, MAST = [MX + 4050, 120];
-    const FG = { x: MX + 3700, y: 320, w: 800, h: 320 }, BG = { x: MX + 3700, y: 720, w: 800, h: 260 };
-
-    const CAM0 = [960, 540, 1];
-    const FAN = [2250, 540, 0.6];
-    const PZ = 0.94, PCY = 2110;
-    const CPA = [PA.x + PA.w / 2, PCY, PZ], CPB = [PB.x + PB.w / 2, PCY, PZ], CPC = [PC.x + PC.w / 2, PCY, PZ];
-    const MAP = [MX + 1230, 520, 0.7];
-    const PGV = [MX + 3550, 560, 0.8];
-    const FULL = [4250, 1110, 0.21];
-    const FIN = [MX + 1400, Y0, 1];
+    const CAM0 = [700, IY, 1];
+    const CV = [-67, -360, 0.6];
+    const GV = [2700, -406, 0.8];
+    const KV = [4700, -420, 0.8];
+    const TV = [6700, -353, 0.7];
+    const SV = [1250, 640, 0.62];
+    const BV = [2400, 1240, 0.62];
+    const FIN = [FIN_X, ML, 1];
     const drift = (c, dx = 10, k = 1.015) => [c[0] + dx, c[1] + 2, c[2] * k];
     const CAM = [
-      [0, CAM0], [AT.pull[0], drift(CAM0, 0), E.lin], [AT.pull[1], FAN, E.io], [3.3, drift(FAN, 10, 1.012), E.lin],
-      [3.55, CPA, E.io], [5.25, drift(CPA), E.lin], [5.5, CPB, E.io], [7.5, drift(CPB), E.lin],
-      [7.75, CPC, E.io], [9.75, drift(CPC), E.lin], [10.0, MAP, E.io], [12.25, drift(MAP, 10, 1.01), E.lin],
-      [12.5, PGV, E.io], [AT.full[0], drift(PGV, 10, 1.01), E.lin], [AT.full[1], FULL, E.io], [AT.dive[0], drift(FULL, 0, 1.012), E.lin],
-      [AT.dive[1], FIN, E.io], [16, FIN, E.lin],
+      [AT.morph[0], CAM0], [0.7, CV, E.io], [2.3, drift(CV), E.lin], [2.75, GV, E.io], [5.0, drift(GV), E.lin],
+      [5.4, KV, E.io], [7.6, drift(KV), E.lin], [7.9, TV, E.io], [9.5, drift(TV), E.lin], [9.75, CV, E.io],
+      [11.1, drift(CV, 6), E.lin], [11.35, SV, E.io], [13.3, drift(SV), E.lin], [13.55, BV, E.io],
+      [AT.fin[0], drift(BV), E.lin], [AT.fin[1], FIN, E.io], [16, FIN, E.lin],
     ];
     function camAt(b) {
       if (b <= CAM[0][0]) return CAM[0][1].slice();
@@ -147,7 +105,6 @@
       }
       return CAM[CAM.length - 1][1].slice();
     }
-    const at = (c, sx, sy) => [c[0] + (sx - 960) / c[2], c[1] + (sy - 540) / c[2]];
 
     function glow(e, cx, cy, r, a) {
       if (a <= 0) return;
@@ -155,446 +112,397 @@
       g.addColorStop(0, `rgba(255,200,150,${a})`); g.addColorStop(0.35, `rgba(235,130,85,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
       e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill(); e.restore();
     }
-    function tick(x, cx, cy, s, k, a = 1) {
-      polyline(x, [[cx - 0.5 * s, cy], [cx - 0.12 * s, cy + 0.38 * s], [cx + 0.6 * s, cy - 0.5 * s]], k, s * 0.16, css("signal"), a);
-    }
     function dot(x, cx, cy, r, fill, stroke, lw, a = 1) {
       if (a <= 0) return;
       x.save(); x.globalAlpha = a; x.fillStyle = fill; x.strokeStyle = stroke; x.lineWidth = lw;
       x.beginPath(); x.arc(cx, cy, r, 0, TAU); if (fill) x.fill(); if (lw > 0) x.stroke(); x.restore();
     }
-    function pip(x, cx, cy, r, on, a = 1) { dot(x, cx, cy, r, on > 0 ? css("signal") : css("paper"), on > 0 ? css("signal") : css("pink"), r * 0.32, a); }
+    function tick(x, cx, cy, s, k, a = 1) {
+      polyline(x, [[cx - 0.5 * s, cy], [cx - 0.12 * s, cy + 0.38 * s], [cx + 0.6 * s, cy - 0.5 * s]], k, s * 0.16, css("signal"), a);
+    }
     function lamp(x, e, cx, cy, r, on, a = 1) {
       if (a <= 0) return;
       dot(x, cx, cy, r, css("paper"), css("pink"), r * 0.13, a);
       if (on > 0) { dot(x, cx, cy, r * 0.78, css("signal"), null, 0, a * on); glow(e, cx, cy, r * 2.6, 0.5 * on * a); }
     }
-    function gate(x, gx, gy, on, k, a, hot = false) {
-      x.save(); x.globalAlpha = a; x.fillStyle = css("paper"); x.fillRect(gx - 22, gy - 22, 44, 44); x.restore();
-      rect(x, gx - 22, gy - 22, 44, 44, 3, css("pink"), a);
-      if (on) tick(x, gx, gy + 2, 34, k, a);
-      else if (k > 0) line(x, gx - 13, gy, gx - 13 + 26 * k, gy, 4, hot ? css("signal") : css("graphite"), a);
-    }
-    function dashPts(x, pts, k, w, color, a = 1, dash = [10, 9]) {
-      if (k <= 0 || a <= 0) return null;
-      x.save(); x.setLineDash(dash); const head = polyline(x, pts, k, w, color, a); x.restore();
-      return head;
-    }
-    function sparkAt(Ly, pts, d, size = 0.8, trail = 200, lw = 3) {
-      const head = pathAt(pts, d);
-      spark(Ly.e, Ly.x, head, trailOn(pts, d, trail, 16), { t: G.t, size, lw });
-      dot(Ly.x, head[0], head[1], 6.5 * size, css("signal"), null, 0);
-      return head;
-    }
-    function runLine(Ly, b, a, o) {
-      const { x, e } = Ly;
-      const { y, x0, x1, xs, times, lampT, t0 } = o;
-      line(x, x0 + 22, y, x1 - 30, y, 4, css("pink"), a);
-      const pts = [[x0 + 22, y], [x1 - 30, y]], Ln = x1 - 52 - x0;
-      const d = keys(b, [[t0, 0], ...xs.map((px, j) => [times[j], px - x0 - 22, E.io]), [lampT, Ln, E.io]]);
-      polyline(x, pts, d / Ln, 4.4, css("signal"), a);
-      if (b > t0 && b < lampT && a > 0.5) sparkAt(Ly, pts, d);
-      xs.forEach((px, j) => pip(x, px, y, 13, prog(b, times[j], times[j] + 0.03), a));
-      lamp(x, e, x1, y, 28, prog(b, lampT, lampT + 0.05), a);
-    }
-    function nar(x, key, c, row, r, a) {
-      if (a <= 0) return;
-      const [px, py] = at(c, 110, row ? 1024 : 944);
-      K.narration(x, tr(key), px, py, { px: 60 / c[2], maxW: 1040 / c[2], reveal: r, alpha: a, dim: 0.12 });
-    }
-    function card(d, px, py, w, h, a, sy = 1) {
+    function card(d, px, py, w, h, a, sy = 1, lw = 2.4) {
       if (a <= 0) return;
       d.save(); d.globalAlpha = a; d.translate(px, py); d.scale(1, Math.max(0.001, sy));
       d.shadowColor = "rgba(0,0,0,0.28)"; d.shadowBlur = 18; d.shadowOffsetY = 7;
       d.fillStyle = css("paper"); d.fillRect(0, 0, w, h);
-      d.shadowColor = "transparent"; d.strokeStyle = css("pink"); d.lineWidth = 2.4; d.strokeRect(0, 0, w, h);
+      d.shadowColor = "transparent"; d.strokeStyle = css("pink"); d.lineWidth = lw; d.strokeRect(0, 0, w, h);
       d.restore();
     }
-    function letterMark(x, cx, cy, letter, r, a) {
-      dot(x, cx, cy, r, css("paper"), css("pink"), 3, a);
-      text(x, letter, cx, cy + r * 0.44, { font: FONT.mono(r * 1.25, 700), align: "center", alpha: a });
-    }
-    function panelFrame(x, P, letter, titleKey, sub, a) {
-      rect(x, P.x, P.y, P.w, P.h, 2.4, css("pink"), a);
-      letterMark(x, P.x + 72, P.y + 74, letter, 34, a);
-      const tw = text(x, tr(titleKey), P.x + 132, P.y + 92, { font: FONT.cjk(50, 600), alpha: a });
-      text(x, sub, P.x + 132 + tw + 34, P.y + 90, { font: FONT.mono(32), color: css("graphite"), alpha: a, maxW: P.w - tw - 220 });
-      line(x, P.x + 30, P.y + 128, P.x + P.w - 30, P.y + 128, 1.4, css("pink"), a);
-    }
-    const lbl = (k) => (k.startsWith("ch09.") ? tr(k) : k);
-    const fontOf = (k, px, w = 600) => (k.startsWith("ch09.") ? FONT.cjk(px, w) : FONT.mono(px, w === 600 ? 500 : w));
-
-    function history(x, e, b) {
-      const inkC = css("pink");
-      line(x, -150, Y0, HEAD[0], Y0, 3, inkC);
-      for (const cx of COMMITS) dot(x, cx, Y0, 9, css("paper"), inkC, 2.6);
-      const hit = impact(b, AT.enter, 0.2);
-      dot(x, HEAD[0], Y0, 14, css("signal"), null, 0);
-      if (hit > 0.02) { dot(x, HEAD[0], Y0, 14 + 30 * (1 - hit), null, css("signal"), 2.4, hit); glow(e, HEAD[0], Y0, 90, 0.6 * hit); }
-    }
-    function terminal(x, b, a) {
+    function pill(d, px, py, w, h, label, font, a, o = {}) {
       if (a <= 0) return;
-      const cmd = "git push origin main";
-      const strokes = b < AT.type ? 0 : Math.floor((b - AT.type) / AT.stroke + 1e-6) + 1;
-      const shown = "$ " + cmd.slice(0, Math.min(cmd.length, strokes * 2));
-      const ta = a * prog(b, 0.12, 0.2);
-      text(x, shown, 560, 420, { font: FONT.mono(44, 500), alpha: ta });
-      if (b < AT.enter && Math.floor(b * 8) % 2 === 0) K.fillRect(x, 566 + measure(x, shown, FONT.mono(44, 500)), 386, 22, 40, css("pink"), 0.8 * ta);
-      text(x, `${SHA_OLD}..${SHA_NEW}  main -> main`, 560, 476, { font: FONT.mono(32), color: css("graphite"), alpha: prog(b, AT.enter, AT.enter + 0.05) * a });
-      text(x, SHA_NEW, HEAD[0], Y0 + 64, { font: FONT.mono(30, 600), color: css("signal"), align: "center", alpha: prog(b, AT.enter, AT.enter + 0.05) * a });
+      d.save(); d.globalAlpha = a;
+      K.roundRect(d, px, py, w, h, h * 0.22);
+      if (o.fill) { d.fillStyle = o.fill; d.fill(); }
+      d.strokeStyle = o.stroke || css("pink"); d.lineWidth = 2.4; d.stroke(); d.restore();
+      text(d, label, px + w / 2, py + h * 0.68, { font, color: o.color || css("pink"), align: "center", alpha: a, maxW: w - 24 });
     }
-    const DIFF = ["src/components/…", "workers/api/…", "reporters/server-reporter/…", "reporters/mac-telemetry-hub"];
-    function diffCard(d, b, a) {
-      const k = prog(b, 0.35, 0.5, E.outBack);
-      if (k <= 0 || a <= 0) return;
-      const px = 180, py = 660, w = 1000, h = 340;
-      card(d, px, py, w, h, a, k);
-      if (k < 0.9) return;
-      text(d, tr("ch09.diff"), px + 36, py + 64, { font: FONT.cjk(40, 600), alpha: a });
-      line(d, px + 30, py + 90, px + w - 30, py + 90, 1.4, css("pink"), a);
-      DIFF.forEach((s, j) => text(d, s, px + 36, py + 150 + j * 52, { font: FONT.mono(38, 500), alpha: a, reveal: prog(b, 0.45 + j * 0.06, 0.62 + j * 0.06) }));
-    }
-    function title(x, b, a) {
-      const k = prog(b, 0.3, 0.75, E.out) * a;
-      if (k <= 0) return;
-      text(x, "09", 110, 196, { font: FONT.pixel(112), color: css("signal"), alpha: k });
-      text(x, tr("ch09.title"), 290, 176, { font: FONT.cjk(58, 600), reveal: prog(b, 0.35, 0.8), alpha: k });
-      text(x, "main → GitHub Actions · Vercel · Workers Builds · GHCR", 292, 226, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.45, 1.0), alpha: k });
-      line(x, 110, 262, 110 + 1000 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("pink"), k);
-    }
-
-    function fan(Ly, b, a) {
-      const { x, e } = Ly, inkC = css("pink"), gr = css("graphite");
-      if (b < AT.fan[0] || a <= 0) return;
-      for (const [i, tk] of TRACKS.entries()) {
-        const kk = tk.id === "vercel" ? 1 : prog(b, AT.fan[0] + 0.03 * i, AT.fan[1] + 0.03 * i, E.io);
-        if (kk <= 0) continue;
-        const gk = prog(b, tk.tGate, tk.tGate + 0.05);
-        if (!tk.on && gk > 0) {
-          polyline(x, branchPts(tk.y, GATE_X - 22), 1, 4, inkC, a);
-          dashed(x, GATE_X + 22, tk.y, LAMP_X - 26, tk.y, 3, gr, [10, 9], 0.8 * a);
-        } else if (tk.id !== "vercel") polyline(x, tk.pts, kk, 4, inkC, a);
-        if (kk < 0.55) continue;
-        const la = prog(kk, 0.55, 1) * a;
-        gate(x, GATE_X, tk.y, tk.on, gk, la);
-        const nw = text(x, lbl(tk.name), GATE_X + 50, tk.y - 22, { font: fontOf(tk.name, 52, 600), alpha: la });
-        if (gk > 0) {
-          const why = tk.gate === null ? tr("ch09.always") : tk.on ? tk.gate : tr("ch09.skip");
-          text(x, why, GATE_X + 50 + nw + 30, tk.y - 22, { font: tk.gate ? FONT.mono(48, 500) : FONT.cjk(48, 600), color: tk.on ? css("signal") : gr, alpha: la, reveal: prog(b, tk.tGate, tk.tGate + 0.25), maxW: LAMP_X - GATE_X - nw - 140 });
-        }
-        if (!tk.on) { if (gk > 0) dot(x, LAMP_X, tk.y, 24, css("paper"), gr, 2.4, 0.8 * la); continue; }
-        const end = tk.id === "vercel" ? tk.len : dAtX(tk, LAMP_X - 26);
-        const d = keys(b, [[tk.tGate, tk.dGate], ...tk.pips.map((pt, j) => [pt, dAtX(tk, tk.pipX[j]), E.io]), [tk.lamp, end, E.io]]);
-        tk.pipX.forEach((px, j) => pip(x, px, tk.y, 11, prog(b, tk.pips[j], tk.pips[j] + 0.03), la));
-        if (b >= tk.tGate) {
-          polyline(x, tk.pts, d / tk.len, 4.4, css("signal"), a);
-          if (b < tk.lamp) sparkAt(Ly, tk.pts, d);
-        }
-        if (tk.id !== "vercel") lamp(x, e, LAMP_X, tk.y, 26, prog(b, tk.lamp, tk.lamp + 0.05), la);
-      }
-      const ga = prog(b, AT.fan[1] - 0.1, AT.fan[1] + 0.15) * a;
-      if (ga <= 0) return;
-      const brace = (y0, y1) => { line(x, BRACKET_X, y0, BRACKET_X, y1, 2.2, inkC, ga); line(x, BRACKET_X - 16, y0, BRACKET_X, y0, 2.2, inkC, ga); line(x, BRACKET_X - 16, y1, BRACKET_X, y1, 2.2, inkC, ga); };
-      brace(-140, 420); brace(660, 1080);
-      text(x, "GitHub Actions", BRACKET_X - 16, -186, { font: FONT.mono(50, 600), alpha: ga });
-      text(x, "Workers Builds", BRACKET_X - 16, 1160, { font: FONT.mono(50, 600), alpha: ga });
-      letterMark(x, BRACKET_X + 66, -15, "C", 32, ga);
-      letterMark(x, BRACKET_X + 66, 315, "A", 32, ga);
-      letterMark(x, BRACKET_X + 66, 870, "B", 32, ga);
-    }
-
-    const CI_ROWS = [["lint", "ESLint"], ["typecheck", "ch09.a.tc"], ["test", "ch09.a.test"], ["docs:check", "ch09.a.docs"]];
-    const CQ_ROWS = [["javascript-typescript", null], ["actions", "ch09.a.act"]];
-    function panelA(x, e, b, a) {
+    function arrowHead(x, tx, ty, ang, color, a = 1, s = 18) {
       if (a <= 0) return;
-      const P = PA, gr = css("graphite");
-      panelFrame(x, P, "A", "ch09.pA", tr("ch09.pA.sub"), a);
-      const col = (cx, head, rows, times, lampT, lampX) => {
-        text(x, head, cx, P.y + 214, { font: FONT.mono(46, 700), alpha: a });
-        lamp(x, e, lampX, P.y + 198, 24, prog(b, lampT, lampT + 0.05), a);
-        rows.forEach(([lab, sub], j) => {
-          const y = P.y + 306 + j * 86, tk = times[j];
-          const done = prog(b, tk, tk + 0.08), ra = a * lerp(0.5, 1, done);
-          checkbox(x, cx, y - 32, done, { size: 42, alpha: a });
-          const tw = text(x, lab, cx + 66, y, { font: FONT.mono(38, 500), alpha: ra });
-          if (sub) text(x, lbl(sub), cx + 66 + tw + 26, y, { font: fontOf(sub, 30), color: gr, alpha: ra, maxW: lampX - cx - tw - 90 });
-          const sw = prog(b, tk, tk + 0.12, E.outExpo);
-          if (sw > 0 && b < tk + 0.45) line(x, cx, y + 24, cx + (lampX - cx) * sw, y + 24, 2.2, css("signal"), a * (1 - prog(b, tk + 0.2, tk + 0.45)));
-        });
-      };
-      col(P.x + 60, "CI", CI_ROWS, AT.ci, AT.ciLamp, P.x + 900);
-      line(x, P.x + 1010, P.y + 160, P.x + 1010, P.y + 640, 1, css("pink"), 0.35 * a);
-      col(P.x + 1060, "CodeQL", CQ_ROWS, AT.cq, AT.cqLamp, P.x + P.w - 70);
-      text(x, tr("ch09.a.weekly"), P.x + 1060, P.y + 306 + 2 * 86, { font: FONT.cjk(30, 600), color: gr, alpha: a, maxW: P.w - 1130 });
-      text(x, tr("ch09.a.nobuild"), P.x + 60, P.y + 718, { font: FONT.cjk(32, 600), color: gr, alpha: a * prog(b, 4.6, 4.75), maxW: P.w - 120 });
-      text(x, tr("ch09.a.cancel"), P.x + 60, P.y + 772, { font: FONT.cjk(32, 600), color: gr, alpha: a * prog(b, 4.8, 4.95), maxW: P.w - 120 });
+      x.save(); x.globalAlpha = a; x.fillStyle = color; x.beginPath();
+      x.moveTo(tx + Math.cos(ang) * 4, ty + Math.sin(ang) * 4);
+      x.lineTo(tx + Math.cos(ang + 2.6) * s, ty + Math.sin(ang + 2.6) * s);
+      x.lineTo(tx + Math.cos(ang - 2.6) * s, ty + Math.sin(ang - 2.6) * s);
+      x.fill(); x.restore();
+    }
+    function screen(x, draw) { x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0); draw(); x.restore(); }
+    function nar(x, key, row, r, a) {
+      if (a <= 0) return;
+      screen(x, () => K.narration(x, tr(key), 110, row ? 1024 : 944, { reveal: r, alpha: a, dim: 0.12, maxW: 1040 }));
+    }
+    function title(x, b) {
+      const a = prog(b, 0.3, 0.75, E.out) * (1 - prog(b, 2.3, 2.6));
+      if (a <= 0) return;
+      screen(x, () => {
+        text(x, "09", 110, 196, { font: FONT.pixel(112), color: css("signal"), alpha: a });
+        text(x, tr("ch09.title"), 290, 176, { font: FONT.cjk(58, 600), reveal: prog(b, 0.35, 0.8), alpha: a });
+        text(x, "Talk to God · ai Worker · Clef · Claude", 292, 226, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.45, 1.0), alpha: a });
+        line(x, 110, 262, 110 + 820 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("pink"), a);
+      });
     }
 
-    const WROWS = [
-      { id: "api", y: 1810, paths: "workers/api/*   shared/*   src/lib/*", on: true },
-      { id: "ai", y: 2050, paths: "workers/ai/*   shared/ai-paths.ts   …", on: false, flash: AT.miss[2] },
-      { id: "ingress", y: 2170, paths: "workers/ingress/*   shared/*   src/lib/*", on: false, flash: AT.miss[0] },
-      { id: "collector", y: 2290, paths: "workers/collector/*   shared/*   src/lib/*", on: false, flash: AT.miss[1] },
+    // 一条消息的去向：章内小节 → 世界坐标；拖尾从同一个函数往回取，画面仍是时间的纯函数。
+    const MSG = [
+      [AT.leave, [C.x + C.w, LANE]], [3.0, [2000, LANE], E.io], [3.3, [2000, LANE]], [3.55, [2420, LANE], E.io],
+      [AT.pass, [2420, LANE]], [5.0, [3350, LANE], E.io], [5.6, [3900, LANE], E.io], [AT.clef, [4400, LANE], E.io],
+      [6.15, [4750, -600], E.io], [AT.down, [4750, -600]], [AT.haiku, [4750, -320], E.io],
     ];
-    function panelB(Ly, b, a) {
-      if (a <= 0) return;
-      const { x } = Ly, P = PB, gr = css("graphite");
-      panelFrame(x, P, "B", "ch09.pB", "Cloudflare Workers Builds", a);
-      const TX0 = P.x + 1010, TX1 = P.x + P.w - 90;
-      const XS = [TX0 + 320, TX0 + 600];
-      text(x, "typecheck", XS[0], P.y + 178, { font: FONT.mono(32, 500), color: gr, align: "center", alpha: a });
-      text(x, "wrangler deploy", XS[1], P.y + 178, { font: FONT.mono(32, 500), color: gr, align: "center", alpha: a });
-      for (const r of WROWS) {
-        text(x, r.id, P.x + 60, r.y - 12, { font: FONT.mono(46, 700), alpha: a });
-        text(x, r.paths, P.x + 60, r.y + 36, { font: FONT.mono(30), color: gr, alpha: a });
-        if (r.on) {
-          gate(x, TX0, r.y, true, 1, a);
-          text(x, "workers/api/…", TX0 - 30, r.y + 64, { font: FONT.mono(30, 500), color: css("signal"), alpha: a });
-          runLine(Ly, b, a, { y: r.y, x0: TX0, x1: TX1, xs: XS, times: AT.api, lampT: AT.apiLamp, t0: 5.5 });
-          text(x, "api.homepage.lyjw.llc", TX1 + 28, r.y + 76, { font: FONT.mono(30, 500), align: "right", alpha: a * prog(b, AT.apiLamp, AT.apiLamp + 0.1) });
-          text(x, "− shared/ingest/*", P.x + 60, r.y + 80, { font: FONT.mono(30, 600), color: css("signal"), alpha: a });
-          text(x, tr("ch09.b.ingest"), P.x + 60, r.y + 126, { font: FONT.cjk(30, 600), color: gr, alpha: a, maxW: TX0 - P.x - 100 });
-        } else {
-          const fl = impact(b, r.flash, 0.2), hot = fl > 0.05;
-          gate(x, TX0, r.y, false, 1, a, hot);
-          dashed(x, TX0 + 22, r.y, TX1 - 28, r.y, 3, gr, [10, 9], 0.8 * a);
-          dot(x, TX1, r.y, 28, css("paper"), gr, 2.4, 0.8 * a);
-          text(x, tr("ch09.b.miss"), TX0 + 48, r.y - 26, { font: FONT.cjk(30, 600), color: hot ? css("signal") : gr, alpha: a, maxW: TX1 - TX0 - 100 });
-        }
+    const CALL = [[8.0, [5550, -320]], [AT.call, [6250, -460], E.io], [8.4, [6750, -230], E.io], [AT.data, [6750, -60], E.io]];
+    const BACK = [[AT.data + 0.05, [6750, -60]], [8.8, [6750, -230], E.io]];
+    const MCP = [[AT.mcp, [7680, -870]], [9.3, [7200, -560], E.io]];
+    function along(path, b) {
+      if (b <= path[0][0]) return path[0][1];
+      for (let i = 1; i < path.length; i++) if (b <= path[i][0]) {
+        const [t0, p0] = path[i - 1], [t1, p1, e = E.lin] = path[i];
+        const k = e(clamp((b - t0) / (t1 - t0)));
+        return [lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k)];
       }
-      text(x, tr("ch09.b.deps"), P.x + 60, P.y + P.h - 36, { font: FONT.cjk(30, 600), color: gr, alpha: a, maxW: P.w - 120 });
+      return path[path.length - 1][1];
+    }
+    function runner(Ly, path, b, size = 0.9) {
+      const t0 = path[0][0], t1 = path[path.length - 1][0];
+      if (b < t0 || b > t1 + 0.02) return;
+      const head = along(path, b);
+      const trail = [];
+      for (let i = 14; i >= 1; i--) trail.push(along(path, Math.max(t0, b - i * 0.012)));
+      spark(Ly.e, Ly.tp, head, trail, { t: G.t, size, lw: 3 });
+      dot(Ly.tp, head[0], head[1], 6.5 * size, css("signal"), null, 0);
     }
 
-    const IMG_STEPS = [["buildx", "linux/amd64"], ["GHCR", `latest · sha-${SHA_NEW}`], ["ssh misaka-jp", "ch09.c.ssh"], ["running", "restarts=0"]];
-    const HUB_STEPS = ["ch09.c.sign", "ch09.c.notar", "ch09.c.staple"];
-    function panelC(Ly, b, a) {
+    function bubble(d, str, right, y, a, o = {}) {
+      if (a <= 0) return 0;
+      const f = FONT.cjk(52, 600), w = measure(d, str, f) + 64, h = 96;
+      const px = right - w;
+      d.save(); d.globalAlpha = a; d.fillStyle = css("pink"); K.roundRect(d, px, y, w, h, 18); d.fill(); d.restore();
+      text(d, str, px + 32, y + 64, { font: f, color: css("paper"), alpha: a, reveal: o.reveal ?? 1 });
+      return h;
+    }
+    const DEST = ["Cloudflare Workers", "Cloudflare Turnstile", "Workers AI · Clef", "Anthropic · Claude API", "Sentry", "GitHub", "ch09.c.browser"];
+    function consent(d, b, y0, a) {
       if (a <= 0) return;
-      const { x, s } = Ly, P = PC, gr = css("graphite");
-      panelFrame(x, P, "C", "ch09.pC", "GitHub Actions → GHCR · GitHub Release", a);
-      const X0 = P.x + 90, X1 = P.x + P.w - 130, RX = P.x + P.w - 40;
-      const y1 = P.y + 300, xs1 = [P.x + 360, P.x + 730, P.x + 1100, P.x + 1450];
-      const w1 = text(x, tr("ch09.c.img"), P.x + 60, P.y + 200, { font: FONT.cjk(42, 600), alpha: a });
-      text(x, "reporters/server-reporter/…", P.x + 60 + w1 + 30, P.y + 198, { font: FONT.mono(32, 500), color: css("signal"), alpha: a });
-      IMG_STEPS.forEach(([lab, sub], j) => {
-        text(x, lab, xs1[j], y1 - 34, { font: FONT.mono(34, 600), align: "center", alpha: a });
-        text(x, lbl(sub), xs1[j], y1 + 56, { font: fontOf(sub, 30), color: gr, align: "center", alpha: a, maxW: 350 });
+      const gr = css("graphite");
+      text(d, tr("ch09.c.label"), C.x + 60, y0 + 50, { font: FONT.mono(48, 600), color: gr, alpha: a });
+      text(d, tr("ch09.c.intro"), C.x + 60, y0 + 124, { font: FONT.cjk(50, 600), alpha: a, maxW: C.w - 120 });
+      DEST.forEach((s, j) => {
+        const r = prog(b, AT.consent + 0.1 + j * 0.08, AT.consent + 0.3 + j * 0.08);
+        dot(d, C.x + 84, y0 + 186 + j * 62, 6, css("pink"), null, 0, a * r);
+        text(d, s.startsWith("ch09.") ? tr(s) : s, C.x + 110, y0 + 202 + j * 62, { font: s.startsWith("ch09.") ? FONT.cjk(48, 600) : FONT.mono(48, 500), alpha: a, reveal: r });
       });
-      gate(x, X0, y1, true, 1, a);
-      runLine(Ly, b, a, { y: y1, x0: X0, x1: X1, xs: xs1, times: AT.img, lampT: AT.imgLamp, t0: 7.75 });
-      text(x, "misaka-jp", RX, y1 + 78, { font: FONT.mono(32, 600), align: "right", alpha: a });
-      const la = prog(b, AT.imgLamp, AT.imgLamp + 0.15) * a;
-      if (la > 0) {
-        const sx = xs1[2], by = y1 + 140;
-        dashPts(x, [[sx, y1 + 76], [sx, by], [sx + 120, by]], prog(b, AT.imgLamp, AT.imgLamp + 0.15), 2.2, gr, la, [8, 8]);
-        text(x, "×", sx + 60, by + 12, { font: FONT.mono(36, 600), color: gr, align: "center", alpha: la });
-        for (const [j, name] of [[0, "dsm"], [1, "n100"]]) {
-          const bx = sx + 130 + j * 128;
-          rect(x, bx, by - 28, 112, 56, 2, gr, la);
-          text(x, name, bx + 56, by + 11, { font: FONT.mono(30, 500), color: gr, align: "center", alpha: la });
-        }
-        text(x, tr("ch09.c.lan"), sx + 130 + 2 * 128 + 10, by + 11, { font: FONT.cjk(30, 600), color: gr, alpha: la, maxW: RX - (sx + 130 + 2 * 128 + 10) });
-      }
-      const y2 = P.y + 670, xs2 = [P.x + 430, P.x + 870, P.x + 1310];
-      const w2 = text(x, "Mac Telemetry Hub", P.x + 60, P.y + 560, { font: FONT.mono(40, 700), alpha: a });
-      const w3 = text(x, "reporters/mac-telemetry-hub", P.x + 60 + w2 + 30, P.y + 558, { font: FONT.mono(32, 500), color: css("signal"), alpha: a });
-      text(x, tr("ch09.c.ptr"), P.x + 60 + w2 + 30 + w3 + 20, P.y + 558, { font: FONT.cjk(30, 600), color: gr, alpha: a });
-      HUB_STEPS.forEach((k, j) => text(x, tr(k), xs2[j], y2 - 34, { font: FONT.cjk(32, 600), align: "center", alpha: a, maxW: 420 }));
-      gate(x, X0, y2, true, 1, a);
-      runLine(Ly, b, a, { y: y2, x0: X0, x1: X1, xs: xs2, times: AT.hub, lampT: AT.hubLamp, t0: 8.9 });
-      text(x, "GitHub Release", RX, y2 + 78, { font: FONT.mono(32, 600), align: "right", alpha: a });
-      text(x, tr("ch09.c.run"), RX, y2 + 120, { font: FONT.mono(30), color: gr, align: "right", alpha: a, maxW: 420 });
-      stamp(s, "notarized", xs2[1] + 10, y2 + 96, { k: prog(b, AT.notarized, AT.notarized + 0.12), px: 46, rot: -0.1, alpha: a });
+      const by = y0 + 202 + DEST.length * 62 + 10, hit = prog(b, AT.accept, AT.accept + 0.06);
+      pill(d, C.x + 60, by, 300, 84, tr("ch09.c.accept"), FONT.cjk(46, 600), a, { fill: hit > 0 ? css("signal") : css("pink"), stroke: hit > 0 ? css("signal") : css("pink"), color: css("paper") });
+      pill(d, C.x + 390, by, 300, 84, tr("ch09.c.decline"), FONT.cjk(46, 600), a);
+    }
+    function nowCard(d, px, py, w, h, a) {
+      if (a <= 0) return;
+      card(d, px, py, w, h, a, 1, 2);
+      const s = h - 60;
+      d.save(); d.globalAlpha = a; d.fillStyle = css("pink"); d.globalAlpha = 0.12 * a; d.fillRect(px + 30, py + 30, s, s);
+      d.globalAlpha = a; d.strokeStyle = css("pink"); d.lineWidth = 2; d.strokeRect(px + 30, py + 30, s, s);
+      for (let j = 1; j <= 3; j++) { d.globalAlpha = a * (0.5 - j * 0.1); d.beginPath(); d.arc(px + 30 + s / 2, py + 30 + s / 2, s * 0.13 * j, 0, TAU); d.stroke(); }
+      d.restore();
+      text(d, "NOW PLAYING", px + s + 64, py + 72, { font: FONT.mono(40, 600), color: css("graphite"), alpha: a, texture: true });
+      text(d, "アイドル", px + s + 64, py + 136, { font: FONT.cjk(56, 600), alpha: a });
+      text(d, "YOASOBI", px + s + 64, py + 192, { font: FONT.mono(48, 500), color: css("graphite"), alpha: a });
     }
 
-    function station(x, cx, cy, a, o = {}) {
-      dot(x, cx, cy, o.r ?? 18, css("paper"), o.hot ? css("signal") : css("pink"), o.lw ?? 6, a);
-    }
-    function pageIcon(x, cx, cy, col, a, s = 1) {
-      if (a <= 0) return;
-      x.save(); x.globalAlpha = a; x.translate(cx, cy); x.scale(s, s);
-      x.fillStyle = css("paper"); x.strokeStyle = col; x.lineWidth = 3;
-      x.beginPath(); x.moveTo(-22, -30); x.lineTo(10, -30); x.lineTo(22, -18); x.lineTo(22, 30); x.lineTo(-22, 30); x.closePath(); x.fill(); x.stroke();
-      for (let j = 0; j < 3; j++) { x.beginPath(); x.moveTo(-12, -12 + j * 12); x.lineTo(12 - (j === 2 ? 10 : 0), -12 + j * 12); x.stroke(); }
-      x.restore();
-    }
-    const LW = 14;
-    function axis(x, b, a, finK) {
-      const inkC = css("pink");
-      if (b >= AT.fan[0]) polyline(x, [[HEAD[0], Y0], [O[0], Y0]], prog(b, AT.fan[0], AT.fan[1], E.io), lerp(4, 3, finK), inkC);
-      line(x, O[0], Y0, L[0], Y0, lerp(LW, 3, finK), inkC);
-      line(x, L[0], Y0, FG.x, Y0, LW, inkC, a);
-      polyline(x, [O, BEND, ESA, C, [BG.x, C[1]]], 1, LW, css("signal"), a);
-    }
-    function landing(Ly, b, a) {
-      const { x, d, s, e } = Ly, inkC = css("pink"), gr = css("graphite");
-      if (a <= 0) return;
-      pip(x, NEXT_BUILD_X, Y0, 13, prog(b, AT.land - 0.1, AT.land - 0.08), a);
-      text(x, "next build", NEXT_BUILD_X, Y0 - 40, { font: FONT.mono(44, 500), align: "center", alpha: a });
-      const oHot = prog(b, AT.land, AT.land + 0.05);
-      station(x, O[0], O[1], a, { r: 30, lw: 7, hot: oHot > 0 });
-      if (oHot > 0) { dot(x, O[0], O[1], 22, css("signal"), null, 0, oHot * a); glow(e, O[0], O[1], 150, 0.55 * oHot * (0.6 + 0.4 * impact(b, AT.land, 0.4)) * a); }
-      text(x, "Vercel · Production", O[0] + 40, O[1] - 52, { font: FONT.mono(46, 600), alpha: a });
-      station(x, ESA[0], ESA[1], a, { hot: b >= AT.purge && b < AT.warm[1] + 0.1 });
-      station(x, L[0], L[1], a);
-      station(x, C[0], C[1], a);
-      text(x, tr("ch09.m.esa"), ESA[0] - 34, ESA[1] - 34, { font: FONT.mono(46, 600), align: "right", alpha: a, maxW: 560 });
-      text(x, "lyjw.me", L[0] - 40, L[1] + 72, { font: FONT.mono(46, 600), align: "right", alpha: a });
-      text(x, "lyjw131.com", C[0] - 40, C[1] + 72, { font: FONT.mono(46, 600), color: css("signal"), align: "right", alpha: a });
-      const oldA = 1 - prog(b, AT.purge + 0.05, AT.purge + 0.2);
-      pageIcon(x, ESA[0], ESA[1] + 96, inkC, a * oldA);
-      if (b >= AT.purge && oldA > 0) {
-        const k = prog(b, AT.purge, AT.purge + 0.08);
-        line(x, ESA[0] - 28, ESA[1] + 66, ESA[0] - 28 + 56 * k, ESA[1] + 126, 4, css("signal"), a * oldA);
-        line(x, ESA[0] + 28, ESA[1] + 66, ESA[0] + 28 - 56 * k, ESA[1] + 126, 4, css("signal"), a * oldA);
+    function chatCard(Ly, b) {
+      const { x, d, s } = Ly, gr = css("graphite");
+      const ca = prog(b, 0.25, 0.55);
+      card(d, C.x, C.y, C.w, C.h, ca, 1, 2.6);
+      if (ca > 0) {
+        text(d, "TALK TO GOD", C.x + 48, C.y + 72, { font: FONT.mono(48, 600), color: gr, alpha: ca });
+        line(d, C.x + 30, C.y + 104, C.x + C.w - 30, C.y + 104, 1.4, css("pink"), ca);
       }
-      stamp(s, "purge", ESA[0] + 150, ESA[1] + 110, { k: prog(b, AT.purge, AT.purge + 0.12), px: 44, rot: -0.12, alpha: a });
-      const wk = prog(b, AT.warm[0], AT.warm[1], E.io);
-      if (wk > 0 && wk < 1) {
-        const path = [[O[0] + 40, O[1] + 90], [BEND[0] + 30, BEND[1] + 96], [ESA[0], ESA[1] + 96]];
-        pageIcon(x, ...pathAt(path, wk * pathLen(path)), css("signal"), a, 0.8);
+
+      const k = prog(b, AT.morph[0], AT.morph[1], E.io);
+      const x0 = lerp(CAM0[0] - 960, C.x + 40, k), x1 = lerp(CAM0[0] + 960, C.x + C.w - 40, k);
+      line(d, x0, IY, x1, IY, 3, css("pink"));
+      const box = prog(b, 0.45, 0.65);
+      if (box > 0) {
+        line(d, C.x + 40, IY, C.x + 40, IY - 100 * box, 3, css("pink"));
+        line(d, C.x + C.w - 40, IY, C.x + C.w - 40, IY - 100 * box, 3, css("pink"));
+        if (box >= 1) line(d, C.x + 40, IY - 100, C.x + C.w - 40, IY - 100, 3, css("pink"));
       }
-      if (wk >= 1) pageIcon(x, ESA[0], ESA[1] + 96, css("signal"), a);
-      tick(x, L[0] + 66, L[1] - 14, 64, prog(b, AT.dom[0], AT.dom[0] + 0.1, E.out), a);
-      tick(x, C[0] + 66, C[1] - 14, 64, prog(b, AT.dom[1], AT.dom[1] + 0.1, E.out), a);
-      glow(e, L[0], L[1], 110, 0.45 * impact(b, AT.dom[0], 0.3) * a);
-      glow(e, C[0], C[1], 110, 0.45 * impact(b, AT.dom[1], 0.3) * a);
-      const sy = CARD.y + 250;
-      dashPts(x, [[O[0], O[1] - 100], [O[0], sy], [CARD.x, sy]], prog(b, AT.status, AT.status + 0.2, E.io), 2.6, inkC, a);
-      text(x, "deployment_status", O[0] + 24, sy - 20, { font: FONT.mono(42, 500), color: gr, alpha: a * prog(b, AT.status + 0.1, AT.status + 0.2), maxW: CARD.x - O[0] - 40 });
-      const ca = prog(b, AT.status + 0.1, AT.status + 0.25, E.outBack);
-      if (ca <= 0) return;
-      card(d, CARD.x, CARD.y, CARD.w, CARD.h, a, ca);
-      if (ca < 0.9) return;
-      text(d, tr("ch09.m.card"), CARD.x + 40, CARD.y + 66, { font: FONT.cjk(44, 600), alpha: a, maxW: CARD.w - 80 });
-      line(d, CARD.x + 30, CARD.y + 96, CARD.x + CARD.w - 30, CARD.y + 96, 1.4, inkC, a);
-      const rows = [["ch09.m.r1", "PurgeCaches", AT.r1], ["ch09.m.r2", "ch09.m.r2s", AT.r2], ["ch09.m.r3", "POST /api/internal/site-deployed", AT.notify]];
-      rows.forEach(([lab, sub, t], j) => {
-        const y = CARD_ROW(j);
-        checkbox(d, CARD.x + 40, y - 36, prog(b, t, t + 0.08), { size: 44, alpha: a });
-        const lw = text(d, tr(lab), CARD.x + 106, y, { font: FONT.cjk(42, 600), alpha: a, maxW: CARD.w - 150 });
-        text(d, lbl(sub), CARD.x + 106, y + 48, { font: fontOf(sub, 40), color: gr, alpha: a, maxW: CARD.w - 150 });
-        if (j === 2) text(d, tr("ch09.m.retry"), CARD.x + CARD.w - 40, y, { font: FONT.cjk(40, 600), color: gr, align: "right", alpha: a, maxW: CARD.w - 190 - lw });
+      const msg1 = tr("ch09.msg1"), typed = prog(b, AT.type1[0], AT.type1[1]);
+      const inText = b < AT.send1 && typed > 0 ? [...msg1].slice(0, Math.ceil(typed * [...msg1].length)).join("") : "";
+      const vk = prog(b, AT.verify[0], AT.verify[0] + 0.05) * (1 - prog(b, AT.verify[1], AT.verify[1] + 0.05));
+      const idle = box * (b > AT.send1 + 0.05 && vk <= 0 ? 1 : 0) * (b < AT.send1 ? 0 : 1);
+      if (inText) text(d, inText, C.x + 80, IY - 32, { font: FONT.cjk(52, 600) });
+      if (vk > 0) text(d, "Verifying you are human…", C.x + 80, IY - 34, { font: FONT.mono(46, 500), color: gr, alpha: vk });
+      else if (idle > 0 && b < AT.send2 - 0.15) text(d, "Speak, mortal… (type /)", C.x + 80, IY - 34, { font: FONT.mono(46, 500), color: gr, alpha: 0.6 * idle });
+      const caretX = C.x + 84 + (inText ? measure(d, inText, FONT.cjk(52, 600)) : 0);
+      const cx = lerp(CAM0[0] + 390, caretX, k), cy = lerp(IY, IY - 50, k);
+      if (k < 0.9) dot(d, cx, cy, 9, css("signal"), null, 0, 1 - prog(k, 0.6, 0.9));
+      if (k > 0.6 && b < AT.send1 && Math.floor(b * 8) % 2 === 0) K.fillRect(d, cx, IY - 78, 5, 56, css("signal"), prog(k, 0.6, 0.9));
+
+      d.save(); d.beginPath(); d.rect(C.x, MSG_TOP, C.w, MSG_BOT - MSG_TOP); d.clip();
+      const scroll = 700 * prog(b, AT.send2 - 0.15, AT.send2 + 0.05, E.io);
+      const oldA = 1 - prog(b, AT.send2 - 0.1, AT.send2 + 0.05);
+      const by = MSG_TOP + 40 - scroll;
+      bubble(d, msg1, C.x + C.w - 50, by, prog(b, AT.send1, AT.send1 + 0.08) * oldA);
+      const cA = win(b, AT.consent, AT.consent + 0.08, AT.accept + 0.1, AT.accept + 0.25);
+      consent(d, b, by + 140, cA);
+      const rA = prog(b, AT.reply - 0.1, AT.reply) * oldA;
+      if (rA > 0) {
+        text(d, "HAIKU · SMALL FRY", C.x + 60, by + 196, { font: FONT.mono(48, 600), color: gr, alpha: rA });
+        text(d, tr("ch09.reply"), C.x + 60, by + 276, { font: FONT.cjk(52, 600), alpha: rA, reveal: prog(b, AT.reply - 0.08, AT.reply + 0.15), maxW: C.w - 120 });
+        nowCard(d, C.x + 60, by + 330, 940, 250, prog(b, AT.reply + 0.05, AT.reply + 0.15) * oldA);
+      }
+      const b2 = MSG_TOP + 40 + 700 - scroll;
+      bubble(d, tr("ch09.msg2"), C.x + C.w - 50, b2, prog(b, AT.send2, AT.send2 + 0.08));
+      const dk = prog(b, AT.design, AT.design + 0.12, E.out);
+      if (dk > 0) {
+        const dy = b2 + 210, mid = C.x + C.w / 2, lab = "DESIGN SESSION · ARCHITECT TAKES OVER";
+        const lw = measure(d, lab, FONT.mono(48, 600)) + 60;
+        line(d, mid - (C.w / 2 - 50) * dk, dy, mid + (C.w / 2 - 50) * dk, dy, 2.4, css("signal"));
+        card(d, mid - lw / 2, dy - 46, lw, 92, dk, 1, 2);
+        text(d, lab, mid, dy + 16, { font: FONT.mono(48, 600), color: css("signal"), align: "center", alpha: dk });
+      }
+      d.restore();
+
+      const sk = prog(b, AT.seal, AT.seal + 0.14);
+      if (sk > 0 && b < AT.send2) {
+        stamp(s, "SEAL", C.x + 1180, by + 470, { k: sk, px: 84, rot: -0.1 });
+        const la = prog(b, AT.seal + 0.05, AT.seal + 0.15) * oldA;
+        K.leader(x, C.x + 1060, by + 500, tr("ch09.seal"), -1220, 150, { font: FONT.cjk(52, 600), color: css("pink"), alpha: la });
+      }
+    }
+
+    function gates(Ly, b, a) {
+      const { x, d, e, s } = Ly, gr = css("graphite");
+      if (a <= 0) return;
+      line(x, C.x + C.w, LANE, 3900, LANE, 4, css("pink"), a);
+      d.save(); d.globalAlpha = a; d.fillStyle = css("paper"); d.fillRect(1976, LANE - 24, 48, 48); d.restore();
+      rect(d, 1976, LANE - 24, 48, 48, 3, css("pink"), a);
+      tick(d, 2000, LANE + 2, 36, prog(b, AT.human, AT.human + 0.08), a);
+      text(d, tr("ch09.g.human"), 2000, LANE - 70, { font: FONT.cjk(52, 600), align: "center", alpha: a });
+      text(d, tr("ch09.g.humanSub"), 2000, LANE + 104, { font: FONT.mono(42, 500), color: gr, align: "center", alpha: a });
+      const Q = { x: 2300, y: -900, w: 1100, h: 780 };
+      card(d, Q.x, Q.y, Q.w, Q.h, a);
+      text(d, "ChatQuota", Q.x + 50, Q.y + 84, { font: FONT.mono(56, 600), alpha: a });
+      text(d, "admitVisitor", Q.x + Q.w - 50, Q.y + 84, { font: FONT.mono(40, 500), color: gr, align: "right", alpha: a });
+      line(d, Q.x + 30, Q.y + 116, Q.x + Q.w - 30, Q.y + 116, 1.4, css("pink"), a);
+      ["ch09.q.r1", "ch09.q.r2", "ch09.q.r3"].forEach((key, j) => {
+        const y = Q.y + 230 + j * 130, t = AT.quota[j];
+        checkbox(d, Q.x + 60, y - 40, prog(b, t, t + 0.08), { size: 52, alpha: a });
+        text(d, tr(key), Q.x + 150, y, { font: FONT.cjk(50, 600), alpha: a * lerp(0.55, 1, prog(b, t, t + 0.08)) });
       });
+      text(d, tr("ch09.q.foot"), Q.x + 60, Q.y + Q.h - 60, { font: FONT.cjk(44, 600), color: gr, alpha: a * prog(b, AT.block - 0.1, AT.block), maxW: Q.w - 400 });
+      stamp(s, "429", Q.x + Q.w - 200, Q.y + 330, { k: prog(b, AT.block, AT.block + 0.14), px: 96, rot: -0.12, sub: "Too many prayers", subPx: 40, alpha: a });
+      const ga = a * prog(b, AT.pass, AT.pass + 0.05);
+      if (ga > 0) glow(e, Q.x + Q.w, LANE, 90, 0.5 * ga * impact(b, AT.pass, 0.3));
     }
 
-    function mast(x, mx, my, a, hot = 0) {
+    const TIERS = [
+      { id: "Fable", persona: "God", y: -880, used: 2 },
+      { id: "Sonnet", persona: "Prophet", y: -600, used: 6 },
+      { id: "Haiku", persona: "Small Fry", y: -320, used: 3 },
+    ];
+    function clef(Ly, b, a) {
+      const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
       if (a <= 0) return;
-      const inkC = css("pink");
-      dot(x, mx, my, 22, css("paper"), inkC, 2.8, a);
-      line(x, mx - 14, my - 14, mx + 14, my + 14, 2.2, inkC, a); line(x, mx - 14, my + 14, mx + 14, my - 14, 2.2, inkC, a);
-      if (hot > 0.02) for (let j = 1; j <= 3; j++) {
-        x.save(); x.globalAlpha = a * hot * (1 - j * 0.22); x.strokeStyle = css("signal"); x.lineWidth = 2.6;
-        x.beginPath(); x.arc(mx, my, 22 + j * 13, -0.6, 0.6); x.stroke(); x.beginPath(); x.arc(mx, my, 22 + j * 13, Math.PI - 0.6, Math.PI + 0.6); x.stroke();
-        x.restore();
-      }
-    }
-    function box(x, B, label, on, a) {
-      if (a <= 0) return;
-      x.save(); x.globalAlpha = a; x.fillStyle = css("paper"); x.strokeStyle = on > 0 ? css("signal") : css("pink"); x.lineWidth = 3;
-      roundRect(x, B.x, B.y, B.w, B.h, 10); x.fill(); x.stroke(); x.restore();
-      text(x, label, B.x + B.w / 2, B.y + B.h / 2 + 14, { font: FONT.mono(40, 600), color: on > 0 ? css("signal") : css("pink"), align: "center", alpha: a, maxW: B.w - 30 });
-    }
-    function browser(d, W, host, a, dim, fresh) {
-      if (a <= 0) return;
-      card(d, W.x, W.y, W.w, W.h, a);
-      d.save(); d.globalAlpha = a * 0.08; d.fillStyle = css("pink"); d.fillRect(W.x, W.y, W.w, 56); d.restore();
-      line(d, W.x, W.y + 56, W.x + W.w, W.y + 56, 1.6, css("pink"), a);
-      for (let j = 0; j < 3; j++) dot(d, W.x + 30 + j * 28, W.y + 28, 8, css("paper"), css("pink"), 1.8, a);
-      text(d, host, W.x + 128, W.y + 41, { font: FONT.mono(36, 600), alpha: a * (1 - 0.4 * dim) });
-      const ix = W.x + 24, iy = W.y + 80, iw = W.w - 48, ih = W.h - 104;
-      for (const [u, v, w, h] of [[0, 0, 0.62, 1], [0.66, 0, 0.34, 0.46], [0.66, 0.54, 0.34, 0.46]]) {
-        const cy = iy + v * ih, isNew = fresh > 0 && cy < iy + ih * fresh;
-        d.save(); d.globalAlpha = a * (1 - 0.45 * dim); d.strokeStyle = isNew ? css("signal") : css("pink"); d.lineWidth = 2;
-        d.strokeRect(ix + u * iw, cy, w * iw - 10, h * ih - 10); d.restore();
-      }
-      if (fresh > 0 && fresh < 1) line(d, W.x + 10, iy + ih * fresh, W.x + W.w - 10, iy + ih * fresh, 3, css("signal"), a);
-    }
-    function updateCard(d, px, py, w, h, k, a) {
-      if (k <= 0 || a <= 0) return;
-      card(d, px, py, w, h, a, E.outBack(k));
-      const ta = clamp((k - 0.5) * 2) * a;
-      if (ta <= 0) return;
-      text(d, "UPDATE", px + 24, py + 46, { font: FONT.mono(36, 600), color: css("graphite"), alpha: ta, tracking: 3 });
-      text(d, "DISMISS ×", px + w - 24, py + 46, { font: FONT.mono(36, 500), color: css("graphite"), align: "right", alpha: ta });
-      line(d, px, py + 66, px + w, py + 66, 1.4, css("pink"), ta * 0.6);
-      dot(d, px + 36, py + 118, 10, css("signal"), null, 0, ta);
-      text(d, "New version", px + 60, py + 134, { font: FONT.sans(44, 600), alpha: ta });
-      text(d, `${SHA_OLD} → ${SHA_NEW}`, px + 36, py + 196, { font: FONT.mono(38, 500), color: css("graphite"), alpha: ta });
-      d.save(); d.globalAlpha = ta; d.fillStyle = css("pink"); roundRect(d, px + w - 210, py + 96, 180, 70, 10); d.fill(); d.restore();
-      text(d, "Reload", px + w - 120, py + 144, { font: FONT.sans(38, 600), color: css("paper"), align: "center", alpha: ta });
-    }
-    const NOTIFY = [[CARD.x + CARD.w, CARD_ROW(2) - 12], [ING.x - 50, CARD_ROW(2) - 12], [ING.x - 50, ING.y + ING.h / 2], [ING.x, ING.y + ING.h / 2]];
-    const BIND = [[ING.x + ING.w, ING.y + ING.h / 2], [CORE.x, CORE.y + CORE.h / 2]];
-    const TO_MAST = [[CORE.x + CORE.w, CORE.y + CORE.h / 2], [MAST[0] - 24, MAST[1]]];
-    function notify(Ly, b, a) {
-      const { x, d, e } = Ly, gr = css("graphite");
-      if (a <= 0) return;
-      const nk = prog(b, AT.notify, AT.ingress - 0.05, E.io);
-      polyline(x, NOTIFY, nk, 2.4, css("pink"), a);
-      if (nk > 0 && nk < 1) sparkAt(Ly, NOTIFY, nk * pathLen(NOTIFY), 0.8, 220);
-      const inA = prog(b, AT.ingress - 0.15, AT.ingress - 0.05) * a;
-      box(x, ING, "ingress Worker", prog(b, AT.ingress, AT.ingress + 0.05), inA);
-      text(x, "internal:site-deployed", ING.x + ING.w / 2, ING.y + ING.h + 50, { font: FONT.mono(36), color: gr, align: "center", alpha: inA });
-      dashPts(x, BIND, 1, 2.6, css("pink"), inA);
-      text(x, "Service Binding", (BIND[0][0] + BIND[1][0]) / 2, BIND[0][1] - 22, { font: FONT.mono(36, 500), color: gr, align: "center", alpha: inA, maxW: CORE.x - ING.x - ING.w - 20 });
-      const bk = prog(b, AT.ingress, AT.core, E.io);
-      if (bk > 0 && bk < 1) sparkAt(Ly, BIND, bk * pathLen(BIND), 0.8, 160);
-      box(x, CORE, "StateCore", prog(b, AT.core, AT.core + 0.05), inA);
-      text(x, "broadcastVersion()", CORE.x + CORE.w / 2, CORE.y + CORE.h + 50, { font: FONT.mono(36), color: gr, align: "center", alpha: inA });
-      polyline(x, TO_MAST, 1, 2.4, css("pink"), inA);
-      const mk = prog(b, AT.core, AT.ring, E.io);
-      if (mk > 0 && mk < 1) sparkAt(Ly, TO_MAST, mk * pathLen(TO_MAST), 0.8, 140);
-      mast(x, MAST[0], MAST[1], inA, Math.max(impact(b, AT.ring, 0.3), win(b, AT.ring, AT.ring + 0.05, AT.ring + 0.6, AT.ring + 0.9)));
-      text(x, "LivePushRoom", MAST[0], MAST[1] + 78, { font: FONT.mono(38, 600), align: "center", alpha: inA });
-      text(x, tr("ch09.p.room"), MAST[0], MAST[1] + 122, { font: FONT.cjk(36, 600), color: gr, align: "center", alpha: inA });
-      const va = prog(b, AT.ring, AT.ring + 0.1) * a;
-      text(x, "version", MAST[0] + 72, MAST[1] - 40, { font: FONT.mono(44, 600), color: css("signal"), alpha: va });
-      text(x, tr("ch09.p.bare"), MAST[0] + 72, MAST[1] + 6, { font: FONT.cjk(36, 600), color: gr, alpha: va, maxW: 330 });
-      if (b >= AT.ring && b < AT.ring + 1.2) {
-        const sec = (b - AT.ring) * BARs;
-        for (let j = 0; j < 3; j++) {
-          const rr = (sec - j * 0.16) * 800;
-          if (rr <= 30 || rr > 1100) continue;
-          const fade = Math.pow(1 - rr / 1100, 1.4);
-          e.save(); e.globalAlpha = 0.5 * fade * a; e.strokeStyle = "rgba(240,150,105,1)"; e.lineWidth = 8 - j * 2;
-          e.beginPath(); e.arc(MAST[0], MAST[1], rr, 0, TAU); e.stroke(); e.restore();
-          x.save(); x.globalAlpha = 0.45 * fade * a; x.strokeStyle = css("signal"); x.lineWidth = 2.4;
-          x.beginPath(); x.arc(MAST[0], MAST[1], rr, 0, TAU); x.stroke(); x.restore();
+      card(d, 3900, -640, 500, 280, a);
+      text(d, "Clef", 4150, -500, { font: FONT.sans(72, 600), align: "center", alpha: a });
+      text(d, tr("ch09.k.sub"), 4150, -420, { font: FONT.cjk(40, 600), color: gr, align: "center", alpha: a, maxW: 470 });
+      const pick = prog(b, AT.clef, AT.clef + 0.08), downK = prog(b, AT.down, AT.down + 0.2, E.io);
+      TIERS.forEach((t, j) => {
+        const on = j === 1 ? pick * (1 - downK) : j === 2 ? prog(b, AT.haiku, AT.haiku + 0.06) : 0;
+        polyline(x, [[4400, LANE], [4560, LANE], [4560, t.y], [4750, t.y]], 1, 3, on > 0 ? sig : gr, a * (on > 0 ? 1 : 0.6));
+        card(d, 4750, t.y - 100, 800, 200, a);
+        text(d, t.id, 4800, t.y - 6, { font: FONT.mono(60, 600), alpha: a });
+        text(d, t.persona, 4800, t.y + 60, { font: FONT.mono(44, 500), color: gr, alpha: a });
+        const fill = t.used + (j === 2 ? prog(b, AT.haiku, AT.haiku + 0.06) : 0);
+        for (let c = 0; c < 6; c++) {
+          const cx = 5170 + c * 56, on2 = c < Math.floor(fill + 1e-6);
+          d.save(); d.globalAlpha = a; d.fillStyle = on2 ? (j === 1 && b >= AT.full ? sig : css("pink")) : css("paper"); d.fillRect(cx, t.y - 30, 40, 60);
+          d.strokeStyle = css("pink"); d.lineWidth = 2; d.strokeRect(cx, t.y - 30, 40, 60); d.restore();
         }
+        if (j === 2) lamp(d, e, 5500, t.y - 64, 18, prog(b, AT.haiku, AT.haiku + 0.06), a);
+      });
+      const fk = prog(b, AT.full, AT.full + 0.06);
+      if (fk > 0) text(d, tr("ch09.k.full"), 5470, -690, { font: FONT.cjk(48, 600), color: sig, align: "right", alpha: a * fk });
+      if (downK > 0) {
+        const head = polyline(x, [[5620, -560], [5620, -380]], downK, 4, sig, a);
+        if (downK >= 1) arrowHead(x, head[0], head[1], Math.PI / 2, sig, a);
+        text(x, tr("ch09.k.down"), 5660, -455, { font: FONT.cjk(44, 600), color: sig, alpha: a * downK });
       }
-      const wa = prog(b, AT.notify - 0.2, AT.notify) * a;
-      const fresh = prog(b, AT.reload, AT.reload + 0.3, E.io);
-      browser(d, FG, "lyjw.me", wa, 0, 0);
-      browser(d, BG, "lyjw131.com", wa, 1 - fresh, fresh);
-      text(x, tr("ch09.p.fg"), FG.x, FG.y - 20, { font: FONT.cjk(36, 600), alpha: wa });
-      text(x, tr("ch09.p.bg"), BG.x, BG.y - 20, { font: FONT.cjk(36, 600), color: gr, alpha: wa });
-      const qa = prog(b, AT.ask, AT.ask + 0.1) * a;
-      const ask = `GET /api/version → ${SHA_NEW}`;
-      text(x, ask, FG.x + FG.w, FG.y - 20, { font: FONT.mono(36, 500), color: css("signal"), align: "right", alpha: qa, maxW: FG.w - 140 });
-      text(x, ask, BG.x + BG.w, BG.y - 20, { font: FONT.mono(36, 500), color: css("signal"), align: "right", alpha: qa * (1 - prog(b, AT.reload, AT.reload + 0.08)), maxW: BG.w - 260 });
-      text(x, tr("ch09.p.reload"), BG.x + BG.w, BG.y - 20, { font: FONT.cjk(36, 600), color: css("signal"), align: "right", alpha: prog(b, AT.reload + 0.04, AT.reload + 0.12) * a });
-      updateCard(d, FG.x + 20, FG.y + 72, FG.w - 40, 226, prog(b, AT.card, AT.card + 0.28), a);
-      const fa = prog(b, AT.reload + 0.1, AT.reload + 0.3) * a;
-      text(x, tr("ch09.p.foot1"), BG.x + BG.w, BG.y + BG.h + 62, { font: FONT.cjk(36, 600), color: gr, align: "right", alpha: fa, maxW: 780 });
-      text(x, tr("ch09.p.foot2"), BG.x + BG.w, BG.y + BG.h + 110, { font: FONT.cjk(36, 600), color: gr, align: "right", alpha: fa, maxW: 780 });
+      text(x, tr("ch09.k.refuse"), 4750, -110, { font: FONT.cjk(42, 600), color: gr, alpha: a * prog(b, 6.9, 7.1), maxW: 900 });
     }
 
-    const PLATE_RECT = [-600, -700, 9000, 2900];
-    function plateFrame(x, b, a) {
-      const k = prog(b, AT.full[0] + 0.1, AT.full[1] + 0.05, E.out) * a;
-      if (k <= 0) return;
-      rect(x, -200, -420, 8900, 3060, 5, css("pink"), k);
-      text(x, "PLATE 09 · RELEASE", 8640, 2580, { font: FONT.mono(140, 600), align: "right", alpha: k });
+    function tools(Ly, b, a) {
+      const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
+      if (a <= 0) return;
+      polyline(x, [[5550, -320], [5900, -320], [5900, -460], [6250, -460]], 1, 3, b >= 8.0 ? sig : gr, a * 0.9);
+      const T = { x: 6250, y: -720, w: 1000, h: 490 };
+      card(d, T.x, T.y, T.w, T.h, a);
+      text(d, "SITE_TOOLS", T.x + 50, T.y + 84, { font: FONT.mono(54, 600), alpha: a });
+      line(d, T.x + 30, T.y + 116, T.x + T.w - 30, T.y + 116, 1.4, css("pink"), a);
+      const hot = win(b, AT.call - 0.05, AT.call, AT.data + 0.4, AT.data + 0.5);
+      if (hot > 0) K.fillRect(d, T.x + 30, T.y + 150, T.w - 60, 76, sig, 0.14 * hot * a);
+      text(d, "get_site_status", T.x + 60, T.y + 206, { font: FONT.mono(50, 500), color: hot > 0.5 ? sig : css("pink"), alpha: a });
+      text(d, "read_project_doc", T.x + 60, T.y + 296, { font: FONT.mono(50, 500), alpha: a });
+      text(d, tr("ch09.t.note"), T.x + 60, T.y + 410, { font: FONT.cjk(46, 600), color: gr, alpha: a });
+      line(x, 6750, -230, 6750, -80, 3, css("pink"), a);
+      text(x, "PUBLIC_STATUS", 6720, -150, { font: FONT.mono(42, 500), color: gr, align: "right", alpha: a });
+      card(d, 6450, -80, 600, 130, a);
+      text(d, "api · PublicStatus", 6750, -2, { font: FONT.mono(46, 600), align: "center", alpha: a });
+      const sa = prog(b, 8.8, 8.9) * a;
+      text(x, tr("ch09.t.same"), 7090, 0, { font: FONT.cjk(44, 600), color: sig, alpha: sa });
+      if (b >= AT.data && b < 9.1) {
+        const p = along(BACK, b);
+        pill(Ly.tp, p[0] + 30, p[1] - 40, 370, 74, "listening/now", FONT.mono(42, 500), prog(b, AT.data, AT.data + 0.05) * (1 - prog(b, 8.8, 9.0)) * a, { fill: css("paper"), color: sig, stroke: sig });
+      }
+      const ma = prog(b, AT.mcp - 0.15, AT.mcp) * a;
+      if (ma > 0) {
+        card(d, 7420, -1010, 560, 130, ma);
+        text(d, tr("ch09.t.client"), 7700, -930, { font: FONT.cjk(46, 600), align: "center", alpha: ma, maxW: 520 });
+        const head = polyline(x, [[7680, -880], [7680, -800], [7200, -800], [7200, -735]], prog(b, AT.mcp, AT.mcp + 0.25, E.io), 3, sig, ma);
+        if (head && b > AT.mcp + 0.25) arrowHead(x, head[0], head[1], Math.PI / 2, sig, ma);
+        text(x, "POST /mcp", 7250, -820, { font: FONT.mono(46, 600), color: sig, alpha: ma });
+        glow(e, 7200, -735, 80, 0.5 * impact(b, AT.mcp + 0.25, 0.3) * ma);
+      }
     }
 
+    const SB = { x: 0, y: 260, w: 1400, h: 800 };
+    const ASK = { x: 1550, y: 280, w: 900, h: 270 };
+    const PLAN = { x: 1550, y: 590, w: 900, h: 460 };
+    function sandbox(Ly, b, a) {
+      const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
+      if (a <= 0) return;
+      const ok = prog(b, AT.design + 0.2, AT.design + 0.35);
+      if (ok <= 0) return;
+      const sa = a * ok;
+      K.dashed(x, SB.x, SB.y, SB.x + SB.w, SB.y, 3, css("pink"), [16, 12], sa);
+      K.dashed(x, SB.x, SB.y + SB.h, SB.x + SB.w, SB.y + SB.h, 3, css("pink"), [16, 12], sa);
+      K.dashed(x, SB.x, SB.y, SB.x, SB.y + SB.h, 3, css("pink"), [16, 12], sa);
+      K.dashed(x, SB.x + SB.w, SB.y, SB.x + SB.w, SB.y + SB.h, 3, css("pink"), [16, 12], sa);
+      text(x, tr("ch09.s.box"), SB.x + 40, SB.y - 30, { font: FONT.cjk(50, 600), alpha: sa, maxW: SB.w - 40 });
+      card(d, SB.x + 50, SB.y + 70, 560, 220, sa);
+      text(d, "Opus", SB.x + 90, SB.y + 166, { font: FONT.sans(72, 600), alpha: sa });
+      text(d, "Architect", SB.x + 90, SB.y + 240, { font: FONT.mono(48, 500), color: gr, alpha: sa });
+      card(d, SB.x + 790, SB.y + 70, 560, 220, sa);
+      text(d, "LYJW131/lyjwpage", SB.x + 820, SB.y + 166, { font: FONT.mono(46, 600), alpha: sa, maxW: 500 });
+      text(d, tr("ch09.s.repo"), SB.x + 820, SB.y + 240, { font: FONT.cjk(46, 600), color: gr, alpha: sa, maxW: 500 });
+      const ck = prog(b, AT.clone, AT.clone + 0.2, E.io);
+      if (ck > 0) {
+        const head = polyline(x, [[SB.x + 780, SB.y + 180], [SB.x + 620, SB.y + 180]], ck, 4, sig, sa);
+        if (ck >= 1) arrowHead(x, head[0], head[1], Math.PI, sig, sa);
+      }
+      const rows = [["read", true], ["glob", true], ["grep", true], ["write", false], ["edit", false]];
+      rows.forEach(([name, on], j) => {
+        const r = prog(b, AT.clone + 0.1 + j * 0.06, AT.clone + 0.2 + j * 0.06) * sa;
+        const px = SB.x + 60 + j * 262, py = SB.y + 420;
+        text(x, name, px + 60, py, { font: FONT.mono(48, 500), color: on ? css("pink") : gr, alpha: r });
+        if (on) tick(x, px + 20, py - 16, 38, r > 0 ? 1 : 0, r);
+        else { line(x, px + 4, py - 32, px + 40, py + 4, 4, gr, r); line(x, px + 40, py - 32, px + 4, py + 4, 4, gr, r); }
+      });
+      text(x, tr("ch09.s.net"), SB.x + 60, SB.y + 560, { font: FONT.cjk(48, 600), alpha: sa * prog(b, AT.clone + 0.45, AT.clone + 0.55) });
+      text(x, "ask_visitor · propose_build", SB.x + 60, SB.y + 680, { font: FONT.mono(46, 500), color: gr, alpha: sa * prog(b, AT.ask - 0.1, AT.ask) });
+
+      const ak = prog(b, AT.ask, AT.ask + 0.12, E.outBack);
+      card(d, ASK.x, ASK.y, ASK.w, ASK.h, sa * clamp(ak * 3), ak);
+      if (ak > 0.9) {
+        text(d, "ask_visitor", ASK.x + 40, ASK.y + 66, { font: FONT.mono(46, 600), color: sig, alpha: sa });
+        text(d, tr("ch09.a.q"), ASK.x + 40, ASK.y + 140, { font: FONT.cjk(50, 600), alpha: sa, maxW: ASK.w - 80 });
+        const pickK = prog(b, AT.answer, AT.answer + 0.05);
+        pill(d, ASK.x + 40, ASK.y + 170, 400, 72, tr("ch09.a.o1"), FONT.cjk(44, 600), sa, pickK > 0 ? { fill: css("pink"), color: css("paper") } : {});
+        pill(d, ASK.x + 460, ASK.y + 170, 400, 72, tr("ch09.a.o2"), FONT.cjk(44, 600), sa);
+      }
+      const pk = prog(b, AT.plan, AT.plan + 0.12, E.outBack);
+      card(d, PLAN.x, PLAN.y, PLAN.w, PLAN.h, sa * clamp(pk * 3), pk);
+      if (pk > 0.9) {
+        text(d, "propose_build", PLAN.x + 40, PLAN.y + 66, { font: FONT.mono(46, 600), color: sig, alpha: sa });
+        text(d, tr("ch09.p.title"), PLAN.x + 40, PLAN.y + 146, { font: FONT.cjk(52, 600), alpha: sa, maxW: PLAN.w - 80 });
+        text(d, tr("ch09.p.rows"), PLAN.x + 40, PLAN.y + 216, { font: FONT.cjk(46, 600), color: gr, alpha: sa, maxW: PLAN.w - 80 });
+        text(d, "src/components/live/…", PLAN.x + 40, PLAN.y + 280, { font: FONT.mono(46, 500), color: gr, alpha: sa });
+        const gk = prog(b, AT.gh, AT.gh + 0.08);
+        if (gk > 0) {
+          K.fillRect(d, PLAN.x + 30, PLAN.y + 306, PLAN.w - 60, 60, sig, 0.12 * gk * sa);
+          tick(d, PLAN.x + 64, PLAN.y + 336, 30, prog(b, AT.gh + 0.12, AT.gh + 0.2), sa);
+          text(d, tr("ch09.p.gh"), PLAN.x + 104, PLAN.y + 352, { font: FONT.cjk(44, 600), alpha: sa * gk, maxW: PLAN.w - 150 });
+        }
+        const hit = prog(b, AT.build, AT.build + 0.05);
+        pill(d, PLAN.x + 40, PLAN.y + 378, 390, 68, "Open issue", FONT.mono(46, 600), sa);
+        pill(d, PLAN.x + 470, PLAN.y + 378, 390, 68, "Start build", FONT.mono(46, 600), sa, hit > 0 ? { fill: sig, stroke: sig, color: css("paper") } : {});
+        glow(e, PLAN.x + 665, PLAN.y + 412, 140, 0.45 * impact(b, AT.build, 0.3) * sa);
+      }
+    }
+
+    const BR_Y = 1250, BR_X1 = 3300, PLAN_X = 2600, IMPL_X = 3050;
+    const PR = { x: 3330, y: 1190, w: 430, h: 120 };
+    const RT = { x: 2830, y: 870, w: 680, h: 170 };
+    function history(x, e, b) {
+      line(x, FIN_X - 960 - 150, ML, HEAD[0], ML, 3, css("pink"));
+      for (const cx of COMMITS) dot(x, cx, ML, 9, css("paper"), css("pink"), 2.6);
+      dot(x, HEAD[0], ML, 14, css("signal"), null, 0);
+    }
+    function build(Ly, b, a) {
+      const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
+      if (a <= 0) return;
+      const bk = prog(b, 13.55, 13.75, E.io);
+      const pts = [[HEAD[0], ML]];
+      for (let i = 1; i <= 16; i++) { const t = i / 16, u = 1 - t; pts.push([u * u * u * HEAD[0] + 3 * u * u * t * 2250 + 3 * u * t * t * 2250 + t * t * t * 2400, u * u * u * ML + 3 * u * u * t * ML + 3 * u * t * t * BR_Y + t * t * t * BR_Y]); }
+      pts.push([BR_X1, BR_Y]);
+      polyline(x, pts, bk, 4, css("pink"), a);
+      text(x, "claude/build-<runId>", 2420, BR_Y + 80, { font: FONT.mono(46, 500), alpha: a * prog(b, 13.7, 13.8) });
+      const pc = prog(b, AT.planCommit, AT.planCommit + 0.05);
+      dot(x, PLAN_X, BR_Y, 12, css("paper"), css("pink"), 3, a * pc);
+      text(x, "builds/<runId>.md", PLAN_X, BR_Y - 44, { font: FONT.mono(44, 500), color: gr, align: "center", alpha: a * pc });
+      const pr = prog(b, AT.pr, AT.pr + 0.1, E.outBack);
+      card(d, PR.x, PR.y, PR.w, PR.h, a * clamp(pr * 3), pr);
+      if (pr > 0.9) text(d, "draft PR", PR.x + PR.w / 2, PR.y + 78, { font: FONT.mono(54, 600), align: "center", alpha: a });
+      const ra = prog(b, AT.pr + 0.1, AT.upload) * a;
+      card(d, RT.x, RT.y, RT.w, RT.h, ra);
+      if (ra > 0) {
+        text(d, "routine · Claude Code", RT.x + 40, RT.y + 76, { font: FONT.mono(46, 600), alpha: ra, maxW: RT.w - 80 });
+        text(d, tr("ch09.b.routine"), RT.x + 40, RT.y + 140, { font: FONT.cjk(44, 600), color: gr, alpha: ra, maxW: RT.w - 80 });
+      }
+      const uk = prog(b, AT.upload, AT.implCommit, E.io);
+      if (uk > 0) {
+        K.dashed(x, IMPL_X, RT.y + RT.h, IMPL_X, lerp(RT.y + RT.h, BR_Y - 14, uk), 3, sig, [12, 9], a);
+        if (uk >= 1) arrowHead(x, IMPL_X, BR_Y - 14, Math.PI / 2, sig, a);
+        text(x, tr("ch09.b.upload"), IMPL_X + 30, 1140, { font: FONT.cjk(44, 600), color: sig, alpha: a * prog(b, AT.upload, AT.upload + 0.1), maxW: 760 });
+      }
+      const ic = prog(b, AT.implCommit, AT.implCommit + 0.05);
+      dot(x, IMPL_X, BR_Y, 12, sig, null, 0, a * ic);
+      glow(e, IMPL_X, BR_Y, 80, 0.5 * impact(b, AT.implCommit, 0.3) * a);
+      text(x, tr("ch09.b.review"), PR.x, PR.y + PR.h + 76, { font: FONT.cjk(46, 600), color: gr, alpha: a * prog(b, AT.review, AT.review + 0.1) });
+      text(x, tr("ch09.b.owner"), PR.x, PR.y + PR.h + 140, { font: FONT.cjk(46, 600), alpha: a * prog(b, AT.owner, AT.owner + 0.1) });
+    }
+
+    const PLATE_RECT = [-1700, -1300, 8200, 1900];
     function render(f) {
       BARs = f.BAR;
       const b = f.bar;
       const c = camAt(b), c0 = camAt(b - 1 / 60 / f.BAR);
-      const hitS = Math.max(impact(b, AT.enter, 0.12) * 0.6, impact(b, AT.notarized, 0.1), impact(b, AT.land, 0.14), impact(b, AT.purge, 0.1) * 0.6, impact(b, AT.card, 0.12) * 0.6);
-      const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.014 * hitS), rot: 0 };
+      const hitS = Math.max(impact(b, AT.accept, 0.1) * 0.5, impact(b, AT.block, 0.1), impact(b, AT.seal, 0.1), impact(b, AT.build, 0.12) * 0.6);
+      const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.012 * hitS), rot: 0 };
       G.setCam(cam);
-      G.fill(plate, { uGridA: prog(b, 0.05, 0.6), uPlate: PLATE_RECT });
+      G.fill(plate, { uGridA: prog(b, 0.05, 0.6) * (1 - prog(b, AT.fade[0], AT.fin[1] - 0.02)), uPlate: PLATE_RECT });
 
       const x = ink.begin(); ink.cam(cam);
       const d = paperL.begin(); paperL.cam(cam);
@@ -604,39 +512,35 @@
       const Ly = { x, d, e, s, tp };
 
       const keep = 1 - prog(b, AT.fade[0], AT.fade[1]);
-      const finK = prog(b, AT.dive[0], AT.dive[1], E.io);
-      const openA = clamp(1 - prog(b, AT.pull[0], AT.pull[0] + 0.3) + prog(b, AT.full[0], AT.full[1])) * keep;
-      title(x, b, openA);
-      terminal(x, b, openA);
-      diffCard(d, b, openA);
-      axis(x, b, keep, finK);
-      history(x, e, b);
-      fan(Ly, b, keep);
-      const pa = keep * prog(b, 3.2, 3.5);
-      panelA(x, e, b, pa);
-      panelB(Ly, b, pa);
-      panelC(Ly, b, pa);
-      landing(Ly, b, keep);
-      notify(Ly, b, keep);
-      plateFrame(x, b, keep);
+      const cardA = (1 - prog(b, 11.25, 11.45)) * (b < 13.3 ? 1 : 0);
+      if (cardA > 0) { d.save(); d.globalAlpha = cardA; chatCard(Ly, b); d.restore(); }
+      gates(Ly, b, prog(b, 2.4, 2.7) * (1 - prog(b, 5.3, 5.5)));
+      clef(Ly, b, prog(b, 4.8, 5.2) * (1 - prog(b, 7.75, 8.0)));
+      tools(Ly, b, prog(b, 7.6, 7.9) * (1 - prog(b, 9.6, 9.8)));
+      runner(Ly, MSG, b);
+      runner(Ly, CALL, b, 0.8);
+      runner(Ly, MCP, b, 0.7);
+      sandbox(Ly, b, 1 - prog(b, 13.4, 13.6));
+      if (b >= 13.3) { history(x, e, b); build(Ly, b, keep); }
 
-      nar(x, "ch09.n1a", FAN, 0, prog(b, 1.95, 2.45), win(b, 1.9, 2.0, 3.25, 3.35));
-      nar(x, "ch09.n1b", FAN, 1, prog(b, 2.45, 3.0), win(b, 1.9, 2.0, 3.25, 3.35));
-      nar(x, "ch09.n2a", CPA, 0, prog(b, 3.6, 4.1), win(b, 3.55, 3.65, 5.2, 5.3));
-      nar(x, "ch09.n2b", CPA, 1, prog(b, 4.1, 4.7), win(b, 3.55, 3.65, 5.2, 5.3));
-      nar(x, "ch09.n3a", CPB, 0, prog(b, 5.6, 6.1), win(b, 5.55, 5.65, 7.45, 7.55));
-      nar(x, "ch09.n3b", CPB, 1, prog(b, 6.1, 6.8), win(b, 5.55, 5.65, 7.45, 7.55));
-      nar(x, "ch09.n4a", CPC, 0, prog(b, 7.85, 8.35), win(b, 7.8, 7.9, 9.7, 9.8));
-      nar(x, "ch09.n4b", CPC, 1, prog(b, 8.35, 9.1), win(b, 7.8, 7.9, 9.7, 9.8));
-      nar(x, "ch09.n5a", MAP, 0, prog(b, 10.1, 10.6), win(b, 10.05, 10.15, 12.2, 12.3));
-      nar(x, "ch09.n5b", MAP, 1, prog(b, 10.6, 11.4), win(b, 10.05, 10.15, 12.2, 12.3));
-      nar(x, "ch09.n6a", PGV, 0, prog(b, 12.6, 13.2), win(b, 12.55, 12.65, 14.9, 15.0));
-      nar(x, "ch09.n6b", PGV, 1, prog(b, 13.2, 14.1), win(b, 12.55, 12.65, 14.9, 15.0));
+      title(x, b);
+      nar(x, "ch09.n1a", 0, prog(b, 1.1, 1.6), win(b, 1.05, 1.15, 2.35, 2.45));
+      nar(x, "ch09.n1b", 1, prog(b, 1.6, 2.2), win(b, 1.05, 1.15, 2.35, 2.45));
+      nar(x, "ch09.n2a", 0, prog(b, 3.1, 3.6), win(b, 3.05, 3.15, 5.2, 5.3));
+      nar(x, "ch09.n2b", 1, prog(b, 3.6, 4.4), win(b, 3.05, 3.15, 5.2, 5.3));
+      nar(x, "ch09.n3a", 0, prog(b, 5.55, 6.0), win(b, 5.5, 5.6, 7.6, 7.7));
+      nar(x, "ch09.n3b", 1, prog(b, 6.25, 6.8), win(b, 5.5, 5.6, 7.6, 7.7));
+      nar(x, "ch09.n4a", 0, prog(b, 8.0, 8.6), win(b, 7.95, 8.05, 9.6, 9.7));
+      nar(x, "ch09.n4b", 1, prog(b, 8.9, 9.4), win(b, 7.95, 8.05, 9.6, 9.7));
+      nar(x, "ch09.n5a", 0, prog(b, 11.35, 11.9), win(b, 11.3, 11.4, 13.35, 13.45));
+      nar(x, "ch09.n5b", 1, prog(b, 11.9, 12.6), win(b, 11.3, 11.4, 13.35, 13.45));
+      nar(x, "ch09.n6a", 0, prog(b, 13.6, 14.1), win(b, 13.55, 13.65, 15.3, 15.4));
+      nar(x, "ch09.n6b", 1, prog(b, 14.9, 15.2), win(b, 13.55, 13.65, 15.3, 15.4));
 
-      G.composite(ink.upload(), { mode: G.MODE.ink, seed: 5.3 });
+      G.composite(ink.upload(), { mode: G.MODE.ink, seed: 3.7 });
       G.composite(paperL.upload(), { mode: G.MODE.paper });
       G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.4 });
-      G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 4.1 });
+      G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 6.2 });
       G.composite(top.upload(), { mode: G.MODE.normal });
 
       const sh = hitS * 6;
