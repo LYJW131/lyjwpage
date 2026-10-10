@@ -1,9 +1,35 @@
+import * as Sentry from "@sentry/cloudflare";
 import { DurableObject } from "cloudflare:workers";
-import { BUILD_DESIGN_LIMITS, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_SCREENSHOT_LIMITS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun, type BuildScreenshot } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_REPO, BUILD_SCREENSHOT_LIMITS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun, type BuildScreenshot } from "@shared/build-routine";
 import type { Env } from "../runtime";
+import { BuildBlockedError, closeFailedDraft, installationApi } from "./github";
 
-export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; screenshots?: BuildScreenshot[] };
+export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; reviewRequested?: boolean; draftClose?: "closed" | "skipped"; screenshots?: BuildScreenshot[] };
+type PlanReservation = { runId: string; accountId?: number };
+const PREPARATION_LEASE_MS = 60_000;
+const PUBLICATION_BODY_MAX_CHARS = 64_000;
+// 失败草稿的关闭与超时的发现都靠 alarm 扫描，间隔即两者的最大延迟。
+const DRAFT_SWEEP_MS = 60_000;
+const PENDING_PHASES: readonly BuildRun["phase"][] = ["triggered", "running", "uploaded", "validated"];
+const FAILURE_PHASES: readonly BuildRun["phase"][] = ["failed", "blocked", "timeout"];
 const phases = { triggered: 0, running: 1, uploaded: 2, validated: 3, pr_open: 4, blocked: 5, failed: 5, timeout: 5, merged: 6, closed: 6 } as const;
+
+function preparedRun(run: StoredRun): boolean {
+  return !!(run.callbackOrigin || run.planCommitSha || run.dispatchAttempted);
+}
+
+function acceptsAgentUpdates(run: StoredRun): boolean {
+  return !preparedRun(run) || !!(run.dispatchAttempted && run.planCommitSha && run.state.pr);
+}
+
+function validPreparedPullRequest(planCommitSha: string, pr: NonNullable<BuildRun["pr"]>): boolean {
+  return /^[a-f0-9]{40}$/.test(planCommitSha) && pr.headSha === planCommitSha && pr.draft === true && Number.isSafeInteger(pr.number) && pr.number > 0 && pr.url === `https://github.com/${BUILD_REPO}/pull/${pr.number}`;
+}
+
+// 记下实现提交后发布结果可能仍在恢复，只关只含计划提交的草稿。
+function closableDraft(run: StoredRun): boolean {
+  return FAILURE_PHASES.includes(run.state.phase) && !run.draftClose && !run.implementationHeadSha && !!run.planCommitSha && run.state.pr?.draft === true && run.state.pr.headSha === run.planCommitSha;
+}
 
 export class BuildCoordinator extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -75,7 +101,7 @@ export class BuildCoordinator extends DurableObject<Env> {
       if (planExpiresAt <= Date.now() || this.get(`plan:${planId}`) || this.get(`run:${run.state.runId}`)) return "used";
       if (this.count("fire", String(run.accountId ?? run.account)) >= BUILD_QUOTA.fire.account) return "account";
       if (this.count("fire") >= BUILD_QUOTA.fire.everyone) return "site";
-      this.put(`plan:${planId}`, true, planExpiresAt);
+      this.put(`plan:${planId}`, { runId: run.state.runId, accountId: run.accountId } satisfies PlanReservation, run.state.createdAt + BUILD_STATUS_TTL_MS);
       this.put(`run:${run.state.runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
       this.ctx.storage.sql.exec("INSERT INTO build_hits VALUES (?, ?, ?)", "fire", String(run.accountId ?? run.account), Date.now());
       return "ok";
@@ -84,6 +110,18 @@ export class BuildCoordinator extends DurableObject<Env> {
 
   isPlanUsed(id: string): boolean {
     return !!this.get(`plan:${id}`);
+  }
+
+  hasPlanRun(planId: string): boolean {
+    const reservation = this.get<PlanReservation | true>(`plan:${planId}`);
+    return typeof reservation === "object" && !!reservation?.runId && !!this.readRun(reservation.runId);
+  }
+
+  findPlanRun(planId: string, accountId: number): StoredRun | null {
+    const reservation = this.get<PlanReservation | true>(`plan:${planId}`);
+    if (!Number.isSafeInteger(accountId) || typeof reservation !== "object" || reservation?.accountId !== accountId) return null;
+    const run = this.readRun(reservation.runId);
+    return run?.accountId === accountId ? run : null;
   }
 
   readRun(runId: string): StoredRun | null {
@@ -107,9 +145,130 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
+  claimPreparation(runId: string): string | null {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.state.phase !== "triggered" || run.dispatchAttempted || run.uploadUsed || run.uploadExpiresAt <= Date.now() || run.preparation && run.preparation.expiresAt > Date.now()) return null;
+      const token = crypto.randomUUID();
+      run.preparation = { token, expiresAt: Date.now() + PREPARATION_LEASE_MS };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return token;
+    });
+  }
+
+  releasePreparation(runId: string, token: string): void {
+    this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.preparation?.token !== token) return;
+      delete run.preparation;
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+    });
+  }
+
+  failPreparation(runId: string, token: string, reason: string, blocked = false): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.preparation?.token !== token || run.preparation.expiresAt <= Date.now() || run.dispatchAttempted || run.state.phase !== "triggered") return false;
+      run.state = { ...run.state, phase: blocked ? "blocked" : "triggered", reason, updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return true;
+    });
+  }
+
+  setPrepared(runId: string, planCommitSha: string, pr: NonNullable<BuildRun["pr"]>, token: string): BuildRun | null {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.preparation?.token !== token || run.preparation.expiresAt <= Date.now() || run.dispatchAttempted || run.state.phase !== "triggered" || run.uploadExpiresAt <= Date.now()) return null;
+      if (!validPreparedPullRequest(planCommitSha, pr) || planCommitSha === run.baseSha || run.planCommitSha && run.planCommitSha !== planCommitSha || run.state.pr && run.state.pr.number !== pr.number) return null;
+      run.planCommitSha = planCommitSha;
+      run.state = { ...run.state, pr, reason: undefined, updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return run.state;
+    });
+  }
+
+  setLegacyPrepared(runId: string, planCommitSha: string, pr: NonNullable<BuildRun["pr"]>): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.callbackOrigin !== undefined || run.planCommitSha !== undefined || !run.uploadUsed || run.state.phase !== "validated") return false;
+      if (!validPreparedPullRequest(planCommitSha, pr) || planCommitSha === run.baseSha || run.state.pr && (run.state.pr.number !== pr.number || run.state.pr.url !== pr.url || run.state.pr.headSha !== planCommitSha)) return false;
+      run.planCommitSha = planCommitSha;
+      run.state = { ...run.state, pr, updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return true;
+    });
+  }
+
+  claimDispatch(runId: string): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.state.phase !== "triggered" || run.dispatchAttempted || run.preparation || run.uploadUsed || run.uploadExpiresAt <= Date.now() || !run.planCommitSha || run.state.pr?.headSha !== run.planCommitSha || run.state.pr.draft !== true) return false;
+      run.dispatchAttempted = true;
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return true;
+    });
+  }
+
+  failDispatch(runId: string, reason: string, rejected = false): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run?.dispatchAttempted || !["triggered", "running"].includes(run.state.phase)) return false;
+      run.state = { ...run.state, phase: rejected ? "failed" : run.state.phase, reason, updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return true;
+    });
+  }
+
+  failPublication(runId: string, patch: { phase?: "failed" | "blocked"; reason: string }, expected: BuildRun): BuildRun | null {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run) return null;
+      if (["closed", "merged"].includes(run.state.phase) || run.state.phase !== expected.phase || run.state.pr?.headSha !== expected.pr?.headSha || run.state.pr?.draft !== expected.pr?.draft) return run.state;
+      run.state = { ...run.state, ...patch, updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return run.state;
+    });
+  }
+
+  completePublication(runId: string, pr: NonNullable<BuildRun["pr"]>): BuildRun | null {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || !run.uploadUsed || !run.implementationHeadSha || pr.headSha !== run.implementationHeadSha || pr.number !== run.state.pr?.number || pr.url !== run.state.pr.url || typeof pr.draft !== "boolean") return null;
+      if (["closed", "merged", "blocked"].includes(run.state.phase) || run.state.phase === "pr_open" && run.state.pr.headSha === run.implementationHeadSha) return run.state;
+      if (!["validated", "failed", "timeout"].includes(run.state.phase)) return null;
+      const updatedAt = Date.now();
+      const signals = run.state.pr.headSha !== pr.headSha ? { ci: { state: "unknown", updatedAt }, preview: { state: "unknown", updatedAt } } : {};
+      run.state = { ...run.state, ...signals, phase: "pr_open", pr, reason: undefined, updatedAt };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return run.state;
+    });
+  }
+
+  setImplementationHead(runId: string, sha: string, body?: string): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || !run.uploadUsed || run.state.phase !== "validated" || !run.planCommitSha || !run.state.pr || !/^[a-f0-9]{40}$/.test(sha) || sha === run.planCommitSha || run.implementationHeadSha && run.implementationHeadSha !== sha) return false;
+      if (body !== undefined && (body.length > PUBLICATION_BODY_MAX_CHARS || run.publicationBody !== undefined && run.publicationBody !== body)) return false;
+      run.implementationHeadSha = sha;
+      if (body !== undefined) run.publicationBody = body;
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return true;
+    });
+  }
+
+  claimReviewRequests(runId: string): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.reviewRequested || run.state.phase !== "pr_open" || !run.uploadUsed || !run.implementationHeadSha || run.state.pr?.headSha !== run.implementationHeadSha) return false;
+      run.reviewRequested = true;
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return true;
+    });
+  }
+
   private awaitingUpload(runId: string, hash: string): StoredRun | null {
     const run = this.readRun(runId);
-    return run && !run.uploadUsed && run.uploadHash === hash && run.uploadExpiresAt > Date.now() && ["triggered", "running"].includes(run.state.phase) ? run : null;
+    return run && acceptsAgentUpdates(run) && !run.uploadUsed && run.uploadHash === hash && run.uploadExpiresAt > Date.now() && ["triggered", "running"].includes(run.state.phase) ? run : null;
   }
 
   claimUpload(runId: string, hash: string): StoredRun | null {
@@ -165,8 +324,22 @@ export class BuildCoordinator extends DurableObject<Env> {
     return this.ctx.storage.transactionSync(() => {
       const run = this.readRun(runId);
       if (!run) return null;
+      patch = { ...patch };
+      if (patch.phase === "closed" && FAILURE_PHASES.includes(run.state.phase) && !run.implementationHeadSha) delete patch.phase;
       if (expectedHeadSha && run.state.pr?.headSha !== expectedHeadSha) return run.state;
-      if (!expectedHeadSha && patch.pr && run.state.pr && patch.pr.headSha !== run.state.pr.headSha && patch.githubUpdatedAt === run.state.githubUpdatedAt) {
+      if (patch.pr && run.state.pr && patch.pr.number !== run.state.pr.number) return run.state;
+      if (preparedRun(run) && patch.pr && (!run.state.pr || patch.pr.headSha !== run.state.pr.headSha && patch.pr.headSha !== run.implementationHeadSha)) {
+        // 维护者在实现提交之后再推或点 Update branch 时，合并与关闭仍要落地；带计划提交头的是迟到的旧快照，照旧丢弃。
+        if (!run.state.pr || patch.pr.headSha === run.planCommitSha || (patch.phase !== "merged" && patch.phase !== "closed")) delete patch.phase;
+        delete patch.pr;
+        delete patch.ci;
+        delete patch.preview;
+        delete patch.review;
+        delete patch.githubUpdatedAt;
+        patch.reconciledAt = 0;
+      }
+      const publicationAdvance = preparedRun(run) && run.uploadUsed && !!run.implementationHeadSha && patch.pr?.headSha === run.implementationHeadSha && run.state.pr?.headSha !== run.implementationHeadSha;
+      if (!expectedHeadSha && !publicationAdvance && patch.pr && run.state.pr && patch.pr.headSha !== run.state.pr.headSha && patch.githubUpdatedAt === run.state.githubUpdatedAt) {
         delete patch.phase;
         delete patch.pr;
         delete patch.ci;
@@ -175,16 +348,20 @@ export class BuildCoordinator extends DurableObject<Env> {
         patch.reconciledAt = 0;
       }
       if (patch.githubUpdatedAt && run.state.githubUpdatedAt && patch.githubUpdatedAt < run.state.githubUpdatedAt) {
-        delete patch.phase;
-        delete patch.pr;
         delete patch.githubUpdatedAt;
-        delete patch.ci;
-        delete patch.preview;
-        delete patch.review;
-        delete patch.reconciledAt;
+        if (!publicationAdvance) {
+          delete patch.phase;
+          delete patch.pr;
+          delete patch.ci;
+          delete patch.preview;
+          delete patch.review;
+          delete patch.reconciledAt;
+        }
       }
+      const published = run.uploadUsed && !!run.implementationHeadSha && (patch.pr ?? run.state.pr)?.headSha === run.implementationHeadSha;
+      if (preparedRun(run) && patch.phase === "pr_open" && !published) delete patch.phase;
       const reopened = run.state.phase === "closed" && patch.phase === "pr_open" && !!patch.githubUpdatedAt && (patch.githubUpdatedAt > (run.state.githubUpdatedAt ?? 0) || !!expectedHeadSha);
-      const confirmedPr = patch.phase === "pr_open" && !!patch.pr && run.uploadUsed && ["failed", "timeout"].includes(run.state.phase);
+      const confirmedPr = patch.phase === "pr_open" && !!patch.pr && run.uploadUsed && (!preparedRun(run) || published) && ["failed", "timeout"].includes(run.state.phase);
       if (patch.phase && phases[patch.phase] < phases[run.state.phase] && !reopened && !confirmedPr) delete patch.phase;
       if (run.state.phase === "merged") delete patch.phase;
       if (confirmedPr || patch.phase === "pr_open" || patch.phase === "merged" || patch.phase === "closed") patch.reason = undefined;
@@ -212,10 +389,50 @@ export class BuildCoordinator extends DurableObject<Env> {
   claimReconcile(runId: string): boolean {
     return this.ctx.storage.transactionSync(() => {
       const run = this.readRun(runId);
-      if (!run || !run.state.pr || ["merged", "closed"].includes(run.state.phase) || this.get(`reconcile:${runId}`)) return false;
+      if (!run || !run.state.pr || run.draftClose || ["merged", "closed"].includes(run.state.phase) || this.get(`reconcile:${runId}`)) return false;
       this.put(`reconcile:${runId}`, true, Date.now() + BUILD_RECONCILE_MS);
       return true;
     });
+  }
+
+  async scheduleDraftSweep(at = Date.now() + DRAFT_SWEEP_MS): Promise<void> {
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || current > at) await this.ctx.storage.setAlarm(at);
+  }
+
+  private finishDraftClose(runId: string, outcome: NonNullable<StoredRun["draftClose"]>): void {
+    this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.draftClose) return;
+      run.draftClose = outcome;
+      if (outcome === "closed") run.state = { ...run.state, reason: [run.state.reason, "The draft pull request was closed."].filter(Boolean).join(" "), updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+    });
+  }
+
+  async alarm(): Promise<void> {
+    const rows = this.ctx.storage.sql.exec<{ key: string }>(
+      `SELECT key FROM build_records WHERE key LIKE 'run:%' AND expires > ? AND json_extract(value, '$.draftClose') IS NULL AND json_extract(value, '$.state.phase') IN (${[...PENDING_PHASES, ...FAILURE_PHASES].map(() => "?").join(", ")})`,
+      Date.now(), ...PENDING_PHASES, ...FAILURE_PHASES,
+    ).toArray();
+    let again = false;
+    for (const { key } of rows) {
+      const runId = key.slice("run:".length);
+      const run = this.readRun(runId);
+      if (!run) continue;
+      if (PENDING_PHASES.includes(run.state.phase)) { again = true; continue; }
+      if (!closableDraft(run)) continue;
+      try {
+        await closeFailedDraft(await installationApi(this.env), run);
+        this.finishDraftClose(runId, "closed");
+      } catch (error) {
+        if (error instanceof BuildBlockedError) {
+          this.finishDraftClose(runId, "skipped");
+          Sentry.captureException(error, { tags: { "build.step": "draft-close" } });
+        } else again = true;
+      }
+    }
+    if (again) await this.scheduleDraftSweep();
   }
 
   hasDelivery(id: string): boolean {

@@ -6,10 +6,11 @@ import test from "node:test";
 import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, planLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
-import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url } from "./build/token.ts";
+import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url, uploadTokenForRun } from "./build/token.ts";
 import { allowedBuildPath, parseBuildPlan, parseBuildUpload } from "./build/validation.ts";
-import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest, reconcileBuild } from "./build/github.ts";
+import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest as publishBuild, prepareBuildPullRequest, validateBuildBase, reconcileBuild } from "./build/github.ts";
 import { verifyGithubWebhook, applyGithubWebhook } from "./build/webhook.ts";
+import { buildGithubFixture, FIXTURE_PLAN_SHA, FIXTURE_PLAN_TREE } from "./build/testing/github-fixture.ts";
 import { consumePlan, issuePlan } from "./build/plan.ts";
 
 registerHooks({ resolve(specifier, context, nextResolve) {
@@ -38,7 +39,7 @@ function coordinator() {
     return { one() { assert.equal(rows.length, 1); return rows[0]; }, toArray() { return rows; } };
   } };
   const transactionSync = <T>(fn: () => T): T => { db.exec("BEGIN"); try { const result = fn(); db.exec("COMMIT"); return result; } catch (error) { db.exec("ROLLBACK"); throw error; } };
-  const instance = new BuildCoordinator({ storage: { sql, transactionSync } } as unknown as DurableObjectState, {} as Env);
+  const instance = new BuildCoordinator({ storage: { sql, transactionSync, getAlarm: async () => null, setAlarm: async () => undefined } } as unknown as DurableObjectState, {} as Env);
   const env = { BUILD_COORDINATOR: { getByName: () => instance }, BUILD_SESSION_SECRET: "test-build-secret", GITHUB_APP_PRIVATE_KEY: privatePem, GITHUB_APP_CLIENT_SECRET: "oauth-fixture", GITHUB_WEBHOOK_SECRET: "webhook-fixture", ROUTINE_FIRE_URL: "https://routine.test/fire", ROUTINE_FIRE_TOKEN: "fire-fixture" } as unknown as Env;
   return { instance, env, db };
 }
@@ -86,6 +87,15 @@ test("signed capabilities enforce integrity, purpose and expiry", async () => {
   assert.equal(await verifyBuildToken(token, "different", "plan"), null);
   assert.equal(await verifyBuildToken(token, "secret", "session"), null);
   assert.equal(await verifyBuildToken(token, "secret", "plan", payload.expiresAt), null);
+});
+
+test("upload capabilities recover after preparation interruption and remain bound to one run and secret", async () => {
+  const capability = await uploadTokenForRun(runId, "secret");
+  assert.match(capability, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(await uploadTokenForRun(runId, "secret"), capability);
+  assert.notEqual(await uploadTokenForRun("b".repeat(32), "secret"), capability);
+  assert.notEqual(await uploadTokenForRun(runId, "rotated-secret"), capability);
+  assert.notEqual(await hashToken(capability), capability);
 });
 
 test("design sessions count 12 turns, expire and cap global starts", (t) => {
@@ -182,47 +192,51 @@ test("GitHub JWT supports PKCS8 and GitHub PKCS1 PEM with verifiable RS256 signa
 });
 
 function githubFixture(extra: (path: string, body: Record<string, unknown> | null) => Response | undefined = () => undefined) {
-  const calls: { path: string; body: Record<string, unknown> | null; auth?: string }[] = [];
-  const fetcher: typeof fetch = async (input, init) => {
-    const path = String(input).replace("https://api.github.com", "");
-    const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null;
-    calls.push({ path, body, auth: (init?.headers as Record<string, string> | undefined)?.Authorization });
-    const override = extra(path, body);
-    if (override) return override;
-    if (path.endsWith("/installation")) return json({ id: 1 });
-    if (path === "/app/installations/1/access_tokens") return json({ token: "installation-fixture" });
-    if (path.includes("/compare/")) return json({ status: "ahead", merge_base_commit: { sha } });
-    if (path.endsWith(`/git/commits/${sha}`)) return json({ tree: { sha: treeSha } });
-    if (path.includes("/git/trees/") && path.includes("recursive")) return json({ truncated: false, tree: [{ path: "src", type: "tree", mode: "040000" }, { path: "src/card.tsx", type: "blob", mode: "100644" }, { path: ".github", type: "tree", mode: "040000" }] });
-    if (path.endsWith("/git/blobs") || path.endsWith("/git/trees") || path.endsWith("/git/commits")) return json({ sha: headSha }, 201);
-    if (path.endsWith("/git/refs")) return json({ ref: `refs/heads/${branchForRun(runId)}` }, 201);
-    if (path.endsWith("/pulls")) return json({ number: 12, html_url: `https://github.com/${BUILD_REPO}/pull/12`, head: { sha: headSha } }, 201);
-    if (path.endsWith("/git/ref/heads/main")) return json({ object: { sha } });
-    if (path === "https://github.com/login/oauth/access_token") return json({ access_token: "oauth-fixture" });
-    if (path === "/user") return json({ id: 1, login: "visitor", name: "Visitor" });
-    if (path.startsWith("/applications/") && init?.method === "DELETE") return new Response(null, { status: 204 });
-    if (path.endsWith("/issues/12/comments")) return json({ id: 1 }, 201);
-    throw new Error(`Unexpected fixture request: ${path}`);
-  };
-  return { fetcher, calls };
+  const calls: { path: string; method: string; body: Record<string, unknown> | null; auth?: string }[] = [];
+  const fixture = buildGithubFixture({ runId, baseSha: sha, baseTree: treeSha, headSha, override: (call) => {
+    const path = call.path === "/login/oauth/access_token" ? "https://github.com/login/oauth/access_token" : call.path;
+    calls.push({ ...call, path });
+    return extra(path, call.body);
+  } });
+  return { ...fixture, calls };
 }
 
-test("GitHub publishing retains the base tree and binds parent, branch, ready PR and verified coauthor", async () => {
+async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, changed: BuildUpload, validatedBaseTree?: string) {
+  const baseTree = validatedBaseTree ?? await validateBuildBase(api, run, changed);
+  const prepared = await prepareBuildPullRequest(api, run);
+  run.planCommitSha = prepared.planCommitSha;
+  run.state.pr = prepared.pr;
+  return publishBuild(api, run, changed, baseTree, async (sha, body) => {
+    run.implementationHeadSha = sha;
+    run.publicationBody = body;
+  });
+}
+
+test("GitHub publishing preserves the plan tree and appends the implementation to the same draft PR", async () => {
   const { fetcher, calls } = githubFixture();
   const result = await createBuildPullRequest(new GithubBuildApi("fixture", fetcher), await stored(), upload);
   assert.equal(result.number, 12);
-  assert.equal(calls.find((call) => call.path.endsWith("/git/trees"))?.body?.base_tree, treeSha);
-  assert.deepEqual(calls.find((call) => call.path.endsWith("/git/commits"))?.body?.parents, [sha]);
-  assert.match(String(calls.find((call) => call.path.endsWith("/git/commits"))?.body?.message), /Co-authored-by: Visitor <1\+visitor@users.noreply.github.com>/);
-  assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.draft, false);
-  assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.base, "main");
-  assert.doesNotMatch(String(calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /Review closely/);
-  assert.equal(calls.some((call) => call.path.endsWith("/pulls/12")), false);
-  const extra = githubFixture((path) => path.endsWith("/pulls/12") ? json({ number: 12 }) : undefined);
+  assert.equal(result.draft, true);
+  const trees = calls.filter((call) => call.path.endsWith("/git/trees") && call.method === "POST");
+  assert.equal(trees[0].body?.base_tree, treeSha);
+  assert.equal(trees[1].body?.base_tree, FIXTURE_PLAN_TREE);
+  const commits = calls.filter((call) => call.path.endsWith("/git/commits") && call.method === "POST");
+  assert.deepEqual(commits[0].body?.parents, [sha]);
+  assert.deepEqual(commits[1].body?.parents, [FIXTURE_PLAN_SHA]);
+  assert.match(String(commits[1].body?.message), /Co-authored-by: Visitor <1\+visitor@users.noreply.github.com>/);
+  const creations = calls.filter((call) => call.path.endsWith("/pulls") && call.method === "POST");
+  assert.equal(creations.length, 1);
+  assert.equal(creations[0].body?.draft, true);
+  assert.equal(creations[0].body?.base, "main");
+  const patch = calls.find((call) => call.path.endsWith("/pulls/12") && call.method === "PATCH");
+  assert.doesNotMatch(String(patch?.body?.body), /Review closely/);
+  const extra = githubFixture();
   const extraFiles = [{ path: "src/lib/extra.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "shared/collector.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "workers/ai/README.md", mode: "100644" as const, content: btoa("# ai") }];
   await createBuildPullRequest(new GithubBuildApi("fixture", extra.fetcher), await stored(), { ...upload, files: [...upload.files, ...extraFiles] });
-  assert.match(String(extra.calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /## Review closely\n- `src\/lib\/extra\.ts` — outside the plan\n- `shared\/collector\.ts` — outside the plan, shared contract\n- `workers\/ai\/README\.md` — outside the plan, documentation outside docs\//);
-  const patched = String(extra.calls.find((call) => call.path.endsWith("/pulls/12"))?.body?.body);
+  const patched = String(extra.calls.find((call) => call.path.endsWith("/pulls/12") && call.method === "PATCH")?.body?.body);
+  assert.match(patched, /## Review closely/);
+  assert.match(patched, /outside the plan, shared contract/);
+  assert.match(patched, /documentation outside docs\//);
   assert.match(patched, /\[`src\/lib\/extra\.ts`\]\(https:\/\/github\.com\/LYJW131\/lyjwpage\/pull\/12\/files#diff-[0-9a-f]{64}\)/);
 });
 
@@ -343,6 +357,7 @@ test("webhooks verify exact bytes, reject invalid signatures and deduplicate del
   const run = await stored();
   run.uploadUsed = true;
   run.state.phase = "validated";
+  run.state.pr = { number: 12, url: `https://github.com/${BUILD_REPO}/pull/12`, headSha };
   instance.reserveRun(run, "p", Date.now() + 60_000);
   const payload = { repository: { full_name: BUILD_REPO }, pull_request: { number: 12, state: "open", merged: false, html_url: `https://github.com/${BUILD_REPO}/pull/12`, head: { ref: run.state.branch, sha: headSha, repo: { full_name: BUILD_REPO } }, base: { ref: "main" }, updated_at: new Date().toISOString() } };
   const text = JSON.stringify(payload);
@@ -394,7 +409,10 @@ test("dispatch includes the upload capability only in routine input and accepts 
   assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
   assert.equal("uploadToken" in result, false);
   assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${result.runId}`, { message: "Working" }, fireText?.uploadToken as string), env)).status, 200);
-  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher)).status, 409);
+  const replay = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
+  assert.equal(replay.status, 202);
+  assert.equal((await replay.json() as { runId: string }).runId, result.runId);
+  assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/pulls")).length, 1);
   const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env);
   assert.equal(status.status, 200);
   assert.equal((await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}&token=${result.statusToken}`), env)).status, 401);
