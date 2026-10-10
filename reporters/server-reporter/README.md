@@ -11,7 +11,7 @@ TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（
 | 内容 | 节奏 | 什么时候真的推 |
 | --- | --- | --- |
 | CPU / 负载 / 内存 / 磁盘 / 网速 / 运行时间 | 固定每分钟一轮（`INTERVAL_MS`） | **每轮都推**。这份快照本身就是心跳，站点按信封的 `updatedAt` 判断上报器还活着没有 |
-| 公网 IP 的 Location / ISP / ASN | 地址变了才查，否则按 `src/geo.ts#GEO_TTL_MS` 缓存 | 跟着上面那份一起推。查的是网卡上的地址，不是「我访问某个 what-is-my-ip 看到的出口」 |
+| 公网 IP 的 Location / ISP / ASN | 查成功后按 `src/geo.ts#GEO_TTL_MS` 复用；两个来源都失败不写入缓存，下一轮再查 | 跟着上面那份一起推。查的是网卡上的地址。失败这一轮国家、ISP、ASN 留空，城市用 `HOST_LOCATION`，卡片按 `src/components/live/server-card.tsx#formatLocation` 只显示城市 |
 | 计费周期内的累计流量 | 每轮把这一段的增量并进去 | 跟着一起推。攒不住（状态文件写不进）时报 `null`，卡片上那一栏整行不出现 |
 | 推送账本（`reporter` 块） | 站点回 ok 才记一笔，按 `BUCKET_MS` 分格存在 `PUSH_LEDGER_PATH` | 每封都带：镜像提交（Actions 以 `GIT_SHA` 烧进 `REPORTER_COMMIT`）、窗口（`WINDOW_MS`）内推成功几封（含这一封）、这些封往返的中位数（`rttMs`，从发出到读完回执，不含这一封）、窗口起止。站点卡片服务区据此显示 Push、RTT 和线上跑的哪一版。和 agents-reporter 同一份 `push-ledger.ts`，常量见 `src/push-ledger.ts#WINDOW_MS`、`src/push-ledger.ts#BUCKET_MS` |
 
@@ -46,7 +46,7 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 就是这个口径；按 1024 算的话 2T 会显示成「1.82 TB」，和账单对不上。内存和磁盘不受
 影响，它们仍按 1024 —— 那是系统自己报数的方式。
 
-周期边界、增量累加、推送账本、CPU 占用和 AS 行解析这几个纯函数有单测：
+周期边界、增量累加、推送账本、CPU 占用、AS 行解析和地理位置缓存这几个纯函数有单测：
 
 ```bash
 pnpm --filter @lyjwpage/server-reporter test

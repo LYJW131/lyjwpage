@@ -105,6 +105,21 @@ test("曲名对不上时，同一艺人两张单曲不猜", () => {
   assert.equal(hit, undefined);
 });
 
+test("缺专辑名的目录行不能靠空名字接住包含判断", () => {
+  const hit = pickCatalogHit(
+    [
+      song("ミッドナイト・リフレクション", "NOMELON NOLEMON", "", "blank"),
+      song("ミッドナイト・リフレクション", "NOMELON NOLEMON", "HALO - EP", "halo"),
+    ],
+    {
+      title: "ミッドナイト・リフレクション",
+      artist: "NOMELON NOLEMON",
+      album: "HALO",
+    },
+  );
+  assert.equal(hit?.id, "halo");
+});
+
 test("艺人对不上且专辑也对不上，不因为只剩一条就认", () => {
   const hit = pickCatalogHit(
     [song("One Last Kiss", "Utada", "SCIENCE FICTION", "sf")],

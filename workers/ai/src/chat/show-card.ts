@@ -43,7 +43,17 @@ export function parseShowCardInput(input: unknown): GodChatCard | null {
 }
 
 // 卡片背后的视图照样记进这条回复的读取账本（claimViews 的额度与去重），读过的不再读。
-export async function runShowCard(card: GodChatCard, io: ToolIO, ledger: ToolLedger): Promise<string> {
-  const { text } = await SITE_STATUS_TOOL.run({ views: GOD_CHAT_CARD_VIEWS[card] }, io, ledger);
-  return `The ${card} card is now in your reply, showing this data live. Don't restate it as a list or mention where the card is.\n\n${text}`;
+export async function runShowCard(card: GodChatCard, io: ToolIO, ledger: ToolLedger): Promise<{ text: string; isError: boolean }> {
+  const outcome = await SITE_STATUS_TOOL.run({ views: GOD_CHAT_CARD_VIEWS[card] }, io, ledger);
+  if (outcome.isError && /"error":/.test(outcome.text)) {
+    return {
+      text: `The ${card} card is in the reply, but its live data could not be read. Say so; do not invent what it shows.\n\n${outcome.text}`,
+      isError: true,
+    };
+  }
+  if (outcome.isError) return { text: outcome.text, isError: true };
+  return {
+    text: `The ${card} card is now in your reply, showing this data live. Don't restate it as a list or mention where the card is.\n\n${outcome.text}`,
+    isError: false,
+  };
 }

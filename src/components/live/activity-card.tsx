@@ -4,7 +4,7 @@ import NumberFlow from "@number-flow/react";
 import { useId, type ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
-import { useStale } from "@/hooks/use-stale";
+import { useActivityCurrent, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { ACTIVITY_PATH } from "@/lib/paths";
@@ -221,9 +221,7 @@ export function ActivityCard({
   });
   const stale = useStale(updatedAt ?? latest?.pushedAt, ACTIVITY_STALE_MS, servedAt);
   const data = stale ? undefined : latest;
-
-  // useMountedAt 是定格时刻，用它判日期会在跨夜后把新上报误判为昨天。
-  const current = Boolean(data?.currentAtSource);
+  const current = useActivityCurrent(data, servedAt);
 
   const rings = ringValues(data, current);
 

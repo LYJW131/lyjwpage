@@ -56,6 +56,7 @@ import type {
   TrackMotion,
 } from "@/lib/types";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
+import { formatClock } from "@/lib/clock-format";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import { liveTrack } from "@/lib/home-layout";
 import { fetchCatalogSongAlbum, queueOptionsFor } from "@/lib/web-player";
@@ -69,16 +70,6 @@ const MUSIC_REFRESH_MS = 60_000;
 // VISIBLE_ROWS × 2 须与 globals.css 的 recent-tracks-track nth-child 上限对齐。
 const VISIBLE_ROWS = 4;
 const MIN_ROW_HEIGHT_PX = 56;
-
-function formatDuration(milliseconds: number) {
-  const total = Math.max(0, Math.round(milliseconds / 1000));
-  const seconds = String(total % 60).padStart(2, "0");
-  const minutes = Math.floor(total / 60) % 60;
-  const hours = Math.floor(total / 3600);
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
-    : `${minutes}:${seconds}`;
-}
 
 function formatMargin(milliseconds: number) {
   const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
@@ -939,7 +930,7 @@ export function ListeningCard({
                             </span>
                             {hero.durationMs != null && (
                               <span className="label-mono shrink-0 tabular-nums">
-                                {formatDuration(hero.durationMs)}
+                                {formatClock(hero.durationMs)}
                               </span>
                             )}
                           </div>

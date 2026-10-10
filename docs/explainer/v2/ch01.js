@@ -73,7 +73,7 @@
     "ch01.srcMac": ["Mac 本机", "the Mac itself"],
     "ch01.srcCursor": ["容器里的 Cursor", "Cursor, via the container"],
     "ch01.merge": ["站点这边合并", "merged site-side"],
-    "ch01.sum": ["三处相加", "all three summed"],
+    "ch01.sum": ["按 agent 合并", "merged per agent"],
     "ch01.tokRate": ["token 处理量 · 5 分钟平均", "tokens processed · 5-min avg"],
     "ch01.pulse.coding": ["Coding", "Coding"],
     "ch01.pulse.tokens": ["Tokens", "Tokens"],
@@ -866,7 +866,7 @@
     narPair(x, "ch01.n10a", "ch01.n10b", 13510, [22.05, 22.5], [22.5, 23.1], [22.0, 22.1, 23.62, 23.74], b);
   }
 
-  // Tokens 道画的是三处 5 分钟桶相加后的 token 处理量（输入 + 输出 + 缓存写入，按桶平均到每分钟），不是生成速度（FACTS §1）
+  // Tokens 道按 agent 合并 5 分钟桶后的 token 处理量（输入 + 输出 + 缓存写入，按桶平均到每分钟），不是生成速度（FACTS §1）
   const SRC_Y = [330, 470, 610];
   const MERGE = [15960, 470];
   const PC = { x: 16300, y: 214, w: 860, h: 540 };

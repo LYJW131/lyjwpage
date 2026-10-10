@@ -71,7 +71,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 三个来源只报自己观测到的原始事实，三种形状一样：日行（来源 × agent × 站点日）、5 分钟 token 桶、最近一次用量事件（契约 `shared/coding-usage.ts`）。来源登记在 `shared/coding-usage-sources.ts#CODING_USAGE_SOURCES`：Mac 本机的会话记录、agents-reporter 里 Cursor 账号的完整历史、Claude Code 云端的 OTLP（状态核心做差后才成形，见上表）。
 - 合计、排名、去重、年度格子都不归来源，在状态核心一处算（`shared/coding-usage-view.ts#buildCodingUsageView`）：同一个 agent 有账号级来源（Cursor 账号）就只用它，本机和云端相加（`shared/coding-usage-sources.ts#resolveCodingUsageSources`）。读出口是 `/api/status/coding`、`/api/status/coding/now`、`/api/status/coding/year`（`src/lib/status-views.ts#STATUS_VIEWS`）。
-- Pulse 多一条 Tokens 道：三个来源的 5 分钟桶全部相加，画的是 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）在每个 5 分钟桶里的平均值，折成每分钟；它不是模型的生成速度（`src/lib/pulse.ts#tokensLaneView`）。卡上「此刻」那个数取最近 `TOKEN_CURRENT_MS`（10 分钟）内最后一个有用量的桶，不是此刻的精确值，口径问题还没修（同文件 `TOKEN_CURRENT_MS`）。
+- Pulse 多一条 Tokens 道：5 分钟桶按同一条来源取舍合并（`shared/coding-usage-sources.ts#resolveCodingUsageSources`，同一 agent 有账号级来源就只用它，否则本机与云端相加），画的是 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）在每个 5 分钟桶里的平均值，折成每分钟；它不是模型的生成速度（`src/lib/pulse.ts#tokensLaneView`）。卡上「此刻」那个数取最近 `TOKEN_CURRENT_MS`（10 分钟）内最后一个有用量的桶，不是此刻的精确值，口径问题还没修（同文件 `TOKEN_CURRENT_MS`）。
 - 片中只讲到「三处各报原始数，站点这边合并，Pulse 上多一条 token 处理量（5 分钟平均）」，不点存储键和模块名；不说「生成速度」「每分钟生成」，也不说它是此刻的精确值。
 
 ### collector 的任务
@@ -227,7 +227,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间，听那条另有从 Apple 最近播放推出的别处播放（§1「没人上报的播放」）；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
 - Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding.ts#codingBand`）；Clef 的打分只出现在悬停提示里。
-- Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`src/lib/pulse.ts#tokensLaneView`）。
+- Tokens 道：三个来源的 5 分钟 token 桶读的时候按 `shared/coding-usage-sources.ts#resolveCodingUsageSources` 合并（同一 agent 有账号级来源就只用它，否则本机与云端相加），画每个桶的 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`src/lib/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 08 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`src/lib/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
 ## 4 首屏（Vercel 上的 Next.js）

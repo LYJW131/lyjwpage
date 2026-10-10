@@ -28,6 +28,11 @@ function artistNameMatches(found: string | null | undefined, wanted: string) {
   return have.includes(wanted) || wanted.includes(have);
 }
 
+// 空串是任何专辑名的子串；缺专辑名不能因此算命中。
+function albumNameContains(outer: string, inner: string) {
+  return inner.length > 0 && outer.includes(inner);
+}
+
 function albumRole(name: string | null | undefined): "single" | "ep" | null {
   const n = normalizeForMatch(name);
   if (n.endsWith("single")) return "single";
@@ -111,7 +116,7 @@ function pickAlbum(
     if (!artistMatched) return undefined;
     const contained = candidates.find((song) => {
       const found = normalizeForMatch(song.attributes?.albumName);
-      return found.includes(wantedAlbum) || wantedAlbum.includes(found);
+      return albumNameContains(found, wantedAlbum) || albumNameContains(wantedAlbum, found);
     });
     if (contained) return contained;
     const role = albumRole(wantedAlbum);

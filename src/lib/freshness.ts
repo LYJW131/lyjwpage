@@ -36,7 +36,40 @@ export function localDate(at: number, secondsFromGMT: number): string {
   return new Date(at + secondsFromGMT * 1000).toISOString().slice(0, 10);
 }
 
+const SOURCE_DAY_MS = 24 * 60 * 60 * 1000;
+const SOURCE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// 与 localDate 同一套固定偏移：上报里的 secondsFromGMT 不是时区名，日界不能另按夏令时重算。
+export function activityDateEndsAt(date: string, secondsFromGMT: number): number | null {
+  if (!SOURCE_DATE.test(date)) return null;
+  const start = Date.parse(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(start)) return null;
+  const ends = start + SOURCE_DAY_MS - secondsFromGMT * 1000;
+  return Number.isSafeInteger(ends) && ends > 0 ? ends : null;
+}
+
+export function activityCurrentAt(date: string, secondsFromGMT: number, now: number): boolean {
+  return SOURCE_DATE.test(date) && localDate(now, secondsFromGMT) === date;
+}
+
+// now=0 没有访客钟，沿用取数时的 currentAtSource。钟还停在上一日时，比钟更新的 date 仍信取数结果，避免把新的一天判成昨天。
+export function activityDisplayedCurrent(
+  payload: { date: string; secondsFromGMT: number; currentAtSource: boolean },
+  now: number,
+): boolean {
+  if (!now) return payload.currentAtSource;
+  if (!SOURCE_DATE.test(payload.date)) return false;
+  const today = localDate(now, payload.secondsFromGMT);
+  if (payload.date > today) return payload.currentAtSource;
+  return payload.date === today;
+}
+
 export const CHARGER_STALE_MS = 90_000;
+
+// 断流窗口不得短于心跳窗口；安静时只有空心跳续期，否则正常设备会反复闪断。
+export function chargingStaleAfterMs(intervalMs = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000) {
+  return Math.max(CHARGER_STALE_MS, intervalMs * 3, heartbeatWindowMs());
+}
 
 export type FreshnessInput = {
   now: number;

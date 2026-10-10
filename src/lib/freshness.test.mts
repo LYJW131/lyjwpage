@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AGENT_LIMITS_STALE_MS,
+  CHARGER_STALE_MS,
   chargingFeedClockStale,
+  chargingStaleAfterMs,
   RESUME_REFETCH_GRACE_MS,
   clockAdvance,
   clockReading,
@@ -10,9 +12,14 @@ import {
   hasPendingDeadline,
   resumeStep,
   resumeTimedOut,
+  activityCurrentAt,
+  activityDateEndsAt,
+  activityDisplayedCurrent,
   isStale,
   liveChargingFeed,
+  heartbeatWindowMs,
   liveNowListening,
+  localDate,
   PLAYSTATION_STALE_MS,
   type ChargingFeed,
 } from "./freshness.ts";
@@ -49,6 +56,14 @@ function feed(partial: Partial<ChargingFeed> = {}): ChargingFeed {
     ...partial,
   };
 }
+
+test("充电头和充电宝共用一条断流窗口，不短于心跳、自身下限和三轮推送", () => {
+  const heartbeat = heartbeatWindowMs();
+  assert.equal(chargingStaleAfterMs(30_000), Math.max(CHARGER_STALE_MS, 90_000, heartbeat));
+  assert.equal(chargingStaleAfterMs(1_000), Math.max(CHARGER_STALE_MS, 3_000, heartbeat));
+  const wide = Math.max(heartbeat, CHARGER_STALE_MS) + 60_000;
+  assert.equal(chargingStaleAfterMs(wide), wide * 3);
+});
 
 test("充电头 / 充电宝按钟判：Mac 心跳窗口或这一路自己的窗口，过了任一个就算断", () => {
   assert.equal(chargingFeedClockStale(feed(), T + 300_000), false);
@@ -279,6 +294,51 @@ test("推钟推到此刻与 deadline 里较晚的那个：系统时钟往回调�
   const ticked = Math.max(40_000, advance.kind === "later" ? advance.to : 0);
   assert.equal(ticked, 60_000);
   assert.deepEqual(clockAdvance(ticked, [60_000], 40_000), { kind: "idle" }, "跨过去之后不再挂着");
+});
+
+test("活动圆环：冻住的 currentAtSource 跨过源站当地日就不再是今天", () => {
+  const secondsFromGMT = 8 * 3600;
+  const date = "2026-10-10";
+  const ends = activityDateEndsAt(date, secondsFromGMT);
+  assert.equal(ends, Date.parse(`${date}T00:00:00.000Z`) + 24 * 60 * 60 * 1000 - secondsFromGMT * 1000);
+  const payload = { date, secondsFromGMT, currentAtSource: true };
+  assert.equal(activityCurrentAt(date, secondsFromGMT, ends! - 1), true);
+  assert.equal(activityDisplayedCurrent(payload, ends! - 1), true);
+  assert.equal(activityCurrentAt(date, secondsFromGMT, ends!), false);
+  assert.equal(activityDisplayedCurrent(payload, ends!), false);
+  assert.equal(activityDisplayedCurrent(payload, 0), true);
+});
+
+test("活动圆环：钟还停在上一日时，更新的 date 仍信取数结果", () => {
+  const secondsFromGMT = 8 * 3600;
+  const ends = activityDateEndsAt("2026-10-10", secondsFromGMT);
+  assert.ok(ends);
+  const duringPreviousDay = ends - 60_000;
+  assert.equal(
+    activityDisplayedCurrent({ date: "2026-10-11", secondsFromGMT, currentAtSource: true }, duringPreviousDay),
+    true,
+  );
+  assert.equal(
+    activityDisplayedCurrent({ date: "2026-10-11", secondsFromGMT, currentAtSource: false }, duringPreviousDay),
+    false,
+  );
+});
+
+test("活动圆环：西半球用同一套固定偏移，日界不是访客时区", () => {
+  const secondsFromGMT = -7 * 3600;
+  const date = "2026-10-10";
+  const ends = activityDateEndsAt(date, secondsFromGMT);
+  assert.ok(ends);
+  assert.equal(activityCurrentAt(date, secondsFromGMT, ends - 1), true);
+  assert.equal(localDate(ends - 1, secondsFromGMT), date);
+  assert.equal(activityCurrentAt(date, secondsFromGMT, ends), false);
+  assert.equal(localDate(ends, secondsFromGMT), "2026-10-11");
+});
+
+test("活动圆环：不是 YYYY-MM-DD 的 date 在有钟之后不算今天", () => {
+  assert.equal(activityDateEndsAt("2026-9-1", 0), null);
+  assert.equal(activityDisplayedCurrent({ date: "yesterday", secondsFromGMT: 0, currentAtSource: true }, 1_000), false);
+  assert.equal(activityDisplayedCurrent({ date: "yesterday", secondsFromGMT: 0, currentAtSource: true }, 0), true);
 });
 
 test("刚好推到窗口那一刻也判得出过期：deadline 取窗口之后那一毫秒", () => {

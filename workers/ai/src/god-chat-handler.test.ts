@@ -589,3 +589,43 @@ test("Sonnet 没有空位时 request_upgrade 回错误，Haiku 自己答完", as
   assert.ok(requests[1].tools?.every((tool) => !("name" in tool) || tool.name !== "request_upgrade"));
   assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.tier), ["haiku"]);
 });
+
+test("状态读取失败不盖成查过的回复：工具结果是错误，签给页面的 trace 不含这次视图", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
+  const env: Env = {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "haiku-low",
+    ANTHROPIC_API_KEY: "test-key",
+    TURNSTILE_SECRET_KEY: "test-key",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    CHAT_QUOTA: binding<ChatQuota>({
+      admitVisitor: async () => "ok" as const,
+      admitTier: async () => "haiku" as const,
+    }),
+    ANTHROPIC_EGRESS: binding<AnthropicEgress>({
+      fetch: async (request) => {
+        const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+        requests.push(body);
+        return modelStream(body.model, requests.length === 1);
+      },
+    }),
+  };
+  const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "What's the timezone?" }]), env, {
+    readStatus: async () => new Response("状态存储初始化中", { status: 503 }),
+    readDoc: async () => new Response("unused"),
+  }));
+  const results = requests[1]?.messages.at(-1)?.content;
+  assert.ok(Array.isArray(results));
+  const failure = results.find((block) => block.type === "tool_result");
+  assert.equal(failure?.type === "tool_result" && failure.is_error, true);
+  assert.match(failure?.type === "tool_result" ? String(failure.content) : "", /HTTP 503/);
+  assert.doesNotMatch(failure?.type === "tool_result" ? String(failure.content) : "", /状态存储初始化中/);
+  assert.equal(events.some((event) => event.type === "tool"), false);
+  const seal = events.find((event) => event.type === "seal");
+  assert.equal(seal?.type === "seal" && seal.trace?.views, undefined);
+});

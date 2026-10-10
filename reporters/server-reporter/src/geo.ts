@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 import { failure, recovered } from "./log.js";
 
-const GEO_TTL_MS = 6 * 3_600_000;
+export const GEO_TTL_MS = 6 * 3_600_000;
 const GEO_TIMEOUT_MS = 5_000;
 const USER_AGENT = "lyjwpage-server-reporter/2.0";
 const AS_LINE = /^AS(\d+)\s*(.*)$/i;
@@ -67,24 +67,29 @@ async function lookupIpApi(ip: string): Promise<Geo> {
 
 let cached: { ip: string; at: number; geo: Geo } | null = null;
 
+function unknownGeo(): Geo {
+  return { country: null, city: config.location || null, isp: null, asn: null, asnOrg: null };
+}
+
 export async function geoFor(ip: string): Promise<Geo> {
   const now = Date.now();
   if (cached?.ip === ip && now - cached.at < GEO_TTL_MS) return cached.geo;
-  let found: Geo;
   try {
-    found = await lookupIpSb(ip);
+    const found = await lookupIpSb(ip);
     recovered("geo");
+    cached = { ip, at: now, geo: found };
+    return found;
   } catch (error) {
     failure("geo", error);
     try {
-      found = await lookupIpApi(ip);
+      const found = await lookupIpApi(ip);
       recovered("geo");
+      cached = { ip, at: now, geo: found };
+      return found;
     } catch (fallback) {
       failure("geo", fallback);
       if (cached?.ip === ip) return cached.geo;
-      found = { country: null, city: config.location || null, isp: null, asn: null, asnOrg: null };
+      return unknownGeo();
     }
   }
-  cached = { ip, at: now, geo: found };
-  return found;
 }
