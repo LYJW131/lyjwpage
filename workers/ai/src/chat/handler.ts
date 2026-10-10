@@ -25,7 +25,7 @@ import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { admitDesign, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
-import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
+import { CLEF_CHOICES, DESIGN_EFFORT, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
 
@@ -123,7 +123,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
   const forced = devSwitch(env, "CHAT_FORCE_TIER");
-  const decision: RouteDecision = design ? { route: "opus", source: "design" } : isClefChoice(forced)
+  const decision: RouteDecision = design ? { route: "opus", effort: DESIGN_EFFORT, source: "design" } : isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
     : isGodChatTier(forced)
       ? { route: forced, source: "forced" }
