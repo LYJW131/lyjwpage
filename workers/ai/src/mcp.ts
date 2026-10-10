@@ -1,7 +1,8 @@
 import { site } from "@/lib/site";
 
 import { readJsonBody } from "./chat/guard";
-import { SITE_TOOLS, newLedger, type ToolIO } from "./tools/registry";
+import { CODE_TOOL } from "./tools/code-mode";
+import { SITE_TOOLS, newLedger, type SiteTool, type ToolIO } from "./tools/registry";
 
 // 新协议每个请求在 _meta 里自带版本、没有 initialize；旧协议先握手。两代都收，都不发会话 ID。
 const MODERN_VERSIONS = ["2026-07-28"];
@@ -34,13 +35,15 @@ const INSTRUCTIONS = [
   'Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA".',
 ].join(" ");
 
-const TOOLS = SITE_TOOLS.map(({ name, title, description, inputSchema }) => ({
+const toolsFor = (io: ToolIO): readonly SiteTool[] => (io.runCode ? [...SITE_TOOLS, CODE_TOOL] : SITE_TOOLS);
+
+const describe = ({ name, title, description, inputSchema }: SiteTool) => ({
   name,
   title,
   description,
   inputSchema,
   annotations: { title, readOnlyHint: true, openWorldHint: false },
-}));
+});
 
 type Id = string | number;
 type Params = Record<string, unknown>;
@@ -106,7 +109,7 @@ function eraOf(request: Request, method: string, params: Params): Era {
 }
 
 async function callTool(params: Params, io: ToolIO) {
-  const tool = SITE_TOOLS.find((candidate) => candidate.name === params.name);
+  const tool = toolsFor(io).find((candidate) => candidate.name === params.name);
   if (!tool) throw new RpcError(INVALID_PARAMS, `Unknown tool: ${String(params.name)}`, 200);
   if (params.arguments !== undefined && !isObject(params.arguments)) {
     throw new RpcError(INVALID_PARAMS, "arguments must be an object", 200);
@@ -132,7 +135,7 @@ async function dispatch(era: Era, method: string, params: Params, io: ToolIO, se
     case "ping":
       return {};
     case "tools/list":
-      return { tools: TOOLS, ...(era === "modern" && CACHE_HINTS) };
+      return { tools: toolsFor(io).map(describe), ...(era === "modern" && CACHE_HINTS) };
     case "tools/call":
       return callTool(params, io);
   }

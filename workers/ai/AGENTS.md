@@ -7,6 +7,7 @@
 - 生产不开放 `workers.dev` 或独立公开域名；HTTP 只服务 `shared/ai-paths.ts#AI_HTTP_PATHS` 中的路径，由 api 的 `AI_SERVICE` 转发原请求和响应流，不改访客 IP、不缓冲聊天响应。
 - `PUBLIC_STATUS` 是唯一状态读取权限，契约为 `shared/public-status.ts#PublicStatusRpc`。只能读取 api 返回的公开模型；不添加 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore` 绑定，不自建状态权威。
 - `src/tools/registry.ts#SITE_TOOLS` 同时是无鉴权 `/mcp` 和首页对话的工具：只放只读、只读公开模型的工具；要访客确认的、只对对话界面有意义的、Anthropic 服务端工具留在 `src/chat/`。
+- `run_site_code` 执行模型生成的代码，只能在 `MCP_CODE_MODE=true` 时经 `ToolIO.runCode` 暴露给 `/mcp`，不进 `SITE_TOOLS` 与首页对话；沙箱必须保持无网络（`globalOutbound: null`）、无绑定，只通过 `status(view)` 读白名单视图并共用读取账本。
 - 付费模型调用前先过 `ChatQuota`；缺配额绑定或历史签名密钥时关闭对话入口。历史只能经 `src/chat/seal.ts#sealedHistory` 验证后进入 Clef 和模型，工具循环共用整条回复的输出预算与读取账本。
 - 设计会话、计划和构建状态令牌各自签名；计划只能被 issue 或 build 消费一次。`BuildCoordinator` 只保存 AI 交互配额与构建状态，不保存站点遥测。访客 GitHub token 用完立即撤销，不持久化。
 - routine 不持有仓库推送凭据；上传只经 `src/build/validation.ts` 的路径与大小校验后由 GitHub App 写入构建分支。webhook 必须验证原始正文 HMAC；Claude 审查只作参考，不授权合并。
