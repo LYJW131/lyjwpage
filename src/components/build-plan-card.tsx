@@ -10,12 +10,10 @@ import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { BUILD_PATH, BUILD_SESSION_PATH, BUILD_STATUS_PATH, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSession, type BuildSignal } from "@shared/build-routine";
+import { BUILD_PATH, BUILD_STATUS_PATH, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
 
 const BUILD_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_PATH);
-const SESSION_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_SESSION_PATH);
 const STATUS_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
-let githubSession: BuildSession | null = null;
 
 const phaseLabels: Record<BuildPhase, string> = {
   triggered: "Build requested",
@@ -49,20 +47,11 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
     setWorking(true);
     setError(null);
     try {
-      if (!BUILD_URL || !SESSION_URL) throw new Error("Builds are offline right now.");
-      if (!githubSession || githubSession.expiresAt <= Date.now()) {
-        const signIn = await signInWithGithub();
-        const response = await fetch(SESSION_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(signIn) });
-        const session = await response.json() as BuildSession & { error?: string };
-        if (!response.ok || !session.session) throw new Error(session.error ?? "Couldn't connect your GitHub account.");
-        githubSession = session;
-      }
-      const response = await fetch(BUILD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: githubSession.session, planToken: proposal.token }) });
+      if (!BUILD_URL) throw new Error("Builds are offline right now.");
+      const signIn = await signInWithGithub();
+      const response = await fetch(BUILD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...signIn, planToken: proposal.token }) });
       const result = await response.json() as BuildFireResult & { error?: string };
-      if (!response.ok || !result.runId || !result.statusToken) {
-        if (response.status === 401) githubSession = null;
-        throw new Error(result.error ?? "Couldn't start the build.");
-      }
+      if (!response.ok || !result.runId || !result.statusToken) throw new Error(result.error ?? "Couldn't start the build.");
       onChange({ ...proposal, build: { runId: result.runId, branch: result.branch, statusToken: result.statusToken } });
     } catch (err) {
       setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't reach the server.");

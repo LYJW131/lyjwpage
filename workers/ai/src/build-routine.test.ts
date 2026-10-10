@@ -16,7 +16,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
   return { url: "data:text/javascript,export class DurableObject{constructor(ctx,env){this.ctx=ctx;this.env=env}}", shortCircuit: true };
 } });
-const { handleBuild, handleBuildProgress, handleBuildSession, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
+const { handleBuild, handleBuildProgress, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
 const { BuildCoordinator } = await import("./build/coordinator.ts");
 const plan: BuildPlan = { title: "Improve the page", spec: "Improve the public layout.", acceptance: ["Mobile layout fits."], paths: ["src/card.tsx"] };
 const sha = "a".repeat(40);
@@ -27,6 +27,7 @@ const uploadToken = "f".repeat(64);
 const privateKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const privatePem = privateKeys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
 const json = (value: unknown, status = 200) => Response.json(value, { status });
+const signIn = { code: "github-code", codeVerifier: "a".repeat(43) };
 const upload: BuildUpload = { baseSha: sha, message: "feat: improve the page", files: [{ path: "src/card.tsx", mode: "100644", content: btoa("export default true;") }], deletions: [] };
 
 function coordinator() {
@@ -197,6 +198,9 @@ function githubFixture(extra: (path: string, body: Record<string, unknown> | nul
     if (path.endsWith("/git/refs")) return json({ ref: `refs/heads/${branchForRun(runId)}` }, 201);
     if (path.endsWith("/pulls")) return json({ number: 12, html_url: `https://github.com/${BUILD_REPO}/pull/12`, head: { sha: headSha } }, 201);
     if (path.endsWith("/git/ref/heads/main")) return json({ object: { sha } });
+    if (path === "https://github.com/login/oauth/access_token") return json({ access_token: "oauth-fixture" });
+    if (path === "/user") return json({ id: 1, login: "visitor", name: "Visitor" });
+    if (path.startsWith("/applications/") && init?.method === "DELETE") return new Response(null, { status: 204 });
     if (path.endsWith("/issues/12/comments")) return json({ id: 1 }, 201);
     throw new Error(`Unexpected fixture request: ${path}`);
   };
@@ -306,43 +310,41 @@ test("webhooks verify exact bytes, reject invalid signatures and deduplicate del
   assert.equal(instance.readRun(runId)?.state.pr?.number, 12);
 });
 
-test("GitHub session is PKCE-bound, accepts any account and revokes OAuth token", async () => {
-  const { env } = coordinator();
-  const calls: { url: string; body: Record<string, unknown> | null }[] = [];
-  const fetcher: typeof fetch = async (input, init) => {
-    const url = String(input); const body = init?.body ? JSON.parse(String(init.body)) : null;
-    calls.push({ url, body });
-    if (url.includes("access_token")) return json({ access_token: "oauth-fixture" });
-    if (url.endsWith("/user")) return json({ id: 432, login: "any-visitor", name: "Any Visitor" });
-    return new Response(null, { status: 204 });
-  };
-  const response = await handleBuildSession(post("/api/build/session", { code: "github-code", codeVerifier: "a".repeat(43) }), env, fetcher);
-  assert.equal(response.status, 200);
-  const body = await response.json() as { session: string; login: string };
-  assert.equal(body.login, "any-visitor");
-  assert.equal(calls[0].body?.code_verifier, "a".repeat(43));
-  assert.equal(calls.at(-1)?.body?.access_token, "oauth-fixture");
-  assert.equal(JSON.stringify(body).includes("oauth-fixture"), false);
+test("every build signs in with PKCE, accepts any account, uses the identity once and revokes the OAuth token", async () => {
+  const { env, instance } = coordinator();
+  const proposal = await issuePlan(env, plan);
+  const { fetcher, calls } = githubFixture((path) => path === "/user" ? json({ id: 432, login: "any-visitor", name: "Any Visitor" }) : undefined);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
+  assert.equal(response.status, 202);
+  const { runId: started } = await response.json() as { runId: string };
+  assert.equal(calls.find((call) => call.path.includes("access_token") && call.path.startsWith("https://github.com"))?.body?.code_verifier, signIn.codeVerifier);
+  assert.equal(calls.find((call) => call.path.startsWith("/applications/"))?.body?.access_token, "oauth-fixture");
+  assert.equal(instance.readRun(started)?.account, "any-visitor");
+  assert.equal(instance.readRun(started)?.coauthor, "Any Visitor <432+any-visitor@users.noreply.github.com>");
+  assert.equal((await handleBuild(post("/api/build", { planToken: proposal.token, session: "old-session-ticket" }), env, fetcher)).status, 400);
+  const denied = githubFixture((path) => path.includes("login/oauth") ? json({ error: "bad_verification_code" }) : undefined);
+  const fresh = await issuePlan(env, plan);
+  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: fresh.token }), env, denied.fetcher)).status, 401);
+  assert.equal(denied.calls.some((call) => call.path === "/fire" || call.path.endsWith("/git/ref/heads/main")), false);
 });
 
 test("dispatch includes the upload capability only in routine input and accepts late upload after uncertain dispatch", async () => {
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);
-  const session = await signBuildToken({ kind: "session", account: "visitor", userId: 1, name: "Visitor", expiresAt: Date.now() + 60_000 }, env.BUILD_SESSION_SECRET!);
   let fireText: Record<string, unknown> | undefined;
   const fixture = githubFixture();
   const fetcher: typeof fetch = async (input, init) => {
     if (String(input) === env.ROUTINE_FIRE_URL) { fireText = JSON.parse(JSON.parse(String(init?.body)).text); throw new Error("Network response was lost"); }
     return fixture.fetcher(input, init);
   };
-  const response = await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, fetcher);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
   assert.equal(response.status, 202);
   const result = await response.json() as { runId: string; statusToken: string };
   assert.equal(fireText?.baseSha, sha);
   assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
   assert.equal("uploadToken" in result, false);
   assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${result.runId}`, { message: "Working" }, fireText?.uploadToken as string), env)).status, 200);
-  assert.equal((await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, fetcher)).status, 409);
+  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher)).status, 409);
   const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env);
   assert.equal(status.status, 200);
   assert.equal((await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}&token=${result.statusToken}`), env)).status, 401);
@@ -425,9 +427,8 @@ test("a replayed build never reaches GitHub and account renames do not reset quo
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);
   await consumePlan(env, proposal.token);
-  const session = await signBuildToken({ kind: "session", account: "visitor", userId: 1, name: null, expiresAt: Date.now() + 60_000 }, env.BUILD_SESSION_SECRET!);
   const denied: typeof fetch = async () => assert.fail("Replay must be rejected before network access");
-  assert.equal((await handleBuild(post("/api/build", { session, planToken: proposal.token }), env, denied)).status, 409);
+  assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, denied)).status, 409);
   for (let n = 0; n < 3; n += 1) {
     const run = await stored(n.toString().padStart(32, "0"), `renamed-${n}`);
     run.accountId = 1;
