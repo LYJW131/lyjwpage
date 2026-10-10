@@ -147,7 +147,7 @@ test("长回复截断时工具痕迹跟着保留", () => {
 });
 
 test("一条回复读视图有总额度，读过的不再读，同一轮的几次调用按顺序分", () => {
-  const read = new Set<Parameters<typeof claimViews>[0][number]>();
+  const read = newLedger();
   const first = claimViews(["desktop", "server", "charger", "pulse"], read);
   assert.deepEqual(first, { views: ["desktop", "server", "charger", "pulse"], notes: [] });
   const second = claimViews(["pulse", "coding", "limits", "sentry", "reporters"], read);
@@ -155,7 +155,7 @@ test("一条回复读视图有总额度，读过的不再读，同一轮的几�
   assert.match(second.notes.join(" "), /Already read.*pulse/);
   const third = claimViews(["watching", "desktop"], read);
   assert.deepEqual(third.views, []);
-  assert.match(third.notes.join(" "), /at most 8 views: watching/);
+  assert.match(third.notes.join(" "), /at most 8 views or pages: watching/);
   assert.match(third.notes.join(" "), /Already read.*desktop/);
 });
 
@@ -392,7 +392,7 @@ test("卡片工具只读卡片背后那一个视图回给模型，记进同一�
   assert.deepEqual(paths, ["/api/status/listening/now"]);
   assert.deepEqual([...ledger.views], ["nowListening"]);
   assert.match(text, /^The nowListening card is now in your reply/);
-  assert.match(text, /## nowListening\n\{"ok":true/);
+  assert.match(text, /## nowListening\ndetail=summary \| no paged lists \| last page\n\{"ok":true/);
   const again = await runShowCard("nowListening", io, ledger);
   assert.equal(paths.length, 1);
   assert.match(again, /Already read earlier in this reply, reuse those results: nowListening\./);

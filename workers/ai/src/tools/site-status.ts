@@ -1,6 +1,6 @@
 import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
 
-import type { SiteTool } from "./registry";
+import type { SiteTool, ToolLedger } from "./registry";
 
 export type ReadStatus = (path: string) => Promise<Response>;
 
@@ -36,65 +36,210 @@ const VIEW_NOTES = {
 
 const VIEW_KEYS = Object.keys(VIEW_NOTES) as StatusViewKey[];
 
-// 工具结果进上下文就是输入 token 花费：超长的视图截断而不是整段塞进去；一条回复里所有调用（含同一轮并行的几次）
-// 合计最多读 MAX_VIEWS_PER_REPLY 个视图，读过的不再读，否则并行多调几次就能把输入撑大好几倍。
+// 工具结果进上下文就是输入 token 花费：默认去掉图片字段、长列表分页，兜底仍截断超长视图；一条回复里所有调用（含同一轮并行的几次）
+// 合计最多读 MAX_VIEWS_PER_REPLY 次（视图 + 位置 + query + detail 各算一次），完全相同的读取不再读，否则并行多调几次就能把输入撑大好几倍。
 const MAX_VIEWS_PER_CALL = 4;
 const MAX_VIEWS_PER_REPLY = 8;
 const MAX_CHARS_PER_VIEW = 8_000;
+const PAGE_SIZE = 20;
+const MAX_QUERY_CHARS = 200;
+
+const DETAILS = ["summary", "full"] as const;
+type Detail = (typeof DETAILS)[number];
+
+export type StatusPage = { offset: number; query: string; detail: Detail };
+const FIRST_PAGE: StatusPage = { offset: 0, query: "", detail: "summary" };
+
+type Cursor = StatusPage & { view: StatusViewKey; totals: number[] };
+
+export type SiteStatusInput = { views: StatusViewKey[]; notes: string[]; page: StatusPage; cursor?: Cursor; badCursor?: true };
+
+const IMAGE_KEY_WORDS = new Set(["cover", "covers", "artwork", "artworks", "image", "images", "icon", "icons", "thumbnail", "thumbnails", "thumb", "avatar", "avatars", "poster", "posters", "backdrop", "backdrops", "logo", "banner"]);
+const IMAGE_URL = /^(?:data:image\/|\/img\/|(?:https?:\/\/|\/)[^\s?#]+\.(?:png|jpe?g|gif|webp|avif|svg|ico|heic)(?:[?#]|$))/i;
+
+export function isImageField(key: string, value: unknown): boolean {
+  const words = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[\s_-]+/);
+  return words.some((word) => IMAGE_KEY_WORDS.has(word)) || (typeof value === "string" && IMAGE_URL.test(value));
+}
 
 export function isStatusViewKey(value: unknown): value is StatusViewKey {
   return VIEW_KEYS.includes(value as StatusViewKey);
 }
 
-export function parseSiteStatusInput(input: unknown): { views: StatusViewKey[]; notes: string[] } {
-  const raw = (input as { views?: unknown } | null)?.views;
+const normalize = (text: string) => text.normalize("NFKC").toLowerCase();
+
+function encodeCursor(cursor: Cursor): string {
+  const bytes = new TextEncoder().encode(JSON.stringify([cursor.view, cursor.offset, cursor.query, cursor.detail, cursor.totals]));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeCursor(raw: unknown): Cursor | null {
+  if (typeof raw !== "string" || !/^[A-Za-z0-9_-]{1,2000}$/.test(raw)) return null;
+  try {
+    const binary = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(Uint8Array.from(binary, (char) => char.charCodeAt(0))));
+    if (!Array.isArray(parsed) || parsed.length !== 5) return null;
+    const [view, offset, query, detail, totals] = parsed as unknown[];
+    if (!isStatusViewKey(view) || !Number.isSafeInteger(offset) || (offset as number) <= 0 || typeof query !== "string") return null;
+    if (!DETAILS.includes(detail as Detail) || !Array.isArray(totals) || !totals.every((n) => Number.isSafeInteger(n) && n >= 0)) return null;
+    return { view, offset: offset as number, query, detail: detail as Detail, totals: totals as number[] };
+  } catch {
+    return null;
+  }
+}
+
+export function parseSiteStatusInput(input: unknown): SiteStatusInput {
+  const args = (input ?? {}) as { views?: unknown; detail?: unknown; query?: unknown; cursor?: unknown };
+  if (args.cursor !== undefined) {
+    const cursor = decodeCursor(args.cursor);
+    if (!cursor) return { views: [], notes: [], page: FIRST_PAGE, badCursor: true };
+    const ignored = (["views", "detail", "query"] as const).filter((name) => args[name] !== undefined);
+    const notes = ignored.length ? [`cursor given, so ${ignored.join(", ")} ${ignored.length > 1 ? "were" : "was"} ignored; the cursor keeps its own view, query and detail.`] : [];
+    return { views: [cursor.view], notes, page: { offset: cursor.offset, query: cursor.query, detail: cursor.detail }, cursor };
+  }
+  const raw = args.views;
   const asked = Array.isArray(raw) ? [...new Set(raw)] : [];
   const known = asked.filter(isStatusViewKey);
   const unknown = asked.length - known.length;
   const later = known.slice(MAX_VIEWS_PER_CALL);
+  const badDetail = args.detail !== undefined && !DETAILS.includes(args.detail as Detail);
   const notes = [
     unknown && `Ignored ${unknown} unknown view name${unknown > 1 ? "s" : ""}; the valid views are listed in the tool description.`,
     later.length && `At most ${MAX_VIEWS_PER_CALL} views per call; call again for: ${later.join(", ")}.`,
+    badDetail && `Unknown detail, used "summary"; detail is "summary" or "full".`,
+    args.query !== undefined && typeof args.query !== "string" && "Ignored query: it must be a string.",
   ].filter((note): note is string => Boolean(note));
-  return { views: known.slice(0, MAX_VIEWS_PER_CALL), notes };
+  const query = typeof args.query === "string" ? args.query.trim().slice(0, MAX_QUERY_CHARS) : "";
+  const detail = badDetail || args.detail === undefined ? "summary" : (args.detail as Detail);
+  return { views: known.slice(0, MAX_VIEWS_PER_CALL), notes, page: { offset: 0, query, detail } };
 }
 
+const readKey = (view: StatusViewKey, page: StatusPage) => JSON.stringify([view, page.offset, normalize(page.query), page.detail]);
+
 // 同步调用：同一轮的几次调用按顺序先分好额度再并行去读，谁读到哪些视图是确定的。
-export function claimViews(requested: StatusViewKey[], read: Set<StatusViewKey>) {
+export function claimViews(requested: StatusViewKey[], ledger: ToolLedger, page: StatusPage = FIRST_PAGE) {
+  const reads = (ledger.reads ??= new Set());
   const views: StatusViewKey[] = [];
   const repeated: StatusViewKey[] = [];
   const overBudget: StatusViewKey[] = [];
   for (const key of requested) {
-    if (read.has(key)) repeated.push(key);
-    else if (read.size >= MAX_VIEWS_PER_REPLY) overBudget.push(key);
+    const id = readKey(key, page);
+    if (reads.has(id)) repeated.push(key);
+    else if (reads.size >= MAX_VIEWS_PER_REPLY) overBudget.push(key);
     else {
-      read.add(key);
+      reads.add(id);
+      ledger.views.add(key);
       views.push(key);
     }
   }
   const notes = [
     repeated.length && `Already read earlier in this reply, reuse those results: ${repeated.join(", ")}.`,
-    overBudget.length && `Not read, this reply may read at most ${MAX_VIEWS_PER_REPLY} views: ${overBudget.join(", ")}.`,
+    overBudget.length && `Not read, this reply may read at most ${MAX_VIEWS_PER_REPLY} views or pages: ${overBudget.join(", ")}.`,
   ].filter((note): note is string => Boolean(note));
   return { views, notes };
 }
 
-async function readView(read: ReadStatus, key: StatusViewKey): Promise<string> {
+function strip(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(strip);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key, child]) => !isImageField(key, child))
+      .map(([key, child]) => [key, strip(child)]),
+  );
+}
+
+function contains(value: unknown, needle: string): boolean {
+  if (typeof value === "string") return normalize(value).includes(needle);
+  if (typeof value === "number" || typeof value === "boolean") return String(value).includes(needle);
+  if (Array.isArray(value)) return value.some((child) => contains(child, needle));
+  if (value && typeof value === "object") return Object.values(value).some((child) => contains(child, needle));
+  return false;
+}
+
+type PagedList = { path: string; total: number; before: number };
+
+// 只处理最外层的数组（不在别的数组项里的）：搜到的条目整项保留，项里的子列表不再按 query 过滤或分页，
+// 否则「游戏名匹配」会把这个游戏的奖杯列表筛空，嵌套列表也没法和外层共用同一个位置。
+function collectLists(value: unknown, path: string, needle: string, lists: PagedList[]): unknown {
+  if (Array.isArray(value)) {
+    const items = needle ? value.filter((item) => contains(item, needle)) : value;
+    if (needle || value.length > PAGE_SIZE) lists.push({ path: path || "(root)", total: items.length, before: value.length });
+    return items;
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, collectLists(child, path ? `${path}.${key}` : key, needle, lists)]));
+}
+
+type ViewResult = { section: string; outOfRange?: true };
+
+function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: Cursor | undefined): ViewResult {
+  const needle = normalize(page.query);
+  const lists: PagedList[] = [];
+  const filtered = collectLists(page.detail === "summary" ? strip(data) : data, "", needle, lists);
+  const longest = Math.max(0, ...lists.map((list) => list.total));
+  if (page.offset > 0 && page.offset >= longest) return { section: "", outOfRange: true };
+  const totals = lists.map((list) => list.total);
+  const next = page.offset + PAGE_SIZE < longest ? encodeCursor({ view, ...page, offset: page.offset + PAGE_SIZE, totals }) : undefined;
+  const wrapped = new Set(lists.map((list) => list.path));
+  const replace = (value: unknown, path: string): unknown => {
+    if (Array.isArray(value)) {
+      if (!wrapped.has(path || "(root)")) return value;
+      const list = lists.find((candidate) => candidate.path === (path || "(root)"));
+      const more = page.offset + PAGE_SIZE < value.length;
+      return {
+        total: value.length,
+        ...(needle && { totalBeforeQuery: list?.before ?? value.length }),
+        items: value.slice(page.offset, page.offset + PAGE_SIZE),
+        ...(more && next && { nextCursor: next }),
+      };
+    }
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, replace(child, path ? `${path}.${key}` : key)]));
+  };
+  const json = JSON.stringify(replace(filtered, ""));
+  const listNotes = lists.map((list) => {
+    const shown = list.total > page.offset ? `items ${page.offset + 1}-${Math.min(list.total, page.offset + PAGE_SIZE)}` : "no items on this page";
+    const count = needle ? `${list.total} of ${list.before} match` : `${list.total} total`;
+    return `${list.path} (${count}, ${list.total ? shown : "0 items"})`;
+  });
+  const summary = [
+    `detail=${page.detail}`,
+    needle && `query "${page.query}"`,
+    needle && !lists.length && "no lists to search",
+    lists.length ? `lists: ${listNotes.join("; ")}` : "no paged lists",
+    next ? `nextCursor: ${next}` : "last page",
+    cursor && JSON.stringify(cursor.totals) !== JSON.stringify(totals) && "the lists changed while paging, items may repeat or be missing",
+  ].filter(Boolean);
+  const body = json.length > MAX_CHARS_PER_VIEW ? `${json.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : json;
+  return { section: `${summary.join(" | ")}\n${body}` };
+}
+
+async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, cursor?: Cursor): Promise<ViewResult> {
+  let text: string;
   try {
     const response = await read(STATUS_VIEWS[key].path);
-    if (!response.ok) return JSON.stringify({ error: `HTTP ${response.status}` });
-    const text = await response.text();
-    return text.length > MAX_CHARS_PER_VIEW ? `${text.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : text;
+    if (!response.ok) return { section: JSON.stringify({ error: `HTTP ${response.status}` }) };
+    text = await response.text();
   } catch {
-    return JSON.stringify({ error: "unavailable" });
+    return { section: JSON.stringify({ error: "unavailable" }) };
+  }
+  try {
+    return pageView(key, JSON.parse(text), page, cursor);
+  } catch {
+    if (page.offset > 0) return { section: "", outOfRange: true };
+    return { section: `not JSON, returned as is\n${text.length > MAX_CHARS_PER_VIEW ? `${text.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : text}` };
   }
 }
 
-export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[], now = Date.now()): Promise<string> {
-  const results = await Promise.all(views.map(async (key) => `## ${key}\n${await readView(read, key)}`));
-  const clock = new Date(now).toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour12: false });
-  return [`now: ${now} (${clock} Asia/Shanghai)`, ...results].join("\n\n");
+const clockLine = (now: number) => `now: ${now} (${new Date(now).toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour12: false })} Asia/Shanghai)`;
+
+export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[], now = Date.now(), page: StatusPage = FIRST_PAGE): Promise<string> {
+  const results = await Promise.all(views.map(async (key) => `## ${key}\n${(await readView(read, key, page)).section}`));
+  return [clockLine(now), ...results].join("\n\n");
 }
+
+const INVALID_CURSOR = "Invalid cursor: it is not one this tool returned, or the list no longer reaches that position. Call get_site_status again without cursor to start from the first page.";
 
 export const SITE_STATUS_TOOL: SiteTool = {
   name: "get_site_status",
@@ -102,6 +247,10 @@ export const SITE_STATUS_TOOL: SiteTool = {
   description: [
     "Read live data from LYJW's homepage (the same JSON the site's cards show).",
     "Timestamps are epoch milliseconds; the result includes the current time for comparison.",
+    `By default image fields (covers, artwork, icons, avatars, image URLs) are removed; pass detail="full" only when you need image links.`,
+    "Long lists are paged: each view starts with a summary line naming the paged lists, their totals and the nextCursor. Pass nextCursor back unchanged as cursor to read the next page; no nextCursor means the last page. The page size is chosen by the server.",
+    "To look for a specific item (a game, song, show or trophy), use query first: it keeps the list items that contain the text, ignoring case and full/half width. Game names may be in Chinese, English or Japanese, so try another name when nothing matches.",
+    "Don't conclude that something is absent until you have searched for it or read every page.",
     "Views:",
     ...VIEW_KEYS.map((key) => `- ${key}: ${VIEW_NOTES[key]}`),
   ].join("\n"),
@@ -111,17 +260,33 @@ export const SITE_STATUS_TOOL: SiteTool = {
       views: {
         type: "array",
         items: { type: "string", enum: VIEW_KEYS },
-        description: `Which views to read (at most ${MAX_VIEWS_PER_CALL})`,
+        description: `Which views to read (at most ${MAX_VIEWS_PER_CALL}); may be omitted when cursor is given`,
       },
+      detail: { type: "string", enum: [...DETAILS], description: `"summary" (default) drops image fields; "full" keeps every field` },
+      query: { type: "string", description: "Text to search for in long lists; only matching items are kept" },
+      cursor: { type: "string", description: "The nextCursor from an earlier result, passed back unchanged; it decides the view, query and detail" },
     },
-    required: ["views"],
+    required: [],
     additionalProperties: false,
   },
   // 额度在第一个 await 之前占好（claimViews 的前提）。
   async run(input, { readStatus }, ledger) {
     const parsed = parseSiteStatusInput(input);
-    const { views, notes } = claimViews(parsed.views, ledger.views);
-    const read = views.length ? await runSiteStatusTool(readStatus, views) : "";
+    if (parsed.badCursor) return { text: INVALID_CURSOR, isError: true };
+    const hadView = parsed.cursor && ledger.views.has(parsed.cursor.view);
+    const { views, notes } = claimViews(parsed.views, ledger, parsed.page);
+    if (parsed.cursor && views.length) {
+      const view = parsed.cursor.view;
+      const result = await readView(readStatus, view, parsed.page, parsed.cursor);
+      if (result.outOfRange) {
+        ledger.reads?.delete(readKey(view, parsed.page));
+        if (!hadView) ledger.views.delete(view);
+        return { text: INVALID_CURSOR, isError: true };
+      }
+      const text = [`${clockLine(Date.now())}\n\n## ${view}\n${result.section}`, ...parsed.notes].join("\n\n");
+      return { text, isError: false, views };
+    }
+    const read = views.length ? await runSiteStatusTool(readStatus, views, Date.now(), parsed.page) : "";
     const text = [read, ...parsed.notes, ...notes].filter(Boolean).join("\n\n") || "No valid views requested.";
     return { text, isError: !views.length, ...(views.length && { views }) };
   },
