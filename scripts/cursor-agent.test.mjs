@@ -213,6 +213,13 @@ test("完整流程：在 PR 分支上起 agent，评论跟随待办并列出推�
   assert.match(final, /改好了/);
 });
 
+test("运行刚结束时 result 为空串，总结取流里的 text", async () => {
+  const github = fakeGithub();
+  const cursor = fakeCursor([[{ id: "1-0", event: "result", data: { status: "FINISHED", text: "流里的总结" } }]], { status: "FINISHED", result: "" });
+  await runCursorAgent({ eventName: "issue_comment", payload: issuePayload(), repo: REPO, github, cursor, log: quiet, sleep: noSleep, commentIntervalMs: 0 });
+  assert.match(github.calls.updates.at(-1).body, /<summary>Summary<\/summary>\n\n流里的总结/);
+});
+
 test("流中断后带 Last-Event-ID 续上", async () => {
   const github = fakeGithub();
   const cursor = fakeCursor([
