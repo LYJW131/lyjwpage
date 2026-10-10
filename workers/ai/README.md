@@ -11,8 +11,7 @@
 | POST | `/api/chat` | 首页对话，流式返回 NDJSON |
 | GET | `/api/chat/usage` | 当前访客与全站的对话配额，只读不扣额度 |
 | POST | `/api/github/issue` | 访客确认签名计划并完成 GitHub PKCE 授权后提交 issue |
-| POST | `/api/build/session` | GitHub PKCE 授权换取有限期账号会话 |
-| POST | `/api/build` | 一次性消费计划与额度并触发 routine |
+| POST | `/api/build` | 访客每次都完成 GitHub PKCE 授权：授权码当场换令牌、查身份后立即吊销，再一次性消费计划与额度并触发 routine |
 | GET | `/api/build/status` | 持状态 token 查询 run 并按需对账 |
 | POST | `/api/build/upload` | routine 持一次性上传 token 提交文件 |
 | POST | `/api/build/progress` | routine 持同一上传 token 报告进度 |

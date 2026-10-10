@@ -43,7 +43,7 @@ test("登记的 AI 路由保留 CORS 预检，MCP 保留协议请求头", async 
 });
 
 test("网页 AI 路由拒绝未授权来源，MCP 同样拒绝携带陌生 Origin 的请求", async () => {
-  for (const path of ["/api/chat", "/api/chat/usage", "/api/github/issue", "/api/build", "/api/build/session", "/api/build/status", "/mcp"]) {
+  for (const path of ["/api/chat", "/api/chat/usage", "/api/github/issue", "/api/build", "/api/build/status", "/mcp"]) {
     const response = await worker.fetch(request(path, path === "/api/chat/usage" ? "GET" : "POST", "https://elsewhere.test"), env());
     assert.equal(response.status, 403);
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), null);
@@ -103,13 +103,13 @@ test("routine 与 webhook 无 Origin 也交给各自鉴权，缺配置时关闭"
   }
 });
 
-test("构建状态、授权与触发在进入 DO 前受入口限流", async () => {
+test("构建状态与触发在进入 DO 前受入口限流", async () => {
   const keys: string[] = [];
   const limited = env({ BUILD_REQUEST_LIMIT: { limit: async ({ key }) => { keys.push(key); return { success: false }; } } });
-  for (const path of ["/api/build", "/api/build/session", "/api/build/status"]) {
+  for (const path of ["/api/build", "/api/build/status"]) {
     const response = await worker.fetch(new Request(`https://ai.test${path}`, { method: path.endsWith("status") ? "GET" : "POST", headers: { Origin: "https://lyjw.me", "CF-Connecting-IP": "192.0.2.1" } }), limited);
     assert.equal(response.status, 429);
     assert.equal(response.headers.get("Retry-After"), "60");
   }
-  assert.deepEqual(keys, ["192.0.2.1", "192.0.2.1", "192.0.2.1"]);
+  assert.deepEqual(keys, ["192.0.2.1", "192.0.2.1"]);
 });

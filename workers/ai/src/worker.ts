@@ -1,7 +1,6 @@
 import {
   AI_HTTP_PATHS,
   BUILD_PATH,
-  BUILD_SESSION_PATH,
   BUILD_STATUS_PATH,
   BUILD_UPLOAD_PATH,
   BUILD_PROGRESS_PATH,
@@ -12,7 +11,7 @@ import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValu
 import { MCP_PATH } from "@shared/mcp";
 
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
-import { handleBuild, handleBuildSession, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleGithubWebhook } from "./build/handlers";
+import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleGithubWebhook } from "./build/handlers";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
 import type { Env } from "./runtime";
@@ -21,7 +20,6 @@ import type { ToolIO } from "./tools/registry";
 
 const BUILD_HANDLERS = new Map([
   [BUILD_PATH, handleBuild],
-  [BUILD_SESSION_PATH, handleBuildSession],
   [BUILD_STATUS_PATH, handleBuildStatus],
   [BUILD_UPLOAD_PATH, handleBuildUpload],
   [BUILD_PROGRESS_PATH, handleBuildProgress],
