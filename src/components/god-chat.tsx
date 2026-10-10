@@ -125,6 +125,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const pendingRef = useRef<string | null>(null);
   const verifyStateRef = useRef<"ok" | "failed" | "unavailable">("ok");
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expiredRef = useRef(false);
   const sessionRef = useRef(0);
   const sendRef = useRef<(text: string, token?: string) => void>(() => {});
   const conversationId = conversation?.id;
@@ -159,7 +160,12 @@ function Conversation({ className, archive, session: conversation }: { className
           setToken(value);
         }
       },
-      "expired-callback": () => setToken(null),
+      // token 约 5 分钟过期；默认自动续会让开着页面的访客隔几分钟就在后台重跑一次挑战，改为下次发送时才重新验。
+      "refresh-expired": "manual",
+      "expired-callback": () => {
+        expiredRef.current = true;
+        setToken(null);
+      },
       "error-callback": () => {
         setToken(null);
         verificationFailed("Human verification failed. Send again to retry.", "failed");
@@ -405,7 +411,8 @@ function Conversation({ className, archive, session: conversation }: { className
       void send(text, token);
       return;
     }
-    if (verifyStateRef.current === "failed" && widgetId.current) window.turnstile?.reset(widgetId.current);
+    if ((verifyStateRef.current === "failed" || expiredRef.current) && widgetId.current) window.turnstile?.reset(widgetId.current);
+    expiredRef.current = false;
     verifyStateRef.current = "ok";
     setError(null);
     pendingRef.current = text;
