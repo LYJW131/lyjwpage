@@ -1,9 +1,10 @@
+import * as Sentry from "@sentry/cloudflare";
 import { BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SESSION_TTL_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult, type BuildSession } from "@shared/build-routine";
 import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
-import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild } from "./github";
+import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestCodexReview } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
 import { readBoundedJson } from "./http";
@@ -133,6 +134,13 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
     await coordinator.updateRun(runId, { phase: "validated" });
     const pr = await createBuildPullRequest(api, run, upload, baseTree);
     const state = await coordinator.updateRun(runId, { phase: "pr_open", pr });
+    if (env.CODEX_REVIEW_GITHUB_TOKEN) {
+      try { await requestCodexReview(env.CODEX_REVIEW_GITHUB_TOKEN, pr.number, fetcher); }
+      catch (error) {
+        console.warn("[build] Codex review request failed", error);
+        Sentry.captureException(error, { tags: { "build.step": "codex-review" } });
+      }
+    }
     return Response.json(state, { status: 201, headers: noStore });
   } catch (error) {
     const blocked = error instanceof BuildBlockedError;
