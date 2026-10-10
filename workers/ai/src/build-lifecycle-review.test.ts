@@ -38,6 +38,8 @@ function coordinator() {
   return { db, instance, env };
 }
 
+const sessionUrl = "https://claude.ai/code/session_01Fixture";
+
 async function stored(): Promise<StoredRun> {
   const now = Date.now();
   return { state: { runId, branch: branchForRun(runId), phase: "triggered", createdAt: now, updatedAt: now }, plan, account: "visitor", accountId: 1, coauthor: "Visitor <1+visitor@users.noreply.github.com>", baseSha, uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: now + BUILD_TIMEOUT_MS };
@@ -56,7 +58,7 @@ function githubFixture(override: (call: GithubCall) => Response | undefined = ()
     calls.push(call);
     const response = override(call);
     if (response) return response;
-    if (url.hostname === "fixture.invalid" && call.path === "/fire") return Response.json({ claude_code_session_url: "https://fixture.invalid/session" });
+    if (url.hostname === "fixture.invalid" && call.path === "/fire") return Response.json({ claude_code_session_url: sessionUrl });
     assert.equal(url.hostname, "api.github.com");
     if (call.path.endsWith("/installation")) return Response.json({ id: 1 });
     if (call.path === "/app/installations/1/access_tokens") return Response.json({ token: "installation-fixture" });
@@ -117,7 +119,7 @@ for (const useEgress of [true, false]) {
         idFromName: (name: string) => name,
         get: () => ({ fetch: async (request: Request) => {
           egressRequests.push(request);
-          return Response.json({ claude_code_session_url: "https://fixture.invalid/session" });
+          return Response.json({ claude_code_session_url: sessionUrl });
         } }),
       } as unknown as Env["ANTHROPIC_EGRESS"];
     }
@@ -126,7 +128,7 @@ for (const useEgress of [true, false]) {
     const fetcher: typeof fetch = async (input, init) => {
       const request = new Request(input, init);
       directRequests.push(request);
-      if (request.url === env.ROUTINE_FIRE_URL) return Response.json({ claude_code_session_url: "https://fixture.invalid/session" });
+      if (request.url === env.ROUTINE_FIRE_URL) return Response.json({ claude_code_session_url: sessionUrl });
       return github.fetcher(input, init);
     };
     const abort = new AbortController();
@@ -138,6 +140,7 @@ for (const useEgress of [true, false]) {
     const result = await response.json() as BuildFireResult;
     assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
     assert.equal(instance.readRun(result.runId)?.state.reason, undefined);
+    assert.equal(instance.readRun(result.runId)?.sessionUrl, sessionUrl);
     assert.deepEqual(egressRequests.map((request) => request.url), useEgress ? [env.ROUTINE_FIRE_URL] : []);
     assert.deepEqual(directRequests.map((request) => new URL(request.url).hostname), ["api.github.com", "api.github.com", "api.github.com", ...(useEgress ? [] : ["api.anthropic.com"])]);
     assert.ok(github.calls.some((call) => call.path.endsWith("/git/ref/heads/main")));
@@ -156,13 +159,13 @@ for (const useEgress of [true, false]) {
   });
 }
 
-test("publishing opens a regular PR, removes supplied coauthors and neutralizes body mentions", async () => {
-  const run = await stored();
+test("publishing opens a regular PR, replaces supplied trailers and neutralizes body mentions", async () => {
+  const run = { ...await stored(), sessionUrl };
   run.plan = { ...plan, spec: "Ask @someone and \\@another", acceptance: ["Review by @team/name"], paths: ["src/@scope/card.tsx"] };
   const fixture = githubFixture();
-  await createBuildPullRequest(new GithubBuildApi("fixture", fixture.fetcher), run, { ...upload, message: "feat: card\r\n\r\nCo-authored-by: Forged <forged@example.test>\n  co-AUTHORED-by: Other <other@example.test>\nKeep this detail." }, treeSha);
+  await createBuildPullRequest(new GithubBuildApi("fixture", fixture.fetcher), run, { ...upload, message: "feat: card\r\n\r\nCo-authored-by: Forged <forged@example.test>\n  co-AUTHORED-by: Other <other@example.test>\nClaude-Session: https://claude.ai/code/session_forged\nKeep this detail." }, treeSha);
   const message = String(fixture.calls.find((call) => call.path.endsWith("/git/commits"))?.body?.message);
-  assert.equal(message, `feat: card\n\nKeep this detail.\n\nCo-authored-by: ${run.coauthor}`);
+  assert.equal(message, `feat: card\n\nKeep this detail.\n\nCo-authored-by: ${run.coauthor}\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: ${sessionUrl}`);
   const pr = fixture.calls.find((call) => call.path.endsWith("/pulls"))?.body;
   assert.equal(pr?.draft, false);
   assert.doesNotMatch(String(pr?.body), /@[A-Za-z0-9]/);

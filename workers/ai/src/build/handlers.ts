@@ -18,6 +18,7 @@ const fail = (status: number, error: string) => Response.json({ error }, { statu
 const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const bearer = (request: Request) => /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(request.headers.get("Authorization") ?? "")?.[1] ?? null;
 const validRunId = (id: string | null): id is string => !!id && /^[a-f0-9]{32}$/.test(id);
+const validSessionUrl = (url: string) => /^https:\/\/claude\.ai\/code\/[\w-]{1,200}$/.test(url);
 
 export async function handleBuildSession(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
@@ -72,8 +73,10 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
       signal: AbortSignal.timeout(20_000),
     });
     const confirmation = await readBoundedJson(response, 16_384);
+    const sessionUrl = object(confirmation)?.claude_code_session_url;
     if (!response.ok) await coordinator.updateRun(runId, { phase: "failed", reason: "The routine rejected the build request." });
-    else if (typeof object(confirmation)?.claude_code_session_url !== "string") await coordinator.updateRun(runId, { reason: "The routine did not confirm the build request; its result is unknown." });
+    else if (typeof sessionUrl !== "string") await coordinator.updateRun(runId, { reason: "The routine did not confirm the build request; its result is unknown." });
+    else if (validSessionUrl(sessionUrl)) await coordinator.setSessionUrl(runId, sessionUrl);
     return Response.json({ runId, branch, statusToken } satisfies BuildFireResult, { status: 202, headers: noStore });
   } catch {
     if (reserved) {
