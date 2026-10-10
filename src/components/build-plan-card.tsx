@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ChatMarkdown } from "@/components/chat-markdown";
+import { GithubConsent } from "@/components/github-consent";
 import { IssuePanel } from "@/components/github-issue-panel";
 import { buildReviewSummary } from "@/lib/build-review-summary";
 import { createBuildStatusPoller, isBuildTerminal } from "@/lib/build-status-polling";
@@ -31,6 +32,7 @@ const phaseLabels: Record<BuildPhase, string> = {
 export function BuildPlanCard({ proposal, onChange, inactive = false }: { proposal: ChatProposal; onChange: (proposal: ChatProposal) => void; inactive?: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   const [issueOpen, setIssueOpen] = useState(false);
+  const [buildOpen, setBuildOpen] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const expired = now >= proposal.expiresAt;
@@ -78,16 +80,34 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Open issue</button>
-            <button type="button" onClick={() => void startBuild()} disabled={disabled || issueOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">{working ? "Connecting to GitHub…" : "Start build"}</button>
+            <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen || buildOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Open issue</button>
+            <button type="button" onClick={() => { setError(null); setBuildOpen(true); }} disabled={disabled || issueOpen || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
           </div>
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds create a public pull request with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {issueOpen && <IssuePanel proposal={proposal} disabled={disabled} onClose={() => setIssueOpen(false)} onCreated={(issue) => onChange({ ...proposal, issue })} />}
+          {buildOpen && <BuildPanel working={working} disabled={disabled} onClose={() => { setError(null); setBuildOpen(false); }} onStart={() => void startBuild()} />}
         </>
       )}
       {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
     </section>
+  );
+}
+
+function BuildPanel({ working, disabled, onClose, onStart }: { working: boolean; disabled: boolean; onClose: () => void; onStart: () => void }) {
+  const [agreed, setAgreed] = useState(false);
+
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-line-strong bg-surface p-3 text-xs text-muted-foreground">
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0">A build opens a public pull request with your GitHub account as co-author.</span>
+        <button type="button" onClick={onClose} disabled={working} aria-label="Close build confirmation" className="shrink-0 hover:text-foreground">Close</button>
+      </div>
+      <GithubConsent action="build" checked={agreed} onChange={setAgreed} disabled={working || disabled} />
+      <button type="button" onClick={() => { if (agreed) onStart(); }} disabled={working || disabled || !agreed} className="rounded bg-foreground px-3 py-2 text-background disabled:opacity-40">
+        {working ? "Connecting to GitHub…" : "Sign in with GitHub & start build"}
+      </button>
+    </div>
   );
 }
 
