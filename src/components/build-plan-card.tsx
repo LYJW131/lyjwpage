@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ChatMarkdown } from "@/components/chat-markdown";
+import { GithubConsent } from "@/components/github-consent";
 import { IssuePanel } from "@/components/github-issue-panel";
 import { buildReviewSummary } from "@/lib/build-review-summary";
 import { createBuildStatusPoller, isBuildTerminal } from "@/lib/build-status-polling";
@@ -10,7 +11,7 @@ import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { BUILD_PATH, BUILD_STATUS_PATH, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
+import { BUILD_PATH, BUILD_STATUS_PATH, planLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
 
 const BUILD_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_PATH);
 const STATUS_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
@@ -31,6 +32,7 @@ const phaseLabels: Record<BuildPhase, string> = {
 export function BuildPlanCard({ proposal, onChange, inactive = false }: { proposal: ChatProposal; onChange: (proposal: ChatProposal) => void; inactive?: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   const [issueOpen, setIssueOpen] = useState(false);
+  const [buildOpen, setBuildOpen] = useState(false);
   const [working, setWorking] = useState<"signing_in" | "preparing" | null>(null);
   const startingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,15 +84,16 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Open issue</button>
-            <button type="button" onClick={() => void startBuild()} disabled={disabled || issueOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">{working === "signing_in" ? "Connecting to GitHub…" : working === "preparing" ? "Preparing draft PR…" : "Start build"}</button>
+            <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen || buildOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Open issue</button>
+            <button type="button" onClick={() => { setError(null); setBuildOpen(true); }} disabled={disabled || issueOpen || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
           </div>
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {issueOpen && <IssuePanel proposal={proposal} disabled={disabled} onClose={() => setIssueOpen(false)} onCreated={(issue) => onChange({ ...proposal, issue })} />}
+          {buildOpen && <GithubConsent action="build" language={planLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
         </>
       )}
-      {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
+      {error && !buildOpen && <p role="alert" className="text-xs text-red-500">{error}</p>}
     </section>
   );
 }
