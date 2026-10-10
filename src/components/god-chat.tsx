@@ -58,6 +58,25 @@ const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 // 排着队的消息等组件渲染出来的最长时间；组件出来之后（可能在等访客点验证）交给 Turnstile 自己的超时回调。
 const VERIFY_LOAD_TIMEOUT_MS = 15_000;
 const VERIFY_UNAVAILABLE = "Human verification couldn't load. Check your connection or ad blocker, then reload the page.";
+const PASS_KEY = "lyjw.chat.pass";
+const PASS_MARGIN_MS = 30_000;
+type HumanPass = { pass: string; expiresAt: number };
+
+function readPass(): HumanPass | null {
+  try {
+    const value: unknown = JSON.parse(window.sessionStorage.getItem(PASS_KEY) ?? "null");
+    if (value && typeof value === "object" && typeof (value as HumanPass).pass === "string" && typeof (value as HumanPass).expiresAt === "number" && (value as HumanPass).expiresAt - PASS_MARGIN_MS > Date.now()) return value as HumanPass;
+  } catch {}
+  return null;
+}
+
+function writePass(pass: HumanPass | null) {
+  try {
+    if (pass) window.sessionStorage.setItem(PASS_KEY, JSON.stringify(pass));
+    else window.sessionStorage.removeItem(PASS_KEY);
+  } catch {}
+}
+
 const COMMANDS = [
   { name: "/clear", aliases: ["/new"], description: "Start a new conversation with empty context" },
   { name: "/usage", aliases: [], description: "Show your quota in the current window" },
@@ -107,7 +126,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const verifyStateRef = useRef<"ok" | "failed" | "unavailable">("ok");
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionRef = useRef(0);
-  const sendRef = useRef<(text: string, token: string) => void>(() => {});
+  const sendRef = useRef<(text: string, token?: string) => void>(() => {});
   const conversationId = conversation?.id;
   const design = conversation?.design;
 
@@ -182,7 +201,7 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!el) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
-        setWarm(true);
+        if (!readPass()) setWarm(true);
         observer.disconnect();
       }
     });
@@ -198,7 +217,7 @@ function Conversation({ className, archive, session: conversation }: { className
     return () => observer.disconnect();
   }, []);
 
-  async function send(text: string, usedToken: string) {
+  async function send(text: string, usedToken?: string) {
     const content = text.trim();
     if (!content) return;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
@@ -230,23 +249,27 @@ function Conversation({ className, archive, session: conversation }: { className
     setDraft((current) => (current === text ? "" : current));
     setError(null);
     setStreaming(true);
-    setToken(null);
-    if (widgetId.current) window.turnstile?.reset(widgetId.current);
+    if (usedToken) {
+      setToken(null);
+      if (widgetId.current) window.turnstile?.reset(widgetId.current);
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       if (!CHAT_URL) throw new Error(OFFLINE);
+      const humanPass = usedToken ? null : readPass();
       const designToken = activeChatDesign(conversation?.design)?.token;
       if (conversation?.design && !designToken) chatArchive.update(conversation.id, { design: undefined }, { persist: false });
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, turnstileToken: usedToken, ...(designToken && { designToken }) }),
+        body: JSON.stringify({ messages: history, ...(usedToken ? { turnstileToken: usedToken } : { humanPass: humanPass?.pass }), ...(designToken && { designToken }) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
         const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+        if (data?.code === "human_pass_expired") writePass(null);
         if (conversation && designSessionEnded(data?.code)) {
           chatArchive.update(conversation.id, { design: undefined }, { persist: false });
           throw new Error("Design session ended. Send your message again to continue in ordinary chat.");
@@ -278,6 +301,7 @@ function Conversation({ className, archive, session: conversation }: { className
             meta = { ...meta, docs: [...(meta.docs ?? []), { doc, path, url, section }] };
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
+          else if (event.type === "pass") writePass({ pass: event.pass, expiresAt: event.expiresAt });
           else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace, planToken: event.planToken };
           else if (event.type === "card") {
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
@@ -371,6 +395,10 @@ function Conversation({ className, archive, session: conversation }: { className
     setUsage(null);
     if (!SITE_KEY || verifyStateRef.current === "unavailable") {
       setError(SITE_KEY ? VERIFY_UNAVAILABLE : OFFLINE);
+      return;
+    }
+    if (readPass()) {
+      void send(text);
       return;
     }
     if (token) {
