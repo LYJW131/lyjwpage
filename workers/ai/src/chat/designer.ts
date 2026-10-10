@@ -18,6 +18,9 @@ export type SessionEvent = BetaManagedAgentsStreamSessionEvents;
 export type SendEvent = BetaManagedAgentsEventParams;
 
 const STEP_CHARS = 120;
+// 补发时往回翻事件的上限：一回合规划连工具结果和计费 span 通常几十到一两百条。
+const RESUME_EVENTS = 1000;
+const VISITOR_REPLY = "The visitor replied:\n";
 
 const SITE_STATUS_CUSTOM_TOOL: BetaManagedAgentsCustomToolParams = {
   type: "custom",
@@ -48,6 +51,8 @@ export type DesignApi = {
   send(sessionId: string, events: SendEvent[]): Promise<void>;
   // 会话停着等哪些自定义工具的结果：上一条回复里给访客的题目或计划。会话还在跑时返回空，访客的话按普通消息排队。
   pending(sessionId: string): Promise<string[]>;
+  // 最近一回合的事件，从访客那条开场（消息或对挂起题目、计划的回答）起按时间顺序；找不到开场时为空。
+  turn(sessionId: string): Promise<SessionEvent[]>;
 };
 
 export function designApi(client: Anthropic, env: Env): DesignApi {
@@ -78,10 +83,20 @@ export function designApi(client: Anthropic, env: Env): DesignApi {
       const idle = page.data[0];
       return idle?.type === "session.status_idle" && idle.stop_reason.type === "requires_action" ? idle.stop_reason.event_ids : [];
     },
+    async turn(sessionId) {
+      const events: SessionEvent[] = [];
+      for await (const event of client.beta.sessions.events.list(sessionId, { order: "desc", limit: 100 })) {
+        events.push(event as SessionEvent);
+        if (kickoffText(event as SessionEvent) !== null) return events.reverse();
+        if (events.length >= RESUME_EVENTS) break;
+      }
+      return [];
+    },
   };
 }
 
-export type DesignTurnInput = { kind: "open"; history: GodChatMessage[] } | { kind: "reply"; text: string };
+// resume 不发任何东西给会话，只把访客断线时错过的那一回合重新推一遍；回合还在跑时跟着事件流看到它停下。
+export type DesignTurnInput = { kind: "open"; history: GodChatMessage[] } | { kind: "reply"; text: string } | { kind: "resume" };
 export type DesignTurnResult = { complete: boolean; asked: boolean; planToken?: string; lead?: string; views: string[] };
 
 // 访客那段对话原样转给规划者，标签只用来分清说话人；内容是不可信的公开输入，系统提示词里已经说明。
@@ -91,6 +106,31 @@ export function openingBrief(history: GodChatMessage[]): string {
 }
 
 const userMessage = (text: string): SendEvent => ({ type: "user.message", content: [{ type: "text", text }] });
+
+export function kickoffText(event: SessionEvent): string | null {
+  if (event.type !== "user.message" && event.type !== "user.custom_tool_result") return null;
+  const text = (event.content ?? []).map((block) => block.type === "text" ? block.text : "").join("");
+  if (event.type === "user.message") return text;
+  return text.startsWith(VISITOR_REPLY) ? text.slice(VISITOR_REPLY.length) : null;
+}
+
+// 开场里得有访客最新那条：首回合是整段转述，之后是原话。对不上说明那条消息没到会话，不能拿上一回合的回复去配它。
+export function turnMatches(turn: SessionEvent[], latest: string): boolean {
+  const text = turn[0] ? kickoffText(turn[0]) : null;
+  return text !== null && (text === latest || text.includes(`<visitor>\n${latest}\n</visitor>`));
+}
+
+async function* replayed(backlog: SessionEvent[], live: AsyncIterable<SessionEvent>): AsyncIterable<SessionEvent> {
+  const seen = new Set<string>();
+  for (const event of backlog) {
+    if ("id" in event) seen.add(event.id);
+    yield event;
+  }
+  for await (const event of live) {
+    const id = event.type === "event_start" ? event.event.id : event.type === "event_delta" ? event.event_id : "id" in event ? event.id : undefined;
+    if (id === undefined || !seen.has(id)) yield event;
+  }
+}
 const toolResult = (id: string, text: string, isError: boolean): SendEvent => ({ type: "user.custom_tool_result", custom_tool_use_id: id, content: [{ type: "text", text }], is_error: isError });
 
 function clip(text: string): string {
@@ -149,6 +189,9 @@ export async function designTurn({
   // 交给访客回答的题目和计划不立刻回结果：会话停在等结果的状态，访客下一条消息就是这次调用的结果。
   const held = new Set<string>();
   const shown = new Map<string, string>();
+  const observe = input.kind === "resume";
+  // 补发时题目和计划等会话停下、确认还挂着再推：原回合可能已经把无效的调用退回给规划者。
+  const parked = new Map<string, { name: string; input: unknown }>();
   let wroteText = false;
   let asked = false;
   let planToken: string | undefined;
@@ -208,16 +251,21 @@ export async function designTurn({
   };
 
   try {
-    const events = await api.stream(sessionId, local.signal);
-    let kickoff: SendEvent[];
-    if (input.kind === "open") kickoff = [userMessage(openingBrief(input.history))];
+    // 先开事件流再翻历史，两段之间产生的事件不会漏，重复的按事件 ID 去掉。
+    const live = await api.stream(sessionId, local.signal);
+    let events: AsyncIterable<SessionEvent> = live;
+    if (input.kind === "resume") events = replayed((await api.turn(sessionId)).slice(1), live);
     else {
-      const pending = await api.pending(sessionId);
-      kickoff = pending.length
-        ? pending.map((id, i) => toolResult(id, i === 0 ? `The visitor replied:\n${input.text}` : "Superseded by the visitor's reply to your other request.", false))
-        : [userMessage(input.text)];
+      let kickoff: SendEvent[];
+      if (input.kind === "open") kickoff = [userMessage(openingBrief(input.history))];
+      else {
+        const pending = await api.pending(sessionId);
+        kickoff = pending.length
+          ? pending.map((id, i) => toolResult(id, i === 0 ? `${VISITOR_REPLY}${input.text}` : "Superseded by the visitor's reply to your other request.", false))
+          : [userMessage(input.text)];
+      }
+      await api.send(sessionId, kickoff);
     }
-    await api.send(sessionId, kickoff);
 
     loop: for await (const event of events) {
       switch (event.type) {
@@ -236,12 +284,16 @@ export async function designTurn({
             const progress = toolProgress(event.name, event.input);
             if (progress) emit(progress);
           }
-          if (event.evaluated_permission === "ask") {
+          if (event.evaluated_permission === "ask" && !observe) {
             await api.send(sessionId, [{ type: "user.tool_confirmation", tool_use_id: event.id, result: "deny", deny_message: "Denied: nobody can confirm tool calls in this session. Work with read-only commands." }]);
           }
           break;
         }
         case "agent.custom_tool_use": {
+          if (observe) {
+            parked.set(event.id, { name: event.name, input: event.input });
+            break;
+          }
           const reply = await custom(event.id, event.name, event.input);
           if (reply) await api.send(sessionId, [reply]);
           break;
@@ -259,6 +311,9 @@ export async function designTurn({
           const reason = event.stop_reason;
           stopReason = reason.type;
           if (reason.type === "requires_action") {
+            if (observe && reason.event_ids.every((id) => parked.get(id)?.name === ASK_VISITOR_TOOL.name || parked.get(id)?.name === PROPOSE_BUILD_TOOL.name)) {
+              for (const id of reason.event_ids) await custom(id, parked.get(id)!.name, parked.get(id)!.input);
+            }
             if (reason.event_ids.every((id) => held.has(id))) break loop;
             break;
           }
@@ -277,7 +332,7 @@ export async function designTurn({
       }
     }
   } catch (error) {
-    if (signal.aborted) {
+    if (signal.aborted && !observe) {
       await api.send(sessionId, [{ type: "user.interrupt" }]).catch(() => {});
       throw error;
     }
