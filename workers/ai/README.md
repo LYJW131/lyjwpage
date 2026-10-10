@@ -54,7 +54,7 @@
 - Haiku 作答时带 `request_upgrade` 工具（`src/chat/handler.ts#UPGRADE_TOOL`）：它判断问题超出自己时先调这个工具，Worker 向 `ChatQuota` 扣一个 Sonnet 名额（不降级、不动 Haiku 已扣的名额），成功就丢掉 Haiku 这一轮的草稿，由 Sonnet 带着原对话重答，流里补发一条 `route`（`tier: sonnet`，无 `downgradedFrom`），回复上限与强度按 Sonnet 重算；Sonnet 没空位时工具回错误，Haiku 自己答完。升级只在非设计会话里开放，Fable 仍然只由 Clef 派。
 - 回复上限按档位定（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` 的 `maxTokens`），设计会话的花费由会话预算约束；思考强度在选中 Haiku 时由 Clef 一并选出，设计会话里的 Opus 用 `GOD_CHAT_TIER_INFO.opus.effort`，其余情况（Sonnet、Fable、降级、强制档位、Clef 不可用）取 `GOD_CHAT_TIER_INFO` 的 `effort` 默认值。访客没有手动调高的命令。`maxTokens` 是一条回复所有轮次（工具循环、暂停续跑）合计的输出上限，每轮请求只给剩下的部分；每轮按计费量扣（`src/chat/billing.ts#billedOutputTokens`）。同一请求内本档中途拒答后兜底模型还能再用满一次 `max_tokens`，这部分溢出有意接受。各档都用 [Claude 官方的消息级 effort](https://platform.claude.com/docs/en/build-with-claude/effort#per-message-effort-beta)，请求参数以 `src/chat/handler.ts#converse` 为准：保持 adaptive thinking，不设置请求顶层的 effort；`src/chat/history.ts#toModelMessages` 在强度变化的访客消息前插入空 `system` 消息及 `output_config.effort`，工具续跑继承该强度。实际 effort 随已签名的 trace 回传，后续按原位置重放，切换当前强度不重写历史前缀。省钱靠 system 与末尾各一个缓存断点；缓存按模型分开，换档不会互相命中，历史裁剪和工具定义变化仍会影响命中。
 
-浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化。设计会话到期或轮数耗尽时清除设计令牌并退回普通对话。localStorage 不可用时只保留内存状态。
+浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化。设计会话到期、轮数耗尽或访客输入 `/exit`（只在设计会话里列出）时清除设计令牌并退回普通对话。localStorage 不可用时只保留内存状态。
 
 ## MCP
 
