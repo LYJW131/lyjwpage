@@ -28,6 +28,9 @@ binding = "PUBLIC_STATUS"
 service = "api"
 entrypoint = "PublicStatus"
 
+[[worker_loaders]]
+binding = "LOADER"
+
 # 与上报入口同一个站点图片桶：构建截图按内容寻址写入，经站点 /img/<objectKey> 进 PR 评论。
 [[r2_buckets]]
 binding = "IMAGES"
