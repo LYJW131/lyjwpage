@@ -3,6 +3,7 @@ import { withSentryConfig } from "@sentry/nextjs/config";
 import { execSync } from "node:child_process";
 
 import { IMAGE_PATH_PREFIX } from "./src/lib/asset-url";
+import { homepageCacheHeaderRules } from "./src/lib/homepage-cache-policy";
 import { MCP_PATH } from "./shared/mcp";
 import { previewWorkerOrigin } from "./scripts/preview-worker-name.mjs";
 import { chatCodeVersion } from "./scripts/chat-code-version.mjs";
@@ -82,14 +83,8 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
         ],
       },
-      {
-        // 首页没有静态后缀，缺少此头时 ESA 会每次回源。
-        // 注意别加 must-revalidate：它禁止返回过期缓存，和 SWR 的目标正好相反。
-        source: "/",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400" },
-        ],
-      },
+      // 别在这里写死 Cache-Control：文档和飞行数据必须分开，数值跟首屏 cacheLife 走。
+      ...homepageCacheHeaderRules(),
     ];
   },
   // pnpm 的真实字体路径会被追踪，但运行时没有软链；必须同时打包代码读取的路径。

@@ -155,7 +155,7 @@
     x.restore();
     if (expired) glow(e, cx, cy, 170, 0.35 * impact(b, 2.5, 0.25));
     text(x, "max-age=300", cx + 110, cy + 44, { font: FONT.mono(30), color: css("graphite"), alpha: a * prog(b, 1.65, 1.8) });
-    text(x, "stale-while-revalidate=86400", cx + 110, cy + 88, { font: FONT.mono(30), color: css("graphite"), alpha: a * prog(b, 1.7, 1.85) });
+    text(x, "stale-while-revalidate=600", cx + 110, cy + 88, { font: FONT.mono(30), color: css("graphite"), alpha: a * prog(b, 1.7, 1.85) });
     text(x, tr("ch06.stale"), cx + 110, cy - 14, { font: FONT.cjk(38, 600), color: css("signal"), reveal: prog(b, 2.5, 2.95), alpha: a, maxW: 720 });
     const fresh = b >= 3.5;
     pageIcon(x, ESA[0], ESA[1] + 90, fresh ? css("signal") : css("pink"), a * (b > 2.95 && b < 3.45 ? 0.35 : 1));

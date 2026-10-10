@@ -314,8 +314,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 大陆访问
 
 - lyjw131.com 经阿里云 ESA 回源 lyjw.me。
-- 首页的 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`：5 分钟内直接命中；过期后先给旧页，后台回源。
-- 首屏新鲜度不靠 ESA 这一层：ESA 给的可能是一份旧 HTML，浏览器挂载后经 SWR / WebSocket 直接向 Worker 取最新状态（根 `README.md`「首屏快照与实时更新分开处理」；缓存头数值在 `next.config.ts` 首页那条 `Cache-Control`；浏览器直连 Worker 见 `src/lib/backend-url.ts#backendUrl`）。第 06 章旁白「数据在挂载后直连 Worker 取新」出自这里。
+- 首页文档的 `Cache-Control` 由 `src/lib/homepage-cache-policy.ts#homepageDocumentCacheControl` 生成：`max-age` 与 `stale-while-revalidate` 分别是 `src/lib/first-screen-cache.ts#FIRST_SCREEN_CACHE_LIFE` 的 `stale` 与 `revalidate`。新鲜期内直接命中；过期后在 SWR 窗口里先给旧页，后台回源。带 `RSC` 或路由预取头的响应用 `homepageFlightCacheControl`，不进这条公共缓存。
+- 首屏新鲜度不靠 ESA 这一层：ESA 给的可能是一份旧 HTML，浏览器挂载后经 SWR / WebSocket 直接向 Worker 取最新状态（根 `README.md`「首屏快照与实时更新分开处理」；浏览器直连 Worker 见 `src/lib/backend-url.ts#backendUrl`）。第 06 章旁白「数据在挂载后直连 Worker 取新」出自这里。
 
 ### 发版
 

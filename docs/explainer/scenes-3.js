@@ -76,7 +76,7 @@
     const origin = card(root, { x: 1260, y: 205, w: 280, tint: "green", icon: "globe", title: "lyjw.me", sub: "源站 · Vercel" });
     const worker = card(root, { x: 1590, y: 205, w: 270, tint: "orange", icon: "cloud", title: "API Worker", mono: true, sub: "状态 API · WebSocket" });
     worker.querySelector(".hd").style.fontSize = "24px";
-    const CC = ["max-age=300", "stale-while-revalidate=86400", "stale-if-error=86400"];
+    const CC = ["max-age=300", "stale-while-revalidate=600", "stale-if-error=86400"];
     const hdr = card(root, { x: 80, y: 460, w: 900, pad: "12px 18px", title: '<span class="lbl b" style="font-size:19px">首页 Cache-Control</span>',
       lines: [`<div class="c5-chips"><i class="c5-hl"></i>${CC.map((t) => `<span class="c5-chip">${t}</span>`).join("")}</div>`] });
     const gh = card(root, { x: 80, y: 470, w: 420, icon: "rocket", title: "GitHub Actions", sub: mono("purge-esa.yml", 18), tags: [{ t: `${icon("check", 14, 3)}部署成功`, c: "g" }] });
