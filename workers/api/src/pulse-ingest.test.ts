@@ -22,7 +22,7 @@ import type { StateLane } from "@shared/pulse-timeline";
 import { requestStore, type Env } from "@api/runtime";
 import { commitPreparedEmbyReport } from "@api/stores/emby";
 import { commitPreparedPlaystationReport } from "@api/stores/playstation";
-import { getPlayingNow } from "@/lib/playstation";
+import { getPlaying, getPlayingNow } from "@/lib/playstation";
 import { powerMirror } from "@shared/playstation-store";
 import { commitPreparedTelemetryEnvelope } from "@api/stores/telemetry";
 import type { ListeningItem, RecentTrack } from "@/lib/types";
@@ -264,6 +264,35 @@ test("PSN 在线状态：进游戏、换游戏、下线各是一段", withStorag
     ["in-game", "Pragmata", game, off],
   ]);
   assert.equal((await open(storage, "gaming")).state, "offline");
+}));
+
+test("迟到的更旧 PlayStation 快照不倒灌在线状态、游玩列表和游戏道", withStorage(async (storage) => {
+  const presence = (at: number, online: boolean, playing: { titleId: string; title: string } | null) =>
+    ({ version: 1, presence: { observedAt: at, online, availability: null, platform: "PS5", lastOnlineAt: null,
+      playing: playing && { ...playing, format: null, launchPlatform: null, iconUrl: null } } });
+  const game = (at: number, name: string) => ({
+    version: 1,
+    playedGames: {
+      observedAt: at,
+      items: [{
+        titleId: "PPSA01", name, category: "ps5_native_game", playCount: 1,
+        firstPlayedAt: at, lastPlayedAt: at, playDurationMs: 1_000, imageUrl: null, service: null, preOrder: false,
+      }],
+    },
+  });
+  const off = T0 + 60 * 60_000;
+  await inRequest(() => recordPlaystationReport(presence(off, false, null), off));
+  await inRequest(() => recordPlaystationReport(game(off, "Pragmata"), off));
+  const late = off + 10 * 60_000;
+  await inRequest(() => recordPlaystationReport(presence(T0, true, { titleId: "PPSA01", title: "Old session" }), late));
+  await inRequest(() => recordPlaystationReport(game(T0, "Old name"), late));
+  const now = await getPlayingNow();
+  assert.equal(now.observedAt, off);
+  assert.equal(now.online, false);
+  assert.equal(now.playing, null);
+  assert.equal((await getPlaying()).items[0]?.name, "Pragmata");
+  assert.equal((await open(storage, "gaming")).state, "offline");
+  assert.equal((await closed(storage, "gaming")).some((row) => row.state === "in-game"), false);
 }));
 
 test("游戏道合并 PlayStation 与 Quest：Quest 在玩时 PS 的在线截不断它，停玩后交还 PS", withStorage(async (storage) => {

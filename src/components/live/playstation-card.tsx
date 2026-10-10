@@ -18,6 +18,7 @@ import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useConfirmedClockStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
+import { gameColumnSnapClass, keepPartialGameColumn } from "@/lib/gaming-columns";
 import { stableKeys } from "@/lib/keys";
 import { foldService } from "@/lib/playstation-entitlements";
 import {
@@ -96,8 +97,6 @@ function useOpenHeight(openId: string | null, contentToken: unknown) {
 
 const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 
-// TILE_ROWS、吸附选择器和裁尾规则须一致，否则最后一列会缺格。
-const TILE_ROWS = 3;
 const INITIAL_TILE_COUNT = 12;
 
 const TILE_TRACK = cn(
@@ -106,12 +105,6 @@ const TILE_TRACK = cn(
   "md:auto-cols-[calc((100%-0.75rem)/2)]",
   "lg:auto-cols-[calc((100%-1.5rem)/3)]",
 );
-
-function fillLastColumn<T>(tiles: T[]): T[] {
-  if (tiles.length < TILE_ROWS) return tiles;
-  const leftover = tiles.length % TILE_ROWS;
-  return leftover === 0 ? tiles : tiles.slice(0, -leftover);
-}
 
 const COVER_PX = 112;
 
@@ -451,7 +444,7 @@ export function PlaystationRow({
   });
   const livePresence = presenceStale ? undefined : presence.data;
 
-  const tiles = fillLastColumn(buildTiles(list.data, livePresence, titles ?? []));
+  const tiles = keepPartialGameColumn(buildTiles(list.data, livePresence, titles ?? []));
   const mountedAt = useMountedAt();
   const renderedTiles = mountedAt ? tiles : tiles.slice(0, INITIAL_TILE_COUNT);
   const reduced = useReducedMotion();
@@ -574,7 +567,7 @@ export function PlaystationRow({
                 animate="animate"
                 exit="exit"
                 transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                className="min-w-0 [&:nth-child(3n+1)]:snap-start"
+                className={cn("flex min-w-0", gameColumnSnapClass())}
               >
                 <GameTile
                   tile={tile}

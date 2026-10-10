@@ -15,6 +15,7 @@ import useSWR, { useSWRConfig } from "swr";
 
 import Image from "@/components/app-image";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
+import { trophyGroupSnapClass, trophyGroupTrackClass } from "@/lib/gaming-columns";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import { trophiesTilePath } from "@/lib/paths";
 import { isRestReady, subscribeRestReady } from "@/lib/rest-ready";
@@ -49,19 +50,6 @@ export function trophyRowKey(
   id: number,
 ): string {
   return `${npCommunicationId}-${groupId}-${id}`;
-}
-
-function groupTrack(count: number) {
-  return cn(
-    "grid grid-flow-col grid-rows-1 gap-3",
-    count <= 2
-      ? ["auto-cols-[100%]", "md:auto-cols-[calc((100%-0.75rem)/2)]"]
-      : [
-          "auto-cols-[100%]",
-          "md:auto-cols-[calc((100%-0.75rem)/2)]",
-          "lg:auto-cols-[calc((100%-1.5rem)/3)]",
-        ],
-  );
 }
 
 const useIsomorphicLayoutEffect =
@@ -372,10 +360,10 @@ function GroupStrip({
         "scrollbar-none [&::-webkit-scrollbar]:hidden",
       )}
     >
-      <div className={groupTrack(groups.length)}>
+      <div className={trophyGroupTrackClass(groups.length)}>
         {groups.map(({ key, group }) => (
-          <div key={key} className="min-w-0 snap-start">
-            <div className="flex items-stretch overflow-hidden border border-line bg-surface">
+          <div key={key} className={trophyGroupSnapClass(groups.length)}>
+            <div className="flex h-full w-full items-stretch overflow-hidden border border-line bg-surface">
               {group.iconUrl ? (
                 <div className="relative w-10 shrink-0 self-stretch overflow-hidden border-r border-line bg-muted">
                   <Image
