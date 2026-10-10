@@ -1,0 +1,25 @@
+name = "ai-browser-harness-prototype"
+main = "worker.ts"
+compatibility_date = "2026-10-09"
+compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
+workers_dev = false
+tsconfig = "tsconfig.json"
+
+[assets]
+directory = "public"
+
+[vars]
+AI_DEV = "true"
+PUBLIC_API_URL = "https://api.homepage.lyjw.llc"
+
+[[durable_objects.bindings]]
+name = "BUILD_COORDINATOR"
+class_name = "BuildCoordinator"
+
+[[durable_objects.bindings]]
+name = "DESIGN_BUDGET"
+class_name = "DesignBudget"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BuildCoordinator", "DesignBudget"]

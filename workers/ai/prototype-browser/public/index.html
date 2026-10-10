@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser Design Harness</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #fff; --fg: #111; --muted: #666; --card: #f4f4f5; --border: #ddd; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; --muted: #999; --card: #1d1d20; --border: #333; } }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
+    main { max-width: 860px; margin: 0 auto; display: grid; gap: 12px; }
+    textarea { width: 100%; box-sizing: border-box; min-height: 64px; font: inherit; background: var(--card); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer; }
+    #log { display: grid; gap: 6px; }
+    .line { white-space: pre-wrap; word-break: break-word; }
+    .user { font-weight: 600; }
+    .thinking { color: var(--muted); font-size: 12px; max-height: 6em; overflow: auto; }
+    .tool { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+    .error { color: #d33; }
+    .card { white-space: pre-wrap; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+    fieldset { border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 4px; }
+    #metrics { font-family: ui-monospace, monospace; font-size: 12px; background: var(--card); border-radius: 8px; padding: 8px; white-space: pre-wrap; min-height: 2em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Browser design harness (prototype)</h1>
+    <textarea id="input" aria-label="Message"></textarea>
+    <div class="row">
+      <button id="send">Send</button>
+      <button id="replay">Run replay</button>
+      <button id="stop">Stop</button>
+      <button id="reset">New session</button>
+    </div>
+    <pre id="metrics" aria-label="Metrics"></pre>
+    <div id="log"></div>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
