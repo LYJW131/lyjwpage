@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { GithubConsent } from "@/components/github-consent";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { workerUrl } from "@/lib/worker-url";
 import { GITHUB_ISSUE_PATH, GITHUB_ISSUE_REPO, type GithubIssueResult } from "@shared/github-issue";
@@ -16,10 +17,11 @@ export function IssuePanel({ proposal, onClose, onCreated, disabled }: {
   disabled: boolean;
 }) {
   const [working, setWorking] = useState(false);
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    if (working || disabled) return;
+    if (working || disabled || !agreed) return;
     setWorking(true);
     setError(null);
     try {
@@ -41,11 +43,12 @@ export function IssuePanel({ proposal, onClose, onCreated, disabled }: {
   return (
     <div className="mt-3 space-y-2 rounded-md border border-line-strong bg-surface p-3 text-xs text-muted-foreground">
       <div className="flex items-start justify-between gap-2">
-        <span>The plan and acceptance criteria will be posted publicly to {GITHUB_ISSUE_REPO} under your GitHub account.</span>
+        <span className="min-w-0">The plan and acceptance criteria will be posted publicly to {GITHUB_ISSUE_REPO} under your GitHub account.</span>
         <button type="button" onClick={onClose} disabled={working} aria-label="Close issue confirmation" className="shrink-0 hover:text-foreground">Close</button>
       </div>
+      <GithubConsent action="issue" checked={agreed} onChange={setAgreed} disabled={working || disabled} />
       {error && <p role="alert" className="text-red-500">{error}</p>}
-      <button type="button" onClick={() => void submit()} disabled={working || disabled} className="rounded bg-foreground px-3 py-2 text-background disabled:opacity-40">
+      <button type="button" onClick={() => void submit()} disabled={working || disabled || !agreed} className="rounded bg-foreground px-3 py-2 text-background disabled:opacity-40">
         {working ? "Waiting for GitHub…" : "Sign in with GitHub & submit"}
       </button>
     </div>
