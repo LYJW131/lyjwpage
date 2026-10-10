@@ -171,7 +171,7 @@ export default async function Home() {
       <WebPlayerProvider>
         <Header desktop={desktop} desktopIconDataUri={desktopIcon} />
 
-        <main className="flex-1">
+        <main id="content" tabIndex={-1} className="flex-1">
           <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
             <Section id="live" className="p-0 sm:p-0">
               <CardBoundary label="Update" silent paths={[APP_VERSION_PATH]}>
