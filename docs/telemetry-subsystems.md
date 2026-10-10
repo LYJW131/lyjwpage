@@ -145,6 +145,7 @@
 Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──> 上报入口 ──> 状态核心 SQLite
 ```
 - 设备序列号（`device.serialNumber`）随上报存进状态核心，只用来判断结构变化（`workers/api/src/stores/charger-store.ts`、`powerbank-store.ts` 的 `structuralKey`）；状态接口和推送都经 `shared/charging-devices.ts` 的投影出去，不带序列号。
+- 充电头卡片在每个正在输出的端口下画出电压和电流（`src/lib/charging-device.ts#formatPortElectrical`，缺一就不画）；外壳名字和图标用公开状态里的 `cover`，放在卡片角标上。iOS 的充电段同样画出这两项。
 
 ### 本地高速 SSE 切换
 - 当在内网 Mac 访问 `/local/charging` 时，会在浏览器 `localStorage` 写入标记并跳转首页。
@@ -267,6 +268,7 @@ payload: >-
 - **设备时区为准**：上报日期取 Apple Watch 当地自然日（`YYYY-MM-DD`）与 `secondsFromGMT`。跨时区旅行过日界线时，按手表本地日推进，服务端不做时区矫正。
 - **iOS 后台节流容忍**：iOS 系统对 HealthKit 数据的后台推送存在约每小时一次的系统级节流，因此该模块不建立 WebSocket 推送，前端按 `STATUS_VIEWS.activity.cadenceMs` 排期在下一次预期上报后取，逾期后按 `nextLagDelay` 退避重试。
 - **读数与训练在可滞后层**：圆环读数（KV `activity:v1`）与最近训练（KV `workouts:v1`）由上报入口在状态核心那一半成功之后写入，状态核心只留 Pulse 用的五分钟统计桶和训练区间。圆环超过 `ACTIVITY_STALE_MS` 没有新读数时卡片写 Unavailable；训练是历史事实，不设过期。
+- 步数、距离、爬楼是选填。首页只在来源当地的当天、且该项有数字时才画出来，读不到就画「—」，不当成 0（`src/lib/activity-display.ts#activityExtras`）。窄屏这三项在圆环下面，宽屏在圆环右侧；对话里的健身卡同样只画有数字的项。
 
 ---
 

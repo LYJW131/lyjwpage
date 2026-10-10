@@ -6,6 +6,7 @@ import { useId, type ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { activityExtras, type ActivityExtra } from "@/lib/activity-display";
 import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { ACTIVITY_PATH } from "@/lib/paths";
 import type { ActivityPayload, StatusResponse } from "@/lib/types";
@@ -205,7 +206,22 @@ export function Rings({ rings, className }: { rings: RingValue[]; className?: st
 }
 
 
-type Extra = { label: string; value: ReactNode | null };
+function ExtraReadout({ extra }: { extra: ActivityExtra }) {
+  if (extra.value == null) return <span className="text-muted-foreground">—</span>;
+  return (
+    <>
+      <NumberFlow
+        value={extra.value}
+        format={
+          extra.digits > 0
+            ? { minimumFractionDigits: extra.digits, maximumFractionDigits: extra.digits }
+            : { maximumFractionDigits: 0 }
+        }
+      />
+      {extra.unit ? <span className="text-sm text-muted-foreground">{` ${extra.unit}`}</span> : null}
+    </>
+  );
+}
 
 export function ActivityCard({
   fallback,
@@ -226,21 +242,7 @@ export function ActivityCard({
   const current = Boolean(data?.currentAtSource);
 
   const rings = ringValues(data, current);
-
-  const extras: Extra[] = !data
-    ? [
-        { label: "Steps", value: null },
-        { label: "Distance", value: null },
-        { label: "Flights", value: null },
-      ]
-    : [
-        { label: "Steps", value: <NumberFlow value={!current ? 0 : (data.steps ?? 0)} /> },
-        {
-          label: "Distance",
-          value: `${((!current ? 0 : (data.distanceMeters ?? 0)) / 1000).toFixed(2)} km`,
-        },
-        { label: "Flights", value: <NumberFlow value={!current ? 0 : (data.flightsClimbed ?? 0)} /> },
-      ];
+  const extras = activityExtras(data, current);
 
   return (
     <Card label="Activity" action={stale ? "Unavailable" : "Apple Watch"} className={cn("h-full", className)}>
@@ -274,12 +276,12 @@ export function ActivityCard({
           </div>
         </div>
 
-        <div className="hidden min-w-0 gap-1.5 lg:grid">
+        <div className="col-span-2 mt-1 grid min-w-0 grid-cols-3 justify-self-stretch gap-x-3 border-t border-line pt-3 md:hidden lg:col-span-1 lg:mt-0 lg:grid lg:grid-cols-1 lg:content-center lg:justify-self-auto lg:gap-1.5 lg:border-0 lg:pt-0">
           {extras.map((item) => (
             <div key={item.label} className="min-w-0">
               <div className="label-mono text-muted-foreground">{item.label}</div>
               <div className="truncate font-mono text-lg tabular-nums">
-                {item.value ?? <span className="text-muted-foreground">—</span>}
+                <ExtraReadout extra={item} />
               </div>
             </div>
           ))}

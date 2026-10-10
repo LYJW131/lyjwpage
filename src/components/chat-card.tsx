@@ -8,6 +8,7 @@ import { Rings, ringValues } from "@/components/live/activity-card";
 import { mediaApp, mergeVariants, playTime } from "@/components/live/playstation-card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveNowListening, useStale } from "@/hooks/use-stale";
+import { activityExtras, formatActivityExtra } from "@/lib/activity-display";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
@@ -419,12 +420,16 @@ function ActivityCard() {
                 </dd>
               </div>
             ))}
-            {current && data.steps != null && (
-              <div className="flex items-baseline justify-between gap-2">
-                <dt className="pl-3.5 text-muted-foreground">Steps</dt>
-                <dd className="font-mono tabular-nums">{data.steps.toLocaleString("en-US")}</dd>
-              </div>
-            )}
+            {activityExtras(data, current).map((extra) => {
+              const text = formatActivityExtra(extra);
+              if (!text) return null;
+              return (
+                <div key={extra.label} className="flex items-baseline justify-between gap-2">
+                  <dt className="pl-3.5 text-muted-foreground">{extra.label}</dt>
+                  <dd className="font-mono tabular-nums">{text}</dd>
+                </div>
+              );
+            })}
           </dl>
         </div>
       ) : (
