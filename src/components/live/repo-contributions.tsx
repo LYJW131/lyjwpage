@@ -108,12 +108,33 @@ const stateLabels: Record<DeploymentState, string> = { READY: "Deployed", BUILDI
 
 const AUTHOR_PX = 16;
 
+const AVATAR_CLASS = "size-4 shrink-0 rounded-full border border-surface bg-muted";
+
 function AuthorAvatar({ author }: { author: CommitAuthor }) {
-  const className = "size-4 shrink-0 rounded-full border border-surface bg-muted";
   if (author.avatarUrl) {
-    return <Image src={avatarSrc(author.avatarUrl).replace(`s=${AVATAR_PX * 2}`, `s=${AUTHOR_PX * 2}`)} alt="" width={AUTHOR_PX} height={AUTHOR_PX} unoptimized className={className} />;
+    return <Image src={avatarSrc(author.avatarUrl).replace(`s=${AVATAR_PX * 2}`, `s=${AUTHOR_PX * 2}`)} alt="" width={AUTHOR_PX} height={AUTHOR_PX} unoptimized className={AVATAR_CLASS} />;
   }
-  return <span aria-hidden className={cn(className, "flex items-center justify-center text-[9px] text-muted-foreground")}>{author.name.slice(0, 1).toUpperCase()}</span>;
+  return <span aria-hidden className={cn(AVATAR_CLASS, "flex items-center justify-center text-[9px] text-muted-foreground")}>{author.name.slice(0, 1).toUpperCase()}</span>;
+}
+
+function authorKey(author: CommitAuthor): string {
+  return `${author.login ?? author.name}:${author.model ?? ""}`;
+}
+
+function AuthorLine({ authors, children }: { authors: CommitAuthor[]; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+      <span className="flex shrink-0 -space-x-1">
+        {authors.map((author) => <AuthorAvatar key={authorKey(author)} author={author} />)}
+      </span>
+      <span className="min-w-0 truncate">{children}</span>
+    </div>
+  );
+}
+
+function joinLabels(count: number, index: number): string {
+  if (index === 0) return "";
+  return count === 2 ? " and " : index === count - 1 ? ", and " : ", ";
 }
 
 function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; committedAt: string | null }) {
@@ -127,26 +148,42 @@ function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; commi
   }, [mountedAt]);
   const at = committedAt ? Date.parse(committedAt) : NaN;
   const when = Number.isNaN(at) ? "—" : now ? formatRelativeTime(at, now) : formatCommitTime(committedAt);
+  const people = authors.filter((author) => !author.agent);
+  const agents = authors.filter((author) => author.agent);
+  const time = <time dateTime={committedAt ?? undefined} title={committedAt ? formatCommitTime(committedAt) : undefined}>{when}</time>;
+  const agentNames = agents.map((author, index) => {
+    const model = author.model && author.model.toLowerCase() !== author.name.toLowerCase() ? author.model : null;
+    const name = author.login && !author.login.endsWith("[bot]")
+      ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="font-medium text-foreground hover:underline">{author.name}</a>
+      : <span className="font-medium text-foreground">{author.name}</span>;
+    return (
+      <Fragment key={authorKey(author)}>
+        {joinLabels(agents.length, index)}
+        {name}{model && <span className="font-medium text-foreground"> ({model})</span>}
+      </Fragment>
+    );
+  });
   return (
-    <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
-      {authors.length > 0 && (
-        <span className="flex shrink-0 -space-x-1">
-          {authors.map((author) => <AuthorAvatar key={author.login ?? author.name} author={author} />)}
-        </span>
+    <>
+      {people.length > 0 ? (
+        <AuthorLine authors={people}>
+          {people.map((author, index) => (
+            <Fragment key={authorKey(author)}>
+              {joinLabels(people.length, index)}
+              {author.login
+                ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="font-medium text-foreground hover:underline">{author.name}</a>
+                : <span className="font-medium text-foreground">{author.name}</span>}
+            </Fragment>
+          ))}
+          {" committed "}{time}
+        </AuthorLine>
+      ) : agents.length > 0 ? (
+        <AuthorLine authors={agents}>{agentNames}{" committed "}{time}</AuthorLine>
+      ) : (
+        <div className="min-w-0 truncate text-[11px] leading-4 text-muted-foreground">committed {time}</div>
       )}
-      <span className="min-w-0 truncate">
-        {authors.map((author, index) => (
-          <Fragment key={author.login ?? author.name}>
-            {index > 0 && (authors.length === 2 ? " and " : index === authors.length - 1 ? ", and " : ", ")}
-            {author.login
-              ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="font-medium text-foreground hover:underline">{author.name}</a>
-              : <span className="font-medium text-foreground">{author.name}</span>}
-          </Fragment>
-        ))}
-        {authors.length > 0 ? " committed " : "committed "}
-        <time dateTime={committedAt ?? undefined} title={committedAt ? formatCommitTime(committedAt) : undefined}>{when}</time>
-      </span>
-    </div>
+      {people.length > 0 && agents.length > 0 && <AuthorLine authors={agents}>with {agentNames}</AuthorLine>}
+    </>
   );
 }
 
@@ -173,7 +210,7 @@ function CommitCard({ commit, deploy }: {
   const production = deploy?.production ?? false;
   const status = production ? "Live" : !deployment ? "Committed" : deployment.state === "READY" && deployment.target === "preview" ? "Preview ready" : stateLabels[deployment.state];
   return (
-    <li className="flex min-h-[96px] flex-col justify-center gap-1 border border-line bg-muted/40 px-3 py-2">
+    <li className="flex min-h-[98px] flex-col justify-center gap-1 border border-line bg-muted/40 px-3 py-2">
       <a href={commit.url} target="_blank" rel="noreferrer noopener" title={commit.title} className="-mt-2 block truncate pt-2 text-sm leading-5 hover:underline">{commit.title}</a>
       <CommitByline authors={commit.authors} committedAt={commit.committedAt} />
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 whitespace-nowrap text-[10px] leading-4 text-muted-foreground">

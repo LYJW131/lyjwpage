@@ -1,17 +1,22 @@
+import Anthropic from "@anthropic-ai/sdk";
+
 import {
   AI_HTTP_PATHS,
   BUILD_PATH,
   BUILD_STATUS_PATH,
   BUILD_UPLOAD_PATH,
   BUILD_PROGRESS_PATH,
+  BUILD_SCREENSHOT_PATH,
   BUILD_WEBHOOK_PATH,
 } from "@shared/ai-paths";
 import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "@shared/http-origins";
 import { MCP_PATH } from "@shared/mcp";
 
+import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
+import { anthropicFetch } from "./chat/egress";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
-import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleGithubWebhook } from "./build/handlers";
+import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
 import { mcpCodeModeEnabled, type Env } from "./runtime";
@@ -24,9 +29,10 @@ const BUILD_HANDLERS = new Map([
   [BUILD_STATUS_PATH, handleBuildStatus],
   [BUILD_UPLOAD_PATH, handleBuildUpload],
   [BUILD_PROGRESS_PATH, handleBuildProgress],
+  [BUILD_SCREENSHOT_PATH, handleBuildScreenshot],
   [BUILD_WEBHOOK_PATH, handleGithubWebhook],
 ]);
-const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_WEBHOOK_PATH]);
+const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH]);
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -94,6 +100,13 @@ const worker = {
     const headers = new Headers(response.headers);
     cors.forEach((value, name) => headers.set(name, value));
     return new Response(response.body, { status: response.status, headers });
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    if (!env.ANTHROPIC_API_KEY) return;
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
+    const deleted = await deleteExpiredDesignSessions(client.beta.sessions, env);
+    if (deleted) console.info("[design] deleted expired sessions", JSON.stringify({ deleted }));
   },
 } satisfies ExportedHandler<Env>;
 

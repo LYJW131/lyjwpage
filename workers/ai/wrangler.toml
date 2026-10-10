@@ -8,6 +8,14 @@ preview_urls = true
 [vars]
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
+# 设计会话的 Managed Agents 壳，必须与 ANTHROPIC_API_KEY 在同一个 Console 工作空间（见 docs/ops-facts.md）。
+DESIGN_AGENT_ID = "agent_01A9iz5Qv92DM3v6AgZvwo59"
+DESIGN_ENVIRONMENT_ID = "env_01P1faxn2fwzNE596uk9JzgM"
+VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
+
+# 删除过期的设计会话，见 src/chat/design-cleanup.ts。
+[triggers]
+crons = ["*/15 * * * *"]
 
 [version_metadata]
 binding = "CF_VERSION_METADATA"
@@ -22,6 +30,11 @@ entrypoint = "PublicStatus"
 
 [[worker_loaders]]
 binding = "LOADER"
+
+# 与上报入口同一个站点图片桶：构建截图按内容寻址写入，经站点 /img/<objectKey> 进 PR 评论。
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "lyjw-homepage"
 
 [[durable_objects.bindings]]
 name = "CHAT_QUOTA"

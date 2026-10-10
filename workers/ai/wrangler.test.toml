@@ -8,6 +8,9 @@ workers_dev = false
 AI_DEV = "true"
 SENTRY_ENVIRONMENT = "development"
 ALLOWED_ORIGINS = "https://*.vercel.app"
+# 设计会话的 Managed Agents 壳，必须与 ANTHROPIC_API_KEY 在同一个 Console 工作空间（见 docs/ops-facts.md）。
+DESIGN_AGENT_ID = "agent_01A9iz5Qv92DM3v6AgZvwo59"
+DESIGN_ENVIRONMENT_ID = "env_01P1faxn2fwzNE596uk9JzgM"
 
 [ai]
 binding = "AI"

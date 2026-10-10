@@ -1,12 +1,14 @@
 import * as Sentry from "@sentry/cloudflare";
-import { BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult } from "@shared/build-routine";
+import { BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SCREENSHOT_PATH, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult } from "@shared/build-routine";
 import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
+import { withPreviewShare } from "./preview-share";
 import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestAgentReviews } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
+import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
 import { readBoundedJson } from "./http";
 import { hashToken, signBuildToken, verifyBuildToken } from "./token";
 import { parseBuildUpload } from "./validation";
@@ -68,7 +70,7 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
     dispatched = true;
     const response = await routineFetcher(env.ROUTINE_FIRE_URL, {
       method: "POST", headers: { Authorization: `Bearer ${env.ROUTINE_FIRE_TOKEN}`, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-      body: JSON.stringify({ text: JSON.stringify({ runId, plan: plan.plan, coauthor, baseSha, uploadToken, uploadUrl: `${origin}${BUILD_UPLOAD_PATH}?runId=${runId}`, progressUrl: `${origin}${BUILD_PROGRESS_PATH}?runId=${runId}` }) }),
+      body: JSON.stringify({ text: JSON.stringify({ runId, plan: plan.plan, coauthor, baseSha, uploadToken, uploadUrl: `${origin}${BUILD_UPLOAD_PATH}?runId=${runId}`, progressUrl: `${origin}${BUILD_PROGRESS_PATH}?runId=${runId}`, screenshotUrl: `${origin}${BUILD_SCREENSHOT_PATH}?runId=${runId}` }) }),
       signal: AbortSignal.timeout(20_000),
     });
     const confirmation = await readBoundedJson(response, 16_384);
@@ -100,7 +102,7 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
   if (!run) return fail(404, "Build not found.");
   if (run.state.pr && !["merged", "closed"].includes(run.state.phase) && (!run.state.reconciledAt || Date.now() - run.state.reconciledAt >= BUILD_RECONCILE_MS) && await coordinator.claimReconcile(runId)) {
     try {
-      const patch = await reconcileBuild(await installationApi(env, fetcher, true), run.state);
+      const patch = await withPreviewShare(env, run.state, await reconcileBuild(await installationApi(env, fetcher, true), run.state), fetcher);
       const state = await coordinator.updateRun(runId, patch, run.state.pr.headSha);
       return Response.json(state, { headers: noStore });
     } catch { /* Preserve the last observed facts when GitHub is unreachable. */ }
@@ -132,6 +134,11 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
     await coordinator.updateRun(runId, { phase: "validated" });
     const pr = await createBuildPullRequest(api, run, upload, baseTree);
     const state = await coordinator.updateRun(runId, { phase: "pr_open", pr });
+    try { await postScreenshotComment(api, pr.number, run); }
+    catch (error) {
+      console.warn("[build] screenshot comment failed", error);
+      Sentry.captureException(error, { tags: { "build.step": "screenshots" } });
+    }
     if (env.CODEX_REVIEW_GITHUB_TOKEN) {
       try { await requestAgentReviews(env.CODEX_REVIEW_GITHUB_TOKEN, pr.number, fetcher); }
       catch (error) {
@@ -163,6 +170,25 @@ export async function handleBuildProgress(request: Request, env: Env): Promise<R
     ? await coordinator.blockRun(runId, hash, `The builder stopped without uploading: ${data.message.trim()}`)
     : await coordinator.progress(runId, hash, data.message.trim());
   return accepted ? Response.json({ accepted: true }, { headers: noStore }) : fail(401, "Progress authorization was used or expired.");
+}
+
+// 截图在上传前提交、随上传令牌失效；对象按内容寻址进 R2 图片桶，PR 开出后由 App 一次评论出来。
+export async function handleBuildScreenshot(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return fail(405, "Method not allowed.");
+  if (!env.BUILD_COORDINATOR || !env.IMAGES) return fail(503, "Build screenshots are unavailable.");
+  const runId = new URL(request.url).searchParams.get("runId");
+  const token = bearer(request);
+  if (!validRunId(runId) || !token) return fail(401, "Invalid screenshot authorization.");
+  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const hash = await hashToken(token);
+  if (!await coordinator.canAddScreenshot(runId, hash)) return fail(409, "Screenshot authorization was used or expired, or the screenshot limit was reached.");
+  let shot;
+  try { shot = parseScreenshot(await readJsonBody(request, SCREENSHOT_BODY_BYTES)); }
+  catch (error) { return fail(400, error instanceof Error ? error.message : "Invalid screenshot."); }
+  const objectKey = await screenshotObjectKey(shot);
+  await env.IMAGES.put(objectKey, shot.bytes, { httpMetadata: { contentType: shot.contentType, cacheControl: "public, max-age=31536000, immutable" } });
+  if (!await coordinator.addScreenshot(runId, hash, { objectKey, caption: shot.caption })) return fail(409, "Screenshot authorization was used or expired, or the screenshot limit was reached.");
+  return Response.json({ accepted: true }, { status: 201, headers: noStore });
 }
 
 export async function handleGithubWebhook(request: Request, env: Env): Promise<Response> {

@@ -1,8 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import { BUILD_DESIGN_LIMITS, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_SCREENSHOT_LIMITS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun, type BuildScreenshot } from "@shared/build-routine";
 import type { Env } from "../runtime";
 
-export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number };
+export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; screenshots?: BuildScreenshot[] };
 const phases = { triggered: 0, running: 1, uploaded: 2, validated: 3, pr_open: 4, blocked: 5, failed: 5, timeout: 5, merged: 6, closed: 6 } as const;
 
 export class BuildCoordinator extends DurableObject<Env> {
@@ -55,6 +55,11 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
+  peekDesign(id: string): { status: "ok" | "expired"; remaining: number } {
+    const session = this.get<{ turns: number; expiresAt: number }>(`design:${id}`);
+    return session ? { status: "ok", remaining: Math.max(0, BUILD_DESIGN_LIMITS.maxTurns - session.turns) } : { status: "expired", remaining: 0 };
+  }
+
   claimPlan(id: string, expiresAt: number): boolean {
     return this.ctx.storage.transactionSync(() => {
       this.prune();
@@ -102,10 +107,15 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
+  private awaitingUpload(runId: string, hash: string): StoredRun | null {
+    const run = this.readRun(runId);
+    return run && !run.uploadUsed && run.uploadHash === hash && run.uploadExpiresAt > Date.now() && ["triggered", "running"].includes(run.state.phase) ? run : null;
+  }
+
   claimUpload(runId: string, hash: string): StoredRun | null {
     return this.ctx.storage.transactionSync(() => {
-      const run = this.readRun(runId);
-      if (!run || run.uploadUsed || run.uploadHash !== hash || run.uploadExpiresAt <= Date.now() || !["triggered", "running"].includes(run.state.phase)) return null;
+      const run = this.awaitingUpload(runId, hash);
+      if (!run) return null;
       run.uploadUsed = true;
       run.state = { ...run.state, phase: "uploaded", reason: undefined, updatedAt: Date.now() };
       this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
@@ -115,9 +125,25 @@ export class BuildCoordinator extends DurableObject<Env> {
 
   progress(runId: string, hash: string, message: string): boolean {
     return this.ctx.storage.transactionSync(() => {
-      const run = this.readRun(runId);
-      if (!run || run.uploadUsed || run.uploadHash !== hash || run.uploadExpiresAt <= Date.now() || !["triggered", "running"].includes(run.state.phase)) return false;
+      const run = this.awaitingUpload(runId, hash);
+      if (!run) return false;
       run.state = { ...run.state, phase: "running", reason: undefined, progress: message.slice(0, 200), updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+      return true;
+    });
+  }
+
+  canAddScreenshot(runId: string, hash: string): boolean {
+    const run = this.awaitingUpload(runId, hash);
+    return !!run && (run.screenshots?.length ?? 0) < BUILD_SCREENSHOT_LIMITS.count;
+  }
+
+  addScreenshot(runId: string, hash: string, screenshot: BuildScreenshot): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      const run = this.awaitingUpload(runId, hash);
+      const screenshots = run?.screenshots ?? [];
+      if (!run || screenshots.length >= BUILD_SCREENSHOT_LIMITS.count) return false;
+      if (!screenshots.some((shot) => shot.objectKey === screenshot.objectKey)) run.screenshots = [...screenshots, screenshot];
       this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
       return true;
     });
@@ -126,8 +152,8 @@ export class BuildCoordinator extends DurableObject<Env> {
   // 计划路径加计划外名额仍不够、只能靠断言或放宽测试才能完成时，routine 用它停下：同样占用上传令牌，停下后不能再上传。
   blockRun(runId: string, hash: string, reason: string): boolean {
     return this.ctx.storage.transactionSync(() => {
-      const run = this.readRun(runId);
-      if (!run || run.uploadUsed || run.uploadHash !== hash || run.uploadExpiresAt <= Date.now() || !["triggered", "running"].includes(run.state.phase)) return false;
+      const run = this.awaitingUpload(runId, hash);
+      if (!run) return false;
       run.uploadUsed = true;
       run.state = { ...run.state, phase: "blocked", reason, progress: undefined, updatedAt: Date.now() };
       this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);

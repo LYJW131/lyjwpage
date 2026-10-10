@@ -1,4 +1,4 @@
-export { BUILD_PATH, BUILD_STATUS_PATH, BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_WEBHOOK_PATH } from "./ai-paths";
+export { BUILD_PATH, BUILD_STATUS_PATH, BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH } from "./ai-paths";
 
 export const BUILD_REPO = "LYJW131/lyjwpage";
 
@@ -13,6 +13,8 @@ export const BUILD_PLAN_LIMITS = { titleChars: 100, specChars: 6000, acceptanceI
 export const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone: 10 } } as const;
 // outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。
 export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;
+// 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。
+export const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;
 
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
 export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number };
@@ -31,9 +33,12 @@ export type BuildRun = {
   ci?: BuildSignal;
   preview?: BuildSignal;
   review?: BuildSignal;
+  // Vercel 预览的公开分享链接：preview.url 在部署成功后换成 url；expiresAt 为 epoch 毫秒。
+  previewShare?: { deploymentId: string; url: string; expiresAt: number };
   reconciledAt?: number;
   githubUpdatedAt?: number;
 };
+export type BuildScreenshot = { objectKey: string; caption: string };
 export type BuildUpload = { baseSha: string; message: string; files: { path: string; content: string; mode: "100644" | "100755" }[]; deletions: string[] };
 
 export function newRunId(): string { return crypto.randomUUID().replaceAll("-", ""); }
@@ -47,7 +52,10 @@ export type PlanLanguage = "zh" | "ja" | "en";
 // 计划正文跟随对话语言，issue 与 PR 的固定文案跟随计划：中日文按字数比拉丁字母更「重」，路径、标识符里的
 // 拉丁字母不该把中文计划判成英文，英文计划里引用的几个中文歌名也不该把它判成中文；假名占比高才算日文。
 export function planLanguage(plan: Pick<BuildPlan, "title" | "spec" | "acceptance">): PlanLanguage {
-  const text = `${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`;
+  return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`);
+}
+
+export function textLanguage(text: string): PlanLanguage {
   const kana = text.match(/[\u3040-\u30ff]/g)?.length ?? 0;
   const han = text.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
   const latin = text.match(/[A-Za-z]/g)?.length ?? 0;
@@ -66,6 +74,8 @@ export const PLAN_LABELS = {
     issueFooter: "_Filed from the [homepage chat](https://lyjw.me)._",
     planReady: "Here is the plan for your review.",
     askReady: "Pick your answers below.",
+    screenshots: "Screenshots",
+    screenshotsNote: "Captured by the build routine on its local dev server before upload; the Vercel preview is the deployed result.",
   },
   zh: {
     acceptance: "验收标准",
@@ -77,6 +87,8 @@ export const PLAN_LABELS = {
     issueFooter: "_提交自[首页对话](https://lyjw.me)。_",
     planReady: "方案如下，请过目。",
     askReady: "请在下面选一下。",
+    screenshots: "截图",
+    screenshotsNote: "由构建 routine 在上传前于本地开发服务器截取；部署后的效果以 Vercel 预览为准。",
   },
   ja: {
     acceptance: "受け入れ基準",
@@ -88,6 +100,8 @@ export const PLAN_LABELS = {
     issueFooter: "_[ホームページのチャット](https://lyjw.me)から作成されました。_",
     planReady: "プランを用意しました。ご確認ください。",
     askReady: "下から選んでください。",
+    screenshots: "スクリーンショット",
+    screenshotsNote: "ビルド routine がアップロード前にローカルの開発サーバーで撮影したものです。デプロイ後の表示は Vercel のプレビューで確認してください。",
   },
 } as const satisfies Record<PlanLanguage, unknown>;
 
