@@ -19,6 +19,7 @@ import {
   CHARGER_MODEL,
   ankerModelLabel,
 } from "@/lib/charging-device";
+import { absenceCopy, absenceKind, chargingReadingLost } from "@/lib/absence";
 import { chargerActive } from "@/lib/home-layout";
 import { CHARGER_PATH } from "@/lib/paths";
 import type {
@@ -56,7 +57,7 @@ export function ChargerCard({
 }) {
   useLiveEvents();
   const local = useLocalCharging().charger;
-  const { data: remote, error, isLoading, isValidating, servedAt } = useStatus<ChargerPayload>(
+  const { data: remote, error, isLoading, isValidating, servedAt, awaiting } = useStatus<ChargerPayload>(
     CHARGER_PATH,
     local ? 0 : REFRESH_MS,
     {
@@ -66,27 +67,35 @@ export function ChargerCard({
       revalidateOnFocus: !local,
     },
   );
+  const raw = local ?? remote;
   const data = useLiveChargingFeed(
-    local ?? remote,
+    raw,
     local ? { validating: false } : { validating: isValidating, servedAt },
   );
   const history = data?.history ?? [];
 
+  const readingLost = chargingReadingLost(raw, data);
   const connected = Boolean(data?.connected);
   const power = data?.totalPower ?? 0;
   const charging = chargerActive(data);
+  const hold = readingLost && chargerActive(raw);
 
   // 隐藏时仍须挂载，否则无法收到让卡片恢复的轮询和推送。
   useEffect(() => {
-    onActiveChange?.(charging);
-  }, [charging, onActiveChange]);
+    onActiveChange?.(charging || hold);
+  }, [charging, hold, onActiveChange]);
 
   const dot = tone(data);
   const ratio = data ? Math.min(power / data.maxPower, 1) : 0;
 
   const summary = (() => {
-    if (isLoading && !data) return "Loading";
-    if (error) return "No telemetry yet";
+    const kind = absenceKind({
+      loading: isLoading && !data,
+      awaiting: !data && awaiting,
+      error: data ? undefined : error,
+      unavailable: readingLost,
+    });
+    if (kind !== "known") return absenceCopy(kind);
     if (!connected) return "Charger disconnected";
     if (!charging) return "Standby";
     return `${Math.round(ratio * 100)}% / ${data?.maxPower}W`;

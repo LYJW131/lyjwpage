@@ -31,6 +31,7 @@ import { useLyrics, type LyricsFallback } from "@/hooks/use-lyrics";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useLiveNowListening } from "@/hooks/use-stale";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
+import { gapCopy } from "@/lib/absence";
 import { stableKeys } from "@/lib/keys";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
 import { cueAt, NO_CUE } from "@/lib/lyrics-cue";
@@ -548,7 +549,7 @@ export function ListeningCard({
   className?: string;
   wide?: boolean;
 }) {
-  const { data, error, isLoading } = useStatus<ListeningPayload>(
+  const { data, error, isLoading, awaiting } = useStatus<ListeningPayload>(
     LISTENING_PATH,
     (current) => (current ? REFRESH_MS : EMPTY_REFRESH_MS),
     { fallback },
@@ -835,11 +836,9 @@ export function ListeningCard({
               <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
               <div className="flex min-w-0 flex-1 flex-col justify-center">
                 <div className="text-sm text-muted-foreground">
-                  {isLoading
-                    ? "Loading…"
-                    : error
-                      ? "Apple Music not connected"
-                      : "Nothing played recently"}
+                  {!data
+                    ? gapCopy({ loading: isLoading, awaiting, error })
+                    : "Nothing played recently"}
                 </div>
               </div>
             </HeroWrapper>

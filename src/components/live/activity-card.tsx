@@ -64,16 +64,28 @@ const CAP_SHADOW: ReadonlyArray<[number, number]> = [
 const CAP_SHADOW_REACH = CAP_SHADOW[CAP_SHADOW.length - 1][0];
 
 // 圆环也画在首页对话的卡片里，同页会有两份：渐变与遮罩的 id 按实例区分，不然 url(#…) 都指向第一份。
-export function Rings({ rings, className }: { rings: RingValue[]; className?: string }) {
+export function Rings({
+  rings,
+  className,
+  unavailable = false,
+}: {
+  rings: RingValue[];
+  className?: string;
+  unavailable?: boolean;
+}) {
   const uid = useId();
   return (
     <svg
       viewBox="0 0 100 100"
       className={className}
       role="img"
-      aria-label={rings
-        .map((ring) => `${ring.label} ${Math.round(ring.value)} / ${ring.goal} ${ring.unit}`)
-        .join(", ")}
+      aria-label={
+        unavailable
+          ? "Activity unavailable"
+          : rings
+              .map((ring) => `${ring.label} ${Math.round(ring.value)} / ${ring.goal} ${ring.unit}`)
+              .join(", ")
+      }
     >
       <defs>
         {RINGS.map((ring) => (
@@ -216,37 +228,45 @@ export function ActivityCard({
   children?: ReactNode;
   className?: string;
 }) {
-  const { data: latest, updatedAt, servedAt } = useStatus<ActivityPayload>(ACTIVITY_PATH, {
+  const { data: latest, updatedAt, servedAt, error, isLoading, awaiting } = useStatus<ActivityPayload>(ACTIVITY_PATH, {
     fallback,
   });
   const stale = useStale(updatedAt ?? latest?.pushedAt, ACTIVITY_STALE_MS, servedAt);
-  const data = stale ? undefined : latest;
+  const unavailable = !latest || stale;
+  const showMeasured = Boolean(latest) && (stale || Boolean(latest?.currentAtSource));
 
   // useMountedAt 是定格时刻，用它判日期会在跨夜后把新上报误判为昨天。
-  const current = Boolean(data?.currentAtSource);
+  const rings = ringValues(latest, showMeasured);
+  const measured = (value: number | null | undefined) => (showMeasured ? (value ?? 0) : 0);
 
-  const rings = ringValues(data, current);
-
-  const extras: Extra[] = !data
+  const extras: Extra[] = !latest
     ? [
         { label: "Steps", value: null },
         { label: "Distance", value: null },
         { label: "Flights", value: null },
       ]
     : [
-        { label: "Steps", value: <NumberFlow value={!current ? 0 : (data.steps ?? 0)} /> },
+        { label: "Steps", value: <NumberFlow value={measured(latest.steps)} /> },
         {
           label: "Distance",
-          value: `${((!current ? 0 : (data.distanceMeters ?? 0)) / 1000).toFixed(2)} km`,
+          value: `${(measured(latest.distanceMeters) / 1000).toFixed(2)} km`,
         },
-        { label: "Flights", value: <NumberFlow value={!current ? 0 : (data.flightsClimbed ?? 0)} /> },
+        { label: "Flights", value: <NumberFlow value={measured(latest.flightsClimbed)} /> },
       ];
+  const action =
+    latest && !stale
+      ? "Apple Watch"
+      : !latest && isLoading && !error && !awaiting
+        ? "Loading…"
+        : !latest && awaiting
+          ? "No report"
+          : "Unavailable";
 
   return (
-    <Card label="Activity" action={stale ? "Unavailable" : "Apple Watch"} className={cn("h-full", className)}>
+    <Card label="Activity" action={action} className={cn("h-full", className)}>
       <div className="grid min-w-0 md:grid-cols-2">
-      <div className="grid min-h-44 md:h-[207px] lg:h-[215px] grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 lg:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5">
-        <Rings rings={rings} className="size-32 shrink-0 md:size-36 lg:size-40" />
+      <div className={cn("grid min-h-44 md:h-[207px] lg:h-[215px] grid-cols-[auto_1fr] items-center justify-items-center gap-3 p-4 lg:grid-cols-[auto_1fr_1fr] lg:gap-4 lg:p-5", unavailable && "opacity-40")}>
+        <Rings rings={rings} unavailable={unavailable} className="size-32 shrink-0 md:size-36 lg:size-40" />
 
         <div className="min-w-0">
           <div className="grid gap-1.5">
@@ -260,13 +280,17 @@ export function ActivityCard({
                   <span className="label-mono text-muted-foreground">{ring.label}</span>
                 </div>
                 <div className="truncate font-mono text-lg tabular-nums">
-                  {data ? (
-                    <NumberFlow value={Math.round(ring.value)} />
+                  {latest ? (
+                    stale ? (
+                      <span>{Math.round(ring.value)}</span>
+                    ) : (
+                      <NumberFlow value={Math.round(ring.value)} />
+                    )
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
                   <span className="text-sm text-muted-foreground">
-                    {` / ${data ? ring.goal : "—"} ${ring.unit}`}
+                    {` / ${latest ? ring.goal : "—"} ${ring.unit}`}
                   </span>
                 </div>
               </div>

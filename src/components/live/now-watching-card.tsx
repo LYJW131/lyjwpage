@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
+import { absenceCopy } from "@/lib/absence";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import { NOW_WATCHING_PATH } from "@/lib/paths";
 import { describeDevice, describeMedia } from "@/lib/watching-media";
@@ -183,13 +184,19 @@ export function NowWatchingCard({
   nowFallback: StatusResponse<NowWatchingPayload>;
 }) {
   useLiveEvents();
-  const { data: live } = useStatus<NowWatchingPayload>(NOW_WATCHING_PATH, NOW_REFRESH_MS, {
+  const { data: live, error, awaiting } = useStatus<NowWatchingPayload>(NOW_WATCHING_PATH, NOW_REFRESH_MS, {
     fallback: nowFallback,
   });
   const reduced = useReducedMotion();
   const nowPlaying = live?.nowPlaying ?? null;
 
   return (
+    <>
+    {!live && error ? (
+      <Card id="now-watching" label="Now Watching" action="Emby" className="mt-3 scroll-mt-28">
+        <p className="px-4 py-4 text-sm text-muted-foreground">{absenceCopy(awaiting ? "awaiting" : "failed")}</p>
+      </Card>
+    ) : null}
     <AnimatePresence initial={false}>
       {nowPlaying ? (
         <motion.div
@@ -213,5 +220,6 @@ export function NowWatchingCard({
         </motion.div>
       ) : null}
     </AnimatePresence>
+    </>
   );
 }

@@ -5,6 +5,7 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { gapCopy } from "@/lib/absence";
 import { SERVER_STALE_MS } from "@/lib/freshness";
 import { SERVER_PATH } from "@/lib/paths";
 import type { ServerPayload, ServerTraffic, StatusResponse } from "@/lib/types";
@@ -184,7 +185,7 @@ export function ServerCard({
   fallback: StatusResponse<ServerPayload>;
   className?: string;
 }) {
-  const { data, updatedAt, error, servedAt } = useStatus<ServerPayload>(SERVER_PATH, {
+  const { data, updatedAt, error, servedAt, awaiting, isLoading } = useStatus<ServerPayload>(SERVER_PATH, {
     fallback,
   });
   const stale = useStale(updatedAt ?? data?.pushedAt, SERVER_STALE_MS, servedAt);
@@ -192,11 +193,14 @@ export function ServerCard({
   const location = data ? formatLocation(data) : null;
   const isp = data ? formatIsp(data) : null;
 
-  const action = (() => {
-    if (error && !data) return "No data";
-    if (stale) return "Unavailable";
-    return data?.id ? nodeId(data.id) : "—";
-  })();
+  const action =
+    data?.id && !stale
+      ? nodeId(data.id)
+      : !data && isLoading && !error && !awaiting
+        ? "Loading…"
+        : !data && awaiting
+          ? "No report"
+          : "Unavailable";
 
   return (
     <Card
@@ -205,11 +209,15 @@ export function ServerCard({
       action={<span title={data ? `${data.id} · ${data.hostname}` : undefined}>{action}</span>}
       className={cn("h-full scroll-mt-28", className)}
     >
-      <div className="flex h-full min-h-44 flex-col justify-between gap-3 p-4 lg:p-5">
+      <div className={cn("flex h-full min-h-44 flex-col justify-between gap-3 p-4 lg:p-5", stale && data && "opacity-40")}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate font-medium" title={location ?? undefined}>
-              {location ?? <span className="text-muted-foreground">—</span>}
+              {location ?? (
+                <span className="font-normal text-muted-foreground">
+                  {gapCopy({ loading: isLoading, awaiting, error }, "—")}
+                </span>
+              )}
             </div>
             <div className="truncate text-sm text-muted-foreground" title={isp ?? undefined}>
               {isp ?? "—"}

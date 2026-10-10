@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { MacBookProIcon } from "@/components/ui/device-icons";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { absenceCopy, combinedAbsence } from "@/lib/absence";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useSiteDay } from "@/hooks/use-site-day";
 import { useConfirmedClockStale, useStale } from "@/hooks/use-stale";
@@ -1019,21 +1020,28 @@ export function VibeCodingCard({
   className?: string;
 }) {
   useLiveEvents();
-  const { data: usage, servedAt: usageServedAt } = useStatus<CodingUsagePayload>(CODING_PATH, REFRESH_MS, { fallback });
-  const {
-    data: now,
-    servedAt: nowServedAt,
-    isValidating: nowValidating,
-  } = useStatus<CodingNowPayload>(CODING_NOW_PATH, REFRESH_MS, { fallback: nowFallback });
-  const { data: limits, servedAt: limitsServedAt } = useStatus<AgentLimitsPayload>(LIMITS_PATH, {
-    fallback: limitsFallback,
-  });
+  const usageState = useStatus<CodingUsagePayload>(CODING_PATH, REFRESH_MS, { fallback });
+  const nowState = useStatus<CodingNowPayload>(CODING_NOW_PATH, REFRESH_MS, { fallback: nowFallback });
+  const limitsState = useStatus<AgentLimitsPayload>(LIMITS_PATH, { fallback: limitsFallback });
+  const usage = usageState.data;
+  const now = nowState.data;
+  const limits = limitsState.data;
   const clocks = useMemo<FirstFrameClocks>(
-    () => ({ usage: usageServedAt, now: nowServedAt, nowValidating, limits: limitsServedAt }),
-    [usageServedAt, nowServedAt, nowValidating, limitsServedAt],
+    () => ({
+      usage: usageState.servedAt,
+      now: nowState.servedAt,
+      nowValidating: nowState.isValidating,
+      limits: limitsState.servedAt,
+    }),
+    [usageState.servedAt, nowState.servedAt, nowState.isValidating, limitsState.servedAt],
   );
   const siteDay = useSiteDay();
-  const today = siteDay ?? (usageServedAt != null ? zonedDay(usageServedAt, site.timezone) : null);
+  const today = siteDay ?? (usageState.servedAt != null ? zonedDay(usageState.servedAt, site.timezone) : null);
+  const blank = combinedAbsence([
+    { hasData: Boolean(usage), loading: usageState.isLoading, awaiting: usageState.awaiting, error: usageState.error },
+    { hasData: Boolean(now), loading: nowState.isLoading, awaiting: nowState.awaiting, error: nowState.error },
+    { hasData: Boolean(limits), loading: limitsState.isLoading, awaiting: limitsState.awaiting, error: limitsState.error },
+  ]);
   const macDeclaredOffline = Boolean(now?.declaredOffline);
   const rows = usage || now || limits ? codingAgentRows(usage ?? null, now ?? null, limits ?? null) : null;
   const totalFailing = (rows ?? []).flatMap((row) =>
@@ -1073,6 +1081,10 @@ export function VibeCodingCard({
             clocks={clocks}
           />
         </>
+      ) : blank ? (
+        <div className="px-4 py-5 text-sm text-muted-foreground md:px-5">
+          {absenceCopy(blank)}
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-5 border-b border-line px-5 py-5 md:grid-cols-3">

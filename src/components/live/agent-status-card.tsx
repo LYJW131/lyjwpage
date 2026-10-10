@@ -16,6 +16,7 @@ import { Modal } from "@/components/ui/modal";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { gapCopy } from "@/lib/absence";
 import {
   indicatorLabel,
   type AgentIndicator,
@@ -219,7 +220,7 @@ export function AgentStatusCard({
   className?: string;
 }) {
   useLiveEvents();
-  const { data: fetched, error, servedAt } = useStatus<AgentStatusPayload>(AGENT_STATUS_PATH, { fallback });
+  const { data: fetched, error, servedAt, awaiting } = useStatus<AgentStatusPayload>(AGENT_STATUS_PATH, { fallback });
   const stale = useStale(fetched?.fetchedAt, AGENT_STATUS_STALE_MS, servedAt);
   const data = fetched && stale
     ? {
@@ -321,7 +322,7 @@ export function AgentStatusCard({
         </div>
       ) : (
         <p className="px-4 py-5 text-sm text-muted-foreground md:px-5">
-          {error ? "Status unavailable" : "Checking status"}
+          {error ? gapCopy({ awaiting, error }) : "Checking status"}
         </p>
       )}
       {open && <Detail agent={open} onClose={close} />}

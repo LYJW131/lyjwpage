@@ -6,6 +6,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useStatus } from "@/hooks/use-status";
+import { gapCopy } from "@/lib/absence";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import { workoutMetrics } from "@/lib/workout-display";
 import type { StatusResponse, Workout, WorkoutsPayload } from "@/lib/types";
@@ -52,7 +53,7 @@ function WorkoutTile({ workout }: { workout: Workout }) {
 }
 
 export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsPayload> }) {
-  const { data, error } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, { fallback });
+  const { data, error, isLoading, awaiting } = useStatus<WorkoutsPayload>(STATUS_VIEWS.workouts.path, { fallback });
   const listRef = useRef<HTMLUListElement>(null);
   const items = data?.items.slice(0, 10) ?? [];
   useEffect(() => {
@@ -80,7 +81,7 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
   return (
     <section id="workouts" aria-label="Recent workouts" className="@container flex min-w-0 flex-col justify-center border-t border-line md:border-t-0 md:border-l">
       {!data ? (
-        <p className="p-4 text-sm text-muted-foreground">{error ? "Workout history unavailable" : "Awaiting workout report"}</p>
+        <p className="p-4 text-sm text-muted-foreground">{gapCopy({ loading: isLoading, awaiting, error })}</p>
       ) : data.items.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">No readable workouts</p>
       ) : (

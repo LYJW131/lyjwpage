@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
+import { absenceCopy, questSurface } from "@/lib/absence";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import type { StatusResponse } from "@/lib/types";
@@ -76,11 +77,24 @@ function QuestHero({ playing }: { playing: QuestPlaying }) {
 
 export function QuestNowCard({ nowFallback }: { nowFallback: StatusResponse<QuestNow> }) {
   useLiveEvents();
-  const { data } = useStatus<QuestNow>(STATUS_VIEWS.questNow.path, NOW_REFRESH_MS, { fallback: nowFallback });
+  const { data, error, awaiting } = useStatus<QuestNow>(STATUS_VIEWS.questNow.path, NOW_REFRESH_MS, { fallback: nowFallback });
   const reduced = useReducedMotion();
-  const playing = data?.playing ?? null;
+  const surface = questSurface(data, Boolean(error) && !data);
+  const playing = surface === "playing" ? data?.playing ?? null : null;
+  const quiet =
+    surface === "failed"
+      ? absenceCopy(awaiting ? "awaiting" : "failed")
+      : surface === "unavailable"
+        ? absenceCopy("unavailable")
+        : null;
 
   return (
+    <>
+    {quiet ? (
+      <Card id="now-gaming" label="Now Playing" action="Meta Quest" className="mt-3 scroll-mt-28">
+        <p className="px-4 py-4 text-sm text-muted-foreground">{quiet}</p>
+      </Card>
+    ) : null}
     <AnimatePresence initial={false}>
       {playing ? (
         <motion.div
@@ -99,5 +113,6 @@ export function QuestNowCard({ nowFallback }: { nowFallback: StatusResponse<Ques
         </motion.div>
       ) : null}
     </AnimatePresence>
+    </>
   );
 }

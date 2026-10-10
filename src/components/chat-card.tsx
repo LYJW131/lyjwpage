@@ -8,6 +8,7 @@ import { Rings, ringValues } from "@/components/live/activity-card";
 import { mediaApp, mergeVariants, playTime } from "@/components/live/playstation-card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveNowListening, useStale } from "@/hooks/use-stale";
+import { READING_FAILED, READING_LOADING } from "@/lib/absence";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
@@ -100,7 +101,7 @@ function Frame({ title, aside, compact = false, children }: { title: string; asi
 function Placeholder({ failed, children }: { failed: boolean; children?: ReactNode }) {
   return (
     <div className={cn("px-3 py-3 text-xs text-muted-foreground", !failed && !children && "animate-pulse")}>
-      {failed ? "Couldn't load this right now." : (children ?? "Loading…")}
+      {failed ? READING_FAILED : (children ?? READING_LOADING)}
     </div>
   );
 }

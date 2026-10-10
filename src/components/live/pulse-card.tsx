@@ -10,6 +10,7 @@ import { DevToggle, DevToggleSlot, isDev } from "@/components/dev-toggles";
 import { Card } from "@/components/ui/card";
 import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useStatus } from "@/hooks/use-status";
+import { absenceCopy, gapCopy } from "@/lib/absence";
 import { PULSE_PATH } from "@/lib/paths";
 import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC } from "@shared/pulse-coding";
 import { columnRows } from "@/lib/pulse-columns";
@@ -502,7 +503,7 @@ export function PulseCard({
   fallback: StatusResponse<PulsePayload>;
   className?: string;
 }) {
-  const { data } = useStatus<PulsePayload>(PULSE_PATH, REFRESH_MS, { fallback });
+  const { data, error, isLoading, awaiting } = useStatus<PulsePayload>(PULSE_PATH, REFRESH_MS, { fallback });
   const range = data?.window ?? { from: 0, to: 0 };
   const lanes = data?.lanes;
   const traceStyle = useSyncExternalStore(subscribeTraceStyle, readTraceStyle, () => "hatched" as const);
@@ -525,6 +526,14 @@ export function PulseCard({
       return null;
     }
   };
+
+  if (!data) {
+    return (
+      <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
+        <p className="p-4 text-sm text-muted-foreground lg:p-5">{gapCopy({ loading: isLoading, awaiting, error })}</p>
+      </Card>
+    );
+  }
 
   return (
     <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
@@ -549,7 +558,11 @@ export function PulseCard({
               </span>
               <div ref={domain === "activity" ? activityRef : undefined} className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-start-auto">
                 {empty ? (
-                  <span className="text-xs text-muted-foreground">No data</span>
+                  <span className="text-xs text-muted-foreground">
+                    {lanes && typeof lanes === "object" && lanes[domain] && typeof lanes[domain] === "object" && !model
+                      ? absenceCopy("unavailable")
+                      : "No data"}
+                  </span>
                 ) : (
                   <LaneView label={label} model={model} range={range} />
                 )}

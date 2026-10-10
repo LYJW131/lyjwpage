@@ -48,7 +48,9 @@ export async function statusEnvelope<T>(
       } else {
         console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
       }
-      return { ok: false, error: error instanceof AwaitingReport ? message : "状态暂不可用" };
+      return error instanceof AwaitingReport
+        ? { ok: false, error: message, awaiting: true }
+        : { ok: false, error: "状态暂不可用" };
     }
   });
 }

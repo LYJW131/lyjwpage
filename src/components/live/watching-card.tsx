@@ -7,6 +7,7 @@ import Image from "@/components/app-image";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
+import { gapCopy } from "@/lib/absence";
 import { NOW_WATCHING_PATH, WATCHING_PATH } from "@/lib/paths";
 import { stableKeys } from "@/lib/keys";
 import { isNowWatching, pinNowWatching, watchingIdentity } from "@/lib/watching";
@@ -170,7 +171,7 @@ export function WatchingRow({
   nowFallback: StatusResponse<NowWatchingPayload>;
 }) {
   useLiveEvents();
-  const { data: list, error, isLoading } = useStatus<WatchingPayload>(
+  const { data: list, error, isLoading, awaiting } = useStatus<WatchingPayload>(
     WATCHING_PATH,
     LIST_REFRESH_MS,
     {
@@ -224,12 +225,12 @@ export function WatchingRow({
 
   const keys = stableKeys((data?.items ?? []).map(watchingIdentity));
 
-  if (isLoading && !data) return <Skeleton />;
+  if (isLoading && !list && !error) return <Skeleton />;
 
-  if (error || !data?.items.length) {
+  if (!list || !data?.items.length) {
     return (
       <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-line text-sm text-muted-foreground">
-        {error ? "Emby not connected" : "Nothing watched recently"}
+        {!list ? gapCopy({ awaiting, error }) : "Nothing watched recently"}
       </div>
     );
   }

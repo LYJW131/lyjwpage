@@ -45,6 +45,7 @@ export type StatusState<T> = {
   data: T | undefined;
   updatedAt: number | undefined;
   error: string | undefined;
+  awaiting: boolean;
   isLoading: boolean;
   isValidating: boolean;
   servedAt: number | undefined;
@@ -182,6 +183,7 @@ export function useStatus<T>(
     data: data?.ok ? data.data : undefined,
     updatedAt: data?.ok ? data.updatedAt : undefined,
     error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
+    awaiting: Boolean(data && !data.ok && data.awaiting),
     isLoading,
     isValidating,
     servedAt: fallback.ok ? fallback.servedAt : undefined,

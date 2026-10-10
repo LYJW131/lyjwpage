@@ -529,7 +529,7 @@ export type GithubRepoCommit = {
 // 信封不带逐次变化的时间戳，否则每次响应字节都不同，SWR 深比较失效、卡片每轮重渲染；客户端进 SWR 前必须剥掉 servedAt（lib/status-reads 的 withoutServedAt）。
 export type StatusResponse<T> =
   | { ok: true; data: T; updatedAt?: number; servedAt?: number }
-  | { ok: false; error: string };
+  | { ok: false; error: string; awaiting?: true };
 
 export type IngestFailure = { ok: false; error: string };
 

@@ -44,7 +44,7 @@
 | `GET` | `/api/status/<模块>/now` | 公开 | 状态即时快照查询 |
 
 ### 信封与容错设计
-- 所有 `/api/status/*` 端点共用统一信封格式：`{ ok: true, data: ... }` 或 `{ ok: false, error: ... }`。
+- 所有 `/api/status/*` 端点共用统一信封格式：`{ ok: true, data: ... }` 或 `{ ok: false, error: ... }`。还没收到上报时，失败信封额外带 `awaiting: true`（源：`src/lib/api.ts#statusEnvelope`），`error` 文案不变。
 - 上游故障或源离线时返回 200 HTTP 状态码并在信封内标记 `{ ok: false }`，避免 5xx 错误导致前端 SWR 全局打崩。
 
 ### 推送通信机制（Cloudflare WebSocket Hibernation）

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AwaitingReport } from "./awaiting-report.ts";
 import { statusEnvelope } from "./api.ts";
 import { LagResult } from "./lag-result.ts";
 import { acceptPush, guardPolled, withoutServedAt, writeGeneration } from "./status-reads.ts";
@@ -83,4 +84,18 @@ test("statusEnvelope: 成功的信封带出站时刻，可滞后层的 updatedAt
   });
   assert.equal(failed.ok, false);
   assert.equal("servedAt" in failed, false);
+  if (!failed.ok) {
+    assert.equal(failed.error, "状态暂不可用");
+    assert.equal(failed.awaiting, undefined);
+  }
+
+  const awaiting = await statusEnvelope(async () => {
+    throw new AwaitingReport("尚未收到");
+  });
+  assert.equal(awaiting.ok, false);
+  if (!awaiting.ok) {
+    assert.equal(awaiting.error, "尚未收到");
+    assert.equal(awaiting.awaiting, true);
+    assert.equal("servedAt" in awaiting, false);
+  }
 });

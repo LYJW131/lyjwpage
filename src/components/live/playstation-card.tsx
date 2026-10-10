@@ -17,6 +17,7 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useConfirmedClockStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { gapCopy } from "@/lib/absence";
 import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
 import { stableKeys } from "@/lib/keys";
 import { foldService } from "@/lib/playstation-entitlements";
@@ -535,14 +536,14 @@ export function PlaystationRow({
 
   const keys = stableKeys(tiles.map((tile) => tile.titleId));
 
-  if (list.isLoading && presence.isLoading && !list.data && !presence.data) {
+  if (list.isLoading && presence.isLoading && !list.data && !presence.data && !list.error) {
     return <Skeleton />;
   }
 
-  if ((list.error && !list.data) || !tiles.length) {
+  if (!list.data || !tiles.length) {
     return (
       <div className="flex h-16 items-center justify-center rounded-md border border-dashed border-line text-sm text-muted-foreground">
-        {list.error && !list.data ? "No PlayStation telemetry yet" : "No recent games"}
+        {!list.data ? gapCopy({ loading: list.isLoading, awaiting: list.awaiting, error: list.error }) : "No recent games"}
       </div>
     );
   }

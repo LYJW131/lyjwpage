@@ -13,6 +13,7 @@ import {
   POWER_BANK_MODEL,
   ankerModelLabel,
 } from "@/lib/charging-device";
+import { absenceCopy, absenceKind, chargingReadingLost } from "@/lib/absence";
 import { powerBankActive } from "@/lib/home-layout";
 import { POWERBANK_PATH } from "@/lib/paths";
 import type {
@@ -76,7 +77,7 @@ export function PowerBankCard({
 }) {
   useLiveEvents();
   const local = useLocalCharging().powerBank;
-  const { data: remote, error, isLoading, isValidating, servedAt } = useStatus<PowerBankPayload>(
+  const { data: remote, error, isLoading, isValidating, servedAt, awaiting } = useStatus<PowerBankPayload>(
     POWERBANK_PATH,
     local ? 0 : REFRESH_MS,
     {
@@ -84,11 +85,13 @@ export function PowerBankCard({
       revalidateOnFocus: !local,
     },
   );
+  const raw = local ?? remote;
   const data = useLiveChargingFeed(
-    local ?? remote,
+    raw,
     local ? { validating: false } : { validating: isValidating, servedAt },
   );
 
+  const readingLost = chargingReadingLost(raw, data);
   const connected = Boolean(data?.connected);
   const battery = data?.battery ?? null;
   const charging = connected && Boolean(data?.charging);
@@ -96,9 +99,10 @@ export function PowerBankCard({
   const discharging = connected && (data?.outputPower ?? 0) > 1;
   // 隐藏时仍须挂载，否则无法收到让卡片恢复的轮询和推送。
   const flowing = powerBankActive(data);
+  const hold = readingLost && powerBankActive(raw);
   useEffect(() => {
-    onActiveChange?.(flowing);
-  }, [flowing, onActiveChange]);
+    onActiveChange?.(flowing || hold);
+  }, [flowing, hold, onActiveChange]);
   const onDock = connected && Boolean((data?.ports ?? []).find((p) => p.id === "B")?.active);
   const inputSources = connected
     ? (data?.ports ?? []).filter((port) => port.direction === "in").length
@@ -106,8 +110,13 @@ export function PowerBankCard({
   const dualInput = inputSources >= 2;
 
   const summary = (() => {
-    if (isLoading && !data) return "Loading";
-    if (error) return "No telemetry yet";
+    const kind = absenceKind({
+      loading: isLoading && !data,
+      awaiting: !data && awaiting,
+      error: data ? undefined : error,
+      unavailable: readingLost,
+    });
+    if (kind !== "known") return absenceCopy(kind);
     if (!connected) return "Power bank disconnected";
     if (limited) return "Overheated, charging paused";
     const inflow = dualInput ? "Dual-port fast charge" : onDock ? "Dock fast charge" : null;
