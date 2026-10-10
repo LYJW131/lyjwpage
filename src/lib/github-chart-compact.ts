@@ -25,21 +25,6 @@ const MONTHS = [
   "Dec",
 ] as const;
 
-const MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
-
 export type ChartLabel = {
   x: number;
   y: number;
@@ -131,32 +116,17 @@ export function chartSize(weekCount: number) {
   return { width: LEFT + weekCount * STEP, height: TOP + 7 * STEP };
 }
 
-function ordinal(day: number): string {
-  const rem100 = day % 100;
-  if (rem100 >= 11 && rem100 <= 13) return `${day}th`;
-  switch (day % 10) {
-    case 1:
-      return `${day}st`;
-    case 2:
-      return `${day}nd`;
-    case 3:
-      return `${day}rd`;
-    default:
-      return `${day}th`;
-  }
-}
-
 export function formatDayHeading(date: string): string {
   const month = Number(date.slice(5, 7));
   const day = Number(date.slice(8, 10));
-  return `${MONTH_NAMES[month - 1] ?? date.slice(5, 7)} ${ordinal(day)}`;
+  return `${MONTHS[month - 1] ?? date.slice(5, 7)} ${day}`;
 }
 
 export function formatContributionLabel(date: string, count: number): string {
   const when = formatDayHeading(date);
   if (count <= 0) return `No contributions on ${when}.`;
   if (count === 1) return `1 contribution on ${when}.`;
-  return `${count} contributions on ${when}.`;
+  return `${count.toLocaleString("en-US")} contributions on ${when}.`;
 }
 
 export function heatmapScores(counts: readonly number[]): number[] {

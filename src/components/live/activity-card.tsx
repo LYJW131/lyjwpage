@@ -72,7 +72,7 @@ export function Rings({ rings, className }: { rings: RingValue[]; className?: st
       className={className}
       role="img"
       aria-label={rings
-        .map((ring) => `${ring.label} ${Math.round(ring.value)} / ${ring.goal} ${ring.unit}`)
+        .map((ring) => `${ring.label} ${Math.round(ring.value).toLocaleString("en-US")} / ${ring.goal.toLocaleString("en-US")} ${ring.unit}`)
         .join(", ")}
     >
       <defs>
@@ -234,12 +234,12 @@ export function ActivityCard({
         { label: "Flights", value: null },
       ]
     : [
-        { label: "Steps", value: <NumberFlow value={!current ? 0 : (data.steps ?? 0)} /> },
+        { label: "Steps", value: <NumberFlow value={!current ? 0 : (data.steps ?? 0)} locales="en-US" /> },
         {
           label: "Distance",
           value: `${((!current ? 0 : (data.distanceMeters ?? 0)) / 1000).toFixed(2)} km`,
         },
-        { label: "Flights", value: <NumberFlow value={!current ? 0 : (data.flightsClimbed ?? 0)} /> },
+        { label: "Flights", value: <NumberFlow value={!current ? 0 : (data.flightsClimbed ?? 0)} locales="en-US" /> },
       ];
 
   return (
@@ -261,12 +261,12 @@ export function ActivityCard({
                 </div>
                 <div className="truncate font-mono text-lg tabular-nums">
                   {data ? (
-                    <NumberFlow value={Math.round(ring.value)} />
+                    <NumberFlow value={Math.round(ring.value)} locales="en-US" />
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
                   <span className="text-sm text-muted-foreground">
-                    {` / ${data ? ring.goal : "—"} ${ring.unit}`}
+                    {` / ${data ? ring.goal.toLocaleString("en-US") : "—"} ${ring.unit}`}
                   </span>
                 </div>
               </div>

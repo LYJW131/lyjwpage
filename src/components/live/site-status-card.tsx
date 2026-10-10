@@ -36,7 +36,7 @@ import type { LighthouseVitals, VercelDeployment, VercelDeploymentsPayload } fro
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
-const time = new Intl.DateTimeFormat("zh-CN", { timeZone: site.timezone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+const time = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : ms < 10 ? `${Number(ms.toFixed(1))}ms` : `${Math.round(ms)}ms`;
 
 function CollectionWindow({ start, end }: { start?: number; end?: number }) {

@@ -36,11 +36,10 @@ function avatarSrc(url: string): string {
 }
 
 const commitTimeFormat = new Intl.DateTimeFormat("en-US", {
-  month: "numeric",
+  month: "short",
   day: "numeric",
-  hour: "2-digit",
+  hour: "numeric",
   minute: "2-digit",
-  hourCycle: "h23",
   timeZone: site.timezone,
 });
 
@@ -48,8 +47,7 @@ function formatCommitTime(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  const parts = Object.fromEntries(commitTimeFormat.formatToParts(date).map((part) => [part.type, part.value]));
-  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
+  return commitTimeFormat.format(date);
 }
 
 function ContributorRow({

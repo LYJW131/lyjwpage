@@ -9,7 +9,7 @@ export async function getReportersStatus(): Promise<LagResult<ReportersPayload>>
     readLagEntry<ReporterStat>(LAG_KEYS.reporterServer),
     readLagEntry<ReporterStat>(LAG_KEYS.reporterAgents),
   ]);
-  if (!server && !agents) throw new AwaitingReport("尚未收到常驻上报器的账本");
+  if (!server && !agents) throw new AwaitingReport("No reporter ledger yet");
   return new LagResult(
     { reporters: { "server-reporter": server?.data ?? null, "agents-reporter": agents?.data ?? null } },
     Math.max(server?.updatedAt ?? 0, agents?.updatedAt ?? 0),

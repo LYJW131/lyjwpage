@@ -118,6 +118,7 @@ export function ChargerCard({
             {connected ? (
               <NumberFlow
                 value={power}
+                locales="en-US"
                 format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
               />
             ) : (

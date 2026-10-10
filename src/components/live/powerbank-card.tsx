@@ -163,6 +163,7 @@ export function PowerBankCard({
             {connected && battery != null ? (
               <NumberFlow
                 value={battery}
+                locales="en-US"
                 format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }}
               />
             ) : (

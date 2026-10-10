@@ -18,7 +18,7 @@ test("activity reads the rings from the lag layer: pushedAt is updatedAt and the
   installLagStoreForTests(async (key) => (key === LAG_KEYS.activity ? entry : null));
   t.after(() => installLagStoreForTests(null));
 
-  await assert.rejects(getActivitySnapshot, /尚未收到活动圆环上报/);
+  await assert.rejects(getActivitySnapshot, /No activity ring report yet/);
   entry = { updatedAt, data: { ...rings, date: localDate(Date.now(), rings.secondsFromGMT) } };
   const today = await getActivitySnapshot();
   assert.equal(today.updatedAt, updatedAt);

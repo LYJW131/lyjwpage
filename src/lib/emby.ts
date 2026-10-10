@@ -4,7 +4,7 @@ import { type NowWatchingPayload, nowWatchingPayload, type WatchingPayload, watc
 
 export async function getWatching(options: { limit?: number } = {}): Promise<WatchingPayload> {
   const [stored, objectKeys] = await Promise.all([getResume(), getImageObjectKeys()]);
-  if (!stored) throw new AwaitingReport("尚未收到 Emby 推送");
+  if (!stored) throw new AwaitingReport("No Emby report yet");
 
   return watchingPayload(stored.items, objectKeys, options);
 }

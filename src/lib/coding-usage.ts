@@ -18,7 +18,7 @@ import { buildCodingNowAgents } from "@shared/coding-usage-view";
 export async function getCodingUsage(): Promise<CodingUsagePayload> {
   const raw = await withStorage((storage) => storage.get(codingViewKey()), null);
   const view = parseStoredView(raw);
-  if (!view) throw new AwaitingReport("尚未收到 coding 用量");
+  if (!view) throw new AwaitingReport("No coding usage report yet");
   return view;
 }
 
@@ -37,6 +37,6 @@ export async function getCodingNow(): Promise<CodingNowPayload> {
 
 export async function getCodingYear(): Promise<CodingYearPayload> {
   const year = parseStoredYear(await withStorage((storage) => storage.get(codingYearKey()), null));
-  if (!year) throw new AwaitingReport("尚未收到 coding 用量");
+  if (!year) throw new AwaitingReport("No coding usage report yet");
   return encodeCodingYear(year, Date.now());
 }

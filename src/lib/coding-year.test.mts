@@ -75,9 +75,9 @@ test("年度编码：今天由出口按钟现算，用量停了也不跟着少�
 });
 
 test("hover 文案带 compact token", () => {
-  assert.equal(formatDayHeading("2026-08-08"), "August 8th");
-  assert.equal(formatTokenLabel("2026-08-08", 0), "No tokens on August 8th.");
-  assert.equal(formatTokenLabel("2026-08-08", 1200), "1.2k tokens on August 8th.");
+  assert.equal(formatDayHeading("2026-08-08"), "Aug 8");
+  assert.equal(formatTokenLabel("2026-08-08", 0), "No tokens on Aug 8.");
+  assert.equal(formatTokenLabel("2026-08-08", 1200), "1.2k tokens on Aug 8.");
   assert.equal(compactTokens(12_400), "12k");
   assert.equal(addDays(ORIGIN, 91), "2025-11-16");
 });

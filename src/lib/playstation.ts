@@ -7,13 +7,13 @@ import type {
 
 export async function getPlaying(): Promise<PlaystationPlayingPayload> {
   const payload = await getPlaystationPlayedGames();
-  if (!payload) throw new AwaitingReport("尚未收到 PlayStation 最近游玩遥测");
+  if (!payload) throw new AwaitingReport("No PlayStation play history yet");
   return payload;
 }
 
 export async function getPlayingNow(): Promise<PlaystationPresencePayload> {
   const payload = await getPlaystationPresence();
-  if (!payload) throw new AwaitingReport("尚未收到 PlayStation 在线状态遥测");
+  if (!payload) throw new AwaitingReport("No PlayStation presence yet");
   return payload;
 }
 export { normalizePlaystationPlayedGames, normalizePlaystationPresence } from "@shared/playstation";

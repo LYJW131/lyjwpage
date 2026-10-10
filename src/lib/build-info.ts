@@ -14,26 +14,20 @@ export const commit = RAW_COMMIT
     }
   : null;
 
-// 固定 h23；en-US 的 hour12:false 会把午夜格式化成 24。
 const FORMATTER = new Intl.DateTimeFormat("en-US", {
   timeZone: site.timezone,
   year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
   minute: "2-digit",
   second: "2-digit",
-  hourCycle: "h23",
 });
 
 function formatBuildTime(iso: string): string | null {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
-
-  const parts = Object.fromEntries(
-    FORMATTER.formatToParts(date).map((part) => [part.type, part.value]),
-  );
-  return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+  return FORMATTER.format(date);
 }
 
 export const buildTime = RAW_BUILD_TIME ? formatBuildTime(RAW_BUILD_TIME) : null;

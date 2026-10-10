@@ -39,11 +39,10 @@ function formattersFor(timezone: string): ClockFormatters {
       second: "2-digit",
       hourCycle: "h23",
     }),
-    calendar: new Intl.DateTimeFormat("en-CA", {
+    calendar: new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
+      month: "short",
+      day: "numeric",
     }),
     weekday: new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
@@ -66,10 +65,9 @@ function timeParts(now: number, timezone: string) {
 function clockParts(now: number, timezone: string) {
   const date = new Date(now);
   const { calendar, weekday } = formattersFor(timezone);
-  const calendarParts = calendar.formatToParts(date);
   return {
     ...timeParts(now, timezone),
-    date: `${part(calendarParts, "year")}/${part(calendarParts, "month")}/${part(calendarParts, "day")}`,
+    date: calendar.format(date),
     weekday: weekday.format(date),
   };
 }
@@ -284,7 +282,7 @@ export function TimezoneCard({
           </div>
 
           <div className="text-sm font-medium text-muted-foreground">
-            {clock ? `${clock.date} ${clock.weekday}` : "--"}
+            {clock ? `${clock.weekday}, ${clock.date}` : "--"}
           </div>
 
           <div

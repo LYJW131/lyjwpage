@@ -98,6 +98,7 @@ function Rate({ label, bytesPerSec }: { label: string; bytesPerSec: number | nul
             <span className="text-2xl font-medium tracking-tight tabular-nums">
               <NumberFlow
                 value={parts.value}
+                locales="en-US"
                 format={parts.unit === "B/s" ? RATE_FORMAT_BYTES : RATE_FORMAT_SCALED}
               />
             </span>

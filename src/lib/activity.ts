@@ -15,6 +15,6 @@ export function withActivityFreshness(
 }
 
 export async function getActivitySnapshot(): Promise<LagResult<ActivityPayload>> {
-  const stored = await loadLag<ActivityStatus>(LAG_KEYS.activity, "尚未收到活动圆环上报");
+  const stored = await loadLag<ActivityStatus>(LAG_KEYS.activity, "No activity ring report yet");
   return stored.map((activity) => withActivityFreshness({ ...activity, pushedAt: stored.updatedAt, currentAtSource: true }));
 }
