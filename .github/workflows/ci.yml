@@ -19,8 +19,8 @@ env:
 
 jobs:
   check:
-    # 仓库变量 SELF_HOSTED_RUNNER=on 时走自建 runner；只放行本仓库分支，fork 来的 PR 不上自建机。机器离线时把变量关掉，任务会一直排队等它
-    runs-on: ${{ vars.SELF_HOSTED_RUNNER == 'on' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","lyjwpage"]') || 'ubuntu-latest' }}
+    # 仓库变量 SELF_HOSTED_RUNNER=on 时走自建 runner；只放行本仓库分支；fork 来的 PR 和访客构建的 PR（claude/build-*，见 shared/build-routine.ts#branchForRun）含外人能左右的代码，留在托管机。机器离线时把变量关掉，任务会一直排队等它
+    runs-on: ${{ vars.SELF_HOSTED_RUNNER == 'on' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'claude/build-') && github.event.pull_request.user.login != 'lyjw131[bot]')) && fromJSON('["self-hosted","linux","x64","lyjwpage"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
 
