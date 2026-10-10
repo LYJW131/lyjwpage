@@ -717,7 +717,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 // 站主要求隐私说明跟随访客消息的语言（中文或英文），是「界面文案英文」的例外。
-// destinations 须列全对话数据的每个出站去向；新增模型供应商、第三方工具或日志出口时同步改两种语言。
+// destinations 须列全对话数据的每个出站去向；新增模型供应商、第三方工具或日志出口时同步改两种语言；Anthropic 的保留期按 docs/ops-facts.md 记的组织数据保留设置写，两边同步。
 type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
 const CONSENT_COPY: Record<ChatConsentLanguage, ConsentCopy> = {
   en: {
@@ -728,7 +728,7 @@ const CONSENT_COPY: Record<ChatConsentLanguage, ConsentCopy> = {
       { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and this conversation's history, and keeps your IP address for the rate-limit window. No transcripts are stored; logs hold request metadata, usage counts and errors, not your message text." },
       { name: "Cloudflare Turnstile", detail: "checks that you're human and receives your IP address." },
       { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message plus short excerpts of a few earlier ones to pick which Claude model answers." },
-      { name: "Anthropic (Claude API)", detail: "receives the whole conversation to write the reply and runs any web searches. Anthropic keeps API data for up to 30 days, longer if flagged for safety review, and doesn't train on it." },
+      { name: "Anthropic (Claude API)", detail: "receives the whole conversation to write the reply and runs any web searches. Anthropic keeps API data for 30 days and may access it for safety review (longer if flagged); it isn't used for training." },
       { name: "Sentry", detail: "receives error reports; chat text is masked in session replays and request bodies aren't sent." },
       { name: "GitHub", detail: "only if you file a build plan: it becomes a public issue or pull request, and a build also sends the plan to Anthropic's Claude Code." },
       { name: "This browser", detail: "saves your conversations and this consent." },
@@ -746,7 +746,7 @@ const CONSENT_COPY: Record<ChatConsentLanguage, ConsentCopy> = {
       { name: "Cloudflare Workers（本站后端）", detail: "转发你的消息和本次对话的历史，并在限流窗口内保留你的 IP 地址。不保存对话记录，日志里只有请求元数据、用量计数和错误，没有消息原文。" },
       { name: "Cloudflare Turnstile", detail: "验证你是真人，会收到你的 IP 地址。" },
       { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取你最新的消息和前几条消息的简短摘录，决定由哪个 Claude 模型回答。" },
-      { name: "Anthropic（Claude API）", detail: "收到完整对话来生成回复，并执行联网搜索。Anthropic 最多保留 API 数据 30 天，被安全审查标记的会更久，且不用于训练。" },
+      { name: "Anthropic（Claude API）", detail: "收到完整对话来生成回复，并执行联网搜索。Anthropic 保留 API 数据 30 天，可因安全原因查看，被标记的会保留更久；不用于训练。" },
       { name: "Sentry", detail: "接收错误报告；会话录像里对话文字被遮住，也不上传请求正文。" },
       { name: "GitHub", detail: "仅当你提交构建计划时：计划会成为公开的 issue 或 pull request，发起构建还会把计划发给 Anthropic 的 Claude Code。" },
       { name: "这个浏览器", detail: "保存你的对话和这次同意。" },
