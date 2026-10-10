@@ -143,6 +143,7 @@ struct WatchingItem: Decodable, Sendable, Equatable, Identifiable {
     let type: WatchingType
     let year: Int?
     let link: String?
+    // ISO-8601 UTC。源：reporters/emby-reporter/src/item.ts#normalizePlayedAt
     let playedAt: String?
 }
 

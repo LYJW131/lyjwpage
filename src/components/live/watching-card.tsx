@@ -9,7 +9,8 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { NOW_WATCHING_PATH, WATCHING_PATH } from "@/lib/paths";
 import { stableKeys } from "@/lib/keys";
-import { isNowWatching, pinNowWatching, watchingIdentity } from "@/lib/watching";
+import { formatWatchedOn } from "@/lib/relative-time";
+import { isNowWatching, pinNowWatching, playedAtMs, watchingIdentity } from "@/lib/watching";
 import {
   LIST_DURATION,
   LIST_TRANSITION,
@@ -57,6 +58,7 @@ function Tile({
   positionMs,
   durationMs,
   eager,
+  reserveWatched,
 }: {
   item: WatchingItem;
   live: boolean;
@@ -65,6 +67,7 @@ function Tile({
   positionMs: number | null;
   durationMs: number | null;
   eager?: boolean;
+  reserveWatched?: boolean;
 }) {
   const progress = live && liveProgress != null ? liveProgress : item.progress;
 
@@ -80,6 +83,7 @@ function Tile({
           animationPlayState: (paused ? "paused" : "running") as "paused" | "running",
         }
       : { width: `${Math.round(progress)}%` };
+  const watchedMs = playedAtMs(item.playedAt);
 
   return (
     <a
@@ -114,7 +118,7 @@ function Tile({
           </span>
         )}
 
-        <div className="absolute inset-x-0 bottom-0 h-1">
+        <div className="absolute inset-x-0 bottom-0 h-1 bg-background/45">
           <div
             className={cn(
               "h-full bg-live",
@@ -135,6 +139,14 @@ function Tile({
         >
           {item.subtitle || "—"}
         </div>
+        {reserveWatched && (
+          <time
+            dateTime={watchedMs == null ? undefined : new Date(watchedMs).toISOString()}
+            className="truncate text-[10px] leading-4 text-muted-foreground"
+          >
+            {watchedMs == null ? "\u00a0" : `Watched ${formatWatchedOn(watchedMs)}`}
+          </time>
+        )}
       </div>
     </a>
   );
@@ -223,6 +235,7 @@ export function WatchingRow({
   }, [firstIsLive, firstItemId, nowPlayingId, reduced]);
 
   const keys = stableKeys((data?.items ?? []).map(watchingIdentity));
+  const reserveWatched = (data?.items ?? []).some((item) => playedAtMs(item.playedAt) != null);
 
   if (isLoading && !data) return <Skeleton />;
 
@@ -270,6 +283,7 @@ export function WatchingRow({
                   positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
                   durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
                   eager={index < 4}
+                  reserveWatched={reserveWatched}
                 />
               </motion.div>
             );

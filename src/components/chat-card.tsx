@@ -12,7 +12,7 @@ import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwor
 import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
 import { PLAYSTATION_IMAGE_SCALE, playstationImage } from "@/lib/playstation-image";
-import { formatRelativeTime } from "@/lib/relative-time";
+import { formatRelativeTime, formatWatchedOn } from "@/lib/relative-time";
 import { fetchStatus, guardPolled } from "@/lib/status-reads";
 import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
 import { trackPositionMs } from "@/lib/track-position";
@@ -27,6 +27,7 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { workoutMetrics } from "@/lib/workout-display";
+import { playedAtMs } from "@/lib/watching";
 import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";
 import type { GodChatCard } from "@shared/god-chat";
 
@@ -186,7 +187,7 @@ function Strip({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Tile({ href, image, title, subtitle, progress }: { href?: string | null; image: ReactNode; title: string; subtitle?: string | null; progress?: number | null }) {
+function Tile({ href, image, title, subtitle, progress, watched }: { href?: string | null; image: ReactNode; title: string; subtitle?: string | null; progress?: number | null; watched?: string | null }) {
   const body = (
     <>
       {image}
@@ -197,6 +198,7 @@ function Tile({ href, image, title, subtitle, progress }: { href?: string | null
       )}
       <div className="mt-1.5 truncate text-[11px] leading-tight">{title}</div>
       {subtitle && <div className="truncate text-[10px] leading-tight text-muted-foreground">{subtitle}</div>}
+      {watched && <div className="truncate text-[10px] leading-tight text-muted-foreground">{watched}</div>}
     </>
   );
   return (
@@ -315,6 +317,11 @@ function NowWatchingCard() {
   );
 }
 
+function watchedOn(playedAt: string | null): string | null {
+  const ms = playedAtMs(playedAt);
+  return ms == null ? null : `Watched ${formatWatchedOn(ms)}`;
+}
+
 function WatchingCard() {
   const recent = useCardView<WatchingPayload>("watching");
   const items = recent.data?.items.slice(0, RECENT_LIMIT);
@@ -323,7 +330,7 @@ function WatchingCard() {
       {items?.length ? (
         <Strip label="Recently watched">
           {items.map((item) => (
-            <Tile key={item.id} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} />
+            <Tile key={item.id} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} watched={watchedOn(item.playedAt)} />
           ))}
         </Strip>
       ) : (

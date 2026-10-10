@@ -7,6 +7,7 @@ const DAY = 86_400_000;
 const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 const absolute = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: site.timezone });
 const absoluteWithYear = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: site.timezone });
+const watchedOn = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: site.timezone });
 
 export function formatRelativeTime(atMs: number, nowMs: number): string {
   const diff = nowMs - atMs;
@@ -18,4 +19,8 @@ export function formatRelativeTime(atMs: number, nowMs: number): string {
   const at = new Date(atMs);
   const sameYear = at.getUTCFullYear() === new Date(nowMs).getUTCFullYear();
   return `on ${(sameYear ? absolute : absoluteWithYear).format(at)}`;
+}
+
+export function formatWatchedOn(atMs: number): string {
+  return watchedOn.format(atMs);
 }

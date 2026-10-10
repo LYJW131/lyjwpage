@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatRelativeTime } from "./relative-time.ts";
+import { formatRelativeTime, formatWatchedOn } from "./relative-time.ts";
 
 test("相对时间按 GitHub 的档位：分钟、小时、天、周，超过一个月给绝对日期（站点时区 UTC+8）", () => {
   const now = Date.parse("2026-09-12T18:30:00Z");
@@ -14,4 +14,9 @@ test("相对时间按 GitHub 的档位：分钟、小时、天、周，超过一
   assert.equal(ago(8 * 86_400_000), "last week");
   assert.equal(ago(40 * 86_400_000), "on Aug 4");
   assert.equal(ago(400 * 86_400_000), "on Aug 9, 2025");
+});
+
+test("观看日期用站点时区的 en-US 绝对日期", () => {
+  assert.equal(formatWatchedOn(Date.parse("2026-10-08T16:30:00Z")), "Oct 9, 2026");
+  assert.equal(formatWatchedOn(Date.parse("2026-10-08T15:04:05.123Z")), "Oct 8, 2026");
 });

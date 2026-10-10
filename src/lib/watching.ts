@@ -1,5 +1,11 @@
 import type { WatchingItem } from "@/lib/types";
 
+export function playedAtMs(value: string | null): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 export function watchingIdentity(item: Pick<WatchingItem, "title" | "subtitle">): string {
   return `${item.title}\n${item.subtitle}`;
 }
@@ -21,7 +27,11 @@ export function pinNowWatching(
       continue;
     }
     if (current && out[existing].id === current.id) {
-      out[existing] = { ...out[existing], progress: item.progress };
+      out[existing] = {
+        ...out[existing],
+        progress: item.progress,
+        playedAt: out[existing].playedAt ?? item.playedAt,
+      };
     }
   }
   return out;

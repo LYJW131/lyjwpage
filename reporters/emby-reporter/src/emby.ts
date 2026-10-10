@@ -1,15 +1,8 @@
 import { config } from "./config.js";
+import { RESUME_FIELDS, normalizePlayedAt, resolveProgress } from "./item.js";
 import type { EmbyItemMedia, EmbyPlayState } from "./playback.js";
 
-
-const ITEM_FIELDS = [
-  "ProductionYear",
-  "SeriesPrimaryImage",
-  "BasicSyncInfo",
-  "UserDataPlayCount",
-].join(",");
-
-const PLAYING_FIELDS = `${ITEM_FIELDS},MediaSources,MediaStreams`;
+const PLAYING_FIELDS = `${RESUME_FIELDS},MediaSources,MediaStreams`;
 
 export const TICKS_PER_MS = 10_000;
 
@@ -118,19 +111,6 @@ function resolvePoster(item: EmbyItem): ImageRef | null {
   return imageRef(item.Id, "Primary", item.ImageTags?.Primary, height);
 }
 
-function resolveProgress(item: EmbyItem): number {
-  const userData = item.UserData ?? {};
-  const percentage = Number(userData.PlayedPercentage);
-  if (userData.PlayedPercentage != null && !Number.isNaN(percentage)) {
-    return Math.min(100, Math.max(0, percentage));
-  }
-
-  const position = Number(userData.PlaybackPositionTicks) || 0;
-  const runtime = Number(item.RunTimeTicks) || 0;
-  if (!runtime) return 0;
-  return Math.min(100, Math.max(0, (position / runtime) * 100));
-}
-
 function text(value: string | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -157,7 +137,7 @@ function mapItem(raw: EmbyItem): MappedItem | null {
       episode: finite(raw.IndexNumber),
       year: finite(raw.ProductionYear),
       progress: resolveProgress(raw),
-      playedAt: text(raw.UserData?.LastPlayedDate),
+      playedAt: normalizePlayedAt(raw.UserData?.LastPlayedDate),
       posterKey: poster?.key ?? null,
       backdropKey: backdrop?.key ?? null,
     },
@@ -169,7 +149,7 @@ export async function fetchResume(): Promise<MappedItem[]> {
   const params = new URLSearchParams({
     Limit: String(config.resumeLimit),
     MediaTypes: "Video",
-    Fields: ITEM_FIELDS,
+    Fields: RESUME_FIELDS,
   });
   const data = (await embyFetch(
     `/emby/Users/${config.emby.userId}/Items/Resume?${params}`,

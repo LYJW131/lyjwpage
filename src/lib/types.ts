@@ -9,6 +9,7 @@ export type WatchingItem = {
   type: "Episode" | "Movie" | "Series" | "Other";
   year: number | null;
   link: string | null;
+  // ISO-8601 UTC。上报侧收成毫秒精度，须能被 apps/ios/Core/Formatting.swift#ISO8601Parsing 解析。
   playedAt: string | null;
 };
 
