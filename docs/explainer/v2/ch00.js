@@ -18,6 +18,7 @@
     "ch00.ingress": ["上报入口", "Ingress"],
     "ch00.core": ["状态核心", "State core"],
     "ch00.collector": ["采集 Worker", "Collector"],
+    "ch00.ai": ["对话与构建", "Chat & builds"],
     "ch00.home": ["家里", "Home"],
     "ch00.tokyo": ["东京", "Tokyo"],
     "ch00.cloud": ["云端", "Cloud"],
@@ -147,7 +148,7 @@
     { id: "contact", r: [0, 64, 304, 121] },
     { id: "timezone", r: [310, 64, 304, 121] },
     { id: "listening", r: [0, 192, 614, 238] },
-    { id: "activity", r: [0, 437, 614, 152] },
+    { id: "chat", r: [0, 437, 614, 152] },
   ];
   const LC = CARDS[2].r;
   const COVER = [LC[0] + 14, LC[1] + 31, 48];
@@ -206,7 +207,7 @@
       if (ck <= 0) return;
       const hero = c.id === "listening";
       const hot = hero ? o.hot || 0 : 0;
-      const clip = c.id === "activity";
+      const clip = c.id === "chat";
       if (clip) { x.save(); x.beginPath(); x.rect(wx, wy, ww, wh - 2); x.clip(); }
       card(x, c.r, ck, hero ? 1 : dim, hot);
       const ia = prog(ck, 0.6, 1) * (hero ? 1 : dim);
@@ -227,10 +228,15 @@
           x.save(); x.globalAlpha = ia * 0.8; x.strokeStyle = css("pink"); x.lineWidth = 1.4; roundRect(x, PX(u + 14 + j * 66), PY(v + 120), 56 * PSC, 56 * PSC, 5); x.stroke(); x.restore();
           bar(x, u + 14 + j * 66, v + 184, 44, 5, 0.35 * ia); bar(x, u + 14 + j * 66, v + 194, 28, 4, 0.2 * ia);
         }
-      } else if (c.id === "activity") {
+      } else if (c.id === "chat") {
         line(x, PX(u), PY(v + 21), PX(u + w), PY(v + 21), 1.4, css("pink"), 0.6 * ia);
-        bar(x, u + 10, v + 8, 46, 6, 0.4 * ia);
-        for (let j = 0; j < 3; j++) { x.save(); x.globalAlpha = ia; x.strokeStyle = css("pink"); x.lineWidth = 5; x.beginPath(); x.arc(PX(u + 70), PY(v + 90), (40 - j * 11) * PSC, -Math.PI / 2, -Math.PI / 2 + TAU * (0.55 + 0.15 * j)); x.stroke(); x.restore(); }
+        bar(x, u + 10, v + 8, 60, 6, 0.4 * ia);
+        x.save(); x.globalAlpha = ia * 0.8; x.strokeStyle = css("pink"); x.lineWidth = 1.4;
+        roundRect(x, PX(u + w - 214), PY(v + 32), 200 * PSC, 22 * PSC, 11); x.stroke();
+        roundRect(x, PX(u + 14), PY(v + 66), w * PSC - 28 * PSC, 30 * PSC, 10); x.stroke();
+        x.restore();
+        bar(x, u + w - 200, v + 40, 120, 6, 0.35 * ia);
+        bar(x, u + 26, v + 77, 180, 7, 0.25 * ia);
       }
       if (clip) x.restore();
     });
@@ -253,6 +259,7 @@
     ingress: { x: 1420, y: ML - 70, w: 420, h: 140, key: "ch00.ingress", mono: "ingress" },
     core: { x: 2000, y: ML - 70, w: 420, h: 140, key: "ch00.core", mono: "api" },
     collector: { x: 2000, y: ML - 330, w: 420, h: 140, key: "ch00.collector", mono: "collector" },
+    ai: { x: 1420, y: ML - 330, w: 420, h: 140, key: "ch00.ai", mono: "ai" },
   };
   const RAIL_Y = ML + 200, GLY = [["room", 1560], ["lag", 1800], ["d1", 2040], ["cred", 2280]], GLY_Y = ML + 330;
   const ROUTE = [[PIC_X + 240, ML], COVER_C];
@@ -311,6 +318,8 @@
     });
     const ba = (t) => prog(k, t, t + 0.2, E.out);
     block(x, BLK.collector, ba(0.4), false);
+    block(x, BLK.ai, ba(0.45), false);
+    polyline(x, [[BLK.ai.x + BLK.ai.w, BLK.ai.y + 100], [1920, BLK.ai.y + 100], [1920, ML - 40], [BLK.core.x, ML - 40]], prog(k, 0.55, 0.7), 2, css("pink"), 0.5);
     polyline(x, [[BLK.collector.x + 210, BLK.collector.y + BLK.collector.h], [BLK.core.x + 210, BLK.core.y]], prog(k, 0.5, 0.65), 2, css("pink"), 0.7);
     const rk = prog(k, 0.5, 0.8, E.io);
     if (rk > 0) {

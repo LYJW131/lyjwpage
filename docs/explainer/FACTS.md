@@ -8,11 +8,12 @@
 
 ## 一句话总览
 
-仍是三段：**采集 → 中枢 → 展示**。上报器（和 Claude Code 云端的 OTLP）向上报入口 POST；中枢在 Cloudflare Workers 上记状态；展示是 Vercel 上的 Next.js 出首屏，浏览器挂载后直连 Worker 取数、收 WebSocket 推送（`src/lib/backend-url.ts#backendUrl`）。第 00 章旁白「上报器发 POST，Workers 记状态，Vercel 出首屏，浏览器收推送」就是这一句。中枢由三部分组成：
+仍是三段：**采集 → 中枢 → 展示**。上报器（和 Claude Code 云端的 OTLP）向上报入口 POST；中枢在 Cloudflare Workers 上记状态；展示是 Vercel 上的 Next.js 出首屏，浏览器挂载后直连 Worker 取数、收 WebSocket 推送（`src/lib/backend-url.ts#backendUrl`）。第 00 章旁白「上报器发 POST，Workers 记状态，Vercel 出首屏，浏览器收推送」就是这一句。中枢由四个 Worker 组成：
 
 - **ingress**：无状态的上报入口，负责鉴权、校验、分流。
 - **api**：状态核心 `StateCore`（RPC 入口）加上 `StateHub` DO，以及推送房间 `LivePushRoom`。
 - **collector**：每分钟一响的采集 Worker。
+- **ai**：首页对话、访客构建和公开 MCP；不挂公开域名，api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 把这几条路径原样转给它，它经 Service Binding `PUBLIC_STATUS` 只读 api 的状态（`workers/ai/README.md`「入口与权限」、`workers/ai/wrangler.toml`）。它不在一首歌的链路上，片中只在第 00 章总览和第 09 章发布里出现。
 
 数据按层落地：实时层在 DO，可滞后层在 KV `LAG`，长期历史在 D1 `lyjwpage-history`，凭据在 KV `CREDENTIALS`。
 
@@ -36,7 +37,7 @@ FIG. 2 的 App 名、400 ms 的出处按 main a2c6e1c 回代码复核过；apple
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |
 | 服务器 | server-reporter，东京 misaka-jp 容器 | `/api/ingest/server` · `lyjwpage-server` | 服务器状态，固定每 60 秒一次（`reporters/server-reporter/src/config.ts#intervalMs` 的默认值，容器 `.env` 可覆盖） |
 | 编码账号 | agents-reporter，misaka-jp 容器 | `/api/ingest/agents` · `lyjwpage-agents` | 各家编码工具限额；Cursor 账号的用量日行、最近一次用量事件、5 分钟 token 桶 |
-| Quest | discord-reporter，misaka-jp 容器：Bot 连 Discord Gateway，只取目标用户 `platform=meta_quest` 的 Playing（`reporters/discord-reporter/README.md`） | `/api/ingest/quest` · `lyjwpage-quest` | Quest 在玩什么：`{version:1, presence:{observedAt, discordStatus, playing}}`（`shared/ingest/quest.ts#prepareQuestReport`）。进实时层、推 `quest-now`（`src/lib/status-views.ts#STATUS_VIEWS` 的 `questNow`），首页没有这张卡 |
+| Quest | discord-reporter，misaka-jp 容器：Bot 连 Discord Gateway，只取目标用户 `platform=meta_quest` 的 Playing（`reporters/discord-reporter/README.md`） | `/api/ingest/quest` · `lyjwpage-quest` | Quest 在玩什么：`{version:1, presence:{observedAt, discordStatus, playing}}`（`shared/ingest/quest.ts#prepareQuestReport`）。进实时层、推 `quest-now`（`src/lib/status-views.ts#STATUS_VIEWS` 的 `questNow`）；在玩时首页出现一张 Now Playing 卡（`src/components/live/quest-now-card.tsx`） |
 | Claude Code 云端 | OTLP JSON（可 gzip），Claude Code 自己发，不是我们写的上报器 | `/api/ingest/agents/otlp` · `lyjwpage-claude-cloud` | 云端 token 与费用的累计值（只收 cumulative）；状态核心按序列做差，落成和另两个来源同形的日行、5 分钟桶、最近一次用量事件（`workers/api/src/stores/claude-cloud.ts`）。三处怎么合并见下文「编码用量」 |
 | collector Worker | Cloudflare，cron 每分钟一响，任务表 `workers/collector/src/registry.ts#JOBS` 里的任务各按自己的节奏 | 不走 ingress | 见下文 |
 
@@ -235,17 +236,17 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 按卡缓存
 
-- `/api/home` 已删除（8977457）。首屏按视图并行调 `firstScreen(key)`，一个视图一次（按 7fcfacb 现数 **26 次**），外加头像和最近提交；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#Home`）。一张卡读几个视图就有几条缓存，卡与视图的对应见 `src/app/page.tsx#READS`。
+- `/api/home` 已删除（8977457）。首屏按视图并行调 `firstScreen(key)`，一个视图一次（按 e10a75a 现数 **27 次**），外加头像和最近提交；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#Home`）。一张卡读几个视图就有几条缓存，卡与视图的对应见 `src/app/page.tsx#READS`。
 - 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/lib/first-screen.ts#firstScreen`）。
 - 实时层的公开读取在 `StateHub.publicRead()` 里随读取一起过初始化与提交可见性屏障，每次读一个 RPC；可滞后层只读 KV，不过屏障、不唤醒 DO（`workers/api/src/public-execution.ts#executePublicRequest`）。
 - **每张卡一条 `'use cache'`**，cacheLife 为 stale 300 / revalidate 600 / expire 7 天（`src/lib/first-screen.ts#firstScreen`）。歌词另是 300 / 3600 / 86400（`src/lib/first-screen.ts#firstScreenLyrics`）。
-- 标签：按 7fcfacb 现数 19 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒定时重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
+- 标签：按 e10a75a 现数 20 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒定时重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
 - 一个标签失效，只让那张卡回源；整页在后台重建，旧页照给（`revalidateTag(…, "max")`，status-revalidation.ts:5）。
 - 请求路径上不现拉外部 API：每条缓存只读自己的状态端点（实时读 DO，可滞后读 KV），GitHub、Sentry 这些外部来源只由采集 Worker 定时去取（按卡读取见 `src/lib/first-screen.ts#firstScreen`，端点的数据层与读取实现见 `src/lib/status-views.ts`、`src/lib/status-loaders.ts`）。
 - 失效通知只带标签名、不带数据：数据已经落在 Worker 上，下一次读端点自己去拿（校验只接受 `tags`：`src/lib/revalidate-request.ts#parseRevalidateRequest`、`src/app/api/revalidate/route.ts#POST`）。`revalidateTag(tag, "max")` 只把条目标成过期，下一次有人访问时先给旧的、后台重建（Next.js 文档 revalidateTag 一页，profile 取 "max" 的行为）。
 - 标签只为布局变化而发：首屏版面变了（例如在线 / 离线翻转、充电头接上或拔下、开始或停止放歌）才通知 Vercel；只变内容的交给 cacheLife 的 revalidate 600 秒定时重建（布局判据见 `src/lib/home-layout.ts`，写 KV 的一方在 `workers/ingress/src/lag-ingest.ts#commitLagIngest` 返回要失效的标签；内容更新周期见 `src/lib/first-screen.ts#FIRST_SCREEN_CACHE_LIFE`）。
 - cacheLife 三个值（Next.js 文档 cacheLife 一页）：stale 是浏览器端路由缓存不问服务器就直接用的时长；revalidate 是过了这个时长后，下一个请求先拿旧的、服务端在后台重建；expire 是没人访问时的上限，过了就同步重建。
-- 第 00 章把首屏画成浏览器窗口里的线框：卡片框按 `src/app/page.tsx#Home` 的版面，尺寸取第 04 章 P 表（`docs/explainer/v2/ch04.js#P`）的比例；P 表注明是按 lyjw.me 桌面宽度实测的卡片框乘 0.6，那次实测未核。画的那一刻没在充电：充电那一格收起、「最近播放」占满一行（`src/components/live/media-pair.tsx#LiveMediaPair` 不在充电时加 is-disconnected，`src/app/globals.css` 在桌面宽度下把这时的最近播放左边贴到 0）。卡上的标注照站点原文（`src/components/live/listening-card.tsx` 的 Recently Played、Now Playing）；界面上是大写，因为 `src/components/ui/card.tsx#Card` 的标签用 label-mono，它在 `src/app/globals.css` 里是 text-transform: uppercase。
+- 第 00 章把首屏画成浏览器窗口里的线框：卡片框按 `src/app/page.tsx#Home` 的版面，尺寸取第 04 章 P 表（`docs/explainer/v2/ch04.js#P`）的比例；P 表注明是按 lyjw.me 桌面宽度实测的卡片框乘 0.6，那次实测未核。Media 下面是整行的 Talk to God 对话卡（`src/app/page.tsx#SLOT` 的 `godChat`），线框画到它就被窗口下沿切掉；它不读状态视图，没有 `firstScreen` 缓存，所以第 04 章的印版里没有它。画的那一刻没在充电：充电那一格收起、「最近播放」占满一行（`src/components/live/media-pair.tsx#LiveMediaPair` 不在充电时加 is-disconnected，`src/app/globals.css` 在桌面宽度下把这时的最近播放左边贴到 0）。卡上的标注照站点原文（`src/components/live/listening-card.tsx` 的 Recently Played、Now Playing）；界面上是大写，因为 `src/components/ui/card.tsx#Card` 的标签用 label-mono，它在 `src/app/globals.css` 里是 text-transform: uppercase。
 
 ### 来源出问题时
 
@@ -328,12 +329,12 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | agents（限额） | agent 在用：5 分钟 | 都没在用：60 分钟 | `SITE_URL/api/status/coding/now`，不问人数 |
 | 服务器（对照） | 60 秒 | 60 秒 | 不问 |
 
-第 07 章用到的部分按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 07 章用到的部分按 main e10a75a 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - PlayStation 大约每 `reporters/playstation-reporter/src/cadence.ts#PROBE_INTERVAL_MS` 发一次发现包，只在该打的时候打 PSN。`HTTP/1.1 200` 是醒着，`620` 是休息，超时或别的回复先记一笔，连续 `reporters/playstation-reporter/src/cadence.ts#OFF_STREAK_TO_REST` 次才离开醒着。醒着和没醒对调立刻打一轮，休息和关机来回切不额外打。退避（`reporters/playstation-reporter/src/state.ts#backoffMs`）没到时这些都不放行。
   - `AWAKE_TICK_INTERVAL_MS` 是醒着那一档的间隔，不是两轮之间的下限：对调那一轮不等它（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`）。门只在每次探测时判，醒着时要等到过线之后的那一探，实际约每分钟一轮。
   - 下游的窗口都锚在闲档：站点判 PS 上报器断没断流用 `src/lib/freshness.ts#PLAYSTATION_STALE_MS`（闲档三轮多一点，只有浏览器判）。Pulse 玩那条道每次观测的有效期是 `shared/pulse-timeline.ts#GAMING_HOLD_MS`（盖过闲档再留投递抖动，`shared/pulse-timeline.ts#stateHoldMs`）：有效期内来了新观测，这一段就接着开，过期还没等到才在最后一次确认处收尾（`shared/pulse-timeline.ts#planStateObservation`）；容器每个完整 tick 都发 presence（`reporters/playstation-reporter/src/tick.ts#tick`），闲档一轮一封就接得上。主机醒着时只会更快，判活的下限由闲档决定。第 08 章不画这两个窗口。
-- agents 的两档是 `reporters/agents-reporter/src/config.ts` 里 `cadence` 的默认值（容器 `.env` 可覆盖，线上值没记进 `docs/ops-facts.md`）。每跑完一轮才按 agent 最近一次使用定下一次等多久（`reporters/agents-reporter/src/cadence.ts#ACTIVE_WINDOW_MS` 内算在用）；等的时候每 5 分钟醒来重查一次，开始使用立刻提前跑，停用不延后已定的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。
+- agents 的两档是 `reporters/agents-reporter/src/config.ts` 里 `cadence` 的默认值（容器 `.env` 可覆盖，线上值没记进 `docs/ops-facts.md`）。每跑完一轮才按 agent 最近一次使用定下一次等多久（`reporters/agents-reporter/src/cadence.ts#ACTIVE_WINDOW_MS` 内算在用）；等的时候每 5 分钟醒来重查一次，开始使用立刻提前跑，停用不延后已定的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。「在用」是最近一次使用落在 `ACTIVE_WINDOW_MS` 之内（写章时 15 分钟），读的是取限额的几家 agent（`reporters/agents-reporter/src/config.ts` 的 `agentIds`）在 `coding/now` 里的 `lastActivityAt`（同文件 `latestActivityAt`）。第 07 章按这个窗口排：停手后那两轮仍是 5 分钟，过了窗口才换 60 分钟。
 - 服务器上报器固定每分钟推，不问人数：这份快照本身就是心跳，站点按信封的 `updatedAt` 判它还活着没有；上报不经过 Vercel，没有函数调用量要省，闲着时先问一次人数比直接推一次还费（`reporters/server-reporter/README.md`「节奏」）。夜里只有它的心形还在跳。
 - 限额那一台按 agent 使用情况调频，是因为每一轮都要打各家厂商的限额接口，限额只在用的时候变（`reporters/agents-reporter/README.md`「它做什么」的每轮流程与 `reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。
 - agents 的活动查询读不到、超时、格式不对一律当没在用，所以故障只会让它变慢，不会变快（`reporters/agents-reporter/src/cadence.ts#nextDelay`）。PlayStation 和服务器都不问人数。
@@ -359,7 +360,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 ### 检查：CI 与 CodeQL（只检查、不发布）
 
-- CI：推 main 或 dev、开 PR 都跑，一个 job 依次跑 lint、全部工作区的 typecheck、站点单测、api / ingress / collector 的单测、上报器单测、`scripts` 的测试、`pnpm docs:check`（`.github/workflows/ci.yml#check`）。
+- CI：推 main 或 dev、开 PR 都跑，一个 job 依次跑 lint、全部工作区的 typecheck、站点单测、api / ai / ingress / collector 的单测、上报器单测、`scripts` 的测试、`pnpm docs:check`（`.github/workflows/ci.yml#check`）。
 - CI 不跑 `next build`：Vercel 每次推送都会构建，CI 只管 Vercel 覆盖不到的几件事（`.github/workflows/ci.yml#check`）。同一分支连推几次，只留最后一次（同文件的 `concurrency`，`cancel-in-progress`）。
 - CodeQL：推 main 或 dev、开 PR，外加每周一次定时，扫 `javascript-typescript` 和 `actions` 两类（`.github/workflows/codeql.yml#analyze`）。
 
@@ -371,8 +372,8 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 ### Worker：Cloudflare Workers Builds
 
-- api、ingress、collector 各连一个 Workers Builds 项目，生产分支 main：构建命令是各自的 typecheck，部署命令是 `wrangler deploy`（`docs/workers-builds.md`「构建配置」）。
-- 各按自己的监视路径决定这次构建不构建（`docs/workers-builds.md`「构建监视路径」）：三个都盯 `shared/*`、`src/lib/*` 和根目录的依赖与配置文件，另各盯自己的 `workers/<名字>/*`；只有 api 排除 `shared/ingest/*`，所以改上报校验不会重新发布带 Durable Object 的 api，页面的 WebSocket 也不断。片中那次推送只改到 api 的目录，ingress、collector 这次不构建，线上仍是上一版。
+- api、ai、ingress、collector 各连一个 Workers Builds 项目，生产分支 main：构建命令是各自的 typecheck，部署命令是 `wrangler deploy`（`docs/workers-builds.md`「构建配置」）。
+- 各按自己的监视路径决定这次构建不构建（`docs/workers-builds.md`「构建监视路径」）：四个都盯根目录的依赖与配置文件，另各盯自己的 `workers/<名字>/*`；api、ingress、collector 还盯 `shared/*`、`src/lib/*`（各自排除对话与构建那几份 `shared/` 文件），ai 只盯它点名的几份 `shared/`、`src/lib/` 文件；api 另排除 `shared/ingest/*`，所以改上报校验不会重新发布带 Durable Object 的 api，页面的 WebSocket 也不断。片中那次推送只改到 api 的目录，ai、ingress、collector 这次不构建，线上仍是上一版。
 - Workers Builds 并行构建、不保证先后，Worker 之间的 RPC 契约只加不改，被调用方先上线（根 `AGENTS.md`「部署流程」；契约定义在 `shared/state-core.ts#StateCoreRpc` 与 `shared/collector.ts#COLLECTOR_JOBS`）。跨 Worker 的契约切换靠手动按序部署，片中不画。
 - 片中不画：api 的分支 Preview、ingress 与 collector 关掉预览构建的原因、D1 迁移要先手动 apply（都在 `docs/workers-builds.md`）。
 
@@ -403,7 +404,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 ## 片中不用或待定
 
 - **实测延迟**：上一版的「320–490 ms（8 月实测）」作废，因为中间多了一跳 Service Binding。上画面前要重测；没重测就不出数字。
-- **按人数调频的只剩 agents-reporter**。PlayStation 按局域网发现包调频；片中不说几个上报器按人数调频，也不说节奏有几种。
+- **没有上报器再按人数调频**：agents-reporter 按 agent 使用情况，PlayStation 按局域网发现包，服务器固定。`/count` 仍在推送房间上，片中只在第 05 章当数人头的白卡画。
 - **Mac `postInterval`**：默认 10 秒，注释写的是「本机 30 秒」，未确认，片中不用。
 - **HA 的配置**：不在仓库里。片中只讲它报什么，不讲怎么配。
 

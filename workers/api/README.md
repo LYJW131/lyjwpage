@@ -146,8 +146,8 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 
 两个数出自同一个房间、同一条连接（`src/live-census.ts`）。`connections` 静默 `CONNECTION_STALE_MS` 不计数、
 `CONNECTION_CLOSE_MS` 才关，因为后台标签页的定时器会被浏览器节流；`online` 只数握手带 `visible=1` 或之后报了 `visible` 的连接，
-静默 `VISIBLE_STALE_MS`（三个心跳周期）就不算，因为可见页面不会被节流，一条僵尸按 `connections` 的口径多活，就会把按人数调频的上报器（agents-reporter）
-多钉在快档那么久。可见人数变了才广播 `{ type: "online", payload: { online } }`，新连接接上时单独收到一条当前值；有人可见时
+静默 `VISIBLE_STALE_MS`（三个心跳周期）就不算，因为可见页面不会被节流，一条僵尸按 `connections` 的口径多活，页脚的在线人数
+就多算那么久。可见人数变了才广播 `{ type: "online", payload: { online } }`，新连接接上时单独收到一条当前值；有人可见时
 挂清扫闹钟（间隔 `src/origin-worker.ts` 的 `SWEEP_INTERVAL_MS`），没人可见就停。心跳 ping 仍由运行时自动回、不唤醒房间，只有接入、
 断开、切可见性和闹钟会唤醒。浏览器与 Worker 的心跳间隔共用 `shared/live-heartbeat.ts#LIVE_HEARTBEAT_MS`。
 

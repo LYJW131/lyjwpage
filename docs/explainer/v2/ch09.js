@@ -25,7 +25,7 @@
       "ch09.pB": ["Worker", "Workers"],
       "ch09.b.ingest": ["改上报校验不会重新发布 api：Durable Object 不重启", "Ingest validation changes skip api: the DO keeps running"],
       "ch09.b.miss": ["没改到：不构建，线上仍是上一版", "Untouched: no build, the live version stays"],
-      "ch09.b.deps": ["三个都另盯着根目录的依赖与配置", "All three also watch the root deps and config"],
+      "ch09.b.deps": ["四个都另盯着根目录的依赖与配置", "All four also watch the root deps and config"],
       "ch09.n3a": ["Worker 各自构建、互不等待：", "Each Worker builds on its own;"],
       "ch09.n3b": ["契约只加不改，新接口先发被调用方。", "APIs only grow; ship the callee first."],
       "ch09.pC": ["上报器", "Reporters"],
@@ -68,7 +68,7 @@
     const AT = {
       type: 0.25, stroke: 0.0625, enter: 1.0, pull: [1.45, 1.9], fan: [1.5, 1.95], gate0: 2.0, gateStep: 0.0625,
       ci: [4.0, 4.25, 4.5, 4.75], ciLamp: 5.0, cq: [4.375, 4.875], cqLamp: 5.25,
-      api: [6.0, 6.5], apiLamp: 7.0, miss: [6.25, 6.75],
+      api: [6.0, 6.5], apiLamp: 7.0, miss: [6.25, 6.75, 6.375],
       img: [8.0, 8.25, 8.5, 8.75], imgLamp: 9.0, hub: [9.25, 9.625, 9.675], notarized: 9.625, hubLamp: 9.75,
       land: 10.0, status: 10.25, purge: 10.5, warm: [10.75, 10.95], r1: 10.9, dom: [11.0, 11.25], r2: 11.5,
       notify: 12.0, ingress: 12.5, core: 12.75, ring: 13.0, ask: 13.5, card: 14.0, reload: 14.5,
@@ -91,8 +91,9 @@
       { id: "ci", y: 390, name: "CI", gate: null, on: true, pips: AT.ci, lamp: AT.ciLamp },
       { id: "vercel", y: Y0, name: "Vercel", gate: null, on: true, pips: [], lamp: AT.land },
       { id: "api", y: 690, name: "api", gate: "workers/api/…", on: true, pips: AT.api, lamp: AT.apiLamp },
-      { id: "ingress", y: 840, name: "ingress", gate: "", on: false },
-      { id: "collector", y: 990, name: "collector", gate: "", on: false },
+      { id: "ingress", y: 810, name: "ingress", gate: "", on: false },
+      { id: "collector", y: 930, name: "collector", gate: "", on: false },
+      { id: "ai", y: 1050, name: "ai", gate: "", on: false },
     ];
     function branchPts(y, x1) {
       const pts = [[HEAD[0], Y0], [1440, Y0]];
@@ -294,12 +295,12 @@
       const ga = prog(b, AT.fan[1] - 0.1, AT.fan[1] + 0.15) * a;
       if (ga <= 0) return;
       const brace = (y0, y1) => { line(x, BRACKET_X, y0, BRACKET_X, y1, 2.2, inkC, ga); line(x, BRACKET_X - 16, y0, BRACKET_X, y0, 2.2, inkC, ga); line(x, BRACKET_X - 16, y1, BRACKET_X, y1, 2.2, inkC, ga); };
-      brace(-140, 420); brace(660, 1020);
+      brace(-140, 420); brace(660, 1080);
       text(x, "GitHub Actions", BRACKET_X - 16, -186, { font: FONT.mono(50, 600), alpha: ga });
-      text(x, "Workers Builds", BRACKET_X - 16, 1100, { font: FONT.mono(50, 600), alpha: ga });
+      text(x, "Workers Builds", BRACKET_X - 16, 1160, { font: FONT.mono(50, 600), alpha: ga });
       letterMark(x, BRACKET_X + 66, -15, "C", 32, ga);
       letterMark(x, BRACKET_X + 66, 315, "A", 32, ga);
-      letterMark(x, BRACKET_X + 66, 840, "B", 32, ga);
+      letterMark(x, BRACKET_X + 66, 870, "B", 32, ga);
     }
 
     const CI_ROWS = [["lint", "ESLint"], ["typecheck", "ch09.a.tc"], ["test", "ch09.a.test"], ["docs:check", "ch09.a.docs"]];
@@ -331,8 +332,9 @@
 
     const WROWS = [
       { id: "api", y: 1810, paths: "workers/api/*   shared/*   src/lib/*", on: true },
-      { id: "ingress", y: 2090, paths: "workers/ingress/*   shared/*   src/lib/*", on: false, flash: AT.miss[0] },
-      { id: "collector", y: 2250, paths: "workers/collector/*   shared/*   src/lib/*", on: false, flash: AT.miss[1] },
+      { id: "ai", y: 2050, paths: "workers/ai/*   shared/ai-paths.ts   …", on: false, flash: AT.miss[2] },
+      { id: "ingress", y: 2170, paths: "workers/ingress/*   shared/*   src/lib/*", on: false, flash: AT.miss[0] },
+      { id: "collector", y: 2290, paths: "workers/collector/*   shared/*   src/lib/*", on: false, flash: AT.miss[1] },
     ];
     function panelB(Ly, b, a) {
       if (a <= 0) return;

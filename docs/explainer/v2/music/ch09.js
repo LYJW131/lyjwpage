@@ -14,11 +14,11 @@
     A9sus4: ["A2", "E3", "G3", "B3", "D4"],
   },
   score: ({ THEME, withNotes, phrase, midi }) => {
-    const GATES = ["A5", "C6", "D6", "E6", "F6", "A6", null, null];
+    const GATES = ["A5", "C6", "D6", "E6", "F6", "A6", null, null, null];
     const gates = GATES.flatMap((n, i) => (n
       ? [{ bar: 2, beat: i * 0.25, kind: "tick", m: midi(n), i: i % 3 }]
       : []));
-    const skipped = [[2, 1.5], [2, 1.75], [6, 1], [6, 3]].map(([bar, beat]) => [bar, beat, 0.5, "D3", "pluckMute", 0.55, false]);
+    const skipped = [[2, 1.5], [2, 1.75], [2, 2], [6, 1], [6, 1.5], [6, 3]].map(([bar, beat]) => [bar, beat, 0.5, "D3", "pluckMute", 0.55, false]);
     return {
       harm: [
         "Dsus2", [["Dsus2", 0], ["Am7", 2]], "Dm69", "G9",

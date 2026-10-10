@@ -3,19 +3,22 @@
   const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, fillRect, rect, clawd, roundRect } = K;
   I18N.add({
     "ch07.title": ["节拍器", "Metronomes"],
-    "ch07.sub": ["固定、看人数、看主机", "Fixed, by audience, by console"],
+    "ch07.sub": ["固定、看 agent、看主机", "Fixed, by agent use, by console"],
     "ch07.legend": ["一拍 = 一分钟", "1 beat = 1 minute"],
-    "ch07.sA": ["有人在看 · 主机醒着", "Watched · console awake"],
-    "ch07.sB": ["页面都在后台", "Every page in the background"],
-    "ch07.sC": ["入夜 · 没人", "Night · nobody here"],
-    "ch07.sD": ["早上 · 有人来了", "Morning · a visitor"],
-    "ch07.sE": ["人数问不到", "Head count unreadable"],
-    "ch07.srv": ["服务器 · 不问人数", "Server · no head count"],
+    "ch07.sA": ["agent 在用 · 主机醒着", "Agents busy · console awake"],
+    "ch07.sB": ["停手了 · 还在 15 分钟内", "Paused · still within 15 min"],
+    "ch07.sC": ["入夜 · 都没在用", "Night · nothing running"],
+    "ch07.sD": ["早上 · 又开始写代码", "Morning · coding again"],
+    "ch07.sE": ["使用情况读不到", "Activity unreadable"],
+    "ch07.srv": ["服务器 · 什么都不问", "Server · asks nothing"],
     "ch07.lim": ["编码账号限额", "Coding plan limits"],
     "ch07.ps": ["PlayStation", "PlayStation"],
-    "ch07.count": ["人数", "Head count"],
-    "ch07.watch": ["正在看", "watching"],
-    "ch07.open": ["开着的", "open"],
+    "ch07.agents": ["取限额的几家 agent", "Agents with limits"],
+    "ch07.last": ["最近一次使用", "last used"],
+    "ch07.now": ["此刻", "now"],
+    "ch07.ago": ["N 分钟前", "N min ago"],
+    "ch07.asIdle": ["当没在用", "idle"],
+    "ch07.window": ["15 分钟内算在用", "busy = used in 15 min"],
     "ch07.console": ["家里的 PS5", "The PS5 at home"],
     "ch07.probe": ["同一个局域网里的发现包", "discovery probes, home LAN"],
     "ch07.fast": ["快档", "fast"],
@@ -24,21 +27,21 @@
     "ch07.rest": ["休息", "rest mode"],
     "ch07.noReply": ["没应答", "no reply"],
     "ch07.naps": ["限额：60 分钟 = 12 次 5 分钟的盹", "Limits: 60 min = twelve 5-min naps"],
-    "ch07.napCheck": ["每次醒来看一眼人数", "a head-count check after each"],
+    "ch07.napCheck": ["每次醒来看一眼 agent 在不在用", "an activity check after each"],
     "ch07.same1": ["休息和关机是同一档，", "Rest mode and off share a tier:"],
     "ch07.same2": ["来回切不额外打", "switching adds no round"],
-    "ch07.noCount1": ["PS 不看人数，", "PS ignores the head count:"],
+    "ch07.noCount1": ["PS 不管谁在写代码，", "PS ignores coding activity:"],
     "ch07.noCount2": ["只看主机醒没醒", "it only asks if the console is awake"],
     "ch07.flip1": ["醒着和没醒对调，", "Awake and asleep swap:"],
     "ch07.flip2": ["当场打一轮", "one round, right away"],
     "ch07.backoff": ["（退避没到时一律不放行）", "(unless a backoff is still running)"],
     "ch07.n1a": ["限额每轮都要调厂商接口，", "Each limits round calls vendor APIs;"],
-    "ch07.n1b": ["跑完按当时的人数定下一轮间隔。", "the head count sets the next wait."],
+    "ch07.n1b": ["跑完看 agent 在不在用，定下一轮。", "agent activity sets the next wait."],
     "ch07.n2a": ["服务器每分钟照报：快照即心跳，", "Snapshot = heartbeat, each minute;"],
-    "ch07.n2b": ["先问人数反而比直接报更费。", "asking first would cost more."],
+    "ch07.n2b": ["先问一句反而比直接报更费。", "asking first would cost more."],
     "ch07.n3a": ["开机后第一探读到 200，", "Power on: the first probe reads 200,"],
     "ch07.n3b": ["紧跟着问一轮 PSN、寄一封。", "then a PSN round, then an envelope."],
-    "ch07.n4a": ["/count 超时或出错一律当 0：", "/count fails or times out? Zero."],
+    "ch07.n4a": ["使用情况读不到，一律当没在用：", "Activity unreadable? Treat as idle."],
     "ch07.n4b": ["故障只会让限额变慢。", "Failures only ever slow it down."],
   });
   const tr = (k) => I18N.tr(k);
@@ -56,8 +59,7 @@
     ...every(40, 50, 1),
   ], -1);
   const LIM_SEGS = sided([
-    ...every(-4, 16, 5),
-    { a: 16, b: 26, mode: "swing" },
+    ...every(-4, 26, 5),
     { a: 26, b: 36, mode: "park" },
     ...every(36, 46, 5),
     { a: 46, b: 999, mode: "park" },
@@ -82,7 +84,7 @@
   }
   const srvAngle = (phi) => AMP * Math.cos(Math.PI * phi);
   const PS_D = [[-99, 100], [24, 228], [40, 100]];
-  const LIM_D = [[-99, 168], [16, 196], [26, 240], [36, 168], [46, 240]];
+  const LIM_D = [[-99, 168], [26, 240], [36, 168], [46, 240]];
   const SRV_D = 104;
   function slide(phi, table) {
     let d = table[0][1];
@@ -91,10 +93,10 @@
   }
   const stepAt = (phi, table) => { let v = table[0][1], at = -99; for (const [t, x] of table) if (phi >= t) { v = x; at = t; } return [v, at]; };
   const PS_R = [[-99, "ch07.fast"], [24, "ch07.idle"], [40, "ch07.fast"]];
-  const LIM_R = [[-99, "5 min"], [16, "10 min"], [26, "60 min"], [36, "5 min"], [46, "60 min"]];
-  const ONLINE = [[-99, "02"], [16, "00"], [36, "01"]];
-  const CONN = [[-99, "03"], [24, "00"], [36, "01"]];
-  const SCENE = [[-99, "ch07.sA"], [16, "ch07.sB"], [24, "ch07.sC"], [36, "ch07.sD"], [44, "ch07.sE"]];
+  const LIM_R = [[-99, "5 min"], [26, "60 min"], [36, "5 min"], [46, "60 min"]];
+  // 停手到 26 那一轮刚好过了 ACTIVE_WINDOW_MS（15 拍），所以 16、21 两轮仍按在用排 5 分钟。
+  const STOP = 10.5, RESUME = 35, WINDOW = 15;
+  const SCENE = [[-99, "ch07.sA"], [12, "ch07.sB"], [24, "ch07.sC"], [RESUME, "ch07.sD"], [44, "ch07.sE"]];
   const CONSOLE = [[-99, "awake"], [24, "rest"], [30, "off"], [40, "awake"]];
   const BOOT = 39;
   const REPLY = { awake: ["200", "ch07.awake"], rest: ["620", "ch07.rest"], off: ["—", "ch07.noReply"] };
@@ -107,8 +109,9 @@
   const PIV = 92 * MS, ROD = 286 * MS;
   const CAP_Y = BY - 412 * MS;
   const tipOf = (cx, th) => [cx + Math.sin(th) * ROD, BY - PIV - Math.cos(th) * ROD];
-  const MAST = [1480, 320], BUS_Y = 286, XMARK = 1410;
+  const BUS_Y = 286, XMARK = 1410;
   const HC = { x: 1330, y: 370, w: 530, h: 210 };
+  const HC_IN = HC.x + HC.w / 2;
   const PS5 = { x: 1360, y: 606, w: 72, h: 116 };
   const PROBE = [[1206, 642], [PS5.x - 6, 660]];
   const NOTE_Y = 790, NOTE2_Y = 950;
@@ -155,27 +158,15 @@
     for (const t of ticks) if (phi >= t && phi - t < 1.5) p = Math.max(p, pulse(phi, t));
     if (p > 0.02) { const [tx, ty] = tipOf(cx, th); glow(e, tx, ty, 60, 0.5 * p); }
   }
-  function mast(x, mx, my, a, hot = 0) {
-    if (a <= 0) return;
-    const inkC = css("pink");
-    x.save(); x.globalAlpha = a; x.strokeStyle = inkC; x.lineWidth = 2.6; x.fillStyle = css("paper");
-    x.beginPath(); x.arc(mx, my, 18, 0, TAU); x.fill(); x.stroke(); x.restore();
-    line(x, mx - 12, my - 12, mx + 12, my + 12, 2, inkC, a); line(x, mx - 12, my + 12, mx + 12, my - 12, 2, inkC, a);
-    if (hot > 0.02) for (let j = 1; j <= 3; j++) {
-      x.save(); x.globalAlpha = a * hot * (1 - j * 0.22); x.strokeStyle = css("signal"); x.lineWidth = 2.4;
-      x.beginPath(); x.arc(mx, my, 18 + j * 11, -0.6, 0.6); x.stroke(); x.beginPath(); x.arc(mx, my, 18 + j * 11, Math.PI - 0.6, Math.PI + 0.6); x.stroke();
-      x.restore();
-    }
-  }
   function dashLine(x, pts, color, alpha, dash = [9, 8], w = 2) {
     x.save(); x.globalAlpha = alpha; x.strokeStyle = color; x.lineWidth = w; x.setLineDash(dash); x.lineJoin = "round";
     x.beginPath(); pts.forEach(([u, v], i) => (i ? x.lineTo(u, v) : x.moveTo(u, v))); x.stroke(); x.restore();
   }
-  const askPath = (cx) => [[cx, CAP_Y - 4], [cx, BUS_Y], [MAST[0], BUS_Y], [MAST[0], MAST[1] - 20]];
+  const askPath = (cx) => [[cx, CAP_Y - 4], [cx, BUS_Y], [HC_IN, BUS_Y], [HC_IN, HC.y]];
   function askDot(x, e, cx, phi, t0, dur, failed) {
     const k = (phi - t0) / dur;
     if (k <= 0 || k >= 1) return 0;
-    const pts = askPath(cx), L = K.pathLen(pts), stop = failed ? L - (MAST[0] - XMARK) - (MAST[1] - 20 - BUS_Y) : L;
+    const pts = askPath(cx), L = K.pathLen(pts), stop = failed ? L - (HC_IN - XMARK) - (HC.y - BUS_Y) : L;
     const d = failed ? Math.min(stop, 2 * k * L) : (k < 0.5 ? 2 * k : 2 - 2 * k) * L;
     const [px, py] = K.pathAt(pts, d);
     const a = failed ? 1 - prog(k, 0.6, 1) : 1;
@@ -230,21 +221,27 @@
     text(x, tr(key), 1860, 176, { font: FONT.cjk(38, 600), color: at > 0 && phi - at < 4 ? css("signal") : css("pink"), align: "right", alpha: a * k, maxW: 520 });
     text(x, tr("ch07.legend"), 1860, 222, { font: FONT.cjk(28, 600), color: css("graphite"), align: "right", alpha: a });
   }
-  function headCount(x, phi, a, asked) {
+  function activityCard(x, e, phi, a, asked) {
     const { x: px, y: py, w, h } = HC;
     rect(x, px, py, w, h, 2.4, css("pink"), a);
-    text(x, tr("ch07.count"), px + 26, py + 46, { font: FONT.cjk(30, 600), alpha: a });
+    if (asked > 0.02) fillRect(x, px, py, w, h, css("signal"), 0.06 * asked * a);
+    text(x, tr("ch07.agents"), px + 26, py + 46, { font: FONT.cjk(30, 600), alpha: a, maxW: w - 52 });
     line(x, px + 20, py + 66, px + w - 20, py + 66, 1.2, css("pink"), 0.5 * a);
-    [["online", "ch07.watch", ONLINE], ["connections", "ch07.open", CONN]].forEach(([key, lab, table], i) => {
-      const y = py + 118 + i * 66;
-      const kw = K.measure(x, key, FONT.mono(30, 500));
-      text(x, key, px + 26, y, { font: FONT.mono(30, 500), alpha: a });
-      text(x, tr(lab), px + 40 + kw, y, { font: FONT.cjk(28, 600), color: css("graphite"), alpha: a });
-      const [v, at] = stepAt(phi, table);
-      const fresh = at > 0 ? pulse(phi, at, 0.35) : 0;
-      if (asked > 0.02) fillRect(x, px + w - 110, y - 40, 90, 52, css("signal"), 0.12 * asked * a);
-      text(x, v, px + w - 26, y + 6, { font: FONT.mono(48, 600), color: fresh > 0.1 ? css("signal") : css("pink"), align: "right", alpha: a });
-    });
+    const busy = phi < STOP || phi >= RESUME;
+    const age = busy ? 0 : Math.floor(phi - STOP);
+    const fresh = phi >= RESUME ? pulse(phi, RESUME, 0.35) : 0;
+    text(x, tr("ch07.last"), px + 26, py + 118, { font: FONT.cjk(28, 600), color: css("graphite"), alpha: a });
+    const v = busy ? tr("ch07.now") : tr("ch07.ago").replace("N", age);
+    text(x, v, px + w - 26, py + 124, { font: FONT.cjk(44, 600), color: fresh > 0.1 ? css("signal") : css("pink"), align: "right", alpha: a });
+    if (fresh > 0.02) glow(e, px + w - 80, py + 108, 60, 0.45 * fresh * a);
+    const left = busy ? WINDOW : Math.max(0, WINDOW - (phi - STOP));
+    text(x, tr("ch07.window"), px + 26, py + 182, { font: FONT.cjk(28, 600), color: css("graphite"), alpha: a, maxW: 250 });
+    const cx0 = px + w - 26 - WINDOW * 14;
+    for (let i = 0; i < WINDOW; i++) {
+      const fill = clamp(left - i);
+      rect(x, cx0 + i * 14, py + 160, 10, 26, 1.2, css("pink"), 0.5 * a);
+      if (fill > 0) fillRect(x, cx0 + i * 14, py + 160 + 26 * (1 - fill), 10, 26 * fill, css("signal"), 0.85 * a);
+    }
   }
   function labels(x, cx, readout, changedAt, phi, name, sub, a, word = false) {
     const hot = changedAt > 0 && phi - changedAt < 2;
@@ -315,23 +312,21 @@
     zees(x, phi, win(phi, 26.4, 27, 35.7, 36.1) * pa);
     const la = prog(b, 0.55, 0.95) * pa;
     const failed = phi >= FAIL;
-    dashLine(x, [[MX.lim, CAP_Y - 4], [MX.lim, BUS_Y], [MAST[0], BUS_Y], [MAST[0], MAST[1] - 20]], css("pink"), 0.6 * la);
-    text(x, "GET /count", MX.lim + 16, BUS_Y - 12, { font: FONT.mono(28, 500), alpha: la });
+    dashLine(x, askPath(MX.lim), css("pink"), 0.6 * la);
+    text(x, "GET /api/status/coding/now", MX.lim + 16, BUS_Y - 12, { font: FONT.mono(28, 500), alpha: la });
     let asked = 0;
     for (const t of [1, 6, 11, 16, 21, 26, 31, 36, 41, 46]) {
-      const pre = t === 21 || NAP_CHECKS.includes(t);
+      const pre = NAP_CHECKS.includes(t);
       asked = Math.max(asked, askDot(x, e, MX.lim, phi, pre ? t - 0.5 : t + 0.05, 0.45, t >= FAIL));
     }
-    mast(x, MAST[0], MAST[1], la, asked);
-    text(x, "LivePushRoom", MAST[0] + 34, MAST[1] + 10, { font: FONT.mono(28, 500), alpha: la });
-    headCount(x, phi, la, asked);
+    activityCard(x, e, phi, la, asked);
     if (failed) {
       const k = prog(phi, FAIL, FAIL + 0.3, E.outBack);
       const c = css("signal");
       line(x, XMARK - 16 * k, BUS_Y - 16 * k, XMARK + 16 * k, BUS_Y + 16 * k, 4, c);
       line(x, XMARK - 16 * k, BUS_Y + 16 * k, XMARK + 16 * k, BUS_Y - 16 * k, 4, c);
       glow(e, XMARK, BUS_Y, 60, 0.5 * pulse(phi, FAIL, 0.2));
-      text(x, "0", MX.lim - 16, CAP_Y - 20, { font: FONT.mono(34, 700), color: c, align: "right", alpha: prog(phi, FAIL + 0.2, FAIL + 0.5) });
+      text(x, tr("ch07.asIdle"), MX.lim - 16, CAP_Y - 20, { font: FONT.cjk(34, 700), color: c, align: "right", alpha: prog(phi, FAIL + 0.2, FAIL + 0.5) });
     }
     consoleSide(x, e, phi, la);
     notes(x, phi, pa);
@@ -343,11 +338,11 @@
     nar(x, "ch07.n3b", 190, 1024, prog(b, 9.5, 10.2), win(b, 9.05, 9.15, 10.85, 11.0));
     nar(x, "ch07.n4a", 190, 944, prog(b, 11.0, 11.12), win(b, 11.0, 11.05, 11.62, 11.75));
     nar(x, "ch07.n4b", 190, 1024, prog(b, 11.12, 11.3), win(b, 11.0, 11.05, 11.62, 11.75));
-    const cIn = prog(b, 6.6, 6.9), cOut = prog(b, 9.05, 9.35);
+    const cIn = prog(b, 6.6, 6.9), cOut = prog(b, RESUME / 4, RESUME / 4 + 0.3);
     if (cIn > 0 && cOut < 1) {
       const hop = Math.sin(cOut * Math.PI) * 70 + (1 - E.out(cIn)) * 40;
       clawd(tp, 500 - 60 * E.in(cOut), BY - hop, 6, { pose: cOut > 0 ? "arms-up" : "default", crouch: cOut > 0 ? 0 : 1, alpha: cIn * (1 - cOut) });
-      const za = cIn * (1 - prog(b, 8.95, 9.05));
+      const za = cIn * (1 - prog(b, RESUME / 4 - 0.1, RESUME / 4));
       for (let j = 0; j < 2; j++) {
         const u = ((phi * 0.4 + j / 2) % 1 + 1) % 1;
         text(x, "z", 540 + u * 30, BY - 60 - u * 50, { font: FONT.mono(22 + 10 * u, 600), color: css("graphite"), alpha: za * Math.sin(u * Math.PI), texture: true });

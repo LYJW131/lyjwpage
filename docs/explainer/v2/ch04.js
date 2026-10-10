@@ -44,7 +44,8 @@
     { id: "coding", rt: 0, tag: 1, r: [0, 865, 614, 258], k: "chart" },
     { id: "coding-now", rt: 1, tag: 1, r: [0, 1127, 362, 200], k: "list" },
     { id: "limits", rt: 0, tag: 1, r: [366, 1127, 248, 200], k: "meters" },
-    { id: "playing-now", rt: 1, tag: 1, r: [0, 1334, 614, 118], k: "hero" },
+    { id: "playing-now", rt: 1, tag: 1, r: [0, 1334, 362, 118], k: "hero" },
+    { id: "quest-now", rt: 1, tag: 1, r: [366, 1334, 248, 118], k: "poster" },
     { id: "playing", rt: 1, tag: 1, r: [0, 1456, 362, 183], k: "list" },
     { id: "trophies", rt: 1, tag: 1, r: [366, 1456, 248, 183], k: "tiles" },
     { id: "pulse", rt: 1, tag: 0, r: [0, 1646, 614, 212], k: "lanes" },
@@ -58,7 +59,7 @@
   ];
   const PAGE_W = 614, PAGE_H = 2582;
   const byId = Object.fromEntries(P.map((p) => [p.id, p]));
-  const TAP = { "listening-now": 30, listening: 20, "github-chart": 10, activity: 60, trophies: 50, watching: 50 };
+  const TAP = { "listening-now": 30, listening: 20, "github-chart": 10, activity: 60, trophies: 50, watching: 50, "quest-now": 30 };
   for (const p of P) {
     const [x, y, w, h] = p.r;
     p.ty = y + (TAP[p.id] ?? h / 2);

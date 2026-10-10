@@ -528,7 +528,7 @@
 
   const R9 = { hx: 360, s: 0.46 };
   const REL = { head: 1350, bend: [1440, 1650], gate: 1720, lamp: 3000, bracket: 3110 };
-  const REL_ROWS = [[-90, true], [60, true], [240, true], [390, true], [540, true], [690, true], [840, false], [990, false]];
+  const REL_ROWS = [[-90, true], [60, true], [240, true], [390, true], [540, true], [690, true], [810, false], [930, false], [1050, false]];
   const u9 = (x) => R9.hx + (x - REL.head) * R9.s, v9 = (y) => SPINE + (y - SPINE) * R9.s;
   function cell9(L) {
     const { d } = L, X = CELLS[8].X, inkC = css("pink"), gr = css("graphite"), sig = css("signal");
@@ -550,7 +550,7 @@
     }
     ring(hx, SPINE, 16, sig, sig, 1);
     const bx = u9(REL.bracket);
-    for (const [y0, y1] of [[v9(-90) - 20, v9(390) + 20], [v9(690) - 20, v9(990) + 20]]) polyline(d, [[bx - 20, y0], [bx, y0], [bx, y1], [bx - 20, y1]], 1, 5, inkC);
+    for (const [y0, y1] of [[v9(-90) - 20, v9(390) + 20], [v9(690) - 20, v9(1050) + 20]]) polyline(d, [[bx - 20, y0], [bx, y0], [bx, y1], [bx - 20, y1]], 1, 5, inkC);
     d.restore();
   }
 
