@@ -63,6 +63,8 @@
 - 限流与来源：按 `CF-Connecting-IP` 过 Rate Limiting 绑定 `MCP_LIMIT`，拦下时回 429 带 `Retry-After`；和 `CHAT_USAGE_LIMIT` 一样只是尽力而为，核验记录见 `docs/ops-facts.md`。带 `Origin` 的请求按 `ALLOWED_ORIGINS` 校验（与 `/api/*` 同口径），不在名单里回 403；服务端和桌面端的 MCP 客户端不带 `Origin`，不受影响。
 - 验证：`src/mcp.test.ts` 覆盖两代握手与报错，但客户端会按自己的 schema 严格校验结果，单测验不出这类不兼容；改了协议处理，起 `pnpm dev:worker` 后用真实客户端各连一次：`claude -p --strict-mcp-config --mcp-config '{"mcpServers":{"lyjw":{"type":"http","url":"http://localhost:8788/mcp"}}}' "…"` 走新协议，`npx @modelcontextprotocol/inspector --cli http://localhost:8788/mcp --transport http --method tools/list` 走旧协议握手。
 
+- Code Mode（默认关闭）：`MCP_CODE_MODE=true` 且有 `LOADER`（`wrangler.toml` 的 `worker_loaders`）时，`/mcp` 的工具表多一个 `run_site_code`（`src/tools/code-mode.ts#CODE_TOOL`），首页对话不用；它不在 `SITE_TOOLS` 里，由 `src/worker.ts` 给 `ToolIO.runCode` 才出现。模型写的代码在 Worker Loader 动态 Worker 里跑（`src/tools/code-sandbox.ts`）：`globalOutbound` 为 null、无绑定，唯一出口是 `status(view)`，读到完整未分页的公开 JSON；读取额度与 `get_site_status` 共用账本，同一次运行重复读同一视图只占一次；有 CPU 与墙钟超时（`CODE_TIMEOUT_MS`）、代码长度与输出长度上限。生产不设该变量。
+
 ## 配置与部署
 
 绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，提交 issue 与连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret（含触发 Codex 与 Cursor 审查的 `CODEX_REVIEW_GITHUB_TOKEN`）、routine 与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`GITHUB_ISSUE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。

@@ -20,6 +20,9 @@ binding = "PUBLIC_STATUS"
 service = "api"
 entrypoint = "PublicStatus"
 
+[[worker_loaders]]
+binding = "LOADER"
+
 [[durable_objects.bindings]]
 name = "CHAT_QUOTA"
 class_name = "ChatQuota"

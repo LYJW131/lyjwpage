@@ -3,7 +3,14 @@ import type { StatusViewKey } from "@/lib/status-views";
 import { PROJECT_DOC_TOOL, type ProjectDocKey, type ReadDoc } from "./project-docs";
 import { SITE_STATUS_TOOL, type ReadStatus } from "./site-status";
 
-export type ToolIO = { readStatus: ReadStatus; readDoc: ReadDoc };
+export type CodeRun = { ok: true; result: unknown } | { ok: false; error: string };
+
+// runCode 只在 MCP_CODE_MODE 开启且有 Worker Loader 时才有；没有它 CODE_TOOL 不会出现在工具表里。
+export type ToolIO = {
+  readStatus: ReadStatus;
+  readDoc: ReadDoc;
+  runCode?: (code: string, status: (view: unknown) => Promise<unknown>) => Promise<CodeRun>;
+};
 
 // 读取额度的账本：首页对话一条回复共用一本，所有调用累计；MCP 每次调用各开一本新的。
 // views 是读过的视图集合（进 trace）；reads 是「视图 + 位置 + query + detail」的读取键，额度按它计。

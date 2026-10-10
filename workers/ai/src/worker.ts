@@ -14,8 +14,9 @@ import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleGithubWebhook } from "./build/handlers";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
-import type { Env } from "./runtime";
+import { mcpCodeModeEnabled, type Env } from "./runtime";
 import { fetchProjectDoc } from "./tools/project-docs";
+import { sandboxRunner } from "./tools/code-sandbox";
 import type { ToolIO } from "./tools/registry";
 
 const BUILD_HANDLERS = new Map([
@@ -83,7 +84,7 @@ const worker = {
       if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
         return jsonResponse({ error: "Too many requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
       }
-      response = await handleMcp(request, tools, env.CF_VERSION_METADATA?.id ?? "dev");
+      response = await handleMcp(request, mcpCodeModeEnabled(env) && env.LOADER ? { ...tools, runCode: sandboxRunner(env.LOADER) } : tools, env.CF_VERSION_METADATA?.id ?? "dev");
     } else {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       response = pathname === GOD_CHAT_PATH
