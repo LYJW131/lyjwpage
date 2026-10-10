@@ -321,7 +321,7 @@ test("every build signs in with PKCE, accepts any account, uses the identity onc
   const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
   assert.equal(response.status, 202);
   const { runId: started } = await response.json() as { runId: string };
-  assert.equal(calls.find((call) => call.path.includes("access_token") && call.path.startsWith("https://github.com"))?.body?.code_verifier, signIn.codeVerifier);
+  assert.equal(calls.find((call) => call.path === "https://github.com/login/oauth/access_token")?.body?.code_verifier, signIn.codeVerifier);
   assert.equal(calls.find((call) => call.path.startsWith("/applications/"))?.body?.access_token, "oauth-fixture");
   assert.equal(instance.readRun(started)?.account, "any-visitor");
   assert.equal(instance.readRun(started)?.coauthor, "Any Visitor <432+any-visitor@users.noreply.github.com>");
