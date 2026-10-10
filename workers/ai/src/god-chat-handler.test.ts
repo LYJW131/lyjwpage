@@ -209,7 +209,7 @@ function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role:
 const toolIO = { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
 
-test("改站请求由 Opus 判断，start_design 签会话，规划者只读文档与提计划，计划进历史签章", async (t) => {
+test("改站请求由 Opus 判断，start_design 签会话，规划者可读数据、文档、源码与外部文档并提计划，计划进历史签章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
@@ -236,7 +236,7 @@ test("改站请求由 Opus 判断，start_design 签会话，规划者只读文�
   assert.ok(requests[1].max_tokens > GOD_CHAT_TIER_INFO.opus.maxTokens);
   assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1 });
   assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.opus.model, GOD_CHAT_TIER_INFO.opus.model]);
-  assert.deepEqual(requests[1].tools?.map((tool) => "name" in tool && tool.name), ["read_project_doc", "ask_visitor", "propose_build"]);
+  assert.deepEqual(requests[1].tools?.map((tool) => "name" in tool && tool.name), ["get_site_status", "read_project_doc", "read_repo_file", "ask_visitor", "propose_build", "web_search", "web_fetch"]);
   const reply = events.flatMap((event) => event.type === "text" ? [event.text] : []).join("");
   const history: GodChatMessage[] = [
     { role: "user", content: "Please improve the music card." },

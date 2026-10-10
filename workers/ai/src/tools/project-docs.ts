@@ -38,7 +38,7 @@ const DOC_KEYS = Object.keys(PROJECT_DOCS) as ProjectDocKey[];
 // 文档进上下文就是输入 token 花费，且多为中文：一次读取最多 MAX_DOC_CHARS，一条回复合计最多读 MAX_DOC_READS_PER_REPLY 次，
 // 长文档先给目录再按章节读，不整篇塞进去。
 const MAX_DOC_CHARS = 8_000;
-const MAX_DOC_READS_PER_REPLY = 4;
+export const MAX_DOC_READS_PER_REPLY = 4;
 const MAX_SECTION_CHARS = 120;
 // 与 raw.githubusercontent.com 返回的 max-age 对齐：访客连问不重复回源，main 上的改动几分钟内可见。
 const DOC_CACHE_SECONDS = 300;
@@ -75,11 +75,11 @@ export function parseProjectDocInput(input: unknown): ProjectDocRequest | null {
 const normalize = (text: string) => text.replace(/[`*_]/g, "").trim().toLowerCase();
 
 // 同步调用：同一轮并行的几次调用按顺序先占好额度再并行去读，与 site-status.ts#claimViews 同理。
-export function claimDoc(request: ProjectDocRequest, read: Set<string>): { read: boolean; note?: string } {
+export function claimDoc(request: ProjectDocRequest, read: Set<string>, limit = MAX_DOC_READS_PER_REPLY): { read: boolean; note?: string } {
   const key = `${request.doc}#${normalize(request.section ?? "")}`;
   if (read.has(key)) return { read: false, note: "Already read earlier in this reply, reuse that result." };
-  if (read.size >= MAX_DOC_READS_PER_REPLY) {
-    return { read: false, note: `Not read, this reply may read at most ${MAX_DOC_READS_PER_REPLY} docs or sections.` };
+  if (read.size >= limit) {
+    return { read: false, note: `Not read, this reply may read at most ${limit} docs or sections.` };
   }
   read.add(key);
   return { read: true };
@@ -163,7 +163,7 @@ export const PROJECT_DOC_TOOL: SiteTool = {
   async run(input, { readDoc }, ledger) {
     const request = parseProjectDocInput(input);
     if (!request) return { text: "Unknown doc; the valid docs are listed in the tool description.", isError: true };
-    const claim = claimDoc(request, ledger.docs);
+    const claim = claimDoc(request, ledger.docs, ledger.docLimit);
     if (!claim.read) return { text: claim.note ?? "Not read.", isError: true };
     const { ok, text, heading } = await readProjectDoc(readDoc, request);
     return { text, isError: !ok, ...(ok && { doc: { key: request.doc, ...(heading && { heading }) } }) };
