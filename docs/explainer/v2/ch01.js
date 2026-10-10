@@ -936,7 +936,8 @@
   const JOBS = [
     ["apple-recent", 1, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
     ["github-chart", 10, 1], ["github-repo", 30, 2], ["vercel-deployments", 1, 0], ["vercel-metrics", 15, 3],
-    ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["sentry-status", 5, 0],
+    ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["sentry-status", 5, 2],
+    ["avatar-watch", 5, 1],
   ];
   const MINUTES = 12;
   const APPLE_IDLE = 5, APPLE_HOLD = 10, APPLE_CHANGED = 5;
@@ -944,7 +945,7 @@
     ? m % APPLE_IDLE === 0 || (m > APPLE_CHANGED && m - APPLE_CHANGED < APPLE_HOLD)
     : m % JOBS[j][1] === JOBS[j][2]);
   const DC = [17870, 500], DR = 262;
-  const TC = { x: 18236, y: 174, w: 880, h: 652 };
+  const TC = { x: 18236, y: 174, w: 880, h: 700 };
   const minuteAt = (b) => Math.floor((b - AT.dial) * 4 + 1e-9);
   function handSteps(j, b) {
     if (b < AT.dial) return 0;
