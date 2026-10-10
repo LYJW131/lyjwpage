@@ -175,3 +175,14 @@ test("streaming keeps one current turn and fresh build status after a concurrent
   store.update(id, { messages: chatReplyMessages(current(), user) });
   assert.deepEqual(current().map((message) => message.content), messages.map((message) => message.content));
 });
+
+test("cards no longer registered are dropped without losing the conversation", () => {
+  const raw = JSON.stringify({ version: 1, activeId: "s", sessions: [{ id: "s", title: "Music", createdAt: 1, updatedAt: 2, messages: [
+    { role: "user", content: "What is LYJW listening to?" },
+    { role: "assistant", content: "This.", cards: [{ card: "music", at: 0 }, { card: "nowListening", at: 0 }] },
+    { role: "user", content: "And before?" },
+    { role: "assistant", content: "That.", cards: [{ card: "gaming", at: 0 }] },
+  ] }] });
+  const [session] = readChatArchive(raw).sessions;
+  assert.deepEqual(session.messages.map((message) => message.cards), [undefined, [{ card: "nowListening", at: 0 }], undefined, undefined]);
+});
