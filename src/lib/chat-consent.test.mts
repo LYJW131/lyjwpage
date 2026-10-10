@@ -5,7 +5,8 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 import { CHAT_CODE_PATHS, chatCodeVersion } from "../../scripts/chat-code-version.mjs";
-import { CHAT_CONSENT_KEY, chatConsentLanguage, createChatConsentStore } from "./chat-consent.ts";
+import { textLanguage } from "@shared/build-routine";
+import { CHAT_CONSENT_KEY, createChatConsentStore } from "./chat-consent.ts";
 
 function storage() {
   const values = new Map<string, string>();
@@ -46,11 +47,11 @@ test("every chat code path exists in the repo", () => {
   assert.match(chatCodeVersion(process.cwd()), /^[0-9a-f]{16}$/);
 });
 
-test("privacy notice follows Chinese messages and falls back to English for every other language", () => {
-  assert.equal(chatConsentLanguage("LYJW 正在听什么歌？"), "zh");
-  assert.equal(chatConsentLanguage("我想給這個網站加功能"), "zh");
-  assert.equal(chatConsentLanguage("what is LYJW listening to?"), "en");
-  assert.equal(chatConsentLanguage("今日は何を聴いていますか"), "en");
-  assert.equal(chatConsentLanguage("안녕하세요"), "en");
-  assert.equal(chatConsentLanguage("¿Qué está escuchando?"), "en");
+test("privacy notice follows Chinese, Japanese and English messages and falls back to English otherwise", () => {
+  assert.equal(textLanguage("LYJW 正在听什么歌？"), "zh");
+  assert.equal(textLanguage("我想給這個網站加功能"), "zh");
+  assert.equal(textLanguage("what is LYJW listening to?"), "en");
+  assert.equal(textLanguage("今日は何を聴いていますか"), "ja");
+  assert.equal(textLanguage("안녕하세요"), "en");
+  assert.equal(textLanguage("¿Qué está escuchando?"), "en");
 });

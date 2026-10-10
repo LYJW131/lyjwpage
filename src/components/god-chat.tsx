@@ -11,7 +11,8 @@ import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
-import { chatConsent, chatConsentLanguage, type ChatConsentLanguage } from "@/lib/chat-consent";
+import { chatConsent } from "@/lib/chat-consent";
+import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
@@ -517,7 +518,7 @@ function Conversation({ className, archive, session: conversation }: { className
     const text = consentPending;
     setConsentPending(null);
     if (text) setDraft((current) => current || text);
-    setError(CONSENT_COPY[chatConsentLanguage(text ?? "")].declined);
+    setError(CONSENT_COPY[textLanguage(text ?? "")].declined);
   }
 
   // 卡片从紧凑高度长到视口高度时顶边不动、往下长；把顶边滚到吸顶页头下面，长完正好占满可见区域，上下各留 EDGE_GAP_PX。
@@ -869,10 +870,10 @@ function SessionList({ archive }: { archive: ChatArchive }) {
   );
 }
 
-// 站主要求隐私说明跟随访客消息的语言（中文或英文），是「界面文案英文」的例外。
-// destinations 须列全对话数据的每个出站去向；新增模型供应商、第三方工具或日志出口时同步改两种语言；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步。
+// 站主要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
+// destinations 须列全对话数据的每个出站去向；新增模型供应商、第三方工具或日志出口时同步改三种语言；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步。
 type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
-const CONSENT_COPY: Record<ChatConsentLanguage, ConsentCopy> = {
+const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   en: {
     lang: "en",
     label: "Privacy notice",
@@ -911,10 +912,29 @@ const CONSENT_COPY: Record<ChatConsentLanguage, ConsentCopy> = {
     remember: "接受后会记在这个浏览器里，对话代码有改动时需要重新确认。",
     declined: "消息没有发出。接受隐私说明后才能对话。",
   },
+  ja: {
+    lang: "ja",
+    label: "プライバシーに関するお知らせ",
+    intro: "神託が答える前に、このチャットがあなたのデータをどこへ送るかをご確認ください：",
+    destinations: [
+      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージとこの会話の履歴を中継し、レート制限の期間中は IP アドレスを保持します。会話の記録は保存せず、ログにはリクエストのメタデータ、利用回数、エラーのみが残り、メッセージ本文は含まれません。" },
+      { name: "Cloudflare Turnstile", detail: "人間であることを確認し、IP アドレスを受け取ります。" },
+      { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージと、それ以前のいくつかのメッセージの短い抜粋を読み、どの Claude モデルが答えるかを決めます。Cloudflare はこれを保存せず、学習にも使いません。" },
+      { name: "Anthropic（Claude API）", detail: "返信を書くために会話全体を受け取り、Web 検索も行います。Anthropic は API データを 30 日間保持し、安全確認のために閲覧することがあります（フラグが付いた場合はより長く保持）。学習には使われません。" },
+      { name: "AI HOT（aihot.news）", detail: "Claude が AI ニュースを調べるとき、メッセージから選んだ検索語を受け取ります。接続は Anthropic が本サイトに代わって行います。" },
+      { name: "Sentry", detail: "エラーレポートを受け取ります。セッションリプレイではチャットの文字が隠され、リクエスト本文は送られません。" },
+      { name: "GitHub", detail: "ビルド計画を提出した場合のみ：計画は公開の issue または pull request になり、ビルドを始めると計画が Anthropic の Claude Code にも送られます。" },
+      { name: "このブラウザ", detail: "会話とこの同意を保存します。" },
+    ],
+    accept: "同意する",
+    decline: "同意しない",
+    remember: "同意はこのブラウザに記録され、チャットのコードが変わると改めて確認します。",
+    declined: "メッセージは送信されていません。チャットするにはプライバシーに関するお知らせに同意してください。",
+  },
 };
 
 function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: () => void; onDecline: () => void }) {
-  const copy = CONSENT_COPY[chatConsentLanguage(text)];
+  const copy = CONSENT_COPY[textLanguage(text)];
   return (
     <>
       <div className="flex justify-end">

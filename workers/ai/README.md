@@ -56,7 +56,7 @@
 
 浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化。设计会话到期、轮数耗尽或访客输入 `/exit`（只在设计会话里列出）时清除设计令牌并退回普通对话。localStorage 不可用时只保留内存状态。
 
-访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`，按这条消息用中文或英文，判断见 `src/lib/chat-consent.ts#chatConsentLanguage`），接受之前不加载 Turnstile、不发任何请求；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.mjs#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。说明逐条列出对话数据的出站去向（`CONSENT_COPY` 的 `destinations`），新增模型供应商、第三方工具或日志出口时同步改它。
+访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`，按这条消息用中文、日文或英文，判断见 `shared/build-routine.ts#textLanguage`），接受之前不加载 Turnstile、不发任何请求；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.mjs#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。说明逐条列出对话数据的出站去向（`CONSENT_COPY` 的 `destinations`），新增模型供应商、第三方工具或日志出口时同步改它。
 
 ## MCP
 

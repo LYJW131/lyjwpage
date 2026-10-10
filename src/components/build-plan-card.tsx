@@ -11,7 +11,7 @@ import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { BUILD_PATH, BUILD_STATUS_PATH, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
+import { BUILD_PATH, BUILD_STATUS_PATH, planLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal, type PlanLanguage } from "@shared/build-routine";
 
 const BUILD_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_PATH);
 const STATUS_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
@@ -86,7 +86,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds create a public pull request with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {issueOpen && <IssuePanel proposal={proposal} disabled={disabled} onClose={() => setIssueOpen(false)} onCreated={(issue) => onChange({ ...proposal, issue })} />}
-          {buildOpen && <BuildPanel working={working} disabled={disabled} onClose={() => { setError(null); setBuildOpen(false); }} onStart={() => void startBuild()} />}
+          {buildOpen && <BuildPanel language={planLanguage(proposal.plan)} working={working} disabled={disabled} onClose={() => { setError(null); setBuildOpen(false); }} onStart={() => void startBuild()} />}
         </>
       )}
       {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
@@ -94,7 +94,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   );
 }
 
-function BuildPanel({ working, disabled, onClose, onStart }: { working: boolean; disabled: boolean; onClose: () => void; onStart: () => void }) {
+function BuildPanel({ language, working, disabled, onClose, onStart }: { language: PlanLanguage; working: boolean; disabled: boolean; onClose: () => void; onStart: () => void }) {
   const [agreed, setAgreed] = useState(false);
 
   return (
@@ -103,7 +103,7 @@ function BuildPanel({ working, disabled, onClose, onStart }: { working: boolean;
         <span className="min-w-0">A build opens a public pull request with your GitHub account as co-author.</span>
         <button type="button" onClick={onClose} disabled={working} aria-label="Close build confirmation" className="shrink-0 hover:text-foreground">Close</button>
       </div>
-      <GithubConsent action="build" checked={agreed} onChange={setAgreed} disabled={working || disabled} />
+      <GithubConsent action="build" language={language} checked={agreed} onChange={setAgreed} disabled={working || disabled} />
       <button type="button" onClick={() => { if (agreed) onStart(); }} disabled={working || disabled || !agreed} className="rounded bg-foreground px-3 py-2 text-background disabled:opacity-40">
         {working ? "Connecting to GitHub…" : "Sign in with GitHub & start build"}
       </button>
