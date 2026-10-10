@@ -49,6 +49,8 @@ declare global {
 type ShownCard = { card: GodChatCard; at: number };
 type Reply = Omit<ChatBubble, "role" | "content">;
 type Bubble = ChatBubble;
+type Resumed = { user: Bubble & { id: string }; before: Bubble[]; handoff: boolean };
+const RESUME_DELAY_MS = 2000;
 const EMPTY_MESSAGES: Bubble[] = [];
 // 须与 globals.css 里 .design-halo 的动画总时长一致。
 const DESIGN_HALO_MS = 2_400;
@@ -134,6 +136,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const expiredRef = useRef(false);
   const sessionRef = useRef(0);
   const sendRef = useRef<(text: string, token?: string) => void>(() => {});
+  const resumeRef = useRef<() => void>(() => {});
   const conversationId = conversation?.id;
   const design = conversation?.design;
 
@@ -229,14 +232,14 @@ function Conversation({ className, archive, session: conversation }: { className
     return () => observer.disconnect();
   }, []);
 
-  async function send(text: string, usedToken?: string) {
-    const content = text.trim();
+  async function send(text: string, usedToken?: string, resumed?: Resumed) {
+    const content = resumed?.user.content ?? text.trim();
     if (!content) return;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
-    const answers = answersRef.current?.text.trim() === content ? answersRef.current.answers : undefined;
-    answersRef.current = null;
-    const user: Bubble & { id: string } = { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
-    const shown: Bubble[] = [...messages, user];
+    const answers = !resumed && answersRef.current?.text.trim() === content ? answersRef.current.answers : undefined;
+    if (!resumed) answersRef.current = null;
+    const user: Bubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
+    const shown: Bubble[] = [...(resumed?.before ?? messages), user];
     const history: GodChatMessage[] = fitHistory(
       shown
         .filter(({ content }) => content.trim())
@@ -245,7 +248,8 @@ function Conversation({ className, archive, session: conversation }: { className
         ),
     );
     let reply = "";
-    let meta: Reply = {};
+    // 补发只取回规划者那一段，交接回合里 Sonnet 的开场白拿不回来，分隔线画在最前面。
+    let meta: Reply = resumed?.handoff ? { designAt: 0 } : {};
     const session = sessionRef.current;
     const bubble = (): Bubble => ({ role: "assistant", content: reply, ...meta });
     const replyMessages = (next?: Bubble) => chatReplyMessages(
@@ -260,7 +264,7 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!messages.length) reveal();
     show();
     // 等验证期间输入框还能改，回调发的是排队时那条；框里已经不是它就别清，免得吞掉访客新改的草稿。
-    setDraft((current) => (current === text ? "" : current));
+    if (!resumed) setDraft((current) => (current === text ? "" : current));
     setError(null);
     setStreaming(true);
     if (usedToken) {
@@ -270,15 +274,18 @@ function Conversation({ className, archive, session: conversation }: { className
 
     const controller = new AbortController();
     abortRef.current = controller;
+    let designToken: string | undefined;
+    let answered = false;
+    let dropped = false;
     try {
       if (!CHAT_URL) throw new Error(OFFLINE);
       const humanPass = usedToken ? null : readPass();
-      const designToken = activeChatDesign(conversation?.design)?.token;
+      designToken = activeChatDesign(conversation?.design)?.token;
       if (conversation?.design && !designToken) chatArchive.update(conversation.id, { design: undefined }, { persist: false });
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, ...(usedToken ? { turnstileToken: usedToken } : { humanPass: humanPass?.pass }), ...(designToken && { designToken }) }),
+        body: JSON.stringify({ messages: history, ...(usedToken ? { turnstileToken: usedToken } : { humanPass: humanPass?.pass }), ...(designToken && { designToken }), ...(resumed && { resume: true }) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -290,6 +297,7 @@ function Conversation({ className, archive, session: conversation }: { className
         }
         throw new Error(data?.error ?? OFFLINE);
       }
+      answered = true;
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
       let buffer = "";
       for (;;) {
@@ -321,7 +329,8 @@ function Conversation({ className, archive, session: conversation }: { className
           else if (event.type === "card") {
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
           } else if (event.type === "design" && conversation) {
-            chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) }, { persist: false });
+            // 连同访客这条一起存下：刷新或断线后要靠它补发规划者的回复。
+            chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) });
             if (!designToken && meta.designAt === undefined) {
               meta = { ...meta, designAt: reply.length };
               if (sessionRef.current === session) {
@@ -338,21 +347,51 @@ function Conversation({ className, archive, session: conversation }: { className
         show();
       }
     } catch (err) {
-      if (!controller.signal.aborted) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
+      // 设计会话里请求已到 Worker 后断线，规划者那一回合照样跑完、轮数也扣了：留住访客这条，稍后补发错过的回复。
+      if (!controller.signal.aborted) {
+        if ((designToken && err instanceof TypeError) || (answered && (designToken || meta.designAt !== undefined))) dropped = true;
+        else setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
+      }
     } finally {
       if (sessionRef.current === session) {
         const kept = reply || meta.cards?.length || meta.proposals?.length || meta.asks?.length;
-        setMessages(replyMessages(kept ? bubble() : undefined));
-        if (!kept) setDraft((current) => current || content);
+        if (dropped) {
+          setMessages([...replyMessages(), user, ...(kept ? [bubble()] : [])]);
+          if (resumed) setError("The connection dropped. Reload the page to get the rest of the reply.");
+          else setTimeout(() => resumeRef.current(), RESUME_DELAY_MS);
+        } else {
+          setMessages(replyMessages(kept ? bubble() : undefined));
+          if (!kept) setDraft((current) => current || content);
+        }
       }
       setStreaming(false);
       abortRef.current = null;
     }
   }
 
+  // 设计会话里最后一条访客消息还没拿到盖了章的回复：从会话里取回它错过的那一回合。
+  function resume() {
+    // 补发不走 Turnstile：没有有效通行证时留着那两条，等访客自己再发。
+    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass()) return;
+    const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
+    if (!current || !activeChatDesign(current.design)) return;
+    const list = current.messages;
+    const at = list.map((message) => message.role).lastIndexOf("user");
+    if (at < 0 || at < list.length - 2 || list[at + 1]?.seal) return;
+    const user = { ...list[at], id: list[at].id ?? crypto.randomUUID() };
+    if (!list[at].id) setMessages([...list.slice(0, at), user, ...list.slice(at + 1)], false);
+    void send(user.content, undefined, { user, before: list.slice(0, at), handoff: list[at + 1]?.designAt !== undefined });
+  }
+
   useEffect(() => {
     sendRef.current = (text, value) => void send(text, value);
+    resumeRef.current = resume;
   });
+
+  useEffect(() => {
+    const timer = setTimeout(() => resumeRef.current(), 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const typing = draft.trimStart();
   const paletteOpen = typing.startsWith("/") && !/\s/.test(typing.trim());
@@ -568,15 +607,9 @@ function Conversation({ className, archive, session: conversation }: { className
                       Looked at {message.lookups.join(", ")}
                     </div>
                   ) : null}
-                  {message.docs?.length ? <DocReads docs={message.docs} /> : null}
-                  {message.steps?.length ? <PlannerSteps steps={message.steps} live={live} /> : null}
-                  {message.searches?.map((query, i) => (
-                    <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
-                      Searched “{query}”
-                    </div>
-                  ))}
+                  {message.designAt === undefined && <PlannerActivity message={message} live={live} />}
                   {message.role === "assistant" ? (
-                    <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} />
+                    <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} handoff={<PlannerActivity message={message} live={live} />} />
                   ) : message.answers ? (
                     <AnswerCard answers={message.answers} />
                   ) : (
@@ -742,6 +775,22 @@ function DocRead({ read, prefix }: { read: NonNullable<ChatBubble["docs"]>[numbe
   );
 }
 
+// 交接回合的文档、沙盒步骤和搜索跟规划者的回复放在一起，画在交接分隔线下面。
+function PlannerActivity({ message, live }: { message: ChatBubble; live: boolean }) {
+  if (!message.docs?.length && !message.steps?.length && !message.searches?.length) return null;
+  return (
+    <div>
+      {message.docs?.length ? <DocReads docs={message.docs} /> : null}
+      {message.steps?.length ? <PlannerSteps steps={message.steps} live={live} /> : null}
+      {message.searches?.map((query, i) => (
+        <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
+          Searched “{query}”
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PlannerSteps({ steps, live }: { steps: string[]; live: boolean }) {
   return (
     <details className="mb-1.5">
@@ -816,12 +865,12 @@ function DesignDivider() {
   );
 }
 
-function ReplyBody({ content, cards = [], designAt, live }: { content: string; cards?: ShownCard[]; designAt?: number; live: boolean }) {
+function ReplyBody({ content, cards = [], designAt, live, handoff }: { content: string; cards?: ShownCard[]; designAt?: number; live: boolean; handoff?: ReactNode }) {
   const parts: ReactNode[] = [];
   let from = 0;
   const marks = [
     ...cards.map(({ card, at }) => ({ at, node: <ChatCard key={card} card={card} /> })),
-    ...(designAt === undefined ? [] : [{ at: designAt, node: <DesignDivider key="design" /> }]),
+    ...(designAt === undefined ? [] : [{ at: designAt, node: <Fragment key="design"><DesignDivider />{handoff}</Fragment> }]),
   ].sort((a, b) => a.at - b.at);
   for (const { at, node } of marks) {
     const text = content.slice(from, at);
