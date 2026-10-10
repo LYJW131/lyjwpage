@@ -29,6 +29,8 @@ export interface Env {
   CODEX_REVIEW_GITHUB_TOKEN?: string;
   ROUTINE_FIRE_URL?: string;
   ROUTINE_FIRE_TOKEN?: string;
+  VERCEL_TOKEN?: string;
+  VERCEL_TEAM_ID?: string;
   BUILD_REQUEST_LIMIT?: RateLimit;
   MCP_LIMIT?: RateLimit;
   AI_DEV?: string;

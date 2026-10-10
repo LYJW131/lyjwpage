@@ -117,7 +117,8 @@ export type GodChatEvent =
   | { type: "seal"; seal: string; trace?: GodChatTrace; planToken?: string }
   | { type: "pass"; pass: string; expiresAt: number };
 
-export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string };
+// resume：设计会话里重新取回访客断线时错过的那条回复，messages 截到访客那条为止；不扣设计轮数。
+export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true };
 
 // 访客自己的话超长就拒；模型的旧回复只截断，超出总量从最早的消息丢起，长回答不能让后续对话发不出去。
 // 浏览器发送前先过一遍，Worker 收到后再过一遍。
@@ -167,11 +168,12 @@ export function normalizeTrace(value: unknown): GodChatTrace | undefined {
 
 export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!body || typeof body !== "object") return null;
-  const { messages, turnstileToken, humanPass, designToken } = body as Record<string, unknown>;
+  const { messages, turnstileToken, humanPass, designToken, resume } = body as Record<string, unknown>;
   if (turnstileToken !== undefined && (typeof turnstileToken !== "string" || !turnstileToken || turnstileToken.length > 2048)) return null;
   if (humanPass !== undefined && (typeof humanPass !== "string" || !GOD_CHAT_PASS_PATTERN.test(humanPass))) return null;
   if (turnstileToken === undefined && humanPass === undefined) return null;
   if (designToken !== undefined && (typeof designToken !== "string" || !/^[\w-]+\.[\w-]+$/.test(designToken) || designToken.length > 2048)) return null;
+  if (resume !== undefined && (resume !== true || designToken === undefined)) return null;
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
   const parsed: GodChatMessage[] = [];
@@ -189,5 +191,5 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   }
   const fitted = fitHistory(parsed);
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
-  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }) };
+  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }) };
 }

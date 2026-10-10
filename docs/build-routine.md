@@ -41,11 +41,11 @@ PR 由 App 机器人开出，Codex 与 Cursor 不会自动审查；PR 确认创�
 
 Claude review 卡片通过 `src/lib/build-review-summary.ts#buildReviewSummary` 将可识别的审查结论显示为 No issues 或 Issues found；缺失、失败或无法识别的结论显示 Unknown。评论正文不直接显示，链接仍指向 GitHub 原评论；本地保存的会话也使用同一展示规则。
 
-CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类和汇总：Vercel 与 Workers Builds 的明确部署信号只计入 Preview，Vercel Preview Comments 辅助检查不计入两栏。Preview 汇总所有部署，失败优先于等待，链接指向决定当前结果的部署；读取失败或不完整时显示未知。检查与部署 webhook 只标记状态需要重新对账，单条事件不能覆盖整体结论。
+CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类和汇总：Vercel 与 Workers Builds 的明确部署信号只计入 Preview，Vercel Preview Comments 辅助检查不计入两栏。Preview 汇总所有部署，失败优先于等待，链接指向决定当前结果的部署；读取失败或不完整时显示未知。检查与部署 webhook 只标记状态需要重新对账，单条事件不能覆盖整体结论。Vercel 预览部署成功后，`workers/ai/src/build/preview-share.ts#withPreviewShare` 先确认该部署的 Git 分支就是这次构建的分支，再用 Vercel 分享链接把它公开 `PREVIEW_SHARE_TTL_S`，Preview 链接换成带 `_vercel_share` 的部署地址；站点其他分支的预览仍需登录 Vercel。缺 `VERCEL_TOKEN` 或分享失败时保留原部署页链接。
 
 卡片可见且构建未到终态时轮询；`merged`、`closed`、`blocked`、`failed`、`timeout` 停止轮询，`merged` / `closed` 不再调用 GitHub 对账。其他已有 PR 的陈旧状态按 `BUILD_RECONCILE_MS` 限制对账频率，通过 GitHub API 查询 PR、检查和预览状态。无法读取 PR 时保留最后观测到的事实；PR 查询成功后，读取失败或不完整的检查、预览与审查结果显示未知，不用 routine 的预算耗尽或会话结束推断结果。对账按 head SHA 与 GitHub 更新时间防止旧结果覆盖新提交。状态访问需要绑定 runId 的签名 token。
 
-浏览器用 localStorage 保存多个会话，包括历史签章、设计/计划令牌和构建 runId/状态令牌。`/clear` 与 `/new` 新开会话，旧会话仍可切换、删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化；容量策略由 `src/lib/chat-archive.ts` 维护。过期计划按钮禁用；localStorage 不可用时退回内存，刷新后不承诺恢复。
+浏览器用 localStorage 保存多个会话，包括历史签章、设计/计划令牌和构建 runId/状态令牌。`/clear` 与 `/new` 新开会话，设计会话里 `/exit` 丢掉设计令牌、回到普通对话，旧会话仍可切换、删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化，设计会话的回复在收到 `design` 事件时先存一次；设计会话里请求送达后断线，浏览器保留访客那条并自动补发一次规划者的回复，刷新页面后也会补发最后一条没盖章的设计回复。容量策略由 `src/lib/chat-archive.ts` 维护。过期计划按钮禁用；localStorage 不可用时退回内存，刷新后不承诺恢复。
 
 ## 安全边界
 
@@ -64,7 +64,7 @@ CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类�
 
 这些操作由有授权的维护者完成；文档不表示已配置。
 
-1. 在 AI Worker 与实际用于验收的分支 Preview 配置 `ROUTINE_FIRE_TOKEN`、`BUILD_SESSION_SECRET`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_WEBHOOK_SECRET`，并设置 `ROUTINE_FIRE_URL`；`CODEX_REVIEW_GITHUB_TOKEN` 可选，只配在生产 AI Worker。现有 `GITHUB_APP_CLIENT_SECRET` 供 PKCE 授权使用；付费设计对话仍需要现有模型、历史签名和 Turnstile 配置。不要把生产凭据复制进 Preview。
+1. 在 AI Worker 与实际用于验收的分支 Preview 配置 `ROUTINE_FIRE_TOKEN`、`BUILD_SESSION_SECRET`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_WEBHOOK_SECRET`，并设置 `ROUTINE_FIRE_URL`；`CODEX_REVIEW_GITHUB_TOKEN` 可选，只配在生产 AI Worker；`VERCEL_TOKEN` 可选，只配在生产 AI Worker，用来公开构建预览（团队 ID 写在 `wrangler.toml` 的 `VERCEL_TEAM_ID`）。现有 `GITHUB_APP_CLIENT_SECRET` 供 PKCE 授权使用；付费设计对话仍需要现有模型、历史签名和 Turnstile 配置。不要把生产凭据复制进 Preview。
 2. GitHub App 配置 webhook 指向对应环境的构建 webhook 路径，并订阅上文事件；确认 Contents、Pull requests、Issues 写权限，以及 Checks 和 Commit statuses 读取权限及目标仓库安装。安装 token 的缩减权限由 `workers/ai/src/build/github.ts#installationApi` 指定。JWT issuer 使用公开 `GITHUB_APP_CLIENT_ID`，安装 ID 由 GitHub 查询，不另存凭据。回调页仍是 `GITHUB_CALLBACK_PATH`，验收地址须登记在 App 中。
 3. routine 不挂仓库，选择 Custom 网络环境，仅允许 `github.com`、`registry.npmjs.org`、`api.homepage.lyjw.llc`；贴入下节提示词。分支 Preview 实测时，把上传所用的具体 Preview 主机加入该隔离测试环境，测试完成后移除，不能用生产上传地址验证 Preview run。
 4. 核对 Vercel Preview 无 `GITHUB_TOKEN`、`REVALIDATE_SECRET`、`SENTRY_AUTH_TOKEN`；检查 Worker Preview 只持有专供测试的凭据。核对 Workers Builds 监视路径包含共享构建契约，清单见 [Workers 构建](./workers-builds.md)。

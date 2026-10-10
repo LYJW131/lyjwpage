@@ -34,11 +34,13 @@ export async function startDesign(env: Env, openSession: (designId: string) => P
   return { session: { token, expiresAt, remaining: admitted.remaining }, sessionId };
 }
 
-export async function admitDesign(env: Env, token: string): Promise<DesignAdmission> {
+// 补发断线错过的那一回合不算新的一轮：那一轮在原请求里已经扣过。
+export async function admitDesign(env: Env, token: string, resume = false): Promise<DesignAdmission> {
   if (!designAvailable(env)) return { status: 503, error: "Design sessions are unavailable." };
   const payload = await verifyBuildToken<DesignToken>(token, env.BUILD_SESSION_SECRET!, "design");
   if (!payload || typeof payload.id !== "string" || !/^[a-f0-9-]{36}$/.test(payload.id) || typeof payload.sessionId !== "string" || !/^sesn_\w+$/.test(payload.sessionId)) return { status: 400, code: "design_session_expired", error: "This design session is invalid or expired. Continue in ordinary chat." };
-  const admitted = await env.BUILD_COORDINATOR!.getByName("global").admitDesign(payload.id);
+  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
+  const admitted = resume ? await coordinator.peekDesign(payload.id) : await coordinator.admitDesign(payload.id);
   if (admitted.status !== "ok") return {
     status: admitted.status === "expired" ? 400 : 429,
     code: admitted.status === "expired" ? "design_session_expired" : "design_session_exhausted",
