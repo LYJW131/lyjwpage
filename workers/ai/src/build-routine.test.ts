@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, buildIssueBody, planLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, planLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url } from "./build/token.ts";
@@ -16,7 +16,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
   return { url: "data:text/javascript,export class DurableObject{constructor(ctx,env){this.ctx=ctx;this.env=env}}", shortCircuit: true };
 } });
-const { handleBuild, handleBuildProgress, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
+const { handleBuild, handleBuildProgress, handleBuildScreenshot, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
 const { BuildCoordinator } = await import("./build/coordinator.ts");
 const plan: BuildPlan = { title: "Improve the page", spec: "Improve the public layout.", acceptance: ["Mobile layout fits."], paths: ["src/card.tsx"] };
 const sha = "a".repeat(40);
@@ -290,6 +290,52 @@ test("an opened PR asks Codex and Cursor to review it with the owner's token, an
     }
     assert.deepEqual(comments.map((comment) => String(comment.body?.body).split(/\s/)[0]).sort(), ["@codex", "@cursoragent"]);
   }
+});
+
+const png = (seed: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from([seed])]).toString("base64");
+function imageBucket() {
+  const objects = new Map<string, { bytes: Uint8Array; contentType?: string }>();
+  const bucket = { async put(key: string, bytes: Uint8Array, options?: { httpMetadata?: { contentType?: string } }) { objects.set(key, { bytes, contentType: options?.httpMetadata?.contentType }); } };
+  return { objects, bucket: bucket as unknown as R2Bucket };
+}
+
+test("screenshots need the unused upload token, real image bytes and stay within the per-run limit", async () => {
+  const { env, instance } = coordinator();
+  const { objects, bucket } = imageBucket();
+  const withImages = { ...env, IMAGES: bucket } as Env;
+  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
+  const shot = (body: unknown, token = uploadToken) => handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, body, token), withImages);
+  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home", content: png(0) }, uploadToken), env)).status, 503);
+  assert.equal((await shot({ caption: "Home", content: png(0) }, "e".repeat(64))).status, 409);
+  assert.equal((await shot({ caption: "Home", content: btoa("<svg onload=alert(1)>") })).status, 400);
+  assert.equal((await shot({ caption: "x".repeat(BUILD_SCREENSHOT_LIMITS.captionChars + 1), content: png(0) })).status, 400);
+  for (let n = 0; n < BUILD_SCREENSHOT_LIMITS.count; n += 1) assert.equal((await shot({ caption: `Home — 375px [x](https://evil.test) @owner ${n}`, content: png(n) })).status, 201);
+  assert.equal((await shot({ caption: "One more", content: png(99) })).status, 409);
+  assert.equal(objects.size, BUILD_SCREENSHOT_LIMITS.count);
+  const [objectKey, object] = [...objects][0];
+  assert.match(objectKey, /^[a-f0-9]{64}\.png$/);
+  assert.equal(object.contentType, "image/png");
+  assert.equal(instance.readRun(runId)?.screenshots?.[0].caption, "Home — 375px x (https evil.test) owner 0");
+});
+
+test("the App comments the screenshots on the opened PR, and screenshots close with the upload", async () => {
+  const { env, instance } = coordinator();
+  const { bucket } = imageBucket();
+  const withImages = { ...env, IMAGES: bucket } as Env;
+  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
+  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home desktop", content: png(1) }, uploadToken), withImages)).status, 201);
+  const { fetcher, calls } = githubFixture();
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), withImages, fetcher)).status, 201);
+  const comments = calls.filter((call) => call.path.endsWith("/issues/12/comments"));
+  assert.equal(comments.length, 1);
+  assert.equal(comments[0].auth, "Bearer installation-fixture");
+  assert.match(String(comments[0].body?.body), /^## Screenshots\n[\s\S]*\*\*Home desktop\*\*\n\n!\[Home desktop\]\(https:\/\/lyjw\.me\/img\/[a-f0-9]{64}\.png\)$/);
+  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Late", content: png(2) }, uploadToken), withImages)).status, 409);
+  const plain = coordinator();
+  plain.instance.reserveRun(await stored(), "p", Date.now() + 60_000);
+  const quiet = githubFixture();
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), plain.env, quiet.fetcher)).status, 201);
+  assert.equal(quiet.calls.some((call) => call.path.endsWith("/comments")), false);
 });
 
 test("webhooks verify exact bytes, reject invalid signatures and deduplicate deliveries", async () => {

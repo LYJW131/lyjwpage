@@ -55,7 +55,7 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 检出默认分支，用
 | Worker | 包含路径 | 排除路径 |
 | --- | --- | --- |
 | `api` | `workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | `shared/ingest/*`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
-| `ai` | `workers/ai/*`、`shared/ai-paths.ts`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts`、`shared/http-origins.ts`、`shared/public-status.ts`、`src/lib/status-views.ts`、`src/lib/site.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | 无 |
+| `ai` | `workers/ai/*`、`shared/ai-paths.ts`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts`、`shared/http-origins.ts`、`shared/public-status.ts`、`src/lib/status-views.ts`、`src/lib/site.ts`、`src/lib/asset-url.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | 无 |
 | `ingress` | `workers/ingress/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
 | `collector` | `workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
 

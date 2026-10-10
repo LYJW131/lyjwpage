@@ -15,10 +15,11 @@
 | GET | `/api/build/status` | 持状态 token 查询 run 并按需对账 |
 | POST | `/api/build/upload` | routine 持一次性上传 token 提交文件 |
 | POST | `/api/build/progress` | routine 持同一上传 token 报告进度 |
+| POST | `/api/build/screenshot` | routine 上传前持同一上传 token 提交界面截图，存进 R2 图片桶，PR 开出后由 App 评论 |
 | POST | `/api/build/webhook` | 验证 GitHub webhook 并更新构建状态 |
 | POST | `/mcp` | 无鉴权的 Streamable HTTP MCP |
 
-浏览器端点检查允许来源；上传、进度和 webhook 接受无 Origin 的服务器请求，分别验证 bearer token 或原始正文 HMAC。这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
+浏览器端点检查允许来源；上传、进度、截图和 webhook 接受无 Origin 的服务器请求，分别验证 bearer token 或原始正文 HMAC。这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
 
 `PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。api 的 `PublicStatus` 只接受 `src/lib/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
 
