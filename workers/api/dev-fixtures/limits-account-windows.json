@@ -1,0 +1,57 @@
+{
+  "ok": true,
+  "updatedAt": "$now-60000",
+  "data": {
+    "agents": {
+      "claude": {
+        "plan": { "tier": "Max 5x", "label": "Max 5x" },
+        "limits": [
+          { "key": "claude.primary", "label": null, "group": null, "windowMinutes": 300, "usedPercent": 6, "resetsAt": null },
+          { "key": "weekly_all", "label": null, "group": null, "windowMinutes": 10080, "usedPercent": 93, "resetsAt": null },
+          { "key": "claude-weekly-scoped-fable", "label": "Fable only", "group": null, "windowMinutes": 10080, "usedPercent": 4, "resetsAt": null }
+        ],
+        "limitsError": null,
+        "updatedAt": "$now-60000"
+      },
+      "cursor": {
+        "plan": { "tier": "Ultra", "label": "Ultra" },
+        "limits": [
+          { "key": "cursor.secondary", "label": "Cursor models", "group": null, "windowMinutes": 43200, "usedPercent": 15, "resetsAt": null },
+          { "key": "cursor.tertiary", "label": "Other models", "group": null, "windowMinutes": 43200, "usedPercent": 100, "resetsAt": null },
+          { "key": "cursor.quaternary", "label": "Grok Bot", "group": null, "windowMinutes": 10080, "usedPercent": 5, "resetsAt": null }
+        ],
+        "limitsError": null,
+        "updatedAt": "$now-60000"
+      },
+      "codex": {
+        "plan": { "tier": "prolite", "label": "Pro Lite" },
+        "limits": [
+          { "key": "codex.primary", "label": null, "group": null, "windowMinutes": 300, "usedPercent": 10, "resetsAt": null },
+          { "key": "codex-spark-session", "label": "Codex Spark 5h", "group": null, "windowMinutes": 300, "usedPercent": 99, "resetsAt": null },
+          { "key": "codex.secondary", "label": null, "group": null, "windowMinutes": 10080, "usedPercent": 40, "resetsAt": null }
+        ],
+        "limitsError": null,
+        "updatedAt": "$now-60000"
+      },
+      "antigravity": {
+        "plan": { "tier": "Google AI Pro", "label": "Google AI Pro" },
+        "limits": [
+          { "key": "antigravity.primary", "label": "Gemini Weekly", "group": null, "windowMinutes": 10080, "usedPercent": 4, "resetsAt": null },
+          { "key": "antigravity.secondary", "label": "Gemini 5h", "group": null, "windowMinutes": 300, "usedPercent": 1, "resetsAt": null },
+          { "key": "antigravity.tertiary", "label": "Claude & GPT Weekly", "group": null, "windowMinutes": 10080, "usedPercent": 82, "resetsAt": null },
+          { "key": "antigravity.quaternary", "label": "Claude & GPT 5h", "group": null, "windowMinutes": 300, "usedPercent": 0, "resetsAt": null }
+        ],
+        "limitsError": null,
+        "updatedAt": "$now-60000"
+      },
+      "grok": {
+        "plan": { "tier": "SuperGrok Heavy", "label": "SuperGrok Heavy" },
+        "limits": [
+          { "key": "grok.primary", "label": null, "group": null, "windowMinutes": 10080, "usedPercent": 65, "resetsAt": null }
+        ],
+        "limitsError": null,
+        "updatedAt": "$now-60000"
+      }
+    }
+  }
+}

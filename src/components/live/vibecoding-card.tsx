@@ -6,7 +6,7 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { Cloud } from "lucide-react";
+import { CircleUser, Cloud } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
@@ -19,6 +19,7 @@ import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useSiteDay } from "@/hooks/use-site-day";
 import { useConfirmedClockStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { accountWindowSlot, busiestAccountWindow, windowMatchesName } from "@/lib/agent-limit-windows";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import {
   CODING_ACTIVE_WINDOW_MS,
@@ -45,14 +46,6 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { AgentLimitsPayload } from "@/lib/vibecoding-limits";
-
-function busiestLimit(limits: VibeCodingLimit[], now: number) {
-  const candidates = limits.filter((limit) => !isExtraWindow(limit));
-  if (candidates.length === 0) return null;
-  const effective = (limit: VibeCodingLimit) =>
-    now && limit.resetsAt != null && limit.resetsAt * 1000 <= now ? 0 : limit.usedPercent;
-  return candidates.reduce((best, row) => (effective(row) > effective(best) ? row : best));
-}
 
 const REFRESH_MS = 2 * 60_000;
 
@@ -86,6 +79,18 @@ function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean, clocks
   return { active, sources: sources.map((entry) => entry.source), model: codingDisplayModel(row, live, active) };
 }
 
+function ActivitySourceMark({ source, label }: { source: CodingActivityEntry["source"]; label: string }) {
+  const className = "size-3.5";
+  switch (source) {
+    case "mac":
+      return <MacBookProIcon className={className} aria-label={label} />;
+    case "agents":
+      return <CircleUser className={className} aria-label={label} />;
+    case "agents-otlp":
+      return <Cloud className={className} aria-label={label} />;
+  }
+}
+
 function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) {
   const labels = sources.map((source) => CODING_SOURCE_LABELS[source] ?? source);
   return (
@@ -94,13 +99,9 @@ function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) 
       title={labels.length ? `Active on ${labels.join(" + ")}` : undefined}
     >
       <span className="label-mono">Active</span>
-      {sources.map((source, index) =>
-        source === "mac" ? (
-          <MacBookProIcon key={source} className="size-3.5" aria-label={labels[index]} />
-        ) : (
-          <Cloud key={source} className="size-3.5" aria-label={labels[index]} />
-        ),
-      )}
+      {sources.map((source, index) => (
+        <ActivitySourceMark key={source} source={source} label={labels[index] ?? source} />
+      ))}
     </span>
   );
 }
@@ -384,9 +385,7 @@ function TotalUsage({
   );
 }
 
-const SESSION_WINDOW_MAX_MINUTES = 1440;
-
-// Cursor 按键匹配；按时长推断会把 tertiary 误当专项窗口而剔除。
+// Cursor 三扇都跨过一天，按时长会并进同一个 weekly 槽，只能按 key 对上。
 const FEATURED_LIMITS: Record<
   string,
   ReadonlyArray<{ slot: FeaturedLimitSlot; title: string }>
@@ -411,42 +410,14 @@ type FeaturedLimitSlot =
   | "cursor.tertiary"
   | "cursor.quaternary";
 
-function isNamedLimit(limit: VibeCodingLimit, name: string) {
-  return `${limit.key} ${limit.label ?? ""}`.toLowerCase().includes(name);
-}
-
-function isSparkWindow(limit: VibeCodingLimit) {
-  return (
-    limit.key.endsWith(".tertiary") ||
-    isNamedLimit(limit, "spark") ||
-    isNamedLimit(limit, "bengalfox")
-  );
-}
-
-function isExtraWindow(limit: VibeCodingLimit) {
-  return isSparkWindow(limit) || limit.key.includes("weekly-scoped") || isNamedLimit(limit, "fable");
-}
-
-function isSessionWindow(limit: VibeCodingLimit) {
-  return (
-    limit.group === "session" ||
-    (limit.windowMinutes != null && limit.windowMinutes < SESSION_WINDOW_MAX_MINUTES)
-  );
-}
-
-function limitSlot(limit: VibeCodingLimit): "session" | "weekly" | null {
-  if (isExtraWindow(limit)) return null;
-  return isSessionWindow(limit) ? "session" : "weekly";
-}
-
 function pickSlotLimit(limits: VibeCodingLimit[], slot: FeaturedLimitSlot) {
   if (slot === "fable") {
-    return limits.find((limit) => isNamedLimit(limit, "fable")) ?? null;
+    return limits.find((limit) => windowMatchesName(limit, "fable")) ?? null;
   }
   if (slot !== "session" && slot !== "weekly") {
     return limits.find((limit) => limit.key === slot) ?? null;
   }
-  const matched = limits.filter((limit) => limitSlot(limit) === slot);
+  const matched = limits.filter((limit) => accountWindowSlot(limit) === slot);
   if (matched.length === 0) return null;
   if (slot === "weekly") {
     return matched.find((limit) => limit.key === "weekly_all") ?? matched[0] ?? null;
@@ -455,7 +426,7 @@ function pickSlotLimit(limits: VibeCodingLimit[], slot: FeaturedLimitSlot) {
 }
 
 function compactLimit(row: Pick<CodingAgentRow, "limits">, now: number) {
-  return busiestLimit(row.limits, now);
+  return busiestAccountWindow(row.limits, now);
 }
 
 type FeaturedLimitRow =
@@ -808,7 +779,7 @@ function AgentPanel({
       <div className="mt-5 grid gap-3 border-t border-line pt-4">
         <div className="label-mono text-muted-foreground">
           Limits
-          {row.plan && (
+          {!limitsStale && row.plan && (
             <span title={`Plan ${row.plan.tier}`}>
               <span aria-hidden className="mx-1.5">
                 ·
@@ -855,6 +826,8 @@ function CompactAgentRow({
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
   const limit = limitsStale ? null : compactLimit(row, now);
+  const plan = limitsStale ? null : row.plan;
+  const windowLabel = limit?.label ?? null;
   const usedPercentValue = limit?.usedPercent ?? null;
   const resetsAt = limit?.resetsAt ?? null;
   useEffect(() => {
@@ -889,7 +862,7 @@ function CompactAgentRow({
   return (
     <div
       className="min-w-0 py-3"
-      title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}
+      title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? windowLabel ?? undefined)}
     >
       <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
         <div className="flex h-5 min-w-0 items-center gap-2">
@@ -904,12 +877,22 @@ function CompactAgentRow({
           {active && <ActiveBadge sources={sources} />}
         </div>
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
-          {row.plan && (
-            <span className="truncate" title={`Plan ${row.plan.tier}`}>
-              {row.plan.label}
+          {plan && (
+            <span className="truncate" title={`Plan ${plan.tier}`}>
+              {plan.label}
             </span>
           )}
-          {row.plan && reset && (
+          {plan && windowLabel && (
+            <span aria-hidden className="mx-1.5">
+              ·
+            </span>
+          )}
+          {windowLabel && (
+            <span className="min-w-0 truncate" title={windowLabel}>
+              {windowLabel}
+            </span>
+          )}
+          {(plan || windowLabel) && reset && (
             <span aria-hidden className="mx-1.5">
               /
             </span>

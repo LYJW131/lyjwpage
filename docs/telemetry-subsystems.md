@@ -185,9 +185,9 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 ### 卡片怎么判
 - 展示名、品牌图标、占哪种行（全量面板、紧凑行、只进合计与年度不单独占行）只在站点登记表 `src/lib/coding-agents.ts#CODING_AGENTS`；来源只报 agent id，登记表里没有的 id 用 id 当名字、占一行紧凑行。
 - 「今天」：视图给的是各 agent 最近一个有行的站点日，浏览器按自己的站点日判是不是今天，不是今天就写明是哪一天。来源在当天有采集就有行（没用是一行 0），所以最近一天停在昨天表示今天还没报到。
-- 活动灯：任一来源的最近事件在 `src/lib/coding-agents.ts#CODING_ACTIVE_WINDOW_MS` 内就亮；Mac 亲口离线时只作废来自 `mac` 的时刻（`liveCodingActivity`），账号与云端的灯不受 Mac 存活影响。
+- 活动灯：任一来源的最近事件在 `src/lib/coding-agents.ts#CODING_ACTIVE_WINDOW_MS` 内就亮；Mac 亲口离线时只作废来自 `mac` 的时刻（`liveCodingActivity`），账号与云端的灯不受 Mac 存活影响。灯上的标记按来源分开（`src/lib/coding-agents.ts#CODING_SOURCE_LABELS`）：`mac` 是本机，`agents` 是账号，`agents-otlp` 是云端环境。账号活动不画成云，也不画成某台 Mac。
 - 来源状态：参与合计的来源这一轮采集失败（`error`）时，读数旁标 Partial（有读数）或 Unavailable（没有读数），悬停写出每个来源的状况（含被账号级来源覆盖的 `superseded`）；没有行的地方一律画「—」，不当成 0。
-- 限额另走可滞后层（见下一节），按 id 贴到同一行上。
+- 限额另走可滞后层（见下一节），按 id 贴到同一行上。紧凑行的那一个百分比是非专项窗口里用量最高的一扇（`src/lib/agent-limit-windows.ts#busiestAccountWindow`），旁边写出这扇的 `label`。专项窗口只有名字里带 Spark、BengalFox、Fable 的，以及 key 含 `weekly-scoped` 的（`src/lib/agent-limit-windows.ts#isExtraAccountWindow`）。key 以 `.tertiary` 结尾不是专项：Antigravity 的第三扇是另一套周额度，Cursor 的第三扇是其他模型月额度。
 
 ### 数据契约与分桶规范
 - **日期分桶**：日行按 `Asia/Shanghai` 站点日划分；时刻一律 epoch 毫秒。
@@ -208,7 +208,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 - **凭据完全隔离**：容器内部独立维护各家 CLI（Claude Code、Codex 等）登录 Session，严禁复制宿主机凭据，防止 refresh token 竞态失效。
 - **心跳与超时**：
   - 即使数据无变化，每轮上报依然执行（作为存活心跳）。
-  - 限额在可滞后层，过没过时由浏览器按 `AGENT_LIMITS_STALE_MS` 判断，超过就呈现 Unavailable（源：`src/lib/freshness.ts#AGENT_LIMITS_STALE_MS`）。
+  - 限额在可滞后层，过没过时由浏览器按 `AGENT_LIMITS_STALE_MS` 判断，超过就呈现 Unavailable（源：`src/lib/freshness.ts#AGENT_LIMITS_STALE_MS`）。套餐和窗口在同一行、同一个 `updatedAt` 上，过时后套餐名跟窗口一起撤下。
 
 ---
 
