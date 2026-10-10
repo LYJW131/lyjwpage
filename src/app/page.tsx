@@ -217,6 +217,9 @@ export default async function Home() {
                     artworkPlaceholders={artwork}
                   />
                 </CardBoundary>
+                <CardBoundary label="Talk to God" className={SLOT.godChat}>
+                  <GodChat className={SLOT.godChat} />
+                </CardBoundary>
                 <CardBoundary label="Activity" className={SLOT.activity} paths={READS.activity}>
                   <ActivityCard fallback={activity} className={SLOT.activity}>
                     <WorkoutsStrip fallback={workouts} />
@@ -246,9 +249,6 @@ export default async function Home() {
                 </CardBoundary>
                 <CardBoundary label="Pulse" className={SLOT.pulse} paths={READS.pulse}>
                   <PulseCard fallback={pulse} className={SLOT.pulse} />
-                </CardBoundary>
-                <CardBoundary label="Talk to God" className={SLOT.godChat}>
-                  <GodChat className={SLOT.godChat} />
                 </CardBoundary>
               </div>
 

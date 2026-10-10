@@ -67,11 +67,12 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
+// 站主要求示例用中文，是「界面文案英文」的例外；四条依次展示实时状态卡片、项目文档、联网搜索、改站规划与构建。
 const SUGGESTIONS = [
-  "What's LYJW listening to?",
-  "How does this site get its live data?",
-  "What's new in AI this week?",
-  "Help me improve this site",
+  "LYJW 正在听什么歌？",
+  "这个网站的实时数据是怎么来的？",
+  "帮我搜一下这周 AI 圈的新闻",
+  "我想给这个网站加个小功能",
 ];
 
 export function GodChat({ className }: { className?: string }) {
