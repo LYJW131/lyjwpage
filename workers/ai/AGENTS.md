@@ -9,6 +9,7 @@
 - `src/tools/registry.ts#SITE_TOOLS` 同时是无鉴权 `/mcp` 和首页对话的工具：只放只读、只读公开模型的工具；要访客确认的、只对对话界面有意义的、Anthropic 服务端工具留在 `src/chat/`。
 - 付费模型调用前先过 `ChatQuota`；缺配额绑定或历史签名密钥时关闭对话入口。历史只能经 `src/chat/seal.ts#sealedHistory` 验证后进入 Clef 和模型，工具循环共用整条回复的输出预算与读取账本。
 - 设计会话、计划和构建状态令牌各自签名；计划只能被 issue 或 build 消费一次。`BuildCoordinator` 只保存 AI 交互配额与构建状态，不保存站点遥测。访客 GitHub token 用完立即撤销，不持久化。
+- 设计会话的 Managed Agents 规划者只读：沙盒只放行 github.com、不挂凭据，write / edit 关闭，停下等确认的调用一律拒绝；提示词与工具每个会话从 `src/chat/designer.ts` 覆盖，不依赖 Console 上 agent 的配置。挂起的 `ask_visitor` / `propose_build` 只能用 `user.custom_tool_result` 了结。
 - routine 不持有仓库推送凭据；上传只经 `src/build/validation.ts` 的路径与大小校验后由 GitHub App 写入构建分支。webhook 必须验证原始正文 HMAC；Claude 审查只作参考，不授权合并。
 - Anthropic 出站经 `src/chat/egress.ts#anthropicFetch`；不要把任意主机转发能力加进 `AnthropicEgress`，取消信号须贯穿请求与响应管道。
 - `src/sentry.ts#sentryOptions` 禁止收集请求正文、请求头和 cookie；不能把对话、OAuth code 或出站密钥写入日志与错误上下文。

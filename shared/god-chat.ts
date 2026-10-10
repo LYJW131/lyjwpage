@@ -98,6 +98,7 @@ export function parseQuestions(value: unknown): GodChatQuestion[] | null {
 // design 和 plan 的 token 各自签名；计划 token 同时进该轮历史签章，不能移到另一条回复里。
 // card 是 show_card 要画的卡片，画在回复里收到这一行时正文已到的位置；同一条回复里同一张卡片只发一次。
 // thinking 是模型思考的摘要（不是原文），只给界面在等正文时显示，不进对话历史；分几轮想时轮与轮之间补一个空行。
+// step 是设计会话里规划者在沙盒中的一步（搜代码、跑命令）的一行英文说明，只给界面显示进度，不进对话历史。
 // served 只在给出最终答案的那一轮由 Anthropic 的拒答兜底模型答成（没被拒）时出现，回复末尾一次，model 是那个模型的 id。
 export type GodChatEvent =
   | { type: "route"; route: GodChatRoute; tier: GodChatServedTier | null; downgradedFrom?: GodChatTier }
@@ -111,6 +112,7 @@ export type GodChatEvent =
   | { type: "tool"; views: string[] }
   | { type: "doc"; doc: string; path: string; url: string; section?: string }
   | { type: "search"; query: string }
+  | { type: "step"; text: string }
   | { type: "sources"; sources: GodChatSource[] }
   | { type: "seal"; seal: string; trace?: GodChatTrace; planToken?: string }
   | { type: "pass"; pass: string; expiresAt: number };

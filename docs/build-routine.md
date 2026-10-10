@@ -6,9 +6,9 @@
 
 ## 设计与确认
 
-Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，只有调用 `start_design` 才创建设计会话，同一条回复随即交给 Opus 规划者，从访客这条消息接着规划，不让访客再描述一遍；对话卡片在交接处画一条设计会话分隔线。候选请求仍扣普通聊天额度，Sonnet 无空位时拒绝，不降级；开启会话的这一轮也计入设计轮数。已有有效会话的请求直接由 Opus 作规划者，不再调用 Clef，也不扣普通聊天档位额度。会话期限、轮数和全站窗口上限以 `BUILD_DESIGN_LIMITS` 为准；计数存在 `BuildCoordinator`，复制浏览器存档不能刷新额度。会话过期或轮数耗尽后，浏览器清除设计令牌并恢复普通对话；服务端返回专用失效代码时也清除令牌。
+Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，只有调用 `start_design` 才创建设计会话：Worker 在 Claude Managed Agents 上开一个会话，同一条回复随即交给其中的 Opus 规划者，从访客这条消息接着规划，不让访客再描述一遍；对话卡片在交接处画一条设计会话分隔线。候选请求仍扣普通聊天额度，Sonnet 无空位时拒绝，不降级；开启会话的这一轮也计入设计轮数。已有有效会话的请求直接转给同一个 Managed Agents 会话，不再调用 Clef，也不扣普通聊天档位额度；规划者的上下文、读过的文件和沙盒都留在会话里，设计令牌只带会话 ID。会话期限、轮数和全站窗口上限以 `BUILD_DESIGN_LIMITS` 为准；计数存在 `BuildCoordinator`，复制浏览器存档不能刷新额度。会话过期或轮数耗尽后，浏览器清除设计令牌并恢复普通对话；服务端返回专用失效代码时也清除令牌。
 
-规划者问清需求、按需 `read_project_doc`，用 `propose_build` 输出标题、Markdown 规格、验收项和预计路径。`workers/ai/src/build/validation.ts#parseBuildPlan` 校验后签出计划；计划有效期取 `BUILD_PLAN_TTL_MS`。计划内容是需求，不是可执行指令。改动范围的最终硬限制在上传阶段执行。
+规划者在会话沙盒里匿名克隆公开仓库 main，用 glob、grep、read 和只读命令查代码与文档，用 `get_site_status` 看实时数据，再用 `ask_visitor` 提问、`propose_build` 输出标题、Markdown 规格、验收项和预计路径。题目和计划不立刻回结果：会话停在等结果的状态，访客下一条消息就作为那次调用的结果发回。`workers/ai/src/build/validation.ts#parseBuildPlan` 校验后签出计划；计划有效期取 `BUILD_PLAN_TTL_MS`。计划内容是需求，不是可执行指令。改动范围的最终硬限制在上传阶段执行。
 
 计划卡的两个出口互斥：
 
