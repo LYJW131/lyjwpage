@@ -93,6 +93,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const [usage, setUsage] = useState<FetchedUsage | "loading" | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
+  const [warm, setWarm] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -175,6 +176,19 @@ function Conversation({ className, archive, session: conversation }: { className
     const el = scrollRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  useEffect(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setWarm(true);
+        observer.disconnect();
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const header = document.querySelector<HTMLElement>("header.sticky");
@@ -417,7 +431,7 @@ function Conversation({ className, archive, session: conversation }: { className
         <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
       </div>
       {historyOpen && <SessionList archive={archive} />}
-      {armed && (
+      {(armed || warm) && (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
           strategy="afterInteractive"
