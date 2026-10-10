@@ -45,7 +45,7 @@ CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类�
 
 卡片可见且构建未到终态时轮询；`merged`、`closed`、`blocked`、`failed`、`timeout` 停止轮询，`merged` / `closed` 不再调用 GitHub 对账。其他已有 PR 的陈旧状态按 `BUILD_RECONCILE_MS` 限制对账频率，通过 GitHub API 查询 PR、检查和预览状态。无法读取 PR 时保留最后观测到的事实；PR 查询成功后，读取失败或不完整的检查、预览与审查结果显示未知，不用 routine 的预算耗尽或会话结束推断结果。对账按 head SHA 与 GitHub 更新时间防止旧结果覆盖新提交。状态访问需要绑定 runId 的签名 token。
 
-浏览器用 localStorage 保存多个会话，包括历史签章、设计/计划令牌和构建 runId/状态令牌。`/clear` 与 `/new` 新开会话，设计会话里 `/exit` 丢掉设计令牌、回到普通对话，旧会话仍可切换、删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化；容量策略由 `src/lib/chat-archive.ts` 维护。过期计划按钮禁用；localStorage 不可用时退回内存，刷新后不承诺恢复。
+浏览器用 localStorage 保存多个会话，包括历史签章、设计/计划令牌和构建 runId/状态令牌。`/clear` 与 `/new` 新开会话，设计会话里 `/exit` 丢掉设计令牌、回到普通对话，旧会话仍可切换、删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化，设计会话的回复在收到 `design` 事件时先存一次；设计会话里请求送达后断线，浏览器保留访客那条并自动补发一次规划者的回复，刷新页面后也会补发最后一条没盖章的设计回复。容量策略由 `src/lib/chat-archive.ts` 维护。过期计划按钮禁用；localStorage 不可用时退回内存，刷新后不承诺恢复。
 
 ## 安全边界
 
