@@ -2,13 +2,13 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "LYJW · 从生活遥测到实时主页",
+    "title": "LYJW · 从生活遥测到实时主页与 AI 对话",
     "locale": "zh-CN",
     "output": "docs/architecture.html",
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage.git",
-      "revision": "43ef5895bf8e65ac20f11d5b0516587d7fa7f7a1"
+      "revision": "ff52d027f7097358a511438eef9ed28b45d3814d"
     }
   },
   "components": [
@@ -20,11 +20,11 @@
       "tag": "Access token · POST /api/ingest/*",
       "pos": [
         40,
-        260
+        420
       ],
       "size": [
-        270,
-        120
+        240,
+        110
       ],
       "sources": [
         {
@@ -46,11 +46,11 @@
       "tag": "无状态入口 · R2 HEAD 确认",
       "pos": [
         450,
-        260
+        420
       ],
       "size": [
         240,
-        120
+        110
       ],
       "sources": [
         {
@@ -71,12 +71,12 @@
       "sublabel": "提交实时状态 · 提供公开模型",
       "tag": "/api/status/* · 布局变化才失效缓存",
       "pos": [
-        830,
-        260
+        860,
+        420
       ],
       "size": [
         240,
-        120
+        110
       ],
       "sources": [
         {
@@ -97,8 +97,8 @@
       "sublabel": "实时快照 · Pulse · 用量账本",
       "tag": "串行提交 · 实时层唯一权威",
       "pos": [
-        830,
-        50
+        860,
+        230
       ],
       "size": [
         240,
@@ -121,7 +121,7 @@
       "tag": "写入方直写 · API 只读此层",
       "pos": [
         450,
-        490
+        610
       ],
       "size": [
         240,
@@ -146,8 +146,8 @@
       "sublabel": "事件广播 · 可见人数",
       "tag": "可休眠 WebSocket",
       "pos": [
-        830,
-        490
+        860,
+        610
       ],
       "size": [
         240,
@@ -173,7 +173,7 @@
       "tag": "Apple 最近播放写实时层",
       "pos": [
         450,
-        700
+        800
       ],
       "size": [
         240,
@@ -199,10 +199,10 @@
       "tag": "Cloudflare · Sentry · PSI · 厂商状态",
       "pos": [
         40,
-        700
+        800
       ],
       "size": [
-        270,
+        240,
         100
       ],
       "sources": [
@@ -218,8 +218,8 @@
       "sublabel": "上报事实 · Pulse · 服务统计",
       "tag": "无公开读路径",
       "pos": [
-        830,
-        700
+        860,
+        800
       ],
       "size": [
         240,
@@ -241,11 +241,11 @@
       "id": "images",
       "type": "cloud",
       "label": "R2 · 内容寻址图片",
-      "sublabel": "Mac / Emby 直传",
+      "sublabel": "上报图片 · 构建截图",
       "tag": "图片不经过 Next.js 函数",
       "pos": [
-        1210,
-        50
+        1270,
+        230
       ],
       "size": [
         240,
@@ -256,7 +256,7 @@
           "path": "reporters/emby-reporter/src/r2.ts"
         },
         {
-          "path": "docs/ops-facts.md"
+          "path": "workers/ai/src/build/screenshots.ts"
         },
         {
           "path": "next.config.ts"
@@ -270,12 +270,12 @@
       "sublabel": "lyjw.me · 按卡 use cache",
       "tag": "首屏快照 · 后台重建",
       "pos": [
-        1210,
-        260
+        1270,
+        420
       ],
       "size": [
         240,
-        120
+        110
       ],
       "sources": [
         {
@@ -296,8 +296,8 @@
       "sublabel": "SWR · 逐卡新鲜度",
       "tag": "挂载后直连 API 与 /ws",
       "pos": [
-        1210,
-        490
+        1270,
+        610
       ],
       "size": [
         240,
@@ -322,8 +322,8 @@
       "sublabel": "lyjw131.com · 回源 lyjw.me",
       "tag": "HTML · JS · /img/* 缓存",
       "pos": [
-        1210,
-        700
+        1270,
+        800
       ],
       "size": [
         240,
@@ -337,12 +337,133 @@
           "path": "next.config.ts"
         }
       ]
+    },
+    {
+      "id": "ai",
+      "type": "backend",
+      "label": "AI Worker",
+      "sublabel": "对话 · 设计 · 构建 · MCP",
+      "tag": "Turnstile · Clef 选档 · 配额 DO",
+      "pos": [
+        450,
+        230
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "sources": [
+        {
+          "path": "workers/ai/src/worker.ts"
+        },
+        {
+          "path": "workers/ai/src/chat/handler.ts"
+        },
+        {
+          "path": "workers/ai/src/chat/router.ts"
+        }
+      ]
+    },
+    {
+      "id": "anthropic",
+      "type": "external",
+      "label": "Anthropic API",
+      "sublabel": "Haiku · Sonnet · Fable",
+      "tag": "经 AnthropicEgress DO 出站",
+      "pos": [
+        450,
+        40
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "shared/god-chat-tiers.ts"
+        },
+        {
+          "path": "workers/ai/src/chat/egress.ts"
+        }
+      ]
+    },
+    {
+      "id": "managed",
+      "type": "external",
+      "label": "Claude Managed Agents",
+      "sublabel": "Opus 规划者 · 沙盒",
+      "tag": "克隆公开仓库 · 出计划",
+      "pos": [
+        860,
+        40
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "workers/ai/src/chat/designer.ts"
+        },
+        {
+          "path": "workers/ai/src/chat/design.ts"
+        }
+      ]
+    },
+    {
+      "id": "routine",
+      "type": "external",
+      "label": "Claude Code routine",
+      "sublabel": "按签名计划改代码",
+      "tag": "无推送凭据 · 截桌面与 375px",
+      "pos": [
+        40,
+        230
+      ],
+      "size": [
+        240,
+        110
+      ],
+      "sources": [
+        {
+          "path": "workers/ai/src/build/handlers.ts"
+        },
+        {
+          "path": "docs/build-routine.md"
+        }
+      ]
+    },
+    {
+      "id": "github",
+      "type": "external",
+      "label": "GitHub",
+      "sublabel": "访客 issue · App 开 PR",
+      "tag": "webhook 回写构建状态",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        240,
+        100
+      ],
+      "sources": [
+        {
+          "path": "workers/ai/src/build/github.ts"
+        },
+        {
+          "path": "workers/ai/src/build/webhook.ts"
+        },
+        {
+          "path": "workers/ai/src/github-issue.ts"
+        }
+      ]
     }
   ],
   "boundaries": [
     {
       "kind": "region",
-      "label": "Cloudflare · 上报、状态与持久化",
+      "label": "Cloudflare · 上报、状态、对话与持久化",
       "wraps": [
         "ingress",
         "api",
@@ -350,7 +471,8 @@
         "lag",
         "live",
         "collector",
-        "history"
+        "history",
+        "ai"
       ],
       "pad": 28
     }
@@ -451,7 +573,7 @@
       "id": "direct_read",
       "from": "browser",
       "to": "api",
-      "label": "状态 API",
+      "label": "状态 · 对话 API",
       "variant": "default"
     },
     {
@@ -502,6 +624,69 @@
       "to": "browser",
       "label": "大陆入口",
       "variant": "default"
+    },
+    {
+      "id": "ai_forward",
+      "from": "api",
+      "to": "ai",
+      "label": "转发 /api/chat · /mcp",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ai_status",
+      "from": "ai",
+      "to": "api",
+      "label": "PublicStatus RPC",
+      "variant": "default"
+    },
+    {
+      "id": "ai_model",
+      "from": "ai",
+      "to": "anthropic",
+      "label": "流式作答",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ai_design",
+      "from": "ai",
+      "to": "managed",
+      "label": "设计会话",
+      "variant": "default"
+    },
+    {
+      "id": "build_fire",
+      "from": "ai",
+      "to": "routine",
+      "label": "/fire 触发",
+      "variant": "default"
+    },
+    {
+      "id": "build_upload",
+      "from": "routine",
+      "to": "ai",
+      "label": "上传文件 · 截图",
+      "variant": "default"
+    },
+    {
+      "id": "build_pr",
+      "from": "ai",
+      "to": "github",
+      "label": "开 PR · 评论截图",
+      "variant": "default"
+    },
+    {
+      "id": "build_webhook",
+      "from": "github",
+      "to": "ai",
+      "label": "webhook",
+      "variant": "dashed"
+    },
+    {
+      "id": "build_screenshot",
+      "from": "ai",
+      "to": "images",
+      "label": "写构建截图",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -527,6 +712,15 @@
       "items": [
         "Vercel 生成首屏时按卡读 API；浏览器挂载后直连 Worker，实时变化走 WebSocket，可滞后卡按各自节奏轮询。",
         "只有布局变化触发 Vercel 标签失效。ESA 按 SWR 独立更新；图片走同源 /img/*，在边缘回源。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "对话与访客构建",
+      "items": [
+        "首条消息前先接受隐私说明，Turnstile 验人后发 30 分钟通行证；Clef 选 Haiku、Sonnet 或 Fable，额度满了逐档降级。",
+        "改站请求由 Sonnet 开设计会话，交给 Managed Agents 里的 Opus 出计划；访客授权 GitHub 后，routine 改代码上传，ai 校验再以 App 开 PR，截图存 R2 并评论进 PR。",
+        "ai 没有公开域名：浏览器、MCP 客户端、routine 与 GitHub webhook 都打到 api，经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
       ]
     }
   ]
