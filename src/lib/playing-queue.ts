@@ -30,10 +30,14 @@ export function normalizePlayingQueue(value: unknown): PlayingQueue | null {
   if (!row || !Array.isArray(row.tracks)) return null;
 
   const tracks: PlayingQueueTrack[] = [];
-  for (const item of row.tracks) {
-    const track = object(item);
+  // index 是上报队列的原下标；丢掉没标题的行后仍按原下标对，否则当前首会滑到别的歌。
+  const rawIndex = number(row.index);
+  let index: number | null = null;
+  for (let at = 0; at < row.tracks.length; at += 1) {
+    const track = object(row.tracks[at]);
     const title = track ? text(track.title) : null;
     if (!title) continue;
+    if (rawIndex === at) index = tracks.length;
     tracks.push({
       title,
       artist: track ? text(track.artist) : null,
@@ -41,12 +45,6 @@ export function normalizePlayingQueue(value: unknown): PlayingQueue | null {
     });
   }
   if (tracks.length === 0) return null;
-
-  const rawIndex = number(row.index);
-  const index =
-    rawIndex != null && Number.isInteger(rawIndex) && rawIndex >= 0 && rawIndex < tracks.length
-      ? rawIndex
-      : null;
 
   return { index, tracks };
 }
