@@ -168,11 +168,11 @@ test("GitHub JWT supports PKCS8 and GitHub PKCS1 PEM with verifiable RS256 signa
 });
 
 function githubFixture(extra: (path: string, body: Record<string, unknown> | null) => Response | undefined = () => undefined) {
-  const calls: { path: string; body: Record<string, unknown> | null }[] = [];
+  const calls: { path: string; body: Record<string, unknown> | null; auth?: string }[] = [];
   const fetcher: typeof fetch = async (input, init) => {
     const path = String(input).replace("https://api.github.com", "");
     const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null;
-    calls.push({ path, body });
+    calls.push({ path, body, auth: (init?.headers as Record<string, string> | undefined)?.Authorization });
     const override = extra(path, body);
     if (override) return override;
     if (path.endsWith("/installation")) return json({ id: 1 });
@@ -184,6 +184,7 @@ function githubFixture(extra: (path: string, body: Record<string, unknown> | nul
     if (path.endsWith("/git/refs")) return json({ ref: `refs/heads/${branchForRun(runId)}` }, 201);
     if (path.endsWith("/pulls")) return json({ number: 12, html_url: `https://github.com/${BUILD_REPO}/pull/12`, head: { sha: headSha } }, 201);
     if (path.endsWith("/git/ref/heads/main")) return json({ object: { sha } });
+    if (path.endsWith("/issues/12/comments")) return json({ id: 1 }, 201);
     throw new Error(`Unexpected fixture request: ${path}`);
   };
   return { fetcher, calls };
@@ -235,6 +236,23 @@ test("valid upload creates and returns a confirmed PR without secret fields", as
   assert.equal(body.pr?.number, 12);
   assert.equal(JSON.stringify(body).includes(uploadToken), false);
   assert.equal("plan" in body, false);
+});
+
+test("an opened PR asks Codex to review it with the owner's token, and a failed request keeps the PR", async () => {
+  for (const [token, status] of [[undefined, 201], ["owner-fixture", 201], ["owner-fixture", 500]] as const) {
+    const { env, instance } = coordinator();
+    instance.reserveRun(await stored(), "p", Date.now() + 60_000);
+    const { fetcher, calls } = githubFixture((path) => status === 500 && path.endsWith("/comments") ? json({}, 500) : undefined);
+    const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), { ...env, CODEX_REVIEW_GITHUB_TOKEN: token }, fetcher);
+    assert.equal(response.status, 201);
+    assert.equal((await response.json() as BuildRun).phase, "pr_open");
+    const comments = calls.filter((call) => call.path.endsWith("/comments"));
+    assert.equal(comments.length, token ? 1 : 0);
+    if (!token) continue;
+    assert.equal(comments[0].path, `/repos/${BUILD_REPO}/issues/12/comments`);
+    assert.equal(comments[0].auth, "Bearer owner-fixture");
+    assert.match(String(comments[0].body?.body), /^@codex review\n/);
+  }
 });
 
 test("webhooks verify exact bytes, reject invalid signatures and deduplicate deliveries", async () => {

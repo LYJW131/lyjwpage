@@ -37,6 +37,8 @@ Worker 先原子占用上传令牌，再执行请求体、文件数、单文件/
 
 GitHub webhook 按原始正文验证 `X-Hub-Signature-256`，并核对目标仓库与 run 分支，处理成功后才登记 delivery ID 去重，处理失败保留重投机会。订阅事件为 `check_run`、`check_suite`、`status`、`issue_comment`、`pull_request`。检查、预览与评论是独立状态；`claude[bot]` 的评论只供参考，不能授权代码或合并。卡片注明此边界。
 
+PR 由 App 机器人开出，Codex 不会自动审查；PR 确认创建后，`workers/ai/src/build/github.ts#requestCodexReview` 用仓库所有者的令牌 `CODEX_REVIEW_GITHUB_TOKEN` 以所有者身份发一条固定文案的 `@codex review` 评论（`CODEX_REVIEW_REQUEST`，不拼入访客内容）。没配令牌时跳过；评论失败只记 Sentry（tag `build.step`），不影响 PR 与 run 状态。每次访客构建因此消耗所有者的 Codex 审查额度，次数受 `BUILD_QUOTA` 约束。卡片的审查栏只读 `claude[bot]`，不显示 Codex 结论。
+
 Claude review 卡片通过 `src/lib/build-review-summary.ts#buildReviewSummary` 将可识别的审查结论显示为 No issues 或 Issues found；缺失、失败或无法识别的结论显示 Unknown。评论正文不直接显示，链接仍指向 GitHub 原评论；本地保存的会话也使用同一展示规则。
 
 CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类和汇总：Vercel 与 Workers Builds 的明确部署信号只计入 Preview，Vercel Preview Comments 辅助检查不计入两栏。Preview 汇总所有部署，失败优先于等待，链接指向决定当前结果的部署；读取失败或不完整时显示未知。检查与部署 webhook 只标记状态需要重新对账，单条事件不能覆盖整体结论。
@@ -62,7 +64,7 @@ CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类�
 
 这些操作由有授权的维护者完成；文档不表示已配置。
 
-1. 在 AI Worker 与实际用于验收的分支 Preview 配置 `ROUTINE_FIRE_TOKEN`、`BUILD_SESSION_SECRET`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_WEBHOOK_SECRET`，并设置 `ROUTINE_FIRE_URL`。现有 `GITHUB_APP_CLIENT_SECRET` 供 PKCE 授权使用；付费设计对话仍需要现有模型、历史签名和 Turnstile 配置。不要把生产凭据复制进 Preview。
+1. 在 AI Worker 与实际用于验收的分支 Preview 配置 `ROUTINE_FIRE_TOKEN`、`BUILD_SESSION_SECRET`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_WEBHOOK_SECRET`，并设置 `ROUTINE_FIRE_URL`；`CODEX_REVIEW_GITHUB_TOKEN` 可选，只配在生产 AI Worker。现有 `GITHUB_APP_CLIENT_SECRET` 供 PKCE 授权使用；付费设计对话仍需要现有模型、历史签名和 Turnstile 配置。不要把生产凭据复制进 Preview。
 2. GitHub App 配置 webhook 指向对应环境的构建 webhook 路径，并订阅上文事件；确认 Contents、Pull requests、Issues 写权限，以及 Checks 和 Commit statuses 读取权限及目标仓库安装。安装 token 的缩减权限由 `workers/ai/src/build/github.ts#installationApi` 指定。JWT issuer 使用公开 `GITHUB_APP_CLIENT_ID`，安装 ID 由 GitHub 查询，不另存凭据。回调页仍是 `GITHUB_CALLBACK_PATH`，验收地址须登记在 App 中。
 3. routine 不挂仓库，选择 Custom 网络环境，仅允许 `github.com`、`registry.npmjs.org`、`api.homepage.lyjw.llc`；贴入下节提示词。分支 Preview 实测时，把上传所用的具体 Preview 主机加入该隔离测试环境，测试完成后移除，不能用生产上传地址验证 Preview run。
 4. 核对 Vercel Preview 无 `GITHUB_TOKEN`、`REVALIDATE_SECRET`、`SENTRY_AUTH_TOKEN`；检查 Worker Preview 只持有专供测试的凭据。核对 Workers Builds 监视路径包含共享构建契约，清单见 [Workers 构建](./workers-builds.md)。
