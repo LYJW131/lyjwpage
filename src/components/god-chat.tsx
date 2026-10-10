@@ -1,7 +1,7 @@
 "use client";
 
 import Script from "next/script";
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
 import { ChatCard } from "@/components/chat-card";
@@ -132,6 +132,15 @@ function Conversation({ className, archive, session: conversation }: { className
   const widgetId = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
+  // 必须稳定：会话列表挂载时聚焦，新函数会在每次渲染时把焦点拽回去。
+  const closeHistory = useCallback(() => {
+    setHistoryOpen(false);
+    historyButtonRef.current?.focus();
+  }, []);
+  const historyId = useId();
+  const commandListId = useId();
   const stickRef = useRef(true);
   const pendingRef = useRef<string | null>(null);
   // 选项卡的回答以文本发给模型，界面上按这份结构画成卡片；Turnstile 延后发送时按文本对上。
@@ -264,8 +273,12 @@ function Conversation({ className, archive, session: conversation }: { className
       user,
       next,
     );
+    let restoreComposer = messages.length === 0;
     const show = () => {
       if (sessionRef.current === session) setMessages(replyMessages(bubble()), false);
+      if (!restoreComposer) return;
+      restoreComposer = false;
+      requestAnimationFrame(() => draftRef.current?.focus());
     };
     stickRef.current = true;
     if (!messages.length) reveal();
@@ -507,6 +520,7 @@ function Conversation({ className, archive, session: conversation }: { className
     setQueued(text);
     setDraft("");
     setArmed(true);
+    requestAnimationFrame(() => draftRef.current?.focus());
     if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
     loadTimerRef.current = setTimeout(() => {
       if (pendingRef.current && !widgetId.current) verificationFailed(VERIFY_UNAVAILABLE, "unavailable");
@@ -525,6 +539,7 @@ function Conversation({ className, archive, session: conversation }: { className
     setConsentPending(null);
     if (text) setDraft((current) => current || text);
     setError(CONSENT_COPY[textLanguage(text ?? "")].declined);
+    requestAnimationFrame(() => draftRef.current?.focus());
   }
 
   // 卡片从紧凑高度长到视口高度时顶边不动、往下长；把顶边滚到吸顶页头下面，长完正好占满可见区域，上下各留 EDGE_GAP_PX。
@@ -566,10 +581,16 @@ function Conversation({ className, archive, session: conversation }: { className
       <div ref={anchorRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <FableDescent descent={descent} />
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs text-muted-foreground">
-        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedSessions(archive).length > 0 ? ` (${savedSessions(archive).length})` : ""}</span></button>
-        <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
+        <button ref={historyButtonRef} type="button" onClick={() => setHistoryOpen((open) => !open)} aria-expanded={historyOpen} aria-controls={historyId} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" aria-hidden /><span className="truncate">Conversations{savedSessions(archive).length > 0 ? ` (${savedSessions(archive).length})` : ""}</span></button>
+        <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" aria-hidden />New</button>
       </div>
-      {historyOpen && <SessionList archive={archive} />}
+      {historyOpen && (
+        <SessionList
+          id={historyId}
+          archive={archive}
+          onClose={closeHistory}
+        />
+      )}
       {(armed || warm) && (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
@@ -693,6 +714,7 @@ function Conversation({ className, archive, session: conversation }: { className
         >
           {paletteOpen && (
             <div
+              id={commandListId}
               role="listbox"
               aria-label="Commands"
               className="absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-md border border-line-strong bg-surface py-1 shadow-lg"
@@ -701,6 +723,7 @@ function Conversation({ className, archive, session: conversation }: { className
                 matches.map((command, i) => (
                   <button
                     key={command.name}
+                    id={commandOptionId(commandListId, command.name)}
                     type="button"
                     role="option"
                     aria-selected={i === active}
@@ -726,6 +749,7 @@ function Conversation({ className, archive, session: conversation }: { className
             </div>
           )}
           <textarea
+            ref={draftRef}
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value);
@@ -765,7 +789,10 @@ function Conversation({ className, archive, session: conversation }: { className
             rows={1}
             placeholder={waiting ? "Verifying you are human…" : "Speak, mortal… (type /)"}
             aria-label="Message"
-            className="scrollbar-none max-h-32 min-h-10 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus:border-foreground/40 sm:text-sm [&::-webkit-scrollbar]:hidden"
+            aria-autocomplete="list"
+            aria-controls={paletteOpen ? commandListId : undefined}
+            aria-activedescendant={paletteOpen && matches[active] ? commandOptionId(commandListId, matches[active].name) : undefined}
+            className="scrollbar-none max-h-32 min-h-10 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus-visible:border-foreground sm:text-sm [&::-webkit-scrollbar]:hidden"
           />
           {streaming ? (
             <button
@@ -774,7 +801,7 @@ function Conversation({ className, archive, session: conversation }: { className
               onClick={() => abortRef.current?.abort()}
               className="paper-card flex size-10 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface text-foreground transition-colors hover:bg-surface-hover"
             >
-              <Square className="size-3.5 fill-current" />
+              <Square className="size-3.5 fill-current" aria-hidden />
             </button>
           ) : (
             <button
@@ -783,7 +810,7 @@ function Conversation({ className, archive, session: conversation }: { className
               disabled={!draft.trim()}
               className="flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition-opacity disabled:opacity-30"
             >
-              <ArrowUp className="size-4" />
+              <ArrowUp className="size-4" aria-hidden />
             </button>
           )}
         </form>
@@ -850,14 +877,32 @@ function DocReads({ docs }: { docs: NonNullable<ChatBubble["docs"]> }) {
   );
 }
 
-function SessionList({ archive }: { archive: ChatArchive }) {
+function commandOptionId(listId: string, name: string) {
+  return `${listId}-${name.replace(/[^a-z0-9]+/gi, "")}`;
+}
+
+function SessionList({ id, archive, onClose }: { id: string; archive: ChatArchive; onClose: () => void }) {
   const sessions = savedSessions(archive);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    const current = root?.querySelector<HTMLButtonElement>("[aria-current='true']");
+    const sessionButton = root?.querySelector<HTMLButtonElement>("ul button");
+    (current ?? sessionButton ?? root)?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !root?.contains(document.activeElement)) return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   function remove(id: string) {
     chatArchive.remove(id);
     if (!chatArchive.getSnapshot().sessions.length) chatArchive.start();
   }
   return (
-    <div data-sentry-block className="border-b border-line bg-muted px-3 py-2">
+    <div ref={rootRef} id={id} role="region" aria-label={sessions.length ? "Saved conversations" : "No saved conversations yet"} tabIndex={-1} data-sentry-block className="border-b border-line bg-muted px-3 py-2 outline-none">
       <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <span>{sessions.length ? "Saved in this browser" : "No saved conversations yet"}</span>
         {sessions.length > 0 && <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-red-500">Clear all conversations</button>}
@@ -869,7 +914,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
               <span className="truncate">{session.title}</span>
               <time className="shrink-0 text-[10px]" dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</time>
             </button>
-            <button type="button" aria-label={`Delete conversation: ${session.title}`} onClick={() => remove(session.id)} className="p-2 text-muted-foreground hover:text-red-500"><Trash2 className="size-3.5" /></button>
+            <button type="button" aria-label={`Delete conversation: ${session.title}`} onClick={() => remove(session.id)} className="p-2 text-muted-foreground hover:text-red-500"><Trash2 className="size-3.5" aria-hidden /></button>
           </li>
         ))}
       </ul>}
@@ -946,7 +991,11 @@ function UserBubble({ text }: { text: string }) {
 }
 
 function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: () => void; onDecline: () => void }) {
+  const acceptRef = useRef<HTMLButtonElement>(null);
   const copy = CONSENT_COPY[textLanguage(text)];
+  useEffect(() => {
+    acceptRef.current?.focus();
+  }, []);
   return (
     <>
       <UserBubble text={text} />
@@ -963,7 +1012,7 @@ function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: 
           ))}
         </ul>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">{copy.accept}</button>
+          <button ref={acceptRef} type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">{copy.accept}</button>
           <button type="button" onClick={onDecline} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover">{copy.decline}</button>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">{copy.remember}</p>
