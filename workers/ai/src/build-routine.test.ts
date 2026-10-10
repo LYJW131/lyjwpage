@@ -216,10 +216,14 @@ test("GitHub publishing retains the base tree and binds parent, branch, ready PR
   assert.match(String(calls.find((call) => call.path.endsWith("/git/commits"))?.body?.message), /Co-authored-by: Visitor <1\+visitor@users.noreply.github.com>/);
   assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.draft, false);
   assert.equal(calls.find((call) => call.path.endsWith("/pulls"))?.body?.base, "main");
-  assert.doesNotMatch(String(calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /outside the approved plan/);
-  const extra = githubFixture();
-  await createBuildPullRequest(new GithubBuildApi("fixture", extra.fetcher), await stored(), { ...upload, files: [...upload.files, { path: "src/lib/extra.ts", mode: "100644", content: btoa("export {};") }] });
-  assert.match(String(extra.calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /## Changed outside the approved plan\n- `src\/lib\/extra\.ts`/);
+  assert.doesNotMatch(String(calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /Review closely/);
+  assert.equal(calls.some((call) => call.path.endsWith("/pulls/12")), false);
+  const extra = githubFixture((path) => path.endsWith("/pulls/12") ? json({ number: 12 }) : undefined);
+  const extraFiles = [{ path: "src/lib/extra.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "shared/collector.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "workers/ai/README.md", mode: "100644" as const, content: btoa("# ai") }];
+  await createBuildPullRequest(new GithubBuildApi("fixture", extra.fetcher), await stored(), { ...upload, files: [...upload.files, ...extraFiles] });
+  assert.match(String(extra.calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /## Review closely\n- `src\/lib\/extra\.ts` — outside the plan\n- `shared\/collector\.ts` — outside the plan, shared contract\n- `workers\/ai\/README\.md` — outside the plan, documentation outside docs\//);
+  const patched = String(extra.calls.find((call) => call.path.endsWith("/pulls/12"))?.body?.body);
+  assert.match(patched, /\[`src\/lib\/extra\.ts`\]\(https:\/\/github\.com\/LYJW131\/lyjwpage\/pull\/12\/files#diff-[0-9a-f]{64}\)/);
 });
 
 test("issue and PR labels follow the plan language", () => {

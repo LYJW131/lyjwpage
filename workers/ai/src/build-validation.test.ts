@@ -52,6 +52,9 @@ test("upload allows a few files outside the plan, counts them, and rejects more"
     const parsed = parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, plan.paths);
     assert.deepEqual(outsidePlanPaths(parsed, plan.paths), [path]);
   }
+  const docs = ["workers/ai/README.md", "README.md", "apps/ios/README.md", "docs/a.md", "src/x.md", "workers/api/NOTES.md"];
+  assert.equal(parseBuildUpload({ ...upload, files: docs.map((path) => ({ ...upload.files[0], path })) }, plan.paths).files.length, docs.length);
+  for (const path of ["AGENTS.md", "workers/ai/AGENTS.md", "CLAUDE.md", ".github/README.md", "reporters/server-reporter/README.md"]) assert.equal(allowedBuildPath(path), false, path);
   const allowed = outside.slice(0, BUILD_UPLOAD_LIMITS.outsidePlanFiles);
   assert.equal(parseBuildUpload({ ...upload, files: [], deletions: allowed }, plan.paths).deletions.length, allowed.length);
   assert.throws(() => parseBuildUpload({ ...upload, files: [], deletions: outside.slice(0, BUILD_UPLOAD_LIMITS.outsidePlanFiles + 1) }, plan.paths), /outside the approved plan paths \(at most/);
