@@ -329,7 +329,8 @@ export class BuildCoordinator extends DurableObject<Env> {
       if (expectedHeadSha && run.state.pr?.headSha !== expectedHeadSha) return run.state;
       if (patch.pr && run.state.pr && patch.pr.number !== run.state.pr.number) return run.state;
       if (preparedRun(run) && patch.pr && (!run.state.pr || patch.pr.headSha !== run.state.pr.headSha && patch.pr.headSha !== run.implementationHeadSha)) {
-        delete patch.phase;
+        // 维护者在实现提交之后再推或点 Update branch 时，合并与关闭仍要落地；带计划提交头的是迟到的旧快照，照旧丢弃。
+        if (!run.state.pr || patch.pr.headSha === run.planCommitSha || (patch.phase !== "merged" && patch.phase !== "closed")) delete patch.phase;
         delete patch.pr;
         delete patch.ci;
         delete patch.preview;

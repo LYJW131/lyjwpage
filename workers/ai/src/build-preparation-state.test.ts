@@ -399,3 +399,31 @@ test("legacy preparation verifies the draft identity and cannot replace an exist
   assert.equal(coordinator.readRun(runId)?.planCommitSha, undefined);
   assert.equal(coordinator.readRun(runId)?.state.pr?.headSha, implementationHeadSha);
 });
+
+test("a merge or close still lands after the head moves past the implementation commit", async () => {
+  for (const merged of [true, false]) {
+    const { coordinator, env } = fixture();
+    recordImplementation(coordinator);
+    assert.ok(coordinator.completePublication(runId, { ...pr, headSha: implementationHeadSha, draft: false }));
+    const laterHead = "d".repeat(40);
+    await applyGithubWebhook(env, "pull_request", pullRequest(laterHead));
+    assert.equal(coordinator.readRun(runId)?.state.phase, "pr_open");
+    assert.equal(coordinator.readRun(runId)?.state.pr?.headSha, implementationHeadSha);
+    const stale = pullRequest();
+    stale.pull_request.state = "closed";
+    await applyGithubWebhook(env, "pull_request", stale);
+    assert.equal(coordinator.readRun(runId)?.state.phase, "pr_open");
+    const closed = pullRequest(laterHead);
+    closed.pull_request.state = "closed";
+    closed.pull_request.merged = merged;
+    await applyGithubWebhook(env, "pull_request", closed);
+    assert.equal(coordinator.readRun(runId)?.state.phase, merged ? "merged" : "closed");
+    assert.equal(coordinator.readRun(runId)?.state.pr?.headSha, implementationHeadSha);
+  }
+  const { coordinator } = fixture();
+  recordImplementation(coordinator);
+  assert.ok(coordinator.completePublication(runId, { ...pr, headSha: implementationHeadSha, draft: false }));
+  coordinator.updateRun(runId, { phase: "merged", pr: { ...pr, headSha: "d".repeat(40), draft: false }, ci: { state: "failure", updatedAt: Date.now() } }, implementationHeadSha);
+  assert.equal(coordinator.readRun(runId)?.state.phase, "merged");
+  assert.notEqual(coordinator.readRun(runId)?.state.ci?.state, "failure");
+});
