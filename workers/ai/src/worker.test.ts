@@ -9,7 +9,7 @@ import type { Env } from "./runtime.ts";
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
-    return { url: "data:text/javascript,export class DurableObject{}", shortCircuit: true };
+    return { url: "data:text/javascript,export class DurableObject{};export class RpcTarget{}", shortCircuit: true };
   },
 });
 const { default: worker } = await import("./worker.ts");

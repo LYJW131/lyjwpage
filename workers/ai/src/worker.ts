@@ -19,11 +19,12 @@ import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
 import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
-import type { Env } from "./runtime";
+import { mcpCodeModeEnabled, type Env } from "./runtime";
 import { fetchProjectDoc } from "./tools/project-docs";
+import { sandboxRunner } from "./tools/code-sandbox";
 import type { ToolIO } from "./tools/registry";
 
-const BUILD_HANDLERS = new Map([
+const BUILD_HANDLERS = new Map<string, (request: Request, env: Env, fetcher?: typeof fetch, ctx?: Pick<ExecutionContext, "waitUntil">) => Promise<Response>>([
   [BUILD_PATH, handleBuild],
   [BUILD_STATUS_PATH, handleBuildStatus],
   [BUILD_UPLOAD_PATH, handleBuildUpload],
@@ -41,7 +42,7 @@ function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
 }
 
 const worker = {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (!AI_HTTP_PATHS.has(pathname)) return new Response("Not found", { status: 404 });
 
@@ -59,7 +60,7 @@ const worker = {
       if (pathname !== BUILD_WEBHOOK_PATH && env.BUILD_REQUEST_LIMIT && !(await env.BUILD_REQUEST_LIMIT.limit({ key: clientIp(request) })).success) {
         return jsonResponse({ error: "Too many build requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
       }
-      const response = await buildHandler(request, env);
+      const response = await buildHandler(request, env, undefined, ctx);
       const headers = new Headers(response.headers);
       cors.forEach((value, name) => headers.set(name, value));
       return new Response(response.body, { status: response.status, headers });
@@ -89,7 +90,7 @@ const worker = {
       if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
         return jsonResponse({ error: "Too many requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
       }
-      response = await handleMcp(request, tools, env.CF_VERSION_METADATA?.id ?? "dev");
+      response = await handleMcp(request, mcpCodeModeEnabled(env) && env.LOADER ? { ...tools, runCode: sandboxRunner(env.LOADER) } : tools, env.CF_VERSION_METADATA?.id ?? "dev");
     } else {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       response = pathname === GOD_CHAT_PATH

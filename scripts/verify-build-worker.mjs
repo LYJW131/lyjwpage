@@ -21,7 +21,6 @@ const children = [];
 const logs = [];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const baseSha = 'a'.repeat(40);
-const headSha = 'e'.repeat(40);
 const fixtureSecret = 'local-build-fixture-only';
 const plan = { title: 'Improve the fixture card', spec: 'Render the fixture card clearly.', acceptance: ['Readable on a phone'], paths: ['src/components/fixture.tsx'] };
 
@@ -149,16 +148,34 @@ try {
     assert.equal((await post('/api/build', { ...signIn, planToken: proposal.token })).status, 502);
   }
   assert.equal((await inspect()).fires.length, 0);
-  await post('/__fixture/configure', { mainUnavailable: false });
+  await post('/__fixture/configure', { mainUnavailable: false, delayDispatchMs: 1500 });
   const fires = await Promise.all(Array.from({ length: 8 }, () => post('/api/build', { ...signIn, planToken: proposal.token })));
-  assert.equal(fires.filter((response) => response.status === 202).length, 1);
-  assert.equal(fires.filter((response) => response.status === 409).length, 7);
-  const build = await fires.find((response) => response.status === 202).json();
-  const fixture = await inspect();
-  assert.equal(fixture.fires.length, 1);
+  assert.equal(fires.filter((response) => response.status === 202).length, 8);
+  const fireResults = await Promise.all(fires.map((response) => response.json()));
+  assert.equal(new Set(fireResults.map((result) => result.runId)).size, 1);
+  const build = fireResults.find((result) => result.run?.pr) ?? fireResults[0];
+  const fixture = await eventually(async () => { const snapshot = await inspect(); assert.equal(snapshot.fires.length, 1); return snapshot; });
+  assert.equal((await rpc('global', 'readRun', build.runId)).sessionUrl, undefined);
+  assert.ok(build.run.pr?.draft);
+  await eventually(async () => assert.equal((await rpc('global', 'readRun', build.runId)).sessionUrl, 'https://claude.ai/code/session_fixture'));
+  await post('/__fixture/configure', { delayDispatchMs: 0 });
+  console.log('PASS: ExecutionContext.waitUntil returns the draft PR response before routine dispatch confirmation');
   const installationCalls = fixture.calls.filter((call) => call.path.endsWith('/access_tokens'));
   assert.ok(installationCalls.length > BUILD_QUOTA.fire.account);
-  assert.ok(installationCalls.every((call) => Object.values(call.body.permissions).every((permission) => permission === 'read')));
+  assert.ok(installationCalls.filter((call) => call.body.permissions.contents === 'read').every((call) => Object.values(call.body.permissions).every((permission) => permission === 'read')));
+  assert.ok(installationCalls.some((call) => call.body.permissions.contents === 'write' && call.body.permissions.pull_requests === 'write'));
+  const prepared = await rpc('global', 'readRun', build.runId);
+  assert.equal(prepared.state.pr.draft, true);
+  assert.equal(prepared.state.pr.headSha, prepared.planCommitSha);
+  assert.equal(fixture.prs.length, 1);
+  const planCommit = fixture.objects.find((object) => object.key === `commit:${prepared.planCommitSha}`).value;
+  assert.deepEqual(planCommit.parents, [{ sha: baseSha }]);
+  const planTree = fixture.objects.find((object) => object.key === `tree:${planCommit.tree.sha}`).value;
+  const planFile = planTree.find((entry) => entry.path === `builds/${build.runId}.md`);
+  assert.ok(planFile);
+  const planBlob = fixture.objects.find((object) => object.key === `blob:${planFile.sha}`).value;
+  assert.match(planBlob.content, /Render the fixture card clearly/);
+  assert.doesNotMatch(planBlob.content, /fixture-visitor|uploadToken|session_fixture|Fixture Visitor/);
   console.log('PASS: main uses a read-only App installation token and repeated read failures do not consume the plan or build quota');
   const fired = fixture.fires[0];
   assert.equal(fired.runId, build.runId);
@@ -167,10 +184,13 @@ try {
   const exchanges = fixture.calls.filter((call) => call.path.includes('/login/oauth/access_token')).length;
   assert.ok(exchanges > BUILD_QUOTA.fire.account);
   assert.equal(fixture.calls.filter((call) => call.method === 'DELETE' && call.path.includes('/applications/')).length, exchanges);
+  assert.equal((await webhook('pull_request', { pull_request: fixture.prs[0] }, 'plan-only-draft')).status, 200);
+  assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'triggered');
+  assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.draft, true);
   const progress = await post(`/api/build/progress?runId=${build.runId}`, { message: 'Fixture implementation underway.' }, { Authorization: `Bearer ${fired.uploadToken}` });
   assert.equal(progress.status, 200);
   const getStatus = () => fetch(`${worker}/api/build/status?runId=${build.runId}`, { headers: { Authorization: `Bearer ${build.statusToken}` } });
-  assert.equal((await (await getStatus()).json()).phase, 'running');
+  assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'running');
   const upload = { baseSha, message: 'feat: improve fixture card', files: [{ path: 'src/components/fixture.tsx', content: Buffer.from('export const fixture = true;\n').toString('base64'), mode: '100644' }], deletions: [] };
   const uploaded = await Promise.all(Array.from({ length: 8 }, () => post(`/api/build/upload?runId=${build.runId}`, upload, { Authorization: `Bearer ${fired.uploadToken}` })));
   assert.equal(uploaded.filter((response) => response.status === 201).length, 1);
@@ -179,17 +199,31 @@ try {
   const afterUpload = await inspect();
   assert.equal(afterUpload.jwtVerified, true);
   const writes = afterUpload.calls.filter((call) => call.method === 'POST' && call.path.startsWith('api.github.com/repos/'));
-  assert.equal(writes.length, 5);
+  assert.equal(writes.filter((call) => call.path.endsWith('/git/refs')).length, 1);
+  assert.equal(writes.filter((call) => call.path.endsWith('/pulls')).length, 1);
   assert.equal(writes.find((call) => call.path.endsWith('/git/refs')).body.ref, `refs/heads/${build.branch}`);
-  assert.equal(writes.find((call) => call.path.endsWith('/pulls')).body.draft, false);
-  assert.match(writes.find((call) => call.path.endsWith('/git/commits')).body.message, /Co-authored-by: Fixture Visitor/);
+  assert.equal(writes.find((call) => call.path.endsWith('/pulls')).body.draft, true);
+  const implementation = writes.filter((call) => call.path.endsWith('/git/commits')).at(-1);
+  assert.match(implementation.body.message, /Co-authored-by: Fixture Visitor/);
+  assert.deepEqual(implementation.body.parents, [prepared.planCommitSha]);
+  const published = await rpc('global', 'readRun', build.runId);
+  const headSha = published.implementationHeadSha;
+  assert.equal(published.state.pr.number, prepared.state.pr.number);
+  assert.equal(published.state.pr.draft, true);
+  assert.equal(published.state.pr.headSha, headSha);
+  const implementationTree = afterUpload.objects.find((object) => object.key === `tree:${implementation.body.tree}`).value;
+  assert.ok(implementationTree.some((entry) => entry.path === `builds/${build.runId}.md` && entry.sha === planFile.sha));
+  assert.ok(implementationTree.some((entry) => entry.path === upload.files[0].path));
+  assert.equal(afterUpload.calls.filter((call) => call.path === 'api.github.com/graphql').length, 0);
   const status = await (await getStatus()).json();
   assert.equal(status.phase, 'pr_open');
   assert.equal(status.pr.number, 101);
+  assert.equal(status.pr.draft, false);
   assert.equal(status.ci.state, 'success');
   assert.equal(status.preview.state, 'success');
   assert.match(status.review.state, /Fixture review/);
-  console.log('PASS: actual per-build PKCE sign-in, fire, progress, upload and status handlers create one mocked PR with verified App JWT and co-author');
+  assert.equal((await inspect()).calls.filter((call) => call.path === 'api.github.com/graphql').length, 1);
+  console.log('PASS: concurrent Build clicks return one run, draft PR and plan file before one dispatch; one upload continues the same branch and becomes ready only after implementation CI');
 
   const newHead = '9'.repeat(40);
   async function webhook(event, payload, delivery, valid = true) {
@@ -201,13 +235,13 @@ try {
   assert.equal((await webhook('pull_request', { pull_request: prPayload }, 'bad-signature', false)).status, 401);
   assert.equal((await webhook('pull_request', { pull_request: prPayload }, 'new-head')).status, 200);
   const current = (await rpc('global', 'readRun', build.runId)).state;
-  assert.equal(current.pr.headSha, newHead);
-  assert.equal(current.ci.state, 'unknown');
-  assert.equal(current.preview.state, 'unknown');
-  await rpc('global', 'updateRun', build.runId, { pr: { ...current.pr, headSha }, ci: { state: 'success', updatedAt: Date.now() + 10_000 } }, headSha);
-  assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.headSha, newHead);
-  assert.equal((await webhook('status', { sha: headSha, context: 'Vercel', state: 'success', updated_at: new Date(Date.now() + 20_000).toISOString() }, 'stale-head-status')).status, 200);
-  assert.equal((await rpc('global', 'readRun', build.runId)).state.preview.state, 'unknown');
+  assert.equal(current.pr.headSha, headSha);
+  assert.equal(current.ci.state, 'success');
+  assert.equal(current.preview.state, 'success');
+  await rpc('global', 'updateRun', build.runId, { pr: { ...current.pr, headSha: newHead }, ci: { state: 'success', updatedAt: Date.now() + 10_000 } }, newHead);
+  assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.headSha, headSha);
+  assert.equal((await webhook('status', { sha: newHead, context: 'Vercel', state: 'success', updated_at: new Date(Date.now() + 20_000).toISOString() }, 'stale-head-status')).status, 200);
+  assert.equal((await rpc('global', 'readRun', build.runId)).state.preview.state, 'success');
   assert.equal((await webhook('pull_request', { pull_request: { ...prPayload, state: 'closed', merged: true } }, 'new-head')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'pr_open');
   assert.equal((await webhook('issue_comment', { issue: { number: 101 }, comment: { user: { login: 'someone' }, body: 'Approved', html_url: 'https://example.test/comment', updated_at: new Date().toISOString() } }, 'untrusted-review')).status, 200);
@@ -215,7 +249,7 @@ try {
   assert.equal((await webhook('issue_comment', { issue: { number: 101 }, comment: { user: { login: 'claude[bot]' }, body: 'Fixture advisory review received.', html_url: 'https://github.com/LYJW131/lyjwpage/pull/101#issuecomment-2', updated_at: new Date(Date.now() + 2000).toISOString() } }, 'trusted-review')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.review.state, 'Fixture advisory review received.');
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'pr_open');
-  assert.equal((await webhook('pull_request', { pull_request: { ...prPayload, state: 'closed', merged: true, updated_at: new Date(Date.now() + 3000).toISOString() } }, 'merged')).status, 200);
+  assert.equal((await webhook('pull_request', { pull_request: { ...prPayload, head: { ...prPayload.head, sha: headSha }, state: 'closed', merged: true, updated_at: new Date(Date.now() + 3000).toISOString() } }, 'merged')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'merged');
   assert.equal((await webhook('pull_request', { pull_request: { ...prPayload, updated_at: new Date(Date.now() + 4000).toISOString() } }, 'late-open')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'merged');
@@ -225,29 +259,106 @@ try {
   assert.equal((await inspect()).calls.length, githubCalls);
   console.log('PASS: signed webhooks deduplicate deliveries, reject stale-head updates and merged status does not reconcile');
 
+  let fixtureAccount = 200;
+  async function nextBuild(scenario = {}) {
+    fixtureAccount += 1;
+    await post('/__fixture/configure', { accountId: fixtureAccount, account: `fixture-${fixtureAccount}`, ancestor: true, rejectPr: false, rejectBody: false, rejectDispatch: false, check: 'success', ...scenario });
+    const proposal = await (await post('/__fixture/plan', plan)).json();
+    const response = await post('/api/build', { ...signIn, planToken: proposal.token });
+    assert.equal(response.status, 202);
+    const build = await response.json();
+    if (!scenario.rejectPr) await eventually(async () => {
+      const stored = await rpc('global', 'readRun', build.runId);
+      assert.equal(stored.dispatchAttempted, true);
+      assert.ok(stored.sessionUrl || stored.state.phase === 'failed');
+    });
+    const status = () => fetch(`${worker}/api/build/status?runId=${build.runId}`, { headers: { Authorization: `Bearer ${build.statusToken}` } });
+    return { build, proposal, status };
+  }
+  async function uploadBuild(build, changedUpload = upload) {
+    const fire = (await inspect()).fires.find((entry) => entry.runId === build.runId);
+    assert.ok(fire);
+    return post(`/api/build/upload?runId=${build.runId}`, changedUpload, { Authorization: `Bearer ${fire.uploadToken}` });
+  }
+
+  const preparing = await nextBuild({ rejectPr: true, refResponseLost: true });
+  const unconfirmed = await rpc('global', 'readRun', preparing.build.runId);
+  assert.equal(unconfirmed.state.phase, 'triggered');
+  assert.equal(unconfirmed.state.pr, undefined);
+  assert.equal((await inspect()).fires.some((fire) => fire.runId === preparing.build.runId), false);
+  const retainedBranch = (await inspect()).objects.find((object) => object.key === `branch:${preparing.build.branch}`).value;
+  await post('/__fixture/configure', { rejectPr: false, prResponseLost: true });
+  const retry = await post('/api/build', { ...signIn, planToken: preparing.proposal.token });
+  assert.equal(retry.status, 202);
+  assert.equal((await retry.json()).runId, preparing.build.runId);
+  assert.equal((await rpc('global', 'readRun', preparing.build.runId)).planCommitSha, retainedBranch);
+  await eventually(async () => assert.equal((await inspect()).fires.filter((fire) => fire.runId === preparing.build.runId).length, 1));
+  assert.equal((await inspect()).prs.filter((pr) => pr.head.ref === preparing.build.branch).length, 1);
+  console.log('PASS: partially successful ref and PR requests retain the plan branch, recover the same draft and dispatch once');
+
+  const recovering = await nextBuild({ rejectBody: true });
+  assert.equal((await uploadBuild(recovering.build)).status, 502);
+  const failedPublication = await rpc('global', 'readRun', recovering.build.runId);
+  assert.equal(failedPublication.state.phase, 'failed');
+  assert.ok(failedPublication.implementationHeadSha);
+  assert.ok(failedPublication.publicationBody);
+  assert.equal(failedPublication.state.pr.headSha, failedPublication.planCommitSha);
+  assert.equal((await uploadBuild(recovering.build)).status, 401);
+  await post('/__fixture/configure', { rejectBody: false, pushResponseLost: true });
+  const recovered = await (await recovering.status()).json();
+  assert.equal(recovered.phase, 'pr_open');
+  assert.equal(recovered.pr.headSha, failedPublication.implementationHeadSha);
+  assert.equal(recovered.pr.number, failedPublication.state.pr.number);
+  assert.equal(recovered.pr.draft, false);
+  assert.equal((await inspect()).prs.filter((pr) => pr.head.ref === recovering.build.branch).length, 1);
+  console.log('PASS: status polling recovers persisted implementation and PR body after publication failure and an ambiguous fast-forward response');
+
+  const foreign = await nextBuild();
+  const foreignPlan = (await rpc('global', 'readRun', foreign.build.runId)).planCommitSha;
+  await post('/__fixture/configure', { branchHead: { branch: foreign.build.branch, sha: newHead } });
+  const foreignUpload = await uploadBuild(foreign.build);
+  assert.equal(foreignUpload.status, 400);
+  assert.equal((await rpc('global', 'readRun', foreign.build.runId)).state.phase, 'blocked');
+  assert.equal((await rpc('global', 'readRun', foreign.build.runId)).state.pr.headSha, foreignPlan);
+  assert.equal((await inspect()).objects.find((object) => object.key === `branch:${foreign.build.branch}`).value, newHead);
+  console.log('PASS: an unexpected branch head is neither overwritten nor adopted');
+
+  const rejectedDispatch = await nextBuild({ rejectDispatch: true });
+  const failedDispatch = await (await rejectedDispatch.status()).json();
+  assert.equal(failedDispatch.phase, 'failed');
+  assert.equal(failedDispatch.pr.draft, true);
+  const dispatchAttempts = (await inspect()).fires.filter((fire) => fire.runId === rejectedDispatch.build.runId).length;
+  await post('/api/build', { ...signIn, planToken: rejectedDispatch.proposal.token });
+  assert.equal((await inspect()).fires.filter((fire) => fire.runId === rejectedDispatch.build.runId).length, dispatchAttempts);
+  console.log('PASS: routine rejection keeps the visible draft and retries do not dispatch another agent');
+
+  const cancelled = await nextBuild({ check: 'cancelled' });
+  assert.equal((await uploadBuild(cancelled.build)).status, 201);
+  const cancelledStatus = await (await cancelled.status()).json();
+  assert.equal(cancelledStatus.phase, 'pr_open');
+  assert.equal(cancelledStatus.ci.state, 'failure');
+  assert.equal(cancelledStatus.pr.draft, true);
+  console.log('PASS: cancelled implementation CI keeps its PR draft');
+
   for (const [scenario, changedUpload, errorPattern] of [
     [{ ancestor: true }, { ...upload, files: [{ ...upload.files[0], path: 'src/package.json' }] }, /protected|allowed|blocked/i],
     [{ ancestor: false }, upload, /main history/i],
   ]) {
+    const next = await nextBuild();
     await post('/__fixture/configure', scenario);
-    const nextPlan = await (await post('/__fixture/plan', plan)).json();
-    const nextResponse = await post('/api/build', { ...signIn, planToken: nextPlan.token });
-    assert.equal(nextResponse.status, 202);
-    const nextBuild = await nextResponse.json();
-    const nextFire = (await inspect()).fires.find((entry) => entry.runId === nextBuild.runId);
     const before = (await inspect()).calls.filter((call) => call.method === 'POST' && call.path.startsWith('api.github.com/repos/')).length;
-    const rejected = await post(`/api/build/upload?runId=${nextBuild.runId}`, changedUpload, { Authorization: `Bearer ${nextFire.uploadToken}` });
+    const rejected = await uploadBuild(next.build, changedUpload);
     assert.equal(rejected.status, 400);
     assert.match((await rejected.json()).error, errorPattern);
-    assert.equal((await rpc('global', 'readRun', nextBuild.runId)).state.phase, 'blocked');
+    assert.equal((await rpc('global', 'readRun', next.build.runId)).state.phase, 'blocked');
     assert.equal((await inspect()).calls.filter((call) => call.method === 'POST' && call.path.startsWith('api.github.com/repos/')).length, before);
   }
-  console.log('PASS: forbidden uploads and bases outside main are blocked before any GitHub write');
+  console.log('PASS: forbidden uploads and bases outside main are blocked before implementation writes');
 
   await stop(child);
   child = start();
   await ready();
-  assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.headSha, newHead);
+  assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.headSha, headSha);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'merged');
   assert.equal(await rpc('global', 'hasDelivery', 'merged'), true);
   assert.equal((await rpc('upload-race', 'readRun', uploadRun.state.runId)).uploadUsed, true);

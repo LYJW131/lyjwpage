@@ -5,12 +5,12 @@ import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
 import { withPreviewShare } from "./preview-share";
-import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestAgentReviews } from "./github";
+import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestAgentReviews } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
 import { readBoundedJson } from "./http";
-import { hashToken, signBuildToken, verifyBuildToken } from "./token";
+import { hashToken, signBuildToken, uploadTokenForRun, verifyBuildToken } from "./token";
 import { parseBuildUpload } from "./validation";
 import { applyGithubWebhook, verifyGithubWebhook } from "./webhook";
 
@@ -39,7 +39,65 @@ async function verifyGithubVisitor(code: string, codeVerifier: string, secret: s
   finally { if (token) await revoke(token, secret, fetcher); }
 }
 
-export async function handleBuild(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
+type BuildContext = Pick<ExecutionContext, "waitUntil">;
+
+async function buildResponse(run: StoredRun, env: Env): Promise<Response> {
+  const { runId, branch, createdAt } = run.state;
+  const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET!);
+  return Response.json({ runId, branch, statusToken, run: run.state } satisfies BuildFireResult, { status: 202, headers: noStore });
+}
+
+async function dispatchBuild(runId: string, env: Env, fetcher: typeof fetch): Promise<void> {
+  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
+  let dispatched = false;
+  try {
+    const run = await coordinator.readRun(runId);
+    if (!run?.callbackOrigin || !run.state.pr || !run.planCommitSha || !env.BUILD_SESSION_SECRET || !env.ROUTINE_FIRE_URL || !env.ROUTINE_FIRE_TOKEN) return;
+    const uploadToken = await uploadTokenForRun(runId, env.BUILD_SESSION_SECRET);
+    if (await hashToken(uploadToken) !== run.uploadHash) {
+      await coordinator.updateRun(runId, { phase: "failed", reason: "Build authorization changed; the routine was not started." });
+      return;
+    }
+    if (!await coordinator.claimDispatch(runId)) return;
+    dispatched = true;
+    const response = await (anthropicFetch(env) ?? fetcher)(env.ROUTINE_FIRE_URL, {
+      method: "POST", headers: { Authorization: `Bearer ${env.ROUTINE_FIRE_TOKEN}`, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+      body: JSON.stringify({ text: JSON.stringify({ runId, plan: run.plan, coauthor: run.coauthor, baseSha: run.baseSha, branch: run.state.branch, prUrl: run.state.pr.url, planCommitSha: run.planCommitSha, uploadToken, uploadUrl: `${run.callbackOrigin}${BUILD_UPLOAD_PATH}?runId=${runId}`, progressUrl: `${run.callbackOrigin}${BUILD_PROGRESS_PATH}?runId=${runId}`, screenshotUrl: `${run.callbackOrigin}${BUILD_SCREENSHOT_PATH}?runId=${runId}` }) }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const confirmation = await readBoundedJson(response, 16_384);
+    const sessionUrl = object(confirmation)?.claude_code_session_url;
+    if (!response.ok) await coordinator.failDispatch(runId, "The routine rejected the build request. The pull request remains a draft.", true);
+    else if (typeof sessionUrl !== "string" || !validSessionUrl(sessionUrl)) await coordinator.failDispatch(runId, "The routine did not confirm the build request; its result is unknown. The pull request remains a draft.");
+    else await coordinator.setSessionUrl(runId, sessionUrl);
+  } catch {
+    if (dispatched) await coordinator.failDispatch(runId, "Build dispatch was not confirmed; the routine result is unknown. The pull request remains a draft.");
+  }
+}
+
+async function prepareBuild(runId: string, env: Env, fetcher: typeof fetch, ctx?: BuildContext): Promise<void> {
+  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
+  const lease = await coordinator.claimPreparation(runId);
+  if (!lease) return;
+  try {
+    const run = await coordinator.readRun(runId);
+    if (!run) return;
+    const prepared = await prepareBuildPullRequest(await installationApi(env, fetcher), run);
+    if (!await coordinator.setPrepared(runId, prepared.planCommitSha, prepared.pr, lease)) return;
+  } catch (error) {
+    await coordinator.failPreparation(runId, lease, error instanceof BuildBlockedError
+      ? error.message
+      : "GitHub did not confirm the draft pull request. Preparation will be checked again; the routine was not started.", error instanceof BuildBlockedError);
+    return;
+  } finally {
+    await coordinator.releasePreparation(runId, lease);
+  }
+  const dispatch = dispatchBuild(runId, env, fetcher);
+  if (ctx) ctx.waitUntil(dispatch);
+  else await dispatch;
+}
+
+export async function handleBuild(request: Request, env: Env, fetcher: typeof fetch = fetch, ctx?: BuildContext): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
   if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR || !env.ROUTINE_FIRE_URL || !env.ROUTINE_FIRE_TOKEN || !env.GITHUB_APP_PRIVATE_KEY || !env.GITHUB_APP_CLIENT_SECRET) return fail(503, "Builds are unavailable right now.");
   const data = object(await readJsonBody(request, BUILD_TOKEN_MAX_CHARS + 5000));
@@ -47,49 +105,59 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
   const plan = await readPlan(env, data.planToken);
   if (!plan) return fail(401, "The plan has expired.");
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
-  if (await coordinator.isPlanUsed(plan.id)) return fail(409, "This plan has already been used.");
+  if (await coordinator.isPlanUsed(plan.id) && !await coordinator.hasPlanRun(plan.id)) return fail(409, "This plan has already been used.");
   const session = await verifyGithubVisitor(data.code, data.codeVerifier, env.GITHUB_APP_CLIENT_SECRET, fetcher);
   if (session instanceof Response) return session;
+  if (await coordinator.isPlanUsed(plan.id)) {
+    const existing = await coordinator.findPlanRun(plan.id, session.userId);
+    if (!existing) return fail(409, "This plan has already been used by another GitHub account.");
+    await prepareBuild(existing.state.runId, env, fetcher, ctx);
+    return buildResponse((await coordinator.readRun(existing.state.runId))!, env);
+  }
   const runId = newRunId();
   const createdAt = Date.now();
-  const uploadToken = newRunId() + newRunId();
+  const uploadToken = await uploadTokenForRun(runId, env.BUILD_SESSION_SECRET);
   const branch = branchForRun(runId);
   let reserved = false;
-  let dispatched = false;
   try {
     const baseSha = await currentMain(await installationApi(env, fetcher, true));
     const coauthor = `${session.name || session.account} <${session.userId}+${session.account}@users.noreply.github.com>`;
-    const run: StoredRun = { state: { runId, branch, phase: "triggered", createdAt, updatedAt: createdAt }, plan: plan.plan, account: session.account, accountId: session.userId, coauthor, baseSha, uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: createdAt + BUILD_TIMEOUT_MS };
+    const run: StoredRun = { state: { runId, branch, phase: "triggered", createdAt, updatedAt: createdAt }, plan: plan.plan, account: session.account, accountId: session.userId, coauthor, baseSha, callbackOrigin: new URL(request.url).origin, uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: createdAt + BUILD_TIMEOUT_MS };
     const admission = await coordinator.reserveRun(run, plan.id, plan.expiresAt);
-    if (admission === "used") return fail(409, "This plan has already been used.");
+    if (admission === "used") {
+      const existing = await coordinator.findPlanRun(plan.id, session.userId);
+      return existing ? buildResponse(existing, env) : fail(409, "This plan has already been used.");
+    }
     if (admission !== "ok") return fail(429, admission === "account" ? "This GitHub account has reached its hourly build limit." : "The site's hourly build limit has been reached.");
     reserved = true;
-    const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET);
-    const origin = new URL(request.url).origin;
-    const routineFetcher = anthropicFetch(env) ?? fetcher;
-    dispatched = true;
-    const response = await routineFetcher(env.ROUTINE_FIRE_URL, {
-      method: "POST", headers: { Authorization: `Bearer ${env.ROUTINE_FIRE_TOKEN}`, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-      body: JSON.stringify({ text: JSON.stringify({ runId, plan: plan.plan, coauthor, baseSha, uploadToken, uploadUrl: `${origin}${BUILD_UPLOAD_PATH}?runId=${runId}`, progressUrl: `${origin}${BUILD_PROGRESS_PATH}?runId=${runId}`, screenshotUrl: `${origin}${BUILD_SCREENSHOT_PATH}?runId=${runId}` }) }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    const confirmation = await readBoundedJson(response, 16_384);
-    const sessionUrl = object(confirmation)?.claude_code_session_url;
-    if (!response.ok) await coordinator.updateRun(runId, { phase: "failed", reason: "The routine rejected the build request." });
-    else if (typeof sessionUrl !== "string") await coordinator.updateRun(runId, { reason: "The routine did not confirm the build request; its result is unknown." });
-    else if (validSessionUrl(sessionUrl)) await coordinator.setSessionUrl(runId, sessionUrl);
-    return Response.json({ runId, branch, statusToken } satisfies BuildFireResult, { status: 202, headers: noStore });
+    await coordinator.scheduleDraftSweep();
+    await prepareBuild(runId, env, fetcher, ctx);
+    return buildResponse((await coordinator.readRun(runId))!, env);
   } catch {
     if (reserved) {
-      await coordinator.updateRun(runId, dispatched ? { reason: "Build dispatch was not confirmed; the routine result is unknown." } : { phase: "failed", reason: "The build could not be prepared; the routine was not started." });
-      const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET);
-      return Response.json({ runId, branch, statusToken } satisfies BuildFireResult, { status: 202, headers: noStore });
+      await coordinator.updateRun(runId, { reason: "The draft pull request could not be confirmed; the routine was not started." });
+      return buildResponse((await coordinator.readRun(runId))!, env);
     }
     return fail(502, "The build could not be started.");
   }
 }
 
-export async function handleBuildStatus(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
+async function requestBuildReviews(runId: string, env: Env, fetcher: typeof fetch): Promise<void> {
+  if (!env.CODEX_REVIEW_GITHUB_TOKEN) return;
+  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
+  const run = await coordinator.readRun(runId);
+  if (!run?.state.pr || !await coordinator.claimReviewRequests(runId)) return;
+  try { await requestAgentReviews(env.CODEX_REVIEW_GITHUB_TOKEN, run.state.pr.number, fetcher); }
+  catch (error) {
+    Sentry.captureException(error, { tags: { "build.step": "agent-review" } });
+  }
+}
+
+function publishedImplementation(run: StoredRun): boolean {
+  return run.uploadUsed && !!run.implementationHeadSha && run.state.pr?.headSha === run.implementationHeadSha && ["pr_open", "closed", "merged"].includes(run.state.phase);
+}
+
+export async function handleBuildStatus(request: Request, env: Env, fetcher: typeof fetch = fetch, ctx?: BuildContext): Promise<Response> {
   if (request.method !== "GET") return fail(405, "Method not allowed.");
   if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR) return fail(503, "Build status is unavailable.");
   const url = new URL(request.url);
@@ -98,15 +166,43 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
   const signature = token ? await verifyBuildToken<StatusPayload>(token, env.BUILD_SESSION_SECRET, "status") : null;
   if (!validRunId(runId) || signature?.runId !== runId) return fail(401, "The build status link is invalid or expired.");
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
-  const run = await coordinator.readRun(runId);
+  let run = await coordinator.readRun(runId);
   if (!run) return fail(404, "Build not found.");
+  if (!run.dispatchAttempted && run.callbackOrigin && run.state.phase === "triggered" && env.GITHUB_APP_PRIVATE_KEY && env.ROUTINE_FIRE_URL && env.ROUTINE_FIRE_TOKEN) {
+    await prepareBuild(runId, env, fetcher, ctx);
+    run = (await coordinator.readRun(runId))!;
+  }
   if (run.state.pr && !["merged", "closed"].includes(run.state.phase) && (!run.state.reconciledAt || Date.now() - run.state.reconciledAt >= BUILD_RECONCILE_MS) && await coordinator.claimReconcile(runId)) {
     try {
+      if (run.implementationHeadSha && run.uploadUsed && ["validated", "failed", "timeout"].includes(run.state.phase)) {
+        const pr = await recoverBuildPublication(await installationApi(env, fetcher), run);
+        if (!await coordinator.completePublication(runId, pr)) throw new Error("The implementation publication could not be recorded.");
+        run = (await coordinator.readRun(runId))!;
+      }
       const patch = await withPreviewShare(env, run.state, await reconcileBuild(await installationApi(env, fetcher, true), run.state), fetcher);
-      const state = await coordinator.updateRun(runId, patch, run.state.pr.headSha);
+      let state = await coordinator.updateRun(runId, patch, run.state.pr!.headSha);
+      if (state?.phase === "pr_open" && state.pr?.draft && state.ci?.state === "success") {
+        const current = (await coordinator.readRun(runId))!;
+        const expectedHeadSha = state.pr.headSha;
+        try {
+          const pr = await markBuildReady(await installationApi(env, fetcher), current);
+          if (pr) state = await coordinator.updateRun(runId, { pr, reason: undefined }, expectedHeadSha);
+        } catch (error) {
+          state = await coordinator.failPublication(runId, error instanceof BuildBlockedError
+            ? { phase: "blocked", reason: error.message }
+            : { reason: "GitHub did not confirm readiness for review. Status will be checked again." }, current.state);
+        }
+      }
+      if (state?.phase === "pr_open") await requestBuildReviews(runId, env, fetcher);
       return Response.json(state, { headers: noStore });
-    } catch { /* Preserve the last observed facts when GitHub is unreachable. */ }
+    } catch (error) {
+      if (error instanceof BuildBlockedError) {
+        const state = await coordinator.failPublication(runId, { phase: "blocked", reason: error.message }, run.state);
+        return Response.json(state, { headers: noStore });
+      }
+    }
   }
+  if (run.state.phase === "pr_open") await requestBuildReviews(runId, env, fetcher);
   return Response.json(run.state, { headers: noStore });
 }
 
@@ -117,40 +213,49 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
   const token = bearer(request);
   if (!validRunId(runId) || !token) return fail(401, "Invalid upload authorization.");
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
-  const run = await coordinator.claimUpload(runId, await hashToken(token));
+  let run = await coordinator.claimUpload(runId, await hashToken(token));
   if (!run) return fail(401, "Upload authorization was used or expired.");
+  let publicationState = run.state;
   let upload;
   try {
     upload = parseBuildUpload(await readJsonBody(request, BUILD_UPLOAD_LIMITS.requestBytes), run.plan.paths);
     if (upload.baseSha !== run.baseSha) throw new Error("The upload does not match the assigned base commit.");
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Invalid upload.";
-    await coordinator.updateRun(runId, { phase: "blocked", reason });
+    await coordinator.failPublication(runId, { phase: "blocked", reason }, publicationState);
     return fail(400, reason);
   }
   try {
     const api = await installationApi(env, fetcher);
     const baseTree = await validateBuildBase(api, run, upload);
-    await coordinator.updateRun(runId, { phase: "validated" });
-    const pr = await createBuildPullRequest(api, run, upload, baseTree);
-    const state = await coordinator.updateRun(runId, { phase: "pr_open", pr });
+    publicationState = (await coordinator.updateRun(runId, { phase: "validated" }))!;
+    if (!run.planCommitSha && !run.callbackOrigin) {
+      const prepared = await prepareBuildPullRequest(api, run);
+      if (!await coordinator.setLegacyPrepared(runId, prepared.planCommitSha, prepared.pr)) throw new Error("The build draft could not be recorded.");
+      run = (await coordinator.readRun(runId))!;
+      publicationState = run.state;
+    }
+    const pr = await createBuildPullRequest(api, run, upload, baseTree, async (sha, body) => {
+      if (!await coordinator.setImplementationHead(runId, sha, body)) throw new Error("The implementation commit could not be recorded.");
+    });
+    const state = await coordinator.completePublication(runId, pr);
+    if (!state) throw new Error("The implementation publication could not be recorded.");
     try { await postScreenshotComment(api, pr.number, run); }
     catch (error) {
       console.warn("[build] screenshot comment failed", error);
       Sentry.captureException(error, { tags: { "build.step": "screenshots" } });
     }
-    if (env.CODEX_REVIEW_GITHUB_TOKEN) {
-      try { await requestAgentReviews(env.CODEX_REVIEW_GITHUB_TOKEN, pr.number, fetcher); }
-      catch (error) {
-        console.warn("[build] agent review request failed", error);
-        Sentry.captureException(error, { tags: { "build.step": "agent-review" } });
-      }
-    }
+    await requestBuildReviews(runId, env, fetcher);
     return Response.json(state, { status: 201, headers: noStore });
   } catch (error) {
     const blocked = error instanceof BuildBlockedError;
-    const reason = blocked || error instanceof BuildPullRequestRejectedError ? (error as Error).message : "GitHub did not confirm pull request creation; the result is unknown.";
-    await coordinator.updateRun(runId, { phase: blocked ? "blocked" : "failed", reason });
+    const reason = blocked || error instanceof BuildPullRequestRejectedError ? (error as Error).message : "GitHub did not confirm publication of the implementation; the result is unknown. The pull request remains a draft.";
+    await coordinator.failPublication(runId, { phase: blocked ? "blocked" : "failed", reason }, publicationState);
+    const current = await coordinator.readRun(runId);
+    if (current && publishedImplementation(current)) {
+      await requestBuildReviews(runId, env, fetcher);
+      return Response.json(current.state, { status: 201, headers: noStore });
+    }
     return fail(blocked ? 400 : 502, reason);
   }
 }

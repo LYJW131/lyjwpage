@@ -18,7 +18,7 @@ export const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, capti
 
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
 export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number };
-export type BuildFireResult = { runId: string; branch: string; statusToken: string };
+export type BuildFireResult = { runId: string; branch: string; statusToken: string; run?: BuildRun };
 export type BuildPhase = "triggered" | "running" | "uploaded" | "validated" | "blocked" | "pr_open" | "merged" | "closed" | "timeout" | "failed";
 export type BuildSignal = { state: string; url?: string; updatedAt: number };
 export type BuildRun = {
@@ -29,7 +29,7 @@ export type BuildRun = {
   updatedAt: number;
   reason?: string;
   progress?: string;
-  pr?: { number: number; url: string; headSha: string };
+  pr?: { number: number; url: string; headSha: string; draft?: boolean };
   ci?: BuildSignal;
   preview?: BuildSignal;
   review?: BuildSignal;
@@ -52,7 +52,10 @@ export type PlanLanguage = "zh" | "ja" | "en";
 // 计划正文跟随对话语言，issue 与 PR 的固定文案跟随计划：中日文按字数比拉丁字母更「重」，路径、标识符里的
 // 拉丁字母不该把中文计划判成英文，英文计划里引用的几个中文歌名也不该把它判成中文；假名占比高才算日文。
 export function planLanguage(plan: Pick<BuildPlan, "title" | "spec" | "acceptance">): PlanLanguage {
-  const text = `${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`;
+  return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`);
+}
+
+export function textLanguage(text: string): PlanLanguage {
   const kana = text.match(/[\u3040-\u30ff]/g)?.length ?? 0;
   const han = text.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
   const latin = text.match(/[A-Za-z]/g)?.length ?? 0;
