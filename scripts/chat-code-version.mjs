@@ -7,6 +7,7 @@ export const CHAT_CODE_PATHS = [
   "src/components/god-chat.tsx",
   "src/components/chat-card.tsx",
   "src/components/chat-markdown.tsx",
+  "src/components/ask-card.tsx",
   "src/components/build-plan-card.tsx",
   "src/components/github-issue-panel.tsx",
   "src/lib/chat-archive.ts",
