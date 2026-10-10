@@ -6,7 +6,7 @@ import { GithubConsent } from "@/components/github-consent";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { workerUrl } from "@/lib/worker-url";
 import { GITHUB_ISSUE_PATH, GITHUB_ISSUE_REPO, type GithubIssueResult } from "@shared/github-issue";
-import type { BuildProposal } from "@shared/build-routine";
+import { planLanguage, type BuildProposal } from "@shared/build-routine";
 
 const ISSUE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GITHUB_ISSUE_PATH);
 
@@ -46,7 +46,7 @@ export function IssuePanel({ proposal, onClose, onCreated, disabled }: {
         <span className="min-w-0">The plan and acceptance criteria will be posted publicly to {GITHUB_ISSUE_REPO} under your GitHub account.</span>
         <button type="button" onClick={onClose} disabled={working} aria-label="Close issue confirmation" className="shrink-0 hover:text-foreground">Close</button>
       </div>
-      <GithubConsent action="issue" checked={agreed} onChange={setAgreed} disabled={working || disabled} />
+      <GithubConsent action="issue" language={planLanguage(proposal.plan)} checked={agreed} onChange={setAgreed} disabled={working || disabled} />
       {error && <p role="alert" className="text-red-500">{error}</p>}
       <button type="button" onClick={() => void submit()} disabled={working || disabled || !agreed} className="rounded bg-foreground px-3 py-2 text-background disabled:opacity-40">
         {working ? "Waiting for GitHub…" : "Sign in with GitHub & submit"}
