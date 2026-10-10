@@ -11,6 +11,8 @@ import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
+import { chatConsent } from "@/lib/chat-consent";
+import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
@@ -119,6 +121,8 @@ function Conversation({ className, archive, session: conversation }: { className
   const [armed, setArmed] = useState(false);
   const [warm, setWarm] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
+  const consented = useSyncExternalStore(chatConsent.subscribe, chatConsent.getSnapshot, chatConsent.getServerSnapshot);
+  const [consentPending, setConsentPending] = useState<string | null>(null);
   const [designHalo, setDesignHalo] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -216,7 +220,7 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!el) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
-        if (!readPass()) setWarm(true);
+        if (!readPass() && chatConsent.getSnapshot()) setWarm(true);
         observer.disconnect();
       }
     });
@@ -371,8 +375,8 @@ function Conversation({ className, archive, session: conversation }: { className
 
   // 设计会话里最后一条访客消息还没拿到盖了章的回复：从会话里取回它错过的那一回合。
   function resume() {
-    // 补发不走 Turnstile：没有有效通行证时留着那两条，等访客自己再发。
-    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass()) return;
+    // 补发不走 Turnstile：没有有效通行证或对话代码变了还没重新同意时留着那两条，等访客自己再发。
+    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass() || !chatConsent.getSnapshot()) return;
     const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
     if (!current || !activeChatDesign(current.design)) return;
     const list = current.messages;
@@ -470,6 +474,14 @@ function Conversation({ className, archive, session: conversation }: { className
   function ask(text: string) {
     if (!text.trim() || streaming) return;
     setUsage(null);
+    // 同意前消息只留在本地：Turnstile 也不加载，什么都不发出去。
+    if (!chatConsent.getSnapshot()) {
+      if (!messages.length && consentPending === null) reveal();
+      setConsentPending(text.trim());
+      setDraft("");
+      setError(null);
+      return;
+    }
     if (!SITE_KEY || verifyStateRef.current === "unavailable") {
       setError(SITE_KEY ? VERIFY_UNAVAILABLE : OFFLINE);
       return;
@@ -495,6 +507,20 @@ function Conversation({ className, archive, session: conversation }: { className
     }, VERIFY_LOAD_TIMEOUT_MS);
   }
 
+  function acceptConsent() {
+    const text = consentPending;
+    setConsentPending(null);
+    chatConsent.accept();
+    if (text) ask(text);
+  }
+
+  function declineConsent() {
+    const text = consentPending;
+    setConsentPending(null);
+    if (text) setDraft((current) => current || text);
+    setError(CONSENT_COPY[textLanguage(text ?? "")].declined);
+  }
+
   // 卡片从紧凑高度长到视口高度时顶边不动、往下长；把顶边滚到吸顶页头下面，长完正好占满可见区域，上下各留 EDGE_GAP_PX。
   function reveal() {
     const anchor = anchorRef.current;
@@ -514,7 +540,7 @@ function Conversation({ className, archive, session: conversation }: { className
 
   const waiting = armed && !token && !streaming && !error;
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
-  const expanded = messages.length > 0;
+  const expanded = messages.length > 0 || consentPending !== null;
 
   return (
     // 对话、设计与构建计划包含访客原文，Replay 需要遮住整张卡片。
@@ -556,7 +582,7 @@ function Conversation({ className, archive, session: conversation }: { className
         }}
         className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden"
       >
-        {messages.length === 0 ? (
+        {messages.length === 0 && consentPending === null ? (
           <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
               Ask anything. The oracle sees what LYJW is up to, knows how this site is built, and can search the web.
@@ -643,6 +669,7 @@ function Conversation({ className, archive, session: conversation }: { className
             );
           })
         )}
+        {consentPending !== null && <ConsentPrompt text={consentPending} onAccept={acceptConsent} onDecline={declineConsent} />}
       </div>
 
       <div className="border-t border-line p-3">
@@ -697,7 +724,7 @@ function Conversation({ className, archive, session: conversation }: { className
               setDraft(event.target.value);
               setSelected(0);
             }}
-            onFocus={() => setArmed(true)}
+            onFocus={() => { if (consented) setArmed(true); }}
             onKeyDown={(event) => {
               if (paletteOpen && matches.length) {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -840,6 +867,98 @@ function SessionList({ archive }: { archive: ChatArchive }) {
         ))}
       </ul>}
     </div>
+  );
+}
+
+// 站主要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
+// destinations 须列全对话数据的每个出站去向；新增模型供应商、第三方工具或日志出口时同步改三种语言；Anthropic（含 Managed Agents）与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；设计会话「约一小时内删除」取决于 workers/ai/src/chat/design-cleanup.ts 的宽限期与 cron 周期。
+type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
+const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
+  en: {
+    lang: "en",
+    label: "Privacy notice",
+    intro: "Before the oracle answers, please accept where this chat sends your data:",
+    destinations: [
+      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and this conversation's history, and keeps your IP address for the rate-limit window. No transcripts are stored; logs hold request metadata, usage counts and errors, not your message text." },
+      { name: "Cloudflare Turnstile", detail: "checks that you're human and receives your IP address." },
+      { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message plus short excerpts of a few earlier ones to pick which Claude model answers. Cloudflare doesn't store this or use it for training." },
+      { name: "Anthropic (Claude API)", detail: "receives the whole conversation to write the reply and runs any web searches. Anthropic keeps API data for 30 days and may access it for safety review (longer if flagged); it isn't used for training. Design sessions run on Anthropic's Claude Managed Agents, which keep the session transcript until this site deletes it, within about an hour after the session expires." },
+      { name: "AI HOT (aihot.news)", detail: "receives the search terms Claude picks from your message when it looks up AI news. Anthropic connects to it on the site's behalf." },
+      { name: "Sentry", detail: "receives error reports; chat text is masked in session replays and request bodies aren't sent." },
+      { name: "GitHub", detail: "only if you file a build plan: it becomes a public issue or pull request, and a build also sends the plan to Anthropic's Claude Code." },
+      { name: "This browser", detail: "saves your conversations and this consent." },
+    ],
+    accept: "Accept",
+    decline: "Decline",
+    remember: "Accepting is remembered in this browser until the chat code changes.",
+    declined: "Nothing was sent. Accept the privacy notice to chat.",
+  },
+  zh: {
+    lang: "zh-CN",
+    label: "隐私说明",
+    intro: "神谕作答之前，请先确认这个对话会把你的数据发到哪里：",
+    destinations: [
+      { name: "Cloudflare Workers（本站后端）", detail: "转发你的消息和本次对话的历史，并在限流窗口内保留你的 IP 地址。不保存对话记录，日志里只有请求元数据、用量计数和错误，没有消息原文。" },
+      { name: "Cloudflare Turnstile", detail: "验证你是真人，会收到你的 IP 地址。" },
+      { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取你最新的消息和前几条消息的简短摘录，决定由哪个 Claude 模型回答。Cloudflare 不存储这些内容，也不用于训练。" },
+      { name: "Anthropic（Claude API）", detail: "收到完整对话来生成回复，并执行联网搜索。Anthropic 保留 API 数据 30 天，可因安全原因查看，被标记的会保留更久；不用于训练。设计会话运行在 Anthropic 的 Claude Managed Agents 上，会话记录会一直保留到本站删除，本站在设计会话过期后约一小时内删除。" },
+      { name: "AI HOT（aihot.news）", detail: "Claude 查 AI 资讯时，会收到它从你的消息里提炼的搜索词。由 Anthropic 代本站连接。" },
+      { name: "Sentry", detail: "接收错误报告；会话录像里对话文字被遮住，也不上传请求正文。" },
+      { name: "GitHub", detail: "仅当你提交构建计划时：计划会成为公开的 issue 或 pull request，发起构建还会把计划发给 Anthropic 的 Claude Code。" },
+      { name: "这个浏览器", detail: "保存你的对话和这次同意。" },
+    ],
+    accept: "接受",
+    decline: "拒绝",
+    remember: "接受后会记在这个浏览器里，对话代码有改动时需要重新确认。",
+    declined: "消息没有发出。接受隐私说明后才能对话。",
+  },
+  ja: {
+    lang: "ja",
+    label: "プライバシーに関するお知らせ",
+    intro: "神託が答える前に、このチャットがあなたのデータをどこへ送るかをご確認ください：",
+    destinations: [
+      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージとこの会話の履歴を中継し、レート制限の期間中は IP アドレスを保持します。会話の記録は保存せず、ログにはリクエストのメタデータ、利用回数、エラーのみが残り、メッセージ本文は含まれません。" },
+      { name: "Cloudflare Turnstile", detail: "人間であることを確認し、IP アドレスを受け取ります。" },
+      { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージと、それ以前のいくつかのメッセージの短い抜粋を読み、どの Claude モデルが答えるかを決めます。Cloudflare はこれを保存せず、学習にも使いません。" },
+      { name: "Anthropic（Claude API）", detail: "返信を書くために会話全体を受け取り、Web 検索も行います。Anthropic は API データを 30 日間保持し、安全確認のために閲覧することがあります（フラグが付いた場合はより長く保持）。学習には使われません。デザインセッションは Anthropic の Claude Managed Agents 上で動き、会話の記録は本サイトが削除するまで残ります。本サイトはセッションの期限切れから約 1 時間以内に削除します。" },
+      { name: "AI HOT（aihot.news）", detail: "Claude が AI ニュースを調べるとき、メッセージから選んだ検索語を受け取ります。接続は Anthropic が本サイトに代わって行います。" },
+      { name: "Sentry", detail: "エラーレポートを受け取ります。セッションリプレイではチャットの文字が隠され、リクエスト本文は送られません。" },
+      { name: "GitHub", detail: "ビルド計画を提出した場合のみ：計画は公開の issue または pull request になり、ビルドを始めると計画が Anthropic の Claude Code にも送られます。" },
+      { name: "このブラウザ", detail: "会話とこの同意を保存します。" },
+    ],
+    accept: "同意する",
+    decline: "同意しない",
+    remember: "同意はこのブラウザに記録され、チャットのコードが変わると改めて確認します。",
+    declined: "メッセージは送信されていません。チャットするにはプライバシーに関するお知らせに同意してください。",
+  },
+};
+
+function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: () => void; onDecline: () => void }) {
+  const copy = CONSENT_COPY[textLanguage(text)];
+  return (
+    <>
+      <div className="flex justify-end">
+        <div className="min-w-0 max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-sm leading-relaxed text-background [overflow-wrap:anywhere]">{text}</div>
+      </div>
+      <div role="group" aria-label={copy.label} lang={copy.lang} className="w-full text-sm leading-relaxed text-foreground">
+        <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">{copy.label}</div>
+        <p>{copy.intro}</p>
+        <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+          {copy.destinations.map(({ name, detail }) => (
+            <li key={name}>
+              <span className="font-medium text-foreground">{name}</span>
+              {copy.lang === "en" ? ": " : "："}
+              {detail}
+            </li>
+          ))}
+        </ul>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">{copy.accept}</button>
+          <button type="button" onClick={onDecline} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover">{copy.decline}</button>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">{copy.remember}</p>
+      </div>
+    </>
   );
 }
 
