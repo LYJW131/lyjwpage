@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, buildIssueBody, planLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url } from "./build/token.ts";
@@ -216,6 +216,16 @@ test("GitHub publishing retains the base tree and binds parent, branch, ready PR
   const extra = githubFixture();
   await createBuildPullRequest(new GithubBuildApi("fixture", extra.fetcher), await stored(), { ...upload, files: [...upload.files, { path: "src/lib/extra.ts", mode: "100644", content: btoa("export {};") }] });
   assert.match(String(extra.calls.find((call) => call.path.endsWith("/pulls"))?.body?.body), /## Changed outside the approved plan\n- `src\/lib\/extra\.ts`/);
+});
+
+test("issue and PR labels follow the plan language", () => {
+  const zh: BuildPlan = { title: "加一张原神卡片", spec: "在首页游戏区新增只读卡片，数据来自 workers/collector/src/jobs/genshin-profile.ts 与 shared/collector.ts。", acceptance: ["手机端 375px 单列显示"], paths: ["src/components/live/genshin-card.tsx"] };
+  const ja: BuildPlan = { ...zh, title: "原神カードを追加する", spec: "ホームのゲーム欄に読み取り専用のカードを追加します。", acceptance: ["スマホでも一列で表示される"] };
+  const en: BuildPlan = { ...plan, spec: "Show the song 星街すいせい GHOST in the card title when it is playing." };
+  assert.deepEqual([planLanguage(zh), planLanguage(ja), planLanguage(plan), planLanguage(en)], ["zh", "ja", "en", "en"]);
+  assert.match(buildIssueBody(zh), /## 验收标准[\s\S]*## 计划路径/);
+  assert.match(buildIssueBody(ja), /## 受け入れ基準/);
+  assert.match(buildIssueBody(plan), /## Acceptance criteria/);
 });
 
 test("base must be an ancestor of main, with comparison in the correct direction", async () => {
