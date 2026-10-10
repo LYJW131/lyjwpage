@@ -31,3 +31,7 @@ export function workoutsLayoutKey(payload: { items: readonly unknown[] } | null)
   if (!payload) return "none";
   return payload.items.length ? "list" : "empty";
 }
+
+export function genshinLayoutKey(payload: object | null | undefined): "none" | "card" {
+  return payload ? "card" : "none";
+}

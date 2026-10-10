@@ -14,6 +14,7 @@ import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
+import { GenshinCard } from "@/components/live/genshin-card";
 import { PulseCard } from "@/components/live/pulse-card";
 import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
@@ -63,6 +64,7 @@ const SLOT = {
   agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
   vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1372px]",
   playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]",
+  genshin: "md:col-span-2",
   godChat: "md:col-span-2",
   pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_575px] sm:[contain-intrinsic-size:auto_276px]",
   siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]",
@@ -78,6 +80,7 @@ const READS = {
   agentStatus: [AGENT_STATUS_PATH],
   vibeCoding: [CODING_PATH, CODING_NOW_PATH, LIMITS_PATH],
   playstation: [NOW_PLAYING_PATH, PLAYING_PATH, TROPHIES_PATH],
+  genshin: [STATUS_VIEWS.genshin.path],
   pulse: [PULSE_PATH],
   siteStatus: [GITHUB_REPO_PATH, VERCEL_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
   emby: [WATCHING_PATH, NOW_WATCHING_PATH],
@@ -112,6 +115,7 @@ export default async function Home() {
     sentry,
     reporters,
     pulse,
+    genshin,
     avatarDataUri,
     recentCommits,
   ] = await Promise.all([
@@ -142,6 +146,7 @@ export default async function Home() {
     firstScreen("sentry"),
     firstScreen("reporters"),
     firstScreen("pulse"),
+    firstScreen("genshin"),
     githubAvatarDataUri(),
     getRecentCommits(),
   ]);
@@ -246,6 +251,9 @@ export default async function Home() {
                     playingNow={playingNow}
                     className={SLOT.playstation}
                   />
+                </CardBoundary>
+                <CardBoundary label="Genshin Impact" className={SLOT.genshin} paths={READS.genshin}>
+                  <GenshinCard fallback={genshin} className={SLOT.genshin} />
                 </CardBoundary>
                 <CardBoundary label="Pulse" className={SLOT.pulse} paths={READS.pulse}>
                   <PulseCard fallback={pulse} className={SLOT.pulse} />

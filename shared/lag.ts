@@ -21,7 +21,18 @@ export const LAG_KEYS = {
   reporterServer: "reporter:server-reporter:v1",
   reporterAgents: "reporter:agents-reporter:v1",
   freshnessWatch: "freshness-watch:v1",
+  genshin: "genshin:v1",
 } as const;
+
+// genshin:v1 的公开模型：只留这些字段，UID、签名、头像等一律不存。
+export type GenshinProfile = {
+  nickname: string;
+  adventureRank: number;
+  worldLevel: number;
+  achievements: number;
+  abyss: { floor: number; chamber: number } | null;
+  theaterAct: number | null;
+};
 
 export type LagKey = (typeof LAG_KEYS)[keyof typeof LAG_KEYS];
 

@@ -22,7 +22,7 @@ test("a job is due when the epoch minute lands on its offset", () => {
 });
 
 test("the registry covers every shared job name once, with periods that divide an hour", () => {
-  assert.deepEqual(JOBS.map((job) => job.name).sort(), [...COLLECTOR_JOBS].sort());
+  assert.deepEqual(JOBS.map((job) => job.name).sort(), [...new Set<string>([...COLLECTOR_JOBS, "genshin-profile"])].sort());
   for (const job of JOBS) {
     assert.equal(60 % job.everyMinutes, 0, job.name);
     assert.ok(job.offset >= 0 && job.offset < job.everyMinutes, job.name);

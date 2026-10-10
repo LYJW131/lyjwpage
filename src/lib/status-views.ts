@@ -37,6 +37,7 @@ export const STATUS_VIEWS = {
   cloudflareWorkers: { path: "/api/status/cloudflare-workers", layer: "lag", cadenceMs: 2 * 60_000 },
   vercelDeployments: { path: "/api/status/vercel-deployments", layer: "lag", cadenceMs: 60_000 },
   sentry: { path: "/api/status/sentry", layer: "lag", cadenceMs: 5 * 60_000 },
+  genshin: { path: "/api/status/genshin", layer: "lag", tag: "genshin", cadenceMs: 3_600_000 },
   reporters: { path: "/api/status/reporters", layer: "lag", cadenceMs: 60_000 },
   pulse: { path: "/api/status/pulse", layer: "realtime" },
 } as const satisfies Record<string, StatusView>;

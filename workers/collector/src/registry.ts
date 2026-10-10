@@ -6,6 +6,7 @@ import { explain, type Job, type JobResult } from "./job";
 import { appleRecentJob } from "./jobs/apple-recent";
 import { avatarWatchJob } from "./jobs/avatar-watch";
 import { cloudflareDeploymentsJob, cloudflareMetricsJob } from "./jobs/cloudflare";
+import { genshinProfileJob } from "./jobs/genshin-profile";
 import { githubChartJob } from "./jobs/github-chart";
 import { githubRepoJob } from "./jobs/github-repo";
 import { pagespeedJob } from "./jobs/pagespeed";
@@ -26,6 +27,7 @@ export const JOBS: readonly Job[] = [
   cloudflareMetricsJob,
   sentryStatusJob,
   avatarWatchJob,
+  genshinProfileJob,
 ];
 
 export function findJob(name: string, jobs: readonly Job[] = JOBS): Job | undefined {

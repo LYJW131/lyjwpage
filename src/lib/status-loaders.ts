@@ -10,6 +10,7 @@ import { getCodingNow, getCodingUsage, getCodingYear } from "@/lib/coding-usage"
 import { getNowWatching, getWatching } from "@/lib/emby";
 import { getGithubChart, sliceGithubChart } from "@/lib/github-chart";
 import { getGithubRepo } from "@/lib/github-repo";
+import { getGenshinProfile } from "@/lib/genshin";
 import { getPlaying, getPlayingNow } from "@/lib/playstation";
 import { getQuestNow } from "@/lib/quest";
 import { getPowerBankSnapshot } from "@/lib/powerbank";
@@ -75,6 +76,7 @@ export const statusLoaders = {
   cloudflareWorkers: { endpoint: unparam(getCloudflareWorkers) },
   vercelDeployments: { endpoint: unparam(getVercelDeployments) },
   sentry: { endpoint: unparam(getSentryStatus) },
+  genshin: { endpoint: unparam(getGenshinProfile) },
   reporters: { endpoint: unparam(getReportersStatus) },
   pulse: { endpoint: unparam(() => getPulseStatus()) },
 } satisfies { [K in StatusViewKey]: EndpointLoader };
