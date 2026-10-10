@@ -37,7 +37,7 @@ Worker 先原子占用上传令牌，再执行请求体、文件数、单文件/
 
 GitHub webhook 按原始正文验证 `X-Hub-Signature-256`，并核对目标仓库与 run 分支，处理成功后才登记 delivery ID 去重，处理失败保留重投机会。订阅事件为 `check_run`、`check_suite`、`status`、`issue_comment`、`pull_request`。检查、预览与评论是独立状态；`claude[bot]` 的评论只供参考，不能授权代码或合并。卡片注明此边界。
 
-PR 由 App 机器人开出，Codex 不会自动审查；PR 确认创建后，`workers/ai/src/build/github.ts#requestCodexReview` 用仓库所有者的令牌 `CODEX_REVIEW_GITHUB_TOKEN` 以所有者身份发一条固定文案的 `@codex review` 评论（`CODEX_REVIEW_REQUEST`，不拼入访客内容）。没配令牌时跳过；评论失败只记 Sentry（tag `build.step`），不影响 PR 与 run 状态。每次访客构建因此消耗所有者的 Codex 审查额度，次数受 `BUILD_QUOTA` 约束。卡片的审查栏只读 `claude[bot]`，不显示 Codex 结论。
+PR 由 App 机器人开出，Codex 与 Cursor 不会自动审查；PR 确认创建后，`workers/ai/src/build/github.ts#requestAgentReviews` 用仓库所有者的令牌 `CODEX_REVIEW_GITHUB_TOKEN` 以所有者身份发两条固定文案的评论（`AGENT_REVIEW_REQUESTS`，不拼入访客内容）：`@codex review` 管正确性与仓库规则，`@cursoragent` 管安全与改动范围，都要求只检查、不推送、不运行 PR 代码、不调用外部服务。这些只是提示词约束：Cursor 的 cloud agent 有推送权限和用户连接的外部服务，访客内容里的注入仍是残余风险。没配令牌时跳过；评论失败只记 Sentry（tag `build.step`），不影响 PR 与 run 状态。每次访客构建因此消耗所有者的 Codex 与 Cursor 额度，次数受 `BUILD_QUOTA` 约束。卡片的审查栏只读 `claude[bot]`，不显示 Codex 与 Cursor 的结论。
 
 Claude review 卡片通过 `src/lib/build-review-summary.ts#buildReviewSummary` 将可识别的审查结论显示为 No issues 或 Issues found；缺失、失败或无法识别的结论显示 Unknown。评论正文不直接显示，链接仍指向 GitHub 原评论；本地保存的会话也使用同一展示规则。
 

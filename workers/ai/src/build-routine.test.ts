@@ -238,7 +238,7 @@ test("valid upload creates and returns a confirmed PR without secret fields", as
   assert.equal("plan" in body, false);
 });
 
-test("an opened PR asks Codex to review it with the owner's token, and a failed request keeps the PR", async () => {
+test("an opened PR asks Codex and Cursor to review it with the owner's token, and a failed request keeps the PR", async () => {
   for (const [token, status] of [[undefined, 201], ["owner-fixture", 201], ["owner-fixture", 500]] as const) {
     const { env, instance } = coordinator();
     instance.reserveRun(await stored(), "p", Date.now() + 60_000);
@@ -247,11 +247,13 @@ test("an opened PR asks Codex to review it with the owner's token, and a failed 
     assert.equal(response.status, 201);
     assert.equal((await response.json() as BuildRun).phase, "pr_open");
     const comments = calls.filter((call) => call.path.endsWith("/comments"));
-    assert.equal(comments.length, token ? 1 : 0);
+    assert.equal(comments.length, token ? 2 : 0);
     if (!token) continue;
-    assert.equal(comments[0].path, `/repos/${BUILD_REPO}/issues/12/comments`);
-    assert.equal(comments[0].auth, "Bearer owner-fixture");
-    assert.match(String(comments[0].body?.body), /^@codex review\n/);
+    for (const comment of comments) {
+      assert.equal(comment.path, `/repos/${BUILD_REPO}/issues/12/comments`);
+      assert.equal(comment.auth, "Bearer owner-fixture");
+    }
+    assert.deepEqual(comments.map((comment) => String(comment.body?.body).split(/\s/)[0]).sort(), ["@codex", "@cursoragent"]);
   }
 });
 

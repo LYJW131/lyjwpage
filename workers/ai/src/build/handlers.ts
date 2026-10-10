@@ -4,7 +4,7 @@ import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
-import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestCodexReview } from "./github";
+import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestAgentReviews } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
 import { readBoundedJson } from "./http";
@@ -135,10 +135,10 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
     const pr = await createBuildPullRequest(api, run, upload, baseTree);
     const state = await coordinator.updateRun(runId, { phase: "pr_open", pr });
     if (env.CODEX_REVIEW_GITHUB_TOKEN) {
-      try { await requestCodexReview(env.CODEX_REVIEW_GITHUB_TOKEN, pr.number, fetcher); }
+      try { await requestAgentReviews(env.CODEX_REVIEW_GITHUB_TOKEN, pr.number, fetcher); }
       catch (error) {
-        console.warn("[build] Codex review request failed", error);
-        Sentry.captureException(error, { tags: { "build.step": "codex-review" } });
+        console.warn("[build] agent review request failed", error);
+        Sentry.captureException(error, { tags: { "build.step": "agent-review" } });
       }
     }
     return Response.json(state, { status: 201, headers: noStore });
