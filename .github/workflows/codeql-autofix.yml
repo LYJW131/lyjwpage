@@ -1,0 +1,56 @@
+name: CodeQL Autofix
+
+on:
+  workflow_run:
+    workflows: [CodeQL]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [claude/friendly-babbage-mdfp4p]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only list what would be launched
+        type: boolean
+        default: false
+      limit:
+        description: Max new agents this run
+        required: false
+
+permissions:
+  contents: write
+  security-events: read
+
+concurrency:
+  group: codeql-autofix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: >
+      github.event_name == 'workflow_dispatch' || github.event_name == 'push' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Launch a Cursor agent per open alert
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CURSOR_MODEL: ${{ vars.CURSOR_MODEL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.repository.default_branch }}
+          DRY_RUN: ${{ github.event_name == 'push' && 'true' || inputs.dry_run || 'false' }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          if [ -n "$CURSOR_API_KEY" ]; then echo 'CURSOR_API_KEY secret: set'; else echo 'CURSOR_API_KEY secret: missing'; fi
+          node scripts/run-codeql-autofix.mjs
