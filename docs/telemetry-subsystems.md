@@ -153,7 +153,7 @@ Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──
 ### 功率曲线与历史回放
 - **服务端环形缓冲**：StateHub 的 SQLite 为充电头保留最近 `CHARGER_HISTORY_LIMIT`（`src/lib/limits.ts`）个采样点（最小间隔 `MIN_SAMPLE_GAP_MS`，见 `workers/api/src/stores/charger-store.ts`），新进网页可直接绘制完整历史曲线。
 - **真实时间映射**：图表横坐标必须按时间戳间距绘制，禁止按采样序号等宽平铺，以真实还原丢包或断流空档。
-- **断流检测**：超过 `chargerStaleAfterMs()`（`src/lib/anker.ts`：`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）未收到新读数，状态判定为断流，卡片置灰。
+- **断流检测**：充电头和充电宝共用 `src/lib/freshness.ts#chargingStaleAfterMs`（`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）。超过该窗口未收到新读数，状态判定为断流，卡片置灰。
 
 ### A110G 充电宝差异
 - 充电宝电量变化缓慢，因此服务端**不记录历史曲线**，仅保存当前快照。

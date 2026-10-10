@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AGENT_LIMITS_STALE_MS,
+  CHARGER_STALE_MS,
   chargingFeedClockStale,
+  chargingStaleAfterMs,
   RESUME_REFETCH_GRACE_MS,
   clockAdvance,
   clockReading,
@@ -12,6 +14,7 @@ import {
   resumeTimedOut,
   isStale,
   liveChargingFeed,
+  heartbeatWindowMs,
   liveNowListening,
   PLAYSTATION_STALE_MS,
   type ChargingFeed,
@@ -49,6 +52,14 @@ function feed(partial: Partial<ChargingFeed> = {}): ChargingFeed {
     ...partial,
   };
 }
+
+test("充电头和充电宝共用一条断流窗口，不短于心跳、自身下限和三轮推送", () => {
+  const heartbeat = heartbeatWindowMs();
+  assert.equal(chargingStaleAfterMs(30_000), Math.max(CHARGER_STALE_MS, 90_000, heartbeat));
+  assert.equal(chargingStaleAfterMs(1_000), Math.max(CHARGER_STALE_MS, 3_000, heartbeat));
+  const wide = Math.max(heartbeat, CHARGER_STALE_MS) + 60_000;
+  assert.equal(chargingStaleAfterMs(wide), wide * 3);
+});
 
 test("充电头 / 充电宝按钟判：Mac 心跳窗口或这一路自己的窗口，过了任一个就算断", () => {
   assert.equal(chargingFeedClockStale(feed(), T + 300_000), false);

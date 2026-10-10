@@ -1,11 +1,9 @@
+import { formatClock } from "@/lib/clock-format";
 import type { Workout } from "@/lib/types";
 
 export function workoutDuration(seconds: number): string {
   const whole = Math.floor(seconds);
-  const hours = Math.floor(whole / 3600);
-  const minutes = Math.floor(whole / 60) % 60;
-  const remainder = String(whole % 60).padStart(2, "0");
-  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${remainder}` : `${minutes}:${remainder}`;
+  return formatClock(whole > 0 ? whole * 1000 : 0);
 }
 
 export function workoutMetrics(workout: Workout): { label: string; value: string }[] {

@@ -38,6 +38,11 @@ export function localDate(at: number, secondsFromGMT: number): string {
 
 export const CHARGER_STALE_MS = 90_000;
 
+// 断流窗口不得短于心跳窗口；安静时只有空心跳续期，否则正常设备会反复闪断。
+export function chargingStaleAfterMs(intervalMs = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000) {
+  return Math.max(CHARGER_STALE_MS, intervalMs * 3, heartbeatWindowMs());
+}
+
 export type FreshnessInput = {
   now: number;
   at: number | null | undefined;
