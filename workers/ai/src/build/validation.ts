@@ -16,7 +16,12 @@ export function allowedBuildPath(path: string): boolean {
   const segments = path.split("/");
   if (segments.some((part) => !part || part === "." || part === "..")) return false;
   if (segments.some(protectedPathSegment)) return false;
-  return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path);
+  return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path) || markdownDoc(path);
+}
+
+// 文档改了也只是文字，PR 里单列给人审；agent 指令文件已被受保护名挡掉，上报器单独部署不放开。
+export function markdownDoc(path: string): boolean {
+  return /\.md$/i.test(path) && !path.split("/").some((segment) => segment.toLowerCase() === "reporters");
 }
 
 // 拒绝原因原样回给规划者：笼统的「计划无效」会让它不知道改哪里，一条回复的工具轮数就这样耗完。
@@ -88,6 +93,7 @@ export function parseBuildUpload(value: unknown, planPaths: readonly string[]): 
   if (total > BUILD_UPLOAD_LIMITS.totalBytes) throw new Error("Upload exceeds the total size limit.");
   const result = { baseSha, message: message.trim(), files: cleanFiles, deletions: deletions.map(checkPath) };
   const outside = outsidePlanPaths(result, planPaths);
-  if (outside.length > BUILD_UPLOAD_LIMITS.outsidePlanFiles) throw new Error(`${outside.length} changed paths are outside the approved plan paths (at most ${BUILD_UPLOAD_LIMITS.outsidePlanFiles}): ${outside.join(", ")}`);
+  const counted = outside.filter((path) => !markdownDoc(path));
+  if (counted.length > BUILD_UPLOAD_LIMITS.outsidePlanFiles) throw new Error(`${counted.length} changed paths are outside the approved plan paths (at most ${BUILD_UPLOAD_LIMITS.outsidePlanFiles}, documentation excluded): ${counted.join(", ")}`);
   return result;
 }
