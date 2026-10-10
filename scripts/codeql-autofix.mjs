@@ -206,7 +206,7 @@ export async function runCodeqlAutofix({
   return { items, code: failed ? 1 : 0 };
 }
 
-const cell = (text) => String(text ?? "").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+const cell = (text) => String(text ?? "").replace(/[\\|]/g, "\\$&").replace(/\s+/g, " ").trim();
 
 export function renderSummary({ items, dryRun }) {
   const lines = [`## CodeQL autofix${dryRun ? " (dry run)" : ""}`, ""];
