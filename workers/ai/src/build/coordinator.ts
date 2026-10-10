@@ -123,7 +123,7 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
-  // 计划路径不够、只能靠断言或放宽测试才能完成时，routine 用它停下：同样占用上传令牌，停下后不能再上传。
+  // 计划路径加计划外名额仍不够、只能靠断言或放宽测试才能完成时，routine 用它停下：同样占用上传令牌，停下后不能再上传。
   blockRun(runId: string, hash: string, reason: string): boolean {
     return this.ctx.storage.transactionSync(() => {
       const run = this.readRun(runId);
