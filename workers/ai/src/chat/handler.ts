@@ -453,7 +453,8 @@ async function converse({
           if (cards.has(card)) return result(`The ${card} card is already in this reply.`, true);
           cards.add(card);
           emit({ type: "card", card });
-          return result(await runShowCard(card, io, ledger), false);
+          const shown = await runShowCard(card, io, ledger);
+          return result(shown.text, shown.isError);
         }
         const tool = SITE_TOOLS.find((candidate) => candidate.name === call.name);
         if (!tool) return result("Unknown tool.", true);

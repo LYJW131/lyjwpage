@@ -586,7 +586,7 @@ export type ActivityRings = {
 };
 
 export type ActivityStatus = ActivityRings & {
-  // 来源按其本地日历产生的 YYYY-MM-DD，secondsFromGMT 是随报的 UTC 偏移秒数；是否仍属当天由取数出口算成 currentAtSource，不能拿访客日期比较。
+  // 来源本地日历的 YYYY-MM-DD，secondsFromGMT 是随报的 UTC 偏移秒数。currentAtSource 是取数那一刻的判断；展示按这两个字段重算（freshness.ts 的 activityDisplayedCurrent）。不能拿访客时区的日期比较。
   date: string;
   secondsFromGMT: number;
   steps: number | null;

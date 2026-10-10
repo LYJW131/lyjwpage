@@ -6,6 +6,7 @@ import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, downgradeChain, modelLabel } from "
 import { readJsonBody, turnstilePassed } from "./chat/guard.ts";
 import { toModelMessages } from "./chat/history.ts";
 import { parseRouterAnswer, routerInput } from "./chat/router.ts";
+import { TOOL_READ_TIMEOUT_MS } from "./tools/deadline.ts";
 import { claimDoc, parseProjectDocInput, readProjectDoc, sliceDoc } from "./tools/project-docs.ts";
 import { sealExchange, sealedHistory, storedReply } from "./chat/seal.ts";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./chat/show-card.ts";
@@ -271,6 +272,16 @@ test("文档读取失败不抛错、标成失败，回给模型的结果带来�
   assert.match(down.text, /unavailable/);
 });
 
+test("文档读取超时标成失败，不把挂起的请求当成读到", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const hung = readProjectDoc(() => new Promise(() => {}), { doc: "overview" });
+  t.mock.timers.tick(TOOL_READ_TIMEOUT_MS);
+  const timedOut = await hung;
+  assert.equal(timedOut.ok, false);
+  assert.match(timedOut.text, /timed out/);
+  assert.doesNotMatch(timedOut.text, /# Hub/);
+});
+
 test("回复读过的项目文档随 trace 带回，只认白名单键", () => {
   const parsed = parseGodChatRequest({
     turnstileToken: "t",
@@ -388,14 +399,16 @@ test("卡片工具只读卡片背后那一个视图回给模型，记进同一�
     },
   } as unknown as ToolIO;
   const ledger = newLedger();
-  const text = await runShowCard("nowListening", io, ledger);
+  const shown = await runShowCard("nowListening", io, ledger);
+  assert.equal(shown.isError, false);
   assert.deepEqual(paths, ["/api/status/listening/now"]);
   assert.deepEqual([...ledger.views], ["nowListening"]);
-  assert.match(text, /^The nowListening card is now in your reply/);
-  assert.match(text, /## nowListening\ndetail=summary \| no paged lists \| last page\n\{"ok":true/);
+  assert.match(shown.text, /^The nowListening card is now in your reply/);
+  assert.match(shown.text, /## nowListening\ndetail=summary \| no paged lists \| last page\n\{"ok":true/);
   const again = await runShowCard("nowListening", io, ledger);
+  assert.equal(again.isError, true);
   assert.equal(paths.length, 1);
-  assert.match(again, /Already read earlier in this reply, reuse those results: nowListening\./);
+  assert.match(again.text, /Already read earlier in this reply, reuse those results: nowListening\./);
 });
 
 test("画过卡片的回复随 trace 带回，只认登记过的卡片名；卡片背后的视图不算成 get_site_status 调用", () => {

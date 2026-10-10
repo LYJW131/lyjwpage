@@ -1,17 +1,11 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
-import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
+import { chargingStaleAfterMs } from "@/lib/freshness";
 import { publicAssetPath } from "@/lib/asset-url";
 import { readLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
 import type { ChargerPayload, ChargerStatus, ReportedChargerStatus } from "@/lib/types";
 import { publicChargerStatus } from "@shared/charging-devices";
 
-
-// 断流窗口不得短于心跳窗口；安静时只有空心跳续期，否则正常设备会反复闪断。
-export function chargerStaleAfterMs() {
-  const interval = Number(process.env.CHARGER_PUSH_INTERVAL_MS) || 30_000;
-  return Math.max(CHARGER_STALE_MS, interval * 3, heartbeatWindowMs());
-}
 
 function withCoverIconUrl<T extends { cover: ChargerStatus["cover"] }>(payload: T): T {
   const cover = payload.cover;
@@ -31,7 +25,7 @@ export async function getChargerSnapshot(): Promise<ChargerPayload> {
       history: stored.history,
       historyPartial: false,
       pushedAt,
-      staleAfterMs: chargerStaleAfterMs(),
+      staleAfterMs: chargingStaleAfterMs(),
     }),
     live,
   );
@@ -66,7 +60,7 @@ export function chargerPushPayload({
       history: [],
       historyPartial: historyCount > 0,
       pushedAt: receivedAt,
-      staleAfterMs: chargerStaleAfterMs(),
+      staleAfterMs: chargingStaleAfterMs(),
     }),
     liveness,
   );
