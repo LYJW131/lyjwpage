@@ -12,8 +12,9 @@
     "ch.06": ["06 交付", "06 Delivery"],
     "ch.07": ["07 调频", "07 Cadence"],
     "ch.08": ["08 自检", "08 Self-check"],
-    "ch.09": ["09 发布", "09 Release"],
-    "ch.10": ["10 回顾", "10 Recap"],
+    "ch.09": ["09 对话", "09 Chat"],
+    "ch.10": ["10 发布", "10 Release"],
+    "ch.11": ["11 回顾", "11 Recap"],
     "ph.todo": ["这一章还没写", "Not written yet"],
   };
 
