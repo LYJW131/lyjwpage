@@ -458,14 +458,10 @@ function Conversation({ className, archive, session: conversation }: { className
               <div key={index} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
                 <div
                   className={cn(
-                    "min-w-0 rounded-lg px-3 py-2 text-sm leading-relaxed [overflow-wrap:anywhere]",
-                    message.role === "user" ? "max-w-[85%]" : "max-w-full sm:max-w-[85%]",
-                    (message.cards?.length || message.proposals?.length) && "w-full",
+                    "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
                     message.role === "user"
-                      ? "whitespace-pre-wrap bg-foreground text-background"
-                      : message.tier === "fable"
-                        ? "border border-[#f5c542] bg-muted text-foreground shadow-[0_0_24px_-8px_rgba(245,197,66,0.8)]"
-                        : "border border-line bg-muted text-foreground",
+                      ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
+                      : "w-full text-foreground",
                   )}
                 >
                   {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
