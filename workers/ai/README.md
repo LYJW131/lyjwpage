@@ -55,6 +55,8 @@
 
 浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化。设计会话到期或轮数耗尽时清除设计令牌并退回普通对话。localStorage 不可用时只保留内存状态。
 
+访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`），接受之前不加载 Turnstile、不发任何请求；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.mjs#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。
+
 ## MCP
 
 `POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。站点在根目录 `next.config.ts` 中将 `/mcp` 用 307 跳到 `NEXT_PUBLIC_BACKEND_URL` 对应的 api，api 再经 Service Binding 交给本 Worker。307 保留 POST 与请求体；不用 Vercel rewrite，避免 `CF-Connecting-IP` 变成共用的 Vercel 出口 IP。公开访问域名见 `docs/ops-facts.md`。

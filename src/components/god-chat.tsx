@@ -10,6 +10,7 @@ import { FableDescent, type Descent } from "@/components/fable-descent";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
+import { chatConsent } from "@/lib/chat-consent";
 import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
@@ -93,6 +94,8 @@ function Conversation({ className, archive, session: conversation }: { className
   const [token, setToken] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
+  const consented = useSyncExternalStore(chatConsent.subscribe, chatConsent.getSnapshot, chatConsent.getServerSnapshot);
+  const [consentPending, setConsentPending] = useState<string | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -352,6 +355,14 @@ function Conversation({ className, archive, session: conversation }: { className
   function ask(text: string) {
     if (!text.trim() || streaming) return;
     setUsage(null);
+    // 同意前消息只留在本地：Turnstile 也不加载，什么都不发出去。
+    if (!chatConsent.getSnapshot()) {
+      if (!messages.length && consentPending === null) reveal();
+      setConsentPending(text.trim());
+      setDraft("");
+      setError(null);
+      return;
+    }
     if (!SITE_KEY || verifyStateRef.current === "unavailable") {
       setError(SITE_KEY ? VERIFY_UNAVAILABLE : OFFLINE);
       return;
@@ -370,6 +381,20 @@ function Conversation({ className, archive, session: conversation }: { className
     loadTimerRef.current = setTimeout(() => {
       if (pendingRef.current && !widgetId.current) verificationFailed(VERIFY_UNAVAILABLE, "unavailable");
     }, VERIFY_LOAD_TIMEOUT_MS);
+  }
+
+  function acceptConsent() {
+    const text = consentPending;
+    setConsentPending(null);
+    chatConsent.accept();
+    if (text) ask(text);
+  }
+
+  function declineConsent() {
+    const text = consentPending;
+    setConsentPending(null);
+    if (text) setDraft((current) => current || text);
+    setError("Nothing was sent. Accept the privacy notice to chat.");
   }
 
   // 卡片从紧凑高度长到视口高度时顶边不动、往下长；把顶边滚到吸顶页头下面，长完正好占满可见区域，上下各留 EDGE_GAP_PX。
@@ -391,7 +416,7 @@ function Conversation({ className, archive, session: conversation }: { className
 
   const waiting = armed && !token && !streaming && !error;
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
-  const expanded = messages.length > 0;
+  const expanded = messages.length > 0 || consentPending !== null;
 
   return (
     // 对话、设计与构建计划包含访客原文，Replay 需要遮住整张卡片。
@@ -432,7 +457,7 @@ function Conversation({ className, archive, session: conversation }: { className
         }}
         className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden"
       >
-        {messages.length === 0 ? (
+        {messages.length === 0 && consentPending === null ? (
           <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
               Ask anything. The oracle sees what LYJW is up to, knows how this site is built, and can search the web.
@@ -519,6 +544,7 @@ function Conversation({ className, archive, session: conversation }: { className
             );
           })
         )}
+        {consentPending !== null && <ConsentPrompt text={consentPending} onAccept={acceptConsent} onDecline={declineConsent} />}
       </div>
 
       <div className="border-t border-line p-3">
@@ -573,7 +599,7 @@ function Conversation({ className, archive, session: conversation }: { className
               setDraft(event.target.value);
               setSelected(0);
             }}
-            onFocus={() => setArmed(true)}
+            onFocus={() => { if (consented) setArmed(true); }}
             onKeyDown={(event) => {
               if (paletteOpen && matches.length) {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -687,6 +713,31 @@ function SessionList({ archive }: { archive: ChatArchive }) {
         ))}
       </ul>}
     </div>
+  );
+}
+
+function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: () => void; onDecline: () => void }) {
+  return (
+    <>
+      <div className="flex justify-end">
+        <div className="min-w-0 max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-sm leading-relaxed text-background [overflow-wrap:anywhere]">{text}</div>
+      </div>
+      <div role="group" aria-label="Privacy notice" className="w-full text-sm leading-relaxed text-foreground">
+        <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">Privacy notice</div>
+        <p>Before the oracle answers, please accept how this chat handles your data:</p>
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
+          <li>Your messages and this conversation&apos;s history are sent through this site&apos;s Cloudflare Worker to Anthropic&apos;s Claude models.</li>
+          <li>Cloudflare Turnstile checks that you&apos;re human, and your IP address counts toward rate limits.</li>
+          <li>The site keeps no transcripts; conversations are saved only in this browser.</li>
+          <li>Build plans you choose to file become public on GitHub.</li>
+        </ul>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">Accept</button>
+          <button type="button" onClick={onDecline} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover">Decline</button>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">Accepting is remembered in this browser until the chat code changes.</p>
+      </div>
+    </>
   );
 }
 
