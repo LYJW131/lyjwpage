@@ -20,6 +20,8 @@ import { useSiteDay } from "@/hooks/use-site-day";
 import { useConfirmedClockStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
+import { busiestLimit, isExtraLimitWindow, limitWindowTitle } from "@/lib/coding-limit-windows";
+import { codingModelLabel } from "@/lib/coding-model-label";
 import {
   CODING_ACTIVE_WINDOW_MS,
   CODING_SOURCE_LABELS,
@@ -45,14 +47,6 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { AgentLimitsPayload } from "@/lib/vibecoding-limits";
-
-function busiestLimit(limits: VibeCodingLimit[], now: number) {
-  const candidates = limits.filter((limit) => !isExtraWindow(limit));
-  if (candidates.length === 0) return null;
-  const effective = (limit: VibeCodingLimit) =>
-    now && limit.resetsAt != null && limit.resetsAt * 1000 <= now ? 0 : limit.usedPercent;
-  return candidates.reduce((best, row) => (effective(row) > effective(best) ? row : best));
-}
 
 const REFRESH_MS = 2 * 60_000;
 
@@ -103,13 +97,6 @@ function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) 
       )}
     </span>
   );
-}
-
-function displayModelName(model: string) {
-  if (model === "github_bugbot") return "Bugbot";
-  if (model.startsWith("grok-bot-")) return "Grok Bot";
-  if (model === "agent_review") return "Agent Review";
-  return model;
 }
 
 const LIMIT_WARN_PERCENT = 75;
@@ -212,26 +199,6 @@ function RankMark({ rank }: { rank: number }) {
       {String(rank + 1).padStart(2, "0")}
     </span>
   );
-}
-
-function capitalize(part: string) {
-  return part ? `${part[0].toUpperCase()}${part.slice(1)}` : part;
-}
-
-function formatModelName(model: string) {
-  if (!model) return model;
-  const claude = /^claude-([a-z]+)-(\d+)(?:-(\d+))?$/i.exec(model);
-  if (claude) {
-    const [, family, major, minor] = claude;
-    return `Claude ${capitalize(family)} ${major}${minor ? `.${minor}` : ""}`;
-  }
-  const gpt = /^gpt-(\d+(?:\.\d+)?)(?:-(.+))?$/i.exec(model);
-  if (gpt) {
-    const [, version, variant] = gpt;
-    const suffix = variant ? ` ${variant.split("-").map(capitalize).join(" ")}` : "";
-    return `GPT ${version}${suffix}`;
-  }
-  return model.split("-").map(capitalize).join(" ");
 }
 
 function SourceIssue({ failing, hasValue }: { failing: CodingSourceNote[]; hasValue: boolean }) {
@@ -364,7 +331,7 @@ function TotalUsage({
                   <div className="flex min-w-0 items-center gap-2">
                     <ModelProviderIcon model={item.model} />
                     <div className="truncate text-sm font-medium" title={item.model}>
-                      {formatModelName(item.model)}
+                      {codingModelLabel(item.model)}
                     </div>
                   </div>
                   <div className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -415,18 +382,6 @@ function isNamedLimit(limit: VibeCodingLimit, name: string) {
   return `${limit.key} ${limit.label ?? ""}`.toLowerCase().includes(name);
 }
 
-function isSparkWindow(limit: VibeCodingLimit) {
-  return (
-    limit.key.endsWith(".tertiary") ||
-    isNamedLimit(limit, "spark") ||
-    isNamedLimit(limit, "bengalfox")
-  );
-}
-
-function isExtraWindow(limit: VibeCodingLimit) {
-  return isSparkWindow(limit) || limit.key.includes("weekly-scoped") || isNamedLimit(limit, "fable");
-}
-
 function isSessionWindow(limit: VibeCodingLimit) {
   return (
     limit.group === "session" ||
@@ -435,7 +390,7 @@ function isSessionWindow(limit: VibeCodingLimit) {
 }
 
 function limitSlot(limit: VibeCodingLimit): "session" | "weekly" | null {
-  if (isExtraWindow(limit)) return null;
+  if (isExtraLimitWindow(limit)) return null;
   return isSessionWindow(limit) ? "session" : "weekly";
 }
 
@@ -751,7 +706,7 @@ function AgentPanel({
     ? ((lastDay?.cacheReadTokens ?? 0) / promptTokens) * 100
     : 0;
   const { active, sources, model } = useAgentActive(row, macDeclaredOffline, clocks);
-  const displayModel = model ? displayModelName(model) : "No model";
+  const displayModel = model ? codingModelLabel(model) : "No model";
   const rows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
   const usageUrl = agentUsageUrl(row.id);
   return (
@@ -767,7 +722,7 @@ function AgentPanel({
             "label-mono truncate",
             active ? "text-live" : "text-muted-foreground",
           )}
-          title={row.usage?.models.join(" · ") || undefined}
+          title={model ?? undefined}
         >
           {displayModel}
         </span>
@@ -883,6 +838,7 @@ function CompactAgentRow({
 
   const pace = limit ? limitPace(limit, now) : null;
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
+  const windowTitle = limit ? limitWindowTitle(limit) : null;
   const { active, sources } = useAgentActive(row, macDeclaredOffline, clocks);
   const usageUrl = agentUsageUrl(row.id);
 
@@ -905,12 +861,22 @@ function CompactAgentRow({
         </div>
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {row.plan && (
-            <span className="truncate" title={`Plan ${row.plan.tier}`}>
+            <span className="min-w-0 truncate" title={`Plan ${row.plan.tier}`}>
               {row.plan.label}
             </span>
           )}
-          {row.plan && reset && (
-            <span aria-hidden className="mx-1.5">
+          {row.plan && (windowTitle || reset) && (
+            <span aria-hidden className="mx-1.5 shrink-0">
+              /
+            </span>
+          )}
+          {windowTitle && (
+            <span className="min-w-0 truncate" title={windowTitle}>
+              {windowTitle}
+            </span>
+          )}
+          {windowTitle && reset && (
+            <span aria-hidden className="mx-1.5 shrink-0">
               /
             </span>
           )}
@@ -963,7 +929,7 @@ function CompactAgentRow({
           )}
         </span>
       </div>
-      <UsageMeter href={usageUrl} label={agentUsageLabel(row.label)}>
+      <UsageMeter href={usageUrl} label={agentUsageLabel(row.label, windowTitle ?? undefined)}>
         {usedPercent != null && (
           <div
             className="h-full transition-[width] duration-700"
