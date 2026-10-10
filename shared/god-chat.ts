@@ -6,6 +6,9 @@ import { isGodChatServedTier, type GodChatEffort, type GodChatRoute, type GodCha
 
 // 卡片渲染 Turnstile 时带上，Worker 校验 siteverify 回来的 action 与之相同。
 export const GOD_CHAT_TURNSTILE_ACTION = "god-chat";
+// 验过人后 Worker 发的通行证有效期；通行证绑 IP，期内不再要新的 Turnstile token。
+export const GOD_CHAT_PASS_TTL_MS = 30 * 60_000;
+export const GOD_CHAT_PASS_PATTERN = /^\d{13}\.[\w-]{20,100}$/;
 
 // 公开端点直接花 API 额度：这几项上限共同限定单次请求的最大花费，放宽前先算账。
 export const GOD_CHAT_LIMITS = {
@@ -109,9 +112,10 @@ export type GodChatEvent =
   | { type: "doc"; doc: string; path: string; url: string; section?: string }
   | { type: "search"; query: string }
   | { type: "sources"; sources: GodChatSource[] }
-  | { type: "seal"; seal: string; trace?: GodChatTrace; planToken?: string };
+  | { type: "seal"; seal: string; trace?: GodChatTrace; planToken?: string }
+  | { type: "pass"; pass: string; expiresAt: number };
 
-export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken: string; designToken?: string };
+export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string };
 
 // 访客自己的话超长就拒；模型的旧回复只截断，超出总量从最早的消息丢起，长回答不能让后续对话发不出去。
 // 浏览器发送前先过一遍，Worker 收到后再过一遍。
@@ -161,8 +165,10 @@ export function normalizeTrace(value: unknown): GodChatTrace | undefined {
 
 export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!body || typeof body !== "object") return null;
-  const { messages, turnstileToken, designToken } = body as Record<string, unknown>;
-  if (typeof turnstileToken !== "string" || !turnstileToken || turnstileToken.length > 2048) return null;
+  const { messages, turnstileToken, humanPass, designToken } = body as Record<string, unknown>;
+  if (turnstileToken !== undefined && (typeof turnstileToken !== "string" || !turnstileToken || turnstileToken.length > 2048)) return null;
+  if (humanPass !== undefined && (typeof humanPass !== "string" || !GOD_CHAT_PASS_PATTERN.test(humanPass))) return null;
+  if (turnstileToken === undefined && humanPass === undefined) return null;
   if (designToken !== undefined && (typeof designToken !== "string" || !/^[\w-]+\.[\w-]+$/.test(designToken) || designToken.length > 2048)) return null;
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
@@ -181,5 +187,5 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   }
   const fitted = fitHistory(parsed);
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
-  return { messages: fitted, turnstileToken, ...(typeof designToken === "string" && { designToken }) };
+  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }) };
 }

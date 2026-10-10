@@ -28,6 +28,7 @@ import { billedOutputTokens, usageHops } from "./billing";
 import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
+import { issuePass, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, DESIGN_READ_LIMITS, DESIGN_TOOL_ROUNDS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
@@ -116,9 +117,13 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   // 额度缺绑定按超额处理：计数失效时宁可拒绝也不放行。
   const quota = quotaStub(env);
   if (!quota) return fail(503, "The oracle is offline.");
-  const verdict = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, parsed.turnstileToken, ip);
-  if (!turnstilePassed(verdict, getAllowedOrigins(env), aiDevEnabled(env))) {
-    return fail(403, "Human verification failed. Please try again.");
+  const passed = parsed.humanPass !== undefined && await passValid(sealSecret, parsed.humanPass, ip);
+  if (!passed) {
+    if (!parsed.turnstileToken) return fail(403, "Human verification expired. Please try again.", undefined, "human_pass_expired");
+    const verdict = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, parsed.turnstileToken, ip);
+    if (!turnstilePassed(verdict, getAllowedOrigins(env), aiDevEnabled(env))) {
+      return fail(403, "Human verification failed. Please try again.");
+    }
   }
   if (abort.signal.aborted) return gone();
   // 验过人才计数，计数在 Clef 之前：访客自己超额、全站路由满或哪一档都排不上时，不再触发付费的路由调用。
@@ -172,6 +177,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
         if (event.type === "text") reply += event.text;
         controller.enqueue(line(event));
       };
+      if (!passed) emit({ type: "pass", ...await issuePass(sealSecret, ip) });
       emit({ type: "route", route: wanted, tier, ...(tier !== wanted && !design && { downgradedFrom: wanted }) });
       if (design) emit({ type: "design", ...design });
       try {
