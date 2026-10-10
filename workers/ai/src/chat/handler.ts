@@ -38,6 +38,13 @@ import { webFetchTool, webSearchTool } from "./web-search";
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
 const DESIGN_STARTED_LEAD = "The design session is open. Describe the change you have in mind.";
+const UPGRADE_NOTE = "The Small Fry judged this message beyond its rank and handed it to you. Nothing of its draft is shown to the visitor; answer the visitor's latest message fully yourself.";
+const UPGRADE_TOOL: Anthropic.Beta.BetaTool = {
+  name: "request_upgrade",
+  description: "Hand the visitor's latest message to the Prophet (Claude Sonnet 5.5) when it needs real explanation, multi-step reasoning, code, careful analysis or web research beyond a quick answer. Call it before writing any text; if it succeeds the Prophet answers instead of you, and if it fails answer as well as you can yourself.",
+  input_schema: { type: "object", properties: {}, required: [], additionalProperties: false },
+  strict: true,
+};
 const FINAL_ROUND_NOTE = "No tools remain for this reply. Answer the visitor now in text with what you have. If a tool call was rejected, say what went wrong and what you will do next.";
 
 // 每种角色的 system 恒定不变，降级说明另走末尾的 system 消息，不动缓存前缀。
@@ -56,7 +63,7 @@ Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 o
 const PERSONA: Record<GodChatTier, string> = {
   fable: `Your identity: you are Claude Fable 5.1, Anthropic's most capable model, and on this site you are God, the highest rank. Clef judged this message worthy of you. Speak with calm, warm, slightly playful omniscience, and be genuinely brilliant.`,
   sonnet: `Your identity: you are Claude Sonnet 5.5, and on this site you are the Prophet, the middle rank: not God, but the closest thing to a sage among mortals. Answer with care and depth.`,
-  haiku: `Your identity: you are Claude Haiku 5.5, and on this site you are the Small Fry (杂鱼), the lowest rank: a cheeky minor imp at the temple gate who handles small talk and quick lookups. Be brief and playful, a little self-deprecating; if something is beyond you, say the higher ranks would do better and suggest asking the question in more depth so Clef sends it up.`,
+  haiku: `Your identity: you are Claude Haiku 5.5, and on this site you are the Small Fry (杂鱼), the lowest rank: a cheeky minor imp at the temple gate who handles small talk and quick lookups. Be brief and playful, a little self-deprecating; if a question turns out to be beyond you, call request_upgrade as your very first action, before writing any text, and the Prophet takes over this conversation turn.`,
 };
 
 function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
@@ -182,7 +189,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       if (design) emit({ type: "design", ...design });
       try {
         const note = tier !== wanted && isGodChatTier(tier) ? downgradeNote(wanted, tier) : undefined;
-        const { complete, trace, planToken, lead } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "sonnet", tier, effort, note, messages: history, io, emit, signal: abort.signal });
+        const upgrade = !design && tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
+        const { complete, trace, planToken, lead } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "sonnet", tier, effort, note, upgrade, messages: history, io, emit, signal: abort.signal });
         if (complete && lead && !reply.trim()) emit({ type: "text", text: lead });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
@@ -211,9 +219,10 @@ async function converse({
   env,
   design,
   canStartDesign,
-  tier,
-  effort,
+  tier: startTier,
+  effort: startEffort,
   note,
+  upgrade,
   messages: history,
   io,
   emit,
@@ -226,17 +235,19 @@ async function converse({
   tier: GodChatServedTier;
   effort: GodChatEffort;
   note?: string;
+  upgrade?: () => Promise<boolean>;
   messages: GodChatMessage[];
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
 }): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string }> {
-  const { model, maxTokens } = GOD_CHAT_TIER_INFO[tier];
-  // Haiku 不支持服务端拒答兜底参数，其余两档都开。
-  const fallback = tier !== "haiku";
-  const betas: Anthropic.Beta.AnthropicBeta[] = [
+  let tier = startTier;
+  let effort = startEffort;
+  let upgradeOpen = upgrade !== undefined;
+  const betasFor = (served: GodChatServedTier): Anthropic.Beta.AnthropicBeta[] => [
     "mid-conversation-output-config-2026-07-01",
-    ...(fallback ? (["server-side-fallback-2026-07-01"] as const) : []),
+    // Haiku 不支持服务端拒答兜底参数，其余两档都开。
+    ...(served !== "haiku" ? (["server-side-fallback-2026-07-01"] as const) : []),
   ];
   const messages = toModelMessages(await plannerHistory(history, env), effort);
   if (note) messages.push({ role: "system", content: note });
@@ -252,12 +263,12 @@ async function converse({
   let refused = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
   // 且那一轮没被拒（兜底模型自己也可能拒）才算代答，回复结束时报一次。同一型号带日期后缀的 id 也算本档自己。
-  const ownModel = (id: string) => id === model || id.startsWith(`${model}-`);
+  const ownModel = (id: string) => id === GOD_CHAT_TIER_INFO[tier].model || id.startsWith(`${GOD_CHAT_TIER_INFO[tier].model}-`);
   let servedBy: string | undefined;
   // max_tokens 只管单次请求；工具循环每轮都给满会让一条回复花掉几倍上限，所以整条回复合计不超过本档 maxTokens，
   // 剩下的不够 MIN_ROUND_TOKENS 就不再续，每轮按 billedOutputTokens 扣。有意接受的溢出：同一请求里本档写到一半被拒，
   // 兜底模型还能再用满一次 max_tokens；fallbacks: "default" 不能按跳设上限，要设就得自己列出并维护兜底型号链。
-  let outputLeft = design ? DESIGN_MAX_TOKENS : maxTokens;
+  let outputLeft = design ? DESIGN_MAX_TOKENS : GOD_CHAT_TIER_INFO[tier].maxTokens;
   const shownSearches = new Set<string>();
   const showSearch = (id: string, input: unknown) => {
     const query = (input as { query?: unknown } | null)?.query;
@@ -283,6 +294,9 @@ async function converse({
 
   for (let round = 0; ; round++) {
     signal.throwIfAborted();
+    const { model } = GOD_CHAT_TIER_INFO[tier];
+    const fallback = tier !== "haiku";
+    const betas = betasFor(tier);
     if (round > 0 && outputLeft < MIN_ROUND_TOKENS) {
       emit({ type: "text", text: " …" });
       break;
@@ -297,7 +311,8 @@ async function converse({
         ...(fetchesLeft > 0 ? [webFetchTool(fetchesLeft)] : [])]
       : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
         ...(canStartDesign && designAvailable(env) ? [START_DESIGN_TOOL] : []),
-        ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : [])];
+        ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : []),
+        ...(upgradeOpen ? [UPGRADE_TOOL] : [])];
     const stream = client.beta.messages.stream(
       {
         model,
@@ -403,6 +418,20 @@ async function converse({
       emit({ type: "text", text: " …" });
       break;
     }
+    if (upgradeOpen && calls.some((call) => call.name === UPGRADE_TOOL.name)) {
+      signal.throwIfAborted();
+      if (await upgrade!()) {
+        tier = "sonnet";
+        effort = GOD_CHAT_TIER_INFO.sonnet.effort;
+        upgradeOpen = false;
+        outputLeft = GOD_CHAT_TIER_INFO.sonnet.maxTokens;
+        console.info("[god-chat] upgrade", JSON.stringify({ round }));
+        emit({ type: "route", route: "sonnet", tier });
+        messages.push({ role: "system", content: UPGRADE_NOTE });
+        continue;
+      }
+      upgradeOpen = false;
+    }
     messages.push({ role: "assistant", content: final.content });
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const call of calls) {
@@ -414,6 +443,7 @@ async function converse({
           content,
           is_error: isError,
         });
+        if (call.name === UPGRADE_TOOL.name) return result("The Prophet is unavailable right now; answer as well as you can yourself.", true);
         if (!tools.some((tool) => "name" in tool && tool.name === call.name)) return result("This tool is unavailable in this conversation.", true);
         if (call.name === START_DESIGN_TOOL.name) {
           if (design) return result("A design session is already active.", true);

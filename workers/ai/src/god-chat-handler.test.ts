@@ -356,3 +356,64 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   assert.ok(!events.some((event) => event.type === "plan"));
   assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
 });
+
+function upgradeEnv(sonnetFree: boolean) {
+  const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
+  const admitted: { tier: string; allowDowngrade?: boolean }[] = [];
+  const env: Env = {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "haiku-low",
+    ANTHROPIC_API_KEY: "test-key",
+    TURNSTILE_SECRET_KEY: "test-key",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    CHAT_QUOTA: binding<ChatQuota>({
+      admitVisitor: async () => "ok" as const,
+      admitTier: async (_ip, wanted, _enforce, allowDowngrade) => {
+        admitted.push({ tier: wanted, allowDowngrade });
+        return wanted === "sonnet" && !sonnetFree ? null : wanted;
+      },
+    }),
+    ANTHROPIC_EGRESS: binding<AnthropicEgress>({
+      fetch: async (request) => {
+        const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+        requests.push(body);
+        return requests.length === 1 ? modelStream(body.model, { name: "request_upgrade", input: {} }) : modelStream(body.model, false);
+      },
+    }),
+  };
+  return { env, requests, admitted };
+}
+
+test("Haiku 调 request_upgrade 后整轮对话交给 Sonnet：扣 Sonnet 名额、不带 Haiku 的草稿、路由事件改成 Prophet", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const { env, requests, admitted } = upgradeEnv(true);
+  const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "Prove that sqrt(2) is irrational." }]), env, toolIO));
+  assert.deepEqual(admitted.map((entry) => entry.tier), ["haiku", "sonnet"]);
+  assert.equal(admitted[1].allowDowngrade, false);
+  assert.equal(requests.length, 2);
+  assert.ok(requests[0].tools?.some((tool) => "name" in tool && tool.name === "request_upgrade"));
+  assert.equal(requests[1].model, GOD_CHAT_TIER_INFO.sonnet.model);
+  assert.ok(requests[1].tools?.every((tool) => !("name" in tool) || tool.name !== "request_upgrade"));
+  assert.ok(requests[1].messages.every((message) => message.role !== "assistant"));
+  const routes = events.filter((event) => event.type === "route");
+  assert.deepEqual(routes.map((event) => event.tier), ["haiku", "sonnet"]);
+  assert.ok(routes.every((event) => event.downgradedFrom === undefined));
+  const seal = events.find((event) => event.type === "seal");
+  assert.equal(seal?.trace?.tier, "sonnet");
+});
+
+test("Sonnet 没有空位时 request_upgrade 回错误，Haiku 自己答完", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const { env, requests } = upgradeEnv(false);
+  const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "Prove that sqrt(2) is irrational." }]), env, toolIO));
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].model, GOD_CHAT_TIER_INFO.haiku.model);
+  assert.ok(requests[1].tools?.every((tool) => !("name" in tool) || tool.name !== "request_upgrade"));
+  assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.tier), ["haiku"]);
+});
