@@ -481,20 +481,7 @@ function Conversation({ className, archive, session: conversation }: { className
                       Looked at {message.lookups.join(", ")}
                     </div>
                   ) : null}
-                  {message.docs?.map((read, i) => (
-                    <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
-                      Read{" "}
-                      <a
-                        href={read.url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="underline underline-offset-2 hover:text-foreground"
-                      >
-                        {read.path}
-                      </a>
-                      {read.section && <> › {read.section}</>}
-                    </div>
-                  ))}
+                  {message.docs?.length ? <DocReads docs={message.docs} /> : null}
                   {message.searches?.map((query, i) => (
                     <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
                       Searched “{query}”
@@ -650,6 +637,30 @@ function Conversation({ className, archive, session: conversation }: { className
 // 存储层总留一条空会话给输入框当草稿；只有带消息的会话才算存档，列表与计数都不含草稿。
 function savedSessions(archive: ChatArchive): ChatSession[] {
   return archive.sessions.filter((session) => session.messages.length > 0);
+}
+
+function DocRead({ read, prefix }: { read: NonNullable<ChatBubble["docs"]>[number]; prefix: boolean }) {
+  return (
+    <div className="label-mono text-[10px] text-muted-foreground">
+      {prefix && "Read "}
+      <a href={read.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2 hover:text-foreground">
+        {read.path}
+      </a>
+      {read.section && <> › {read.section}</>}
+    </div>
+  );
+}
+
+function DocReads({ docs }: { docs: NonNullable<ChatBubble["docs"]> }) {
+  if (docs.length === 1) return <div className="mb-1.5"><DocRead read={docs[0]} prefix /></div>;
+  return (
+    <details className="mb-1.5">
+      <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">Read {docs.length} docs</summary>
+      <div className="mt-1 space-y-1 pl-3">
+        {docs.map((read, i) => <DocRead key={i} read={read} prefix={false} />)}
+      </div>
+    </details>
+  );
 }
 
 function SessionList({ archive }: { archive: ChatArchive }) {
