@@ -1,7 +1,21 @@
 "use client";
 
-import { ThemeProvider as NextThemesProvider } from "next-themes";
-import type { ReactNode } from "react";
+import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
+import { useLayoutEffect, type ReactNode } from "react";
+
+import { THEME_COLOR_DARK, THEME_COLOR_LIGHT } from "@/lib/theme-chrome";
+
+function ThemeChrome() {
+  const { resolvedTheme } = useTheme();
+  useLayoutEffect(() => {
+    if (resolvedTheme !== "light" && resolvedTheme !== "dark") return;
+    const color = resolvedTheme === "dark" ? THEME_COLOR_DARK : THEME_COLOR_LIGHT;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((node) => {
+      node.setAttribute("content", color);
+    });
+  }, [resolvedTheme]);
+  return null;
+}
 
 // React 19 会误报 next-themes 防闪烁脚本，过滤这一项开发告警。
 type PatchedConsoleError = typeof console.error & { __themePatched?: true };
@@ -28,8 +42,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       attribute="class"
       defaultTheme="system"
       enableSystem
+      enableColorScheme
       disableTransitionOnChange
     >
+      <ThemeChrome />
       {children}
     </NextThemesProvider>
   );

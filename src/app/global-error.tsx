@@ -4,9 +4,9 @@ import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 
-import "./globals.css";
+import { globalErrorThemeScript, THEME_COLOR_DARK, THEME_COLOR_LIGHT } from "@/lib/theme-chrome";
 
-const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(t==="dark"||((!t||t==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}`;
+import "./globals.css";
 
 export default function GlobalError({
   error,
@@ -25,7 +25,9 @@ export default function GlobalError({
       <head>
         <title>System error</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <meta name="theme-color" content={THEME_COLOR_LIGHT} media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content={THEME_COLOR_DARK} media="(prefers-color-scheme: dark)" />
+        <script dangerouslySetInnerHTML={{ __html: globalErrorThemeScript() }} />
       </head>
       <body className="flex min-h-full flex-col items-center justify-center bg-background px-4 text-foreground">
         <div className="paper-card w-full max-w-md rounded-lg border border-line-strong bg-surface p-6 text-center sm:p-8">
