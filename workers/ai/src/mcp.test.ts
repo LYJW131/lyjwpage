@@ -107,6 +107,27 @@ test("读站点状态：只读登记过的视图，每次调用各算各的额�
   assert.equal(none.body?.result?.isError, true);
 });
 
+test("上游失败是工具错误，不把响应正文交给客户端", async () => {
+  const paths: string[] = [];
+  const io: ToolIO = {
+    readStatus: async (path) => {
+      paths.push(path);
+      return new Response("状态存储初始化中", { status: 503 });
+    },
+    readDoc: async () => new Response("# Doc\nbody"),
+  };
+  const failed = await post(
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "get_site_status", arguments: { views: ["desktop"] } } },
+    { "MCP-Protocol-Version": "2025-06-18" },
+    io,
+  );
+  assert.equal(failed.response.status, 200);
+  assert.equal(failed.body?.result?.isError, true);
+  assert.match(failed.body?.result?.content?.[0].text ?? "", /HTTP 503/);
+  assert.doesNotMatch(failed.body?.result?.content?.[0].text ?? "", /状态存储初始化中/);
+  assert.deepEqual(paths, [STATUS_VIEWS.desktop.path]);
+});
+
 test("tools/list 里 get_site_status 的参数全是可选的 views、detail、query、cursor，没有 limit", async () => {
   const list = await post({ jsonrpc: "2.0", id: 2, method: "tools/list" }, { "MCP-Protocol-Version": "2025-06-18" });
   const tool = list.body?.result?.tools?.find((candidate) => candidate.name === "get_site_status");
