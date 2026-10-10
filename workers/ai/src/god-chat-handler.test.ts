@@ -257,7 +257,7 @@ test("改站请求由 Sonnet 判断，start_design 签会话后同一条回复�
   for (const body of requests) assert.deepEqual(body.messages.filter((m) => m.role === "system").map((m) => m.output_config?.effort), [DESIGN_EFFORT]);
   assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1 });
   assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.opus.model]);
-  assert.deepEqual(requests[0].tools?.map((tool) => "name" in tool && tool.name), ["get_site_status", "read_project_doc", "read_repo_file", "ask_visitor", "propose_build", "web_search", "web_fetch"]);
+  assert.deepEqual(requests[0].tools?.map((tool) => "name" in tool && tool.name), ["get_site_status", "read_project_doc", "find_repo_files", "read_repo_file", "ask_visitor", "propose_build", "web_search", "web_fetch"]);
   const reply = events.flatMap((event) => event.type === "text" ? [event.text] : []).join("");
   const history: GodChatMessage[] = [
     { role: "user", content: "Please improve the music card." },

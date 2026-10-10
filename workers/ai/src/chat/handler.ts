@@ -21,7 +21,7 @@ import { PLAN_LABELS, planLanguage } from "@shared/build-routine";
 import { issuePlan } from "../build/plan";
 import { checkBuildPlan } from "../build/validation";
 import { MAX_DOC_READS_PER_REPLY } from "../tools/project-docs";
-import { parseRepoFileInput, READ_REPO_FILE_TOOL, readRepoFile, REPO_FILE_LIMITS, repoFileUrl } from "./repo-file";
+import { FIND_REPO_FILES_TOOL, findRepoFiles, parseFindInput, parseRepoFileInput, READ_REPO_FILE_TOOL, readRepoFile, REPO_FILE_LIMITS, repoFileUrl, repoTree } from "./repo-file";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { billedOutputTokens, usageHops } from "./billing";
@@ -283,6 +283,8 @@ async function converse({
   let searches = 0;
   let fetches = 0;
   let repoReads = 0;
+  let repoFinds = 0;
+  const tree = repoTree();
   const shownFetches = new Set<string>();
   const showFetch = (id: string, input: unknown) => {
     const url = (input as { url?: unknown } | null)?.url;
@@ -309,7 +311,7 @@ async function converse({
     const searchesLeft = (design ? DESIGN_READ_LIMITS.webSearches : GOD_CHAT_LIMITS.maxWebSearches) - searches;
     const fetchesLeft = DESIGN_READ_LIMITS.webFetches - fetches;
     const tools = lastRound ? (design ? [ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL] : []) : design
-      ? [...DESIGN_SITE_TOOL_DEFS, READ_REPO_FILE_TOOL, ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL,
+      ? [...DESIGN_SITE_TOOL_DEFS, FIND_REPO_FILES_TOOL, READ_REPO_FILE_TOOL, ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL,
         ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : []),
         ...(fetchesLeft > 0 ? [webFetchTool(fetchesLeft)] : [])]
       : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
@@ -465,11 +467,19 @@ async function converse({
           emit({ type: "design", ...design });
           return result("The design session is open; the planner takes over this reply.", false);
         }
+        if (call.name === FIND_REPO_FILES_TOOL.name) {
+          const terms = parseFindInput(call.input);
+          if (!terms) return result('Invalid query. Give one or more path fragments, such as "plan card".', true);
+          if (repoFinds >= REPO_FILE_LIMITS.findsPerReply) return result(`Not searched, this reply may search at most ${REPO_FILE_LIMITS.findsPerReply} times.`, true);
+          repoFinds += 1;
+          const { ok, text } = await findRepoFiles(tree, terms);
+          return result(text, !ok);
+        }
         if (call.name === READ_REPO_FILE_TOOL.name) {
           const request = parseRepoFileInput(call.input);
           if (!request) return result("Invalid path. Give a repository-relative file path such as workers/ai/src/chat/handler.ts.", true);
           if (repoReads >= REPO_FILE_LIMITS.readsPerReply) return result(`Not read, this reply may read at most ${REPO_FILE_LIMITS.readsPerReply} files or ranges.`, true);
-          const { ok, text } = await readRepoFile(io.readDoc, request);
+          const { ok, text } = await readRepoFile(io.readDoc, request, tree);
           // 猜错路径不占读取额度，轮数上限照样兜住反复试探。
           if (ok) repoReads += 1;
           if (ok) emit({ type: "doc", doc: "repo", path: request.path, url: repoFileUrl(request.path, "blob") });

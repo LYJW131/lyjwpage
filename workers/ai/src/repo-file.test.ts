@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseRepoFileInput, readRepoFile, REPO_FILE_LIMITS, repoFileUrl } from "./chat/repo-file.ts";
+import { findRepoFiles, parseFindInput, parseRepoFileInput, readRepoFile, REPO_FILE_LIMITS, repoFileUrl } from "./chat/repo-file.ts";
 
 test("repo file paths stay repository-relative and line ranges are sane", () => {
   assert.deepEqual(parseRepoFileInput({ path: "./workers/ai/src/chat/handler.ts", startLine: 20, endLine: 40 }), { path: "workers/ai/src/chat/handler.ts", startLine: 20, endLine: 40 });
@@ -26,4 +26,21 @@ test("repo file reads number lines, cut long files with a continuation line and 
   assert.equal(missing.ok, false);
   assert.match(missing.text, /No such file on main/);
   assert.ok(urls.every((url) => url.startsWith("https://raw.githubusercontent.com/LYJW131/lyjwpage/main/")));
+});
+
+test("find_repo_files matches every fragment case-insensitively, shortest paths first, and a missing read suggests same-name files", async () => {
+  const paths = ["src/components/build-plan-card.tsx", "src/components/build-plan-card.test.tsx", "src/lib/github-sign-in.ts", "workers/ai/src/build/github-oauth.ts", "README.md"];
+  const tree = async () => paths;
+  assert.deepEqual(parseFindInput({ query: "  Plan  CARD " }), ["plan", "card"]);
+  assert.equal(parseFindInput({ query: "   " }), null);
+  const found = await findRepoFiles(tree, ["plan", "card"]);
+  assert.deepEqual(found.text.split("\n"), ["src/components/build-plan-card.tsx", "src/components/build-plan-card.test.tsx"]);
+  assert.match((await findRepoFiles(tree, ["nothing"])).text, /^No paths contain all of: nothing/);
+  assert.equal((await findRepoFiles(async () => null, ["plan"])).ok, false);
+  const read = async () => new Response("", { status: 404 });
+  const moved = await readRepoFile(read, { path: "src/components/live/build-plan-card.tsx", startLine: 1 }, tree);
+  assert.match(moved.text, /Similar paths:\nsrc\/components\/build-plan-card\.tsx$/);
+  const stem = await readRepoFile(read, { path: "src/lib/github-oauth.tsx", startLine: 1 }, tree);
+  assert.match(stem.text, /Similar paths:\nworkers\/ai\/src\/build\/github-oauth\.ts$/);
+  assert.match((await readRepoFile(read, { path: "src/x.ts", startLine: 1 }, tree)).text, /Use find_repo_files/);
 });
