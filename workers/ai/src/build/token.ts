@@ -16,6 +16,10 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
+export async function uploadTokenForRun(runId: string, secret: string): Promise<string> {
+  return base64url(new Uint8Array(await crypto.subtle.sign("HMAC", await hmacKey(secret), new TextEncoder().encode(`build-upload:${runId}`))));
+}
+
 export async function signBuildToken<T>(payload: T, secret: string): Promise<string> {
   const body = base64url(new TextEncoder().encode(JSON.stringify(payload)));
   const signature = await crypto.subtle.sign("HMAC", await hmacKey(secret), new TextEncoder().encode(body));
