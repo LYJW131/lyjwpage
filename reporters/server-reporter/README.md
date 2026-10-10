@@ -4,7 +4,7 @@
 
 站点在公网上，够不着这台机器的 `/proc`，所以该给的东西由这边送过去。
 TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（`config` / `log` /
-`site` / `push-ledger` 各一份；它按人数调频的那份这里不用，见下面「节奏」）。没有运行时依赖，跑在容器里，机器上不用装 Node。
+`site` / `push-ledger` 各一份；它按 agent 使用情况调频的那份这里不用，见下面「节奏」）。没有运行时依赖，跑在容器里，机器上不用装 Node。
 
 ## 它做什么
 
@@ -58,7 +58,7 @@ pnpm --filter @lyjwpage/server-reporter test
 
 固定每分钟推一次，按轮的起点对齐（采集和推送花掉的时间从这一分钟里扣）。
 
-不按人数调频：上报不经过 Vercel，没有函数调用量要省；闲着时每分钟问一遍 `/count`，问询本身就不比直接推一次省。agents-reporter 按人数调频，控制的是打厂商接口的频率。PlayStation 在 n100 上按局域网发现包调频，见 `reporters/playstation-reporter`。
+不调频：上报不经过 Vercel，没有函数调用量要省；闲着时每分钟先问一遍要不要报，问询本身就不比直接推一次省。agents-reporter 按 agent 使用情况调频，控制的是打厂商接口的频率。PlayStation 在 n100 上按局域网发现包调频，见 `reporters/playstation-reporter`。
 
 断流窗口是站点 `src/lib/freshness.ts#SERVER_STALE_MS`：读数在站点的可滞后层，浏览器拿每封刷新的 `updatedAt` 和它比，过了显示 Unavailable。要降频时**先放宽站点窗口、部署完，这边再降频**，反过来做中间那段时间卡片会断续显示不可用。
 
