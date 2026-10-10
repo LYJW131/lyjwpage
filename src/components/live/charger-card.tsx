@@ -3,6 +3,7 @@
 import NumberFlow from "@number-flow/react";
 import { useEffect } from "react";
 
+import Image from "@/components/app-image";
 import { Sparkline } from "@/components/live/sparkline";
 import { Card } from "@/components/ui/card";
 import { StatusDot, type DotTone } from "@/components/ui/status-dot";
@@ -18,6 +19,7 @@ import {
 import {
   CHARGER_MODEL,
   ankerModelLabel,
+  formatPortElectrical,
 } from "@/lib/charging-device";
 import { chargerActive } from "@/lib/home-layout";
 import { CHARGER_PATH } from "@/lib/paths";
@@ -97,13 +99,29 @@ export function ChargerCard({
       label="Charger"
       tone={dot}
       action={
-        data?.device.firmwareVersion ? (
-          <span title={`Firmware ${data.device.firmwareVersion}`}>
-            {ankerModelLabel(data.device.model, CHARGER_MODEL)}
-          </span>
-        ) : (
-          ankerModelLabel(data?.device.model, CHARGER_MODEL)
-        )
+        <span
+          className="inline-flex items-center gap-1.5"
+          title={
+            [
+              data?.device.firmwareVersion ? `Firmware ${data.device.firmwareVersion}` : null,
+              data?.cover?.name,
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined
+          }
+        >
+          {data?.cover?.iconUrl ? (
+            <Image
+              src={data.cover.iconUrl}
+              alt=""
+              width={16}
+              height={16}
+              unoptimized
+              className="size-4 rounded-sm object-contain"
+            />
+          ) : null}
+          {ankerModelLabel(data?.device.model, CHARGER_MODEL)}
+        </span>
       }
       className={cn("h-full", className)}
     >
@@ -150,6 +168,7 @@ export function ChargerCard({
               {(data?.ports ?? [{ id: "C1" }, { id: "C2" }, { id: "C3" }]).map((port) => {
                 const raw = "active" in port ? (port as ChargerPort) : null;
                 const full = connected ? raw : null;
+                const electrical = full?.active ? formatPortElectrical(full.voltage, full.current) : null;
                 return (
                   <div key={port.id} className="bg-surface px-2.5 py-2">
                     <div className="flex items-center gap-1.5">
@@ -166,12 +185,16 @@ export function ChargerCard({
                     <div
                       className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground"
                       title={
-                        full?.device
-                          ? [full.device, full.protocol, full.cable].filter(Boolean).join(" · ")
+                        full
+                          ? [full.device, full.protocol, electrical, full.cable].filter(Boolean).join(" · ") ||
+                            undefined
                           : undefined
                       }
                     >
                       {full?.active ? (full.device ?? "Unknown") : "—"}
+                    </div>
+                    <div className="truncate font-mono text-[0.6875rem] text-muted-foreground">
+                      {electrical ?? "—"}
                     </div>
                   </div>
                 );

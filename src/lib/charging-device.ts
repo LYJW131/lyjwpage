@@ -76,6 +76,16 @@ function deviceInfo(raw: RawChargingDevice): ReportedChargingDeviceInfo {
   };
 }
 
+export function formatPortElectrical(
+  voltage: number | null | undefined,
+  current: number | null | undefined,
+): string | null {
+  if (voltage == null || current == null || !Number.isFinite(voltage) || !Number.isFinite(current)) {
+    return null;
+  }
+  return `${voltage.toFixed(1)}V · ${current.toFixed(2)}A`;
+}
+
 export function ankerModelLabel(model: string | null | undefined, fallback: string): string {
   const sku = displayText(model) ?? fallback;
   return /^anker\b/i.test(sku) ? sku : `Anker ${sku}`;

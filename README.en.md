@@ -24,7 +24,7 @@ It is both my personal homepage and a personal telemetry system that keeps evolv
 | **Watching** | What's playing on Emby and recently watched, with progress, episode info, and video and audio specs. |
 | **Music** | Apple Music and HomePod playback, recently played, word-by-word lyrics and animated covers; visitors can use the web player and "Listen together" with their own Apple Music account and subscription. |
 | **Activity** | Apple Watch Move, Exercise and Stand rings from the iPhone's HealthKit data, plus duration, energy and heart rate of recent workouts. |
-| **Server** | Uptime, CPU, memory and network throughput of the exit node, plus traffic accumulated over the billing cycle. |
+| **Server** | Uptime, CPU, memory, disk and network throughput of the exit node, plus traffic accumulated over the billing cycle. |
 | **AI Coding** | Token usage of coding tools (merged from Mac logs, Cursor account history and Claude Code cloud telemetry), API-equivalent cost estimates, which agent is in use right now, a yearly heatmap and account limit windows. |
 | **Games** | PlayStation online status, game history and trophy progress; expand a game card for per-trophy details. |
 | **Pulse** | A factual 24-hour timeline for coding, listening, watching, playing, charging and physical activity: coding split into coding app / agent / both plus a token-rate lane, listening, watching and playing drawn as playing, paused or idle with the track or title, watts for charging, steps and workouts for activity. Hover any segment to see its state and title. |
@@ -93,7 +93,7 @@ The faint line under the app name is the current window title; the Cursor and An
   <img src="docs/screenshots/activity-light.gif" alt="Activity card: readings move from morning to afternoon, the rings turn to new positions and numbers roll, recent workouts on the right" width="100%">
 </picture>
 
-**Exit node**: location and carrier, up and down rates, traffic used this billing cycle, plus CPU and memory.
+**Exit node**: location and carrier, up and down rates, traffic used this billing cycle, plus CPU, memory and disk.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
