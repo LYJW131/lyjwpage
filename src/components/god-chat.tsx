@@ -862,7 +862,8 @@ function SessionList({ archive }: { archive: ChatArchive }) {
         <span>{sessions.length ? "Saved in this browser" : "No saved conversations yet"}</span>
         {sessions.length > 0 && <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-red-500">Clear all conversations</button>}
       </div>
-      {sessions.length > 0 && <ul className="scrollbar-none max-h-36 snap-y snap-mandatory overflow-y-auto [&::-webkit-scrollbar]:hidden">
+      {/* 视口必须是 h-11 的整数倍，否则吸附后底部仍停在半行。 */}
+      {sessions.length > 0 && <ul className="scrollbar-none max-h-[calc(var(--spacing)*33)] snap-y snap-mandatory overflow-y-auto [&::-webkit-scrollbar]:hidden">
         {sessions.map((session) => (
           <li key={session.id} className="flex h-11 snap-start items-center gap-2">
             <button type="button" aria-current={session.id === archive.activeId ? "true" : undefined} onClick={() => chatArchive.select(session.id)} className={cn("flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs", session.id === archive.activeId ? "bg-surface text-foreground" : "text-muted-foreground hover:bg-surface-hover")}>
