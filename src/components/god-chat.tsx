@@ -123,6 +123,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const [descent, setDescent] = useState<Descent | null>(null);
   const consented = useSyncExternalStore(chatConsent.subscribe, chatConsent.getSnapshot, chatConsent.getServerSnapshot);
   const [consentPending, setConsentPending] = useState<string | null>(null);
+  const [queued, setQueued] = useState<string | null>(null);
   const [designHalo, setDesignHalo] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -168,6 +169,7 @@ function Conversation({ className, archive, session: conversation }: { className
         const pending = pendingRef.current;
         if (pending) {
           pendingRef.current = null;
+          setQueued(null);
           sendRef.current(pending, value);
         } else {
           setToken(value);
@@ -206,6 +208,7 @@ function Conversation({ className, archive, session: conversation }: { className
     loadTimerRef.current = null;
     const pending = pendingRef.current;
     pendingRef.current = null;
+    setQueued(null);
     if (pending) setDraft((current) => current || pending);
     setError(message);
   }
@@ -424,6 +427,7 @@ function Conversation({ className, archive, session: conversation }: { className
       sessionRef.current += 1;
       abortRef.current?.abort();
       pendingRef.current = null;
+      setQueued(null);
       setError(null);
       chatArchive.start();
     }
@@ -474,12 +478,13 @@ function Conversation({ className, archive, session: conversation }: { className
   function ask(text: string) {
     if (!text.trim() || streaming) return;
     setUsage(null);
-    // 同意前消息只留在本地：Turnstile 也不加载，什么都不发出去。
+    // 同意前消息只留在本地、不发给 Worker；站主要求说明一出现就在后台跑 Turnstile，访客读完点接受时多半已验完，可以直接发。
     if (!chatConsent.getSnapshot()) {
       if (!messages.length && consentPending === null) reveal();
       setConsentPending(text.trim());
       setDraft("");
       setError(null);
+      if (SITE_KEY && !readPass()) setArmed(true);
       return;
     }
     if (!SITE_KEY || verifyStateRef.current === "unavailable") {
@@ -499,7 +504,8 @@ function Conversation({ className, archive, session: conversation }: { className
     verifyStateRef.current = "ok";
     setError(null);
     pendingRef.current = text;
-    setDraft(text);
+    setQueued(text);
+    setDraft("");
     setArmed(true);
     if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
     loadTimerRef.current = setTimeout(() => {
@@ -540,7 +546,7 @@ function Conversation({ className, archive, session: conversation }: { className
 
   const waiting = armed && !token && !streaming && !error;
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
-  const expanded = messages.length > 0 || consentPending !== null;
+  const expanded = messages.length > 0 || consentPending !== null || queued !== null;
 
   return (
     // 对话、设计与构建计划包含访客原文，Replay 需要遮住整张卡片。
@@ -582,7 +588,7 @@ function Conversation({ className, archive, session: conversation }: { className
         }}
         className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden"
       >
-        {messages.length === 0 && consentPending === null ? (
+        {messages.length === 0 && consentPending === null && queued === null ? (
           <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
               Ask anything. The oracle sees what LYJW is up to, knows how this site is built, and can search the web.
@@ -670,6 +676,7 @@ function Conversation({ className, archive, session: conversation }: { className
           })
         )}
         {consentPending !== null && <ConsentPrompt text={consentPending} onAccept={acceptConsent} onDecline={declineConsent} />}
+        {queued !== null && <UserBubble text={queued} />}
       </div>
 
       <div className="border-t border-line p-3">
@@ -933,13 +940,19 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   },
 };
 
+function UserBubble({ text }: { text: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="min-w-0 max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-sm leading-relaxed text-background [overflow-wrap:anywhere]">{text}</div>
+    </div>
+  );
+}
+
 function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: () => void; onDecline: () => void }) {
   const copy = CONSENT_COPY[textLanguage(text)];
   return (
     <>
-      <div className="flex justify-end">
-        <div className="min-w-0 max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-sm leading-relaxed text-background [overflow-wrap:anywhere]">{text}</div>
-      </div>
+      <UserBubble text={text} />
       <div role="group" aria-label={copy.label} lang={copy.lang} className="w-full text-sm leading-relaxed text-foreground">
         <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">{copy.label}</div>
         <p>{copy.intro}</p>
