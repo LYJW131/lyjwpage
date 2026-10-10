@@ -191,7 +191,8 @@ export type ListeningItem = {
   id: string;
   title: string;
   artist: string;
-  artwork: string | null;
+  // Apple 封面模板 URL。与 LocalNowPlaying.artworkUrl 同一字段。
+  artworkUrl: string | null;
   link: string | null;
   palette: string[];
   // 条目是专辑、歌单或电台这类容器，不是单曲；durationMs 是容器内曲目总时长，只为列表首项计算（算它要再查一次上游，页面也只显示首项）。

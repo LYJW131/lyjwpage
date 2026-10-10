@@ -19,9 +19,9 @@ function isPrivateHost(hostname: string) {
   if (host.includes(":")) {
     if (host === "::" || host === "::1") return true;
     if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)) return true;
-    const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host);
-    if (!mapped) return false;
-    return isPrivateHost(mapped[1]);
+    const embedded = mappedIpv4(host);
+    if (!embedded) return false;
+    return isPrivateHost(embedded);
   }
 
   const parts = host.split(".");
@@ -39,6 +39,17 @@ function isPrivateHost(hostname: string) {
   }
 
   return !host.includes(".");
+}
+
+// URL.hostname 把 ::ffff:127.0.0.1 收成 ::ffff:7f00:1，点分形式到不了这里。
+function mappedIpv4(host: string): string | null {
+  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host);
+  if (dotted?.[1]) return dotted[1];
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (!hex?.[1] || !hex[2]) return null;
+  const hi = Number.parseInt(hex[1], 16);
+  const lo = Number.parseInt(hex[2], 16);
+  return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
 }
 
 function publicArtwork(value: unknown) {

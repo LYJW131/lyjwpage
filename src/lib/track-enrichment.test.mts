@@ -149,6 +149,49 @@ test("同一曲目这次没查到时沿用已存补全，换了曲目不沿用",
   assert.equal(keepEnrichment(music("Song"), fresh, good, true), fresh);
 });
 
+test("同一 songId 这次没查出动态封面时留着已存视频，换了 songId 不留", async () => {
+  const { keepEnrichment } = await import("@/lib/track-enrichment");
+  const video = { videoUrl: "https://mvod/x.m3u8", colors: ["#000", "#fff"] as string[] | null };
+  const stored = {
+    trackKey: trackKeyOf(music("Song")), id: "1500", link: LINK, songId: "1501", artwork: "https://art/old.jpg",
+    hasLyrics: true, upcomingSongIds: [], motion: video,
+  };
+  const unknown = { ...stored, artwork: "https://art/new.jpg", motion: null };
+  assert.deepEqual(keepEnrichment(music("Song"), unknown, stored, true), { ...unknown, motion: video });
+  const replaced = { ...unknown, motion: { videoUrl: "https://mvod/y.m3u8", colors: null } };
+  assert.equal(keepEnrichment(music("Song"), replaced, stored, true), replaced);
+  const other = { ...stored, songId: "9", motion: null };
+  assert.equal(keepEnrichment(music("Song"), other, stored, true), other);
+});
+
+test("卡片记住同一首后到的视频，这次没带视频时不把已经显示的清掉", async () => {
+  const { rememberLookup, shownMotion } = await import("@/lib/track-enrichment");
+  const video = { videoUrl: "https://mvod/x.m3u8", colors: null };
+  const base = {
+    id: "1500", songId: "1501", link: LINK, upcomingSongIds: [] as string[], hasLyrics: true, motion: null,
+  };
+  const first = rememberLookup("song|artist|album", base, null);
+  assert.equal(first?.motion, null);
+  assert.equal(shownMotion(base, first), null);
+  const arrived = rememberLookup("song|artist|album", { ...base, motion: video }, first);
+  assert.deepEqual(arrived?.motion, video);
+  assert.deepEqual(shownMotion({ songId: "1501", motion: null }, arrived), video);
+  assert.equal(shownMotion({ songId: "9", motion: null }, arrived), null);
+  assert.equal(rememberLookup("song|artist|album", { ...base, motion: video }, arrived), arrived);
+});
+
+test("播放器优先用已经存下的视频，没有时才用现查结果", async () => {
+  const { heldVideoUrl, withHeldMotion } = await import("@/lib/track-enrichment");
+  const video = { videoUrl: "https://mvod/x.m3u8", colors: null };
+  assert.equal(heldVideoUrl(video, { hasMotion: false, videoUrl: null }), video.videoUrl);
+  assert.equal(heldVideoUrl(null, { hasMotion: true, videoUrl: "https://mvod/y.m3u8" }), "https://mvod/y.m3u8");
+  assert.equal(heldVideoUrl(null, null), null);
+  const item = { id: "1500", motion: null as typeof video | null };
+  assert.deepEqual(withHeldMotion(item, video), { ...item, motion: video });
+  const held = { ...item, motion: video };
+  assert.equal(withHeldMotion(held, { videoUrl: "https://mvod/y.m3u8", colors: null }), held);
+});
+
 test("沿用已存补全时队列 ID 跟着本次上报的队列走", async () => {
   const { keepEnrichment } = await import("@/lib/track-enrichment");
   const good = {

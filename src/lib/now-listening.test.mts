@@ -81,6 +81,19 @@ test("HomePod 暂停着不当 alternate：宽限期要用源站的钟算，浏�
   assert.equal(payload.alternate, null);
 });
 
+test("晚到的 HomePod 进度锚过了可见期限就不再选中", () => {
+  const pod = candidate("homepod", "playing", "pod");
+  const lag = 164_000;
+  const music = { ...pod.music, positionMs: 2_000, durationMs: 203_000, observedAt: NOW - lag };
+  const homePod = { ...pod, music, receivedAt: NOW };
+  const snapshot = { mac: null, homePod, macReceivedAt: 0 };
+  assert.equal(pickNowListening(snapshot, online, NOW).music?.title, "pod");
+  const visibleUntil = music.observedAt + (music.durationMs - music.positionMs) + 5 * 60_000;
+  assert.equal(pickNowListening(snapshot, online, visibleUntil).music?.title, "pod");
+  assert.equal(pickNowListening(snapshot, online, visibleUntil + 1).music, null);
+  assert.equal(pickNowListening(snapshot, online, NOW + 400_000).music, null, "still inside the old receipt-anchored window");
+});
+
 test("选中的已经是 HomePod：没有 alternate", () => {
   const payload = pickNowListening(
     { mac: null, homePod: candidate("homepod", "playing", "pod"), macReceivedAt: 0 },
