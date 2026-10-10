@@ -264,6 +264,7 @@ export class BuildCoordinator extends DurableObject<Env> {
       this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
       return true;
     });
+  }
 
   private awaitingUpload(runId: string, hash: string): StoredRun | null {
     const run = this.readRun(runId);
