@@ -19,11 +19,16 @@ export const GOD_CHAT_LIMITS = {
 } as const;
 
 // show_card 能画的卡片：模型只选卡片名，卡片由浏览器按这里登记的状态视图读公开数据自己画，Worker 也读同一组视图回给模型。
+// 「此刻」和「最近」各是一张卡：问此刻只画此刻，免得把历史一起端出来。浏览器可以额外借读别的视图补图，但不得靠它才画得出来。
 export const GOD_CHAT_CARD_VIEWS = {
-  music: ["nowListening", "listening"],
-  watching: ["nowWatching", "watching"],
-  gaming: ["playingNow", "playing"],
-  fitness: ["activity", "workouts"],
+  nowListening: ["nowListening"],
+  listening: ["listening"],
+  nowWatching: ["nowWatching"],
+  watching: ["watching"],
+  playingNow: ["playingNow"],
+  playing: ["playing"],
+  activity: ["activity"],
+  workouts: ["workouts"],
 } as const satisfies Record<string, readonly StatusViewKey[]>;
 
 export type GodChatCard = keyof typeof GOD_CHAT_CARD_VIEWS;

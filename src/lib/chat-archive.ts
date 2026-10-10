@@ -1,5 +1,5 @@
 import type { BuildFireResult, BuildProposal, BuildRun } from "@shared/build-routine";
-import { parseQuestions, type GodChatCard, type GodChatMessage, type GodChatQuestion, type GodChatSource } from "@shared/god-chat";
+import { isGodChatCard, parseQuestions, type GodChatCard, type GodChatMessage, type GodChatQuestion, type GodChatSource } from "@shared/god-chat";
 import type { GodChatTier } from "@shared/god-chat-tiers";
 import type { GithubIssueResult } from "@shared/github-issue";
 
@@ -61,7 +61,7 @@ function validRun(value: unknown): boolean {
 
 function validBubble(value: unknown): value is ChatBubble {
   if (!object(value) || !["user", "assistant"].includes(String(value.role)) || typeof value.content !== "string") return false;
-  if (value.cards !== undefined && (!Array.isArray(value.cards) || !value.cards.every((card) => object(card) && ["music", "watching", "gaming", "fitness"].includes(String(card.card)) && typeof card.at === "number"))) return false;
+  if (value.cards !== undefined && (!Array.isArray(value.cards) || !value.cards.every((card) => object(card) && typeof card.card === "string" && typeof card.at === "number"))) return false;
   if (value.proposals !== undefined && (!Array.isArray(value.proposals) || !value.proposals.every((proposal) => {
     if (!object(proposal) || typeof proposal.token !== "string" || typeof proposal.expiresAt !== "number" || !object(proposal.plan)) return false;
     const plan = proposal.plan;
@@ -77,6 +77,15 @@ function validBubble(value: unknown): value is ChatBubble {
   return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || ["haiku", "opus", "fable"].includes(String(value.tier))) && (value.downgradedFrom === undefined || ["haiku", "opus", "fable"].includes(String(value.downgradedFrom)));
 }
 
+// 卡片清单会变：存档里已不登记的卡片只是不再画，整段对话照留。
+function dropRetiredCards(session: ChatSession): ChatSession {
+  if (!session.messages.some((message) => message.cards?.some(({ card }) => !isGodChatCard(card)))) return session;
+  return { ...session, messages: session.messages.map(({ cards, ...message }) => {
+    const kept = cards?.filter(({ card }) => isGodChatCard(card));
+    return kept?.length ? { ...message, cards: kept } : message;
+  }) };
+}
+
 export function readChatArchive(raw: string | null): ChatArchive {
   if (!raw || byteLength(raw) > CHAT_ARCHIVE_LIMITS.bytes) return EMPTY_CHAT_ARCHIVE;
   try {
@@ -89,7 +98,7 @@ export function readChatArchive(raw: string | null): ChatArchive {
       ids.add(session.id);
       return true;
     });
-    return boundChatArchive({ version: 1, activeId: typeof value.activeId === "string" ? value.activeId : "", sessions });
+    return boundChatArchive({ version: 1, activeId: typeof value.activeId === "string" ? value.activeId : "", sessions: sessions.map(dropRetiredCards) });
   } catch {
     return EMPTY_CHAT_ARCHIVE;
   }

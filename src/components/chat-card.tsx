@@ -63,14 +63,22 @@ function useNow(intervalMs: number | null) {
 
 export function ChatCard({ card }: { card: GodChatCard }) {
   switch (card) {
-    case "music":
-      return <MusicCard />;
+    case "nowListening":
+      return <NowListeningCard />;
+    case "listening":
+      return <ListeningCard />;
+    case "nowWatching":
+      return <NowWatchingCard />;
     case "watching":
       return <WatchingCard />;
-    case "gaming":
-      return <GamingCard />;
-    case "fitness":
-      return <FitnessCard />;
+    case "playingNow":
+      return <PlayingNowCard />;
+    case "playing":
+      return <PlayingCard />;
+    case "activity":
+      return <ActivityCard />;
+    case "workouts":
+      return <WorkoutsCard />;
   }
 }
 
@@ -90,6 +98,15 @@ function Placeholder({ failed, children }: { failed: boolean; children?: ReactNo
   return (
     <div className={cn("px-3 py-3 text-xs text-muted-foreground", !failed && !children && "animate-pulse")}>
       {failed ? "Couldn't load this right now." : (children ?? "Loading…")}
+    </div>
+  );
+}
+
+function Idle({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-3">
+      <StatusDot tone="off" />
+      <span className="label-mono text-[10px] text-muted-foreground">{children}</span>
     </div>
   );
 }
@@ -201,19 +218,18 @@ function artwork(url: string | null | undefined) {
   return url ? { src: appleArtwork(url, TILE_PX * ARTWORK_SCALE), optimize: needsOptimizing(url) } : { src: null };
 }
 
-function MusicCard() {
+function NowListeningCard() {
   const now = useCardView<NowListeningPayload>("nowListening");
-  const recent = useCardView<ListeningPayload>("listening");
   const live = useLiveNowListening(now.data, { validating: now.validating });
   const music = live && !live.idle ? live.music : null;
   const inferred = !music ? (live?.elsewhere ?? null) : null;
   const tick = useNow(music?.state === "playing" || inferred ? 1_000 : null);
   const elsewhere = inferred && tick < inferred.startedAt + inferred.durationMs + LISTENING_ELSEWHERE_HOLD_MS ? inferred : null;
 
-  let hero: ReactNode;
+  let body: ReactNode;
   if (music) {
     const position = trackPositionMs(music, tick);
-    hero = (
+    body = (
       <Hero
         image={<div className="w-14"><Thumb {...artwork(music.artworkUrl)} /></div>}
         tone={music.state === "playing" ? "live" : "idle"}
@@ -227,7 +243,7 @@ function MusicCard() {
     );
   } else if (elsewhere) {
     const position = Math.min(elsewhere.durationMs, tick - elsewhere.startedAt);
-    hero = (
+    body = (
       <Hero
         image={<div className="w-14"><Thumb {...artwork(elsewhere.artworkUrl)} /></div>}
         tone="live"
@@ -238,33 +254,43 @@ function MusicCard() {
         meta={`~${clock(position)} / ${clock(elsewhere.durationMs)}`}
       />
     );
-  } else if (!live) {
-    hero = <Placeholder failed={now.failed} />;
+  } else if (live) {
+    body = <Idle>Nothing playing right now</Idle>;
+  } else {
+    body = <Placeholder failed={now.failed} />;
   }
 
-  const items = recent.data?.items.slice(0, RECENT_LIMIT) ?? [];
   return (
     <Frame title="Music" aside="Apple Music">
-      {hero}
-      {items.length > 0 && (
+      {body}
+    </Frame>
+  );
+}
+
+function ListeningCard() {
+  const recent = useCardView<ListeningPayload>("listening");
+  const items = recent.data?.items.slice(0, RECENT_LIMIT);
+  return (
+    <Frame title="Music" aside="Apple Music">
+      {items?.length ? (
         <Strip label="Recently played">
           {items.map((item) => (
             <Tile key={item.id} href={item.link} image={<Thumb {...artwork(item.artwork)} />} title={item.title} subtitle={item.artist} />
           ))}
         </Strip>
+      ) : (
+        <Placeholder failed={recent.failed}>{items ? "Nothing played recently." : undefined}</Placeholder>
       )}
     </Frame>
   );
 }
 
-function WatchingCard() {
+function NowWatchingCard() {
   const now = useCardView<NowWatchingPayload>("nowWatching");
-  const recent = useCardView<WatchingPayload>("watching");
   const playing = now.data?.nowPlaying ?? null;
   const current = now.data?.current ?? null;
   const device = playing ? (playing.deviceName ?? playing.client) : null;
 
-  const items = recent.data?.items.slice(0, RECENT_LIMIT) ?? [];
   return (
     <Frame title="Watching" aside="Emby">
       {playing ? (
@@ -277,30 +303,48 @@ function WatchingCard() {
           href={current?.link}
           progress={playing.positionMs != null && playing.durationMs ? (playing.positionMs / playing.durationMs) * 100 : (playing.progress ?? current?.progress ?? null)}
         />
-      ) : now.data ? null : (
+      ) : now.data ? (
+        <Idle>Nothing playing right now</Idle>
+      ) : (
         <Placeholder failed={now.failed} />
-      )}
-      {items.length > 0 && (
-        <Strip label="Recently watched">
-          {items.map((item) => (
-            <Tile key={item.id} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} />
-          ))}
-        </Strip>
       )}
     </Frame>
   );
 }
 
-function GamingCard() {
+function WatchingCard() {
+  const recent = useCardView<WatchingPayload>("watching");
+  const items = recent.data?.items.slice(0, RECENT_LIMIT);
+  return (
+    <Frame title="Watching" aside="Emby">
+      {items?.length ? (
+        <Strip label="Recently watched">
+          {items.map((item) => (
+            <Tile key={item.id} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} />
+          ))}
+        </Strip>
+      ) : (
+        <Placeholder failed={recent.failed}>{items ? "Nothing watched recently." : undefined}</Placeholder>
+      )}
+    </Frame>
+  );
+}
+
+function recentGames(payload: PlaystationPlayingPayload | undefined) {
+  return mergeVariants((payload?.items ?? []).filter((game) => !mediaApp(game.category)));
+}
+
+function PlayingNowCard() {
   const presence = useCardView<PlaystationPresencePayload>("playingNow");
+  // 只借来补图标和游玩时长，没有它卡片照样画。
   const recent = useCardView<PlaystationPlayingPayload>("playing");
   const status = presence.data;
-  const games = mergeVariants((recent.data?.items ?? []).filter((game) => !mediaApp(game.category))).slice(0, RECENT_LIMIT);
-  const playingGame = status?.playing ? games.find((game) => game.titleIds.includes(status.playing!.titleId)) : undefined;
+  const tick = useNow(status && !status.online ? 60_000 : null);
+  const playingGame = status?.playing ? recentGames(recent.data).find((game) => game.titleIds.includes(status.playing!.titleId)) : undefined;
 
-  let hero: ReactNode;
+  let body: ReactNode;
   if (status?.playing) {
-    hero = (
+    body = (
       <Hero
         image={<div className="w-14"><Thumb src={playstationImage(status.playing.iconUrl ?? playingGame?.imageUrl, 56 * PLAYSTATION_IMAGE_SCALE)} /></div>}
         tone="live"
@@ -309,14 +353,27 @@ function GamingCard() {
         subtitle={playingGame ? playTime(playingGame.playDurationMs, playingGame.playCount) : null}
       />
     );
-  } else if (!status) {
-    hero = <Placeholder failed={presence.failed} />;
+  } else if (status?.online) {
+    body = <Idle>{`Online${status.platform ? ` · ${status.platform}` : ""} · not in a game`}</Idle>;
+  } else if (status) {
+    body = <Idle>{status.lastOnlineAt ? `Offline · last online ${formatRelativeTime(status.lastOnlineAt, tick)}` : "Offline"}</Idle>;
+  } else {
+    body = <Placeholder failed={presence.failed} />;
   }
 
   return (
     <Frame title="Gaming" aside="PlayStation">
-      {hero}
-      {games.length > 0 && (
+      {body}
+    </Frame>
+  );
+}
+
+function PlayingCard() {
+  const recent = useCardView<PlaystationPlayingPayload>("playing");
+  const games = recent.data ? recentGames(recent.data).slice(0, RECENT_LIMIT) : undefined;
+  return (
+    <Frame title="Gaming" aside="PlayStation">
+      {games?.length ? (
         <Strip label="Recently played">
           {games.map((game) => (
             <Tile
@@ -327,20 +384,19 @@ function GamingCard() {
             />
           ))}
         </Strip>
+      ) : (
+        <Placeholder failed={recent.failed}>{games ? "No games played recently." : undefined}</Placeholder>
       )}
     </Frame>
   );
 }
 
-function FitnessCard() {
+function ActivityCard() {
   const activity = useCardView<ActivityPayload>("activity");
-  const workouts = useCardView<WorkoutsPayload>("workouts");
-  const tick = useNow(60_000);
   const stale = useStale(activity.updatedAt ?? activity.data?.pushedAt, ACTIVITY_STALE_MS);
   const data = stale ? undefined : activity.data;
   const current = Boolean(data?.currentAtSource);
   const rings = ringValues(data, current);
-  const recent = workouts.data?.items.slice(0, 3) ?? [];
 
   return (
     <Frame title="Fitness" aside="Apple Watch">
@@ -371,8 +427,19 @@ function FitnessCard() {
       ) : (
         <Placeholder failed={activity.failed}>{activity.data && stale ? "No recent activity reported." : undefined}</Placeholder>
       )}
-      {recent.length > 0 && (
-        <div className="border-t border-line">
+    </Frame>
+  );
+}
+
+function WorkoutsCard() {
+  const workouts = useCardView<WorkoutsPayload>("workouts");
+  const tick = useNow(60_000);
+  const recent = workouts.data?.items.slice(0, 3);
+
+  return (
+    <Frame title="Fitness" aside="Apple Watch">
+      {recent?.length ? (
+        <div>
           <div className="label-mono px-3 pt-2 text-[10px] text-muted-foreground">Recent workouts</div>
           <ul className="px-3 pb-2">
             {recent.map((workout) => (
@@ -388,6 +455,8 @@ function FitnessCard() {
             ))}
           </ul>
         </div>
+      ) : (
+        <Placeholder failed={workouts.failed}>{recent ? "No recent workouts." : undefined}</Placeholder>
       )}
     </Frame>
   );
