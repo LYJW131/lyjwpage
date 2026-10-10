@@ -277,7 +277,7 @@ test("规划者用 ask_visitor 提问：发出 ask 事件并结束这条回复�
   assert.ok(requests[0].tools?.some((tool) => "name" in tool && tool.name === "ask_visitor"));
   assert.equal(requests.length, 2);
   assert.deepEqual(events.filter((event) => event.type === "ask"), [{ type: "ask", questions }]);
-  assert.ok(events.some((event) => event.type === "text" && event.text === "Pick your answers below."));
+  assert.ok(events.some((event) => event.type === "text" && event.text === "请在下面选一下。"));
   assert.ok(events.some((event) => event.type === "seal"));
 });
 

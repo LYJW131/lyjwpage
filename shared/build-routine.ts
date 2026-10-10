@@ -63,6 +63,8 @@ export const PLAN_LABELS = {
     requestedBy: (account: string) => `Requested by @${account}.`,
     buildRun: (runId: string) => `Build run: \`${runId}\`. Claude review is advisory; it does not authorize merging.`,
     issueFooter: "_Filed from the [homepage chat](https://lyjw.me)._",
+    planReady: "Here is the plan for your review.",
+    askReady: "Pick your answers below.",
   },
   zh: {
     acceptance: "验收标准",
@@ -71,6 +73,8 @@ export const PLAN_LABELS = {
     requestedBy: (account: string) => `由 @${account} 发起。`,
     buildRun: (runId: string) => `构建编号：\`${runId}\`。Claude 的审查仅供参考，不代表可以合并。`,
     issueFooter: "_提交自[首页对话](https://lyjw.me)。_",
+    planReady: "方案如下，请过目。",
+    askReady: "请在下面选一下。",
   },
   ja: {
     acceptance: "受け入れ基準",
@@ -79,6 +83,8 @@ export const PLAN_LABELS = {
     requestedBy: (account: string) => `@${account} さんのリクエストです。`,
     buildRun: (runId: string) => `ビルド ID：\`${runId}\`。Claude のレビューは参考情報で、マージを承認するものではありません。`,
     issueFooter: "_[ホームページのチャット](https://lyjw.me)から作成されました。_",
+    planReady: "プランを用意しました。ご確認ください。",
+    askReady: "下から選んでください。",
   },
 } as const satisfies Record<PlanLanguage, unknown>;
 

@@ -17,6 +17,7 @@ import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatTier
 
 import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
+import { PLAN_LABELS, planLanguage } from "@shared/build-routine";
 import { issuePlan } from "../build/plan";
 import { checkBuildPlan } from "../build/validation";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
@@ -165,9 +166,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       if (design) emit({ type: "design", ...design });
       try {
         const note = tier !== wanted ? downgradeNote(wanted, tier) : undefined;
-        const { complete, trace, planToken, asked } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "opus", tier, effort, note, messages: history, io, emit, signal: abort.signal });
-        if (complete && planToken && !reply.trim()) emit({ type: "text", text: "Here is the plan for your review." });
-        if (complete && asked && !reply.trim()) emit({ type: "text", text: "Pick your answers below." });
+        const { complete, trace, planToken, lead } = await converse({ client, env, design, canStartDesign: decision.design === true && tier === "opus", tier, effort, note, messages: history, io, emit, signal: abort.signal });
+        if (complete && lead && !reply.trim()) emit({ type: "text", text: lead });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace, planToken), ...(trace && { trace }), ...(planToken && { planToken }) });
@@ -214,7 +214,7 @@ async function converse({
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
-}): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string; asked: boolean }> {
+}): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string }> {
   const { model, maxTokens } = GOD_CHAT_TIER_INFO[tier];
   // Haiku 不支持服务端拒答兜底参数，其余两档都开。
   const fallback = tier !== "haiku";
@@ -229,6 +229,8 @@ async function converse({
   const docKeys = new Set<string>();
   let planToken: string | undefined;
   let asked = false;
+  // 模型只调工具不写正文时补的一句话，跟着计划或题目的语言走。
+  let lead: string | undefined;
   const cards = new Set<GodChatCard>();
   let refused = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
@@ -393,6 +395,7 @@ async function converse({
           const questions = parseQuestions((call.input as { questions?: unknown } | null)?.questions);
           if (!questions) return result("Invalid questions. Respect the counts and length limits in the tool description, with distinct option labels.", true);
           asked = true;
+          lead = PLAN_LABELS[planLanguage({ title: "", spec: questions.map((question) => `${question.question}\n${question.options.map((option) => `${option.label} ${option.description}`).join("\n")}`).join("\n"), acceptance: [] })].askReady;
           emit({ type: "ask", questions });
           return result("The questions are shown as clickable choices. End the reply now; the visitor's next message carries the answers.", false);
         }
@@ -402,6 +405,7 @@ async function converse({
           if ("error" in checked) return result(`Plan rejected: ${checked.error} Fix it and call propose_build again.`, true);
           const proposal = await issuePlan(env, checked.plan).catch((error: unknown) => error instanceof Error ? error : new Error("The plan could not be signed."));
           if (proposal instanceof Error) return result(`Plan rejected: ${proposal.message}`, true);
+          lead = PLAN_LABELS[planLanguage(checked.plan)].planReady;
           planToken = proposal.token;
           emit({ type: "plan", ...proposal });
           return result("The plan is displayed. The visitor can choose Open issue or Start build; nothing has been submitted.", false);
@@ -452,5 +456,5 @@ async function converse({
     plan: Boolean(planToken),
     cards: [...cards],
   });
-  return { complete: !refused, trace, asked, ...(planToken && { planToken }) };
+  return { complete: !refused, trace, lead, ...(planToken && { planToken }) };
 }
