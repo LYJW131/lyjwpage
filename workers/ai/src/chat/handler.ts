@@ -17,7 +17,8 @@ import { GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatTier
 
 import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
-import { issuePlan, parseBuildPlan } from "../build/plan";
+import { issuePlan } from "../build/plan";
+import { checkBuildPlan } from "../build/validation";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { billedOutputTokens, usageHops } from "./billing";
@@ -25,13 +26,14 @@ import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
+import { admitDesign, ASK_VISITOR_TOOL, DESIGN_MAX_TOKENS, DESIGN_TOOL_ROUNDS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
 import { CLEF_CHOICES, DESIGN_EFFORT, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
+const FINAL_ROUND_NOTE = "No tools remain for this reply. Answer the visitor now in text with what you have. If a tool call was rejected, say what went wrong and what you will do next.";
 
 // 每种角色的 system 恒定不变，降级说明另走末尾的 system 消息，不动缓存前缀。
 const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
@@ -247,6 +249,8 @@ async function converse({
   let searches = 0;
   let wroteText = false;
   let wroteThinking = false;
+  let finalRound = 0;
+  let finalRoundText = false;
 
   for (let round = 0; ; round++) {
     signal.throwIfAborted();
@@ -254,7 +258,8 @@ async function converse({
       emit({ type: "text", text: " …" });
       break;
     }
-    const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
+    const lastRound = round >= (design ? DESIGN_TOOL_ROUNDS : GOD_CHAT_LIMITS.maxToolRounds);
+    if (lastRound && round > 0) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
     const searchesLeft = GOD_CHAT_LIMITS.maxWebSearches - searches;
     const tools = lastRound ? [] : design
       ? [...SITE_TOOL_DEFS.filter((tool) => tool.name === "read_project_doc"), ASK_VISITOR_TOOL, PROPOSE_BUILD_TOOL]
@@ -282,6 +287,8 @@ async function converse({
     let fallbackModel: string | undefined;
     // 每轮请求的文字各自成段：上一轮说完「我查一下」、调完工具再接着说时补一个空行，免得两句粘在一起。
     let roundText = false;
+    finalRound = round;
+    finalRoundText = false;
     let roundThinking = false;
     for await (const event of stream) {
       if (event.type === "message_start" && !ownModel(event.message.model)) fallbackModel = event.message.model;
@@ -294,7 +301,7 @@ async function converse({
       } else if (event.type === "content_block_delta") {
         if (event.delta.type === "text_delta") {
           if (!roundText && wroteText) emit({ type: "text", text: "\n\n" });
-          roundText = wroteText = true;
+          roundText = wroteText = finalRoundText = true;
           emit({ type: "text", text: event.delta.text });
         } else if (event.delta.type === "thinking_delta" && event.delta.thinking) {
           if (!roundThinking && wroteThinking) emit({ type: "thinking", text: "\n\n" });
@@ -391,9 +398,10 @@ async function converse({
         }
         if (call.name === PROPOSE_BUILD_TOOL.name) {
           if (planToken) return result("A plan was already proposed in this reply.", true);
-          const plan = parseBuildPlan(call.input);
-          if (!plan) return result("Invalid plan. Respect the title, specification, acceptance, and path limits; use permitted repository file paths only.", true);
-          const proposal = await issuePlan(env, plan);
+          const checked = checkBuildPlan(call.input);
+          if ("error" in checked) return result(`Plan rejected: ${checked.error} Fix it and call propose_build again.`, true);
+          const proposal = await issuePlan(env, checked.plan).catch((error: unknown) => error instanceof Error ? error : new Error("The plan could not be signed."));
+          if (proposal instanceof Error) return result(`Plan rejected: ${proposal.message}`, true);
           planToken = proposal.token;
           emit({ type: "plan", ...proposal });
           return result("The plan is displayed. The visitor can choose Open issue or Start build; nothing has been submitted.", false);
@@ -422,11 +430,15 @@ async function converse({
         }
         return result(text, isError);
       };
-      results.push(await run());
+      const outcome = await run();
+      console.info("[god-chat] tool", JSON.stringify({ tier, round, name: call.name, error: outcome.is_error, ...(outcome.is_error && { reason: String(outcome.content).slice(0, 200) }) }));
+      results.push(outcome);
     }
     if (planToken || asked) break;
     messages.push({ role: "user", content: results });
   }
+  // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。
+  if (!refused && finalRound > 0 && !finalRoundText && !planToken && !asked) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({
