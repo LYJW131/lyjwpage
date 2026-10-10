@@ -31,6 +31,8 @@ import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";
 import type { GodChatCard } from "@shared/god-chat";
 
 const TILE_PX = 80;
+const HERO_PX = 96;
+const HERO_WIDE_PX = 128;
 const RECENT_LIMIT = 8;
 
 const readStatus = async <T,>(path: string) => guardPolled(path, await fetchStatus<T>(path));
@@ -111,15 +113,15 @@ function Idle({ children }: { children: ReactNode }) {
   );
 }
 
-function Thumb({ src, optimize = false, wide = false, poster = false }: { src: string | null; optimize?: boolean; wide?: boolean; poster?: boolean }) {
+function Thumb({ src, optimize = false, wide = false, poster = false, px = wide ? HERO_WIDE_PX : TILE_PX }: { src: string | null; optimize?: boolean; wide?: boolean; poster?: boolean; px?: number }) {
   return (
     <div
       className={cn(
         "relative shrink-0 overflow-hidden border border-line bg-muted",
-        poster ? "aspect-[2/3] w-full" : wide ? "aspect-video w-24" : "aspect-square w-full",
+        poster ? "aspect-[2/3] w-full" : wide ? "aspect-video w-32" : "aspect-square w-full",
       )}
     >
-      {src && <Image src={src} alt="" fill sizes={wide ? "96px" : `${TILE_PX}px`} className="object-cover" unoptimized={!optimize} />}
+      {src && <Image src={src} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!optimize} />}
     </div>
   );
 }
@@ -214,8 +216,8 @@ function clock(ms: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function artwork(url: string | null | undefined) {
-  return url ? { src: appleArtwork(url, TILE_PX * ARTWORK_SCALE), optimize: needsOptimizing(url) } : { src: null };
+function artwork(url: string | null | undefined, px = TILE_PX) {
+  return url ? { src: appleArtwork(url, px * ARTWORK_SCALE), px, optimize: needsOptimizing(url) } : { src: null };
 }
 
 function NowListeningCard() {
@@ -231,7 +233,7 @@ function NowListeningCard() {
     const position = trackPositionMs(music, tick);
     body = (
       <Hero
-        image={<div className="w-14"><Thumb {...artwork(music.artworkUrl)} /></div>}
+        image={<div className="w-24"><Thumb {...artwork(music.artworkUrl, HERO_PX)} /></div>}
         tone={music.state === "playing" ? "live" : "idle"}
         status={`${music.state === "playing" ? "Now playing" : "Paused"} · ${music.source === "homepod" ? "HomePod" : "Mac"}`}
         title={music.title ?? "Unknown track"}
@@ -245,7 +247,7 @@ function NowListeningCard() {
     const position = Math.min(elsewhere.durationMs, tick - elsewhere.startedAt);
     body = (
       <Hero
-        image={<div className="w-14"><Thumb {...artwork(elsewhere.artworkUrl)} /></div>}
+        image={<div className="w-24"><Thumb {...artwork(elsewhere.artworkUrl, HERO_PX)} /></div>}
         tone="live"
         status="Playing elsewhere"
         title={elsewhere.title}
@@ -346,7 +348,7 @@ function PlayingNowCard() {
   if (status?.playing) {
     body = (
       <Hero
-        image={<div className="w-14"><Thumb src={playstationImage(status.playing.iconUrl ?? playingGame?.imageUrl, 56 * PLAYSTATION_IMAGE_SCALE)} /></div>}
+        image={<div className="w-24"><Thumb src={playstationImage(status.playing.iconUrl ?? playingGame?.imageUrl, HERO_PX * PLAYSTATION_IMAGE_SCALE)} px={HERO_PX} /></div>}
         tone="live"
         status={`Playing · ${status.playing.launchPlatform ?? status.platform ?? "PlayStation"}`}
         title={status.playing.title}
