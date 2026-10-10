@@ -21,6 +21,7 @@ export interface Env {
   GITHUB_ISSUE_LIMIT?: RateLimit;
   BUILD_COORDINATOR?: DurableObjectNamespace<BuildCoordinator>;
   BUILD_SESSION_SECRET?: string;
+  IMAGES?: R2Bucket;
   // Managed Agents 的 agent 与 environment，须与 ANTHROPIC_API_KEY 同属一个工作区；agent 只是壳，提示词和工具每个会话从代码覆盖。
   DESIGN_AGENT_ID?: string;
   DESIGN_ENVIRONMENT_ID?: string;
