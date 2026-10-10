@@ -8,6 +8,7 @@ import { buildReviewSummary } from "@/lib/build-review-summary";
 import { createBuildStatusPoller, isBuildTerminal } from "@/lib/build-status-polling";
 import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
+import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import { BUILD_PATH, BUILD_SESSION_PATH, BUILD_STATUS_PATH, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSession, type BuildSignal } from "@shared/build-routine";
 
@@ -137,8 +138,8 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
   return (
     <div ref={ref} className="space-y-2 border-t border-line pt-3 text-xs" aria-label="Build status" aria-live="polite">
       <p className="font-semibold">{savedRun ? phaseLabels[savedRun.phase] ?? "Status unknown" : "Status unknown · checking…"}</p>
+      {savedRun && <BuildProgress run={savedRun} />}
       {savedRun?.reason && <p>{savedRun.reason}</p>}
-      {savedRun?.progress && <p className="text-muted-foreground">{savedRun.progress}</p>}
       {savedRun?.pr && <a href={savedRun.pr.url} target="_blank" rel="noreferrer noopener" className="inline-block underline underline-offset-2">View pull request #{savedRun.pr.number}</a>}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted-foreground">
         <dt>CI</dt><dd><Signal signal={savedRun?.ci} /></dd>
@@ -148,6 +149,67 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
       <p className="text-[10px] text-muted-foreground">Claude review is advisory. {terminal ? "This build has finished; automatic refresh is off." : "Status refreshes while this card is visible."}</p>
       <details className="text-[10px] text-muted-foreground"><summary className="cursor-pointer">Build details</summary><p className="mt-1 break-all font-mono">{build.runId}</p></details>
       {error && <p role="status" className="text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+const STEPS = ["Queued", "Building", "Uploaded", "PR"] as const;
+const STEP_OF: Record<BuildPhase, number> = { triggered: 0, running: 1, uploaded: 2, validated: 2, blocked: 2, failed: 2, timeout: 1, pr_open: 3, merged: 3, closed: 3 };
+const ACTIVE_PHASES: readonly BuildPhase[] = ["triggered", "running", "uploaded", "validated"];
+const FAILED_PHASES: readonly BuildPhase[] = ["blocked", "failed", "timeout"];
+// 按已跑过的构建粗估，只用来安抚等待，不参与超时判断（超时见 BUILD_TIMEOUT_MS）。
+const TYPICAL_BUILD = "usually 5–15 min";
+const PROGRESS_LOG = 4;
+
+function elapsed(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+function BuildProgress({ run }: { run: BuildRun }) {
+  const active = ACTIVE_PHASES.includes(run.phase);
+  const failed = FAILED_PHASES.includes(run.phase);
+  const current = STEP_OF[run.phase] ?? 0;
+  const [now, setNow] = useState(() => Date.now());
+  const [log, setLog] = useState<string[]>(() => run.progress ? [run.progress] : []);
+  const [lastProgress, setLastProgress] = useState(run.progress);
+  if (run.progress !== lastProgress) {
+    setLastProgress(run.progress);
+    if (run.progress) setLog((entries) => [...entries.filter((entry) => entry !== run.progress), run.progress!].slice(-PROGRESS_LOG));
+  }
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+
+  return (
+    <div className="space-y-2">
+      <ol className="flex items-center gap-1.5" aria-label="Build stages">
+        {STEPS.map((step, index) => {
+          const reached = index < current || (index === current && !active && !failed);
+          const here = index === current;
+          return (
+            <li key={step} className={cn("flex items-center gap-1.5", index < STEPS.length - 1 && "flex-1")} aria-current={here ? "step" : undefined}>
+              <span className={cn(
+                "size-2 shrink-0 rounded-full border",
+                reached ? "border-foreground bg-foreground" : "border-line-strong",
+                here && active && "animate-pulse border-foreground bg-foreground/60",
+                here && failed && "border-red-500 bg-red-500",
+              )} />
+              <span className={cn("shrink-0 text-[10px]", here || reached ? "text-foreground" : "text-muted-foreground")}>{step}</span>
+              {index < STEPS.length - 1 && <span className={cn("h-px min-w-2 flex-1", index < current ? "bg-foreground" : "bg-line")} />}
+            </li>
+          );
+        })}
+      </ol>
+      {active && <p className="font-mono text-[10px] tabular-nums text-muted-foreground">Running for {elapsed(now - run.createdAt)} · {TYPICAL_BUILD}</p>}
+      {active && log.length > 0 && (
+        <ul className="space-y-0.5 text-muted-foreground">
+          {log.map((entry, index) => <li key={entry} className={cn("break-words", index === log.length - 1 && "text-foreground")}>{entry}</li>)}
+        </ul>
+      )}
     </div>
   );
 }
