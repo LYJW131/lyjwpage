@@ -59,7 +59,7 @@ import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
 
 const SLOT = {
   activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]",
-  server: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_245px]",
+  server: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_281px]",
   agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
   vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1372px]",
   playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]",
