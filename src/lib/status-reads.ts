@@ -5,6 +5,8 @@ import type {
   DesktopPayload,
   ListeningPayload,
   NowListeningPayload,
+  PlaystationPlayingPayload,
+  PlaystationPresencePayload,
   PowerBankPayload,
   StatusResponse,
   TrophiesSummaryPayload,
@@ -16,6 +18,8 @@ const STAMPS: Record<string, (data: never) => number | null> = {
   [STATUS_VIEWS.desktop.path]: (data: DesktopPayload) => data.receivedAt,
   [STATUS_VIEWS.listening.path]: (data: ListeningPayload) => data.fetchedAt,
   [STATUS_VIEWS.nowListening.path]: (data: NowListeningPayload) => data.receivedAt,
+  [STATUS_VIEWS.playing.path]: (data: PlaystationPlayingPayload) => data.observedAt,
+  [STATUS_VIEWS.playingNow.path]: (data: PlaystationPresencePayload) => data.observedAt,
   [STATUS_VIEWS.powerBank.path]: (data: PowerBankPayload) => data.pushedAt,
   [STATUS_VIEWS.trophies.path]: (data: TrophiesSummaryPayload) => data.observedAt,
 };
