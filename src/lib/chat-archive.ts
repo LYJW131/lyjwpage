@@ -129,10 +129,11 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
     if (!archive) {
       try { archive = readChatArchive(storage()?.getItem(CHAT_ARCHIVE_KEY) ?? null); }
       catch { archive = EMPTY_CHAT_ARCHIVE; memoryOnly = true; }
-      if (!archive.sessions.length) {
+      const resumed = archive.sessions.find((session) => session.id === archive?.activeId);
+      if (!archive.sessions.length || !activeChatDesign(resumed?.design, now())) {
         const time = now();
         const id = newId();
-        archive = { version: 1, activeId: id, sessions: [{ id, title: "New conversation", createdAt: time, updatedAt: time, messages: [] }] };
+        archive = { version: 1, activeId: id, sessions: [{ id, title: "New conversation", createdAt: time, updatedAt: time, messages: [] }, ...archive.sessions.filter((session) => session.messages.length)] };
       }
     }
     return archive;
