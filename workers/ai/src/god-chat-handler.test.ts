@@ -14,6 +14,7 @@ import { signBuildToken } from "./build/token.ts";
 import { readPlan } from "./build/plan.ts";
 import { sealedHistory } from "./chat/seal.ts";
 import { DESIGN_EFFORT } from "./chat/router.ts";
+import { DESIGN_MAX_TOKENS } from "./chat/design.ts";
 
 // Node 不提供 cloudflare:workers；这里只替换基类，SDK 与流式序列化使用真实实现。
 registerHooks({
@@ -231,6 +232,8 @@ test("改站请求由 Opus 判断，start_design 签会话，规划者只读文�
   assert.equal(seal.trace?.plan, true);
   assert.equal(seal.trace?.effort, DESIGN_EFFORT);
   for (const body of requests) assert.deepEqual(body.messages.filter((m) => m.role === "system").map((m) => m.output_config?.effort), [DESIGN_EFFORT]);
+  assert.equal(requests[0].max_tokens, GOD_CHAT_TIER_INFO.opus.maxTokens);
+  assert.ok(requests[1].max_tokens > GOD_CHAT_TIER_INFO.opus.maxTokens);
   assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1 });
   assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.opus.model, GOD_CHAT_TIER_INFO.opus.model]);
   assert.deepEqual(requests[1].tools?.map((tool) => "name" in tool && tool.name), ["read_project_doc", "propose_build"]);
@@ -273,6 +276,7 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
   assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1 });
   assert.equal(requests.length, 1);
   assert.deepEqual(requests[0].messages.filter((m) => m.role === "system").map((m) => m.output_config?.effort), [DESIGN_EFFORT]);
+  assert.equal(requests[0].max_tokens, DESIGN_MAX_TOKENS);
   for (const invalid of [`${token.slice(0, -2)}xx`, await signBuildToken({ kind: "design", id, expiresAt: Date.now() - 1 }, env.BUILD_SESSION_SECRET!), await signBuildToken({ kind: "plan", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!)]) {
     const rejected = await handleChat(chatRequest(invalid), env, toolIO);
     assert.equal(rejected.status, 400);

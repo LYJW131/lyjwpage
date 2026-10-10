@@ -47,6 +47,10 @@ export async function plannerHistory(history: GodChatMessage[], env: Env): Promi
   }));
 }
 
+// 设计回复要在一条回复里装下 medium 强度的思考、读文档的几轮和一份完整计划（spec 上限见 BUILD_PLAN_LIMITS）；
+// 按 Opus 的 maxTokens 给时思考加读文档就用完了，propose_build 来不及调用。
+export const DESIGN_MAX_TOKENS = 12_288;
+
 export const PLANNER_PROMPT = `You are the build planner in the conversation on LYJW's personal homepage (lyjw.me), whose public repository is github.com/${BUILD_REPO}.
 Help the visitor turn one worthwhile change to this site into a small, clear, reviewable plan. The visitor can open an issue or start a cloud build from a plan card. The build creates a pull request; nothing is merged or deployed automatically.
 

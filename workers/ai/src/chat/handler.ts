@@ -24,7 +24,7 @@ import { anthropicFetch } from "./egress";
 import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { admitDesign, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
+import { admitDesign, DESIGN_MAX_TOKENS, designAvailable, plannerHistory, PLANNER_PROMPT, PROPOSE_BUILD_TOOL, startDesign, START_DESIGN_TOOL } from "./design";
 import { CLEF_CHOICES, DESIGN_EFFORT, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
@@ -233,7 +233,7 @@ async function converse({
   // max_tokens 只管单次请求；工具循环每轮都给满会让一条回复花掉几倍上限，所以整条回复合计不超过本档 maxTokens，
   // 剩下的不够 MIN_ROUND_TOKENS 就不再续，每轮按 billedOutputTokens 扣。有意接受的溢出：同一请求里本档写到一半被拒，
   // 兜底模型还能再用满一次 max_tokens；fallbacks: "default" 不能按跳设上限，要设就得自己列出并维护兜底型号链。
-  let outputLeft = maxTokens;
+  let outputLeft = design ? DESIGN_MAX_TOKENS : maxTokens;
   const shownSearches = new Set<string>();
   const showSearch = (id: string, input: unknown) => {
     const query = (input as { query?: unknown } | null)?.query;
@@ -374,6 +374,7 @@ async function converse({
           const started = await startDesign(env);
           if ("error" in started) return result(started.error, true);
           design = started.session;
+          outputLeft += DESIGN_MAX_TOKENS - maxTokens;
           emit({ type: "design", ...design });
           return result("The design session is active. Clarify material questions and use propose_build when a complete plan is ready. The visitor chooses whether to open an issue or start a build.", false);
         }
