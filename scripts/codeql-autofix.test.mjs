@@ -140,6 +140,11 @@ test("等到期限仍在跑的标为 still running；取消时一并取消 Curso
   assert.equal(cancelled[0].outcome, "cancelled");
 });
 
+test("摘要表格转义竖线与反斜杠", () => {
+  const item = { alert: alert(9, {}, "src/a\\|b.ts"), outcome: "deferred" };
+  assert.match(renderSummary({ items: [item] }), /`src\/a\\\\\\\|b\.ts` lines 3-5 \| deferred \|/);
+});
+
 test("没有告警时摘要直说", () => {
   assert.match(renderSummary({ items: [] }), /No open CodeQL alerts/);
 });
