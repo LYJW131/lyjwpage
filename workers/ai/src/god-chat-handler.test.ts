@@ -14,7 +14,7 @@ import { signBuildToken } from "./build/token.ts";
 import { readPlan } from "./build/plan.ts";
 import { sealedHistory } from "./chat/seal.ts";
 import { DESIGN_EFFORT } from "./chat/router.ts";
-import { DESIGN_MAX_TOKENS } from "./chat/design.ts";
+import { DESIGN_MAX_TOKENS, DESIGN_TOOL_ROUNDS } from "./chat/design.ts";
 
 // Node 不提供 cloudflare:workers；这里只替换基类，SDK 与流式序列化使用真实实现。
 registerHooks({
@@ -341,7 +341,9 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   sessions.set(id, 1);
   const token = await signBuildToken({ kind: "design", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!);
   const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, DESIGN_TOOL_ROUNDS + 1);
   assert.deepEqual(requests.at(-1)?.tools, []);
+  assert.ok(requests.at(-1)?.messages.some((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("No tools remain")));
   assert.ok(!events.some((event) => event.type === "plan"));
+  assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
 });

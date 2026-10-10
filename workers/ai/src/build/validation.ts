@@ -19,18 +19,32 @@ export function allowedBuildPath(path: string): boolean {
   return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path);
 }
 
-export function parseBuildPlan(value: unknown): BuildPlan | null {
-  if (!value || typeof value !== "object") return null;
+// 拒绝原因原样回给规划者：笼统的「计划无效」会让它不知道改哪里，一条回复的工具轮数就这样耗完。
+export function checkBuildPlan(value: unknown): { plan: BuildPlan } | { error: string } {
+  const limits = BUILD_PLAN_LIMITS;
+  if (!value || typeof value !== "object") return { error: "The plan must be an object with title, spec, acceptance and paths." };
   const { title, spec, acceptance, paths } = value as Record<string, unknown>;
-  if (typeof title !== "string" || typeof spec !== "string" || !Array.isArray(acceptance) || !Array.isArray(paths)) return null;
+  if (typeof title !== "string" || typeof spec !== "string" || !Array.isArray(acceptance) || !Array.isArray(paths)) return { error: "title and spec must be strings; acceptance and paths must be arrays." };
   const cleanTitle = title.replace(/\s+/g, " ").trim();
-  if (!cleanTitle || cleanTitle.length > BUILD_PLAN_LIMITS.titleChars || !spec.trim() || spec.length > BUILD_PLAN_LIMITS.specChars) return null;
-  if (!acceptance.length || acceptance.length > BUILD_PLAN_LIMITS.acceptanceItems || acceptance.some((item) => typeof item !== "string" || !item.trim() || item.length > BUILD_PLAN_LIMITS.acceptanceChars)) return null;
-  if (!paths.length || paths.length > BUILD_PLAN_LIMITS.paths || paths.some((path) => typeof path !== "string" || !allowedBuildPath(path.replace(/\/$/, "/_")))) return null;
+  if (!cleanTitle || cleanTitle.length > limits.titleChars) return { error: `title must be 1 to ${limits.titleChars} characters; it has ${cleanTitle.length}.` };
+  if (!spec.trim() || spec.length > limits.specChars) return { error: `spec must be 1 to ${limits.specChars} characters; it has ${spec.length}. Shorten it.` };
+  if (!acceptance.length || acceptance.length > limits.acceptanceItems) return { error: `Give 1 to ${limits.acceptanceItems} acceptance checks; there are ${acceptance.length}.` };
+  const badCheck = acceptance.findIndex((item) => typeof item !== "string" || !item.trim() || item.length > limits.acceptanceChars);
+  if (badCheck >= 0) return { error: `Acceptance check ${badCheck + 1} must be a non-empty string of at most ${limits.acceptanceChars} characters.` };
+  if (!paths.length || paths.length > limits.paths) return { error: `List 1 to ${limits.paths} paths; there are ${paths.length}.` };
+  const badPath = paths.find((path) => typeof path !== "string" || !allowedBuildPath(path.replace(/\/$/, "/_")));
+  if (badPath !== undefined) return { error: `Path ${JSON.stringify(badPath)} is not allowed. Use repository paths under src/, public/, docs/, shared/ or workers/*/src/ that avoid protected names.` };
   const text = `${cleanTitle}\n${spec}\n${acceptance.join("\n")}`;
   const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.toml|next\.config\.[\w]+|vercel\.json|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
-  if (mentionedPaths.some((path) => path.split("/").some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters"))) return null;
-  return { title: cleanTitle, spec: spec.trim(), acceptance: acceptance.map((item) => (item as string).trim()), paths: [...new Set(paths as string[])] };
+  // 句末标点会被一起匹配进最后一段（「…/AGENTS.md.」），比对前去掉，否则加个句号就能绕过。
+  const protectedMention = mentionedPaths.find((path) => path.split("/").map((segment) => segment.replace(/[.,;:]+$/, "")).some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters"));
+  if (protectedMention) return { error: `The title, spec or acceptance names ${JSON.stringify(protectedMention)}, a protected file or directory. Describe the behavior without naming agent instructions, dependency manifests, CI, scripts, deploy config or reporters.` };
+  return { plan: { title: cleanTitle, spec: spec.trim(), acceptance: acceptance.map((item) => (item as string).trim()), paths: [...new Set(paths as string[])] } };
+}
+
+export function parseBuildPlan(value: unknown): BuildPlan | null {
+  const checked = checkBuildPlan(value);
+  return "plan" in checked ? checked.plan : null;
 }
 
 function withinBuildPlan(path: string, planPaths: readonly string[]): boolean {
