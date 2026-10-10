@@ -1,6 +1,6 @@
 import { cacheLife } from "next/cache";
 
-import { type CommitAuthor, type CommitListItem, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@/lib/commit-authors";
+import { type CommitAuthor, type CommitListItem, actorAuthor, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@/lib/commit-authors";
 import { repoIdFromUrl } from "@/lib/github-repo";
 import { FIRST_SCREEN_CACHE_LIFE } from "@/lib/first-screen";
 import { site } from "@/lib/site";
@@ -52,18 +52,17 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
     if (token) {
       try {
         const shas = body.map(item => item.sha).filter((sha): sha is string => !!sha && /^[a-f0-9]{40}$/i.test(sha));
-        const fields = shas.map((sha, i) => `c${i}: object(oid: "${sha}") { ... on Commit { authors(first: 100) { nodes { name avatarUrl user { login } } } } }`).join("\n");
+        const fields = shas.map((sha, i) => `c${i}: object(oid: "${sha}") { ... on Commit { authors(first: 100) { nodes { name email avatarUrl user { login } } } } }`).join("\n");
         const response = await fetch("https://api.github.com/graphql", {
           method: "POST", headers, cache: "force-cache", signal: AbortSignal.timeout(8_000),
           body: JSON.stringify({ query: `query { repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${fields} } }` }),
         });
-        const result = await response.json() as { data?: { repository?: Record<string, { authors?: { nodes?: { name: string; avatarUrl: string; user: { login: string } | null }[] } }> } };
+        const result = await response.json() as { data?: { repository?: Record<string, { authors?: { nodes?: { name: string; email: string; avatarUrl: string; user: { login: string } | null }[] } }> } };
         if (!response.ok || !result.data?.repository) throw new Error("GitHub authors unavailable");
         shas.forEach((sha, i) => {
           const nodes = result.data?.repository?.[`c${i}`]?.authors?.nodes;
-          if (nodes?.length) githubAuthors.set(sha, mergeAuthors(null, nodes.map(author => ({
-            name: author.user?.login ?? author.name, login: author.user?.login ?? null,
-            avatarUrl: author.avatarUrl, agent: null,
+          if (nodes?.length) githubAuthors.set(sha, mergeAuthors(null, nodes.map(author => actorAuthor({
+            name: author.name, email: author.email, login: author.user?.login ?? null, avatarUrl: author.avatarUrl,
           }))));
         });
       } catch (error) {
