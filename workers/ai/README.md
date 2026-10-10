@@ -86,7 +86,7 @@ pnpm dev:local
 
 初始化 StateHub 只在首次使用空的本地状态时需要。`pnpm dev:worker` 同时启动 dev-router、api、ai、ingress、collector；请求从本地 api 经 Service Binding 到 ai，工具再经 `PUBLIC_STATUS` 读本地 api。端口、状态持久化与假数据注入见 [api 本地开发](../api/README.md#本地开发)。`workers/api/.dev.vars` 的 `UPSTREAM_API_URL` 只控制 api 的公开状态兜底，不启用 AI 调试权限。
 
-聊天凭据放 `workers/ai/.dev.vars`：`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`、`CHAT_HISTORY_SECRET` 必须齐全，否则聊天回 503；设计与签名计划另需 `BUILD_SESSION_SECRET`、`BUILD_COORDINATOR` 绑定，以及与该 key 同一工作区的 `DESIGN_AGENT_ID`、`DESIGN_ENVIRONMENT_ID`（用该 key 跑 `pnpm --dir workers/ai designer:setup` 按名字找或建，打印两个 ID），缺任何一项时 Sonnet 拿不到 `start_design`；issue 提交还需 `GITHUB_APP_CLIENT_SECRET`。本地 `wrangler.test.toml` 设置 `AI_DEV=true`；`src/runtime.ts#aiDevEnabled` 只在 `AI_DEV=true` 或 `PREVIEW_WORKER=true` 时放宽 localhost / Turnstile 测试密钥校验，并启用以下调试变量：
+聊天凭据放 `workers/ai/.dev.vars`：`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`、`CHAT_HISTORY_SECRET` 必须齐全，否则聊天回 503；设计与签名计划另需 `BUILD_SESSION_SECRET`、`BUILD_COORDINATOR` 绑定，以及与该 key 同一工作区的 `DESIGN_AGENT_ID`、`DESIGN_ENVIRONMENT_ID`（`wrangler.toml` 与 `wrangler.test.toml` 的 `[vars]` 已填；换工作区时用新 key 跑 `pnpm --dir workers/ai designer:setup`，按名字找或建并打印两个 ID），缺任何一项时 Sonnet 拿不到 `start_design`；issue 提交还需 `GITHUB_APP_CLIENT_SECRET`。本地 `wrangler.test.toml` 设置 `AI_DEV=true`；`src/runtime.ts#aiDevEnabled` 只在 `AI_DEV=true` 或 `PREVIEW_WORKER=true` 时放宽 localhost / Turnstile 测试密钥校验，并启用以下调试变量：
 
 - `CHAT_RATE_LIMIT=off`：普通聊天配额仍记账、`/usage` 仍显示用量，但不拦截；设计轮数与会话上限仍执行。
 - `CHAT_FORCE_TIER=<档位或 CLEF_CHOICES 的键>`：无设计会话时跳过 Clef；合法值见根目录 `shared/god-chat-tiers.ts#GOD_CHAT_TIERS` 与 `src/chat/router.ts#CLEF_CHOICES`。有效设计会话始终由规划者回答。
