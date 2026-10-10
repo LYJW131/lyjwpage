@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { installLagStoreForTests } from "./lag-store.ts";
 import { LAG_KEYS, type LagEntry } from "@shared/lag";
-import { fetchWorkerDeployments, fetchWorkersMetrics, getCloudflareWorkers, parseBuildsByVersion, parseWorkerDeployment, parseWorkersMetrics } from "./cloudflare-workers.ts";
+import { isStale } from "./freshness.ts";
+import { deploymentCheckedAt, type CloudflareDeploymentsPayload } from "./cloudflare-workers-types.ts";
+import { fetchWorkerDeploymentAttempts, fetchWorkerDeployments, fetchWorkersMetrics, getCloudflareWorkers, parseBuildsByVersion, parseWorkerDeployment, parseWorkersMetrics } from "./cloudflare-workers.ts";
 
 const start = Date.parse("2026-09-10T12:30:00Z");
 const end = start + 43_200_000;
@@ -76,6 +78,25 @@ test("deployment permission failure preserves metrics and sends credentials only
   assert.doesNotMatch(JSON.stringify({ metrics, deployments }), /test-secret|test-account/);
 });
 
+test("an empty deployment list is a confirmed miss, a failed request is not", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("/workers/scripts/api/deployments")) {
+      return Response.json({ success: true, result: { deployments: [] } });
+    }
+    if (url.includes("/workers/scripts/ingress/deployments")) {
+      return Response.json({ success: false }, { status: 500 });
+    }
+    return Response.json({ success: false }, { status: 403 });
+  });
+  const attempts = await fetchWorkerDeploymentAttempts("test-account", "test-secret");
+  assert.deepEqual(attempts.map((attempt) => attempt.ok ? [attempt.name, attempt.deployment] : [attempt.name, attempt.error]), [
+    ["api", null],
+    ["ingress", "Cloudflare 查询失败 (500)"],
+    ["collector", "Cloudflare 查询失败 (403)"],
+  ]);
+});
+
 test("deployments join the commit of the highest-traffic version in one batched call", async (t) => {
   const sha = "0123456789abcdef".repeat(2) + "01234567";
   const calls: string[] = [];
@@ -133,7 +154,7 @@ test("a deployed version without a build record borrows the commit of the previo
 test("the public payload joins metrics and deployments by name, each half with its own time", async (t) => {
   const metrics = { ...parseWorkersMetrics(analytics(), start, end), fetchedAt: end + 5 };
   const deployment = { deployedAt: 1, versions: [{ id: "v1", percentage: 100 }], commit: null };
-  const deployments = { fetchedAt: end + 60, workers: [{ name: "collector", deployment }, { name: "api", deployment: null }] };
+  const deployments: CloudflareDeploymentsPayload = { fetchedAt: end + 60, workers: [{ name: "collector", deployment }, { name: "api", deployment: null }] };
   const store = new Map<string, LagEntry<unknown>>([
     [LAG_KEYS.cloudflareMetrics, { updatedAt: end + 5, data: metrics }],
     [LAG_KEYS.cloudflareDeployments, { updatedAt: end + 60, data: deployments }],
@@ -145,9 +166,17 @@ test("the public payload joins metrics and deployments by name, each half with i
   assert.equal(result.updatedAt, end + 60);
   assert.equal(result.data.fetchedAt, end + 5);
   assert.equal(result.data.deploymentsFetchedAt, end + 60);
-  assert.deepEqual(result.data.workers.map((worker) => [worker.name, worker.metrics?.requests ?? null, worker.deployment?.versions[0].id ?? null]), [
-    ["api", 20, null], ["ingress", null, null], ["collector", null, "v1"],
+  assert.deepEqual(result.data.workers.map((worker) => [worker.name, worker.metrics?.requests ?? null, worker.deployment?.versions[0].id ?? null, worker.deploymentObservedAt]), [
+    ["api", 20, null, end + 60], ["ingress", null, null, null], ["collector", null, "v1", end + 60],
   ]);
+  assert.equal(deploymentCheckedAt(result.data.workers[2]?.deploymentObservedAt, result.data.deploymentsFetchedAt), end + 60);
+
+  deployments.workers[0] = { name: "collector", deployment, observedAt: end };
+  const timed = await getCloudflareWorkers();
+  assert.equal(timed.data.workers.find((worker) => worker.name === "collector")?.deploymentObservedAt, end);
+  assert.equal(deploymentCheckedAt(0, end + 60), 0);
+  assert.equal(isStale({ now: end + 60, at: deploymentCheckedAt(0, end + 60), windowMs: 15 * 60_000 }), true);
+  assert.equal(isStale({ now: end + 60, at: deploymentCheckedAt(undefined, end + 60), windowMs: 15 * 60_000 }), false);
 
   store.delete(LAG_KEYS.cloudflareMetrics);
   const partial = await getCloudflareWorkers();

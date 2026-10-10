@@ -3,6 +3,8 @@ import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 import type { AgentStatusPayload, AgentStatusRow } from "@/lib/agent-status-types";
+import type { WorkerDeploymentAttempt } from "@/lib/cloudflare-workers";
+import type { CloudflareDeploymentsPayload, WorkerDeployment } from "@/lib/cloudflare-workers-types";
 import { PAGESPEED_TIMEOUT_MS } from "@/lib/pagespeed";
 import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@/lib/sentry-status";
 import type { SentryStatusPayload } from "@/lib/sentry-status-types";
@@ -10,6 +12,7 @@ import type { GithubRepoPayload } from "@/lib/types";
 import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
 
 import { MemoryKv } from "../testing/memory-kv";
+import { refreshCloudflareDeployments } from "./cloudflare";
 import { mergeRepoStats } from "./github-repo";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
@@ -142,4 +145,56 @@ test("sentry status carries a failed block with its own time, and only for a whi
 
 test("pagespeed waits per request for less than the job's runtime budget", () => {
   assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
+});
+
+const workerDeployment = (deployedAt: number): WorkerDeployment => ({
+  deployedAt, versions: [{ id: "v1", percentage: 100 }], commit: null,
+});
+
+test("a failed worker deployment keeps the last confirmed copy and its time", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const lag = new MemoryKv();
+  const previous: CloudflareDeploymentsPayload = {
+    fetchedAt: 10,
+    workers: [
+      { name: "api", deployment: workerDeployment(1), observedAt: 10 },
+      { name: "ingress", deployment: null, observedAt: 10 },
+      { name: "collector", deployment: workerDeployment(2), observedAt: 10 },
+    ],
+  };
+  await writeLag(lag, LAG_KEYS.cloudflareDeployments, previous, 10);
+  const attempts: WorkerDeploymentAttempt[] = [
+    { name: "api", ok: false, error: "Cloudflare 查询失败 (500)" },
+    { name: "ingress", ok: true, deployment: null },
+    { name: "collector", ok: true, deployment: workerDeployment(3) },
+  ];
+  const result = await refreshCloudflareDeployments(lag, async () => attempts, 20);
+  assert.equal(result.detail, "api carried over");
+  const stored = (await readLag<CloudflareDeploymentsPayload>(lag, LAG_KEYS.cloudflareDeployments))?.data;
+  assert.equal(stored?.fetchedAt, 20);
+  assert.equal(stored?.workers[0]?.deployment?.deployedAt, 1);
+  assert.equal(stored?.workers[0]?.observedAt, 10, "失败的格子不刷新确认时刻");
+  assert.equal(stored?.workers[1]?.deployment, null);
+  assert.equal(stored?.workers[1]?.observedAt, 20, "空列表是确认过的没有部署");
+  assert.equal(stored?.workers[2]?.deployment?.deployedAt, 3);
+  assert.equal(stored?.workers[2]?.observedAt, 20);
+
+  await assert.rejects(refreshCloudflareDeployments(lag, async () => attempts.map((attempt) => (
+    attempt.ok ? { name: attempt.name, ok: false as const, error: "down" } : attempt
+  )), 30), /一个都没取到/);
+  assert.equal((await readLag<CloudflareDeploymentsPayload>(lag, LAG_KEYS.cloudflareDeployments))?.updatedAt, 20);
+});
+
+test("a failed deployment with nothing saved is not a fresh empty cell", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const lag = new MemoryKv();
+  const attempts: WorkerDeploymentAttempt[] = [
+    { name: "api", ok: false, error: "Cloudflare 查询失败 (500)" },
+    { name: "ingress", ok: true, deployment: workerDeployment(4) },
+    { name: "collector", ok: true, deployment: workerDeployment(5) },
+  ];
+  await refreshCloudflareDeployments(lag, async () => attempts, 20);
+  const stored = (await readLag<CloudflareDeploymentsPayload>(lag, LAG_KEYS.cloudflareDeployments))?.data;
+  assert.equal(stored?.workers[0]?.deployment, null);
+  assert.equal(stored?.workers[0]?.observedAt, 0);
 });

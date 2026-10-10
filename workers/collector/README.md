@@ -45,8 +45,10 @@
 - **部分成功**：GitHub 仓库统计的名单和总数、Vercel 指标的两组、Sentry 的五路查询（合成四块，其中 `errors` 要站点、后端两路
   都取到才更新）都是各拉各的，这一轮没取到的那一部分沿用可滞后层里上一份的（带着它原来的采集时刻）；全都没取到才算失败、不写。
   Sentry 各块取到的时刻记在 `blockAt`，卡片按它判过期（`SENTRY_STALE_MS`）；沿用最多 `SENTRY_BLOCK_CARRY_MS`，再旧那一块才回到「没有」。
-  Cloudflare 部署逐个 Worker 查，单个查不到只空那一格（某个 Worker 还没部署时就是这样），
-  全部查不到才算失败。
+  Cloudflare 部署逐个 Worker 查。请求失败沿用上一份那一格，并保留它上次成功的 `observedAt`
+  （没有上一份就记 0，读取侧按过期处理，不当成刚确认没有部署）；响应成功但列表是空的，才把那一格写成没有，`observedAt` 用这一响的时刻。
+  全部请求失败才算失败、不写。页面按每个 Worker 的 `deploymentObservedAt` 判这格过不过期
+  （`src/lib/cloudflare-workers-types.ts#deploymentCheckedAt`），不跟整份的 `deploymentsFetchedAt`。
 - **厂商状态**已登记的各家（`src/lib/agent-status-parse.ts` 的 `FALLBACK`）各自降级：某一家失败沿用上一轮那一行并标 `stale`；
   全部失败是这边出不去，整轮抛错、不写，监控报 error。上一轮是 KV 里那份，同一 isolate 里自己上一轮写的更新时用它
   （KV 读可能落后一分钟）。

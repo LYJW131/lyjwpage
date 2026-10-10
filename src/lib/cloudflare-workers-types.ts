@@ -21,7 +21,8 @@ export type WorkerDeployment = {
 
 export type CloudflareDeploymentsPayload = {
   fetchedAt: number;
-  workers: { name: CloudflareWorkerName; deployment: WorkerDeployment | null }[];
+  // observedAt 是这一格上次成功确认的时刻。0 表示请求失败且没有上一份可沿用，读取侧按过期处理，不当成刚确认没有部署。
+  workers: { name: CloudflareWorkerName; deployment: WorkerDeployment | null; observedAt?: number }[];
 };
 
 export type CloudflareMetricsPayload = {
@@ -30,6 +31,11 @@ export type CloudflareMetricsPayload = {
   windowEnd: number;
   workers: { name: CloudflareWorkerName; metrics: WorkerMetrics | null }[];
 };
+
+// 有数字就用这一格自己的确认时刻（含 0：失败且没有上一份）。缺字段才退回整份时间，兼容还没写 observedAt 的旧值。
+export function deploymentCheckedAt(observedAt: number | null | undefined, fetchedAt: number | null | undefined): number | null | undefined {
+  return typeof observedAt === "number" ? observedAt : fetchedAt;
+}
 
 export type CloudflareWorkersPayload = {
   fetchedAt: number | null;
@@ -40,5 +46,6 @@ export type CloudflareWorkersPayload = {
     name: CloudflareWorkerName;
     metrics: WorkerMetrics | null;
     deployment: WorkerDeployment | null;
+    deploymentObservedAt: number | null;
   }[];
 };

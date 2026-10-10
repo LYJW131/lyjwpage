@@ -11,7 +11,7 @@ import { colorForRank, RepoContributions } from "@/components/live/repo-contribu
 import { formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
 import { UptimeStrip } from "@/components/live/uptime-strip";
-import { useStale } from "@/hooks/use-stale";
+import { useStale, useStaleFlags } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
 import {
   AGENT_LIMITS_STALE_MS,
@@ -26,7 +26,7 @@ import {
 } from "@/lib/freshness";
 import type { ReporterName, ReporterStat, ReportersPayload } from "@/lib/reporter-ledger";
 import { useStatus } from "@/hooks/use-status";
-import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@/lib/cloudflare-workers-types";
+import { CLOUDFLARE_WORKERS, deploymentCheckedAt, type CloudflareWorkersPayload } from "@/lib/cloudflare-workers-types";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
 import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, SENTRY_PATH, SERVER_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
 import type { SentryBlock, SentryErrorSeries, SentryStatusPayload } from "@/lib/sentry-status-types";
@@ -136,7 +136,10 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const analyticsStale = useStale(vercel?.metrics?.analytics?.fetchedAt, VERCEL_METRICS_STALE_MS, vercelServedAt);
   const pagespeedStale = useStale(vercel?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS, vercelServedAt);
   const workerMetricsStale = useStale(cloudflare?.fetchedAt, CLOUDFLARE_METRICS_STALE_MS, cloudflareServedAt);
-  const workerDeploymentsStale = useStale(cloudflare?.deploymentsFetchedAt, CLOUDFLARE_DEPLOYMENTS_STALE_MS, cloudflareServedAt);
+  const deploymentStale = useStaleFlags(CLOUDFLARE_WORKERS.map(({ name }) => {
+    const worker = cloudflare?.workers.find((row) => row.name === name);
+    return deploymentCheckedAt(worker?.deploymentObservedAt, cloudflare?.deploymentsFetchedAt);
+  }), CLOUDFLARE_DEPLOYMENTS_STALE_MS, cloudflareServedAt);
   const sentryAt = (block: SentryBlock) => sentry ? sentry.blockAt?.[block] ?? sentry.fetchedAt : undefined;
   const uptimeStale = useStale(sentryAt("uptime"), SENTRY_STALE_MS, sentryServedAt);
   const heartbeatStale = useStale(sentryAt("heartbeat"), SENTRY_STALE_MS, sentryServedAt);
@@ -230,9 +233,9 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
               <CollectionWindow start={functions?.start} end={functions?.end} />
             </div>
           </li>
-          {CLOUDFLARE_WORKERS.map(({ name }) => {
+          {CLOUDFLARE_WORKERS.map(({ name }, index) => {
             const worker = cloudflare?.workers.find(w => w.name === name);
-            const metrics = workerMetricsStale ? null : worker?.metrics, deployment = workerDeploymentsStale ? null : worker?.deployment;
+            const metrics = workerMetricsStale ? null : worker?.metrics, deployment = deploymentStale[index] ? null : worker?.deployment;
             return <li key={name} className="bg-surface px-4 py-2.5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>

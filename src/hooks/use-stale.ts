@@ -32,16 +32,21 @@ type Clock = {
   settled: boolean;
 };
 
-function useClock(servedAt: number | undefined, first: number | null, second: number | null = null): Clock {
+function useClock(servedAt: number | undefined, deadlines: readonly (number | null)[]): Clock {
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = clockReading(ticked, mountedAt, servedAt);
-  const key = `${now}|${first}|${second}`;
+  const signature = deadlines.map((at) => (at == null ? "" : String(at))).join(",");
+  const stable = useMemo(
+    () => signature.split(",").map((part) => (part === "" ? null : Number(part))),
+    [signature],
+  );
+  const key = `${now}|${signature}`;
   const [checked, setChecked] = useState<string | null>(null);
-  const settled = !hasPendingDeadline(now, [first, second]) || checked === key;
+  const settled = !hasPendingDeadline(now, stable) || checked === key;
 
   useEffect(() => {
-    const advance = clockAdvance(now, [first, second], Date.now());
+    const advance = clockAdvance(now, stable, Date.now());
     if (advance.kind === "idle") return;
     const tick = () => setTicked(Math.max(Date.now(), advance.to));
     if (advance.kind === "now") {
@@ -54,18 +59,28 @@ function useClock(servedAt: number | undefined, first: number | null, second: nu
       window.clearTimeout(settle);
       window.clearTimeout(timer);
     };
-  }, [first, second, now, key]);
+  }, [stable, now, key]);
 
   return { now, settled };
 }
 
 function useClockStale(at: number | null | undefined, windowMs: number, servedAt?: number) {
-  const { now, settled } = useClock(servedAt, deadlineOf(at, windowMs));
+  const { now, settled } = useClock(servedAt, [deadlineOf(at, windowMs)]);
   return { stale: isStale({ now, at, windowMs }), settled };
 }
 
 export function useStale(at: number | null | undefined, windowMs: number, servedAt?: number) {
   return useClockStale(at, windowMs, servedAt).stale;
+}
+
+export function useStaleFlags(times: readonly (number | null | undefined)[], windowMs: number, servedAt?: number): boolean[] {
+  const signature = times.map((at) => (typeof at === "number" ? String(at) : "")).join(",");
+  const stable = useMemo(
+    () => signature.split(",").map((part) => (part === "" ? undefined : Number(part))),
+    [signature],
+  );
+  const { now } = useClock(servedAt, stable.map((at) => deadlineOf(at, windowMs)));
+  return stable.map((at) => isStale({ now, at, windowMs }));
 }
 
 export function useConfirmedStale(stale: boolean, validating: boolean, settled = true): boolean {
@@ -119,11 +134,10 @@ export function useLiveChargingFeed<T extends ChargingFeed>(
   feed: T | undefined,
   { validating, servedAt }: StatusTiming,
 ): T | undefined {
-  const { now, settled } = useClock(
-    servedAt,
+  const { now, settled } = useClock(servedAt, [
     feed ? deadlineOf(feed.lastSeenAt, feed.heartbeatWindowMs) : null,
     feed ? deadlineOf(feed.pushedAt, feed.staleAfterMs) : null,
-  );
+  ]);
   const clockStale = useConfirmedStale(
     feed ? chargingFeedClockStale(feed, now) : false,
     validating,

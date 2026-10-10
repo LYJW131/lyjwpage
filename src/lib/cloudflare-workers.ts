@@ -3,6 +3,7 @@ import {
   CLOUDFLARE_WORKERS,
   type CloudflareDeploymentsPayload,
   type CloudflareMetricsPayload,
+  type CloudflareWorkerName,
   type CloudflareWorkersPayload,
   type WorkerDeployment,
 } from "@/lib/cloudflare-workers-types";
@@ -147,14 +148,24 @@ export function parseVersionList(raw: unknown): { id: string; number: number }[]
 const VERSION_LOOKBACK = 8;
 const BUILDS_BATCH = 10;
 
-export async function fetchWorkerDeployments(account: string, token: string): Promise<(WorkerDeployment | null)[]> {
+export type WorkerDeploymentAttempt =
+  | { name: CloudflareWorkerName; ok: true; deployment: WorkerDeployment | null }
+  | { name: CloudflareWorkerName; ok: false; error: string };
+
+function attemptError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function fetchWorkerDeploymentAttempts(account: string, token: string): Promise<WorkerDeploymentAttempt[]> {
   const request = apiRequest(account, token);
   const scripts = `/accounts/${encodeURIComponent(account)}/workers/scripts`;
   const [deployments, versions] = await Promise.all([
-    Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }) => {
+    Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }): Promise<WorkerDeploymentAttempt> => {
       try {
-        return parseWorkerDeployment(await request(`${scripts}/${name}/deployments`));
-      } catch { return null; }
+        return { name, ok: true, deployment: parseWorkerDeployment(await request(`${scripts}/${name}/deployments`)) };
+      } catch (error) {
+        return { name, ok: false, error: attemptError(error) };
+      }
     })),
     // 改密钥、控制台上传生成的版本没有构建记录，但代码和它前一个版本一样：
     // 顺着版本号往前找最近一个有构建的。列表查不到只是没有这条回退。
@@ -165,7 +176,7 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
     })),
   ]);
   const versionIds = [...new Set([
-    ...deployments.flatMap((deployment) => deployment?.versions.map((version) => version.id) ?? []),
+    ...deployments.flatMap((attempt) => attempt.ok ? attempt.deployment?.versions.map((version) => version.id) ?? [] : []),
     ...versions.flat().map((version) => version.id),
   ])];
   if (!versionIds.length) return deployments;
@@ -178,17 +189,22 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
       .then((raw) => { for (const [id, commit] of parseBuildsByVersion(raw)) commits.set(id, commit); })
       .catch(() => undefined),
   ));
-  return deployments.map((deployment, i) => {
-    if (!deployment) return deployment;
+  return deployments.map((attempt, i) => {
+    if (!attempt.ok || !attempt.deployment) return attempt;
+    const deployment = attempt.deployment;
     const active = [...deployment.versions].sort((a, b) => b.percentage - a.percentage);
     const direct = active.map((version) => commits.get(version.id)).find((item) => item != null);
-    if (direct) return { ...deployment, commit: direct };
+    if (direct) return { ...attempt, deployment: { ...deployment, commit: direct } };
     const current = versions[i].find((version) => version.id === active[0]?.id);
     const previous = current
       ? versions[i].filter((version) => version.number < current.number).map((version) => commits.get(version.id)).find((item) => item != null)
       : undefined;
-    return { ...deployment, commit: previous ?? null };
+    return { ...attempt, deployment: { ...deployment, commit: previous ?? null } };
   });
+}
+
+export async function fetchWorkerDeployments(account: string, token: string): Promise<(WorkerDeployment | null)[]> {
+  return (await fetchWorkerDeploymentAttempts(account, token)).map((attempt) => (attempt.ok ? attempt.deployment : null));
 }
 
 export async function getCloudflareWorkers(): Promise<LagResult<CloudflareWorkersPayload>> {
@@ -198,16 +214,21 @@ export async function getCloudflareWorkers(): Promise<LagResult<CloudflareWorker
   ]);
   if (!metrics && !deployments) throw new AwaitingReport("Waiting for the first Workers check");
   const metricsByName = new Map(metrics?.data.workers.map((worker) => [worker.name, worker.metrics]));
-  const deploymentByName = new Map(deployments?.data.workers.map((worker) => [worker.name, worker.deployment]));
+  const deploymentByName = new Map(deployments?.data.workers.map((worker) => [worker.name, worker]));
+  const deploymentsFetchedAt = deployments?.data.fetchedAt ?? null;
   return new LagResult<CloudflareWorkersPayload>({
     fetchedAt: metrics?.data.fetchedAt ?? null,
     windowStart: metrics?.data.windowStart ?? null,
     windowEnd: metrics?.data.windowEnd ?? null,
-    deploymentsFetchedAt: deployments?.data.fetchedAt ?? null,
-    workers: CLOUDFLARE_WORKERS.map(({ name }) => ({
-      name,
-      metrics: metricsByName.get(name) ?? null,
-      deployment: deploymentByName.get(name) ?? null,
-    })),
+    deploymentsFetchedAt,
+    workers: CLOUDFLARE_WORKERS.map(({ name }) => {
+      const stored = deploymentByName.get(name);
+      return {
+        name,
+        metrics: metricsByName.get(name) ?? null,
+        deployment: stored?.deployment ?? null,
+        deploymentObservedAt: stored ? (typeof stored.observedAt === "number" ? stored.observedAt : deploymentsFetchedAt) : null,
+      };
+    }),
   }, Math.max(metrics?.updatedAt ?? 0, deployments?.updatedAt ?? 0));
 }
