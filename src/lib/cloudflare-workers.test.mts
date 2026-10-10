@@ -72,7 +72,7 @@ test("deployment permission failure preserves metrics and sends credentials only
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
   assert.equal(calls.length, 7);
   assert.equal(metrics.workers[0].metrics?.requests, 20);
-  assert.deepEqual(deployments, [null, null, null]);
+  assert.ok(deployments.every((row) => row.deployment === null && row.error));
   assert.doesNotMatch(JSON.stringify({ metrics, deployments }), /test-secret|test-account/);
 });
 
@@ -97,8 +97,9 @@ test("deployments join the commit of the highest-traffic version in one batched 
   });
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
   assert.equal(calls.length, 7);
-  assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: x" });
-  assert.deepEqual(deployments.slice(1), [null, null]);
+  assert.equal(deployments[0].error, null);
+  assert.deepEqual(deployments[0].deployment?.commit, { sha, branch: "main", message: "feat: x" });
+  assert.ok(deployments.slice(1).every((row) => row.deployment === null && row.error));
 });
 
 test("a deployed version without a build record borrows the commit of the previous built version", async (t) => {
@@ -126,8 +127,45 @@ test("a deployed version without a build record borrows the commit of the previo
     return Response.json({ success: false }, { status: 403 });
   });
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: y" });
-  assert.equal(deployments[0]?.versions[0].id, "secret-v");
+  assert.equal(deployments[0].error, null);
+  assert.deepEqual(deployments[0].deployment?.commit, { sha, branch: "main", message: "feat: y" });
+  assert.equal(deployments[0].deployment?.versions[0].id, "secret-v");
+});
+
+test("a failed builds query keeps the deployment instead of dropping the round", async (t) => {
+  const warnings: string[] = [];
+  t.mock.method(console, "warn", (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); });
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("/builds/builds?")) return new Response("", { status: 200 });
+    if (url.includes("/deployments")) {
+      return Response.json({ success: true, result: { deployments: [
+        { created_on: "2026-09-11T00:00:00Z", versions: [{ version_id: "v1", percentage: 100 }] },
+      ] } });
+    }
+    return Response.json({ success: true, result: { items: [] } });
+  });
+  const deployments = await fetchWorkerDeployments("test-account", "test-secret");
+  assert.equal(deployments[0].error, null);
+  assert.equal(deployments[0].deployment?.versions[0].id, "v1");
+  assert.equal(deployments[0].deployment?.commit, null);
+  assert.ok(warnings.some((line) => line.includes("构建查询失败")));
+});
+
+test("an empty body or a timeout is a failed read, a confirmed empty list is not", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("/workers/scripts/api/deployments")) return new Response("", { status: 200 });
+    if (url.includes("/workers/scripts/ingress/deployments")) throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    if (url.includes("/workers/scripts/collector/deployments")) return Response.json({ success: true, result: { deployments: [] } });
+    return Response.json({ success: false }, { status: 403 });
+  });
+  const deployments = await fetchWorkerDeployments("test-account", "test-secret");
+  assert.equal(deployments[0].deployment, null);
+  assert.match(deployments[0].error ?? "", /JSON|json|Unexpected/i);
+  assert.equal(deployments[1].deployment, null);
+  assert.match(deployments[1].error ?? "", /timeout|aborted/i);
+  assert.deepEqual(deployments[2], { deployment: null, error: null });
 });
 
 test("the public payload joins metrics and deployments by name, each half with its own time", async (t) => {

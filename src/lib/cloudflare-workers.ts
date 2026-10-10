@@ -147,14 +147,21 @@ export function parseVersionList(raw: unknown): { id: string; number: number }[]
 const VERSION_LOOKBACK = 8;
 const BUILDS_BATCH = 10;
 
-export async function fetchWorkerDeployments(account: string, token: string): Promise<(WorkerDeployment | null)[]> {
+export type WorkerDeploymentFetch = {
+  deployment: WorkerDeployment | null;
+  error: string | null;
+};
+
+export async function fetchWorkerDeployments(account: string, token: string): Promise<WorkerDeploymentFetch[]> {
   const request = apiRequest(account, token);
   const scripts = `/accounts/${encodeURIComponent(account)}/workers/scripts`;
   const [deployments, versions] = await Promise.all([
-    Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }) => {
+    Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }): Promise<WorkerDeploymentFetch> => {
       try {
-        return parseWorkerDeployment(await request(`${scripts}/${name}/deployments`));
-      } catch { return null; }
+        return { deployment: parseWorkerDeployment(await request(`${scripts}/${name}/deployments`)), error: null };
+      } catch (error) {
+        return { deployment: null, error: error instanceof Error ? error.message : String(error) };
+      }
     })),
     // 改密钥、控制台上传生成的版本没有构建记录，但代码和它前一个版本一样：
     // 顺着版本号往前找最近一个有构建的。列表查不到只是没有这条回退。
@@ -165,7 +172,7 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
     })),
   ]);
   const versionIds = [...new Set([
-    ...deployments.flatMap((deployment) => deployment?.versions.map((version) => version.id) ?? []),
+    ...deployments.flatMap((row) => row.deployment?.versions.map((version) => version.id) ?? []),
     ...versions.flat().map((version) => version.id),
   ])];
   if (!versionIds.length) return deployments;
@@ -176,18 +183,20 @@ export async function fetchWorkerDeployments(account: string, token: string): Pr
     request(`/accounts/${encodeURIComponent(account)}/builds/builds?version_ids=${
       versionIds.slice(i * BUILDS_BATCH, (i + 1) * BUILDS_BATCH).map(encodeURIComponent).join(",")}`)
       .then((raw) => { for (const [id, commit] of parseBuildsByVersion(raw)) commits.set(id, commit); })
-      .catch(() => undefined),
+      .catch((error: unknown) => {
+        console.warn("[cloudflare-deployments] 构建查询失败：", error instanceof Error ? error.message : String(error));
+      }),
   ));
-  return deployments.map((deployment, i) => {
-    if (!deployment) return deployment;
-    const active = [...deployment.versions].sort((a, b) => b.percentage - a.percentage);
+  return deployments.map((row, i) => {
+    if (!row.deployment) return row;
+    const active = [...row.deployment.versions].sort((a, b) => b.percentage - a.percentage);
     const direct = active.map((version) => commits.get(version.id)).find((item) => item != null);
-    if (direct) return { ...deployment, commit: direct };
+    if (direct) return { deployment: { ...row.deployment, commit: direct }, error: null };
     const current = versions[i].find((version) => version.id === active[0]?.id);
     const previous = current
       ? versions[i].filter((version) => version.number < current.number).map((version) => commits.get(version.id)).find((item) => item != null)
       : undefined;
-    return { ...deployment, commit: previous ?? null };
+    return { deployment: { ...row.deployment, commit: previous ?? null }, error: null };
   });
 }
 

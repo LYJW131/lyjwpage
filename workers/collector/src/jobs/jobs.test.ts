@@ -3,6 +3,8 @@ import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 import type { AgentStatusPayload, AgentStatusRow } from "@/lib/agent-status-types";
+import type { WorkerDeploymentFetch } from "@/lib/cloudflare-workers";
+import type { CloudflareDeploymentsPayload, WorkerDeployment } from "@/lib/cloudflare-workers-types";
 import { PAGESPEED_TIMEOUT_MS } from "@/lib/pagespeed";
 import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@/lib/sentry-status";
 import type { SentryStatusPayload } from "@/lib/sentry-status-types";
@@ -10,6 +12,7 @@ import type { GithubRepoPayload } from "@/lib/types";
 import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
 
 import { MemoryKv } from "../testing/memory-kv";
+import { refreshCloudflareDeployments } from "./cloudflare";
 import { mergeRepoStats } from "./github-repo";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
@@ -142,4 +145,78 @@ test("sentry status carries a failed block with its own time, and only for a whi
 
 test("pagespeed waits per request for less than the job's runtime budget", () => {
   assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
+});
+
+function workerDeployment(id: string): WorkerDeployment {
+  return { deployedAt: 1, versions: [{ id, percentage: 100 }], commit: null };
+}
+
+function deploymentPayload(ids: Record<"api" | "ingress" | "collector", string | null>, fetchedAt = 10): CloudflareDeploymentsPayload {
+  return {
+    fetchedAt,
+    workers: (["api", "ingress", "collector"] as const).map((name) => ({
+      name,
+      deployment: ids[name] == null ? null : workerDeployment(ids[name]),
+    })),
+  };
+}
+
+test("cloudflare deployments keep the last good cell when one read fails, and clear a confirmed empty list", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const lag = new MemoryKv();
+  await writeLag(lag, LAG_KEYS.cloudflareDeployments, deploymentPayload({ api: "api-v", ingress: "ing-v", collector: "col-v" }), 10);
+  const fetched: WorkerDeploymentFetch[] = [
+    { deployment: workerDeployment("api-v2"), error: null },
+    { deployment: null, error: "The operation was aborted due to timeout" },
+    { deployment: null, error: null },
+  ];
+  const { failed } = await refreshCloudflareDeployments(lag, async () => fetched, 20);
+  assert.deepEqual(failed, ["ingress"]);
+  const stored = await readLag<CloudflareDeploymentsPayload>(lag, LAG_KEYS.cloudflareDeployments);
+  assert.equal(stored?.updatedAt, 20);
+  assert.equal(stored?.data.fetchedAt, 20);
+  assert.equal(stored?.data.workers[0].deployment?.versions[0].id, "api-v2");
+  assert.equal(stored?.data.workers[1].deployment?.versions[0].id, "ing-v");
+  assert.equal(stored?.data.workers[2].deployment, null);
+});
+
+test("cloudflare deployments keep a commit for the same version when this round did not get one", async () => {
+  const lag = new MemoryKv();
+  const sha = "ab".repeat(20);
+  const previous = deploymentPayload({ api: "api-v", ingress: "ing-v", collector: "col-v" });
+  previous.workers[0].deployment = { ...workerDeployment("api-v"), commit: { sha, branch: "main", message: "feat" } };
+  previous.workers[1].deployment = { ...workerDeployment("ing-v"), commit: { sha, branch: "main", message: "feat" } };
+  previous.workers[2].deployment = { ...workerDeployment("col-v"), commit: { sha, branch: "main", message: "old" } };
+  await writeLag(lag, LAG_KEYS.cloudflareDeployments, previous, 10);
+  const { failed } = await refreshCloudflareDeployments(lag, async () => [
+    { deployment: { ...workerDeployment("api-v"), deployedAt: 2, commit: { sha, branch: "main", message: "feat 2" } }, error: null },
+    { deployment: { ...workerDeployment("ing-v"), deployedAt: 3 }, error: null },
+    { deployment: workerDeployment("col-v2"), error: null },
+  ], 20);
+  assert.deepEqual(failed, []);
+  const stored = (await readLag<CloudflareDeploymentsPayload>(lag, LAG_KEYS.cloudflareDeployments))?.data.workers;
+  assert.equal(stored?.[0].deployment?.commit?.message, "feat 2");
+  assert.equal(stored?.[0].deployment?.deployedAt, 2);
+  assert.equal(stored?.[1].deployment?.commit?.message, "feat");
+  assert.equal(stored?.[1].deployment?.deployedAt, 3);
+  assert.equal(stored?.[2].deployment?.versions[0].id, "col-v2");
+  assert.equal(stored?.[2].deployment?.commit, null);
+});
+
+test("cloudflare deployments do not write when every worker read fails", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const lag = new MemoryKv();
+  await writeLag(lag, LAG_KEYS.cloudflareDeployments, deploymentPayload({ api: "api-v", ingress: null, collector: null }), 10);
+  const failedRead = (error: string): WorkerDeploymentFetch => ({ deployment: null, error });
+  await assert.rejects(
+    refreshCloudflareDeployments(lag, async () => [
+      failedRead("Cloudflare 查询失败 (500)"),
+      failedRead("Unexpected end of JSON input"),
+      failedRead("The operation was aborted due to timeout"),
+    ], 30),
+    /一个都没取到/,
+  );
+  const stored = await readLag<CloudflareDeploymentsPayload>(lag, LAG_KEYS.cloudflareDeployments);
+  assert.equal(stored?.updatedAt, 10);
+  assert.equal(stored?.data.workers[0].deployment?.versions[0].id, "api-v");
 });
