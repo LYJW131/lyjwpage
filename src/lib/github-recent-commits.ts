@@ -61,10 +61,10 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
         if (!response.ok || !result.data?.repository) throw new Error("GitHub authors unavailable");
         shas.forEach((sha, i) => {
           const nodes = result.data?.repository?.[`c${i}`]?.authors?.nodes;
-          if (nodes?.length) githubAuthors.set(sha, nodes.map(author => ({
+          if (nodes?.length) githubAuthors.set(sha, mergeAuthors(null, nodes.map(author => ({
             name: author.user?.login ?? author.name, login: author.user?.login ?? null,
             avatarUrl: author.avatarUrl, agent: null,
-          })));
+          }))));
         });
       } catch (error) {
         console.error("[github-commits] authors", error instanceof Error ? error.message : String(error));
