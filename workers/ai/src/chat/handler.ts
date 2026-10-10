@@ -26,7 +26,7 @@ import { toModelMessages } from "./history";
 import { issuePass, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { admitDesign, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
-import { designApi, designTurn, type DesignTurnInput } from "./designer";
+import { designApi, designTurn, turnMatches, type DesignTurnInput } from "./designer";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
@@ -126,7 +126,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const enforce = devSwitch(env, "CHAT_RATE_LIMIT") !== "off";
   let design: { session: GodChatDesign; sessionId: string } | undefined;
   if (parsed.designToken) {
-    const admitted = await admitDesign(env, parsed.designToken);
+    const admitted = await admitDesign(env, parsed.designToken, parsed.resume);
     if ("error" in admitted) return fail(admitted.status, admitted.error, undefined, admitted.code);
     design = { session: admitted.session, sessionId: admitted.sessionId };
   } else {
@@ -167,6 +167,9 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const effort = (tier === wanted && decision.effort) || GOD_CHAT_TIER_INFO[tier].effort;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
   const api = designApi(client, env);
+  if (parsed.resume && (!design || !turnMatches(await api.turn(design.sessionId), latest))) {
+    return fail(409, "The interrupted reply could not be recovered. Send your message again.", undefined, "nothing_to_resume");
+  }
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       let reply = "";
@@ -180,7 +183,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       const plan = (sessionId: string, input: DesignTurnInput, views: string[] = []) => planTurn({ api, env, io, sessionId, input, views, emit, signal: abort.signal });
       try {
         let outcome: { complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string };
-        if (design) outcome = await plan(design.sessionId, { kind: "reply", text: latest });
+        if (design) outcome = await plan(design.sessionId, parsed.resume ? { kind: "resume" } : { kind: "reply", text: latest });
         else {
           const note = tier !== wanted && isGodChatTier(tier) ? downgradeNote(wanted, tier) : undefined;
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;

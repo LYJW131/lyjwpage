@@ -4,6 +4,7 @@ import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
+import { withPreviewShare } from "./preview-share";
 import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestAgentReviews } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
@@ -100,7 +101,7 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
   if (!run) return fail(404, "Build not found.");
   if (run.state.pr && !["merged", "closed"].includes(run.state.phase) && (!run.state.reconciledAt || Date.now() - run.state.reconciledAt >= BUILD_RECONCILE_MS) && await coordinator.claimReconcile(runId)) {
     try {
-      const patch = await reconcileBuild(await installationApi(env, fetcher, true), run.state);
+      const patch = await withPreviewShare(env, run.state, await reconcileBuild(await installationApi(env, fetcher, true), run.state), fetcher);
       const state = await coordinator.updateRun(runId, patch, run.state.pr.headSha);
       return Response.json(state, { headers: noStore });
     } catch { /* Preserve the last observed facts when GitHub is unreachable. */ }

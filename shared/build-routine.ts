@@ -31,6 +31,8 @@ export type BuildRun = {
   ci?: BuildSignal;
   preview?: BuildSignal;
   review?: BuildSignal;
+  // Vercel 预览的公开分享链接：preview.url 在部署成功后换成 url；expiresAt 为 epoch 毫秒。
+  previewShare?: { deploymentId: string; url: string; expiresAt: number };
   reconciledAt?: number;
   githubUpdatedAt?: number;
 };
