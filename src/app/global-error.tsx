@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
 
+import { SkipLink } from "@/components/skip-link";
+
 import "./globals.css";
 
 const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(t==="dark"||((!t||t==="system")&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}`;
@@ -27,8 +29,10 @@ export default function GlobalError({
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body className="flex min-h-full flex-col items-center justify-center bg-background px-4 text-foreground">
-        <div className="paper-card w-full max-w-md rounded-lg border border-line-strong bg-surface p-6 text-center sm:p-8">
+      <body className="flex min-h-full flex-col bg-background text-foreground">
+        <SkipLink />
+        <main id="content" tabIndex={-1} className="flex flex-1 items-center justify-center px-4">
+          <div className="paper-card w-full max-w-md rounded-lg border border-line-strong bg-surface p-6 text-center sm:p-8">
           <div className="label-mono text-xs text-muted-foreground">500 / SYSTEM ERROR</div>
           <h1 className="mt-2 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
             Service temporarily unavailable
@@ -51,7 +55,8 @@ export default function GlobalError({
               Back to home
             </Link>
           </div>
-        </div>
+          </div>
+        </main>
       </body>
     </html>
   );

@@ -6,8 +6,14 @@ import { useReducedMotion } from "motion/react";
 import { site } from "@/lib/site";
 
 // Next 同路由导航不会滚到顶，需要自行处理首页点击。
-export function HomeLink() {
+export function HomeLink({ heading = false }: { heading?: boolean }) {
   const reduced = useReducedMotion();
+  const label = (
+    <>
+      <span className="sm:hidden">{site.shortName}</span>
+      <span className="hidden sm:inline">{site.name}</span>
+    </>
+  );
   return (
     <Link
       href="/"
@@ -20,8 +26,7 @@ export function HomeLink() {
         window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
       }}
     >
-      <span className="sm:hidden">{site.shortName}</span>
-      <span className="hidden sm:inline">{site.name}</span>
+      {heading ? <h1 className="inline">{label}</h1> : label}
     </Link>
   );
 }

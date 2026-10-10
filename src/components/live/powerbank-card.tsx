@@ -186,7 +186,7 @@ export function PowerBankCard({
               <div className="h-3.5 shrink-0 overflow-hidden border border-line bg-muted/40">
                 <div
                   className={cn(
-                    "h-full transition-[width] duration-700",
+                    "h-full transition-[width] duration-700 motion-reduce:transition-none",
                     !connected
                       ? "bg-live-off"
                       : limited
@@ -284,7 +284,7 @@ export function PowerBankCard({
                 <div className="h-1.5 min-w-0 flex-1 overflow-hidden border border-line bg-muted/40">
                   <div
                     className={cn(
-                      "h-full transition-[width] duration-700",
+                      "h-full transition-[width] duration-700 motion-reduce:transition-none",
                       !connected
                         ? "bg-live-off"
                         : limited

@@ -18,7 +18,7 @@ export function Header({
       <div className="mx-auto w-[calc(100%-2rem)] max-w-5xl py-3 sm:py-4">
         {/* 徽章脱离文档流，避免应用名宽度变化推动两侧并产生 CLS。 */}
         <div className="relative grid min-h-10 grid-cols-2 items-center gap-3">
-          <HomeLink />
+          <HomeLink heading />
           <div className="flex items-center gap-2 justify-self-end">
             <MiniPlayer />
             <ThemeToggle />

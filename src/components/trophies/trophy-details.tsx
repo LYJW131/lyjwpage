@@ -39,7 +39,6 @@ export function warmTileAttributes(titleIds: readonly string[]) {
 
 const MIN_ROW_HEIGHT_PX = 56;
 const SETTLE_DELAY_MS = 110;
-const SUSPEND_AFTER_CHANGE_MS = 500;
 
 const FLASH_MS = 1000;
 
@@ -187,16 +186,13 @@ export function useTrophyCatalog(titleIds: string[] | null) {
   };
 }
 
-function useRowSnap(topKey: string | undefined) {
+function useTrophyScrollReset(topKey: string | undefined) {
   const node = useRef<HTMLDivElement | null>(null);
   const previous = useRef(topKey);
-  const suspendUntil = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useIsomorphicLayoutEffect(() => {
     if (previous.current === topKey) return;
     previous.current = topKey;
-    suspendUntil.current = Date.now() + SUSPEND_AFTER_CHANGE_MS;
 
     const el = node.current;
     if (!el || el.scrollTop === 0) return;
@@ -208,25 +204,6 @@ function useRowSnap(topKey: string | undefined) {
 
   return useCallback((el: HTMLDivElement | null) => {
     node.current = el;
-    if (!el) return;
-
-    const onScroll = () => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        if (Date.now() < suspendUntil.current) return;
-        const rowHeight = el.clientHeight / VISIBLE_ROWS;
-        const target = Math.round(el.scrollTop / rowHeight) * rowHeight;
-        if (Math.abs(target - el.scrollTop) < 0.5) return;
-        el.scrollTo({ top: target, behavior: "smooth" });
-      }, SETTLE_DELAY_MS);
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (timer.current) clearTimeout(timer.current);
-      node.current = null;
-    };
   }, []);
 }
 
@@ -414,8 +391,8 @@ function TrophyViewport({
         role="region"
         aria-label="Trophies"
         className={cn(
-          "absolute inset-0 grid overflow-y-auto",
-          "scroll-smooth overscroll-y-contain [overflow-anchor:none]",
+          "absolute inset-0 grid snap-y snap-mandatory overflow-y-auto",
+          "scroll-auto overscroll-y-contain [overflow-anchor:none]",
           "scrollbar-none [&::-webkit-scrollbar]:hidden",
         )}
         style={{ gridAutoRows: `calc(100% / ${VISIBLE_ROWS})` }}
@@ -478,15 +455,15 @@ export function TrophyExpand({
           }))
         : [],
     ) ?? [];
-  const snapRef = useRowSnap(trophies?.[0]?.key);
+  const snapRef = useTrophyScrollReset(trophies?.[0]?.key);
   const viewport = useRef<HTMLDivElement | null>(null);
   const listRef = useCallback(
     (el: HTMLDivElement | null) => {
       viewport.current = el;
-      const detach = snapRef(el);
+      snapRef(el);
       return () => {
         viewport.current = null;
-        detach?.();
+        snapRef(null);
       };
     },
     [snapRef],
@@ -564,7 +541,7 @@ export function TrophyExpand({
           <div
             key={row.key}
             className={cn(
-              "min-w-0 rounded-md",
+              "min-w-0 snap-start rounded-md",
               row.key === flashKey && (reduced ? "bg-surface-hover" : "animate-trophy-focus"),
             )}
           >

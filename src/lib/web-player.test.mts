@@ -14,13 +14,14 @@ import {
   PLAYLIST_EXTRA_HEIGHT_PX,
   PLAYLIST_MAX_HEIGHT_PX,
   PLAYLIST_PADDING_Y_PX,
+  PLAYLIST_MAX_VISIBLE_ROWS,
   PLAYLIST_ROW_HEIGHT_PX,
+  playlistScrollportHeight,
   queueOptionsFor,
   resetMusicAuthStateForTesting,
   resolveVisibleQueue,
   setCachedPlaylist,
   setMusicAuthSnapshot,
-  snapPlaylistScrollTop,
   subscribeMusicAuth,
 } from "./web-player.ts";
 
@@ -95,18 +96,15 @@ test("computePlaylistHeight: 曲目高度按每行 32px 加上内边距与边框
   assert.equal(computePlaylistHeight(30), PLAYLIST_MAX_HEIGHT_PX);
 });
 
-test("snapPlaylistScrollTop: 停滚时吸附到最近的 32px 整行并限制在合法滚动区间内", () => {
-  assert.equal(snapPlaylistScrollTop(0, 736), 0);
-  assert.equal(snapPlaylistScrollTop(15, 736), 0);
-  assert.equal(snapPlaylistScrollTop(16, 736), 32);
-  assert.equal(snapPlaylistScrollTop(30, 736), 32);
-  assert.equal(snapPlaylistScrollTop(47, 736), 32);
-  assert.equal(snapPlaylistScrollTop(48, 736), 64);
-  assert.equal(snapPlaylistScrollTop(730, 736), 736);
-  assert.equal(snapPlaylistScrollTop(800, 736), 736);
-  assert.equal(snapPlaylistScrollTop(-20, 736), 0);
-  assert.equal(snapPlaylistScrollTop(50, 0), 0);
-  assert.equal(snapPlaylistScrollTop(50, -10), 0);
+test("playlistScrollportHeight: 滚动口是整行的整数倍，内边距和边框留在外面", () => {
+  assert.equal(playlistScrollportHeight(0), 0);
+  assert.equal(playlistScrollportHeight(-5), 0);
+  assert.equal(playlistScrollportHeight(1), PLAYLIST_ROW_HEIGHT_PX);
+  assert.equal(playlistScrollportHeight(6), 6 * PLAYLIST_ROW_HEIGHT_PX);
+  assert.equal(playlistScrollportHeight(6) % PLAYLIST_ROW_HEIGHT_PX, 0);
+  assert.equal(playlistScrollportHeight(15), PLAYLIST_MAX_VISIBLE_ROWS * PLAYLIST_ROW_HEIGHT_PX);
+  assert.equal(computePlaylistHeight(6), playlistScrollportHeight(6) + PLAYLIST_EXTRA_HEIGHT_PX);
+  assert.equal(PLAYLIST_MAX_HEIGHT_PX, playlistScrollportHeight(7) + PLAYLIST_EXTRA_HEIGHT_PX);
 });
 
 test("playlistCache: 设置与获取缓存，清空后恢复未命中", () => {

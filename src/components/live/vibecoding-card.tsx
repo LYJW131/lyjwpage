@@ -678,7 +678,7 @@ function LimitMeter({
       </div>
       <UsageMeter href={href} label={label}>
         <div
-          className="h-full transition-[width] duration-700"
+          className="h-full transition-[width] duration-700 motion-reduce:transition-none"
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
         {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
@@ -966,7 +966,7 @@ function CompactAgentRow({
       <UsageMeter href={usageUrl} label={agentUsageLabel(row.label)}>
         {usedPercent != null && (
           <div
-            className="h-full transition-[width] duration-700"
+            className="h-full transition-[width] duration-700 motion-reduce:transition-none"
             style={{ width: `${usedPercent}%`, backgroundColor: color }}
           />
         )}

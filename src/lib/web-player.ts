@@ -30,18 +30,15 @@ export function clearPlaylistCache(): void {
   playlistCache.clear();
 }
 
-export function computePlaylistHeight(itemCount: number): number {
+export function playlistScrollportHeight(itemCount: number): number {
   if (itemCount <= 0) return 0;
-  return Math.min(
-    PLAYLIST_MAX_HEIGHT_PX,
-    itemCount * PLAYLIST_ROW_HEIGHT_PX + PLAYLIST_EXTRA_HEIGHT_PX,
-  );
+  return Math.min(itemCount, PLAYLIST_MAX_VISIBLE_ROWS) * PLAYLIST_ROW_HEIGHT_PX;
 }
 
-export function snapPlaylistScrollTop(scrollTop: number, maxScroll: number): number {
-  if (maxScroll <= 0) return 0;
-  const target = Math.round(scrollTop / PLAYLIST_ROW_HEIGHT_PX) * PLAYLIST_ROW_HEIGHT_PX;
-  return Math.min(maxScroll, Math.max(0, target));
+export function computePlaylistHeight(itemCount: number): number {
+  const scrollport = playlistScrollportHeight(itemCount);
+  if (scrollport <= 0) return 0;
+  return scrollport + PLAYLIST_EXTRA_HEIGHT_PX;
 }
 
 export function hasPersistedMusicUserToken(): boolean {

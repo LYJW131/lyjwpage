@@ -36,6 +36,8 @@ import type { LighthouseVitals, VercelDeployment, VercelDeploymentsPayload } fro
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
+// 首列放下 Desktop。列间距收窄，避免六列指标被挤掉末位。
+const PERF_ROW = "grid-cols-[3rem_repeat(6,minmax(0,1fr))] gap-x-0.5 lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:gap-x-1";
 const time = new Intl.DateTimeFormat("zh-CN", { timeZone: site.timezone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : ms < 10 ? `${Number(ms.toFixed(1))}ms` : `${Math.round(ms)}ms`;
 
@@ -191,14 +193,14 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
-          <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[9px] text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-[10px]">
+          <div className={cn("grid items-center text-right text-[9px] text-muted-foreground lg:text-[10px]", PERF_ROW)}>
             <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "Unavailable" : undefined}>{measured}</span>
             <span title="Lighthouse performance score, lab run on a simulated device">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}
           </div>
           {(["desktop", "mobile"] as const).map(device => {
             const score = pagespeed?.[device].score;
-            return <div key={device} className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs">
-              <span className="text-left text-[11px] text-muted-foreground">{device === "desktop" ? "Desktop" : "Mobile"}</span>
+            return <div key={device} className={cn("grid h-11 items-center text-right text-[10px] tabular-nums lg:text-xs", PERF_ROW)}>
+              <span className="truncate text-left text-[11px] text-muted-foreground">{device === "desktop" ? "Desktop" : "Mobile"}</span>
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}>{score ?? "—"}</span>
               {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
             </div>;
@@ -206,9 +208,9 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
           {sentry?.vitals && (() => {
             const vitals = vitalsStale ? null : sentry.vitals;
             const field = fieldValues(vitals), samples = vitals?.samples, score = vitals ? fieldPerformanceScore(vitals) : null;
-            return <div className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs"
+            return <div className={cn("grid h-11 items-center text-right text-[10px] tabular-nums lg:text-xs", PERF_ROW)}
               title={vitalsStale ? "Real visitors via Sentry · unavailable" : samples ? `Real visitors via Sentry · p75 of ${number.format(samples)} page loads, last 7 days` : "Real visitors via Sentry · no page loads sampled yet"}>
-              <span className="text-left text-[11px] text-muted-foreground">Users</span>
+              <span className="truncate text-left text-[11px] text-muted-foreground">Users</span>
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}
                 title="Web Vitals score of real visitors: LCP 30%, INP 30%, CLS 15%, FCP 15%, TTFB 10%, from 7-day p75">{score ?? "—"}</span>
               {vitalRows.map(row => <span key={row.key}>{vital(field[row.key], row.unit)}</span>)}

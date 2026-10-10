@@ -2,7 +2,7 @@
 
 import NumberFlow from "@number-flow/react";
 import { CircleQuestionMark } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
 import { useOnlineCount } from "@/hooks/use-online-count";
@@ -42,37 +42,59 @@ export function OnlineCount() {
 function SourceHint({ connected }: { connected: boolean }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLSpanElement>(null);
+  const panelId = useId();
 
   useEffect(() => {
     if (!open) return;
+    panelRef.current?.focus();
+    const rootEl = root.current;
     const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      if (!rootEl?.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    const onFocusOut = (event: FocusEvent) => {
+      const next = event.relatedTarget;
+      if (next instanceof Node && rootEl?.contains(next)) return;
+      setOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    rootEl?.addEventListener("focusout", onFocusOut);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      rootEl?.removeEventListener("focusout", onFocusOut);
     };
   }, [open]);
 
   return (
     <span ref={root} className="relative inline-flex">
       <button
+        ref={buttonRef}
         type="button"
         aria-label="Data source"
         aria-expanded={open}
+        aria-controls={panelId}
         onClick={() => setOpen((prev) => !prev)}
-        className="-m-2 p-2 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+        className="-m-2 p-2 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:text-foreground"
       >
         <CircleQuestionMark className="size-3.5" aria-hidden />
       </button>
 
       {open && (
-        <span className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-line bg-surface p-3">
+        <span
+          ref={panelRef}
+          id={panelId}
+          tabIndex={-1}
+          role="note"
+          className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-line bg-surface p-3 outline-none"
+        >
           <span className="label-mono block text-foreground">Data source</span>
           <span className="mt-2 block text-xs normal-case leading-relaxed text-muted-foreground">
             Counts foreground WebSocket connections live on a Cloudflare Workers Durable Object, across the Vercel production site and every preview build.

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -18,6 +18,7 @@ export const LYRIC_LINE_VARIANTS = {
 };
 
 export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalNowPlaying }) {
+  const reduced = useReducedMotion();
   const ref = useRef<HTMLSpanElement>(null);
   const maxAtRef = useRef<number>(0);
   const { state, observedAt, positionMs, durationMs, repeatOne, trackId } = track;
@@ -31,7 +32,7 @@ export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalN
     if (!node) return;
     const anchor = { state, observedAt, positionMs, durationMs, repeatOne };
 
-    const paint = () => {
+    const paint = (stepped: boolean) => {
       const at = trackPositionMs(anchor, Date.now());
       let currentAt = at;
       if (state === "playing") {
@@ -57,13 +58,14 @@ export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalN
               ? 1
               : 0
             : Math.max(0, Math.min(1, (currentAt - word.startMs) / lengthMs));
+        const sung = stepped ? ratio > 0 : ratio >= 1;
 
         if (ratio <= 0) {
           if (span.dataset.sung !== "pending") {
             span.dataset.sung = "pending";
             span.style.removeProperty("--sung");
           }
-        } else if (ratio >= 1) {
+        } else if (sung) {
           if (span.dataset.sung !== "done") {
             span.dataset.sung = "done";
             span.style.removeProperty("--sung");
@@ -75,14 +77,18 @@ export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalN
       });
     };
 
-    paint();
+    paint(Boolean(reduced));
     if (state !== "playing") return;
+    if (reduced) {
+      const timer = window.setInterval(() => paint(true), 1_000);
+      return () => window.clearInterval(timer);
+    }
     let frame = requestAnimationFrame(function loop() {
-      paint();
+      paint(false);
       frame = requestAnimationFrame(loop);
     });
     return () => cancelAnimationFrame(frame);
-  }, [words, state, observedAt, positionMs, durationMs, repeatOne]);
+  }, [words, state, observedAt, positionMs, durationMs, repeatOne, reduced]);
 
   return (
     <span ref={ref}>

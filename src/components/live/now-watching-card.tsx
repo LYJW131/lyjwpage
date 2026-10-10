@@ -7,6 +7,7 @@ import Image from "@/components/app-image";
 import { Card } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { usePlaybackProgressEase } from "@/hooks/use-playback-progress";
 import { useStatus } from "@/hooks/use-status";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import { NOW_WATCHING_PATH } from "@/lib/paths";
@@ -64,6 +65,7 @@ function NowWatchingHero({
   item: WatchingItem | null;
 }) {
   const { paused } = nowPlaying;
+  const reduced = useReducedMotion();
   const device = describeDevice(nowPlaying.client, nowPlaying.deviceName);
   const chips = describeMedia(nowPlaying.media);
 
@@ -96,6 +98,7 @@ function NowWatchingHero({
     position != null && duration
       ? (position / duration) * 100
       : (nowPlaying.progress ?? item?.progress ?? 0);
+  const ease = usePlaybackProgressEase(percent, duration ?? 0, 1_000, reduced);
   const image = item?.backdrop ?? item?.poster ?? null;
 
   return (
@@ -167,7 +170,10 @@ function NowWatchingHero({
           <div
             className={cn(
               "h-full",
-              paused ? "bg-muted-foreground" : "bg-live transition-[width] duration-1000 ease-linear",
+              paused ? "bg-muted-foreground" : "bg-live",
+              !paused &&
+                ease &&
+                "transition-[width] duration-700 ease-linear motion-reduce:transition-none",
             )}
             style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
           />
