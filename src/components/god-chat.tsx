@@ -10,7 +10,7 @@ import { FableDescent, type Descent } from "@/components/fable-descent";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
-import { chatConsent } from "@/lib/chat-consent";
+import { chatConsent, chatConsentLanguage, type ChatConsentLanguage } from "@/lib/chat-consent";
 import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
@@ -394,7 +394,7 @@ function Conversation({ className, archive, session: conversation }: { className
     const text = consentPending;
     setConsentPending(null);
     if (text) setDraft((current) => current || text);
-    setError("Nothing was sent. Accept the privacy notice to chat.");
+    setError(CONSENT_COPY[chatConsentLanguage(text ?? "")].declined);
   }
 
   // 卡片从紧凑高度长到视口高度时顶边不动、往下长；把顶边滚到吸顶页头下面，长完正好占满可见区域，上下各留 EDGE_GAP_PX。
@@ -716,26 +716,58 @@ function SessionList({ archive }: { archive: ChatArchive }) {
   );
 }
 
+// 站主要求隐私说明跟随访客消息的语言（中文或英文），是「界面文案英文」的例外。
+const CONSENT_COPY: Record<ChatConsentLanguage, { lang: string; label: string; intro: string; points: string[]; accept: string; decline: string; remember: string; declined: string }> = {
+  en: {
+    lang: "en",
+    label: "Privacy notice",
+    intro: "Before the oracle answers, please accept how this chat handles your data:",
+    points: [
+      "Your messages and this conversation's history are sent through this site's Cloudflare Worker to Anthropic's Claude models.",
+      "Cloudflare Turnstile checks that you're human, and your IP address counts toward rate limits.",
+      "The site keeps no transcripts; conversations are saved only in this browser.",
+      "Build plans you choose to file become public on GitHub.",
+    ],
+    accept: "Accept",
+    decline: "Decline",
+    remember: "Accepting is remembered in this browser until the chat code changes.",
+    declined: "Nothing was sent. Accept the privacy notice to chat.",
+  },
+  zh: {
+    lang: "zh-CN",
+    label: "隐私说明",
+    intro: "神谕作答之前，请先确认这个对话如何处理你的数据：",
+    points: [
+      "你的消息和本次对话的历史会经本站的 Cloudflare Worker 发送给 Anthropic 的 Claude 模型。",
+      "Cloudflare Turnstile 会验证你是真人，你的 IP 地址会计入限流。",
+      "本站不保存对话记录，对话只存在这个浏览器里。",
+      "你主动提交的构建计划会公开在 GitHub 上。",
+    ],
+    accept: "接受",
+    decline: "拒绝",
+    remember: "接受后会记在这个浏览器里，对话代码有改动时需要重新确认。",
+    declined: "消息没有发出。接受隐私说明后才能对话。",
+  },
+};
+
 function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: () => void; onDecline: () => void }) {
+  const copy = CONSENT_COPY[chatConsentLanguage(text)];
   return (
     <>
       <div className="flex justify-end">
         <div className="min-w-0 max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-sm leading-relaxed text-background [overflow-wrap:anywhere]">{text}</div>
       </div>
-      <div role="group" aria-label="Privacy notice" className="w-full text-sm leading-relaxed text-foreground">
-        <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">Privacy notice</div>
-        <p>Before the oracle answers, please accept how this chat handles your data:</p>
+      <div role="group" aria-label={copy.label} lang={copy.lang} className="w-full text-sm leading-relaxed text-foreground">
+        <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">{copy.label}</div>
+        <p>{copy.intro}</p>
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
-          <li>Your messages and this conversation&apos;s history are sent through this site&apos;s Cloudflare Worker to Anthropic&apos;s Claude models.</li>
-          <li>Cloudflare Turnstile checks that you&apos;re human, and your IP address counts toward rate limits.</li>
-          <li>The site keeps no transcripts; conversations are saved only in this browser.</li>
-          <li>Build plans you choose to file become public on GitHub.</li>
+          {copy.points.map((point) => <li key={point}>{point}</li>)}
         </ul>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">Accept</button>
-          <button type="button" onClick={onDecline} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover">Decline</button>
+          <button type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">{copy.accept}</button>
+          <button type="button" onClick={onDecline} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover">{copy.decline}</button>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">Accepting is remembered in this browser until the chat code changes.</p>
+        <p className="mt-2 text-[11px] text-muted-foreground">{copy.remember}</p>
       </div>
     </>
   );
