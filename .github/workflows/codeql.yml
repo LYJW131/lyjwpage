@@ -19,7 +19,8 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ubuntu-latest
+    # 仓库变量 SELF_HOSTED_RUNNER=on 时走自建 runner；只放行本仓库分支，fork 来的 PR 不上自建机，条件与 ci.yml 一致
+    runs-on: ${{ vars.SELF_HOSTED_RUNNER == 'on' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","lyjwpage"]') || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:

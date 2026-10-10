@@ -19,7 +19,8 @@ env:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # 仓库变量 SELF_HOSTED_RUNNER=on 时走自建 runner；只放行本仓库分支，fork 来的 PR 不上自建机。机器离线时把变量关掉，任务会一直排队等它
+    runs-on: ${{ vars.SELF_HOSTED_RUNNER == 'on' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","linux","x64","lyjwpage"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -28,11 +29,22 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: pnpm
+          # 自建机的 pnpm store 常驻在本机，不必再从 Actions 缓存下载
+          cache: ${{ runner.environment == 'github-hosted' && 'pnpm' || '' }}
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm lint
+      # CI_CACHE_DIR 只在自建机上设置。按内容判定缓存是因为每次检出文件 mtime 都会变；先复制再改名回去，并发任务不会写坏同一份缓存
+      - name: pnpm lint
+        run: |
+          if [ -z "${CI_CACHE_DIR:-}" ]; then
+            pnpm lint
+            exit 0
+          fi
+          cp "$CI_CACHE_DIR/eslintcache" "$RUNNER_TEMP/eslintcache" 2>/dev/null || true
+          pnpm lint --cache --cache-strategy content --cache-location "$RUNNER_TEMP/eslintcache"
+          cp "$RUNNER_TEMP/eslintcache" "$CI_CACHE_DIR/eslintcache.$GITHUB_JOB.$GITHUB_RUN_ID"
+          mv "$CI_CACHE_DIR/eslintcache.$GITHUB_JOB.$GITHUB_RUN_ID" "$CI_CACHE_DIR/eslintcache"
 
       - run: pnpm -r --include-workspace-root typecheck
 
