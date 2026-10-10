@@ -15,6 +15,7 @@
 
 ## 须成对修改
 
+- 新增任务 ⇄ `shared/collector.ts#COLLECTOR_JOBS`（只加不改）与 `src/registry.ts`；`src/registry.test.ts` 核对两边全集相等，不用类型断言或放宽测试绕过。
 - 新增或改节奏的任务 ⇄ `src/lib/status-views.ts` 里对应视图的 `cadenceMs`，浏览器据此在下一次预期写入之后去取。
 - `shared/collector.ts`（`Collector.refresh` 的契约）⇄ `workers/ingress/src/worker.ts` 的部署通知，后者点名重拉部署列表。
 

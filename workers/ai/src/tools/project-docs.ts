@@ -6,7 +6,7 @@ export type ReadDoc = (url: string) => Promise<Response>;
 
 const HUB_REPO = "https://github.com/LYJW131/MacTelemetryHub";
 
-// 白名单只收讲设计的现状文档；文档在运行时从公开仓库的 main 读，改文档不用重发 Worker，新增条目才要改这里。
+// 白名单只收讲设计的现状文档和各 Worker 的成对修改规则（构建规划要据此列全路径）；文档在运行时从公开仓库的 main 读，改文档不用重发 Worker，新增条目才要改这里。
 const PROJECT_DOCS = {
   overview: { path: "README.en.md", note: "Project overview (English): every card, architecture, key design choices, tech stack, where to start reading the source" },
   conventions: { path: "AGENTS.md", note: "Engineering rules: API naming and cross-client contracts, deploy flow, docs and comment conventions" },
@@ -14,6 +14,10 @@ const PROJECT_DOCS = {
   storage: { path: "docs/state-storage.md", note: "Worker data backend: Durable Object / KV / D1 storage, public data boundary, first-paint cache and invalidation" },
   workersDeploy: { path: "docs/workers-builds.md", note: "How the Workers deploy through Cloudflare Workers Builds, watch paths, branch previews" },
   facts: { path: "docs/explainer/FACTS.md", note: "Fact sheet behind the site's explainer animation: each endpoint and number with its source" },
+  apiRules: { path: "workers/api/AGENTS.md", note: "API Worker invariants and the files that must change together (section 须成对修改)" },
+  aiRules: { path: "workers/ai/AGENTS.md", note: "AI Worker invariants and the files that must change together (section 迁移与成对修改)" },
+  collectorRules: { path: "workers/collector/AGENTS.md", note: "Collector Worker invariants and the files that must change together (section 须成对修改)" },
+  ingressRules: { path: "workers/ingress/AGENTS.md", note: "Ingest Worker invariants and what a new report source must change together (section 新增来源要一起做)" },
   apiWorker: { path: "workers/api/README.md", note: "API Worker (state core): endpoints, StateHub, WebSocket push, cron and public status reads" },
   aiWorker: { path: "workers/ai/README.md", note: "AI Worker: the Talk to God chat, model routing, quotas, site tools and public MCP" },
   visitorBuild: { path: "docs/build-routine.md", note: "Visitor collaboration: design sessions, signed plans, allowed paths, routine uploads, build status and security boundaries" },
