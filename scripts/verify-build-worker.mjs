@@ -140,19 +140,17 @@ try {
   assert.equal((await rpc('timeout', 'readRun', stalledUpload.state.runId)).state.phase, 'timeout');
   console.log('PASS: stalled dispatches and uploads report unknown-result timeouts without accepting replays');
 
-  const sessionResponse = await post('/api/build/session', { code: 'fixture-code', codeVerifier: 'x'.repeat(43) });
-  assert.equal(sessionResponse.status, 200);
-  const { session } = await sessionResponse.json();
+  const signIn = { code: 'fixture-code', codeVerifier: 'x'.repeat(43) };
   const proposalResponse = await post('/__fixture/plan', plan);
   assert.equal(proposalResponse.status, 200);
   const proposal = await proposalResponse.json();
   await post('/__fixture/configure', { mainUnavailable: true });
   for (let n = 0; n <= BUILD_QUOTA.fire.account; n += 1) {
-    assert.equal((await post('/api/build', { session, planToken: proposal.token })).status, 502);
+    assert.equal((await post('/api/build', { ...signIn, planToken: proposal.token })).status, 502);
   }
   assert.equal((await inspect()).fires.length, 0);
   await post('/__fixture/configure', { mainUnavailable: false });
-  const fires = await Promise.all(Array.from({ length: 8 }, () => post('/api/build', { session, planToken: proposal.token })));
+  const fires = await Promise.all(Array.from({ length: 8 }, () => post('/api/build', { ...signIn, planToken: proposal.token })));
   assert.equal(fires.filter((response) => response.status === 202).length, 1);
   assert.equal(fires.filter((response) => response.status === 409).length, 7);
   const build = await fires.find((response) => response.status === 202).json();
@@ -166,7 +164,9 @@ try {
   assert.equal(fired.runId, build.runId);
   assert.equal(fired.baseSha, baseSha);
   assert.match(fired.coauthor, /131\+fixture-visitor@users\.noreply\.github\.com/);
-  assert.equal(fixture.calls.filter((call) => call.method === 'DELETE' && call.path.includes('/applications/')).length, 1);
+  const exchanges = fixture.calls.filter((call) => call.path.includes('/login/oauth/access_token')).length;
+  assert.ok(exchanges > BUILD_QUOTA.fire.account);
+  assert.equal(fixture.calls.filter((call) => call.method === 'DELETE' && call.path.includes('/applications/')).length, exchanges);
   const progress = await post(`/api/build/progress?runId=${build.runId}`, { message: 'Fixture implementation underway.' }, { Authorization: `Bearer ${fired.uploadToken}` });
   assert.equal(progress.status, 200);
   const getStatus = () => fetch(`${worker}/api/build/status?runId=${build.runId}`, { headers: { Authorization: `Bearer ${build.statusToken}` } });
