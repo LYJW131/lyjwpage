@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { BUILD_DESIGN_LIMITS, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun } from "@shared/build-routine";
 import type { Env } from "../runtime";
 
-export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number };
+export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number };
 const phases = { triggered: 0, running: 1, uploaded: 2, validated: 3, pr_open: 4, blocked: 5, failed: 5, timeout: 5, merged: 6, closed: 6 } as const;
 
 export class BuildCoordinator extends DurableObject<Env> {
@@ -91,6 +91,15 @@ export class BuildCoordinator extends DurableObject<Env> {
       this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
     }
     return run;
+  }
+
+  setSessionUrl(runId: string, sessionUrl: string): void {
+    this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run) return;
+      run.sessionUrl = sessionUrl;
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+    });
   }
 
   claimUpload(runId: string, hash: string): StoredRun | null {

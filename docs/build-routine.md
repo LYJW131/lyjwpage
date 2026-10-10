@@ -29,7 +29,7 @@ Worker 先原子占用上传令牌，再执行请求体、文件数、单文件/
 
 允许的路径是站点源码、静态资源、文档、共享代码和各 Worker 的源码，测试文件也必须位于这些允许目录内。上传和删除还必须匹配签名计划的 `paths`：文件精确匹配，结尾 `/` 的目录允许其下的路径，并允许同目录的测试文件。超出计划范围时拒绝上传，在卡片上说明路径。拒绝规则按每个路径段转小写后匹配，优先于允许规则：CI、agent 配置和规则、依赖清单与锁文件、脚本、部署配置、上报器和子模块配置不能改。准确规则只在 `workers/ai/src/build/validation.ts#allowedBuildPath` 维护；文件和删除项都过同一检查。`workers/ai/src/build/github.ts#validateBuildBase` 还会完整检查 base tree：树被截断时拒绝，不允许替换或删除目录、符号链接与子模块，也不允许路径穿过这些非目录父节点；删除目标必须存在。
 
-验证通过后，Worker 用 `GITHUB_APP_PRIVATE_KEY` 经 WebCrypto 签 RS256 JWT，换取限定于目标仓库的安装 token，按 baseSha 的 tree 创建 blob、tree 和 commit，再创建 `branchForRun(runId)` 分支与普通 PR。开 PR 明确被 GitHub 拒绝时删除已创建的 ref；网络超时等结果不确定的情况保留分支等待 GitHub 确证。提交父节点固定为 baseSha，提交说明移除 routine 提供的 co-author 尾注，只追加验证身份对应的一行；PR 正文中的计划与提交说明转义 `@`，避免意外通知。PR 号码、地址与 head SHA 取 GitHub API 返回值，不猜测成功。没有自动合并路径。
+验证通过后，Worker 用 `GITHUB_APP_PRIVATE_KEY` 经 WebCrypto 签 RS256 JWT，换取限定于目标仓库的安装 token，按 baseSha 的 tree 创建 blob、tree 和 commit，再创建 `branchForRun(runId)` 分支与普通 PR。开 PR 明确被 GitHub 拒绝时删除已创建的 ref；网络超时等结果不确定的情况保留分支等待 GitHub 确证。提交父节点固定为 baseSha，提交说明移除 routine 提供的 `Co-authored-by` 与 `Claude-Session` 尾注，改由 Worker 追加：验证身份对应的访客一行、`workers/ai/src/build/github.ts#BUILD_CLAUDE_COAUTHOR` 一行，以及 `/fire` 响应里 `claude_code_session_url` 对应的 `Claude-Session`（未确认会话时省略），PR 正文附同样的尾注；PR 正文中的计划与提交说明转义 `@`，避免意外通知。PR 号码、地址与 head SHA 取 GitHub API 返回值，不猜测成功。没有自动合并路径。
 
 ## 状态与恢复
 

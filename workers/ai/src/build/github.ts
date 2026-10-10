@@ -72,6 +72,9 @@ export async function assertMainAncestor(api: GithubBuildApi, baseSha: string): 
   if (!["ahead", "identical"].includes(comparison.status) || comparison.merge_base_commit?.sha !== baseSha) throw new BuildBlockedError("The base commit is not in main history.");
 }
 
+// Must name the model configured on the build routine (docs/ops-facts.md「Claude Code 云端 routine」).
+const BUILD_CLAUDE_COAUTHOR = "Claude Opus 5.5 <noreply@anthropic.com>";
+
 function validSha(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }
 
 export async function validateBuildBase(api: GithubBuildApi, run: StoredRun, upload: BuildUpload): Promise<string> {
@@ -107,8 +110,9 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
   for (const path of upload.deletions) entries.push({ path, mode: "100644", type: "blob", sha: null });
   const tree = await api.repo<{ sha: string }>("/git/trees", "POST", { base_tree: baseTree, tree: entries });
   if (!validSha(tree.sha)) throw new Error("GitHub tree confirmation is unavailable.");
-  const message = upload.message.split(/\r\n?|\n/).filter((line) => !/^\s*co-authored-by\s*:/i.test(line)).join("\n").trim() || run.plan.title;
-  const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `${message}\n\nCo-authored-by: ${run.coauthor}`, tree: tree.sha, parents: [upload.baseSha] });
+  const message = upload.message.split(/\r\n?|\n/).filter((line) => !/^\s*(co-authored-by|claude-session)\s*:/i.test(line)).join("\n").trim() || run.plan.title;
+  const trailers = [`Co-authored-by: ${run.coauthor}`, `Co-Authored-By: ${BUILD_CLAUDE_COAUTHOR}`, ...(run.sessionUrl ? [`Claude-Session: ${run.sessionUrl}`] : [])].join("\n");
+  const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `${message}\n\n${trailers}`, tree: tree.sha, parents: [upload.baseSha] });
   if (!validSha(commit.sha)) throw new Error("GitHub commit confirmation is unavailable.");
   await api.repo("/git/refs", "POST", { ref: `refs/heads/${run.state.branch}`, sha: commit.sha });
   let pr: { number: number; html_url: string; head: { sha: string } };
@@ -116,7 +120,7 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
     pr = await api.repo("/pulls", "POST", {
       title: run.plan.title, head: run.state.branch, base: "main", draft: false,
       // GitHub can still turn a backslash-escaped @ into a mention.
-      body: `${buildIssueBody(run.plan)}\n\n---\nRequested by @${run.account}.\n\nCo-authored-by: ${run.coauthor}\n\nBuild run: \`${run.state.runId}\`. Claude review is advisory; it does not authorize merging.`.replaceAll("@", "@\u200b"),
+      body: `${buildIssueBody(run.plan)}\n\n---\nRequested by @${run.account}.\n\n${trailers}\n\nBuild run: \`${run.state.runId}\`. Claude review is advisory; it does not authorize merging.`.replaceAll("@", "@\u200b"),
     });
   } catch (error) {
     if (!(error instanceof GithubRequestError) || error.status < 400 || error.status >= 500 || error.status === 408) throw error;
