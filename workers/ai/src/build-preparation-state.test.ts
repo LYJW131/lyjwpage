@@ -26,7 +26,7 @@ function fixture(overrides: Partial<StoredRun> = {}) {
     return { one() { assert.equal(rows.length, 1); return rows[0]; }, toArray() { return rows; } };
   } };
   const transactionSync = <T>(fn: () => T): T => { db.exec("BEGIN"); try { const value = fn(); db.exec("COMMIT"); return value; } catch (error) { db.exec("ROLLBACK"); throw error; } };
-  const coordinator = new BuildCoordinator({ storage: { sql, transactionSync } } as unknown as DurableObjectState, {} as Env);
+  const coordinator = new BuildCoordinator({ storage: { sql, transactionSync, getAlarm: async () => null, setAlarm: async () => undefined } } as unknown as DurableObjectState, {} as Env);
   const env = { BUILD_COORDINATOR: { getByName: () => coordinator } } as unknown as Env;
   const now = Date.now();
   const run: StoredRun = {

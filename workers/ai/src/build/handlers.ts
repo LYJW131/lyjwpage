@@ -128,6 +128,7 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
     }
     if (admission !== "ok") return fail(429, admission === "account" ? "This GitHub account has reached its hourly build limit." : "The site's hourly build limit has been reached.");
     reserved = true;
+    await coordinator.scheduleDraftSweep();
     await prepareBuild(runId, env, fetcher, ctx);
     return buildResponse((await coordinator.readRun(runId))!, env);
   } catch {

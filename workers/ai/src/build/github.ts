@@ -214,6 +214,17 @@ export async function prepareBuildPullRequest(api: GithubBuildApi, run: StoredRu
   return { pr: confirmed, planCommitSha: commit.sha };
 }
 
+export async function closeFailedDraft(api: GithubBuildApi, run: StoredRun): Promise<void> {
+  if (!validSha(run.planCommitSha) || !run.state.pr || run.implementationHeadSha) throw new BuildBlockedError("Only a draft holding the build plan alone can be closed.");
+  const pr = await existingPullRequest(api, run);
+  if (!pr) throw new BuildBlockedError("The build pull request is unavailable.");
+  confirmedPullRequest(pr, run.state, [run.planCommitSha]);
+  if (pr.state === "closed") return;
+  assertOpenDraft(pr);
+  const closed = await api.repo<GithubPullRequest>(`/pulls/${pr.number}`, "PATCH", { state: "closed" });
+  if (closed.state !== "closed") throw new Error("GitHub did not confirm closing the draft pull request.");
+}
+
 async function preparedCommit(api: GithubBuildApi, run: StoredRun): Promise<GithubCommit> {
   assertBuildIdentity(run);
   if (!validSha(run.planCommitSha) || !run.state.pr) throw new BuildBlockedError("The build draft has not been prepared.");

@@ -1,11 +1,17 @@
+import * as Sentry from "@sentry/cloudflare";
 import { DurableObject } from "cloudflare:workers";
 import { BUILD_DESIGN_LIMITS, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_REPO, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun } from "@shared/build-routine";
 import type { Env } from "../runtime";
+import { BuildBlockedError, closeFailedDraft, installationApi } from "./github";
 
-export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; reviewRequested?: boolean };
+export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; reviewRequested?: boolean; draftClose?: "closed" | "skipped" };
 type PlanReservation = { runId: string; accountId?: number };
 const PREPARATION_LEASE_MS = 60_000;
 const PUBLICATION_BODY_MAX_CHARS = 64_000;
+// 失败草稿的关闭与超时的发现都靠 alarm 扫描，间隔即两者的最大延迟。
+const DRAFT_SWEEP_MS = 60_000;
+const PENDING_PHASES: readonly BuildRun["phase"][] = ["triggered", "running", "uploaded", "validated"];
+const FAILURE_PHASES: readonly BuildRun["phase"][] = ["failed", "blocked", "timeout"];
 const phases = { triggered: 0, running: 1, uploaded: 2, validated: 3, pr_open: 4, blocked: 5, failed: 5, timeout: 5, merged: 6, closed: 6 } as const;
 
 function preparedRun(run: StoredRun): boolean {
@@ -18,6 +24,11 @@ function acceptsAgentUpdates(run: StoredRun): boolean {
 
 function validPreparedPullRequest(planCommitSha: string, pr: NonNullable<BuildRun["pr"]>): boolean {
   return /^[a-f0-9]{40}$/.test(planCommitSha) && pr.headSha === planCommitSha && pr.draft === true && Number.isSafeInteger(pr.number) && pr.number > 0 && pr.url === `https://github.com/${BUILD_REPO}/pull/${pr.number}`;
+}
+
+// 记下实现提交后发布结果可能仍在恢复，只关只含计划提交的草稿。
+function closableDraft(run: StoredRun): boolean {
+  return FAILURE_PHASES.includes(run.state.phase) && !run.draftClose && !run.implementationHeadSha && !!run.planCommitSha && run.state.pr?.draft === true && run.state.pr.headSha === run.planCommitSha;
 }
 
 export class BuildCoordinator extends DurableObject<Env> {
@@ -288,6 +299,7 @@ export class BuildCoordinator extends DurableObject<Env> {
       const run = this.readRun(runId);
       if (!run) return null;
       patch = { ...patch };
+      if (patch.phase === "closed" && FAILURE_PHASES.includes(run.state.phase) && !run.implementationHeadSha) delete patch.phase;
       if (expectedHeadSha && run.state.pr?.headSha !== expectedHeadSha) return run.state;
       if (patch.pr && run.state.pr && patch.pr.number !== run.state.pr.number) return run.state;
       if (preparedRun(run) && patch.pr && (!run.state.pr || patch.pr.headSha !== run.state.pr.headSha && patch.pr.headSha !== run.implementationHeadSha)) {
@@ -350,10 +362,50 @@ export class BuildCoordinator extends DurableObject<Env> {
   claimReconcile(runId: string): boolean {
     return this.ctx.storage.transactionSync(() => {
       const run = this.readRun(runId);
-      if (!run || !run.state.pr || ["merged", "closed"].includes(run.state.phase) || this.get(`reconcile:${runId}`)) return false;
+      if (!run || !run.state.pr || run.draftClose || ["merged", "closed"].includes(run.state.phase) || this.get(`reconcile:${runId}`)) return false;
       this.put(`reconcile:${runId}`, true, Date.now() + BUILD_RECONCILE_MS);
       return true;
     });
+  }
+
+  async scheduleDraftSweep(at = Date.now() + DRAFT_SWEEP_MS): Promise<void> {
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || current > at) await this.ctx.storage.setAlarm(at);
+  }
+
+  private finishDraftClose(runId: string, outcome: NonNullable<StoredRun["draftClose"]>): void {
+    this.ctx.storage.transactionSync(() => {
+      const run = this.readRun(runId);
+      if (!run || run.draftClose) return;
+      run.draftClose = outcome;
+      if (outcome === "closed") run.state = { ...run.state, reason: [run.state.reason, "The draft pull request was closed."].filter(Boolean).join(" "), updatedAt: Date.now() };
+      this.put(`run:${runId}`, run, run.state.createdAt + BUILD_STATUS_TTL_MS);
+    });
+  }
+
+  async alarm(): Promise<void> {
+    const rows = this.ctx.storage.sql.exec<{ key: string }>(
+      `SELECT key FROM build_records WHERE key LIKE 'run:%' AND expires > ? AND json_extract(value, '$.draftClose') IS NULL AND json_extract(value, '$.state.phase') IN (${[...PENDING_PHASES, ...FAILURE_PHASES].map(() => "?").join(", ")})`,
+      Date.now(), ...PENDING_PHASES, ...FAILURE_PHASES,
+    ).toArray();
+    let again = false;
+    for (const { key } of rows) {
+      const runId = key.slice("run:".length);
+      const run = this.readRun(runId);
+      if (!run) continue;
+      if (PENDING_PHASES.includes(run.state.phase)) { again = true; continue; }
+      if (!closableDraft(run)) continue;
+      try {
+        await closeFailedDraft(await installationApi(this.env), run);
+        this.finishDraftClose(runId, "closed");
+      } catch (error) {
+        if (error instanceof BuildBlockedError) {
+          this.finishDraftClose(runId, "skipped");
+          Sentry.captureException(error, { tags: { "build.step": "draft-close" } });
+        } else again = true;
+      }
+    }
+    if (again) await this.scheduleDraftSweep();
   }
 
   hasDelivery(id: string): boolean {

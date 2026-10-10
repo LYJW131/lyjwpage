@@ -34,7 +34,7 @@ function coordinator() {
     return { one() { assert.equal(rows.length, 1); return rows[0]; }, toArray() { return rows; } };
   } };
   const transactionSync = <T>(fn: () => T): T => { db.exec("BEGIN"); try { const value = fn(); db.exec("COMMIT"); return value; } catch (error) { db.exec("ROLLBACK"); throw error; } };
-  const instance = new BuildCoordinator({ storage: { sql, transactionSync } } as unknown as DurableObjectState, {} as Env);
+  const instance = new BuildCoordinator({ storage: { sql, transactionSync, getAlarm: async () => null, setAlarm: async () => undefined } } as unknown as DurableObjectState, {} as Env);
   const env = { BUILD_COORDINATOR: { getByName: () => instance }, BUILD_SESSION_SECRET: "local-review-fixture", GITHUB_APP_PRIVATE_KEY: privatePem, GITHUB_WEBHOOK_SECRET: "local-webhook-fixture", ROUTINE_FIRE_URL: "https://fixture.invalid/fire", ROUTINE_FIRE_TOKEN: "local-fire-fixture", GITHUB_APP_CLIENT_SECRET: "local-oauth-fixture" } as unknown as Env;
   return { db, instance, env };
 }
