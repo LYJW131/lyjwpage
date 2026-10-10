@@ -44,6 +44,7 @@ import {
   STATIC_VARIANTS,
 } from "@/lib/motion";
 import { LISTENING_PATH, NOW_LISTENING_PATH } from "@/lib/paths";
+import { rememberLookup, shownMotion, withHeldMotion } from "@/lib/track-enrichment";
 import { trackPositionMs } from "@/lib/track-position";
 import type {
   ListeningItem,
@@ -621,30 +622,9 @@ export function ListeningCard({
   const trackKey = localTrack
     ? `${localTrack.title ?? ""}|${localTrack.artist ?? ""}|${localTrack.album ?? ""}`
     : null;
-  const [lookupLatch, setLookupLatch] = useState<{
-    key: string;
-    id: string | null;
-    songId: string;
-    link: string | null;
-    upcomingSongIds: string[];
-    hasLyrics: boolean;
-    motion: TrackMotion | null;
-  } | null>(null);
-  if (
-    live?.songId &&
-    trackKey &&
-    (lookupLatch?.key !== trackKey || lookupLatch.songId !== live.songId)
-  ) {
-    setLookupLatch({
-      key: trackKey,
-      id: live.id,
-      songId: live.songId,
-      link: live.link,
-      upcomingSongIds: live.upcomingSongIds,
-      hasLyrics: live.hasLyrics,
-      motion: live.motion,
-    });
-  }
+  const [lookupLatch, setLookupLatch] = useState<ReturnType<typeof rememberLookup>>(null);
+  const nextLatch = rememberLookup(trackKey, live, lookupLatch);
+  if (nextLatch !== lookupLatch) setLookupLatch(nextLatch);
   const latched = trackKey && lookupLatch?.key === trackKey ? lookupLatch : null;
   const resolvedSongId = live?.songId ?? latched?.songId ?? null;
   const resolvedUpcoming = useMemo(
@@ -715,7 +695,7 @@ export function ListeningCard({
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
         durationMs: null,
         track: localTrack,
-        motion: live?.songId ? live.motion : latched?.motion ?? null,
+        motion: shownMotion(live, latched),
       }
     : elsewhere
       ? {
@@ -770,7 +750,7 @@ export function ListeningCard({
     ([, songId]) => fetchCatalogSongAlbum(songId),
     { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false, shouldRetryOnError: false },
   );
-  const heroItem: ListeningItem | null | undefined = localActive && hero?.track
+  const heroItemBase: ListeningItem | null | undefined = localActive && hero?.track
     ? data?.items.find((item) => item.id === heroResourceId) ??
       (heroResourceId && hero.link ? {
         id: heroResourceId,
@@ -786,6 +766,7 @@ export function ListeningCard({
         ? data?.items.find((item) => item.id === elsewhereAlbum.id) ?? elsewhereAlbum
         : null
       : latest;
+  const heroItem = heroItemBase && localActive ? withHeldMotion(heroItemBase, hero?.motion) : heroItemBase;
   const canOpenHero = Boolean(heroItem && canOpenInPlayer(heroItem));
 
   const rest = dedupeListeningItems(

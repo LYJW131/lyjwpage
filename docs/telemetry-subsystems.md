@@ -117,7 +117,7 @@
 
 ### 接口缓存与公开查询策略
 - `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `workers/api/src/routes/lyrics/route.ts`）。
-- 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用。
+- 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用，播放器打开时若条目里已经有视频就不再现查。同一 `songId` 上已存的视频不会被一次没查出结果的上报清掉（`src/lib/track-enrichment.ts#keepEnrichment`）；Mac 掉线后 HomePod 接的是同一首且没带视频时，页面沿用 Mac 上那份（`src/lib/freshness.ts#liveNowListening`）。
 
 ---
 
