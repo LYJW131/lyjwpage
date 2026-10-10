@@ -80,7 +80,7 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
           admitVisitor: async () => "ok" as const,
           admitTier: () => {
             if (tier === "haiku") return Promise.resolve("haiku" as const);
-            if (tier === "opus") return Promise.resolve("opus" as const);
+            if (tier === "sonnet") return Promise.resolve("sonnet" as const);
             return Promise.resolve("fable" as const);
           },
         }),
@@ -175,9 +175,9 @@ function designEnv(reply: (request: Anthropic.Beta.MessageCreateParamsStreaming,
       admitVisitor: async () => { counters.visitor++; return "ok" as const; },
       admitTier: async (_ip, wanted, _enforce, allowDowngrade) => {
         counters.tier++;
-        assert.equal(wanted, "opus");
+        assert.equal(wanted, "sonnet");
         assert.equal(allowDowngrade, false);
-        return "opus" as const;
+        return "sonnet" as const;
       },
     }),
     AI: Object.assign({} as Ai, { run: async () => { counters.clef++; return { answers: { route: { choice: "design" } } }; } }),
@@ -209,34 +209,43 @@ function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role:
 const toolIO = { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
 
-test("改站请求由 Opus 判断，start_design 签会话，规划者可读数据、文档、源码与外部文档并提计划，计划进历史签章", async (t) => {
+test("改站请求由 Sonnet 判断，start_design 签会话并结束这条回复，下一轮由 Opus 规划：读数据、文档、源码与外部文档并提计划，计划进历史签章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const { env, requests, counters } = designEnv((body, index) => modelStream(body.model, index === 0
-    ? { name: "start_design", input: {} }
-    : { name: "propose_build", input: plan }));
-  const response = await handleChat(chatRequest(), env, toolIO);
-  assert.equal(response.status, 200);
-  const events = await parseEvents(response);
-  const design = events.find((event) => event.type === "design");
-  const proposed = events.find((event) => event.type === "plan");
-  const seal = events.find((event) => event.type === "seal");
+  const opening = designEnv((body) => modelStream(body.model, { name: "start_design", input: {} }));
+  const openEvents = await parseEvents(await handleChat(chatRequest(), opening.env, toolIO));
+  const design = openEvents.find((event) => event.type === "design");
   assert.ok(design?.type === "design");
   assert.equal(design.remaining, BUILD_DESIGN_LIMITS.maxTurns - 1);
   assert.ok(design.expiresAt > Date.now() && design.expiresAt <= Date.now() + BUILD_DESIGN_LIMITS.ttlMs);
+  assert.equal(opening.requests.length, 1);
+  assert.equal(opening.requests[0].model, GOD_CHAT_TIER_INFO.sonnet.model);
+  assert.equal(opening.requests[0].max_tokens, GOD_CHAT_TIER_INFO.sonnet.maxTokens);
+  assert.deepEqual(opening.requests[0].messages.filter((m) => m.role === "system").map((m) => m.output_config?.effort), [GOD_CHAT_TIER_INFO.sonnet.effort]);
+  assert.ok(openEvents.some((event) => event.type === "text" && event.text.includes("design session")));
+  assert.ok(!openEvents.some((event) => event.type === "plan"));
+  assert.deepEqual(opening.counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1 });
+
+  const { env, requests, counters, sessions } = designEnv((body) => modelStream(body.model, { name: "propose_build", input: plan }));
+  const id = crypto.randomUUID();
+  sessions.set(id, 1);
+  const token = await signBuildToken({ kind: "design", id, expiresAt: Date.now() + BUILD_DESIGN_LIMITS.ttlMs }, env.BUILD_SESSION_SECRET!);
+  const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
+  const proposed = events.find((event) => event.type === "plan");
+  const seal = events.find((event) => event.type === "seal");
   assert.ok(proposed?.type === "plan");
   assert.deepEqual((await readPlan(env, proposed.token))?.plan, plan);
   assert.ok(seal?.type === "seal");
   assert.equal(seal.planToken, proposed.token);
   assert.equal(seal.trace?.plan, true);
+  assert.equal(seal.trace?.tier, "opus");
   assert.equal(seal.trace?.effort, DESIGN_EFFORT);
+  assert.equal(DESIGN_EFFORT, "medium");
   for (const body of requests) assert.deepEqual(body.messages.filter((m) => m.role === "system").map((m) => m.output_config?.effort), [DESIGN_EFFORT]);
-  assert.equal(requests[0].max_tokens, GOD_CHAT_TIER_INFO.opus.maxTokens);
-  assert.ok(requests[1].max_tokens > GOD_CHAT_TIER_INFO.opus.maxTokens);
-  assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1 });
-  assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.opus.model, GOD_CHAT_TIER_INFO.opus.model]);
-  assert.deepEqual(requests[1].tools?.map((tool) => "name" in tool && tool.name), ["get_site_status", "read_project_doc", "read_repo_file", "ask_visitor", "propose_build", "web_search", "web_fetch"]);
+  assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1 });
+  assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.opus.model]);
+  assert.deepEqual(requests[0].tools?.map((tool) => "name" in tool && tool.name), ["get_site_status", "read_project_doc", "read_repo_file", "ask_visitor", "propose_build", "web_search", "web_fetch"]);
   const reply = events.flatMap((event) => event.type === "text" ? [event.text] : []).join("");
   const history: GodChatMessage[] = [
     { role: "user", content: "Please improve the music card." },
@@ -247,7 +256,7 @@ test("改站请求由 Opus 判断，start_design 签会话，规划者可读数�
   assert.equal((await sealedHistory([history[0], { ...history[1], planToken: `${proposed.token}x` }, history[2]], env.CHAT_HISTORY_SECRET!)).length, 1);
 });
 
-test("Opus 可以不开设计会话；模型未获授工具不能偷开会话或提计划", async (t) => {
+test("Sonnet 可以不开设计会话；模型未获授工具不能偷开会话或提计划", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });

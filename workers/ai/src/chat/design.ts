@@ -49,7 +49,7 @@ export async function plannerHistory(history: GodChatMessage[], env: Env): Promi
 }
 
 // 设计回复要在一条回复里装下 medium 强度的思考、读文档的几轮和一份完整计划（spec 上限见 BUILD_PLAN_LIMITS）；
-// 按 Opus 的 maxTokens 给时思考加读文档就用完了，propose_build 来不及调用。
+// 按 GOD_CHAT_TIER_INFO.opus 的 maxTokens 给时思考加读文档就用完了，propose_build 来不及调用。
 export const DESIGN_MAX_TOKENS = 12_288;
 // 读文档要两三轮，提问或提交计划还要一轮，被拒后改一次又是一轮；普通对话的轮数不够规划者用完一个来回。
 export const DESIGN_TOOL_ROUNDS = 6;

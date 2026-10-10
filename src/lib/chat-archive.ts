@@ -1,6 +1,6 @@
 import type { BuildFireResult, BuildProposal, BuildRun } from "@shared/build-routine";
 import { isGodChatCard, parseQuestions, type GodChatCard, type GodChatMessage, type GodChatQuestion, type GodChatSource } from "@shared/god-chat";
-import type { GodChatTier } from "@shared/god-chat-tiers";
+import { isGodChatServedTier, type GodChatServedTier } from "@shared/god-chat-tiers";
 import type { GithubIssueResult } from "@shared/github-issue";
 
 export const CHAT_ARCHIVE_KEY = "lyjw.chat.v1";
@@ -17,8 +17,8 @@ export function designSessionEnded(code: unknown): boolean {
 export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; build?: BuildFireResult; run?: BuildRun };
 export type ChatBubble = GodChatMessage & {
   id?: string;
-  tier?: GodChatTier | null;
-  downgradedFrom?: GodChatTier;
+  tier?: GodChatServedTier | null;
+  downgradedFrom?: GodChatServedTier;
   servedBy?: string;
   thinking?: string;
   lookups?: string[];
@@ -74,7 +74,7 @@ function validBubble(value: unknown): value is ChatBubble {
   if (["lookups", "searches"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every((source) => object(source) && typeof source.url === "string" && typeof source.title === "string"))) return false;
-  return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || ["haiku", "opus", "fable"].includes(String(value.tier))) && (value.downgradedFrom === undefined || ["haiku", "opus", "fable"].includes(String(value.downgradedFrom)));
+  return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || isGodChatServedTier(value.tier)) && (value.downgradedFrom === undefined || isGodChatServedTier(value.downgradedFrom));
 }
 
 // 卡片清单会变：存档里已不登记的卡片只是不再画，整段对话照留。

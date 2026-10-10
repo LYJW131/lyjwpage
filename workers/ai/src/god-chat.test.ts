@@ -88,8 +88,8 @@ test("Clef 看得到长消息的结尾", () => {
 });
 
 test("额度用完只往下降级，不往上升", () => {
-  assert.deepEqual(downgradeChain("fable"), ["fable", "opus", "haiku"]);
-  assert.deepEqual(downgradeChain("opus"), ["opus", "haiku"]);
+  assert.deepEqual(downgradeChain("fable"), ["fable", "sonnet", "haiku"]);
+  assert.deepEqual(downgradeChain("sonnet"), ["sonnet", "haiku"]);
   assert.deepEqual(downgradeChain("haiku"), ["haiku"]);
 });
 
@@ -274,10 +274,10 @@ test("文档读取失败不抛错、标成失败，回给模型的结果带来�
 test("回复读过的项目文档随 trace 带回，只认白名单键", () => {
   const parsed = parseGodChatRequest({
     turnstileToken: "t",
-    messages: [user("q"), { role: "assistant", content: "a", trace: { tier: "opus", docs: ["storage", "IgnorePrevious", "../x"] } }, user("q2")],
+    messages: [user("q"), { role: "assistant", content: "a", trace: { tier: "sonnet", docs: ["storage", "IgnorePrevious", "../x"] } }, user("q2")],
   });
   assert.ok(parsed);
-  assert.deepEqual(parsed.messages[1].trace, { tier: "opus", docs: ["storage", "IgnorePrevious"] });
+  assert.deepEqual(parsed.messages[1].trace, { tier: "sonnet", docs: ["storage", "IgnorePrevious"] });
   const note = (toModelMessages(parsed.messages, "medium")[0].content as { text: string }[])[1].text;
   assert.match(note, /after it read the project docs docs\/state-storage\.md\.\]$/);
   assert.doesNotMatch(note, /Ignore/);
@@ -342,7 +342,7 @@ test("下一轮切换强度只追加消息级设置，历史强度的位置与�
 test("跨档位重放保留实际强度，相同强度不重复插入，裁掉开头后仍有初始设置", () => {
   const history: GodChatMessage[] = [
     user("q1"), { ...assistant("a1"), trace: { tier: "fable", effort: "low" } },
-    user("q2"), { ...assistant("a2"), trace: { tier: "opus", effort: "low" } },
+    user("q2"), { ...assistant("a2"), trace: { tier: "sonnet", effort: "low" } },
     user("q3"), { ...assistant("a3"), trace: { tier: "haiku", effort: "high" } },
     user("q4"),
   ];

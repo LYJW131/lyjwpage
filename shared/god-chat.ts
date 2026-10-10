@@ -2,7 +2,7 @@ export { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "./ai-paths";
 import type { StatusViewKey } from "@/lib/status-views";
 import { BUILD_TOKEN_MAX_CHARS, type BuildProposal } from "./build-routine";
 
-import { isGodChatTier, type GodChatEffort, type GodChatRoute, type GodChatTier } from "./god-chat-tiers";
+import { isGodChatServedTier, type GodChatEffort, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";
 
 // 卡片渲染 Turnstile 时带上，Worker 校验 siteverify 回来的 action 与之相同。
 export const GOD_CHAT_TURNSTILE_ACTION = "god-chat";
@@ -43,7 +43,7 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
 // trace 由 Worker 在回复结束时随 seal 事件下发，浏览器原样带回；只收枚举与计数，不收任何自由文本（搜索词、文档章节名不回传）。
 // docs 是 read_project_doc 的文档键，design / plan 标记规划工具，cards 是那条回复给访客画过的卡片。
 export type GodChatTrace = {
-  tier?: GodChatTier;
+  tier?: GodChatServedTier;
   // 每轮原样重放消息级 effort，切换强度不能重写已缓存的历史前缀。
   effort?: GodChatEffort;
   views?: string[];
@@ -97,7 +97,7 @@ export function parseQuestions(value: unknown): GodChatQuestion[] | null {
 // thinking 是模型思考的摘要（不是原文），只给界面在等正文时显示，不进对话历史；分几轮想时轮与轮之间补一个空行。
 // served 只在给出最终答案的那一轮由 Anthropic 的拒答兜底模型答成（没被拒）时出现，回复末尾一次，model 是那个模型的 id。
 export type GodChatEvent =
-  | { type: "route"; route: GodChatRoute; tier: GodChatTier | null; downgradedFrom?: GodChatTier }
+  | { type: "route"; route: GodChatRoute; tier: GodChatServedTier | null; downgradedFrom?: GodChatTier }
   | { type: "served"; model: string }
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
@@ -146,7 +146,7 @@ export function normalizeTrace(value: unknown): GodChatTrace | undefined {
   const searches = Number.isInteger(raw.searches) ? Math.min(raw.searches as number, GOD_CHAT_LIMITS.maxWebSearches) : 0;
   const cards = Array.isArray(raw.cards) ? [...new Set(raw.cards.filter(isGodChatCard))] : [];
   const trace: GodChatTrace = {
-    ...(isGodChatTier(raw.tier) && { tier: raw.tier }),
+    ...(isGodChatServedTier(raw.tier) && { tier: raw.tier }),
     ...(effort && { effort }),
     ...(views.length && { views }),
     ...(docs.length && { docs }),
