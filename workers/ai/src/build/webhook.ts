@@ -30,7 +30,7 @@ export async function applyGithubWebhook(env: Env, event: string, payload: Webho
     if (pr.head.repo?.full_name?.toLowerCase() !== BUILD_REPO.toLowerCase() || pr.base?.ref !== "main") return;
     runId = runIdFromBranch(pr.head.ref);
     const existing = runId ? await coordinator.readRun(runId) : null;
-    if (!existing?.state.pr || existing.state.pr.number !== pr.number || pr.html_url !== existing.state.pr.url || pr.head.sha !== existing.state.pr.headSha && pr.head.sha !== existing.implementationHeadSha) return;
+    if (!existing?.state.pr || existing.state.pr.number !== pr.number || pr.html_url !== existing.state.pr.url || pr.head.sha !== existing.state.pr.headSha && pr.head.sha !== existing.implementationHeadSha && (pr.state !== "closed" || pr.head.sha === existing.planCommitSha)) return;
     expectedHeadSha = existing.state.pr.headSha;
     patch.phase = pr.merged ? "merged" : pr.state === "closed" ? "closed" : "pr_open";
     if (!Number.isFinite(Date.parse(pr.updated_at))) return;
