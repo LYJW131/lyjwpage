@@ -55,6 +55,36 @@ export type GodChatDesign = { token: string; expiresAt: number; remaining: numbe
 
 export type GodChatSource = { url: string; title: string };
 
+// ask 是设计会话里规划者让访客做选择的题目：浏览器画成可点的选项，访客的回答作为下一条消息发回，
+// 题目本身不进历史签章，回答里带着题目原文，模型据此接上。
+export type GodChatQuestion = { header: string; question: string; multiSelect: boolean; options: { label: string; description: string }[] };
+export const GOD_CHAT_ASK_LIMITS = { questions: 3, minOptions: 2, options: 4, headerChars: 24, questionChars: 200, labelChars: 60, descriptionChars: 300 } as const;
+
+export function parseQuestions(value: unknown): GodChatQuestion[] | null {
+  const limits = GOD_CHAT_ASK_LIMITS;
+  const text = (item: unknown, max: number) => typeof item === "string" && item.trim() && item.length <= max ? item.trim() : null;
+  if (!Array.isArray(value) || !value.length || value.length > limits.questions) return null;
+  const questions: GodChatQuestion[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") return null;
+    const { header, question, multiSelect, options } = entry as Record<string, unknown>;
+    const cleanHeader = text(header, limits.headerChars);
+    const cleanQuestion = text(question, limits.questionChars);
+    if (!cleanHeader || !cleanQuestion || typeof multiSelect !== "boolean" || !Array.isArray(options) || options.length < limits.minOptions || options.length > limits.options) return null;
+    const cleanOptions: GodChatQuestion["options"] = [];
+    for (const option of options) {
+      if (!option || typeof option !== "object") return null;
+      const label = text((option as Record<string, unknown>).label, limits.labelChars);
+      const description = (option as Record<string, unknown>).description;
+      if (!label || typeof description !== "string" || description.length > limits.descriptionChars) return null;
+      cleanOptions.push({ label, description: description.trim() });
+    }
+    if (new Set(cleanOptions.map((option) => option.label)).size !== cleanOptions.length) return null;
+    questions.push({ header: cleanHeader, question: cleanQuestion, multiSelect, options: cleanOptions });
+  }
+  return questions;
+}
+
 // 响应体是 NDJSON，每行一个事件；首行总是 route（refuse 时 tier 为 null），views 是 get_site_status 读取的视图键。
 // doc 是 read_project_doc 的一次读取：doc 为文档键，path 为仓库内路径（别的仓库带 owner/repo 前缀），url 为 GitHub 页面，section 为实际读到的章节标题（没读章节或没匹配上时缺省）。
 // design 和 plan 的 token 各自签名；计划 token 同时进该轮历史签章，不能移到另一条回复里。
@@ -68,6 +98,7 @@ export type GodChatEvent =
   | { type: "thinking"; text: string }
   | ({ type: "design" } & GodChatDesign)
   | ({ type: "plan" } & BuildProposal)
+  | { type: "ask"; questions: GodChatQuestion[] }
   | { type: "card"; card: GodChatCard }
   | { type: "tool"; views: string[] }
   | { type: "doc"; doc: string; path: string; url: string; section?: string }
