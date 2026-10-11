@@ -53,10 +53,10 @@ export function runIdFromBranch(ref: string): string | null {
 }
 export type PlanLanguage = "zh" | "ja" | "en";
 
-// 计划正文跟随对话语言，issue 与 PR 的固定文案跟随计划：中日文按字数比拉丁字母更「重」，路径、标识符里的
+// 计划正文跟随对话语言，issue 与 PR 的固定文案跟随计划：先剔除行内代码与路径，中日文按字数比拉丁字母更「重」，标识符里的
 // 拉丁字母不该把中文计划判成英文，英文计划里引用的几个中文歌名也不该把它判成中文；假名占比高才算日文。
 export function planLanguage(plan: Pick<BuildPlan, "title" | "spec" | "acceptance">): PlanLanguage {
-  return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`);
+  return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`.replace(/`[^`\n]*`|\S*\/\S*/g, " "));
 }
 
 // 访客看到的说明跟标题走：规格里夹着大量英文路径与标识符，标题最能代表访客的语言。
