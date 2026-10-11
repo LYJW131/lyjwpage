@@ -1,23 +1,22 @@
 name: Explainer score
 
 on:
+  # 只渲 main：合过 main 的分支提交也会带着 main 的乐谱改动命中 paths，渲一次要二三十分钟；分支预览取不到配乐就现合成
   push:
-    # 访客构建的分支含外人能左右的乐谱，不替它渲染上传
-    branches-ignore: ["claude/build-*"]
+    branches: [main]
     paths:
       - docs/explainer/v2/plan.js
       - docs/explainer/v2/score.js
       - docs/explainer/v2/music/**
       - docs/explainer/v2/tools/score-mp3.mjs
       - scripts/explainer-score.mjs
-      - .github/workflows/explainer-score.yml
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: explainer-score-${{ github.ref }}
+  group: explainer-score
   cancel-in-progress: true
 
 env:

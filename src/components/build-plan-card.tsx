@@ -11,7 +11,7 @@ import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_PATH, BUILD_STATUS_PATH, planLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
+import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_PATH, BUILD_STATUS_PATH, visitorLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
 
 const BUILD_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, BUILD_PATH);
 const STATUS_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
@@ -90,7 +90,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {issueOpen && <IssuePanel proposal={proposal} disabled={disabled} onClose={() => setIssueOpen(false)} onCreated={(issue) => onChange({ ...proposal, issue })} />}
-          {buildOpen && <GithubConsent action="build" language={planLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
+          {buildOpen && <GithubConsent action="build" language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
         </>
       )}
       {error && !buildOpen && <p role="alert" className="text-xs text-red-500">{error}</p>}

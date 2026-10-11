@@ -22,9 +22,9 @@
 
 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`workers/site/src/index.ts` 把 `/explainer` 落到构建期生成的 explainer 静态资产；页面载入的脚本（`v2/index.html` 的 `LOAD` 表）和内联样式引用的字体按内容哈希改名放进 `a/`，缓存一年；配乐不进仓库，见下一段。页面和 `v2/film.js` 经注入的 `window.__assets` 查哈希名；本地预览和写章工具没有这张表，用原名。`LOAD` 表里还没写的章不发布，站点上是占位画面。
 
-站点版的整片配乐放在 R2，不进仓库。对象键是乐谱输入（`scripts/explainer-score.mjs#scoreInputs`：章节表、合成器、各章乐谱和渲染脚本）的 sha256，页面经 `/img/<键>.mp3` 取它（同图片一样由 `site` Worker 经 R2 绑定直出、`lyjw131.com` 经 ESA 回源）。改了这些文件推到任何分支（`claude/build-*` 除外），`.github/workflows/explainer-score.yml` 就在 GitHub 托管机上渲染并上传；同一个键已经在 R2 就跳过，对象传上后不覆盖。上传用仓库 secret `R2_SCORE_ACCESS_KEY_ID` / `R2_SCORE_SECRET_ACCESS_KEY`，渲染那一步不带凭据。
+站点版的整片配乐放在 R2，不进仓库。对象键是乐谱输入（`scripts/explainer-score.mjs#scoreInputs`：章节表、合成器、各章乐谱和渲染脚本）的 sha256，页面经 `/img/<键>.mp3` 取它（同图片一样由 `site` Worker 经 R2 绑定直出、`lyjw131.com` 经 ESA 回源）。改了这些文件的提交进了 main，`.github/workflows/explainer-score.yml` 就在 GitHub 托管机上渲染并上传（分支不渲，预览上现合成；要提前渲可在 Actions 里对分支手动触发它）；同一个键已经在 R2 就跳过，对象传上后不覆盖，main 连续推送时只留最后一次在渲。上传用仓库 secret `R2_SCORE_ACCESS_KEY_ID` / `R2_SCORE_SECRET_ACCESS_KEY`，渲染那一步不带凭据。
 
-构建不查对象在不在：还没传上（渲染要几分钟）或取不到时，播放器在浏览器里现合成；时长和章节表对不上时同样弃用。乐谱改了键就跟着变，不会再放旧配乐。看某次构建该取哪个键：
+构建不查对象在不在：还没传上（合进 main 后要渲二三十分钟）或取不到时，播放器在浏览器里现合成；时长和章节表对不上时同样弃用。乐谱改了键就跟着变，不会再放旧配乐。看某次构建该取哪个键：
 
 ```bash
 node scripts/explainer-score.mjs    # 打印当前乐谱对应的 <键>.mp3
