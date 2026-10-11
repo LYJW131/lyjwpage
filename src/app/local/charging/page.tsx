@@ -1,17 +1,13 @@
 import type { MetaDescriptor } from "react-router";
 
 import { LOCAL_CHARGING_STORAGE_KEY } from "@/lib/local-charging-arm";
-import { NO_STORE } from "@/lib/site-policy";
+import { site } from "@/lib/site";
 
 export function meta(): MetaDescriptor[] {
   return [
-    { title: "Local Charging — LYJW's Homepage" },
+    { title: `Local Charging — ${site.name}` },
     { name: "robots", content: "noindex, nofollow" },
   ];
-}
-
-export function headers() {
-  return { "Cache-Control": NO_STORE };
 }
 
 export default function LocalChargingArmPage() {

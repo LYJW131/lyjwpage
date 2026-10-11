@@ -1,4 +1,5 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
+import { parseBuildCommit } from "@/lib/cloudflare-workers";
 import { LagResult } from "@/lib/lag-result";
 import { readLagEntry } from "@/lib/lag-store";
 import type { SiteAnalyticsPayload } from "@/lib/site-analytics";
@@ -42,7 +43,6 @@ export function parseSiteBuild(raw: unknown): SiteDeployment {
           : row.status === "stopped" && ["cancelled", "terminated", "skipped"].includes(String(row.build_outcome)) ? "CANCELED"
             : row.status === "stopped" && row.build_outcome === "fail" ? "ERROR" : "UNKNOWN";
   const meta = row.build_trigger_metadata == null ? {} : record(row.build_trigger_metadata);
-  const sha = typeof meta.commit_hash === "string" && /^[a-f0-9]{40}$/i.test(meta.commit_hash) ? meta.commit_hash : null;
   const started = timestamp(row.running_on);
   const stopped = timestamp(row.stopped_on);
   return {
@@ -51,11 +51,7 @@ export function parseSiteBuild(raw: unknown): SiteDeployment {
     createdAt,
     buildDurationMs: started !== null && stopped !== null && stopped >= started ? stopped - started : null,
     target: meta.branch === "main" ? "production" : "preview",
-    commit: sha ? {
-      sha,
-      branch: typeof meta.branch === "string" ? meta.branch.slice(0, 100) : null,
-      message: typeof meta.commit_message === "string" ? meta.commit_message.split("\n")[0].slice(0, 180) : null,
-    } : null,
+    commit: parseBuildCommit(meta),
   };
 }
 

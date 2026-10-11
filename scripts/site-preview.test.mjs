@@ -116,7 +116,6 @@ test("deploy writes a whitelisted preview config, spawns the site preview name a
     SITE_ENV: "preview",
     PUBLIC_BACKEND_URL: apiOrigin,
     R2_PUBLIC_BASE_URL: "https://lyjw.me/img",
-    SENTRY_ENVIRONMENT: "preview",
   });
   assert.deepEqual(config.services, []);
   assert.deepEqual(config.r2_buckets, []);

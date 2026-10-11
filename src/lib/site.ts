@@ -1,11 +1,13 @@
 
+export const CLOUDFLARE_DASH_URL = "https://dash.cloudflare.com/209f2c881b1c494fec50851c067b3266";
+
 export const site = {
   name: "LYJW's Homepage",
   shortName: "LYJW",
   url: "https://lyjw.me",
   description: "A personal homepage with live status of devices, apps, music, media and AI coding.",
   repo: "https://github.com/LYJW131/lyjwpage",
-  cloudflare: "https://dash.cloudflare.com/209f2c881b1c494fec50851c067b3266/workers-and-pages",
+  cloudflare: `${CLOUDFLARE_DASH_URL}/workers-and-pages`,
   sentry: "https://yangjunwei-liang.sentry.io",
   githubLogin: "LYJW131",
   githubId: 153256373,

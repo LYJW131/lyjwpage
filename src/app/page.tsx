@@ -209,55 +209,22 @@ export async function loader({ context }: Route.LoaderArgs) {
     pulse,
     avatarDataUri: assets.avatarDataUri,
     recentCommits: assets.recentCommits,
-    nowSongId,
     desktopIcon,
     artwork,
-    lyrics,
+    lyricsFallback:
+      nowSongId && lyrics && lyrics.lines.length
+        ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
+        : null,
   };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const {
-    desktop,
-    timezone,
-    workouts,
-    activity,
-    server,
-    charger,
-    powerBank,
-    listening,
-    nowListening,
-    coding,
-    codingNow,
-    limits,
-    agentStatus,
-    codingYear,
-    watching,
-    nowWatching,
-    playing,
-    playingNow,
-    questNow,
-    trophiesEnvelope,
-    githubChart,
-    githubRepo,
-    cloudflareWorkers,
-    siteDeployments,
-    sentry,
-    reporters,
-    pulse,
-    avatarDataUri,
-    recentCommits,
-    nowSongId,
-    desktopIcon,
-    artwork,
-    lyrics,
-  } = loaderData;
-  const trophies = trophiesEnvelope as StatusResponse<TrophiesSummaryPayload>;
+  const trophies = loaderData.trophiesEnvelope as StatusResponse<TrophiesSummaryPayload>;
 
   return (
     <>
       <WebPlayerProvider>
-        <Header desktop={desktop} desktopIconDataUri={desktopIcon} />
+        <Header desktop={loaderData.desktop} desktopIconDataUri={loaderData.desktopIcon} />
 
         <main className="flex-1">
           <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
@@ -272,83 +239,79 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <CardBoundary label="Contact" paths={READS.contact}>
                   <ContactCard
-                    avatarDataUri={avatarDataUri}
-                    chartFallback={githubChart}
-                    yearFallback={codingYear}
+                    avatarDataUri={loaderData.avatarDataUri}
+                    chartFallback={loaderData.githubChart}
+                    yearFallback={loaderData.codingYear}
                   />
                 </CardBoundary>
                 <CardBoundary label="Timezone">
-                  <TimezoneCard fallback={timezone} />
+                  <TimezoneCard fallback={loaderData.timezone} />
                 </CardBoundary>
               </div>
 
               {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}
               <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>
-                <NowWatchingCard nowFallback={nowWatching} />
+                <NowWatchingCard nowFallback={loaderData.nowWatching} />
               </CardBoundary>
               <CardBoundary label="Now Playing" silent paths={READS.questNow}>
-                <QuestNowCard nowFallback={questNow} />
+                <QuestNowCard nowFallback={loaderData.questNow} />
               </CardBoundary>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <CardBoundary label="Media" className="md:col-span-2" paths={READS.media}>
                   <LiveMediaPair
-                    chargerFallback={charger}
-                    powerBankFallback={powerBank}
-                    listeningFallback={listening}
-                    nowListeningFallback={nowListening}
-                    lyricsFallback={
-                      nowSongId && lyrics && lyrics.lines.length
-                        ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
-                        : null
-                    }
-                    artworkPlaceholders={artwork}
+                    chargerFallback={loaderData.charger}
+                    powerBankFallback={loaderData.powerBank}
+                    listeningFallback={loaderData.listening}
+                    nowListeningFallback={loaderData.nowListening}
+                    lyricsFallback={loaderData.lyricsFallback}
+                    artworkPlaceholders={loaderData.artwork}
                   />
                 </CardBoundary>
                 <CardBoundary label="Talk to God" className={SLOT.godChat}>
                   <GodChat className={SLOT.godChat} />
                 </CardBoundary>
                 <CardBoundary label="Activity" className={SLOT.activity} paths={READS.activity}>
-                  <ActivityCard fallback={activity} className={SLOT.activity}>
-                    <WorkoutsStrip fallback={workouts} />
+                  <ActivityCard fallback={loaderData.activity} className={SLOT.activity}>
+                    <WorkoutsStrip fallback={loaderData.workouts} />
                   </ActivityCard>
                 </CardBoundary>
                 <CardBoundary label="Exit Node" className={SLOT.server} paths={READS.server}>
-                  <ServerCard fallback={server} className={SLOT.server} />
+                  <ServerCard fallback={loaderData.server} className={SLOT.server} />
                 </CardBoundary>
                 <CardBoundary label="Provider Status" className={SLOT.agentStatus} paths={READS.agentStatus}>
-                  <AgentStatusCard fallback={agentStatus} className={SLOT.agentStatus} />
+                  <AgentStatusCard fallback={loaderData.agentStatus} className={SLOT.agentStatus} />
                 </CardBoundary>
                 <CardBoundary label="Vibe Coding" className={SLOT.vibeCoding} paths={READS.vibeCoding}>
                   <VibeCodingCard
-                    fallback={coding}
-                    nowFallback={codingNow}
-                    limitsFallback={limits}
+                    fallback={loaderData.coding}
+                    nowFallback={loaderData.codingNow}
+                    limitsFallback={loaderData.limits}
                     className={SLOT.vibeCoding}
                   />
                 </CardBoundary>
                 <CardBoundary label="PlayStation" className={SLOT.playstation} paths={READS.playstation}>
                   <PlaystationBlock
                     trophies={trophies}
-                    playing={playing}
-                    playingNow={playingNow}
+                    playing={loaderData.playing}
+                    playingNow={loaderData.playingNow}
                     className={SLOT.playstation}
                   />
                 </CardBoundary>
                 <CardBoundary label="Pulse" className={SLOT.pulse} paths={READS.pulse}>
-                  <PulseCard fallback={pulse} className={SLOT.pulse} />
+                  <PulseCard fallback={loaderData.pulse} className={SLOT.pulse} />
                 </CardBoundary>
               </div>
 
               <CardBoundary label="LYJWPAGE" className={SLOT.siteStatus} paths={READS.siteStatus}>
                 <SiteStatusCard
-                  githubFallback={githubRepo}
-                  siteFallback={siteDeployments}
-                  cloudflareFallback={cloudflareWorkers}
-                  sentryFallback={sentry}
-                  serverFallback={server}
-                  reportersFallback={reporters}
-                  recentCommits={recentCommits}
+                  githubFallback={loaderData.githubRepo}
+                  siteFallback={loaderData.siteDeployments}
+                  cloudflareFallback={loaderData.cloudflareWorkers}
+                  sentryFallback={loaderData.sentry}
+                  serverFallback={loaderData.server}
+                  reportersFallback={loaderData.reporters}
+                  recentCommits={loaderData.recentCommits}
                   className={SLOT.siteStatus}
                 />
               </CardBoundary>
@@ -362,7 +325,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   <span className="label-mono text-muted-foreground">Emby</span>
                 </div>
                 <CardBoundary label="Emby" paths={READS.emby}>
-                  <WatchingRow fallback={watching} nowFallback={nowWatching} />
+                  <WatchingRow fallback={loaderData.watching} nowFallback={loaderData.nowWatching} />
                 </CardBoundary>
               </div>
             </Section>

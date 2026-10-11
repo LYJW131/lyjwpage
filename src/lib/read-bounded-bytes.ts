@@ -1,4 +1,3 @@
-
 export class BodyTooLargeError extends Error {
   constructor(maxBytes: number) {
     super(`body exceeds ${maxBytes} bytes`);

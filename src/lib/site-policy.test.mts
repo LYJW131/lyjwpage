@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -9,13 +10,13 @@ import {
   STATUS_CACHE_CONTROL,
   classifyGatewayRequest,
   classifyRenderRequest,
-  filterStatusTags,
   imageObjectHeaders,
   imageObjectRequest,
   isPublicStatusEnvelope,
   renderCacheHeaders,
   statusSnapshotHeaders,
 } from "./site-policy.ts";
+import { filterStatusTags } from "./status-views.ts";
 
 test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/"), { kind: "render" });
@@ -37,14 +38,14 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/sw.js"), { kind: "service-worker" });
   assert.deepEqual(classifyGatewayRequest("GET", "/assets/app-abc.js"), { kind: "asset" });
   assert.deepEqual(classifyGatewayRequest("GET", "/manifest.webmanifest"), { kind: "asset" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/icon"), { kind: "site-asset" });
+  assert.deepEqual(classifyGatewayRequest("HEAD", "/pwa/icon-192.png"), { kind: "site-asset" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/opengraph-image"), { kind: "invalid" });
 });
 
 test("/img 只放行内容地址键", () => {
   const key = `${"a".repeat(64)}.webp`;
-  assert.deepEqual(classifyGatewayRequest("GET", `/img/${key}`), {
-    kind: "image-object",
-    objectKey: key,
-  });
+  assert.deepEqual(classifyGatewayRequest("GET", `/img/${key}`), { kind: "image-object" });
   assert.equal(classifyGatewayRequest("GET", "/img/short.webp").kind, "invalid");
   assert.equal(classifyGatewayRequest("GET", "/img/ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789.webp").kind, "invalid");
   assert.equal(classifyGatewayRequest("GET", `/img/${"a".repeat(64)}.exe`).kind, "invalid");
@@ -61,7 +62,7 @@ test("原始 /img 回源请求剥掉查询串，只带条件头进缓存入口",
       Authorization: "Bearer token",
     },
   });
-  const loopback = imageObjectRequest(incoming, key);
+  const loopback = imageObjectRequest(incoming);
   assert.equal(loopback.url, `https://lyjw.me/img/${key}`);
   assert.equal(loopback.headers.get("range"), "bytes=0-1023");
   assert.equal(loopback.headers.get("if-none-match"), '"etag"');
@@ -82,6 +83,11 @@ test("原始 /img 对象头：只有命中对象才有 immutable，元数据完�
   assert.equal(headers.get("Content-Length"), "1234");
   assert.equal(headers.get("Content-Type"), "audio/mpeg");
   assert.equal(headers.get("Accept-Ranges"), "bytes");
+});
+
+test("带哈希的 /assets 由静态资源层直出，_headers 与 Worker 用同一个 immutable 策略", () => {
+  const rules = readFileSync(new URL("../../public/_headers", import.meta.url), "utf8");
+  assert.ok(rules.includes(`/assets/*\n  Cache-Control: ${IMMUTABLE_ASSET_CACHE_CONTROL}\n`));
 });
 
 test("渲染分类区分首页文档、根数据与其他路由", () => {
@@ -144,16 +150,14 @@ test("首页 HTML 与根数据才可缓存，SSR 错误一律 no-store", () => {
   });
 });
 
-test("状态快照只在成功时可缓存并带白名单标签", () => {
-  assert.deepEqual(statusSnapshotHeaders(200, "listening"), {
+test("状态快照可缓存并带白名单标签", () => {
+  assert.deepEqual(statusSnapshotHeaders("listening"), {
     "Cache-Control": STATUS_CACHE_CONTROL,
     "Cache-Tag": "page:listening",
   });
-  assert.deepEqual(statusSnapshotHeaders(200, undefined), {
+  assert.deepEqual(statusSnapshotHeaders(undefined), {
     "Cache-Control": STATUS_CACHE_CONTROL,
   });
-  assert.deepEqual(statusSnapshotHeaders(503, "listening"), { "Cache-Control": NO_STORE });
-  assert.deepEqual(statusSnapshotHeaders(404, undefined), { "Cache-Control": NO_STORE });
 });
 
 test("失效标签白名单过滤、去重、空输入", () => {

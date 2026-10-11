@@ -10,8 +10,6 @@ import { resolve, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 import { stripVTControlCharacters } from 'node:util';
-
-const { WebSocket } = globalThis;
 import { createDevAccess } from './dev-access.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -77,7 +75,7 @@ try {
     name: 'isolated-api', main: join(root, 'workers/api/src/index.ts'),
     compatibility_date: '2025-02-14', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env', 'enable_request_signal'],
     vars: {
-      NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`,
+      STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`,
       ALLOWED_ORIGINS: '',
       DEV_OVERRIDES: 'true',
       APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
@@ -533,13 +531,13 @@ export default { fetch(request, env) {
   if (verifyBuild) {
     const logStart = logs.length;
     const build = start('pnpm', ['build'], {
-      NEXT_PUBLIC_BACKEND_URL: worker,
+      PUBLIC_BACKEND_URL: worker,
       SENTRY_AUTH_TOKEN: '',
     });
     const [buildExit] = await once(build, 'exit');
-    await writeFile(join(temporary, 'next-build.log'), logs.slice(logStart).join(''));
+    await writeFile(join(temporary, 'site-build.log'), logs.slice(logStart).join(''));
     assert.equal(buildExit, 0, logs.join('').slice(-12000));
-    console.log('PASS: Next production build completes against the initialized isolated Worker');
+    console.log('PASS: site production build completes against the initialized isolated Worker');
   }
   const logLines = stripVTControlCharacters(logs.join('')).split('\n');
   assert.equal(logLines.some(line => /Cannot perform I\/O|\[storage\]|Uncaught/.test(line)

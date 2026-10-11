@@ -5,9 +5,15 @@ import * as Sentry from "@sentry/cloudflare";
 
 import type { SiteCacheRpc } from "@shared/site-cache";
 
-import { FIRST_SCREEN_FETCH_TIMEOUT_MS, type FirstScreen } from "@/lib/first-screen";
+import {
+  FIRST_SCREEN_FETCH_TIMEOUT_MS,
+  FIRST_SCREEN_UNAVAILABLE,
+  type FirstScreen,
+} from "@/lib/first-screen";
 import {
   IMAGE_MAX_BYTES,
+  IMAGE_PROXY_PATH,
+  IMAGE_UPSTREAM_TIMEOUT_MS,
   ImagePolicyError,
   ImageUpstreamError,
   fetchImageUpstream,
@@ -18,30 +24,33 @@ import {
   parseVariantWidth,
   readImageBytes,
   variantShape,
-  type ImageFit,
 } from "@/lib/image-proxy";
 import type { LyricsResult } from "@/lib/lyrics";
-import { BodyTooLargeError, readBoundedBytes } from "@/lib/read-bounded-bytes";
 import { relaySentryEnvelope } from "@/lib/sentry-tunnel";
 import {
   HOME_CACHE_TAG,
   IMMUTABLE_ASSET_CACHE_CONTROL,
-  IMMUTABLE_ASSET_PREFIXES,
+  IMMUTABLE_EXPLAINER_PREFIX,
   NO_STORE,
   REMOTE_IMAGE_CACHE_CONTROL,
   SERVICE_WORKER_CACHE_CONTROL,
-  CONDITIONAL_FORWARD_HEADERS,
+  SITE_ASSET_ROUTES,
   classifyGatewayRequest,
   classifyRenderRequest,
-  filterStatusTags,
   imageObjectHeaders,
   imageObjectKeyFromPath,
   imageObjectRequest,
   isPublicStatusEnvelope,
   renderCacheHeaders,
+  statusCacheTag,
   statusSnapshotHeaders,
 } from "@/lib/site-policy";
-import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
+import {
+  STATUS_VIEWS,
+  filterStatusTags,
+  viewKeyByPath,
+  type StatusViewKey,
+} from "@/lib/status-views";
 import { siteContext, type SiteServices } from "@/server/site-context";
 
 import { sentryOptions } from "./sentry";
@@ -80,11 +89,12 @@ function errorResponse(status: number, message = "Not Found"): Response {
 class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const view =
+    const key =
       (request.method === "GET" || request.method === "HEAD") && !url.search
-        ? Object.values(STATUS_VIEWS).find((entry) => entry.path === url.pathname)
+        ? viewKeyByPath(url.pathname)
         : undefined;
-    if (!view) return errorResponse(404);
+    if (!key) return errorResponse(404);
+    const view = STATUS_VIEWS[key];
 
     let upstream: Response;
     try {
@@ -98,10 +108,11 @@ class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
     }
 
     const tag = "tag" in view ? view.tag : undefined;
+    // 上游故障必须报错以保留上一份首屏缓存；未部署端点的 404 才降级为空卡片。
     if (upstream.status === 404) {
       return Response.json(
-        { ok: false, error: "Status unavailable" },
-        { headers: statusSnapshotHeaders(200, tag) },
+        { ok: false, error: FIRST_SCREEN_UNAVAILABLE },
+        { headers: statusSnapshotHeaders(tag) },
       );
     }
     if (!upstream.ok) return errorResponse(503, "Status upstream failed");
@@ -115,10 +126,7 @@ class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
     if (!isPublicStatusEnvelope(payload)) {
       return errorResponse(503, "Status payload invalid");
     }
-    return Response.json(payload, {
-      status: 200,
-      headers: statusSnapshotHeaders(200, tag),
-    });
+    return Response.json(payload, { headers: statusSnapshotHeaders(tag) });
   }
 
   async invalidate(tags: readonly string[]): Promise<void> {
@@ -126,7 +134,7 @@ class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
     if (!valid.length) return;
     const cache = this.ctx.cache;
     if (!cache) throw new Error("StatusSnapshot cache is not enabled");
-    await cache.invalidate({ tags: valid.map((tag) => `page:${tag}`) });
+    await cache.invalidate({ tags: valid.map(statusCacheTag) });
   }
 }
 
@@ -136,7 +144,7 @@ class ImageVariantsBase extends WorkerEntrypoint<Env> {
     if (request.method !== "GET" && request.method !== "HEAD") return errorResponse(404);
     const objectKey = imageObjectKeyFromPath(url.pathname);
     if (objectKey) return this.rawObject(objectKey, request);
-    if (url.pathname !== "/image") return errorResponse(404);
+    if (url.pathname !== IMAGE_PROXY_PATH) return errorResponse(404);
 
     const source = url.searchParams.get("url");
     const width = parseVariantWidth(url.searchParams.get("w"));
@@ -148,10 +156,15 @@ class ImageVariantsBase extends WorkerEntrypoint<Env> {
     const internalKey = imageSourceFromInternalPath(source);
 
     try {
-      const bytes = await this.sourceBytes(source);
-      const output = await this.transform(bytes, width, fit, quality);
+      const input = internalKey
+        ? await this.objectStream(internalKey)
+        : await this.remoteStream(source);
+      const output = await this.env.IMAGES.input(input)
+        .transform(variantShape(width, fit))
+        .output({ format: "image/webp", quality });
       const response = output.response();
       const headers = new Headers(response.headers);
+      // 对象键是内容哈希，字节不变，变体可按内容寻址永久缓存。
       headers.set(
         "Cache-Control",
         internalKey ? IMMUTABLE_ASSET_CACHE_CONTROL : REMOTE_IMAGE_CACHE_CONTROL,
@@ -159,7 +172,6 @@ class ImageVariantsBase extends WorkerEntrypoint<Env> {
       return new Response(response.body, { status: 200, headers });
     } catch (error) {
       if (error instanceof ImagePolicyError) return errorResponse(404);
-      if (error instanceof BodyTooLargeError) return errorResponse(413, "Image upstream too large");
       if (error instanceof ImageUpstreamError) return errorResponse(error.status === 413 ? 413 : 502, "Image upstream failed");
       console.error("[image]", error instanceof Error ? error.message : error);
       return errorResponse(502, "Image transform failed");
@@ -177,68 +189,57 @@ class ImageVariantsBase extends WorkerEntrypoint<Env> {
       if (!object) return errorResponse(404);
       return new Response(object.body, { headers: imageObjectHeaders(object) });
     }
-    const origin = imageObjectFallbackOrigin(this.env);
-    if (!origin) return errorResponse(404);
-    const forward = new Headers();
-    for (const name of CONDITIONAL_FORWARD_HEADERS) {
-      const value = request.headers.get(name);
-      if (value) forward.set(name, value);
-    }
     try {
-      return await fetch(`${origin}/${objectKey}`, {
+      return await this.fetchObjectOrigin(objectKey, {
         method: request.method,
-        headers: forward,
-        signal: AbortSignal.timeout(8_000),
+        headers: request.headers,
       });
     } catch {
       return errorResponse(502, "Image origin failed");
     }
   }
 
-  private async sourceBytes(source: string): Promise<Uint8Array> {
-    const objectKey = imageSourceFromInternalPath(source);
-    if (objectKey) {
-      if (isProduction(this.env)) {
-        const head = await this.env.IMAGE_OBJECTS.head(objectKey);
-        if (!head) throw new ImageUpstreamError(404);
-        if (head.size > IMAGE_MAX_BYTES) throw new ImageUpstreamError(413);
-        const object = await this.env.IMAGE_OBJECTS.get(objectKey);
-        if (!object) throw new ImageUpstreamError(404);
-        return readBoundedBytes(object.body, IMAGE_MAX_BYTES);
+  private async objectStream(objectKey: string): Promise<ReadableStream<Uint8Array>> {
+    if (isProduction(this.env)) {
+      const object = await this.env.IMAGE_OBJECTS.get(objectKey);
+      if (!object) throw new ImageUpstreamError(404);
+      if (object.size > IMAGE_MAX_BYTES) {
+        await object.body.cancel();
+        throw new ImageUpstreamError(413);
       }
-      const origin = imageObjectFallbackOrigin(this.env);
-      if (!origin) throw new ImageUpstreamError(404);
-      const response = await fetch(`${origin}/${objectKey}`, {
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined);
-        throw new ImageUpstreamError(response.status);
-      }
-      return readImageBytes(response);
+      return object.body;
     }
-    const parsed = parseImageSource(source);
-    if (!parsed) throw new ImagePolicyError("source");
-    const upstream = await fetchImageUpstream(parsed);
-    return readImageBytes(upstream);
+    const response = await this.fetchObjectOrigin(objectKey);
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw new ImageUpstreamError(response.status);
+    }
+    return bytesStream(await readImageBytes(response));
   }
 
-  private async transform(
-    bytes: Uint8Array,
-    width: number,
-    fit: ImageFit,
-    quality: number,
-  ): Promise<ImageTransformationResult> {
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(bytes);
-        controller.close();
-      },
-    });
-    return this.env.IMAGES.input(stream)
-      .transform(variantShape(width, fit))
-      .output({ format: "image/webp", quality });
+  private async remoteStream(source: string): Promise<ReadableStream<Uint8Array>> {
+    const parsed = parseImageSource(source);
+    if (!parsed) throw new ImagePolicyError("source");
+    return bytesStream(await readImageBytes(await fetchImageUpstream(parsed)));
   }
+
+  private async fetchObjectOrigin(objectKey: string, init: RequestInit = {}): Promise<Response> {
+    const origin = imageObjectFallbackOrigin(this.env);
+    if (!origin) return errorResponse(404);
+    return fetch(`${origin}/${objectKey}`, {
+      ...init,
+      signal: AbortSignal.timeout(IMAGE_UPSTREAM_TIMEOUT_MS),
+    });
+  }
+}
+
+function bytesStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
 }
 
 class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
@@ -299,7 +300,7 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
       },
       image: async (url, px, fit, quality) => {
         try {
-          const target = new URL("https://site.internal/image");
+          const target = new URL(IMAGE_PROXY_PATH, "https://site.internal");
           target.searchParams.set("url", url);
           target.searchParams.set("w", String(px));
           target.searchParams.set("fit", fit);
@@ -308,9 +309,9 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
             new Request(target, { headers: { Accept: "image/webp" } }),
           );
           if (!response.ok) return null;
-          const bytes = new Uint8Array(await response.arrayBuffer());
+          const base64 = Buffer.from(await response.arrayBuffer()).toString("base64");
           const type = response.headers.get("Content-Type") ?? "image/webp";
-          return `data:${type};base64,${toBase64(bytes)}`;
+          return `data:${type};base64,${base64}`;
         } catch {
           return null;
         }
@@ -318,14 +319,6 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
       asset: (path: string) => env.ASSETS.fetch(new Request(new URL(path, origin))),
     };
   }
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  }
-  return btoa(binary);
 }
 
 async function relaySentry(request: Request, env: Env): Promise<Response> {
@@ -349,9 +342,14 @@ const siteWorker = {
       case "image-proxy":
         return ctx.exports.ImageVariants.fetch(request);
       case "image-object":
-        return ctx.exports.ImageVariants.fetch(
-          imageObjectRequest(request, route.objectKey!),
-        );
+        return ctx.exports.ImageVariants.fetch(imageObjectRequest(request));
+      case "site-asset": {
+        const { asset, cacheControl } = SITE_ASSET_ROUTES.get(url.pathname)!;
+        const response = await env.ASSETS.fetch(new Request(new URL(asset, url), request));
+        const headers = new Headers(response.headers);
+        headers.set("Cache-Control", response.ok ? cacheControl : NO_STORE);
+        return new Response(response.body, { status: response.status, headers });
+      }
       case "explainer-index": {
         const response = await env.ASSETS.fetch(
           new Request(new URL("/explainer/index.html", url), request),
@@ -369,7 +367,7 @@ const siteWorker = {
       case "asset": {
         const response = await env.ASSETS.fetch(request);
         if (response.status === 404) return ctx.exports.RenderedSite.fetch(request);
-        if (IMMUTABLE_ASSET_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+        if (url.pathname.startsWith(IMMUTABLE_EXPLAINER_PREFIX)) {
           const headers = new Headers(response.headers);
           headers.set("Cache-Control", IMMUTABLE_ASSET_CACHE_CONTROL);
           return new Response(response.body, { status: response.status, headers });

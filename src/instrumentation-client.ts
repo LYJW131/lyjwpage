@@ -1,14 +1,20 @@
 import * as Sentry from "@sentry/react";
 
-import { SENTRY_DSN, SENTRY_ENABLED, SENTRY_ENVIRONMENT } from "@/lib/sentry";
+import { commitSha } from "@/lib/build-info";
+import {
+  SENTRY_DSN,
+  SENTRY_ENABLED,
+  SENTRY_ENVIRONMENT,
+  SENTRY_RELAY_PREFIX,
+} from "@/lib/sentry";
 import { redactSentryEvent } from "@/lib/sentry-redact";
 
 Sentry.init({
   dsn: SENTRY_DSN,
   enabled: SENTRY_ENABLED,
   environment: SENTRY_ENVIRONMENT,
-  release: process.env.COMMIT_SHA || undefined,
-  tunnel: "/relay",
+  release: commitSha ?? undefined,
+  tunnel: SENTRY_RELAY_PREFIX,
   tracesSampleRate: 0.1,
   enableLogs: true,
   integrations: [

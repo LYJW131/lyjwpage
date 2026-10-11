@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --env-file-if-exists=.env.local --import tsx --import ./src/lib/testing/register-alias.mjs scripts/build-site-assets.tsx && react-router dev --port ${DEV_SITE_PORT:-3211}",
+    "assets": "node --env-file-if-exists=.env.local --import tsx --import ./src/lib/testing/register-alias.mjs scripts/build-site-assets.tsx",
+    "dev": "pnpm assets && react-router dev --port ${DEV_SITE_PORT:-3211}",
     "dev:worker": "pnpm --dir workers/api exec wrangler dev -c ../dev-router/wrangler.toml -c wrangler.test.toml -c ../ai/wrangler.test.toml -c ../ingress/wrangler.test.toml -c ../collector/wrangler.test.toml --port ${DEV_WORKER_PORT:-8788} --persist-to ${DEV_WORKER_STATE:-.wrangler/dev-state}",
     "dev:worker:init": "STATE_SERVICE_URL=http://localhost:${DEV_WORKER_PORT:-8788} node --env-file=workers/api/.dev.vars scripts/migrate-state-storage.mjs --initialize",
-    "dev:local": "node --env-file-if-exists=.env.local --import tsx --import ./src/lib/testing/register-alias.mjs scripts/build-site-assets.tsx && SITE_ENV=development PUBLIC_BACKEND_URL=http://localhost:${DEV_WORKER_PORT:-8788} react-router dev --port ${DEV_SITE_PORT:-3211}",
+    "dev:local": "pnpm assets && SITE_ENV=development PUBLIC_BACKEND_URL=http://localhost:${DEV_WORKER_PORT:-8788} react-router dev --port ${DEV_SITE_PORT:-3211}",
     "dev:override": "node scripts/dev-override.mjs",
     "docs:architecture": "node scripts/architecture-diagram.mjs",
     "docs:check": "node scripts/docs-check.mjs",

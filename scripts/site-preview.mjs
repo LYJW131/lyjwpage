@@ -38,7 +38,6 @@ export function sitePreviewVars(manifest) {
     SITE_ENV: "preview",
     PUBLIC_BACKEND_URL: manifest.backendUrl,
     R2_PUBLIC_BASE_URL: "https://lyjw.me/img",
-    SENTRY_ENVIRONMENT: "preview",
   };
 }
 
