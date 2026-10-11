@@ -1,16 +1,16 @@
-import { localDate } from "@/lib/freshness";
+import { activityCurrentAt } from "@/lib/freshness";
 import { loadLag, type LagResult } from "@/lib/lag-result";
 import type { ActivityPayload, ActivityStatus } from "@/lib/types";
 import { LAG_KEYS } from "@shared/lag";
 
-// 跨日失效必须在取数时计算；缓存中的昨天满环不能继续代表今天。
+// 取数出口按源站钟现算 currentAtSource。首屏会冻住这个布尔，页面用 activityDisplayedCurrent 重算。
 export function withActivityFreshness(
   payload: ActivityPayload,
   now = Date.now(),
 ): ActivityPayload {
   return {
     ...payload,
-    currentAtSource: localDate(now, payload.secondsFromGMT) === payload.date,
+    currentAtSource: activityCurrentAt(payload.date, payload.secondsFromGMT, now),
   };
 }
 

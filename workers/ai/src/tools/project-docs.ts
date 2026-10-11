@@ -1,5 +1,6 @@
 import { site } from "@/lib/site";
 
+import { isTimeout, withTimeout } from "./deadline";
 import type { SiteTool } from "./registry";
 
 export type ReadDoc = (url: string) => Promise<Response>;
@@ -131,12 +132,21 @@ export async function readProjectDoc(
 ): Promise<{ ok: boolean; text: string; heading?: string }> {
   const header = `Source: ${projectDocUrl(request.doc, "blob")}`;
   try {
-    const response = await read(projectDocUrl(request.doc, "raw"));
-    if (!response.ok) return { ok: false, text: `${header}\n\n${JSON.stringify({ error: `HTTP ${response.status}` })}` };
+    const response = await withTimeout(read(projectDocUrl(request.doc, "raw")));
+    if (!response.ok) {
+      try { await response.body?.cancel(); } catch {
+        // 取消失败不能盖掉已经拿到的状态码。
+      }
+      const error = `HTTP ${response.status}`;
+      console.warn("[project-doc] read failed", JSON.stringify({ doc: request.doc, error }));
+      return { ok: false, text: `${header}\n\n${JSON.stringify({ error })}` };
+    }
     const { text, heading } = sliceDoc(await response.text(), request.section);
     return { ok: true, text: `${header}\n${LANGUAGE_NOTE}\n\n${text}`, heading };
-  } catch {
-    return { ok: false, text: `${header}\n\n${JSON.stringify({ error: "unavailable" })}` };
+  } catch (error) {
+    const reason = isTimeout(error) ? "timed out" : "unavailable";
+    console.warn("[project-doc] read failed", JSON.stringify({ doc: request.doc, error: reason }));
+    return { ok: false, text: `${header}\n\n${JSON.stringify({ error: reason })}` };
   }
 }
 

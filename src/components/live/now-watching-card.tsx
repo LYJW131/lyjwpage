@@ -10,8 +10,8 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import { NOW_WATCHING_PATH } from "@/lib/paths";
+import { formatClock } from "@/lib/clock-format";
 import { describeDevice, describeMedia } from "@/lib/watching-media";
-import { formatClock } from "@/lib/web-player";
 import type { StatusResponse, WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
 import { cn } from "@/lib/utils";
 

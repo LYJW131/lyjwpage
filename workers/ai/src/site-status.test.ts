@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { STATUS_VIEWS } from "@/lib/status-views";
 import { runShowCard } from "./chat/show-card.ts";
+import { TOOL_READ_TIMEOUT_MS } from "./tools/deadline.ts";
 import { newLedger, type ToolIO, type ToolLedger } from "./tools/registry.ts";
 import { isImageField, SITE_STATUS_TOOL } from "./tools/site-status.ts";
 
@@ -189,10 +190,101 @@ test("没有 reads 的旧账本第一次使用时再初始化", async () => {
 
 test("show_card 回给模型的是精简后的第一页，带摘要与 nextCursor", async () => {
   const io = fakeIO(() => ({ games: games(60) }));
-  const text = await runShowCard("playing", io, newLedger());
-  const { summary, json } = section(text, "playing");
+  const shown = await runShowCard("playing", io, newLedger());
+  assert.equal(shown.isError, false);
+  const { summary, json } = section(shown.text, "playing");
   assert.match(summary, /nextCursor: /);
   const parsed = JSON.parse(json);
   assert.equal(parsed.games.items.length, 20);
   assert.equal(parsed.games.items[0].coverUrl, undefined);
+});
+
+test("上游失败、抛错或非 JSON 是工具错误，trace 不记这次没读成的视图，同一次读取不能再打", async () => {
+  const paths: string[] = [];
+  const failed = {
+    readStatus: async (path: string) => {
+      paths.push(path);
+      return new Response("initializing", { status: 503 });
+    },
+    readDoc: async () => new Response(""),
+  } satisfies ToolIO;
+  const ledger = newLedger();
+  const down = await run({ views: ["playing", "timezone"] }, failed, ledger);
+  assert.equal(down.isError, true);
+  assert.equal(down.views, undefined);
+  assert.match(down.text, /HTTP 503/);
+  assert.equal(ledger.views.size, 0);
+  assert.equal(ledger.reads?.size, 2);
+  await run({ views: ["playing", "timezone"] }, failed, ledger);
+  assert.deepEqual(paths, [STATUS_VIEWS.playing.path, STATUS_VIEWS.timezone.path]);
+
+  const thrown = await run({ views: ["desktop"] }, {
+    readStatus: async () => { throw new Error("binding down"); },
+    readDoc: async () => new Response(""),
+  }, newLedger());
+  assert.equal(thrown.isError, true);
+  assert.match(thrown.text, /unavailable/);
+  assert.doesNotMatch(thrown.text, /binding down/);
+
+  let calls = 0;
+  const ledger2 = newLedger();
+  const first = await run({ views: ["playing"] }, {
+    readStatus: async () => {
+      calls += 1;
+      return calls === 1 ? Response.json({ games: games(60) }) : new Response("<html>", { status: 200 });
+    },
+    readDoc: async () => new Response(""),
+  }, ledger2);
+  const cursor = cursorOf(section(first.text, "playing").summary);
+  const badPage = await run({ cursor }, {
+    readStatus: async () => {
+      calls += 1;
+      return new Response("<html>", { status: 200 });
+    },
+    readDoc: async () => new Response(""),
+  }, ledger2);
+  assert.equal(badPage.isError, true);
+  assert.match(badPage.text, /not JSON/);
+  assert.equal(ledger2.reads?.size, 2);
+  await run({ cursor }, { readStatus: async () => { calls += 1; return new Response("again", { status: 500 }); }, readDoc: async () => new Response("") }, ledger2);
+  assert.equal(calls, 2);
+});
+
+test("同一调用里读成的视图留下，失败的不进 trace", async () => {
+  const ledger = newLedger();
+  const result = await run({ views: ["playing", "timezone"] }, {
+    readStatus: async (path) => path === STATUS_VIEWS.playing.path
+      ? new Response("", { status: 503 })
+      : Response.json({ zone: "Asia/Shanghai" }),
+    readDoc: async () => new Response(""),
+  }, ledger);
+  assert.equal(result.isError, false);
+  assert.deepEqual(result.views, ["timezone"]);
+  assert.deepEqual([...ledger.views], ["timezone"]);
+  assert.match(result.text, /HTTP 503/);
+  assert.match(result.text, /Asia\/Shanghai/);
+});
+
+test("读取挂起到期限就是工具错误，不占住回复", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const ledger = newLedger();
+  const hung = run({ views: ["playing"] }, { readStatus: () => new Promise(() => {}), readDoc: async () => new Response("") }, ledger);
+  t.mock.timers.tick(TOOL_READ_TIMEOUT_MS);
+  const result = await hung;
+  assert.equal(result.isError, true);
+  assert.match(result.text, /timed out/);
+  assert.equal(ledger.views.size, 0);
+  assert.equal(ledger.reads?.size, 1);
+});
+
+test("show_card 读失败时告诉模型别编数据，卡片背后的视图不记成读过", async () => {
+  const ledger = newLedger();
+  const shown = await runShowCard("playing", {
+    readStatus: async () => new Response("", { status: 503 }),
+    readDoc: async () => new Response(""),
+  }, ledger);
+  assert.equal(shown.isError, true);
+  assert.match(shown.text, /could not be read/);
+  assert.match(shown.text, /do not invent/i);
+  assert.equal(ledger.views.size, 0);
 });

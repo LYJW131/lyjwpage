@@ -85,6 +85,59 @@ test("tokens lane sums every source per bucket, drops the partial leading and wi
   });
 });
 
+test("tokens lane: an account source replaces that agent's device and environment rows; other agents still add", async () => {
+  await withStorage(async (storage) => {
+    const mac = mergeBucketReport(null, report(NOW - 20 * M, NOW - 2 * M, ["cursor", "claude", "codex"], [
+      [NOW - 15 * M, [
+        tokens("cursor", "composer-2", 5_000, 0, 0, 0),
+        tokens("claude", null, 200, 0, 0, 0),
+        tokens("codex", null, 40, 0, 0, 0),
+      ]],
+      [NOW - 10 * M, [
+        tokens("cursor", "composer-2", 800, 0, 0, 0),
+        tokens("claude", null, 300, 0, 0, 0),
+      ]],
+    ]), NOW - 2 * M);
+    const account = mergeBucketReport(null, report(NOW - 20 * M, NOW - M, ["cursor"], [
+      [NOW - 15 * M, [tokens("cursor", "composer-2", 100, 0, 0, 0)]],
+    ]), NOW - M);
+    const cloud = addBucketDeltas(null, [
+      { at: NOW - 14 * M, id: "claude", model: null, inputTokens: 50, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      { at: NOW - 14 * M, id: "cursor", model: null, inputTokens: 9_000, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      { at: NOW - 9 * M, id: "claude", model: null, inputTokens: 20, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    ], NOW - 3 * M);
+    await storage.batch()
+      .set(codingBucketsKey("mac"), JSON.stringify(mac))
+      .set(codingBucketsKey("agents"), JSON.stringify(account))
+      .set(codingBucketsKey("agents-otlp"), JSON.stringify(cloud))
+      .execute();
+    const lane = (await getPulseStatus(NOW)).lanes.tokens;
+    assert.deepEqual(columnRows(lane.buckets, ["fresh", "output", "cacheRead"]), [
+      { startSec: sec(NOW - 15 * M), endSec: sec(NOW - 10 * M), fresh: 390, output: 0, cacheRead: 0 },
+      { startSec: sec(NOW - 10 * M), endSec: sec(NOW - 5 * M), fresh: 320, output: 0, cacheRead: 0 },
+    ]);
+    assert.equal(lane.summary.freshTokens, 710);
+  });
+});
+
+test("tokens lane: a superseded source's fresh coverage is not a measured zero", async () => {
+  await withStorage(async (storage) => {
+    const mac = mergeBucketReport(null, report(NOW - 60 * M, NOW - M, ["cursor"], [
+      [NOW - 50 * M, [tokens("cursor", null, 500, 0, 0, 0)]],
+    ]), NOW - M);
+    const account = mergeBucketReport(null, report(NOW - 60 * M, NOW - 30 * M, ["cursor"], [
+      [NOW - 50 * M, [tokens("cursor", null, 100, 0, 0, 0)]],
+    ]), NOW - 30 * M);
+    await storage.batch()
+      .set(codingBucketsKey("mac"), JSON.stringify(mac))
+      .set(codingBucketsKey("agents"), JSON.stringify(account))
+      .execute();
+    const { summary } = (await getPulseStatus(NOW)).lanes.tokens;
+    assert.equal(summary.freshTokens, 100);
+    assert.equal(summary.currentPerMinute, null);
+  });
+});
+
 test("tokens lane: the current rate is the last bucket's, or 0 when a source still covers the last ten minutes, or unknown", async () => {
   const current = async (to: number, extra: (storage: FakeStorage) => Promise<void> = async () => {}) => withStorage(async (storage) => {
     const mac = mergeBucketReport(null, report(NOW - 60 * M, to, ["claude"], [[NOW - 50 * M, [tokens("claude", null, 500, 0, 0, 0)]]]), to);

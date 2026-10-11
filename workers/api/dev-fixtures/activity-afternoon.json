@@ -2,7 +2,7 @@
   "ok": true,
   "updatedAt": "$now-600000",
   "data": {
-    "date": "2026-09-14",
+    "date": "$today",
     "secondsFromGMT": 28800,
     "moveKcal": 386,
     "moveGoalKcal": 270,

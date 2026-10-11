@@ -6,7 +6,6 @@ import {
   clearPlaylistCache,
   computePlaylistHeight,
   filterUserQueueItems,
-  formatClock,
   getCachedPlaylist,
   getMusicAuthServerSnapshot,
   getMusicAuthSnapshot,
@@ -62,13 +61,6 @@ test("queueOptionsFor: 认不出种类的链接，退回原始 url", () => {
 test("queueOptionsFor: link 为 null 或非法 URL 时返回 null", () => {
   assert.equal(queueOptionsFor({ id: "123", link: null }), null);
   assert.equal(queueOptionsFor({ id: "123", link: "not a url" }), null);
-});
-
-test("formatClock: 包含零、负数以及时分秒各档位", () => {
-  assert.equal(formatClock(0), "0:00");
-  assert.equal(formatClock(-1_000), "0:00");
-  assert.equal(formatClock(83_000), "1:23");
-  assert.equal(formatClock(3_723_000), "1:02:03");
 });
 
 test("resolveVisibleQueue: 仅当已装载专辑与当前专辑 ID 一致时保留列表", () => {

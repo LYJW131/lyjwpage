@@ -1,5 +1,6 @@
 import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
 
+import { isTimeout, withTimeout } from "./deadline";
 import type { SiteTool, ToolLedger } from "./registry";
 
 export type ReadStatus = (path: string) => Promise<Response>;
@@ -201,13 +202,14 @@ function collectLists(value: unknown, path: string, needle: string, lists: Paged
   return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, collectLists(child, path ? `${path}.${key}` : key, needle, lists)]));
 }
 
-type ViewResult = { section: string; outOfRange?: true };
+type ViewResult = { section: string; outOfRange?: true; error?: string };
 
 function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: Cursor | undefined): ViewResult {
   const needle = normalize(page.query);
   const lists: PagedList[] = [];
   const filtered = collectLists(withMonthlyTotals(page.detail === "summary" ? strip(data) : data), "", needle, lists);
-  const longest = Math.max(0, ...lists.map((list) => list.total));
+  let longest = 0;
+  for (const list of lists) if (list.total > longest) longest = list.total;
   if (page.offset > 0 && page.offset >= longest) return { section: "", outOfRange: true };
   const totals = lists.map((list) => list.total);
   const next = page.offset + PAGE_SIZE < longest ? encodeCursor({ view, ...page, offset: page.offset + PAGE_SIZE, totals }) : undefined;
@@ -245,28 +247,54 @@ function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: 
   return { section: `${summary.join(" | ")}\n${body}` };
 }
 
+function logReadFailure(view: StatusViewKey, error: string) {
+  console.warn("[site-status] read failed", JSON.stringify({ view, error }));
+}
+
 async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, cursor?: Cursor): Promise<ViewResult> {
   let text: string;
   try {
-    const response = await read(STATUS_VIEWS[key].path);
-    if (!response.ok) return { section: JSON.stringify({ error: `HTTP ${response.status}` }) };
+    const response = await withTimeout(read(STATUS_VIEWS[key].path));
+    if (!response.ok) {
+      try { await response.body?.cancel(); } catch {
+        // 取消失败不能盖掉已经拿到的状态码。
+      }
+      const error = `HTTP ${response.status}`;
+      logReadFailure(key, error);
+      return { section: JSON.stringify({ error }), error };
+    }
     text = await response.text();
+  } catch (error) {
+    const reason = isTimeout(error) ? "timed out" : "unavailable";
+    logReadFailure(key, reason);
+    return { section: JSON.stringify({ error: reason }), error: reason };
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
   } catch {
-    return { section: JSON.stringify({ error: "unavailable" }) };
+    logReadFailure(key, "not JSON");
+    return { section: JSON.stringify({ error: "not JSON" }), error: "not JSON" };
   }
   try {
-    return pageView(key, JSON.parse(text), page, cursor);
+    return pageView(key, data, page, cursor);
   } catch {
-    if (page.offset > 0) return { section: "", outOfRange: true };
-    return { section: `not JSON, returned as is\n${text.length > MAX_CHARS_PER_VIEW ? `${text.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : text}` };
+    logReadFailure(key, "unavailable");
+    return { section: JSON.stringify({ error: "unavailable" }), error: "unavailable" };
   }
 }
 
 const clockLine = (now: number) => `now: ${now} (${new Date(now).toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour12: false })} Asia/Shanghai)`;
 
-export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[], now = Date.now(), page: StatusPage = FIRST_PAGE): Promise<string> {
-  const results = await Promise.all(views.map(async (key) => `## ${key}\n${(await readView(read, key, page)).section}`));
-  return [clockLine(now), ...results].join("\n\n");
+export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[], now = Date.now(), page: StatusPage = FIRST_PAGE): Promise<{ text: string; failed: StatusViewKey[] }> {
+  const results = await Promise.all(views.map(async (key) => {
+    const result = await readView(read, key, page);
+    return { key, failed: Boolean(result.error), section: `## ${key}\n${result.section}` };
+  }));
+  return {
+    text: [clockLine(now), ...results.map((result) => result.section)].join("\n\n"),
+    failed: results.filter((result) => result.failed).map((result) => result.key),
+  };
 }
 
 const INVALID_CURSOR = "Invalid cursor: it is not one this tool returned, or the list no longer reaches that position. Call get_site_status again without cursor to start from the first page.";
@@ -281,6 +309,7 @@ export const SITE_STATUS_TOOL: SiteTool = {
     "Long lists are paged: each view starts with a summary line naming the paged lists, their totals and the nextCursor. Pass nextCursor back unchanged as cursor to read the next page; no nextCursor means the last page. The page size is chosen by the server.",
     "To look for a specific item (a game, song, show or trophy), use query first: it keeps the list items that contain the text, ignoring case and full/half width. Game names may be in Chinese, English or Japanese, so try another name when nothing matches.",
     "Don't conclude that something is absent until you have searched for it or read every page.",
+    "If a view comes back as an error, it was not read. Say so; do not invent its data or treat the error as an empty result.",
     "Views:",
     ...VIEW_KEYS.map((key) => `- ${key}: ${VIEW_NOTES[key]}`),
   ].join("\n"),
@@ -303,21 +332,32 @@ export const SITE_STATUS_TOOL: SiteTool = {
   async run(input, { readStatus }, ledger) {
     const parsed = parseSiteStatusInput(input);
     if (parsed.badCursor) return { text: INVALID_CURSOR, isError: true };
-    const hadView = parsed.cursor && ledger.views.has(parsed.cursor.view);
+    const seen = new Set(ledger.views);
     const { views, notes } = claimViews(parsed.views, ledger, parsed.page);
+    const dropUnread = (key: StatusViewKey) => {
+      if (!seen.has(key)) ledger.views.delete(key);
+    };
     if (parsed.cursor && views.length) {
       const view = parsed.cursor.view;
       const result = await readView(readStatus, view, parsed.page, parsed.cursor);
       if (result.outOfRange) {
         ledger.reads?.delete(readKey(view, parsed.page));
-        if (!hadView) ledger.views.delete(view);
+        dropUnread(view);
         return { text: INVALID_CURSOR, isError: true };
       }
+      if (result.error) dropUnread(view);
       const text = [`${clockLine(Date.now())}\n\n## ${view}\n${result.section}`, ...parsed.notes].join("\n\n");
-      return { text, isError: false, views };
+      return { text, isError: Boolean(result.error), ...(!result.error && { views }) };
     }
-    const read = views.length ? await runSiteStatusTool(readStatus, views, Date.now(), parsed.page) : "";
-    const text = [read, ...parsed.notes, ...notes].filter(Boolean).join("\n\n") || "No valid views requested.";
-    return { text, isError: !views.length, ...(views.length && { views }) };
+    if (!views.length) {
+      const text = [...parsed.notes, ...notes].filter(Boolean).join("\n\n") || "No valid views requested.";
+      return { text, isError: true };
+    }
+    const read = await runSiteStatusTool(readStatus, views, Date.now(), parsed.page);
+    const failed = new Set(read.failed);
+    for (const key of failed) dropUnread(key);
+    const ok = views.filter((key) => !failed.has(key));
+    const text = [read.text, ...parsed.notes, ...notes].filter(Boolean).join("\n\n");
+    return { text, isError: ok.length === 0, ...(ok.length && { views: ok }) };
   },
 };

@@ -7,8 +7,9 @@ import useSWR from "swr";
 import { Rings, ringValues } from "@/components/live/activity-card";
 import { mediaApp, mergeVariants, playTime } from "@/components/live/playstation-card";
 import { StatusDot } from "@/components/ui/status-dot";
-import { useLiveNowListening, useStale } from "@/hooks/use-stale";
+import { useActivityCurrent, useLiveNowListening, useStale } from "@/hooks/use-stale";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
+import { formatClock } from "@/lib/clock-format";
 import { ACTIVITY_STALE_MS } from "@/lib/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
 import { PLAYSTATION_IMAGE_SCALE, playstationImage } from "@/lib/playstation-image";
@@ -212,11 +213,6 @@ function Tile({ href, image, title, subtitle, progress }: { href?: string | null
   );
 }
 
-function clock(ms: number) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
-
 function artwork(url: string | null | undefined, px = TILE_PX) {
   return url ? { src: appleArtwork(url, px * ARTWORK_SCALE), px, optimize: needsOptimizing(url) } : { src: null };
 }
@@ -241,7 +237,7 @@ function NowListeningCard() {
         subtitle={[music.artist, music.album].filter(Boolean).join(" · ")}
         href={live?.link}
         progress={music.durationMs > 0 ? (position / music.durationMs) * 100 : null}
-        meta={music.durationMs > 0 ? `${clock(position)} / ${clock(music.durationMs)}` : null}
+        meta={music.durationMs > 0 ? `${formatClock(position)} / ${formatClock(music.durationMs)}` : null}
       />
     );
   } else if (elsewhere) {
@@ -254,7 +250,7 @@ function NowListeningCard() {
         title={elsewhere.title}
         subtitle={[elsewhere.artist, elsewhere.album].filter(Boolean).join(" · ")}
         progress={(position / elsewhere.durationMs) * 100}
-        meta={`~${clock(position)} / ${clock(elsewhere.durationMs)}`}
+        meta={`~${formatClock(position)} / ${formatClock(elsewhere.durationMs)}`}
       />
     );
   } else if (live) {
@@ -398,7 +394,7 @@ function ActivityCard() {
   const activity = useCardView<ActivityPayload>("activity");
   const stale = useStale(activity.updatedAt ?? activity.data?.pushedAt, ACTIVITY_STALE_MS);
   const data = stale ? undefined : activity.data;
-  const current = Boolean(data?.currentAtSource);
+  const current = useActivityCurrent(data);
   const rings = ringValues(data, current);
 
   return (

@@ -153,7 +153,7 @@ Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──
 ### 功率曲线与历史回放
 - **服务端环形缓冲**：StateHub 的 SQLite 为充电头保留最近 `CHARGER_HISTORY_LIMIT`（`src/lib/limits.ts`）个采样点（最小间隔 `MIN_SAMPLE_GAP_MS`，见 `workers/api/src/stores/charger-store.ts`），新进网页可直接绘制完整历史曲线。
 - **真实时间映射**：图表横坐标必须按时间戳间距绘制，禁止按采样序号等宽平铺，以真实还原丢包或断流空档。
-- **断流检测**：超过 `chargerStaleAfterMs()`（`src/lib/anker.ts`：`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）未收到新读数，状态判定为断流，卡片置灰。
+- **断流检测**：充电头和充电宝共用 `src/lib/freshness.ts#chargingStaleAfterMs`（`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）。超过该窗口未收到新读数，状态判定为断流，卡片置灰。
 
 ### A110G 充电宝差异
 - 充电宝电量变化缓慢，因此服务端**不记录历史曲线**，仅保存当前快照。
@@ -266,7 +266,7 @@ payload: >-
 - **原生读取真实目标**：通过原生 Swift 代码从 `HKActivitySummary` 读取用户当天的真实目标卡路里、锻炼时长与站立次数（非预设常量）。
 - **设备时区为准**：上报日期取 Apple Watch 当地自然日（`YYYY-MM-DD`）与 `secondsFromGMT`。跨时区旅行过日界线时，按手表本地日推进，服务端不做时区矫正。
 - **iOS 后台节流容忍**：iOS 系统对 HealthKit 数据的后台推送存在约每小时一次的系统级节流，因此该模块不建立 WebSocket 推送，前端按 `STATUS_VIEWS.activity.cadenceMs` 排期在下一次预期上报后取，逾期后按 `nextLagDelay` 退避重试。
-- **读数与训练在可滞后层**：圆环读数（KV `activity:v1`）与最近训练（KV `workouts:v1`）由上报入口在状态核心那一半成功之后写入，状态核心只留 Pulse 用的五分钟统计桶和训练区间。圆环超过 `ACTIVITY_STALE_MS` 没有新读数时卡片写 Unavailable；训练是历史事实，不设过期。
+- **读数与训练在可滞后层**：圆环读数（KV `activity:v1`）与最近训练（KV `workouts:v1`）由上报入口在状态核心那一半成功之后写入，状态核心只留 Pulse 用的五分钟统计桶和训练区间。圆环超过 `ACTIVITY_STALE_MS` 没有新读数时卡片写 Unavailable。读数的日期过了源站当地日，页面按 `src/lib/freshness.ts#activityDisplayedCurrent` 把环清零，不把冻住的 `currentAtSource` 继续当成今天。训练是历史事实，不设过期。
 
 ---
 
@@ -317,7 +317,7 @@ payload: >-
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
   （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code 的 token 桶）现算。Clef 只给 Coding 打十五分钟强度与模式，
   只在悬停里出现；别的道不再有模型分。
-- Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（不含 cache read），不带模型名和来源；
+- Tokens 道按 `shared/coding-usage-sources.ts#resolveCodingUsageSources` 合并三个来源的 5 分钟 token 桶后画速率（不含 cache read）：同一 agent 有账号级来源就只用它，否则本机与云端相加；不带模型名和来源；
   取桶规则见 `src/lib/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
 - 这些事实由 API 定时任务按归档水位写入 D1 的事实表（迁移 `0007_history_pulse.sql`；周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）。
