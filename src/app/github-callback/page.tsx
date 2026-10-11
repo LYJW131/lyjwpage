@@ -12,9 +12,9 @@ const RELAY = `try{var p=new URLSearchParams(location.search);history.replaceSta
 
 export default function GithubCallbackPage() {
   return (
-    <>
+    <main id="content" tabIndex={-1}>
       <p className="p-6 text-sm text-muted-foreground">Finishing GitHub sign-in… you can close this window.</p>
       <script dangerouslySetInnerHTML={{ __html: RELAY }} />
-    </>
+    </main>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { GeistMono } from "geist/font/mono";
 
 import { PwaRegistration } from "@/components/pwa-registration";
+import { SkipLink } from "@/components/skip-link";
 import { RestReady } from "@/components/rest-ready";
 import { SiteAnalytics } from "@/components/site-analytics";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -67,6 +68,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="flex min-h-full flex-col">
+        <SkipLink />
         <PsPlusSprite />
         {/* 普通图片使用 no-cors；带 crossOrigin 的预连接无法被它复用。 */}
         <link rel="preconnect" href="https://is1-ssl.mzstatic.com" />

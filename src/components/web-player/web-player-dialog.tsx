@@ -1,5 +1,6 @@
 "use client";
 
+import { useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ExternalLink, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 
@@ -7,16 +8,16 @@ import { SyncPlaybackButton } from "@/components/web-player/sync-playback-button
 import { Modal } from "@/components/ui/modal";
 import { PlayerCover } from "@/components/web-player/player-cover";
 import { PlayerLyrics } from "@/components/web-player/player-lyrics";
+import { usePlaybackProgressEase } from "@/hooks/use-playback-progress";
 import type { WebPlayer } from "@/hooks/use-web-player";
 import { PLAYBACK_STATE } from "@/lib/musickit";
 import { catalogItemId } from "@/lib/playing-queue";
 import { cn } from "@/lib/utils";
 import {
-  computePlaylistHeight,
   formatClock,
-  PLAYLIST_MAX_HEIGHT_PX,
+  playlistScrollportHeight,
+  PLAYLIST_MAX_VISIBLE_ROWS,
   queueOptionsFor,
-  snapPlaylistScrollTop,
 } from "@/lib/web-player";
 
 function DialogButton({ children, onClick, disabled }: {
@@ -47,19 +48,13 @@ const SEEK_KEYS = new Set([
   "PageDown",
 ]);
 
-const SETTLE_DELAY_MS = 110;
-const SUSPEND_AFTER_CHANGE_MS = 400;
-
 function usePlaylistSnap(albumId: string | null | undefined) {
   const node = useRef<HTMLDivElement | null>(null);
   const previous = useRef(albumId);
-  const suspendUntil = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (previous.current === albumId) return;
     previous.current = albumId;
-    suspendUntil.current = Date.now() + SUSPEND_AFTER_CHANGE_MS;
 
     const el = node.current;
     if (!el || el.scrollTop === 0) return;
@@ -71,28 +66,6 @@ function usePlaylistSnap(albumId: string | null | undefined) {
 
   return useCallback((el: HTMLDivElement | null) => {
     node.current = el;
-    if (!el) return;
-
-    const onScroll = () => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        if (Date.now() < suspendUntil.current) return;
-        const maxScroll = el.scrollHeight - el.clientHeight;
-        const target = snapPlaylistScrollTop(el.scrollTop, maxScroll);
-        if (Math.abs(target - el.scrollTop) < 0.5) return;
-        const reduced =
-          typeof window !== "undefined" &&
-          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        el.scrollTo({ top: target, behavior: reduced ? "auto" : "smooth" });
-      }, SETTLE_DELAY_MS);
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (timer.current) clearTimeout(timer.current);
-      node.current = null;
-    };
   }, []);
 }
 
@@ -120,6 +93,8 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
   const durationMs = isItemActive ? activeDurationMs : 0;
   const percent =
     durationMs > 0 ? Math.min(100, Math.max(0, (positionMs / durationMs) * 100)) : 0;
+  const reduced = useReducedMotion();
+  const easePlayback = usePlaybackProgressEase(percent, durationMs, 1_000, reduced);
 
   useEffect(() => {
     return () => {
@@ -267,7 +242,10 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                 <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted transition-[height] duration-150 group-hover:h-1.5">
                   <div
                     className={cn(
-                      "h-full rounded-full transition-all",
+                      "h-full rounded-full",
+                      !isDragging &&
+                        easePlayback &&
+                        "transition-[width] duration-150 ease-linear motion-reduce:transition-none",
                       isPlaying ? "bg-live" : "bg-muted-foreground",
                     )}
                     style={{ width: `${percent}%` }}
@@ -276,7 +254,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
 
                 <div
                   className={cn(
-                    "pointer-events-none absolute size-2.5 -translate-x-1/2 rounded-full bg-foreground shadow-sm ring-2 ring-surface transition-all duration-150",
+                    "pointer-events-none absolute size-2.5 -translate-x-1/2 rounded-full bg-foreground shadow-sm ring-2 ring-surface transition-[opacity,transform] duration-150 motion-reduce:transition-none",
                     isDragging
                       ? "scale-125 opacity-100"
                       : "opacity-80 sm:opacity-0 sm:group-hover:opacity-100 sm:group-hover:scale-110",
@@ -366,22 +344,24 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
             {(() => {
               if (!hasQueue && !isStarting) return null;
 
-              const targetHeight = hasQueue
-                ? computePlaylistHeight(player.queue.length)
-                : PLAYLIST_MAX_HEIGHT_PX;
+              const scrollportHeight = playlistScrollportHeight(
+                hasQueue ? player.queue.length : PLAYLIST_MAX_VISIBLE_ROWS,
+              );
 
               return (
-                <div
-                  ref={listRef}
-                  className="mt-3 max-h-[237px] overflow-y-auto border-t border-line py-1.5 scrollbar-none [&::-webkit-scrollbar]:hidden"
-                  style={{ height: `${targetHeight}px` }}
-                >
+                // 内边距在滚动口外，按行高吸附才不会停在半行。
+                <div className="mt-3 border-t border-line py-1.5">
+                  <div
+                    ref={listRef}
+                    className="snap-y snap-mandatory overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
+                    style={{ height: `${scrollportHeight}px` }}
+                  >
                   {!hasQueue ? (
                     <div aria-hidden>
                       {[0, 1, 2, 3, 4, 5, 6].map((i) => (
                         <div
                           key={i}
-                          className="flex h-8 animate-pulse items-center gap-2 px-1 py-1.5"
+                          className="flex h-8 snap-start items-center gap-2 px-1 py-1.5"
                         >
                           <div className="h-3.5 w-5 rounded bg-muted" />
                           <div className="h-3.5 flex-1 rounded bg-muted" />
@@ -399,7 +379,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                           key={`${song.id ?? "song"}:${index}`}
                           type="button"
                           onClick={() => player.playAt(index)}
-                          className="flex h-8 w-full items-center gap-2 px-1 py-1.5 text-left text-sm transition-colors hover:bg-surface-hover"
+                          className="flex h-8 w-full snap-start items-center gap-2 px-1 py-1.5 text-left text-sm transition-colors hover:bg-surface-hover"
                         >
                           <span className="label-mono w-5 shrink-0 text-muted-foreground">
                             {index + 1}
@@ -419,6 +399,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                       );
                     })
                   )}
+                  </div>
                 </div>
               );
             })()}

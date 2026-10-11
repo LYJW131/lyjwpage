@@ -190,7 +190,7 @@ export function ChargerCard({
                 <div className="h-1.5 min-w-0 flex-1 overflow-hidden border border-line bg-muted/40">
                   <div
                     className={cn(
-                      "h-full transition-[width] duration-700",
+                      "h-full transition-[width] duration-700 motion-reduce:transition-none",
                       charging ? "bg-live" : "bg-muted-foreground",
                     )}
                     style={{ width: `${Math.min(Math.max(ratio * 100, 0), 100)}%` }}

@@ -36,13 +36,13 @@ export default function Error({
         </div>
       </header>
 
-      <main className="flex flex-1 items-center justify-center py-12">
+      <main id="content" tabIndex={-1} className="flex flex-1 items-center justify-center py-12">
         <div className="mx-auto w-[calc(100%-2rem)] max-w-md">
           <Card label="ERROR" tone="off">
             <div className="flex flex-col items-center p-6 text-center sm:p-8">
-              <div className="label-mono text-3xl font-bold tracking-widest text-foreground sm:text-4xl">
+              <h1 className="label-mono text-3xl font-bold tracking-widest text-foreground sm:text-4xl">
                 Something went wrong
-              </div>
+              </h1>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                 An unexpected error occurred while rendering this page. Try reloading.
               </p>

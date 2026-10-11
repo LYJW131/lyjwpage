@@ -230,12 +230,6 @@ export function TimezoneCard({
     now,
   );
   const clock = now ? clockParts(now, timezone) : null;
-  const zoneLabel = [
-    formatTimezoneRegion(timezone),
-    offsetSeconds == null ? null : formatUTCOffset(offsetSeconds),
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
   return (
     <Card className={cn("h-full", className)}>
@@ -287,11 +281,15 @@ export function TimezoneCard({
             {clock ? `${clock.date} ${clock.weekday}` : "--"}
           </div>
 
+          {/* 偏移量整段换行。整行 nowrap 会画出列宽，盖住右侧表盘。 */}
           <div
-            className="whitespace-nowrap font-mono text-xs text-muted-foreground"
+            className="flex min-w-0 flex-wrap items-baseline gap-x-1 font-mono text-xs leading-4 text-muted-foreground"
             title={timezone}
           >
-            {zoneLabel}
+            <span className="min-w-0 [overflow-wrap:anywhere]">{formatTimezoneRegion(timezone)}</span>
+            {offsetSeconds != null && (
+              <span className="whitespace-nowrap">· {formatUTCOffset(offsetSeconds)}</span>
+            )}
           </div>
         </div>
 
