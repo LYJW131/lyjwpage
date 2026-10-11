@@ -12,7 +12,7 @@ Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，�
 
 计划卡的两个出口互斥，同时最多展开一个确认面板。浏览器在发起 PKCE 授权前，每次都在计划卡里展开 `src/components/github-consent.tsx#GithubConsent` 的 GitHub 授权说明（按 `shared/build-routine.ts#visitorLanguage` 跟随访客语言，用中日英），访客点接受才弹出授权窗口；同意不保存，下次再点 Open issue 或 Start build 还会展开。
 
-- **Open issue**：浏览器完成 GitHub PKCE 授权，将授权码、verifier 和计划 token 提交；Worker 从签名计划生成正文，以访客身份创建 issue，然后撤销访客 token。正文的小节与仓库 issue 表单（`.github/ISSUE_TEMPLATE/`）同构；访客 token 无权打标签，`from-chat` 标签由 `.github/workflows/issue-labels.yml` 按正文末行的首页链接补上。
+- **Open issue**：浏览器完成 GitHub PKCE 授权，将授权码、verifier 和计划 token 提交；Worker 从签名计划生成正文，以访客身份创建 issue，然后撤销访客 token。正文的小节与仓库 issue 表单（`.github/ISSUE_TEMPLATE/`）同构；访客 token 无权打标签，`from-chat` 标签由 `.github/workflows/issue-labels.yml` 按 issue 的 `performed_via_github_app`（站点的 GitHub App）补上。
 - **Start build**：每次都弹窗连接 GitHub，与 Open issue 一样把授权码随计划一起交给 Worker，不签发、不保存任何会话凭据。Worker 兑换授权码、查 `/user` 拿账号名、用户 ID 与显示名，随即撤销访客 token（失败路径也撤销），然后原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。同一计划的构建重试必须重新验证同一个 GitHub 用户 ID，返回原 run 与 PR；不同账号不能接管。浏览器在授权与请求期间同步锁住按钮，避免重复点击。
 
 计划的使用记录在 DO 中。issue 在 OAuth 换票成功后、创建 issue 前消费计划；构建用 App 的只读安装令牌读取 main，成功后原子消费计划与额度，并将计划关联到唯一 run。读取 main 失败或构建额度拒绝不消费计划；已消费的计划不能创建另一个构建或 issue，同账号重试只恢复原 run，不重复扣额度。GitHub 请求结果不确定时先查 GitHub，不能把网络失败当成「没有创建」。构建频率取 `BUILD_QUOTA`；设计、账号和状态令牌使用不同用途标签，不能互换。
