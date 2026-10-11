@@ -71,9 +71,9 @@ test("preview state follows the newest site check and never an arbitrary check U
     const patch = await reconcileBuild(githubFixture([ci, {
       ...siteCheck, status, conclusion, details_url: "https://evil.example", html_url: "https://evil.example",
     }], []), run);
-    assert.equal(patch.ci?.state, "success", conclusion);
-    assert.equal(patch.preview?.state, state, conclusion);
-    assert.equal(patch.preview?.url, url, conclusion);
+    assert.equal(patch.ci?.state, "success", conclusion ?? status);
+    assert.equal(patch.preview?.state, state, conclusion ?? status);
+    assert.equal(patch.preview?.url, url, conclusion ?? status);
   }
 });
 

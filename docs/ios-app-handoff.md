@@ -4,6 +4,8 @@
 
 给在 Mac 上接手 [`apps/ios`](../apps/ios/README.md) 的 agent：把这个 App 第一次编过、测过、装上手机，并把验证结果写回仓库。App 是什么、怎么分层见它的 README；硬约束见 [`apps/ios/AGENTS.md`](../apps/ios/AGENTS.md)。做完一项就从本文删掉对应条目，全部做完后删掉本文并从 [docs/README.md](./README.md) 撤下登记。
 
+执行范围遵循 [App README「维护范围」](../apps/ios/README.md#维护范围)：仅验收运动数据上报相关的覆盖安装、授权、设置、Report Telemetry 与后台唤醒。下面的系统音乐、设备端摘要、站点展示、小组件及状态查询任务暂停，恢复客户端维护后再执行。
+
 ## 验证入口
 
 构建、测试和安装命令见 [App README](../apps/ios/README.md#目录与验证)。本机编译、模拟器交互及装机结果见 [验证记录](./ios-app-verification.md)；记录是快照，不能代替下面的设备验收。
