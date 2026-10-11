@@ -3,7 +3,7 @@ import { BUILD_PLAN_LIMITS, BUILD_UPLOAD_LIMITS, type BuildPlan, type BuildUploa
 const PROTECTED_PATH_SEGMENTS = new Set([
   ".git", ".github", ".claude", "agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md",
   ".cursor", ".cursorrules", ".codex", ".agents", ".gemini", ".vscode", ".devcontainer", ".husky", ".idea",
-  "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "scripts", ".gitmodules", "vercel.json",
+  "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "scripts", ".gitmodules",
 ]);
 
 function protectedPathSegment(segment: string): boolean {
@@ -40,7 +40,7 @@ export function checkBuildPlan(value: unknown): { plan: BuildPlan } | { error: s
   const badPath = paths.find((path) => typeof path !== "string" || !allowedBuildPath(path.replace(/\/$/, "/_")));
   if (badPath !== undefined) return { error: `Path ${JSON.stringify(badPath)} is not allowed. Use repository paths under src/, public/, docs/, shared/ or workers/*/src/ that avoid protected names.` };
   const text = `${cleanTitle}\n${spec}\n${acceptance.join("\n")}`;
-  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.(?:toml|jsonc?)|(?:next|vite|react-router)\.config\.[\w]+|vercel\.json|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
+  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.(?:toml|jsonc?)|(?:next|vite|react-router)\.config\.[\w]+|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
   // 句末标点会被一起匹配进最后一段（「…/AGENTS.md.」），比对前去掉，否则加个句号就能绕过。
   const protectedMention = mentionedPaths.find((path) => path.split("/").map((segment) => segment.replace(/[.,;:]+$/, "")).some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters"));
   if (protectedMention) return { error: `The title, spec or acceptance names ${JSON.stringify(protectedMention)}, a protected file or directory. Describe the behavior without naming agent instructions, dependency manifests, CI, scripts, deploy config or reporters.` };

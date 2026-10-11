@@ -36,9 +36,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # 部署流程
 
-- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由已有集成自动部署（域名切换完成前生产入口仍是 Vercel，见 `docs/ops-facts.md` 待上线行）。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
-- 域名与缓存链路（`lyjw.me` 在 Vercel，`lyjw131.com` 经阿里云 ESA 回源）见 `docs/ops-facts.md`。API Worker 对展示变化经 `SITE_CACHE` 通知 site Worker 标签失效，ESA 首页按源站的 SWR 头自行更新；新版本部署成功后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
-- 除非用户明确要求手工部署，不运行 `vercel deploy`、`vercel --prod`、`vercel promote` 等手工发布命令；自动部署失败时先检查并修复现有流程。
+- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由 Workers Builds 自动部署 `site` Worker（域名切换步骤见 `docs/workers-builds.md`）。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
+- 域名与缓存链路（`lyjw.me` 由 `site` Worker 直出，`lyjw131.com` 经阿里云 ESA 回源）见 `docs/ops-facts.md`。API Worker 对展示变化经 `SITE_CACHE` 通知 site Worker 标签失效，ESA 首页按源站的 SWR 头自行更新；新版本部署成功后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
+- 自动部署失败时先检查并修复现有流程，不改用手工发布。
 - `workers/api`、`workers/ai`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/public-status.ts`、`shared/collector.ts`）只加不改，被调用方先发布（Workers Builds 并行构建，保证顺序靠「禁区」里的手动部署例外）。
 - 推送成功不等于部署完成：检查该次提交的部署检查（Workers Builds 的 `Workers Builds: site`），并从生产域名验证本次受影响的行为或配置。
 - 上报器与其他独立部署单元按各自 README 发布：misaka-jp 上的 `server-reporter`、`agents-reporter` 合进 main 后由 `.github/workflows/build-reporters.yml` 自动换镜像，dsm 上的 `emby-reporter`、n100 上的 `playstation-reporter` 手动。若依赖站点的新契约或更长陈旧窗口，先确认站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。

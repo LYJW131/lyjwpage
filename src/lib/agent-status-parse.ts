@@ -14,7 +14,6 @@ export const AGENT_STATUS_URLS = {
   xaiFeed: "https://status.x.ai/feed.xml",
   typesafe: "https://status.typesafe.ai/index.json",
   apple: "https://www.apple.com/support/systemstatus/data/developer/system_status_en_US.js",
-  vercel: "https://www.vercel-status.com/api/v2/summary.json",
   github: "https://www.githubstatus.com/api/v2/summary.json",
   cloudflare: "https://www.cloudflarestatus.com/api/v2/summary.json",
 } as const;
@@ -26,7 +25,6 @@ const STATUS_PAGES = {
   xai: "https://status.x.ai/grok-build",
   typesafe: "https://status.typesafe.ai",
   apple: "https://developer.apple.com/system-status/",
-  vercel: "https://www.vercel-status.com",
   github: "https://www.githubstatus.com",
   cloudflare: "https://www.cloudflarestatus.com",
 } as const;
@@ -629,7 +627,6 @@ const FALLBACK: Record<AgentStatusRow["id"], { name: string; statusPage: string 
   grok: { name: "Grok", statusPage: STATUS_PAGES.xai },
   typesafe: { name: "TypeSafe", statusPage: STATUS_PAGES.typesafe },
   apple: { name: "Apple", statusPage: STATUS_PAGES.apple },
-  vercel: { name: "Vercel", statusPage: STATUS_PAGES.vercel },
   github: { name: "GitHub", statusPage: STATUS_PAGES.github },
   cloudflare: { name: "Cloudflare", statusPage: STATUS_PAGES.cloudflare },
 };
@@ -676,7 +673,7 @@ export async function collectAgentStatus(
 ): Promise<AgentStatusPayload> {
   const text = async (url: string) => fetchText(url);
   const failed = new Set<AgentStatusRow["id"]>();
-  const [claude, codex, cursor, grok, typesafe, apple, vercel, github, cloudflare] = await Promise.all([
+  const [claude, codex, cursor, grok, typesafe, apple, github, cloudflare] = await Promise.all([
     load(previous, failed, "claude", async () =>
       statuspageRow(
         "claude",
@@ -716,16 +713,6 @@ export async function collectAgentStatus(
     }),
     load(previous, failed, "typesafe", async () => typesafeRow(await text(AGENT_STATUS_URLS.typesafe), now)),
     load(previous, failed, "apple", async () => appleRow(await text(AGENT_STATUS_URLS.apple))),
-    load(previous, failed, "vercel", async () =>
-      statuspageRow(
-        "vercel",
-        "Vercel",
-        STATUS_PAGES.vercel,
-        await text(AGENT_STATUS_URLS.vercel),
-        () => true,
-        true,
-      ),
-    ),
     load(previous, failed, "github", async () =>
       statuspageRow(
         "github",
@@ -750,7 +737,7 @@ export async function collectAgentStatus(
   if (failed.size === Object.keys(FALLBACK).length) throw new Error("status pages all unreachable");
   return {
     fetchedAt: now,
-    agents: [claude, codex, cursor, grok, typesafe, apple, vercel, github, cloudflare],
+    agents: [claude, codex, cursor, grok, typesafe, apple, github, cloudflare],
   };
 }
 

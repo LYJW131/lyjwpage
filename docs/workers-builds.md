@@ -24,7 +24,7 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 `site` 在根目录 `wrangler.jsonc`：`SITE_ENV=production`，渲染 `RenderedSite`、状态快照 `StatusSnapshot`、图片 `ImageVariants` 三个带平台缓存的入口，默认入口分流 MCP 转发、Sentry `/relay`、`/image` 优化、`/img` R2 对象与静态资产。绑定含 `PUBLIC_STATUS`（→ api `PublicStatus`）、`IMAGES`、R2 `IMAGE_OBJECTS`（`lyjw-homepage`）与 `ASSETS`；Sentry DSN 写在 `[vars]`，构建期 `SENTRY_AUTH_TOKEN` 配在 Builds 环境变量里，仅用于上传 sourcemap。api 侧经 `SITE_CACHE`（→ site `RenderedSite`）做私有标签失效，见 `shared/site-cache.ts`。生产域名切换在 Builds 之外执行，见 [ops-facts](./ops-facts.md) 的待办行。
 
-切换顺序（发布前待办，未执行）：先在 Builds 创建/核对 `site` 目标，再为 api 配置 `SITE_CACHE` 调用方，再补 collector 的 `SITE_WORKER_TAG` / `SITE_ANALYTICS_SITES` 与 ingress 的部署通知，最后切换域名并用 `purge-esa.yml` 验证、刷新 ESA。无状态 DO 迁移；Vercel 侧在验收前不撤。Worker 发布与平台缓存生效不原子，`/` 文档与视图快照的 HIT / Range / 失效传播要在隔离云预览上验收。
+切换顺序（发布前待办，未执行）：先在 Builds 创建/核对 `site` 目标，再为 api 配置 `SITE_CACHE` 调用方，再补 collector 的 `SITE_WORKER_TAG` / `SITE_ANALYTICS_SITES` 与 ingress 的部署通知，最后切换域名并用 `purge-esa.yml` 验证、刷新 ESA。无状态 DO 迁移；旧托管在验收前不撤，待删清单见 [仓库外事实](./ops-facts.md)「待手工清理」。Worker 发布与平台缓存生效不原子，`/` 文档与视图快照的 HIT / Range / 失效传播要在隔离云预览上验收。
 
 ## 分支预览
 

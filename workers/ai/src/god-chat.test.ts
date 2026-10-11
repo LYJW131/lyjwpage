@@ -160,10 +160,10 @@ test("一条回复读视图有总额度，读过的不再读，同一轮的几�
 });
 
 test("Turnstile：生产只认本站域名和这张卡片的 action，localhost 与测试密钥只在本地预览认", () => {
-  const origins = ["https://lyjw131.com", "https://lyjw.me", "https://*.vercel.app"];
+  const origins = ["https://lyjw131.com", "https://lyjw.me", "https://*.lyjw.workers.dev"];
   const ok = { success: true, action: GOD_CHAT_TURNSTILE_ACTION };
   assert.equal(turnstilePassed({ ...ok, hostname: "lyjw.me" }, origins, false), true);
-  assert.equal(turnstilePassed({ ...ok, hostname: "lyjwpage-git-x.vercel.app" }, origins, false), true);
+  assert.equal(turnstilePassed({ ...ok, hostname: "x-site.lyjw.workers.dev" }, origins, false), true);
   assert.equal(turnstilePassed({ ...ok, hostname: "localhost" }, origins, false), false);
   assert.equal(turnstilePassed({ ...ok, hostname: "localhost" }, origins, true), true);
   assert.equal(turnstilePassed({ ...ok, hostname: "evil.example" }, origins, true), false);

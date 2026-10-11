@@ -104,7 +104,7 @@ test("no site check means unknown preview without a URL", async () => {
 });
 
 test("commit statuses all count as CI, whatever their context", async () => {
-  for (const context of ["Vercel", "test Vercel integration", "Vercel - fixture: e2e-tests", "ci/tests"]) {
+  for (const context of ["Netlify", "test Netlify integration", "Netlify - fixture: e2e-tests", "ci/tests"]) {
     const patch = await reconcileBuild(githubFixture([ci, { ...siteCheck, status: "completed", conclusion: "success" }], [{ context, state: "failure" }]), run);
     assert.equal(patch.ci?.state, "failure", context);
     assert.equal(patch.preview?.state, "success", context);
@@ -113,11 +113,11 @@ test("commit statuses all count as CI, whatever their context", async () => {
 
 test("provider words and unrelated app checks remain CI", async () => {
   const checks = [
-    { name: "test Vercel integration", app: { slug: "github-actions" } },
-    { name: "Vercel", app: { slug: "github-actions" } },
-    { name: "Vercel Preview Comments", app: { slug: "github-actions" } },
-    { name: "Vercel – Code Owners", app: { slug: "vercel" } },
-    { name: "Workers Builds: site", app: { slug: "vercel" } },
+    { name: "test Netlify integration", app: { slug: "github-actions" } },
+    { name: "Netlify", app: { slug: "github-actions" } },
+    { name: "Netlify Preview Comments", app: { slug: "github-actions" } },
+    { name: "Netlify – Code Owners", app: { slug: "netlify" } },
+    { name: "Workers Builds: site", app: { slug: "netlify" } },
     { name: "Workers Builds: site", app: undefined },
     { name: "Workers Builds: api", app: { slug: "cloudflare-workers-and-pages" } },
     { name: "Cloudflare integration tests", app: { slug: "cloudflare-workers-and-pages" } },

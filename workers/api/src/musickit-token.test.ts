@@ -13,7 +13,7 @@ import {
   signedOrigins,
 } from "@api/musickit-token";
 
-const PRODUCTION = "https://lyjw.me,https://lyjw131.com,https://*.vercel.app";
+const PRODUCTION = "https://lyjw.me,https://lyjw131.com,https://*.lyjw.workers.dev";
 const LITERAL = ["https://lyjw.me", "https://lyjw131.com"];
 
 async function generateKeyPair(): Promise<{ pem: string; publicKey: CryptoKey }> {
@@ -41,7 +41,7 @@ function decodeJwt(token: string): { header: Record<string, unknown>; payload: R
 test("signedOrigins：写死的来源签整份名单，通配匹配和 localhost 只签自己", () => {
   const allowed = PRODUCTION.split(",");
   assert.deepEqual(signedOrigins("https://lyjw.me", allowed), LITERAL);
-  assert.deepEqual(signedOrigins("https://lyjwpage-abc123.vercel.app", allowed), ["https://lyjwpage-abc123.vercel.app"]);
+  assert.deepEqual(signedOrigins("https://abc123-site.lyjw.workers.dev", allowed), ["https://abc123-site.lyjw.workers.dev"]);
   assert.deepEqual(signedOrigins("http://localhost:3211", allowed), ["http://localhost:3211"]);
   assert.deepEqual(signedOrigins(null, allowed), LITERAL);
   assert.deepEqual(signedOrigins("https://lyjw.me", []), []);
@@ -83,9 +83,9 @@ test("issueMusicKitToken：签出可验的 ES256 JWT，声明按来源分开缓�
   assert.ok(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, publicKey, signature, new TextEncoder().encode(signingInput)));
 
   assert.equal(await issueMusicKitToken("https://lyjw131.com", env, { now: 1_700_001_000, cache }), issued);
-  const preview = await issueMusicKitToken("https://lyjwpage-x.vercel.app", env, { now: 1_700_001_000, cache });
+  const preview = await issueMusicKitToken("https://x-site.lyjw.workers.dev", env, { now: 1_700_001_000, cache });
   assert.notEqual(preview.token, issued.token);
-  assert.deepEqual(decodeJwt(preview.token).payload.origin, ["https://lyjwpage-x.vercel.app"]);
+  assert.deepEqual(decodeJwt(preview.token).payload.origin, ["https://x-site.lyjw.workers.dev"]);
   assert.equal(cache.size, 2);
 
   const renewed = await issueMusicKitToken("https://lyjw.me", env, { now: 1_700_001_800, cache });

@@ -45,7 +45,7 @@ test("畸形 SHA 直接抛错", () => {
   );
 });
 
-test("Vercel deployment_status 等其他事件返回 null", () => {
+test("deployment_status 等其他事件返回 null", () => {
   assert.equal(
     siteDeploymentSha("deployment_status", { deployment_status: { state: "success" } }),
     null,
