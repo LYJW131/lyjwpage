@@ -78,16 +78,16 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
         <p className="mt-2 break-all font-mono text-[10px] text-muted-foreground">{proposal.plan.paths.join(", ")}</p>
       </details>
       {proposal.issue ? (
-        <p className="text-xs">Sent to LYJW as <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">suggestion #{proposal.issue.number}</a> on GitHub.</p>
+        <p className="text-xs">Opened <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
       ) : proposal.build ? (
         <BuildStatusCard key={proposal.build.runId} build={proposal.build} savedRun={proposal.run} onRun={(run) => { if (JSON.stringify(run) !== JSON.stringify(proposal.run)) onChange({ ...proposal, run }); }} />
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen || buildOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Suggest it</button>
-            <button type="button" onClick={() => { setError(null); setBuildOpen(true); }} disabled={disabled || issueOpen || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Build it now</button>
+            <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen || buildOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Open issue</button>
+            <button type="button" onClick={() => { setError(null); setBuildOpen(true); }} disabled={disabled || issueOpen || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Pick one. Suggest it sends the plan to LYJW as an idea. Build it now has Claude make the change for LYJW to review. Both ask you to sign in with GitHub, and nothing goes live until LYJW approves it.</p>
+          <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {issueOpen && <IssuePanel proposal={proposal} disabled={disabled} onClose={() => setIssueOpen(false)} onCreated={(issue) => onChange({ ...proposal, issue })} />}
           {buildOpen && <GithubConsent action="build" language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
