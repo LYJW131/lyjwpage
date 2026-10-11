@@ -125,7 +125,7 @@
 - `f.hit` / `f.env` 能取的事件：kick、snare、hat、clock（含敲门）、tick、stamp、whoosh、lamp、key、bell（只算主题音，不管哪件乐器唱）、accent；另有包络 duck、pad、bass、riser、energy、beat、bar。morse、gate、off、ping、clear、hop 只出声、不进事件表，画面按本章的 AT 落拍。
 - **不改 `score.js`**：新和弦写在本章乐谱的 `chords` 里；新鼓型直接在 `sections` 里写 16 格字符串；新音色、新剧情音交给主创（改已有条目或合成器会改到别的章）。
 - 信封主题 `THEME`（A4 D5 F5 E5）：信封出场时唱，每章换一件乐器。调性以 D 多利亚 / D 小调为主，第 06 章转调。
-- 试听：`score-test.html?only=ch05` 看这一章的时间轴、事件和包络；`index.html?only=ch04,ch05,ch06` 连着前后章边看边听（只排几章时和整片 `score.mp3` 长度对不上，一定在浏览器里现合成）。不带 `?only=` 的整片预览放的是入库的 `score.mp3`，乐谱改了而时长没变时听到的还是旧配乐。`score.mp3` 由主创在乐谱定稿后用 `tools/score-mp3.mjs` 重渲入库（站点版只用它，见 [README「站点版」](../README.md#站点版)）。
+- 试听：`score-test.html?only=ch05` 看这一章的时间轴、事件和包络；`index.html?only=ch04,ch05,ch06` 连着前后章边看边听（只排几章时和整片 `score.mp3` 长度对不上，一定在浏览器里现合成）。不带 `?only=` 的整片预览放的是本地渲过的 `score.mp3`（不入库），乐谱改了而时长没变时听到的还是旧配乐；没有它就现合成。站点版的配乐推送后由 CI 渲染传到 R2，见 [README「站点版」](../README.md#站点版)。
 
 ## 事实
 

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+
+import { scoreObjectKey } from "./explainer-score.mjs";
 
 const buildScript = fileURLToPath(new URL("./build-explainer.mjs", import.meta.url));
 
@@ -16,7 +17,9 @@ function buildFixture(t, markup) {
   fs.mkdirSync(source, { recursive: true });
   const html = '<!doctype html><meta charset="utf-8">\n' + markup;
   fs.writeFileSync(path.join(source, "index.html"), html);
-  fs.writeFileSync(path.join(source, "score.mp3"), "score fixture");
+  fs.mkdirSync(path.join(source, "music"));
+  fs.mkdirSync(path.join(source, "tools"));
+  for (const rel of ["plan.js", "score.js", "music/ch00.js", "tools/score-mp3.mjs"]) fs.writeFileSync(path.join(source, rel), `// ${rel}`);
   const result = spawnSync(process.execPath, [buildScript], { cwd, encoding: "utf8" });
   return { ...result, cwd, html };
 }
@@ -35,11 +38,10 @@ for (const [name, markup] of [
     const result = buildFixture(t, markup);
     assert.equal(result.status, 0, result.stderr);
     const output = fs.readFileSync(path.join(result.cwd, "public/explainer/index.html"), "utf8");
-    const scoreHash = createHash("sha256").update("score fixture").digest("hex").slice(0, 16);
-    const assets = { "score.mp3": `a/score.${scoreHash}.mp3` };
+    const assets = { "score.mp3": `/img/${scoreObjectKey(path.join(result.cwd, "docs/explainer/v2"))}` };
     const head = `<link rel="icon" href="/icon" type="image/png">\n<script>window.__assets = ${JSON.stringify(assets)};</script>\n`;
     assert.equal(output, result.html.replace('<meta charset="utf-8">\n', '<meta charset="utf-8">\n' + head));
-    assert.equal(fs.readFileSync(path.join(result.cwd, "public/explainer", assets["score.mp3"]), "utf8"), "score fixture");
+    assert.deepEqual(fs.readdirSync(path.join(result.cwd, "public/explainer/a")), []);
   });
 }
 

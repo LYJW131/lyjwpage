@@ -3,11 +3,11 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { findUnpublishedReference } from "./explainer-html.mjs";
+import { scorePublicPath } from "./explainer-score.mjs";
 
 const SRC = "docs/explainer/v2";
 const OUT = "public/explainer";
 const ASSETS = "a";
-const SCORE = "score.mp3";
 const UNWRITTEN_CHAPTER = /^(music\/)?ch\d\d\.js$/;
 const CSS_URL = /url\((["']?)([^"')]+)\1\)/g;
 const isFile = (rel) => fs.statSync(path.join(SRC, rel), { throwIfNoEntry: false })?.isFile() ?? false;
@@ -22,14 +22,13 @@ for (const [rel] of JSON.parse(loader[1])) {
   else if (UNWRITTEN_CHAPTER.test(rel)) unwritten.push(rel);
   else throw new Error(`index.html 载入的 ${rel} 不存在`);
 }
-if (!isFile(SCORE)) throw new Error(`缺 ${SRC}/${SCORE}：站点版只用预渲的整片配乐，先跑 node ${SRC}/tools/score-mp3.mjs`);
 const styled = [...html.matchAll(CSS_URL)].map((m) => m[2]).filter((rel) => !/^(?:[a-z]+:|\/|#)/i.test(rel));
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT, ASSETS), { recursive: true });
 
 const assets = {};
-for (const rel of new Set([...scripts, ...styled, SCORE])) {
+for (const rel of new Set([...scripts, ...styled])) {
   if (!isFile(rel)) throw new Error(`index.html 引用了不存在的 ${rel}`);
   const bytes = fs.readFileSync(path.join(SRC, rel));
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
@@ -38,6 +37,9 @@ for (const rel of new Set([...scripts, ...styled, SCORE])) {
   fs.writeFileSync(path.join(OUT, target), bytes);
   assets[rel] = target;
 }
+
+// 配乐不进仓库：由 .github/workflows/explainer-score.yml 渲好按乐谱哈希传到 R2；对象还没传上时 film.js 取不到，退回现合成
+assets["score.mp3"] = scorePublicPath(SRC);
 
 let page = html.replace(CSS_URL, (whole, _quote, rel) => (assets[rel] ? `url(${assets[rel]})` : whole));
 const stray = findUnpublishedReference(page);
@@ -49,5 +51,5 @@ const head = `<link rel="icon" href="/icon" type="image/png">\n<script>window.__
 page = page.replace(charset, `${charset}${head}`);
 fs.writeFileSync(path.join(OUT, "index.html"), page);
 
-console.log(`[explainer] ${Object.keys(assets).length} 个资源按内容哈希写入 ${OUT}/${ASSETS}`);
+console.log(`[explainer] ${Object.keys(assets).length - 1} 个资源按内容哈希写入 ${OUT}/${ASSETS}，配乐取 ${assets["score.mp3"]}`);
 if (unwritten.length) console.warn(`[explainer] 还没写、不发布（页面上是占位）：${unwritten.join(" ")}`);
