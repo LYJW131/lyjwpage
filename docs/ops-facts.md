@@ -30,6 +30,7 @@
 | 事实 | 核对 |
 | --- | --- |
 | `lyjw.me` 站点在 Vercel，生产随 `main` 自动部署；预览构建把后端源改成该分支的影子 Worker，生产构建用面板里的值 | 核对于 未记录，方式：迁自 `docs/state-storage.md` 与 `docs/workers-builds.md` |
+| 项目 `lyjwpage` 的 Ignored Build Step（`commandForIgnoringBuildStep`）只放行生产分支 `main` 和带 Pull Request 的部署：`VERCEL_ENV` 为 `production`，或 `VERCEL_GIT_PULL_REQUEST_ID` 非空，命令退出码 1，构建继续；其余分支推送退出码 0，构建取消。没有 PR 的分支推送仍会建一条随即取消的部署 | 核对于 2026-10-11，方式：`GET /v9/projects/prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC` 读回该命令，`link.productionBranch` 为 `main` <!-- allow: 核对戳 --> |
 | 项目环境变量（只记名字）：`NEXT_PUBLIC_BACKEND_URL`（构建期写入前端，状态、推送、在线人数同源）、`REVALIDATE_SECRET`（只有 Worker 与 Vercel 两边有）、`R2_PUBLIC_BASE_URL`（`/img/*` rewrite 的目的地与首屏图标内联的来源，生产只配在 Vercel）、可选 `GITHUB_TOKEN`（构建期读最近提交）；参照根 `.env.example` | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
 | `REVALIDATE_SECRET` 两边（Vercel 的 Production、api Worker 的 Secret）同一个值，2026-10-09 轮换过：旧值可能随 Sentry 采样到的 `/api/revalidate` transaction 外泄；换值后 Vercel 要新部署才生效 | 核对于 2026-10-09，方式：`vercel env ls`、`wrangler secret list`，生产上 Worker 发出的失效请求被站点接受 <!-- allow: 核对戳 --> |
 | Vercel 的 Preview 环境不放凭据：`GITHUB_TOKEN`、`REVALIDATE_SECRET` 只配 Production，`SENTRY_AUTH_TOKEN` 只对 Production 生效。预览构建会执行分支代码，分支可能来自 agent 推送；缺了它们，预览构建匿名读 GitHub、不上传 sourcemap，预览站的 `/api/revalidate` 回 503 | 核对于 2026-10-10，方式：Vercel REST `GET /v10/projects/{id}/env` 只看键名与 target <!-- allow: 核对戳 --> |
