@@ -41,7 +41,9 @@ main 提交 `c33d1fbd05998f3e045eb7d440111010a073095e` 的 [CodeQL 重跑](https
 
 自建机的 `scripts/setup-ci-pnpm.sh` 按 `package.json#packageManager` 选择精确版本，工具安装落在各 runner 的持久工具缓存；版本之间隔离，安装加锁并先写临时目录。实测首次安装 2.1 秒、复用 0.45 秒。托管机继续使用 pnpm/action-setup 与 setup-node 的 pnpm 缓存。
 
-主站 tsconfig 的 `incremental` 已启用，CI 从持久缓存恢复 `tsconfig.tsbuildinfo`，完整 workspace typecheck 成功后再原子保存。远端主站 `next typegen` 用时 0.9 秒，`tsc --noEmit` 首次 11.2 秒、复用 3 秒。修改已经检查过的源文件、注入 `string = 42` 后，增量检查以 TS2322 失败；还原后通过。所有 workspace 的检查仍执行，Next 路由类型仍每次生成。
+主站 tsconfig 的 `incremental` 已启用。远端主站 `next typegen` 用时 0.9 秒，`tsc --noEmit` 首次 11.2 秒、复用 3 秒。修改已经检查过的源文件、注入 `string = 42` 后，增量检查以 TS2322 失败；还原后通过。
+
+CI 为全部 workspace 设置 `--incremental --tsBuildInfoFile tsconfig.ci.tsbuildinfo`，按 workspace 相对路径恢复持久缓存，完整 workspace typecheck 成功后再原子保存；CI 的 noEmit 缓存与测试编译的产物缓存独立。远端全 workspace 检查首次 12.9 秒、复用 5 秒。再次注入类型错误仍失败，还原后通过。所有 workspace 的检查仍执行，Next 路由类型仍每次生成。
 
 `scripts/ci-checks.sh` 在自建机并行执行 lint、全部 workspace 类型检查、十组 workspace 测试、脚本测试与文档检查；各项独立记录日志、状态和耗时，等待全部结束后汇总，任一项失败即返回失败。类型检查没有产物依赖，所有 workspace 同时启动。托管机按顺序执行门禁。用替代命令分别模拟五项门禁失败，均返回失败且执行完整清单，类型检查失败时不覆盖成功缓存。
 
