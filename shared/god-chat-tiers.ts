@@ -9,13 +9,14 @@ export type GodChatEffort = "low" | "medium" | "high";
 // 有意的取舍：回复上限随档位放大，思考强度不跟档位走，Sonnet、Fable 用 low 控成本和等待（Sonnet low 与 medium 的回答质量相当，
 // 只在难题上多花约两成时间）。Opus 不在路由与额度里，只在已开启的设计会话里作答，强度 medium。effort 是默认值：
 // Clef 选 Haiku 时连强度一起选（workers/ai/src/chat/router.ts#CLEF_CHOICES），降级、强制档位或 Clef 不可用时才用这里的。
-export type GodChatTierInfo = { model: string; label: string; persona: string; effort: GodChatEffort; maxTokens: number };
+// serverFallback：该型号支持服务端拒答兜底（beta 头与 fallbacks 参数）。
+export type GodChatTierInfo = { model: string; label: string; persona: string; effort: GodChatEffort; maxTokens: number; serverFallback: boolean };
 
 export const GOD_CHAT_TIER_INFO: Record<GodChatServedTier, GodChatTierInfo> = {
-  haiku: { model: "claude-haiku-5-5", label: "Haiku 5.5", persona: "Small Fry", effort: "medium", maxTokens: 2048 },
-  sonnet: { model: "claude-sonnet-5-5", label: "Sonnet 5.5", persona: "Prophet", effort: "low", maxTokens: 4096 },
-  fable: { model: "claude-fable-5-1", label: "Fable 5.1", persona: "God", effort: "low", maxTokens: 8192 },
-  opus: { model: "claude-opus-5-5", label: "Opus 5.5", persona: "Architect", effort: "medium", maxTokens: 4096 },
+  haiku: { model: "claude-haiku-5-5", label: "Haiku 5.5", persona: "Small Fry", effort: "medium", maxTokens: 2048, serverFallback: false },
+  sonnet: { model: "claude-sonnet-5-5", label: "Sonnet 5.5", persona: "Prophet", effort: "low", maxTokens: 4096, serverFallback: true },
+  fable: { model: "claude-fable-5-1", label: "Fable 5.1", persona: "God", effort: "low", maxTokens: 8192, serverFallback: true },
+  opus: { model: "claude-opus-5-5", label: "Opus 5.5", persona: "Architect", effort: "medium", maxTokens: 4096, serverFallback: true },
 };
 
 export function isGodChatTier(value: unknown): value is GodChatTier {
@@ -24,10 +25,6 @@ export function isGodChatTier(value: unknown): value is GodChatTier {
 
 export function isGodChatServedTier(value: unknown): value is GodChatServedTier {
   return isGodChatTier(value) || value === GOD_CHAT_DESIGN_TIER;
-}
-
-export function godChatTierInfo(tier: unknown): GodChatTierInfo | undefined {
-  return isGodChatServedTier(tier) ? GOD_CHAT_TIER_INFO[tier] : undefined;
 }
 
 // 拒答兜底换上的模型不在上面几档里，展示名从 id 推：claude-opus-4-8 → Opus 4.8，日期后缀不显示。

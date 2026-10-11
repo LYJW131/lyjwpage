@@ -41,6 +41,16 @@ function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
+function withCors(response: Response, cors: Headers): Response {
+  const headers = new Headers(response.headers);
+  cors.forEach((value, name) => headers.set(name, value));
+  return new Response(response.body, { status: response.status, headers });
+}
+
+function tooMany(error: string, cors: Headers, retryAfter: string): Response {
+  return jsonResponse({ error }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": retryAfter } });
+}
+
 const worker = {
   async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(request.url);
@@ -58,12 +68,9 @@ const worker = {
         return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       }
       if (pathname !== BUILD_WEBHOOK_PATH && env.BUILD_REQUEST_LIMIT && !(await env.BUILD_REQUEST_LIMIT.limit({ key: clientIp(request) })).success) {
-        return jsonResponse({ error: "Too many build requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
+        return tooMany("Too many build requests.", cors, "60");
       }
-      const response = await buildHandler(request, env, undefined, ctx);
-      const headers = new Headers(response.headers);
-      cors.forEach((value, name) => headers.set(name, value));
-      return new Response(response.body, { status: response.status, headers });
+      return withCors(await buildHandler(request, env, undefined, ctx), cors);
     }
 
     if (pathname === GOD_CHAT_USAGE_PATH) {
@@ -74,7 +81,7 @@ const worker = {
       // 不验人，每次都进全站共用的 ChatQuota 跑一个事务；按 IP 限流，刷这个端点拖不慢别人的对话。
       const ip = clientIp(request);
       if (env.CHAT_USAGE_LIMIT && !(await env.CHAT_USAGE_LIMIT.limit({ key: ip })).success) {
-        return jsonResponse({ error: "Too many usage checks." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "10" } });
+        return tooMany("Too many usage checks.", cors, "10");
       }
       return jsonResponse(await quota.usage(ip), { headers: cors });
     }
@@ -88,7 +95,7 @@ const worker = {
       const origin = request.headers.get("Origin");
       if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
-        return jsonResponse({ error: "Too many requests." }, { status: 429, headers: { ...Object.fromEntries(cors), "Retry-After": "60" } });
+        return tooMany("Too many requests.", cors, "60");
       }
       response = await handleMcp(request, mcpCodeModeEnabled(env) && env.LOADER ? { ...tools, runCode: sandboxRunner(env.LOADER) } : tools, env.CF_VERSION_METADATA?.id ?? "dev");
     } else {
@@ -97,9 +104,7 @@ const worker = {
         ? await handleChat(request, env, tools)
         : await handleGithubIssue(request, env, clientIp(request));
     }
-    const headers = new Headers(response.headers);
-    cors.forEach((value, name) => headers.set(name, value));
-    return new Response(response.body, { status: response.status, headers });
+    return withCors(response, cors);
   },
 
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {

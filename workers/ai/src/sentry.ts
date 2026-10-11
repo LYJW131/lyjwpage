@@ -15,8 +15,7 @@ export function sentryOptions(env: Env): CloudflareOptions {
     tracesSampleRate: 0.01,
     enableLogs: true,
     initialScope: { tags: { worker: "ai" } },
-    // 默认的 HttpServer 集成不看 sendDefaultPii 就读 POST 正文，RequestData 再把正文和请求头原样写进 event.request
-    // （整段对话、OAuth code、出站代理请求带的 x-api-key）；同名集成覆盖默认实例。别改用 dataCollection：没写的项按全开补齐。
+    // 关掉正文与请求头采集，原因见 workers/api/src/sentry.ts#sentryOptions。
     integrations: [
       consoleLoggingIntegration({ levels: ["warn", "error"] }),
       httpServerIntegration({ maxRequestBodySize: "none" }),

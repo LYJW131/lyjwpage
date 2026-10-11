@@ -1,5 +1,5 @@
 // agent 与 environment 按工作区隔离：用与 Worker 的 ANTHROPIC_API_KEY 同一工作区的 key 运行。
-// agent 只是壳，模型、提示词和工具由 Worker 每个会话从代码覆盖，改提示词不用重跑这里。
+// 改模型、提示词或工具不用重跑这里，原因见 workers/ai/src/runtime.ts#DESIGN_AGENT_ID。
 import Anthropic from "@anthropic-ai/sdk";
 
 import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
