@@ -25,6 +25,7 @@ export const CODING_AGENTS = {
   antigravity: { label: "Antigravity", icon: "antigravity", row: "compact" },
   opencode: { label: "OpenCode", icon: "opencode", row: "hidden" },
   pi: { label: "Pi", icon: "pi", row: "hidden" },
+  devin: { label: "Devin CLI", icon: "devin", row: "hidden" },
 } as const satisfies Record<string, CodingAgentBrand>;
 
 const REGISTERED = Object.keys(CODING_AGENTS);
