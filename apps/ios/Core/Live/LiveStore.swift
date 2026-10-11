@@ -160,8 +160,8 @@ final class LiveStore {
             guard let value = envelope.data else { throw FeedUnavailable(reason: envelope.error ?? "Unavailable") }
             setNowWatching(value, at: envelope.servedAt)
             return envelope.updatedAt
-        case .playing: return try apply(data, Status.playing) { self.playing = $0 }
-        case .playingNow: return try apply(data, Status.playingNow) { self.playingNow = $0 }
+        case .playing: return try apply(data, Status.playing) { self.accept(playing: $0) }
+        case .playingNow: return try apply(data, Status.playingNow) { self.accept(playingNow: $0) }
         case .trophies: return try apply(data, Status.trophies) { self.accept(trophies: $0) }
         case .githubRepo: return try apply(data, Status.githubRepo) { self.githubRepo = $0 }
         case .vercelDeployments: return try apply(data, Status.vercelDeployments) { self.vercelDeployments = $0 }
@@ -192,8 +192,8 @@ final class LiveStore {
         case let .codingNow(payload): codingNow = payload
         case let .nowWatching(payload): setNowWatching(payload, at: nil)
         case let .watching(payload): watching = payload
-        case let .playingNow(payload): playingNow = payload
-        case let .playing(payload): playing = payload
+        case let .playingNow(payload): accept(playingNow: payload)
+        case let .playing(payload): accept(playing: payload)
         case let .trophies(payload): accept(trophies: payload)
         case .presence:
             Task { await refresh(FeedKey.presenceDependents) }
@@ -234,6 +234,16 @@ final class LiveStore {
     private func accept(trophies next: TrophiesSummaryPayload) {
         guard next.observedAt >= (trophies?.observedAt ?? 0) else { return }
         trophies = next
+    }
+
+    private func accept(playing next: PlaystationPlayingPayload) {
+        guard next.observedAt >= (playing?.observedAt ?? 0) else { return }
+        playing = next
+    }
+
+    private func accept(playingNow next: PlaystationPresencePayload) {
+        guard next.observedAt >= (playingNow?.observedAt ?? 0) else { return }
+        playingNow = next
     }
 
     // 推送里的充电头 history 永远为空，只能接在已有曲线后面。

@@ -21,6 +21,8 @@
 
 一轮里：presence 每个完整 tick 都发（那一封是心跳）；游玩列表变了才一起带；奖杯只在目录变了才另发一封。PSN 前面的 CDN 回拒绝页或网关错误时按连败次数退避（`src/state.ts` 的 `backoffMs`），成功一轮清零。
 
+游玩列表自己带语言头请求，不走 psn-api（`src/psn.ts#fetchPlayedGames`）。HTTP 成功但正文带 `error` 时不能当成空列表：站点整份替换 `playedGames.items`（`workers/api/src/stores/playstation.ts#commitPreparedPlaystationReport`），空数组会把卡片上的游戏清掉。时长字段 `playDurationMs` 是毫秒，游玩时刻是 epoch 毫秒，页面对着 `src/components/live/playstation-card.tsx#playTime` 和 `src/lib/relative-time.ts#formatRelativeTime` 用。
+
 ## 配置
 
 全部走环境变量。`.env` 不进仓库。

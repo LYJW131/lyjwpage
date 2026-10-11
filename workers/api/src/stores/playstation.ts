@@ -38,24 +38,20 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
       incomingTrophies ? getPlaystationTrophies() : null,
     ]);
 
-  const presenceChanged =
-    incomingPresence != null &&
-    (!previousPresence ||
-      JSON.stringify(presenceContent(previousPresence)) !==
-      JSON.stringify(presenceContent(incomingPresence)));
-  const playedGamesChanged =
-    incomingPlayedGames != null &&
-    JSON.stringify(previousPlayedGames?.items ?? null) !==
-    JSON.stringify(incomingPlayedGames.items);
-  const trophiesChanged =
-    incomingTrophies != null &&
-    JSON.stringify(previousTrophies ? trophiesContent(previousTrophies) : null) !==
-    JSON.stringify(trophiesContent(incomingTrophies));
   const writes: Promise<unknown>[] = [];
   const events: PendingEvent[] = [];
   const tags: string[] = [];
 
-  if (incomingPresence) {
+  // 晚到的信封 receivedAt 是现在。旧 observedAt 若落库，会按到达时刻把游戏道倒回去。
+  const presenceFresh = incomingPresence != null && (previousPresence == null || incomingPresence.observedAt > previousPresence.observedAt);
+  const playedGamesFresh = incomingPlayedGames != null && (previousPlayedGames == null || incomingPlayedGames.observedAt > previousPlayedGames.observedAt);
+  const trophiesFresh = incomingTrophies != null && (previousTrophies == null || incomingTrophies.observedAt > previousTrophies.observedAt);
+  let presenceChanged = false;
+  let playedGamesChanged = false;
+  let trophiesChanged = false;
+
+  if (presenceFresh && incomingPresence) {
+    presenceChanged = !previousPresence || JSON.stringify(presenceContent(previousPresence)) !== JSON.stringify(presenceContent(incomingPresence));
     writes.push(setPlaystationPresence(incomingPresence));
     // Quest 正在玩时游戏道归 Quest：PS 这一封的「在线」不能把那段截断。
     const quest = await questMirror.get();
@@ -65,21 +61,27 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
       events.push({ type: "playing-now", payload: incomingPresence });
     }
   }
-  if (incomingPlayedGames && (playedGamesChanged || !previousPlayedGames)) {
-    writes.push(setPlaystationPlayedGames(incomingPlayedGames));
-    events.push({ type: "playing", payload: incomingPlayedGames });
-    if (!previousPlayedGames?.items.length !== !incomingPlayedGames.items.length) tags.push(PLAYING_TAG);
+  if (playedGamesFresh && incomingPlayedGames) {
+    playedGamesChanged = JSON.stringify(previousPlayedGames?.items ?? null) !== JSON.stringify(incomingPlayedGames.items);
+    if (playedGamesChanged || !previousPlayedGames) {
+      writes.push(setPlaystationPlayedGames(incomingPlayedGames));
+      events.push({ type: "playing", payload: incomingPlayedGames });
+      if (!previousPlayedGames?.items.length !== !incomingPlayedGames.items.length) tags.push(PLAYING_TAG);
+    }
   }
-  if (incomingTrophies && (trophiesChanged || !previousTrophies)) {
-    writes.push(setPlaystationTrophies(incomingTrophies));
-    events.push({ type: "trophies", payload: summarizeTrophies(incomingTrophies) });
-    if (!previousTrophies) tags.push(TROPHIES_TAG);
+  if (trophiesFresh && incomingTrophies) {
+    trophiesChanged = JSON.stringify(previousTrophies ? trophiesContent(previousTrophies) : null) !== JSON.stringify(trophiesContent(incomingTrophies));
+    if (trophiesChanged || !previousTrophies) {
+      writes.push(setPlaystationTrophies(incomingTrophies));
+      events.push({ type: "trophies", payload: summarizeTrophies(incomingTrophies) });
+      if (!previousTrophies) tags.push(TROPHIES_TAG);
+    }
   }
 
   await fanout({ writes, events, tags });
   const scope = requestStore.getStore();
   const history = scope?.env.HISTORY;
-  if (incomingTrophies && history && scope && historyArchiveEnabled(scope.env)) {
+  if (trophiesFresh && incomingTrophies && history && scope && historyArchiveEnabled(scope.env)) {
     scope.ctx.waitUntil(archiveTrophies(history, incomingTrophies));
   }
   return { changed: presenceChanged || playedGamesChanged || trophiesChanged };
