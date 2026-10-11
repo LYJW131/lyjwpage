@@ -132,7 +132,7 @@ test("快照按固定 SHA 取文件：大小写不敏感搜索、清单外路径
 test("清单持久化后不再请求 GitHub：同一 store 直接复用记录", async () => {
   const { open, fetched, store } = repo({ "a.ts": "needle" });
   await open();
-  assert.equal(fetched.filter((url) => url.includes("api.github.com")).length, 2);
+  assert.equal(fetched.filter((url) => new URL(url).hostname === "api.github.com").length, 2);
   fetched.length = 0;
   await open();
   assert.equal(fetched.length, 0);
