@@ -6,6 +6,9 @@ test("GitHub noreply 邮箱直接拼出登录名和头像，agent 邮箱换成�
   assert.deepEqual(authorFromTrailer("Grok 4.6", "304785771+grokkybara[bot]@users.noreply.github.com"), {
     name: "grokkybara[bot]", login: "grokkybara[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/4293548?v=4", agent: "grok", model: "Grok 4.6",
   });
+  assert.deepEqual(authorFromTrailer("Antigravity", "341015624+lyjw-antigravity[bot]@users.noreply.github.com"), {
+    name: "lyjw-antigravity[bot]", login: "lyjw-antigravity[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/5274597?v=4", agent: "antigravity", model: "Antigravity",
+  });
   assert.deepEqual(authorFromTrailer("Yangjunwei Liang", "LYJW131@users.noreply.github.com"), {
     name: "LYJW131", login: "LYJW131", avatarUrl: "https://github.com/LYJW131.png", agent: null, model: null,
   });
