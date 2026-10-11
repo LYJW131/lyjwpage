@@ -245,6 +245,8 @@ test("issue and PR labels follow the plan language", () => {
   const ja: BuildPlan = { ...zh, title: "原神カードを追加する", spec: "ホームのゲーム欄に読み取り専用のカードを追加します。", acceptance: ["スマホでも一列で表示される"] };
   const en: BuildPlan = { ...plan, spec: "Show the song 星街すいせい GHOST in the card title when it is playing." };
   assert.deepEqual([planLanguage(zh), planLanguage(ja), planLanguage(plan), planLanguage(en)], ["zh", "ja", "en", "en"]);
+  const pathHeavy: BuildPlan = { title: "统一构建进度", spec: "改 `src/components/live/agent-status-card.tsx` 与 workers/ai/src/chat/designer.ts 里的进度显示。", acceptance: ["`workers/ai/src/chat/designer.ts` 的进度文案一致"], paths: ["src/components/live/agent-status-card.tsx"] };
+  assert.equal(planLanguage(pathHeavy), "zh", "repository paths and inline code do not outweigh the Chinese prose");
   assert.equal(visitorLanguage({ title: "回答完问题后自动折叠问题框" }), "zh", "a Chinese title with an English technical spec still shows Chinese copy to the visitor");
   assert.match(buildIssueBody(zh), /## 验收标准[\s\S]*## 计划路径/);
   assert.match(buildIssueBody(ja), /## 受け入れ基準/);
