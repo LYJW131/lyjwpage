@@ -1,18 +1,17 @@
-import type { BuildPhase, BuildRun } from "@shared/build-routine";
+import { BUILD_CLOSED_PHASES, BUILD_FAILED_PHASES, type BuildPhase, type BuildRun } from "@shared/build-routine";
 
 export const BUILD_STATUS_POLL_MS = 10_000;
 
 export function isBuildTerminal(phase?: BuildPhase): boolean {
-  return phase !== undefined && ["merged", "closed", "blocked", "failed", "timeout"].includes(phase);
+  return phase !== undefined && (BUILD_CLOSED_PHASES.includes(phase) || BUILD_FAILED_PHASES.includes(phase));
 }
 
-export function createBuildStatusPoller({ phase, load, onRun, onError }: {
-  phase?: BuildPhase;
+export function createBuildStatusPoller({ load, onRun, onError }: {
   load: (signal: AbortSignal) => Promise<BuildRun>;
   onRun: (run: BuildRun) => void;
   onError: (error: unknown) => void;
 }) {
-  let stopped = isBuildTerminal(phase);
+  let stopped = false;
   let visible = false;
   let request: AbortController | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;

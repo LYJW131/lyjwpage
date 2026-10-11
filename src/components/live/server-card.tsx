@@ -5,7 +5,7 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
-import { formatBinaryPair } from "@/lib/byte-size";
+import { BINARY_TIERS, DECIMAL_TIERS, formatBytePair, formatBytes } from "@/lib/byte-size";
 import { SERVER_STALE_MS } from "@/lib/freshness";
 import { SERVER_PATH } from "@/lib/paths";
 import type { ServerPayload, ServerTraffic, StatusResponse } from "@/lib/types";
@@ -37,33 +37,6 @@ export function formatUptime(seconds: number): string {
   if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
   if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   return `${Math.max(1, minutes)}m`;
-}
-
-type Tier = { div: number; unit: string; digits: number };
-
-const TRAFFIC_TIERS: readonly Tier[] = [
-  { div: 1e12, unit: "TB", digits: 2 },
-  { div: 1e9, unit: "GB", digits: 1 },
-  { div: 1e6, unit: "MB", digits: 0 },
-];
-
-function tierIndex(tiers: readonly Tier[], bytes: number): number {
-  const found = tiers.findIndex((tier) => bytes >= tier.div);
-  return found < 0 ? tiers.length - 1 : found;
-}
-
-function tierAt(tiers: readonly Tier[], index: number): Tier {
-  return tiers[Math.min(Math.max(index, 0), tiers.length - 1)];
-}
-
-function formatSize(tiers: readonly Tier[], bytes: number, tier?: Tier): string {
-  const pick = tier ?? tierAt(tiers, tierIndex(tiers, bytes));
-  return `${(bytes / pick.div).toFixed(pick.digits)} ${pick.unit}`;
-}
-
-function formatFraction(tiers: readonly Tier[], used: number, total: number): string {
-  const tier = tierAt(tiers, tierIndex(tiers, total));
-  return `${(used / tier.div).toFixed(tier.digits)} / ${formatSize(tiers, total, tier)}`;
 }
 
 // 显式 UTC，避免服务端与访客时区不同导致 title 水合不一致。
@@ -140,15 +113,15 @@ function Traffic({ traffic }: { traffic: ServerTraffic }) {
   const downPercent = Math.min(100, rxBytes * scale);
   const upPercent = Math.min(100 - downPercent, txBytes * scale);
   const detail = quotaBytes
-    ? formatFraction(TRAFFIC_TIERS, used, quotaBytes)
-    : `↓ ${formatSize(TRAFFIC_TIERS, rxBytes)} · ↑ ${formatSize(TRAFFIC_TIERS, txBytes)}`;
+    ? formatBytePair(DECIMAL_TIERS, used, quotaBytes)
+    : `↓ ${formatBytes(DECIMAL_TIERS, rxBytes)} · ↑ ${formatBytes(DECIMAL_TIERS, txBytes)}`;
 
   return (
     <div
       className="min-w-0"
       title={
         `${formatCycleDay(traffic.cycleStart)} → ${formatCycleDay(traffic.cycleEnd)}` +
-        ` · ↓ ${formatSize(TRAFFIC_TIERS, rxBytes)} ↑ ${formatSize(TRAFFIC_TIERS, txBytes)}`
+        ` · ↓ ${formatBytes(DECIMAL_TIERS, rxBytes)} ↑ ${formatBytes(DECIMAL_TIERS, txBytes)}`
       }
     >
       <div className="flex items-baseline justify-between gap-2">
@@ -242,13 +215,13 @@ export function ServerCard({
           <Meter
             label="Memory"
             percent={memoryPercent}
-            detail={data ? formatBinaryPair(data.memoryUsedBytes, data.memoryTotalBytes) : "—"}
+            detail={data ? formatBytePair(BINARY_TIERS, data.memoryUsedBytes, data.memoryTotalBytes) : "—"}
           />
           <Meter
             label="Disk"
             className="col-span-2"
             percent={diskPercent}
-            detail={data ? formatBinaryPair(data.diskUsedBytes, data.diskTotalBytes) : "—"}
+            detail={data ? formatBytePair(BINARY_TIERS, data.diskUsedBytes, data.diskTotalBytes) : "—"}
           />
         </div>
       </div>

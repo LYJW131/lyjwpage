@@ -19,7 +19,11 @@ export const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, capti
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
 export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number };
 export type BuildFireResult = { runId: string; branch: string; statusToken: string; run?: BuildRun };
-export type BuildPhase = "triggered" | "running" | "uploaded" | "validated" | "blocked" | "pr_open" | "merged" | "closed" | "timeout" | "failed";
+export const BUILD_PHASES = ["triggered", "running", "uploaded", "validated", "blocked", "pr_open", "merged", "closed", "timeout", "failed"] as const;
+export type BuildPhase = (typeof BUILD_PHASES)[number];
+export const BUILD_ACTIVE_PHASES: readonly BuildPhase[] = ["triggered", "running", "uploaded", "validated"];
+export const BUILD_FAILED_PHASES: readonly BuildPhase[] = ["blocked", "failed", "timeout"];
+export const BUILD_CLOSED_PHASES: readonly BuildPhase[] = ["merged", "closed"];
 export type BuildSignal = { state: string; url?: string; updatedAt: number };
 export type BuildRun = {
   runId: string;
