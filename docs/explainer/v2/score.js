@@ -964,7 +964,7 @@
     const sr = opts.sampleRate || SAMPLE_RATE;
     const workers = opts.workers ?? 4;
     if (!Number.isInteger(workers) || workers < 1 || workers > 16) throw new Error("workers must be an integer from 1 to 16");
-    const voices = opts.precomputeVoices ? await prepareVoices(sr, workers, score) : null;
+    const voices = (opts.precomputeVoices || opts.offset) ? await prepareVoices(sr, workers, score) : null;
     const ctx = new OfflineAudioContext(2, opts.frames ?? Math.ceil((score.DURATION + TAIL) * sr), sr);
     const enqueue = schedule(ctx, opts, voices, score), batchSeconds = opts.batchSeconds ?? RENDER_BATCH_SECONDS;
     if (batchSeconds > 0) {

@@ -44,9 +44,19 @@ try {
         maxError = Math.max(maxError, Math.abs(error)); errorEnergy += error * error; signalEnergy += a[i] * a[i]; peak = Math.max(peak, Math.abs(b[i]));
       }
     }
+    const pad = score.notes.find((note) => note.kind === "pad" && note.level > 0 && note.end - note.t > 1);
+    const offset = (pad.t + pad.end) / 2;
+    const slice = await window.Score.render({ raw: true, solo: "pad", offset, frames: Math.round(0.25 * parallel.sampleRate) });
+    let sliceEnergy = 0;
+    for (const value of slice.getChannelData(0)) {
+      if (!Number.isFinite(value)) throw new Error("Invalid offset audio sample");
+      sliceEnergy += value * value;
+    }
+    const offsetPadRms = Math.sqrt(sliceEnergy / slice.length);
+    if (!(offsetPadRms > 0.00001)) throw new Error("Sustained pad is silent at render offset");
     const errorDb = 10 * Math.log10(Math.max(errorEnergy, Number.MIN_VALUE) / signalEnergy);
     if (!(peak > 0 && maxError < 0.001 && errorDb < -70)) throw new Error(`Audio differs: peak=${peak}, maxError=${maxError}, errorDb=${errorDb}`);
-    return { durationSeconds: parallel.length / parallel.sampleRate, sampleRate: parallel.sampleRate, channels: parallel.numberOfChannels, workers, maxError, errorDb, peak, finite: true };
+    return { durationSeconds: parallel.length / parallel.sampleRate, sampleRate: parallel.sampleRate, channels: parallel.numberOfChannels, workers, maxError, errorDb, peak, offsetPadRms, finite: true };
   }, { full: process.argv.includes("--full"), workers, browserFallback: process.argv.includes("--browser-fallback") });
   const report = { ...result, browserVersion: browser.version(), elapsedSeconds: (performance.now() - started) / 1000 };
   if (process.env.SCORE_CHECK_REPORT) fs.writeFileSync(process.env.SCORE_CHECK_REPORT, JSON.stringify(report, null, 2));
