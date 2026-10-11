@@ -79,7 +79,7 @@ jobs:
       - name: Install render tools
         if: steps.key.outputs.exists == '0'
         run: |
-          command -v ffmpeg || { sudo apt-get update -q && sudo apt-get install -y -q ffmpeg; }
+          command -v ffmpeg || { sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg; }
           if [ -n "${CI_CACHE_DIR:-}" ]; then
             pnpm --dir docs/explainer/render install --frozen-lockfile --ignore-workspace --store-dir "$CI_CACHE_DIR/pnpm-store"
           else
