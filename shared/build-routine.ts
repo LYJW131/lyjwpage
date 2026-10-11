@@ -59,7 +59,7 @@ export function planLanguage(plan: Pick<BuildPlan, "title" | "spec" | "acceptanc
   return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`);
 }
 
-// 访客看到的说明跟标题走：规格常是英文技术说明，标题按规划者的约定用访客的语言。
+// 访客看到的说明跟标题走：规格里夹着大量英文路径与标识符，标题最能代表访客的语言。
 export function visitorLanguage(plan: Pick<BuildPlan, "title">): PlanLanguage {
   return textLanguage(plan.title);
 }
