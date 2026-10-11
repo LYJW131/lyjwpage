@@ -760,8 +760,8 @@
       const node = ctx.createBufferSource(); node.buffer = buffer; node.connect(to);
       node.start(0, (Math.round(offset * ctx.sampleRate) + 1e-6) / ctx.sampleRate);
     };
-    if (!solo || solo.has("pad")) { source(voices.pad, bus.pad); source(voices.verb, verb); }
-    if (!solo || solo.has("bass")) source(voices.bass, bus.bass);
+    if (voices && (!solo || solo.has("pad"))) { source(voices.pad, bus.pad); source(voices.verb, verb); }
+    if (voices && (!solo || solo.has("bass"))) source(voices.bass, bus.bass);
     const retired = [];
     // 双精度的减法可能把整帧移到前一帧；统一量化并留极小余量，避免并行段的音色相位错一帧。
     const localTime = (t) => (Math.round(t * ctx.sampleRate) - Math.round(offset * ctx.sampleRate) + 1e-6) / ctx.sampleRate;
@@ -783,14 +783,51 @@
       src.start(t0);
       retire(t0 + buf.duration, [src, a, p, ...sends]);
     }
+    function pad(n) {
+      const names = CHORD[n.chord], lvl = 0.11 * n.level * Math.sqrt(4 / names.length), att = 0.28, rel = n.last ? 1.7 : 0.45;
+      for (const name of names) for (const [det, pan] of [[-7, -0.5], [7, 0.5]]) {
+        const o = ctx.createOscillator(), f = filt("lowpass", n.lp, 0.3), a = gain(0), p = ctx.createStereoPanner();
+        o.type = "sawtooth"; o.frequency.value = hz(midi(name)); o.detune.value = det;
+        f.frequency.setValueAtTime(n.lp * 0.55, n.t); f.frequency.linearRampToValueAtTime(n.lp, n.t + 0.8);
+        a.gain.setValueAtTime(0, n.t); a.gain.linearRampToValueAtTime(lvl, n.t + att);
+        a.gain.setValueAtTime(lvl, n.end); a.gain.setTargetAtTime(0, n.end, rel / 4);
+        p.pan.value = pan;
+        o.connect(f); f.connect(a); a.connect(p); p.connect(bus.pad); const sending = send(p, verb, n.verb);
+        const end = n.end + rel * 1.6;
+        o.start(n.t); o.stop(end); retire(end, [o, f, a, p, sending]);
+      }
+    }
+    function bass(n) {
+      const f = hz(n.m), vol = 0.36 * n.v, end = n.t + n.dur, a = gain(0), h = gain(0.2);
+      const o = ctx.createOscillator(), o2 = ctx.createOscillator();
+      o.frequency.value = f; o2.frequency.value = 2 * f;
+      for (const x of [o, o2]) { x.detune.setValueAtTime(35, n.t); x.detune.setTargetAtTime(0, n.t, 0.012); }
+      a.gain.setValueAtTime(0, n.t); a.gain.linearRampToValueAtTime(vol, n.t + n.att);
+      a.gain.setValueAtTime(vol, end); a.gain.setTargetAtTime(0, end, n.rel / 3);
+      o.connect(a); o2.connect(h); h.connect(a); a.connect(bus.bass);
+      const stopped = end + n.rel * 3 + 0.02;
+      for (const x of [o, o2]) { x.start(n.t); x.stop(stopped); }
+      retire(stopped, [o, o2, a, h]);
+    }
     const KICK_G = { tight: 0.9, light: 0.65, lub: 0.85, dub: 0.85, boom: 0.6 };
     const LAMP_PAN = [-0.4, 0, 0.4];
     // 这几件的电平按隔离渲染的 LUFS-M（400 ms 窗）对到同一位置上别的剧情音；knock 频谱偏低，同样响度下比 tick 听着轻，所以高约 3 dB。改音色要重新对
     const GLASS_G = 0.62, MARIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 0.75, MORSE_G = 0.21, GATE_G = 0.49, OFF_G = 0.19, PING_G = [0.84, 0.25], CLEAR_G = 0.13, HOP_G = 0.24;
     const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7];
 
-    let next = 0;
+    let next = 0, controlAt = 0;
     return (until = Infinity) => {
+      if (!voices) while (controlAt < Math.min(until, END)) {
+        const end = Math.min(controlAt + RENDER_BATCH_SECONDS, END), points = Math.ceil((end - controlAt) * DUCK_RATE) + 1;
+        const cPad = new Float32Array(points), cBass = new Float32Array(points);
+        for (let i = 0; i < points; i++) {
+          const value = duck(offset + controlAt + i / (points - 1) * (end - controlAt), score.DIPS);
+          cPad[i] = value; cBass[i] = 0.35 + 0.65 * value;
+        }
+        bus.pad.gain.setValueCurveAtTime(cPad, controlAt, end - controlAt);
+        bus.bass.gain.setValueCurveAtTime(cBass, controlAt, end - controlAt);
+        controlAt = end;
+      }
       for (let i = retired.length - 1; i >= 0; i--) if (retired[i].end <= ctx.currentTime) {
         for (const node of retired[i].nodes) node.disconnect();
         retired.splice(i, 1);
@@ -800,7 +837,8 @@
         if (!on(n)) continue;
         const t = n.t;
         switch (n.kind) {
-          case "pad": case "bass": break;
+          case "pad": if (!voices) pad(n); break;
+          case "bass": if (!voices) bass(n); break;
           case "kick": play(S.kick(n.type), t, { g: KICK_G[n.type] * n.v, to: bus.drums }); break;
           case "snare": play(S.snare(n.type), t, { g: (n.type === "thud" ? 0.34 : 0.3) * n.v, pan: 0.05, to: bus.drums, verbAmt: n.verb ?? 0.12 }); break;
           case "hat":
@@ -905,7 +943,10 @@
     if (TARGET_LUFS == null) {
       let pk = 0;
       for (let i = 0; i < L.length; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i]));
-      out = limit(L, R, sr, pk > 0 ? ceil / pk : 1, ceil);
+      // 峰值归一已保证不超过上限，无需分配整片的 lookahead 限幅工作数组。
+      const gain = pk > 0 ? ceil / pk : 1;
+      for (const channel of [L, R]) for (let i = 0; i < channel.length; i++) channel[i] = clamp(channel[i] * gain, -ceil, ceil);
+      out = [L, R];
     } else {
       let g = Math.pow(10, (TARGET_LUFS - loudness(L, R, sr)) / 20);
       out = limit(L, R, sr, g, ceil);
@@ -923,7 +964,7 @@
     const sr = opts.sampleRate || SAMPLE_RATE;
     const workers = opts.workers ?? 4;
     if (!Number.isInteger(workers) || workers < 1 || workers > 16) throw new Error("workers must be an integer from 1 to 16");
-    const voices = await prepareVoices(sr, workers, score);
+    const voices = opts.precomputeVoices ? await prepareVoices(sr, workers, score) : null;
     const ctx = new OfflineAudioContext(2, opts.frames ?? Math.ceil((score.DURATION + TAIL) * sr), sr);
     const enqueue = schedule(ctx, opts, voices, score), batchSeconds = opts.batchSeconds ?? RENDER_BATCH_SECONDS;
     if (batchSeconds > 0) {
@@ -958,7 +999,7 @@
       const from = Math.floor(length * i / workers / alignment) * alignment;
       const to = i + 1 === workers ? length : Math.floor(length * (i + 1) / workers / alignment) * alignment;
       const start = Math.max(0, from - Math.ceil(RENDER_WARMUP_SECONDS * sr / alignment) * alignment);
-      const buf = await render({ ...opts, raw: true, offset: start / sr, frames: to - start }, score);
+      const buf = await render({ ...opts, precomputeVoices: true, raw: true, offset: start / sr, frames: to - start }, score);
       for (let c = 0; c < 2; c++) out.copyToChannel(buf.getChannelData(c).subarray(from - start, to - start), c, from);
     }));
     return opts.raw || opts.solo || opts.stage ? out : master(out);
