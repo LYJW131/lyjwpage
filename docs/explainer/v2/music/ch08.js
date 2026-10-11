@@ -32,7 +32,7 @@
         { from: 10, to: 10, id: "strata-clawd", name: "Clawd 冒出来说收尾那句", energy: 0.42,
           kick: "Xx......Xx......", kickKind: "heart", duck: 0.35, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.75,
           bass: "light", pad: 0.85, lp: 1800, padVerb: 0.38 },
-        { from: 11, to: 11, id: "strata-rise", name: "升回地面：心跳回到每拍，收在 A7sus4 交给第 09 章", energy: 0.5,
+        { from: 11, to: 11, id: "strata-rise", name: "升回地面：心跳回到每拍，收在 A7sus4 交给第 09 章（对话）", energy: 0.5,
           kick: "Xx..Xx..Xx..Xx..", kickKind: "heart", duck: 0.4, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.9,
           bass: "light", pad: 0.8, lp: 2200, padVerb: 0.34 },
       ],

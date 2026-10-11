@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+save_cache() {
+  local temporary="$2.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+  cp "$1" "$temporary"
+  mv "$temporary" "$2"
+}
+
+lint() {
+  if [ -z "${CI_CACHE_DIR:-}" ]; then
+    pnpm lint
+    return
+  fi
+  cp "$CI_CACHE_DIR/eslintcache" "$RUNNER_TEMP/eslintcache" 2>/dev/null || true
+  pnpm lint --cache --cache-strategy content --cache-location "$RUNNER_TEMP/eslintcache"
+  save_cache "$RUNNER_TEMP/eslintcache" "$CI_CACHE_DIR/eslintcache"
+}
+
+typecheck() {
+  if [ -z "${CI_CACHE_DIR:-}" ]; then
+    pnpm -r --include-workspace-root typecheck
+    return
+  fi
+  project_paths=$(pnpm -r --include-workspace-root list --depth=-1 --json | node -e 'let s="";process.stdin.on("data", c => s+=c);process.stdin.on("end", () => console.log(JSON.parse(s).map(p => p.path).join("\n")));')
+  while IFS= read -r project; do
+    case "$project" in
+      "$PWD"|"$PWD"/*) ;;
+      *) echo "Workspace outside repository: $project" >&2; return 1 ;;
+    esac
+    directory="$CI_CACHE_DIR/typecheck${project#"$PWD"}"
+    cp "$directory/tsconfig.ci.tsbuildinfo" "$project/tsconfig.ci.tsbuildinfo" 2>/dev/null || true
+  done <<< "$project_paths"
+  # CI 的 noEmit 缓存单独命名，不能与上报器测试编译 dist 的产物缓存混用。
+  pnpm -r --include-workspace-root --parallel typecheck --incremental --tsBuildInfoFile tsconfig.ci.tsbuildinfo
+  while IFS= read -r project; do
+    directory="$CI_CACHE_DIR/typecheck${project#"$PWD"}"
+    mkdir -p "$directory"
+    save_cache "$project/tsconfig.ci.tsbuildinfo" "$directory/tsconfig.ci.tsbuildinfo"
+  done <<< "$project_paths"
+}
+
+workspace_tests() {
+  pnpm -r --include-workspace-root --workspace-concurrency=4 --no-bail --stream test
+}
+
+script_tests() {
+  node --test scripts/*.test.mjs
+}
+
+docs() {
+  pnpm docs:check
+}
+
+if [ "${1:-}" = '--gate' ]; then
+  case "$2" in
+    lint) lint ;;
+    typecheck) typecheck ;;
+    workspace_tests) workspace_tests ;;
+    script_tests) script_tests ;;
+    docs) docs ;;
+    *) exit 2 ;;
+  esac
+  exit 0
+fi
+
+run_gate() {
+  local name="$1" started elapsed status=0
+  started=$(date +%s)
+  # 函数作为条件执行时 bash 会关闭 errexit；单独的 bash 进程保留门禁中间命令的失败。
+  bash -euo pipefail "$0" --gate "$name" > "$RUNNER_TEMP/check-$name.log" 2>&1 || status=$?
+  elapsed=$(( $(date +%s) - started ))
+  printf 'CI_TIMING %s seconds=%s status=%s\n' "$name" "$elapsed" "$status" >> "$RUNNER_TEMP/check-$name.log"
+  return "$status"
+}
+
+gates=(lint typecheck workspace_tests script_tests docs)
+pids=()
+status=0
+for gate in "${gates[@]}"; do
+  echo "Starting $gate"
+  if [ -n "${CI_CACHE_DIR:-}" ]; then
+    run_gate "$gate" &
+    pids+=("$!")
+  else
+    run_gate "$gate" || status=1
+  fi
+done
+for pid in "${pids[@]}"; do
+  wait "$pid" || status=1
+done
+for gate in "${gates[@]}"; do
+  echo "::group::$gate"
+  cat "$RUNNER_TEMP/check-$gate.log"
+  echo '::endgroup::'
+done
+exit "$status"

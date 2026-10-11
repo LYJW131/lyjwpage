@@ -1,4 +1,4 @@
-import { BUILD_REPO, branchForRun, buildIssueBody, PLAN_LABELS, planLanguage, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_CLOSED_PHASES, BUILD_REPO, branchForRun, buildIssueBody, PLAN_LABELS, planLanguage, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import { GITHUB_APP_CLIENT_ID } from "@shared/github-issue";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
@@ -61,7 +61,7 @@ export async function installationApi(env: Env, fetcher: typeof fetch = fetch, r
 
 export async function currentMain(api: GithubBuildApi): Promise<string> {
   const data = await api.repo<{ object: { sha: string } }>("/git/ref/heads/main");
-  if (!/^[a-f0-9]{40}$/.test(data.object?.sha)) throw new Error("GitHub main commit is unavailable.");
+  if (!validSha(data.object?.sha)) throw new Error("GitHub main commit is unavailable.");
   return data.object.sha;
 }
 
@@ -76,7 +76,7 @@ export async function assertMainAncestor(api: GithubBuildApi, baseSha: string): 
 // Must name the model configured on the build routine (docs/ops-facts.md「Claude Code 云端 routine」).
 const BUILD_CLAUDE_COAUTHOR = "Claude Opus 5.5 <noreply@anthropic.com>";
 
-function validSha(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }
+export function validSha(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }
 
 export async function validateBuildBase(api: GithubBuildApi, run: StoredRun, upload: BuildUpload): Promise<string> {
   if (upload.baseSha !== run.baseSha) throw new BuildBlockedError("The upload does not match the assigned base commit.");
@@ -86,10 +86,10 @@ export async function validateBuildBase(api: GithubBuildApi, run: StoredRun, upl
   const tree = await api.repo<{ truncated: boolean; tree: { path: string; type: string; mode: string }[] }>(`/git/trees/${base.tree.sha}?recursive=1`);
   if (tree.truncated || !Array.isArray(tree.tree)) throw new BuildBlockedError("The base tree could not be fully checked.");
   const existing = new Map(tree.tree.map((entry) => [entry.path, entry]));
-  const changed = new Set([...upload.files.map((file) => file.path), ...upload.deletions]);
+  const changed = new Set(uploadPaths(upload));
   for (const path of changed) {
     const entry = existing.get(path);
-    if (path === `builds/${run.state.runId}.md` && entry) throw new BuildBlockedError("The build plan path already exists in main.");
+    if (path === planPath(run) && entry) throw new BuildBlockedError("The build plan path already exists in main.");
     if (entry && (entry.type !== "blob" || !["100644", "100755"].includes(entry.mode))) throw new BuildBlockedError("Replacing directories, symlinks or submodules is blocked.");
     const parts = path.split("/");
     for (let index = 1; index < parts.length; index += 1) {
@@ -109,9 +109,13 @@ const REVIEW_RULES: { reason: Exclude<ReviewReason, "outside">; test: (path: str
   { reason: "docs", test: (path) => markdownDoc(path) && !path.startsWith("docs/") },
 ];
 
+function uploadPaths(upload: Pick<BuildUpload, "files" | "deletions">): string[] {
+  return [...upload.files.map((file) => file.path), ...upload.deletions];
+}
+
 export function reviewPaths(upload: Pick<BuildUpload, "files" | "deletions">, planPaths: readonly string[]): { path: string; reasons: ReviewReason[] }[] {
   const outside = new Set(outsidePlanPaths(upload, planPaths));
-  return [...upload.files.map((file) => file.path), ...upload.deletions].flatMap((path) => {
+  return uploadPaths(upload).flatMap((path) => {
     const reasons: ReviewReason[] = [...(outside.has(path) ? ["outside" as const] : []), ...REVIEW_RULES.filter((rule) => rule.test(path)).map((rule) => rule.reason)];
     return reasons.length ? [{ path, reasons }] : [];
   });
@@ -194,7 +198,7 @@ export async function prepareBuildPullRequest(api: GithubBuildApi, run: StoredRu
       head = await branchHead(api, run.state.branch);
       if (!head) throw error;
     }
-    head = await branchHead(api, run.state.branch);
+    head ??= await branchHead(api, run.state.branch);
   }
   if (head !== commit.sha) throw new BuildBlockedError("The build branch contains an unexpected commit.");
   let pr = await existingPullRequest(api, run);
@@ -267,7 +271,7 @@ export async function recoverBuildPublication(api: GithubBuildApi, run: StoredRu
 export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, upload: BuildUpload, validatedBaseTree: string | undefined, recordImplementationHead: (sha: string, body: string) => Promise<void>): Promise<NonNullable<BuildRun["pr"]>> {
   if (run.implementationHeadSha) return recoverBuildPublication(api, run);
   if (!validatedBaseTree) await validateBuildBase(api, run, upload);
-  if (upload.baseSha !== run.baseSha || [...upload.files.map((file) => file.path), ...upload.deletions].some((path) => path === planPath(run) || path.startsWith("builds/"))) throw new BuildBlockedError("The upload cannot replace the recorded build plan.");
+  if (upload.baseSha !== run.baseSha || uploadPaths(upload).some((path) => path === planPath(run) || path.startsWith("builds/"))) throw new BuildBlockedError("The upload cannot replace the recorded build plan.");
   const planCommit = await preparedCommit(api, run);
   const existing = await existingPullRequest(api, run);
   if (!existing) throw new BuildBlockedError("The build draft is unavailable.");
@@ -364,6 +368,10 @@ function aggregateState(states: string[]): string {
   return states.length && states.every((state) => ["success", "neutral", "skipped"].includes(state)) ? "success" : "unknown";
 }
 
+function ciState(checks: GithubCheck[], statuses: GithubStatus[]): string {
+  return aggregateState([...checks.filter((check) => checkKind(check) === "ci").map(checkState), ...statuses.filter((item) => !isPreviewStatus(item)).map((item) => item.state)]);
+}
+
 async function allCheckRuns(api: GithubBuildApi, sha: string): Promise<GithubCheck[]> {
   const checks: GithubCheck[] = [];
   for (let page = 1; page <= 10; page += 1) {
@@ -390,7 +398,7 @@ async function latestReview(api: GithubBuildApi, number: number): Promise<Review
 }
 
 export async function reconcileBuild(api: GithubBuildApi, run: BuildRun): Promise<Partial<BuildRun>> {
-  if (!run.pr || ["merged", "closed"].includes(run.phase)) return {};
+  if (!run.pr || BUILD_CLOSED_PHASES.includes(run.phase)) return {};
   const pr = await api.repo<GithubPullRequest>(`/pulls/${run.pr.number}`);
   const confirmed = confirmedPullRequest(pr, run, undefined, run.pr.draft === undefined);
   const result: Partial<BuildRun> = { phase: pr.merged ? "merged" : pr.state === "closed" ? "closed" : run.phase, pr: confirmed, reconciledAt: Date.now(), githubUpdatedAt: Date.parse(pr.updated_at) || undefined };
@@ -405,11 +413,8 @@ export async function reconcileBuild(api: GithubBuildApi, run: BuildRun): Promis
   ]);
   const [checkResult, statusResult, commentsResult] = responses;
   const checks = checkResult.status === "fulfilled" ? checkResult.value : [];
-  const status = statusResult.status === "fulfilled" ? statusResult.value : null;
-  const ciChecks = checks.filter((check) => checkKind(check) === "ci");
-  const ciStatuses = status?.statuses.filter((item) => !isPreviewStatus(item)) ?? [];
   if (checkResult.status === "fulfilled" && statusResult.status === "fulfilled" && statusResult.value.total_count <= statusResult.value.statuses.length) {
-    result.ci = { state: aggregateState([...ciChecks.map(checkState), ...ciStatuses.map((item) => item.state)]), updatedAt: Date.now() };
+    result.ci = { state: ciState(checks, statusResult.value.statuses), updatedAt: Date.now() };
     const previews = [
       ...statusResult.value.statuses.filter(isPreviewStatus).map((item) => ({ state: item.state, url: item.target_url })),
       ...checks.filter((check) => checkKind(check) === "preview").map((check) => ({ state: checkState(check), url: check.details_url ?? check.html_url })),
@@ -437,14 +442,13 @@ export async function markBuildReady(api: GithubBuildApi, run: StoredRun): Promi
     api.repo<{ statuses: GithubStatus[]; total_count: number }>(`/commits/${run.implementationHeadSha}/status?per_page=100`),
   ]);
   if (!Number.isSafeInteger(statuses.total_count) || statuses.total_count > statuses.statuses.length) return null;
-  const ciChecks = checks.filter((check) => checkKind(check) === "ci");
-  if (!ciChecks.some((check) => check.name === "check" && check.app?.slug === "github-actions" && check.status === "completed" && check.conclusion === "success")
-    || aggregateState([...ciChecks.map(checkState), ...statuses.statuses.filter((item) => !isPreviewStatus(item)).map((item) => item.state)]) !== "success") return null;
+  if (!checks.some((check) => checkKind(check) === "ci" && check.name === "check" && check.app?.slug === "github-actions" && check.status === "completed" && check.conclusion === "success")
+    || ciState(checks, statuses.statuses) !== "success") return null;
   const latest = await existingPullRequest(api, run);
   if (!latest) return null;
-  confirmedPullRequest(latest, run.state, [run.implementationHeadSha]);
+  const latestConfirmed = confirmedPullRequest(latest, run.state, [run.implementationHeadSha]);
   if (latest.state !== "open" || latest.merged || !latest.node_id) return null;
-  if (!latest.draft) return confirmedPullRequest(latest, run.state, [run.implementationHeadSha]);
+  if (!latest.draft) return latestConfirmed;
   const mutation = await api.request<{ data?: { markPullRequestReadyForReview?: { pullRequest: { isDraft: boolean; headRefOid: string; number: number } } }; errors?: unknown[] }>("/graphql", "POST", {
     query: "mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{isDraft headRefOid number}}}", variables: { id: latest.node_id },
   });

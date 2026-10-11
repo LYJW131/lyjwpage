@@ -164,13 +164,18 @@ function Hero({
           )}
         </div>
         {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}
-        {progress != null && (
-          <div className="mt-2 h-1 overflow-hidden bg-muted">
-            <div className="h-full bg-foreground/60" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
-          </div>
-        )}
+        <ProgressBar percent={progress} className="mt-2 h-1" />
         {meta && <div className="mt-1 font-mono text-[10px] tabular-nums text-muted-foreground">{meta}</div>}
       </div>
+    </div>
+  );
+}
+
+function ProgressBar({ percent, className }: { percent?: number | null; className: string }) {
+  if (percent == null) return null;
+  return (
+    <div className={cn(className, "overflow-hidden bg-muted")}>
+      <div className="h-full bg-foreground/60" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
     </div>
   );
 }
@@ -190,11 +195,7 @@ function Tile({ href, image, title, subtitle, progress }: { href?: string | null
   const body = (
     <>
       {image}
-      {progress != null && (
-        <div className="mt-1 h-0.5 overflow-hidden bg-muted">
-          <div className="h-full bg-foreground/60" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
-        </div>
-      )}
+      <ProgressBar percent={progress} className="mt-1 h-0.5" />
       <div className="mt-1.5 truncate text-[11px] leading-tight">{title}</div>
       {subtitle && <div className="truncate text-[10px] leading-tight text-muted-foreground">{subtitle}</div>}
     </>

@@ -7,6 +7,12 @@ on:
     paths-ignore:
       - .github/github-avatar.sha256
   pull_request:
+  workflow_dispatch:
+    inputs:
+      threads:
+        description: Self-hosted CodeQL thread count (empty uses repository variable)
+        type: string
+        required: false
   schedule:
     - cron: "27 4 * * 1"
 
@@ -15,6 +21,10 @@ permissions:
   security-events: write
   actions: read
   packages: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   changes:
@@ -39,7 +49,7 @@ jobs:
               - .github/workflows/**
               - "**/action.{yml,yaml}"
 
-      # 只有推 main / dev 按改动过滤；PR 和每周定时扫都两种语言全扫
+      # 只有推 main / dev 按改动过滤；PR、每周定时扫和手动触发都两种语言全扫
       - id: pick
         env:
           CHANGED: ${{ steps.filter.outputs.changes }}
@@ -68,6 +78,8 @@ jobs:
 
       - uses: github/codeql-action/init@v4
         if: env.SCAN == 'true'
+        env:
+          CODEQL_THREADS: ${{ runner.environment == 'self-hosted' && (inputs.threads || vars.CODEQL_THREADS || '8') || '' }}
         with:
           languages: ${{ matrix.language }}
           build-mode: none
@@ -76,3 +88,4 @@ jobs:
         if: env.SCAN == 'true'
         with:
           category: "/language:${{ matrix.language }}"
+          upload-database: false

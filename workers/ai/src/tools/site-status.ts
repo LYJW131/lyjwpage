@@ -1,5 +1,6 @@
 import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
 
+import { base64url, decodeBase64url } from "../crypto";
 import type { SiteTool, ToolLedger } from "./registry";
 
 export type ReadStatus = (path: string) => Promise<Response>;
@@ -70,14 +71,13 @@ const normalize = (text: string) => text.normalize("NFKC").toLowerCase();
 
 function encodeCursor(cursor: Cursor): string {
   const bytes = new TextEncoder().encode(JSON.stringify([cursor.view, cursor.offset, cursor.query, cursor.detail, cursor.totals]));
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return base64url(bytes);
 }
 
 function decodeCursor(raw: unknown): Cursor | null {
   if (typeof raw !== "string" || !/^[A-Za-z0-9_-]{1,2000}$/.test(raw)) return null;
   try {
-    const binary = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
-    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(Uint8Array.from(binary, (char) => char.charCodeAt(0))));
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(decodeBase64url(raw)));
     if (!Array.isArray(parsed) || parsed.length !== 5) return null;
     const [view, offset, query, detail, totals] = parsed as unknown[];
     if (!isStatusViewKey(view) || !Number.isSafeInteger(offset) || (offset as number) <= 0 || typeof query !== "string") return null;
@@ -203,6 +203,8 @@ function collectLists(value: unknown, path: string, needle: string, lists: Paged
 
 type ViewResult = { section: string; outOfRange?: true };
 
+const clip = (text: string) => (text.length > MAX_CHARS_PER_VIEW ? `${text.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : text);
+
 function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: Cursor | undefined): ViewResult {
   const needle = normalize(page.query);
   const lists: PagedList[] = [];
@@ -211,15 +213,15 @@ function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: 
   if (page.offset > 0 && page.offset >= longest) return { section: "", outOfRange: true };
   const totals = lists.map((list) => list.total);
   const next = page.offset + PAGE_SIZE < longest ? encodeCursor({ view, ...page, offset: page.offset + PAGE_SIZE, totals }) : undefined;
-  const wrapped = new Set(lists.map((list) => list.path));
+  const byPath = new Map(lists.map((list) => [list.path, list]));
   const replace = (value: unknown, path: string): unknown => {
     if (Array.isArray(value)) {
-      if (!wrapped.has(path || "(root)")) return value;
-      const list = lists.find((candidate) => candidate.path === (path || "(root)"));
+      const list = byPath.get(path || "(root)");
+      if (!list) return value;
       const more = page.offset + PAGE_SIZE < value.length;
       return {
         total: value.length,
-        ...(needle && { totalBeforeQuery: list?.before ?? value.length }),
+        ...(needle && { totalBeforeQuery: list.before }),
         items: value.slice(page.offset, page.offset + PAGE_SIZE),
         ...(more && next && { nextCursor: next }),
       };
@@ -241,8 +243,7 @@ function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: 
     next ? `nextCursor: ${next}` : "last page",
     cursor && JSON.stringify(cursor.totals) !== JSON.stringify(totals) && "the lists changed while paging, items may repeat or be missing",
   ].filter(Boolean);
-  const body = json.length > MAX_CHARS_PER_VIEW ? `${json.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : json;
-  return { section: `${summary.join(" | ")}\n${body}` };
+  return { section: `${summary.join(" | ")}\n${clip(json)}` };
 }
 
 async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, cursor?: Cursor): Promise<ViewResult> {
@@ -258,7 +259,7 @@ async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, 
     return pageView(key, JSON.parse(text), page, cursor);
   } catch {
     if (page.offset > 0) return { section: "", outOfRange: true };
-    return { section: `not JSON, returned as is\n${text.length > MAX_CHARS_PER_VIEW ? `${text.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : text}` };
+    return { section: `not JSON, returned as is\n${clip(text)}` };
   }
 }
 

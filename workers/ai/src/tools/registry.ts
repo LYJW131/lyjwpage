@@ -38,6 +38,8 @@ export type SiteTool = {
   run(input: unknown, io: ToolIO, ledger: ToolLedger): Promise<ToolOutcome>;
 };
 
+export const replyToolDescription = ({ description, replyCap }: SiteTool): string => (replyCap ? `${description}\n${replyCap}` : description);
+
 // 这里的工具全部经无鉴权的 /mcp 公开，同时是首页对话的工具：只放只读、且只读公开模型的工具。
 export const SITE_TOOLS: readonly SiteTool[] = [SITE_STATUS_TOOL, PROJECT_DOC_TOOL];
 
