@@ -20,7 +20,7 @@ on:
       chrome-version:
         description: Chrome for Testing version (pin for comparisons)
         type: string
-        default: stable
+        default: ""
 
 permissions:
   contents: read
@@ -31,6 +31,7 @@ concurrency:
 
 env:
   SCORE_ORIGIN: https://lyjw.me
+  SCORE_CHROME_VERSION: 155.0.8059.39
 
 jobs:
   # 渲染跑的是分支上的代码，所以这一步不碰任何凭据
@@ -85,16 +86,47 @@ jobs:
             pnpm --dir docs/explainer/render install --frozen-lockfile --ignore-workspace
           fi
 
+      - name: Reuse Chrome tool
+        id: cached-chrome
+        if: steps.key.outputs.exists == '0' && runner.environment == 'self-hosted'
+        env:
+          CHROME_VERSION: ${{ inputs.chrome-version || env.SCORE_CHROME_VERSION }}
+        run: |
+          if [[ "$CHROME_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ -n "${CI_CACHE_DIR:-}" ]; then
+            chrome="$CI_CACHE_DIR/chrome/$CHROME_VERSION/chrome"
+            if [ -x "$chrome" ]; then
+              echo "chrome-path=$chrome" >> "$GITHUB_OUTPUT"
+              "$chrome" --version
+            fi
+          fi
+
       - uses: browser-actions/setup-chrome@v2
         id: chrome
-        if: steps.key.outputs.exists == '0'
+        if: steps.key.outputs.exists == '0' && steps.cached-chrome.outputs.chrome-path == ''
         with:
-          chrome-version: ${{ inputs.chrome-version || 'stable' }}
+          chrome-version: ${{ inputs.chrome-version || env.SCORE_CHROME_VERSION }}
+
+      - name: Cache Chrome tool
+        if: steps.key.outputs.exists == '0' && runner.environment == 'self-hosted' && steps.cached-chrome.outputs.chrome-path == ''
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+        run: |
+          if [ -n "${CI_CACHE_DIR:-}" ]; then
+            mkdir -p "$CI_CACHE_DIR/chrome"
+            target="$CI_CACHE_DIR/chrome/$CHROME_VERSION"
+            if [ ! -d "$target" ]; then
+              staging=$(mktemp -d "$CI_CACHE_DIR/chrome/.download-XXXXXX")
+              trap 'rm -rf "$staging"' EXIT
+              cp -a "$(dirname "$CHROME_PATH")/." "$staging/"
+              mv -T -n "$staging" "$target"
+            fi
+          fi
 
       - name: Render score
         if: steps.key.outputs.exists == '0'
         env:
-          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          CHROME_PATH: ${{ steps.cached-chrome.outputs.chrome-path || steps.chrome.outputs.chrome-path }}
           SCORE_METRICS_PATH: ${{ runner.temp }}/score-metrics.json
         run: node docs/explainer/v2/tools/score-mp3.mjs
 
