@@ -104,7 +104,7 @@ export async function validateBuildBase(api: GithubBuildApi, run: StoredRun, upl
 type ReviewReason = keyof (typeof PLAN_LABELS)["en"]["reasons"];
 const REVIEW_RULES: { reason: Exclude<ReviewReason, "outside">; test: (path: string) => boolean }[] = [
   { reason: "contract", test: (path) => path.startsWith("shared/") },
-  { reason: "auth", test: (path) => /^workers\/[^/]+\/src\/build\//.test(path) || path.startsWith("workers/ingress/") || /^workers\/ai\/src\/github-issue/.test(path) },
+  { reason: "auth", test: (path) => /^workers\/[^/]+\/src\/build\//.test(path) || path.startsWith("workers/ingress/") },
   { reason: "prompt", test: (path) => path.startsWith("workers/ai/src/chat/") },
   { reason: "docs", test: (path) => markdownDoc(path) && !path.startsWith("docs/") },
 ];

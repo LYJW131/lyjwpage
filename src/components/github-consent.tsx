@@ -47,7 +47,7 @@ const COPY: Record<PlanLanguage, GithubConsentCopy> = {
     why: ["目的", "GitHub ログインで、どの GitHub アカウントからのリクエストかを確認します。"],
     what: ["流れ", "GitHub が本サイトに渡すのは一度きりの認可コードだけです。本サイトのサーバーはそれを短期間有効なトークンに交換し、この操作だけに使ったあと、すぐに GitHub へ失効を依頼します。トークンは保存されません。"],
     build: ["ビルド", "GitHub のユーザー名、ユーザー ID、表示名だけを読み取り、GitHub noreply の co-author を作成して、公開の pull request にあなたを co-author として記載します。"],
-    public: ["公开", "結果は GitHub 上で公開されます。"],
+    public: ["公開", "結果は GitHub 上で公開されます。"],
     control: ["管理", <>本サイトのアクセス権は、GitHub の {settingsLink("Settings → Applications")} でいつでも確認・取り消しできます。</>],
     accept: "同意して GitHub でログイン",
     working: "GitHub を待っています…",

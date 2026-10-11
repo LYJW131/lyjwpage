@@ -9,7 +9,7 @@ import {
   BUILD_SCREENSHOT_PATH,
   BUILD_WEBHOOK_PATH,
 } from "@shared/ai-paths";
-import { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
+import { GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
 import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "@shared/http-origins";
 import { MCP_PATH } from "@shared/mcp";
 
@@ -17,7 +17,6 @@ import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
 import { anthropicFetch } from "./chat/egress";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
-import { handleGithubIssue } from "./github-issue";
 import { handleMcp } from "./mcp";
 import { mcpCodeModeEnabled, type Env } from "./runtime";
 import { fetchProjectDoc } from "./tools/project-docs";
@@ -100,9 +99,7 @@ const worker = {
       response = await handleMcp(request, mcpCodeModeEnabled(env) && env.LOADER ? { ...tools, runCode: sandboxRunner(env.LOADER) } : tools, env.CF_VERSION_METADATA?.id ?? "dev");
     } else {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
-      response = pathname === GOD_CHAT_PATH
-        ? await handleChat(request, env, tools)
-        : await handleGithubIssue(request, env, clientIp(request));
+      response = await handleChat(request, env, tools);
     }
     return withCors(response, cors);
   },

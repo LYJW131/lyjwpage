@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 在首页对话里提
+    url: https://lyjw.me
+    about: 首页对话会帮你把想法整理成计划，再替你开 issue 或直接发起构建。

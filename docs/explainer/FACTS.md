@@ -382,7 +382,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 ### 设计会话
 
 - 站点改动请求由 Clef 交给 Sonnet；Sonnet 觉得值得做才调 `start_design`，在 Claude Managed Agents 上开一个会话，同一条回复交给其中的 Opus 规划者（`workers/ai/src/chat/designer.ts`、`docs/build-routine.md`「设计与确认」）。
-- 计划卡两个出口：Open issue（浏览器直接跳 GitHub 预填好的 issue 创建页，不需授权，见 `shared/build-routine.ts#buildIssueUrl`）、Start build（点之前展开 GitHub 授权说明，接受才弹授权窗口，同意不保存，用完立即撤销，见 `src/components/github-consent.tsx#GithubConsent`）。
+- 计划卡两个出口：Open issue（浏览器直接跳 GitHub 的 `improvement.yml` 表单，各字段已按计划预填，访客用自己的账号提交、不消费计划、不需授权，见 `shared/build-routine.ts#buildIssueUrl`）、Start build（点之前展开 GitHub 授权说明，接受才弹授权窗口，同意不保存，用完立即撤销，见 `src/components/github-consent.tsx#GithubConsent`）。
 
 ### 构建
 
