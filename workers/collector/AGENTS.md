@@ -9,7 +9,7 @@
 - 一次调用同时只能有 6 个连接在等响应头。带 `headStart` 的任务先跑（`src/registry.ts#HEAD_START_MS`）；目前没有任务设置它。新增任务时想想会不会在同一分钟大量并发出网。
 - 预览与非生产分支构建关闭：`CORE` 指向生产 `api`，预览版一跑就会往生产状态里写。
 - 新增 `StateCore` 方法先发布 `workers/api`，再发布本 Worker；契约只加不改（`shared/state-core.ts`、`shared/collector.ts`）。
-- D1 表结构归 `workers/api/migrations`：新表先在 api 那边 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，再发布本 Worker。奖杯表由 api 写（`workers/api/src/stores/trophy-history.ts#archiveTrophies`），这里只写 `site_deploys`。
+- D1 表结构归 `workers/api/migrations`：新表先在 api 那边 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。奖杯表由 api 写（`workers/api/src/stores/trophy-history.ts#archiveTrophies`），这里只写 `site_deploys`。
 - `src/lib/cache` 在这里背后是 KV（`src/storage-driver.ts`）：TTL 最短 60 秒，`ifAbsent` 先读后写、不是原子的，KV 读还有最长 60 秒的边缘缓存，两分钟以内要读回的东西不走它；列表、哈希操作直接抛错。
 - 手动触发（`Collector.refresh`、本地调试入口）不向 Sentry 报到；cron 监控名额不够，`collector-<任务>` 报到默认关（`SENTRY_CRON_CHECKINS`），任务真失败靠 `src/sentry.ts#reportJobFailure` 开 issue（tag `collector.job`）。
 

@@ -113,7 +113,7 @@ developer token 经 `CORE.appleDeveloperToken()` 由 api 签。
 
 绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS` 三个 KV，`CORE`（`api` 的 `StateCore`），D1 `HISTORY`
 （`lyjwpage-history`）。D1 表结构归 `workers/api/migrations` 管：新表先在 api 那边
-`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，再发布本 Worker。
+`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
 Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION_METADATA`。
 
 ## 部署

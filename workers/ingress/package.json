@@ -6,7 +6,7 @@
   "description": "Stateless report ingest on a Cloudflare Worker: Access auth, validation, and the split into state core, lag layer, archive and credentials",
   "main": "src/index.ts",
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy -c wrangler.toml",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs src/*.test.ts"
   },

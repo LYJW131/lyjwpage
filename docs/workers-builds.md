@@ -10,13 +10,15 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 生产分支为 `main`，根目录均为 `/`；共享根目录的 `pnpm-lock.yaml` 与工作区，Wrangler 版本以各包为准。
 
+在 `workers/<名>` 里调 wrangler 一律带 `-c wrangler.toml`：wrangler 向上找配置时按文件名优先，根目录 `site` 的 `wrangler.jsonc` 会压过同目录的 `wrangler.toml`，不带 `-c` 的部署、`secret put`、D1 迁移都会落到 `site` 上。
+
 | Worker | 构建命令 | 生产部署命令 | 分支预览命令 |
 | --- | --- | --- | --- |
-| `api` | `pnpm --dir workers/api typecheck` | `pnpm --dir workers/api exec wrangler deploy` | `node workers/api/scripts/deploy-preview.mjs --worker-name api` |
-| `ai` | `pnpm --dir workers/ai typecheck` | `pnpm --dir workers/ai exec wrangler deploy` | `node workers/api/scripts/deploy-preview.mjs --worker-name ai` |
+| `api` | `pnpm --dir workers/api typecheck` | `pnpm --dir workers/api exec wrangler deploy -c wrangler.toml` | `node workers/api/scripts/deploy-preview.mjs --worker-name api` |
+| `ai` | `pnpm --dir workers/ai typecheck` | `pnpm --dir workers/ai exec wrangler deploy -c wrangler.toml` | `node workers/api/scripts/deploy-preview.mjs --worker-name ai` |
 | `site` | `pnpm build` | `pnpm exec wrangler deploy` | `pnpm preview:deploy` |
-| `ingress` | `pnpm --dir workers/ingress typecheck` | `pnpm --dir workers/ingress exec wrangler deploy` | 关闭 |
-| `collector` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy` | 关闭 |
+| `ingress` | `pnpm --dir workers/ingress typecheck` | `pnpm --dir workers/ingress exec wrangler deploy -c wrangler.toml` | 关闭 |
+| `collector` | `pnpm --dir workers/collector typecheck` | `pnpm --dir workers/collector exec wrangler deploy -c wrangler.toml` | 关闭 |
 
 `ingress` 和 `collector` 的分支预览及非生产分支构建保持关闭：它们的 `CORE` 指向生产状态核心，预览写入会影响生产。`workers/dev-router` 仅用于本地，不连接 Builds。
 
@@ -57,7 +59,7 @@ api 和 ai 的 Builds 都调用同一个预览脚本，各自发布到自己的 
 AI 端点需要的 Secret 只设在实际使用的 parent 的本分支 Preview；例如 api parent：
 
 ```sh
-pnpm --dir workers/api exec wrangler preview secret put CHAT_HISTORY_SECRET --name <预览名> --worker-name api
+pnpm --dir workers/api exec wrangler preview secret put CHAT_HISTORY_SECRET -c wrangler.toml --name <预览名> --worker-name api
 ```
 
 ai parent 使用 `--worker-name ai`，其他所需变量见 `workers/ai/.dev.vars.example`。值从标准输入输入，不复制生产凭据；缺少密钥的聊天端点返回 503，MCP 公开状态工具仍可验证。分支要试付费对话时把 Secret 设在 api parent 上：两份候选都在时预览选它；只改 AI 代码的分支没有 api 那份，Secret 设在 ai parent。
