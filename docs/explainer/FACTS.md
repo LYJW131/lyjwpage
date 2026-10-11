@@ -383,11 +383,11 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 - 站点改动请求由 Clef 交给 Sonnet；Sonnet 觉得值得做才调 `start_design`，在 Claude Managed Agents 上开一个会话，同一条回复交给其中的 Opus 规划者（`workers/ai/src/chat/designer.ts`、`docs/build-routine.md`「设计与确认」）。
 - 规划者只读：沙盒只放行 github.com、不挂凭据，write / edit 关闭，用 read、glob、grep 和只读命令查仓库；用 `ask_visitor` 提问、`propose_build` 出计划（标题、规格、验收项、预计路径），计划由 Worker 校验后签名（`workers/ai/AGENTS.md`「不变量」、`workers/ai/src/build/validation.ts`）。
-- 计划卡两个出口：Open issue、Start build。点之前每次都展开 GitHub 授权说明，接受才弹授权窗口，同意不保存（`src/components/github-consent.tsx#GithubConsent`）。访客的 GitHub token 用完立即撤销。
+- 计划卡两个出口：Suggest it、Build it now。点之前每次都展开 GitHub 授权说明，接受才弹授权窗口，同意不保存（`src/components/github-consent.tsx#GithubConsent`）。访客的 GitHub token 用完立即撤销。
 
 ### 构建
 
-- Start build：Worker 用 GitHub App 把签名计划写成 `builds/<runId>.md`，提交到分支 `claude/build-<runId>`（`shared/build-routine.ts#branchForRun`）并开草稿 PR，再把计划交给 routine（Claude Code）去写代码（`docs/build-routine.md`「上传与 PR」）。
+- Build it now：Worker 用 GitHub App 把签名计划写成 `builds/<runId>.md`，提交到分支 `claude/build-<runId>`（`shared/build-routine.ts#branchForRun`）并开草稿 PR，再把计划交给 routine（Claude Code）去写代码（`docs/build-routine.md`「上传与 PR」）。
 - routine 不持有仓库推送凭据：改动回传 Worker，校验路径与大小后由 GitHub App 提交到同一分支和 PR（`workers/ai/src/build/validation.ts`）。PR 上的 Claude 审查只作参考，不授权合并（`workers/ai/AGENTS.md`）；合不合并由站长决定。
 - 片中不画：计划令牌与额度的消费细节、截图上传、构建状态的恢复。
 

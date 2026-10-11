@@ -26,7 +26,7 @@
       { from: 10, to: 10, id: "chat-reply", name: "回到卡片：10:0 回复连着在听卡翻出来，10:1 盖章；10:3 第二句发出", energy: 0.5,
         kick: "X.......X.......", kickKind: "light", duck: 0.4, hat: "......x.......x.", hatKind: "flip",
         bass: "light", pad: 0.85, lp: 2200, padVerb: 0.34 },
-      { from: 11, to: 13, id: "chat-design", name: "设计会话：11:0 Architect 接手，暖铃唱主题；出题、出计划、点 Start build", energy: 0.8,
+      { from: 11, to: 13, id: "chat-design", name: "设计会话：11:0 Architect 接手，暖铃唱主题；出题、出计划、点 Build it now", energy: 0.8,
         kick: "X.......X.x.....", duck: 0.5, snare: "....x.......x...", snareKind: "thud", hat: "..x...x...x...x.", hatKind: "flip",
         bass: "groove", arp: { p: "queue", lo: 69, inst: "bell", v: 0.24 }, pad: 0.72, lp: 3200, padVerb: 0.3 },
       { from: 14, to: 14, id: "chat-build", name: "构建分支：计划提交、草稿 PR、routine 上传、实现提交", energy: 0.74,
