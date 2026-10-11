@@ -14,6 +14,13 @@ export function designSessionEnded(code: unknown): boolean {
   return code === "design_session_expired" || code === "design_session_exhausted";
 }
 
+export const DESIGN_END_REASONS = ["expired", "exhausted", "left"] as const;
+export type DesignEndReason = (typeof DESIGN_END_REASONS)[number];
+
+export function designEndReason(design: ChatDesign, now = Date.now()): DesignEndReason {
+  return design.remaining <= 0 && design.expiresAt > now ? "exhausted" : "expired";
+}
+
 export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; build?: BuildFireResult; run?: BuildRun };
 // at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
 export type ChatShownCard = { card: GodChatCard; at: number };
@@ -32,6 +39,8 @@ export type ChatBubble = GodChatMessage & {
   cards?: ChatShownCard[];
   // 同一条回复里开了设计会话、换规划者接手时正文已有的长度，分隔线画在这里。
   designAt?: number;
+  // 设计会话在这条回复之后结束：结束提示画在它下面。
+  designEnded?: DesignEndReason;
   proposals?: ChatProposal[];
   asks?: GodChatQuestion[];
   answers?: ChatAnswer[];
@@ -79,6 +88,7 @@ function validBubble(value: unknown): value is ChatBubble {
   }))) return false;
   if (value.asks !== undefined && !parseQuestions(value.asks)) return false;
   if (value.designAt !== undefined && typeof value.designAt !== "number") return false;
+  if (value.designEnded !== undefined && !(DESIGN_END_REASONS as readonly unknown[]).includes(value.designEnded)) return false;
   if (value.answers !== undefined && (!Array.isArray(value.answers) || !value.answers.every((answer) => object(answer) && ["header", "question", "answer"].every((key) => typeof answer[key] === "string")))) return false;
   if (["lookups", "searches", "steps"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
@@ -158,6 +168,16 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
     }
     listeners.forEach((listener) => listener());
   };
+  const update = (id: string, changes: Partial<Pick<ChatSession, "messages" | "design">>, { persist = true }: { persist?: boolean } = {}) => {
+    const current = snapshot();
+    save({ ...current, sessions: current.sessions.map((session) => {
+      if (session.id !== id) return session;
+      const updated = { ...session, ...changes, updatedAt: now() };
+      const first = updated.messages.find((message) => message.role === "user");
+      updated.title = first?.content.slice(0, 64) || "New conversation";
+      return updated;
+    }) }, persist);
+  };
   const start = () => {
     const current = snapshot();
     const session = blankSession();
@@ -181,15 +201,13 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
       listeners.forEach((listener) => listener());
     },
     start,
-    update(id: string, changes: Partial<Pick<ChatSession, "messages" | "design">>, { persist = true }: { persist?: boolean } = {}) {
-      const current = snapshot();
-      save({ ...current, sessions: current.sessions.map((session) => {
-        if (session.id !== id) return session;
-        const updated = { ...session, ...changes, updatedAt: now() };
-        const first = updated.messages.find((message) => message.role === "user");
-        updated.title = first?.content.slice(0, 64) || "New conversation";
-        return updated;
-      }) }, persist);
+    update,
+    endDesign(id: string, reason: DesignEndReason, { persist = true }: { persist?: boolean } = {}) {
+      const session = snapshot().sessions.find((entry) => entry.id === id);
+      if (!session?.design) return;
+      const last = session.messages.findLastIndex((message) => message.role === "assistant");
+      const messages = last < 0 ? session.messages : session.messages.map((message, index) => index === last ? { ...message, designEnded: reason } : message);
+      update(id, { design: undefined, messages }, { persist });
     },
     select(id: string) {
       const current = snapshot();
