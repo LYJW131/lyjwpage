@@ -15,7 +15,7 @@ export const ARTWORK_SCALE = 3;
 
 // 预签名链接不能改查询串；构建期环境变量必须使用完整字面量才能替换。
 const SIGNED_IMAGE_OPTIMIZATION_ENABLED =
-  process.env.NEXT_PUBLIC_SIGNED_IMAGE_OPTIMIZATION !== "false";
+  process.env.PUBLIC_SIGNED_IMAGE_OPTIMIZATION !== "false";
 
 export function needsOptimizing(url: string | null | undefined): boolean {
   if (!SIGNED_IMAGE_OPTIMIZATION_ENABLED || !url) return false;

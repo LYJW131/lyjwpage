@@ -1,9 +1,22 @@
 "use client";
 
-import NextImage, { type ImageProps } from "next/image";
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, type CSSProperties } from "react";
 
+import {
+  IMAGE_WIDTHS,
+  optimizerImagePath,
+  optimizerSrcSet,
+  parseImageSource,
+} from "@/lib/image-proxy";
 import { isRestReady, resolveImageLoading, subscribeRestReady } from "@/lib/rest-ready";
+
+export type ImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> & {
+  src: string;
+  fill?: boolean;
+  priority?: boolean;
+  unoptimized?: boolean;
+  quality?: number;
+};
 
 function subscribeNothing(): () => void {
   return () => {};
@@ -13,7 +26,28 @@ function notReady(): boolean {
   return false;
 }
 
-export default function AppImage({ loading, priority, ...rest }: ImageProps) {
+const FILL_STYLE: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  width: "100%",
+  height: "100%",
+};
+
+export default function AppImage({
+  src,
+  fill,
+  priority,
+  unoptimized,
+  quality,
+  loading,
+  style,
+  alt,
+  sizes,
+  width,
+  decoding,
+  fetchPriority,
+  ...rest
+}: ImageProps) {
   const fixed = Boolean(priority) || loading === "eager";
   const restReady = useSyncExternalStore(
     fixed ? subscribeNothing : subscribeRestReady,
@@ -21,5 +55,28 @@ export default function AppImage({ loading, priority, ...rest }: ImageProps) {
     notReady,
   );
   const resolved = resolveImageLoading(restReady, loading, priority);
-  return <NextImage {...rest} {...resolved} {...(priority ? { priority: true } : {})} />;
+
+  const q = quality ?? 75;
+  const optimizable = !unoptimized && parseImageSource(src) !== null;
+  const numericWidth = typeof width === "number" && Number.isFinite(width) ? width : undefined;
+  const largestWidth = IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1];
+  const targetWidth =
+    numericWidth === undefined
+      ? largestWidth
+      : (IMAGE_WIDTHS.find((candidate) => candidate >= numericWidth) ?? largestWidth);
+
+  return (
+    <img
+      {...rest}
+      src={optimizable ? optimizerImagePath(src, targetWidth, q) : src}
+      srcSet={optimizable ? optimizerSrcSet(src, q) : undefined}
+      sizes={sizes ?? (fill || numericWidth === undefined ? undefined : `${numericWidth}px`)}
+      alt={alt ?? ""}
+      width={width}
+      loading={priority ? undefined : (resolved.loading ?? "lazy")}
+      decoding={decoding ?? "async"}
+      fetchPriority={fetchPriority ?? (priority ? "high" : undefined)}
+      style={fill ? { ...FILL_STYLE, ...style } : style}
+    />
+  );
 }

@@ -4,7 +4,9 @@ export const SENTRY_DSN =
 export const SENTRY_ENVIRONMENT = process.env.SENTRY_ENVIRONMENT || "development";
 
 export const SENTRY_ENABLED =
-  SENTRY_ENVIRONMENT !== "development" || process.env.NEXT_PUBLIC_SENTRY_DEV === "true";
+  SENTRY_ENVIRONMENT !== "development" || process.env.PUBLIC_SENTRY_DEV === "true";
+
+export const SENTRY_RELAY_PREFIX = "/relay";
 
 export const SENTRY_ORG = "yangjunwei-liang";
 export const SENTRY_API_ORIGIN = "https://us.sentry.io";

@@ -2,7 +2,7 @@ import { LAG_KEYS, writeLag } from "@shared/lag";
 import { get, put } from "@/lib/cache";
 import { fetchPageSpeed, mergePageSpeed } from "@/lib/pagespeed";
 import { site } from "@/lib/site";
-import type { PageSpeedSample } from "@/lib/vercel-deployments-types";
+import type { PageSpeedSample } from "@/lib/site-deployments-types";
 
 import { ok, skipMissing, type Job } from "../job";
 

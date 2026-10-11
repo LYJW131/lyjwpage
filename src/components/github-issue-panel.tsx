@@ -8,7 +8,7 @@ import { workerUrl } from "@/lib/worker-url";
 import { GITHUB_ISSUE_PATH, type GithubIssueResult } from "@shared/github-issue";
 import { visitorLanguage, type BuildProposal } from "@shared/build-routine";
 
-const ISSUE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GITHUB_ISSUE_PATH);
+const ISSUE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GITHUB_ISSUE_PATH);
 
 export function IssuePanel({ proposal, onClose, onCreated, disabled }: {
   proposal: BuildProposal;

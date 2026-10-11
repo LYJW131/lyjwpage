@@ -10,8 +10,6 @@ workers_dev = false
 STORAGE_PREFIX = "lyjwpage-test"
 APPLE_MUSIC_STOREFRONT = "cn"
 CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
-VERCEL_PROJECT_ID = "prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC"
-VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
 DEV_TRIGGERS = "true"
 
 [[services]]

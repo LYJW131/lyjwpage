@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "site",
+  "main": "workers/site/src/index.ts",
+  "compatibility_date": "2026-10-08",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": false,
+  "assets": {
+    "directory": "./build/client",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/sw.js",
+      "/explainer",
+      "/explainer/*",
+      "/img/*",
+      "/image",
+      "/mcp",
+      "/api/*",
+      "/relay",
+      "/relay/*"
+    ]
+  },
+  "vars": {
+    "SITE_ENV": "production",
+    "PUBLIC_BACKEND_URL": "https://api.homepage.lyjw.llc",
+    "SENTRY_DSN": "https://13d4c7b65d377b6a3e1e546f9d940b9d@o4511888459890688.ingest.us.sentry.io/4512132602331136"
+  },
+  "services": [
+    { "binding": "PUBLIC_STATUS", "service": "api", "entrypoint": "PublicStatus" }
+  ],
+  "r2_buckets": [
+    { "binding": "IMAGE_OBJECTS", "bucket_name": "lyjw-homepage" }
+  ],
+  "images": { "binding": "IMAGES" },
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "cache": { "enabled": false },
+  "exports": {
+    "RenderedSite": { "type": "worker", "cache": { "enabled": true } },
+    "StatusSnapshot": { "type": "worker", "cache": { "enabled": true } },
+    "ImageVariants": { "type": "worker", "cache": { "enabled": true } }
+  }
+}

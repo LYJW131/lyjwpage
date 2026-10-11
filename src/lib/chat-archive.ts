@@ -140,7 +140,7 @@ export function boundChatArchive(archive: ChatArchive): ChatArchive {
   return result;
 }
 
-export function createChatArchiveStore(storage: () => ArchiveStorage | null, newId = () => crypto.randomUUID(), now = () => Date.now()) {
+export function createChatArchiveStore(storage: () => ArchiveStorage | null, newId: () => string = () => crypto.randomUUID(), now = () => Date.now()) {
   let archive: ChatArchive | undefined;
   let memoryOnly = false;
   const listeners = new Set<() => void>();

@@ -1,4 +1,4 @@
-import type { CollectorJobName } from "@shared/collector";
+import type { ActiveCollectorJobName } from "@shared/collector";
 
 import type { Env } from "./env";
 
@@ -15,7 +15,7 @@ export type JobResult = {
 };
 
 export type Job = {
-  name: CollectorJobName;
+  name: ActiveCollectorJobName;
   everyMinutes: number;
   offset: number;
   maxRuntimeMinutes: number;
@@ -28,7 +28,7 @@ export const ok = (detail?: string): JobResult => (detail ? { status: "ok", deta
 
 const warnedMissing = new Set<string>();
 
-export function skipMissing(job: CollectorJobName, missing: string[]): JobResult {
+export function skipMissing(job: ActiveCollectorJobName, missing: string[]): JobResult {
   if (!warnedMissing.has(job)) {
     warnedMissing.add(job);
     console.warn(JSON.stringify({ event: "collector-skip", job, missing }));

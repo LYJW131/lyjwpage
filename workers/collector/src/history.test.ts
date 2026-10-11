@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import type { HistoryDb } from "@shared/history-ingest";
-import type { VercelDeployment } from "@/lib/vercel-deployments-types";
+import type { SiteDeployment } from "@/lib/site-deployments-types";
 
 import { archiveSiteDeploys } from "./history";
 
@@ -54,7 +54,7 @@ test("site deploy archive failures are logged, never thrown", async (t) => {
   assert.equal(logged.mock.callCount(), 1);
 });
 
-function deployment(id: string, overrides: Partial<VercelDeployment> = {}): VercelDeployment {
+function deployment(id: string, overrides: Partial<SiteDeployment> = {}): SiteDeployment {
   return {
     id,
     state: "READY",
