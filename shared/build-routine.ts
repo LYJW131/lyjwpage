@@ -59,6 +59,11 @@ export function planLanguage(plan: Pick<BuildPlan, "title" | "spec" | "acceptanc
   return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`);
 }
 
+// 访客看到的说明跟标题走：规格常是英文技术说明，标题按规划者的约定用访客的语言。
+export function visitorLanguage(plan: Pick<BuildPlan, "title">): PlanLanguage {
+  return textLanguage(plan.title);
+}
+
 export function textLanguage(text: string): PlanLanguage {
   const kana = text.match(/[\u3040-\u30ff]/g)?.length ?? 0;
   const han = text.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
