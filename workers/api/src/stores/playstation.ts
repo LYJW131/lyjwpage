@@ -31,11 +31,12 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
     receivedAt,
   } = prepared;
 
-  const [previousPresence, previousPlayedGames, previousTrophies] =
+  const [previousPresence, previousPlayedGames, previousTrophies, quest] =
     await Promise.all([
       incomingPresence ? getPlaystationPresence() : null,
       incomingPlayedGames ? getPlaystationPlayedGames() : null,
       incomingTrophies ? getPlaystationTrophies() : null,
+      incomingPresence ? questMirror.get() : null,
     ]);
 
   const writes: Promise<unknown>[] = [];
@@ -54,7 +55,6 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
     presenceChanged = !previousPresence || JSON.stringify(presenceContent(previousPresence)) !== JSON.stringify(presenceContent(incomingPresence));
     writes.push(setPlaystationPresence(incomingPresence));
     // Quest 正在玩时游戏道归 Quest：PS 这一封的「在线」不能把那段截断。
-    const quest = await questMirror.get();
     const questPlaying = quest ? questNow(quest, receivedAt).playing : null;
     writes.push(recordStateObservation("gaming", receivedAt, questPlaying ? questGamingFacts(questPlaying) : gamingFacts(incomingPresence)));
     if (presenceChanged || !previousPresence) {

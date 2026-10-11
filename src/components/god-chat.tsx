@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent } from "@/lib/chat-consent";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
-import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
+import { activeChatDesign, chatArchive, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -21,7 +21,6 @@ import {
   GOD_CHAT_PATH,
   GOD_CHAT_TURNSTILE_ACTION,
   GOD_CHAT_USAGE_PATH,
-  type GodChatCard,
   type GodChatEvent,
   type GodChatMessage,
   fitHistory,
@@ -30,8 +29,6 @@ import {
 import {
   GOD_CHAT_TIERS,
   GOD_CHAT_TIER_INFO,
-  godChatTierInfo,
-  isGodChatServedTier,
   modelLabel,
   type GodChatCount,
   type GodChatServedTier,
@@ -50,13 +47,10 @@ declare global {
   }
 }
 
-// at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
-type ShownCard = { card: GodChatCard; at: number };
 type Reply = Omit<ChatBubble, "role" | "content">;
-type Bubble = ChatBubble;
-type Resumed = { user: Bubble & { id: string }; before: Bubble[]; handoff: boolean };
+type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; handoff: boolean };
 const RESUME_DELAY_MS = 2000;
-const EMPTY_MESSAGES: Bubble[] = [];
+const EMPTY_MESSAGES: ChatBubble[] = [];
 // 须与 globals.css 里 .design-halo 的动画总时长一致。
 const DESIGN_HALO_MS = 2_400;
 
@@ -97,7 +91,7 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
-// 站主要求示例用中文，是「界面文案英文」的例外；四条依次展示实时状态卡片、项目文档、联网搜索、改站规划与构建。
+// 站主要求示例用中文，是「界面文案英文」的例外。
 const SUGGESTIONS = [
   "LYJW 正在听什么歌？",
   "这个网站的实时数据是怎么来的？",
@@ -113,7 +107,7 @@ export function GodChat({ className }: { className?: string }) {
 
 function Conversation({ className, archive, session: conversation }: { className?: string; archive: ChatArchive; session?: ChatSession }) {
   const messages = conversation?.messages ?? EMPTY_MESSAGES;
-  const setMessages = (next: Bubble[], persist = true) => { if (conversation) chatArchive.update(conversation.id, { messages: next }, { persist }); };
+  const setMessages = (next: ChatBubble[], persist = true) => { if (conversation) chatArchive.update(conversation.id, { messages: next }, { persist }); };
   const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -152,8 +146,8 @@ function Conversation({ className, archive, session: conversation }: { className
   useEffect(() => {
     if (!conversationId || !design) return;
     const expire = () => {
-      const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversationId);
-      if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.update(conversationId, { design: undefined });
+      const current = chatArchive.session(conversationId);
+      if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.endDesign(conversationId, designEndReason(current.design));
     };
     if (!activeChatDesign(design)) { expire(); return; }
     const timer = setTimeout(expire, Math.max(0, design.expiresAt - Date.now()) + 20);
@@ -249,8 +243,8 @@ function Conversation({ className, archive, session: conversation }: { className
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
     const answers = !resumed && answersRef.current?.text.trim() === content ? answersRef.current.answers : undefined;
     if (!resumed) answersRef.current = null;
-    const user: Bubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
-    const shown: Bubble[] = [...(resumed?.before ?? messages), user];
+    const user: ChatBubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
+    const shown: ChatBubble[] = [...(resumed?.before ?? messages), user];
     const history: GodChatMessage[] = fitHistory(
       shown
         .filter(({ content }) => content.trim())
@@ -262,9 +256,9 @@ function Conversation({ className, archive, session: conversation }: { className
     // 补发只取回规划者那一段，交接回合里 Sonnet 的开场白拿不回来，分隔线画在最前面。
     let meta: Reply = resumed?.handoff ? { designAt: 0 } : {};
     const session = sessionRef.current;
-    const bubble = (): Bubble => ({ role: "assistant", content: reply, ...meta });
-    const replyMessages = (next?: Bubble) => chatReplyMessages(
-      conversation ? chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id)?.messages ?? messages : messages,
+    const bubble = (): ChatBubble => ({ role: "assistant", content: reply, ...meta, ...(meta.designAt !== undefined && designConsent.getSnapshot() ? { designRevealed: true } : {}) });
+    const replyMessages = (next?: ChatBubble) => chatReplyMessages(
+      conversation ? chatArchive.session(conversation.id)?.messages ?? messages : messages,
       user,
       next,
     );
@@ -291,8 +285,9 @@ function Conversation({ className, archive, session: conversation }: { className
     try {
       if (!CHAT_URL) throw new Error(OFFLINE);
       const humanPass = usedToken ? null : readPass();
-      designToken = designConsented ? activeChatDesign(conversation?.design)?.token : undefined;
-      if (conversation?.design && !designToken && designConsented) chatArchive.update(conversation.id, { design: undefined }, { persist: false });
+      // 设计同意要读此刻的真值：接受后立刻补发时，闭包里的 designConsented 还是旧的。
+      designToken = designConsent.getSnapshot() ? activeChatDesign(conversation?.design)?.token : undefined;
+      if (conversation?.design && !designToken && designConsent.getSnapshot()) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -303,8 +298,8 @@ function Conversation({ className, archive, session: conversation }: { className
         const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
         if (data?.code === "human_pass_expired") writePass(null);
         if (conversation && designSessionEnded(data?.code)) {
-          chatArchive.update(conversation.id, { design: undefined }, { persist: false });
-          throw new Error("Design session ended. Send your message again to continue in ordinary chat.");
+          chatArchive.endDesign(conversation.id, data?.code === "design_session_exhausted" ? "exhausted" : "expired", { persist: false });
+          throw new Error("The design session has ended. Send your message again to continue in ordinary chat.");
         }
         throw new Error(data?.error ?? OFFLINE);
       }
@@ -386,8 +381,9 @@ function Conversation({ className, archive, session: conversation }: { className
   function resume() {
     // 补发不走 Turnstile：没有有效通行证或对话代码变了还没重新同意时留着那两条，等访客自己再发。
     if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass() || !chatConsent.getSnapshot()) return;
-    const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
-    if (!current || !activeChatDesign(current.design)) return;
+    const current = chatArchive.session(conversation.id);
+    // 没同意设计时扣着令牌，resume: true 不带 designToken 会被 Worker 拒绝：补发等同意之后再走。
+    if (!current || !activeChatDesign(current.design) || !designConsent.getSnapshot()) return;
     const list = current.messages;
     const at = list.map((message) => message.role).lastIndexOf("user");
     if (at < 0 || at < list.length - 2 || list[at + 1]?.seal) return;
@@ -426,7 +422,7 @@ function Conversation({ className, archive, session: conversation }: { className
         sessionRef.current += 1;
         abortRef.current?.abort();
       }
-      chatArchive.update(conversation.id, { design: undefined });
+      chatArchive.endDesign(conversation.id, "left");
       return;
     }
     if (name === "/clear") {
@@ -553,6 +549,8 @@ function Conversation({ className, archive, session: conversation }: { className
   const waiting = armed && !token && !streaming && !error;
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
   const expanded = messages.length > 0 || consentPending !== null || queued !== null;
+  const savedCount = savedSessions(archive).length;
+  const lastDesignAtIndex = messages.findLastIndex((message) => message.designAt !== undefined);
 
   return (
     // 对话、设计与构建计划包含访客原文，Replay 需要遮住整张卡片。
@@ -572,7 +570,7 @@ function Conversation({ className, archive, session: conversation }: { className
       <div ref={anchorRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <FableDescent descent={descent} />
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs text-muted-foreground">
-        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedSessions(archive).length > 0 ? ` (${savedSessions(archive).length})` : ""}</span></button>
+        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedCount > 0 ? ` (${savedCount})` : ""}</span></button>
         <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
       </div>
       {historyOpen && <SessionList archive={archive} />}
@@ -594,7 +592,7 @@ function Conversation({ className, archive, session: conversation }: { className
         }}
         className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden"
       >
-        {messages.length === 0 && consentPending === null && queued === null ? (
+        {!expanded ? (
           <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
               Ask anything. The oracle sees what LYJW is up to, knows how this site is built, and can search the web.
@@ -617,95 +615,100 @@ function Conversation({ className, archive, session: conversation }: { className
           messages.map((message, index) => {
             const live = streaming && index === messages.length - 1;
             return (
-              <div key={index} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
-                <div
-                  className={cn(
-                    "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
-                    message.role === "user" && message.answers
-                      ? "max-w-[85%]"
-                      : message.role === "user"
-                      ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
-                      : "w-full text-foreground",
-                  )}
-                >
-                  {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
-                  {message.thinking && (
-                    <details open={live && !message.content} className="mb-1.5">
-                      <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
-                        {live && !message.content ? "Thinking…" : "Thought process"}
-                      </summary>
-                      {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
-                      <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
-                        <ChatMarkdown>{live ? stableMarkdown(message.thinking) : message.thinking}</ChatMarkdown>
+              <Fragment key={index}>
+                <div className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
+                  <div
+                    className={cn(
+                      "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
+                      message.role === "user" && message.answers
+                        ? "max-w-[85%]"
+                        : message.role === "user"
+                        ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
+                        : "w-full text-foreground",
+                    )}
+                  >
+                    {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
+                    {message.thinking && (
+                      <details open={live && !message.content} className="mb-1.5">
+                        <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
+                          {live && !message.content ? "Thinking…" : "Thought process"}
+                        </summary>
+                        {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
+                        <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
+                          <ChatMarkdown>{live ? stableMarkdown(message.thinking) : message.thinking}</ChatMarkdown>
+                        </div>
+                      </details>
+                    )}
+                    {message.lookups?.length ? (
+                      <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">
+                        Looked at {message.lookups.join(", ")}
                       </div>
-                    </details>
-                  )}
-                  {message.lookups?.length ? (
-                    <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">
-                      Looked at {message.lookups.join(", ")}
-                    </div>
-                  ) : null}
-                  {message.designAt === undefined && <PlannerActivity message={message} live={live} />}
-                  {message.role === "assistant" ? (() => {
-                    const messageLang = textLanguage(messages.slice(0, index + 1).reverse().find((m) => m.role === "user")?.content ?? "");
-                    const waitingDesignConsent = message.designAt !== undefined && !designConsented && conversation?.design !== undefined;
-                    const declinedDesign = message.designAt !== undefined && !designConsented && conversation?.design === undefined;
-                    const designConsentNode = waitingDesignConsent ? (
-                      <DesignConsentPrompt
-                        language={messageLang}
-                        onAccept={() => designConsent.accept()}
-                        onDecline={() => { if (conversation) chatArchive.update(conversation.id, { design: undefined }); }}
-                      />
-                    ) : declinedDesign ? (
-                      <div className="label-mono mt-2 text-[11px] text-muted-foreground">
-                        {messageLang === "zh" ? "已退出设计模式，继续普通对话。" : messageLang === "ja" ? "デザインモードを終了しました。通常のチャットを続けます。" : "Left design mode; continued in ordinary chat."}
-                      </div>
-                    ) : null;
-                    return (
-                      <>
-                        <ReplyBody
-                          content={message.content}
-                          cards={message.cards}
-                          designAt={message.designAt}
-                          live={live}
-                          handoff={<PlannerActivity message={message} live={live} />}
-                          designConsentNode={designConsentNode}
-                          showDesignContent={!waitingDesignConsent && !declinedDesign}
+                    ) : null}
+                    {message.designAt === undefined && <PlannerActivity message={message} live={live} />}
+                    {message.role === "assistant" ? (() => {
+                      const messageLang = textLanguage(messages.slice(0, index + 1).reverse().find((m) => m.role === "user")?.content ?? "");
+                      // designRevealed 是这条回复被展示过的事实，与现在是否还同意无关：同意失效后退出，看过的规划仍可读，没看过的仍藏。
+                      const unrevealedDesign = message.designAt !== undefined && !designConsented && message.designRevealed !== true;
+                      const waitingDesignConsent = unrevealedDesign && conversation?.design !== undefined && index === lastDesignAtIndex;
+                      const designConsentNode = waitingDesignConsent ? (
+                        <DesignConsentPrompt
+                          language={messageLang}
+                          onAccept={() => {
+                            designConsent.accept();
+                            const current = conversation ? chatArchive.session(conversation.id) : undefined;
+                            if (current) chatArchive.update(current.id, { messages: current.messages.map((entry) => entry.designAt !== undefined ? { ...entry, designRevealed: true } : entry) });
+                            resumeRef.current();
+                          }}
+                          onDecline={() => { if (conversation) chatArchive.endDesign(conversation.id, "left"); }}
                         />
-                        {!waitingDesignConsent && !declinedDesign && message.asks?.length ? (
-                          <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={answer} />
-                        ) : null}
-                        {!waitingDesignConsent && !declinedDesign && message.proposals?.map((proposal, proposalIndex) => (
-                          <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
-                            if (!conversation) return;
-                            const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
-                            if (current) chatArchive.update(current.id, { messages: current.messages.map((entry, messageIndex) => messageIndex === index ? { ...entry, proposals: entry.proposals?.map((item, itemIndex) => itemIndex === proposalIndex ? updated : item) } : entry) });
-                          }} />
+                      ) : null;
+                      return (
+                        <>
+                          <ReplyBody
+                            content={message.content}
+                            cards={message.cards}
+                            designAt={message.designAt}
+                            live={live}
+                            handoff={<PlannerActivity message={message} live={live} />}
+                            designConsentNode={designConsentNode}
+                            showDesignContent={!unrevealedDesign}
+                          />
+                          {!unrevealedDesign && message.asks?.length ? (
+                            <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={answer} />
+                          ) : null}
+                          {!unrevealedDesign && message.proposals?.map((proposal, proposalIndex) => (
+                            <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
+                              if (!conversation) return;
+                              const current = chatArchive.session(conversation.id);
+                              if (current) chatArchive.update(current.id, { messages: current.messages.map((entry, messageIndex) => messageIndex === index ? { ...entry, proposals: entry.proposals?.map((item, itemIndex) => itemIndex === proposalIndex ? updated : item) } : entry) });
+                            }} />
+                          ))}
+                        </>
+                      );
+                    })() : message.answers ? (
+                      <AnswerCard answers={message.answers} />
+                    ) : (
+                      message.content
+                    )}
+                    {message.sources?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-[11px]">
+                        {message.sources.map((source) => (
+                          <a
+                            key={source.url}
+                            href={source.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="max-w-full truncate text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                          >
+                            {source.title}
+                          </a>
                         ))}
-                      </>
-                    );
-                  })() : message.answers ? (
-                    <AnswerCard answers={message.answers} />
-                  ) : (
-                    message.content
-                  )}
-                  {message.sources?.length ? (
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-[11px]">
-                      {message.sources.map((source) => (
-                        <a
-                          key={source.url}
-                          href={source.url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="max-w-full truncate text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                        >
-                          {source.title}
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+                {message.designEnded && <DesignEndNotice reason={message.designEnded} />}
+              </Fragment>
             );
           })
         )}
@@ -912,7 +915,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 // 站主要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
-// destinations 须列全普通对话数据的出站去向；GitHub 授权推迟至提交构建计划（GithubConsent）；设计模式独有的 Managed Agents 保留规则移至切换设计模式时的专属隐私确认（DESIGN_CONSENT_COPY）；Turnstile 人机验证不收对话内容，站主定为不列；新增模型供应商或日志出口时同步改三种语言。
+// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，站主定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步。
 type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
 const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   en: {
@@ -1092,8 +1095,30 @@ function DesignStatus({ design }: { design: ChatDesign }) {
   return (
     <p className="mb-2 flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
       <PencilRuler className="size-3 shrink-0" />
-      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left</span>
+      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left · ends {new Date(design.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
     </p>
+  );
+}
+
+const DESIGN_END_LABELS: Record<DesignEndReason, string> = {
+  expired: "Design session ended · time's up",
+  exhausted: "Design session ended · no turns left",
+  left: "Left the design session",
+};
+
+function DesignEndNotice({ reason }: { reason: DesignEndReason }) {
+  return (
+    <div role="status" className="space-y-1 py-1 text-center">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <span className="h-px flex-1 bg-line" />
+        <span className="label-mono flex min-w-0 items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-1 text-[10px]">
+          <PencilRuler className="size-3 shrink-0" />
+          {DESIGN_END_LABELS[reason]}
+        </span>
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      <p className="text-[11px] text-muted-foreground">You&apos;re back in ordinary chat, which can&apos;t make plans. To keep planning, describe the change again and a new design session will start.</p>
+    </div>
   );
 }
 
@@ -1120,7 +1145,7 @@ function ReplyBody({
   showDesignContent = true,
 }: {
   content: string;
-  cards?: ShownCard[];
+  cards?: ChatShownCard[];
   designAt?: number;
   live: boolean;
   handoff?: ReactNode;
@@ -1129,30 +1154,33 @@ function ReplyBody({
 }) {
   const parts: ReactNode[] = [];
   let from = 0;
+  // 分隔线本身带确认框，恒显示；线后的文字、卡片和交接都属于设计内容，由 showDesignContent 统一把守。
+  const dividerMark = designAt === undefined
+    ? null
+    : {
+        at: designAt,
+        design: false,
+        node: (
+          <Fragment key="design">
+            <DesignDivider />
+            {designConsentNode}
+            {showDesignContent ? handoff : null}
+          </Fragment>
+        ),
+      };
   const marks = [
-    ...cards.map(({ card, at }) => ({ at, node: <ChatCard key={card} card={card} /> })),
-    ...(designAt === undefined
-      ? []
-      : [{
-          at: designAt,
-          node: (
-            <Fragment key="design">
-              <DesignDivider />
-              {designConsentNode}
-              {showDesignContent ? handoff : null}
-            </Fragment>
-          ),
-        }]),
+    ...cards.map(({ card, at }) => ({ at, design: true, node: <ChatCard key={card} card={card} /> })),
+    ...(dividerMark ? [dividerMark] : []),
   ].sort((a, b) => a.at - b.at);
-  for (const { at, node } of marks) {
+  for (const { at, node, design } of marks) {
     const text = content.slice(from, at);
-    if (text.trim()) parts.push(<ChatMarkdown key={`text-${from}`}>{text}</ChatMarkdown>);
-    parts.push(node);
+    if (text.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`}>{text}</ChatMarkdown>);
+    if (!design || showDesignContent || designAt === undefined || at < designAt) parts.push(node);
     from = at;
   }
   const rest = content.slice(from);
-  if (showDesignContent && rest.trim()) parts.push(<ChatMarkdown key={`text-${from}`}>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
-  if (live && showDesignContent && !rest.trim()) parts.push(<span key="typing" className="animate-pulse text-muted-foreground">…</span>);
+  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`}>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
+  if (live && !rest.trim() && (showDesignContent || designAt === undefined)) parts.push(<span key="typing" className="animate-pulse text-muted-foreground">…</span>);
   return <div className="space-y-2">{parts}</div>;
 }
 
@@ -1167,10 +1195,9 @@ function RankLabel({ reply }: { reply: Reply }) {
   if (reply.tier === null) {
     return <div className="label-mono mb-1.5 text-[10px] text-red-500">Gates closed</div>;
   }
-  const info = godChatTierInfo(reply.tier);
-  if (!info || !isGodChatServedTier(reply.tier)) return null;
-  const { persona, label } = info;
-  const from = godChatTierInfo(reply.downgradedFrom);
+  if (!reply.tier) return null;
+  const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
+  const from = reply.downgradedFrom && GOD_CHAT_TIER_INFO[reply.downgradedFrom];
   const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.sonnet : undefined;
   return (
     <div className="mb-1.5">
@@ -1191,16 +1218,14 @@ function RankLabel({ reply }: { reply: Reply }) {
   );
 }
 
-function RouteStatus({ last, streaming }: { last?: Bubble; streaming: boolean }) {
+function RouteStatus({ last, streaming }: { last?: ChatBubble; streaming: boolean }) {
   if (!last || last.role !== "assistant") return <>Routed by Clef</>;
   if (last.tier === undefined) {
     return streaming ? <span className="animate-pulse">Clef routing…</span> : <>Routed by Clef</>;
   }
   if (last.tier === null) return <span className="text-red-500">Gates closed</span>;
-  const info = godChatTierInfo(last.tier);
-  if (!info || !isGodChatServedTier(last.tier)) return <>Routed by Clef</>;
-  const { persona, label } = info;
-  const from = godChatTierInfo(last.downgradedFrom);
+  const { persona, label } = GOD_CHAT_TIER_INFO[last.tier];
+  const from = last.downgradedFrom && GOD_CHAT_TIER_INFO[last.downgradedFrom];
   return (
     <span>
       <span className="hidden sm:inline">Clef → </span>

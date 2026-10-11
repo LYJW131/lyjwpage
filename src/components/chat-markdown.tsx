@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, memo, useContext } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -39,7 +39,7 @@ const COMPONENTS: Components = {
   ),
 };
 
-export function ChatMarkdown({ children }: { children: string }) {
+export const ChatMarkdown = memo(function ChatMarkdown({ children }: { children: string }) {
   return (
     <div
       className={[
@@ -57,4 +57,4 @@ export function ChatMarkdown({ children }: { children: string }) {
       </Markdown>
     </div>
   );
-}
+});

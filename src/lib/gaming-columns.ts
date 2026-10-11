@@ -1,25 +1,5 @@
-export const GAME_TILE_ROWS = 3;
-
-export type ColumnBreakpoint = "base" | "md" | "lg";
-
-export function trophyGroupColumns(count: number, breakpoint: ColumnBreakpoint): number {
-  if (count <= 1 || breakpoint === "base") return 1;
-  if (count <= 2 || breakpoint === "md") return 2;
-  return 3;
-}
-
-export function isColumnStart(index: number, columns: number): boolean {
-  return columns > 0 && index % columns === 0;
-}
-
-export function gameColumnSnapClass(rows = GAME_TILE_ROWS): string {
-  return `[&:nth-child(${rows}n+1)]:snap-start`;
-}
-
-// 末列不满也保留。按行数裁掉余数会把列表末尾的游戏藏起来。
-export function keepPartialGameColumn<T>(tiles: readonly T[]): readonly T[] {
-  return tiles;
-}
+// nth-child 步长 3 须与 playstation-card 的 TILE_TRACK 里 grid-rows-3 一致；Tailwind 只从源码字面量生成类，不能拼接。
+export const GAME_COLUMN_SNAP_CLASS = "[&:nth-child(3n+1)]:snap-start";
 
 export function trophyGroupSnapClass(count: number): string {
   const frame = "flex min-w-0";
