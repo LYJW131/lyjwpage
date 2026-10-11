@@ -5,6 +5,7 @@ import {
   CHARGER_MODEL,
   POWER_BANK_MODEL,
   ankerModelLabel,
+  formatPortElectrical,
   normalizeChargingDevice,
   normalizePowerBank,
   readCover,
@@ -69,6 +70,13 @@ test("顶栏型号前面补 Anker，已经带了就不叠", () => {
   assert.equal(ankerModelLabel(null, CHARGER_MODEL), "Anker A2687");
   assert.equal(ankerModelLabel("A110G", POWER_BANK_MODEL), "Anker A110G");
   assert.equal(ankerModelLabel("Anker A2687", CHARGER_MODEL), "Anker A2687");
+});
+
+test("端口没报电压或电流时不补 0", () => {
+  assert.equal(formatPortElectrical(20.08, 4.78), "20.1V · 4.78A");
+  assert.equal(formatPortElectrical(5.07, 0), "5.1V · 0.00A");
+  assert.equal(formatPortElectrical(null, 1), null);
+  assert.equal(formatPortElectrical(9, null), null);
 });
 
 test("封面对象键也收原样 JPEG", () => {
