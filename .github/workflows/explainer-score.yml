@@ -37,7 +37,7 @@ jobs:
   # 渲染跑的是分支上的代码，所以这一步不碰任何凭据
   render:
     if: ${{ !startsWith(github.ref, 'refs/heads/claude/build-') }}
-    runs-on: ${{ (matrix.provider == 'self-hosted' || (matrix.provider == 'default' && vars.SELF_HOSTED_RUNNER == 'on')) && fromJSON('["self-hosted","linux","x64","lyjwpage"]') || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.provider == 'self-hosted' && fromJSON('["self-hosted","linux","x64","lyjwpage"]') || 'ubuntu-latest' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
