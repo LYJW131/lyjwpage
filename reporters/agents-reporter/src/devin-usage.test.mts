@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
-import { devinUsageDays } from "../dist/devin-usage.js";
+process.env.HOME = await mkdtemp(path.join(tmpdir(), "devin-usage-"));
+const { collectDevinUsage, devinUsageDays, devinUsageFailure } = await import("../dist/devin-usage.js");
 
 const model = (input: number, output: number, cacheRead: number, cacheWrite: number, reasoning: number, cost: number) => ({
   input, output, cacheRead, cacheWrite, reasoning, cost, tokens: input + output + cacheRead + cacheWrite + reasoning, messages: 1,
@@ -54,4 +58,19 @@ test("devinUsageDays returns nothing before Devin CLI is ever used and rejects m
     () => devinUsageDays({ contributions: [{ date: "2026-10-11", clients: [{ client: "devin-cli", models: { x: { input: -1 } } }] }] }),
     /invalid/,
   );
+});
+
+test("a failure after a restart still carries the last successful collectedAt", async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify(body), { status: 200 });
+  try {
+    const usage = await collectDevinUsage(1_790_000_000_000);
+    assert.equal(usage?.state, "ok");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const failed = await devinUsageFailure(new Error("tokens.ci responded 503"));
+  assert.equal(failed.state, "error");
+  assert.equal(failed.collectedAt, 1_790_000_000_000);
+  assert.equal(failed.days, undefined);
 });

@@ -45,7 +45,7 @@ async function collectDevin(): Promise<CodingUsageAgent | null> {
     return usage;
   } catch (error) {
     failure("devin-usage", error);
-    return devinUsageFailure(error);
+    return await devinUsageFailure(error);
   }
 }
 
