@@ -5,6 +5,7 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { formatBinaryPair } from "@/lib/byte-size";
 import { SERVER_STALE_MS } from "@/lib/freshness";
 import { SERVER_PATH } from "@/lib/paths";
 import type { ServerPayload, ServerTraffic, StatusResponse } from "@/lib/types";
@@ -40,11 +41,6 @@ export function formatUptime(seconds: number): string {
 
 type Tier = { div: number; unit: string; digits: number };
 
-const MEMORY_TIERS: readonly Tier[] = [
-  { div: 1024 ** 3, unit: "GB", digits: 1 },
-  { div: 1024 ** 2, unit: "MB", digits: 0 },
-];
-
 const TRAFFIC_TIERS: readonly Tier[] = [
   { div: 1e12, unit: "TB", digits: 2 },
   { div: 1e9, unit: "GB", digits: 1 },
@@ -68,10 +64,6 @@ function formatSize(tiers: readonly Tier[], bytes: number, tier?: Tier): string 
 function formatFraction(tiers: readonly Tier[], used: number, total: number): string {
   const tier = tierAt(tiers, tierIndex(tiers, total));
   return `${(used / tier.div).toFixed(tier.digits)} / ${formatSize(tiers, total, tier)}`;
-}
-
-function formatPair(used: number, total: number): string {
-  return formatFraction(MEMORY_TIERS, used, total);
 }
 
 // 显式 UTC，避免服务端与访客时区不同导致 title 水合不一致。
@@ -115,13 +107,15 @@ function Meter({
   label,
   percent,
   detail,
+  className,
 }: {
   label: string;
   percent: number;
   detail: string;
+  className?: string;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", className)}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="label-mono text-muted-foreground">{label}</span>
         <span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
@@ -188,7 +182,8 @@ export function ServerCard({
     fallback,
   });
   const stale = useStale(updatedAt ?? data?.pushedAt, SERVER_STALE_MS, servedAt);
-  const memoryPercent = data ? (data.memoryUsedBytes / data.memoryTotalBytes) * 100 : 0;
+  const memoryPercent = data && data.memoryTotalBytes > 0 ? (data.memoryUsedBytes / data.memoryTotalBytes) * 100 : 0;
+  const diskPercent = data && data.diskTotalBytes > 0 ? (data.diskUsedBytes / data.diskTotalBytes) * 100 : 0;
   const location = data ? formatLocation(data) : null;
   const isp = data ? formatIsp(data) : null;
 
@@ -246,8 +241,14 @@ export function ServerCard({
           />
           <Meter
             label="Memory"
-            percent={data ? memoryPercent : 0}
-            detail={data ? formatPair(data.memoryUsedBytes, data.memoryTotalBytes) : "—"}
+            percent={memoryPercent}
+            detail={data ? formatBinaryPair(data.memoryUsedBytes, data.memoryTotalBytes) : "—"}
+          />
+          <Meter
+            label="Disk"
+            className="col-span-2"
+            percent={diskPercent}
+            detail={data ? formatBinaryPair(data.diskUsedBytes, data.diskTotalBytes) : "—"}
           />
         </div>
       </div>
