@@ -139,7 +139,7 @@ Sentry 沿用 `api-worker` 项目（同一个 DSN），每个事件带 `worker: 
 过滤。日志只收 warn / error，`[ingest]` 拒收、`[auth]` 越权原样进 Sentry Logs。
 
 发布走 Cloudflare Workers Builds 原生 Git 集成：构建 `pnpm --dir workers/ingress typecheck`，部署
-`pnpm --dir workers/ingress exec wrangler deploy`，监视路径与「预览构建和非生产分支构建都关掉」的理由见
+`pnpm --dir workers/ingress exec wrangler deploy -c wrangler.toml`，监视路径与「预览构建和非生产分支构建都关掉」的理由见
 [原生部署配置](../../docs/workers-builds.md)。`CORE` 指向生产状态核心，预览版一收就写进生产；`[previews.vars]` 的
 `PREVIEW_WORKER` 是最后一道闸：预览版本只会拒收（上报 403、部署通知 404）。
 
