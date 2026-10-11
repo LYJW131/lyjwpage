@@ -26,7 +26,7 @@
 
 手动运行的 `benchmark` 开关会在两类 runner 上并行强制渲染完整配乐，只保存音频和分阶段计时 artifact，不上传 R2。Chrome 默认版本由工作流的 `SCORE_CHROME_VERSION` 固定，可用 `chrome-version` 覆盖；自建机按版本共享浏览器缓存。对比时使用同一个完整版本号；两边使用同一提交、Node 配置、锁定的 Playwright 和 MP3 参数。`v2/tools/score-mp3.mjs` 按可用 CPU 自动选择并行数（可用 `SCORE_WORKERS` 指定），输出浏览器准备、合成、PCM 转换、传输与 MP3 编码耗时，工作流另用 ffprobe 核对音频时长、采样率和声道。
 
-合成器将 pad / bass 按 Web Audio 音色参数预渲染并复用，在 PCM 中统一混入 duck 控制；其余音符按 `v2/score.js#RENDER_BATCH_SECONDS` 滚动调度并回收结束的节点，并行段按采样帧对齐，以 `RENDER_WARMUP_SECONDS` 预热混响和反馈延迟。拼接后统一做响度处理与限幅；CLI 只载入配乐输入，PCM 直接送入 ffmpeg，不经过 Base64 或临时 WAV。无效采样会使任务失败。
+CLI 并行渲染将 pad / bass 按 Web Audio 音色参数预渲染并复用，在 PCM 中统一混入 duck 控制；其余音符按 `v2/score.js#RENDER_BATCH_SECONDS` 滚动调度并回收结束的节点，并行段按采样帧对齐，以 `RENDER_WARMUP_SECONDS` 预热混响和反馈延迟。拼接后统一做响度处理与限幅；CLI 只载入配乐输入，PCM 直接送入 ffmpeg，不经过 Base64 或临时 WAV。无效采样会使任务失败。浏览器缺配乐时的 `Score.render()` 保留原生 pad / bass 节点，按窗口调度 duck，不建立整片声部缓存；默认峰值归一直接处理输出缓冲区，避免整片限幅临时数组。
 
 构建不查对象在不在：还没传上或取不到时，播放器在浏览器里现合成；时长和章节表对不上时同样弃用。乐谱改了键就跟着变，不会再放旧配乐。看某次构建该取哪个键：
 
@@ -40,6 +40,8 @@ node scripts/explainer-score.mjs    # 打印当前乐谱对应的 <键>.mp3
 node docs/explainer/v2/tools/score-mp3.mjs
 # 核对并行与串行音频；默认覆盖多个切点，--full 核对整片
 node docs/explainer/v2/tools/score-check.mjs --full
+# 核对浏览器后备合成；不分配整片声部缓存
+node docs/explainer/v2/tools/score-check.mjs --browser-fallback --full
 ```
 
 本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`；没配 `R2_PUBLIC_BASE_URL` 时 `/img` 不通，配乐走现合成。
