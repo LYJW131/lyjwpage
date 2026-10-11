@@ -26,7 +26,7 @@ import { toModelMessages } from "./history";
 import { issuePass, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { admitDesign, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
-import { designApi, designTurn, turnMatches, type DesignTurnInput } from "./designer";
+import { designApi, designRequestId, designTurn, type DesignTurnInput } from "./designer";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
@@ -125,11 +125,25 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
     }
   }
   if (abort.signal.aborted) return gone();
+  const history = await sealedHistory(parsed.messages, sealSecret);
+  const latest = history[history.length - 1].content;
+  // requestId 绑定「上一条已盖章的助手回复 + 访客最新一条」：重发与断线重连得到同一会话回合，同句换个上下文是新回合。
+  const requestId = await designRequestId(history);
+
+  // 明确的 Stop 只停那个回合：验过令牌、核过历史、在扣配额之前处理；按 requestId 对号，错开的取消不动作。
+  if (parsed.cancel) {
+    if (!parsed.designToken) return fail(400, "Nothing to cancel.");
+    const admission = await admitDesign(env, parsed.designToken, requestId, latest, true);
+    if ("error" in admission) return fail(admission.status, admission.error, undefined, admission.code);
+    await designApi(env).cancel(admission.sessionId, requestId);
+    return new Response(null, { status: 204 });
+  }
+
   // 验过人才计数，计数在 Clef 之前：访客自己超额、全站路由满或哪一档都排不上时，不再触发付费的路由调用。
   const enforce = devSwitch(env, "CHAT_RATE_LIMIT") !== "off";
   let design: OpenDesign | undefined;
   if (parsed.designToken) {
-    const admitted = await admitDesign(env, parsed.designToken, parsed.resume);
+    const admitted = await admitDesign(env, parsed.designToken, requestId, latest, parsed.resume === true);
     if ("error" in admitted) return fail(admitted.status, admitted.error, undefined, admitted.code);
     design = admitted;
   } else {
@@ -138,8 +152,6 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
     if (admission === "site") return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
   }
 
-  const history = await sealedHistory(parsed.messages, sealSecret);
-  const latest = history[history.length - 1].content;
   const forced = devSwitch(env, "CHAT_FORCE_TIER");
   const decision: RouteDecision = design ? { route: "sonnet", source: "design" } : isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
@@ -169,8 +181,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   // Clef 定的强度只给它选中的那档；降级后换了模型，用接手那档的默认强度。
   const effort = (tier === wanted && decision.effort) || GOD_CHAT_TIER_INFO[tier].effort;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
-  const api = designApi(client, env);
-  if (parsed.resume && (!design || !turnMatches(await api.turn(design.sessionId), latest))) {
+  const api = designApi(env);
+  if (parsed.resume && (!design || !(await api.matches(design.sessionId, requestId, latest)))) {
     return fail(409, "The interrupted reply could not be recovered. Send your message again.", undefined, "nothing_to_resume");
   }
   const body = new ReadableStream<Uint8Array>({
@@ -183,20 +195,27 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       if (!passed) emit({ type: "pass", ...await issuePass(sealSecret, ip) });
       emit({ type: "route", route: wanted, tier, ...(tier !== wanted && !design && { downgradedFrom: wanted }) });
       if (design) emit({ type: "design", ...design.session });
-      const plan = (sessionId: string, input: DesignTurnInput, views: string[] = []) => planTurn({ api, env, io, sessionId, input, views, emit, signal: abort.signal });
+      const plan = (sessionId: string, input: DesignTurnInput, views: string[] = []) => planTurn({ api, sessionId, input, views, emit, signal: abort.signal });
       try {
         let outcome: TurnOutcome;
-        if (design) outcome = await plan(design.sessionId, parsed.resume ? { kind: "resume" } : { kind: "reply", text: latest });
+        if (design) outcome = await plan(design.sessionId, parsed.resume ? { kind: "resume", requestId, latest } : { kind: "reply", requestId, latest, text: latest });
         else {
           const note = tier !== wanted && isGodChatTier(tier) ? downgradeNote(wanted, tier) : undefined;
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
-          const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
+          let openDraft: { kind: "open"; history: GodChatMessage[] } | undefined;
+          const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env)
+            ? async () => {
+              openDraft = { kind: "open", history: await plannerHistory(history, env) };
+              return startDesign(env, (id, expiresAt) => api.create(id, expiresAt), requestId, latest, openDraft);
+            }
+            : undefined;
           const chat = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, io, emit, signal: abort.signal });
           outcome = chat;
           if (chat.complete && chat.openedSessionId) {
-            // 同一条回复交给 Managed Agents 上的规划者：Sonnet 的开场白已经推给访客，规划者从访客那条消息接着做。
+            // 同一条回复交给持久的设计会话：Sonnet 的开场白已经推给访客，规划者从访客那条消息接着做；草稿在
+            // prepareTurn 时已经落库，这条流断了也能被 resume 原样接上。
             emit({ type: "route", route: "sonnet", tier: GOD_CHAT_DESIGN_TIER });
-            outcome = await plan(chat.openedSessionId, { kind: "open", history: await plannerHistory(history, env) }, chat.trace?.views);
+            outcome = await plan(chat.openedSessionId, { kind: "open", requestId, latest, history: openDraft?.history ?? await plannerHistory(history, env) }, chat.trace?.views);
           }
         }
         const { complete, trace, planToken, lead } = outcome;

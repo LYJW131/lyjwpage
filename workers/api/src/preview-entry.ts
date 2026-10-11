@@ -1,5 +1,5 @@
 import { PREVIEW_REVISION_PATH } from "../../../scripts/preview-worker-name.mjs";
-import { AnthropicEgress, BuildCoordinator, ChatQuota } from "../../ai/src/index";
+import { AnthropicEgress, BuildCoordinator, ChatQuota, DesignSession as AiDesignSession } from "../../ai/src/index";
 import type { Env as AiEnv } from "../../ai/src/runtime";
 import aiWorker from "../../ai/src/worker";
 
@@ -7,7 +7,22 @@ import apiWorker, { LivePushRoom, StateHub } from "./index";
 import { readPublicStatus } from "./public-status";
 import type { Env as ApiEnv } from "./runtime";
 
-export { AnthropicEgress, BuildCoordinator, ChatQuota, LivePushRoom, StateHub };
+// 组合预览里设计会话的 Durable Object 没有 PUBLIC_STATUS Service Binding，改走本 Worker 的直接读取；
+// 只重写这一个方法，生产类不因此拿到 api 的状态权限。
+class PreviewDesignSession extends AiDesignSession {
+  private readonly previewEnv: PreviewEnv;
+
+  constructor(ctx: DurableObjectState, env: PreviewEnv) {
+    super(ctx, { ...env, PUBLIC_STATUS: { readStatus: (path) => readPublicStatus(path, env, ctx) } });
+    this.previewEnv = env;
+  }
+
+  protected readStatus(path: string): Promise<Response> {
+    return readPublicStatus(path, this.previewEnv, this.ctx);
+  }
+}
+
+export { AnthropicEgress, BuildCoordinator, ChatQuota, LivePushRoom, StateHub, PreviewDesignSession as DesignSession };
 
 type PreviewEnv = ApiEnv & Omit<AiEnv, "PUBLIC_STATUS"> & { PREVIEW_COMMIT_SHA?: string };
 

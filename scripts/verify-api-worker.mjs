@@ -387,7 +387,7 @@ export default { fetch(request, env) {
   const statusTool = await mcp('tools/call', { name: 'get_site_status', arguments: { views: ['nowListening'] } });
   assert.equal(statusTool.result.isError, false);
   const statusText = statusTool.result.content[0].text;
-  assert.equal(JSON.parse(statusText.split('## nowListening\n')[1]).data.music.title, 'isolated-second');
+  assert.equal(JSON.parse(statusText.slice(statusText.indexOf('\n{') + 1)).data.music.title, 'isolated-second');
   assert.equal(/musicUserToken|developerToken/.test(statusText), false);
   console.log('PASS: MCP → AI → PublicStatus RPC reads the latest ingest from StateHub using the public status model');
   await eventually(async () => assert.ok(notices.some(n => n.tags?.includes('listening-now'))));

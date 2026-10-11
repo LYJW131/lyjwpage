@@ -3,7 +3,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 
 import type Anthropic from "@anthropic-ai/sdk";
-import { GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
+import { GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent, type GodChatMessage, type GodChatQuestion } from "@shared/god-chat";
 import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, type GodChatEffort } from "@shared/god-chat-tiers";
 import { BUILD_DESIGN_LIMITS, PLAN_LABELS, type BuildPlan } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
@@ -11,9 +11,10 @@ import type { ChatQuota } from "./chat/quota.ts";
 import type { AnthropicEgress } from "./chat/egress.ts";
 import type { BuildCoordinator } from "./build/coordinator.ts";
 import { signBuildToken } from "./build/token.ts";
-import { readPlan } from "./build/plan.ts";
+import { issuePlan, readPlan } from "./build/plan.ts";
 import { sealedHistory } from "./chat/seal.ts";
-import { DESIGN_BUDGET_CENTS, PLANNER_PROMPT } from "./chat/design.ts";
+import type { DesignSession, PrepareResult } from "./chat/design-session.ts";
+import { admitTurn, type DesignDraft, type DesignFrame, type DesignMeta, type DesignTurn, type DesignTurnInput, type DesignTurnResult, VISITOR_REPLY_PREFIX } from "./chat/design-turns.ts";
 
 // Node 不提供 cloudflare:workers；这里只替换基类，SDK 与流式序列化使用真实实现。
 registerHooks({
@@ -162,41 +163,94 @@ const plan: BuildPlan = {
   paths: ["src/components/live/music-card.tsx"],
 };
 
-type Scripted = Record<string, unknown>;
-const at = new Date(0).toISOString();
-const agent = {
-  running: { type: "session.status_running", id: "sevt_run", processed_at: at },
-  say: (id: string, text: string): Scripted[] => [
-    { type: "event_start", event: { type: "agent.message", id } },
-    { type: "event_delta", event_id: id, delta: { type: "content_delta", index: 0, content: { type: "text", text: text.slice(0, 3) } } },
-    { type: "agent.message", id, content: [{ type: "text", text }], processed_at: at },
-  ],
-  tool: (id: string, name: string, input: Record<string, unknown>, permission = "allow"): Scripted => ({ type: "agent.tool_use", id, name, input, evaluated_permission: permission, processed_at: at }),
-  custom: (id: string, name: string, input: unknown): Scripted => ({ type: "agent.custom_tool_use", id, name, input, processed_at: at }),
-  idle: (stop_reason: Scripted): Scripted => ({ type: "session.status_idle", id: "sevt_idle", processed_at: at, stop_reason, stop_details: null }),
-  waiting: (...event_ids: string[]): Scripted => agent.idle({ type: "requires_action", event_ids }),
-  visitor: (id: string, text: string): Scripted => ({ type: "user.message", id, content: [{ type: "text", text }], processed_at: at }),
-  result: (id: string, toolId: string, text: string): Scripted => ({ type: "user.custom_tool_result", id, custom_tool_use_id: toolId, content: [{ type: "text", text }], is_error: false, processed_at: at }),
+// 假的设计会话对象：跟 Durable Object 一样的 RPC 形状——prepareTurn 走同一套 admitTurn 判定，
+// fetch 对 prepared 的回合消费一段脚本、挂起标记由结果推出，之后的请求一律重放存下的帧。
+const frame = {
+  text: (text: string): DesignFrame => ({ type: "event", event: { type: "text", text } }),
+  say: (text: string): DesignFrame[] => [frame.text(text)],
+  doc: (path: string): DesignFrame => ({ type: "event", event: { type: "doc", doc: "repo", path, url: `https://github.com/LYJW131/lyjwpage/blob/aaa111/${path}` } }),
+  step: (text: string): DesignFrame => ({ type: "event", event: { type: "step", text } }),
+  tool: (views: string[]): DesignFrame => ({ type: "event", event: { type: "tool", views } }),
+  ask: (questions: GodChatQuestion[]): DesignFrame => ({ type: "event", event: { type: "ask", questions } }),
+  plan: (proposal: { token: string; plan: BuildPlan; expiresAt: number }): DesignFrame => ({ type: "event", event: { type: "plan", ...proposal } }),
+  result: (result: DesignTurnResult): DesignFrame => ({ type: "result", result }),
 };
 
-const sse = (events: Scripted[]) => new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
+type SessionState = { turns: number; requestIds: Set<string> };
 
-// 假的 Anthropic 出站：/v1/messages 给 Sonnet，/v1/sessions* 扮演 Managed Agents；每开一次事件流按顺序吐下一段脚本。
-type DesignSetup = { reply?: (body: Anthropic.Beta.MessageCreateParamsStreaming, index: number) => Response; turns?: Scripted[][]; pending?: string[]; history?: Scripted[]; createFails?: boolean };
-function designEnv({ reply = (body) => modelStream(body.model, false), turns = [], pending = [], history = [], createFails = false }: DesignSetup = {}) {
+function fakeSession(next: () => DesignFrame[] | undefined, createFails: boolean, onStream: () => void, admitted: (requestId: string) => boolean) {
+  const stub = {
+    meta: undefined as DesignMeta | undefined,
+    turn: undefined as (DesignTurn & { draft?: DesignDraft }) | undefined,
+    frames: [] as DesignFrame[],
+    pending: false,
+    submitted: [] as { operationId: string; text: string }[],
+    drafts: [] as DesignDraft[],
+    cancelled: [] as string[],
+    disposed: false,
+    initialize: async (designId: string, expiresAt: number) => {
+      if (createFails) throw new Error("create failed");
+      stub.meta = { designId, expiresAt, createdAt: Date.now() };
+    },
+    prepareTurn: async (requestId: string, latest: string, draft?: DesignDraft): Promise<PrepareResult> => {
+      if (stub.disposed || !stub.meta) return { status: "uninitialized" };
+      if (stub.meta.expiresAt <= Date.now()) return { status: "expired" };
+      const book = stub.turn ? { current: stub.turn.requestId, turns: { [stub.turn.requestId]: stub.turn } } : { turns: {} };
+      const outcome = admitTurn(book, requestId, latest, Date.now());
+      if (outcome.status === "prepared") {
+        stub.turn = { ...outcome.turn, draft };
+        if (draft) stub.drafts.push(draft);
+        return { status: "prepared" };
+      }
+      return { status: outcome.status };
+    },
+    matches: async (requestId: string, latest: string) => !stub.disposed && !!stub.meta && stub.meta.expiresAt > Date.now() && stub.turn?.requestId === requestId && stub.turn.latest === latest && admitted(requestId),
+    fetch: async (request: Request) => {
+      if (stub.disposed || !stub.meta || stub.meta.expiresAt <= Date.now()) return Response.json({ error: "expired" }, { status: 410 });
+      const input = await request.json() as DesignTurnInput;
+      const turn = stub.turn;
+      if (!turn || turn.requestId !== input.requestId || turn.latest !== input.latest || turn.state === "cancelled" || !admitted(input.requestId)) {
+        return Response.json({ error: "The interrupted reply could not be recovered.", code: "nothing_to_resume" }, { status: 409 });
+      }
+      onStream();
+      if (turn.state === "prepared") {
+        const draft = turn.draft;
+        const text = !draft ? "" : draft.kind === "open" ? "[open]" : stub.pending ? `${VISITOR_REPLY_PREFIX}${draft.text}` : draft.text;
+        if (draft?.kind === "reply") stub.pending = false;
+        stub.submitted.push({ operationId: turn.requestId, text });
+        stub.frames = next() ?? [];
+        const last = stub.frames.at(-1);
+        stub.turn = { ...turn, state: "finished", result: last?.type === "result" ? last.result : { complete: false, asked: false, views: [] } };
+        stub.pending = Boolean(stub.turn.result?.asked || stub.turn.result?.planToken);
+      }
+      const body = stub.frames.map((entry) => `${JSON.stringify(entry)}\n`).join("");
+      return new Response(body, { headers: { "Content-Type": "application/x-ndjson" } });
+    },
+    cancel: async (requestId: string) => {
+      if (stub.turn?.requestId === requestId && stub.turn.state !== "finished") {
+        stub.turn = { ...stub.turn, state: "cancelled" };
+        stub.cancelled.push(requestId);
+      }
+    },
+    disposeSession: async () => { stub.disposed = true; },
+  };
+  return stub;
+}
+type FakeSession = ReturnType<typeof fakeSession>;
+
+type DesignSetup = { reply?: (body: Anthropic.Beta.MessageCreateParamsStreaming, index: number) => Response; turns?: DesignFrame[][]; createFails?: boolean };
+function designEnv({ reply = (body) => modelStream(body.model, false), turns = [], createFails = false }: DesignSetup = {}) {
   const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
-  const created: Record<string, unknown>[] = [];
-  const sent: Scripted[] = [];
   const counters = { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 0, streams: 0, peeked: 0 };
-  const sessions = new Map<string, number>();
+  const sessions = new Map<string, SessionState>();
+  const stubs = new Map<string, FakeSession>();
+  const scripts = [...turns];
   const env: Env = {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     ANTHROPIC_API_KEY: "test-key",
     TURNSTILE_SECRET_KEY: "test-key",
     CHAT_HISTORY_SECRET: "test-seal",
     BUILD_SESSION_SECRET: "test-build",
-    DESIGN_AGENT_ID: "agent_test",
-    DESIGN_ENVIRONMENT_ID: "env_test",
     ALLOWED_ORIGINS: "https://lyjw.me",
     CHAT_QUOTA: binding<ChatQuota>({
       admitVisitor: async () => { counters.visitor++; return "ok" as const; },
@@ -209,21 +263,34 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
     }),
     AI: Object.assign({} as Ai, { run: async () => { counters.clef++; return { answers: { route: { choice: "design" } } }; } }),
     BUILD_COORDINATOR: binding<BuildCoordinator>({
-      createDesign: async (id) => { counters.created++; sessions.set(id, 0); return true; },
-      admitDesign: async (id) => {
+      createDesign: async (id) => { counters.created++; sessions.set(id, { turns: 0, requestIds: new Set() }); return true; },
+      admitDesign: async (id, requestId) => {
         counters.admitted++;
-        const count = sessions.get(id);
-        if (count === undefined) return { status: "expired", remaining: 0 };
-        if (count >= BUILD_DESIGN_LIMITS.maxTurns) return { status: "exhausted", remaining: 0 };
-        sessions.set(id, count + 1);
-        return { status: "ok", remaining: BUILD_DESIGN_LIMITS.maxTurns - count - 1 };
+        const session = sessions.get(id);
+        if (!session) return { status: "expired", remaining: 0 };
+        if (requestId !== undefined && session.requestIds.has(requestId)) return { status: "ok", remaining: Math.max(0, BUILD_DESIGN_LIMITS.maxTurns - session.turns) };
+        if (session.turns >= BUILD_DESIGN_LIMITS.maxTurns) return { status: "exhausted", remaining: 0 };
+        session.turns += 1;
+        if (requestId !== undefined) session.requestIds.add(requestId);
+        return { status: "ok", remaining: BUILD_DESIGN_LIMITS.maxTurns - session.turns };
       },
       peekDesign: async (id) => {
         counters.peeked++;
-        const count = sessions.get(id);
-        return count === undefined ? { status: "expired", remaining: 0 } : { status: "ok", remaining: BUILD_DESIGN_LIMITS.maxTurns - count };
+        const session = sessions.get(id);
+        return session === undefined ? { status: "expired", remaining: 0 } : { status: "ok", remaining: Math.max(0, BUILD_DESIGN_LIMITS.maxTurns - session.turns) };
       },
     }),
+    DESIGN_SESSIONS: {
+      idFromName: () => ({ toString: () => "test", equals: () => true }),
+      getByName: (name: string) => {
+        let stub = stubs.get(name);
+        if (!stub) {
+          stub = fakeSession(() => scripts.shift(), createFails, () => counters.streams++, (requestId) => sessions.get(name)?.requestIds.has(requestId) === true);
+          stubs.set(name, stub);
+        }
+        return stub;
+      },
+    } as unknown as DurableObjectNamespace<DesignSession>,
     ANTHROPIC_EGRESS: binding<AnthropicEgress>({
       fetch: async (request: Request) => {
         const { pathname } = new URL(request.url);
@@ -232,81 +299,57 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
           requests.push(body);
           return reply(body, requests.length - 1);
         }
-        if (pathname === "/v1/sessions" && request.method === "POST") {
-          if (createFails) return Response.json({ type: "error", error: { type: "api_error", message: "down" } }, { status: 500 });
-          created.push(await request.json() as Record<string, unknown>);
-          return Response.json({ id: "sesn_test", type: "session", status: "idle" });
-        }
-        if (pathname === "/v1/sessions/sesn_test/events/stream") {
-          counters.streams++;
-          return sse(turns.shift() ?? []);
-        }
-        if (pathname === "/v1/sessions/sesn_test/events" && request.method === "POST") {
-          const body = await request.json() as { events: Scripted[] };
-          sent.push(...body.events);
-          return Response.json({ data: body.events });
-        }
-        if (pathname === "/v1/sessions/sesn_test/events") {
-          if (![...new URL(request.url).searchParams.keys()].some((key) => key.startsWith("types"))) return Response.json({ data: [...history].reverse(), next_page: null });
-          return Response.json({ data: pending.length ? [agent.waiting(...pending)] : [], next_page: null });
-        }
-        if (pathname === "/v1/sessions/sesn_test") return Response.json({ id: "sesn_test", type: "session", status: "idle" });
         throw new Error(`Unexpected request ${request.method} ${pathname}`);
       },
     }),
   };
-  return { env, requests, created, sent, counters, sessions };
+  return { env, requests, counters, sessions, stubs, scripts };
 }
 
-function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role: "user", content: "Please improve the music card." }], resume = false) {
-  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages, ...(designToken && { designToken }), ...(resume && { resume }) }) });
+function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role: "user", content: "Please improve the music card." }], resume = false, cancel = false) {
+  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages, ...(designToken && { designToken }), ...(resume && { resume: true }), ...(cancel && { cancel: true }) }) });
 }
 const toolIO = { readStatus: async () => Response.json({ ok: true, data: { timezone: "Asia/Singapore" } }), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
 const textOf = (events: GodChatEvent[]) => events.flatMap((event) => event.type === "text" ? [event.text] : []).join("");
-const designToken = async (env: Env, sessions: Map<string, number>, payload: Record<string, unknown> = {}) => {
+const designToken = async (env: Env, sessions: Map<string, SessionState>, { pending = false, payload = {} }: { pending?: boolean; payload?: Record<string, unknown> } = {}) => {
   const id = crypto.randomUUID();
-  sessions.set(id, 1);
-  return signBuildToken({ kind: "design", id, expiresAt: Date.now() + BUILD_DESIGN_LIMITS.ttlMs, sessionId: "sesn_test", ...payload }, env.BUILD_SESSION_SECRET!);
+  const expiresAt = Date.now() + BUILD_DESIGN_LIMITS.ttlMs;
+  sessions.set(id, { turns: 1, requestIds: new Set() });
+  const stub = env.DESIGN_SESSIONS!.getByName(id) as unknown as FakeSession;
+  await stub.initialize(id, expiresAt);
+  stub.pending = pending;
+  return { token: await signBuildToken({ kind: "design", id, expiresAt, sessionId: id, ...payload }, env.BUILD_SESSION_SECRET!), id, stub };
 };
 
-test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并在同一条回复里交给规划者；计划挂起等访客，进历史签章", async (t) => {
+test("改站请求由 Sonnet 判断，start_design 建设计会话并在同一条回复里交给规划者；计划挂起等访客，进历史签章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const { env, requests, created, sent, counters } = designEnv({
+  const { env, requests, counters, stubs, scripts } = designEnv({
     reply: (body, index) => modelStream(body.model, index === 0 ? { name: "start_design", input: {} } : false),
-    turns: [[
-      agent.running,
-      agent.tool("tu_clone", "bash", { command: "git clone --depth 1 https://github.com/LYJW131/lyjwpage.git /workspace/lyjwpage" }),
-      agent.tool("tu_read", "read", { file_path: "/workspace/lyjwpage/src/components/live/music-card.tsx" }),
-      agent.tool("tu_grep", "grep", { pattern: "empty state" }),
-      ...agent.say("sevt_m1", "Here is my plan."),
-      agent.custom("ctu_plan", "propose_build", plan),
-      agent.waiting("ctu_plan"),
-    ]],
   });
+  const proposal = await issuePlan(env, plan);
+  scripts.push([
+    frame.doc("src/components/live/music-card.tsx"),
+    frame.step("Searched the code for “empty state”"),
+    ...frame.say("Here is my plan."),
+    frame.plan(proposal),
+    frame.result({ complete: true, asked: false, planToken: proposal.token, views: [] }),
+  ]);
   const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
   assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.sonnet.model]);
-  assert.equal(created.length, 1);
-  const session = created[0] as { agent: { type: string; id: string; system: string; model: { id: string }; tools: { type: string; name?: string; configs?: { name: string; enabled?: boolean }[] }[] }; environment_id: string; budget: { max_list_cost: { amount: string } } };
-  assert.equal(session.agent.type, "agent_with_overrides");
-  assert.equal(session.agent.id, "agent_test");
-  assert.equal(session.agent.system, PLANNER_PROMPT);
-  assert.equal(session.agent.model.id, GOD_CHAT_TIER_INFO.opus.model);
-  assert.deepEqual(session.agent.tools.map((tool) => tool.name ?? tool.type), ["agent_toolset_20260401", "ask_visitor", "propose_build", "get_site_status"]);
-  assert.deepEqual(session.agent.tools[0].configs?.filter((config) => config.enabled === false).map((config) => config.name), ["write", "edit"]);
-  assert.equal(session.environment_id, "env_test");
-  assert.equal(session.budget.max_list_cost.amount, String(DESIGN_BUDGET_CENTS));
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].type, "user.message");
-  assert.match(JSON.stringify(sent[0]), /Please improve the music card\./);
+  const stub = [...stubs.values()][0];
+  assert.ok(stub?.meta);
+  assert.equal(stub.submitted.length, 1);
+  assert.equal(stub.drafts[0]?.kind, "open");
+  assert.match(JSON.stringify(stub.drafts[0]), /Please improve the music card\./);
   assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.type === "route" && event.tier), ["sonnet", "opus"]);
   const design = events.find((event) => event.type === "design");
   assert.ok(design?.type === "design");
   assert.equal(design.remaining, BUILD_DESIGN_LIMITS.maxTurns - 1);
-  assert.deepEqual(events.filter((event) => event.type === "step").map((event) => event.type === "step" && event.text), ["Cloned the repository", "Searched the code for “empty state”"]);
-  assert.ok(events.some((event) => event.type === "doc" && event.doc === "repo" && event.path === "src/components/live/music-card.tsx" && event.url.endsWith("/blob/main/src/components/live/music-card.tsx")));
+  assert.deepEqual(events.filter((event) => event.type === "step").map((event) => event.type === "step" && event.text), ["Searched the code for “empty state”"]);
+  assert.ok(events.some((event) => event.type === "doc" && event.doc === "repo" && event.path === "src/components/live/music-card.tsx"));
   assert.equal(textOf(events), `${PLAN_LABELS.en.handoff}Here is my plan.`);
   assert.ok(events.findIndex((event) => event.type === "text") < events.findIndex((event) => event.type === "design"), "the ordinary chat says one line before the planner takes over");
   const proposed = events.find((event) => event.type === "plan");
@@ -326,10 +369,10 @@ test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并�
   assert.equal((await sealedHistory(history, env.CHAT_HISTORY_SECRET!)).length, 3);
   assert.equal((await sealedHistory([history[0], { ...history[1], planToken: `${proposed.token}x` }, history[2]], env.CHAT_HISTORY_SECRET!)).length, 1);
 
-  const next = designEnv({ pending: ["ctu_plan"], turns: [[agent.running, ...agent.say("sevt_m2", "Shortened."), agent.idle({ type: "end_turn" })]] });
-  const token = await designToken(next.env, next.sessions);
+  const next = designEnv({ turns: [[...frame.say("Shortened."), frame.result({ complete: true, asked: false, views: [] })]] });
+  const { token, stub: session } = await designToken(next.env, next.sessions, { pending: true });
   const answered = await parseEvents(await handleChat(chatRequest(token, history), next.env, toolIO));
-  assert.deepEqual(next.sent, [{ type: "user.custom_tool_result", custom_tool_use_id: "ctu_plan", content: [{ type: "text", text: "The visitor replied:\nMake the empty label shorter." }], is_error: false }]);
+  assert.deepEqual(session.submitted.map((entry) => entry.text), [`${VISITOR_REPLY_PREFIX}Make the empty label shorter.`]);
   assert.equal(textOf(answered), "Shortened.");
   assert.deepEqual(next.requests, []);
   assert.deepEqual(next.counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1, streams: 1, peeked: 0 });
@@ -337,137 +380,135 @@ test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并�
   assert.ok(sealed?.type === "seal" && sealed.trace?.design && !sealed.planToken);
 });
 
-test("会话没有挂起的工具调用时，访客的话按普通消息发给规划者", async (t) => {
+test("会话没有挂起的交互时，访客的话原样发给规划者", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const { env, sent, sessions } = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "Sure."), agent.idle({ type: "end_turn" })]] });
-  await parseEvents(await handleChat(chatRequest(await designToken(env, sessions)), env, toolIO));
-  assert.deepEqual(sent, [{ type: "user.message", content: [{ type: "text", text: "Please improve the music card." }] }]);
+  const { env, sessions } = designEnv({ turns: [[...frame.say("Sure."), frame.result({ complete: true, asked: false, views: [] })]] });
+  const { token, stub } = await designToken(env, sessions);
+  await parseEvents(await handleChat(chatRequest(token), env, toolIO));
+  assert.deepEqual(stub.submitted.map((entry) => entry.text), ["Please improve the music card."]);
 });
 
-test("规划者没写字就出计划时，开场白跟访客看得到的中文标题走，不跟英文规格；写了字就不再补", async (t) => {
+test("规划者没写字就出计划时补发收场句并签章；写了字就不再补", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
   const zhPlan = { ...plan, title: "回答完问题后自动折叠问题框" };
-  const silent = designEnv({ turns: [[agent.running, agent.custom("ctu_plan", "propose_build", zhPlan), agent.waiting("ctu_plan")]] });
-  const quiet = await parseEvents(await handleChat(chatRequest(await designToken(silent.env, silent.sessions)), silent.env, toolIO));
+  const silent = designEnv();
+  const proposal = await issuePlan(silent.env, zhPlan);
+  silent.scripts.push([frame.plan(proposal), frame.result({ complete: true, asked: false, planToken: proposal.token, lead: PLAN_LABELS.zh.planReady, views: [] })]);
+  const quiet = await parseEvents(await handleChat(chatRequest((await designToken(silent.env, silent.sessions)).token), silent.env, toolIO));
   assert.equal(textOf(quiet), PLAN_LABELS.zh.planReady);
-  const spoken = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "改完后回答过的问题会收起来。"), agent.custom("ctu_plan", "propose_build", zhPlan), agent.waiting("ctu_plan")]] });
-  const said = await parseEvents(await handleChat(chatRequest(await designToken(spoken.env, spoken.sessions)), spoken.env, toolIO));
+  assert.ok(quiet.some((event) => event.type === "seal" && event.planToken === proposal.token));
+  const spoken = designEnv();
+  const spokenProposal = await issuePlan(spoken.env, zhPlan);
+  spoken.scripts.push([...frame.say("改完后回答过的问题会收起来。"), frame.plan(spokenProposal), frame.result({ complete: true, asked: false, planToken: spokenProposal.token, lead: PLAN_LABELS.zh.planReady, views: [] })]);
+  const said = await parseEvents(await handleChat(chatRequest((await designToken(spoken.env, spoken.sessions)).token), spoken.env, toolIO));
   assert.equal(textOf(said), "改完后回答过的问题会收起来。");
 });
 
-test("规划者的自定义工具：站点状态当场回结果，不合规的题目与禁区计划报错让它重试，合规的题目挂起等访客；要确认的内置工具一律拒绝", async (t) => {
-  const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
-  t.after(() => { globalThis.fetch = original; });
-  const questions = [{ header: "内容", question: "卡片显示多少内容？", multiSelect: false, options: [{ label: "只显示概况", description: "最简单" }, { label: "概况加展柜", description: "要维护对照表" }] }];
-  const bad = [{ ...questions[0], options: [questions[0].options[0]] }];
-  const { env, sent, sessions } = designEnv({ turns: [[
-    agent.running,
-    agent.tool("tu_curl", "bash", { command: "curl https://example.com" }, "ask"),
-    agent.custom("ctu_status", "get_site_status", { views: ["timezone"] }),
-    agent.custom("ctu_plan", "propose_build", { ...plan, paths: [".github/workflows/push.yml"] }),
-    agent.custom("ctu_bad", "ask_visitor", { questions: bad }),
-    agent.waiting("ctu_status", "ctu_plan", "ctu_bad"),
-    agent.running,
-    agent.custom("ctu_ask", "ask_visitor", { questions }),
-    agent.waiting("ctu_ask"),
-  ]] });
-  const events = await parseEvents(await handleChat(chatRequest(await designToken(env, sessions)), env, toolIO));
-  const replies = sent.slice(1);
-  assert.deepEqual(replies.map((event) => [event.type, event.tool_use_id ?? event.custom_tool_use_id, event.result ?? event.is_error]), [
-    ["user.tool_confirmation", "tu_curl", "deny"],
-    ["user.custom_tool_result", "ctu_status", false],
-    ["user.custom_tool_result", "ctu_plan", true],
-    ["user.custom_tool_result", "ctu_bad", true],
-  ]);
-  assert.match(JSON.stringify(replies[1]), /Asia\/Singapore/);
-  assert.ok(events.some((event) => event.type === "tool" && event.views.includes("timezone")));
-  assert.deepEqual(events.filter((event) => event.type === "ask"), [{ type: "ask", questions }]);
-  assert.ok(!events.some((event) => event.type === "plan"));
-  assert.equal(textOf(events), "请在下面选一下。");
-  const seal = events.find((event) => event.type === "seal");
-  assert.ok(seal?.type === "seal" && seal.trace?.views?.includes("timezone"));
-});
-
-test("断线补发：会话已停在等访客时，从访客那条回答起重推错过的文字、读过的文件和题目并盖章，不发事件给会话也不扣轮数", async (t) => {
+test("设计会话透出的事件原样推给访客：状态卡片、题目与文字；结果里的挂起交互记入 trace 与签章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
   const questions = [{ header: "Scope", question: "How much should the card show?", multiSelect: false, options: [{ label: "Summary", description: "Simplest" }, { label: "Showcase", description: "More work" }] }];
-  const { env, sent, sessions, counters } = designEnv({ history: [
-    agent.visitor("sevt_old", "Earlier message."),
-    ...agent.say("sevt_old_reply", "Earlier reply.").slice(2),
-    agent.result("sevt_kick", "ctu_prev", "The visitor replied:\nMake it smaller."),
-    agent.running,
-    agent.tool("tu_read", "read", { file_path: "/workspace/lyjwpage/src/components/live/music-card.tsx" }),
-    agent.custom("ctu_status", "get_site_status", { views: ["timezone"] }),
-    agent.result("sevt_status", "ctu_status", "{\"timezone\":\"Asia/Singapore\"}"),
-    ...agent.say("sevt_m", "One question first.").slice(2),
-    agent.custom("ctu_ask", "ask_visitor", { questions }),
-    agent.waiting("ctu_ask"),
-  ] });
-  const token = await designToken(env, sessions);
+  const { env, sessions } = designEnv({ turns: [[
+    frame.tool(["timezone"]),
+    ...frame.say("One question first."),
+    frame.ask(questions),
+    frame.result({ complete: true, asked: true, views: ["timezone"] }),
+  ]] });
+  const { token, stub } = await designToken(env, sessions);
+  const events = await parseEvents(await handleChat(chatRequest(token), env, toolIO));
+  assert.ok(events.some((event) => event.type === "tool" && event.views.includes("timezone")));
+  assert.deepEqual(events.filter((event) => event.type === "ask"), [{ type: "ask", questions }]);
+  assert.equal(textOf(events), "One question first.");
+  assert.equal(stub.pending, true);
+  const seal = events.find((event) => event.type === "seal");
+  assert.ok(seal?.type === "seal" && seal.trace?.views?.includes("timezone") && seal.trace?.design);
+});
+
+test("断线补发：已停的回合从持久记录重推文字、文件卡片和题目并盖章，不扣轮数", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const questions = [{ header: "Scope", question: "How much should the card show?", multiSelect: false, options: [{ label: "Summary", description: "Simplest" }, { label: "Showcase", description: "More work" }] }];
+  const { env, sessions, counters } = designEnv({ turns: [[
+    frame.doc("src/components/live/music-card.tsx"),
+    ...frame.say("One question first."),
+    frame.ask(questions),
+    frame.result({ complete: true, asked: true, views: [] }),
+  ]] });
+  const { token } = await designToken(env, sessions);
   const messages: GodChatMessage[] = [{ role: "user", content: "Make it smaller." }];
+  await parseEvents(await handleChat(chatRequest(token, messages), env, toolIO));
+  counters.admitted = 0;
+  counters.peeked = 0;
   const events = await parseEvents(await handleChat(chatRequest(token, messages, true), env, toolIO));
   assert.equal(textOf(events), "One question first.");
   assert.ok(events.some((event) => event.type === "doc" && event.path === "src/components/live/music-card.tsx"));
   assert.deepEqual(events.filter((event) => event.type === "ask"), [{ type: "ask", questions }]);
-  assert.ok(events.some((event) => event.type === "design" && event.remaining === BUILD_DESIGN_LIMITS.maxTurns - 1));
+  assert.ok(events.some((event) => event.type === "design" && event.remaining === BUILD_DESIGN_LIMITS.maxTurns - 2));
   const seal = events.find((event) => event.type === "seal");
   assert.ok(seal?.type === "seal");
   assert.equal((await sealedHistory([...messages, { role: "assistant", content: textOf(events), seal: seal.seal, trace: seal.trace }, { role: "user", content: "Summary." }], env.CHAT_HISTORY_SECRET!)).length, 3);
-  assert.deepEqual(sent, []);
   assert.deepEqual({ admitted: counters.admitted, peeked: counters.peeked }, { admitted: 0, peeked: 1 });
 });
 
-test("断线补发：回合还在跑时先重推已有的，再跟着事件流到停下，重复的事件只推一次；挂起的计划重新签发", async (t) => {
+test("配额被拒的回合不能靠补发换得模型调用：prepareTurn 留下的草稿没有受理记录", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const first = agent.say("sevt_m1", "Reading the card.");
-  const { env, sent, sessions } = designEnv({
-    history: [agent.visitor("sevt_kick", "Shorten the label."), agent.running, first[2]],
-    turns: [[first[2], agent.tool("tu_grep", "grep", { pattern: "label" }), ...agent.say("sevt_m2", "Here is the plan."), agent.custom("ctu_plan", "propose_build", plan), agent.waiting("ctu_plan")]],
-  });
-  const events = await parseEvents(await handleChat(chatRequest(await designToken(env, sessions), [{ role: "user", content: "Shorten the label." }], true), env, toolIO));
-  assert.equal(textOf(events), "Reading the card.\n\nHere is the plan.");
-  assert.deepEqual(events.filter((event) => event.type === "step").map((event) => event.type === "step" && event.text), ["Searched the code for “label”"]);
-  const proposed = events.find((event) => event.type === "plan");
-  assert.ok(proposed?.type === "plan");
-  assert.deepEqual((await readPlan(env, proposed.token))?.plan, plan);
-  const seal = events.find((event) => event.type === "seal");
-  assert.ok(seal?.type === "seal" && seal.planToken === proposed.token);
-  assert.deepEqual(sent, []);
+  const { env, requests, sessions, counters } = designEnv();
+  const { token, id } = await designToken(env, sessions);
+  sessions.get(id)!.turns = BUILD_DESIGN_LIMITS.maxTurns;
+  const messages = [{ role: "user" as const, content: "One more change." }];
+  const denied = await handleChat(chatRequest(token, messages), env, toolIO);
+  assert.equal(denied.status, 429);
+  const resumed = await handleChat(chatRequest(token, messages, true), env, toolIO);
+  assert.equal(resumed.status, 409);
+  assert.equal((await resumed.json() as { code: string }).code, "nothing_to_resume");
+  assert.deepEqual({ streams: counters.streams, calls: requests.length, admitted: counters.admitted }, { streams: 0, calls: 0, admitted: 1 });
 });
 
 test("断线补发：最近一回合不是访客最新那条消息时拒绝，不重推上一回合；没有设计令牌的补发请求无效", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const { env, sessions, counters } = designEnv({ history: [agent.visitor("sevt_kick", "Earlier message."), ...agent.say("sevt_m", "Earlier reply.").slice(2), agent.idle({ type: "end_turn" })] });
-  const response = await handleChat(chatRequest(await designToken(env, sessions), [{ role: "user", content: "A message that never arrived." }], true), env, toolIO);
+  const { env, sessions, counters } = designEnv({ turns: [[...frame.say("Earlier reply."), frame.result({ complete: true, asked: false, views: [] })]] });
+  const { token } = await designToken(env, sessions);
+  await parseEvents(await handleChat(chatRequest(token), env, toolIO));
+  counters.streams = 0;
+  const response = await handleChat(chatRequest(token, [{ role: "user", content: "A message that never arrived." }], true), env, toolIO);
   assert.equal(response.status, 409);
   assert.equal((await response.json() as { code: string }).code, "nothing_to_resume");
   assert.equal(counters.streams, 0);
   assert.equal((await handleChat(chatRequest(undefined, undefined, true), env, toolIO)).status, 400);
 });
 
-test("规划者到预算上限时说明并结束；会话被终止时不盖章", async (t) => {
+test("回合结果说明预算耗尽或会话结束时照样盖章；意外中断不盖章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const budget = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "Reading."), agent.idle({ type: "budget_reached" })]] });
-  const capped = await parseEvents(await handleChat(chatRequest(await designToken(budget.env, budget.sessions)), budget.env, toolIO));
+  const budget = designEnv({ turns: [[
+    ...frame.say("Reading."),
+    ...frame.say("\n\n(This design session has used its budget. Continue in ordinary chat.)"),
+    frame.result({ complete: true, asked: false, views: [] }),
+  ]] });
+  const capped = await parseEvents(await handleChat(chatRequest((await designToken(budget.env, budget.sessions)).token), budget.env, toolIO));
   assert.match(textOf(capped), /used its budget/);
   assert.ok(capped.some((event) => event.type === "seal"));
-  const ended = designEnv({ turns: [[agent.running, { type: "session.status_terminated", id: "sevt_end", processed_at: at }]] });
-  const terminated = await parseEvents(await handleChat(chatRequest(await designToken(ended.env, ended.sessions)), ended.env, toolIO));
-  assert.match(textOf(terminated), /has ended/);
-  assert.ok(!terminated.some((event) => event.type === "seal"));
+  const ended = designEnv({ turns: [[
+    ...frame.say("\n\n[This design session has expired. Continue in ordinary chat.]"),
+    frame.result({ complete: true, asked: false, views: [] }),
+  ]] });
+  const expired = await parseEvents(await handleChat(chatRequest((await designToken(ended.env, ended.sessions)).token), ended.env, toolIO));
+  assert.match(textOf(expired), /has expired/);
+  assert.ok(expired.some((event) => event.type === "seal"));
+  const broken = designEnv({ turns: [[...frame.say("\n\n[The planner stopped unexpectedly. Send another message to try again.]"), frame.result({ complete: false, asked: false, views: [] })]] });
+  const interrupted = await parseEvents(await handleChat(chatRequest((await designToken(broken.env, broken.sessions)).token), broken.env, toolIO));
+  assert.ok(!interrupted.some((event) => event.type === "seal"));
 });
 
 test("Sonnet 可以不开设计会话；模型未获授工具不能偷开会话或提计划；建会话失败时 Sonnet 自己答完", async (t) => {
@@ -475,11 +516,11 @@ test("Sonnet 可以不开设计会话；模型未获授工具不能偷开会话�
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
   for (const tool of [false, { name: "propose_build", input: plan }, { name: "draft_github_issue", input: { title: "Injected", body: "Injected" } }]) {
-    const { env, counters, created } = designEnv({ reply: (body, index) => modelStream(body.model, index === 0 ? tool : false) });
+    const { env, counters, stubs } = designEnv({ reply: (body, index) => modelStream(body.model, index === 0 ? tool : false) });
     const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
     assert.equal(counters.created, 0);
     assert.equal(counters.admitted, 0);
-    assert.equal(created.length, 0);
+    assert.equal(stubs.size, 0);
     assert.ok(!events.some((event) => event.type === "plan" || event.type === "design"));
     assert.ok(events.some((event) => event.type === "seal"));
   }
@@ -499,9 +540,8 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const { env, requests, counters, sessions } = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "Ok."), agent.idle({ type: "end_turn" })]] });
-  const token = await designToken(env, sessions);
-  const id = [...sessions.keys()][0];
+  const { env, requests, counters, sessions } = designEnv({ turns: [[...frame.say("Ok."), frame.result({ complete: true, asked: false, views: [] })], [...frame.say("Again."), frame.result({ complete: true, asked: false, views: [] })]] });
+  const { token, id } = await designToken(env, sessions);
   const response = await handleChat(chatRequest(token), env, toolIO);
   assert.equal(response.status, 200);
   const events = await parseEvents(response);
@@ -509,9 +549,9 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
   assert.deepEqual(counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1, streams: 1, peeked: 0 });
   for (const invalid of [
     `${token.slice(0, -2)}xx`,
-    await signBuildToken({ kind: "design", id, expiresAt: Date.now() - 1, sessionId: "sesn_test" }, env.BUILD_SESSION_SECRET!),
+    await signBuildToken({ kind: "design", id, expiresAt: Date.now() - 1, sessionId: id }, env.BUILD_SESSION_SECRET!),
     await signBuildToken({ kind: "design", id, expiresAt: Date.now() + 10000 }, env.BUILD_SESSION_SECRET!),
-    await signBuildToken({ kind: "plan", id, expiresAt: Date.now() + 10000, sessionId: "sesn_test" }, env.BUILD_SESSION_SECRET!),
+    await signBuildToken({ kind: "plan", id, expiresAt: Date.now() + 10000, sessionId: id }, env.BUILD_SESSION_SECRET!),
   ]) {
     const rejected = await handleChat(chatRequest(invalid), env, toolIO);
     assert.equal(rejected.status, 400);
@@ -521,8 +561,8 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
   const expired = await handleChat(chatRequest(token), env, toolIO);
   assert.equal(expired.status, 400);
   assert.equal((await expired.json() as { code: string }).code, "design_session_expired");
-  sessions.set(id, BUILD_DESIGN_LIMITS.maxTurns);
-  const exhausted = await handleChat(chatRequest(token), env, toolIO);
+  sessions.set(id, { turns: BUILD_DESIGN_LIMITS.maxTurns, requestIds: new Set() });
+  const exhausted = await handleChat(chatRequest(token, [{ role: "user", content: "Another question." }]), env, toolIO);
   assert.equal(exhausted.status, 429);
   assert.equal((await exhausted.json() as { code: string }).code, "design_session_exhausted");
   assert.equal(counters.streams, 1);

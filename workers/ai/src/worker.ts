@@ -1,5 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
-
 import {
   AI_HTTP_PATHS,
   BUILD_PATH,
@@ -14,7 +12,6 @@ import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValu
 import { MCP_PATH } from "@shared/mcp";
 
 import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
-import { anthropicFetch } from "./chat/egress";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
 import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
 import { handleGithubIssue } from "./github-issue";
@@ -108,9 +105,7 @@ const worker = {
   },
 
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-    if (!env.ANTHROPIC_API_KEY) return;
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
-    const deleted = await deleteExpiredDesignSessions(client.beta.sessions, env);
+    const deleted = await deleteExpiredDesignSessions(env);
     if (deleted) console.info("[design] deleted expired sessions", JSON.stringify({ deleted }));
   },
 } satisfies ExportedHandler<Env>;

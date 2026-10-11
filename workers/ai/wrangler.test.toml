@@ -8,9 +8,7 @@ workers_dev = false
 AI_DEV = "true"
 SENTRY_ENVIRONMENT = "development"
 ALLOWED_ORIGINS = "https://*.vercel.app"
-# 设计会话的 Managed Agents 壳，必须与 ANTHROPIC_API_KEY 在同一个 Console 工作空间（见 docs/ops-facts.md）。
-DESIGN_AGENT_ID = "agent_01A9iz5Qv92DM3v6AgZvwo59"
-DESIGN_ENVIRONMENT_ID = "env_01P1faxn2fwzNE596uk9JzgM"
+# 设计会话跑在 DESIGN_SESSIONS Durable Object 里。
 
 [ai]
 binding = "AI"
@@ -32,6 +30,10 @@ class_name = "AnthropicEgress"
 name = "BUILD_COORDINATOR"
 class_name = "BuildCoordinator"
 
+[[durable_objects.bindings]]
+name = "DESIGN_SESSIONS"
+class_name = "DesignSession"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ChatQuota", "AnthropicEgress"]
@@ -39,6 +41,10 @@ new_sqlite_classes = ["ChatQuota", "AnthropicEgress"]
 [[migrations]]
 tag = "v2-build-coordinator"
 new_sqlite_classes = ["BuildCoordinator"]
+
+[[migrations]]
+tag = "v3-design-session"
+new_sqlite_classes = ["DesignSession"]
 
 [[ratelimits]]
 name = "CHAT_USAGE_LIMIT"

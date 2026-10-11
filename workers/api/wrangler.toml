@@ -127,6 +127,10 @@ class_name = "AnthropicEgress"
 name = "BUILD_COORDINATOR"
 class_name = "BuildCoordinator"
 
+[[previews.durable_objects.bindings]]
+name = "DESIGN_SESSIONS"
+class_name = "DesignSession"
+
 [previews.ai]
 binding = "AI"
 

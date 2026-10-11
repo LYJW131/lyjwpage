@@ -8,12 +8,9 @@ preview_urls = true
 [vars]
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
-# 设计会话的 Managed Agents 壳，必须与 ANTHROPIC_API_KEY 在同一个 Console 工作空间（见 docs/ops-facts.md）。
-DESIGN_AGENT_ID = "agent_01A9iz5Qv92DM3v6AgZvwo59"
-DESIGN_ENVIRONMENT_ID = "env_01P1faxn2fwzNE596uk9JzgM"
 VERCEL_TEAM_ID = "team_kfTnkK6X9bbqSbkgAhq7SxCd"
 
-# 删除过期的设计会话，见 src/chat/design-cleanup.ts。
+# 删除过期的设计会话 Durable Object，见 src/chat/design-cleanup.ts。
 [triggers]
 crons = ["*/15 * * * *"]
 
@@ -48,6 +45,10 @@ class_name = "AnthropicEgress"
 name = "BUILD_COORDINATOR"
 class_name = "BuildCoordinator"
 
+[[durable_objects.bindings]]
+name = "DESIGN_SESSIONS"
+class_name = "DesignSession"
+
 [[migrations]]
 tag = "v1-transfer-from-api"
 
@@ -64,6 +65,10 @@ to = "AnthropicEgress"
 [[migrations]]
 tag = "v2-build-coordinator"
 new_sqlite_classes = ["BuildCoordinator"]
+
+[[migrations]]
+tag = "v3-design-session"
+new_sqlite_classes = ["DesignSession"]
 
 [[ratelimits]]
 name = "CHAT_USAGE_LIMIT"
