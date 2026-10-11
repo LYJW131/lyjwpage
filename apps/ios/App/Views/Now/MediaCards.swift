@@ -130,14 +130,34 @@ private struct ChargerSection: View {
             }
             PowerSparkline(samples: charger.history)
                 .frame(height: 44)
+            if let cover = charger.cover {
+                HStack(spacing: 8) {
+                    if cover.iconUrl != nil {
+                        RemoteImage(url: AssetURL.resolve(cover.iconUrl), contentMode: .fit)
+                            .frame(width: 28, height: 28)
+                    }
+                    Text(cover.name)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
             ForEach(charger.ports.filter(\.active)) { port in
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text(port.id).font(.caption.weight(.semibold)).monospaced()
                         .frame(width: 26, alignment: .leading)
-                    Text(port.device ?? port.`protocol` ?? "Connected")
-                        .font(.subheadline)
-                        .lineLimit(1)
-                    Spacer()
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(port.device ?? port.`protocol` ?? "Connected")
+                            .font(.subheadline)
+                            .lineLimit(1)
+                        if let voltage = port.voltage, let current = port.current {
+                            Text("\(Format.decimal(voltage, digits: 1)) V · \(Format.decimal(current, digits: 2)) A")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    Spacer(minLength: 0)
                     Text(port.power.map(Format.watts) ?? "—")
                         .font(.subheadline.weight(.medium))
                         .monospacedDigit()

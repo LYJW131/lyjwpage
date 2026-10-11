@@ -145,6 +145,7 @@
 Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──> 上报入口 ──> 状态核心 SQLite
 ```
 - 设备序列号（`device.serialNumber`）随上报存进状态核心，只用来判断结构变化（`workers/api/src/stores/charger-store.ts`、`powerbank-store.ts` 的 `structuralKey`）；状态接口和推送都经 `shared/charging-devices.ts` 的投影出去，不带序列号。
+- 充电头卡片在每个正在输出的端口下画出电压和电流（`src/lib/charging-device.ts#formatPortElectrical`，缺一就不画）；外壳名字和图标用公开状态里的 `cover`，放在卡片角标上。iOS 的充电段同样画出这两项。
 
 ### 本地高速 SSE 切换
 - 当在内网 Mac 访问 `/local/charging` 时，会在浏览器 `localStorage` 写入标记并跳转首页。
