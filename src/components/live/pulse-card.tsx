@@ -12,6 +12,7 @@ import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useStatus } from "@/hooks/use-status";
 import { PULSE_PATH } from "@/lib/paths";
 import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC } from "@shared/pulse-coding";
+import { gamingSummaryDetail } from "@/lib/gaming-lane-detail";
 import { columnRows } from "@/lib/pulse-columns";
 import type {
   PulseCodingLane,
@@ -235,7 +236,14 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
       );
     }),
     summary: segments.length || traces.length
-      ? { value: pulseDuration(activeSeconds), detail: domain === "listening" && titles ? `${titles.toLocaleString("en-US")} ${titles === 1 ? "track" : "tracks"}` : ACTIVE_WORDS[domain] }
+      ? {
+          value: pulseDuration(activeSeconds),
+          detail: domain === "listening" && titles
+            ? `${titles.toLocaleString("en-US")} ${titles === 1 ? "track" : "tracks"}`
+            : domain === "gaming"
+              ? gamingSummaryDetail(activeSeconds, titles, segments.map((row) => row.state))
+              : ACTIVE_WORDS[domain],
+        }
       : null,
     aria: domain === "gaming" ? "Game status on PlayStation or Meta Quest: offline, online or in a game" : `${domain} status: idle, paused or playing`,
   };
