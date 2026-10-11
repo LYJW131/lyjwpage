@@ -13,7 +13,7 @@
 - **ingress**：无状态的上报入口，负责鉴权、校验、分流。
 - **api**：状态核心 `StateCore`（RPC 入口）加上 `StateHub` DO，以及推送房间 `LivePushRoom`。
 - **collector**：每分钟一响的采集 Worker。
-- **ai**：首页对话、访客构建和公开 MCP；不挂公开域名，api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 把这几条路径原样转给它，它经 Service Binding `PUBLIC_STATUS` 只读 api 的状态（`workers/ai/README.md`「入口与权限」、`workers/ai/wrangler.toml`）。它不在一首歌的链路上，片中只在第 00 章总览和第 09 章发布里出现。
+- **ai**：首页对话、访客构建和公开 MCP；不挂公开域名，api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 把这几条路径原样转给它，它经 Service Binding `PUBLIC_STATUS` 只读 api 的状态（`workers/ai/README.md`「入口与权限」、`workers/ai/wrangler.toml`）。它不在一首歌的链路上，片中在第 00 章总览、第 09 章「对话」和第 10 章发布里出现。
 
 数据按层落地：实时层在 DO，可滞后层在 KV `LAG`，长期历史在 D1 `lyjwpage-history`，凭据在 KV `CREDENTIALS`。
 
@@ -319,7 +319,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 发版
 
-部署成功之后刷新 ESA、等两个域名换上新版、通知开着的页面，事实只写在 §9「部署成功之后：刷新 ESA、通知页面」，片中由第 09 章「发布」讲；第 06 章只讲请求时的分发与缓存。
+部署成功之后刷新 ESA、等两个域名换上新版、通知开着的页面，事实只写在 §10「部署成功之后：刷新 ESA、通知页面」，片中由第 10 章「发布」讲；第 06 章只讲请求时的分发与缓存。
 
 ## 7 自适应调频
 
@@ -352,9 +352,48 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 取数带的是 `SENTRY_API_TOKEN`，代码只拿它发 GET 查询（`src/lib/sentry-status.ts#sentryClient`）。令牌的权限范围是 Sentry 侧的配置：`workers/collector/README.md` 写的是组织只读（org:read / project:read / event:read），`docs/ops-facts.md` 没有这一条，**未核**。片中令牌只画成一张卡、标 `GET`，不说「只读」。
 
-## 9 发布（推到 main 之后）
+## 9 对话与构建（workers/ai）
 
-第 09 章「发布」用的部分，按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 09 章「对话」用的部分，按 main 897c83d 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
+不在一首歌的链路上：对话只读 api 给浏览器的同一份公开模型，不往状态里写东西。
+
+### 发第一句之前
+
+- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Turnstile、Workers AI 的 Clef、Anthropic、Sentry、GitHub、这个浏览器等）；点 Accept 之前不加载 Turnstile、不发任何请求（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.mjs#CHAT_CODE_PATHS`）。
+
+### 过闸（花钱之前）
+
+- 浏览器经 api 转发到 ai Worker（`shared/ai-paths.ts#AI_HTTP_PATHS`）。先验人：通行证（验过人后按 IP 签发、有效期 `shared/god-chat.ts#GOD_CHAT_PASS_TTL_MS`）或 Turnstile（`workers/ai/src/chat/pass.ts`、`turnstilePassed`）。
+- 再过 `ChatQuota.admitVisitor` 三道：访客总量、全站路由次数（`shared/god-chat-tiers.ts#GOD_CHAT_ROUTE_LIMIT`）、这位访客此刻至少有一档访客与全站都有空位；挡下回 429，到此为止，不再付费调 Clef（`workers/ai/README.md`「首页对话」）。数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，片中不出数。
+
+### Clef 选档
+
+- Clef 是 Workers AI 上的路由模型（`workers/ai/src/chat/router.ts`，`CLEF_CHOICES`）：Haiku（两种思考强度）、Sonnet、设计、Fable、refuse；Clef 不可用时落到 `ROUTER_FALLBACK`（Haiku）。
+- 三档与人设：Haiku · Small Fry、Sonnet · Prophet、Fable · God；设计会话里的 Opus 是 Architect（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`）。选中的档满了只往下逐档降，绝不往上升（`shared/god-chat-tiers.ts#downgradeChain`）。refuse 不调模型，直接回一句关门话。
+- Haiku 判断问题超出自己时调 `request_upgrade`，扣到 Sonnet 名额就由 Sonnet 重答（`workers/ai/src/chat/handler.ts#UPGRADE_TOOL`）。
+
+### 工具与盖章
+
+- 站点工具 `workers/ai/src/tools/registry.ts#SITE_TOOLS` 只读公开模型：`get_site_status` 经 `PUBLIC_STATUS.readStatus(path)` 调 api 的 `PublicStatus`，和浏览器看到的同一份（`shared/public-status.ts#PublicStatusRpc`）。`show_card` 只在对话里，用同一份数据在回复里画站点卡片。
+- 同一套 `SITE_TOOLS` 挂在无鉴权的 `POST /mcp` 上给外部 AI 客户端用（`workers/ai/src/mcp.ts`）；要访客确认的、只对对话界面有意义的工具不在 `/mcp`。
+- 回复正常结束时 Worker 给这一问一答盖章（`workers/ai/src/chat/seal.ts`），浏览器原样带回；下一轮进 Clef 和模型之前先验章，没有章或对不上的整对丢掉。片中把这一步画成一枚章。
+
+### 设计会话
+
+- 站点改动请求由 Clef 交给 Sonnet；Sonnet 觉得值得做才调 `start_design`，在 Claude Managed Agents 上开一个会话，同一条回复交给其中的 Opus 规划者（`workers/ai/src/chat/designer.ts`、`docs/build-routine.md`「设计与确认」）。
+- 规划者只读：沙盒只放行 github.com、不挂凭据，write / edit 关闭，用 read、glob、grep 和只读命令查仓库；用 `ask_visitor` 提问、`propose_build` 出计划（标题、规格、验收项、预计路径），计划由 Worker 校验后签名（`workers/ai/AGENTS.md`「不变量」、`workers/ai/src/build/validation.ts`）。
+- 计划卡两个出口：Open issue、Start build。点之前每次都展开 GitHub 授权说明，接受才弹授权窗口，同意不保存（`src/components/github-consent.tsx#GithubConsent`）。访客的 GitHub token 用完立即撤销。
+
+### 构建
+
+- Start build：Worker 用 GitHub App 把签名计划写成 `builds/<runId>.md`，提交到分支 `claude/build-<runId>`（`shared/build-routine.ts#branchForRun`）并开草稿 PR，再把计划交给 routine（Claude Code）去写代码（`docs/build-routine.md`「上传与 PR」）。
+- routine 不持有仓库推送凭据：改动回传 Worker，校验路径与大小后由 GitHub App 提交到同一分支和 PR（`workers/ai/src/build/validation.ts`）。PR 上的 Claude 审查只作参考，不授权合并（`workers/ai/AGENTS.md`）；合不合并由站长决定。
+- 片中不画：计划令牌与额度的消费细节、截图上传、构建状态的恢复。
+
+## 10 发布（推到 main 之后）
+
+第 10 章「发布」用的部分，按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 一次 `git push origin main` 同时触发几条流水线：GitHub Actions 的几个工作流、Vercel 的 Git 集成、Cloudflare Workers Builds 的原生 Git 集成（`docs/workers-builds.md` 开头）。它们各自决定跑不跑、各自构建，互不等待。片中举的那次推送改到 `src/components/`、`workers/api/`、`reporters/server-reporter/` 下的文件和 Hub 的子模块指针，是示意，不对应真实提交；画面上的短哈希也是示意。
 
