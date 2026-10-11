@@ -6,9 +6,11 @@
 
 第 3 节里第 03 章用到的部分、第 2 节的 202 时机按 main 34eb555 逐条回代码复核过；其余各节的核对基线写在各节开头。 <!-- allow: 核对基线戳 -->
 
+各节里随站点迁到 site Worker（React Router、Workers Builds）改写的条目，按 448a95e1 回代码复核过。 <!-- allow: 核对基线戳 -->
+
 ## 一句话总览
 
-仍是三段：**采集 → 中枢 → 展示**。上报器（和 Claude Code 云端的 OTLP）向上报入口 POST；中枢在 Cloudflare Workers 上记状态；展示是 Vercel 上的 Next.js 出首屏，浏览器挂载后直连 Worker 取数、收 WebSocket 推送（`src/lib/backend-url.ts#backendUrl`）。第 00 章旁白「上报器发 POST，Workers 记状态，Vercel 出首屏，浏览器收推送」就是这一句。中枢由四个 Worker 组成：
+仍是三段：**采集 → 中枢 → 展示**。上报器（和 Claude Code 云端的 OTLP）向上报入口 POST；中枢在 Cloudflare Workers 上记状态；展示是 site Worker 用 React Router 渲染首屏（`workers/site/src/index.ts`，配置在根 `wrangler.jsonc`），浏览器挂载后直连 Worker 取数、收 WebSocket 推送（`src/lib/backend-url.ts#backendUrl`）。第 00 章旁白「上报器发 POST，Workers 记状态，site Worker 出首屏，浏览器收推送」就是这一句。中枢由四个 Worker 组成：
 
 - **ingress**：无状态的上报入口，负责鉴权、校验、分流。
 - **api**：状态核心 `StateCore`（RPC 入口）加上 `StateHub` DO，以及推送房间 `LivePushRoom`。
@@ -78,7 +80,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章表盘的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），表盘让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
 - 最近在听：apple-recent 任务，专辑 / 歌单粒度的列表交给 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
-- GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`；Vercel 部署列表那一轮另把站点部署记录写进 D1（[当时的 vercel.ts#vercelDeploymentsJob](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/workers/collector/src/jobs/vercel.ts)、`workers/collector/src/history.ts#archiveSiteDeploys`）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
+- GitHub、站点部署与访问量、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`；站点部署列表那一轮（`site-deployments`，每分钟）另把部署记录写进 D1，访问量是 `site-analytics`，每 15 分钟第 3 分钟（`workers/collector/src/jobs/site-status.ts#siteDeploymentsJob`、`workers/collector/src/jobs/site-status.ts#siteAnalyticsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - PlayStation 不在这张表里。
 
 ### 没人上报的播放（第 01 章 FIG. 7A）
@@ -146,7 +148,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 失败时：状态核心没准备好回 503，上报器稍后重发；未就绪及标记为 retryable 的暂时故障回 503，其余校验或处理失败回 400，上报器整封重发；各路按自然键或整份覆盖写，重发不重复（`workers/ingress/src/worker.ts#commitIngest`、`workers/ingress/src/worker.ts#unavailable`）。
 
-可滞后层的写入方（ingress、collector）没有 Vercel 密钥。写入时发现布局变了，就调 `CORE.revalidate(tags)` 请状态核心代发（同一函数）。
+可滞后层的写入方（ingress、collector）没有 `SITE_CACHE` 绑定，它只配在 `workers/api/wrangler.toml`。写入时发现布局变了，就调 `CORE.revalidate(tags)` 请状态核心代发（同一函数）。
 
 特例：iPhone 的训练收下了、圆环被拒时，已收下的那份照写，然后回 400。
 
@@ -169,12 +171,12 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - **DO 不发网络请求，只交回「要做的事」**：`event` / `listening` / `tags` 三种（ingest-effects.ts:25-28）。
 - StateCore 用自己的 `ctx.waitUntil` 执行这份清单，然后把结果回给 ingress（state-core.ts:30-37；live-platform.ts:12-17）：
   1. 先并行向 `LivePushRoom` 广播。
-  2. 再把布局标签一次性发给 `POST {SITE}/api/revalidate`，5 秒超时（ingest-effects.ts:106-120；live-platform.ts:19、66-95）。
+  2. 再把布局标签一次性经 Service Binding `SITE_CACHE` 交给 site Worker 的 `invalidate`，5 秒超时（`workers/api/src/live-platform.ts#expireStatusTags`、`REVALIDATE_TIMEOUT_MS`）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
 - 效果在 StateHub 之外派发：`StateCore.commitIngest` 拿到 StateHub 交回的效果，交给 `dispatchIngestEffects`，后者经 `afterResponse` 放进 `ctx.waitUntil`；网络请求不占 StateHub 的执行时间，串行的提交队列不被推送和失效拖住（`workers/api/src/ingest-effects.ts#dispatchIngestEffects`、`workers/api/src/live-platform.ts#afterResponse`）。第 03 章旁白「网络请求不占 StateHub 的时间」出自这里。
 - 换歌那封上报在交给 StateHub 之前，由 StateCore 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随状态落库；推送和读取只用存好的这份（`workers/api/src/listening-enrichment.ts#enrichCommand`、`src/lib/track-enrichment.ts#candidateFrom`）。
 - 各模块交回什么（workers/api/src/stores/telemetry.ts）：
-  - **切应用**只交回一条 `desktop` 事件，不失效首屏：页头那一格定宽，换应用只换内容（354-355）。所以片中「切应用」不配「通知 Vercel」。
+  - **切应用**只交回一条 `desktop` 事件，不失效首屏：页头那一格定宽，换应用只换内容（354-355）。所以片中「切应用」不配「通知 site Worker」。
   - **换歌**交回 `listening`：StateCore 用提交时存好的补全拼出 `listening-now` 再广播（`workers/api/src/ingest-effects.ts#dispatchIngestEffect`）。只有开始或停止放歌才另失效在听那张卡的标签 `NOW_LISTENING_TAG`（telemetry.ts:392-393），换一首不失效。
   - iPhone 那一半只进 Pulse（五分钟桶和训练区间），不推送、不失效（phone-telemetry.ts:7-9、42-44）。
   - 清单里的通知（`event`、`listening`）先并行发完，再把所有标签合成一次失效（ingest-effects.ts:106-120）。
@@ -230,7 +232,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存写入，不含缓存读）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`src/lib/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 08 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`src/lib/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
-## 4 首屏（Vercel 上的 Next.js）
+## 4 首屏（site Worker 上的 React Router）
 
 第 04 章用到的部分按 main 7fcfacb 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
@@ -240,7 +242,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/server/site-context.ts#SiteServices`）。
 - 实时层的公开读取在 `StateHub.publicRead()` 里随读取一起过初始化与提交可见性屏障，每次读一个 RPC；可滞后层只读 KV，不过屏障、不唤醒 DO（`workers/api/src/public-execution.ts#executePublicRequest`）。
 - **视图响应由 site Worker 的 `StatusSnapshot` 缓存入口回源**：成功 200 挂 `Cache-Tag: page:<tag>`、Cache-Control 600 秒；歌词由 `site.lyrics` 直取后端 `/api/lyrics`，不进这条缓存（`workers/site/src/index.ts#StatusSnapshotBase`、`src/lib/site-policy.ts#statusSnapshotHeaders`）。整页 SSR 文档与数据响应另挂 `Cache-Tag: home`、max-age 300 / SWR 86400（`src/lib/site-policy.ts#HOME_CACHE_TAG`）。
-- 标签：按 e10a75a 现数 20 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒缓存过期重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
+- 标签：按 e10a75a 现数 20 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、站点部署、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒缓存过期重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
 - 一个标签失效，只让那份视图快照回源；失效经私有 RPC 调进站点缓存（`shared/site-cache.ts#SiteCacheRpc`、`workers/site/src/index.ts#StatusSnapshotBase` 的 `invalidate`）。
 - 请求路径上不现拉外部 API：每条缓存只读自己的状态端点（实时读 DO，可滞后读 KV），GitHub、Sentry 这些外部来源只由采集 Worker 定时去取（按卡读取见 `src/app/page.tsx#loader`，端点的数据层与读取实现见 `src/lib/status-views.ts`、`src/lib/status-loaders.ts`）。
 - 失效通知只带标签名、不带数据：数据已经落在 Worker 上，下一次读端点自己去拿。通知不再是站点 HTTP 路由：api Worker 经私有 `SITE_CACHE` Service Binding 调 `invalidate(tags)`（`workers/api/src/live-platform.ts#expireStatusTags`、`shared/site-cache.ts#SiteCacheRpc`），白名单过滤后按 `page:<tag>` 失效视图快照。
@@ -307,7 +309,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 图片
 
 - 页面、状态 API 和推送里的图片一律写同源 `/img/<objectKey>`（`src/lib/asset-url.ts#publicAssetPath`）。
-- lyjw.me：由 [当时的 next.config.ts](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/next.config.ts) 的边缘 rewrite 代理到 R2（只放行 64 位十六进制加 png / webp / jpg），带 rewrite 缓存。
+- lyjw.me：`/img/*` 由 site Worker 经 R2 绑定 `IMAGE_OBJECTS` 直出，图片字节不进渲染层（`workers/site/src/index.ts`，绑定见根 `wrangler.jsonc`）。
 - lyjw131.com：由 ESA 缓存同一路径。
 - 图片是 immutable，内容变了名字就变，永远不需要刷新。
 
@@ -315,7 +317,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - lyjw131.com 经阿里云 ESA 回源 lyjw.me。
 - 首页的 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`：5 分钟内直接命中；过期后先给旧页，后台回源。
-- 首屏新鲜度不靠 ESA 这一层：ESA 给的可能是一份旧 HTML，浏览器挂载后经 SWR / WebSocket 直接向 Worker 取最新状态（根 `README.md`「首屏快照与实时更新分开处理」；缓存头数值在 [当时的 next.config.ts](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/next.config.ts) 首页那条 `Cache-Control`；浏览器直连 Worker 见 `src/lib/backend-url.ts#backendUrl`）。第 06 章旁白「数据在挂载后直连 Worker 取新」出自这里。
+- 首屏新鲜度不靠 ESA 这一层：ESA 给的可能是一份旧 HTML，浏览器挂载后经 SWR / WebSocket 直接向 Worker 取最新状态（根 `README.md`「首屏快照与实时更新分开处理」；缓存头数值在 `src/lib/site-policy.ts#HOME_CACHE_CONTROL`；浏览器直连 Worker 见 `src/lib/backend-url.ts#backendUrl`）。第 06 章旁白「数据在挂载后直连 Worker 取新」出自这里。
 
 ### 发版
 
@@ -335,7 +337,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   - `AWAKE_TICK_INTERVAL_MS` 是醒着那一档的间隔，不是两轮之间的下限：对调那一轮不等它（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`）。门只在每次探测时判，醒着时要等到过线之后的那一探，实际约每分钟一轮。
   - 下游的窗口都锚在闲档：站点判 PS 上报器断没断流用 `src/lib/freshness.ts#PLAYSTATION_STALE_MS`（闲档三轮多一点，只有浏览器判）。Pulse 玩那条道每次观测的有效期是 `shared/pulse-timeline.ts#GAMING_HOLD_MS`（盖过闲档再留投递抖动，`shared/pulse-timeline.ts#stateHoldMs`）：有效期内来了新观测，这一段就接着开，过期还没等到才在最后一次确认处收尾（`shared/pulse-timeline.ts#planStateObservation`）；容器每个完整 tick 都发 presence（`reporters/playstation-reporter/src/tick.ts#tick`），闲档一轮一封就接得上。主机醒着时只会更快，判活的下限由闲档决定。第 08 章不画这两个窗口。
 - agents 的两档是 `reporters/agents-reporter/src/config.ts` 里 `cadence` 的默认值（容器 `.env` 可覆盖，线上值没记进 `docs/ops-facts.md`）。每跑完一轮才按 agent 最近一次使用定下一次等多久（`reporters/agents-reporter/src/cadence.ts#ACTIVE_WINDOW_MS` 内算在用）；等的时候每 5 分钟醒来重查一次，开始使用立刻提前跑，停用不延后已定的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。「在用」是最近一次使用落在 `ACTIVE_WINDOW_MS` 之内（写章时 15 分钟），读的是取限额的几家 agent（`reporters/agents-reporter/src/config.ts` 的 `agentIds`）在 `coding/now` 里的 `lastActivityAt`（同文件 `latestActivityAt`）。第 07 章按这个窗口排：停手后那两轮仍是 5 分钟，过了窗口才换 60 分钟。
-- 服务器上报器固定每分钟推，不问人数：这份快照本身就是心跳，站点按信封的 `updatedAt` 判它还活着没有；上报不经过 Vercel，没有函数调用量要省，闲着时先问一次人数比直接推一次还费（`reporters/server-reporter/README.md`「节奏」）。夜里只有它的心形还在跳。
+- 服务器上报器固定每分钟推，不问人数：这份快照本身就是心跳，站点按信封的 `updatedAt` 判它还活着没有；上报不经过站点，没有函数调用量要省，闲着时先问一次人数比直接推一次还费（`reporters/server-reporter/README.md`「节奏」）。夜里只有它的心形还在跳。
 - 限额那一台按 agent 使用情况调频，是因为每一轮都要打各家厂商的限额接口，限额只在用的时候变（`reporters/agents-reporter/README.md`「它做什么」的每轮流程与 `reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。
 - agents 的活动查询读不到、超时、格式不对一律当没在用，所以故障只会让它变慢，不会变快（`reporters/agents-reporter/src/cadence.ts#nextDelay`）。PlayStation 和服务器都不问人数。
 
@@ -345,7 +347,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 两个方向相反的信号：
 
-- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明 Vercel 还在出页面（`src/app/api/version/route.ts#loader`）；后端那一截看 api Worker 的 cron 心跳（`workers/api/src/index.ts#runScheduled`）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
+- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明站点（site Worker）还在出页面（`src/app/api/version/route.ts#loader`）；后端那一截看 api Worker 的 cron 心跳（`workers/api/src/index.ts#runScheduled`）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
 - **Worker 每 5 分钟去报到**：api cron 的每一轮（见 §3「api 的 cron」）。
 
 Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回，页面和首屏都不直连 Sentry，只读可滞后层里的这份结果（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`src/lib/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。
@@ -395,18 +397,19 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 第 10 章「发布」用的部分，按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
-一次 `git push origin main` 同时触发几条流水线：GitHub Actions 的几个工作流、Vercel 的 Git 集成、Cloudflare Workers Builds 的原生 Git 集成（`docs/workers-builds.md` 开头）。它们各自决定跑不跑、各自构建，互不等待。片中举的那次推送改到 `src/components/`、`workers/api/`、`reporters/server-reporter/` 下的文件和 Hub 的子模块指针，是示意，不对应真实提交；画面上的短哈希也是示意。
+一次 `git push origin main` 同时触发几条流水线：GitHub Actions 的几个工作流、Cloudflare Workers Builds 的原生 Git 集成（站点和各 Worker 都走它，`docs/workers-builds.md` 开头）。它们各自决定跑不跑、各自构建，互不等待。片中举的那次推送改到 `src/components/`、`workers/api/`、`reporters/server-reporter/` 下的文件和 Hub 的子模块指针，是示意，不对应真实提交；画面上的短哈希也是示意。
 
 ### 检查：CI 与 CodeQL（只检查、不发布）
 
 - CI：推 main 或 dev、开 PR 都跑，一个 job 依次跑 lint、全部工作区的 typecheck、站点单测、api / ai / ingress / collector 的单测、上报器单测、`scripts` 的测试、`pnpm docs:check`（`.github/workflows/ci.yml#check`）。
-- CI 不跑 `next build`：Vercel 每次推送都会构建，CI 只管 Vercel 覆盖不到的几件事（`.github/workflows/ci.yml#check`）。同一分支连推几次，只留最后一次（同文件的 `concurrency`，`cancel-in-progress`）。
+- CI 不跑站点构建：门禁只有 lint、typecheck、单测、脚本测试、docs:check（`scripts/ci-checks.sh` 的 `gates`），站点构建交给 Workers Builds 的 `site`（下一节）。同一分支连推几次，只留最后一次（同文件的 `concurrency`，`cancel-in-progress`）。
 - CodeQL：推 main 或 dev、开 PR，外加每周一次定时，扫 `javascript-typescript` 和 `actions` 两类（`.github/workflows/codeql.yml#analyze`）。
 
-### 站点：Vercel
+### 站点：Workers Builds 的 site
 
-- 生产随 main 自动部署是 Vercel 控制台的配置，记在 `docs/ops-facts.md` 的「Vercel」一节。构建命令 `pnpm build` 跑 `scripts/build.mjs`：先生成讲解片的静态页，再 `next build`。
-- 部署只发生在 Vercel：`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`（§6「大陆访问」）。
+- 站点是 site Worker（根 `wrangler.jsonc`），由 Workers Builds 构建和部署，检查名 `Workers Builds: site`；构建命令 `pnpm build`，部署命令 `wrangler deploy`（`docs/workers-builds.md`「构建配置」）。`pnpm build` 跑 `scripts/build.mjs`：先生成讲解片的静态页和站点资产，再 `react-router build`。
+- 它也按监视路径决定构建不构建，`src/*` 在内（`docs/workers-builds.md`「构建监视路径」）；片中那次推送改到 `src/components/`，所以这次要构建。
+- `lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`（§6「大陆访问」）。
 - 构建不过就没有新部署，域名上仍是上一版：`/api/version` 由此刻接管生产域名的那次部署自己回答（`src/app/api/version/route.ts#loader`）。
 
 ### Worker：Cloudflare Workers Builds
@@ -424,12 +427,12 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 ### 部署成功之后：刷新 ESA、通知页面
 
-- Vercel 的生产部署成功后，GitHub 上的 `deployment_status`（state 为 success、environment 为 Production）触发 `.github/workflows/purge-esa.yml`：
+- 站点在 main 上的构建部署成功后，GitHub 上的 `check_run`（app 为 `cloudflare-workers-and-pages`、名字 `Workers Builds: site`、结论 success）触发 `.github/workflows/purge-esa.yml`（触发条件在 `scripts/site-deploy-event.mjs#siteDeploymentSha`），先等 `lyjw.me` 的 `/api/version` 答出这次的 sha（同文件的 `deployment` job）：
   1. `.github/workflows/purge-esa.yml#purge`：调 ESA 的 `PurgeCaches` 刷掉 `lyjw131.com` 首页的缓存键，再 GET 一次预热（`scripts/run-esa-purge.mjs`、`scripts/esa-purge.mjs#purgeEsaHomepage`、`scripts/esa-purge.mjs#warmupEsaCache`）。
-  2. `.github/workflows/purge-esa.yml#notify`（等刷新完）：先等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，每个域名最多 30 次、每次隔 10 秒；等不到也照常通知，最坏只是不弹提示。先刷新再通知，是因为反过来的话 lyjw131.com 的访客点刷新拿回的还是旧 HTML（同文件里那段注释）。
-  3. 带 `lyjwpage-github-actions` 那把 Access service token 调上报入口的 `POST /api/internal/site-deployed`，这把只有 `internal:site-deployed` 权限（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）；失败重试，最长 10 分钟（`--retry-max-time 600`），理由是同一次推送也改了 api 时，Workers Builds 往往比 Vercel 晚上线。
+  2. `.github/workflows/purge-esa.yml#notify`（等刷新完）：先等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，每个域名最多 30 次、每次隔 10 秒；等不到这一步就失败，不发通知，页面靠自己的定时自查兜底（下文「收不到通知也有兜底」）。先刷新再通知，是因为反过来的话 lyjw131.com 的访客点刷新拿回的还是旧 HTML（同文件里那段注释）。
+  3. 带 `lyjwpage-github-actions` 那把 Access service token 调上报入口的 `POST /api/internal/site-deployed`，这把只有 `internal:site-deployed` 权限（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）；失败重试，最长 10 分钟（`--retry-max-time 600`），理由是各 Worker 并行上线，接收端还没换版时会短暂回 404 / 405（同文件里那段注释）。
 - 上报入口验过权限，经 Service Binding 调 `StateCore.broadcastVersion()`（`workers/ingress/src/worker.ts#handleSiteDeployed`、`workers/api/src/state-core.ts#broadcastVersion`）：直接交给推送房间、不经 StateHub，LivePushRoom 向所有连着的页面广播 `version`，不带数据（`payload` 为 null）；另在 `waitUntil` 里请 collector 立刻重拉部署列表（`workers/ingress/src/worker.ts#DEPLOYMENT_JOBS`，片中不画）。
-- 页面收到 `version` 只重问自己域名上的 `/api/version`，不信推来的版本号（`src/hooks/use-live-events.ts#INVALIDATIONS`）；这个接口是构建期常量，头是 `max-age=0, must-revalidate`（[当时的 next.config.ts](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/next.config.ts) 的 headers），拿它和页面构建时焊进的 sha 比（`src/lib/app-version.ts#resolveVersionStatus`）。
+- 页面收到 `version` 只重问自己域名上的 `/api/version`，不信推来的版本号（`src/hooks/use-live-events.ts#INVALIDATIONS`）；这个接口是构建期常量，头是 `max-age=0, must-revalidate`（`src/lib/site-policy.ts#VERSION_CACHE_CONTROL`），拿它和页面构建时焊进的 sha 比（`src/lib/app-version.ts#resolveVersionStatus`）。
 - 比出来旧了：前台只弹 UPDATE 卡，刷不刷交给人（`src/components/app-version-card.tsx#AppVersionCard`）；后台标签页自己刷新（`src/components/stale-tab-reload.tsx#StaleTabReload`、`src/hooks/use-stale-auto-reload.ts#useStaleAutoReload`），有几道闸：同一个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次、两次自动刷新之间冷却 `AUTO_RELOAD_COOLDOWN_MS`、网页播放器在放不刷、sessionStorage 用不了不刷（`src/lib/app-version.ts#autoReloadDecision`）。片中只画「前台弹提示、后台自己刷新」。
 - 收不到通知也有兜底：页面每 30 分钟问一次，切回前台时再问一次（`src/hooks/use-app-version.ts#REFRESH_MS`）。
 
