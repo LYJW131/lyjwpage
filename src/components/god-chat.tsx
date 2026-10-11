@@ -370,6 +370,8 @@ function Conversation({ className, archive, session: conversation }: { className
         } else {
           setMessages(replyMessages(kept ? bubble() : undefined));
           if (!kept) setDraft((current) => current || content);
+          // 设计开场在同意后由补发发出：已同意的访客无缝续上交接，不同意的停在确认框。
+          if (!resumed && meta.designAt !== undefined && designConsent.getSnapshot()) setTimeout(() => resumeRef.current(), 0);
         }
       }
       setStreaming(false);
@@ -386,7 +388,14 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!current || !activeChatDesign(current.design) || !designConsent.getSnapshot()) return;
     const list = current.messages;
     const at = list.map((message) => message.role).lastIndexOf("user");
-    if (at < 0 || at < list.length - 2 || list[at + 1]?.seal) return;
+    const next = list[at + 1];
+    const after = list.length - 1 - at;
+    // 设计开场推迟到同意后：盖章的交接回复允许补发一次开场；它后面没跑完的规划者回复按断线补发同样放行。
+    const resumable =
+      after === 0 ||
+      (after === 1 && !next?.seal) ||
+      (next?.seal !== undefined && next.designAt !== undefined && (after === 1 || (after === 2 && !list[at + 2]?.seal)));
+    if (at < 0 || !resumable) return;
     const user = { ...list[at], id: list[at].id ?? crypto.randomUUID() };
     if (!list[at].id) setMessages([...list.slice(0, at), user, ...list.slice(at + 1)], false);
     void send(user.content, undefined, { user, before: list.slice(0, at), handoff: list[at + 1]?.designAt !== undefined });
