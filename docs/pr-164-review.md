@@ -351,7 +351,7 @@ Workers 缓存对带 `stale-while-revalidate` 的过期条目会立刻返回旧�
 
 `Promise.race` 在 5 秒后拒绝。`finally` 只 `clearTimeout`，不取消 `SITE_CACHE.invalidate`。超时被 catch 掉，`waitUntil` 的 Promise 就此结束。调用方分不清失效完成和只是超时。
 
-超时先赢时，之后 RPC 的拒绝没有人接收。让 `SITE_CACHE.invalidate` 在 5 秒后才 reject，catch 先记 `Site cache timeout`，随后出现未处理的 `invalidate` 拒绝。
+超时先赢时，之后 RPC 的拒绝由 `Promise.race` 已挂上的处理接住，不会成为未处理拒绝（审查原稿此处写反，按 Devin 的指正改正）。
 
 失效 RPC 若随调用方结束被取消，会停在两次 `invalidate` 之间：状态快照已标陈旧，首页标签还没动。`SITE_CACHE` 若一直挂起，`waitUntil` 不结束；抛错路径已有测试，这条放弃路径没有。
 
@@ -361,7 +361,7 @@ Workers 缓存对带 `stale-while-revalidate` 的过期条目会立刻返回旧�
 
 **依据**
 
-`expireStatusTags` 的 `Promise.race` 与 `RenderedSite.invalidate` 的两步顺序。未处理拒绝和半截失效是同一条超时路径上的两种结果。
+`expireStatusTags` 的 `Promise.race` 与 `RenderedSite.invalidate` 的两步顺序。这条超时路径上真正的结果是半截失效。
 
 ## 7. 旧采集任务名还在，行为已经是永久跳过
 

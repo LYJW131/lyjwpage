@@ -1,13 +1,3 @@
-<!-- BEGIN:nextjs-agent-rules -->
-
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
-
 # 工作方式
 
 - 根据用户目标和已有上下文完成实现与必要验证；常规、可逆的实现选择自行决定，有影响的假设简短说明。用户中途补充要求或询问进度时，结合新信息继续原任务。
@@ -21,13 +11,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。
 - 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑一律进后端 Worker；状态与数据查询归 `workers/api`，模型调用与工具编排归 `workers/ai`，site Worker（React Router SSR）只渲染页面、缓存和处理图片，不为功能新增数据端点（现有资源路由只服务版本号、图标、OG、manifest 与 Sentry/图片网关）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件。
-- 不删除、不手改本文件顶部 `next dev` 托管的自动块（`BEGIN:nextjs-agent-rules` 到 `END:nextjs-agent-rules`）。
 
 # 项目入口与验证
 
 - 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
 - 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈，首次后跑一次 `pnpm dev:worker:init`）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，但按端点整份兜底：新端点看本地，已有端点的新字段要用下面的注入看（见 `workers/api/README.md`「本地开发」）。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/api/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/api/README.md`「本地开发」）。
-- 修改路由与加载器前，读 `node_modules/react-router` / `@react-router` 提供的文档与类型。按需检索，不为小改动遍历整个文档或技能目录。
+- 修改路由与加载器前，读 `node_modules/react-router/docs/` 与 `@react-router` 的类型。按需检索，不为小改动遍历整个文档或技能目录。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后用户提出的修改请求若没有另行要求，视为用户正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让用户能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。在生产域名上验证完就关掉页面：开着的可见标签会按轮询节奏一直请求 API。
 - 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`。Worker 与上报器用各自目录里 `AGENTS.md` / `README.md` 写的验证命令。
@@ -106,7 +95,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 一个事实一个出处，其他地方放指针；非抄不可时标 `源：path#symbol`（`pnpm docs:check` 会核对符号还在）。
 - 仓库外的事实（控制台配置、Access 策略、机器路径）只写在 `docs/ops-facts.md`，逐条带「核对于 <日期>，方式：…」；正文里远端路径写成 `主机:/绝对路径`。
 - `docs/` 每篇文首一行标类型：`reference`（现状事实）、`runbook`（操作步骤）、`decision`（已定取舍，写完不改）、`record`（某时点的审计、核验、基准，另写「按 <sha> <日期> 核对，快照不维护，不当现状引用」）。新增文档在 `docs/README.md` 登记。
-- 根 `AGENTS.md` ≤ 150 行（不计上方托管自动块），只写硬规则与禁区、完成条件、权威事实源的指针，不写目录或文件清单、来源枚举、数量版本日期、部署拓扑、迁移步骤。子目录 `AGENTS.md` ≤ 60 行，同目录放一行 `@AGENTS.md` 的 `CLAUDE.md`，只写不变量、坑、本地验证命令、须成对修改的文件；人读的说明留在 `README.md`。
+- 根 `AGENTS.md` ≤ 150 行，只写硬规则与禁区、完成条件、权威事实源的指针，不写目录或文件清单、来源枚举、数量版本日期、部署拓扑、迁移步骤。子目录 `AGENTS.md` ≤ 60 行，同目录放一行 `@AGENTS.md` 的 `CLAUDE.md`，只写不变量、坑、本地验证命令、须成对修改的文件；人读的说明留在 `README.md`。
 - 改代码的同一提交里更新受影响的文档与注释。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
 - 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.mjs` 文件头。
 - 确需保留时间线写法（如核对戳）时，在同一行末尾加 `<!-- allow: 理由 -->`。

@@ -12,6 +12,9 @@ export const HOME_CACHE_TAG = "home";
 export const STATUS_CACHE_CONTROL =
   "public, max-age=600, stale-while-revalidate=604200, stale-if-error=604200";
 
+// 降级信封（ok:false 或端点未部署）只短缓存、不带 SWR / stale-if-error：一次暂时故障不能顶替上一份好快照撑满 7 天。
+export const STATUS_DEGRADED_CACHE_CONTROL = "public, max-age=60";
+
 export const VERSION_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 
 export const SERVICE_WORKER_CACHE_CONTROL = "no-cache, no-store, must-revalidate";
@@ -88,17 +91,51 @@ export function imageObjectRequest(request: Request): Request {
   return new Request(url, { method: request.method, headers });
 }
 
-export function imageObjectHeaders(object: {
-  httpEtag: string;
-  size: number;
-  writeHttpMetadata(headers: Headers): void;
-}): Headers {
+export type ByteRange = { offset: number; length?: number } | { suffix: number };
+
+export type ImageObjectPart = { offset: number; length: number };
+
+const SINGLE_BYTE_RANGE = /^bytes=(\d*)-(\d*)$/;
+
+// 只认单段范围；多段或写坏的 Range 按 RFC 9110 忽略，回整份。
+export function parseByteRange(header: string | null): ByteRange | null {
+  const match = header ? SINGLE_BYTE_RANGE.exec(header.trim()) : null;
+  if (!match || (!match[1] && !match[2])) return null;
+  if (!match[1]) return { suffix: Number(match[2]) };
+  const offset = Number(match[1]);
+  if (!match[2]) return { offset };
+  const end = Number(match[2]);
+  return end < offset ? null : { offset, length: end - offset + 1 };
+}
+
+export function imageObjectPart(range: ByteRange, size: number): ImageObjectPart | null {
+  if ("suffix" in range) {
+    const length = Math.min(range.suffix, size);
+    return length > 0 ? { offset: size - length, length } : null;
+  }
+  if (range.offset >= size) return null;
+  return { offset: range.offset, length: Math.min(range.length ?? size - range.offset, size - range.offset) };
+}
+
+export function imageObjectHeaders(
+  object: {
+    httpEtag: string;
+    size: number;
+    writeHttpMetadata(headers: Headers): void;
+  },
+  part: ImageObjectPart | null = null,
+): Headers {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("ETag", object.httpEtag);
-  headers.set("Content-Length", String(object.size));
   headers.set("Cache-Control", IMMUTABLE_ASSET_CACHE_CONTROL);
   headers.set("Accept-Ranges", "bytes");
+  if (part) {
+    headers.set("Content-Range", `bytes ${part.offset}-${part.offset + part.length - 1}/${object.size}`);
+    headers.set("Content-Length", String(part.length));
+  } else {
+    headers.set("Content-Length", String(object.size));
+  }
   return headers;
 }
 
@@ -154,7 +191,7 @@ export function renderCacheHeaders(
   return null;
 }
 
-export function isPublicStatusEnvelope(value: unknown): boolean {
+export function isPublicStatusEnvelope(value: unknown): value is { ok: boolean } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
   if (typeof row.ok !== "boolean") return false;
@@ -165,8 +202,10 @@ export function statusCacheTag(tag: string): string {
   return `page:${tag}`;
 }
 
-export function statusSnapshotHeaders(tag: string | undefined): Record<string, string> {
-  const headers: Record<string, string> = { "Cache-Control": STATUS_CACHE_CONTROL };
+export function statusSnapshotHeaders(tag: string | undefined, ok: boolean): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Cache-Control": ok ? STATUS_CACHE_CONTROL : STATUS_DEGRADED_CACHE_CONTROL,
+  };
   if (tag) headers["Cache-Tag"] = statusCacheTag(tag);
   return headers;
 }

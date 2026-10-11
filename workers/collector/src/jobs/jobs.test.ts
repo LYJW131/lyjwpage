@@ -13,6 +13,7 @@ import type { Env } from "../env";
 import { mergeRepoStats } from "./github-repo";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
+import { vercelDeploymentsJob, vercelMetricsJob } from "./retired";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
 
 const noEnv = {} as Env;
@@ -140,6 +141,30 @@ test("site-deployments 缺配置干净跳过，缺哪个报哪个", async (t) =>
   });
 });
 
+test("site-deployments 成功才写 LAG，失败那轮不覆盖上一份", async (t) => {
+  const lag = new MemoryKv();
+  const env = {
+    LAG: lag,
+    CLOUDFLARE_METRICS_TOKEN: "t",
+    CLOUDFLARE_ACCOUNT_ID: "a",
+    SITE_WORKER_TAG: "c".repeat(32),
+  } as unknown as Env;
+  let failing = false;
+  t.mock.method(globalThis, "fetch", async (url: string | URL) => {
+    if (failing) return new Response("down", { status: 503 });
+    if (String(url).includes("/site/deployments")) return Response.json({ success: true, result: { deployments: [] } });
+    return Response.json({ success: true, result: [] });
+  });
+
+  assert.deepEqual(await siteDeploymentsJob.run({ env, now, scheduled: true }), { status: "ok" });
+  const first = await readLag(lag, LAG_KEYS.siteDeployments);
+  assert.equal(first?.updatedAt, now);
+
+  failing = true;
+  await assert.rejects(siteDeploymentsJob.run({ env, now: now + 60_000, scheduled: true }), /503/);
+  assert.deepEqual(await readLag(lag, LAG_KEYS.siteDeployments), first);
+});
+
 test("site-analytics 缺配置或站点映射不全时跳过", async (t) => {
   t.mock.method(console, "warn", () => {});
   assert.deepEqual(await siteAnalyticsJob.run({ env: noEnv, now, scheduled: false }), {
@@ -157,3 +182,13 @@ test("site-analytics 缺配置或站点映射不全时跳过", async (t) => {
   );
 });
 
+test("退役的 Vercel 任务保留 ABI 名额但不再取数", async () => {
+  for (const job of [vercelDeploymentsJob, vercelMetricsJob]) {
+    assert.deepEqual(await job.run({ env: noEnv, now, scheduled: true }), {
+      status: "skipped",
+      detail: "Retired deployment provider",
+    });
+  }
+  assert.equal(vercelDeploymentsJob.everyMinutes, 1);
+  assert.equal(vercelMetricsJob.everyMinutes, 15);
+});

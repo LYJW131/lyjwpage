@@ -1,14 +1,9 @@
-import { Link, type MetaDescriptor } from "react-router";
+import { Link } from "react-router";
 
 import { Footer } from "@/components/footer";
 import { HomeLink } from "@/components/home-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui/card";
-import { site } from "@/lib/site";
-
-export function meta(): MetaDescriptor[] {
-  return [{ title: `404 — ${site.name}` }];
-}
 
 export function loader() {
   throw new Response(null, { status: 404 });
