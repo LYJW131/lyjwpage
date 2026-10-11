@@ -1,17 +1,13 @@
-import { BUILD_TOKEN_MAX_CHARS, buildIssueBody, PLAN_LABELS, planLanguage } from "@shared/build-routine";
-import { GITHUB_ISSUE_REPO, parseGithubIssueRequest, type GithubIssueResult } from "@shared/github-issue";
+import { BUILD_REPO, BUILD_TOKEN_MAX_CHARS, buildIssueBody, PLAN_LABELS, planLanguage } from "@shared/build-routine";
+import { parseGithubIssueRequest, type GithubIssueResult } from "@shared/github-issue";
 
-import { exchangeCode, revoke } from "./build/github-oauth";
+import { exchangeCode, GITHUB_API, GITHUB_API_HEADERS, revoke } from "./build/github-oauth";
+import { fail, readBoundedJson } from "./build/http";
 import { consumePlan, readPlan } from "./build/plan";
 import { readJsonBody } from "./chat/guard";
 import type { Env } from "./runtime";
 
 const MAX_BODY_BYTES = BUILD_TOKEN_MAX_CHARS + 4096;
-const GITHUB_API = "https://api.github.com";
-
-function fail(status: number, error: string): Response {
-  return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
-}
 
 export async function handleGithubIssue(request: Request, env: Env, ip: string): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
@@ -29,20 +25,14 @@ export async function handleGithubIssue(request: Request, env: Env, ip: string):
   try {
     const plan = await consumePlan(env, parsed.planToken);
     if (!plan) return fail(409, "This plan is expired or already used. Ask for a new plan.");
-    const res = await fetch(`${GITHUB_API}/repos/${GITHUB_ISSUE_REPO}/issues`, {
+    const res = await fetch(`${GITHUB_API}/repos/${BUILD_REPO}/issues`, {
       method: "POST",
-      headers: {
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "lyjwpage-ai",
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers: { ...GITHUB_API_HEADERS, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ title: plan.title, body: `${buildIssueBody(plan)}\n\n---\n${PLAN_LABELS[planLanguage(plan)].issueFooter}` }),
       signal: AbortSignal.timeout(15_000),
     });
-    const data = (await res.json().catch(() => null)) as { html_url?: unknown; number?: unknown } | null;
-    if (res.status !== 201 || typeof data?.html_url !== "string" || typeof data.number !== "number" || !Number.isSafeInteger(data.number) || data.number < 1 || data.html_url !== `https://github.com/${GITHUB_ISSUE_REPO}/issues/${data.number}`) {
+    const data = (await readBoundedJson(res, 256 * 1024)) as { html_url?: unknown; number?: unknown } | null;
+    if (res.status !== 201 || typeof data?.html_url !== "string" || typeof data.number !== "number" || !Number.isSafeInteger(data.number) || data.number < 1 || data.html_url !== `https://github.com/${BUILD_REPO}/issues/${data.number}`) {
       return fail(502, "GitHub did not confirm the issue. Check your GitHub issues before asking for another plan.");
     }
     const result: GithubIssueResult = { url: data.html_url, number: data.number };

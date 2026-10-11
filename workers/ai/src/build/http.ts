@@ -1,5 +1,9 @@
-export async function readBoundedJson(response: Response, maxBytes: number): Promise<unknown> {
-  const reader = response.body?.getReader();
+export function fail(status: number, error: string): Response {
+  return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+export async function readBoundedBytes(body: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<Uint8Array | null> {
+  const reader = body?.getReader();
   if (!reader) return null;
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -11,7 +15,16 @@ export async function readBoundedJson(response: Response, maxBytes: number): Pro
       if (size > maxBytes) { await reader.cancel(); return null; }
       chunks.push(value);
     }
-    return JSON.parse(await new Blob(chunks).text());
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
+}
+
+export async function readBoundedJson(response: Response, maxBytes: number): Promise<unknown> {
+  try {
+    const bytes = await readBoundedBytes(response.body, maxBytes);
+    return bytes && JSON.parse(new TextDecoder().decode(bytes));
   } catch { return null; }
-  finally { reader.releaseLock(); }
 }
