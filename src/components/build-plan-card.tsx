@@ -11,22 +11,22 @@ import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_PATH, BUILD_STATUS_PATH, planLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
+import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_PATH, BUILD_STATUS_PATH, visitorLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
 
 const BUILD_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_PATH);
 const STATUS_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
 
 const phaseLabels: Record<BuildPhase, string> = {
-  triggered: "Getting ready",
-  running: "Making the change",
-  uploaded: "Checking the change",
-  validated: "Change checked",
-  blocked: "Stuck · the plan needs more room",
-  pr_open: "Waiting for LYJW's review",
-  merged: "Accepted by LYJW",
-  closed: "Closed without merging",
-  timeout: "Took too long · result unknown",
-  failed: "The build failed",
+  triggered: "Preparing build",
+  running: "In progress",
+  uploaded: "Changes uploaded",
+  validated: "Changes validated",
+  blocked: "Blocked",
+  pr_open: "Pull request opened",
+  merged: "Merged",
+  closed: "Closed",
+  timeout: "Timed out · result unknown",
+  failed: "Build failed",
 };
 
 export function BuildPlanCard({ proposal, onChange, inactive = false }: { proposal: ChatProposal; onChange: (proposal: ChatProposal) => void; inactive?: boolean }) {
@@ -72,25 +72,25 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
       </div>
       <h3 className="font-semibold">{proposal.plan.title}</h3>
       <details>
-        <summary className="cursor-pointer text-xs text-muted-foreground">Technical details for the builder</summary>
+        <summary className="cursor-pointer text-xs text-muted-foreground">Specification & acceptance criteria</summary>
         <div className="mt-2 text-xs"><ChatMarkdown>{proposal.plan.spec}</ChatMarkdown></div>
         <ul className="mt-2 list-disc space-y-1 pl-4 text-xs">{proposal.plan.acceptance.map((item, index) => <li key={index}>{item}</li>)}</ul>
         <p className="mt-2 break-all font-mono text-[10px] text-muted-foreground">{proposal.plan.paths.join(", ")}</p>
       </details>
       {proposal.issue ? (
-        <p className="text-xs">Sent to LYJW as <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">suggestion #{proposal.issue.number}</a> on GitHub.</p>
+        <p className="text-xs">Opened <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
       ) : proposal.build ? (
         <BuildStatusCard key={proposal.build.runId} build={proposal.build} savedRun={proposal.run} onRun={(run) => { if (JSON.stringify(run) !== JSON.stringify(proposal.run)) onChange({ ...proposal, run }); }} />
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen || buildOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Suggest it</button>
-            <button type="button" onClick={() => { setError(null); setBuildOpen(true); }} disabled={disabled || issueOpen || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Build it now</button>
+            <button type="button" onClick={() => setIssueOpen(true)} disabled={disabled || issueOpen || buildOpen} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">Open issue</button>
+            <button type="button" onClick={() => { setError(null); setBuildOpen(true); }} disabled={disabled || issueOpen || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Pick one. Suggest it sends the plan to LYJW as an idea. Build it now has Claude make the change for LYJW to review. Both ask you to sign in with GitHub, and nothing goes live until LYJW approves it.</p>
+          <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {issueOpen && <IssuePanel proposal={proposal} disabled={disabled} onClose={() => setIssueOpen(false)} onCreated={(issue) => onChange({ ...proposal, issue })} />}
-          {buildOpen && <GithubConsent action="build" language={planLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
+          {buildOpen && <GithubConsent action="build" language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
         </>
       )}
       {error && !buildOpen && <p role="alert" className="text-xs text-red-500">{error}</p>}
@@ -150,15 +150,15 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
       <p className="font-semibold">{buildStatusLabel(savedRun)}</p>
       {savedRun && <BuildProgress run={savedRun} />}
       {savedRun?.reason && <p>{savedRun.reason}</p>}
-      {savedRun?.pr && <a href={savedRun.pr.url} target="_blank" rel="noreferrer noopener" className="inline-block underline underline-offset-2">See the change on GitHub (#{savedRun.pr.number})</a>}
+      {savedRun?.pr && <a href={savedRun.pr.url} target="_blank" rel="noreferrer noopener" className="inline-block underline underline-offset-2">View {savedRun.pr.draft ? "draft PR" : "pull request"} #{savedRun.pr.number}</a>}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted-foreground">
-        <dt>Automatic tests</dt><dd><Signal signal={savedRun?.ci} /></dd>
-        <dt>Preview site</dt><dd><Signal signal={savedRun?.preview} /></dd>
-        <dt>AI review</dt><dd><Signal signal={savedRun?.review} label={buildReviewSummary(savedRun?.review?.state)} /></dd>
+        <dt>CI</dt><dd><Signal signal={savedRun?.ci} /></dd>
+        <dt>Preview</dt><dd><Signal signal={savedRun?.preview} /></dd>
+        <dt>Claude review</dt><dd><Signal signal={savedRun?.review} label={buildReviewSummary(savedRun?.review?.state)} /></dd>
       </dl>
-      <p className="text-[10px] text-muted-foreground">The AI review is only a second opinion; LYJW decides. {terminal ? "Automatic refresh is off. Refresh to check for updates." : "Status refreshes while this card is visible."}</p>
+      <p className="text-[10px] text-muted-foreground">Claude review is advisory. {terminal ? "Automatic refresh is off. Refresh to check for updates." : "Status refreshes while this card is visible."}</p>
       {(terminal || error) && <button type="button" onClick={() => void refreshStatus()} disabled={refreshing} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">{refreshing ? "Refreshing…" : "Refresh status"}</button>}
-      <details className="text-[10px] text-muted-foreground"><summary className="cursor-pointer">Build ID</summary><p className="mt-1 break-all font-mono">{build.runId}</p></details>
+      <details className="text-[10px] text-muted-foreground"><summary className="cursor-pointer">Build details</summary><p className="mt-1 break-all font-mono">{build.runId}</p></details>
       {error && <p role="status" className="text-red-500">{error}</p>}
     </div>
   );
@@ -175,9 +175,9 @@ async function loadBuildRun(runId: string, statusToken: string, signal: AbortSig
 
 function buildStatusLabel(run?: BuildRun): string {
   if (!run) return "Status unknown · checking…";
-  if (run.phase === "triggered" && run.pr) return "Getting ready";
-  if (run.phase === "pr_open" && run.pr?.draft === true) return "Running automatic checks";
-  if (run.phase === "pr_open" && run.pr?.draft === false) return "Ready for LYJW's review";
+  if (run.phase === "triggered" && run.pr) return "Draft PR opened · starting build";
+  if (run.phase === "pr_open" && run.pr?.draft === true) return "Draft PR · awaiting checks";
+  if (run.phase === "pr_open" && run.pr?.draft === false) return "Ready for review";
   return phaseLabels[run.phase] ?? "Status unknown";
 }
 
@@ -185,7 +185,7 @@ function statusError(error: unknown): string {
   return error instanceof Error && error.message !== "Failed to fetch" ? error.message : "Couldn't refresh the build. Showing the last known status.";
 }
 
-const STEPS = ["Starting", "Building", "Checking", "Ready"] as const;
+const STEPS = ["Draft PR", "Building", "Checks", "Ready"] as const;
 const STEP_OF: Record<BuildPhase, number> = { triggered: 0, running: 1, uploaded: 2, validated: 2, blocked: 2, failed: 2, timeout: 1, pr_open: 3, merged: 3, closed: 3 };
 // 按已跑过的构建粗估，只用来安抚等待，不参与超时判断（超时见 BUILD_TIMEOUT_MS）。
 const TYPICAL_BUILD = "usually 5–15 min";
@@ -244,9 +244,7 @@ function BuildProgress({ run }: { run: BuildRun }) {
   );
 }
 
-const SIGNAL_LABELS: Record<string, string> = { success: "Passed", failure: "Failed", pending: "Running", unknown: "Not yet" };
-
-function Signal({ signal, label = signal && (SIGNAL_LABELS[signal.state] ?? signal.state) }: { signal?: BuildSignal; label?: string }) {
-  if (!signal) return <>Not yet</>;
+function Signal({ signal, label = signal?.state }: { signal?: BuildSignal; label?: string }) {
+  if (!signal) return <>Unknown</>;
   return signal.url ? <a href={signal.url} target="_blank" rel="noreferrer noopener" className="break-words underline underline-offset-2">{label}</a> : <>{label}</>;
 }

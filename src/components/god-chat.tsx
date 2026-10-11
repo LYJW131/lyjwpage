@@ -832,7 +832,7 @@ function PlannerSteps({ steps, live }: { steps: string[]; live: boolean }) {
   return (
     <details className="mb-1.5">
       <summary className={`label-mono cursor-pointer truncate text-[10px] text-muted-foreground ${live ? "normal-case" : ""}`}>
-        {live ? steps[steps.length - 1] : `${steps.length.toLocaleString("en-US")} step${steps.length > 1 ? "s" : ""} looking through the site`}
+        {live ? steps[steps.length - 1] : `${steps.length.toLocaleString("en-US")} step${steps.length > 1 ? "s" : ""} in the sandbox`}
       </summary>
       <ol className="mt-1 space-y-0.5 pl-3 text-[10px] text-muted-foreground">
         {steps.map((step, i) => <li key={i} className="label-mono normal-case leading-snug [overflow-wrap:anywhere]">{step}</li>)}
