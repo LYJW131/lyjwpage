@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { COLLECTOR_JOBS } from "@shared/collector";
+import { COLLECTOR_JOBS, RETIRED_COLLECTOR_JOBS } from "@shared/collector";
 
 import type { Env } from "./env";
 import type { Job } from "./job";
@@ -22,7 +22,8 @@ test("a job is due when the epoch minute lands on its offset", () => {
 });
 
 test("the registry covers every shared job name once, with periods that divide an hour", () => {
-  assert.deepEqual(JOBS.map((job) => job.name).sort(), [...COLLECTOR_JOBS].sort());
+  const retired: readonly string[] = RETIRED_COLLECTOR_JOBS;
+  assert.deepEqual(JOBS.map((job) => job.name).sort(), COLLECTOR_JOBS.filter((name) => !retired.includes(name)).sort());
   for (const job of JOBS) {
     assert.equal(60 % job.everyMinutes, 0, job.name);
     assert.ok(job.offset >= 0 && job.offset < job.everyMinutes, job.name);
@@ -175,4 +176,17 @@ test("cron check-ins stay off unless SENTRY_CRON_CHECKINS is true", async () => 
   assert.equal(await cronMonitor({}, real)("collector-x", async () => "ran", config), "ran");
   assert.equal(await cronMonitor({ SENTRY_CRON_CHECKINS: "false" }, real)("collector-x", async () => "ran", config), "ran");
   assert.equal(await cronMonitor({ SENTRY_CRON_CHECKINS: "true" }, real)("collector-x", async () => "ran", config), "real:ran");
+});
+
+test("retired job names stay callable as skipped and never join the schedule", async () => {
+  const outcomes = await runNamed({} as Env, ["vercel-deployments", "vercel-metrics", "nope"]);
+  assert.deepEqual(outcomes.map(({ job, status }) => [job, status]), [
+    ["vercel-deployments", "skipped"],
+    ["vercel-metrics", "skipped"],
+    ["nope", "error"],
+  ]);
+  const hour = at("2026-09-28T10:00:00Z");
+  for (let m = 0; m < 60; m++) {
+    assert.ok(dueJobs(hour + m * 60_000).every((job) => !(RETIRED_COLLECTOR_JOBS as readonly string[]).includes(job.name)));
+  }
 });

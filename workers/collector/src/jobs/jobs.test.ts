@@ -13,7 +13,6 @@ import type { Env } from "../env";
 import { mergeRepoStats } from "./github-repo";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
-import { vercelDeploymentsJob, vercelMetricsJob } from "./retired";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
 
 const noEnv = {} as Env;
@@ -180,15 +179,4 @@ test("site-analytics 缺配置或站点映射不全时跳过", async (t) => {
     siteAnalyticsJob.run({ env: partial, now, scheduled: false }),
     /both production hosts/,
   );
-});
-
-test("退役的 Vercel 任务保留 ABI 名额但不再取数", async () => {
-  for (const job of [vercelDeploymentsJob, vercelMetricsJob]) {
-    assert.deepEqual(await job.run({ env: noEnv, now, scheduled: true }), {
-      status: "skipped",
-      detail: "Retired deployment provider",
-    });
-  }
-  assert.equal(vercelDeploymentsJob.everyMinutes, 1);
-  assert.equal(vercelMetricsJob.everyMinutes, 15);
 });

@@ -50,7 +50,7 @@ api 和 ai 的 Builds 都调用同一个预览脚本，各自发布到自己的 
 
 `scripts/build.mjs` 在预览构建里等待本分支 api、ai 两个候选地址，`scripts/preview-backend.mjs#findMatchingPreview` 只接受 revision 与 `WORKERS_CI_COMMIT_SHA` 一致且状态读取就绪的候选；两份都是本提交时固定选 api：ai 先就绪时，在 `PREFERRED_GRACE_MS` 内反复重查 api（它常常晚到，之前还挂着旧提交）。只改了 AI 代码的分支没有 api 的新 Preview，会多等这一段再用 ai。等待上限见 `WAIT_MS`；等不到匹配时构建直接失败，预览构建永不回退生产后端。选中的地址既是构建期的 `PREVIEW_BACKEND_URL`，也是运行时的预览后端，构建成功后冻结在 `build/site-preview.json`；`scripts/deploy-site-preview.mjs`（`pnpm preview:deploy`）只按这份冻结记录发布 `site` 的 Preview，不重查后端。预览构建强制清空 `SENTRY_AUTH_TOKEN`、`GITHUB_TOKEN`、`PUBLIC_CF_WEB_ANALYTICS_TOKENS`，不上传 sourcemap、不带生产凭据。
 
-为了让只改前端的分支也有同提交后端可用，api 的非生产分支构建用单独的 Preview 触发器：包含路径同时覆盖前端与后端依赖（`src/*`、`shared/*`、`workers/api/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单），分支过滤器排除 `main`；生产触发器的监视路径不变。
+为了让只改前端的分支也有同提交后端可用，api 的非生产分支构建（Builds 配置里的 `previews_base_config`）另配包含路径：包含路径同时覆盖前端与后端依赖（`src/*`、`shared/*`、`workers/api/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单）；生产配置的监视路径不变。
 
 站点 Preview 由 Cloudflare Access 保护：操作者在控制台 Workers & Pages → `site` → Access → Protect this Worker → Previews only 开启，或在 Access 应用的目的地里配 `{ type: "preview_worker", worker_id: <site Worker ID> }`，身份提供方按批准的名单配置；访问者打开预览链接要先登录，没有免登录分享链接。只保护 `site` 的 Preview，不要开账号级保护以免挡住 api/ai 预览的构建就绪检查。之后在 site 的非生产 Builds 里启用 Preview URL 并把 `SITE_PREVIEW_ACCESS_READY` 设为 `true`，`preview:deploy` 才会执行。这些全部是发布前待办，未在远端配置。
 
