@@ -1,0 +1,25 @@
+name: Issue Labels
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  from-chat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # 访客 token 无权打标签，只能事后补；判据是 shared/build-routine.ts#PLAN_LABELS 各语言 issueFooter 共有的首页链接。
+      - name: Label issues filed from the homepage chat
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          printf '%s' "$BODY" | tail -n 1 | grep -qE '^_.*\]\(https://lyjw\.me\).*_$' || exit 0
+          gh label create from-chat --color 5319e7 --description "Filed from the homepage chat" --force
+          gh issue edit "$NUMBER" --add-label from-chat

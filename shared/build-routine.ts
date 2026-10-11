@@ -72,8 +72,10 @@ export function textLanguage(text: string): PlanLanguage {
   return kana > (kana + han) * 0.2 ? "ja" : "zh";
 }
 
+// issue 的小节标题须与 .github/ISSUE_TEMPLATE/ 的表单字段同步；issueFooter 末行的首页链接是 .github/workflows/issue-labels.yml 打 from-chat 标签的判据。
 export const PLAN_LABELS = {
   en: {
+    request: "Request",
     acceptance: "Acceptance criteria",
     paths: "Planned paths",
     review: "Review closely",
@@ -88,8 +90,9 @@ export const PLAN_LABELS = {
     screenshotsNote: "Captured by the build routine on its local dev server before upload; the Vercel preview is the deployed result.",
   },
   zh: {
+    request: "想要什么",
     acceptance: "验收标准",
-    paths: "计划路径",
+    paths: "涉及路径",
     review: "重点审查",
     reasons: { outside: "计划外", contract: "共享契约", auth: "构建或授权代码", prompt: "对话提示词", docs: "docs/ 之外的文档" },
     requestedBy: (account: string) => `由 @${account} 发起。`,
@@ -102,6 +105,7 @@ export const PLAN_LABELS = {
     screenshotsNote: "由构建 routine 在上传前于本地开发服务器截取；部署后的效果以 Vercel 预览为准。",
   },
   ja: {
+    request: "要望",
     acceptance: "受け入れ基準",
     paths: "変更予定のパス",
     review: "重点レビュー",
@@ -119,5 +123,5 @@ export const PLAN_LABELS = {
 
 export function buildIssueBody(plan: BuildPlan): string {
   const labels = PLAN_LABELS[planLanguage(plan)];
-  return `${plan.spec}\n\n## ${labels.acceptance}\n${plan.acceptance.map((item) => `- [ ] ${item}`).join("\n")}\n\n## ${labels.paths}\n${plan.paths.map((path) => `- \`${path}\``).join("\n")}`;
+  return `## ${labels.request}\n${plan.spec}\n\n## ${labels.acceptance}\n${plan.acceptance.map((item) => `- [ ] ${item}`).join("\n")}\n\n## ${labels.paths}\n${plan.paths.map((path) => `- \`${path}\``).join("\n")}`;
 }

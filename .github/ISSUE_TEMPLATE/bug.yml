@@ -1,0 +1,31 @@
+name: Bug
+description: 页面或数据不对
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 哪里不对
+      description: 看到了什么，本来应该是什么样。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 怎么复现
+      description: 在哪个页面、什么宽度、做了什么；截图直接拖进来。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 修好之后应该满足哪几条，一条一个勾选框。
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: paths
+    attributes:
+      label: 涉及路径
+      description: 知道的话写上相关文件或页面。
