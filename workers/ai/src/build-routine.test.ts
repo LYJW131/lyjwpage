@@ -248,7 +248,7 @@ test("issue and PR labels follow the plan language", () => {
   const pathHeavy: BuildPlan = { title: "统一构建进度", spec: "改 `src/components/live/agent-status-card.tsx` 与 workers/ai/src/chat/designer.ts 里的进度显示。", acceptance: ["`workers/ai/src/chat/designer.ts` 的进度文案一致"], paths: ["src/components/live/agent-status-card.tsx"] };
   assert.equal(planLanguage(pathHeavy), "zh", "repository paths and inline code do not outweigh the Chinese prose");
   assert.equal(visitorLanguage({ title: "回答完问题后自动折叠问题框" }), "zh", "a Chinese title with an English technical spec still shows Chinese copy to the visitor");
-  assert.match(buildIssueBody(zh), /## 验收标准[\s\S]*## 计划路径/);
+  assert.match(buildIssueBody(zh), /^## 想要什么\n[\s\S]*## 验收标准[\s\S]*## 涉及路径/);
   assert.match(buildIssueBody(ja), /## 受け入れ基準/);
   assert.match(buildIssueBody(plan), /## Acceptance criteria/);
 });
