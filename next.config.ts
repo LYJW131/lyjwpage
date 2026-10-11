@@ -9,7 +9,7 @@ import { chatCodeVersion } from "./scripts/chat-code-version.mjs";
 
 // 不可放宽成任意路径代理，否则整个 R2 桶都会暴露在站点域名下。
 const R2_ORIGIN = process.env.R2_PUBLIC_BASE_URL?.replace(/\/+$/, "") ?? "";
-const IMAGE_REWRITE_SOURCE = `${IMAGE_PATH_PREFIX}/:objectKey([a-f0-9]{64}\\.(?:png|webp|jpe?g))`;
+const IMAGE_REWRITE_SOURCE = `${IMAGE_PATH_PREFIX}/:objectKey([a-f0-9]{64}\\.(?:png|webp|jpe?g|mp3))`;
 
 // 构建时间必须在配置求值时内联；服务端模块求值会把它变成冷启动时间。
 const BUILD_TIME = new Date().toISOString();

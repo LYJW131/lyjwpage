@@ -135,7 +135,7 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 
 `/api/ingest/playstation` 的信封是 `{ version: 1, presence?, playedGames?, trophies? }`，
 每一项各自可省、缺席表示这次不谈这一项。上报入口 prepare（`shared/ingest/playstation.ts`）
-后经 `StateCore.commitIngest` 交付。`StateCore.playstationPower()` 保留在内部 RPC 契约中，
+后经 `StateCore.commitIngest` 交付。`presence`、`playedGames`、`trophies` 各自比已存的 `observedAt`：更旧或同一时刻的重复不落库，也不按这封的 `receivedAt` 改写游戏道。`StateCore.playstationPower()` 保留在内部 RPC 契约中，
 当前没有调用者；PlayStation 上报和公开状态都不使用它。奖杯信封收下之后，
 这里把已获得的奖杯 upsert 进 D1 `trophies`（`src/stores/trophy-history.ts` 的 `archiveTrophies`，失败只记日志）。
 
