@@ -5,7 +5,7 @@ import test from "node:test";
 import type Anthropic from "@anthropic-ai/sdk";
 import { GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, type GodChatEffort } from "@shared/god-chat-tiers";
-import { BUILD_DESIGN_LIMITS, type BuildPlan } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, PLAN_LABELS, type BuildPlan } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { ChatQuota } from "./chat/quota.ts";
 import type { AnthropicEgress } from "./chat/egress.ts";
@@ -307,7 +307,8 @@ test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并�
   assert.equal(design.remaining, BUILD_DESIGN_LIMITS.maxTurns - 1);
   assert.deepEqual(events.filter((event) => event.type === "step").map((event) => event.type === "step" && event.text), ["Cloned the repository", "Searched the code for “empty state”"]);
   assert.ok(events.some((event) => event.type === "doc" && event.doc === "repo" && event.path === "src/components/live/music-card.tsx" && event.url.endsWith("/blob/main/src/components/live/music-card.tsx")));
-  assert.equal(textOf(events), "Here is my plan.");
+  assert.equal(textOf(events), `${PLAN_LABELS.en.handoff}Here is my plan.`);
+  assert.ok(events.findIndex((event) => event.type === "text") < events.findIndex((event) => event.type === "design"), "the ordinary chat says one line before the planner takes over");
   const proposed = events.find((event) => event.type === "plan");
   assert.ok(proposed?.type === "plan");
   assert.deepEqual((await readPlan(env, proposed.token))?.plan, plan);
