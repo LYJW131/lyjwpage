@@ -1,10 +1,8 @@
-import { githubAvatarPng, pngResponse } from "@/lib/github-avatar-icon";
-import { site } from "@/lib/site";
+import type { LoaderFunctionArgs } from "react-router";
 
-export const size = { width: 180, height: 180 };
-export const contentType = "image/png";
-export const alt = site.githubLogin;
+import { STABLE_ASSET_CACHE_CONTROL } from "@/lib/site-policy";
+import { siteAssetResponse } from "@/server/site-asset";
 
-export default async function AppleIcon() {
-  return pngResponse(await githubAvatarPng(size.width), contentType);
+export async function loader({ context }: LoaderFunctionArgs) {
+  return siteAssetResponse(context, "/site-assets/apple-icon.png", STABLE_ASSET_CACHE_CONTROL);
 }

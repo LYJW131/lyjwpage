@@ -1,12 +1,18 @@
-import type { Metadata } from "next";
-import Link from "next/link";
+import { Link } from "react-router";
 
 import { Footer } from "@/components/footer";
 import { HomeLink } from "@/components/home-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui/card";
+import type { MetaDescriptor } from "react-router";
 
-export const metadata: Metadata = { title: "404" };
+export function meta(): MetaDescriptor[] {
+  return [{ title: "404 — LYJW's Homepage" }];
+}
+
+export function loader() {
+  throw new Response(null, { status: 404 });
+}
 
 export default function NotFound() {
   return (
@@ -32,7 +38,7 @@ export default function NotFound() {
               </p>
               <div className="mt-6">
                 <Link
-                  href="/"
+                  to="/"
                   className="paper-card inline-flex h-8 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-xs font-medium text-foreground transition-colors hover:bg-surface-hover"
                 >
                   Back to home

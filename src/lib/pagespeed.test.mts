@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fetchPageSpeed, mergePageSpeed, parsePageSpeed } from "./pagespeed.ts";
-import type { LighthouseVitals, PageSpeedSample } from "./vercel-deployments-types.ts";
+import type { LighthouseVitals, PageSpeedSample } from "./site-deployments-types.ts";
 
 const response = (overrides: Record<string, unknown> = {}) => ({
   captchaResult: "CAPTCHA_NOT_NEEDED",

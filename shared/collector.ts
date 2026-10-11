@@ -6,6 +6,8 @@ export const COLLECTOR_JOBS = [
   "github-repo",
   "vercel-deployments",
   "vercel-metrics",
+  "site-deployments",
+  "site-analytics",
   "cloudflare-deployments",
   "cloudflare-metrics",
   "sentry-status",

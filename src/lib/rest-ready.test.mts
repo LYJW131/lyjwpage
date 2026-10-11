@@ -18,7 +18,7 @@ test("首屏没揭开时图保持原样，揭开后一律 eager", () => {
   assert.deepEqual(resolveImageLoading(true, "eager", false), { loading: "eager" });
 });
 
-test("priority 不带 loading，避免和 next/image 的预载冲突", () => {
+test("priority 不带 loading，避免和 AppImage 的预载冲突", () => {
   assert.deepEqual(resolveImageLoading(false, "lazy", true), {});
   assert.deepEqual(resolveImageLoading(true, "lazy", true), {});
   assert.deepEqual(resolveImageLoading(true, undefined, true), {});

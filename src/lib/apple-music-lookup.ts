@@ -18,8 +18,8 @@ export function normalizeForMatch(value: string | null | undefined) {
   return (value ?? "")
     .toLowerCase()
     .normalize("NFKC")
-    .replace(/[\s　]/g, "")
-    .replace(/[-–—_.,'"‘’“”!?()（）\[\]・:：]/g, "");
+    .replace(/[\s\u3000]/g, "")
+    .replace(/[-–—_.,'"‘’“”!?()（）[\]・:：]/g, "");
 }
 
 function artistNameMatches(found: string | null | undefined, wanted: string) {

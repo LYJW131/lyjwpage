@@ -12,12 +12,11 @@ export interface Env {
 
   APPLE_MUSIC_STOREFRONT?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
-  VERCEL_PROJECT_ID?: string;
-  VERCEL_TEAM_ID?: string;
+  SITE_WORKER_TAG?: string;
+  SITE_ANALYTICS_SITES?: string;
 
   GITHUB_TOKEN?: string;
   GITHUB_DISPATCH_TOKEN?: string;
-  VERCEL_TOKEN?: string;
   CLOUDFLARE_METRICS_TOKEN?: string;
   SENTRY_API_TOKEN?: string;
   PAGESPEED_API_KEY?: string;

@@ -17,7 +17,6 @@ entrypoint = "DevOverrideReader"
 [vars]
 STORAGE_PREFIX = "lyjwpage-test"
 ALLOWED_ORIGINS = "https://*.vercel.app"
-SITE_URL = "https://lyjwpage-do-test.vercel.app"
 APPLE_MUSIC_STOREFRONT = "cn"
 
 [alias]

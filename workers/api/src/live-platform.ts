@@ -1,4 +1,5 @@
 import type { LiveEvent } from "@/lib/live-events";
+import { STATUS_TAGS } from "@/lib/status-views";
 
 import { currentContext, requestStore } from "@api/runtime";
 import type { LivePushRoom } from "./origin-worker";
@@ -14,41 +15,27 @@ export function afterResponse(work: () => Promise<void>): Promise<void> {
 
 const REVALIDATE_TIMEOUT_MS = 5_000;
 
-export async function expireStatusTags(
-  tags: readonly string[],
-): Promise<void> {
-  if (!tags.length) return;
-  const delivered = await revalidateVercel(currentContext().env, tags);
-  if (delivered) console.log("[revalidate]", tags.join(","));
-}
-
-async function revalidateVercel(env: Env, tags: readonly string[]): Promise<boolean> {
-  const site = env.SITE_URL?.replace(/\/+$/, "");
-  const secret = env.REVALIDATE_SECRET;
-  if (!site || !secret) {
-    console.warn("[revalidate] 没配 SITE_URL / REVALIDATE_SECRET，缓存失效停用");
-    return false;
+export async function expireStatusTags(tags: readonly string[]): Promise<void> {
+  const valid = [...new Set(tags.filter((tag) => STATUS_TAGS.includes(tag)))];
+  if (!valid.length) return;
+  const service = currentContext().env.SITE_CACHE;
+  if (!service) {
+    console.warn("[revalidate] SITE_CACHE is not configured");
+    return;
   }
-
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const response = await fetch(`${site}/api/revalidate`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${secret}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ tags }),
-      signal: AbortSignal.timeout(REVALIDATE_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      const envelope = (await response.json().catch(() => null)) as { error?: string } | null;
-      console.error("[revalidate]", site, response.status, envelope?.error ?? "");
-      return false;
-    }
-    return true;
+    await Promise.race([
+      service.invalidate(valid),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Site cache timeout")), REVALIDATE_TIMEOUT_MS);
+      }),
+    ]);
+    console.log("[revalidate]", valid.join(","));
   } catch (error) {
     console.error("[revalidate]", error instanceof Error ? error.message : String(error));
-    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

@@ -1,5 +1,5 @@
 export const CHAT_CONSENT_KEY = "lyjw.chat.consent";
-// 构建期由 next.config.ts 按对话相关代码的内容哈希注入，代码一变旧的同意就失效。
+// 构建期由 vite.config.ts 按对话相关代码的内容哈希注入，代码一变旧的同意就失效。
 const CHAT_CONSENT_VERSION = process.env.CHAT_CODE_VERSION ?? "";
 
 type ConsentStorage = Pick<Storage, "getItem" | "setItem">;

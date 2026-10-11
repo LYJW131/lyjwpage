@@ -37,8 +37,6 @@ export type BuildRun = {
   ci?: BuildSignal;
   preview?: BuildSignal;
   review?: BuildSignal;
-  // Vercel 预览的公开分享链接：preview.url 在部署成功后换成 url；expiresAt 为 epoch 毫秒。
-  previewShare?: { deploymentId: string; url: string; expiresAt: number };
   reconciledAt?: number;
   githubUpdatedAt?: number;
 };
@@ -79,7 +77,7 @@ export const PLAN_LABELS = {
     planReady: "Here is the plan for your review.",
     askReady: "Pick your answers below.",
     screenshots: "Screenshots",
-    screenshotsNote: "Captured by the build routine on its local dev server before upload; the Vercel preview is the deployed result.",
+    screenshotsNote: "Captured by the build routine before upload; the deployed preview requires Cloudflare Access sign-in.",
   },
   zh: {
     acceptance: "验收标准",
@@ -92,7 +90,7 @@ export const PLAN_LABELS = {
     planReady: "方案如下，请过目。",
     askReady: "请在下面选一下。",
     screenshots: "截图",
-    screenshotsNote: "由构建 routine 在上传前于本地开发服务器截取；部署后的效果以 Vercel 预览为准。",
+    screenshotsNote: "由构建 routine 在上传前截取；部署后的预览需要通过 Cloudflare Access 登录。",
   },
   ja: {
     acceptance: "受け入れ基準",
@@ -105,7 +103,7 @@ export const PLAN_LABELS = {
     planReady: "プランを用意しました。ご確認ください。",
     askReady: "下から選んでください。",
     screenshots: "スクリーンショット",
-    screenshotsNote: "ビルド routine がアップロード前にローカルの開発サーバーで撮影したものです。デプロイ後の表示は Vercel のプレビューで確認してください。",
+    screenshotsNote: "アップロード前にビルド routine が撮影したものです。デプロイ後のプレビューには Cloudflare Access へのサインインが必要です。",
   },
 } as const satisfies Record<PlanLanguage, unknown>;
 

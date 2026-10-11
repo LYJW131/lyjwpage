@@ -13,8 +13,8 @@ import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_PATH, BUILD_STATUS_PATH, planLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
 
-const BUILD_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_PATH);
-const STATUS_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
+const BUILD_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, BUILD_PATH);
+const STATUS_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
 
 const phaseLabels: Record<BuildPhase, string> = {
   triggered: "Preparing build",
@@ -153,7 +153,7 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
       {savedRun?.pr && <a href={savedRun.pr.url} target="_blank" rel="noreferrer noopener" className="inline-block underline underline-offset-2">View {savedRun.pr.draft ? "draft PR" : "pull request"} #{savedRun.pr.number}</a>}
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-muted-foreground">
         <dt>CI</dt><dd><Signal signal={savedRun?.ci} /></dd>
-        <dt>Preview</dt><dd><Signal signal={savedRun?.preview} /></dd>
+        <dt>Preview</dt><dd><Signal signal={savedRun?.preview} title="Preview (sign-in required)" /></dd>
         <dt>Claude review</dt><dd><Signal signal={savedRun?.review} label={buildReviewSummary(savedRun?.review?.state)} /></dd>
       </dl>
       <p className="text-[10px] text-muted-foreground">Claude review is advisory. {terminal ? "Automatic refresh is off. Refresh to check for updates." : "Status refreshes while this card is visible."}</p>
@@ -244,7 +244,7 @@ function BuildProgress({ run }: { run: BuildRun }) {
   );
 }
 
-function Signal({ signal, label = signal?.state }: { signal?: BuildSignal; label?: string }) {
+function Signal({ signal, label = signal?.state, title }: { signal?: BuildSignal; label?: string; title?: string }) {
   if (!signal) return <>Unknown</>;
-  return signal.url ? <a href={signal.url} target="_blank" rel="noreferrer noopener" className="break-words underline underline-offset-2">{label}</a> : <>{label}</>;
+  return signal.url ? <a href={signal.url} target="_blank" rel="noreferrer noopener" title={title} className="break-words underline underline-offset-2">{label}</a> : <>{label}</>;
 }

@@ -748,28 +748,19 @@ test("StateCore enrichment is stored with the track and the push reads it withou
   }
 });
 
-test("commit performs no room or Vercel I/O and Worker dispatch performs both", async () => {
+test("commit performs no room or site-cache I/O and Worker dispatch performs both", async () => {
   const storage = new FakeStorage();
   installStorageForTests(storage);
   let broadcasts = 0;
   let revalidates = 0;
   const env = {
     ...testEnv(),
-    SITE_URL: "https://site.example",
-    REVALIDATE_SECRET: "secret",
+    SITE_CACHE: { invalidate: async (tags: readonly string[]) => { assert.ok(tags.length); revalidates += 1; } },
     LIVE_PUSH: {
       idFromName: () => null,
       get: () => ({ broadcast: async () => { broadcasts += 1; } }),
     },
   } as unknown as Env;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input) => {
-    if (String(input) === "https://site.example/api/revalidate") {
-      revalidates += 1;
-      return Response.json({ ok: true });
-    }
-    throw new Error(`unexpected fetch ${String(input)}`);
-  }) as typeof fetch;
   try {
     const command = await inRequest(env, () => prepareIngest("mac", envelope({
       chargingDevices: { devices: [
@@ -784,7 +775,6 @@ test("commit performs no room or Vercel I/O and Worker dispatch performs both", 
     assert.equal(broadcasts, 1);
     assert.equal(revalidates, 1);
   } finally {
-    globalThis.fetch = originalFetch;
     resetStorageForTests();
   }
 });

@@ -8,11 +8,11 @@ const PROTECTED_PATH_SEGMENTS = new Set([
 
 function protectedPathSegment(segment: string): boolean {
   const lower = segment.toLowerCase();
-  return PROTECTED_PATH_SEGMENTS.has(lower) || lower.startsWith(".windsurf") || /^wrangler.*\.toml$/.test(lower) || /^next\.config\./.test(lower);
+  return PROTECTED_PATH_SEGMENTS.has(lower) || lower.startsWith(".windsurf") || /^wrangler.*\.(?:toml|jsonc?)$/.test(lower) || /^(?:next|vite|react-router)\.config\./.test(lower);
 }
 
 export function allowedBuildPath(path: string): boolean {
-  if (!path || path.length > 240 || !/^[A-Za-z0-9_@().\[\] /-]+$/.test(path) || path.trim() !== path) return false;
+  if (!path || path.length > 240 || !/^[A-Za-z0-9_@().[\] /-]+$/.test(path) || path.trim() !== path) return false;
   const segments = path.split("/");
   if (segments.some((part) => !part || part === "." || part === "..")) return false;
   if (segments.some(protectedPathSegment)) return false;
@@ -40,7 +40,7 @@ export function checkBuildPlan(value: unknown): { plan: BuildPlan } | { error: s
   const badPath = paths.find((path) => typeof path !== "string" || !allowedBuildPath(path.replace(/\/$/, "/_")));
   if (badPath !== undefined) return { error: `Path ${JSON.stringify(badPath)} is not allowed. Use repository paths under src/, public/, docs/, shared/ or workers/*/src/ that avoid protected names.` };
   const text = `${cleanTitle}\n${spec}\n${acceptance.join("\n")}`;
-  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.toml|next\.config\.[\w]+|vercel\.json|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
+  const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.(?:toml|jsonc?)|(?:next|vite|react-router)\.config\.[\w]+|vercel\.json|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
   // 句末标点会被一起匹配进最后一段（「…/AGENTS.md.」），比对前去掉，否则加个句号就能绕过。
   const protectedMention = mentionedPaths.find((path) => path.split("/").map((segment) => segment.replace(/[.,;:]+$/, "")).some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters"));
   if (protectedMention) return { error: `The title, spec or acceptance names ${JSON.stringify(protectedMention)}, a protected file or directory. Describe the behavior without naming agent instructions, dependency manifests, CI, scripts, deploy config or reporters.` };
