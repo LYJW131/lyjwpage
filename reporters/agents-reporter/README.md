@@ -166,7 +166,7 @@ Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺�
 tokens.ci 给的原样用，不换算时区。tokens.ci 的 `reasoning` 与 `output` 分列相加，站点契约里
 reasoning 是 output 的子集，所以并进 `outputTokens`；费用用 tokens.ci 的估价，Devin 自家模型记 0，那天 `costComplete` 为
 false。第一次出现 Devin CLI 之后，tokens.ci 有记录而没有它的日子发一行全 0。不带活动和桶。拉失败只发 `state: "error"`，
-`collectedAt` 是本进程上一次成功的时刻（重启后第一次就失败时为 null，站点不收这一行）。`LIMITS_FIXTURE` 模式下不拉。
+`collectedAt` 是上一次成功的时刻（落在数据卷的 `/data/devin-usage.json`，跨重启保留）。`LIMITS_FIXTURE` 模式下不拉。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向

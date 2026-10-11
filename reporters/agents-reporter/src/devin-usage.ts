@@ -1,3 +1,6 @@
+import { readFile, rename, writeFile } from "node:fs/promises";
+import path from "node:path";
+
 import { type CodingUsageAgent, type CodingUsageDay, MAX_DAY_MODELS, OVERFLOW_MODEL } from "./coding-usage.js";
 import { config } from "./config.js";
 
@@ -120,13 +123,33 @@ export function devinUsageDays(body: unknown): CodingUsageDay[] {
   return [...merged].map(([date, rows]) => usageDay(date, rows));
 }
 
-let lastSuccessAt: number | null = null;
+function statePath(): string {
+  return path.join(config.home || "/data", "devin-usage.json");
+}
 
-export function devinUsageFailure(error: unknown): CodingUsageAgent {
+// 站点拒收 collectedAt 早于已存账本的行，失败行要带上次成功的时刻才进得去，所以跨重启落盘。
+async function readLastSuccessAt(): Promise<number | null> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(statePath(), "utf8"));
+    const at = (parsed as { collectedAt?: unknown } | null)?.collectedAt;
+    return typeof at === "number" && Number.isSafeInteger(at) && at > 0 ? at : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeLastSuccessAt(collectedAt: number): Promise<void> {
+  const file = statePath();
+  const temporary = `${file}.${process.pid}.tmp`;
+  await writeFile(temporary, JSON.stringify({ collectedAt }), { mode: 0o600 });
+  await rename(temporary, file);
+}
+
+export async function devinUsageFailure(error: unknown): Promise<CodingUsageAgent> {
   return {
     id: DEVIN_AGENT_ID,
     state: "error",
-    collectedAt: lastSuccessAt,
+    collectedAt: await readLastSuccessAt(),
     error: error instanceof Error ? error.message : String(error),
     warning: null,
     sessionCount: null,
@@ -139,6 +162,6 @@ export async function collectDevinUsage(now = Date.now()): Promise<CodingUsageAg
   const response = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!response.ok) throw new DevinUsageError(`tokens.ci responded ${response.status}`);
   const days = devinUsageDays(await response.json());
-  lastSuccessAt = now;
+  await writeLastSuccessAt(now);
   return { id: DEVIN_AGENT_ID, state: "ok", collectedAt: now, error: null, warning: null, sessionCount: null, days };
 }
