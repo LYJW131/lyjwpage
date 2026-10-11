@@ -25,6 +25,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v6
+        if: runner.environment == 'github-hosted'
 
       - uses: actions/setup-node@v5
         with:
@@ -33,7 +34,17 @@ jobs:
           cache: ${{ runner.environment == 'github-hosted' && 'pnpm' || '' }}
           package-manager-cache: ${{ runner.environment == 'github-hosted' }}
 
-      - run: pnpm install --frozen-lockfile
+      - name: Reuse pnpm tool
+        if: runner.environment == 'self-hosted'
+        run: bash scripts/setup-ci-pnpm.sh
+
+      - name: Install dependencies
+        run: |
+          if [ -n "${CI_CACHE_DIR:-}" ]; then
+            pnpm install --frozen-lockfile --store-dir "$CI_CACHE_DIR/pnpm-store"
+          else
+            pnpm install --frozen-lockfile
+          fi
 
       # CI_CACHE_DIR 只在自建机上设置。按内容判定缓存是因为每次检出文件 mtime 都会变；先复制再改名回去，并发任务不会写坏同一份缓存
       - name: pnpm lint
@@ -47,7 +58,17 @@ jobs:
           cp "$RUNNER_TEMP/eslintcache" "$CI_CACHE_DIR/eslintcache.$GITHUB_JOB.$GITHUB_RUN_ID"
           mv "$CI_CACHE_DIR/eslintcache.$GITHUB_JOB.$GITHUB_RUN_ID" "$CI_CACHE_DIR/eslintcache"
 
-      - run: pnpm -r --include-workspace-root typecheck
+      - name: Workspace typecheck
+        run: |
+          if [ -n "${CI_CACHE_DIR:-}" ]; then
+            cp "$CI_CACHE_DIR/tsconfig.tsbuildinfo" tsconfig.tsbuildinfo 2>/dev/null || true
+          fi
+          pnpm -r --include-workspace-root typecheck
+          if [ -n "${CI_CACHE_DIR:-}" ]; then
+            cache_file="$CI_CACHE_DIR/tsconfig.tsbuildinfo.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+            cp tsconfig.tsbuildinfo "$cache_file"
+            mv "$cache_file" "$CI_CACHE_DIR/tsconfig.tsbuildinfo"
+          fi
 
       - name: Workspace tests
         run: >-
