@@ -30,7 +30,7 @@ export function MiniPlayer() {
         className="flex size-full items-center justify-center overflow-hidden transition-opacity hover:opacity-80 sm:size-6 sm:rounded-sm"
       >
         <PlayerArtwork
-          artwork={(player.activeItem ?? player.item)?.artwork ?? null}
+          artwork={(player.activeItem ?? player.item)?.artworkUrl ?? null}
           size={MINI_ARTWORK_PX}
           className="size-full sm:size-6 sm:rounded-sm"
         />

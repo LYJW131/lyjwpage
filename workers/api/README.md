@@ -230,12 +230,12 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   （有效期或结束时刻挪动超过一分钟也写）；状态或标题变了在那一刻关上旧段、开新段。
   `holdUntil` 是每次观测带宽限的有效期，只决定这段还开不开着、在线时画到此刻：Mac 的播放、Emby 播放与暂停
   用 `PULSE_STATE_HOLD_MS`；HomePod 只在状态变化时由 HA 推一次，按那份快照的可见期限（`src/lib/homepod-store.ts`
-  的 `homePodVisibleUntil`：剩余时长加宽限，单曲循环另算，与首页判 HomePod 是否还在放同一个口径）；主机没醒时
+  的 `homePodVisibleUntil`：播放中从 `observedAt` 起算剩余时长再加宽限，暂停从收到时刻起算，单曲循环另算，与首页判 HomePod 是否还在放同一个口径）；主机没醒时
   只按闲档查一次，用 `GAMING_HOLD_MS`；Emby 明确停播之后一直是空闲、`holdUntil` 为 null，开着的那一段不设过期，
   七天没开播仍是观测到的空闲。
   过了 `holdUntil` 来源就算断了，旧段只认到确实知道的那一刻 `max(seenAt, endsBy)`，宽限不算进事实，中间是未知：
-  定期确认的来源（Mac、Emby、PSN）`endsBy` 为 null，认到最后一次确认；HomePod 的 `endsBy` 是这首按剩余时长
-  该放完的那一刻（单曲循环、没有时长时为 null），一首长歌只有开头那一次推送也能整段留下到曲终。
+  定期确认的来源（Mac、Emby、PSN）`endsBy` 为 null，认到最后一次确认；HomePod 的 `endsBy` 是 `src/lib/homepod-store.ts`
+  的 `homePodTrackEnd`（播放中为 `observedAt` 加上 `durationMs - positionMs`，因为 `positionMs` 是 `observedAt` 那一刻的进度；暂停不往前走，从收到时刻起算；单曲循环、没有时长时为 null），一首长歌只有开头那一次推送也能整段留下到曲终。
   过期还没被下一次观测关上的段在图上也只画到那一刻，关上之后画法不变。原始字段分开存：listening 是
   `source`（mac / homepod）、`title`、`artist`、`album`、`trackId`；watching 是 `itemId`、`title`、`subtitle`；
   gaming 是 `titleId`、`title`。标题只防病态长度（`PULSE_TITLE_MAX`）。

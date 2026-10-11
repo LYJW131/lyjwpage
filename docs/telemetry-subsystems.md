@@ -117,7 +117,7 @@
 
 ### 接口缓存与公开查询策略
 - `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `workers/api/src/routes/lyrics/route.ts`）。
-- 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用。
+- 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用，播放器打开时若条目里已经有视频就不再现查。同一 `songId` 上已存的视频不会被一次没查出结果的上报清掉（`src/lib/track-enrichment.ts#keepEnrichment`）；Mac 掉线后 HomePod 接的是同一首且没带视频时，页面沿用 Mac 上那份（`src/lib/freshness.ts#liveNowListening`）。
 
 ---
 
@@ -256,6 +256,7 @@ payload: >-
 - `/api/status/listening/now` 动态裁决优先级：
   `MacBook 正在播放` > `MacBook 暂停未过宽限期` > `HomePod 正在播放` > `HomePod 暂停未过宽限期`（宽限期 `src/lib/now-listening.ts#MUSIC_PAUSE_GRACE_MS`）。
 - 服务端通过 `observedAt` 动态计算 `expiresInMs` 下发给客户端，由浏览器精确调度下一次查询时间，避免在服务端无状态实例上挂载定时器。
+- HomePod 正在播放时，曲终和可见期限从 `observedAt` 起算剩余时长（`src/lib/homepod-store.ts#homePodTrackEnd`），再加静音宽限；上报晚到也不能把剩余时长从 `receivedAt` 再放一遍。暂停时进度冻结，剩余从收到时刻算。卡片在可见期限到点重取 `listening/now`。
 - 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等任一客户端）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），按时长还没放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS`（`src/lib/limits.ts`）就给开播时刻、时长与理想误差；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」、估算进度和虚线框里的理想误差（如 `±3s`），不同步歌词；放完再留 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首被推过来，到点还没有就撤下并重取一次。`elsewhere.next` 是按循环或容器顺序推出的下一首（规则见 [最近在听](../workers/api/README.md#最近在听)），卡片把它放在歌词的位置：独占整行时在 Hero 右栏，否则在 Hero 下面一行，带 `Loop` / `In Order` 标明依据；推不出来就不显示。当前这首按时长放完、下一首还没被看见时，Hero 先换成猜的那首（开播取上一首的推断曲终，徽标换成依据），确认上榜的是同一首就原地接上，等待窗口过了还没确认就照常撤下。
 
 ---

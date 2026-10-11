@@ -109,6 +109,38 @@ test("Mac 信封：前面的模块分段失败时 coding 模块不挂上（状�
   assert.deepEqual(prepared.rejected.map((entry) => entry.module), ["codingActivity"]);
 });
 
+test("Mac 信封：队列里没标题的行不把即将播放指到别的歌", () => {
+  const blankFirst = prepareTelemetryEnvelope(mac({
+    appleMusic: {
+      state: "playing",
+      title: "B",
+      queue: {
+        index: 0,
+        tracks: [{ title: "" }, { title: "A" }, { title: "B" }, { title: "C" }],
+      },
+    },
+  }), NOW);
+  assert.deepEqual(
+    blankFirst.modules.appleMusic?.upcomingTracks.map((track) => track.title),
+    ["C"],
+  );
+
+  const blankBeforeCurrent = prepareTelemetryEnvelope(mac({
+    appleMusic: {
+      state: "playing",
+      title: "B",
+      queue: {
+        index: 2,
+        tracks: [{ title: " " }, { title: "A" }, { title: "B" }, { title: null }, { title: "C" }],
+      },
+    },
+  }), NOW);
+  assert.deepEqual(
+    blankBeforeCurrent.modules.appleMusic?.upcomingTracks.map((track) => track.title),
+    ["C"],
+  );
+});
+
 test("agents 信封：限额照写，坏的 coding 数据只丢它自己", () => {
   const prepared = prepareAgentLimits({
     agents: [{ id: "cursor", plan: { tier: "ultra" }, limits: [] }],
