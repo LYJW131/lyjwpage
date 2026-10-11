@@ -15,6 +15,7 @@
 | [CodeQL 告警自动修复](./codeql-autofix.md) | runbook | CodeQL 扫描后每条未关闭告警派一个 Cursor 云端 agent 修复并各开一个 PR |
 | [AI Worker 首次迁移](./ai-worker-migration.md) | runbook | 公开状态 RPC、聊天 DO 转移、密钥与构建配置的有序切换 |
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
+| [自建 Actions runner 实测](./actions-runner-benchmark.md) | record | 同一提交的托管机与自建机 CI、CodeQL 耗时及配置验证 |
 | [页面效果图、GIF 与架构图产物](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图重生成 |
 | [iOS App 上机验证](./ios-app-handoff.md) | runbook | `apps/ios` 的系统音乐、健康上报、小组件、快捷指令及后台设备验收 |
 | [iOS App 验证记录](./ios-app-verification.md) | record | SDK 构建、模拟器端到端验证与签名装机的核验快照 |
