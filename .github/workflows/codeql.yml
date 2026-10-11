@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
     outputs:
       languages: ${{ steps.pick.outputs.languages }}
     steps:
@@ -29,7 +28,7 @@ jobs:
 
       - uses: dorny/paths-filter@v4
         id: filter
-        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        if: github.event_name == 'push'
         with:
           filters: |
             javascript-typescript:
@@ -40,12 +39,12 @@ jobs:
               - .github/workflows/**
               - "**/action.{yml,yaml}"
 
-      # 每周定时扫不看改动，两种语言都扫
+      # 只有推 main / dev 按改动过滤；PR 和每周定时扫都两种语言全扫
       - id: pick
         env:
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" != push ] && [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+          if [ "$GITHUB_EVENT_NAME" != push ]; then
             CHANGED='["javascript-typescript","actions"]'
           fi
           echo "languages=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
