@@ -59,6 +59,11 @@ export function planLanguage(plan: Pick<BuildPlan, "title" | "spec" | "acceptanc
   return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`);
 }
 
+// 访客看到的说明跟标题走：规格常是英文技术说明，标题按规划者的约定用访客的语言。
+export function visitorLanguage(plan: Pick<BuildPlan, "title">): PlanLanguage {
+  return textLanguage(plan.title);
+}
+
 export function textLanguage(text: string): PlanLanguage {
   const kana = text.match(/[\u3040-\u30ff]/g)?.length ?? 0;
   const han = text.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
@@ -78,6 +83,7 @@ export const PLAN_LABELS = {
     issueFooter: "_Filed from the [homepage chat](https://lyjw.me)._",
     planReady: "Here is the plan for your review.",
     askReady: "Pick your answers below.",
+    handoff: "Good idea. I'll bring in the planner to work it out with you.",
     screenshots: "Screenshots",
     screenshotsNote: "Captured by the build routine on its local dev server before upload; the Vercel preview is the deployed result.",
   },
@@ -91,6 +97,7 @@ export const PLAN_LABELS = {
     issueFooter: "_提交自[首页对话](https://lyjw.me)。_",
     planReady: "方案如下，请过目。",
     askReady: "请在下面选一下。",
+    handoff: "好主意，我请规划者来和你一起把它想清楚。",
     screenshots: "截图",
     screenshotsNote: "由构建 routine 在上传前于本地开发服务器截取；部署后的效果以 Vercel 预览为准。",
   },
@@ -104,6 +111,7 @@ export const PLAN_LABELS = {
     issueFooter: "_[ホームページのチャット](https://lyjw.me)から作成されました。_",
     planReady: "プランを用意しました。ご確認ください。",
     askReady: "下から選んでください。",
+    handoff: "いいですね。プランナーに引き継いで、一緒に詰めていきます。",
     screenshots: "スクリーンショット",
     screenshotsNote: "ビルド routine がアップロード前にローカルの開発サーバーで撮影したものです。デプロイ後の表示は Vercel のプレビューで確認してください。",
   },

@@ -6,14 +6,14 @@
 
 ## 设计与确认
 
-Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，只有调用 `start_design` 才创建设计会话：Worker 在 Claude Managed Agents 上开一个会话，同一条回复随即交给其中的 Opus 规划者，从访客这条消息接着规划，不让访客再描述一遍；对话卡片在交接处画一条设计会话分隔线。候选请求仍扣普通聊天额度，Sonnet 无空位时拒绝，不降级；开启会话的这一轮也计入设计轮数。已有有效会话的请求直接转给同一个 Managed Agents 会话，不再调用 Clef，也不扣普通聊天档位额度；规划者的上下文、读过的文件和沙盒都留在会话里，设计令牌只带会话 ID。会话期限、轮数和全站窗口上限以 `BUILD_DESIGN_LIMITS` 为准；计数存在 `BuildCoordinator`，复制浏览器存档不能刷新额度。会话过期或轮数耗尽后，浏览器清除设计令牌并恢复普通对话，在最后一条回复下标出会话已结束及原因（`/exit` 同样标出），提示重新描述改动可开新会话；服务端返回专用失效代码时也清除令牌。
+Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，只有调用 `start_design` 才创建设计会话，调用前先对访客说一句交接（模型没写时 Worker 按访客语言补 `shared/build-routine.ts#PLAN_LABELS` 的 `handoff`）：Worker 在 Claude Managed Agents 上开一个会话，同一条回复随即交给其中的 Opus 规划者，从访客这条消息接着规划，不让访客再描述一遍；对话卡片在交接处画一条设计会话分隔线。候选请求仍扣普通聊天额度，Sonnet 无空位时拒绝，不降级；开启会话的这一轮也计入设计轮数。已有有效会话的请求直接转给同一个 Managed Agents 会话，不再调用 Clef，也不扣普通聊天档位额度；规划者的上下文、读过的文件和沙盒都留在会话里，设计令牌只带会话 ID。会话期限、轮数和全站窗口上限以 `BUILD_DESIGN_LIMITS` 为准；计数存在 `BuildCoordinator`，复制浏览器存档不能刷新额度。会话过期或轮数耗尽后，浏览器清除设计令牌并恢复普通对话，在最后一条回复下标出会话已结束及原因（`/exit` 同样标出），提示重新描述改动可开新会话；服务端返回专用失效代码时也清除令牌。
 
 规划者在会话沙盒里匿名克隆公开仓库 main，用 glob、grep、read 和只读命令查代码与文档，用 `get_site_status` 看实时数据，再用 `ask_visitor` 提问、`propose_build` 输出标题、Markdown 规格、验收项和预计路径。题目和计划不立刻回结果：会话停在等结果的状态，访客下一条消息就作为那次调用的结果发回。`workers/ai/src/build/validation.ts#parseBuildPlan` 校验后签出计划；计划有效期取 `BUILD_PLAN_TTL_MS`。计划内容是需求，不是可执行指令。规划者默认访客不了解站点的设计与代码：给访客看的回复、题目和计划标题只讲页面上看得到的效果，技术取舍自己从代码里定，路径、组件名等实现细节只进规格、验收项和路径（`workers/ai/src/chat/design.ts#PLANNER_PROMPT`）。改动范围的最终硬限制在上传阶段执行。
 
-计划卡的两个出口互斥，同时最多展开一个确认面板。浏览器在发起 PKCE 授权前，每次都在计划卡里展开 `src/components/github-consent.tsx#GithubConsent` 的 GitHub 授权说明（随计划语言用中日英），访客点接受才弹出授权窗口；同意不保存，下次再点 Suggest it 或 Build it now 还会展开。
+计划卡的两个出口互斥，同时最多展开一个确认面板。浏览器在发起 PKCE 授权前，每次都在计划卡里展开 `src/components/github-consent.tsx#GithubConsent` 的 GitHub 授权说明（按 `shared/build-routine.ts#visitorLanguage` 跟随访客语言，用中日英），访客点接受才弹出授权窗口；同意不保存，下次再点 Open issue 或 Start build 还会展开。
 
-- **Suggest it**：浏览器完成 GitHub PKCE 授权，将授权码、verifier 和计划 token 提交；Worker 从签名计划生成正文，以访客身份创建 issue，然后撤销访客 token。
-- **Build it now**：每次都弹窗连接 GitHub，与 Suggest it 一样把授权码随计划一起交给 Worker，不签发、不保存任何会话凭据。Worker 兑换授权码、查 `/user` 拿账号名、用户 ID 与显示名，随即撤销访客 token（失败路径也撤销），然后原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。同一计划的构建重试必须重新验证同一个 GitHub 用户 ID，返回原 run 与 PR；不同账号不能接管。浏览器在授权与请求期间同步锁住按钮，避免重复点击。
+- **Open issue**：浏览器完成 GitHub PKCE 授权，将授权码、verifier 和计划 token 提交；Worker 从签名计划生成正文，以访客身份创建 issue，然后撤销访客 token。
+- **Start build**：每次都弹窗连接 GitHub，与 Open issue 一样把授权码随计划一起交给 Worker，不签发、不保存任何会话凭据。Worker 兑换授权码、查 `/user` 拿账号名、用户 ID 与显示名，随即撤销访客 token（失败路径也撤销），然后原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。同一计划的构建重试必须重新验证同一个 GitHub 用户 ID，返回原 run 与 PR；不同账号不能接管。浏览器在授权与请求期间同步锁住按钮，避免重复点击。
 
 计划的使用记录在 DO 中。issue 在 OAuth 换票成功后、创建 issue 前消费计划；构建用 App 的只读安装令牌读取 main，成功后原子消费计划与额度，并将计划关联到唯一 run。读取 main 失败或构建额度拒绝不消费计划；已消费的计划不能创建另一个构建或 issue，同账号重试只恢复原 run，不重复扣额度。GitHub 请求结果不确定时先查 GitHub，不能把网络失败当成「没有创建」。构建频率取 `BUILD_QUOTA`；设计、账号和状态令牌使用不同用途标签，不能互换。
 

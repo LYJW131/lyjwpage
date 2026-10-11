@@ -11,6 +11,7 @@ import {
   type GodChatTrace,
   normalizeTrace,
 } from "@shared/god-chat";
+import { PLAN_LABELS, textLanguage } from "@shared/build-routine";
 import { GOD_CHAT_DESIGN_TIER, GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatServedTier, type GodChatTier } from "@shared/god-chat-tiers";
 
 import { getAllowedOrigins } from "@shared/http-origins";
@@ -52,7 +53,7 @@ For AI industry news (new models, products, papers, what is hot today or this we
 You can see what LYJW is doing through the get_site_status tool: music, video, games, coding agents, devices, workouts, servers and this site's own health. When a visitor asks about LYJW or the site, look it up instead of guessing, then answer naturally; never dump raw JSON. Don't claim the site shows or publishes anything you haven't looked up: the tool's view list is a menu, not a record of what is public.
 For music, watching, gaming or fitness, use show_card instead: it puts a live card in your reply and returns the same data, so add a sentence or two rather than listing what the card shows. Now and recent are separate cards; show the one that was asked about.
 This site is open source, and the read_project_doc tool reads its design docs. When a visitor asks how the site works, why it is built a certain way, or how a card gets its data, read the relevant doc first, answer from it in the visitor's language, and link the doc's source URL.
-When a visitor wants to change or fix this site, judge whether the idea is useful and feasible. If start_design is available and the idea is worthwhile, write at most one short sentence and call it: the planner (Claude Opus) then continues this same reply with a bounded planning conversation. If it is inappropriate, explain briefly without starting. Talk about site changes in plain words about what the visitor would see, assuming they know nothing about how the site is built; never work out implementation details (formats, limits, routing, storage, security) or ask the visitor technical questions yourself, because planning is the planner's job. If start_design is not available, say in one plain sentence that a plan can't be made in this reply and that describing the change again in a new message can start a design session. Only a signed plan can become an issue or build, and the visitor must choose that action in the interface.
+When a visitor wants to change or fix this site, judge whether the idea is useful and feasible. If start_design is available and the idea is worthwhile, first write one short, friendly sentence telling the visitor you are bringing in the planner, with no details about the change, then call it: the planner (Claude Opus) continues this same reply with a bounded planning conversation. If it is inappropriate, explain briefly without starting. Talk about site changes in plain words about what the visitor would see, assuming they know nothing about how the site is built; never work out implementation details (formats, limits, routing, storage, security) or ask the visitor technical questions yourself, because planning is the planner's job. If start_design is not available, say in one plain sentence that a plan can't be made in this reply and that describing the change again in a new message can start a design session. Only a signed plan can become an issue or build, and the visitor must choose that action in the interface.
 Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
 
 const PERSONA: Record<GodChatTier, string> = {
@@ -199,7 +200,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           }
         }
         const { complete, trace, planToken, lead } = outcome;
-        if (complete && lead && !reply.trim()) emit({ type: "text", text: lead });
+        if (complete && lead) emit({ type: "text", text: lead });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace, planToken), ...(trace && { trace }), ...(planToken && { planToken }) });
@@ -444,6 +445,11 @@ async function converse({
           const started = await openDesign!();
           if ("error" in started) return result(started.error, true);
           openedSessionId = started.sessionId;
+          // 访客要先看到普通对话这边的一句交接，再看到规划者接手；模型没写就补一句固定的。
+          if (!wroteText) {
+            emit({ type: "text", text: PLAN_LABELS[textLanguage(history.at(-1)?.content ?? "")].handoff });
+            wroteText = true;
+          }
           emit({ type: "design", ...started.session });
           return result("The design session is open; the planner takes over this reply.", false);
         }
