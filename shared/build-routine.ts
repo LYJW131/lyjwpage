@@ -121,3 +121,11 @@ export function buildIssueBody(plan: BuildPlan): string {
   const labels = PLAN_LABELS[planLanguage(plan)];
   return `${plan.spec}\n\n## ${labels.acceptance}\n${plan.acceptance.map((item) => `- [ ] ${item}`).join("\n")}\n\n## ${labels.paths}\n${plan.paths.map((path) => `- \`${path}\``).join("\n")}`;
 }
+
+export function buildIssueUrl(plan: BuildPlan): string {
+  const labels = PLAN_LABELS[planLanguage(plan)];
+  const body = `${buildIssueBody(plan)}\n\n---\n${labels.issueFooter}`;
+  const params = new URLSearchParams({ title: plan.title, body });
+  return `https://github.com/${BUILD_REPO}/issues/new?${params.toString()}`;
+}
+
