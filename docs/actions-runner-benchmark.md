@@ -33,6 +33,20 @@ attempt 4 的 CI 比托管机少 10 秒，约 12%；两项 CodeQL 仍较慢。�
 
 main 提交 `c33d1fbd05998f3e045eb7d440111010a073095e` 的 [CodeQL 重跑](https://github.com/LYJW131/lyjwpage/actions/runs/38124964435/attempts/2) 成功。javascript-typescript 用时 188 秒，包含全量生成 overlay-base 数据库；其中扫描结果上传及增量缓存上传后，完整数据库的归档上传与额外体积测量占用约 55 秒。工作流设置 `upload-database: false` 跳过这份可下载归档，安全扫描结果上传与 overlay-base 缓存分别执行，继续保留。
 
+## pnpm store 核对
+
+[main CI](https://github.com/LYJW131/lyjwpage/actions/runs/38125726614) 的安装日志是 `reused 0, downloaded 957`，pnpm 自报 6.7 秒。此时持久 store 的配置意图没有生效：SSH 在各 runner 服务的 mount namespace 内以实际 HOME、PNPM_HOME 执行 `pnpm store path`，结果落在临时的 pnpm/action-setup 安装目录；HOME 下的 store 链接不控制这个路径。CI 以 `CI_CACHE_DIR` 显式设置 `--store-dir`，持久位置见 [仓库外事实](./ops-facts.md)。
+
+使用相同源码在两份全新目录中执行 `pnpm install --frozen-lockfile --offline --store-dir`，两次都复用全部 957 个包，下载为零。首次读取持久磁盘 store 用时 19.6 秒，第二次用时 4 秒；磁盘冷读受同机 I/O 影响，不能只引用第二次暖缓存结果。
+
+自建机的 `scripts/setup-ci-pnpm.sh` 按 `package.json#packageManager` 选择精确版本，工具安装落在各 runner 的持久工具缓存；版本之间隔离，安装加锁并先写临时目录。实测首次安装 2.1 秒、复用 0.45 秒。托管机继续使用 pnpm/action-setup 与 setup-node 的 pnpm 缓存。
+
+主站 tsconfig 的 `incremental` 已启用。远端主站 `next typegen` 用时 0.9 秒，`tsc --noEmit` 首次 11.2 秒、复用 3 秒。修改已经检查过的源文件、注入 `string = 42` 后，增量检查以 TS2322 失败；还原后通过。
+
+CI 为全部 workspace 设置 `--incremental --tsBuildInfoFile tsconfig.ci.tsbuildinfo`，按 workspace 相对路径恢复持久缓存，完整 workspace typecheck 成功后再原子保存；CI 的 noEmit 缓存与测试编译的产物缓存独立。远端全 workspace 检查首次 12.9 秒、复用 5 秒。再次注入类型错误仍失败，还原后通过。所有 workspace 的检查仍执行，Next 路由类型仍每次生成。
+
+`scripts/ci-checks.sh` 在自建机并行执行 lint、全部 workspace 类型检查、十组 workspace 测试、脚本测试与文档检查；各项独立记录日志、状态和耗时，等待全部结束后汇总，任一项失败即返回失败。类型检查没有产物依赖，所有 workspace 同时启动。托管机按顺序执行门禁。用替代命令分别模拟五项门禁失败，均返回失败且执行完整清单，类型检查失败时不覆盖成功缓存。
+
 ## CI 分步耗时
 
 | 步骤 | 托管机 attempt 1 | 自建机 attempt 4 |
@@ -58,6 +72,6 @@ main 提交 `c33d1fbd05998f3e045eb7d440111010a073095e` 的 [CodeQL 重跑](https
 
 GitHub runners API 确认 runner 在线、标签匹配，仓库变量启用。实际 job 的 `runner_name` 指向自建机。
 
-在空闲 runner 上停止服务、卸载工作目录及工具缓存的 bind mount，再单独启动服务，systemd 自动恢复两层挂载，创建独立 HOME 与共享 store 链接。Node 工具缓存仍可使用。未重启整台机器。
+在空闲 runner 上停止服务、卸载工作目录及工具缓存的 bind mount，再单独启动服务，systemd 自动恢复两层挂载，创建独立 HOME。Node 工具缓存仍可使用。未重启整台机器。
 
 安装初期 main 的一次 CodeQL 扫描因系统 PATH 缺少 Node 而失败；补齐 Node 后，正常 main 与固定提交重跑均成功。一次 main CI 基准重跑被新的 main 推送按并发规则取消，因此正式对比使用独立 PR 的固定提交。
