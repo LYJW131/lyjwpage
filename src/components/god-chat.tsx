@@ -25,10 +25,13 @@ import {
   type GodChatEvent,
   type GodChatMessage,
   fitHistory,
+  readGodChatRoute,
 } from "@shared/god-chat";
 import {
   GOD_CHAT_TIERS,
   GOD_CHAT_TIER_INFO,
+  godChatTierInfo,
+  isGodChatServedTier,
   modelLabel,
   type GodChatCount,
   type GodChatServedTier,
@@ -319,8 +322,10 @@ function Conversation({ className, archive, session: conversation }: { className
           if (event.type === "text") reply += event.text;
           else if (event.type === "thinking") meta = { ...meta, thinking: (meta.thinking ?? "") + event.text };
           else if (event.type === "route") {
-            meta = { ...meta, tier: event.tier, downgradedFrom: event.downgradedFrom };
-            if (event.tier === "fable" && sessionRef.current === session) summon();
+            const route = readGodChatRoute(event.tier, event.downgradedFrom);
+            if (!route) continue;
+            meta = { ...meta, tier: route.tier, ...(route.downgradedFrom && { downgradedFrom: route.downgradedFrom }) };
+            if (route.tier === "fable" && sessionRef.current === session) summon();
           } else if (event.type === "served") meta = { ...meta, servedBy: event.model };
           else if (event.type === "tool") {
             const seen = meta.lookups ?? [];
@@ -1024,17 +1029,19 @@ function RankLabel({ reply }: { reply: Reply }) {
   if (reply.tier === null) {
     return <div className="label-mono mb-1.5 text-[10px] text-red-500">Gates closed</div>;
   }
-  if (!reply.tier) return null;
-  const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
+  const info = godChatTierInfo(reply.tier);
+  if (!info || !isGodChatServedTier(reply.tier)) return null;
+  const { persona, label } = info;
+  const from = godChatTierInfo(reply.downgradedFrom);
   const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.sonnet : undefined;
   return (
     <div className="mb-1.5">
       <div className={cn("label-mono text-[10px]", RANK_TONE[reply.tier])}>
         {opener && `${opener.persona} · ${opener.label} → `}{persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
       </div>
-      {reply.downgradedFrom && (
+      {from && (
         <div className="label-mono text-[10px] text-muted-foreground">
-          {GOD_CHAT_TIER_INFO[reply.downgradedFrom].persona} is resting; the {persona} answers instead
+          {from.persona} is resting; the {persona} answers instead
         </div>
       )}
       {reply.servedBy && (
@@ -1048,17 +1055,22 @@ function RankLabel({ reply }: { reply: Reply }) {
 
 function RouteStatus({ last, streaming }: { last?: Bubble; streaming: boolean }) {
   if (!last || last.role !== "assistant") return <>Routed by Clef</>;
-  if (last.tier === undefined) return <span className={cn(streaming && "animate-pulse")}>Clef routing…</span>;
+  if (last.tier === undefined) {
+    return streaming ? <span className="animate-pulse">Clef routing…</span> : <>Routed by Clef</>;
+  }
   if (last.tier === null) return <span className="text-red-500">Gates closed</span>;
-  const { persona, label } = GOD_CHAT_TIER_INFO[last.tier];
+  const info = godChatTierInfo(last.tier);
+  if (!info || !isGodChatServedTier(last.tier)) return <>Routed by Clef</>;
+  const { persona, label } = info;
+  const from = godChatTierInfo(last.downgradedFrom);
   return (
     <span>
       <span className="hidden sm:inline">Clef → </span>
       <span className={RANK_TONE[last.tier]}>
         {persona} · {last.servedBy ? modelLabel(last.servedBy) : label}
       </span>
-      {last.downgradedFrom && (
-        <span className="hidden sm:inline"> ({GOD_CHAT_TIER_INFO[last.downgradedFrom].persona} resting)</span>
+      {from && (
+        <span className="hidden sm:inline"> ({from.persona} resting)</span>
       )}
       {last.servedBy && <span className="hidden sm:inline"> ({label} declined)</span>}
     </span>
