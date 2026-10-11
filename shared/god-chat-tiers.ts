@@ -26,6 +26,10 @@ export function isGodChatServedTier(value: unknown): value is GodChatServedTier 
   return isGodChatTier(value) || value === GOD_CHAT_DESIGN_TIER;
 }
 
+export function godChatTierInfo(tier: unknown): GodChatTierInfo | undefined {
+  return isGodChatServedTier(tier) ? GOD_CHAT_TIER_INFO[tier] : undefined;
+}
+
 // 拒答兜底换上的模型不在上面几档里，展示名从 id 推：claude-opus-4-8 → Opus 4.8，日期后缀不显示。
 export function modelLabel(model: string): string {
   const own = Object.values(GOD_CHAT_TIER_INFO).find((info) => info.model === model);
