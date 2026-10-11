@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent } from "@/lib/chat-consent";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
-import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession } from "@/lib/chat-archive";
+import { activeChatDesign, chatArchive, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -146,7 +146,7 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!conversationId || !design) return;
     const expire = () => {
       const current = chatArchive.session(conversationId);
-      if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.update(conversationId, { design: undefined });
+      if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.endDesign(conversationId, designEndReason(current.design));
     };
     if (!activeChatDesign(design)) { expire(); return; }
     const timer = setTimeout(expire, Math.max(0, design.expiresAt - Date.now()) + 20);
@@ -285,7 +285,7 @@ function Conversation({ className, archive, session: conversation }: { className
       if (!CHAT_URL) throw new Error(OFFLINE);
       const humanPass = usedToken ? null : readPass();
       designToken = activeChatDesign(conversation?.design)?.token;
-      if (conversation?.design && !designToken) chatArchive.update(conversation.id, { design: undefined }, { persist: false });
+      if (conversation?.design && !designToken) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -296,8 +296,8 @@ function Conversation({ className, archive, session: conversation }: { className
         const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
         if (data?.code === "human_pass_expired") writePass(null);
         if (conversation && designSessionEnded(data?.code)) {
-          chatArchive.update(conversation.id, { design: undefined }, { persist: false });
-          throw new Error("Design session ended. Send your message again to continue in ordinary chat.");
+          chatArchive.endDesign(conversation.id, data?.code === "design_session_exhausted" ? "exhausted" : "expired", { persist: false });
+          throw new Error("The design session has ended. Send your message again to continue in ordinary chat.");
         }
         throw new Error(data?.error ?? OFFLINE);
       }
@@ -419,7 +419,7 @@ function Conversation({ className, archive, session: conversation }: { className
         sessionRef.current += 1;
         abortRef.current?.abort();
       }
-      chatArchive.update(conversation.id, { design: undefined });
+      chatArchive.endDesign(conversation.id, "left");
       return;
     }
     if (name === "/clear") {
@@ -611,67 +611,70 @@ function Conversation({ className, archive, session: conversation }: { className
           messages.map((message, index) => {
             const live = streaming && index === messages.length - 1;
             return (
-              <div key={index} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
-                <div
-                  className={cn(
-                    "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
-                    message.role === "user" && message.answers
-                      ? "max-w-[85%]"
-                      : message.role === "user"
-                      ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
-                      : "w-full text-foreground",
-                  )}
-                >
-                  {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
-                  {message.thinking && (
-                    <details open={live && !message.content} className="mb-1.5">
-                      <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
-                        {live && !message.content ? "Thinking…" : "Thought process"}
-                      </summary>
-                      {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
-                      <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
-                        <ChatMarkdown>{live ? stableMarkdown(message.thinking) : message.thinking}</ChatMarkdown>
+              <Fragment key={index}>
+                <div className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
+                  <div
+                    className={cn(
+                      "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
+                      message.role === "user" && message.answers
+                        ? "max-w-[85%]"
+                        : message.role === "user"
+                        ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
+                        : "w-full text-foreground",
+                    )}
+                  >
+                    {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
+                    {message.thinking && (
+                      <details open={live && !message.content} className="mb-1.5">
+                        <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
+                          {live && !message.content ? "Thinking…" : "Thought process"}
+                        </summary>
+                        {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
+                        <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
+                          <ChatMarkdown>{live ? stableMarkdown(message.thinking) : message.thinking}</ChatMarkdown>
+                        </div>
+                      </details>
+                    )}
+                    {message.lookups?.length ? (
+                      <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">
+                        Looked at {message.lookups.join(", ")}
                       </div>
-                    </details>
-                  )}
-                  {message.lookups?.length ? (
-                    <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">
-                      Looked at {message.lookups.join(", ")}
-                    </div>
-                  ) : null}
-                  {message.designAt === undefined && <PlannerActivity message={message} live={live} />}
-                  {message.role === "assistant" ? (
-                    <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} handoff={<PlannerActivity message={message} live={live} />} />
-                  ) : message.answers ? (
-                    <AnswerCard answers={message.answers} />
-                  ) : (
-                    message.content
-                  )}
-                  {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={answer} /> : null}
-                  {message.proposals?.map((proposal, proposalIndex) => (
-                    <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
-                      if (!conversation) return;
-                      const current = chatArchive.session(conversation.id);
-                      if (current) chatArchive.update(current.id, { messages: current.messages.map((entry, messageIndex) => messageIndex === index ? { ...entry, proposals: entry.proposals?.map((item, itemIndex) => itemIndex === proposalIndex ? updated : item) } : entry) });
-                    }} />
-                  ))}
-                  {message.sources?.length ? (
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-[11px]">
-                      {message.sources.map((source) => (
-                        <a
-                          key={source.url}
-                          href={source.url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="max-w-full truncate text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                        >
-                          {source.title}
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
+                    ) : null}
+                    {message.designAt === undefined && <PlannerActivity message={message} live={live} />}
+                    {message.role === "assistant" ? (
+                      <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} handoff={<PlannerActivity message={message} live={live} />} />
+                    ) : message.answers ? (
+                      <AnswerCard answers={message.answers} />
+                    ) : (
+                      message.content
+                    )}
+                    {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={answer} /> : null}
+                    {message.proposals?.map((proposal, proposalIndex) => (
+                      <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
+                        if (!conversation) return;
+                        const current = chatArchive.session(conversation.id);
+                        if (current) chatArchive.update(current.id, { messages: current.messages.map((entry, messageIndex) => messageIndex === index ? { ...entry, proposals: entry.proposals?.map((item, itemIndex) => itemIndex === proposalIndex ? updated : item) } : entry) });
+                      }} />
+                    ))}
+                    {message.sources?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-[11px]">
+                        {message.sources.map((source) => (
+                          <a
+                            key={source.url}
+                            href={source.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="max-w-full truncate text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                          >
+                            {source.title}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+                {message.designEnded && <DesignEndNotice reason={message.designEnded} />}
+              </Fragment>
             );
           })
         )}
@@ -976,8 +979,30 @@ function DesignStatus({ design }: { design: ChatDesign }) {
   return (
     <p className="mb-2 flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
       <PencilRuler className="size-3 shrink-0" />
-      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left</span>
+      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left · ends {new Date(design.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
     </p>
+  );
+}
+
+const DESIGN_END_LABELS: Record<DesignEndReason, string> = {
+  expired: "Design session ended · time's up",
+  exhausted: "Design session ended · no turns left",
+  left: "Left the design session",
+};
+
+function DesignEndNotice({ reason }: { reason: DesignEndReason }) {
+  return (
+    <div role="status" className="space-y-1 py-1 text-center">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <span className="h-px flex-1 bg-line" />
+        <span className="label-mono flex min-w-0 items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-1 text-[10px]">
+          <PencilRuler className="size-3 shrink-0" />
+          {DESIGN_END_LABELS[reason]}
+        </span>
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      <p className="text-[11px] text-muted-foreground">You&apos;re back in ordinary chat, which can&apos;t make plans. To keep planning, describe the change again and a new design session will start.</p>
+    </div>
   );
 }
 
