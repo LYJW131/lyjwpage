@@ -1,4 +1,5 @@
 import { appleArtwork } from "@/lib/apple-artwork";
+import { parseImageSource } from "@/lib/image-proxy";
 import type { SiteServices } from "@/server/site-context";
 
 // 占位图不能改成 CSS 背景：背景解码时机不可控，会在移动端水合时露出空帧。
@@ -18,28 +19,11 @@ async function encodePlaceholder(
   templateUrl: string,
   px: number,
 ): Promise<ArtworkDataUri | null> {
-  try {
-    let source: URL;
-    try {
-      source = new URL(templateUrl);
-    } catch {
-      return null;
-    }
-    if (
-      source.protocol !== "https:" ||
-      (!source.hostname.endsWith(".mzstatic.com") &&
-        !source.hostname.endsWith(".blobstore.apple.com"))
-    ) return null;
-
-    const url = appleArtwork(templateUrl, px);
-    if (!url) return null;
-
-    const quality = QUALITY_BY_PX[px] ?? 50;
-    const dataUri = await site.image(url, px, "cover", quality);
-    return dataUri ? (dataUri as ArtworkDataUri) : null;
-  } catch {
-    return null;
-  }
+  if (!parseImageSource(templateUrl)) return null;
+  const url = appleArtwork(templateUrl, px);
+  if (!url) return null;
+  const dataUri = await site.image(url, px, "cover", QUALITY_BY_PX[px] ?? 50);
+  return dataUri as ArtworkDataUri | null;
 }
 
 export type ArtworkDataUri = `data:image/${string}`;

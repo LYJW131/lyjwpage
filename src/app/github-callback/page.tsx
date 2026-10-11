@@ -1,17 +1,13 @@
 import type { MetaDescriptor } from "react-router";
 
 import { GITHUB_SIGN_IN_MESSAGE } from "@shared/github-issue";
-import { NO_STORE } from "@/lib/site-policy";
+import { site } from "@/lib/site";
 
 export function meta(): MetaDescriptor[] {
   return [
-    { title: "GitHub sign-in — LYJW's Homepage" },
+    { title: `GitHub sign-in — ${site.name}` },
     { name: "robots", content: "noindex, nofollow" },
   ];
-}
-
-export function headers() {
-  return { "Cache-Control": NO_STORE };
 }
 
 // 只把 code 交给同源的打开者：别的站点即使自己打开这个授权弹窗，也收不到 code。读完参数先从地址栏和这条历史里抹掉 code 与 state，弹窗没关上时 URL 里也不留授权码。

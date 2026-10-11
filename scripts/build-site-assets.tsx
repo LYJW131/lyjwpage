@@ -1,8 +1,6 @@
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import sharp from "sharp";
-
 import { getRecentCommits } from "@/lib/github-recent-commits";
 import type { SiteAssetMetadata } from "@/lib/site-assets";
 
@@ -11,23 +9,17 @@ import { ogPng } from "./site-assets/og";
 
 const OUT_DIR = join(process.cwd(), "public", "site-assets");
 
-async function avatarWebp(source: Uint8Array): Promise<Uint8Array> {
-  const webp = await sharp(source).resize(192, 192, { fit: "cover" }).webp().toBuffer();
-  return new Uint8Array(webp);
-}
-
 async function main() {
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   await mkdir(OUT_DIR, { recursive: true });
 
   const source = await githubAvatarSource(buildId);
 
-  const [avatarDataUri, recentCommits, og, webp, icon32, icon180, icon192, icon512] =
+  const [avatarDataUri, recentCommits, og, icon32, icon180, icon192, icon512] =
     await Promise.all([
       githubAvatarDataUri(source),
       getRecentCommits(),
       githubAvatarPng(source, 184).then((avatar) => ogPng(avatar)),
-      githubAvatarPng(source, 192).then(avatarWebp),
       githubAvatarPng(source, 32),
       githubAvatarPng(source, 180),
       githubAvatarPng(source, 192),
@@ -47,7 +39,6 @@ async function main() {
     writeFile(join(OUT_DIR, "icon-192.png"), icon192),
     writeFile(join(OUT_DIR, "icon-512.png"), icon512),
     writeFile(join(OUT_DIR, "opengraph.png"), og),
-    writeFile(join(OUT_DIR, "avatar.webp"), webp),
   ];
   await Promise.all(tasks);
 

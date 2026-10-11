@@ -1,6 +1,7 @@
-
-import { IMAGE_PATH_PREFIX } from "@/lib/asset-url";
+import { IMAGE_OBJECT_KEY, IMAGE_PATH_PREFIX } from "@/lib/asset-url";
 import { BodyTooLargeError, readBoundedBytes } from "@/lib/read-bounded-bytes";
+
+export const IMAGE_PROXY_PATH = "/image";
 
 export const IMAGE_WIDTHS = [
   32, 48, 56, 64, 88, 96, 128, 160, 184, 192, 240, 256, 320, 384, 512, 640, 750,
@@ -80,7 +81,7 @@ export function variantShape(width: number, fit: ImageFit): ImageTransform {
 }
 
 export function optimizerImagePath(src: string, width: number, quality: number): string {
-  return `/image?url=${encodeURIComponent(src)}&w=${width}&q=${quality}`;
+  return `${IMAGE_PROXY_PATH}?url=${encodeURIComponent(src)}&w=${width}&q=${quality}`;
 }
 
 export function optimizerSrcSet(src: string, quality: number): string {
@@ -106,7 +107,7 @@ export class ImageUpstreamError extends Error {
 export function imageSourceFromInternalPath(pathname: string): string | null {
   if (!pathname.startsWith(`${IMAGE_PATH_PREFIX}/`)) return null;
   const key = pathname.slice(IMAGE_PATH_PREFIX.length + 1);
-  return /^[a-f0-9]{64}\.(?:png|webp|jpe?g)$/.test(key) ? key : null;
+  return IMAGE_OBJECT_KEY.test(key) ? key : null;
 }
 
 export async function fetchImageUpstream(

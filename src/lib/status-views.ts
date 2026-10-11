@@ -94,6 +94,10 @@ export const STATUS_TAGS: readonly string[] = Object.freeze(
   entries().flatMap(([, view]) => (view.tag ? [view.tag] : [])),
 );
 
+export function filterStatusTags(tags: readonly string[]): string[] {
+  return [...new Set(tags.filter((tag) => STATUS_TAGS.includes(tag)))];
+}
+
 // 可滞后层不推送：写入方直接写 KV，推来的新值会和几分钟旧的 KV 读数来回打架。
 for (const [key, view] of entries()) {
   if (view.layer === "lag" && view.event) throw new Error(`status view "${key}" is lag-layer but has a push event`);

@@ -139,7 +139,7 @@ function CardFault({
 type CardErrorBoundaryProps = CardBoundaryProps & { children?: ReactNode };
 type CardErrorBoundaryState = { error: unknown; failed: boolean };
 
-class CardErrorBoundary extends Component<CardErrorBoundaryProps, CardErrorBoundaryState> {
+export class CardBoundary extends Component<CardErrorBoundaryProps, CardErrorBoundaryState> {
   override state: CardErrorBoundaryState = { error: null, failed: false };
 
   static getDerivedStateFromError(error: unknown): CardErrorBoundaryState {
@@ -158,5 +158,3 @@ class CardErrorBoundary extends Component<CardErrorBoundaryProps, CardErrorBound
     return this.props.children;
   }
 }
-
-export const CardBoundary = CardErrorBoundary;

@@ -7,7 +7,7 @@ import { useMountedAt } from "@/hooks/use-mounted-at";
 import type { CommitAuthor } from "@/lib/commit-authors";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { site } from "@/lib/site";
+import { CLOUDFLARE_DASH_URL, site } from "@/lib/site";
 import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { SiteDeployment, SiteDeploymentState } from "@/lib/site-deployments-types";
@@ -106,13 +106,12 @@ function ContributorRow({
 
 const stateLabels: Record<SiteDeploymentState, string> = { READY: "Built", BUILDING: "Building", QUEUED: "Queued", INITIALIZING: "Initializing", ERROR: "Failed", CANCELED: "Canceled", UNKNOWN: "—" };
 
-const CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266";
 const CLOUDFLARE_BUILD_PREFIX = "cloudflare-build:";
 
 function deploymentHref(deployment: SiteDeployment): string {
   if (deployment.id.startsWith(CLOUDFLARE_BUILD_PREFIX)) {
     const buildId = deployment.id.slice(CLOUDFLARE_BUILD_PREFIX.length);
-    return `https://dash.cloudflare.com/${CLOUDFLARE_ACCOUNT_ID}/workers/services/view/site/production/builds/${encodeURIComponent(buildId)}`;
+    return `${CLOUDFLARE_DASH_URL}/workers/services/view/site/production/builds/${encodeURIComponent(buildId)}`;
   }
   return site.cloudflare;
 }

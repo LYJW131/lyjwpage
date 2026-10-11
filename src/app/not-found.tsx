@@ -1,13 +1,13 @@
-import { Link } from "react-router";
+import { Link, type MetaDescriptor } from "react-router";
 
 import { Footer } from "@/components/footer";
 import { HomeLink } from "@/components/home-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui/card";
-import type { MetaDescriptor } from "react-router";
+import { site } from "@/lib/site";
 
 export function meta(): MetaDescriptor[] {
-  return [{ title: "404 — LYJW's Homepage" }];
+  return [{ title: `404 — ${site.name}` }];
 }
 
 export function loader() {

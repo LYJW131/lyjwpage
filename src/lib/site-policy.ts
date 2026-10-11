@@ -1,8 +1,9 @@
-
 import { MCP_PATH } from "@shared/mcp";
 
 import { IMAGE_PATH_PREFIX } from "@/lib/asset-url";
-import { STATUS_TAGS } from "@/lib/status-views";
+import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
+import { SENTRY_RELAY_PREFIX } from "@/lib/sentry";
+import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
 
 export const HOME_CACHE_CONTROL =
   "public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400";
@@ -26,15 +27,12 @@ export const STABLE_ASSET_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 
 export const NO_STORE = "no-store";
 
-export const SENTRY_RELAY_PREFIX = "/relay";
-
-export const IMAGE_PROXY_PATH = "/image";
-
 export type GatewayKind =
   | "mcp"
   | "sentry-relay"
   | "image-proxy"
   | "image-object"
+  | "site-asset"
   | "explainer-index"
   | "service-worker"
   | "asset"
@@ -43,10 +41,19 @@ export type GatewayKind =
 
 export type GatewayClass = {
   kind: GatewayKind;
-  objectKey?: string;
 };
 
-export const IMMUTABLE_ASSET_PREFIXES = ["/explainer/a/", "/assets/"];
+export type SiteAssetRoute = { asset: string; cacheControl: string };
+
+export const SITE_ASSET_ROUTES: ReadonlyMap<string, SiteAssetRoute> = new Map([
+  ["/icon", { asset: `${SITE_ASSETS_PREFIX}/icon.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
+  ["/apple-icon", { asset: `${SITE_ASSETS_PREFIX}/apple-icon.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
+  ["/opengraph-image", { asset: `${SITE_ASSETS_PREFIX}/opengraph.png`, cacheControl: GENERATED_ASSET_CACHE_CONTROL }],
+  ["/pwa/icon-192.png", { asset: `${SITE_ASSETS_PREFIX}/icon-192.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
+  ["/pwa/icon-512.png", { asset: `${SITE_ASSETS_PREFIX}/icon-512.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
+]);
+
+export const IMMUTABLE_EXPLAINER_PREFIX = "/explainer/a/";
 
 const ASSET_PREFIXES = [
   "/explainer/",
@@ -63,16 +70,15 @@ export function imageObjectKeyFromPath(pathname: string): string | null {
   return match ? match[1] : null;
 }
 
-export const CONDITIONAL_FORWARD_HEADERS = [
+const CONDITIONAL_FORWARD_HEADERS = [
   "range",
   "if-range",
   "if-none-match",
   "if-modified-since",
 ] as const;
 
-export function imageObjectRequest(request: Request, objectKey: string): Request {
+export function imageObjectRequest(request: Request): Request {
   const url = new URL(request.url);
-  url.pathname = `${IMAGE_PATH_PREFIX}/${objectKey}`;
   url.search = "";
   const headers = new Headers();
   for (const name of CONDITIONAL_FORWARD_HEADERS) {
@@ -111,9 +117,9 @@ export function classifyGatewayRequest(method: string, pathname: string): Gatewa
   if (pathname.endsWith(".data")) return { kind: "render" };
   if (pathname === IMAGE_PROXY_PATH) return { kind: "image-proxy" };
   if (pathname.startsWith(`${IMAGE_PATH_PREFIX}/`)) {
-    const objectKey = imageObjectKeyFromPath(pathname);
-    return objectKey ? { kind: "image-object", objectKey } : { kind: "invalid" };
+    return { kind: imageObjectKeyFromPath(pathname) ? "image-object" : "invalid" };
   }
+  if (SITE_ASSET_ROUTES.has(pathname)) return { kind: "site-asset" };
   if (pathname === "/explainer") return { kind: "explainer-index" };
   if (pathname === "/sw.js") return { kind: "service-worker" };
   if (looksStatic(pathname)) return { kind: "asset" };
@@ -155,17 +161,12 @@ export function isPublicStatusEnvelope(value: unknown): boolean {
   return row.ok ? "data" in row : typeof row.error === "string";
 }
 
-export function statusSnapshotHeaders(
-  status: number,
-  tag: string | undefined,
-): Record<string, string> {
-  if (status !== 200) return { "Cache-Control": NO_STORE };
-  const headers: Record<string, string> = { "Cache-Control": STATUS_CACHE_CONTROL };
-  if (tag) headers["Cache-Tag"] = `page:${tag}`;
-  return headers;
+export function statusCacheTag(tag: string): string {
+  return `page:${tag}`;
 }
 
-export function filterStatusTags(tags: readonly string[]): string[] {
-  const allowed = new Set(STATUS_TAGS);
-  return [...new Set(tags.filter((tag) => allowed.has(tag)))];
+export function statusSnapshotHeaders(tag: string | undefined): Record<string, string> {
+  const headers: Record<string, string> = { "Cache-Control": STATUS_CACHE_CONTROL };
+  if (tag) headers["Cache-Tag"] = statusCacheTag(tag);
+  return headers;
 }

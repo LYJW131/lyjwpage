@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   SITE_PREVIEW_ACCESS_VAR,
+  SITE_PREVIEW_MANIFEST_PATH,
   sitePreviewConfig,
   sitePreviewDeployEnv,
   sitePreviewManifest,
@@ -17,7 +18,7 @@ const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export function deploySitePreview({ env = process.env, spawn = spawnSync, log = console.error, root = defaultRoot } = {}) {
   const builtConfigPath = resolve(root, "build/server/wrangler.json");
-  const manifestPath = resolve(root, "build/site-preview.json");
+  const manifestPath = resolve(root, SITE_PREVIEW_MANIFEST_PATH);
   const tempConfigPath = resolve(root, "build/server/wrangler.preview-site.json");
   for (const path of [builtConfigPath, manifestPath]) {
     if (!existsSync(path)) throw new Error(`缺少构建产物 ${path}；先跑 pnpm build`);
@@ -25,11 +26,8 @@ export function deploySitePreview({ env = process.env, spawn = spawnSync, log = 
   const raw = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (raw?.version !== 1) throw new Error(`site-preview.json 版本 ${JSON.stringify(raw?.version)} 不支持`);
   if (raw.mode !== "preview") throw new Error(`site-preview.json 是 ${raw.mode} 构建，不是预览`);
-  if (typeof raw.branch !== "string" || typeof raw.commit !== "string") {
-    throw new Error("site-preview.json 缺少字符串 branch/commit");
-  }
-  const manifest = sitePreviewManifest({ branch: raw.branch, commit: raw.commit, backendUrl: raw.backendUrl });
-  if (manifest.mode !== "preview" || manifest.branch !== raw.branch || manifest.backendUrl !== raw.backendUrl) {
+  const manifest = sitePreviewManifest(raw);
+  if (manifest.mode !== "preview" || manifest.branch !== raw.branch) {
     throw new Error("site-preview.json 与预览契约不一致，重新构建");
   }
 

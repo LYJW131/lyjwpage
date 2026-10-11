@@ -1,5 +1,5 @@
 import type { LiveEvent } from "@/lib/live-events";
-import { STATUS_TAGS } from "@/lib/status-views";
+import { filterStatusTags } from "@/lib/status-views";
 
 import { currentContext, requestStore } from "@api/runtime";
 import type { LivePushRoom } from "./origin-worker";
@@ -16,7 +16,7 @@ export function afterResponse(work: () => Promise<void>): Promise<void> {
 const REVALIDATE_TIMEOUT_MS = 5_000;
 
 export async function expireStatusTags(tags: readonly string[]): Promise<void> {
-  const valid = [...new Set(tags.filter((tag) => STATUS_TAGS.includes(tag)))];
+  const valid = filterStatusTags(tags);
   if (!valid.length) return;
   const service = currentContext().env.SITE_CACHE;
   if (!service) {

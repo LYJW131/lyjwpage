@@ -5,14 +5,16 @@ import {
   type CloudflareOptions,
 } from "@sentry/cloudflare";
 
+import { commitSha } from "@/lib/build-info";
+import { SENTRY_ENVIRONMENT } from "@/lib/sentry";
 import { isKnownLogNoise } from "@/lib/sentry-noise";
 import { redactSentryEvent } from "@/lib/sentry-redact";
 
 export function sentryOptions(env: Env): CloudflareOptions {
   return {
     dsn: env.SENTRY_DSN?.trim() || undefined,
-    environment: process.env.SENTRY_ENVIRONMENT || "development",
-    release: process.env.COMMIT_SHA || undefined,
+    environment: SENTRY_ENVIRONMENT,
+    release: commitSha ?? undefined,
     tracesSampleRate: 0.1,
     enableLogs: true,
     integrations: [

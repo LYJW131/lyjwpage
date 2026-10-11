@@ -47,9 +47,6 @@ export function meta(): MetaDescriptor[] {
     { name: "apple-mobile-web-app-title", content: site.shortName },
     { name: "apple-mobile-web-app-status-bar-style", content: "default" },
     { name: "robots", content: "index, follow" },
-    { name: "viewport", content: "width=device-width, initial-scale=1" },
-    { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#ffffff" },
-    { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#0a0a0a" },
   ];
 }
 
@@ -59,6 +56,7 @@ export function links(): LinkDescriptor[] {
     { rel: "manifest", href: "/manifest.webmanifest" },
     { rel: "icon", href: "/icon", type: "image/png", sizes: "32x32" },
     { rel: "apple-touch-icon", href: "/apple-icon" },
+    // 普通图片使用 no-cors；带 crossOrigin 的预连接无法被它复用。
     { rel: "preconnect", href: "https://is1-ssl.mzstatic.com" },
   ];
 }
@@ -71,6 +69,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <html lang="en" suppressHydrationWarning className="h-full">
       <head>
         <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
         <Meta />
         <Links />
         <script
@@ -89,7 +90,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="flex min-h-full flex-col">
         <PsPlusSprite />
-        {/* 普通图片使用 no-cors；带 crossOrigin 的预连接无法被它复用。 */}
         <ThemeProvider>{children}</ThemeProvider>
         <PwaRegistration />
         <RestReady />
