@@ -21,7 +21,8 @@ export function designEndReason(design: ChatDesign, now = Date.now()): DesignEnd
   return design.remaining <= 0 && design.expiresAt > now ? "exhausted" : "expired";
 }
 
-export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; build?: BuildFireResult; run?: BuildRun };
+// issueOpened 是浏览器记下的已选出口：GitHub 原生提交不会回传结果，点过 Open issue 就当作这个计划已经选了 issue，两个出口都关掉。
+export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; issueOpened?: boolean; build?: BuildFireResult; run?: BuildRun };
 // at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
 export type ChatShownCard = { card: GodChatCard; at: number };
 export type ChatAnswer = { header: string; question: string; answer: string };
@@ -83,6 +84,7 @@ function validBubble(value: unknown): value is ChatBubble {
     const plan = proposal.plan;
     if (typeof plan.title !== "string" || typeof plan.spec !== "string" || !strings(plan.acceptance) || !strings(plan.paths)) return false;
     if (proposal.issue && (!object(proposal.issue) || typeof proposal.issue.url !== "string" || typeof proposal.issue.number !== "number")) return false;
+    if (proposal.issueOpened !== undefined && proposal.issueOpened !== true) return false;
     if (proposal.build && (!object(proposal.build) || typeof proposal.build.runId !== "string" || typeof proposal.build.statusToken !== "string" || typeof proposal.build.branch !== "string")) return false;
     return proposal.run === undefined || validRun(proposal.run);
   }))) return false;

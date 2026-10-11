@@ -110,7 +110,7 @@ test("design sessions count 12 turns, expire and cap global starts", (t) => {
   assert.deepEqual(instance.admitDesign("first"), { status: "expired", remaining: 0 });
 });
 
-test("plans are single use across issue and build and expire", async (t) => {
+test("plans are single use and expire", async (t) => {
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);
   assert.deepEqual(await consumePlan(env, proposal.token), plan);
@@ -245,15 +245,21 @@ test("issue and PR labels follow the plan language", () => {
   const ja: BuildPlan = { ...zh, title: "原神カードを追加する", spec: "ホームのゲーム欄に読み取り専用のカードを追加します。", acceptance: ["スマホでも一列で表示される"] };
   const en: BuildPlan = { ...plan, spec: "Show the song 星街すいせい GHOST in the card title when it is playing." };
   assert.deepEqual([planLanguage(zh), planLanguage(ja), planLanguage(plan), planLanguage(en)], ["zh", "ja", "en", "en"]);
+  const pathHeavy: BuildPlan = { title: "统一构建进度", spec: "改 `src/components/live/agent-status-card.tsx` 与 workers/ai/src/chat/designer.ts 里的进度显示。", acceptance: ["`workers/ai/src/chat/designer.ts` 的进度文案一致"], paths: ["src/components/live/agent-status-card.tsx"] };
+  assert.equal(planLanguage(pathHeavy), "zh", "repository paths and inline code do not outweigh the Chinese prose");
   assert.equal(visitorLanguage({ title: "回答完问题后自动折叠问题框" }), "zh", "a Chinese title with an English technical spec still shows Chinese copy to the visitor");
-  assert.match(buildIssueBody(zh), /## 验收标准[\s\S]*## 计划路径/);
+  assert.match(buildIssueBody(zh), /^## 想要什么\n[\s\S]*## 验收标准[\s\S]*## 涉及路径/);
   assert.match(buildIssueBody(ja), /## 受け入れ基準/);
   assert.match(buildIssueBody(plan), /## Acceptance criteria/);
   const issueUrl = new URL(buildIssueUrl(zh));
   assert.equal(issueUrl.origin, "https://github.com");
   assert.equal(issueUrl.pathname, `/${BUILD_REPO}/issues/new`);
+  assert.equal(issueUrl.searchParams.get("template"), "improvement.yml");
   assert.equal(issueUrl.searchParams.get("title"), zh.title);
-  assert.match(issueUrl.searchParams.get("body") ?? "", /## 验收标准[\s\S]*提交自\[首页对话\]/);
+  assert.equal(issueUrl.searchParams.get("what"), zh.spec);
+  assert.match(issueUrl.searchParams.get("acceptance") ?? "", /^- \[ \] 手机端 375px 单列显示$/);
+  assert.equal(issueUrl.searchParams.get("paths"), "- `src/components/live/genshin-card.tsx`");
+  assert.match(issueUrl.searchParams.get("context") ?? "", /提交自\[首页对话\][\s\S]*filed-from-homepage-chat/);
 });
 
 test("base must be an ancestor of main, with comparison in the correct direction", async () => {

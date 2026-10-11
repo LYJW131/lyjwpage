@@ -18,7 +18,6 @@ export interface Env {
   ANTHROPIC_EGRESS?: DurableObjectNamespace<AnthropicEgress>;
   CHAT_USAGE_LIMIT?: RateLimit;
   GITHUB_APP_CLIENT_SECRET?: string;
-  GITHUB_ISSUE_LIMIT?: RateLimit;
   BUILD_COORDINATOR?: DurableObjectNamespace<BuildCoordinator>;
   BUILD_SESSION_SECRET?: string;
   IMAGES?: R2Bucket;

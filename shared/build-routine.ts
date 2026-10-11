@@ -53,13 +53,13 @@ export function runIdFromBranch(ref: string): string | null {
 }
 export type PlanLanguage = "zh" | "ja" | "en";
 
-// 计划正文跟随对话语言，issue 与 PR 的固定文案跟随计划：中日文按字数比拉丁字母更「重」，路径、标识符里的
+// 计划正文跟随对话语言，issue 与 PR 的固定文案跟随计划：先剔除行内代码与路径，中日文按字数比拉丁字母更「重」，标识符里的
 // 拉丁字母不该把中文计划判成英文，英文计划里引用的几个中文歌名也不该把它判成中文；假名占比高才算日文。
 export function planLanguage(plan: Pick<BuildPlan, "title" | "spec" | "acceptance">): PlanLanguage {
-  return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`);
+  return textLanguage(`${plan.title}\n${plan.spec}\n${plan.acceptance.join("\n")}`.replace(/`[^`\n]*`|\S*\/\S*/g, " "));
 }
 
-// 访客看到的说明跟标题走：规格常是英文技术说明，标题按规划者的约定用访客的语言。
+// 访客看到的说明跟标题走：规格里夹着大量英文路径与标识符，标题最能代表访客的语言。
 export function visitorLanguage(plan: Pick<BuildPlan, "title">): PlanLanguage {
   return textLanguage(plan.title);
 }
@@ -72,8 +72,10 @@ export function textLanguage(text: string): PlanLanguage {
   return kana > (kana + han) * 0.2 ? "ja" : "zh";
 }
 
+// 预填参数对应 .github/ISSUE_TEMPLATE/improvement.yml 的字段 id；issue 与 PR 正文的小节标题同用一套文案，须与表单字段同步。
 export const PLAN_LABELS = {
   en: {
+    request: "Request",
     acceptance: "Acceptance criteria",
     paths: "Planned paths",
     review: "Review closely",
@@ -88,8 +90,9 @@ export const PLAN_LABELS = {
     screenshotsNote: "Captured by the build routine on its local dev server before upload; the Vercel preview is the deployed result.",
   },
   zh: {
+    request: "想要什么",
     acceptance: "验收标准",
-    paths: "计划路径",
+    paths: "涉及路径",
     review: "重点审查",
     reasons: { outside: "计划外", contract: "共享契约", auth: "构建或授权代码", prompt: "对话提示词", docs: "docs/ 之外的文档" },
     requestedBy: (account: string) => `由 @${account} 发起。`,
@@ -102,6 +105,7 @@ export const PLAN_LABELS = {
     screenshotsNote: "由构建 routine 在上传前于本地开发服务器截取；部署后的效果以 Vercel 预览为准。",
   },
   ja: {
+    request: "要望",
     acceptance: "受け入れ基準",
     paths: "変更予定のパス",
     review: "重点レビュー",
@@ -119,13 +123,38 @@ export const PLAN_LABELS = {
 
 export function buildIssueBody(plan: BuildPlan): string {
   const labels = PLAN_LABELS[planLanguage(plan)];
-  return `${plan.spec}\n\n## ${labels.acceptance}\n${plan.acceptance.map((item) => `- [ ] ${item}`).join("\n")}\n\n## ${labels.paths}\n${plan.paths.map((path) => `- \`${path}\``).join("\n")}`;
+  return `## ${labels.request}\n${plan.spec}\n\n## ${labels.acceptance}\n${plan.acceptance.map((item) => `- [ ] ${item}`).join("\n")}\n\n## ${labels.paths}\n${plan.paths.map((path) => `- \`${path}\``).join("\n")}`;
 }
+
+// GitHub 对超长预填链接回 414；context 里的注释标记是访客提交后 .github/workflows/issue-labels.yml 补 from-chat 标签的判据。
+export const BUILD_ISSUE_URL_LIMIT = 7_500;
+export const BUILD_ISSUE_ORIGIN = "filed-from-homepage-chat";
 
 export function buildIssueUrl(plan: BuildPlan): string {
   const labels = PLAN_LABELS[planLanguage(plan)];
-  const body = `${buildIssueBody(plan)}\n\n---\n${labels.issueFooter}`;
-  const params = new URLSearchParams({ title: plan.title, body });
-  return `https://github.com/${BUILD_REPO}/issues/new?${params.toString()}`;
+  const context = `${labels.issueFooter}\n<!-- ${BUILD_ISSUE_ORIGIN} -->`;
+  const fields = {
+    title: plan.title,
+    what: plan.spec,
+    acceptance: plan.acceptance.map((item) => `- [ ] ${item}`).join("\n"),
+    paths: plan.paths.map((path) => `- \`${path}\``).join("\n"),
+  };
+  const url = (candidate: typeof fields) => `https://github.com/${BUILD_REPO}/issues/new?${new URLSearchParams({ template: "improvement.yml", ...candidate, context })}`;
+  if (url(fields).length <= BUILD_ISSUE_URL_LIMIT) return url(fields);
+  // 先砍路径、再砍验收条目、最后截规格，被砍的字段末尾标「…」。
+  for (const keep of [10, 3, 0]) {
+    fields.paths = keep ? `${plan.paths.slice(0, keep).map((path) => `- \`${path}\``).join("\n")}\n…` : "…";
+    if (url(fields).length <= BUILD_ISSUE_URL_LIMIT) return url(fields);
+  }
+  for (const keep of [4, 2, 0]) {
+    fields.acceptance = keep ? `${plan.acceptance.slice(0, keep).map((item) => `- [ ] ${item}`).join("\n")}\n…` : "…";
+    if (url(fields).length <= BUILD_ISSUE_URL_LIMIT) return url(fields);
+  }
+  const spec = [...plan.spec];
+  for (let n = spec.length; n > 0; n = Math.floor(n / 2)) {
+    fields.what = `${spec.slice(0, n).join("")}\n…`;
+    if (url(fields).length <= BUILD_ISSUE_URL_LIMIT) return url(fields);
+  }
+  return url({ title: fields.title, what: "…", acceptance: "…", paths: "…" });
 }
 

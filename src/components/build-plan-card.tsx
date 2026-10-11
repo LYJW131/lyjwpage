@@ -35,7 +35,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   const startingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const expired = now >= proposal.expiresAt;
-  const used = Boolean(proposal.issue || proposal.build);
+  const used = Boolean(proposal.issue || proposal.issueOpened || proposal.build);
   const disabled = expired || used || working !== null || inactive;
 
   useEffect(() => {
@@ -77,6 +77,8 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
       </details>
       {proposal.issue ? (
         <p className="text-xs">Opened <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
+      ) : proposal.issueOpened ? (
+        <p className="text-xs">Opened <a href={buildIssueUrl(proposal.plan)} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">GitHub&apos;s new issue form</a> — submit it there to file this plan.</p>
       ) : proposal.build ? (
         <BuildStatusCard key={proposal.build.runId} build={proposal.build} savedRun={proposal.run} onRun={(run) => { if (JSON.stringify(run) !== JSON.stringify(proposal.run)) onChange({ ...proposal, run }); }} />
       ) : (
@@ -87,6 +89,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
               target="_blank"
               rel="noreferrer noopener"
               aria-disabled={disabled || buildOpen || undefined}
+              onClick={() => onChange({ ...proposal, issueOpened: true })}
               className={cn(
                 "rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover",
                 (disabled || buildOpen) && "pointer-events-none opacity-40",
