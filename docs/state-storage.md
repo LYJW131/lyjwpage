@@ -70,13 +70,13 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 
 公开状态视图登记在 `src/lib/status-views.ts`：路径、所在的数据层（`realtime` / `lag`）、站点缓存标签（`page:<tag>`）、WebSocket 事件都从这一行派生，可滞后层不许带推送事件（模块加载时断言）。`SITE_CACHE` 失效的标签白名单也来自这张表。
 
-首屏按卡读取（`src/lib/first-screen.ts`）：每条状态视图各挂自己的 `page:<tag>`、各读自己的端点，由 `StatusSnapshot` 入口按视图缓存，并行发出。实时卡的端点读状态核心 DO，可滞后卡的端点读 KV，任何一条都不在请求路径上现拉外部 API，所以慢卡拖不住整个首屏。单个端点回 `ok:false` 用卡片降级信封；网络失败、5xx 与非法信封直接 503，不用错误快照覆盖已有缓存；端点还没部署（404）降级为那张卡不可用。缓存期限是 `src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`。首屏歌词在拿到「此刻在听」之后按曲目读 `/api/lyrics`（同样缓存；这首的歌词多数已在写入时预热进 `APPLE_CACHE`）。
+首屏按卡读取（`src/lib/first-screen.ts`）：每条状态视图各挂自己的 `page:<tag>`、各读自己的端点，由 `StatusSnapshot` 入口按视图缓存，并行发出。实时卡的端点读状态核心 DO，可滞后卡的端点读 KV，都不在请求路径上现拉外部 API；冷缓存时首页 loader 等齐全部视图（`src/app/page.tsx` 的 `Promise.all`），已缓存的视图直接命中。成功快照的缓存期限是 `src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`；端点回 `ok:false` 或还没部署（404）时用卡片降级信封，只按 `STATUS_DEGRADED_CACHE_CONTROL` 短缓存；网络失败、5xx 与非法信封回 503 且不缓存，已有快照按 `stale-if-error` 继续用，没有快照时整页渲染失败、不进缓存。首屏歌词在拿到「此刻在听」之后按曲目直取 `/api/lyrics`，不经 `StatusSnapshot` 缓存，失败时不带歌词（这首的歌词多数已在写入时预热进 `APPLE_CACHE`）。
 
 浏览器读路径在 `src/lib/status-reads.ts` 与 `src/hooks/use-status.ts`。页面打开后只有实时卡各自回源校验一次，补上 HTML 生成后到推送连上之间的空窗；可滞后卡直接用首屏那份，按各自节奏轮询——只有首屏那份的 `updatedAt` 已经超过它的轮询间隔（没人访问时首页可能几个小时没重建）才在挂载后补取一次。有单调时间戳的 payload 按代数挡旧值。时间相关的新鲜度每次读取现算。
 
 实时卡的「此刻在不在线 / 断没断流」一律由浏览器判（`src/hooks/use-stale.ts`，纯逻辑在 `src/lib/freshness.ts`）：源站只给 `lastSeenAt`、`declaredOffline`、`heartbeatWindowMs`、`pushedAt`、`staleAfterMs`、`observedAt` 这类原始事实，不在读取时下结论，免得结论跟着首屏缓存冻住。成功信封带 `servedAt`（源站交出这份的时刻，`statusEnvelope` 盖）：首屏那份连它一起冻进缓存，首帧没有访客钟时拿它当钟，服务端预渲染和 hydrate 判出同一个结论；浏览器取回的信封在进 SWR 之前摘掉它。挂载后换浏览器自己的钟，按钟判出的过期要等挂载校验或切回前台的那次回源回来才认，认下之后只有数据重新新鲜才松开。
 
-Worker 写入完成后，只有首屏布局变化才经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（判据见 `src/lib/home-layout.ts` 与 `workers/api/README.md`），内容变化交给各状态视图缓存周期的定时重建。失效按标签白名单把对应 `page:<tag>` 与 `home` 标 stale，已有 HTML 优先返回并后台重建。不因纯心跳刷新首页。ESA 首页不走通知：边缘按源站 `Cache-Control` 的 SWR（由 site Worker 响应给出）自行过期与后台取新，控制台缓存规则见 [仓库外事实](./ops-facts.md)。站点缓存的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker。
+Worker 写入完成后，只有首屏布局变化才经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（判据见 `src/lib/home-layout.ts` 与 `workers/api/README.md`），内容变化交给视图快照的缓存期限自然过期。失效按标签白名单先清除对应 `page:<tag>` 快照，再清除 `home` 首页文档，下一次请求重新渲染。不因纯心跳刷新首页。ESA 首页不走通知：边缘按源站 `Cache-Control` 的 SWR（由 site Worker 响应给出）自行过期与后台取新，控制台缓存规则见 [仓库外事实](./ops-facts.md)。站点缓存的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker。
 
 ## 配置
 

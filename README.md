@@ -151,7 +151,7 @@
 
 首页生成时按卡并行读取各模块的端点，每条状态读取由 `StatusSnapshot` 入口按 `page:<标签>` 缓存，让首次展示不依赖浏览器逐张卡片请求数据。实时卡读状态核心，可滞后卡读 KV，任何一张都不在请求路径上现拉外部 API。首屏从各视图缓存并行读取数据；整页缓存命中时无需重新取数，冷缓存渲染仍会等待所需视图。
 
-页面加载后，实时卡各自回源校验一次、之后由推送与轮询更新；可滞后卡直接用首屏那份，之后在写入方的下一次预期写入之后几秒去取（节奏登记在 `src/lib/status-views.ts` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts`）。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `src/lib/home-layout.ts`）触发标签失效并在后台重建；读数、标题、进度这类内容变化交给 `StatusSnapshot` 各视图的缓存周期（`src/lib/status-views.ts` 的 `cadenceMs`）与标签失效重建，纯心跳不触发重建。
+页面加载后，实时卡各自回源校验一次、之后由推送与轮询更新；可滞后卡直接用首屏那份，之后在写入方的下一次预期写入之后几秒去取（节奏登记在 `src/lib/status-views.ts` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts`）。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `src/lib/home-layout.ts`）按标签清除，下一次请求重新渲染；读数、标题、进度这类内容变化交给 `StatusSnapshot` 视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`，各视图统一，不随 `cadenceMs`）自然过期，纯心跳不触发重建。
 
 因此，缓存页面负责首次展示，客户端负责追上当前状态；不要求每次设备变化都同步刷新整页 HTML。
 

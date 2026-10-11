@@ -8,9 +8,9 @@ import {
   ScrollRestoration,
   Scripts,
   useLocation,
-  useRevalidator,
   useRouteError,
   type LinkDescriptor,
+  type MetaArgs,
   type MetaDescriptor,
 } from "react-router";
 
@@ -32,9 +32,15 @@ import { site } from "@/lib/site";
 
 import "./globals.css";
 
-export function meta(): MetaDescriptor[] {
+function errorTitle(error: unknown): string {
+  if (!error) return site.name;
+  if (isRouteErrorResponse(error) && error.status === 404) return `404 — ${site.name}`;
+  return `Something went wrong — ${site.name}`;
+}
+
+export function meta({ error }: MetaArgs): MetaDescriptor[] {
   return [
-    { title: site.name },
+    { title: errorTitle(error) },
     { name: "description", content: site.description },
     { property: "og:title", content: site.name },
     { property: "og:description", content: site.description },
@@ -106,7 +112,6 @@ export default function App() {
 }
 
 function PageError({ error }: { error: unknown }) {
-  const { revalidate } = useRevalidator();
   useEffect(() => {
     console.error(error);
     Sentry.captureException(error);
@@ -137,7 +142,7 @@ function PageError({ error }: { error: unknown }) {
               <div className="mt-6 flex items-center justify-center gap-3">
                 <button
                   type="button"
-                  onClick={() => revalidate()}
+                  onClick={() => window.location.reload()}
                   className="paper-card inline-flex h-8 items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-xs font-medium text-foreground transition-colors hover:bg-surface-hover"
                 >
                   Retry

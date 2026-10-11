@@ -39,6 +39,8 @@ import {
   classifyRenderRequest,
   imageObjectHeaders,
   imageObjectKeyFromPath,
+  imageObjectPart,
+  parseByteRange,
   imageObjectRequest,
   isPublicStatusEnvelope,
   renderCacheHeaders,
@@ -86,6 +88,16 @@ function errorResponse(status: number, message = "Not Found"): Response {
   });
 }
 
+// 用 purge 而非 invalidate：响应不带 ETag / Last-Modified 且有 stale-while-revalidate，软失效会先回旧正文，首页后台重建时读到的也还是旧快照。
+async function purgeTags(cache: CacheContext | undefined, owner: string, tags: string[]): Promise<void> {
+  if (!cache) throw new Error(`${owner} cache is not enabled`);
+  const result = await cache.purge({ tags });
+  if (!result.success) {
+    const reason = result.errors.map((error) => `${error.code} ${error.message}`).join("; ");
+    throw new Error(`${owner} purge failed: ${reason || "unknown"}`);
+  }
+}
+
 class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -112,7 +124,7 @@ class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
     if (upstream.status === 404) {
       return Response.json(
         { ok: false, error: FIRST_SCREEN_UNAVAILABLE },
-        { headers: statusSnapshotHeaders(tag) },
+        { headers: statusSnapshotHeaders(tag, false) },
       );
     }
     if (!upstream.ok) return errorResponse(503, "Status upstream failed");
@@ -126,15 +138,13 @@ class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
     if (!isPublicStatusEnvelope(payload)) {
       return errorResponse(503, "Status payload invalid");
     }
-    return Response.json(payload, { headers: statusSnapshotHeaders(tag) });
+    return Response.json(payload, { headers: statusSnapshotHeaders(tag, payload.ok) });
   }
 
   async invalidate(tags: readonly string[]): Promise<void> {
     const valid = filterStatusTags(tags);
     if (!valid.length) return;
-    const cache = this.ctx.cache;
-    if (!cache) throw new Error("StatusSnapshot cache is not enabled");
-    await cache.invalidate({ tags: valid.map(statusCacheTag) });
+    await purgeTags(this.ctx.cache, "StatusSnapshot", valid.map(statusCacheTag));
   }
 }
 
@@ -185,9 +195,28 @@ class ImageVariantsBase extends WorkerEntrypoint<Env> {
         if (!head) return errorResponse(404);
         return new Response(null, { headers: imageObjectHeaders(head) });
       }
-      const object = await this.env.IMAGE_OBJECTS.get(objectKey);
+      // If-Range 的校验 R2 不做，按 RFC 9110 忽略 Range 回整份。
+      const range = request.headers.has("if-range") ? null : parseByteRange(request.headers.get("range"));
+      const head = range ? await this.env.IMAGE_OBJECTS.head(objectKey) : null;
+      if (range && !head) return errorResponse(404);
+      const part = head && range ? imageObjectPart(range, head.size) : null;
+      if (head && !part) {
+        return new Response(null, {
+          status: 416,
+          headers: { "Content-Range": `bytes */${head.size}`, "Cache-Control": NO_STORE },
+        });
+      }
+      const object = await this.env.IMAGE_OBJECTS.get(objectKey, {
+        range: part ?? undefined,
+        onlyIf: request.headers,
+      });
       if (!object) return errorResponse(404);
-      return new Response(object.body, { headers: imageObjectHeaders(object) });
+      if (!("body" in object)) {
+        const headers = imageObjectHeaders(object);
+        headers.delete("Content-Length");
+        return new Response(null, { status: 304, headers });
+      }
+      return new Response(object.body, { status: part ? 206 : 200, headers: imageObjectHeaders(object, part) });
     }
     try {
       return await this.fetchObjectOrigin(objectKey, {
@@ -268,10 +297,9 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   async invalidate(tags: readonly string[]): Promise<void> {
     const valid = filterStatusTags(tags);
     if (!valid.length) return;
+    // 先清快照再清首页：反过来的话，夹在中间的请求会用旧快照重建首页并再缓存一轮。
     await this.ctx.exports.StatusSnapshot.invalidate(valid);
-    const cache = this.ctx.cache;
-    if (!cache) throw new Error("RenderedSite cache is not enabled");
-    await cache.invalidate({ tags: [HOME_CACHE_TAG] });
+    await purgeTags(this.ctx.cache, "RenderedSite", [HOME_CACHE_TAG]);
   }
 
   private services(origin: string): SiteServices {

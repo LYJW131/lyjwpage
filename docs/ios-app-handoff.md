@@ -21,9 +21,8 @@
 2. **设备端摘要**：在 Apple Intelligence 模型可用的设备上，Pulse 的 Day in Review 能生成；模型不可用时不显示这张卡。
 3. **覆盖安装与健康上报**：`./build-install.sh`。
    - 覆盖安装后「iPhone」页 Last report 有值、Settings 里地址和 Client ID 还在；按 Report Now 显示 Delivered。
-   - 「Now」的 Activity 卡和「iPhone」页的本机圆环对得上。
-   - 桌面加 Listening 与 Activity Rings 小组件，锁屏加圆形与长条；主屏切到着色 / 透明外观看封面与圆环是否可读。
-   - 快捷指令 App 里跑 Report Telemetry（不打开 App 就完成），可绑到操作按钮；问 Siri「What's playing on lyjwpage」。
+   - 快捷指令 App 里跑 Report Telemetry（不打开 App 就完成），可绑到操作按钮。
+   - 暂停中，恢复客户端维护后再验：「Now」的 Activity 卡和「iPhone」页的本机圆环对得上；桌面加 Listening 与 Activity Rings 小组件，锁屏加圆形与长条，主屏切到着色 / 透明外观看封面与圆环是否可读；问 Siri「What's playing on lyjwpage」。
 4. **后台唤醒**：装好、手动报一次后别再开 App，几小时后看站点上的圆环卡时间往前走了没有；不走按 [README「后台到底有没有在报」](../apps/ios/README.md#后台到底有没有在报) 查。
 5. **收尾**：修过的地方提交（提交说明写清是哪条编译错误、怎么改的）；按根 AGENTS.md 的部署流程合进 main。App 不走任何自动部署，装到手机就是上线。
 

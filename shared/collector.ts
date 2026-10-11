@@ -4,6 +4,8 @@ export const COLLECTOR_JOBS = [
   "pagespeed",
   "github-chart",
   "github-repo",
+  "vercel-deployments",
+  "vercel-metrics",
   "site-deployments",
   "site-analytics",
   "cloudflare-deployments",

@@ -8,9 +8,12 @@ import {
   IMMUTABLE_ASSET_CACHE_CONTROL,
   NO_STORE,
   STATUS_CACHE_CONTROL,
+  STATUS_DEGRADED_CACHE_CONTROL,
   classifyGatewayRequest,
   classifyRenderRequest,
   imageObjectHeaders,
+  imageObjectPart,
+  parseByteRange,
   imageObjectRequest,
   isPublicStatusEnvelope,
   renderCacheHeaders,
@@ -85,6 +88,31 @@ test("原始 /img 对象头：只有命中对象才有 immutable，元数据完�
   assert.equal(headers.get("Accept-Ranges"), "bytes");
 });
 
+test("/img 的 Range：只认单段，越界不可满足，换算成 206 的 Content-Range 与分段长度", () => {
+  assert.deepEqual(parseByteRange("bytes=100-149"), { offset: 100, length: 50 });
+  assert.deepEqual(parseByteRange("bytes=900-"), { offset: 900 });
+  assert.deepEqual(parseByteRange("bytes=-200"), { suffix: 200 });
+  for (const ignored of [null, "", "bytes=-", "bytes=5-1", "bytes=0-1,4-5", "items=0-1"]) {
+    assert.equal(parseByteRange(ignored), null);
+  }
+
+  assert.deepEqual(imageObjectPart({ offset: 100, length: 50 }, 1000), { offset: 100, length: 50 });
+  assert.deepEqual(imageObjectPart({ offset: 900 }, 1000), { offset: 900, length: 100 });
+  assert.deepEqual(imageObjectPart({ offset: 990, length: 50 }, 1000), { offset: 990, length: 10 });
+  assert.deepEqual(imageObjectPart({ suffix: 200 }, 1000), { offset: 800, length: 200 });
+  assert.deepEqual(imageObjectPart({ suffix: 5000 }, 1000), { offset: 0, length: 1000 });
+  assert.equal(imageObjectPart({ offset: 1000 }, 1000), null);
+  assert.equal(imageObjectPart({ suffix: 0 }, 1000), null);
+
+  const headers = imageObjectHeaders(
+    { httpEtag: '"e"', size: 1000, writeHttpMetadata() {} },
+    { offset: 100, length: 50 },
+  );
+  assert.equal(headers.get("Content-Range"), "bytes 100-149/1000");
+  assert.equal(headers.get("Content-Length"), "50");
+  assert.equal(headers.get("Accept-Ranges"), "bytes");
+});
+
 test("带哈希的 /assets 由静态资源层直出，_headers 与 Worker 用同一个 immutable 策略", () => {
   const rules = readFileSync(new URL("../../public/_headers", import.meta.url), "utf8");
   assert.ok(rules.includes(`/assets/*\n  Cache-Control: ${IMMUTABLE_ASSET_CACHE_CONTROL}\n`));
@@ -151,13 +179,18 @@ test("首页 HTML 与根数据才可缓存，SSR 错误一律 no-store", () => {
 });
 
 test("状态快照可缓存并带白名单标签", () => {
-  assert.deepEqual(statusSnapshotHeaders("listening"), {
+  assert.deepEqual(statusSnapshotHeaders("listening", true), {
     "Cache-Control": STATUS_CACHE_CONTROL,
     "Cache-Tag": "page:listening",
   });
-  assert.deepEqual(statusSnapshotHeaders(undefined), {
+  assert.deepEqual(statusSnapshotHeaders(undefined, true), {
     "Cache-Control": STATUS_CACHE_CONTROL,
   });
+  assert.deepEqual(statusSnapshotHeaders("listening", false), {
+    "Cache-Control": STATUS_DEGRADED_CACHE_CONTROL,
+    "Cache-Tag": "page:listening",
+  });
+  assert.doesNotMatch(STATUS_DEGRADED_CACHE_CONTROL, /stale-/);
 });
 
 test("失效标签白名单过滤、去重、空输入", () => {

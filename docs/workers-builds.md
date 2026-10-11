@@ -24,7 +24,14 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 `site` 在根目录 `wrangler.jsonc`：`SITE_ENV=production`，渲染 `RenderedSite`、状态快照 `StatusSnapshot`、图片 `ImageVariants` 三个带平台缓存的入口，默认入口分流 MCP 转发、Sentry `/relay`、`/image` 优化、`/img` R2 对象与静态资产。绑定含 `PUBLIC_STATUS`（→ api `PublicStatus`）、`IMAGES`、R2 `IMAGE_OBJECTS`（`lyjw-homepage`）与 `ASSETS`；Sentry DSN 写在 `[vars]`，构建期 `SENTRY_AUTH_TOKEN` 配在 Builds 环境变量里，仅用于上传 sourcemap。api 侧经 `SITE_CACHE`（→ site `RenderedSite`）做私有标签失效，见 `shared/site-cache.ts`。生产域名切换在 Builds 之外执行，见 [ops-facts](./ops-facts.md) 的待办行。
 
-切换顺序（发布前待办，未执行）：先在 Builds 创建/核对 `site` 目标，再为 api 配置 `SITE_CACHE` 调用方，再补 collector 的 `SITE_WORKER_TAG` / `SITE_ANALYTICS_SITES` 与 ingress 的部署通知，最后切换域名并用 `purge-esa.yml` 验证、刷新 ESA。无状态 DO 迁移；旧托管在验收前不撤，待删清单见 [仓库外事实](./ops-facts.md)「待手工清理」。Worker 发布与平台缓存生效不原子，`/` 文档与视图快照的 HIT / Range / 失效传播要在隔离云预览上验收。
+切换顺序（远端完成到哪一步见 [仓库外事实](./ops-facts.md)）：
+
+1. 合并前：`site` 先存在。按「禁区」的跨 Worker 契约例外，从 PR 分支手动 `wrangler deploy` 一次 `site`（`wrangler.jsonc` 不带路由、`workers_dev = false`，不接流量也不抢域名），api 的 `SITE_CACHE` 才能在合并后发布成功。再连 `site` 的 Workers Builds、设好构建环境变量，把 site 的 tag 与两站 Web Analytics 映射写进 `workers/collector/wrangler.toml` 的 `SITE_WORKER_TAG` / `SITE_ANALYTICS_SITES`。
+2. 合并：api、ai、collector、ingress、site 由 Workers Builds 并行发布，此时 `lyjw.me` 仍是 Vercel 上合并前的最后一次生产部署；根目录 `vercel.json` 关掉 Vercel 的 Git 部署，合并后的提交不再在 Vercel 构建。并行发布的错代窗口是暂时的：新 ingress 早于新 collector 时部署通知回 `unknown job`（只记日志），旧前端请求已改名的部署端点得到 404，`page:<tag>` 失效打到还没接流量的 `site`。
+3. `Workers Builds: site` 成功后立刻切域名：在 `lyjw.me` zone 删掉指向 Vercel 的根 CNAME，给 `site` 加自定义域名 `lyjw.me`。ESA 回源仍是 `lyjw.me`，不用改。`purge-esa.yml` 会等 `/api/version` 变成合并提交；切换晚于它的等待上限时手动 `workflow_dispatch` 重跑。
+4. 验收：两个域名的首页、`/api/version`、`/img` 的 Range、首屏缓存 HIT 与布局失效、部署卡片和访问量。回滚是把根 CNAME 改回 Vercel；Vercel 项目在验收前不删，待删清单见「待手工清理」。
+
+无状态 DO 迁移。Worker 发布与平台缓存生效不原子，验收要看线上响应头，不能只看构建成功。
 
 ## 分支预览
 
@@ -43,7 +50,7 @@ api 和 ai 的 Builds 都调用同一个预览脚本，各自发布到自己的 
 
 `scripts/build.mjs` 在预览构建里等待本分支 api、ai 两个候选地址，`scripts/preview-backend.mjs#findMatchingPreview` 只接受 revision 与 `WORKERS_CI_COMMIT_SHA` 一致且状态读取就绪的候选；两份都是本提交时固定选 api：ai 先就绪时，在 `PREFERRED_GRACE_MS` 内反复重查 api（它常常晚到，之前还挂着旧提交）。只改了 AI 代码的分支没有 api 的新 Preview，会多等这一段再用 ai。等待上限见 `WAIT_MS`；等不到匹配时构建直接失败，预览构建永不回退生产后端。选中的地址既是构建期的 `PREVIEW_BACKEND_URL`，也是运行时的预览后端，构建成功后冻结在 `build/site-preview.json`；`scripts/deploy-site-preview.mjs`（`pnpm preview:deploy`）只按这份冻结记录发布 `site` 的 Preview，不重查后端。预览构建强制清空 `SENTRY_AUTH_TOKEN`、`GITHUB_TOKEN`、`PUBLIC_CF_WEB_ANALYTICS_TOKENS`，不上传 sourcemap、不带生产凭据。
 
-为了让只改前端的分支也有同提交后端可用，api 的非生产分支构建用单独的 Preview 触发器：包含路径同时覆盖前端与后端依赖（`src/*`、`shared/*`、`workers/api/*`、`workers/ai/*`、`scripts/*`、根配置清单），分支过滤器排除 `main`；生产触发器的监视路径不变。
+为了让只改前端的分支也有同提交后端可用，api 的非生产分支构建用单独的 Preview 触发器：包含路径同时覆盖前端与后端依赖（`src/*`、`shared/*`、`workers/api/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单），分支过滤器排除 `main`；生产触发器的监视路径不变。
 
 站点 Preview 由 Cloudflare Access 保护：操作者在控制台 Workers & Pages → `site` → Access → Protect this Worker → Previews only 开启，或在 Access 应用的目的地里配 `{ type: "preview_worker", worker_id: <site Worker ID> }`，身份提供方按批准的名单配置；访问者打开预览链接要先登录，没有免登录分享链接。只保护 `site` 的 Preview，不要开账号级保护以免挡住 api/ai 预览的构建就绪检查。之后在 site 的非生产 Builds 里启用 Preview URL 并把 `SITE_PREVIEW_ACCESS_READY` 设为 `true`，`preview:deploy` 才会执行。这些全部是发布前待办，未在远端配置。
 
@@ -65,7 +72,7 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 检出默认分支，用
 | --- | --- | --- |
 | `api` | `workers/api/*`、`src/lib/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | `shared/ingest/*`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
 | `ai` | `workers/ai/*`、`shared/ai-paths.ts`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts`、`shared/http-origins.ts`、`shared/public-status.ts`、`src/lib/status-views.ts`、`src/lib/site.ts`、`src/lib/asset-url.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | 无 |
-| `site` | `src/*`、`shared/*`、`workers/site/*`、`scripts/*`、`public/*`、`.github/github-avatar.sha256`、`wrangler.jsonc`、`vite.config.ts`、`react-router.config.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml` | 无 |
+| `site` | `src/*`、`shared/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、`.github/github-avatar.sha256`、`wrangler.jsonc`、`vite.config.ts`、`react-router.config.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml` | 无 |
 | `ingress` | `workers/ingress/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
 | `collector` | `workers/collector/*`、`shared/*`、`src/lib/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
 

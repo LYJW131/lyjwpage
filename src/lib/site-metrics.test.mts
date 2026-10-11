@@ -89,3 +89,55 @@ test("split deployments do not fabricate one production commit", async () => {
   assert.equal(value.production, null);
   assert.equal(value.activeVersions.length, 2);
 });
+
+test("a fully routed version without a build record becomes its own production row, not the newest build", async () => {
+  const fetcher: typeof fetch = async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith("/site/deployments")) return Response.json(active());
+    if (path.includes("/builds/workers/")) return Response.json({ success: true, result: [build("new-build", "b".repeat(40))] });
+    return Response.json({ success: true, result: { builds: {} } });
+  };
+  const value = await fetchSiteDeployments("account", "c".repeat(32), "token", Date.now(), fetcher);
+  assert.equal(value.production?.id, "cloudflare-version:version-one");
+  assert.equal(value.production?.commit, null);
+  assert.equal(value.recent[0].id, "cloudflare-build:new-build");
+});
+
+test("a deployed build is shown as production even if its own run failed or came from a branch", async () => {
+  const fetcher: typeof fetch = async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith("/site/deployments")) return Response.json(active());
+    if (path.includes("/builds/workers/")) return Response.json({ success: true, result: [] });
+    const deployed = { ...build("manual"), build_outcome: "fail", build_trigger_metadata: { branch: "hotfix" } };
+    return Response.json({ success: true, result: { builds: { "version-one": deployed } } });
+  };
+  const value = await fetchSiteDeployments("account", "c".repeat(32), "token", Date.now(), fetcher);
+  assert.equal(value.production?.state, "READY");
+  assert.equal(value.production?.target, "production");
+});
+
+test("no active deployment keeps recent builds newest first, capped at five", async () => {
+  const builds = Array.from({ length: 7 }, (_, i) => ({ ...build(`b${i}`), created_on: `2026-10-0${i + 1}T00:00:00Z` }));
+  const fetcher: typeof fetch = async (url) => {
+    if (String(url).includes("/site/deployments")) return Response.json({ success: true, result: { deployments: [] } });
+    return Response.json({ success: true, result: builds });
+  };
+  const value = await fetchSiteDeployments("account", "c".repeat(32), "token", Date.now(), fetcher);
+  assert.equal(value.production, null);
+  assert.deepEqual(value.recent.map((row) => row.id), ["b6", "b5", "b4", "b3", "b2"].map((id) => `cloudflare-build:${id}`));
+});
+
+test("build states map stopped outcomes and branches, and a bad tag or HTTP error never reads as empty", async () => {
+  assert.equal(parseSiteBuild({ ...build(), status: "queued" }).state, "QUEUED");
+  assert.equal(parseSiteBuild({ ...build(), status: "initializing" }).state, "INITIALIZING");
+  for (const outcome of ["cancelled", "terminated", "skipped"]) {
+    assert.equal(parseSiteBuild({ ...build(), build_outcome: outcome }).state, "CANCELED");
+  }
+  assert.equal(parseSiteBuild({ ...build(), build_outcome: "mystery" }).state, "UNKNOWN");
+  assert.equal(parseSiteBuild({ ...build(), build_trigger_metadata: { branch: "feature" } }).target, "preview");
+  assert.throws(() => parseSiteBuild({ ...build(), build_uuid: "" }));
+
+  const forbidden: typeof fetch = async () => new Response("no", { status: 403 });
+  await assert.rejects(fetchSiteDeployments("account", "c".repeat(32), "token", Date.now(), forbidden), /403/);
+  await assert.rejects(fetchSiteDeployments("account", "not-a-tag", "token", Date.now(), forbidden), /tag is invalid/);
+});
