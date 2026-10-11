@@ -17,7 +17,41 @@ permissions:
   packages: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      languages: ${{ steps.pick.outputs.languages }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        with:
+          filters: |
+            javascript-typescript:
+              - "**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts,vue,html,htm}"
+              - "**/tsconfig*.json"
+              - .github/workflows/codeql.yml
+            actions:
+              - .github/workflows/**
+              - "**/action.{yml,yaml}"
+
+      # 每周定时扫不看改动，两种语言都扫
+      - id: pick
+        env:
+          CHANGED: ${{ steps.filter.outputs.changes }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != push ] && [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            CHANGED='["javascript-typescript","actions"]'
+          fi
+          echo "languages=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
+
   analyze:
+    needs: changes
     name: Analyze (${{ matrix.language }})
     # 仓库变量 SELF_HOSTED_RUNNER=on 时走自建 runner；条件与 ci.yml 一致
     runs-on: ${{ vars.SELF_HOSTED_RUNNER == 'on' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'claude/build-') && github.event.pull_request.user.login != 'lyjw131[bot]')) && fromJSON('["self-hosted","linux","x64","lyjwpage"]') || 'ubuntu-latest' }}
@@ -26,14 +60,20 @@ jobs:
       matrix:
         language: [javascript-typescript, actions]
 
+    # 没改到这门语言时只跳过步骤、不跳过任务：跳过的 matrix 任务不展开，检查名会停在未展开的模板上，必需检查就一直等不到
+    env:
+      SCAN: ${{ contains(fromJSON(needs.changes.outputs.languages), matrix.language) }}
     steps:
       - uses: actions/checkout@v5
+        if: env.SCAN == 'true'
 
       - uses: github/codeql-action/init@v4
+        if: env.SCAN == 'true'
         with:
           languages: ${{ matrix.language }}
           build-mode: none
 
       - uses: github/codeql-action/analyze@v4
+        if: env.SCAN == 'true'
         with:
           category: "/language:${{ matrix.language }}"
