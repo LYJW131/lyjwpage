@@ -16,6 +16,11 @@ export const COLLECTOR_JOBS = [
 
 export type CollectorJobName = (typeof COLLECTOR_JOBS)[number];
 
+// 契约只加不改：退役的名字留在 COLLECTOR_JOBS 里，旧调用方点名时回 skipped，不再进定时轮次。
+export const RETIRED_COLLECTOR_JOBS = ["vercel-deployments", "vercel-metrics"] as const satisfies readonly CollectorJobName[];
+
+export type ActiveCollectorJobName = Exclude<CollectorJobName, (typeof RETIRED_COLLECTOR_JOBS)[number]>;
+
 export function isCollectorJob(name: string): name is CollectorJobName {
   return (COLLECTOR_JOBS as readonly string[]).includes(name);
 }

@@ -31,7 +31,7 @@
 | `github-repo` | `LAG github-repo:v1` | `GITHUB_TOKEN` |
 | `site-deployments` | `LAG site-deployments:v1`；每次部署另归档 D1 `site_deploys` | `CLOUDFLARE_METRICS_TOKEN`；`SITE_WORKER_TAG` |
 | `site-analytics` | `LAG site-analytics:v1`（Cloudflare Web Analytics 两站 pageviews，UTC 七日窗） | `CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
-| `vercel-deployments` | 已退役：保留 ABI 名额，运行即 `skipped`（`Retired deployment provider`） | 无 |
+| `vercel-deployments` | 已退役：名字留在契约里，点名时回 `skipped`，不进定时轮次（`shared/collector.ts#RETIRED_COLLECTOR_JOBS`） | 无 |
 | `vercel-metrics` | 已退役：同上 | 无 |
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
