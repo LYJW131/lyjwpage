@@ -1,0 +1,102 @@
+name: Explainer score
+
+on:
+  push:
+    # 访客构建的分支含外人能左右的乐谱，不替它渲染上传
+    branches-ignore: ["claude/build-*"]
+    paths:
+      - docs/explainer/v2/plan.js
+      - docs/explainer/v2/score.js
+      - docs/explainer/v2/music/**
+      - docs/explainer/v2/tools/score-mp3.mjs
+      - scripts/explainer-score.mjs
+      - .github/workflows/explainer-score.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: explainer-score-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCORE_ORIGIN: https://lyjw.me
+
+jobs:
+  # 渲染跑的是分支上的代码，所以这一步不碰任何凭据
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      exists: ${{ steps.key.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Resolve object key
+        id: key
+        run: |
+          key=$(node scripts/explainer-score.mjs)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -I --max-time 20 "$SCORE_ORIGIN/img/$key")
+          echo "exists=$([ "$code" = 200 ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
+          echo "$key -> HTTP $code"
+
+      - name: Install render tools
+        if: steps.key.outputs.exists == '0'
+        run: |
+          command -v ffmpeg || { sudo apt-get update -q && sudo apt-get install -y -q ffmpeg; }
+          pnpm --dir docs/explainer/render install --frozen-lockfile --ignore-workspace
+
+      - name: Render score
+        if: steps.key.outputs.exists == '0'
+        run: node docs/explainer/v2/tools/score-mp3.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.exists == '0'
+        with:
+          name: explainer-score
+          path: docs/explainer/v2/score.mp3
+          retention-days: 3
+          if-no-files-found: error
+
+  upload:
+    needs: render
+    if: needs.render.outputs.exists == '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: explainer-score
+
+      # 对象一经上传就不覆盖：键按乐谱算，同一份乐谱换台机器渲出的字节可能有细微差别
+      - name: Upload to R2
+        env:
+          KEY: ${{ needs.render.outputs.key }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_SCORE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SCORE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 不认 AWS CLI 新版默认附带的校验和头
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ENDPOINT: https://209f2c881b1c494fec50851c067b3266.r2.cloudflarestorage.com
+          R2_BUCKET: lyjw-homepage
+        run: |
+          [[ "$KEY" =~ ^[a-f0-9]{64}\.mp3$ ]] || { echo "::error::Unexpected key: $KEY"; exit 1; }
+          [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::R2_SCORE_ACCESS_KEY_ID is not set"; exit 1; }
+          if aws s3api head-object --endpoint-url "$R2_ENDPOINT" --bucket "$R2_BUCKET" --key "$KEY" >/dev/null 2>&1; then
+            echo "$KEY already in R2"
+            exit 0
+          fi
+          aws s3api put-object --endpoint-url "$R2_ENDPOINT" --bucket "$R2_BUCKET" --key "$KEY" --body score.mp3 \
+            --content-type audio/mpeg --cache-control "public, max-age=31536000, immutable"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -I --max-time 20 "$SCORE_ORIGIN/img/$KEY")
+          echo "$SCORE_ORIGIN/img/$KEY -> HTTP $code"
