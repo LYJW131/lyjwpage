@@ -27,7 +27,8 @@ jobs:
   # 渲染跑的是分支上的代码，所以这一步不碰任何凭据
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 合成是单线程 JS，托管机上整片要渲二三十分钟
+    timeout-minutes: 60
     outputs:
       key: ${{ steps.key.outputs.key }}
       exists: ${{ steps.key.outputs.exists }}
