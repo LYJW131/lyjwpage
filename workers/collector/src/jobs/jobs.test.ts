@@ -7,13 +7,17 @@ import { PAGESPEED_TIMEOUT_MS } from "@/lib/pagespeed";
 import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@/lib/sentry-status";
 import type { SentryStatusPayload } from "@/lib/sentry-status-types";
 import type { GithubRepoPayload } from "@/lib/types";
-import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
 
 import { MemoryKv } from "../testing/memory-kv";
+import type { Env } from "../env";
 import { mergeRepoStats } from "./github-repo";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
-import { refreshVercelMetrics } from "./vercel";
+import { vercelDeploymentsJob, vercelMetricsJob } from "./retired";
+import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
+
+const noEnv = {} as Env;
+const now = 1_700_000_000_000;
 
 function row(id: AgentStatusRow["id"], indicator: AgentStatusRow["indicator"]): AgentStatusRow {
   return { id, name: id, indicator, statusUrl: `https://status.example/${id}`, components: [], incidents: [], note: null, stale: false } as AgentStatusRow;
@@ -100,29 +104,6 @@ test("repo stats keep the good half of a partial round", () => {
   assert.equal(mergeRepoStats({ ok: false, totals: { commits: 434, additions: 1, deletions: 1 } }, null), null);
 });
 
-test("vercel metrics carry a failed group over with its own collected-at", async (t) => {
-  t.mock.method(console, "warn", () => {});
-  const lag = new MemoryKv();
-  const functions = { fetchedAt: 10, start: 0, end: 10, invocations: 5, errors: 0, timeouts: 0, cpuP75Ms: 3, memoryAvgMb: 100 };
-  const analytics = { fetchedAt: 10, start: 0, end: 10, pageviews: 50, visitors: 9 };
-  await refreshVercelMetrics(lag, { functions: async () => functions, analytics: async () => analytics }, 10);
-
-  const { payload, failed } = await refreshVercelMetrics(lag, {
-    functions: async () => ({ ...functions, fetchedAt: 20, invocations: 7 }),
-    analytics: async () => { throw new Error("503"); },
-  }, 20);
-  assert.deepEqual(failed, ["analytics"]);
-  assert.equal(payload.functions?.invocations, 7);
-  assert.deepEqual(payload.analytics, analytics);
-  assert.equal((await readLag<VercelMetricsPayload>(lag, LAG_KEYS.vercelMetrics))?.updatedAt, 20);
-
-  await assert.rejects(refreshVercelMetrics(lag, {
-    functions: async () => { throw new Error("503"); },
-    analytics: async () => { throw new Error("503"); },
-  }, 30));
-  assert.equal((await readLag<VercelMetricsPayload>(lag, LAG_KEYS.vercelMetrics))?.updatedAt, 20);
-});
-
 test("sentry status carries a failed block with its own time, and only for a while", async () => {
   const lag = new MemoryKv();
   const errors = { site: { count12h: 1, count7d: 2, unresolved: 0 }, worker: { count12h: 3, count7d: 4, unresolved: 1 } };
@@ -142,4 +123,48 @@ test("sentry status carries a failed block with its own time, and only for a whi
 
 test("pagespeed waits per request for less than the job's runtime budget", () => {
   assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
+});
+
+test("site-deployments 缺配置干净跳过，缺哪个报哪个", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  assert.deepEqual(await siteDeploymentsJob.run({ env: noEnv, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing CLOUDFLARE_METRICS_TOKEN, CLOUDFLARE_ACCOUNT_ID, SITE_WORKER_TAG",
+  });
+  const partial = {
+    CLOUDFLARE_METRICS_TOKEN: "t",
+    CLOUDFLARE_ACCOUNT_ID: "a",
+  } as Env;
+  assert.deepEqual(await siteDeploymentsJob.run({ env: partial, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing SITE_WORKER_TAG",
+  });
+});
+
+test("site-analytics 缺配置或站点映射不全时跳过", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  assert.deepEqual(await siteAnalyticsJob.run({ env: noEnv, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing CLOUDFLARE_METRICS_TOKEN, CLOUDFLARE_ACCOUNT_ID, SITE_ANALYTICS_SITES",
+  });
+  const partial = {
+    CLOUDFLARE_METRICS_TOKEN: "t",
+    CLOUDFLARE_ACCOUNT_ID: "a",
+    SITE_ANALYTICS_SITES: JSON.stringify({ "lyjw.me": "a".repeat(32) }),
+  } as Env;
+  await assert.rejects(
+    siteAnalyticsJob.run({ env: partial, now, scheduled: false }),
+    /both production hosts/,
+  );
+});
+
+test("退役的 Vercel 任务保留 ABI 名额但不再取数", async () => {
+  for (const job of [vercelDeploymentsJob, vercelMetricsJob]) {
+    assert.deepEqual(await job.run({ env: noEnv, now, scheduled: true }), {
+      status: "skipped",
+      detail: "Retired deployment provider",
+    });
+  }
+  assert.equal(vercelDeploymentsJob.everyMinutes, 1);
+  assert.equal(vercelMetricsJob.everyMinutes, 15);
 });

@@ -24,9 +24,6 @@ import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
-import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
-import { getRecentCommits } from "@/lib/github-recent-commits";
-import { firstScreen, firstScreenLyrics } from "@/lib/first-screen";
 import { APP_VERSION_PATH } from "@/lib/app-version";
 import { liveTrack } from "@/lib/home-layout";
 import {
@@ -51,11 +48,19 @@ import {
   SENTRY_PATH,
   SERVER_PATH,
   TROPHIES_PATH,
-  VERCEL_DEPLOYMENTS_PATH,
+  SITE_DEPLOYMENTS_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
+import {
+  SITE_ASSET_METADATA_PATH,
+  emptySiteAssetMetadata,
+  type SiteAssetMetadata,
+} from "@/lib/site-assets";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
+import { siteContext, type SiteServices } from "@/server/site-context";
+
+import type { Route } from "./+types/page";
 
 const SLOT = {
   activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]",
@@ -79,11 +84,22 @@ const READS = {
   vibeCoding: [CODING_PATH, CODING_NOW_PATH, LIMITS_PATH],
   playstation: [NOW_PLAYING_PATH, PLAYING_PATH, TROPHIES_PATH],
   pulse: [PULSE_PATH],
-  siteStatus: [GITHUB_REPO_PATH, VERCEL_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
+  siteStatus: [GITHUB_REPO_PATH, SITE_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
   emby: [WATCHING_PATH, NOW_WATCHING_PATH],
 } as const;
 
-export default async function Home() {
+async function loadSiteAssets(site: SiteServices): Promise<SiteAssetMetadata> {
+  try {
+    const response = await site.asset(SITE_ASSET_METADATA_PATH);
+    if (response.ok) return (await response.json()) as SiteAssetMetadata;
+  } catch {
+  }
+  return emptySiteAssetMetadata();
+}
+
+export async function loader({ context }: Route.LoaderArgs) {
+  const site = context.get(siteContext);
+  const status = site.status;
   const [
     desktop,
     timezone,
@@ -108,44 +124,41 @@ export default async function Home() {
     githubChart,
     githubRepo,
     cloudflareWorkers,
-    vercelDeployments,
+    siteDeployments,
     sentry,
     reporters,
     pulse,
-    avatarDataUri,
-    recentCommits,
+    assets,
   ] = await Promise.all([
-    firstScreen("desktop"),
-    firstScreen("timezone"),
-    firstScreen("workouts"),
-    firstScreen("activity"),
-    firstScreen("server"),
-    firstScreen("charger"),
-    firstScreen("powerBank"),
-    firstScreen("listening"),
-    firstScreen("nowListening"),
-    firstScreen("coding"),
-    firstScreen("codingNow"),
-    firstScreen("limits"),
-    firstScreen("agentStatus"),
-    firstScreen("codingYear"),
-    firstScreen("watching"),
-    firstScreen("nowWatching"),
-    firstScreen("playing"),
-    firstScreen("playingNow"),
-    firstScreen("questNow"),
-    firstScreen("trophies"),
-    firstScreen("githubChart"),
-    firstScreen("githubRepo"),
-    firstScreen("cloudflareWorkers"),
-    firstScreen("vercelDeployments"),
-    firstScreen("sentry"),
-    firstScreen("reporters"),
-    firstScreen("pulse"),
-    githubAvatarDataUri(),
-    getRecentCommits(),
+    status("desktop"),
+    status("timezone"),
+    status("workouts"),
+    status("activity"),
+    status("server"),
+    status("charger"),
+    status("powerBank"),
+    status("listening"),
+    status("nowListening"),
+    status("coding"),
+    status("codingNow"),
+    status("limits"),
+    status("agentStatus"),
+    status("codingYear"),
+    status("watching"),
+    status("nowWatching"),
+    status("playing"),
+    status("playingNow"),
+    status("questNow"),
+    status("trophies"),
+    status("githubChart"),
+    status("githubRepo"),
+    status("cloudflareWorkers"),
+    status("siteDeployments"),
+    status("sentry"),
+    status("reporters"),
+    status("pulse"),
+    loadSiteAssets(site),
   ]);
-  const trophies = trophiesEnvelope as StatusResponse<TrophiesSummaryPayload>;
 
   const nowSongId =
     nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics
@@ -161,10 +174,85 @@ export default async function Home() {
   const rowArtworks = liveHeroArtwork ? listeningArtworks : listeningArtworks.slice(1);
 
   const [desktopIcon, artwork, lyrics] = await Promise.all([
-    desktopIconDataUri(desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
-    artworkPlaceholders(rowArtworks, heroArtwork),
-    nowSongId ? firstScreenLyrics(nowSongId) : Promise.resolve(null),
+    desktopIconDataUri(site, desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
+    artworkPlaceholders(site, rowArtworks, heroArtwork),
+    nowSongId ? site.lyrics(nowSongId) : Promise.resolve(null),
   ]);
+
+  return {
+    desktop,
+    timezone,
+    workouts,
+    activity,
+    server,
+    charger,
+    powerBank,
+    listening,
+    nowListening,
+    coding,
+    codingNow,
+    limits,
+    agentStatus,
+    codingYear,
+    watching,
+    nowWatching,
+    playing,
+    playingNow,
+    questNow,
+    trophiesEnvelope,
+    githubChart,
+    githubRepo,
+    cloudflareWorkers,
+    siteDeployments,
+    sentry,
+    reporters,
+    pulse,
+    avatarDataUri: assets.avatarDataUri,
+    recentCommits: assets.recentCommits,
+    nowSongId,
+    desktopIcon,
+    artwork,
+    lyrics,
+  };
+}
+
+export default function Home({ loaderData }: Route.ComponentProps) {
+  const {
+    desktop,
+    timezone,
+    workouts,
+    activity,
+    server,
+    charger,
+    powerBank,
+    listening,
+    nowListening,
+    coding,
+    codingNow,
+    limits,
+    agentStatus,
+    codingYear,
+    watching,
+    nowWatching,
+    playing,
+    playingNow,
+    questNow,
+    trophiesEnvelope,
+    githubChart,
+    githubRepo,
+    cloudflareWorkers,
+    siteDeployments,
+    sentry,
+    reporters,
+    pulse,
+    avatarDataUri,
+    recentCommits,
+    nowSongId,
+    desktopIcon,
+    artwork,
+    lyrics,
+  } = loaderData;
+  const trophies = trophiesEnvelope as StatusResponse<TrophiesSummaryPayload>;
 
   return (
     <>
@@ -255,7 +343,7 @@ export default async function Home() {
               <CardBoundary label="LYJWPAGE" className={SLOT.siteStatus} paths={READS.siteStatus}>
                 <SiteStatusCard
                   githubFallback={githubRepo}
-                  vercelFallback={vercelDeployments}
+                  siteFallback={siteDeployments}
                   cloudflareFallback={cloudflareWorkers}
                   sentryFallback={sentry}
                   serverFallback={server}

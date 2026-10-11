@@ -10,7 +10,7 @@
 
 Pulse 的时段详情需要额外动作：用鼠标停在泳道上，把 `[role="tooltip"]`（body 上的浮层）和卡片的 boundingBox 取并集再裁，并顺手把上一张卡 `visibility: hidden`——浮层画在卡片上方，那 12px 的缝里会露出它的下边和硬阴影。
 
-3211 / 8788 被别的实例占着时，用 `.claude/launch.json` 里的 `api-worker-alt`（8790）和 `lyjwpage-local-alt`（3213）另起一套：`dev:worker` / `dev:local` 认 `DEV_WORKER_PORT` / `DEV_SITE_PORT`，`next.config.ts` 认 `NEXT_DIST_DIR`（`next dev` 按 `<distDir>/dev/lock` 保证同目录单实例，第二套要指到 `.next/alt`），`pnpm dev:override` 和截图脚本分别用 `DEV_WORKER_URL` / `SITE_URL` 指过去。
+3211 / 8788 被别的实例占着时，用 `.claude/launch.json` 里的 `api-worker-alt`（8790）和 `lyjwpage-local-alt`（3213）另起一套：`dev:worker` / `dev:local` / `dev` / `start` 认 `DEV_WORKER_PORT` / `DEV_SITE_PORT`（如 `DEV_SITE_PORT=3213 pnpm dev`），`pnpm dev:override` 和截图脚本分别用 `DEV_WORKER_URL` / `SITE_URL` 指过去。
 
 歌词不入库：本地 Worker 没有 Apple Music 凭据，`/api/lyrics` 也不走上游兜底，所以截「正在听」时把生产站的响应包一层 `ok` 直接注入（`song` 取 `listening-now-*.json` 里的 `songId`）：
 

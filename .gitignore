@@ -42,6 +42,9 @@ yarn-error.log*
 
 *.tsbuildinfo
 next-env.d.ts
+/.react-router/
+/public/site-assets/
+/worker-configuration.d.ts
 
 __pycache__/
 *.pyc

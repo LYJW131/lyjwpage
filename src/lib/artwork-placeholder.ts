@@ -1,7 +1,5 @@
-import { cacheLife } from "next/cache";
-import sharp from "sharp";
-
 import { appleArtwork } from "@/lib/apple-artwork";
+import type { SiteServices } from "@/server/site-context";
 
 // 占位图不能改成 CSS 背景：背景解码时机不可控，会在移动端水合时露出空帧。
 
@@ -16,12 +14,10 @@ const QUALITY_BY_PX: Record<number, number> = {
 };
 
 async function encodePlaceholder(
+  site: SiteServices,
   templateUrl: string,
   px: number,
 ): Promise<ArtworkDataUri | null> {
-  "use cache";
-  cacheLife("max");
-
   try {
     let source: URL;
     try {
@@ -38,25 +34,10 @@ async function encodePlaceholder(
     const url = appleArtwork(templateUrl, px);
     if (!url) return null;
 
-    const res = await fetch(url, {
-      cache: "force-cache",
-      signal: AbortSignal.timeout(8_000),
-      headers: { Accept: "image/*" },
-    });
-    if (!res.ok) throw new Error(`Apple 封面 HTTP ${res.status}`);
-
     const quality = QUALITY_BY_PX[px] ?? 50;
-    const webp = await sharp(new Uint8Array(await res.arrayBuffer()))
-      .resize(px, px, { fit: "cover" })
-      .webp({ quality })
-      .toBuffer();
-
-    return `data:image/webp;base64,${webp.toString("base64")}`;
-  } catch (error) {
-    console.error(
-      "[artwork-placeholder] 压制失败，该格无占位",
-      error instanceof Error ? error.message : String(error),
-    );
+    const dataUri = await site.image(url, px, "cover", quality);
+    return dataUri ? (dataUri as ArtworkDataUri) : null;
+  } catch {
     return null;
   }
 }
@@ -69,11 +50,14 @@ export type ArtworkPlaceholders = {
 };
 
 async function encodeAll(
+  site: SiteServices,
   urls: Iterable<string>,
   px: number,
 ): Promise<Record<string, ArtworkDataUri>> {
   const unique = [...new Set([...urls].filter(Boolean))];
-  const encoded = await Promise.all(unique.map((url) => encodePlaceholder(url, px)));
+  const encoded = await Promise.all(
+    unique.map((url) => encodePlaceholder(site, url, px)),
+  );
 
   const table: Record<string, ArtworkDataUri> = {};
   unique.forEach((url, i) => {
@@ -85,6 +69,7 @@ async function encodeAll(
 
 // SSR 的 HTML 不区分设备，不能按移动端可见行数裁掉桌面首屏所需的占位图。
 export async function artworkPlaceholders(
+  site: SiteServices,
   rowArtworks: (string | null | undefined)[],
   heroArtwork: string | null | undefined,
 ): Promise<ArtworkPlaceholders> {
@@ -92,8 +77,8 @@ export async function artworkPlaceholders(
   const heroes = heroArtwork ? [heroArtwork] : [];
 
   const [hero, rowTable] = await Promise.all([
-    encodeAll(heroes, HERO_PLACEHOLDER_PX),
-    encodeAll(rows, ROW_PLACEHOLDER_PX),
+    encodeAll(site, heroes, HERO_PLACEHOLDER_PX),
+    encodeAll(site, rows, ROW_PLACEHOLDER_PX),
   ]);
   return { hero, rows: rowTable };
 }

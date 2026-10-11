@@ -1,4 +1,4 @@
-import { addIntegration, replayIntegration } from "@sentry/nextjs";
+import { addIntegration, replayIntegration } from "@sentry/react";
 
 export function attachReplay(): void {
   addIntegration(

@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "updatedAt": "$now-30000",
+  "data": {
+    "fetchedAt": "$now-30000",
+    "production": {
+      "id": "cloudflare-version:fixture-site-version",
+      "state": "READY",
+      "createdAt": "$now",
+      "buildDurationMs": 90000,
+      "target": "production",
+      "commit": {
+        "sha": "f72dd525b8c1befb018b76ca041a9a6d0c27ce84",
+        "branch": "main",
+        "message": "fixture site deployment"
+      }
+    },
+    "recent": [
+      {
+        "id": "cloudflare-version:fixture-site-version",
+        "state": "READY",
+        "createdAt": "$now",
+        "buildDurationMs": 90000,
+        "target": "production",
+        "commit": {
+          "sha": "f72dd525b8c1befb018b76ca041a9a6d0c27ce84",
+          "branch": "main",
+          "message": "fixture site deployment"
+        }
+      }
+    ],
+    "activeVersions": [{ "id": "fixture-site-version", "percentage": 100 }],
+    "analytics": {
+      "fetchedAt": "$now",
+      "start": "$now-604800000",
+      "end": "$now",
+      "pageviews": 64,
+      "hosts": ["lyjw.me", "lyjw131.com"]
+    },
+    "pagespeed": {
+      "fetchedAt": "$now-12000000",
+      "url": "https://lyjw.me",
+      "samples": 6,
+      "start": "$now-30000000",
+      "desktop": { "score": 84, "lcpMs": 666, "tbtMs": 241, "cls": 0.004, "fcpMs": 351, "ttfbMs": 448 },
+      "mobile": { "score": 76, "lcpMs": 3489, "tbtMs": 405, "cls": 0, "fcpMs": 1351, "ttfbMs": 412 }
+    }
+  }
+}

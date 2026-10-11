@@ -10,6 +10,8 @@ import { resolve, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
 import { stripVTControlCharacters } from 'node:util';
+
+const { WebSocket } = globalThis;
 import { createDevAccess } from './dev-access.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -75,8 +77,8 @@ try {
     name: 'isolated-api', main: join(root, 'workers/api/src/index.ts'),
     compatibility_date: '2025-02-14', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env', 'enable_request_signal'],
     vars: {
-      NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`, REVALIDATE_SECRET: `${secret}-revalidate`,
-      SITE_URL: site, ALLOWED_ORIGINS: '',
+      NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`,
+      ALLOWED_ORIGINS: '',
       DEV_OVERRIDES: 'true',
       APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
     },
@@ -89,6 +91,7 @@ try {
     services: [
       { binding: 'DEV_OVERRIDE_READER', service: 'isolated-api', entrypoint: 'DevOverrideReader' },
       { binding: 'AI_SERVICE', service: 'isolated-ai' },
+      { binding: 'SITE_CACHE', service: 'isolated-site-cache', entrypoint: 'SiteCache' },
     ],
     migrations: [
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
@@ -135,6 +138,11 @@ try {
 export default { fetch(request, env) {
   return new URL(request.url).pathname.startsWith('/__verify/') ? env.VERIFY.fetch(request) : router.fetch(request, env);
 } };`);
+  const siteCacheFixture = {
+    name: 'isolated-site-cache', main: join(root, 'scripts/fixtures/site-cache.mjs'),
+    compatibility_date: '2026-09-08',
+    vars: { RECORDER_URL: `${site}/invalidate` },
+  };
   const router = {
     name: 'isolated-router', main: routerMain,
     compatibility_date: '2026-09-08',
@@ -145,7 +153,7 @@ export default { fetch(request, env) {
     ],
   };
   const configPaths = [];
-  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture })) {
+  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture, siteCacheFixture })) {
     const path = join(temporary, `${name}.wrangler.json`);
     await writeFile(path, JSON.stringify(config));
     configPaths.push(path);
@@ -155,7 +163,7 @@ export default { fetch(request, env) {
   const notices = [];
   const mockSite = httpServer((request, response) => {
     let body = ''; request.on('data', chunk => body += chunk);
-    request.on('end', () => { assert.equal(request.headers.authorization, `Bearer ${secret}-revalidate`); notices.push(JSON.parse(body)); response.setHeader('content-type', 'application/json'); response.end('{"ok":true}'); });
+    request.on('end', () => { notices.push(JSON.parse(body)); response.setHeader('content-type', 'application/json'); response.end('{"ok":true}'); });
   });
   mockSite.listen(sitePort, '127.0.0.1');
   children.push({ kill: () => mockSite.close(), exitCode: 0 });
@@ -387,7 +395,8 @@ export default { fetch(request, env) {
   const statusTool = await mcp('tools/call', { name: 'get_site_status', arguments: { views: ['nowListening'] } });
   assert.equal(statusTool.result.isError, false);
   const statusText = statusTool.result.content[0].text;
-  assert.equal(JSON.parse(statusText.split('## nowListening\n')[1]).data.music.title, 'isolated-second');
+  const nowListeningSection = statusText.split('## nowListening\n')[1];
+  assert.equal(JSON.parse(nowListeningSection.slice(nowListeningSection.indexOf('\n') + 1)).data.music.title, 'isolated-second');
   assert.equal(/musicUserToken|developerToken/.test(statusText), false);
   console.log('PASS: MCP → AI → PublicStatus RPC reads the latest ingest from StateHub using the public status model');
   await eventually(async () => assert.ok(notices.some(n => n.tags?.includes('listening-now'))));
@@ -401,7 +410,7 @@ export default { fetch(request, env) {
   await post(worker, '/api/ingest/homepod', { entityId: 'media_player.isolated', state: 'playing', title: 'isolated-second', positionMs: 2000, durationMs: 3600000, observedAt: Date.now() });
   await sleep(200);
   assert.equal(notices.length, homePodNotices, 'HomePod position heartbeat must not invalidate page');
-  console.log('PASS: ingress → StateCore.commitIngest → Durable Object SQLite → /api/revalidate → direct Worker status; WebSocket receives both updates and the site-deployed version event');
+  console.log('PASS: ingress → StateCore.commitIngest → Durable Object SQLite → SITE_CACHE invalidate RPC → direct Worker status; WebSocket receives both updates and the site-deployed version event');
   const beforeTimezone = notices.length;
   const response = await post(worker, '/api/ingest/mac', { version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'], modules: { timezone: { identifier: 'Asia/Singapore', secondsFromGMT: 28800 } } });
   assert.equal(response.status, 202);

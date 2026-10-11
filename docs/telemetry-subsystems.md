@@ -29,8 +29,8 @@
 
 ### 架构边界
 - **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/api`）。
-- **无状态渲染**：Vercel 仅负责首屏 HTML 生成、Next.js 页面缓存、静态资源分发和图片优化。Vercel 内部没有状态 API 代理或数据库直连端点。
-- **客户端直连**：浏览器端配置 `NEXT_PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
+- **无状态渲染**：site Worker 仅负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化；站点内没有状态 API 代理或数据库直连端点。
+- **客户端直连**：浏览器端配置 `PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
 - **原生客户端**：[`apps/ios`](../apps/ios/README.md) 读同一个 api Worker：状态 GET 不带 `Origin`（api Worker 只拦带了且不在白名单的来源），推送长连接自报站点域名作 `Origin`（`/ws` 缺来源一律 403），所以改 `ALLOWED_ORIGINS` 时要保留站点域名。取数节奏照浏览器端的登记表，只在前台连推送、退后台即断，在线人数的语义和关掉标签页一致。
 
 ### 通信端点规范
@@ -78,7 +78,7 @@
 
 ### 图片处理与 R2 缓存
 - **剧照 vs 海报**：剧集本身的 Primary 图通常是剧照，竖版海报由代理优先提取剧集的 `SeriesPrimaryImageTag` 并用 sharp 压缩为 `<sha256>.webp` 直传 Cloudflare R2。
-- **`missingImages` 补传机制**：条目中仅存 `imageKey`（`itemId:kind:tag:height`），读取时映射为对象键并拼成 `/img/<对象键>` 同源路径，由访客域名的边缘（Vercel rewrite / ESA）回源 R2。若引用的图片键在状态核心里还没有对象键映射（上报入口没确认到对象，或映射被淘汰），上报回执会返回 `missingImages`，代理据此异步补传。
+- **`missingImages` 补传机制**：条目中仅存 `imageKey`（`itemId:kind:tag:height`），读取时映射为对象键并拼成 `/img/<对象键>` 同源路径，由访客域名的站点层（site Worker R2 绑定 / ESA 回源）取 R2。若引用的图片键在状态核心里还没有对象键映射（上报入口没确认到对象，或映射被淘汰），上报回执会返回 `missingImages`，代理据此异步补传。
 - **HEAD 正缓存很短**：上报入口对 R2 对象的 HEAD 校验只记一小会儿（`shared/ingest/r2-assets.ts#CONFIRMED_TTL_MS`），以便桶清空或对象重建后能自动重新请求补传。
 
 ---

@@ -1,5 +1,8 @@
-import { githubAvatarPng, pngResponse } from "@/lib/github-avatar-icon";
+import type { LoaderFunctionArgs } from "react-router";
 
-export async function GET() {
-  return pngResponse(await githubAvatarPng(512), "image/png");
+import { STABLE_ASSET_CACHE_CONTROL } from "@/lib/site-policy";
+import { siteAssetResponse } from "@/server/site-asset";
+
+export async function loader({ context }: LoaderFunctionArgs) {
+  return siteAssetResponse(context, "/site-assets/icon-512.png", STABLE_ASSET_CACHE_CONTROL);
 }

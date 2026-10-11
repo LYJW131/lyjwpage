@@ -78,7 +78,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章表盘的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），表盘让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
 - 最近在听：apple-recent 任务，专辑 / 歌单粒度的列表交给 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
-- GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`；Vercel 部署列表那一轮另把站点部署记录写进 D1（`workers/collector/src/jobs/vercel.ts#vercelDeploymentsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
+- GitHub、Vercel、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`；Vercel 部署列表那一轮另把站点部署记录写进 D1（[当时的 vercel.ts#vercelDeploymentsJob](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/workers/collector/src/jobs/vercel.ts)、`workers/collector/src/history.ts#archiveSiteDeploys`）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - PlayStation 不在这张表里。
 
 ### 没人上报的播放（第 01 章 FIG. 7A）
@@ -236,23 +236,23 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 按卡缓存
 
-- `/api/home` 已删除（8977457）。首屏按视图并行调 `firstScreen(key)`，一个视图一次（按 e10a75a 现数 **27 次**），外加头像和最近提交；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#Home`）。一张卡读几个视图就有几条缓存，卡与视图的对应见 `src/app/page.tsx#READS`。
-- 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/lib/first-screen.ts#firstScreen`）。
+- `/api/home` 已删除（8977457）。首屏 loader 按视图并行调 `status(key)`，一个视图一次（按 e10a75a 现数 **27 次**），外加头像和最近提交；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#loader`）。
+- 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/server/site-context.ts#SiteServices`）。
 - 实时层的公开读取在 `StateHub.publicRead()` 里随读取一起过初始化与提交可见性屏障，每次读一个 RPC；可滞后层只读 KV，不过屏障、不唤醒 DO（`workers/api/src/public-execution.ts#executePublicRequest`）。
-- **每张卡一条 `'use cache'`**，cacheLife 为 stale 300 / revalidate 600 / expire 7 天（`src/lib/first-screen.ts#firstScreen`）。歌词另是 300 / 3600 / 86400（`src/lib/first-screen.ts#firstScreenLyrics`）。
-- 标签：按 e10a75a 现数 20 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒定时重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
-- 一个标签失效，只让那张卡回源；整页在后台重建，旧页照给（`revalidateTag(…, "max")`，status-revalidation.ts:5）。
-- 请求路径上不现拉外部 API：每条缓存只读自己的状态端点（实时读 DO，可滞后读 KV），GitHub、Sentry 这些外部来源只由采集 Worker 定时去取（按卡读取见 `src/lib/first-screen.ts#firstScreen`，端点的数据层与读取实现见 `src/lib/status-views.ts`、`src/lib/status-loaders.ts`）。
-- 失效通知只带标签名、不带数据：数据已经落在 Worker 上，下一次读端点自己去拿（校验只接受 `tags`：`src/lib/revalidate-request.ts#parseRevalidateRequest`、`src/app/api/revalidate/route.ts#POST`）。`revalidateTag(tag, "max")` 只把条目标成过期，下一次有人访问时先给旧的、后台重建（Next.js 文档 revalidateTag 一页，profile 取 "max" 的行为）。
-- 标签只为布局变化而发：首屏版面变了（例如在线 / 离线翻转、充电头接上或拔下、开始或停止放歌）才通知 Vercel；只变内容的交给 cacheLife 的 revalidate 600 秒定时重建（布局判据见 `src/lib/home-layout.ts`，写 KV 的一方在 `workers/ingress/src/lag-ingest.ts#commitLagIngest` 返回要失效的标签；内容更新周期见 `src/lib/first-screen.ts#FIRST_SCREEN_CACHE_LIFE`）。
-- cacheLife 三个值（Next.js 文档 cacheLife 一页）：stale 是浏览器端路由缓存不问服务器就直接用的时长；revalidate 是过了这个时长后，下一个请求先拿旧的、服务端在后台重建；expire 是没人访问时的上限，过了就同步重建。
+- **视图响应由 site Worker 的 `StatusSnapshot` 缓存入口回源**：成功 200 挂 `Cache-Tag: page:<tag>`、Cache-Control 600 秒；歌词由 `site.lyrics` 直取后端 `/api/lyrics`，不进这条缓存（`workers/site/src/index.ts#StatusSnapshotBase`、`src/lib/site-policy.ts#statusSnapshotHeaders`）。整页 SSR 文档与数据响应另挂 `Cache-Tag: home`、max-age 300 / SWR 86400（`src/lib/site-policy.ts#HOME_CACHE_TAG`）。
+- 标签：按 e10a75a 现数 20 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、Vercel、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒缓存过期重建（`src/lib/status-views.ts#STATUS_VIEWS`）。
+- 一个标签失效，只让那份视图快照回源；失效经私有 RPC 调进站点缓存（`shared/site-cache.ts#SiteCacheRpc`、`workers/site/src/index.ts#StatusSnapshotBase` 的 `invalidate`）。
+- 请求路径上不现拉外部 API：每条缓存只读自己的状态端点（实时读 DO，可滞后读 KV），GitHub、Sentry 这些外部来源只由采集 Worker 定时去取（按卡读取见 `src/app/page.tsx#loader`，端点的数据层与读取实现见 `src/lib/status-views.ts`、`src/lib/status-loaders.ts`）。
+- 失效通知只带标签名、不带数据：数据已经落在 Worker 上，下一次读端点自己去拿。通知不再是站点 HTTP 路由：api Worker 经私有 `SITE_CACHE` Service Binding 调 `invalidate(tags)`（`workers/api/src/live-platform.ts#expireStatusTags`、`shared/site-cache.ts#SiteCacheRpc`），白名单过滤后按 `page:<tag>` 失效视图快照。
+- 标签只为布局变化而发：首屏版面变了（例如在线 / 离线翻转、充电头接上或拔下、开始或停止放歌）才通知失效；只变内容的交给 600 秒缓存过期自己重建（布局判据见 `src/lib/home-layout.ts`，写 KV 的一方在 `workers/ingress/src/lag-ingest.ts#commitLagIngest` 返回要失效的标签；快照有效期见 `src/lib/site-policy.ts#STATUS_CACHE_CONTROL`）。
+- 站点 Worker 缓存两个值：max-age 是响应在边缘直接可用的时长；stale-while-revalidate 是过了这个时长后先给旧副本、后台再回源重建的窗口。
 - 第 00 章把首屏画成浏览器窗口里的线框：卡片框按 `src/app/page.tsx#Home` 的版面，尺寸取第 04 章 P 表（`docs/explainer/v2/ch04.js#P`）的比例；P 表注明是按 lyjw.me 桌面宽度实测的卡片框乘 0.6，那次实测未核。Media 下面是整行的 Talk to God 对话卡（`src/app/page.tsx#SLOT` 的 `godChat`），线框画到它就被窗口下沿切掉；它不读状态视图，没有 `firstScreen` 缓存，所以第 04 章的印版里没有它。画的那一刻没在充电：充电那一格收起、「最近播放」占满一行（`src/components/live/media-pair.tsx#LiveMediaPair` 不在充电时加 is-disconnected，`src/app/globals.css` 在桌面宽度下把这时的最近播放左边贴到 0）。卡上的标注照站点原文（`src/components/live/listening-card.tsx` 的 Recently Played、Now Playing）；界面上是大写，因为 `src/components/ui/card.tsx#Card` 的标签用 label-mono，它在 `src/app/globals.css` 里是 text-transform: uppercase。
 
 ### 来源出问题时
 
 - Worker 降级：回 `ok:false` 加 HTTP 200。
 - 404：显示 "Status unavailable"。
-- 5xx 或网络错误：抛出，Next **继续用上一份缓存**（`src/lib/first-screen.ts#firstScreen`）。
+- 5xx 或网络错误：抛出，本次渲染失败回 500 且不缓存；`StatusSnapshot` 上游失败或非法包回 503（`workers/site/src/index.ts#StatusSnapshotBase`）。
 
 ## 5 浏览器
 
@@ -307,7 +307,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 图片
 
 - 页面、状态 API 和推送里的图片一律写同源 `/img/<objectKey>`（`src/lib/asset-url.ts#publicAssetPath`）。
-- lyjw.me：由 `next.config.ts` 的边缘 rewrite 代理到 R2（只放行 64 位十六进制加 png / webp / jpg），带 rewrite 缓存。
+- lyjw.me：由 [当时的 next.config.ts](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/next.config.ts) 的边缘 rewrite 代理到 R2（只放行 64 位十六进制加 png / webp / jpg），带 rewrite 缓存。
 - lyjw131.com：由 ESA 缓存同一路径。
 - 图片是 immutable，内容变了名字就变，永远不需要刷新。
 
@@ -315,7 +315,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - lyjw131.com 经阿里云 ESA 回源 lyjw.me。
 - 首页的 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`：5 分钟内直接命中；过期后先给旧页，后台回源。
-- 首屏新鲜度不靠 ESA 这一层：ESA 给的可能是一份旧 HTML，浏览器挂载后经 SWR / WebSocket 直接向 Worker 取最新状态（根 `README.md`「首屏快照与实时更新分开处理」；缓存头数值在 `next.config.ts` 首页那条 `Cache-Control`；浏览器直连 Worker 见 `src/lib/backend-url.ts#backendUrl`）。第 06 章旁白「数据在挂载后直连 Worker 取新」出自这里。
+- 首屏新鲜度不靠 ESA 这一层：ESA 给的可能是一份旧 HTML，浏览器挂载后经 SWR / WebSocket 直接向 Worker 取最新状态（根 `README.md`「首屏快照与实时更新分开处理」；缓存头数值在 [当时的 next.config.ts](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/next.config.ts) 首页那条 `Cache-Control`；浏览器直连 Worker 见 `src/lib/backend-url.ts#backendUrl`）。第 06 章旁白「数据在挂载后直连 Worker 取新」出自这里。
 
 ### 发版
 
@@ -345,7 +345,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 两个方向相反的信号：
 
-- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明 Vercel 还在出页面（`src/app/api/version/route.ts#GET`）；后端那一截看 api Worker 的 cron 心跳（`workers/api/src/index.ts#runScheduled`）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
+- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明 Vercel 还在出页面（`src/app/api/version/route.ts#loader`）；后端那一截看 api Worker 的 cron 心跳（`workers/api/src/index.ts#runScheduled`）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
 - **Worker 每 5 分钟去报到**：api cron 的每一轮（见 §3「api 的 cron」）。
 
 Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回，页面和首屏都不直连 Sentry，只读可滞后层里的这份结果（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`src/lib/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。
@@ -407,7 +407,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 - 生产随 main 自动部署是 Vercel 控制台的配置，记在 `docs/ops-facts.md` 的「Vercel」一节。构建命令 `pnpm build` 跑 `scripts/build.mjs`：先生成讲解片的静态页，再 `next build`。
 - 部署只发生在 Vercel：`lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`（§6「大陆访问」）。
-- 构建不过就没有新部署，域名上仍是上一版：`/api/version` 由此刻接管生产域名的那次部署自己回答（`src/app/api/version/route.ts#GET` 的注释）。
+- 构建不过就没有新部署，域名上仍是上一版：`/api/version` 由此刻接管生产域名的那次部署自己回答（`src/app/api/version/route.ts#loader`）。
 
 ### Worker：Cloudflare Workers Builds
 
@@ -429,7 +429,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
   2. `.github/workflows/purge-esa.yml#notify`（等刷新完）：先等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，每个域名最多 30 次、每次隔 10 秒；等不到也照常通知，最坏只是不弹提示。先刷新再通知，是因为反过来的话 lyjw131.com 的访客点刷新拿回的还是旧 HTML（同文件里那段注释）。
   3. 带 `lyjwpage-github-actions` 那把 Access service token 调上报入口的 `POST /api/internal/site-deployed`，这把只有 `internal:site-deployed` 权限（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）；失败重试，最长 10 分钟（`--retry-max-time 600`），理由是同一次推送也改了 api 时，Workers Builds 往往比 Vercel 晚上线。
 - 上报入口验过权限，经 Service Binding 调 `StateCore.broadcastVersion()`（`workers/ingress/src/worker.ts#handleSiteDeployed`、`workers/api/src/state-core.ts#broadcastVersion`）：直接交给推送房间、不经 StateHub，LivePushRoom 向所有连着的页面广播 `version`，不带数据（`payload` 为 null）；另在 `waitUntil` 里请 collector 立刻重拉部署列表（`workers/ingress/src/worker.ts#DEPLOYMENT_JOBS`，片中不画）。
-- 页面收到 `version` 只重问自己域名上的 `/api/version`，不信推来的版本号（`src/hooks/use-live-events.ts#INVALIDATIONS`）；这个接口是构建期常量，头是 `max-age=0, must-revalidate`（`next.config.ts` 的 headers），拿它和页面构建时焊进的 sha 比（`src/lib/app-version.ts#resolveVersionStatus`）。
+- 页面收到 `version` 只重问自己域名上的 `/api/version`，不信推来的版本号（`src/hooks/use-live-events.ts#INVALIDATIONS`）；这个接口是构建期常量，头是 `max-age=0, must-revalidate`（[当时的 next.config.ts](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/next.config.ts) 的 headers），拿它和页面构建时焊进的 sha 比（`src/lib/app-version.ts#resolveVersionStatus`）。
 - 比出来旧了：前台只弹 UPDATE 卡，刷不刷交给人（`src/components/app-version-card.tsx#AppVersionCard`）；后台标签页自己刷新（`src/components/stale-tab-reload.tsx#StaleTabReload`、`src/hooks/use-stale-auto-reload.ts#useStaleAutoReload`），有几道闸：同一个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次、两次自动刷新之间冷却 `AUTO_RELOAD_COOLDOWN_MS`、网页播放器在放不刷、sessionStorage 用不了不刷（`src/lib/app-version.ts#autoReloadDecision`）。片中只画「前台弹提示、后台自己刷新」。
 - 收不到通知也有兜底：页面每 30 分钟问一次，切回前台时再问一次（`src/hooks/use-app-version.ts#REFRESH_MS`）。
 

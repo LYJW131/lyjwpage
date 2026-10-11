@@ -242,7 +242,7 @@ test("长文档先给目录与开头，按章节读到下一个同级标题为�
     "x".repeat(20_000),
   ].join("\n");
   const whole = sliceDoc(doc).text;
-  assert.match(whole, /^Outline:\n- Title\n  - Push\n    - Detail\n  - Storage\n/);
+  assert.match(whole, /^Outline:\n- Title\n {2}- Push\n {4}- Detail\n {2}- Storage\n/);
   assert.doesNotMatch(whole.split("Opening:")[0], /not a heading/);
   assert.ok(whole.length < doc.length);
   const push = sliceDoc(doc, "push");

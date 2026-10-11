@@ -6,7 +6,7 @@ import { pastHalfLife } from "@shared/token-lifetime";
 
 // 客户端环境变量必须用完整字面量，构建替换不支持解构或动态取键。
 export const MUSICKIT_TOKEN_ENDPOINT = workerUrl(
-  process.env.NEXT_PUBLIC_BACKEND_URL,
+  process.env.PUBLIC_BACKEND_URL,
   "/api/musickit/token",
 );
 
@@ -171,9 +171,8 @@ export async function fetchDeveloperToken(): Promise<DeveloperToken> {
 
   const response = await fetch(MUSICKIT_TOKEN_ENDPOINT, { cache: "no-store" });
   if (!response.ok) {
-    const detail = await response
-      .json()
-      .then((body: { error?: string }) => body.error)
+    const detail = await (response.json() as Promise<{ error?: string }>)
+      .then((body) => body.error)
       .catch(() => null);
     throw new Error(detail || `Token service returned ${response.status}`);
   }

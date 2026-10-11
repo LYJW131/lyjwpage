@@ -26,7 +26,7 @@ export async function ensurePreviewState(hub: PreviewState): Promise<void> {
   await hub.finishImport();
 }
 
-async function readBounded(response: Response, maxBytes: number): Promise<Uint8Array> {
+async function readBounded(response: Response, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
   if (!response.body) return new Uint8Array();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -82,7 +82,7 @@ export async function fetchPreviewUpstream(request: Request): Promise<Response> 
     return Response.json({ ok: false, error: "上游返回了重定向" }, { status: 502 });
   }
 
-  let body: Uint8Array;
+  let body: Uint8Array<ArrayBuffer>;
   try {
     body = await readBounded(upstream, PROXY_MAX_BYTES);
   } catch (error) {
