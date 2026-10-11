@@ -20,15 +20,23 @@
 
 ## 站点版
 
-`scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它；页面载入的脚本（`v2/index.html` 的 `LOAD` 表）、内联样式引用的字体和配乐 `v2/score.mp3` 按内容哈希改名放进 `a/`，缓存一年。页面和 `v2/film.js` 经注入的 `window.__assets` 查哈希名；本地预览和写章工具没有这张表，用原名。`LOAD` 表里还没写的章不发布，站点上是占位画面。
+`scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它；页面载入的脚本（`v2/index.html` 的 `LOAD` 表）和内联样式引用的字体按内容哈希改名放进 `a/`，缓存一年；配乐不进仓库，见下一段。页面和 `v2/film.js` 经注入的 `window.__assets` 查哈希名；本地预览和写章工具没有这张表，用原名。`LOAD` 表里还没写的章不发布，站点上是占位画面。
 
-站点版只用预渲的整片配乐，缺 `v2/score.mp3` 构建直接失败。`v2/plan.js` 的章节表和各章乐谱定稿后渲它，要本机 Chrome、PATH 上带 libmp3lame 的 ffmpeg，以及装好的 `render/` 依赖（见「渲染配乐与音效」）；整片要渲几分钟：
+站点版的整片配乐放在 R2，不进仓库。对象键是乐谱输入（`scripts/explainer-score.mjs#scoreInputs`：章节表、合成器、各章乐谱和渲染脚本）的 sha256，页面经 `/img/<键>.mp3` 取它（同图片一样由 `next.config.ts` rewrite 到 R2、`lyjw131.com` 经 ESA 回源）。改了这些文件推到任何分支（`claude/build-*` 除外），`.github/workflows/explainer-score.yml` 就在 GitHub 托管机上渲染并上传；同一个键已经在 R2 就跳过，对象传上后不覆盖。上传用仓库 secret `R2_SCORE_ACCESS_KEY_ID` / `R2_SCORE_SECRET_ACCESS_KEY`，渲染那一步不带凭据。
+
+构建不查对象在不在：还没传上（渲染要几分钟）或取不到时，播放器在浏览器里现合成；时长和章节表对不上时同样弃用。乐谱改了键就跟着变，不会再放旧配乐。看某次构建该取哪个键：
 
 ```bash
-node docs/explainer/v2/tools/score-mp3.mjs    # 写出 docs/explainer/v2/score.mp3
+node scripts/explainer-score.mjs    # 打印当前乐谱对应的 <键>.mp3
 ```
 
-它随仓库提交，改了章节表或任何乐谱都要重渲并提交：时长和章节表对不上时，播放器会弃用它、改在浏览器里现合成；乐谱改了而时长没变时，线上放的还是旧配乐。这两种情况构建都查不出来。本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`。
+本地试听整片要渲一份，要本机 Chrome、PATH 上带 libmp3lame 的 ffmpeg，以及装好的 `render/` 依赖（见「渲染配乐与音效」）；整片要渲几分钟，写出的 `docs/explainer/v2/score.mp3` 只给本地预览用，已在 `.gitignore`：
+
+```bash
+node docs/explainer/v2/tools/score-mp3.mjs
+```
+
+本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`；没配 `R2_PUBLIC_BASE_URL` 时 `/img` 不通，配乐走现合成。
 
 ## 中英两版
 
