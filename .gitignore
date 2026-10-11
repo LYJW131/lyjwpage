@@ -1,6 +1,7 @@
 node_modules/
 /public/explainer/
 docs/explainer/artifact.html
+docs/explainer/v2/score.mp3
 .pnpm-store/
 .wrangler/
 workers/api/wrangler.preview.json
