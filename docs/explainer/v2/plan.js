@@ -9,7 +9,8 @@ window.PLAN = [
   { id: "ch07", bars: 12 },
   { id: "ch08", bars: 12 },
   { id: "ch09", bars: 16 },
-  { id: "ch10", bars: 14 },
+  { id: "ch10", bars: 16 },
+  { id: "ch11", bars: 14 },
 ];
 window.CHAPTERS = window.CHAPTERS || [];
 window.SCORE_PARTS = window.SCORE_PARTS || [];

@@ -44,7 +44,7 @@
   for (let k = 0; k <= 50; k += 5) CHECKS.push(k);
   for (let k = 0; k <= 50; k++) KNOCKS.push(k + 0.5);
 
-  // ch09 的提交落点和 ch10 的回顾几何须与此处一致，章节接缝才能对齐。
+  // ch09 收尾、ch10 的提交落点和 ch11 的回顾几何须与此处一致，章节接缝才能对齐。
   const Y0 = 540;
   const NOW_X = 1350;
   const V = 200;
