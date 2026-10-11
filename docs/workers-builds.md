@@ -30,8 +30,8 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 1. 合并前：`site` 先存在。按「禁区」的跨 Worker 契约例外，从 PR 分支手动 `wrangler deploy` 一次 `site`（`wrangler.jsonc` 不带路由、`workers_dev = false`，不接流量也不抢域名），api 的 `SITE_CACHE` 才能在合并后发布成功。再连 `site` 的 Workers Builds、设好构建环境变量，把 site 的 tag 与两站 Web Analytics 映射写进 `workers/collector/wrangler.toml` 的 `SITE_WORKER_TAG` / `SITE_ANALYTICS_SITES`。
 2. 合并：api、ai、collector、ingress、site 由 Workers Builds 并行发布，此时 `lyjw.me` 仍是 Vercel 上合并前的最后一次生产部署；根目录 `vercel.json` 关掉 Vercel 的 Git 部署，合并后的提交不再在 Vercel 构建。并行发布的错代窗口是暂时的：新 ingress 早于新 collector 时部署通知回 `unknown job`（只记日志），旧前端请求已改名的部署端点得到 404，`page:<tag>` 失效打到还没接流量的 `site`。
-3. `Workers Builds: site` 成功后立刻切域名：在 `lyjw.me` zone 删掉指向 Vercel 的根 CNAME，给 `site` 加自定义域名 `lyjw.me`。ESA 回源仍是 `lyjw.me`，不用改。`purge-esa.yml` 会等 `/api/version` 变成合并提交；切换晚于它的等待上限时手动 `workflow_dispatch` 重跑。
-4. 验收：两个域名的首页、`/api/version`、`/img` 的 Range、首屏缓存 HIT 与布局失效、部署卡片和访问量。回滚是把根 CNAME 改回 Vercel；Vercel 项目在验收前不删，待删清单见「待手工清理」。
+3. 四个 Worker 与 `site` 的生产构建都成功后切域名：`wrangler.jsonc` 加 `lyjw.me` 的 `custom_domain` 路由推上 main，`site` 的 Builds 部署时由 wrangler 接管根记录（非交互部署直接覆盖指向 Vercel 的 CNAME；接管失败则部署失败，CNAME 原样留着）。ESA 回源仍是 `lyjw.me`，不用改。`purge-esa.yml` 会等 `/api/version` 变成合并提交；切换晚于它的等待上限时手动 `workflow_dispatch` 重跑。
+4. 验收：两个域名的首页、`/api/version`、`/img` 的 Range、首屏缓存 HIT 与布局失效、部署卡片和访问量。回滚是从 `wrangler.jsonc` 撤掉路由、在控制台摘掉 `site` 的自定义域名，再把根 CNAME 改回 Vercel；Vercel 项目在验收前不删，待删清单见「待手工清理」。
 
 无状态 DO 迁移。Worker 发布与平台缓存生效不原子，验收要看线上响应头，不能只看构建成功。
 
