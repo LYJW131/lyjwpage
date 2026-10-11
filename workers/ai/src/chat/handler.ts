@@ -200,7 +200,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           }
         }
         const { complete, trace, planToken, lead } = outcome;
-        if (complete && lead && !reply.trim()) emit({ type: "text", text: lead });
+        if (complete && lead) emit({ type: "text", text: lead });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace, planToken), ...(trace && { trace }), ...(planToken && { planToken }) });

@@ -3,7 +3,7 @@ import type { BetaManagedAgentsAgentToolset20260401Params, BetaManagedAgentsCust
 import type { BetaManagedAgentsEventParams, BetaManagedAgentsStreamSessionEvents } from "@anthropic-ai/sdk/resources/beta/sessions/events";
 
 import { site } from "@/lib/site";
-import { PLAN_LABELS, planLanguage, textLanguage } from "@shared/build-routine";
+import { PLAN_LABELS, textLanguage } from "@shared/build-routine";
 import { parseQuestions, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 
@@ -243,7 +243,8 @@ export async function designTurn({
       if (proposal instanceof Error) return toolResult(id, `Plan rejected: ${proposal.message}`, true);
       held.add(id);
       planToken = proposal.token;
-      lead = PLAN_LABELS[planLanguage(checked.plan)].planReady;
+      // 规格常是英文的技术说明，开场白跟访客看得到的标题走。
+      lead = PLAN_LABELS[textLanguage(checked.plan.title)].planReady;
       emit({ type: "plan", ...proposal });
       return null;
     }
@@ -339,5 +340,5 @@ export async function designTurn({
     local.abort();
     console.info("[god-chat] design turn", JSON.stringify({ sessionId, kind: input.kind, stopReason, asked, plan: Boolean(planToken), ...usage }));
   }
-  return { complete, views: [...ledger.views], ...(planToken && { planToken }), ...(lead && { lead }) };
+  return { complete, views: [...ledger.views], ...(planToken && { planToken }), ...(lead && !wroteText && { lead }) };
 }

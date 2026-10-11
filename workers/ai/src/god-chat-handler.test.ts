@@ -346,6 +346,19 @@ test("会话没有挂起的工具调用时，访客的话按普通消息发给�
   assert.deepEqual(sent, [{ type: "user.message", content: [{ type: "text", text: "Please improve the music card." }] }]);
 });
 
+test("规划者没写字就出计划时，开场白跟访客看得到的中文标题走，不跟英文规格；写了字就不再补", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const zhPlan = { ...plan, title: "回答完问题后自动折叠问题框" };
+  const silent = designEnv({ turns: [[agent.running, agent.custom("ctu_plan", "propose_build", zhPlan), agent.waiting("ctu_plan")]] });
+  const quiet = await parseEvents(await handleChat(chatRequest(await designToken(silent.env, silent.sessions)), silent.env, toolIO));
+  assert.equal(textOf(quiet), PLAN_LABELS.zh.planReady);
+  const spoken = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "改完后回答过的问题会收起来。"), agent.custom("ctu_plan", "propose_build", zhPlan), agent.waiting("ctu_plan")]] });
+  const said = await parseEvents(await handleChat(chatRequest(await designToken(spoken.env, spoken.sessions)), spoken.env, toolIO));
+  assert.equal(textOf(said), "改完后回答过的问题会收起来。");
+});
+
 test("规划者的自定义工具：站点状态当场回结果，不合规的题目与禁区计划报错让它重试，合规的题目挂起等访客；要确认的内置工具一律拒绝", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
