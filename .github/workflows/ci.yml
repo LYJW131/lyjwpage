@@ -31,6 +31,7 @@ jobs:
           node-version: 24
           # 自建机的 pnpm store 常驻在本机，不必再从 Actions 缓存下载
           cache: ${{ runner.environment == 'github-hosted' && 'pnpm' || '' }}
+          package-manager-cache: ${{ runner.environment == 'github-hosted' }}
 
       - run: pnpm install --frozen-lockfile
 
@@ -48,17 +49,20 @@ jobs:
 
       - run: pnpm -r --include-workspace-root typecheck
 
-      - run: pnpm test
-
-      - run: pnpm --filter @lyjwpage/api test
-
-      - run: pnpm --filter @lyjwpage/ai test
-
-      - run: pnpm --filter @lyjwpage/ingress test
-
-      - run: pnpm --filter @lyjwpage/collector test
-
-      - run: pnpm --filter @lyjwpage/agents-reporter --filter @lyjwpage/server-reporter --filter @lyjwpage/emby-reporter --filter @lyjwpage/playstation-reporter --filter @lyjwpage/discord-reporter test
+      - name: Workspace tests
+        run: >-
+          pnpm -r --include-workspace-root --workspace-concurrency=4 --no-bail --stream
+          --filter lyjwpage
+          --filter @lyjwpage/api
+          --filter @lyjwpage/ai
+          --filter @lyjwpage/ingress
+          --filter @lyjwpage/collector
+          --filter @lyjwpage/agents-reporter
+          --filter @lyjwpage/server-reporter
+          --filter @lyjwpage/emby-reporter
+          --filter @lyjwpage/playstation-reporter
+          --filter @lyjwpage/discord-reporter
+          test
 
       - run: node --test scripts/*.test.mjs
 
