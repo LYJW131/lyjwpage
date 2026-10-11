@@ -19,7 +19,7 @@ body:
     attributes:
       label: 验收标准
       description: 做到哪几条算完成，一条一个勾选框。
-      value: "- [ ] "
+      placeholder: "- [ ] "
     validations:
       required: true
   - type: textarea

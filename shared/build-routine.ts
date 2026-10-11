@@ -72,7 +72,7 @@ export function textLanguage(text: string): PlanLanguage {
   return kana > (kana + han) * 0.2 ? "ja" : "zh";
 }
 
-// issue 的小节标题须与 .github/ISSUE_TEMPLATE/ 的表单字段同步；issueFooter 末行的首页链接是 .github/workflows/issue-labels.yml 打 from-chat 标签的判据。
+// issue 的小节标题须与 .github/ISSUE_TEMPLATE/ 的表单字段同步。
 export const PLAN_LABELS = {
   en: {
     request: "Request",

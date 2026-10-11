@@ -21,7 +21,7 @@ body:
     attributes:
       label: 验收标准
       description: 修好之后应该满足哪几条，一条一个勾选框。
-      value: "- [ ] "
+      placeholder: "- [ ] "
     validations:
       required: true
   - type: textarea
