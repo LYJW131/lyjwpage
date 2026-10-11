@@ -24,7 +24,7 @@
 
 站点版的整片配乐放在 R2，不进仓库。对象键是乐谱输入（`scripts/explainer-score.mjs#scoreInputs`：Clawd 动作时序、章节表、合成器、各章乐谱和渲染脚本）的 sha256，页面经 `/img/<键>.mp3` 取它（同图片一样由 `next.config.ts` rewrite 到 R2、`lyjw131.com` 经 ESA 回源）。改了这些文件的提交进了 main，`.github/workflows/explainer-score.yml` 渲染并上传（仓库变量 `SELF_HOSTED_RUNNER=on` 时渲染走自建机，关闭时走托管机；分支不自动渲染，预览上现合成；可对内部开发分支手动运行）；同一个键已经在 R2 就跳过，对象传上后不覆盖，main 连续推送时只留最后一次在渲。上传用仓库 secret `R2_SCORE_ACCESS_KEY_ID` / `R2_SCORE_SECRET_ACCESS_KEY`，渲染那一步不带凭据，上传始终走托管机。
 
-手动运行的 `benchmark` 开关会在两类 runner 上并行强制渲染完整配乐，只保存音频和分阶段计时 artifact，不上传 R2。对比时将 `chrome-version` 固定为同一个完整版本号；两边使用同一提交、Node 配置、锁定的 Playwright 和 MP3 参数。`v2/tools/score-mp3.mjs` 按可用 CPU 自动选择并行数（可用 `SCORE_WORKERS` 指定），输出浏览器准备、合成、PCM 转换、传输与 MP3 编码耗时，工作流另用 ffprobe 核对音频时长、采样率和声道。
+手动运行的 `benchmark` 开关会在两类 runner 上并行强制渲染完整配乐，只保存音频和分阶段计时 artifact，不上传 R2。Chrome 默认版本由工作流的 `SCORE_CHROME_VERSION` 固定，可用 `chrome-version` 覆盖；自建机按版本共享浏览器缓存。对比时使用同一个完整版本号；两边使用同一提交、Node 配置、锁定的 Playwright 和 MP3 参数。`v2/tools/score-mp3.mjs` 按可用 CPU 自动选择并行数（可用 `SCORE_WORKERS` 指定），输出浏览器准备、合成、PCM 转换、传输与 MP3 编码耗时，工作流另用 ffprobe 核对音频时长、采样率和声道。
 
 合成器将 pad / bass 按 Web Audio 音色参数预渲染并复用，在 PCM 中统一混入 duck 控制；其余音符按 `v2/score.js#RENDER_BATCH_SECONDS` 滚动调度并回收结束的节点，并行段按采样帧对齐，以 `RENDER_WARMUP_SECONDS` 预热混响和反馈延迟。拼接后统一做响度处理与限幅；CLI 只载入配乐输入，PCM 直接送入 ffmpeg，不经过 Base64 或临时 WAV。无效采样会使任务失败。
 
