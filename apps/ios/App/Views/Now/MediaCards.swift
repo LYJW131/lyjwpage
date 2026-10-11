@@ -150,7 +150,7 @@ private struct ChargerSection: View {
                         Text(port.device ?? port.`protocol` ?? "Connected")
                             .font(.subheadline)
                             .lineLimit(1)
-                        if let voltage = port.voltage, let current = port.current {
+                        if port.device == nil, let voltage = port.voltage, let current = port.current {
                             Text("\(Format.decimal(voltage, digits: 1)) V · \(Format.decimal(current, digits: 2)) A")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)

@@ -191,10 +191,7 @@ export function ChargerCard({
                           : undefined
                       }
                     >
-                      {full?.active ? (full.device ?? "Unknown") : "—"}
-                    </div>
-                    <div className="truncate font-mono text-[0.6875rem] text-muted-foreground">
-                      {electrical ?? "—"}
+                      {full?.active ? (full.device ?? electrical ?? "Unknown") : "—"}
                     </div>
                   </div>
                 );
