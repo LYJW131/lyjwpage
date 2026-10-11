@@ -297,7 +297,7 @@ Clawd 收尾：「线上出错时，我先去 Sentry 查证据。」
 - **过闸**：验人（通行证或 Turnstile）、ChatQuota 三道额度，一项一勾；被挡下的一条盖 429，到此为止，不调 Clef。
 - **分拣**：Clef 把消息分给三档（Fable · God、Sonnet · Prophet、Haiku · Small Fry），选中的那档满了就往下降一档；refuse 不调模型。
 - **工具**：模型经 `SITE_TOOLS` 查站点，`PUBLIC_STATUS` 读的是浏览器看到的同一份公开模型；同一套工具挂在 `/mcp` 上给外部 AI 客户端。回到卡片：回复带着在听卡，盖一枚章。
-- **设计与构建**：访客想改站，Sonnet 开设计会话，Opus 在只读沙盒里克隆仓库、出题、出计划；Start build 之前先看 GitHub 授权说明；Worker 把计划提交到构建分支、开草稿 PR，routine 写代码、上传给 Worker 校验后提交。合不合并由站长决定，镜头落回 main 线，交给第 10 章。
+- **设计与构建**：访客想改站，Sonnet 开设计会话，Opus 在只读沙盒里克隆仓库、出题、出计划；Build it now 之前先看 GitHub 授权说明；Worker 把计划提交到构建分支、开草稿 PR，routine 写代码、上传给 Worker 校验后提交。合不合并由站长决定，镜头落回 main 线，交给第 10 章。
 
 **2D 画法**：对话卡照站点原样画成线框（标题、气泡、输入框）；闸门、额度、档位都是正视的方框、勾和格子；沙盒是一圈虚线框；分支是从 HEAD 弯出去的一根线。发光的只有消息的火花和灯。没有 Clawd。
 

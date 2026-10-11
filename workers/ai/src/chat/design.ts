@@ -125,7 +125,7 @@ export const ASK_VISITOR_TOOL: BetaManagedAgentsCustomToolParams = {
 export const PROPOSE_BUILD_TOOL: BetaManagedAgentsCustomToolParams = {
   type: "custom",
   name: "propose_build",
-  description: "Present one complete plan for the visitor to review and choose Open issue or Start build. The plan is the only task passed to the builder. Call it after discussing material uncertainties; the result is what the visitor said after reviewing the plan, or why the plan was rejected.",
+  description: "Present one complete plan for the visitor to review and choose Suggest it or Build it now. The plan is the only task passed to the builder. Call it after discussing material uncertainties; the result is what the visitor said after reviewing the plan, or why the plan was rejected.",
   input_schema: {
     type: "object",
     properties: {

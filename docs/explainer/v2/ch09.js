@@ -446,8 +446,8 @@
           text(d, tr("ch09.p.gh"), PLAN.x + 104, PLAN.y + 352, { font: FONT.cjk(44, 600), alpha: sa * gk, maxW: PLAN.w - 150 });
         }
         const hit = prog(b, AT.build, AT.build + 0.05);
-        pill(d, PLAN.x + 40, PLAN.y + 378, 390, 68, "Open issue", FONT.mono(46, 600), sa);
-        pill(d, PLAN.x + 470, PLAN.y + 378, 390, 68, "Start build", FONT.mono(46, 600), sa, hit > 0 ? { fill: sig, stroke: sig, color: css("paper") } : {});
+        pill(d, PLAN.x + 40, PLAN.y + 378, 390, 68, "Suggest it", FONT.mono(46, 600), sa);
+        pill(d, PLAN.x + 470, PLAN.y + 378, 390, 68, "Build it now", FONT.mono(46, 600), sa, hit > 0 ? { fill: sig, stroke: sig, color: css("paper") } : {});
         glow(e, PLAN.x + 665, PLAN.y + 412, 140, 0.45 * impact(b, AT.build, 0.3) * sa);
       }
     }
