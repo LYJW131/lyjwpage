@@ -14,19 +14,28 @@ lint() {
 }
 
 typecheck() {
-  if [ -n "${CI_CACHE_DIR:-}" ]; then
-    cp "$CI_CACHE_DIR/tsconfig.tsbuildinfo" tsconfig.tsbuildinfo 2>/dev/null || true
-  fi
-  if [ -n "${CI_CACHE_DIR:-}" ]; then
-    pnpm -r --include-workspace-root --parallel typecheck
-  else
+  if [ -z "${CI_CACHE_DIR:-}" ]; then
     pnpm -r --include-workspace-root typecheck
+    return
   fi
-  if [ -n "${CI_CACHE_DIR:-}" ]; then
-    cache_file="$CI_CACHE_DIR/tsconfig.tsbuildinfo.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
-    cp tsconfig.tsbuildinfo "$cache_file"
-    mv "$cache_file" "$CI_CACHE_DIR/tsconfig.tsbuildinfo"
-  fi
+  project_paths=$(pnpm -r --include-workspace-root list --depth=-1 --json | node -e 'let s="";process.stdin.on("data", c => s+=c);process.stdin.on("end", () => console.log(JSON.parse(s).map(p => p.path).join("\n")));')
+  while IFS= read -r project; do
+    case "$project" in
+      "$PWD"|"$PWD"/*) ;;
+      *) echo "Workspace outside repository: $project" >&2; return 1 ;;
+    esac
+    directory="$CI_CACHE_DIR/typecheck${project#"$PWD"}"
+    cp "$directory/tsconfig.ci.tsbuildinfo" "$project/tsconfig.ci.tsbuildinfo" 2>/dev/null || true
+  done <<< "$project_paths"
+  # CI 的 noEmit 缓存单独命名，不能与上报器测试编译 dist 的产物缓存混用。
+  pnpm -r --include-workspace-root --parallel typecheck --incremental --tsBuildInfoFile tsconfig.ci.tsbuildinfo
+  while IFS= read -r project; do
+    directory="$CI_CACHE_DIR/typecheck${project#"$PWD"}"
+    mkdir -p "$directory"
+    cache_file="$directory/tsconfig.ci.tsbuildinfo.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+    cp "$project/tsconfig.ci.tsbuildinfo" "$cache_file"
+    mv "$cache_file" "$directory/tsconfig.ci.tsbuildinfo"
+  done <<< "$project_paths"
 }
 
 workspace_tests() {
