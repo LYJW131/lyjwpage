@@ -290,25 +290,6 @@ test("valid upload creates and returns a confirmed PR without secret fields", as
   assert.equal("plan" in body, false);
 });
 
-test("an opened PR asks Codex and Cursor to review it with the owner's token, and a failed request keeps the PR", async () => {
-  for (const [token, status] of [[undefined, 201], ["owner-fixture", 201], ["owner-fixture", 500]] as const) {
-    const { env, instance } = coordinator();
-    instance.reserveRun(await stored(), "p", Date.now() + 60_000);
-    const { fetcher, calls } = githubFixture((path) => status === 500 && path.endsWith("/comments") ? json({}, 500) : undefined);
-    const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), { ...env, CODEX_REVIEW_GITHUB_TOKEN: token }, fetcher);
-    assert.equal(response.status, 201);
-    assert.equal((await response.json() as BuildRun).phase, "pr_open");
-    const comments = calls.filter((call) => call.path.endsWith("/comments"));
-    assert.equal(comments.length, token ? 2 : 0);
-    if (!token) continue;
-    for (const comment of comments) {
-      assert.equal(comment.path, `/repos/${BUILD_REPO}/issues/12/comments`);
-      assert.equal(comment.auth, "Bearer owner-fixture");
-    }
-    assert.deepEqual(comments.map((comment) => String(comment.body?.body).split(/\s/)[0]).sort(), ["@codex", "@cursoragent"]);
-  }
-});
-
 const png = (seed: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from([seed])]).toString("base64");
 function imageBucket() {
   const objects = new Map<string, { bytes: Uint8Array; contentType?: string }>();

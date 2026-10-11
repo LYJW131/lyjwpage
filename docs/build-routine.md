@@ -41,9 +41,7 @@ GitHub 写入使用 `GITHUB_APP_PRIVATE_KEY` 经 WebCrypto 签 RS256 JWT，换�
 
 准备阶段用 DO 租约串行化并发请求，创建计划 commit、分支或 PR 的部分成功会保留远端结果；重试先查询并验证 GitHub 身份，恢复同一分支和 PR。带签名状态 token 的状态查询也可重试未完成的准备；同账号的 Build 重试返回同一 run。routine 派发由原子标记限制为一次，派发结果不确定时不会再次启动付费构建。run 停在 `failed`、`blocked` 或 `timeout` 且草稿只含计划提交时，`BuildCoordinator` 的 alarm（间隔取 `workers/ai/src/build/coordinator.ts#DRAFT_SWEEP_MS`，Build 受理时排上）关闭该草稿 PR、保留分支，失败原因后补一句已关闭；run 仍停在原失败状态，卡片保留草稿链接与原因，GitHub 的关闭事件不把它改成 `closed`。已记录实现提交的 run 可能仍在恢复发布，草稿不关。还有待处理 run 时 alarm 继续排下一次，超时也由它发现；关闭遇到 GitHub 暂时失败下次重试，PR 与这次构建对不上时跳过并记 Sentry（tag `build.step`）。等待上传从 run 创建时计时，上传或校验中断从状态更新时间计时，超过 `BUILD_TIMEOUT_MS` 均显示结果未知。已接收上传的 run 若随后收到 GitHub 的 PR 确证，可从失败或超时恢复，并清除旧错误原因。routine 可向进度端点携带同一上传令牌报告短文本；进度只作展示，不代表通过验证。计划路径加上计划外放行的名额仍不够、只能靠类型断言或放宽测试才能完成时，routine 改为向同一端点报告 `blocked`（`workers/ai/src/build/coordinator.ts#blockRun`）：占用上传令牌，run 停在 `blocked` 并在卡片上显示缺哪些路径，访客据此重新出计划。规划者出计划前要读所涉 Worker 的 AGENTS.md「须成对修改」一节，把成对文件列进 `paths`。
 
-GitHub webhook 按原始正文验证 `X-Hub-Signature-256`，并核对目标仓库与 run 分支，处理成功后才登记 delivery ID 去重，处理失败保留重投机会。订阅事件为 `check_run`、`check_suite`、`status`、`issue_comment`、`pull_request`。检查、预览与评论是独立状态；`claude[bot]` 的评论只供参考，不能授权代码或合并。卡片注明此边界。
-
-PR 由 App 机器人开出，Codex 与 Cursor 不会自动审查；实现提交确认发布到既有 PR 后，`workers/ai/src/build/github.ts#requestAgentReviews` 用仓库所有者的令牌 `CODEX_REVIEW_GITHUB_TOKEN` 以所有者身份发两条固定文案的评论（`AGENT_REVIEW_REQUESTS`，不拼入访客内容）：`@codex review` 管正确性与仓库规则，`@cursoragent` 管安全与改动范围，都要求只检查、不推送、不运行 PR 代码、不调用外部服务。这些只是提示词约束：Cursor 的 cloud agent 有推送权限和用户连接的外部服务，访客内容里的注入仍是残余风险。没配令牌时跳过；评论失败只记 Sentry（tag `build.step`），不影响 PR 与 run 状态。每次访客构建因此消耗所有者的 Codex 与 Cursor 额度，次数受 `BUILD_QUOTA` 约束。卡片的审查栏只读 `claude[bot]`，不显示 Codex 与 Cursor 的结论。
+GitHub webhook 按原始正文验证 `X-Hub-Signature-256`，并核对目标仓库与 run 分支，处理成功后才登记 delivery ID 去重，处理失败保留重投机会。订阅事件为 `check_run`、`check_suite`、`status`、`issue_comment`、`pull_request`。检查、预览与评论是独立状态；`claude[bot]` 的评论只供参考，不能授权代码或合并。卡片注明此边界。卡片的审查栏只读 `claude[bot]`。
 
 Claude review 卡片通过 `src/lib/build-review-summary.ts#buildReviewSummary` 将可识别的审查结论显示为 No issues 或 Issues found；缺失、失败或无法识别的结论显示 Unknown。评论正文不直接显示，链接仍指向 GitHub 原评论；本地保存的会话也使用同一展示规则。
 
@@ -70,7 +68,7 @@ CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类�
 
 这些操作由有授权的维护者完成；文档不表示已配置。
 
-1. 在 AI Worker 与实际用于验收的分支 Preview 配置 `ROUTINE_FIRE_TOKEN`、`BUILD_SESSION_SECRET`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_WEBHOOK_SECRET`，并设置 `ROUTINE_FIRE_URL`；`CODEX_REVIEW_GITHUB_TOKEN` 可选，只配在生产 AI Worker；`VERCEL_TOKEN` 可选，只配在生产 AI Worker，用来公开构建预览（团队 ID 写在 `wrangler.toml` 的 `VERCEL_TEAM_ID`）。现有 `GITHUB_APP_CLIENT_SECRET` 供 PKCE 授权使用；付费设计对话仍需要现有模型、历史签名和 Turnstile 配置。不要把生产凭据复制进 Preview。
+1. 在 AI Worker 与实际用于验收的分支 Preview 配置 `ROUTINE_FIRE_TOKEN`、`BUILD_SESSION_SECRET`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_WEBHOOK_SECRET`，并设置 `ROUTINE_FIRE_URL`；`VERCEL_TOKEN` 可选，只配在生产 AI Worker，用来公开构建预览（团队 ID 写在 `wrangler.toml` 的 `VERCEL_TEAM_ID`）。现有 `GITHUB_APP_CLIENT_SECRET` 供 PKCE 授权使用；付费设计对话仍需要现有模型、历史签名和 Turnstile 配置。不要把生产凭据复制进 Preview。
 2. GitHub App 配置 webhook 指向对应环境的构建 webhook 路径，并订阅上文事件；确认 Contents、Pull requests、Issues 写权限，以及 Checks 和 Commit statuses 读取权限及目标仓库安装。安装 token 的缩减权限由 `workers/ai/src/build/github.ts#installationApi` 指定。JWT issuer 使用公开 `GITHUB_APP_CLIENT_ID`，安装 ID 由 GitHub 查询，不另存凭据。回调页仍是 `GITHUB_CALLBACK_PATH`，验收地址须登记在 App 中。
 3. routine 不挂仓库，选择 Custom 网络环境，仅允许 `github.com`、`registry.npmjs.org`、`api.homepage.lyjw.llc`、`lyjw.me`（截图里的 `/img/*`）与 `next.config.ts#remotePatterns` 的图片主机；贴入下节提示词。分支 Preview 实测时，把上传所用的具体 Preview 主机加入该隔离测试环境，测试完成后移除，不能用生产上传地址验证 Preview run。
 4. 核对 Vercel Preview 无 `GITHUB_TOKEN`、`REVALIDATE_SECRET`、`SENTRY_AUTH_TOKEN`；检查 Worker Preview 只持有专供测试的凭据。核对 Workers Builds 监视路径包含共享构建契约，清单见 [Workers 构建](./workers-builds.md)。
