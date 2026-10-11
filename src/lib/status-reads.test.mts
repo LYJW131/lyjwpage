@@ -16,6 +16,22 @@ test("acceptPush / guardPolled: stamped payloads drop out-of-order values", () =
   assert.deepEqual(guardPolled(path, equal), equal);
 });
 
+test("acceptPush: PlayStation presence and played games drop an older observedAt", () => {
+  const nowPath = STATUS_VIEWS.playingNow.path;
+  const newer = { ok: true as const, data: { observedAt: 2_000, online: false, playing: null } };
+  const older = { ok: true as const, data: { observedAt: 1_000, online: true, playing: { titleId: "PPSA01" } } };
+  assert.equal(acceptPush(nowPath, newer), true);
+  assert.equal(acceptPush(nowPath, older), false);
+  assert.deepEqual(guardPolled(nowPath, older), newer);
+
+  const listPath = STATUS_VIEWS.playing.path;
+  const newerList = { ok: true as const, data: { observedAt: 5_000, items: [{ titleId: "new" }] } };
+  const olderList = { ok: true as const, data: { observedAt: 4_000, items: [{ titleId: "old" }] } };
+  assert.equal(acceptPush(listPath, newerList), true);
+  assert.equal(acceptPush(listPath, olderList), false);
+  assert.deepEqual(guardPolled(listPath, olderList), newerList);
+});
+
 test("acceptPush: pushes without a comparable stamp are always taken", () => {
   const path = STATUS_VIEWS.watching.path;
   assert.equal(acceptPush(path, { ok: true, data: { items: [] } }), true);
