@@ -35,8 +35,6 @@ yarn-error.log*
 .dev.vars*
 !.dev.vars.example
 
-.vercel
-
 /.claude/settings.local.json
 /.claude/worktrees/
 

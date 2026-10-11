@@ -198,25 +198,23 @@ function appleStatus(events: Record<string, unknown>[] = [], uploadEvents: Recor
   })});`;
 }
 
-const vercel = summary({
+const github = summary({
   status: { indicator: "minor", description: "Partial System Outage" },
-  components: [{ name: "Builds", status: "degraded_performance" }],
+  components: [
+    { name: "Git Operations", status: "operational" },
+    { name: "Actions", status: "degraded_performance" },
+  ],
   incidents: [
     {
-      id: "v1",
-      name: "Build delays",
+      id: "g1",
+      name: "Actions delays",
       status: "investigating",
       impact: "minor",
-      shortlink: "https://www.vercelstatus.com/incidents/v1",
-      components: [{ name: "Builds" }],
-      incident_updates: [{ body: "Builds are delayed.", created_at: "2026-09-22T01:00:00Z" }],
+      shortlink: "https://www.githubstatus.com/incidents/g1",
+      components: [{ name: "Actions" }],
+      incident_updates: [{ body: "Actions runs are delayed.", created_at: "2026-09-22T01:00:00Z" }],
     },
   ],
-});
-
-const github = summary({
-  status: { indicator: "none", description: "All Systems Operational" },
-  components: [{ name: "Git Operations", status: "operational" }],
 });
 
 const cloudflare = summary({
@@ -250,7 +248,6 @@ function pages(extra: Record<string, string | Error> = {}): (url: string) => Pro
     [AGENT_STATUS_URLS.xaiFeed, xaiFeed],
     [AGENT_STATUS_URLS.typesafe, typesafeIndex()],
     [AGENT_STATUS_URLS.apple, appleStatus()],
-    [AGENT_STATUS_URLS.vercel, vercel],
     [AGENT_STATUS_URLS.github, github],
     [AGENT_STATUS_URLS.cloudflare, cloudflare],
   ]);
@@ -378,13 +375,12 @@ test("Apple 进行中的 Outage 按受影响范围分轻重，时间换成 ISO",
   assert.equal(row(everyone, "apple").indicator, "major_outage");
 });
 
-test("Vercel / GitHub 走 Statuspage 整页，页面灯直接进这一行", async () => {
+test("GitHub 走 Statuspage 整页，页面灯直接进这一行", async () => {
   const payload = await collectAgentStatus(null, pages());
-  const vercelRow = row(payload, "vercel");
-  assert.equal(vercelRow.indicator, "degraded");
-  assert.equal(vercelRow.incidents[0]?.title, "Build delays");
-  assert.ok(vercelRow.components.some((component) => component.name === "Builds"));
-  assert.equal(row(payload, "github").indicator, "operational");
+  const githubRow = row(payload, "github");
+  assert.equal(githubRow.indicator, "degraded");
+  assert.equal(githubRow.incidents[0]?.title, "Actions delays");
+  assert.ok(githubRow.components.some((component) => component.name === "Actions"));
 });
 
 test("Cloudflare 只盯站点用到的产品和 DNS，不跟整页灯、机房或 WARP 走", async () => {

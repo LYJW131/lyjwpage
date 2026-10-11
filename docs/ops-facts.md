@@ -2,7 +2,7 @@
 
 > 类型：reference
 
-只记不在仓库里的事实：Cloudflare、Vercel、阿里云 ESA、Sentry、GitHub 的控制台配置，Access 策略，机器与路径。仓库里查得到的事（代码、`wrangler.toml`、工作流）不在这里重复，只指到出处；与代码冲突以代码为准。
+只记不在仓库里的事实：Cloudflare、阿里云 ESA、Sentry、GitHub 的控制台配置，Access 策略，机器与路径。仓库里查得到的事（代码、`wrangler.toml`、工作流）不在这里重复，只指到出处；与代码冲突以代码为准。
 
 每条带「核对于 <日期>，方式：…」。「核对于 未记录」是从旧文档原样迁入、原文没写核对时间的条目，迁入时没有重新核对；其他文档里残留的同类描述，清扫时改成指向本文。改了控制台配置就来这里改对应一行，并更新核对时间。
 
@@ -22,19 +22,8 @@
 | --- | --- |
 | 回源 `lyjw.me`，回源 Host 同为 `lyjw.me`；缓存首页 HTML 与带内容哈希的静态 JS | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
 | 缓存规则顺序敏感：①「PWA 核心文件绕过缓存」置首，匹配 `/sw.js`、`/offline.html`、`/manifest.webmanifest`、`/pwa/icon-192.png`、`/pwa/icon-512.png`，必须先于整站长效缓存规则；②「首页遵循源站缓存」（主机名等于本站、URI 路径等于 `/`）排在①之后，边缘按源站 `Cache-Control` 的 SWR 自行过期与后台取新（值在 [当时的 next.config.ts](https://github.com/LYJW131/lyjwpage/blob/f72dd525b8c1befb018b76ca041a9a6d0c27ce84/next.config.ts) 的 headers）；没有②，`/` 因没有文件后缀被判 DYNAMIC、每次回源 | 核对于 未记录，方式：迁自 `docs/telemetry-subsystems.md` 的「PWA 与边缘缓存规则」一节与 `workers/api/README.md` |
-| 图片路径 `/img/*` 由 ESA 按静态后缀缓存，回源 `lyjw.me`（那边再 rewrite 到 R2 公开源）；对象带一年不可变缓存，地址即内容指纹，所以不需要主动刷新 | 核对于 未记录，方式：迁自根 `README.md` 的「图片」一节 |
+| 图片路径 `/img/*` 由 ESA 按静态后缀缓存，回源 `lyjw.me`（由 `site` Worker 经 R2 绑定直出）；对象带一年不可变缓存，地址即内容指纹，所以不需要主动刷新 | 核对于 未记录，方式：迁自根 `README.md` 的「图片」一节 |
 | 新版本上线时 `.github/workflows/purge-esa.yml` 调 `PurgeCaches` 刷新首页 cachekey 并预热；站点 ID 与刷新 URL 见 `.github/workflows/purge-esa.yml#ESA_SITE_ID`，凭据是仓库 secret `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET`；日常上报不触发刷新 | 核对于 未记录，方式：迁自 `workers/api/README.md` |
-
-## Vercel
-
-| 事实 | 核对 |
-| --- | --- |
-| `lyjw.me` 站点在 Vercel，生产随 `main` 自动部署；预览构建把后端源改成该分支的影子 Worker，生产构建用面板里的值 | 核对于 未记录，方式：迁自 `docs/state-storage.md` 与 `docs/workers-builds.md` |
-| 项目 `lyjwpage` 的 Ignored Build Step（`commandForIgnoringBuildStep`）只放行生产分支 `main` 和带 Pull Request 的部署：`VERCEL_ENV` 为 `production`，或 `VERCEL_GIT_PULL_REQUEST_ID` 非空，命令退出码 1，构建继续；其余分支推送退出码 0，构建取消。没有 PR 的分支推送仍会建一条随即取消的部署 | 核对于 2026-10-11，方式：`GET /v9/projects/prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC` 读回该命令，`link.productionBranch` 为 `main` <!-- allow: 核对戳 --> |
-| 项目环境变量（只记名字）：`NEXT_PUBLIC_BACKEND_URL`（构建期写入前端，状态、推送、在线人数同源）、`REVALIDATE_SECRET`（只有 Worker 与 Vercel 两边有）、`R2_PUBLIC_BASE_URL`（`/img/*` rewrite 的目的地与首屏图标内联的来源，生产只配在 Vercel）、可选 `GITHUB_TOKEN`（构建期读最近提交）；参照根 `.env.example` | 核对于 未记录，方式：迁自 `docs/state-storage.md` |
-| `REVALIDATE_SECRET` 两边（Vercel 的 Production、api Worker 的 Secret）同一个值，2026-10-09 轮换过：旧值可能随 Sentry 采样到的 `/api/revalidate` transaction 外泄；换值后 Vercel 要新部署才生效 | 核对于 2026-10-09，方式：`vercel env ls`、`wrangler secret list`，生产上 Worker 发出的失效请求被站点接受 <!-- allow: 核对戳 --> |
-| Vercel 的 Preview 环境不放凭据：`GITHUB_TOKEN`、`REVALIDATE_SECRET` 只配 Production，`SENTRY_AUTH_TOKEN` 只对 Production 生效。预览构建会执行分支代码，分支可能来自 agent 推送；缺了它们，预览构建匿名读 GitHub、不上传 sourcemap，预览站的 `/api/revalidate` 回 503 | 核对于 2026-10-10，方式：Vercel REST `GET /v10/projects/{id}/env` 只看键名与 target <!-- allow: 核对戳 --> |
-| 主账号与小账号各有一个生产项目，Production 与 Preview 的 `NEXT_PUBLIC_BACKEND_URL` 都指向 API 域名 | 核对于 2026-09-07，方式：迁自 [核验记录](./reporter-endpoints.md) |
 
 ## Cloudflare 账号里的资源
 
@@ -71,7 +60,7 @@
 | 事实 | 核对 |
 | --- | --- |
 | 仓库 Actions variable `SELF_HOSTED_RUNNER=on`；任务选择条件以 `.github/workflows/ci.yml` 与 `.github/workflows/codeql.yml` 为准。自建机离线时将变量删除或设为 `off`，新任务回到托管机，已排队任务须重新运行 | 核对于 2026-10-11，方式：`gh variable get SELF_HOSTED_RUNNER`，重跑同一 main 提交并读回 job 的 `runner_name` <!-- allow: 核对戳 --> |
-| GitHub App `LYJW131`（slug `lyjw131`，App ID `5201294`，Client ID 写在 `.github/workflows/avatar-sync.yml`），机器人账号 `lyjw131[bot]`（用户 ID `338272049`）；权限为 Contents 读写、Issues 读写、Pull requests 读写，Checks、Commit statuses 与 Metadata 只读，只装在 `LYJW131/lyjwpage`；Webhook 开启，地址 `https://api.homepage.lyjw.llc/api/build/webhook`，订阅 Check run、Check suite、Status、Issue comment、Pull request，签名密钥是 ai Worker 的 Secret `GITHUB_WEBHOOK_SECRET`；App 设为公开，因为私有 App 只有所有者能做用户授权，别的账号打开授权链接是 404。用户授权的回调地址登记了 `https://lyjw.me/github-callback`、`https://lyjw131.com/github-callback`、`http://localhost:3211/github-callback`（严格匹配），供首页对话让访客以自己的身份提 issue 或连接 GitHub 发起构建。`avatar-sync.yml`（由 collector 的 `avatar-watch` 任务触发）用它经 GraphQL `createCommitOnBranch` 往 main 提交 `.github/github-avatar.sha256`，触发 Vercel 重建以重新抓取构建期缓存的头像 | 核对于 2026-10-10，方式：GitHub App 设置页（General、Permissions、Advanced）与安装页，Advanced 里重投一次事件到生产地址返回 200 <!-- allow: 核对戳 --> |
+| GitHub App `LYJW131`（slug `lyjw131`，App ID `5201294`，Client ID 写在 `.github/workflows/avatar-sync.yml`），机器人账号 `lyjw131[bot]`（用户 ID `338272049`）；权限为 Contents 读写、Issues 读写、Pull requests 读写，Checks、Commit statuses 与 Metadata 只读，只装在 `LYJW131/lyjwpage`；Webhook 开启，地址 `https://api.homepage.lyjw.llc/api/build/webhook`，订阅 Check run、Check suite、Status、Issue comment、Pull request，签名密钥是 ai Worker 的 Secret `GITHUB_WEBHOOK_SECRET`；App 设为公开，因为私有 App 只有所有者能做用户授权，别的账号打开授权链接是 404。用户授权的回调地址登记了 `https://lyjw.me/github-callback`、`https://lyjw131.com/github-callback`、`http://localhost:3211/github-callback`（严格匹配），供首页对话让访客以自己的身份提 issue 或连接 GitHub 发起构建。`avatar-sync.yml`（由 collector 的 `avatar-watch` 任务触发）用它经 GraphQL `createCommitOnBranch` 往 main 提交 `.github/github-avatar.sha256`，触发 `site` 重建以重新抓取构建期缓存的头像 | 核对于 2026-10-10，方式：GitHub App 设置页（General、Permissions、Advanced）与安装页，Advanced 里重投一次事件到生产地址返回 200 <!-- allow: 核对戳 --> |
 | GitHub App `LYJW Antigravity`（slug `lyjw-antigravity`，App ID `5274597`，Client ID `Iv23livbSaiQ9CYOuSMh`），机器人账号 `lyjw-antigravity[bot]`（用户 ID `341015624`）。只用来给 Antigravity 的提交当 `Co-authored-by` 身份，尾注写 `Co-authored-by: Antigravity <341015624+lyjw-antigravity[bot]@users.noreply.github.com>`，显示名可改、邮箱不能改。名字不能用 `Antigravity`，GitHub 把这个名字留给账号 `@antigravity`。头像是 [antigravity.google](https://antigravity.google/) 的 `/assets/image/antigravity-logo.png`。App 仅限本账号安装，没有安装、没有私钥、Webhook 关闭，权限只有 Metadata 只读 | 核对于 2026-10-11，方式：GitHub App 设置页创建后读回 App ID、Client ID 与头像，`api.github.com/users/lyjw-antigravity[bot]` 读回用户 ID <!-- allow: 核对戳 --> |
 | 构建 PR 请 Codex 与 Cursor 审查用 LYJW131 的细粒度令牌 `lyjwpage-build-codex-review`：只授权 `LYJW131/lyjwpage`，权限只有 Pull requests 读写（Metadata 只读为必选），2027-10-10 到期，到期前要重建并重写 ai Worker 的 Secret `CODEX_REVIEW_GITHUB_TOKEN`；过期后评论失败进 Sentry（tag `build.step: agent-review`），构建本身不受影响 | 核对于 2026-10-10，方式：GitHub 令牌创建页设置读回，`wrangler deployments list` 最新一版由 secret 触发 <!-- allow: 核对戳 --> |
 | 凭据放的位置（不记值）：App 有两把私钥，一把是仓库 Actions secret `AVATAR_APP_PRIVATE_KEY`（由 `avatar-sync.yml` 使用，指纹 `SHA256:0sNP…`），一把是 ai Worker 的 Secret `GITHUB_APP_PRIVATE_KEY`（访客构建建分支开 PR，指纹 `SHA256:nyZE…`），轮换时按指纹认；仓库 Actions variable `AVATAR_APP_ID` 存了 App ID，工作流没有使用 | 核对于 2026-10-10，方式：App 设置页 Key pairs 与 `wrangler secret list` 只核对名称 <!-- allow: 核对戳 --> |
@@ -86,8 +75,7 @@
 | 事实 | 核对 |
 | --- | --- |
 | 访客构建用 routine「lyjwpage /build」`trig_014sUCU54BW4Bd39UmcWjLK6`：只有 API 触发、不挂仓库（`sources` 为空），模型 Opus 5.5，工具 Bash/Read/Write/Edit/Glob/Grep，提示词取自 [访客协作构建](./build-routine.md) 的「Routine 提示词」；fire 地址与令牌是 ai Worker 的 Secret `ROUTINE_FIRE_URL`、`ROUTINE_FIRE_TOKEN`，构建令牌签名用 ai 的 `BUILD_SESSION_SECRET`。改提示词或工具用 RemoteTrigger 的 update 整份提交 `job_config` | 核对于 2026-10-10，方式：RemoteTrigger get 读回，生产首页对话发起一次构建并在 routine 的运行记录里看到会话 <!-- allow: 核对戳 --> |
-| ai Worker 的 Secret `VERCEL_TOKEN` 是 Vercel 团队 `team_kfTnkK6X9bbqSbkgAhq7SxCd` 作用域的专用 token `lyjwpage-ai-preview-share`，2027-10-10 到期，只用来给访客构建的预览建分享链接；到期或撤销后 Preview 退回需要登录的部署页 | 核对于 2026-10-10，方式：`wrangler secret list --name ai` 只看名称，生产构建状态接口读回带 `_vercel_share` 的 Preview 链接并匿名打开返回 200 <!-- allow: 核对戳 --> |
-| 它跑在 claude.ai 环境 `lyjwpage-build`（`env_014uCQ1YF1gu2qTf1K5vJKqR`）：网络为 Custom，只放行 `github.com`、`registry.npmjs.org`、`api.homepage.lyjw.llc`、`lyjw.me`，以及截图用的远端图片主机 `avatars.githubusercontent.com`、`*.blobstore.apple.com`、`psn-rsc.prod.dl.playstation.net`（与 `next.config.ts#remotePatterns` 对应），不勾「默认的常用包管理器列表」，无 setup 脚本、环境变量与网络密钥；环境的网络设置只能在网页编辑 | 核对于 2026-10-11，方式：claude.ai 新建会话页的环境设置保存后重新打开读回 <!-- allow: 核对戳 --> |
+| 它跑在 claude.ai 环境 `lyjwpage-build`（`env_014uCQ1YF1gu2qTf1K5vJKqR`）：网络为 Custom，只放行 `github.com`、`registry.npmjs.org`、`api.homepage.lyjw.llc`、`lyjw.me`，以及截图用的远端图片主机 `avatars.githubusercontent.com`、`*.blobstore.apple.com`、`psn-rsc.prod.dl.playstation.net`（与 `src/lib/image-proxy.ts#allowedImageHost` 对应），不勾「默认的常用包管理器列表」，无 setup 脚本、环境变量与网络密钥；环境的网络设置只能在网页编辑 | 核对于 2026-10-11，方式：claude.ai 新建会话页的环境设置保存后重新打开读回 <!-- allow: 核对戳 --> |
 | 测试用 routine `trig_01D64vPhffksi2pfXDPHzRPp`（「lyjwpage build (preview test)」，环境 `lyjwpage-canary`，Custom 只放行 `github.com`、`registry.npmjs.org`）已停用；分支 Preview 实测时把要用的预览 Worker 域名加进这个环境、Secret 写进那个预览，测完移除 | 核对于 2026-10-10，方式：RemoteTrigger get 读回 `enabled: false`，环境设置页读回 <!-- allow: 核对戳 --> |
 
 ## 机器与部署位置
@@ -109,5 +97,6 @@
 
 | 事实 | 核对 |
 | --- | --- |
-| 已退役的 `online-counter`：控制台里的 Worker、自定义域 `online.homepage.lyjw.llc`、它的 Workers Builds 项目（不删则每次推送都留一条失败的构建）、Vercel 上的旧变量 `NEXT_PUBLIC_ONLINE_COUNTER_URL` 都待手工删除 | 核对于 未记录，方式：迁自 [核验记录](./reporter-endpoints.md) 的最后一节，迁入时是否已删未重核 |
+| 已退役的 `online-counter`：控制台里的 Worker、自定义域 `online.homepage.lyjw.llc`、它的 Workers Builds 项目（不删则每次推送都留一条失败的构建）都待手工删除 | 核对于 未记录，方式：迁自 [核验记录](./reporter-endpoints.md) 的最后一节，迁入时是否已删未重核 |
+| 域名切到 `site` Worker 并验收后（切换顺序见 [Workers 构建](./workers-builds.md)）待删：Vercel 上主账号与小账号的两个生产项目（项目 `prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC` 等，环境变量随项目一起删，含旧变量 `NEXT_PUBLIC_ONLINE_COUNTER_URL`）；ai Worker 的 Secret `VERCEL_TOKEN` 与它对应的团队 token `lyjwpage-ai-preview-share`（团队 `team_kfTnkK6X9bbqSbkgAhq7SxCd`）；api Worker 的 Secret `REVALIDATE_SECRET` | 核对于 2026-10-12，方式：`git grep` 确认仓库代码不再读取 `VERCEL_TOKEN`、`REVALIDATE_SECRET`；控制台侧沿用此前的核对，未重核 <!-- allow: 核对戳 --> |
 | api Worker 上旧的 `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET` secret 与阿里云 RAM 里的专用用户已无用，两处控制台都删掉即可 | 核对于 未记录，方式：迁自 `workers/api/README.md` |

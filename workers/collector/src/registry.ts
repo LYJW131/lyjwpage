@@ -12,7 +12,6 @@ import { pagespeedJob } from "./jobs/pagespeed";
 import { providerStatusJob } from "./jobs/provider-status";
 import { sentryStatusJob } from "./jobs/sentry-status";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./jobs/site-status";
-import { vercelDeploymentsJob, vercelMetricsJob } from "./jobs/retired";
 import { checkinDue, isDue, monitorConfig, monitorSlug } from "./schedule";
 
 export const JOBS: readonly Job[] = [
@@ -21,8 +20,6 @@ export const JOBS: readonly Job[] = [
   pagespeedJob,
   githubChartJob,
   githubRepoJob,
-  vercelDeploymentsJob,
-  vercelMetricsJob,
   siteDeploymentsJob,
   siteAnalyticsJob,
   cloudflareDeploymentsJob,
