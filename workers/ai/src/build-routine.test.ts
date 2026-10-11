@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, planLanguage, visitorLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, buildIssueUrl, planLanguage, visitorLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url, uploadTokenForRun } from "./build/token.ts";
@@ -249,6 +249,11 @@ test("issue and PR labels follow the plan language", () => {
   assert.match(buildIssueBody(zh), /## 验收标准[\s\S]*## 计划路径/);
   assert.match(buildIssueBody(ja), /## 受け入れ基準/);
   assert.match(buildIssueBody(plan), /## Acceptance criteria/);
+  const issueUrl = new URL(buildIssueUrl(zh));
+  assert.equal(issueUrl.origin, "https://github.com");
+  assert.equal(issueUrl.pathname, `/${BUILD_REPO}/issues/new`);
+  assert.equal(issueUrl.searchParams.get("title"), zh.title);
+  assert.match(issueUrl.searchParams.get("body") ?? "", /## 验收标准[\s\S]*提交自\[首页对话\]/);
 });
 
 test("base must be an ancestor of main, with comparison in the correct direction", async () => {
