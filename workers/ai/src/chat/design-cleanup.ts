@@ -1,26 +1,24 @@
-import type Anthropic from "@anthropic-ai/sdk";
-
-import { BUILD_DESIGN_LIMITS } from "@shared/build-routine";
-
 import type { Env } from "../runtime";
 
-// Managed Agents 的会话记录与沙盒不会自己过期，访客在设计会话里说的话会一直留着；令牌过期后再留这么久，
-// 让最后一回合跑完、断线的访客补发，然后整个删掉。
+// 设计会话的 Durable Object 不会自己消失：转录、挂起的题目与计划、仓库快照都在里面；令牌过期后再留这么久，
+// 让最后一回合跑完、断线的访客补发，然后整个删掉。名册在 BuildCoordinator，删成功才除名，失败下轮重试。
 export const DESIGN_SESSION_GRACE_MS = 30 * 60_000;
 // 一次定时任务最多删这么多，剩下的下一轮接着删，子请求数有上限。
 const DELETE_BATCH = 100;
 
-type SessionsApi = Pick<Anthropic["beta"]["sessions"], "list" | "delete">;
-
-export async function deleteExpiredDesignSessions(sessions: SessionsApi, env: Env, now = Date.now()): Promise<number> {
-  if (!env.DESIGN_AGENT_ID) return 0;
-  const before = new Date(now - BUILD_DESIGN_LIMITS.ttlMs - DESIGN_SESSION_GRACE_MS).toISOString();
-  const expired: string[] = [];
-  for await (const session of sessions.list({ agent_id: env.DESIGN_AGENT_ID, "created_at[lt]": before, include_archived: true, limit: DELETE_BATCH })) {
-    if (session.status === "running" || session.status === "rescheduling") continue;
-    expired.push(session.id);
-    if (expired.length >= DELETE_BATCH) break;
+export async function deleteExpiredDesignSessions(env: Env, now = Date.now()): Promise<number> {
+  if (!env.BUILD_COORDINATOR || !env.DESIGN_SESSIONS) return 0;
+  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const expired = await coordinator.expiredDesignSessions(now - DESIGN_SESSION_GRACE_MS, DELETE_BATCH);
+  let deleted = 0;
+  for (const id of expired) {
+    try {
+      await env.DESIGN_SESSIONS.getByName(id).disposeSession();
+      await coordinator.forgetDesignSession(id);
+      deleted += 1;
+    } catch {
+      // 除名留在名册里，下一轮定时任务接着试。
+    }
   }
-  for (const id of expired) await sessions.delete(id);
-  return expired.length;
+  return deleted;
 }

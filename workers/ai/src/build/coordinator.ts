@@ -36,6 +36,8 @@ export class BuildCoordinator extends DurableObject<Env> {
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS build_records (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires INTEGER NOT NULL)");
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS build_hits (kind TEXT NOT NULL, account TEXT NOT NULL, at INTEGER NOT NULL)");
     ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS build_hits_at ON build_hits(at)");
+    // 清理名册：与按期淘汰的配额记录不同，删除真正成功之前条目必须留下，断了重试。
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS design_sessions (id TEXT PRIMARY KEY, expires INTEGER NOT NULL)");
   }
 
   private get<T>(key: string): T | null {
@@ -68,20 +70,39 @@ export class BuildCoordinator extends DurableObject<Env> {
       this.prune();
       if (expiresAt <= Date.now() || expiresAt > Date.now() + BUILD_DESIGN_LIMITS.ttlMs || this.get(`design:${id}`) || this.count("design") >= BUILD_DESIGN_LIMITS.everyone) return false;
       this.put(`design:${id}`, { turns: 0, expiresAt }, expiresAt);
+      this.ctx.storage.sql.exec("INSERT INTO design_sessions VALUES (?, ?)", id, expiresAt);
       this.ctx.storage.sql.exec("INSERT INTO build_hits VALUES (?, ?, ?)", "design", "", Date.now());
       return true;
     });
   }
 
-  admitDesign(id: string): { status: "ok" | "expired" | "exhausted"; remaining: number } {
+  // requestId 先去重再数回合：同一回合的重试（断线重连、浏览器重发）不再扣额度。
+  admitDesign(id: string, requestId?: string): { status: "ok" | "expired" | "exhausted"; remaining: number } {
     return this.ctx.storage.transactionSync(() => {
-      const session = this.get<{ turns: number; expiresAt: number }>(`design:${id}`);
+      const session = this.get<{ turns: number; expiresAt: number; requestIds?: string[] }>(`design:${id}`);
       if (!session) return { status: "expired", remaining: 0 };
+      if (requestId !== undefined && (session.requestIds ?? []).includes(requestId)) {
+        return { status: "ok", remaining: Math.max(0, BUILD_DESIGN_LIMITS.maxTurns - session.turns) };
+      }
       if (session.turns >= BUILD_DESIGN_LIMITS.maxTurns) return { status: "exhausted", remaining: 0 };
       session.turns += 1;
+      if (requestId !== undefined) (session.requestIds ??= []).push(requestId);
       this.put(`design:${id}`, session, session.expiresAt);
       return { status: "ok", remaining: BUILD_DESIGN_LIMITS.maxTurns - session.turns };
     });
+  }
+
+  hasDesignAdmission(id: string, requestId: string): boolean {
+    const session = this.get<{ requestIds?: string[] }>(`design:${id}`);
+    return session?.requestIds?.includes(requestId) === true;
+  }
+
+  expiredDesignSessions(before: number, limit: number): string[] {
+    return this.ctx.storage.sql.exec<{ id: string }>("SELECT id FROM design_sessions WHERE expires <= ? ORDER BY expires, id LIMIT ?", before, limit).toArray().map((row) => row.id);
+  }
+
+  forgetDesignSession(id: string): void {
+    this.ctx.storage.sql.exec("DELETE FROM design_sessions WHERE id = ?", id);
   }
 
   peekDesign(id: string): { status: "ok" | "expired"; remaining: number } {

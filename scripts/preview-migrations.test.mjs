@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { previewMigrations } from "./preview-migrations.mjs";
+import { PREVIEW_MIGRATIONS, previewMigrations } from "./preview-migrations.mjs";
 
 const migrations = [
   { tag: "v1-transfer-from-ingest", new_sqlite_classes: ["OnlineCounterRoom"], transferred_classes: [{ from: "StateHub", from_script: "ingest", to: "StateHub" }] },
@@ -15,6 +15,7 @@ test("Preview initializes current classes without replaying production transfers
     { tag: "v2-split-online-counter", new_sqlite_classes: ["LivePushRoom", "StateHub"] },
     ...migrations.slice(2),
     { tag: "v5-build-coordinator", new_sqlite_classes: ["BuildCoordinator"] },
+    { tag: "v6-design-session", new_sqlite_classes: ["DesignSession"] },
   ]);
 });
 
@@ -24,7 +25,7 @@ test("new api migrations remain after the deployed Preview tag and are not skipp
   const deployed = previewMigrations(migrations);
   const updated = previewMigrations([...migrations, next, renamed]);
   assert.deepEqual(updated.slice(0, deployed.length), deployed);
-  assert.deepEqual(updated.slice(updated.findIndex(({ tag }) => tag === "v5-build-coordinator") + 1), [next, renamed]);
+  assert.deepEqual(updated.slice(deployed.length), [next, renamed]);
 });
 
 test("Preview requires the production baseline and insertion anchor, and rejects duplicate tags", () => {
@@ -46,7 +47,9 @@ test("Preview migration generation does not mutate input or share mutable histor
 test("the repository api migration chain retains every post-baseline tag in Preview", () => {
   const config = readFileSync(new URL("../workers/api/wrangler.toml", import.meta.url), "utf8");
   const productionTags = [...config.matchAll(/^\[\[migrations\]\]\s*\ntag = "([^"]+)"/gm)].map((match) => match[1]);
+  const previewOnly = new Set(PREVIEW_MIGRATIONS.map(({ migration }) => migration.tag));
   const result = previewMigrations(productionTags.map((tag) => ({ tag })));
   const baseline = productionTags.indexOf("v2-split-online-counter");
-  assert.deepEqual(result.filter(({ tag }) => tag !== "v5-build-coordinator").map(({ tag }) => tag), productionTags.slice(baseline));
+  assert.deepEqual(result.filter(({ tag }) => !previewOnly.has(tag)).map(({ tag }) => tag), productionTags.slice(baseline));
+  for (const { migration } of PREVIEW_MIGRATIONS) assert.ok(result.some(({ tag }) => tag === migration.tag));
 });

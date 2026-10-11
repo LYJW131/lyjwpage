@@ -3,6 +3,7 @@ const PREVIEW_BASELINE = { tag: "v2-split-online-counter", new_sqlite_classes: [
 // Preview-only migrations keep their place before later api migrations on already-created namespaces.
 export const PREVIEW_MIGRATIONS = [
   { after: "v4-anthropic-egress", migration: { tag: "v5-build-coordinator", new_sqlite_classes: ["BuildCoordinator"] } },
+  { after: "v5-build-coordinator", migration: { tag: "v6-design-session", new_sqlite_classes: ["DesignSession"] } },
 ];
 
 export function previewMigrations(migrations) {

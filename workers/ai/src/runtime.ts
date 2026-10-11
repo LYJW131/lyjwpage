@@ -1,6 +1,7 @@
 import type { PublicStatusRpc } from "@shared/public-status";
 
 import type { BuildCoordinator } from "./build/coordinator";
+import type { DesignSession } from "./chat/design-session";
 import type { AnthropicEgress } from "./chat/egress";
 import type { ChatQuota } from "./chat/quota";
 
@@ -22,9 +23,8 @@ export interface Env {
   BUILD_COORDINATOR?: DurableObjectNamespace<BuildCoordinator>;
   BUILD_SESSION_SECRET?: string;
   IMAGES?: R2Bucket;
-  // Managed Agents 的 agent 与 environment，须与 ANTHROPIC_API_KEY 同属一个工作区；agent 只是壳，模型、提示词和工具每个会话从代码覆盖。
-  DESIGN_AGENT_ID?: string;
-  DESIGN_ENVIRONMENT_ID?: string;
+  // 设计会话的持久对象：每个会话一个 SQLite Durable Object，PiHarness + Lifecycle 在里面跑。
+  DESIGN_SESSIONS?: DurableObjectNamespace<DesignSession>;
   GITHUB_APP_PRIVATE_KEY?: string;
   GITHUB_WEBHOOK_SECRET?: string;
   CODEX_REVIEW_GITHUB_TOKEN?: string;

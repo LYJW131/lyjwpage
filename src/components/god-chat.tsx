@@ -128,6 +128,8 @@ function Conversation({ className, archive, session: conversation }: { className
   const widgetRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // 正在流式的那一条的身份：明确停止要带同一份已验历史与最新设计令牌（开场交接新发的也在内），后端据此只对那个回合动手。
+  const stopRef = useRef<{ messages: GodChatMessage[]; designToken?: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
   const pendingRef = useRef<string | null>(null);
@@ -286,6 +288,7 @@ function Conversation({ className, archive, session: conversation }: { className
       const humanPass = usedToken ? null : readPass();
       designToken = activeChatDesign(conversation?.design)?.token;
       if (conversation?.design && !designToken) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
+      stopRef.current = { messages: history, ...(designToken && { designToken }) };
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -337,6 +340,7 @@ function Conversation({ className, archive, session: conversation }: { className
           } else if (event.type === "design" && conversation) {
             // 连同访客这条一起存下：刷新或断线后要靠它补发规划者的回复。
             chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) });
+            if (stopRef.current) stopRef.current.designToken = event.token;
             if (!designToken && meta.designAt === undefined) {
               meta = { ...meta, designAt: reply.length };
               if (sessionRef.current === session) {
@@ -372,6 +376,7 @@ function Conversation({ className, archive, session: conversation }: { className
       }
       setStreaming(false);
       abortRef.current = null;
+      stopRef.current = null;
     }
   }
 
@@ -387,6 +392,22 @@ function Conversation({ className, archive, session: conversation }: { className
     const user = { ...list[at], id: list[at].id ?? crypto.randomUUID() };
     if (!list[at].id) setMessages([...list.slice(0, at), user, ...list.slice(at + 1)], false);
     void send(user.content, undefined, { user, before: list.slice(0, at), handoff: list[at + 1]?.designAt !== undefined });
+  }
+
+  // 明确的停止：设计回合先让后端按 requestId 撤掉还在跑的那一轮（取消用自己的请求信号，不随主流一起死），
+  // 再断本地这条流。普通对话没有后端回合可撤，只断流。
+  function stop() {
+    const pending = stopRef.current;
+    if (pending?.designToken && CHAT_URL) {
+      void fetch(CHAT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: pending.messages, humanPass: readPass()?.pass, designToken: pending.designToken, cancel: true }),
+      }).then((res) => {
+        if (!res.ok) setError("The planner could not be stopped. Reconnect to check its status.");
+      }).catch(() => setError("The planner could not be stopped. Reconnect to check its status."));
+    }
+    abortRef.current?.abort();
   }
 
   useEffect(() => {
@@ -774,7 +795,7 @@ function Conversation({ className, archive, session: conversation }: { className
             <button
               type="button"
               aria-label="Stop"
-              onClick={() => abortRef.current?.abort()}
+              onClick={stop}
               className="paper-card flex size-10 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface text-foreground transition-colors hover:bg-surface-hover"
             >
               <Square className="size-3.5 fill-current" />
@@ -881,7 +902,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 // 站主要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
-// destinations 须列全对话数据的每个出站去向；Turnstile 人机验证不收对话内容，站主定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言；Anthropic（含 Managed Agents）与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；设计会话「约一小时内删除」取决于 workers/ai/src/chat/design-cleanup.ts 的宽限期与 cron 周期。
+// destinations 须列全对话数据的每个出站去向；Turnstile 人机验证不收对话内容，站主定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；设计会话「过期后安排删除」取决于 workers/ai/src/chat/design-cleanup.ts 的宽限期与 cron 周期。
 type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
 const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   en: {
@@ -889,12 +910,12 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "Privacy notice",
     intro: "Before the oracle answers, please accept where this chat sends your data:",
     destinations: [
-      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and this conversation's history, and keeps your IP address for the rate-limit window. No transcripts are stored; logs hold request metadata, usage counts and errors, not your message text." },
+      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and this conversation's history, and keeps your IP address for the rate-limit window. Design-session transcripts and pending questions or plans are stored so you can reconnect; deletion is scheduled after the session expires. Ordinary chat transcripts are not stored by this backend. Logs hold request metadata, usage counts and errors, not your message text." },
       { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message plus short excerpts of a few earlier ones to pick which Claude model answers. Cloudflare doesn't store this or use it for training." },
-      { name: "Anthropic (Claude API)", detail: "receives the whole conversation to write the reply and runs any web searches. Anthropic keeps API data for 30 days and may access it for safety review (longer if flagged); it isn't used for training. Design sessions run on Anthropic's Claude Managed Agents, which keep the session transcript until this site deletes it, within about an hour after the session expires." },
+      { name: "Anthropic (Claude API)", detail: "receives the whole conversation to write the reply and runs any web searches. Anthropic keeps API data for 30 days and may access it for safety review (longer if flagged); it isn't used for training." },
       { name: "AI HOT (aihot.news)", detail: "receives the search terms Claude picks from your message when it looks up AI news. Anthropic connects to it on the site's behalf." },
       { name: "Sentry", detail: "receives error reports; chat text is masked in session replays and request bodies aren't sent." },
-      { name: "GitHub", detail: "only if you file a build plan: it becomes a public issue or pull request, and a build also sends the plan to Anthropic's Claude Code." },
+      { name: "GitHub", detail: "receives requests for public repository files during design sessions. If you submit a build plan, it becomes a public issue or pull request; starting a build also sends the plan to Anthropic's Claude Code." },
       { name: "This browser", detail: "saves your conversations and this consent." },
     ],
     accept: "Accept",
@@ -907,12 +928,12 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "隐私说明",
     intro: "神谕作答之前，请先确认这个对话会把你的数据发到哪里：",
     destinations: [
-      { name: "Cloudflare Workers（本站后端）", detail: "转发你的消息和本次对话的历史，并在限流窗口内保留你的 IP 地址。不保存对话记录，日志里只有请求元数据、用量计数和错误，没有消息原文。" },
+      { name: "Cloudflare Workers（本站后端）", detail: "转发你的消息和本次对话的历史，并在限流窗口内保留你的 IP 地址。设计会话的记录、待回答的问题和计划会保存，以便断线后继续；会话过期后安排删除。普通聊天记录不保存在本站后端，日志只有请求元数据、用量计数和错误，没有消息原文。" },
       { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取你最新的消息和前几条消息的简短摘录，决定由哪个 Claude 模型回答。Cloudflare 不存储这些内容，也不用于训练。" },
-      { name: "Anthropic（Claude API）", detail: "收到完整对话来生成回复，并执行联网搜索。Anthropic 保留 API 数据 30 天，可因安全原因查看，被标记的会保留更久；不用于训练。设计会话运行在 Anthropic 的 Claude Managed Agents 上，会话记录会一直保留到本站删除，本站在设计会话过期后约一小时内删除。" },
+      { name: "Anthropic（Claude API）", detail: "收到完整对话来生成回复，并执行联网搜索。Anthropic 保留 API 数据 30 天，可因安全原因查看，被标记的会保留更久；不用于训练。" },
       { name: "AI HOT（aihot.news）", detail: "Claude 查 AI 资讯时，会收到它从你的消息里提炼的搜索词。由 Anthropic 代本站连接。" },
       { name: "Sentry", detail: "接收错误报告；会话录像里对话文字被遮住，也不上传请求正文。" },
-      { name: "GitHub", detail: "仅当你提交构建计划时：计划会成为公开的 issue 或 pull request，发起构建还会把计划发给 Anthropic 的 Claude Code。" },
+      { name: "GitHub", detail: "设计会话会请求公开仓库文件。仅当你提交构建计划时，计划才会成为公开的 issue 或 pull request；发起构建还会把计划发给 Anthropic 的 Claude Code。" },
       { name: "这个浏览器", detail: "保存你的对话和这次同意。" },
     ],
     accept: "接受",
@@ -925,12 +946,12 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "プライバシーに関するお知らせ",
     intro: "神託が答える前に、このチャットがあなたのデータをどこへ送るかをご確認ください：",
     destinations: [
-      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージとこの会話の履歴を中継し、レート制限の期間中は IP アドレスを保持します。会話の記録は保存せず、ログにはリクエストのメタデータ、利用回数、エラーのみが残り、メッセージ本文は含まれません。" },
+      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージとこの会話の履歴を中継し、レート制限の期間中は IP アドレスを保持します。再接続できるよう、デザインセッションの会話、未回答の質問、プランを保存し、期限切れ後に削除を予定します。通常のチャットの会話は本サイトのバックエンドに保存しません。ログにはリクエストのメタデータ、利用回数、エラーのみが残り、メッセージ本文は含まれません。" },
       { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージと、それ以前のいくつかのメッセージの短い抜粋を読み、どの Claude モデルが答えるかを決めます。Cloudflare はこれを保存せず、学習にも使いません。" },
-      { name: "Anthropic（Claude API）", detail: "返信を書くために会話全体を受け取り、Web 検索も行います。Anthropic は API データを 30 日間保持し、安全確認のために閲覧することがあります（フラグが付いた場合はより長く保持）。学習には使われません。デザインセッションは Anthropic の Claude Managed Agents 上で動き、会話の記録は本サイトが削除するまで残ります。本サイトはセッションの期限切れから約 1 時間以内に削除します。" },
+      { name: "Anthropic（Claude API）", detail: "返信を書くために会話全体を受け取り、Web 検索も行います。Anthropic は API データを 30 日間保持し、安全確認のために閲覧することがあります（フラグが付いた場合はより長く保持）。学習には使われません。" },
       { name: "AI HOT（aihot.news）", detail: "Claude が AI ニュースを調べるとき、メッセージから選んだ検索語を受け取ります。接続は Anthropic が本サイトに代わって行います。" },
       { name: "Sentry", detail: "エラーレポートを受け取ります。セッションリプレイではチャットの文字が隠され、リクエスト本文は送られません。" },
-      { name: "GitHub", detail: "ビルド計画を提出した場合のみ：計画は公開の issue または pull request になり、ビルドを始めると計画が Anthropic の Claude Code にも送られます。" },
+      { name: "GitHub", detail: "デザインセッション中に公開リポジトリのファイル取得リクエストを受け取ります。プランを送信すると公開 issue または pull request になり、ビルドを開始するとプランが Anthropic の Claude Code にも送られます。" },
       { name: "このブラウザ", detail: "会話とこの同意を保存します。" },
     ],
     accept: "同意する",
