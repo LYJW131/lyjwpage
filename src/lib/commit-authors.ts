@@ -2,7 +2,7 @@ export type CommitAuthor = {
   name: string;
   login: string | null;
   avatarUrl: string | null;
-  agent: "claude" | "cursor" | "openai" | "grok" | null;
+  agent: "claude" | "cursor" | "openai" | "grok" | "antigravity" | null;
   model: string | null;
 };
 
@@ -11,6 +11,7 @@ const AGENTS: Record<string, { agent: NonNullable<CommitAuthor["agent"]>; login:
   "codex@openai.com": { agent: "openai", login: "codex", avatarUrl: "https://avatars.githubusercontent.com/u/267193182?v=4" },
   "cursoragent@cursor.com": { agent: "cursor", login: "cursoragent", avatarUrl: "https://avatars.githubusercontent.com/u/199161495?v=4" },
   "304785771+grokkybara[bot]@users.noreply.github.com": { agent: "grok", login: "grokkybara[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/4293548?v=4" },
+  "341015624+lyjw-antigravity[bot]@users.noreply.github.com": { agent: "antigravity", login: "lyjw-antigravity[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/5274597?v=4" },
 };
 
 function agentAuthor(name: string, email: string): CommitAuthor | null {
