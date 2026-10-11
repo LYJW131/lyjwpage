@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, createChatArchiveStore, designSessionEnded, readChatArchive, type ChatBubble } from "./chat-archive.ts";
+import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, createChatArchiveStore, designEndReason, designSessionEnded, readChatArchive, type ChatBubble } from "./chat-archive.ts";
 
 function storage() {
   const values = new Map<string, string>();
@@ -28,6 +28,25 @@ test("reload resumes the active conversation only while a design session is live
   assert.equal(restored.activeId, id);
   assert.deepEqual(restored.sessions[0].messages, messages);
   assert.deepEqual(restored.sessions[0].design, design);
+});
+
+test("ending a design session marks the last reply and survives reload", () => {
+  const data = storage();
+  const store = createChatArchiveStore(() => data, () => "one", () => 123);
+  const id = store.getSnapshot().activeId;
+  store.update(id, { messages: [...messages, { role: "user", content: "Still there?" }], design: { token: "signed-design", expiresAt: 1, remaining: 3 } });
+  store.endDesign(id, "expired");
+  const restored = createChatArchiveStore(() => data, () => "fresh", () => 123).getSnapshot().sessions.find((session) => session.id === id)!;
+  assert.equal(restored.design, undefined);
+  assert.deepEqual(restored.messages.map((message) => message.designEnded), [undefined, "expired", undefined]);
+  store.endDesign(id, "left");
+  assert.equal(store.session(id)!.messages[1].designEnded, "expired");
+});
+
+test("a design session that ran out of turns before its deadline ended as exhausted", () => {
+  assert.equal(designEndReason({ token: "t", expiresAt: 2_000, remaining: 0 }, 1_000), "exhausted");
+  assert.equal(designEndReason({ token: "t", expiresAt: 1_000, remaining: 0 }, 2_000), "expired");
+  assert.equal(designEndReason({ token: "t", expiresAt: 1_000, remaining: 5 }, 2_000), "expired");
 });
 
 test("reload starts a fresh conversation and keeps the previous one in history when not in design mode", () => {

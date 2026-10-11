@@ -1,25 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { BuildPhase, BuildRun } from "@shared/build-routine";
-import { BUILD_STATUS_POLL_MS, createBuildStatusPoller } from "./build-status-polling.ts";
+import { BUILD_PHASES, type BuildPhase, type BuildRun } from "@shared/build-routine";
+import { BUILD_STATUS_POLL_MS, createBuildStatusPoller, isBuildTerminal } from "./build-status-polling.ts";
 
 const run = (phase: BuildPhase): BuildRun => ({ runId: "run", branch: "claude/build-run", phase, createdAt: 1, updatedAt: 2 });
 const terminalPhases = ["merged", "closed", "blocked", "failed", "timeout"] as const;
 const failOnError = (error: unknown) => assert.fail(String(error));
 
-test("restored terminal builds never poll, including after visibility changes", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  for (const phase of terminalPhases) {
-    let requests = 0;
-    const poller = createBuildStatusPoller({ phase, load: async () => { requests++; return run(phase); }, onRun: () => {}, onError: failOnError });
-    await poller.setVisible(true);
-    poller.setVisible(false);
-    await poller.setVisible(true);
-    t.mock.timers.tick(BUILD_STATUS_POLL_MS * 10);
-    assert.equal(requests, 0, phase);
-    poller.stop();
-  }
+test("terminal phases are exactly the closed and failed ones", () => {
+  for (const phase of BUILD_PHASES) assert.equal(isBuildTerminal(phase), (terminalPhases as readonly BuildPhase[]).includes(phase), phase);
+  assert.equal(isBuildTerminal(undefined), false);
 });
 
 test("the first terminal response ends polling without waiting for a render", async (t) => {
@@ -27,7 +18,7 @@ test("the first terminal response ends polling without waiting for a render", as
   for (const phase of terminalPhases) {
     let requests = 0;
     const received: BuildRun[] = [];
-    const poller = createBuildStatusPoller({ phase: "running", load: async () => { requests++; return run(phase); }, onRun: (result) => received.push(result), onError: failOnError });
+    const poller = createBuildStatusPoller({ load: async () => { requests++; return run(phase); }, onRun: (result) => received.push(result), onError: failOnError });
     await poller.setVisible(true);
     t.mock.timers.tick(BUILD_STATUS_POLL_MS * 10);
     poller.setVisible(false);
@@ -45,7 +36,6 @@ test("active builds keep refreshing, pause offscreen, and ignore aborted respons
   let activeSignal: AbortSignal | undefined;
   const received: BuildRun[] = [];
   const poller = createBuildStatusPoller({
-    phase: "pr_open",
     load: async (signal) => {
       requests++;
       activeSignal = signal;

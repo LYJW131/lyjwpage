@@ -1,0 +1,24 @@
+name: Issue Labels
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  from-chat:
+    # 访客 token 无权打标签，只能事后补。判据是创建者经由站点的 GitHub App（lyjw131，即 shared/github-issue.ts#GITHUB_APP_CLIENT_ID 那个 App）：正文可以伪造，这个字段不能。
+    if: github.event.issue.performed_via_github_app.id == 5201294
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Label issues filed from the homepage chat
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh label create from-chat --color 5319e7 --description "Filed from the homepage chat" --force
+          gh issue edit "$NUMBER" --add-label from-chat

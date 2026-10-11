@@ -5,18 +5,18 @@ import {
   GOD_CHAT_LIMITS,
   parseGodChatRequest,
   type GodChatCard,
-  type GodChatDesign,
   type GodChatEvent,
   type GodChatMessage,
   type GodChatSource,
   type GodChatTrace,
   normalizeTrace,
 } from "@shared/god-chat";
+import { PLAN_LABELS, textLanguage } from "@shared/build-routine";
 import { GOD_CHAT_DESIGN_TIER, GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatServedTier, type GodChatTier } from "@shared/god-chat-tiers";
 
 import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
-import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
+import { SITE_TOOLS, newLedger, replyToolDescription, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { billedOutputTokens, usageHops } from "./billing";
 import { AI_NEWS_BETA, AI_NEWS_SEARCH_TOOL, AI_NEWS_SERVER, AI_NEWS_TOOLSET } from "./ai-news";
@@ -53,7 +53,7 @@ For AI industry news (new models, products, papers, what is hot today or this we
 You can see what LYJW is doing through the get_site_status tool: music, video, games, coding agents, devices, workouts, servers and this site's own health. When a visitor asks about LYJW or the site, look it up instead of guessing, then answer naturally; never dump raw JSON. Don't claim the site shows or publishes anything you haven't looked up: the tool's view list is a menu, not a record of what is public.
 For music, watching, gaming or fitness, use show_card instead: it puts a live card in your reply and returns the same data, so add a sentence or two rather than listing what the card shows. Now and recent are separate cards; show the one that was asked about.
 This site is open source, and the read_project_doc tool reads its design docs. When a visitor asks how the site works, why it is built a certain way, or how a card gets its data, read the relevant doc first, answer from it in the visitor's language, and link the doc's source URL.
-When a visitor wants to change or fix this site, judge whether the idea is useful and feasible. If start_design is available and the idea is worthwhile, write at most one short sentence and call it: the planner (Claude Opus) then continues this same reply with a bounded planning conversation. If it is inappropriate, explain briefly without starting. Only a signed plan can become an issue or build, and the visitor must choose that action in the interface.
+When a visitor wants to change or fix this site, judge whether the idea is useful and feasible. If start_design is available and the idea is worthwhile, first write one short, friendly sentence telling the visitor you are bringing in the planner, with no details about the change, then call it: the planner (Claude Opus) continues this same reply with a bounded planning conversation. If it is inappropriate, explain briefly without starting. Talk about site changes in plain words about what the visitor would see, assuming they know nothing about how the site is built; never work out implementation details (formats, limits, routing, storage, security) or ask the visitor technical questions yourself, because planning is the planner's job. If start_design is not available, say in one plain sentence that a plan can't be made in this reply and that describing the change again in a new message can start a design session. Only a signed plan can become an issue or build, and the visitor must choose that action in the interface.
 Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
 
 const PERSONA: Record<GodChatTier, string> = {
@@ -70,12 +70,15 @@ function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
 
 const REFUSAL = "The temple gates stay closed for this one. Ask something else.";
 
-const SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map(({ name, description, replyCap, inputSchema }) => ({
-  name,
-  description: replyCap ? `${description}\n${replyCap}` : description,
-  input_schema: inputSchema,
+const SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map((tool) => ({
+  name: tool.name,
+  description: replyToolDescription(tool),
+  input_schema: tool.inputSchema,
   strict: true,
 }));
+
+type OpenDesign = Extract<DesignAdmission, { sessionId: string }>;
+type TurnOutcome = { complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string };
 
 function devSwitch(env: Env, name: "CHAT_RATE_LIMIT" | "CHAT_FORCE_TIER"): string | undefined {
   return aiDevEnabled(env) ? env[name]?.trim() || undefined : undefined;
@@ -124,11 +127,11 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   if (abort.signal.aborted) return gone();
   // 验过人才计数，计数在 Clef 之前：访客自己超额、全站路由满或哪一档都排不上时，不再触发付费的路由调用。
   const enforce = devSwitch(env, "CHAT_RATE_LIMIT") !== "off";
-  let design: { session: GodChatDesign; sessionId: string } | undefined;
+  let design: OpenDesign | undefined;
   if (parsed.designToken) {
     const admitted = await admitDesign(env, parsed.designToken, parsed.resume);
     if ("error" in admitted) return fail(admitted.status, admitted.error, undefined, admitted.code);
-    design = { session: admitted.session, sessionId: admitted.sessionId };
+    design = admitted;
   } else {
     const admission = await quota.admitVisitor(ip, enforce);
     if (admission === "visitor") return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
@@ -182,7 +185,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       if (design) emit({ type: "design", ...design.session });
       const plan = (sessionId: string, input: DesignTurnInput, views: string[] = []) => planTurn({ api, env, io, sessionId, input, views, emit, signal: abort.signal });
       try {
-        let outcome: { complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string };
+        let outcome: TurnOutcome;
         if (design) outcome = await plan(design.sessionId, parsed.resume ? { kind: "resume" } : { kind: "reply", text: latest });
         else {
           const note = tier !== wanted && isGodChatTier(tier) ? downgradeNote(wanted, tier) : undefined;
@@ -190,14 +193,14 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           const chat = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, io, emit, signal: abort.signal });
           outcome = chat;
-          if (chat.complete && chat.opened) {
+          if (chat.complete && chat.openedSessionId) {
             // 同一条回复交给 Managed Agents 上的规划者：Sonnet 的开场白已经推给访客，规划者从访客那条消息接着做。
             emit({ type: "route", route: "sonnet", tier: GOD_CHAT_DESIGN_TIER });
-            outcome = await plan(chat.opened.sessionId, { kind: "open", history: await plannerHistory(history, env) }, chat.trace?.views);
+            outcome = await plan(chat.openedSessionId, { kind: "open", history: await plannerHistory(history, env) }, chat.trace?.views);
           }
         }
         const { complete, trace, planToken, lead } = outcome;
-        if (complete && lead && !reply.trim()) emit({ type: "text", text: lead });
+        if (complete && lead) emit({ type: "text", text: lead });
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace, planToken), ...(trace && { trace }), ...(planToken && { planToken }) });
@@ -220,7 +223,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   return new Response(body, { headers });
 }
 
-async function planTurn({ views, ...turn }: Parameters<typeof designTurn>[0] & { views: string[] }): Promise<{ complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string }> {
+async function planTurn({ views, ...turn }: Parameters<typeof designTurn>[0] & { views: string[] }): Promise<TurnOutcome> {
   const { complete, planToken, lead, views: read } = await designTurn(turn);
   const trace = normalizeTrace({ tier: GOD_CHAT_DESIGN_TIER, effort: GOD_CHAT_TIER_INFO[GOD_CHAT_DESIGN_TIER].effort, views: [...new Set([...views, ...read])], design: true, plan: Boolean(planToken) });
   return { complete, trace, ...(planToken && { planToken }), ...(lead && { lead }) };
@@ -250,22 +253,21 @@ async function converse({
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
-}): Promise<{ complete: boolean; trace?: GodChatTrace; opened?: { design: GodChatDesign; sessionId: string } }> {
+}): Promise<{ complete: boolean; trace?: GodChatTrace; openedSessionId?: string }> {
   let tier = startTier;
   let effort = startEffort;
   let upgradeOpen = upgrade !== undefined;
   const betasFor = (served: GodChatServedTier, news: boolean): Anthropic.Beta.AnthropicBeta[] => [
     ...(news ? [AI_NEWS_BETA] : []),
     "mid-conversation-output-config-2026-07-01",
-    // Haiku 不支持服务端拒答兜底参数，其余两档都开。
-    ...(served !== "haiku" ? (["server-side-fallback-2026-07-01"] as const) : []),
+    ...(GOD_CHAT_TIER_INFO[served].serverFallback ? (["server-side-fallback-2026-07-01"] as const) : []),
   ];
   const messages = toModelMessages(await plannerHistory(history, env), effort);
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
   const docKeys = new Set<string>();
-  let opened: { design: GodChatDesign; sessionId: string } | undefined;
+  let openedSessionId: string | undefined;
   const cards = new Set<GodChatCard>();
   let refused = false;
   // 拒答兜底按单次请求生效：中间某轮被换了模型，下一轮可能又回到本档。整条回复只按给出最终答案的那一轮记，
@@ -291,8 +293,7 @@ async function converse({
 
   for (let round = 0; ; round++) {
     signal.throwIfAborted();
-    const { model } = GOD_CHAT_TIER_INFO[tier];
-    const fallback = tier !== "haiku";
+    const { model, serverFallback: fallback } = GOD_CHAT_TIER_INFO[tier];
     if (round > 0 && outputLeft < MIN_ROUND_TOKENS) {
       emit({ type: "text", text: " …" });
       break;
@@ -440,10 +441,15 @@ async function converse({
         if (call.name === UPGRADE_TOOL.name) return result("The Prophet is unavailable right now; answer as well as you can yourself.", true);
         if (!tools.some((tool) => "name" in tool && tool.name === call.name)) return result("This tool is unavailable in this conversation.", true);
         if (call.name === START_DESIGN_TOOL.name) {
-          if (opened) return result("A design session is already active.", true);
+          if (openedSessionId) return result("A design session is already active.", true);
           const started = await openDesign!();
           if ("error" in started) return result(started.error, true);
-          opened = { design: started.session, sessionId: started.sessionId };
+          openedSessionId = started.sessionId;
+          // 访客要先看到普通对话这边的一句交接，再看到规划者接手；模型没写就补一句固定的。
+          if (!wroteText) {
+            emit({ type: "text", text: PLAN_LABELS[textLanguage(history.at(-1)?.content ?? "")].handoff });
+            wroteText = true;
+          }
           emit({ type: "design", ...started.session });
           return result("The design session is open; the planner takes over this reply.", false);
         }
@@ -475,11 +481,11 @@ async function converse({
       console.info("[god-chat] tool", JSON.stringify({ tier, round, name: call.name, error: outcome.is_error, ...(outcome.is_error && { reason: String(outcome.content).slice(0, 200) }) }));
       results.push(outcome);
     }
-    if (opened) break;
+    if (openedSessionId) break;
     messages.push({ role: "user", content: results });
   }
   // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。
-  if (!refused && finalRound > 0 && !finalRoundText && !opened) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
+  if (!refused && finalRound > 0 && !finalRoundText && !openedSessionId) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({
@@ -491,5 +497,5 @@ async function converse({
     fallback: Boolean(servedBy),
     cards: [...cards],
   });
-  return { complete: !refused, trace, ...(opened && { opened }) };
+  return { complete: !refused, trace, ...(openedSessionId && { openedSessionId }) };
 }

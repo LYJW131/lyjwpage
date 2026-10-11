@@ -1,11 +1,11 @@
 import { BUILD_REPO, runIdFromBranch, type BuildRun } from "@shared/build-routine";
+import { hmacKey } from "../crypto";
 import type { Env } from "../runtime";
 
 export async function verifyGithubWebhook(body: Uint8Array, signature: string | null, secret: string): Promise<boolean> {
   if (!signature || !/^sha256=[a-f0-9]{64}$/.test(signature)) return false;
   const bytes = Uint8Array.from(signature.slice(7).match(/../g)!, (part) => parseInt(part, 16));
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
-  return crypto.subtle.verify("HMAC", key, bytes, Uint8Array.from(body));
+  return crypto.subtle.verify("HMAC", await hmacKey(secret), bytes, Uint8Array.from(body));
 }
 
 type WebhookPayload = {

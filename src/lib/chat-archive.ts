@@ -1,4 +1,4 @@
-import type { BuildFireResult, BuildProposal, BuildRun } from "@shared/build-routine";
+import { BUILD_PHASES, type BuildFireResult, type BuildProposal, type BuildRun } from "@shared/build-routine";
 import { isGodChatCard, parseQuestions, type GodChatCard, type GodChatMessage, type GodChatQuestion, type GodChatSource } from "@shared/god-chat";
 import { isGodChatServedTier, type GodChatServedTier } from "@shared/god-chat-tiers";
 import type { GithubIssueResult } from "@shared/github-issue";
@@ -14,7 +14,16 @@ export function designSessionEnded(code: unknown): boolean {
   return code === "design_session_expired" || code === "design_session_exhausted";
 }
 
+export const DESIGN_END_REASONS = ["expired", "exhausted", "left"] as const;
+export type DesignEndReason = (typeof DESIGN_END_REASONS)[number];
+
+export function designEndReason(design: ChatDesign, now = Date.now()): DesignEndReason {
+  return design.remaining <= 0 && design.expiresAt > now ? "exhausted" : "expired";
+}
+
 export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; build?: BuildFireResult; run?: BuildRun };
+// at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
+export type ChatShownCard = { card: GodChatCard; at: number };
 export type ChatAnswer = { header: string; question: string; answer: string };
 export type ChatBubble = GodChatMessage & {
   id?: string;
@@ -27,9 +36,13 @@ export type ChatBubble = GodChatMessage & {
   searches?: string[];
   steps?: string[];
   sources?: GodChatSource[];
-  cards?: { card: GodChatCard; at: number }[];
+  cards?: ChatShownCard[];
   // 同一条回复里开了设计会话、换规划者接手时正文已有的长度，分隔线画在这里。
   designAt?: number;
+  // 这条回复的设计内容曾在同意状态下展示过：同意失效或被拒绝时不再隐藏它，没看过的照旧藏。
+  designRevealed?: boolean;
+  // 设计会话在这条回复之后结束：结束提示画在它下面。
+  designEnded?: DesignEndReason;
   proposals?: ChatProposal[];
   asks?: GodChatQuestion[];
   answers?: ChatAnswer[];
@@ -43,7 +56,7 @@ export type ChatSession = {
   design?: ChatDesign;
 };
 export type ChatArchive = { version: 1; activeId: string; sessions: ChatSession[] };
-export const EMPTY_CHAT_ARCHIVE: ChatArchive = { version: 1, activeId: "", sessions: [] };
+const EMPTY_CHAT_ARCHIVE: ChatArchive = { version: 1, activeId: "", sessions: [] };
 type ArchiveStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export function chatReplyMessages(messages: ChatBubble[], user: ChatBubble & { id: string }, reply?: ChatBubble): ChatBubble[] {
@@ -58,7 +71,7 @@ const strings = (value: unknown): value is string[] => Array.isArray(value) && v
 const optionalString = (value: unknown) => value === undefined || typeof value === "string";
 
 function validRun(value: unknown): boolean {
-  if (!object(value) || typeof value.runId !== "string" || typeof value.branch !== "string" || !["triggered", "running", "uploaded", "validated", "blocked", "pr_open", "merged", "closed", "timeout", "failed"].includes(String(value.phase))) return false;
+  if (!object(value) || typeof value.runId !== "string" || typeof value.branch !== "string" || !(BUILD_PHASES as readonly string[]).includes(String(value.phase))) return false;
   if (!optionalString(value.reason) || !optionalString(value.progress)) return false;
   if (value.pr !== undefined && (!object(value.pr) || typeof value.pr.number !== "number" || typeof value.pr.url !== "string" || typeof value.pr.headSha !== "string")) return false;
   return ["ci", "preview", "review"].every((key) => value[key] === undefined || (object(value[key]) && typeof value[key].state === "string" && optionalString(value[key].url)));
@@ -77,6 +90,8 @@ function validBubble(value: unknown): value is ChatBubble {
   }))) return false;
   if (value.asks !== undefined && !parseQuestions(value.asks)) return false;
   if (value.designAt !== undefined && typeof value.designAt !== "number") return false;
+  if (value.designRevealed !== undefined && value.designRevealed !== true) return false;
+  if (value.designEnded !== undefined && !(DESIGN_END_REASONS as readonly unknown[]).includes(value.designEnded)) return false;
   if (value.answers !== undefined && (!Array.isArray(value.answers) || !value.answers.every((answer) => object(answer) && ["header", "question", "answer"].every((key) => typeof answer[key] === "string")))) return false;
   if (["lookups", "searches", "steps"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
@@ -132,15 +147,18 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
   let archive: ChatArchive | undefined;
   let memoryOnly = false;
   const listeners = new Set<() => void>();
+  const blankSession = (): ChatSession => {
+    const time = now();
+    return { id: newId(), title: "New conversation", createdAt: time, updatedAt: time, messages: [] };
+  };
   const snapshot = () => {
     if (!archive) {
       try { archive = readChatArchive(storage()?.getItem(CHAT_ARCHIVE_KEY) ?? null); }
       catch { archive = EMPTY_CHAT_ARCHIVE; memoryOnly = true; }
       const resumed = archive.sessions.find((session) => session.id === archive?.activeId);
       if (!archive.sessions.length || !activeChatDesign(resumed?.design, now())) {
-        const time = now();
-        const id = newId();
-        archive = { version: 1, activeId: id, sessions: [{ id, title: "New conversation", createdAt: time, updatedAt: time, messages: [] }, ...archive.sessions.filter((session) => session.messages.length)] };
+        const session = blankSession();
+        archive = { version: 1, activeId: session.id, sessions: [session, ...archive.sessions.filter((entry) => entry.messages.length)] };
       }
     }
     return archive;
@@ -153,39 +171,46 @@ export function createChatArchiveStore(storage: () => ArchiveStorage | null, new
     }
     listeners.forEach((listener) => listener());
   };
+  const update = (id: string, changes: Partial<Pick<ChatSession, "messages" | "design">>, { persist = true }: { persist?: boolean } = {}) => {
+    const current = snapshot();
+    save({ ...current, sessions: current.sessions.map((session) => {
+      if (session.id !== id) return session;
+      const updated = { ...session, ...changes, updatedAt: now() };
+      const first = updated.messages.find((message) => message.role === "user");
+      updated.title = first?.content.slice(0, 64) || "New conversation";
+      return updated;
+    }) }, persist);
+  };
   const start = () => {
     const current = snapshot();
-    const time = now();
-    const session: ChatSession = { id: newId(), title: "New conversation", createdAt: time, updatedAt: time, messages: [] };
+    const session = blankSession();
     save({ ...current, activeId: session.id, sessions: [session, ...current.sessions.filter((entry) => entry.messages.length)] });
     return session.id;
   };
   return {
     getSnapshot: snapshot,
     getServerSnapshot: () => EMPTY_CHAT_ARCHIVE,
+    session: (id: string) => snapshot().sessions.find((session) => session.id === id),
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     reload() {
       if (memoryOnly) return;
       const current = snapshot();
       try {
         const restored = readChatArchive(storage()?.getItem(CHAT_ARCHIVE_KEY) ?? null);
-        const time = now();
-        const id = newId();
-        archive = restored.sessions.length ? restored : { version: 1, activeId: id, sessions: [{ id, title: "New conversation", createdAt: time, updatedAt: time, messages: [] }] };
+        const blank = restored.sessions.length ? null : blankSession();
+        archive = blank ? { version: 1, activeId: blank.id, sessions: [blank] } : restored;
         if (archive.sessions.some((session) => session.id === current.activeId)) archive = { ...archive, activeId: current.activeId };
       } catch { memoryOnly = true; }
       listeners.forEach((listener) => listener());
     },
     start,
-    update(id: string, changes: Partial<Pick<ChatSession, "messages" | "design">>, { persist = true }: { persist?: boolean } = {}) {
-      const current = snapshot();
-      save({ ...current, sessions: current.sessions.map((session) => {
-        if (session.id !== id) return session;
-        const updated = { ...session, ...changes, updatedAt: now() };
-        const first = updated.messages.find((message) => message.role === "user");
-        updated.title = first?.content.slice(0, 64) || "New conversation";
-        return updated;
-      }) }, persist);
+    update,
+    endDesign(id: string, reason: DesignEndReason, { persist = true }: { persist?: boolean } = {}) {
+      const session = snapshot().sessions.find((entry) => entry.id === id);
+      if (!session?.design) return;
+      const last = session.messages.findLastIndex((message) => message.role === "assistant");
+      const messages = last < 0 ? session.messages : session.messages.map((message, index) => index === last ? { ...message, designEnded: reason } : message);
+      update(id, { design: undefined, messages }, { persist });
     },
     select(id: string) {
       const current = snapshot();

@@ -110,23 +110,24 @@ try {
   assert.equal((await rpc('upload-race', 'readRun', uploadRun.state.runId)).state.phase, 'uploaded');
   console.log('PASS: real Durable Object RPC and SQLite transactions consume concurrent plan/upload claims once');
 
-  const designIds = Array.from({ length: BUILD_DESIGN_LIMITS.everyone + 5 }, (_, index) => `design-${index}`);
+  const overflow = 5;
+  const designIds = Array.from({ length: BUILD_DESIGN_LIMITS.everyone + overflow }, (_, index) => `design-${index}`);
   const designResults = await Promise.all(designIds.map((id) => rpc('design-quota', 'createDesign', id, Date.now() + BUILD_DESIGN_LIMITS.ttlMs - 1000)));
   assert.equal(designResults.filter(Boolean).length, BUILD_DESIGN_LIMITS.everyone);
   const designId = designIds[designResults.findIndex(Boolean)];
-  const turns = await Promise.all(Array.from({ length: BUILD_DESIGN_LIMITS.maxTurns + 5 }, () => rpc('design-quota', 'admitDesign', designId)));
+  const turns = await Promise.all(Array.from({ length: BUILD_DESIGN_LIMITS.maxTurns + overflow }, () => rpc('design-quota', 'admitDesign', designId)));
   assert.equal(turns.filter((result) => result.status === 'ok').length, BUILD_DESIGN_LIMITS.maxTurns);
-  assert.equal(turns.filter((result) => result.status === 'exhausted').length, 5);
+  assert.equal(turns.filter((result) => result.status === 'exhausted').length, overflow);
   assert.equal((await rpc('design-quota', 'admitDesign', 'missing')).status, 'expired');
-  console.log('PASS: concurrent planning admission enforces 20 sessions per hour and 12 turns per session');
+  console.log(`PASS: concurrent planning admission enforces ${BUILD_DESIGN_LIMITS.everyone} sessions per hour and ${BUILD_DESIGN_LIMITS.maxTurns} turns per session`);
 
-  const accountRuns = await Promise.all(Array.from({ length: 8 }, (_, index) => rpc('account-quota', 'reserveRun', storedRun((100 + index).toString(16).padStart(32, '0'), `same-account-${index ? 'renamed' : 'initial'}`), `account-plan-${index}`, expiresAt)));
+  const accountRuns = await Promise.all(Array.from({ length: BUILD_QUOTA.fire.account + overflow }, (_, index) => rpc('account-quota', 'reserveRun', storedRun((100 + index).toString(16).padStart(32, '0'), `same-account-${index ? 'renamed' : 'initial'}`), `account-plan-${index}`, expiresAt)));
   assert.equal(accountRuns.filter((result) => result === 'ok').length, BUILD_QUOTA.fire.account);
-  assert.equal(accountRuns.filter((result) => result === 'account').length, 5);
-  const siteRuns = await Promise.all(Array.from({ length: 15 }, (_, index) => rpc('site-quota', 'reserveRun', storedRun((200 + index).toString(16).padStart(32, '0'), `visitor-${index + 1}`), `site-plan-${index}`, expiresAt)));
+  assert.equal(accountRuns.filter((result) => result === 'account').length, overflow);
+  const siteRuns = await Promise.all(Array.from({ length: BUILD_QUOTA.fire.everyone + overflow }, (_, index) => rpc('site-quota', 'reserveRun', storedRun((200 + index).toString(16).padStart(32, '0'), `visitor-${index + 1}`), `site-plan-${index}`, expiresAt)));
   assert.equal(siteRuns.filter((result) => result === 'ok').length, BUILD_QUOTA.fire.everyone);
-  assert.equal(siteRuns.filter((result) => result === 'site').length, 5);
-  console.log('PASS: persisted build quotas enforce 3 per GitHub account and 10 site-wide without races');
+  assert.equal(siteRuns.filter((result) => result === 'site').length, overflow);
+  console.log(`PASS: persisted build quotas enforce ${BUILD_QUOTA.fire.account} per GitHub account and ${BUILD_QUOTA.fire.everyone} site-wide without races`);
 
   const timedRun = storedRun('2'.repeat(32), 'visitor-2', Date.now() - BUILD_TIMEOUT_MS - 1000);
   assert.equal(await rpc('timeout', 'reserveRun', timedRun, 'timeout-plan', expiresAt), 'ok');

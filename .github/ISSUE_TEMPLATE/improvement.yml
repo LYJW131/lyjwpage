@@ -1,0 +1,29 @@
+name: 改进 / 新想法
+description: 想加的功能、想改的样子
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 想要什么
+      description: 一两句话说清要改成什么样。
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 现在的情况
+      description: 现在是什么样、为什么想改；截图直接拖进来。
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 做到哪几条算完成，一条一个勾选框。
+      placeholder: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: paths
+    attributes:
+      label: 涉及路径
+      description: 知道的话写上相关文件或页面。

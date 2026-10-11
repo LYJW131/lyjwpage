@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/cloudflare";
-import { BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SCREENSHOT_PATH, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult } from "@shared/build-routine";
+import { BUILD_CLOSED_PHASES, BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SCREENSHOT_PATH, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult } from "@shared/build-routine";
 import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
@@ -9,14 +9,13 @@ import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, cr
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
-import { readBoundedJson } from "./http";
+import { fail, readBoundedBytes, readBoundedJson } from "./http";
 import { hashToken, signBuildToken, uploadTokenForRun, verifyBuildToken } from "./token";
 import { parseBuildUpload } from "./validation";
 import { applyGithubWebhook, verifyGithubWebhook } from "./webhook";
 
 type StatusPayload = { kind: "status"; runId: string; expiresAt: number };
 const noStore = { "Cache-Control": "no-store" };
-const fail = (status: number, error: string) => Response.json({ error }, { status, headers: noStore });
 const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const bearer = (request: Request) => /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(request.headers.get("Authorization") ?? "")?.[1] ?? null;
 const validRunId = (id: string | null): id is string => !!id && /^[a-f0-9]{32}$/.test(id);
@@ -142,8 +141,10 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
   }
 }
 
-async function requestBuildReviews(runId: string, env: Env, fetcher: typeof fetch): Promise<void> {
-  if (!env.CODEX_REVIEW_GITHUB_TOKEN) return;
+// reviewRequested 只会由 false 变 true，传进来的旧快照已为 true 时可以省掉两次 DO 往返。
+async function requestBuildReviews(known: StoredRun, env: Env, fetcher: typeof fetch): Promise<void> {
+  if (!env.CODEX_REVIEW_GITHUB_TOKEN || known.reviewRequested) return;
+  const runId = known.state.runId;
   const coordinator = env.BUILD_COORDINATOR!.getByName("global");
   const run = await coordinator.readRun(runId);
   if (!run?.state.pr || !await coordinator.claimReviewRequests(runId)) return;
@@ -172,7 +173,7 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
     await prepareBuild(runId, env, fetcher, ctx);
     run = (await coordinator.readRun(runId))!;
   }
-  if (run.state.pr && !["merged", "closed"].includes(run.state.phase) && (!run.state.reconciledAt || Date.now() - run.state.reconciledAt >= BUILD_RECONCILE_MS) && await coordinator.claimReconcile(runId)) {
+  if (run.state.pr && !BUILD_CLOSED_PHASES.includes(run.state.phase) && (!run.state.reconciledAt || Date.now() - run.state.reconciledAt >= BUILD_RECONCILE_MS) && await coordinator.claimReconcile(runId)) {
     try {
       if (run.implementationHeadSha && run.uploadUsed && ["validated", "failed", "timeout"].includes(run.state.phase)) {
         const pr = await recoverBuildPublication(await installationApi(env, fetcher), run);
@@ -193,16 +194,13 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
             : { reason: "GitHub did not confirm readiness for review. Status will be checked again." }, current.state);
         }
       }
-      if (state?.phase === "pr_open") await requestBuildReviews(runId, env, fetcher);
+      if (state?.phase === "pr_open") await requestBuildReviews(run, env, fetcher);
       return Response.json(state, { headers: noStore });
     } catch (error) {
-      if (error instanceof BuildBlockedError) {
-        const state = await coordinator.failPublication(runId, { phase: "blocked", reason: error.message }, run.state);
-        return Response.json(state, { headers: noStore });
-      }
+      if (error instanceof BuildBlockedError) return Response.json(await coordinator.failPublication(runId, { phase: "blocked", reason: error.message }, run.state), { headers: noStore });
     }
   }
-  if (run.state.phase === "pr_open") await requestBuildReviews(runId, env, fetcher);
+  if (run.state.phase === "pr_open") await requestBuildReviews(run, env, fetcher);
   return Response.json(run.state, { headers: noStore });
 }
 
@@ -245,7 +243,7 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
       console.warn("[build] screenshot comment failed", error);
       Sentry.captureException(error, { tags: { "build.step": "screenshots" } });
     }
-    await requestBuildReviews(runId, env, fetcher);
+    await requestBuildReviews(run, env, fetcher);
     return Response.json(state, { status: 201, headers: noStore });
   } catch (error) {
     const blocked = error instanceof BuildBlockedError;
@@ -253,7 +251,7 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
     await coordinator.failPublication(runId, { phase: blocked ? "blocked" : "failed", reason }, publicationState);
     const current = await coordinator.readRun(runId);
     if (current && publishedImplementation(current)) {
-      await requestBuildReviews(runId, env, fetcher);
+      await requestBuildReviews(current, env, fetcher);
       return Response.json(current.state, { status: 201, headers: noStore });
     }
     return fail(blocked ? 400 : 502, reason);
@@ -299,22 +297,9 @@ export async function handleBuildScreenshot(request: Request, env: Env): Promise
 export async function handleGithubWebhook(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
   if (!env.GITHUB_WEBHOOK_SECRET || !env.BUILD_COORDINATOR) return fail(503, "GitHub webhooks are unavailable.");
-  const reader = request.body?.getReader();
-  if (!reader) return fail(400, "Invalid webhook body.");
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      size += chunk.value.byteLength;
-      if (size > 1024 * 1024) { await reader.cancel(); return fail(413, "Webhook body is too large."); }
-      chunks.push(chunk.value);
-    }
-  } finally { reader.releaseLock(); }
-  const body = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length; }
+  if (!request.body) return fail(400, "Invalid webhook body.");
+  const body = await readBoundedBytes(request.body, 1024 * 1024);
+  if (!body) return fail(413, "Webhook body is too large.");
   if (!await verifyGithubWebhook(body, request.headers.get("X-Hub-Signature-256"), env.GITHUB_WEBHOOK_SECRET)) return fail(401, "Invalid webhook signature.");
   const delivery = request.headers.get("X-GitHub-Delivery");
   if (!delivery || !/^[\w-]{1,100}$/.test(delivery)) return fail(400, "Invalid delivery identifier.");

@@ -11,7 +11,7 @@ import type { ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { BUILD_PATH, BUILD_STATUS_PATH, planLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
+import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_PATH, BUILD_STATUS_PATH, visitorLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
 
 const BUILD_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_PATH);
 const STATUS_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
@@ -80,7 +80,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
       {proposal.issue ? (
         <p className="text-xs">Opened <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
       ) : proposal.build ? (
-        <BuildStatusCard key={proposal.build.runId} build={proposal.build} savedRun={proposal.run} onRun={(run) => onChange({ ...proposal, run })} />
+        <BuildStatusCard key={proposal.build.runId} build={proposal.build} savedRun={proposal.run} onRun={(run) => { if (JSON.stringify(run) !== JSON.stringify(proposal.run)) onChange({ ...proposal, run }); }} />
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
@@ -90,7 +90,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {issueOpen && <IssuePanel proposal={proposal} disabled={disabled} onClose={() => setIssueOpen(false)} onCreated={(issue) => onChange({ ...proposal, issue })} />}
-          {buildOpen && <GithubConsent action="build" language={planLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
+          {buildOpen && <GithubConsent action="build" language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
         </>
       )}
       {error && !buildOpen && <p role="alert" className="text-xs text-red-500">{error}</p>}
@@ -187,8 +187,6 @@ function statusError(error: unknown): string {
 
 const STEPS = ["Draft PR", "Building", "Checks", "Ready"] as const;
 const STEP_OF: Record<BuildPhase, number> = { triggered: 0, running: 1, uploaded: 2, validated: 2, blocked: 2, failed: 2, timeout: 1, pr_open: 3, merged: 3, closed: 3 };
-const ACTIVE_PHASES: readonly BuildPhase[] = ["triggered", "running", "uploaded", "validated"];
-const FAILED_PHASES: readonly BuildPhase[] = ["blocked", "failed", "timeout"];
 // 按已跑过的构建粗估，只用来安抚等待，不参与超时判断（超时见 BUILD_TIMEOUT_MS）。
 const TYPICAL_BUILD = "usually 5–15 min";
 const PROGRESS_LOG = 4;
@@ -199,8 +197,8 @@ function elapsed(ms: number): string {
 }
 
 function BuildProgress({ run }: { run: BuildRun }) {
-  const active = ACTIVE_PHASES.includes(run.phase);
-  const failed = FAILED_PHASES.includes(run.phase);
+  const active = BUILD_ACTIVE_PHASES.includes(run.phase);
+  const failed = BUILD_FAILED_PHASES.includes(run.phase);
   const current = (run.phase === "pr_open" && run.pr?.draft !== false || run.phase === "closed" && run.pr?.draft) ? 2 : STEP_OF[run.phase] ?? 0;
   const [now, setNow] = useState(() => Date.now());
   const [log, setLog] = useState<string[]>(() => run.progress ? [run.progress] : []);
