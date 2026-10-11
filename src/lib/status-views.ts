@@ -35,7 +35,7 @@ export const STATUS_VIEWS = {
   githubChart: { path: "/api/status/github-chart", layer: "lag", cadenceMs: 10 * 60_000 },
   githubRepo: { path: "/api/status/github-repo", layer: "lag", cadenceMs: 30 * 60_000 },
   cloudflareWorkers: { path: "/api/status/cloudflare-workers", layer: "lag", cadenceMs: 2 * 60_000 },
-  vercelDeployments: { path: "/api/status/vercel-deployments", layer: "lag", cadenceMs: 60_000 },
+  siteDeployments: { path: "/api/status/site-deployments", layer: "lag", cadenceMs: 60_000 },
   sentry: { path: "/api/status/sentry", layer: "lag", cadenceMs: 5 * 60_000 },
   reporters: { path: "/api/status/reporters", layer: "lag", cadenceMs: 60_000 },
   pulse: { path: "/api/status/pulse", layer: "realtime" },
@@ -93,6 +93,10 @@ export function isPushedViewPath(path: string): boolean {
 export const STATUS_TAGS: readonly string[] = Object.freeze(
   entries().flatMap(([, view]) => (view.tag ? [view.tag] : [])),
 );
+
+export function filterStatusTags(tags: readonly string[]): string[] {
+  return [...new Set(tags.filter((tag) => STATUS_TAGS.includes(tag)))];
+}
 
 // 可滞后层不推送：写入方直接写 KV，推来的新值会和几分钟旧的 KV 读数来回打架。
 for (const [key, view] of entries()) {

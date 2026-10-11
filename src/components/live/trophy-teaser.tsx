@@ -32,7 +32,6 @@ const AVATAR_PX = 40;
 function ProfileAvatar({ url, alt }: { url: string; alt: string }) {
   const requested = AVATAR_PX * PLAYSTATION_IMAGE_SCALE;
   const optimize = playstationAvatarNeedsOptimizing(url, requested);
-  // next/image 只生成 1x/2x 档。还要走优化器时申报半个 3x 目标，避免 sizes 选出过大的 src。
   const px = optimize ? requested / 2 : AVATAR_PX;
   return (
     <Image

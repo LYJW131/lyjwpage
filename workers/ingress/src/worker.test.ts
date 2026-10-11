@@ -502,7 +502,7 @@ test("site-deployed: the state core broadcasts version and the collector re-pull
   assert.deepEqual(await json(response), { ok: true, delivered: 3 });
   assert.equal(w.calls.broadcasts, 1);
   assert.deepEqual(w.calls.refreshed, [DEPLOYMENT_JOBS]);
-  assert.deepEqual(DEPLOYMENT_JOBS, ["vercel-deployments", "cloudflare-deployments"]);
+  assert.deepEqual(DEPLOYMENT_JOBS, ["site-deployments", "cloudflare-deployments"]);
   assert.equal((await w.send("/api/internal/site-deployed", { method: "GET", client: DEPLOYER })).status, 405);
   assert.equal((await w.send("/api/internal/site-deployed", { client: null })).status, 401);
 });

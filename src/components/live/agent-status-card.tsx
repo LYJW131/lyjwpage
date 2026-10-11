@@ -7,7 +7,6 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GithubIcon from "@lobehub/icons/es/Github/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
-import VercelIcon from "@lobehub/icons/es/Vercel/components/Mono";
 import { ExternalLink, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
@@ -104,8 +103,6 @@ function Brand({ id }: { id: AgentStatusRow["id"] }) {
       return <TypesafeIcon className={className} />;
     case "apple":
       return <AppleIcon size={20} className={className} />;
-    case "vercel":
-      return <VercelIcon size={20} className={className} />;
     case "github":
       return <GithubIcon size={20} className={className} />;
     case "cloudflare":

@@ -1,4 +1,5 @@
-import { BUILD_CLOSED_PHASES, BUILD_REPO, branchForRun, buildIssueBody, PLAN_LABELS, planLanguage, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_CLOSED_PHASES, BUILD_REPO, branchForRun, buildIssueBody, PLAN_LABELS, planLanguage, type BuildRun, type BuildSignal, type BuildUpload } from "@shared/build-routine";
+import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "../../../../scripts/preview-worker-name.mjs";
 import { GITHUB_APP_CLIENT_ID } from "@shared/github-issue";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
@@ -300,28 +301,23 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
   return recoverBuildPublication(api, { ...run, implementationHeadSha: commit.sha, publicationBody: body });
 }
 
-type GithubCheck = { name: string; status: string; conclusion: string | null; html_url?: string; details_url?: string; completed_at?: string; started_at?: string; app?: { slug: string } };
+type GithubCheck = { id?: number; name: string; status: string; conclusion: string | null; html_url?: string; details_url?: string; completed_at?: string; started_at?: string; app?: { slug: string } };
 type GithubStatus = { context: string; state: string; target_url?: string; updated_at: string };
 
-function vercelDeploymentName(name: string): boolean {
-  return /^Vercel(?: [-–] [a-z0-9][a-z0-9._-]*)?$/i.test(name);
+function checkKind(check: GithubCheck): "ci" | "preview" {
+  return check.app?.slug === "cloudflare-workers-and-pages" && check.name === "Workers Builds: site" ? "preview" : "ci";
 }
 
-function checkKind(check: GithubCheck): "ci" | "preview" | "auxiliary" {
-  if (check.app?.slug === "vercel") {
-    if (check.name === "Vercel Preview Comments") return "auxiliary";
-    if (vercelDeploymentName(check.name)) return "preview";
+function newestSiteCheck(checks: GithubCheck[]): GithubCheck | null {
+  let newest: GithubCheck | null = null;
+  for (const check of checks) {
+    if (checkKind(check) !== "preview") continue;
+    if (!newest || (check.started_at ?? "") > (newest.started_at ?? "")
+      || ((check.started_at ?? "") === (newest.started_at ?? "") && (check.id ?? 0) > (newest.id ?? 0))) {
+      newest = check;
+    }
   }
-  if (check.app?.slug === "cloudflare-workers-and-pages" && /^Workers Builds: \S/.test(check.name)) return "preview";
-  return "ci";
-}
-
-function isPreviewStatus(status: GithubStatus): boolean {
-  if (!vercelDeploymentName(status.context)) return false;
-  try {
-    const url = new URL(status.target_url ?? "");
-    return url.protocol === "https:" && url.hostname === "vercel.com";
-  } catch { return false; }
+  return newest;
 }
 
 function checkState(check: GithubCheck): string {
@@ -335,7 +331,22 @@ function aggregateState(states: string[]): string {
 }
 
 function ciState(checks: GithubCheck[], statuses: GithubStatus[]): string {
-  return aggregateState([...checks.filter((check) => checkKind(check) === "ci").map(checkState), ...statuses.filter((item) => !isPreviewStatus(item)).map((item) => item.state)]);
+  return aggregateState([...checks.filter((check) => checkKind(check) === "ci").map(checkState), ...statuses.map((item) => item.state)]);
+}
+
+function sitePreview(checks: GithubCheck[], branch: string): BuildSignal {
+  const check = newestSiteCheck(checks);
+  const updatedAt = Date.now();
+  if (!check || check.conclusion === "skipped" || check.conclusion === "neutral") return { state: "unknown", updatedAt };
+  if (check.status !== "completed") return { state: "pending", updatedAt };
+  if (check.conclusion === "success") {
+    const url = previewWorkerOrigin(branch, SITE_PREVIEW_WORKER_SCRIPT);
+    return { state: "success", ...(url ? { url } : {}), updatedAt };
+  }
+  if (check.conclusion && ["failure", "error", "timed_out", "cancelled", "action_required", "startup_failure"].includes(check.conclusion)) {
+    return { state: "failure", updatedAt };
+  }
+  return { state: "unknown", updatedAt };
 }
 
 async function allCheckRuns(api: GithubBuildApi, sha: string): Promise<GithubCheck[]> {
@@ -381,12 +392,7 @@ export async function reconcileBuild(api: GithubBuildApi, run: BuildRun): Promis
   const checks = checkResult.status === "fulfilled" ? checkResult.value : [];
   if (checkResult.status === "fulfilled" && statusResult.status === "fulfilled" && statusResult.value.total_count <= statusResult.value.statuses.length) {
     result.ci = { state: ciState(checks, statusResult.value.statuses), updatedAt: Date.now() };
-    const previews = [
-      ...statusResult.value.statuses.filter(isPreviewStatus).map((item) => ({ state: item.state, url: item.target_url })),
-      ...checks.filter((check) => checkKind(check) === "preview").map((check) => ({ state: checkState(check), url: check.details_url ?? check.html_url })),
-    ];
-    const state = aggregateState(previews.map((preview) => preview.state));
-    result.preview = { state, url: previews.find((preview) => aggregateState([preview.state]) === state)?.url, updatedAt: Date.now() };
+    result.preview = sitePreview(checks, run.branch);
   }
   if (commentsResult.status === "fulfilled") {
     const comment = commentsResult.value;

@@ -1,4 +1,5 @@
 export const CLOUDFLARE_WORKERS = [
+  { name: "site", description: "页面渲染 · 首屏缓存 · 图片交付" },
   { name: "api", description: "状态核心 · 公开读取 · 实时推送与在线人数" },
   { name: "ingress", description: "上报入口 · Access 鉴权" },
   { name: "collector", description: "定时采集 · PlayStation 与各家外部数据" },

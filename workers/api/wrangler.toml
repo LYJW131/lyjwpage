@@ -10,11 +10,10 @@ routes = [
 
 
 [vars]
-ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
+ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me"
 APPLE_MUSIC_TEAM_ID = "2VTXNMR2GL"
 APPLE_MUSIC_KEY_ID = "88KBJL3CKU"
 STORAGE_PREFIX = "lyjwpage"
-SITE_URL = "https://lyjw.me"
 APPLE_MUSIC_STOREFRONT = "cn"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 
@@ -27,6 +26,11 @@ binding = "AI"
 [[services]]
 binding = "AI_SERVICE"
 service = "ai"
+
+[[services]]
+binding = "SITE_CACHE"
+service = "site"
+entrypoint = "RenderedSite"
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
@@ -104,7 +108,7 @@ PREVIEW_WORKER = "true"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 UPSTREAM_API_URL = "https://api.homepage.lyjw.llc"
 STORAGE_PREFIX = "lyjwpage-preview"
-ALLOWED_ORIGINS = "https://*.vercel.app"
+ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
 APPLE_MUSIC_STOREFRONT = "cn"
 
 [[previews.durable_objects.bindings]]

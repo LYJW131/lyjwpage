@@ -29,8 +29,6 @@ export interface Env {
   GITHUB_WEBHOOK_SECRET?: string;
   ROUTINE_FIRE_URL?: string;
   ROUTINE_FIRE_TOKEN?: string;
-  VERCEL_TOKEN?: string;
-  VERCEL_TEAM_ID?: string;
   BUILD_REQUEST_LIMIT?: RateLimit;
   MCP_LIMIT?: RateLimit;
   MCP_CODE_MODE?: string;

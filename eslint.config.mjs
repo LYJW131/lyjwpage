@@ -1,10 +1,39 @@
+import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import jsxA11y from "eslint-plugin-jsx-a11y";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
+import globals from "globals";
+import tseslint from "typescript-eslint";
 
 const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    rules: {
+      "no-empty": ["error", { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: ["**/*.{js,mjs,cjs}"],
+    languageOptions: { globals: { ...globals.node, WebSocket: "readonly" } },
+  },
+  {
+    files: ["public/sw.js"],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+  {
+    files: ["**/*.{ts,tsx,mts}"],
+    extends: [
+      react.configs.flat.recommended,
+      react.configs.flat["jsx-runtime"],
+      reactHooks.configs.flat["recommended-latest"],
+      jsxA11y.flatConfigs.recommended,
+    ],
+    rules: { "jsx-a11y/no-noninteractive-tabindex": "off" },
+    settings: { react: { version: "detect" } },
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
   {
     files: ["src/**/*.{ts,tsx}", "shared/**/*.ts"],
     rules: {
@@ -55,11 +84,11 @@ const eslintConfig = defineConfig([
     },
   },
   globalIgnores([
-    ".next/**",
+    ".react-router/**",
     "**/.wrangler/**",
-    "out/**",
     "build/**",
-    "next-env.d.ts",
+    "worker-configuration.d.ts",
+    "public/site-assets/**",
     "reporters/**",
     ".claude/**",
     "docs/explainer/**",
