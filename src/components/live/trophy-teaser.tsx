@@ -3,6 +3,9 @@ import { PsPlusMark } from "@/components/trophies/ps-plus";
 import { TrophyMetal, trophyTypeLabel } from "@/components/trophies/trophy-metal";
 import {
   PLAYSTATION_IMAGE_SCALE,
+  playstationAvatar,
+  playstationAvatarNeedsOptimizing,
+  playstationImage,
 } from "@/lib/playstation-image";
 import type { PlaystationPresenceKind } from "@/lib/playstation-presence";
 import { site } from "@/lib/site";
@@ -25,6 +28,23 @@ const TYPES: TrophyType[] = ["platinum", "gold", "silver", "bronze"];
 const RECENT_PX = 28;
 
 const AVATAR_PX = 40;
+
+function ProfileAvatar({ url, alt }: { url: string; alt: string }) {
+  const requested = AVATAR_PX * PLAYSTATION_IMAGE_SCALE;
+  const optimize = playstationAvatarNeedsOptimizing(url, requested);
+  // next/image 只生成 1x/2x 档。还要走优化器时申报半个 3x 目标，避免 sizes 选出过大的 src。
+  const px = optimize ? requested / 2 : AVATAR_PX;
+  return (
+    <Image
+      src={playstationAvatar(url, requested) ?? url}
+      alt={alt}
+      width={px}
+      height={px}
+      unoptimized={!optimize}
+      className="h-10 w-10 rounded-full object-cover"
+    />
+  );
+}
 
 function formatUnlock(ms: number): string {
   return new Date(ms).toLocaleString("en-US", {
@@ -92,14 +112,7 @@ export function TrophyTeaser({
           </svg>
           <div className="relative grid h-10 w-10 place-items-center">
             {data.profile.avatarUrl ? (
-              <Image
-                src={data.profile.avatarUrl}
-                alt={data.profile.onlineId}
-                /* next/image 只生成 1x/2x 档，申报半个 3x 目标以覆盖高 DPR；sizes 会引入过大的 src 回退。 */
-                width={(AVATAR_PX * PLAYSTATION_IMAGE_SCALE) / 2}
-                height={(AVATAR_PX * PLAYSTATION_IMAGE_SCALE) / 2}
-                className="h-10 w-10 rounded-full object-cover"
-              />
+              <ProfileAvatar url={data.profile.avatarUrl} alt={data.profile.onlineId} />
             ) : (
               <TrophyMetal kind="level" size="md" className="h-8 w-8" />
             )}
@@ -147,7 +160,7 @@ export function TrophyTeaser({
             <div className="mt-1.5 flex items-center gap-2 lg:justify-end">
               {recent.iconUrl ? (
                 <Image
-                  src={recent.iconUrl}
+                  src={playstationImage(recent.iconUrl, RECENT_PX * PLAYSTATION_IMAGE_SCALE) ?? recent.iconUrl}
                   alt=""
                   width={RECENT_PX}
                   height={RECENT_PX}

@@ -9,6 +9,7 @@ import {
 import { AuthSession } from "./auth.js";
 import { accountId, type Env } from "./env.js";
 import {
+  assertNoPsnError,
   epochMs,
   languageHeader,
   nonNegative,
@@ -143,7 +144,10 @@ async function requestPlayedGames(
     const body = (await response.text().catch(() => "")).slice(0, 200);
     throw new Error(`PSN 返回 ${response.status}：${body}`);
   }
-  return (await response.json()) as Loose<UserPlayedGamesResponse>;
+  return assertNoPsnError(
+    (await response.json()) as Loose<UserPlayedGamesResponse>,
+    "游玩列表",
+  );
 }
 
 function readPlayedGame(title: Loose<UserPlayedGamesResponse["titles"][number]>): PlayedGame | null {
