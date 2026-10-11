@@ -1,10 +1,11 @@
 name: Explainer score
 
 on:
-  # 只渲 main：合过 main 的分支提交也会带着 main 的乐谱改动命中 paths，渲一次要二三十分钟；分支预览取不到配乐就现合成
+  # 分支预览缺配乐时在浏览器合成，避免每次分支推送都渲整片。
   push:
     branches: [main]
     paths:
+      - docs/explainer/clawd.js
       - docs/explainer/v2/plan.js
       - docs/explainer/v2/score.js
       - docs/explainer/v2/music/**
