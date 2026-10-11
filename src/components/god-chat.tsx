@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent } from "@/lib/chat-consent";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
-import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatSession } from "@/lib/chat-archive";
+import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -21,7 +21,6 @@ import {
   GOD_CHAT_PATH,
   GOD_CHAT_TURNSTILE_ACTION,
   GOD_CHAT_USAGE_PATH,
-  type GodChatCard,
   type GodChatEvent,
   type GodChatMessage,
   fitHistory,
@@ -30,8 +29,6 @@ import {
 import {
   GOD_CHAT_TIERS,
   GOD_CHAT_TIER_INFO,
-  godChatTierInfo,
-  isGodChatServedTier,
   modelLabel,
   type GodChatCount,
   type GodChatServedTier,
@@ -50,13 +47,10 @@ declare global {
   }
 }
 
-// at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
-type ShownCard = { card: GodChatCard; at: number };
 type Reply = Omit<ChatBubble, "role" | "content">;
-type Bubble = ChatBubble;
-type Resumed = { user: Bubble & { id: string }; before: Bubble[]; handoff: boolean };
+type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; handoff: boolean };
 const RESUME_DELAY_MS = 2000;
-const EMPTY_MESSAGES: Bubble[] = [];
+const EMPTY_MESSAGES: ChatBubble[] = [];
 // 须与 globals.css 里 .design-halo 的动画总时长一致。
 const DESIGN_HALO_MS = 2_400;
 
@@ -97,7 +91,7 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
-// 站主要求示例用中文，是「界面文案英文」的例外；四条依次展示实时状态卡片、项目文档、联网搜索、改站规划与构建。
+// 站主要求示例用中文，是「界面文案英文」的例外。
 const SUGGESTIONS = [
   "LYJW 正在听什么歌？",
   "这个网站的实时数据是怎么来的？",
@@ -113,7 +107,7 @@ export function GodChat({ className }: { className?: string }) {
 
 function Conversation({ className, archive, session: conversation }: { className?: string; archive: ChatArchive; session?: ChatSession }) {
   const messages = conversation?.messages ?? EMPTY_MESSAGES;
-  const setMessages = (next: Bubble[], persist = true) => { if (conversation) chatArchive.update(conversation.id, { messages: next }, { persist }); };
+  const setMessages = (next: ChatBubble[], persist = true) => { if (conversation) chatArchive.update(conversation.id, { messages: next }, { persist }); };
   const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -151,7 +145,7 @@ function Conversation({ className, archive, session: conversation }: { className
   useEffect(() => {
     if (!conversationId || !design) return;
     const expire = () => {
-      const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversationId);
+      const current = chatArchive.session(conversationId);
       if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.update(conversationId, { design: undefined });
     };
     if (!activeChatDesign(design)) { expire(); return; }
@@ -248,8 +242,8 @@ function Conversation({ className, archive, session: conversation }: { className
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
     const answers = !resumed && answersRef.current?.text.trim() === content ? answersRef.current.answers : undefined;
     if (!resumed) answersRef.current = null;
-    const user: Bubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
-    const shown: Bubble[] = [...(resumed?.before ?? messages), user];
+    const user: ChatBubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
+    const shown: ChatBubble[] = [...(resumed?.before ?? messages), user];
     const history: GodChatMessage[] = fitHistory(
       shown
         .filter(({ content }) => content.trim())
@@ -261,9 +255,9 @@ function Conversation({ className, archive, session: conversation }: { className
     // 补发只取回规划者那一段，交接回合里 Sonnet 的开场白拿不回来，分隔线画在最前面。
     let meta: Reply = resumed?.handoff ? { designAt: 0 } : {};
     const session = sessionRef.current;
-    const bubble = (): Bubble => ({ role: "assistant", content: reply, ...meta });
-    const replyMessages = (next?: Bubble) => chatReplyMessages(
-      conversation ? chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id)?.messages ?? messages : messages,
+    const bubble = (): ChatBubble => ({ role: "assistant", content: reply, ...meta });
+    const replyMessages = (next?: ChatBubble) => chatReplyMessages(
+      conversation ? chatArchive.session(conversation.id)?.messages ?? messages : messages,
       user,
       next,
     );
@@ -385,7 +379,7 @@ function Conversation({ className, archive, session: conversation }: { className
   function resume() {
     // 补发不走 Turnstile：没有有效通行证或对话代码变了还没重新同意时留着那两条，等访客自己再发。
     if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass() || !chatConsent.getSnapshot()) return;
-    const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
+    const current = chatArchive.session(conversation.id);
     if (!current || !activeChatDesign(current.design)) return;
     const list = current.messages;
     const at = list.map((message) => message.role).lastIndexOf("user");
@@ -552,6 +546,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const waiting = armed && !token && !streaming && !error;
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
   const expanded = messages.length > 0 || consentPending !== null || queued !== null;
+  const savedCount = savedSessions(archive).length;
 
   return (
     // 对话、设计与构建计划包含访客原文，Replay 需要遮住整张卡片。
@@ -571,7 +566,7 @@ function Conversation({ className, archive, session: conversation }: { className
       <div ref={anchorRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <FableDescent descent={descent} />
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs text-muted-foreground">
-        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedSessions(archive).length > 0 ? ` (${savedSessions(archive).length})` : ""}</span></button>
+        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedCount > 0 ? ` (${savedCount})` : ""}</span></button>
         <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
       </div>
       {historyOpen && <SessionList archive={archive} />}
@@ -593,7 +588,7 @@ function Conversation({ className, archive, session: conversation }: { className
         }}
         className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden"
       >
-        {messages.length === 0 && consentPending === null && queued === null ? (
+        {!expanded ? (
           <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
               Ask anything. The oracle sees what LYJW is up to, knows how this site is built, and can search the web.
@@ -656,7 +651,7 @@ function Conversation({ className, archive, session: conversation }: { className
                   {message.proposals?.map((proposal, proposalIndex) => (
                     <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
                       if (!conversation) return;
-                      const current = chatArchive.getSnapshot().sessions.find((entry) => entry.id === conversation.id);
+                      const current = chatArchive.session(conversation.id);
                       if (current) chatArchive.update(current.id, { messages: current.messages.map((entry, messageIndex) => messageIndex === index ? { ...entry, proposals: entry.proposals?.map((item, itemIndex) => itemIndex === proposalIndex ? updated : item) } : entry) });
                     }} />
                   ))}
@@ -999,7 +994,7 @@ function DesignDivider() {
   );
 }
 
-function ReplyBody({ content, cards = [], designAt, live, handoff }: { content: string; cards?: ShownCard[]; designAt?: number; live: boolean; handoff?: ReactNode }) {
+function ReplyBody({ content, cards = [], designAt, live, handoff }: { content: string; cards?: ChatShownCard[]; designAt?: number; live: boolean; handoff?: ReactNode }) {
   const parts: ReactNode[] = [];
   let from = 0;
   const marks = [
@@ -1029,10 +1024,9 @@ function RankLabel({ reply }: { reply: Reply }) {
   if (reply.tier === null) {
     return <div className="label-mono mb-1.5 text-[10px] text-red-500">Gates closed</div>;
   }
-  const info = godChatTierInfo(reply.tier);
-  if (!info || !isGodChatServedTier(reply.tier)) return null;
-  const { persona, label } = info;
-  const from = godChatTierInfo(reply.downgradedFrom);
+  if (!reply.tier) return null;
+  const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
+  const from = reply.downgradedFrom && GOD_CHAT_TIER_INFO[reply.downgradedFrom];
   const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.sonnet : undefined;
   return (
     <div className="mb-1.5">
@@ -1053,16 +1047,14 @@ function RankLabel({ reply }: { reply: Reply }) {
   );
 }
 
-function RouteStatus({ last, streaming }: { last?: Bubble; streaming: boolean }) {
+function RouteStatus({ last, streaming }: { last?: ChatBubble; streaming: boolean }) {
   if (!last || last.role !== "assistant") return <>Routed by Clef</>;
   if (last.tier === undefined) {
     return streaming ? <span className="animate-pulse">Clef routing…</span> : <>Routed by Clef</>;
   }
   if (last.tier === null) return <span className="text-red-500">Gates closed</span>;
-  const info = godChatTierInfo(last.tier);
-  if (!info || !isGodChatServedTier(last.tier)) return <>Routed by Clef</>;
-  const { persona, label } = info;
-  const from = godChatTierInfo(last.downgradedFrom);
+  const { persona, label } = GOD_CHAT_TIER_INFO[last.tier];
+  const from = last.downgradedFrom && GOD_CHAT_TIER_INFO[last.downgradedFrom];
   return (
     <span>
       <span className="hidden sm:inline">Clef → </span>

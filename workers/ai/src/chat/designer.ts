@@ -3,14 +3,14 @@ import type { BetaManagedAgentsAgentToolset20260401Params, BetaManagedAgentsCust
 import type { BetaManagedAgentsEventParams, BetaManagedAgentsStreamSessionEvents } from "@anthropic-ai/sdk/resources/beta/sessions/events";
 
 import { site } from "@/lib/site";
-import { PLAN_LABELS, planLanguage } from "@shared/build-routine";
+import { PLAN_LABELS, planLanguage, textLanguage } from "@shared/build-routine";
 import { parseQuestions, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 
 import { issuePlan } from "../build/plan";
 import { checkBuildPlan } from "../build/validation";
 import type { Env } from "../runtime";
-import { newLedger, type ToolIO } from "../tools/registry";
+import { newLedger, replyToolDescription, type ToolIO } from "../tools/registry";
 import { SITE_STATUS_TOOL } from "../tools/site-status";
 import { ASK_VISITOR_TOOL, DESIGN_BUDGET_CENTS, DESIGN_REPO_DIR, PLANNER_PROMPT, PROPOSE_BUILD_TOOL } from "./design";
 
@@ -25,7 +25,7 @@ const VISITOR_REPLY = "The visitor replied:\n";
 const SITE_STATUS_CUSTOM_TOOL: BetaManagedAgentsCustomToolParams = {
   type: "custom",
   name: SITE_STATUS_TOOL.name,
-  description: SITE_STATUS_TOOL.replyCap ? `${SITE_STATUS_TOOL.description}\n${SITE_STATUS_TOOL.replyCap}` : SITE_STATUS_TOOL.description,
+  description: replyToolDescription(SITE_STATUS_TOOL),
   input_schema: SITE_STATUS_TOOL.inputSchema,
 };
 
@@ -97,7 +97,7 @@ export function designApi(client: Anthropic, env: Env): DesignApi {
 
 // resume 不发任何东西给会话，只把访客断线时错过的那一回合重新推一遍；回合还在跑时跟着事件流看到它停下。
 export type DesignTurnInput = { kind: "open"; history: GodChatMessage[] } | { kind: "reply"; text: string } | { kind: "resume" };
-export type DesignTurnResult = { complete: boolean; asked: boolean; planToken?: string; lead?: string; views: string[] };
+export type DesignTurnResult = { complete: boolean; planToken?: string; lead?: string; views: string[] };
 
 // 访客那段对话原样转给规划者，标签只用来分清说话人；内容是不可信的公开输入，系统提示词里已经说明。
 export function openingBrief(history: GodChatMessage[]): string {
@@ -231,7 +231,7 @@ export async function designTurn({
       if (!questions) return toolResult(id, "Invalid questions. Respect the counts and length limits in the tool description, with distinct option labels.", true);
       asked = true;
       held.add(id);
-      lead = PLAN_LABELS[planLanguage({ title: "", spec: questions.map((question) => `${question.question}\n${question.options.map((option) => `${option.label} ${option.description}`).join("\n")}`).join("\n"), acceptance: [] })].askReady;
+      lead = PLAN_LABELS[textLanguage(questions.map((question) => `${question.question}\n${question.options.map((option) => `${option.label} ${option.description}`).join("\n")}`).join("\n"))].askReady;
       emit({ type: "ask", questions });
       return null;
     }
@@ -332,15 +332,12 @@ export async function designTurn({
       }
     }
   } catch (error) {
-    if (signal.aborted && !observe) {
-      await api.send(sessionId, [{ type: "user.interrupt" }]).catch(() => {});
-      throw error;
-    }
+    if (signal.aborted && !observe) await api.send(sessionId, [{ type: "user.interrupt" }]).catch(() => {});
     throw error;
   } finally {
     signal.removeEventListener("abort", stop);
     local.abort();
     console.info("[god-chat] design turn", JSON.stringify({ sessionId, kind: input.kind, stopReason, asked, plan: Boolean(planToken), ...usage }));
   }
-  return { complete, asked, views: [...ledger.views], ...(planToken && { planToken }), ...(lead && { lead }) };
+  return { complete, views: [...ledger.views], ...(planToken && { planToken }), ...(lead && { lead }) };
 }

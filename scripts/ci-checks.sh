@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+save_cache() {
+  local temporary="$2.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+  cp "$1" "$temporary"
+  mv "$temporary" "$2"
+}
+
 lint() {
   if [ -z "${CI_CACHE_DIR:-}" ]; then
     pnpm lint
@@ -8,9 +14,7 @@ lint() {
   fi
   cp "$CI_CACHE_DIR/eslintcache" "$RUNNER_TEMP/eslintcache" 2>/dev/null || true
   pnpm lint --cache --cache-strategy content --cache-location "$RUNNER_TEMP/eslintcache"
-  cache_file="$CI_CACHE_DIR/eslintcache.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
-  cp "$RUNNER_TEMP/eslintcache" "$cache_file"
-  mv "$cache_file" "$CI_CACHE_DIR/eslintcache"
+  save_cache "$RUNNER_TEMP/eslintcache" "$CI_CACHE_DIR/eslintcache"
 }
 
 typecheck() {
@@ -32,24 +36,12 @@ typecheck() {
   while IFS= read -r project; do
     directory="$CI_CACHE_DIR/typecheck${project#"$PWD"}"
     mkdir -p "$directory"
-    cache_file="$directory/tsconfig.ci.tsbuildinfo.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
-    cp "$project/tsconfig.ci.tsbuildinfo" "$cache_file"
-    mv "$cache_file" "$directory/tsconfig.ci.tsbuildinfo"
+    save_cache "$project/tsconfig.ci.tsbuildinfo" "$directory/tsconfig.ci.tsbuildinfo"
   done <<< "$project_paths"
 }
 
 workspace_tests() {
-  pnpm -r --include-workspace-root --workspace-concurrency=4 --no-bail --stream \
-    --filter lyjwpage \
-    --filter @lyjwpage/api \
-    --filter @lyjwpage/ai \
-    --filter @lyjwpage/ingress \
-    --filter @lyjwpage/collector \
-    --filter @lyjwpage/agents-reporter \
-    --filter @lyjwpage/server-reporter \
-    --filter @lyjwpage/emby-reporter \
-    --filter @lyjwpage/playstation-reporter \
-    --filter @lyjwpage/discord-reporter test
+  pnpm -r --include-workspace-root --workspace-concurrency=4 --no-bail --stream test
 }
 
 script_tests() {

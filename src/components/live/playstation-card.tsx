@@ -18,7 +18,7 @@ import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useConfirmedClockStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
-import { gameColumnSnapClass, keepPartialGameColumn } from "@/lib/gaming-columns";
+import { GAME_COLUMN_SNAP_CLASS } from "@/lib/gaming-columns";
 import { stableKeys } from "@/lib/keys";
 import { foldService } from "@/lib/playstation-entitlements";
 import {
@@ -99,6 +99,7 @@ const UNSNAP_MS = LIST_DURATION * 1000 + 80;
 
 const INITIAL_TILE_COUNT = 12;
 
+// grid-rows-3 须与 GAME_COLUMN_SNAP_CLASS 的 nth-child 步长一致。
 const TILE_TRACK = cn(
   "grid grid-flow-col grid-rows-3 gap-3",
   "auto-cols-[100%]",
@@ -444,7 +445,8 @@ export function PlaystationRow({
   });
   const livePresence = presenceStale ? undefined : presence.data;
 
-  const tiles = keepPartialGameColumn(buildTiles(list.data, livePresence, titles ?? []));
+  // 末列不满也保留：按行数裁掉余数会把列表末尾的游戏藏起来。
+  const tiles = buildTiles(list.data, livePresence, titles ?? []);
   const mountedAt = useMountedAt();
   const renderedTiles = mountedAt ? tiles : tiles.slice(0, INITIAL_TILE_COUNT);
   const reduced = useReducedMotion();
@@ -567,7 +569,7 @@ export function PlaystationRow({
                 animate="animate"
                 exit="exit"
                 transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                className={cn("flex min-w-0", gameColumnSnapClass())}
+                className={cn("flex min-w-0", GAME_COLUMN_SNAP_CLASS)}
               >
                 <GameTile
                   tile={tile}

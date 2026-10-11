@@ -3,7 +3,7 @@ import { GITHUB_APP_CLIENT_ID, GITHUB_CALLBACK_PATH, GITHUB_SIGN_IN_MESSAGE } fr
 const CANCELLED = "GitHub sign-in was cancelled.";
 const UNAVAILABLE = "GitHub sign-in isn't available in this browser.";
 const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-export type GithubSignIn = { code: string; codeVerifier: string };
+type GithubSignIn = { code: string; codeVerifier: string };
 
 // PKCE hashes asynchronously, but opening the popup must stay in the click's synchronous call stack.
 export function signInWithGithub(): Promise<GithubSignIn> {

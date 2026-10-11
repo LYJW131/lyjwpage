@@ -512,7 +512,7 @@ export type GithubRepoPayload = {
     contributors: number;
   };
   contributors: GithubRepoContributor[];
-  // 默认分支最新的几次提交，新的在前；采集方取不到时沿用上一份，旧数据里可能缺席。首页的提交列表另由构建期取，不读这里。
+  // 默认分支最新的几次提交，新的在前；采集方取不到时沿用上一份，旧数据里可能缺席。与首页「最近提交」列表的同名 prop 不是同一份数据（见 docs/state-storage.md）。
   recentCommits?: GithubRepoCommit[];
 };
 
