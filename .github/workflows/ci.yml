@@ -46,45 +46,5 @@ jobs:
             pnpm install --frozen-lockfile
           fi
 
-      # CI_CACHE_DIR 只在自建机上设置。按内容判定缓存是因为每次检出文件 mtime 都会变；先复制再改名回去，并发任务不会写坏同一份缓存
-      - name: pnpm lint
-        run: |
-          if [ -z "${CI_CACHE_DIR:-}" ]; then
-            pnpm lint
-            exit 0
-          fi
-          cp "$CI_CACHE_DIR/eslintcache" "$RUNNER_TEMP/eslintcache" 2>/dev/null || true
-          pnpm lint --cache --cache-strategy content --cache-location "$RUNNER_TEMP/eslintcache"
-          cp "$RUNNER_TEMP/eslintcache" "$CI_CACHE_DIR/eslintcache.$GITHUB_JOB.$GITHUB_RUN_ID"
-          mv "$CI_CACHE_DIR/eslintcache.$GITHUB_JOB.$GITHUB_RUN_ID" "$CI_CACHE_DIR/eslintcache"
-
-      - name: Workspace typecheck
-        run: |
-          if [ -n "${CI_CACHE_DIR:-}" ]; then
-            cp "$CI_CACHE_DIR/tsconfig.tsbuildinfo" tsconfig.tsbuildinfo 2>/dev/null || true
-          fi
-          pnpm -r --include-workspace-root typecheck
-          if [ -n "${CI_CACHE_DIR:-}" ]; then
-            cache_file="$CI_CACHE_DIR/tsconfig.tsbuildinfo.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
-            cp tsconfig.tsbuildinfo "$cache_file"
-            mv "$cache_file" "$CI_CACHE_DIR/tsconfig.tsbuildinfo"
-          fi
-
-      - name: Workspace tests
-        run: >-
-          pnpm -r --include-workspace-root --workspace-concurrency=4 --no-bail --stream
-          --filter lyjwpage
-          --filter @lyjwpage/api
-          --filter @lyjwpage/ai
-          --filter @lyjwpage/ingress
-          --filter @lyjwpage/collector
-          --filter @lyjwpage/agents-reporter
-          --filter @lyjwpage/server-reporter
-          --filter @lyjwpage/emby-reporter
-          --filter @lyjwpage/playstation-reporter
-          --filter @lyjwpage/discord-reporter
-          test
-
-      - run: node --test scripts/*.test.mjs
-
-      - run: pnpm docs:check
+      - name: Validate workspace
+        run: bash scripts/ci-checks.sh
