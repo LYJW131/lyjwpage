@@ -1,5 +1,5 @@
-import { cursorObservationsKey } from '@/lib/coding-pulse';
-import { PULSE_TTL_MS } from '@/lib/limits';
+import { cursorObservationsKey } from '../coding-pulse';
+import { PULSE_TTL_MS } from '@shared/limits';
 import { getStorage } from '@shared/storage';
 import type { CursorObservation } from '@shared/pulse-cursor';
 

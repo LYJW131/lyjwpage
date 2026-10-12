@@ -9,7 +9,7 @@
     "dev": "wrangler dev -c wrangler.toml",
     "deploy": "wrangler deploy -c wrangler.toml",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs ../../src/lib/sqlite-store.test.mjs src/*.test.ts"
+    "test": "node --test --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs ../../shared/sqlite-store.test.mjs src/*.test.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250214.0",

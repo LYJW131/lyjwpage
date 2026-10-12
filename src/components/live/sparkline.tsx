@@ -2,8 +2,8 @@
 
 import { useId, useState } from "react";
 
-import { LIVE_INTERVAL_MS, LIVE_WINDOW_MS } from "@/lib/limits";
-import type { ChargerSample } from "@/lib/types";
+import { LIVE_INTERVAL_MS, LIVE_WINDOW_MS } from "@shared/limits";
+import type { ChargerSample } from "@shared/types";
 
 
 const WINDOW_MS = 20 * 60 * 1000;

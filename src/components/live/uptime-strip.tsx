@@ -1,7 +1,7 @@
 "use client";
 
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@/lib/sentry";
-import type { HealthSeries, SentryUptime, UptimeDay } from "@/lib/sentry-status-types";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
+import type { HealthSeries, SentryUptime, UptimeDay } from "@shared/sentry-status-types";
 import { cn } from "@/lib/utils";
 
 const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 import { prepareIngest } from "@shared/ingest/prepare";
 import { questMirror, questNow, QUEST_STALE_MS } from "@shared/quest";

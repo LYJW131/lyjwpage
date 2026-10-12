@@ -1,6 +1,6 @@
 import { type ResolvedNowPlaying, type StoredWatchingItem } from "@shared/emby-store";
-import { publicAssetPath } from "@/lib/asset-url";
-import type { WatchingItem } from "@/lib/types";
+import { publicAssetPath } from "@shared/asset-url";
+import type { WatchingItem } from "@shared/types";
 
 export type WatchingPayload = {
   items: WatchingItem[];

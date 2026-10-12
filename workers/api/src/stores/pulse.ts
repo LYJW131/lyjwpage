@@ -6,8 +6,8 @@ import {
   pulseLaneKey,
   pulseLaneOpenKey,
   pulseWorkoutsKey,
-} from "@/lib/pulse-keys";
-import { PULSE_TTL_MS } from "@/lib/limits";
+} from "../pulse-keys";
+import { PULSE_TTL_MS } from "@shared/limits";
 import { getStorage } from "@shared/storage";
 import {
   ACTIVITY_BUCKET_CAP,

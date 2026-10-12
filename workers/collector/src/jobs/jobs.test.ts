@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
-import type { AgentStatusPayload, AgentStatusRow } from "@/lib/agent-status-types";
-import { PAGESPEED_TIMEOUT_MS } from "@/lib/pagespeed";
-import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@/lib/sentry-status";
-import type { SentryStatusPayload } from "@/lib/sentry-status-types";
-import type { GithubRepoPayload } from "@/lib/types";
+import type { AgentStatusPayload, AgentStatusRow } from "@shared/agent-status-types";
+import { PAGESPEED_TIMEOUT_MS } from "../pagespeed";
+import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@shared/sentry-status";
+import type { SentryStatusPayload } from "@shared/sentry-status-types";
+import type { GithubRepoPayload } from "@shared/types";
 
 import { MemoryKv } from "../testing/memory-kv";
 import type { Env } from "../env";

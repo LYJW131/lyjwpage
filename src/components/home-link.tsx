@@ -3,7 +3,7 @@
 import { Link } from "react-router";
 import { useReducedMotion } from "motion/react";
 
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 // 同路由导航不会滚到顶，需要自行处理首页点击。
 export function HomeLink() {

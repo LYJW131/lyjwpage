@@ -1,6 +1,6 @@
 import { LAG_KEYS, writeLag } from "@shared/lag";
-import { fetchSiteAnalytics, parseSiteAnalyticsSources } from "@/lib/site-analytics";
-import { fetchSiteDeployments } from "@/lib/site-deployments";
+import { fetchSiteAnalytics, parseSiteAnalyticsSources } from "@shared/site-analytics";
+import { fetchSiteDeployments } from "@shared/site-deployments";
 
 import { archiveSiteDeploys } from "../history";
 import { ok, settings, skipMissing, type Job } from "../job";

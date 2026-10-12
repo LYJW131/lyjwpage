@@ -1,5 +1,5 @@
 import { getStorage } from "@shared/storage";
-import type { ReportedPowerBankStatus } from "@/lib/types";
+import type { ReportedPowerBankStatus } from "@shared/types";
 import { K_LAST_PUSH, K_LATEST, type Stored } from "@shared/powerbank-store";
 
 

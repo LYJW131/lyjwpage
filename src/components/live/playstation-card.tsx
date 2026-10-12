@@ -17,10 +17,10 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useConfirmedClockStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
-import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
+import { PLAYSTATION_STALE_MS } from "@shared/freshness";
 import { GAME_COLUMN_SNAP_CLASS } from "@/lib/gaming-columns";
 import { stableKeys } from "@/lib/keys";
-import { foldService } from "@/lib/playstation-entitlements";
+import { foldService } from "@shared/playstation-entitlements";
 import {
   PLAYSTATION_IMAGE_SCALE,
   playstationImage,
@@ -29,7 +29,7 @@ import {
   addTrophyCounts,
   countTrophies,
   emptyTrophyCounts,
-} from "@/lib/trophy-counts";
+} from "@shared/trophy-counts";
 import {
   LIST_DURATION,
   LIST_TRANSITION,
@@ -44,8 +44,8 @@ import type {
   PlaystationPresencePayload,
   StatusResponse,
   TrophyTitleDigest,
-} from "@/lib/types";
-import { TROPHY_TYPES } from "@/lib/types";
+} from "@shared/types";
+import { TROPHY_TYPES } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const LIST_REFRESH_MS = 10 * 60_000;

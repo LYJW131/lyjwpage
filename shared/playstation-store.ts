@@ -4,7 +4,7 @@ import type {
   PlaystationPowerPayload,
   PlaystationPresencePayload,
   TrophiesPayload,
-} from "@/lib/types";
+} from "@shared/types";
 
 export const TTL_MS = 30 * 24 * 60 * 60 * 1000;
 

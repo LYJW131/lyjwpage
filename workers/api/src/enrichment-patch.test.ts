@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { trackLookupCacheKey } from "@/lib/apple-music";
+import { trackLookupCacheKey } from "@shared/apple-music";
 import { installAppleCache } from "@shared/apple-cache";
-import { motionArtworkCacheKey } from "@/lib/motion-artwork";
-import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
-import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
-import { MemoryKv } from "@/lib/testing/memory-kv";
-import { trackKeyOf, upcomingKeyOf } from "@/lib/track-enrichment";
-import type { ListeningItem } from "@/lib/types";
+import { motionArtworkCacheKey } from "@shared/motion-artwork";
+import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
+import { MemoryKv } from "@shared/testing/memory-kv";
+import { trackKeyOf, upcomingKeyOf } from "@shared/track-enrichment";
+import type { ListeningItem } from "@shared/types";
 import { mirror as recentMirror } from "@shared/apple-music-store";
 import { mirror as homePodMirror } from "@shared/homepod-store";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";

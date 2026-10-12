@@ -1,6 +1,6 @@
-import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
+import { CHARGER_HISTORY_LIMIT } from "@shared/limits";
 import { getStorage } from "@shared/storage";
-import type { ChargerSample, ReportedChargerStatus } from "@/lib/types";
+import type { ChargerSample, ReportedChargerStatus } from "@shared/types";
 import { type ChargerLanding, type ChargerState, DISCONNECTED_HISTORY_AFTER_MS, K_HISTORY, K_LAST_PUSH, K_LATEST, type Stored, disconnectedHistoryExpired } from "@shared/charger-store";
 
 

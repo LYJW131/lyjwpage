@@ -12,7 +12,7 @@ import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import { NOW_WATCHING_PATH } from "@/lib/paths";
 import { describeDevice, describeMedia } from "@/lib/watching-media";
 import { formatClock } from "@/lib/web-player";
-import type { StatusResponse, WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
+import type { StatusResponse, WatchingItem, WatchingMedia, WatchingPlayMethod } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const NOW_REFRESH_MS = 60_000;

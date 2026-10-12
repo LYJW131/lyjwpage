@@ -21,10 +21,10 @@
 
 | 这里 | 站点 |
 | --- | --- |
-| `Core/Models/*.swift` | `src/lib/types.ts` 等载荷类型 |
-| `Core/LiveEvent.swift` | `src/lib/live-events.ts#LiveEvent` |
-| `Core/Live/FeedSchedule.swift` | `src/lib/status-views.ts#STATUS_VIEWS`、`src/lib/poll-schedule.ts` |
-| `Core/Freshness.swift`、`Core/Live/LiveStore+Derived.swift` | `src/lib/freshness.ts`、`src/lib/home-layout.ts` |
+| `Core/Models/*.swift` | `shared/types.ts` 等载荷类型 |
+| `Core/LiveEvent.swift` | `shared/live-events.ts#LiveEvent` |
+| `Core/Live/FeedSchedule.swift` | `shared/status-views.ts#STATUS_VIEWS`、`src/lib/poll-schedule.ts` |
+| `Core/Freshness.swift`、`Core/Live/LiveStore+Derived.swift` | `shared/freshness.ts`、`shared/home-layout.ts` |
 | `App/Hub/**` 的上报载荷 | `shared/ingest/phone.ts#KNOWN_MODULES`、`shared/ingest/activity.ts`、`shared/ingest/workouts.ts` |
 
 Swift 里抄过来的常量逐个标了 `源：path#symbol`。站点重命名字段时直接替换，不留兼容分支（根 AGENTS.md「变更完成条件」）。

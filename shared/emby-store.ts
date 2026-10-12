@@ -1,5 +1,5 @@
 import { mirrorKey } from "@shared/storage";
-import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
+import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@shared/types";
 
 export const TTL_MS = 6 * 60 * 60 * 1000;
 

@@ -1,5 +1,5 @@
 import type { MediaItem } from "@/lib/musickit";
-import { catalogItemId, mediaItemIndex } from "@/lib/playing-queue";
+import { catalogItemId, mediaItemIndex } from "@shared/playing-queue";
 import { hostRewoundIntoTrack } from "@/lib/listen-along";
 
 export const SYNC_RESYNC_THRESHOLD_MS = 5_000;

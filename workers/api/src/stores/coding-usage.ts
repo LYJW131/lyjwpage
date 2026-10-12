@@ -1,5 +1,5 @@
-import { codingLayoutKey } from "@/lib/home-layout";
-import { CODING_TAG } from "@/lib/live-events";
+import { codingLayoutKey } from "@shared/home-layout";
+import { CODING_TAG } from "@shared/live-events";
 import { getStorage } from "@shared/storage";
 import {
   codingUsageKey,

@@ -156,7 +156,7 @@
 
 ## 04 活字印版（12 小节）
 
-事实：FACTS §4。画面标题「活字印版 / The type case」，副标 `React Router · SSR` 和 `site Worker · Cache-Tag`。纸面，俯视一整页首屏：每条 `firstScreen` 缓存一块印版（一张卡读几个视图就切成几块，`src/app/page.tsx#READS`），按首屏桌面宽度的真实比例排成一条长版，块上写它的 `page:` 标签名，没挂标签的写端点末段（屏幕上不小于 28 px）；挂标签的块右上角吊一枚小标签。块数、带标签和不带标签的各几块，写章时按代码现数（`src/app/page.tsx` 里 `firstScreen` 的调用、`src/lib/status-views.ts#STATUS_VIEWS` 的 tag），旁白里不说数。
+事实：FACTS §4。画面标题「活字印版 / The type case」，副标 `React Router · SSR` 和 `site Worker · Cache-Tag`。纸面，俯视一整页首屏：每条 `firstScreen` 缓存一块印版（一张卡读几个视图就切成几块，`src/app/page.tsx#READS`），按首屏桌面宽度的真实比例排成一条长版，块上写它的 `page:` 标签名，没挂标签的写端点末段（屏幕上不小于 28 px）；挂标签的块右上角吊一枚小标签。块数、带标签和不带标签的各几块，写章时按代码现数（`src/app/page.tsx` 里 `firstScreen` 的调用、`shared/status-views.ts#STATUS_VIEWS` 的 tag），旁白里不说数。
 
 | 小节 | 画面 | 配乐 |
 |---|---|---|
@@ -189,7 +189,7 @@
 | 8.5–10.5 | 线上没有消息。放大的「Now Playing」：进度条自己往前走，旁边竖写 `positionMs + (now − observedAt)`，now 标浏览器的钟、observedAt 标 Mac 的钟，注「只在播放时往前走」；歌词占位两行横条逐块亮。旁白 `n5` | 踩镲停下，只剩浏览器的钟一拍一响；铃跟着歌词块轻轻唱 |
 | 10.5–12.5 | 两只正视钟面：线上面源站的钟停在 servedAt（只管首帧），10:3 挂载，虚线箭头穿过电报线交给线下面访客的钟；访客的钟一拍走一格，12:0 走到截止 `lastSeenAt + heartbeatWindowMs`，卡片上的在线点自己熄灭、换成 Offline，源站什么也没说。在线点画成 signal，不用 live 绿。旁白 `n6` | 12:0 在线点熄灭：一声很轻的、往下滑一个八度的玻璃音 |
 | 12.5–15 | 同一根线数两种人：这一页的窗口（页脚 Online now 用 live 绿）、线上面的房间和一张「数人头」白卡（角标 `/count`；connections：开着的，含后台；online：正在看的）；13:2 切到另一个标签页，只发一声 `hidden`（往上的脉冲），线不断；14:0 online 03 → 02（live 绿），connections 不变。旁白 `n7` | 13:2 电键一声（往外发，比进来的高、短）；14:0 叮；踩镲敲 ON |
-| 15–17.3 | 白卡「预期到货表」（角标 `nextLagDelay`）：可滞后卡在 `due = updatedAt + cadenceMs + LAG_GRACE_MS` 才去取（服务器、GitHub 贡献图、活动圆环三行，节奏按 `src/lib/status-views.ts#STATUS_VIEWS`），过了 due 从 15 秒起退避；右栏：推送连着时，在听列表、在看、在玩、奖杯的轮询取 `max(cardMs, PUSH_SAFETY_NET_MS)`，16:2 盖「≥ 5 min」章。旁白 `n8` | 15:1、15:2、15:3、16:0 一行一声叮；16:2 印章；踩镲敲 ETA |
+| 15–17.3 | 白卡「预期到货表」（角标 `nextLagDelay`）：可滞后卡在 `due = updatedAt + cadenceMs + LAG_GRACE_MS` 才去取（服务器、GitHub 贡献图、活动圆环三行，节奏按 `shared/status-views.ts#STATUS_VIEWS`），过了 due 从 15 秒起退避；右栏：推送连着时，在听列表、在看、在玩、奖杯的轮询取 `max(cardMs, PUSH_SAFETY_NET_MS)`，16:2 盖「≥ 5 min」章。旁白 `n8` | 15:1、15:2、15:3、16:0 一行一声叮；16:2 印章；踩镲敲 ETA |
 | 17.3–18 | 拉远看整条示波线（几次到站的脉冲都在上面），17.72 起脉冲拉平成一条直线，往两头伸出画面。最后一帧：屏幕 y = 540 一条全宽水平直线（signalD，4 px） | 踩镲敲 SK（收报）；17:3 吸一口气，收在 A7sus4，18:0 交给第 06 章 |
 
 | 键 | 小节 | 中文 | English |

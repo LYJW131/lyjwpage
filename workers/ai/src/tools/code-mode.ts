@@ -1,4 +1,4 @@
-import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
+import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 
 import type { CodeRun, SiteTool, ToolIO, ToolLedger } from "./registry";
 import { claimViews, isStatusViewKey } from "./site-status";

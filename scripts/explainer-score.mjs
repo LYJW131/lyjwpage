@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const SCORE_SOURCE = "docs/explainer/v2";
-// 须与 src/lib/asset-url.ts#IMAGE_PATH_PREFIX 同步（scripts/explainer-score.test.mjs 核对）
+// 须与 shared/asset-url.ts#IMAGE_PATH_PREFIX 同步（scripts/explainer-score.test.mjs 核对）
 export const SCORE_PATH_PREFIX = "/img";
 
 // 整片配乐只由这些文件决定：键按它们的内容算，乐谱改了而时长没变也会换成新对象

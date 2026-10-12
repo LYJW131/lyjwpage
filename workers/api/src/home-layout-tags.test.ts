@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { STATUS_TAGS, STATUS_VIEWS } from "@/lib/status-views";
-import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
+import { STATUS_TAGS, STATUS_VIEWS } from "@shared/status-views";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 
 import { collectIngestEffects, dispatchIngestEffects, type CollectedIngest } from "./ingest-effects";

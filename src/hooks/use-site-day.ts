@@ -2,8 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 
-import { nextZonedDayStart, zonedDay } from "@/lib/heatmap-window";
-import { site } from "@/lib/site";
+import { nextZonedDayStart, zonedDay } from "@shared/heatmap-window";
+import { site } from "@shared/site";
 
 const ROLLOVER_GRACE_MS = 2_000;
 

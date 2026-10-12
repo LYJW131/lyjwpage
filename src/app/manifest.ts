@@ -1,4 +1,4 @@
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 import { STABLE_ASSET_CACHE_CONTROL } from "@/lib/site-policy";
 
 export function loader() {

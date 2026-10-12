@@ -1,13 +1,13 @@
 import { requestState } from "@shared/request-state";
-import { candidateFrom, type TrackEnrichment } from "@/lib/track-enrichment";
+import { candidateFrom, type TrackEnrichment } from "@shared/track-enrichment";
 import {
   type StoredHomePod
 } from "@shared/homepod-store";
-import { type NowListeningSnapshot } from "@/lib/now-listening";
+import { type NowListeningSnapshot } from "@shared/now-listening";
 import {
   type PlayingQueueTrack
-} from "@/lib/playing-queue";
-import { IMAGE_OBJECT_KEY, publicAssetPath } from "@/lib/asset-url";
+} from "@shared/playing-queue";
+import { IMAGE_OBJECT_KEY, publicAssetPath } from "@shared/asset-url";
 import { fieldMirror } from "@shared/storage";
 import { withPresence, type Liveness } from "@shared/reporter-liveness";
 import type {
@@ -15,7 +15,7 @@ import type {
   DesktopPayload,
   LocalNowPlaying,
   TimezoneActivity
-} from "@/lib/types";
+} from "@shared/types";
 
 export const DESKTOP_ICON_CACHE_LIMIT = 64;
 

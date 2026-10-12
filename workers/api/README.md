@@ -18,13 +18,13 @@
 - `src/apple-music-recent.ts`：收下采集 Worker 拉回的最近在听，差分、写入和广播。
 - `src/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签；同一把私钥也签服务端用的 developer token（`issueApiDeveloperToken`，经 `StateCore.appleDeveloperToken()` 给采集 Worker）。
 - 根目录 `shared/http-origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，`/ws`、公开 API 和令牌签发共用。
-- 根目录 `shared/`：读写共用的 SQLite 键、类型和状态计算；根目录 `src/lib/` 提供读取与通用工具。
-- 根目录 `src/lib/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、站点缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
-- 根目录 `src/lib/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
+- 根目录 `shared/`：读写共用的 SQLite 键、类型、状态计算与通用工具；只属于本 Worker 的读取在 `src/`。
+- 根目录 `shared/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、站点缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
+- `src/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
 - `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，状态端点按 loader 表通用分发。StateHub 初始化/提交可见性屏障不单独发 RPC，由每次 `StateHub.publicRead` 随读取一起过：未初始化返回 `null`，入口据此回 503。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层（`layer: "lag"`）的端点只读 `LAG` KV，写入方也不经 `commitIngest()` 队列，不发读取，也就不过屏障、不唤醒 StateHub（本地开着 `DEV_OVERRIDES` 时要先查 DO 里的注入，那次读取照常过屏障）；下面的按参数查询同样不过。
 - `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。它们是给网页播放器按任意曲目查的按需端点，也是读取路径上唯一会现查 Apple 的入口；结果缓存在 `APPLE_CACHE` KV。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
-- `src/storage-driver.ts`：StateHub 的 SQLite 存储驱动，由 `src/ports.ts` 经 `shared/storage.ts#installStorage` 装上；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
-- `src/ports.ts`：入口加载时把本 Worker 的实现装进 `shared/` 的端口：可滞后层读取（`shared/lag.ts#installLagReader`，读 `LAG` KV）、Apple 结果缓存（`shared/apple-cache.ts#installAppleCache`，读 `APPLE_CACHE`）、Apple Music 凭据（`shared/apple-music-auth.ts#installAppleMusicAuth`）。厂商状态、GitHub、站点、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，站点与 Cloudflare 两条按名字把几条键拼成一份。
+- `src/storage-driver.ts`：StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
+- `src/ports.ts`：入口加载时把本 Worker 的实现装进 `shared/` 的端口：存储（`shared/storage.ts#installStorage`）、可滞后层读取（`shared/lag.ts#installLagReader`，读 `LAG` KV）、Apple 结果缓存（`shared/apple-cache.ts#installAppleCache`，读 `APPLE_CACHE`）、Apple Music 凭据（`shared/apple-music-auth.ts#installAppleMusicAuth`）。厂商状态、GitHub、站点、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，站点与 Cloudflare 两条按名字把几条键拼成一份。
 - `src/public-status.ts`：具名入口 `PublicStatus`，只接受公开状态登记表中的精确路径，复用浏览器的公开模型；不提供凭据、写入或按参数查询。契约在 `shared/public-status.ts`。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
 - `src/origin-worker.ts` 的 AI 路由：经 `AI_SERVICE` 转发至 [AI Worker](../ai/README.md)，范围由根目录 `shared/ai-paths.ts#AI_HTTP_PATHS` 限定。
@@ -75,7 +75,7 @@
   账本，不按时刻（时刻只取和存着的较大者，入口顺序与提交顺序相反时会停在水位上）。桶同理，每写一份
   `pulse:token-buckets:revision` 加一。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
   `costComplete` 看所有有 token 的日行，来源采集失败只体现在状态里。首屏标签 `coding` 只在新旧视图的骨架
-  （行、总量、常用模型的有无，`src/lib/home-layout.ts` 的 `codingLayoutKey`）不同时打。
+  （行、总量、常用模型的有无，`shared/home-layout.ts` 的 `codingLayoutKey`）不同时打。
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
   推 `coding-now`：和上一次推出去的那份（`coding:now:pushed`）比，多出一个 (agent, 来源)、换了模型、时刻往前走了
   `src/stores/coding-activity.ts#PUSH_STEP_MS` 以上才推，保活不推。灯由浏览器按
@@ -86,9 +86,9 @@
 - **Cursor 账号观测**：agents 来源的 cursor 行另记一笔 `pulse:cursor-observations`（Coding 三色带与 Coding 评估的独立来源）：
   用量历史采集成功就是一次心跳（时刻取采集时刻），只有活动的那封时刻往前走了才记。
 
-读出口在 `src/lib/coding-usage.ts`：`/api/status/coding` 原样给视图，`/api/status/coding/now` 与推送用同一个
+读出口在 `src/coding-usage.ts`：`/api/status/coding` 原样给视图，`/api/status/coding/now` 与推送用同一个
 `buildCodingNowAgents` 拼、外加 Mac 存活，`/api/status/coding/year` 按站点今天切出 53 周（371 天）并编码成
-`days/models/mix`（`src/lib/coding-year.ts` 的 `encodeCodingYear`）。三条都归实时层，只有 `coding/now` 推送。
+`days/models/mix`（`shared/coding-year.ts` 的 `encodeCodingYear`）。三条都归实时层，只有 `coding/now` 推送。
 展示名、图标、哪几个 agent 画全量面板由站点登记表 `src/lib/coding-agents.ts` 定，来源只报 id。
 
 本地预览用夹具（`dev-fixtures/coding-*.json`）：`/api/status/coding` 有 `coding-multi-source`（三个来源都在）、
@@ -156,13 +156,13 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 `StateCore.commitIngest` 进这里：StateHub 按到达顺序串行提交，回 `{ ready, ok, data | error }`，未初始化时什么都不写；
 提交确认后，推送与首屏失效由这边的 `waitUntil` 执行。api Worker 上没有 `/api/ingest/*`。
 
-Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（契约 `shared/site-cache.ts`，只收公开状态标签）。失效先清除对应 `page:<tag>` 状态视图，再清除挂 `home` 的首页文档，下一次请求用新快照重新渲染。所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `src/lib/home-layout.ts`。coding 用量卡片的骨架在状态核心重算视图时比新旧两份，行、总量与常用模型的有无变了才发 `coding`。读数、标题、进度、灯色等内容变化不通知，由视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`）过期后重建；浏览器挂载后直接问 Worker。通知有超时（`src/live-platform.ts` 的 `REVALIDATE_TIMEOUT_MS`），失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
+Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（契约 `shared/site-cache.ts`，只收公开状态标签）。失效先清除对应 `page:<tag>` 状态视图，再清除挂 `home` 的首页文档，下一次请求用新快照重新渲染。所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `shared/home-layout.ts`。coding 用量卡片的骨架在状态核心重算视图时比新旧两份，行、总量与常用模型的有无变了才发 `coding`。读数、标题、进度、灯色等内容变化不通知，由视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`）过期后重建；浏览器挂载后直接问 Worker。通知有超时（`src/live-platform.ts` 的 `REVALIDATE_TIMEOUT_MS`），失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
 
 ESA 首页不走数据上报通知：`lyjw131.com` 以 `lyjw.me` 为源站，边缘按源站 `Cache-Control` 的 SWR 头（site Worker 响应）自行缓存与后台取新，控制台缓存规则见 [仓库外事实](../../docs/ops-facts.md)。新版本部署上线时，由 GitHub Actions（`.github/workflows/purge-esa.yml`）刷新首页并预热边缘缓存，等两个域名的 `/api/version` 都答出这次部署的 sha 后，再调上报入口的 `POST /api/internal/site-deployed`；上报入口验过之后调这里的 `StateCore.broadcastVersion()`，向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version` 并弹出更新提示（同时请采集 Worker 重拉部署列表，见上报入口 README）；站点自己的版本轮询因此只作兜底。日常上报不触发刷新。
 
 站点缓存仍采用后台重建（stale-while-revalidate），通知成功不代表新 HTML 已生成。ESA 后台回源可能取得仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
 
-「正在听」的写入时补全在 `src/listening-enrichment.ts`：`StateCore.commitIngest` 对 Mac（带 `appleMusic` 模块时）和 HomePod 的报文先调 `src/lib/track-enrichment.ts#enrichTrackOutcome`，查曲目目录（当前这首和队列里的后几首）和动态封面，再把结果放进报文交给 StateHub；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。每段各自限时（`CATALOG_TIMEOUT_MS`、`UPCOMING_TIMEOUT_MS`、`MOTION_TIMEOUT_MS`），目录与队列并行、动态封面排在目录之后；某段失败或超时只丢那一段、打一条带阶段与曲目的 `[enrichment]` warn，状态照常落库。回执之后在 `waitUntil` 里预热歌词；写入时目录、队列或动态封面有一段没查出结果的（`EnrichmentOutcome` 的 `catalogKnown` / `upcomingKnown` / `motionKnown`），在新的请求状态里按 `RETRY_BUDGET` 整份重查一次，多查到东西就经 `StateHub.commitEnrichmentPatch` 补写（`src/enrichment-patch.ts`）：与上报同一条串行队列，当前曲目的 `trackKey` 对不上（已换歌）就丢弃；否则按块合并（`mergeEnrichment`）：目录块、动态封面、队列歌曲 ID 各自只在比已存的好时才换，队列部分还要补丁所查的队列（`upcomingKeyOf`）与已存的 `upcomingTracks` 一致，同一首歌期间队列变了就不动队列；没有一块变好就丢弃。写回只改补全字段、不动接收时间，并推一次 `listening-now`。同一曲目的新上报目录没查到时沿用已存的目录与动态封面（`keepEnrichment`），队列歌曲 ID 跟本次上报的队列走。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`），不请求 Apple。最近播放首项的动态封面由 `StateCore.commitRecentlyPlayed` 补进该项的 `motion`，查不出结果时沿用同一项已存的那份。
+「正在听」的写入时补全在 `src/listening-enrichment.ts`：`StateCore.commitIngest` 对 Mac（带 `appleMusic` 模块时）和 HomePod 的报文先调 `shared/track-enrichment.ts#enrichTrackOutcome`，查曲目目录（当前这首和队列里的后几首）和动态封面，再把结果放进报文交给 StateHub；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。每段各自限时（`CATALOG_TIMEOUT_MS`、`UPCOMING_TIMEOUT_MS`、`MOTION_TIMEOUT_MS`），目录与队列并行、动态封面排在目录之后；某段失败或超时只丢那一段、打一条带阶段与曲目的 `[enrichment]` warn，状态照常落库。回执之后在 `waitUntil` 里预热歌词；写入时目录、队列或动态封面有一段没查出结果的（`EnrichmentOutcome` 的 `catalogKnown` / `upcomingKnown` / `motionKnown`），在新的请求状态里按 `RETRY_BUDGET` 整份重查一次，多查到东西就经 `StateHub.commitEnrichmentPatch` 补写（`src/enrichment-patch.ts`）：与上报同一条串行队列，当前曲目的 `trackKey` 对不上（已换歌）就丢弃；否则按块合并（`mergeEnrichment`）：目录块、动态封面、队列歌曲 ID 各自只在比已存的好时才换，队列部分还要补丁所查的队列（`upcomingKeyOf`）与已存的 `upcomingTracks` 一致，同一首歌期间队列变了就不动队列；没有一块变好就丢弃。写回只改补全字段、不动接收时间，并推一次 `listening-now`。同一曲目的新上报目录没查到时沿用已存的目录与动态封面（`keepEnrichment`），队列歌曲 ID 跟本次上报的队列走。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`），不请求 Apple。最近播放首项的动态封面由 `StateCore.commitRecentlyPlayed` 补进该项的 `motion`，查不出结果时沿用同一项已存的那份。
 
 公开 API 为 `/api/status/*`、`/api/lyrics`、`/api/motion-artwork`，没有聚合端点。site Worker 渲染首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
 
@@ -210,7 +210,7 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后自己�
 
 各道都**按列**给出：各列等长，第 i 行是各列的第 i 个。时刻一律是**相对 `window.from` 的整秒**，
 还原为 `window.from + startSec * 1000`；`window` 与 `generatedAt` 仍是 epoch 毫秒。行 ⇄ 列的转换在
-`src/lib/pulse-columns.ts`，出口和卡片共用；卡片认不出的形状（站点与 Worker 部署有先后）当没数据。
+`shared/pulse-columns.ts`，出口和卡片共用；卡片认不出的形状（站点与 Worker 部署有先后）当没数据。
 **没有段的时间就是未知**（没有观测），和观测到的空闲、离线、0 瓦、0 步分开：卡片上空闲是一条贴底的
 细灰线，未知只剩虚线轨道。
 
@@ -221,15 +221,15 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
 
 ### 存储：事实时间线
 
-纯函数在 `shared/pulse-timeline.ts`，写入在 `workers/api/src/stores/pulse.ts`，键在 `src/lib/pulse-keys.ts`。
-全部在 StateHub SQLite，TTL 是 `src/lib/limits.ts` 的 `PULSE_TTL_MS`（一直有效的开区间例外，见下）。
+纯函数在 `shared/pulse-timeline.ts`，写入在 `workers/api/src/stores/pulse.ts`，键在 `src/pulse-keys.ts`。
+全部在 StateHub SQLite，TTL 是 `shared/limits.ts` 的 `PULSE_TTL_MS`（一直有效的开区间例外，见下）。
 
 - **状态区间**（listening / watching / gaming）：每条道一个开着的区间 `pulse:v2:<道>:open`
   （`{from, seenAt, holdUntil, endsBy, state, …原始字段}`）加一串已关闭区间 `pulse:v2:<道>`（`{from, to, state, …}`，
   条数上限见 `shared/pulse-timeline.ts` 的 `STATE_LANE_CAPS`）。同一状态、同一标题只续 `seenAt`、`holdUntil`、`endsBy`，每条道每分钟最多写一次
   （有效期或结束时刻挪动超过一分钟也写）；状态或标题变了在那一刻关上旧段、开新段。
   `holdUntil` 是每次观测带宽限的有效期，只决定这段还开不开着、在线时画到此刻：Mac 的播放、Emby 播放与暂停
-  用 `PULSE_STATE_HOLD_MS`；HomePod 只在状态变化时由 HA 推一次，按那份快照的可见期限（`src/lib/homepod-store.ts`
+  用 `PULSE_STATE_HOLD_MS`；HomePod 只在状态变化时由 HA 推一次，按那份快照的可见期限（`shared/homepod-store.ts`
   的 `homePodVisibleUntil`：剩余时长加宽限，单曲循环另算，与首页判 HomePod 是否还在放同一个口径）；主机没醒时
   只按闲档查一次，用 `GAMING_HOLD_MS`；Emby 明确停播之后一直是空闲、`holdUntil` 为 null，开着的那一段不设过期，
   七天没开播仍是观测到的空闲。
@@ -255,8 +255,8 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
   `LISTENING_TRACE_BRIDGE_MS` 内接到下一首开播，否则只画到自己的窗口末尾。Mac / HomePod 在放（暂停不算）同一首（`sameSong`：歌名与艺人）、前后差不过
   `LISTENING_TRACE_MATCH_SLACK_MS` 的推断已被实测解释，不再重复画。
   改这些常量或算法前后各跑一次 `node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/listening-replay.mts`：
-  回放一段录下来的 iPhone 连续播放（`src/lib/testing/recent-tracks-session.json`），按不同拉取间隔打印标对歌名的比例与开播误差，
-  口径与当时的数字见 [别处播放推断精度实测](../../docs/listening-inference-accuracy.md)；`src/lib/pulse-listening-replay.test.mts` 守住每分钟一轮与活跃档（`workers/collector` 的 `ACTIVE_POLL_MS`）一轮的下限。
+  回放一段录下来的 iPhone 连续播放（`shared/testing/recent-tracks-session.json`），按不同拉取间隔打印标对歌名的比例与开播误差，
+  口径与当时的数字见 [别处播放推断精度实测](../../docs/listening-inference-accuracy.md)；`shared/pulse-listening-replay.test.mts` 守住每分钟一轮与活跃档（`workers/collector` 的 `ACTIVE_POLL_MS`）一轮的下限。
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
   `pulse:token-buckets:agents-otlp` 现算，切片规则同 Coding 评估特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
@@ -360,14 +360,14 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 
 两条都成立时用 `loop`。随机播放、刚开始放、换了容器而列表还没跟上时为 null，卡片就不显示 Up Next。
 单曲循环看不出来：列表去重，同一首重放不会再排一次。Apple 不给别的设备上的队列、随机或循环开关，手动插进 Up Next 的歌只能等它放过一轮。
-`scripts/listening-replay.mts` 末尾按录下来的那段歌单顺序播放回放下一首的猜中、猜错与不猜次数，`src/lib/listening-next.test.mts` 守住猜错为零。
+`scripts/listening-replay.mts` 末尾按录下来的那段歌单顺序播放回放下一首的猜中、猜错与不猜次数，`shared/listening-next.test.mts` 守住猜错为零。
 Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不向外提供凭据端点；状态读取不触发拉取或广播。
 
 ## AI 路由与公开状态 RPC
 
 首页对话、配额查询、GitHub issue 提交与 MCP 的路径登记在 `shared/ai-paths.ts#AI_HTTP_PATHS`。`src/origin-worker.ts` 经 `AI_SERVICE.fetch(request)` 把请求和响应流交给 [AI Worker](../ai/README.md)，不在 api 执行聊天模型调用、对话配额或 MCP 协议；缺少绑定时回 503。预检与来源校验也由 AI Worker 处理，`CF-Connecting-IP` 随原请求保留。
 
-AI Worker 通过具名入口 `PublicStatus` 读取本站公开状态，契约是 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。`src/public-status.ts#readPublicStatus` 只接受 `src/lib/status-views.ts#STATUS_VIEWS` 中的精确路径，复用 `executePublicRequest` 返回浏览器使用的公开模型；查询参数、任意 URL、凭据和写入不在这个接口中。不能为工具方便而把 `StateCore` 或通用存储接口交给 AI Worker。
+AI Worker 通过具名入口 `PublicStatus` 读取本站公开状态，契约是 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。`src/public-status.ts#readPublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 中的精确路径，复用 `executePublicRequest` 返回浏览器使用的公开模型；查询参数、任意 URL、凭据和写入不在这个接口中。不能为工具方便而把 `StateCore` 或通用存储接口交给 AI Worker。
 
 Pulse 的 Coding 评估仍由本 Worker 的 `src/pulse-score.ts#PulseScorer` 和 cron 执行，评分租约与结果仍属于 StateHub，见上文「Coding 的 Clef 评估」。
 
@@ -409,7 +409,7 @@ cron 心跳与 `HEAD /api/version` 在线探测都不经过数据链路，上报
 | 来源（`freshness.source`） | 读哪里 | 时刻字段 | 阈值 |
 | --- | --- | --- | --- |
 | `quest` | StateHub `questMirror` | `observedAt` | `shared/quest.ts#QUEST_STALE_MS`，判法就是 `questNow` 的 `available` |
-| `playstation` | StateHub `presenceMirror` | `observedAt` | `src/lib/freshness.ts#PLAYSTATION_STALE_MS` |
+| `playstation` | StateHub `presenceMirror` | `observedAt` | `shared/freshness.ts#PLAYSTATION_STALE_MS` |
 | `emby` | StateHub `resumeMirror`（续播列表，上报器至少每 `FULL_PUSH_INTERVAL_MS` 整推一次） | `at` | `shared/emby-store.ts#RESUME_STALE_MS` |
 | `server` | LAG `server:v1` | `updatedAt` | `SERVER_STALE_MS` |
 | `agents-reporter` | LAG `reporter:agents-reporter:v1`（每封都写，与站点状态卡那一格同源） | `updatedAt` | `AGENT_LIMITS_STALE_MS` |
@@ -463,7 +463,7 @@ AI 模型、验人、对话签名与 issue 提交凭据见 [AI Worker](../ai/REA
 上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点。PlayStation 的游戏数据也走这一条：`reporters/playstation-reporter` POST 原始信封。agents-reporter 按此源公开的 `/api/status/coding/now` 判断 agent 在不在用来调频；server-reporter 节奏固定，PlayStation 按局域网发现包调频；上报器都不读 `/count`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
-`shared/`（`shared/ingest/` 除外，校验改了只发布上报入口）、共用 `src/lib/`、根依赖及路径配置变化也触发 api 部署，见 [原生部署配置](../../docs/workers-builds.md)。
+`shared/`（`shared/ingest/` 除外，校验改了只发布上报入口）、根依赖及路径配置变化也触发 api 部署，见 [原生部署配置](../../docs/workers-builds.md)。
 
 ## 本地开发
 
@@ -525,11 +525,11 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 厂商状态、GitHub 贡献日历与仓库统计、站点、Cloudflare Workers、Sentry 这几条端点的数据都由采集 Worker
 （`workers/collector`）按各自节奏拉取、写进可滞后层 KV（`shared/lag.ts` 的键表），这里的公开端点**只读**：
 不持有任何外部令牌、不在读路径上现拉、不推送。每条都带写入方最后一次成功取到的时刻，信封里给 `updatedAt`；
-过没过时由浏览器按 `src/lib/freshness.ts` 里各块的阈值判断，过了那一格回到「—」或 Unavailable，服务端不下结论。
+过没过时由浏览器按 `shared/freshness.ts` 里各块的阈值判断，过了那一格回到「—」或 Unavailable，服务端不下结论。
 还没写过的键回 `ok: false`（等采集）。取数口径、失败时的沿用规则、节奏与监控见
 [采集 Worker 的 README](../collector/README.md)。
 
-| 端点 | 读哪几条键 | 卡片阈值（`src/lib/freshness.ts`） |
+| 端点 | 读哪几条键 | 卡片阈值（`shared/freshness.ts`） |
 | --- | --- | --- |
 | `/api/status/agent-status` | `agent-status:v1` | `AGENT_STATUS_STALE_MS` |
 | `/api/status/github-chart`（可带 `?since=`） | `github-chart:v1`，切片在这一侧做 | `GITHUB_CHART_STALE_MS` |
@@ -544,7 +544,7 @@ SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 ### Workers 统计
 
-只查询本仓库的 `api`、`ingress`、`collector`（名单在 `src/lib/cloudflare-workers-types.ts`，
+只查询本仓库的 `api`、`ingress`、`collector`（名单在 `shared/cloudflare-workers-types.ts`，
 GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还没部署的脚本那一格为空。
 统计是一个滚动窗口（长度与对齐粒度见 `workers/collector/src/jobs/cloudflare.ts` 的 `WINDOW_MS`、`WINDOW_ALIGN_MS`）的调用量、执行错误、子请求和整段窗口 CPU P50（微秒转成 `cpuTimeP50Ms`），
 采样统计不是账单，也不将执行错误等同于 HTTP 错误或可用率。部署只投影部署时间、正在分流的版本与比例，
@@ -560,15 +560,15 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 ### 性能评分（PageSpeed Insights）
 
 同一份载荷的 `pagespeed` 字段，数据来自 Google `runPagespeed`，与部署指标无关，所以独立成块。
-测的是 `lyjw.me`（`src/lib/site.ts` 的 `site.url`），载荷里带着这个地址，卡片表头显示它。
+测的是 `lyjw.me`（`shared/site.ts` 的 `site.url`），载荷里带着这个地址，卡片表头显示它。
 这是**实验室数据**：一台模拟设备上跑出来的，不是访客的真实体验，所以没有 INP，表上那一列是同一轮测出的 TBT。
-**每一格是滚动窗口内各轮实测的中位数**（窗口长度与样本上限见 `src/lib/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），一轮异常被旁边几轮压住；
+**每一格是滚动窗口内各轮实测的中位数**（窗口长度与样本上限见 `workers/collector/src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），一轮异常被旁边几轮压住；
 载荷里的 `samples` 与 `start` 是参与的轮数和最早一轮的时间。
 
 ### Sentry
 
 四块数据：`uptime`（对 `https://lyjw.me/api/version` 的在线探测，配置见 [仓库外事实](../../docs/ops-facts.md)）、`heartbeat`（本 Worker cron 的
-心跳监控 `api-minute-cron`，只算 production；cron 每 `CRON_HEARTBEAT_EVERY_MINUTES`（`src/lib/sentry.ts`，站点卡片上的文案也读它）分钟一轮，每轮都报到，监控的 crontab 与 wrangler 触发器同是 `src/cron-heartbeat.ts#CRON_SCHEDULE`；slug 里的 minute 不改，改了丢监控历史）、
+心跳监控 `api-minute-cron`，只算 production；cron 每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/sentry.ts`，站点卡片上的文案也读它）分钟一轮，每轮都报到，监控的 crontab 与 wrangler 触发器同是 `src/cron-heartbeat.ts#CRON_SCHEDULE`；slug 里的 minute 不改，改了丢监控历史）、
 `errors`（production 报错：`site` 是站点项目，`worker` 是 api 与采集 Worker 两个项目合计）、
 `vitals`（站点 production 的 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。
