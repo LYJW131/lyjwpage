@@ -11,6 +11,8 @@ import { collectAgents } from "../../dist/limits.js";
 
 const clientId = "11111111-2222-4333-8444-555555555555";
 const tokenUrl = "https://platform.claude.com/v1/oauth/token";
+const usageUrl = "https://api.anthropic.com/api/oauth/usage";
+const profileUrl = "https://api.anthropic.com/api/oauth/profile";
 const embeddedConfig = `{BASE_API_URL:"https://api.anthropic.com",TOKEN_URL:"${tokenUrl}",CLIENT_ID:"${clientId}",DESIGN_CLIENT_ID:"99999999-2222-4333-8444-555555555555",OAUTH_FILE_SUFFIX:""}`;
 
 async function fixture(t: TestContext) {
@@ -110,7 +112,8 @@ test("usage 回 401 后续期一次，再用新 access token 读取限额", asyn
       refreshCalls++;
       return Response.json({ access_token: "new-access", refresh_token: "new-refresh", expires_in: 28800 });
     }
-    assert.equal(url, "https://api.anthropic.com/api/oauth/usage");
+    if (url === profileUrl) return new Response(null, { status: 401 });
+    assert.equal(url, usageUrl);
     usageCalls++;
     if (usageCalls === 1) return new Response(null, { status: 401 });
     assert.equal(init.headers.Authorization, "Bearer new-access");
@@ -121,4 +124,23 @@ test("usage 回 401 后续期一次，再用新 access token 读取限额", asyn
   assert.equal(usageCalls, 2);
   assert.equal(rows[0]?.limitsError, null);
   assert.equal(rows[0]?.limits[0]?.usedPercent, 25);
+});
+
+test("套餐以 profile 为准，凭据里登录时的旧档只在 profile 取不到时兜底", async (t) => {
+  await fixture(t);
+  let profileStatus = 200;
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (url === profileUrl) {
+      if (profileStatus !== 200) return new Response(null, { status: profileStatus });
+      return Response.json({
+        account: { has_claude_max: true },
+        organization: { organization_type: "claude_max", rate_limit_tier: "default_claude_max_20x" },
+      });
+    }
+    assert.equal(url, usageUrl);
+    return Response.json({ five_hour: { utilization: 1 }, seven_day: { utilization: 2 } });
+  });
+  assert.deepEqual((await collectAgents())[0]?.plan, { tier: "Max 20x", label: "Max 20x" });
+  profileStatus = 403;
+  assert.deepEqual((await collectAgents())[0]?.plan, { tier: "Max 5x", label: "Max 5x" });
 });
