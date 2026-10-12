@@ -22,8 +22,8 @@ export const AGENT_STATUS_STALE_MS = 10 * 60_000;
 export const GITHUB_CHART_STALE_MS = 6 * 3_600_000;
 // GitHub 统计生成中会返回 202，可能跨越多轮采集，不能按一轮未更新即判故障。
 export const GITHUB_REPO_STALE_MS = 3 * 3_600_000;
-export const VERCEL_DEPLOYMENTS_STALE_MS = 10 * 60_000;
-export const VERCEL_METRICS_STALE_MS = 3_600_000;
+export const SITE_DEPLOYMENTS_STALE_MS = 10 * 60_000;
+export const SITE_ANALYTICS_STALE_MS = 3_600_000;
 export const PAGESPEED_STALE_MS = 3 * 3_600_000;
 export const CLOUDFLARE_DEPLOYMENTS_STALE_MS = 15 * 60_000;
 export const CLOUDFLARE_METRICS_STALE_MS = 3_600_000;

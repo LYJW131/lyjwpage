@@ -241,7 +241,7 @@ try {
   assert.equal(current.preview.state, 'success');
   await rpc('global', 'updateRun', build.runId, { pr: { ...current.pr, headSha: newHead }, ci: { state: 'success', updatedAt: Date.now() + 10_000 } }, newHead);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.headSha, headSha);
-  assert.equal((await webhook('status', { sha: newHead, context: 'Vercel', state: 'success', updated_at: new Date(Date.now() + 20_000).toISOString() }, 'stale-head-status')).status, 200);
+  assert.equal((await webhook('status', { sha: newHead, context: 'ci/tests', state: 'success', updated_at: new Date(Date.now() + 20_000).toISOString() }, 'stale-head-status')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.preview.state, 'success');
   assert.equal((await webhook('pull_request', { pull_request: { ...prPayload, state: 'closed', merged: true } }, 'new-head')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'pr_open');

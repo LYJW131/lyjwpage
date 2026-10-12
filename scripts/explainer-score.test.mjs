@@ -21,8 +21,8 @@ function scoreSource(t) {
 test("score key is served under the R2 image path prefix", () => {
   const assetUrl = fs.readFileSync(new URL("../src/lib/asset-url.ts", import.meta.url), "utf8");
   assert.match(assetUrl, new RegExp(`export const IMAGE_PATH_PREFIX = "${SCORE_PATH_PREFIX}";`));
-  const nextConfig = fs.readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
-  assert.match(nextConfig, /IMAGE_REWRITE_SOURCE = .*\|mp3\)\)/);
+  const sitePolicy = fs.readFileSync(new URL("../src/lib/site-policy.ts", import.meta.url), "utf8");
+  assert.match(sitePolicy, /IMAGE_OBJECT_PATH = .*\|mp3\)\)/);
 });
 
 test("score key changes with any score input", (t) => {

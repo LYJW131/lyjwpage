@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app-image";
 import { useEffect, useState, type ReactNode } from "react";
 import useSWR from "swr";
 

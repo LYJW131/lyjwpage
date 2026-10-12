@@ -125,16 +125,6 @@
       "stale": false
     },
     {
-      "id": "vercel",
-      "name": "Vercel",
-      "indicator": "operational",
-      "statusUrl": "https://www.vercel-status.com",
-      "components": [{ "name": "Builds", "indicator": "operational" }],
-      "incidents": [],
-      "note": null,
-      "stale": false
-    },
-    {
       "id": "github",
       "name": "GitHub",
       "indicator": "operational",

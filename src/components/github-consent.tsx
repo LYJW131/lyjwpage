@@ -7,7 +7,7 @@ import { BUILD_REPO, type PlanLanguage } from "@shared/build-routine";
 const SETTINGS_URL = "https://github.com/settings/applications";
 const settingsLink = (label: string) => <a href={SETTINGS_URL} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2 hover:text-foreground">{label}</a>;
 
-// 站主要求 GitHub 授权说明跟随计划语言（与 issue、PR 文案同一套判断），是「界面文案英文」的例外；三种语言的条目须同步。
+// 站主要求 GitHub 授权说明跟随访客的语言（`visitorLanguage`，按计划标题判断），是「界面文案英文」的例外；三种语言的条目须同步。
 type Term = [string, ReactNode];
 type GithubConsentCopy = { lang: string; colon: string; title: string; intro: Record<"issue" | "build", string>; why: Term; what: Term; issue: Term; build: Term; public: Term; control: Term; accept: string; working: string; cancel: string };
 const COPY: Record<PlanLanguage, GithubConsentCopy> = {

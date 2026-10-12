@@ -6,9 +6,9 @@ import { GithubConsent } from "@/components/github-consent";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { workerUrl } from "@/lib/worker-url";
 import { GITHUB_ISSUE_PATH, type GithubIssueResult } from "@shared/github-issue";
-import { planLanguage, type BuildProposal } from "@shared/build-routine";
+import { visitorLanguage, type BuildProposal } from "@shared/build-routine";
 
-const ISSUE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GITHUB_ISSUE_PATH);
+const ISSUE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GITHUB_ISSUE_PATH);
 
 export function IssuePanel({ proposal, onClose, onCreated, disabled }: {
   proposal: BuildProposal;
@@ -39,5 +39,5 @@ export function IssuePanel({ proposal, onClose, onCreated, disabled }: {
     } finally { setWorking(false); }
   }
 
-  return <GithubConsent action="issue" language={planLanguage(proposal.plan)} working={working} disabled={disabled} error={error} onAccept={() => void submit()} onCancel={onClose} />;
+  return <GithubConsent action="issue" language={visitorLanguage(proposal.plan)} working={working} disabled={disabled} error={error} onAccept={() => void submit()} onCancel={onClose} />;
 }

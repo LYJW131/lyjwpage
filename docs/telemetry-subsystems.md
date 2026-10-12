@@ -29,8 +29,8 @@
 
 ### 架构边界
 - **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/api`）。
-- **无状态渲染**：Vercel 仅负责首屏 HTML 生成、Next.js 页面缓存、静态资源分发和图片优化。Vercel 内部没有状态 API 代理或数据库直连端点。
-- **客户端直连**：浏览器端配置 `NEXT_PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
+- **无状态渲染**：site Worker 仅负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化；站点内没有状态 API 代理或数据库直连端点。
+- **客户端直连**：浏览器端配置 `PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
 - **原生客户端**：[`apps/ios`](../apps/ios/README.md) 读同一个 api Worker：状态 GET 不带 `Origin`（api Worker 只拦带了且不在白名单的来源），推送长连接自报站点域名作 `Origin`（`/ws` 缺来源一律 403），所以改 `ALLOWED_ORIGINS` 时要保留站点域名。取数节奏照浏览器端的登记表，只在前台连推送、退后台即断，在线人数的语义和关掉标签页一致。
 
 ### 通信端点规范
@@ -78,7 +78,7 @@
 
 ### 图片处理与 R2 缓存
 - **剧照 vs 海报**：剧集本身的 Primary 图通常是剧照，竖版海报由代理优先提取剧集的 `SeriesPrimaryImageTag` 并用 sharp 压缩为 `<sha256>.webp` 直传 Cloudflare R2。
-- **`missingImages` 补传机制**：条目中仅存 `imageKey`（`itemId:kind:tag:height`），读取时映射为对象键并拼成 `/img/<对象键>` 同源路径，由访客域名的边缘（Vercel rewrite / ESA）回源 R2。若引用的图片键在状态核心里还没有对象键映射（上报入口没确认到对象，或映射被淘汰），上报回执会返回 `missingImages`，代理据此异步补传。
+- **`missingImages` 补传机制**：条目中仅存 `imageKey`（`itemId:kind:tag:height`），读取时映射为对象键并拼成 `/img/<对象键>` 同源路径，由访客域名的站点层（site Worker R2 绑定 / ESA 回源）取 R2。若引用的图片键在状态核心里还没有对象键映射（上报入口没确认到对象，或映射被淘汰），上报回执会返回 `missingImages`，代理据此异步补传。
 - **HEAD 正缓存很短**：上报入口对 R2 对象的 HEAD 校验只记一小会儿（`shared/ingest/r2-assets.ts#CONFIRMED_TTL_MS`），以便桶清空或对象重建后能自动重新请求补传。
 
 ---
@@ -170,7 +170,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 | 来源 | 入口里的位置 | 看得到什么 |
 | --- | --- | --- |
 | `mac` | `/api/ingest/mac` 的 `modules.codingUsage` / `codingActivity` / `codingTokenBuckets` | 这台 Mac 本地日志里的会话 |
-| `agents` | `/api/ingest/agents` 顶层同名三键 | 账号侧的完整历史（Cursor） |
+| `agents` | `/api/ingest/agents` 顶层同名三键 | 账号侧的完整历史（Cursor；Devin CLI 取自 tokens.ci 公开主页，只取 `devin-cli` 一个客户端） |
 | `agents-otlp` | `/api/ingest/agents/otlp`（Claude Code 内置遥测） | 云端环境里的会话；状态核心把累计值做差后整理成同形的三种事实 |
 
 三种事实：`(来源, agent, 站点日)` 的日行（token 分列、API 等值费用、当天按模型拆分）、`(来源, agent, 模型)` 的 5 分钟 token 桶、`(来源, agent)` 的最近一条用量事件。坏的 coding 模块只丢它自己，回执写 `rejected`（见 [上报入口](../workers/ingress/README.md)）。各来源的采集节奏见各自上报器的 README。
@@ -205,7 +205,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 ## 8. AI Coding Agent 账号限额
 
 ### 容器化上报架构
-- **独立容器运行**：`reporters/agents-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封可以另带 Cursor 账号的三种 coding 事实（`codingUsage` / `codingActivity` / `codingTokenBuckets`，见上一节），Mac 不在线时 Cursor 的用量与活动灯照样更新。
+- **独立容器运行**：`reporters/agents-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封可以另带 Cursor 账号的三种 coding 事实（`codingUsage` / `codingActivity` / `codingTokenBuckets`，见上一节），Mac 不在线时 Cursor 的用量与活动灯照样更新；Devin CLI 的日行也放在同一封的 `codingUsage` 里。
 - **凭据完全隔离**：容器内部独立维护各家 CLI（Claude Code、Codex 等）登录 Session，严禁复制宿主机凭据，防止 refresh token 竞态失效。
 - **心跳与超时**：
   - 即使数据无变化，每轮上报依然执行（作为存活心跳）。

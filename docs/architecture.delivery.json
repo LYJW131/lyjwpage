@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "d08c4539-42c0-44fd-9575-b974e3247b3f",
+  "receiptId": "add0db3a-d39a-4182-b8f5-50c40718c796",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "/home/user/lyjwpage/docs/architecture.json",
-  "output": "/home/user/lyjwpage/docs/architecture.html",
+  "input": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/apple-music-api-calibration-733500/docs/architecture.json",
+  "output": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/apple-music-api-calibration-733500/docs/architecture.html",
   "specification": {
-    "sha256": "3a1f21f00c22c3595166fe72a1037765f4b3930115ec1e8a607102be63855bf0",
-    "bytes": 15926
+    "sha256": "66a645884c8b92b6a0482f86f5b44ea60e0fe8be3b09b7fdc380ad6e9024910d",
+    "bytes": 15952
   },
   "artifact": {
-    "sha256": "fb5874db127e18520f3135558c23d574514c373b664921a37b19e6a48dddf03e",
-    "bytes": 812792
+    "sha256": "df48385e06d6aec8c3633db586ab5836a2d5a0bdb8ea4d314a886321cb891db7",
+    "bytes": 812804
   }
 }

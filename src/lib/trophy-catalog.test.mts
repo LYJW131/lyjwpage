@@ -7,7 +7,7 @@ import { trophiesTilePath } from "@/lib/paths";
 import { fetchCatalog, prefetchCatalogs } from "@/lib/trophy-catalog";
 import type { TrophiesPayload, TrophyTitle } from "@/lib/types";
 
-process.env.NEXT_PUBLIC_BACKEND_URL = "https://api.test";
+process.env.PUBLIC_BACKEND_URL = "https://api.test";
 
 function title(npCommunicationId: string, titleIds: string[]): TrophyTitle {
   return { npCommunicationId, titleIds, groups: [], trophies: [] } as unknown as TrophyTitle;

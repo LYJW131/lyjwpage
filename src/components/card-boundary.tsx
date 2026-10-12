@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import * as Sentry from "@sentry/nextjs";
-import { catchError, type ErrorInfo } from "next/error";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import * as Sentry from "@sentry/react";
 import { RefreshCw, RotateCw } from "lucide-react";
 import { useSWRConfig } from "swr";
 
@@ -137,8 +136,25 @@ function CardFault({
   );
 }
 
-function CardFallback(props: CardBoundaryProps, { error, reset }: ErrorInfo) {
-  return <CardFault {...props} error={error} reset={reset} />;
-}
+type CardErrorBoundaryProps = CardBoundaryProps & { children?: ReactNode };
+type CardErrorBoundaryState = { error: unknown; failed: boolean };
 
-export const CardBoundary = catchError(CardFallback);
+export class CardBoundary extends Component<CardErrorBoundaryProps, CardErrorBoundaryState> {
+  override state: CardErrorBoundaryState = { error: null, failed: false };
+
+  static getDerivedStateFromError(error: unknown): CardErrorBoundaryState {
+    return { error, failed: true };
+  }
+
+  private readonly reset = () => this.setState({ error: null, failed: false });
+
+  override render() {
+    const { error, failed } = this.state;
+    if (failed) {
+      const { children, ...props } = this.props;
+      void children;
+      return <CardFault {...props} error={error} reset={this.reset} />;
+    }
+    return this.props.children;
+  }
+}

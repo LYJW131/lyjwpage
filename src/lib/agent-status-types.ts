@@ -30,7 +30,6 @@ export type AgentStatusRow = {
     | "grok"
     | "typesafe"
     | "apple"
-    | "vercel"
     | "github"
     | "cloudflare";
   name: string;
