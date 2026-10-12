@@ -173,6 +173,37 @@
   animation-timing-function: ease;
 }
 
+::view-transition-new(.source-hint) {
+  animation: source-hint-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+::view-transition-old(.source-hint) {
+  animation: source-hint-out 120ms ease-in both;
+}
+
+@keyframes source-hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes source-hint-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+/* 全局 reduced-motion 规则的 *、*::before 匹配不到 view transition 伪元素。 */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 .pulse-trace-hatched {
   background-image: repeating-linear-gradient(
     -45deg,

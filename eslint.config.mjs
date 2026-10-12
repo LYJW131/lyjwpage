@@ -1,3 +1,4 @@
+import { fixupPluginRules } from "@eslint/compat";
 import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
 import jsxA11y from "eslint-plugin-jsx-a11y";
@@ -5,6 +6,9 @@ import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+
+// eslint-plugin-react 与 jsx-a11y 仍调用 ESLint 10 已删除的 context 方法（如 getFilename），由 @eslint/compat 补上。
+const withFixedPlugin = (config, name, plugin) => ({ ...config, plugins: { ...config.plugins, [name]: fixupPluginRules(plugin) } });
 
 const eslintConfig = defineConfig([
   js.configs.recommended,
@@ -25,10 +29,10 @@ const eslintConfig = defineConfig([
   {
     files: ["**/*.{ts,tsx,mts}"],
     extends: [
-      react.configs.flat.recommended,
-      react.configs.flat["jsx-runtime"],
+      withFixedPlugin(react.configs.flat.recommended, "react", react),
+      withFixedPlugin(react.configs.flat["jsx-runtime"], "react", react),
       reactHooks.configs.flat["recommended-latest"],
-      jsxA11y.flatConfigs.recommended,
+      withFixedPlugin(jsxA11y.flatConfigs.recommended, "jsx-a11y", jsxA11y),
     ],
     rules: { "jsx-a11y/no-noninteractive-tabindex": "off" },
     settings: { react: { version: "detect" } },

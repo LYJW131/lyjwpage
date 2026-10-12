@@ -18,6 +18,6 @@
     "wrangler": "4.149.0"
   },
   "dependencies": {
-    "@sentry/cloudflare": "10.75.2"
+    "@sentry/cloudflare": "11.7.0"
   }
 }

@@ -1,9 +1,4 @@
-import {
-  consoleLoggingIntegration,
-  httpServerIntegration,
-  requestDataIntegration,
-  type CloudflareOptions,
-} from "@sentry/cloudflare";
+import { consoleLoggingIntegration, type CloudflareOptions } from "@sentry/cloudflare";
 
 import { previewWorkerEnabled } from "./preview";
 import type { Env } from "./runtime";
@@ -13,14 +8,22 @@ export function sentryOptions(env: Env): CloudflareOptions {
     dsn: env.SENTRY_DSN?.trim() || undefined,
     environment: env.SENTRY_ENVIRONMENT?.trim() || (previewWorkerEnabled() ? "preview" : "production"),
     tracesSampleRate: 0.01,
-    enableLogs: true,
-    // 默认的 HttpServer 集成不看 sendDefaultPii 就读 POST 正文，RequestData 再把正文和请求头原样写进 event.request
-    // （整段对话、OAuth code、出站代理请求带的 x-api-key）；同名集成覆盖默认实例。别改用 dataCollection：没写的项按全开补齐。
     integrations: [
       consoleLoggingIntegration({ levels: ["warn", "error"] }),
-      httpServerIntegration({ maxRequestBodySize: "none" }),
-      requestDataIntegration({ include: { cookies: false, data: false, headers: false } }),
     ],
-    sendDefaultPii: false,
+    // 请求正文与请求头里有整段对话、OAuth code 和出站代理带的 x-api-key。dataCollection 没写的项按全开补齐
+    // （IP、请求头、全部正文），所以每项都显式关掉。
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: false,
+      httpBodies: [],
+      urlQueryParams: false,
+      graphQL: { document: false, variables: false },
+      genAI: { inputs: false, outputs: false },
+      databaseQueryData: false,
+      queues: false,
+      stackFrameVariables: false,
+    },
   };
 }
