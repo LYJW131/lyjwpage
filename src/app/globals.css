@@ -329,8 +329,16 @@ button.paper-card {
   grid-template-rows: 0fr;
 }
 
-/* nth-child 上限须与 listening-card 的 VISIBLE_ROWS × 2 对齐。 */
+/* 行数上限 4 须与 listening-card 的 VISIBLE_ROWS 对齐，行高下限 56px。md 起卡片是固定槽高，视口变矮
+   （如多出 Up Next）时只排放得下的整行，末行才不会被卡片底边切掉；手机上卡片随内容长高，保底 4 行。
+   条目只留两屏（行数 × 2）。 */
+.recent-tracks-viewport {
+  min-height: calc(56px * 4);
+}
+
+/* 容器放在绝对定位的滚动层而不是视口上：Chromium 对高度不定的弹性项按测量阶段的高度求值尺寸查询。 */
 .recent-tracks {
+  container: recent-tracks / size;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -348,13 +356,43 @@ button.paper-card {
   width: 100%;
   height: 100%;
   grid-auto-flow: column;
-  grid-template-rows: repeat(var(--recent-track-rows), minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
   grid-auto-columns: 100%;
   grid-auto-rows: auto;
 }
 
 .recent-tracks-track > :nth-child(n + 9) {
   display: none;
+}
+
+@container recent-tracks (height < calc(56px * 4)) {
+  .recent-tracks-track {
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+  }
+
+  .recent-tracks-track > :nth-child(n + 7) {
+    display: none;
+  }
+}
+
+@container recent-tracks (height < calc(56px * 3)) {
+  .recent-tracks-track {
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .recent-tracks-track > :nth-child(n + 5) {
+    display: none;
+  }
+}
+
+@container recent-tracks (height < calc(56px * 2)) {
+  .recent-tracks-track {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .recent-tracks-track > :nth-child(n + 3) {
+    display: none;
+  }
 }
 
 @media (min-width: 48rem) {
@@ -382,6 +420,10 @@ button.paper-card {
   .live-media-pair.is-disconnected > .listening-shell {
     z-index: 1;
     left: 0;
+  }
+
+  .recent-tracks-viewport {
+    min-height: 56px;
   }
 
   .recent-tracks.is-wide {
