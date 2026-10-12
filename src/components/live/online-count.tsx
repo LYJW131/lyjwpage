@@ -2,7 +2,7 @@
 
 import NumberFlow from "@number-flow/react";
 import { CircleQuestionMark } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState, ViewTransition } from "react";
 
 import { StatusDot } from "@/components/ui/status-dot";
 import { useOnlineCount } from "@/hooks/use-online-count";
@@ -46,10 +46,10 @@ function SourceHint({ connected }: { connected: boolean }) {
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      if (!root.current?.contains(event.target as Node)) startTransition(() => setOpen(false));
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") startTransition(() => setOpen(false));
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -65,26 +65,28 @@ function SourceHint({ connected }: { connected: boolean }) {
         type="button"
         aria-label="Data source"
         aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => startTransition(() => setOpen((prev) => !prev))}
         className="-m-2 p-2 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
       >
         <CircleQuestionMark className="size-3.5" aria-hidden />
       </button>
 
       {open && (
-        <span className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-line bg-surface p-3">
-          <span className="label-mono block text-foreground">Data source</span>
-          <span className="mt-2 block text-xs normal-case leading-relaxed text-muted-foreground">
-            Counts foreground WebSocket connections live on a Cloudflare Workers Durable Object, across the production site and every preview build.
-          </span>
-          <span className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
-            <span className="label-mono text-muted-foreground">WebSocket</span>
-            <span className="label-mono flex items-center gap-1.5 text-foreground">
-              <StatusDot tone={connected ? "live" : "off"} />
-              {connected ? "Connected" : "Disconnected"}
+        <ViewTransition default="none" enter="source-hint" exit="source-hint">
+          <span className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-line bg-surface p-3">
+            <span className="label-mono block text-foreground">Data source</span>
+            <span className="mt-2 block text-xs normal-case leading-relaxed text-muted-foreground">
+              Counts foreground WebSocket connections live on a Cloudflare Workers Durable Object, across the production site and every preview build.
+            </span>
+            <span className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
+              <span className="label-mono text-muted-foreground">WebSocket</span>
+              <span className="label-mono flex items-center gap-1.5 text-foreground">
+                <StatusDot tone={connected ? "live" : "off"} />
+                {connected ? "Connected" : "Disconnected"}
+              </span>
             </span>
           </span>
-        </span>
+        </ViewTransition>
       )}
     </span>
   );
