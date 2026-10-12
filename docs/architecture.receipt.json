@@ -7,12 +7,12 @@
     "source": "isolated pinned checkout"
   },
   "specification": {
-    "sha256": "66a645884c8b92b6a0482f86f5b44ea60e0fe8be3b09b7fdc380ad6e9024910d",
-    "bytes": 15952
+    "sha256": "b42f2196df3566fb769cfc25192d3cdf77ebcedf375371bfb838bfa3ebf95ef9",
+    "bytes": 15947
   },
   "artifact": {
-    "sha256": "df48385e06d6aec8c3633db586ab5836a2d5a0bdb8ea4d314a886321cb891db7",
-    "bytes": 812804
+    "sha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
+    "bytes": 812794
   },
   "validation": {
     "checksPassed": 9,
@@ -25,7 +25,7 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "b85d882cbf7d78bd16679bbd38ce66a35e0c01ee",
+    "revision": "9de4de40d6bad7edb2e38af0bd18464a3fee9f97",
     "references": 47
   },
   "output": "architecture.html",
@@ -44,11 +44,11 @@
     "status": "pass",
     "visualReview": "not-requested",
     "provenance": "current",
-    "deliveryReceiptId": "add0db3a-d39a-4182-b8f5-50c40718c796",
+    "deliveryReceiptId": "08b71e74-bdb2-4351-97fe-fe549be6ca3b",
     "artifact": {
-      "path": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/apple-music-api-calibration-733500/docs/architecture.html",
-      "sha256": "df48385e06d6aec8c3633db586ab5836a2d5a0bdb8ea4d314a886321cb891db7",
-      "bytes": 812804
+      "path": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/wf_57534b25-505-5/docs/architecture.html",
+      "sha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
+      "bytes": 812794
     },
     "state": {
       "detail": "read",
@@ -753,7 +753,7 @@
       "contactSheet": null
     },
     "sidecars": {
-      "directory": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/apple-music-api-calibration-733500/.archify/evidence/architecture-sfnlZt",
+      "directory": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/wf_57534b25-505-5/.archify/evidence/architecture-MK7que",
       "receipt": "architecture.browser-check.json",
       "files": []
     }
@@ -1096,17 +1096,17 @@
     ],
     "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
   },
-  "visual_review": "passed: current HTML inspected at 1440px and 375px (no horizontal overflow, no console errors) and both native PNG exports inspected",
+  "visual_review": "passed: both native PNG exports inspected; HTML covered by the automated browser-check viewports only",
   "correction_rounds": 0,
   "static_diagram_review": "passed: both exported PNGs inspected for nodes, routes, labels and export bounds",
   "capture": {
     "status": "pass",
     "artifact": {
-      "path": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/apple-music-api-calibration-733500/docs/architecture.html",
-      "sha256": "df48385e06d6aec8c3633db586ab5836a2d5a0bdb8ea4d314a886321cb891db7",
-      "bytes": 812804
+      "path": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/wf_57534b25-505-5/docs/architecture.html",
+      "sha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
+      "bytes": 812794
     },
-    "evidenceDirectory": ".archify/evidence/architecture-sfnlZt"
+    "evidenceDirectory": ".archify/evidence/architecture-MK7que"
   },
   "viewports": [
     {
@@ -1334,13 +1334,13 @@
       "width": 3106,
       "height": 2141,
       "original": {
-        "path": ".archify/evidence/architecture-sfnlZt/architecture-light.viewer-original.png",
+        "path": ".archify/evidence/architecture-MK7que/architecture-light.viewer-original.png",
         "sha256": "daa18ad07d1a80563b6745507f003d3e1b3056dacedb9ff2331b2b76a2fdd13a",
         "bytes": 772672,
         "width": 3314,
         "height": 2284
       },
-      "artifactSha256": "df48385e06d6aec8c3633db586ab5836a2d5a0bdb8ea4d314a886321cb891db7",
+      "artifactSha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
       "sha256": "f233a6d8088c165b77b94fb8ee5b5e4f6c4e3161730ec2c071cf1cf2e59c0ac8",
       "bytes": 260913
     },
@@ -1359,13 +1359,13 @@
       "width": 3106,
       "height": 2141,
       "original": {
-        "path": ".archify/evidence/architecture-sfnlZt/architecture-dark.viewer-original.png",
+        "path": ".archify/evidence/architecture-MK7que/architecture-dark.viewer-original.png",
         "sha256": "d60476645bef0237aa6cca599abeebf47cd9cd2c68cc50590f536df808dcba3e",
         "bytes": 845221,
         "width": 3314,
         "height": 2284
       },
-      "artifactSha256": "df48385e06d6aec8c3633db586ab5836a2d5a0bdb8ea4d314a886321cb891db7",
+      "artifactSha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
       "sha256": "94dcd0290e9a0eb7ea11960333165abffc04d4495391e59e273871be67a9f7a6",
       "bytes": 249632
     }

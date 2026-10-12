@@ -1,5 +1,5 @@
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
-import type { TrophiesPayload } from "@/lib/types";
+import type { TrophiesPayload } from "@shared/types";
 
 
 export const HISTORY_BATCH_SIZE = 100;

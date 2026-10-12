@@ -1,5 +1,5 @@
 
-import type { PlaystationPresencePayload } from "./types.ts";
+import type { PlaystationPresencePayload } from "@shared/types.ts";
 
 export const PLAYSTATION_PRESENCE_KINDS = ["online", "busy", "offline"] as const;
 export type PlaystationPresenceKind = (typeof PLAYSTATION_PRESENCE_KINDS)[number];

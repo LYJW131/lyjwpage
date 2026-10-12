@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 import { prepareIngest } from "@shared/ingest/prepare";
 import { questMirror, questNow, QUEST_STALE_MS } from "@shared/quest";
@@ -26,7 +25,7 @@ test("Quest prepare validates the platform and freshness, excludes Discord accou
 });
 
 test("Quest commit persists heartbeats, ignores old reports and only pushes state changes", async () => {
-  installStorageForTests(new FakeStorage());
+  installTestStorage(new FakeStorage());
   try {
     const commit = (raw: unknown, at: number) => withRequestState(async () => {
       const command = await prepareIngest("quest", raw, at);
@@ -36,7 +35,7 @@ test("Quest commit persists heartbeats, ignores old reports and only pushes stat
     const first = await commit(report(), NOW);
     assert.equal(first.ok, true);
     assert.equal(first.effects.filter((x) => x.kind === "event").length, 1);
-    const tagsOf = (result: typeof first) => result.effects.flatMap((x) => (x.kind === "tags" ? x.tags : []));
+    const tagsOf = (result: Pick<typeof first, "effects">) => result.effects.flatMap((x) => (x.kind === "tags" ? x.tags : []));
     assert.deepEqual(tagsOf(first), ["quest-now"], "开始玩：首页的卡片要出现");
     const heartbeat = await commit(report(NOW + 60_000), NOW + 60_000);
     assert.equal(heartbeat.effects.length, 0);
@@ -49,7 +48,7 @@ test("Quest commit persists heartbeats, ignores old reports and only pushes stat
     assert.equal((await questMirror.get())?.playing, null);
     const recovered = await commit(report(NOW + 80_000 + QUEST_STALE_MS), NOW + 80_000 + QUEST_STALE_MS);
     assert.equal(recovered.effects.filter((x) => x.kind === "event").length, 1);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("Quest current state distinguishes no data, known idle and stale activity", () => {

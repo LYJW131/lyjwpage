@@ -65,7 +65,7 @@ struct StatusEndpoint<Payload: Decodable & Sendable>: Sendable {
     let path: String
 }
 
-// 对着站点 `src/lib/status-views.ts#STATUS_VIEWS`，只收 App 用得到的。
+// 对着站点 `shared/status-views.ts#STATUS_VIEWS`，只收 App 用得到的。
 enum Status {
     static let desktop = StatusEndpoint<DesktopPayload>(path: "/api/status/desktop")
     static let timezone = StatusEndpoint<TimezonePayload>(path: "/api/status/timezone")

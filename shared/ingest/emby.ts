@@ -1,7 +1,7 @@
-import type { EmbyNowPlaying, StoredWatchingItem } from "@/lib/emby-store";
-import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
-import { number, object, text } from "@/lib/json";
-import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
+import type { EmbyNowPlaying, StoredWatchingItem } from "@shared/emby-store";
+import { IMAGE_OBJECT_KEY } from "@shared/asset-url";
+import { number, object, text } from "@shared/json";
+import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@shared/types";
 
 import { hasStoredImage, type ImageBucket } from "./r2-assets";
 

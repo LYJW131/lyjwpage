@@ -1,6 +1,6 @@
 import sharp from "sharp";
 
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 const SOURCE_PX = 512;
 

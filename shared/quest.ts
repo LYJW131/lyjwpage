@@ -1,4 +1,4 @@
-import { mirrorKey } from "@/lib/storage";
+import { mirrorKey } from "@shared/storage";
 
 export const QUEST_STALE_MS = 5 * 60_000;
 
@@ -23,7 +23,7 @@ export type QuestPresence = {
 // discordStatus 只在上报与存储里：它是 Discord 账号的在线状态，不是 Quest 本身，公开的 QuestNow 不带。
 export type QuestNow = Omit<QuestPresence, "discordStatus"> & { available: boolean };
 
-export const questMirror = mirrorKey<QuestPresence>(["quest", "presence"], (value) => value.observedAt);
+export const questMirror = mirrorKey<QuestPresence>(["quest", "presence"]);
 
 export function questNow(presence: QuestPresence | null, now = Date.now()): QuestNow {
   const available = presence != null && now - Math.min(presence.observedAt, presence.receivedAt) < QUEST_STALE_MS;

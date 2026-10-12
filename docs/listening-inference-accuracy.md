@@ -9,7 +9,7 @@
 - 播放端：一台 iPhone 连续放一个歌单，没有手动切歌；Mac 整段停在暂停，不提供在放的实测，量到的是别处播放这一路自己的精度。
 - 基准：本机每 5 秒拉一次 `/v1/me/recent/played/tracks`（与采集 Worker 同一份 user token，`limit=10`），两段共 56 分钟，中间停拉约 8 分钟。列表最前那首换了就记一次开播，取前后两轮的中点（误差 ±2.5 秒），放到下一首开播或时长用完；停拉那段只知道中间放过，不计分。
 - 生产窗口：同一时段生产采集 Worker（每分钟一轮）记下的 `(since, t]`，从 D1 `listening_plays` 只读取出。
-- 数据：`src/lib/testing/recent-tracks-session.json`，Apple 条目 id 换成了 `t01`…，曲名、艺人、时长照原样。回放与打分在 `src/lib/testing/listening-replay.ts`。
+- 数据：`shared/testing/recent-tracks-session.json`，Apple 条目 id 换成了 `t01`…，曲名、艺人、时长照原样。回放与打分在 `shared/testing/listening-replay.ts`。
 - 口径：标对 = 可计分的播放时间里被同名段覆盖的比例；开播误差 = 同名、开播最近的那一段减基准开播。按某个间隔回放时，每 N 轮取一轮，起点分别取 0…N−1，各相位合并统计。
 
 ## 上榜时机
@@ -50,4 +50,4 @@
 
 ## 复现
 
-`node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/listening-replay.mts` 打印新算法各间隔与生产窗口的数字。`src/lib/pulse-listening-replay.test.mts` 守住每分钟一轮的下限。
+`node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/listening-replay.mts` 打印新算法各间隔与生产窗口的数字。`shared/pulse-listening-replay.test.mts` 守住每分钟一轮的下限。

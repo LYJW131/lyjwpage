@@ -1,7 +1,7 @@
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
-import { ContributorsUnavailable, fetchRecentCommits, fetchRepoStats, repoIdFromUrl, type RepoTotals } from "@/lib/github-repo";
-import { site } from "@/lib/site";
-import type { GithubRepoPayload } from "@/lib/types";
+import { ContributorsUnavailable, fetchRecentCommits, fetchRepoStats, repoIdFromUrl, type RepoTotals } from "@shared/github-repo";
+import { site } from "@shared/site";
+import type { GithubRepoPayload } from "@shared/types";
 
 import { ok, skipMissing, type Job } from "../job";
 

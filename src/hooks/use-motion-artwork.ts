@@ -1,6 +1,6 @@
 "use client";
 import { backendUrl } from "@/lib/backend-url";
-import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
+import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
 import { useEffect, useState } from "react";
 
 export type MotionArtworkResult = {

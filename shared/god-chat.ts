@@ -1,5 +1,5 @@
 export { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "./ai-paths";
-import type { StatusViewKey } from "@/lib/status-views";
+import type { StatusViewKey } from "@shared/status-views";
 import { BUILD_TOKEN_MAX_CHARS, type BuildProposal } from "./build-routine";
 
 import { isGodChatServedTier, type GodChatEffort, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";

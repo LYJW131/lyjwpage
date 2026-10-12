@@ -1,6 +1,6 @@
-import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
-import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from "@/lib/pulse-assessments";
-import { PULSE_TTL_MS } from "@/lib/limits";
+import { codingObservationsKey, cursorObservationsKey } from "./coding-pulse";
+import { pulseAssessmentsKey, pulseAssessmentAttemptKey } from "./pulse-assessments";
+import { PULSE_TTL_MS } from "@shared/limits";
 import { codingBucketsKey } from "@shared/coding-store";
 import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { CODING_WINDOW_MS } from "@shared/pulse-coding";

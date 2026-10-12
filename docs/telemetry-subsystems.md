@@ -54,7 +54,7 @@
   - **状态翻面即时推**：前台应用切换、切歌、插拔充电头、上报器上下线、列表变动等事件通过 WebSocket 广播。
   - **连续滚动指标不推送**：功率曲线采样、token 用量这类累计读数由卡片按自己的间隔轮询，避免推送沦为无谓的频繁轮询。
   - **事件负载设计**：
-    - 带数据的事件（登记表 `src/lib/status-views.ts` 里带 `event` 的视图）：**一律携带那条端点的整份数据**（充电头不带历史点，由浏览器接上已有曲线），浏览器收到后直接更新 SWR 缓存，避免回源请求打满并发。
+    - 带数据的事件（登记表 `shared/status-views.ts` 里带 `event` 的视图）：**一律携带那条端点的整份数据**（充电头不带历史点，由浏览器接上已有曲线），浏览器收到后直接更新 SWR 缓存，避免回源请求打满并发。
     - `presence`：**仅发送失效通知**（payload 为 `null`），浏览器根据本地保存的 `lastSeenAt` 和 `heartbeatWindowMs` 自行判定是否真正超时断流。
 - **兜底轮询**：推送覆盖整份的实时视图（登记表 `pushCovers`）在 WebSocket 连着时只保留兜底轮询（`src/lib/poll-schedule.ts#PUSH_SAFETY_NET_MS`）；断开时回到卡片自己的快间隔。重连后回源一次带推送事件的视图（登记表 `event`），补上断线期间漏掉的推送；页面在后台时只记下待补，回到前台再取。重连退避与稳定判据见 `src/lib/live-reconnect.ts`。带心跳判活（`lastSeenAt`）或滚动读数的卡不退，照常轮询。
 
@@ -145,16 +145,16 @@
 Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──> 上报入口 ──> 状态核心 SQLite
 ```
 - 设备序列号（`device.serialNumber`）随上报存进状态核心，只用来判断结构变化（`workers/api/src/stores/charger-store.ts`、`powerbank-store.ts` 的 `structuralKey`）；状态接口和推送都经 `shared/charging-devices.ts` 的投影出去，不带序列号。
-- 充电头卡片的端口认不出设备时，在设备名的位置画电压和电流（`src/lib/charging-device.ts#formatPortElectrical`，缺一就写 Unknown）；认得出就只写设备名。外壳名字和图标用公开状态里的 `cover`，放在卡片角标上。iOS 的充电段同样只在设备未知时画这两项。
+- 充电头卡片的端口认不出设备时，在设备名的位置画电压和电流（`shared/charging-device.ts#formatPortElectrical`，缺一就写 Unknown）；认得出就只写设备名。外壳名字和图标用公开状态里的 `cover`，放在卡片角标上。iOS 的充电段同样只在设备未知时画这两项。
 
 ### 本地高速 SSE 切换
 - 当在内网 Mac 访问 `/local/charging` 时，会在浏览器 `localStorage` 写入标记并跳转首页。
 - 此时页面跳过远端 Worker，直接连接本机 `http://127.0.0.1:8787/sse/charger` 和 `/sse/powerbank`，享受约 1 Hz 的秒级高刷功率流。连接断开则平滑降级回远端推送。
 
 ### 功率曲线与历史回放
-- **服务端环形缓冲**：StateHub 的 SQLite 为充电头保留最近 `CHARGER_HISTORY_LIMIT`（`src/lib/limits.ts`）个采样点（最小间隔 `MIN_SAMPLE_GAP_MS`，见 `workers/api/src/stores/charger-store.ts`），新进网页可直接绘制完整历史曲线。
+- **服务端环形缓冲**：StateHub 的 SQLite 为充电头保留最近 `CHARGER_HISTORY_LIMIT`（`shared/limits.ts`）个采样点（最小间隔 `MIN_SAMPLE_GAP_MS`，见 `workers/api/src/stores/charger-store.ts`），新进网页可直接绘制完整历史曲线。
 - **真实时间映射**：图表横坐标必须按时间戳间距绘制，禁止按采样序号等宽平铺，以真实还原丢包或断流空档。
-- **断流检测**：超过 `chargerStaleAfterMs()`（`src/lib/anker.ts`：`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）未收到新读数，状态判定为断流，卡片置灰。
+- **断流检测**：超过 `chargerStaleAfterMs()`（`workers/api/src/anker.ts`：`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）未收到新读数，状态判定为断流，卡片置灰。
 
 ### A110G 充电宝差异
 - 充电宝电量变化缓慢，因此服务端**不记录历史曲线**，仅保存当前快照。
@@ -178,10 +178,10 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 ### 合并规则与出口
 - 同一 agent 有账号级来源时只算它，其余来源的同 agent 账本标 `superseded`、不相加；只有设备级 / 环境级来源时相加（claude 的本机与云端，前提是云端遥测变量只配在云端）。规则在 `shared/coding-usage-sources.ts#resolveCodingUsageSources`。
 - 日子或会话数变了才重算视图与年度（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前三模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与前几名模型；只有状态变了就在存着的视图上换状态，不重扫日行。Mac、agents 采集时刻比存着的旧的账本不收；云端 OTLP 的账本由状态核心按提交顺序做差攒出，不走这道淘汰，也只收 cumulative 时序。存储键与归档见 [coding agent 的 token 用量](../workers/api/README.md#coding-agent-的-token-用量)。
-- 三条读出口都在实时层（`src/lib/coding-usage.ts`）：
+- 三条读出口都在实时层（`workers/api/src/coding-usage.ts`）：
   - `/api/status/coding`：视图原样给，不推送，卡片自己轮询。
   - `/api/status/coding/now`：各 agent 各来源最近一条事件，带 Mac 的存活；变了推 `coding-now`，带整份。
-  - `/api/status/coding/year`：按站点今天切出 53 周（`src/lib/coding-year.ts#encodeCodingYear`），任一来源有日行就出图；不推送、没有首屏失效，年度图自己长间隔轮询、切回标签页时再取；首屏那份放得比轮询间隔还久时挂载补取一次（`src/lib/poll-schedule.ts#fallbackOutlived`）。
+  - `/api/status/coding/year`：按站点今天切出 53 周（`shared/coding-year.ts#encodeCodingYear`），任一来源有日行就出图；不推送、没有首屏失效，年度图自己长间隔轮询、切回标签页时再取；首屏那份放得比轮询间隔还久时挂载补取一次（`src/lib/poll-schedule.ts#fallbackOutlived`）。
 
 ### 卡片怎么判
 - 展示名、品牌图标、占哪种行（全量面板、紧凑行、只进合计与年度不单独占行）只在站点登记表 `src/lib/coding-agents.ts#CODING_AGENTS`；来源只报 agent id，登记表里没有的 id 用 id 当名字、占一行紧凑行。
@@ -209,7 +209,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 - **凭据完全隔离**：容器内部独立维护各家 CLI（Claude Code、Codex 等）登录 Session，严禁复制宿主机凭据，防止 refresh token 竞态失效。
 - **心跳与超时**：
   - 即使数据无变化，每轮上报依然执行（作为存活心跳）。
-  - 限额在可滞后层，过没过时由浏览器按 `AGENT_LIMITS_STALE_MS` 判断，超过就呈现 Unavailable（源：`src/lib/freshness.ts#AGENT_LIMITS_STALE_MS`）。
+  - 限额在可滞后层，过没过时由浏览器按 `AGENT_LIMITS_STALE_MS` 判断，超过就呈现 Unavailable（源：`shared/freshness.ts#AGENT_LIMITS_STALE_MS`）。
 
 ---
 
@@ -220,7 +220,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 - **模块静默机制**：
   - 仅携带内容发生变更的模块。
   - 若所有模块指纹均无变化，发送空 `modules` 的**纯心跳信封**（节奏由上报器定），仅用于维持存活时间戳，不写入历史数据表。
-- **优雅离线**：Mac 休眠或关机时主动发送 `presence: "offline"`；崩溃或断网由服务端根据 `HEARTBEAT_WINDOW_MS`（默认值见 `src/lib/freshness.ts`）自动兜底判定。
+- **优雅离线**：Mac 休眠或关机时主动发送 `presence: "offline"`；崩溃或断网由服务端根据 `HEARTBEAT_WINDOW_MS`（默认值见 `shared/freshness.ts`）自动兜底判定。
 
 ### 前台应用图标直传 R2
 - **系统原生编码**：Mac 端使用 macOS 原生接口把前台应用图标缩成小图并计算 SHA-256，直传 R2。
@@ -255,9 +255,9 @@ payload: >-
 
 ### 设备优先级抢占与暂停宽限期
 - `/api/status/listening/now` 动态裁决优先级：
-  `MacBook 正在播放` > `MacBook 暂停未过宽限期` > `HomePod 正在播放` > `HomePod 暂停未过宽限期`（宽限期 `src/lib/now-listening.ts#MUSIC_PAUSE_GRACE_MS`）。
+  `MacBook 正在播放` > `MacBook 暂停未过宽限期` > `HomePod 正在播放` > `HomePod 暂停未过宽限期`（宽限期 `shared/now-listening.ts#MUSIC_PAUSE_GRACE_MS`）。
 - 服务端通过 `observedAt` 动态计算 `expiresInMs` 下发给客户端，由浏览器精确调度下一次查询时间，避免在服务端无状态实例上挂载定时器。
-- 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等任一客户端）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），按时长还没放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS`（`src/lib/limits.ts`）就给开播时刻、时长与理想误差；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」、估算进度和虚线框里的理想误差（如 `±3s`），不同步歌词；放完再留 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首被推过来，到点还没有就撤下并重取一次。`elsewhere.next` 是按循环或容器顺序推出的下一首（规则见 [最近在听](../workers/api/README.md#最近在听)），卡片把它放在歌词的位置：独占整行时在 Hero 右栏，否则在 Hero 下面一行，带 `Loop` / `In Order` 标明依据；推不出来就不显示。当前这首按时长放完、下一首还没被看见时，Hero 先换成猜的那首（开播取上一首的推断曲终，徽标换成依据），确认上榜的是同一首就原地接上，等待窗口过了还没确认就照常撤下。
+- 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等任一客户端）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），按时长还没放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS`（`shared/limits.ts`）就给开播时刻、时长与理想误差；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」、估算进度和虚线框里的理想误差（如 `±3s`），不同步歌词；放完再留 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首被推过来，到点还没有就撤下并重取一次。`elsewhere.next` 是按循环或容器顺序推出的下一首（规则见 [最近在听](../workers/api/README.md#最近在听)），卡片把它放在歌词的位置：独占整行时在 Hero 右栏，否则在 Hero 下面一行，带 `Loop` / `In Order` 标明依据；推不出来就不显示。当前这首按时长放完、下一首还没被看见时，Hero 先换成猜的那首（开播取上一首的推断曲终，徽标换成依据），确认上榜的是同一首就原地接上，等待窗口过了还没确认就照常撤下。
 
 ---
 
@@ -319,6 +319,6 @@ payload: >-
   （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code 的 token 桶）现算。Clef 只给 Coding 打十五分钟强度与模式，
   只在悬停里出现；别的道不再有模型分。
 - Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（不含 cache read），不带模型名和来源；
-  取桶规则见 `src/lib/pulse.ts#tokensLaneView`。
+  取桶规则见 `workers/api/src/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
 - 这些事实由 API 定时任务按归档水位写入 D1 的事实表（迁移 `0007_history_pulse.sql`；周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）。

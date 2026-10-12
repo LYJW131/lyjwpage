@@ -17,7 +17,7 @@
 
 一次超时不把正在醒着的主机打进闲档。`200` 和 `620` 立刻生效。醒着和没醒对调时立刻打一轮，好接上或撤掉「正在游玩」；休息和关机是同一档，来回切不额外打。退避没到时，这些都不放行。
 
-间隔算的是上一轮**开始**的时刻，写在打 PSN 之前。站点断流窗口 `src/lib/freshness.ts` 的 `PLAYSTATION_STALE_MS` 锚的是闲档：要放宽闲档，先改站点并部署完，再改 `src/cadence.ts` 的 `IDLE_TICK_INTERVAL_MS`。
+间隔算的是上一轮**开始**的时刻，写在打 PSN 之前。站点断流窗口 `shared/freshness.ts` 的 `PLAYSTATION_STALE_MS` 锚的是闲档：要放宽闲档，先改站点并部署完，再改 `src/cadence.ts` 的 `IDLE_TICK_INTERVAL_MS`。
 
 一轮里：presence 每个完整 tick 都发（那一封是心跳）；游玩列表变了才一起带；奖杯只在目录变了才另发一封。PSN 前面的 CDN 回拒绝页或网关错误时按连败次数退避（`src/state.ts` 的 `backoffMs`），成功一轮清零。
 

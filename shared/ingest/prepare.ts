@@ -1,4 +1,4 @@
-import { reporterBlockOf, type ReporterBlock } from "@/lib/reporter-ledger";
+import { reporterBlockOf, type ReporterBlock } from "@shared/reporter-ledger";
 
 import { prepareAgentLimits, type PreparedAgentLimits } from "./agents";
 import { prepareClaudeCloudUsage, type PreparedClaudeCloudUsage } from "./claude-cloud";

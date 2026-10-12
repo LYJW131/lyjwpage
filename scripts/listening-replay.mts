@@ -7,7 +7,7 @@ import {
   replayAtCadence,
   replayNextAtCadence,
   scoreReplay,
-} from "@/lib/testing/listening-replay";
+} from "@shared/testing/listening-replay";
 
 const session = loadRecordedSession();
 const truth = recordedTruth(session);

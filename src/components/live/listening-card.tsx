@@ -32,9 +32,9 @@ import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useLiveNowListening } from "@/hooks/use-stale";
 import { useExpiryRefetch, useStatus } from "@/hooks/use-status";
 import { stableKeys } from "@/lib/keys";
-import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
+import { LISTENING_ELSEWHERE_HOLD_MS } from "@shared/limits";
 import { cueAt, NO_CUE } from "@/lib/lyrics-cue";
-import type { LyricLine } from "@/lib/lyrics-ttml";
+import type { LyricLine } from "@shared/lyrics-ttml";
 import {
   HERO_VARIANTS,
   LIST_DURATION,
@@ -54,10 +54,10 @@ import type {
   NowListeningPayload,
   StatusResponse,
   TrackMotion,
-} from "@/lib/types";
+} from "@shared/types";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
-import { liveTrack } from "@/lib/home-layout";
+import { liveTrack } from "@shared/home-layout";
 import { fetchCatalogSongAlbum, queueOptionsFor } from "@/lib/web-player";
 import { cn } from "@/lib/utils";
 

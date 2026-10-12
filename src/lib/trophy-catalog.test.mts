@@ -5,7 +5,7 @@ import type { Cache, ScopedMutator } from "swr";
 
 import { trophiesTilePath } from "@/lib/paths";
 import { fetchCatalog, prefetchCatalogs } from "@/lib/trophy-catalog";
-import type { TrophiesPayload, TrophyTitle } from "@/lib/types";
+import type { TrophiesPayload, TrophyTitle } from "@shared/types";
 
 process.env.PUBLIC_BACKEND_URL = "https://api.test";
 

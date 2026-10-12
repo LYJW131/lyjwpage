@@ -1,8 +1,8 @@
 import { MCP_PATH } from "@shared/mcp";
 
-import { IMAGE_PATH_PREFIX } from "@/lib/asset-url";
+import { IMAGE_PATH_PREFIX } from "@shared/asset-url";
 import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
-import { SENTRY_RELAY_PREFIX } from "@/lib/sentry";
+import { SENTRY_RELAY_PREFIX } from "@shared/sentry";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
 
 export const HOME_CACHE_CONTROL =

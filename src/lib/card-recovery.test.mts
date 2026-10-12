@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { RECOVERY_DELAYS_MS, RECOVERY_FORGET_MS, createFaultLedger, describeFault, primeCardCache } from "./card-recovery.ts";
 import { acceptPush, guardPolled, writeGeneration } from "./status-reads.ts";
-import { STATUS_VIEWS, viewKeyByPath } from "./status-views.ts";
-import type { StatusResponse } from "./types.ts";
+import { STATUS_VIEWS, viewKeyByPath } from "@shared/status-views.ts";
+import type { StatusResponse } from "@shared/types.ts";
 
 test("反复崩：自动重试的间隔逐步放长，用完之后不再自动试", () => {
   const ledger = createFaultLedger();

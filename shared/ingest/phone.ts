@@ -1,5 +1,5 @@
-import { object } from "@/lib/json";
-import type { ReportedWorkouts } from "@/lib/types";
+import { object } from "@shared/json";
+import type { ReportedWorkouts } from "@shared/types";
 import type { ActivityReport } from "@shared/activity";
 
 import { normalizeActivity } from "./activity";
