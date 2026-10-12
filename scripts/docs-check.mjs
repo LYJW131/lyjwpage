@@ -9,8 +9,6 @@ const posix = path.posix;
 export const DOC_TYPES = ["reference", "runbook", "decision", "record"];
 export const ROOT_AGENTS_MAX_LINES = 150;
 export const NESTED_AGENTS_MAX_LINES = 60;
-export const NEXT_BLOCK_BEGIN = "<!-- BEGIN:nextjs-agent-rules -->";
-export const NEXT_BLOCK_END = "<!-- END:nextjs-agent-rules -->";
 
 const PATH_EXTENSIONS = new Set([
   "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "md", "mdx",
@@ -328,13 +326,8 @@ export function checkMarkdown(ctx, file, text, { docType = null } = {}) {
     return other === null ? null : collectAnchors(other);
   };
 
-  let managed = false;
   for (const line of scanLines(text)) {
-    if (line.text.trim() === NEXT_BLOCK_BEGIN) managed = true;
-    if (managed || line.inFence) {
-      if (line.text.trim() === NEXT_BLOCK_END) managed = false;
-      continue;
-    }
+    if (line.inFence) continue;
     const allow = ALLOW_RE.exec(line.text);
     if (allow) {
       if (!allow[1].trim()) add(line.n, "allow", "`<!-- allow: … -->` 缺少理由");
@@ -391,15 +384,6 @@ export function checkMarkdown(ctx, file, text, { docType = null } = {}) {
 }
 
 
-export function countAgentsLines(text, { root }) {
-  const lines = text.replace(/\n$/, "").split("\n");
-  if (!root) return lines.length;
-  const begin = lines.findIndex((line) => line.trim() === NEXT_BLOCK_BEGIN);
-  const end = lines.findIndex((line) => line.trim() === NEXT_BLOCK_END);
-  if (begin === -1 || end === -1 || end < begin) return lines.length;
-  return lines.length - (end - begin + 1);
-}
-
 function isDocsPage(file) {
   return file.startsWith("docs/") && /\.md$/.test(file) && !/(^|\/)(AGENTS|CLAUDE)\.md$/.test(file);
 }
@@ -413,8 +397,8 @@ export function checkStructure(ctx, mdFiles) {
       const text = ctx.text(file) ?? "";
       const isRoot = file === "AGENTS.md";
       const limit = isRoot ? ROOT_AGENTS_MAX_LINES : NESTED_AGENTS_MAX_LINES;
-      const count = countAgentsLines(text, { root: isRoot });
-      if (count > limit) add(file, 1, "size", `${count} 行，超过 ${limit} 行上限${isRoot ? "（不计 next 自动块）" : ""}：细节挪到 README / docs，这里只留规则和指针`);
+      const count = text.replace(/\n$/, "").split("\n").length;
+      if (count > limit) add(file, 1, "size", `${count} 行，超过 ${limit} 行上限：细节挪到 README / docs，这里只留规则和指针`);
       const companion = posix.join(posix.dirname(file), "CLAUDE.md");
       const claude = ctx.text(companion);
       if (claude === null) add(file, 1, "pair", `同目录缺 ${companion}（内容一行 @AGENTS.md，Claude Code 只按需载入 CLAUDE.md）`);
