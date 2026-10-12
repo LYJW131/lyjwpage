@@ -46,8 +46,13 @@ test("/relay POST 把信封转到配置的 ingest 端点", async () => {
     return new Response("ok", { status: 200 });
   }) as typeof fetch;
   const result = await relaySentryEnvelope(relayRequest(), DSN, fetcher);
-  assert.deepEqual(calls, [{ url: ENVELOPE_TARGET, method: "POST", redirect: "error" }]);
+  assert.deepEqual(calls, [{ url: ENVELOPE_TARGET, method: "POST", redirect: "manual" }]);
   assert.equal("response" in result && result.response.status, 200);
+});
+
+test("ingest 回 3xx 时 502，不把重定向转给浏览器", async () => {
+  const fetcher = (async () => new Response(null, { status: 302, headers: { Location: "https://evil.example.com/" } })) as typeof fetch;
+  assert.deepEqual(await relaySentryEnvelope(relayRequest(), DSN, fetcher), { reject: 502 });
 });
 
 test("信封对不上站点项目时 403，根本不发请求", async () => {
