@@ -25,14 +25,17 @@ import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { issuePass, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { admitDesign, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
-import { designApi, designTurn, turnMatches, type DesignTurnInput } from "./designer";
+import { admitDesign, claimDesignOpen, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
+import { designApi, designTurn, turnMatches, type DesignApi, type DesignTurnInput, type SessionEvent } from "./designer";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
+// 抢输开场的补发等对方把开场发进会话：那边只隔着建事件流与一次发送，几秒内就该落地。
+const OPENED_TURN_POLL_MS = 500;
+const OPENED_TURN_POLLS = 20;
 const UPGRADE_NOTE = "The Small Fry judged this message beyond its rank and handed it to you. Nothing of its draft is shown to the visitor; answer the visitor's latest message fully yourself.";
 const UPGRADE_TOOL: Anthropic.Beta.BetaTool = {
   name: "request_upgrade",
@@ -171,8 +174,11 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
   const api = designApi(client, env);
   // 设计会话的首回合推迟到访客同意之后：同意由客户端扣下 resume 请求来表达，Worker 见空会话即补开场，不重放校验。
-  const priorTurn = parsed.resume && design ? await api.turn(design.sessionId) : undefined;
-  if (parsed.resume && (!design || (priorTurn!.length > 0 && !turnMatches(priorTurn!, latest)))) {
+  // 开场每个会话只发一次：同时到的补发（复制的标签页）抢不到开场，就等对方的开场落进会话，再按断线补发跟着看。
+  let priorTurn = parsed.resume && design ? await api.turn(design.sessionId) : undefined;
+  const opening = priorTurn?.length === 0 && await claimDesignOpen(env, design!.sessionId);
+  if (priorTurn?.length === 0 && !opening) priorTurn = await openedTurn(api, design!.sessionId, abort.signal);
+  if (parsed.resume && (!design || (!opening && !turnMatches(priorTurn!, latest)))) {
     return fail(409, "The interrupted reply could not be recovered. Send your message again.", undefined, "nothing_to_resume");
   }
   const body = new ReadableStream<Uint8Array>({
@@ -190,7 +196,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
         let outcome: TurnOutcome;
         if (design) {
           const input: DesignTurnInput = parsed.resume
-            ? priorTurn!.length ? { kind: "resume" } : { kind: "open", history: await plannerHistory(history, env) }
+            ? opening ? { kind: "open", history: await plannerHistory(history, env) } : { kind: "resume" }
             : { kind: "reply", text: latest };
           outcome = await plan(design.sessionId, input);
         } else {
@@ -222,6 +228,15 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
     },
   });
   return new Response(body, { headers });
+}
+
+async function openedTurn(api: DesignApi, sessionId: string, signal: AbortSignal): Promise<SessionEvent[]> {
+  for (let tries = 0; tries < OPENED_TURN_POLLS && !signal.aborted; tries++) {
+    await new Promise((resolve) => setTimeout(resolve, OPENED_TURN_POLL_MS));
+    const turn = await api.turn(sessionId);
+    if (turn.length) return turn;
+  }
+  return [];
 }
 
 async function planTurn({ views, ...turn }: Parameters<typeof designTurn>[0] & { views: string[] }): Promise<TurnOutcome> {

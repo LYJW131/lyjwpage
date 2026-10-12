@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent } from "@/lib/chat-consent";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
-import { activeChatDesign, chatArchive, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
+import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -83,7 +83,7 @@ function TurnstileScript({ onReady, onError }: { onReady: () => void; onError: (
 }
 
 type Reply = Omit<ChatBubble, "role" | "content">;
-type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; handoff: boolean };
+type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; keep: ChatBubble[]; handoff: boolean };
 const RESUME_DELAY_MS = 2000;
 const EMPTY_MESSAGES: ChatBubble[] = [];
 // 须与 globals.css 里 .design-halo 的动画总时长一致。
@@ -290,7 +290,7 @@ function Conversation({ className, archive, session: conversation }: { className
         ),
     );
     let reply = "";
-    // 补发只取回规划者那一段，交接回合里 Sonnet 的开场白拿不回来，分隔线画在最前面。
+    // 交接回复没盖章就被补发整条替掉，Sonnet 的开场白拿不回来，分隔线画在规划者回复的最前面。
     let meta: Reply = resumed?.handoff ? { designAt: 0 } : {};
     const session = sessionRef.current;
     const bubble = (): ChatBubble => ({ role: "assistant", content: reply, ...meta, ...(meta.designAt !== undefined && designConsent.getSnapshot() ? { designRevealed: true } : {}) });
@@ -298,6 +298,7 @@ function Conversation({ className, archive, session: conversation }: { className
       conversation ? chatArchive.session(conversation.id)?.messages ?? messages : messages,
       user,
       next,
+      resumed?.keep,
     );
     const show = () => {
       if (sessionRef.current === session) setMessages(replyMessages(bubble()), false);
@@ -401,7 +402,7 @@ function Conversation({ className, archive, session: conversation }: { className
       if (sessionRef.current === session) {
         const kept = reply || meta.cards?.length || meta.proposals?.length || meta.asks?.length;
         if (dropped) {
-          setMessages([...replyMessages(), user, ...(kept ? [bubble()] : [])]);
+          setMessages([...replyMessages(), user, ...(resumed?.keep ?? []), ...(kept ? [bubble()] : [])]);
           if (resumed) setError("The connection dropped. Reload the page to get the rest of the reply.");
           else setTimeout(() => resumeRef.current(), RESUME_DELAY_MS);
         } else {
@@ -424,18 +425,12 @@ function Conversation({ className, archive, session: conversation }: { className
     // 没同意设计时扣着令牌，resume: true 不带 designToken 会被 Worker 拒绝：补发等同意之后再走。
     if (!current || !activeChatDesign(current.design) || !designConsent.getSnapshot()) return;
     const list = current.messages;
-    const at = list.map((message) => message.role).lastIndexOf("user");
-    const next = list[at + 1];
-    const after = list.length - 1 - at;
-    // 设计开场推迟到同意后：盖章的交接回复允许补发一次开场；它后面没跑完的规划者回复按断线补发同样放行。
-    const resumable =
-      after === 0 ||
-      (after === 1 && !next?.seal) ||
-      (next?.seal !== undefined && next.designAt !== undefined && (after === 1 || (after === 2 && !list[at + 2]?.seal)));
-    if (at < 0 || !resumable) return;
+    const point = chatResumePoint(list);
+    if (!point) return;
+    const { at, keep, handoff } = point;
     const user = { ...list[at], id: list[at].id ?? crypto.randomUUID() };
     if (!list[at].id) setMessages([...list.slice(0, at), user, ...list.slice(at + 1)], false);
-    void send(user.content, undefined, { user, before: list.slice(0, at), handoff: list[at + 1]?.designAt !== undefined });
+    void send(user.content, undefined, { user, before: list.slice(0, at), keep, handoff });
   }
 
   useEffect(() => {
@@ -693,7 +688,8 @@ function Conversation({ className, archive, session: conversation }: { className
                       const messageLang = textLanguage(messages.slice(0, index + 1).reverse().find((m) => m.role === "user")?.content ?? "");
                       // designRevealed 是这条回复被展示过的事实，与现在是否还同意无关：同意失效后退出，看过的规划仍可读，没看过的仍藏。
                       const unrevealedDesign = message.designAt !== undefined && !designConsented && message.designRevealed !== true;
-                      const waitingDesignConsent = unrevealedDesign && conversation?.design !== undefined && index === lastDesignAtIndex;
+                      // 会话还开着就要重新问：对话代码换版后同意失效，看过的内容照样显示，但不问就会把下一条悄悄发去普通对话。
+                      const waitingDesignConsent = message.designAt !== undefined && !designConsented && conversation?.design !== undefined && index === lastDesignAtIndex;
                       const designConsentNode = waitingDesignConsent ? (
                         <DesignConsentPrompt
                           language={messageLang}
