@@ -16,7 +16,7 @@ async function fetchAvatar(url: URL): Promise<Uint8Array | null> {
   return new Uint8Array(await res.arrayBuffer());
 }
 
-export async function githubAvatarSource(buildId: string): Promise<Uint8Array | null> {
+export async function githubAvatarSource(): Promise<Uint8Array | null> {
   const candidates = [
     `https://avatars.githubusercontent.com/u/${site.githubId}`,
     `https://avatars.githubusercontent.com/${site.githubLogin}`,
@@ -24,7 +24,6 @@ export async function githubAvatarSource(buildId: string): Promise<Uint8Array | 
   for (const base of candidates) {
     const url = new URL(base);
     url.searchParams.set("s", String(SOURCE_PX));
-    url.searchParams.set("b", buildId);
     try {
       const source = await fetchAvatar(url);
       if (source) return source;
@@ -33,25 +32,6 @@ export async function githubAvatarSource(buildId: string): Promise<Uint8Array | 
     }
   }
   return null;
-}
-
-const CARD_PX = 128;
-
-export async function githubAvatarDataUri(source: Uint8Array | null): Promise<string | null> {
-  if (!source) return null;
-  try {
-    const webp = await sharp(source)
-      .resize(CARD_PX, CARD_PX, { fit: "cover" })
-      .webp()
-      .toBuffer();
-    return `data:image/webp;base64,${webp.toString("base64")}`;
-  } catch (error) {
-    console.error(
-      "[github-avatar] 内联失败，回退远端",
-      error instanceof Error ? error.message : String(error),
-    );
-    return null;
-  }
 }
 
 export async function githubAvatarPng(

@@ -1,3 +1,4 @@
+import type { CommitAuthor } from "@shared/commit-authors";
 
 export type WatchingItem = {
   id: string;
@@ -512,16 +513,21 @@ export type GithubRepoPayload = {
     contributors: number;
   };
   contributors: GithubRepoContributor[];
-  // 默认分支最新的几次提交，新的在前；采集方取不到时沿用上一份，旧数据里可能缺席。与首页「最近提交」列表的同名 prop 不是同一份数据（见 docs/state-storage.md）。
+  // 默认分支最新的几次提交，新的在前；采集方取不到时沿用上一份，旧数据里可能缺席。
   recentCommits?: GithubRepoCommit[];
 };
 
-// authors 是 GitHub 登录名（没有关联账号时用署名），含 Co-authored-by 里的协作者；committedAt 是 ISO 时间串。
+// sha 是 7 位短哈希；authors 是 GitHub 登录名（没有关联账号时用署名），含 Co-authored-by 里的协作者；committedAt 是 ISO 时间串。
+// oid 是 40 位完整哈希，url 是提交页链接，verified 是 GitHub 认定的签名状态，authorDetails 是带头像与 coding agent 判定的作者明细；这四项在旧载荷里可能缺席。
 export type GithubRepoCommit = {
   sha: string;
   title: string;
   authors: string[];
   committedAt: string | null;
+  oid?: string;
+  url?: string;
+  verified?: boolean;
+  authorDetails?: CommitAuthor[];
 };
 
 // updatedAt 只在可滞后层出现，是写入方最后一次成功取到数据的 epoch 毫秒，浏览器按各卡阈值据此判过时。

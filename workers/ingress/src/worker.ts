@@ -1,6 +1,6 @@
 import { writeAppleMusicCredentials } from "@shared/credentials";
 import { describeRejections } from "@shared/ingest/coding";
-import { INGEST_SOURCES, prepareIngestForCommit, type PreparedIngest } from "@shared/ingest/prepare";
+import { INGEST_SOURCES, prepareIngest, type PreparedIngest } from "@shared/ingest/prepare";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 
 import { authorize } from "./access-auth";
@@ -13,7 +13,7 @@ const INGEST_PREFIX = "/api/ingest/";
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 
-export const DEPLOYMENT_JOBS = ["site-deployments", "cloudflare-deployments"];
+export const DEPLOYMENT_JOBS = ["site-deployments", "cloudflare-deployments", "github-repo"];
 
 export async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
@@ -95,8 +95,7 @@ async function handleIngest(
 async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw: string): Promise<Response> {
   try {
     const body = parseBody(raw);
-    const command = await prepareIngestForCommit(source, body, () => env.CORE.ready(), env.IMAGES);
-    if (!command) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
+    const command = await prepareIngest(source, body, Date.now(), env.IMAGES);
     if ((command.source === "mac" || command.source === "agents") && command.rejected.length) {
       console.warn("[ingest] rejected", source, describeRejections(command.rejected));
     }
@@ -106,7 +105,7 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
       data = { id: command.status.id };
     } else {
       const reply = await env.CORE.commitIngest(command);
-      if (!reply.ready) return jsonResponse({ ok: false, error: "状态存储初始化中" }, { status: 503 });
+      if (!reply.ready) return unavailable(source, "state core not ready");
       if (!reply.ok && reply.retryable) return unavailable(source, reply.error);
       if (!reply.ok) {
         if (!partiallyAccepted(command)) throw new Error(reply.error);

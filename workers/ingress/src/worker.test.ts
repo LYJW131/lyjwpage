@@ -7,7 +7,7 @@ import { MemoryKv } from "@shared/testing/memory-kv";
 import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
 import { CREDENTIAL_KEYS } from "@shared/credentials";
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
-import { prepareIngest, prepareIngestForCommit, type CoreCommand } from "@shared/ingest/prepare";
+import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
 import { resetStoredImageCacheForTests } from "@shared/ingest/r2-assets";
 import { LAG_KEYS, readLag } from "@shared/lag";
 import type { CommitReply, StateCoreRpc } from "@shared/state-core";
@@ -55,7 +55,6 @@ type Calls = {
 
 type Setup = {
   reply?: (command: CoreCommand) => CommitReply | Promise<CommitReply>;
-  ready?: boolean;
   refresh?: CollectorRpc["refresh"];
   collector?: boolean;
 };
@@ -65,7 +64,7 @@ function world(setup: Setup = {}) {
   const lag = new MemoryKv();
   const credentials = new MemoryKv();
   const core: StateCoreRpc = {
-    ready: async () => { calls.ready += 1; return setup.ready ?? true; },
+    ready: async () => { calls.ready += 1; return true; },
     commitIngest: async (command) => {
       assert.deepEqual(structuredClone(command), command);
       calls.commits.push(command);
@@ -204,29 +203,25 @@ test("auth: only a signed Access assertion counts, and each client id writes onl
   assert.equal((await w.send("/api/ingest/mac", { ...post(mac({})), client: MAC_ONLY })).status, 202);
 });
 
-test("receipts: 202 carries the state core's data; readiness and validation keep their old priority", async () => {
+test("receipts: 202 carries the state core's data; invalid input is a 400 without asking for readiness", async () => {
   const w = world({ reply: () => ({ ready: true, ok: true, data: { accepted: 0, heartbeat: true } }) });
   const accepted = await w.send("/api/ingest/mac", post(mac({})));
   assert.equal(accepted.status, 202);
   assert.deepEqual(await json(accepted), { ok: true, data: { accepted: 0, heartbeat: true, ignored: [], rejected: [] } });
   assert.equal(accepted.headers.get("content-type"), "application/json; charset=utf-8");
   assert.equal(accepted.headers.get("cache-control"), "no-store");
-  assert.equal(w.calls.ready, 0, "a valid report goes straight to commitIngest, which owns readiness");
 
   const invalidJson = await w.send("/api/ingest/mac", { body: '{"private-marker":' });
   assert.equal(invalidJson.status, 400);
   assert.deepEqual(await json(invalidJson), { ok: false, error: "上报数据无效或处理失败" });
   const invalid = await w.send("/api/ingest/mac", post({}));
   assert.equal(invalid.status, 400);
-  assert.equal(w.calls.ready, 1, "an invalid report asks for readiness once");
+  assert.equal(w.calls.ready, 0, "ingress never asks the state core for readiness");
 
-  const uninitialized = world({ ready: false, reply: () => ({ ready: false, ok: false }) });
-  const early = await uninitialized.send("/api/ingest/iphone", post({}));
-  assert.equal(early.status, 503, "uninitialized storage outranks the validation error");
-  assert.deepEqual(await json(early), { ok: false, error: "状态存储初始化中" });
-  const late = await uninitialized.send("/api/ingest/iphone", post({ version: 1 }));
+  const notReady = world({ reply: () => ({ ready: false, ok: false }) });
+  const late = await notReady.send("/api/ingest/iphone", post({ version: 1 }));
   assert.equal(late.status, 503);
-  assert.deepEqual(await json(late), { ok: false, error: "状态存储初始化中" });
+  assert.deepEqual(await json(late), { ok: false, error: "状态存储暂时不可用，请重试" });
 
   const rejected = world({ reply: () => ({ ready: true, ok: false, error: "desktop 模块缺少 applicationName" }) });
   const rejection = await rejected.send("/api/ingest/mac", post(mac({ timezone: { identifier: "Asia/Tokyo", secondsFromGMT: 32400 } })));
@@ -443,32 +438,6 @@ test("PlayStation power 字段直接拒收", async () => {
   );
 });
 
-test("readiness is only probed after invalid input", async () => {
-  let readyCalls = 0;
-  const valid = await prepareIngestForCommit("iphone", { version: 1 }, async () => {
-    readyCalls += 1;
-    return false;
-  });
-  assert.equal(valid?.source, "iphone");
-  assert.equal(readyCalls, 0, "valid reports must proceed directly to commitIngest");
-
-  const unavailable = await prepareIngestForCommit("iphone", {}, async () => {
-    readyCalls += 1;
-    return false;
-  });
-  assert.equal(unavailable, null);
-  assert.equal(readyCalls, 1);
-
-  await assert.rejects(
-    prepareIngestForCommit("iphone", {}, async () => {
-      readyCalls += 1;
-      return true;
-    }),
-    /version 必须为 1/,
-  );
-  assert.equal(readyCalls, 2);
-});
-
 test("OTLP: gzip or plain JSON answers the exporter's empty 200; other encodings and bad bodies keep their statuses", async () => {
   const w = world();
   const metrics = JSON.stringify({ resourceMetrics: [] });
@@ -495,14 +464,14 @@ test("OTLP: gzip or plain JSON answers the exporter's empty 200; other encodings
   assert.equal((await w.send("/api/ingest/mac", { ...post(mac({})), headers: { "content-encoding": "gzip" } })).status, 202);
 });
 
-test("site-deployed: the state core broadcasts version and the collector re-pulls deployments in the background", async () => {
+test("site-deployed: the state core broadcasts version and the collector re-pulls deployments and recent commits in the background", async () => {
   const w = world();
   const response = await w.send("/api/internal/site-deployed", { client: DEPLOYER });
   assert.equal(response.status, 200);
   assert.deepEqual(await json(response), { ok: true, delivered: 3 });
   assert.equal(w.calls.broadcasts, 1);
   assert.deepEqual(w.calls.refreshed, [DEPLOYMENT_JOBS]);
-  assert.deepEqual(DEPLOYMENT_JOBS, ["site-deployments", "cloudflare-deployments"]);
+  assert.deepEqual(DEPLOYMENT_JOBS, ["site-deployments", "cloudflare-deployments", "github-repo"]);
   assert.equal((await w.send("/api/internal/site-deployed", { method: "GET", client: DEPLOYER })).status, 405);
   assert.equal((await w.send("/api/internal/site-deployed", { client: null })).status, 401);
 });
@@ -515,7 +484,7 @@ test("site-deployed: a failing or missing collector never fails the notification
   assert.deepEqual(await json(response), { ok: true, delivered: 3 });
   const erroring = world({ refresh: async (jobs) => jobs.map((job): CollectorJobOutcome => ({ job, status: "error", detail: "token missing", ms: 1 })) });
   assert.equal((await erroring.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 200);
-  assert.equal(warned.mock.callCount(), 3);
+  assert.equal(warned.mock.callCount(), 1 + DEPLOYMENT_JOBS.length);
   const unbound = world({ collector: false });
   assert.equal((await unbound.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 200);
 });

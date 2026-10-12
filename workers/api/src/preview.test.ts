@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ensurePreviewState, isPreviewProxyPath, previewWorkerEnabled } from "./preview.ts";
+import { isPreviewProxyPath, previewWorkerEnabled } from "./preview.ts";
 
 function withPreviewFlag(value: string | undefined, run: () => void | Promise<void>) {
   const previous = process.env.PREVIEW_WORKER;
@@ -40,32 +40,4 @@ test("需要私钥或不是状态信封的路径才转给生产", () => {
   assert.equal(isPreviewProxyPath("/api/motion-artwork"), true);
   assert.equal(isPreviewProxyPath("/api/home"), false);
   assert.equal(isPreviewProxyPath("/api/ingest/mac"), false);
-});
-
-test("影子 Worker 在第一次读取前初始化空库，之后不再写", async () => {
-  await withPreviewFlag("true", async () => {
-    let ready = false;
-    let imports = 0;
-    const hub = {
-      ready: () => ready,
-      finishImport: async () => {
-        imports += 1;
-        ready = true;
-      },
-    };
-    await ensurePreviewState(hub);
-    await ensurePreviewState(hub);
-    assert.equal(imports, 1);
-  });
-
-  await withPreviewFlag(undefined, async () => {
-    let imports = 0;
-    await ensurePreviewState({
-      ready: () => false,
-      finishImport: async () => {
-        imports += 1;
-      },
-    });
-    assert.equal(imports, 0);
-  });
 });

@@ -6,11 +6,12 @@ import type { AgentStatusPayload, AgentStatusRow } from "@shared/agent-status-ty
 import { PAGESPEED_TIMEOUT_MS } from "../pagespeed";
 import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@shared/sentry-status";
 import type { SentryStatusPayload } from "@shared/sentry-status-types";
+import { ContributorsUnavailable } from "@shared/github-repo";
 import type { GithubRepoPayload } from "@shared/types";
 
 import { MemoryKv } from "../testing/memory-kv";
 import type { Env } from "../env";
-import { mergeRepoStats } from "./github-repo";
+import { mergeRepoStats, refreshGithubRepo } from "./github-repo";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
@@ -179,4 +180,51 @@ test("site-analytics 缺配置或站点映射不全时跳过", async (t) => {
     siteAnalyticsJob.run({ env: partial, now, scheduled: false }),
     /both production hosts/,
   );
+});
+
+const commit = (sha: string, day: number) => ({ sha, title: sha, authors: ["p0"], committedAt: `2026-10-0${day}T00:00:00Z` });
+
+test("repo rounds land fresh commits while stats are pending, without hiding stale stats", async () => {
+  const lag = new MemoryKv();
+  const revalidated: string[][] = [];
+  const core = { revalidate: async (tags: string[]) => { revalidated.push(tags); } };
+  const previous = { ...repo(400, 3, 1), recentCommits: [commit("aaaaaaa", 1)] };
+  await writeLag(lag, LAG_KEYS.githubRepo, previous, 1);
+  const budgets: number[] = [];
+  const fetchers = {
+    commits: async () => [commit("bbbbbbb", 2), commit("aaaaaaa", 1)],
+    stats: async (budgetMs: number) => {
+      budgets.push(budgetMs);
+      throw new ContributorsUnavailable("202", { commits: null, additions: null, deletions: null });
+    },
+  };
+
+  await assert.rejects(refreshGithubRepo({ lag, core, fetchers }, true));
+  const entry = await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo);
+  assert.deepEqual(entry?.data.recentCommits?.map((entry) => entry.sha), ["bbbbbbb", "aaaaaaa"]);
+  assert.deepEqual(entry?.data.totals, previous.totals);
+  assert.equal(entry?.updatedAt, 1, "统计没取到，updatedAt 不前进");
+  assert.deepEqual(revalidated, [["github-repo"]]);
+
+  assert.deepEqual(await refreshGithubRepo({ lag, core, fetchers }, false), { status: "ok", detail: "stats carried over" });
+  assert.equal(revalidated.length, 1, "提交没变不清首屏");
+  assert.ok(budgets[1] < budgets[0], "部署后的重拉统计预算更短");
+});
+
+test("a slower repo round never rolls the commit list back", async () => {
+  const lag = new MemoryKv();
+  const core = { revalidate: async () => {} };
+  await writeLag(lag, LAG_KEYS.githubRepo, { ...repo(400, 3, 1), recentCommits: [commit("aaaaaaa", 1)] }, 1);
+  const fetchers = {
+    commits: async () => [commit("bbbbbbb", 2)],
+    stats: async () => {
+      await writeLag(lag, LAG_KEYS.githubRepo, { ...repo(401, 3, 2), recentCommits: [commit("ccccccc", 3)] }, 2);
+      return repo(402, 3, 3);
+    },
+  };
+
+  await refreshGithubRepo({ lag, core, fetchers }, true);
+  const written = (await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo))?.data;
+  assert.equal(written?.recentCommits?.[0]?.sha, "ccccccc");
+  assert.equal(written?.totals.commits, 402);
 });

@@ -30,10 +30,8 @@ import { relaySentryEnvelope } from "@/lib/sentry-tunnel";
 import {
   HOME_CACHE_TAG,
   IMMUTABLE_ASSET_CACHE_CONTROL,
-  IMMUTABLE_EXPLAINER_PREFIX,
   NO_STORE,
   REMOTE_IMAGE_CACHE_CONTROL,
-  SERVICE_WORKER_CACHE_CONTROL,
   SITE_ASSET_ROUTES,
   classifyGatewayRequest,
   classifyRenderRequest,
@@ -274,7 +272,7 @@ function bytesStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
 class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   async fetch(request: Request): Promise<Response> {
     const context = new RouterContextProvider();
-    context.set(siteContext, this.services(new URL(request.url).origin));
+    context.set(siteContext, this.services());
     const response = await requestHandler(request, context);
     const { pathname } = new URL(request.url);
     const policy = renderCacheHeaders(
@@ -302,7 +300,7 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
     await purgeTags(this.ctx.cache, "RenderedSite", [HOME_CACHE_TAG]);
   }
 
-  private services(origin: string): SiteServices {
+  private services(): SiteServices {
     const env = this.env;
     const ctx = this.ctx;
     return {
@@ -344,7 +342,6 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
           return null;
         }
       },
-      asset: (path: string) => env.ASSETS.fetch(new Request(new URL(path, origin))),
     };
   }
 }
@@ -377,30 +374,6 @@ const siteWorker = {
         const headers = new Headers(response.headers);
         headers.set("Cache-Control", response.ok ? cacheControl : NO_STORE);
         return new Response(response.body, { status: response.status, headers });
-      }
-      case "explainer-index": {
-        const response = await env.ASSETS.fetch(
-          new Request(new URL("/explainer/index.html", url), request),
-        );
-        if (response.status === 404) return ctx.exports.RenderedSite.fetch(request);
-        return response;
-      }
-      case "service-worker": {
-        const response = await env.ASSETS.fetch(request);
-        const headers = new Headers(response.headers);
-        headers.set("Content-Type", "application/javascript; charset=utf-8");
-        headers.set("Cache-Control", SERVICE_WORKER_CACHE_CONTROL);
-        return new Response(response.body, { status: response.status, headers });
-      }
-      case "asset": {
-        const response = await env.ASSETS.fetch(request);
-        if (response.status === 404) return ctx.exports.RenderedSite.fetch(request);
-        if (url.pathname.startsWith(IMMUTABLE_EXPLAINER_PREFIX)) {
-          const headers = new Headers(response.headers);
-          headers.set("Cache-Control", IMMUTABLE_ASSET_CACHE_CONTROL);
-          return new Response(response.body, { status: response.status, headers });
-        }
-        return response;
       }
       case "render":
         return ctx.exports.RenderedSite.fetch(request);

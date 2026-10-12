@@ -18,7 +18,6 @@ const temporary = await mkdtemp(join(tmpdir(), 'lyjw-ingest-'));
 const children = [];
 const logs = [];
 let socket;
-const secret = 'local-token-usage-verification';
 const access = await createDevAccess();
 const cloudClient = 'cloud-only.access';
 const agentsClient = 'agents-only.access';
@@ -75,7 +74,7 @@ try {
     name: 'isolated-api', main: join(root, 'workers/api/src/index.ts'),
     compatibility_date: '2025-02-14', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env', 'enable_request_signal'],
     vars: {
-      STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`,
+      STORAGE_PREFIX: 'isolated-verify',
       ALLOWED_ORIGINS: '',
       DEV_OVERRIDES: 'true',
       APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
@@ -167,15 +166,14 @@ export default { fetch(request, env) {
   // 路由 Worker 先起来时，后面两个可能还没注册好；等上报入口也答得上话
   await eventually(async () => assert.deepEqual(await (await fetch(`${worker}/api/ingest/mac`)).json(), { ok: false, error: '只接受 POST' }));
   assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0, online: 0 });
-  assert.equal((await otlp()).status, 503, 'OTLP must preserve the storage initialization barrier');
-  assert.equal((await post(worker, '/api/ingest/homepod', {})).status, 503);
-  assert.equal((await post(worker, '/api/ingest/iphone', { version: 1 })).status, 503);
-  assert.equal((await post(worker, '/api/ingest/iphone', {})).status, 503);
-  assert.equal((await fetch(`${worker}/api/status/listening/now`)).status, 503);
+  assert.equal((await post(worker, '/api/ingest/iphone', {})).status, 400);
+  const emptyNow = await fetch(`${worker}/api/status/listening/now`);
+  assert.equal(emptyNow.status, 200);
+  assert.equal((await emptyNow.json()).ok, true);
   assert.equal((await fetch(`${worker}/api/status/not-a-route`)).status, 404);
-  assert.equal((await fetch(`${worker}/__verify/public-status?path=${encodeURIComponent('/api/status/listening/now')}`)).status, 503);
-  assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true }, `${secret}-import`)).status, 200);
-  console.log('PASS: known public routes preserve the initialization barrier; unknown routes stay in the Worker');
+  assert.equal((await fetch(`${worker}/__verify/public-status?path=${encodeURIComponent('/api/status/listening/now')}`)).status, 200);
+  assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true })).status, 405);
+  console.log('PASS: an empty StateHub serves known public routes and rejects invalid reports with 400; unknown routes stay in the Worker');
 
   const aiHeaders = { Origin: 'https://lyjw.me', 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.10' };
   async function mcp(method, params = {}) {
@@ -496,7 +494,7 @@ export default { fetch(request, env) {
   startWorkers();
   await eventually(async () => assert.equal(await nowPlaying(), 'isolated-second'));
   assert.equal((await (await fetch(`${worker}/api/status/timezone`)).json()).ok, true);
-  console.log('PASS: restart preserves initialized state and snapshots');
+  console.log('PASS: restart preserves state and snapshots');
   if (verifyMcpClient) {
     async function inspect(method, args = []) {
       const output = [];
@@ -535,7 +533,7 @@ export default { fetch(request, env) {
     const [buildExit] = await once(build, 'exit');
     await writeFile(join(temporary, 'site-build.log'), logs.slice(logStart).join(''));
     assert.equal(buildExit, 0, logs.join('').slice(-12000));
-    console.log('PASS: site production build completes against the initialized isolated Worker');
+    console.log('PASS: site production build completes against the isolated Worker');
   }
   const logLines = stripVTControlCharacters(logs.join('')).split('\n');
   assert.equal(logLines.some(line => /Cannot perform I\/O|\[storage\]|Uncaught/.test(line)

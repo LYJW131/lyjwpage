@@ -16,9 +16,6 @@ dist/
 
 /coverage
 
-/.next/
-/out/
-
 /build
 
 .DS_Store
@@ -39,7 +36,6 @@ yarn-error.log*
 /.claude/worktrees/
 
 *.tsbuildinfo
-next-env.d.ts
 /.react-router/
 /public/site-assets/
 /worker-configuration.d.ts
