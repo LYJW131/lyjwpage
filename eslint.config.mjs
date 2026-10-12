@@ -50,6 +50,12 @@ const eslintConfig = defineConfig([
         }, {
           group: ["**/workers/ai/**"],
           message: "模型调用与工具编排只属于 AI Worker；浏览器契约放在 shared。",
+        }, {
+          group: [
+            "@shared/storage", "@shared/cache", "@shared/lag", "@shared/lag-result", "@shared/apple-music-auth", "@shared/apple-cache",
+            "**/shared/storage", "**/shared/cache", "**/shared/lag", "**/shared/lag-result", "**/shared/apple-music-auth", "**/shared/apple-cache",
+          ],
+          message: "这些模块要 Worker 入口先 install 端口，站点里没人安装，调用即抛错；状态经 API Worker 读。",
         }],
       }],
     },
