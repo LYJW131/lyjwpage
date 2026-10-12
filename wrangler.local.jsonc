@@ -7,18 +7,7 @@
   "workers_dev": false,
   "assets": {
     "directory": "./build/client",
-    "binding": "ASSETS",
-    "run_worker_first": [
-      "/sw.js",
-      "/explainer",
-      "/explainer/*",
-      "/img/*",
-      "/image",
-      "/mcp",
-      "/api/*",
-      "/relay",
-      "/relay/*"
-    ]
+    "binding": "ASSETS"
   },
   "vars": {
     "SITE_ENV": "development",

@@ -4,7 +4,6 @@ import { withRequestState } from "@shared/request-state";
 import type { Env } from "./env";
 import { explain, type Job, type JobResult } from "./job";
 import { appleRecentJob } from "./jobs/apple-recent";
-import { avatarWatchJob } from "./jobs/avatar-watch";
 import { cloudflareDeploymentsJob, cloudflareMetricsJob } from "./jobs/cloudflare";
 import { githubChartJob } from "./jobs/github-chart";
 import { githubRepoJob } from "./jobs/github-repo";
@@ -25,7 +24,6 @@ export const JOBS: readonly Job[] = [
   cloudflareDeploymentsJob,
   cloudflareMetricsJob,
   sentryStatusJob,
-  avatarWatchJob,
 ];
 
 export function findJob(name: string, jobs: readonly Job[] = JOBS): Job | undefined {

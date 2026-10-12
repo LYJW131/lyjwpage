@@ -24,6 +24,7 @@ import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
+import { githubAvatarDataUri } from "@/lib/github-avatar-inline";
 import { APP_VERSION_PATH } from "@/lib/app-version";
 import { liveTrack } from "@shared/home-layout";
 import {
@@ -51,14 +52,9 @@ import {
   SITE_DEPLOYMENTS_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
-import {
-  SITE_ASSET_METADATA_PATH,
-  emptySiteAssetMetadata,
-  type SiteAssetMetadata,
-} from "@/lib/site-assets";
 import { STATUS_VIEWS } from "@shared/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
-import { siteContext, type SiteServices } from "@/server/site-context";
+import { siteContext } from "@/server/site-context";
 
 import type { Route } from "./+types/page";
 
@@ -88,18 +84,10 @@ const READS = {
   emby: [WATCHING_PATH, NOW_WATCHING_PATH],
 } as const;
 
-async function loadSiteAssets(site: SiteServices): Promise<SiteAssetMetadata> {
-  try {
-    const response = await site.asset(SITE_ASSET_METADATA_PATH);
-    if (response.ok) return (await response.json()) as SiteAssetMetadata;
-  } catch {
-  }
-  return emptySiteAssetMetadata();
-}
-
 export async function loader({ context }: Route.LoaderArgs) {
   const site = context.get(siteContext);
   const status = site.status;
+  const avatar = githubAvatarDataUri(site);
   const [
     desktop,
     timezone,
@@ -128,7 +116,6 @@ export async function loader({ context }: Route.LoaderArgs) {
     sentry,
     reporters,
     pulse,
-    assets,
   ] = await Promise.all([
     status("desktop"),
     status("timezone"),
@@ -157,7 +144,6 @@ export async function loader({ context }: Route.LoaderArgs) {
     status("sentry"),
     status("reporters"),
     status("pulse"),
-    loadSiteAssets(site),
   ]);
 
   const nowSongId =
@@ -173,7 +159,8 @@ export async function loader({ context }: Route.LoaderArgs) {
   const heroArtwork = liveHeroArtwork ?? listeningArtworks[0];
   const rowArtworks = liveHeroArtwork ? listeningArtworks : listeningArtworks.slice(1);
 
-  const [desktopIcon, artwork, lyrics] = await Promise.all([
+  const [avatarDataUri, desktopIcon, artwork, lyrics] = await Promise.all([
+    avatar,
     desktopIconDataUri(site, desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
     artworkPlaceholders(site, rowArtworks, heroArtwork),
     nowSongId ? site.lyrics(nowSongId) : Promise.resolve(null),
@@ -207,8 +194,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     sentry,
     reporters,
     pulse,
-    avatarDataUri: assets.avatarDataUri,
-    recentCommits: assets.recentCommits,
+    avatarDataUri,
     desktopIcon,
     artwork,
     lyricsFallback:
@@ -311,7 +297,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   sentryFallback={loaderData.sentry}
                   serverFallback={loaderData.server}
                   reportersFallback={loaderData.reporters}
-                  recentCommits={loaderData.recentCommits}
                   className={SLOT.siteStatus}
                 />
               </CardBoundary>

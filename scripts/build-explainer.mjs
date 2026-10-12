@@ -46,7 +46,7 @@ const stray = findUnpublishedReference(page);
 if (stray !== null) throw new Error(`index.html 引用的 ${stray} 没有发布到 ${ASSETS}/`);
 const charset = '<meta charset="utf-8">\n';
 if (!page.includes(charset)) throw new Error("index.html 缺少 charset meta");
-// 站点图标（Next 的 /icon 路由）只加在站点版：源页面在 file:// 下取不到它，写章工具会当成报错
+// 站点图标（/icon）只加在站点版：源页面在 file:// 下取不到它，写章工具会当成报错
 const head = `<link rel="icon" href="/icon" type="image/png">\n<script>window.__assets = ${JSON.stringify(assets)};</script>\n`;
 page = page.replace(charset, `${charset}${head}`);
 fs.writeFileSync(path.join(OUT, "index.html"), page);

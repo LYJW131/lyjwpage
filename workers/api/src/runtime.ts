@@ -17,7 +17,6 @@ export interface Env extends MusicKitTokenEnv {
   LAG?: KVNamespace;
   APPLE_CACHE?: KVNamespace;
   SITE_CACHE?: SiteCacheRpc;
-  STATE_IMPORT_SECRET?: string;
   STORAGE_PREFIX?: string;
   ALLOWED_ORIGINS?: string;
   SENTRY_DSN?: string;

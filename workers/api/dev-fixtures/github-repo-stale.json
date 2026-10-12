@@ -67,6 +67,92 @@
         "additions": 77,
         "deletions": 0
       }
+    ],
+    "recentCommits": [
+      {
+        "sha": "34d1780",
+        "title": "docs(ops): 记下 lyjw.me 已切到 site Worker",
+        "authors": [
+          "LYJW131",
+          "claude"
+        ],
+        "committedAt": "2026-10-12T04:10:00Z",
+        "oid": "34d17804c0ffee00000000000000000000000001",
+        "url": "https://github.com/LYJW131/lyjwpage/commit/34d17804c0ffee00000000000000000000000001",
+        "verified": true,
+        "authorDetails": [
+          {
+            "name": "LYJW131",
+            "login": "LYJW131",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/153256373?v=4",
+            "agent": null,
+            "model": null
+          },
+          {
+            "name": "claude",
+            "login": "claude",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/81847?v=4",
+            "agent": "claude",
+            "model": "Claude Opus 5.5"
+          }
+        ]
+      },
+      {
+        "sha": "f402ed3",
+        "title": "feat(site): lyjw.me 切到 site Worker 的自定义域名",
+        "authors": [
+          "LYJW131",
+          "codex",
+          "cursoragent"
+        ],
+        "committedAt": "2026-10-12T03:20:00Z",
+        "oid": "f402ed30c0ffee00000000000000000000000002",
+        "url": "https://github.com/LYJW131/lyjwpage/commit/f402ed30c0ffee00000000000000000000000002",
+        "verified": true,
+        "authorDetails": [
+          {
+            "name": "LYJW131",
+            "login": "LYJW131",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/153256373?v=4",
+            "agent": null,
+            "model": null
+          },
+          {
+            "name": "codex",
+            "login": "codex",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/267193182?v=4",
+            "agent": "openai",
+            "model": "gpt-6-astra"
+          },
+          {
+            "name": "cursoragent",
+            "login": "cursoragent",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/199161495?v=4",
+            "agent": "cursor",
+            "model": "Cursor Agent"
+          }
+        ]
+      },
+      {
+        "sha": "454c873",
+        "title": "fix(workers): 在 Worker 目录调 wrangler 一律显式带 -c wrangler.toml",
+        "authors": [
+          "claude"
+        ],
+        "committedAt": "2026-10-11T22:05:00Z",
+        "oid": "454c873cc0ffee00000000000000000000000003",
+        "url": "https://github.com/LYJW131/lyjwpage/commit/454c873cc0ffee00000000000000000000000003",
+        "verified": false,
+        "authorDetails": [
+          {
+            "name": "claude",
+            "login": "claude",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/81847?v=4",
+            "agent": "claude",
+            "model": "Claude Opus 5.5"
+          }
+        ]
+      }
     ]
   }
 }

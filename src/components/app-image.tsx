@@ -4,6 +4,8 @@ import { useSyncExternalStore, type CSSProperties } from "react";
 
 import {
   IMAGE_WIDTHS,
+  displayWidthFromSizes,
+  imageWidthBucket,
   optimizerImagePath,
   optimizerSrcSet,
   parseImageSource,
@@ -59,18 +61,20 @@ export default function AppImage({
   const q = quality ?? 75;
   const optimizable = !unoptimized && parseImageSource(src) !== null;
   const numericWidth = typeof width === "number" && Number.isFinite(width) ? width : undefined;
-  const largestWidth = IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1];
-  const targetWidth =
-    numericWidth === undefined
-      ? largestWidth
-      : (IMAGE_WIDTHS.find((candidate) => candidate >= numericWidth) ?? largestWidth);
+  const displayWidth = numericWidth ?? displayWidthFromSizes(sizes);
+  const optimizedSrc = optimizable
+    ? optimizerImagePath(
+        src,
+        displayWidth === undefined ? IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1] : imageWidthBucket(displayWidth),
+        q,
+      )
+    : src;
 
   return (
     <img
       {...rest}
-      src={optimizable ? optimizerImagePath(src, targetWidth, q) : src}
-      srcSet={optimizable ? optimizerSrcSet(src, q) : undefined}
-      sizes={sizes ?? (fill || numericWidth === undefined ? undefined : `${numericWidth}px`)}
+      src={optimizedSrc}
+      srcSet={optimizable && displayWidth !== undefined ? optimizerSrcSet(src, q, displayWidth) : undefined}
       alt={alt ?? ""}
       width={width}
       loading={priority ? undefined : (resolved.loading ?? "lazy")}

@@ -7,9 +7,9 @@
 
 ## 代码职责
 
-- `src/index.ts`：默认 Worker 入口与 cron（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分，每几轮顺带做一次断流检测，见下文「断流告警」）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数、公开 HTTP 和存储导入。
+- `src/index.ts`：默认 Worker 入口与 cron（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分，每几轮顺带做一次断流检测，见下文「断流告警」）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
 - `src/state-core.ts`：对内的 RPC 入口 `StateCore`（契约 `shared/state-core.ts`），上报入口和采集 Worker 经 Service Binding 调：
-  `ready()`、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`audience()`、
+  `ready()`（恒为 `true`，契约只加不改而保留）、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`audience()`、
   `playstationPower()`、`appleDeveloperToken()`、`commitRecentlyPlayed()`、`revalidate()`。
 - `src/live-census.ts`：推送房间的两个人头数（开着 / 可见）怎么数，纯函数；房间 `LivePushRoom` 在 `src/origin-worker.ts`。
 - `src/ingest-handlers.ts`、`src/stores/`：上报的 StateHub 提交阶段，按来源分发；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
@@ -21,7 +21,7 @@
 - 根目录 `shared/`：读写共用的 SQLite 键、类型、状态计算与通用工具；只属于本 Worker 的读取在 `src/`。
 - 根目录 `shared/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、站点缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
 - `src/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
-- `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，状态端点按 loader 表通用分发。StateHub 初始化/提交可见性屏障不单独发 RPC，由每次 `StateHub.publicRead` 随读取一起过：未初始化返回 `null`，入口据此回 503。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层（`layer: "lag"`）的端点只读 `LAG` KV，写入方也不经 `commitIngest()` 队列，不发读取，也就不过屏障、不唤醒 StateHub（本地开着 `DEV_OVERRIDES` 时要先查 DO 里的注入，那次读取照常过屏障）；下面的按参数查询同样不过。
+- `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，状态端点按 loader 表通用分发。StateHub 提交可见性屏障不单独发 RPC，由每次 `StateHub.publicRead` 随读取一起过；空的 StateHub 直接以空状态回应。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层（`layer: "lag"`）的端点只读 `LAG` KV，写入方也不经 `commitIngest()` 队列，不发读取，也就不过屏障、不唤醒 StateHub（本地开着 `DEV_OVERRIDES` 时要先查 DO 里的注入，那次读取照常过屏障）；下面的按参数查询同样不过。
 - `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。它们是给网页播放器按任意曲目查的按需端点，也是读取路径上唯一会现查 Apple 的入口；结果缓存在 `APPLE_CACHE` KV。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
 - `src/storage-driver.ts`：StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
 - `src/ports.ts`：入口加载时把本 Worker 的实现装进 `shared/` 的端口：存储（`shared/storage.ts#installStorage`）、可滞后层读取（`shared/lag.ts#installLagReader`，读 `LAG` KV）、Apple 结果缓存（`shared/apple-cache.ts#installAppleCache`，读 `APPLE_CACHE`）、Apple Music 凭据（`shared/apple-music-auth.ts#installAppleMusicAuth`）。厂商状态、GitHub、站点、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，站点与 Cloudflare 两条按名字把几条键拼成一份。
@@ -152,7 +152,7 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 
 上报走 `https://ingest.homepage.lyjw.llc/api/ingest/<来源>`，由上报入口 Worker 接收：Cloudflare Access 与 service token、
 `[vars.ACCESS_CLIENTS]` 权限表、回执状态码都在 [上报入口 README](../ingress/README.md)。它收下的实时那一半经
-`StateCore.commitIngest` 进这里：StateHub 按到达顺序串行提交，回 `{ ready, ok, data | error }`，未初始化时什么都不写；
+`StateCore.commitIngest` 进这里：StateHub 按到达顺序串行提交，回 `{ ready, ok, data | error }`（`ready` 恒为 `true`）；
 提交确认后，推送与首屏失效由这边的 `waitUntil` 执行。api Worker 上没有 `/api/ingest/*`。
 
 Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（契约 `shared/site-cache.ts`，只收公开状态标签）。失效先清除对应 `page:<tag>` 状态视图，再清除挂 `home` 的首页文档，下一次请求用新快照重新渲染。所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `shared/home-layout.ts`。coding 用量卡片的骨架在状态核心重算视图时比新旧两份，行、总量与常用模型的有无变了才发 `coding`。读数、标题、进度、灯色等内容变化不通知，由视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`）过期后重建；浏览器挂载后直接问 Worker。通知有超时（`src/live-platform.ts` 的 `REVALIDATE_TIMEOUT_MS`），失败只记日志，不能让已落库的上报重发。纯心跳和没有标签的广播不触发缓存通知。
@@ -415,7 +415,7 @@ cron 心跳与 `HEAD /api/version` 在线探测都不经过数据链路，上报
 | 采集 Worker 写的各条键 | LAG，见 `src/freshness-watch.ts#LAG_FEEDS` | `updatedAt` | 上文「外部数据卡片」那张表的卡片阈值 |
 
 同一上报器只看一条：`reporter:server-reporter:v1` 与 `server:v1`、`limits:v1` 与 agents 账本都来自同一个上报器，两条都看会一次断流报两遍。
-StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`（`shared/storage.ts#mirrorKey`），不另抄键名。读不到的来源（没写过、DO 未初始化、读失败）这一轮不下结论、沿用上次状态，读故障不会被报成断流或恢复。
+StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`（`shared/storage.ts#mirrorKey`），不另抄键名。读不到的来源（没写过、读失败）这一轮不下结论、沿用上次状态，读故障不会被报成断流或恢复。
 
 **只在翻转时报**：翻转状态是 LAG KV 里的一条 `freshness-watch:v1`（`{ updatedAt, data: { <来源>: "fresh" | "stale" } }`），只在有来源翻转时整份写一次；没有记录的来源按新鲜算，所以首次部署时已经断着的来源会报一次。先写状态再发事件，写失败这一轮不发、下一轮重判。
 
@@ -471,14 +471,13 @@ AI 模型、验人、对话签名与 issue 提交凭据见 [AI Worker](../ai/REA
 ```sh
 cp workers/api/.dev.vars.example workers/api/.dev.vars
 pnpm dev:worker                     # 仓库根目录执行；http://localhost:8788
-pnpm dev:worker:init                # 只需一次，初始化空的 StateHub
 pnpm dev:local                      # 站点指向本地 Worker
 ```
 
 `pnpm dev:worker` 是一个 `wrangler dev` 进程，配置入口在根目录 `package.json`：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
 本目录的 `wrangler.test.toml`、`workers/ai/wrangler.test.toml`、`workers/ingress/wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
 dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入口（见它的 README），
-`/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，其余一切（含 `/ws`、`/api/internal/storage/import`）给 api；AI 路由由 api 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，
+`/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，其余一切（含 `/ws`）给 api；AI 路由由 api 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，
 `LAG`、`CREDENTIALS` 两个本地 KV 用同一个 id，一边写的另一边读得到；Service Binding 按生产名字
 （`api`、`ai`、`ingress`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
 `curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；
@@ -486,7 +485,7 @@ api 自己的 cron 本地触发不到（Service Binding 调不了别的 Worker �
 D1 归档、Clef 打分本来也被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
-状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，再跑一次 init。
+状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，新目录直接以空状态起。
 
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 按端点整份兜底（`src/public-api.ts#overlayResponse`）：生产回 `ok:true` 的端点整份用生产的，
 生产没有的端点、或生产也 `ok:false` 的才用本地的（只读、不上报）。不按字段合并：给已有端点加的新字段，本地算出来也会被生产那份整份盖掉，
@@ -511,9 +510,9 @@ pnpm --dir workers/api test
 node scripts/verify-api-worker.mjs --build
 ```
 
-集成脚本和 `pnpm dev:worker` 一样用 dev-router 把上报路由到上报入口、经 Service Binding 打本 Worker，启动隔离 SQLite、KV 和缓存通知测试服务器，检查鉴权、404、初始化屏障、并发假数据索引、写入、缓存失效、真实 WebSocket（含部署通知的 `version` 事件）、重启持久化。`--build` 还会在已初始化的隔离 Worker 存活期间，把 `PUBLIC_BACKEND_URL`（状态、推送与在线人数同源）指向该本地地址并运行生产构建。退出时清理临时状态，不使用生产绑定或凭据。
+集成脚本和 `pnpm dev:worker` 一样用 dev-router 把上报路由到上报入口、经 Service Binding 打本 Worker，启动隔离 SQLite、KV 和缓存通知测试服务器，检查鉴权、404、空状态直接服务、并发假数据索引、写入、缓存失效、真实 WebSocket（含部署通知的 `version` 事件）、重启持久化。`--build` 还会在隔离 Worker 存活期间，把 `PUBLIC_BACKEND_URL`（状态、推送与在线人数同源）指向该本地地址并运行生产构建。退出时清理临时状态，不使用生产绑定或凭据。
 
-SQLite 初始化、迁移与权限见 [后端架构](../../docs/state-storage.md)。
+SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md)。
 
 ## Durable Object 迁移
 

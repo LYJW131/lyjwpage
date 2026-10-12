@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [main, dev]
-    paths-ignore:
-      - .github/github-avatar.sha256
   pull_request:
 
 permissions:
@@ -13,9 +11,6 @@ permissions:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
   check:
