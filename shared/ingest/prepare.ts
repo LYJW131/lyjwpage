@@ -53,18 +53,3 @@ export async function prepareIngest(
     default: throw new Error("Unknown ingest source");
   }
 }
-
-// 校验失败仍须先探测存储就绪状态，维持未初始化 503 优先于报文 400 的回执契约。
-export async function prepareIngestForCommit(
-  source: string,
-  raw: unknown,
-  ready: () => Promise<boolean>,
-  images?: ImageBucket,
-): Promise<PreparedIngest | null> {
-  try {
-    return await prepareIngest(source, raw, Date.now(), images);
-  } catch (error) {
-    if (!(await ready())) return null;
-    throw error;
-  }
-}

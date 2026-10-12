@@ -80,14 +80,13 @@ type Watched = Record<string, "fresh" | "stale">;
 export type FreshnessWatchDeps = {
   now: number;
   lag: LagStore;
-  hubRead(commands: StorageCommand[]): Promise<StorageResult[] | null>;
+  hubRead(commands: StorageCommand[]): Promise<StorageResult[]>;
   emit(event: FreshnessEvent): void;
 };
 
 async function readHubStamps(deps: FreshnessWatchDeps): Promise<Map<string, Stamp>> {
   const stamps = new Map<string, Stamp>();
   const values = await deps.hubRead(HUB_FEEDS.map(({ key }) => ({ op: "get", key })));
-  if (!values) return stamps;
   HUB_FEEDS.forEach((feed, index) => {
     const raw = values[index];
     if (typeof raw !== "string") return;
@@ -112,7 +111,7 @@ async function readLagStamps(deps: FreshnessWatchDeps): Promise<Map<string, Stam
   return stamps;
 }
 
-// 读不到的来源（没写过、DO 未初始化或读失败）这一轮不下结论，沿用上次状态，免得把读故障报成断流或恢复。
+// 读不到的来源（没写过或读失败）这一轮不下结论，沿用上次状态，免得把读故障报成断流或恢复。
 export async function watchFreshness(deps: FreshnessWatchDeps): Promise<FreshnessEvent[]> {
   const [hub, lag, previous] = await Promise.all([
     readHubStamps(deps).catch((error: unknown) => {

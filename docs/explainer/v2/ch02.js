@@ -52,7 +52,7 @@
     "ch02.lamp.d1": ["D1 归档", "D1 archive"],
     "ch02.lamp.d1s": ["waitUntil · 不等", "waitUntil · not awaited"],
     "ch02.onFail": ["失败时", "On failure"],
-    "ch02.f503": ["状态核心未就绪：稍后重发", "core not ready: retry later"],
+    "ch02.f503": ["暂时故障：稍后重发", "transient failure: retry later"],
     "ch02.f400": ["上报器整封重发", "the reporter resends it all"],
     "ch02.n6a": ["三层都写完，才回 202；", "202 only after three layers commit;"],
     "ch02.n6b": ["归档、推送与失效在后台继续。", "archive and push continue after."],
@@ -237,7 +237,7 @@
     ["ch02.r3", "RS256 · aud · iss · exp", "401 · 403 · 503"],
     ["ch02.r4", "ch02.r4s", "400"],
     ["ch02.r5", "JSON.parse", "400"],
-    ["ch02.r6", "PreparedIngest", "400 · 503"],
+    ["ch02.r6", "PreparedIngest", "400"],
   ];
   function panelB(x, s, b) {
     const X = 2000, Y = 110, FW = 1080, FH = 880;
@@ -490,7 +490,7 @@
     const fk = prog(b, AT.fail, AT.fail + 0.15);
     if (fk > 0) {
       text(x, tr("ch02.onFail"), 3300, 2790, { font: FONT.cjk(30, 600), color: pink, alpha: fk });
-      text(x, "ready: false → 503", 3300, 2840, { font: FONT.mono(28, 600), color: pink, alpha: fk });
+      text(x, "retryable → 503", 3300, 2840, { font: FONT.mono(28, 600), color: pink, alpha: fk });
       text(x, tr("ch02.f503"), 3300, 2880, { font: FONT.cjk(28, 600), color: graphite, alpha: fk });
       text(x, "throw → 400", 3300, 2940, { font: FONT.mono(28, 600), color: pink, alpha: fk });
       text(x, tr("ch02.f400"), 3300, 2980, { font: FONT.cjk(28, 600), color: graphite, alpha: fk });

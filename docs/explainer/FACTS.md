@@ -116,8 +116,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | 5 | OTLP 压缩格式不对 | 415 |
 | 6 | 读不出请求体，或超过 **4 MiB**（按实际读到的字节数） | 400（storage-contract.ts:14） |
 | 7 | 不是 JSON | 400 |
-| 8 | prepare 失败 | 状态核心未初始化回 503，否则 400 |
-| 9 | `CORE.commitIngest` 返回 `ready:false` | 503 |
+| 8 | prepare 失败 | 400 |
+| 9 | `CORE.commitIngest` 回暂时故障（`retryable`：DO 重置或过载） | 503 |
 | 9 | `CORE.commitIngest` 拒收 | 400 |
 
 - Emby 海报在 prepare 里 HEAD R2 确认存在，带 5 分钟正缓存（r2-assets.ts:17）。回执里的 `missingImages` 告诉上报器还要补传哪些图：状态核心按 prepare 确认过的键算出，随 202 的 `data` 回给上报器（`workers/api/src/stores/emby.ts`、`reporters/emby-reporter/src/site.ts`）。
@@ -140,13 +140,13 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - `CORE` 是 Service Binding：`workers/ingress/wrangler.toml` 里 `[[services]]` 的 `service = "api"`、`entrypoint = "StateCore"`；入口 `await env.CORE.commitIngest(command)`（`workers/ingress/src/worker.ts#commitIngest`）。
 - Cloudflare 内部调用，不走公网、不带凭据：只有声明了这个 binding 的 Worker 调得到，所以这一跳不再鉴权，鉴权只在入口做一次（`workers/api/AGENTS.md`「不变量」；`workers/api/src/state-core.ts#StateCore`）。
 - 交过去的是 prepare 的产物 `PreparedIngest`，必须能结构化复制；状态核心只 import 它的类型，不 import 校验实现，所以改校验只发布入口（`workers/ingress/AGENTS.md`「不变量」；`shared/state-core.ts#StateCoreRpc`）。RPC 方法只加不改，api 与调用方分开部署（`workers/api/AGENTS.md`「不变量」）。
-- `StateCore` 是 RPC 入口（`WorkerEntrypoint`），它把命令交给唯一的状态 DO `StateHub` 按到达顺序提交（§3），回 `CommitReply`：`ready: false` 时入口回 503；`ok: true` 的 `data` 原样放进 202；`ok: false` 回 400（`shared/state-core.ts#CommitReply`）。推送和首屏失效在 StateCore 自己的 waitUntil 里派发，不经入口（§3「效果清单」）。
+- `StateCore` 是 RPC 入口（`WorkerEntrypoint`），它把命令交给唯一的状态 DO `StateHub` 按到达顺序提交（§3），回 `CommitReply`：`ok: true` 的 `data` 原样放进 202；`ok: false` 带 `retryable`（DO 重置或过载）时入口回 503，其余 `ok: false` 回 400（`shared/state-core.ts#CommitReply`）。推送和首屏失效在 StateCore 自己的 waitUntil 里派发，不经入口（§3「效果清单」）。
 
 ### 202 的时机
 
 **202 要等三样**，而且是依次等：StateCore 回执 → `LAG` 写完 → 凭据写完 → 回 202。D1 归档在拿到回执后、写 LAG 之前交给 waitUntil，不等，失败只记日志；凭据只在 mac 带来 Apple Music user token 时才写（`workers/ingress/src/worker.ts#commitIngest`）。所以 202 的意思是：实时层已在 StateHub 落账，LAG 和凭据已写；D1 归档、推送、首屏失效还在后台，入口不等。
 
-失败时：状态核心没准备好回 503，上报器稍后重发；未就绪及标记为 retryable 的暂时故障回 503，其余校验或处理失败回 400，上报器整封重发；各路按自然键或整份覆盖写，重发不重复（`workers/ingress/src/worker.ts#commitIngest`、`workers/ingress/src/worker.ts#unavailable`）。
+失败时：DO 重置、过载这类标记为 retryable 的暂时故障回 503，上报器稍后重发；其余校验或处理失败回 400，上报器整封重发；各路按自然键或整份覆盖写，重发不重复（`workers/ingress/src/worker.ts#commitIngest`、`workers/ingress/src/worker.ts#unavailable`）。
 
 可滞后层的写入方（ingress、collector）没有 `SITE_CACHE` 绑定，它只配在 `workers/api/wrangler.toml`。写入时发现布局变了，就调 `CORE.revalidate(tags)` 请状态核心代发（同一函数）。
 
@@ -240,7 +240,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - `/api/home` 已删除（8977457）。首屏 loader 按视图并行调 `status(key)`，一个视图一次（按 e10a75a 现数 **27 次**），最近提交随 `githubRepo` 视图到达，头像内联与之同时开始；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#loader`）。
 - 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/server/site-context.ts#SiteServices`）。
-- 实时层的公开读取在 `StateHub.publicRead()` 里随读取一起过初始化与提交可见性屏障，每次读一个 RPC；可滞后层只读 KV，不过屏障、不唤醒 DO（`workers/api/src/public-execution.ts#executePublicRequest`）。
+- 实时层的公开读取在 `StateHub.publicRead()` 里随读取一起过提交可见性屏障，每次读一个 RPC；可滞后层只读 KV，不过屏障、不唤醒 DO（`workers/api/src/public-execution.ts#executePublicRequest`）。
 - **视图响应由 site Worker 的 `StatusSnapshot` 缓存入口回源**：成功 200 挂 `Cache-Tag: page:<tag>`、Cache-Control 600 秒；`ok:false` 与端点 404 的降级信封只缓存 60 秒（`src/lib/site-policy.ts#STATUS_DEGRADED_CACHE_CONTROL`）；歌词由 `site.lyrics` 直取后端 `/api/lyrics`，不进这条缓存（`workers/site/src/index.ts#StatusSnapshotBase`、`src/lib/site-policy.ts#statusSnapshotHeaders`）。整页 SSR 文档与数据响应另挂 `Cache-Tag: home`、max-age 300 / SWR 86400（`src/lib/site-policy.ts#HOME_CACHE_TAG`）。
 - 标签：按 e10a75a 现数 20 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、站点部署、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒缓存过期重建（`shared/status-views.ts#STATUS_VIEWS`）。
 - 一个标签失效，先清除那份视图快照，再清除首页文档，下一次请求重新渲染；失效经私有 RPC 调进站点缓存，用的是 purge 而不是软失效（`shared/site-cache.ts#SiteCacheRpc`、`workers/site/src/index.ts#purgeTags`）。
