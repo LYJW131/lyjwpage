@@ -30,10 +30,8 @@ import { relaySentryEnvelope } from "@/lib/sentry-tunnel";
 import {
   HOME_CACHE_TAG,
   IMMUTABLE_ASSET_CACHE_CONTROL,
-  IMMUTABLE_EXPLAINER_PREFIX,
   NO_STORE,
   REMOTE_IMAGE_CACHE_CONTROL,
-  SERVICE_WORKER_CACHE_CONTROL,
   SITE_ASSET_ROUTES,
   classifyGatewayRequest,
   classifyRenderRequest,
@@ -377,30 +375,6 @@ const siteWorker = {
         const headers = new Headers(response.headers);
         headers.set("Cache-Control", response.ok ? cacheControl : NO_STORE);
         return new Response(response.body, { status: response.status, headers });
-      }
-      case "explainer-index": {
-        const response = await env.ASSETS.fetch(
-          new Request(new URL("/explainer/index.html", url), request),
-        );
-        if (response.status === 404) return ctx.exports.RenderedSite.fetch(request);
-        return response;
-      }
-      case "service-worker": {
-        const response = await env.ASSETS.fetch(request);
-        const headers = new Headers(response.headers);
-        headers.set("Content-Type", "application/javascript; charset=utf-8");
-        headers.set("Cache-Control", SERVICE_WORKER_CACHE_CONTROL);
-        return new Response(response.body, { status: response.status, headers });
-      }
-      case "asset": {
-        const response = await env.ASSETS.fetch(request);
-        if (response.status === 404) return ctx.exports.RenderedSite.fetch(request);
-        if (url.pathname.startsWith(IMMUTABLE_EXPLAINER_PREFIX)) {
-          const headers = new Headers(response.headers);
-          headers.set("Cache-Control", IMMUTABLE_ASSET_CACHE_CONTROL);
-          return new Response(response.body, { status: response.status, headers });
-        }
-        return response;
       }
       case "render":
         return ctx.exports.RenderedSite.fetch(request);
