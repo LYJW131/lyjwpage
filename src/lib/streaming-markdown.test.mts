@@ -52,3 +52,8 @@ test("最后一行只有块级起始标记时整行先压着", () => {
   assert.equal(stableMarkdown("Code:\n\n``"), "Code:");
   assert.equal(stableMarkdown("- one\n- "), "- one");
 });
+
+test("没收尾的 html 代码块补上收尾行交出去，供预览卡跟随显示", () => {
+  assert.equal(stableMarkdown("Demo:\n\n```html\n<p>hi</p>\n<di"), "Demo:\n\n```html\n<p>hi</p>\n<di\n```");
+  assert.equal(stableMarkdown("Demo:\n\n```ht"), "Demo:");
+});

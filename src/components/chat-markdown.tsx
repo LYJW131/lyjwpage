@@ -2,7 +2,7 @@ import { createContext, memo, useContext, type ReactNode } from "react";
 import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { ChatHtmlPreview } from "@/components/chat-html-preview";
+import { ChatHtmlPreview, HtmlPreviewLive } from "@/components/chat-html-preview";
 
 const LINK_CLASS = "underline underline-offset-2 hover:opacity-80";
 
@@ -57,11 +57,11 @@ const REPLY_COMPONENTS: Components = {
   ...COMPONENTS,
   pre: ({ node, children }) => {
     const source = htmlSource(node);
-    return source === null ? <CodeBlock>{children}</CodeBlock> : <ChatHtmlPreview source={source} code={<CodeBlock>{children}</CodeBlock>} />;
+    return source === null ? <CodeBlock>{children}</CodeBlock> : <ChatHtmlPreview source={source}>{children}</ChatHtmlPreview>;
   },
 };
 
-export const ChatMarkdown = memo(function ChatMarkdown({ children, htmlPreview = false }: { children: string; htmlPreview?: boolean }) {
+export const ChatMarkdown = memo(function ChatMarkdown({ children, htmlPreview = false, live = false }: { children: string; htmlPreview?: boolean; live?: boolean }) {
   return (
     <div
       className={[
@@ -74,9 +74,11 @@ export const ChatMarkdown = memo(function ChatMarkdown({ children, htmlPreview =
         "[&_th]:border [&_th]:border-line [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-line [&_td]:px-2 [&_td]:py-1",
       ].join(" ")}
     >
-      <Markdown remarkPlugins={[remarkGfm]} components={htmlPreview ? REPLY_COMPONENTS : COMPONENTS}>
-        {children}
-      </Markdown>
+      <HtmlPreviewLive.Provider value={live}>
+        <Markdown remarkPlugins={[remarkGfm]} components={htmlPreview ? REPLY_COMPONENTS : COMPONENTS}>
+          {children}
+        </Markdown>
+      </HtmlPreviewLive.Provider>
     </div>
   );
 });
