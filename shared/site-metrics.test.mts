@@ -27,7 +27,7 @@ test("analytics requires both production domains and rejects partial or malforme
   }
 });
 
-test("analytics totals pageviews from disjoint host filters, never visits or Worker requests", async () => {
+test("analytics totals pageviews from disjoint host filters over a rolling 7×24h window, never visits or Worker requests", async () => {
   const requests: Record<string, unknown>[] = [];
   const fetcher: typeof fetch = async (_url, init) => {
     const body = JSON.parse(String(init?.body));
@@ -37,11 +37,11 @@ test("analytics totals pageviews from disjoint host filters, never visits or Wor
     assert.doesNotMatch(body.query, /dimensions|visits|workersInvocations/);
     return Response.json(pageviews(body.variables.host === "lyjw.me" ? 23 : 41));
   };
-  const now = Date.parse("2026-10-11T08:00:00Z");
+  const now = Date.parse("2026-10-11T08:00:42.500Z");
   const result = await fetchSiteAnalytics("account", "token", sources, now, fetcher);
   assert.equal(result.pageviews, 64);
-  assert.equal(result.start, Date.parse("2026-10-04T00:00:00Z"));
-  assert.equal(result.end, Date.parse("2026-10-11T00:00:00Z"));
+  assert.equal(result.start, Date.parse("2026-10-04T08:00:00Z"));
+  assert.equal(result.end, Date.parse("2026-10-11T08:00:00Z"));
   assert.equal(requests.length, 2);
   await assert.rejects(fetchSiteAnalytics("account", "token", [sources[0], sources[0]], now, fetcher));
   await assert.rejects(fetchSiteAnalytics("account", "token", sources, now, async () => Response.json({ errors: [{}] })));
