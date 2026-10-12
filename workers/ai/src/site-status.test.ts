@@ -4,7 +4,7 @@ import test from "node:test";
 import { STATUS_VIEWS } from "@shared/status-views";
 import { runShowCard } from "./chat/show-card.ts";
 import { newLedger, type ToolIO, type ToolLedger } from "./tools/registry.ts";
-import { isImageField, SITE_STATUS_TOOL } from "./tools/site-status.ts";
+import { isImageField, nowListeningHint, runSiteStatusTool, SITE_STATUS_TOOL } from "./tools/site-status.ts";
 
 const games = (count: number) =>
   Array.from({ length: count }, (_, i) => ({
@@ -195,4 +195,47 @@ test("show_card 回给模型的是精简后的第一页，带摘要与 nextCurso
   const parsed = JSON.parse(json);
   assert.equal(parsed.games.items.length, 20);
   assert.equal(parsed.games.items[0].coverUrl, undefined);
+});
+
+const nowListening = (startedAt: number, music: unknown = null) => ({
+  ok: true,
+  data: {
+    music,
+    idle: !music,
+    elsewhere: {
+      title: "片っぽ (Acoustic Version)",
+      artist: "eill",
+      album: "プレロマンス / フィナーレ。 - EP",
+      artworkUrl: "https://is1-ssl.mzstatic.com/a.jpg",
+      songId: "1",
+      startedAt,
+      durationMs: 248_000,
+      marginMs: 2_600,
+      next: { title: "だから僕は音楽を辞めた", artist: "ヨルシカ", songId: "2", artworkUrl: null, durationMs: 200_000, basis: "order" },
+    },
+  },
+});
+
+test("nowListening 只有推断的 elsewhere 时，结果写明此刻多半正在听，idle 只管 Mac 与 HomePod", async () => {
+  const now = 1_800_000_000_000;
+  const text = await runSiteStatusTool(async () => Response.json(nowListening(now - 46_000)), ["nowListening"], now);
+  const [summary, hint, json] = text.split("## nowListening\n")[1]!.split("\n");
+  assert.match(summary!, /^detail=summary/);
+  assert.match(hint!, /most likely listening right now to "片っぽ \(Acoustic Version\)" by eill, about 0:46 of 4:08 in/);
+  assert.match(hint!, /idle only means the Mac and HomePod are not playing/);
+  assert.match(json!, /^\{"ok":true/);
+});
+
+test("推断的那首刚放完、下一首还没上榜时，仍说多半在听并给出猜的下一首", () => {
+  const now = 1_800_000_000_000;
+  const hint = nowListeningHint(nowListening(now - 250_000), now);
+  assert.match(hint!, /most likely still listening/);
+  assert.match(hint!, /likely "だから僕は音楽を辞めた" by ヨルシカ/);
+});
+
+test("Mac / HomePod 在放或没有推断时不加说明", () => {
+  const now = 1_800_000_000_000;
+  assert.equal(nowListeningHint(nowListening(now - 46_000, { title: "Idol", state: "playing" }), now), null);
+  assert.equal(nowListeningHint({ ok: true, data: { music: null, idle: true, elsewhere: null } }, now), null);
+  assert.equal(nowListeningHint({ ok: false, error: "x" }, now), null);
 });
