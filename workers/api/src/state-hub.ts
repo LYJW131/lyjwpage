@@ -13,8 +13,12 @@ import { PulseArchiveState, type ArchiveStream, type PulseArchiveSnapshot } from
 import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
 import type { PulseAssessment } from "@shared/pulse-assessment";
 import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
+import { LAG_REPURGE_DELAY_MS, lagStatusTags, queueRepurge, takeDueRepurge, type RepurgeQueue } from "./lag-repurge";
+import { expireStatusTags } from "./live-platform";
 
 export type PulseTick = { archive: PulseArchiveSnapshot; score: PulseScoreClaim | null };
+
+const REPURGE_KEY = "lag-repurge";
 
 type CommitIngestWire =
   | { ready: true; ok: true; json: string; error: null; effects: IngestEffect[] }
@@ -142,6 +146,31 @@ export class StateHub extends DurableObject<Env> {
     return this.pulseScoreState.finishPulseScore(token, generation, records);
   }
 
+  async deferStatusRepurge(tags: string[]): Promise<void> {
+    const lag = lagStatusTags(tags);
+    if (!lag.length) return;
+    const at = Date.now() + LAG_REPURGE_DELAY_MS;
+    await this.ctx.storage.transaction(async (txn) => {
+      await txn.put(REPURGE_KEY, queueRepurge((await txn.get<RepurgeQueue>(REPURGE_KEY)) ?? {}, lag, at));
+      const current = await txn.getAlarm();
+      if (current === null || current > at) await txn.setAlarm(at);
+    });
+  }
+
+  private async flushStatusRepurge(): Promise<number | null> {
+    const { due, next } = await this.ctx.storage.transaction(async (txn) => {
+      const taken = takeDueRepurge((await txn.get<RepurgeQueue>(REPURGE_KEY)) ?? {}, Date.now());
+      if (taken.next === null) await txn.delete(REPURGE_KEY);
+      else await txn.put(REPURGE_KEY, taken.rest);
+      return taken;
+    });
+    if (due.length) {
+      console.log("[lag-repurge]", due.join(","));
+      await withRequestState(() => requestStore.run({ env: this.env, ctx: this.ctx }, () => expireStatusTags(due)));
+    }
+    return next;
+  }
+
   private async scheduleAlarm(at: number): Promise<void> {
     await this.ctx.storage.transaction(async (txn) => {
       const current = await txn.getAlarm();
@@ -153,6 +182,8 @@ export class StateHub extends DurableObject<Env> {
   }
   async alarm(): Promise<void> {
     const removed = this.database.purgeExpired();
-    await this.scheduleAlarm(Date.now() + (removed === 1000 ? 1000 : 60 * 60_000));
+    const repurgeAt = await this.flushStatusRepurge();
+    const housekeepingAt = Date.now() + (removed === 1000 ? 1000 : 60 * 60_000);
+    await this.scheduleAlarm(repurgeAt === null ? housekeepingAt : Math.min(repurgeAt, housekeepingAt));
   }
 }

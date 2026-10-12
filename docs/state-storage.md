@@ -76,7 +76,7 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 
 实时卡的「此刻在不在线 / 断没断流」一律由浏览器判（`src/hooks/use-stale.ts`，纯逻辑在 `shared/freshness.ts`）：源站只给 `lastSeenAt`、`declaredOffline`、`heartbeatWindowMs`、`pushedAt`、`staleAfterMs`、`observedAt` 这类原始事实，不在读取时下结论，免得结论跟着首屏缓存冻住。成功信封带 `servedAt`（源站交出这份的时刻，`statusEnvelope` 盖）：首屏那份连它一起冻进缓存，首帧没有访客钟时拿它当钟，服务端预渲染和 hydrate 判出同一个结论；浏览器取回的信封在进 SWR 之前摘掉它。挂载后换浏览器自己的钟，按钟判出的过期要等挂载校验或切回前台的那次回源回来才认，认下之后只有数据重新新鲜才松开。
 
-Worker 写入完成后，只有首屏布局变化才经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（判据见 `shared/home-layout.ts` 与 `workers/api/README.md`），内容变化交给视图快照的缓存期限自然过期。失效按标签白名单先清除对应 `page:<tag>` 快照，再清除 `home` 首页文档，下一次请求重新渲染。不因纯心跳刷新首页。ESA 首页不走通知：边缘按源站 `Cache-Control` 的 SWR（由 site Worker 响应给出）自行过期与后台取新，控制台缓存规则见 [仓库外事实](./ops-facts.md)。站点缓存的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker。
+Worker 写入完成后，只有首屏布局变化才经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（判据见 `shared/home-layout.ts` 与 `workers/api/README.md`），内容变化交给视图快照的缓存期限自然过期。失效按标签白名单先清除对应 `page:<tag>` 快照，再清除 `home` 首页文档，下一次请求重新渲染。可滞后层的标签等 KV 写入各机房可见后还会再失效一次（`workers/api/src/lag-repurge.ts#LAG_REPURGE_DELAY_MS`）。不因纯心跳刷新首页。ESA 首页不走通知：边缘按源站 `Cache-Control` 的 SWR（由 site Worker 响应给出）自行过期与后台取新，控制台缓存规则见 [仓库外事实](./ops-facts.md)。站点缓存的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker。
 
 ## 配置
 

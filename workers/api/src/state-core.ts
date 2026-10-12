@@ -10,6 +10,7 @@ import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { enrichCommand, enrichRecentlyPlayed, followUpEnrichment, type EnrichmentFollowUp } from "./listening-enrichment";
 import { expireStatusTags, liveRoom } from "./live-platform";
+import { lagStatusTags } from "./lag-repurge";
 import { issueApiDeveloperToken } from "./musickit-token";
 import { requestStore, type Env } from "./runtime";
 
@@ -72,7 +73,12 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   }
 
   async revalidate(tags: string[]): Promise<void> {
-    await this.scoped(() => expireStatusTags([...new Set(tags)]));
+    const unique = [...new Set(tags)];
+    await this.scoped(() => expireStatusTags(unique));
+    if (!lagStatusTags(unique).length) return;
+    await this.hub().deferStatusRepurge(unique).catch((error: unknown) => {
+      console.warn("[revalidate] defer", error instanceof Error ? error.message : String(error));
+    });
   }
 
   private followUp(followUp: EnrichmentFollowUp): Promise<void> {
