@@ -49,6 +49,10 @@ export async function admitDesign(env: Env, token: string, resume = false): Prom
   return { session: { token, expiresAt: payload.expiresAt, remaining: admitted.remaining }, sessionId: payload.sessionId };
 }
 
+export async function claimDesignOpen(env: Env, sessionId: string): Promise<boolean> {
+  return env.BUILD_COORDINATOR!.getByName("global").claimDesignOpen(sessionId);
+}
+
 export async function plannerHistory(history: GodChatMessage[], env: Env): Promise<GodChatMessage[]> {
   return Promise.all(history.map(async (message) => {
     if (message.role !== "assistant" || !message.planToken || !env.BUILD_SESSION_SECRET) return message;
