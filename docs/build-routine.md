@@ -10,12 +10,12 @@ Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，�
 
 规划者在会话沙盒里匿名克隆公开仓库 main，用 glob、grep、read 和只读命令查代码与文档，用 `get_site_status` 看实时数据，再用 `ask_visitor` 提问、`propose_build` 输出标题、Markdown 规格、验收项和预计路径；访客能读到的内容（消息、题目、选项和整份计划）都用访客的语言写，代码标识符与路径保留原文，routine 照同一语言读计划和汇报进度。题目和计划不立刻回结果：会话停在等结果的状态，访客下一条消息就作为那次调用的结果发回。`workers/ai/src/build/validation.ts#parseBuildPlan` 校验后签出计划；计划有效期取 `BUILD_PLAN_TTL_MS`。计划内容是需求，不是可执行指令。规划者默认访客不了解站点的设计与代码：给访客看的回复、题目和计划标题只讲页面上看得到的效果，技术取舍自己从代码里定，路径、组件名等实现细节只进规格、验收项和路径（`workers/ai/src/chat/design.ts#PLANNER_PROMPT`）。改动范围的最终硬限制在上传阶段执行。
 
-计划卡的两个出口互斥，同时最多展开一个确认面板。浏览器在发起 PKCE 授权前，每次都在计划卡里展开 `src/components/github-consent.tsx#GithubConsent` 的 GitHub 授权说明（按 `shared/build-routine.ts#visitorLanguage` 跟随访客语言，用中日英），访客点接受才弹出授权窗口；同意不保存，下次再点 Open issue 或 Start build 还会展开。
+计划卡提供两个出口：
 
-- **Open issue**：浏览器完成 GitHub PKCE 授权，将授权码、verifier 和计划 token 提交；Worker 从签名计划生成正文，以访客身份创建 issue，然后撤销访客 token。正文的小节与仓库 issue 表单（`.github/ISSUE_TEMPLATE/`）同构；访客 token 无权打标签，`from-chat` 标签由 `.github/workflows/issue-labels.yml` 按 issue 的 `performed_via_github_app`（站点的 GitHub App）补上。
-- **Start build**：每次都弹窗连接 GitHub，与 Open issue 一样把授权码随计划一起交给 Worker，不签发、不保存任何会话凭据。Worker 兑换授权码、查 `/user` 拿账号名、用户 ID 与显示名，随即撤销访客 token（失败路径也撤销），然后原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。同一计划的构建重试必须重新验证同一个 GitHub 用户 ID，返回原 run 与 PR；不同账号不能接管。浏览器在授权与请求期间同步锁住按钮，避免重复点击。
+- **Open issue**：在新标签页直接跳转到 GitHub issue 创建页（`shared/build-routine.ts#buildIssueUrl`），用 `improvement.yml` 表单打开，标题与「想要什么」「验收标准」「涉及路径」按计划预填，「现在的情况」一栏填来源署名和隐藏标记，访客在 GitHub 确认后以自己的账号提交，无需给本站授权，也不消费计划。正文写不进 `performed_via_github_app`，`from-chat` 标签由 `.github/workflows/issue-labels.yml` 改按 context 字段里的隐藏标记（`shared/build-routine.ts#BUILD_ISSUE_ORIGIN`）补上。
+- **Start build**：发起协作构建前在计划卡展开 `src/components/github-consent.tsx#GithubConsent` 的 GitHub 授权说明（按 `shared/build-routine.ts#visitorLanguage` 跟随访客语言，用中日英），访客点接受才弹出授权窗口；同意不保存，下次再点还会展开。每次都弹窗连接 GitHub，把授权码随计划一起交给 Worker，不签发、不保存任何会话凭据。Worker 兑换授权码、查 `/user` 拿账号名、用户 ID 与显示名，随即撤销访客 token（失败路径也撤销），然后原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。同一计划的构建重试必须重新验证同一个 GitHub 用户 ID，返回原 run 与 PR；不同账号不能接管。浏览器在授权与请求期间同步锁住按钮，避免重复点击。
 
-计划的使用记录在 DO 中。issue 在 OAuth 换票成功后、创建 issue 前消费计划；构建用 App 的只读安装令牌读取 main，成功后原子消费计划与额度，并将计划关联到唯一 run。读取 main 失败或构建额度拒绝不消费计划；已消费的计划不能创建另一个构建或 issue，同账号重试只恢复原 run，不重复扣额度。GitHub 请求结果不确定时先查 GitHub，不能把网络失败当成「没有创建」。构建频率取 `BUILD_QUOTA`；设计、账号和状态令牌使用不同用途标签，不能互换。
+计划的使用记录在 DO 中。只有 Start build 消费计划：构建用 App 的只读安装令牌读取 main，成功后原子消费计划与额度，并将计划关联到唯一 run。读取 main 失败或构建额度拒绝不消费计划；已消费的计划不能再发起构建，同账号重试只恢复原 run，不重复扣额度。Open issue 不经过 Worker：GitHub 的原生提交不会回传结果，浏览器点过链接就在本地存档记下已选出口（`src/lib/chat-archive.ts#ChatProposal` 的 `issueOpened`），卡片随即关闭两个出口；访客在 GitHub 上的重复提交由访客自己负责。GitHub 请求结果不确定时先查 GitHub，不能把网络失败当成「没有创建」。构建频率取 `BUILD_QUOTA`；设计、账号和状态令牌使用不同用途标签，不能互换。
 
 ## 上传与 PR
 

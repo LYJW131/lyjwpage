@@ -9,8 +9,10 @@ permissions:
 
 jobs:
   from-chat:
-    # 访客 token 无权打标签，只能事后补。判据是创建者经由站点的 GitHub App（lyjw131，即 shared/github-issue.ts#GITHUB_APP_CLIENT_ID 那个 App）：正文可以伪造，这个字段不能。
-    if: github.event.issue.performed_via_github_app.id == 5201294
+    # 访客 token 无权打标签，只能事后补。判据有两个：创建者经由站点的 GitHub App（lyjw131，即 shared/github-issue.ts#GITHUB_APP_CLIENT_ID 那个 App，正文可以伪造，这个字段不能）；或正文带预填链接写入的隐藏标记（shared/build-routine.ts#BUILD_ISSUE_ORIGIN，访客自己提交时本来就会有它，伪造出来也只影响这一个装饰标签）。
+    if: >-
+      github.event.issue.performed_via_github_app.id == 5201294
+      || contains(github.event.issue.body, 'filed-from-homepage-chat')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

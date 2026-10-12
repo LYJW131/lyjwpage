@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, planLanguage, visitorLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, buildIssueUrl, planLanguage, visitorLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url, uploadTokenForRun } from "./build/token.ts";
@@ -110,7 +110,7 @@ test("design sessions count 12 turns, expire and cap global starts", (t) => {
   assert.deepEqual(instance.admitDesign("first"), { status: "expired", remaining: 0 });
 });
 
-test("plans are single use across issue and build and expire", async (t) => {
+test("plans are single use and expire", async (t) => {
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);
   assert.deepEqual(await consumePlan(env, proposal.token), plan);
@@ -251,6 +251,15 @@ test("issue and PR labels follow the plan language", () => {
   assert.match(buildIssueBody(zh), /^## 想要什么\n[\s\S]*## 验收标准[\s\S]*## 涉及路径/);
   assert.match(buildIssueBody(ja), /## 受け入れ基準/);
   assert.match(buildIssueBody(plan), /## Acceptance criteria/);
+  const issueUrl = new URL(buildIssueUrl(zh));
+  assert.equal(issueUrl.origin, "https://github.com");
+  assert.equal(issueUrl.pathname, `/${BUILD_REPO}/issues/new`);
+  assert.equal(issueUrl.searchParams.get("template"), "improvement.yml");
+  assert.equal(issueUrl.searchParams.get("title"), zh.title);
+  assert.equal(issueUrl.searchParams.get("what"), zh.spec);
+  assert.match(issueUrl.searchParams.get("acceptance") ?? "", /^- \[ \] 手机端 375px 单列显示$/);
+  assert.equal(issueUrl.searchParams.get("paths"), "- `src/components/live/genshin-card.tsx`");
+  assert.match(issueUrl.searchParams.get("context") ?? "", /提交自\[首页对话\][\s\S]*filed-from-homepage-chat/);
 });
 
 test("base must be an ancestor of main, with comparison in the correct direction", async () => {

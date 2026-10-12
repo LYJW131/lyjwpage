@@ -70,7 +70,7 @@ export function textLanguage(text: string): PlanLanguage {
   return kana > (kana + han) * 0.2 ? "ja" : "zh";
 }
 
-// issue 的小节标题须与 .github/ISSUE_TEMPLATE/ 的表单字段同步。
+// 预填参数对应 .github/ISSUE_TEMPLATE/improvement.yml 的字段 id；issue 与 PR 正文的小节标题同用一套文案，须与表单字段同步。
 export const PLAN_LABELS = {
   en: {
     request: "Request",
@@ -123,3 +123,36 @@ export function buildIssueBody(plan: BuildPlan): string {
   const labels = PLAN_LABELS[planLanguage(plan)];
   return `## ${labels.request}\n${plan.spec}\n\n## ${labels.acceptance}\n${plan.acceptance.map((item) => `- [ ] ${item}`).join("\n")}\n\n## ${labels.paths}\n${plan.paths.map((path) => `- \`${path}\``).join("\n")}`;
 }
+
+// GitHub 对超长预填链接回 414；context 里的注释标记是访客提交后 .github/workflows/issue-labels.yml 补 from-chat 标签的判据。
+export const BUILD_ISSUE_URL_LIMIT = 7_500;
+export const BUILD_ISSUE_ORIGIN = "filed-from-homepage-chat";
+
+export function buildIssueUrl(plan: BuildPlan): string {
+  const labels = PLAN_LABELS[planLanguage(plan)];
+  const context = `${labels.issueFooter}\n<!-- ${BUILD_ISSUE_ORIGIN} -->`;
+  const fields = {
+    title: plan.title,
+    what: plan.spec,
+    acceptance: plan.acceptance.map((item) => `- [ ] ${item}`).join("\n"),
+    paths: plan.paths.map((path) => `- \`${path}\``).join("\n"),
+  };
+  const url = (candidate: typeof fields) => `https://github.com/${BUILD_REPO}/issues/new?${new URLSearchParams({ template: "improvement.yml", ...candidate, context })}`;
+  if (url(fields).length <= BUILD_ISSUE_URL_LIMIT) return url(fields);
+  // 先砍路径、再砍验收条目、最后截规格，被砍的字段末尾标「…」。
+  for (const keep of [10, 3, 0]) {
+    fields.paths = keep ? `${plan.paths.slice(0, keep).map((path) => `- \`${path}\``).join("\n")}\n…` : "…";
+    if (url(fields).length <= BUILD_ISSUE_URL_LIMIT) return url(fields);
+  }
+  for (const keep of [4, 2, 0]) {
+    fields.acceptance = keep ? `${plan.acceptance.slice(0, keep).map((item) => `- [ ] ${item}`).join("\n")}\n…` : "…";
+    if (url(fields).length <= BUILD_ISSUE_URL_LIMIT) return url(fields);
+  }
+  const spec = [...plan.spec];
+  for (let n = spec.length; n > 0; n = Math.floor(n / 2)) {
+    fields.what = `${spec.slice(0, n).join("")}\n…`;
+    if (url(fields).length <= BUILD_ISSUE_URL_LIMIT) return url(fields);
+  }
+  return url({ title: fields.title, what: "…", acceptance: "…", paths: "…" });
+}
+
