@@ -19,18 +19,6 @@
       "@/lib/storage-driver": [
         "./src/storage-driver.ts"
       ],
-      "@/lib/apple-developer-token": [
-        "./src/apple-developer-token.ts"
-      ],
-      "@/lib/apple-music-credentials": [
-        "./src/apple-music-credentials.ts"
-      ],
-      "@/lib/lag-store": [
-        "./src/lag-store.ts"
-      ],
-      "@/lib/apple-cache-store": [
-        "./src/apple-cache-store.ts"
-      ],
       "@/*": [
         "../../src/*"
       ],

@@ -1,5 +1,5 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
-import { readLagEntry } from "@/lib/lag-store";
+import { readLagEntry } from "@shared/lag";
 import type { LagKey } from "@shared/lag";
 
 export class LagResult<T> {

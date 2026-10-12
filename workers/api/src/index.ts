@@ -10,8 +10,11 @@ import { StateCore as StateCoreBase } from "./state-core";
 import { PublicStatus as PublicStatusBase } from "./public-status";
 import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG } from "./cron-heartbeat";
 import { freshnessCheckDue, watchFreshness, type FreshnessEvent } from "./freshness-watch";
+import { installApiPorts } from "./ports";
 import { sentryOptions } from "./sentry";
 import type { PulseTick } from "./state-hub";
+
+installApiPorts();
 
 // Wrangler 迁移按导出名识别 DO；Sentry 包装不能改变这些名称。
 export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry(sentryOptions, LivePushRoomBase);

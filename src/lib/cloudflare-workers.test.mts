@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { installLagStoreForTests } from "./lag-store.ts";
+import { installLagReader } from "@shared/lag";
 import { LAG_KEYS, type LagEntry } from "@shared/lag";
 import { fetchWorkerDeployments, fetchWorkersMetrics, getCloudflareWorkers, parseBuildsByVersion, parseWorkerDeployment, parseWorkersMetrics } from "./cloudflare-workers.ts";
 
@@ -139,8 +139,8 @@ test("the public payload joins metrics and deployments by name, each half with i
     [LAG_KEYS.cloudflareMetrics, { updatedAt: end + 5, data: metrics }],
     [LAG_KEYS.cloudflareDeployments, { updatedAt: end + 60, data: deployments }],
   ]);
-  installLagStoreForTests(async (key) => store.get(key) ?? null);
-  t.after(() => installLagStoreForTests(null));
+  installLagReader(async (key) => store.get(key) ?? null);
+  t.after(() => installLagReader(null));
 
   const result = await getCloudflareWorkers();
   assert.equal(result.updatedAt, end + 60);

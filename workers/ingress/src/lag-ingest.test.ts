@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { SERVER_STALE_MS } from "@/lib/freshness";
-import { installLagStoreForTests } from "@/lib/lag-store";
+import { installLagReader } from "@shared/lag";
 import { getServerSnapshot } from "@/lib/server";
 import { STATUS_VIEWS } from "@/lib/status-views";
 import { MemoryKv } from "@/lib/testing/memory-kv";
@@ -194,13 +194,13 @@ test("落地节点的 publicIp 只是上报契约：写进可滞后层的不带�
   assert.ok(!("publicIp" in written));
 
   await writeLag(kv, LAG_KEYS.server, { ...written, publicIp: "203.0.113.7" }, NOW);
-  installLagStoreForTests((key) => readLag(kv, key));
+  installLagReader((key) => readLag(kv, key));
   try {
     const { data } = await getServerSnapshot();
     assert.equal(data.hostname, "misaka-jp");
     assert.equal(data.pushedAt, NOW);
     assert.ok(!("publicIp" in data));
   } finally {
-    installLagStoreForTests(null);
+    installLagReader(null);
   }
 });

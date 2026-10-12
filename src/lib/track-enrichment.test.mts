@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { trackLookupCacheKey } from "@/lib/apple-music";
-import { installAppleCacheForTests } from "@/lib/apple-cache-store";
+import { installAppleCache } from "@shared/apple-cache";
 import { lyricsCacheKey } from "@/lib/lyrics";
 import { motionArtworkCacheKey } from "@/lib/motion-artwork";
 import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
@@ -53,8 +53,9 @@ async function withoutNetwork<T>(run: () => Promise<T>): Promise<{ value: T; fet
 }
 
 test("缓存命中时补全全部来自 KV，不发外部请求", async (t) => {
-  installAppleCacheForTests(seeded());
-  t.after(() => installAppleCacheForTests(null));
+  const seededKv = seeded();
+  installAppleCache(() => seededKv);
+  t.after(() => installAppleCache(null));
   const { value, fetched } = await withoutNetwork(() => enrichTrack(music("Song"), [{ title: "Next", artist: "Artist", album: null }]));
   assert.deepEqual(fetched, []);
   assert.deepEqual(value, {
@@ -71,8 +72,8 @@ test("缓存命中时补全全部来自 KV，不发外部请求", async (t) => {
 
 test("查询失败时存成未补全，失败结果不写 KV", async (t) => {
   const kv = new TtlKv();
-  installAppleCacheForTests(kv);
-  t.after(() => installAppleCacheForTests(null));
+  installAppleCache(() => kv);
+  t.after(() => installAppleCache(null));
   const { value } = await withoutNetwork(() => enrichTrack(music("Unknown")));
   assert.equal(value?.songId, null);
   assert.equal(value?.motion, null);
@@ -101,9 +102,9 @@ test("补全结果对不上当前曲目时按未补全处理", () => {
 
 test("KV 过期时间不短于 60 秒", async (t) => {
   const kv = new TtlKv();
-  installAppleCacheForTests(kv);
-  t.after(() => installAppleCacheForTests(null));
-  const { put } = await import("@/lib/apple-cache");
+  installAppleCache(() => kv);
+  t.after(() => installAppleCache(null));
+  const { put } = await import("@shared/apple-cache");
   await withRequestState(() => put("short", { ok: true }, 5_000));
   assert.equal(kv.ttls.get("lyjwpage:short"), 60);
 });
@@ -115,8 +116,9 @@ test("listening/now 读取只用存好的补全，不发外部请求", async (t)
   const { mirror: liveness } = await import("@shared/reporter-liveness");
   const { getNowListening } = await import("@/lib/telemetry");
   installStorageForTests(new FakeStorage());
-  installAppleCacheForTests(new TtlKv());
-  t.after(() => { resetStorageForTests(); installAppleCacheForTests(null); });
+  const ttlKv = new TtlKv();
+  installAppleCache(() => ttlKv);
+  t.after(() => { resetStorageForTests(); installAppleCache(null); });
   const now = Date.now();
   const playing = music("Song", { observedAt: now });
   await liveness.put({ lastSeenAt: now, declaredOffline: false });
@@ -182,8 +184,8 @@ test("动态封面：Apple 404 按「没有」缓存 7 天，其他错误不缓�
   const { resolveMotionArtwork } = await import("@/lib/motion-artwork");
   const kv = new TtlKv();
   kv.values.set("lyjwpage:apple-web-token", JSON.stringify({ token: "web-token", expiresAt: Date.now() + 3_600_000 }));
-  installAppleCacheForTests(kv);
-  t.after(() => installAppleCacheForTests(null));
+  installAppleCache(() => kv);
+  t.after(() => installAppleCache(null));
   const original = globalThis.fetch;
   t.after(() => { globalThis.fetch = original; });
   const reply = (status: number) => { globalThis.fetch = (async () => new Response("{}", { status })) as typeof fetch; };
@@ -210,8 +212,8 @@ function captureWarnings(t: { after: (fn: () => void) => void }): unknown[][] {
 test("动态封面卡住不拖住目录结果，超时打 warn 并标成未知", async (t) => {
   const kv = seeded();
   kv.values.delete(`lyjwpage:${motionArtworkCacheKey(parseAppleMusicUrl(LINK)!)}`);
-  installAppleCacheForTests(kv);
-  t.after(() => installAppleCacheForTests(null));
+  installAppleCache(() => kv);
+  t.after(() => installAppleCache(null));
   const warnings = captureWarnings(t);
   const original = globalThis.fetch;
   globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
@@ -233,8 +235,8 @@ test("队列里某首查询卡住只丢那一首", async (t) => {
   const stuck = trackLookupCacheKey({ title: "Stuck", artist: "Artist", album: null });
   const get = kv.get.bind(kv);
   kv.get = (key: string) => (key === `lyjwpage:${stuck}` ? new Promise<string | null>(() => {}) : get(key));
-  installAppleCacheForTests(kv);
-  t.after(() => installAppleCacheForTests(null));
+  installAppleCache(() => kv);
+  t.after(() => installAppleCache(null));
   captureWarnings(t);
   const { enrichTrackOutcome } = await import("@/lib/track-enrichment");
   const upcoming = [{ title: "Stuck", artist: "Artist", album: null }, { title: "Next", artist: "Artist", album: null }];
@@ -249,8 +251,8 @@ test("队列里某首查询卡住只丢那一首", async (t) => {
 test("目录查询超时打 warn（带曲目与阶段），存成未补全并标成未知", async (t) => {
   const kv = new TtlKv();
   kv.get = () => new Promise<string | null>(() => {});
-  installAppleCacheForTests(kv);
-  t.after(() => installAppleCacheForTests(null));
+  installAppleCache(() => kv);
+  t.after(() => installAppleCache(null));
   const warnings = captureWarnings(t);
   const { enrichTrackOutcome } = await import("@/lib/track-enrichment");
   const outcome = await withRequestState(() => enrichTrackOutcome(music("Slow Song"), [], { catalogMs: 30, upcomingMs: 30, motionMs: 30 }));
@@ -264,8 +266,8 @@ test("目录查询超时打 warn（带曲目与阶段），存成未补全并标
 test("目录里确定没有的曲目不算未知，不触发重查", async (t) => {
   const kv = new TtlKv();
   kv.values.set(`lyjwpage:${trackLookupCacheKey(music("Missing"))}`, JSON.stringify({ link: "", artwork: null, id: null, songId: null, hasLyrics: false }));
-  installAppleCacheForTests(kv);
-  t.after(() => installAppleCacheForTests(null));
+  installAppleCache(() => kv);
+  t.after(() => installAppleCache(null));
   const { enrichTrackOutcome } = await import("@/lib/track-enrichment");
   const { value } = await withoutNetwork(() => enrichTrackOutcome(music("Missing")));
   assert.equal(value?.catalogKnown, true);

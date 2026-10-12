@@ -80,7 +80,7 @@ try {
       DEV_OVERRIDES: 'true',
       APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
     },
-    alias: Object.fromEntries(['storage-driver', 'apple-developer-token', 'apple-music-credentials', 'lag-store', 'apple-cache-store']
+    alias: Object.fromEntries(['storage-driver']
       .map(name => [`@/lib/${name}`, join(root, `workers/api/src/${name}.ts`)])),
     durable_objects: { bindings: [
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },

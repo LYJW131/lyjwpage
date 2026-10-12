@@ -51,3 +51,16 @@ export async function writeLag<T>(kv: LagStore, key: LagKey, data: T, updatedAt 
   const entry: LagEntry<T> = { updatedAt, data };
   await kv.put(key, JSON.stringify(entry));
 }
+
+type LagReader = (key: LagKey) => Promise<LagEntry<unknown> | null>;
+
+let lagReader: LagReader | null = null;
+
+export function installLagReader(reader: LagReader | null): void {
+  lagReader = reader;
+}
+
+export async function readLagEntry<T>(key: LagKey): Promise<LagEntry<T> | null> {
+  if (!lagReader) throw new Error("可滞后层读取没有装上：Worker 入口先调 installLagReader");
+  return (await lagReader(key)) as LagEntry<T> | null;
+}
