@@ -154,8 +154,8 @@ importers:
         specifier: ^20
         version: 20.19.43
       typescript:
-        specifier: ^5
-        version: 5.9.3
+        specifier: ^7.0.2
+        version: 7.0.2
 
   reporters/discord-reporter:
     dependencies:
@@ -167,8 +167,8 @@ importers:
         specifier: ^20
         version: 20.19.43
       typescript:
-        specifier: ^5
-        version: 5.9.3
+        specifier: ^7.0.2
+        version: 7.0.2
 
   reporters/emby-reporter:
     dependencies:
@@ -180,8 +180,8 @@ importers:
         specifier: ^20
         version: 20.19.43
       typescript:
-        specifier: ^5
-        version: 5.9.3
+        specifier: ^7.0.2
+        version: 7.0.2
 
   reporters/playstation-reporter:
     dependencies:
@@ -193,8 +193,8 @@ importers:
         specifier: ^20
         version: 20.19.43
       typescript:
-        specifier: ^5
-        version: 5.9.3
+        specifier: ^7.0.2
+        version: 7.0.2
 
   reporters/server-reporter:
     devDependencies:
@@ -202,8 +202,8 @@ importers:
         specifier: ^20
         version: 20.19.43
       typescript:
-        specifier: ^5
-        version: 5.9.3
+        specifier: ^7.0.2
+        version: 7.0.2
 
   workers/ai:
     dependencies:
@@ -5181,11 +5181,6 @@ packages:
     peerDependencies:
       eslint: ^8.57.0 || ^9.0.0 || ^10.0.0
       typescript: '>=4.8.4 <6.1.0'
-
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
-    engines: {node: '>=14.17'}
-    hasBin: true
 
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
@@ -11257,8 +11252,6 @@ snapshots:
       typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
-
-  typescript@5.9.3: {}
 
   typescript@6.0.3: {}
 
