@@ -11,7 +11,7 @@
     "test": "node --test --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs src/*.test.ts src/jobs/*.test.ts"
   },
   "dependencies": {
-    "@sentry/cloudflare": "10.75.2"
+    "@sentry/cloudflare": "11.7.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260702.1",

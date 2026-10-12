@@ -1,4 +1,6 @@
-import type { Event } from "@sentry/react";
+import type { BrowserOptions, Event } from "@sentry/react";
+
+type StreamedSpan = Parameters<NonNullable<BrowserOptions["beforeSendSpan"]>>[0];
 
 const SPAN_URL_KEYS = ["http.url", "url.full", "url"] as const;
 const BREADCRUMB_URL_KEYS = ["url", "from", "to"] as const;
@@ -51,3 +53,29 @@ export function redactSentryEvent<T extends Event>(event: T): T {
   }
   return event;
 }
+
+export function redactSentrySpan(span: StreamedSpan): StreamedSpan {
+  for (const key of SPAN_URL_KEYS) {
+    const value = span.attributes[key];
+    if (typeof value === "string") span.attributes[key] = stripUrlQuery(value);
+  }
+  delete span.attributes["url.query"];
+  delete span.attributes["url.fragment"];
+  const match = SPAN_METHOD_URL.exec(span.name);
+  if (match) span.name = `${match[1]} ${stripUrlQuery(match[2])}`;
+  return span;
+}
+
+// 浏览器与 site Worker 共用。dataCollection 没写的项按全开补齐（IP、请求头、正文、查询串），所以每项都显式写。
+export const SENTRY_SITE_DATA_COLLECTION = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: false,
+  httpBodies: [],
+  urlQueryParams: false,
+  graphQL: { document: false, variables: false },
+  genAI: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  stackFrameVariables: false,
+} satisfies NonNullable<BrowserOptions["dataCollection"]>;
