@@ -6,7 +6,7 @@ import { useSWRConfig } from "swr";
 import type { ScopedMutator } from "swr";
 
 import { mergeChargerHistory } from "@/lib/charger-history";
-import type { LiveEvent } from "@/lib/live-events";
+import type { LiveEvent } from "@shared/live-events";
 import { acceptPush } from "@/lib/status-reads";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { EARLY_LIVE_SOCKET_KEY, type EarlyLiveSocket } from "@/lib/live-socket-boot";
@@ -19,8 +19,8 @@ import {
   POWERBANK_PATH,
   TROPHIES_PATH,
 } from "@/lib/paths";
-import { isPushedViewPath, pathByEvent } from "@/lib/status-views";
-import type { ChargerPayload, StatusResponse } from "@/lib/types";
+import { isPushedViewPath, pathByEvent } from "@shared/status-views";
+import type { ChargerPayload, StatusResponse } from "@shared/types";
 import { LIVE_HEARTBEAT_MS } from "@shared/live-heartbeat";
 import { attemptsAfterClose, catchUpOnOpen, catchUpOnVisible, reconnectDelay } from "@/lib/live-reconnect";
 

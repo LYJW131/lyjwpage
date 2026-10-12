@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage.git",
-      "revision": "b85d882cbf7d78bd16679bbd38ce66a35e0c01ee"
+      "revision": "9de4de40d6bad7edb2e38af0bd18464a3fee9f97"
     }
   },
   "components": [
@@ -135,7 +135,7 @@
           "path": "workers/ingress/src/lag-ingest.ts"
         },
         {
-          "path": "workers/api/src/lag-store.ts"
+          "path": "workers/api/src/ports.ts"
         }
       ]
     },
@@ -311,7 +311,7 @@
           "path": "src/lib/live-socket.ts"
         },
         {
-          "path": "src/lib/freshness.ts"
+          "path": "shared/freshness.ts"
         }
       ]
     },

@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getChargerSnapshot } from "@/lib/anker";
-import { getPowerBankSnapshot } from "@/lib/powerbank";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { getChargerSnapshot } from "./anker";
+import { getPowerBankSnapshot } from "./powerbank";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { K_LATEST as CHARGER_LATEST } from "@shared/charger-store";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
 import { K_LATEST as POWERBANK_LATEST } from "@shared/powerbank-store";
@@ -39,7 +38,7 @@ async function land(body: unknown) {
 
 test("充电头、充电宝的序列号只留在状态核心：推送和状态接口都不带，存储里照旧有", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   try {
     const result = await land({
       version: 4,
@@ -65,6 +64,6 @@ test("充电头、充电宝的序列号只留在状态核心：推送和状态�
     assert.ok(String(await storage.get(CHARGER_LATEST)).includes(CHARGER_SERIAL));
     assert.ok(String(await storage.get(POWERBANK_LATEST)).includes(POWERBANK_SERIAL));
   } finally {
-    resetStorageForTests();
+    installTestStorage(null);
   }
 });

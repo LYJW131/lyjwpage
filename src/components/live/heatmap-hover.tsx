@@ -22,8 +22,8 @@ import {
   dayLabels,
   formatDayHeading,
   monthLabels,
-} from "@/lib/github-chart-compact";
-import type { GithubChartDay } from "@/lib/types";
+} from "@shared/github-chart-compact";
+import type { GithubChartDay } from "@shared/types";
 
 export type CellAnchor = { left: number; top: number; width: number; height: number };
 

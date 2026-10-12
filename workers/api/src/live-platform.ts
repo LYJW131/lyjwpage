@@ -1,5 +1,5 @@
-import type { LiveEvent } from "@/lib/live-events";
-import { filterStatusTags } from "@/lib/status-views";
+import type { LiveEvent } from "@shared/live-events";
+import { filterStatusTags } from "@shared/status-views";
 
 import { currentContext, requestStore } from "@api/runtime";
 import type { LivePushRoom } from "./origin-worker";

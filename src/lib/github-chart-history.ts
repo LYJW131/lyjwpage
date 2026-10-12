@@ -1,6 +1,6 @@
-import { expandGithubDays, formatContributionLabel, groupWeeks, heatmapFrame, weekdayOf } from "@/lib/github-chart-compact";
-import { heatmapRefreshFrom, mergeHeatmapSeries } from "@/lib/heatmap-window";
-import type { GithubChartDay, GithubChartPayload } from "@/lib/types";
+import { expandGithubDays, formatContributionLabel, groupWeeks, heatmapFrame, weekdayOf } from "@shared/github-chart-compact";
+import { heatmapRefreshFrom, mergeHeatmapSeries } from "@shared/heatmap-window";
+import type { GithubChartDay, GithubChartPayload } from "@shared/types";
 
 
 let snapshot: GithubChartPayload | null = null;

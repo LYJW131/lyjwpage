@@ -4,13 +4,13 @@ import { Fragment, useEffect, useState } from "react";
 
 import Image from "@/components/app-image";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import type { CommitAuthor } from "@/lib/commit-authors";
+import type { CommitAuthor } from "@shared/commit-authors";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { CLOUDFLARE_DASH_URL, site } from "@/lib/site";
-import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
+import { CLOUDFLARE_DASH_URL, site } from "@shared/site";
+import type { GithubRepoContributor, GithubRepoPayload } from "@shared/types";
 import { cn } from "@/lib/utils";
-import type { SiteDeployment, SiteDeploymentState } from "@/lib/site-deployments-types";
+import type { SiteDeployment, SiteDeploymentState } from "@shared/site-deployments-types";
 
 const AVATAR_PX = 28;
 

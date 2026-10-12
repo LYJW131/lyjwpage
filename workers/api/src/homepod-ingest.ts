@@ -1,7 +1,7 @@
 import { mirror } from "@shared/homepod-store";
-import { liveTrack } from "@/lib/home-layout";
-import { keepEnrichment, mergeEnrichment, playableMusic, trackKeyOf, type TrackEnrichment } from "@/lib/track-enrichment";
-import { NOW_LISTENING_TAG } from "@/lib/live-events";
+import { liveTrack } from "@shared/home-layout";
+import { keepEnrichment, mergeEnrichment, playableMusic, trackKeyOf, type TrackEnrichment } from "@shared/track-enrichment";
+import { NOW_LISTENING_TAG } from "@shared/live-events";
 import { fanout } from "@api/fanout";
 import { homePodListening, patchedListeningEffect } from "@api/stores/telemetry";
 import type { PreparedHomePodEvent } from "@shared/ingest/homepod";

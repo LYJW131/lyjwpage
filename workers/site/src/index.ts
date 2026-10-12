@@ -25,7 +25,7 @@ import {
   readImageBytes,
   variantShape,
 } from "@/lib/image-proxy";
-import type { LyricsResult } from "@/lib/lyrics";
+import type { LyricsResult } from "@shared/lyrics-ttml";
 import { relaySentryEnvelope } from "@/lib/sentry-tunnel";
 import {
   HOME_CACHE_TAG,
@@ -52,7 +52,7 @@ import {
   filterStatusTags,
   viewKeyByPath,
   type StatusViewKey,
-} from "@/lib/status-views";
+} from "@shared/status-views";
 import { siteContext, type SiteServices } from "@/server/site-context";
 
 import { sentryOptions } from "./sentry";

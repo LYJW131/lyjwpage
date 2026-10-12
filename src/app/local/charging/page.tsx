@@ -1,7 +1,7 @@
 import type { MetaDescriptor } from "react-router";
 
 import { LOCAL_CHARGING_STORAGE_KEY } from "@/lib/local-charging-arm";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 export function meta(): MetaDescriptor[] {
   return [

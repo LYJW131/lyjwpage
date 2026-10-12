@@ -1,4 +1,4 @@
-import { number, object, text } from "@/lib/json";
+import { number, object, text } from "@shared/json";
 import type { ActivityHistory, ActivityHistoryBucket, ActivityReport } from "@shared/activity";
 
 

@@ -28,7 +28,7 @@ import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 import "./globals.css";
 

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { gzipSync } from "node:zlib";
 
-import { SERVER_TAG } from "@/lib/live-events";
-import { MemoryKv } from "@/lib/testing/memory-kv";
+import { SERVER_TAG } from "@shared/live-events";
+import { MemoryKv } from "@shared/testing/memory-kv";
 import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
 import { CREDENTIAL_KEYS } from "@shared/credentials";
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";

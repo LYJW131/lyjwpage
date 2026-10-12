@@ -1,4 +1,4 @@
-import { object, text } from "@/lib/json";
+import { object, text } from "@shared/json";
 
 export type PreparedClaudeCloudUsage = {
   source: "agents-otlp";

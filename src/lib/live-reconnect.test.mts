@@ -9,7 +9,7 @@ import {
   catchUpOnVisible,
   reconnectDelay,
 } from "@/lib/live-reconnect";
-import { STATUS_VIEWS, isPushedViewPath } from "@/lib/status-views";
+import { STATUS_VIEWS, isPushedViewPath } from "@shared/status-views";
 
 test("退避从 1 秒起每次 ×1.5、封顶 30 秒，抖动只落在上半截", () => {
   assert.equal(reconnectDelay(0, 1), 1_000);

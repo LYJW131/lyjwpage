@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
+import { LISTENING_ELSEWHERE_HOLD_MS } from "@shared/limits";
 import { LISTENING_TRACE_JITTER_MS, LISTENING_TRACE_LAG_MS } from "@shared/pulse-listening";
 
 import { ACTIVE_FOLLOW_MS, ACTIVE_HOLD_MS, ACTIVE_POLL_MS, appleRecentDue, followRecentTracks, IDLE_EVERY_MINUTES, nextPollAt } from "./apple-recent";

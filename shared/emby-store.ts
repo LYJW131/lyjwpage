@@ -1,5 +1,5 @@
-import { mirrorKey } from "@/lib/storage";
-import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";
+import { mirrorKey } from "@shared/storage";
+import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@shared/types";
 
 export const TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -21,7 +21,19 @@ export type EmbyNowPlaying = {
   at: number;
 };
 
-export const mirror = mirrorKey<EmbyNowPlaying>(["emby", "nowPlaying"], (state) => state.at, {
+export type ResolvedNowPlaying = {
+  itemId: string;
+  paused: boolean;
+  progress: number | null;
+  client: string | null;
+  deviceName: string | null;
+  playMethod: WatchingPlayMethod | null;
+  media: WatchingMedia | null;
+  positionMs: number | null;
+  durationMs: number | null;
+};
+
+export const mirror = mirrorKey<EmbyNowPlaying>(["emby", "nowPlaying"], {
   ttlMs: TTL_MS,
 });
 
@@ -33,19 +45,16 @@ export type StoredWatchingItem = Omit<WatchingItem, "poster" | "backdrop"> & {
 
 export const resumeMirror = mirrorKey<{ items: StoredWatchingItem[]; at: number }>(
   ["emby", "resume"],
-  (state) => state.at,
   { ttlMs: LIBRARY_TTL_MS },
 );
 
 // webhook 只有播放状态，必须分开存详情，避免暂停或续播覆盖完整条目。
 export const currentMirror = mirrorKey<{ item: StoredWatchingItem; at: number }>(
   ["emby", "current"],
-  (state) => state.at,
   { ttlMs: TTL_MS },
 );
 
 export const imagesMirror = mirrorKey<{ objectKeys: Record<string, string>; at: number }>(
   ["emby", "images"],
-  (state) => state.at,
   { ttlMs: LIBRARY_TTL_MS },
 );

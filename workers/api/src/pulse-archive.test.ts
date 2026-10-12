@@ -5,9 +5,9 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
-import { pulseChargingKey, pulseLaneOpenKey, pulseListeningTracesKey } from "@/lib/pulse-keys";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
+import { codingObservationsKey, cursorObservationsKey } from "./coding-pulse";
+import { pulseChargingKey, pulseLaneOpenKey, pulseListeningTracesKey } from "./pulse-keys";
+import { installTestStorage } from "@shared/testing/fake-storage";
 import type { CodingBucketDelta } from "@shared/coding-buckets";
 import type { CodingTokenBucketReport, CodingUsageAgent, CodingUsageDay } from "@shared/coding-usage";
 import type { CodingUsageSource } from "@shared/coding-usage-sources";
@@ -78,8 +78,8 @@ function setup(options: { failStream?: ArchiveStream } = {}) {
     changes: () => changes,
     watermark: (stream: ArchiveStream) => (hub.prepare("SELECT value FROM metadata WHERE key = ?").get(`pulse-archive:v2:${stream}`) as { value?: string } | undefined)?.value ?? null,
     async write(run: () => Promise<unknown>) {
-      installStorageForTests(storage);
-      try { await run(); } finally { resetStorageForTests(); }
+      installTestStorage(storage);
+      try { await run(); } finally { installTestStorage(null); }
     },
   };
 }

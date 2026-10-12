@@ -1,0 +1,17 @@
+import { AwaitingReport } from "@shared/awaiting-report";
+import { LagResult } from "@shared/lag-result";
+import { readLagEntry } from "@shared/lag";
+import type { ReporterStat, ReportersPayload } from "@shared/reporter-ledger";
+import { LAG_KEYS } from "@shared/lag";
+
+export async function getReportersStatus(): Promise<LagResult<ReportersPayload>> {
+  const [server, agents] = await Promise.all([
+    readLagEntry<ReporterStat>(LAG_KEYS.reporterServer),
+    readLagEntry<ReporterStat>(LAG_KEYS.reporterAgents),
+  ]);
+  if (!server && !agents) throw new AwaitingReport("尚未收到常驻上报器的账本");
+  return new LagResult(
+    { reporters: { "server-reporter": server?.data ?? null, "agents-reporter": agents?.data ?? null } },
+    Math.max(server?.updatedAt ?? 0, agents?.updatedAt ?? 0),
+  );
+}

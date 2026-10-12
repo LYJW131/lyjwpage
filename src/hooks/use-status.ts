@@ -7,8 +7,8 @@ import { fetchStatus, guardPolled, withoutServedAt } from "@/lib/status-reads";
 import { useLiveSocketConnected } from "@/hooks/use-live-events";
 import { fallbackOutlived, lagOverdue, nextLagDelay, realtimeInterval } from "@/lib/poll-schedule";
 import { createMountRefetchGate, createRefetchLedger } from "@/lib/refetch-guard";
-import { cadenceOfPath, layerOfPath, pushCoversPath } from "@/lib/status-views";
-import type { StatusResponse } from "@/lib/types";
+import { cadenceOfPath, layerOfPath, pushCoversPath } from "@shared/status-views";
+import type { StatusResponse } from "@shared/types";
 
 function subscribeVisibility(onChange: () => void) {
   document.addEventListener("visibilitychange", onChange);

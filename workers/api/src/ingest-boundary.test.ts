@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readChargerState } from "@/lib/charger-store";
-import { getImageObjectKeys } from "@/lib/emby-store";
-import { readLiveness } from "@/lib/reporter-liveness";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
-import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
-import { pulseWorkoutsKey } from "@/lib/pulse-keys";
+import { readChargerState } from "./charger-store";
+import { getImageObjectKeys } from "./emby-store";
+import { readLiveness } from "@shared/reporter-liveness";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
+import { HIDDEN_DESKTOP_BUNDLE_ID } from "@shared/types";
+import { pulseWorkoutsKey } from "./pulse-keys";
 import { withRequestState } from "@shared/request-state";
 import { K_LAST_PUSH } from "@shared/charger-store";
 import { parseStoredCodingBuckets } from "@shared/coding-buckets";
@@ -31,11 +30,11 @@ import { resetStoredImageCacheForTests, type ImageBucket } from "@shared/ingest/
 import type { PreparedTelemetryEnvelope } from "@shared/ingest/telemetry";
 import { commitPreparedIngest } from "./ingest-handlers";
 import { enrichCommand } from "./listening-enrichment";
-import { trackLookupCacheKey } from "@/lib/apple-music";
-import { installAppleCacheForTests } from "../../../src/lib/apple-cache-store";
-import { motionArtworkCacheKey } from "@/lib/motion-artwork";
-import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
-import { MemoryKv } from "@/lib/testing/memory-kv";
+import { trackLookupCacheKey } from "@shared/apple-music";
+import { installAppleCache } from "@shared/apple-cache";
+import { motionArtworkCacheKey } from "@shared/motion-artwork";
+import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
+import { MemoryKv } from "@shared/testing/memory-kv";
 import { requestStore, type Env } from "./runtime";
 
 const NOW = 1_800_000_000_000;
@@ -77,7 +76,7 @@ async function commit(env: Env, command: CoreCommand): Promise<CollectedIngest<u
 
 test("Mac late validation keeps liveness but does not invent a charger heartbeat", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   try {
     const command = await inRequest(testEnv(), () => prepareIngest(
       "mac",
@@ -88,12 +87,12 @@ test("Mac late validation keeps liveness but does not invent a charger heartbeat
     assert.equal(result.ok, false);
     assert.equal((await readLiveness()).lastSeenAt, NOW);
     assert.equal(await storage.get(K_LAST_PUSH), null);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("Mac commits the charger before a later malformed power bank and omits later modules", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   try {
     const command = await inRequest(testEnv(), () => prepareIngest("mac", envelope({
       chargingDevices: { devices: [
@@ -106,12 +105,12 @@ test("Mac commits the charger before a later malformed power bank and omits late
     assert.equal(result.ok, false);
     assert.equal((await readChargerState()).previous?.status.totalPower, 40);
     assert.equal(result.effects.some((effect) => effect.kind === "event" && effect.event.type === "desktop"), false);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("Mac keeps an earlier charger write when desktop validation fails and does not commit later coding", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   try {
     const command = await inRequest(testEnv(), () => prepareIngest("mac", envelope({
       chargingDevices: { devices: [
@@ -124,7 +123,7 @@ test("Mac keeps an earlier charger write when desktop validation fails and does 
     assert.equal(result.ok, false);
     assert.equal((await readChargerState()).previous?.status.totalPower, 32);
     assert.equal(await storage.get(codingActivityKey("mac")), null);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 async function fieldsOf(storage: FakeStorage, name: string): Promise<Record<string, string>> {
@@ -140,7 +139,7 @@ function usageDay(date: string, totalTokens: number, model = "claude-opus-5") {
 
 test("a broken coding module is dropped at the ingress; desktop, liveness and the other coding modules still commit", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   try {
     const command = await inRequest(testEnv(), () => prepareIngest("mac", envelope({
       desktop: { applicationName: "Xcode", bundleIdentifier: "com.apple.dt.Xcode" },
@@ -158,12 +157,12 @@ test("a broken coding module is dropped at the ingress; desktop, liveness and th
       { id: "claude", activity: [{ source: "mac", lastActivityAt: NOW - 30_000, model: "claude-opus-5" }] },
     ]]);
     assert.equal(pushed[0]?.lastSeenAt, NOW, "the push carries the Mac liveness of this very envelope");
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("Mac usage replaces its ledgers, recomputes the view and tags the first screen only when the skeleton changes", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const tags = (result: CollectedIngest<unknown>) => result.effects.flatMap((effect) => effect.kind === "tags" ? effect.tags : []);
   const usage = (at: number, agents: unknown[]) => inRequest(env, () => prepareIngest("mac", envelope({ codingUsage: { agents } }, ["coding"]), at));
@@ -188,11 +187,11 @@ test("Mac usage replaces its ledgers, recomputes the view and tags the first scr
     const view = parseStoredView(await storage.get(codingViewKey()))!;
     assert.equal(view.totals?.totalTokens, 155);
     assert.deepEqual(view.agents.find((agent) => agent.id === "claude")?.status.map((row) => row.state), ["error"]);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 test("a later Mac module failure does not notify an unpersisted telemetry patch", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   try {
     const command = await inRequest(testEnv(), () => prepareIngest("mac", envelope({
       desktop: { applicationName: "Cursor", observedAt: NOW },
@@ -205,12 +204,12 @@ test("a later Mac module failure does not notify an unpersisted telemetry patch"
       effect.kind === "event" && effect.event.type === "desktop"), false);
     assert.equal(result.effects.some((effect) =>
       effect.kind === "tags" && effect.tags.includes("desktop")), false);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("iPhone keeps the Pulse workout copy when the following activity module is invalid", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   try {
     const workout = {
       id: "11111111-1111-4111-8111-111111111111",
@@ -227,7 +226,7 @@ test("iPhone keeps the Pulse workout copy when the following activity module is 
     const result = await commit(testEnv(), command);
     assert.equal(result.ok, false);
     assert.equal(JSON.parse((await storage.get(pulseWorkoutsKey()))!).items[0]?.activityType, workout.activityType);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("fanout exposes no notification when its corresponding durable write fails", async () => {
@@ -264,7 +263,7 @@ test("one failed event does not turn a durable commit into failure or drop other
 
 test("Emby R2 HEAD runs during ingress preparation and does not block another source commit", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => { release = resolve; });
   let heads = 0;
@@ -287,12 +286,12 @@ test("Emby R2 HEAD runs during ingress preparation and does not block another so
     const embyResult = await commit(env, preparedEmby);
     assert.equal(embyResult.ok, true);
     assert.deepEqual(await getImageObjectKeys(), { "item:poster": `${HASH_A}.webp` });
-  } finally { release(); resetStorageForTests(); }
+  } finally { release(); installTestStorage(null); }
 });
 
 test("Emby image commits merge against the latest map without losing concurrent keys", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   try {
     const [first, second] = await Promise.all([
@@ -302,12 +301,12 @@ test("Emby image commits merge against the latest map without losing concurrent 
     assert.equal((await commit(env, first)).ok, true);
     assert.equal((await commit(env, second)).ok, true);
     assert.deepEqual(await getImageObjectKeys(), { a: `${HASH_A}.webp`, b: `${HASH_B}.webp` });
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("Cursor activity-only agents envelopes push the whole coding-now payload, and only when it moved", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   try {
     const mac = await inRequest(env, () => prepareIngest("mac", envelope({
@@ -341,12 +340,12 @@ test("Cursor activity-only agents envelopes push the whole coding-now payload, a
       inRequest(env, () => prepareIngest("agents", { cursorNow: { lastActivityAt: new Date(NOW).toISOString(), currentModel: "x" } }, NOW)),
       "the renamed cursorNow is no longer data",
     );
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("an errored Cursor history round (a strictly parsed page failed) keeps the stored days and only marks the agents source as error", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const agents = (at: number, row: Record<string, unknown>) => inRequest(env, () => prepareIngest("agents", {
     collectedAt: new Date(at).toISOString(), codingUsage: { agents: [{ id: "cursor", sessionCount: null, ...row }] },
@@ -360,9 +359,9 @@ test("an errored Cursor history round (a strictly parsed page failed) keeps the 
     assert.deepEqual(cursor.status.map((row) => [row.source, row.state, row.collectedAt, row.error]), [["agents", "error", NOW, "cursor history: invalid usage event"]]);
     assert.equal(cursor.lastDay?.totalTokens, 500, "the history is not cleared");
     assert.equal(view.totals?.totalTokens, 500);
-    const { cursorObservationsKey } = await import("@/lib/coding-pulse");
+    const { cursorObservationsKey } = await import("./coding-pulse");
     assert.equal((await storage.listRange(cursorObservationsKey(), 0, -1)).length, 1);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 function otlpTokens(at: number, value: number, type = "input", temporality = 2) {
@@ -382,7 +381,7 @@ function otlpTokens(at: number, value: number, type = "input", temporality = 2) 
 
 test("agents-otlp turns cumulative deltas into day rows, token buckets and activity for claude", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const tagged = (result: CollectedIngest<unknown>) =>
     result.effects.some((effect) => effect.kind === "tags" && effect.tags.includes("coding"));
@@ -415,12 +414,12 @@ test("agents-otlp turns cumulative deltas into day rows, token buckets and activ
     assert.ok(!JSON.stringify([...Object.values(await fieldsOf(storage, codingUsageKey("agents-otlp"))), await storage.get(codingOtlpKey())]).includes("someone@example.com"));
 
     await assert.rejects(inRequest(env, () => prepareIngest("agents-otlp", { nope: true }, NOW)));
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("an OTLP commit that fails after the delta is computed writes nothing, so the next export still lands the whole delta", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const otlp = (at: number, input: number) => inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(at, input), at));
   const cloudInput = async () => parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude?.days
@@ -449,12 +448,12 @@ test("an OTLP commit that fails after the delta is computed writes nothing, so t
     assert.equal((await commit(env, await otlp(NOW + 180_000, 180))).ok, true);
     assert.equal(await cloudInput(), 180);
     assert.equal(await bucketInput(), 180);
-  } finally { storage.failWhen(null); resetStorageForTests(); }
+  } finally { storage.failWhen(null); installTestStorage(null); }
 });
 
 test("OTLP envelopes that commit in the opposite order of their receipt keep every delta in the ledger", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const ledger = async () => parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude!;
   const bucketTotal = async () => parseStoredCodingBuckets(await storage.get(codingBucketsKey("agents-otlp")))?.windows
@@ -470,12 +469,12 @@ test("OTLP envelopes that commit in the opposite order of their receipt keep eve
     assert.equal((await commit(env, a)).ok, true);
     assert.equal((await ledger()).days.reduce((sum, day) => sum + day.totalTokens, 0), 150);
     assert.equal(await bucketTotal(), 150);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("delta-temporality OTLP points are not counted, so a retry after a lost receipt cannot double count", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const warnings: unknown[][] = [];
   const previous = console.warn;
@@ -492,12 +491,12 @@ test("delta-temporality OTLP points are not counted, so a retry after a lost rec
     assert.equal((await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", otlpTokens(NOW + 60_000, 70), NOW + 60_000)))).ok, true);
     assert.equal(parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude?.days
       .reduce((sum, day) => sum + day.totalTokens, 0), 70);
-  } finally { console.warn = previous; resetStorageForTests(); }
+  } finally { console.warn = previous; installTestStorage(null); }
 });
 
 test("a status-only round patches the stored view instead of rescanning every day row", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const usage = (at: number, tokens: number) => inRequest(env, () => prepareIngest("mac", envelope({ codingUsage: { agents: [
     { id: "claude", state: "ok", collectedAt: at, sessionCount: 3, days: [usageDay("2026-09-29", tokens)] },
@@ -514,12 +513,12 @@ test("a status-only round patches the stored view instead of rescanning every da
 
     assert.equal((await commit(env, await usage(NOW + 1_200_000, 140))).ok, true);
     assert.equal((await view()).totals?.totalTokens, 140);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("a late, older usage snapshot never replaces a newer one, ok or error", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const agents = (at: number, row: Record<string, unknown>) => inRequest(env, () => prepareIngest("agents", {
     collectedAt: new Date(at).toISOString(), codingUsage: { agents: [{ id: "cursor", sessionCount: null, ...row }] },
@@ -544,12 +543,12 @@ test("a late, older usage snapshot never replaces a newer one, ok or error", asy
     await commit(env, await agents(later + 600_000, { state: "ok", collectedAt: later + 600_000, days: twoDays(90) }));
     assert.equal((await cursor())?.state, "ok");
     assert.equal(await total(), 590);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("a usage round that only advances collectedAt updates the status without rewriting the year or moving the archive marks", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const usage = (at: number, agents: unknown[]) => inRequest(env, () => prepareIngest("mac", envelope({ codingUsage: { agents } }, ["coding"]), at));
   const claude = (at: number, tokens = 100) => ({ id: "claude", state: "ok", collectedAt: at, sessionCount: 3, days: [usageDay("2026-09-29", tokens)] });
@@ -571,12 +570,12 @@ test("a usage round that only advances collectedAt updates the status without re
     assert.equal(parseStoredView(await storage.get(codingViewKey()))?.updatedAt, NOW + 1_200_000);
     assert.equal((await ledger()).receivedAt, NOW + 1_200_000);
     assert.notEqual(await storage.get(codingYearKey()), year);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("coding-now pushes are gated against the last pushed payload, so a steady 30-second cadence still pushes about once a minute", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const activity = (at: number) => inRequest(env, () => prepareIngest("agents", {
     collectedAt: new Date(at).toISOString(),
@@ -588,12 +587,12 @@ test("coding-now pushes are gated against the last pushed payload, so a steady 3
     const step = async (index: number) => pushed(await commit(env, await activity(NOW + index * 30_000)));
     const steps = [await step(0), await step(1), await step(2), await step(3), await step(4)];
     assert.deepEqual(steps, [true, false, true, false, true]);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("desktop icon commits merge the latest map without losing another report", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   try {
     const make = (name: string, iconHash: string, objectKey: string, at: number) =>
@@ -611,7 +610,7 @@ test("desktop icon commits merge the latest map without losing another report", 
       [HASH_A, `${HASH_A}.webp`],
       [HASH_B, `${HASH_B}.webp`],
     ]);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 function trophiesReport(observedAt: number, earned: boolean) {
@@ -642,7 +641,7 @@ function trophiesReport(observedAt: number, earned: boolean) {
 }
 
 test("PlayStation trophies push the summary only when the catalog content changes", async () => {
-  installStorageForTests(new FakeStorage());
+  installTestStorage(new FakeStorage());
   const env = testEnv();
   const ingest = async (observedAt: number, earned: boolean) => commit(env, await inRequest(env, () =>
     prepareIngest("playstation", { version: 1, trophies: trophiesReport(observedAt, earned) }, observedAt)));
@@ -657,12 +656,12 @@ test("PlayStation trophies push the summary only when the catalog content change
     assert.equal(Object.hasOwn(summary.titles[0]!, "trophies"), false);
     assert.deepEqual(summary.earned, { platinum: 0, gold: 0, silver: 0, bronze: 1 });
     assert.equal(summary.recent[0]?.trophyName, "First");
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("listening effects retain the track from their own commit", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   const originalFetch = globalThis.fetch;
   let fetches = 0;
@@ -700,15 +699,15 @@ test("listening effects retain the track from their own commit", async () => {
     assert.equal(broadcasts, 1);
   } finally {
     globalThis.fetch = originalFetch;
-    resetStorageForTests();
+    installTestStorage(null);
   }
 });
 
 test("StateCore enrichment is stored with the track and the push reads it without network", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const kv = new MemoryKv();
-  installAppleCacheForTests(kv);
+  installAppleCache(() => kv);
   const env = testEnv();
   const link = "https://music.apple.com/cn/album/x/1500?i=1501";
   kv.values.set(`lyjwpage:${trackLookupCacheKey({ title: "First", artist: "Artist", album: null })}`,
@@ -743,14 +742,14 @@ test("StateCore enrichment is stored with the track and the push reads it withou
     assert.equal(fetches, 0);
   } finally {
     globalThis.fetch = originalFetch;
-    installAppleCacheForTests(null);
-    resetStorageForTests();
+    installAppleCache(null);
+    installTestStorage(null);
   }
 });
 
 test("commit performs no room or site-cache I/O and Worker dispatch performs both", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   let broadcasts = 0;
   let revalidates = 0;
   const env = {
@@ -775,7 +774,7 @@ test("commit performs no room or site-cache I/O and Worker dispatch performs bot
     assert.equal(broadcasts, 1);
     assert.equal(revalidates, 1);
   } finally {
-    resetStorageForTests();
+    installTestStorage(null);
   }
 });
 
@@ -801,7 +800,7 @@ async function landDesktop(env: Env, desktop: Record<string, unknown>) {
 
 test("desktop 的窗口标题入库并随推送发出", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   try {
     const { result } = await landDesktop(env, {
@@ -813,12 +812,12 @@ test("desktop 的窗口标题入库并随推送发出", async () => {
     assert.equal(result.ok, true);
     assert.equal((await telemetryMirror.get())?.desktop?.windowTitle, "~/Developer/lyjwpage — zsh");
     assert.equal(desktopPush(result).windowTitle, "~/Developer/lyjwpage — zsh");
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("desktop 缺席或空白的窗口标题一律是 null，不是缺字段", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   try {
     const blank = await landDesktop(env, {
@@ -838,12 +837,12 @@ test("desktop 缺席或空白的窗口标题一律是 null，不是缺字段", a
     const absentPush = desktopPush(absent.result);
     assert.equal(absentPush.windowTitle, null);
     assert.ok("windowTitle" in absentPush);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("desktop 的超长窗口标题按码点截断，不劈开代理对", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   try {
     const { result } = await landDesktop(env, {
@@ -864,12 +863,12 @@ test("desktop 的超长窗口标题按码点截断，不劈开代理对", async 
     });
     assert.equal((await telemetryMirror.get())?.desktop?.windowTitle, "标".repeat(200));
     assert.equal(desktopPush(exact.result).windowTitle, "标".repeat(200));
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("desktop 的窗口标题类型不对时该模块及其后的模块都不落地", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   try {
     const { command, result } = await landDesktop(env, {
@@ -882,12 +881,12 @@ test("desktop 的窗口标题类型不对时该模块及其后的模块都不落
     assert.equal(await telemetryMirror.get(), null);
     assert.equal(result.effects.some((effect) =>
       effect.kind === "event" && effect.event.type === "desktop"), false);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });
 
 test("隐藏前台应用时窗口标题被强制清空", async () => {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
+  installTestStorage(storage);
   const env = testEnv();
   try {
     const { result } = await landDesktop(env, {
@@ -899,5 +898,5 @@ test("隐藏前台应用时窗口标题被强制清空", async () => {
     assert.equal(result.ok, true);
     assert.equal((await telemetryMirror.get())?.desktop?.windowTitle, null);
     assert.equal(desktopPush(result).windowTitle, null);
-  } finally { resetStorageForTests(); }
+  } finally { installTestStorage(null); }
 });

@@ -1,6 +1,6 @@
-import { type CommitAuthor, type CommitListItem, actorAuthor, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@/lib/commit-authors";
-import { repoIdFromUrl } from "@/lib/github-repo";
-import { site } from "@/lib/site";
+import { type CommitAuthor, type CommitListItem, actorAuthor, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@shared/commit-authors";
+import { repoIdFromUrl } from "@shared/github-repo";
+import { site } from "@shared/site";
 
 
 export type GithubRecentCommit = {

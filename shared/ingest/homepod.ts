@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { numberish, object, text } from "@/lib/json";
+import { numberish, object, text } from "@shared/json";
 import type { StoredHomePod } from "@shared/homepod-store";
 
 function observedAt(value: unknown, fallbackAt: number) {

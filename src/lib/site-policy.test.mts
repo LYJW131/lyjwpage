@@ -19,7 +19,7 @@ import {
   renderCacheHeaders,
   statusSnapshotHeaders,
 } from "./site-policy.ts";
-import { filterStatusTags } from "./status-views.ts";
+import { filterStatusTags } from "@shared/status-views.ts";
 
 test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/"), { kind: "render" });

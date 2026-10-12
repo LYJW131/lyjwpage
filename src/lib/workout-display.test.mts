@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { workoutDuration, workoutMetrics } from "./workout-display.ts";
-import type { Workout } from "./types.ts";
+import type { Workout } from "@shared/types.ts";
 
 const fencing: Workout = {
   id: "demo", activityType: "Fencing", startedAt: 1, endedAt: 1419001,

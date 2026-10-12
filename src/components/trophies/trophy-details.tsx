@@ -19,7 +19,7 @@ import { trophyGroupSnapClass, trophyGroupTrackClass } from "@/lib/gaming-column
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import { trophiesTilePath } from "@/lib/paths";
 import { isRestReady, subscribeRestReady } from "@/lib/rest-ready";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 import {
   TROPHY_VISIBLE_ROWS as VISIBLE_ROWS,
   fetchCatalog,
@@ -27,7 +27,7 @@ import {
   trophyIconSrc,
   warmTrophyIcons,
 } from "@/lib/trophy-catalog";
-import type { StatusResponse, TrophiesPayload, Trophy, TrophyTitle } from "@/lib/types";
+import type { StatusResponse, TrophiesPayload, Trophy, TrophyTitle } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const CATALOG_REFRESH_MS = 10 * 60_000;

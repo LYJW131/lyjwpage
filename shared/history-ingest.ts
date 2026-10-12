@@ -1,6 +1,6 @@
 import type { ActivityReport } from "@shared/activity";
-import type { ParsedAgentLimits } from "@/lib/agent-limits-parse";
-import type { ReportedWorkouts, ServerStatus } from "@/lib/types";
+import type { ParsedAgentLimits } from "@shared/agent-limits-parse";
+import type { ReportedWorkouts, ServerStatus } from "@shared/types";
 
 export interface HistoryStatement {
   bind(...values: unknown[]): HistoryStatement;
