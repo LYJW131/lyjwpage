@@ -37,10 +37,7 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/relay/api/1/envelope/"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("POST", "/"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("GET", "/image"), { kind: "image-proxy" });
-  assert.deepEqual(classifyGatewayRequest("GET", "/explainer"), { kind: "explainer-index" });
-  assert.deepEqual(classifyGatewayRequest("GET", "/sw.js"), { kind: "service-worker" });
-  assert.deepEqual(classifyGatewayRequest("GET", "/assets/app-abc.js"), { kind: "asset" });
-  assert.deepEqual(classifyGatewayRequest("GET", "/manifest.webmanifest"), { kind: "asset" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/manifest.webmanifest"), { kind: "render" });
   assert.deepEqual(classifyGatewayRequest("GET", "/icon"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("HEAD", "/pwa/icon-192.png"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("POST", "/opengraph-image"), { kind: "invalid" });
@@ -113,9 +110,11 @@ test("/img 的 Range：只认单段，越界不可满足，换算成 206 的 Con
   assert.equal(headers.get("Accept-Ranges"), "bytes");
 });
 
-test("带哈希的 /assets 由静态资源层直出，_headers 与 Worker 用同一个 immutable 策略", () => {
+test("静态资源层按 _headers 出缓存头：/assets 与 explainer 哈希资源 immutable，/sw.js 不缓存", () => {
   const rules = readFileSync(new URL("../../public/_headers", import.meta.url), "utf8");
   assert.ok(rules.includes(`/assets/*\n  Cache-Control: ${IMMUTABLE_ASSET_CACHE_CONTROL}\n`));
+  assert.ok(rules.includes(`/explainer/a/*\n  Cache-Control: ${IMMUTABLE_ASSET_CACHE_CONTROL}\n`));
+  assert.ok(rules.includes("/sw.js\n  Content-Type: application/javascript; charset=utf-8\n  Cache-Control: no-cache, no-store, must-revalidate\n"));
 });
 
 test("渲染分类区分首页文档、根数据与其他路由", () => {
