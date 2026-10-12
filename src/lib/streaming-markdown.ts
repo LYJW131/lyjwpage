@@ -30,11 +30,18 @@ function inlineCut(block: string): number {
   return cut;
 }
 
+const HTML_FENCE = /^\s{0,3}(`{3,}|~{3,})\s*html\s*$/i;
+
 // 流式输出时只交出已经闭合的 Markdown：没收尾的代码块、正在长的表格、没配对的行内标记先压着，闭合后整块出现。
+// 例外是 html 代码块：换成一个空的 html 代码块，图示先占位，收尾后整块画出来。
 export function stableMarkdown(text: string): string {
   const lines = text.split("\n");
   const fences = lines.flatMap((line, i) => (FENCE.test(line) ? [i] : []));
-  if (fences.length % 2 === 1) return lines.slice(0, fences[fences.length - 1]).join("\n").trimEnd();
+  if (fences.length % 2 === 1) {
+    const open = lines[fences[fences.length - 1]].match(HTML_FENCE);
+    const head = lines.slice(0, fences[fences.length - 1]).join("\n").trimEnd();
+    return open ? `${head}\n\n${open[1]}html\n${open[1]}` : head;
+  }
 
   const lastFenceEnd = fences.length ? lines.slice(0, fences[fences.length - 1] + 1).join("\n").length : 0;
   const gap = text.lastIndexOf("\n\n");
