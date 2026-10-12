@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { HTML_PREVIEW_HEIGHT_KEY, HTML_PREVIEW_MIN_HEIGHT, htmlPreviewDocument, previewHeight } from "@/lib/html-preview";
-import { cn } from "@/lib/utils";
 
 const TAB_CLASS = "rounded px-1.5 py-0.5 transition-colors hover:text-foreground aria-pressed:bg-background aria-pressed:text-foreground";
 
@@ -33,15 +32,12 @@ export function ChatHtmlPreview({ source, code }: { source: string; code: ReactN
           </button>
         </div>
       </div>
-      <iframe
-        ref={frameRef}
-        title="HTML preview"
-        sandbox="allow-scripts"
-        srcDoc={htmlPreviewDocument(source)}
-        className={cn("block w-full bg-white", view !== "preview" && "hidden")}
-        style={{ height }}
-      />
-      {view === "code" && code}
+      {/* 切到 Code 就卸掉 iframe：模型写的死循环或吃内存的脚本靠这个停下来，CSP 和 sandbox 管不了算力。 */}
+      {view === "preview" ? (
+        <iframe ref={frameRef} title="HTML preview" sandbox="allow-scripts" srcDoc={htmlPreviewDocument(source)} className="block w-full bg-white" style={{ height }} />
+      ) : (
+        code
+      )}
     </div>
   );
 }

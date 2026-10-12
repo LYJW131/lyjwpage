@@ -27,7 +27,7 @@ const RELAY_HEIGHT = `(()=>{const k="${HTML_PREVIEW_HEIGHT_KEY}",f=document.quer
 
 // 里层页面去掉自带的 doctype，排在 CSP meta 与测高脚本之后：模型写的 <html>、<head> 由解析器并进已开的元素，CSP 只能被它收紧。
 export function htmlPreviewDocument(source: string): string {
-  const page = `<!doctype html><meta charset="utf-8">${CSP_META}<script>${REPORT_HEIGHT}</script>${source.replace(/^\s*<!doctype[^>]*>/i, "")}`;
+  const page = `<!doctype html><meta charset="utf-8">${CSP_META}<style>html{scrollbar-width:none}html::-webkit-scrollbar{display:none}</style><script>${REPORT_HEIGHT}</script>${source.replace(/^\s*<!doctype[^>]*>/i, "")}`;
   return `<!doctype html><html><head><meta charset="utf-8">${CSP_META}<style>html,body{margin:0;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe sandbox="allow-scripts" srcdoc="${escapeAttribute(page)}"></iframe><script>${RELAY_HEIGHT}</script></body></html>`;
 }
 
