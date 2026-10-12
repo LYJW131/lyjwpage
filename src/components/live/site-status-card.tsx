@@ -26,7 +26,6 @@ import {
 import type { ReporterName, ReporterStat, ReportersPayload } from "@shared/reporter-ledger";
 import { useStatus } from "@/hooks/use-status";
 import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@shared/cloudflare-workers-types";
-import type { GithubRecentCommit } from "@/lib/github-recent-commits";
 import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, SENTRY_PATH, SERVER_PATH, SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
 import type { SentryBlock, SentryErrorSeries, SentryStatusPayload } from "@shared/sentry-status-types";
 import { site } from "@shared/site";
@@ -115,14 +114,13 @@ function ReporterTile({ name, stat, staleMs, servedAt, title }: {
   </li>;
 }
 
-export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallback, sentryFallback, serverFallback, reportersFallback, recentCommits, className }: {
+export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallback, sentryFallback, serverFallback, reportersFallback, className }: {
   githubFallback: StatusResponse<GithubRepoPayload>;
   siteFallback: StatusResponse<SiteDeploymentsPayload>;
   cloudflareFallback: StatusResponse<CloudflareWorkersPayload>;
   sentryFallback: StatusResponse<SentryStatusPayload>;
   serverFallback: StatusResponse<ServerPayload>;
   reportersFallback: StatusResponse<ReportersPayload>;
-  recentCommits: GithubRecentCommit[];
   className?: string;
 }) {
   const { data: github, servedAt: githubServedAt } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, { fallback: githubFallback });
@@ -184,7 +182,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
         </div>
       )}
     </div>
-    <RepoContributions data={github} recentCommits={recentCommits} deploymentsBySha={deploymentsBySha} />
+    <RepoContributions data={github} deploymentsBySha={deploymentsBySha} />
     {sentry && <UptimeStrip site={sentry.uptime} api={sentry.heartbeat ?? null} siteStale={uptimeStale} apiStale={heartbeatStale} />}
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">

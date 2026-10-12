@@ -40,7 +40,6 @@ writeFileSync(SITE_PREVIEW_MANIFEST_PATH, `${JSON.stringify({ version: 1, mode: 
 let backendUrl = null;
 if (preview) {
   env.SENTRY_AUTH_TOKEN = "";
-  env.GITHUB_TOKEN = "";
   env.PUBLIC_CF_WEB_ANALYTICS_TOKENS = "";
   const origins = PREVIEW_WORKER_SCRIPTS.map((worker) => previewWorkerOrigin(branch, worker)).filter(Boolean);
   backendUrl = await waitForPreview(origins, commit);
