@@ -25,6 +25,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { Card } from "@/components/ui/card";
 import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
+import { DOCUMENT_COMMIT_META } from "@/lib/app-version";
+import { commitSha } from "@/lib/build-info";
 import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
@@ -84,6 +86,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {commitSha ? <meta name={DOCUMENT_COMMIT_META} content={commitSha} /> : null}
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
         <Meta />
