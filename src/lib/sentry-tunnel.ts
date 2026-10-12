@@ -57,16 +57,22 @@ export async function relaySentryEnvelope(
   }
   const target = sentryRelayTarget(envelopeDsn(body), allowed);
   if (!target) return { reject: 403 };
+  let response: Response;
   try {
-    const response = await fetcher(target, {
+    response = await fetcher(target, {
       method: "POST",
       headers: { "Content-Type": "application/x-sentry-envelope" },
       body,
-      redirect: "error",
+      // Workers 的 fetch 不支持 redirect: "error"，会同步抛 TypeError；只能 manual 后自己拒掉 3xx。
+      redirect: "manual",
       signal: AbortSignal.timeout(SENTRY_RELAY_TIMEOUT_MS),
     });
-    return { response };
   } catch {
     return { reject: 504 };
   }
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel();
+    return { reject: 502 };
+  }
+  return { response };
 }
