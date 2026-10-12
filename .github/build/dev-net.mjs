@@ -41,7 +41,13 @@ function tunnel(host, onSocket, onError) {
 
 function relay(port, origin) {
   const server = http.createServer(async (req, res) => {
-    const target = new URL(req.url, origin);
+    // 绝对形式的请求目标（GET https://别的主机/）会让 new URL(req.url, origin) 换掉主机；中继只转发到自己的源。
+    if (!req.url?.startsWith("/")) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("dev-net relay accepts origin-form paths only");
+      return;
+    }
+    const target = new URL(`${origin.origin}/${req.url.slice(1)}`);
     const headers = {};
     for (const [key, value] of Object.entries(req.headers)) if (!HOP.has(key)) headers[key] = value;
     const body = req.method === "GET" || req.method === "HEAD" ? undefined : Readable.toWeb(req);
