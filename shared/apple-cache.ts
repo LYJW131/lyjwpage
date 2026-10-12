@@ -1,5 +1,20 @@
 import { requestState } from "@shared/request-state";
-import { appleCacheKv } from "@/lib/apple-cache-store";
+
+export type AppleCacheKv = {
+  get(key: string, type: "text"): Promise<string | null>;
+  put(key: string, value: string, options: { expirationTtl: number }): Promise<void>;
+  delete(key: string): Promise<void>;
+};
+
+let appleCacheProvider: (() => AppleCacheKv | null) | null = null;
+
+export function installAppleCache(provider: (() => AppleCacheKv | null) | null): void {
+  appleCacheProvider = provider;
+}
+
+function appleCacheKv(): AppleCacheKv | null {
+  return appleCacheProvider?.() ?? null;
+}
 
 // KV 的过期时间不能短于 60 秒；查询失败只记在本次请求里，交给下一次写入或请求重试。
 const KV_MIN_TTL_S = 60;

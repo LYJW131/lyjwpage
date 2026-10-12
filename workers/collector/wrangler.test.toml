@@ -31,8 +31,6 @@ id = "00000000000000000000000000000003"
 
 [alias]
 "@/lib/storage-driver" = "./src/storage-driver.ts"
-"@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
-"@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
 
 [observability]
 enabled = true

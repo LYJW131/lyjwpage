@@ -1,5 +1,5 @@
 import { ampFetch, AppleUpstreamError, getWebToken } from "@/lib/apple-web-token";
-import { cached } from "@/lib/apple-cache";
+import { cached } from "@shared/apple-cache";
 import type { AppleMusicParsed } from "@/lib/motion-artwork-url";
 
 

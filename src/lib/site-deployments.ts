@@ -1,7 +1,7 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { parseBuildCommit } from "@/lib/cloudflare-workers";
 import { LagResult } from "@/lib/lag-result";
-import { readLagEntry } from "@/lib/lag-store";
+import { readLagEntry } from "@shared/lag";
 import type { SiteAnalyticsPayload } from "@/lib/site-analytics";
 import {
   type PageSpeedPayload,

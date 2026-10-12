@@ -1,6 +1,6 @@
-import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
+import { readAppleMusicCredentials } from "@shared/apple-music-auth";
 import { ampFetch, AppleUpstreamError, getWebToken } from "@/lib/apple-web-token";
-import { cached } from "@/lib/apple-cache";
+import { cached } from "@shared/apple-cache";
 import { parseLyricsTtml, type LyricLine } from "@/lib/lyrics-ttml";
 
 

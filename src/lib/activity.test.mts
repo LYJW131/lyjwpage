@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { getActivitySnapshot } from "@/lib/activity";
 import { localDate } from "@/lib/freshness";
-import { installLagStoreForTests } from "@/lib/lag-store";
+import { installLagReader } from "@shared/lag";
 import { LAG_KEYS, type LagEntry } from "@shared/lag";
 
 const rings = {
@@ -15,8 +15,8 @@ const rings = {
 test("activity reads the rings from the lag layer: pushedAt is updatedAt and the date boundary is judged at read time", async (t) => {
   const updatedAt = Date.now() - 60_000;
   let entry: LagEntry<unknown> | null = null;
-  installLagStoreForTests(async (key) => (key === LAG_KEYS.activity ? entry : null));
-  t.after(() => installLagStoreForTests(null));
+  installLagReader(async (key) => (key === LAG_KEYS.activity ? entry : null));
+  t.after(() => installLagReader(null));
 
   await assert.rejects(getActivitySnapshot, /尚未收到活动圆环上报/);
   entry = { updatedAt, data: { ...rings, date: localDate(Date.now(), rings.secondsFromGMT) } };

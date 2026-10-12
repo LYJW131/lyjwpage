@@ -1,12 +1,11 @@
-import { appleDeveloperToken } from "@/lib/apple-developer-token";
-import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
+import { appleDeveloperToken, readAppleMusicCredentials } from "@shared/apple-music-auth";
 import {
   catalogSearchTerms,
   normalizeForMatch,
   pickCatalogHit,
   type CatalogSong,
 } from "@/lib/apple-music-lookup";
-import { cached } from "@/lib/apple-cache";
+import { cached } from "@shared/apple-cache";
 import { createHash } from "node:crypto";
 
 

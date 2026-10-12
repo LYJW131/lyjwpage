@@ -32,7 +32,7 @@ import type { PreparedTelemetryEnvelope } from "@shared/ingest/telemetry";
 import { commitPreparedIngest } from "./ingest-handlers";
 import { enrichCommand } from "./listening-enrichment";
 import { trackLookupCacheKey } from "@/lib/apple-music";
-import { installAppleCacheForTests } from "../../../src/lib/apple-cache-store";
+import { installAppleCache } from "@shared/apple-cache";
 import { motionArtworkCacheKey } from "@/lib/motion-artwork";
 import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
 import { MemoryKv } from "@/lib/testing/memory-kv";
@@ -708,7 +708,7 @@ test("StateCore enrichment is stored with the track and the push reads it withou
   const storage = new FakeStorage();
   installStorageForTests(storage);
   const kv = new MemoryKv();
-  installAppleCacheForTests(kv);
+  installAppleCache(() => kv);
   const env = testEnv();
   const link = "https://music.apple.com/cn/album/x/1500?i=1501";
   kv.values.set(`lyjwpage:${trackLookupCacheKey({ title: "First", artist: "Artist", album: null })}`,
@@ -743,7 +743,7 @@ test("StateCore enrichment is stored with the track and the push reads it withou
     assert.equal(fetches, 0);
   } finally {
     globalThis.fetch = originalFetch;
-    installAppleCacheForTests(null);
+    installAppleCache(null);
     resetStorageForTests();
   }
 });

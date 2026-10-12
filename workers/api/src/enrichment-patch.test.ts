@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { trackLookupCacheKey } from "@/lib/apple-music";
-import { installAppleCacheForTests } from "../../../src/lib/apple-cache-store";
+import { installAppleCache } from "@shared/apple-cache";
 import { motionArtworkCacheKey } from "@/lib/motion-artwork";
 import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
 import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
@@ -66,7 +66,7 @@ function seedFirst(kv: MemoryKv) {
 function isolated(t: { after: (fn: () => void) => void }): MemoryKv {
   installStorageForTests(new FakeStorage());
   const kv = new MemoryKv();
-  installAppleCacheForTests(kv);
+  installAppleCache(() => kv);
   const originalFetch = globalThis.fetch;
   const originalWarn = console.warn;
   globalThis.fetch = (async () => { throw new Error("network disabled"); }) as typeof fetch;
@@ -74,7 +74,7 @@ function isolated(t: { after: (fn: () => void) => void }): MemoryKv {
   t.after(() => {
     globalThis.fetch = originalFetch;
     console.warn = originalWarn;
-    installAppleCacheForTests(null);
+    installAppleCache(null);
     resetStorageForTests();
   });
   return kv;

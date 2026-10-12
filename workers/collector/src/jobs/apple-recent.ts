@@ -4,7 +4,7 @@ import {
   resolveCredentials,
   type Credentials,
 } from "@/lib/apple-music";
-import { readAppleMusicCredentials } from "@/lib/apple-music-credentials";
+import { readAppleMusicCredentials } from "@shared/apple-music-auth";
 import { cached, get, put } from "@/lib/cache";
 import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
 

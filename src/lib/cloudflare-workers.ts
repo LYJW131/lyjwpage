@@ -7,7 +7,7 @@ import {
   type WorkerDeployment,
 } from "@/lib/cloudflare-workers-types";
 import { LagResult } from "@/lib/lag-result";
-import { readLagEntry } from "@/lib/lag-store";
+import { readLagEntry } from "@shared/lag";
 import { LAG_KEYS } from "@shared/lag";
 
 const API = "https://api.cloudflare.com/client/v4";

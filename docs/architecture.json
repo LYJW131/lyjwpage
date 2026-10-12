@@ -135,7 +135,7 @@
           "path": "workers/ingress/src/lag-ingest.ts"
         },
         {
-          "path": "workers/api/src/lag-store.ts"
+          "path": "workers/api/src/ports.ts"
         }
       ]
     },

@@ -4,7 +4,7 @@ import {
 import { pickNowListening, type NowListeningSnapshot } from "@/lib/now-listening";
 import { readLiveness, type Liveness } from "@/lib/reporter-liveness";
 import { LagResult } from "@/lib/lag-result";
-import { readLagEntry } from "@/lib/lag-store";
+import { readLagEntry } from "@shared/lag";
 import type {
   DesktopPayload,
   NowListeningPayload,
