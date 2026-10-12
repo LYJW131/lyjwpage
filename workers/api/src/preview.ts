@@ -17,17 +17,6 @@ export function isPreviewProxyPath(pathname: string): boolean {
   return PROXY_PATHS.has(pathname);
 }
 
-type PreviewState = {
-  ready: () => boolean | Promise<boolean>;
-  finishImport: () => Promise<void>;
-};
-
-export async function ensurePreviewState(hub: PreviewState): Promise<void> {
-  if (!previewWorkerEnabled()) return;
-  if (await hub.ready()) return;
-  await hub.finishImport();
-}
-
 export async function fetchPreviewUpstream(request: Request): Promise<Response> {
   const base = process.env.UPSTREAM_API_URL?.trim().replace(/\/+$/, "");
   if (!base) {
