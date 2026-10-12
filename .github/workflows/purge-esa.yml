@@ -10,10 +10,6 @@ on:
         required: false
         type: string
 
-concurrency:
-  group: esa-purge
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -25,10 +21,14 @@ jobs:
        github.event.check_run.name == 'Workers Builds: site' &&
        github.event.check_run.conclusion == 'success' &&
        github.event.check_run.check_suite.head_branch == 'main')
+    # 组挂在 job 上而不是工作流顶层：顶层组在 if 求值前就入组，每个无关 check_run 都会顶掉排队中的真部署；if 不成立的 job 不入组。
+    concurrency:
+      group: esa-purge
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
-      eligible: ${{ steps.commit.outputs.eligible }}
+      live: ${{ steps.source.outputs.live }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -41,21 +41,16 @@ jobs:
         id: commit
         run: node scripts/site-deploy-event.mjs >> "$GITHUB_OUTPUT"
       - name: Wait for the source domain
+        id: source
         if: steps.commit.outputs.eligible == 'true'
         env:
           EXPECTED_SHA: ${{ steps.commit.outputs.sha }}
-        run: |
-          for attempt in $(seq 1 30); do
-            commit=$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' https://lyjw.me/api/version | jq -r '.commit // empty' || true)
-            if [ "$commit" = "$EXPECTED_SHA" ]; then exit 0; fi
-            sleep 10
-          done
-          echo "::error::Source domain did not serve the expected commit"
-          exit 1
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/wait-site-version.mjs https://lyjw.me
 
   purge:
     needs: deployment
-    if: needs.deployment.outputs.eligible == 'true'
+    if: needs.deployment.outputs.live == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -79,22 +74,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
       - name: Wait for production domains to serve the new build
+        id: domains
         env:
           EXPECTED_SHA: ${{ needs.deployment.outputs.sha }}
-        run: |
-          for origin in https://lyjw.me https://lyjw131.com; do
-            for attempt in $(seq 1 30); do
-              commit=$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "$origin/api/version" | jq -r '.commit // empty' || true)
-              if [ "$commit" = "$EXPECTED_SHA" ]; then continue 2; fi
-              sleep 10
-            done
-            echo "::error::$origin did not serve the expected commit"
-            exit 1
-          done
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/wait-site-version.mjs https://lyjw.me https://lyjw131.com
 
       # 各 Worker 并行上线；接收端尚未换版时会短暂返回 404/405，需重试。
       - name: Notify open pages
+        if: steps.domains.outputs.live == 'true'
         env:
           ACCESS_CLIENT_ID: ${{ secrets.ACCESS_CLIENT_ID }}
           ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
