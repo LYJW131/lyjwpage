@@ -990,7 +990,6 @@ function CompactAgentRow({
         <button
           type="button"
           aria-expanded={open}
-          aria-label={`${agentUsageLabel(row.label)}, ${open ? "hide" : "show"} all limits`}
           onClick={() => setExpanded((value) => !value)}
           className="block w-full cursor-pointer text-left focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
         >
