@@ -76,9 +76,9 @@ export async function fetchSiteAnalytics(
       SITE_ANALYTICS_HOSTS.some((host) => sources.filter((source) => source.host === host).length !== 1)) {
     throw new Error("Site analytics must cover both production hosts exactly once");
   }
-  const day = 86_400_000;
-  const end = Math.floor(now / day) * day;
-  const start = end - 7 * day;
+  const minute = 60_000;
+  const end = Math.floor(now / minute) * minute;
+  const start = end - 7 * 86_400_000;
   const signal = AbortSignal.timeout(15_000);
   const counts = await Promise.all(sources.map(async ({ host, siteTag }) => {
     const response = await fetcher("https://api.cloudflare.com/client/v4/graphql", {
