@@ -1214,12 +1214,12 @@ function ReplyBody({
   ].sort((a, b) => a.at - b.at);
   for (const { at, node, design } of marks) {
     const text = content.slice(from, at);
-    if (text.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} htmlPreview>{text}</ChatMarkdown>);
+    if (text.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} visuals>{text}</ChatMarkdown>);
     if (!design || showDesignContent || designAt === undefined || at < designAt) parts.push(node);
     from = at;
   }
   const rest = content.slice(from);
-  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} htmlPreview>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
+  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} visuals>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
   if (live && !rest.trim() && (showDesignContent || designAt === undefined)) parts.push(<span key="typing" className="animate-pulse text-muted-foreground">…</span>);
   return <div className="space-y-2">{parts}</div>;
 }
