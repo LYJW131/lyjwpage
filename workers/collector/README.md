@@ -30,7 +30,7 @@
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
 | `github-repo` | `LAG github-repo:v1`（含首页「最近提交」读的 `recentCommits`；站点部署通知也会点名重拉）；提交列表变了才 `CORE.revalidate(["github-repo"])` | `GITHUB_TOKEN` |
 | `site-deployments` | `LAG site-deployments:v1`；每次部署另归档 D1 `site_deploys` | `CLOUDFLARE_METRICS_TOKEN`；`SITE_WORKER_TAG` |
-| `site-analytics` | `LAG site-analytics:v1`（Cloudflare Web Analytics 两站 pageviews，UTC 七日窗） | `CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
+| `site-analytics` | `LAG site-analytics:v1`（Cloudflare Web Analytics 两站 pageviews，截至采集时刻的滚动 7×24 小时窗） | `CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
 | `vercel-deployments` | 已退役：名字留在契约里，点名时回 `skipped`，不进定时轮次（`shared/collector.ts#RETIRED_COLLECTOR_JOBS`） | 无 |
 | `vercel-metrics` | 已退役：同上 | 无 |
 | `avatar-watch` | 已退役：同上 | 无 |
