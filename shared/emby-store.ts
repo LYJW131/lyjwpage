@@ -21,6 +21,18 @@ export type EmbyNowPlaying = {
   at: number;
 };
 
+export type ResolvedNowPlaying = {
+  itemId: string;
+  paused: boolean;
+  progress: number | null;
+  client: string | null;
+  deviceName: string | null;
+  playMethod: WatchingPlayMethod | null;
+  media: WatchingMedia | null;
+  positionMs: number | null;
+  durationMs: number | null;
+};
+
 export const mirror = mirrorKey<EmbyNowPlaying>(["emby", "nowPlaying"], {
   ttlMs: TTL_MS,
 });

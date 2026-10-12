@@ -12,6 +12,12 @@ export type LyricLine = {
   words?: LyricWord[];
 };
 
+export type LyricsResult = {
+  lines: LyricLine[];
+  songwriters?: string[];
+  error?: string;
+};
+
 export type LyricsTiming = "line" | "word" | "none";
 
 export type ParsedLyrics = {

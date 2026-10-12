@@ -2,7 +2,7 @@ import { AwaitingReport } from "@/lib/awaiting-report";
 import { getStored, lastPushReceivedAt } from "@/lib/charger-store";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import { publicAssetPath } from "@/lib/asset-url";
-import { readLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
+import { readLiveness, withPresence, type Liveness } from "@shared/reporter-liveness";
 import type { ChargerPayload, ChargerStatus, ReportedChargerStatus } from "@/lib/types";
 import { publicChargerStatus } from "@shared/charging-devices";
 

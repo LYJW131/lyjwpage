@@ -1,4 +1,4 @@
-import type { EmbyNowPlaying, StoredWatchingItem } from "@/lib/emby-store";
+import type { EmbyNowPlaying, StoredWatchingItem } from "@shared/emby-store";
 import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
 import { number, object, text } from "@/lib/json";
 import type { WatchingItem, WatchingMedia, WatchingPlayMethod } from "@/lib/types";

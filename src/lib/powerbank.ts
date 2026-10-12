@@ -1,7 +1,7 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@/lib/freshness";
 import { getStored, lastPushReceivedAt } from "@/lib/powerbank-store";
-import { readLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
+import { readLiveness, withPresence, type Liveness } from "@shared/reporter-liveness";
 import type { PowerBankPayload, ReportedPowerBankStatus } from "@/lib/types";
 import { publicPowerBankStatus } from "@shared/charging-devices";
 

@@ -2,14 +2,14 @@ import { requestState } from "@shared/request-state";
 import { candidateFrom, type TrackEnrichment } from "@/lib/track-enrichment";
 import {
   type StoredHomePod
-} from "@/lib/homepod-store";
+} from "@shared/homepod-store";
 import { type NowListeningSnapshot } from "@/lib/now-listening";
 import {
   type PlayingQueueTrack
 } from "@/lib/playing-queue";
 import { IMAGE_OBJECT_KEY, publicAssetPath } from "@/lib/asset-url";
 import { fieldMirror } from "@shared/storage";
-import { withPresence, type Liveness } from "@/lib/reporter-liveness";
+import { withPresence, type Liveness } from "@shared/reporter-liveness";
 import type {
   DesktopActivity,
   DesktopPayload,

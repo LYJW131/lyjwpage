@@ -1,20 +1,6 @@
-import { currentMirror, type EmbyNowPlaying, imagesMirror, mirror, resumeMirror } from "@shared/emby-store";
-import type { WatchingMedia, WatchingPlayMethod } from "@/lib/types";
-
+import { currentMirror, type EmbyNowPlaying, imagesMirror, mirror, resumeMirror, type ResolvedNowPlaying } from "@shared/emby-store";
 
 export const TICKS_PER_MS = 10_000;
-
-export type ResolvedNowPlaying = {
-  itemId: string;
-  paused: boolean;
-  progress: number | null;
-  client: string | null;
-  deviceName: string | null;
-  playMethod: WatchingPlayMethod | null;
-  media: WatchingMedia | null;
-  positionMs: number | null;
-  durationMs: number | null;
-};
 
 export async function getNowPlaying(): Promise<ResolvedNowPlaying | null> {
   return resolveNowPlaying(await mirror.get());

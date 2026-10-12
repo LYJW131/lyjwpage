@@ -4,7 +4,7 @@ import test from "node:test";
 import { heartbeatWindowMs } from "@/lib/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
 import { pickNowListening, type NowListeningCandidate } from "@/lib/now-listening";
-import type { Liveness } from "@/lib/reporter-liveness";
+import type { Liveness } from "@shared/reporter-liveness";
 import type { LocalNowPlaying } from "@/lib/types";
 import { LISTENING_TRACE_LAG_MS, type ListeningTrace } from "@shared/pulse-listening";
 

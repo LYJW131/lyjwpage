@@ -1,8 +1,8 @@
 import {
   getHomePodSnapshot
-} from "@/lib/homepod-store";
+} from "@shared/homepod-store";
 import { pickNowListening, type NowListeningSnapshot } from "@/lib/now-listening";
-import { readLiveness, type Liveness } from "@/lib/reporter-liveness";
+import { readLiveness, type Liveness } from "@shared/reporter-liveness";
 import { LagResult } from "@/lib/lag-result";
 import { readLagEntry } from "@shared/lag";
 import type {

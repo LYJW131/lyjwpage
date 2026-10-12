@@ -7,7 +7,7 @@ import { getNowWatching, getWatching } from "@/lib/emby";
 import { getPowerBankSnapshot } from "@/lib/powerbank";
 import { installTestStorage } from "@/lib/testing/fake-storage";
 import { getNowListening } from "@/lib/telemetry";
-import { getTrophies } from "@/lib/trophies";
+import { getTrophies } from "@/lib/playstation";
 import { StorageClient } from "@shared/storage-client";
 import type { StorageCommand } from "@shared/storage-contract";
 

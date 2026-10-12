@@ -9,13 +9,13 @@ import {
   getHomePodSnapshot,
   playableHomePod,
   type StoredHomePod,
-} from "@/lib/homepod-store";
+} from "@shared/homepod-store";
 import { chargerActive, liveTrack, powerBankActive } from "@/lib/home-layout";
 import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG } from "@/lib/live-events";
 import type { PlayingQueueTrack } from "@/lib/playing-queue";
 import { powerBankPushPayload } from "@/lib/powerbank";
 import { readPowerBankState } from "@/lib/powerbank-store";
-import { nextLiveness, readLiveness, type Liveness } from "@/lib/reporter-liveness";
+import { nextLiveness, readLiveness, type Liveness } from "@shared/reporter-liveness";
 import type {
   ChargerStatus,
   LocalNowPlaying,

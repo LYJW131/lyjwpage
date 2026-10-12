@@ -1,6 +1,6 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { encodeCodingYear } from "@/lib/coding-year";
-import { readLiveness, withPresence } from "@/lib/reporter-liveness";
+import { readLiveness, withPresence } from "@shared/reporter-liveness";
 import { getStorage } from "@shared/storage";
 import type { CodingNowPayload, CodingUsagePayload, CodingYearPayload } from "@/lib/types";
 import {

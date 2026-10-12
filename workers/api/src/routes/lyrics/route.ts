@@ -1,4 +1,5 @@
-import { lyricsCacheKey, lyricsTtlMs, resolveLyrics, type LyricsResult } from "@/lib/lyrics";
+import { lyricsCacheKey, lyricsTtlMs, resolveLyrics } from "@/lib/lyrics";
+import type { LyricsResult } from "@/lib/lyrics-ttml";
 
 export type LyricsResponse = LyricsResult & { songId: string | null };
 
