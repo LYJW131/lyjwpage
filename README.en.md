@@ -143,7 +143,7 @@ The system has three parts: **collectors adapt to each source, Cloudflare manage
 
 **The state hub** is Cloudflare Workers: it receives reports, merges data from external services, and serves the public status API and live push. Reports first reach a stateless ingress Worker: behind Cloudflare Access it verifies each reporter's identity, validates and normalizes the payload, then splits it by data layer — the realtime half goes over a Service Binding to the state core (the api Worker, which owns the Durable Objects), while the lag layer, the archive and credentials are written by the ingress itself. Changing validation only redeploys the ingress; the state core keeps running and pages keep their push connections. Durable Objects SQLite holds the realtime layer's snapshots and history and is the single source of truth. Display-only data that may lag a few minutes (external service stats, the exit node, plan limits and so on) is written straight into a KV lag layer by its producers; every entry carries its update time, and the browser decides against each card's threshold whether it is stale. R2 stores images such as posters, D1 archives workouts, activity rings, limits, hourly server summaries, coding usage and Pulse's factual timeline, and the live-push WebSocket also counts online visitors.
 
-**The frontend** is the `site` Worker: React Router SSR renders the homepage on Cloudflare Workers, reading each card's status endpoint from the api Worker; once mounted, the browser connects straight to the api Worker for the latest state. The mainland China entry point accelerates pages and static assets through Alibaba Cloud ESA.
+**The frontend** is the `site` Worker: React Router SSR renders the homepage on Cloudflare Workers, reading each card's status (lag views straight from KV, realtime views from the api Worker over a Service Binding), and it answers `/api/*` on the site's own domain the same way, by data ownership; once mounted, the browser connects straight to the api Worker for the latest state. The mainland China entry point accelerates pages and static assets through Alibaba Cloud ESA.
 
 ## Key design choices
 
@@ -209,7 +209,7 @@ Data in Sentry also comes back to the page: using a read-only token, the collect
 | Hosting and delivery | Cloudflare Workers · Alibaba Cloud ESA |
 | Error and performance monitoring | Sentry |
 
-AI chat, MCP and GitHub issue tools run in [`workers/ai`](./workers/ai/README.md). Public URLs pass through api, and AI reads status through api's read-only interface. Pulse Coding scoring remains in api.
+AI chat, MCP and GitHub issue tools run in [`workers/ai`](./workers/ai/README.md). Requests on the site's domain and on api's public URL both reach it over a Service Binding, and AI reads status through api's read-only interface. Pulse Coding scoring remains in api.
 
 ## Where to start reading
 

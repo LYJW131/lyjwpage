@@ -15,20 +15,20 @@ import {
 } from "./live-census";
 import { liveRoom } from "./live-platform";
 import { ConfigError, issueMusicKitToken } from "./musickit-token";
-import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "@shared/http-origins";
+import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, requestOrigin } from "@shared/http-origins";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
 import { AI_HTTP_PATHS } from "@shared/ai-paths";
+import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
+import { withPublicCors } from "@shared/status-response";
 import type { Env } from "./runtime";
 import { site } from "@shared/site";
 
 
 export type { Env };
 export { StateHub };
-
-const WS_PATH = "/ws";
 
 const MUSICKIT_TOKEN_PATH = "/api/musickit/token";
 
@@ -62,7 +62,7 @@ async function handleMusicKitToken(request: Request, env: Env, cors: Headers): P
   }
 
   try {
-    const { token, issuedAt, expiresAt } = await issueMusicKitToken(request.headers.get("Origin"), env);
+    const { token, issuedAt, expiresAt } = await issueMusicKitToken(requestOrigin(request), env);
     // 缓存令牌可能已消耗半段寿命，客户端必须用签发时刻而非收到时刻计算续期。
     return jsonResponse({ token, issuedAt, expiresAt }, { headers: cors });
   } catch (error) {
@@ -300,18 +300,13 @@ const worker = {
     if (url.pathname.startsWith("/api/")) {
       const devOverride = process.env.DEV_OVERRIDES?.trim() === "true" && url.pathname.startsWith("/api/dev/");
       if (request.method !== "GET" && !devOverride) return new Response("Method not allowed", { status: 405, headers: cors });
-      const origin = request.headers.get("Origin");
-      if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ ok: false }, { status: 403, headers: cors });
+      if (isForeignOrigin(request, env)) return jsonResponse({ ok: false }, { status: 403, headers: cors });
       const lookup = isLookupPath(url.pathname);
       if (!lookup && !isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
-      const response = lookup ? await serveLookup(request, env, ctx) : await executePublicRequest(request, env, ctx);
-      const headers = new Headers(response.headers);
-      cors.forEach((value, name) => headers.set(name, value));
-      headers.set("Access-Control-Expose-Headers", "X-Fetched-At, X-Edge-Cache");
-      return new Response(response.body, { status: response.status, headers });
+      return withPublicCors(lookup ? await serveLookup(request, env, ctx) : await executePublicRequest(request, env, ctx), cors);
     }
 
-    if (url.pathname === WS_PATH) {
+    if (url.pathname === LIVE_SOCKET_PATH) {
       const rejected = rejectSocket(request, env);
       if (rejected) return rejected;
       return liveRoom(env).fetch(request);

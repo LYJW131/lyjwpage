@@ -1,35 +1,19 @@
-
-import { getAgentLimits } from "./agent-limits";
-import { getAgentStatus } from "@shared/agent-status";
-import { getWorkoutsSnapshot } from "./workouts";
-import { getActivitySnapshot } from "./activity";
 import { getChargerSnapshot, sliceChargerHistory } from "./anker";
 import { getRecentlyPlayed } from "./apple-music-store";
-import { getCloudflareWorkers } from "@shared/cloudflare-workers";
 import { getCodingNow, getCodingUsage, getCodingYear } from "./coding-usage";
 import { getNowWatching, getWatching } from "./emby";
-import { getGithubChart, sliceGithubChart } from "@shared/github-chart";
-import { getGithubRepo } from "@shared/github-repo";
 import { getPlaying, getPlayingNow, getTrophies } from "./playstation";
 import { getQuestNow } from "./quest";
 import { getPowerBankSnapshot } from "./powerbank";
 import { getPulseStatus } from "./pulse";
-import { getReportersStatus } from "./reporters";
-import { getSentryStatus } from "@shared/sentry-status";
-import { getServerSnapshot } from "./server";
+import { LAG_VIEW_LOADERS } from "@shared/lag-views";
 import type { EndpointViewKey, StatusViewKey } from "@shared/status-views";
 import type { LagResult } from "@shared/lag-result";
 import type { StatusPayloads } from "@shared/status-payloads";
-import { getDesktopPayload, getNowListening, getTimezonePayload } from "./telemetry";
+import type { StatusLoaderParams } from "@shared/status-response";
+import { getDesktopPayload, getNowListening } from "./telemetry";
 import { summarizeTrophies } from "@shared/trophies";
 import { sliceTrophies } from "@shared/trophy-slice";
-import { getSiteDeployments } from "@shared/site-deployments";
-
-export type StatusLoaderParams = {
-  since?: number;
-  sinceDate?: string;
-  titleIds?: string[];
-};
 
 type EndpointLoader<T> = {
   endpoint: (params: StatusLoaderParams) => Promise<T | LagResult<T>>;
@@ -41,10 +25,10 @@ function unparam<T>(load: () => Promise<T>): (params: StatusLoaderParams) => Pro
 
 export const statusLoaders = {
   desktop: { endpoint: unparam(getDesktopPayload) },
-  timezone: { endpoint: unparam(getTimezonePayload) },
-  workouts: { endpoint: unparam(getWorkoutsSnapshot) },
-  activity: { endpoint: unparam(getActivitySnapshot) },
-  server: { endpoint: unparam(getServerSnapshot) },
+  timezone: { endpoint: LAG_VIEW_LOADERS.timezone },
+  workouts: { endpoint: LAG_VIEW_LOADERS.workouts },
+  activity: { endpoint: LAG_VIEW_LOADERS.activity },
+  server: { endpoint: LAG_VIEW_LOADERS.server },
   charger: {
     endpoint: async ({ since }: StatusLoaderParams) =>
       sliceChargerHistory(await getChargerSnapshot(), since),
@@ -54,8 +38,8 @@ export const statusLoaders = {
   nowListening: { endpoint: unparam(getNowListening) },
   coding: { endpoint: unparam(getCodingUsage) },
   codingNow: { endpoint: unparam(getCodingNow) },
-  limits: { endpoint: unparam(getAgentLimits) },
-  agentStatus: { endpoint: unparam(getAgentStatus) },
+  limits: { endpoint: LAG_VIEW_LOADERS.limits },
+  agentStatus: { endpoint: LAG_VIEW_LOADERS.agentStatus },
   codingYear: { endpoint: unparam(getCodingYear) },
   watching: { endpoint: unparam(getWatching) },
   nowWatching: { endpoint: unparam(getNowWatching) },
@@ -68,15 +52,12 @@ export const statusLoaders = {
       return titleIds == null ? summarizeTrophies(data) : sliceTrophies(data, titleIds);
     },
   },
-  githubChart: {
-    endpoint: async ({ sinceDate }: StatusLoaderParams) =>
-      (await getGithubChart()).map((chart) => sliceGithubChart(chart, sinceDate)),
-  },
-  githubRepo: { endpoint: unparam(getGithubRepo) },
-  cloudflareWorkers: { endpoint: unparam(getCloudflareWorkers) },
-  siteDeployments: { endpoint: unparam(getSiteDeployments) },
-  sentry: { endpoint: unparam(getSentryStatus) },
-  reporters: { endpoint: unparam(getReportersStatus) },
+  githubChart: { endpoint: LAG_VIEW_LOADERS.githubChart },
+  githubRepo: { endpoint: LAG_VIEW_LOADERS.githubRepo },
+  cloudflareWorkers: { endpoint: LAG_VIEW_LOADERS.cloudflareWorkers },
+  siteDeployments: { endpoint: LAG_VIEW_LOADERS.siteDeployments },
+  sentry: { endpoint: LAG_VIEW_LOADERS.sentry },
+  reporters: { endpoint: LAG_VIEW_LOADERS.reporters },
   pulse: { endpoint: unparam(() => getPulseStatus()) },
 } satisfies { [K in StatusViewKey]: EndpointLoader<StatusPayloads[K]> };
 

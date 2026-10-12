@@ -29,8 +29,8 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/no-such-page"), { kind: "render" });
   assert.deepEqual(classifyGatewayRequest("GET", "/_.data"), { kind: "render" });
   assert.deepEqual(classifyGatewayRequest("GET", "/github-callback.data"), { kind: "render" });
-  assert.deepEqual(classifyGatewayRequest("GET", "/mcp"), { kind: "mcp" });
-  assert.deepEqual(classifyGatewayRequest("POST", "/mcp/tools/call"), { kind: "mcp" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/mcp"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/mcp/tools/call"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("POST", "/relay/api/1/envelope/"), {
     kind: "sentry-relay",
   });
@@ -41,6 +41,24 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/icon"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("HEAD", "/pwa/icon-192.png"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("POST", "/opengraph-image"), { kind: "invalid" });
+});
+
+test("API 路径按数据归属分流：可滞后视图 site 自己读，其余交给 api 或 ai", () => {
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/status/server"), { kind: "lag-status", view: "server" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/status/github-chart"), { kind: "lag-status", view: "githubChart" });
+  assert.deepEqual(classifyGatewayRequest("HEAD", "/api/status/server"), { kind: "api" }, "只有 GET 由 site 回，其余方法照旧交给 api");
+  assert.deepEqual(classifyGatewayRequest("OPTIONS", "/api/status/server"), { kind: "api" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/status/listening/now"), { kind: "api" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/status/vercel-deployments"), { kind: "api" }, "未登记的视图由 api 回 404");
+  assert.deepEqual(classifyGatewayRequest("GET", "/ws"), { kind: "api" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/lyrics"), { kind: "api" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/musickit/token"), { kind: "api" });
+  assert.deepEqual(classifyGatewayRequest("PUT", "/api/dev/override/api/status/server"), { kind: "api" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/api/chat"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/chat/usage"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/build/status"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/api/build/webhook"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/version"), { kind: "render" });
 });
 
 test("/img 只放行内容地址键", () => {

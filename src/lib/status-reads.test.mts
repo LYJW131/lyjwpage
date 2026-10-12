@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { statusEnvelope } from "@api/api.ts";
+import { statusEnvelope } from "@shared/status-response";
 import { LagResult } from "@shared/lag-result.ts";
 import { acceptPush, guardPolled, withoutServedAt, writeGeneration } from "./status-reads.ts";
 import { STATUS_VIEWS } from "@shared/status-views.ts";
