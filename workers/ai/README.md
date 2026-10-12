@@ -97,6 +97,8 @@ pnpm dev:local
 
 生产缺省不开调试权限，不能靠 `UPSTREAM_API_URL` 或只设置调试变量绕过验人及配额。使用 `pnpm dev` 让本地页面连接生产 api 时，localhost 的 Turnstile 结果不会被当成本地测试放行；调试对话应使用上面的本地 Worker 栈。本地 `AI` 绑定调用远程 Workers AI，需要 Wrangler 具备访问权限；强制档位只跳过 Clef，仍会调用所选 Anthropic 模型。
 
+改提示词、工具说明或工具结果的措辞后，用 `pnpm --dir workers/ai chat:probe` 对真实模型连问几次再看回答（语言、说法）：它在 Node 里直接调 `src/chat/handler.ts#handleChat`，跳过 Clef 与验人，状态视图读 `workers/api/dev-fixtures/` 的夹具，用法见 `scripts/chat-probe.ts` 的 `USAGE`。
+
 ## 验证
 
 从仓库根目录执行：
