@@ -2,7 +2,7 @@
 
 > 类型：runbook
 
-首页对话是设计、提交 issue 和发起构建的入口。任何 GitHub 账号都能参与；代码不检查账号是否为仓库所有者或协作者。共享协议与上限统一见 `shared/build-routine.ts`，后端在 `workers/ai/src/build/`，HTTP 入口由 `shared/ai-paths.ts#AI_HTTP_PATHS` 登记并经 api 转发。部署与分支 Preview 使用 [Workers 构建](./workers-builds.md) 的既有流程。
+首页对话是设计、提交 issue 和发起构建的入口。任何 GitHub 账号都能参与；代码不检查账号是否为仓库所有者或协作者。共享协议与上限统一见 `shared/build-routine.ts`，后端在 `workers/ai/src/build/`，HTTP 入口由 `shared/ai-paths.ts#AI_HTTP_PATHS` 登记，经 site 或 api 的 Service Binding 转发。部署与分支 Preview 使用 [Workers 构建](./workers-builds.md) 的既有流程。
 
 ## 设计与确认
 

@@ -3,17 +3,12 @@ import {
 } from "@shared/homepod-store";
 import { pickNowListening, type NowListeningSnapshot } from "@shared/now-listening";
 import { readLiveness, type Liveness } from "@shared/reporter-liveness";
-import { LagResult } from "@shared/lag-result";
-import { readLagEntry } from "@shared/lag";
 import type {
   DesktopPayload,
-  NowListeningPayload,
-  TimezoneActivity,
-  TimezonePayload
+  NowListeningPayload
 } from "@shared/types";
 import { pulseListeningTracesKey } from "./pulse-keys";
 import { getStorage } from "@shared/storage";
-import { LAG_KEYS } from "@shared/lag";
 import { playingContainer } from "@shared/apple-music-store";
 import { NEXT_LOOP_MAX, parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
 import { desktopPayload, snapshotFrom, syncTelemetryState } from "@shared/telemetry";
@@ -25,12 +20,6 @@ async function syncForRead(): Promise<Liveness> {
 
 export async function getDesktopPayload(): Promise<DesktopPayload> {
   return desktopPayload(await syncForRead());
-}
-
-export async function getTimezonePayload(): Promise<TimezonePayload | LagResult<TimezonePayload>> {
-  const entry = await readLagEntry<{ timezone: TimezoneActivity | null }>(LAG_KEYS.timezone);
-  const payload = { timezone: entry?.data.timezone ?? null, snapshotAt: Date.now() };
-  return entry ? new LagResult(payload, entry.updatedAt) : payload;
 }
 
 const ELSEWHERE_TRACES = Math.max(40, 2 * NEXT_LOOP_MAX);

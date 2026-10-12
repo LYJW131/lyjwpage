@@ -20,7 +20,7 @@
 - 根目录 `shared/http-origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，`/ws`、公开 API 和令牌签发共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型、状态计算与通用工具；只属于本 Worker 的读取在 `src/`。
 - 根目录 `shared/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、站点缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
-- `src/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
+- `src/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。可滞后层的 loader 引用 `shared/lag-views.ts#LAG_VIEW_LOADERS`，site Worker 在站点域名上直接调同一份，两边信封逐字一致由 `src/lag-parity.test.ts` 核对。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
 - `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，状态端点按 loader 表通用分发。StateHub 提交可见性屏障不单独发 RPC，由每次 `StateHub.publicRead` 随读取一起过；空的 StateHub 直接以空状态回应。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层（`layer: "lag"`）的端点只读 `LAG` KV，写入方也不经 `commitIngest()` 队列，不发读取，也就不过屏障、不唤醒 StateHub（本地开着 `DEV_OVERRIDES` 时要先查 DO 里的注入，那次读取照常过屏障）；下面的按参数查询同样不过。
 - `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。它们是给网页播放器按任意曲目查的按需端点，也是读取路径上唯一会现查 Apple 的入口；结果缓存在 `APPLE_CACHE` KV。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
 - `src/storage-driver.ts`：StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
@@ -364,7 +364,7 @@ Mac 上报的 Apple Music 凭据在凭据 KV（`shared/credentials.ts`），不�
 
 ## AI 路由与公开状态 RPC
 
-首页对话、配额查询、GitHub issue 提交与 MCP 的路径登记在 `shared/ai-paths.ts#AI_HTTP_PATHS`。`src/origin-worker.ts` 经 `AI_SERVICE.fetch(request)` 把请求和响应流交给 [AI Worker](../ai/README.md)，不在 api 执行聊天模型调用、对话配额或 MCP 协议；缺少绑定时回 503。预检与来源校验也由 AI Worker 处理，`CF-Connecting-IP` 随原请求保留。
+首页对话、配额查询、GitHub issue 提交与 MCP 的路径登记在 `shared/ai-paths.ts#AI_HTTP_PATHS`。`src/origin-worker.ts` 经 `AI_SERVICE.fetch(request)` 把请求和响应流交给 [AI Worker](../ai/README.md)，不在 api 执行聊天模型调用、对话配额或 MCP 协议；缺少绑定时回 503。预检与来源校验也由 AI Worker 处理，`CF-Connecting-IP` 随原请求保留。站点域名上的同一组路径由 site Worker 经自己的 `AI_SERVICE` 直接交给 AI Worker，不经过这里。
 
 AI Worker 通过具名入口 `PublicStatus` 读取本站公开状态，契约是 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。`src/public-status.ts#readPublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 中的精确路径，复用 `executePublicRequest` 返回浏览器使用的公开模型；查询参数、任意 URL、凭据和写入不在这个接口中。不能为工具方便而把 `StateCore` 或通用存储接口交给 AI Worker。
 
@@ -378,8 +378,10 @@ Pulse 的 Coding 评估仍由本 Worker 的 `src/pulse-score.ts#PulseScorer` 和
 
 `ALLOWED_ORIGINS` 一份名单，两道限制：
 
-1. **谁能来要令牌** —— 比请求的 `Origin` 头，配了名单之后不带这个头一律拒绝。这道只是让
-   「拿一份」不那么随手，Origin 头非浏览器伪造得了。
+1. **谁能来要令牌** —— 比请求的来源：带 `Origin` 头就看它；浏览器的同源 GET 不带 `Origin`，
+   只带 `Sec-Fetch-Site: same-origin`，这时按请求自己的源算（`shared/http-origins.ts#requestOrigin`，
+   经站点 Service Binding 转来的请求 URL 仍是站点的源）。配了名单之后两样都没有的一律拒绝。这道只是让
+   「拿一份」不那么随手，这两个头非浏览器都伪造得了。
 2. **令牌只在这些域上有效** —— 名单里写死的域签进 JWT 的 `origin` 声明，由 Apple 校验。
    通配项（`https://*.lyjw.workers.dev`）Apple 不解析，匹配到的预览域名和 localhost **只签它自己一个**，
    不把生产域名一起捎上；否则任何人带一句 `Origin: http://localhost:3000` 就能要走一份在
@@ -448,7 +450,7 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 几乎只增不删（活动桶按权威范围替换）、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
-实时状态存在 StateHub，展示快照存在 `LAG`，凭据存在 `CREDENTIALS`，site Worker 不连接任何数据库（首屏失效走 `SITE_CACHE` Service Binding，没有 HTTP secret）。秘密通过以下命令配置：
+实时状态存在 StateHub，展示快照存在 `LAG`，凭据存在 `CREDENTIALS`，site Worker 只读 `LAG` KV 回可滞后视图，不连 StateHub、D1 或凭据 KV（首屏失效走 `SITE_CACHE` Service Binding，没有 HTTP secret）。秘密通过以下命令配置：
 
 ```sh
 pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY -c wrangler.toml < AuthKey_XXXXXXXXXX.p8

@@ -1,8 +1,10 @@
-import { MCP_PATH } from "@shared/mcp";
-
+import { AI_HTTP_PATHS, MCP_PATH } from "@shared/ai-paths";
 import { IMAGE_PATH_PREFIX } from "@shared/asset-url";
-import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
+import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
 import { SENTRY_RELAY_PREFIX } from "@shared/sentry";
+import { lagViewKeyByPath, type LagViewKey } from "@shared/status-views";
+import { APP_VERSION_PATH } from "@/lib/app-version";
+import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
 
 export const HOME_CACHE_CONTROL =
@@ -28,18 +30,19 @@ export const STABLE_ASSET_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 
 export const NO_STORE = "no-store";
 
-export type GatewayKind =
-  | "mcp"
-  | "sentry-relay"
-  | "image-proxy"
-  | "image-object"
-  | "site-asset"
-  | "render"
-  | "invalid";
-
-export type GatewayClass = {
-  kind: GatewayKind;
-};
+export type GatewayClass =
+  | { kind: "lag-status"; view: LagViewKey }
+  | {
+      kind:
+        | "api"
+        | "ai"
+        | "sentry-relay"
+        | "image-proxy"
+        | "image-object"
+        | "site-asset"
+        | "render"
+        | "invalid";
+    };
 
 export type SiteAssetRoute = { asset: string; cacheControl: string };
 
@@ -125,7 +128,11 @@ export function imageObjectHeaders(
 }
 
 export function classifyGatewayRequest(method: string, pathname: string): GatewayClass {
-  if (pathname === MCP_PATH || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "mcp" };
+  if (AI_HTTP_PATHS.has(pathname) || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "ai" };
+  if (pathname === LIVE_SOCKET_PATH || (pathname.startsWith("/api/") && pathname !== APP_VERSION_PATH)) {
+    const view = method === "GET" ? lagViewKeyByPath(pathname) : undefined;
+    return view ? { kind: "lag-status", view } : { kind: "api" };
+  }
   if (pathname === SENTRY_RELAY_PREFIX || pathname.startsWith(`${SENTRY_RELAY_PREFIX}/`)) {
     return { kind: method === "POST" ? "sentry-relay" : "invalid" };
   }

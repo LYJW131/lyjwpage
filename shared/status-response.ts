@@ -2,6 +2,12 @@ import { AwaitingReport } from "@shared/awaiting-report";
 import { LagResult } from "@shared/lag-result";
 import type { StatusResponse } from "@shared/types";
 
+export type StatusLoaderParams = {
+  since?: number;
+  sinceDate?: string;
+  titleIds?: string[];
+};
+
 function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -27,6 +33,14 @@ export function titleIdsParam(request: Request): string[] | undefined {
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean);
+}
+
+export function loaderParams(request: Request): StatusLoaderParams {
+  return {
+    since: sinceParam(request),
+    sinceDate: sinceDateParam(request),
+    titleIds: titleIdsParam(request),
+  };
 }
 
 export async function statusEnvelope<T>(
@@ -59,4 +73,11 @@ export function statusResponse<T>(envelope: StatusResponse<T>): Response {
       "X-Fetched-At": new Date().toISOString(),
     },
   });
+}
+
+export function withPublicCors(response: Response, cors: Headers): Response {
+  const headers = new Headers(response.headers);
+  cors.forEach((value, name) => headers.set(name, value));
+  headers.set("Access-Control-Expose-Headers", "X-Fetched-At, X-Edge-Cache");
+  return new Response(response.body, { status: response.status, headers });
 }

@@ -44,6 +44,9 @@ export const STATUS_VIEWS = {
 export type StatusViewKey = keyof typeof STATUS_VIEWS;
 export type EndpointViewKey = StatusViewKey;
 export type StatusPath = (typeof STATUS_VIEWS)[StatusViewKey]["path"];
+export type LagViewKey = {
+  [K in StatusViewKey]: (typeof STATUS_VIEWS)[K]["layer"] extends "lag" ? K : never;
+}[StatusViewKey];
 
 export const STATUS_VIEW_KEYS = Object.keys(STATUS_VIEWS) as StatusViewKey[];
 
@@ -63,6 +66,11 @@ export function viewKeyByPath(path: string): EndpointViewKey | undefined {
 export function layerOfPath(path: string): StatusLayer {
   const key = viewKeyByPath(path);
   return key ? (STATUS_VIEWS[key] as StatusView).layer : "realtime";
+}
+
+export function lagViewKeyByPath(path: string): LagViewKey | undefined {
+  const key = viewKeyByPath(path);
+  return key && STATUS_VIEWS[key].layer === "lag" ? (key as LagViewKey) : undefined;
 }
 
 const PATH_BY_EVENT = new Map<string, string>(
