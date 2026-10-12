@@ -580,12 +580,31 @@ function nextCompactTickDelay(remain: number) {
 function UsageMeter({
   href,
   label,
+  expanded,
+  onToggle,
   children,
 }: {
   href: string | null;
   label: string;
+  expanded?: boolean;
+  onToggle?: () => void;
   children?: ReactNode;
 }) {
+  const hitArea =
+    "-mb-3 block pt-1.5 pb-3 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live";
+  if (onToggle) {
+    return (
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className={cn(hitArea, "w-full cursor-pointer")}
+      >
+        <span className="relative block h-1.5 overflow-hidden bg-muted">{children}</span>
+      </button>
+    );
+  }
   if (!href) {
     return <span className="relative mt-1.5 block h-1.5 overflow-hidden bg-muted">{children}</span>;
   }
@@ -595,7 +614,7 @@ function UsageMeter({
       target="_blank"
       rel="noreferrer noopener"
       aria-label={label}
-      className="-mb-3 block pt-1.5 pb-3 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
+      className={hitArea}
     >
       <span className="relative block h-1.5 overflow-hidden bg-muted">{children}</span>
     </a>
@@ -889,8 +908,11 @@ function CompactAgentRow({
   const expandable = !usageUrl && !limitsStale && row.limits.length > 1;
   const open = expandable && expanded;
 
-  const summary = (
-    <>
+  return (
+    <div
+      className="min-w-0 py-3"
+      title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}
+    >
       <span className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
         <span className="flex h-5 min-w-0 items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
@@ -963,7 +985,12 @@ function CompactAgentRow({
           )}
         </span>
       </span>
-      <UsageMeter href={usageUrl} label={agentUsageLabel(row.label)}>
+      <UsageMeter
+        href={usageUrl}
+        label={agentUsageLabel(row.label)}
+        expanded={open}
+        onToggle={expandable ? () => setExpanded((value) => !value) : undefined}
+      >
         {usedPercent != null && (
           <span
             className="block h-full transition-[width] duration-700"
@@ -972,26 +999,6 @@ function CompactAgentRow({
         )}
         {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
       </UsageMeter>
-    </>
-  );
-
-  return (
-    <div
-      className="min-w-0 py-3"
-      title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}
-    >
-      {expandable ? (
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setExpanded((value) => !value)}
-          className="block w-full cursor-pointer text-left focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
-        >
-          {summary}
-        </button>
-      ) : (
-        summary
-      )}
       {open && (
         <div className="mt-3 grid gap-3 border-l border-line pl-3">
           {row.limits.map((item) => (
