@@ -1,4 +1,4 @@
-import { reporterBlockOf, type ReporterBlock } from "@/lib/reporter-ledger";
+import { reporterBlockOf, type ReporterBlock } from "@shared/reporter-ledger";
 
 import { prepareAgentLimits, type PreparedAgentLimits } from "./agents";
 import { prepareClaudeCloudUsage, type PreparedClaudeCloudUsage } from "./claude-cloud";
@@ -51,20 +51,5 @@ export async function prepareIngest(
     case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents-otlp": return prepareClaudeCloudUsage(raw, receivedAt);
     default: throw new Error("Unknown ingest source");
-  }
-}
-
-// 校验失败仍须先探测存储就绪状态，维持未初始化 503 优先于报文 400 的回执契约。
-export async function prepareIngestForCommit(
-  source: string,
-  raw: unknown,
-  ready: () => Promise<boolean>,
-  images?: ImageBucket,
-): Promise<PreparedIngest | null> {
-  try {
-    return await prepareIngest(source, raw, Date.now(), images);
-  } catch (error) {
-    if (!(await ready())) return null;
-    throw error;
   }
 }

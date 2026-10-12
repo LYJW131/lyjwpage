@@ -7,12 +7,12 @@
     "source": "isolated pinned checkout"
   },
   "specification": {
-    "sha256": "3a1f21f00c22c3595166fe72a1037765f4b3930115ec1e8a607102be63855bf0",
-    "bytes": 15926
+    "sha256": "b42f2196df3566fb769cfc25192d3cdf77ebcedf375371bfb838bfa3ebf95ef9",
+    "bytes": 15947
   },
   "artifact": {
-    "sha256": "fb5874db127e18520f3135558c23d574514c373b664921a37b19e6a48dddf03e",
-    "bytes": 812792
+    "sha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
+    "bytes": 812794
   },
   "validation": {
     "checksPassed": 9,
@@ -25,7 +25,7 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "ff52d027f7097358a511438eef9ed28b45d3814d",
+    "revision": "9de4de40d6bad7edb2e38af0bd18464a3fee9f97",
     "references": 47
   },
   "output": "architecture.html",
@@ -44,11 +44,11 @@
     "status": "pass",
     "visualReview": "not-requested",
     "provenance": "current",
-    "deliveryReceiptId": "d08c4539-42c0-44fd-9575-b974e3247b3f",
+    "deliveryReceiptId": "08b71e74-bdb2-4351-97fe-fe549be6ca3b",
     "artifact": {
-      "path": "/home/user/lyjwpage/docs/architecture.html",
-      "sha256": "fb5874db127e18520f3135558c23d574514c373b664921a37b19e6a48dddf03e",
-      "bytes": 812792
+      "path": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/wf_57534b25-505-5/docs/architecture.html",
+      "sha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
+      "bytes": 812794
     },
     "state": {
       "detail": "read",
@@ -56,7 +56,7 @@
     },
     "chrome": {
       "status": "available",
-      "executable": "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
+      "executable": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     },
     "diagnostics": [],
     "containment": {
@@ -753,7 +753,7 @@
       "contactSheet": null
     },
     "sidecars": {
-      "directory": "/home/user/lyjwpage/.archify/evidence/architecture-GMT627",
+      "directory": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/wf_57534b25-505-5/.archify/evidence/architecture-MK7que",
       "receipt": "architecture.browser-check.json",
       "files": []
     }
@@ -763,7 +763,7 @@
     "installedVersion": "3.0.1",
     "availableVersion": "3.0.1",
     "releaseNotes": null,
-    "checkedAt": "2026-10-10T17:24:07.319Z",
+    "checkedAt": "2026-10-11T16:27:26.016Z",
     "source": "cache",
     "noticeRequired": false,
     "noticeText": null
@@ -1096,17 +1096,17 @@
     ],
     "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
   },
-  "visual_review": "passed: current HTML inspected at 1440px and 375px (no horizontal overflow, no console errors) and both native PNG exports inspected",
+  "visual_review": "passed: both native PNG exports inspected; HTML covered by the automated browser-check viewports only",
   "correction_rounds": 0,
   "static_diagram_review": "passed: both exported PNGs inspected for nodes, routes, labels and export bounds",
   "capture": {
     "status": "pass",
     "artifact": {
-      "path": "/home/user/lyjwpage/docs/architecture.html",
-      "sha256": "fb5874db127e18520f3135558c23d574514c373b664921a37b19e6a48dddf03e",
-      "bytes": 812792
+      "path": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/wf_57534b25-505-5/docs/architecture.html",
+      "sha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
+      "bytes": 812794
     },
-    "evidenceDirectory": ".archify/evidence/architecture-GMT627"
+    "evidenceDirectory": ".archify/evidence/architecture-MK7que"
   },
   "viewports": [
     {
@@ -1334,15 +1334,15 @@
       "width": 3106,
       "height": 2141,
       "original": {
-        "path": ".archify/evidence/architecture-GMT627/architecture-light.viewer-original.png",
-        "sha256": "82f4d36e0cfac7927094eb06e5258d959bf89478a33d3ab51aef68e4bd88776b",
-        "bytes": 769580,
+        "path": ".archify/evidence/architecture-MK7que/architecture-light.viewer-original.png",
+        "sha256": "daa18ad07d1a80563b6745507f003d3e1b3056dacedb9ff2331b2b76a2fdd13a",
+        "bytes": 772672,
         "width": 3314,
         "height": 2284
       },
-      "artifactSha256": "fb5874db127e18520f3135558c23d574514c373b664921a37b19e6a48dddf03e",
-      "sha256": "7f7d1ea784e79f9ec784e5d67fa11a220e4ff58ae875e0ddf0ca02198a2c812a",
-      "bytes": 256839
+      "artifactSha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
+      "sha256": "f233a6d8088c165b77b94fb8ee5b5e4f6c4e3161730ec2c071cf1cf2e59c0ac8",
+      "bytes": 260913
     },
     "architecture-dark.png": {
       "kind": "viewer-png-export",
@@ -1359,15 +1359,15 @@
       "width": 3106,
       "height": 2141,
       "original": {
-        "path": ".archify/evidence/architecture-GMT627/architecture-dark.viewer-original.png",
-        "sha256": "3c707784c88f63824df98b1c7dc0ee0443c9b34e34db423428d5f39ebb7ec56d",
-        "bytes": 839017,
+        "path": ".archify/evidence/architecture-MK7que/architecture-dark.viewer-original.png",
+        "sha256": "d60476645bef0237aa6cca599abeebf47cd9cd2c68cc50590f536df808dcba3e",
+        "bytes": 845221,
         "width": 3314,
         "height": 2284
       },
-      "artifactSha256": "fb5874db127e18520f3135558c23d574514c373b664921a37b19e6a48dddf03e",
-      "sha256": "59afbcca7cf1d97d903497eaacc053f86cff8565676e3a117c672201477e8cf6",
-      "bytes": 248331
+      "artifactSha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
+      "sha256": "94dcd0290e9a0eb7ea11960333165abffc04d4495391e59e273871be67a9f7a6",
+      "bytes": 249632
     }
   }
 }

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@/lib/sentry";
-import { SERVER_STALE_MS } from "@/lib/freshness";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
+import { SERVER_STALE_MS } from "@shared/freshness";
 import { LAG_KEYS, readLag } from "@shared/lag";
 import { QUEST_STALE_MS, questMirror } from "@shared/quest";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
@@ -26,7 +26,7 @@ function fakeLag(seed: Record<string, { updatedAt: number; data: unknown }> = {}
 }
 
 function hub(values: Record<string, unknown>) {
-  return async (commands: StorageCommand[]): Promise<StorageResult[] | null> =>
+  return async (commands: StorageCommand[]): Promise<StorageResult[]> =>
     commands.map(({ key }) => (key in values ? JSON.stringify(values[key]) : null));
 }
 
@@ -73,11 +73,9 @@ test("StateHub 来源按 questNow 的口径判断断流", async () => {
 
 test("StateHub 读不到时不下结论，不把读故障报成恢复", async () => {
   const seed = { [LAG_KEYS.freshnessWatch]: { updatedAt: 0, data: { quest: "stale" } } };
-  const notReady = fakeLag(seed);
-  assert.deepEqual(await run(notReady, async () => null), []);
   const broken = fakeLag(seed);
   assert.deepEqual(await run(broken, async () => { throw new Error("hub down"); }), []);
-  assert.equal(notReady.puts + broken.puts, 0);
+  assert.equal(broken.puts, 0);
 });
 
 test("一个 KV 键读失败只跳过它，其他来源照常判断", async () => {

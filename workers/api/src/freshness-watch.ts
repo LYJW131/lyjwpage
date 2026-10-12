@@ -9,10 +9,10 @@ import {
   PLAYSTATION_STALE_MS,
   SENTRY_STALE_MS,
   SERVER_STALE_MS,
-  VERCEL_DEPLOYMENTS_STALE_MS,
-  VERCEL_METRICS_STALE_MS,
-} from "@/lib/freshness";
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@/lib/sentry";
+  SITE_ANALYTICS_STALE_MS,
+  SITE_DEPLOYMENTS_STALE_MS,
+} from "@shared/freshness";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
 import { RESUME_STALE_MS, resumeMirror } from "@shared/emby-store";
 import { LAG_KEYS, readLag, writeLag, type LagKey, type LagStore } from "@shared/lag";
 import { presenceMirror } from "@shared/playstation-store";
@@ -59,8 +59,8 @@ export const LAG_FEEDS: readonly LagFeed[] = [
   { source: "agent-status", key: LAG_KEYS.agentStatus, thresholdMs: AGENT_STATUS_STALE_MS },
   { source: "github-chart", key: LAG_KEYS.githubChart, thresholdMs: GITHUB_CHART_STALE_MS },
   { source: "github-repo", key: LAG_KEYS.githubRepo, thresholdMs: GITHUB_REPO_STALE_MS },
-  { source: "vercel-deployments", key: LAG_KEYS.vercelDeployments, thresholdMs: VERCEL_DEPLOYMENTS_STALE_MS },
-  { source: "vercel-metrics", key: LAG_KEYS.vercelMetrics, thresholdMs: VERCEL_METRICS_STALE_MS },
+  { source: "site-deployments", key: LAG_KEYS.siteDeployments, thresholdMs: SITE_DEPLOYMENTS_STALE_MS },
+  { source: "site-analytics", key: LAG_KEYS.siteAnalytics, thresholdMs: SITE_ANALYTICS_STALE_MS },
   { source: "pagespeed", key: LAG_KEYS.pagespeed, thresholdMs: PAGESPEED_STALE_MS },
   { source: "cloudflare-deployments", key: LAG_KEYS.cloudflareDeployments, thresholdMs: CLOUDFLARE_DEPLOYMENTS_STALE_MS },
   { source: "cloudflare-metrics", key: LAG_KEYS.cloudflareMetrics, thresholdMs: CLOUDFLARE_METRICS_STALE_MS },
@@ -80,14 +80,13 @@ type Watched = Record<string, "fresh" | "stale">;
 export type FreshnessWatchDeps = {
   now: number;
   lag: LagStore;
-  hubRead(commands: StorageCommand[]): Promise<StorageResult[] | null>;
+  hubRead(commands: StorageCommand[]): Promise<StorageResult[]>;
   emit(event: FreshnessEvent): void;
 };
 
 async function readHubStamps(deps: FreshnessWatchDeps): Promise<Map<string, Stamp>> {
   const stamps = new Map<string, Stamp>();
   const values = await deps.hubRead(HUB_FEEDS.map(({ key }) => ({ op: "get", key })));
-  if (!values) return stamps;
   HUB_FEEDS.forEach((feed, index) => {
     const raw = values[index];
     if (typeof raw !== "string") return;
@@ -112,7 +111,7 @@ async function readLagStamps(deps: FreshnessWatchDeps): Promise<Map<string, Stam
   return stamps;
 }
 
-// 读不到的来源（没写过、DO 未初始化或读失败）这一轮不下结论，沿用上次状态，免得把读故障报成断流或恢复。
+// 读不到的来源（没写过或读失败）这一轮不下结论，沿用上次状态，免得把读故障报成断流或恢复。
 export async function watchFreshness(deps: FreshnessWatchDeps): Promise<FreshnessEvent[]> {
   const [hub, lag, previous] = await Promise.all([
     readHubStamps(deps).catch((error: unknown) => {

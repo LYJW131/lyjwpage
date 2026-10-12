@@ -9,7 +9,7 @@ import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useConfirmedClockStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
-import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
+import { PLAYSTATION_STALE_MS } from "@shared/freshness";
 import { LIST_DURATION } from "@/lib/motion";
 import { NOW_PLAYING_PATH, TROPHIES_PATH } from "@/lib/paths";
 import { playstationPresenceKind } from "@/lib/playstation-presence";
@@ -18,7 +18,7 @@ import type {
   PlaystationPresencePayload,
   StatusResponse,
   TrophiesSummaryPayload,
-} from "@/lib/types";
+} from "@shared/types";
 
 const NOW_REFRESH_MS = 60_000;
 const TROPHIES_REFRESH_MS = 10 * 60_000;

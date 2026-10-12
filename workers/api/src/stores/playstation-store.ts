@@ -2,7 +2,7 @@ import type {
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
   TrophiesPayload,
-} from "@/lib/types";
+} from "@shared/types";
 import { playedGamesMirror, presenceMirror, trophiesMirror } from "@shared/playstation-store";
 
 export function setPlaystationPresence(payload: PlaystationPresencePayload) {

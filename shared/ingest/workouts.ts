@@ -1,5 +1,5 @@
-import { object } from "@/lib/json";
-import type { ReportedWorkout, ReportedWorkouts } from "@/lib/types";
+import { object } from "@shared/json";
+import type { ReportedWorkout, ReportedWorkouts } from "@shared/types";
 import { WORKOUT_LIMIT } from "@shared/workouts";
 
 

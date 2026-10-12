@@ -1,28 +1,16 @@
 "use client";
 
 import { Monitor, Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
-import { flushSync } from "react-dom";
 
-const OPTIONS = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-] as const;
+import { useTheme } from "@/components/theme-provider";
+import { THEME_CHOICES, type ThemeChoice } from "@/lib/theme";
 
-function applyTheme(setTheme: (theme: string) => void, next: string) {
-  if (typeof document !== "undefined") {
-    document.documentElement.dataset.themeChoice = next;
-  }
-
+function applyTheme(setTheme: (theme: ThemeChoice) => void, next: ThemeChoice) {
   if (
-    typeof document !== "undefined" &&
     "startViewTransition" in document &&
     !window.matchMedia("(prefers-reduced-motion: reduce)").matches
   ) {
-    document.startViewTransition(() => {
-      flushSync(() => setTheme(next));
-    });
+    document.startViewTransition(() => setTheme(next));
     return;
   }
 
@@ -37,9 +25,7 @@ export function ThemeToggle() {
       type="button"
       aria-label="Toggle theme (light / dark / system)"
       onClick={() => {
-        const currentChoice = theme ?? "system";
-        const index = OPTIONS.findIndex((option) => option.value === currentChoice);
-        const next = OPTIONS[(index + 1) % OPTIONS.length].value;
+        const next = THEME_CHOICES[(THEME_CHOICES.indexOf(theme) + 1) % THEME_CHOICES.length];
         applyTheme(setTheme, next);
       }}
       className="paper-card relative flex size-8 items-center justify-center rounded-md border border-line-strong bg-surface text-muted-foreground hover:bg-surface-hover hover:text-foreground after:absolute after:-inset-1"

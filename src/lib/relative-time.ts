@@ -1,4 +1,4 @@
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 const MINUTE = 60_000;
 const HOUR = 3_600_000;

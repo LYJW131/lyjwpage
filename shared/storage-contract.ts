@@ -1,4 +1,4 @@
-export type WriteOptions = { ttlMs?: number; ifAbsent?: boolean };
+export type WriteOptions = { ttlMs?: number };
 export type StorageCommand =
   | { op: "get" | "remove" | "fields"; key: string }
   | { op: "set"; key: string; value: string; options?: WriteOptions }
@@ -27,7 +27,6 @@ export function parseCommands(value: unknown): StorageCommand[] {
         if (row.options !== undefined) {
           if (!row.options || typeof row.options !== "object" || Array.isArray(row.options)) throw new Error("Invalid options");
           if (row.options.ttlMs !== undefined) validTtl(row.options.ttlMs);
-          if (row.options.ifAbsent !== undefined && typeof row.options.ifAbsent !== "boolean") throw new Error("Invalid condition");
         }
         break;
       case "append":

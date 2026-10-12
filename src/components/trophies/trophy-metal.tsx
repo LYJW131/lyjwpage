@@ -1,5 +1,5 @@
 import Image from "@/components/app-image";
-import type { TrophyType } from "@/lib/types";
+import type { TrophyType } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const LABELS: Record<TrophyType | "level", string> = {

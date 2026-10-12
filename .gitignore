@@ -16,9 +16,6 @@ dist/
 
 /coverage
 
-/.next/
-/out/
-
 /build
 
 .DS_Store
@@ -35,13 +32,13 @@ yarn-error.log*
 .dev.vars*
 !.dev.vars.example
 
-.vercel
-
 /.claude/settings.local.json
 /.claude/worktrees/
 
 *.tsbuildinfo
-next-env.d.ts
+/.react-router/
+/public/site-assets/
+/worker-configuration.d.ts
 
 __pycache__/
 *.pyc

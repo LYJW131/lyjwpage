@@ -1,6 +1,7 @@
-import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
+import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
 import type { CoreCommand } from "@shared/ingest/prepare";
 
+// 状态核心总是就绪：ready() 恒为 true，回执不出现 ready: false；两者留在契约里是因为只加不改。
 export type CommitReply =
   | { ready: false; ok: false }
   | { ready: true; ok: true; data: unknown }

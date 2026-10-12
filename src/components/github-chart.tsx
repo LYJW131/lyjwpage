@@ -12,7 +12,7 @@ import {
 import { useSiteDay } from "@/hooks/use-site-day";
 import { useStale } from "@/hooks/use-stale";
 import { incrementalFetcher, useStatus } from "@/hooks/use-status";
-import { GITHUB_CHART_STALE_MS } from "@/lib/freshness";
+import { GITHUB_CHART_STALE_MS } from "@shared/freshness";
 import {
   githubChartCursor,
   githubChartWeeks,
@@ -20,7 +20,7 @@ import {
   seedGithubChart,
 } from "@/lib/github-chart-history";
 import { GITHUB_CHART_PATH } from "@/lib/paths";
-import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@/lib/types";
+import type { GithubChartDay, GithubChartPayload, StatusResponse } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const fetchGithubChart = incrementalFetcher<GithubChartPayload>(

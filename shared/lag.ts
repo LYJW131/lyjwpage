@@ -7,8 +7,8 @@ export const LAG_KEYS = {
   agentStatus: "agent-status:v1",
   githubChart: "github-chart:v1",
   githubRepo: "github-repo:v1",
-  vercelDeployments: "vercel-deployments:v1",
-  vercelMetrics: "vercel-metrics:v1",
+  siteDeployments: "site-deployments:v1",
+  siteAnalytics: "site-analytics:v1",
   pagespeed: "pagespeed:v1",
   cloudflareDeployments: "cloudflare-deployments:v1",
   cloudflareMetrics: "cloudflare-metrics:v1",
@@ -50,4 +50,17 @@ export async function readLag<T>(kv: LagStore, key: LagKey): Promise<LagEntry<T>
 export async function writeLag<T>(kv: LagStore, key: LagKey, data: T, updatedAt = Date.now()): Promise<void> {
   const entry: LagEntry<T> = { updatedAt, data };
   await kv.put(key, JSON.stringify(entry));
+}
+
+type LagReader = (key: LagKey) => Promise<LagEntry<unknown> | null>;
+
+let lagReader: LagReader | null = null;
+
+export function installLagReader(reader: LagReader | null): void {
+  lagReader = reader;
+}
+
+export async function readLagEntry<T>(key: LagKey): Promise<LagEntry<T> | null> {
+  if (!lagReader) throw new Error("可滞后层读取没有装上：Worker 入口先调 installLagReader");
+  return (await lagReader(key)) as LagEntry<T> | null;
 }

@@ -1,4 +1,4 @@
-import type { ActivityStatus } from "@/lib/types";
+import type { ActivityStatus } from "@shared/types";
 
 
 export type StoredActivity = {

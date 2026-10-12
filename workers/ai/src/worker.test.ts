@@ -43,7 +43,7 @@ test("登记的 AI 路由保留 CORS 预检，MCP 保留协议请求头", async 
 });
 
 test("网页 AI 路由拒绝未授权来源，MCP 同样拒绝携带陌生 Origin 的请求", async () => {
-  for (const path of ["/api/chat", "/api/chat/usage", "/api/github/issue", "/api/build", "/api/build/status", "/mcp"]) {
+  for (const path of ["/api/chat", "/api/chat/usage", "/api/build", "/api/build/status", "/mcp"]) {
     const response = await worker.fetch(request(path, path === "/api/chat/usage" ? "GET" : "POST", "https://elsewhere.test"), env());
     assert.equal(response.status, 403);
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), null);

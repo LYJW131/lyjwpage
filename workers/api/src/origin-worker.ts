@@ -1,10 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 
 import { StateHub } from "./state-hub";
-import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
-import type { StoredEntry } from "@shared/sqlite-store";
 
-import type { LiveEvent } from "@/lib/live-events";
+import type { LiveEvent } from "@shared/live-events";
 
 import {
   HEARTBEAT_INTERVAL_MS,
@@ -24,7 +22,7 @@ import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
 import { AI_HTTP_PATHS } from "@shared/ai-paths";
 import type { Env } from "./runtime";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 
 export type { Env };
@@ -41,20 +39,6 @@ function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
-function secretMatches(provided: string, expected: string): boolean {
-  const a = new TextEncoder().encode(provided);
-  const b = new TextEncoder().encode(expected);
-  if (a.byteLength !== b.byteLength) return false;
-  return crypto.subtle.timingSafeEqual(a, b);
-}
-
-function bearerToken(request: Request): string | null {
-  const header = request.headers.get("Authorization");
-  if (!header) return null;
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() ?? null;
-}
-
 function rejectSocket(request: Request, env: Env): Response | null {
   if (!isAllowedOrigin(request, env)) {
     return new Response("Forbidden", { status: 403 });
@@ -67,48 +51,6 @@ function rejectSocket(request: Request, env: Env): Response | null {
 
 function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-async function readBoundedBody(stream: ReadableStream<Uint8Array> | null): Promise<string> {
-  if (!stream) return "";
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let bytes = 0;
-  let result = "";
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > STORAGE_MAX_BYTES) { await reader.cancel(); throw new Error("Body too large"); }
-      result += decoder.decode(value, { stream: true });
-    }
-    return result + decoder.decode();
-  } finally { reader.releaseLock(); }
-}
-
-async function handleImport(request: Request, env: Env): Promise<Response> {
-  if (request.method !== "POST") return jsonResponse({ ok: false }, { status: 405 });
-  const expected = env.STATE_IMPORT_SECRET;
-  if (!expected || !env.STATE) return jsonResponse({ ok: false }, { status: 503 });
-  const provided = bearerToken(request);
-  if (!provided || !secretMatches(provided, expected)) return jsonResponse({ ok: false }, { status: 401 });
-  try {
-    const body = JSON.parse(await readBoundedBody(request.body));
-    const hub = env.STATE.get(env.STATE.idFromName("global"));
-    const prefix = env.STORAGE_PREFIX ?? "lyjwpage";
-    {
-      if (!Array.isArray(body.entries) || body.entries.length > 1000 || !body.entries.every((entry: StoredEntry) =>
-        entry && typeof entry.key === "string" && entry.key.startsWith(`${prefix}:`) &&
-        (entry.expiresAt === null || Number.isSafeInteger(entry.expiresAt)))) throw new Error("Invalid import");
-      const imported = await hub.importMissing(body.entries);
-      if (body.finalize === true) await hub.finishImport();
-      return jsonResponse({ imported });
-    }
-  } catch (error) {
-    console.error("[storage]", reason(error));
-    return jsonResponse({ ok: false, error: "存储请求失败" }, { status: 400 });
-  }
 }
 
 async function handleMusicKitToken(request: Request, env: Env, cors: Headers): Promise<Response> {
@@ -329,11 +271,6 @@ export class LivePushRoom extends DurableObject<Env> {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-
-    if (url.pathname === "/api/internal/storage/import") {
-      if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
-      return handleImport(request, env);
-    }
 
     const cors = getCorsHeaders(request, env);
     if (AI_HTTP_PATHS.has(url.pathname)) {

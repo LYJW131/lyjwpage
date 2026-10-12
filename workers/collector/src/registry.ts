@@ -1,17 +1,16 @@
-import type { CollectorJobOutcome } from "@shared/collector";
+import { RETIRED_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collector";
 import { withRequestState } from "@shared/request-state";
 
 import type { Env } from "./env";
 import { explain, type Job, type JobResult } from "./job";
 import { appleRecentJob } from "./jobs/apple-recent";
-import { avatarWatchJob } from "./jobs/avatar-watch";
 import { cloudflareDeploymentsJob, cloudflareMetricsJob } from "./jobs/cloudflare";
 import { githubChartJob } from "./jobs/github-chart";
 import { githubRepoJob } from "./jobs/github-repo";
 import { pagespeedJob } from "./jobs/pagespeed";
 import { providerStatusJob } from "./jobs/provider-status";
 import { sentryStatusJob } from "./jobs/sentry-status";
-import { vercelDeploymentsJob, vercelMetricsJob } from "./jobs/vercel";
+import { siteAnalyticsJob, siteDeploymentsJob } from "./jobs/site-status";
 import { checkinDue, isDue, monitorConfig, monitorSlug } from "./schedule";
 
 export const JOBS: readonly Job[] = [
@@ -20,12 +19,11 @@ export const JOBS: readonly Job[] = [
   pagespeedJob,
   githubChartJob,
   githubRepoJob,
-  vercelDeploymentsJob,
-  vercelMetricsJob,
+  siteDeploymentsJob,
+  siteAnalyticsJob,
   cloudflareDeploymentsJob,
   cloudflareMetricsJob,
   sentryStatusJob,
-  avatarWatchJob,
 ];
 
 export function findJob(name: string, jobs: readonly Job[] = JOBS): Job | undefined {
@@ -118,6 +116,10 @@ export async function runNamed(
 ): Promise<CollectorJobOutcome[]> {
   return Promise.all([...new Set(names)].map((name) => {
     const job = findJob(name, options.jobs);
-    return job ? runJob(job, env, { report: options.report }) : Promise.resolve<CollectorJobOutcome>({ job: name, status: "error", detail: "unknown job", ms: 0 });
+    if (job) return runJob(job, env, { report: options.report });
+    if ((RETIRED_COLLECTOR_JOBS as readonly string[]).includes(name)) {
+      return Promise.resolve<CollectorJobOutcome>({ job: name, status: "skipped", detail: "Retired job", ms: 0 });
+    }
+    return Promise.resolve<CollectorJobOutcome>({ job: name, status: "error", detail: "unknown job", ms: 0 });
   }));
 }

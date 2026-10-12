@@ -10,8 +10,8 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStatus } from "@/hooks/use-status";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
-import { STATUS_VIEWS } from "@/lib/status-views";
-import type { StatusResponse } from "@/lib/types";
+import { STATUS_VIEWS } from "@shared/status-views";
+import type { StatusResponse } from "@shared/types";
 import type { QuestNow, QuestPlaying } from "@shared/quest";
 
 const NOW_REFRESH_MS = 60_000;

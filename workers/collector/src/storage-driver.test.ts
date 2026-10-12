@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { cached, get, put, remove } from "@/lib/cache";
-import { installStorageForTests, resetStorageDriverForTests } from "@/lib/storage-driver";
+import { cached, get, put, remove } from "@shared/cache";
+import { installStorage } from "@shared/storage";
 
 import type { Env } from "./env";
 import { bindEnv, unbindEnvForTests } from "./runtime";
-import { getStorage, kvStorage, kvTtlSeconds } from "./storage-driver";
+import { collectorStorage, kvStorage, kvTtlSeconds } from "./storage-driver";
 import { MemoryKv } from "./testing/memory-kv";
 
 afterEach(() => {
-  resetStorageDriverForTests();
+  installStorage(null);
   unbindEnvForTests();
 });
 
-test("get, set with TTL, ifAbsent and remove map onto KV", async () => {
+test("get, set with TTL and remove map onto KV", async () => {
   let now = 1_000_000;
   const kv = new MemoryKv(() => now);
   const storage = kvStorage(kv);
@@ -24,9 +24,7 @@ test("get, set with TTL, ifAbsent and remove map onto KV", async () => {
   assert.equal(await storage.get("a"), "1");
   assert.equal(kv.puts.at(-1)?.expirationTtl, undefined);
 
-  assert.equal(await storage.set("a", "2", { ifAbsent: true }), false);
-  assert.equal(await storage.get("a"), "1");
-  assert.equal(await storage.set("b", "x", { ifAbsent: true, ttlMs: 120_500 }), true);
+  assert.equal(await storage.set("b", "x", { ttlMs: 120_500 }), true);
   assert.equal(kv.puts.at(-1)?.expirationTtl, 121);
 
   now += 121_000;
@@ -56,9 +54,10 @@ test("a batch runs in order so later commands see earlier writes", async () => {
   assert.deepEqual(results, [true, "v", 1, null]);
 });
 
-test("src/lib/cache works unchanged on top of the KV driver", async () => {
+test("the storage cache works unchanged on top of the KV driver", async () => {
   const kv = new MemoryKv();
-  installStorageForTests(kvStorage(kv));
+  const storage = kvStorage(kv);
+  installStorage(() => storage);
 
   await put("thing", { n: 1 }, 30 * 60_000);
   assert.deepEqual(await get("thing"), { n: 1 });
@@ -78,6 +77,6 @@ test("src/lib/cache works unchanged on top of the KV driver", async () => {
 test("the Worker driver reads COLLECTOR_KV from the bound env", async () => {
   const kv = new MemoryKv();
   bindEnv({ COLLECTOR_KV: kv.asKv() } as Env);
-  await getStorage().set("x", "y");
+  await collectorStorage().set("x", "y");
   assert.equal(kv.raw("x"), "y");
 });

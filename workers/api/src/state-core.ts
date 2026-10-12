@@ -2,9 +2,9 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { withRequestState } from "@shared/request-state";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import type { CommitReply, CoreAudience, CorePower, StateCoreRpc } from "@shared/state-core";
-import type { LiveEvent } from "@/lib/live-events";
-import { getPlaystationPower } from "@/lib/playstation-store";
-import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
+import type { LiveEvent } from "@shared/live-events";
+import { getPlaystationPower } from "./playstation-store";
+import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";
@@ -20,7 +20,7 @@ function transientFailure(error: unknown): boolean {
 
 export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   async ready(): Promise<boolean> {
-    return this.hub().ready();
+    return true;
   }
 
   // 必须先派发效果再处理提交失败：较早模块已落库的变化仍需通知。
@@ -37,7 +37,6 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
         return { ready: true, ok: false, error: result, retryable: true };
       }
       await dispatchIngestEffects(result.effects);
-      if (!result.ready) return { ready: false, ok: false };
       if (!result.ok) return { ready: true, ok: false, error: result.error };
       if (followUp) this.ctx.waitUntil(this.followUp(followUp));
       return { ready: true, ok: true, data: JSON.parse(result.json) as unknown };

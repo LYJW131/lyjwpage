@@ -7,7 +7,7 @@ workers_dev = false
 [vars]
 AI_DEV = "true"
 SENTRY_ENVIRONMENT = "development"
-ALLOWED_ORIGINS = "https://*.vercel.app"
+ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
 # 设计会话的 Managed Agents 壳，必须与 ANTHROPIC_API_KEY 在同一个 Console 工作空间（见 docs/ops-facts.md）。
 DESIGN_AGENT_ID = "agent_01A9iz5Qv92DM3v6AgZvwo59"
 DESIGN_ENVIRONMENT_ID = "env_01P1faxn2fwzNE596uk9JzgM"
@@ -44,11 +44,6 @@ new_sqlite_classes = ["BuildCoordinator"]
 name = "CHAT_USAGE_LIMIT"
 namespace_id = "13101"
 simple = { limit = 30, period = 10 }
-
-[[ratelimits]]
-name = "GITHUB_ISSUE_LIMIT"
-namespace_id = "13102"
-simple = { limit = 5, period = 60 }
 
 [[ratelimits]]
 name = "MCP_LIMIT"

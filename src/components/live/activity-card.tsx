@@ -7,9 +7,9 @@ import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { activityDayCount, activityDistanceKm } from "@/lib/activity-display";
-import { ACTIVITY_STALE_MS } from "@/lib/freshness";
+import { ACTIVITY_STALE_MS } from "@shared/freshness";
 import { ACTIVITY_PATH } from "@/lib/paths";
-import type { ActivityPayload, StatusResponse } from "@/lib/types";
+import type { ActivityPayload, StatusResponse } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 type RingId = "move" | "exercise" | "stand";

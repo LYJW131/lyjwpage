@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { statusEnvelope } from "./api.ts";
-import { LagResult } from "./lag-result.ts";
+import { statusEnvelope } from "@api/api.ts";
+import { LagResult } from "@shared/lag-result.ts";
 import { acceptPush, guardPolled, withoutServedAt, writeGeneration } from "./status-reads.ts";
-import { STATUS_VIEWS } from "./status-views.ts";
+import { STATUS_VIEWS } from "@shared/status-views.ts";
 
 test("acceptPush / guardPolled: stamped payloads drop out-of-order values", () => {
   const path = STATUS_VIEWS.desktop.path;

@@ -7,7 +7,6 @@ import {
   checkMarkdown,
   checkStructure,
   collectAnchors,
-  countAgentsLines,
   findTimeline,
   formatIssues,
   githubSlug,
@@ -172,18 +171,15 @@ test("符号匹配把美元符号按字面量处理，并保持完整标识符�
   assert.match(issues[1].message, /suffix/);
 });
 
-test("allow 注释放行同一行，但必须写理由；next 自动块不查", () => {
+test("allow 注释放行同一行，但必须写理由", () => {
   const ctx = ctxOf({ "docs/x.md": "" });
   const text = [
     "`src/gone.ts` 2026-09-29 <!-- allow: 快照里的旧路径 -->",
     "`src/gone.ts` <!-- allow: -->",
     "`src/gone.ts`",
-    "<!-- BEGIN:nextjs-agent-rules -->",
-    "`node_modules/next/dist/x.ts` `src/托管块里的坏路径.ts` 2026-09-29",
-    "<!-- END:nextjs-agent-rules -->",
     "`src/gone2.ts`",
   ].join("\n");
-  assert.deepEqual(tags(checkMarkdown(ctx, "docs/x.md", text)), ["allow@2", "path@3", "path@7"]);
+  assert.deepEqual(tags(checkMarkdown(ctx, "docs/x.md", text)), ["allow@2", "path@3", "path@4"]);
 });
 
 test("record 不查时间线，但引用照查；围栏与行内代码里的日期不算", () => {
@@ -191,15 +187,6 @@ test("record 不查时间线，但引用照查；围栏与行内代码里的日�
   const text = ["2026-09-29 之后改了 `src/gone.ts`", "`2025-02-14` 是字面值", "```", "2026-09-29", "```"].join("\n");
   assert.deepEqual(tags(checkMarkdown(ctx, "docs/x.md", text, { docType: "record" })), ["path@1"]);
   assert.deepEqual(tags(checkMarkdown(ctx, "docs/x.md", text, { docType: "reference" })), ["path@1", "timeline@1"]);
-});
-
-test("AGENTS.md 行数：根文件不计 next 自动块，其余全算", () => {
-  const block = "<!-- BEGIN:nextjs-agent-rules -->\n\n# 托管\n\n<!-- END:nextjs-agent-rules -->\n";
-  const body = (n) => Array.from({ length: n }, (_, i) => `行 ${i}`).join("\n");
-  assert.equal(countAgentsLines(`${block}${body(10)}\n`, { root: true }), 10);
-  assert.equal(countAgentsLines(`${block}${body(10)}\n`, { root: false }), 15);
-  assert.equal(countAgentsLines("<!-- BEGIN:nextjs-agent-rules -->\n乱\n", { root: true }), 2);
-  assert.equal(countAgentsLines(body(3), { root: true }), 3);
 });
 
 test("结构：体积上限与 CLAUDE.md 配对", () => {

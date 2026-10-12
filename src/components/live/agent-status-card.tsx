@@ -7,7 +7,6 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GithubIcon from "@lobehub/icons/es/Github/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
-import VercelIcon from "@lobehub/icons/es/Vercel/components/Mono";
 import { ExternalLink, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
@@ -21,10 +20,10 @@ import {
   type AgentIndicator,
   type AgentStatusPayload,
   type AgentStatusRow,
-} from "@/lib/agent-status-types";
-import { AGENT_STATUS_STALE_MS } from "@/lib/freshness";
+} from "@shared/agent-status-types";
+import { AGENT_STATUS_STALE_MS } from "@shared/freshness";
 import { AGENT_STATUS_PATH } from "@/lib/paths";
-import type { StatusResponse } from "@/lib/types";
+import type { StatusResponse } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const ROWS_PER_COLUMN = 3;
@@ -104,8 +103,6 @@ function Brand({ id }: { id: AgentStatusRow["id"] }) {
       return <TypesafeIcon className={className} />;
     case "apple":
       return <AppleIcon size={20} className={className} />;
-    case "vercel":
-      return <VercelIcon size={20} className={className} />;
     case "github":
       return <GithubIcon size={20} className={className} />;
     case "cloudflare":

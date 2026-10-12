@@ -1,7 +1,7 @@
-import type { LiveEvent } from "@/lib/live-events";
-import { readLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
-import { askStorage, tellStorage } from "@/lib/storage";
-import type { CodingNowPayload } from "@/lib/types";
+import type { LiveEvent } from "@shared/live-events";
+import { readLiveness, withPresence, type Liveness } from "@shared/reporter-liveness";
+import { getStorage } from "@shared/storage";
+import type { CodingNowPayload } from "@shared/types";
 import { codingActivityKey, codingPushedNowKey, parseStoredActivity, parseStoredPushedNow, type StoredCodingActivity } from "@shared/coding-store";
 import type { CodingActivityReport } from "@shared/coding-usage";
 import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
@@ -23,12 +23,9 @@ function activitiesOf(values: readonly unknown[]): CodingActivities {
 }
 
 export async function readCodingActivities(): Promise<CodingActivities> {
-  const answered = await askStorage(async (storage) => {
-    const batch = storage.batch();
-    for (const source of CODING_USAGE_SOURCE_NAMES) batch.get(codingActivityKey(source));
-    return batch.execute();
-  });
-  return answered.reachable ? activitiesOf(answered.value) : {};
+  const batch = getStorage().batch();
+  for (const source of CODING_USAGE_SOURCE_NAMES) batch.get(codingActivityKey(source));
+  return activitiesOf(await batch.execute());
 }
 
 function worthPushing(pushed: CodingNowPayload["agents"], next: CodingNowPayload["agents"]): boolean {
@@ -58,14 +55,12 @@ export async function prepareCodingActivity(
   receivedAt: number,
   liveness?: Liveness,
 ): Promise<CodingActivityLanding> {
-  const answered = await askStorage(async (storage) => {
-    const batch = storage.batch();
-    for (const name of CODING_USAGE_SOURCE_NAMES) batch.get(codingActivityKey(name));
-    batch.get(codingPushedNowKey());
-    return batch.execute();
-  });
-  const activities = answered.reachable ? activitiesOf(answered.value) : {};
-  const pushed = answered.reachable ? parseStoredPushedNow(answered.value[CODING_USAGE_SOURCE_NAMES.length]) : [];
+  const read = getStorage().batch();
+  for (const name of CODING_USAGE_SOURCE_NAMES) read.get(codingActivityKey(name));
+  read.get(codingPushedNowKey());
+  const stored = await read.execute();
+  const activities = activitiesOf(stored);
+  const pushed = parseStoredPushedNow(stored[CODING_USAGE_SOURCE_NAMES.length]);
   const previous = activities[source] ?? null;
   if (previous && report.collectedAt < previous.collectedAt) {
     return { stage: () => {}, commit: async () => {}, event: null, previous, accepted: false };
@@ -82,11 +77,11 @@ export async function prepareCodingActivity(
   };
   return {
     stage,
-    commit: () => tellStorage((storage) => {
-      const batch = storage.batch();
+    commit: () => {
+      const batch = getStorage().batch();
       stage(batch);
       return batch.execute();
-    }),
+    },
     event,
     previous,
     accepted: true,

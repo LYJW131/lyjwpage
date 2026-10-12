@@ -10,11 +10,10 @@ routes = [
 
 
 [vars]
-ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me,https://*.vercel.app"
+ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me"
 APPLE_MUSIC_TEAM_ID = "2VTXNMR2GL"
 APPLE_MUSIC_KEY_ID = "88KBJL3CKU"
 STORAGE_PREFIX = "lyjwpage"
-SITE_URL = "https://lyjw.me"
 APPLE_MUSIC_STOREFRONT = "cn"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 
@@ -28,12 +27,10 @@ binding = "AI"
 binding = "AI_SERVICE"
 service = "ai"
 
-[alias]
-"@/lib/storage-driver" = "./src/storage-driver.ts"
-"@/lib/apple-developer-token" = "./src/apple-developer-token.ts"
-"@/lib/apple-music-credentials" = "./src/apple-music-credentials.ts"
-"@/lib/lag-store" = "./src/lag-store.ts"
-"@/lib/apple-cache-store" = "./src/apple-cache-store.ts"
+[[services]]
+binding = "SITE_CACHE"
+service = "site"
+entrypoint = "RenderedSite"
 
 [[durable_objects.bindings]]
 name = "LIVE_PUSH"
@@ -104,7 +101,7 @@ PREVIEW_WORKER = "true"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 UPSTREAM_API_URL = "https://api.homepage.lyjw.llc"
 STORAGE_PREFIX = "lyjwpage-preview"
-ALLOWED_ORIGINS = "https://*.vercel.app"
+ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
 APPLE_MUSIC_STOREFRONT = "cn"
 
 [[previews.durable_objects.bindings]]
@@ -134,11 +131,6 @@ binding = "AI"
 name = "CHAT_USAGE_LIMIT"
 namespace_id = "13101"
 simple = { limit = 30, period = 10 }
-
-[[previews.ratelimits]]
-name = "GITHUB_ISSUE_LIMIT"
-namespace_id = "13102"
-simple = { limit = 5, period = 60 }
 
 [[previews.ratelimits]]
 name = "MCP_LIMIT"

@@ -1,7 +1,7 @@
-import { zonedDay } from "@/lib/heatmap-window";
-import type { LiveEvent } from "@/lib/live-events";
-import { site } from "@/lib/site";
-import { askStorage, tellStorage } from "@/lib/storage";
+import { zonedDay } from "@shared/heatmap-window";
+import type { LiveEvent } from "@shared/live-events";
+import { site } from "@shared/site";
+import { getStorage } from "@shared/storage";
 import { fanout } from "@api/fanout";
 import type { CodingBucketDelta } from "@shared/coding-buckets";
 import { codingOtlpKey, codingUsageKey, parseOtlpCounters, parseStoredUsageLedgers, type StoredOtlpCounters } from "@shared/coding-store";
@@ -52,10 +52,9 @@ function bucketDelta(at: number, model: string | null, type: OtlpTokenType, toke
 export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeCloudUsage) {
   const { points, receivedAt } = prepared;
   if (points.length === 0) return { accepted: 0 };
-  const answered = await askStorage((storage) => storage.batch().get(codingOtlpKey()).fields(codingUsageKey("agents-otlp")).execute());
-  if (!answered.reachable) throw new Error("云端用量计数器读不到");
-  const counters = parseOtlpCounters(answered.value[0]);
-  const ledger = parseStoredUsageLedgers(answered.value[1]).claude;
+  const stored = await getStorage().batch().get(codingOtlpKey()).fields(codingUsageKey("agents-otlp")).execute();
+  const counters = parseOtlpCounters(stored[0]);
+  const ledger = parseStoredUsageLedgers(stored[1]).claude;
 
   const series = { ...(counters?.series ?? {}) };
   const sessions = { ...(counters?.sessions ?? {}) };
@@ -152,11 +151,9 @@ export async function recordPreparedClaudeCloudUsage(prepared: PreparedClaudeClo
   const buckets = await prepareOtlpBuckets(deltas, receivedAt);
   staged.push(buckets.stage);
 
-  const write = tellStorage((storage) => {
-    const batch = storage.batch().set(codingOtlpKey(), JSON.stringify(nextCounters));
-    for (const stage of staged) stage(batch);
-    return batch.execute();
-  });
+  const batch = getStorage().batch().set(codingOtlpKey(), JSON.stringify(nextCounters));
+  for (const stage of staged) stage(batch);
+  const write = batch.execute();
   await fanout({ writes: [write], events, tags });
   return { accepted: points.length - deltaPoints };
 }

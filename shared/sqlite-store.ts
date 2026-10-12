@@ -5,7 +5,6 @@ type Row = Record<string, SqlValue>;
 export interface SqlDatabase {
   exec(query: string, ...bindings: SqlValue[]): { toArray(): Row[]; rowsWritten: number };
 }
-export type StoredEntry = { key: string; kind: "string" | "hash" | "list"; value: string | Record<string, string> | string[]; expiresAt: number | null };
 
 export class SqliteStore {
   private sql: SqlDatabase;
@@ -55,7 +54,6 @@ export class SqliteStore {
       case "get": return this.requireKind(key, "string")?.value ?? null;
       case "set": {
         const previous = this.entry(key);
-        if (previous && command.options?.ifAbsent) return false;
         if (previous && previous.kind !== "string") this.remove(key);
         this.sql.exec("INSERT INTO entries(key, kind, value, expires_at) VALUES (?, 'string', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at", key, command.value, command.options?.ttlMs ? this.now() + command.options.ttlMs : null);
         return true;
@@ -153,22 +151,6 @@ export class SqliteStore {
         : { op: "set", key: valueKey, value, options: { ttlMs } });
       this.command({ op: "set", key: indexKey, value: JSON.stringify(next), options: { ttlMs } });
       return next;
-    });
-  }
-
-  importMissing(entries: StoredEntry[]): number {
-    return this.transaction(() => {
-      let imported = 0;
-      for (const entry of entries) {
-        if (this.entry(entry.key) || (entry.expiresAt !== null && entry.expiresAt <= this.now())) continue;
-        if (entry.kind === "string" && typeof entry.value === "string") this.command({ op: "set", key: entry.key, value: entry.value });
-        else if (entry.kind === "hash" && entry.value && typeof entry.value === "object" && !Array.isArray(entry.value)) this.command({ op: "patch", key: entry.key, fields: entry.value });
-        else if (entry.kind === "list" && Array.isArray(entry.value)) this.command({ op: "append", key: entry.key, values: entry.value });
-        else throw new Error("Invalid imported entry");
-        if (entry.expiresAt !== null) this.sql.exec("UPDATE entries SET expires_at = ? WHERE key = ?", entry.expiresAt, entry.key);
-        imported++;
-      }
-      return imported;
     });
   }
 }
