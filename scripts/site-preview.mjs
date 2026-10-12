@@ -1,4 +1,4 @@
-import { previewWorkerName, previewWorkerOrigin, PREVIEW_WORKER_SCRIPTS, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.mjs";
+import { previewWorkerName, previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.mjs";
 
 export const SITE_PREVIEW_MANIFEST_PATH = "build/site-preview.json";
 export const SITE_PREVIEW_ACCESS_VAR = "SITE_PREVIEW_ACCESS_READY";
@@ -20,9 +20,8 @@ export function sitePreviewManifest({ branch = "", commit, backendUrl = null }) 
   if (!previewWorkerName(trimmed, SITE_PREVIEW_WORKER_SCRIPT)) {
     throw new Error(`invalid preview branch: ${JSON.stringify(trimmed)}`);
   }
-  const allowed = new Set(PREVIEW_WORKER_SCRIPTS.map((worker) => previewWorkerOrigin(trimmed, worker)));
-  if (!allowed.has(backendUrl)) {
-    throw new Error("the preview backend must be this branch's api or ai Preview origin");
+  if (backendUrl !== previewWorkerOrigin(trimmed)) {
+    throw new Error("the preview backend must be this branch's api Preview origin");
   }
   return { version: 1, mode: "preview", branch: trimmed, commit, backendUrl };
 }

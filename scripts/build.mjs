@@ -1,24 +1,23 @@
 #!/usr/bin/env node
-// Workers Builds 的预览构建要等本分支同提交的 api/ai Preview；等不到直接失败，不回退生产后端。
+// Workers Builds 的预览构建要等本分支同提交的 api Preview；等不到直接失败，不回退生产后端。
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 
 const envFile = new URL("../.env.local", import.meta.url);
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
-import { findMatchingPreview } from "./preview-backend.mjs";
-import { PREVIEW_WORKER_SCRIPTS, previewWorkerOrigin } from "./preview-worker-name.mjs";
+import { isMatchingPreview } from "./preview-backend.mjs";
+import { previewWorkerOrigin } from "./preview-worker-name.mjs";
 import { SITE_PREVIEW_MANIFEST_PATH, sitePreviewManifest } from "./site-preview.mjs";
 
 const WAIT_MS = 180_000;
 const POLL_MS = 10_000;
 
-async function waitForPreview(origins, commitSha) {
+async function waitForPreview(origin, commitSha) {
   if (!commitSha) return null;
   const deadline = Date.now() + WAIT_MS;
   while (true) {
-    const origin = await findMatchingPreview(origins, commitSha);
-    if (origin) return origin;
+    if (await isMatchingPreview(origin, commitSha)) return origin;
     console.log(`[preview] 等待本分支 ${commitSha.slice(0, 8)} 的 Worker Preview`);
     if (Date.now() + POLL_MS > deadline) return null;
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
@@ -41,8 +40,7 @@ let backendUrl = null;
 if (preview) {
   env.SENTRY_AUTH_TOKEN = "";
   env.PUBLIC_CF_WEB_ANALYTICS_TOKENS = "";
-  const origins = PREVIEW_WORKER_SCRIPTS.map((worker) => previewWorkerOrigin(branch, worker)).filter(Boolean);
-  backendUrl = await waitForPreview(origins, commit);
+  backendUrl = await waitForPreview(previewWorkerOrigin(branch), commit);
   if (!backendUrl) {
     console.error(`[preview] 等不到本分支 ${commit.slice(0, 8)} 的 Worker Preview，构建失败；预览构建不回退生产后端`);
     process.exit(1);
