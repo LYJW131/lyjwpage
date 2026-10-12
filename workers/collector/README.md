@@ -14,7 +14,7 @@
 
 另开一个具名 entrypoint `Collector`（契约见 `shared/collector.ts`）：同账号的 Worker 调
 `refresh(jobs)` 就能点名立刻跑几个任务，比如上报入口（`workers/ingress`）收到站点部署通知后请它重拉
-`vercel-deployments` 与 `cloudflare-deployments`。
+`site-deployments` 与 `cloudflare-deployments`。
 没有路由、没有域名；生产上 `fetch` 一律 404。
 
 ## 任务
@@ -28,13 +28,15 @@
 | `provider-status` | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 |
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
-| `github-repo` | `LAG github-repo:v1` | `GITHUB_TOKEN` |
-| `vercel-deployments` | `LAG vercel-deployments:v1`；每次部署另归档 D1 `site_deploys` | `VERCEL_TOKEN` |
-| `vercel-metrics` | `LAG vercel-metrics:v1`（函数、访问两组各带采集时刻） | `VERCEL_TOKEN` |
+| `github-repo` | `LAG github-repo:v1`（含首页「最近提交」读的 `recentCommits`；站点部署通知也会点名重拉）；提交列表变了才 `CORE.revalidate(["github-repo"])` | `GITHUB_TOKEN` |
+| `site-deployments` | `LAG site-deployments:v1`；每次部署另归档 D1 `site_deploys` | `CLOUDFLARE_METRICS_TOKEN`；`SITE_WORKER_TAG` |
+| `site-analytics` | `LAG site-analytics:v1`（Cloudflare Web Analytics 两站 pageviews，UTC 七日窗） | `CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
+| `vercel-deployments` | 已退役：名字留在契约里，点名时回 `skipped`，不进定时轮次（`shared/collector.ts#RETIRED_COLLECTOR_JOBS`） | 无 |
+| `vercel-metrics` | 已退役：同上 | 无 |
+| `avatar-watch` | 已退役：同上 | 无 |
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
-| `avatar-watch` | 不写状态：GitHub 头像的 sha256 与 main 上 `.github/github-avatar.sha256` 不一致时触发 `.github/workflows/avatar-sync.yml`，由它提交新哈希、触发站点重建；同一哈希在 `REDISPATCH_AFTER_MS` 内只触发一次 | `GITHUB_DISPATCH_TOKEN` |
 
 每个任务可有一条 Sentry cron 监控 `collector-<任务>`（默认不报到，由 `SENTRY_CRON_CHECKINS=true` 开启），报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
 
@@ -42,21 +44,21 @@
 
 - **缺令牌就干净地跳过**：每个 isolate 每个任务只 `console.warn` 一次
   （`{"event":"collector-skip",…}`），监控照常报 ok —— 没配是配置状态，不是故障。
-- **部分成功**：GitHub 仓库统计的名单和总数、Vercel 指标的两组、Sentry 的五路查询（合成四块，其中 `errors` 要站点、后端两路
+- **部分成功**：GitHub 仓库统计的名单和总数、Sentry 的五路查询（合成四块，其中 `errors` 要站点、后端两路
   都取到才更新）都是各拉各的，这一轮没取到的那一部分沿用可滞后层里上一份的（带着它原来的采集时刻）；全都没取到才算失败、不写。
   Sentry 各块取到的时刻记在 `blockAt`，卡片按它判过期（`SENTRY_STALE_MS`）；沿用最多 `SENTRY_BLOCK_CARRY_MS`，再旧那一块才回到「没有」。
   Cloudflare 部署逐个 Worker 查，单个查不到只空那一格（某个 Worker 还没部署时就是这样），
   全部查不到才算失败。
-- **厂商状态**已登记的各家（`src/lib/agent-status-parse.ts` 的 `FALLBACK`）各自降级：某一家失败沿用上一轮那一行并标 `stale`；
+- **厂商状态**已登记的各家（`src/agent-status-parse.ts` 的 `FALLBACK`）各自降级：某一家失败沿用上一轮那一行并标 `stale`；
   全部失败是这边出不去，整轮抛错、不写，监控报 error。上一轮是 KV 里那份，同一 isolate 里自己上一轮写的更新时用它
   （KV 读可能落后一分钟）。
 - **同一响里的出站**：一次调用同时只能有 6 个连接在等响应头。带 `headStart` 的任务先跑一阵
   （`src/registry.ts` 的 `HEAD_START_MS`，或先跑完），其余再开跑。目前没有任务设置它。
 - **PageSpeed** 桌面、移动并行测，单端通常二三十秒，偶尔长尾到一分钟以上，所以单端等到 `PAGESPEED_TIMEOUT_MS`
-  才放弃，合成一个样本并进滚动窗口（窗口与样本上限见 `src/lib/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），样本窗口存在 `COLLECTOR_KV`。
+  才放弃，合成一个样本并进滚动窗口（窗口与样本上限见 `src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），样本窗口存在 `COLLECTOR_KV`。
   密钥只进查询参数，日志里只有状态码。任一端失败这一轮就空过，可滞后层沿用上一份。
 - **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由
-  状态核心签（私钥只在 api 上），本 isolate 缓存到离到期 `RENEW_BEFORE_MS`。封面、时长的缓存经 `src/lib/cache`
+  状态核心签（私钥只在 api 上），本 isolate 缓存到离到期 `RENEW_BEFORE_MS`。封面、时长的缓存经 `shared/cache`
   存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`CONTAINER_TTL_MS`），稳定状态下一轮只有拉两份列表出网。
   节奏分两档：任务每分钟排期，闲时只在整 `IDLE_EVERY_MINUTES` 分钟真去拉；任一份列表变了就记下时刻（`COLLECTOR_KV`），
   之后 `ACTIVE_HOLD_MS` 内每分钟都拉，并在同一响里接着每 `ACTIVE_POLL_MS` 再拉一次单曲列表（专辑列表仍是一响一次），
@@ -82,14 +84,13 @@
 ## COLLECTOR_KV 的键
 
 命名空间由 `wrangler.toml` 的 `COLLECTOR_KV` 绑定（ID 也记在 [仓库外事实](../../docs/ops-facts.md)）。
-里面是 `src/lib/cache` 的键。
+里面是 `shared/cache` 的键。
 
 | 键 | 内容 |
 | --- | --- |
-| `lyjwpage:cache:*` | `src/lib/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*`、已触发过的头像哈希 `avatar-watch:dispatched:v1` |
+| `lyjwpage:cache:*` | `shared/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*` |
 
-`src/lib/cache` 在这里背后是 KV（`src/storage-driver.ts`）：TTL 最短 60 秒（5 秒的负缓存会活满一分钟），
-`ifAbsent` 是先读后写、不是原子的，也不是锁（同一任务可能被 cron 与 `Collector.refresh` 同时触发，别拿它当互斥），KV 的读还有最长 60 秒的边缘缓存 ——
+`shared/cache` 在这里背后是 KV（`src/storage-driver.ts`，由 `src/ports.ts` 装上）：TTL 最短 60 秒（5 秒的负缓存会活满一分钟），KV 的读还有最长 60 秒的边缘缓存 ——
 两分钟以内要读回的东西不走它。列表、哈希操作直接抛错。
 
 ## 配置
@@ -98,19 +99,19 @@
 
 | Secret | 用途 |
 | --- | --- |
-| `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计 |
-| `GITHUB_DISPATCH_TOKEN` | fine-grained PAT，只授权 `LYJW131/lyjwpage`：Actions 读写（触发 `avatar-sync.yml`）、Contents 只读（读标记文件） |
-| `VERCEL_TOKEN` | 团队范围：部署列表、函数与访问统计（只读用） |
+| `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计与最近提交（REST + GraphQL 取协作者） |
 | `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取 |
 | `SENTRY_API_TOKEN` | Sentry 组织只读：`org:read` / `project:read` / `event:read` |
 | `PAGESPEED_API_KEY` | Google PageSpeed Insights |
+
+`SITE_WORKER_TAG`（site Worker 的 Builds tag）与 `SITE_ANALYTICS_SITES`（JSON：`{"lyjw.me":"<site_tag>","lyjw131.com":"<site_tag>"}`，两站缺一不可）是 `[vars]` 配置；缺哪个跳过哪个任务，不算故障。
 
 Apple Music 不在这里配：user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推来的），
 developer token 经 `CORE.appleDeveloperToken()` 由 api 签。
 
 绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS` 三个 KV，`CORE`（`api` 的 `StateCore`），D1 `HISTORY`
 （`lyjwpage-history`）。D1 表结构归 `workers/api/migrations` 管：新表先在 api 那边
-`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，再发布本 Worker。
+`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
 Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION_METADATA`。
 
 ## 部署
@@ -142,5 +143,5 @@ pnpm --dir workers/collector typecheck
 pnpm --dir workers/collector test
 ```
 
-单测覆盖节奏与报到、KV 存储驱动（含 `src/lib/cache` 跑在它上面）、D1 `site_deploys` 的 upsert
+单测覆盖节奏与报到、KV 存储驱动（含 `shared/cache` 跑在它上面）、D1 `site_deploys` 的 upsert
 （真实 SQLite 跑 api 的全部迁移）、厂商状态变了才失效首屏，以及几处部分成功的合并口径。

@@ -42,7 +42,6 @@
 | 401 / 403 / 503 | `{ ok: false, error }` | 没有合法的 Access JWT / 这把凭据不能写这个来源 / 暂时验不了 JWT |
 | 415 | `{ ok: false, error: "不支持的压缩：<编码>" }` | 只在 OTLP 路由：`Content-Encoding` 不是 `identity` / `gzip` |
 | 400 | `{ ok: false, error: "无法读取上报数据" }` | 读不出请求体（含解压失败、解压后超过 `STORAGE_MAX_BYTES`） |
-| 503 | `{ ok: false, error: "状态存储初始化中" }` | 状态核心还没初始化；报文是 JSON 但校验不过时也先回这个（不是 JSON 直接 400） |
 | 503 | `{ ok: false, error: "状态存储暂时不可用，请重试" }` | 状态核心的 Durable Object 正在重置（发布新版本）、过载或连接断开（回执带 `retryable`，或 RPC 抛出带 `retryable` 的错）；归档与 KV 都不写，上报器整封重发 |
 | 400 | `{ ok: false, error: "上报数据无效或处理失败" }` | 报文不是 JSON、校验不过、状态核心拒收、写 KV 失败 |
 
@@ -77,14 +76,13 @@ prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIng
    落地节点（`server`）整封在可滞后层，不去状态核心。
 2. **长期归档**进 D1 `HISTORY`（`src/ingest-archive.ts`），排在可滞后层之前，按自然键幂等，失败只记日志。
 3. **可滞后层**直接写 KV `LAG`（`src/lag-ingest.ts`）：落地节点读数、限额、常驻上报器账本、Mac 时区、iPhone 圆环读数与训练列表。
-   布局变了才失效首屏 —— 失效要 `REVALIDATE_SECRET`，只在状态核心上，所以请它代发（`StateCore.revalidate`）。
+   布局变了才失效首屏 —— 失效走 `SITE_CACHE` Service Binding，只在状态核心上，所以请它代发（`StateCore.revalidate`）。
 4. **Apple Music user token**（Mac 的 `appleMusicCredentials` 模块）写凭据 KV `CREDENTIALS`，写完才回 202。
 
 状态核心拒收时后三步都不做，回 400；它暂时不可用（Durable Object 重置、过载、连接断开）同样三步都不做，回 503 让上报器整封重发。唯一的例外是 iPhone：训练收下、圆环被拒（prepare 记下 `failure.stage = beforeActivity`，
 状态核心已经落了训练区间）时，可滞后层和归档照同样的口径写训练列表，再回 400，上报器整封重发。
 
-校验不过时才问一次状态核心 `ready()`：未初始化回 503 的优先级高于校验 400；
-请求体不是 JSON 在这之前就回 400，不问 `ready()`；好报文直接提交，由 `commitIngest` 自己判初始化。
+入口不问状态核心 `ready()`：请求体不是 JSON、校验不过都直接回 400，好报文直接提交。
 
 ### Claude Code 云端线程用量
 
@@ -121,7 +119,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 1. 请状态核心 `StateCore.broadcastVersion()` 向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version`
    并弹出更新提示；回执 `{ ok: true, delivered }` 里是送达的连接数。
-2. 在 `waitUntil` 里请采集 Worker `Collector.refresh(["vercel-deployments", "cloudflare-deployments"])` 立刻重拉部署列表
+2. 在 `waitUntil` 里请采集 Worker 按 `workers/ingress/src/worker.ts#DEPLOYMENT_JOBS` 立刻重拉部署列表与仓库统计（首页「最近提交」读后者）
    （契约 `shared/collector.ts`），不等下一次 cron；失败只记日志，不拖慢回执（工作流的 curl 只等有限时间，见 `.github/workflows/purge-esa.yml`）。
 
 ## 配置
@@ -139,7 +137,7 @@ Sentry 沿用 `api-worker` 项目（同一个 DSN），每个事件带 `worker: 
 过滤。日志只收 warn / error，`[ingest]` 拒收、`[auth]` 越权原样进 Sentry Logs。
 
 发布走 Cloudflare Workers Builds 原生 Git 集成：构建 `pnpm --dir workers/ingress typecheck`，部署
-`pnpm --dir workers/ingress exec wrangler deploy`，监视路径与「预览构建和非生产分支构建都关掉」的理由见
+`pnpm --dir workers/ingress exec wrangler deploy -c wrangler.toml`，监视路径与「预览构建和非生产分支构建都关掉」的理由见
 [原生部署配置](../../docs/workers-builds.md)。`CORE` 指向生产状态核心，预览版一收就写进生产；`[previews.vars]` 的
 `PREVIEW_WORKER` 是最后一道闸：预览版本只会拒收（上报 403、部署通知 404）。
 

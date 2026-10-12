@@ -1,4 +1,4 @@
-import type { LyricLine } from "@/lib/lyrics-ttml";
+import type { LyricLine } from "@shared/lyrics-ttml";
 
 
 export const LYRIC_HOLD_GAP_MS = 3_000;

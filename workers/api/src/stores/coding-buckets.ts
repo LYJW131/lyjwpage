@@ -1,4 +1,4 @@
-import { askStorage, tellStorage } from "@/lib/storage";
+import { getStorage } from "@shared/storage";
 import {
   addBucketDeltas,
   CODING_BUCKET_TTL_MS,
@@ -21,9 +21,8 @@ export type CodingBucketsLanding = {
 const IGNORED: CodingBucketsLanding = { stage: () => {}, commit: async () => {}, accepted: false };
 
 async function readBuckets(source: CodingUsageSource): Promise<{ stored: StoredCodingBuckets | null; revision: number }> {
-  const answered = await askStorage((storage) => storage.batch().get(codingBucketsKey(source)).get(codingBucketsRevisionKey()).execute());
-  if (!answered.reachable) throw new Error("coding token 桶读不到");
-  return { stored: parseStoredCodingBuckets(answered.value[0]), revision: parseRevision(answered.value[1]) + 1 };
+  const values = await getStorage().batch().get(codingBucketsKey(source)).get(codingBucketsRevisionKey()).execute();
+  return { stored: parseStoredCodingBuckets(values[0]), revision: parseRevision(values[1]) + 1 };
 }
 
 function write(source: CodingUsageSource, next: StoredCodingBuckets, revision: number): CodingBucketsLanding {
@@ -34,11 +33,11 @@ function write(source: CodingUsageSource, next: StoredCodingBuckets, revision: n
   };
   return {
     stage,
-    commit: () => tellStorage((storage) => {
-      const batch = storage.batch();
+    commit: () => {
+      const batch = getStorage().batch();
       stage(batch);
       return batch.execute();
-    }),
+    },
     accepted: true,
   };
 }

@@ -88,7 +88,7 @@ ssh dsm '/usr/local/bin/docker compose -f /volume3/docker/emby-proxy/docker-comp
 （`docker` 不在群晖的非交互 PATH 里，得写绝对路径。`-f` 指到哪个文件，compose 就拿
 那个目录当项目目录 —— `.env` 和项目名都从那儿取，不会和 NAS 上别的 compose 项目串。）
 
-生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/emby`，不经 Vercel 站点。
+生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/emby`，不经站点。
 
 不进容器直接跑也行（Node ≥ 20），在仓库根目录：
 `pnpm --filter @lyjwpage/emby-reporter build && node reporters/emby-reporter/dist/index.js`。

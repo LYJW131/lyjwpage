@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
@@ -18,36 +14,28 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+    "rootDirs": [".", ".react-router/types"],
+    "types": ["node", "vite/client"],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@shared/*": [
-        "./shared/*"
-      ],
-      "@api/*": [
-        "./workers/api/src/*"
-      ]
+      "@/*": ["./src/*"],
+      "@shared/*": ["./shared/*"],
+      "@api/*": ["./workers/api/src/*"]
     }
   },
   "include": [
-    "next-env.d.ts",
+    "worker-configuration.d.ts",
+    ".react-router/types/**/*",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts",
-    ".next-build/types/**/*.ts",
-    ".next-build/dev/types/**/*.ts"
+    "**/*.mts"
   ],
   "exclude": [
     "node_modules",
     "reporters",
-    "workers"
+    "workers/api",
+    "workers/ai",
+    "workers/collector",
+    "workers/dev-router",
+    "workers/ingress"
   ]
 }

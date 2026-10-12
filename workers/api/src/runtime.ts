@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { SiteCacheRpc } from "@shared/site-cache";
 import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./origin-worker";
 import type { MusicKitTokenEnv } from "./musickit-token";
@@ -15,10 +16,8 @@ export interface Env extends MusicKitTokenEnv {
   CREDENTIALS?: KVNamespace;
   LAG?: KVNamespace;
   APPLE_CACHE?: KVNamespace;
-  REVALIDATE_SECRET?: string;
-  STATE_IMPORT_SECRET?: string;
+  SITE_CACHE?: SiteCacheRpc;
   STORAGE_PREFIX?: string;
-  SITE_URL?: string;
   ALLOWED_ORIGINS?: string;
   SENTRY_DSN?: string;
   SENTRY_ENVIRONMENT?: string;

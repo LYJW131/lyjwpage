@@ -4,7 +4,7 @@ import {
   type MusicKitInstance,
   type QueueOptions,
 } from "@/lib/musickit";
-import type { ListeningItem } from "@/lib/types";
+import type { ListeningItem } from "@shared/types";
 
 export const PLAYLIST_ROW_HEIGHT_PX = 32;
 export const PLAYLIST_PADDING_Y_PX = 12;

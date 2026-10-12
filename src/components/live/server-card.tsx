@@ -6,9 +6,9 @@ import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { BINARY_TIERS, DECIMAL_TIERS, formatBytePair, formatBytes } from "@/lib/byte-size";
-import { SERVER_STALE_MS } from "@/lib/freshness";
+import { SERVER_STALE_MS } from "@shared/freshness";
 import { SERVER_PATH } from "@/lib/paths";
-import type { ServerPayload, ServerTraffic, StatusResponse } from "@/lib/types";
+import type { ServerPayload, ServerTraffic, StatusResponse } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const RATE_FORMAT_BYTES = { maximumFractionDigits: 0 } as const;

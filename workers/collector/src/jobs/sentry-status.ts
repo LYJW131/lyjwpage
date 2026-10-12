@@ -1,6 +1,6 @@
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
-import { fetchSentryStatus, mergeSentryStatus, sentryClient } from "@/lib/sentry-status";
-import type { SentryStatusPayload } from "@/lib/sentry-status-types";
+import { fetchSentryStatus, mergeSentryStatus, sentryClient } from "@shared/sentry-status";
+import type { SentryStatusPayload } from "@shared/sentry-status-types";
 
 import { ok, skipMissing, type Job } from "../job";
 

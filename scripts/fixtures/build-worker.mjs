@@ -167,7 +167,7 @@ export class BuildFixture extends DurableObject {
     }
     if (/\/commits\/[a-f0-9]{40}\/check-runs$/.test(path)) return json({ total_count: 2, check_runs: [
       { name: 'check', status: 'completed', conclusion: scenario.check ?? 'success', app: { slug: 'github-actions' } },
-      { name: 'Vercel', status: 'completed', conclusion: 'success', details_url: 'https://fixture-preview.example', app: { slug: 'vercel' } },
+      { name: 'Workers Builds: site', status: 'completed', conclusion: 'success', app: { slug: 'cloudflare-workers-and-pages' } },
     ] });
     if (/\/commits\/[a-f0-9]{40}\/status$/.test(path)) return json({ state: 'success', total_count: 0, statuses: [] });
     if (/\/issues\/\d+\/comments$/.test(path)) return json([{ user: { login: 'claude[bot]' }, body: 'Fixture review: no blocking concerns.', html_url: 'https://github.com/LYJW131/lyjwpage/pull/101#issuecomment-1', updated_at: new Date().toISOString() }]);

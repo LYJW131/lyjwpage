@@ -3,7 +3,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, planLanguage, visitorLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, buildIssueUrl, planLanguage, visitorLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url, uploadTokenForRun } from "./build/token.ts";
@@ -51,7 +51,7 @@ function post(path: string, body: unknown, token?: string) {
   return new Request(`https://api.test${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
 }
 
-for (const path of [".github/workflows/ci.yml", ".claude/settings.json", "AGENTS.md", "src/AGENTS.md", "CLAUDE.md", "docs/CLAUDE.md", "package.json", "src/package.json", "workers/ai/package.json", "pnpm-lock.yaml", "src/pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "src/.npmrc", "scripts/foo.test.ts", "workers/ai/scripts/foo.test.ts", "workers/ai/wrangler.toml", "workers/ai/src/wrangler.test.toml", "next.config.ts", "src/next.config.mjs", "vercel.json", "docs/vercel.json", "reporters/foo.test.ts", ".gitmodules", "src/.gitmodules", "src/../package.json", "/src/a.ts", "src//a.ts", "src\\a.ts", "src/%2e%2e/package.json", "src/.git/config"]) {
+for (const path of [".github/workflows/ci.yml", ".claude/settings.json", "AGENTS.md", "src/AGENTS.md", "CLAUDE.md", "docs/CLAUDE.md", "package.json", "src/package.json", "workers/ai/package.json", "pnpm-lock.yaml", "src/pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "src/.npmrc", "scripts/foo.test.ts", "workers/ai/scripts/foo.test.ts", "workers/ai/wrangler.toml", "workers/ai/src/wrangler.test.toml", "src/wrangler.jsonc", "src/wrangler.preview.json", "next.config.ts", "src/next.config.mjs", "src/vite.config.ts", "src/react-router.config.ts", "reporters/foo.test.ts", ".gitmodules", "src/.gitmodules", "src/../package.json", "/src/a.ts", "src//a.ts", "src\\a.ts", "src/%2e%2e/package.json", "src/.git/config"]) {
   test(`upload path denies ${path}`, () => {
     assert.equal(allowedBuildPath(path), false);
     assert.throws(() => parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, [path]));
@@ -110,7 +110,7 @@ test("design sessions count 12 turns, expire and cap global starts", (t) => {
   assert.deepEqual(instance.admitDesign("first"), { status: "expired", remaining: 0 });
 });
 
-test("plans are single use across issue and build and expire", async (t) => {
+test("plans are single use and expire", async (t) => {
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);
   assert.deepEqual(await consumePlan(env, proposal.token), plan);
@@ -251,6 +251,15 @@ test("issue and PR labels follow the plan language", () => {
   assert.match(buildIssueBody(zh), /^## 想要什么\n[\s\S]*## 验收标准[\s\S]*## 涉及路径/);
   assert.match(buildIssueBody(ja), /## 受け入れ基準/);
   assert.match(buildIssueBody(plan), /## Acceptance criteria/);
+  const issueUrl = new URL(buildIssueUrl(zh));
+  assert.equal(issueUrl.origin, "https://github.com");
+  assert.equal(issueUrl.pathname, `/${BUILD_REPO}/issues/new`);
+  assert.equal(issueUrl.searchParams.get("template"), "improvement.yml");
+  assert.equal(issueUrl.searchParams.get("title"), zh.title);
+  assert.equal(issueUrl.searchParams.get("what"), zh.spec);
+  assert.match(issueUrl.searchParams.get("acceptance") ?? "", /^- \[ \] 手机端 375px 单列显示$/);
+  assert.equal(issueUrl.searchParams.get("paths"), "- `src/components/live/genshin-card.tsx`");
+  assert.match(issueUrl.searchParams.get("context") ?? "", /提交自\[首页对话\][\s\S]*filed-from-homepage-chat/);
 });
 
 test("base must be an ancestor of main, with comparison in the correct direction", async () => {
@@ -288,25 +297,6 @@ test("valid upload creates and returns a confirmed PR without secret fields", as
   assert.equal(body.pr?.number, 12);
   assert.equal(JSON.stringify(body).includes(uploadToken), false);
   assert.equal("plan" in body, false);
-});
-
-test("an opened PR asks Codex and Cursor to review it with the owner's token, and a failed request keeps the PR", async () => {
-  for (const [token, status] of [[undefined, 201], ["owner-fixture", 201], ["owner-fixture", 500]] as const) {
-    const { env, instance } = coordinator();
-    instance.reserveRun(await stored(), "p", Date.now() + 60_000);
-    const { fetcher, calls } = githubFixture((path) => status === 500 && path.endsWith("/comments") ? json({}, 500) : undefined);
-    const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), { ...env, CODEX_REVIEW_GITHUB_TOKEN: token }, fetcher);
-    assert.equal(response.status, 201);
-    assert.equal((await response.json() as BuildRun).phase, "pr_open");
-    const comments = calls.filter((call) => call.path.endsWith("/comments"));
-    assert.equal(comments.length, token ? 2 : 0);
-    if (!token) continue;
-    for (const comment of comments) {
-      assert.equal(comment.path, `/repos/${BUILD_REPO}/issues/12/comments`);
-      assert.equal(comment.auth, "Bearer owner-fixture");
-    }
-    assert.deepEqual(comments.map((comment) => String(comment.body?.body).split(/\s/)[0]).sort(), ["@codex", "@cursoragent"]);
-  }
 });
 
 const png = (seed: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from([seed])]).toString("base64");

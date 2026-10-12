@@ -8,6 +8,7 @@ const ingest = await import("../../../shared/ingest/agents.ts");
 
 const { bucketStart, MAX_DAY_MODELS, MAX_WINDOW_ROWS, OVERFLOW_MODEL } = await import("../dist/coding-usage.js");
 const { recentPayload, recentReports } = await import("../dist/cursor-now.js");
+const { devinUsageDays } = await import("../dist/devin-usage.js");
 const {
   aggregateEvents,
   applyIncrementalLedger,
@@ -259,4 +260,23 @@ test("上限确实是站点卡着的：MAX_DAY_MODELS 与 MAX_WINDOW_ROWS 和站
 
 test("并出来的占位行名是站点隐藏名单里的名字：视图不当模型名展示、不进排名", () => {
   assert.equal(codingModels.isVisibleCodingModel(OVERFLOW_MODEL), false);
+});
+
+test("Devin CLI 的 tokens.ci 日行过站点校验，超出模型上限时并成占位行", () => {
+  const astra = { input: 993, output: 378_706, cacheRead: 86_309_848, cacheWrite: 7_097_676, reasoning: 120, cost: 193.97 };
+  const many = Object.fromEntries(
+    Array.from({ length: MAX_DAY_MODELS + 5 }, (_, index) => [`model-${index}`, { input: index + 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0, cost: 0 }]),
+  );
+  const days = devinUsageDays({
+    contributions: [
+      { date: "2026-09-28", clients: [{ client: "devin-cli", models: { "gpt-6-astra-xhigh": astra } }] },
+      { date: "2026-09-29", clients: [{ client: "devin-cli", models: many }] },
+    ],
+  });
+  const sent = wire({ agents: [{ id: "devin", state: "ok", collectedAt: NOW, error: null, warning: null, sessionCount: null, days }] });
+  const normalized = contract.normalizeCodingUsageReport(sent, NOW);
+  const crowded = normalized.agents[0]!.days![1]!;
+  assert.equal(crowded.models.length, MAX_DAY_MODELS);
+  assert.equal(crowded.models.reduce((sum: number, row: { tokens: number }) => sum + row.tokens, 0), crowded.totalTokens);
+  assert.ok(crowded.models.some((row: { model: string }) => row.model === OVERFLOW_MODEL));
 });

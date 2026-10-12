@@ -1,5 +1,5 @@
-import { normalizeServer } from "@/lib/server-parse";
-import type { ReportedServerStatus } from "@/lib/types";
+import { normalizeServer } from "@shared/server-parse";
+import type { ReportedServerStatus } from "@shared/types";
 
 export type PreparedServerReport = { source: "server"; receivedAt: number; status: ReportedServerStatus };
 

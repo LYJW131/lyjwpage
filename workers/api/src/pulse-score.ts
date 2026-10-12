@@ -1,4 +1,4 @@
-import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@/lib/limits';
+import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@shared/limits';
 import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, cloudAgentActivity, codingQuestions, codingWindowFeatures, judgment, modeJudgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCursorObservation } from '@shared/pulse-cursor';
 import { parseStoredCodingBuckets, type StoredCodingBuckets } from '@shared/coding-buckets';

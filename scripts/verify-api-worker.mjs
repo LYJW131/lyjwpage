@@ -18,7 +18,6 @@ const temporary = await mkdtemp(join(tmpdir(), 'lyjw-ingest-'));
 const children = [];
 const logs = [];
 let socket;
-const secret = 'local-token-usage-verification';
 const access = await createDevAccess();
 const cloudClient = 'cloud-only.access';
 const agentsClient = 'agents-only.access';
@@ -75,13 +74,11 @@ try {
     name: 'isolated-api', main: join(root, 'workers/api/src/index.ts'),
     compatibility_date: '2025-02-14', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env', 'enable_request_signal'],
     vars: {
-      NEXT_PUBLIC_BACKEND_URL: worker, STORAGE_PREFIX: 'isolated-verify', STATE_IMPORT_SECRET: `${secret}-import`, REVALIDATE_SECRET: `${secret}-revalidate`,
-      SITE_URL: site, ALLOWED_ORIGINS: '',
+      STORAGE_PREFIX: 'isolated-verify',
+      ALLOWED_ORIGINS: '',
       DEV_OVERRIDES: 'true',
       APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
     },
-    alias: Object.fromEntries(['storage-driver', 'apple-developer-token', 'apple-music-credentials', 'lag-store', 'apple-cache-store']
-      .map(name => [`@/lib/${name}`, join(root, `workers/api/src/${name}.ts`)])),
     durable_objects: { bindings: [
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
       { name: 'STATE', class_name: 'StateHub' },
@@ -89,6 +86,7 @@ try {
     services: [
       { binding: 'DEV_OVERRIDE_READER', service: 'isolated-api', entrypoint: 'DevOverrideReader' },
       { binding: 'AI_SERVICE', service: 'isolated-ai' },
+      { binding: 'SITE_CACHE', service: 'isolated-site-cache', entrypoint: 'SiteCache' },
     ],
     migrations: [
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
@@ -135,6 +133,11 @@ try {
 export default { fetch(request, env) {
   return new URL(request.url).pathname.startsWith('/__verify/') ? env.VERIFY.fetch(request) : router.fetch(request, env);
 } };`);
+  const siteCacheFixture = {
+    name: 'isolated-site-cache', main: join(root, 'scripts/fixtures/site-cache.mjs'),
+    compatibility_date: '2026-09-08',
+    vars: { RECORDER_URL: `${site}/invalidate` },
+  };
   const router = {
     name: 'isolated-router', main: routerMain,
     compatibility_date: '2026-09-08',
@@ -145,7 +148,7 @@ export default { fetch(request, env) {
     ],
   };
   const configPaths = [];
-  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture })) {
+  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture, siteCacheFixture })) {
     const path = join(temporary, `${name}.wrangler.json`);
     await writeFile(path, JSON.stringify(config));
     configPaths.push(path);
@@ -155,7 +158,7 @@ export default { fetch(request, env) {
   const notices = [];
   const mockSite = httpServer((request, response) => {
     let body = ''; request.on('data', chunk => body += chunk);
-    request.on('end', () => { assert.equal(request.headers.authorization, `Bearer ${secret}-revalidate`); notices.push(JSON.parse(body)); response.setHeader('content-type', 'application/json'); response.end('{"ok":true}'); });
+    request.on('end', () => { notices.push(JSON.parse(body)); response.setHeader('content-type', 'application/json'); response.end('{"ok":true}'); });
   });
   mockSite.listen(sitePort, '127.0.0.1');
   children.push({ kill: () => mockSite.close(), exitCode: 0 });
@@ -163,15 +166,14 @@ export default { fetch(request, env) {
   // 路由 Worker 先起来时，后面两个可能还没注册好；等上报入口也答得上话
   await eventually(async () => assert.deepEqual(await (await fetch(`${worker}/api/ingest/mac`)).json(), { ok: false, error: '只接受 POST' }));
   assert.deepEqual(await (await fetch(`${worker}/count`)).json(), { ok: true, connections: 0, online: 0 });
-  assert.equal((await otlp()).status, 503, 'OTLP must preserve the storage initialization barrier');
-  assert.equal((await post(worker, '/api/ingest/homepod', {})).status, 503);
-  assert.equal((await post(worker, '/api/ingest/iphone', { version: 1 })).status, 503);
-  assert.equal((await post(worker, '/api/ingest/iphone', {})).status, 503);
-  assert.equal((await fetch(`${worker}/api/status/listening/now`)).status, 503);
+  assert.equal((await post(worker, '/api/ingest/iphone', {})).status, 400);
+  const emptyNow = await fetch(`${worker}/api/status/listening/now`);
+  assert.equal(emptyNow.status, 200);
+  assert.equal((await emptyNow.json()).ok, true);
   assert.equal((await fetch(`${worker}/api/status/not-a-route`)).status, 404);
-  assert.equal((await fetch(`${worker}/__verify/public-status?path=${encodeURIComponent('/api/status/listening/now')}`)).status, 503);
-  assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true }, `${secret}-import`)).status, 200);
-  console.log('PASS: known public routes preserve the initialization barrier; unknown routes stay in the Worker');
+  assert.equal((await fetch(`${worker}/__verify/public-status?path=${encodeURIComponent('/api/status/listening/now')}`)).status, 200);
+  assert.equal((await post(worker, '/api/internal/storage/import', { entries: [], finalize: true })).status, 405);
+  console.log('PASS: an empty StateHub serves known public routes and rejects invalid reports with 400; unknown routes stay in the Worker');
 
   const aiHeaders = { Origin: 'https://lyjw.me', 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.10' };
   async function mcp(method, params = {}) {
@@ -190,7 +192,7 @@ export default { fetch(request, env) {
   const tools = (await mcp('tools/list')).result.tools;
   assert.deepEqual(tools.map(tool => tool.name).sort(), ['get_site_status', 'read_project_doc']);
   assert.ok(tools.every(tool => tool.annotations.readOnlyHint));
-  for (const path of ['/api/chat', '/api/github/issue', '/api/build', '/api/build/upload', '/api/build/webhook']) {
+  for (const path of ['/api/chat', '/api/build', '/api/build/upload', '/api/build/webhook']) {
     const response = await fetch(`${worker}${path}`, { method: 'POST', headers: aiHeaders, body: '{}' });
     assert.equal(response.status, 503, path);
     assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -206,7 +208,7 @@ export default { fetch(request, env) {
   assert.equal(usage.resetInMs, 0);
   assert.ok(Object.values(usage.tiers).every(tier => tier.visitor.used === 0 && tier.everyone.used === 0));
   assert.equal((await fetch(`${worker}/api/chat/usage`, { method: 'POST', headers: aiHeaders })).status, 405);
-  for (const path of ['/mcp', '/api/chat', '/api/chat/usage', '/api/github/issue', '/api/build', '/api/build/status']) {
+  for (const path of ['/mcp', '/api/chat', '/api/chat/usage', '/api/build', '/api/build/status']) {
     const response = await fetch(`${worker}${path}`, {
       method: ['/api/chat/usage', '/api/build/status'].includes(path) ? 'GET' : 'POST', headers: { ...aiHeaders, Origin: 'https://untrusted.invalid' },
     });
@@ -387,7 +389,8 @@ export default { fetch(request, env) {
   const statusTool = await mcp('tools/call', { name: 'get_site_status', arguments: { views: ['nowListening'] } });
   assert.equal(statusTool.result.isError, false);
   const statusText = statusTool.result.content[0].text;
-  assert.equal(JSON.parse(statusText.split('## nowListening\n')[1]).data.music.title, 'isolated-second');
+  const nowListeningSection = statusText.split('## nowListening\n')[1];
+  assert.equal(JSON.parse(nowListeningSection.slice(nowListeningSection.indexOf('\n') + 1)).data.music.title, 'isolated-second');
   assert.equal(/musicUserToken|developerToken/.test(statusText), false);
   console.log('PASS: MCP → AI → PublicStatus RPC reads the latest ingest from StateHub using the public status model');
   await eventually(async () => assert.ok(notices.some(n => n.tags?.includes('listening-now'))));
@@ -401,7 +404,7 @@ export default { fetch(request, env) {
   await post(worker, '/api/ingest/homepod', { entityId: 'media_player.isolated', state: 'playing', title: 'isolated-second', positionMs: 2000, durationMs: 3600000, observedAt: Date.now() });
   await sleep(200);
   assert.equal(notices.length, homePodNotices, 'HomePod position heartbeat must not invalidate page');
-  console.log('PASS: ingress → StateCore.commitIngest → Durable Object SQLite → /api/revalidate → direct Worker status; WebSocket receives both updates and the site-deployed version event');
+  console.log('PASS: ingress → StateCore.commitIngest → Durable Object SQLite → SITE_CACHE invalidate RPC → direct Worker status; WebSocket receives both updates and the site-deployed version event');
   const beforeTimezone = notices.length;
   const response = await post(worker, '/api/ingest/mac', { version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'], modules: { timezone: { identifier: 'Asia/Singapore', secondsFromGMT: 28800 } } });
   assert.equal(response.status, 202);
@@ -491,7 +494,7 @@ export default { fetch(request, env) {
   startWorkers();
   await eventually(async () => assert.equal(await nowPlaying(), 'isolated-second'));
   assert.equal((await (await fetch(`${worker}/api/status/timezone`)).json()).ok, true);
-  console.log('PASS: restart preserves initialized state and snapshots');
+  console.log('PASS: restart preserves state and snapshots');
   if (verifyMcpClient) {
     async function inspect(method, args = []) {
       const output = [];
@@ -524,13 +527,13 @@ export default { fetch(request, env) {
   if (verifyBuild) {
     const logStart = logs.length;
     const build = start('pnpm', ['build'], {
-      NEXT_PUBLIC_BACKEND_URL: worker,
+      PUBLIC_BACKEND_URL: worker,
       SENTRY_AUTH_TOKEN: '',
     });
     const [buildExit] = await once(build, 'exit');
-    await writeFile(join(temporary, 'next-build.log'), logs.slice(logStart).join(''));
+    await writeFile(join(temporary, 'site-build.log'), logs.slice(logStart).join(''));
     assert.equal(buildExit, 0, logs.join('').slice(-12000));
-    console.log('PASS: Next production build completes against the initialized isolated Worker');
+    console.log('PASS: site production build completes against the isolated Worker');
   }
   const logLines = stripVTControlCharacters(logs.join('')).split('\n');
   assert.equal(logLines.some(line => /Cannot perform I\/O|\[storage\]|Uncaught/.test(line)

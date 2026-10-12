@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { STATUS_VIEWS } from "@/lib/status-views";
+import { STATUS_VIEWS } from "@shared/status-views";
 import { handleMcp } from "./mcp.ts";
 import { CODE_TOOL, formatOutcome, sandboxModule } from "./tools/code-mode.ts";
 import { newLedger, type ToolIO } from "./tools/registry.ts";

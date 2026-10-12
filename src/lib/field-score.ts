@@ -1,4 +1,4 @@
-import type { SentryVitals } from "@/lib/sentry-status-types";
+import type { SentryVitals } from "@shared/sentry-status-types";
 
 
 type Curve = { key: keyof SentryVitals; weight: number; p10: number; median: number };

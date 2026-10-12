@@ -1,6 +1,5 @@
 "use client";
 
-import Script from "next/script";
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
@@ -47,6 +46,42 @@ declare global {
   }
 }
 
+const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+function TurnstileScript({ onReady, onError }: { onReady: () => void; onError: () => void }) {
+  const readyRef = useRef(onReady);
+  const errorRef = useRef(onError);
+  useEffect(() => {
+    readyRef.current = onReady;
+    errorRef.current = onError;
+  });
+  useEffect(() => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SCRIPT_SRC}"]`);
+    if (window.turnstile || existing?.dataset.loaded === "1") {
+      readyRef.current();
+      return;
+    }
+    const script = existing ?? document.createElement("script");
+    const ready = () => {
+      script.dataset.loaded = "1";
+      readyRef.current();
+    };
+    const failed = () => errorRef.current();
+    script.addEventListener("load", ready, { once: true });
+    script.addEventListener("error", failed, { once: true });
+    if (!existing) {
+      script.src = TURNSTILE_SCRIPT_SRC;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+    return () => {
+      script.removeEventListener("load", ready);
+      script.removeEventListener("error", failed);
+    };
+  }, []);
+  return null;
+}
+
 type Reply = Omit<ChatBubble, "role" | "content">;
 type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; handoff: boolean };
 const RESUME_DELAY_MS = 2000;
@@ -54,10 +89,10 @@ const EMPTY_MESSAGES: ChatBubble[] = [];
 // 须与 globals.css 里 .design-halo 的动画总时长一致。
 const DESIGN_HALO_MS = 2_400;
 
-const CHAT_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
+const CHAT_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
 const OFFLINE = "The oracle is offline.";
 
-const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+const SITE_KEY = process.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
 // 排着队的消息等组件渲染出来的最长时间；组件出来之后（可能在等访客点验证）交给 Turnstile 自己的超时回调。
 const VERIFY_LOAD_TIMEOUT_MS = 15_000;
 const VERIFY_UNAVAILABLE = "Human verification couldn't load. Check your connection or ad blocker, then reload the page.";
@@ -69,7 +104,8 @@ function readPass(): HumanPass | null {
   try {
     const value: unknown = JSON.parse(window.sessionStorage.getItem(PASS_KEY) ?? "null");
     if (value && typeof value === "object" && typeof (value as HumanPass).pass === "string" && typeof (value as HumanPass).expiresAt === "number" && (value as HumanPass).expiresAt - PASS_MARGIN_MS > Date.now()) return value as HumanPass;
-  } catch {}
+  } catch {
+  }
   return null;
 }
 
@@ -77,7 +113,8 @@ function writePass(pass: HumanPass | null) {
   try {
     if (pass) window.sessionStorage.setItem(PASS_KEY, JSON.stringify(pass));
     else window.sessionStorage.removeItem(PASS_KEY);
-  } catch {}
+  } catch {
+  }
 }
 
 const COMMANDS = [
@@ -88,7 +125,7 @@ const COMMANDS = [
 
 type Command = (typeof COMMANDS)[number];
 const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
-const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
+const USAGE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
 // 站主要求示例用中文，是「界面文案英文」的例外。
@@ -584,9 +621,7 @@ function Conversation({ className, archive, session: conversation }: { className
       </div>
       {historyOpen && <SessionList archive={archive} />}
       {(armed || warm) && (
-        <Script
-          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-          strategy="afterInteractive"
+        <TurnstileScript
           onReady={() => setScriptReady(true)}
           onError={() => verificationFailed(VERIFY_UNAVAILABLE, "unavailable")}
         />

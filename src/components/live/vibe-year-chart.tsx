@@ -11,7 +11,7 @@ import {
 } from "@/components/live/heatmap-hover";
 import { useSiteDay } from "@/hooks/use-site-day";
 import { useStatus } from "@/hooks/use-status";
-import { groupWeeks, heatmapFrame, heatmapScores, weekdayOf } from "@/lib/github-chart-compact";
+import { groupWeeks, heatmapFrame, heatmapScores, weekdayOf } from "@shared/github-chart-compact";
 import {
   YEAR_MIX_SHOW,
   compactTokens,
@@ -19,9 +19,9 @@ import {
   formatTokenLabel,
   indexYearMix,
   type YearModelShare,
-} from "@/lib/coding-year";
+} from "@shared/coding-year";
 import { CODING_YEAR_PATH } from "@/lib/paths";
-import type { CodingYearPayload, GithubChartDay, StatusResponse } from "@/lib/types";
+import type { CodingYearPayload, GithubChartDay, StatusResponse } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const YEAR_REFRESH_MS = 30 * 60_000;

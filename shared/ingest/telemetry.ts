@@ -1,25 +1,25 @@
-import type { TrackEnrichment } from "@/lib/track-enrichment";
+import type { TrackEnrichment } from "@shared/track-enrichment";
 import {
   normalizeChargingDevice,
   normalizePowerBank,
   pickCharger,
   pickPowerBank,
   type RawChargingDevices,
-} from "@/lib/charging-device";
-import { number, object, text } from "@/lib/json";
+} from "@shared/charging-device";
+import { number, object, text } from "@shared/json";
 import {
   normalizePlayingQueue,
   upcomingQueueTracks,
   type PlayingQueueTrack,
-} from "@/lib/playing-queue";
-import { IMAGE_OBJECT_KEY } from "@/lib/asset-url";
-import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
+} from "@shared/playing-queue";
+import { IMAGE_OBJECT_KEY } from "@shared/asset-url";
+import { HIDDEN_DESKTOP_BUNDLE_ID } from "@shared/types";
 import type {
   LocalNowPlaying,
   ReportedChargerStatus,
   ReportedPowerBankStatus,
   TimezoneActivity,
-} from "@/lib/types";
+} from "@shared/types";
 import type { StoredDesktopActivity } from "@shared/telemetry";
 
 import { CODING_MODULES, prepareCodingModules, type CodingModuleRejection, type CodingModules } from "./coding";

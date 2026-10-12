@@ -29,7 +29,7 @@ actor TelemetryHub {
 
     private static let coalesce: TimeInterval = 60
 
-    // refresh 必须小于 src/lib/freshness.ts 的 ACTIVITY_STALE_MS，避免不变的读数被判陈旧。
+    // refresh 必须小于 shared/freshness.ts 的 ACTIVITY_STALE_MS，避免不变的读数被判陈旧。
     private static let refresh: TimeInterval = 6 * 60 * 60
 
     init(modules: [any TelemetryModule]) {

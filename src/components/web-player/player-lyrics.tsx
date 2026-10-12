@@ -6,9 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { HeroLyrics, HeroLyricsSkeleton } from "@/components/live/hero-lyrics";
 import { useLyrics } from "@/hooks/use-lyrics";
 import { PLAYBACK_STATE, type MediaItem, type MusicKitInstance } from "@/lib/musickit";
-import { catalogItemId } from "@/lib/playing-queue";
+import { catalogItemId } from "@shared/playing-queue";
 import { trackPositionMs } from "@/lib/track-position";
-import type { LocalNowPlaying } from "@/lib/types";
+import type { LocalNowPlaying } from "@shared/types";
 
 export function PlayerLyrics({
   instance,

@@ -4,7 +4,7 @@ import { BUILD_ACTIVE_PHASES, BUILD_CLOSED_PHASES, BUILD_DESIGN_LIMITS, BUILD_FA
 import type { Env } from "../runtime";
 import { BuildBlockedError, closeFailedDraft, installationApi, validSha } from "./github";
 
-export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; reviewRequested?: boolean; draftClose?: "closed" | "skipped"; screenshots?: BuildScreenshot[] };
+export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; draftClose?: "closed" | "skipped"; screenshots?: BuildScreenshot[] };
 type PlanReservation = { runId: string; accountId?: number };
 const PREPARATION_LEASE_MS = 60_000;
 const PUBLICATION_BODY_MAX_CHARS = 64_000;
@@ -254,16 +254,6 @@ export class BuildCoordinator extends DurableObject<Env> {
       if (body !== undefined && (body.length > PUBLICATION_BODY_MAX_CHARS || run.publicationBody !== undefined && run.publicationBody !== body)) return false;
       run.implementationHeadSha = sha;
       if (body !== undefined) run.publicationBody = body;
-      this.saveRun(run);
-      return true;
-    });
-  }
-
-  claimReviewRequests(runId: string): boolean {
-    return this.ctx.storage.transactionSync(() => {
-      const run = this.readRun(runId);
-      if (!run || run.reviewRequested || run.state.phase !== "pr_open" || !run.uploadUsed || !run.implementationHeadSha || run.state.pr?.headSha !== run.implementationHeadSha) return false;
-      run.reviewRequested = true;
       this.saveRun(run);
       return true;
     });

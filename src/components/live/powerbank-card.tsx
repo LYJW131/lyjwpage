@@ -12,15 +12,15 @@ import { useStatus } from "@/hooks/use-status";
 import {
   POWER_BANK_MODEL,
   ankerModelLabel,
-} from "@/lib/charging-device";
-import { powerBankActive } from "@/lib/home-layout";
+} from "@shared/charging-device";
+import { powerBankActive } from "@shared/home-layout";
 import { POWERBANK_PATH } from "@/lib/paths";
 import type {
   PowerBankPayload,
   PowerBankPort,
   PowerBankStatus,
   StatusResponse,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const REFRESH_MS = 30_000;

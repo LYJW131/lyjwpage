@@ -2,7 +2,7 @@
 import { backendUrl } from "@/lib/backend-url";
 import { useEffect, useState } from "react";
 
-import type { LyricLine } from "@/lib/lyrics-ttml";
+import type { LyricLine } from "@shared/lyrics-ttml";
 
 
 const LYRICS_ENDPOINT = "/api/lyrics";

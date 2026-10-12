@@ -1,4 +1,4 @@
-import type { StatusViewKey } from "@/lib/status-views";
+import type { StatusViewKey } from "@shared/status-views";
 
 import { PROJECT_DOC_TOOL, type ProjectDocKey, type ReadDoc } from "./project-docs";
 import { SITE_STATUS_TOOL, type ReadStatus } from "./site-status";

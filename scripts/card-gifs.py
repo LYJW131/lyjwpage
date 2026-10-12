@@ -171,7 +171,7 @@ def open_page(browser, theme: str):
         pass  # 轮询与长连接可能让 networkidle 永不满足。
     if theme == "dark":
         page.wait_for_selector("html.dark")
-    page.add_style_tag(content="#dev-toggles, nextjs-portal { display: none !important; }")
+    page.add_style_tag(content="#dev-toggles { display: none !important; }")
     page.wait_for_timeout(3000)
     return page
 

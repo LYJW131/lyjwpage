@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { siteDay, type HistoryDb } from "@shared/history-ingest";
-import type { ReportedServerStatus, ReportedWorkout } from "@/lib/types";
+import type { ReportedServerStatus, ReportedWorkout } from "@shared/types";
 import { archiveIngest } from "./ingest-archive";
 import type { PreparedIngest } from "@shared/ingest/prepare";
 

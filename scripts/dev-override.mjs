@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { site } from "../src/lib/site.ts";
+import { site } from "../shared/site.ts";
 
 
 const BASE = (process.env.DEV_WORKER_URL ?? "http://localhost:8788").replace(/\/+$/, "");

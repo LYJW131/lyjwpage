@@ -1,4 +1,4 @@
-import { CRON_HEARTBEAT_EVERY_MINUTES, SENTRY_CRON_MONITOR_SLUG } from "@/lib/sentry";
+import { CRON_HEARTBEAT_EVERY_MINUTES, SENTRY_CRON_MONITOR_SLUG } from "@shared/sentry";
 import { PULSE_SCORE_SETTLE_MS } from "./pulse-score";
 
 // 每轮落在评分窗口收口加上评分余量之后，刚收口的窗口当轮就能评。

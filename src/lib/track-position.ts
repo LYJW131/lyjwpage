@@ -1,4 +1,4 @@
-import type { LocalNowPlaying } from "@/lib/types";
+import type { LocalNowPlaying } from "@shared/types";
 
 export type PlaybackAnchor = Pick<
   LocalNowPlaying,

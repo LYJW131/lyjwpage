@@ -53,7 +53,7 @@ function harness<Env>(options: (env: Env) => Sentry.CloudflareOptions) {
 async function exercise<Env>(options: (env: Env) => Sentry.CloudflareOptions) {
   const run = harness(options);
   await run.send("/api/chat", { messages: [{ role: "user", content: CHAT }], turnstileToken: "t" });
-  await run.send("/api/github/issue", { title: "t", body: "b", code: CODE });
+  await run.send("/api/build", { title: "t", body: "b", code: CODE });
   await run.send("/throw", { code: CODE }, { "x-api-key": API_KEY });
   await run.send("/v1/messages", { messages: [{ role: "user", content: CHAT }] }, { "x-api-key": API_KEY });
   return run;

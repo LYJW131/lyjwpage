@@ -4,13 +4,13 @@ import { Fragment, useEffect, useState } from "react";
 
 import Image from "@/components/app-image";
 import { useMountedAt } from "@/hooks/use-mounted-at";
-import type { CommitAuthor } from "@/lib/commit-authors";
-import type { GithubRecentCommit } from "@/lib/github-recent-commits";
+import type { CommitAuthor } from "@shared/commit-authors";
+import { deploymentFor, type RecentCommit, recentCommitsFrom } from "@/lib/recent-commits";
 import { formatRelativeTime } from "@/lib/relative-time";
-import { site } from "@/lib/site";
-import type { GithubRepoContributor, GithubRepoPayload } from "@/lib/types";
+import { CLOUDFLARE_DASH_URL, site } from "@shared/site";
+import type { GithubRepoContributor, GithubRepoPayload } from "@shared/types";
 import { cn } from "@/lib/utils";
-import type { DeploymentState, VercelDeployment } from "@/lib/vercel-deployments-types";
+import type { SiteDeployment, SiteDeploymentState } from "@shared/site-deployments-types";
 
 const AVATAR_PX = 28;
 
@@ -104,7 +104,17 @@ function ContributorRow({
   );
 }
 
-const stateLabels: Record<DeploymentState, string> = { READY: "Deployed", BUILDING: "Building", QUEUED: "Queued", INITIALIZING: "Initializing", ERROR: "Failed", CANCELED: "Canceled", UNKNOWN: "—" };
+const stateLabels: Record<SiteDeploymentState, string> = { READY: "Built", BUILDING: "Building", QUEUED: "Queued", INITIALIZING: "Initializing", ERROR: "Failed", CANCELED: "Canceled", UNKNOWN: "—" };
+
+const CLOUDFLARE_BUILD_PREFIX = "cloudflare-build:";
+
+function deploymentHref(deployment: SiteDeployment): string {
+  if (deployment.id.startsWith(CLOUDFLARE_BUILD_PREFIX)) {
+    const buildId = deployment.id.slice(CLOUDFLARE_BUILD_PREFIX.length);
+    return `${CLOUDFLARE_DASH_URL}/workers/services/view/site/production/builds/${encodeURIComponent(buildId)}`;
+  }
+  return site.cloudflare;
+}
 
 const AUTHOR_PX = 16;
 
@@ -203,8 +213,8 @@ function CommitVerifiedIcon({ className }: { className?: string }) {
 }
 
 function CommitCard({ commit, deploy }: {
-  commit: GithubRecentCommit;
-  deploy: { deployment: VercelDeployment; production: boolean } | undefined;
+  commit: RecentCommit;
+  deploy: { deployment: SiteDeployment; production: boolean } | undefined;
 }) {
   const deployment = deploy?.deployment ?? null;
   const production = deploy?.production ?? false;
@@ -222,32 +232,32 @@ function CommitCard({ commit, deploy }: {
           href={commit.url}
           target="_blank"
           rel="noreferrer noopener"
-          title={commit.verified ? `${commit.shortSha} · Verified signature` : commit.shortSha}
+          title={commit.verified ? `${commit.sha} · Verified signature` : commit.sha}
           className="group/sha -mb-2 inline-flex items-center gap-1 pb-2 font-mono hover:text-foreground"
         >
-          <span>{commit.shortSha}</span>
+          <span>{commit.sha}</span>
           {commit.verified && (
             <CommitVerifiedIcon className="size-3 text-muted-foreground group-hover/sha:text-foreground" />
           )}
         </a>
-        {deployment && <a href={`${site.vercel}/${deployment.id.replace(/^dpl_/, "")}`} target="_blank" rel="noreferrer noopener" className="-mb-2 pb-2 hover:text-foreground">{deployment.target === "production" ? "Production" : "Preview"} ↗</a>}
+        {deployment && <a href={deploymentHref(deployment)} target="_blank" rel="noreferrer noopener" className="-mb-2 pb-2 hover:text-foreground">{deployment.target === "production" ? "Production" : "Preview"} ↗</a>}
         {deployment?.buildDurationMs != null && <span>Build {(deployment.buildDurationMs / 1000).toFixed(0)}s</span>}
       </div>
     </li>
   );
 }
 
+const COMMIT_LIMIT = 3;
+
 export function RepoContributions({
   data,
-  recentCommits = [],
   deploymentsBySha,
 }: {
   data: GithubRepoPayload | undefined;
-  recentCommits?: GithubRecentCommit[];
-  deploymentsBySha: Map<string, { deployment: VercelDeployment; production: boolean }>;
+  deploymentsBySha: Map<string, { deployment: SiteDeployment; production: boolean }>;
 }) {
   const hasContributors = Boolean(data?.contributors.length);
-  const commits = recentCommits ?? [];
+  const commits = recentCommitsFrom(data?.recentCommits, COMMIT_LIMIT);
   if (!hasContributors && commits.length === 0) return null;
 
   const shown = data?.contributors.slice(0, CONTRIBUTOR_LIMIT) ?? [];
@@ -268,8 +278,8 @@ export function RepoContributions({
             <div className="min-w-0 border-t border-line p-4 md:border-t-0 md:border-l md:border-line md:pl-4 lg:pr-5">
               <div className="label-mono text-muted-foreground">Commits</div>
               <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
-                {commits.slice(0, 3).map((commit) => (
-                  <CommitCard key={commit.sha} commit={commit} deploy={deploymentsBySha.get(commit.sha)} />
+                {commits.map((commit) => (
+                  <CommitCard key={commit.sha} commit={commit} deploy={deploymentFor(commit, deploymentsBySha)} />
                 ))}
               </ul>
             </div>
@@ -279,8 +289,8 @@ export function RepoContributions({
         <div className="p-4 lg:px-5">
           <div className="label-mono text-muted-foreground">Commits</div>
           <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
-            {commits.slice(0, 3).map((commit) => (
-              <CommitCard key={commit.sha} commit={commit} deploy={deploymentsBySha.get(commit.sha)} />
+            {commits.map((commit) => (
+              <CommitCard key={commit.sha} commit={commit} deploy={deploymentFor(commit, deploymentsBySha)} />
             ))}
           </ul>
         </div>

@@ -1,17 +1,17 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "react-router";
 import { useReducedMotion } from "motion/react";
 
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
-// Next 同路由导航不会滚到顶，需要自行处理首页点击。
+// 同路由导航不会滚到顶，需要自行处理首页点击。
 export function HomeLink() {
   const reduced = useReducedMotion();
   return (
     <Link
-      href="/"
-      prefetch={false}
+      to="/"
+      prefetch="none"
       className="-m-2 min-w-0 justify-self-start truncate p-2 text-sm font-bold tracking-tight"
       onClick={(event) => {
         if (window.location.pathname !== "/") return;

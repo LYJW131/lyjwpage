@@ -10,16 +10,16 @@ import { ListeningCard } from "@/components/live/listening-card";
 import { PowerBankCard } from "@/components/live/powerbank-card";
 import type { LyricsFallback } from "@/hooks/use-lyrics";
 import type { ArtworkPlaceholders } from "@/lib/artwork-placeholder";
-import { chargingFeedClockStale, liveChargingFeed } from "@/lib/freshness";
+import { chargingFeedClockStale, liveChargingFeed } from "@shared/freshness";
 import { CHARGER_PATH, LISTENING_PATH, NOW_LISTENING_PATH, POWERBANK_PATH } from "@/lib/paths";
-import { chargerActive as chargerIsActive, powerBankActive as powerBankIsActive } from "@/lib/home-layout";
+import { chargerActive as chargerIsActive, powerBankActive as powerBankIsActive } from "@shared/home-layout";
 import type {
   ChargerPayload,
   ListeningPayload,
   NowListeningPayload,
   PowerBankPayload,
   StatusResponse,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
 
 // 固定槽高而非 min-height，避免两张半卡的固有高度改变右侧列表布局。

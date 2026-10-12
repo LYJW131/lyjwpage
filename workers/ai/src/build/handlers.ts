@@ -4,8 +4,8 @@ import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
-import { withPreviewShare } from "./preview-share";
-import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, GithubBuildApi, installationApi, reconcileBuild, requestAgentReviews } from "./github";
+
+import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, GithubBuildApi, installationApi, reconcileBuild } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
@@ -141,19 +141,6 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
   }
 }
 
-// reviewRequested 只会由 false 变 true，传进来的旧快照已为 true 时可以省掉两次 DO 往返。
-async function requestBuildReviews(known: StoredRun, env: Env, fetcher: typeof fetch): Promise<void> {
-  if (!env.CODEX_REVIEW_GITHUB_TOKEN || known.reviewRequested) return;
-  const runId = known.state.runId;
-  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
-  const run = await coordinator.readRun(runId);
-  if (!run?.state.pr || !await coordinator.claimReviewRequests(runId)) return;
-  try { await requestAgentReviews(env.CODEX_REVIEW_GITHUB_TOKEN, run.state.pr.number, fetcher); }
-  catch (error) {
-    Sentry.captureException(error, { tags: { "build.step": "agent-review" } });
-  }
-}
-
 function publishedImplementation(run: StoredRun): boolean {
   return run.uploadUsed && !!run.implementationHeadSha && run.state.pr?.headSha === run.implementationHeadSha && ["pr_open", "closed", "merged"].includes(run.state.phase);
 }
@@ -180,7 +167,7 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
         if (!await coordinator.completePublication(runId, pr)) throw new Error("The implementation publication could not be recorded.");
         run = (await coordinator.readRun(runId))!;
       }
-      const patch = await withPreviewShare(env, run.state, await reconcileBuild(await installationApi(env, fetcher, true), run.state), fetcher);
+      const patch = await reconcileBuild(await installationApi(env, fetcher, true), run.state);
       let state = await coordinator.updateRun(runId, patch, run.state.pr!.headSha);
       if (state?.phase === "pr_open" && state.pr?.draft && state.ci?.state === "success") {
         const current = (await coordinator.readRun(runId))!;
@@ -194,13 +181,11 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
             : { reason: "GitHub did not confirm readiness for review. Status will be checked again." }, current.state);
         }
       }
-      if (state?.phase === "pr_open") await requestBuildReviews(run, env, fetcher);
       return Response.json(state, { headers: noStore });
     } catch (error) {
       if (error instanceof BuildBlockedError) return Response.json(await coordinator.failPublication(runId, { phase: "blocked", reason: error.message }, run.state), { headers: noStore });
     }
   }
-  if (run.state.phase === "pr_open") await requestBuildReviews(run, env, fetcher);
   return Response.json(run.state, { headers: noStore });
 }
 
@@ -243,17 +228,13 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
       console.warn("[build] screenshot comment failed", error);
       Sentry.captureException(error, { tags: { "build.step": "screenshots" } });
     }
-    await requestBuildReviews(run, env, fetcher);
     return Response.json(state, { status: 201, headers: noStore });
   } catch (error) {
     const blocked = error instanceof BuildBlockedError;
     const reason = blocked || error instanceof BuildPullRequestRejectedError ? (error as Error).message : "GitHub did not confirm publication of the implementation; the result is unknown. The pull request remains a draft.";
     await coordinator.failPublication(runId, { phase: blocked ? "blocked" : "failed", reason }, publicationState);
     const current = await coordinator.readRun(runId);
-    if (current && publishedImplementation(current)) {
-      await requestBuildReviews(current, env, fetcher);
-      return Response.json(current.state, { status: 201, headers: noStore });
-    }
+    if (current && publishedImplementation(current)) return Response.json(current.state, { status: 201, headers: noStore });
     return fail(blocked ? 400 : 502, reason);
   }
 }

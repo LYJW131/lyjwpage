@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { cueAt, LYRIC_HOLD_GAP_MS, NO_CUE } from "./lyrics-cue.ts";
-import type { LyricLine } from "./lyrics-ttml.ts";
+import type { LyricLine } from "@shared/lyrics-ttml.ts";
 
 const LINES: LyricLine[] = [
   { startMs: 10_000, endMs: 12_000, text: "a" },

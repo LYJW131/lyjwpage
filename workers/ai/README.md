@@ -10,7 +10,6 @@
 | --- | --- | --- |
 | POST | `/api/chat` | 首页对话，流式返回 NDJSON |
 | GET | `/api/chat/usage` | 当前访客与全站的对话配额，只读不扣额度 |
-| POST | `/api/github/issue` | 访客确认签名计划并完成 GitHub PKCE 授权后提交 issue |
 | POST | `/api/build` | 访客每次都完成 GitHub PKCE 授权：授权码当场换令牌、查身份后立即吊销，再一次性消费计划与额度并触发 routine |
 | GET | `/api/build/status` | 持状态 token 查询 run 并按需对账 |
 | POST | `/api/build/upload` | routine 持一次性上传 token 提交文件 |
@@ -21,7 +20,7 @@
 
 浏览器端点检查允许来源；上传、进度、截图和 webhook 接受无 Origin 的服务器请求，分别验证 bearer token 或原始正文 HMAC。这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
 
-`PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。api 的 `PublicStatus` 只接受 `src/lib/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
+`PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。api 的 `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
 
 ## 代码职责
 
@@ -29,7 +28,6 @@
 - `src/chat/`：Turnstile、模型分流、工具循环、流式事件、历史验签、配额与 Anthropic 出口。
 - `src/tools/registry.ts#SITE_TOOLS`：首页对话与 MCP 共用的只读站点工具；读取由 `ToolIO` 注入。
 - `src/mcp.ts`：MCP 协议处理，不调用模型。
-- `src/github-issue.ts`：一次性消费签名计划，以访客身份创建 issue 并撤销短期 token。
 - `src/build/`：构建令牌、上传路径验证、GitHub App 调用、webhook、状态对账与 `BuildCoordinator`。完整配置与 routine 提示词见 [访客协作构建](../../docs/build-routine.md)。
 - `src/sentry.ts#sentryOptions`：关闭请求正文、请求头与 cookie 收集；对话、OAuth code 和代理请求中的密钥不能进入 Sentry。`SENTRY_ENVIRONMENT` 优先，未配置时由 `PREVIEW_WORKER` 选择预览或生产环境。
 
@@ -45,7 +43,7 @@
 - 对 Anthropic 的请求经 `src/chat/egress.ts#anthropicFetch` 转给 Durable Object `AnthropicEgress`；出口位置取同文件的 `EGRESS_HINT`，主机白名单取 `ANTHROPIC_HOST`。对象只转发该上游，避免访客所在机房的地区限制；核验记录见 `docs/ops-facts.md`。没有这层绑定时直接发。
 - 中断：Worker 开启 `enable_request_signal`，入站请求的 `signal` 一 abort 就停下工具循环，SDK 的 fetch 信号带进 `AnthropicEgress`，那边经带信号的管道取消对 Anthropic 的连接，避免原样直通响应体时取消延迟。只有运行时真的报了取消时这条路径才起作用，不能把访客点击停止当成上游已停止计费；生产断开信号的核验边界见 `docs/ops-facts.md`。未收到取消时仍受这条回复的 `maxTokens` 和配额约束，拒答兜底的溢出规则见下文。
 - 站点改动请求由 Clef 路由给 Sonnet，候选请求仍扣普通额度，Sonnet 无空位时返回 429，不降级；Sonnet 判断值得做时调用 `start_design`，开启轮计入设计轮数。设计会话跑在 Claude Managed Agents（`src/chat/designer.ts`）：`start_design` 用 `agent_with_overrides` 建会话，模型、提示词（`src/chat/design.ts#PLANNER_PROMPT`）和工具每个会话从代码覆盖，Console 上的 agent（`DESIGN_AGENT_ID`）只是壳，environment（`DESIGN_ENVIRONMENT_ID`）只放行 github.com；会话带 `src/chat/design.ts#DESIGN_BUDGET_CENTS` 的硬预算，到顶时平台暂停会话、回复里说明。会话 ID 签进设计令牌；开场回合不在本条回复里跑——访客先看到设计模式的隐私确认，同意后浏览器带 `resume: true` 与令牌补发，Worker 见空会话即把那段对话作为开场交给会话里的 Opus 规划者，期间不向会话发任何访客内容，NDJSON 再发一次 `route` 事件；持有效令牌的后续消息直接转给同一个会话，扣 `BuildCoordinator` 中的专属轮数，跳过 Clef 与普通配额；会话期限、轮数和全站上限以 `shared/build-routine.ts#BUILD_DESIGN_LIMITS` 为准。规划者在沙盒里克隆公开仓库，用 Managed Agents 自带的 read、glob、grep、bash（`auto` 权限，停下等确认的调用一律拒绝；write、edit 关闭）和 web_search、web_fetch；自定义工具 `get_site_status` 由 Worker 当场作答，`ask_visitor` 与 `propose_build` 校验通过后挂起：会话停在 `requires_action`，访客下一条消息作为那次调用的 `user.custom_tool_result` 发回，没有挂起的调用时才发 `user.message`。题目不合规、计划被 `src/build/validation.ts#checkBuildPlan` 拒绝时立刻把原因回给规划者。NDJSON 发送 `design` / `ask` / `plan` 事件，正文按 `event_deltas` 实时推；Managed Agents 不给思考内容，规划者读仓库文件发 `doc` 事件，其余每一步发一行 `step` 事件作进度。访客断线时线上 Worker 照样把那一回合跑完（见 `docs/ops-facts.md`），浏览器随后带 `resume: true` 重发同一份历史：Worker 只校验令牌、不扣轮数，从会话事件里找到访客最新那条对应的回合开场，重推之后的文字、进度和仍挂起的题目或计划（计划重新签发），回合还在跑就跟着事件流到停下，期间不向会话发任何事件；会话还没有任何事件时同样按补发处理、把整段历史作为开场上传（设计同意的补发就走这条路）；回合开场存在但对不上访客最新那条时返回 409 `nothing_to_resume`。Managed Agents 的会话记录与沙盒不会自己过期，`scheduled`（`wrangler.toml` 的 cron）按 `src/chat/design-cleanup.ts#deleteExpiredDesignSessions` 删除设计 agent 下令牌过期又过了 `DESIGN_SESSION_GRACE_MS` 的会话，删除时连同事件和沙盒一起移除。每条设计回复记一行 `[god-chat] design turn` 日志（会话 ID、停止原因、模型请求数与 token），不记对话正文与工具输入。
-- Open issue 使用 GitHub App 用户授权与 PKCE（S256），回调页仍是 `src/app/github-callback/page.tsx`。浏览器只提交签名计划、code 和 `codeVerifier`；`src/github-issue.ts` 验证并一次性消费计划，从计划生成标题正文，以访客身份开 issue 后立即撤销 token。GitHub App 不会代替访客发 issue。Start build 每次通过 PKCE 验证 GitHub 身份，由 GitHub App 先提交已确认计划并创建草稿 PR，再启动 routine；实现经 Worker 校验后追加到同一分支和 PR，满足 CI 条件后转为待审。两个出口共享计划消费记录，同账号的构建重试只恢复原 run；身份、恢复与上传契约见 [访客协作构建](../../docs/build-routine.md)。
+- Open issue 在访客浏览器里直接打开 GitHub 预填链接（`shared/build-routine.ts#buildIssueUrl`），按计划填好 `improvement.yml` 表单的标题与各字段，访客在 GitHub 上自行提交，不经过本 Worker、不消费计划。Start build 每次通过 PKCE 验证 GitHub 身份，由 GitHub App 先提交已确认计划并创建草稿 PR，再启动 routine；实现经 Worker 校验后追加到同一分支和 PR，满足 CI 条件后转为待审。计划只被 Start build 消费一次，同账号的构建重试只恢复原 run；身份、恢复与上传契约见 [访客协作构建](../../docs/build-routine.md)。
 - `show_card`（`src/chat/show-card.ts`）在回复里画一张实时卡片：模型只选卡片名，卡片名与每张卡片背后的状态视图登记在 `shared/god-chat.ts#GOD_CHAT_CARD_VIEWS`，模型给不了任何文字、图片或链接。每张卡片只对应一个视图，「此刻」和「最近」分开画，访客只问此刻时模型只画此刻那张。NDJSON 发一行 `card`，站点 `src/components/chat-card.tsx` 按登记的视图读公开状态自己画，画在收到这一行时正文已到的位置；它和首页卡片共用 SWR 缓存键，推送写进同一份缓存、卡片跟着变，自己不轮询。工具结果把同一个视图的数据回给模型（走 `get_site_status` 的执行与这条回复的账本，读过的不再读），模型据此用一两句话作答、不复述卡片内容。同一条回复里同一张卡片只画一次。
 - 请求带 `thinking.display: "summarized"`：模型思考时流出 `thinking` 事件（思考摘要），卡片在正文出来前显示，正文开始后折叠；摘要不进对话历史。
 - 模型由 Anthropic 的拒答兜底（`fallbacks: "default"`，Haiku 没有）换掉时，NDJSON 末尾多一行 `served`，卡片标出实际作答的模型；下一轮的 trace 带 `fallback`。兜底按单次请求生效、兜底模型自己也可能拒，所以只按给出最终答案的那一轮、且它没被拒时才报。
@@ -62,7 +60,7 @@
 
 ## MCP
 
-`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。站点在根目录 `next.config.ts` 中将 `/mcp` 用 307 跳到 `NEXT_PUBLIC_BACKEND_URL` 对应的 api，api 再经 Service Binding 交给本 Worker。307 保留 POST 与请求体；不用 Vercel rewrite，避免 `CF-Connecting-IP` 变成共用的 Vercel 出口 IP。公开访问域名见 `docs/ops-facts.md`。
+`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。站点的 site Worker 网关将 `/mcp` 用 307 跳到 `PUBLIC_BACKEND_URL` 对应的 api，api 再经 Service Binding 交给本 Worker。307 保留 POST 与请求体；不走缓存层 rewrite，避免 `CF-Connecting-IP` 变成共用的出口 IP。公开访问域名见 `docs/ops-facts.md`。
 
 - 工具就是 `src/tools/registry.ts#SITE_TOOLS`，和首页对话同一份定义与执行。这里只放只读、只读公开模型的工具：`start_design`、`ask_visitor`、`propose_build`（要访客在卡片里操作）、`show_card`（只对对话卡片有意义）和 `web_search`（Anthropic 服务端工具）只在对话里。每次调用各开一本账本，单次调用的视图数与截断长度和对话相同，跨调用不累计。
 - 协议：无状态，只回 JSON，不发会话 ID，不开 SSE（GET、DELETE 回 405），JSON-RPC 批量请求回 400。两代客户端都收：`_meta` 里带版本的新协议（`MODERN_VERSIONS`）逐个请求核对 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头与正文一致，`server/discover`、`tools/list` 带缓存提示（`CACHE_HINTS`，缺了 Claude Code 整张工具表都不认）；旧协议（`LEGACY_VERSIONS`）先 `initialize` 握手。
@@ -73,11 +71,11 @@
 
 ## 配置与部署
 
-绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，提交 issue 与连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret（含触发 Codex 与 Cursor 审查的 `CODEX_REVIEW_GITHUB_TOKEN`）、routine 与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`GITHUB_ISSUE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
+绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、routine 与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
 
 生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管 api 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
 
-Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在同一隔离 Preview 内运行 api 与 AI，不连接生产 Service Binding；以 api 或 ai 为 parent 时使用同一实现，Vercel 选择与当前提交 SHA 匹配的 Preview。Secret 只配在实际选中的 parent 的具体 Preview 上，不能把另一个 parent 的配置当成已继承；创建、解析和配置步骤只在构建文档维护。
+Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在同一隔离 Preview 内运行 api 与 AI，不连接生产 Service Binding；以 api 或 ai 为 parent 时使用同一实现，站点预览构建按 `scripts/preview-backend.mjs#findMatchingPreview` 选择与当前提交 SHA 匹配的 Preview。Secret 只配在实际选中的 parent 的具体 Preview 上，不能把另一个 parent 的配置当成已继承；创建、解析和配置步骤只在构建文档维护。
 
 ## 本地开发
 
@@ -86,11 +84,10 @@ Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../do
 ```sh
 cp workers/ai/.dev.vars.example workers/ai/.dev.vars
 pnpm dev:worker
-pnpm dev:worker:init
 pnpm dev:local
 ```
 
-初始化 StateHub 只在首次使用空的本地状态时需要。`pnpm dev:worker` 同时启动 dev-router、api、ai、ingress、collector；请求从本地 api 经 Service Binding 到 ai，工具再经 `PUBLIC_STATUS` 读本地 api。端口、状态持久化与假数据注入见 [api 本地开发](../api/README.md#本地开发)。`workers/api/.dev.vars` 的 `UPSTREAM_API_URL` 只控制 api 的公开状态兜底，不启用 AI 调试权限。
+`pnpm dev:worker` 同时启动 dev-router、api、ai、ingress、collector；请求从本地 api 经 Service Binding 到 ai，工具再经 `PUBLIC_STATUS` 读本地 api。端口、状态持久化与假数据注入见 [api 本地开发](../api/README.md#本地开发)。`workers/api/.dev.vars` 的 `UPSTREAM_API_URL` 只控制 api 的公开状态兜底，不启用 AI 调试权限。
 
 聊天凭据放 `workers/ai/.dev.vars`：`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`、`CHAT_HISTORY_SECRET` 必须齐全，否则聊天回 503；设计与签名计划另需 `BUILD_SESSION_SECRET`、`BUILD_COORDINATOR` 绑定，以及与该 key 同一工作区的 `DESIGN_AGENT_ID`、`DESIGN_ENVIRONMENT_ID`（`wrangler.toml` 与 `wrangler.test.toml` 的 `[vars]` 已填；换工作区时用新 key 跑 `pnpm --dir workers/ai designer:setup`，按名字找或建并打印两个 ID），缺任何一项时 Sonnet 拿不到 `start_design`；issue 提交还需 `GITHUB_APP_CLIENT_SECRET`。本地 `wrangler.test.toml` 设置 `AI_DEV=true`；`src/runtime.ts#aiDevEnabled` 只在 `AI_DEV=true` 或 `PREVIEW_WORKER=true` 时放宽 localhost / Turnstile 测试密钥校验，并启用以下调试变量：
 

@@ -14,7 +14,7 @@
 - `music.js` 的 `PLAN`（每章小节数）⇄ 场景里各章的 `chapter()`：两边必须一致，否则配乐和画面错位。
 - 改了中文文案，`i18n-en.js` 的英文对照表要跟上：用 `render/harvest.mjs` 查英文模式下没查到译文的片段，应为 0。
 - 只改画面、不改章节小节数时，先用 `render/cuesjson.mjs` 导出音效时间表和上一版比对，没变就不用重渲音效。
-- 站点版由 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成到 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`next.config.ts` 把 `/explainer` rewrite 到它；脚本只认 `v2/index.html` 的 `LOAD` 表（保持 JSON 写法），连同内联样式里的相对 `url()` 按内容哈希改名。新增别的资源要让脚本拷得到：页面上新的相对 `src` / `href` 它会报错，脚本里取的文件要像 `v2/film.js` 取配乐那样经 `window.__assets` 查名字。根上的 `clawd.js`、`fonts/` 也被 v2 引用。
+- 站点版由 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成到 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`workers/site/src/index.ts` 把 `/explainer` 落到构建期生成的 explainer 静态资产；脚本只认 `v2/index.html` 的 `LOAD` 表（保持 JSON 写法），连同内联样式里的相对 `url()` 按内容哈希改名。新增别的资源要让脚本拷得到：页面上新的相对 `src` / `href` 它会报错，脚本里取的文件要像 `v2/film.js` 取配乐那样经 `window.__assets` 查名字。根上的 `clawd.js`、`fonts/` 也被 v2 引用。
 - 配乐不入库：`scripts/explainer-score.mjs#scoreInputs` 列的文件决定 R2 上的对象键，合进 main 后由 `.github/workflows/explainer-score.yml` 渲染上传（`README.md`「站点版」）。合成配乐时新读了别的文件，要加进 `scoreInputs` 和工作流的 `paths`，否则改了它键不变、线上放旧配乐。
 
 ## 环境
