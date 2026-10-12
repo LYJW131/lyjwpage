@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, createChatArchiveStore, designEndReason, designSessionEnded, readChatArchive, type ChatBubble } from "./chat-archive.ts";
+import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, chatResumePoint, createChatArchiveStore, designEndReason, designSessionEnded, readChatArchive, type ChatBubble } from "./chat-archive.ts";
 
 function storage() {
   const values = new Map<string, string>();
@@ -204,6 +204,22 @@ test("streaming keeps one current turn and fresh build status after a concurrent
   assert.equal(current().at(-1)?.content, "Complete reply");
   store.update(id, { messages: chatReplyMessages(current(), user) });
   assert.deepEqual(current().map((message) => message.content), messages.map((message) => message.content));
+});
+
+test("consent resume keeps the sealed handoff and appends the planner reply; finished planner replies are not resumed again", () => {
+  const user: ChatBubble & { id: string } = { id: "ask", role: "user", content: "Improve the music card." };
+  const handoff: ChatBubble = { role: "assistant", content: "Handing over to the planner.", designAt: 28, seal: "s1", trace: { tier: "sonnet" } };
+  const point = chatResumePoint([user, handoff]);
+  assert.deepEqual(point, { at: 0, keep: [handoff], handoff: false });
+  const planner: ChatBubble = { role: "assistant", content: "Here is my plan." };
+  assert.deepEqual(chatReplyMessages([user, handoff], user, planner, point?.keep).map((message) => message.content), [user.content, handoff.content, planner.content]);
+  assert.deepEqual(chatResumePoint([user, handoff, planner]), { at: 0, keep: [handoff], handoff: false });
+  const sealedPlanner: ChatBubble = { ...planner, seal: "s2", trace: { tier: "opus", design: true } };
+  assert.equal(chatResumePoint([user, handoff, sealedPlanner]), null);
+  assert.deepEqual(chatResumePoint([user, { ...handoff, seal: undefined }]), { at: 0, keep: [], handoff: true });
+  assert.equal(chatResumePoint([user, { ...sealedPlanner, designAt: 0 }]), null);
+  assert.deepEqual(chatResumePoint([user]), { at: 0, keep: [], handoff: false });
+  assert.equal(chatResumePoint([user, { role: "assistant", content: "Done.", seal: "s3" }]), null);
 });
 
 test("cards no longer registered are dropped without losing the conversation", () => {

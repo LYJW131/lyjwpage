@@ -25,14 +25,17 @@ import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
 import { issuePass, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
-import { admitDesign, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
-import { designApi, designTurn, turnMatches, type DesignTurnInput } from "./designer";
+import { admitDesign, claimDesignOpen, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
+import { designApi, designTurn, turnMatches, type DesignApi, type DesignTurnInput, type SessionEvent } from "./designer";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
+// 抢输开场的补发等对方把开场发进会话：那边只隔着建事件流与一次发送，几秒内就该落地。
+const OPENED_TURN_POLL_MS = 500;
+const OPENED_TURN_POLLS = 20;
 const UPGRADE_NOTE = "The Small Fry judged this message beyond its rank and handed it to you. Nothing of its draft is shown to the visitor; answer the visitor's latest message fully yourself.";
 const UPGRADE_TOOL: Anthropic.Beta.BetaTool = {
   name: "request_upgrade",
@@ -170,7 +173,12 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const effort = (tier === wanted && decision.effort) || GOD_CHAT_TIER_INFO[tier].effort;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, fetch: anthropicFetch(env) });
   const api = designApi(client, env);
-  if (parsed.resume && (!design || !turnMatches(await api.turn(design.sessionId), latest))) {
+  // 设计会话的首回合推迟到访客同意之后：同意由客户端扣下 resume 请求来表达，Worker 见空会话即补开场，不重放校验。
+  // 开场每个会话只发一次：同时到的补发（复制的标签页）抢不到开场，就等对方的开场落进会话，再按断线补发跟着看。
+  let priorTurn = parsed.resume && design ? await api.turn(design.sessionId) : undefined;
+  const opening = priorTurn?.length === 0 && await claimDesignOpen(env, design!.sessionId);
+  if (priorTurn?.length === 0 && !opening) priorTurn = await openedTurn(api, design!.sessionId, abort.signal);
+  if (parsed.resume && (!design || (!opening && !turnMatches(priorTurn!, latest)))) {
     return fail(409, "The interrupted reply could not be recovered. Send your message again.", undefined, "nothing_to_resume");
   }
   const body = new ReadableStream<Uint8Array>({
@@ -186,18 +194,17 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
       const plan = (sessionId: string, input: DesignTurnInput, views: string[] = []) => planTurn({ api, env, io, sessionId, input, views, emit, signal: abort.signal });
       try {
         let outcome: TurnOutcome;
-        if (design) outcome = await plan(design.sessionId, parsed.resume ? { kind: "resume" } : { kind: "reply", text: latest });
-        else {
+        if (design) {
+          const input: DesignTurnInput = parsed.resume
+            ? opening ? { kind: "open", history: await plannerHistory(history, env) } : { kind: "resume" }
+            : { kind: "reply", text: latest };
+          outcome = await plan(design.sessionId, input);
+        } else {
           const note = tier !== wanted && isGodChatTier(tier) ? downgradeNote(wanted, tier) : undefined;
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
           const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
-          const chat = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, io, emit, signal: abort.signal });
-          outcome = chat;
-          if (chat.complete && chat.openedSessionId) {
-            // 同一条回复交给 Managed Agents 上的规划者：Sonnet 的开场白已经推给访客，规划者从访客那条消息接着做。
-            emit({ type: "route", route: "sonnet", tier: GOD_CHAT_DESIGN_TIER });
-            outcome = await plan(chat.openedSessionId, { kind: "open", history: await plannerHistory(history, env) }, chat.trace?.views);
-          }
+          // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
+          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, io, emit, signal: abort.signal });
         }
         const { complete, trace, planToken, lead } = outcome;
         if (complete && lead) emit({ type: "text", text: lead });
@@ -221,6 +228,15 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
     },
   });
   return new Response(body, { headers });
+}
+
+async function openedTurn(api: DesignApi, sessionId: string, signal: AbortSignal): Promise<SessionEvent[]> {
+  for (let tries = 0; tries < OPENED_TURN_POLLS && !signal.aborted; tries++) {
+    await new Promise((resolve) => setTimeout(resolve, OPENED_TURN_POLL_MS));
+    const turn = await api.turn(sessionId);
+    if (turn.length) return turn;
+  }
+  return [];
 }
 
 async function planTurn({ views, ...turn }: Parameters<typeof designTurn>[0] & { views: string[] }): Promise<TurnOutcome> {
@@ -253,7 +269,7 @@ async function converse({
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
-}): Promise<{ complete: boolean; trace?: GodChatTrace; openedSessionId?: string }> {
+}): Promise<TurnOutcome> {
   let tier = startTier;
   let effort = startEffort;
   let upgradeOpen = upgrade !== undefined;
@@ -497,5 +513,5 @@ async function converse({
     fallback: Boolean(servedBy),
     cards: [...cards],
   });
-  return { complete: !refused, trace, ...(openedSessionId && { openedSessionId }) };
+  return { complete: !refused, trace };
 }

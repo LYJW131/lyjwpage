@@ -40,6 +40,8 @@ export type ChatBubble = GodChatMessage & {
   cards?: ChatShownCard[];
   // 同一条回复里开了设计会话、换规划者接手时正文已有的长度，分隔线画在这里。
   designAt?: number;
+  // 这条回复的设计内容曾在同意状态下展示过：同意失效或被拒绝时不再隐藏它，没看过的照旧藏。
+  designRevealed?: boolean;
   // 设计会话在这条回复之后结束：结束提示画在它下面。
   designEnded?: DesignEndReason;
   proposals?: ChatProposal[];
@@ -58,10 +60,25 @@ export type ChatArchive = { version: 1; activeId: string; sessions: ChatSession[
 const EMPTY_CHAT_ARCHIVE: ChatArchive = { version: 1, activeId: "", sessions: [] };
 type ArchiveStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export function chatReplyMessages(messages: ChatBubble[], user: ChatBubble & { id: string }, reply?: ChatBubble): ChatBubble[] {
+export function chatReplyMessages(messages: ChatBubble[], user: ChatBubble & { id: string }, reply?: ChatBubble, keep: ChatBubble[] = []): ChatBubble[] {
   const turnIndex = messages.findIndex((message) => message.id === user.id);
   const history = turnIndex < 0 ? messages : messages.slice(0, turnIndex);
-  return reply ? [...history, user, reply] : history;
+  return reply ? [...history, user, ...keep, reply] : history;
+}
+
+export type ChatResumePoint = { at: number; keep: ChatBubble[]; handoff: boolean };
+
+// 最后一条访客消息还缺盖章的回复时，补发从哪接。交接回复由普通对话盖章（trace 不带 design），设计开场推迟到同意后：
+// 盖了章的交接留着，规划者的回复接在它后面；没盖章的半截回复由补发整条重来。规划者的回复盖了章就算完成，刷新不再补发。
+export function chatResumePoint(messages: ChatBubble[]): ChatResumePoint | null {
+  const at = messages.map((message) => message.role).lastIndexOf("user");
+  if (at < 0) return null;
+  const next = messages[at + 1];
+  const after = messages.length - 1 - at;
+  if (next?.seal !== undefined && next.designAt !== undefined && !next.trace?.design) {
+    return after === 1 || (after === 2 && !messages[at + 2].seal) ? { at, keep: [next], handoff: false } : null;
+  }
+  return after === 0 || (after === 1 && !next.seal) ? { at, keep: [], handoff: next?.designAt !== undefined } : null;
 }
 
 const byteLength = (value: string) => new TextEncoder().encode(value).byteLength;
@@ -90,6 +107,7 @@ function validBubble(value: unknown): value is ChatBubble {
   }))) return false;
   if (value.asks !== undefined && !parseQuestions(value.asks)) return false;
   if (value.designAt !== undefined && typeof value.designAt !== "number") return false;
+  if (value.designRevealed !== undefined && value.designRevealed !== true) return false;
   if (value.designEnded !== undefined && !(DESIGN_END_REASONS as readonly unknown[]).includes(value.designEnded)) return false;
   if (value.answers !== undefined && (!Array.isArray(value.answers) || !value.answers.every((answer) => object(answer) && ["header", "question", "answer"].every((key) => typeof answer[key] === "string")))) return false;
   if (["lookups", "searches", "steps"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
