@@ -19,8 +19,9 @@ type WebhookPayload = {
   comment?: { user: { login: string }; body: string; html_url: string; updated_at: string };
 };
 
-// 仓库里每个分支的 CI 都会推 check_run / check_suite / status，只有构建分支上的才可能属于某次构建，其余不唤醒 BuildCoordinator；事件没带分支名时照旧按 SHA 查。
-function outsideBuildBranches(payload: WebhookPayload): boolean {
+// 仓库里每个分支的 CI 都会推 check_run / check_suite / status，只有构建分支上的才可能属于某次构建；其余验签后直接确认，不唤醒 BuildCoordinator（投递去重也不记）。事件没带分支名时照旧交给它按 SHA 查。
+export function outsideBuildBranches(event: string, payload: WebhookPayload): boolean {
+  if (event !== "check_run" && event !== "check_suite" && event !== "status") return false;
   const branches = [payload.check_run?.check_suite?.head_branch, payload.check_suite?.head_branch, ...(payload.branches ?? []).map((branch) => branch.name)]
     .filter((name): name is string => !!name);
   return branches.length > 0 && !branches.some((name) => runIdFromBranch(name));
@@ -28,7 +29,6 @@ function outsideBuildBranches(payload: WebhookPayload): boolean {
 
 export async function applyGithubWebhook(env: Env, event: string, payload: WebhookPayload): Promise<void> {
   if (!env.BUILD_COORDINATOR || payload.repository?.full_name?.toLowerCase() !== BUILD_REPO.toLowerCase()) return;
-  if ((event === "check_run" || event === "check_suite" || event === "status") && outsideBuildBranches(payload)) return;
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
   let runId: string | null = null;
   let expectedHeadSha: string | undefined;
