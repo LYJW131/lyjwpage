@@ -6,7 +6,7 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { ChevronDown, Cloud } from "lucide-react";
+import { Cloud } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
@@ -902,12 +902,6 @@ function CompactAgentRow({
           </span>
           <span className="truncate text-sm font-medium">{row.label}</span>
           {active && <ActiveBadge sources={sources} />}
-          {expandable && (
-            <ChevronDown
-              aria-hidden
-              className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
-            />
-          )}
         </span>
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {row.plan && (
