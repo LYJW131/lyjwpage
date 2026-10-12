@@ -72,9 +72,10 @@ test("srcset 按显示宽度出 1x、2x 两档，档位都在宽度白名单里"
     w: Number(new URL(entry.split(" ")[0], "https://site.test").searchParams.get("w")),
     density: entry.split(" ")[1],
   }));
-  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 44)), [{ w: 48, density: "1x" }, { w: 88, density: "2x" }]);
-  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 64)), [{ w: 64, density: "1x" }, { w: 128, density: "2x" }]);
+  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 44)), [{ w: 48, density: "1x" }, { w: 88, density: "2x" }, { w: 160, density: "3x" }]);
+  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 64)), [{ w: 64, density: "1x" }, { w: 128, density: "2x" }, { w: 192, density: "3x" }]);
   assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 1500)), [{ w: 1920, density: "1x" }]);
+  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 700)), [{ w: 750, density: "1x" }, { w: 1920, density: "2x" }]);
   for (const display of [1, 20, 44, 100, 333, 960, 5000]) {
     for (const { w } of widthsOf(optimizerSrcSet(src, 75, display))) {
       assert.ok((IMAGE_WIDTHS as readonly number[]).includes(w));
