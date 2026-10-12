@@ -4,11 +4,14 @@ import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
 
 import type { Env } from "./env";
 import { runNamed, runScheduled } from "./registry";
+import { installCollectorPorts } from "./ports";
 import { bindEnv } from "./runtime";
 import { cronMonitor } from "./schedule";
 import { reportJobFailure, sentryOptions } from "./sentry";
 
 export type { Env } from "./env";
+
+installCollectorPorts();
 
 class CollectorBase extends WorkerEntrypoint<Env> implements CollectorRpc {
   async refresh(jobs: string[]): Promise<CollectorJobOutcome[]> {

@@ -1,9 +1,9 @@
-import { PLAYING_TAG, TROPHIES_TAG } from "@/lib/live-events";
-import { getPlaystationPlayedGames, getPlaystationPresence, getPlaystationTrophies } from "@/lib/playstation-store";
-import { summarizeTrophies, trophiesContent } from "@/lib/trophies";
+import { PLAYING_TAG, TROPHIES_TAG } from "@shared/live-events";
+import { getPlaystationPlayedGames, getPlaystationPresence, getPlaystationTrophies } from "../playstation-store";
+import { summarizeTrophies, trophiesContent } from "@shared/trophies";
 import type {
   PlaystationPresencePayload
-} from "@/lib/types";
+} from "@shared/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import { historyArchiveEnabled, requestStore } from "@api/runtime";
 import { recordStateObservation } from "@api/stores/pulse";

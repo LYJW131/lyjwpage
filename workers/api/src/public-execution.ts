@@ -1,5 +1,5 @@
 import { withRequestState } from "@shared/request-state";
-import { layerOfPath } from "@/lib/status-views";
+import { layerOfPath } from "@shared/status-views";
 import { ensurePreviewState } from "./preview";
 import { devOverridesEnabled, publicResponse } from "./public-api";
 import { requestStore, type Env } from "./runtime";

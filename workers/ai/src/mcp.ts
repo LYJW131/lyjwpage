@@ -1,4 +1,4 @@
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 import { readJsonBody } from "./chat/guard";
 import { CODE_TOOL } from "./tools/code-mode";

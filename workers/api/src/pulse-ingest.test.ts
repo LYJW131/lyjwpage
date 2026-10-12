@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PULSE_REPEAT_AFTER_MS } from "@/lib/limits";
-import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { PULSE_REPEAT_AFTER_MS } from "@shared/limits";
+import { codingObservationsKey, cursorObservationsKey } from "./coding-pulse";
 import {
   pulseActivityKey,
   pulseActivityRevisionKey,
@@ -11,21 +11,20 @@ import {
   pulseLaneOpenKey,
   pulseListeningTracesKey,
   pulseWorkoutsKey,
-} from "@/lib/pulse-keys";
+} from "./pulse-keys";
 import { commitPreparedAgentsReport } from "@api/stores/agents";
 import { commitRecentlyPlayed, commitRecentTracks } from "@api/apple-music-recent";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 import { LISTENING_TRACE_JITTER_MS } from "@shared/pulse-listening";
 import type { StateLane } from "@shared/pulse-timeline";
 import { requestStore, type Env } from "@api/runtime";
 import { commitPreparedEmbyReport } from "@api/stores/emby";
 import { commitPreparedPlaystationReport } from "@api/stores/playstation";
-import { getPlaying, getPlayingNow } from "@/lib/playstation";
+import { getPlaying, getPlayingNow } from "./playstation";
 import { powerMirror } from "@shared/playstation-store";
 import { commitPreparedTelemetryEnvelope } from "@api/stores/telemetry";
-import type { ListeningItem, RecentTrack } from "@/lib/types";
+import type { ListeningItem, RecentTrack } from "@shared/types";
 import { prepareAgentLimits } from "@shared/ingest/agents";
 import { prepareEmbyReport } from "@shared/ingest/emby";
 import { preparePlaystationReport } from "@shared/ingest/playstation";
@@ -84,8 +83,8 @@ const helpless = { source: "mac", title: "Helpless", artist: "Hamilton", album: 
 function withStorage(run: (storage: FakeStorage) => Promise<void>) {
   return async () => {
     const storage = new FakeStorage();
-    installStorageForTests(storage);
-    try { await run(storage); } finally { resetStorageForTests(); }
+    installTestStorage(storage);
+    try { await run(storage); } finally { installTestStorage(null); }
   };
 }
 

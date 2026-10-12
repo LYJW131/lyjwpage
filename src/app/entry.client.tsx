@@ -8,7 +8,7 @@ import {
   SENTRY_ENABLED,
   SENTRY_ENVIRONMENT,
   SENTRY_RELAY_PREFIX,
-} from "@/lib/sentry";
+} from "@shared/sentry";
 import { redactSentryEvent } from "@/lib/sentry-redact";
 
 Sentry.init({

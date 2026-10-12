@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import type { HistoryDb } from "@shared/history-ingest";
-import type { TrophiesPayload } from "@/lib/types";
+import type { TrophiesPayload } from "@shared/types";
 
 import { archiveTrophies, runBatched, trophyStatements } from "./stores/trophy-history";
 

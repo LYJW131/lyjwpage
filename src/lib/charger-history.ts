@@ -1,5 +1,5 @@
-import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
-import type { ChargerPayload, ChargerSample } from "@/lib/types";
+import { CHARGER_HISTORY_LIMIT } from "@shared/limits";
+import type { ChargerPayload, ChargerSample } from "@shared/types";
 
 
 let history: ChargerSample[] = [];

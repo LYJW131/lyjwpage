@@ -1,4 +1,4 @@
-import type { WatchingMedia } from "@/lib/types";
+import type { WatchingMedia } from "@shared/types";
 
 
 function clientName(client: string | null): string | null {

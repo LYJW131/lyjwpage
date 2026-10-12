@@ -1,5 +1,5 @@
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
-import type { SiteDeployment } from "@/lib/site-deployments-types";
+import type { SiteDeployment } from "@shared/site-deployments-types";
 
 
 export const HISTORY_BATCH_SIZE = 100;

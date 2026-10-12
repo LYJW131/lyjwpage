@@ -11,12 +11,12 @@ import {
   subscribeHeatmap,
   writeHeatmapMode,
 } from "@/lib/heatmap-preference";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 import type {
   CodingYearPayload,
   GithubChartPayload,
   StatusResponse,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
 
 export function ContactCard({

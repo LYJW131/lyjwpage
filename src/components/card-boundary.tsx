@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { useVersionStatus } from "@/hooks/use-app-version";
 import { createFaultLedger, describeFault, primeCardCache, type FaultRecord } from "@/lib/card-recovery";
 import { fetchStatus, guardPolled, writeGeneration } from "@/lib/status-reads";
-import { viewKeyByPath } from "@/lib/status-views";
+import { viewKeyByPath } from "@shared/status-views";
 import { cn } from "@/lib/utils";
 
 // 崩溃数据可能来自 SWR fallbackData，单纯清缓存会再次读回它；重挂前先预取。

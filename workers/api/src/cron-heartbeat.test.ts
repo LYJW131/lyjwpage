@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@/lib/sentry";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
 import { CRON_MONITOR_CONFIG, CRON_SCHEDULE } from "./cron-heartbeat.ts";
 import { PULSE_SCORE_LEASE_MS } from "./pulse-score-state.ts";
 

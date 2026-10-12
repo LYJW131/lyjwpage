@@ -9,7 +9,7 @@ import { PlayerCover } from "@/components/web-player/player-cover";
 import { PlayerLyrics } from "@/components/web-player/player-lyrics";
 import type { WebPlayer } from "@/hooks/use-web-player";
 import { PLAYBACK_STATE } from "@/lib/musickit";
-import { catalogItemId } from "@/lib/playing-queue";
+import { catalogItemId } from "@shared/playing-queue";
 import { cn } from "@/lib/utils";
 import {
   computePlaylistHeight,

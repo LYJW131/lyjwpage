@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { WatchingMedia } from "./types.ts";
+import type { WatchingMedia } from "@shared/types.ts";
 import { describeDevice, describeMedia } from "./watching-media.ts";
 
 const gundam: WatchingMedia = {

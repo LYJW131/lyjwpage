@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { STATUS_TAGS, STATUS_VIEWS } from "@/lib/status-views";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { STATUS_TAGS, STATUS_VIEWS } from "@shared/status-views";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 
 import { collectIngestEffects, dispatchIngestEffects, type CollectedIngest } from "./ingest-effects";
@@ -51,8 +50,8 @@ function tagsOf(result: CollectedIngest<unknown>): string[] {
 
 function withStorage(run: () => Promise<void>) {
   return async () => {
-    installStorageForTests(new FakeStorage());
-    try { await run(); } finally { resetStorageForTests(); }
+    installTestStorage(new FakeStorage());
+    try { await run(); } finally { installTestStorage(null); }
   };
 }
 

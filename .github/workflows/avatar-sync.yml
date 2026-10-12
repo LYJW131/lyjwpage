@@ -23,15 +23,15 @@ jobs:
           ref: main
           sparse-checkout: |
             .github/github-avatar.sha256
-            src/lib/site.ts
+            shared/site.ts
           sparse-checkout-cone-mode: false
 
       # 须与 workers/collector/src/jobs/avatar-watch.ts 同步：头像地址、标记文件路径和哈希算法要一致。
       - name: Hash current avatar
         id: avatar
         run: |
-          id=$(sed -nE 's/^ *githubId: ([0-9]+),$/\1/p' src/lib/site.ts)
-          [ -n "$id" ] || { echo "::error::githubId not found in src/lib/site.ts"; exit 1; }
+          id=$(sed -nE 's/^ *githubId: ([0-9]+),$/\1/p' shared/site.ts)
+          [ -n "$id" ] || { echo "::error::githubId not found in shared/site.ts"; exit 1; }
           meta=$(curl -sS --retry 3 --max-time 20 -o "$RUNNER_TEMP/avatar" -w '%{http_code} %{content_type}' \
             "https://avatars.githubusercontent.com/u/$id?s=512")
           case "$meta" in

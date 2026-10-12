@@ -1,4 +1,4 @@
-import { object } from "@/lib/json";
+import { object } from "@shared/json";
 import type { QuestPlaying, QuestPresence } from "@shared/quest";
 
 export type PreparedQuestReport = { source: "quest"; receivedAt: number; presence: QuestPresence };

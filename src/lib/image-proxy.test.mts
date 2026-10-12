@@ -19,7 +19,7 @@ import {
   parseVariantWidth,
   variantShape,
 } from "./image-proxy.ts";
-import { BodyTooLargeError, readBoundedBytes } from "./read-bounded-bytes.ts";
+import { BodyTooLargeError, readBoundedBytes } from "@shared/read-bounded-bytes.ts";
 
 test("白名单域名放行，相似后缀与凭证拒绝", () => {
   assert.ok(parseImageSource("https://avatars.githubusercontent.com/u/1?s=96"));

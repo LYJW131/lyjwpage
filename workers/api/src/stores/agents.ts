@@ -1,4 +1,4 @@
-import type { LiveEvent } from "@/lib/live-events";
+import type { LiveEvent } from "@shared/live-events";
 import { fanout } from "@api/fanout";
 import { recordCursorObservation } from "@api/stores/pulse-source-observations";
 import type { PreparedAgentLimits } from "@shared/ingest/agents";

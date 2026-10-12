@@ -1,4 +1,4 @@
-import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
+import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 
 import { base64url, decodeBase64url } from "../crypto";
 import type { SiteTool, ToolLedger } from "./registry";

@@ -1,6 +1,5 @@
-import { motionArtworkCacheKey, motionTtlMs, NO_MOTION, resolveMotionArtwork, type MotionResult } from "@/lib/motion-artwork";
-import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
-import { withStorageScope } from "@/lib/storage";
+import { motionArtworkCacheKey, motionTtlMs, NO_MOTION, resolveMotionArtwork, type MotionResult } from "@shared/motion-artwork";
+import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
 
 export type MotionResponse = MotionResult & { link: string | null };
 
@@ -25,7 +24,7 @@ export async function GET(request: Request) {
     );
   }
   try {
-    const result = await withStorageScope(() => resolveMotionArtwork(parsed));
+    const result = await resolveMotionArtwork(parsed);
     return jsonResponse({ link: requested, ...result }, 200, Math.round(motionTtlMs(result) / 1000));
   } catch (error) {
     console.error("[motion-artwork]", error);

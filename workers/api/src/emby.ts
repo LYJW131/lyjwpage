@@ -1,0 +1,18 @@
+import { AwaitingReport } from "@shared/awaiting-report";
+import { getCurrentItem, getImageObjectKeys, getNowPlaying, getResume } from "./emby-store";
+import { type NowWatchingPayload, nowWatchingPayload, type WatchingPayload, watchingPayload } from "@shared/emby";
+
+export async function getWatching(options: { limit?: number } = {}): Promise<WatchingPayload> {
+  const [stored, objectKeys] = await Promise.all([getResume(), getImageObjectKeys()]);
+  if (!stored) throw new AwaitingReport("尚未收到 Emby 推送");
+
+  return watchingPayload(stored.items, objectKeys, options);
+}
+
+export async function getNowWatching(): Promise<NowWatchingPayload> {
+  const [live, current, objectKeys] = await Promise.all([getNowPlaying(), getCurrentItem(), getImageObjectKeys()]);
+  if (!live) return { nowPlaying: null, current: null };
+
+  return nowWatchingPayload(live, current?.item ?? null, objectKeys);
+}
+export { type NowWatchingPayload, nowWatchingPayload, type WatchingPayload, watchingPayload } from "@shared/emby";
