@@ -199,7 +199,7 @@ Data in Sentry also comes back to the page: using a read-only token, the collect
 
 | Layer | Main technologies |
 | --- | --- |
-| Pages and types | React Router 8 · Vite · React 19 (React Compiler) · TypeScript |
+| Pages and types | React Router 8 · Vite · React 19 (React Compiler) · TypeScript 7 |
 | Styling and interaction | Tailwind CSS 4 · Motion · Number Flow · Geist |
 | Client data | SWR · WebSocket |
 | State and asset storage | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
