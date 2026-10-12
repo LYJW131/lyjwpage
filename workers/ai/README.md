@@ -4,7 +4,7 @@
 
 ## 入口与权限
 
-生产配置 `wrangler.toml` 设 `workers_dev=false`，不绑定独立公开域名；`preview_urls=true` 用于允许隔离的分支 Preview 使用 workers.dev 地址。生产 HTTP 只经 api 对外公开。浏览器与 MCP 客户端继续访问 api 的公开地址，api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 经 `AI_SERVICE.fetch(request)` 原样转发请求与响应流；来源校验、预检、限流和协议处理由本 Worker 执行。
+生产配置 `wrangler.toml` 设 `workers_dev=false`、`preview_urls=false`，不绑定独立公开域名，也没有 workers.dev 地址。生产 HTTP 只经 api 对外公开。浏览器与 MCP 客户端继续访问 api 的公开地址，api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 经 `AI_SERVICE.fetch(request)` 原样转发请求与响应流；来源校验、预检、限流和协议处理由本 Worker 执行。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -75,7 +75,7 @@
 
 生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管 api 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
 
-Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在同一隔离 Preview 内运行 api 与 AI，不连接生产 Service Binding；以 api 或 ai 为 parent 时使用同一实现，站点预览构建按 `scripts/preview-backend.mjs#findMatchingPreview` 选择与当前提交 SHA 匹配的 Preview。Secret 只配在实际选中的 parent 的具体 Preview 上，不能把另一个 parent 的配置当成已继承；创建、解析和配置步骤只在构建文档维护。
+Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在 api 的同一隔离 Preview 内运行 api 与 AI，不连接生产 Service Binding；ai 自己不发布分支 Preview。Secret 配在 api parent 的具体 Preview 上；创建、解析和配置步骤只在构建文档维护。
 
 ## 本地开发
 
