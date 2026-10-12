@@ -1219,7 +1219,7 @@ function ReplyBody({
     from = at;
   }
   const rest = content.slice(from);
-  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} htmlPreview live={live}>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
+  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} htmlPreview>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
   if (live && !rest.trim() && (showDesignContent || designAt === undefined)) parts.push(<span key="typing" className="animate-pulse text-muted-foreground">…</span>);
   return <div className="space-y-2">{parts}</div>;
 }
