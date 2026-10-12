@@ -48,7 +48,7 @@ api 和 ai 的 Builds 都调用同一个预览脚本，各自发布到自己的 
 - `global_fetch_strictly_public`：让 `UPSTREAM_API_URL` 能访问同账号的生产自定义域，避免绕过 Worker 后返回 522。
 - `PREVIEW_COMMIT_SHA` 为 Builds 当前提交；组合入口仅在 `PREVIEW_WORKER=true` 时工作，并提供 `PREVIEW_REVISION_PATH` 供构建校验。
 
-预览绑定由 api 配置的 `[previews]` 段提供，状态、聊天与构建 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入和存储导入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
+预览绑定由 api 配置的 `[previews]` 段提供，状态、聊天与构建 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
 
 `scripts/build.mjs` 在预览构建里等待本分支 api、ai 两个候选地址，`scripts/preview-backend.mjs#findMatchingPreview` 只接受 revision 与 `WORKERS_CI_COMMIT_SHA` 一致且状态读取就绪的候选；两份都是本提交时固定选 api：ai 先就绪时，在 `PREFERRED_GRACE_MS` 内反复重查 api（它常常晚到，之前还挂着旧提交）。只改了 AI 代码的分支没有 api 的新 Preview，会多等这一段再用 ai。等待上限见 `WAIT_MS`；等不到匹配时构建直接失败，预览构建永不回退生产后端。选中的地址既是构建期的 `PREVIEW_BACKEND_URL`，也是运行时的预览后端，构建成功后冻结在 `build/site-preview.json`；`scripts/deploy-site-preview.mjs`（`pnpm preview:deploy`）只按这份冻结记录发布 `site` 的 Preview，不重查后端。预览构建强制清空 `SENTRY_AUTH_TOKEN`、`GITHUB_TOKEN`、`PUBLIC_CF_WEB_ANALYTICS_TOKENS`，不上传 sourcemap、不带生产凭据。
 
