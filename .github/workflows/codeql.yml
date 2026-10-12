@@ -6,11 +6,6 @@ on:
     branches: [main, dev]
   pull_request:
   workflow_dispatch:
-    inputs:
-      threads:
-        description: Self-hosted CodeQL thread count (empty uses repository variable)
-        type: string
-        required: false
   schedule:
     - cron: "27 4 * * 1"
 
@@ -60,8 +55,7 @@ jobs:
   analyze:
     needs: changes
     name: Analyze (${{ matrix.language }})
-    # 仓库变量 SELF_HOSTED_RUNNER=on 时走自建 runner；条件与 ci.yml 一致
-    runs-on: ${{ vars.SELF_HOSTED_RUNNER == 'on' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'claude/build-') && github.event.pull_request.user.login != 'lyjw131[bot]')) && fromJSON('["self-hosted","linux","x64","lyjwpage"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -76,8 +70,6 @@ jobs:
 
       - uses: github/codeql-action/init@v4
         if: env.SCAN == 'true'
-        env:
-          CODEQL_THREADS: ${{ runner.environment == 'self-hosted' && (inputs.threads || vars.CODEQL_THREADS || '8') || '' }}
         with:
           languages: ${{ matrix.language }}
           build-mode: none

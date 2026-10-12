@@ -1,43 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-save_cache() {
-  local temporary="$2.$GITHUB_JOB.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
-  cp "$1" "$temporary"
-  mv "$temporary" "$2"
-}
-
 lint() {
-  if [ -z "${CI_CACHE_DIR:-}" ]; then
-    pnpm lint
-    return
-  fi
-  cp "$CI_CACHE_DIR/eslintcache" "$RUNNER_TEMP/eslintcache" 2>/dev/null || true
-  pnpm lint --cache --cache-strategy content --cache-location "$RUNNER_TEMP/eslintcache"
-  save_cache "$RUNNER_TEMP/eslintcache" "$CI_CACHE_DIR/eslintcache"
+  pnpm lint
 }
 
 typecheck() {
-  if [ -z "${CI_CACHE_DIR:-}" ]; then
-    pnpm -r --include-workspace-root typecheck
-    return
-  fi
-  project_paths=$(pnpm -r --include-workspace-root list --depth=-1 --json | node -e 'let s="";process.stdin.on("data", c => s+=c);process.stdin.on("end", () => console.log(JSON.parse(s).map(p => p.path).join("\n")));')
-  while IFS= read -r project; do
-    case "$project" in
-      "$PWD"|"$PWD"/*) ;;
-      *) echo "Workspace outside repository: $project" >&2; return 1 ;;
-    esac
-    directory="$CI_CACHE_DIR/typecheck${project#"$PWD"}"
-    cp "$directory/tsconfig.ci.tsbuildinfo" "$project/tsconfig.ci.tsbuildinfo" 2>/dev/null || true
-  done <<< "$project_paths"
-  # CI 的 noEmit 缓存单独命名，不能与上报器测试编译 dist 的产物缓存混用。
-  pnpm -r --include-workspace-root --parallel typecheck --incremental --tsBuildInfoFile tsconfig.ci.tsbuildinfo
-  while IFS= read -r project; do
-    directory="$CI_CACHE_DIR/typecheck${project#"$PWD"}"
-    mkdir -p "$directory"
-    save_cache "$project/tsconfig.ci.tsbuildinfo" "$directory/tsconfig.ci.tsbuildinfo"
-  done <<< "$project_paths"
+  pnpm -r --include-workspace-root typecheck
 }
 
 workspace_tests() {
@@ -75,19 +44,10 @@ run_gate() {
 }
 
 gates=(lint typecheck workspace_tests script_tests docs)
-pids=()
 status=0
 for gate in "${gates[@]}"; do
   echo "Starting $gate"
-  if [ -n "${CI_CACHE_DIR:-}" ]; then
-    run_gate "$gate" &
-    pids+=("$!")
-  else
-    run_gate "$gate" || status=1
-  fi
-done
-for pid in "${pids[@]}"; do
-  wait "$pid" || status=1
+  run_gate "$gate" || status=1
 done
 for gate in "${gates[@]}"; do
   echo "::group::$gate"
