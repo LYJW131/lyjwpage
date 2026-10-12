@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BUILD_REPO, type BuildRun } from "@shared/build-routine";
+import { BUILD_REPO, branchForRun, type BuildRun } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import { GithubBuildApi, reconcileBuild } from "./build/github.ts";
 import { fixturePullRequest } from "./build/testing/github-fixture.ts";
@@ -164,4 +164,24 @@ test("individual webhook events invalidate both aggregates without replacing the
   assert.equal(settled.ci?.state, "success");
   assert.equal(settled.preview?.state, "success");
   assert.equal(settled.preview?.url, siteUrl);
+});
+
+test("CI events on other branches never wake the BuildCoordinator; build branches and events without a branch still look up the SHA", async () => {
+  const calls: string[] = [];
+  const env = { BUILD_COORDINATOR: { getByName: () => ({
+    findRun(sha: string) { calls.push(sha); return null; },
+    updateRun() { assert.fail("no run matches"); },
+  }) } } as unknown as Env;
+  const repository = { full_name: BUILD_REPO };
+  const suite = { head_sha: headSha, status: "completed", conclusion: "success" };
+  await applyGithubWebhook(env, "check_run", { repository, check_run: { ...ci, head_sha: headSha, check_suite: { head_branch: "main" } } });
+  await applyGithubWebhook(env, "check_suite", { repository, check_suite: { ...suite, head_branch: "claude/project-thread-x" } });
+  await applyGithubWebhook(env, "status", { repository, sha: headSha, state: "success", branches: [{ name: "main" }, { name: "claude/build-fixture" }] });
+  assert.deepEqual(calls, []);
+
+  await applyGithubWebhook(env, "check_run", { repository, check_run: { ...ci, head_sha: headSha, check_suite: { head_branch: branchForRun(run.runId) } } });
+  await applyGithubWebhook(env, "status", { repository, sha: headSha, state: "success", branches: [{ name: "main" }, { name: branchForRun(run.runId) }] });
+  await applyGithubWebhook(env, "check_suite", { repository, check_suite: { ...suite, head_branch: null } });
+  await applyGithubWebhook(env, "status", { repository, sha: headSha, state: "success", branches: [] });
+  assert.deepEqual(calls, [headSha, headSha, headSha, headSha]);
 });
