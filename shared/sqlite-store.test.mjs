@@ -109,7 +109,7 @@ test("SQLite：尾部裁剪保留逻辑末尾并清理空列表条目", () => {
   db.close();
 });
 
-test("SQLite：随机 append / trim / remove / import 之后 seq 连续且保留条数正确", () => {
+test("SQLite：随机 append / trim / remove 之后 seq 连续且保留条数正确", () => {
   const { store, db } = database();
   let seed = 12345;
   const random = n => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n;
@@ -156,12 +156,10 @@ test("SQLite：随机 append / trim / remove / import 之后 seq 连续且保留
         model.delete(key);
         break;
       default: {
+        if (current.length) break;
         const values = fresh(1 + random(4));
-        const imported = store.importMissing([{ key, kind: "list", value: values, expiresAt: null }]);
-        if (!current.length) {
-          assert.equal(imported, 1);
-          model.set(key, values);
-        }
+        store.execute([{ op: "append", key, values }]);
+        model.set(key, values);
       }
     }
     check();
@@ -180,20 +178,6 @@ test("SQLite：尾部裁剪在同批后续失败时回滚", () => {
     { op: "append", key: "state", values: ["invalid"] },
   ]), /type mismatch/);
   assert.deepEqual(store.execute([{ op: "listRange", key: "history", start: 0, stop: -1 }]), [["1", "2", "3"]]);
-  db.close();
-});
-
-test("SQLite：迁移保留 TTL、历史、凭据且不覆盖新上报", () => {
-  const { store, advance, db } = database();
-  store.execute([{ op: "set", key: "fresh", value: "live" }]);
-  assert.equal(store.importMissing([
-    { key: "fresh", kind: "string", value: "old", expiresAt: null },
-    { key: "credential", kind: "string", value: "synthetic-token", expiresAt: null },
-    { key: "history", kind: "list", value: ["a", "b"], expiresAt: 1100 },
-    { key: "dead", kind: "string", value: "expired", expiresAt: 999 },
-  ]), 2);
-  advance(100);
-  assert.deepEqual(store.execute([{ op: "get", key: "fresh" }, { op: "get", key: "credential" }, { op: "listRange", key: "history", start: 0, stop: -1 }]), ["live", "synthetic-token", []]);
   db.close();
 });
 
