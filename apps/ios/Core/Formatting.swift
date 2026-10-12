@@ -140,7 +140,7 @@ enum Format {
 }
 
 enum SiteDay {
-    // 「今天」按站点时区算，不按手机所在时区。源：src/lib/site.ts#site（`timezone` 字段）
+    // 「今天」按站点时区算，不按手机所在时区。源：shared/site.ts#site（`timezone` 字段）
     static let timeZone = TimeZone(identifier: "Asia/Shanghai")!
 
     static func string(_ date: Date) -> String {
