@@ -3,6 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-09-08"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = false
+upload_source_maps = true
 
 [triggers]
 crons = ["* * * * *"]
@@ -13,8 +14,6 @@ APPLE_MUSIC_STOREFRONT = "cn"
 CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
 SITE_WORKER_TAG = "f5d09e0840d64b7eb77e4a090db0a82a"
 SITE_ANALYTICS_SITES = '{"lyjw.me":"cd75b97259324a95b0a0ef6e90df3997","lyjw131.com":"e9e4cec850db4121a312b0616e77c277"}'
-SENTRY_CRON_CHECKINS = "false"
-SENTRY_DSN = "https://23b24c339292701f7b84adea24780773@o4511888459890688.ingest.us.sentry.io/4512164070948864"
 
 [[services]]
 binding = "CORE"
@@ -38,8 +37,12 @@ binding = "HISTORY"
 database_name = "lyjwpage-history"
 database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 
-[version_metadata]
-binding = "CF_VERSION_METADATA"
-
 [observability]
+enabled = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
+
+[observability.issues]
 enabled = true

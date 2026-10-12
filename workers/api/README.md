@@ -24,7 +24,7 @@
 - `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，状态端点按 loader 表通用分发。StateHub 提交可见性屏障不单独发 RPC，由每次 `StateHub.publicRead` 随读取一起过；空的 StateHub 直接以空状态回应。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层（`layer: "lag"`）的端点只读 `LAG` KV，写入方也不经 `commitIngest()` 队列，不发读取，也就不过屏障、不唤醒 StateHub（本地开着 `DEV_OVERRIDES` 时要先查 DO 里的注入，那次读取照常过屏障）；下面的按参数查询同样不过。
 - `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询，结果只由参数决定，不过公开读屏障。它们是给网页播放器按任意曲目查的按需端点，也是读取路径上唯一会现查 Apple 的入口；结果缓存在 `APPLE_CACHE` KV。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
 - `src/storage-driver.ts`：StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
-- `src/ports.ts`：入口加载时把本 Worker 的实现装进 `shared/` 的端口：存储（`shared/storage.ts#installStorage`）、可滞后层读取（`shared/lag.ts#installLagReader`，读 `LAG` KV）、Apple 结果缓存（`shared/apple-cache.ts#installAppleCache`，读 `APPLE_CACHE`）、Apple Music 凭据（`shared/apple-music-auth.ts#installAppleMusicAuth`）。厂商状态、GitHub、站点、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，站点与 Cloudflare 两条按名字把几条键拼成一份。
+- `src/ports.ts`：入口加载时把本 Worker 的实现装进 `shared/` 的端口：存储（`shared/storage.ts#installStorage`）、可滞后层读取（`shared/lag.ts#installLagReader`，读 `LAG` KV）、Apple 结果缓存（`shared/apple-cache.ts#installAppleCache`，读 `APPLE_CACHE`）、Apple Music 凭据（`shared/apple-music-auth.ts#installAppleMusicAuth`）。厂商状态、GitHub、站点、Cloudflare、站点健康这几条端点只读采集 Worker 写的那几条键，站点与 Cloudflare 两条按名字把几条键拼成一份。
 - `src/public-status.ts`：具名入口 `PublicStatus`，只接受公开状态登记表中的精确路径，复用浏览器的公开模型；不提供凭据、写入或按参数查询。契约在 `shared/public-status.ts`。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
 - `src/origin-worker.ts` 的 AI 路由：经 `AI_SERVICE` 转发至 [AI Worker](../ai/README.md)，范围由根目录 `shared/ai-paths.ts#AI_HTTP_PATHS` 限定。
@@ -419,22 +419,21 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 
 **只在翻转时报**：翻转状态是 LAG KV 里的一条 `freshness-watch:v1`（`{ updatedAt, data: { <来源>: "fresh" | "stale" } }`），只在有来源翻转时整份写一次；没有记录的来源按新鲜算，所以首次部署时已经断着的来源会报一次。先写状态再发事件，写失败这一轮不发、下一轮重判。
 
-**事件格式**：每次翻转一条 Sentry 消息，进 `api-worker` 项目：
+**事件格式**：每次翻转一条日志（`src/index.ts#reportFreshness`），进 Workers Observability 的服务 `api`：
 
 | 字段 | 断流 | 恢复 |
 | --- | --- | --- |
 | 消息 | `Feed stale: <来源>` | `Feed recovered: <来源>` |
-| level | `warning` | `info` |
-| tag | `freshness.source=<来源>`、`freshness.state=stale` | 同左，`freshness.state=recovered` |
-| fingerprint | `["freshness", <来源>, "stale"]` | `["freshness", <来源>, "recovered"]` |
-| extra | `lastSeenAt`（ISO）、`ageMinutes`、`thresholdMinutes` | 同左 |
+| 级别 | `console.error` | `console.info` |
+| 第二个参数（JSON） | `source`、`lastSeenAt`（ISO）、`ageMinutes`、`thresholdMinutes` | 同左 |
 
-每个来源的断流、恢复各归成一个 issue，告警规则按 tag 过滤，配在 Sentry 控制台（仓库外）。
+断流是 error 级，Workers Issues 按消息归组，每个来源一条；恢复只是 info 日志，不进 Issues。告警走 Issues 自动化，配在 Cloudflare 控制台（仓库外）。
 
 ### cron 失败口径
 
-- StateHub 整个调不通（`pulseTick` 抛错）：这一轮抛给 `Sentry.withMonitor`，按失败报到，`withSentry` 同时记一条异常。监控 `failureIssueThreshold` 见 `src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`。
-- 子步骤失败（归档、评分、断流检测）：只打 `console.warn` 并记一条 `warning` 级异常（tag `cron.step=pulse-archive | pulse-score | freshness-watch`），这一轮照常报 ok。取舍：站点「API」在线行读的就是这个监控，子步骤坏了 API 本身仍在服务，不该让在线行闪；子步骤的故障靠事件看。StateHub 内部 `pulseTick` 里读归档快照、领评分任务各自兜底，只记 warn，不算 StateHub 调不通。
+- 每轮跑完（成功或抛错）都在 D1 `health_buckets` 记一次心跳（`shared/health.ts#recordCheck`，系列 `HEARTBEAT_SERIES`，时刻取排定时刻）；Preview 与关着归档的环境不记。站点「API」在线行由采集 Worker 的 `site-health` 任务按这份记录汇总，漏跑的那几轮也算失败。
+- StateHub 整个调不通（`pulseTick` 抛错）：这一轮记失败心跳，异常照常抛出，运行时记成未捕获异常进 Workers Issues。
+- 子步骤失败（归档、评分、断流检测）：只记一条 `console.error("[cron-step] <步骤>", error)`，这一轮照常记成功心跳。取舍：子步骤坏了 API 本身仍在服务，不该让在线行闪；子步骤的故障靠 Issues 看。StateHub 内部 `pulseTick` 里读归档快照、领评分任务各自兜底，只记 warn，不算 StateHub 调不通。
 
 ## 配置与部署
 
@@ -456,7 +455,7 @@ pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY -c wrang
 
 AI 模型、验人、对话签名与 issue 提交凭据见 [AI Worker](../ai/README.md#配置与部署)，不配在本 Worker 的生产配置中。
 
-外部数据的令牌（GitHub、Cloudflare、Sentry、PageSpeed）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。PSN 登录在 `reporters/playstation-reporter` 的数据卷里。
+外部数据的令牌（GitHub、Cloudflare、PageSpeed）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。PSN 登录在 `reporters/playstation-reporter` 的数据卷里。
 
 站点配置 `PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
 上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点。PlayStation 的游戏数据也走这一条：`reporters/playstation-reporter` POST 原始信封。agents-reporter 按此源公开的 `/api/status/coding/now` 判断 agent 在不在用来调频；server-reporter 节奏固定，PlayStation 按局域网发现包调频；上报器都不读 `/count`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
@@ -520,7 +519,7 @@ SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 ## 外部数据卡片（可滞后层）
 
-厂商状态、GitHub 贡献日历与仓库统计、站点、Cloudflare Workers、Sentry 这几条端点的数据都由采集 Worker
+厂商状态、GitHub 贡献日历与仓库统计、站点、Cloudflare Workers、站点健康这几条端点的数据都由采集 Worker
 （`workers/collector`）按各自节奏拉取、写进可滞后层 KV（`shared/lag.ts` 的键表），这里的公开端点**只读**：
 不持有任何外部令牌、不在读路径上现拉、不推送。每条都带写入方最后一次成功取到的时刻，信封里给 `updatedAt`；
 过没过时由浏览器按 `shared/freshness.ts` 里各块的阈值判断，过了那一格回到「—」或 Unavailable，服务端不下结论。
@@ -534,10 +533,10 @@ SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md
 | `/api/status/github-repo` | `github-repo:v1` | `GITHUB_REPO_STALE_MS` |
 | `/api/status/site-deployments` | `site-deployments:v1` + `site-analytics:v1` + `pagespeed:v1` | 部署 `SITE_DEPLOYMENTS_STALE_MS`、访问量 `SITE_ANALYTICS_STALE_MS`、PageSpeed `PAGESPEED_STALE_MS` |
 | `/api/status/cloudflare-workers` | `cloudflare-metrics:v1` + `cloudflare-deployments:v1`，按 Worker 名拼 | 统计 `CLOUDFLARE_METRICS_STALE_MS`、部署 `CLOUDFLARE_DEPLOYMENTS_STALE_MS` |
-| `/api/status/sentry` | `sentry:v1` | 各块 `SENTRY_STALE_MS` |
+| `/api/status/health` | `health:v1` | 各块 `HEALTH_STALE_MS` |
 
 几份拼起来的端点，各部分带自己的采集时刻（站点部署的 `fetchedAt`、访问量与指标每组的 `fetchedAt`、PageSpeed 最近一轮的
-`fetchedAt`；Cloudflare 统计的 `fetchedAt` 与部署的 `deploymentsFetchedAt`；Sentry 各块的 `blockAt`），卡片分别判过期。
+`fetchedAt`；Cloudflare 统计的 `fetchedAt` 与部署的 `deploymentsFetchedAt`；健康各块的 `blockAt`），卡片分别判过期。
 信封的 `updatedAt` 取最常刷新的那一份，用来决定挂载时要不要补取一次，也是后续轮询排期的依据（`src/lib/poll-schedule.ts` 的 `nextLagDelay`）。
 
 ### Workers 统计
@@ -563,12 +562,11 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 **每一格是滚动窗口内各轮实测的中位数**（窗口长度与样本上限见 `workers/collector/src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），一轮异常被旁边几轮压住；
 载荷里的 `samples` 与 `start` 是参与的轮数和最早一轮的时间。
 
-### Sentry
+### 站点健康
 
-四块数据：`uptime`（对 `https://lyjw.me/api/version` 的在线探测，配置见 [仓库外事实](../../docs/ops-facts.md)）、`heartbeat`（本 Worker cron 的
-心跳监控 `api-minute-cron`，只算 production；cron 每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/sentry.ts`，站点卡片上的文案也读它）分钟一轮，每轮都报到，监控的 crontab 与 wrangler 触发器同是 `src/cron-heartbeat.ts#CRON_SCHEDULE`；slug 里的 minute 不改，改了丢监控历史）、
-`errors`（production 报错：`site` 是站点项目，`worker` 是 api 与采集 Worker 两个项目合计）、
-`vitals`（站点 production 的 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
+四块数据，由采集 Worker 的 `site-health` 任务汇总（口径见 [采集 Worker README](../collector/README.md)）：`uptime`（采集 Worker 每分钟对 `shared/health.ts#SITE_UPTIME_URL` 的探测）、`heartbeat`（本 Worker cron 的心跳，见上文「cron 失败口径」；cron 每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/health.ts`，站点卡片上的文案也读它）分钟一轮，wrangler 触发器同是 `src/cron-heartbeat.ts#CRON_SCHEDULE`）、
+`errors`（Workers Observability 的生产报错数：`site` 是 site Worker 含浏览器转来的错误，`worker` 是 api、ai、ingress、collector 合计；另带 Workers Issues 的 active 数）、
+`vitals`（Web Analytics 真实访客 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。
 
 ## 常驻上报器账本

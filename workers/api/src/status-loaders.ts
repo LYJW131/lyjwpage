@@ -15,7 +15,7 @@ import { getQuestNow } from "./quest";
 import { getPowerBankSnapshot } from "./powerbank";
 import { getPulseStatus } from "./pulse";
 import { getReportersStatus } from "./reporters";
-import { getSentryStatus } from "@shared/sentry-status";
+import { getHealth } from "@shared/health";
 import { getServerSnapshot } from "./server";
 import type { EndpointViewKey, StatusViewKey } from "@shared/status-views";
 import type { LagResult } from "@shared/lag-result";
@@ -75,7 +75,7 @@ export const statusLoaders = {
   githubRepo: { endpoint: unparam(getGithubRepo) },
   cloudflareWorkers: { endpoint: unparam(getCloudflareWorkers) },
   siteDeployments: { endpoint: unparam(getSiteDeployments) },
-  sentry: { endpoint: unparam(getSentryStatus) },
+  health: { endpoint: unparam(getHealth) },
   reporters: { endpoint: unparam(getReportersStatus) },
   pulse: { endpoint: unparam(() => getPulseStatus()) },
 } satisfies { [K in StatusViewKey]: EndpointLoader<StatusPayloads[K]> };

@@ -1,5 +1,4 @@
 import { renderToReadableStream } from "react-dom/server";
-import * as Sentry from "@sentry/cloudflare";
 import { ServerRouter, type EntryContext } from "react-router";
 
 import { NO_STORE } from "@/lib/site-policy";
@@ -19,7 +18,6 @@ export default async function handleRequest(
         if (shellReady) responseHeaders.set("Cache-Control", NO_STORE);
         else responseStatusCode = 500;
         console.error(error);
-        Sentry.captureException(error);
       },
     },
   );

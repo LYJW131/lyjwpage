@@ -11,14 +11,12 @@ export type JobContext = {
 export type JobResult = {
   status: "ok" | "skipped";
   detail?: string;
-  failing?: string;
 };
 
 export type Job = {
   name: ActiveCollectorJobName;
   everyMinutes: number;
   offset: number;
-  maxRuntimeMinutes: number;
   // Worker 同时等待响应头的连接数有限，短超时任务需先启动，避免预算耗在排队上。
   headStart?: boolean;
   run(ctx: JobContext): Promise<JobResult>;

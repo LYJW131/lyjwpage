@@ -1,8 +1,8 @@
 import { MCP_PATH } from "@shared/mcp";
 
 import { IMAGE_PATH_PREFIX } from "@shared/asset-url";
+import { ERROR_RELAY_PATH } from "@/lib/error-relay";
 import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
-import { SENTRY_RELAY_PREFIX } from "@shared/sentry";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
 
 export const HOME_CACHE_CONTROL =
@@ -30,7 +30,7 @@ export const NO_STORE = "no-store";
 
 export type GatewayKind =
   | "mcp"
-  | "sentry-relay"
+  | "error-relay"
   | "image-proxy"
   | "image-object"
   | "site-asset"
@@ -126,9 +126,7 @@ export function imageObjectHeaders(
 
 export function classifyGatewayRequest(method: string, pathname: string): GatewayClass {
   if (pathname === MCP_PATH || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "mcp" };
-  if (pathname === SENTRY_RELAY_PREFIX || pathname.startsWith(`${SENTRY_RELAY_PREFIX}/`)) {
-    return { kind: method === "POST" ? "sentry-relay" : "invalid" };
-  }
+  if (pathname === ERROR_RELAY_PATH) return { kind: method === "POST" ? "error-relay" : "invalid" };
   if (method !== "GET" && method !== "HEAD") return { kind: "invalid" };
   if (pathname.endsWith(".data")) return { kind: "render" };
   if (pathname === IMAGE_PROXY_PATH) return { kind: "image-proxy" };

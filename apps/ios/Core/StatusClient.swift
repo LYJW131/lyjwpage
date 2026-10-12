@@ -89,7 +89,7 @@ enum Status {
     static let githubRepo = StatusEndpoint<GithubRepoPayload>(path: "/api/status/github-repo")
     static let vercelDeployments = StatusEndpoint<VercelDeploymentsPayload>(path: "/api/status/vercel-deployments")
     static let cloudflareWorkers = StatusEndpoint<CloudflareWorkersPayload>(path: "/api/status/cloudflare-workers")
-    static let sentry = StatusEndpoint<SentryStatusPayload>(path: "/api/status/sentry")
+    static let health = StatusEndpoint<HealthPayload>(path: "/api/status/health")
     static let reporters = StatusEndpoint<ReportersPayload>(path: "/api/status/reporters")
     static let pulse = StatusEndpoint<PulsePayload>(path: "/api/status/pulse")
 }

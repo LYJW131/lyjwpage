@@ -150,8 +150,8 @@ test("一条回复读视图有总额度，读过的不再读，同一轮的几�
   const read = newLedger();
   const first = claimViews(["desktop", "server", "charger", "pulse"], read);
   assert.deepEqual(first, { views: ["desktop", "server", "charger", "pulse"], notes: [] });
-  const second = claimViews(["pulse", "coding", "limits", "sentry", "reporters"], read);
-  assert.deepEqual(second.views, ["coding", "limits", "sentry", "reporters"]);
+  const second = claimViews(["pulse", "coding", "limits", "health", "reporters"], read);
+  assert.deepEqual(second.views, ["coding", "limits", "health", "reporters"]);
   assert.match(second.notes.join(" "), /Already read.*pulse/);
   const third = claimViews(["watching", "desktop"], read);
   assert.deepEqual(third.views, []);

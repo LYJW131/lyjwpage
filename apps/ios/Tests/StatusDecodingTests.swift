@@ -30,7 +30,7 @@ import Testing
         try expectData(Status.githubRepo, "github-repo")
         try expectData(Status.vercelDeployments, "vercel-deployments")
         try expectData(Status.cloudflareWorkers, "cloudflare-workers")
-        try expectData(Status.sentry, "sentry")
+        try expectData(Status.health, "health")
         try expectData(Status.reporters, "reporters")
         try expectData(Status.pulse, "pulse")
 
@@ -61,7 +61,7 @@ import Testing
         "watching-now", "watching-now-paused", "playing-now-pragmata", "desktop-claude-code",
         "desktop-ghostty", "coding-multi-source", "coding-source-error", "coding-now-active",
         "coding-year", "limits-steady", "agent-status-degraded", "agent-status-boundary",
-        "activity-afternoon", "workouts", "server-traffic", "sentry-steady", "reporters-steady",
+        "activity-afternoon", "workouts", "server-traffic", "health-steady", "reporters-steady",
         "pulse-busy-day", "pulse-empty", "pulse-zero-lanes", "pulse-tokens-idle",
     ])
     func devFixtureDecodes(name: String) throws {
@@ -81,7 +81,7 @@ import Testing
         case let n where n.hasPrefix("activity"): try expectData(Status.activity, data)
         case "workouts": try expectData(Status.workouts, data)
         case let n where n.hasPrefix("server"): try expectData(Status.server, data)
-        case let n where n.hasPrefix("sentry"): try expectData(Status.sentry, data)
+        case let n where n.hasPrefix("health"): try expectData(Status.health, data)
         case let n where n.hasPrefix("reporters"): try expectData(Status.reporters, data)
         case let n where n.hasPrefix("pulse"): try expectData(Status.pulse, data)
         default: Issue.record("没登记 \(name) 用哪个端点解码")

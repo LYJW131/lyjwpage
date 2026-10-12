@@ -37,6 +37,5 @@ export const providerStatusJob: Job = {
   name: "provider-status",
   everyMinutes: 1,
   offset: 0,
-  maxRuntimeMinutes: 2,
   run: ({ env }) => refreshProviderStatus({ lag: env.LAG, core: env.CORE }),
 };

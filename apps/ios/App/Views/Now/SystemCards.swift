@@ -289,10 +289,10 @@ struct SiteCard: View {
                 if let totals = store.githubRepo?.totals {
                     Metric(value: Format.integer(Double(totals.commits)), caption: "Commits")
                 }
-                if let uptime = store.sentry?.uptime?.availability30d {
+                if let uptime = store.health?.uptime?.availability30d {
                     Metric(value: Format.percent(uptime * 100, digits: 2), caption: "30-day uptime")
                 }
-                if let errors = store.sentry?.errors {
+                if let errors = store.health?.errors {
                     Metric(value: Format.integer(Double((errors.site?.count12h ?? 0) + (errors.worker?.count12h ?? 0))), caption: "Errors (12h)")
                 }
             }

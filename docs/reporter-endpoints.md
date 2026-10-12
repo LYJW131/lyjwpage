@@ -115,7 +115,7 @@ prepare 后交给 `StateCore.commitIngest`，`StateCore.ingest` 删除；此处�
 
 自定义域名 `ingest.homepage.lyjw.llc` 写在 `workers/ingress/wrangler.toml`，由 ingress 的部署从 `api` 接管（Access 应用跟着
 主机名走）。切换时按 api → ingress → collector 手动部署一遍，再推 main。待部署核验：七个来源与 OTLP 的真实上报 202、
-一次部署通知的 `delivered`、Sentry `api-worker` 项目里带 `worker:ingress` 标签的事件。
+一次部署通知的 `delivered`、Workers Observability 里服务 `ingress` 的日志。
 
 ## 2026-09-29 在线人数并回推送房间
 

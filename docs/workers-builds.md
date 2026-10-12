@@ -24,7 +24,7 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 `api` 是现有公开 API 域名的入口，AI 路径由 `shared/ai-paths.ts#AI_HTTP_PATHS` 限定，经 `AI_SERVICE` 原样转发到 `ai`，不缓存或聚合流式正文。`ai` 不配置生产域名，关闭默认 `workers.dev` 地址与 `preview_urls`。`PUBLIC_STATUS` 只绑定 api 的 `PublicStatus`，不是含写操作和凭据方法的 `StateCore`。
 
-`site` 在根目录 `wrangler.jsonc`：`SITE_ENV=production`，渲染 `RenderedSite`、状态快照 `StatusSnapshot`、图片 `ImageVariants` 三个带平台缓存的入口，默认入口分流 MCP 转发、Sentry `/relay`、`/image` 优化、`/img` R2 对象与静态资产。绑定含 `PUBLIC_STATUS`（→ api `PublicStatus`）、`IMAGES`、R2 `IMAGE_OBJECTS`（`lyjw-homepage`）与 `ASSETS`；Sentry DSN 写在 `[vars]`，构建期 `SENTRY_AUTH_TOKEN` 配在 Builds 环境变量里，仅用于上传 sourcemap。api 侧经 `SITE_CACHE`（→ site `RenderedSite`）做私有标签失效，见 `shared/site-cache.ts`。生产域名切换在 Builds 之外执行，见 [ops-facts](./ops-facts.md) 的待办行。
+`site` 在根目录 `wrangler.jsonc`：`SITE_ENV=production`，渲染 `RenderedSite`、状态快照 `StatusSnapshot`、图片 `ImageVariants` 三个带平台缓存的入口，默认入口分流 MCP 转发、浏览器错误中转 `/relay`、`/image` 优化、`/img` R2 对象与静态资产。绑定含 `PUBLIC_STATUS`（→ api `PublicStatus`）、`IMAGES`、R2 `IMAGE_OBJECTS`（`lyjw-homepage`）与 `ASSETS`；`upload_source_maps` 只上传 Worker 包的 source map（`vite.config.ts` 只给 ssr 环境出 map），浏览器包不出 map。api 侧经 `SITE_CACHE`（→ site `RenderedSite`）做私有标签失效，见 `shared/site-cache.ts`。生产域名切换在 Builds 之外执行，见 [ops-facts](./ops-facts.md) 的待办行。
 
 切换顺序（远端完成到哪一步见 [仓库外事实](./ops-facts.md)）：
 
@@ -50,7 +50,7 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 预览绑定由 api 配置的 `[previews]` 段提供，状态、聊天与构建 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
 
-`scripts/build.mjs` 在预览构建里等待本分支 api Preview，`scripts/preview-backend.mjs#isMatchingPreview` 只接受 revision 与 `WORKERS_CI_COMMIT_SHA` 一致且状态读取就绪的地址。等待上限见 `WAIT_MS`；等不到匹配时构建直接失败，预览构建永不回退生产后端。选中的地址既是构建期的 `PREVIEW_BACKEND_URL`，也是运行时的预览后端，构建成功后冻结在 `build/site-preview.json`；`scripts/deploy-site-preview.mjs`（`pnpm preview:deploy`）只按这份冻结记录发布 `site` 的 Preview，不重查后端。预览构建强制清空 `SENTRY_AUTH_TOKEN`、`PUBLIC_CF_WEB_ANALYTICS_TOKENS`，不上传 sourcemap、不带生产凭据。
+`scripts/build.mjs` 在预览构建里等待本分支 api Preview，`scripts/preview-backend.mjs#isMatchingPreview` 只接受 revision 与 `WORKERS_CI_COMMIT_SHA` 一致且状态读取就绪的地址。等待上限见 `WAIT_MS`；等不到匹配时构建直接失败，预览构建永不回退生产后端。选中的地址既是构建期的 `PREVIEW_BACKEND_URL`，也是运行时的预览后端，构建成功后冻结在 `build/site-preview.json`；`scripts/deploy-site-preview.mjs`（`pnpm preview:deploy`）只按这份冻结记录发布 `site` 的 Preview，不重查后端。预览构建强制清空 `PUBLIC_CF_WEB_ANALYTICS_TOKENS`，不带生产凭据。
 
 为了让只改前端或只改 AI 的分支也有同提交后端可用，api 的非生产分支构建（Builds 配置里的 `previews_base_config`）另配包含路径：同时覆盖前端、状态与 AI 依赖（`src/*`、`shared/*`、`workers/api/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单），只排除 ingress 独有的 `shared/ingest/*`；生产配置的监视路径不变。
 

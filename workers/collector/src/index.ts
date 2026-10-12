@@ -1,4 +1,3 @@
-import * as Sentry from "@sentry/cloudflare";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
 
@@ -6,26 +5,22 @@ import type { Env } from "./env";
 import { runNamed, runScheduled } from "./registry";
 import { installCollectorPorts } from "./ports";
 import { bindEnv } from "./runtime";
-import { cronMonitor } from "./schedule";
-import { reportJobFailure, sentryOptions } from "./sentry";
 
 export type { Env } from "./env";
 
 installCollectorPorts();
 
-class CollectorBase extends WorkerEntrypoint<Env> implements CollectorRpc {
+export class Collector extends WorkerEntrypoint<Env> implements CollectorRpc {
   async refresh(jobs: string[]): Promise<CollectorJobOutcome[]> {
-    return runNamed(bindEnv(this.env), Array.isArray(jobs) ? jobs.filter((job) => typeof job === "string") : [], { report: reportJobFailure });
+    return runNamed(bindEnv(this.env), Array.isArray(jobs) ? jobs.filter((job) => typeof job === "string") : []);
   }
 }
-
-export const Collector = Sentry.withSentry(sentryOptions, CollectorBase);
 
 const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status: 404 });
 
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await runScheduled(bindEnv(env), controller.scheduledTime, { monitor: cronMonitor(env, Sentry.withMonitor), report: reportJobFailure });
+    await runScheduled(bindEnv(env), controller.scheduledTime);
   },
 
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -46,4 +41,4 @@ const collector = {
   },
 };
 
-export default Sentry.withSentry(sentryOptions, collector);
+export default collector;

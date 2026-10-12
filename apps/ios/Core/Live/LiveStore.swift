@@ -30,7 +30,7 @@ final class LiveStore {
     var githubRepo: GithubRepoPayload?
     var vercelDeployments: VercelDeploymentsPayload?
     var cloudflareWorkers: CloudflareWorkersPayload?
-    var sentry: SentryStatusPayload?
+    var health: HealthPayload?
     var reporters: ReportersPayload?
     var pulse: PulsePayload?
     var siteVersion: AppVersionPayload?
@@ -166,7 +166,7 @@ final class LiveStore {
         case .githubRepo: return try apply(data, Status.githubRepo) { self.githubRepo = $0 }
         case .vercelDeployments: return try apply(data, Status.vercelDeployments) { self.vercelDeployments = $0 }
         case .cloudflareWorkers: return try apply(data, Status.cloudflareWorkers) { self.cloudflareWorkers = $0 }
-        case .sentry: return try apply(data, Status.sentry) { self.sentry = $0 }
+        case .health: return try apply(data, Status.health) { self.health = $0 }
         case .reporters: return try apply(data, Status.reporters) { self.reporters = $0 }
         case .pulse: return try apply(data, Status.pulse) { self.pulse = $0 }
         case .version:
@@ -289,7 +289,7 @@ extension FeedKey {
         case .githubRepo: Status.githubRepo.path
         case .vercelDeployments: Status.vercelDeployments.path
         case .cloudflareWorkers: Status.cloudflareWorkers.path
-        case .sentry: Status.sentry.path
+        case .health: Status.health.path
         case .reporters: Status.reporters.path
         case .pulse: Status.pulse.path
         case .version: StatusClient.versionURL.path

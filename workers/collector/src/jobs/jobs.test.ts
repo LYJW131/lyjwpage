@@ -3,18 +3,19 @@ import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 import type { AgentStatusPayload, AgentStatusRow } from "@shared/agent-status-types";
-import { PAGESPEED_TIMEOUT_MS } from "../pagespeed";
-import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@shared/sentry-status";
-import type { SentryStatusPayload } from "@shared/sentry-status-types";
+import { HEARTBEAT_SERIES, UPTIME_SERIES, recordCheck } from "@shared/health";
+import type { HealthPayload } from "@shared/health-types";
 import { ContributorsUnavailable } from "@shared/github-repo";
 import type { GithubRepoPayload } from "@shared/types";
 
 import { MemoryKv } from "../testing/memory-kv";
+import { historyDb } from "../testing/sqlite-history";
 import type { Env } from "../env";
 import { mergeRepoStats, refreshGithubRepo } from "./github-repo";
-import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
+import { siteHealthJob } from "./site-health";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
+import { probeSite, uptimeProbeJob } from "./uptime-probe";
 
 const noEnv = {} as Env;
 const now = 1_700_000_000_000;
@@ -104,25 +105,66 @@ test("repo stats keep the good half of a partial round", () => {
   assert.equal(mergeRepoStats({ ok: false, totals: { commits: 434, additions: 1, deletions: 1 } }, null), null);
 });
 
-test("sentry status carries a failed block with its own time, and only for a while", async () => {
-  const lag = new MemoryKv();
-  const errors = { site: { count12h: 1, count7d: 2, unresolved: 0 }, worker: { count12h: 3, count7d: 4, unresolved: 1 } };
-  const previous: SentryStatusPayload = { fetchedAt: 1, uptime: null, heartbeat: null, errors, vitals: null };
-  await writeLag(lag, LAG_KEYS.sentry, previous, 1);
-  const vitals = { lcpP75Ms: 1800, inpP75Ms: null, clsP75: null, fcpP75Ms: null, ttfbP75Ms: null, samples: 3 };
-  const merged = mergeSentryStatus({ fetchedAt: 2, uptime: null, heartbeat: null, errors: null, vitals }, previous);
-  assert.deepEqual(merged, { fetchedAt: 2, uptime: null, heartbeat: null, errors, vitals, blockAt: { errors: 1, vitals: 2 } });
+const HEALTH_SITES = JSON.stringify({ "lyjw.me": "a".repeat(32), "lyjw131.com": "b".repeat(32) });
 
-  const later = mergeSentryStatus({ fetchedAt: SENTRY_BLOCK_CARRY_MS - 1, uptime: null, heartbeat: null, errors: null, vitals }, merged);
-  assert.equal(later.blockAt?.errors, 1);
-  assert.deepEqual(later.errors, errors);
-  const expired = mergeSentryStatus({ fetchedAt: SENTRY_BLOCK_CARRY_MS + 1, uptime: null, heartbeat: null, errors: null, vitals }, later);
-  assert.equal(expired.errors, null);
-  assert.equal(expired.blockAt?.errors, undefined);
+function cloudflareHealthFetch(options: { vitalsDown?: boolean } = {}) {
+  return async (url: string | URL, init?: RequestInit) => {
+    const path = new URL(String(url)).pathname;
+    if (path.endsWith("/graphql")) {
+      if (options.vitalsDown) return new Response("down", { status: 503 });
+      return Response.json({ data: { viewer: { accounts: [{ vitals: [{ count: 44, quantiles: {
+        largestContentfulPaintP75: 609_000, interactionToNextPaintP75: 48_000, cumulativeLayoutShiftP75: 0.001,
+        firstContentfulPaintP75: 588_000, timeToFirstByteP75: 0,
+      } }] }] } } });
+    }
+    if (path.endsWith("/issues/summary")) {
+      const service = new URL(String(url)).searchParams.get("service");
+      return Response.json({ success: true, result: { activeIssues: service === "api" ? 2 : 0, activeOccurrences: 0, lastIssue: null, resolvedIssues: 0 } });
+    }
+    const body = JSON.parse(String(init?.body)) as { timeframe: { from: number; to: number } };
+    const week = body.timeframe.to - body.timeframe.from > 86_400_000;
+    const group = (service: string, count: number) => ({ groups: [{ key: "$metadata.service", value: service }], count });
+    return Response.json({ success: true, result: { calculations: [{ aggregates: [
+      group("site", week ? 30 : 3), group("api", week ? 10 : 1), group("collector", week ? 5 : 0), group("other-worker", 99),
+    ] }] } });
+  };
+}
+
+test("uptime probe records scheduled runs only, and a failed fetch counts as down", async (t) => {
+  const { db, all } = historyDb();
+  const env = { HISTORY: db } as unknown as Env;
+  t.mock.method(globalThis, "fetch", async () => new Response("ok"));
+  assert.deepEqual(await uptimeProbeJob.run({ env, now, scheduled: true }), { status: "ok" });
+  await uptimeProbeJob.run({ env, now: now + 60_000, scheduled: false });
+  assert.deepEqual(all("SELECT series, success, failure FROM health_buckets"), [{ series: "site-uptime", success: 1, failure: 0 }]);
+  assert.equal(await probeSite(async () => { throw new TypeError("network"); }), false);
+  assert.equal(await probeSite(async () => new Response("", { status: 502 })), false);
 });
 
-test("pagespeed waits per request for less than the job's runtime budget", () => {
-  assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
+test("site health summarizes D1 checks with Cloudflare errors and vitals, carrying a failed block", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const { db, all } = historyDb();
+  const lag = new MemoryKv();
+  const env = { HISTORY: db, LAG: lag, CLOUDFLARE_METRICS_TOKEN: "t", CLOUDFLARE_ACCOUNT_ID: "a", SITE_ANALYTICS_SITES: HEALTH_SITES } as unknown as Env;
+  await recordCheck(db, HEARTBEAT_SERIES, now - 3 * 60_000, true);
+  await recordCheck(db, UPTIME_SERIES, now - 60_000, false);
+  await recordCheck(db, UPTIME_SERIES, now - 40 * 86_400_000, true);
+  const fetches = t.mock.method(globalThis, "fetch", cloudflareHealthFetch());
+
+  assert.deepEqual(await siteHealthJob.run({ env, now, scheduled: true }), { status: "ok" });
+  const first = (await readLag<HealthPayload>(lag, LAG_KEYS.health))!.data;
+  assert.equal(first.heartbeat?.status, "up");
+  assert.equal(first.uptime?.status, "down");
+  assert.equal(first.uptime?.intervalSeconds, 60);
+  assert.deepEqual(first.errors, { site: { count12h: 3, count7d: 30, unresolved: 0 }, worker: { count12h: 1, count7d: 15, unresolved: 2 } });
+  assert.deepEqual(first.vitals, { lcpP75Ms: 609, inpP75Ms: 48, clsP75: 0.001, fcpP75Ms: 588, ttfbP75Ms: null, samples: 44 });
+  assert.equal(all("SELECT COUNT(*) AS n FROM health_buckets")[0].n, 2, "超出保留期的格子被清掉");
+
+  fetches.mock.mockImplementation(cloudflareHealthFetch({ vitalsDown: true }));
+  assert.deepEqual(await siteHealthJob.run({ env, now: now + 300_000, scheduled: true }), { status: "ok", detail: "vitals carried over" });
+  const second = (await readLag<HealthPayload>(lag, LAG_KEYS.health))!.data;
+  assert.deepEqual(second.vitals, first.vitals);
+  assert.equal(second.blockAt?.vitals, now);
 });
 
 test("site-deployments 缺配置干净跳过，缺哪个报哪个", async (t) => {

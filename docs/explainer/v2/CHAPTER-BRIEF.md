@@ -71,7 +71,7 @@ for (const [k,v] of Object.entries(S.events)) if (v.length) console.log(k.padEnd
 - 别的章的文件；共用文件：`engine.js`、`kit.js`、`film.js`、`plan.js`、`i18n.js`、`index.html`、`score.js`、`tools/`。
 - 不 push，不合 main，不 `git add -A`，不提交 `score.mp3`、截图和联系表。
 - 不运行 mexicat/pdoom-video 的代码；不改上一版讲解片（`docs/explainer/*.js`、`scenes-*.js`）和 `scripts/build-explainer.mjs`。
-- 不上画面的东西见 CONVENTIONS「事实」：隐私判断的判据、Sentry 的组织名和数字、密钥、歌词原文、没重测的延迟、厂商 logo；编码用量不点存储键和模块名。
+- 不上画面的东西见 CONVENTIONS「事实」：隐私判断的判据、站点自检的账号 ID 和数字、密钥、歌词原文、没重测的延迟、厂商 logo；编码用量不点存储键和模块名。
 
 ## 怎么不和别的章撞
 
@@ -89,6 +89,6 @@ for (const [k,v] of Object.entries(S.events)) if (v.length) console.log(k.padEnd
 - **05 电报线**：时间轴只画先后，不标毫秒（代码注释里那几个数没重测）。live 绿第一次在这里出现，只给在线人数。主角那封 listening-now 在这一章到站、卡片翻面。回填节奏、5 分钟兜底的名单按 FACTS §5 和 `src/lib/poll-schedule.ts`，编码卡不举例。
 - **06 两条线路**：在听卡的封面来自 Apple 目录，不走 `/img`；图片举例用 Emby 海报或 Mac 应用图标。不讲发版（归第 10 章「发布」）；转调用本章乐谱的 `chords`。
 - **07 节拍器**：三台的时间都出自 FACTS §7；「人数问不到就当 0」「PS5 关机停在 30 分钟档」「两轮之间至少 55 秒」都要画到。配乐真的换档（全速 → 半速 → 很慢 → 回到全速），BPM 不变。
-- **08 心电图与地层**：Sentry 不出组织名、监控 ID、真实报错标题、可用率数字；令牌只标它实际发出的请求方法（如 `GET`），不声称权限范围。「报到只证明 cron 跑完了」。Coding 的打分窗口按 `shared/pulse-coding.ts`；编码用量新契约进 main 之后先重核 FACTS §3 再写 Coding 那一层。live 绿第二次、也是最后一次出现。
+- **08 心电图与地层**：站点自检不出 Cloudflare 账号 ID、真实报错标题、可用率数字；敲门和报到都记进 D1 的 `health_buckets`，采集 Worker 汇总时只标 `SELECT`，不画令牌、不声称权限范围。「报到只证明 cron 跑完了」。Coding 的打分窗口按 `shared/pulse-coding.ts`；编码用量新契约进 main 之后先重核 FACTS §3 再写 Coding 那一层。live 绿第二次、也是最后一次出现。
 - **11 一首歌的旅程**：要复用各章的画法，等其余各章都交了再做；闪回用各章自己的底。不标延迟。最后一帧和第 00 章第一帧完全相同。
 - **分组与顺序**（每次最多两位作者并行）：先 04+06、05（和编码用量无关，可以马上开）；再 01、07+08（01、08 等编码用量的新契约进 main、FACTS 重核后开）；最后 00+11。

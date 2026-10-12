@@ -38,7 +38,6 @@ writeFileSync(SITE_PREVIEW_MANIFEST_PATH, `${JSON.stringify({ version: 1, mode: 
 
 let backendUrl = null;
 if (preview) {
-  env.SENTRY_AUTH_TOKEN = "";
   env.PUBLIC_CF_WEB_ANALYTICS_TOKENS = "";
   backendUrl = await waitForPreview(previewWorkerOrigin(branch), commit);
   if (!backendUrl) {

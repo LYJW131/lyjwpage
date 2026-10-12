@@ -1,5 +1,3 @@
-import * as Sentry from "@sentry/cloudflare";
-
 import originWorker, { LivePushRoom as LivePushRoomBase, StateHub as StateHubBase } from "./origin-worker";
 import { previewWorkerEnabled } from "./preview";
 import { historyArchiveEnabled, pulseScoringEnabled, type Env } from "./runtime";
@@ -8,20 +6,19 @@ import { PulseScorer, clefDecide } from "./pulse-score";
 import { DevOverrideReader as DevOverrideReaderBase } from "./dev-override-reader";
 import { StateCore as StateCoreBase } from "./state-core";
 import { PublicStatus as PublicStatusBase } from "./public-status";
-import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG } from "./cron-heartbeat";
+import { HEARTBEAT_SERIES, recordCheck } from "@shared/health";
 import { freshnessCheckDue, watchFreshness, type FreshnessEvent } from "./freshness-watch";
 import { installApiPorts } from "./ports";
-import { sentryOptions } from "./sentry";
 import type { PulseTick } from "./state-hub";
 
 installApiPorts();
 
-// Wrangler 迁移按导出名识别 DO；Sentry 包装不能改变这些名称。
-export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry(sentryOptions, LivePushRoomBase);
-export const StateHub = Sentry.instrumentDurableObjectWithSentry(sentryOptions, StateHubBase);
-export const StateCore = Sentry.withSentry(sentryOptions, StateCoreBase);
-export const PublicStatus = Sentry.withSentry(sentryOptions, PublicStatusBase);
-export const DevOverrideReader = Sentry.withSentry(sentryOptions, DevOverrideReaderBase);
+// Wrangler 迁移按导出名识别 DO，这些导出名不能改。
+export const LivePushRoom = LivePushRoomBase;
+export const StateHub = StateHubBase;
+export const StateCore = StateCoreBase;
+export const PublicStatus = PublicStatusBase;
+export const DevOverrideReader = DevOverrideReaderBase;
 export type { Env } from "./runtime";
 
 const apiWorker = {
@@ -31,11 +28,20 @@ const apiWorker = {
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
     // Preview 仍可能连着共享归档，必须独立禁止 cron 写入。
     if (previewWorkerEnabled()) return;
-    await Sentry.withMonitor(CRON_MONITOR_SLUG, () => runScheduled(env, event.scheduledTime), CRON_MONITOR_CONFIG);
+    let ok = false;
+    try {
+      await runScheduled(env, event.scheduledTime);
+      ok = true;
+    } finally {
+      if (historyArchiveEnabled(env)) {
+        await recordCheck(env.HISTORY!, HEARTBEAT_SERIES, event.scheduledTime, ok)
+          .catch((error: unknown) => console.error("[cron-heartbeat]", error));
+      }
+    }
   },
 };
 
-// 只有 StateHub 整个调不通才让这一轮按失败报到；子步骤失败只记 warn 和一条事件，站点的 API 在线行不跟着闪。
+// 只有 StateHub 整个调不通才让这一轮记成失败心跳；子步骤失败只记一条错误日志，站点的 API 在线行不跟着闪。
 async function runScheduled(env: Env, scheduledTime: number): Promise<void> {
   const archiving = historyArchiveEnabled(env);
   const scoring = pulseScoringEnabled(env);
@@ -81,17 +87,14 @@ function tickShape({ archive, score }: PulseTick) {
 }
 
 function stepFailed(step: string, error: unknown): void {
-  console.warn(`[${step}]`, error);
-  Sentry.captureException(error, { level: "warning", tags: { "cron.step": step } });
+  console.error(`[cron-step] ${step}`, error);
 }
 
+// 断流记 error 级，Workers Issues 按来源各开一条；恢复只记 info，不进 Issues。
 function reportFreshness({ source, state, lastSeenAt, ageMs, thresholdMs }: FreshnessEvent): void {
-  Sentry.captureMessage(state === "stale" ? `Feed stale: ${source}` : `Feed recovered: ${source}`, {
-    level: state === "stale" ? "warning" : "info",
-    tags: { "freshness.source": source, "freshness.state": state },
-    extra: { lastSeenAt: new Date(lastSeenAt).toISOString(), ageMinutes: Math.round(ageMs / 60_000), thresholdMinutes: thresholdMs / 60_000 },
-    fingerprint: ["freshness", source, state],
-  });
+  const detail = { source, lastSeenAt: new Date(lastSeenAt).toISOString(), ageMinutes: Math.round(ageMs / 60_000), thresholdMinutes: thresholdMs / 60_000 };
+  if (state === "stale") console.error(`Feed stale: ${source}`, JSON.stringify(detail));
+  else console.info(`Feed recovered: ${source}`, JSON.stringify(detail));
 }
 
-export default Sentry.withSentry(sentryOptions, apiWorker);
+export default apiWorker;

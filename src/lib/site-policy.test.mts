@@ -31,10 +31,9 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/github-callback.data"), { kind: "render" });
   assert.deepEqual(classifyGatewayRequest("GET", "/mcp"), { kind: "mcp" });
   assert.deepEqual(classifyGatewayRequest("POST", "/mcp/tools/call"), { kind: "mcp" });
-  assert.deepEqual(classifyGatewayRequest("POST", "/relay/api/1/envelope/"), {
-    kind: "sentry-relay",
-  });
-  assert.deepEqual(classifyGatewayRequest("GET", "/relay/api/1/envelope/"), { kind: "invalid" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/relay"), { kind: "error-relay" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/relay"), { kind: "invalid" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/relay/api/1/envelope/"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("POST", "/"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("GET", "/image"), { kind: "image-proxy" });
   assert.deepEqual(classifyGatewayRequest("GET", "/manifest.webmanifest"), { kind: "render" });

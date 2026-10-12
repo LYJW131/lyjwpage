@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { reactRouter } from "@react-router/dev/vite";
 import babel from "@rolldown/plugin-babel";
-import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 
@@ -58,26 +57,14 @@ export default defineConfig(({ command, mode }) => {
       esmEnvServerNotBrowser(),
       reactRouter(),
       babel({ presets: [reactCompilerPreset()] }),
-      ...(env.SENTRY_AUTH_TOKEN
-        ? [
-            sentryVitePlugin({
-              org: "yangjunwei-liang",
-              project: "lyjwpage",
-              authToken: env.SENTRY_AUTH_TOKEN,
-              release: { name: commitSha || undefined },
-              telemetry: false,
-              silent: !env.CI,
-              sourcemaps: { filesToDeleteAfterUpload: ["./build/**/*.map"] },
-            }),
-          ]
-        : []),
     ],
-    build: { sourcemap: env.SENTRY_AUTH_TOKEN ? "hidden" : false },
+    // 只给 Worker 出 source map，wrangler 按 upload_source_maps 上传后换算线上调用栈；浏览器包的 map 会随静态资源公开，所以不出。
+    environments: { ssr: { build: { sourcemap: true } } },
     define: {
       "process.env.PUBLIC_BACKEND_URL": JSON.stringify(backendUrl),
       "process.env.PUBLIC_TURNSTILE_SITE_KEY": defineEnv("PUBLIC_TURNSTILE_SITE_KEY"),
       "process.env.PUBLIC_SIGNED_IMAGE_OPTIMIZATION": defineEnv("PUBLIC_SIGNED_IMAGE_OPTIMIZATION"),
-      "process.env.PUBLIC_SENTRY_DEV": defineEnv("PUBLIC_SENTRY_DEV"),
+      "process.env.PUBLIC_ERROR_REPORT_DEV": defineEnv("PUBLIC_ERROR_REPORT_DEV"),
       "process.env.PUBLIC_CF_WEB_ANALYTICS_TOKENS": defineEnv("PUBLIC_CF_WEB_ANALYTICS_TOKENS"),
       "process.env.BUILD_TIME": JSON.stringify(BUILD_TIME),
       "process.env.COMMIT_SHA": JSON.stringify(commitSha),
@@ -85,8 +72,8 @@ export default defineConfig(({ command, mode }) => {
       "process.env.CHAT_CODE_VERSION": JSON.stringify(
         env.CHAT_CODE_VERSION || chatCodeVersion(process.cwd()),
       ),
-      "process.env.SENTRY_ENVIRONMENT": JSON.stringify(
-        env.SENTRY_ENVIRONMENT ??
+      "process.env.DEPLOY_ENV": JSON.stringify(
+        env.DEPLOY_ENV ??
           (env.WORKERS_CI_BRANCH
             ? env.WORKERS_CI_BRANCH === "main"
               ? "production"

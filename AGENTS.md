@@ -9,7 +9,7 @@
 # 禁区
 
 - 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。
-- 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑一律进后端 Worker；状态与数据查询归 `workers/api`，模型调用与工具编排归 `workers/ai`，site Worker（React Router SSR）只渲染页面、缓存和处理图片，不为功能新增数据端点（现有资源路由只服务版本号、图标、OG、manifest 与 Sentry/图片网关）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
+- 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑一律进后端 Worker；状态与数据查询归 `workers/api`，模型调用与工具编排归 `workers/ai`，site Worker（React Router SSR）只渲染页面、缓存和处理图片，不为功能新增数据端点（现有资源路由只服务版本号、图标、OG、manifest、图片网关与浏览器错误中转 `/relay`，后者只写日志）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件。
 
 # 项目入口与验证
@@ -36,10 +36,10 @@
 
 # 排查线上错误
 
-- 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
-- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 site Worker，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与 API 定时任务，周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）、上报入口 `ingress`（tag `worker:ingress`）和 AI Worker（tag `worker:ai`）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
-- `reporters/` 下的上报器没接 Sentry，查所在机器的容器日志。
-- Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
+- 线上报错、页面异常、Worker 或 cron 失败，先用 Cloudflare Code Mode MCP 查 Workers Observability 的证据，再读代码：Workers Issues（`/accounts/{id}/workers/observability/issues`）看已归组的异常、5xx 与 `console.error`，遥测查询（`.../workers/observability/telemetry/query`）按 `$metadata.service`、`$metadata.level` 找日志和调用栈，拿到 `$workers.scriptVersion.id` 再对源码定位。不凭猜测改代码，也不借浏览器登录态调接口；MCP 不可用时告诉用户，而不是绕开。
+- 服务名就是 Worker 名：`site`（含浏览器经 `/relay` 转来的 `[browser-error]`，`release` 是提交 SHA；浏览器调用栈是压缩后的代码）、`api`（含 Durable Object 与定时任务，周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）、`ai`、`ingress`、`collector`（任务失败的日志以 `[collector-job] <任务>` 开头）。分支预览与生产同名，按请求主机是不是 `*.workers.dev` 区分；保留期、采样与在线探测见 `docs/ops-facts.md`。
+- `reporters/` 下的上报器不进 Workers Observability，查所在机器的容器日志。
+- Workers Issues 里只读不写是默认。把 issue 标为 resolved / ignored 这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；改 Issues 自动化、告警或可观测性设置，先问用户。
 
 # API 命名与跨端契约
 

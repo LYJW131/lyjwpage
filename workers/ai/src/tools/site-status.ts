@@ -30,7 +30,7 @@ const VIEW_NOTES = {
   githubRepo: "This site's GitHub repo: totals, contributors and the latest commit titles (refreshed periodically, may lag by up to half an hour)",
   cloudflareWorkers: "Cloudflare Workers request and error stats for this site",
   siteDeployments: "Site Worker production deployment, recent builds, pageviews and PageSpeed samples",
-  sentry: "Error counts from Sentry for this site",
+  health: "Uptime, API cron heartbeat, error counts and real-visitor Web Vitals for this site",
   reporters: "Health of the reporters that push data to this site",
   pulse: "24h timeline of coding, listening, watching, gaming, charging, activity (large)",
 } as const satisfies Record<StatusViewKey, string>;
