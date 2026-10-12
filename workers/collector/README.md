@@ -28,15 +28,15 @@
 | `provider-status` | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 |
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
-| `github-repo` | `LAG github-repo:v1` | `GITHUB_TOKEN` |
+| `github-repo` | `LAG github-repo:v1`（含首页「最近提交」读的 `recentCommits`；站点部署通知也会点名重拉） | `GITHUB_TOKEN` |
 | `site-deployments` | `LAG site-deployments:v1`；每次部署另归档 D1 `site_deploys` | `CLOUDFLARE_METRICS_TOKEN`；`SITE_WORKER_TAG` |
 | `site-analytics` | `LAG site-analytics:v1`（Cloudflare Web Analytics 两站 pageviews，UTC 七日窗） | `CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
 | `vercel-deployments` | 已退役：名字留在契约里，点名时回 `skipped`，不进定时轮次（`shared/collector.ts#RETIRED_COLLECTOR_JOBS`） | 无 |
 | `vercel-metrics` | 已退役：同上 | 无 |
+| `avatar-watch` | 已退役：同上 | 无 |
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
-| `avatar-watch` | 不写状态：GitHub 头像的 sha256 与 main 上 `.github/github-avatar.sha256` 不一致时触发 `.github/workflows/avatar-sync.yml`，由它提交新哈希、触发站点重建；同一哈希在 `REDISPATCH_AFTER_MS` 内只触发一次 | `GITHUB_DISPATCH_TOKEN` |
 
 每个任务可有一条 Sentry cron 监控 `collector-<任务>`（默认不报到，由 `SENTRY_CRON_CHECKINS=true` 开启），报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
 
@@ -88,7 +88,7 @@
 
 | 键 | 内容 |
 | --- | --- |
-| `lyjwpage:cache:*` | `shared/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*`、已触发过的头像哈希 `avatar-watch:dispatched:v1` |
+| `lyjwpage:cache:*` | `shared/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*` |
 
 `shared/cache` 在这里背后是 KV（`src/storage-driver.ts`，由 `src/ports.ts` 装上）：TTL 最短 60 秒（5 秒的负缓存会活满一分钟），KV 的读还有最长 60 秒的边缘缓存 ——
 两分钟以内要读回的东西不走它。列表、哈希操作直接抛错。
@@ -99,8 +99,7 @@
 
 | Secret | 用途 |
 | --- | --- |
-| `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计 |
-| `GITHUB_DISPATCH_TOKEN` | fine-grained PAT，只授权 `LYJW131/lyjwpage`：Actions 读写（触发 `avatar-sync.yml`）、Contents 只读（读标记文件） |
+| `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计与最近提交（REST + GraphQL 取协作者） |
 | `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取 |
 | `SENTRY_API_TOKEN` | Sentry 组织只读：`org:read` / `project:read` / `event:read` |
 | `PAGESPEED_API_KEY` | Google PageSpeed Insights |

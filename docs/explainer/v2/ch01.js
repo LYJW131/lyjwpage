@@ -937,7 +937,6 @@
     ["apple-recent", 1, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
     ["github-chart", 10, 1], ["github-repo", 30, 2], ["site-deployments", 1, 0], ["site-analytics", 15, 3],
     ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["sentry-status", 5, 2],
-    ["avatar-watch", 5, 1],
   ];
   const MINUTES = 12;
   const APPLE_IDLE = 5, APPLE_HOLD = 10, APPLE_CHANGED = 5;
