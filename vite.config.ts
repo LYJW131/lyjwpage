@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
@@ -6,11 +7,27 @@ import { reactRouter } from "@react-router/dev/vite";
 import babel from "@rolldown/plugin-babel";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { reactCompilerPreset } from "@vitejs/plugin-react";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
 import { chatCodeVersion } from "./scripts/chat-code-version.mjs";
 
 const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
+
+// Cloudflare 插件给 workerd 环境带上 `browser` 解析条件，esm-env 因此在 SSR 里把 BROWSER 判为 true，
+// NumberFlow 就输出空壳，数字要等水合后才出现。服务端环境改指 false.js。
+function esmEnvServerNotBrowser(): Plugin {
+  return {
+    name: "esm-env-server-not-browser",
+    enforce: "pre",
+    applyToEnvironment: (environment) => environment.config.consumer === "server",
+    async resolveId(source, importer, options) {
+      if (source !== "esm-env/browser") return null;
+      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      if (!resolved) return null;
+      return { ...resolved, id: path.join(path.dirname(resolved.id), "false.js") };
+    },
+  };
+}
 
 export default defineConfig(({ command, mode }) => {
   const fileEnv = loadEnv(mode, process.cwd(), "");
@@ -38,6 +55,7 @@ export default defineConfig(({ command, mode }) => {
         viteEnvironment: { name: "ssr" },
         configPath: command === "serve" ? "wrangler.local.jsonc" : "wrangler.jsonc",
       }),
+      esmEnvServerNotBrowser(),
       reactRouter(),
       babel({ presets: [reactCompilerPreset()] }),
       ...(env.SENTRY_AUTH_TOKEN
