@@ -11,31 +11,46 @@ import {
   parseAutoReloadLedger,
   rebaseAutoReloadLedger,
   recordAutoReload,
+  readDocumentCommit,
   resolveVersionStatus,
   settleAutoReloadLedger,
   type AutoReloadInput,
   type AutoReloadLedger,
 } from "./app-version.ts";
 
-test("两边 sha 一致就是最新", () => {
-  assert.equal(resolveVersionStatus("a".repeat(40), "a".repeat(40)), "current");
-});
-
-test("对不上就是旧页面", () => {
-  assert.equal(resolveVersionStatus("a".repeat(40), "b".repeat(40)), "stale");
-});
-
-test("任一边拿不到都是 unknown，不误报成旧", () => {
-  assert.equal(resolveVersionStatus(null, "b".repeat(40)), "unknown");
-  assert.equal(resolveVersionStatus("a".repeat(40), null), "unknown");
-  assert.equal(resolveVersionStatus(null, null), "unknown");
-  assert.equal(resolveVersionStatus("", "b".repeat(40)), "unknown");
-  assert.equal(resolveVersionStatus("a".repeat(40), ""), "unknown");
-});
-
 const A = "a".repeat(40);
 const B = "b".repeat(40);
 const C = "c".repeat(40);
+
+test("两边 sha 一致就是最新", () => {
+  assert.equal(resolveVersionStatus(A, A, undefined), "current");
+});
+
+test("刷新拿到的文档已是新版才算旧页面", () => {
+  assert.equal(resolveVersionStatus(A, B, B), "stale");
+});
+
+test("边缘缓存还在回旧文档时不算旧页面，免得刷新后提示再弹", () => {
+  assert.equal(resolveVersionStatus(A, B, A), "unknown");
+  assert.equal(resolveVersionStatus(A, B, null), "unknown");
+  assert.equal(resolveVersionStatus(A, B, undefined), "unknown");
+  assert.equal(resolveVersionStatus(A, B, C), "unknown");
+});
+
+test("任一边拿不到都是 unknown，不误报成旧", () => {
+  assert.equal(resolveVersionStatus(null, B, B), "unknown");
+  assert.equal(resolveVersionStatus(A, null, B), "unknown");
+  assert.equal(resolveVersionStatus(null, null, null), "unknown");
+  assert.equal(resolveVersionStatus("", B, B), "unknown");
+  assert.equal(resolveVersionStatus(A, "", B), "unknown");
+});
+
+test("从首页 HTML 头部读出构建 sha", () => {
+  assert.equal(readDocumentCommit(`<head><meta charSet="utf-8"/><meta name="build-commit" content="${B}"/>`), B);
+  assert.equal(readDocumentCommit("<head><meta charSet=\"utf-8\"/></head>"), null);
+  assert.equal(readDocumentCommit('<meta name="build-commit" content="not-a-sha"/>'), null);
+});
+
 const NOW = 10_000_000;
 const base: AutoReloadInput = {
   status: "stale",
