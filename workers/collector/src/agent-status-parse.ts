@@ -13,6 +13,7 @@ export const AGENT_STATUS_URLS = {
   xaiHome: "https://status.x.ai/",
   xaiFeed: "https://status.x.ai/feed.xml",
   typesafe: "https://status.typesafe.ai/index.json",
+  devin: "https://www.devinstatus.com/api/v2/summary.json",
   apple: "https://www.apple.com/support/systemstatus/data/developer/system_status_en_US.js",
   github: "https://www.githubstatus.com/api/v2/summary.json",
   cloudflare: "https://www.cloudflarestatus.com/api/v2/summary.json",
@@ -24,6 +25,7 @@ const STATUS_PAGES = {
   cursor: "https://status.cursor.com",
   xai: "https://status.x.ai/grok-build",
   typesafe: "https://status.typesafe.ai",
+  devin: "https://www.devinstatus.com",
   apple: "https://developer.apple.com/system-status/",
   github: "https://www.githubstatus.com",
   cloudflare: "https://www.cloudflarestatus.com",
@@ -192,6 +194,10 @@ function isCodexComponent(name: string): boolean {
     default:
       return false;
   }
+}
+
+function isDevinComponent(name: string): boolean {
+  return !/\b(enterprise|fedstart)\b/i.test(name);
 }
 
 const CLOUDFLARE_SITE_COMPONENTS: Record<string, true> = {
@@ -626,6 +632,7 @@ const FALLBACK: Record<AgentStatusRow["id"], { name: string; statusPage: string 
   cursor: { name: "Cursor", statusPage: STATUS_PAGES.cursor },
   grok: { name: "Grok", statusPage: STATUS_PAGES.xai },
   typesafe: { name: "TypeSafe", statusPage: STATUS_PAGES.typesafe },
+  devin: { name: "Devin", statusPage: STATUS_PAGES.devin },
   apple: { name: "Apple", statusPage: STATUS_PAGES.apple },
   github: { name: "GitHub", statusPage: STATUS_PAGES.github },
   cloudflare: { name: "Cloudflare", statusPage: STATUS_PAGES.cloudflare },
@@ -673,7 +680,7 @@ export async function collectAgentStatus(
 ): Promise<AgentStatusPayload> {
   const text = async (url: string) => fetchText(url);
   const failed = new Set<AgentStatusRow["id"]>();
-  const [claude, codex, cursor, grok, typesafe, apple, github, cloudflare] = await Promise.all([
+  const [claude, codex, cursor, grok, typesafe, devin, apple, github, cloudflare] = await Promise.all([
     load(previous, failed, "claude", async () =>
       statuspageRow(
         "claude",
@@ -712,6 +719,16 @@ export async function collectAgentStatus(
       return xaiRow(home.body, feed.body);
     }),
     load(previous, failed, "typesafe", async () => typesafeRow(await text(AGENT_STATUS_URLS.typesafe), now)),
+    load(previous, failed, "devin", async () =>
+      statuspageRow(
+        "devin",
+        "Devin",
+        STATUS_PAGES.devin,
+        await text(AGENT_STATUS_URLS.devin),
+        isDevinComponent,
+        false,
+      ),
+    ),
     load(previous, failed, "apple", async () => appleRow(await text(AGENT_STATUS_URLS.apple))),
     load(previous, failed, "github", async () =>
       statuspageRow(
@@ -737,7 +754,7 @@ export async function collectAgentStatus(
   if (failed.size === Object.keys(FALLBACK).length) throw new Error("status pages all unreachable");
   return {
     fetchedAt: now,
-    agents: [claude, codex, cursor, grok, typesafe, apple, github, cloudflare],
+    agents: [claude, codex, cursor, grok, typesafe, devin, apple, github, cloudflare],
   };
 }
 

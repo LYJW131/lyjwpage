@@ -4,6 +4,7 @@ import AppleIcon from "@lobehub/icons/es/Apple/components/Mono";
 import ClaudeIcon from "@lobehub/icons/es/Claude/components/Color";
 import CloudflareIcon from "@lobehub/icons/es/Cloudflare/components/Color";
 import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
+import DevinIcon from "@lobehub/icons/es/Devin/components/Mono";
 import GithubIcon from "@lobehub/icons/es/Github/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
@@ -101,6 +102,8 @@ function Brand({ id }: { id: AgentStatusRow["id"] }) {
       return <GrokIcon size={20} className={className} />;
     case "typesafe":
       return <TypesafeIcon className={className} />;
+    case "devin":
+      return <DevinIcon size={20} className={className} />;
     case "apple":
       return <AppleIcon size={20} className={className} />;
     case "github":

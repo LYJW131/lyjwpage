@@ -198,6 +198,28 @@ function appleStatus(events: Record<string, unknown>[] = [], uploadEvents: Recor
   })});`;
 }
 
+const devin = summary({
+  status: { indicator: "major", description: "Partial System Outage" },
+  components: [
+    { name: "Cloud Agent", status: "operational" },
+    { name: "Desktop Agent", status: "operational" },
+    { name: "Cloud Agent (Enterprise)", status: "major_outage" },
+    { name: "Desktop Agent (Fedstart)", status: "major_outage" },
+    { name: "Enterprise", status: "major_outage" },
+  ],
+  incidents: [
+    {
+      id: "d1",
+      name: "Enterprise sessions failing",
+      status: "investigating",
+      impact: "major",
+      shortlink: "https://www.devinstatus.com/incidents/d1",
+      components: [{ name: "Cloud Agent (Enterprise)" }],
+      incident_updates: [{ body: "Enterprise sessions fail to start.", created_at: "2026-09-22T01:00:00Z" }],
+    },
+  ],
+});
+
 const github = summary({
   status: { indicator: "minor", description: "Partial System Outage" },
   components: [
@@ -247,6 +269,7 @@ function pages(extra: Record<string, string | Error> = {}): (url: string) => Pro
     [AGENT_STATUS_URLS.xaiHome, xaiHome],
     [AGENT_STATUS_URLS.xaiFeed, xaiFeed],
     [AGENT_STATUS_URLS.typesafe, typesafeIndex()],
+    [AGENT_STATUS_URLS.devin, devin],
     [AGENT_STATUS_URLS.apple, appleStatus()],
     [AGENT_STATUS_URLS.github, github],
     [AGENT_STATUS_URLS.cloudflare, cloudflare],
@@ -373,6 +396,17 @@ test("Apple 进行中的 Outage 按受影响范围分轻重，时间换成 ISO",
     pages({ [AGENT_STATUS_URLS.apple]: appleStatus([{ ...ongoing, usersAffected: "All users are affected" }]) }),
   );
   assert.equal(row(everyone, "apple").indicator, "major_outage");
+});
+
+test("Devin 只看公开版组件，Enterprise / Fedstart 出事不点这一行", async () => {
+  const payload = await collectAgentStatus(null, pages());
+  const devinRow = row(payload, "devin");
+  assert.equal(devinRow.indicator, "operational");
+  assert.deepEqual(
+    devinRow.components.map((component) => component.name),
+    ["Cloud Agent", "Desktop Agent"],
+  );
+  assert.equal(devinRow.incidents.length, 0);
 });
 
 test("GitHub 走 Statuspage 整页，页面灯直接进这一行", async () => {
