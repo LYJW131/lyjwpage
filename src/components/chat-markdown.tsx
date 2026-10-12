@@ -3,6 +3,8 @@ import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { ChatHtmlPreview } from "@/components/chat-html-preview";
+import { ChatVisualView, VisualPlaceholder } from "@/components/chat-visual";
+import { isVisualKind, parseVisual } from "@/lib/chat-visuals";
 
 const LINK_CLASS = "underline underline-offset-2 hover:opacity-80";
 
@@ -19,12 +21,23 @@ function ImageLink({ src, alt }: { src?: unknown; alt?: string }) {
   );
 }
 
-function htmlSource(node: ExtraProps["node"]): string | null {
+function fencedBlock(node: ExtraProps["node"]): { language: string; source: string } | null {
   const code = node?.children[0];
   if (node?.children.length !== 1 || code?.type !== "element" || code.tagName !== "code") return null;
   const classes = code.properties.className;
-  if (!Array.isArray(classes) || !classes.includes("language-html")) return null;
-  return code.children.map((child) => (child.type === "text" ? child.value : "")).join("");
+  const language = Array.isArray(classes) ? classes.find((name) => typeof name === "string" && name.startsWith("language-")) : undefined;
+  if (typeof language !== "string") return null;
+  return { language: language.slice("language-".length), source: code.children.map((child) => (child.type === "text" ? child.value : "")).join("") };
+}
+
+// 图示代码块流式时先是空块（见 stableMarkdown），画占位；收尾后校验不过就照原样显示代码。
+function ReplyBlock({ node, children }: { node: ExtraProps["node"]; children: ReactNode }) {
+  const block = fencedBlock(node);
+  if (block?.language === "html") return <ChatHtmlPreview source={block.source} />;
+  if (!block || !isVisualKind(block.language)) return <CodeBlock>{children}</CodeBlock>;
+  if (!block.source.trim()) return <VisualPlaceholder kind={block.language} />;
+  const visual = parseVisual(block.language, block.source);
+  return visual ? <ChatVisualView visual={visual} /> : <CodeBlock>{children}</CodeBlock>;
 }
 
 function CodeBlock({ children }: { children: ReactNode }) {
@@ -55,13 +68,10 @@ const COMPONENTS: Components = {
 
 const REPLY_COMPONENTS: Components = {
   ...COMPONENTS,
-  pre: ({ node, children }) => {
-    const source = htmlSource(node);
-    return source === null ? <CodeBlock>{children}</CodeBlock> : <ChatHtmlPreview source={source} />;
-  },
+  pre: ({ node, children }) => <ReplyBlock node={node}>{children}</ReplyBlock>,
 };
 
-export const ChatMarkdown = memo(function ChatMarkdown({ children, htmlPreview = false }: { children: string; htmlPreview?: boolean }) {
+export const ChatMarkdown = memo(function ChatMarkdown({ children, visuals = false }: { children: string; visuals?: boolean }) {
   return (
     <div
       className={[
@@ -74,7 +84,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({ children, htmlPreview =
         "[&_th]:border [&_th]:border-line [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-line [&_td]:px-2 [&_td]:py-1",
       ].join(" ")}
     >
-      <Markdown remarkPlugins={[remarkGfm]} components={htmlPreview ? REPLY_COMPONENTS : COMPONENTS}>
+      <Markdown remarkPlugins={[remarkGfm]} components={visuals ? REPLY_COMPONENTS : COMPONENTS}>
         {children}
       </Markdown>
     </div>
