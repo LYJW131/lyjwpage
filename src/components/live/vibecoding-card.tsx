@@ -677,8 +677,8 @@ function LimitMeter({
         </span>
       </div>
       <UsageMeter href={href} label={label}>
-        <div
-          className="h-full transition-[width] duration-700"
+        <span
+          className="block h-full transition-[width] duration-700"
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
         {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
