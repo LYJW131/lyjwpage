@@ -3,6 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-09-08"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = true
+upload_source_maps = true
 
 routes = [
   { pattern = "ingest.homepage.lyjw.llc", custom_domain = true }
@@ -10,7 +11,6 @@ routes = [
 
 [vars]
 EMBY_PUBLIC_URL = "https://emby.lyjw131.com"
-SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 ACCESS_TEAM_DOMAIN = "https://lyjw2007.cloudflareaccess.com"
 ACCESS_AUD = "a1557bcf1114491b462c7ee722ae97032405c43fa831812c8403e6d7366fba01"
 
@@ -53,10 +53,14 @@ binding = "HISTORY"
 database_name = "lyjwpage-history"
 database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 
-[version_metadata]
-binding = "CF_VERSION_METADATA"
-
 [observability]
+enabled = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
+
+[observability.issues]
 enabled = true
 
 [previews.vars]

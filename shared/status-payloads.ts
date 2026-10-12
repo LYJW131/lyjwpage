@@ -1,7 +1,7 @@
 import type { AgentStatusPayload } from "@shared/agent-status-types";
 import type { CloudflareWorkersPayload } from "@shared/cloudflare-workers-types";
 import type { ReportersPayload } from "@shared/reporter-ledger";
-import type { SentryStatusPayload } from "@shared/sentry-status-types";
+import type { HealthPayload } from "@shared/health-types";
 import type { SiteDeploymentsPayload } from "@shared/site-deployments-types";
 import type {
   ActivityPayload,
@@ -53,7 +53,7 @@ export type StatusPayloads = {
   githubRepo: GithubRepoPayload;
   cloudflareWorkers: CloudflareWorkersPayload;
   siteDeployments: SiteDeploymentsPayload;
-  sentry: SentryStatusPayload;
+  health: HealthPayload;
   reporters: ReportersPayload;
   pulse: PulsePayload;
 };

@@ -1,7 +1,7 @@
-import type { SentryVitals } from "@shared/sentry-status-types";
+import type { FieldVitals } from "@shared/health-types";
 
 
-type Curve = { key: keyof SentryVitals; weight: number; p10: number; median: number };
+type Curve = { key: keyof FieldVitals; weight: number; p10: number; median: number };
 
 const CURVES: Curve[] = [
   { key: "lcpP75Ms", weight: 0.3, p10: 2500, median: 4000 },
@@ -26,7 +26,7 @@ export function curveScore(value: number, p10: number, median: number): number {
   return 1 - normalCdf(Math.log(value / median) / sigma);
 }
 
-export function fieldPerformanceScore(vitals: SentryVitals | null | undefined): number | null {
+export function fieldPerformanceScore(vitals: FieldVitals | null | undefined): number | null {
   if (!vitals) return null;
   let weighted = 0, weights = 0;
   for (const curve of CURVES) {

@@ -19,7 +19,6 @@
     "wrangler": "4.149.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.132.1",
-    "@sentry/cloudflare": "11.7.0"
+    "@anthropic-ai/sdk": "0.132.1"
   }
 }

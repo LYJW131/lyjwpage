@@ -257,7 +257,6 @@ export const appleRecentJob: Job = {
   name: "apple-recent",
   everyMinutes: 1,
   offset: 0,
-  maxRuntimeMinutes: 2,
   async run({ env, now, scheduled }) {
     const lastChangeAt = scheduled ? await get<number>(LAST_CHANGE_KEY) : undefined;
     if (scheduled && !appleRecentDue(now, lastChangeAt)) return { status: "skipped", detail: "idle" };

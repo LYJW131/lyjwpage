@@ -936,7 +936,7 @@
   const JOBS = [
     ["apple-recent", 1, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
     ["github-chart", 10, 1], ["github-repo", 30, 2], ["site-deployments", 1, 0], ["site-analytics", 15, 3],
-    ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["sentry-status", 5, 2],
+    ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["uptime-probe", 1, 0], ["site-health", 5, 4],
   ];
   const MINUTES = 12;
   const APPLE_IDLE = 5, APPLE_HOLD = 10, APPLE_CHANGED = 5;
@@ -997,11 +997,11 @@
     text(d, tr("ch01.chart"), TC.x + 34, TC.y + 60, { font: FONT.cjk(36, 600), alpha: ca });
     text(d, tr("ch01.perMin"), TC.x + TC.w - 34, TC.y + 58, { font: FONT.cjk(28, 600), color: css("graphite"), align: "right", alpha: ca });
     line(d, TC.x + 28, TC.y + 86, TC.x + TC.w - 28, TC.y + 86, 1.4, css("pink"), ca);
-    const gx = TC.x + 438, pitch = 34, y0 = TC.y + 150;
+    const gx = TC.x + 438, pitch = 34, y0 = TC.y + 150, ROW = 46;
     [0, 5, 10].forEach((mm) => text(d, `:${String(mm).padStart(2, "0")}`, gx + mm * pitch + 13, TC.y + 122, { font: FONT.mono(28, 500), color: css("graphite"), align: "center", alpha: ca }));
-    if (m >= 0) fillRect(d, gx + m * pitch - 3, y0 - 26, pitch, JOBS.length * 48 + 4, css("pink"), 0.07 * ca);
+    if (m >= 0) fillRect(d, gx + m * pitch - 3, y0 - 26, pitch, JOBS.length * ROW + 4, css("pink"), 0.07 * ca);
     JOBS.forEach(([name], j) => {
-      const y = y0 + j * 48;
+      const y = y0 + j * ROW;
       const ranNow = m >= 0 && due(j, m) ? Math.exp(-((beatF - m) * 60 / 108) / 0.2) : 0;
       text(d, name, TC.x + 34, y + 10, { font: FONT.mono(28, 500), color: ranNow > 0.3 ? css("signal") : css("pink"), alpha: ca });
       for (let mm = 0; mm < MINUTES; mm++) {

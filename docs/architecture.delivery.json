@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "08b71e74-bdb2-4351-97fe-fe549be6ca3b",
+  "receiptId": "30fc7e23-7d75-407d-86ac-28a8362fcc10",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
-  "input": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/wf_57534b25-505-5/docs/architecture.json",
-  "output": "/Users/liangyangjunwei/Developer/lyjwpage/.claude/worktrees/wf_57534b25-505-5/docs/architecture.html",
+  "input": "/home/user/lyjwpage/docs/architecture.json",
+  "output": "/home/user/lyjwpage/docs/architecture.html",
   "specification": {
-    "sha256": "b42f2196df3566fb769cfc25192d3cdf77ebcedf375371bfb838bfa3ebf95ef9",
-    "bytes": 15947
+    "sha256": "8f458c72c0ba76faa27a3f94e80d753b13199755d191f9f7b07c53c9ac1dcb8d",
+    "bytes": 15937
   },
   "artifact": {
-    "sha256": "432b1a003c73f994337ad99a5c0f16dec1bff9f0388722233101edb85d00700b",
-    "bytes": 812794
+    "sha256": "e0992c43c6a6347eb32572753bd69b5ca7c525d232bcfcad21fd6eda891c6e7b",
+    "bytes": 812764
   }
 }

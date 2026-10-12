@@ -2,7 +2,7 @@
 
 > 类型：reference
 
-只记不在仓库里的事实：Cloudflare、阿里云 ESA、Sentry、GitHub 的控制台配置，Access 策略，机器与路径。仓库里查得到的事（代码、`wrangler.toml`、工作流）不在这里重复，只指到出处；与代码冲突以代码为准。
+只记不在仓库里的事实：Cloudflare、阿里云 ESA、GitHub 的控制台配置，Access 策略，机器与路径。仓库里查得到的事（代码、`wrangler.toml`、工作流）不在这里重复，只指到出处；与代码冲突以代码为准。
 
 每条带「核对于 <日期>，方式：…」。「核对于 未记录」是从旧文档原样迁入、原文没写核对时间的条目，迁入时没有重新核对；其他文档里残留的同类描述，清扫时改成指向本文。改了控制台配置就来这里改对应一行，并更新核对时间。
 
@@ -49,12 +49,14 @@
 | 站点 SSR 已上线：`site` Worker（tag `f5d09e0840d64b7eb77e4a090db0a82a`）以自定义域名接管 `lyjw.me`，指向 Vercel 的根 CNAME 已删；Workers Builds 已连（main 生产 + 分支 Preview），生产构建变量 `PUBLIC_TURNSTILE_SITE_KEY`、`PUBLIC_CF_WEB_ANALYTICS_TOKENS`、`FOOTER_EXTRA_TEXT` / `FOOTER_EXTRA_HREF`、`SENTRY_AUTH_TOKEN`（secret），Previews 基础配置的构建变量是上述除 `SENTRY_AUTH_TOKEN` 外的几项再加 `SITE_PREVIEW_ACCESS_READY=true`；Access 应用「lyjwpage site Previews」保护 `*-site.lyjw.workers.dev`，复用策略「lyjwpage owner (email)」，登录方式只允许「Cloudflare account members」并开着 `auto_redirect_to_identity`（打开预览直接跳 Cloudflare 登录，已登录控制台时无需点选），会话 24h，是唯一保护 site Preview 的应用（控制台「Protect this Worker」会另建一个放行全部账号成员的 `preview_worker` 应用、比它宽，不要打开）；api 的 `previews_base_config.path_includes` 已含 `src/*`、`workers/site/*` 等站点路径，`path_excludes` 只剩 `shared/ingest/*`，部署命令不带参数；api、ai、ingress、collector 的生产部署命令带 `-c wrangler.toml` | 核对于 2026-10-12，方式：`curl https://lyjw.me/api/version` 返回 f402ed30、`cf builds workers get`、`cf builds triggers environment-variables list`、`cf zero-trust access applications list`（10-12 另经 Access API 读回只剩这一个 site 预览应用与上述登录设置，未登录 curl 分支 Preview 跳转的 `kid` 等于它的 aud，登录页带 `auto-redirect-to-identity="true"`）、`cf dns records list -z lyjw.me` 读回；生产构建变量 2026-10-12 删去 `GITHUB_TOKEN` 后经 Builds API `builds/triggers/{trigger_uuid}/environment_variables` 读回 main 触发，Previews 的构建变量经 `builds/workers/{script_tag}` 的 `previews_base_config.environment_variables` 读回 <!-- allow: 核对戳 --> |
 | Workers 运行时在流式响应途中不把访客断开传给 api Worker：预览上用 HTTP/1.1 与 HTTP/2 客户端中途断开，`request.signal`（已开 `enable_request_signal`）与响应流的 `cancel()` 都没触发，`AnthropicEgress` 照样把 Anthropic 的流读到结束，这次调用到响应发完才记为 canceled；本地 workerd 会立刻传 | 核对于 2026-10-09，方式：预览部署加临时诊断日志，用 Workers Observability 查询 API 看日志，Anthropic Console 日志看 499 前的生成量 <!-- allow: 核对戳 --> |
 
-## Sentry
+## Workers Observability
 
 | 事实 | 核对 |
 | --- | --- |
-| 组织的 cron 监控名额只有一个，给了 `api-minute-cron`；采集 Worker 每个任务的 `collector-<任务>` 监控随报到自动建出，因名额不足是停用状态，报到被丢弃，所以任务失败要看 `collector-worker` 项目里 tag `collector.job` 的 issue | 核对于 未记录，方式：迁自 `workers/collector/README.md` |
-| 在线探测每分钟 HEAD `https://lyjw.me/api/version`，配在 Sentry 侧；站点卡片的「在线状态」读它 | 核对于 未记录，方式：迁自根 `README.md` |
+| Workers Logs 与 Traces 在 Workers Paid 上保留 7 天，Workers Issues 计入同一套可观测性额度；2026-12-01 起改按 Cloudflare Observability 的摄入与存储计费 | 核对于 2026-10-12，方式：Cloudflare 文档 `workers/platform/pricing`、`observability/pricing` <!-- allow: 核对戳 --> |
+| 遥测查询里分支预览与生产同服务名，只能靠 `$workers.event.request.headers.host` 是否含 `workers.dev` 区分；定时任务的事件没有主机名。site Worker 的旧 Sentry 中转 `POST /relay` 在 7 天窗口里有数百条 error 级请求事件 | 核对于 2026-10-12，方式：Code Mode MCP 调 `workers/observability/telemetry/query`，按 `$metadata.service` 与 `$metadata.message` 分组 <!-- allow: 核对戳 --> |
+| Workers Issues 汇总接口 `workers/observability/issues/summary` 在开 `[observability.issues]` 之前对五个服务都返回 0 个 active issue；告警自动化（`issues/automations`）尚未建 | 核对于 2026-10-12，方式：Code Mode MCP 逐个服务读 `issues/summary?service=` 与 `issues/automations`（返回空列表） <!-- allow: 核对戳 --> |
+| 健康卡片的错误数与 Web Vitals 由 collector 用 `CLOUDFLARE_METRICS_TOKEN` 读：Web Analytics 的 `rumWebVitalsEventsAdaptiveGroups` 时长分位数单位是微秒；遥测查询与 Issues 汇总要这把令牌另有 Workers Observability 读权限，权限是否已加未核对 | 核对于 2026-10-12，方式：Code Mode MCP 跑同一条 GraphQL 与遥测查询（MCP 自己的令牌，不是 collector 的） <!-- allow: 核对戳 --> |
 
 ## GitHub
 
@@ -96,6 +98,7 @@
 
 | 事实 | 核对 |
 | --- | --- |
+| 退出 Sentry 后留下的外部配置待删：site Workers Builds 生产构建变量 `SENTRY_AUTH_TOKEN`、collector 的 Secret `SENTRY_API_TOKEN`、Sentry 组织 `yangjunwei-liang` 下的项目、在线探测与 cron 监控 | 核对于 未核对，方式：仓库代码已不再读这些名字（`rg -i sentry`） |
 | Vercel 团队 `team_kfTnkK6X9bbqSbkgAhq7SxCd` 的项目 `prj_r6sFPPmanb9zm3hzYAHAmp3KsIiC` 暂留、待站主决定何时删（环境变量随项目一起删，含旧变量 `NEXT_PUBLIC_ONLINE_COUNTER_URL`）；它已断开 Git 连接，不再自动部署、PR 上不再出现 Vercel 检查 | 核对于 2026-10-12，方式：Vercel API `DELETE /v9/projects/{id}/link` 后读回 `link` 为空，项目、环境变量与域名别名仍在；之后 #162 的检查列表里没有 Vercel <!-- allow: 核对戳 --> |
 | collector KV 里的 `lyjwpage:cache:avatar-watch:dispatched:v1` 已无代码读写，可随 TTL 过期或手删 | 核对于 2026-10-12，方式：`rg` 确认仓库代码不再读写这个键 <!-- allow: 核对戳 --> |
 | 阿里云 RAM 里给 api Worker 旧 `ALIYUN_ACCESS_KEY_*` secret 用的专用用户已无用，可删；api Worker 上这两个 secret 已不在 | api 侧核对于 2026-10-12，方式：Workers secrets API 读回 api 只剩 `APPLE_MUSIC_PRIVATE_KEY`；RAM 用户未核对 <!-- allow: 核对戳 --> |

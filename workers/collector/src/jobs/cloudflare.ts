@@ -13,7 +13,6 @@ export const cloudflareDeploymentsJob: Job = {
   name: "cloudflare-deployments",
   everyMinutes: 2,
   offset: 0,
-  maxRuntimeMinutes: 2,
   async run({ env }) {
     const config = settings(env, CLOUDFLARE_SETTINGS);
     if ("missing" in config) return skipMissing("cloudflare-deployments", config.missing);
@@ -34,7 +33,6 @@ export const cloudflareMetricsJob: Job = {
   name: "cloudflare-metrics",
   everyMinutes: 15,
   offset: 4,
-  maxRuntimeMinutes: 2,
   async run({ env }) {
     const config = settings(env, CLOUDFLARE_SETTINGS);
     if ("missing" in config) return skipMissing("cloudflare-metrics", config.missing);

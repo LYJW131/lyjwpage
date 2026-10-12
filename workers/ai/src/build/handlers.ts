@@ -1,4 +1,3 @@
-import * as Sentry from "@sentry/cloudflare";
 import { BUILD_CLOSED_PHASES, BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SCREENSHOT_PATH, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult } from "@shared/build-routine";
 import { anthropicFetch } from "../chat/egress";
 import { readJsonBody } from "../chat/guard";
@@ -225,8 +224,7 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
     if (!state) throw new Error("The implementation publication could not be recorded.");
     try { await postScreenshotComment(api, pr.number, run); }
     catch (error) {
-      console.warn("[build] screenshot comment failed", error);
-      Sentry.captureException(error, { tags: { "build.step": "screenshots" } });
+      console.error("[build] screenshot comment failed", error);
     }
     return Response.json(state, { status: 201, headers: noStore });
   } catch (error) {

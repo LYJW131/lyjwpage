@@ -1,4 +1,3 @@
-import * as Sentry from "@sentry/cloudflare";
 import { DurableObject } from "cloudflare:workers";
 import { BUILD_ACTIVE_PHASES, BUILD_CLOSED_PHASES, BUILD_DESIGN_LIMITS, BUILD_FAILED_PHASES, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_REPO, BUILD_SCREENSHOT_LIMITS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun, type BuildScreenshot } from "@shared/build-routine";
 import type { Env } from "../runtime";
@@ -422,7 +421,7 @@ export class BuildCoordinator extends DurableObject<Env> {
       } catch (error) {
         if (error instanceof BuildBlockedError) {
           this.finishDraftClose(runId, "skipped");
-          Sentry.captureException(error, { tags: { "build.step": "draft-close" } });
+          console.error("[build] draft close skipped", error);
         } else again = true;
       }
     }

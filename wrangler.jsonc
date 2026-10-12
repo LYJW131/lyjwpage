@@ -13,8 +13,7 @@
   },
   "vars": {
     "SITE_ENV": "production",
-    "PUBLIC_BACKEND_URL": "https://api.homepage.lyjw.llc",
-    "SENTRY_DSN": "https://13d4c7b65d377b6a3e1e546f9d940b9d@o4511888459890688.ingest.us.sentry.io/4512132602331136"
+    "PUBLIC_BACKEND_URL": "https://api.homepage.lyjw.llc"
   },
   "services": [
     { "binding": "PUBLIC_STATUS", "service": "api", "entrypoint": "PublicStatus" }
@@ -23,7 +22,13 @@
     { "binding": "IMAGE_OBJECTS", "bucket_name": "lyjw-homepage" }
   ],
   "images": { "binding": "IMAGES" },
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 },
+    "issues": { "enabled": true }
+  },
   "cache": { "enabled": false },
   "exports": {
     "RenderedSite": { "type": "worker", "cache": { "enabled": true } },

@@ -12,12 +12,14 @@ export const COLLECTOR_JOBS = [
   "cloudflare-metrics",
   "sentry-status",
   "avatar-watch",
+  "uptime-probe",
+  "site-health",
 ] as const;
 
 export type CollectorJobName = (typeof COLLECTOR_JOBS)[number];
 
 // 契约只加不改：退役的名字留在 COLLECTOR_JOBS 里，旧调用方点名时回 skipped，不再进定时轮次。
-export const RETIRED_COLLECTOR_JOBS = ["vercel-deployments", "vercel-metrics", "avatar-watch"] as const satisfies readonly CollectorJobName[];
+export const RETIRED_COLLECTOR_JOBS = ["vercel-deployments", "vercel-metrics", "avatar-watch", "sentry-status"] as const satisfies readonly CollectorJobName[];
 
 export type ActiveCollectorJobName = Exclude<CollectorJobName, (typeof RETIRED_COLLECTOR_JOBS)[number]>;
 

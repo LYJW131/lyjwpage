@@ -2,16 +2,17 @@ import { RETIRED_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collec
 import { withRequestState } from "@shared/request-state";
 
 import type { Env } from "./env";
-import { explain, type Job, type JobResult } from "./job";
+import { explain, type Job } from "./job";
 import { appleRecentJob } from "./jobs/apple-recent";
 import { cloudflareDeploymentsJob, cloudflareMetricsJob } from "./jobs/cloudflare";
 import { githubChartJob } from "./jobs/github-chart";
 import { githubRepoJob } from "./jobs/github-repo";
 import { pagespeedJob } from "./jobs/pagespeed";
 import { providerStatusJob } from "./jobs/provider-status";
-import { sentryStatusJob } from "./jobs/sentry-status";
+import { siteHealthJob } from "./jobs/site-health";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./jobs/site-status";
-import { checkinDue, isDue, monitorConfig, monitorSlug } from "./schedule";
+import { uptimeProbeJob } from "./jobs/uptime-probe";
+import { isDue } from "./schedule";
 
 export const JOBS: readonly Job[] = [
   appleRecentJob,
@@ -23,7 +24,8 @@ export const JOBS: readonly Job[] = [
   siteAnalyticsJob,
   cloudflareDeploymentsJob,
   cloudflareMetricsJob,
-  sentryStatusJob,
+  uptimeProbeJob,
+  siteHealthJob,
 ];
 
 export function findJob(name: string, jobs: readonly Job[] = JOBS): Job | undefined {
@@ -34,45 +36,16 @@ export function dueJobs(time: number, jobs: readonly Job[] = JOBS): Job[] {
   return jobs.filter((job) => isDue(job, time));
 }
 
-export type MonitorRunner = <T>(slug: string, run: () => Promise<T>, config: ReturnType<typeof monitorConfig>) => Promise<T>;
-
-export type FailureReporter = (job: Job["name"], error: Error) => void;
-
-class MonitorFailure extends Error {
-  result: JobResult;
-  constructor(result: JobResult) {
-    super(result.failing);
-    this.name = "MonitorFailure";
-    this.result = result;
-  }
-}
-
-export async function runJob(
-  job: Job,
-  env: Env,
-  options: { now?: number; scheduled?: boolean; monitor?: MonitorRunner; report?: FailureReporter } = {},
-): Promise<CollectorJobOutcome> {
+export async function runJob(job: Job, env: Env, options: { now?: number; scheduled?: boolean } = {}): Promise<CollectorJobOutcome> {
   const started = Date.now();
   const now = options.now ?? started;
-  const execute = () => withRequestState(async () => {
-    const result = await job.run({ env, now, scheduled: options.scheduled ?? false });
-    if (options.monitor && result.failing) throw new MonitorFailure(result);
-    return result;
-  });
   try {
-    const result = options.monitor
-      ? await options.monitor(monitorSlug(job), execute, monitorConfig(job))
-      : await execute();
-    return outcome(job, result.status, result.detail ?? result.failing, started);
+    const result = await withRequestState(() => job.run({ env, now, scheduled: options.scheduled ?? false }));
+    return outcome(job, result.status, result.detail, started);
   } catch (error) {
-    if (error instanceof MonitorFailure) {
-      options.report?.(job.name, new Error(error.message));
-      return outcome(job, error.result.status, error.message, started);
-    }
     const failed = outcome(job, "error", explain(error), started);
-    const outage = (error as { outage?: unknown } | null)?.outage === true;
-    (outage ? console.warn : console.error)(JSON.stringify({ event: "collector-job", ...failed }));
-    if (!outage) options.report?.(job.name, error instanceof Error ? error : new Error(explain(error)));
+    if ((error as { outage?: unknown } | null)?.outage === true) console.warn(JSON.stringify({ event: "collector-job", ...failed }));
+    else console.error(`[collector-job] ${job.name}`, error);
     return failed;
   }
 }
@@ -86,14 +59,9 @@ export const HEAD_START_MS = 3_000;
 export async function runScheduled(
   env: Env,
   scheduledTime: number,
-  options: { monitor?: MonitorRunner; report?: FailureReporter; jobs?: readonly Job[]; headStartMs?: number } = {},
+  options: { jobs?: readonly Job[]; headStartMs?: number } = {},
 ): Promise<CollectorJobOutcome[]> {
-  const run = (job: Job) => runJob(job, env, {
-    now: scheduledTime,
-    scheduled: true,
-    monitor: options.monitor && checkinDue(job, scheduledTime) ? options.monitor : undefined,
-    report: options.report,
-  });
+  const run = (job: Job) => runJob(job, env, { now: scheduledTime, scheduled: true });
   const due = dueJobs(scheduledTime, options.jobs);
   const first = due.filter((job) => job.headStart).map(run);
   const rest = due.filter((job) => !job.headStart);
@@ -112,11 +80,11 @@ export async function runScheduled(
 export async function runNamed(
   env: Env,
   names: readonly string[],
-  options: { jobs?: readonly Job[]; report?: FailureReporter } = {},
+  options: { jobs?: readonly Job[] } = {},
 ): Promise<CollectorJobOutcome[]> {
   return Promise.all([...new Set(names)].map((name) => {
     const job = findJob(name, options.jobs);
-    if (job) return runJob(job, env, { report: options.report });
+    if (job) return runJob(job, env);
     if ((RETIRED_COLLECTOR_JOBS as readonly string[]).includes(name)) {
       return Promise.resolve<CollectorJobOutcome>({ job: name, status: "skipped", detail: "Retired job", ms: 0 });
     }

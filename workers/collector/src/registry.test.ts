@@ -5,8 +5,8 @@ import { COLLECTOR_JOBS, RETIRED_COLLECTOR_JOBS } from "@shared/collector";
 
 import type { Env } from "./env";
 import type { Job } from "./job";
-import { JOBS, dueJobs, runJob, runNamed, runScheduled, type MonitorRunner } from "./registry";
-import { checkinCrontab, cronMonitor, checkinDue, checkinEveryMinutes, isDue, monitorConfig, monitorSlug } from "./schedule";
+import { JOBS, dueJobs, runJob, runNamed, runScheduled } from "./registry";
+import { isDue } from "./schedule";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -27,7 +27,6 @@ test("the registry covers every shared job name once, with periods that divide a
   for (const job of JOBS) {
     assert.equal(60 % job.everyMinutes, 0, job.name);
     assert.ok(job.offset >= 0 && job.offset < job.everyMinutes, job.name);
-    assert.ok(job.maxRuntimeMinutes > 0, job.name);
   }
   const hour = at("2026-09-28T10:00:00Z");
   for (const job of JOBS) {
@@ -36,116 +35,44 @@ test("the registry covers every shared job name once, with periods that divide a
   }
 });
 
-test("check-ins happen at most every five minutes and only on runs the job actually makes", () => {
-  const hour = at("2026-09-28T10:00:00Z");
-  for (const job of JOBS) {
-    const every = checkinEveryMinutes(job);
-    assert.ok(every >= 5 && every % job.everyMinutes === 0, job.name);
-    const checkins = Array.from({ length: 60 }, (_, m) => hour + m * 60_000).filter((time) => checkinDue(job, time));
-    assert.equal(checkins.length, 60 / every, job.name);
-    for (const time of checkins) assert.ok(isDue(job, time), `${job.name} checks in on a minute it does not run`);
-  }
-  assert.equal(checkinEveryMinutes({ everyMinutes: 1 }), 5);
-  assert.equal(checkinEveryMinutes({ everyMinutes: 2 }), 10);
-  assert.equal(checkinEveryMinutes({ everyMinutes: 15 }), 15);
-});
-
-test("monitor crontabs match the check-in minutes", () => {
-  assert.equal(checkinCrontab({ everyMinutes: 1, offset: 0 }), "*/5 * * * *");
-  assert.equal(checkinCrontab({ everyMinutes: 2, offset: 0 }), "*/10 * * * *");
-  assert.equal(checkinCrontab({ everyMinutes: 10, offset: 1 }), "1-59/10 * * * *");
-  assert.equal(checkinCrontab({ everyMinutes: 30, offset: 2 }), "2-59/30 * * * *");
-  assert.equal(checkinCrontab({ everyMinutes: 60, offset: 7 }), "7 * * * *");
-  const config = monitorConfig({ everyMinutes: 15, offset: 3, maxRuntimeMinutes: 2 });
-  assert.deepEqual(config, {
-    schedule: { type: "crontab", value: "3-59/15 * * * *" },
-    checkinMargin: 3,
-    maxRuntime: 2,
-    timezone: "UTC",
-    failureIssueThreshold: 2,
-    recoveryThreshold: 1,
-  });
-  assert.equal(monitorSlug({ name: "provider-status" }), "collector-provider-status");
-});
-
 const env = {} as Env;
 
 function fakeJob(run: Job["run"], overrides: Partial<Job> = {}): Job {
-  return { name: "github-chart", everyMinutes: 10, offset: 1, maxRuntimeMinutes: 2, run, ...overrides };
+  return { name: "github-chart", everyMinutes: 10, offset: 1, run, ...overrides };
 }
 
-function recordingMonitor() {
-  const checkins: { slug: string; status: "ok" | "error"; schedule: string }[] = [];
-  const monitor: MonitorRunner = async (slug, run, config) => {
-    try {
-      const value = await run();
-      checkins.push({ slug, status: "ok", schedule: config.schedule.value });
-      return value;
-    } catch (error) {
-      checkins.push({ slug, status: "error", schedule: config.schedule.value });
-      throw error;
-    }
-  };
-  return { monitor, checkins };
-}
-
-test("a job failure becomes an error outcome and an error check-in instead of rejecting", async (t) => {
+test("a job failure becomes an error outcome and an error log instead of rejecting", async (t) => {
   const logged = t.mock.method(console, "error", () => {});
-  const { monitor, checkins } = recordingMonitor();
-  const reported: [string, string][] = [];
-  const report = (job: string, error: Error) => { reported.push([job, error.message]); };
-  const result = await runJob(fakeJob(async () => { throw new Error("upstream 503"); }), env, { monitor, report });
+  const result = await runJob(fakeJob(async () => { throw new Error("upstream 503"); }), env);
   assert.equal(result.status, "error");
   assert.equal(result.detail, "upstream 503");
   assert.equal(logged.mock.callCount(), 1);
-  assert.deepEqual(reported, [["github-chart", "upstream 503"]], "真失败开 issue");
-  assert.deepEqual(checkins, [{ slug: "collector-github-chart", status: "error", schedule: "1-59/10 * * * *" }]);
+  assert.equal(logged.mock.calls[0].arguments[0], "[collector-job] github-chart");
 });
 
-test("a known upstream outage is still an error check-in but is logged at warn", async (t) => {
+test("a known upstream outage is logged at warn so it does not open an issue", async (t) => {
   const errors = t.mock.method(console, "error", () => {});
   const warnings = t.mock.method(console, "warn", () => {});
-  const { monitor, checkins } = recordingMonitor();
   const outage = Object.assign(new Error("PSN 上游不可用（presence）"), { outage: true });
-  const reported: string[] = [];
-  const result = await runJob(fakeJob(async () => { throw outage; }), env, { monitor, report: (job) => { reported.push(job); } });
+  const result = await runJob(fakeJob(async () => { throw outage; }), env);
   assert.equal(result.status, "error");
-  assert.deepEqual(reported, [], "已知外部故障不开 issue");
   assert.equal(errors.mock.callCount(), 0);
   assert.equal(warnings.mock.callCount(), 1);
-  assert.deepEqual(checkins.map((row) => row.status), ["error"]);
 });
 
-test("a skip that asks the monitor to fail stays a skip in the outcome but checks in as error", async () => {
-  const failing = fakeJob(async () => ({ status: "skipped", detail: "backoff", failing: "PSN 已连续 3 轮失败" }));
-  const { monitor, checkins } = recordingMonitor();
-  const reported: string[] = [];
-  const outcome = await runJob(failing, env, { monitor, report: (_, error) => { reported.push(error.message); } });
-  assert.deepEqual(reported, ["PSN 已连续 3 轮失败"], "连着失败好几轮才开 issue");
-  assert.deepEqual({ ...outcome, ms: 0 }, { job: "github-chart", status: "skipped", detail: "PSN 已连续 3 轮失败", ms: 0 });
-  assert.deepEqual(checkins.map((row) => row.status), ["error"]);
-  assert.equal((await runJob(failing, env)).detail, "backoff");
-});
-
-test("a scheduled tick runs only due jobs and checks in only on check-in minutes", async () => {
+test("a scheduled tick runs only due jobs", async () => {
   const ran: string[] = [];
   const job = (name: Job["name"], everyMinutes: number, offset: number) =>
     fakeJob(async () => { ran.push(name); return { status: "ok" }; }, { name, everyMinutes, offset });
   const jobs = [job("provider-status", 1, 0), job("apple-recent", 2, 0), job("github-chart", 10, 1)];
 
-  const { monitor, checkins } = recordingMonitor();
-  await runScheduled(env, at("2026-09-28T10:02:00Z"), { monitor, jobs });
+  await runScheduled(env, at("2026-09-28T10:02:00Z"), { jobs });
   assert.deepEqual(ran.sort(), ["apple-recent", "provider-status"]);
-  assert.equal(checkins.length, 0);
 
   ran.length = 0;
-  const outcomes = await runScheduled(env, at("2026-09-28T10:10:00Z"), { monitor, jobs });
+  const outcomes = await runScheduled(env, at("2026-09-28T10:11:00Z"), { jobs });
   assert.deepEqual(outcomes.map((row) => row.status), ["ok", "ok"]);
-  assert.deepEqual(checkins.map((row) => row.slug).sort(), ["collector-apple-recent", "collector-provider-status"]);
-
-  checkins.length = 0;
-  await runScheduled(env, at("2026-09-28T10:11:00Z"), { monitor, jobs });
-  assert.deepEqual(checkins.map((row) => row.slug), ["collector-github-chart"]);
+  assert.deepEqual(ran.sort(), ["github-chart", "provider-status"]);
 });
 
 test("a head-start job gets going before the rest, which wait for it or the head-start window", async () => {
@@ -168,14 +95,6 @@ test("a head-start job gets going before the rest, which wait for it or the head
 test("named runs report unknown jobs without throwing and dedupe names", async () => {
   const results = await runNamed(env, ["nope", "nope"]);
   assert.deepEqual(results, [{ job: "nope", status: "error", detail: "unknown job", ms: 0 }]);
-});
-
-test("cron check-ins stay off unless SENTRY_CRON_CHECKINS is true", async () => {
-  const config = monitorConfig({ everyMinutes: 5, offset: 2, maxRuntimeMinutes: 2 });
-  const real = (async (_slug: string, run: () => Promise<string>) => `real:${await run()}`) as unknown as MonitorRunner;
-  assert.equal(await cronMonitor({}, real)("collector-x", async () => "ran", config), "ran");
-  assert.equal(await cronMonitor({ SENTRY_CRON_CHECKINS: "false" }, real)("collector-x", async () => "ran", config), "ran");
-  assert.equal(await cronMonitor({ SENTRY_CRON_CHECKINS: "true" }, real)("collector-x", async () => "ran", config), "real:ran");
 });
 
 test("retired job names stay callable as skipped and never join the schedule", async () => {

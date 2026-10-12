@@ -8,7 +8,6 @@ import { Card } from "@/components/ui/card";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
-import { SentryMark } from "@/components/live/sentry-mark";
 import { UptimeStrip } from "@/components/live/uptime-strip";
 import { useStale } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
@@ -18,7 +17,7 @@ import {
   CLOUDFLARE_METRICS_STALE_MS,
   GITHUB_REPO_STALE_MS,
   PAGESPEED_STALE_MS,
-  SENTRY_STALE_MS,
+  HEALTH_STALE_MS,
   SERVER_STALE_MS,
   SITE_ANALYTICS_STALE_MS,
   SITE_DEPLOYMENTS_STALE_MS,
@@ -26,8 +25,8 @@ import {
 import type { ReporterName, ReporterStat, ReportersPayload } from "@shared/reporter-ledger";
 import { useStatus } from "@/hooks/use-status";
 import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@shared/cloudflare-workers-types";
-import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, SENTRY_PATH, SERVER_PATH, SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
-import type { SentryBlock, SentryErrorSeries, SentryStatusPayload } from "@shared/sentry-status-types";
+import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, HEALTH_PATH, SERVER_PATH, SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
+import type { ErrorSeries, HealthBlock, HealthPayload } from "@shared/health-types";
 import { site } from "@shared/site";
 import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@shared/types";
 import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@shared/site-deployments-types";
@@ -79,13 +78,13 @@ function Fact({ label, value, title, className }: { label: string; value: string
   return <span className="whitespace-nowrap" title={title}>{label} <span className={cn("text-foreground", className)}>{value}</span></span>;
 }
 
-const fieldValues = (vitals: SentryStatusPayload["vitals"]) => ({
+const fieldValues = (vitals: HealthPayload["vitals"]) => ({
   lcpMs: vitals?.lcpP75Ms, tbtMs: vitals?.inpP75Ms, cls: vitals?.clsP75, fcpMs: vitals?.fcpP75Ms, ttfbMs: vitals?.ttfbP75Ms,
 });
 
-function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; title: string }) {
+function ErrorCount({ series, title }: { series: ErrorSeries | undefined; title: string }) {
   if (!series) return null;
-  return <span title={`${title} · ${number.format(series.count7d)} in 7d · ${number.format(series.unresolved)} unresolved`}
+  return <span title={`${title} · ${number.format(series.count7d)} in 7d · ${number.format(series.unresolved)} active ${series.unresolved === 1 ? "issue" : "issues"} · Workers Observability, sampled`}
     className={cn("shrink-0 text-[10px] tabular-nums", series.count12h ? "text-red-500" : "text-muted-foreground")}>
     {number.format(series.count12h)} err
   </span>;
@@ -114,11 +113,11 @@ function ReporterTile({ name, stat, staleMs, servedAt, title }: {
   </li>;
 }
 
-export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallback, sentryFallback, serverFallback, reportersFallback, className }: {
+export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallback, healthFallback, serverFallback, reportersFallback, className }: {
   githubFallback: StatusResponse<GithubRepoPayload>;
   siteFallback: StatusResponse<SiteDeploymentsPayload>;
   cloudflareFallback: StatusResponse<CloudflareWorkersPayload>;
-  sentryFallback: StatusResponse<SentryStatusPayload>;
+  healthFallback: StatusResponse<HealthPayload>;
   serverFallback: StatusResponse<ServerPayload>;
   reportersFallback: StatusResponse<ReportersPayload>;
   className?: string;
@@ -126,22 +125,22 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
   const { data: github, servedAt: githubServedAt } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, { fallback: githubFallback });
   const { data: siteDeployments, servedAt: siteServedAt } = useStatus<SiteDeploymentsPayload>(SITE_DEPLOYMENTS_PATH, { fallback: siteFallback });
   const { data: cloudflare, servedAt: cloudflareServedAt } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, { fallback: cloudflareFallback });
-  const { data: sentry, servedAt: sentryServedAt } = useStatus<SentryStatusPayload>(SENTRY_PATH, { fallback: sentryFallback });
+  const { data: health, servedAt: healthServedAt } = useStatus<HealthPayload>(HEALTH_PATH, { fallback: healthFallback });
   const githubStale = useStale(github ? github.totalsAt ?? github.fetchedAt : undefined, GITHUB_REPO_STALE_MS, githubServedAt);
   const deploymentsStale = useStale(siteDeployments?.fetchedAt, SITE_DEPLOYMENTS_STALE_MS, siteServedAt);
   const analyticsStale = useStale(siteDeployments?.analytics?.fetchedAt, SITE_ANALYTICS_STALE_MS, siteServedAt);
   const pagespeedStale = useStale(siteDeployments?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS, siteServedAt);
   const workerMetricsStale = useStale(cloudflare?.fetchedAt, CLOUDFLARE_METRICS_STALE_MS, cloudflareServedAt);
   const workerDeploymentsStale = useStale(cloudflare?.deploymentsFetchedAt, CLOUDFLARE_DEPLOYMENTS_STALE_MS, cloudflareServedAt);
-  const sentryAt = (block: SentryBlock) => sentry ? sentry.blockAt?.[block] ?? sentry.fetchedAt : undefined;
-  const uptimeStale = useStale(sentryAt("uptime"), SENTRY_STALE_MS, sentryServedAt);
-  const heartbeatStale = useStale(sentryAt("heartbeat"), SENTRY_STALE_MS, sentryServedAt);
-  const errorsStale = useStale(sentryAt("errors"), SENTRY_STALE_MS, sentryServedAt);
-  const vitalsStale = useStale(sentryAt("vitals"), SENTRY_STALE_MS, sentryServedAt);
+  const healthAt = (block: HealthBlock) => health ? health.blockAt?.[block] ?? health.fetchedAt : undefined;
+  const uptimeStale = useStale(healthAt("uptime"), HEALTH_STALE_MS, healthServedAt);
+  const heartbeatStale = useStale(healthAt("heartbeat"), HEALTH_STALE_MS, healthServedAt);
+  const errorsStale = useStale(healthAt("errors"), HEALTH_STALE_MS, healthServedAt);
+  const vitalsStale = useStale(healthAt("vitals"), HEALTH_STALE_MS, healthServedAt);
   const analytics = analyticsStale ? null : siteDeployments?.analytics;
   const totals = githubStale ? null : github?.totals;
   const production = deploymentsStale ? null : siteDeployments?.production;
-  const siteErrors = errorsStale ? undefined : sentry?.errors?.site, apiErrors = errorsStale ? undefined : sentry?.errors?.worker;
+  const siteErrors = errorsStale ? undefined : health?.errors?.site, apiErrors = errorsStale ? undefined : health?.errors?.worker;
   const siteWorker = cloudflare?.workers.find(w => w.name === "site");
   const siteMetrics = workerMetricsStale ? null : siteWorker?.metrics;
   const { data: server } = useStatus<ServerPayload>(SERVER_PATH, { fallback: serverFallback });
@@ -164,7 +163,6 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
     <div className="flex items-center gap-4">
       <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub repository" className="-m-2 flex p-2 hover:text-foreground"><Github size={15} /></a>
       <a href={site.cloudflare} target="_blank" rel="noreferrer" aria-label="Cloudflare dashboard" className="-m-2 flex p-2"><CloudflareColor size={19} /></a>
-      <a href={site.sentry} target="_blank" rel="noreferrer" aria-label="Sentry dashboard" className="-m-2 flex p-2 hover:text-foreground"><SentryMark /></a>
     </div>
   }>
     <div className="border-b border-line px-4 py-5 md:px-5">
@@ -183,7 +181,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       )}
     </div>
     <RepoContributions data={github} deploymentsBySha={deploymentsBySha} />
-    {sentry && <UptimeStrip site={sentry.uptime} api={sentry.heartbeat ?? null} siteStale={uptimeStale} apiStale={heartbeatStale} />}
+    {health && <UptimeStrip site={health.uptime} api={health.heartbeat ?? null} siteStale={uptimeStale} apiStale={heartbeatStale} />}
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
@@ -199,11 +197,11 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
               {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
             </div>;
           })}
-          {sentry?.vitals && (() => {
-            const vitals = vitalsStale ? null : sentry.vitals;
+          {health?.vitals && (() => {
+            const vitals = vitalsStale ? null : health.vitals;
             const field = fieldValues(vitals), samples = vitals?.samples, score = vitals ? fieldPerformanceScore(vitals) : null;
             return <div className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs"
-              title={vitalsStale ? "Real visitors via Sentry · unavailable" : samples ? `Real visitors via Sentry · p75 of ${number.format(samples)} page loads, last 7 days` : "Real visitors via Sentry · no page loads sampled yet"}>
+              title={vitalsStale ? "Real visitors via Cloudflare Web Analytics · unavailable" : samples ? `Real visitors via Cloudflare Web Analytics · p75 of ${number.format(samples)} Web Vitals reports, last 7 days` : "Real visitors via Cloudflare Web Analytics · no reports yet"}>
               <span className="text-left text-[11px] text-muted-foreground">Users</span>
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}
                 title="Web Vitals score of real visitors: LCP 30%, INP 30%, CLS 15%, FCP 15%, TTFB 10%, from 7-day p75">{score ?? "—"}</span>
@@ -233,7 +231,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
-                {name === "api" && <ErrorCount series={apiErrors} title="API Worker errors in the last 12h" />}
+                {name === "api" && <ErrorCount series={apiErrors} title="Backend Worker errors in the last 12h (api, ai, ingress, collector)" />}
                 <CommitSha commit={deployment?.commit} />
               </div>
               <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">

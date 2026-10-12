@@ -52,7 +52,7 @@
     { id: "github-repo", rt: 0, tag: 0, r: [0, 1865, 614, 106], k: "text" },
     { id: "site-deployments", rt: 0, tag: 0, r: [0, 1975, 614, 106], k: "text" },
     { id: "cloudflare-workers", rt: 0, tag: 0, r: [0, 2085, 614, 106], k: "text" },
-    { id: "sentry", rt: 0, tag: 0, r: [0, 2195, 614, 106], k: "cells" },
+    { id: "health", rt: 0, tag: 0, r: [0, 2195, 614, 106], k: "cells" },
     { id: "reporters", rt: 0, tag: 0, r: [0, 2305, 614, 111], k: "text" },
     { id: "watching-now", rt: 1, tag: 1, r: [0, 2430, 270, 152], k: "poster" },
     { id: "watching", rt: 1, tag: 1, r: [274, 2430, 340, 152], k: "tiles" },
@@ -68,7 +68,7 @@
   const RAIL = { rt: -70, lag: 684 }, GLYPH_Y = 2760;
   const RECAST = [["desktop", 6.0], ["listening-now", 6.5], ["charger", 7.0]];
   const recastAt = Object.fromEntries(RECAST);
-  const TIMERS = [["github-chart", 8.0], ["pulse", 8.125], ["github-repo", 8.25], ["site-deployments", 8.375], ["cloudflare-workers", 8.5], ["sentry", 8.625], ["reporters", 8.75]];
+  const TIMERS = [["github-chart", 8.0], ["pulse", 8.125], ["github-repo", 8.25], ["site-deployments", 8.375], ["cloudflare-workers", 8.5], ["health", 8.625], ["reporters", 8.75]];
   const timerAt = Object.fromEntries(TIMERS);
   const FAIL = "pulse", FAIL_T = 9.5;
 

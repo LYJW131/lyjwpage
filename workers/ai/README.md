@@ -24,12 +24,12 @@
 
 ## 代码职责
 
-- `src/index.ts`：Sentry 包装的 HTTP 入口，导出 `ChatQuota`、`AnthropicEgress`、`BuildCoordinator`。
+- `src/index.ts`：HTTP 入口，导出 `ChatQuota`、`AnthropicEgress`、`BuildCoordinator`。
 - `src/chat/`：Turnstile、模型分流、工具循环、流式事件、历史验签、配额与 Anthropic 出口。
 - `src/tools/registry.ts#SITE_TOOLS`：首页对话与 MCP 共用的只读站点工具；读取由 `ToolIO` 注入。
 - `src/mcp.ts`：MCP 协议处理，不调用模型。
 - `src/build/`：构建令牌、上传路径验证、GitHub App 调用、webhook、状态对账与 `BuildCoordinator`。完整配置与 routine 提示词见 [访客协作构建](../../docs/build-routine.md)。
-- `src/sentry.ts#sentryOptions`：关闭请求正文、请求头与 cookie 收集；对话、OAuth code 和代理请求中的密钥不能进入 Sentry。`SENTRY_ENVIRONMENT` 优先，未配置时由 `PREVIEW_WORKER` 选择预览或生产环境。
+- 日志与 Issues 在 Workers Observability 的服务 `ai` 下；`console` 调用只记错误对象和固定前缀，不带对话、OAuth code 和代理请求中的密钥。
 
 下文 `src/chat/`、`src/tools/` 等后端路径相对于本目录；`shared/`、站点的 `src/components/`、`src/app/` 和 `docs/` 相对于仓库根目录。
 

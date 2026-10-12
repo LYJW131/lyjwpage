@@ -8,7 +8,6 @@ export const site = {
   description: "A personal homepage with live status of devices, apps, music, media and AI coding.",
   repo: "https://github.com/LYJW131/lyjwpage",
   cloudflare: `${CLOUDFLARE_DASH_URL}/workers-and-pages`,
-  sentry: "https://yangjunwei-liang.sentry.io",
   githubLogin: "LYJW131",
   githubId: 153256373,
   github: "https://github.com/LYJW131",

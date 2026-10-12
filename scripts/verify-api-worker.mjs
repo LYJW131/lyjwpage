@@ -528,7 +528,6 @@ export default { fetch(request, env) {
     const logStart = logs.length;
     const build = start('pnpm', ['build'], {
       PUBLIC_BACKEND_URL: worker,
-      SENTRY_AUTH_TOKEN: '',
     });
     const [buildExit] = await once(build, 'exit');
     await writeFile(join(temporary, 'site-build.log'), logs.slice(logStart).join(''));

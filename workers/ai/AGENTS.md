@@ -13,7 +13,7 @@
 - 设计会话的 Managed Agents 规划者只读：沙盒只放行 github.com、不挂凭据，write / edit 关闭，停下等确认的调用一律拒绝；提示词与工具每个会话从 `src/chat/designer.ts` 覆盖，不依赖 Console 上 agent 的配置。挂起的 `ask_visitor` / `propose_build` 只能用 `user.custom_tool_result` 了结。会话不会自己过期，靠 cron 跑的 `src/chat/design-cleanup.ts` 删除；改设计会话期限时同时核对宽限期。
 - routine 不持有仓库推送凭据；上传只经 `src/build/validation.ts` 的路径与大小校验后由 GitHub App 写入构建分支。webhook 必须验证原始正文 HMAC；Claude 审查只作参考，不授权合并。
 - Anthropic 出站经 `src/chat/egress.ts#anthropicFetch`；不要把任意主机转发能力加进 `AnthropicEgress`，取消信号须贯穿请求与响应管道。
-- `src/sentry.ts#sentryOptions` 禁止收集请求正文、请求头和 cookie；不能把对话、OAuth code 或出站密钥写入日志与错误上下文。
+- Workers Observability 收下所有 `console` 输出：不能把请求正文、请求头、cookie、对话、OAuth code 或出站密钥写进日志与错误消息。
 - 开发权限只由 `src/runtime.ts#aiDevEnabled` 判定；生产缺省关闭，不能用 `UPSTREAM_API_URL` 推断开发环境。分支预览使用组合入口，不能绑定生产状态或生产配额对象。
 
 ## 迁移与成对修改

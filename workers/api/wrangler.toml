@@ -3,11 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2026-09-08"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
 workers_dev = true
+upload_source_maps = true
 
 routes = [
   { pattern = "api.homepage.lyjw.llc", custom_domain = true }
 ]
-
 
 [vars]
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me"
@@ -15,10 +15,6 @@ APPLE_MUSIC_TEAM_ID = "2VTXNMR2GL"
 APPLE_MUSIC_KEY_ID = "88KBJL3CKU"
 STORAGE_PREFIX = "lyjwpage"
 APPLE_MUSIC_STOREFRONT = "cn"
-SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
-
-[version_metadata]
-binding = "CF_VERSION_METADATA"
 
 [ai]
 binding = "AI"
@@ -54,6 +50,13 @@ database_name = "lyjwpage-history"
 database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 
 [observability]
+enabled = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
+
+[observability.issues]
 enabled = true
 
 [triggers]
@@ -98,7 +101,6 @@ new_sqlite_classes = ["AnthropicEgress"]
 # Preview 不继承生产绑定，要用的绑定（DO、AI、限流）都得在下面重声明。
 [previews.vars]
 PREVIEW_WORKER = "true"
-SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 UPSTREAM_API_URL = "https://api.homepage.lyjw.llc"
 STORAGE_PREFIX = "lyjwpage-preview"
 ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
