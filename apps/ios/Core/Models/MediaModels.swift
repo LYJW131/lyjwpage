@@ -54,7 +54,7 @@ struct LocalNowPlaying: Decodable, Sendable, Equatable {
         return repeatOne ? elapsed.truncatingRemainder(dividingBy: durationMs) : min(durationMs, elapsed)
     }
 
-    // 须与站点 `src/lib/home-layout.ts#liveTrack` 同一判断。
+    // 须与站点 `shared/home-layout.ts#liveTrack` 同一判断。
     var isLive: Bool { title?.isEmpty == false && state != .stopped }
 }
 
@@ -84,7 +84,7 @@ struct NowListeningPayload: Decodable, Sendable, Equatable, ReporterPresence {
     let declaredOffline: Bool
     let heartbeatWindowMs: Double
 
-    // Mac 掉线时它报的那首已不可信，换成 HomePod，没有就当空闲。须与站点 `src/lib/freshness.ts#liveNowListening` 一致。
+    // Mac 掉线时它报的那首已不可信，换成 HomePod，没有就当空闲。须与站点 `shared/freshness.ts#liveNowListening` 一致。
     func live(macOffline: Bool) -> NowListeningPayload {
         guard macOffline, music?.source == .appleMusic else { return self }
         return NowListeningPayload(
