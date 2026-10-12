@@ -2,6 +2,7 @@
   "use strict";
   const BPM = 108, BEAT = 60 / BPM, BAR = BEAT * 4;
   const TAIL = 2, SAMPLE_RATE = 48000;
+  const RENDER_BATCH_SECONDS = 1, RENDER_WARMUP_SECONDS = 20, RENDER_QUANTUM_FRAMES = 128, DUCK_RATE = 1000;
   const CEIL_DB = -1, TARGET_LUFS = null;
   const at = (bar, beat = 0) => bar * BAR + beat * BEAT;
   const TAU = Math.PI * 2;
@@ -197,10 +198,10 @@
   const EVENT_KEYS = ["kick", "snare", "hat", "tick", "stamp", "whoosh", "lamp", "key", "bell", "accent", "clock"];
   const DIP_ATT = 0.008;
   function lastIdx(list, t, key = "t") { let lo = 0, hi = list.length - 1, r = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (list[m][key] <= t + 1e-9) { r = m; lo = m + 1; } else hi = m - 1; } return r; }
-  function duck(t) {
+  function duck(t, dips = B.DIPS) {
     let g = 1;
-    for (let i = lastIdx(B.DIPS, t); i >= 0; i--) {
-      const d = B.DIPS[i], x = t - d.t;
+    for (let i = lastIdx(dips, t); i >= 0; i--) {
+      const d = dips[i], x = t - d.t;
       if (x > 2) break;
       const s = x < DIP_ATT ? x / DIP_ATT : Math.exp(-(x - DIP_ATT) / d.tau);
       g *= 1 - d.depth * s;
@@ -297,7 +298,7 @@
       return norm(d);
     }
     const get = (key, fn) => {
-      if (!cache.has(key)) { const d = fn(), b = new AudioBuffer({ length: d.length, sampleRate: sr, numberOfChannels: 1 }); b.copyToChannel(d, 0); cache.set(key, b); }
+      if (!cache.has(key)) { const d = fn(); if (d.some((v) => !Number.isFinite(v))) throw new Error(`Invalid sample bank: ${key}`); const b = new AudioBuffer({ length: d.length, sampleRate: sr, numberOfChannels: 1 }); b.copyToChannel(d, 0); cache.set(key, b); }
       return cache.get(key);
     };
 
@@ -639,9 +640,82 @@
     return c;
   }
 
+  // 声部采样的自动化初值固定，所有并行段共享同一份干声与 duck，效果器仍连续预热。
+  const VOICE_BANK = new Map(), PREPARED_VOICES = new WeakMap();
+  const voiceFrames = (n, sr) => n.kind === "pad" ? Math.round(n.end * sr) - Math.round(n.t * sr) : Math.round(n.dur * sr);
+  const voiceKey = (n, sr, name, det) => JSON.stringify(n.kind === "pad" ? [sr, n.kind, name, det, n.lp, voiceFrames(n, sr), n.last] : [sr, n.kind, n.m, voiceFrames(n, sr), n.att, n.rel]);
+  async function prepareVoices(sr, workers, score) {
+    let rates = PREPARED_VOICES.get(score);
+    if (!rates) { rates = new Map(); PREPARED_VOICES.set(score, rates); }
+    if (rates.has(sr)) return rates.get(sr);
+    const jobs = new Map();
+    for (const n of score.NOTES) {
+      if (n.kind === "pad") for (const name of CHORD[n.chord]) for (const det of [-7, 7]) jobs.set(voiceKey(n, sr, name, det), { n, name, det });
+      else if (n.kind === "bass") jobs.set(voiceKey(n, sr), { n });
+    }
+    const missing = [...jobs].filter(([key]) => !VOICE_BANK.has(key));
+    let next = 0;
+    const preparing = Promise.all(Array.from({ length: Math.min(workers, missing.length) }, async () => {
+      while (next < missing.length) {
+        const [key, { n, name, det }] = missing[next++], duration = voiceFrames(n, sr) / sr;
+        const rel = n.kind === "pad" ? n.last ? 1.7 : 0.45 : n.rel;
+        const tail = n.kind === "pad" ? rel * 1.6 : rel * 3 + 0.02;
+        const pre = sr, frames = Math.ceil((duration + tail) * sr), ctx = new OfflineAudioContext(1, pre + frames, sr);
+        const gain = ctx.createGain(); gain.gain.value = 0;
+        gain.gain.setValueAtTime(0, 1); gain.gain.linearRampToValueAtTime(1, 1 + (n.kind === "pad" ? 0.28 : n.att));
+        gain.gain.setValueAtTime(1, 1 + duration); gain.gain.setTargetAtTime(0, 1 + duration, rel / (n.kind === "pad" ? 4 : 3));
+        gain.connect(ctx.destination);
+        if (n.kind === "pad") {
+          const oscillator = ctx.createOscillator(), filter = ctx.createBiquadFilter();
+          oscillator.type = "sawtooth"; oscillator.frequency.value = hz(midi(name)); oscillator.detune.value = det;
+          filter.type = "lowpass"; filter.Q.value = 0.3; filter.frequency.value = n.lp;
+          filter.frequency.setValueAtTime(n.lp * 0.55, 1); filter.frequency.linearRampToValueAtTime(n.lp, 1.8);
+          oscillator.connect(filter); filter.connect(gain); oscillator.start(1); oscillator.stop(1 + duration + tail);
+        } else {
+          const fundamental = ctx.createOscillator(), harmonic = ctx.createOscillator(), overtone = ctx.createGain();
+          fundamental.frequency.value = hz(n.m); harmonic.frequency.value = 2 * hz(n.m); overtone.gain.value = 0.2;
+          fundamental.connect(gain); harmonic.connect(overtone); overtone.connect(gain);
+          for (const oscillator of [fundamental, harmonic]) {
+            oscillator.detune.setValueAtTime(35, 1); oscillator.detune.setTargetAtTime(0, 1, 0.012);
+            oscillator.start(1); oscillator.stop(1 + duration + tail);
+          }
+        }
+        const rendered = await ctx.startRendering(), buffer = new AudioBuffer({ length: frames, sampleRate: sr, numberOfChannels: 1 });
+        buffer.copyToChannel(rendered.getChannelData(0).subarray(pre), 0);
+        VOICE_BANK.set(key, buffer);
+      }
+    })).then(() => {
+      const length = Math.ceil((score.DURATION + TAIL) * sr), points = new Float32Array(Math.ceil(length / sr * DUCK_RATE) + 1), control = new Float32Array(length);
+      for (let i = 0; i < points.length; i++) points[i] = duck(i / DUCK_RATE, score.DIPS);
+      for (let i = 0; i < length; i++) { const x = i * DUCK_RATE / sr, k = Math.floor(x); control[i] = points[k] + (points[k + 1] - points[k]) * (x - k); }
+      const pad = new AudioBuffer({ length, sampleRate: sr, numberOfChannels: 2 }), bass = new AudioBuffer({ length, sampleRate: sr, numberOfChannels: 1 }), verb = new AudioBuffer({ length, sampleRate: sr, numberOfChannels: 2 });
+      const pL = pad.getChannelData(0), pR = pad.getChannelData(1), b = bass.getChannelData(0), vL = verb.getChannelData(0), vR = verb.getChannelData(1);
+      for (const n of score.NOTES) {
+        const from = Math.round(n.t * sr);
+        if (n.kind === "pad") {
+          const names = CHORD[n.chord], level = Math.fround(0.11 * n.level * Math.sqrt(4 / names.length));
+          for (const name of names) for (const [det, pan] of [[-7, -0.5], [7, 0.5]]) {
+            const data = VOICE_BANK.get(voiceKey(n, sr, name, det)).getChannelData(0), end = Math.min(data.length, length - from);
+            const left = Math.fround(Math.cos((pan + 1) * Math.PI / 4)), right = Math.fround(Math.sin((pan + 1) * Math.PI / 4));
+            for (let i = 0; i < end; i++) {
+              const k = from + i, value = Math.fround(data[i] * level), l = Math.fround(value * left), r = Math.fround(value * right);
+              pL[k] += l * control[k]; pR[k] += r * control[k]; vL[k] += l * n.verb; vR[k] += r * n.verb;
+            }
+          }
+        } else if (n.kind === "bass") {
+          const data = VOICE_BANK.get(voiceKey(n, sr)).getChannelData(0), end = Math.min(data.length, length - from), level = Math.fround(0.36 * n.v);
+          for (let i = 0; i < end; i++) { const k = from + i; b[k] += data[i] * level * (0.35 + 0.65 * control[k]); }
+        }
+      }
+      return { pad, bass, verb };
+    });
+    rates.set(sr, preparing);
+    return preparing;
+  }
+
   const CAT = { pad: "pad", bass: "bass", kick: "drums", snare: "drums", hat: "drums", clock: "drums", mel: "mel" };
-  function schedule(ctx, opts) {
-    const END = B.DURATION + TAIL, S = samplesFor(ctx.sampleRate);
+  function schedule(ctx, opts, voices, score) {
+    const offset = opts.offset || 0, END = ctx.length / ctx.sampleRate, S = samplesFor(ctx.sampleRate);
     const solo = opts.solo ? new Set([].concat(opts.solo)) : null;
     const on = (n) => !solo || solo.has(CAT[n.kind] || "fx");
     const gain = (v = 1) => { const g = ctx.createGain(); g.gain.value = v; return g; };
@@ -650,10 +724,15 @@
     // DynamicsCompressor 的阈值分支会放大浮点误差，破坏重复渲染的一致性。
     const mix = gain(), sweep = filt("lowpass", 20000, 0.9), post = gain(0.4);
     sweep.frequency.setValueAtTime(20000, 0);
-    for (const s of B.SWEEPS) {
-      sweep.frequency.setValueAtTime(20000, s.t0);
-      sweep.frequency.exponentialRampToValueAtTime(s.f, s.t1);
-      sweep.frequency.exponentialRampToValueAtTime(20000, s.t2);
+    for (const s of score.SWEEPS) {
+      if (s.t2 <= offset) continue;
+      if (s.t0 >= offset) sweep.frequency.setValueAtTime(20000, s.t0 - offset);
+      else {
+        const f = offset < s.t1 ? 20000 * Math.pow(s.f / 20000, (offset - s.t0) / (s.t1 - s.t0)) : s.f * Math.pow(20000 / s.f, (offset - s.t1) / (s.t2 - s.t1));
+        sweep.frequency.setValueAtTime(f, 0);
+      }
+      if (s.t1 > offset) sweep.frequency.exponentialRampToValueAtTime(s.f, s.t1 - offset);
+      sweep.frequency.exponentialRampToValueAtTime(20000, s.t2 - offset);
     }
     mix.connect(sweep); sweep.connect(post);
     if (opts.stage === "pre") post.connect(ctx.destination);
@@ -665,10 +744,8 @@
     const bus = { drums: gain(), fx: gain(), mel: gain(), fxPost: gain(), melPost: gain() };
     for (const k of ["drums", "fx", "mel"]) bus[k].connect(mix);
     bus.fxPost.connect(post); bus.melPost.connect(post);
-    const RATE = 1000, cn = Math.ceil(END * RATE) + 1, cPad = new Float32Array(cn), cBass = new Float32Array(cn);
-    for (let i = 0; i < cn; i++) { const t = i / RATE; cPad[i] = duck(t); cBass[i] = bassDuck(t); }
-    bus.pad = gain(); bus.pad.gain.setValueCurveAtTime(cPad, 0, (cn - 1) / RATE); bus.pad.connect(mix);
-    bus.bass = gain(); bus.bass.gain.setValueCurveAtTime(cBass, 0, (cn - 1) / RATE); bus.bass.connect(mix);
+    bus.pad = gain(); bus.pad.connect(mix);
+    bus.bass = gain(); bus.bass.connect(mix);
 
     const verb = ctx.createConvolver(); verb.buffer = impulse(ctx, 1.7, 2026);
     const verbRet = gain(0.5); verb.connect(verbRet); verbRet.connect(mix);
@@ -676,16 +753,35 @@
     dL.delayTime.value = dR.delayTime.value = BEAT * 0.75;
     dIn.connect(dHp); dHp.connect(dLp); dLp.connect(dL); dL.connect(dR); dR.connect(dFb); dFb.connect(dHp);
     dL.connect(merge, 0, 0); dR.connect(merge, 0, 1); merge.connect(dRet); dRet.connect(mix);
-    const send = (node, to, amt) => { if (amt > 0) { const s = gain(amt); node.connect(s); s.connect(to); } };
+    for (const node of [mix, sweep, post, ...Object.values(bus), verb, verbRet, dIn, dL, dR, dFb, dHp, dLp, dRet]) {
+      node.channelCount = 2; node.channelCountMode = "explicit";
+    }
+    const source = (buffer, to) => {
+      const node = ctx.createBufferSource(); node.buffer = buffer; node.connect(to);
+      node.start(0, (Math.round(offset * ctx.sampleRate) + 1e-6) / ctx.sampleRate);
+    };
+    if (voices && (!solo || solo.has("pad"))) { source(voices.pad, bus.pad); source(voices.verb, verb); }
+    if (voices && (!solo || solo.has("bass"))) source(voices.bass, bus.bass);
+    const retired = [];
+    // 双精度的减法可能把整帧移到前一帧；统一量化并留极小余量，避免并行段的音色相位错一帧。
+    const localTime = (t) => (Math.round(t * ctx.sampleRate) - Math.round(offset * ctx.sampleRate) + 1e-6) / ctx.sampleRate;
+    const notes = score.NOTES.filter((n) => n.t >= offset && n.t < offset + END).map((n) => ({ ...n, t: localTime(n.t), ...(n.end == null ? {} : { end: localTime(n.end) }), ...(n.dur == null ? {} : { dur: Math.round(n.dur * ctx.sampleRate) / ctx.sampleRate }) }));
+    const retire = (end, nodes) => retired.push({ end: end + 1, nodes: nodes.filter(Boolean) });
+    const send = (node, to, amt) => { if (amt > 0) { const s = gain(amt); node.connect(s); s.connect(to); return s; } };
 
     function play(buf, t, { g = 1, pan = 0, panTo = null, panDur = 0.5, to = bus.fx, verbAmt = 0, delayAmt = 0, pre = 0 } = {}) {
-      const t0 = Math.max(0, t - pre), src = ctx.createBufferSource(), a = gain(g), p = ctx.createStereoPanner();
+      const t0 = Math.max(0, t - pre), src = ctx.createBufferSource(), a = gain(g), p = pan == null ? a : ctx.createStereoPanner();
+      if (!buf) throw new Error("Missing voice sample");
       src.buffer = buf;
-      p.pan.setValueAtTime(clamp(pan, -1, 1), t0);
-      if (panTo != null) p.pan.linearRampToValueAtTime(clamp(panTo, -1, 1), t + panDur);
-      src.connect(a); a.connect(p); p.connect(to);
-      send(p, verb, verbAmt); send(p, dIn, delayAmt);
+      if (p !== a) {
+        p.pan.setValueAtTime(clamp(pan, -1, 1), t0);
+        if (panTo != null) p.pan.linearRampToValueAtTime(clamp(panTo, -1, 1), t + panDur);
+        a.connect(p);
+      }
+      src.connect(a); p.connect(to);
+      const sends = [send(p, verb, verbAmt), send(p, dIn, delayAmt)];
       src.start(t0);
+      retire(t0 + buf.duration, [src, a, p, ...sends]);
     }
     function pad(n) {
       const names = CHORD[n.chord], lvl = 0.11 * n.level * Math.sqrt(4 / names.length), att = 0.28, rel = n.last ? 1.7 : 0.45;
@@ -696,8 +792,9 @@
         a.gain.setValueAtTime(0, n.t); a.gain.linearRampToValueAtTime(lvl, n.t + att);
         a.gain.setValueAtTime(lvl, n.end); a.gain.setTargetAtTime(0, n.end, rel / 4);
         p.pan.value = pan;
-        o.connect(f); f.connect(a); a.connect(p); p.connect(bus.pad); send(p, verb, n.verb);
-        o.start(n.t); o.stop(n.end + rel * 1.6);
+        o.connect(f); f.connect(a); a.connect(p); p.connect(bus.pad); const sending = send(p, verb, n.verb);
+        const end = n.end + rel * 1.6;
+        o.start(n.t); o.stop(end); retire(end, [o, f, a, p, sending]);
       }
     }
     function bass(n) {
@@ -708,7 +805,9 @@
       a.gain.setValueAtTime(0, n.t); a.gain.linearRampToValueAtTime(vol, n.t + n.att);
       a.gain.setValueAtTime(vol, end); a.gain.setTargetAtTime(0, end, n.rel / 3);
       o.connect(a); o2.connect(h); h.connect(a); a.connect(bus.bass);
-      for (const x of [o, o2]) { x.start(n.t); x.stop(end + n.rel * 3 + 0.02); }
+      const stopped = end + n.rel * 3 + 0.02;
+      for (const x of [o, o2]) { x.start(n.t); x.stop(stopped); }
+      retire(stopped, [o, o2, a, h]);
     }
     const KICK_G = { tight: 0.9, light: 0.65, lub: 0.85, dub: 0.85, boom: 0.6 };
     const LAMP_PAN = [-0.4, 0, 0.4];
@@ -716,58 +815,77 @@
     const GLASS_G = 0.62, MARIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 0.75, MORSE_G = 0.21, GATE_G = 0.49, OFF_G = 0.19, PING_G = [0.84, 0.25], CLEAR_G = 0.13, HOP_G = 0.24;
     const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7];
 
-    for (const n of B.NOTES) {
-      if (!on(n)) continue;
-      const t = n.t;
-      switch (n.kind) {
-        case "pad": pad(n); break;
-        case "bass": bass(n); break;
-        case "kick": play(S.kick(n.type), t, { g: KICK_G[n.type] * n.v, to: bus.drums }); break;
-        case "snare": play(S.snare(n.type), t, { g: (n.type === "thud" ? 0.34 : 0.3) * n.v, pan: 0.05, to: bus.drums, verbAmt: n.verb ?? 0.12 }); break;
-        case "hat":
-          if (n.type === "type") play(S.type(n.variant), t, { g: 0.26 * n.v * n.vol, pan: 0.12 + 0.08 * n.variant, to: bus.drums, verbAmt: 0.05 });
-          else play(S.flip(n.variant % 3), t, { g: 0.24 * n.v * n.vol, pan: -0.25, to: bus.drums, verbAmt: 0.15 });
-          break;
-        case "clock":
-          if (n.type === "knock" || n.type === "knockFar") play(S.knock(n.type === "knockFar"), t, { g: KNOCK_G * n.v * n.vol, pan: 0.2, to: bus.drums, verbAmt: n.type === "knockFar" ? 0.25 : 0.1 });
-          else play(S.clock(n.type), t, { g: 0.11 * n.v * n.vol, pan: n.type === "tick" ? 0.35 : -0.35, to: bus.drums, verbAmt: 0.08 });
-          break;
-        case "mel": {
-          const to = n.post ? bus.melPost : bus.mel;
-          if (n.inst === "bell" || n.inst === "bell2")
-            play(S.bell(n.m, n.tone || "bright"), t, { g: 0.36 * n.v, pan: n.inst === "bell" ? 0.1 : -0.25, to, verbAmt: 0.4, delayAmt: n.inst === "bell" ? 0.26 : 0.15 });
-          else if (n.inst === "glass") play(S.glass(n.m), t, { g: GLASS_G * n.v, pan: 0, to, verbAmt: 0.35, delayAmt: 0.22 });
-          else if (n.inst === "marimba") play(S.marimba(n.m), t, { g: MARIMBA_G * n.v, pan: -0.1, to, verbAmt: 0.3, delayAmt: 0.12 });
-          else
-            play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
-          break;
+    let next = 0, controlAt = 0;
+    return (until = Infinity) => {
+      if (!voices) while (controlAt < Math.min(until, END)) {
+        const end = Math.min(controlAt + RENDER_BATCH_SECONDS, END), points = Math.ceil((end - controlAt) * DUCK_RATE) + 1;
+        const cPad = new Float32Array(points), cBass = new Float32Array(points);
+        for (let i = 0; i < points; i++) {
+          const value = duck(offset + controlAt + i / (points - 1) * (end - controlAt), score.DIPS);
+          cPad[i] = value; cBass[i] = 0.35 + 0.65 * value;
         }
-        case "key": play(S.key(), t, { g: 0.85 * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.15, pre: KEY_PRE }); break;
-        case "stamp": play(S.stamp(n.size), t, { g: n.size === "big" ? 1.35 : 0.72, verbAmt: n.size === "big" ? 0.3 : 0.2 }); break;
-        case "tick": play(S.ding(n.m), t, { g: 0.62, pan: -0.35 + 0.14 * n.i, verbAmt: 0.2, delayAmt: 0.12 }); break;
-        case "lamp": play(S.lamp(n.m, n.late), t, { g: n.late ? 0.17 : 0.65, pan: n.late ? 0.55 : LAMP_PAN[n.i], verbAmt: n.late ? 0.6 : 0.35, delayAmt: 0.2 }); break;
-        case "whoosh":
-          if (n.tube === "fork") { play(S.fork(0), t, { g: 0.6, panTo: -0.8, panDur: 0.6, verbAmt: 0.25 }); play(S.fork(1), t, { g: 0.6, panTo: 0.8, panDur: 0.6, verbAmt: 0.25 }); }
-          else if (n.tube === "down") play(S.down(), t, { g: 0.7, to: bus.fxPost, verbAmt: 0.2 });
-          else if (n.tube === "whip") play(S.whip(), t, { g: WHIP_G * (n.v ?? 1), pan: n.pan ?? 0.5, panTo: n.panTo ?? -0.5, panDur: WHOOSH_LEN.whip, verbAmt: 0.2 });
-          else play(S.whoosh(n.tube), t, { g: 0.75, panTo: TUBE_PAN[n.tube], panDur: 0.6, verbAmt: 0.25 });
-          break;
-        case "accent":
-          if (n.what === "arrive") play(S.kick("boom"), t, { g: 0.45, to: bus.fxPost });
-          else if (n.what === "slip") play(S.slip(), t, { g: 0.7, pan: 0.2, verbAmt: 0.15 });
-          else if (n.what === "broadcast") play(S.broadcast(), t, { g: 0.36, verbAmt: 0.45, delayAmt: 0.3 });
-          else if (n.what === "flip") play(S.flipHit(), t, { g: 0.8, verbAmt: 0.4, delayAmt: 0.25 });
-          break;
-        case "swell": play(S.swell(), t, { g: 0.2, verbAmt: 0.3 }); break;
-        case "boom": play(S.kick("boom"), t, { g: 0.45 }); break;
-        case "morse": play(S.morse(n.m, Math.round((n.len ?? 0.35) * BEAT * 1000) / 1000), t, { g: MORSE_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.12, delayAmt: 0.1 }); break;
-        case "gate": play(S.gate(), t, { g: GATE_G, pan: n.pan ?? 0.1, verbAmt: 0.22 }); break;
-        case "off": play(S.off(n.m), t, { g: OFF_G, pan: n.pan ?? 0.3, verbAmt: 0.5, delayAmt: 0.2 }); break;
-        case "ping": play(S.ping(n.m, n.late), t, { g: n.late ? PING_G[1] : PING_G[0], pan: n.pan ?? 0, verbAmt: n.late ? 0.5 : 0.25, delayAmt: 0.12 }); break;
-        case "clear": play(S.clear(), t, { g: CLEAR_G, verbAmt: 0.3 }); break;
-        case "hop": play(S.hop(n.m), t, { g: HOP_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.25, delayAmt: 0.15 }); break;
+        bus.pad.gain.setValueCurveAtTime(cPad, controlAt, end - controlAt);
+        bus.bass.gain.setValueCurveAtTime(cBass, controlAt, end - controlAt);
+        controlAt = end;
       }
-    }
+      for (let i = retired.length - 1; i >= 0; i--) if (retired[i].end <= ctx.currentTime) {
+        for (const node of retired[i].nodes) node.disconnect();
+        retired.splice(i, 1);
+      }
+      while (next < notes.length && notes[next].t <= until) {
+        const index = next++, n = notes[index];
+        if (!on(n)) continue;
+        const t = n.t;
+        switch (n.kind) {
+          case "pad": if (!voices) pad(n); break;
+          case "bass": if (!voices) bass(n); break;
+          case "kick": play(S.kick(n.type), t, { g: KICK_G[n.type] * n.v, to: bus.drums }); break;
+          case "snare": play(S.snare(n.type), t, { g: (n.type === "thud" ? 0.34 : 0.3) * n.v, pan: 0.05, to: bus.drums, verbAmt: n.verb ?? 0.12 }); break;
+          case "hat":
+            if (n.type === "type") play(S.type(n.variant), t, { g: 0.26 * n.v * n.vol, pan: 0.12 + 0.08 * n.variant, to: bus.drums, verbAmt: 0.05 });
+            else play(S.flip(n.variant % 3), t, { g: 0.24 * n.v * n.vol, pan: -0.25, to: bus.drums, verbAmt: 0.15 });
+            break;
+          case "clock":
+            if (n.type === "knock" || n.type === "knockFar") play(S.knock(n.type === "knockFar"), t, { g: KNOCK_G * n.v * n.vol, pan: 0.2, to: bus.drums, verbAmt: n.type === "knockFar" ? 0.25 : 0.1 });
+            else play(S.clock(n.type), t, { g: 0.11 * n.v * n.vol, pan: n.type === "tick" ? 0.35 : -0.35, to: bus.drums, verbAmt: 0.08 });
+            break;
+          case "mel": {
+            const to = n.post ? bus.melPost : bus.mel;
+            if (n.inst === "bell" || n.inst === "bell2")
+              play(S.bell(n.m, n.tone || "bright"), t, { g: 0.36 * n.v, pan: n.inst === "bell" ? 0.1 : -0.25, to, verbAmt: 0.4, delayAmt: n.inst === "bell" ? 0.26 : 0.15 });
+            else if (n.inst === "glass") play(S.glass(n.m), t, { g: GLASS_G * n.v, pan: 0, to, verbAmt: 0.35, delayAmt: 0.22 });
+            else if (n.inst === "marimba") play(S.marimba(n.m), t, { g: MARIMBA_G * n.v, pan: -0.1, to, verbAmt: 0.3, delayAmt: 0.12 });
+            else
+              play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
+            break;
+          }
+          case "key": play(S.key(), t, { g: 0.85 * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.15, pre: KEY_PRE }); break;
+          case "stamp": play(S.stamp(n.size), t, { g: n.size === "big" ? 1.35 : 0.72, verbAmt: n.size === "big" ? 0.3 : 0.2 }); break;
+          case "tick": play(S.ding(n.m), t, { g: 0.62, pan: -0.35 + 0.14 * n.i, verbAmt: 0.2, delayAmt: 0.12 }); break;
+          case "lamp": play(S.lamp(n.m, n.late), t, { g: n.late ? 0.17 : 0.65, pan: n.late ? 0.55 : LAMP_PAN[n.i], verbAmt: n.late ? 0.6 : 0.35, delayAmt: 0.2 }); break;
+          case "whoosh":
+            if (n.tube === "fork") { play(S.fork(0), t, { g: 0.6, panTo: -0.8, panDur: 0.6, verbAmt: 0.25 }); play(S.fork(1), t, { g: 0.6, panTo: 0.8, panDur: 0.6, verbAmt: 0.25 }); }
+            else if (n.tube === "down") play(S.down(), t, { g: 0.7, to: bus.fxPost, verbAmt: 0.2 });
+            else if (n.tube === "whip") play(S.whip(), t, { g: WHIP_G * (n.v ?? 1), pan: n.pan ?? 0.5, panTo: n.panTo ?? -0.5, panDur: WHOOSH_LEN.whip, verbAmt: 0.2 });
+            else play(S.whoosh(n.tube), t, { g: 0.75, panTo: TUBE_PAN[n.tube], panDur: 0.6, verbAmt: 0.25 });
+            break;
+          case "accent":
+            if (n.what === "arrive") play(S.kick("boom"), t, { g: 0.45, to: bus.fxPost });
+            else if (n.what === "slip") play(S.slip(), t, { g: 0.7, pan: 0.2, verbAmt: 0.15 });
+            else if (n.what === "broadcast") play(S.broadcast(), t, { g: 0.36, verbAmt: 0.45, delayAmt: 0.3 });
+            else if (n.what === "flip") play(S.flipHit(), t, { g: 0.8, verbAmt: 0.4, delayAmt: 0.25 });
+            break;
+          case "swell": play(S.swell(), t, { g: 0.2, verbAmt: 0.3 }); break;
+          case "boom": play(S.kick("boom"), t, { g: 0.45 }); break;
+          case "morse": play(S.morse(n.m, Math.round((n.len ?? 0.35) * BEAT * 1000) / 1000), t, { g: MORSE_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.12, delayAmt: 0.1 }); break;
+          case "gate": play(S.gate(), t, { g: GATE_G, pan: n.pan ?? 0.1, verbAmt: 0.22 }); break;
+          case "off": play(S.off(n.m), t, { g: OFF_G, pan: n.pan ?? 0.3, verbAmt: 0.5, delayAmt: 0.2 }); break;
+          case "ping": play(S.ping(n.m, n.late), t, { g: n.late ? PING_G[1] : PING_G[0], pan: n.pan ?? 0, verbAmt: n.late ? 0.5 : 0.25, delayAmt: 0.12 }); break;
+          case "clear": play(S.clear(), t, { g: CLEAR_G, verbAmt: 0.3 }); break;
+          case "hop": play(S.hop(n.m), t, { g: HOP_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.25, delayAmt: 0.15 }); break;
+        }
+      }
+    };
   }
 
   function kWeighted(x, sr) {
@@ -825,7 +943,10 @@
     if (TARGET_LUFS == null) {
       let pk = 0;
       for (let i = 0; i < L.length; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i]));
-      out = limit(L, R, sr, pk > 0 ? ceil / pk : 1, ceil);
+      // 峰值归一已保证不超过上限，无需分配整片的 lookahead 限幅工作数组。
+      const gain = pk > 0 ? ceil / pk : 1;
+      for (const channel of [L, R]) for (let i = 0; i < channel.length; i++) channel[i] = clamp(channel[i] * gain, -ceil, ceil);
+      out = [L, R];
     } else {
       let g = Math.pow(10, (TARGET_LUFS - loudness(L, R, sr)) / 20);
       out = limit(L, R, sr, g, ceil);
@@ -838,18 +959,55 @@
     return buf;
   }
 
-  async function render(opts = {}) {
-    if (!B) throw new Error("先调 Score.build(plan)");
+  async function render(opts = {}, score = B) {
+    if (!score) throw new Error("先调 Score.build(plan)");
     const sr = opts.sampleRate || SAMPLE_RATE;
-    const ctx = new OfflineAudioContext(2, Math.ceil((B.DURATION + TAIL) * sr), sr);
-    schedule(ctx, opts);
+    const workers = opts.workers ?? 4;
+    if (!Number.isInteger(workers) || workers < 1 || workers > 16) throw new Error("workers must be an integer from 1 to 16");
+    const voices = (opts.precomputeVoices || opts.offset) ? await prepareVoices(sr, workers, score) : null;
+    const ctx = new OfflineAudioContext(2, opts.frames ?? Math.ceil((score.DURATION + TAIL) * sr), sr);
+    const enqueue = schedule(ctx, opts, voices, score), batchSeconds = opts.batchSeconds ?? RENDER_BATCH_SECONDS;
+    if (batchSeconds > 0) {
+      enqueue(batchSeconds + KEY_PRE);
+      const resumptions = [];
+      for (let t = batchSeconds; t < ctx.length / sr; t += batchSeconds) {
+        resumptions.push(ctx.suspend(t).then(() => {
+          enqueue(t + batchSeconds + KEY_PRE);
+          return ctx.resume();
+        }));
+      }
+      const rendered = ctx.startRendering();
+      const [buf] = await Promise.all([rendered, ...resumptions]);
+      return opts.raw || opts.solo || opts.stage ? buf : master(buf);
+    }
+    enqueue();
     const buf = await ctx.startRendering();
     return opts.raw || opts.solo || opts.stage ? buf : master(buf);
   }
 
+  async function renderParallel(opts = {}) {
+    const score = B;
+    if (!score) throw new Error("先调 Score.build(plan)");
+    const sr = opts.sampleRate || SAMPLE_RATE, length = Math.ceil((score.DURATION + TAIL) * sr), workers = opts.workers ?? 8;
+    if (!Number.isInteger(workers) || workers < 1 || workers > 16) throw new Error("workers must be an integer from 1 to 16");
+    const gcd = (a, b) => b ? gcd(b, a % b) : a;
+    const controlFrames = sr / gcd(sr, DUCK_RATE), alignment = RENDER_QUANTUM_FRAMES * controlFrames / gcd(RENDER_QUANTUM_FRAMES, controlFrames);
+    await prepareVoices(sr, workers, score);
+    const out = new AudioBuffer({ length, sampleRate: sr, numberOfChannels: 2 });
+    // 预热包含音符尾音、混响与反馈延迟；丢弃预热区，整片拼好后只做一次母带。
+    await Promise.all(Array.from({ length: workers }, async (_, i) => {
+      const from = Math.floor(length * i / workers / alignment) * alignment;
+      const to = i + 1 === workers ? length : Math.floor(length * (i + 1) / workers / alignment) * alignment;
+      const start = Math.max(0, from - Math.ceil(RENDER_WARMUP_SECONDS * sr / alignment) * alignment);
+      const buf = await render({ ...opts, precomputeVoices: true, raw: true, offset: start / sr, frames: to - start }, score);
+      for (let c = 0; c < 2; c++) out.copyToChannel(buf.getChannelData(c).subarray(from - start, to - start), c, from);
+    }));
+    return opts.raw || opts.solo || opts.stage ? out : master(out);
+  }
+
   window.Score = {
     BPM, BAR, BEAT, tail: TAIL, sampleRate: SAMPLE_RATE,
-    build, render, env, at, loudness,
+    build, render, renderParallel, env, at, loudness,
     theme: THEME.map(([beat, dur, note]) => ({ beat, dur, note })),
   };
 })();
