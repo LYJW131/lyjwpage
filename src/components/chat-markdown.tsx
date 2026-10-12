@@ -1,6 +1,8 @@
-import { createContext, memo, useContext } from "react";
-import Markdown, { type Components } from "react-markdown";
+import { createContext, memo, useContext, type ReactNode } from "react";
+import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+import { ChatHtmlPreview } from "@/components/chat-html-preview";
 
 const LINK_CLASS = "underline underline-offset-2 hover:opacity-80";
 
@@ -17,6 +19,24 @@ function ImageLink({ src, alt }: { src?: unknown; alt?: string }) {
   );
 }
 
+function htmlSource(node: ExtraProps["node"]): string | null {
+  const code = node?.children[0];
+  if (node?.children.length !== 1 || code?.type !== "element" || code.tagName !== "code") return null;
+  const classes = code.properties.className;
+  if (!Array.isArray(classes) || !classes.includes("language-html")) return null;
+  return code.children.map((child) => (child.type === "text" ? child.value : "")).join("");
+}
+
+function CodeBlock({ children }: { children: ReactNode }) {
+  return (
+    <pre
+      className="scrollbar-none my-2 overflow-x-auto rounded-md border border-line bg-surface p-3 text-xs leading-relaxed [&::-webkit-scrollbar]:hidden [&_code]:block [&_code]:bg-transparent [&_code]:p-0"
+    >
+      {children}
+    </pre>
+  );
+}
+
 const COMPONENTS: Components = {
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noreferrer noopener" className={LINK_CLASS}>
@@ -25,13 +45,7 @@ const COMPONENTS: Components = {
   ),
   // 回复和思考摘要里的图片只给链接不加载：模型（或经联网搜索读到的注入文本）能把对话内容拼进图片 URL，浏览器渲染即发请求，无需点击就外带出去。
   img: ({ src, alt }) => <ImageLink src={src} alt={alt} />,
-  pre: ({ children }) => (
-    <pre
-      className="scrollbar-none my-2 overflow-x-auto rounded-md border border-line bg-surface p-3 text-xs leading-relaxed [&::-webkit-scrollbar]:hidden [&_code]:block [&_code]:bg-transparent [&_code]:p-0"
-    >
-      {children}
-    </pre>
-  ),
+  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   table: ({ children }) => (
     <div className="scrollbar-none my-2 overflow-x-auto [&::-webkit-scrollbar]:hidden">
       <table className="w-full border-collapse text-xs">{children}</table>
@@ -39,7 +53,16 @@ const COMPONENTS: Components = {
   ),
 };
 
-export const ChatMarkdown = memo(function ChatMarkdown({ children }: { children: string }) {
+// 回复里的 ```html 代码块画成沙箱预览；思考摘要和计划书不画。
+const REPLY_COMPONENTS: Components = {
+  ...COMPONENTS,
+  pre: ({ node, children }) => {
+    const source = htmlSource(node);
+    return source === null ? <CodeBlock>{children}</CodeBlock> : <ChatHtmlPreview source={source} code={<CodeBlock>{children}</CodeBlock>} />;
+  },
+};
+
+export const ChatMarkdown = memo(function ChatMarkdown({ children, htmlPreview = false }: { children: string; htmlPreview?: boolean }) {
   return (
     <div
       className={[
@@ -52,7 +75,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({ children }: { children:
         "[&_th]:border [&_th]:border-line [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-line [&_td]:px-2 [&_td]:py-1",
       ].join(" ")}
     >
-      <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+      <Markdown remarkPlugins={[remarkGfm]} components={htmlPreview ? REPLY_COMPONENTS : COMPONENTS}>
         {children}
       </Markdown>
     </div>
