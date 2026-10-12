@@ -208,7 +208,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### api 的 cron（`workers/api/src/index.ts#runScheduled`）
 
-这一节和下面的「Pulse 事实时间线」是第 08 章用的，按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+这一节和下面的「Pulse 事实时间线」是第 08 章用的，按 914a2d3 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - 每 5 分钟一轮，落在 UTC 每小时第 2、7、…、57 分（`workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`），先调一次 StateHub 的 `pulseTick` 同时拿到归档快照和评分任务，然后两件事并行：
   1. 把 pulse 归档到 D1：StateHub 给出一份有界快照（各路水位之后的新行）→ 按自然键 upsert 写事实表 → 成功后回头确认水位。各路独立，一路读坏、写坏不挡别的路（`workers/api/src/pulse-archive.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
