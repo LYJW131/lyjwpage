@@ -77,10 +77,12 @@ export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalN
 
     paint();
     if (state !== "playing") return;
-    let frame = requestAnimationFrame(function loop() {
+    let frame = 0;
+    const loop = () => {
       paint();
       frame = requestAnimationFrame(loop);
-    });
+    };
+    frame = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frame);
   }, [words, state, observedAt, positionMs, durationMs, repeatOne]);
 

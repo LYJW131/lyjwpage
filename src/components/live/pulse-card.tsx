@@ -17,6 +17,7 @@ import { columnRows } from "@shared/pulse-columns";
 import type {
   PulseCodingLane,
   PulseDomain,
+  PulseLanes,
   PulsePayload,
   PulsePowerLane,
   PulseStateLane,
@@ -409,6 +410,29 @@ function stepsModel(lane: PulseStepsLane, range: Range, width: number): LaneMode
   };
 }
 
+// Worker 与站点独立部署，缓存载荷可能不符合当前形状，必须逐道校验。
+function laneModel(
+  lanes: PulseLanes | undefined,
+  domain: PulseDomain,
+  range: Range,
+  traceStyle: TraceStyle,
+  activityWidth: number,
+): LaneModel | null {
+  const lane = lanes && typeof lanes === "object" ? lanes[domain] : undefined;
+  if (!lane || typeof lane !== "object") return null;
+  try {
+    switch (domain) {
+      case "coding": return lane.kind === "coding" ? codingModel(lane, range) : null;
+      case "tokens": return lane.kind === "tokens" ? tokensModel(lane, range) : null;
+      case "listening": case "watching": case "gaming": return lane.kind === "state" ? stateModel(domain, lane, range, traceStyle) : null;
+      case "charging": return lane.kind === "power" ? powerModel(lane, range) : null;
+      case "activity": return lane.kind === "steps" ? stepsModel(lane, range, activityWidth) : null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 function useWidth(ref: RefObject<HTMLElement | null>): number {
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -517,28 +541,11 @@ export function PulseCard({
   const activityRef = useRef<HTMLDivElement>(null);
   const activityWidth = useWidth(activityRef);
 
-  // Worker 与站点独立部署，缓存载荷可能不符合当前形状，必须逐道校验。
-  const modelOf = (domain: PulseDomain): LaneModel | null => {
-    const lane = lanes && typeof lanes === "object" ? lanes[domain] : undefined;
-    if (!lane || typeof lane !== "object") return null;
-    try {
-      switch (domain) {
-        case "coding": return lane.kind === "coding" ? codingModel(lane, range) : null;
-        case "tokens": return lane.kind === "tokens" ? tokensModel(lane, range) : null;
-        case "listening": case "watching": case "gaming": return lane.kind === "state" ? stateModel(domain, lane, range, traceStyle) : null;
-        case "charging": return lane.kind === "power" ? powerModel(lane, range) : null;
-        case "activity": return lane.kind === "steps" ? stepsModel(lane, range, activityWidth) : null;
-      }
-    } catch {
-      return null;
-    }
-  };
-
   return (
     <Card label="Pulse" action="Last 24 hours" className={cn("h-full", className)}>
       <div className="flex flex-col gap-3 p-4 sm:gap-2 lg:p-5">
         {LANES.map(({ domain, label }) => {
-          const model = modelOf(domain);
+          const model = laneModel(lanes, domain, range, traceStyle, activityWidth);
           const empty = !model || !model.items.length;
           return (
             <div
