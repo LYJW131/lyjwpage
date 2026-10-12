@@ -38,16 +38,25 @@ async function sealValid(secret: string, user: GodChatMessage, assistant: GodCha
 }
 
 // 历史由浏览器提交：没盖章或章对不上的一问一答整对丢掉（Clef 拒掉的、伪造的、半路中断的都在此列），最后一条是这次的新消息。
+// 一条访客消息可以带多条盖章回复：设计开场推迟后，交接那条和规划者那条连续排在同一个访客消息后面。
 export async function sealedHistory(messages: GodChatMessage[], secret: string): Promise<GodChatMessage[]> {
   const latest = messages[messages.length - 1];
   const kept: GodChatMessage[] = [];
-  for (let i = 0; i < messages.length - 1; ) {
-    const user = messages[i];
-    const assistant = messages[i + 1];
-    if (user.role === "user" && assistant?.role === "assistant" && i + 1 < messages.length - 1 && (await sealValid(secret, user, assistant))) {
-      kept.push(user, assistant);
-      i += 2;
-    } else i += 1;
+  let pendingUser: GodChatMessage | undefined;
+  let pendingKept = false;
+  for (let i = 0; i < messages.length - 1; i++) {
+    const message = messages[i];
+    if (message.role === "user") {
+      pendingUser = message;
+      pendingKept = false;
+      continue;
+    }
+    if (message.role !== "assistant" || !pendingUser || !(await sealValid(secret, pendingUser, message))) continue;
+    if (!pendingKept) {
+      kept.push(pendingUser);
+      pendingKept = true;
+    }
+    kept.push(message);
   }
   return [...kept, latest];
 }

@@ -189,6 +189,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
   const sent: Scripted[] = [];
   const counters = { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 0, streams: 0, peeked: 0 };
   const sessions = new Map<string, number>();
+  const opened = new Set<string>();
   const env: Env = {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     ANTHROPIC_API_KEY: "test-key",
@@ -223,6 +224,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
         const count = sessions.get(id);
         return count === undefined ? { status: "expired", remaining: 0 } : { status: "ok", remaining: BUILD_DESIGN_LIMITS.maxTurns - count };
       },
+      claimDesignOpen: async (sessionId) => !opened.has(sessionId) && Boolean(opened.add(sessionId)),
     }),
     ANTHROPIC_EGRESS: binding<AnthropicEgress>({
       fetch: async (request: Request) => {
@@ -247,7 +249,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
           return Response.json({ data: body.events });
         }
         if (pathname === "/v1/sessions/sesn_test/events") {
-          if (![...new URL(request.url).searchParams.keys()].some((key) => key.startsWith("types"))) return Response.json({ data: [...history].reverse(), next_page: null });
+          if (![...new URL(request.url).searchParams.keys()].some((key) => key.startsWith("types"))) return Response.json({ data: [...history, ...sent].reverse(), next_page: null });
           return Response.json({ data: pending.length ? [agent.waiting(...pending)] : [], next_page: null });
         }
         if (pathname === "/v1/sessions/sesn_test") return Response.json({ id: "sesn_test", type: "session", status: "idle" });
@@ -270,7 +272,7 @@ const designToken = async (env: Env, sessions: Map<string, number>, payload: Rec
   return signBuildToken({ kind: "design", id, expiresAt: Date.now() + BUILD_DESIGN_LIMITS.ttlMs, sessionId: "sesn_test", ...payload }, env.BUILD_SESSION_SECRET!);
 };
 
-test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并在同一条回复里交给规划者；计划挂起等访客，进历史签章", async (t) => {
+test("改站请求由 Sonnet 判断，start_design 只建会话发令牌、不上传访客内容；同意后补发带出开场回合，计划挂起等访客，进历史签章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
@@ -298,33 +300,45 @@ test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并�
   assert.deepEqual(session.agent.tools[0].configs?.filter((config) => config.enabled === false).map((config) => config.name), ["write", "edit"]);
   assert.equal(session.environment_id, "env_test");
   assert.equal(session.budget.max_list_cost.amount, String(DESIGN_BUDGET_CENTS));
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].type, "user.message");
-  assert.match(JSON.stringify(sent[0]), /Please improve the music card\./);
-  assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.type === "route" && event.tier), ["sonnet", "opus"]);
+  // 同意前：建了会话但一条访客内容都没发给 Managed Agents。
+  assert.equal(sent.length, 0);
+  assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.type === "route" && event.tier), ["sonnet"]);
   const design = events.find((event) => event.type === "design");
   assert.ok(design?.type === "design");
   assert.equal(design.remaining, BUILD_DESIGN_LIMITS.maxTurns - 1);
-  assert.deepEqual(events.filter((event) => event.type === "step").map((event) => event.type === "step" && event.text), ["Cloned the repository", "Searched the code for “empty state”"]);
-  assert.ok(events.some((event) => event.type === "doc" && event.doc === "repo" && event.path === "src/components/live/music-card.tsx" && event.url.endsWith("/blob/main/src/components/live/music-card.tsx")));
-  assert.equal(textOf(events), `${PLAN_LABELS.en.handoff}Here is my plan.`);
+  assert.equal(textOf(events), PLAN_LABELS.en.handoff);
   assert.ok(events.findIndex((event) => event.type === "text") < events.findIndex((event) => event.type === "design"), "the ordinary chat says one line before the planner takes over");
-  const proposed = events.find((event) => event.type === "plan");
+  assert.ok(!events.some((event) => event.type === "plan" || event.type === "doc" || event.type === "step" || event.type === "ask"));
+  const firstSeal = events.find((event) => event.type === "seal");
+  assert.ok(firstSeal?.type === "seal" && !firstSeal.planToken && firstSeal.trace?.tier === "sonnet" && !firstSeal.trace?.design);
+  assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1, streams: 0, peeked: 0 });
+
+  // 同意后的补发：空会话补开场回合，整段历史此刻才进 Managed Agents。
+  const opened = await parseEvents(await handleChat(chatRequest(design.token, [{ role: "user", content: "Please improve the music card." }], true), env, toolIO));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, "user.message");
+  assert.match(JSON.stringify(sent[0]), /Please improve the music card\./);
+  assert.deepEqual(opened.filter((event) => event.type === "route").map((event) => event.type === "route" && event.tier), ["opus"]);
+  assert.ok(opened.some((event) => event.type === "design" && event.remaining === BUILD_DESIGN_LIMITS.maxTurns - 1));
+  assert.deepEqual(opened.filter((event) => event.type === "step").map((event) => event.type === "step" && event.text), ["Cloned the repository", "Searched the code for “empty state”"]);
+  assert.ok(opened.some((event) => event.type === "doc" && event.doc === "repo" && event.path === "src/components/live/music-card.tsx" && event.url.endsWith("/blob/main/src/components/live/music-card.tsx")));
+  assert.equal(textOf(opened), "Here is my plan.");
+  const proposed = opened.find((event) => event.type === "plan");
   assert.ok(proposed?.type === "plan");
   assert.deepEqual((await readPlan(env, proposed.token))?.plan, plan);
-  const seal = events.find((event) => event.type === "seal");
+  const seal = opened.find((event) => event.type === "seal");
   assert.ok(seal?.type === "seal");
   assert.equal(seal.planToken, proposed.token);
   assert.deepEqual({ tier: seal.trace?.tier, design: seal.trace?.design, plan: seal.trace?.plan }, { tier: "opus", design: true, plan: true });
-  assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1, streams: 1, peeked: 0 });
-  const reply = textOf(events);
+  assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1, streams: 1, peeked: 1 });
   const history: GodChatMessage[] = [
     { role: "user", content: "Please improve the music card." },
-    { role: "assistant", content: reply, seal: seal.seal, trace: seal.trace, planToken: seal.planToken },
+    { role: "assistant", content: textOf(events), seal: firstSeal.seal, trace: firstSeal.trace },
+    { role: "assistant", content: textOf(opened), seal: seal.seal, trace: seal.trace, planToken: seal.planToken },
     { role: "user", content: "Make the empty label shorter." },
   ];
-  assert.equal((await sealedHistory(history, env.CHAT_HISTORY_SECRET!)).length, 3);
-  assert.equal((await sealedHistory([history[0], { ...history[1], planToken: `${proposed.token}x` }, history[2]], env.CHAT_HISTORY_SECRET!)).length, 1);
+  assert.equal((await sealedHistory(history, env.CHAT_HISTORY_SECRET!)).length, 4);
+  assert.equal((await sealedHistory([history[0], history[1], { ...history[2], planToken: `${proposed.token}x` }, history[3]], env.CHAT_HISTORY_SECRET!)).length, 3);
 
   const next = designEnv({ pending: ["ctu_plan"], turns: [[agent.running, ...agent.say("sevt_m2", "Shortened."), agent.idle({ type: "end_turn" })]] });
   const token = await designToken(next.env, next.sessions);
@@ -335,6 +349,23 @@ test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并�
   assert.deepEqual(next.counters, { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 1, streams: 1, peeked: 0 });
   const sealed = answered.find((event) => event.type === "seal");
   assert.ok(sealed?.type === "seal" && sealed.trace?.design && !sealed.planToken);
+});
+
+test("同意后两个标签页同时补发：开场只发一次，抢不到开场的那页等开场落进会话后跟着看同一回合", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const turn = [agent.running, ...agent.say("sevt_m1", "Here is my plan."), agent.custom("ctu_plan", "propose_build", plan), agent.waiting("ctu_plan")];
+  const { env, sent, sessions } = designEnv({ turns: [turn, turn] });
+  const token = await designToken(env, sessions);
+  const messages: GodChatMessage[] = [{ role: "user", content: "Please improve the music card." }];
+  const replies = await Promise.all([1, 2].map(async () => parseEvents(await handleChat(chatRequest(token, messages, true), env, toolIO))));
+  assert.equal(sent.filter((event) => event.type === "user.message").length, 1);
+  for (const events of replies) {
+    assert.equal(textOf(events), "Here is my plan.");
+    assert.ok(events.some((event) => event.type === "plan"));
+    assert.ok(events.some((event) => event.type === "seal"));
+  }
 });
 
 test("会话没有挂起的工具调用时，访客的话按普通消息发给规划者", async (t) => {

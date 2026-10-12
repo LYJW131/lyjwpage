@@ -7,6 +7,8 @@ import { BuildBlockedError, closeFailedDraft, installationApi, validSha } from "
 export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; draftClose?: "closed" | "skipped"; screenshots?: BuildScreenshot[] };
 type PlanReservation = { runId: string; accountId?: number };
 const PREPARATION_LEASE_MS = 60_000;
+// 只罩住「查到空会话 → 开场发进会话」那几秒；发送前就失败的开场，租约过了还能重开。
+const DESIGN_OPEN_LEASE_MS = 60_000;
 const PUBLICATION_BODY_MAX_CHARS = 64_000;
 // 失败草稿的关闭与超时的发现都靠 alarm 扫描，间隔即两者的最大延迟。
 const DRAFT_SWEEP_MS = 60_000;
@@ -87,6 +89,14 @@ export class BuildCoordinator extends DurableObject<Env> {
   peekDesign(id: string): { status: "ok" | "expired"; remaining: number } {
     const session = this.get<{ turns: number; expiresAt: number }>(`design:${id}`);
     return session ? { status: "ok", remaining: Math.max(0, BUILD_DESIGN_LIMITS.maxTurns - session.turns) } : { status: "expired", remaining: 0 };
+  }
+
+  claimDesignOpen(sessionId: string): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      if (this.get(`open:${sessionId}`)) return false;
+      this.put(`open:${sessionId}`, true, Date.now() + DESIGN_OPEN_LEASE_MS);
+      return true;
+    });
   }
 
   claimPlan(id: string, expiresAt: number): boolean {
