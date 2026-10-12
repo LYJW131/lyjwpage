@@ -27,13 +27,13 @@ async function fetchVersion(path: string): Promise<AppVersionPayload> {
   return response.json();
 }
 
-// 只读到 sha 所在的头部就断开，首页整份 HTML 很大。
+// 只读到 sha 所在的头部就断开，首页整份 HTML 很大。错误页同样带 sha，不看状态码，页面崩溃后才能靠它确认新版可用。
 async function fetchDocumentCommit(): Promise<string | null> {
   const response = await fetch(window.location.pathname + window.location.search, {
     cache: "no-store",
     headers: { Accept: "text/html" },
   });
-  if (!response.ok || !response.body) throw new Error(`document: ${response.status}`);
+  if (!response.body) throw new Error(`document: ${response.status}`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let html = "";
@@ -66,6 +66,7 @@ export function useVersionStatus() {
     fetchDocumentCommit,
     {
       refreshInterval: (commit) => (commit === latestCommit ? 0 : DOCUMENT_RECHECK_MS),
+      refreshWhenHidden: true,
       revalidateOnFocus: true,
     },
   );
