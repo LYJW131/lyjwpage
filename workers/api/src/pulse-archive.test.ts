@@ -5,9 +5,9 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
-import { pulseChargingKey, pulseLaneOpenKey, pulseListeningTracesKey } from "@/lib/pulse-keys";
-import { installTestStorage } from "@/lib/testing/fake-storage";
+import { codingObservationsKey, cursorObservationsKey } from "./coding-pulse";
+import { pulseChargingKey, pulseLaneOpenKey, pulseListeningTracesKey } from "./pulse-keys";
+import { installTestStorage } from "@shared/testing/fake-storage";
 import type { CodingBucketDelta } from "@shared/coding-buckets";
 import type { CodingTokenBucketReport, CodingUsageAgent, CodingUsageDay } from "@shared/coding-usage";
 import type { CodingUsageSource } from "@shared/coding-usage-sources";

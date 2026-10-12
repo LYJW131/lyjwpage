@@ -1,5 +1,5 @@
-import { zonedDay } from "@/lib/heatmap-window";
-import { site } from "@/lib/site";
+import { zonedDay } from "@shared/heatmap-window";
+import { site } from "@shared/site";
 import type {
   CodingNowPayload,
   CodingUsageAgentView,
@@ -7,7 +7,7 @@ import type {
   CodingUsagePayload,
   CodingUsageSourceStatus,
   CodingUsageTotals,
-} from "@/lib/types";
+} from "@shared/types";
 
 import { codingModelName, isVisibleCodingModel } from "./coding-models";
 import type { CodingUsageAgent, CodingUsageDay } from "./coding-usage";

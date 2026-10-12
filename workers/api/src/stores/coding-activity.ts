@@ -1,7 +1,7 @@
-import type { LiveEvent } from "@/lib/live-events";
+import type { LiveEvent } from "@shared/live-events";
 import { readLiveness, withPresence, type Liveness } from "@shared/reporter-liveness";
 import { getStorage } from "@shared/storage";
-import type { CodingNowPayload } from "@/lib/types";
+import type { CodingNowPayload } from "@shared/types";
 import { codingActivityKey, codingPushedNowKey, parseStoredActivity, parseStoredPushedNow, type StoredCodingActivity } from "@shared/coding-store";
 import type { CodingActivityReport } from "@shared/coding-usage";
 import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";

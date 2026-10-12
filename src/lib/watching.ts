@@ -1,4 +1,4 @@
-import type { WatchingItem } from "@/lib/types";
+import type { WatchingItem } from "@shared/types";
 
 export function watchingIdentity(item: Pick<WatchingItem, "title" | "subtitle">): string {
   return `${item.title}\n${item.subtitle}`;

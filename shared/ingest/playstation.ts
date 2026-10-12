@@ -1,5 +1,5 @@
-import { object } from "@/lib/json";
-import { normalizeTrophies } from "@/lib/trophies";
+import { object } from "@shared/json";
+import { normalizeTrophies } from "@shared/trophies";
 import { normalizePlaystationPlayedGames, normalizePlaystationPresence } from "@shared/playstation";
 
 export type PreparedPlaystationReport = {

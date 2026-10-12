@@ -3,10 +3,10 @@ import {
   appleStorefront,
   resolveCredentials,
   type Credentials,
-} from "@/lib/apple-music";
+} from "@shared/apple-music";
 import { readAppleMusicCredentials } from "@shared/apple-music-auth";
-import { cached, get, put } from "@/lib/cache";
-import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
+import { cached, get, put } from "@shared/cache";
+import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
 
 import { explain, ok, skipMissing, type Job } from "../job";
 import { epochMinute } from "../schedule";

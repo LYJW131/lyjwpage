@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getChargerSnapshot } from "@/lib/anker";
-import { getPowerBankSnapshot } from "@/lib/powerbank";
-import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
+import { getChargerSnapshot } from "./anker";
+import { getPowerBankSnapshot } from "./powerbank";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { K_LATEST as CHARGER_LATEST } from "@shared/charger-store";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
 import { K_LATEST as POWERBANK_LATEST } from "@shared/powerbank-store";

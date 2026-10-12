@@ -1,7 +1,7 @@
 import type { MetaDescriptor } from "react-router";
 
 import { GITHUB_SIGN_IN_MESSAGE } from "@shared/github-issue";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 export function meta(): MetaDescriptor[] {
   return [

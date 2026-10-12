@@ -13,7 +13,7 @@ import { useStatus } from "@/hooks/use-status";
 import { PULSE_PATH } from "@/lib/paths";
 import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC } from "@shared/pulse-coding";
 import { gamingSummaryDetail } from "@/lib/gaming-lane-detail";
-import { columnRows } from "@/lib/pulse-columns";
+import { columnRows } from "@shared/pulse-columns";
 import type {
   PulseCodingLane,
   PulseDomain,
@@ -23,7 +23,7 @@ import type {
   PulseStepsLane,
   PulseTokensLane,
   StatusResponse,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const REFRESH_MS = 5 * 60_000;

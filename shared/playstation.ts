@@ -1,10 +1,10 @@
-import { number, object, text } from "@/lib/json";
+import { number, object, text } from "@shared/json";
 import type {
   PlaystationGame,
   PlaystationNowPlaying,
   PlaystationPlayingPayload,
   PlaystationPresencePayload,
-} from "@/lib/types";
+} from "@shared/types";
 
 export function requiredNumber(
   row: Record<string, unknown>,

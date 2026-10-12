@@ -1,8 +1,8 @@
 import { LAG_KEYS, readLag, writeLag, type LagStore } from "@shared/lag";
 import type { StateCoreRpc } from "@shared/state-core";
-import { fetchText } from "@/lib/agent-status";
-import { agentStatusFingerprint, collectAgentStatus } from "@/lib/agent-status-parse";
-import type { AgentStatusPayload } from "@/lib/agent-status-types";
+import { fetchText } from "@shared/agent-status";
+import { agentStatusFingerprint, collectAgentStatus } from "../agent-status-parse";
+import type { AgentStatusPayload } from "@shared/agent-status-types";
 
 import { explain, ok, type Job, type JobResult } from "../job";
 

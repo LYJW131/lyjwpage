@@ -6,8 +6,8 @@ import type {
   CodingUsageAgentView,
   CodingUsagePayload,
   CodingUsageSource,
-} from "./types.ts";
-import { agentLimitsOf, type AgentLimitFields, type AgentLimitsPayload } from "./vibecoding-limits.ts";
+} from "@shared/types.ts";
+import { agentLimitsOf, type AgentLimitFields, type AgentLimitsPayload } from "@shared/vibecoding-limits.ts";
 
 export type CodingAgentRowKind = "featured" | "compact" | "hidden";
 

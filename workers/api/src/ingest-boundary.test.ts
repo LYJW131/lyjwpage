@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readChargerState } from "@/lib/charger-store";
-import { getImageObjectKeys } from "@/lib/emby-store";
+import { readChargerState } from "./charger-store";
+import { getImageObjectKeys } from "./emby-store";
 import { readLiveness } from "@shared/reporter-liveness";
-import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
-import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
-import { pulseWorkoutsKey } from "@/lib/pulse-keys";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
+import { HIDDEN_DESKTOP_BUNDLE_ID } from "@shared/types";
+import { pulseWorkoutsKey } from "./pulse-keys";
 import { withRequestState } from "@shared/request-state";
 import { K_LAST_PUSH } from "@shared/charger-store";
 import { parseStoredCodingBuckets } from "@shared/coding-buckets";
@@ -30,11 +30,11 @@ import { resetStoredImageCacheForTests, type ImageBucket } from "@shared/ingest/
 import type { PreparedTelemetryEnvelope } from "@shared/ingest/telemetry";
 import { commitPreparedIngest } from "./ingest-handlers";
 import { enrichCommand } from "./listening-enrichment";
-import { trackLookupCacheKey } from "@/lib/apple-music";
+import { trackLookupCacheKey } from "@shared/apple-music";
 import { installAppleCache } from "@shared/apple-cache";
-import { motionArtworkCacheKey } from "@/lib/motion-artwork";
-import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
-import { MemoryKv } from "@/lib/testing/memory-kv";
+import { motionArtworkCacheKey } from "@shared/motion-artwork";
+import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
+import { MemoryKv } from "@shared/testing/memory-kv";
 import { requestStore, type Env } from "./runtime";
 
 const NOW = 1_800_000_000_000;
@@ -359,7 +359,7 @@ test("an errored Cursor history round (a strictly parsed page failed) keeps the 
     assert.deepEqual(cursor.status.map((row) => [row.source, row.state, row.collectedAt, row.error]), [["agents", "error", NOW, "cursor history: invalid usage event"]]);
     assert.equal(cursor.lastDay?.totalTokens, 500, "the history is not cleared");
     assert.equal(view.totals?.totalTokens, 500);
-    const { cursorObservationsKey } = await import("@/lib/coding-pulse");
+    const { cursorObservationsKey } = await import("./coding-pulse");
     assert.equal((await storage.listRange(cursorObservationsKey(), 0, -1)).length, 1);
   } finally { installTestStorage(null); }
 });

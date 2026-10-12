@@ -4,7 +4,7 @@ import { HomeLink } from "@/components/home-link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MiniPlayer } from "@/components/web-player/mini-player";
 import { DESKTOP_PATH } from "@/lib/paths";
-import type { DesktopPayload, StatusResponse } from "@/lib/types";
+import type { DesktopPayload, StatusResponse } from "@shared/types";
 
 export function Header({
   desktop,

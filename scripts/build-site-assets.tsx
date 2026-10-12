@@ -2,7 +2,7 @@ import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type GithubRecentCommit, getRecentCommits } from "@/lib/github-recent-commits";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 import { SITE_ASSET_METADATA_PATH, type SiteAssetMetadata } from "@/lib/site-assets";
 
 import { githubAvatarDataUri, githubAvatarPng, githubAvatarSource } from "./site-assets/avatar";

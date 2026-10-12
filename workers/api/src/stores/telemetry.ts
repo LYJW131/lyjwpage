@@ -1,26 +1,26 @@
-import { keepEnrichment, mergeEnrichment, playableMusic, trackKeyOf, upcomingKeyOf, type TrackEnrichment } from "@/lib/track-enrichment";
+import { keepEnrichment, mergeEnrichment, playableMusic, trackKeyOf, upcomingKeyOf, type TrackEnrichment } from "@shared/track-enrichment";
 import { recordCodingObservation } from "@api/stores/coding-pulse";
 import { isCodingApp } from "@shared/coding-apps";
 import { listeningObservation } from "@shared/pulse-listening";
-import { chargerPushPayload } from "@/lib/anker";
-import { readChargerState } from "@/lib/charger-store";
-import { askSettlingAt, settlingDecision } from "@/lib/charging-settling";
+import { chargerPushPayload } from "../anker";
+import { readChargerState } from "../charger-store";
+import { askSettlingAt, settlingDecision } from "../charging-settling";
 import {
   getHomePodSnapshot,
   playableHomePod,
   type StoredHomePod,
 } from "@shared/homepod-store";
-import { chargerActive, liveTrack, powerBankActive } from "@/lib/home-layout";
-import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG } from "@/lib/live-events";
-import type { PlayingQueueTrack } from "@/lib/playing-queue";
-import { powerBankPushPayload } from "@/lib/powerbank";
-import { readPowerBankState } from "@/lib/powerbank-store";
+import { chargerActive, liveTrack, powerBankActive } from "@shared/home-layout";
+import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG } from "@shared/live-events";
+import type { PlayingQueueTrack } from "@shared/playing-queue";
+import { powerBankPushPayload } from "../powerbank";
+import { readPowerBankState } from "../powerbank-store";
 import { nextLiveness, readLiveness, type Liveness } from "@shared/reporter-liveness";
 import type {
   ChargerStatus,
   LocalNowPlaying,
   TimezoneActivity,
-} from "@/lib/types";
+} from "@shared/types";
 import { fanout, type PendingEvent } from "@api/fanout";
 import type { ListeningEffect } from "@api/ingest-effects";
 import { recordChargingSample, recordStateObservation } from "@api/stores/pulse";

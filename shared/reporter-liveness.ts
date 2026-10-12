@@ -1,6 +1,6 @@
 import { mirrorKey } from "@shared/storage";
-import { heartbeatWindowMs } from "@/lib/freshness";
-import type { ReporterPresence } from "@/lib/types";
+import { heartbeatWindowMs } from "@shared/freshness";
+import type { ReporterPresence } from "@shared/types";
 
 export type Liveness = Pick<ReporterPresence, "lastSeenAt" | "declaredOffline">;
 

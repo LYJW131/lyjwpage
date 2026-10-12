@@ -6,7 +6,7 @@ import {
 } from "@sentry/cloudflare";
 
 import { commitSha } from "@/lib/build-info";
-import { SENTRY_ENVIRONMENT } from "@/lib/sentry";
+import { SENTRY_ENVIRONMENT } from "@shared/sentry";
 import { isKnownLogNoise } from "@/lib/sentry-noise";
 import { redactSentryEvent } from "@/lib/sentry-redact";
 

@@ -1,4 +1,4 @@
-import { object } from "@/lib/json";
+import { object } from "@shared/json";
 
 
 export type CodingUsageDay = {

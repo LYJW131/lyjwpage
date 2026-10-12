@@ -1,5 +1,5 @@
 import { commit } from "@/lib/build-info";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 import { workerUrl } from "@/lib/worker-url";
 import { pastHalfLife } from "@shared/token-lifetime";
 

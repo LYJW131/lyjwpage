@@ -1,4 +1,4 @@
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 import type { SiteTool } from "./registry";
 

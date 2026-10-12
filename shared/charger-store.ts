@@ -1,5 +1,5 @@
 import { key } from "@shared/storage";
-import type { ChargerSample, ReportedChargerStatus } from "@/lib/types";
+import type { ChargerSample, ReportedChargerStatus } from "@shared/types";
 
 export const DISCONNECTED_HISTORY_AFTER_MS = 30 * 60 * 1000;
 

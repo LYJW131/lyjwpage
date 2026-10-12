@@ -1,5 +1,5 @@
-import { IMAGE_OBJECT_KEY, IMAGE_PATH_PREFIX } from "@/lib/asset-url";
-import { BodyTooLargeError, readBoundedBytes } from "@/lib/read-bounded-bytes";
+import { IMAGE_OBJECT_KEY, IMAGE_PATH_PREFIX } from "@shared/asset-url";
+import { BodyTooLargeError, readBoundedBytes } from "@shared/read-bounded-bytes";
 
 export const IMAGE_PROXY_PATH = "/image";
 

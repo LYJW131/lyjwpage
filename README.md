@@ -151,7 +151,7 @@
 
 首页生成时按卡并行读取各模块的端点，每条状态读取由 `StatusSnapshot` 入口按 `page:<标签>` 缓存，让首次展示不依赖浏览器逐张卡片请求数据。实时卡读状态核心，可滞后卡读 KV，任何一张都不在请求路径上现拉外部 API。首屏从各视图缓存并行读取数据；整页缓存命中时无需重新取数，冷缓存渲染仍会等待所需视图。
 
-页面加载后，实时卡各自回源校验一次、之后由推送与轮询更新；可滞后卡直接用首屏那份，之后在写入方的下一次预期写入之后几秒去取（节奏登记在 `src/lib/status-views.ts` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts`）。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `src/lib/home-layout.ts`）按标签清除，下一次请求重新渲染；读数、标题、进度这类内容变化交给 `StatusSnapshot` 视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`，各视图统一，不随 `cadenceMs`）自然过期，纯心跳不触发重建。
+页面加载后，实时卡各自回源校验一次、之后由推送与轮询更新；可滞后卡直接用首屏那份，之后在写入方的下一次预期写入之后几秒去取（节奏登记在 `shared/status-views.ts` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts`）。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `shared/home-layout.ts`）按标签清除，下一次请求重新渲染；读数、标题、进度这类内容变化交给 `StatusSnapshot` 视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`，各视图统一，不随 `cadenceMs`）自然过期，纯心跳不触发重建。
 
 因此，缓存页面负责首次展示，客户端负责追上当前状态；不要求每次设备变化都同步刷新整页 HTML。
 
@@ -191,7 +191,7 @@ Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天�
 
 ### 报错与性能交给 Sentry
 
-站点（浏览器与 site Worker）、`api` Worker（请求、API 定时任务、两个 Durable Object）和采集 Worker（各定时任务，失败上报 Sentry；逐任务 cron 报到由 `SENTRY_CRON_CHECKINS` 控制，见 [`workers/collector/README.md`](./workers/collector/README.md)）各报到一个 Sentry 项目；上报入口与 AI Worker 和 `api` 同报一个项目，事件分别带 `worker:ingress`、`worker:ai` 标签。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。API 定时任务定时报心跳（周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`），`lyjw.me` 有在线探测。采样按免费额度设，入口见 [`src/lib/sentry.ts`](./src/lib/sentry.ts)、[`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)、[`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts)、[`workers/ai/src/sentry.ts`](./workers/ai/src/sentry.ts) 与 [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `PUBLIC_SENTRY_DEV=true`。
+站点（浏览器与 site Worker）、`api` Worker（请求、API 定时任务、两个 Durable Object）和采集 Worker（各定时任务，失败上报 Sentry；逐任务 cron 报到由 `SENTRY_CRON_CHECKINS` 控制，见 [`workers/collector/README.md`](./workers/collector/README.md)）各报到一个 Sentry 项目；上报入口与 AI Worker 和 `api` 同报一个项目，事件分别带 `worker:ingress`、`worker:ai` 标签。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。API 定时任务定时报心跳（周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`），`lyjw.me` 有在线探测。采样按免费额度设，入口见 [`shared/sentry.ts`](./shared/sentry.ts)、[`workers/api/src/sentry.ts`](./workers/api/src/sentry.ts)、[`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts)、[`workers/ai/src/sentry.ts`](./workers/ai/src/sentry.ts) 与 [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `PUBLIC_SENTRY_DEV=true`。
 
 Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取回站点与后端（api、采集两个 Worker 项目合计）的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，写进可滞后层给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是站点上的静态路由，只说明前端还在出页面；`API` 那行看 api Worker 的 cron 心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
 
@@ -217,7 +217,7 @@ AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md
 | --- | --- |
 | 首页如何组合各个模块 | [`src/app/page.tsx`](./src/app/page.tsx) · [`src/components/live/`](./src/components/live/) |
 | 首屏如何按卡读取和缓存状态 | [`src/lib/first-screen.ts`](./src/lib/first-screen.ts) |
-| 状态视图在两侧如何登记 | [`src/lib/status-views.ts`](./src/lib/status-views.ts) · [`src/lib/status-loaders.ts`](./src/lib/status-loaders.ts) |
+| 状态视图在两侧如何登记 | [`shared/status-views.ts`](./shared/status-views.ts) · [`workers/api/src/status-loaders.ts`](./workers/api/src/status-loaders.ts) |
 | 推送与轮询如何更新同一份客户端状态 | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | 网页播放器与歌词如何工作 | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
 | 上报如何鉴权、校验与按数据层拆分 | [`workers/ingress/`](./workers/ingress/) |

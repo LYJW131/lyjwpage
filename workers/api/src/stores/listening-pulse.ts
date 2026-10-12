@@ -1,7 +1,7 @@
-import { pulseListeningTracesKey } from "@/lib/pulse-keys";
-import { PULSE_TTL_MS } from "@/lib/limits";
+import { pulseListeningTracesKey } from "../pulse-keys";
+import { PULSE_TTL_MS } from "@shared/limits";
 import { getStorage, mirrorKey } from "@shared/storage";
-import type { RecentTrack } from "@/lib/types";
+import type { RecentTrack } from "@shared/types";
 import { LISTENING_TRACE_CAP, listeningTraces, parseListeningTrace, type ListeningTrace, type RecentTracksSnapshot } from "@shared/pulse-listening";
 
 const recentTracks = mirrorKey<RecentTracksSnapshot>(

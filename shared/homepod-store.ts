@@ -1,6 +1,6 @@
 import { mirrorKey } from "@shared/storage";
-import type { TrackEnrichment } from "@/lib/track-enrichment";
-import type { LocalNowPlaying } from "@/lib/types";
+import type { TrackEnrichment } from "@shared/track-enrichment";
+import type { LocalNowPlaying } from "@shared/types";
 
 export const TTL_MS = 24 * 60 * 60 * 1000;
 

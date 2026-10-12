@@ -1,5 +1,5 @@
 import { key } from "@shared/storage";
-import type { ReportedPowerBankStatus } from "@/lib/types";
+import type { ReportedPowerBankStatus } from "@shared/types";
 
 export const K_LATEST = key("powerbank", "latest");
 

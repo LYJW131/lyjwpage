@@ -1,6 +1,6 @@
 // 构建期环境变量必须写完整 process.env 属性访问；解构和动态取键不会被替换。
 
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 const RAW_COMMIT = process.env.COMMIT_SHA ?? "";
 const RAW_BUILD_TIME = process.env.BUILD_TIME ?? "";

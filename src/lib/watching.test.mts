@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { WatchingItem } from "./types.ts";
+import type { WatchingItem } from "@shared/types.ts";
 import { isNowWatching, pinNowWatching, watchingIdentity } from "./watching.ts";
 
 function item(partial: Partial<WatchingItem> & Pick<WatchingItem, "id" | "title">): WatchingItem {

@@ -1,5 +1,5 @@
-import { getCurrentItem, getImageObjectKeys, getNowPlaying, getResume, resolveNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
-import { NOW_WATCHING_TAG, WATCHING_TAG } from "@/lib/live-events";
+import { getCurrentItem, getImageObjectKeys, getNowPlaying, getResume, resolveNowPlaying, type StoredWatchingItem } from "../emby-store";
+import { NOW_WATCHING_TAG, WATCHING_TAG } from "@shared/live-events";
 import { fanout, type PendingEvent } from "@api/fanout";
 import { recordStateObservation } from "@api/stores/pulse";
 import { watchingFacts } from "@shared/pulse-timeline";

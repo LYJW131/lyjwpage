@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { SERVER_STALE_MS } from "@/lib/freshness";
+import { SERVER_STALE_MS } from "@shared/freshness";
 import { installLagReader } from "@shared/lag";
-import { getServerSnapshot } from "@/lib/server";
-import { STATUS_VIEWS } from "@/lib/status-views";
-import { MemoryKv } from "@/lib/testing/memory-kv";
-import type { AgentLimitsPayload } from "@/lib/vibecoding-limits";
+import { getServerSnapshot } from "../../api/src/server";
+import { STATUS_VIEWS } from "@shared/status-views";
+import { MemoryKv } from "@shared/testing/memory-kv";
+import type { AgentLimitsPayload } from "@shared/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 
 import { prepareIngest } from "@shared/ingest/prepare";
 import { commitLagIngest } from "./lag-ingest";
 import { publicWorkout } from "@shared/workouts";
-import type { Workout } from "@/lib/types";
+import type { Workout } from "@shared/types";
 
 const NOW = 1_800_000_000_000;
 

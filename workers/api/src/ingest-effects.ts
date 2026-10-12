@@ -1,13 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { LiveEvent } from "@/lib/live-events";
-import { pickNowListening } from "@/lib/now-listening";
-import { readRecentListeningTraces } from "@/lib/telemetry";
+import type { LiveEvent } from "@shared/live-events";
+import { pickNowListening } from "@shared/now-listening";
+import { readRecentListeningTraces } from "./telemetry";
 import type { Liveness } from "@shared/reporter-liveness";
-import type { LocalNowPlaying } from "@/lib/types";
+import type { LocalNowPlaying } from "@shared/types";
 import { playingContainer } from "@shared/apple-music-store";
 import type { StoredHomePod } from "@shared/homepod-store";
-import { candidateFrom, type TrackEnrichment } from "@/lib/track-enrichment";
+import { candidateFrom, type TrackEnrichment } from "@shared/track-enrichment";
 
 import { afterResponse, expireStatusTags, publish } from "./live-platform";
 

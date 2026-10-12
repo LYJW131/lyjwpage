@@ -1,4 +1,4 @@
-import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
+import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
 import type { CoreCommand } from "@shared/ingest/prepare";
 
 export type CommitReply =

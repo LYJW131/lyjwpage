@@ -1,4 +1,4 @@
-import type { ListeningItem, ListeningPayload, PlayingContainer } from "@/lib/types";
+import type { ListeningItem, ListeningPayload, PlayingContainer } from "@shared/types";
 import { mirror, playingContainer } from "@shared/apple-music-store";
 
 function sameContent(a: ListeningItem[], b: ListeningItem[]) {

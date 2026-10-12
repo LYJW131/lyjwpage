@@ -22,16 +22,16 @@ import {
   SERVER_STALE_MS,
   SITE_ANALYTICS_STALE_MS,
   SITE_DEPLOYMENTS_STALE_MS,
-} from "@/lib/freshness";
-import type { ReporterName, ReporterStat, ReportersPayload } from "@/lib/reporter-ledger";
+} from "@shared/freshness";
+import type { ReporterName, ReporterStat, ReportersPayload } from "@shared/reporter-ledger";
 import { useStatus } from "@/hooks/use-status";
-import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@/lib/cloudflare-workers-types";
+import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@shared/cloudflare-workers-types";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
 import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, SENTRY_PATH, SERVER_PATH, SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
-import type { SentryBlock, SentryErrorSeries, SentryStatusPayload } from "@/lib/sentry-status-types";
-import { site } from "@/lib/site";
-import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@/lib/types";
-import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@/lib/site-deployments-types";
+import type { SentryBlock, SentryErrorSeries, SentryStatusPayload } from "@shared/sentry-status-types";
+import { site } from "@shared/site";
+import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@shared/types";
+import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@shared/site-deployments-types";
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");

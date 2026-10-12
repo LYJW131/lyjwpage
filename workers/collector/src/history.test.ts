@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import type { HistoryDb } from "@shared/history-ingest";
-import type { SiteDeployment } from "@/lib/site-deployments-types";
+import type { SiteDeployment } from "@shared/site-deployments-types";
 
 import { archiveSiteDeploys } from "./history";
 

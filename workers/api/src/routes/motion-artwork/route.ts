@@ -1,5 +1,5 @@
-import { motionArtworkCacheKey, motionTtlMs, NO_MOTION, resolveMotionArtwork, type MotionResult } from "@/lib/motion-artwork";
-import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
+import { motionArtworkCacheKey, motionTtlMs, NO_MOTION, resolveMotionArtwork, type MotionResult } from "@shared/motion-artwork";
+import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
 
 export type MotionResponse = MotionResult & { link: string | null };
 

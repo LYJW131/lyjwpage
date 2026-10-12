@@ -1,5 +1,5 @@
-import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
-import { getNowListening, readRecentListeningTraces } from "@/lib/telemetry";
+import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
+import { getNowListening, readRecentListeningTraces } from "./telemetry";
 import { fanout } from "@api/fanout";
 import { preparePlayingContainer, prepareRecentlyPlayed } from "@api/stores/apple-music-store";
 import { prepareRecentTracks, recordListeningTraces } from "@api/stores/listening-pulse";

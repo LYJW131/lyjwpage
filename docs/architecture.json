@@ -311,7 +311,7 @@
           "path": "src/lib/live-socket.ts"
         },
         {
-          "path": "src/lib/freshness.ts"
+          "path": "shared/freshness.ts"
         }
       ]
     },

@@ -2,9 +2,9 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { withRequestState } from "@shared/request-state";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import type { CommitReply, CoreAudience, CorePower, StateCoreRpc } from "@shared/state-core";
-import type { LiveEvent } from "@/lib/live-events";
-import { getPlaystationPower } from "@/lib/playstation-store";
-import type { ListeningItem, PlayingContainer, RecentTrack } from "@/lib/types";
+import type { LiveEvent } from "@shared/live-events";
+import { getPlaystationPower } from "./playstation-store";
+import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";

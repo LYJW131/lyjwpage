@@ -1,5 +1,5 @@
 import { mirrorKey } from "@shared/storage";
-import type { ListeningItem, PlayingContainer } from "@/lib/types";
+import type { ListeningItem, PlayingContainer } from "@shared/types";
 
 
 // mirrorKey 不校验形状；结构变化必须升级键版本，避免把旧值当新格式读取。

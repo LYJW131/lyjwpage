@@ -11,8 +11,8 @@ import {
   SERVER_STALE_MS,
   SITE_ANALYTICS_STALE_MS,
   SITE_DEPLOYMENTS_STALE_MS,
-} from "@/lib/freshness";
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@/lib/sentry";
+} from "@shared/freshness";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
 import { RESUME_STALE_MS, resumeMirror } from "@shared/emby-store";
 import { LAG_KEYS, readLag, writeLag, type LagKey, type LagStore } from "@shared/lag";
 import { presenceMirror } from "@shared/playstation-store";

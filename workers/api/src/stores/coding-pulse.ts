@@ -1,5 +1,5 @@
-import { codingObservationsKey } from "@/lib/coding-pulse";
-import { PULSE_TTL_MS } from "@/lib/limits";
+import { codingObservationsKey } from "../coding-pulse";
+import { PULSE_TTL_MS } from "@shared/limits";
 import { getStorage } from "@shared/storage";
 import { parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 

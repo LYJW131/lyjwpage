@@ -1,4 +1,4 @@
-import { STATUS_VIEWS } from "@/lib/status-views";
+import { STATUS_VIEWS } from "@shared/status-views";
 
 
 export const DESKTOP_PATH = STATUS_VIEWS.desktop.path;

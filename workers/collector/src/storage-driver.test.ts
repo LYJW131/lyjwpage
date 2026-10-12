@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { cached, get, put, remove } from "@/lib/cache";
+import { cached, get, put, remove } from "@shared/cache";
 import { installStorage } from "@shared/storage";
 
 import type { Env } from "./env";

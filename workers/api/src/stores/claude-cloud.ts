@@ -1,6 +1,6 @@
-import { zonedDay } from "@/lib/heatmap-window";
-import type { LiveEvent } from "@/lib/live-events";
-import { site } from "@/lib/site";
+import { zonedDay } from "@shared/heatmap-window";
+import type { LiveEvent } from "@shared/live-events";
+import { site } from "@shared/site";
 import { getStorage } from "@shared/storage";
 import { fanout } from "@api/fanout";
 import type { CodingBucketDelta } from "@shared/coding-buckets";
