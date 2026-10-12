@@ -100,6 +100,22 @@
       "stale": false
     },
     {
+      "id": "devin",
+      "name": "Devin",
+      "indicator": "operational",
+      "statusUrl": "https://www.devinstatus.com",
+      "components": [
+        { "name": "Cloud Web Client", "indicator": "operational" },
+        { "name": "Cloud Agent", "indicator": "operational" },
+        { "name": "Desktop Agent", "indicator": "operational" },
+        { "name": "Desktop Tab", "indicator": "operational" },
+        { "name": "Integrations", "indicator": "operational" }
+      ],
+      "incidents": [],
+      "note": null,
+      "stale": false
+    },
+    {
       "id": "apple",
       "name": "Apple",
       "indicator": "partial_outage",

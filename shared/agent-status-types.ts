@@ -29,6 +29,7 @@ export type AgentStatusRow = {
     | "cursor"
     | "grok"
     | "typesafe"
+    | "devin"
     | "apple"
     | "github"
     | "cloudflare";
