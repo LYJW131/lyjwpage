@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Event } from "@sentry/react";
-import { redactSentryEvent } from "./sentry-redact";
+import { redactSentryEvent, redactSentrySpan, SENTRY_SITE_DATA_COLLECTION } from "./sentry-redact";
 import { sentryOptions } from "../../workers/site/src/sentry";
 
 test("redactSentryEvent strips query, hash and credentials from request.url", () => {
@@ -62,21 +62,31 @@ test("redactSentryEvent leaves events without sensitive fields untouched", () =>
   assert.equal(redactSentryEvent(event), event);
 });
 
-test("site worker sentryOptions wires beforeSend and beforeSendTransaction through redaction", () => {
+test("site worker sentryOptions wires beforeSend and beforeSendSpan through redaction", () => {
   const options = sentryOptions({} as Env);
   const beforeSend = options.beforeSend as (event: Event, hint: unknown) => Event | null;
-  const beforeSendTransaction = options.beforeSendTransaction as (
-    event: Event,
-    hint: unknown,
-  ) => Event | null;
-  assert.equal(typeof beforeSend, "function");
-  assert.equal(typeof beforeSendTransaction, "function");
-  const event = {
-    request: { url: "https://lyjw.me/cb?code=secret" },
-    spans: [{ description: "POST https://api.example.com/t?key=k" }],
-  } as unknown as Event;
-  const sent = beforeSend(event, {});
-  assert.equal(sent!.request!.url, "https://lyjw.me/cb");
-  const tx = beforeSendTransaction(event, {});
-  assert.equal(tx!.spans![0]!.description, "POST https://api.example.com/t");
+  const event = { request: { url: "https://lyjw.me/cb?code=secret" } } as unknown as Event;
+  assert.equal(beforeSend(event, {})!.request!.url, "https://lyjw.me/cb");
+  assert.equal(options.beforeSendSpan, redactSentrySpan);
+  assert.equal(options.dataCollection, SENTRY_SITE_DATA_COLLECTION);
+});
+
+test("redactSentrySpan strips query from url attributes and METHOD names", () => {
+  const span = {
+    name: "GET https://api.example.com/t?key=k#frag",
+    attributes: {
+      "url.full": "https://lyjw.me/api/auth/callback?code=secret#frag",
+      "http.url": "https://lyjw.me/x?y=1",
+      "url.query": "code=secret",
+      "url.fragment": "frag",
+      "url.path": "/api/auth/callback",
+    },
+  } as unknown as Parameters<typeof redactSentrySpan>[0];
+  const out = redactSentrySpan(span);
+  assert.equal(out.name, "GET https://api.example.com/t");
+  assert.equal(out.attributes["url.full"], "https://lyjw.me/api/auth/callback");
+  assert.equal(out.attributes["http.url"], "https://lyjw.me/x");
+  assert.equal(out.attributes["url.query"], undefined);
+  assert.equal(out.attributes["url.fragment"], undefined);
+  assert.equal(out.attributes["url.path"], "/api/auth/callback");
 });
