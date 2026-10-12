@@ -21,9 +21,10 @@ jobs:
        github.event.check_run.name == 'Workers Builds: site' &&
        github.event.check_run.conclusion == 'success' &&
        github.event.check_run.check_suite.head_branch == 'main')
-    # 组挂在 job 上而不是工作流顶层：顶层组在 if 求值前就入组，每个无关 check_run 都会顶掉排队中的真部署；if 不成立的 job 不入组。
+    # 组挂在 job 上：顶层组在 if 求值前就入组，无关的 check_run 会顶掉排队中的真部署；if 不成立的 job 不入组。
+    # 组按部署 sha 分：各部署共用一个 pending 位时，乱序完成的旧部署或手动重跑也会顶掉新部署；不同部署并行，旧的由 wait-site-version 让位。
     concurrency:
-      group: esa-purge
+      group: esa-purge-${{ github.event.check_run.head_sha || inputs.commit || github.sha }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     outputs:
