@@ -552,7 +552,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 ### 站点部署与访问量
 
 生产版本由 `cloudflare-version:` 的 activeVersions（单版本 100% 流量）决定，分流或构建中不会把最新构建误当成线上版本；`cloudflare-build:` 记录 Workers Builds 的构建状态，仅作最近构建展示。
-`analytics` 是 Cloudflare Web Analytics 前七个完整 UTC 日对齐窗口的 pageviews，`lyjw.me` 与 `lyjw131.com` 两个站点各自独立聚合再相加，缺一站的源配置整份任务跳过。
+`analytics` 是 Cloudflare Web Analytics 截至采集时刻（取整到分钟）滚动 7×24 小时窗口的 pageviews，`lyjw.me` 与 `lyjw131.com` 两个站点各自独立聚合再相加，缺一站的源配置整份任务跳过。
 仅公开这些聚合指标及部署/构建 ID、状态、时间、生产标记、提交 SHA、分支和标题。
 
 ### 性能评分（PageSpeed Insights）
