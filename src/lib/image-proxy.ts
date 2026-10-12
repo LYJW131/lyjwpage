@@ -84,8 +84,21 @@ export function optimizerImagePath(src: string, width: number, quality: number):
   return `${IMAGE_PROXY_PATH}?url=${encodeURIComponent(src)}&w=${width}&q=${quality}`;
 }
 
-export function optimizerSrcSet(src: string, quality: number): string {
-  return IMAGE_WIDTHS.map((width) => `${optimizerImagePath(src, width, quality)} ${width}w`).join(", ");
+export function imageWidthBucket(width: number): number {
+  return IMAGE_WIDTHS.find((candidate) => candidate >= width) ?? IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1];
+}
+
+export function displayWidthFromSizes(sizes: string | undefined): number | undefined {
+  const widths = [...(sizes ?? "").replace(/\([^)]*\)/g, "").matchAll(/(\d+(?:\.\d+)?)px/g)].map((match) => Number(match[1]));
+  return widths.length ? Math.max(...widths) : undefined;
+}
+
+export function optimizerSrcSet(src: string, quality: number, displayWidth: number): string {
+  const one = imageWidthBucket(displayWidth);
+  const two = imageWidthBucket(displayWidth * 2);
+  const entries = [`${optimizerImagePath(src, one, quality)} 1x`];
+  if (two !== one) entries.push(`${optimizerImagePath(src, two, quality)} 2x`);
+  return entries.join(", ");
 }
 
 export class ImagePolicyError extends Error {
