@@ -199,7 +199,7 @@ Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取�
 
 | 层次 | 主要技术 |
 | --- | --- |
-| 页面与类型 | React Router 8 · Vite · React 19 · TypeScript |
+| 页面与类型 | React Router 8 · Vite · React 19（React Compiler） · TypeScript |
 | 样式与交互 | Tailwind CSS 4 · Motion · Number Flow · Geist |
 | 客户端数据 | SWR · WebSocket |
 | 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |

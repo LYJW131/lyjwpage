@@ -132,10 +132,12 @@ function AnalogClock({
       return () => window.clearInterval(timer);
     }
 
-    let frame = requestAnimationFrame(function tick() {
+    let frame = 0;
+    const tick = () => {
       apply(Date.now(), true);
       frame = requestAnimationFrame(tick);
-    });
+    };
+    frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [live, reduced, timezone]);
 

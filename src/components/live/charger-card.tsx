@@ -94,6 +94,13 @@ export function ChargerCard({
     return `${Math.round(ratio * 100)}% / ${data?.maxPower}W`;
   })();
 
+  const deviceTitle = [
+    data?.device.firmwareVersion ? `Firmware ${data.device.firmwareVersion}` : null,
+    data?.cover?.name,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <Card
       label="Charger"
@@ -101,14 +108,7 @@ export function ChargerCard({
       action={
         <span
           className="inline-flex items-center gap-1.5"
-          title={
-            [
-              data?.device.firmwareVersion ? `Firmware ${data.device.firmwareVersion}` : null,
-              data?.cover?.name,
-            ]
-              .filter(Boolean)
-              .join(" · ") || undefined
-          }
+          title={deviceTitle || undefined}
         >
           {data?.cover?.iconUrl ? (
             <Image
