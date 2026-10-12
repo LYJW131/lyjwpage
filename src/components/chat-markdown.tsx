@@ -53,7 +53,6 @@ const COMPONENTS: Components = {
   ),
 };
 
-// 回复里的 ```html 代码块画成沙箱预览；思考摘要和计划书不画。
 const REPLY_COMPONENTS: Components = {
   ...COMPONENTS,
   pre: ({ node, children }) => {
