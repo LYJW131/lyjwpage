@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { reactRouter } from "@react-router/dev/vite";
+import babel from "@rolldown/plugin-babel";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
+import { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
 import { chatCodeVersion } from "./scripts/chat-code-version.mjs";
@@ -37,6 +39,7 @@ export default defineConfig(({ command, mode }) => {
         configPath: command === "serve" ? "wrangler.local.jsonc" : "wrangler.jsonc",
       }),
       reactRouter(),
+      babel({ presets: [reactCompilerPreset()] }),
       ...(env.SENTRY_AUTH_TOKEN
         ? [
             sentryVitePlugin({

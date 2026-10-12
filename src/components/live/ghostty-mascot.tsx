@@ -36,7 +36,7 @@ export function GhosttyMascot({
     let startedAt: number | null = null;
 
     const tick = (now: number) => {
-      startedAt ??= now;
+      if (startedAt === null) startedAt = now;
       const next = ghosttyFrameIndex(now - startedAt, data.frameMs, frames.length);
       if (next !== current) {
         current = next;

@@ -129,7 +129,7 @@ export function useTrophyWarmup(tiles: readonly (readonly string[])[]) {
   const observeTile = useCallback(
     (el: HTMLElement | null) => {
       if (!el) return;
-      tileObserver.current ??= new IntersectionObserver(
+      if (!tileObserver.current) tileObserver.current = new IntersectionObserver(
         (entries) => {
           for (const entry of entries) {
             if (!entry.isIntersecting) {
