@@ -1,6 +1,5 @@
 import type { CommitAuthor } from "@shared/commit-authors";
 
-
 export type WatchingItem = {
   id: string;
   title: string;
@@ -519,7 +518,7 @@ export type GithubRepoPayload = {
 };
 
 // sha 是 7 位短哈希；authors 是 GitHub 登录名（没有关联账号时用署名），含 Co-authored-by 里的协作者；committedAt 是 ISO 时间串。
-// oid 是 40 位完整哈希，verified 是 GitHub 认定的签名状态，authorDetails 是带头像与 coding agent 判定的作者明细；这四项在旧载荷里可能缺席。
+// oid 是 40 位完整哈希，url 是提交页链接，verified 是 GitHub 认定的签名状态，authorDetails 是带头像与 coding agent 判定的作者明细；这四项在旧载荷里可能缺席。
 export type GithubRepoCommit = {
   sha: string;
   title: string;

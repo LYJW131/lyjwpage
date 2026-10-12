@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [main, dev]
-    paths-ignore:
-      - .github/github-avatar.sha256
   pull_request:
 
 permissions:
