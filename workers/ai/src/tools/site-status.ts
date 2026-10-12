@@ -211,17 +211,18 @@ const clock = (ms: number) => {
 
 // 照字面读，模型会把 idle: true 当成「没在听」、把 elsewhere 当成「刚才在别处放过」；其实 idle 只管 Mac / HomePod，
 // elsewhere 是推断出的此刻多半正在 iPhone 等设备上放的那首，所以把这层含义直接说给模型。
+// 只陈述事实，不写现成的句子或「Say …」式的措辞要求：Haiku 会照抄这些英文句子，回答就跟着变成英文。
 export function nowListeningHint(data: unknown, now: number): string | null {
   const payload = (data as { data?: NowListeningPayload } | null)?.data;
   const elsewhere = payload?.elsewhere;
   if (!payload || payload.music || !elsewhere) return null;
   const song = `"${elsewhere.title}"${elsewhere.artist ? ` by ${elsewhere.artist}` : ""}`;
-  const source = "idle only means the Mac and HomePod are not playing; elsewhere is inferred from Apple Music play history on a device without a reporter (iPhone, iPad or the web player), not reported live";
+  const source = "Field meaning: idle and music: null only cover the Mac and HomePod; elsewhere is inferred from Apple Music play history on a device without a reporter (iPhone, iPad or the web player)";
   if (now < elsewhere.startedAt + elsewhere.durationMs) {
-    return `Reading: LYJW is most likely listening right now to ${song}, about ${clock(now - elsewhere.startedAt)} of ${clock(elsewhere.durationMs)} in. ${source}. Say LYJW is probably listening to it now; don't say nothing is playing or that it was played earlier.`;
+    return `${source}. Its estimated position is ${clock(now - elsewhere.startedAt)} of ${clock(elsewhere.durationMs)}, so LYJW is most likely listening to ${song} right now, not idle.`;
   }
-  const next = elsewhere.next ? `, likely "${elsewhere.next.title}"${elsewhere.next.artist ? ` by ${elsewhere.next.artist}` : ""}` : "";
-  return `Reading: LYJW is most likely still listening: ${song} has just run out and the next song${next} has not shown up in play history yet. ${source}. Don't say nothing is playing.`;
+  const next = elsewhere.next ? ` (likely "${elsewhere.next.title}"${elsewhere.next.artist ? ` by ${elsewhere.next.artist}` : ""})` : "";
+  return `${source}. ${song} has just run out and the next song${next} has not shown up in play history yet, so LYJW is most likely still listening, not idle.`;
 }
 
 const VIEW_HINTS: Partial<Record<StatusViewKey, (data: unknown, now: number) => string | null>> = {

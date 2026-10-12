@@ -221,8 +221,9 @@ test("nowListening 只有推断的 elsewhere 时，结果写明此刻多半正�
   const text = await runSiteStatusTool(async () => Response.json(nowListening(now - 46_000)), ["nowListening"], now);
   const [summary, hint, json] = text.split("## nowListening\n")[1]!.split("\n");
   assert.match(summary!, /^detail=summary/);
-  assert.match(hint!, /most likely listening right now to "片っぽ \(Acoustic Version\)" by eill, about 0:46 of 4:08 in/);
-  assert.match(hint!, /idle only means the Mac and HomePod are not playing/);
+  assert.match(hint!, /estimated position is 0:46 of 4:08, so LYJW is most likely listening to "片っぽ \(Acoustic Version\)" by eill right now/);
+  assert.match(hint!, /idle and music: null only cover the Mac and HomePod/);
+  assert.doesNotMatch(hint!, /\bSay\b|don't say/i, "措辞要求会被模型照抄成英文回答");
   assert.match(json!, /^\{"ok":true/);
 });
 
