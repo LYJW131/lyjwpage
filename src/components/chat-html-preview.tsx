@@ -54,23 +54,24 @@ export function ChatHtmlPreview({ source }: { source: string }) {
       if (next !== null) setHeight(next);
       const link = visualLink(data?.[HTML_VISUAL_OPEN_KEY]);
       // 和正文里的 Markdown 链接一样只在访客点击时打开：图示里的脚本自己发消息，没有点击就开不了标签页。
-      if (link && navigator.userActivation?.isActive) window.open(link, "_blank", "noopener,noreferrer");
+      // 用户激活对整页有效，所以还要求焦点在这块图示上，访客点站点别处时图示脚本借不到这次激活。
+      if (link && navigator.userActivation?.isActive && document.activeElement === frameRef.current) window.open(link, "_blank", "noopener,noreferrer");
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  const ready = scheme !== null && source.trim() !== "";
+  const doc = scheme !== null && source.trim() !== "" ? htmlVisualDocument(source, readTheme(scheme), window.location.origin) : null;
   return (
     <div className={cn("my-3", height === null && "animate-pulse rounded-md bg-surface")} style={height === null ? { minHeight: PLACEHOLDER_HEIGHT } : undefined}>
-      {ready && (
+      {doc !== null && (
         <iframe
           ref={frameRef}
           title="Visual"
           sandbox="allow-scripts"
-          srcDoc={htmlVisualDocument(source, readTheme(scheme), window.location.origin)}
+          srcDoc={doc}
           className="block w-full bg-transparent"
-          style={{ height: height ?? PLACEHOLDER_HEIGHT, colorScheme: scheme }}
+          style={{ height: height ?? PLACEHOLDER_HEIGHT, colorScheme: scheme ?? undefined }}
         />
       )}
     </div>

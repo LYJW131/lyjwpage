@@ -1,5 +1,6 @@
 import { IMAGE_OBJECT_KEY, IMAGE_PATH_PREFIX } from "@shared/asset-url";
 import { GOD_CHAT_CHART_SERIES, GOD_CHAT_VISUAL_KINDS, type GodChatVisualKind } from "@shared/god-chat";
+import { object } from "@shared/json";
 import { visualLink } from "@/lib/html-preview";
 import { parseImageSource } from "@/lib/image-proxy";
 
@@ -41,8 +42,6 @@ const SHAPES: readonly MediaShape[] = ["square", "poster", "wide"];
 
 type Raw = Record<string, unknown>;
 
-const record = (value: unknown): Raw | null => (value && typeof value === "object" && !Array.isArray(value) ? (value as Raw) : null);
-
 function text(value: unknown, max: number): string | undefined {
   if (typeof value === "number" && Number.isFinite(value)) value = String(value);
   if (typeof value !== "string") return undefined;
@@ -64,7 +63,7 @@ function list<T>(value: unknown, min: number, max: number, item: (entry: unknown
 const optional = <K extends string, V>(key: K, value: V | undefined) => (value === undefined ? {} : ({ [key]: value } as { [P in K]: V }));
 
 function statItem(value: unknown): StatItem | null {
-  const raw = record(value);
+  const raw = object(value);
   const label = text(raw?.label, LIMITS.label);
   const shown = text(raw?.value, LIMITS.short);
   if (!raw || !label || !shown) return null;
@@ -76,7 +75,7 @@ function stats(raw: Raw): StatsVisual | null {
   if (!items) return null;
   const summary = raw.summary === undefined ? undefined : statItem(raw.summary);
   if (summary === null) return null;
-  const tone = record(raw.summary)?.tone;
+  const tone = object(raw.summary)?.tone;
   return {
     kind: "stats",
     items,
@@ -91,7 +90,7 @@ function chart(raw: Raw): ChartVisual | null {
   const labels = list(raw.labels, type === "line" ? 2 : 1, maxLabels, (entry) => text(entry, LIMITS.label) ?? null);
   if (!labels) return null;
   const series = list(raw.series, 1, GOD_CHAT_CHART_SERIES, (entry) => {
-    const item = record(entry);
+    const item = object(entry);
     const name = text(item?.name, LIMITS.label);
     const values = list(item?.values, labels.length, labels.length, (v) =>
       typeof v === "number" && Number.isFinite(v) && (type === "line" || v >= 0) ? v : null,
@@ -112,7 +111,7 @@ function chart(raw: Raw): ChartVisual | null {
 
 function timeline(raw: Raw): TimelineVisual | null {
   const items = list(raw.items, 1, LIMITS.timeline, (entry) => {
-    const item = record(entry);
+    const item = object(entry);
     const time = text(item?.time, LIMITS.short);
     const title = text(item?.title, LIMITS.title);
     return item && time && title ? { time, title, ...optional("text", text(item.text, LIMITS.text)) } : null;
@@ -130,7 +129,7 @@ export function visualImage(value: unknown): string | undefined {
 
 function media(raw: Raw): MediaVisual | null {
   const items = list(raw.items, 1, LIMITS.media, (entry) => {
-    const item = record(entry);
+    const item = object(entry);
     const title = text(item?.title, LIMITS.title);
     if (!item || !title) return null;
     return {
@@ -153,7 +152,7 @@ export function isVisualKind(value: string): value is GodChatVisualKind {
 export function parseVisual(kind: GodChatVisualKind, source: string): ChatVisual | null {
   let raw: Raw | null;
   try {
-    raw = record(JSON.parse(source));
+    raw = object(JSON.parse(source));
   } catch {
     return null;
   }
