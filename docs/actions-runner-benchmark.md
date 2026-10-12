@@ -39,7 +39,7 @@ main 提交 `c33d1fbd05998f3e045eb7d440111010a073095e` 的 [CodeQL 重跑](https
 
 使用相同源码在两份全新目录中执行 `pnpm install --frozen-lockfile --offline --store-dir`，两次都复用全部 957 个包，下载为零。首次读取持久磁盘 store 用时 19.6 秒，第二次用时 4 秒；磁盘冷读受同机 I/O 影响，不能只引用第二次暖缓存结果。
 
-自建机的 `scripts/setup-ci-pnpm.sh` 按 `package.json#packageManager` 选择精确版本，工具安装落在各 runner 的持久工具缓存；版本之间隔离，安装加锁并先写临时目录。实测首次安装 2.1 秒、复用 0.45 秒。托管机继续使用 pnpm/action-setup 与 setup-node 的 pnpm 缓存。
+自建机的 [pnpm 安装脚本](https://github.com/LYJW131/lyjwpage/blob/c33d1fbd05998f3e045eb7d440111010a073095e/scripts/setup-ci-pnpm.sh) 按 `package.json#packageManager` 选择精确版本，工具安装落在各 runner 的持久工具缓存；版本之间隔离，安装加锁并先写临时目录。实测首次安装 2.1 秒、复用 0.45 秒。托管机继续使用 pnpm/action-setup 与 setup-node 的 pnpm 缓存。
 
 主站 tsconfig 的 `incremental` 已启用。远端主站 `next typegen` 用时 0.9 秒，`tsc --noEmit` 首次 11.2 秒、复用 3 秒。修改已经检查过的源文件、注入 `string = 42` 后，增量检查以 TS2322 失败；还原后通过。
 
