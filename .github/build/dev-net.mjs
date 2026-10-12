@@ -41,13 +41,11 @@ function tunnel(host, onSocket, onError) {
 
 function relay(port, origin) {
   const server = http.createServer(async (req, res) => {
-    // 绝对形式的请求目标（GET https://别的主机/）会让 new URL(req.url, origin) 换掉主机；中继只转发到自己的源。
-    if (!req.url?.startsWith("/")) {
-      res.writeHead(400, { "Content-Type": "text/plain" });
-      res.end("dev-net relay accepts origin-form paths only");
-      return;
-    }
-    const target = new URL(`${origin.origin}/${req.url.slice(1)}`);
+    // 不用 new URL(req.url, origin)：绝对形式的请求目标（GET https://别的主机/）会换掉主机。只取路径与查询，主机固定为中继的源。
+    const { pathname, search } = new URL(req.url ?? "/", "http://relay.invalid");
+    const target = new URL(origin);
+    target.pathname = pathname;
+    target.search = search;
     const headers = {};
     for (const [key, value] of Object.entries(req.headers)) if (!HOP.has(key)) headers[key] = value;
     const body = req.method === "GET" || req.method === "HEAD" ? undefined : Readable.toWeb(req);
