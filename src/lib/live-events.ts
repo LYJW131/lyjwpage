@@ -1,4 +1,4 @@
-import type { NowWatchingPayload, WatchingPayload } from "@/lib/emby";
+import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";
 import type { QuestNow } from "@shared/quest";
 import type {
   ChargerPayload,

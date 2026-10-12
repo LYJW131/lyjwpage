@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { LiveEvent } from "@/lib/live-events";
 import { pickNowListening } from "@/lib/now-listening";
 import { readRecentListeningTraces } from "@/lib/telemetry";
-import type { Liveness } from "@/lib/reporter-liveness";
+import type { Liveness } from "@shared/reporter-liveness";
 import type { LocalNowPlaying } from "@/lib/types";
 import { playingContainer } from "@shared/apple-music-store";
 import type { StoredHomePod } from "@shared/homepod-store";

@@ -1,14 +1,7 @@
 import { readAppleMusicCredentials } from "@shared/apple-music-auth";
 import { ampFetch, AppleUpstreamError, getWebToken } from "@/lib/apple-web-token";
 import { cached } from "@shared/apple-cache";
-import { parseLyricsTtml, type LyricLine } from "@/lib/lyrics-ttml";
-
-
-export type LyricsResult = {
-  lines: LyricLine[];
-  songwriters?: string[];
-  error?: string;
-};
+import { parseLyricsTtml, type LyricsResult } from "@/lib/lyrics-ttml";
 
 export const NO_LYRICS: LyricsResult = { lines: [] };
 

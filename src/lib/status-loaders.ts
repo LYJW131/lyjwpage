@@ -10,7 +10,7 @@ import { getCodingNow, getCodingUsage, getCodingYear } from "@/lib/coding-usage"
 import { getNowWatching, getWatching } from "@/lib/emby";
 import { getGithubChart, sliceGithubChart } from "@/lib/github-chart";
 import { getGithubRepo } from "@/lib/github-repo";
-import { getPlaying, getPlayingNow } from "@/lib/playstation";
+import { getPlaying, getPlayingNow, getTrophies } from "@/lib/playstation";
 import { getQuestNow } from "@/lib/quest";
 import { getPowerBankSnapshot } from "@/lib/powerbank";
 import { getPulseStatus } from "@/lib/pulse";
@@ -19,8 +19,9 @@ import { getSentryStatus } from "@/lib/sentry-status";
 import { getServerSnapshot } from "@/lib/server";
 import type { EndpointViewKey, StatusViewKey } from "@/lib/status-views";
 import type { LagResult } from "@/lib/lag-result";
+import type { StatusPayloads } from "@/lib/status-payloads";
 import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
-import { getTrophies, summarizeTrophies } from "@/lib/trophies";
+import { summarizeTrophies } from "@/lib/trophies";
 import { sliceTrophies } from "@/lib/trophy-slice";
 import { getSiteDeployments } from "@/lib/site-deployments";
 
@@ -30,8 +31,8 @@ export type StatusLoaderParams = {
   titleIds?: string[];
 };
 
-type EndpointLoader = {
-  endpoint: (params: StatusLoaderParams) => Promise<unknown>;
+type EndpointLoader<T> = {
+  endpoint: (params: StatusLoaderParams) => Promise<T | LagResult<T>>;
 };
 
 function unparam<T>(load: () => Promise<T>): (params: StatusLoaderParams) => Promise<T> {
@@ -77,16 +78,7 @@ export const statusLoaders = {
   sentry: { endpoint: unparam(getSentryStatus) },
   reporters: { endpoint: unparam(getReportersStatus) },
   pulse: { endpoint: unparam(() => getPulseStatus()) },
-} satisfies { [K in StatusViewKey]: EndpointLoader };
-
-export type StatusLoaders = typeof statusLoaders;
-export type StatusLoaderKey = keyof StatusLoaders;
-
-type EndpointValue<L> = L extends { endpoint: (params: StatusLoaderParams) => Promise<infer E> }
-  ? E extends LagResult<infer D> ? D : E
-  : never;
-
-export type EndpointPayloadOf<K extends StatusLoaderKey> = EndpointValue<StatusLoaders[K]>;
+} satisfies { [K in StatusViewKey]: EndpointLoader<StatusPayloads[K]> };
 
 export function loadEndpoint(key: EndpointViewKey, params: StatusLoaderParams = {}): Promise<unknown> {
   const endpoint: (args: StatusLoaderParams) => Promise<unknown> = statusLoaders[key].endpoint;

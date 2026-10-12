@@ -7,7 +7,7 @@ import {
   nextLiveness,
   offlineByLiveness,
   readLiveness,
-} from "@/lib/reporter-liveness";
+} from "@shared/reporter-liveness";
 import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
 
 test.beforeEach(() => {

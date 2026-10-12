@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { readChargerState } from "@/lib/charger-store";
 import { getImageObjectKeys } from "@/lib/emby-store";
-import { readLiveness } from "@/lib/reporter-liveness";
+import { readLiveness } from "@shared/reporter-liveness";
 import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
 import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
 import { pulseWorkoutsKey } from "@/lib/pulse-keys";

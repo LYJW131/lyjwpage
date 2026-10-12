@@ -1,6 +1,6 @@
-import { homePodTrackEnd, homePodVisibleAt, homePodVisibleUntil } from "@/lib/homepod-store";
+import { homePodTrackEnd, homePodVisibleAt, homePodVisibleUntil } from "@shared/homepod-store";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
-import { offlineByLiveness, type Liveness } from "@/lib/reporter-liveness";
+import { offlineByLiveness, type Liveness } from "@shared/reporter-liveness";
 import type { LocalNowPlaying, NowListeningElsewhere, NowListeningNext, PlayingContainer, RecentTrack } from "@/lib/types";
 import { PULSE_STATE_HOLD_MS, pulseText, type ListeningFacts, type ObservationHold } from "@shared/pulse-timeline";
 

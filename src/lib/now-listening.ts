@@ -1,5 +1,5 @@
-import { homePodVisibleAt } from "@/lib/homepod-store";
-import { offlineByLiveness, withPresence, type Liveness } from "@/lib/reporter-liveness";
+import { homePodVisibleAt } from "@shared/homepod-store";
+import { offlineByLiveness, withPresence, type Liveness } from "@shared/reporter-liveness";
 import type { LocalNowPlaying, NowListeningAlternate, NowListeningPayload, PlayingContainer, TrackMotion } from "@/lib/types";
 import { playingElsewhere, sameSong, type ListeningTrace } from "@shared/pulse-listening";
 

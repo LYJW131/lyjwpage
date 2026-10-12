@@ -1,9 +1,4 @@
-import { AwaitingReport } from "@/lib/awaiting-report";
 import { number, object, text } from "@/lib/json";
-import {
-  getPlaystationPlayedGames,
-  getPlaystationTrophies,
-} from "@/lib/playstation-store";
 import { foldService } from "@/lib/playstation-entitlements";
 import type { PlaystationGame } from "@/lib/types";
 import { addTrophyCounts, emptyTrophyCounts } from "@/lib/trophy-counts";
@@ -269,7 +264,7 @@ function entitlementsFrom(
   };
 }
 
-function overlayPlayStats(
+export function overlayPlayStats(
   titles: TrophyTitle[],
   games: PlaystationGame[],
 ): TrophyTitle[] {
@@ -309,22 +304,6 @@ function overlayPlayStats(
       ...entitlements,
     };
   });
-}
-
-export async function getTrophies(): Promise<TrophiesPayload> {
-  const [payload, played] = await Promise.all([getPlaystationTrophies(), getPlaystationPlayedGames()]);
-  if (!payload) throw new AwaitingReport("尚未收到 PlayStation 奖杯遥测");
-  if (!played?.items.length) {
-    return {
-      ...payload,
-      titles: payload.titles.map((title) => ({
-        ...title,
-        service: title.service ?? null,
-        preOrder: title.preOrder === true,
-      })),
-    };
-  }
-  return { ...payload, titles: overlayPlayStats(payload.titles, played.items) };
 }
 
 // 奖杯分子分母必须来自同一过滤后的集合，账号级分子可能让结果超过 100%。

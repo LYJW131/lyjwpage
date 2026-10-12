@@ -1,4 +1,4 @@
-import { type ResolvedNowPlaying, type StoredWatchingItem } from "@/lib/emby-store";
+import { type ResolvedNowPlaying, type StoredWatchingItem } from "@shared/emby-store";
 import { publicAssetPath } from "@/lib/asset-url";
 import type { WatchingItem } from "@/lib/types";
 
