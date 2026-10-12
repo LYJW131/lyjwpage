@@ -27,7 +27,7 @@ export async function githubAppJwt(privateKey: string, now = Date.now()): Promis
   return `${head}.${body}.${base64url(new Uint8Array(signature))}`;
 }
 
-class GithubRequestError extends Error {
+export class GithubRequestError extends Error {
   status: number;
   constructor(status: number) { super(`GitHub request failed (${status}).`); this.status = status; }
 }
@@ -74,7 +74,7 @@ export async function assertMainAncestor(api: GithubBuildApi, baseSha: string): 
   if (!["ahead", "identical"].includes(comparison.status) || comparison.merge_base_commit?.sha !== baseSha) throw new BuildBlockedError("The base commit is not in main history.");
 }
 
-// Must name the model configured on the build routine (docs/ops-facts.md「Claude Code 云端 routine」).
+// 须与 .github/workflows/build.yml 中 implement job 的 --model 对应，scripts/build-actions.test.mjs 核对。
 const BUILD_CLAUDE_COAUTHOR = "Claude Opus 5.5 <noreply@anthropic.com>";
 
 export function validSha(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }
@@ -289,7 +289,7 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
   const tree = await api.repo<{ sha: string }>("/git/trees", "POST", { base_tree: planCommit.tree.sha, tree: entries });
   if (!validSha(tree.sha) || tree.sha === planCommit.tree.sha) throw new BuildBlockedError("The upload does not contain implementation changes.");
   const message = upload.message.split(/\r\n?|\n/).filter((line) => !/^\s*(co-authored-by|claude-session)\s*:/i.test(line)).join("\n").trim() || run.plan.title;
-  const trailers = [`Co-authored-by: ${run.coauthor}`, `Co-Authored-By: ${BUILD_CLAUDE_COAUTHOR}`, ...(run.sessionUrl ? [`Claude-Session: ${run.sessionUrl}`] : [])].join("\n");
+  const trailers = `Co-authored-by: ${run.coauthor}\nCo-Authored-By: ${BUILD_CLAUDE_COAUTHOR}`;
   const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `${message}\n\n${trailers}`, tree: tree.sha, parents: [run.planCommitSha] });
   if (!validSha(commit.sha)) throw new Error("GitHub commit confirmation is unavailable.");
   const pr = run.state.pr!;

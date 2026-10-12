@@ -15,6 +15,7 @@ export const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone
 export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;
 // 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。
 export const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;
+export const BUILD_PROGRESS_LIMITS = { messageChars: 200, blockedChars: 600 } as const;
 
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
 export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number };
@@ -85,7 +86,7 @@ export const PLAN_LABELS = {
     askReady: "Pick your answers below.",
     handoff: "Good idea. I'll bring in the planner to work it out with you.",
     screenshots: "Screenshots",
-    screenshotsNote: "Captured by the build routine before upload; the deployed preview requires Cloudflare Access sign-in.",
+    screenshotsNote: "Captured by the build workflow before upload; the deployed preview requires Cloudflare Access sign-in.",
   },
   zh: {
     request: "想要什么",
@@ -100,7 +101,7 @@ export const PLAN_LABELS = {
     askReady: "请在下面选一下。",
     handoff: "好主意，我请规划者来和你一起把它想清楚。",
     screenshots: "截图",
-    screenshotsNote: "由构建 routine 在上传前截取；部署后的预览需要通过 Cloudflare Access 登录。",
+    screenshotsNote: "由构建工作流在上传前截取；部署后的预览需要通过 Cloudflare Access 登录。",
   },
   ja: {
     request: "要望",
@@ -115,7 +116,7 @@ export const PLAN_LABELS = {
     askReady: "下から選んでください。",
     handoff: "いいですね。プランナーに引き継いで、一緒に詰めていきます。",
     screenshots: "スクリーンショット",
-    screenshotsNote: "アップロード前にビルド routine が撮影したものです。デプロイ後のプレビューには Cloudflare Access へのサインインが必要です。",
+    screenshotsNote: "アップロード前にビルドワークフローが撮影したものです。デプロイ後のプレビューには Cloudflare Access へのサインインが必要です。",
   },
 } as const satisfies Record<PlanLanguage, unknown>;
 
