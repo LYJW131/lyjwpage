@@ -5,7 +5,6 @@ import * as Sentry from "@sentry/cloudflare";
 
 import { installLagReader, readLag } from "@shared/lag";
 import { lagEnvelope, serveLagStatus } from "@shared/lag-views";
-import { site } from "@shared/site";
 import type { SiteCacheRpc } from "@shared/site-cache";
 import { statusResponse } from "@shared/status-response";
 
@@ -327,13 +326,11 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
         return (await response.json()) as FirstScreen<K>;
       },
       lyrics: async (songId: string): Promise<LyricsResult | null> => {
-        const path = `/api/lyrics?song=${encodeURIComponent(songId)}`;
+        // api 的边缘缓存按请求 URL 的源分键：SSR 用浏览器取歌词的同一个源（PUBLIC_BACKEND_URL），两边才共用一份。
+        const url = `${backendOrigin(env)}/api/lyrics?song=${encodeURIComponent(songId)}`;
         const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
         try {
-          // api 的边缘缓存按请求的源分键，用站点域名才和浏览器经站点来的请求共用一份。
-          const response = isProduction(env)
-            ? await env.API_SERVICE.fetch(`${site.url}${path}`, init)
-            : await fetch(`${backendOrigin(env)}${path}`, init);
+          const response = isProduction(env) ? await env.API_SERVICE.fetch(url, init) : await fetch(url, init);
           if (!response.ok) return null;
           return (await response.json()) as LyricsResult;
         } catch {
