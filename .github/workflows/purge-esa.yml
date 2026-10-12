@@ -1,8 +1,14 @@
 name: Purge ESA and Notify Pages on Deploy
 
 on:
-  deployment_status:
+  check_run:
+    types: [completed]
   workflow_dispatch:
+    inputs:
+      commit:
+        description: Production commit SHA; empty uses main
+        required: false
+        type: string
 
 concurrency:
   group: esa-purge
@@ -12,23 +18,53 @@ permissions:
   contents: read
 
 jobs:
-  purge:
+  deployment:
     if: >
       github.event_name == 'workflow_dispatch' ||
-      (github.event.deployment_status.state == 'success' &&
-       (github.event.deployment.environment == 'Production' || github.event.deployment.original_environment == 'Production'))
+      (github.event.check_run.app.slug == 'cloudflare-workers-and-pages' &&
+       github.event.check_run.name == 'Workers Builds: site' &&
+       github.event.check_run.conclusion == 'success' &&
+       github.event.check_run.check_suite.head_branch == 'main')
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      eligible: ${{ steps.commit.outputs.eligible }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Validate production deployment
+        id: commit
+        run: node scripts/site-deploy-event.mjs >> "$GITHUB_OUTPUT"
+      - name: Wait for the source domain
+        if: steps.commit.outputs.eligible == 'true'
+        env:
+          EXPECTED_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          for attempt in $(seq 1 30); do
+            commit=$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' https://lyjw.me/api/version | jq -r '.commit // empty' || true)
+            if [ "$commit" = "$EXPECTED_SHA" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::Source domain did not serve the expected commit"
+          exit 1
+
+  purge:
+    needs: deployment
+    if: needs.deployment.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           ref: main
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           package-manager-cache: false
-
       - name: Purge ESA Homepage Cache
         env:
           ESA_SITE_ID: "1113300533463584"
@@ -39,32 +75,31 @@ jobs:
 
   # 必须先刷 ESA 再通知页面，并等待域名切换到新版本，否则刷新仍会拿到旧 HTML。
   notify:
-    needs: purge
+    needs: [deployment, purge]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Wait for production domains to serve the new build
         env:
-          EXPECTED_SHA: ${{ github.event.deployment.sha }}
+          EXPECTED_SHA: ${{ needs.deployment.outputs.sha }}
         run: |
-          [ -n "$EXPECTED_SHA" ] || { echo "没有部署 sha，跳过等待"; exit 0; }
           for origin in https://lyjw.me https://lyjw131.com; do
             for attempt in $(seq 1 30); do
               commit=$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "$origin/api/version" | jq -r '.commit // empty' || true)
-              if [ "$commit" = "$EXPECTED_SHA" ]; then echo "$origin 已是 $commit"; continue 2; fi
-              echo "$origin 仍是 ${commit:-未知}，第 $attempt 次，10 秒后重试"
+              if [ "$commit" = "$EXPECTED_SHA" ]; then continue 2; fi
               sleep 10
             done
-            echo "::warning::$origin 5 分钟内没有答出 $EXPECTED_SHA"
+            echo "::error::$origin did not serve the expected commit"
+            exit 1
           done
 
-      # Vercel 与 Workers Builds 并行上线；接收端尚未换版时会短暂返回 404/405，需重试。
+      # 各 Worker 并行上线；接收端尚未换版时会短暂返回 404/405，需重试。
       - name: Notify open pages
         env:
           ACCESS_CLIENT_ID: ${{ secrets.ACCESS_CLIENT_ID }}
           ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
         run: |
-          [ -n "$ACCESS_CLIENT_ID" ] && [ -n "$ACCESS_CLIENT_SECRET" ] || { echo "::error::仓库没配 ACCESS_CLIENT_ID / ACCESS_CLIENT_SECRET"; exit 1; }
+          [ -n "$ACCESS_CLIENT_ID" ] && [ -n "$ACCESS_CLIENT_SECRET" ] || { echo "::error::Access service token is not configured"; exit 1; }
           curl -fsS --max-time 15 --retry 30 --retry-all-errors --retry-delay 20 --retry-max-time 600 -X POST \
             -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
             -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \

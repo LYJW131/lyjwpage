@@ -51,7 +51,7 @@
 | `ch00.q`（标题） | 4.25–7.55 | 这张卡片，是怎么知道的？ | How does this card know? |
 | `ch00.title`（页眉） | 7.55–9.5 | 这张卡片从哪来 | Where does this card come from? |
 | `ch00.n1a` / `n1b` | 6.1–7.5 | 全片跟踪一封上报信封：／Mac 上 Apple Music 换了一首歌。 | We trace one report end to end: / a song change on the Mac. |
-| `ch00.n2a` / `n2b` | 8.1–9.5 | 上报器发 POST，Workers 记状态，／Vercel 出首屏，浏览器收推送。 | Reporters post; Workers hold state; / Vercel renders; the browser listens. |
+| `ch00.n2a` / `n2b` | 8.1–9.5 | 上报器发 POST，Workers 记状态，／site Worker 出首屏，浏览器收推送。 | Reporters post; Workers hold state; / site Worker renders; browsers listen. |
 
 ## 01 野外观测站（35 小节）
 
@@ -137,7 +137,7 @@
 | 5–6 | 5:0 主角落账；托盘上出一张小纸条，右栏「要做的事」（角标 `IngestEffect`）固定三行 event / listening / tags：listening 写「广播 listening-now · 用落账前补好的封面和链接」（查 Apple 目录在 StateCore 交给 StateHub 之前做完，随状态落库），tags 空着「换歌不失效；开始或停止放歌才有」，方框不勾。旁白 `n3` | |
 | 6–8 | 6:0 纸条从墙缝递出，镜头甩到门外岗亭 StateCore「RPC 入口 · 照单去办」；6:2 盖 waitUntil 章、listening 打勾；同一拍两条虚线出发：去天线 LivePushRoom（另一个单例 DO），橙环荡开，所有开着的页面依次翻面、标 listening-now；回执 `ok · data` 飞回入口，标「回执 → 入口」「入口接着写 LAG 和凭据，都写完才盖 202」，两条路中间「‖ 并行 ‖」。旁白 `n4` | 6:0 纸滑出，6:2 广播 + 印章 |
 | 8–10.5 | 甩回屋里：又进两封（playstation、emby），9:0 一封纯心跳（信封上一颗心跟着底鼓跳）：账本记「♥ 存活 + pulse 观测」，「要做的事（空）」注「不推送」「不失效首屏」；Clawd 在桌角冒出来说一句。旁白 `n5` | 心跳段半速，底鼓变成扑通扑通 |
-| 10.5–12 | 一封在线 → 离线（mac · presence）落账：「要做的事」写 event「广播 presence」、tags「失效页头、在听、充电头 → Vercel，5 秒超时」；11:0 两项打勾，纸条递出，橙环从右边扫进来。旁白 `n6` | 11:0 翻转一记，11:3 吸一口气 |
+| 10.5–12 | 一封在线 → 离线（mac · presence）落账：「要做的事」写 event「广播 presence」、tags「失效页头、在听、充电头 → site Worker，5 秒超时」；11:0 两项打勾，纸条递出，橙环从右边扫进来。旁白 `n6` | 11:0 翻转一记，11:3 吸一口气 |
 | 12–15 | 拉远：屋子、岗亭、天线缩成「实时 · StateHub」一组；可滞后墙（带时间签的格子）、凭据抽屉、D1 档案架按拍从地平线升起（KV LAG、KV CREDENTIALS、D1 · lyjwpage-history）；右边白卡「四个库」逐行写上（实时 · 会推送 · StateHub（DO，SQLite）；可滞后 · 不推送 · KV LAG · 带 updatedAt；历史 · 长期保存 · D1 · lyjwpage-history；凭据 · 不公开 · KV CREDENTIALS）；14:2 脚注「pulse 时间线在屋里只放 7 天，每 5 分钟归档进 D1」。旁白 `n7` | 12:0 律动全开，主题带和声完整唱一遍 |
 | 15–16 | 15:0 图版外框「PLATE 03 · STATE CORE」；15:2 起镜头对准对照表白卡下方的空白，冲进去，满屏是纸 | 15:0 终和弦 Dm9 和一声低「咚」 |
 
@@ -149,20 +149,20 @@
 | `ch03.n4a` / `n4b` | 6.3–8 | StateCore 用 waitUntil 照单办，／网络请求不占 StateHub 的时间。 | StateCore runs them in waitUntil: / network I/O never blocks StateHub. |
 | `ch03.n5a` / `n5b` | 9–10.5 | 心跳只续存活、记 pulse 观测，／效果单为空，下游什么都不做。 | A heartbeat logs liveness and pulse; / its effect list stays empty. |
 | `ch03.clawd`（气泡） | 9.6–10.2 | 记一笔就好，／别吵醒大家。 | Just jot it down, / don't wake anyone. |
-| `ch03.n6a` / `n6b` | 10.55–11.75 | 只有上线、下线才广播 presence，／并通知 Vercel 让首屏标签过期。 | Presence is pushed only on flips, / and Vercel is asked to expire tags. |
+| `ch03.n6a` / `n6b` | 10.55–11.75 | 只有上线、下线才广播 presence，／并通知 site Worker 让首屏标签过期。 | Presence is pushed only on flips, / and the site Worker expires its tags. |
 | `ch03.n7a` / `n7b` | 12.3–16 | 只有实时层放在 DO 里，变了就推送；／其余几层在 KV 和 D1，不推送、按需读取。 | Only the realtime layer lives in a DO and pushes; / the rest sit in KV and D1 and wait to be read. |
 
 `n7` 中英都超过行宽：它排在缩放 0.66 的拉远机位上，世界坐标写 91 px、`maxW` 2600，屏幕上仍是 60 px、不缩字（`v2/tools/check.mjs` 核过）。其余各句中文每行不超过 17 字，英文不超过 36 个字符。
 
 ## 04 活字印版（12 小节）
 
-事实：FACTS §4。画面标题「活字印版 / The type case」，副标 `Vercel · Next.js` 和 `'use cache' · cacheTag`。纸面，俯视一整页首屏：每条 `firstScreen` 缓存一块印版（一张卡读几个视图就切成几块，`src/app/page.tsx#READS`），按首屏桌面宽度的真实比例排成一条长版，块上写它的 `page:` 标签名，没挂标签的写端点末段（屏幕上不小于 28 px）；挂标签的块右上角吊一枚小标签。块数、带标签和不带标签的各几块，写章时按代码现数（`src/app/page.tsx` 里 `firstScreen` 的调用、`src/lib/status-views.ts#STATUS_VIEWS` 的 tag），旁白里不说数。
+事实：FACTS §4。画面标题「活字印版 / The type case」，副标 `React Router · SSR` 和 `site Worker · Cache-Tag`。纸面，俯视一整页首屏：每条 `firstScreen` 缓存一块印版（一张卡读几个视图就切成几块，`src/app/page.tsx#READS`），按首屏桌面宽度的真实比例排成一条长版，块上写它的 `page:` 标签名，没挂标签的写端点末段（屏幕上不小于 28 px）；挂标签的块右上角吊一枚小标签。块数、带标签和不带标签的各几块，写章时按代码现数（`src/app/page.tsx` 里 `firstScreen` 的调用、`shared/status-views.ts#STATUS_VIEWS` 的 tag），旁白里不说数。
 
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–1 | 接第 03 章的满屏纸往后拉：一整页印版现出来；标题 | 印刷机的重拍进来 |
 | 1–3 | 出纸口递出一张印好的页：访客拿到的是缓存好的 HTML。旁白 `n1` | |
-| 3–5 | 镜头顺着长版往下走，每块印版一根细线接到左右两条轨（实时 → DO，可滞后 → KV LAG），轨通到页底的库符号；脚注「`'use cache'` · stale 300 / revalidate 600 / expire 7 天」 | |
+| 3–5 | 镜头顺着长版往下走，每块印版一根细线接到左右两条轨（实时 → DO，可滞后 → KV LAG），轨通到页底的库符号；脚注「`Cache-Tag` · max-age 600 / stale-while-revalidate 604200」 | |
 | 5–8 | 接第 03 章那次在线 → 离线：页头、在听、充电头三块的标签失效（注「在线 → 离线：这几块的标签失效」，不写个数），三块被夹起（往上平移、投影变深），在强拍上按 stamp 模式重印、放回；同时出纸口照旧递出旧页，新页在后台印。旁白 `n2` | 每块重印落在一个重拍上 |
 | 8–9.5 | 没挂标签的那几块，角上各亮一个 600 秒的圆形计时环。旁白 `n3` | |
 | 9.5–11 | pulse 那块的计时走到头、回源碰上 503：那块印版不动，盖一枚「503 · 沿用上一份」章。旁白 `n4` | 印章 |
@@ -189,7 +189,7 @@
 | 8.5–10.5 | 线上没有消息。放大的「Now Playing」：进度条自己往前走，旁边竖写 `positionMs + (now − observedAt)`，now 标浏览器的钟、observedAt 标 Mac 的钟，注「只在播放时往前走」；歌词占位两行横条逐块亮。旁白 `n5` | 踩镲停下，只剩浏览器的钟一拍一响；铃跟着歌词块轻轻唱 |
 | 10.5–12.5 | 两只正视钟面：线上面源站的钟停在 servedAt（只管首帧），10:3 挂载，虚线箭头穿过电报线交给线下面访客的钟；访客的钟一拍走一格，12:0 走到截止 `lastSeenAt + heartbeatWindowMs`，卡片上的在线点自己熄灭、换成 Offline，源站什么也没说。在线点画成 signal，不用 live 绿。旁白 `n6` | 12:0 在线点熄灭：一声很轻的、往下滑一个八度的玻璃音 |
 | 12.5–15 | 同一根线数两种人：这一页的窗口（页脚 Online now 用 live 绿）、线上面的房间和一张「数人头」白卡（角标 `/count`；connections：开着的，含后台；online：正在看的）；13:2 切到另一个标签页，只发一声 `hidden`（往上的脉冲），线不断；14:0 online 03 → 02（live 绿），connections 不变。旁白 `n7` | 13:2 电键一声（往外发，比进来的高、短）；14:0 叮；踩镲敲 ON |
-| 15–17.3 | 白卡「预期到货表」（角标 `nextLagDelay`）：可滞后卡在 `due = updatedAt + cadenceMs + LAG_GRACE_MS` 才去取（服务器、GitHub 贡献图、活动圆环三行，节奏按 `src/lib/status-views.ts#STATUS_VIEWS`），过了 due 从 15 秒起退避；右栏：推送连着时，在听列表、在看、在玩、奖杯的轮询取 `max(cardMs, PUSH_SAFETY_NET_MS)`，16:2 盖「≥ 5 min」章。旁白 `n8` | 15:1、15:2、15:3、16:0 一行一声叮；16:2 印章；踩镲敲 ETA |
+| 15–17.3 | 白卡「预期到货表」（角标 `nextLagDelay`）：可滞后卡在 `due = updatedAt + cadenceMs + LAG_GRACE_MS` 才去取（服务器、GitHub 贡献图、活动圆环三行，节奏按 `shared/status-views.ts#STATUS_VIEWS`），过了 due 从 15 秒起退避；右栏：推送连着时，在听列表、在看、在玩、奖杯的轮询取 `max(cardMs, PUSH_SAFETY_NET_MS)`，16:2 盖「≥ 5 min」章。旁白 `n8` | 15:1、15:2、15:3、16:0 一行一声叮；16:2 印章；踩镲敲 ETA |
 | 17.3–18 | 拉远看整条示波线（几次到站的脉冲都在上面），17.72 起脉冲拉平成一条直线，往两头伸出画面。最后一帧：屏幕 y = 540 一条全宽水平直线（signalD，4 px） | 踩镲敲 SK（收报）；17:3 吸一口气，收在 A7sus4，18:0 交给第 06 章 |
 
 | 键 | 小节 | 中文 | English |
@@ -211,9 +211,9 @@
 
 | 小节 | 画面 | 配乐 |
 |---|---|---|
-| 0–1 | 第 05 章那条直线成了 lyjw.me 线，lyjw131.com 线从旁边画出来，两条都通到 Vercel 源站；标题 | 转调，声场铺开 |
+| 0–1 | 第 05 章那条直线成了 lyjw.me 线，lyjw131.com 线从旁边画出来，两条都通到 site Worker 源站；标题 | 转调，声场铺开 |
 | 1–4 | lyjw131.com 那条经过「阿里云 ESA」站，站旁挂一个 5 分钟钟面，标「过期先给旧页，后台回源 / Expired: old page first, refetch later」。旁白 `n1` | |
-| 4–7 | 图片是索书号：一张借书卡写 `/img/<哈希>.webp`（Emby 海报；在听的封面来自 Apple 目录，不走这条路）；lyjw.me 由边缘 rewrite 代理到 R2，lyjw131.com 由 ESA 缓存同一路径。旁白 `n2` | |
+| 4–7 | 图片是索书号：一张借书卡写 `/img/<哈希>.webp`（Emby 海报；在听的封面来自 Apple 目录，不走这条路）；lyjw.me 由 site Worker 经 R2 绑定直出（注「site Worker · R2 绑定」），lyjw131.com 由 ESA 缓存同一路径。旁白 `n2` | |
 | 7–9 | 借书卡收掉，两条线往右延伸，镜头跟着横移到节拍器那张纸，9:0 停住 | 收住，拨弦往下答一句（本章不唱信封主题）；收在 A7sus4，交给第 07 章 |
 
 | 键 | 小节 | 中文 | English |
@@ -252,7 +252,7 @@
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–1 | 首帧那根尖峰往后拉开，心电图横线出来；标题 | 底鼓就是心跳（lub-dub）；0:0 报到一声往上挑的低音 |
-| 1–4 | 同一条线上两种方向相反的信号：线上的 Sentry 每分钟来敲门（HEAD `/api/version`，尖朝下，进 lyjw.me，注「只说明 Vercel 还在出页面」）；线下 workers/api 的 cron 每 5 分钟一轮，每轮去报到（尖朝上，到 Sentry）；Sentry 的框里 lyjw.me、API 两行记录一格一格往里加；2.5 起冷面脚注「* 报到只证明 cron 跑完了。」。旁白 `n1` | 敲门是后半拍一声指节叩木门，报到是整 5 拍一声往上挑的低音（1:1、2:2、3:3） |
+| 1–4 | 同一条线上两种方向相反的信号：线上的 Sentry 每分钟来敲门（HEAD `/api/version`，尖朝下，进 lyjw.me，注「只说明 site Worker 还在出页面」）；线下 workers/api 的 cron 每 5 分钟一轮，每轮去报到（尖朝上，到 Sentry）；Sentry 的框里 lyjw.me、API 两行记录一格一格往里加；2.5 起冷面脚注「* 报到只证明 cron 跑完了。」。旁白 `n1` | 敲门是后半拍一声指节叩木门，报到是整 5 拍一声往上挑的低音（1:1、2:2、3:3） |
 | 4–6 | 往右：采集 Worker 的小钟走到整 5 分钟，5:0 拿令牌去 Sentry 查（卡上标 `GET`），5:1 结果带回来，经可滞后层（KV LAG）上 LYJWPAGE 白卡：lyjw.me、API 两行各 30 天一格，5:2 今天那一格亮（live 绿）；卡上只写 Operational 和 30 days ago / Today，不出可用率。旁白 `n2` | 5:0 令牌一声；5:2 高音灯 |
 | 6–8 | 镜头纵向下沉进地层：一层一层是 Pulse 卡上那几条道（道名一栏贴着画面左边，顺序照 Pulse 卡），墨色深浅交替，里面是原始事实的示意（区间、瓦数、桶）；右沿是此刻，workers/api 的 cron 每 5 拍（和报到同一轮）掉下一片压进右沿（注「每 5 分钟压进一薄片」）；右边 D1 档案架「lyjwpage-history · 长期保存」，底下「← 越往左越早，一直留着」；7:0 Listening 那一层里正在放的这首歌亮一下。旁白 `n3` | 低通收窄，敲门隔着地层变闷，压进一片时一声翻纸（和报到同一拍：6:1、7:2、8:3）；7:0 低音马林巴唱信封主题 |
 | 8–10 | 推近 Coding 那一层（其余几层的数据和道名淡掉）：一窗一格，格里两道细刻线分出三个 5 分钟桶（注「一窗 = 三个 5 分钟桶」），下面 Tokens 那层是三个来源的桶叠在一起（注「Mac · 云端 · Cursor」）；8:1 全零的窗先落到最低档，标「不问 Clef，直接最低档」；8:2 起 Clef（「打分（示意）」）一窗一窗往右打，每半拍一窗（先后和快慢都是示意），打出来的档是窗里的一根横线（高低是示意）；贴着此刻那一窗还没满，不打；Clef 那一格上方注「打分只在屋里放 7 天，不进 D1」（打分记在 StateHub，不归档）。旁白 `n4` | 8:1 一声闷拨弦；8:2 起每打一窗一声小铃 |
@@ -296,25 +296,25 @@
 
 ## 10 发布（16 小节）
 
-事实：FACTS §10。下表按 `v2/ch10.js` 和 `v2/music/ch10.js` 的现状写。画面标题「发布 / Release」，副标 `main → GitHub Actions · Vercel · Workers Builds · GHCR`。纸面（接第 09 章的纸面）。一张流水线总图，一根主轴贯穿全章，就是屏幕 y 540 那条线：第 09 章收尾的 git main → Vercel 那条流水线 → 第 06 章的 lyjw.me 线。其余流水线从这次的提交（HEAD）散开，按平台分组：GitHub Actions 在主轴上方，Workers Builds 在下方；三张详图（A 检查、B Worker、C 上报器）排在总图下面，图号和总图右边的分组标记对应；落地时回到主轴，用第 06 章两条线路图的原样几何（整体平移，只画线和站，不讲缓存）。画面和配乐共用 `v2/ch10.js` 顶部的时间表 `AT`。那次推送改到的路径和画面上的短哈希都是示意（FACTS §10）。
+事实：FACTS §10。下表按 `v2/ch10.js` 和 `v2/music/ch10.js` 的现状写。画面标题「发布 / Release」，副标 `main → GitHub Actions · Workers Builds · GHCR`。纸面（接第 09 章的纸面）。一张流水线总图，一根主轴贯穿全章，就是屏幕 y 540 那条线：第 09 章收尾的 git main → site Worker 那条流水线 → 第 06 章的 lyjw.me 线。其余流水线从这次的提交（HEAD）散开，按平台分组：GitHub Actions 在主轴上方，Workers Builds 在下方；三张详图（A 检查、B Worker、C 上报器）排在总图下面，图号和总图右边的分组标记对应；落地时回到主轴，用第 06 章两条线路图的原样几何（整体平移，只画线和站，不讲缓存）。画面和配乐共用 `v2/ch10.js` 顶部的时间表 `AT`。那次推送改到的路径和画面上的短哈希都是示意（FACTS §10）。
 
 交接：0:0 接第 09 章最后一帧，两帧相同：同一高度一条墨线（git 的 main），提交的圆点落在第 08 章那几处敲门尖峰的横坐标上，这次的提交在笔尖的位置；首帧只有线和圆点。16:0 镜头停在 `[MX + 1400, 540]`、缩放 1，画面上只剩主轴那一段（第 06 章 lyjw.me 线的 O → L）收成的一根 3 px 墨线，横穿屏幕 y 540；第 11 章从这一帧硬切暗底，同一高度的这条线成了它长图版的脊线（见第 11 章）。
 
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–1.5 | 接住第 09 章的 main 线与提交圆点；0.3 起标题；0.35 起左下一张「这次改到的路径」（四个目录）；0:1 起打字机敲出 `$ git push origin main`（一个十六分两个字），1:0 回车，下一行 `5939ef8..c47d2a1  main -> main`，HEAD 亮一圈、标出短哈希 | 0:0 一声低「咚」落地，空五度的铃垫着；打字声；1:0 纸滑出去（推上 GitHub） |
-| 1.5–3.5 | 1.45–1.9 拉远，标题、终端、改动卡退掉；1.5 起八条流水线从 HEAD 散开（GitHub Actions：Hub 发布、上报器镜像、CodeQL、CI；主轴：Vercel；Workers Builds：api、ingress、collector、ai），右边括线分组，图号 A、B、C 对应下面三张详图；2:0 起每条闸门一个十六分：放行的打勾，线上写放行的理由（改到的路径，或「每次推到 main」），ingress、collector、ai 划一道、写「没改到」，闸门后变虚线、灯是空的；放行的几条同时有火花往前走。旁白 `n1` | 1:2 分叉声；2:0 起闸门一条一声：放行的「叮」往上爬（A5 C6 D6 E6 F6 A6），没改到的三条各一声闷拨弦；律动进来 |
-| 3.5–5.5 | 甩到详图 A「检查」：CI 四项（lint · typecheck 全部工作区 · test 站点、Worker、上报器、脚本 · docs:check 文档与注释的漂移）每拍勾一项，5:0 亮灯；CodeQL 两项（javascript-typescript · actions 工作流本身）在后半拍勾，5:1 亮灯；注「另有每周一次定时扫描」「不跑 next build：Vercel 每次都会构建」「同一分支连推几次，只留最后一次」。旁白 `n2` | 每勾一项一声叮；两声灯 |
+| 1.5–3.5 | 1.45–1.9 拉远，标题、终端、改动卡退掉；1.5 起八条流水线从 HEAD 散开（GitHub Actions：Hub 发布、上报器镜像、CodeQL、CI；主轴：site Worker（闸门写 `src/components/…`）；Workers Builds：api、ingress、collector、ai），右边括线分组，图号 A、B、C 对应下面三张详图；2:0 起每条闸门一个十六分：放行的打勾，线上写放行的理由（改到的路径，或「每次推到 main」），ingress、collector、ai 划一道、写「没改到」，闸门后变虚线、灯是空的；放行的几条同时有火花往前走。旁白 `n1` | 1:2 分叉声；2:0 起闸门一条一声：放行的「叮」往上爬（A5 C6 D6 E6 F6 A6），没改到的三条各一声闷拨弦；律动进来 |
+| 3.5–5.5 | 甩到详图 A「检查」：CI 四项（lint · typecheck 全部工作区 · test 站点、Worker、上报器、脚本 · docs:check 文档与注释的漂移）每拍勾一项，5:0 亮灯；CodeQL 两项（javascript-typescript · actions 工作流本身）在后半拍勾，5:1 亮灯；注「另有每周一次定时扫描」「不跑站点构建：交给 Workers Builds」「同一分支连推几次，只留最后一次」。旁白 `n2` | 每勾一项一声叮；两声灯 |
 | 5.5–7.5 | 甩到详图 B「Worker」（Cloudflare Workers Builds）：四行，各写监视路径；api 那行另写 `− shared/ingest/*` 和「改上报校验不会重新发布 api：Durable Object 不重启」，放行后 typecheck（6:0）→ wrangler deploy（6:2）→ 7:0 亮灯、标 `api.homepage.lyjw.llc`；ai、ingress、collector「没改到：不构建，线上仍是上一版」，6:1、6:1.5、6:3 各闪一下；脚注「四个都另盯着根目录的依赖与配置」。旁白 `n3` | 6:0 叮，6:2 气动管，7:0 灯；6:1、6:1.5、6:3 闷拨弦 |
 | 7.5–10 | 甩到详图 C「上报器」：容器镜像一行（buildx `linux/amd64` → GHCR `latest · sha-c47d2a1` → ssh misaka-jp「受限密钥，只跑部署脚本」→ running `restarts=0`），8:0 起一拍一步，9:0 亮灯 misaka-jp；ssh 那一步往下一根虚线打叉，接 dsm、n100「内网两台：手动更新」；Mac Telemetry Hub 一行（子模块指针）：9:1 Developer ID 签名，公证排队，9:2.5 盖 notarized，9:3 发 Release `hub-build-<运行号>`。旁白 `n4` | 8:0 叮，8:1 气动管，8:2 钥匙，8:3 叮，9:0 灯；9:1 叮，公证时钟摆走，9:2.5 印章，9:3 灯 |
-| 10–12.5 | 甩回主轴，落在第 06 章两条线路图上：10:0 Vercel 那条的火花过 next build、到源站，Production 亮；10:1 一根虚线 `deployment_status` 叫起 GitHub Actions 的单子；10:2 ESA 手上的首页划掉、盖 purge，10:3 新的一份从源站沿 lyjw131.com 线预热回来，第一项打勾；11:0、11:1 两个终点站先后打勾（两个域名的 `/api/version` 答出新版），11:2 第二项打勾；第三项「通知上报入口（ingress Worker）」，注「失败重试，最长 10 分钟」。旁白 `n5` | 10:0 落地一声 + 灯；10:1 叮，10:2 印章，10:3 气动管；11:0、11:1、11:2 三声叮 |
+| 10–12.5 | 甩回主轴，落在第 06 章两条线路图上：10:0 site Worker 那条的火花过 pnpm build、到源站，Production 亮；10:1 一根虚线 `check_run`（`Workers Builds: site` 成功）叫起 GitHub Actions 的单子；10:2 ESA 手上的首页划掉、盖 purge，10:3 新的一份从源站沿 lyjw131.com 线预热回来，第一项打勾；11:0、11:1 两个终点站先后打勾（两个域名的 `/api/version` 答出新版），11:2 第二项打勾；第三项「通知上报入口（ingress Worker）」，注「失败重试，最长 10 分钟」。旁白 `n5` | 10:0 落地一声 + 灯；10:1 叮，10:2 印章，10:3 气动管；11:0、11:1、11:2 三声叮 |
 | 12.5–15 | 12:0 第三项打勾，火花顺着线往右出画；12.25 镜头跟过去：12:2 上报入口放行（权限 `internal:site-deployed`），经 Service Binding 到 StateCore 的 `broadcastVersion()`，13:0 推送房间 LivePushRoom 广播 `version`（不带数据），橙环荡开扫过两个窗口；13:2 两个窗口各自问 `GET /api/version → c47d2a1`；14:0 前台 lyjw.me 纵向弹出 UPDATE 卡（`5939ef8 → c47d2a1`）；14:2 后台 lyjw131.com 的标签页自己刷新，从上往下换成新的一版；脚注「收不到通知也没关系：每 30 分钟、切回前台时各问一次」。旁白 `n6` | 12:0 钥匙，12:2 叮，12:3 吸一口气；13:0 广播，第二支铃唱信封主题（高八度），拨弦低八度跟着；14:0 翻面一记；14:2 纸滑 |
 | 15–16 | 15:0 拉远看整张图纸（PLATE 10 · RELEASE，灯都亮着，开场的标题、终端、改动卡回来）；15.5 起落回主轴，别的一起退掉，主轴收成一根细墨线；最后一帧只剩屏幕 y 540 那条线 | 15:0 呼啸，15:3 吸一口气；收在 Ebmaj7s11 → A9sus4，交给第 11 章 0:0 的 Dm9 |
 
 | 键 | 小节 | 中文 | English |
 |---|---|---|---|
 | `ch10.n1a` / `n1b` | 1.95–3.3 | 推到 main，几条流水线同时触发；／设了监视路径的，没改到就不跑。 | A push to main fans out at once; / watch paths decide who sits out. |
-| `ch10.n2a` / `n2b` | 3.6–5.25 | CI 和 CodeQL 只检查、不发布；／next build 留给 Vercel 去跑。 | CI and CodeQL check but never ship; / next build is left to Vercel. |
+| `ch10.n2a` / `n2b` | 3.6–5.25 | CI 和 CodeQL 只检查、不发布；／站点构建留给 Workers Builds。 | CI and CodeQL check but never ship; / the site build is left to Workers Builds. |
 | `ch10.n3a` / `n3b` | 5.6–7.5 | Worker 各自构建、互不等待：／契约只加不改，新接口先发被调用方。 | Each Worker builds on its own; / APIs only grow; ship the callee first. |
 | `ch10.n4a` / `n4b` | 7.85–9.75 | 上报器的镜像推到 GHCR；／Mac 的 Hub 签名、公证后发 Release。 | Reporter images go to GHCR; / the Hub is notarized, then released. |
 | `ch10.n5a` / `n5b` | 10.1–12.25 | 部署成功才刷新 ESA 首页；／先等两个域名换好，再通知页面。 | ESA is purged only after the deploy; / pages hear after both are polled. |

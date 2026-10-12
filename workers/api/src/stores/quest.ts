@@ -1,6 +1,6 @@
-import { PLAYSTATION_STALE_MS } from "@/lib/freshness";
-import { QUEST_NOW_TAG } from "@/lib/live-events";
-import { getPlaystationPresence } from "@/lib/playstation-store";
+import { PLAYSTATION_STALE_MS } from "@shared/freshness";
+import { QUEST_NOW_TAG } from "@shared/live-events";
+import { getPlaystationPresence } from "../playstation-store";
 import { questMirror, questNow } from "@shared/quest";
 import type { PreparedQuestReport } from "@shared/ingest/quest";
 import { gamingFacts, questGamingFacts, type GamingFacts } from "@shared/pulse-timeline";

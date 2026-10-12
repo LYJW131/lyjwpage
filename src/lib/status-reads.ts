@@ -1,5 +1,5 @@
 import { backendUrl } from "@/lib/backend-url";
-import { STATUS_VIEWS } from "@/lib/status-views";
+import { STATUS_VIEWS } from "@shared/status-views";
 import type { QuestNow } from "@shared/quest";
 import type {
   DesktopPayload,
@@ -10,7 +10,7 @@ import type {
   PowerBankPayload,
   StatusResponse,
   TrophiesSummaryPayload,
-} from "@/lib/types";
+} from "@shared/types";
 
 
 const STAMPS: Record<string, (data: never) => number | null> = {

@@ -1,9 +1,6 @@
-import { cacheLife } from "next/cache";
-
-import { type CommitAuthor, type CommitListItem, actorAuthor, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@/lib/commit-authors";
-import { repoIdFromUrl } from "@/lib/github-repo";
-import { FIRST_SCREEN_CACHE_LIFE } from "@/lib/first-screen";
-import { site } from "@/lib/site";
+import { type CommitAuthor, type CommitListItem, actorAuthor, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@shared/commit-authors";
+import { repoIdFromUrl } from "@shared/github-repo";
+import { site } from "@shared/site";
 
 
 export type GithubRecentCommit = {
@@ -19,8 +16,6 @@ export type GithubRecentCommit = {
 const RECENT_LIMIT = 3;
 
 export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
-  "use cache";
-
   const buildId = process.env.BUILD_TIME ?? process.env.COMMIT_SHA ?? "";
   const { owner, name } = repoIdFromUrl(site.repo);
   const url = new URL(`https://api.github.com/repos/${owner}/${name}/commits`);
@@ -44,7 +39,6 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
     const body = (await response.json().catch(() => null)) as CommitListItem[] | null;
     if (!response.ok || !Array.isArray(body)) {
       console.error("[github-commits]", response.status, "最近提交响应不是预期的形状");
-      cacheLife(FIRST_SCREEN_CACHE_LIFE);
       return [];
     }
     // REST 只关联主作者；GraphQL authors 包含 GitHub 识别的协作者及其真实头像。
@@ -86,18 +80,14 @@ export async function getRecentCommits(): Promise<GithubRecentCommit[]> {
       ];
     });
     if (commits.length === 0) {
-      cacheLife(FIRST_SCREEN_CACHE_LIFE);
       return commits;
     }
-    if (commits.every(commit => githubAuthors.has(commit.sha))) cacheLife("max");
-    else cacheLife(FIRST_SCREEN_CACHE_LIFE);
     return commits;
   } catch (error) {
     console.error(
       "[github-commits]",
       error instanceof Error ? error.message : String(error),
     );
-    cacheLife(FIRST_SCREEN_CACHE_LIFE);
     return [];
   }
 }

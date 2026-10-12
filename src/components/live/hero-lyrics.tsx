@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { cueAt } from "@/lib/lyrics-cue";
-import type { LyricLine, LyricWord } from "@/lib/lyrics-ttml";
+import type { LyricLine, LyricWord } from "@shared/lyrics-ttml";
 import { trackPositionMs } from "@/lib/track-position";
-import type { LocalNowPlaying } from "@/lib/types";
+import type { LocalNowPlaying } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 

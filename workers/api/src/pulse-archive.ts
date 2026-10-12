@@ -1,4 +1,4 @@
-import { codingObservationsKey, cursorObservationsKey } from "@/lib/coding-pulse";
+import { codingObservationsKey, cursorObservationsKey } from "./coding-pulse";
 import {
   pulseActivityKey,
   pulseActivityRangeKey,
@@ -6,7 +6,7 @@ import {
   pulseChargingKey,
   pulseLaneKey,
   pulseListeningTracesKey,
-} from "@/lib/pulse-keys";
+} from "./pulse-keys";
 import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from "@shared/coding-buckets";
 import { codingBucketsKey, codingUsageKey, codingUsageRevisionKey, parseRevision } from "@shared/coding-store";
 import { CODING_USAGE_SOURCE_NAMES, isCodingUsageSource, type CodingUsageSource } from "@shared/coding-usage-sources";
@@ -24,7 +24,7 @@ import {
   type ClosedInterval,
   type StateLaneFacts,
 } from "@shared/pulse-timeline";
-import { CHARGING_IDLE_MAX_W } from "@/lib/home-layout";
+import { CHARGING_IDLE_MAX_W } from "@shared/home-layout";
 import type { StorageCommand } from "@shared/storage-contract";
 
 

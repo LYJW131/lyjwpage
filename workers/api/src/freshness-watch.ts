@@ -9,10 +9,10 @@ import {
   PLAYSTATION_STALE_MS,
   SENTRY_STALE_MS,
   SERVER_STALE_MS,
-  VERCEL_DEPLOYMENTS_STALE_MS,
-  VERCEL_METRICS_STALE_MS,
-} from "@/lib/freshness";
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@/lib/sentry";
+  SITE_ANALYTICS_STALE_MS,
+  SITE_DEPLOYMENTS_STALE_MS,
+} from "@shared/freshness";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
 import { RESUME_STALE_MS, resumeMirror } from "@shared/emby-store";
 import { LAG_KEYS, readLag, writeLag, type LagKey, type LagStore } from "@shared/lag";
 import { presenceMirror } from "@shared/playstation-store";
@@ -59,8 +59,8 @@ export const LAG_FEEDS: readonly LagFeed[] = [
   { source: "agent-status", key: LAG_KEYS.agentStatus, thresholdMs: AGENT_STATUS_STALE_MS },
   { source: "github-chart", key: LAG_KEYS.githubChart, thresholdMs: GITHUB_CHART_STALE_MS },
   { source: "github-repo", key: LAG_KEYS.githubRepo, thresholdMs: GITHUB_REPO_STALE_MS },
-  { source: "vercel-deployments", key: LAG_KEYS.vercelDeployments, thresholdMs: VERCEL_DEPLOYMENTS_STALE_MS },
-  { source: "vercel-metrics", key: LAG_KEYS.vercelMetrics, thresholdMs: VERCEL_METRICS_STALE_MS },
+  { source: "site-deployments", key: LAG_KEYS.siteDeployments, thresholdMs: SITE_DEPLOYMENTS_STALE_MS },
+  { source: "site-analytics", key: LAG_KEYS.siteAnalytics, thresholdMs: SITE_ANALYTICS_STALE_MS },
   { source: "pagespeed", key: LAG_KEYS.pagespeed, thresholdMs: PAGESPEED_STALE_MS },
   { source: "cloudflare-deployments", key: LAG_KEYS.cloudflareDeployments, thresholdMs: CLOUDFLARE_DEPLOYMENTS_STALE_MS },
   { source: "cloudflare-metrics", key: LAG_KEYS.cloudflareMetrics, thresholdMs: CLOUDFLARE_METRICS_STALE_MS },

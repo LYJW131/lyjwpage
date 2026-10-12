@@ -2,7 +2,6 @@
 
 import CloudflareColor from "@lobehub/icons/es/Cloudflare/components/Color";
 import Github from "@lobehub/icons/es/Github/components/Mono";
-import Vercel from "@lobehub/icons/es/Vercel/components/Mono";
 import NumberFlow from "@number-flow/react";
 import { Container } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -21,18 +20,18 @@ import {
   PAGESPEED_STALE_MS,
   SENTRY_STALE_MS,
   SERVER_STALE_MS,
-  VERCEL_DEPLOYMENTS_STALE_MS,
-  VERCEL_METRICS_STALE_MS,
-} from "@/lib/freshness";
-import type { ReporterName, ReporterStat, ReportersPayload } from "@/lib/reporter-ledger";
+  SITE_ANALYTICS_STALE_MS,
+  SITE_DEPLOYMENTS_STALE_MS,
+} from "@shared/freshness";
+import type { ReporterName, ReporterStat, ReportersPayload } from "@shared/reporter-ledger";
 import { useStatus } from "@/hooks/use-status";
-import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@/lib/cloudflare-workers-types";
+import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@shared/cloudflare-workers-types";
 import type { GithubRecentCommit } from "@/lib/github-recent-commits";
-import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, SENTRY_PATH, SERVER_PATH, VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
-import type { SentryBlock, SentryErrorSeries, SentryStatusPayload } from "@/lib/sentry-status-types";
-import { site } from "@/lib/site";
-import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@/lib/types";
-import type { LighthouseVitals, VercelDeployment, VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
+import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, SENTRY_PATH, SERVER_PATH, SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
+import type { SentryBlock, SentryErrorSeries, SentryStatusPayload } from "@shared/sentry-status-types";
+import { site } from "@shared/site";
+import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@shared/types";
+import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@shared/site-deployments-types";
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
@@ -116,9 +115,9 @@ function ReporterTile({ name, stat, staleMs, servedAt, title }: {
   </li>;
 }
 
-export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallback, sentryFallback, serverFallback, reportersFallback, recentCommits, className }: {
+export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallback, sentryFallback, serverFallback, reportersFallback, recentCommits, className }: {
   githubFallback: StatusResponse<GithubRepoPayload>;
-  vercelFallback: StatusResponse<VercelDeploymentsPayload>;
+  siteFallback: StatusResponse<SiteDeploymentsPayload>;
   cloudflareFallback: StatusResponse<CloudflareWorkersPayload>;
   sentryFallback: StatusResponse<SentryStatusPayload>;
   serverFallback: StatusResponse<ServerPayload>;
@@ -127,14 +126,13 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   className?: string;
 }) {
   const { data: github, servedAt: githubServedAt } = useStatus<GithubRepoPayload>(GITHUB_REPO_PATH, { fallback: githubFallback });
-  const { data: vercel, servedAt: vercelServedAt } = useStatus<VercelDeploymentsPayload>(VERCEL_DEPLOYMENTS_PATH, { fallback: vercelFallback });
+  const { data: siteDeployments, servedAt: siteServedAt } = useStatus<SiteDeploymentsPayload>(SITE_DEPLOYMENTS_PATH, { fallback: siteFallback });
   const { data: cloudflare, servedAt: cloudflareServedAt } = useStatus<CloudflareWorkersPayload>(CLOUDFLARE_WORKERS_PATH, { fallback: cloudflareFallback });
   const { data: sentry, servedAt: sentryServedAt } = useStatus<SentryStatusPayload>(SENTRY_PATH, { fallback: sentryFallback });
   const githubStale = useStale(github ? github.totalsAt ?? github.fetchedAt : undefined, GITHUB_REPO_STALE_MS, githubServedAt);
-  const deploymentsStale = useStale(vercel?.fetchedAt, VERCEL_DEPLOYMENTS_STALE_MS, vercelServedAt);
-  const functionsStale = useStale(vercel?.metrics?.functions?.fetchedAt, VERCEL_METRICS_STALE_MS, vercelServedAt);
-  const analyticsStale = useStale(vercel?.metrics?.analytics?.fetchedAt, VERCEL_METRICS_STALE_MS, vercelServedAt);
-  const pagespeedStale = useStale(vercel?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS, vercelServedAt);
+  const deploymentsStale = useStale(siteDeployments?.fetchedAt, SITE_DEPLOYMENTS_STALE_MS, siteServedAt);
+  const analyticsStale = useStale(siteDeployments?.analytics?.fetchedAt, SITE_ANALYTICS_STALE_MS, siteServedAt);
+  const pagespeedStale = useStale(siteDeployments?.pagespeed?.fetchedAt, PAGESPEED_STALE_MS, siteServedAt);
   const workerMetricsStale = useStale(cloudflare?.fetchedAt, CLOUDFLARE_METRICS_STALE_MS, cloudflareServedAt);
   const workerDeploymentsStale = useStale(cloudflare?.deploymentsFetchedAt, CLOUDFLARE_DEPLOYMENTS_STALE_MS, cloudflareServedAt);
   const sentryAt = (block: SentryBlock) => sentry ? sentry.blockAt?.[block] ?? sentry.fetchedAt : undefined;
@@ -142,22 +140,23 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   const heartbeatStale = useStale(sentryAt("heartbeat"), SENTRY_STALE_MS, sentryServedAt);
   const errorsStale = useStale(sentryAt("errors"), SENTRY_STALE_MS, sentryServedAt);
   const vitalsStale = useStale(sentryAt("vitals"), SENTRY_STALE_MS, sentryServedAt);
-  const functions = functionsStale ? null : vercel?.metrics?.functions;
-  const analytics = analyticsStale ? null : vercel?.metrics?.analytics;
+  const analytics = analyticsStale ? null : siteDeployments?.analytics;
   const totals = githubStale ? null : github?.totals;
-  const production = deploymentsStale ? null : vercel?.production;
+  const production = deploymentsStale ? null : siteDeployments?.production;
   const siteErrors = errorsStale ? undefined : sentry?.errors?.site, apiErrors = errorsStale ? undefined : sentry?.errors?.worker;
+  const siteWorker = cloudflare?.workers.find(w => w.name === "site");
+  const siteMetrics = workerMetricsStale ? null : siteWorker?.metrics;
   const { data: server } = useStatus<ServerPayload>(SERVER_PATH, { fallback: serverFallback });
   const { data: reporters, servedAt: reportersServedAt } = useStatus<ReportersPayload>(REPORTERS_PATH, { fallback: reportersFallback });
-  const measured = vercel?.pagespeed ? new URL(vercel.pagespeed.url).host : null;
-  const pagespeed = pagespeedStale ? null : vercel?.pagespeed;
-  const deploymentsBySha = new Map<string, { deployment: VercelDeployment; production: boolean }>();
-  for (const deployment of [...vercel?.recent ?? [], ...vercel?.production ? [vercel.production] : []]) {
+  const measured = siteDeployments?.pagespeed ? new URL(siteDeployments.pagespeed.url).host : null;
+  const pagespeed = pagespeedStale ? null : siteDeployments?.pagespeed;
+  const deploymentsBySha = new Map<string, { deployment: SiteDeployment; production: boolean }>();
+  for (const deployment of [...siteDeployments?.recent ?? [], ...siteDeployments?.production ? [siteDeployments.production] : []]) {
     const sha = deployment.commit?.sha;
     if (!sha) continue;
     const prev = deploymentsBySha.get(sha);
     if (!prev || deployment.createdAt > prev.deployment.createdAt) {
-      deploymentsBySha.set(sha, { deployment, production: !deploymentsStale && vercel?.production?.commit?.sha === sha });
+      deploymentsBySha.set(sha, { deployment, production: !deploymentsStale && siteDeployments?.production?.commit?.sha === sha });
     }
   }
   const contributors = github?.contributors ?? [];
@@ -166,14 +165,13 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
   return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
     <div className="flex items-center gap-4">
       <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub repository" className="-m-2 flex p-2 hover:text-foreground"><Github size={15} /></a>
-      <a href={site.vercel} target="_blank" rel="noreferrer" aria-label="Vercel dashboard" className="-m-2 flex p-2 hover:text-foreground"><Vercel size={15} /></a>
       <a href={site.cloudflare} target="_blank" rel="noreferrer" aria-label="Cloudflare dashboard" className="-m-2 flex p-2"><CloudflareColor size={19} /></a>
       <a href={site.sentry} target="_blank" rel="noreferrer" aria-label="Sentry dashboard" className="-m-2 flex p-2 hover:text-foreground"><SentryMark /></a>
     </div>
   }>
     <div className="border-b border-line px-4 py-5 md:px-5">
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-        <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : analyticsStale ? "Unavailable" : undefined} />
+        <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `Cloudflare Web Analytics pageviews · ${new Date(analytics.start).toISOString().slice(0, 10)} — ${new Date(analytics.end).toISOString().slice(0, 10)} UTC` : analyticsStale ? "Unavailable" : undefined} />
         <Stat label="COMMITS" value={totals?.commits} title={githubStale ? "Unavailable" : "Commits on the default branch"} />
         <Stat label="ADDITIONS" value={totals?.additions} prefix="+" title={githubStale ? "Unavailable" : "Total lines added"} />
         <Stat label="DELETIONS" value={totals?.deletions} prefix="−" title={githubStale ? "Unavailable" : "Total lines removed"} />
@@ -218,19 +216,19 @@ export function SiteStatusCard({ githubFallback, vercelFallback, cloudflareFallb
       </section>
       <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 lg:border-l lg:border-line" aria-label="Services">
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
-          <li className="bg-surface px-4 py-2.5">
+          <li className="bg-surface px-4 py-2.5" title={siteDeployments?.activeVersions.length ? `Serving ${siteDeployments.activeVersions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : undefined}>
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
-              <span className="flex items-center gap-1.5"><Vercel size={11} />Vercel</span>
-              <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + functions)" />
+              <span className="flex items-center gap-1.5"><CloudflareColor size={11} />Site</span>
+              <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + worker)" />
               <CommitSha commit={production?.commit} />
             </div>
             <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
-              <span className="whitespace-nowrap" title={functions ? `${functions.timeouts} timeouts · avg peak memory ${functions.memoryAvgMb == null ? "—" : `${Math.round(functions.memoryAvgMb)} MB`}` : undefined}>Req <span className="text-foreground">{functions ? number.format(functions.invocations) : "—"}</span></span>
-              <span className="whitespace-nowrap" title="P75 CPU time per function invocation">CPU <span className="text-foreground">{cpu(functions?.cpuP75Ms)}</span></span>
-              <CollectionWindow start={functions?.start} end={functions?.end} />
+              <span className="whitespace-nowrap" title={siteMetrics ? `${number.format(siteMetrics.subrequests)} subrequests · Worker invocations, not visits or pageviews` : undefined}>Req <span className="text-foreground">{siteMetrics ? number.format(siteMetrics.requests) : "—"}</span></span>
+              <span className="whitespace-nowrap" title="P50 CPU time per Worker request">CPU <span className="text-foreground">{cpu(siteMetrics?.cpuTimeP50Ms)}</span></span>
+              {!workerMetricsStale && <CollectionWindow start={cloudflare?.windowStart ?? undefined} end={cloudflare?.windowEnd ?? undefined} />}
             </div>
           </li>
-          {CLOUDFLARE_WORKERS.map(({ name }) => {
+          {CLOUDFLARE_WORKERS.filter(({ name }) => name !== "site").map(({ name }) => {
             const worker = cloudflare?.workers.find(w => w.name === name);
             const metrics = workerMetricsStale ? null : worker?.metrics, deployment = workerDeploymentsStale ? null : worker?.deployment;
             return <li key={name} className="bg-surface px-4 py-2.5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>

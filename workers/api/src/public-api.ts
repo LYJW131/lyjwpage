@@ -1,13 +1,13 @@
-import { get as cacheGet, put as cachePut } from "@/lib/cache";
+import { get as cacheGet, put as cachePut } from "@shared/cache";
 import {
   sinceDateParam,
   sinceParam,
   statusEnvelope,
   statusResponse,
   titleIdsParam,
-} from "@/lib/api";
-import { loadEndpoint, type StatusLoaderParams } from "@/lib/status-loaders";
-import { pathByEvent, viewKeyByPath } from "@/lib/status-views";
+} from "./api";
+import { loadEndpoint, type StatusLoaderParams } from "./status-loaders";
+import { pathByEvent, viewKeyByPath } from "@shared/status-views";
 import {
   DEV_OVERRIDE_ENABLED_KEY,
   DEV_OVERRIDE_INDEX_KEY,

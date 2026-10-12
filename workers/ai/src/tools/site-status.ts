@@ -1,4 +1,4 @@
-import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
+import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 
 import { base64url, decodeBase64url } from "../crypto";
 import type { SiteTool, ToolLedger } from "./registry";
@@ -29,7 +29,7 @@ const VIEW_NOTES = {
   githubChart: "GitHub contribution chart",
   githubRepo: "This site's GitHub repo: totals, contributors and the latest commit titles (refreshed periodically, may lag by up to half an hour)",
   cloudflareWorkers: "Cloudflare Workers request and error stats for this site",
-  vercelDeployments: "Recent Vercel deployments of this site",
+  siteDeployments: "Site Worker production deployment, recent builds, pageviews and PageSpeed samples",
   sentry: "Error counts from Sentry for this site",
   reporters: "Health of the reporters that push data to this site",
   pulse: "24h timeline of coding, listening, watching, gaming, charging, activity (large)",

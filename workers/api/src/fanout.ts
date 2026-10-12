@@ -1,4 +1,4 @@
-import type { LiveEvent } from "@/lib/live-events";
+import type { LiveEvent } from "@shared/live-events";
 import {
   activeIngestEffectCollector,
   collectListeningEffect,

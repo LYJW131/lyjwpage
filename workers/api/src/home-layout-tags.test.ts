@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { STATUS_VIEWS } from "@/lib/status-views";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { STATUS_TAGS, STATUS_VIEWS } from "@shared/status-views";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 
 import { collectIngestEffects, dispatchIngestEffects, type CollectedIngest } from "./ingest-effects";
+import { expireStatusTags } from "./live-platform";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
 
 import { commitPreparedIngest } from "./ingest-handlers";
@@ -50,8 +50,8 @@ function tagsOf(result: CollectedIngest<unknown>): string[] {
 
 function withStorage(run: () => Promise<void>) {
   return async () => {
-    installStorageForTests(new FakeStorage());
-    try { await run(); } finally { resetStorageForTests(); }
+    installTestStorage(new FakeStorage());
+    try { await run(); } finally { installTestStorage(null); }
   };
 }
 
@@ -111,32 +111,60 @@ function usage(agents: ReturnType<typeof usageAgent>[], at: number) {
 
 test("Coding：视图在提交时重算，卡片骨架（行数、总量、常用模型）变了才失效首屏", withStorage(async () => {
   let revalidates = 0;
-  const env = testEnv({ SITE_URL: "https://site.example", REVALIDATE_SECRET: "secret" } as Partial<Env>);
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input) => {
-    if (String(input) === "https://site.example/api/revalidate") {
-      revalidates += 1;
-      return Response.json({ ok: true });
-    }
-    throw new Error(`unexpected fetch ${String(input)}`);
-  }) as typeof fetch;
-  try {
-    const dispatch = async (result: CollectedIngest<unknown>) => {
-      await inRequest(env, () => dispatchIngestEffects(result.effects));
-    };
-    const first = await land(env, "mac", usage([usageAgent("claude", 100, NOW)], NOW), NOW);
-    assert.ok(tagsOf(first).includes(STATUS_VIEWS.coding.tag));
-    await dispatch(first);
-    assert.equal(revalidates, 1);
-    const content = await land(env, "mac", usage([usageAgent("claude", 200, NOW + 1)], NOW + 1), NOW + 1);
-    assert.deepEqual(tagsOf(content), []);
-    await dispatch(content);
-    assert.equal(revalidates, 1);
-    const grown = await land(env, "mac", usage([usageAgent("claude", 300, NOW + 2), usageAgent("codex", 5, NOW + 2)], NOW + 2), NOW + 2);
-    assert.ok(tagsOf(grown).includes(STATUS_VIEWS.coding.tag));
-    await dispatch(grown);
-    assert.equal(revalidates, 2);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const env = testEnv({
+    SITE_CACHE: {
+      invalidate: async (tags: readonly string[]) => {
+        assert.ok(tags.every((tag) => STATUS_TAGS.includes(tag)));
+        revalidates += 1;
+      },
+    },
+  } as Partial<Env>);
+  const dispatch = async (result: CollectedIngest<unknown>) => {
+    await inRequest(env, () => dispatchIngestEffects(result.effects));
+  };
+  const first = await land(env, "mac", usage([usageAgent("claude", 100, NOW)], NOW), NOW);
+  assert.ok(tagsOf(first).includes(STATUS_VIEWS.coding.tag));
+  await dispatch(first);
+  assert.equal(revalidates, 1);
+  const content = await land(env, "mac", usage([usageAgent("claude", 200, NOW + 1)], NOW + 1), NOW + 1);
+  assert.deepEqual(tagsOf(content), []);
+  await dispatch(content);
+  assert.equal(revalidates, 1);
+  const grown = await land(env, "mac", usage([usageAgent("claude", 300, NOW + 2), usageAgent("codex", 5, NOW + 2)], NOW + 2), NOW + 2);
+  assert.ok(tagsOf(grown).includes(STATUS_VIEWS.coding.tag));
+  await dispatch(grown);
+  assert.equal(revalidates, 2);
 }));
+
+test("SITE_CACHE RPC：空/非法标签不调远端，缺绑定与拒绝都不影响已提交的应答", async (t) => {
+  const warnings = t.mock.method(console, "warn", () => {});
+  const errors = t.mock.method(console, "error", () => {});
+  await withStorage(async () => {
+
+  const calls: string[][] = [];
+  const env = testEnv({
+    SITE_CACHE: {
+      invalidate: async (tags: readonly string[]) => { calls.push([...tags]); },
+    },
+  } as Partial<Env>);
+  await inRequest(env, () => expireStatusTags([]));
+  await inRequest(env, () => expireStatusTags(["nonsense", "api/lyrics"]));
+  assert.deepEqual(calls, []);
+  await inRequest(env, () => expireStatusTags(["listening", "listening", "server"]));
+  assert.deepEqual(calls, [["listening", "server"]]);
+
+  const unbound = testEnv();
+  await inRequest(unbound, () => expireStatusTags(["listening"]));
+  assert.equal(warnings.mock.callCount(), 1, "缺绑定只 warn");
+
+  const down = testEnv({
+    SITE_CACHE: { invalidate: async () => { throw new Error("site down"); } },
+  } as Partial<Env>);
+  await inRequest(down, () => expireStatusTags(["listening"]));
+  assert.equal(errors.mock.callCount(), 1, "远端拒绝只记日志");
+
+  const result = await land(unbound, "mac", usage([usageAgent("claude", 100, NOW)], NOW), NOW);
+  await inRequest(unbound, () => dispatchIngestEffects(result.effects));
+  assert.equal(result.ok, true, "缓存失效缺席不改动已提交的入库应答");
+  })();
+});

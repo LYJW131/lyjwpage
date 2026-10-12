@@ -5,7 +5,7 @@ import type {
   PlaystationPresencePayload,
   StatusResponse,
   TrophiesSummaryPayload,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const ANCHOR = "playing";

@@ -6,9 +6,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useStatus } from "@/hooks/use-status";
-import { STATUS_VIEWS } from "@/lib/status-views";
+import { STATUS_VIEWS } from "@shared/status-views";
 import { workoutMetrics } from "@/lib/workout-display";
-import type { StatusResponse, Workout, WorkoutsPayload } from "@/lib/types";
+import type { StatusResponse, Workout, WorkoutsPayload } from "@shared/types";
 
 function stamp(workout: Workout) {
   return new Date(workout.startedAt + workout.secondsFromGMT * 1000).toLocaleString("en-US", {

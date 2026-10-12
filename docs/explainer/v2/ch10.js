@@ -18,10 +18,10 @@
       "ch10.a.docs": ["文档与注释的漂移", "doc and comment drift"],
       "ch10.a.act": ["工作流本身", "the workflows themselves"],
       "ch10.a.weekly": ["另有每周一次定时扫描", "plus a weekly scheduled scan"],
-      "ch10.a.nobuild": ["不跑 next build：Vercel 每次都会构建", "No next build here: Vercel builds every push"],
+      "ch10.a.nobuild": ["不跑站点构建：交给 Workers Builds", "No site build here: Workers Builds does that"],
       "ch10.a.cancel": ["同一分支连推几次，只留最后一次", "Rapid pushes to one branch: only the last one runs"],
       "ch10.n2a": ["CI 和 CodeQL 只检查、不发布；", "CI and CodeQL check but never ship;"],
-      "ch10.n2b": ["next build 留给 Vercel 去跑。", "next build is left to Vercel."],
+      "ch10.n2b": ["站点构建留给 Workers Builds。", "the site build is left to Workers Builds."],
       "ch10.pB": ["Worker", "Workers"],
       "ch10.b.ingest": ["改上报校验不会重新发布 api：Durable Object 不重启", "Ingest validation changes skip api: the DO keeps running"],
       "ch10.b.miss": ["没改到：不构建，线上仍是上一版", "Untouched: no build, the live version stays"],
@@ -43,7 +43,7 @@
       "ch10.m.card": ["GitHub Actions · 部署成功之后", "GitHub Actions · after a green deploy"],
       "ch10.m.r1": ["刷新 ESA 首页并预热", "Purge the ESA home page, then warm it"],
       "ch10.m.r2": ["等两个域名的 /api/version 都答出 c47d2a1", "Wait until both domains serve c47d2a1"],
-      "ch10.m.r2s": ["等不到也照常通知，最坏只是不弹提示", "Times out? Notify anyway; worst case, no prompt"],
+      "ch10.m.r2s": ["等不到就不通知，页面靠定时自查兜底", "Times out? No notice; pages poll on their own"],
       "ch10.m.r3": ["通知上报入口（ingress Worker）", "Notify the ingress Worker"],
       "ch10.m.retry": ["失败重试，最长 10 分钟", "retries for up to 10 min"],
       "ch10.n5a": ["部署成功才刷新 ESA 首页；", "ESA is purged only after the deploy;"],
@@ -84,13 +84,13 @@
     const GATE_X = 1720, LAMP_X = 3000, BRACKET_X = 3110;
     const MX = 4000;
     const O = [MX + 400, Y0], ESA = [MX + 1400, 840], L = [MX + 2400, Y0], C = [MX + 2400, 840], BEND = [MX + 700, 840];
-    const NEXT_BUILD_X = 4060;
+    const BUILD_X = 4060;
     const TRACKS = [
       { id: "hub", y: -90, name: "ch10.t.hub", gate: "reporters/mac-telemetry-hub", on: true, pips: AT.hub, lamp: AT.hubLamp },
       { id: "img", y: 60, name: "ch10.t.img", gate: "reporters/server-reporter/…", on: true, pips: AT.img, lamp: AT.imgLamp },
       { id: "codeql", y: 240, name: "CodeQL", gate: null, on: true, pips: AT.cq, lamp: AT.cqLamp },
       { id: "ci", y: 390, name: "CI", gate: null, on: true, pips: AT.ci, lamp: AT.ciLamp },
-      { id: "vercel", y: Y0, name: "Vercel", gate: null, on: true, pips: [], lamp: AT.land },
+      { id: "site", y: Y0, name: "site Worker", gate: "src/components/…", on: true, pips: [], lamp: AT.land },
       { id: "api", y: 690, name: "api", gate: "workers/api/…", on: true, pips: AT.api, lamp: AT.apiLamp },
       { id: "ingress", y: 810, name: "ingress", gate: "", on: false },
       { id: "collector", y: 930, name: "collector", gate: "", on: false },
@@ -106,7 +106,7 @@
       return pts;
     }
     for (const [i, tk] of TRACKS.entries()) {
-      tk.pts = branchPts(tk.y, tk.id === "vercel" ? O[0] - 30 : LAMP_X - 26);
+      tk.pts = branchPts(tk.y, tk.id === "site" ? O[0] - 30 : LAMP_X - 26);
       tk.len = pathLen(tk.pts);
       tk.dGate = pathLen(branchPts(tk.y, GATE_X));
       tk.tGate = AT.gate0 + i * AT.gateStep;
@@ -260,7 +260,7 @@
       if (k <= 0) return;
       text(x, "10", 110, 196, { font: FONT.pixel(112), color: css("signal"), alpha: k });
       text(x, tr("ch10.title"), 290, 176, { font: FONT.cjk(58, 600), reveal: prog(b, 0.35, 0.8), alpha: k });
-      text(x, "main → GitHub Actions · Vercel · Workers Builds · GHCR", 292, 226, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.45, 1.0), alpha: k });
+      text(x, "main → GitHub Actions · Workers Builds · GHCR", 292, 226, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.45, 1.0), alpha: k });
       line(x, 110, 262, 110 + 1000 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("pink"), k);
     }
 
@@ -268,13 +268,13 @@
       const { x, e } = Ly, inkC = css("pink"), gr = css("graphite");
       if (b < AT.fan[0] || a <= 0) return;
       for (const [i, tk] of TRACKS.entries()) {
-        const kk = tk.id === "vercel" ? 1 : prog(b, AT.fan[0] + 0.03 * i, AT.fan[1] + 0.03 * i, E.io);
+        const kk = tk.id === "site" ? 1 : prog(b, AT.fan[0] + 0.03 * i, AT.fan[1] + 0.03 * i, E.io);
         if (kk <= 0) continue;
         const gk = prog(b, tk.tGate, tk.tGate + 0.05);
         if (!tk.on && gk > 0) {
           polyline(x, branchPts(tk.y, GATE_X - 22), 1, 4, inkC, a);
           dashed(x, GATE_X + 22, tk.y, LAMP_X - 26, tk.y, 3, gr, [10, 9], 0.8 * a);
-        } else if (tk.id !== "vercel") polyline(x, tk.pts, kk, 4, inkC, a);
+        } else if (tk.id !== "site") polyline(x, tk.pts, kk, 4, inkC, a);
         if (kk < 0.55) continue;
         const la = prog(kk, 0.55, 1) * a;
         gate(x, GATE_X, tk.y, tk.on, gk, la);
@@ -284,14 +284,14 @@
           text(x, why, GATE_X + 50 + nw + 30, tk.y - 22, { font: tk.gate ? FONT.mono(48, 500) : FONT.cjk(48, 600), color: tk.on ? css("signal") : gr, alpha: la, reveal: prog(b, tk.tGate, tk.tGate + 0.25), maxW: LAMP_X - GATE_X - nw - 140 });
         }
         if (!tk.on) { if (gk > 0) dot(x, LAMP_X, tk.y, 24, css("paper"), gr, 2.4, 0.8 * la); continue; }
-        const end = tk.id === "vercel" ? tk.len : dAtX(tk, LAMP_X - 26);
+        const end = tk.id === "site" ? tk.len : dAtX(tk, LAMP_X - 26);
         const d = keys(b, [[tk.tGate, tk.dGate], ...tk.pips.map((pt, j) => [pt, dAtX(tk, tk.pipX[j]), E.io]), [tk.lamp, end, E.io]]);
         tk.pipX.forEach((px, j) => pip(x, px, tk.y, 11, prog(b, tk.pips[j], tk.pips[j] + 0.03), la));
         if (b >= tk.tGate) {
           polyline(x, tk.pts, d / tk.len, 4.4, css("signal"), a);
           if (b < tk.lamp) sparkAt(Ly, tk.pts, d);
         }
-        if (tk.id !== "vercel") lamp(x, e, LAMP_X, tk.y, 26, prog(b, tk.lamp, tk.lamp + 0.05), la);
+        if (tk.id !== "site") lamp(x, e, LAMP_X, tk.y, 26, prog(b, tk.lamp, tk.lamp + 0.05), la);
       }
       const ga = prog(b, AT.fan[1] - 0.1, AT.fan[1] + 0.15) * a;
       if (ga <= 0) return;
@@ -429,12 +429,12 @@
     function landing(Ly, b, a) {
       const { x, d, s, e } = Ly, inkC = css("pink"), gr = css("graphite");
       if (a <= 0) return;
-      pip(x, NEXT_BUILD_X, Y0, 13, prog(b, AT.land - 0.1, AT.land - 0.08), a);
-      text(x, "next build", NEXT_BUILD_X, Y0 - 40, { font: FONT.mono(44, 500), align: "center", alpha: a });
+      pip(x, BUILD_X, Y0, 13, prog(b, AT.land - 0.1, AT.land - 0.08), a);
+      text(x, "pnpm build", BUILD_X, Y0 - 40, { font: FONT.mono(44, 500), align: "center", alpha: a });
       const oHot = prog(b, AT.land, AT.land + 0.05);
       station(x, O[0], O[1], a, { r: 30, lw: 7, hot: oHot > 0 });
       if (oHot > 0) { dot(x, O[0], O[1], 22, css("signal"), null, 0, oHot * a); glow(e, O[0], O[1], 150, 0.55 * oHot * (0.6 + 0.4 * impact(b, AT.land, 0.4)) * a); }
-      text(x, "Vercel · Production", O[0] + 40, O[1] - 52, { font: FONT.mono(46, 600), alpha: a });
+      text(x, "site Worker · Production", O[0] + 40, O[1] - 52, { font: FONT.mono(46, 600), alpha: a });
       station(x, ESA[0], ESA[1], a, { hot: b >= AT.purge && b < AT.warm[1] + 0.1 });
       station(x, L[0], L[1], a);
       station(x, C[0], C[1], a);
@@ -461,7 +461,7 @@
       glow(e, C[0], C[1], 110, 0.45 * impact(b, AT.dom[1], 0.3) * a);
       const sy = CARD.y + 250;
       dashPts(x, [[O[0], O[1] - 100], [O[0], sy], [CARD.x, sy]], prog(b, AT.status, AT.status + 0.2, E.io), 2.6, inkC, a);
-      text(x, "deployment_status", O[0] + 24, sy - 20, { font: FONT.mono(42, 500), color: gr, alpha: a * prog(b, AT.status + 0.1, AT.status + 0.2), maxW: CARD.x - O[0] - 40 });
+      text(x, "check_run", O[0] + 24, sy - 20, { font: FONT.mono(42, 500), color: gr, alpha: a * prog(b, AT.status + 0.1, AT.status + 0.2), maxW: CARD.x - O[0] - 40 });
       const ca = prog(b, AT.status + 0.1, AT.status + 0.25, E.outBack);
       if (ca <= 0) return;
       card(d, CARD.x, CARD.y, CARD.w, CARD.h, a, ca);

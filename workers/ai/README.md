@@ -10,7 +10,6 @@
 | --- | --- | --- |
 | POST | `/api/chat` | 首页对话，流式返回 NDJSON |
 | GET | `/api/chat/usage` | 当前访客与全站的对话配额，只读不扣额度 |
-| POST | `/api/github/issue` | 访客确认签名计划并完成 GitHub PKCE 授权后提交 issue |
 | POST | `/api/build` | 访客每次都完成 GitHub PKCE 授权：授权码当场换令牌、查身份后立即吊销，再一次性消费计划与额度并触发 routine |
 | GET | `/api/build/status` | 持状态 token 查询 run 并按需对账 |
 | POST | `/api/build/upload` | routine 持一次性上传 token 提交文件 |
@@ -21,7 +20,7 @@
 
 浏览器端点检查允许来源；上传、进度、截图和 webhook 接受无 Origin 的服务器请求，分别验证 bearer token 或原始正文 HMAC。这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
 
-`PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。api 的 `PublicStatus` 只接受 `src/lib/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
+`PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。api 的 `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
 
 ## 代码职责
 
@@ -61,7 +60,7 @@
 
 ## MCP
 
-`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。站点在根目录 `next.config.ts` 中将 `/mcp` 用 307 跳到 `NEXT_PUBLIC_BACKEND_URL` 对应的 api，api 再经 Service Binding 交给本 Worker。307 保留 POST 与请求体；不用 Vercel rewrite，避免 `CF-Connecting-IP` 变成共用的 Vercel 出口 IP。公开访问域名见 `docs/ops-facts.md`。
+`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。站点的 site Worker 网关将 `/mcp` 用 307 跳到 `PUBLIC_BACKEND_URL` 对应的 api，api 再经 Service Binding 交给本 Worker。307 保留 POST 与请求体；不走缓存层 rewrite，避免 `CF-Connecting-IP` 变成共用的出口 IP。公开访问域名见 `docs/ops-facts.md`。
 
 - 工具就是 `src/tools/registry.ts#SITE_TOOLS`，和首页对话同一份定义与执行。这里只放只读、只读公开模型的工具：`start_design`、`ask_visitor`、`propose_build`（要访客在卡片里操作）、`show_card`（只对对话卡片有意义）和 `web_search`（Anthropic 服务端工具）只在对话里。每次调用各开一本账本，单次调用的视图数与截断长度和对话相同，跨调用不累计。
 - 协议：无状态，只回 JSON，不发会话 ID，不开 SSE（GET、DELETE 回 405），JSON-RPC 批量请求回 400。两代客户端都收：`_meta` 里带版本的新协议（`MODERN_VERSIONS`）逐个请求核对 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头与正文一致，`server/discover`、`tools/list` 带缓存提示（`CACHE_HINTS`，缺了 Claude Code 整张工具表都不认）；旧协议（`LEGACY_VERSIONS`）先 `initialize` 握手。
@@ -72,11 +71,11 @@
 
 ## 配置与部署
 
-绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret（含触发 Codex 与 Cursor 审查的 `CODEX_REVIEW_GITHUB_TOKEN`）、routine 与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
+绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、routine 与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
 
 生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管 api 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
 
-Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在同一隔离 Preview 内运行 api 与 AI，不连接生产 Service Binding；以 api 或 ai 为 parent 时使用同一实现，Vercel 选择与当前提交 SHA 匹配的 Preview。Secret 只配在实际选中的 parent 的具体 Preview 上，不能把另一个 parent 的配置当成已继承；创建、解析和配置步骤只在构建文档维护。
+Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在同一隔离 Preview 内运行 api 与 AI，不连接生产 Service Binding；以 api 或 ai 为 parent 时使用同一实现，站点预览构建按 `scripts/preview-backend.mjs#findMatchingPreview` 选择与当前提交 SHA 匹配的 Preview。Secret 只配在实际选中的 parent 的具体 Preview 上，不能把另一个 parent 的配置当成已继承；创建、解析和配置步骤只在构建文档维护。
 
 ## 本地开发
 

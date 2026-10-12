@@ -1,4 +1,4 @@
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 import type { SiteTool } from "./registry";
 
@@ -22,7 +22,7 @@ const PROJECT_DOCS = {
   aiWorker: { path: "workers/ai/README.md", note: "AI Worker: the Talk to God chat, model routing, quotas, site tools and public MCP" },
   visitorBuild: { path: "docs/build-routine.md", note: "Visitor collaboration: design sessions, signed plans, allowed paths, routine uploads, build status and security boundaries" },
   ingressWorker: { path: "workers/ingress/README.md", note: "Ingest Worker: reporter auth through Cloudflare Access, validation, splitting reports" },
-  collectorWorker: { path: "workers/collector/README.md", note: "Collector Worker: scheduled pulls from Apple Music, GitHub, Vercel and other services" },
+  collectorWorker: { path: "workers/collector/README.md", note: "Collector Worker: scheduled pulls from Apple Music, GitHub, Cloudflare and other services" },
   macHub: { repo: HUB_REPO, path: "README.md", note: "MacTelemetryHub, the macOS/iOS app that reports LYJW's Mac and iPhone (foreground app, music, chargers, activity rings)" },
   iosApp: { path: "apps/ios/README.md", note: "iOS app in this repo: system music, health reporting, widgets, shortcuts" },
   serverReporter: { path: "reporters/server-reporter/README.md", note: "Reporter for the exit-node server's uptime, CPU, memory and traffic" },

@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { trackLookupCacheKey } from "@/lib/apple-music";
-import { installAppleCacheForTests } from "../../../src/lib/apple-cache-store";
-import { motionArtworkCacheKey } from "@/lib/motion-artwork";
-import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
-import { MemoryKv } from "@/lib/testing/memory-kv";
-import { trackKeyOf, upcomingKeyOf } from "@/lib/track-enrichment";
-import type { ListeningItem } from "@/lib/types";
+import { trackLookupCacheKey } from "@shared/apple-music";
+import { installAppleCache } from "@shared/apple-cache";
+import { motionArtworkCacheKey } from "@shared/motion-artwork";
+import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
+import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
+import { MemoryKv } from "@shared/testing/memory-kv";
+import { trackKeyOf, upcomingKeyOf } from "@shared/track-enrichment";
+import type { ListeningItem } from "@shared/types";
 import { mirror as recentMirror } from "@shared/apple-music-store";
 import { mirror as homePodMirror } from "@shared/homepod-store";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
@@ -64,9 +63,9 @@ function seedFirst(kv: MemoryKv) {
 }
 
 function isolated(t: { after: (fn: () => void) => void }): MemoryKv {
-  installStorageForTests(new FakeStorage());
+  installTestStorage(new FakeStorage());
   const kv = new MemoryKv();
-  installAppleCacheForTests(kv);
+  installAppleCache(() => kv);
   const originalFetch = globalThis.fetch;
   const originalWarn = console.warn;
   globalThis.fetch = (async () => { throw new Error("network disabled"); }) as typeof fetch;
@@ -74,8 +73,8 @@ function isolated(t: { after: (fn: () => void) => void }): MemoryKv {
   t.after(() => {
     globalThis.fetch = originalFetch;
     console.warn = originalWarn;
-    installAppleCacheForTests(null);
-    resetStorageForTests();
+    installAppleCache(null);
+    installTestStorage(null);
   });
   return kv;
 }

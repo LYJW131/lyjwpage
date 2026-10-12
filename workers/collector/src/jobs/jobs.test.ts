@@ -2,18 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
-import type { AgentStatusPayload, AgentStatusRow } from "@/lib/agent-status-types";
-import { PAGESPEED_TIMEOUT_MS } from "@/lib/pagespeed";
-import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@/lib/sentry-status";
-import type { SentryStatusPayload } from "@/lib/sentry-status-types";
-import type { GithubRepoPayload } from "@/lib/types";
-import type { VercelMetricsPayload } from "@/lib/vercel-deployments-types";
+import type { AgentStatusPayload, AgentStatusRow } from "@shared/agent-status-types";
+import { PAGESPEED_TIMEOUT_MS } from "../pagespeed";
+import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@shared/sentry-status";
+import type { SentryStatusPayload } from "@shared/sentry-status-types";
+import type { GithubRepoPayload } from "@shared/types";
 
 import { MemoryKv } from "../testing/memory-kv";
+import type { Env } from "../env";
 import { mergeRepoStats } from "./github-repo";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
-import { refreshVercelMetrics } from "./vercel";
+import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
+
+const noEnv = {} as Env;
+const now = 1_700_000_000_000;
 
 function row(id: AgentStatusRow["id"], indicator: AgentStatusRow["indicator"]): AgentStatusRow {
   return { id, name: id, indicator, statusUrl: `https://status.example/${id}`, components: [], incidents: [], note: null, stale: false } as AgentStatusRow;
@@ -100,29 +103,6 @@ test("repo stats keep the good half of a partial round", () => {
   assert.equal(mergeRepoStats({ ok: false, totals: { commits: 434, additions: 1, deletions: 1 } }, null), null);
 });
 
-test("vercel metrics carry a failed group over with its own collected-at", async (t) => {
-  t.mock.method(console, "warn", () => {});
-  const lag = new MemoryKv();
-  const functions = { fetchedAt: 10, start: 0, end: 10, invocations: 5, errors: 0, timeouts: 0, cpuP75Ms: 3, memoryAvgMb: 100 };
-  const analytics = { fetchedAt: 10, start: 0, end: 10, pageviews: 50, visitors: 9 };
-  await refreshVercelMetrics(lag, { functions: async () => functions, analytics: async () => analytics }, 10);
-
-  const { payload, failed } = await refreshVercelMetrics(lag, {
-    functions: async () => ({ ...functions, fetchedAt: 20, invocations: 7 }),
-    analytics: async () => { throw new Error("503"); },
-  }, 20);
-  assert.deepEqual(failed, ["analytics"]);
-  assert.equal(payload.functions?.invocations, 7);
-  assert.deepEqual(payload.analytics, analytics);
-  assert.equal((await readLag<VercelMetricsPayload>(lag, LAG_KEYS.vercelMetrics))?.updatedAt, 20);
-
-  await assert.rejects(refreshVercelMetrics(lag, {
-    functions: async () => { throw new Error("503"); },
-    analytics: async () => { throw new Error("503"); },
-  }, 30));
-  assert.equal((await readLag<VercelMetricsPayload>(lag, LAG_KEYS.vercelMetrics))?.updatedAt, 20);
-});
-
 test("sentry status carries a failed block with its own time, and only for a while", async () => {
   const lag = new MemoryKv();
   const errors = { site: { count12h: 1, count7d: 2, unresolved: 0 }, worker: { count12h: 3, count7d: 4, unresolved: 1 } };
@@ -142,4 +122,61 @@ test("sentry status carries a failed block with its own time, and only for a whi
 
 test("pagespeed waits per request for less than the job's runtime budget", () => {
   assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
+});
+
+test("site-deployments 缺配置干净跳过，缺哪个报哪个", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  assert.deepEqual(await siteDeploymentsJob.run({ env: noEnv, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing CLOUDFLARE_METRICS_TOKEN, CLOUDFLARE_ACCOUNT_ID, SITE_WORKER_TAG",
+  });
+  const partial = {
+    CLOUDFLARE_METRICS_TOKEN: "t",
+    CLOUDFLARE_ACCOUNT_ID: "a",
+  } as Env;
+  assert.deepEqual(await siteDeploymentsJob.run({ env: partial, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing SITE_WORKER_TAG",
+  });
+});
+
+test("site-deployments 成功才写 LAG，失败那轮不覆盖上一份", async (t) => {
+  const lag = new MemoryKv();
+  const env = {
+    LAG: lag,
+    CLOUDFLARE_METRICS_TOKEN: "t",
+    CLOUDFLARE_ACCOUNT_ID: "a",
+    SITE_WORKER_TAG: "c".repeat(32),
+  } as unknown as Env;
+  let failing = false;
+  t.mock.method(globalThis, "fetch", async (url: string | URL) => {
+    if (failing) return new Response("down", { status: 503 });
+    if (String(url).includes("/site/deployments")) return Response.json({ success: true, result: { deployments: [] } });
+    return Response.json({ success: true, result: [] });
+  });
+
+  assert.deepEqual(await siteDeploymentsJob.run({ env, now, scheduled: true }), { status: "ok" });
+  const first = await readLag(lag, LAG_KEYS.siteDeployments);
+  assert.equal(first?.updatedAt, now);
+
+  failing = true;
+  await assert.rejects(siteDeploymentsJob.run({ env, now: now + 60_000, scheduled: true }), /503/);
+  assert.deepEqual(await readLag(lag, LAG_KEYS.siteDeployments), first);
+});
+
+test("site-analytics 缺配置或站点映射不全时跳过", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  assert.deepEqual(await siteAnalyticsJob.run({ env: noEnv, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing CLOUDFLARE_METRICS_TOKEN, CLOUDFLARE_ACCOUNT_ID, SITE_ANALYTICS_SITES",
+  });
+  const partial = {
+    CLOUDFLARE_METRICS_TOKEN: "t",
+    CLOUDFLARE_ACCOUNT_ID: "a",
+    SITE_ANALYTICS_SITES: JSON.stringify({ "lyjw.me": "a".repeat(32) }),
+  } as Env;
+  await assert.rejects(
+    siteAnalyticsJob.run({ env: partial, now, scheduled: false }),
+    /both production hosts/,
+  );
 });

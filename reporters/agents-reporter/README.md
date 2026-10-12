@@ -7,7 +7,7 @@ Mac 合盖 / 睡眠 / 离线不影响它。
 
 Claude、Codex、Grok、Antigravity 的 token 用量由 Mac 从本机日志上报（`/api/ingest/mac` 的 `codingUsage`）。
 Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这份历史跟限额一起由这个容器拉，用的是同一份
-`accessToken`，作为账号级来源 `agents` 上报。
+`accessToken`，作为账号级来源 `agents` 上报。Devin CLI 的用量取自 tokens.ci 的公开主页（见下面 devin 一节），同样作为 `agents` 上报。
 
 站点入口是 `POST /api/ingest/agents`（按数据是谁产生的命名，不是上报程序的名字）。信封顶层是
 `{ collectedAt, agents?, codingUsage?, codingActivity?, codingTokenBuckets?, reporter }`：`agents` 是各家限额行，
@@ -45,7 +45,7 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 | `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-agents` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
 | `ACTIVE_INTERVAL_MS` | | agent 在用时的间隔，也是闲档重查活动的间隔。默认见 `src/config.ts#config.cadence` |
-| `IDLE_INTERVAL_MS` | | 都没在用时的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `src/lib/freshness.ts#AGENT_LIMITS_STALE_MS` |
+| `IDLE_INTERVAL_MS` | | 都没在用时的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `shared/freshness.ts#AGENT_LIMITS_STALE_MS` |
 | `ACTIVITY_TIMEOUT_MS` | | 每个活动请求的超时。默认见 `src/config.ts#config.cadence` |
 | `CURSOR_NOW_FAST_INTERVAL_MS` | | Cursor 在用时查最近用量事件的间隔，要小于活动窗口 `src/cursor-now.ts#ACTIVE_WINDOW_MS`。默认见 `src/config.ts#config.cursorNow` |
 | `CURSOR_NOW_MAX_INTERVAL_MS` | | 没新事件时间隔翻倍拉长的上限。默认见 `src/config.ts#config.cursorNow` |
@@ -57,6 +57,7 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 | `AGENT_IDS` | | 逗号分隔，默认集合见 `src/config.ts#agentIds` |
 | `GROK_HOME` | | Grok 凭据目录，默认 `$HOME/.grok` |
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
+| `TOKENS_CI_USER` | | 拉 Devin CLI 用量的 tokens.ci 用户名，默认见 `src/config.ts#config.tokensCiUser`；设成空串就不拉 |
 | `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
 | `ANTIGRAVITY_PLAN_LABEL` | | Antigravity 的订阅名，如 `Google AI Pro`。配额接口不带订阅（IDE 里那句来自 Windsurf 那套 language server 问 aicode.googleapis.com 的 gRPC，CLI 从不显示；`loadCodeAssist` 回的 free-tier 是 Code Assist 档位不是订阅），只能人工指定；空 = 不渲染套餐 |
 | `ANTIGRAVITY_QUOTA_URL` | | 可选覆盖。默认 `https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` |
@@ -159,6 +160,14 @@ Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺�
 这个容器依赖站点入口认识 `codingUsage` / `codingActivity` / `codingTokenBuckets`：入口不认识它们时，快循环那封只带
 活动与桶的小信封会被当成没有可收的数据拒收，所以发布时入口先于容器。
 
+**devin。** 不登录、不用凭据：每轮限额那一轮并行 GET 公开的 `https://tokens.ci/api/users/<TOKENS_CI_USER>`，
+只取 `contributions[].clients` 里 `client` 为 `devin-cli` 的那一份（同一页的 Claude、Codex 等由别的来源报，这里不碰），
+翻成 `codingUsage` 里 `id: "devin"` 的一行，`days` 整份替换站点那份（`src/devin-usage.ts#devinUsageDays`）。日期照
+tokens.ci 给的原样用，不换算时区。tokens.ci 的 `reasoning` 与 `output` 分列相加，站点契约里
+reasoning 是 output 的子集，所以并进 `outputTokens`；费用用 tokens.ci 的估价，Devin 自家模型记 0，那天 `costComplete` 为
+false。第一次出现 Devin CLI 之后，tokens.ci 有记录而没有它的日子发一行全 0。不带活动和桶。拉失败只发 `state: "error"`，
+`collectedAt` 是上一次成功的时刻（落在数据卷的 `/data/devin-usage.json`，跨重启保留）。`LIMITS_FIXTURE` 模式下不拉。
+
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向
 `oauth2.googleapis.com/token` 刷新并原子写回。刷新要的 client_id / client_secret 是 `agy` 二进制里的常量，
@@ -206,7 +215,7 @@ cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应�
 机器与网络见 `docs/ops-facts.md`。代理开关见 `Dockerfile#NODE_USE_ENV_PROXY`。
 ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
 
-限额在站点的可滞后层，浏览器按 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（三轮闲档加余量）判断过没过时。
+限额在站点的可滞后层，浏览器按 `shared/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（三轮闲档加余量）判断过没过时。
 间隔见 `src/config.ts#config.cadence`。
 
 `compose.yaml` 改了才需要送（跳板后面 sftp 用不了，`scp` 别想，走 ssh 管道）：

@@ -1,8 +1,10 @@
+import type { CodingUsageAgent } from "./coding-usage.js";
 import { config } from "./config.js";
 import { waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
 import { observeCursorActivity, runCursorNowLoop } from "./cursor-now.js";
 import { collectCursorUsage, cursorUsageFailure } from "./cursor-usage.js";
+import { collectDevinUsage, devinUsageFailure } from "./devin-usage.js";
 import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
 import { push, type PushPayload } from "./site.js";
@@ -36,8 +38,19 @@ async function collectCursor(): Promise<CursorFacts> {
   }
 }
 
+async function collectDevin(): Promise<CodingUsageAgent | null> {
+  try {
+    const usage = await collectDevinUsage();
+    if (usage) recovered("devin-usage");
+    return usage;
+  } catch (error) {
+    failure("devin-usage", error);
+    return await devinUsageFailure(error);
+  }
+}
+
 async function collectPayload(): Promise<PushPayload> {
-  const [agents, cursor] = await Promise.all([
+  const [agents, cursor, devin] = await Promise.all([
     (async () => {
       try {
         await refreshClaudeIfDue();
@@ -47,11 +60,14 @@ async function collectPayload(): Promise<PushPayload> {
       return collectAgents();
     })(),
     collectCursor(),
+    collectDevin(),
   ]);
+  const usage = [...(cursor.codingUsage?.agents ?? []), ...(devin ? [devin] : [])];
   return {
     collectedAt: new Date().toISOString(),
     agents,
     ...cursor,
+    ...(usage.length ? { codingUsage: { agents: usage } } : {}),
   };
 }
 

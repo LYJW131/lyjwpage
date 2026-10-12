@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@/lib/sentry";
-import { SERVER_STALE_MS } from "@/lib/freshness";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
+import { SERVER_STALE_MS } from "@shared/freshness";
 import { LAG_KEYS, readLag } from "@shared/lag";
 import { QUEST_STALE_MS, questMirror } from "@shared/quest";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";

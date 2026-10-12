@@ -13,7 +13,7 @@ const INGEST_PREFIX = "/api/ingest/";
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 
-export const DEPLOYMENT_JOBS = ["vercel-deployments", "cloudflare-deployments"];
+export const DEPLOYMENT_JOBS = ["site-deployments", "cloudflare-deployments"];
 
 export async function handleRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
