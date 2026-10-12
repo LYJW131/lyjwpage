@@ -34,7 +34,7 @@ import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
-const time = new Intl.DateTimeFormat("zh-CN", { timeZone: site.timezone, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+const time = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : ms < 10 ? `${Number(ms.toFixed(1))}ms` : `${Math.round(ms)}ms`;
 
 function CollectionWindow({ start, end }: { start?: number; end?: number }) {
@@ -169,7 +169,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
   }>
     <div className="border-b border-line px-4 py-5 md:px-5">
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-        <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `Cloudflare Web Analytics pageviews · ${new Date(analytics.start).toISOString().slice(0, 10)} — ${new Date(analytics.end).toISOString().slice(0, 10)} UTC` : analyticsStale ? "Unavailable" : undefined} />
+        <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `Cloudflare Web Analytics pageviews · last 7 × 24h · ${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : analyticsStale ? "Unavailable" : undefined} />
         <Stat label="COMMITS" value={totals?.commits} title={githubStale ? "Unavailable" : "Commits on the default branch"} />
         <Stat label="ADDITIONS" value={totals?.additions} prefix="+" title={githubStale ? "Unavailable" : "Total lines added"} />
         <Stat label="DELETIONS" value={totals?.deletions} prefix="−" title={githubStale ? "Unavailable" : "Total lines removed"} />
