@@ -274,7 +274,7 @@ function bytesStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
 class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   async fetch(request: Request): Promise<Response> {
     const context = new RouterContextProvider();
-    context.set(siteContext, this.services(new URL(request.url).origin));
+    context.set(siteContext, this.services());
     const response = await requestHandler(request, context);
     const { pathname } = new URL(request.url);
     const policy = renderCacheHeaders(
@@ -302,7 +302,7 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
     await purgeTags(this.ctx.cache, "RenderedSite", [HOME_CACHE_TAG]);
   }
 
-  private services(origin: string): SiteServices {
+  private services(): SiteServices {
     const env = this.env;
     const ctx = this.ctx;
     return {
@@ -344,7 +344,6 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
           return null;
         }
       },
-      asset: (path: string) => env.ASSETS.fetch(new Request(new URL(path, origin))),
     };
   }
 }

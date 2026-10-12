@@ -495,14 +495,14 @@ test("OTLP: gzip or plain JSON answers the exporter's empty 200; other encodings
   assert.equal((await w.send("/api/ingest/mac", { ...post(mac({})), headers: { "content-encoding": "gzip" } })).status, 202);
 });
 
-test("site-deployed: the state core broadcasts version and the collector re-pulls deployments in the background", async () => {
+test("site-deployed: the state core broadcasts version and the collector re-pulls deployments and recent commits in the background", async () => {
   const w = world();
   const response = await w.send("/api/internal/site-deployed", { client: DEPLOYER });
   assert.equal(response.status, 200);
   assert.deepEqual(await json(response), { ok: true, delivered: 3 });
   assert.equal(w.calls.broadcasts, 1);
   assert.deepEqual(w.calls.refreshed, [DEPLOYMENT_JOBS]);
-  assert.deepEqual(DEPLOYMENT_JOBS, ["site-deployments", "cloudflare-deployments"]);
+  assert.deepEqual(DEPLOYMENT_JOBS, ["site-deployments", "cloudflare-deployments", "github-repo"]);
   assert.equal((await w.send("/api/internal/site-deployed", { method: "GET", client: DEPLOYER })).status, 405);
   assert.equal((await w.send("/api/internal/site-deployed", { client: null })).status, 401);
 });
@@ -515,7 +515,7 @@ test("site-deployed: a failing or missing collector never fails the notification
   assert.deepEqual(await json(response), { ok: true, delivered: 3 });
   const erroring = world({ refresh: async (jobs) => jobs.map((job): CollectorJobOutcome => ({ job, status: "error", detail: "token missing", ms: 1 })) });
   assert.equal((await erroring.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 200);
-  assert.equal(warned.mock.callCount(), 3);
+  assert.equal(warned.mock.callCount(), 1 + DEPLOYMENT_JOBS.length);
   const unbound = world({ collector: false });
   assert.equal((await unbound.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 200);
 });
