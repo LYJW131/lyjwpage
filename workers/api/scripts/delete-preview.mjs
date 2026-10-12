@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PREVIEW_WORKER_SCRIPTS, SITE_PREVIEW_WORKER_SCRIPT, previewWorkerName } from "../../../scripts/preview-worker-name.mjs";
+import { PREVIEW_WORKER_SCRIPT, SITE_PREVIEW_WORKER_SCRIPT, previewWorkerName } from "../../../scripts/preview-worker-name.mjs";
 
 const branch = (process.env.PREVIEW_BRANCH ?? process.env.WORKERS_CI_BRANCH ?? "").trim();
 const name = previewWorkerName(branch);
@@ -19,7 +19,7 @@ if (!process.env.CLOUDFLARE_API_TOKEN?.trim()) {
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const wrangler = resolve(apiDir, "node_modules/wrangler/bin/wrangler.js");
 let exitCode = 0;
-for (const workerName of [...PREVIEW_WORKER_SCRIPTS, SITE_PREVIEW_WORKER_SCRIPT]) {
+for (const workerName of [PREVIEW_WORKER_SCRIPT, SITE_PREVIEW_WORKER_SCRIPT]) {
   const result = spawnSync(process.execPath, [
     wrangler,
     "preview",

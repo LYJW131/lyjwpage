@@ -4,17 +4,13 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
 
 import { experimental_readRawConfig } from "wrangler";
 
-import { PREVIEW_WORKER_SCRIPTS, previewWorkerName, previewWorkerOrigin } from "../../../scripts/preview-worker-name.mjs";
+import { PREVIEW_WORKER_SCRIPT, previewWorkerName, previewWorkerOrigin } from "../../../scripts/preview-worker-name.mjs";
 import { previewMigrations } from "../../../scripts/preview-migrations.mjs";
 
 const apiDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const { values } = parseArgs({ options: { "worker-name": { type: "string", default: "api" } } });
-const workerName = values["worker-name"];
-if (!PREVIEW_WORKER_SCRIPTS.includes(workerName)) throw new Error(`Unknown Preview Worker: ${workerName}`);
 
 const branch = process.env.WORKERS_CI_BRANCH?.trim() ?? "";
 const name = previewWorkerName(branch);
@@ -28,7 +24,7 @@ const commitSha = process.env.WORKERS_CI_COMMIT_SHA?.trim() || execFileSync("git
 const previewConfig = resolve(apiDir, "wrangler.preview.json");
 writeFileSync(previewConfig, JSON.stringify({
   ...rawConfig,
-  name: workerName,
+  name: PREVIEW_WORKER_SCRIPT,
   main: "src/preview-entry.ts",
   services: [],
   previews: {
@@ -52,11 +48,11 @@ try {
     "--name",
     name,
     "--worker-name",
-    workerName,
+    PREVIEW_WORKER_SCRIPT,
   ], { cwd: apiDir, stdio: "inherit" });
 } finally {
   rmSync(previewConfig, { force: true });
 }
 
 if (result.status !== 0) process.exit(result.status ?? 1);
-console.log(`[preview] ${previewWorkerOrigin(branch, workerName)} (${commitSha.slice(0, 8)})`);
+console.log(`[preview] ${previewWorkerOrigin(branch)} (${commitSha.slice(0, 8)})`);
