@@ -8,7 +8,7 @@
 
 [Visit](https://lyjw.me) · [Mirror for mainland China](https://lyjw131.com) · [Interactive architecture diagram](https://lyjw131.github.io/lyjwpage/)
 
-How-it-works explainer: [中文](https://lyjw131.com/explainer?lang=zh) · [English](https://lyjw.me/explainer?lang=en)
+How-it-works explainer: [中文](https://lyjw131.com/explainer/?lang=zh) · [English](https://lyjw.me/explainer/?lang=en)
 
 </div>
 

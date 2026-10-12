@@ -17,8 +17,6 @@ export const STATUS_DEGRADED_CACHE_CONTROL = "public, max-age=60";
 
 export const VERSION_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 
-export const SERVICE_WORKER_CACHE_CONTROL = "no-cache, no-store, must-revalidate";
-
 export const IMMUTABLE_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 export const REMOTE_IMAGE_CACHE_CONTROL =
@@ -36,9 +34,6 @@ export type GatewayKind =
   | "image-proxy"
   | "image-object"
   | "site-asset"
-  | "explainer-index"
-  | "service-worker"
-  | "asset"
   | "render"
   | "invalid";
 
@@ -55,16 +50,6 @@ export const SITE_ASSET_ROUTES: ReadonlyMap<string, SiteAssetRoute> = new Map([
   ["/pwa/icon-192.png", { asset: `${SITE_ASSETS_PREFIX}/icon-192.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
   ["/pwa/icon-512.png", { asset: `${SITE_ASSETS_PREFIX}/icon-512.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
 ]);
-
-export const IMMUTABLE_EXPLAINER_PREFIX = "/explainer/a/";
-
-const ASSET_PREFIXES = [
-  "/explainer/",
-  "/site-assets/",
-  "/assets/",
-  "/trophies/",
-  "/fonts/",
-];
 
 const IMAGE_OBJECT_PATH = new RegExp(`^${IMAGE_PATH_PREFIX}/([a-f0-9]{64}\\.(?:png|webp|jpe?g|mp3))$`);
 
@@ -139,12 +124,6 @@ export function imageObjectHeaders(
   return headers;
 }
 
-function looksStatic(pathname: string): boolean {
-  const last = pathname.split("/").pop() ?? "";
-  if (ASSET_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return true;
-  return last.includes(".");
-}
-
 export function classifyGatewayRequest(method: string, pathname: string): GatewayClass {
   if (pathname === MCP_PATH || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "mcp" };
   if (pathname === SENTRY_RELAY_PREFIX || pathname.startsWith(`${SENTRY_RELAY_PREFIX}/`)) {
@@ -157,9 +136,6 @@ export function classifyGatewayRequest(method: string, pathname: string): Gatewa
     return { kind: imageObjectKeyFromPath(pathname) ? "image-object" : "invalid" };
   }
   if (SITE_ASSET_ROUTES.has(pathname)) return { kind: "site-asset" };
-  if (pathname === "/explainer") return { kind: "explainer-index" };
-  if (pathname === "/sw.js") return { kind: "service-worker" };
-  if (looksStatic(pathname)) return { kind: "asset" };
   return { kind: "render" };
 }
 

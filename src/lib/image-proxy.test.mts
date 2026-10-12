@@ -5,10 +5,14 @@ import {
   IMAGE_DEFAULT_QUALITY,
   IMAGE_DEFAULT_WIDTH,
   ImagePolicyError,
+  IMAGE_WIDTHS,
   ImageUpstreamError,
+  displayWidthFromSizes,
   fetchImageUpstream,
+  imageWidthBucket,
   imageSourceFromInternalPath,
   optimizerImagePath,
+  optimizerSrcSet,
   parseImageSource,
   parseVariantFit,
   parseVariantQuality,
@@ -60,6 +64,32 @@ test("宽度和质量白名单校验", () => {
   assert.equal(parseVariantFit("contain"), "contain");
   assert.equal(parseVariantFit("cover"), "cover");
   assert.equal(parseVariantFit("fill"), null);
+});
+
+test("srcset 按显示宽度出 1x、2x 两档，档位都在宽度白名单里", () => {
+  const src = "https://is1-ssl.mzstatic.com/a.webp";
+  const widthsOf = (set: string) => set.split(", ").map((entry) => ({
+    w: Number(new URL(entry.split(" ")[0], "https://site.test").searchParams.get("w")),
+    density: entry.split(" ")[1],
+  }));
+  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 44)), [{ w: 48, density: "1x" }, { w: 88, density: "2x" }, { w: 160, density: "3x" }]);
+  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 64)), [{ w: 64, density: "1x" }, { w: 128, density: "2x" }, { w: 192, density: "3x" }]);
+  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 1500)), [{ w: 1920, density: "1x" }]);
+  assert.deepEqual(widthsOf(optimizerSrcSet(src, 75, 700)), [{ w: 750, density: "1x" }, { w: 1920, density: "2x" }]);
+  for (const display of [1, 20, 44, 100, 333, 960, 5000]) {
+    for (const { w } of widthsOf(optimizerSrcSet(src, 75, display))) {
+      assert.ok((IMAGE_WIDTHS as readonly number[]).includes(w));
+    }
+  }
+  assert.equal(imageWidthBucket(10), IMAGE_WIDTHS[0]);
+  assert.equal(imageWidthBucket(99999), IMAGE_WIDTHS[IMAGE_WIDTHS.length - 1]);
+});
+
+test("sizes 取其中最大的像素宽度作显示宽度，没有像素值就不猜", () => {
+  assert.equal(displayWidthFromSizes("44px"), 44);
+  assert.equal(displayWidthFromSizes("(min-width: 1024px) 64px, 56px"), 64);
+  assert.equal(displayWidthFromSizes("100vw"), undefined);
+  assert.equal(displayWidthFromSizes(undefined), undefined);
 });
 
 test("签名查询串原样保留进 url 参数", () => {

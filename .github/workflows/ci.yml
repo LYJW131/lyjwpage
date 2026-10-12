@@ -12,9 +12,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  NEXT_TELEMETRY_DISABLED: "1"
-
 jobs:
   check:
     # 仓库变量 SELF_HOSTED_RUNNER=on 时走自建 runner，条件与 codeql.yml 一致；只放行本仓库分支；fork 来的 PR 和访客构建的 PR（claude/build-*，见 shared/build-routine.ts#branchForRun）含外人能左右的代码，留在托管机。机器离线时把变量关掉，任务会一直排队等它
