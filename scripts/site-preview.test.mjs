@@ -10,7 +10,6 @@ import { sitePreviewConfig, sitePreviewManifest, sitePreviewName } from "./site-
 const commit = "a".repeat(40);
 const branch = "feat/agent-status";
 const apiOrigin = "https://feat-agent-status-api.lyjw.workers.dev";
-const aiOrigin = "https://feat-agent-status-ai.lyjw.workers.dev";
 
 const builtConfig = () => ({
   name: "site",
@@ -38,18 +37,17 @@ test("manifest rejects bad commits, main backends and non-branch origins", () =>
   assert.throws(() => sitePreviewManifest({ branch, commit: "ABC", backendUrl: apiOrigin }), /40-char/);
   assert.throws(() => sitePreviewManifest({ branch, commit: "z".repeat(40), backendUrl: apiOrigin }), /40-char/);
   assert.throws(() => sitePreviewManifest({ branch: "main", commit, backendUrl: apiOrigin }), /production/);
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }), /api or ai Preview origin/);
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: null }), /api or ai Preview origin/);
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: `${apiOrigin}/evil` }), /api or ai Preview origin/);
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://other-api.lyjw.workers.dev" }), /api or ai Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }), /api Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: null }), /api Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: `${apiOrigin}/evil` }), /api Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://other-api.lyjw.workers.dev" }), /api Preview origin/);
 });
 
-test("manifest pins the exact api or ai preview origin for the branch", () => {
-  for (const backendUrl of [apiOrigin, aiOrigin]) {
-    assert.deepEqual(sitePreviewManifest({ branch, commit, backendUrl }), {
-      version: 1, mode: "preview", branch, commit, backendUrl,
-    });
-  }
+test("manifest pins the branch's api preview origin", () => {
+  assert.deepEqual(sitePreviewManifest({ branch, commit, backendUrl: apiOrigin }), {
+    version: 1, mode: "preview", branch, commit, backendUrl: apiOrigin,
+  });
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://feat-agent-status-ai.lyjw.workers.dev" }), /api Preview origin/);
   assert.deepEqual(sitePreviewManifest({ branch: "", commit }), {
     version: 1, mode: "production", branch: "main", commit, backendUrl: null,
   });
@@ -86,11 +84,11 @@ test("deploy rejects a disk manifest that fails consumer validation", () => {
   const env = { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit, SITE_PREVIEW_ACCESS_READY: "true" };
   for (const [manifest, pattern] of [
     [{ version: 1, mode: "preview", branch, commit: "z".repeat(40), backendUrl: apiOrigin }, /40-char/],
-    [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }, /api or ai Preview origin/],
-    [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://other-branch-api.lyjw.workers.dev" }, /api or ai Preview origin/],
+    [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }, /api Preview origin/],
+    [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://other-branch-api.lyjw.workers.dev" }, /api Preview origin/],
     [{ version: 2, mode: "preview", branch, commit, backendUrl: apiOrigin }, /版本/],
     [{ version: 1, mode: "preview", branch: "main", commit, backendUrl: apiOrigin }, /production/],
-    [{ version: 1, mode: "preview", branch, commit, backendUrl: null }, /api or ai Preview origin/],
+    [{ version: 1, mode: "preview", branch, commit, backendUrl: null }, /api Preview origin/],
     [{ version: 1, mode: "building", branch, commit, backendUrl: null }, /不是预览/],
   ]) {
     const { calls, run } = deployFixture({ manifest, env });
@@ -130,4 +128,9 @@ test("deploy writes a whitelisted preview config, spawns the site preview name a
   assert.deepEqual(config.previews.services, []);
   assert.deepEqual(config.previews.durable_objects, { bindings: [] });
   assert.deepEqual(config.previews.images, { binding: "IMAGES" });
+});
+
+test("production config keeps preview_urls on, since every production deploy rewrites the Worker-wide Preview URL switch", () => {
+  const production = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+  assert.match(production, /"preview_urls":\s*true/);
 });
