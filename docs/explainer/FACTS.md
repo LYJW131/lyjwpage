@@ -426,9 +426,9 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 ### 部署成功之后：刷新 ESA、通知页面
 
-- 站点在 main 上的构建部署成功后，GitHub 上的 `check_run`（app 为 `cloudflare-workers-and-pages`、名字 `Workers Builds: site`、结论 success）触发 `.github/workflows/purge-esa.yml`（触发条件在 `scripts/site-deploy-event.mjs#siteDeploymentSha`），先等 `lyjw.me` 的 `/api/version` 答出这次的 sha（同文件的 `deployment` job）：
+- 站点在 main 上的构建部署成功后，GitHub 上的 `check_run`（app 为 `cloudflare-workers-and-pages`、名字 `Workers Builds: site`、结论 success）触发 `.github/workflows/purge-esa.yml`（触发条件在 `scripts/site-deploy-event.mjs#siteDeploymentSha`），先等 `lyjw.me` 的 `/api/version` 答出这次的 sha（同文件的 `deployment` job，等法在 `scripts/wait-site-version.mjs#waitForSiteVersion`）；域名已经答出以这次 sha 为祖先的更新提交时，这一次让位，不刷新也不通知，交给更新那次部署自己的工作流：
   1. `.github/workflows/purge-esa.yml#purge`：调 ESA 的 `PurgeCaches` 刷掉 `lyjw131.com` 首页的缓存键，再 GET 一次预热（`scripts/run-esa-purge.mjs`、`scripts/esa-purge.mjs#purgeEsaHomepage`、`scripts/esa-purge.mjs#warmupEsaCache`）。
-  2. `.github/workflows/purge-esa.yml#notify`（等刷新完）：先等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，每个域名最多 30 次、每次隔 10 秒；等不到这一步就失败，不发通知，页面靠自己的定时自查兜底（下文「收不到通知也有兜底」）。先刷新再通知，是因为反过来的话 lyjw131.com 的访客点刷新拿回的还是旧 HTML（同文件里那段注释）。
+  2. `.github/workflows/purge-esa.yml#notify`（等刷新完）：先等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，每个域名最多 `scripts/wait-site-version.mjs#ATTEMPTS` 次、每次隔 `scripts/wait-site-version.mjs#INTERVAL_MS`，同样遇到更新提交就让位；等不到这一步就失败，不发通知，页面靠自己的定时自查兜底（下文「收不到通知也有兜底」）。先刷新再通知，是因为反过来的话 lyjw131.com 的访客点刷新拿回的还是旧 HTML（同文件里那段注释）。
   3. 带 `lyjwpage-github-actions` 那把 Access service token 调上报入口的 `POST /api/internal/site-deployed`，这把只有 `internal:site-deployed` 权限（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）；失败重试，最长 10 分钟（`--retry-max-time 600`），理由是各 Worker 并行上线，接收端还没换版时会短暂回 404 / 405（同文件里那段注释）。
 - 上报入口验过权限，经 Service Binding 调 `StateCore.broadcastVersion()`（`workers/ingress/src/worker.ts#handleSiteDeployed`、`workers/api/src/state-core.ts#broadcastVersion`）：直接交给推送房间、不经 StateHub，LivePushRoom 向所有连着的页面广播 `version`，不带数据（`payload` 为 null）；另在 `waitUntil` 里请 collector 立刻重拉部署列表与仓库统计（`workers/ingress/src/worker.ts#DEPLOYMENT_JOBS`，片中不画）。
 - 页面收到 `version` 只重问自己域名上的 `/api/version`，不信推来的版本号（`src/hooks/use-live-events.ts#INVALIDATIONS`）；这个接口是构建期常量，头是 `max-age=0, must-revalidate`（`src/lib/site-policy.ts#VERSION_CACHE_CONTROL`），拿它和页面构建时焊进的 sha 比（`src/lib/app-version.ts#resolveVersionStatus`）。
