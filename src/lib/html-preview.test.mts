@@ -5,8 +5,7 @@ import { HTML_PREVIEW_MAX_HEIGHT, HTML_PREVIEW_MIN_HEIGHT, htmlPreviewDocument, 
 
 test("模型的页面整段进里层 srcdoc 属性，引号和尖括号不能闭合属性逃到外壳", () => {
   const doc = htmlPreviewDocument(`<p title="a">x</p></iframe><script>top.x=1</script>`);
-  const outerScripts = doc.match(/<script>/g) ?? [];
-  assert.equal(outerScripts.length, 1);
+  assert.equal(doc.split("<script").length - 1, 1);
   assert.match(doc, /<iframe sandbox="allow-scripts" srcdoc="[^"<>]*"><\/iframe>/);
 });
 

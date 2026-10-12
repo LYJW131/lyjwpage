@@ -21,9 +21,9 @@ const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${CSP}">`;
 
 const escapeAttribute = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const REPORT_HEIGHT = `(()=>{const k=${JSON.stringify(HTML_PREVIEW_HEIGHT_KEY)},d=document.documentElement,p=()=>parent.postMessage({[k]:Math.ceil(d.scrollHeight)},"*");addEventListener("load",p);new ResizeObserver(p).observe(d);addEventListener("click",e=>{const a=e.target instanceof Element&&e.target.closest("a[href]");if(!a)return;e.preventDefault();const h=a.getAttribute("href");const t=h.startsWith("#")&&document.getElementById(decodeURIComponent(h.slice(1)));if(t)scrollTo({top:t.getBoundingClientRect().top+scrollY})},true)})()`;
+const REPORT_HEIGHT = `(()=>{const k="${HTML_PREVIEW_HEIGHT_KEY}",d=document.documentElement,p=()=>parent.postMessage({[k]:Math.ceil(d.scrollHeight)},"*");addEventListener("load",p);new ResizeObserver(p).observe(d);addEventListener("click",e=>{const a=e.target instanceof Element&&e.target.closest("a[href]");if(!a)return;e.preventDefault();const h=a.getAttribute("href");const t=h.startsWith("#")&&document.getElementById(decodeURIComponent(h.slice(1)));if(t)scrollTo({top:t.getBoundingClientRect().top+scrollY})},true)})()`;
 
-const RELAY_HEIGHT = `(()=>{const k=${JSON.stringify(HTML_PREVIEW_HEIGHT_KEY)},f=document.querySelector("iframe");addEventListener("message",e=>{if(e.source!==f.contentWindow)return;const h=e.data&&e.data[k];if(typeof h==="number")parent.postMessage({[k]:h},"*")})})()`;
+const RELAY_HEIGHT = `(()=>{const k="${HTML_PREVIEW_HEIGHT_KEY}",f=document.querySelector("iframe");addEventListener("message",e=>{if(e.source!==f.contentWindow)return;const h=e.data&&e.data[k];if(typeof h==="number")parent.postMessage({[k]:h},"*")})})()`;
 
 // 里层页面去掉自带的 doctype，排在 CSP meta 与测高脚本之后：模型写的 <html>、<head> 由解析器并进已开的元素，CSP 只能被它收紧。
 export function htmlPreviewDocument(source: string): string {
