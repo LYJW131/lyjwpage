@@ -411,11 +411,11 @@
       ]
     },
     {
-      "id": "routine",
+      "id": "build_workflow",
       "type": "external",
-      "label": "Claude Code routine",
-      "sublabel": "按签名计划改代码",
-      "tag": "无推送凭据 · 截桌面与 375px",
+      "label": "GitHub Actions 构建",
+      "sublabel": "先审计划 · 沙盒里改代码",
+      "tag": "无写凭据 · OIDC 回传",
       "pos": [
         40,
         230
@@ -426,10 +426,10 @@
       ],
       "sources": [
         {
-          "path": "workers/ai/src/build/handlers.ts"
+          "path": ".github/workflows/build.yml"
         },
         {
-          "path": "docs/build-routine.md"
+          "path": "scripts/build-actions.mjs"
         }
       ]
     },
@@ -455,7 +455,7 @@
           "path": "workers/ai/src/build/webhook.ts"
         },
         {
-          "path": "workers/ai/src/github-issue.ts"
+          "path": "shared/build-routine.ts"
         }
       ]
     }
@@ -654,17 +654,17 @@
       "variant": "default"
     },
     {
-      "id": "build_fire",
+      "id": "build_dispatch",
       "from": "ai",
-      "to": "routine",
-      "label": "/fire 触发",
+      "to": "build_workflow",
+      "label": "派发构建",
       "variant": "default"
     },
     {
       "id": "build_upload",
-      "from": "routine",
+      "from": "build_workflow",
       "to": "ai",
-      "label": "上传文件 · 截图",
+      "label": "OIDC 上传 · 截图",
       "variant": "default"
     },
     {
@@ -719,8 +719,8 @@
       "title": "对话与访客构建",
       "items": [
         "首条消息前先接受隐私说明，Turnstile 验人后发 30 分钟通行证；Clef 选 Haiku、Sonnet 或 Fable，额度满了逐档降级。",
-        "改站请求由 Sonnet 开设计会话，交给 Managed Agents 里的 Opus 出计划；访客授权 GitHub 后，routine 改代码上传，ai 校验再以 App 开 PR，截图存 R2 并评论进 PR。",
-        "ai 没有公开域名：浏览器、MCP 客户端、routine 与 GitHub webhook 都打到 api，经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
+        "改站请求由 Sonnet 开设计会话，交给 Managed Agents 里的 Opus 出计划；访客授权 GitHub 后，Actions 先审计划再改代码、凭 OIDC 回传，ai 校验再以 App 开 PR，截图存 R2 并评论进 PR。",
+        "ai 没有公开域名：浏览器、MCP 客户端、构建工作流与 GitHub webhook 都打到 api，经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
       ]
     }
   ]

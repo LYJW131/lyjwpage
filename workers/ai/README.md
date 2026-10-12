@@ -10,15 +10,15 @@
 | --- | --- | --- |
 | POST | `/api/chat` | 首页对话，流式返回 NDJSON |
 | GET | `/api/chat/usage` | 当前访客与全站的对话配额，只读不扣额度 |
-| POST | `/api/build` | 访客每次都完成 GitHub PKCE 授权：授权码当场换令牌、查身份后立即吊销，再一次性消费计划与额度并触发 routine |
+| POST | `/api/build` | 访客每次都完成 GitHub PKCE 授权：授权码当场换令牌、查身份后立即吊销，再一次性消费计划与额度、开草稿 PR，并以 `repository_dispatch` 派发构建工作流 |
 | GET | `/api/build/status` | 持状态 token 查询 run 并按需对账 |
-| POST | `/api/build/upload` | routine 持一次性上传 token 提交文件 |
-| POST | `/api/build/progress` | routine 持同一上传 token 报告进度 |
-| POST | `/api/build/screenshot` | routine 上传前持同一上传 token 提交界面截图，存进 R2 图片桶，PR 开出后由 App 评论 |
+| POST | `/api/build/upload` | 构建工作流持 GitHub Actions OIDC 令牌提交文件，每个 run 只收一次 |
+| POST | `/api/build/progress` | 构建工作流持 OIDC 令牌报告计划审查结果、进度或 `blocked` |
+| POST | `/api/build/screenshot` | 构建工作流在上传前持 OIDC 令牌提交界面截图，存进 R2 图片桶，PR 开出后由 App 评论 |
 | POST | `/api/build/webhook` | 验证 GitHub webhook 并更新构建状态 |
 | POST | `/mcp` | 无鉴权的 Streamable HTTP MCP |
 
-浏览器端点检查允许来源；上传、进度、截图和 webhook 接受无 Origin 的服务器请求，分别验证 bearer token 或原始正文 HMAC。这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
+浏览器端点检查允许来源；上传、进度、截图和 webhook 接受无 Origin 的服务器请求，前三者验证 GitHub Actions OIDC 令牌（`src/build/actions-oidc.ts#verifyActionsToken`），webhook 验证原始正文 HMAC。这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
 
 `PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。api 的 `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
 
@@ -28,7 +28,7 @@
 - `src/chat/`：Turnstile、模型分流、工具循环、流式事件、历史验签、配额与 Anthropic 出口。
 - `src/tools/registry.ts#SITE_TOOLS`：首页对话与 MCP 共用的只读站点工具；读取由 `ToolIO` 注入。
 - `src/mcp.ts`：MCP 协议处理，不调用模型。
-- `src/build/`：构建令牌、上传路径验证、GitHub App 调用、webhook、状态对账与 `BuildCoordinator`。完整配置与 routine 提示词见 [访客协作构建](../../docs/build-routine.md)。
+- `src/build/`：构建令牌、构建工作流的 OIDC 校验、上传路径验证、GitHub App 调用与工作流派发、webhook、状态对账与 `BuildCoordinator`。构建工作流、提示词指针与完整配置见 [访客协作构建](../../docs/build-routine.md)。
 - `src/sentry.ts#sentryOptions`：关闭请求正文、请求头与 cookie 收集；对话、OAuth code 和代理请求中的密钥不能进入 Sentry。`SENTRY_ENVIRONMENT` 优先，未配置时由 `PREVIEW_WORKER` 选择预览或生产环境。
 
 下文 `src/chat/`、`src/tools/` 等后端路径相对于本目录；`shared/`、站点的 `src/components/`、`src/app/` 和 `docs/` 相对于仓库根目录。
@@ -43,7 +43,7 @@
 - 对 Anthropic 的请求经 `src/chat/egress.ts#anthropicFetch` 转给 Durable Object `AnthropicEgress`；出口位置取同文件的 `EGRESS_HINT`，主机白名单取 `ANTHROPIC_HOST`。对象只转发该上游，避免访客所在机房的地区限制；核验记录见 `docs/ops-facts.md`。没有这层绑定时直接发。
 - 中断：Worker 开启 `enable_request_signal`，入站请求的 `signal` 一 abort 就停下工具循环，SDK 的 fetch 信号带进 `AnthropicEgress`，那边经带信号的管道取消对 Anthropic 的连接，避免原样直通响应体时取消延迟。只有运行时真的报了取消时这条路径才起作用，不能把访客点击停止当成上游已停止计费；生产断开信号的核验边界见 `docs/ops-facts.md`。未收到取消时仍受这条回复的 `maxTokens` 和配额约束，拒答兜底的溢出规则见下文。
 - 站点改动请求由 Clef 路由给 Sonnet，候选请求仍扣普通额度，Sonnet 无空位时返回 429，不降级；Sonnet 判断值得做时调用 `start_design`，开启轮计入设计轮数。设计会话跑在 Claude Managed Agents（`src/chat/designer.ts`）：`start_design` 用 `agent_with_overrides` 建会话，模型、提示词（`src/chat/design.ts#PLANNER_PROMPT`）和工具每个会话从代码覆盖，Console 上的 agent（`DESIGN_AGENT_ID`）只是壳，environment（`DESIGN_ENVIRONMENT_ID`）只放行 github.com；会话带 `src/chat/design.ts#DESIGN_BUDGET_CENTS` 的硬预算，到顶时平台暂停会话、回复里说明。会话 ID 签进设计令牌；开场回合不在本条回复里跑——访客先看到设计模式的隐私确认，同意后浏览器带 `resume: true` 与令牌补发，Worker 见空会话即把那段对话作为开场交给会话里的 Opus 规划者，期间不向会话发任何访客内容，NDJSON 再发一次 `route` 事件；持有效令牌的后续消息直接转给同一个会话，扣 `BuildCoordinator` 中的专属轮数，跳过 Clef 与普通配额；会话期限、轮数和全站上限以 `shared/build-routine.ts#BUILD_DESIGN_LIMITS` 为准。规划者在沙盒里克隆公开仓库，用 Managed Agents 自带的 read、glob、grep、bash（`auto` 权限，停下等确认的调用一律拒绝；write、edit 关闭）和 web_search、web_fetch；自定义工具 `get_site_status` 由 Worker 当场作答，`ask_visitor` 与 `propose_build` 校验通过后挂起：会话停在 `requires_action`，访客下一条消息作为那次调用的 `user.custom_tool_result` 发回，没有挂起的调用时才发 `user.message`。题目不合规、计划被 `src/build/validation.ts#checkBuildPlan` 拒绝时立刻把原因回给规划者。NDJSON 发送 `design` / `ask` / `plan` 事件，正文按 `event_deltas` 实时推；Managed Agents 不给思考内容，规划者读仓库文件发 `doc` 事件，其余每一步发一行 `step` 事件作进度。访客断线时线上 Worker 照样把那一回合跑完（见 `docs/ops-facts.md`），浏览器随后带 `resume: true` 重发同一份历史：Worker 只校验令牌、不扣轮数，从会话事件里找到访客最新那条对应的回合开场，重推之后的文字、进度和仍挂起的题目或计划（计划重新签发），回合还在跑就跟着事件流到停下，期间不向会话发任何事件；会话还没有任何事件时同样按补发处理、把整段历史作为开场上传（设计同意的补发就走这条路），开场先在 `BuildCoordinator#claimDesignOpen` 按会话抢一次租约，同时到的另一份补发（复制的标签页）抢不到就等开场落进会话，再按断线补发跟着看同一回合；回合开场存在但对不上访客最新那条时返回 409 `nothing_to_resume`。Managed Agents 的会话记录与沙盒不会自己过期，`scheduled`（`wrangler.toml` 的 cron）按 `src/chat/design-cleanup.ts#deleteExpiredDesignSessions` 删除设计 agent 下令牌过期又过了 `DESIGN_SESSION_GRACE_MS` 的会话，删除时连同事件和沙盒一起移除。每条设计回复记一行 `[god-chat] design turn` 日志（会话 ID、停止原因、模型请求数与 token），不记对话正文与工具输入。
-- Open issue 在访客浏览器里直接打开 GitHub 预填链接（`shared/build-routine.ts#buildIssueUrl`），按计划填好 `improvement.yml` 表单的标题与各字段，访客在 GitHub 上自行提交，不经过本 Worker、不消费计划。Start build 每次通过 PKCE 验证 GitHub 身份，由 GitHub App 先提交已确认计划并创建草稿 PR，再启动 routine；实现经 Worker 校验后追加到同一分支和 PR，满足 CI 条件后转为待审。计划只被 Start build 消费一次，同账号的构建重试只恢复原 run；身份、恢复与上传契约见 [访客协作构建](../../docs/build-routine.md)。
+- Open issue 在访客浏览器里直接打开 GitHub 预填链接（`shared/build-routine.ts#buildIssueUrl`），按计划填好 `improvement.yml` 表单的标题与各字段，访客在 GitHub 上自行提交，不经过本 Worker、不消费计划。Start build 每次通过 PKCE 验证 GitHub 身份，由 GitHub App 先提交已确认计划并创建草稿 PR，再派发 GitHub Actions 构建工作流（先由 Claude 审查计划，通过后在沙盒里实现）；实现经 Worker 校验后追加到同一分支和 PR，满足 CI 条件后转为待审。计划只被 Start build 消费一次，同账号的构建重试只恢复原 run；身份、恢复与上传契约见 [访客协作构建](../../docs/build-routine.md)。
 - `show_card`（`src/chat/show-card.ts`）在回复里画一张实时卡片：模型只选卡片名，卡片名与每张卡片背后的状态视图登记在 `shared/god-chat.ts#GOD_CHAT_CARD_VIEWS`，模型给不了任何文字、图片或链接。每张卡片只对应一个视图，「此刻」和「最近」分开画，访客只问此刻时模型只画此刻那张。NDJSON 发一行 `card`，站点 `src/components/chat-card.tsx` 按登记的视图读公开状态自己画，画在收到这一行时正文已到的位置；它和首页卡片共用 SWR 缓存键，推送写进同一份缓存、卡片跟着变，自己不轮询。工具结果把同一个视图的数据回给模型（走 `get_site_status` 的执行与这条回复的账本，读过的不再读），模型据此用一两句话作答、不复述卡片内容。同一条回复里同一张卡片只画一次。
 - 回复里的其他图示不走工具：提示词印出 `shared/god-chat.ts#GOD_CHAT_VISUAL_EXAMPLES` 的组件（`stats`、`chart`、`timeline`、`media`），模型在正文里写以组件名为语言标记、内容为 JSON 的代码块，站点在 `src/lib/chat-visuals.ts` 校验后用 `src/components/chat-visual.tsx` 画，校验不过就照原样显示代码；组件画不了的才写 `html` 代码块，进断网沙箱（`src/lib/html-preview.ts`）。图示是正文的一部分，随回复进历史签章。
 - 请求带 `thinking.display: "summarized"`：模型思考时流出 `thinking` 事件（思考摘要），卡片在正文出来前显示，正文开始后折叠；摘要不进对话历史。
@@ -72,7 +72,7 @@
 
 ## 配置与部署
 
-绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、routine 与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
+绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、构建工作流与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
 
 生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管 api 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
 
@@ -110,6 +110,6 @@ pnpm exec eslint workers/ai/src
 node scripts/verify-build-worker.mjs
 ```
 
-`scripts/verify-build-worker.mjs` 用临时配置启动本地 workerd，以真实 Durable Object RPC 和 SQLite 验证并发一次性消费、额度、状态恢复与重启持久化；GitHub 和 routine 出站使用夹具。若依赖锁定的 workerd 不支持脚本配置的 `compatibility_date`，设置 `MINIFLARE_WORKERD_PATH` 指向支持该日期的本地 workerd 可执行文件。
+`scripts/verify-build-worker.mjs` 用临时配置启动本地 workerd，以真实 Durable Object RPC 和 SQLite 验证并发一次性消费、额度、状态恢复与重启持久化；GitHub 出站（含工作流派发与 Actions OIDC 公钥）使用夹具。若依赖锁定的 workerd 不支持脚本配置的 `compatibility_date`，设置 `MINIFLARE_WORKERD_PATH` 指向支持该日期的本地 workerd 可执行文件。
 
 `src/worker.test.ts` 验证路由边界、CORS、MCP 的公开状态 RPC、缺绑定时关闭入口与环境选择；聊天、配额和 MCP 的行为测试随实现放在本目录。涉及跨 Worker 读取或转发时，还要运行 [api 集成验证](../api/README.md#验证)。MCP 协议变更必须按上文「MCP」用真实客户端连接本地入口，不能仅以单元测试作为客户端兼容的证明。

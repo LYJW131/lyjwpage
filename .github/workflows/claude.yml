@@ -49,7 +49,7 @@ jobs:
           additional_permissions: |
             actions: read
 
-          # 与访客构建的云端 routine 对齐：任意 Bash（装依赖、跑检查）、读写文件、查外部文档。
+          # 有意放开：任意 Bash（装依赖、跑检查）、读写文件、查外部文档。
           # 只有对仓库有写权限的人 @claude 才会触发（Action 自带检查），跑的是 PR 分支上的代码。
           claude_args: |
             --allowedTools "Bash,Read,Write,Edit,MultiEdit,Glob,Grep,WebSearch,WebFetch"

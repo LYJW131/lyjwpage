@@ -11,6 +11,7 @@ import { allowedBuildPath, parseBuildPlan, parseBuildUpload } from "./build/vali
 import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest as publishBuild, prepareBuildPullRequest, validateBuildBase, reconcileBuild } from "./build/github.ts";
 import { verifyGithubWebhook, applyGithubWebhook } from "./build/webhook.ts";
 import { buildGithubFixture, FIXTURE_PLAN_SHA, FIXTURE_PLAN_TREE } from "./build/testing/github-fixture.ts";
+import { createActionsOidcFixture } from "./build/testing/actions-oidc.ts";
 import { consumePlan, issuePlan } from "./build/plan.ts";
 
 registerHooks({ resolve(specifier, context, nextResolve) {
@@ -24,7 +25,9 @@ const sha = "a".repeat(40);
 const treeSha = "b".repeat(40);
 const headSha = "c".repeat(40);
 const runId = "a".repeat(32);
-const uploadToken = "f".repeat(64);
+const buildSecret = "test-build-secret";
+const callbackOrigin = "https://api.test";
+const oidc = await createActionsOidcFixture();
 const privateKeys = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const privatePem = privateKeys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
 const json = (value: unknown, status = 200) => Response.json(value, { status });
@@ -40,12 +43,16 @@ function coordinator() {
   } };
   const transactionSync = <T>(fn: () => T): T => { db.exec("BEGIN"); try { const result = fn(); db.exec("COMMIT"); return result; } catch (error) { db.exec("ROLLBACK"); throw error; } };
   const instance = new BuildCoordinator({ storage: { sql, transactionSync, getAlarm: async () => null, setAlarm: async () => undefined } } as unknown as DurableObjectState, {} as Env);
-  const env = { BUILD_COORDINATOR: { getByName: () => instance }, BUILD_SESSION_SECRET: "test-build-secret", GITHUB_APP_PRIVATE_KEY: privatePem, GITHUB_APP_CLIENT_SECRET: "oauth-fixture", GITHUB_WEBHOOK_SECRET: "webhook-fixture", ROUTINE_FIRE_URL: "https://routine.test/fire", ROUTINE_FIRE_TOKEN: "fire-fixture" } as unknown as Env;
+  const env = { BUILD_COORDINATOR: { getByName: () => instance }, BUILD_SESSION_SECRET: buildSecret, GITHUB_APP_PRIVATE_KEY: privatePem, GITHUB_APP_CLIENT_SECRET: "oauth-fixture", GITHUB_WEBHOOK_SECRET: "webhook-fixture" } as unknown as Env;
   return { instance, env, db };
 }
 async function stored(id = runId, account = "visitor"): Promise<StoredRun> {
   const now = Date.now();
-  return { state: { runId: id, branch: branchForRun(id), phase: "triggered", createdAt: now, updatedAt: now }, plan, account, coauthor: "Visitor <1+visitor@users.noreply.github.com>", baseSha: sha, uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: now + BUILD_TIMEOUT_MS };
+  return { state: { runId: id, branch: branchForRun(id), phase: "triggered", createdAt: now, updatedAt: now }, plan, account, coauthor: "Visitor <1+visitor@users.noreply.github.com>", baseSha: sha, uploadHash: await hashToken(await uploadTokenForRun(id, buildSecret)), uploadUsed: false, uploadExpiresAt: now + BUILD_TIMEOUT_MS };
+}
+async function dispatched(id = runId): Promise<StoredRun> {
+  const run = await stored(id);
+  return { ...run, callbackOrigin, planCommitSha: FIXTURE_PLAN_SHA, dispatchAttempted: true, state: { ...run.state, pr: { number: 12, url: `https://github.com/${BUILD_REPO}/pull/12`, headSha: FIXTURE_PLAN_SHA, draft: true } } };
 }
 function post(path: string, body: unknown, token?: string) {
   return new Request(`https://api.test${path}`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
@@ -136,27 +143,29 @@ test("build quotas atomically cap accounts and the site without consuming denied
 
 test("a blocked report consumes the upload token and stops the run", async () => {
   const { env, instance } = coordinator();
-  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
-  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "x".repeat(601), blocked: true }, uploadToken), env)).status, 400);
-  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Plan needs shared/collector.ts", blocked: true }, uploadToken), env)).status, 200);
+  instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
+  const token = await oidc.token(callbackOrigin);
+  const fetcher = oidc.serve();
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "x".repeat(601), blocked: true }, token), env, fetcher)).status, 400);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Plan needs shared/collector.ts", blocked: true }, token), env, fetcher)).status, 200);
   const run = instance.readRun(runId)!;
   assert.equal(run.state.phase, "blocked");
   assert.equal(run.uploadUsed, true);
   assert.match(run.state.reason ?? "", /shared\/collector\.ts/);
-  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Still working" }, uploadToken), env)).status, 401);
-  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), env, githubFixture().fetcher)).status, 401);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Still working" }, token), env, fetcher)).status, 401);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), env, githubFixture().fetcher)).status, 401);
 });
 
 test("upload claim is atomic, progress cannot consume it and timeout is unknown", async (t) => {
   const { instance } = coordinator();
-  const run = await stored();
+  const run = await dispatched();
   assert.equal(instance.reserveRun(run, "p", Date.now() + 60_000), "ok");
   assert.equal(instance.claimUpload(runId, "wrong"), null);
   assert.equal(instance.progress(runId, run.uploadHash, "Testing"), true);
   assert.equal(instance.claimUpload(runId, run.uploadHash)?.state.phase, "uploaded");
   assert.equal(instance.claimUpload(runId, run.uploadHash), null);
   assert.equal(instance.progress(runId, run.uploadHash, "Done"), false);
-  const second = await stored("d".repeat(32));
+  const second = await dispatched("d".repeat(32));
   instance.reserveRun(second, "p2", Date.now() + 60_000);
   const later = Date.now() + BUILD_TIMEOUT_MS + 1;
   t.mock.method(Date, "now", () => later);
@@ -193,7 +202,7 @@ test("GitHub JWT supports PKCS8 and GitHub PKCS1 PEM with verifiable RS256 signa
 
 function githubFixture(extra: (path: string, body: Record<string, unknown> | null) => Response | undefined = () => undefined) {
   const calls: { path: string; method: string; body: Record<string, unknown> | null; auth?: string }[] = [];
-  const fixture = buildGithubFixture({ runId, baseSha: sha, baseTree: treeSha, headSha, override: (call) => {
+  const fixture = buildGithubFixture({ runId, baseSha: sha, baseTree: treeSha, headSha, oidc, override: (call) => {
     const path = call.path === "/login/oauth/access_token" ? "https://github.com/login/oauth/access_token" : call.path;
     calls.push({ ...call, path });
     return extra(path, call.body);
@@ -279,23 +288,26 @@ test("base tree validation prevents directory replacement, symlink traversal, su
 
 test("upload rejection consumes the token, stores a safe reason and does no external writes", async () => {
   const { env, instance } = coordinator();
-  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
-  const denied: typeof fetch = async () => assert.fail("No network on rejected uploads");
+  instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
+  const denied = oidc.serve(async () => assert.fail("No GitHub request on rejected uploads"));
+  const token = await oidc.token(callbackOrigin);
   const bad = { ...upload, files: [{ ...upload.files[0], path: ".github/workflows/evil.yml" }] };
-  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, bad, uploadToken), env, denied)).status, 400);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, bad, token), env, denied)).status, 400);
   assert.equal(instance.readRun(runId)?.state.phase, "blocked");
-  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), env, denied)).status, 401);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), env, denied)).status, 401);
 });
 
 test("valid upload creates and returns a confirmed PR without secret fields", async () => {
   const { env, instance } = coordinator();
-  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), env, githubFixture().fetcher);
+  instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
+  const token = await oidc.token(callbackOrigin);
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), env, githubFixture().fetcher);
   assert.equal(response.status, 201);
   const body = await response.json() as BuildRun;
   assert.equal(body.phase, "pr_open");
   assert.equal(body.pr?.number, 12);
-  assert.equal(JSON.stringify(body).includes(uploadToken), false);
+  const text = JSON.stringify(body);
+  assert.equal(text.includes(token) || text.includes(await uploadTokenForRun(runId, buildSecret)), false);
   assert.equal("plan" in body, false);
 });
 
@@ -306,14 +318,16 @@ function imageBucket() {
   return { objects, bucket: bucket as unknown as R2Bucket };
 }
 
-test("screenshots need the unused upload token, real image bytes and stay within the per-run limit", async () => {
+test("screenshots need workflow authorization before upload, real image bytes and stay within the per-run limit", async () => {
   const { env, instance } = coordinator();
   const { objects, bucket } = imageBucket();
   const withImages = { ...env, IMAGES: bucket } as Env;
-  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
-  const shot = (body: unknown, token = uploadToken) => handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, body, token), withImages);
-  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home", content: png(0) }, uploadToken), env)).status, 503);
-  assert.equal((await shot({ caption: "Home", content: png(0) }, "e".repeat(64))).status, 409);
+  instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
+  const fetcher = oidc.serve();
+  const token = await oidc.token(callbackOrigin);
+  const shot = (body: unknown, auth = token) => handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, body, auth), withImages, fetcher);
+  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home", content: png(0) }, token), env, fetcher)).status, 503);
+  assert.equal((await shot({ caption: "Home", content: png(0) }, await oidc.token("https://other.test"))).status, 401);
   assert.equal((await shot({ caption: "Home", content: btoa("<svg onload=alert(1)>") })).status, 400);
   assert.equal((await shot({ caption: "x".repeat(BUILD_SCREENSHOT_LIMITS.captionChars + 1), content: png(0) })).status, 400);
   for (let n = 0; n < BUILD_SCREENSHOT_LIMITS.count; n += 1) assert.equal((await shot({ caption: `Home — 375px [x](https://evil.test) @owner ${n}`, content: png(n) })).status, 201);
@@ -329,19 +343,20 @@ test("the App comments the screenshots on the opened PR, and screenshots close w
   const { env, instance } = coordinator();
   const { bucket } = imageBucket();
   const withImages = { ...env, IMAGES: bucket } as Env;
-  instance.reserveRun(await stored(), "p", Date.now() + 60_000);
-  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home desktop", content: png(1) }, uploadToken), withImages)).status, 201);
+  instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
+  const token = await oidc.token(callbackOrigin);
   const { fetcher, calls } = githubFixture();
-  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), withImages, fetcher)).status, 201);
+  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home desktop", content: png(1) }, token), withImages, fetcher)).status, 201);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), withImages, fetcher)).status, 201);
   const comments = calls.filter((call) => call.path.endsWith("/issues/12/comments"));
   assert.equal(comments.length, 1);
   assert.equal(comments[0].auth, "Bearer installation-fixture");
   assert.match(String(comments[0].body?.body), /^## Screenshots\n[\s\S]*\*\*Home desktop\*\*\n\n!\[Home desktop\]\(https:\/\/lyjw\.me\/img\/[a-f0-9]{64}\.png\)$/);
-  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Late", content: png(2) }, uploadToken), withImages)).status, 409);
+  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Late", content: png(2) }, token), withImages, fetcher)).status, 409);
   const plain = coordinator();
-  plain.instance.reserveRun(await stored(), "p", Date.now() + 60_000);
+  plain.instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
   const quiet = githubFixture();
-  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), plain.env, quiet.fetcher)).status, 201);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), plain.env, quiet.fetcher)).status, 201);
   assert.equal(quiet.calls.some((call) => call.path.endsWith("/comments")), false);
 });
 
@@ -383,25 +398,30 @@ test("every build signs in with PKCE, accepts any account, uses the identity onc
   const denied = githubFixture((path) => path.includes("login/oauth") ? json({ error: "bad_verification_code" }) : undefined);
   const fresh = await issuePlan(env, plan);
   assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: fresh.token }), env, denied.fetcher)).status, 401);
-  assert.equal(denied.calls.some((call) => call.path === "/fire" || call.path.endsWith("/git/ref/heads/main")), false);
+  assert.equal(denied.calls.some((call) => call.path.endsWith("/dispatches") || call.path.endsWith("/git/ref/heads/main")), false);
 });
 
-test("dispatch includes the upload capability only in routine input and accepts late upload after uncertain dispatch", async () => {
+test("dispatch sends only run identifiers to the build workflow and accepts a late OIDC upload after uncertain dispatch", async () => {
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);
-  let fireText: Record<string, unknown> | undefined;
+  let dispatch: { auth: string | null; body: unknown } | undefined;
   const fixture = githubFixture();
   const fetcher: typeof fetch = async (input, init) => {
-    if (String(input) === env.ROUTINE_FIRE_URL) { fireText = JSON.parse(JSON.parse(String(init?.body)).text); throw new Error("Network response was lost"); }
+    if (String(input) === `https://api.github.com/repos/${BUILD_REPO}/dispatches`) {
+      dispatch = { auth: new Headers(init?.headers).get("Authorization"), body: JSON.parse(String(init?.body)) };
+      throw new Error("Network response was lost");
+    }
     return fixture.fetcher(input, init);
   };
   const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
   assert.equal(response.status, 202);
   const result = await response.json() as { runId: string; statusToken: string };
-  assert.equal(fireText?.baseSha, sha);
+  assert.equal(dispatch?.auth, "Bearer installation-fixture");
+  assert.deepEqual(dispatch?.body, { event_type: "build", client_payload: { runId: result.runId, planCommitSha: FIXTURE_PLAN_SHA, baseSha: sha, prNumber: 12, callbackOrigin } });
   assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
+  assert.match(instance.readRun(result.runId)?.state.reason ?? "", /build workflow result is unknown/);
   assert.equal("uploadToken" in result, false);
-  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${result.runId}`, { message: "Working" }, fireText?.uploadToken as string), env)).status, 200);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${result.runId}`, { message: "Working" }, await oidc.token(callbackOrigin)), env, oidc.serve())).status, 200);
   const replay = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
   assert.equal(replay.status, 202);
   assert.equal((await replay.json() as { runId: string }).runId, result.runId);
@@ -409,6 +429,52 @@ test("dispatch includes the upload capability only in routine input and accepts 
   const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env);
   assert.equal(status.status, 200);
   assert.equal((await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}&token=${result.statusToken}`), env)).status, 401);
+});
+
+test("workflow endpoints accept only a build workflow OIDC token whose audience is the run's callback origin", async () => {
+  const { env, instance } = coordinator();
+  const { objects, bucket } = imageBucket();
+  const withImages = { ...env, IMAGES: bucket } as Env;
+  instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
+  const fixture = githubFixture();
+  const forger = await createActionsOidcFixture();
+  const endpoints = (token?: string) => [
+    handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Working" }, token), env, fixture.fetcher),
+    handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home", content: png(7) }, token), withImages, fixture.fetcher),
+    handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), env, fixture.fetcher),
+  ];
+  for (const token of [undefined, await uploadTokenForRun(runId, buildSecret), await oidc.token("https://ai.test"), await oidc.token(callbackOrigin, { workflow_ref: `${BUILD_REPO}/.github/workflows/claude.yml@refs/heads/main` }), await forger.token(callbackOrigin)]) {
+    for (const response of await Promise.all(endpoints(token))) assert.equal(response.status, 401);
+  }
+  const unknownRun = await handleBuildProgress(post(`/api/build/progress?runId=${"b".repeat(32)}`, { message: "Working" }, await oidc.token(callbackOrigin)), env, fixture.fetcher);
+  assert.equal(unknownRun.status, 401);
+  assert.equal(instance.readRun(runId)?.uploadUsed, false);
+  assert.equal(instance.readRun(runId)?.state.phase, "triggered");
+  assert.equal(objects.size, 0);
+  assert.equal(fixture.calls.length, 0);
+  const token = await oidc.token(callbackOrigin);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Working" }, token), env, fixture.fetcher)).status, 200);
+  assert.equal(instance.readRun(runId)?.state.progress, "Working");
+  assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home", content: png(7) }, token), withImages, fixture.fetcher)).status, 201);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), withImages, fixture.fetcher)).status, 201);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), withImages, fixture.fetcher)).status, 401);
+});
+
+test("runs without a callback origin refuse workflow tokens and an unavailable key set leaves the upload unclaimed", async () => {
+  const { env, instance } = coordinator();
+  instance.reserveRun(await stored(), "legacy", Date.now() + 60_000);
+  const fetcher = oidc.serve(async () => assert.fail("No GitHub request without workflow authorization"));
+  for (const audience of [callbackOrigin, "undefined", ""]) {
+    assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await oidc.token(audience)), env, fetcher)).status, 401);
+  }
+  assert.equal(instance.readRun(runId)?.uploadUsed, false);
+  const current = coordinator();
+  current.instance.reserveRun(await dispatched(), "current", Date.now() + 60_000);
+  const keys = await createActionsOidcFixture();
+  keys.jwksStatus = 502;
+  const unavailable = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await keys.token(callbackOrigin)), current.env, keys.serve());
+  assert.equal(unavailable.status, 503);
+  assert.equal(current.instance.readRun(runId)?.uploadUsed, false);
 });
 
 test("reconciliation reports unavailable signals as unknown and paginates bot review comments", async () => {
@@ -468,18 +534,22 @@ test("same-second stale reconciliation is rejected by its expected head", async 
 
 test("an interrupted upload becomes unknown and a confirmed delayed PR recovers a failed request", async (t) => {
   const { instance } = coordinator();
-  const run = await stored();
+  const run = await dispatched();
   instance.reserveRun(run, "p", Date.now() + 60_000);
-  instance.claimUpload(runId, run.uploadHash);
+  assert.ok(instance.claimUpload(runId, run.uploadHash));
+  instance.updateRun(runId, { phase: "validated" });
+  assert.equal(instance.setImplementationHead(runId, headSha), true);
   const later = Date.now() + BUILD_TIMEOUT_MS + 1;
   t.mock.method(Date, "now", () => later);
   assert.equal(instance.readRun(runId)?.state.phase, "timeout");
-  const pr = { number: 1, url: `https://github.com/${BUILD_REPO}/pull/1`, headSha };
+  const pr = { number: 12, url: `https://github.com/${BUILD_REPO}/pull/12`, headSha };
   assert.equal(instance.updateRun(runId, { phase: "pr_open", pr, githubUpdatedAt: later })?.phase, "pr_open");
   assert.equal(instance.readRun(runId)?.state.reason, undefined);
-  const second = await stored("e".repeat(32));
+  const second = await dispatched("e".repeat(32));
   instance.reserveRun(second, "p2", later + 60_000);
-  instance.claimUpload(second.state.runId, second.uploadHash);
+  assert.ok(instance.claimUpload(second.state.runId, second.uploadHash));
+  instance.updateRun(second.state.runId, { phase: "validated" });
+  assert.equal(instance.setImplementationHead(second.state.runId, headSha), true);
   instance.updateRun(second.state.runId, { phase: "failed", reason: "Result unknown." });
   assert.equal(instance.updateRun(second.state.runId, { phase: "pr_open", pr, githubUpdatedAt: later })?.phase, "pr_open");
 });
