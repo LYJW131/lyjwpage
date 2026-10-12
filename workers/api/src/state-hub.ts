@@ -29,11 +29,6 @@ export class StateHub extends DurableObject<Env> {
     super(ctx, env);
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-    ctx.storage.sql.exec("DROP TABLE IF EXISTS esa_purge");
-    ctx.storage.sql.exec("DROP TABLE IF EXISTS public_read_model_jobs");
-    ctx.storage.sql.exec("DELETE FROM metadata WHERE key = 'lag_mirrors'");
-    ctx.storage.sql.exec("DELETE FROM metadata WHERE key = 'audience'");
-    ctx.storage.sql.exec("DELETE FROM entries WHERE key LIKE '%:lag-mirror:pending:%'");
     this.pulseArchiveState = new PulseArchiveState({
       sql: ctx.storage.sql,
       execute: (commands) => this.database.execute(commands),
