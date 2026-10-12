@@ -1,11 +1,11 @@
 import { EXACT_IMAGE_HOSTS, SUFFIX_IMAGE_HOSTS } from "@/lib/image-proxy";
+import type { GOD_CHAT_HTML_THEME_VARS } from "@shared/god-chat";
 
 export const HTML_VISUAL_HEIGHT_KEY = "lyjwHtmlVisualHeight";
 export const HTML_VISUAL_OPEN_KEY = "lyjwHtmlVisualOpen";
 export const HTML_VISUAL_MIN_HEIGHT = 24;
 export const HTML_VISUAL_MAX_HEIGHT = 800;
 
-// 主题变量名是给模型的契约，提示词里列的就是这些（workers/ai/src/chat/handler.ts#BASE_PROMPT），两边同步。
 export const HTML_VISUAL_THEME_VARS = {
   "--fg": "--foreground",
   "--muted": "--muted-foreground",
@@ -18,7 +18,7 @@ export const HTML_VISUAL_THEME_VARS = {
   "--green": "--signal-green",
   "--blue": "--signal-blue",
   "--violet": "--signal-violet",
-} as const;
+} as const satisfies Record<(typeof GOD_CHAT_HTML_THEME_VARS)[number], string>;
 
 export type HtmlVisualTheme = {
   scheme: "light" | "dark";
@@ -50,7 +50,7 @@ const escapeAttribute = (value: string) => value.replace(/&/g, "&amp;").replace(
 
 // 被拦的导航会把图示换成浏览器的拦截页，所以里层吞掉所有链接点击：http(s) 链接交给站点在点击当下开新标签页，
 // #锚点改为脚本滚动（srcdoc 的基准 URL 是站点页面，#锚点也会解析成站点地址；不用 scrollIntoView，它会连站点页面一起滚）。
-const INNER_SCRIPT = `(()=>{const d=document.documentElement,p=()=>parent.postMessage({"${HTML_VISUAL_HEIGHT_KEY}":Math.ceil(d.scrollHeight)},"*");addEventListener("load",p);new ResizeObserver(p).observe(d);new MutationObserver(p).observe(d,{childList:true,subtree:true,attributes:true,characterData:true});addEventListener("click",e=>{const a=e.target instanceof Element&&e.target.closest("a[href]");if(!a)return;e.preventDefault();const h=a.getAttribute("href");if(h.startsWith("#")){const t=document.getElementById(decodeURIComponent(h.slice(1)));if(t)scrollTo({top:t.getBoundingClientRect().top+scrollY});return}parent.postMessage({"${HTML_VISUAL_OPEN_KEY}":a.href},"*")},true)})()`;
+const INNER_SCRIPT = `(()=>{const d=document.documentElement,p=()=>parent.postMessage({"${HTML_VISUAL_HEIGHT_KEY}":Math.ceil(d.getBoundingClientRect().height)},"*");addEventListener("load",p);new ResizeObserver(p).observe(d);addEventListener("click",e=>{const a=e.target instanceof Element&&e.target.closest("a[href]");if(!a)return;e.preventDefault();const h=a.getAttribute("href");if(h.startsWith("#")){const t=document.getElementById(decodeURIComponent(h.slice(1)));if(t)scrollTo({top:t.getBoundingClientRect().top+scrollY});return}parent.postMessage({"${HTML_VISUAL_OPEN_KEY}":new URL(h,document.baseURI).href},"*")},true)})()`;
 
 const RELAY_SCRIPT = `(()=>{const f=document.querySelector("iframe");addEventListener("message",e=>{if(e.source===f.contentWindow)parent.postMessage(e.data,"*")})})()`;
 

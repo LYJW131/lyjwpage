@@ -75,6 +75,7 @@ export const GOD_CHAT_VISUAL_EXAMPLES = {
 export type GodChatVisualKind = keyof typeof GOD_CHAT_VISUAL_EXAMPLES;
 export const GOD_CHAT_VISUAL_KINDS = Object.keys(GOD_CHAT_VISUAL_EXAMPLES) as GodChatVisualKind[];
 export const GOD_CHAT_CHART_SERIES = 4;
+export const GOD_CHAT_HTML_THEME_VARS = ["--fg", "--muted", "--line", "--surface", "--accent", "--red", "--orange", "--yellow", "--green", "--blue", "--violet"] as const;
 
 export function readGodChatRoute(tier: unknown, downgradedFrom?: unknown): { tier: GodChatServedTier | null; downgradedFrom?: GodChatServedTier } | undefined {
   if (tier === null) return { tier: null };
