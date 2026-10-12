@@ -56,10 +56,11 @@ const RELAY_SCRIPT = `(()=>{const f=document.querySelector("iframe");addEventLis
 
 // 里层页面去掉自带的 doctype，排在 CSP meta、主题样式与注入脚本之后：模型写的 <html>、<head> 由解析器并进已开的元素，CSP 只能被它收紧。
 // color-scheme 必须与站点一致，iframe 才保持透明，图示直接落在对话的底色上。
+// body 设 position:relative，没有定位祖先的绝对定位元素才会计入 body.scrollHeight，上报的高度不会把它们裁掉。
 export function htmlVisualDocument(source: string, theme: HtmlVisualTheme, origin: string): string {
   const meta = `<meta http-equiv="Content-Security-Policy" content="${csp(origin)}">`;
   const vars = Object.entries(theme.vars).map(([name, value]) => `${name}:${value}`).join(";");
-  const style = `${theme.fontFaces}:root{color-scheme:${theme.scheme};${vars}}html{scrollbar-width:none}html::-webkit-scrollbar{display:none}body{margin:0;background:transparent;color:var(--fg);font-family:${theme.font};font-size:${theme.fontSize};line-height:1.6}`;
+  const style = `${theme.fontFaces}:root{color-scheme:${theme.scheme};${vars}}html{scrollbar-width:none}html::-webkit-scrollbar{display:none}body{position:relative;margin:0;background:transparent;color:var(--fg);font-family:${theme.font};font-size:${theme.fontSize};line-height:1.6}`;
   const page = `<!doctype html><meta charset="utf-8">${meta}<style>${style}</style><script>${INNER_SCRIPT}</script>${source.replace(/^\s*<!doctype[^>]*>/i, "")}`;
   return `<!doctype html><html><head><meta charset="utf-8">${meta}<style>:root{color-scheme:${theme.scheme}}html,body{margin:0;height:100%;overflow:hidden;background:transparent}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe sandbox="allow-scripts" srcdoc="${escapeAttribute(page)}"></iframe><script>${RELAY_SCRIPT}</script></body></html>`;
 }
