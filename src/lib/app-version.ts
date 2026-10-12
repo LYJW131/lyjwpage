@@ -9,12 +9,23 @@ export type AppVersionPayload = {
   builtAt: string | null;
 };
 
+export const DOCUMENT_COMMIT_META = "build-commit";
+
+const DOCUMENT_COMMIT_PATTERN = new RegExp(`<meta name="${DOCUMENT_COMMIT_META}" content="([0-9a-f]{7,40})"`);
+
+export function readDocumentCommit(html: string): string | null {
+  return DOCUMENT_COMMIT_PATTERN.exec(html)?.[1] ?? null;
+}
+
+// 版本接口不过缓存而首页 HTML 过边缘缓存，部署后两者会错开几分钟；刷新拿到的文档已是新版才算旧页面，否则点了刷新还是旧页、提示接着弹。
 export function resolveVersionStatus(
   pageCommit: string | null | undefined,
   latestCommit: string | null | undefined,
+  documentCommit: string | null | undefined,
 ): AppVersionStatus {
   if (!pageCommit || !latestCommit) return "unknown";
-  return pageCommit === latestCommit ? "current" : "stale";
+  if (pageCommit === latestCommit) return "current";
+  return documentCommit === latestCommit ? "stale" : "unknown";
 }
 
 export type AutoReloadTrigger = "background" | "page-crash";
