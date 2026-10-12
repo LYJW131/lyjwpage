@@ -5,7 +5,7 @@ import { setImmediate } from "node:timers/promises";
 import { getChargerSnapshot } from "@/lib/anker";
 import { getNowWatching, getWatching } from "@/lib/emby";
 import { getPowerBankSnapshot } from "@/lib/powerbank";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
+import { installTestStorage } from "@/lib/testing/fake-storage";
 import { getNowListening } from "@/lib/telemetry";
 import { getTrophies } from "@/lib/trophies";
 import { StorageClient } from "@shared/storage-client";
@@ -14,7 +14,7 @@ import type { StorageCommand } from "@shared/storage-contract";
 // Worker 只把同一轮发出的读取合成一次 StateHub RPC；互不依赖的读取必须在第一轮全部发出。
 async function firstWaveKeys(load: () => Promise<unknown>): Promise<Set<string>> {
   const pending: { commands: StorageCommand[]; release: () => void }[] = [];
-  installStorageForTests(new StorageClient((commands) => new Promise((resolve) => {
+  installTestStorage(new StorageClient((commands) => new Promise((resolve) => {
     pending.push({ commands, release: () => resolve(commands.map((command) => (command.op === "fields" ? {} : command.op === "listRange" ? [] : null))) });
   })));
   try {
@@ -25,7 +25,7 @@ async function firstWaveKeys(load: () => Promise<unknown>): Promise<Set<string>>
     await settled;
     return keys;
   } finally {
-    resetStorageForTests();
+    installTestStorage(null);
   }
 }
 

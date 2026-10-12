@@ -29,8 +29,5 @@ id = "00000000000000000000000000000002"
 binding = "COLLECTOR_KV"
 id = "00000000000000000000000000000003"
 
-[alias]
-"@/lib/storage-driver" = "./src/storage-driver.ts"
-
 [observability]
 enabled = true

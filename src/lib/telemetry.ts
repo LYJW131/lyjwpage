@@ -12,7 +12,7 @@ import type {
   TimezonePayload
 } from "@/lib/types";
 import { pulseListeningTracesKey } from "@/lib/pulse-keys";
-import { withStorage } from "@/lib/storage";
+import { getStorage } from "@shared/storage";
 import { LAG_KEYS } from "@shared/lag";
 import { playingContainer } from "@shared/apple-music-store";
 import { NEXT_LOOP_MAX, parseListeningTrace, type ListeningTrace } from "@shared/pulse-listening";
@@ -36,7 +36,7 @@ export async function getTimezonePayload(): Promise<TimezonePayload | LagResult<
 const ELSEWHERE_TRACES = Math.max(40, 2 * NEXT_LOOP_MAX);
 
 export async function readRecentListeningTraces(): Promise<ListeningTrace[]> {
-  const rows: unknown[] = await withStorage((storage) => storage.listRange(pulseListeningTracesKey(), -ELSEWHERE_TRACES, -1), []);
+  const rows: unknown[] = await getStorage().listRange(pulseListeningTracesKey(), -ELSEWHERE_TRACES, -1);
   return rows.flatMap((raw) => {
     const trace = typeof raw === "string" ? parseListeningTrace(raw) : null;
     return trace ? [trace] : [];

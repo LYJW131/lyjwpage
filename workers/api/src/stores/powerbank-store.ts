@@ -1,6 +1,6 @@
-import { tellStorage } from "@/lib/storage";
+import { getStorage } from "@shared/storage";
 import type { ReportedPowerBankStatus } from "@/lib/types";
-import { fallback, K_LAST_PUSH, K_LATEST, type Stored } from "@shared/powerbank-store";
+import { K_LAST_PUSH, K_LATEST, type Stored } from "@shared/powerbank-store";
 
 
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -28,15 +28,10 @@ export function prepareStatus(
   return {
     structuralChanged,
     commit: async () => {
-      fallback.persisted = await tellStorage(async (storage) => {
-        const pipe = storage.batch();
-        pipe.set(K_LATEST, JSON.stringify({ status, receivedAt }), { ttlMs: TTL_MS });
-        pipe.set(K_LAST_PUSH, String(receivedAt), { ttlMs: TTL_MS });
-        return pipe.execute();
-      });
-      fallback.latest = status;
-      fallback.receivedAt = receivedAt;
-      fallback.lastPushAt = receivedAt;
+      const pipe = getStorage().batch();
+      pipe.set(K_LATEST, JSON.stringify({ status, receivedAt }), { ttlMs: TTL_MS });
+      pipe.set(K_LAST_PUSH, String(receivedAt), { ttlMs: TTL_MS });
+      await pipe.execute();
     },
   };
 }

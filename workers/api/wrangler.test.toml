@@ -19,9 +19,6 @@ STORAGE_PREFIX = "lyjwpage-test"
 ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
 APPLE_MUSIC_STOREFRONT = "cn"
 
-[alias]
-"@/lib/storage-driver" = "./src/storage-driver.ts"
-
 # 跨本地 Worker 共享 KV 必须使用同一个 id。
 [[kv_namespaces]]
 binding = "CREDENTIALS"

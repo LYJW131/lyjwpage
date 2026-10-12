@@ -1,7 +1,7 @@
 import { CHARGER_HISTORY_LIMIT } from "@/lib/limits";
-import { tellStorage, withStorage } from "@/lib/storage";
+import { getStorage } from "@shared/storage";
 import type { ChargerSample, ReportedChargerStatus } from "@/lib/types";
-import { type ChargerLanding, type ChargerState, DISCONNECTED_HISTORY_AFTER_MS, K_HISTORY, K_LAST_PUSH, K_LATEST, type Stored, disconnectedHistoryExpired, fallback } from "@shared/charger-store";
+import { type ChargerLanding, type ChargerState, DISCONNECTED_HISTORY_AFTER_MS, K_HISTORY, K_LAST_PUSH, K_LATEST, type Stored, disconnectedHistoryExpired } from "@shared/charger-store";
 
 
 const MIN_SAMPLE_GAP_MS = 5_000;
@@ -87,33 +87,20 @@ export function prepareStatus(
     structuralChanged,
     historyCount,
     commit: async () => {
-      fallback.persisted = await tellStorage(async (storage) => {
-        const pipe = storage.batch();
-        pipe.set(
-          K_LATEST,
-          JSON.stringify({ status, receivedAt, disconnectedAt: disconnectedAt || null }),
-          { ttlMs: TTL_MS },
-        );
-        pipe.set(K_LAST_PUSH, String(receivedAt), { ttlMs: TTL_MS });
-        if (plan.kind === "clear" || (plan.kind === "append" && plan.reset)) pipe.remove(K_HISTORY);
-        if (plan.kind === "append") {
-          pipe.append(K_HISTORY, JSON.stringify(plan.sample));
-          pipe.trim(K_HISTORY, -CHARGER_HISTORY_LIMIT, -1);
-          pipe.expire(K_HISTORY, TTL_MS);
-        }
-        return pipe.execute();
-      });
-      fallback.latest = status;
-      fallback.receivedAt = receivedAt;
-      fallback.disconnectedAt = disconnectedAt;
-      fallback.lastPushAt = receivedAt;
-      if (plan.kind !== "keep") {
-        if (plan.kind === "clear" || plan.reset) fallback.history.length = 0;
-        if (plan.kind === "append") fallback.history.push(plan.sample);
-        if (fallback.history.length > CHARGER_HISTORY_LIMIT) {
-          fallback.history.splice(0, fallback.history.length - CHARGER_HISTORY_LIMIT);
-        }
+      const pipe = getStorage().batch();
+      pipe.set(
+        K_LATEST,
+        JSON.stringify({ status, receivedAt, disconnectedAt: disconnectedAt || null }),
+        { ttlMs: TTL_MS },
+      );
+      pipe.set(K_LAST_PUSH, String(receivedAt), { ttlMs: TTL_MS });
+      if (plan.kind === "clear" || (plan.kind === "append" && plan.reset)) pipe.remove(K_HISTORY);
+      if (plan.kind === "append") {
+        pipe.append(K_HISTORY, JSON.stringify(plan.sample));
+        pipe.trim(K_HISTORY, -CHARGER_HISTORY_LIMIT, -1);
+        pipe.expire(K_HISTORY, TTL_MS);
       }
+      await pipe.execute();
     },
   };
 }
@@ -129,15 +116,10 @@ export function prepareHeartbeat(
 
   return {
     commit: async () => {
-      fallback.lastPushAt = receivedAt;
-      if (expired) fallback.history.length = 0;
-      // 心跳写入不能翻转快照的 persisted 标志，两者不是同一份数据。
-      await withStorage(async (storage) => {
-        const pipe = storage.batch();
-        pipe.set(K_LAST_PUSH, String(receivedAt), { ttlMs: TTL_MS });
-        if (expired) pipe.remove(K_HISTORY);
-        return pipe.execute();
-      }, null);
+      const pipe = getStorage().batch();
+      pipe.set(K_LAST_PUSH, String(receivedAt), { ttlMs: TTL_MS });
+      if (expired) pipe.remove(K_HISTORY);
+      await pipe.execute();
     },
   };
 }

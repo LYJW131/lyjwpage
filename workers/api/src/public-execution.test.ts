@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { installLagReader } from "@shared/lag";
 import { LAG_KEYS } from "@shared/lag";
+import { installApiPorts } from "./ports";
 import { executePublicRequest } from "./public-execution";
 import type { Env } from "./runtime";
+
+installApiPorts();
 
 function harness(ready: boolean) {
   const calls: string[] = [];

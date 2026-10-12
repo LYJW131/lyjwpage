@@ -1,4 +1,4 @@
-import { key } from "@/lib/storage";
+import { key } from "@shared/storage";
 import type { StateLane } from "@shared/pulse-timeline";
 
 export const pulseLaneKey = (lane: StateLane) => key("pulse", "v2", lane);

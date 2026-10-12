@@ -1,4 +1,4 @@
-import { mirrorKey } from "@/lib/storage";
+import { mirrorKey } from "@shared/storage";
 import type { TrackEnrichment } from "@/lib/track-enrichment";
 import type { LocalNowPlaying } from "@/lib/types";
 
@@ -12,6 +12,5 @@ export type StoredHomePod = {
 
 export const mirror = mirrorKey<StoredHomePod>(
   ["homepod", "nowPlaying"],
-  (state) => state.receivedAt,
   { ttlMs: TTL_MS },
 );

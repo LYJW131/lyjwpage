@@ -14,8 +14,7 @@ import {
 } from "@/lib/pulse-keys";
 import { commitPreparedAgentsReport } from "@api/stores/agents";
 import { commitRecentlyPlayed, commitRecentTracks } from "@api/apple-music-recent";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
 import { LISTENING_TRACE_JITTER_MS } from "@shared/pulse-listening";
 import type { StateLane } from "@shared/pulse-timeline";
@@ -84,8 +83,8 @@ const helpless = { source: "mac", title: "Helpless", artist: "Hamilton", album: 
 function withStorage(run: (storage: FakeStorage) => Promise<void>) {
   return async () => {
     const storage = new FakeStorage();
-    installStorageForTests(storage);
-    try { await run(storage); } finally { resetStorageForTests(); }
+    installTestStorage(storage);
+    try { await run(storage); } finally { installTestStorage(null); }
   };
 }
 

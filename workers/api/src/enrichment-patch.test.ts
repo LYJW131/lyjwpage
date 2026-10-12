@@ -5,8 +5,7 @@ import { trackLookupCacheKey } from "@/lib/apple-music";
 import { installAppleCache } from "@shared/apple-cache";
 import { motionArtworkCacheKey } from "@/lib/motion-artwork";
 import { parseAppleMusicUrl } from "@/lib/motion-artwork-url";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
 import { MemoryKv } from "@/lib/testing/memory-kv";
 import { trackKeyOf, upcomingKeyOf } from "@/lib/track-enrichment";
 import type { ListeningItem } from "@/lib/types";
@@ -64,7 +63,7 @@ function seedFirst(kv: MemoryKv) {
 }
 
 function isolated(t: { after: (fn: () => void) => void }): MemoryKv {
-  installStorageForTests(new FakeStorage());
+  installTestStorage(new FakeStorage());
   const kv = new MemoryKv();
   installAppleCache(() => kv);
   const originalFetch = globalThis.fetch;
@@ -75,7 +74,7 @@ function isolated(t: { after: (fn: () => void) => void }): MemoryKv {
     globalThis.fetch = originalFetch;
     console.warn = originalWarn;
     installAppleCache(null);
-    resetStorageForTests();
+    installTestStorage(null);
   });
   return kv;
 }
