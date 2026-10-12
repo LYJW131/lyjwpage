@@ -279,13 +279,12 @@ export async function fetchClaude(): Promise<AgentRow | null> {
   const accessToken = text(oauth.accessToken);
   if (!accessToken) throw new ClaudeAuthExpiredError();
 
-  let hints: { subscriptionType: string | null; rateLimitTier: string | null } | null = {
+  // 凭据里的 subscriptionType / rateLimitTier 是登录时的快照，续期不更新，换套餐后会一直是旧档；
+  // 每轮以 profile 为准，取不到才退回快照。
+  const hints = (await fetchClaudeOAuthProfile(accessToken)) ?? {
     subscriptionType: text(oauth.subscriptionType),
     rateLimitTier: text(oauth.rateLimitTier),
   };
-  if (!hints.subscriptionType && !hints.rateLimitTier) {
-    hints = (await fetchClaudeOAuthProfile(accessToken)) ?? hints;
-  }
 
   try {
     const body = await fetchClaudeUsageBody(accessToken);
