@@ -944,7 +944,7 @@
     ? m % APPLE_IDLE === 0 || (m > APPLE_CHANGED && m - APPLE_CHANGED < APPLE_HOLD)
     : m % JOBS[j][1] === JOBS[j][2]);
   const DC = [17870, 500], DR = 262;
-  const TC = { x: 18236, y: 174, w: 880, h: 700 };
+  const TC = { x: 18236, y: 174, w: 880, h: 652 };
   const minuteAt = (b) => Math.floor((b - AT.dial) * 4 + 1e-9);
   function handSteps(j, b) {
     if (b < AT.dial) return 0;
