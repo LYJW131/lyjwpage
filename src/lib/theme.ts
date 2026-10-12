@@ -50,7 +50,11 @@ export function themeBootScript(): string {
   );
 }
 
+// localStorage 写不进（禁用存储、配额满）时选择只留在本页内存里，否则快照读回旧值，主题切过去又被切回来。
+let unsavedChoice: ThemeChoice | null = null;
+
 export function readThemeChoice(): ThemeChoice {
+  if (unsavedChoice) return unsavedChoice;
   try {
     return parseThemeChoice(localStorage.getItem(THEME_STORAGE_KEY));
   } catch {
@@ -101,7 +105,10 @@ export function syncThemeToDocument(choice: ThemeChoice, systemDark: boolean): v
 export function setThemeChoice(next: ThemeChoice): void {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, next);
-  } catch {}
+    unsavedChoice = null;
+  } catch {
+    unsavedChoice = next;
+  }
   syncThemeToDocument(next, readSystemDark());
   for (const listener of listeners) listener();
 }

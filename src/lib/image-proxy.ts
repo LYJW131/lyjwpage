@@ -94,10 +94,14 @@ export function displayWidthFromSizes(sizes: string | undefined): number | undef
 }
 
 export function optimizerSrcSet(src: string, quality: number, displayWidth: number): string {
-  const one = imageWidthBucket(displayWidth);
-  const two = imageWidthBucket(displayWidth * 2);
-  const entries = [`${optimizerImagePath(src, one, quality)} 1x`];
-  if (two !== one) entries.push(`${optimizerImagePath(src, two, quality)} 2x`);
+  const entries: string[] = [];
+  let previous = 0;
+  for (const density of [1, 2, 3]) {
+    const width = imageWidthBucket(displayWidth * density);
+    if (width === previous) continue;
+    entries.push(`${optimizerImagePath(src, width, quality)} ${density}x`);
+    previous = width;
+  }
   return entries.join(", ");
 }
 
