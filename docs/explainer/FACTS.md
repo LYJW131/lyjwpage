@@ -238,7 +238,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 按卡缓存
 
-- `/api/home` 已删除（8977457）。首屏 loader 按视图并行调 `status(key)`，一个视图一次（按 e10a75a 现数 **27 次**），外加头像和最近提交；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#loader`）。
+- `/api/home` 已删除（8977457）。首屏 loader 按视图并行调 `status(key)`，一个视图一次（按 e10a75a 现数 **27 次**），最近提交随 `githubRepo` 视图到达，头像内联与之同时开始；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#loader`）。
 - 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/server/site-context.ts#SiteServices`）。
 - 实时层的公开读取在 `StateHub.publicRead()` 里随读取一起过初始化与提交可见性屏障，每次读一个 RPC；可滞后层只读 KV，不过屏障、不唤醒 DO（`workers/api/src/public-execution.ts#executePublicRequest`）。
 - **视图响应由 site Worker 的 `StatusSnapshot` 缓存入口回源**：成功 200 挂 `Cache-Tag: page:<tag>`、Cache-Control 600 秒；`ok:false` 与端点 404 的降级信封只缓存 60 秒（`src/lib/site-policy.ts#STATUS_DEGRADED_CACHE_CONTROL`）；歌词由 `site.lyrics` 直取后端 `/api/lyrics`，不进这条缓存（`workers/site/src/index.ts#StatusSnapshotBase`、`src/lib/site-policy.ts#statusSnapshotHeaders`）。整页 SSR 文档与数据响应另挂 `Cache-Tag: home`、max-age 300 / SWR 86400（`src/lib/site-policy.ts#HOME_CACHE_TAG`）。
@@ -431,7 +431,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
   1. `.github/workflows/purge-esa.yml#purge`：调 ESA 的 `PurgeCaches` 刷掉 `lyjw131.com` 首页的缓存键，再 GET 一次预热（`scripts/run-esa-purge.mjs`、`scripts/esa-purge.mjs#purgeEsaHomepage`、`scripts/esa-purge.mjs#warmupEsaCache`）。
   2. `.github/workflows/purge-esa.yml#notify`（等刷新完）：先等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 都答出这次部署的 sha，每个域名最多 30 次、每次隔 10 秒；等不到这一步就失败，不发通知，页面靠自己的定时自查兜底（下文「收不到通知也有兜底」）。先刷新再通知，是因为反过来的话 lyjw131.com 的访客点刷新拿回的还是旧 HTML（同文件里那段注释）。
   3. 带 `lyjwpage-github-actions` 那把 Access service token 调上报入口的 `POST /api/internal/site-deployed`，这把只有 `internal:site-deployed` 权限（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）；失败重试，最长 10 分钟（`--retry-max-time 600`），理由是各 Worker 并行上线，接收端还没换版时会短暂回 404 / 405（同文件里那段注释）。
-- 上报入口验过权限，经 Service Binding 调 `StateCore.broadcastVersion()`（`workers/ingress/src/worker.ts#handleSiteDeployed`、`workers/api/src/state-core.ts#broadcastVersion`）：直接交给推送房间、不经 StateHub，LivePushRoom 向所有连着的页面广播 `version`，不带数据（`payload` 为 null）；另在 `waitUntil` 里请 collector 立刻重拉部署列表（`workers/ingress/src/worker.ts#DEPLOYMENT_JOBS`，片中不画）。
+- 上报入口验过权限，经 Service Binding 调 `StateCore.broadcastVersion()`（`workers/ingress/src/worker.ts#handleSiteDeployed`、`workers/api/src/state-core.ts#broadcastVersion`）：直接交给推送房间、不经 StateHub，LivePushRoom 向所有连着的页面广播 `version`，不带数据（`payload` 为 null）；另在 `waitUntil` 里请 collector 立刻重拉部署列表与仓库统计（`workers/ingress/src/worker.ts#DEPLOYMENT_JOBS`，片中不画）。
 - 页面收到 `version` 只重问自己域名上的 `/api/version`，不信推来的版本号（`src/hooks/use-live-events.ts#INVALIDATIONS`）；这个接口是构建期常量，头是 `max-age=0, must-revalidate`（`src/lib/site-policy.ts#VERSION_CACHE_CONTROL`），拿它和页面构建时焊进的 sha 比（`src/lib/app-version.ts#resolveVersionStatus`）。
 - 比出来旧了：前台只弹 UPDATE 卡，刷不刷交给人（`src/components/app-version-card.tsx#AppVersionCard`）；后台标签页自己刷新（`src/components/stale-tab-reload.tsx#StaleTabReload`、`src/hooks/use-stale-auto-reload.ts#useStaleAutoReload`），有几道闸：同一个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次、两次自动刷新之间冷却 `AUTO_RELOAD_COOLDOWN_MS`、网页播放器在放不刷、sessionStorage 用不了不刷（`src/lib/app-version.ts#autoReloadDecision`）。片中只画「前台弹提示、后台自己刷新」。
 - 收不到通知也有兜底：页面每 30 分钟问一次，切回前台时再问一次（`src/hooks/use-app-version.ts#REFRESH_MS`）。

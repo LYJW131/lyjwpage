@@ -121,7 +121,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 1. 请状态核心 `StateCore.broadcastVersion()` 向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version`
    并弹出更新提示；回执 `{ ok: true, delivered }` 里是送达的连接数。
-2. 在 `waitUntil` 里请采集 Worker `Collector.refresh(["site-deployments", "cloudflare-deployments"])` 立刻重拉部署列表
+2. 在 `waitUntil` 里请采集 Worker 按 `workers/ingress/src/worker.ts#DEPLOYMENT_JOBS` 立刻重拉部署列表与仓库统计（首页「最近提交」读后者）
    （契约 `shared/collector.ts`），不等下一次 cron；失败只记日志，不拖慢回执（工作流的 curl 只等有限时间，见 `.github/workflows/purge-esa.yml`）。
 
 ## 配置

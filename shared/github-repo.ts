@@ -1,7 +1,7 @@
 import { get, put } from "@shared/cache";
 import { loadLag, type LagResult } from "@shared/lag-result";
 import { site } from "@shared/site";
-import { type CommitListItem, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@shared/commit-authors";
+import { type CommitAuthor, type CommitListItem, actorAuthor, commitTitle, mergeAuthors, parseCoAuthors, primaryAuthor } from "@shared/commit-authors";
 import type { GithubRepoCommit, GithubRepoContributor, GithubRepoPayload } from "@shared/types";
 import { LAG_KEYS } from "@shared/lag";
 
@@ -91,26 +91,78 @@ export function getGithubRepo(): Promise<LagResult<GithubRepoPayload>> {
 
 export const RECENT_COMMIT_LIMIT = 10;
 
-export function repoCommitsFrom(items: CommitListItem[]): GithubRepoCommit[] {
+export function repoCommitsFrom(
+  items: CommitListItem[],
+  githubAuthors: ReadonlyMap<string, CommitAuthor[]> = new Map(),
+): GithubRepoCommit[] {
   return items.flatMap((item) => {
     const sha = item.sha?.trim();
     if (!sha) return [];
     const message = item.commit?.message ?? "";
-    const authors = mergeAuthors(primaryAuthor(item), parseCoAuthors(message)).map((author) => author.login ?? author.name);
-    return [{ sha: sha.slice(0, 7), title: commitTitle(message), authors: [...new Set(authors)], committedAt: item.commit?.author?.date ?? null }];
+    const authors = mergeAuthors(primaryAuthor(item), parseCoAuthors(message));
+    return [{
+      sha: sha.slice(0, 7),
+      title: commitTitle(message),
+      authors: [...new Set(authors.map((author) => author.login ?? author.name))],
+      committedAt: item.commit?.author?.date ?? null,
+      oid: sha,
+      url: item.html_url?.trim() || `${site.repo}/commit/${sha}`,
+      verified: Boolean(item.commit?.verification?.verified),
+      authorDetails: githubAuthors.get(sha) ?? authors,
+    }];
   });
 }
 
+type GraphqlCommitAuthor = { name: string; email: string; avatarUrl: string; user: { login: string } | null };
+
+// REST 只关联主作者；GraphQL 的 authors 才带上 GitHub 识别出的协作者及其真实头像。
+async function fetchCommitAuthors(
+  token: string,
+  owner: string,
+  name: string,
+  shas: string[],
+  signal: AbortSignal,
+): Promise<Map<string, CommitAuthor[]>> {
+  const valid = shas.filter((sha) => /^[a-f0-9]{40}$/i.test(sha));
+  const result = new Map<string, CommitAuthor[]>();
+  if (!valid.length) return result;
+  const fields = valid
+    .map((sha, i) => `c${i}: object(oid: "${sha}") { ... on Commit { authors(first: 100) { nodes { name email avatarUrl user { login } } } } }`)
+    .join("\n");
+  const data = await graphqlData<{ repository?: Record<string, { authors?: { nodes?: GraphqlCommitAuthor[] } } | null> | null }>(
+    token,
+    signal,
+    `query ($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields} } }`,
+    { owner, name },
+    "GitHub 提交作者取数失败",
+  );
+  valid.forEach((sha, i) => {
+    const nodes = data?.repository?.[`c${i}`]?.authors?.nodes;
+    if (nodes?.length) {
+      result.set(sha, mergeAuthors(null, nodes.map((author) => actorAuthor({
+        name: author.name, email: author.email, login: author.user?.login ?? null, avatarUrl: author.avatarUrl,
+      }))));
+    }
+  });
+  return result;
+}
+
 export async function fetchRecentCommits(token: string, owner: string, name: string, budgetMs: number): Promise<GithubRepoCommit[]> {
+  const signal = AbortSignal.timeout(budgetMs);
   const url = new URL(`https://api.github.com/repos/${owner}/${name}/commits`);
   url.searchParams.set("per_page", String(RECENT_COMMIT_LIMIT));
   const response = await fetch(url, {
     headers: { Accept: "application/vnd.github+json", "User-Agent": "lyjwpage", Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(budgetMs),
+    signal,
   });
   const body = (await response.json().catch(() => null)) as CommitListItem[] | null;
   if (!response.ok || !Array.isArray(body)) throw new Error(`GitHub 最近提交 HTTP ${response.status}`);
-  return repoCommitsFrom(body);
+  const shas = body.flatMap((item) => (item.sha ? [item.sha.trim()] : []));
+  const githubAuthors = await fetchCommitAuthors(token, owner, name, shas, signal).catch((error: unknown) => {
+    console.warn("[github-repo]", error instanceof Error ? error.message : String(error), "；提交作者按 REST 与尾注拼");
+    return new Map<string, CommitAuthor[]>();
+  });
+  return repoCommitsFrom(body, githubAuthors);
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -210,12 +262,22 @@ type GraphqlPayload = {
   errors?: Array<{ message?: string }>;
 };
 
-async function graphql(
+function graphql(
   token: string,
   signal: AbortSignal,
   query: string,
   variables: Record<string, unknown>,
 ): Promise<GraphqlPayload["data"]> {
+  return graphqlData<GraphqlPayload["data"]>(token, signal, query, variables, "GitHub 仓库总数取数失败");
+}
+
+async function graphqlData<T>(
+  token: string,
+  signal: AbortSignal,
+  query: string,
+  variables: Record<string, unknown>,
+  failure: string,
+): Promise<T> {
   const response = await fetch(GITHUB_GRAPHQL, {
     method: "POST",
     headers: {
@@ -227,13 +289,13 @@ async function graphql(
     body: JSON.stringify({ query, variables }),
     signal,
   });
-  const body = (await response.json().catch(() => null)) as GraphqlPayload | null;
+  const body = (await response.json().catch(() => null)) as { data?: T; errors?: Array<{ message?: string }> } | null;
   if (!response.ok || !body?.data || body.errors?.length) {
     // 上游原文只进日志：GitHub 的报错里可能带令牌状态、配额、组织名这类不该
     // 出门的东西，而这条 message 会经 statusEnvelope 原样变成公开 JSON。
     const reason = body?.errors?.map((error) => error.message).filter(Boolean).join("; ");
     console.error("[github-repo]", response.status, reason || "GraphQL 响应不是预期的形状");
-    throw new Error("GitHub 仓库总数取数失败");
+    throw new Error(failure);
   }
   return body.data;
 }

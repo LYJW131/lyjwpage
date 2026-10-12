@@ -33,7 +33,7 @@ export const STATUS_VIEWS = {
   questNow: { path: "/api/status/quest/now", layer: "realtime", tag: "quest-now", event: "quest-now" },
   trophies: { path: "/api/status/trophies", layer: "realtime", tag: "trophies", event: "trophies", pushCovers: true },
   githubChart: { path: "/api/status/github-chart", layer: "lag", cadenceMs: 10 * 60_000 },
-  githubRepo: { path: "/api/status/github-repo", layer: "lag", cadenceMs: 30 * 60_000 },
+  githubRepo: { path: "/api/status/github-repo", layer: "lag", tag: "github-repo", cadenceMs: 30 * 60_000 },
   cloudflareWorkers: { path: "/api/status/cloudflare-workers", layer: "lag", cadenceMs: 2 * 60_000 },
   siteDeployments: { path: "/api/status/site-deployments", layer: "lag", cadenceMs: 60_000 },
   sentry: { path: "/api/status/sentry", layer: "lag", cadenceMs: 5 * 60_000 },

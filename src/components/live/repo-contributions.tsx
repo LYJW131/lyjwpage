@@ -5,7 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import Image from "@/components/app-image";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import type { CommitAuthor } from "@shared/commit-authors";
-import type { GithubRecentCommit } from "@/lib/github-recent-commits";
+import { deploymentFor, type RecentCommit, recentCommitsFrom } from "@/lib/recent-commits";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { CLOUDFLARE_DASH_URL, site } from "@shared/site";
 import type { GithubRepoContributor, GithubRepoPayload } from "@shared/types";
@@ -213,7 +213,7 @@ function CommitVerifiedIcon({ className }: { className?: string }) {
 }
 
 function CommitCard({ commit, deploy }: {
-  commit: GithubRecentCommit;
+  commit: RecentCommit;
   deploy: { deployment: SiteDeployment; production: boolean } | undefined;
 }) {
   const deployment = deploy?.deployment ?? null;
@@ -232,10 +232,10 @@ function CommitCard({ commit, deploy }: {
           href={commit.url}
           target="_blank"
           rel="noreferrer noopener"
-          title={commit.verified ? `${commit.shortSha} · Verified signature` : commit.shortSha}
+          title={commit.verified ? `${commit.sha} · Verified signature` : commit.sha}
           className="group/sha -mb-2 inline-flex items-center gap-1 pb-2 font-mono hover:text-foreground"
         >
-          <span>{commit.shortSha}</span>
+          <span>{commit.sha}</span>
           {commit.verified && (
             <CommitVerifiedIcon className="size-3 text-muted-foreground group-hover/sha:text-foreground" />
           )}
@@ -247,17 +247,17 @@ function CommitCard({ commit, deploy }: {
   );
 }
 
+const COMMIT_LIMIT = 3;
+
 export function RepoContributions({
   data,
-  recentCommits = [],
   deploymentsBySha,
 }: {
   data: GithubRepoPayload | undefined;
-  recentCommits?: GithubRecentCommit[];
   deploymentsBySha: Map<string, { deployment: SiteDeployment; production: boolean }>;
 }) {
   const hasContributors = Boolean(data?.contributors.length);
-  const commits = recentCommits ?? [];
+  const commits = recentCommitsFrom(data?.recentCommits, COMMIT_LIMIT);
   if (!hasContributors && commits.length === 0) return null;
 
   const shown = data?.contributors.slice(0, CONTRIBUTOR_LIMIT) ?? [];
@@ -278,8 +278,8 @@ export function RepoContributions({
             <div className="min-w-0 border-t border-line p-4 md:border-t-0 md:border-l md:border-line md:pl-4 lg:pr-5">
               <div className="label-mono text-muted-foreground">Commits</div>
               <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
-                {commits.slice(0, 3).map((commit) => (
-                  <CommitCard key={commit.sha} commit={commit} deploy={deploymentsBySha.get(commit.sha)} />
+                {commits.map((commit) => (
+                  <CommitCard key={commit.sha} commit={commit} deploy={deploymentFor(commit, deploymentsBySha)} />
                 ))}
               </ul>
             </div>
@@ -289,8 +289,8 @@ export function RepoContributions({
         <div className="p-4 lg:px-5">
           <div className="label-mono text-muted-foreground">Commits</div>
           <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
-            {commits.slice(0, 3).map((commit) => (
-              <CommitCard key={commit.sha} commit={commit} deploy={deploymentsBySha.get(commit.sha)} />
+            {commits.map((commit) => (
+              <CommitCard key={commit.sha} commit={commit} deploy={deploymentFor(commit, deploymentsBySha)} />
             ))}
           </ul>
         </div>
