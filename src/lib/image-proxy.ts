@@ -17,12 +17,12 @@ export const IMAGE_DEFAULT_WIDTH = 1920;
 export const IMAGE_FIT_VALUES = ["cover", "contain", "scale-down"] as const;
 export type ImageFit = (typeof IMAGE_FIT_VALUES)[number];
 
-const EXACT_IMAGE_HOSTS = new Set([
+export const EXACT_IMAGE_HOSTS = new Set([
   "avatars.githubusercontent.com",
   "psn-rsc.prod.dl.playstation.net",
 ]);
 
-const SUFFIX_IMAGE_HOSTS = ["blobstore.apple.com", "mzstatic.com"];
+export const SUFFIX_IMAGE_HOSTS = ["blobstore.apple.com", "mzstatic.com"];
 
 const IPV4_LITERAL = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 
