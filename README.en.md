@@ -121,7 +121,7 @@ The faint line under the app name is the current window title; the Cursor and An
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse card: factual timelines including token rates, with daily summaries; hovering a listening segment shows its time range, state and the track playing then" width="100%">
 </picture>
 
-**The site itself (LYJWPAGE)**: repository stats, contributors and recent commits. Below that, two status-page-style uptime rows: `lyjw.me` follows the collector Worker's per-minute uptime probe, and `API` follows the heartbeat of the api Worker's minute cron, each with 30 daily cells and an availability figure. Further down are the PageSpeed lab score and the real-visitor Users score, 12-hour requests, CPU and error counts per service, and push counts, round-trip latency and live versions of the two resident reporters on the exit node.
+**The site itself (LYJWPAGE)**: repository stats, contributors and recent commits. Below that, two status-page-style uptime rows: `lyjw.me` follows the collector Worker's per-minute uptime probe, and `API` follows the api Worker's cron heartbeat, each with 30 daily cells and an availability figure. Further down are the PageSpeed lab score and the real-visitor Users score, 12-hour requests, CPU and error counts per service, and push counts, round-trip latency and live versions of the two resident reporters on the exit node.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
