@@ -132,6 +132,7 @@ function AnalogClock({
       return () => window.clearInterval(timer);
     }
 
+    apply(Date.now(), true);
     let frame = requestAnimationFrame(function tick() {
       apply(Date.now(), true);
       frame = requestAnimationFrame(tick);
@@ -204,15 +205,18 @@ export function TimezoneCard({
   className?: string;
 }) {
   const mountedAt = useMountedAt();
-  const [ticked, setTicked] = useState(0);
+  const [beat, setBeat] = useState({ now: 0, prev: 0 });
   const snapshotAt = fallback.ok ? fallback.data.snapshotAt : 0;
-  const now = ticked || mountedAt || snapshotAt;
+  const now = beat.now || mountedAt || snapshotAt;
+  // 缓存页水合或休眠恢复会把快照时间一次性追平到现在，只能瞬跳；逐位滚动只留给逐秒节拍。
+  const animated = beat.prev !== 0 && Math.abs(beat.now - beat.prev) < 1_500;
 
   useEffect(() => {
     let interval: number | undefined;
+    const tick = () => setBeat(({ now }) => ({ prev: now, now: Date.now() }));
     const timeout = window.setTimeout(() => {
-      setTicked(Date.now());
-      interval = window.setInterval(() => setTicked(Date.now()), 1_000);
+      tick();
+      interval = window.setInterval(tick, 1_000);
     }, 1_000 - (Date.now() % 1_000));
 
     return () => {
@@ -253,9 +257,9 @@ export function TimezoneCard({
                   dateTime={new Date(now).toISOString()}
                   aria-label={`${String(clock.hour).padStart(2, "0")}:${String(clock.minute).padStart(2, "0")}:${String(clock.second).padStart(2, "0")}`}
                 >
-                  <NumberFlow value={clock.hour} locales="en-US" format={TWO_DIGITS} />
+                  <NumberFlow value={clock.hour} locales="en-US" format={TWO_DIGITS} animated={animated} />
                   <span className="mx-0.5 text-muted-foreground">:</span>
-                  <NumberFlow value={clock.minute} locales="en-US" format={TWO_DIGITS} />
+                  <NumberFlow value={clock.minute} locales="en-US" format={TWO_DIGITS} animated={animated} />
                   <span className="mx-0.5 text-lg font-normal text-muted-foreground/50 sm:text-xl lg:text-2xl">
                     :
                   </span>
@@ -263,6 +267,7 @@ export function TimezoneCard({
                     value={clock.second}
                     locales="en-US"
                     format={TWO_DIGITS}
+                    animated={animated}
                     className="text-lg font-normal tracking-normal text-muted-foreground/50 sm:text-xl lg:text-2xl"
                   />
                 </time>
@@ -303,7 +308,7 @@ export function TimezoneCard({
               minute={clock.minute}
               second={clock.second}
               now={now}
-              live={Boolean(mountedAt || ticked)}
+              live={Boolean(mountedAt || beat.now)}
             />
           ) : (
             <ClockShell />
