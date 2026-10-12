@@ -15,7 +15,7 @@ export function scoreInputs(root = SCORE_SOURCE) {
     .filter((name) => name.endsWith(".js"))
     .sort()
     .map((name) => `music/${name}`);
-  return ["plan.js", "score.js", ...music, "tools/score-mp3.mjs"];
+  return ["../clawd.js", "plan.js", "score.js", ...music, "tools/score-mp3.mjs"];
 }
 
 export function scoreObjectKey(root = SCORE_SOURCE) {
