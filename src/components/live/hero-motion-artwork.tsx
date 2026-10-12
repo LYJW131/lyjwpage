@@ -8,6 +8,8 @@ import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwor
 import type { ArtworkDataUri } from "@/lib/artwork-placeholder";
 import { cn } from "@/lib/utils";
 
+const loadHls = () => import("hls.js");
+
 // ABR 只看带宽，会为小封面拉最高档并放大下采样锯齿，按显示尺寸锁定档位。
 function smallestAdequateLevel(levels: Level[], video: HTMLVideoElement): number {
   if (!levels.length) return -1;
@@ -59,7 +61,7 @@ export function HeroMotionArtwork({
       if (fellBack) return;
       fellBack = true;
 
-      const { default: Hls } = await import("hls.js");
+      const { default: Hls } = await loadHls();
       if (unmounted || !Hls.isSupported()) return;
 
       video.removeAttribute("src");
@@ -74,17 +76,9 @@ export function HeroMotionArtwork({
 
       instance.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
-        switch (data.type) {
-          case Hls.ErrorTypes.NETWORK_ERROR:
-            instance.startLoad();
-            break;
-          case Hls.ErrorTypes.MEDIA_ERROR:
-            instance.recoverMediaError();
-            break;
-          default:
-            instance.destroy();
-            break;
-        }
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) instance.startLoad();
+        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) instance.recoverMediaError();
+        else instance.destroy();
       });
       instance.on(Hls.Events.MANIFEST_PARSED, () => {
         if (unmounted) return;
