@@ -34,6 +34,7 @@ export function mergeRepoStats(
 }
 
 const commitKeys = (commits: GithubRepoCommit[] | undefined) => (commits ?? []).map((commit) => commit.oid ?? commit.sha).join();
+const headTime = (commits: GithubRepoCommit[] | undefined) => Date.parse(commits?.[0]?.committedAt ?? "") || 0;
 
 type RepoFetchers = {
   commits: (budgetMs: number) => Promise<GithubRepoCommit[]>;
@@ -48,11 +49,24 @@ function liveFetchers(token: string): RepoFetchers {
   };
 }
 
-export async function refreshGithubRepo(
-  deps: { lag: LagStore; core: Pick<StateCoreRpc, "revalidate">; fetchers: RepoFetchers },
-  scheduled: boolean,
-): Promise<JobResult> {
-  const previous = (await readLag<GithubRepoPayload>(deps.lag, LAG_KEYS.githubRepo))?.data ?? null;
+type RepoDeps = { lag: LagStore; core: Pick<StateCoreRpc, "revalidate">; fetchers: RepoFetchers };
+
+async function publish(deps: RepoDeps, previous: GithubRepoPayload | null, next: GithubRepoPayload, updatedAt?: number) {
+  // 定时任务和部署后的重拉会并发，慢的一轮不能拿更旧的提交盖掉快的一轮已经写下的。
+  const latest = (await readLag<GithubRepoPayload>(deps.lag, LAG_KEYS.githubRepo))?.data;
+  if (latest && headTime(latest.recentCommits) > headTime(next.recentCommits)) next = { ...next, recentCommits: latest.recentCommits };
+  await writeLag(deps.lag, LAG_KEYS.githubRepo, next, updatedAt);
+  if (commitKeys(previous?.recentCommits) === commitKeys(next.recentCommits)) return;
+  try {
+    await deps.core.revalidate([REPO_TAG]);
+  } catch (error) {
+    console.warn("[github-repo] revalidate", explain(error));
+  }
+}
+
+export async function refreshGithubRepo(deps: RepoDeps, scheduled: boolean): Promise<JobResult> {
+  const stored = await readLag<GithubRepoPayload>(deps.lag, LAG_KEYS.githubRepo);
+  const previous = stored?.data ?? null;
   let commitsFresh = true;
   const commits = deps.fetchers.commits(COMMITS_BUDGET_MS).catch((error: unknown) => {
     commitsFresh = false;
@@ -69,25 +83,15 @@ export async function refreshGithubRepo(
   }
   const merged = mergeRepoStats(fresh, previous);
   const recentCommits = await commits;
-  let next: GithubRepoPayload;
   if (merged) {
-    next = recentCommits ? { ...merged, recentCommits } : merged;
-  } else if (!scheduled && previous && recentCommits && commitsFresh) {
-    // 定时任务这时报错，留着 updatedAt 显出过时；部署后的重拉只为最近提交，统计交给下一轮定时。
-    next = { ...previous, recentCommits };
-  } else {
-    throw new Error("GitHub 仓库统计这轮没有可写的结果（名单没取到，也没有上一份可沿用）");
+    await publish(deps, previous, recentCommits ? { ...merged, recentCommits } : merged);
+    return ok(fresh.ok ? undefined : "contributors carried over");
   }
-  await writeLag(deps.lag, LAG_KEYS.githubRepo, next);
-  if (commitKeys(previous?.recentCommits) !== commitKeys(next.recentCommits)) {
-    try {
-      await deps.core.revalidate([REPO_TAG]);
-    } catch (error) {
-      console.warn("[github-repo] revalidate", explain(error));
-    }
-  }
-  if (!merged) return ok("stats carried over");
-  return ok(fresh.ok ? undefined : "contributors carried over");
+  if (!stored || !recentCommits || !commitsFresh) throw new Error("GitHub 仓库统计这轮没有可写的结果（名单没取到，也没有上一份可沿用）");
+  // 统计这轮取不到时新提交照样并进上一份，但 updatedAt 留旧值，卡片照常显出统计过时；定时任务仍报错。
+  await publish(deps, stored.data, { ...stored.data, recentCommits }, stored.updatedAt);
+  if (scheduled) throw new Error("GitHub 仓库统计这轮没有结果，只并进了最近提交");
+  return ok("stats carried over");
 }
 
 export const githubRepoJob: Job = {
