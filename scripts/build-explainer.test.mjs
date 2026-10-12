@@ -19,7 +19,7 @@ function buildFixture(t, markup) {
   fs.writeFileSync(path.join(source, "index.html"), html);
   fs.mkdirSync(path.join(source, "music"));
   fs.mkdirSync(path.join(source, "tools"));
-  for (const rel of ["plan.js", "score.js", "music/ch00.js", "tools/score-mp3.mjs"]) fs.writeFileSync(path.join(source, rel), `// ${rel}`);
+  for (const rel of ["../clawd.js", "plan.js", "score.js", "music/ch00.js", "tools/score-mp3.mjs"]) fs.writeFileSync(path.join(source, rel), `// ${rel}`);
   const result = spawnSync(process.execPath, [buildScript], { cwd, encoding: "utf8" });
   return { ...result, cwd, html };
 }
