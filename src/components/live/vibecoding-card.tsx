@@ -6,7 +6,7 @@ import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
-import { Cloud } from "lucide-react";
+import { ChevronDown, Cloud } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
@@ -587,7 +587,7 @@ function UsageMeter({
   children?: ReactNode;
 }) {
   if (!href) {
-    return <div className="relative mt-1.5 h-1.5 overflow-hidden bg-muted">{children}</div>;
+    return <span className="relative mt-1.5 block h-1.5 overflow-hidden bg-muted">{children}</span>;
   }
   return (
     <a
@@ -677,8 +677,8 @@ function LimitMeter({
         </span>
       </div>
       <UsageMeter href={href} label={label}>
-        <div
-          className="h-full transition-[width] duration-700"
+        <span
+          className="block h-full transition-[width] duration-700"
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
         {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
@@ -885,14 +885,14 @@ function CompactAgentRow({
   const overPace = pace != null && usedPercent != null && usedPercent / 100 > pace;
   const { active, sources } = useAgentActive(row, macDeclaredOffline, clocks);
   const usageUrl = agentUsageUrl(row.id);
+  const [expanded, setExpanded] = useState(false);
+  const expandable = !usageUrl && !limitsStale && row.limits.length > 1;
+  const open = expandable && expanded;
 
-  return (
-    <div
-      className="min-w-0 py-3"
-      title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}
-    >
-      <div className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
-        <div className="flex h-5 min-w-0 items-center gap-2">
+  const summary = (
+    <>
+      <span className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
+        <span className="flex h-5 min-w-0 items-center gap-2">
           <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
             {row.id === "codex" ? (
               <CodexActivityIndicator active={active} />
@@ -902,7 +902,13 @@ function CompactAgentRow({
           </span>
           <span className="truncate text-sm font-medium">{row.label}</span>
           {active && <ActiveBadge sources={sources} />}
-        </div>
+          {expandable && (
+            <ChevronDown
+              aria-hidden
+              className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+            />
+          )}
+        </span>
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {row.plan && (
             <span className="truncate" title={`Plan ${row.plan.tier}`}>
@@ -962,16 +968,49 @@ function CompactAgentRow({
             </span>
           )}
         </span>
-      </div>
+      </span>
       <UsageMeter href={usageUrl} label={agentUsageLabel(row.label)}>
         {usedPercent != null && (
-          <div
-            className="h-full transition-[width] duration-700"
+          <span
+            className="block h-full transition-[width] duration-700"
             style={{ width: `${usedPercent}%`, backgroundColor: color }}
           />
         )}
         {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
       </UsageMeter>
+    </>
+  );
+
+  return (
+    <div
+      className="min-w-0 py-3"
+      title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}
+    >
+      {expandable ? (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setExpanded((value) => !value)}
+          className="block w-full cursor-pointer text-left focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live"
+        >
+          {summary}
+        </button>
+      ) : (
+        summary
+      )}
+      {open && (
+        <div className="mt-3 grid gap-3 border-l border-line pl-3">
+          {row.limits.map((item) => (
+            <LimitMeter
+              key={item.key}
+              limit={item}
+              title={item.label ?? item.key}
+              href={null}
+              label={agentUsageLabel(row.label, item.label ?? item.key)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
