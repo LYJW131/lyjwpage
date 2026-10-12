@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { STATUS_VIEWS } from "@/lib/status-views";
+import { STATUS_VIEWS } from "@shared/status-views";
 import { runShowCard } from "./chat/show-card.ts";
 import { newLedger, type ToolIO, type ToolLedger } from "./tools/registry.ts";
 import { isImageField, SITE_STATUS_TOOL } from "./tools/site-status.ts";

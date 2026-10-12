@@ -4,10 +4,13 @@ import { afterEach, test } from "node:test";
 import { CREDENTIAL_KEYS } from "@shared/credentials";
 
 import { appleDeveloperToken, resetAppleDeveloperTokenForTests } from "./apple-developer-token";
-import { readAppleMusicCredentials } from "./apple-music-credentials";
+import { readAppleMusicCredentials } from "@shared/apple-music-auth";
+import { installCollectorPorts } from "./ports";
 import type { Env } from "./env";
 import { bindEnv, unbindEnvForTests } from "./runtime";
 import { MemoryKv } from "./testing/memory-kv";
+
+installCollectorPorts();
 
 afterEach(() => {
   resetAppleDeveloperTokenForTests();

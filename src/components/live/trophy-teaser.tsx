@@ -8,13 +8,13 @@ import {
   playstationImage,
 } from "@/lib/playstation-image";
 import type { PlaystationPresenceKind } from "@/lib/playstation-presence";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 import type {
   StatusResponse,
   TrophiesSummaryPayload,
   TrophyType,
   TrophyUnlock,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const PRESENCE_DOT: Record<PlaystationPresenceKind, { className: string; label: string }> = {

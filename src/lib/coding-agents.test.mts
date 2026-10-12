@@ -10,7 +10,7 @@ import {
   describeCodingSources,
   type CodingActivityEntry,
 } from "./coding-agents.ts";
-import type { CodingUsageAgentView } from "./types.ts";
+import type { CodingUsageAgentView } from "@shared/types.ts";
 
 const limitRow = { plan: null, limits: [], limitsError: null, updatedAt: 5_000 };
 

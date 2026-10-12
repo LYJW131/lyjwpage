@@ -1,5 +1,5 @@
-import type { ListeningItem, LocalNowPlaying } from "@/lib/types";
-import type { PlayingQueueTrack } from "@/lib/playing-queue";
+import type { ListeningItem, LocalNowPlaying } from "@shared/types";
+import type { PlayingQueueTrack } from "@shared/playing-queue";
 import {
   enrichTrackOutcome,
   mergeEnrichment,
@@ -9,7 +9,7 @@ import {
   type EnrichmentOutcome,
   type TrackEnrichment,
   upcomingKeyOf,
-} from "@/lib/track-enrichment";
+} from "@shared/track-enrichment";
 import type { CoreCommand } from "@shared/ingest/prepare";
 
 export type EnrichmentTarget = "mac" | "homepod";

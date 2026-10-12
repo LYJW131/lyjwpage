@@ -1,8 +1,8 @@
 import { LAG_KEYS, writeLag } from "@shared/lag";
-import { get, put } from "@/lib/cache";
-import { fetchPageSpeed, mergePageSpeed } from "@/lib/pagespeed";
-import { site } from "@/lib/site";
-import type { PageSpeedSample } from "@/lib/site-deployments-types";
+import { get, put } from "@shared/cache";
+import { fetchPageSpeed, mergePageSpeed } from "../pagespeed";
+import { site } from "@shared/site";
+import type { PageSpeedSample } from "@shared/site-deployments-types";
 
 import { ok, skipMissing, type Job } from "../job";
 

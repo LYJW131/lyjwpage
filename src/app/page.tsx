@@ -25,7 +25,7 @@ import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { APP_VERSION_PATH } from "@/lib/app-version";
-import { liveTrack } from "@/lib/home-layout";
+import { liveTrack } from "@shared/home-layout";
 import {
   ACTIVITY_PATH,
   AGENT_STATUS_PATH,
@@ -56,8 +56,8 @@ import {
   emptySiteAssetMetadata,
   type SiteAssetMetadata,
 } from "@/lib/site-assets";
-import { STATUS_VIEWS } from "@/lib/status-views";
-import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
+import { STATUS_VIEWS } from "@shared/status-views";
+import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
 import { siteContext, type SiteServices } from "@/server/site-context";
 
 import type { Route } from "./+types/page";

@@ -13,8 +13,8 @@ import { useLiveEvents } from "@/hooks/use-live-events";
 import { commitSha as pageCommit } from "@/lib/build-info";
 import { fetchStatus } from "@/lib/status-reads";
 import { SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
-import type { StatusResponse } from "@/lib/types";
-import type { SiteDeploymentsPayload } from "@/lib/site-deployments-types";
+import type { StatusResponse } from "@shared/types";
+import type { SiteDeploymentsPayload } from "@shared/site-deployments-types";
 
 const REFRESH_MS = 30 * 60_000;
 

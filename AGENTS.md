@@ -19,7 +19,7 @@
 - 修改路由与加载器前，读 `node_modules/react-router/docs/` 与 `@react-router` 的类型。按需检索，不为小改动遍历整个文档或技能目录。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后用户提出的修改请求若没有另行要求，视为用户正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让用户能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。在生产域名上验证完就关掉页面：开着的可见标签会按轮询节奏一直请求 API。
-- 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`。Worker 与上报器用各自目录里 `AGENTS.md` / `README.md` 写的验证命令。
+- 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`（`shared/` 的测试同样由 `pnpm test` 跑）。Worker 与上报器用各自目录里 `AGENTS.md` / `README.md` 写的验证命令。
 - 有回归风险时补行为测试；低影响改动不添加仅重复实现的测试。相关检查通过后，只有新改动、失败或未解疑点才扩大或重复验证。环境限制导致无法验证时说明具体缺口。
 - CI 的门禁清单以 `.github/workflows/ci.yml` 为准（含 `pnpm docs:check`）。本地不必全跑，但改动波及处对应的那几项必须通过。
 
@@ -70,7 +70,7 @@
 - LobeHub 没有的品牌再找官方 SVG：含 `fill="currentColor"` 的要内联为组件，通过 `<img>` 或 `AppImage` 加载时无法继承页面文字色；示例见 `src/components/live/agent-status-card.tsx` 的 `TypesafeIcon`。只有位图时，先压到展示所需尺寸再入库。
 - 静态图标使用 `src/components/app-image.tsx`（`AppImage`）时一律设 `unoptimized`，直接加载最终资源。图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况，允许列表见 `src/lib/image-proxy.ts`。
 - 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏；GitHub 头像同理，由 `scripts/site-assets/avatar.ts` 在构建期缩小并内联为 data URI（图片优化器里的 GitHub 域名仅供源图获取失败时回退）。
-- R2 图片在页面、状态 API 和推送里一律是 `/img/<objectKey>` 同源路径（`src/lib/asset-url.ts`），不烧交付域，图片字节不进站点渲染层：`/img/*` 由 site Worker 的 R2 绑定直出，`lyjw131.com` 由 ESA 缓存并回源（规则见 `docs/ops-facts.md`）。改前缀要同步改站点路由和 ESA 规则。
+- R2 图片在页面、状态 API 和推送里一律是 `/img/<objectKey>` 同源路径（`shared/asset-url.ts`），不烧交付域，图片字节不进站点渲染层：`/img/*` 由 site Worker 的 R2 绑定直出，`lyjw131.com` 由 ESA 缓存并回源（规则见 `docs/ops-facts.md`）。改前缀要同步改站点路由和 ESA 规则。
 
 # 界面与交互
 

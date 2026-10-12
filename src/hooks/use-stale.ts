@@ -19,8 +19,8 @@ import {
   resumeTimedOut,
   type ChargingFeed,
   type ResumeState,
-} from "@/lib/freshness";
-import type { NowListeningPayload, ReporterPresence } from "@/lib/types";
+} from "@shared/freshness";
+import type { NowListeningPayload, ReporterPresence } from "@shared/types";
 
 // isStale 使用严格大于；闹钟必须越过边界，否则不会判旧也不会再推进。
 function deadlineOf(at: number | null | undefined, windowMs: number): number | null {

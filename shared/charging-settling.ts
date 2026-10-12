@@ -1,4 +1,4 @@
-import { key } from "@/lib/storage";
+import { key } from "@shared/storage";
 
 
 // 必须覆盖上报器完整追发窗口及往返余量，否则最后的稳定读数会错过推送。

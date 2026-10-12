@@ -1,4 +1,4 @@
-import { readBoundedBytes } from "@/lib/read-bounded-bytes";
+import { readBoundedBytes } from "@shared/read-bounded-bytes";
 
 const PROXY_PATHS = new Set([
   "/api/musickit/token",

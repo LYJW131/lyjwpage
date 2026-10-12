@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Resvg } from "@resvg/resvg-js";
 import satori from "satori";
 
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 export const OG_SIZE = { width: 1200, height: 630 };
 

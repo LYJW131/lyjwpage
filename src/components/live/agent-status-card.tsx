@@ -20,10 +20,10 @@ import {
   type AgentIndicator,
   type AgentStatusPayload,
   type AgentStatusRow,
-} from "@/lib/agent-status-types";
-import { AGENT_STATUS_STALE_MS } from "@/lib/freshness";
+} from "@shared/agent-status-types";
+import { AGENT_STATUS_STALE_MS } from "@shared/freshness";
 import { AGENT_STATUS_PATH } from "@/lib/paths";
-import type { StatusResponse } from "@/lib/types";
+import type { StatusResponse } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const ROWS_PER_COLUMN = 3;

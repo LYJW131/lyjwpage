@@ -17,7 +17,7 @@ import {
   STATIC_TRANSITION,
   STATIC_VARIANTS,
 } from "@/lib/motion";
-import type { StatusResponse, WatchingItem } from "@/lib/types";
+import type { StatusResponse, WatchingItem } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const NOW_REFRESH_MS = 60_000;

@@ -1,6 +1,6 @@
 import Foundation
 
-// 节奏照搬浏览器端（`src/lib/status-views.ts#STATUS_VIEWS`、`src/lib/poll-schedule.ts`），App 打在 Worker 上的量才不超过多开一个标签页。
+// 节奏照搬浏览器端（`shared/status-views.ts#STATUS_VIEWS`、`src/lib/poll-schedule.ts`），App 打在 Worker 上的量才不超过多开一个标签页。
 enum FeedKey: String, CaseIterable, Sendable {
     case desktop, timezone, activity, workouts, server, charger, powerBank, listening, nowListening
     case coding, codingNow, codingYear, limits, agentStatus, watching, nowWatching, playing, playingNow

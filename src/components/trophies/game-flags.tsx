@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { PsPlusMark } from "@/components/trophies/ps-plus";
-import { plusCatalog } from "@/lib/playstation-entitlements";
+import { plusCatalog } from "@shared/playstation-entitlements";
 import { cn } from "@/lib/utils";
 
 export function consoleLabel(platforms: Array<string | null | undefined>): string | null {

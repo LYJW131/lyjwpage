@@ -10,7 +10,7 @@ import {
   nextLagDelay,
   realtimeInterval,
 } from "@/lib/poll-schedule";
-import { STATUS_VIEWS, cadenceOfPath, isPushedViewPath, pushCoversPath } from "@/lib/status-views";
+import { STATUS_VIEWS, cadenceOfPath, isPushedViewPath, pushCoversPath } from "@shared/status-views";
 
 const MIN = 60_000;
 

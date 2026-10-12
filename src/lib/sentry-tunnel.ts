@@ -1,4 +1,4 @@
-import { BodyTooLargeError, readBoundedBytes } from "@/lib/read-bounded-bytes";
+import { BodyTooLargeError, readBoundedBytes } from "@shared/read-bounded-bytes";
 
 export const SENTRY_RELAY_MAX_BYTES = 1_048_576;
 const SENTRY_RELAY_TIMEOUT_MS = 8_000;

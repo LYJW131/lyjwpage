@@ -45,7 +45,7 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 | `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-agents` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
 | `ACTIVE_INTERVAL_MS` | | agent 在用时的间隔，也是闲档重查活动的间隔。默认见 `src/config.ts#config.cadence` |
-| `IDLE_INTERVAL_MS` | | 都没在用时的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `src/lib/freshness.ts#AGENT_LIMITS_STALE_MS` |
+| `IDLE_INTERVAL_MS` | | 都没在用时的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `shared/freshness.ts#AGENT_LIMITS_STALE_MS` |
 | `ACTIVITY_TIMEOUT_MS` | | 每个活动请求的超时。默认见 `src/config.ts#config.cadence` |
 | `CURSOR_NOW_FAST_INTERVAL_MS` | | Cursor 在用时查最近用量事件的间隔，要小于活动窗口 `src/cursor-now.ts#ACTIVE_WINDOW_MS`。默认见 `src/config.ts#config.cursorNow` |
 | `CURSOR_NOW_MAX_INTERVAL_MS` | | 没新事件时间隔翻倍拉长的上限。默认见 `src/config.ts#config.cursorNow` |
@@ -215,7 +215,7 @@ cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应�
 机器与网络见 `docs/ops-facts.md`。代理开关见 `Dockerfile#NODE_USE_ENV_PROXY`。
 ssh 直连在 kex 阶段会被对面关掉，一律走 dsm 跳板：`ssh -J dsm misaka-jp`。
 
-限额在站点的可滞后层，浏览器按 `src/lib/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（三轮闲档加余量）判断过没过时。
+限额在站点的可滞后层，浏览器按 `shared/freshness.ts` 的 `AGENT_LIMITS_STALE_MS`（三轮闲档加余量）判断过没过时。
 间隔见 `src/config.ts#config.cadence`。
 
 `compose.yaml` 改了才需要送（跳板后面 sftp 用不了，`scp` 别想，走 ssh 管道）：

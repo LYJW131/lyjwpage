@@ -1,4 +1,4 @@
-import { objectKeyFromAssetUrl, publicAssetPath } from "@/lib/asset-url";
+import { objectKeyFromAssetUrl, publicAssetPath } from "@shared/asset-url";
 import type { SiteServices } from "@/server/site-context";
 
 const ICON_PX = 56;

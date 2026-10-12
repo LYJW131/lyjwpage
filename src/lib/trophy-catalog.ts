@@ -3,8 +3,8 @@ import type { Cache, ScopedMutator } from "swr";
 import { trophiesTilePath } from "@/lib/paths";
 import { PLAYSTATION_IMAGE_SCALE, playstationImage } from "@/lib/playstation-image";
 import { fetchStatus } from "@/lib/status-reads";
-import { sliceTrophies } from "@/lib/trophy-slice";
-import type { StatusResponse, TrophiesPayload } from "@/lib/types";
+import { sliceTrophies } from "@shared/trophy-slice";
+import type { StatusResponse, TrophiesPayload } from "@shared/types";
 
 type Catalog = StatusResponse<TrophiesPayload>;
 

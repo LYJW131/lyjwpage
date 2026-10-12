@@ -20,15 +20,15 @@ import {
   CHARGER_MODEL,
   ankerModelLabel,
   formatPortElectrical,
-} from "@/lib/charging-device";
-import { chargerActive } from "@/lib/home-layout";
+} from "@shared/charging-device";
+import { chargerActive } from "@shared/home-layout";
 import { CHARGER_PATH } from "@/lib/paths";
 import type {
   ChargerPayload,
   ChargerPort,
   ChargerStatus,
   StatusResponse,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const REFRESH_MS = 30_000;

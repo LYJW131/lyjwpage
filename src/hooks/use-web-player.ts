@@ -24,7 +24,7 @@ import {
   playbackLagMs,
   shouldSeekAfterTrackChange,
 } from "@/lib/listen-along";
-import { catalogItemId, mediaItemIndex } from "@/lib/playing-queue";
+import { catalogItemId, mediaItemIndex } from "@shared/playing-queue";
 import {
   isSyncEpochCurrent,
   normalizeSyncUpcomingSongIds,
@@ -32,7 +32,7 @@ import {
   shouldKeepNaturalNext,
 } from "@/lib/web-player-sync";
 import { trackPositionMs } from "@/lib/track-position";
-import type { ListeningItem, LocalNowPlaying } from "@/lib/types";
+import type { ListeningItem, LocalNowPlaying } from "@shared/types";
 import {
   fetchCatalogTracks,
   filterUserQueueItems,

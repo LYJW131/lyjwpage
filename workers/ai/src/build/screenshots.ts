@@ -1,5 +1,5 @@
-import { publicAssetPath } from "@/lib/asset-url";
-import { site } from "@/lib/site";
+import { publicAssetPath } from "@shared/asset-url";
+import { site } from "@shared/site";
 import { BUILD_SCREENSHOT_LIMITS, PLAN_LABELS, planLanguage } from "@shared/build-routine";
 import type { StoredRun } from "./coordinator";
 import type { GithubBuildApi } from "./github";

@@ -1,6 +1,6 @@
 import { LAG_KEYS, writeLag } from "@shared/lag";
-import { fetchWorkerDeployments, fetchWorkersMetrics } from "@/lib/cloudflare-workers";
-import { CLOUDFLARE_WORKERS, type CloudflareDeploymentsPayload } from "@/lib/cloudflare-workers-types";
+import { fetchWorkerDeployments, fetchWorkersMetrics } from "@shared/cloudflare-workers";
+import { CLOUDFLARE_WORKERS, type CloudflareDeploymentsPayload } from "@shared/cloudflare-workers-types";
 
 import { ok, settings, skipMissing, type Job } from "../job";
 

@@ -1,5 +1,5 @@
-import { CHARGING_IDLE_MAX_W } from "@/lib/home-layout";
-import { PULSE_REPEAT_AFTER_MS, PULSE_SILENT_AFTER_MS } from "@/lib/limits";
+import { CHARGING_IDLE_MAX_W } from "@shared/home-layout";
+import { PULSE_REPEAT_AFTER_MS, PULSE_SILENT_AFTER_MS } from "@shared/limits";
 
 
 export const PULSE_TITLE_MAX = 200;
