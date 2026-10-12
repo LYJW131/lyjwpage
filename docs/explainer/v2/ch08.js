@@ -6,7 +6,7 @@
     "ch08.title": ["心电图与地层", "Heartbeat and strata"],
     "ch08.knock": ["敲门", "knock"],
     "ch08.knockSub": ["每分钟一次", "every minute"],
-    "ch08.knockOnly": ["只说明 Vercel 还在出页面", "proves only that Vercel serves pages"],
+    "ch08.knockOnly": ["只说明 site Worker 还在出页面", "only proves the site Worker serves"],
     "ch08.checkin": ["报到", "check-in"],
     "ch08.checkinSub": ["每 5 分钟一次", "every 5 minutes"],
     "ch08.cron": ["cron", "cron"],
@@ -208,7 +208,7 @@
     if (a <= 0) return;
     box(x, SITE.x, SITE.y, SITE.w, SITE.h, a);
     text(x, "lyjw.me", SITE.x + 20, SITE.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
-    text(x, "Vercel", SITE.x + 20, SITE.y + 88, { font: FONT.mono(28, 500), color: css("ash"), alpha: a });
+    text(x, "site Worker", SITE.x + 20, SITE.y + 88, { font: FONT.mono(28, 500), color: css("ash"), alpha: a, maxW: SITE.w - 40 });
     box(x, API.x, API.y, API.w, API.h, a);
     text(x, "workers/api", API.x + 20, API.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
     text(x, tr("ch08.cron"), API.x + 20, API.y + 88, { font: FONT.cjk(28, 600), color: css("ash"), alpha: a });

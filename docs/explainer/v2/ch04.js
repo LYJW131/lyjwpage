@@ -9,7 +9,7 @@
     "ch04.visitor": ["访客", "Visitor"],
     "ch04.rt": ["实时", "Realtime"],
     "ch04.lag": ["可滞后", "Lag-tolerant"],
-    "ch04.foot": ["'use cache' · stale 300 / revalidate 600 / expire 7 天", "'use cache' · stale 300 / revalidate 600 / expire 7 days"],
+    "ch04.foot": ["Cache-Tag · max-age 600 / stale-while-revalidate 604200", "Cache-Tag · max-age 600 / stale-while-revalidate 604200"],
     "ch04.flip": ["在线 → 离线：这几块的标签失效", "Online → offline: tags expire"],
     "ch04.old": ["旧页照发", "The old page still ships"],
     "ch04.new": ["新页 · 后台印", "New page · printing"],
@@ -50,7 +50,7 @@
     { id: "trophies", rt: 1, tag: 1, r: [366, 1456, 248, 183], k: "tiles" },
     { id: "pulse", rt: 1, tag: 0, r: [0, 1646, 614, 212], k: "lanes" },
     { id: "github-repo", rt: 0, tag: 0, r: [0, 1865, 614, 106], k: "text" },
-    { id: "vercel-deployments", rt: 0, tag: 0, r: [0, 1975, 614, 106], k: "text" },
+    { id: "site-deployments", rt: 0, tag: 0, r: [0, 1975, 614, 106], k: "text" },
     { id: "cloudflare-workers", rt: 0, tag: 0, r: [0, 2085, 614, 106], k: "text" },
     { id: "sentry", rt: 0, tag: 0, r: [0, 2195, 614, 106], k: "cells" },
     { id: "reporters", rt: 0, tag: 0, r: [0, 2305, 614, 111], k: "text" },
@@ -68,7 +68,7 @@
   const RAIL = { rt: -70, lag: 684 }, GLYPH_Y = 2760;
   const RECAST = [["desktop", 6.0], ["listening-now", 6.5], ["charger", 7.0]];
   const recastAt = Object.fromEntries(RECAST);
-  const TIMERS = [["github-chart", 8.0], ["pulse", 8.125], ["github-repo", 8.25], ["vercel-deployments", 8.375], ["cloudflare-workers", 8.5], ["sentry", 8.625], ["reporters", 8.75]];
+  const TIMERS = [["github-chart", 8.0], ["pulse", 8.125], ["github-repo", 8.25], ["site-deployments", 8.375], ["cloudflare-workers", 8.5], ["sentry", 8.625], ["reporters", 8.75]];
   const timerAt = Object.fromEntries(TIMERS);
   const FAIL = "pulse", FAIL_T = 9.5;
 
@@ -251,8 +251,8 @@
     text(x, "04", -1100, 330, { font: FONT.pixel(280), color: css("signal"), alpha: a });
     text(x, tr("ch04.title"), -1100, 560, { font: FONT.cjk(145, 600), reveal: prog(b, 0.4, 0.95), alpha: a, maxW: 980 });
     line(x, -1100, 620, lerp(-1100, -140, prog(b, 0.45, 1.0, E.outExpo)), 620, 3.5, css("pink"), a);
-    text(x, "Vercel · Next.js", -1096, 720, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.55, 1.05), alpha: a });
-    text(x, "'use cache' · cacheTag", -1096, 812, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.62, 1.1), alpha: a });
+    text(x, "React Router · SSR", -1096, 720, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.55, 1.05), alpha: a });
+    text(x, "site Worker · Cache-Tag", -1096, 812, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.62, 1.1), alpha: a });
   }
 
   function galleyFrame(x, b) {
@@ -423,7 +423,7 @@
     const fa = win(b, 5.0, 5.1, 7.7, 7.85);
     if (fa > 0) {
       text(d, tr("ch04.flip"), 1240, 610, { font: FONT.cjk(36, 600), color: css("signal"), reveal: prog(b, 5.0, 5.35), alpha: fa, maxW: 560 });
-      text(d, 'revalidateTag(…, "max")', 1242, 656, { font: FONT.mono(30), color: css("graphite"), alpha: fa * prog(b, 5.3, 5.45) });
+      text(d, "cache.invalidate({ tags })", 1242, 656, { font: FONT.mono(30), color: css("graphite"), alpha: fa * prog(b, 5.3, 5.45) });
     }
 
     const fp = byId[FAIL], [fx, fy, fw, fh] = fp.r;

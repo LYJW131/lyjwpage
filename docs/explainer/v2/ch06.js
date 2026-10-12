@@ -17,7 +17,7 @@
     "ch06.changed": ["内容变了 → 新名字", "New content → new name"],
     "ch06.noPurge": ["不用刷新", "never purged"],
     "ch06.apple": ["（在听的封面来自 Apple 目录，不走这条路）", "(Now-playing covers come from Apple's catalog, not /img.)"],
-    "ch06.rewrite": ["边缘 rewrite", "edge rewrite"],
+    "ch06.r2": ["site Worker · R2 绑定", "site Worker · R2 binding"],
     "ch06.esaImg": ["ESA 缓存同一路径", "ESA caches the same path"],
     "ch06.n2a": ["文件名就是内容的 sha256：", "Files are named by SHA-256,"],
     "ch06.n2b": ["地址即版本，缓存一年也不会错。", "so caching them for a year is safe."],
@@ -126,7 +126,7 @@
     station(x, C[0], C[1], prog(b, 0.8, 0.92));
     station(x, R2[0], R2[1], prog(b, 0.72, 0.84), { r: 16, lw: 5 });
     const la = (t0) => prog(b, t0, t0 + 0.15);
-    text(x, "Vercel", O[0] - 50, O[1] + 16, { font: FONT.mono(46, 600), align: "right", alpha: la(0.45) });
+    text(x, "site Worker", O[0] - 50, O[1] + 16, { font: FONT.mono(46, 600), align: "right", alpha: la(0.45) });
     text(x, tr("ch06.origin"), O[0] - 50, O[1] + 66, { font: FONT.cjk(40, 600), color: css("graphite"), align: "right", alpha: la(0.5) });
     text(x, tr("ch06.esa"), ESA[0] - 34, ESA[1] - 34, { font: FONT.mono(46, 600), align: "right", alpha: la(0.66), maxW: 560 });
     text(x, "lyjw.me", L[0] - 40, L[1] + 72, { font: FONT.mono(46, 600), align: "right", alpha: la(0.56) });
@@ -210,7 +210,7 @@
       chip(d, lab, lerp(C[0] - 150, ESA[0] + 210, kB), CN_Y - 50, true, a);
     }
     const ra = prog(b, 5.0, 5.2) * a;
-    text(d, tr("ch06.rewrite"), SPUR_X - 28, 470, { font: FONT.cjk(36, 600), align: "right", alpha: ra });
+    text(d, tr("ch06.r2"), SPUR_X - 28, 470, { font: FONT.cjk(36, 600), align: "right", alpha: ra });
     text(d, "/img/*", SPUR_X - 28, 420, { font: FONT.mono(36, 500), color: css("graphite"), align: "right", alpha: ra });
     if (kUp >= 1) glow(e, R2[0], R2[1], 110, 0.5 * impact(b, 5.3, 0.3));
     text(d, tr("ch06.esaImg"), ESA[0] + 210, CN_Y + 72, { font: FONT.cjk(36, 600), color: css("signal"), align: "center", alpha: prog(b, 5.25, 5.45) * a, maxW: 560 });

@@ -1,4 +1,4 @@
-import type { Workout } from "@/lib/types";
+import type { Workout } from "@shared/types";
 
 export const WORKOUT_LIMIT = 10;
 

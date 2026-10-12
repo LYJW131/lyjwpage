@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { BetaManagedAgentsAgentToolset20260401Params, BetaManagedAgentsCustomToolParams } from "@anthropic-ai/sdk/resources/beta/agents/agents";
 import type { BetaManagedAgentsEventParams, BetaManagedAgentsStreamSessionEvents } from "@anthropic-ai/sdk/resources/beta/sessions/events";
 
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 import { PLAN_LABELS, textLanguage, visitorLanguage } from "@shared/build-routine";
 import { parseQuestions, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";

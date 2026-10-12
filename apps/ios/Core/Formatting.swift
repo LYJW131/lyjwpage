@@ -140,7 +140,7 @@ enum Format {
 }
 
 enum SiteDay {
-    // 「今天」按站点时区算，不按手机所在时区。源：src/lib/site.ts#site（`timezone` 字段）
+    // 「今天」按站点时区算，不按手机所在时区。源：shared/site.ts#site（`timezone` 字段）
     static let timeZone = TimeZone(identifier: "Asia/Shanghai")!
 
     static func string(_ date: Date) -> String {
@@ -162,12 +162,13 @@ enum CodingAgentNames {
         case "antigravity": "Antigravity"
         case "opencode": "OpenCode"
         case "pi": "Pi"
+        case "devin": "Devin CLI"
         default: id.prefix(1).uppercased() + id.dropFirst()
         }
     }
 
     // 与站点一致：标为 hidden 的 agent 不单列。
-    static func isHidden(_ id: String) -> Bool { id == "opencode" || id == "pi" }
+    static func isHidden(_ id: String) -> Bool { id == "opencode" || id == "pi" || id == "devin" }
 }
 
 enum LimitWindow {

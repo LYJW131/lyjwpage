@@ -1,5 +1,5 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { STATUS_VIEWS } from "@/lib/status-views";
+import { STATUS_VIEWS } from "@shared/status-views";
 import type { PublicStatusRpc } from "@shared/public-status";
 
 import { executePublicRequest } from "./public-execution";

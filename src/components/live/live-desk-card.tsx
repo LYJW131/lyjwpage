@@ -11,7 +11,7 @@ import { useStatus } from "@/hooks/use-status";
 import { findDesktopOverride } from "@/lib/desktop-app-overrides";
 import { STATIC_TRANSITION, STATIC_VARIANTS } from "@/lib/motion";
 import { DESKTOP_PATH } from "@/lib/paths";
-import type { DesktopActivity, DesktopPayload, StatusResponse } from "@/lib/types";
+import type { DesktopActivity, DesktopPayload, StatusResponse } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const LOCK_SCREEN_BUNDLE_ID = "com.apple.loginwindow";

@@ -37,8 +37,6 @@ export type BuildRun = {
   ci?: BuildSignal;
   preview?: BuildSignal;
   review?: BuildSignal;
-  // Vercel 预览的公开分享链接：preview.url 在部署成功后换成 url；expiresAt 为 epoch 毫秒。
-  previewShare?: { deploymentId: string; url: string; expiresAt: number };
   reconciledAt?: number;
   githubUpdatedAt?: number;
 };
@@ -87,7 +85,7 @@ export const PLAN_LABELS = {
     askReady: "Pick your answers below.",
     handoff: "Good idea. I'll bring in the planner to work it out with you.",
     screenshots: "Screenshots",
-    screenshotsNote: "Captured by the build routine on its local dev server before upload; the Vercel preview is the deployed result.",
+    screenshotsNote: "Captured by the build routine before upload; the deployed preview requires Cloudflare Access sign-in.",
   },
   zh: {
     request: "想要什么",
@@ -102,7 +100,7 @@ export const PLAN_LABELS = {
     askReady: "请在下面选一下。",
     handoff: "好主意，我请规划者来和你一起把它想清楚。",
     screenshots: "截图",
-    screenshotsNote: "由构建 routine 在上传前于本地开发服务器截取；部署后的效果以 Vercel 预览为准。",
+    screenshotsNote: "由构建 routine 在上传前截取；部署后的预览需要通过 Cloudflare Access 登录。",
   },
   ja: {
     request: "要望",
@@ -117,7 +115,7 @@ export const PLAN_LABELS = {
     askReady: "下から選んでください。",
     handoff: "いいですね。プランナーに引き継いで、一緒に詰めていきます。",
     screenshots: "スクリーンショット",
-    screenshotsNote: "ビルド routine がアップロード前にローカルの開発サーバーで撮影したものです。デプロイ後の表示は Vercel のプレビューで確認してください。",
+    screenshotsNote: "アップロード前にビルド routine が撮影したものです。デプロイ後のプレビューには Cloudflare Access へのサインインが必要です。",
   },
 } as const satisfies Record<PlanLanguage, unknown>;
 

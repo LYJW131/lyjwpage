@@ -2,6 +2,8 @@
 
 站点的原生 iOS 客户端 + iPhone 上报器。人读的说明在 `README.md`；首次上机步骤与待验证清单在 `docs/ios-app-handoff.md`。
 
+维护范围以 [README「维护范围」](./README.md#维护范围) 为准；仅维护运动数据上报链路，不同步暂停维护的展示端契约。
+
 ## 不变量
 
 - **bundle id 不改**（`project.yml` 的 `PRODUCT_BUNDLE_IDENTIFIER`）：改了 HealthKit 授权、钥匙串里的 Access 密钥、带 HealthKit 能力的描述文件全要重来。小组件 id 是它的后缀。
@@ -15,12 +17,14 @@
 
 ## 须与站点成对修改
 
+上报载荷保持成对修改；其余展示契约在恢复客户端维护后执行。
+
 | 这里 | 站点 |
 | --- | --- |
-| `Core/Models/*.swift` | `src/lib/types.ts` 等载荷类型 |
-| `Core/LiveEvent.swift` | `src/lib/live-events.ts#LiveEvent` |
-| `Core/Live/FeedSchedule.swift` | `src/lib/status-views.ts#STATUS_VIEWS`、`src/lib/poll-schedule.ts` |
-| `Core/Freshness.swift`、`Core/Live/LiveStore+Derived.swift` | `src/lib/freshness.ts`、`src/lib/home-layout.ts` |
+| `Core/Models/*.swift` | `shared/types.ts` 等载荷类型 |
+| `Core/LiveEvent.swift` | `shared/live-events.ts#LiveEvent` |
+| `Core/Live/FeedSchedule.swift` | `shared/status-views.ts#STATUS_VIEWS`、`src/lib/poll-schedule.ts` |
+| `Core/Freshness.swift`、`Core/Live/LiveStore+Derived.swift` | `shared/freshness.ts`、`shared/home-layout.ts` |
 | `App/Hub/**` 的上报载荷 | `shared/ingest/phone.ts#KNOWN_MODULES`、`shared/ingest/activity.ts`、`shared/ingest/workouts.ts` |
 
 Swift 里抄过来的常量逐个标了 `源：path#symbol`。站点重命名字段时直接替换，不留兼容分支（根 AGENTS.md「变更完成条件」）。

@@ -1,21 +1,21 @@
 import { requestState } from "@shared/request-state";
-import { candidateFrom, type TrackEnrichment } from "@/lib/track-enrichment";
+import { candidateFrom, type TrackEnrichment } from "@shared/track-enrichment";
 import {
   type StoredHomePod
-} from "@/lib/homepod-store";
-import { type NowListeningSnapshot } from "@/lib/now-listening";
+} from "@shared/homepod-store";
+import { type NowListeningSnapshot } from "@shared/now-listening";
 import {
   type PlayingQueueTrack
-} from "@/lib/playing-queue";
-import { IMAGE_OBJECT_KEY, publicAssetPath } from "@/lib/asset-url";
-import { fieldMirror } from "@/lib/storage";
-import { withPresence, type Liveness } from "@/lib/reporter-liveness";
+} from "@shared/playing-queue";
+import { IMAGE_OBJECT_KEY, publicAssetPath } from "@shared/asset-url";
+import { fieldMirror } from "@shared/storage";
+import { withPresence, type Liveness } from "@shared/reporter-liveness";
 import type {
   DesktopActivity,
   DesktopPayload,
   LocalNowPlaying,
   TimezoneActivity
-} from "@/lib/types";
+} from "@shared/types";
 
 export const DESKTOP_ICON_CACHE_LIMIT = 64;
 
@@ -59,7 +59,6 @@ export type PersistedTelemetry = {
 
 export const mirror = fieldMirror<PersistedTelemetry>(
   ["telemetry", "fields"],
-  (state) => state.telemetryReceivedAt,
 );
 
 export async function syncTelemetryState() {

@@ -1,6 +1,6 @@
 // EventSource 默认无限重连；未提供本机服务的访客必须在失败时关闭连接。
 
-import { publicAssetPath } from "./asset-url.ts";
+import { publicAssetPath } from "@shared/asset-url.ts";
 import {
   LOCAL_CHARGING_STORAGE_KEY,
   readLocalChargingArmed,
@@ -11,16 +11,16 @@ import {
   normalizeChargingDevice,
   normalizePowerBank,
   type RawChargingDevice,
-} from "./charging-device.ts";
+} from "@shared/charging-device.ts";
 import { publicChargerStatus, publicPowerBankStatus } from "@shared/charging-devices";
-import { object } from "./json.ts";
-import { LIVE_INTERVAL_MS, LIVE_WINDOW_MS } from "./limits.ts";
+import { object } from "@shared/json.ts";
+import { LIVE_INTERVAL_MS, LIVE_WINDOW_MS } from "@shared/limits.ts";
 import type {
   ChargerPayload,
   ChargerSample,
   PowerBankPayload,
   ReporterPresence,
-} from "./types.ts";
+} from "@shared/types.ts";
 
 const LOCAL_HISTORY_LIMIT = Math.round(LIVE_WINDOW_MS / LIVE_INTERVAL_MS);
 

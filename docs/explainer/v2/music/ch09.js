@@ -48,7 +48,7 @@
       { bar: 4, beat: 2, kind: "stamp", size: "mid" },
       { bar: 4, beat: 3, kind: "whoosh", tube: 1 },
       { bar: 6, beat: 0, kind: "tick", m: midi("F6"), i: 2 },
-      { bar: 6, beat: 1, kind: "off" },
+      { bar: 6, beat: 1, kind: "off", m: midi("D5") },
       { bar: 6, beat: 2, kind: "whoosh", tube: "down" },
       { bar: 6, beat: 3, kind: "lamp", m: midi("A5"), i: 1 },
       { bar: 8, beat: 1, kind: "whoosh", tube: 2 },

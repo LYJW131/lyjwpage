@@ -1,4 +1,4 @@
-import type { CodingUsageSource } from "@/lib/types";
+import type { CodingUsageSource } from "@shared/types";
 
 export type { CodingUsageSource };
 

@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage.git",
-      "revision": "ff52d027f7097358a511438eef9ed28b45d3814d"
+      "revision": "9de4de40d6bad7edb2e38af0bd18464a3fee9f97"
     }
   },
   "components": [
@@ -135,7 +135,7 @@
           "path": "workers/ingress/src/lag-ingest.ts"
         },
         {
-          "path": "workers/api/src/lag-store.ts"
+          "path": "workers/api/src/ports.ts"
         }
       ]
     },
@@ -195,7 +195,7 @@
       "id": "external",
       "type": "external",
       "label": "外部服务",
-      "sublabel": "Apple · GitHub · Vercel",
+      "sublabel": "Apple · GitHub",
       "tag": "Cloudflare · Sentry · PSI · 厂商状态",
       "pos": [
         40,
@@ -242,7 +242,7 @@
       "type": "cloud",
       "label": "R2 · 内容寻址图片",
       "sublabel": "上报图片 · 构建截图",
-      "tag": "图片不经过 Next.js 函数",
+      "tag": "图片不经过 SSR 渲染",
       "pos": [
         1270,
         230
@@ -259,15 +259,15 @@
           "path": "workers/ai/src/build/screenshots.ts"
         },
         {
-          "path": "next.config.ts"
+          "path": "workers/site/src/index.ts"
         }
       ]
     },
     {
       "id": "site",
       "type": "backend",
-      "label": "Next.js · Vercel",
-      "sublabel": "lyjw.me · 按卡 use cache",
+      "label": "site Worker · SSR",
+      "sublabel": "lyjw.me · 平台缓存",
       "tag": "首屏快照 · 后台重建",
       "pos": [
         1270,
@@ -285,7 +285,7 @@
           "path": "src/app/page.tsx"
         },
         {
-          "path": "next.config.ts"
+          "path": "workers/site/src/index.ts"
         }
       ]
     },
@@ -311,7 +311,7 @@
           "path": "src/lib/live-socket.ts"
         },
         {
-          "path": "src/lib/freshness.ts"
+          "path": "shared/freshness.ts"
         }
       ]
     },
@@ -334,7 +334,7 @@
           "path": "docs/ops-facts.md"
         },
         {
-          "path": "next.config.ts"
+          "path": "workers/site/src/index.ts"
         }
       ]
     },
@@ -710,8 +710,8 @@
       "dot": "emerald",
       "title": "首屏快，状态也要新",
       "items": [
-        "Vercel 生成首屏时按卡读 API；浏览器挂载后直连 Worker，实时变化走 WebSocket，可滞后卡按各自节奏轮询。",
-        "只有布局变化触发 Vercel 标签失效。ESA 按 SWR 独立更新；图片走同源 /img/*，在边缘回源。"
+        "site Worker 生成首屏时按卡读 API；浏览器挂载后直连 Worker，实时变化走 WebSocket，可滞后卡按各自节奏轮询。",
+        "只有布局变化触发 site Worker 标签失效。ESA 按 SWR 独立更新；图片走同源 /img/*，在边缘回源。"
       ]
     },
     {

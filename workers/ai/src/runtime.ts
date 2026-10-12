@@ -26,11 +26,8 @@ export interface Env {
   DESIGN_ENVIRONMENT_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
   GITHUB_WEBHOOK_SECRET?: string;
-  CODEX_REVIEW_GITHUB_TOKEN?: string;
   ROUTINE_FIRE_URL?: string;
   ROUTINE_FIRE_TOKEN?: string;
-  VERCEL_TOKEN?: string;
-  VERCEL_TEAM_ID?: string;
   BUILD_REQUEST_LIMIT?: RateLimit;
   MCP_LIMIT?: RateLimit;
   MCP_CODE_MODE?: string;

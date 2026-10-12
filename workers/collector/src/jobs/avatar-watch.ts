@@ -1,6 +1,6 @@
-import { get, put } from "@/lib/cache";
-import { repoIdFromUrl } from "@/lib/github-repo";
-import { site } from "@/lib/site";
+import { get, put } from "@shared/cache";
+import { repoIdFromUrl } from "@shared/github-repo";
+import { site } from "@shared/site";
 
 import { ok, skipMissing, type Job, type JobResult } from "../job";
 

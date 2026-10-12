@@ -1,12 +1,41 @@
+import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import jsxA11y from "eslint-plugin-jsx-a11y";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
+import globals from "globals";
+import tseslint from "typescript-eslint";
 
 const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    files: ["src/**/*.{ts,tsx}", "shared/**/*.ts"],
+    rules: {
+      "no-empty": ["error", { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: ["**/*.{js,mjs,cjs}"],
+    languageOptions: { globals: { ...globals.node, WebSocket: "readonly" } },
+  },
+  {
+    files: ["public/sw.js"],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+  {
+    files: ["**/*.{ts,tsx,mts}"],
+    extends: [
+      react.configs.flat.recommended,
+      react.configs.flat["jsx-runtime"],
+      reactHooks.configs.flat["recommended-latest"],
+      jsxA11y.flatConfigs.recommended,
+    ],
+    rules: { "jsx-a11y/no-noninteractive-tabindex": "off" },
+    settings: { react: { version: "detect" } },
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
@@ -21,6 +50,46 @@ const eslintConfig = defineConfig([
         }, {
           group: ["**/workers/ai/**"],
           message: "模型调用与工具编排只属于 AI Worker；浏览器契约放在 shared。",
+        }, {
+          group: [
+            "@shared/storage", "@shared/cache", "@shared/lag", "@shared/lag-result", "@shared/apple-music-auth", "@shared/apple-cache",
+            "**/shared/storage", "**/shared/cache", "**/shared/lag", "**/shared/lag-result", "**/shared/apple-music-auth", "**/shared/apple-cache",
+          ],
+          message: "这些模块要 Worker 入口先 install 端口，站点里没人安装，调用即抛错；状态经 API Worker 读。",
+        }],
+      }],
+    },
+  },
+  {
+    files: ["shared/**/*.{ts,mts}"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["@api/*", "**/workers/api/**"],
+          message: "上报写入和实时发布只属于 Worker；共享类型、键和计算放在 shared。",
+        }, {
+          group: ["**/workers/collector/**"],
+          message: "定时采集只属于采集 Worker；共享类型、键和契约放在 shared（如 shared/collector.ts）。",
+        }, {
+          group: ["**/workers/ingress/**"],
+          message: "上报鉴权与拆分只属于上报入口 Worker；prepare 放在 shared/ingest，契约放在 shared/state-core.ts。",
+        }, {
+          group: ["**/workers/ai/**"],
+          message: "模型调用与工具编排只属于 AI Worker；浏览器契约放在 shared。",
+        }, {
+          group: ["@/*"],
+          message: "src/ 只放站点代码；Worker 与 shared 用到的模块放进 shared 或所属 Worker。",
+        }],
+      }],
+    },
+  },
+  {
+    files: ["workers/{api,ai,ingress,collector,dev-router}/**/*.{ts,mts}"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["@/*"],
+          message: "src/ 只放站点代码；Worker 与 shared 用到的模块放进 shared 或所属 Worker。",
         }],
       }],
     },
@@ -48,18 +117,21 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@api/*", "**/api/src/**", "@/lib/storage-driver", "@/lib/status-loaders", "@shared/state-core"],
+          group: ["@api/*", "**/api/src/**", "@shared/storage", "@shared/state-core"],
           message: "AI 只能通过 PublicStatus 读取公开模型，不能导入状态核心或存储实现。",
+        }, {
+          group: ["@/*"],
+          message: "src/ 只放站点代码；Worker 与 shared 用到的模块放进 shared 或所属 Worker。",
         }],
       }],
     },
   },
   globalIgnores([
-    ".next/**",
+    ".react-router/**",
     "**/.wrangler/**",
-    "out/**",
     "build/**",
-    "next-env.d.ts",
+    "worker-configuration.d.ts",
+    "public/site-assets/**",
     "reporters/**",
     ".claude/**",
     "docs/explainer/**",

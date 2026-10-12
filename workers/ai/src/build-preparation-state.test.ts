@@ -329,16 +329,6 @@ test("check updates do not hide a genuine publication failure on the same phase 
   assert.equal(state?.reason, "GitHub did not confirm the implementation.");
 });
 
-test("review requests claim once after implementation publication", () => {
-  const { coordinator } = fixture();
-  assert.equal(coordinator.claimReviewRequests(runId), false);
-  recordImplementation(coordinator);
-  assert.equal(coordinator.claimReviewRequests(runId), false);
-  coordinator.updateRun(runId, { phase: "pr_open", pr: { ...pr, headSha: implementationHeadSha } });
-  assert.equal(coordinator.claimReviewRequests(runId), true);
-  assert.equal(coordinator.claimReviewRequests(runId), false);
-});
-
 test("legacy running uploads remain consumable without inventing a preparation record", () => {
   const { coordinator, run } = fixture();
   const legacyId = "2".repeat(32);

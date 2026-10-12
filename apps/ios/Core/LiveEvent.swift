@@ -1,6 +1,6 @@
 import Foundation
 
-// 对着站点 `src/lib/live-events.ts#LiveEvent`。
+// 对着站点 `shared/live-events.ts#LiveEvent`。
 // 认不出的类型落到 .unknown：站点先加事件、App 后发版时不能让整条连接报错。
 enum LiveEvent: Sendable {
     case desktop(DesktopPayload)

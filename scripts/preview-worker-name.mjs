@@ -2,6 +2,7 @@
 export const PREVIEW_WORKERS_SUBDOMAIN = "lyjw.workers.dev";
 export const PREVIEW_WORKER_SCRIPT = "api";
 export const PREVIEW_WORKER_SCRIPTS = ["api", "ai"];
+export const SITE_PREVIEW_WORKER_SCRIPT = "site";
 export const PREVIEW_REVISION_PATH = "/api/preview/revision";
 const MAX_LABEL = 63;
 
@@ -18,10 +19,10 @@ function shortHash(value) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-export function previewWorkerName(branch) {
+export function previewWorkerName(branch, workerName = PREVIEW_WORKER_SCRIPT) {
   const name = slug(branch ?? "");
   if (!name || name === "main") return null;
-  const suffix = `-${PREVIEW_WORKER_SCRIPT}`;
+  const suffix = workerName === SITE_PREVIEW_WORKER_SCRIPT ? "-site" : `-${PREVIEW_WORKER_SCRIPT}`;
   if (name.length + suffix.length <= MAX_LABEL) return name;
   const hash = shortHash(name);
   const room = MAX_LABEL - suffix.length - 1 - hash.length;
@@ -31,8 +32,10 @@ export function previewWorkerName(branch) {
 }
 
 export function previewWorkerOrigin(branch, workerName = PREVIEW_WORKER_SCRIPT) {
-  if (!PREVIEW_WORKER_SCRIPTS.includes(workerName)) throw new Error(`Unknown Preview Worker: ${workerName}`);
-  const name = previewWorkerName(branch);
+  if (![...PREVIEW_WORKER_SCRIPTS, SITE_PREVIEW_WORKER_SCRIPT].includes(workerName)) {
+    throw new Error(`Unknown Preview Worker: ${workerName}`);
+  }
+  const name = previewWorkerName(branch, workerName);
   return name
     ? `https://${name}-${workerName}.${PREVIEW_WORKERS_SUBDOMAIN}`
     : null;

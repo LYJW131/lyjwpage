@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 
 import { ClaudeCodeMascot } from "@/components/live/claude-code-mascot";
 import { GhosttyMascot } from "@/components/live/ghostty-mascot";
-import { HIDDEN_DESKTOP_BUNDLE_ID } from "@/lib/types";
+import { HIDDEN_DESKTOP_BUNDLE_ID } from "@shared/types";
 
 export interface DesktopAppOverride {
   key: string;

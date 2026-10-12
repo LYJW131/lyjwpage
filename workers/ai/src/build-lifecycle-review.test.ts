@@ -506,32 +506,3 @@ test("a late reconciliation rejection cannot overwrite a concurrently confirmed 
   assert.equal(state.reason, undefined);
   assert.equal(instance.readRun(result.runId)?.state.phase, "pr_open");
 });
-
-test("webhook-confirmed publication requests reviews once through status while the upload response is lost", async (t) => {
-  const { env, instance, db } = coordinator();
-  t.after(() => db.close());
-  env.CODEX_REVIEW_GITHUB_TOKEN = "owner-fixture";
-  const proposal = await issuePlan(env, plan);
-  const fixture = githubFixture();
-  const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
-  const delayed = holdFinalPublicationRead(fixture, result.branch, true);
-  t.after(delayed.release);
-  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, fire.uploadToken), env, delayed.fetcher);
-  await delayed.held;
-  const pullRequest = await (await fixture.fetcher(`https://api.github.com/repos/${BUILD_REPO}/pulls/12`)).json();
-  const body = JSON.stringify({ repository: { full_name: BUILD_REPO }, pull_request: pullRequest });
-  const signature = `sha256=${createHmac("sha256", env.GITHUB_WEBHOOK_SECRET!).update(body).digest("hex")}`;
-  assert.equal((await handleGithubWebhook(new Request("https://api.test/api/build/webhook", { method: "POST", body, headers: { "X-Hub-Signature-256": signature, "X-GitHub-Delivery": "published-before-response", "X-GitHub-Event": "pull_request" } }), env)).status, 200);
-  assert.equal(instance.readRun(result.runId)?.state.phase, "pr_open");
-  assert.equal(instance.readRun(result.runId)?.reviewRequested, undefined);
-  const statusRequest = () => new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } });
-  assert.equal((await handleBuildStatus(statusRequest(), env, fixture.fetcher)).status, 200);
-  assert.equal(instance.readRun(result.runId)?.reviewRequested, true);
-  assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/comments")).length, 2);
-  assert.equal((await handleBuildStatus(statusRequest(), env, fixture.fetcher)).status, 200);
-  delayed.release();
-  assert.equal((await uploading).status, 201);
-  assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/comments")).length, 2);
-  assert.equal(instance.readRun(result.runId)?.state.phase, "pr_open");
-});

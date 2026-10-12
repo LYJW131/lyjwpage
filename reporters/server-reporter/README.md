@@ -52,15 +52,15 @@ CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间�
 pnpm --filter @lyjwpage/server-reporter test
 ```
 
-站点那侧**没有实时推送**（可滞后层）。这些数字每个间隔都在变，广播就是拿推送当轮询用；卡片按写入节奏自己来问（`src/lib/status-views.ts#STATUS_VIEWS` 里 `server` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts#nextLagDelay`）。
+站点那侧**没有实时推送**（可滞后层）。这些数字每个间隔都在变，广播就是拿推送当轮询用；卡片按写入节奏自己来问（`shared/status-views.ts#STATUS_VIEWS` 里 `server` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts#nextLagDelay`）。
 
 ### 节奏
 
 固定每分钟推一次，按轮的起点对齐（采集和推送花掉的时间从这一分钟里扣）。
 
-不调频：上报不经过 Vercel，没有函数调用量要省；闲着时每分钟先问一遍要不要报，问询本身就不比直接推一次省。agents-reporter 按 agent 使用情况调频，控制的是打厂商接口的频率。PlayStation 在 n100 上按局域网发现包调频，见 `reporters/playstation-reporter`。
+不调频：上报不经过站点，没有函数调用量要省；闲着时每分钟先问一遍要不要报，问询本身就不比直接推一次省。agents-reporter 按 agent 使用情况调频，控制的是打厂商接口的频率。PlayStation 在 n100 上按局域网发现包调频，见 `reporters/playstation-reporter`。
 
-断流窗口是站点 `src/lib/freshness.ts#SERVER_STALE_MS`：读数在站点的可滞后层，浏览器拿每封刷新的 `updatedAt` 和它比，过了显示 Unavailable。要降频时**先放宽站点窗口、部署完，这边再降频**，反过来做中间那段时间卡片会断续显示不可用。
+断流窗口是站点 `shared/freshness.ts#SERVER_STALE_MS`：读数在站点的可滞后层，浏览器拿每封刷新的 `updatedAt` 和它比，过了显示 Unavailable。要降频时**先放宽站点窗口、部署完，这边再降频**，反过来做中间那段时间卡片会断续显示不可用。
 
 ## 配置
 
@@ -121,7 +121,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter &&
 
 合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
 
-生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/server`，不经 Vercel 站点。
+生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/server`，不经站点。
 
 看日志：`ssh -J dsm misaka-jp 'docker logs -f server-reporter'`。
 

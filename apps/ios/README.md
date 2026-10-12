@@ -1,5 +1,9 @@
 # lyjwpage iOS App
 
+## 维护范围
+
+手机客户端暂停维护，仅作为运动数据上报器使用。维护范围限于 HealthKit 活动圆环、训练数据及其授权、后台唤醒、Access 鉴权、上报设置和 Report Telemetry 快捷指令。站点展示、播放器、Pulse、Library、小组件和状态查询快捷指令暂停维护，不跟随站点展示契约更新；下文保留其实现说明。
+
 个人主页的原生 iOS 客户端，同时是 iPhone 端的上报器。两件事各走各的路：
 
 - **看**：读站点公开的状态 API 和推送长连接，把首页各卡、Pulse 时间线、最近记录用原生界面呈现，和浏览器访客看到的是同一份事实。只在前台工作。
@@ -25,11 +29,11 @@ Listen Along 用 `SystemMusic.swift#SystemMusic.listenAlong` 调用系统音乐 
 - 状态 API 在 api Worker（`Core/StatusClient.swift#SiteHosts`），GET 不带 `Origin`；推送长连接 `/ws` 必须带白名单里的来源，App 自报站点域名。站点改 `ALLOWED_ORIGINS` 时要留着它。
 - 哪一路多久取一次照浏览器端：实时层按卡片自己的间隔，推送连着时能退成兜底的退成兜底；可滞后层按 `updatedAt + 节奏 + 宽限` 去取、逾期退避。登记在 `Core/Live/FeedSchedule.swift`，每条标了站点侧的出处。
 - 推送与轮询交错时按代际戳丢掉旧的（`LiveStore` 的顺序闸），充电头推送不带历史，接在手上的曲线后面。
-- 过期规则（多久没更新写 Unavailable、Mac 掉线时正在听换成 HomePod 那一路）照站点的 `src/lib/freshness.ts`，见 `Core/Freshness.swift` 与 `Core/Live/LiveStore+Derived.swift`。
+- 过期规则（多久没更新写 Unavailable、Mac 掉线时正在听换成 HomePod 那一路）照站点的 `shared/freshness.ts`，见 `Core/Freshness.swift` 与 `Core/Live/LiveStore+Derived.swift`。
 - 冷启动先解上次落盘的响应体垫底（Caches 里，系统清了就是第一次打开的样子），随后照常回源。
 - 退到后台就断推送、停排期：推送连着会算进站点页脚的「Online now」，这和关掉标签页是同一个语义。
 
-站点那侧的类型（`src/lib/types.ts` 等）是这里模型的来源；只声明 App 用得到的字段，多出来的字段解码时忽略，所以站点加字段不会让 App 解码失败。站点改名或删字段时，这里的模型和 `Tests/` 一起改。
+站点那侧的类型（`shared/types.ts` 等）是这里模型的来源；只声明 App 用得到的字段，多出来的字段解码时忽略，所以站点加字段不会让 App 解码失败。恢复客户端维护后，站点改名或删字段时，这里的模型和 `Tests/` 一起改。
 
 ## iOS 27 特性用在哪
 
@@ -203,7 +207,7 @@ capability」—— 这不是工程配错了，是 **xcodebuild 拿不到开发�
 多个唤醒源几乎同时响（活动圆环一个模块就观测着好几个 HealthKit 类型），
 `App/Hub/TelemetryHub.swift#TelemetryHub.coalesce` 那个窗口把它们并成一封。
 内容一个字节没变就不发，除非距上次上报已满 `TelemetryHub.refresh`（站点那边圆环读数按
-`updatedAt` 判新鲜，超过 `src/lib/freshness.ts#ACTIVITY_STALE_MS` 没刷新就显示 Unavailable；
+`updatedAt` 判新鲜，超过 `shared/freshness.ts#ACTIVITY_STALE_MS` 没刷新就显示 Unavailable；
 这次重发让「手机还在报、只是圈没变」也能续上时刻，所以 `refresh` 要小于它）。
 判「变没变」用的是**编码后的字节**，指纹和真正发出去的 body 共用同一个
 `JSONEncoder`（`sortedKeys`）—— 两套配置早晚会飘，飘了之后要么每轮白发一遍，要么反过来

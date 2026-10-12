@@ -1,13 +1,13 @@
 # reporters/agents-reporter
 
-把各 coding agent 的账号限额（以及 Cursor 云端用量）推给站点的小代理，跑在 misaka-jp 的容器里。配置表、登录步骤、部署命令在 `README.md`，这里只写不变量、坑和须成对修改的文件。
+把各 coding agent 的账号限额（以及 Cursor 云端用量、tokens.ci 上的 Devin CLI 用量）推给站点的小代理，跑在 misaka-jp 的容器里。配置表、登录步骤、部署命令在 `README.md`，这里只写不变量、坑和须成对修改的文件。
 
 ## 不变量
 
 - 凭据在容器里自己登录，绝不拷 Mac 上那份：两份 refresh token 各自刷新会互相作废。续期时不要同时运行交互式登录，也不要有第二个实例共用同一个凭据卷；换机器时先停旧容器，再拷 `data/` 卷，最后起新的。
 - 每轮都 POST，内容没变也发：那一封就是心跳，站点靠它刷新限额时间。整轮失败的重试间隔从短到长翻倍，跑通一次复位。
 - 「没配」（`configured: false`）的 agent 这一行不发，站点按 id 留着上一次的值；「配了但取不到」发空 `limits` 加非空 `limitsError`，不要把上一次的好值再发一遍。一家失败只影响那一行。
-- 按 agent 使用情况分档调频，只读公开的 `SITE_URL/api/status/coding/now`（只看 `AGENT_IDS` 里的几家），不带 ingest 密钥，不看页面人数；读不到、超时、格式错一律当没在用，只会变慢。`IDLE_INTERVAL_MS` 改长时，先放宽站点 `src/lib/freshness.ts#AGENT_LIMITS_STALE_MS` 并部署完，容器再改。
+- 按 agent 使用情况分档调频，只读公开的 `SITE_URL/api/status/coding/now`（只看 `AGENT_IDS` 里的几家），不带 ingest 密钥，不看页面人数；读不到、超时、格式错一律当没在用，只会变慢。`IDLE_INTERVAL_MS` 改长时，先放宽站点 `shared/freshness.ts#AGENT_LIMITS_STALE_MS` 并部署完，容器再改。
 - 上报鉴权是 `lyjwpage-agents` 那把 Access service token（`ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`），只在控制台创建或轮换时显示一次；`.env` 不进仓库。
 - 依赖站点新契约的改动，先确认站点与 Worker 已生效，再换容器（根 `AGENTS.md`「部署流程」）。
 

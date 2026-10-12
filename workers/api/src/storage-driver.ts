@@ -2,11 +2,7 @@ import { StorageClient } from "@shared/storage-client";
 import { STORAGE_MAX_COMMANDS, type StorageCommand, type StorageResult } from "@shared/storage-contract";
 import { currentContext } from "./runtime";
 
-export { StorageClient };
-export type { StorageBatch } from "@shared/storage-client";
-export type StorageAnswer<T> = { reachable: true; value: T } | { reachable: false };
-
-export function getStorage(): StorageClient {
+export function stateStorage(): StorageClient {
   const context = currentContext();
   if (context.storage) return context.storage;
   const stub = () => context.env.STATE.get(context.env.STATE.idFromName("global"));
@@ -121,15 +117,4 @@ export function createPublicStorage(
       }
     });
   });
-}
-export function key(...parts: string[]): string { return [process.env.STORAGE_PREFIX ?? "lyjwpage", ...parts].join(":"); }
-export function withStorageScope<T>(run: () => Promise<T>): Promise<T> { return run(); }
-// Worker 写失败必须冒泡，成功应答后仅留进程内存会丢失上报。
-export function withStorage<T>(run: (storage: StorageClient) => Promise<T>, fallback: T): Promise<T> { void fallback; return run(getStorage()); }
-export async function askStorage<T>(load: (storage: StorageClient) => Promise<T>): Promise<StorageAnswer<T>> { return { reachable: true, value: await load(getStorage()) }; }
-export async function tellStorage(run: (storage: StorageClient) => Promise<unknown>): Promise<boolean> { await run(getStorage()); return true; }
-export function resetStorageDriverForTests(): void {}
-export function installStorageForTests(client: StorageClient | null): never {
-  void client;
-  throw new Error("Use the Node test driver");
 }

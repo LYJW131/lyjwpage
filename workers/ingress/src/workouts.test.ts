@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getWorkoutsSnapshot } from "@/lib/workouts";
-import { MemoryKv } from "@/lib/testing/memory-kv";
-import { viewKeyByPath } from "@/lib/status-views";
+import { getWorkoutsSnapshot } from "../../api/src/workouts";
+import { MemoryKv } from "@shared/testing/memory-kv";
+import { viewKeyByPath } from "@shared/status-views";
 import { prepareIngest } from "@shared/ingest/prepare";
 import { normalizeWorkouts } from "@shared/ingest/workouts";
 import { readLag } from "@shared/lag";
 import { publicWorkout } from "@shared/workouts";
-import { installLagStoreForTests } from "../../../src/lib/lag-store.ts";
+import { installLagReader } from "@shared/lag";
 
 import { commitLagIngest } from "./lag-ingest";
 
@@ -40,7 +40,7 @@ test("workouts reject malformed histories, timestamps, duplicate ids and numeric
 
 test("iPhone ingest exposes workouts through the lag layer and replaces deleted history", async () => {
   const kv = new MemoryKv();
-  installLagStoreForTests((key) => readLag(kv, key));
+  installLagReader((key) => readLag(kv, key));
   const land = async (items: unknown[], at: number) =>
     commitLagIngest(kv, await prepareIngest("iphone", { version: 1, modules: { workouts: { items } } }, at));
   try {
@@ -54,7 +54,7 @@ test("iPhone ingest exposes workouts through the lag layer and replaces deleted 
     assert.deepEqual(await land([workout], now + 500), [], "same shape: content only");
     assert.deepEqual(await land([], now + 1000), ["workouts"], "emptied: another placeholder");
     assert.deepEqual((await getWorkoutsSnapshot()).data, { items: [], pushedAt: now + 1000 });
-  } finally { installLagStoreForTests(null); }
+  } finally { installLagReader(null); }
 });
 
 test("workouts retain measured heart rate, environment and elevation without inventing absent values", () => {

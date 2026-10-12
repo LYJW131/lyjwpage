@@ -4,7 +4,7 @@ import { StateHub } from "./state-hub";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 import type { StoredEntry } from "@shared/sqlite-store";
 
-import type { LiveEvent } from "@/lib/live-events";
+import type { LiveEvent } from "@shared/live-events";
 
 import {
   HEARTBEAT_INTERVAL_MS,
@@ -24,7 +24,7 @@ import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
 import { AI_HTTP_PATHS } from "@shared/ai-paths";
 import type { Env } from "./runtime";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 
 
 export type { Env };

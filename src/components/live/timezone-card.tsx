@@ -12,7 +12,7 @@ import {
   formatUTCOffset,
   resolveTimezoneDisplay,
 } from "@/lib/timezone-display";
-import type { StatusResponse, TimezonePayload } from "@/lib/types";
+import type { StatusResponse, TimezonePayload } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) {

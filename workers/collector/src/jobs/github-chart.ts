@@ -1,5 +1,5 @@
 import { LAG_KEYS, writeLag } from "@shared/lag";
-import { fetchGithubChart } from "@/lib/github-chart";
+import { fetchGithubChart } from "@shared/github-chart";
 
 import { ok, skipMissing, type Job } from "../job";
 

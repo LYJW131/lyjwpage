@@ -47,7 +47,7 @@
           kick: "X...X...X...X...", kickKind: "light", duck: 0.45, snare: [null, "....o.......o..."], snareKind: "rim",
           hat: "o.x.o.x.o.x.o.x.", hatKind: "type", hatVol: 0.8, clock: [null, "......xoxoxo...."], clockVol: 1,
           bass: "groove", arp: { p: "332", lo: 69, inst: "pluck", v: 0.32 }, pad: 0.75, lp: 2800, padVerb: 0.3 },
-        { from: 10, to: 11, id: "release-landing", name: "落地：Vercel 生产部署成功，刷新 ESA、等两个域名", energy: 0.8,
+        { from: 10, to: 11, id: "release-landing", name: "落地：site Worker 生产部署成功，刷新 ESA、等两个域名", energy: 0.8,
           kick: "X.......X.......", duck: 0.5, hat: "..x...x...x...x.", hatKind: "flip",
           bass: "reveal", arp: { p: "sparse", lo: 69, inst: "bell", v: 0.3 }, pad: 0.85, lp: 3200, padVerb: 0.34 },
         { from: 12, to: 12, id: "release-notify", name: "GitHub Actions 的钥匙敲上报入口，接着交给推送房间", energy: 0.74,

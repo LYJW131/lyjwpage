@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { installLagStoreForTests } from "../../../src/lib/lag-store";
+import { installLagReader } from "@shared/lag";
 import { LAG_KEYS } from "@shared/lag";
+import { installApiPorts } from "./ports";
 import { executePublicRequest } from "./public-execution";
 import type { Env } from "./runtime";
+
+installApiPorts();
 
 function harness(ready: boolean) {
   const calls: string[] = [];
@@ -22,10 +25,10 @@ function harness(ready: boolean) {
 }
 
 test("可滞后层端点只读 KV，不调用 StateHub", async (t) => {
-  installLagStoreForTests(async (key) =>
+  installLagReader(async (key) =>
     key === LAG_KEYS.server ? { updatedAt: Date.now(), data: { hosts: [] } } : null,
   );
-  t.after(() => installLagStoreForTests(null));
+  t.after(() => installLagReader(null));
   const { calls, run } = harness(false);
   const response = await run("/api/status/server");
   assert.equal(response.status, 200);

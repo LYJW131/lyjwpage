@@ -1,5 +1,5 @@
-import { site } from "@/lib/site";
-import type { TimezoneActivity } from "@/lib/types";
+import { site } from "@shared/site";
+import type { TimezoneActivity } from "@shared/types";
 
 export function validTimezone(identifier: string) {
   try {

@@ -32,19 +32,19 @@ import {
   type CodingAgentRow,
   type CodingSourceNote,
 } from "@/lib/coding-agents";
-import { AGENT_LIMITS_STALE_MS } from "@/lib/freshness";
-import { zonedDay } from "@/lib/heatmap-window";
+import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
+import { zonedDay } from "@shared/heatmap-window";
 import { CODING_NOW_PATH, CODING_PATH, LIMITS_PATH } from "@/lib/paths";
-import { site } from "@/lib/site";
+import { site } from "@shared/site";
 import type {
   CodingNowPayload,
   CodingUsagePayload,
   CodingUsageTotals,
   StatusResponse,
   VibeCodingLimit,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
-import type { AgentLimitsPayload } from "@/lib/vibecoding-limits";
+import type { AgentLimitsPayload } from "@shared/vibecoding-limits";
 
 function busiestLimit(limits: VibeCodingLimit[], now: number) {
   const candidates = limits.filter((limit) => !isExtraWindow(limit));

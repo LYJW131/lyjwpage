@@ -1,10 +1,10 @@
-import { SERVER_STALE_MS } from "@/lib/freshness";
-import { workoutsLayoutKey } from "@/lib/home-layout";
-import { LIMITS_TAG, SERVER_TAG } from "@/lib/live-events";
-import { STATUS_VIEWS } from "@/lib/status-views";
-import { REPORTER_BY_SOURCE, type ReporterBlock, type ReporterStat } from "@/lib/reporter-ledger";
-import type { ActivityStatus, ServerPayload, TimezoneActivity, Workout } from "@/lib/types";
-import { agentLimitsLayoutKey, mergeAgentLimits, type AgentLimitsPayload } from "@/lib/vibecoding-limits";
+import { SERVER_STALE_MS } from "@shared/freshness";
+import { workoutsLayoutKey } from "@shared/home-layout";
+import { LIMITS_TAG, SERVER_TAG } from "@shared/live-events";
+import { STATUS_VIEWS } from "@shared/status-views";
+import { REPORTER_BY_SOURCE, type ReporterBlock, type ReporterStat } from "@shared/reporter-ledger";
+import type { ActivityStatus, ServerPayload, TimezoneActivity, Workout } from "@shared/types";
+import { agentLimitsLayoutKey, mergeAgentLimits, type AgentLimitsPayload } from "@shared/vibecoding-limits";
 import { LAG_KEYS, readLag, writeLag, type LagStore } from "@shared/lag";
 import { publicServer } from "@shared/server";
 import { publicWorkout } from "@shared/workouts";

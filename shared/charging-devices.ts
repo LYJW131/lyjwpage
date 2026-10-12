@@ -1,4 +1,4 @@
-import type { ChargerStatus, ChargingDeviceInfo, PowerBankStatus } from "@/lib/types";
+import type { ChargerStatus, ChargingDeviceInfo, PowerBankStatus } from "@shared/types";
 
 // 公开的充电头、充电宝只挑这些字段：序列号等上报带来的多余字段一律不出去，存储里已有的也一样。
 function publicDevice({ firmwareVersion, model }: ChargingDeviceInfo): ChargingDeviceInfo {

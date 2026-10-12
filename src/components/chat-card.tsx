@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/app-image";
 import { useEffect, useState, type ReactNode } from "react";
 import useSWR from "swr";
 
@@ -9,12 +9,12 @@ import { mediaApp, mergeVariants, playTime } from "@/components/live/playstation
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveNowListening, useStale } from "@/hooks/use-stale";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
-import { ACTIVITY_STALE_MS } from "@/lib/freshness";
-import { LISTENING_ELSEWHERE_HOLD_MS } from "@/lib/limits";
+import { ACTIVITY_STALE_MS } from "@shared/freshness";
+import { LISTENING_ELSEWHERE_HOLD_MS } from "@shared/limits";
 import { PLAYSTATION_IMAGE_SCALE, playstationImage } from "@/lib/playstation-image";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { fetchStatus, guardPolled } from "@/lib/status-reads";
-import { STATUS_VIEWS, type StatusViewKey } from "@/lib/status-views";
+import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import { trackPositionMs } from "@/lib/track-position";
 import type {
   ActivityPayload,
@@ -24,7 +24,7 @@ import type {
   PlaystationPresencePayload,
   StatusResponse,
   WorkoutsPayload,
-} from "@/lib/types";
+} from "@shared/types";
 import { cn } from "@/lib/utils";
 import { workoutMetrics } from "@/lib/workout-display";
 import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";

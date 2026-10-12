@@ -1,5 +1,5 @@
-import { object } from "@/lib/json";
-import { normalizeAgentLimits, type ParsedAgentLimits } from "@/lib/agent-limits-parse";
+import { object } from "@shared/json";
+import { normalizeAgentLimits, type ParsedAgentLimits } from "@shared/agent-limits-parse";
 
 import { describeRejections, prepareCodingModules, type CodingModuleRejection, type CodingModules } from "./coding";
 

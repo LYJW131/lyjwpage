@@ -12,9 +12,9 @@ import {
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { commitSha as pageCommit } from "@/lib/build-info";
 import { fetchStatus } from "@/lib/status-reads";
-import { VERCEL_DEPLOYMENTS_PATH } from "@/lib/paths";
-import type { StatusResponse } from "@/lib/types";
-import type { VercelDeploymentsPayload } from "@/lib/vercel-deployments-types";
+import { SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
+import type { StatusResponse } from "@shared/types";
+import type { SiteDeploymentsPayload } from "@shared/site-deployments-types";
 
 const REFRESH_MS = 30 * 60_000;
 
@@ -43,14 +43,14 @@ export function useVersionStatus() {
 
 export function useAppVersion() {
   const { status, latestCommit, pageCommit: page, message, isDev } = useVersionStatus();
-  const { data: envelope } = useSWR<StatusResponse<VercelDeploymentsPayload>>(
-    VERCEL_DEPLOYMENTS_PATH,
+  const { data: envelope } = useSWR<StatusResponse<SiteDeploymentsPayload>>(
+    SITE_DEPLOYMENTS_PATH,
     fetchStatus,
   );
 
-  const vercel = envelope?.ok ? envelope.data : undefined;
+  const site = envelope?.ok ? envelope.data : undefined;
   const deployment = latestCommit
-    ? [vercel?.production, ...(vercel?.recent ?? [])].find((item) => item?.commit?.sha === latestCommit)
+    ? [site?.production, ...(site?.recent ?? [])].find((item) => item?.commit?.sha === latestCommit)
     : undefined;
 
   return {

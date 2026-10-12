@@ -55,7 +55,6 @@ export class SqliteStore {
       case "get": return this.requireKind(key, "string")?.value ?? null;
       case "set": {
         const previous = this.entry(key);
-        if (previous && command.options?.ifAbsent) return false;
         if (previous && previous.kind !== "string") this.remove(key);
         this.sql.exec("INSERT INTO entries(key, kind, value, expires_at) VALUES (?, 'string', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires_at = excluded.expires_at", key, command.value, command.options?.ttlMs ? this.now() + command.options.ttlMs : null);
         return true;

@@ -24,11 +24,8 @@ import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
-import { githubAvatarDataUri } from "@/lib/github-avatar-icon";
-import { getRecentCommits } from "@/lib/github-recent-commits";
-import { firstScreen, firstScreenLyrics } from "@/lib/first-screen";
 import { APP_VERSION_PATH } from "@/lib/app-version";
-import { liveTrack } from "@/lib/home-layout";
+import { liveTrack } from "@shared/home-layout";
 import {
   ACTIVITY_PATH,
   AGENT_STATUS_PATH,
@@ -51,11 +48,19 @@ import {
   SENTRY_PATH,
   SERVER_PATH,
   TROPHIES_PATH,
-  VERCEL_DEPLOYMENTS_PATH,
+  SITE_DEPLOYMENTS_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
-import { STATUS_VIEWS } from "@/lib/status-views";
-import type { StatusResponse, TrophiesSummaryPayload } from "@/lib/types";
+import {
+  SITE_ASSET_METADATA_PATH,
+  emptySiteAssetMetadata,
+  type SiteAssetMetadata,
+} from "@/lib/site-assets";
+import { STATUS_VIEWS } from "@shared/status-views";
+import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
+import { siteContext, type SiteServices } from "@/server/site-context";
+
+import type { Route } from "./+types/page";
 
 const SLOT = {
   activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]",
@@ -79,11 +84,22 @@ const READS = {
   vibeCoding: [CODING_PATH, CODING_NOW_PATH, LIMITS_PATH],
   playstation: [NOW_PLAYING_PATH, PLAYING_PATH, TROPHIES_PATH],
   pulse: [PULSE_PATH],
-  siteStatus: [GITHUB_REPO_PATH, VERCEL_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
+  siteStatus: [GITHUB_REPO_PATH, SITE_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
   emby: [WATCHING_PATH, NOW_WATCHING_PATH],
 } as const;
 
-export default async function Home() {
+async function loadSiteAssets(site: SiteServices): Promise<SiteAssetMetadata> {
+  try {
+    const response = await site.asset(SITE_ASSET_METADATA_PATH);
+    if (response.ok) return (await response.json()) as SiteAssetMetadata;
+  } catch {
+  }
+  return emptySiteAssetMetadata();
+}
+
+export async function loader({ context }: Route.LoaderArgs) {
+  const site = context.get(siteContext);
+  const status = site.status;
   const [
     desktop,
     timezone,
@@ -108,44 +124,41 @@ export default async function Home() {
     githubChart,
     githubRepo,
     cloudflareWorkers,
-    vercelDeployments,
+    siteDeployments,
     sentry,
     reporters,
     pulse,
-    avatarDataUri,
-    recentCommits,
+    assets,
   ] = await Promise.all([
-    firstScreen("desktop"),
-    firstScreen("timezone"),
-    firstScreen("workouts"),
-    firstScreen("activity"),
-    firstScreen("server"),
-    firstScreen("charger"),
-    firstScreen("powerBank"),
-    firstScreen("listening"),
-    firstScreen("nowListening"),
-    firstScreen("coding"),
-    firstScreen("codingNow"),
-    firstScreen("limits"),
-    firstScreen("agentStatus"),
-    firstScreen("codingYear"),
-    firstScreen("watching"),
-    firstScreen("nowWatching"),
-    firstScreen("playing"),
-    firstScreen("playingNow"),
-    firstScreen("questNow"),
-    firstScreen("trophies"),
-    firstScreen("githubChart"),
-    firstScreen("githubRepo"),
-    firstScreen("cloudflareWorkers"),
-    firstScreen("vercelDeployments"),
-    firstScreen("sentry"),
-    firstScreen("reporters"),
-    firstScreen("pulse"),
-    githubAvatarDataUri(),
-    getRecentCommits(),
+    status("desktop"),
+    status("timezone"),
+    status("workouts"),
+    status("activity"),
+    status("server"),
+    status("charger"),
+    status("powerBank"),
+    status("listening"),
+    status("nowListening"),
+    status("coding"),
+    status("codingNow"),
+    status("limits"),
+    status("agentStatus"),
+    status("codingYear"),
+    status("watching"),
+    status("nowWatching"),
+    status("playing"),
+    status("playingNow"),
+    status("questNow"),
+    status("trophies"),
+    status("githubChart"),
+    status("githubRepo"),
+    status("cloudflareWorkers"),
+    status("siteDeployments"),
+    status("sentry"),
+    status("reporters"),
+    status("pulse"),
+    loadSiteAssets(site),
   ]);
-  const trophies = trophiesEnvelope as StatusResponse<TrophiesSummaryPayload>;
 
   const nowSongId =
     nowListening.ok && !nowListening.data.idle && nowListening.data.hasLyrics
@@ -161,15 +174,57 @@ export default async function Home() {
   const rowArtworks = liveHeroArtwork ? listeningArtworks : listeningArtworks.slice(1);
 
   const [desktopIcon, artwork, lyrics] = await Promise.all([
-    desktopIconDataUri(desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
-    artworkPlaceholders(rowArtworks, heroArtwork),
-    nowSongId ? firstScreenLyrics(nowSongId) : Promise.resolve(null),
+    desktopIconDataUri(site, desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
+    artworkPlaceholders(site, rowArtworks, heroArtwork),
+    nowSongId ? site.lyrics(nowSongId) : Promise.resolve(null),
   ]);
+
+  return {
+    desktop,
+    timezone,
+    workouts,
+    activity,
+    server,
+    charger,
+    powerBank,
+    listening,
+    nowListening,
+    coding,
+    codingNow,
+    limits,
+    agentStatus,
+    codingYear,
+    watching,
+    nowWatching,
+    playing,
+    playingNow,
+    questNow,
+    trophiesEnvelope,
+    githubChart,
+    githubRepo,
+    cloudflareWorkers,
+    siteDeployments,
+    sentry,
+    reporters,
+    pulse,
+    avatarDataUri: assets.avatarDataUri,
+    recentCommits: assets.recentCommits,
+    desktopIcon,
+    artwork,
+    lyricsFallback:
+      nowSongId && lyrics && lyrics.lines.length
+        ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
+        : null,
+  };
+}
+
+export default function Home({ loaderData }: Route.ComponentProps) {
+  const trophies = loaderData.trophiesEnvelope as StatusResponse<TrophiesSummaryPayload>;
 
   return (
     <>
       <WebPlayerProvider>
-        <Header desktop={desktop} desktopIconDataUri={desktopIcon} />
+        <Header desktop={loaderData.desktop} desktopIconDataUri={loaderData.desktopIcon} />
 
         <main className="flex-1">
           <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
@@ -184,83 +239,79 @@ export default async function Home() {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <CardBoundary label="Contact" paths={READS.contact}>
                   <ContactCard
-                    avatarDataUri={avatarDataUri}
-                    chartFallback={githubChart}
-                    yearFallback={codingYear}
+                    avatarDataUri={loaderData.avatarDataUri}
+                    chartFallback={loaderData.githubChart}
+                    yearFallback={loaderData.codingYear}
                   />
                 </CardBoundary>
                 <CardBoundary label="Timezone">
-                  <TimezoneCard fallback={timezone} />
+                  <TimezoneCard fallback={loaderData.timezone} />
                 </CardBoundary>
               </div>
 
               {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}
               <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>
-                <NowWatchingCard nowFallback={nowWatching} />
+                <NowWatchingCard nowFallback={loaderData.nowWatching} />
               </CardBoundary>
               <CardBoundary label="Now Playing" silent paths={READS.questNow}>
-                <QuestNowCard nowFallback={questNow} />
+                <QuestNowCard nowFallback={loaderData.questNow} />
               </CardBoundary>
 
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <CardBoundary label="Media" className="md:col-span-2" paths={READS.media}>
                   <LiveMediaPair
-                    chargerFallback={charger}
-                    powerBankFallback={powerBank}
-                    listeningFallback={listening}
-                    nowListeningFallback={nowListening}
-                    lyricsFallback={
-                      nowSongId && lyrics && lyrics.lines.length
-                        ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
-                        : null
-                    }
-                    artworkPlaceholders={artwork}
+                    chargerFallback={loaderData.charger}
+                    powerBankFallback={loaderData.powerBank}
+                    listeningFallback={loaderData.listening}
+                    nowListeningFallback={loaderData.nowListening}
+                    lyricsFallback={loaderData.lyricsFallback}
+                    artworkPlaceholders={loaderData.artwork}
                   />
                 </CardBoundary>
                 <CardBoundary label="Talk to God" className={SLOT.godChat}>
                   <GodChat className={SLOT.godChat} />
                 </CardBoundary>
                 <CardBoundary label="Activity" className={SLOT.activity} paths={READS.activity}>
-                  <ActivityCard fallback={activity} className={SLOT.activity}>
-                    <WorkoutsStrip fallback={workouts} />
+                  <ActivityCard fallback={loaderData.activity} className={SLOT.activity}>
+                    <WorkoutsStrip fallback={loaderData.workouts} />
                   </ActivityCard>
                 </CardBoundary>
                 <CardBoundary label="Exit Node" className={SLOT.server} paths={READS.server}>
-                  <ServerCard fallback={server} className={SLOT.server} />
+                  <ServerCard fallback={loaderData.server} className={SLOT.server} />
                 </CardBoundary>
                 <CardBoundary label="Provider Status" className={SLOT.agentStatus} paths={READS.agentStatus}>
-                  <AgentStatusCard fallback={agentStatus} className={SLOT.agentStatus} />
+                  <AgentStatusCard fallback={loaderData.agentStatus} className={SLOT.agentStatus} />
                 </CardBoundary>
                 <CardBoundary label="Vibe Coding" className={SLOT.vibeCoding} paths={READS.vibeCoding}>
                   <VibeCodingCard
-                    fallback={coding}
-                    nowFallback={codingNow}
-                    limitsFallback={limits}
+                    fallback={loaderData.coding}
+                    nowFallback={loaderData.codingNow}
+                    limitsFallback={loaderData.limits}
                     className={SLOT.vibeCoding}
                   />
                 </CardBoundary>
                 <CardBoundary label="PlayStation" className={SLOT.playstation} paths={READS.playstation}>
                   <PlaystationBlock
                     trophies={trophies}
-                    playing={playing}
-                    playingNow={playingNow}
+                    playing={loaderData.playing}
+                    playingNow={loaderData.playingNow}
                     className={SLOT.playstation}
                   />
                 </CardBoundary>
                 <CardBoundary label="Pulse" className={SLOT.pulse} paths={READS.pulse}>
-                  <PulseCard fallback={pulse} className={SLOT.pulse} />
+                  <PulseCard fallback={loaderData.pulse} className={SLOT.pulse} />
                 </CardBoundary>
               </div>
 
               <CardBoundary label="LYJWPAGE" className={SLOT.siteStatus} paths={READS.siteStatus}>
                 <SiteStatusCard
-                  githubFallback={githubRepo}
-                  vercelFallback={vercelDeployments}
-                  cloudflareFallback={cloudflareWorkers}
-                  sentryFallback={sentry}
-                  serverFallback={server}
-                  reportersFallback={reporters}
-                  recentCommits={recentCommits}
+                  githubFallback={loaderData.githubRepo}
+                  siteFallback={loaderData.siteDeployments}
+                  cloudflareFallback={loaderData.cloudflareWorkers}
+                  sentryFallback={loaderData.sentry}
+                  serverFallback={loaderData.server}
+                  reportersFallback={loaderData.reporters}
+                  recentCommits={loaderData.recentCommits}
                   className={SLOT.siteStatus}
                 />
               </CardBoundary>
@@ -274,7 +325,7 @@ export default async function Home() {
                   <span className="label-mono text-muted-foreground">Emby</span>
                 </div>
                 <CardBoundary label="Emby" paths={READS.emby}>
-                  <WatchingRow fallback={watching} nowFallback={nowWatching} />
+                  <WatchingRow fallback={loaderData.watching} nowFallback={loaderData.nowWatching} />
                 </CardBoundary>
               </div>
             </Section>

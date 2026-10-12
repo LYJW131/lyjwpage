@@ -11,12 +11,9 @@ const run: BuildRun = {
   runId: "b".repeat(32), branch: "claude/build-fixture", phase: "pr_open", createdAt: 1, updatedAt: 1,
   pr: { number: 12, url: `https://github.com/${BUILD_REPO}/pull/12`, headSha },
 };
-const vercelUrl = "https://vercel.com/fixture/project/deployment";
-const workerUrl = "https://dash.cloudflare.com/fixture/workers/services/view/ai/production/previews/fixture/builds/build-id";
+const siteUrl = "https://claude-build-fixture-site.lyjw.workers.dev";
 const ci = { name: "check", status: "completed", conclusion: "success", app: { slug: "github-actions" } };
-const worker = { name: "Workers Builds: ai", status: "in_progress", conclusion: null, app: { slug: "cloudflare-workers-and-pages" }, details_url: workerUrl };
-const comments = { name: "Vercel Preview Comments", status: "completed", conclusion: "success", app: { slug: "vercel" }, details_url: "https://vercel.com/github" };
-const deployment = { context: "Vercel", state: "pending", target_url: vercelUrl };
+const siteCheck = { name: "Workers Builds: site", status: "in_progress", conclusion: null, app: { slug: "cloudflare-workers-and-pages" }, started_at: "2026-10-11T00:00:00Z" };
 
 function githubFixture(checks: object[], statuses: object[], options: { checkError?: boolean; statusError?: boolean; checkCount?: number; statusCount?: number } = {}) {
   const fetcher: typeof fetch = async (input, init) => {
@@ -32,89 +29,109 @@ function githubFixture(checks: object[], statuses: object[], options: { checkErr
   return new GithubBuildApi("fixture", fetcher);
 }
 
-test("pending Vercel and Workers deployments do not hold successful CI pending", async () => {
-  const patch = await reconcileBuild(githubFixture([ci, worker, comments], [deployment]), run);
+test("a successful site build links the stable Access-protected preview for the run branch", async () => {
+  const patch = await reconcileBuild(githubFixture([ci, { ...siteCheck, status: "completed", conclusion: "success" }], []), run);
   assert.equal(patch.ci?.state, "success");
-  assert.equal(patch.preview?.state, "pending");
-  assert.equal(patch.preview?.url, vercelUrl);
+  assert.equal(patch.preview?.state, "success");
+  assert.equal(patch.preview?.url, siteUrl);
+  assert.ok(!patch.preview?.url?.includes("?"));
 });
 
-test("the Vercel comments check cannot replace the deployment state or link", async () => {
-  const patch = await reconcileBuild(githubFixture([ci, comments], [deployment]), run);
-  assert.equal(patch.preview?.state, "pending");
-  assert.equal(patch.preview?.url, vercelUrl);
-  const onlyComments = await reconcileBuild(githubFixture([{ ...comments, conclusion: "failure" }], []), run);
-  assert.equal(onlyComments.ci?.state, "unknown");
-  assert.equal(onlyComments.preview?.state, "unknown");
-  assert.equal(onlyComments.preview?.url, undefined);
+test("api and ai deployment checks stay CI and never yield a site preview", async () => {
+  const patch = await reconcileBuild(githubFixture([
+    ci,
+    { name: "Workers Builds: api", status: "completed", conclusion: "success", app: { slug: "cloudflare-workers-and-pages" } },
+    { name: "Workers Builds: ai", status: "completed", conclusion: "success", app: { slug: "cloudflare-workers-and-pages" } },
+  ], []), run);
+  assert.equal(patch.ci?.state, "success");
+  assert.equal(patch.preview?.state, "unknown");
+  assert.equal(patch.preview?.url, undefined);
 });
 
-test("Preview aggregates every deployment and links to the signal determining its result", async () => {
-  for (const [status, conclusion, expected] of [
-    ["completed", "failure", "failure"], ["in_progress", null, "pending"],
-    ["completed", "stale", "unknown"], ["completed", "success", "success"],
+test("a site-named check from another app is not trusted as the preview", async () => {
+  const patch = await reconcileBuild(githubFixture([
+    ci,
+    { name: "Workers Builds: site", status: "completed", conclusion: "success", app: { slug: "github-actions" }, details_url: "https://evil.example" },
+  ], []), run);
+  assert.equal(patch.ci?.state, "success");
+  assert.equal(patch.preview?.state, "unknown");
+  assert.equal(patch.preview?.url, undefined);
+});
+
+test("preview state follows the newest site check and never an arbitrary check URL", async () => {
+  for (const [status, conclusion, state, url] of [
+    ["completed", "failure", "failure", undefined],
+    ["in_progress", null, "pending", undefined],
+    ["queued", null, "pending", undefined],
+    ["completed", "stale", "unknown", undefined],
+    ["completed", "skipped", "unknown", undefined],
+    ["completed", "neutral", "unknown", undefined],
+    ["completed", "success", "success", siteUrl],
   ] as const) {
-    const patch = await reconcileBuild(githubFixture([
-      ci, { ...worker, status, conclusion },
-      { ...worker, name: "Workers Builds: api", status: "completed", conclusion: "success", details_url: `${workerUrl}-other` },
-    ], [{ ...deployment, state: "success" }]), run);
-    assert.equal(patch.ci?.state, "success");
-    assert.equal(patch.preview?.state, expected);
-    assert.equal(patch.preview?.url, expected === "success" ? vercelUrl : workerUrl);
+    const patch = await reconcileBuild(githubFixture([ci, {
+      ...siteCheck, status, conclusion, details_url: "https://evil.example", html_url: "https://evil.example",
+    }], []), run);
+    assert.equal(patch.ci?.state, "success", conclusion ?? status);
+    assert.equal(patch.preview?.state, state, conclusion ?? status);
+    assert.equal(patch.preview?.url, url, conclusion ?? status);
   }
 });
 
-test("a Workers-only preview is shown without being counted as CI", async () => {
-  const patch = await reconcileBuild(githubFixture([worker], []), run);
-  assert.equal(patch.ci?.state, "unknown");
-  assert.equal(patch.preview?.state, "pending");
-  assert.equal(patch.preview?.url, workerUrl);
+test("the newest site check by started_at then id wins; absent fields keep list order", async () => {
+  const oldSuccess = { ...siteCheck, status: "completed", conclusion: "success", started_at: "2026-10-10T00:00:00Z", id: 1 };
+  const newFailure = { ...siteCheck, status: "completed", conclusion: "failure", started_at: "2026-10-11T00:00:00Z", id: 2 };
+  const failed = await reconcileBuild(githubFixture([ci, oldSuccess, newFailure], []), run);
+  assert.equal(failed.preview?.state, "failure");
+  const succeeded = await reconcileBuild(githubFixture([ci, { ...newFailure, started_at: "2026-10-10T00:00:00Z" }, { ...oldSuccess, started_at: "2026-10-11T00:00:00Z" }], []), run);
+  assert.equal(succeeded.preview?.state, "success");
+  assert.equal(succeeded.preview?.url, siteUrl);
+  const byId = await reconcileBuild(githubFixture([ci,
+    { ...siteCheck, status: "completed", conclusion: "failure", started_at: "2026-10-11T00:00:00Z", id: 3 },
+    { ...siteCheck, status: "completed", conclusion: "success", started_at: "2026-10-11T00:00:00Z", id: 4 },
+  ], []), run);
+  assert.equal(byId.preview?.state, "success");
+  const ordered = await reconcileBuild(githubFixture([ci,
+    { ...siteCheck, status: "completed", conclusion: "failure" },
+    { ...siteCheck, status: "completed", conclusion: "success" },
+  ], []), run);
+  assert.equal(ordered.preview?.state, "failure");
 });
 
-test("Vercel deployment checks and project commit statuses are recognized precisely", async () => {
-  for (const name of ["Vercel", "Vercel - fixture-project", "Vercel – fixture-project"]) {
-    const check = { name, status: "in_progress", conclusion: null, app: { slug: "vercel" }, details_url: vercelUrl };
-    const fromCheck = await reconcileBuild(githubFixture([ci, check], []), run);
-    const fromStatus = await reconcileBuild(githubFixture([ci], [{ ...deployment, context: name }]), run);
-    for (const patch of [fromCheck, fromStatus]) {
-      assert.equal(patch.ci?.state, "success");
-      assert.equal(patch.preview?.state, "pending");
-      assert.equal(patch.preview?.url, vercelUrl);
-    }
+test("no site check means unknown preview without a URL", async () => {
+  const patch = await reconcileBuild(githubFixture([ci], []), run);
+  assert.equal(patch.preview?.state, "unknown");
+  assert.equal(patch.preview?.url, undefined);
+});
+
+test("commit statuses all count as CI, whatever their context", async () => {
+  for (const context of ["Netlify", "test Netlify integration", "Netlify - fixture: e2e-tests", "ci/tests"]) {
+    const patch = await reconcileBuild(githubFixture([ci, { ...siteCheck, status: "completed", conclusion: "success" }], [{ context, state: "failure" }]), run);
+    assert.equal(patch.ci?.state, "failure", context);
+    assert.equal(patch.preview?.state, "success", context);
   }
 });
 
-test("provider words, unrelated apps and Vercel code checks remain CI", async () => {
+test("provider words and unrelated app checks remain CI", async () => {
   const checks = [
-    { name: "test Vercel integration", app: { slug: "github-actions" } },
-    { name: "Vercel", app: { slug: "github-actions" } },
-    { name: "Vercel Preview Comments", app: { slug: "github-actions" } },
-    { name: "Vercel – Code Owners", app: { slug: "vercel" } },
-    { name: "Vercel - fixture: e2e-tests", app: { slug: "vercel" } },
-    { name: "Workers Builds: ai", app: { slug: "github-actions" } },
-    { name: "Workers Builds: ai", app: undefined },
+    { name: "test Netlify integration", app: { slug: "github-actions" } },
+    { name: "Netlify", app: { slug: "github-actions" } },
+    { name: "Netlify Preview Comments", app: { slug: "github-actions" } },
+    { name: "Netlify – Code Owners", app: { slug: "netlify" } },
+    { name: "Workers Builds: site", app: { slug: "netlify" } },
+    { name: "Workers Builds: site", app: undefined },
+    { name: "Workers Builds: api", app: { slug: "cloudflare-workers-and-pages" } },
     { name: "Cloudflare integration tests", app: { slug: "cloudflare-workers-and-pages" } },
   ];
   for (const check of checks) {
-    const patch = await reconcileBuild(githubFixture([{ ...ci, ...check, conclusion: "failure" }], [deployment]), run);
+    const patch = await reconcileBuild(githubFixture([{ ...ci, ...check, conclusion: "failure" }], []), run);
     assert.equal(patch.ci?.state, "failure", check.name);
-  }
-  for (const status of [
-    { ...deployment, context: "test Vercel integration" },
-    { ...deployment, context: "Vercel - fixture: e2e-tests" },
-    { ...deployment, target_url: "https://vercel.com.example.test/deployment" },
-    { ...deployment, target_url: "https://github.com/fixture/actions/1" },
-    { ...deployment, target_url: undefined },
-  ]) {
-    const patch = await reconcileBuild(githubFixture([ci], [{ ...status, state: "failure" }]), run);
-    assert.equal(patch.ci?.state, "failure", JSON.stringify(status));
-    assert.equal(patch.preview?.state, "unknown");
+    assert.equal(patch.preview?.state, "unknown", check.name);
   }
 });
 
 test("missing or incomplete API results cannot mark either aggregate successful", async () => {
   for (const options of [{ checkError: true }, { statusError: true }, { checkCount: 101 }, { statusCount: 101 }]) {
-    const patch = await reconcileBuild(githubFixture([ci, { ...worker, status: "completed", conclusion: "success" }], [{ ...deployment, state: "success" }], options), run);
+    const patch = await reconcileBuild(githubFixture([ci, { ...siteCheck, status: "completed", conclusion: "success" }], [], options), run);
     assert.equal(patch.ci?.state, "unknown");
     assert.equal(patch.preview?.state, "unknown");
     assert.equal(patch.preview?.url, undefined);
@@ -122,7 +139,7 @@ test("missing or incomplete API results cannot mark either aggregate successful"
 });
 
 test("individual webhook events invalidate both aggregates without replacing them", async () => {
-  const pending = await reconcileBuild(githubFixture([ci, worker], [{ ...deployment, state: "success" }]), run);
+  const pending = await reconcileBuild(githubFixture([ci, siteCheck], []), run);
   const state = { ...run, ...pending };
   const patches: Partial<BuildRun>[] = [];
   const env = { BUILD_COORDINATOR: { getByName: () => ({
@@ -133,17 +150,18 @@ test("individual webhook events invalidate both aggregates without replacing the
       Object.assign(state, patch);
     },
   }) } } as unknown as Env;
-  for (const check of [ci, { ...worker, status: "completed", conclusion: "success" }, comments]) {
+  for (const check of [ci, { ...siteCheck, status: "completed", conclusion: "success" }]) {
     await applyGithubWebhook(env, "check_run", { repository: { full_name: BUILD_REPO }, check_run: { ...check, head_sha: headSha } });
   }
-  await applyGithubWebhook(env, "status", { repository: { full_name: BUILD_REPO }, sha: headSha, ...deployment, state: "success" });
+  await applyGithubWebhook(env, "status", { repository: { full_name: BUILD_REPO }, sha: headSha, context: "ci/tests", state: "success" });
   await applyGithubWebhook(env, "check_suite", { repository: { full_name: BUILD_REPO }, check_suite: { head_sha: headSha, status: "completed", conclusion: "success" } });
-  assert.equal(patches.length, 5);
+  assert.equal(patches.length, 4);
   for (const patch of patches) assert.deepEqual(patch, { reconciledAt: 0 });
   assert.equal(state.ci?.state, "success");
   assert.equal(state.preview?.state, "pending");
-  assert.equal(state.preview?.url, workerUrl);
-  const settled = await reconcileBuild(githubFixture([ci, { ...worker, status: "completed", conclusion: "success" }], [{ ...deployment, state: "success" }]), state);
+  assert.equal(state.preview?.url, undefined);
+  const settled = await reconcileBuild(githubFixture([ci, { ...siteCheck, status: "completed", conclusion: "success" }], []), state);
   assert.equal(settled.ci?.state, "success");
   assert.equal(settled.preview?.state, "success");
+  assert.equal(settled.preview?.url, siteUrl);
 });
