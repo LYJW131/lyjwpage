@@ -1,4 +1,5 @@
 import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
+import type { NowListeningPayload } from "@shared/types";
 
 import { base64url, decodeBase64url } from "../crypto";
 import type { SiteTool, ToolLedger } from "./registry";
@@ -14,7 +15,7 @@ const VIEW_NOTES = {
   charger: "Anker charger ports: devices charging, power, protocol",
   powerBank: "Anker power bank: battery %, charging, ports",
   listening: "Recently played Apple Music tracks",
-  nowListening: "Song playing right now (Apple Music / HomePod), or idle",
+  nowListening: "Song playing right now: reported by the Mac or HomePod (music), or inferred on another device from Apple Music play history (elsewhere); idle only covers the Mac and HomePod",
   coding: "AI coding token usage and API-equivalent cost over recent days",
   codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently",
   codingYear: "Daily coding token totals over the past year (heatmap data, large)",
@@ -203,9 +204,33 @@ function collectLists(value: unknown, path: string, needle: string, lists: Paged
 
 type ViewResult = { section: string; outOfRange?: true };
 
+const clock = (ms: number) => {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+};
+
+// 照字面读，模型会把 idle: true 当成「没在听」、把 elsewhere 当成「刚才在别处放过」；其实 idle 只管 Mac / HomePod，
+// elsewhere 是推断出的此刻多半正在 iPhone 等设备上放的那首，所以把这层含义直接说给模型。
+export function nowListeningHint(data: unknown, now: number): string | null {
+  const payload = (data as { data?: NowListeningPayload } | null)?.data;
+  const elsewhere = payload?.elsewhere;
+  if (!payload || payload.music || !elsewhere) return null;
+  const song = `"${elsewhere.title}"${elsewhere.artist ? ` by ${elsewhere.artist}` : ""}`;
+  const source = "idle only means the Mac and HomePod are not playing; elsewhere is inferred from Apple Music play history on a device without a reporter (iPhone, iPad or the web player), not reported live";
+  if (now < elsewhere.startedAt + elsewhere.durationMs) {
+    return `Reading: LYJW is most likely listening right now to ${song}, about ${clock(now - elsewhere.startedAt)} of ${clock(elsewhere.durationMs)} in. ${source}. Say LYJW is probably listening to it now; don't say nothing is playing or that it was played earlier.`;
+  }
+  const next = elsewhere.next ? `, likely "${elsewhere.next.title}"${elsewhere.next.artist ? ` by ${elsewhere.next.artist}` : ""}` : "";
+  return `Reading: LYJW is most likely still listening: ${song} has just run out and the next song${next} has not shown up in play history yet. ${source}. Don't say nothing is playing.`;
+}
+
+const VIEW_HINTS: Partial<Record<StatusViewKey, (data: unknown, now: number) => string | null>> = {
+  nowListening: nowListeningHint,
+};
+
 const clip = (text: string) => (text.length > MAX_CHARS_PER_VIEW ? `${text.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : text);
 
-function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: Cursor | undefined): ViewResult {
+function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: Cursor | undefined, now: number): ViewResult {
   const needle = normalize(page.query);
   const lists: PagedList[] = [];
   const filtered = collectLists(withMonthlyTotals(page.detail === "summary" ? strip(data) : data), "", needle, lists);
@@ -243,10 +268,11 @@ function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: 
     next ? `nextCursor: ${next}` : "last page",
     cursor && JSON.stringify(cursor.totals) !== JSON.stringify(totals) && "the lists changed while paging, items may repeat or be missing",
   ].filter(Boolean);
-  return { section: `${summary.join(" | ")}\n${clip(json)}` };
+  const hint = page.offset === 0 ? VIEW_HINTS[view]?.(data, now) : null;
+  return { section: [summary.join(" | "), hint, clip(json)].filter(Boolean).join("\n") };
 }
 
-async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, cursor?: Cursor): Promise<ViewResult> {
+async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, now: number, cursor?: Cursor): Promise<ViewResult> {
   let text: string;
   try {
     const response = await read(STATUS_VIEWS[key].path);
@@ -256,7 +282,7 @@ async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, 
     return { section: JSON.stringify({ error: "unavailable" }) };
   }
   try {
-    return pageView(key, JSON.parse(text), page, cursor);
+    return pageView(key, JSON.parse(text), page, cursor, now);
   } catch {
     if (page.offset > 0) return { section: "", outOfRange: true };
     return { section: `not JSON, returned as is\n${clip(text)}` };
@@ -266,7 +292,7 @@ async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, 
 const clockLine = (now: number) => `now: ${now} (${new Date(now).toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour12: false })} Asia/Shanghai)`;
 
 export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[], now = Date.now(), page: StatusPage = FIRST_PAGE): Promise<string> {
-  const results = await Promise.all(views.map(async (key) => `## ${key}\n${(await readView(read, key, page)).section}`));
+  const results = await Promise.all(views.map(async (key) => `## ${key}\n${(await readView(read, key, page, now)).section}`));
   return [clockLine(now), ...results].join("\n\n");
 }
 
@@ -308,13 +334,14 @@ export const SITE_STATUS_TOOL: SiteTool = {
     const { views, notes } = claimViews(parsed.views, ledger, parsed.page);
     if (parsed.cursor && views.length) {
       const view = parsed.cursor.view;
-      const result = await readView(readStatus, view, parsed.page, parsed.cursor);
+      const now = Date.now();
+      const result = await readView(readStatus, view, parsed.page, now, parsed.cursor);
       if (result.outOfRange) {
         ledger.reads?.delete(readKey(view, parsed.page));
         if (!hadView) ledger.views.delete(view);
         return { text: INVALID_CURSOR, isError: true };
       }
-      const text = [`${clockLine(Date.now())}\n\n## ${view}\n${result.section}`, ...parsed.notes].join("\n\n");
+      const text = [`${clockLine(now)}\n\n## ${view}\n${result.section}`, ...parsed.notes].join("\n\n");
       return { text, isError: false, views };
     }
     const read = views.length ? await runSiteStatusTool(readStatus, views, Date.now(), parsed.page) : "";

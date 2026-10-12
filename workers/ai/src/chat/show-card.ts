@@ -6,7 +6,7 @@ import type { ToolIO, ToolLedger } from "../tools/registry";
 import { SITE_STATUS_TOOL } from "../tools/site-status";
 
 const CARD_NOTES = {
-  nowListening: "the song playing right now, or that nothing is playing",
+  nowListening: "the song playing right now, including one inferred as playing on another device, or that nothing is playing",
   listening: "recently played albums and playlists",
   nowWatching: "what is playing on Emby right now, or that nothing is",
   watching: "recently watched movies and episodes",
