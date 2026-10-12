@@ -122,7 +122,7 @@ const AVATAR_CLASS = "size-4 shrink-0 rounded-full border border-surface bg-mute
 
 function AuthorAvatar({ author }: { author: CommitAuthor }) {
   if (author.avatarUrl) {
-    return <Image src={avatarSrc(author.avatarUrl).replace(`s=${AVATAR_PX * 2}`, `s=${AUTHOR_PX * 2}`)} alt="" width={AUTHOR_PX} height={AUTHOR_PX} className={AVATAR_CLASS} />;
+    return <Image src={avatarSrc(author.avatarUrl).replace(`s=${AVATAR_PX * 2}`, `s=${AUTHOR_PX * 2}`)} alt="" width={AUTHOR_PX} height={AUTHOR_PX} unoptimized className={AVATAR_CLASS} />;
   }
   return <span aria-hidden className={cn(AVATAR_CLASS, "flex items-center justify-center text-[9px] text-muted-foreground")}>{author.name.slice(0, 1).toUpperCase()}</span>;
 }

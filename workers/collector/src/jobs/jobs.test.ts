@@ -6,11 +6,12 @@ import type { AgentStatusPayload, AgentStatusRow } from "@shared/agent-status-ty
 import { PAGESPEED_TIMEOUT_MS } from "../pagespeed";
 import { mergeSentryStatus, SENTRY_BLOCK_CARRY_MS } from "@shared/sentry-status";
 import type { SentryStatusPayload } from "@shared/sentry-status-types";
+import { ContributorsUnavailable } from "@shared/github-repo";
 import type { GithubRepoPayload } from "@shared/types";
 
 import { MemoryKv } from "../testing/memory-kv";
 import type { Env } from "../env";
-import { mergeRepoStats } from "./github-repo";
+import { mergeRepoStats, refreshGithubRepo } from "./github-repo";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
@@ -179,4 +180,35 @@ test("site-analytics 缺配置或站点映射不全时跳过", async (t) => {
     siteAnalyticsJob.run({ env: partial, now, scheduled: false }),
     /both production hosts/,
   );
+});
+
+test("repo refresh after a deploy still lands fresh commits while stats are pending", async () => {
+  const lag = new MemoryKv();
+  const revalidated: string[][] = [];
+  const core = { revalidate: async (tags: string[]) => { revalidated.push(tags); } };
+  const commit = (sha: string) => ({ sha, title: sha, authors: ["p0"], committedAt: null });
+  const previous = { ...repo(400, 3, 1), recentCommits: [commit("aaaaaaa")] };
+  await writeLag(lag, LAG_KEYS.githubRepo, previous, 1);
+  const budgets: number[] = [];
+  const fetchers = {
+    commits: async () => [commit("bbbbbbb"), commit("aaaaaaa")],
+    stats: async (budgetMs: number) => {
+      budgets.push(budgetMs);
+      throw new ContributorsUnavailable("202", { commits: null, additions: null, deletions: null });
+    },
+  };
+
+  await assert.rejects(refreshGithubRepo({ lag, core, fetchers }, true));
+  assert.equal((await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo))?.updatedAt, 1, "定时任务不掩盖统计失败");
+  assert.equal(revalidated.length, 0);
+
+  assert.deepEqual(await refreshGithubRepo({ lag, core, fetchers }, false), { status: "ok", detail: "stats carried over" });
+  const written = (await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo))?.data;
+  assert.deepEqual(written?.recentCommits?.map((entry) => entry.sha), ["bbbbbbb", "aaaaaaa"]);
+  assert.deepEqual(written?.totals, previous.totals);
+  assert.deepEqual(revalidated, [["github-repo"]]);
+  assert.ok(budgets[1] < budgets[0], "部署后的重拉统计预算更短");
+
+  await refreshGithubRepo({ lag, core, fetchers }, false);
+  assert.equal(revalidated.length, 1, "提交没变不清首屏");
 });
