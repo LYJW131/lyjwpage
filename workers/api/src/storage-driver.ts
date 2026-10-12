@@ -35,29 +35,17 @@ function readOnly(commands: readonly StorageCommand[]): boolean {
 
 // 只合并独立读取；合并写事务会让一个操作的失败回滚相邻操作。
 type PublicStorageHub = {
-  publicRead(commands: StorageCommand[]): Promise<StorageResult[] | null>;
+  publicRead(commands: StorageCommand[]): Promise<StorageResult[]>;
   execute(commands: StorageCommand[]): Promise<unknown[]>;
 };
-
-export class StorageNotReady extends Error {
-  constructor() {
-    super("State storage is not initialized");
-    this.name = "StorageNotReady";
-  }
-}
 
 export function createPublicStorage(
   hub: PublicStorageHub,
   renewHub?: () => PublicStorageHub,
-  onNotReady?: () => void,
 ): StorageClient {
   const renew = renewHub && (() => { hub = renewHub(); });
-  const read = async (commands: StorageCommand[]): Promise<StorageResult[]> => {
-    const values = await retryRead(commands, () => hub.publicRead(commands), renew);
-    if (values) return values;
-    onNotReady?.();
-    throw new StorageNotReady();
-  };
+  const read = (commands: StorageCommand[]): Promise<StorageResult[]> =>
+    retryRead(commands, () => hub.publicRead(commands), renew);
   let pending: PendingRead[] = [];
   let scheduled = false;
   let tail = Promise.resolve();

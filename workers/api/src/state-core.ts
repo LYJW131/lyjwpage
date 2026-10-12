@@ -20,7 +20,7 @@ function transientFailure(error: unknown): boolean {
 
 export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   async ready(): Promise<boolean> {
-    return this.hub().ready();
+    return true;
   }
 
   // 必须先派发效果再处理提交失败：较早模块已落库的变化仍需通知。
@@ -37,7 +37,6 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
         return { ready: true, ok: false, error: result, retryable: true };
       }
       await dispatchIngestEffects(result.effects);
-      if (!result.ready) return { ready: false, ok: false };
       if (!result.ok) return { ready: true, ok: false, error: result.error };
       if (followUp) this.ctx.waitUntil(this.followUp(followUp));
       return { ready: true, ok: true, data: JSON.parse(result.json) as unknown };

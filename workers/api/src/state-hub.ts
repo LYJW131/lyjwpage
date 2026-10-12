@@ -1,7 +1,7 @@
 import { withRequestState } from "@shared/request-state";
 import { DurableObject } from "cloudflare:workers";
 import { StorageClient } from "@shared/storage-client";
-import { SqliteStore, type StoredEntry } from "@shared/sqlite-store";
+import { SqliteStore } from "@shared/sqlite-store";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
 import { commitPreparedIngest } from "./ingest-handlers";
 import { applyEnrichmentPatch } from "./enrichment-patch";
@@ -17,7 +17,6 @@ import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from
 export type PulseTick = { archive: PulseArchiveSnapshot; score: PulseScoreClaim | null };
 
 type CommitIngestWire =
-  | { ready: false; ok: false; json: "null"; error: null; effects: [] }
   | { ready: true; ok: true; json: string; error: null; effects: IngestEffect[] }
   | { ready: true; ok: false; json: "null"; error: string; effects: IngestEffect[] };
 
@@ -45,26 +44,16 @@ export class StateHub extends DurableObject<Env> {
     });
   }
 
-  ready(): boolean {
-    return this.ctx.storage.sql.exec("SELECT value FROM metadata WHERE key = 'initialized'").toArray()[0]?.value === "1";
-  }
-  async finishImport(): Promise<void> {
-    this.ctx.storage.sql.exec("INSERT INTO metadata(key, value) VALUES ('initialized', '1') ON CONFLICT(key) DO UPDATE SET value = '1'");
-  }
-
-  // 读取与初始化、提交可见性屏障同一次 RPC 完成；null 表示存储尚未初始化。
-  async publicRead(commands: StorageCommand[]): Promise<StorageResult[] | null> {
+  // 读取与提交可见性屏障同一次 RPC 完成。
+  async publicRead(commands: StorageCommand[]): Promise<StorageResult[]> {
     if (commands.some((command) => command.op !== "get" && command.op !== "fields" && command.op !== "listRange")) {
       throw new Error("publicRead only accepts read commands");
     }
-    if (!this.ready()) return null;
     await this.ingestTail;
-    if (!this.ready()) return null;
     return this.database.execute(commands) as StorageResult[];
   }
 
   async updateDevOverride(path: string, envelopeJson: string | null): Promise<string[]> {
-    if (!this.ready()) throw new Error("State storage is not initialized");
     if (!path.startsWith("/api/") || path.length > 1024) throw new Error("Invalid override path");
     if (envelopeJson !== null) {
       const value: unknown = JSON.parse(envelopeJson);
@@ -89,7 +78,6 @@ export class StateHub extends DurableObject<Env> {
   }
 
   commitIngest(command: CoreCommand): Promise<CommitIngestWire> {
-    if (!this.ready()) return Promise.resolve({ ready: false, ok: false, json: "null", error: null, effects: [] });
     const result = this.ingestTail.then(() => withRequestState(() => requestStore.run({
       env: this.env,
       ctx: this.ctx,
@@ -111,7 +99,6 @@ export class StateHub extends DurableObject<Env> {
 
   // 与上报共用 ingestTail 串行：补写必须排在它所补的那封上报之后，且不能和后来换曲目的那封交错。
   commitEnrichmentPatch(patch: EnrichmentPatch): Promise<{ applied: boolean; effects: IngestEffect[] }> {
-    if (!this.ready()) return Promise.resolve({ applied: false, effects: [] });
     const result = this.ingestTail.then(() => withRequestState(() => requestStore.run({
       env: this.env,
       ctx: this.ctx,
@@ -132,7 +119,6 @@ export class StateHub extends DurableObject<Env> {
   // 归档与评分各自失败不连累对方，所以分开兜底，各回各的空值。
   async pulseTick(): Promise<PulseTick> {
     const idle: PulseTick = { archive: { now: Date.now(), streams: [] }, score: null };
-    if (!this.ready()) return idle;
     await this.ingestTail;
     const archive = historyArchiveEnabled(this.env)
       ? await this.pulseArchiveState.readPulseArchive().catch((error: unknown) => (console.warn("[pulse-archive]", error), idle.archive))
@@ -144,28 +130,23 @@ export class StateHub extends DurableObject<Env> {
   }
 
   async confirmPulseArchive(stream: ArchiveStream, at: number, replaceToken?: string): Promise<number> {
-    if (!this.ready() || !historyArchiveEnabled(this.env)) return 0;
+    if (!historyArchiveEnabled(this.env)) return 0;
     await this.ingestTail;
     return this.pulseArchiveState.confirmPulseArchive(stream, at, replaceToken);
   }
 
   async activatePulseScore(token: string, generation: number): Promise<boolean> {
-    if (!this.ready() || !pulseScoringEnabled(this.env)) return false;
+    if (!pulseScoringEnabled(this.env)) return false;
     await this.ingestTail;
     return this.pulseScoreState.activatePulseScore(token, generation);
   }
 
   async finishPulseScore(token: string, generation: number, records: PulseAssessment[]): Promise<boolean> {
-    if (!this.ready() || !pulseScoringEnabled(this.env)) return false;
+    if (!pulseScoringEnabled(this.env)) return false;
     await this.ingestTail;
     return this.pulseScoreState.finishPulseScore(token, generation, records);
   }
 
-  async importMissing(entries: StoredEntry[]): Promise<number> {
-    const count = this.database.importMissing(entries);
-    await this.ensureAlarm();
-    return count;
-  }
   private async scheduleAlarm(at: number): Promise<void> {
     await this.ctx.storage.transaction(async (txn) => {
       const current = await txn.getAlarm();
