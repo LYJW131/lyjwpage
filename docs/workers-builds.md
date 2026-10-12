@@ -54,7 +54,7 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 为了让只改前端或只改 AI 的分支也有同提交后端可用，api 的非生产分支构建（Builds 配置里的 `previews_base_config`）另配包含路径：同时覆盖前端、状态与 AI 依赖（`src/*`、`shared/*`、`workers/api/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单），只排除 ingress 独有的 `shared/ingest/*`；生产配置的监视路径不变。
 
-站点 Preview 地址是 `<预览名>-site.lyjw.workers.dev`，由 Cloudflare Access 保护，访问者要先登录，没有免登录分享链接；应用与策略见 [仓库外事实](./ops-facts.md)。这个地址要 `site` 的 Worker 级 Preview URL 开关开着，而每次生产 `wrangler deploy` 都按 `wrangler.jsonc` 的 `preview_urls` 重写它（缺省为关），所以根配置必须写 `preview_urls: true`；关着时 `wrangler preview` 仍报成功，只是日志写「no active URLs」，PR 上也没有站点地址。只保护 `site` 的 Preview，不要开账号级保护，以免挡住 api 预览的构建就绪检查。`preview:deploy` 只在 site 的非生产构建变量 `SITE_PREVIEW_ACCESS_READY` 为 `true` 时执行，没确认 Access 生效前不要打开它。
+站点 Preview 地址是 `<预览名>-site.lyjw.workers.dev`，由 Cloudflare Access 保护，访问者要先登录，没有免登录分享链接；应用与策略见 [仓库外事实](./ops-facts.md)。这个地址要 `site` 的 Worker 级 Preview URL 开关开着，而每次生产 `wrangler deploy` 都按 `wrangler.jsonc` 的 `preview_urls` 重写它（缺省为关），所以根配置必须写 `preview_urls: true`；关着时 `wrangler preview` 仍报成功，只是日志写「no active URLs」，PR 上也没有站点地址。PR 上带地址的「Deploying Preview」评论只有走 Builds Previews（`previews_enabled` 与 `previews_base_config`）的 Worker 才会发，旧版「非生产分支触发」只给构建状态表；api 与 site 都要走 Previews。只保护 `site` 的 Preview，不要开账号级保护，以免挡住 api 预览的构建就绪检查。`preview:deploy` 只在 site 的 Previews 构建变量 `SITE_PREVIEW_ACCESS_READY` 为 `true` 时执行，没确认 Access 生效前不要打开它。
 
 AI 端点需要的 Secret 设在 api parent 的本分支 Preview 上：
 
@@ -80,7 +80,7 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 检出默认分支，用
 
 AI 的提示词、SDK 使用和工具编排留在 `workers/ai`，仅面向浏览器的对话契约保留在所排除的共享文件。公开路径单独定义在 `shared/ai-paths.ts`，路径变化仍触发 api；其他文件只重导出这些路径。eslint 阻止 api 的生产实现导入 AI 业务契约或运行时，防止排除路径后悄悄漏发。
 
-site 的 main 与非生产分支是两条触发，各存一份监视路径；控制台只改得到 main 那条，改完要按 [仓库外事实](./ops-facts.md) 记的方式经 Builds API 逐条读回、补改。
+api、site 的分支 Preview 走 Builds Previews：每个分支的 Preview 建立时复制一份当时的 `previews_base_config`，改基础配置不回写已有分支，要按 [仓库外事实](./ops-facts.md) 记的方式经 Builds API 逐份读改。
 
 共享状态代码变化仍要发布 api。`shared/ingest/` 的校验只打包进 ingress，api 只能 type-import；命令形状变更要同时改 api 提交阶段，按被调用方先发布的顺序执行。增加共享依赖或移动文件时，同步核对包含与排除规则。
 
