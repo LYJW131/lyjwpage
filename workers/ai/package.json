@@ -20,6 +20,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.132.1",
-    "@sentry/cloudflare": "10.75.2"
+    "@sentry/cloudflare": "11.7.0"
   }
 }

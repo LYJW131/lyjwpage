@@ -9,7 +9,7 @@ import {
   SENTRY_ENVIRONMENT,
   SENTRY_RELAY_PREFIX,
 } from "@shared/sentry";
-import { redactSentryEvent } from "@/lib/sentry-redact";
+import { redactSentryEvent, redactSentrySpan, SENTRY_SITE_DATA_COLLECTION } from "@/lib/sentry-redact";
 
 Sentry.init({
   dsn: SENTRY_DSN,
@@ -18,16 +18,15 @@ Sentry.init({
   release: commitSha ?? undefined,
   tunnel: SENTRY_RELAY_PREFIX,
   tracesSampleRate: 0.1,
-  enableLogs: true,
   integrations: [
     Sentry.browserTracingIntegration(),
     Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] }),
   ],
   beforeSend: (event) => redactSentryEvent(event),
-  beforeSendTransaction: (event) => redactSentryEvent(event),
+  beforeSendSpan: redactSentrySpan,
   replaysSessionSampleRate: 0,
   replaysOnErrorSampleRate: 1,
-  sendDefaultPii: false,
+  dataCollection: SENTRY_SITE_DATA_COLLECTION,
 });
 
 if (SENTRY_ENABLED) {

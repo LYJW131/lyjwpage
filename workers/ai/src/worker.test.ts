@@ -90,7 +90,7 @@ test("Sentry 默认标为 production，只有显式预览开关或环境设置�
   assert.equal(sentryOptions(env()).environment, "production");
   assert.equal(sentryOptions(env({ PREVIEW_WORKER: "true" })).environment, "preview");
   assert.equal(sentryOptions(env({ SENTRY_ENVIRONMENT: "development" })).environment, "development");
-  assert.equal(sentryOptions(env()).sendDefaultPii, false);
+  assert.equal(sentryOptions(env()).dataCollection?.userInfo, false);
 });
 
 
