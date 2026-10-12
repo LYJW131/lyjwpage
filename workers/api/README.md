@@ -39,7 +39,6 @@
 | POST | `/api/chat` | 经 `AI_SERVICE` 转发首页对话，见 [AI Worker](../ai/README.md#首页对话) |
 | POST | `/mcp` | 经 `AI_SERVICE` 转发公开 MCP，见 [AI Worker](../ai/README.md#mcp) |
 | GET | `/api/chat/usage` | 经 `AI_SERVICE` 转发对话配额查询 |
-| POST | `/api/github/issue` | 经 `AI_SERVICE` 转发访客确认的 issue 提交 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
