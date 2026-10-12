@@ -81,7 +81,38 @@ const useDomEffect = typeof window === "undefined" ? useEffect : useLayoutEffect
 // 缓存 HTML 里的快照时间必然陈旧；这段脚本在解析到时钟时就把它同步成本机时间，
 // 让首屏直接显示当前时刻，不等 React 水合。suppressHydrationWarning 保住它写过的 DOM。
 function syncClockScript(timezone: string): string {
-  return `(function(){var s=document.currentScript,t=s&&s.previousElementSibling;if(!t||t.tagName!=="TIME")return;var d=new Date(),tz=${JSON.stringify(timezone)};function f(l,o){var r={},p=new Intl.DateTimeFormat(l,Object.assign({timeZone:tz},o)).formatToParts(d);for(var i=0;i<p.length;i++)r[p[i].type]=p[i].value;return r}var v=f("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}),c=t.children;if(c.length===5){c[0].textContent=v.hour;c[2].textContent=v.minute;c[4].textContent=v.second}t.dateTime=d.toISOString();t.setAttribute("aria-label",v.hour+":"+v.minute+":"+v.second);var e=t.parentElement&&t.parentElement.nextElementSibling;if(e){var cal=f("en-CA",{year:"numeric",month:"2-digit",day:"2-digit"});e.textContent=cal.year+"/"+cal.month+"/"+cal.day+" "+f("en-US",{weekday:"short"}).weekday}var h=t.parentElement&&t.parentElement.parentElement&&t.parentElement.parentElement.nextElementSibling;if(h){var a=h.querySelectorAll(".clock-ui__hand"),sc=+v.second+d.getMilliseconds()/1e3,mi=+v.minute,hr=+v.hour;if(a.length===3){a[0].style.setProperty("--angle",String((hr%12+mi/60+sc/3600)*30));a[1].style.setProperty("--angle",String((mi+sc/60)*6));a[2].style.setProperty("--angle",String((sc%60)*6))}}})();`;
+  return `(function(){var s=document.currentScript,t=s&&s.previousElementSibling;if(!t||t.tagName!=="TIME")return;var d=new Date(),tz=${JSON.stringify(timezone)};function f(l,o){var r={},p=new Intl.DateTimeFormat(l,Object.assign({timeZone:tz},o)).formatToParts(d);for(var i=0;i<p.length;i++)r[p[i].type]=p[i].value;return r}var v=f("en-GB",{hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}),c=t.children,g=function(i,k){var e=c[i]&&c[i].firstElementChild;if(e)e.textContent=v[k]};if(c.length===5){g(0,"hour");g(2,"minute");g(4,"second")}t.dateTime=d.toISOString();t.setAttribute("aria-label",v.hour+":"+v.minute+":"+v.second);var e=t.parentElement&&t.parentElement.nextElementSibling;if(e){var cal=f("en-CA",{year:"numeric",month:"2-digit",day:"2-digit"});e.textContent=cal.year+"/"+cal.month+"/"+cal.day+" "+f("en-US",{weekday:"short"}).weekday}var h=t.parentElement&&t.parentElement.parentElement&&t.parentElement.parentElement.nextElementSibling;if(h){var a=h.querySelectorAll(".clock-ui__hand"),sc=+v.second+d.getMilliseconds()/1e3,mi=+v.minute,hr=+v.hour;if(a.length===3){a[0].style.setProperty("--angle",String((hr%12+mi/60+sc/3600)*30));a[1].style.setProperty("--angle",String((mi+sc/60)*6));a[2].style.setProperty("--angle",String((sc%60)*6))}}})();`;
+}
+
+// 数字行的占位 span 不随 live 切换卸载：NumberFlow 内部高度约 1.5em，若直接替换
+// 占位节点会把整行撑高，下面的日期和时区行跟着跳；占位转 invisible 后只做尺寸基准。
+function ClockDigit({
+  value,
+  live,
+  animated,
+  className,
+}: {
+  value: number;
+  live: boolean;
+  animated: boolean;
+  className?: string;
+}) {
+  return (
+    <span className={cn("relative inline-block", className)}>
+      <span suppressHydrationWarning aria-hidden className={live ? "invisible" : undefined}>
+        {String(value).padStart(2, "0")}
+      </span>
+      {live && (
+        <NumberFlow
+          value={value}
+          locales="en-US"
+          format={TWO_DIGITS}
+          animated={animated}
+          className="absolute inset-0"
+        />
+      )}
+    </span>
+  );
 }
 
 function handAngles(hour: number, minute: number, second: number) {
@@ -269,38 +300,18 @@ export function TimezoneCard({
                   dateTime={new Date(now).toISOString()}
                   aria-label={`${String(clock.hour).padStart(2, "0")}:${String(clock.minute).padStart(2, "0")}:${String(clock.second).padStart(2, "0")}`}
                 >
-                  {live ? (
-                    <>
-                      <NumberFlow value={clock.hour} locales="en-US" format={TWO_DIGITS} animated={animated} />
-                      <span className="mx-0.5 text-muted-foreground">:</span>
-                      <NumberFlow value={clock.minute} locales="en-US" format={TWO_DIGITS} animated={animated} />
-                      <span className="mx-0.5 text-lg font-normal text-muted-foreground/50 sm:text-xl lg:text-2xl">
-                        :
-                      </span>
-                      <NumberFlow
-                        value={clock.second}
-                        locales="en-US"
-                        format={TWO_DIGITS}
-                        animated={animated}
-                        className="text-lg font-normal tracking-normal text-muted-foreground/50 sm:text-xl lg:text-2xl"
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <span suppressHydrationWarning>{String(clock.hour).padStart(2, "0")}</span>
-                      <span className="mx-0.5 text-muted-foreground">:</span>
-                      <span suppressHydrationWarning>{String(clock.minute).padStart(2, "0")}</span>
-                      <span className="mx-0.5 text-lg font-normal text-muted-foreground/50 sm:text-xl lg:text-2xl">
-                        :
-                      </span>
-                      <span
-                        suppressHydrationWarning
-                        className="text-lg font-normal tracking-normal text-muted-foreground/50 sm:text-xl lg:text-2xl"
-                      >
-                        {String(clock.second).padStart(2, "0")}
-                      </span>
-                    </>
-                  )}
+                  <ClockDigit value={clock.hour} live={live} animated={animated} />
+                  <span className="mx-0.5 text-muted-foreground">:</span>
+                  <ClockDigit value={clock.minute} live={live} animated={animated} />
+                  <span className="mx-0.5 text-lg font-normal text-muted-foreground/50 sm:text-xl lg:text-2xl">
+                    :
+                  </span>
+                  <ClockDigit
+                    value={clock.second}
+                    live={live}
+                    animated={animated}
+                    className="text-lg font-normal tracking-normal text-muted-foreground/50 sm:text-xl lg:text-2xl"
+                  />
                 </time>
                 {!live && (
                   <script dangerouslySetInnerHTML={{ __html: syncClockScript(timezone) }} />
