@@ -92,6 +92,17 @@ export function parseWorkerDeployment(raw: unknown): WorkerDeployment | null {
   return versions.length ? { deployedAt, versions, commit: null } : null;
 }
 
+export function parseBuildCommit(metadata: unknown): NonNullable<WorkerDeployment["commit"]> | null {
+  const meta = metadata == null ? {} : record(metadata);
+  const sha = typeof meta.commit_hash === "string" && /^[a-f0-9]{40}$/i.test(meta.commit_hash) ? meta.commit_hash : null;
+  if (!sha) return null;
+  return {
+    sha,
+    branch: typeof meta.branch === "string" ? meta.branch.slice(0, 100) : null,
+    message: typeof meta.commit_message === "string" ? meta.commit_message.split("\n")[0].slice(0, 180) : null,
+  };
+}
+
 export function parseBuildsByVersion(raw: unknown): Map<string, NonNullable<WorkerDeployment["commit"]>> {
   const body = record(raw);
   if (body.success !== true) throw new Error("Cloudflare 构建查询失败");
@@ -99,14 +110,8 @@ export function parseBuildsByVersion(raw: unknown): Map<string, NonNullable<Work
   if (typeof builds !== "object" || builds === null || Array.isArray(builds)) throw new Error("Cloudflare 构建格式无效");
   const commits = new Map<string, NonNullable<WorkerDeployment["commit"]>>();
   for (const [versionId, value] of Object.entries(builds)) {
-    const meta = record(value).build_trigger_metadata == null ? {} : record(record(value).build_trigger_metadata);
-    const sha = typeof meta.commit_hash === "string" && /^[a-f0-9]{40}$/i.test(meta.commit_hash) ? meta.commit_hash : null;
-    if (!sha) continue;
-    commits.set(versionId, {
-      sha,
-      branch: typeof meta.branch === "string" ? meta.branch.slice(0, 100) : null,
-      message: typeof meta.commit_message === "string" ? meta.commit_message.split("\n")[0].slice(0, 180) : null,
-    });
+    const commit = parseBuildCommit(record(value).build_trigger_metadata);
+    if (commit) commits.set(versionId, commit);
   }
   return commits;
 }

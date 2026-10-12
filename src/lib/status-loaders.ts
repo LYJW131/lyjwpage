@@ -22,7 +22,7 @@ import type { LagResult } from "@/lib/lag-result";
 import { getDesktopPayload, getNowListening, getTimezonePayload } from "@/lib/telemetry";
 import { getTrophies, summarizeTrophies } from "@/lib/trophies";
 import { sliceTrophies } from "@/lib/trophy-slice";
-import { getVercelDeployments } from "@/lib/vercel-deployments";
+import { getSiteDeployments } from "@/lib/site-deployments";
 
 export type StatusLoaderParams = {
   since?: number;
@@ -73,7 +73,7 @@ export const statusLoaders = {
   },
   githubRepo: { endpoint: unparam(getGithubRepo) },
   cloudflareWorkers: { endpoint: unparam(getCloudflareWorkers) },
-  vercelDeployments: { endpoint: unparam(getVercelDeployments) },
+  siteDeployments: { endpoint: unparam(getSiteDeployments) },
   sentry: { endpoint: unparam(getSentryStatus) },
   reporters: { endpoint: unparam(getReportersStatus) },
   pulse: { endpoint: unparam(() => getPulseStatus()) },

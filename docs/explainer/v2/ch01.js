@@ -935,7 +935,7 @@
   // apple-recent.ts#appleRecentDue 分闲 / 活跃两档；这里让它在 APPLE_CHANGED 那一分钟看到列表变了。
   const JOBS = [
     ["apple-recent", 1, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
-    ["github-chart", 10, 1], ["github-repo", 30, 2], ["vercel-deployments", 1, 0], ["vercel-metrics", 15, 3],
+    ["github-chart", 10, 1], ["github-repo", 30, 2], ["site-deployments", 1, 0], ["site-analytics", 15, 3],
     ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["sentry-status", 5, 2],
     ["avatar-watch", 5, 1],
   ];

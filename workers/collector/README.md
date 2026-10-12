@@ -14,7 +14,7 @@
 
 另开一个具名 entrypoint `Collector`（契约见 `shared/collector.ts`）：同账号的 Worker 调
 `refresh(jobs)` 就能点名立刻跑几个任务，比如上报入口（`workers/ingress`）收到站点部署通知后请它重拉
-`vercel-deployments` 与 `cloudflare-deployments`。
+`site-deployments` 与 `cloudflare-deployments`。
 没有路由、没有域名；生产上 `fetch` 一律 404。
 
 ## 任务
@@ -29,8 +29,10 @@
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
 | `github-repo` | `LAG github-repo:v1` | `GITHUB_TOKEN` |
-| `vercel-deployments` | `LAG vercel-deployments:v1`；每次部署另归档 D1 `site_deploys` | `VERCEL_TOKEN` |
-| `vercel-metrics` | `LAG vercel-metrics:v1`（函数、访问两组各带采集时刻） | `VERCEL_TOKEN` |
+| `site-deployments` | `LAG site-deployments:v1`；每次部署另归档 D1 `site_deploys` | `CLOUDFLARE_METRICS_TOKEN`；`SITE_WORKER_TAG` |
+| `site-analytics` | `LAG site-analytics:v1`（Cloudflare Web Analytics 两站 pageviews，UTC 七日窗） | `CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
+| `vercel-deployments` | 已退役：名字留在契约里，点名时回 `skipped`，不进定时轮次（`shared/collector.ts#RETIRED_COLLECTOR_JOBS`） | 无 |
+| `vercel-metrics` | 已退役：同上 | 无 |
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
@@ -42,7 +44,7 @@
 
 - **缺令牌就干净地跳过**：每个 isolate 每个任务只 `console.warn` 一次
   （`{"event":"collector-skip",…}`），监控照常报 ok —— 没配是配置状态，不是故障。
-- **部分成功**：GitHub 仓库统计的名单和总数、Vercel 指标的两组、Sentry 的五路查询（合成四块，其中 `errors` 要站点、后端两路
+- **部分成功**：GitHub 仓库统计的名单和总数、Sentry 的五路查询（合成四块，其中 `errors` 要站点、后端两路
   都取到才更新）都是各拉各的，这一轮没取到的那一部分沿用可滞后层里上一份的（带着它原来的采集时刻）；全都没取到才算失败、不写。
   Sentry 各块取到的时刻记在 `blockAt`，卡片按它判过期（`SENTRY_STALE_MS`）；沿用最多 `SENTRY_BLOCK_CARRY_MS`，再旧那一块才回到「没有」。
   Cloudflare 部署逐个 Worker 查，单个查不到只空那一格（某个 Worker 还没部署时就是这样），
@@ -100,17 +102,18 @@
 | --- | --- |
 | `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计 |
 | `GITHUB_DISPATCH_TOKEN` | fine-grained PAT，只授权 `LYJW131/lyjwpage`：Actions 读写（触发 `avatar-sync.yml`）、Contents 只读（读标记文件） |
-| `VERCEL_TOKEN` | 团队范围：部署列表、函数与访问统计（只读用） |
 | `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取 |
 | `SENTRY_API_TOKEN` | Sentry 组织只读：`org:read` / `project:read` / `event:read` |
 | `PAGESPEED_API_KEY` | Google PageSpeed Insights |
+
+`SITE_WORKER_TAG`（site Worker 的 Builds tag）与 `SITE_ANALYTICS_SITES`（JSON：`{"lyjw.me":"<site_tag>","lyjw131.com":"<site_tag>"}`，两站缺一不可）是 `[vars]` 配置；缺哪个跳过哪个任务，不算故障。
 
 Apple Music 不在这里配：user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推来的），
 developer token 经 `CORE.appleDeveloperToken()` 由 api 签。
 
 绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS` 三个 KV，`CORE`（`api` 的 `StateCore`），D1 `HISTORY`
 （`lyjwpage-history`）。D1 表结构归 `workers/api/migrations` 管：新表先在 api 那边
-`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote`，再发布本 Worker。
+`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
 Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION_METADATA`。
 
 ## 部署

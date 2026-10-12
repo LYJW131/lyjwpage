@@ -75,7 +75,7 @@ function SourceHint({ connected }: { connected: boolean }) {
         <span className="absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-lg border border-line bg-surface p-3">
           <span className="label-mono block text-foreground">Data source</span>
           <span className="mt-2 block text-xs normal-case leading-relaxed text-muted-foreground">
-            Counts foreground WebSocket connections live on a Cloudflare Workers Durable Object, across the Vercel production site and every preview build.
+            Counts foreground WebSocket connections live on a Cloudflare Workers Durable Object, across the production site and every preview build.
           </span>
           <span className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
             <span className="label-mono text-muted-foreground">WebSocket</span>

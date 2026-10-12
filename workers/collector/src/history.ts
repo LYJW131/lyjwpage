@@ -1,5 +1,5 @@
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
-import type { VercelDeployment } from "@/lib/vercel-deployments-types";
+import type { SiteDeployment } from "@/lib/site-deployments-types";
 
 
 export const HISTORY_BATCH_SIZE = 100;
@@ -22,8 +22,8 @@ const UPSERT_SITE_DEPLOY = `INSERT INTO site_deploys(id, created_at, build_durat
     OR site_deploys.commit_branch IS NOT excluded.commit_branch
     OR site_deploys.commit_message IS NOT excluded.commit_message`;
 
-export function siteDeployStatements(db: HistoryDb, deployments: readonly (VercelDeployment | null)[], observedAt: number): HistoryStatement[] {
-  const byId = new Map<string, VercelDeployment>();
+export function siteDeployStatements(db: HistoryDb, deployments: readonly (SiteDeployment | null)[], observedAt: number): HistoryStatement[] {
+  const byId = new Map<string, SiteDeployment>();
   for (const deployment of deployments) if (deployment) byId.set(deployment.id, deployment);
   return [...byId.values()].map((deployment) => db.prepare(UPSERT_SITE_DEPLOY).bind(
     deployment.id,
@@ -38,7 +38,7 @@ export function siteDeployStatements(db: HistoryDb, deployments: readonly (Verce
   ));
 }
 
-export async function archiveSiteDeploys(db: HistoryDb, deployments: readonly (VercelDeployment | null)[], observedAt: number): Promise<void> {
+export async function archiveSiteDeploys(db: HistoryDb, deployments: readonly (SiteDeployment | null)[], observedAt: number): Promise<void> {
   try {
     await runBatched(db, siteDeployStatements(db, deployments, observedAt));
   } catch (error) {

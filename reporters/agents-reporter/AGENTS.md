@@ -1,6 +1,6 @@
 # reporters/agents-reporter
 
-把各 coding agent 的账号限额（以及 Cursor 云端用量）推给站点的小代理，跑在 misaka-jp 的容器里。配置表、登录步骤、部署命令在 `README.md`，这里只写不变量、坑和须成对修改的文件。
+把各 coding agent 的账号限额（以及 Cursor 云端用量、tokens.ci 上的 Devin CLI 用量）推给站点的小代理，跑在 misaka-jp 的容器里。配置表、登录步骤、部署命令在 `README.md`，这里只写不变量、坑和须成对修改的文件。
 
 ## 不变量
 

@@ -2,6 +2,8 @@
 
 站点的原生 iOS 客户端 + iPhone 上报器。人读的说明在 `README.md`；首次上机步骤与待验证清单在 `docs/ios-app-handoff.md`。
 
+维护范围以 [README「维护范围」](./README.md#维护范围) 为准；仅维护运动数据上报链路，不同步暂停维护的展示端契约。
+
 ## 不变量
 
 - **bundle id 不改**（`project.yml` 的 `PRODUCT_BUNDLE_IDENTIFIER`）：改了 HealthKit 授权、钥匙串里的 Access 密钥、带 HealthKit 能力的描述文件全要重来。小组件 id 是它的后缀。
@@ -14,6 +16,8 @@
 - 界面文案英文，数字与日期 en-US（根 AGENTS.md「界面与交互」）。
 
 ## 须与站点成对修改
+
+上报载荷保持成对修改；其余展示契约在恢复客户端维护后执行。
 
 | 这里 | 站点 |
 | --- | --- |

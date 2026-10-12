@@ -5,7 +5,7 @@ import test from "node:test";
 import type Anthropic from "@anthropic-ai/sdk";
 import { GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, type GodChatEffort } from "@shared/god-chat-tiers";
-import { BUILD_DESIGN_LIMITS, type BuildPlan } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, PLAN_LABELS, type BuildPlan } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { ChatQuota } from "./chat/quota.ts";
 import type { AnthropicEgress } from "./chat/egress.ts";
@@ -307,7 +307,8 @@ test("改站请求由 Sonnet 判断，start_design 建 Managed Agents 会话并�
   assert.equal(design.remaining, BUILD_DESIGN_LIMITS.maxTurns - 1);
   assert.deepEqual(events.filter((event) => event.type === "step").map((event) => event.type === "step" && event.text), ["Cloned the repository", "Searched the code for “empty state”"]);
   assert.ok(events.some((event) => event.type === "doc" && event.doc === "repo" && event.path === "src/components/live/music-card.tsx" && event.url.endsWith("/blob/main/src/components/live/music-card.tsx")));
-  assert.equal(textOf(events), "Here is my plan.");
+  assert.equal(textOf(events), `${PLAN_LABELS.en.handoff}Here is my plan.`);
+  assert.ok(events.findIndex((event) => event.type === "text") < events.findIndex((event) => event.type === "design"), "the ordinary chat says one line before the planner takes over");
   const proposed = events.find((event) => event.type === "plan");
   assert.ok(proposed?.type === "plan");
   assert.deepEqual((await readPlan(env, proposed.token))?.plan, plan);
@@ -343,6 +344,19 @@ test("会话没有挂起的工具调用时，访客的话按普通消息发给�
   const { env, sent, sessions } = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "Sure."), agent.idle({ type: "end_turn" })]] });
   await parseEvents(await handleChat(chatRequest(await designToken(env, sessions)), env, toolIO));
   assert.deepEqual(sent, [{ type: "user.message", content: [{ type: "text", text: "Please improve the music card." }] }]);
+});
+
+test("规划者没写字就出计划时，开场白跟访客看得到的中文标题走，不跟英文规格；写了字就不再补", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const zhPlan = { ...plan, title: "回答完问题后自动折叠问题框" };
+  const silent = designEnv({ turns: [[agent.running, agent.custom("ctu_plan", "propose_build", zhPlan), agent.waiting("ctu_plan")]] });
+  const quiet = await parseEvents(await handleChat(chatRequest(await designToken(silent.env, silent.sessions)), silent.env, toolIO));
+  assert.equal(textOf(quiet), PLAN_LABELS.zh.planReady);
+  const spoken = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "改完后回答过的问题会收起来。"), agent.custom("ctu_plan", "propose_build", zhPlan), agent.waiting("ctu_plan")]] });
+  const said = await parseEvents(await handleChat(chatRequest(await designToken(spoken.env, spoken.sessions)), spoken.env, toolIO));
+  assert.equal(textOf(said), "改完后回答过的问题会收起来。");
 });
 
 test("规划者的自定义工具：站点状态当场回结果，不合规的题目与禁区计划报错让它重试，合规的题目挂起等访客；要确认的内置工具一律拒绝", async (t) => {

@@ -1,5 +1,5 @@
 import { site } from "@/lib/site";
-import type { LighthouseVitals, PageSpeedPayload, PageSpeedSample } from "@/lib/vercel-deployments-types";
+import type { LighthouseVitals, PageSpeedPayload, PageSpeedSample } from "@/lib/site-deployments-types";
 
 const ENDPOINT = "https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed";
 const FIELDS = "captchaResult,lighthouseResult(categories/performance/score,audits)";

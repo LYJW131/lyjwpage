@@ -1,6 +1,5 @@
 "use client";
 
-import Script from "next/script";
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
@@ -13,7 +12,7 @@ import { Card } from "@/components/ui/card";
 import { stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent } from "@/lib/chat-consent";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
-import { activeChatDesign, chatArchive, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession } from "@/lib/chat-archive";
+import { activeChatDesign, chatArchive, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -47,6 +46,42 @@ declare global {
   }
 }
 
+const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+
+function TurnstileScript({ onReady, onError }: { onReady: () => void; onError: () => void }) {
+  const readyRef = useRef(onReady);
+  const errorRef = useRef(onError);
+  useEffect(() => {
+    readyRef.current = onReady;
+    errorRef.current = onError;
+  });
+  useEffect(() => {
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SCRIPT_SRC}"]`);
+    if (window.turnstile || existing?.dataset.loaded === "1") {
+      readyRef.current();
+      return;
+    }
+    const script = existing ?? document.createElement("script");
+    const ready = () => {
+      script.dataset.loaded = "1";
+      readyRef.current();
+    };
+    const failed = () => errorRef.current();
+    script.addEventListener("load", ready, { once: true });
+    script.addEventListener("error", failed, { once: true });
+    if (!existing) {
+      script.src = TURNSTILE_SCRIPT_SRC;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+    return () => {
+      script.removeEventListener("load", ready);
+      script.removeEventListener("error", failed);
+    };
+  }, []);
+  return null;
+}
+
 type Reply = Omit<ChatBubble, "role" | "content">;
 type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; handoff: boolean };
 const RESUME_DELAY_MS = 2000;
@@ -54,10 +89,10 @@ const EMPTY_MESSAGES: ChatBubble[] = [];
 // 须与 globals.css 里 .design-halo 的动画总时长一致。
 const DESIGN_HALO_MS = 2_400;
 
-const CHAT_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
+const CHAT_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
 const OFFLINE = "The oracle is offline.";
 
-const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+const SITE_KEY = process.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
 // 排着队的消息等组件渲染出来的最长时间；组件出来之后（可能在等访客点验证）交给 Turnstile 自己的超时回调。
 const VERIFY_LOAD_TIMEOUT_MS = 15_000;
 const VERIFY_UNAVAILABLE = "Human verification couldn't load. Check your connection or ad blocker, then reload the page.";
@@ -69,7 +104,8 @@ function readPass(): HumanPass | null {
   try {
     const value: unknown = JSON.parse(window.sessionStorage.getItem(PASS_KEY) ?? "null");
     if (value && typeof value === "object" && typeof (value as HumanPass).pass === "string" && typeof (value as HumanPass).expiresAt === "number" && (value as HumanPass).expiresAt - PASS_MARGIN_MS > Date.now()) return value as HumanPass;
-  } catch {}
+  } catch {
+  }
   return null;
 }
 
@@ -77,7 +113,8 @@ function writePass(pass: HumanPass | null) {
   try {
     if (pass) window.sessionStorage.setItem(PASS_KEY, JSON.stringify(pass));
     else window.sessionStorage.removeItem(PASS_KEY);
-  } catch {}
+  } catch {
+  }
 }
 
 const COMMANDS = [
@@ -88,7 +125,7 @@ const COMMANDS = [
 
 type Command = (typeof COMMANDS)[number];
 const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
-const USAGE_URL = workerUrl(process.env.NEXT_PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
+const USAGE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
 // 站主要求示例用中文，是「界面文案英文」的例外。
@@ -146,7 +183,7 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!conversationId || !design) return;
     const expire = () => {
       const current = chatArchive.session(conversationId);
-      if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.update(conversationId, { design: undefined });
+      if (current?.design?.token === design.token && !activeChatDesign(current.design)) chatArchive.endDesign(conversationId, designEndReason(current.design));
     };
     if (!activeChatDesign(design)) { expire(); return; }
     const timer = setTimeout(expire, Math.max(0, design.expiresAt - Date.now()) + 20);
@@ -285,7 +322,7 @@ function Conversation({ className, archive, session: conversation }: { className
       if (!CHAT_URL) throw new Error(OFFLINE);
       const humanPass = usedToken ? null : readPass();
       designToken = activeChatDesign(conversation?.design)?.token;
-      if (conversation?.design && !designToken) chatArchive.update(conversation.id, { design: undefined }, { persist: false });
+      if (conversation?.design && !designToken) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -296,8 +333,8 @@ function Conversation({ className, archive, session: conversation }: { className
         const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
         if (data?.code === "human_pass_expired") writePass(null);
         if (conversation && designSessionEnded(data?.code)) {
-          chatArchive.update(conversation.id, { design: undefined }, { persist: false });
-          throw new Error("Design session ended. Send your message again to continue in ordinary chat.");
+          chatArchive.endDesign(conversation.id, data?.code === "design_session_exhausted" ? "exhausted" : "expired", { persist: false });
+          throw new Error("The design session has ended. Send your message again to continue in ordinary chat.");
         }
         throw new Error(data?.error ?? OFFLINE);
       }
@@ -419,7 +456,7 @@ function Conversation({ className, archive, session: conversation }: { className
         sessionRef.current += 1;
         abortRef.current?.abort();
       }
-      chatArchive.update(conversation.id, { design: undefined });
+      chatArchive.endDesign(conversation.id, "left");
       return;
     }
     if (name === "/clear") {
@@ -571,9 +608,7 @@ function Conversation({ className, archive, session: conversation }: { className
       </div>
       {historyOpen && <SessionList archive={archive} />}
       {(armed || warm) && (
-        <Script
-          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-          strategy="afterInteractive"
+        <TurnstileScript
           onReady={() => setScriptReady(true)}
           onError={() => verificationFailed(VERIFY_UNAVAILABLE, "unavailable")}
         />
@@ -611,67 +646,70 @@ function Conversation({ className, archive, session: conversation }: { className
           messages.map((message, index) => {
             const live = streaming && index === messages.length - 1;
             return (
-              <div key={index} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
-                <div
-                  className={cn(
-                    "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
-                    message.role === "user" && message.answers
-                      ? "max-w-[85%]"
-                      : message.role === "user"
-                      ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
-                      : "w-full text-foreground",
-                  )}
-                >
-                  {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
-                  {message.thinking && (
-                    <details open={live && !message.content} className="mb-1.5">
-                      <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
-                        {live && !message.content ? "Thinking…" : "Thought process"}
-                      </summary>
-                      {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
-                      <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
-                        <ChatMarkdown>{live ? stableMarkdown(message.thinking) : message.thinking}</ChatMarkdown>
+              <Fragment key={index}>
+                <div className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
+                  <div
+                    className={cn(
+                      "min-w-0 text-sm leading-relaxed [overflow-wrap:anywhere]",
+                      message.role === "user" && message.answers
+                        ? "max-w-[85%]"
+                        : message.role === "user"
+                        ? "max-w-[85%] whitespace-pre-wrap rounded-lg bg-foreground px-3 py-2 text-background"
+                        : "w-full text-foreground",
+                    )}
+                  >
+                    {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
+                    {message.thinking && (
+                      <details open={live && !message.content} className="mb-1.5">
+                        <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
+                          {live && !message.content ? "Thinking…" : "Thought process"}
+                        </summary>
+                        {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
+                        <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
+                          <ChatMarkdown>{live ? stableMarkdown(message.thinking) : message.thinking}</ChatMarkdown>
+                        </div>
+                      </details>
+                    )}
+                    {message.lookups?.length ? (
+                      <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">
+                        Looked at {message.lookups.join(", ")}
                       </div>
-                    </details>
-                  )}
-                  {message.lookups?.length ? (
-                    <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">
-                      Looked at {message.lookups.join(", ")}
-                    </div>
-                  ) : null}
-                  {message.designAt === undefined && <PlannerActivity message={message} live={live} />}
-                  {message.role === "assistant" ? (
-                    <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} handoff={<PlannerActivity message={message} live={live} />} />
-                  ) : message.answers ? (
-                    <AnswerCard answers={message.answers} />
-                  ) : (
-                    message.content
-                  )}
-                  {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={answer} /> : null}
-                  {message.proposals?.map((proposal, proposalIndex) => (
-                    <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
-                      if (!conversation) return;
-                      const current = chatArchive.session(conversation.id);
-                      if (current) chatArchive.update(current.id, { messages: current.messages.map((entry, messageIndex) => messageIndex === index ? { ...entry, proposals: entry.proposals?.map((item, itemIndex) => itemIndex === proposalIndex ? updated : item) } : entry) });
-                    }} />
-                  ))}
-                  {message.sources?.length ? (
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-[11px]">
-                      {message.sources.map((source) => (
-                        <a
-                          key={source.url}
-                          href={source.url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="max-w-full truncate text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                        >
-                          {source.title}
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
+                    ) : null}
+                    {message.designAt === undefined && <PlannerActivity message={message} live={live} />}
+                    {message.role === "assistant" ? (
+                      <ReplyBody content={message.content} cards={message.cards} designAt={message.designAt} live={live} handoff={<PlannerActivity message={message} live={live} />} />
+                    ) : message.answers ? (
+                      <AnswerCard answers={message.answers} />
+                    ) : (
+                      message.content
+                    )}
+                    {message.asks?.length ? <AskCard questions={message.asks} active={!streaming && index === messages.length - 1} onAnswer={answer} /> : null}
+                    {message.proposals?.map((proposal, proposalIndex) => (
+                      <BuildPlanCard key={proposal.token} proposal={proposal} inactive={live} onChange={(updated) => {
+                        if (!conversation) return;
+                        const current = chatArchive.session(conversation.id);
+                        if (current) chatArchive.update(current.id, { messages: current.messages.map((entry, messageIndex) => messageIndex === index ? { ...entry, proposals: entry.proposals?.map((item, itemIndex) => itemIndex === proposalIndex ? updated : item) } : entry) });
+                      }} />
+                    ))}
+                    {message.sources?.length ? (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-[11px]">
+                        {message.sources.map((source) => (
+                          <a
+                            key={source.url}
+                            href={source.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="max-w-full truncate text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                          >
+                            {source.title}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+                {message.designEnded && <DesignEndNotice reason={message.designEnded} />}
+              </Fragment>
             );
           })
         )}
@@ -829,7 +867,7 @@ function PlannerSteps({ steps, live }: { steps: string[]; live: boolean }) {
   return (
     <details className="mb-1.5">
       <summary className={`label-mono cursor-pointer truncate text-[10px] text-muted-foreground ${live ? "normal-case" : ""}`}>
-        {live ? steps[steps.length - 1] : `${steps.length.toLocaleString("en-US")} step${steps.length > 1 ? "s" : ""} looking through the site`}
+        {live ? steps[steps.length - 1] : `${steps.length.toLocaleString("en-US")} step${steps.length > 1 ? "s" : ""} in the sandbox`}
       </summary>
       <ol className="mt-1 space-y-0.5 pl-3 text-[10px] text-muted-foreground">
         {steps.map((step, i) => <li key={i} className="label-mono normal-case leading-snug [overflow-wrap:anywhere]">{step}</li>)}
@@ -976,8 +1014,30 @@ function DesignStatus({ design }: { design: ChatDesign }) {
   return (
     <p className="mb-2 flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
       <PencilRuler className="size-3 shrink-0" />
-      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left</span>
+      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left · ends {new Date(design.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
     </p>
+  );
+}
+
+const DESIGN_END_LABELS: Record<DesignEndReason, string> = {
+  expired: "Design session ended · time's up",
+  exhausted: "Design session ended · no turns left",
+  left: "Left the design session",
+};
+
+function DesignEndNotice({ reason }: { reason: DesignEndReason }) {
+  return (
+    <div role="status" className="space-y-1 py-1 text-center">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <span className="h-px flex-1 bg-line" />
+        <span className="label-mono flex min-w-0 items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-1 text-[10px]">
+          <PencilRuler className="size-3 shrink-0" />
+          {DESIGN_END_LABELS[reason]}
+        </span>
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      <p className="text-[11px] text-muted-foreground">You&apos;re back in ordinary chat, which can&apos;t make plans. To keep planning, describe the change again and a new design session will start.</p>
+    </div>
   );
 }
 

@@ -1,11 +1,14 @@
-import type { Metadata } from "next";
+import type { MetaDescriptor } from "react-router";
 
 import { LOCAL_CHARGING_STORAGE_KEY } from "@/lib/local-charging-arm";
+import { site } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Local Charging",
-  robots: { index: false, follow: false },
-};
+export function meta(): MetaDescriptor[] {
+  return [
+    { title: `Local Charging — ${site.name}` },
+    { name: "robots", content: "noindex, nofollow" },
+  ];
+}
 
 export default function LocalChargingArmPage() {
   return (

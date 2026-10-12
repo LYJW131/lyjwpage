@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 
-import { PREVIEW_WORKER_SCRIPTS, previewWorkerName, previewWorkerOrigin } from "./preview-worker-name.mjs";
+import { PREVIEW_WORKER_SCRIPTS, SITE_PREVIEW_WORKER_SCRIPT, previewWorkerName, previewWorkerOrigin } from "./preview-worker-name.mjs";
 
 test("分支名变成稳定的 Preview 名和地址", () => {
   assert.equal(previewWorkerName("feat/agent-status"), "feat-agent-status");
@@ -12,6 +12,7 @@ test("分支名变成稳定的 Preview 名和地址", () => {
     "https://feat-agent-status-api.lyjw.workers.dev",
   );
   assert.equal(previewWorkerOrigin("feat/agent-status", "ai"), "https://feat-agent-status-ai.lyjw.workers.dev");
+  assert.equal(previewWorkerOrigin("feat/agent-status", "site"), "https://feat-agent-status-site.lyjw.workers.dev");
   assert.throws(() => previewWorkerOrigin("feat/agent-status", "ingress"), /Unknown Preview Worker/);
 });
 
@@ -20,17 +21,20 @@ test("main 和空分支不分配 Preview", () => {
   assert.equal(previewWorkerName("Main"), null);
   assert.equal(previewWorkerName(""), null);
   assert.equal(previewWorkerName("///"), null);
+  assert.equal(previewWorkerName("main", "site"), null);
+  assert.equal(previewWorkerName("", "site"), null);
   assert.equal(previewWorkerOrigin("main"), null);
+  assert.equal(previewWorkerOrigin("main", "site"), null);
 });
 
 test("超长分支名截到 DNS 标签上限，两次结果相同", () => {
   const branch = `feat/${"segment-".repeat(20)}tail`;
   const name = previewWorkerName(branch);
   assert.ok(name);
-  for (const worker of PREVIEW_WORKER_SCRIPTS) {
+  for (const worker of [...PREVIEW_WORKER_SCRIPTS, SITE_PREVIEW_WORKER_SCRIPT]) {
     const label = new URL(previewWorkerOrigin(branch, worker)).hostname.split(".")[0];
     assert.equal(label.length <= 63, true);
-    assert.equal(label, `${name}-${worker}`);
+    assert.equal(label, `${previewWorkerName(branch, worker)}-${worker}`);
   }
   assert.match(name, /^[a-z0-9-]+-[0-9a-f]{8}$/);
   assert.equal(name.endsWith("-"), false);

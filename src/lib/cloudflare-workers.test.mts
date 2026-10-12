@@ -12,9 +12,10 @@ const analytics = () => ({ data: { viewer: { accounts: [{
 
 test("summary maps every repo worker in order, converts microseconds, and leaves absent workers null", () => {
   const result = parseWorkersMetrics(analytics(), start, end);
-  assert.deepEqual(result.workers.map((worker) => worker.name), ["api", "ingress", "collector"]);
-  assert.deepEqual(result.workers[0].metrics, { requests: 20, errors: 2, subrequests: 30, cpuTimeP50Ms: 0.735 });
-  assert.equal(result.workers[1].metrics, null);
+  assert.deepEqual(result.workers.map((worker) => worker.name), ["site", "api", "ingress", "collector"]);
+  assert.equal(result.workers[0].metrics, null);
+  assert.deepEqual(result.workers[1].metrics, { requests: 20, errors: 2, subrequests: 30, cpuTimeP50Ms: 0.735 });
+  assert.equal(result.workers[2].metrics, null);
   assert.deepEqual([result.windowStart, result.windowEnd], [start, end]);
 });
 
@@ -70,9 +71,9 @@ test("deployment permission failure preserves metrics and sends credentials only
   });
   const metrics = await fetchWorkersMetrics("test-account", "test-secret", start, end);
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  assert.equal(calls.length, 7);
-  assert.equal(metrics.workers[0].metrics?.requests, 20);
-  assert.deepEqual(deployments, [null, null, null]);
+  assert.equal(calls.length, 9);
+  assert.equal(metrics.workers[1].metrics?.requests, 20);
+  assert.deepEqual(deployments, [null, null, null, null]);
   assert.doesNotMatch(JSON.stringify({ metrics, deployments }), /test-secret|test-account/);
 });
 
@@ -96,9 +97,9 @@ test("deployments join the commit of the highest-traffic version in one batched 
     return Response.json({ success: false }, { status: 403 });
   });
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  assert.equal(calls.length, 7);
-  assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: x" });
-  assert.deepEqual(deployments.slice(1), [null, null]);
+  assert.equal(calls.length, 9);
+  assert.deepEqual(deployments[1]?.commit, { sha, branch: "main", message: "feat: x" });
+  assert.deepEqual(deployments.filter((_, i) => i !== 1), [null, null, null]);
 });
 
 test("a deployed version without a build record borrows the commit of the previous built version", async (t) => {
@@ -126,8 +127,8 @@ test("a deployed version without a build record borrows the commit of the previo
     return Response.json({ success: false }, { status: 403 });
   });
   const deployments = await fetchWorkerDeployments("test-account", "test-secret");
-  assert.deepEqual(deployments[0]?.commit, { sha, branch: "main", message: "feat: y" });
-  assert.equal(deployments[0]?.versions[0].id, "secret-v");
+  assert.deepEqual(deployments[1]?.commit, { sha, branch: "main", message: "feat: y" });
+  assert.equal(deployments[1]?.versions[0].id, "secret-v");
 });
 
 test("the public payload joins metrics and deployments by name, each half with its own time", async (t) => {
@@ -146,13 +147,13 @@ test("the public payload joins metrics and deployments by name, each half with i
   assert.equal(result.data.fetchedAt, end + 5);
   assert.equal(result.data.deploymentsFetchedAt, end + 60);
   assert.deepEqual(result.data.workers.map((worker) => [worker.name, worker.metrics?.requests ?? null, worker.deployment?.versions[0].id ?? null]), [
-    ["api", 20, null], ["ingress", null, null], ["collector", null, "v1"],
+    ["site", null, null], ["api", 20, null], ["ingress", null, null], ["collector", null, "v1"],
   ]);
 
   store.delete(LAG_KEYS.cloudflareMetrics);
   const partial = await getCloudflareWorkers();
   assert.equal(partial.data.fetchedAt, null);
-  assert.equal(partial.data.workers[2].deployment?.versions[0].id, "v1");
+  assert.equal(partial.data.workers[3].deployment?.versions[0].id, "v1");
 
   store.delete(LAG_KEYS.cloudflareDeployments);
   await assert.rejects(getCloudflareWorkers(), /Waiting/);

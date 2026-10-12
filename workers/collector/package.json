@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Scheduled external pulls (Apple Music, provider status, GitHub, Vercel, Cloudflare, Sentry, PageSpeed) on a Cloudflare Worker",
+  "description": "Scheduled external pulls (Apple Music, provider status, GitHub, Cloudflare, Sentry, PageSpeed) on a Cloudflare Worker",
   "main": "src/index.ts",
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy -c wrangler.toml",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs src/*.test.ts src/jobs/*.test.ts"
   },
