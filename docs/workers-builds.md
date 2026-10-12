@@ -80,6 +80,8 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 检出默认分支，用
 
 AI 的提示词、SDK 使用和工具编排留在 `workers/ai`，仅面向浏览器的对话契约保留在所排除的共享文件。公开路径单独定义在 `shared/ai-paths.ts`，路径变化仍触发 api；其他文件只重导出这些路径。eslint 阻止 api 的生产实现导入 AI 业务契约或运行时，防止排除路径后悄悄漏发。
 
+ai、site 的 main 与非生产分支是两条触发，各存一份监视路径；控制台只改得到 main 那条，改完要按 [仓库外事实](./ops-facts.md) 记的方式经 Builds API 逐条读回、补改。
+
 共享状态代码变化仍要发布 api。`shared/ingest/` 的校验只打包进 ingress，api 只能 type-import；命令形状变更要同时改 api 提交阶段，按被调用方先发布的顺序执行。增加共享依赖或移动文件时，同步核对包含与排除规则。
 
 ## 配置与验收
