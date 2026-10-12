@@ -110,15 +110,14 @@ test("KV 过期时间不短于 60 秒", async (t) => {
 });
 
 test("listening/now 读取只用存好的补全，不发外部请求", async (t) => {
-  const { FakeStorage } = await import("@/lib/testing/fake-storage");
-  const { installStorageForTests, resetStorageForTests } = await import("@/lib/storage");
+  const { FakeStorage, installTestStorage } = await import("@/lib/testing/fake-storage");
   const { mirror: telemetry } = await import("@shared/telemetry");
   const { mirror: liveness } = await import("@shared/reporter-liveness");
   const { getNowListening } = await import("@/lib/telemetry");
-  installStorageForTests(new FakeStorage());
+  installTestStorage(new FakeStorage());
   const ttlKv = new TtlKv();
   installAppleCache(() => ttlKv);
-  t.after(() => { resetStorageForTests(); installAppleCache(null); });
+  t.after(() => { installTestStorage(null); installAppleCache(null); });
   const now = Date.now();
   const playing = music("Song", { observedAt: now });
   await liveness.put({ lastSeenAt: now, declaredOffline: false });

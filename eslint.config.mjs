@@ -77,7 +77,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@api/*", "**/api/src/**", "@/lib/storage-driver", "@/lib/status-loaders", "@shared/state-core"],
+          group: ["@api/*", "**/api/src/**", "@shared/storage", "@/lib/status-loaders", "@shared/state-core"],
           message: "AI 只能通过 PublicStatus 读取公开模型，不能导入状态核心或存储实现。",
         }],
       }],

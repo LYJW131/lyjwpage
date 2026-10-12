@@ -1,18 +1,20 @@
+import { installStorage } from "@shared/storage";
 import { StorageClient } from "@shared/storage-client";
 import type { StorageCommand } from "@shared/storage-contract";
+
+export function installTestStorage(client: StorageClient | null): void {
+  installStorage(client ? () => client : null);
+}
 
 type Entry = { kind: "string" | "hash" | "list"; value: string | Record<string, string> | string[]; expiresAt?: number };
 
 export class FakeStorage extends StorageClient {
-  private unreachable = false;
   private failing: ((commands: readonly StorageCommand[]) => boolean) | null = null;
   private entries = new Map<string, Entry>();
   constructor() { super(async (commands) => this.executeCommands(commands)); }
-  setUnreachable(value = true): void { this.unreachable = value; }
   failWhen(predicate: ((commands: readonly StorageCommand[]) => boolean) | null): void { this.failing = predicate; }
   async append(key: string, ...values: string[]): Promise<number> { return this.executeCommands([{ op: "append", key, values }])[0] as number; }
   private executeCommands(commands: StorageCommand[]): unknown[] {
-    if (this.unreachable) throw new Error("fake storage unreachable");
     if (this.failing?.(commands)) throw new Error("fake storage injected failure");
     const saved = structuredClone(this.entries);
     try { return commands.map((command) => this.command(command)); }
@@ -29,7 +31,6 @@ export class FakeStorage extends StorageClient {
     switch (command.op) {
       case "get": return entry?.value ?? null;
       case "set":
-        if (entry && command.options?.ifAbsent) return false;
         this.entries.set(key, { kind: "string", value: command.value, expiresAt: command.options?.ttlMs ? Date.now() + command.options.ttlMs : undefined });
         return true;
       case "remove": return this.entries.delete(key) ? 1 : 0;

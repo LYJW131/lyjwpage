@@ -1,5 +1,4 @@
 import { lyricsCacheKey, lyricsTtlMs, resolveLyrics, type LyricsResult } from "@/lib/lyrics";
-import { withStorageScope } from "@/lib/storage";
 
 export type LyricsResponse = LyricsResult & { songId: string | null };
 
@@ -23,7 +22,7 @@ export async function GET(request: Request) {
     );
   }
   try {
-    const result = await withStorageScope(() => resolveLyrics(requested));
+    const result = await resolveLyrics(requested);
     return jsonResponse(
       { songId: requested, ...result },
       200,

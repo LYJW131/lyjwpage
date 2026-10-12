@@ -1,36 +1,14 @@
-import { askStorage, withStorage } from "@/lib/storage";
-import { fallback, K_LAST_PUSH, K_LATEST, type Stored } from "@shared/powerbank-store";
-
-function fromMemory(): Stored | null {
-  return fallback.latest
-    ? { status: fallback.latest, receivedAt: fallback.receivedAt }
-    : null;
-}
+import { getStorage } from "@shared/storage";
+import { K_LAST_PUSH, K_LATEST, type Stored } from "@shared/powerbank-store";
 
 async function readLatest(): Promise<Stored | null> {
-  const answered = await askStorage((storage) => storage.get(K_LATEST));
-  if (!answered.reachable) return fromMemory();
-
-  if (answered.value) {
-    let stored: Stored;
-    try {
-      stored = JSON.parse(answered.value) as Stored;
-    } catch {
-      // 脏数据按「答不上来」算，不按「没有」—— 否则会连累好好的内存副本
-      return fromMemory();
-    }
-    // 写失败过时内存这份更新，别被存储里故障前的旧值盖回去
-    if (!fallback.persisted && fallback.latest && fallback.receivedAt > stored.receivedAt) {
-      return fromMemory();
-    }
-    fallback.latest = stored.status;
-    fallback.receivedAt = stored.receivedAt;
-    fallback.persisted = true;
-    return stored;
+  const raw = await getStorage().get(K_LATEST);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Stored;
+  } catch {
+    return null;
   }
-
-  // 存储明确说没有：内存那份没落库过才还算数，落过库说明是真被清了
-  return fallback.persisted ? null : fromMemory();
 }
 
 export function readPowerBankState(): Promise<Stored | null> {
@@ -43,7 +21,6 @@ export async function getStored() {
 }
 
 export async function lastPushReceivedAt() {
-  const raw = await withStorage(async (storage) => storage.get(K_LAST_PUSH), null);
-  const fromStorage = raw ? Number(raw) : 0;
-  return Math.max(fromStorage || 0, fallback.lastPushAt);
+  const raw = await getStorage().get(K_LAST_PUSH);
+  return (raw ? Number(raw) : 0) || 0;
 }

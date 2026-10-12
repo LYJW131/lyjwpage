@@ -1,11 +1,9 @@
-import { withStorage } from "@/lib/storage";
+import { getStorage } from "@shared/storage";
 import { type ChargingDevice, SETTLING_MS, settlingKey } from "@shared/charging-settling";
 
-export function askSettlingAt(device: ChargingDevice): Promise<number> {
-  return withStorage(async (storage) => {
-    const raw = await storage.get(settlingKey(device));
-    return raw ? Number(raw) || 0 : 0;
-  }, 0);
+export async function askSettlingAt(device: ChargingDevice): Promise<number> {
+  const raw = await getStorage().get(settlingKey(device));
+  return raw ? Number(raw) || 0 : 0;
 }
 
 export function settlingDecision(

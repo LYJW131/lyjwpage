@@ -24,12 +24,12 @@ function database() {
   return { store: new SqliteStore(sql, transaction, () => now), advance: ms => now += ms, db };
 }
 
-test("SQLite：TTL 与条件写入原子生效，过期键能再次领取", () => {
+test("SQLite：TTL 到期后读不到，覆盖写重新计时", () => {
   const { store, advance, db } = database();
-  const claim = { op: "set", key: "gate", value: "1", options: { ttlMs: 100, ifAbsent: true } };
-  assert.deepEqual(store.execute([claim, claim]), [true, false]);
+  const write = { op: "set", key: "gate", value: "1", options: { ttlMs: 100 } };
+  assert.deepEqual(store.execute([write, { op: "get", key: "gate" }]), [true, "1"]);
   advance(100);
-  assert.deepEqual(store.execute([{ op: "get", key: "gate" }, claim]), [null, true]);
+  assert.deepEqual(store.execute([{ op: "get", key: "gate" }, write, { op: "get", key: "gate" }]), [null, true, "1"]);
   db.close();
 });
 

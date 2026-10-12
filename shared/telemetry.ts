@@ -8,7 +8,7 @@ import {
   type PlayingQueueTrack
 } from "@/lib/playing-queue";
 import { IMAGE_OBJECT_KEY, publicAssetPath } from "@/lib/asset-url";
-import { fieldMirror } from "@/lib/storage";
+import { fieldMirror } from "@shared/storage";
 import { withPresence, type Liveness } from "@/lib/reporter-liveness";
 import type {
   DesktopActivity,
@@ -59,7 +59,6 @@ export type PersistedTelemetry = {
 
 export const mirror = fieldMirror<PersistedTelemetry>(
   ["telemetry", "fields"],
-  (state) => state.telemetryReceivedAt,
 );
 
 export async function syncTelemetryState() {

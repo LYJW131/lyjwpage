@@ -16,9 +16,6 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "@/lib/storage-driver": [
-        "./src/storage-driver.ts"
-      ],
       "@/*": [
         "../../src/*"
       ],

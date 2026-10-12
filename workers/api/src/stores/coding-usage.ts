@@ -1,6 +1,6 @@
 import { codingLayoutKey } from "@/lib/home-layout";
 import { CODING_TAG } from "@/lib/live-events";
-import { askStorage, tellStorage } from "@/lib/storage";
+import { getStorage } from "@shared/storage";
 import {
   codingUsageKey,
   codingUsageRevisionKey,
@@ -26,11 +26,11 @@ export type CodingUsageLanding = {
 function landing(stage: (batch: StorageBatch) => void, tags: string[], changed: boolean): CodingUsageLanding {
   return {
     stage,
-    commit: () => tellStorage((storage) => {
-      const batch = storage.batch();
+    commit: () => {
+      const batch = getStorage().batch();
       stage(batch);
       return batch.execute();
-    }),
+    },
     tags,
     changed,
   };
@@ -65,19 +65,16 @@ export async function prepareCodingUsage(
   receivedAt: number,
   { derived = false }: { derived?: boolean } = {},
 ): Promise<CodingUsageLanding> {
-  const answered = await askStorage(async (storage) => {
-    const batch = storage.batch();
-    for (const name of CODING_USAGE_SOURCE_NAMES) batch.fields(codingUsageKey(name));
-    batch.get(codingViewKey()).get(codingUsageRevisionKey());
-    return batch.execute();
-  });
-  if (!answered.reachable) throw new Error("coding 用量账本读不到");
+  const read = getStorage().batch();
+  for (const name of CODING_USAGE_SOURCE_NAMES) read.fields(codingUsageKey(name));
+  read.get(codingViewKey()).get(codingUsageRevisionKey());
+  const values = await read.execute();
   const stored: StoredCodingUsage = {};
   CODING_USAGE_SOURCE_NAMES.forEach((name, index) => {
-    stored[name] = parseStoredUsageLedgers(answered.value[index]);
+    stored[name] = parseStoredUsageLedgers(values[index]);
   });
-  const previousView = parseStoredView(answered.value[CODING_USAGE_SOURCE_NAMES.length]);
-  const revision = parseRevision(answered.value[CODING_USAGE_SOURCE_NAMES.length + 1]) + 1;
+  const previousView = parseStoredView(values[CODING_USAGE_SOURCE_NAMES.length]);
+  const revision = parseRevision(values[CODING_USAGE_SOURCE_NAMES.length + 1]) + 1;
 
   const own = { ...stored[source] };
   const fields: Record<string, string> = {};

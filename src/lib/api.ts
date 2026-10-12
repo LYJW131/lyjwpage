@@ -1,6 +1,5 @@
 import { AwaitingReport } from "@/lib/awaiting-report";
 import { LagResult } from "@/lib/lag-result";
-import { withStorageScope } from "@/lib/storage";
 import type { StatusResponse } from "@/lib/types";
 
 function reason(error: unknown): string {
@@ -33,24 +32,22 @@ export function titleIdsParam(request: Request): string[] | undefined {
 export async function statusEnvelope<T>(
   loader: () => Promise<T | LagResult<T>>,
 ): Promise<StatusResponse<T>> {
-  return withStorageScope(async () => {
-    try {
-      const value = await loader();
-      const servedAt = Date.now();
-      if (value instanceof LagResult) {
-        return { ok: true, data: value.data as T, updatedAt: value.updatedAt, servedAt };
-      }
-      return { ok: true, data: value, servedAt };
-    } catch (error) {
-      const message = reason(error);
-      if (error instanceof AwaitingReport) {
-        console.warn("[status]", message);
-      } else {
-        console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
-      }
-      return { ok: false, error: error instanceof AwaitingReport ? message : "状态暂不可用" };
+  try {
+    const value = await loader();
+    const servedAt = Date.now();
+    if (value instanceof LagResult) {
+      return { ok: true, data: value.data as T, updatedAt: value.updatedAt, servedAt };
     }
-  });
+    return { ok: true, data: value, servedAt };
+  } catch (error) {
+    const message = reason(error);
+    if (error instanceof AwaitingReport) {
+      console.warn("[status]", message);
+    } else {
+      console.error("[status]", error instanceof Error ? (error.stack ?? message) : message);
+    }
+    return { ok: false, error: error instanceof AwaitingReport ? message : "状态暂不可用" };
+  }
 }
 
 // 除首帧时钟 servedAt 外，动态时间戳留在响应头，避免无变化的 payload 每次都触发深比较失败。

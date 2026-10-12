@@ -1,4 +1,4 @@
-import { key } from "@/lib/storage";
+import { key } from "@shared/storage";
 import type { CodingNowPayload, CodingUsagePayload } from "@/lib/types";
 
 import type { CodingActivityReport } from "./coding-usage";

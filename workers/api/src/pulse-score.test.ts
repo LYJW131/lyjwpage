@@ -13,8 +13,7 @@ import type { StorageCommand } from "@shared/storage-contract";
 import { PulseScorer, type PulseDecide } from "./pulse-score.ts";
 import { PulseScoreState } from "./pulse-score-state.ts";
 import { pulseAssessmentsKey } from "@/lib/pulse-assessments";
-import { resetStorageForTests } from '@/lib/storage';
-import { installStorageForTests } from '../../../src/lib/storage-driver';
+import { installTestStorage } from '@/lib/testing/fake-storage';
 import { withRequestState } from '@shared/request-state';
 import { requestStore, type Env } from './runtime';
 import { commitPreparedAgentsReport } from './stores/agents';
@@ -399,7 +398,7 @@ test("a zero window is skipped while another coding window still calls the decis
 
 test("Mac-offline account evidence reaches scoring and the public chart, then disappears after source expiry", async () => {
   const b = setup();
-  installStorageForTests(b.storage);
+  installTestStorage(b.storage);
   const pending: Promise<unknown>[] = [];
   try {
     await requestStore.run({ env: { LIVE_PUSH: { idFromName: () => null, get: () => ({ broadcast: async () => {} }) } } as unknown as Env,
@@ -407,7 +406,7 @@ test("Mac-offline account evidence reaches scoring and the public chart, then di
       await commitPreparedAgentsReport(prepareAgentLimits({ codingUsage: { agents: [{ id: 'cursor', state: 'ok', collectedAt: T, error: null,
         warning: null, sessionCount: null, days: [] }] } }, T));
     }));
-  } finally { await Promise.allSettled(pending); resetStorageForTests(); }
+  } finally { await Promise.allSettled(pending); installTestStorage(null); }
   await b.make().run();
   assert.equal(b.requests.length, 0, "checked but inactive sources use a limited-confidence zero baseline");
   const { codingLaneView } = await import('@/lib/pulse');

@@ -13,8 +13,7 @@ import {
   pulseListeningTracesKey,
   pulseWorkoutsKey,
 } from "@/lib/pulse-keys";
-import { installStorageForTests, resetStorageForTests } from "@/lib/storage";
-import { FakeStorage } from "@/lib/testing/fake-storage";
+import { FakeStorage, installTestStorage } from "@/lib/testing/fake-storage";
 import { addBucketDeltas, mergeBucketReport } from "@shared/coding-buckets";
 import { codingBucketsKey } from "@shared/coding-store";
 import type { CodingTokenBucketReport, CodingTokenBucketRow } from "@shared/coding-usage";
@@ -28,8 +27,8 @@ const sec = (at: number) => Math.round((at - FROM) / 1000);
 
 async function withStorage(run: (storage: FakeStorage) => Promise<void>) {
   const storage = new FakeStorage();
-  installStorageForTests(storage);
-  try { await run(storage); } finally { resetStorageForTests(); }
+  installTestStorage(storage);
+  try { await run(storage); } finally { installTestStorage(null); }
 }
 
 test("empty storage is an all-unknown timeline, not an error", async () => {

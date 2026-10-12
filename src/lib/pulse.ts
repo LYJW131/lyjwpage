@@ -10,7 +10,7 @@ import {
   pulseListeningTracesKey,
   pulseWorkoutsKey,
 } from "@/lib/pulse-keys";
-import { withStorage } from "@/lib/storage";
+import { getStorage } from "@shared/storage";
 import type {
   PulseCodingLane,
   PulsePayload,
@@ -279,8 +279,7 @@ function parsed<T>(rows: unknown, parse: (raw: string) => T | null): T[] {
 
 export async function getPulseStatus(now: number = Date.now()): Promise<PulsePayload> {
   const window = pulseWindowAt(now);
-  const empty: unknown[] = [];
-  const rows = await withStorage(async (storage) => storage.batch()
+  const rows: unknown[] = await getStorage().batch()
     .listRange(pulseLaneKey("listening"), -TAIL.listening, -1)
     .get(pulseLaneOpenKey("listening"))
     .listRange(pulseLaneKey("watching"), -TAIL.watching, -1)
@@ -297,7 +296,7 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     .get(codingBucketsKey("mac"))
     .get(codingBucketsKey("agents"))
     .get(codingBucketsKey("agents-otlp"))
-    .execute(), empty);
+    .execute();
   const text = (index: number) => (typeof rows[index] === "string" ? rows[index] as string : null);
   const lane = <L extends StateLane>(name: L, index: number): StateLaneInput<L> => ({
     closed: parsed(rows[index], (raw) => parseClosedInterval(name, raw)),
