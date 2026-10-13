@@ -174,16 +174,22 @@ export function ServerCard({
       className={cn("h-full scroll-mt-28", className)}
     >
       <div className="flex h-full min-h-44 flex-col justify-between gap-3 p-4 lg:p-5">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex items-start justify-between gap-3 md:grid md:grid-cols-2">
           <div className="min-w-0">
-            <div className="truncate label-mono text-muted-foreground" title={location ?? undefined}>
-              {location ?? "—"}
+            <div
+              className="truncate font-medium md:label-mono md:font-normal md:text-muted-foreground"
+              title={location ?? undefined}
+            >
+              {location ?? <span className="text-muted-foreground">—</span>}
             </div>
-            <div className="truncate font-mono text-lg" title={isp ?? undefined}>
+            <div
+              className="truncate text-sm text-muted-foreground md:font-mono md:text-lg md:text-foreground"
+              title={isp ?? undefined}
+            >
               {isp ?? <span className="text-muted-foreground">—</span>}
             </div>
           </div>
-          <div className="min-w-0">
+          <div className="shrink-0 text-right md:min-w-0 md:text-left">
             <div className="label-mono text-muted-foreground">Uptime</div>
             <div className="font-mono text-lg tabular-nums">
               {data ? formatUptime(data.uptimeSeconds) : <span className="text-muted-foreground">—</span>}
