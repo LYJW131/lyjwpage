@@ -79,6 +79,7 @@ description: lyjwpage 的「提炼 skill」定时任务按它跑：从书签起�
 
 修正写到出错那一刻会被读到的地方：
 
+- 机械的、能写成判定的（固定写法、禁用命令、文件位置）→ 确定性检查：测试、`scripts/` 下的检查脚本或 `.claude/settings.json` 的钩子，不写成规则；本流程不改代码，写成提议放进报告。
 - 某类任务里的做法 → 对应 skill。
 - 每个线程都要守的默认做法 → 根 `AGENTS.md`「工作方式」，站主要知道的分工与提问方式 → `HUMAN.md`。
 - 协调者的事（怎么派线程、简报漏了什么、跟进转到哪个线程）→ 项目记忆：协调者读记忆、不读仓库。写记忆后照 repo-memory-mirror 同步仓库镜像。
@@ -87,7 +88,7 @@ description: lyjwpage 的「提炼 skill」定时任务按它跑：从书签起�
 
 ### 6. 写 skill 与偏差修正、自测、开 PR
 
-- 写法照仓库现有 skill（`lyjwpage-verify`）和「参考」里的写作要点：
+- 写法照仓库现有 skill（`lyjwpage-verify`）和 [writing.md](writing.md)（每条带 Anthropic 出处），落笔前和改完后各对照一遍：
   - `name` 用 `lyjwpage-<动作>` 小写连字符；`description` 写清做什么和什么时候用，触发词放前面，这是唯一常驻上下文的部分。
   - 正文写到 Claude 能照做为止，不解释 Claude 已经懂的东西；超过约 200 行就把细节拆到同目录的一级引用文件，从 `SKILL.md` 直接链接。
   - 遵守根 `AGENTS.md`「文档与注释」：不写时间线、不抄易变的值、一个事实一个出处，规则在别处已有就写指针。
