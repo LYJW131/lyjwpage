@@ -155,6 +155,9 @@ test("counts from capped source lists read as lower bounds while the oldest list
   facts = digestFacts(views, NOW);
   assert.match(facts, /This homepage's own code: 9 commits, 2 production deploys;/);
   assert.match(facts, /PlayStation trophies earned: 2; Gold Rush \(gold, ASTRO BOT\), Silver Lining \(silver, ASTRO BOT\)\n/);
+
+  views.siteDeployments = { recent: deploys.map((deploy) => ({ ...deploy, target: "preview", createdAt: at(2) })) } as unknown as DigestViews["siteDeployments"];
+  assert.match(digestFacts(views, NOW), /This homepage's own code: 9 commits; areas touched site\n/);
 });
 
 test("facts round small changes away, so an unchanged hour keeps the same input hash", async () => {
