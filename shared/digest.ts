@@ -24,8 +24,6 @@ export type DigestPayload = {
   model: string;
   // 模型写出这段文字的 epoch 毫秒；可滞后层条目的 updatedAt 是最近一次确认输入没变的时刻，二者可以相差好几个小时。
   generatedAt: number;
-  // 模型判断这 24 小时没什么值得上卡：headline 为空串、highlights 为空，站点改回显示时钟卡。
-  quiet?: boolean;
 };
 
 export type DigestRecord = DigestPayload & {
@@ -47,6 +45,6 @@ export interface DigestRpc {
   compose(request: DigestRequest): Promise<DigestOutcome>;
 }
 
-export function publicDigest({ headline, highlights, model, generatedAt, quiet }: DigestPayload): DigestPayload {
-  return quiet ? { headline, highlights, model, generatedAt, quiet } : { headline, highlights, model, generatedAt };
+export function publicDigest({ headline, highlights, model, generatedAt }: DigestPayload): DigestPayload {
+  return { headline, highlights, model, generatedAt };
 }

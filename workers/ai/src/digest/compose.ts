@@ -22,8 +22,7 @@ const TOPICS: Record<DigestTopic, true> = {
 
 export const DIGEST_SYSTEM_PROMPT = `You fill the summary card at the top of LYJW's personal homepage (lyjw.me). The page shows live data about LYJW: coding with AI agents, music, video, games, fitness, and work on this homepage itself. Once an hour you get a fact sheet about the past 24 hours, ending with the highlight options the card can show; the card should tell a visitor at a glance what LYJW has been up to.
 
-Return a headline and pick the highlights, or set quiet.
-- quiet: true only when the past 24 hours hold too little worth showing a visitor (almost no activity, nothing that tells a story); the card then shows a plain clock instead. Leave headline empty and picks empty when quiet. Otherwise false.
+Return a headline and pick the highlights.
 - headline: 3 to 5 Simplified Chinese characters naming what dominated the day, in the voice of an Apple China tagline: short, confident, concrete. Chinese characters only: no punctuation, spaces, Latin letters or digits. Don't name LYJW.
 - picks: the topics of the ${DIGEST_MAX_HIGHLIGHTS} highlight options that back up the headline, most important first; 2 if the day is quiet. Keep them in the same broad direction as the headline so the card tells one story: coding, agents, tokens and site go together, music, watching, gaming and trophies go together, fitness stands on its own. Reach outside that direction only when it has too few options. Pick only topics listed under "Highlight options"; the card shows each picked option's number and label exactly as listed there.
 Use only the facts given; don't guess at reasons, moods or plans, and don't say who did something unless the facts do. A light, dry touch is welcome in the headline; never mock.`;
@@ -31,11 +30,10 @@ Use only the facts given; don't guess at reasons, moods or plans, and don't say 
 const DIGEST_SCHEMA = {
   type: "object",
   properties: {
-    quiet: { type: "boolean" },
     headline: { type: "string" },
     picks: { type: "array", items: { type: "string", enum: Object.keys(TOPICS) } },
   },
-  required: ["quiet", "headline", "picks"],
+  required: ["headline", "picks"],
   additionalProperties: false,
 };
 
@@ -50,14 +48,13 @@ export async function digestInputHash(model: string, facts: string): Promise<str
 const plain = (value: unknown) => (typeof value === "string" ? value.replace(/\*\*|`/g, "").replace(/\s+/g, " ").trim() : "");
 
 // 结构化输出只保证形状；标题长度、选项外的主题、重复和条数在这里把关。选项不足两条的安静日子，有几条就要几条。
-export function parseDigest(raw: string, options: DigestHighlight[]): { headline: string; highlights: DigestHighlight[]; quiet?: true } | null {
-  let parsed: { quiet?: unknown; headline?: unknown; picks?: unknown };
+export function parseDigest(raw: string, options: DigestHighlight[]): { headline: string; highlights: DigestHighlight[] } | null {
+  let parsed: { headline?: unknown; picks?: unknown };
   try {
     parsed = JSON.parse(raw);
   } catch {
     return null;
   }
-  if (parsed.quiet === true) return { headline: "", highlights: [], quiet: true };
   const headline = plain(parsed.headline).replace(/[。！.!]$/, "");
   const picks = Array.isArray(parsed.picks) ? parsed.picks : [];
   const highlights = [...new Set(picks)]
