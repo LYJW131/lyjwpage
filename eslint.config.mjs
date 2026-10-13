@@ -59,7 +59,7 @@ const eslintConfig = defineConfig([
             "@shared/storage", "@shared/cache", "@shared/lag", "@shared/lag-result", "@shared/apple-music-auth", "@shared/apple-cache",
             "**/shared/storage", "**/shared/cache", "**/shared/lag", "**/shared/lag-result", "**/shared/apple-music-auth", "**/shared/apple-cache",
           ],
-          message: "这些模块要 Worker 入口先 install 端口，站点里没人安装，调用即抛错；状态经 API Worker 读。",
+          message: "这些模块要 Worker 入口先 install 端口，站点里没人安装，调用即抛错；状态经 core Worker 读。",
         }],
       }],
     },

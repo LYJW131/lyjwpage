@@ -1,6 +1,6 @@
 # AI Worker
 
-负责首页对话、设计与访客构建、模型调用、配额、GitHub issue 提交、站点工具与公开 MCP。站点状态的唯一权威仍是 [core Worker](../core/README.md)；Coding 的 Pulse 评估也留在 core 的 cron 中。
+负责首页对话、设计与访客构建、首页近况摘要、模型调用、配额、GitHub issue 提交、站点工具与公开 MCP。站点状态的唯一权威仍是 [core Worker](../core/README.md)；Coding 的 Pulse 评估也留在 core 的 cron 中。
 
 ## 入口与权限
 
@@ -25,10 +25,11 @@
 
 ## 代码职责
 
-- `src/index.ts`：Sentry 包装的 HTTP 入口，导出 `ChatQuota`、`AnthropicEgress`、`BuildCoordinator`。
+- `src/index.ts`：Sentry 包装的 HTTP 入口，导出 `ChatQuota`、`AnthropicEgress`、`BuildCoordinator` 与具名入口 `Digest`。
 - `src/chat/`：Turnstile、模型分流、工具循环、流式事件、历史验签、配额与 Anthropic 出口。
 - `src/tools/registry.ts#SITE_TOOLS`：首页对话与 MCP 共用的只读站点工具；读取由 `ToolIO` 注入。
 - `src/mcp.ts`：MCP 协议处理，不调用模型。
+- `src/digest/`：首页近况摘要，见「近况摘要」。
 - `src/build/`：构建令牌、构建工作流的 OIDC 校验、上传路径验证、GitHub App 调用与工作流派发、webhook、状态对账与 `BuildCoordinator`。构建工作流、提示词指针与完整配置见 [访客协作构建](../../docs/build-routine.md)。
 - `src/sentry.ts#sentryOptions`：关闭请求正文、请求头与 cookie 收集；对话、OAuth code 和代理请求中的密钥不能进入 Sentry。`SENTRY_ENVIRONMENT` 优先，未配置时由 `PREVIEW_WORKER` 选择预览或生产环境。
 
@@ -60,6 +61,12 @@
 
 访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`，按这条消息用中文、日文或英文，判断见 `shared/build-routine.ts#textLanguage`），接受之前不向 Worker 发任何请求，但说明一出现就在后台跑 Turnstile，接受时多半已拿到 token；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.mjs#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。说明逐条列出对话数据的出站去向（`CONSENT_COPY` 的 `destinations`；Turnstile 不收对话内容，不列），新增模型供应商、第三方工具或日志出口时同步改它。
 
+## 近况摘要
+
+具名入口 `Digest`（`src/digest/entrypoint.ts`，契约 `shared/digest.ts#DigestRpc`）只给采集 Worker 的 `digest` 任务经 Service Binding 调用，不开 HTTP 路径。每次 `compose` 经 `PUBLIC_STATUS` 读 `src/digest/facts.ts#DIGEST_VIEWS` 登记的公开视图（任一读不到就整轮失败，采集 Worker 留着上一份摘要），压成一份英文事实清单，连同提示词与模型算出输入哈希：与上一份相同就回 `unchanged`，不调模型；变了才按 `src/digest/compose.ts` 的 `DIGEST_MODEL`、`DIGEST_EFFORT` 经 `AnthropicEgress` 用结构化输出写一行英文标题，并从事实清单末尾的可选格里挑两三格（`shared/digest.ts#DigestPayload`）。可选格的数字和图例由 `src/digest/facts.ts#digestHighlightOptions` 按事实清单同样的取粗算出，模型只选主题，越界、重复和条数在 `compose.ts#parseDigest` 把关，没配 `ANTHROPIC_API_KEY` 时回 `unconfigured`。摘要不经 `ChatQuota`：它不由访客触发，调用次数由采集节奏和输入哈希封顶，事实清单里的数字取粗就是为了让哈希只在有看得出的变化时才变。写入可滞后层、节奏与首屏失效见 [采集 Worker](../collector/README.md)。
+
+改提示词、事实清单或换模型后，用 `pnpm --dir workers/ai digest:probe` 读线上公开视图、打印事实清单，再用真实模型写几版对比（`--models`、`--runs`，用法见 `scripts/digest-probe.ts` 的 `USAGE`）。
+
 ## MCP
 
 `POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。生产里站点域名上的 `/mcp` 由 site Worker 经 Service Binding 直接交给本 Worker；Service Binding 保留访客的 `CF-Connecting-IP`，跨域 `fetch` 或缓存层 rewrite 会把它换成共用的出口 IP。site 的分支 Preview 与本地没有这些绑定，仍用 307 跳到 `PUBLIC_BACKEND_URL` 对应的后端，307 保留 POST 与请求体。公开访问域名见 `docs/ops-facts.md`。
@@ -75,7 +82,7 @@
 
 绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、构建工作流与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
 
-生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管已退役的 api Worker 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
+生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管旧 `api` Worker 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
 
 Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在 core 的同一隔离 Preview 内运行 core 与 AI，不连接生产 Service Binding；ai 自己不发布分支 Preview。Secret 配在 core parent 的具体 Preview 上；创建、解析和配置步骤只在构建文档维护。
 
@@ -96,7 +103,7 @@ pnpm dev:local
 - `CHAT_RATE_LIMIT=off`：普通聊天配额仍记账、`/usage` 仍显示用量，但不拦截；设计轮数与会话上限仍执行。
 - `CHAT_FORCE_TIER=<档位或 CLEF_CHOICES 的键>`：无设计会话时跳过 Clef；合法值见根目录 `shared/god-chat-tiers.ts#GOD_CHAT_TIERS` 与 `src/chat/router.ts#CLEF_CHOICES`。有效设计会话始终由规划者回答。
 
-生产缺省不开调试权限，不能靠 `UPSTREAM_API_URL` 或只设置调试变量绕过验人及配额。使用 `pnpm dev` 让本地页面连接生产 core 时，localhost 的 Turnstile 结果不会被当成本地测试放行；调试对话应使用上面的本地 Worker 栈。本地 `AI` 绑定调用远程 Workers AI，需要 Wrangler 具备访问权限；强制档位只跳过 Clef，仍会调用所选 Anthropic 模型。
+生产缺省不开调试权限，不能靠 `UPSTREAM_API_URL` 或只设置调试变量绕过验人及配额。使用 `pnpm dev` 让本地页面连接生产 core 时，localhost 的 Turnstile 结果不会被当成本地测试放行；调试对话应使用上面的本地 Worker 栈。本地 `AI` 绑定调用远程 Workers AI，需要 Wrangler 具备访问权限，没有时 `pnpm dev:worker` 去掉这个绑定、路由走兜底档位（见 [core 本地开发](../core/README.md#本地开发)）；强制档位只跳过 Clef，仍会调用所选 Anthropic 模型。
 
 改提示词、工具说明或工具结果的措辞后，用 `pnpm --dir workers/ai chat:probe` 对真实模型连问几次再看回答（语言、说法）：它在 Node 里直接调 `src/chat/handler.ts#handleChat`，跳过 Clef 与验人，状态视图读 `workers/core/dev-fixtures/` 的夹具，用法见 `scripts/chat-probe.ts` 的 `USAGE`。
 

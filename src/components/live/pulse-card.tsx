@@ -27,7 +27,7 @@ import type {
 } from "@shared/types";
 import { cn } from "@/lib/utils";
 
-const REFRESH_MS = 5 * 60_000;
+export const PULSE_REFRESH_MS = 5 * 60_000;
 
 const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
   { domain: "coding", label: "Coding" },
@@ -534,7 +534,7 @@ export function PulseCard({
   fallback: StatusResponse<PulsePayload>;
   className?: string;
 }) {
-  const { data } = useStatus<PulsePayload>(PULSE_PATH, REFRESH_MS, { fallback });
+  const { data } = useStatus<PulsePayload>(PULSE_PATH, PULSE_REFRESH_MS, { fallback });
   const range = data?.window ?? { from: 0, to: 0 };
   const lanes = data?.lanes;
   const traceStyle = useSyncExternalStore(subscribeTraceStyle, readTraceStyle, () => "hatched" as const);

@@ -34,6 +34,7 @@ const VIEW_NOTES = {
   sentry: "Error counts from Sentry for this site",
   reporters: "Health of the reporters that push data to this site",
   pulse: "24h timeline of coding, listening, watching, gaming, charging, activity (large)",
+  digest: "Hourly AI-written summary of LYJW's past 24 hours, derived from the other views (read those for exact numbers)",
 } as const satisfies Record<StatusViewKey, string>;
 
 const VIEW_KEYS = Object.keys(VIEW_NOTES) as StatusViewKey[];
