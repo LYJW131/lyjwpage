@@ -266,7 +266,7 @@ function TotalUsage({
   return (
     <div
       className={cn(
-        "border-b border-line px-4 pt-5 md:px-5",
+        "border-b border-line px-4 pt-5 lg:px-5",
         topModels.length === 0 && "pb-5",
       )}
     >
@@ -774,7 +774,7 @@ function AgentPanel({
   const rows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
   const usageUrl = agentUsageUrl(row.id);
   return (
-    <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
+    <div className="flex min-w-0 flex-col p-4 lg:p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <FeaturedMark row={row} active={active} />
@@ -1032,7 +1032,7 @@ function CompactAgents({
     return rightUsed - leftUsed;
   });
   return (
-    <div className="border-t border-line px-4 md:px-5">
+    <div className="border-t border-line px-4 lg:px-5">
       <div className="grid divide-y divide-line">
         {sortedRows.map((row) => (
           <CompactAgentRow
@@ -1092,7 +1092,7 @@ export function VibeCodingCard({
           {usage?.totals ? (
             <TotalUsage totals={usage.totals} topModels={usage.topModels} failing={totalFailing} />
           ) : (
-            <div className="border-b border-line px-4 py-5 text-sm text-muted-foreground md:px-5">
+            <div className="border-b border-line px-4 py-5 text-sm text-muted-foreground lg:px-5">
               Waiting for usage reports
             </div>
           )}

@@ -847,7 +847,7 @@ export function ListeningCard({
       action="Apple Music"
       className={cn("h-full min-h-93.5", className)}
     >
-      <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3 lg:px-5 lg:pb-5">
         <div className="relative h-20 shrink-0">
           {!hero ? (
             <HeroWrapper link={null}>
@@ -1051,7 +1051,7 @@ export function ListeningCard({
         {/* 空列表也须保留视口，否则客户端补数据时会撑高整行。 */}
         <div className="mt-3 flex min-h-0 flex-1 flex-col border-t border-line pt-2">
           {/* 滚动内容不能参与网格的固有高度计算，否则整份列表会撑高卡片。 */}
-          <div className="recent-tracks-viewport relative flex-1">
+          <div className="recent-tracks-viewport relative -mx-2 flex-1">
             <div
               ref={listRef}
               // Firefox / 部分 Safari 的滚动容器需要 tabindex 才能获得键盘焦点。

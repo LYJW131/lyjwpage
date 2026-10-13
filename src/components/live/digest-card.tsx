@@ -152,7 +152,7 @@ export function DigestCard({
 
   return (
     <Card id="digest" className={cn("h-full scroll-mt-28", className)}>
-      <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-2.5 p-4 pl-4.5 lg:gap-x-4 lg:p-5">
+      <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-3 p-4 lg:gap-x-4 lg:p-5">
         <div className="col-start-1 row-start-1 flex min-w-0 flex-col gap-1">
           <div className="text-xs text-muted-foreground">Last 24 hours</div>
           <h2 className="text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
@@ -160,6 +160,7 @@ export function DigestCard({
         <ul className={cn("col-start-1 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-1.5 gap-y-1.5 sm:gap-x-2", stale && "opacity-60")}>
           {data.highlights.map((item) => (
             <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
+              {/* 光学微调：items-baseline 让方块坐在基线上，上移 3px 才落到 text-lg 数字的视觉中线。 */}
               <span className="size-2 -translate-y-[3px] bg-(--tone)" aria-hidden />
               <span className="whitespace-nowrap text-lg font-semibold leading-none tabular-nums text-(--tone)">{digestFigure(item)}</span>
               <span className="truncate text-sm text-muted-foreground">{item.caption}</span>

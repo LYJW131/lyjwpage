@@ -167,7 +167,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       <a href={site.sentry} target="_blank" rel="noreferrer" aria-label="Sentry dashboard" className="-m-2 flex p-2 hover:text-foreground"><SentryMark /></a>
     </div>
   }>
-    <div className="border-b border-line px-4 py-5 md:px-5">
+    <div className="border-b border-line px-4 py-5 lg:px-5">
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
         <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `Cloudflare Web Analytics pageviews · last 7 × 24h · ${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : analyticsStale ? "Unavailable" : undefined} />
         <Stat label="COMMITS" value={totals?.commits} title={githubStale ? "Unavailable" : "Commits on the default branch"} />
@@ -186,7 +186,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
     {sentry && <UptimeStrip site={sentry.uptime} core={sentry.heartbeat ?? null} siteStale={uptimeStale} coreStale={heartbeatStale} />}
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
-        <div className="px-4 pt-3 pb-2">
+        <div className="px-4 pt-3 pb-2 lg:px-5">
           <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[9px] text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-[10px]">
             <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "Unavailable" : undefined}>{measured}</span>
             <span title="Lighthouse performance score, lab run on a simulated device">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}

@@ -69,7 +69,7 @@ export function UptimeStrip({ site, core, siteStale = false, coreStale = false }
 }) {
   if (!site && !core) return null;
   return (
-    <div className="flex flex-col gap-5 border-t border-line px-4 py-4 md:px-5">
+    <div className="flex flex-col gap-5 border-t border-line p-4 lg:p-5">
       {site && (
         <HealthRow name={site.url ? new URL(site.url).host : "lyjw.me"} health={site} unit="checks" stale={siteStale}
           statusTitle={`Per-minute check · HEAD ${site.url || "https://lyjw.me/"}`}

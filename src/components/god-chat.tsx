@@ -610,7 +610,7 @@ function Conversation({ className, archive, session: conversation }: { className
     >
       <div ref={anchorRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <FableDescent descent={descent} />
-      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2 text-xs text-muted-foreground lg:px-5">
         <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedCount > 0 ? ` (${savedCount})` : ""}</span></button>
         <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
       </div>
@@ -629,7 +629,7 @@ function Conversation({ className, archive, session: conversation }: { className
           const el = event.currentTarget;
           stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
         }}
-        className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden"
+        className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-5 [&::-webkit-scrollbar]:hidden"
       >
         {!expanded ? (
           <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
@@ -757,7 +757,7 @@ function Conversation({ className, archive, session: conversation }: { className
         {queued !== null && <UserBubble text={queued} />}
       </div>
 
-      <div className="border-t border-line p-3">
+      <div className="border-t border-line px-4 py-3 lg:px-5">
         {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
         {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
         {conversation?.design && designConsented && <DesignStatus design={conversation.design} />}
@@ -935,7 +935,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
     if (!chatArchive.getSnapshot().sessions.length) chatArchive.start();
   }
   return (
-    <div data-sentry-block className="border-b border-line bg-muted px-3 py-2">
+    <div data-sentry-block className="border-b border-line bg-muted px-4 py-2 lg:px-5">
       <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <span>{sessions.length ? "Saved in this browser" : "No saved conversations yet"}</span>
         {sessions.length > 0 && <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-red-500">Clear all conversations</button>}

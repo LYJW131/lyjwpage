@@ -101,7 +101,7 @@ function NowWatchingHero({
   return (
     <HeroWrapper
       link={item?.link ?? null}
-      className="group grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-3 py-3 sm:items-center sm:gap-x-4"
+      className="group grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-4 py-3 sm:items-center lg:px-5 sm:gap-x-4"
     >
       <div className="relative aspect-video w-32 shrink-0 self-start overflow-hidden rounded-md border border-line bg-muted sm:row-span-2 sm:w-52">
         {image ? (
