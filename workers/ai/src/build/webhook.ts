@@ -12,12 +12,20 @@ type WebhookPayload = {
   action?: string;
   repository?: { full_name?: string };
   pull_request?: { number: number; state: string; merged: boolean; draft?: boolean; html_url: string; head: { ref: string; sha: string; repo: { full_name: string } }; base: { ref: string }; updated_at: string };
-  check_run?: { name: string; head_sha: string; status: string; conclusion: string | null; details_url?: string; completed_at?: string; started_at?: string; app?: { slug: string } };
-  check_suite?: { head_sha: string; status: string; conclusion: string | null; updated_at?: string; app?: { slug: string } };
-  sha?: string; state?: string; context?: string; target_url?: string; updated_at?: string;
+  check_run?: { name: string; head_sha: string; status: string; conclusion: string | null; details_url?: string; completed_at?: string; started_at?: string; app?: { slug: string }; check_suite?: { head_branch?: string | null } };
+  check_suite?: { head_sha: string; status: string; conclusion: string | null; updated_at?: string; app?: { slug: string }; head_branch?: string | null };
+  sha?: string; state?: string; context?: string; target_url?: string; updated_at?: string; branches?: { name: string }[];
   issue?: { number: number };
   comment?: { user: { login: string }; body: string; html_url: string; updated_at: string };
 };
+
+// 仓库里每个分支的 CI 都会推 check_run / check_suite / status，只有构建分支上的才可能属于某次构建；其余验签后直接确认，不唤醒 BuildCoordinator（投递去重也不记）。事件没带分支名时照旧交给它按 SHA 查。
+export function outsideBuildBranches(event: string, payload: WebhookPayload): boolean {
+  if (event !== "check_run" && event !== "check_suite" && event !== "status") return false;
+  const branches = [payload.check_run?.check_suite?.head_branch, payload.check_suite?.head_branch, ...(payload.branches ?? []).map((branch) => branch.name)]
+    .filter((name): name is string => !!name);
+  return branches.length > 0 && !branches.some((name) => runIdFromBranch(name));
+}
 
 export async function applyGithubWebhook(env: Env, event: string, payload: WebhookPayload): Promise<void> {
   if (!env.BUILD_COORDINATOR || payload.repository?.full_name?.toLowerCase() !== BUILD_REPO.toLowerCase()) return;

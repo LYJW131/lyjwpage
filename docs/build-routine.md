@@ -2,7 +2,7 @@
 
 > 类型：runbook
 
-首页对话是设计、提交 issue 和发起构建的入口。任何 GitHub 账号都能参与；代码不检查账号是否为仓库所有者或协作者。共享协议与上限统一见 `shared/build-routine.ts`，后端在 `workers/ai/src/build/`，HTTP 入口由 `shared/ai-paths.ts#AI_HTTP_PATHS` 登记并经 api 转发。写代码的是 GitHub Actions 工作流 `.github/workflows/build.yml`：提示词与 Claude Code 设置在 `.github/build/`，各 job 调用的脚本是 `scripts/build-actions.mjs`。部署与分支 Preview 使用 [Workers 构建](./workers-builds.md) 的既有流程。
+首页对话是设计、提交 issue 和发起构建的入口。任何 GitHub 账号都能参与；代码不检查账号是否为仓库所有者或协作者。共享协议与上限统一见 `shared/build-routine.ts`，后端在 `workers/ai/src/build/`，HTTP 入口由 `shared/ai-paths.ts#AI_HTTP_PATHS` 登记，经 site 或 api 的 Service Binding 转发。写代码的是 GitHub Actions 工作流 `.github/workflows/build.yml`：提示词与 Claude Code 设置在 `.github/build/`，各 job 调用的脚本是 `scripts/build-actions.mjs`。部署与分支 Preview 使用 [Workers 构建](./workers-builds.md) 的既有流程。
 
 ## 设计与确认
 
@@ -54,7 +54,7 @@ GitHub 写入使用 `GITHUB_APP_PRIVATE_KEY` 经 WebCrypto 签 RS256 JWT，换�
 
 gate job 在计划审查通过后向进度端点报告一句；进度只作展示，不代表通过验证，实现过程中没有更细的进度。工作流不上传就结束时，由 gate 或 publish 向同一端点报告 `blocked`（`workers/ai/src/build/coordinator.ts#blockRun`）：计划审查拒绝或没跑完、实现 job 没跑完、改动为空或不能上传，以及 Claude 判断计划路径加上计划外放行的名额仍不够、只能靠类型断言或放宽测试才能完成而写下停下说明。`blocked` 占用上传凭据，run 停在 `blocked`，卡片显示 Worker 加了前缀的原因，访客据此重新出计划。规划者出计划前要读所涉 Worker 的 AGENTS.md「须成对修改」一节，把成对文件列进 `paths`。
 
-GitHub webhook 按原始正文验证 `X-Hub-Signature-256`，并核对目标仓库与 run 分支，处理成功后才登记 delivery ID 去重，处理失败保留重投机会。订阅事件为 `check_run`、`check_suite`、`status`、`issue_comment`、`pull_request`。检查、预览与评论是独立状态；`claude[bot]` 的评论只供参考，不能授权代码或合并。卡片注明此边界。卡片的审查栏只读 `claude[bot]`，gate 发的 Plan review 评论不进审查栏。
+GitHub webhook 按原始正文验证 `X-Hub-Signature-256`，并核对目标仓库与 run 分支（`check_run`、`check_suite`、`status` 带的分支都不是构建分支时，验签后直接确认，不唤醒 `BuildCoordinator`、也不登记 delivery ID；没带分支名时照常按 SHA 查），处理成功后才登记 delivery ID 去重，处理失败保留重投机会。订阅事件为 `check_run`、`check_suite`、`status`、`issue_comment`、`pull_request`。检查、预览与评论是独立状态；`claude[bot]` 的评论只供参考，不能授权代码或合并。卡片注明此边界。卡片的审查栏只读 `claude[bot]`，gate 发的 Plan review 评论不进审查栏。
 
 Claude review 卡片通过 `src/lib/build-review-summary.ts#buildReviewSummary` 将可识别的审查结论显示为 No issues 或 Issues found；缺失、失败或无法识别的结论显示 Unknown。评论正文不直接显示，链接仍指向 GitHub 原评论；本地保存的会话也使用同一展示规则。
 

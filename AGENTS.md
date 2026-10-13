@@ -9,7 +9,7 @@
 # 禁区
 
 - 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。
-- 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑一律进后端 Worker；状态与数据查询归 `workers/api`，模型调用与工具编排归 `workers/ai`，site Worker（React Router SSR）只渲染页面、缓存和处理图片，不为功能新增数据端点（现有资源路由只服务版本号、图标、OG、manifest 与 Sentry/图片网关）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
+- 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑一律进后端 Worker：实时状态归 `workers/api`，外部定时拉取归 `workers/collector`，模型调用与工具编排归 `workers/ai`。site Worker 可以回答 `/api/*`，但只按数据归属分流（`src/lib/site-policy.ts#classifyGatewayRequest`）：可滞后视图直接读 `LAG` KV，loader 与 api 共用 `shared/lag-views.ts`；其余原样经 Service Binding 交给 api / ai，不跨域 `fetch` 后端（会改写 `CF-Connecting-IP`，按 IP 的限流随之失效）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件。
 
 # 项目入口与验证

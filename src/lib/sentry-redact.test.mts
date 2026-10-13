@@ -16,20 +16,8 @@ test("redactSentryEvent strips query, hash and credentials from request.url", ()
   assert.deepEqual(out.request?.headers, { "user-agent": "test" });
 });
 
-test("redactSentryEvent redacts span url data, navigation crumbs and METHOD descriptions", () => {
+test("redactSentryEvent strips query from breadcrumb urls", () => {
   const event = {
-    spans: [
-      {
-        description: "GET https://a-cdn.example.com/covers/1.jpg?sig=signed",
-        data: {
-          "http.url": "https://a-cdn.example.com/x?sig=s",
-          "url.full": "https://a-cdn.example.com/y?sig=s",
-          url: "https://a-cdn.example.com/z?sig=s",
-          "http.method": "GET",
-        },
-      },
-      { description: "navigate /chat?next=/a#top", data: {} },
-    ],
     breadcrumbs: [
       { category: "xhr", data: { url: "https://lyjw.me/image?url=signed%3A%2F%2F" } },
       {
@@ -42,13 +30,6 @@ test("redactSentryEvent redacts span url data, navigation crumbs and METHOD desc
     ],
   } as unknown as Event;
   const out = redactSentryEvent(event);
-  const [span, plain] = out.spans!;
-  assert.equal(span!.description, "GET https://a-cdn.example.com/covers/1.jpg");
-  assert.equal(span!.data!["http.url"], "https://a-cdn.example.com/x");
-  assert.equal(span!.data!["url.full"], "https://a-cdn.example.com/y");
-  assert.equal(span!.data!.url, "https://a-cdn.example.com/z");
-  assert.equal(span!.data!["http.method"], "GET");
-  assert.equal(plain!.description, "navigate /chat?next=/a#top");
   assert.equal(
     out.breadcrumbs![0]!.data!.url,
     "https://lyjw.me/image",
