@@ -27,6 +27,7 @@ import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
 import { PlayerArtworkPreload } from "@/components/web-player/player-artwork";
 import { useWebPlayer } from "@/components/web-player/web-player-provider";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useLeap } from "@/hooks/use-leap";
 import { useLyrics, type LyricsFallback } from "@/hooks/use-lyrics";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useLiveNowListening } from "@/hooks/use-stale";
@@ -65,6 +66,8 @@ const REFRESH_MS = 10 * 60_000;
 const EMPTY_UPCOMING: string[] = [];
 const EMPTY_REFRESH_MS = 60_000;
 const MUSIC_REFRESH_MS = 60_000;
+// 正常走表一步不超过 1 秒（每秒一拍，换句定时器拍得更密），超过这个跨度就是对时或换锚点。
+const PROGRESS_LEAP_MS = 2_500;
 
 // 须与 globals.css 的 recent-tracks-track 行数上限对齐；实际行数按视口高度由容器查询决定。
 const VISIBLE_ROWS = 4;
@@ -181,16 +184,17 @@ function Bars({ state }: { state: BarsState }) {
   );
 }
 
-function Clock({ milliseconds }: { milliseconds: number }) {
+function Clock({ milliseconds, animated = true }: { milliseconds: number; animated?: boolean }) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
   return (
     <>
-      <NumberFlow value={Math.floor(seconds / 60)} locales="en-US" />
+      <NumberFlow value={Math.floor(seconds / 60)} locales="en-US" animated={animated} />
       <span>:</span>
       <NumberFlow
         value={seconds % 60}
         locales="en-US"
         format={{ minimumIntegerDigits: 2 }}
+        animated={animated}
       />
     </>
   );
@@ -225,6 +229,7 @@ function HeroProgress({
 
   const position = trackPositionMs(track, now);
   const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
+  const leap = useLeap(position, PROGRESS_LEAP_MS);
   const gradient = palette && palette.length >= 2 ? paletteGradient(palette) : undefined;
 
   const { observedAt, positionMs, durationMs, repeatOne } = track;
@@ -279,15 +284,15 @@ function HeroProgress({
         </span>
         <NumberFlowGroup>
           <span className="label-mono shrink-0 tabular-nums">
-            <Clock milliseconds={position} />
+            <Clock milliseconds={position} animated={!leap} />
             <span> / </span>
-            <Clock milliseconds={track.durationMs} />
+            <Clock milliseconds={track.durationMs} animated={!leap} />
           </span>
         </NumberFlowGroup>
       </div>
       <div className="mt-1.5 h-0.75 overflow-hidden bg-muted">
         <PaletteBar
-          className="h-full transition-[width] duration-700 ease-linear"
+          className={cn("h-full", !leap && "transition-[width] duration-700 ease-linear")}
           base={playing ? gradient : undefined}
           motion={playing ? motionGradient : undefined}
           idleClassName={playing ? "bg-live" : "bg-muted-foreground"}
