@@ -40,7 +40,7 @@
   - 是什么：一组通用工程 skill，主线是面谈 → 规格 → 拆票 → TDD → 双轴评审 → 复盘。
   - 取了什么：从 `diagnosing-bugs` 借排查纪律，先造一条能稳定复现症状的命令，再列可证伪的假设；从 `git-guardrails-claude-code` 借禁区做成钩子；`writing-for-agents` 的写法要点先按 Anthropic 最新文档核对，只并入一致的部分。
   - 不借：先问透的 grilling，和本项目偏行动的规矩冲突；规格与拆票依赖 issue 跟踪器，本项目用线程；PR 模板站主不要。
-  - 状态：待定。站主选了排查纪律、禁区钩子和核对过的写法要点，落地在 PR #256，它合并时同一提交把这里改成采用、补上落点。
+  - 状态：部分采用。排查纪律落在 [lyjwpage-diagnose](../.claude/skills/lyjwpage-diagnose/SKILL.md)；禁区钩子是 [guard-forbidden-commands.mjs](../scripts/guard-forbidden-commands.mjs)，由 [.claude/settings.json](../.claude/settings.json) 的 PreToolUse 挂上；写法要点落在 [writing.md](../.claude/skills/lyjwpage-skill-mining/writing.md)。
 
 ## 模型选择与子代理
 
