@@ -11,9 +11,6 @@ importers:
       '@clock-ui/react':
         specifier: ^0.1.2
         version: 0.1.2(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@fontsource/ma-shan-zheng':
-        specifier: ^5.3.1
-        version: 5.3.1
       '@lobehub/icons':
         specifier: ^5.23.0
         version: 5.23.0(@lobehub/ui@5.29.3)(@types/react@19.3.0)(antd@6.6.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -867,9 +864,6 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
-
-  '@fontsource/ma-shan-zheng@5.3.1':
-    resolution: {integrity: sha512-cGGn7Yje2RSduXVxEk+rCfNZyD/T/7FMGj03LNPiK8TRL9Sing0tq1zJF3n+W29szPqgb2RNs5oIvmm+ikeI+Q==}
 
   '@giscus/react@3.1.0':
     resolution: {integrity: sha512-0TCO2TvL43+oOdyVVGHDItwxD1UMKP2ZYpT6gXmhFOqfAJtZxTzJ9hkn34iAF/b6YzyJ4Um89QIt9z/ajmAEeg==}
@@ -6121,8 +6115,6 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
-  '@fontsource/ma-shan-zheng@5.3.1': {}
-
   '@giscus/react@3.1.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       giscus: 1.6.0
@@ -9302,7 +9294,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 24.13.3
+      '@types/node': 20.19.43
       merge-stream: 2.0.0
       supports-color: 8.1.1
     optional: true
