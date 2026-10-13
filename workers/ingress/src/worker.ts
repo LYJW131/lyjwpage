@@ -1,6 +1,7 @@
 import { enrichCommand, type EnrichedCommand } from "@shared/command-enrichment";
 import { writeAppleMusicCredentials } from "@shared/credentials";
 import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collector";
+import { jsonResponse } from "@shared/http-origins";
 import { describeRejections } from "@shared/ingest/coding";
 import { INGEST_SOURCES, prepareIngest, type CoreCommand, type PreparedIngest } from "@shared/ingest/prepare";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
@@ -45,13 +46,6 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   }
 
   return new Response("Not found", { status: 404 });
-}
-
-function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(data), { ...init, headers });
 }
 
 function reason(error: unknown): string {

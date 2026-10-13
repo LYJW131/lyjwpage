@@ -12,6 +12,9 @@
  *   manual-sleep   scripts/、shared/、workers/<x>/src/ 里等一段时间一律用
  *                  import { setTimeout as sleep } from "node:timers/promises"，不手写
  *                  new Promise 包 setTimeout；字符串里交给浏览器执行的代码不算
+ *   json-response-literal
+ *                  Worker 与 shared/ 的 JSON 响应统一走 shared/http-origins.ts#jsonResponse，
+ *                  不再手写 new Response(JSON.stringify(...))
  *
  * 退出码：有违例为 1。测试见 scripts/rules-check.test.mjs。
  */
@@ -263,12 +266,34 @@ export function checkManualSleep(file, text) {
 }
 
 const SITE_SOURCE = /^src\//;
+const WORKER_OR_SHARED_TS = /^(?:workers\/[^/]+\/src|shared)\/.+\.ts$/;
 const TEST_OR_FIXTURE = /\.test\.|(^|\/)(?:__tests__|tests?|fixtures|dev-fixtures)\//i;
+const JSON_RESPONSE_IMPL = new Set(["shared/http-origins.ts"]);
+
+export function checkJsonResponseLiteral(file, text) {
+  const ts = loadTs();
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const issues = [];
+  const isJsonStringify = (node) => ts.isCallExpression(node)
+    && ts.isPropertyAccessExpression(node.expression)
+    && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "JSON"
+    && node.expression.name.text === "stringify";
+  const visit = (node) => {
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Response" && node.arguments?.[0] && isJsonStringify(node.arguments[0])) {
+      const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+      issues.push({ file, line: line + 1, rule: "json-response-literal", message: "JSON 响应统一走 shared/http-origins.ts#jsonResponse（Content-Type 与 Cache-Control 一处定义），不手写 new Response(JSON.stringify(...))。" });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return issues;
+}
 
 export function checkFile(file, text) {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
   const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
+  if (WORKER_OR_SHARED_TS.test(file) && !JSON_RESPONSE_IMPL.has(file)) issues.push(...checkJsonResponseLiteral(file, text));
   return issues;
 }
 

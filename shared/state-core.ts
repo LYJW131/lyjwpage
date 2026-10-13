@@ -29,4 +29,7 @@ export interface StateCoreRpc {
   revalidate(tags: string[]): Promise<void>;
   // 回执后重查到的补全按 trackKey 补写；曲目已换或没有一块变好时 applied 为 false。
   commitEnrichmentPatch(patch: EnrichmentPatch): Promise<{ applied: boolean }>;
+  // 采集 Worker 每分钟带自己 cron 的 scheduledTime（epoch 毫秒）调一次；core 按自己的时刻表判断这一分钟跑不跑，
+  // ran 为 false 表示这一分钟不是 core 的轮次（或是 Preview）。这一轮失败时抛错。
+  cronRound(scheduledTime: number): Promise<{ ran: boolean }>;
 }

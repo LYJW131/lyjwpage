@@ -101,14 +101,16 @@ test("git 历史里的真实旧错误形态会被拦下", () => {
   assert.equal(checkScrollbarPair("src/components/x.tsx", 'className="rounded-[2px]"').length, 0);
 });
 
-test("手写 sleep 被拦：具名封装、内联、改名 resolve、块里暂存 timer", () => {
+test("手写 sleep 被拦：具名封装、内联、改名 resolve、块里暂存 timer、无参回调", () => {
   assert.deepEqual(rules("scripts/x.mjs", 'await new Promise((resolve) => setTimeout(resolve, 100));'), ["manual-sleep@1"]);
   assert.deepEqual(rules("workers/core/src/x.ts", 'const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));'), ["manual-sleep@1"]);
   assert.deepEqual(rules("shared/x.ts", 'await new Promise((r) => setTimeout(r, 5));'), ["manual-sleep@1"]);
   assert.deepEqual(rules("workers/collector/src/x.ts", 'await Promise.race([a, new Promise((resolve) => { t = setTimeout(resolve, 5); })]);'), ["manual-sleep@1"]);
+  assert.deepEqual(rules("scripts/x.mjs", 'await new Promise((resolve) => setTimeout(() => resolve(), 100));'), ["manual-sleep@1"]);
+  assert.deepEqual(rules("shared/x.ts", 'await new Promise((done) => setTimeout(function () { done(); }, 100));'), ["manual-sleep@1"]);
 });
 
-test("manual-sleep 放行：node:timers/promises、带值 resolve、reject 超时、范围外与白名单", () => {
+test("manual-sleep 放行：node:timers/promises、带值 resolve、reject 超时、字符串与范围外", () => {
   assert.equal(rules("scripts/x.mjs", 'import { setTimeout as sleep } from "node:timers/promises";\nawait sleep(100);').length, 0);
   // 到时带值或 reject 的是超时 / 竞速，不是 sleep 壳子
   assert.equal(rules("shared/x.ts", 'const p = new Promise((resolve) => { t = setTimeout(() => resolve(x), 5); });').length, 0);
@@ -120,10 +122,21 @@ test("manual-sleep 放行：node:timers/promises、带值 resolve、reject 超�
   // 测试与 fixtures 由 checkFile 统一跳过
   assert.equal(rules("scripts/x.test.mjs", 'await new Promise((resolve) => setTimeout(resolve, 1));').length, 0);
   assert.equal(rules("scripts/fixtures/x.mjs", 'await new Promise((resolve) => setTimeout(resolve, 1));').length, 0);
-  // 白名单文件即使出现真实代码形态也放行
-  assert.deepEqual(rules("scripts/x.mjs", 'await new Promise((resolve) => setTimeout(() => resolve(), 100));'), ["manual-sleep@1"]);
-  assert.deepEqual(rules("shared/x.ts", 'await new Promise((done) => setTimeout(function () { done(); }, 100));'), ["manual-sleep@1"]);
   assert.equal(rules("shared/x.ts", 'await new Promise((resolve) => setTimeout(() => resolve(value), 100));').length, 0);
+});
+
+test("workers/*/src 与 shared/ 手写 new Response(JSON.stringify(...)) 被拦，其余形态与范围外放行", () => {
+  assert.deepEqual(rules("workers/example/src/x.ts", 'return new Response(JSON.stringify(data), { status: 200 });'), ["json-response-literal@1"]);
+  assert.deepEqual(rules("shared/x.ts", 'const r = new Response(JSON.stringify(data));'), ["json-response-literal@1"]);
+  assert.deepEqual(rules("workers/example/src/x.ts", 'return new Response (\n  JSON.stringify(data),\n);'), ["json-response-literal@1"]);
+  assert.equal(rules("shared/x.ts", '// new Response(JSON.stringify(data))').length, 0);
+  assert.equal(rules("workers/example/src/x.ts", 'const hint = "new Response(JSON.stringify(data))";').length, 0);
+  assert.equal(rules("workers/example/src/x.ts", 'const hint = `new Response(JSON.stringify(${data}))`;').length, 0);
+  // 共享实现自身豁免；范围外（src/、测试文件）与合规写法放行
+  assert.equal(rules("shared/http-origins.ts", 'return new Response(JSON.stringify(data), { ...init, headers });').length, 0);
+  assert.equal(rules("src/lib/x.ts", 'return new Response(JSON.stringify(data));').length, 0);
+  assert.equal(rules("workers/example/src/x.test.ts", 'return new Response(JSON.stringify(data));').length, 0);
+  assert.equal(rules("workers/example/src/x.ts", 'return Response.json(data, { headers: { "Cache-Control": "no-store" } });').length, 0);
 });
 
 test("checkFile 只扫认识的代码扩展名", () => {
