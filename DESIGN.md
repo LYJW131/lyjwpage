@@ -118,7 +118,7 @@
   - LobeHub 没有的品牌再找官方 SVG：含 `fill="currentColor"` 的要内联为组件，通过 `<img>` 或 `AppImage` 加载时无法继承页面文字色；示例见 `src/components/live/agent-status-card.tsx` 的 `TypesafeIcon`。只有位图时，先压到展示所需尺寸再入库。
   - 界面图标用 `lucide-react`，与文字同色，尺寸跟随相邻文字（14px 文字配 `size-3.5`）。不用 emoji 当图标（数据里自带的 emoji 照原样）。
 - 滚动区：
-  - 站内滚动条默认隐藏：可滚动区域一律加 `scrollbar-none [&::-webkit-scrollbar]:hidden`（前者管 Firefox 的 `scrollbar-width`，后者管 Chromium 系，两句缺一不可）。现有示例：播放器队列。
+  - 站内滚动条默认隐藏：可滚动区域一律加 `scrollbar-none [&::-webkit-scrollbar]:hidden`（前者管 Firefox 的 `scrollbar-width`，后者管 Chromium 系，两句缺一不可，`pnpm rules:check` 拦只写其一的类串）。现有示例：播放器队列。
   - 条目式滚动要吸附：容器加 `snap-y snap-mandatory`（横向用 `snap-x`，见奖杯组、在看瓷砖），子项加 `snap-start`，滚动停稳后永远是整行对齐。
   - 列表只渲染放得下的整行，不出现被裁掉一半的行或封面（做法见最近播放的容器查询）。
 - 条形与进度条：
@@ -145,7 +145,7 @@
 
 ## Copy
 
-- 界面文案一律英文：标注、正文、状态、按钮、提示、无障碍文案、错误页和元数据都用英文，`<html lang>` 为 `en`；日期用 en-US（`Jun 22`、`Mon 11:00 AM`），数字用 en-US 分组。
+- 界面文案一律英文：标注、正文、状态、按钮、提示、无障碍文案、错误页和元数据都用英文，`<html lang>` 为 `en`；日期用 en-US（`Jun 22`、`Mon 11:00 AM`），数字用 en-US 分组。`pnpm ui:copy` 数代码里的非英文文案字面量，存量例外冻结在 `scripts/ui-copy-baseline.json`，新增即失败。
 - 来自数据源的内容（歌名、游戏名、剧名、歌词、提交信息）照原样，不翻译。模型生成、按约定写成中文的展示内容（摘要卡的中文标语）按它自己的约定走。
 - 站主的中文全名不出现在站点任何位置，显示为 `LYJW`。
 - 仅开发环境可见的调试开关提示可以用中文。
@@ -171,6 +171,6 @@
 ## 交付与合并
 
 - UI 改动交付桌面（1280）与手机（375）截图，至少一张深色；什么时候附图见 `AGENTS.md`「项目入口与验证」与 `HUMAN.md`。改到同一行的卡片或替换部件时，报前后各卡高度与相邻同类文字的字号字重（验证怎么做见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
-- CI 跑 `pnpm design:scale`（`scripts/design-scale-check.mjs`）：按类名数 `src/` 里阶梯外的间距、任意值字号与任意值位移，任何一个类名的出现次数比基线 `scripts/design-scale-baseline.json` 多就失败（把 `text-[10px]` 换成 `text-[9px]` 也算多）；变少只提示，跑 `pnpm design:scale --update` 收紧基线。图形内的 10px 刻度、带注释的光学微调这类合规例外也用 `--update` 记进基线，并在 PR 里说明。
+- CI 跑 `pnpm design:scale`（`scripts/design-scale-check.mjs`）：按类名数 `src/` 里阶梯外的间距、任意值字号与位移、任意值圆角、元素间 `mt` / `mb` / `my` / `m` 外边距、未走 token 的裸 hex / oklch / rgb 色值，任何一个类名的出现次数比基线 `scripts/design-scale-baseline.json` 多就失败（把 `text-[10px]` 换成 `text-[9px]` 也算多）；变少只提示，跑 `pnpm design:scale --update` 收紧基线。图形内的 10px 刻度、图表 / SVG / 品牌色、带注释的光学微调这类合规例外也用 `--update` 记进基线，并在 PR 里说明。
 - 自查用 `.claude/skills/lyjwpage-ui-design/SKILL.md`：它有对照本文件的检查清单和一个量间距、字号、点击区的浏览器脚本。
 - 有 UI / UX 变化的改动进 main 前，先给站主看效果、等他点头再合；站主明确要求的小改动除外。

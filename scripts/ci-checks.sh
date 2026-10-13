@@ -25,6 +25,14 @@ design() {
   pnpm design:scale
 }
 
+rules() {
+  pnpm rules:check
+}
+
+copy() {
+  pnpm ui:copy
+}
+
 if [ "${1:-}" = '--gate' ]; then
   case "$2" in
     lint) lint ;;
@@ -33,6 +41,8 @@ if [ "${1:-}" = '--gate' ]; then
     script_tests) script_tests ;;
     docs) docs ;;
     design) design ;;
+    rules) rules ;;
+    copy) copy ;;
     *) exit 2 ;;
   esac
   exit 0
@@ -48,7 +58,7 @@ run_gate() {
   return "$status"
 }
 
-gates=(lint typecheck workspace_tests script_tests docs design)
+gates=(lint typecheck workspace_tests script_tests docs design rules copy)
 status=0
 for gate in "${gates[@]}"; do
   echo "Starting $gate"
