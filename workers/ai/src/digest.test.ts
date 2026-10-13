@@ -270,7 +270,7 @@ test("compose fails the round instead of publishing a digest missing a view", as
 const hoursOption = (topic: DigestTopic, value: number, caption: string = topic): DigestHighlight => ({ topic, value, unit: "hours", atLeast: false, caption });
 const minutesOption = (topic: DigestTopic, value: number): DigestHighlight => ({ topic, value, unit: "minutes", atLeast: false, caption: topic });
 const countOption = (topic: DigestTopic, value: number, caption: string): DigestHighlight => ({ topic, value, unit: "count", atLeast: false, caption });
-const NO_SIGNALS = { weekend: false, workoutMinutes: 0, date: LOCAL_DATE };
+const NO_SIGNALS = { weekend: false, workoutMinutes: 0, deploys: 0, date: LOCAL_DATE };
 
 test("a quiet day publishes an empty digest that the card shows as the clock, and keeps the input hash", async () => {
   const views = baseViews();
@@ -312,6 +312,7 @@ test("situations, accents and picks follow the day's lead", () => {
       "agentsAllDay [soundtrack,shipping,tokenFlood] coding,agents,tokens"],
     [[hoursOption("coding", 13), hoursOption("agents", 2, "agent time"), tokens(5e6)], NO_SIGNALS, "codingAllDay [] coding,tokens,agents"],
     [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time"), commits(12)], { ...NO_SIGNALS, weekend: true }, "shipping [weekend] site,coding,agents"],
+    [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time"), commits(3)], { ...NO_SIGNALS, deploys: 4 }, "shipping [] site,coding,agents"],
     [[hoursOption("coding", 6), hoursOption("agents", 5, "agent time"), tokens(8e7)], NO_SIGNALS, "agentsLead [] coding,agents,tokens"],
     [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time")], { ...NO_SIGNALS, workoutMinutes: 45 }, "handsOn [workoutToo] coding,agents"],
     [[hoursOption("coding", 2), tokens(1e6), hoursOption("music", 1)], NO_SIGNALS, "codingLight [] coding,tokens"],
