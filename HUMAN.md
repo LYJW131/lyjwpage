@@ -75,7 +75,7 @@
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`。PR 开出来时给你一次链接，CI 绿、评审处理完后再说一次；中间的合 main、修 CI、回评审不打扰你。
 - 合并前的门槛，缺一不可：
   1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）；CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
-  2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex、Cursor Bugbot）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Bugbot 额度用完没跑成时当它不存在，不等也不提。
+  2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex、Cursor Bugbot）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Bugbot 额度用完没跑成时当它不存在，不等也不提。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。
   5. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
@@ -97,6 +97,7 @@
 - 项目聊天里 Claude 只说一行，细节都在线程里，链接点过去。
 - 超过十几行的东西给文件、页面或 Artifact，不刷屏。
 - 说错了改口用删除线加 [Edit: …]，不悄悄覆盖。
+- 站点的视觉与交互规范在 [DESIGN.md](./DESIGN.md)：间距、字号、颜色、卡片结构都按它来；觉得哪里不舒服，指出来，Claude 改规范或改卡片。
 - UI 改动第一次交付附桌面和 375px 两张图；之后你在看开发服务器时，改完自测但不再截图（见 AGENTS.md「[项目入口与验证](./AGENTS.md#项目入口与验证)」）。
 - 每条结论都带证据：链接、文件与符号、命令输出，或者明说是推断。
 
