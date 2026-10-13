@@ -2,7 +2,7 @@
 - Owner: lyjw (GitHub LYJW131). Communicate in Chinese.
 - Repo: https://github.com/LYJW131/lyjwpage (personal site)
 - Goal: keep evolving and optimizing the site, adopting cutting-edge tech.
-- **X/Twitter access (user 2026-10-13 16:12Z):** for anything on X/Twitter, call the X API at api.x.com directly. The session proxy injects the user's credentials automatically, so never add or print a key. Don't scrape x.com pages.
+- **X/Twitter access (user 2026-10-13 16:12Z):** for anything on X/Twitter, call the X API at api.x.com directly. The session proxy injects the user's credentials automatically, so never add or print a key. Don't scrape x.com pages: [[x-api-via-proxy]].
 - **Links in messages (user 2026-10-13 16:01Z, "以后注意一下"):** never post a bare URL next to Chinese text or full-width punctuation: the chat autolinker swallows the following （…） into the URL and the link breaks (NXDOMAIN). Always write links as markdown `[text](url)`, or put a space and ASCII punctuation after a bare URL: [[links-as-markdown]].
 - **Never auto-resolve shipped work (user 2026-10-13 15:50Z):** after a change ships, no Claude (thread or coordinator) resolves the thread. It stays open so it appears in the user's "Waiting on you / review" list; only the user's own ack (or explicit "关") resolves it. The user couldn't find the token-number thread because it was folded into 已解决.
 - **UI/UX changes need the user's OK before merge (user 2026-10-13 13:13Z):** any PR that changes UI/UX going into main must be shown to the user (screenshots/preview) and get their explicit go before merging, unless it is a small change the user explicitly asked for. Overrides the general merge-autonomy rule for UI. Put this in every UI thread brief.
@@ -35,4 +35,3 @@
 - Now-playing first screen decisions (#218/#220/#224): [[now-playing-first-screen-decisions]].
 - Cloud env gaps; #226 auto-creates .dev.vars, dev:worker runs without CF creds: [[cloud-env-gaps]].
 - **Hand-offs carry the user's constraints:** route a follow-up once; briefs and Mac briefs copy what the user already removed/rejected/set; a later relay overrides an earlier one: [[handoff-carry-user-constraints]].
-- **X/Twitter (user 2026-10-13 16:12Z):** read X via `api.x.com` directly; the proxy injects the owner's credentials, never add a key: [[x-api-via-proxy]].
