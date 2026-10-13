@@ -91,6 +91,7 @@ export async function findPlanIssue(api: GithubBuildApi, issueRef: string, since
 
 export class BuildBlockedError extends Error {}
 export class BuildPullRequestRejectedError extends Error {}
+export class BuildPublicationPendingError extends Error {}
 
 export async function assertMainAncestor(api: GithubBuildApi, baseSha: string): Promise<void> {
   const comparison = await api.repo<{ status: string; merge_base_commit?: { sha: string } }>(`/compare/${baseSha}...main`);
@@ -289,11 +290,11 @@ export async function recoverBuildPublication(api: GithubBuildApi, run: StoredRu
   }
   const updated = await pullRequestAfterPush(api, run);
   if (!updated) throw new Error("GitHub pull request confirmation is unavailable.");
-  if (updated.head?.sha === run.planCommitSha) throw new Error("GitHub has not moved the pull request to the implementation commit yet.");
+  if (updated.head?.sha === run.planCommitSha) throw new BuildPublicationPendingError("GitHub has not moved the pull request to the implementation commit yet.");
   return confirmedPublication(api, run, updated);
 }
 
-// GitHub 推进 PR 的 head 晚于分支 ref；仍停在计划提交时只算结果未知（failed，可经状态查询恢复），不当成篡改报 blocked
+// GitHub 推进 PR 的 head 晚于分支 ref，实测可滞后数分钟；仍停在计划提交时 run 留在 validated 由状态查询接着恢复，不当成篡改报 blocked
 const PR_HEAD_SYNC_DELAYS_MS = [250, 500, 1000, 2000];
 
 async function pullRequestAfterPush(api: GithubBuildApi, run: StoredRun): Promise<GithubPullRequest | null> {
