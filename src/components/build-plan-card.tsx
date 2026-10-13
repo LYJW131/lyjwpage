@@ -6,7 +6,7 @@ import { ChatMarkdown } from "@/components/chat-markdown";
 import { GithubConsent } from "@/components/github-consent";
 import { buildReviewSummary } from "@/lib/build-review-summary";
 import { createBuildStatusPoller, isBuildTerminal } from "@/lib/build-status-polling";
-import type { ChatProposal } from "@/lib/chat-archive";
+import { proposalChoiceOpen, type ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
@@ -35,8 +35,8 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   const startingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const expired = now >= proposal.expiresAt;
-  const used = Boolean(proposal.issue || proposal.issueOpened || proposal.build);
-  const disabled = expired || used || working !== null || inactive;
+  const used = Boolean(proposal.issue || proposal.build);
+  const disabled = !proposalChoiceOpen(proposal, now) || working !== null || inactive;
 
   useEffect(() => {
     const timer = setTimeout(() => setNow(Date.now()), Math.max(0, proposal.expiresAt - Date.now()) + 20);
@@ -77,8 +77,6 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
       </details>
       {proposal.issue ? (
         <p className="text-xs">Opened <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
-      ) : proposal.issueOpened ? (
-        <p className="text-xs">Opened <a href={buildIssueUrl(proposal.plan)} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">GitHub&apos;s new issue form</a> — submit it there to file this plan.</p>
       ) : proposal.build ? (
         <BuildStatusCard key={proposal.build.runId} build={proposal.build} savedRun={proposal.run} onRun={(run) => { if (JSON.stringify(run) !== JSON.stringify(proposal.run)) onChange({ ...proposal, run }); }} />
       ) : (
@@ -90,7 +88,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
               rel="noreferrer noopener"
               aria-disabled={disabled || buildOpen || undefined}
               tabIndex={disabled || buildOpen ? -1 : undefined}
-              onClick={() => onChange({ ...proposal, issueOpened: true })}
+              onClick={() => { if (!proposal.issueOpened) onChange({ ...proposal, issueOpened: true }); }}
               className={cn(
                 "rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover",
                 (disabled || buildOpen) && "pointer-events-none opacity-40",
@@ -100,6 +98,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
             </a>
             <button type="button" onClick={() => { setError(null); setBuildOpen(true); }} disabled={disabled || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
           </div>
+          {proposal.issueOpened && !expired && <p className="text-xs">Opened GitHub&apos;s new issue form. Submit it there to file this plan, or start a build instead.</p>}
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {buildOpen && <GithubConsent language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}

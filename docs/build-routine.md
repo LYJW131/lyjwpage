@@ -15,7 +15,7 @@ Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，�
 - **Open issue**：在新标签页直接跳转到 GitHub issue 创建页（`shared/build-routine.ts#buildIssueUrl`），用 `improvement.yml` 表单打开，标题与「想要什么」「验收标准」「涉及路径」按计划预填，「现在的情况」一栏填来源署名和隐藏标记，访客在 GitHub 确认后以自己的账号提交，无需给本站授权，也不消费计划。正文写不进 `performed_via_github_app`，`from-chat` 标签由 `.github/workflows/issue-labels.yml` 改按 context 字段里的隐藏标记（`shared/build-routine.ts#BUILD_ISSUE_ORIGIN`）补上。
 - **Start build**：发起协作构建前在计划卡展开 `src/components/github-consent.tsx#GithubConsent` 的 GitHub 授权说明（按 `shared/build-routine.ts#visitorLanguage` 跟随访客语言，用中日英），访客点接受才弹出授权窗口；同意不保存，下次再点还会展开。每次都弹窗连接 GitHub，把授权码随计划一起交给 Worker，不签发、不保存任何会话凭据。Worker 兑换授权码、查 `/user` 拿账号名、用户 ID 与显示名，随即撤销访客 token（失败路径也撤销），然后原子地消费计划和账号/全站额度，记录访客的 GitHub noreply co-author。同一计划的构建重试必须重新验证同一个 GitHub 用户 ID，返回原 run 与 PR；不同账号不能接管。浏览器在授权与请求期间同步锁住按钮，避免重复点击。
 
-计划的使用记录在 DO 中。只有 Start build 消费计划：构建用 App 的只读安装令牌读取 main，成功后原子消费计划与额度，并将计划关联到唯一 run。读取 main 失败或构建额度拒绝不消费计划；已消费的计划不能再发起构建，同账号重试只恢复原 run，不重复扣额度。Open issue 不经过 Worker：GitHub 的原生提交不会回传结果，浏览器点过链接就在本地存档记下已选出口（`src/lib/chat-archive.ts#ChatProposal` 的 `issueOpened`），卡片随即关闭两个出口；访客在 GitHub 上的重复提交由访客自己负责。GitHub 请求结果不确定时先查 GitHub，不能把网络失败当成「没有创建」。构建频率取 `BUILD_QUOTA`；设计、账号和状态令牌使用不同用途标签，不能互换。
+计划的使用记录在 DO 中。只有 Start build 消费计划：构建用 App 的只读安装令牌读取 main，成功后原子消费计划与额度，并将计划关联到唯一 run。读取 main 失败或构建额度拒绝不消费计划；已消费的计划不能再发起构建，同账号重试只恢复原 run，不重复扣额度。Open issue 不经过 Worker：GitHub 的原生提交不会回传结果，浏览器点过链接只在本地存档记下打开过表单（`src/lib/chat-archive.ts#ChatProposal` 的 `issueOpened`），卡片给出提示但两个出口都保留，访客没提交就回来仍可改选 Start build；只有构建开始（或计划过期）才关闭出口（`src/lib/chat-archive.ts#proposalChoiceOpen`）。访客在 GitHub 上的重复提交、提交 issue 后又构建，由访客自己负责。GitHub 请求结果不确定时先查 GitHub，不能把网络失败当成「没有创建」。构建频率取 `BUILD_QUOTA`；设计、账号和状态令牌使用不同用途标签，不能互换。
 
 ## 草稿与派发
 

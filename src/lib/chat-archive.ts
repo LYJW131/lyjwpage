@@ -21,8 +21,11 @@ export function designEndReason(design: ChatDesign, now = Date.now()): DesignEnd
   return design.remaining <= 0 && design.expiresAt > now ? "exhausted" : "expired";
 }
 
-// issueOpened 是浏览器记下的已选出口：GitHub 原生提交不会回传结果，点过 Open issue 就当作这个计划已经选了 issue，两个出口都关掉。
+// issueOpened 只记「打开过 GitHub 的新 issue 表单」：GitHub 原生提交不会回传结果，访客可能没提交就回来改选构建，所以它不关闭任何出口。
 export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; issueOpened?: boolean; build?: BuildFireResult; run?: BuildRun };
+export function proposalChoiceOpen(proposal: ChatProposal, now = Date.now()): boolean {
+  return !proposal.issue && !proposal.build && now < proposal.expiresAt;
+}
 // at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
 export type ChatShownCard = { card: GodChatCard; at: number };
 export type ChatAnswer = { header: string; question: string; answer: string };
