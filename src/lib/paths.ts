@@ -26,6 +26,7 @@ export const SENTRY_PATH = STATUS_VIEWS.sentry.path;
 export const REPORTERS_PATH = STATUS_VIEWS.reporters.path;
 export const PULSE_PATH = STATUS_VIEWS.pulse.path;
 export const DIGEST_PATH = STATUS_VIEWS.digest.path;
+export const TIMEZONE_PATH = STATUS_VIEWS.timezone.path;
 
 // 同组 titleIds 的顺序变化不应生成新缓存键，必须先排序。
 export function trophiesTilePath(titleIds: readonly string[]): string {
