@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { mergeMessage } from "./merge-message.mjs";
 
-test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓库主人，提交作者只收认得出的身份", () => {
+test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓库主人，只收认得出的身份", () => {
   const result = mergeMessage({
     number: "207",
     title: "feat(site): 最近提交不显示同步合并",
@@ -20,6 +20,7 @@ test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓�
       "gpt-6.1-sol <codex@openai.com>",
       "Claude Opus 5.5 <noreply@anthropic.com>",
       "Yangjunwei Liang <LYJW131@users.noreply.github.com>",
+      "千早 愛音 <lyjw131@icloud.com>",
     ],
     owner: "LYJW131",
   });
