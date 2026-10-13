@@ -176,10 +176,10 @@ export function ServerCard({
       <div className="flex h-full min-h-44 flex-col justify-between gap-3 p-4 lg:p-5">
         <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0">
-            <div className="truncate text-sm text-muted-foreground" title={location ?? undefined}>
+            <div className="truncate label-mono text-muted-foreground" title={location ?? undefined}>
               {location ?? "—"}
             </div>
-            <div className="truncate font-medium" title={isp ?? undefined}>
+            <div className="truncate font-mono text-lg" title={isp ?? undefined}>
               {isp ?? <span className="text-muted-foreground">—</span>}
             </div>
           </div>
