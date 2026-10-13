@@ -139,7 +139,7 @@ export function DigestCard({
     const timer = window.setInterval(() => setTicked(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  if (!data || !updatedAt) return <TimezoneCard fallback={timezoneEnvelope} className={className} />;
+  if (!data || !updatedAt || data.quiet) return <TimezoneCard fallback={timezoneEnvelope} className={className} />;
 
   const now = ticked || mountedAt || (zone ? zone.snapshotAt : updatedAt);
   const { identifier: timezone, abbreviation, offsetSeconds } = resolveTimezoneDisplay(zone?.timezone ?? null, now);

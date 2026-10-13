@@ -13,7 +13,7 @@
 - `Core/` 不 import 任何 UI 框架（SwiftUI、UIKit、HealthKit、WidgetKit）：它要能在 Linux 上 `swift test`。
 - 小组件目标不编 `Core/Live/`，也不编 `App/`；两边都要的界面放 `SharedUI/`。
 - 液态玻璃只用在控件层（系统栏、浮在媒体上的按钮），内容层用分组背景。
-- 界面文案英文，数字与日期 en-US（根 AGENTS.md「界面与交互」）。
+- 界面文案英文，数字与日期 en-US（根 DESIGN.md「Copy」）。
 
 ## 须与站点成对修改
 
