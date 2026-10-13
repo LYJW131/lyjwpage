@@ -132,7 +132,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 `POST https://ingest.homepage.lyjw.llc/api/internal/collector-refresh` 不等 cron，立刻把采集 Worker 的任务各跑一次，
 默认是 `shared/collector.ts#ACTIVE_COLLECTOR_JOBS` 全部（含 `digest`）；查询串带 `job=<任务>`（可重复）只跑点名的几个。
-请求体不读。每个任务单独一次 `Collector.refresh([任务])`；`digest` 等其余任务都跑完再跑（它总结的是别的任务写出的视图），全部跑完才回：
+请求体不读。任务逐个串行，每个单独一次 `Collector.refresh([任务])`（经 Service Binding 触发的采集 Worker 和这次请求共用等响应头的连接额度，并发扇出会让短预算任务耗在排队上）；`digest` 排在最后，它总结的是别的任务写出的视图。全部跑完才回（`pagespeed` 最慢）：
 
 | 状态 | 正文 | 什么时候 |
 | --- | --- | --- |

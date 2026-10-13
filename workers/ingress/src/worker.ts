@@ -217,6 +217,13 @@ async function refreshDeployments(collector: NonNullable<Env["COLLECTOR"]>): Pro
   }
 }
 
+function runOne(collector: NonNullable<Env["COLLECTOR"]>, job: string): Promise<CollectorJobOutcome> {
+  return collector.refresh([job]).then(
+    ([outcome]): CollectorJobOutcome => outcome ?? { job, status: "error", detail: "采集 Worker 没有回结果", ms: 0 },
+    (error: unknown): CollectorJobOutcome => ({ job, status: "error", detail: reason(error), ms: 0 }),
+  );
+}
+
 async function handleCollectorRefresh(request: Request, env: Env, ctx: ExecutionContext, named: string[]): Promise<Response> {
   if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
   const auth = await authorize(request, env, "internal:collector-refresh");
@@ -224,16 +231,12 @@ async function handleCollectorRefresh(request: Request, env: Env, ctx: Execution
   const collector = env.COLLECTOR;
   if (!collector) return jsonResponse({ ok: false, error: "没有绑定采集 Worker" }, { status: 503 });
   const jobs = named.length ? [...new Set(named)] : ACTIVE_COLLECTOR_JOBS;
-  // 每个任务单独一次 RPC：各自一次调用、各自的并发连接额度，超时预算不会耗在别的任务的排队上。
-  const runOne = (job: string) => collector.refresh([job]).then(
-    ([outcome]): CollectorJobOutcome => outcome ?? { job, status: "error", detail: "采集 Worker 没有回结果", ms: 0 },
-    (error: unknown): CollectorJobOutcome => ({ job, status: "error", detail: reason(error), ms: 0 }),
-  );
-  // 摘要读的是别的任务写出的视图（仓库提交、站点部署……），等它们这一轮写完再跑，才总结得到刚采集的数据。
+  const ordered = [...jobs.filter((job) => !COLLECT_LAST.has(job)), ...jobs.filter((job) => COLLECT_LAST.has(job))];
+  // 逐个串行跑：经 Service Binding 触发的 Worker 和这次请求共用 6 个等响应头的连接，并发扇出会让短预算任务耗在排队上。
+  // 摘要读的是别的任务写出的视图（仓库提交、站点部署……），排在最后才总结得到这一轮刚采集的数据。
   const run = (async () => {
-    const first = await Promise.all(jobs.filter((job) => !COLLECT_LAST.has(job)).map(runOne));
-    const last = await Promise.all(jobs.filter((job) => COLLECT_LAST.has(job)).map(runOne));
-    const byJob = new Map([...first, ...last].map((outcome) => [outcome.job, outcome]));
+    const byJob = new Map<string, CollectorJobOutcome>();
+    for (const job of ordered) byJob.set(job, await runOne(collector, job));
     return jobs.map((job) => byJob.get(job)!);
   })();
   // 调用方断开（如 curl 超时）时任务不随连接立刻取消，但只多 waitUntil 的宽限，长任务不保证跑完。
