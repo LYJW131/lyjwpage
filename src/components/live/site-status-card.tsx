@@ -180,7 +180,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
           {contributors.slice(0, CONTRIBUTOR_LIMIT).map((person, index) => person.commits > 0 ? (
             <span key={person.login} title={`${person.login} · ${number.format(person.commits)} commits`} style={{ width: `${person.commits / contributionShare * 100}%`, backgroundColor: colorForRank(index) }} />
           ) : null)}
-          {otherCommits > 0 && <span title={`Others · ${number.format(otherCommits)} commits`} className="bg-muted-foreground/40" style={{ width: `${otherCommits / contributionShare * 100}%` }} />}
+          {otherCommits > 0 && <span title={`Others · ${number.format(otherCommits)} commits`} className="bg-muted-foreground" style={{ width: `${otherCommits / contributionShare * 100}%` }} />}
         </div>
       )}
     </div>
