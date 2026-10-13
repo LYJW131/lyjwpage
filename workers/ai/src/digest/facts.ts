@@ -45,6 +45,8 @@ const AGENT_LABELS: Record<string, string> = {
 
 type Figure = Pick<DigestHighlight, "value" | "unit" | "atLeast">;
 
+const MIN_ACTIVE_SECONDS = 300;
+
 // 事实清单的数字有意取粗：小时级以下的抖动不改变清单，输入哈希不变，这一轮就不调模型。卡片上的数取自同一套取粗。
 function timeFigure(seconds: number): Figure {
   return seconds < 3_600
@@ -122,7 +124,7 @@ function totals<T>(items: T[], key: (item: T) => string | null, seconds: (item: 
 }
 
 function musicLine(lane: PulseStateLane): string | null {
-  if (lane.summary.activeSeconds < 300) return null;
+  if (lane.summary.activeSeconds < MIN_ACTIVE_SECONDS) return null;
   const plays = activePlays(lane, 2);
   const artists = totals(plays, (play) => play.subtitle, (play) => play.seconds)
     .filter(([, seconds], index) => index === 0 || seconds >= 1_200)
@@ -141,7 +143,7 @@ function musicLine(lane: PulseStateLane): string | null {
 }
 
 function watchingLine(lane: PulseStateLane): string | null {
-  if (lane.summary.activeSeconds < 300) return null;
+  if (lane.summary.activeSeconds < MIN_ACTIVE_SECONDS) return null;
   const plays = activePlays(lane, 2);
   const shows = totals(plays, (play) => play.title, (play) => play.seconds).slice(0, 3).map(([title, seconds]) => {
     const parts = [...new Set(plays.filter((play) => play.title === title && play.subtitle).map((play) => play.subtitle!.split(" · ")[0]))];
@@ -151,7 +153,7 @@ function watchingLine(lane: PulseStateLane): string | null {
 }
 
 function gamingLine(lane: PulseStateLane): string | null {
-  if (lane.summary.activeSeconds < 300) return null;
+  if (lane.summary.activeSeconds < MIN_ACTIVE_SECONDS) return null;
   const games = totals(activePlays(lane, 2), (play) => play.title, (play) => play.seconds)
     .slice(0, 3)
     .map(([title, seconds]) => `${title} (${duration(seconds)})`);
@@ -163,7 +165,7 @@ function codingLines(views: DigestViews, windowFrom: number, today: string): str
   const pulse = views.pulse!;
   const { humanSeconds, agentSeconds, bothSeconds } = pulse.lanes.coding.summary;
   const any = humanSeconds + agentSeconds + bothSeconds;
-  if (any >= 300) {
+  if (any >= MIN_ACTIVE_SECONDS) {
     lines.push(`Coding: active ${duration(any)} of the 24 h; a coding app in front on LYJW's Mac ${duration(humanSeconds + bothSeconds)}, AI agents working ${duration(agentSeconds + bothSeconds)}`);
   }
   const agents = (views.codingNow?.agents ?? []).flatMap((agent) => {
@@ -291,8 +293,6 @@ export function digestSignals(views: DigestViews, now: number): DigestSignals {
   const deploys = siteTallies(views, pulse.window.from).deploys?.value ?? 0;
   return { weekend: weekday === "Saturday" || weekday === "Sunday", workoutMinutes: Math.round(seconds / 60), deploys, date };
 }
-
-const MIN_ACTIVE_SECONDS = 300;
 
 // 卡片上的三格只从这里挑：数由代码按事实清单同样的取粗算出，模型只选主题，不写数字和说明。
 export function digestHighlightOptions(views: DigestViews): DigestHighlight[] {

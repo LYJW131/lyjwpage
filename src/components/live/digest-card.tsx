@@ -139,8 +139,15 @@ export function DigestCard({
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   useEffect(() => {
-    const timer = window.setInterval(() => setTicked(Date.now()), 30_000);
-    return () => window.clearInterval(timer);
+    let interval: number | undefined;
+    const timeout = window.setTimeout(() => {
+      setTicked(Date.now());
+      interval = window.setInterval(() => setTicked(Date.now()), 60_000);
+    }, 60_000 - (Date.now() % 60_000));
+    return () => {
+      window.clearTimeout(timeout);
+      if (interval !== undefined) window.clearInterval(interval);
+    };
   }, []);
   if (!data || !updatedAt || data.quiet) return <TimezoneCard fallback={timezoneEnvelope} className={className} />;
 
