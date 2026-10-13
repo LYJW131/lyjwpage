@@ -211,7 +211,7 @@
   };
   const HISTORY = [
     ["a1", "LOSTandFOUND", "SennaRin &amp; 泽野弘之"], ["a2", "Fate/strange Fake", "Original Soundtrack"],
-    ["a3", "还没想好叫什么", "梁杨峻玮"], ["a4", "ROUNDABOUT", "Tatsuya Kitani"],
+    ["a3", "还没想好叫什么", "LYJW"], ["a4", "ROUNDABOUT", "Tatsuya Kitani"],
     ["a5", "Kaikai Kitan / Ao No Waltz", "Eve"], ["a6", "星の消えた夜に", "Aimer"],
     ["a7", "群青", "YOASOBI"], ["a8", "Song from Tv Series 【Oshi No Ko】 Vol.5", "B KOMACHI"],
   ];

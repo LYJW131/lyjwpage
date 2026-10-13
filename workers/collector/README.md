@@ -25,7 +25,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 
 | 任务 | 去向 | 需要 |
 | --- | --- | --- |
-| `apple-recent` | `CORE.commitRecentlyPlayed(items, container)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；`APPLE_MUSIC_PRIVATE_KEY` 与 `APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID`（自签 developer token） |
+| `apple-recent` | `CORE.commitRecentlyPlayed(items, container)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；`APPLE_MUSIC_PRIVATE_KEY` 与 `APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID`（自签 developer token）；`APPLE_MUSIC_OWNER_NAME`（真名打码） |
 | `provider-status` | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 |
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
@@ -38,6 +38,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
+| `digest` | `DIGEST.compose`（ai 的 `Digest`，带上一份的输入哈希）写成的近况摘要进 `LAG digest:v1`；输入没变时 ai 不调模型，这里照样重写一次刷新 `updatedAt`；第一次写出才 `CORE.revalidate(["digest"])` | ai 上的 `ANTHROPIC_API_KEY`（没配时 ai 回 `unconfigured`，这里跳过） |
 
 每个任务可有一条 Sentry cron 监控 `collector-<任务>`（默认不报到，由 `SENTRY_CRON_CHECKINS=true` 开启），报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
 
@@ -153,6 +154,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | `SENTRY_API_TOKEN` | Sentry 组织只读：`org:read` / `project:read` / `event:read` |
 | `PAGESPEED_API_KEY` | Google PageSpeed Insights |
 | `APPLE_MUSIC_PRIVATE_KEY` | Apple Music 开发者私钥（`.p8`）：签服务端调 Apple 用的 developer token 和给网页播放器的 MusicKit token；缺了 `apple-recent` 跳过，令牌路由回 500 |
+| `APPLE_MUSIC_OWNER_NAME` | Apple ID 上的真名：`apple-recent` 出站前把它（含 URL 编码形式）换成 `src/jobs/apple-recent.ts#OWNER_ALIAS`，自己的歌单、音乐回忆署名与个人电台标题不露真名；缺了 `apple-recent` 跳过，宁可不更新也不漏 |
 
 `SITE_WORKER_TAG`（site Worker 的 Builds tag）与 `SITE_ANALYTICS_SITES`（JSON：`{"lyjw.me":"<site_tag>","lyjw131.com":"<site_tag>"}`，两站缺一不可）是 `[vars]` 配置；缺哪个跳过哪个任务，不算故障。
 
@@ -160,7 +162,7 @@ Apple Music 的 user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推
 `ALLOWED_ORIGINS`（MusicKit token 按它签 origin 声明）在 `[vars]`。
 
 绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS`、`APPLE_CACHE` 四个 KV，`CORE`（`core` 的 `StateCore`），
-`APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），D1 `HISTORY`（`lyjwpage-history`）。D1 表结构归 `workers/core/migrations` 管：新表先在 core 那边
+`APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`（`lyjwpage-history`）。D1 表结构归 `workers/core/migrations` 管：新表先在 core 那边
 `pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
 Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION_METADATA`。
 
@@ -169,7 +171,7 @@ Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION
 推到 `main` 由 Cloudflare Workers Builds 原生 Git 集成部署（根目录 `/`，配置与监视路径见
 [原生部署配置](../../docs/workers-builds.md)）；不开分支预览：预览版的 `CORE` 会调到生产的 core。
 
-新增 `StateCore` 方法时先发布 core，再发布这里；两边独立构建。
+新增 `StateCore` 方法时先发布 core，再发布这里；`Digest` 的契约同理，先发布 ai。各自独立构建。
 
 ## 本地开发
 

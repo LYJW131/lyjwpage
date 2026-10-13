@@ -7,3 +7,4 @@ fi
 
 cd "$CLAUDE_PROJECT_DIR"
 pnpm install --frozen-lockfile
+node scripts/cloud-dev-vars.mjs

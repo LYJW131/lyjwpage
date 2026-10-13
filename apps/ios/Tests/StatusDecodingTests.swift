@@ -207,7 +207,7 @@ import Testing
 
     // 站点开发夹具里的 `"$now-60000"` / `"$today"` 令牌按站点脚本的规则换成此刻。源：scripts/dev-override.mjs#NOW_TOKEN
     private func devFixture(_ name: String) throws -> Data {
-        let url = Self.here.appending(path: "../../../workers/api/dev-fixtures/\(name).json").standardizedFileURL
+        let url = Self.here.appending(path: "../../../workers/core/dev-fixtures/\(name).json").standardizedFileURL
         var text = try String(contentsOf: url, encoding: .utf8)
         let now = Date().epochMilliseconds.rounded()
         text = text.replacing(/"\$now(?<offset>[+-]\d+)?"/) { match in

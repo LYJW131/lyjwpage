@@ -49,6 +49,21 @@ export function nextPollAt(polledAt: number, nextBy: number | undefined): number
   return nextBy !== undefined && nextBy > polledAt ? Math.min(periodic, Math.max(nextBy, polledAt + ANCHOR_MIN_GAP_MS)) : periodic;
 }
 
+// Apple 在自己的歌单署名、「音乐回忆」署名、个人电台的标题和链接 slug 里写的是 Apple ID 上的中文真名，出站前一律换成 OWNER_ALIAS。
+// 真名只放在 Secret APPLE_MUSIC_OWNER_NAME，不进代码；按字符串整体替换，新冒出来的字段也盖得住。
+export const OWNER_ALIAS = "LYJW";
+
+export function maskOwnerName<T>(value: T, ownerName: string): T {
+  const forms = [ownerName, encodeURIComponent(ownerName)];
+  const mask = (input: unknown): unknown => {
+    if (typeof input === "string") return forms.reduce((text, form) => text.replaceAll(form, OWNER_ALIAS), input);
+    if (Array.isArray(input)) return input.map(mask);
+    if (input && typeof input === "object") return Object.fromEntries(Object.entries(input).map(([key, field]) => [key, mask(field)]));
+    return input;
+  };
+  return mask(value) as T;
+}
+
 type TracksReply = { traced: boolean; nextBy?: number };
 
 // 接着拉的某一次失败就停在这一响：下一响的头一次照常拉，持续的故障由它报出来。
@@ -262,28 +277,32 @@ export const appleRecentJob: Job = {
   async run({ env, now, scheduled }) {
     const lastChangeAt = scheduled ? await get<number>(LAST_CHANGE_KEY) : undefined;
     if (scheduled && !appleRecentDue(now, lastChangeAt)) return { status: "skipped", detail: "idle" };
-    const signing = settings(env, ["APPLE_MUSIC_PRIVATE_KEY", "APPLE_MUSIC_TEAM_ID", "APPLE_MUSIC_KEY_ID"]);
+    const signing = settings(env, ["APPLE_MUSIC_PRIVATE_KEY", "APPLE_MUSIC_TEAM_ID", "APPLE_MUSIC_KEY_ID", "APPLE_MUSIC_OWNER_NAME"]);
     if ("missing" in signing) return skipMissing("apple-recent", signing.missing);
     const credentials = await readAppleMusicCredentials();
     if (!credentials.ok && credentials.reason === "never-pushed") {
       return skipMissing("apple-recent", ["CREDENTIALS apple-music:v1"]);
     }
     const resolved = await resolveCredentials();
+    const ownerName = signing.values.APPLE_MUSIC_OWNER_NAME;
+    const recentTracks = async () => maskOwnerName(await assembleRecentTracks(resolved), ownerName);
+    // 失败信息里拼着 Apple 的响应正文，进日志和 Sentry 之前同样打码。
+    const masked = (error: unknown) => new Error(maskOwnerName(explain(error), ownerName));
     const polledAt = Date.now();
     const [items, tracks] = await Promise.allSettled([
-      assemble(resolved),
-      assembleRecentTracks(resolved).then((list) => ({ list, observedAt: Date.now() })),
+      assemble(resolved).then((value) => maskOwnerName(value, ownerName)),
+      recentTracks().then((list) => ({ list, observedAt: Date.now() })),
     ]);
-    if (items.status === "rejected") throw items.reason;
+    if (items.status === "rejected") throw masked(items.reason);
     const { changed } = await env.CORE.commitRecentlyPlayed(await enrichRecentlyPlayed(items.value.items), items.value.container);
-    if (tracks.status === "rejected") throw tracks.reason;
+    if (tracks.status === "rejected") throw masked(tracks.reason);
     const { traced, nextBy } = await env.CORE.commitRecentTracks(tracks.value.list, tracks.value.observedAt);
     if (changed || traced) await put(LAST_CHANGE_KEY, now, ACTIVE_HOLD_MS);
     const flags = [changed && "changed", traced && "traced"];
     if (scheduled && (changed || traced || appleRecentActive(now, lastChangeAt))) {
       const followed = await followRecentTracks({
         poll: async () => {
-          const list = await assembleRecentTracks(resolved);
+          const list = await recentTracks();
           const reply = await env.CORE.commitRecentTracks(list, Date.now());
           if (reply.traced) await put(LAST_CHANGE_KEY, Date.now(), ACTIVE_HOLD_MS);
           return reply;
@@ -291,7 +310,7 @@ export const appleRecentJob: Job = {
         wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         clock: Date.now,
       }, { polledAt, nextBy, until: now + ACTIVE_FOLLOW_MS });
-      if (followed.error) console.warn(JSON.stringify({ event: "apple-recent-follow", polls: followed.polls, error: followed.error }));
+      if (followed.error) console.warn(JSON.stringify({ event: "apple-recent-follow", polls: followed.polls, error: maskOwnerName(followed.error, ownerName) }));
       flags.push(followed.traced > 0 && `followed:${followed.traced}`);
     }
     return ok(flags.filter(Boolean).join(",") || undefined);

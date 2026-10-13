@@ -284,7 +284,7 @@ cron 落在窗口结束后 `PULSE_SCORE_SETTLE_MS`（`src/pulse-score.ts`，等�
 未知的窗口，每个十五分钟一份 Clef 请求（型号写在 `src/pulse-score.ts#clefDecide`），强度、连续性、模式一起评估。窗口被完整观测且信号
 全是 0 时不请求模型，写成确定的最低档（强度 0、连续性 0、置信度 1、mode idle，模型名 `rules`）。每轮最多
 36 份请求、并发最多 3，优先新窗口再补最近 24 小时，稳定时每小时最多 4 次。没有观测不调用，也不写评分。
-没有 `AI` 绑定（`wrangler.test.toml` 不配，本地起的 Worker 都不评分）、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用。
+没有 `AI` 绑定、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用（`src/runtime.ts#isolatedFromSharedWrites`），按 example 配的本地 Worker 不评分。
 
 决策模型不会数数、不会算时长、不比时间戳，所以发给它的 state 是代码算好的命名秒数和次数
 （`shared/pulse-coding.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
@@ -439,7 +439,7 @@ pnpm dev:worker                     # 仓库根目录执行；http://localhost:8
 pnpm dev:local                      # 站点指向本地 Worker
 ```
 
-`pnpm dev:worker` 是一个 `wrangler dev` 进程，配置入口在根目录 `package.json`：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
+`pnpm dev:worker` 是一个 `wrangler dev` 进程，由 `scripts/dev-worker.mjs` 拼参数启动（凭据判断见下文）：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
 本目录的 `wrangler.test.toml`、`workers/ai/wrangler.test.toml`、`workers/ingress/wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
 dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入口（见它的 README），
 `/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，Apple Music 的三条路径（`shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS`）给采集 Worker，其余一切（含 `/ws`）给 core；AI 路由由 core 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，
@@ -450,6 +450,8 @@ core 自己的 cron 本地触发不到（Service Binding 调不了别的 Worker 
 D1 归档、Clef 打分本来也被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
+`AI` 绑定只能连远程 Workers AI：`scripts/dev-worker.mjs` 在没有 `CLOUDFLARE_API_TOKEN` 也没有 `wrangler login` 时，把 core 与 ai 的测试配置去掉 `[ai]` 段另存为 `wrangler.test.offline.toml` 再起，否则整个会话起不来；去掉后对话路由走兜底档位。`DEV_WORKER_AI=remote` / `off` 强制选择。
+云端会话启动时 `.claude/hooks/session-start.sh` 跑 `scripts/cloud-dev-vars.mjs`，补上缺的 `workers/core/.dev.vars`（照抄 example）、`workers/ai/.dev.vars`（key 取环境变量 `LYJWPAGE_ANTHROPIC_API_KEY`，Turnstile 用 Cloudflare 测试密钥，签章密钥随机生成）与根 `.env.local`（Turnstile 测试 site key），已有的文件不动。
 状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，新目录直接以空状态起。
 
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 按端点整份兜底（`src/public-api.ts#overlayResponse`）：生产回 `ok:true` 的端点整份用生产的，
@@ -485,7 +487,7 @@ SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 ## 外部数据卡片（可滞后层）
 
-厂商状态、GitHub 贡献日历与仓库统计、站点、Cloudflare Workers、Sentry 这几条端点的数据都由采集 Worker
+厂商状态、GitHub 贡献日历与仓库统计、站点、Cloudflare Workers、Sentry、近况摘要这几条端点的数据都由采集 Worker
 （`workers/collector`）按各自节奏拉取、写进可滞后层 KV（`shared/lag.ts` 的键表），这里的公开端点**只读**：
 不持有任何外部令牌、不在读路径上现拉、不推送。每条都带写入方最后一次成功取到的时刻，信封里给 `updatedAt`；
 过没过时由浏览器按 `shared/freshness.ts` 里各块的阈值判断，过了那一格回到「—」或 Unavailable，服务端不下结论。
@@ -500,6 +502,7 @@ SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md
 | `/api/status/site-deployments` | `site-deployments:v1` + `site-analytics:v1` + `pagespeed:v1` | 部署 `SITE_DEPLOYMENTS_STALE_MS`、访问量 `SITE_ANALYTICS_STALE_MS`、PageSpeed `PAGESPEED_STALE_MS` |
 | `/api/status/cloudflare-workers` | `cloudflare-metrics:v1` + `cloudflare-deployments:v1`，按 Worker 名拼 | 统计 `CLOUDFLARE_METRICS_STALE_MS`、部署 `CLOUDFLARE_DEPLOYMENTS_STALE_MS` |
 | `/api/status/sentry` | `sentry:v1` | 各块 `SENTRY_STALE_MS` |
+| `/api/status/digest` | `digest:v1`，去掉只给采集 Worker 用的输入哈希（`shared/digest.ts#publicDigest`） | `DIGEST_STALE_MS` |
 
 几份拼起来的端点，各部分带自己的采集时刻（站点部署的 `fetchedAt`、访问量与指标每组的 `fetchedAt`、PageSpeed 最近一轮的
 `fetchedAt`；Cloudflare 统计的 `fetchedAt` 与部署的 `deploymentsFetchedAt`；Sentry 各块的 `blockAt`），卡片分别判过期。
