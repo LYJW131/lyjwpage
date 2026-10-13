@@ -12,7 +12,6 @@
 - D1 表结构归 `workers/api/migrations`：新表先在 api 那边 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。奖杯表由 api 写（`workers/api/src/stores/trophy-history.ts#archiveTrophies`），这里只写 `site_deploys`。
 - `shared/cache` 在这里背后是 KV（`src/storage-driver.ts`，由 `src/ports.ts` 装上）：TTL 最短 60 秒，KV 读还有最长 60 秒的边缘缓存，两分钟以内要读回的东西不走它；列表、哈希操作直接抛错。
 - Workers Caching 只开在 `AppleLookups` 上（`wrangler.toml#exports`），默认入口和 `Collector` 不开：方法、来源和 CORS 头在默认入口（`src/apple-music-http.ts`）按每次请求判，经自绑定 `APPLE_LOOKUPS` 再进缓存层。缓存键只有 entrypoint、路径与查询串，`AppleLookups` 的响应不许带 CORS 头或随请求头变化的内容。
-- `APPLE_CACHE` 与 api 绑同一个 KV 命名空间：`STORAGE_PREFIX`、`APPLE_MUSIC_STOREFRONT` 两边须一致，否则互相读不到对方查好的结果（`src/apple-music-http.test.ts` 核对两边的生产与本地配置）。
 - 手动触发（`Collector.refresh`、本地调试入口）不向 Sentry 报到；cron 监控名额不够，`collector-<任务>` 报到默认关（`SENTRY_CRON_CHECKINS`），任务真失败靠 `src/sentry.ts#reportJobFailure` 开 issue（tag `collector.job`）。
 
 ## 须成对修改

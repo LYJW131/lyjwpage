@@ -2,20 +2,17 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { SiteCacheRpc } from "@shared/site-cache";
 import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./origin-worker";
-import type { MusicKitTokenEnv } from "@shared/musickit-token";
 import type { StateHub } from "./state-hub";
 import type { DevOverrideReader } from "./dev-override-reader";
 import { previewWorkerEnabled } from "./preview";
 
-export interface Env extends MusicKitTokenEnv {
+export interface Env {
   LIVE_PUSH: DurableObjectNamespace<LivePushRoom>;
   STATE: DurableObjectNamespace<StateHub>;
   DEV_OVERRIDE_READER?: Service<DevOverrideReader>;
   HISTORY?: D1Database;
   AI?: Ai;
-  CREDENTIALS?: KVNamespace;
   LAG?: KVNamespace;
-  APPLE_CACHE?: KVNamespace;
   SITE_CACHE?: SiteCacheRpc;
   STORAGE_PREFIX?: string;
   ALLOWED_ORIGINS?: string;

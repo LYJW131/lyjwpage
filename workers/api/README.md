@@ -10,21 +10,19 @@
 - `src/index.ts`：默认 Worker 入口与 cron（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分，每几轮顺带做一次断流检测，见下文「断流告警」）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
 - `src/state-core.ts`：对内的 RPC 入口 `StateCore`（契约 `shared/state-core.ts`），上报入口和采集 Worker 经 Service Binding 调：
   `ready()`（恒为 `true`，契约只加不改而保留）、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`audience()`、
-  `playstationPower()`、`appleDeveloperToken()`、`commitRecentlyPlayed()`、`commitRecentTracks()`、`commitEnrichmentPatch(patch)`（采集 Worker 回执后重查到的补全，按 `trackKey` 补写）、`revalidate()`。
+  `playstationPower()`、`appleDeveloperToken()`（api 不持有 Apple 私钥，恒抛错；契约只加不改而保留）、`commitRecentlyPlayed()`、`commitRecentTracks()`、`commitEnrichmentPatch(patch)`（采集 Worker 回执后重查到的补全，按 `trackKey` 补写）、`revalidate()`。
 - `src/live-census.ts`：推送房间的两个人头数（开着 / 可见）怎么数，纯函数；房间 `LivePushRoom` 在 `src/origin-worker.ts`。
 - `src/ingest-handlers.ts`、`src/stores/`：上报的 StateHub 提交阶段，按来源分发；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
   准备阶段（收敛、校验、Emby 的 R2 HEAD）在根目录 `shared/ingest/`，跑在上报入口；这里只 `import type` 命令的类型（eslint 挡住值导入）。
 - `src/ingest-effects.ts`、`src/fanout.ts`：StateHub 提交时只收集可序列化效果；持久化确认后由 `StateCore.commitIngest` 在 `waitUntil` 里补充外部数据、广播并通知首屏 stale。
 - `src/apple-music-recent.ts`：收下采集 Worker 拉回的最近在听，差分、写入和广播。
-- `shared/musickit-token.ts`：给「一起听」签 MusicKit developer token（ES256 JWT），按 origin 声明缓存、过半衰期重签；同一把私钥也签服务端用的 developer token（`issueApiDeveloperToken`）。采集 Worker 用自己那份私钥签，`StateCore.appleDeveloperToken()` 留在契约里，没有调用方。
-- 根目录 `shared/http-origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，`/ws`、公开 API 和令牌签发共用。
+- 根目录 `shared/http-origins.ts`：`ALLOWED_ORIGINS` 的解析、通配匹配和 CORS 头，`/ws` 与公开 API 共用。
 - 根目录 `shared/`：读写共用的 SQLite 键、类型、状态计算与通用工具；只属于本 Worker 的读取在 `src/`。
 - 根目录 `shared/status-views.ts`：公开状态视图登记表（`path` / `layer` / `tag` / `event`）。路径常量、数据层、站点缓存标签、事件→路径全部由它派生；可滞后层（`layer: "lag"`）不能带推送事件，模块加载时断言。
 - `src/status-loaders.ts`：按同一组 key 登记 `endpoint(params)`，单端点由 `src/public-api.ts` 通用分发到对应 loader。可滞后层的 loader 引用 `shared/lag-views.ts#LAG_VIEW_LOADERS`，site Worker 在站点域名上直接调同一份，两边信封逐字一致由 `src/lag-parity.test.ts` 核对。`trophies` 无参回摘要（与首屏、推送同形状），带 `?titleids=` 回那几款的完整目录。
-- `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，状态端点按 loader 表通用分发。StateHub 提交可见性屏障不单独发 RPC，由每次 `StateHub.publicRead` 随读取一起过；空的 StateHub 直接以空状态回应。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层（`layer: "lag"`）的端点只读 `LAG` KV，写入方也不经 `commitIngest()` 队列，不发读取，也就不过屏障、不唤醒 StateHub（本地开着 `DEV_OVERRIDES` 时要先查 DO 里的注入，那次读取照常过屏障）；下面的按参数查询同样不过。
-- `src/lookup-routes.ts`、`src/edge-cache.ts`：`/api/lyrics`、`/api/motion-artwork` 按参数查询（查询本身在 `shared/apple-lookups.ts`，采集 Worker 跑的是同一份），结果只由参数决定，不过公开读屏障。它们是给网页播放器按任意曲目查的按需端点，也是读取路径上唯一会现查 Apple 的入口；结果缓存在 `APPLE_CACHE` KV。先查当前机房的 Cache API（`caches.default`），命中不进 StateHub；未命中回源，只有 200 写回，按响应的 `max-age` 过期。条目只在当前机房、跨部署保留、不合并并发未命中，键里带 SQLite 那层的版本段，响应外形变了升 `EDGE_CACHE_VERSION`。存的响应不含 CORS 头，`X-Edge-Cache: hit | miss | bypass` 标识命中。
+- `src/public-api.ts`、`src/public-execution.ts`：普通 Worker 中的公开 API 入口。已知路由先匹配，状态端点按 loader 表通用分发。StateHub 提交可见性屏障不单独发 RPC，由每次 `StateHub.publicRead` 随读取一起过；空的 StateHub 直接以空状态回应。屏障等待已经进入 `commitIngest()` 队列的提交，不等待仍在普通 Worker 做输入准备或 R2 HEAD 的请求；提交返回 202 后，经过 StateHub 的权威读取可见其持久化结果。可滞后层（`layer: "lag"`）的端点只读 `LAG` KV，写入方也不经 `commitIngest()` 队列，不发读取，也就不过屏障、不唤醒 StateHub（本地开着 `DEV_OVERRIDES` 时要先查 DO 里的注入，那次读取照常过屏障）。
 - `src/storage-driver.ts`：StateHub 的 SQLite 存储驱动；同一公开请求、同一 microtask 的相邻只读批次合并成一次 DO RPC（命令数上限 `shared/storage-contract.ts` 的 `STORAGE_MAX_COMMANDS`），写批次保持原事务顺序。
-- `src/ports.ts`：入口加载时把本 Worker 的实现装进 `shared/` 的端口：存储（`shared/storage.ts#installStorage`）、可滞后层读取（`shared/lag.ts#installLagReader`，读 `LAG` KV）、Apple 结果缓存（`shared/apple-cache.ts#installAppleCache`，读 `APPLE_CACHE`）、Apple Music 凭据（`shared/apple-music-auth.ts#installAppleMusicAuth`）。厂商状态、GitHub、站点、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，站点与 Cloudflare 两条按名字把几条键拼成一份。
+- `src/ports.ts`：入口加载时把本 Worker 的实现装进 `shared/` 的端口：存储（`shared/storage.ts#installStorage`）、可滞后层读取（`shared/lag.ts#installLagReader`，读 `LAG` KV）。厂商状态、GitHub、站点、Cloudflare、Sentry 这几条端点只读采集 Worker 写的那几条键，站点与 Cloudflare 两条按名字把几条键拼成一份。
 - `src/public-status.ts`：具名入口 `PublicStatus`，只接受公开状态登记表中的精确路径，复用浏览器的公开模型；不提供凭据、写入或按参数查询。契约在 `shared/public-status.ts`。
 - `src/dev-override-reader.ts`：只在本地绑定的具名入口 `DevOverrideReader`，推送房间转发生产事件前经它查假数据注入。
 - `src/origin-worker.ts` 的 AI 路由：经 `AI_SERVICE` 转发至 [AI Worker](../ai/README.md)，范围由根目录 `shared/ai-paths.ts#AI_HTTP_PATHS` 限定。
@@ -35,7 +33,6 @@
 | --- | --- | --- |
 | GET | `/ws?visible=1\|0` | 浏览器接收事件推送的 WebSocket，页面开着就一直挂着；切可见性时发 `visible` / `hidden`；使用 `ALLOWED_ORIGINS` 校验来源 |
 | GET | `/count` | `{ ok, connections, online }`：开着的页面数与此刻可见的页面数 |
-| GET | `/api/musickit/token` | `{ token, issuedAt, expiresAt }`：给「一起听」的 MusicKit developer token，同一份来源白名单；见下文 |
 | POST | `/api/chat` | 经 `AI_SERVICE` 转发首页对话，见 [AI Worker](../ai/README.md#首页对话) |
 | POST | `/mcp` | 经 `AI_SERVICE` 转发公开 MCP，见 [AI Worker](../ai/README.md#mcp) |
 | GET | `/api/chat/usage` | 经 `AI_SERVICE` 转发对话配额查询 |
@@ -161,9 +158,9 @@ ESA 首页不走数据上报通知：`lyjw131.com` 以 `lyjw.me` 为源站，边
 
 站点缓存仍采用后台重建（stale-while-revalidate），通知成功不代表新 HTML 已生成。ESA 后台回源可能取得仍在重建中的旧 HTML，下一轮刷新时收敛；这条链路不承诺两层缓存同步完成更新。首屏新鲜度不依赖这两层：浏览器挂载后直接向 Worker 取最新状态。
 
-「正在听」的写入时补全在 `src/listening-enrichment.ts`：命令里已带 `enrichment`（含 `null`）说明调用方已请采集 Worker 补过（`Collector.enrichTrack`），原样提交，回执后的预热与重查也归它（`Collector.followUpTrack`，补丁经 `StateCore.commitEnrichmentPatch` 进同一条队列）；没带时 `StateCore.commitIngest` 对 Mac（带 `appleMusic` 模块时）和 HomePod 的报文先调 `shared/track-enrichment.ts#enrichTrackOutcome`，查曲目目录（当前这首和队列里的后几首）和动态封面，再把结果放进报文交给 StateHub；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。每段各自限时（`CATALOG_TIMEOUT_MS`、`UPCOMING_TIMEOUT_MS`、`MOTION_TIMEOUT_MS`），目录与队列并行、动态封面排在目录之后；某段失败或超时只丢那一段、打一条带阶段与曲目的 `[enrichment]` warn，状态照常落库。回执之后在 `waitUntil` 里预热歌词；写入时目录、队列或动态封面有一段没查出结果的（`EnrichmentOutcome` 的 `catalogKnown` / `upcomingKnown` / `motionKnown`），在新的请求状态里按 `RETRY_BUDGET` 整份重查一次（`shared/track-enrichment.ts#followUpEnrichment`），多查到东西就经 `StateHub.commitEnrichmentPatch` 补写（`src/enrichment-patch.ts`）：与上报同一条串行队列，当前曲目的 `trackKey` 对不上（已换歌）就丢弃；否则按块合并（`mergeEnrichment`）：目录块、动态封面、队列歌曲 ID 各自只在比已存的好时才换，队列部分还要补丁所查的队列（`upcomingKeyOf`）与已存的 `upcomingTracks` 一致，同一首歌期间队列变了就不动队列；没有一块变好就丢弃。写回只改补全字段、不动接收时间，并推一次 `listening-now`。同一曲目的新上报目录没查到时沿用已存的目录与动态封面（`keepEnrichment`），队列歌曲 ID 跟本次上报的队列走。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`），不请求 Apple。最近播放首项的动态封面由采集 Worker 查好放进该项的 `motion`；`StateCore.commitRecentlyPlayed` 只在它是 `undefined`（没查出结果）时再查一次，仍查不出就沿用同一项已存的那份。
+「正在听」的补全由采集 Worker 做，api 不请求 Apple：上报入口在提交前请采集 Worker 查好（`Collector.enrichTrack`），命令带着 `enrichment`（含 `null`）交给 `StateCore.commitIngest`，这里原样提交；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。回执后的歌词预热与没查出结果的重查也归采集 Worker（见它的 [README](../collector/README.md#apple-music)），重查多查到东西就经 `StateCore.commitEnrichmentPatch` 交来，由 `StateHub.commitEnrichmentPatch` 补写（`src/enrichment-patch.ts`）：与上报同一条串行队列，当前曲目的 `trackKey` 对不上（已换歌）就丢弃；否则按块合并（`mergeEnrichment`）：目录块、动态封面、队列歌曲 ID 各自只在比已存的好时才换，队列部分还要补丁所查的队列（`upcomingKeyOf`）与已存的 `upcomingTracks` 一致，同一首歌期间队列变了就不动队列；没有一块变好就丢弃。写回只改补全字段、不动接收时间，并推一次 `listening-now`。同一曲目的新上报目录没查到时沿用已存的目录与动态封面（`keepEnrichment`），队列歌曲 ID 跟本次上报的队列走。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`）。最近播放首项的动态封面由采集 Worker 查好放进该项的 `motion`；没查出结果（`undefined`）时沿用同一项已存的那份（`src/stores/apple-music-store.ts`）。
 
-公开 API 为 `/api/status/*`、`/api/lyrics`、`/api/motion-artwork`，没有聚合端点。site Worker 渲染首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
+公开 API 为 `/api/status/*`，没有聚合端点；`/api/lyrics`、`/api/motion-artwork`、`/api/musickit/token` 由采集 Worker 回答。site Worker 渲染首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
 
 ## 跨域活动脉搏（Pulse）
 
@@ -370,34 +367,6 @@ AI Worker 通过具名入口 `PublicStatus` 读取本站公开状态，契约是
 
 Pulse 的 Coding 评估仍由本 Worker 的 `src/pulse-score.ts#PulseScorer` 和 cron 执行，评分租约与结果仍属于 StateHub，见上文「Coding 的 Clef 评估」。
 
-## MusicKit 令牌
-
-访客用自己的 Apple Music 订阅跟听之前，先得有一份 developer token 才能把 MusicKit JS 配起来。
-这份令牌发给**任何一个访客**，和凭据 KV 里 Mac 上报的那份私人凭据（带 music user token）
-不是一回事、不共用路径。
-
-`ALLOWED_ORIGINS` 一份名单，两道限制：
-
-1. **谁能来要令牌** —— 比请求的来源：带 `Origin` 头就看它；浏览器的同源 GET 不带 `Origin`，
-   只带 `Sec-Fetch-Site: same-origin`，这时按请求自己的源算（`shared/http-origins.ts#requestOrigin`，
-   经站点 Service Binding 转来的请求 URL 仍是站点的源）。配了名单之后两样都没有的一律拒绝。这道只是让
-   「拿一份」不那么随手，这两个头非浏览器都伪造得了。
-2. **令牌只在这些域上有效** —— 名单里写死的域签进 JWT 的 `origin` 声明，由 Apple 校验。
-   通配项（`https://*.lyjw.workers.dev`）Apple 不解析，匹配到的预览域名和 localhost **只签它自己一个**，
-   不把生产域名一起捎上；否则任何人带一句 `Origin: http://localhost:3000` 就能要走一份在
-   `lyjw.me` 上可用的令牌。
-
-同一份 origin 声明的令牌在 isolate 里复用，过了「签发 → 到期」的中点才重签；`issuedAt` 和
-`expiresAt` 一起给，站点用同一条半衰期规则决定何时再要。响应一律 `Cache-Control: no-store`。
-出错时 `{ "error": "..." }`：403 来源不对、405 方法不对、500 变量没配或私钥坏（只有自己写死
-的配置提示外带，运行时异常只进日志）。
-
-三样东西来自 [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) 勾了
-**MusicKit** 的密钥：`APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID` 放 `[vars]`，
-`APPLE_MUSIC_PRIVATE_KEY`（`.p8` 全文，带不带 PEM 头尾、换行是真的还是 `\n` 都吃）走 secret。
-有效期 `MUSICKIT_TOKEN_TTL_SECONDS` 不填按 `DEFAULT_TTL_SECONDS`，上限 `MAX_TTL_SECONDS`（Apple 允许的最长期限）；不取上限是因为令牌一旦被复制走，
-域名限制之外就只剩有效期这一道闸。
-
 ## 断流告警
 
 cron 心跳与 `HEAD /api/version` 在线探测都不经过数据链路，上报器断了它们照样绿。断流检测补这一块，代码在 `src/freshness-watch.ts`。
@@ -442,19 +411,13 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 
 生产发布走 Cloudflare Workers Builds 原生 Git 集成，推送 `main` 且本 Worker 或共享代码变化时触发。构建命令、监视路径与验收流程见 [原生部署配置](../../docs/workers-builds.md)。
 
-`wrangler.toml` 中配置公开变量 `SITE_URL`、`STORAGE_PREFIX`、
-`APPLE_MUSIC_STOREFRONT`、`ALLOWED_ORIGINS`、`APPLE_MUSIC_TEAM_ID`、
-`APPLE_MUSIC_KEY_ID`（响应里的图片地址是 `/img/<对象键>` 同源路径，Worker 不配交付域，
+`wrangler.toml` 中配置公开变量 `STORAGE_PREFIX`、`ALLOWED_ORIGINS`、`SENTRY_DSN`（响应里的图片地址是 `/img/<对象键>` 同源路径，Worker 不配交付域，
 回源 R2 由 site Worker 的 `/img` 路由和 ESA 负责，见根 README「图片」；上报器直传图片那个桶的 HEAD 在上报入口），
-以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG`、`CREDENTIALS` 两个 KV 绑定见 `shared/lag.ts`、`shared/credentials.ts`，这里只读（唯一例外是 cron 写断流检测的翻转状态 `freshness-watch:v1`，见「断流告警」）；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，收下奖杯信封后写 `trophies`；上报的那几张表由上报入口写，站点部署由采集 Worker 写，见上文「长期归档（D1）」），
+以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG` KV 绑定见 `shared/lag.ts`，这里只读（唯一例外是 cron 写断流检测的翻转状态 `freshness-watch:v1`，见「断流告警」）；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，收下奖杯信封后写 `trophies`；上报的那几张表由上报入口写，站点部署由采集 Worker 写，见上文「长期归档（D1）」），
 几乎只增不删（活动桶按权威范围替换）、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
-实时状态存在 StateHub，展示快照存在 `LAG`，凭据存在 `CREDENTIALS`，site Worker 只读 `LAG` KV 回可滞后视图，不连 StateHub、D1 或凭据 KV（首屏失效走 `SITE_CACHE` Service Binding，没有 HTTP secret）。秘密通过以下命令配置：
-
-```sh
-pnpm --dir workers/api exec wrangler secret put APPLE_MUSIC_PRIVATE_KEY -c wrangler.toml < AuthKey_XXXXXXXXXX.p8
-```
+实时状态存在 StateHub，展示快照存在 `LAG`，凭据存在 `CREDENTIALS`（上报入口写、采集 Worker 读，本 Worker 不绑），site Worker 只读 `LAG` KV 回可滞后视图，不连 StateHub、D1 或凭据 KV（首屏失效走 `SITE_CACHE` Service Binding，没有 HTTP secret）。本 Worker 的代码不读任何 Secret。
 
 AI 模型、验人、对话签名与 issue 提交凭据见 [AI Worker](../ai/README.md#配置与部署)，不配在本 Worker 的生产配置中。
 
@@ -479,7 +442,7 @@ pnpm dev:local                      # 站点指向本地 Worker
 `pnpm dev:worker` 是一个 `wrangler dev` 进程，配置入口在根目录 `package.json`：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
 本目录的 `wrangler.test.toml`、`workers/ai/wrangler.test.toml`、`workers/ingress/wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
 dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入口（见它的 README），
-`/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，其余一切（含 `/ws`）给 api；AI 路由由 api 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，
+`/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，Apple Music 的三条路径（`shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS`）给采集 Worker，其余一切（含 `/ws`）给 api；AI 路由由 api 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，
 `LAG`、`CREDENTIALS` 两个本地 KV 用同一个 id，一边写的另一边读得到；Service Binding 按生产名字
 （`api`、`ai`、`ingress`、`collector`）互相找到，所以本地 api 的名字也是 `api`。
 `curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；

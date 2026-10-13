@@ -1,5 +1,7 @@
 // Wrangler 多配置模式只有第一个 Worker 获得端口，其余本地入口必须通过绑定转发。
 
+import { APPLE_MUSIC_HTTP_PATHS } from "../../../shared/apple-music-paths";
+
 type Fetcher = { fetch(input: Request | string, init?: RequestInit): Promise<Response> };
 
 interface Env {
@@ -29,6 +31,8 @@ const router = {
     if (url.pathname.startsWith("/api/ingest/") || url.pathname === SITE_DEPLOYED_PATH) {
       return env.INGRESS.fetch(request);
     }
+
+    if (APPLE_MUSIC_HTTP_PATHS.has(url.pathname)) return env.COLLECTOR.fetch(request);
 
     return env.API.fetch(request);
   },
