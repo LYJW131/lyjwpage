@@ -62,7 +62,8 @@ export function parseDigest(raw: string, options: DigestHighlight[]): { headline
   const highlights = [...new Set(picks)]
     .flatMap((topic) => options.filter((option) => option.topic === topic))
     .slice(0, DIGEST_MAX_HIGHLIGHTS);
-  if (!headline || headline.length > DIGEST_HEADLINE_MAX_CHARS || highlights.length < Math.min(2, options.length)) return null;
+  const words = headline.split(" ").length;
+  if (!headline || headline.length > DIGEST_HEADLINE_MAX_CHARS || words < 2 || words > 5 || highlights.length < Math.min(2, options.length)) return null;
   return { headline, highlights };
 }
 
