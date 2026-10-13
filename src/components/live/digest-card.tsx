@@ -14,25 +14,7 @@ import { formatUTCOffset, resolveTimezoneDisplay } from "@/lib/timezone-display"
 import { cn } from "@/lib/utils";
 import type { DigestPayload, DigestTopic } from "@shared/digest";
 import { DIGEST_STALE_MS } from "@shared/freshness";
-import { modelLabel } from "@shared/god-chat-tiers";
 import type { PulsePayload, StatusResponse, TimezonePayload } from "@shared/types";
-
-const updatedTime = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Shanghai",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-const updatedDay = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Shanghai",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-// 输入没变的轮次只刷新 updatedAt，文字可能是好几个小时前写的；隔得久了带上日期，免得把昨晚写的读成今天。
-const WRITTEN_DAY_AFTER_MS = 12 * 3_600_000;
 
 const TONES: Record<DigestTopic, string> = {
   coding: "var(--signal-blue)",
@@ -95,7 +77,7 @@ function DayDial({
   const [handX0, handY0] = polar(36, nowTurn);
   const [handX1, handY1] = polar(CENTER - 4, nowTurn);
   return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="col-start-2 row-start-1 size-32 shrink-0 self-center md:row-span-3 lg:size-44" role="img" aria-label="The past 24 hours on a 24-hour dial">
+    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="col-start-2 row-start-1 size-32 shrink-0 self-center md:row-span-2 lg:size-44" role="img" aria-label="The past 24 hours on a 24-hour dial">
       <circle cx={CENTER} cy={CENTER} r={CENTER - 2} fill="none" stroke="var(--line)" />
       {Array.from({ length: 24 }, (_, hour) => {
         const major = hour % 6 === 0;
@@ -159,10 +141,7 @@ export function DigestCard({
   return (
     <Card id="digest" className={cn("h-full scroll-mt-28", className)}>
       <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-2.5 p-4 pl-4.5 lg:gap-x-4 lg:p-5">
-        <div className="col-start-1 row-start-1 flex min-w-0 flex-col gap-1.5">
-          <p className="text-xs text-muted-foreground">Past 24 hours</p>
-          <h2 className="text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
-        </div>
+        <h2 className="col-start-1 row-start-1 min-w-0 text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
         <ul className={cn("col-span-2 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 md:col-span-1", stale && "opacity-60")}>
           {data.highlights.map((item) => (
             <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
@@ -172,11 +151,6 @@ export function DigestCard({
             </li>
           ))}
         </ul>
-        <p className="col-span-2 row-start-3 text-xs text-muted-foreground md:col-span-1" title={`${updatedDay.format(stale ? updatedAt : data.generatedAt)} UTC+8`}>
-          {stale
-            ? `Not updated since ${updatedDay.format(updatedAt)}`
-            : `by ${modelLabel(data.model)} at ${(updatedAt - data.generatedAt > WRITTEN_DAY_AFTER_MS ? updatedDay : updatedTime).format(data.generatedAt)}`}
-        </p>
         <DayDial tracks={tracks} window={pulse?.window ?? null} now={now} timezone={timezone} offsetSeconds={offsetSeconds ?? 0} />
       </div>
     </Card>
