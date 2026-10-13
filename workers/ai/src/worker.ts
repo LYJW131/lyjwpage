@@ -4,6 +4,7 @@ import {
   AI_HTTP_PATHS,
   BUILD_PATH,
   BUILD_STATUS_PATH,
+  BUILD_ISSUE_PATH,
   BUILD_UPLOAD_PATH,
   BUILD_PROGRESS_PATH,
   BUILD_SCREENSHOT_PATH,
@@ -16,7 +17,7 @@ import { MCP_PATH } from "@shared/mcp";
 import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
 import { anthropicFetch } from "./chat/egress";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
-import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
+import { handleBuild, handleBuildIssue, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
 import { handleMcp } from "./mcp";
 import { mcpCodeModeEnabled, type Env } from "./runtime";
 import { fetchProjectDoc } from "./tools/project-docs";
@@ -26,6 +27,7 @@ import type { ToolIO } from "./tools/registry";
 const BUILD_HANDLERS = new Map<string, (request: Request, env: Env, fetcher?: typeof fetch, ctx?: Pick<ExecutionContext, "waitUntil">) => Promise<Response>>([
   [BUILD_PATH, handleBuild],
   [BUILD_STATUS_PATH, handleBuildStatus],
+  [BUILD_ISSUE_PATH, handleBuildIssue],
   [BUILD_UPLOAD_PATH, handleBuildUpload],
   [BUILD_PROGRESS_PATH, handleBuildProgress],
   [BUILD_SCREENSHOT_PATH, handleBuildScreenshot],

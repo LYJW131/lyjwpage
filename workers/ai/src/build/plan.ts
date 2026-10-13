@@ -11,9 +11,10 @@ export async function issuePlan(env: Env, value: unknown): Promise<BuildProposal
   if (!plan) throw new Error("The plan is invalid or includes protected paths.");
   if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR) throw new Error("Build planning is unavailable.");
   const expiresAt = Date.now() + BUILD_PLAN_TTL_MS;
-  const token = await signBuildToken<PlanPayload>({ kind: "plan", id: crypto.randomUUID(), plan, expiresAt }, env.BUILD_SESSION_SECRET);
+  const id = crypto.randomUUID();
+  const token = await signBuildToken<PlanPayload>({ kind: "plan", id, plan, expiresAt }, env.BUILD_SESSION_SECRET);
   if (token.length > BUILD_TOKEN_MAX_CHARS) throw new Error("The plan is too large to sign. Shorten its text.");
-  return { plan, token, expiresAt };
+  return { plan, token, expiresAt, issueRef: id };
 }
 
 export async function readPlan(env: Env, token: string): Promise<PlanPayload | null> {

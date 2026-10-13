@@ -57,6 +57,7 @@ test("API 路径按数据归属分流：可滞后视图 site 自己读，其余�
   assert.deepEqual(classifyGatewayRequest("POST", "/api/chat"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/chat/usage"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/build/status"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/build/issue"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("POST", "/api/build/webhook"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/version"), { kind: "render" });
 });
