@@ -141,7 +141,7 @@ export function digestScene(options: DigestHighlight[], signals: DigestSignals):
   const site = options.find((option) => option.topic === "site");
   const trophies = options.find((option) => option.topic === "trophies");
   const [family, top] = (Object.entries(scores) as [Family, number][]).reduce((best, entry) => (entry[1] > best[1] ? entry : best));
-  if (top < QUIET_SCORE && signals.workoutMinutes < 20 && !trophies && (site?.value ?? 0) < 3) return { quiet: true };
+  if (top < QUIET_SCORE && signals.workoutMinutes < 20 && !trophies && Math.max(site?.value ?? 0, signals.deploys) < 3) return { quiet: true };
   const primary = primarySituation(family, options, scores, signals);
   return { quiet: false, primary, accents: accentSituations(primary, family, options, signals), highlights: pickHighlights(primary, family, options, scores) };
 }

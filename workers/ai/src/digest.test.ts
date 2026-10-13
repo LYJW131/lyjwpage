@@ -298,6 +298,8 @@ test("the quiet line matches what the model used to call quiet", () => {
   assert.equal(digestScene([hoursOption("music", 2.5), steps], NO_SIGNALS).quiet, false);
   assert.equal(digestScene([steps], { ...NO_SIGNALS, workoutMinutes: 40 }).quiet, false);
   assert.equal(digestScene([countOption("trophies", 1, "trophies")], NO_SIGNALS).quiet, false);
+  assert.equal(digestScene([countOption("site", 1, "commits")], NO_SIGNALS).quiet, true);
+  assert.deepEqual(digestScene([countOption("site", 1, "commits")], { ...NO_SIGNALS, deploys: 4 }), { quiet: false, primary: "shipping", accents: [], highlights: [countOption("site", 1, "commits")] });
 });
 
 test("situations, accents and picks follow the day's lead", () => {
