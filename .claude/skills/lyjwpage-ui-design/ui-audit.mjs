@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 // 用法：node .claude/skills/lyjwpage-ui-design/ui-audit.mjs [url] [--dark] [--only=<卡片 id 或表头文字>]
 // 默认 url 是 http://localhost:3211/，量 1280 与 375 两个宽度，只读不改页面。
+import { execSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith("--")) ?? "http://localhost:3211/";
 const dark = args.includes("--dark");
 const only = args.find((a) => a.startsWith("--only="))?.slice(7).toLowerCase();
-// 先找项目或全局 node_modules 里的 playwright，再退到云端容器预装的那份。
+// createRequire 不搜 npm 全局目录，所以先问 `npm root -g`，再退到云端容器预装的那份。
 const loadPlaywright = () => {
-  for (const base of [`${process.cwd()}/`, "/opt/node22/lib/node_modules/"]) {
+  let globalRoot = "";
+  try {
+    globalRoot = `${execSync("npm root -g", { encoding: "utf8" }).trim()}/`;
+  } catch {}
+  for (const base of [`${process.cwd()}/`, globalRoot, "/opt/node22/lib/node_modules/"].filter(Boolean)) {
     try {
       return createRequire(base)("playwright");
     } catch {}
