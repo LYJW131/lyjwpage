@@ -10,6 +10,9 @@ crons = ["* * * * *"]
 [vars]
 STORAGE_PREFIX = "lyjwpage"
 APPLE_MUSIC_STOREFRONT = "cn"
+APPLE_MUSIC_TEAM_ID = "2VTXNMR2GL"
+APPLE_MUSIC_KEY_ID = "88KBJL3CKU"
+ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me"
 CLOUDFLARE_ACCOUNT_ID = "209f2c881b1c494fec50851c067b3266"
 SITE_WORKER_TAG = "f5d09e0840d64b7eb77e4a090db0a82a"
 SITE_ANALYTICS_SITES = '{"lyjw.me":"cd75b97259324a95b0a0ef6e90df3997","lyjw131.com":"e9e4cec850db4121a312b0616e77c277"}'
@@ -20,6 +23,17 @@ SENTRY_DSN = "https://23b24c339292701f7b84adea24780773@o4511888459890688.ingest.
 binding = "CORE"
 service = "api"
 entrypoint = "StateCore"
+
+[[services]]
+binding = "APPLE_LOOKUPS"
+service = "collector"
+entrypoint = "AppleLookups"
+
+[exports.AppleLookups]
+type = "worker"
+
+[exports.AppleLookups.cache]
+enabled = true
 
 [[kv_namespaces]]
 binding = "COLLECTOR_KV"
@@ -32,6 +46,10 @@ id = "e9c72a9517884aeb95db7386b630a691"
 [[kv_namespaces]]
 binding = "CREDENTIALS"
 id = "c24d1670d97b4649ab5aa4c0944dfbfc"
+
+[[kv_namespaces]]
+binding = "APPLE_CACHE"
+id = "da83c6ece9694300b707cb87c915610c"
 
 [[d1_databases]]
 binding = "HISTORY"

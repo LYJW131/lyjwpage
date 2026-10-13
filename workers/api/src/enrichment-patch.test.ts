@@ -7,7 +7,7 @@ import { motionArtworkCacheKey } from "@shared/motion-artwork";
 import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
 import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { MemoryKv } from "@shared/testing/memory-kv";
-import { trackKeyOf, upcomingKeyOf } from "@shared/track-enrichment";
+import { followUpEnrichment, trackKeyOf, upcomingKeyOf, type EnrichmentFollowUp, type EnrichmentPatch } from "@shared/track-enrichment";
 import type { ListeningItem } from "@shared/types";
 import { mirror as recentMirror } from "@shared/apple-music-store";
 import { mirror as homePodMirror } from "@shared/homepod-store";
@@ -18,7 +18,7 @@ import { mirror as telemetryMirror } from "@shared/telemetry";
 import { applyEnrichmentPatch } from "./enrichment-patch";
 import { collectIngestEffects } from "./ingest-effects";
 import { commitPreparedIngest } from "./ingest-handlers";
-import { enrichCommand, followUpEnrichment, type EnrichmentFollowUp, type EnrichmentPatch } from "./listening-enrichment";
+import { enrichCommand } from "./listening-enrichment";
 import { requestStore, type Env } from "./runtime";
 import { prepareRecentlyPlayed } from "./stores/apple-music-store";
 
@@ -183,6 +183,32 @@ test("HomePod 补丁同样按 trackKey 校验", async (t) => {
   const stored = await inRequest(() => homePodMirror.get());
   assert.equal(stored?.enrichment?.songId, "1501");
   assert.equal(stored?.receivedAt, NOW);
+});
+
+test("命令已带 enrichment（含 null）时原样提交：不查 Apple，也不排回执后的重查", async (t) => {
+  isolated(t);
+  let fetches = 0;
+  globalThis.fetch = (async () => { fetches += 1; throw new Error("network disabled"); }) as typeof fetch;
+  const prepared = await prepareMac("First", NOW);
+  assert.ok(prepared.source === "mac" && prepared.modules.appleMusic);
+  const music = { source: "homepod" as const, state: "playing" as const, title: "First", artist: "Artist", album: null,
+    trackId: null, artworkUrl: null, positionMs: 0, durationMs: 180_000, repeatOne: false, observedAt: NOW };
+  const enrichment = {
+    trackKey: trackKeyOf(music), id: "1500", link: LINK, songId: "1501", artwork: null,
+    hasLyrics: false, upcomingSongIds: [], motion: null,
+  };
+  for (const given of [enrichment, null]) {
+    const commands: CoreCommand[] = [
+      { ...prepared, modules: { ...prepared.modules, appleMusic: { ...prepared.modules.appleMusic, enrichment: given } } },
+      { source: "homepod", stored: { music, receivedAt: NOW, enrichment: given } },
+    ];
+    for (const command of commands) {
+      const result = await inRequest(() => enrichCommand(command));
+      assert.equal(result.command, command);
+      assert.equal(result.followUp, null);
+    }
+  }
+  assert.equal(fetches, 0);
 });
 
 test("最近播放首项动态封面查询失败时沿用已存的，不算列表变化", async (t) => {

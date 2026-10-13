@@ -6,9 +6,10 @@ import {
 } from "@shared/apple-music";
 import { readAppleMusicCredentials } from "@shared/apple-music-auth";
 import { cached, get, put } from "@shared/cache";
+import { enrichRecentlyPlayed } from "@shared/track-enrichment";
 import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
 
-import { explain, ok, skipMissing, type Job } from "../job";
+import { explain, ok, settings, skipMissing, type Job } from "../job";
 import { epochMinute } from "../schedule";
 
 
@@ -261,6 +262,8 @@ export const appleRecentJob: Job = {
   async run({ env, now, scheduled }) {
     const lastChangeAt = scheduled ? await get<number>(LAST_CHANGE_KEY) : undefined;
     if (scheduled && !appleRecentDue(now, lastChangeAt)) return { status: "skipped", detail: "idle" };
+    const signing = settings(env, ["APPLE_MUSIC_PRIVATE_KEY", "APPLE_MUSIC_TEAM_ID", "APPLE_MUSIC_KEY_ID"]);
+    if ("missing" in signing) return skipMissing("apple-recent", signing.missing);
     const credentials = await readAppleMusicCredentials();
     if (!credentials.ok && credentials.reason === "never-pushed") {
       return skipMissing("apple-recent", ["CREDENTIALS apple-music:v1"]);
@@ -272,7 +275,7 @@ export const appleRecentJob: Job = {
       assembleRecentTracks(resolved).then((list) => ({ list, observedAt: Date.now() })),
     ]);
     if (items.status === "rejected") throw items.reason;
-    const { changed } = await env.CORE.commitRecentlyPlayed(items.value.items, items.value.container);
+    const { changed } = await env.CORE.commitRecentlyPlayed(await enrichRecentlyPlayed(items.value.items), items.value.container);
     if (tracks.status === "rejected") throw tracks.reason;
     const { traced, nextBy } = await env.CORE.commitRecentTracks(tracks.value.list, tracks.value.observedAt);
     if (changed || traced) await put(LAST_CHANGE_KEY, now, ACTIVE_HOLD_MS);

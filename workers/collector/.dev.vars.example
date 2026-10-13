@@ -4,3 +4,6 @@
 # SITE_ANALYTICS_SITES={"lyjw.me":"<site_tag>","lyjw131.com":"<site_tag>"}
 # SENTRY_API_TOKEN=
 # PAGESPEED_API_KEY=
+# APPLE_MUSIC_PRIVATE_KEY=
+# APPLE_MUSIC_TEAM_ID=
+# APPLE_MUSIC_KEY_ID=
