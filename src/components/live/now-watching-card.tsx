@@ -120,7 +120,7 @@ function NowWatchingHero({
       <div className="flex min-w-0 flex-col justify-center gap-1.5 self-center sm:self-end">
         <div className="flex min-w-0 items-center gap-1.5">
           <StatusDot tone={paused ? "idle" : "live"} />
-          <span className={cn("label-mono shrink-0", paused ? "text-muted-foreground" : "text-live")}>
+          <span className={cn("label-mono shrink-0", paused ? "text-muted-foreground" : "text-live-ink")}>
             {paused ? "Paused" : "Now Playing"}
           </span>
           {device && (
@@ -148,7 +148,7 @@ function NowWatchingHero({
                 <li
                   key={chip}
                   className={cn(
-                    "label-mono rounded-sm border border-line px-1.5 py-0.5 text-[10px] normal-case text-muted-foreground sm:text-xs",
+                    "label-mono rounded-sm border border-line px-1.5 py-0.5 normal-case text-muted-foreground sm:text-xs",
                     chip.endsWith("bps") && "max-sm:hidden",
                   )}
                 >

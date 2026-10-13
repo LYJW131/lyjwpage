@@ -48,7 +48,7 @@ function CommitSha({ commit }: { commit: { sha: string; branch: string | null; m
   if (!commit) return null;
   return <a href={`${site.repo}/commit/${commit.sha}`} target="_blank" rel="noreferrer"
     title={commit.message ? `${commit.branch ?? "main"} · ${commit.message}` : commit.branch ?? undefined}
-    className="-mt-2 ml-auto shrink-0 pt-2 font-mono text-[10px] text-muted-foreground hover:text-foreground hover:underline">{commit.sha.slice(0, 7)}</a>;
+    className="-mt-2 ml-auto shrink-0 pt-2 font-mono text-2xs text-muted-foreground hover:text-foreground hover:underline">{commit.sha.slice(0, 7)}</a>;
 }
 
 function Stat({ label, value, title, prefix }: { label: string; value?: number | null; title?: string; prefix?: string }) {
@@ -73,7 +73,7 @@ function vital(value: number | null | undefined, unit: string) {
 }
 
 const scoreTone = (score: number | null | undefined) =>
-  score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500";
+  score == null ? "text-muted-foreground" : score >= 90 ? "text-live-ink" : score >= 50 ? "text-live-idle-ink" : "text-signal-red";
 
 function Fact({ label, value, title, className }: { label: string; value: string; title?: string; className?: string }) {
   return <span className="whitespace-nowrap" title={title}>{label} <span className={cn("text-foreground", className)}>{value}</span></span>;
@@ -86,7 +86,7 @@ const fieldValues = (vitals: SentryStatusPayload["vitals"]) => ({
 function ErrorCount({ series, title }: { series: SentryErrorSeries | undefined; title: string }) {
   if (!series) return null;
   return <span title={`${title} · ${number.format(series.count7d)} in 7d · ${number.format(series.unresolved)} unresolved`}
-    className={cn("shrink-0 text-[10px] tabular-nums", series.count12h ? "text-red-500" : "text-muted-foreground")}>
+    className={cn("shrink-0 text-2xs tabular-nums", series.count12h ? "text-signal-red" : "text-muted-foreground")}>
     {number.format(series.count12h)} err
   </span>;
 }
@@ -100,13 +100,13 @@ function ReporterTile({ name, stat, staleMs, servedAt, title }: {
 }) {
   const stale = useStale(stat?.lastPushAt, staleMs, servedAt);
   return <li className="bg-surface px-4 py-2.5 lg:px-5" title={title}>
-    <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
+    <div className="flex min-w-0 items-center gap-1.5 text-2xs leading-4">
       <Container size={12} className="shrink-0" aria-hidden />
-      <a href={`${site.repo}/tree/main/reporters/${name}`} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:underline">{name}</a>
-      {stat && stale && <span className="shrink-0 text-[10px] text-red-500">offline</span>}
+      <a href={`${site.repo}/tree/main/reporters/${name}`} target="_blank" rel="noreferrer" className="-my-1 min-w-0 truncate py-1 hover:underline">{name}</a>
+      {stat && stale && <span className="shrink-0 text-2xs text-signal-red">offline</span>}
       <CommitSha commit={stat?.commit ? { sha: stat.commit, branch: null, message: `${name} image` } : null} />
     </div>
-    <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
+    <div className="mt-1 flex gap-x-3 text-2xs tabular-nums text-muted-foreground">
       <Fact label="Push" value={stat ? number.format(stat.pushes) : "—"} title="Reports this reporter pushed successfully" />
       <Fact label="RTT" value={rtt(stat?.rttMs)} title="Median round trip of a successful push to the core Worker" />
       <CollectionWindow start={stat?.start} end={stat?.end} />
@@ -187,14 +187,14 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2 lg:px-5">
-          <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[9px] text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-[10px]">
+          <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-2xs text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))]">
             <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "Unavailable" : undefined}>{measured}</span>
             <span title="Lighthouse performance score, lab run on a simulated device">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}
           </div>
           {(["desktop", "mobile"] as const).map(device => {
             const score = pagespeed?.[device].score;
-            return <div key={device} className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs">
-              <span className="text-left text-[11px] text-muted-foreground">{device === "desktop" ? "Desktop" : "Mobile"}</span>
+            return <div key={device} className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-2xs tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs">
+              <span className="text-left text-2xs text-muted-foreground">{device === "desktop" ? "Desktop" : "Mobile"}</span>
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}>{score ?? "—"}</span>
               {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
             </div>;
@@ -202,9 +202,9 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
           {sentry?.vitals && (() => {
             const vitals = vitalsStale ? null : sentry.vitals;
             const field = fieldValues(vitals), samples = vitals?.samples, score = vitals ? fieldPerformanceScore(vitals) : null;
-            return <div className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[10px] tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs"
+            return <div className="grid h-11 grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-2xs tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs"
               title={vitalsStale ? "Real visitors via Sentry · unavailable" : samples ? `Real visitors via Sentry · p75 of ${number.format(samples)} page loads, last 7 days` : "Real visitors via Sentry · no page loads sampled yet"}>
-              <span className="text-left text-[11px] text-muted-foreground">Users</span>
+              <span className="text-left text-2xs text-muted-foreground">Users</span>
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}
                 title="Web Vitals score of real visitors: LCP 30%, INP 30%, CLS 15%, FCP 15%, TTFB 10%, from 7-day p75">{score ?? "—"}</span>
               {vitalRows.map(row => <span key={row.key}>{vital(field[row.key], row.unit)}</span>)}
@@ -215,12 +215,12 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 lg:border-l lg:border-line" aria-label="Services">
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5 lg:px-5" title={siteDeployments?.activeVersions.length ? `Serving ${siteDeployments.activeVersions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : undefined}>
-            <div className="flex items-center gap-1.5 text-[11px] leading-4">
+            <div className="flex items-center gap-1.5 text-2xs leading-4">
               <span className="flex items-center gap-1.5"><CloudflareColor size={11} />Site</span>
               <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + worker)" />
               <CommitSha commit={production?.commit} />
             </div>
-            <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
+            <div className="mt-1 flex gap-x-3 text-2xs tabular-nums text-muted-foreground">
               <span className="whitespace-nowrap" title={siteMetrics ? `${number.format(siteMetrics.subrequests)} subrequests · Worker invocations, not visits or pageviews` : undefined}>Req <span className="text-foreground">{siteMetrics ? number.format(siteMetrics.requests) : "—"}</span></span>
               <span className="whitespace-nowrap" title="P50 CPU time per Worker request">CPU <span className="text-foreground">{cpu(siteMetrics?.cpuTimeP50Ms)}</span></span>
               {!workerMetricsStale && <CollectionWindow start={cloudflare?.windowStart ?? undefined} end={cloudflare?.windowEnd ?? undefined} />}
@@ -230,13 +230,13 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
             const worker = cloudflare?.workers.find(w => w.name === name);
             const metrics = workerMetricsStale ? null : worker?.metrics, deployment = workerDeploymentsStale ? null : worker?.deployment;
             return <li key={name} className="bg-surface px-4 py-2.5 lg:px-5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
-              <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
+              <div className="flex min-w-0 items-center gap-1.5 text-2xs leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
                 {name === "core" && <ErrorCount series={coreErrors} title="Core Worker errors in the last 12h" />}
                 <CommitSha commit={deployment?.commit} />
               </div>
-              <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
+              <div className="mt-1 flex gap-x-3 text-2xs tabular-nums text-muted-foreground">
                 <span className="whitespace-nowrap" title={metrics ? `${number.format(metrics.subrequests)} subrequests` : undefined}>Req <span className="text-foreground">{metrics ? number.format(metrics.requests) : "—"}</span></span>
                 <span className="whitespace-nowrap" title="P50 CPU time per request">CPU <span className="text-foreground">{cpu(metrics?.cpuTimeP50Ms)}</span></span>
                 {!workerMetricsStale && <CollectionWindow start={cloudflare?.windowStart ?? undefined} end={cloudflare?.windowEnd ?? undefined} />}

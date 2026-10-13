@@ -25,8 +25,8 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
 }
 
 const STATUS: Record<HealthSeries["status"], { label: string; className: string }> = {
-  up: { label: "Operational", className: "text-live" },
-  down: { label: "Down", className: "text-red-500" },
+  up: { label: "Operational", className: "text-live-ink" },
+  down: { label: "Down", className: "text-signal-red" },
   unknown: { label: "Unknown", className: "text-muted-foreground" },
 };
 
@@ -51,7 +51,7 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
           })}
         </div>
       )}
-      <div className="mt-2 flex items-center gap-3 text-[11px] tabular-nums text-muted-foreground">
+      <div className="mt-2 flex items-center gap-3 text-2xs tabular-nums text-muted-foreground">
         <span className="shrink-0">{health.days.length || 30} days ago</span>
         <span className="h-px min-w-3 flex-1 bg-line" aria-hidden />
         <span className="shrink-0 whitespace-nowrap" title={`24h ${percent(health.availability24h)} · ${footTitle}`}>

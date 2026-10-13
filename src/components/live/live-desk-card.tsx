@@ -73,7 +73,7 @@ const TITLE_STATIC_VARIANTS = {
 function WindowTitle({ title }: { title: string }) {
   return (
     <span
-      className="mt-0.5 max-w-full truncate text-[11px] leading-tight text-muted-foreground"
+      className="mt-0.5 max-w-full truncate text-2xs leading-tight text-muted-foreground"
       aria-hidden
     >
       {title}
@@ -367,7 +367,7 @@ export function HeaderDesktop({
                   exit="exit"
                   transition={reduced ? STATIC_TRANSITION : TITLE_SWITCH_TRANSITION}
                   /* shrink-0 防止 flex 压扁标题，使 motion 把被压缩的高度误当作 auto 目标。 */
-                  className="block max-w-full shrink-0 overflow-hidden truncate text-[11px] leading-tight text-muted-foreground"
+                  className="block max-w-full shrink-0 overflow-hidden truncate text-2xs leading-tight text-muted-foreground"
                   aria-hidden
                 >
                   {windowTitle}
