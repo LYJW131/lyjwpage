@@ -13,6 +13,7 @@ import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
 import { Card } from "@/components/ui/card";
 import { MacBookProIcon } from "@/components/ui/device-icons";
+import { FitNumber } from "@/components/ui/fit-number";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -799,13 +800,7 @@ function AgentPanel({
             <SourceIssue failing={failing} hasValue={lastDay != null} />
           </div>
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
-            {lastDay ? (
-              <NumberFlow
-                value={lastDay.totalTokens}
-                locales="en-US"
-                format={{ notation: "compact", maximumFractionDigits: 1 }}
-              />
-            ) : <FlowDash />}
+            {lastDay ? <FitNumber value={lastDay.totalTokens} /> : <FlowDash />}
           </div>
         </div>
         <div className="grid gap-3 border-l border-line pl-4">
