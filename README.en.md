@@ -209,7 +209,7 @@ Data in Sentry also comes back to the page: using a read-only token, the collect
 | Hosting and delivery | Cloudflare Workers · Alibaba Cloud ESA |
 | Error and performance monitoring | Sentry |
 
-AI chat, MCP and GitHub issue tools run in [`workers/ai`](./workers/ai/README.md). Requests on the site's domain and on api's public URL both reach it over a Service Binding, and AI reads status through api's read-only interface. Pulse Coding scoring remains in api.
+AI chat, MCP and GitHub issue tools run in [`workers/ai`](./workers/ai/README.md). Requests on the site's domain reach it over a Service Binding, and AI reads status through api's read-only interface. Pulse Coding scoring remains in api.
 
 ## Where to start reading
 
