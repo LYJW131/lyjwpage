@@ -10,14 +10,14 @@
 # 禁区
 
 - 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。
-- 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑一律进后端 Worker：实时状态归 `workers/api`，外部定时拉取与 Apple Music 查询归 `workers/collector`，模型调用与工具编排归 `workers/ai`。site Worker 可以回答 `/api/*`，但只按数据归属分流（`src/lib/site-policy.ts#classifyGatewayRequest`）：可滞后视图直接读 `LAG` KV，loader 与 api 共用 `shared/lag-views.ts`；其余原样经 Service Binding 交给 api / ai / collector，不跨域 `fetch` 后端（会改写 `CF-Connecting-IP`，按 IP 的限流随之失效）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
+- 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑一律进后端 Worker：实时状态归 `workers/core`，外部定时拉取与 Apple Music 查询归 `workers/collector`，模型调用与工具编排归 `workers/ai`。site Worker 可以回答 `/api/*`，但只按数据归属分流（`src/lib/site-policy.ts#classifyGatewayRequest`）：可滞后视图直接读 `LAG` KV，loader 与 core 共用 `shared/lag-views.ts`；其余原样经 Service Binding 交给 core / ai / collector，不跨域 `fetch` 后端（会改写 `CF-Connecting-IP`，按 IP 的限流随之失效）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件。
 
 # 项目入口与验证
 
 - 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
 - 根 `package.json` 的 `typescript` 是 `@typescript/typescript6` 的别名，`tsc` 来自 `@typescript/native`（TypeScript 7 原生编译器）：typescript-eslint 与 `scripts/comment-only-check.test.mjs` 要 6.0 的 JS API，TypeScript 7 没有。两项不要合并；Worker 与上报器目录只跑 `tsc`，直接依赖 `typescript` 7。
-- 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，但按端点整份兜底：新端点看本地，已有端点的新字段要用下面的注入看（见 `workers/api/README.md`「本地开发」）。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/api/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/api/README.md`「本地开发」）。
+- 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，但按端点整份兜底：新端点看本地，已有端点的新字段要用下面的注入看（见 `workers/core/README.md`「本地开发」）。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/core/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/core/README.md`「本地开发」）。
 - 修改路由与加载器前，读 `node_modules/react-router/docs/` 与 `@react-router` 的类型。按需检索，不为小改动遍历整个文档或技能目录。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后用户提出的修改请求若没有另行要求，视为用户正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让用户能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。在生产域名上验证完就关掉页面：开着的可见标签会按轮询节奏一直请求 API。
@@ -29,9 +29,9 @@
 
 - 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由 Workers Builds 自动部署 `site` Worker（域名切换步骤见 `docs/workers-builds.md`）。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
 - 合并 PR 用合并提交，不用 GitHub 默认的 `Merge pull request #N from …`：在 PR 分支上 `git fetch origin main` 后跑 `pnpm merge-message <PR 号> "<PR 标题>"`，把输出的 `commit_title` / `commit_message` 原样传给合并接口。标题是 `<PR 标题> (#N)`，正文列 PR 内各提交主题，末尾汇总这些提交的 `Co-Authored-By` 与提交作者，去重后只留认得出身份（agent 或 GitHub noreply）且不是仓库主人的，站点「最近提交」靠它显示参与的 agent 与模型。PR 标题照提交规范写成 `type(scope): 描述`。把 main 同步进分支照常 merge、不改写已推送历史；「最近提交」不显示这类同步合并（`src/lib/recent-commits.ts#recentCommitsFrom`）。
-- 域名与缓存链路（`lyjw.me` 由 `site` Worker 直出，`lyjw131.com` 经阿里云 ESA 回源）见 `docs/ops-facts.md`。API Worker 对展示变化经 `SITE_CACHE` 通知 site Worker 标签失效，ESA 首页按源站的 SWR 头自行更新；新版本部署成功后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
+- 域名与缓存链路（`lyjw.me` 由 `site` Worker 直出，`lyjw131.com` 经阿里云 ESA 回源）见 `docs/ops-facts.md`。core Worker 对展示变化经 `SITE_CACHE` 通知 site Worker 标签失效，ESA 首页按源站的 SWR 头自行更新；新版本部署成功后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
 - 自动部署失败时先检查并修复现有流程，不改用手工发布。
-- `workers/api`、`workers/ai`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/public-status.ts`、`shared/collector.ts`）只加不改，被调用方先发布（Workers Builds 并行构建，保证顺序靠「禁区」里的手动部署例外）。
+- `workers/core`、`workers/ai`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/public-status.ts`、`shared/collector.ts`）只加不改，被调用方先发布（Workers Builds 并行构建，保证顺序靠「禁区」里的手动部署例外）。
 - 推送成功不等于部署完成：检查该次提交的部署检查（Workers Builds 的 `Workers Builds: site`），并从生产域名验证本次受影响的行为或配置。
 - 上报器与其他独立部署单元按各自 README 发布：misaka-jp 上的 `server-reporter`、`agents-reporter`、`discord-reporter` 合进 main 后由 `.github/workflows/build-reporters.yml` 自动换镜像，dsm 上的 `emby-reporter`、n100 上的 `playstation-reporter` 手动。若依赖站点的新契约或更长陈旧窗口，先确认站点及 Worker 契约已生效，再切换上报器，最后验证真实上报与站点读取。
 - `reporters/mac-telemetry-hub` 是 git submodule，指向 `LYJW131/MacTelemetryHub`，不会自动跟随远端。Hub 仓库推送后，站点仓库的子模块指针要挪到同一提交，否则站点里的上报器源码停在旧版本；指针推到 main 即触发 Hub 的签名与公证 Release（`.github/workflows/release-mac-telemetry-hub.yml`）。跨两个仓库的同一件事（如新契约两边同时改）把指针挪动并进站点那次提交，一次提交说完整件事；站点本身没改动时才单独提 `chore(reporters): 更新 mac-telemetry-hub，<改了什么>`。Hub 本机安装走它自己的 `reporters/mac-telemetry-hub/build-release.sh`，与指针更新是两件事。
@@ -39,7 +39,7 @@
 # 排查线上错误
 
 - 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
-- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 site Worker，release 是提交 SHA；`api-worker` 收 api Worker（含 Durable Object 与 API 定时任务，周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）、上报入口 `ingress`（tag `worker:ingress`）和 AI Worker（tag `worker:ai`）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
+- 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 site Worker，release 是提交 SHA；`api-worker` 收 core Worker（含 Durable Object 与 API 定时任务，周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`）、上报入口 `ingress`（tag `worker:ingress`）和 AI Worker（tag `worker:ai`）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
 - `reporters/` 下的上报器没接 Sentry，查所在机器的容器日志。
 - Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
 
@@ -49,7 +49,7 @@
 
 | 对象 | 约定 | 示例 / 边界 |
 | --- | --- | --- |
-| 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/ingress` 接收，站点不提供上报路由、rewrite 或转发 | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES`（另有 `/api/ingest/agents/otlp`）；校验在 `shared/ingest/`，实时那一半经 Service Binding 交给 `workers/api` 的 `StateCore.commitIngest` |
+| 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/ingress` 接收，站点不提供上报路由、rewrite 或转发 | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES`（另有 `/api/ingest/agents/otlp`）；校验在 `shared/ingest/`，实时那一半经 Service Binding 交给 `workers/core` 的 `StateCore.commitIngest` |
 | 设备遥测 | 一台设备一个入口、一个信封、一个 `modules` 字典 | 充电头归观测它的 `mac`；活动圆环归搬运和观测它的 `iphone`，不按品牌或模块另开入口 |
 | 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名 |
 | 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个上报方一把 Cloudflare Access service token（同一上报方管多个来源时共用一把），上报入口按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS` 限定可写来源 | 新上报方要新建 token、加进 Access 策略并登记 client id；改这张表必须同步 Access 策略；不再让一把凭据通吃所有来源 |

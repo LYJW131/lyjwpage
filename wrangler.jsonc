@@ -18,8 +18,8 @@
     "SENTRY_DSN": "https://13d4c7b65d377b6a3e1e546f9d940b9d@o4511888459890688.ingest.us.sentry.io/4512132602331136"
   },
   "services": [
-    { "binding": "PUBLIC_STATUS", "service": "api", "entrypoint": "PublicStatus" },
-    { "binding": "API_SERVICE", "service": "api" },
+    { "binding": "PUBLIC_STATUS", "service": "core", "entrypoint": "PublicStatus" },
+    { "binding": "CORE_SERVICE", "service": "core" },
     { "binding": "AI_SERVICE", "service": "ai" },
     { "binding": "COLLECTOR_SERVICE", "service": "collector" }
   ],

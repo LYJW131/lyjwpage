@@ -369,7 +369,7 @@
       line(x, 6750, -230, 6750, -80, 3, css("pink"), a);
       text(x, "PUBLIC_STATUS", 6720, -150, { font: FONT.mono(42, 500), color: gr, align: "right", alpha: a });
       card(d, 6450, -80, 600, 130, a);
-      text(d, "api · PublicStatus", 6750, -2, { font: FONT.mono(46, 600), align: "center", alpha: a });
+      text(d, "core · PublicStatus", 6750, -2, { font: FONT.mono(46, 600), align: "center", alpha: a });
       const sa = prog(b, 8.8, 8.9) * a;
       text(x, tr("ch09.t.same"), 7090, 0, { font: FONT.cjk(44, 600), color: sig, alpha: sa });
       if (b >= AT.data && b < 9.1) {

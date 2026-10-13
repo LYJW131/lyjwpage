@@ -21,7 +21,7 @@ export function sitePreviewManifest({ branch = "", commit, backendUrl = null }) 
     throw new Error(`invalid preview branch: ${JSON.stringify(trimmed)}`);
   }
   if (backendUrl !== previewWorkerOrigin(trimmed)) {
-    throw new Error("the preview backend must be this branch's api Preview origin");
+    throw new Error("the preview backend must be this branch's core Preview origin");
   }
   return { version: 1, mode: "preview", branch: trimmed, commit, backendUrl };
 }
