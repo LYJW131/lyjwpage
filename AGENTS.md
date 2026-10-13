@@ -27,8 +27,7 @@
 
 # 部署流程
 
-- 站点生产部署走 Git：改动经 PR 合进 main，由 Workers Builds 自动部署 `site` Worker（域名切换步骤见 `docs/workers-builds.md`）。main 的分支保护要求 CodeQL 的两项 `Analyze (*)` 在提交上通过，直推 main 会被拒。用户要求部署站点时，包含开 PR、过检查与合并，无需再逐步确认。
-- CodeQL 不在 PR 每次推送时跑：合并前给 PR 打 `codeql` 标签触发 `.github/workflows/codeql.yml`，等两项 `Analyze (*)` 在当前 head 上绿了再合；打上标签后的推送会自动重扫。`workflow_dispatch` 出的检查分支保护不认，不能用来过门禁。
+- 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由 Workers Builds 自动部署 `site` Worker（域名切换步骤见 `docs/workers-builds.md`）。用户要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
 - 合并 PR 用合并提交，不用 GitHub 默认的 `Merge pull request #N from …`：在 PR 分支上 `git fetch origin main` 后跑 `pnpm merge-message <PR 号> "<PR 标题>"`，把输出的 `commit_title` / `commit_message` 原样传给合并接口。标题是 `<PR 标题> (#N)`，正文列 PR 内各提交主题，末尾汇总这些提交的 `Co-Authored-By` 与提交作者，去重后只留认得出身份（agent 或 GitHub noreply）且不是仓库主人的，站点「最近提交」靠它显示参与的 agent 与模型。PR 标题照提交规范写成 `type(scope): 描述`。把 main 同步进分支照常 merge、不改写已推送历史；「最近提交」不显示这类同步合并（`src/lib/recent-commits.ts#recentCommitsFrom`）。
 - 域名与缓存链路（`lyjw.me` 由 `site` Worker 直出，`lyjw131.com` 经阿里云 ESA 回源）见 `docs/ops-facts.md`。API Worker 对展示变化经 `SITE_CACHE` 通知 site Worker 标签失效，ESA 首页按源站的 SWR 头自行更新；新版本部署成功后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
 - 自动部署失败时先检查并修复现有流程，不改用手工发布。

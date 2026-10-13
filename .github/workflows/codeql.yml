@@ -4,10 +4,8 @@ name: CodeQL
 on:
   push:
     branches: [main, dev]
-  # 两项 Analyze 是 main 的必需检查，分支保护只认 pull_request 等事件出的检查、不认 workflow_dispatch；
-  # 有意不在 PR 每次推送时扫：合并前给 PR 打 codeql 标签才扫，打上之后的推送也扫
+  # 有意只扫访客构建的 PR（分支前缀见 shared/build-routine.ts#branchForRun）：两项 Analyze 是它转待审的门槛（workers/ai/src/build/github.ts#BUILD_READY_CHECKS）；其他 PR 不扫，免得拖慢迭代
   pull_request:
-    types: [labeled, synchronize]
   workflow_dispatch:
   schedule:
     - cron: "27 7,19 * * *"
@@ -20,10 +18,7 @@ permissions:
 
 jobs:
   changes:
-    if: >-
-      github.event_name != 'pull_request' || (
-        contains(github.event.pull_request.labels.*.name, 'codeql') &&
-        (github.event.action != 'labeled' || github.event.label.name == 'codeql'))
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'claude/build-')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -45,7 +40,7 @@ jobs:
               - .github/workflows/**
               - "**/action.{yml,yaml}"
 
-      # 只有推 main / dev 按改动过滤；PR、定时扫和手动触发都两种语言全扫，PR 上是必需检查，不能按改动跳过
+      # 只有推 main / dev 按改动过滤；PR、定时扫和手动触发都两种语言全扫，PR 上是转待审的门槛，不能按改动跳过
       - id: pick
         env:
           CHANGED: ${{ steps.filter.outputs.changes }}
@@ -59,8 +54,7 @@ jobs:
     needs: changes
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
-    # 并发放在任务上：PR 上打别的标签或没打 codeql 时的推送也会起一次运行（任务全跳过），放在工作流上会把正在扫的那次取消掉。
-    # PR 上按 head 分组：任务进组的先后不保证，按 ref 分组时旧提交的扫描可能反过来取消当前 head 的必需检查
+    # PR 上按 head 分组：任务进组的先后不保证，按 ref 分组时旧提交的扫描可能反过来取消当前 head 的扫描
     concurrency:
       group: codeql-${{ github.ref }}-${{ github.event.pull_request.head.sha }}-${{ matrix.language }}
       cancel-in-progress: true
