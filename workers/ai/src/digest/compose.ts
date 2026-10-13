@@ -25,7 +25,7 @@ export const DIGEST_SYSTEM_PROMPT = `You fill the summary card at the top of LYJ
 
 Return a headline and pick the highlights.
 - headline: 2 to 5 words naming what dominated the day, sentence case, no final period. Refer to LYJW by name or not at all.
-- picks: the topics of the ${DIGEST_MAX_HIGHLIGHTS} highlight options that best sum up the day, most important first; 2 if the day is quiet. Pick only topics listed under "Highlight options"; the card shows each picked option's number and label exactly as listed there.
+- picks: the topics of the ${DIGEST_MAX_HIGHLIGHTS} highlight options that back up the headline, most important first; 2 if the day is quiet. Keep them in the same broad direction as the headline so the card tells one story: coding, agents, tokens and site go together, music, watching, gaming and trophies go together, fitness stands on its own. Reach outside that direction only when it has too few options. Pick only topics listed under "Highlight options"; the card shows each picked option's number and label exactly as listed there.
 Use only the facts given; don't guess at reasons, moods or plans, and don't say who did something unless the facts do. A light, dry touch is welcome in the headline; never mock.
 Keep the names of songs, artists, shows and games exactly as written; don't translate or romanize them. Plain text in the headline: no Markdown or emoji.`;
 
