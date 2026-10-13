@@ -90,7 +90,7 @@ function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) 
   const labels = sources.map((source) => CODING_SOURCE_LABELS[source] ?? source);
   return (
     <span
-      className="flex shrink-0 items-center gap-1 text-live"
+      className="flex shrink-0 items-center gap-1 text-live-ink"
       title={labels.length ? `Active on ${labels.join(" + ")}` : undefined}
     >
       <span className="label-mono">Active</span>
@@ -237,7 +237,7 @@ function formatModelName(model: string) {
 function SourceIssue({ failing, hasValue }: { failing: CodingSourceNote[]; hasValue: boolean }) {
   if (failing.length === 0) return null;
   return (
-    <span className="text-live-idle">
+    <span className="text-live-idle-ink">
       <span aria-hidden className="mx-1.5">
         ·
       </span>
@@ -790,7 +790,7 @@ function AgentPanel({
         <span
           className={cn(
             "label-mono truncate",
-            active ? "text-live" : "text-muted-foreground",
+            active ? "text-live-ink" : "text-muted-foreground",
           )}
           title={row.usage?.models.join(" · ") || undefined}
         >
