@@ -160,17 +160,17 @@ export function DigestCard({
           <p className="text-xs text-muted-foreground">Past 24 hours</p>
           <h2 className="text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
         </div>
-        <ul className={cn("col-span-2 row-start-2 flex flex-col gap-1.5 lg:col-span-1", stale && "opacity-60")}>
+        <ul className={cn("col-span-2 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 lg:col-span-1", stale && "opacity-60")}>
           {data.highlights.map((item) => (
-            <li key={item.topic} className="flex items-baseline gap-2" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
-              <span className="size-2 shrink-0 bg-(--tone)" aria-hidden />
+            <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
+              <span className="size-2 bg-(--tone)" aria-hidden />
               <span className="whitespace-nowrap text-lg font-semibold leading-none tabular-nums text-(--tone)">{item.figure}</span>
-              <span className="text-sm leading-snug text-muted-foreground text-pretty">{item.caption}</span>
+              <span className="truncate text-sm text-muted-foreground">{item.caption}</span>
             </li>
           ))}
         </ul>
         <p className="col-span-2 row-start-3 text-xs text-muted-foreground lg:col-span-1" title={`${updatedDay.format(updatedAt)} UTC+8`}>
-          {stale ? `Not updated since ${updatedDay.format(updatedAt)}` : `${modelLabel(data.model)} · updated ${updatedTime.format(updatedAt)}`}
+          {stale ? `Not updated since ${updatedDay.format(updatedAt)}` : `by ${modelLabel(data.model)} at ${updatedTime.format(updatedAt)}`}
         </p>
         <DayDial tracks={tracks} window={pulse?.window ?? null} now={now} timezone={timezone} offsetSeconds={offsetSeconds ?? 0} />
       </div>

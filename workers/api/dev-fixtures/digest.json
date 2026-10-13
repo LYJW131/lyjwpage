@@ -4,9 +4,9 @@
   "data": {
     "headline": "Agents ran the day",
     "highlights": [
-      { "topic": "coding", "figure": "22 h", "caption": "coding, 16 h of it with agents" },
-      { "topic": "tokens", "figure": "44M", "caption": "tokens across four agents" },
-      { "topic": "music", "figure": "8 h", "caption": "of music, mostly Hoshimachi Suisei" }
+      { "topic": "coding", "figure": "22 h", "caption": "coding" },
+      { "topic": "tokens", "figure": "44M", "caption": "tokens" },
+      { "topic": "music", "figure": "8 h", "caption": "of music" }
     ],
     "model": "claude-sonnet-5-5",
     "generatedAt": "$now-1500000"

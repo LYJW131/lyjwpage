@@ -185,9 +185,9 @@ test("an unknown time zone falls back to the site's", () => {
 const ANSWER = {
   headline: "Agents ran the day.",
   highlights: [
-    { topic: "coding", figure: "22 h", caption: "coding, **16 h** of it with agents" },
-    { topic: "tokens", figure: "44M", caption: "tokens across four agents" },
-    { topic: "music", figure: "8 h", caption: "of music, mostly Hoshimachi Suisei" },
+    { topic: "coding", figure: "22 h", caption: "**coding**" },
+    { topic: "tokens", figure: "44M", caption: "tokens" },
+    { topic: "music", figure: "8 h", caption: "of music" },
   ],
 };
 
@@ -203,7 +203,7 @@ test("compose calls the model once per new input and keeps the old digest while 
   assert.equal(first.status, "composed");
   if (first.status !== "composed") return;
   assert.equal(first.digest.headline, "Agents ran the day");
-  assert.deepEqual(first.digest.highlights[0], { topic: "coding", figure: "22 h", caption: "coding, 16 h of it with agents" });
+  assert.deepEqual(first.digest.highlights[0], { topic: "coding", figure: "22 h", caption: "coding" });
   assert.equal(first.digest.highlights.length, 3);
   assert.equal(first.digest.model, "claude-sonnet-5-5");
   assert.equal(calls.length, 1);
@@ -253,7 +253,7 @@ test("a highlight that breaks the card's limits is dropped, and fewer than two l
   const [coding, tokens, music] = ANSWER.highlights;
   const parsed = parseDigest(JSON.stringify({
     headline: ANSWER.headline,
-    highlights: [coding, { ...coding, figure: "11 h" }, { ...tokens, figure: "44 million" }, music, { topic: "weather", figure: "31°", caption: "and sunny" }],
+    highlights: [coding, { ...coding, figure: "11 h" }, { ...tokens, caption: "tokens across four coding agents" }, music, { topic: "weather", figure: "31°", caption: "and sunny" }],
   }));
   assert.deepEqual(parsed?.highlights.map((item) => item.topic), ["coding", "music"]);
   assert.equal(parseDigest(JSON.stringify({ headline: ANSWER.headline, highlights: [coding, { ...tokens, caption: "" }] })), null);

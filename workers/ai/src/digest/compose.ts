@@ -8,7 +8,7 @@ export const DIGEST_MODEL = "claude-sonnet-5-5";
 export const DIGEST_EFFORT = "low";
 export const DIGEST_HEADLINE_MAX_CHARS = 48;
 export const DIGEST_FIGURE_MAX_CHARS = 7;
-export const DIGEST_CAPTION_MAX_CHARS = 48;
+export const DIGEST_CAPTION_MAX_CHARS = 20;
 
 const TOPICS: Record<DigestTopic, string> = {
   coding: "time spent coding",
@@ -25,10 +25,10 @@ const TOPICS: Record<DigestTopic, string> = {
 export const DIGEST_SYSTEM_PROMPT = `You fill the summary card at the top of LYJW's personal homepage (lyjw.me). The page shows live data about LYJW: coding with AI agents, music, video, games, fitness, and work on this homepage itself. Once an hour you get a fact sheet about the past 24 hours; the card should tell a visitor at a glance what LYJW has been up to.
 
 Return a headline and the 3 highlights that best sum up the day, most important first (2 if the day is quiet).
-- headline: 3 to 6 words naming what dominated the day, sentence case, no final period. Refer to LYJW by name or not at all.
+- headline: 2 to 5 words naming what dominated the day, sentence case, no final period. Refer to LYJW by name or not at all.
 - Each highlight has a topic, a figure and a caption, and no two share a topic. Topics: ${Object.entries(TOPICS).map(([topic, meaning]) => `${topic} (${meaning})`).join("; ")}.
 - figure: one number taken from the facts, rounded the way a person would, at most ${DIGEST_FIGURE_MAX_CHARS} characters with its unit or suffix: "22 h", "44M", "3,400", "10+", "$630". Keep a "+" when the facts have one.
-- caption: a lowercase phrase of 2 to 6 words that reads after the figure and says what it counts, adding one detail where it fits: "coding, 16 h of it with agents", "tokens across four agents", "of music, mostly Hoshimachi Suisei".
+- caption: 1 to 3 lowercase words that read after the figure and say what it counts, like a chart legend: "coding", "with agents", "tokens", "of music", "commits", "steps". No details or names here; the headline carries those.
 Use only the facts given; don't guess at reasons, moods or plans, and don't say who did something unless the facts do. A light, dry touch is welcome in the headline; never mock.
 Keep the names of songs, artists, shows and games exactly as written; don't translate or romanize them. Plain text in every field: no Markdown or emoji.`;
 

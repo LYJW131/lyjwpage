@@ -6,12 +6,12 @@ export type DigestHighlight = {
   topic: DigestTopic;
   // 事实清单里取整后的数字，带单位或后缀，如 "22 h"、"44M"、"10+"。
   figure: string;
-  // 接在数字后面读的英文短语，人名、歌名、剧名照数据原样。
+  // 接在数字后面读的一到三个英文小写词，像图例一样只说数字数的是什么，如 "coding"、"of music"。
   caption: string;
 };
 
 export type DigestPayload = {
-  // 一句不带句号的英文短标题，点出这一天的主线。
+  // 两到五个词、不带句号的英文短标题，点出这一天的主线。
   headline: string;
   // 按重要性排好的两到三件事，topic 互不重复。
   highlights: DigestHighlight[];
