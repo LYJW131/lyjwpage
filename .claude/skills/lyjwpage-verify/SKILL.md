@@ -58,6 +58,8 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
 
 浏览器取证先调共用脚本 `scripts/site-verify.mjs`（`--help` 看全部选项，输出 JSON，失败时 `next` 字段写下一步），不现写 Playwright 片段。每张卡的端点、可用夹具、选择器与「什么状态证明它对」在同目录 [`feature-map.json`](./feature-map.json)。
 
+`cards` 只检查三件事：卡片在、可见、无控制台错误与同源失败请求（环境噪声除外）。`feature-map.json` 的 `proves` 写的是「这张卡对了长什么样」的目标描述——里面的内容、数值、布局条件 `cards` 不查，由验证员用 `shot` 截图和 `page.evaluate` 量值自己取证。
+
 ```bash
 node scripts/site-verify.mjs doctor --url http://localhost:3211        # 先体检：站点可达、playwright、Chrome、夹具开关
 node scripts/site-verify.mjs cards --url http://localhost:3211         # 逐卡检查存在与可见 + 控制台错误
