@@ -3,7 +3,7 @@ import { APPLE_MUSIC_HTTP_PATHS } from "@shared/apple-music-paths";
 import { IMAGE_PATH_PREFIX } from "@shared/asset-url";
 import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
 import { SENTRY_RELAY_PREFIX } from "@shared/sentry";
-import { lagViewKeyByPath, type LagViewKey } from "@shared/status-views";
+import { lagViewKeyByPath, STATUS_VIEWS, type LagViewKey } from "@shared/status-views";
 import { APP_VERSION_PATH } from "@/lib/app-version";
 import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
@@ -12,8 +12,13 @@ export const HOME_CACHE_CONTROL =
   "public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400";
 export const HOME_CACHE_TAG = "home";
 
-export const STATUS_CACHE_CONTROL =
-  "public, max-age=600, stale-while-revalidate=604200, stale-if-error=604200";
+// 不带 stale-while-revalidate：首页在自己的 SWR 里后台重建时若再拿到过期快照，重建出的还是旧版面，要再等一整轮。
+export const STATUS_CACHE_CONTROL = "public, max-age=600, stale-if-error=604200";
+
+// 充电头 / 充电宝那一格亮不亮还看上报新不新（shared/freshness.ts#chargingFeedClockStale），
+// 上报断档或恢复不发失效，快照只能靠短期限跟上。
+export const CLOCKED_LAYOUT_STATUS_CACHE_CONTROL = "public, max-age=60, stale-if-error=604200";
+const CLOCKED_LAYOUT_TAGS: ReadonlySet<string> = new Set([STATUS_VIEWS.charger.tag, STATUS_VIEWS.powerBank.tag]);
 
 // 降级信封（ok:false 或端点未部署）只短缓存、不带 SWR / stale-if-error：一次暂时故障不能顶替上一份好快照撑满 7 天。
 export const STATUS_DEGRADED_CACHE_CONTROL = "public, max-age=60";
@@ -190,7 +195,11 @@ export function statusCacheTag(tag: string): string {
 
 export function statusSnapshotHeaders(tag: string | undefined, ok: boolean): Record<string, string> {
   const headers: Record<string, string> = {
-    "Cache-Control": ok ? STATUS_CACHE_CONTROL : STATUS_DEGRADED_CACHE_CONTROL,
+    "Cache-Control": !ok
+      ? STATUS_DEGRADED_CACHE_CONTROL
+      : tag && CLOCKED_LAYOUT_TAGS.has(tag)
+        ? CLOCKED_LAYOUT_STATUS_CACHE_CONTROL
+        : STATUS_CACHE_CONTROL,
   };
   if (tag) headers["Cache-Tag"] = statusCacheTag(tag);
   return headers;
