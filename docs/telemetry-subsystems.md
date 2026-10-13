@@ -30,7 +30,7 @@
 ### 架构边界
 - **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/api`）。
 - **站点是读取边缘**：site Worker 负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化，并在站点域名上回答 `/api/*`：可滞后视图直接读 `LAG` KV（`shared/lag-views.ts`），其余经 Service Binding 原样交给 api / ai。它不写状态、不持有密钥。
-- **客户端直连**：浏览器端配置 `PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
+- **客户端只连站点**：浏览器按 `PUBLIC_BACKEND_URL`（生产是站点域名）读状态、连 `/ws`，由 site Worker 按归属回答或转交，SWR 统一管理数据缓存与实时更新。
 - **原生客户端**：[`apps/ios`](../apps/ios/README.md) 读同一个 api Worker：状态 GET 不带 `Origin`（api Worker 只拦带了且不在白名单的来源），推送长连接自报站点域名作 `Origin`（`/ws` 缺来源一律 403），所以改 `ALLOWED_ORIGINS` 时要保留站点域名。取数节奏照浏览器端的登记表，只在前台连推送、退后台即断，在线人数的语义和关掉标签页一致。
 
 ### 通信端点规范
@@ -38,7 +38,7 @@
 | 方法 | 路径 | 鉴权 | 作用 |
 | --- | --- | --- | --- |
 | `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每个上报方一把、可授权多个来源，上报入口 Worker 再验 JWT 并按来源限权） | 上报入口校验、拆分；状态核心落库、触发广播与首页缓存失效 |
-| `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden` |
+| `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden` |
 | `GET` | `/count` | 公开 | `{ connections, online }`：开着的页面（含后台）与此刻可见的页面 |
 | `GET` | `/api/status/<模块>` | 公开 | 状态列表或历史数据查询 |
 | `GET` | `/api/status/<模块>/now` | 公开 | 状态即时快照查询 |

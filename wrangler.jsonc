@@ -13,7 +13,7 @@
   },
   "vars": {
     "SITE_ENV": "production",
-    "PUBLIC_BACKEND_URL": "https://api.homepage.lyjw.llc",
+    "PUBLIC_BACKEND_URL": "https://lyjw.me",
     "ALLOWED_ORIGINS": "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me",
     "SENTRY_DSN": "https://13d4c7b65d377b6a3e1e546f9d940b9d@o4511888459890688.ingest.us.sentry.io/4512132602331136"
   },
