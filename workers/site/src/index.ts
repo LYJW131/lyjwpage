@@ -66,7 +66,7 @@ const requestHandler = createRequestHandler(
 
 installLagReader((key) => readLag(workerEnv.LAG, key));
 
-const DEFAULT_BACKEND_ORIGIN = "https://api.homepage.lyjw.llc";
+const DEFAULT_BACKEND_ORIGIN = "https://lyjw.me";
 
 function isProduction(env: Env): boolean {
   return env.SITE_ENV === "production";

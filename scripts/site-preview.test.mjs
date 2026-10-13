@@ -20,7 +20,7 @@ const builtConfig = () => ({
   no_bundle: true,
   exports: { RenderedSite: { type: "worker" } },
   images: { binding: "IMAGES" },
-  vars: { SITE_ENV: "production", PUBLIC_BACKEND_URL: "https://api.homepage.lyjw.llc", SENTRY_DSN: "https://prod.example/dsn" },
+  vars: { SITE_ENV: "production", PUBLIC_BACKEND_URL: "https://lyjw.me", SENTRY_DSN: "https://prod.example/dsn" },
   services: [{ binding: "PUBLIC_STATUS", service: "api", entrypoint: "PublicStatus" }],
   r2_buckets: [{ binding: "IMAGE_OBJECTS", bucket_name: "lyjw-homepage" }],
   kv_namespaces: [{ binding: "KV", id: "prod" }],
