@@ -92,7 +92,7 @@
 - **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），最前那个容器经 `href` 深入查询曲目，累计出时长，按容器顺序的可播曲目（带时长与封面）随 `commitRecentlyPlayed` 交给状态核心推下一首；自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `CONTAINER_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
-- **私钥在 Worker Secret 里**：Apple Music 开发者私钥（`.p8`）是 Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`（签发令牌的 Worker 各读自己那份；放在哪些 Worker、本机原件在哪见 `docs/ops-facts.md`），Mac Telemetry Hub、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由调用的 Worker 自己签发（`shared/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签）。
+- **私钥在 Worker Secret 里**：Apple Music 开发者私钥（`.p8`）是 Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`（放在哪个 Worker、本机原件在哪见 `docs/ops-facts.md`），Mac Telemetry Hub、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由调用的 Worker 自己签发（`shared/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签）。
 - **Mac 只上报 user token**：Mac Telemetry Hub 通过 `/api/ingest/mac` 的 `appleMusicCredentials` 模块只上报 `Music-User-Token`；带 `developerToken` / `expiresAt` 的旧合同会被上报入口拒收。
 - **凭据隔离**：收到的 user token 由上报入口写进独立的凭据 KV（`shared/credentials.ts`），与可滞后层的展示数据分命名空间，不提供任何外部 GET 端点。
 
