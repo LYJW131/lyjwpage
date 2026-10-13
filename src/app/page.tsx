@@ -198,7 +198,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     desktopIcon,
     artwork,
     lyricsFallback:
-      nowSongId && lyrics && lyrics.lines.length
+      nowSongId && lyrics
         ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
         : null,
   };

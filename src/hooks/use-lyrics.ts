@@ -97,12 +97,14 @@ export function useLyrics(
     lyricsCache.set(key, initialSongData);
   }
 
+  // 目录标了有歌词、首屏却取到空歌词也算已知结果：否则首屏先画占位，水合后收起，新歌到了又展开。
+  // 空结果只定首帧、不写负缓存：首屏可能是旧的，挂载后仍回源确认一次。
   const [resolved, setResolved] = useState<{
     songId: string;
     data: CachedLyricsData | null;
   } | null>(() => {
-    if (!key || !initialSongData?.lines.length) return null;
-    return { songId: key, data: initialSongData };
+    if (!key || !initialSongData) return null;
+    return { songId: key, data: initialSongData.lines.length ? initialSongData : null };
   });
 
   // 同曲目 key 不变，负缓存到期须主动重触发 effect 才能恢复请求。
