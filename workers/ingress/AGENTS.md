@@ -21,5 +21,5 @@
 
 ## 本地开发与验证
 
-- 本地没有 Access：先 `node scripts/dev-access.mjs init`，把它打印的 `ACCESS_DEV_JWKS=` 填进本目录的 `.dev.vars`（不是 core 那份），推送时带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效）。`pnpm dev:worker`（仓库根）会把 `/api/ingest/*` 与 `/api/internal/site-deployed` 转到这里。
+- 本地没有 Access：先 `node scripts/dev-access.mjs init`，把它打印的 `ACCESS_DEV_JWKS=` 填进本目录的 `.dev.vars`（不是 core 那份），推送时带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效）。`pnpm dev:worker`（仓库根）会把 `/api/ingest/*` 与 `/api/internal/*` 转到这里。
 - 验证：`pnpm --dir workers/ingress typecheck`、`pnpm --dir workers/ingress test`、`node scripts/verify-core-worker.mjs`（经 Service Binding 打隔离的 core，从上报验到公开读取与推送）。

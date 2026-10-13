@@ -18,7 +18,7 @@
 
 - 新增任务 ⇄ `shared/collector.ts#COLLECTOR_JOBS`（只加不改）与 `src/registry.ts`；退役任务只挪进 `RETIRED_COLLECTOR_JOBS`，不从契约删名字。`src/registry.test.ts` 核对两边全集相等（去掉退役的），不用类型断言或放宽测试绕过。
 - 新增或改节奏的任务 ⇄ `shared/status-views.ts` 里对应视图的 `cadenceMs`，浏览器据此在下一次预期写入之后去取。
-- `shared/collector.ts`（`Collector` 的 RPC 契约，只加不改）⇄ `workers/ingress/src/worker.ts`：部署通知点名重拉部署列表，上报提交前后调补全。
+- `shared/collector.ts`（`Collector` 的 RPC 契约，只加不改）⇄ `workers/ingress/src/worker.ts`：部署通知点名重拉部署列表，手动跑采集按 `ACTIVE_COLLECTOR_JOBS` 逐个串行调 `refresh`，上报提交前后调补全。
 - `shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS` ⇄ 默认入口的分流（`src/index.ts`）与 `src/apple-music-http.ts`：加路径要同时决定它进不进缓存层。
 
 ## 本地开发与验证
