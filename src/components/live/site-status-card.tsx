@@ -73,7 +73,7 @@ function vital(value: number | null | undefined, unit: string) {
 }
 
 const scoreTone = (score: number | null | undefined) =>
-  score == null ? "text-muted-foreground" : score >= 90 ? "text-live-ink" : score >= 50 ? "text-live-idle-ink" : "text-signal-red";
+  score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500";
 
 function Fact({ label, value, title, className }: { label: string; value: string; title?: string; className?: string }) {
   return <span className="whitespace-nowrap" title={title}>{label} <span className={cn("text-foreground", className)}>{value}</span></span>;

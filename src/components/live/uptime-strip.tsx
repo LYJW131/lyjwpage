@@ -25,8 +25,8 @@ function dayTone(entry: UptimeDay): { className: string; label: string } {
 }
 
 const STATUS: Record<HealthSeries["status"], { label: string; className: string }> = {
-  up: { label: "Operational", className: "text-live-ink" },
-  down: { label: "Down", className: "text-signal-red" },
+  up: { label: "Operational", className: "text-live" },
+  down: { label: "Down", className: "text-red-500" },
   unknown: { label: "Unknown", className: "text-muted-foreground" },
 };
 
