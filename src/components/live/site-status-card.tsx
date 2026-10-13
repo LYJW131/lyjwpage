@@ -99,7 +99,7 @@ function ReporterTile({ name, stat, staleMs, servedAt, title }: {
   title?: string;
 }) {
   const stale = useStale(stat?.lastPushAt, staleMs, servedAt);
-  return <li className="bg-surface px-4 py-2.5" title={title}>
+  return <li className="bg-surface px-4 py-2.5 lg:px-5" title={title}>
     <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
       <Container size={12} className="shrink-0" aria-hidden />
       <a href={`${site.repo}/tree/main/reporters/${name}`} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:underline">{name}</a>
@@ -167,7 +167,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       <a href={site.sentry} target="_blank" rel="noreferrer" aria-label="Sentry dashboard" className="-m-2 flex p-2 hover:text-foreground"><SentryMark /></a>
     </div>
   }>
-    <div className="border-b border-line px-4 py-5 md:px-5">
+    <div className="border-b border-line px-4 py-5 lg:px-5">
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
         <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `Cloudflare Web Analytics pageviews · last 7 × 24h · ${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : analyticsStale ? "Unavailable" : undefined} />
         <Stat label="COMMITS" value={totals?.commits} title={githubStale ? "Unavailable" : "Commits on the default branch"} />
@@ -186,7 +186,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
     {sentry && <UptimeStrip site={sentry.uptime} core={sentry.heartbeat ?? null} siteStale={uptimeStale} coreStale={heartbeatStale} />}
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
-        <div className="px-4 pt-3 pb-2">
+        <div className="px-4 pt-3 pb-2 lg:px-5">
           <div className="grid grid-cols-[40px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-[9px] text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-[10px]">
             <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "Unavailable" : undefined}>{measured}</span>
             <span title="Lighthouse performance score, lab run on a simulated device">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}
@@ -214,7 +214,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       </section>
       <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 lg:border-l lg:border-line" aria-label="Services">
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
-          <li className="bg-surface px-4 py-2.5" title={siteDeployments?.activeVersions.length ? `Serving ${siteDeployments.activeVersions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : undefined}>
+          <li className="bg-surface px-4 py-2.5 lg:px-5" title={siteDeployments?.activeVersions.length ? `Serving ${siteDeployments.activeVersions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : undefined}>
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
               <span className="flex items-center gap-1.5"><CloudflareColor size={11} />Site</span>
               <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + worker)" />
@@ -229,7 +229,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
           {CLOUDFLARE_WORKERS.filter(({ name }) => name !== "site").map(({ name }) => {
             const worker = cloudflare?.workers.find(w => w.name === name);
             const metrics = workerMetricsStale ? null : worker?.metrics, deployment = workerDeploymentsStale ? null : worker?.deployment;
-            return <li key={name} className="bg-surface px-4 py-2.5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
+            return <li key={name} className="bg-surface px-4 py-2.5 lg:px-5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>

@@ -241,7 +241,7 @@ export function TimezoneCard({
 
   return (
     <Card className={cn("h-full", className)}>
-      <div className="flex h-full min-h-44 items-center justify-between gap-3 p-4 pl-4.5 lg:p-5 lg:gap-4">
+      <div className="flex h-full min-h-44 items-center justify-between gap-3 p-4 lg:p-5 lg:gap-4">
         <div className="relative z-10 flex min-w-0 flex-col justify-center gap-1.5 sm:gap-2">
           <div className="text-xs text-muted-foreground">
             {usingMac ? "Mac Time" : "Server Time"}

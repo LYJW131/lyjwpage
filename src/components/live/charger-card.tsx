@@ -127,7 +127,7 @@ export function ChargerCard({
     >
       <div
         className={cn(
-          "flex min-h-0 flex-1 flex-col px-4 pb-4 pt-2",
+          "flex min-h-0 flex-1 flex-col px-4 pb-4 pt-2 lg:px-5 lg:pb-5",
         )}
       >
         {/* NumberFlow 的合成基线取盒底；用底边对齐，且保留动画依赖的行高。 */}
