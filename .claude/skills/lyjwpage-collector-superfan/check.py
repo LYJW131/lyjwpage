@@ -45,6 +45,14 @@ def main_head(repo):
     return line[0], int(line[1]) * 1000
 
 
+def content(x):
+    if isinstance(x, dict):
+        return {k: content(v) for k, v in x.items() if not (k.endswith("At") or k in ("start", "end", "windowStart", "windowEnd"))}
+    if isinstance(x, list):
+        return [content(v) for v in x]
+    return x
+
+
 def age(now, at):
     return now - at if isinstance(at, (int, float)) else None
 
@@ -86,7 +94,7 @@ def check(repo):
             continue
         data[view] = body
         snap[view] = {
-            "hash": hashlib.sha1(json.dumps(body.get("data"), sort_keys=True).encode()).hexdigest()[:12],
+            "hash": hashlib.sha1(json.dumps(content(body.get("data")), sort_keys=True).encode()).hexdigest()[:12],
             "updatedAt": body.get("updatedAt"),
         }
 
@@ -120,7 +128,10 @@ def check(repo):
         prod = d.get("production") or {}
         if prod.get("state") != "READY":
             add("site-deployments", "alert", f"生产部署状态是 {prod.get('state')}")
-        failed = [r for r in d.get("recent", []) if r.get("state") not in ("READY", "BUILDING", "QUEUED", "INITIALIZING")]
+        failed = [
+            r for r in d.get("recent", [])
+            if r.get("state") not in ("READY", "BUILDING", "QUEUED", "INITIALIZING") and (r.get("createdAt") or 0) > (prod.get("createdAt") or 0)
+        ]
         for r in failed:
             add("site-deployments", "warn", f"最近一次构建 {r.get('state')}：{(r.get('commit') or {}).get('sha', '')[:7]} {(r.get('commit') or {}).get('message', '')[:60]}")
         an = d.get("analytics") or {}
@@ -150,13 +161,15 @@ def check(repo):
         for probe in ("uptime", "heartbeat"):
             p = d.get(probe) or {}
             if p.get("status") and p.get("status") != "up":
-                add(view, "alert", f"{probe} 状态 {p.get('status')}，24h 可用率 {p.get('availability24h', 0):.1%}")
+                rate = p.get("availability24h")
+                rate_text = f"{rate:.1%}" if isinstance(rate, (int, float)) else "无数据"
+                add(view, "alert", f"{probe} 状态 {p.get('status')}，24h 可用率 {rate_text}")
         snap[view]["errors"] = d.get("errors")
 
     d = data.get("digest", {}).get("data")
     if d:
-        stale("digest", "近况摘要", d.get("generatedAt"), "DIGEST_STALE_MS")
-        if not d.get("headline"):
+        stale("digest", "近况摘要", data["digest"].get("updatedAt"), "DIGEST_STALE_MS")
+        if not d.get("quiet") and not d.get("headline"):
             add("digest", "alert", "摘要没有标题")
         snap["digest"]["model"] = d.get("model")
 

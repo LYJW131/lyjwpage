@@ -47,7 +47,7 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 用 Cloudflare Code Mode MCP（`POST /accounts/{account_id}/workers/observability/telemetry/query`，`view: "events"`，过滤 `$workers.scriptName = collector`），时间窗按第 1 步：
 
 - `$metadata.level = error`：任务失败日志是结构化的，`source` 里有 `event: "collector-job"`、`job`、`status`、`detail`、`ms`。按 `job` 归类，数次数，留最近一条 `detail`。
-- `$metadata.level = warn`：部分成功沿用旧值（如 `[github-repo] … 名单沿用上一份`）、某家厂商超时、`collector-skip`（缺令牌干净跳过）。`collector-skip` 一直出现说明某个任务从来没跑过，正是要报的。
+- `$metadata.level = warn`：部分成功沿用旧值（如 `[github-repo] … 名单沿用上一份`）、某家厂商超时、`collector-skip`（缺令牌干净跳过）。`collector-skip` 一直出现说明某个任务从来没跑过，正是要报的；它每个 isolate 只记一次，所以日志里不再出现不算恢复，要等对应视图有了新写入才结案。
 - `$workers.eventType = scheduled` 的条数与 `outcome`：cron 每分钟一响，窗口里条数明显少于分钟数、或有 `outcome` 不是 `ok` 的，要报。
 
 查询失败就在报告里写明哪一项没读到，照常做其余步骤，不推进 `lastRunAt`。
@@ -57,7 +57,7 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 逐条看第 2、3 步的结果，再和 `snapshots` 比：
 
 - 同一个任务在窗口里反复失败（比如 `apple-recent` 的 403 令牌失效、`pagespeed` 一直超时），即使端点还没过阈值，也算异常：给出 `detail` 原文和次数。
-- 内容冻住：`updatedAt` 在走但内容哈希连续 12 份没变，而它本该变（`github-repo` 在 main 有新提交时、`listening` 在站主听歌时、`digest` 隔几个小时），算 `warn`。
+- 内容冻住：`updatedAt` 在走但内容哈希（脚本已剔除各种 `*At` 时间戳）连续 12 份没变，而它本该变（`github-repo` 在 main 有新提交时、`listening` 在站主听歌时、`digest` 隔几个小时），算 `warn`。
 - 端点数值突变：厂商数、Worker 数、访问量、PageSpeed 分数比上几份掉了一半以上。
 - `health`（或迁移前的 `sentry`）视图里 `heartbeat` / `uptime` 不是 `up` 也照报：它测的是站点和 core 的 cron，不归 collector，但盯防时看到了就说，并注明不归 collector。
 - 每条结论写依据（端点字段、日志条数与原文）；是推断就写「推断」。能定位到源码的给路径加符号。
