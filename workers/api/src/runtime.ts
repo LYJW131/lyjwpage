@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { SiteCacheRpc } from "@shared/site-cache";
 import type { StorageClient } from "@shared/storage-client";
 import type { LivePushRoom } from "./origin-worker";
-import type { MusicKitTokenEnv } from "./musickit-token";
+import type { MusicKitTokenEnv } from "@shared/musickit-token";
 import type { StateHub } from "./state-hub";
 import type { DevOverrideReader } from "./dev-override-reader";
 import { previewWorkerEnabled } from "./preview";

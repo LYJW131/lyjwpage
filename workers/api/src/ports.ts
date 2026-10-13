@@ -2,9 +2,9 @@ import { installAppleCache } from "@shared/apple-cache";
 import { installAppleMusicAuth } from "@shared/apple-music-auth";
 import { appleMusicCredentialsResult } from "@shared/credentials";
 import { installLagReader, readLag } from "@shared/lag";
+import { issueApiDeveloperToken } from "@shared/musickit-token";
 import { installStorage } from "@shared/storage";
 
-import { issueApiDeveloperToken } from "./musickit-token";
 import { currentContext } from "./runtime";
 import { stateStorage } from "./storage-driver";
 
