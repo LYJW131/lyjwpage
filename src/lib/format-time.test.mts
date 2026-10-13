@@ -34,7 +34,7 @@ const label = (ms: number) => new Date(ms).toISOString();
 
 function assertEngineNeutral(text: string) {
   assert.ok(!text.includes(" at "), text);
-  assert.ok(!text.includes(" "), text);
+  assert.ok(!text.includes("\u202f"), text);
 }
 
 test("formatDateTime12 与 UTC 平移后的 en-US 日期时间逐字节一致", () => {

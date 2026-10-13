@@ -1,8 +1,8 @@
 // 同一处不一致会在每次访问重复出现，抽样上报够看趋势。
 export const RECOVERABLE_ERROR_SAMPLE_RATE = 0.1;
 
-// Sentry 项目的入站过滤 react-hydration-errors 按异常文本匹配 React 原文和错误码链接，
-// 原样上报会被整条丢掉；所以换成自己的文本，错误码放进 tag，原文（开发版里带 DOM 文本）不上报。
+// React 原文会被 Sentry 入站过滤丢掉（见 docs/ops-facts.md「Sentry」），所以换成自己的文本，
+// 错误码放进 tag，原文（开发版里带 DOM 文本）不上报。
 export const RECOVERABLE_ERROR_MESSAGE = "React re-rendered a subtree on the client after a recoverable render error";
 
 export type RecoverableErrorReport = {

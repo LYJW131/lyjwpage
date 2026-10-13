@@ -1,6 +1,5 @@
 // 服务端（workerd/V8）与 Safari（JSC）的 Intl 在日期与时间之间的连接词不同（", " 对 " at "），
-// 服务端渲染的文本一旦不同就触发水合不一致。这里只从 Intl 取数字部分，拼接全部自己做；
-// 输出须与 workerd 的 en-US 结果逐字节一致，边缘缓存里的旧 HTML 才能和新客户端对上。
+// 服务端渲染的文本一旦不同就触发水合不一致。这里只从 Intl 取数字部分，拼接全部自己做。
 
 export type WallClock = {
   year: number;

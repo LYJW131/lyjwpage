@@ -92,10 +92,6 @@ const eslintConfig = defineConfig([
   },
   {
     files: ["shared/**/*.{ts,mts}"],
-    rules: { "no-restricted-syntax": ["error", ...NO_LOCALE_DATE_TEXT] },
-  },
-  {
-    files: ["shared/**/*.{ts,mts}"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{

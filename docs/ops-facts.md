@@ -56,6 +56,7 @@
 | --- | --- |
 | 组织的 cron 监控名额只有一个，给了 `api-minute-cron`；采集 Worker 每个任务的 `collector-<任务>` 监控随报到自动建出，因名额不足是停用状态，报到被丢弃，所以任务失败要看 `collector-worker` 项目里 tag `collector.job` 的 issue | 核对于 未记录，方式：迁自 `workers/collector/README.md` |
 | 在线探测每分钟 HEAD `https://lyjw.me/api/version`，配在 Sentry 侧；站点卡片的「在线状态」读它 | 核对于 未记录，方式：迁自根 `README.md` |
+| 项目 `lyjwpage` 开着入站过滤 `react-hydration-errors`：按异常文本丢弃 React 水合错误原文（#418 等），被丢的事件只出现在入站统计里、不成 issue；`src/lib/recoverable-error.ts` 因此换成自己的文本上报 | 核对于 2026-10-14，方式：Sentry MCP 查项目入站过滤统计（10-13T18Z 一小时丢弃 29 条）与 `search_issues` 90 天无 #418 <!-- allow: 核对戳 --> |
 
 ## GitHub
 
