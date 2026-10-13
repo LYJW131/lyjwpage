@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "2b72b83d-ace9-4cc3-9ac3-7bbb5371688a",
+  "receiptId": "2cb54f41-2cae-45bb-b6bd-4bc8016b554c",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
   "input": "/home/user/lyjwpage/docs/architecture.json",
   "output": "/home/user/lyjwpage/docs/architecture.html",
   "specification": {
-    "sha256": "bbe740b0a0d72c4c0e6abd787579a2a15b913cf3bcd16fdfcc2dfc2ad3b0d440",
-    "bytes": 15999
+    "sha256": "ec6f3ef813fe9b1110c80a057165c0bbadf603b900e99e4f7de94675b1459893",
+    "bytes": 16308
   },
   "artifact": {
-    "sha256": "a3a037e53b7982b0b7c6c05d23a199aa53d01e70c1258e48b561bb4944717397",
-    "bytes": 812924
+    "sha256": "3a30f0a535b1e47e167aa78ce80f8af364d201d4290ebb13da12ce1fbd9a7933",
+    "bytes": 814250
   }
 }
