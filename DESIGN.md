@@ -30,12 +30,12 @@
 | 次级文字 | `muted-foreground` | 标签、单位、时间、副标题 |
 | 线 | `line` / `line-strong` | 内部分隔 / 卡片外框 |
 | 状态 | `live` / `live-idle` / `live-off` | 在线、空闲、离线；通过 `StatusDot` 用 |
-| 状态字 | `live-ink` / `live-idle-ink` | 写成字的状态（`Now Playing`、`Operational`）；深色下与 `live` / `live-idle` 同值 |
+| 状态字 | `live-ink` / `live-idle-ink` | 写成字的状态（`Now Playing`、`Operational`、性能分）；深色下 `live-ink` 与 `live` 同值 |
 | 分类色 | `signal-red/orange/yellow/green/blue/violet` | 图表系列、图例方块、分类标记；Tailwind 类 `text-signal-red`、`bg-signal-blue` |
 | 品牌色 | `claude`、活动圆环 `--activity-*` | 只给对应品牌或 Apple 活动圆环 |
 
 - 对比度：文字对它的底色至少 4.5:1；24px 以上或 18.7px 以上加粗的大字至少 3:1；圆点、色条、圆环这类非文字图形至少 3:1。浅色和深色两套都要过。
-- 彩色字要先算对比度。浅色主题下的 `live`、`live-idle`、`claude`、`signal-orange`、`signal-yellow` 在 `surface` 上不到 4.5:1，只用在色块、圆点、线条上，旁边的字用 `foreground`；状态写成字用 `live-ink` / `live-idle-ink`。`signal-red/green/blue/violet` 两套主题在 `surface` 上都过 4.5:1，可以直接写字。其他颜色要写字，先给它补一个够深 / 够亮的文字变体。
+- 彩色字要先算对比度。浅色主题下的 `live`、`live-idle`、`claude`、`signal-orange`、`signal-yellow` 在 `surface` 上不到 4.5:1，只用在色块、圆点、线条上，旁边的字用 `foreground`；状态写成字用 `live-ink` / `live-idle-ink`。`signal-red/green/blue/violet` 两套主题在 `surface` 上都过 4.5:1，可以直接写字。其他颜色要写字，先给它补一个够深 / 够亮的文字变体，只调明度、不降彩度，降了彩度看上去发灰。
 - 颜色不单独承载意思：状态有文字（`Operational`、`Now Playing`），图表系列直接标注，标不下才用图例。
 - 颜色只表达状态或分类；数值「好」或「重要」不是上色的理由（省了多少、排第一都不染绿）。
 - 新 token 同时定义 `:root` 与 `.dark` 两个值；深色值是降饱和、提亮度的同色相，不是反色。
