@@ -257,7 +257,7 @@
   const MAC = [PIC_X, ML];
   const BLK = {
     ingress: { x: 1420, y: ML - 70, w: 420, h: 140, key: "ch00.ingress", mono: "ingress" },
-    core: { x: 2000, y: ML - 70, w: 420, h: 140, key: "ch00.core", mono: "api" },
+    core: { x: 2000, y: ML - 70, w: 420, h: 140, key: "ch00.core", mono: "core" },
     collector: { x: 2000, y: ML - 330, w: 420, h: 140, key: "ch00.collector", mono: "collector" },
     ai: { x: 1420, y: ML - 330, w: 420, h: 140, key: "ch00.ai", mono: "ai" },
   };

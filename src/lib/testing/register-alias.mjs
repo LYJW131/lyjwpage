@@ -15,7 +15,7 @@ function relativeBase(specifier, context) {
 }
 
 function resolveAlias(specifier, context, nextResolve) {
-  const aliased = ["@/", "@shared/", "@api/"].some((prefix) => specifier.startsWith(prefix));
+  const aliased = ["@/", "@shared/", "@core/"].some((prefix) => specifier.startsWith(prefix));
   const relative = aliased ? null : relativeBase(specifier, context);
   if (!aliased && relative == null) {
     return nextResolve(specifier, context);
@@ -24,8 +24,8 @@ function resolveAlias(specifier, context, nextResolve) {
   const base = relative
     ?? (specifier.startsWith("@shared/")
       ? path.join(SRC_ROOT, "../shared", specifier.slice(8))
-      : specifier.startsWith("@api/")
-        ? path.join(SRC_ROOT, "../workers/api/src", specifier.slice(5))
+      : specifier.startsWith("@core/")
+        ? path.join(SRC_ROOT, "../workers/core/src", specifier.slice(6))
         : path.join(SRC_ROOT, specifier.slice(2)));
   for (const extension of EXTENSIONS) {
     const candidate = base + extension;

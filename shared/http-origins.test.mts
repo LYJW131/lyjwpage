@@ -44,12 +44,12 @@ test("isForeignOrigin 只拦带了且不在名单里的 Origin", () => {
   assert.equal(isForeignOrigin(request("https://lyjw.me/api/status/server", { Origin: "https://lyjwpage-abc.vercel.app" }), env), true);
 });
 
-test("site、api、ai、collector 的生产来源名单一致：站点回可滞后视图、后端回其余视图，名单不同就会一半放行一半 403", () => {
+test("site、core、ai、collector 的生产来源名单一致：站点回可滞后视图、后端回其余视图，名单不同就会一半放行一半 403", () => {
   const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   const production = (path: string) => read(path).split(/^\[previews/m)[0].match(/^ALLOWED_ORIGINS = "([^"]*)"$/m)?.[1];
   const site = read("wrangler.jsonc").match(/"ALLOWED_ORIGINS":\s*"([^"]*)"/)?.[1];
   assert.ok(site);
-  assert.equal(production("workers/api/wrangler.toml"), site);
+  assert.equal(production("workers/core/wrangler.toml"), site);
   assert.equal(production("workers/ai/wrangler.toml"), site);
   assert.equal(production("workers/collector/wrangler.toml"), site);
 });

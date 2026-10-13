@@ -21,7 +21,7 @@ SENTRY_DSN = "https://23b24c339292701f7b84adea24780773@o4511888459890688.ingest.
 
 [[services]]
 binding = "CORE"
-service = "api"
+service = "core"
 entrypoint = "StateCore"
 
 [[services]]

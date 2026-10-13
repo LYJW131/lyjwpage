@@ -8,7 +8,7 @@ test("ai 的 .dev.vars 从 LYJWPAGE_ANTHROPIC_API_KEY 取 key，聊天必需的�
   const ai = Object.fromEntries(files["workers/ai/.dev.vars"].trim().split("\n").map((line) => line.split(/=(.*)/s).slice(0, 2)));
   assert.equal(ai.ANTHROPIC_API_KEY, "sk-test");
   for (const key of ["TURNSTILE_SECRET_KEY", "CHAT_HISTORY_SECRET"]) assert.ok(ai[key], key);
-  assert.match(files["workers/api/.dev.vars"], /^DEV_OVERRIDES=true$/m);
+  assert.match(files["workers/core/.dev.vars"], /^DEV_OVERRIDES=true$/m);
 });
 
 test("没有 key 时 ANTHROPIC_API_KEY 留空，不写进 undefined", () => {

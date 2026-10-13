@@ -8,7 +8,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 - **只展示、不参与计算的**直接写可滞后层 KV（`LAG`，键表见 `shared/lag.ts`），每条带
   `updatedAt`。**成功才写**：KV 里的值本身就是上次成功值，失败时旧值原样留着，
   不另存 last-good；过没过时由浏览器按各卡片的阈值判断。
-- **状态核心要拿来算的**（最近在听）经 Service Binding RPC 交给 api Worker
+- **状态核心要拿来算的**（最近在听）经 Service Binding RPC 交给 core Worker
   的具名 entrypoint `StateCore`（binding `CORE`，契约见 `shared/state-core.ts`）：
   差分、推送、pulse 证据都在那边做。
 
@@ -79,7 +79,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 
 手动触发（`Collector.refresh`、本地调试入口）不报到。
 
-**名额**：组织的 cron 监控名额只有一个（见 [仓库外事实](../../docs/ops-facts.md)），给了 api 的 `api-minute-cron`；`collector-<任务>` 监控超出名额只能停用，报到会被 Sentry 丢弃，
+**名额**：组织的 cron 监控名额只有一个（见 [仓库外事实](../../docs/ops-facts.md)），给了 core 的 `api-minute-cron`；`collector-<任务>` 监控超出名额只能停用，报到会被 Sentry 丢弃，
 所以 `SENTRY_CRON_CHECKINS` 默认关（`src/schedule.ts#cronMonitor`），关着时不发报到，失败照常开 issue。加了名额后在 `wrangler.toml` 的 `[vars]` 设 `SENTRY_CRON_CHECKINS = "true"` 并在 Sentry 的 Crons 页启用。
 另一路：任务真失败（已知的外部故障除外）会直接开一个 Sentry issue，
 按任务分组（fingerprint `collector-job` + 任务名，tag `collector.job`），同一任务在一个 isolate 里最多隔 `REPORT_EVERY_MS` 报一次
@@ -161,23 +161,23 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 Apple Music 的 user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推来的）；`APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID`、
 `ALLOWED_ORIGINS`（MusicKit token 按它签 origin 声明）在 `[vars]`。
 
-绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS`、`APPLE_CACHE` 四个 KV，`CORE`（`api` 的 `StateCore`），
-`APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`（`lyjwpage-history`）。D1 表结构归 `workers/api/migrations` 管：新表先在 api 那边
-`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
+绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS`、`APPLE_CACHE` 四个 KV，`CORE`（`core` 的 `StateCore`），
+`APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`（`lyjwpage-history`）。D1 表结构归 `workers/core/migrations` 管：新表先在 core 那边
+`pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
 Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION_METADATA`。
 
 ## 部署
 
 推到 `main` 由 Cloudflare Workers Builds 原生 Git 集成部署（根目录 `/`，配置与监视路径见
-[原生部署配置](../../docs/workers-builds.md)）；不开分支预览：预览版的 `CORE` 会调到生产的 api。
+[原生部署配置](../../docs/workers-builds.md)）；不开分支预览：预览版的 `CORE` 会调到生产的 core。
 
-新增 `StateCore` 方法时先发布 api，再发布这里；`Digest` 的契约同理，先发布 ai。各自独立构建。
+新增 `StateCore` 方法时先发布 core，再发布这里；`Digest` 的契约同理，先发布 ai。各自独立构建。
 
 ## 本地开发
 
 根目录 `pnpm dev:worker` 以多配置方式起四个 Worker（配置清单见根 `package.json` 的 `dev:worker`）：`workers/dev-router`（拿端口，按路径分发）、
-api、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档那一步跳过），
-KV 都是本地的（`LAG`、`CREDENTIALS` 和上报入口共用同一个本地 id，`LAG` 还和 api 共用）。
+core、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档那一步跳过），
+KV 都是本地的（`LAG`、`CREDENTIALS` 和上报入口共用同一个本地 id，`LAG` 还和 core 共用）。
 令牌照需要放 `workers/collector/.dev.vars`（照 `.dev.vars.example`），不放的任务直接跳过。本地不开 Workers Caching。
 
 ```sh
@@ -196,5 +196,5 @@ pnpm --dir workers/collector test
 ```
 
 单测覆盖节奏与报到、KV 存储驱动（含 `shared/cache` 跑在它上面）、D1 `site_deploys` 的 upsert
-（真实 SQLite 跑 api 的全部迁移）、厂商状态变了才失效首屏、几处部分成功的合并口径，以及 Apple Music 的
+（真实 SQLite 跑 core 的全部迁移）、厂商状态变了才失效首屏、几处部分成功的合并口径，以及 Apple Music 的
 入口层（预检、来源、令牌）、`APPLE_CACHE` 命中不出网和补全后的补写。

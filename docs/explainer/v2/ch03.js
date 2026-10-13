@@ -464,7 +464,7 @@
     if (titleA > 0) {
       text(x, "03", 110, 196, { font: FONT.pixel(112), color: css("signalD"), alpha: titleA });
       text(x, tr("ch03.title"), 290, 176, { font: FONT.cjk(58, 600), color: bone, reveal: prog(b, 0.25, 0.9), alpha: titleA });
-      text(x, "workers/api · StateCore → StateHub", 292, 226, { font: FONT.mono(28), color: ash, reveal: prog(b, 0.4, 1.1), alpha: titleA });
+      text(x, "workers/core · StateCore → StateHub", 292, 226, { font: FONT.mono(28), color: ash, reveal: prog(b, 0.4, 1.1), alpha: titleA });
       line(x, 110, 262, 110 + 990 * prog(b, 0.3, 1.2, E.outExpo), 262, 1.4, bone, 0.6 * titleA);
     }
 
