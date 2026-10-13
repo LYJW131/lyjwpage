@@ -68,10 +68,10 @@ export const QUIET_SCORE = 1;
 export const SHIPPING_COMMITS = 8;
 export const SHIPPING_DEPLOYS = 4;
 
-function shippingDay(options: DigestHighlight[]): boolean {
+// 卡片上的 site 格有提交数就只放提交数，部署数要从 signals 另看。
+function shippingDay(options: DigestHighlight[], signals: DigestSignals): boolean {
   const site = options.find((option) => option.topic === "site");
-  if (!site) return false;
-  return site.caption === "commits" ? site.value >= SHIPPING_COMMITS : site.value >= SHIPPING_DEPLOYS;
+  return (site?.caption === "commits" && site.value >= SHIPPING_COMMITS) || signals.deploys >= SHIPPING_DEPLOYS;
 }
 
 function familyScores(options: DigestHighlight[], signals: DigestSignals): Record<Family, number> {
@@ -96,7 +96,7 @@ function primarySituation(family: Family, options: DigestHighlight[], scores: Re
     case "build":
       if (coding >= 16 && agents >= 12) return "agentsAllDay";
       if (coding >= 12 && agents < coding * 0.6) return "codingAllDay";
-      if (shippingDay(options)) return "shipping";
+      if (shippingDay(options, signals)) return "shipping";
       if (coding >= 3 && agents >= coding * 0.6) return "agentsLead";
       if (coding >= 3) return "handsOn";
       return "codingLight";
@@ -116,7 +116,7 @@ function accentSituations(primary: DigestSituation, family: Family, options: Dig
   const find = (topic: DigestTopic) => options.find((option) => option.topic === topic);
   const accents: DigestSituation[] = [];
   if (family !== "music" && hours(find("music")) >= 4) accents.push("soundtrack");
-  if (primary !== "shipping" && family === "build" && shippingDay(options)) accents.push("shipping");
+  if (primary !== "shipping" && family === "build" && shippingDay(options, signals)) accents.push("shipping");
   if ((find("tokens")?.value ?? 0) >= 1e9) accents.push("tokenFlood");
   if (family !== "fitness" && signals.workoutMinutes >= 20) accents.push("workoutToo");
   if (signals.weekend) accents.push("weekend");
