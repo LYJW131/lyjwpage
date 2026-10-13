@@ -2,6 +2,7 @@
 - Owner: lyjw (GitHub LYJW131). Communicate in Chinese.
 - Repo: https://github.com/LYJW131/lyjwpage (personal site)
 - Goal: keep evolving and optimizing the site, adopting cutting-edge tech.
+- **SWE-2Max = Devin CLI model on the Mac (user 2026-10-13 17:07Z, "别让他闲着 猛猛干 并行派"):** `~/.local/bin/devin` model `swe-2-max`, Mac-only (CLI and login live there). Dispatch through Mac Remote Control threads: one git worktree per task, `devin -p --model swe-2-max --respect-workspace-trust false --permission-mode accept-edits --prompt-file task.md --export log.md`, run in parallel. Then the Claude session reviews `git diff`, reruns checks and opens the PR. `auto` mode can't run shell. Free until about 10-15/16, then $3/$15 per M tokens. The user wants it kept busy with parallel work. **Permission:** `Bash(devin:*)` lives in the main repo's `.claude/settings.local.json`. A running RC session in a worktree doesn't pick up later edits; a NEW RC session copies the main settings into its worktree and is allowed (verified 2026-10-13). So when devin gets blocked, start a fresh Mac session.
 - **X/Twitter access (user 2026-10-13 16:12Z):** for anything on X/Twitter, call the X API at api.x.com directly. The session proxy injects the user's credentials automatically, so never add or print a key. Don't scrape x.com pages: [[x-api-via-proxy]].
 - **Links in messages (user 2026-10-13 16:01Z, "以后注意一下"):** never post a bare URL next to Chinese text or full-width punctuation: the chat autolinker swallows the following （…） into the URL and the link breaks (NXDOMAIN). Always write links as markdown `[text](url)`, or put a space and ASCII punctuation after a bare URL: [[links-as-markdown]].
 - **Never auto-resolve shipped work (user 2026-10-13 15:50Z):** after a change ships, no Claude (thread or coordinator) resolves the thread. It stays open so it appears in the user's "Waiting on you / review" list; only the user's own ack (or explicit "关") resolves it. The user couldn't find the token-number thread because it was folded into 已解决.
@@ -17,7 +18,7 @@
 - **iOS app is paused (user 2026-10-13):** only a data reporter; keep its reporting endpoints working, nothing else.
 - **Decision cards (user rule 2026-10-13):** whenever any thread has an open ask_decision card, the coordinator re-posts it in the project chat, then relays the user's choice via message_thread.
 - **Custom view task board (user 2026-10-13 11:50Z):** keep the Custom view tab live as a card board grouped 等你动手 / 进行中 / 挂着等你决定 / 今天已完成, each title linked to its thread; coordinator refreshes it on every thread state change. Shipped-but-not-yet-acked items go under 等你动手 (待你验收), not 已完成.
-- **Merge gate for logic changes:** read every bot review (Devin, Codex, Claude review), fix or reply to each, re-check after last push; main requires conversation resolution. Codex at most 3 rounds per PR, judge on merit. Bugbot out of quota → ignore.
+- **Merge gate for logic changes:** read every bot review (Devin, Codex, Claude review), fix or reply to each, re-check after last push; main requires conversation resolution. Codex at most 3 rounds per PR, judge on merit. Bugbot is turned off by the user (2026-10-13 17:39Z, out of quota): don't wait for or mention it.
 - Merge commit format (#207): `pnpm merge-message`; HUMAN.md (#208) is the user-facing collaboration guide; keep it in sync with new rules.
 - Device work: Remote Control works on MacBook folder ~/Developer/lyjwpage. Its auto mode blocks prod deploys and Cloudflare config writes even after the user says go; those may need the user to click in the CF dashboard. SSH to misaka-jp via dsm jump host works; agents-reporter in docker at /opt/lyjwpage on misaka-jp.
 - Cloud Anthropic test key: env var `LYJWPAGE_ANTHROPIC_API_KEY` in env <cloud env> works in cloud sessions. Use as `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY" ...`; never print it.
@@ -25,8 +26,7 @@
 - Collector manual trigger: GitHub Actions "Run Collector Jobs" (blank = all jobs, or a job name), endpoint POST /api/internal/collector-refresh (#249, 2026-10-13).
 - Retire api.homepage.lyjw.llc done; Apple Music → collector done: [[apple-music-to-collector]], [[same-origin-api-assessment]], [[same-origin-api-traps]]; api→core rename fully done 2026-10-13 (PR #227 live, old api Worker deleted, core on Builds Previews, #236): [[api-rename-to-core]].
 - ISR after Vercel→CF: replaced by Workers Caching entrypoints (StatusSnapshot, RenderedSite, ImageVariants) with Cache-Tag purge via SITE_CACHE. Post-deploy empty-cache home page 500 fixed by per-card degrade (#232, 2026-10-13).
-- Digest card: Chinese Apple-tagline headline live (#233 merged 2026-10-13); quiet → old clock option (#235). Copy-library draft PR #247 (don't merge until user says).
-- **Long-term idea (user 2026-10-13 14:19Z):** digest headline copy pre-generated per situation and picked by rules + model; draft exists as #247.
+- Digest card: Chinese Apple-tagline headline live (#233 merged 2026-10-13); quiet → old clock option (#235). Copy-library PR #247: user approved merging 2026-10-13 17:35Z and asked for 15-minute digest frequency.
 - Vercel design.md (vercel.com/design.md) compared 2026-10-13: borrow methods only (gap ownership, CI ladder check `pnpm design:scale`, rule priority, anti-patterns); comparison at /mnt/project-files/design-md/vercel-design-md-compare.md.
 - Owner's real name → LYJW in collector output (secret APPLE_MUSIC_OWNER_NAME), #225 verified in prod.
 - Secrets: only via Remote Control on the Mac, piped, never read: [[credentials-pipe-only]].
@@ -35,3 +35,4 @@
 - Now-playing first screen decisions (#218/#220/#224): [[now-playing-first-screen-decisions]].
 - Cloud env gaps; #226 auto-creates .dev.vars, dev:worker runs without CF creds: [[cloud-env-gaps]].
 - **Hand-offs carry the user's constraints:** route a follow-up once; briefs and Mac briefs copy what the user already removed/rejected/set; a later relay overrides an earlier one: [[handoff-carry-user-constraints]].
+- **Contrast fixes keep chroma (user 2026-10-13 16:31Z):** text-colour variants change oklch lightness only; desaturating made #251 look grey to the owner: [[ink-tokens-keep-chroma]].
