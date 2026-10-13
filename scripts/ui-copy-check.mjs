@@ -18,7 +18,9 @@ export const BASELINE_PATH = "scripts/ui-copy-baseline.json";
 
 // 假名 + CJK 基本/扩展 A + 兼容 + 谚文音节 / 字母 / 兼容字母：覆盖中日韩
 const CJK_RE = /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
+// 命中按规范化全文比较与入基线；截断只用于报错展示
 const TRUNCATE = 36;
+const preview = (text) => (text.length > TRUNCATE ? `${text.slice(0, TRUNCATE)}…` : text);
 
 const loadTs = (root) => createRequire(path.join(root, "package.json"))("typescript");
 
@@ -28,7 +30,7 @@ export function scanText(ts, file, text) {
   const add = (node, raw) => {
     if (!CJK_RE.test(raw)) return;
     const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-    hits.push({ line: line + 1, text: raw.replace(/\s+/g, " ").trim().slice(0, TRUNCATE) });
+    hits.push({ line: line + 1, text: raw.replace(/\s+/g, " ").trim() });
   };
   const visit = (node) => {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) add(node, node.text);
@@ -103,7 +105,7 @@ function main() {
   const { grew, shrank } = compareCopy(baseline, hits);
   for (const { file, extras } of grew) {
     for (const { text, extra, lines } of extras) {
-      console.error(`✗ ${file}：新增非英文文案 “${text}”${extra > 1 ? `（多 ${extra} 处）` : ""}`);
+      console.error(`✗ ${file}：新增非英文文案 “${preview(text)}”${extra > 1 ? `（多 ${extra} 处）` : ""}`);
       for (const line of lines) console.error(`    ${file}:${line}`);
     }
   }
@@ -113,7 +115,7 @@ function main() {
   }
   if (shrank.length > 0) {
     const detail = shrank
-      .flatMap(({ file, missing }) => missing.map(({ text, extra }) => `${file} 删去 “${text}”${extra > 1 ? `×${extra}` : ""}`))
+      .flatMap(({ file, missing }) => missing.map(({ text, extra }) => `${file} 删去 “${preview(text)}”${extra > 1 ? `×${extra}` : ""}`))
       .join("，");
     console.log(`存量变少：${detail}。跑 \`pnpm ui:copy --update\` 收紧基线。`);
   }

@@ -44,6 +44,13 @@ test("src/ 里字面量主机调用被拦，允许列表与 backendUrl 放行", 
   assert.equal(checkFetchHost("workers/core/src/x.ts", 'await fetch("https://example.com/")').length, 1);
 });
 
+test("fetch 分行写字面量主机也拦，成员调用与模板串同样查首参", () => {
+  assert.deepEqual(rules("src/lib/x.ts", 'await fetch(\n  "https://api.evil.example/x"\n);'), ["site-fetch-host@1"]);
+  assert.deepEqual(rules("src/lib/x.ts", 'navigator.sendBeacon(\n  "https://track.example/e"\n);'), ["site-fetch-host@1"]);
+  assert.deepEqual(rules("src/lib/x.ts", 'new WebSocket(\n  `wss://backend.example/ws`\n);'), ["site-fetch-host@1"]);
+  assert.equal(rules("src/lib/x.ts", 'await fetch(\n  "https://api.music.apple.com/x"\n);\nawait fetch(\n  backendUrl("/api/x")\n);').length, 0);
+});
+
 test("隐藏滚动条两句缺一不可", () => {
   assert.deepEqual(rules("src/components/x.tsx", '<div className="overflow-y-auto scrollbar-none" />'), ["scrollbar-pair@1"]);
   assert.deepEqual(rules("src/components/x.tsx", '<div className="overflow-y-auto [&::-webkit-scrollbar]:hidden" />'), ["scrollbar-pair@1"]);
@@ -53,6 +60,8 @@ test("隐藏滚动条两句缺一不可", () => {
   );
   // 注入 iframe 的原生 CSS（::-webkit-scrollbar{display:none}）不是 Tailwind 类，不算
   assert.equal(rules("src/lib/html-preview.ts", 'const css = "html{scrollbar-width:none}html::-webkit-scrollbar{display:none}";').length, 0);
+  // Chromium 那句必须是 :hidden，换成 :block 等别的变体不算配对成功
+  assert.deepEqual(rules("src/components/x.tsx", '<div className="overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:block" />'), ["scrollbar-pair@1"]);
 });
 
 test("滚动条配对按 className 表达式合并判断，不按源码行", () => {
