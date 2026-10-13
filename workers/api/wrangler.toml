@@ -88,7 +88,7 @@ new_sqlite_classes = ["AnthropicEgress"]
 [previews.vars]
 PREVIEW_WORKER = "true"
 SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
-UPSTREAM_API_URL = "https://api.homepage.lyjw.llc"
+UPSTREAM_API_URL = "https://lyjw.me"
 STORAGE_PREFIX = "lyjwpage-preview"
 ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
 

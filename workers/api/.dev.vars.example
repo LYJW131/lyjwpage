@@ -1,4 +1,4 @@
-UPSTREAM_API_URL=https://api.homepage.lyjw.llc
+UPSTREAM_API_URL=https://lyjw.me
 DEV_OVERRIDES=true
 STORAGE_PREFIX=lyjwpage
 SITE_URL=http://localhost:3211

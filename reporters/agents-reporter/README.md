@@ -40,7 +40,7 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 
 | 变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SITE_URL` | | API Worker 的源 `https://api.homepage.lyjw.llc`，只用来读 agent 活动 `/api/status/coding/now` |
+| `SITE_URL` | | 站点源 `https://lyjw.me`，只用来读 agent 活动 `/api/status/coding/now` |
 | `SITE_INGEST_URL` | ✅ | 上报端点 `https://ingest.homepage.lyjw.llc/api/ingest/agents` |
 | `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-agents` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
