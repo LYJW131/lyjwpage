@@ -6,7 +6,7 @@ import { ChatMarkdown } from "@/components/chat-markdown";
 import { GithubConsent } from "@/components/github-consent";
 import { buildReviewSummary } from "@/lib/build-review-summary";
 import { createBuildStatusPoller, isBuildTerminal } from "@/lib/build-status-polling";
-import { proposalChoiceOpen, type ChatProposal } from "@/lib/chat-archive";
+import { proposalBuildOpen, proposalChoiceOpen, type ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
@@ -43,7 +43,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   const expired = now >= proposal.expiresAt;
   const used = Boolean(proposal.issue || proposal.build);
   const choiceClosed = !proposalChoiceOpen(proposal, now) || inactive;
-  const disabled = choiceClosed || working !== null;
+  const disabled = choiceClosed || !proposalBuildOpen(proposal, now) || working !== null;
   // 授权弹窗还开着时访客仍可改选 Open issue（会关掉弹窗）；登录完成、Worker 正在受理构建时才两边都锁。
   const issueDisabled = choiceClosed || working === "preparing";
   const [lookupRejected, setLookupRejected] = useState(false);
@@ -176,7 +176,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
             </a>
             <button type="button" onClick={() => { setError(null); setBuildOpen(true); checkIssueRef.current?.(); }} disabled={disabled || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
           </div>
-          {proposal.issueOpened && !expired && <p className="text-xs">Opened GitHub&apos;s new issue form. {awaitingIssue ? "Once you submit it there, this card links to the issue. You can still start a build instead." : "Submit it there to file this plan, or start a build instead."}</p>}
+          {proposal.issueOpened && !expired && <p className="text-xs">Opened GitHub&apos;s new issue form. {awaitingIssue ? "Once you submit it there, this card links to the issue. You can still start a build instead." : proposal.issueRef ? "Submit it there to file this plan, or start a build instead." : "Submit it there to file this plan."}</p>}
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {buildOpen && <GithubConsent language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} cancellable={working !== "preparing"} onCancel={leaveBuild} />}

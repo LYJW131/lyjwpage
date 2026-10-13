@@ -26,6 +26,10 @@ export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; issueOpe
 export function proposalChoiceOpen(proposal: ChatProposal, now = Date.now()): boolean {
   return !proposal.issue && !proposal.build && now < proposal.expiresAt;
 }
+// 没有 issueRef 的旧计划无从确认 issue 是否已提交，打开过表单就不再放行构建。
+export function proposalBuildOpen(proposal: ChatProposal, now = Date.now()): boolean {
+  return proposalChoiceOpen(proposal, now) && !(proposal.issueOpened && !proposal.issueRef);
+}
 // at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
 export type ChatShownCard = { card: GodChatCard; at: number };
 export type ChatAnswer = { header: string; question: string; answer: string };
