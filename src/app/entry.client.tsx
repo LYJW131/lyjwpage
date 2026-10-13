@@ -9,6 +9,7 @@ import {
   SENTRY_ENVIRONMENT,
   SENTRY_RELAY_PREFIX,
 } from "@shared/sentry";
+import { RECOVERABLE_ERROR_SAMPLE_RATE, recoverableErrorReport } from "@/lib/recoverable-error";
 import { redactSentryEvent, redactSentrySpan, SENTRY_SITE_DATA_COLLECTION } from "@/lib/sentry-redact";
 
 Sentry.init({
@@ -39,4 +40,12 @@ if (SENTRY_ENABLED) {
   else setTimeout(loadReplay, 3000);
 }
 
-hydrateRoot(document, <HydratedRouter />);
+hydrateRoot(document, <HydratedRouter />, {
+  onRecoverableError(error, info) {
+    if (typeof reportError === "function") reportError(error);
+    else console.error(error);
+    if (Math.random() >= RECOVERABLE_ERROR_SAMPLE_RATE) return;
+    const report = recoverableErrorReport(error, info.componentStack);
+    Sentry.captureException(report.error, report.context);
+  },
+});
