@@ -8,7 +8,7 @@ import {
   earlyLiveSocketScript,
 } from "./live-socket-boot.ts";
 
-const URL_ = "wss://api.homepage.lyjw.llc/ws";
+const URL_ = "wss://lyjw.me/ws";
 const OPENED = `${URL_}?visible=1`;
 
 test("生成的内联脚本是合法 JS —— 它走 dangerouslySetInnerHTML，引号错一个就静默炸掉", () => {
