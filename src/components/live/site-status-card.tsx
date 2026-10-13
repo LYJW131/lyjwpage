@@ -99,7 +99,7 @@ function ReporterTile({ name, stat, staleMs, servedAt, title }: {
   title?: string;
 }) {
   const stale = useStale(stat?.lastPushAt, staleMs, servedAt);
-  return <li className="bg-surface px-4 py-2.5" title={title}>
+  return <li className="bg-surface px-4 py-2.5 lg:px-5" title={title}>
     <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
       <Container size={12} className="shrink-0" aria-hidden />
       <a href={`${site.repo}/tree/main/reporters/${name}`} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:underline">{name}</a>
@@ -214,7 +214,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       </section>
       <section id="cloudflare-workers" className="min-w-0 scroll-mt-28 lg:border-l lg:border-line" aria-label="Services">
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
-          <li className="bg-surface px-4 py-2.5" title={siteDeployments?.activeVersions.length ? `Serving ${siteDeployments.activeVersions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : undefined}>
+          <li className="bg-surface px-4 py-2.5 lg:px-5" title={siteDeployments?.activeVersions.length ? `Serving ${siteDeployments.activeVersions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : undefined}>
             <div className="flex items-center gap-1.5 text-[11px] leading-4">
               <span className="flex items-center gap-1.5"><CloudflareColor size={11} />Site</span>
               <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + worker)" />
@@ -229,7 +229,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
           {CLOUDFLARE_WORKERS.filter(({ name }) => name !== "site").map(({ name }) => {
             const worker = cloudflare?.workers.find(w => w.name === name);
             const metrics = workerMetricsStale ? null : worker?.metrics, deployment = workerDeploymentsStale ? null : worker?.deployment;
-            return <li key={name} className="bg-surface px-4 py-2.5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
+            return <li key={name} className="bg-surface px-4 py-2.5 lg:px-5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
