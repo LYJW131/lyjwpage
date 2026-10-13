@@ -24,6 +24,7 @@ export function ThemeToggle() {
     <button
       type="button"
       aria-label="Toggle theme (light / dark / system)"
+      title={`Theme: ${theme}`}
       onClick={() => {
         const next = THEME_CHOICES[(THEME_CHOICES.indexOf(theme) + 1) % THEME_CHOICES.length];
         applyTheme(setTheme, next);
