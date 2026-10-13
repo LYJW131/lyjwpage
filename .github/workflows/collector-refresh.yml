@@ -1,0 +1,43 @@
+name: Run Collector Jobs
+
+on:
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: Job names separated by spaces; empty runs every active job
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collector-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run collector jobs
+        env:
+          ACCESS_CLIENT_ID: ${{ secrets.ACCESS_CLIENT_ID }}
+          ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
+          JOBS: ${{ inputs.jobs }}
+        run: |
+          [ -n "$ACCESS_CLIENT_ID" ] && [ -n "$ACCESS_CLIENT_SECRET" ] || { echo "::error::Access service token is not configured"; exit 1; }
+          query=$(jq -rn --arg jobs "$JOBS" '[$jobs | splits("[\\s,]+") | select(length > 0) | "job=" + @uri] | join("&")')
+          status=$(curl -sS --max-time 300 -o result.json -w '%{http_code}' -X POST \
+            -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \
+            "https://ingest.homepage.lyjw.llc/api/internal/collector-refresh${query:+?$query}")
+          echo "HTTP $status"
+          jq . result.json || cat result.json
+          [ "$status" = 200 ] || exit 1
+          {
+            echo '| job | status | ms | detail |'
+            echo '| --- | --- | --- | --- |'
+            jq -r '.outcomes[] | "| \(.job) | \(.status) | \(.ms) | \(.detail // "" | gsub("\\|"; "/")) |"' result.json
+          } >> "$GITHUB_STEP_SUMMARY"
+          jq -e '.ok' result.json > /dev/null

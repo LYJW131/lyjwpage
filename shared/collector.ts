@@ -26,6 +26,10 @@ export const RETIRED_COLLECTOR_JOBS = ["vercel-deployments", "vercel-metrics", "
 
 export type ActiveCollectorJobName = Exclude<CollectorJobName, (typeof RETIRED_COLLECTOR_JOBS)[number]>;
 
+export const ACTIVE_COLLECTOR_JOBS: readonly ActiveCollectorJobName[] = COLLECTOR_JOBS.filter(
+  (name): name is ActiveCollectorJobName => !(RETIRED_COLLECTOR_JOBS as readonly string[]).includes(name),
+);
+
 export function isCollectorJob(name: string): name is CollectorJobName {
   return (COLLECTOR_JOBS as readonly string[]).includes(name);
 }

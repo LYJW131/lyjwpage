@@ -2,7 +2,7 @@ import { verifyAccessJwt, type Jwk } from "@shared/access-jwt";
 
 import type { Env } from "./env";
 
-export type Permission = `ingest:${string}` | "internal:site-deployed";
+export type Permission = `ingest:${string}` | "internal:site-deployed" | "internal:collector-refresh";
 
 export type AuthResult =
   | { ok: true; clientId: string }
