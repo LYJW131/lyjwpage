@@ -174,7 +174,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   2. 再把布局标签一次性经 Service Binding `SITE_CACHE` 交给 site Worker 的 `invalidate`，5 秒超时（`workers/api/src/live-platform.ts#expireStatusTags`、`REVALIDATE_TIMEOUT_MS`）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
 - 效果在 StateHub 之外派发：`StateCore.commitIngest` 拿到 StateHub 交回的效果，交给 `dispatchIngestEffects`，后者经 `afterResponse` 放进 `ctx.waitUntil`；网络请求不占 StateHub 的执行时间，串行的提交队列不被推送和失效拖住（`workers/api/src/ingest-effects.ts#dispatchIngestEffects`、`workers/api/src/live-platform.ts#afterResponse`）。第 03 章旁白「网络请求不占 StateHub 的时间」出自这里。
-- 换歌那封上报在交给状态核心之前，由上报入口请采集 Worker 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随命令交给 StateHub 落库；采集 Worker 调不通时由 StateCore 自己补。推送和读取只用存好的这份（`shared/command-enrichment.ts#enrichCommand`、`shared/track-enrichment.ts#candidateFrom`）。
+- 换歌那封上报在交给状态核心之前，由上报入口请采集 Worker 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随命令交给 StateHub 落库；采集 Worker 调不通时命令不带补全照样提交，状态核心不查 Apple。推送和读取只用存好的这份（`shared/command-enrichment.ts#enrichCommand`、`shared/track-enrichment.ts#candidateFrom`）。
 - 各模块交回什么（workers/api/src/stores/telemetry.ts）：
   - **切应用**只交回一条 `desktop` 事件，不失效首屏：页头那一格定宽，换应用只换内容（354-355）。所以片中「切应用」不配「通知 site Worker」。
   - **换歌**交回 `listening`：StateCore 用提交时存好的补全拼出 `listening-now` 再广播（`workers/api/src/ingest-effects.ts#dispatchIngestEffect`）。只有开始或停止放歌才另失效在听那张卡的标签 `NOW_LISTENING_TAG`（telemetry.ts:392-393），换一首不失效。

@@ -15,7 +15,7 @@ Pulse 的时段详情需要额外动作：用鼠标停在泳道上，把 `[role=
 歌词不入库：本地 Worker 没有 Apple Music 凭据，`/api/lyrics` 也不走上游兜底，所以截「正在听」时把生产站的响应包一层 `ok` 直接注入（`song` 取 `listening-now-*.json` 里的 `songId`）：
 
 ```sh
-curl -s 'https://api.homepage.lyjw.llc/api/lyrics?song=1490256995' \
+curl -s 'https://lyjw.me/api/lyrics?song=1490256995' \
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.stringify({ok:true,...JSON.parse(s)})))' \
   > /tmp/lyrics-override.json
 pnpm dev:override /api/lyrics /tmp/lyrics-override.json

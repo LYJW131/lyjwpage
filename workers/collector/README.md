@@ -61,7 +61,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 - **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由本 Worker 自签
   （`shared/musickit-token.ts#issueApiDeveloperToken`，同一 isolate 里过了签发到期的中点才重签），签名配置缺了也跳过。
   列表首项的动态封面在这里查好再交给状态核心（`shared/track-enrichment.ts#enrichRecentlyPlayed`），查不出结果时
-  `motion` 留 `undefined`，状态核心再查一次，仍查不出就沿用已存的那份。封面、时长的缓存经 `shared/cache`
+  `motion` 留 `undefined`，状态核心沿用同一项已存的那份。封面、时长的缓存经 `shared/cache`
   存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`CONTAINER_TTL_MS`），稳定状态下一轮只有拉两份列表出网。
   节奏分两档：任务每分钟排期，闲时只在整 `IDLE_EVERY_MINUTES` 分钟真去拉；任一份列表变了就记下时刻（`COLLECTOR_KV`），
   之后 `ACTIVE_HOLD_MS` 内每分钟都拉，并在同一响里接着每 `ACTIVE_POLL_MS` 再拉一次单曲列表（专辑列表仍是一响一次），
@@ -95,12 +95,40 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
   预检、方法、来源判断和 CORS 头每次按这次请求现做（`src/apple-music-http.ts`），再经 `APPLE_LOOKUPS` 调 `AppleLookups`，
   所以缓存里的响应不带 CORS 头。
 - **`/api/musickit/token`**：给网页播放器按来源签 MusicKit token（`shared/musickit-token.ts#issueMusicKitToken`），
-  来源不被允许时回 403（`shared/http-origins.ts#isAllowedOrigin`），由默认 `fetch` 直接回、不进缓存。
+  由默认 `fetch` 直接回、不进缓存，规则见下文「MusicKit 令牌」。
 - **写入时补全**：`Collector.enrichTrack(music, upcomingTracks)` 查当前曲目的目录、队列里接下来几首（`shared/playing-queue.ts#PRELOAD_AHEAD`）的目录和动态封面，每段各自限时
-  （`shared/track-enrichment.ts` 的 `WRITE_BUDGET`），没查出的段记为未知，不抛错。`Collector.followUpTrack(followUp)` 立即返回，
-  在 `waitUntil` 里预热歌词，写入时有段没查出的整份重查一次，查到更多就经 `CORE.commitEnrichmentPatch` 补写。
-- Apple 的结果缓存在 `APPLE_CACHE` KV（`shared/apple-cache.ts`），和 api 绑同一个命名空间：键以 `STORAGE_PREFIX` 开头，
-  查询按 `APPLE_MUSIC_STOREFRONT` 的店面，两边这两个变量必须一致才共用得上。
+  （`shared/track-enrichment.ts` 的 `WRITE_BUDGET`），目录与队列并行、动态封面排在目录之后；某段失败或超时只丢那一段、
+  打一条带阶段与曲目的 `[enrichment]` warn，记为未知，不抛错。`Collector.followUpTrack(followUp)` 立即返回，
+  在 `waitUntil` 里预热歌词，写入时有段没查出的在新的请求状态里按 `RETRY_BUDGET` 整份重查一次（`shared/track-enrichment.ts#followUpEnrichment`），
+  查到更多就经 `CORE.commitEnrichmentPatch` 补写（按块合并，见 `shared/track-enrichment.ts#mergeEnrichment`）。
+- Apple 的结果缓存在 `APPLE_CACHE` KV（`shared/apple-cache.ts`）：键以 `STORAGE_PREFIX` 开头，查询按 `APPLE_MUSIC_STOREFRONT` 的店面。
+
+### MusicKit 令牌
+
+访客用自己的 Apple Music 订阅跟听之前，先得有一份 developer token 才能把 MusicKit JS 配起来。
+这份令牌发给**任何一个访客**，和凭据 KV 里 Mac 上报的那份私人凭据（带 music user token）
+不是一回事、不共用路径。
+
+`ALLOWED_ORIGINS` 一份名单，两道限制：
+
+1. **谁能来要令牌** —— 比请求的来源：带 `Origin` 头就看它；浏览器的同源 GET 不带 `Origin`，
+   只带 `Sec-Fetch-Site: same-origin`，这时按请求自己的源算（`shared/http-origins.ts#requestOrigin`，
+   经站点 Service Binding 转来的请求 URL 仍是站点的源）。配了名单之后两样都没有的一律拒绝。这道只是让
+   「拿一份」不那么随手，这两个头非浏览器都伪造得了。
+2. **令牌只在这些域上有效** —— 名单里写死的域签进 JWT 的 `origin` 声明，由 Apple 校验。
+   通配项（`https://*.lyjw.workers.dev`）Apple 不解析，匹配到的预览域名和 localhost **只签它自己一个**，
+   不把生产域名一起捎上；否则任何人带一句 `Origin: http://localhost:3000` 就能要走一份在
+   `lyjw.me` 上可用的令牌。
+
+同一份 origin 声明的令牌在 isolate 里复用，过了「签发 → 到期」的中点才重签；`issuedAt` 和
+`expiresAt` 一起给，站点用同一条半衰期规则决定何时再要。响应一律 `Cache-Control: no-store`。
+出错时 `{ "error": "..." }`：403 来源不对、405 方法不对、500 变量没配或私钥坏（只有自己写死
+的配置提示外带，运行时异常只进日志）。
+
+私钥与两个 ID 来自 [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) 勾了
+**MusicKit** 的密钥（放哪见下文「配置」）；`APPLE_MUSIC_PRIVATE_KEY` 是 `.p8` 全文，带不带 PEM 头尾、换行是真的还是 `\n` 都吃。
+有效期 `MUSICKIT_TOKEN_TTL_SECONDS` 不填按 `DEFAULT_TTL_SECONDS`，上限 `MAX_TTL_SECONDS`（Apple 允许的最长期限）；不取上限是因为令牌一旦被复制走，
+域名限制之外就只剩有效期这一道闸。
 
 ## COLLECTOR_KV 的键
 
@@ -147,7 +175,7 @@ Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION
 
 根目录 `pnpm dev:worker` 以多配置方式起四个 Worker（配置清单见根 `package.json` 的 `dev:worker`）：`workers/dev-router`（拿端口，按路径分发）、
 api、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档那一步跳过），
-KV 都是本地的（`LAG`、`CREDENTIALS`、`APPLE_CACHE` 和 api 共用同一个本地 id）。
+KV 都是本地的（`LAG`、`CREDENTIALS` 和上报入口共用同一个本地 id，`LAG` 还和 api 共用）。
 令牌照需要放 `workers/collector/.dev.vars`（照 `.dev.vars.example`），不放的任务直接跳过。本地不开 Workers Caching。
 
 ```sh
