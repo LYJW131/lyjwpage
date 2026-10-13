@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, chatResumePoint, createChatArchiveStore, designEndReason, designSessionEnded, readChatArchive, type ChatBubble } from "./chat-archive.ts";
+import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, chatResumePoint, createChatArchiveStore, designEndReason, designSessionEnded, proposalChoiceOpen, readChatArchive, type ChatBubble } from "./chat-archive.ts";
 
 function storage() {
   const values = new Map<string, string>();
@@ -231,4 +231,14 @@ test("cards no longer registered are dropped without losing the conversation", (
   ] }] });
   const [session] = readChatArchive(raw).sessions;
   assert.deepEqual(session.messages.map((message) => message.cards), [undefined, [{ card: "nowListening", at: 0 }], undefined, undefined]);
+});
+
+test("opening the GitHub issue form keeps Start build available until a build starts or the plan expires", () => {
+  const proposal = messages[1].proposals![0];
+  const plan = { plan: proposal.plan, token: proposal.token, expiresAt: proposal.expiresAt };
+  assert.equal(proposalChoiceOpen(plan, 0), true);
+  assert.equal(proposalChoiceOpen({ ...plan, issueOpened: true }, 0), true);
+  assert.equal(proposalChoiceOpen({ ...plan, issueOpened: true, build: proposal.build }, 0), false);
+  assert.equal(proposalChoiceOpen({ ...plan, issue: { number: 1, url: "https://github.com/LYJW131/lyjwpage/issues/1" } }, 0), false);
+  assert.equal(proposalChoiceOpen({ ...plan, issueOpened: true }, plan.expiresAt), false);
 });
