@@ -92,7 +92,7 @@ function DayDial({
   const [handX0, handY0] = polar(36, nowTurn);
   const [handX1, handY1] = polar(CENTER - 4, nowTurn);
   return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="col-start-2 row-start-1 size-32 shrink-0 self-center md:size-36 lg:row-span-3 lg:size-44" role="img" aria-label="The past 24 hours on a 24-hour dial">
+    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="col-start-2 row-start-1 size-32 shrink-0 self-center md:row-span-3 lg:size-44" role="img" aria-label="The past 24 hours on a 24-hour dial">
       <circle cx={CENTER} cy={CENTER} r={CENTER - 2} fill="none" stroke="var(--line)" />
       {Array.from({ length: 24 }, (_, hour) => {
         const major = hour % 6 === 0;
@@ -160,7 +160,7 @@ export function DigestCard({
           <p className="text-xs text-muted-foreground">Past 24 hours</p>
           <h2 className="text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
         </div>
-        <ul className={cn("col-span-2 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 lg:col-span-1", stale && "opacity-60")}>
+        <ul className={cn("col-span-2 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 md:col-span-1", stale && "opacity-60")}>
           {data.highlights.map((item) => (
             <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
               <span className="size-2 bg-(--tone)" aria-hidden />
@@ -169,7 +169,7 @@ export function DigestCard({
             </li>
           ))}
         </ul>
-        <p className="col-span-2 row-start-3 text-xs text-muted-foreground lg:col-span-1" title={`${updatedDay.format(updatedAt)} UTC+8`}>
+        <p className="col-span-2 row-start-3 text-xs text-muted-foreground md:col-span-1" title={`${updatedDay.format(updatedAt)} UTC+8`}>
           {stale ? `Not updated since ${updatedDay.format(updatedAt)}` : `by ${modelLabel(data.model)} at ${updatedTime.format(updatedAt)}`}
         </p>
         <DayDial tracks={tracks} window={pulse?.window ?? null} now={now} timezone={timezone} offsetSeconds={offsetSeconds ?? 0} />
