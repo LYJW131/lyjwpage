@@ -9,7 +9,7 @@ const baseSha = "a".repeat(40);
 const baseTree = "b".repeat(40);
 const runId = "c".repeat(32);
 const upload: BuildUpload = { baseSha, message: "feat: improve card", files: [{ path: "src/card.ts", mode: "100644", content: btoa("export const improved = true;") }], deletions: [] };
-const run = (): StoredRun => ({ state: { runId, branch: branchForRun(runId), phase: "triggered", createdAt: 1791590400000, updatedAt: 1791590400000 }, plan: { title: "Improve card", spec: "Make the public card clearer.", acceptance: ["The card is readable."], paths: ["src/card.ts"] }, account: "private-visitor", coauthor: "Private Visitor <private-visitor@example.test>", sessionUrl: "https://claude.ai/code/private-session", baseSha, uploadHash: "private-upload-hash", uploadUsed: false, uploadExpiresAt: Date.now() + 60000 });
+const run = (): StoredRun => ({ state: { runId, branch: branchForRun(runId), phase: "triggered", createdAt: 1791590400000, updatedAt: 1791590400000 }, plan: { title: "Improve card", spec: "Make the public card clearer.", acceptance: ["The card is readable."], paths: ["src/card.ts"] }, account: "private-visitor", coauthor: "Private Visitor <private-visitor@example.test>", baseSha, uploadHash: "private-upload-hash", uploadUsed: false, uploadExpiresAt: Date.now() + 60000 });
 type Entry = { path: string; type: string; mode: string; sha: string | null };
 type PullRequest = { number: number; node_id: string; html_url: string; state: string; merged: boolean; draft: boolean; body: string; updated_at: string; head: { sha: string; ref: string; repo: { full_name: string } }; base: { ref: string; repo: { full_name: string } }; user: { id: number; login: string; type: string } };
 type Call = { path: string; method: string; body: Record<string, unknown> };

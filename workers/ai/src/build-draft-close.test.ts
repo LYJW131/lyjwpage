@@ -81,7 +81,7 @@ test("the sweep keeps watching running builds and closes the draft once they tim
 test("a GitHub failure while closing retries on the next sweep", async (t) => {
   let fail = true;
   const { coordinator, alarm, closes } = setup(t, (call) => call.method === "PATCH" && fail ? Response.json({}, { status: 502 }) : undefined);
-  coordinator.failDispatch(runId, "The routine rejected the build request.", true);
+  coordinator.failDispatch(runId, "GitHub rejected the build workflow dispatch.", true);
   await coordinator.alarm();
   assert.equal(coordinator.readRun(runId)?.draftClose, undefined);
   assert.ok(alarm.at);
@@ -105,7 +105,7 @@ test("drafts that may already carry the implementation stay open for recovery", 
 
 test("a draft that no longer matches the build is left alone", async (t) => {
   const { coordinator, closes } = setup(t, (call) => call.method === "GET" && call.path.endsWith("/pulls/12") ? Response.json({ draft: false }) : undefined);
-  coordinator.failDispatch(runId, "The routine rejected the build request.", true);
+  coordinator.failDispatch(runId, "GitHub rejected the build workflow dispatch.", true);
   await coordinator.alarm();
   assert.equal(closes().length, 0);
   assert.equal(coordinator.readRun(runId)?.draftClose, "skipped");

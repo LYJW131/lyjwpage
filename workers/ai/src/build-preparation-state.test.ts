@@ -329,65 +329,13 @@ test("check updates do not hide a genuine publication failure on the same phase 
   assert.equal(state?.reason, "GitHub did not confirm the implementation.");
 });
 
-test("legacy running uploads remain consumable without inventing a preparation record", () => {
-  const { coordinator, run } = fixture();
-  const legacyId = "2".repeat(32);
-  const legacy: StoredRun = { ...run, callbackOrigin: undefined, state: { ...run.state, runId: legacyId, branch: branchForRun(legacyId), phase: "running" } };
-  assert.equal(coordinator.reserveRun(legacy, "legacy", Date.now() + 60_000), "ok");
-  assert.equal(coordinator.progress(legacyId, "token-hash", "Testing"), true);
-  assert.equal(coordinator.claimUpload(legacyId, "token-hash")?.state.phase, "uploaded");
-  assert.equal(coordinator.findPlanRun("legacy", 42)?.state.runId, legacyId);
-});
-
-test("a validated legacy upload can enter the shared draft publication flow exactly once", () => {
-  const { coordinator } = fixture({ callbackOrigin: undefined });
-  assert.equal(coordinator.setLegacyPrepared(runId, planCommitSha, pr), false);
-  assert.ok(coordinator.claimUpload(runId, "token-hash"));
-  assert.equal(coordinator.setLegacyPrepared(runId, planCommitSha, pr), false);
-  coordinator.updateRun(runId, { phase: "validated" });
-  assert.equal(coordinator.setLegacyPrepared(runId, planCommitSha, pr), true);
-  assert.equal(coordinator.setLegacyPrepared(runId, planCommitSha, pr), false);
-  const prepared = coordinator.readRun(runId)!;
-  assert.equal(prepared.planCommitSha, planCommitSha);
-  assert.deepEqual(prepared.state.pr, pr);
-  assert.equal(prepared.state.phase, "validated");
-  assert.equal(prepared.uploadUsed, true);
-  assert.equal(coordinator.claimDispatch(runId), false);
-  assert.equal(coordinator.setImplementationHead(runId, implementationHeadSha, "Verified publication body."), true);
-  assert.equal(coordinator.updateRun(runId, { phase: "pr_open", pr: { ...pr, headSha: implementationHeadSha } })?.phase, "pr_open");
-});
-
-test("legacy preparation rejects new runs, unused uploads and terminal runs", () => {
-  const current = fixture();
-  dispatch(current.coordinator);
-  assert.ok(current.coordinator.claimUpload(runId, "token-hash"));
-  current.coordinator.updateRun(runId, { phase: "validated" });
-  assert.equal(current.coordinator.setLegacyPrepared(runId, planCommitSha, pr), false);
-  const unused = fixture({ callbackOrigin: undefined });
-  unused.coordinator.updateRun(runId, { phase: "validated" });
-  assert.equal(unused.coordinator.setLegacyPrepared(runId, planCommitSha, pr), false);
-  for (const phase of ["failed", "blocked", "timeout", "closed", "merged"] as const) {
-    const { coordinator } = fixture({ callbackOrigin: undefined });
-    assert.ok(coordinator.claimUpload(runId, "token-hash"));
-    coordinator.updateRun(runId, { phase });
-    assert.equal(coordinator.setLegacyPrepared(runId, planCommitSha, pr), false);
-    assert.equal(coordinator.readRun(runId)?.state.pr, undefined);
-  }
-});
-
-test("legacy preparation verifies the draft identity and cannot replace an existing PR or head", () => {
-  const { coordinator } = fixture({ callbackOrigin: undefined });
-  assert.ok(coordinator.claimUpload(runId, "token-hash"));
-  coordinator.updateRun(runId, { phase: "validated" });
-  for (const candidate of [{ ...pr, draft: false }, { ...pr, headSha: baseSha }, { ...pr, number: -1 }, { ...pr, url: "https://github.com/someone/fork/pull/91" }]) {
-    assert.equal(coordinator.setLegacyPrepared(runId, planCommitSha, candidate), false);
-  }
-  assert.equal(coordinator.setLegacyPrepared(runId, "invalid", pr), false);
-  assert.equal(coordinator.setLegacyPrepared(runId, baseSha, { ...pr, headSha: baseSha }), false);
-  coordinator.updateRun(runId, { pr: { ...pr, headSha: implementationHeadSha } });
-  assert.equal(coordinator.setLegacyPrepared(runId, planCommitSha, pr), false);
-  assert.equal(coordinator.readRun(runId)?.planCommitSha, undefined);
-  assert.equal(coordinator.readRun(runId)?.state.pr?.headSha, implementationHeadSha);
+test("a run that was never prepared and dispatched accepts no workflow updates", () => {
+  const { coordinator } = fixture({ callbackOrigin: undefined, state: { runId, branch: branchForRun(runId), phase: "running", createdAt: Date.now(), updatedAt: Date.now() } });
+  assert.equal(coordinator.progress(runId, "token-hash", "Testing"), false);
+  assert.equal(coordinator.canAddScreenshot(runId, "token-hash"), false);
+  assert.equal(coordinator.blockRun(runId, "token-hash", "Stopped."), false);
+  assert.equal(coordinator.claimUpload(runId, "token-hash"), null);
+  assert.equal(coordinator.readRun(runId)?.uploadUsed, false);
 });
 
 test("a merge or close still lands after the head moves past the implementation commit", async () => {

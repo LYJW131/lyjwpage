@@ -20,7 +20,7 @@ const PROJECT_DOCS = {
   ingressRules: { path: "workers/ingress/AGENTS.md", note: "Ingest Worker invariants and what a new report source must change together (section 新增来源要一起做)" },
   apiWorker: { path: "workers/api/README.md", note: "API Worker (state core): endpoints, StateHub, WebSocket push, cron and public status reads" },
   aiWorker: { path: "workers/ai/README.md", note: "AI Worker: the Talk to God chat, model routing, quotas, site tools and public MCP" },
-  visitorBuild: { path: "docs/build-routine.md", note: "Visitor collaboration: design sessions, signed plans, allowed paths, routine uploads, build status and security boundaries" },
+  visitorBuild: { path: "docs/build-routine.md", note: "Visitor collaboration: design sessions, signed plans, allowed paths, the GitHub Actions build workflow with plan review, build status and security boundaries" },
   ingressWorker: { path: "workers/ingress/README.md", note: "Ingest Worker: reporter auth through Cloudflare Access, validation, splitting reports" },
   collectorWorker: { path: "workers/collector/README.md", note: "Collector Worker: scheduled pulls from Apple Music, GitHub, Cloudflare and other services" },
   macHub: { repo: HUB_REPO, path: "README.md", note: "MacTelemetryHub, the macOS/iOS app that reports LYJW's Mac and iPhone (foreground app, music, chargers, activity rings)" },

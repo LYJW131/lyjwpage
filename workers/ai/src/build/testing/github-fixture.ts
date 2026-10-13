@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { BUILD_REPO, branchForRun } from "@shared/build-routine";
+import { ACTIONS_OIDC_JWKS_URL } from "../actions-oidc";
+import type { ActionsOidcFixture } from "./actions-oidc";
 
 export type GithubFixtureCall = { path: string; method: string; headers: Headers; body: Record<string, unknown> | null; auth?: string };
 export const FIXTURE_PLAN_SHA = "d".repeat(40);
@@ -19,6 +21,7 @@ export function fixturePullRequest(runId: string, headSha: string, patch: Record
 export function buildGithubFixture(options: {
   runId: string; baseSha: string; baseTree: string; headSha: string;
   override?: (call: GithubFixtureCall) => Response | undefined;
+  oidc?: ActionsOidcFixture;
 }) {
   const repoPath = `/repos/${BUILD_REPO}`;
   const calls: GithubFixtureCall[] = [];
@@ -37,7 +40,9 @@ export function buildGithubFixture(options: {
     pr = fixturePullRequest(options.runId, FIXTURE_PLAN_SHA);
   }
 
+  const jwks = options.oidc?.serve();
   const fetcher: typeof fetch = async (input, init) => {
+    if (jwks && String(input) === ACTIONS_OIDC_JWKS_URL) return jwks(input, init);
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
     const call: GithubFixtureCall = { path: url.pathname + url.search, method: init?.method ?? "GET", headers, auth: headers.get("Authorization") ?? undefined, body: init?.body ? JSON.parse(String(init.body)) : null };
@@ -53,13 +58,13 @@ export function buildGithubFixture(options: {
     }
     if (url.hostname !== "api.github.com") {
       if (url.hostname === "github.com" && url.pathname === "/login/oauth/access_token") return Response.json({ access_token: "oauth-fixture" });
-      if (url.pathname === "/fire") return Response.json({ claude_code_session_url: "https://claude.ai/code/session_01Fixture" });
       assert.fail(`Unexpected fixture host: ${url.hostname}`);
     }
     const path = url.pathname;
     const body = call.body!;
     if (path === "/user") return Response.json({ id: 1, login: "visitor", name: "Visitor" });
     if (path.startsWith("/applications/") && call.method === "DELETE") return new Response(null, { status: 204 });
+    if (path === `${repoPath}/dispatches` && call.method === "POST") return new Response(null, { status: 204 });
     if (path === `${repoPath}/installation`) return Response.json({ id: 1, permissions: { checks: "read", statuses: "read" } });
     if (path === "/app/installations/1/access_tokens") return Response.json({ token: "installation-fixture" });
     if (path === `${repoPath}/git/ref/heads/main`) return Response.json({ ref: "refs/heads/main", object: { sha: options.baseSha } });

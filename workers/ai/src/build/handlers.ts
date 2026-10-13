@@ -1,15 +1,15 @@
 import * as Sentry from "@sentry/cloudflare";
-import { BUILD_CLOSED_PHASES, BUILD_PROGRESS_PATH, BUILD_RECONCILE_MS, BUILD_SCREENSHOT_PATH, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, BUILD_UPLOAD_PATH, branchForRun, newRunId, type BuildFireResult } from "@shared/build-routine";
-import { anthropicFetch } from "../chat/egress";
+import { BUILD_CLOSED_PHASES, BUILD_PROGRESS_LIMITS, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, branchForRun, newRunId, type BuildFireResult } from "@shared/build-routine";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
 
-import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, GithubBuildApi, installationApi, reconcileBuild } from "./github";
+import { ActionsOidcUnavailableError, verifyActionsToken } from "./actions-oidc";
+import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, GithubBuildApi, GithubRequestError, installationApi, reconcileBuild } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
-import { fail, readBoundedBytes, readBoundedJson } from "./http";
+import { fail, readBoundedBytes } from "./http";
 import { hashToken, signBuildToken, uploadTokenForRun, verifyBuildToken } from "./token";
 import { parseBuildUpload } from "./validation";
 import { applyGithubWebhook, outsideBuildBranches, verifyGithubWebhook } from "./webhook";
@@ -17,10 +17,7 @@ import { applyGithubWebhook, outsideBuildBranches, verifyGithubWebhook } from ".
 type StatusPayload = { kind: "status"; runId: string; expiresAt: number };
 const noStore = { "Cache-Control": "no-store" };
 const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-const bearer = (request: Request) => /^Bearer ([A-Za-z0-9_-]{32,128})$/.exec(request.headers.get("Authorization") ?? "")?.[1] ?? null;
 const validRunId = (id: string | null): id is string => !!id && /^[a-f0-9]{32}$/.test(id);
-const BUILD_BLOCK_REASON_CHARS = 600;
-const validSessionUrl = (url: string) => /^https:\/\/claude\.ai\/code\/[\w-]{1,200}$/.test(url);
 
 type GithubVisitor = { account: string; userId: number; name: string | null };
 
@@ -51,26 +48,21 @@ async function dispatchBuild(runId: string, env: Env, fetcher: typeof fetch): Pr
   let dispatched = false;
   try {
     const run = await coordinator.readRun(runId);
-    if (!run?.callbackOrigin || !run.state.pr || !run.planCommitSha || !env.BUILD_SESSION_SECRET || !env.ROUTINE_FIRE_URL || !env.ROUTINE_FIRE_TOKEN) return;
-    const uploadToken = await uploadTokenForRun(runId, env.BUILD_SESSION_SECRET);
-    if (await hashToken(uploadToken) !== run.uploadHash) {
-      await coordinator.updateRun(runId, { phase: "failed", reason: "Build authorization changed; the routine was not started." });
+    if (!run?.callbackOrigin || !run.state.pr || !run.planCommitSha || !env.BUILD_SESSION_SECRET) return;
+    if (await hashToken(await uploadTokenForRun(runId, env.BUILD_SESSION_SECRET)) !== run.uploadHash) {
+      await coordinator.updateRun(runId, { phase: "failed", reason: "Build authorization changed; the build workflow was not started." });
       return;
     }
+    const api = await installationApi(env, fetcher);
     if (!await coordinator.claimDispatch(runId)) return;
     dispatched = true;
-    const response = await (anthropicFetch(env) ?? fetcher)(env.ROUTINE_FIRE_URL, {
-      method: "POST", headers: { Authorization: `Bearer ${env.ROUTINE_FIRE_TOKEN}`, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-      body: JSON.stringify({ text: JSON.stringify({ runId, plan: run.plan, coauthor: run.coauthor, baseSha: run.baseSha, branch: run.state.branch, prUrl: run.state.pr.url, planCommitSha: run.planCommitSha, uploadToken, uploadUrl: `${run.callbackOrigin}${BUILD_UPLOAD_PATH}?runId=${runId}`, progressUrl: `${run.callbackOrigin}${BUILD_PROGRESS_PATH}?runId=${runId}`, screenshotUrl: `${run.callbackOrigin}${BUILD_SCREENSHOT_PATH}?runId=${runId}` }) }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    const confirmation = await readBoundedJson(response, 16_384);
-    const sessionUrl = object(confirmation)?.claude_code_session_url;
-    if (!response.ok) await coordinator.failDispatch(runId, "The routine rejected the build request. The pull request remains a draft.", true);
-    else if (typeof sessionUrl !== "string" || !validSessionUrl(sessionUrl)) await coordinator.failDispatch(runId, "The routine did not confirm the build request; its result is unknown. The pull request remains a draft.");
-    else await coordinator.setSessionUrl(runId, sessionUrl);
-  } catch {
-    if (dispatched) await coordinator.failDispatch(runId, "Build dispatch was not confirmed; the routine result is unknown. The pull request remains a draft.");
+    await api.repo("/dispatches", "POST", { event_type: "build", client_payload: { runId, planCommitSha: run.planCommitSha, baseSha: run.baseSha, prNumber: run.state.pr.number, callbackOrigin: run.callbackOrigin } });
+  } catch (error) {
+    if (!dispatched) return;
+    const rejected = error instanceof GithubRequestError && error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
+    await coordinator.failDispatch(runId, rejected
+      ? "GitHub rejected the build workflow dispatch. The pull request remains a draft."
+      : "Build dispatch was not confirmed; the build workflow result is unknown. The pull request remains a draft.", rejected);
   }
 }
 
@@ -86,7 +78,7 @@ async function prepareBuild(runId: string, env: Env, fetcher: typeof fetch, ctx?
   } catch (error) {
     await coordinator.failPreparation(runId, lease, error instanceof BuildBlockedError
       ? error.message
-      : "GitHub did not confirm the draft pull request. Preparation will be checked again; the routine was not started.", error instanceof BuildBlockedError);
+      : "GitHub did not confirm the draft pull request. Preparation will be checked again; the build workflow was not started.", error instanceof BuildBlockedError);
     return;
   } finally {
     await coordinator.releasePreparation(runId, lease);
@@ -98,7 +90,7 @@ async function prepareBuild(runId: string, env: Env, fetcher: typeof fetch, ctx?
 
 export async function handleBuild(request: Request, env: Env, fetcher: typeof fetch = fetch, ctx?: BuildContext): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
-  if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR || !env.ROUTINE_FIRE_URL || !env.ROUTINE_FIRE_TOKEN || !env.GITHUB_APP_PRIVATE_KEY || !env.GITHUB_APP_CLIENT_SECRET) return fail(503, "Builds are unavailable right now.");
+  if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR || !env.GITHUB_APP_PRIVATE_KEY || !env.GITHUB_APP_CLIENT_SECRET) return fail(503, "Builds are unavailable right now.");
   const data = object(await readJsonBody(request, BUILD_TOKEN_MAX_CHARS + 5000));
   if (!data || typeof data.planToken !== "string" || typeof data.code !== "string" || !/^[\w.-]{1,512}$/.test(data.code) || typeof data.codeVerifier !== "string" || !/^[A-Za-z0-9._~-]{43,128}$/.test(data.codeVerifier)) return fail(400, "A signed plan and GitHub sign-in are required.");
   const plan = await readPlan(env, data.planToken);
@@ -134,7 +126,7 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
     return buildResponse((await coordinator.readRun(runId))!, env);
   } catch {
     if (reserved) {
-      await coordinator.updateRun(runId, { reason: "The draft pull request could not be confirmed; the routine was not started." });
+      await coordinator.updateRun(runId, { reason: "The draft pull request could not be confirmed; the build workflow was not started." });
       return buildResponse((await coordinator.readRun(runId))!, env);
     }
     return fail(502, "The build could not be started.");
@@ -156,7 +148,7 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
   let run = await coordinator.readRun(runId);
   if (!run) return fail(404, "Build not found.");
-  if (!run.dispatchAttempted && run.callbackOrigin && run.state.phase === "triggered" && env.GITHUB_APP_PRIVATE_KEY && env.ROUTINE_FIRE_URL && env.ROUTINE_FIRE_TOKEN) {
+  if (!run.dispatchAttempted && run.callbackOrigin && run.state.phase === "triggered" && env.GITHUB_APP_PRIVATE_KEY) {
     await prepareBuild(runId, env, fetcher, ctx);
     run = (await coordinator.readRun(runId))!;
   }
@@ -189,14 +181,30 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
   return Response.json(run.state, { headers: noStore });
 }
 
+// 鉴权后换回该 run 原有的上传令牌哈希：一次性上传、停下即作废、截图只在上传前收，仍全由 coordinator 判定。
+async function workflowUploadHash(request: Request, env: Env, fetcher: typeof fetch, invalid: string): Promise<{ runId: string; hash: string } | Response> {
+  const runId = new URL(request.url).searchParams.get("runId");
+  const token = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  if (!validRunId(runId) || !token || !env.BUILD_SESSION_SECRET) return fail(401, invalid);
+  const run = await env.BUILD_COORDINATOR!.getByName("global").readRun(runId);
+  if (!run?.callbackOrigin) return fail(401, invalid);
+  try {
+    if (!await verifyActionsToken(token, run.callbackOrigin, fetcher)) return fail(401, invalid);
+  } catch (error) {
+    if (error instanceof ActionsOidcUnavailableError) return fail(503, "Build authorization cannot be checked right now.");
+    throw error;
+  }
+  return { runId, hash: await hashToken(await uploadTokenForRun(runId, env.BUILD_SESSION_SECRET)) };
+}
+
 export async function handleBuildUpload(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
-  if (!env.BUILD_COORDINATOR || !env.GITHUB_APP_PRIVATE_KEY) return fail(503, "Build uploads are unavailable.");
-  const runId = new URL(request.url).searchParams.get("runId");
-  const token = bearer(request);
-  if (!validRunId(runId) || !token) return fail(401, "Invalid upload authorization.");
+  if (!env.BUILD_COORDINATOR || !env.BUILD_SESSION_SECRET || !env.GITHUB_APP_PRIVATE_KEY) return fail(503, "Build uploads are unavailable.");
+  const authorized = await workflowUploadHash(request, env, fetcher, "Invalid upload authorization.");
+  if (authorized instanceof Response) return authorized;
+  const { runId } = authorized;
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
-  let run = await coordinator.claimUpload(runId, await hashToken(token));
+  const run = await coordinator.claimUpload(runId, authorized.hash);
   if (!run) return fail(401, "Upload authorization was used or expired.");
   let publicationState = run.state;
   let upload;
@@ -212,12 +220,6 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
     const api = await installationApi(env, fetcher);
     const baseTree = await validateBuildBase(api, run, upload);
     publicationState = (await coordinator.updateRun(runId, { phase: "validated" }))!;
-    if (!run.planCommitSha && !run.callbackOrigin) {
-      const prepared = await prepareBuildPullRequest(api, run);
-      if (!await coordinator.setLegacyPrepared(runId, prepared.planCommitSha, prepared.pr)) throw new Error("The build draft could not be recorded.");
-      run = (await coordinator.readRun(runId))!;
-      publicationState = run.state;
-    }
     const pr = await createBuildPullRequest(api, run, upload, baseTree, async (sha, body) => {
       if (!await coordinator.setImplementationHead(runId, sha, body)) throw new Error("The implementation commit could not be recorded.");
     });
@@ -239,17 +241,16 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
   }
 }
 
-export async function handleBuildProgress(request: Request, env: Env): Promise<Response> {
+export async function handleBuildProgress(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
-  if (!env.BUILD_COORDINATOR) return fail(503, "Build progress is unavailable.");
-  const runId = new URL(request.url).searchParams.get("runId");
-  const token = bearer(request);
-  if (!validRunId(runId) || !token) return fail(401, "Invalid progress authorization.");
+  if (!env.BUILD_COORDINATOR || !env.BUILD_SESSION_SECRET) return fail(503, "Build progress is unavailable.");
+  const authorized = await workflowUploadHash(request, env, fetcher, "Invalid progress authorization.");
+  if (authorized instanceof Response) return authorized;
+  const { runId, hash } = authorized;
   const data = object(await readJsonBody(request, 2048));
   const blocked = data?.blocked === true;
-  if (!data || typeof data.message !== "string" || !data.message.trim() || data.message.length > (blocked ? BUILD_BLOCK_REASON_CHARS : 200)) return fail(400, "Invalid progress message.");
+  if (!data || typeof data.message !== "string" || !data.message.trim() || data.message.length > (blocked ? BUILD_PROGRESS_LIMITS.blockedChars : BUILD_PROGRESS_LIMITS.messageChars)) return fail(400, "Invalid progress message.");
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
-  const hash = await hashToken(token);
   const accepted = blocked
     ? await coordinator.blockRun(runId, hash, `The builder stopped without uploading: ${data.message.trim()}`)
     : await coordinator.progress(runId, hash, data.message.trim());
@@ -257,14 +258,13 @@ export async function handleBuildProgress(request: Request, env: Env): Promise<R
 }
 
 // 截图在上传前提交、随上传令牌失效；对象按内容寻址进 R2 图片桶，PR 开出后由 App 一次评论出来。
-export async function handleBuildScreenshot(request: Request, env: Env): Promise<Response> {
+export async function handleBuildScreenshot(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
   if (request.method !== "POST") return fail(405, "Method not allowed.");
-  if (!env.BUILD_COORDINATOR || !env.IMAGES) return fail(503, "Build screenshots are unavailable.");
-  const runId = new URL(request.url).searchParams.get("runId");
-  const token = bearer(request);
-  if (!validRunId(runId) || !token) return fail(401, "Invalid screenshot authorization.");
+  if (!env.BUILD_COORDINATOR || !env.BUILD_SESSION_SECRET || !env.IMAGES) return fail(503, "Build screenshots are unavailable.");
+  const authorized = await workflowUploadHash(request, env, fetcher, "Invalid screenshot authorization.");
+  if (authorized instanceof Response) return authorized;
+  const { runId, hash } = authorized;
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
-  const hash = await hashToken(token);
   if (!await coordinator.canAddScreenshot(runId, hash)) return fail(409, "Screenshot authorization was used or expired, or the screenshot limit was reached.");
   let shot;
   try { shot = parseScreenshot(await readJsonBody(request, SCREENSHOT_BODY_BYTES)); }

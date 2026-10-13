@@ -282,7 +282,7 @@
 | 7.9–9.7 | 工具：8:1 Haiku 调 `get_site_status`，经 `PUBLIC_STATUS` 下到 api · PublicStatus，8:2 `listening/now` 回来，注「和浏览器看到的同一份」；9:0 右上外部 AI 客户端经 `POST /mcp` 接进同一张 `SITE_TOOLS`。旁白 `n4` | 8:1 气动管；8:2 灯；9:0 叮、9:1 灯；9:2 甩镜头 |
 | 9.7–11.3 | 回到卡片：10:0 回复（HAIKU · SMALL FRY）连着一张在听卡；10:1 盖 SEAL，引线注「盖章：下一轮只认盖过章的历史」；10:3 第二句「给在听卡加个歌词按钮」，旧消息滚上去；11:0 分隔线 DESIGN SESSION · ARCHITECT TAKES OVER | 10:0 翻面；10:1 印章；10:3 纸滑；11:0 落地一声，暖铃唱信封主题 |
 | 11.3–13.5 | 往下到只读沙盒（Claude Managed Agents）：Opus · Architect，11:2 从 LYJW131/lyjwpage 匿名克隆；read、glob、grep 打勾，write、edit 打叉；网络只放行 github.com；12:0 ask_visitor 出题，12:1 访客选第一项；12:2 propose_build 出计划卡（标题、规格与验收、预计路径，Open issue / Start build）；13:0 先展开 GitHub 授权说明并接受，13:1 点 Start build。旁白 `n5` | 11:2 分叉声；12:0、12:1 叮；12:2 翻面；13:0 钥匙；13:1 灯 |
-| 13.5–15.3 | 往下到 main 线：从 HEAD 弯出构建分支 `claude/build-<runId>`；13:3 计划提交 `builds/<runId>.md`；14:0 草稿 PR；routine · Claude Code（不持有推送凭据）14:1 上传，注「上传改动，Worker 校验后提交」，14:2 实现提交；14:3「审查只作参考」；15:0「合不合并：站长决定」。旁白 `n6` | 13:3 叮；14:0 灯；14:1 气动管；14:2、14:3 叮 |
+| 13.5–15.3 | 往下到 main 线：从 HEAD 弯出构建分支 `claude/build-<runId>`；13:3 计划提交 `builds/<runId>.md`；14:0 草稿 PR；Actions · Claude Code（不持有写凭据）14:1 上传，注「上传改动，Worker 校验后提交」，14:2 实现提交；14:3「审查只作参考」；15:0「合不合并：站长决定」。旁白 `n6` | 13:3 叮；14:0 灯；14:1 气动管；14:2、14:3 叮 |
 | 15.3–16 | 分支、PR 和标注退掉，网格淡掉，镜头落到 `FIN`：只剩 main 线、提交圆点和 HEAD | 15:1 甩镜头；15:3 吸一口气，收在 A7sus4，交给第 10 章 0:0 的 boom |
 
 | 键 | 小节 | 中文 | English |
