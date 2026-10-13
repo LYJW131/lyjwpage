@@ -4,7 +4,7 @@
 
 塑造本项目做法的外部来源：文章、演讲、仓库、官方文档。每条写它是什么、我们从中取了什么、落在哪些文件。采用了新的外部做法就在对应主题下追加一条；落地处变了（文件改名、规则删掉、评估结论翻转）同一提交里改这里。只引用、没取任何做法的链接不进来，留在引用它的文档里。
 
-状态：**采用**（已落进仓库）、**部分采用**、**待定**（评估过，站主还没定落哪几条）、**不采用**（评估过，写明为什么，免得反复重评）。
+状态：**采用**（已落进仓库）、**部分采用**、**待定**（评估过，还没落进仓库）、**不采用**（评估过，写明为什么，免得反复重评）。
 
 ## Agent 编排与定时自动化
 
@@ -37,10 +37,10 @@
   - 取了什么：少写硬约束，去掉互相冲突的指令，skill 当轻量指南。
   - 状态：采用。落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「参考」，是写和改 skill 的依据。
 - **[mattpocock/skills](https://github.com/mattpocock/skills)**（Matt Pocock）
-  - 是什么：约 30 个通用工程 skill，主线是面谈 → 规格 → 拆票 → TDD → 双轴评审 → 复盘。
+  - 是什么：一组通用工程 skill，主线是面谈 → 规格 → 拆票 → TDD → 双轴评审 → 复盘。
   - 取了什么：从 `diagnosing-bugs` 借排查纪律，先造一条能稳定复现症状的命令，再列可证伪的假设；从 `git-guardrails-claude-code` 借禁区做成钩子；`writing-for-agents` 的写法要点先按 Anthropic 最新文档核对，只并入一致的部分。
   - 不借：先问透的 grilling，和本项目偏行动的规矩冲突；规格与拆票依赖 issue 跟踪器，本项目用线程；PR 模板站主不要。
-  - 状态：部分采用。
+  - 状态：待定。站主选了排查纪律、禁区钩子和核对过的写法要点，落地在 PR #256，它合并时同一提交把这里改成采用、补上落点。
 
 ## 模型选择与子代理
 
@@ -77,22 +77,68 @@
 - **[Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/)**（Cloudflare 文档）
   - 是什么：DO 和普通 Worker 怎么分工。
   - 取了什么：依赖旧状态、要与原子更新一起做的计算留在 DO；参数处理、展示计算、第三方请求等放到普通 Worker。
-  - 状态：采用。落在 [do-execution-audit.md](./do-execution-audit.md)。
+  - 状态：采用。现状落在 [state-storage.md](./state-storage.md)（`StateHub` 只做串行合并与公开读批次，取数和展示在普通 Worker）；取舍依据见审计快照 [do-execution-audit.md](./do-execution-audit.md)。
 - **[Workers Builds 的 GitHub 集成](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/)** 与 **[Preview 的 Service Binding](https://developers.cloudflare.com/workers/previews/resources/#service-bindings)**（Cloudflare 文档）
   - 是什么：Worker 原生 Git 部署，以及分支预览里的绑定行为。
   - 取了什么：Worker 只走 Workers Builds，不在 Actions 里发布；预览的 Service Binding 指向目标 Worker 的生产部署，所以分支上试新后端要走 Worker 分支预览。
-  - 状态：采用。落在 [workers-builds.md](./workers-builds.md)。
+  - 另取：Workers Builds 的新版 Previews 才会在 PR 上贴预览地址，而 `preview_urls` 不写默认关，所以站点显式打开。
+  - 状态：采用。落在 [workers-builds.md](./workers-builds.md) 与 [wrangler.jsonc](../wrangler.jsonc) 的 `preview_urls`。
+- **[Workers best practices：Worker 之间用 Service Binding](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/#use-service-bindings-for-worker-to-worker-communication)**（Cloudflare 文档）
+  - 是什么：Worker 互调的推荐方式。
+  - 取了什么：站点域名上的 `/api/*` 按数据归属分流，后端一律经 Service Binding 原样转交，不跨域 `fetch`，因为跨域会改写 `CF-Connecting-IP`、让按 IP 的限流失效；浏览器因此只连站点一个域名。
+  - 状态：采用。落在根 [AGENTS.md](../AGENTS.md)「禁区」与 [site-policy.ts](../src/lib/site-policy.ts) 的 `classifyGatewayRequest`。
+- **[Workers Caching 的缓存键](https://developers.cloudflare.com/workers/cache/cache-keys/)**（Cloudflare 文档）
+  - 是什么：Worker 版本 ID 默认是缓存键的一部分，`cross_version_cache` 要显式打开。
+  - 取了什么：解释了为什么每次部署后首页从空缓存开始；不开 `cross_version_cache`，改成没有快照的卡按降级信封渲染、那份首页 `no-store`。
+  - 状态：采用。落在 [state-storage.md](./state-storage.md) 首屏一节与 [card-boundary.tsx](../src/components/card-boundary.tsx)。
+- **Cloudflare Access 的 Instant Auth（`auto_redirect_to_identity`）**（Cloudflare 控制台设置，讨论里没留链接）
+  - 是什么：只允许一种登录方式时跳过选择页，直接跳到身份提供方。
+  - 取了什么：站点分支预览只留「Cloudflare account members」一种登录方式并打开它，点开预览直接登录。
+  - 状态：采用。落在 [ops-facts.md](./ops-facts.md) 的站点 Preview Access 条目。
+- **[Workers Observability](https://developers.cloudflare.com/workers/observability/)** 与 Workers Issues、Web Analytics（Cloudflare 文档）
+  - 是什么：Cloudflare 自带的报错分组、日志与 Web Vitals。
+  - 取了什么：评估了能否完全替代 Sentry：心跳与在线条自建、报错数取 Observability、Vitals 取 Web Analytics、浏览器报错经 `/relay` 进 Worker 日志。
+  - 状态：待定。PR #198 是草稿，站主记作长期待办；在那之前线上排查仍以根 [AGENTS.md](../AGENTS.md)「排查线上错误」的 Sentry 为准。
 - **[Durable Object 的 transfer 迁移](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/#transfer-migration)**（Cloudflare 文档）
   - 是什么：把 DO 类从一个 Worker 转到另一个。
   - 取了什么：聊天 DO 迁到 AI Worker 时的有序切换。
   - 状态：采用。落在 [ai-worker-migration.md](./ai-worker-migration.md)。
 - **[Workers KV Instant](https://blog.cloudflare.com/workers-kv-instant/)**（Cloudflare 博客）
   - 是什么：KV 的即时一致模式。
-  - 状态：不采用。每个命名空间每秒只能写一次、按次计费的写入很贵、也没有事务；`LAG` 的写入量和并发都不合适，实时层仍留在 DO。结论与数据见项目记忆 [kv-instant-evaluation](../.claude/memory/kv-instant-evaluation.md)。
+  - 状态：不采用，实时层仍留在 DO。评估时的限制、价格和重新评估的条件只记在项目记忆 [kv-instant-evaluation](../.claude/memory/kv-instant-evaluation.md)，平台调整后按那里的条件重评。
 
-## 前端框架
+## 密钥管理
 
+- **[Infisical](https://infisical.com/pricing)**（及其 [Cloudflare Workers 同步](https://infisical.com/docs/integrations/secret-syncs/cloudflare-workers)）
+  - 是什么：开源的密钥管理平台，可自建或托管。
+  - 状态：不采用。一个人的仓库用不上免费档缺的轮换、审计与权限；它会多一个持有全部密钥的第三方；Cloudflare 读不回已有 Secret，要全部重灌；分支预览的 Secret、Builds 变量和别处的凭据它也管不到。密钥清单仍以 [ops-facts.md](./ops-facts.md) 为准，灌 Secret 走 [lyjwpage-mac-session](../.claude/skills/lyjwpage-mac-session/SKILL.md)。
+
+## 前端与工具链
+
+- **[TypeScript 7.0 RC 公告](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc/)**（Microsoft）与 **[Nx 的 TypeScript 7 指南](https://nx.dev/docs/kb/typescript-7)**
+  - 是什么：Go 实现的原生 TypeScript 编译器，以及迁移办法。
+  - 取了什么：`tsc` 换成 TypeScript 7；typescript-eslint 还要旧的 JS API，所以按指南两版并装；Worker 的 tsconfig 去掉 7 不再支持的 `baseUrl`。
+  - 状态：采用。落在根 [AGENTS.md](../AGENTS.md)「项目入口与验证」的 `typescript` 别名说明与根 `package.json`。
 - **[React Compiler](https://react.dev/learn/react-compiler)**（React 文档）
   - 是什么：编译期自动记忆化。
   - 取了什么：站点构建经 `@vitejs/plugin-react` 的 `reactCompilerPreset` 接入。
   - 状态：采用。落在 [vite.config.ts](../vite.config.ts)。
+- **[markdown-cjk-friendly](https://github.com/tats-u/markdown-cjk-friendly)**（`remark-cjk-friendly`）
+  - 是什么：修正 CommonMark 在中日韩标点旁不认 `**` 收尾的 remark 插件。
+  - 取了什么：对话里「？」后紧跟中文的加粗会原样显示星号，接上它和配套的删除线插件。
+  - 状态：采用。落在 [chat-markdown-plugins.ts](../src/lib/chat-markdown-plugins.ts)。
+
+## 交互与文案参照
+
+- **ChatGPT 的聊天输出**（[chatgpt.com](https://chatgpt.com)，在站主的浏览器里实测，没有文章）
+  - 是什么：它不在回答里塞 HTML，而是让模型挑组件、用自家设计系统内联画出数字卡、图表、时间线，只有要跑逻辑的部分进隐藏沙箱。
+  - 取了什么：首页对话的图示改成站点原生组件，HTML 沙箱只作兜底；预览卡固定尺寸、可重来、可全屏，切换视图不卸载。
+  - 状态：采用。落在 [chat-visual.tsx](../src/components/chat-visual.tsx) 与 [chat-html-preview.tsx](../src/components/chat-html-preview.tsx)。
+- **Claude 界面的 thinking 提示**（站主点名参照，没有文章）
+  - 是什么：一道高光从左往右扫过的「思考中」标签。
+  - 取了什么：对话等待时显示 `THINKING` 扫光，模型流出思考时可展开。
+  - 状态：采用。落在 [god-chat.tsx](../src/components/god-chat.tsx)。
+- **Apple 中国官网的产品标语**（站主给的截图，没有链接）
+  - 是什么：短、笃定、具体的中文标语写法。
+  - 取了什么：摘要卡标题写成 3 到 5 个汉字的标语口吻。试过的书法字体被站主否掉，没有保留。
+  - 状态：采用。落在 [compose.ts](../workers/ai/src/digest/compose.ts) 的提示词。
