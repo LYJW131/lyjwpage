@@ -8,6 +8,7 @@ import { readAppleMusicCredentials } from "@shared/apple-music-auth";
 import { cached, get, put } from "@shared/cache";
 import { enrichRecentlyPlayed } from "@shared/track-enrichment";
 import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { explain, ok, settings, skipMissing, type Job } from "../job";
 import { epochMinute } from "../schedule";
@@ -307,7 +308,7 @@ export const appleRecentJob: Job = {
           if (reply.traced) await put(LAST_CHANGE_KEY, Date.now(), ACTIVE_HOLD_MS);
           return reply;
         },
-        wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        wait: sleep,
         clock: Date.now,
       }, { polledAt, nextBy, until: now + ACTIVE_FOLLOW_MS });
       if (followed.error) console.warn(JSON.stringify({ event: "apple-recent-follow", polls: followed.polls, error: maskOwnerName(followed.error, ownerName) }));

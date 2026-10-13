@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
 
@@ -188,7 +189,7 @@ async function exportPreviews(chromePath, evidenceDirectory) {
   const cleanup = async () => {
     // Chrome 退出时还会往 profile 里写几笔，等它真正退出再删，否则 rm 会撞上 ENOTEMPTY
     child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+    await Promise.race([exited, sleep(5_000)]);
     fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     fs.rmSync(downloads, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   };
