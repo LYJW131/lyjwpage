@@ -92,7 +92,7 @@
 - **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），最前那个容器经 `href` 深入查询曲目，累计出时长，按容器顺序的可播曲目（带时长与封面）随 `commitRecentlyPlayed` 交给状态核心推下一首；自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `CONTAINER_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
-- **私钥在 Worker Secret 里**：Apple Music 开发者私钥（`.p8`）是 Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`（api 签发时读它；放在哪些 Worker、本机原件在哪见 `docs/ops-facts.md`），Mac Telemetry Hub、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由 api 自己签发（`workers/api/src/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签），采集 Worker 经 `StateCore.appleDeveloperToken()` 取。
+- **私钥在 Worker Secret 里**：Apple Music 开发者私钥（`.p8`）是 Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`（签发令牌的 Worker 各读自己那份；放在哪些 Worker、本机原件在哪见 `docs/ops-facts.md`），Mac Telemetry Hub、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由调用的 Worker 自己签发（`shared/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签）。
 - **Mac 只上报 user token**：Mac Telemetry Hub 通过 `/api/ingest/mac` 的 `appleMusicCredentials` 模块只上报 `Music-User-Token`；带 `developerToken` / `expiresAt` 的旧合同会被上报入口拒收。
 - **凭据隔离**：收到的 user token 由上报入口写进独立的凭据 KV（`shared/credentials.ts`），与可滞后层的展示数据分命名空间，不提供任何外部 GET 端点。
 
@@ -103,7 +103,7 @@
 ### 双凭据调用机制
 - **未公开接口**：歌词与动态封面通过 Apple Web 播放器使用的内部端点 `amp-api.music.apple.com` 获取。
 - **鉴权要求**：
-  - `Authorization`：从 `music.apple.com` 网页 bundle 动态提取的 Web Token（由 Worker 定期抓取并缓存在 SQLite 中）。
+  - `Authorization`：从 `music.apple.com` 网页 bundle 动态提取的 Web Token（用到时才抓，缓存在 `APPLE_CACHE` KV 和 isolate 内存里，见 `shared/apple-web-token.ts#getWebToken`）。
   - `Media-User-Token`：Mac Telemetry Hub 上报的主人个人 Music-User-Token。若缺少此 Token，amp-api 返回 404（表现与无歌词相同）。
 
 ### 歌词解析与逐字点亮
@@ -116,7 +116,7 @@
   - 换句动作由边界精确定时器驱动，与当前音轨算法一致。
 
 ### 接口缓存与公开查询策略
-- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `workers/api/src/routes/lyrics/route.ts`）。
+- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `shared/lyrics.ts#lyricsTtlMs`）。
 - 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用。
 
 ---
@@ -127,7 +127,7 @@
 - **架构隔离**：访客在前端播放器使用自己的 Apple Music 订阅。站点不中转音频，播放发生在访客浏览器与 Apple CDN 之间。
 - **独立访客 Token 签发**：
   - 由 API Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token。
-  - 有效期默认 `DEFAULT_TTL_SECONDS`（`workers/api/src/musickit-token.ts`），过了「签发 → 到期」的中点自动换新。
+  - 有效期默认 `DEFAULT_TTL_SECONDS`（`shared/musickit-token.ts`），过了「签发 → 到期」的中点自动换新。
 - **双重域名安全闸**：
   1. 第一道：Worker 检查请求来源是否在 `ALLOWED_ORIGINS` 白名单中：带 `Origin` 看它，浏览器同源请求不带 `Origin` 时按请求自己的源（`shared/http-origins.ts#requestOrigin`）。
   2. 第二道：签发 JWT 时将当前具体 Origin 写入 Token 的 `origin` 声明中，由 Apple 端负责最终校验，防止 Token 被盗用至非授权站点。

@@ -1,10 +1,5 @@
+import { APPLE_MUSIC_HTTP_PATHS } from "@shared/apple-music-paths";
 import { readBoundedBytes } from "@shared/read-bounded-bytes";
-
-const PROXY_PATHS = new Set([
-  "/api/musickit/token",
-  "/api/lyrics",
-  "/api/motion-artwork",
-]);
 
 const PROXY_TIMEOUT_MS = 10_000;
 const PROXY_MAX_BYTES = 1_000_000;
@@ -14,7 +9,7 @@ export function previewWorkerEnabled(): boolean {
 }
 
 export function isPreviewProxyPath(pathname: string): boolean {
-  return PROXY_PATHS.has(pathname);
+  return APPLE_MUSIC_HTTP_PATHS.has(pathname);
 }
 
 export async function fetchPreviewUpstream(request: Request): Promise<Response> {

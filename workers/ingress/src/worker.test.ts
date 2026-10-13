@@ -77,12 +77,15 @@ function world(setup: Setup = {}) {
     appleDeveloperToken: async () => { throw new Error("not used"); },
     commitRecentlyPlayed: async () => { throw new Error("not used"); },
     commitRecentTracks: async () => { throw new Error("not used"); },
+    commitEnrichmentPatch: async () => { throw new Error("not used"); },
   };
   const collector: CollectorRpc = {
     refresh: setup.refresh ?? (async (jobs) => {
       calls.refreshed.push(jobs);
       return jobs.map((job): CollectorJobOutcome => ({ job, status: "ok", ms: 1 }));
     }),
+    enrichTrack: async () => { throw new Error("not used"); },
+    followUpTrack: async () => { throw new Error("not used"); },
   };
   const history: HistoryDb = {
     prepare: (sql) => ({ sql, bind() { return this; } }) as unknown as HistoryStatement,
