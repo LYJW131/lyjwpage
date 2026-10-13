@@ -1,5 +1,6 @@
 import { enrichCommand, type EnrichedCommand } from "@shared/command-enrichment";
 import { writeAppleMusicCredentials } from "@shared/credentials";
+import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collector";
 import { describeRejections } from "@shared/ingest/coding";
 import { INGEST_SOURCES, prepareIngest, type CoreCommand, type PreparedIngest } from "@shared/ingest/prepare";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
@@ -13,6 +14,7 @@ import { commitLagIngest } from "./lag-ingest";
 const INGEST_PREFIX = "/api/ingest/";
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
+const COLLECTOR_REFRESH_PATH = "/api/internal/collector-refresh";
 
 export const DEPLOYMENT_JOBS = ["site-deployments", "cloudflare-deployments", "github-repo"];
 
@@ -22,6 +24,11 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   if (url.pathname === SITE_DEPLOYED_PATH) {
     if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
     return handleSiteDeployed(request, env, ctx);
+  }
+
+  if (url.pathname === COLLECTOR_REFRESH_PATH) {
+    if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
+    return handleCollectorRefresh(request, env, ctx, url.searchParams.getAll("job"));
   }
 
   if (url.pathname === OTLP_INGEST_PATH) {
@@ -207,4 +214,22 @@ async function refreshDeployments(collector: NonNullable<Env["COLLECTOR"]>): Pro
   } catch (error) {
     console.warn("[site-deployed] 调不到采集 Worker", reason(error));
   }
+}
+
+async function handleCollectorRefresh(request: Request, env: Env, ctx: ExecutionContext, named: string[]): Promise<Response> {
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+  const auth = await authorize(request, env, "internal:collector-refresh");
+  if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
+  const collector = env.COLLECTOR;
+  if (!collector) return jsonResponse({ ok: false, error: "没有绑定采集 Worker" }, { status: 503 });
+  const jobs = named.length ? [...new Set(named)] : ACTIVE_COLLECTOR_JOBS;
+  // 每个任务单独一次 RPC：各自一次调用、各自的并发连接额度，超时预算不会耗在别的任务的排队上。
+  const run = Promise.all(jobs.map((job) => collector.refresh([job]).then(
+    ([outcome]): CollectorJobOutcome => outcome ?? { job, status: "error", detail: "采集 Worker 没有回结果", ms: 0 },
+    (error: unknown): CollectorJobOutcome => ({ job, status: "error", detail: reason(error), ms: 0 }),
+  )));
+  // 调用方断开（如 curl 超时）时任务不随连接立刻取消，靠 waitUntil 的宽限跑完。
+  ctx.waitUntil(run);
+  const outcomes = await run;
+  return jsonResponse({ ok: outcomes.every((outcome) => outcome.status !== "error"), outcomes });
 }
