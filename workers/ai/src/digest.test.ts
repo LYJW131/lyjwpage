@@ -5,7 +5,7 @@ import { STATUS_VIEWS } from "@shared/status-views";
 
 import type { DigestHighlight, DigestTopic } from "@shared/digest";
 
-import { composeDigest, digestInputHash, isTagline, keepsHeadline, PRIMARY_CANDIDATES, taglineCandidates, TAGLINE_INSTRUCTIONS, type PickTagline } from "./digest/compose";
+import { composeDigest, digestInputHash, isTagline, keepsHeadline, PRIMARY_CANDIDATES, taglineCandidates, taglineCriteria, TAGLINE_INSTRUCTIONS, type PickTagline } from "./digest/compose";
 import { digestFacts, digestHighlightOptions, digestMessage, type DigestViews } from "./digest/facts";
 import { DIGEST_SITUATIONS, digestScene, type DigestSituation } from "./digest/situation";
 import { DIGEST_TAGLINES } from "./digest/taglines";
@@ -217,7 +217,7 @@ test("compose reads the situation by rule, lets Clef pick one stored tagline, an
   assert.deepEqual(first.digest.highlights[0], { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" });
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].questions, {
-    tagline: { type: "choice", instructions: TAGLINE_INSTRUCTIONS, criteria: Object.fromEntries(candidates.map((line, index) => [`t${index}`, line])) },
+    tagline: { type: "choice", instructions: TAGLINE_INSTRUCTIONS, criteria: Object.fromEntries(candidates.map((line, index) => [`t${index}`, `${line}｜主线：${DIGEST_SITUATIONS.agentsLead}`])) },
   });
   assert.deepEqual(calls[0].state, { facts: digestMessage(baseViews(), NOW).content.split("\n").filter(Boolean), situation: DIGEST_SITUATIONS.agentsLead, accents: [] });
 
@@ -350,6 +350,13 @@ test("only a line of the day's lead carries over, so a weekend line picked while
   assert.equal(keepsHeadline(weekendLine, "codingAllDay", LOCAL_DATE), false);
   assert.equal(keepsHeadline(weekendLine, "watching", LOCAL_DATE), false);
   assert.equal(keepsHeadline(null, "codingAllDay", LOCAL_DATE), false);
+});
+
+test("each option tells Clef which theme the line was written for and whether that theme leads the day", () => {
+  const candidates = taglineCandidates("codingAllDay", ["weekend"], LOCAL_DATE);
+  const criteria = Object.values(taglineCriteria(candidates, "codingAllDay"));
+  assert.equal(criteria[0], `${candidates[0]}｜主线：${DIGEST_SITUATIONS.codingAllDay}`);
+  assert.equal(criteria.at(-1), `${candidates.at(-1)}｜附带：${DIGEST_SITUATIONS.weekend}`);
 });
 
 test("a trophy count from a capped list becomes an at-least option", () => {
