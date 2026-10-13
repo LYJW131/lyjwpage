@@ -89,9 +89,8 @@ test("还没收到奖杯遥测时报 AwaitingReport", async () => {
   });
 });
 
-test("没有最近游玩时权益字段归一化：缺的给 null 与 false", async () => {
+test("没有最近游玩时权益字段归一化：存储里缺 service / preOrder 键的给 null 与 false", async () => {
   await withStorage(async (storage) => {
-    // 旧写入可能没有 service / preOrder 两个键
     const bare = { ...title() } as Record<string, unknown>;
     delete bare.service;
     delete bare.preOrder;
