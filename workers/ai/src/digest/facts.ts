@@ -281,6 +281,17 @@ export function digestFacts(views: DigestViews, now: number): string {
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
+export type DigestSignals = { weekend: boolean; workoutMinutes: number; deploys: number; date: string };
+
+export function digestSignals(views: DigestViews, now: number): DigestSignals {
+  const pulse = views.pulse;
+  if (!pulse) throw new Error("Pulse view unavailable");
+  const { weekday, date } = localClock(now, validTimeZone(views.timezone?.timezone?.identifier));
+  const seconds = (views.workouts?.items ?? []).filter((workout) => workout.startedAt >= pulse.window.from).reduce((sum, workout) => sum + workout.durationSeconds, 0);
+  const deploys = siteTallies(views, pulse.window.from).deploys?.value ?? 0;
+  return { weekend: weekday === "Saturday" || weekday === "Sunday", workoutMinutes: Math.round(seconds / 60), deploys, date };
+}
+
 const MIN_ACTIVE_SECONDS = 300;
 
 // 卡片上的三格只从这里挑：数由代码按事实清单同样的取粗算出，模型只选主题，不写数字和说明。

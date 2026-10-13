@@ -10,7 +10,7 @@ export async function refreshDigest(
   now: number,
 ): Promise<JobResult> {
   const previous = await readLag<DigestRecord>(deps.lag, LAG_KEYS.digest);
-  const outcome = await deps.digest.compose({ previousInputHash: previous?.data.inputHash ?? null });
+  const outcome = await deps.digest.compose({ previousInputHash: previous?.data.inputHash ?? null, previousHeadline: previous?.data.headline || null });
   if (outcome.status === "unconfigured") return skipMissing("digest", ["ANTHROPIC_API_KEY on ai"]);
   if (outcome.status === "unchanged") {
     if (previous) await writeLag(deps.lag, LAG_KEYS.digest, previous.data, now);
@@ -30,7 +30,7 @@ export async function refreshDigest(
 
 export const digestJob: Job = {
   name: "digest",
-  everyMinutes: 60,
+  everyMinutes: 15,
   offset: 5,
   maxRuntimeMinutes: 2,
   run: ({ env, now }) => env.DIGEST

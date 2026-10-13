@@ -40,7 +40,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
-| `digest` | `DIGEST.compose`（ai 的 `Digest`，带上一份的输入哈希）写成的近况摘要进 `LAG digest:v1`；输入没变时 ai 不调模型，这里照样重写一次刷新 `updatedAt`；第一次写出、或摘要与 `quiet`（时钟卡）互换时才 `CORE.revalidate(["digest"])` | ai 上的 `ANTHROPIC_API_KEY`（没配时 ai 回 `unconfigured`，这里跳过） |
+| `digest` | `DIGEST.compose`（ai 的 `Digest`，带上一份的输入哈希与标题）写成的近况摘要进 `LAG digest:v1`；输入没变时 ai 回 `unchanged`，这里照样重写一次刷新 `updatedAt`；第一次写出、或摘要与 `quiet`（时钟卡）互换时才 `CORE.revalidate(["digest"])` | 无（ai 回 `unconfigured` 时这里跳过） |
 
 每个任务可有一条 Sentry cron 监控 `collector-<任务>`（默认不报到，由 `SENTRY_CRON_CHECKINS=true` 开启），报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
 
