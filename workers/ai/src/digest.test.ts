@@ -5,7 +5,7 @@ import { STATUS_VIEWS } from "@shared/status-views";
 
 import type { DigestHighlight, DigestTopic } from "@shared/digest";
 
-import { composeDigest, digestInputHash, isTagline, PRIMARY_CANDIDATES, taglineCandidates, TAGLINE_INSTRUCTIONS, type PickTagline } from "./digest/compose";
+import { composeDigest, digestInputHash, isTagline, keepsHeadline, PRIMARY_CANDIDATES, taglineCandidates, TAGLINE_INSTRUCTIONS, type PickTagline } from "./digest/compose";
 import { digestFacts, digestHighlightOptions, digestMessage, type DigestViews } from "./digest/facts";
 import { DIGEST_SITUATIONS, digestScene, type DigestSituation } from "./digest/situation";
 import { DIGEST_TAGLINES } from "./digest/taglines";
@@ -340,6 +340,15 @@ test("candidates stay put through the day and rotate at midnight", () => {
   assert.notDeepEqual(taglineCandidates("agentsAllDay", ["soundtrack", "weekend"], "2026-10-14"), today);
   for (const line of today.slice(0, PRIMARY_CANDIDATES)) assert.ok(DIGEST_TAGLINES.agentsAllDay.includes(line));
   assert.ok((["soundtrack", "weekend"] as DigestSituation[]).every((accent) => today.some((line) => DIGEST_TAGLINES[accent].includes(line))));
+});
+
+test("only a line of the day's lead carries over, so a weekend line picked while coding does not stay once watching takes over", () => {
+  const candidates = taglineCandidates("codingAllDay", ["weekend"], LOCAL_DATE);
+  const weekendLine = candidates.find((line) => DIGEST_TAGLINES.weekend.includes(line))!;
+  assert.equal(keepsHeadline(candidates[0], "codingAllDay", LOCAL_DATE), true);
+  assert.equal(keepsHeadline(weekendLine, "codingAllDay", LOCAL_DATE), false);
+  assert.equal(keepsHeadline(weekendLine, "watching", LOCAL_DATE), false);
+  assert.equal(keepsHeadline(null, "codingAllDay", LOCAL_DATE), false);
 });
 
 test("a trophy count from a capped list becomes an at-least option", () => {

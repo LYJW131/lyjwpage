@@ -39,9 +39,14 @@ function fnv(text: string): number {
 const sample = (situation: DigestSituation, seed: string, size: number) =>
   [...DIGEST_TAGLINES[situation]].sort((a, b) => fnv(`${seed}|${situation}|${a}`) - fnv(`${seed}|${situation}|${b}`)).slice(0, size);
 
-// 候选按当地日期抽样：同一天里同一情境的候选不变，上一条还在候选里就留着，标题不会每一轮都换；过了零点换一批，同一句不会一连挂好几天。
+// 候选按当地日期抽样：同一天里同一情境的候选不变，标题不会每一轮都换；过了零点换一批，上一条不在新一批里才换。
 export function taglineCandidates(primary: DigestSituation, accents: DigestSituation[], date: string): string[] {
   return [...new Set([...sample(primary, date, PRIMARY_CANDIDATES), ...accents.flatMap((accent) => sample(accent, date, ACCENT_CANDIDATES))])];
+}
+
+// 只留主情境的句子：附带情境（周末、背景音乐）的句子在多种主情境间共用，主线换了它还在候选里，会挂在不相干的卡片上。
+export function keepsHeadline(previous: string | null, primary: DigestSituation, date: string): previous is string {
+  return !!previous && sample(primary, date, PRIMARY_CANDIDATES).includes(previous);
 }
 
 function parseChoice(body: unknown, candidates: string[]): string | null {
@@ -88,7 +93,7 @@ export async function composeDigest({
   if (scene.quiet) return { status: "composed", digest: { headline: "", highlights: [], quiet: true, model: DIGEST_RULES_MODEL, generatedAt: Date.now(), inputHash } };
   const candidates = taglineCandidates(scene.primary, scene.accents, signals.date);
   if (!candidates.length) throw new Error(`Digest has no taglines for ${scene.primary}`);
-  const { headline, model } = previousHeadline && candidates.includes(previousHeadline)
+  const { headline, model } = keepsHeadline(previousHeadline, scene.primary, signals.date)
     ? { headline: previousHeadline, model: DIGEST_RULES_MODEL }
     : await pickTagline(pick, candidates, {
       facts: content.split("\n").filter(Boolean),
