@@ -15,6 +15,7 @@ const INGEST_PREFIX = "/api/ingest/";
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 const COLLECTOR_REFRESH_PATH = "/api/internal/collector-refresh";
+const COLLECT_LAST: ReadonlySet<string> = new Set(["digest"]);
 
 export const DEPLOYMENT_JOBS = ["site-deployments", "cloudflare-deployments", "github-repo"];
 
@@ -224,11 +225,18 @@ async function handleCollectorRefresh(request: Request, env: Env, ctx: Execution
   if (!collector) return jsonResponse({ ok: false, error: "没有绑定采集 Worker" }, { status: 503 });
   const jobs = named.length ? [...new Set(named)] : ACTIVE_COLLECTOR_JOBS;
   // 每个任务单独一次 RPC：各自一次调用、各自的并发连接额度，超时预算不会耗在别的任务的排队上。
-  const run = Promise.all(jobs.map((job) => collector.refresh([job]).then(
+  const runOne = (job: string) => collector.refresh([job]).then(
     ([outcome]): CollectorJobOutcome => outcome ?? { job, status: "error", detail: "采集 Worker 没有回结果", ms: 0 },
     (error: unknown): CollectorJobOutcome => ({ job, status: "error", detail: reason(error), ms: 0 }),
-  )));
-  // 调用方断开（如 curl 超时）时任务不随连接立刻取消，靠 waitUntil 的宽限跑完。
+  );
+  // 摘要读的是别的任务写出的视图（仓库提交、站点部署……），等它们这一轮写完再跑，才总结得到刚采集的数据。
+  const run = (async () => {
+    const first = await Promise.all(jobs.filter((job) => !COLLECT_LAST.has(job)).map(runOne));
+    const last = await Promise.all(jobs.filter((job) => COLLECT_LAST.has(job)).map(runOne));
+    const byJob = new Map([...first, ...last].map((outcome) => [outcome.job, outcome]));
+    return jobs.map((job) => byJob.get(job)!);
+  })();
+  // 调用方断开（如 curl 超时）时任务不随连接立刻取消，但只多 waitUntil 的宽限，长任务不保证跑完。
   ctx.waitUntil(run);
   const outcomes = await run;
   return jsonResponse({ ok: outcomes.every((outcome) => outcome.status !== "error"), outcomes });
