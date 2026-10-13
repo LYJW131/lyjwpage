@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { LAG_KEYS, readLag } from "@shared/lag";
-import type { SentryStatusPayload } from "@shared/sentry-status-types";
+import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
+import type { HealthSeries, SentryStatusPayload } from "@shared/sentry-status-types";
 
 import type { Env } from "../env";
 import { MemoryKv } from "../testing/memory-kv";
@@ -35,6 +35,15 @@ test("Sentry 全部查询失败整轮抛错，不拿空壳覆盖上一份", asyn
 test("只有 cron 监控查不到时那一块沿用上一份，detail 点名缺的是它", async (t) => {
   t.mock.method(console, "warn", () => {});
   const lag = new MemoryKv();
+  const previousHeartbeat: HealthSeries = { status: "up", availability24h: 1, availability30d: 0.999, days: [] };
+  const previousAt = Date.now() - 60_000;
+  await writeLag(lag.asKv(), LAG_KEYS.sentry, {
+    fetchedAt: previousAt,
+    uptime: null,
+    heartbeat: previousHeartbeat,
+    errors: null,
+    vitals: null,
+  } as unknown as SentryStatusPayload, previousAt);
   t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
     const url = new URL(String(input));
     const path = url.pathname;
@@ -52,7 +61,7 @@ test("只有 cron 监控查不到时那一块沿用上一份，detail 点名缺�
   });
   const entry = await readLag<SentryStatusPayload>(lag, LAG_KEYS.sentry);
   assert.equal(entry?.data.uptime?.status, "up");
-  assert.equal(entry?.data.heartbeat, null);
+  assert.deepEqual(entry?.data.heartbeat, previousHeartbeat);
   assert.equal(entry?.data.errors?.site.count12h, 7);
   assert.equal(entry?.data.errors?.worker.unresolved, 4);
   assert.equal(entry?.data.vitals?.lcpP75Ms, 2100);
