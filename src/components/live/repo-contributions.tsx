@@ -286,7 +286,7 @@ export function RepoContributions({
           )}
         </div>
       ) : (
-        <div className="p-4 lg:px-5">
+        <div className="p-4 lg:p-5">
           <div className="label-mono text-muted-foreground">Commits</div>
           <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
             {commits.map((commit) => (

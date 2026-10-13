@@ -69,7 +69,7 @@ const SLOT = {
   server: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_281px]",
   agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
   vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1372px]",
-  playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]",
+  playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_651px]",
   godChat: "md:col-span-2",
   pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_575px] sm:[contain-intrinsic-size:auto_276px]",
   siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]",
