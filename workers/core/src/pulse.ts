@@ -246,14 +246,14 @@ export function chargingLaneView(samples: ChargingSample[], window: PulseWindow)
 }
 
 export function activityLaneView(buckets: ActivityBucket[], workouts: WorkoutInterval[], window: PulseWindow): PulseStepsLane {
-  let steps = 0;
-  const rows = buckets.flatMap((bucket) => {
+  const exact = buckets.flatMap((bucket) => {
     const from = Math.max(window.from, bucket.from), to = Math.min(window.to, bucket.to);
     if (to <= from || bucket.steps == null) return [];
-    steps += bucket.steps * (to - from) / (bucket.to - bucket.from);
     const at = span(window, from, to);
-    return at.endSec > at.startSec ? [{ ...at, steps: bucket.steps }] : [];
+    if (at.endSec <= at.startSec) return [];
+    return [{ ...at, steps: bucket.steps * (to - from) / (bucket.to - bucket.from) }];
   });
+  const rows = roundPreservingTotal(exact);
   const sessions = workouts.flatMap((workout) => {
     const from = Math.max(window.from, workout.startedAt), to = Math.min(window.to, workout.endedAt);
     if (to <= from) return [];
@@ -264,8 +264,21 @@ export function activityLaneView(buckets: ActivityBucket[], workouts: WorkoutInt
     kind: "steps",
     buckets: toColumns(rows, ["steps"] as const),
     workouts: toColumns(sessions, ["activityType"] as const),
-    summary: { steps: Math.round(steps) },
+    summary: { steps: rows.reduce((sum, row) => sum + row.steps, 0) },
   };
+}
+
+function roundPreservingTotal<T extends { steps: number }>(rows: T[]): T[] {
+  const floored = rows.map((row) => Math.floor(row.steps));
+  let remaining = Math.round(rows.reduce((sum, row) => sum + row.steps, 0)) - floored.reduce((sum, steps) => sum + steps, 0);
+  const byRemainder = rows.map((row, index) => ({ index, remainder: row.steps - floored[index] }))
+    .sort((a, b) => b.remainder - a.remainder);
+  for (const { index } of byRemainder) {
+    if (remaining <= 0) break;
+    floored[index] += 1;
+    remaining -= 1;
+  }
+  return rows.map((row, index) => ({ ...row, steps: floored[index] }));
 }
 
 function parsed<T>(rows: unknown, parse: (raw: string) => T | null): T[] {
