@@ -3,6 +3,7 @@ import {
   AGENT_STATUS_STALE_MS,
   CLOUDFLARE_DEPLOYMENTS_STALE_MS,
   CLOUDFLARE_METRICS_STALE_MS,
+  DIGEST_STALE_MS,
   GITHUB_CHART_STALE_MS,
   GITHUB_REPO_STALE_MS,
   PAGESPEED_STALE_MS,
@@ -65,6 +66,7 @@ export const LAG_FEEDS: readonly LagFeed[] = [
   { source: "cloudflare-deployments", key: LAG_KEYS.cloudflareDeployments, thresholdMs: CLOUDFLARE_DEPLOYMENTS_STALE_MS },
   { source: "cloudflare-metrics", key: LAG_KEYS.cloudflareMetrics, thresholdMs: CLOUDFLARE_METRICS_STALE_MS },
   { source: "sentry", key: LAG_KEYS.sentry, thresholdMs: SENTRY_STALE_MS },
+  { source: "digest", key: LAG_KEYS.digest, thresholdMs: DIGEST_STALE_MS },
 ];
 
 export type FreshnessEvent = {

@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "updatedAt": "$now-1500000",
+  "data": {
+    "headline": "Agents ran the day",
+    "highlights": [
+      { "topic": "coding", "value": 22, "unit": "hours", "atLeast": false, "caption": "coding" },
+      { "topic": "tokens", "value": 44000000, "unit": "count", "atLeast": false, "caption": "tokens" },
+      { "topic": "music", "value": 8, "unit": "hours", "atLeast": false, "caption": "music" }
+    ],
+    "model": "claude-sonnet-5-5",
+    "generatedAt": "$now-1500000"
+  }
+}

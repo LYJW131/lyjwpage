@@ -10,12 +10,12 @@ import { DevToggleDock } from "@/components/dev-toggles";
 import { GodChat } from "@/components/god-chat";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { ActivityCard } from "@/components/live/activity-card";
+import { DigestCard } from "@/components/live/digest-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
-import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { QuestNowCard } from "@/components/live/quest-now-card";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
@@ -35,6 +35,7 @@ import {
   CODING_NOW_PATH,
   CODING_PATH,
   CODING_YEAR_PATH,
+  DIGEST_PATH,
   GITHUB_CHART_PATH,
   GITHUB_REPO_PATH,
   LIMITS_PATH,
@@ -71,6 +72,7 @@ const SLOT = {
 
 const READS = {
   contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],
+  digest: [DIGEST_PATH, PULSE_PATH],
   nowWatching: [NOW_WATCHING_PATH],
   questNow: [STATUS_VIEWS.questNow.path],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
@@ -116,6 +118,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     sentry,
     reporters,
     pulse,
+    digest,
   ] = await Promise.all([
     status("desktop"),
     status("timezone"),
@@ -144,6 +147,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     status("sentry"),
     status("reporters"),
     status("pulse"),
+    status("digest"),
   ]);
 
   const nowSongId =
@@ -194,6 +198,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     sentry,
     reporters,
     pulse,
+    digest,
     avatarDataUri,
     desktopIcon,
     artwork,
@@ -230,8 +235,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     yearFallback={loaderData.codingYear}
                   />
                 </CardBoundary>
-                <CardBoundary label="Timezone">
-                  <TimezoneCard fallback={loaderData.timezone} />
+                <CardBoundary label="In Brief" paths={READS.digest}>
+                  <DigestCard fallback={loaderData.digest} pulseFallback={loaderData.pulse} timezoneFallback={loaderData.timezone} />
                 </CardBoundary>
               </div>
 

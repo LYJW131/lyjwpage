@@ -1,5 +1,6 @@
 import type { AgentStatusPayload } from "@shared/agent-status-types";
 import type { CloudflareWorkersPayload } from "@shared/cloudflare-workers-types";
+import type { DigestPayload } from "@shared/digest";
 import type { ReportersPayload } from "@shared/reporter-ledger";
 import type { SentryStatusPayload } from "@shared/sentry-status-types";
 import type { SiteDeploymentsPayload } from "@shared/site-deployments-types";
@@ -56,4 +57,5 @@ export type StatusPayloads = {
   sentry: SentryStatusPayload;
   reporters: ReportersPayload;
   pulse: PulsePayload;
+  digest: DigestPayload;
 };

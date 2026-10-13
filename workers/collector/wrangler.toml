@@ -25,6 +25,11 @@ service = "api"
 entrypoint = "StateCore"
 
 [[services]]
+binding = "DIGEST"
+service = "ai"
+entrypoint = "Digest"
+
+[[services]]
 binding = "APPLE_LOOKUPS"
 service = "collector"
 entrypoint = "AppleLookups"
