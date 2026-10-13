@@ -66,6 +66,7 @@
 - 字重只用 400 / 500 / 600；700 只给站名（Contact 卡的 `LYJW131`）与中文标语。
 - 字距：`label-mono` 自带；标题可 `tracking-tight`；正文不改字距。行高：多行正文 `leading-relaxed`，单行数值 `leading-none` / `leading-tight`。
 - 数字一律等宽（全站默认 `tabular-nums`），变化的数字用 NumberFlow，并保证服务端 HTML 里就有值。
+- 大数字放得下就写全（`3,012,345,678`），放不下才用缩写（`3B`）：用 `src/components/ui/fit-number.tsx#FitNumber`，按容器宽度纯 CSS 切换，首屏不跳。
 - 长文字：标题 `text-balance`；名称类单行截断（`truncate`）且在别处能看到全文；URL / ID 用 `break-words`，不用 `break-all`。
 
 ## Layout
