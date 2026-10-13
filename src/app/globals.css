@@ -557,6 +557,22 @@ html.offscreen-revealed .defer-offscreen-always,
   animation: design-divider-in 0.5s ease-out;
 }
 
+@keyframes thinking-shimmer {
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* 起点 100% 整段是灰字：reduced-motion 的全局规则掐掉动画后停在这一帧，不留半截高光。 */
+.thinking-shimmer {
+  background-image: linear-gradient(90deg, var(--muted-foreground) 35%, var(--foreground) 50%, var(--muted-foreground) 65%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  background-clip: text;
+  color: transparent;
+  animation: thinking-shimmer 1.8s linear infinite;
+}
+
 /* 选择值由 root.tsx 的首屏脚本写进 <html> 的 data 属性；本表渲染阻塞，首次绘制前就位。 */
 .theme-toggle-icon {
   display: none !important;
