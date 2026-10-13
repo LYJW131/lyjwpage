@@ -9,14 +9,13 @@ import { BuildBlockedError, BuildPublicationPendingError, BuildPullRequestReject
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan, type PlanPayload } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
-import { bearerToken, buildCoordinator, fail, readBoundedBytes } from "./http";
+import { bearerToken, buildCoordinator, fail, object, readBoundedBytes } from "./http";
 import { hashToken, signBuildToken, uploadTokenForRun, verifyBuildToken } from "./token";
 import { parseBuildUpload } from "./validation";
 import { applyGithubWebhook, outsideBuildBranches, verifyGithubWebhook } from "./webhook";
 
 type StatusPayload = { kind: "status"; runId: string; expiresAt: number };
 const noStore = { "Cache-Control": "no-store" };
-const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const validRunId = (id: string | null): id is string => !!id && /^[a-f0-9]{32}$/.test(id);
 
 type GithubVisitor = { account: string; userId: number; name: string | null };

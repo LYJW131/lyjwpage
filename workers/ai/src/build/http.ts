@@ -1,6 +1,8 @@
 import type { Env } from "../runtime";
 import type { BuildCoordinator } from "./coordinator";
 
+export const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+
 export function fail(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 }

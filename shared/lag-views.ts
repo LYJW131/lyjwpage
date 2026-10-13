@@ -5,7 +5,7 @@ import { publicDigest, type DigestPayload, type DigestRecord } from "@shared/dig
 import { localDate } from "@shared/freshness";
 import { getGithubChart, sliceGithubChart } from "@shared/github-chart";
 import { getGithubRepo } from "@shared/github-repo";
-import { getCorsHeaders, isForeignOrigin, type OriginEnv } from "@shared/http-origins";
+import { getCorsHeaders, isForeignOrigin, jsonResponse, type OriginEnv } from "@shared/http-origins";
 import { LAG_KEYS, readLagEntry } from "@shared/lag";
 import { LagResult, loadLag } from "@shared/lag-result";
 import type { ReporterStat, ReportersPayload } from "@shared/reporter-ledger";
@@ -113,9 +113,6 @@ export function lagEnvelope(view: LagViewKey, params: StatusLoaderParams = {}): 
 // 与 core 的 /api/* 同口径：带了 Origin 且不在名单里回 403，其余照常回公开模型。
 export async function serveLagStatus(request: Request, view: LagViewKey, env: OriginEnv): Promise<Response> {
   const cors = getCorsHeaders(request, env);
-  if (isForeignOrigin(request, env)) {
-    cors.set("Cache-Control", "no-store");
-    return Response.json({ ok: false }, { status: 403, headers: cors });
-  }
+  if (isForeignOrigin(request, env)) return jsonResponse({ ok: false }, { status: 403, headers: cors });
   return withPublicCors(statusResponse(await lagEnvelope(view, loaderParams(request))), cors);
 }

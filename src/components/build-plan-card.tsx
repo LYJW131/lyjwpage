@@ -43,7 +43,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   const expired = now >= proposal.expiresAt;
   const used = Boolean(proposal.issue || proposal.build);
   const choiceClosed = !proposalChoiceOpen(proposal, now) || inactive;
-  const disabled = choiceClosed || !proposalBuildOpen(proposal, now) || working !== null;
+  const disabled = inactive || !proposalBuildOpen(proposal, now) || working !== null;
   // 授权弹窗还开着时访客仍可改选 Open issue（会关掉弹窗）；登录完成、Worker 正在受理构建时才两边都锁。
   const issueDisabled = choiceClosed || working === "preparing";
   const [lookupRejected, setLookupRejected] = useState(false);
