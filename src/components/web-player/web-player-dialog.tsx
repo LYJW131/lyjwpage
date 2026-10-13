@@ -407,7 +407,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
                           <span
                             className={cn(
                               "min-w-0 flex-1 truncate",
-                              isCurrent && "font-medium text-live",
+                              isCurrent && "font-medium text-live-ink",
                             )}
                           >
                             {song.attributes?.name ?? "Unknown track"}

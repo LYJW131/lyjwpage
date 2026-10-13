@@ -28,16 +28,19 @@
   --line-strong: oklch(0.19 0.006 80 / 88%);
   --paper-shadow: oklch(0.19 0.006 80 / 18%);
 
-  --signal-red: #c84d3d;
+  --signal-red: oklch(0.55 0.16 30);
   --signal-orange: #d66b35;
   --signal-yellow: #d0a22c;
-  --signal-green: #3d7f50;
+  --signal-green: oklch(0.52 0.1 151);
   --signal-blue: #3e70c9;
   --signal-violet: #8255c7;
 
   --live: oklch(0.65 0.17 145);
   --live-idle: oklch(0.7 0.15 75);
   --live-off: oklch(0.62 0 0);
+  /* live / live-idle 在浅色底上不到 4.5:1，只给圆点和色条；彩色字用 ink。 */
+  --live-ink: oklch(0.5 0.14 145);
+  --live-idle-ink: oklch(0.5 0.11 70);
 
   --pulse-human: oklch(0.64 0.13 248);
   --pulse-agent: var(--live);
@@ -72,6 +75,13 @@
   --live: oklch(0.76 0.16 148);
   --live-idle: oklch(0.8 0.13 78);
   --live-off: oklch(0.5 0 0);
+  --live-ink: var(--live);
+  --live-idle-ink: var(--live-idle);
+
+  --signal-red: oklch(0.68 0.14 30);
+  --signal-green: oklch(0.68 0.11 151);
+  --signal-blue: oklch(0.68 0.12 261);
+  --signal-violet: oklch(0.68 0.14 299);
 
   --pulse-human: oklch(0.84 0.09 240);
   --pulse-both: oklch(0.6 0.17 300);
@@ -95,7 +105,15 @@
   --color-live: var(--live);
   --color-live-idle: var(--live-idle);
   --color-live-off: var(--live-off);
+  --color-live-ink: var(--live-ink);
+  --color-live-idle-ink: var(--live-idle-ink);
   --color-claude: var(--claude);
+  --color-signal-red: var(--signal-red);
+  --color-signal-orange: var(--signal-orange);
+  --color-signal-yellow: var(--signal-yellow);
+  --color-signal-green: var(--signal-green);
+  --color-signal-blue: var(--signal-blue);
+  --color-signal-violet: var(--signal-violet);
 
   --radius-xs: var(--radius);
   --radius-sm: var(--radius);
@@ -105,6 +123,9 @@
   --radius-2xl: var(--radius);
   --radius-3xl: var(--radius);
   --radius-4xl: var(--radius);
+
+  /* 只给 font-size、不给行高：与原先的 text-[11px] 一致，行高沿用父级或 leading-*。 */
+  --text-2xs: 0.6875rem;
 
   --font-geist-mono: "Geist Mono";
   --font-sans:

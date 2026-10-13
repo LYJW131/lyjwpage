@@ -81,10 +81,10 @@ function MixBreakdown({
         {rows.map((row) => (
           <li key={row.model} className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 flex-1 truncate font-mono text-[10px]" title={row.model}>
+              <span className="min-w-0 flex-1 truncate font-mono text-2xs" title={row.model}>
                 {row.model}
               </span>
-              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+              <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
                 {compactTokens(row.tokens)}
               </span>
             </div>
@@ -95,7 +95,7 @@ function MixBreakdown({
                   style={{ width: `${sharePercent(row.tokens, tokens)}%` }}
                 />
               </div>
-              <span className="w-7 shrink-0 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
+              <span className="w-7 shrink-0 text-right font-mono text-2xs tabular-nums text-muted-foreground">
                 {formatPercent(row.tokens, tokens)}
               </span>
             </div>

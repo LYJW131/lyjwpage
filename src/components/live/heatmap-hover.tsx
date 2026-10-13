@@ -349,7 +349,7 @@ export function HeatmapTooltip({
       <div className="flex items-end justify-between gap-2">
         <div className="min-w-0">
           <div className="text-lg font-medium tracking-tight tabular-nums leading-none">{value}</div>
-          <div className="mt-1 font-mono text-[10px] leading-none text-muted-foreground">{formatDayHeading(date)}</div>
+          <div className="mt-1 font-mono text-2xs leading-none text-muted-foreground">{formatDayHeading(date)}</div>
         </div>
         <span className="label-mono text-muted-foreground">{unit}</span>
       </div>

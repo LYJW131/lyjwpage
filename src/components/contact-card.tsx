@@ -39,6 +39,7 @@ export function ContactCard({
               href={site.github}
               target="_blank"
               rel="noreferrer noopener"
+              aria-label={`${site.githubLogin} on GitHub`}
               className="group relative size-14 shrink-0 overflow-hidden rounded-lg border border-line bg-muted lg:size-16"
             >
               {/* data URI 自动跳过优化；不要全局加 unoptimized，远端回退仍需缩图。 */}

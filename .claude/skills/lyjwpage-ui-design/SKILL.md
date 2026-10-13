@@ -11,7 +11,7 @@ description: lyjwpage 站点 UI 的设计自查：新做或改卡片、部件、
 
 1. 读 `DESIGN.md` 全文（不长）。改到哪张卡，就先读那张卡的组件和它在 `src/app/page.tsx` 里的位置（同一行有谁、`SLOT` 里的预留高度）。
 2. 先跑一遍量尺脚本记下改动前的读数（见下），之后好对比。
-3. 每个数值先从 `DESIGN.md` 的阶梯里挑：内边距 `p-4 lg:p-5`，组间距等于内边距，字号只在 label / caption / body / lead / title / stat / hero / display 里选。阶梯里找不到合适的，停下来改 `DESIGN.md` 并在汇报里说明，不在组件里写任意值。
+3. 每个数值先从 `DESIGN.md` 的阶梯里挑：内边距 `p-4 lg:p-5`，组间距等于内边距，字号只在 label / meta / caption / body / lead / title / stat / hero / display 里选。阶梯里找不到合适的，停下来改 `DESIGN.md` 并在汇报里说明，不在组件里写任意值。
 
 ## 量尺脚本
 

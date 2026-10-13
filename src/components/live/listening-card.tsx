@@ -442,7 +442,7 @@ const NEXT_BASIS = {
 function NextBadge({ basis, className }: { basis: NowListeningNext["basis"]; className?: string }) {
   return (
     <span
-      className={cn("inline-flex shrink-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground", className)}
+      className={cn("inline-flex shrink-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-2xs leading-4 text-muted-foreground", className)}
       title={NEXT_BASIS[basis].hint}
     >
       {NEXT_BASIS[basis].label}
@@ -904,7 +904,7 @@ export function ListeningCard({
                         <span
                           className={cn(
                             "label-mono shrink-0",
-                            hero.playing ? "text-live" : "text-muted-foreground",
+                            hero.playing ? "text-live-ink" : "text-muted-foreground",
                           )}
                         >
                           {hero.label}
@@ -913,14 +913,14 @@ export function ListeningCard({
                           <NextBadge basis={hero.predictedBasis} className="ml-0.5" />
                         ) : hero.track && hero.estimatedMarginMs != null ? (
                           <span
-                            className="ml-0.5 inline-flex min-w-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 tabular-nums text-muted-foreground"
+                            className="ml-0.5 inline-flex min-w-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-2xs leading-4 tabular-nums text-muted-foreground"
                             title={`Estimated from Apple Music's recently played list and track lengths; ideal start error ${formatMargin(hero.estimatedMarginMs)}`}
                           >
                             <span className="sr-only">Estimated, ideal start error </span>
                             <span className="truncate">{formatMargin(hero.estimatedMarginMs)}</span>
                           </span>
                         ) : hero.track && (
-                          <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
+                          <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-2xs leading-4 text-muted-foreground">
                             {hero.track.source === "homepod" ? (
                               <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
                             ) : (
