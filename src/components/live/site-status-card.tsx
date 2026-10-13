@@ -6,7 +6,7 @@ import NumberFlow from "@number-flow/react";
 import { Container } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FlowDash } from "@/components/ui/flow-dash";
-import { colorForRank, RepoContributions } from "@/components/live/repo-contributions";
+import { colorForRank, CONTRIBUTOR_LIMIT, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
 import { UptimeStrip } from "@/components/live/uptime-strip";
@@ -160,6 +160,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
   const contributors = github?.contributors ?? [];
   // GitHub 协作者各计一次贡献，参与次数之和不能替代去重提交总数。
   const contributionShare = contributors.reduce((sum, person) => sum + person.commits, 0);
+  const otherCommits = contributors.slice(CONTRIBUTOR_LIMIT).reduce((sum, person) => sum + person.commits, 0);
   return <Card id="site-status" label="LYJWPAGE" className={cn("scroll-mt-28", className)} action={
     <div className="flex items-center gap-4">
       <a href={site.repo} target="_blank" rel="noreferrer" aria-label="GitHub repository" className="-m-2 flex p-2 hover:text-foreground"><Github size={15} /></a>
@@ -176,9 +177,10 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       </div>
       {contributionShare > 0 && (
         <div className="mt-6 flex h-2 overflow-hidden bg-muted" role="img" aria-label="Contribution share by commits">
-          {contributors.map((person, index) => person.commits > 0 ? (
+          {contributors.slice(0, CONTRIBUTOR_LIMIT).map((person, index) => person.commits > 0 ? (
             <span key={person.login} title={`${person.login} · ${number.format(person.commits)} commits`} style={{ width: `${person.commits / contributionShare * 100}%`, backgroundColor: colorForRank(index) }} />
           ) : null)}
+          {otherCommits > 0 && <span title={`Others · ${number.format(otherCommits)} commits`} className="bg-muted-foreground/40" style={{ width: `${otherCommits / contributionShare * 100}%` }} />}
         </div>
       )}
     </div>

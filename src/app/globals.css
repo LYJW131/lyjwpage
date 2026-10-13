@@ -124,7 +124,7 @@
   --radius-3xl: var(--radius);
   --radius-4xl: var(--radius);
 
-  /* 只给 font-size、不给行高：与原先的 text-[11px] 一致，行高沿用父级或 leading-*。 */
+  /* 只给 font-size、不给行高：行高沿用父级或 leading-*，套在 leading-4 这类行里不改行高。 */
   --text-2xs: 0.6875rem;
 
   --font-geist-mono: "Geist Mono";
