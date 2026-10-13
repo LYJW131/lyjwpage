@@ -1,0 +1,148 @@
+# 参考文献
+
+> 类型：reference
+
+塑造本项目做法的外部来源：文章、演讲、仓库、官方文档。每条写它是什么、我们从中取了什么、落在哪些文件。采用了新的外部做法就在对应主题下追加一条；落地处变了（文件改名、规则删掉、评估结论翻转）同一提交里改这里。只引用、没取任何做法的链接不进来，留在引用它的文档里。
+
+状态：**采用**（已落进仓库）、**部分采用**、**待定**（评估过，还没落进仓库）、**不采用**（评估过，写明为什么，免得反复重评）。
+
+## Agent 编排与定时自动化
+
+- **[Building effective agent automations](https://claude.dev/blog/building-effective-agent-automations/)**（claude.dev）
+  - 是什么：Anthropic 写的定时 agent 自动化实践。
+  - 取了什么：按书签读、不按时间窗；读不到算失败、不当成没动静；写入明确成功才记账；每次运行重读偏好；最小权限和花费上限。
+  - 状态：采用。落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「状态与偏好」和每日代码审查定时任务，要点存于项目记忆 [agent-automation-practices](../.claude/memory/agent-automation-practices.md)。
+- **[here's how i shipped 2,500 PRs last month](https://x.com/poteto/status/2102050467505430555)**（poteto / Lauren Tan，X 上的演讲视频）
+  - 是什么：一个人同时驱动大量 agent 的做法。主线是「先让环境值得信任，并行是信任的结果」。
+  - 取了什么：纠错阶梯，即每次纠正 agent 都落到能挡住它的最高一层（代码库 → lint / CI → 规则 → skill → 人工 review）；验证 skill 做成「共用 CLI + 功能地图」；让一个「园丁」专找正在被复制的坏写法，先写 lint 止血。
+  - 状态：待定。
+  - 相关：她的长文 [Loops You Can Trust](https://x.com/poteto/status/2069824386283319343)、[The Complete Guide to pstack Pt. 1](https://x.com/poteto/status/2094457600259842065)、[Pt. 2](https://x.com/poteto/status/2097732320606507506)。
+- **[LIVE: Poteto (creator of pstack) on shipping 1,000's of PR's a month at SpaceX](https://www.youtube.com/watch?v=MN9dGgmLyso)**（Matt Pocock 对 poteto 的直播访谈，YouTube）
+  - 是什么：上面那场演讲的延伸问答，讲这套做法每天怎么运转：内外循环、协调者、合并后抽检、full autopilot。
+  - 取了什么：skill 只写流程，确定性的步骤下沉成脚本；园丁的发现先进缓冲文档、成批看出共同根因；合并后抽检，多个 agent 犯同样的错就改环境；常问「我在哪成了瓶颈」，让 agent 自己拿到原本要人转述的信息；翻过去的对话找反复纠正处，变成 lint 或 skill。
+  - 状态：待定。
+- **[pstack](https://github.com/cursor/plugins/tree/main/pstack)** 与 **[verification-skill-example](https://github.com/poteto/verification-skill-example)**（poteto）
+  - 是什么：上面那套做法的 skill 实现，含协调者 playbook、纠错 skill `correct`、验证 skill 模板。
+  - 取了什么：派活简报固定栏目、常驻指令原样贴入；写代码的不判自己的活，验证结论绑 head SHA；验证 skill 分 Launch / Doctor / Drive / Evidence / Cleanup 五节。
+  - 状态：待定。
+- **[Automating eval design and hillclimbing with Claude](https://claude.dev/blog/automating-eval-design-and-hillclimbing/)**（claude.dev）
+  - 是什么：用 Claude 设计评测、按证据迭代提示词。
+  - 取了什么：一次只改一处、改动可归因到根因，不把失败样例原文贴进提示词。
+  - 状态：采用。落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「判断候选」的「一个 skill 一次只改一处根因」。
+
+## 写 skill 与写给 agent 的文档
+
+- **[Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)**（Claude 文档）、**[Claude Code skills](https://code.claude.com/docs/en/skills)**（Claude Code 文档）、**[Equipping agents for the real world with Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)**（Anthropic Engineering）
+  - 是什么：官方的 skill 写法与 frontmatter 规范。
+  - 取了什么：描述写清做什么和何时用、触发词靠前；正文简洁，细节拆到一级引用文件；渐进披露；Claude A 写、Claude B 测。
+  - 状态：采用。落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「写 skill 与偏差修正」，仓库里的 skill 都按它写。
+- **[The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/)**（claude.dev）
+  - 是什么：新一代模型的上下文写法。
+  - 取了什么：少写硬约束，去掉互相冲突的指令，skill 当轻量指南。
+  - 状态：采用。落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「参考」，是写和改 skill 的依据。
+- **[mattpocock/skills](https://github.com/mattpocock/skills)**（Matt Pocock）
+  - 是什么：一组通用工程 skill，主线是面谈 → 规格 → 拆票 → TDD → 双轴评审 → 复盘。
+  - 取了什么：从 `diagnosing-bugs` 借排查纪律，先造一条能稳定复现症状的命令，再列可证伪的假设；从 `git-guardrails-claude-code` 借禁区做成钩子；`writing-for-agents` 的写法要点先按 Anthropic 最新文档核对，只并入一致的部分。
+  - 不借：先问透的 grilling，和本项目偏行动的规矩冲突；规格与拆票依赖 issue 跟踪器，本项目用线程；PR 模板站主不要。
+  - 状态：部分采用。排查纪律落在 [lyjwpage-diagnose](../.claude/skills/lyjwpage-diagnose/SKILL.md)；禁区钩子是 [guard-forbidden-commands.mjs](../scripts/guard-forbidden-commands.mjs)，由 [.claude/settings.json](../.claude/settings.json) 的 PreToolUse 挂上；写法要点落在 [writing.md](../.claude/skills/lyjwpage-skill-mining/writing.md)。
+
+## 模型选择与子代理
+
+- **[What a task costs on Opus 5.5](https://claude.dev/blog/what-a-task-costs-on-opus-5-5/)**（claude.dev）、**[Using Claude Code: Spending your effort](https://claude.dev/blog/spending-your-effort/)**（claude.dev）、**[Subagents](https://code.claude.com/docs/en/sub-agents)**（Claude Code 文档）
+  - 是什么：各类任务的成本、effort 档位怎么选、子代理的 `model` / `effort` 字段。
+  - 取了什么：搜索、读日志、读长历史这类出错容易发现的活放 Sonnet 或 Haiku，判断和改代码留在主模型；要验证、有边界情况的用 high；子代理看不到对话，关键规则要在简报里重说。
+  - 状态：采用。落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)（验证交给 Haiku 验证员）和 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「派读者读线程」（Sonnet 读者）。
+
+## 设计系统与 UI
+
+- **[Vercel design.md](https://vercel.com/design.md)** 与博文 **[How our agents build on-brand pages with design.md](https://vercel.com/blog/how-our-agents-build-on-brand-pages-with-design-md)**（Vercel）
+  - 是什么：教 agent 做 Vercel 署名报告页的公开 skill，配一套评测循环。
+  - 取了什么：只取方法，不取视觉语言。具体是：每个间距只有一个主人；规则冲突时的优先级；同级数值不因内容更长单独缩字号；一组条形共用轨道和比例尺；分开诊断「太多」和「太吵」；能机检的规则交给代码。
+  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)、[lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)，以及只减不增的门禁 [design-scale-check.mjs](../scripts/design-scale-check.mjs)（`pnpm design:scale`）。
+- **[Google Labs DESIGN.md 格式](https://github.com/google-labs-code/design.md)**
+  - 是什么：给 agent 读的设计规范文件格式。
+  - 取了什么：章节顺序。
+  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)。
+- **[ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)**（nextlevelbuilder）
+  - 是什么：按关键词检索的设计知识库，覆盖风格、配色、字体和 UX 规则。
+  - 取了什么：`--domain ux`、`--domain chart` 的单条规则可以查。它的设计系统生成器与本站风格冲突，不用。项目里不安装。
+  - 状态：部分采用。落在 [lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)「外部设计 skill 怎么用」。
+- **[frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design)**（Anthropic）、**[Impeccable](https://github.com/pbakaus/impeccable)**（pbakaus）
+  - 是什么：前者是给全新页面定视觉方向的 skill；后者带布局、排版命令和反模式检测。
+  - 取了什么：前者只在做全新独立页面时参考；后者适合大改版时做一次外部审查。
+  - 状态：部分采用。落在 [lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)「外部设计 skill 怎么用」。
+- **[LobeHub Icons](https://lobehub.com/icons)**
+  - 是什么：AI 与开发者品牌的图标集。
+  - 取了什么：品牌和产品图标先查它，按深路径导入 `@lobehub/icons`。
+  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)「Components」的图标条目。
+
+## Cloudflare 平台
+
+- **[Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/)**（Cloudflare 文档）
+  - 是什么：DO 和普通 Worker 怎么分工。
+  - 取了什么：依赖旧状态、要与原子更新一起做的计算留在 DO；参数处理、展示计算、第三方请求等放到普通 Worker。
+  - 状态：采用。现状落在 [state-storage.md](./state-storage.md)（`StateHub` 只做串行合并与公开读批次，取数和展示在普通 Worker）；取舍依据见审计快照 [do-execution-audit.md](./do-execution-audit.md)。
+- **[Workers Builds 的 GitHub 集成](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/)** 与 **[Preview 的 Service Binding](https://developers.cloudflare.com/workers/previews/resources/#service-bindings)**（Cloudflare 文档）
+  - 是什么：Worker 原生 Git 部署，以及分支预览里的绑定行为。
+  - 取了什么：Worker 只走 Workers Builds，不在 Actions 里发布；预览的 Service Binding 指向目标 Worker 的生产部署，所以分支上试新后端要走 Worker 分支预览。
+  - 另取：Workers Builds 的新版 Previews 才会在 PR 上贴预览地址，而 `preview_urls` 不写默认关，所以站点显式打开。
+  - 状态：采用。落在 [workers-builds.md](./workers-builds.md) 与 [wrangler.jsonc](../wrangler.jsonc) 的 `preview_urls`。
+- **[Workers best practices：Worker 之间用 Service Binding](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/#use-service-bindings-for-worker-to-worker-communication)**（Cloudflare 文档）
+  - 是什么：Worker 互调的推荐方式。
+  - 取了什么：站点域名上的 `/api/*` 按数据归属分流，后端一律经 Service Binding 原样转交，不跨域 `fetch`，因为跨域会改写 `CF-Connecting-IP`、让按 IP 的限流失效；浏览器因此只连站点一个域名。
+  - 状态：采用。落在根 [AGENTS.md](../AGENTS.md)「禁区」与 [site-policy.ts](../src/lib/site-policy.ts) 的 `classifyGatewayRequest`。
+- **[Workers Caching 的缓存键](https://developers.cloudflare.com/workers/cache/cache-keys/)**（Cloudflare 文档）
+  - 是什么：Worker 版本 ID 默认是缓存键的一部分，`cross_version_cache` 要显式打开。
+  - 取了什么：解释了为什么每次部署后首页从空缓存开始；不开 `cross_version_cache`，改成没有快照的卡按降级信封渲染、那份首页 `no-store`。
+  - 状态：采用。落在 [state-storage.md](./state-storage.md) 首屏一节与 [card-boundary.tsx](../src/components/card-boundary.tsx)。
+- **Cloudflare Access 的 Instant Auth（`auto_redirect_to_identity`）**（Cloudflare 控制台设置，讨论里没留链接）
+  - 是什么：只允许一种登录方式时跳过选择页，直接跳到身份提供方。
+  - 取了什么：站点分支预览用它省掉登录方式选择页，点开预览直接登录。
+  - 状态：采用。当前 Access 配置只以 [ops-facts.md](./ops-facts.md) 的站点 Preview 条目为准。
+- **[Workers Observability](https://developers.cloudflare.com/workers/observability/)** 与 Workers Issues、Web Analytics（Cloudflare 文档）
+  - 是什么：Cloudflare 自带的报错分组、日志与 Web Vitals。
+  - 取了什么：评估了能否完全替代 Sentry：心跳与在线条自建、报错数取 Observability、Vitals 取 Web Analytics、浏览器报错经 `/relay` 进 Worker 日志。
+  - 状态：待定。PR #198 是草稿，站主记作长期待办；在那之前线上排查仍以根 [AGENTS.md](../AGENTS.md)「排查线上错误」的 Sentry 为准。
+- **[Durable Object 的 transfer 迁移](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/#transfer-migration)**（Cloudflare 文档）
+  - 是什么：把 DO 类从一个 Worker 转到另一个。
+  - 取了什么：聊天 DO 迁到 AI Worker 时的有序切换。
+  - 状态：采用。落在 [ai-worker-migration.md](./ai-worker-migration.md)。
+- **[Workers KV Instant](https://blog.cloudflare.com/workers-kv-instant/)**（Cloudflare 博客）
+  - 是什么：KV 的即时一致模式。
+  - 状态：不采用，实时层仍留在 DO。评估时的限制、价格和重新评估的条件只记在项目记忆 [kv-instant-evaluation](../.claude/memory/kv-instant-evaluation.md)，平台调整后按那里的条件重评。
+
+## 密钥管理
+
+- **[Infisical](https://infisical.com/pricing)**（及其 [Cloudflare Workers 同步](https://infisical.com/docs/integrations/secret-syncs/cloudflare-workers)）
+  - 是什么：开源的密钥管理平台，可自建或托管。
+  - 状态：不采用。对一个人维护的仓库，收益抵不过多一个持有全部密钥的第三方和整套重灌的成本；套餐与集成能力会变，要重新考虑时按当时的产品现状重评，不沿用旧结论。密钥清单仍以 [ops-facts.md](./ops-facts.md) 为准，灌 Secret 走 [lyjwpage-mac-session](../.claude/skills/lyjwpage-mac-session/SKILL.md)。
+
+## 前端与工具链
+
+- **[TypeScript 7.0 RC 公告](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc/)**（Microsoft）与 **[Nx 的 TypeScript 7 指南](https://nx.dev/docs/kb/typescript-7)**
+  - 是什么：Go 实现的原生 TypeScript 编译器，以及迁移办法。
+  - 取了什么：`tsc` 换成 TypeScript 7；typescript-eslint 还要旧的 JS API，所以按指南两版并装；Worker 的 tsconfig 去掉 7 不再支持的 `baseUrl`。
+  - 状态：采用。落在根 [AGENTS.md](../AGENTS.md)「项目入口与验证」的 `typescript` 别名说明与根 `package.json`。
+- **[React Compiler](https://react.dev/learn/react-compiler)**（React 文档）
+  - 是什么：编译期自动记忆化。
+  - 取了什么：站点构建经 `@vitejs/plugin-react` 的 `reactCompilerPreset` 接入。
+  - 状态：采用。落在 [vite.config.ts](../vite.config.ts)。
+- **[markdown-cjk-friendly](https://github.com/tats-u/markdown-cjk-friendly)**（`remark-cjk-friendly`）
+  - 是什么：修正 CommonMark 在中日韩标点旁不认 `**` 收尾的 remark 插件。
+  - 取了什么：对话里「？」后紧跟中文的加粗会原样显示星号，接上它和配套的删除线插件。
+  - 状态：采用。落在 [chat-markdown-plugins.ts](../src/lib/chat-markdown-plugins.ts)。
+
+## 交互与文案参照
+
+- **ChatGPT 的聊天输出**（[chatgpt.com](https://chatgpt.com)，在站主的浏览器里实测，没有文章）
+  - 是什么：它不在回答里塞 HTML，而是让模型挑组件、用自家设计系统内联画出数字卡、图表、时间线，只有要跑逻辑的部分进隐藏沙箱。
+  - 取了什么：首页对话的图示改成站点原生组件，HTML 沙箱只作兜底；预览卡固定尺寸、可重来、可全屏，切换视图不卸载。
+  - 状态：采用。落在 [chat-visual.tsx](../src/components/chat-visual.tsx) 与 [chat-html-preview.tsx](../src/components/chat-html-preview.tsx)。
+- **Claude 界面的 thinking 提示**（站主点名参照，没有文章）
+  - 是什么：一道高光从左往右扫过的「思考中」标签。
+  - 取了什么：对话等待时显示 `THINKING` 扫光，模型流出思考时可展开。
+  - 状态：采用。落在 [god-chat.tsx](../src/components/god-chat.tsx)。
+- **Apple 中国官网的产品标语**（站主给的截图，没有链接）
+  - 是什么：短、笃定、具体的中文标语写法。
+  - 取了什么：摘要卡标题写成 3 到 5 个汉字的标语口吻。试过的书法字体被站主否掉，没有保留。
+  - 状态：采用。落在 [compose.ts](../workers/ai/src/digest/compose.ts) 的提示词。

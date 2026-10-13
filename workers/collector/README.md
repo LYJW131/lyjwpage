@@ -15,6 +15,8 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 另开一个具名 entrypoint `Collector`（契约见 `shared/collector.ts`）：同账号的 Worker 调
 `refresh(jobs)` 就能点名立刻跑几个任务，比如上报入口（`workers/ingress`）收到站点部署通知后请它重拉
 `site-deployments` 与 `cloudflare-deployments`；`enrichTrack`、`followUpTrack` 见「Apple Music」。
+生产上要手动跑一遍全部任务（含 `digest`），走上报入口的 `POST /api/internal/collector-refresh`，或在 GitHub Actions
+手动运行 `.github/workflows/collector-refresh.yml`，见[上报入口 README](../ingress/README.md#手动跑采集)。
 没有路由、没有域名，只能经 Service Binding 调到；默认 `fetch` 只答 Apple Music 的三条路径（`shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS`），
 其余一律 404。
 

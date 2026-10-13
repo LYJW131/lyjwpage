@@ -69,14 +69,14 @@ export function GithubConsent({ language, working, disabled, cancellable = !work
 
   return (
     <div role="group" aria-label={copy.title} lang={copy.lang} className="mt-3 border-t border-line pt-3 text-sm leading-relaxed text-foreground">
-      <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">{copy.title}</div>
+      <div className="label-mono mb-1.5 text-muted-foreground">{copy.title}</div>
       <p>{copy.intro}</p>
       <ul className="mt-1.5 list-disc space-y-1 break-words pl-5 text-xs text-muted-foreground">
         {terms.map(([label, body]) => (
           <li key={label}><span className="font-medium text-foreground">{label}{copy.colon}</span>{body}</li>
         ))}
       </ul>
-      {error && <p role="alert" lang="en" className="mt-2 text-xs text-red-500">{error}</p>}
+      {error && <p role="alert" lang="en" className="mt-2 text-xs text-signal-red">{error}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={onAccept} disabled={working || disabled} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background disabled:opacity-40">{working ? copy.working : copy.accept}</button>
         <button type="button" onClick={onCancel} disabled={!cancellable} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">{copy.cancel}</button>

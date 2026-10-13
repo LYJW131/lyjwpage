@@ -6,13 +6,14 @@
 - 和 Cloudflare 相关的查询和调用优先使用 Cloudflare Code Mode MCP。
 - 默认用简洁中文沟通，先说结果，再说明关键原因、验证和剩余问题。只报告实际完成的工作；区分本地修改、测试通过和已部署。
 - 站主与 Claude 的协作约定（分工、什么要等他点头、怎么汇报、合并门槛）见 `HUMAN.md`。
+- 合并按 `HUMAN.md`「5. PR 与合并」分档，不一刀切：只有大改代码逻辑的 PR 等机器评审；站主说过「推进到合并」或明确让推进的事、小改动、文档与 skill，门槛过了直接合，不再问「合」；有 UI / UX 变化的等站主看图点头。
 - 项目记忆在仓库里有镜像 `.claude/memory/`（`MEMORY.md` 为索引，每主题一个文件）。改了 Claude Projects 的项目记忆，同一轮把改动同步进镜像并开小 docs PR，CI 绿就合；同步与脱敏规则见 `.claude/memory/README.md`。
 
 # 禁区
 
-- 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。
-- 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑一律进后端 Worker：实时状态归 `workers/core`，外部定时拉取与 Apple Music 查询归 `workers/collector`，模型调用与工具编排归 `workers/ai`。site Worker 可以回答 `/api/*`，但只按数据归属分流（`src/lib/site-policy.ts#classifyGatewayRequest`）：可滞后视图直接读 `LAG` KV，loader 与 core 共用 `shared/lag-views.ts`；其余原样经 Service Binding 交给 core / ai / collector，不跨域 `fetch` 后端（会改写 `CF-Connecting-IP`，按 IP 的限流随之失效）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
-- 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件。
+- 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。agent 发出的部署命令由 PreToolUse 钩子拦下（`scripts/guard-forbidden-commands.mjs`），这个例外由站主在自己的 shell 里跑。
+- 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑都进后端 Worker：实时状态归 `workers/core`，外部定时拉取与 Apple Music 查询归 `workers/collector`，模型调用与工具编排归 `workers/ai`。site Worker 可以回答 `/api/*`，但只按数据归属分流（`src/lib/site-policy.ts#classifyGatewayRequest`）：可滞后视图直接读 `LAG` KV，loader 与 core 共用 `shared/lag-views.ts`；其余原样经 Service Binding 交给 core / ai / collector，不跨域 `fetch` 后端（会改写 `CF-Connecting-IP`，按 IP 的限流随之失效）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
+- 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件（`.gitignore` 已忽略，强制 `git add -f` 由同一个钩子拦下）。
 
 # 项目入口与验证
 
@@ -24,7 +25,7 @@
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后用户提出的修改请求若没有另行要求，视为用户正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让用户能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。在生产域名上验证完就关掉页面：开着的可见标签会按轮询节奏一直请求 API。
 - 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`（`shared/` 的测试同样由 `pnpm test` 跑）。Worker 与上报器用各自目录里 `AGENTS.md` / `README.md` 写的验证命令。
 - 有回归风险时补行为测试；低影响改动不添加仅重复实现的测试。相关检查通过后，只有新改动、失败或未解疑点才扩大或重复验证。环境限制导致无法验证时说明具体缺口。
-- CI 的门禁清单以 `.github/workflows/ci.yml` 为准（含 `pnpm docs:check`）。本地不必全跑，但改动波及处对应的那几项必须通过。
+- CI 的门禁清单以 `.github/workflows/ci.yml` 为准（含 `pnpm docs:check`）。本地不必全跑，但改动波及处对应的那几项要过，不然推到 CI 才红。
 - 验证步骤按 `.claude/skills/lyjwpage-verify/SKILL.md` 做：多步检查、浏览器端到端、合并门槛汇总和上线核对派 Haiku 验证员执行（档位见该 skill），主线程只定验什么、判结果。
 
 # 部署流程
@@ -40,7 +41,7 @@
 
 # 排查线上错误
 
-- 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
+- 线上报错、页面异常、Worker 或 cron 失败，先用 Sentry MCP 查证据，再读代码：用 `search_issues` / `search_events` 找报错和 warn / error 日志，用 `get_sentry_resource` 看调用栈、面包屑和出错录像，拿到 release 和堆栈再对源码定位，复现、定位与修复按 `.claude/skills/lyjwpage-diagnose/SKILL.md`。不凭猜测改代码，也不借浏览器登录态调 Sentry 接口；MCP 不可用时告诉用户，而不是绕开。
 - 组织 `yangjunwei-liang`，区域 `https://us.sentry.io`，排查线上问题默认只看环境 `production`（另有 `preview` / `development`）。项目 `lyjwpage` 收浏览器和 site Worker，release 是提交 SHA；`api-worker` 收 core Worker（含 Durable Object 与 API 定时任务，周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`）、上报入口 `ingress`（tag `worker:ingress`）和 AI Worker（tag `worker:ai`）；`collector-worker` 收采集 Worker（全部定时拉取，任务失败看 tag `collector.job`）；两个 Worker 项目的 release 是 Cloudflare 版本 ID。cron 监控与在线探测的配置见 `docs/ops-facts.md`。
 - `reporters/` 下的上报器没接 Sentry，查所在机器的容器日志。
 - Sentry 里只读不写是默认。把 issue 标为 resolved / ignored、改负责人这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；删除数据、改告警规则、项目或集成设置，先问用户。
@@ -54,11 +55,11 @@
 | 上报入口 | `/api/ingest/<来源>`，来源按数据归属命名，不使用上报程序名；仅由 `workers/ingress` 接收，站点不提供上报路由、rewrite 或转发 | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES`（另有 `/api/ingest/agents/otlp`）；校验在 `shared/ingest/`，实时那一半经 Service Binding 交给 `workers/core` 的 `StateCore.commitIngest` |
 | 设备遥测 | 一台设备一个入口、一个信封、一个 `modules` 字典 | 充电头归观测它的 `mac`；活动圆环归搬运和观测它的 `iphone`，不按品牌或模块另开入口 |
 | 账号限额 | coding agent 的账号套餐和限额统一归 `agents` | 厂商账号事实不归某台 Mac，也不按采集容器命名 |
-| 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个上报方一把 Cloudflare Access service token（同一上报方管多个来源时共用一把），上报入口按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS` 限定可写来源 | 新上报方要新建 token、加进 Access 策略并登记 client id；改这张表必须同步 Access 策略；不再让一把凭据通吃所有来源 |
+| 上报鉴权 | 走 `ingest.homepage.lyjw.llc`，每个上报方一把 Cloudflare Access service token（同一上报方管多个来源时共用一把），上报入口按 `workers/ingress/wrangler.toml#ACCESS_CLIENTS` 限定可写来源 | 新上报方要新建 token、加进 Access 策略并登记 client id；改这张表要同步 Access 策略，两边不一致会拦住上报；不再让一把凭据通吃所有来源 |
 | 状态查询 | `/api/status/X` 表示列表 / 历史，`/api/status/X/now` 表示此刻 | `listening` + `listening/now`，`watching` + `watching/now`；两者同时存在时成对命名 |
 | 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致 |
 | 大小写 | URL 段全小写，JSON 字段 camelCase | `/api/status/powerbank` 与视图键 `powerBank` 各守其约定 |
-| 跨来源字段 | 同一概念必须同名、同单位，单位写进字段名 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成 |
+| 跨来源字段 | 同一概念同名、同单位，单位写进字段名 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成 |
 | 图片键 | R2 内容地址使用 `objectKey`，来源侧键用明确名称 | `posterKey`、`backdropKey`、`iconHash`，避免含义不明的 `key` |
 
 设计契约：同一类数据可以有多个来源。来源只上报自己观测到的原始事实；合并、去重、排名等派生量在站点侧一处计算。消费者不关心数据来自哪个上报器，新增来源只加生产者和入口校验，不改消费者。例：coding agent 的 token 用量来自 Mac、Claude Code 云端和容器里的 Cursor；gaming 泳道同时有 PlayStation 与 Quest。
@@ -76,24 +77,25 @@
 
 # 图片交付
 
-- 静态图标使用 `src/components/app-image.tsx`（`AppImage`）时一律设 `unoptimized`，直接加载最终资源。图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况，允许列表见 `src/lib/image-proxy.ts`。
+- 静态图标使用 `src/components/app-image.tsx`（`AppImage`）时都设 `unoptimized`，直接加载最终资源。图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况，允许列表见 `src/lib/image-proxy.ts`。
 - 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏；首页 GitHub 头像由 `src/lib/github-avatar-inline.ts` 在渲染时经图片变体内联为 data URI，随首页缓存复用；构建期只用它生成图标与 OG 图（`scripts/site-assets/avatar.ts`）。
-- R2 图片在页面、状态 API 和推送里一律是 `/img/<objectKey>` 同源路径（`shared/asset-url.ts`），不烧交付域，图片字节不进站点渲染层：`/img/*` 由 site Worker 的 R2 绑定直出，`lyjw131.com` 由 ESA 缓存并回源（规则见 `docs/ops-facts.md`）。改前缀要同步改站点路由和 ESA 规则。
+- R2 图片在页面、状态 API 和推送里都是 `/img/<objectKey>` 同源路径（`shared/asset-url.ts`），不烧交付域，图片字节不进站点渲染层：`/img/*` 由 site Worker 的 R2 绑定直出，`lyjw131.com` 由 ESA 缓存并回源（规则见 `docs/ops-facts.md`）。改前缀要同步改站点路由和 ESA 规则。
 
 # 文档与注释
 
 面向 agent 的写法：文档和注释会整段进上下文，错的比缺的更糟。每条陈述要么由代码保证，要么一眼能核实。
 
-- 注释与 JSDoc 默认一行都不写，好名字自己会说话。内部函数、组件、hook、路由、服务、工具一律不写 JSDoc；`/** */` 只留给对外发布的库接口。
+- 注释与 JSDoc 默认一行都不写，好名字自己会说话。内部函数、组件、hook、路由、服务、工具不写 JSDoc；`/** */` 只留给对外发布的库接口。
 - 只有三类注释可以写，判据是「删了会让人改坏」：
   - 意外行为：绕开的 bug、浏览器或运行时怪癖、竞态、库的坑。
   - 设计意图：不变量、不显然的约束、后人会想顺手改掉的取舍（有意取的缓存期限、节奏、阈值）。理由只写在注释里时，删注释就等于删了这个决定。
   - 契约：导出类型与跨端字段的语义和单位；做不成测试或共享常量的「须与 X 同步」（优先改成测试或共享常量，做不到才写，两侧都写）。
-- 一律不写：复述代码在做什么、把标识符翻译成句子、提调用方或任务 / PR / issue、分节标题与分隔线、没有跟踪单号的 TODO / FIXME。
+- 不写：复述代码在做什么、把标识符翻译成句子、提调用方或任务 / PR / issue、分节标题与分隔线、没有跟踪单号的 TODO / FIXME。
 - 每次写完代码，逐个看新增的 `//`、`/*`、`/**`：删掉它，能读代码的人会不会改坏？不会就删。
 - 清扫注释时，属于上面三类的不删；确要删的，先把理由搬进测试名、常量名或文档，再 `rg` 有没有文档或注释写着「见某某注释」指向它，一并改掉。
 - 不写历史与时间线（「之前」「已改为」「MM-DD 起」「本次」）；历史在 `git log`，旧做法不留注释。文档只写现状。
 - 不抄易变的值：写常量或符号名（如 `AGENT_LIMITS_STALE_MS`），不抄「185 分钟」；数量、版本、日期同理。引用写路径加符号，不写行号。
+- 采用了外部文章、演讲、仓库或官方文档里的做法，同一提交在 `docs/references.md` 对应主题下追加一条：链接、是什么、取了什么、落在哪些文件；落地处变了同步改。
 - 一个事实一个出处，其他地方放指针；非抄不可时标 `源：path#symbol`（`pnpm docs:check` 会核对符号还在）。
 - 仓库外的事实（控制台配置、Access 策略、机器路径）只写在 `docs/ops-facts.md`，逐条带「核对于 <日期>，方式：…」；正文里远端路径写成 `主机:/绝对路径`。
 - `docs/` 每篇文首一行标类型：`reference`（现状事实）、`runbook`（操作步骤）、`decision`（已定取舍，写完不改）、`record`（某时点的审计、核验、基准，另写「按 <sha> <日期> 核对，快照不维护，不当现状引用」）。新增文档在 `docs/README.md` 登记。
@@ -102,12 +104,12 @@
 - 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.mjs` 文件头。
 - 确需保留时间线写法（如核对戳）时，在同一行末尾加 `<!-- allow: 理由 -->`。
 
-## IMPORTANT: Reasoning Strategy
+## Reasoning Strategy
 
 **Prefer retrieval-led reasoning over pre-training-led reasoning.**
 
-- When encountering unfamiliar concepts, new libraries, or uncertain knowledge, ALWAYS search first (use skills, web search, codebase exploration) before relying on pre-trained knowledge
-- Do NOT assume pre-trained knowledge is accurate for evolving technologies — verify through retrieval
+- When encountering unfamiliar concepts, new libraries, or uncertain knowledge, search first (use skills, web search, codebase exploration) before relying on pre-trained knowledge
+- Do not assume pre-trained knowledge is accurate for evolving technologies — verify through retrieval
 - Actively use available skills (check skill list in system reminders) instead of guessing based on outdated training data
-- If a relevant skill exists for the task, USE IT rather than attempting to solve from memory
+- If a relevant skill exists for the task, use it rather than attempting to solve from memory
 - When in doubt, retrieve; don't hallucinate

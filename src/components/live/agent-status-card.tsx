@@ -297,7 +297,7 @@ export function AgentStatusCard({
                   </>
                 );
                 return (
-                  <li key={agent.id} className="flex w-full items-center gap-3 px-4 py-3 @[36rem]:px-3">
+                  <li key={agent.id} className="flex w-full items-center gap-3 px-4 py-3 lg:px-5">
                     <span className="shrink-0" aria-hidden>
                       <Brand id={agent.id} />
                     </span>
@@ -320,7 +320,7 @@ export function AgentStatusCard({
           ))}
         </div>
       ) : (
-        <p className="px-4 py-5 text-sm text-muted-foreground md:px-5">
+        <p className="px-4 py-5 text-sm text-muted-foreground lg:px-5">
           {error ? "Status unavailable" : "Checking status"}
         </p>
       )}

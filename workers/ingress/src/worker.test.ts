@@ -4,7 +4,7 @@ import { gzipSync } from "node:zlib";
 
 import { SERVER_TAG } from "@shared/live-events";
 import { MemoryKv } from "@shared/testing/memory-kv";
-import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
+import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome, type CollectorRpc } from "@shared/collector";
 import { CREDENTIAL_KEYS } from "@shared/credentials";
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
@@ -114,7 +114,7 @@ function world(setup: Setup = {}) {
     ACCESS_CLIENTS: {
       [ALL]: [...SOURCES.map((source) => `ingest:${source}`), "ingest:agents-otlp"],
       [MAC_ONLY]: ["ingest:mac"],
-      [DEPLOYER]: ["internal:site-deployed"],
+      [DEPLOYER]: ["internal:site-deployed", "internal:collector-refresh"],
     },
   } satisfies Env;
   const pending: Promise<unknown>[] = [];
@@ -192,7 +192,8 @@ test("preview versions refuse every report and hide site-deployed", async () => 
     assert.deepEqual(await json(refused), { ok: false, error: "预览 Worker 不接收上报" });
     assert.equal((await w.send("/api/ingest/agents/otlp", post({ resourceMetrics: [] }))).status, 403);
     assert.equal((await w.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 404);
-    assert.equal(w.calls.commits.length + w.calls.broadcasts, 0);
+    assert.equal((await w.send("/api/internal/collector-refresh", { client: DEPLOYER })).status, 404);
+    assert.equal(w.calls.commits.length + w.calls.broadcasts + w.calls.refreshed.length, 0);
   } finally {
     if (previous === undefined) delete process.env.PREVIEW_WORKER; else process.env.PREVIEW_WORKER = previous;
   }
@@ -561,4 +562,71 @@ test("site-deployed: a failing or missing collector never fails the notification
   assert.equal(warned.mock.callCount(), 1 + DEPLOYMENT_JOBS.length);
   const unbound = world({ collector: false });
   assert.equal((await unbound.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 200);
+});
+
+test("collector-refresh: runs every active job now, one collector call per job, and reports each outcome in request order", async () => {
+  const w = world();
+  const response = await w.send("/api/internal/collector-refresh", { client: DEPLOYER });
+  assert.equal(response.status, 200);
+  const body = await json(response) as { ok: boolean; outcomes: CollectorJobOutcome[] };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.outcomes.map((outcome) => outcome.job), [...ACTIVE_COLLECTOR_JOBS]);
+  assert.deepEqual(new Set(w.calls.refreshed.map(([job]) => job)), new Set(ACTIVE_COLLECTOR_JOBS));
+  assert.equal(w.calls.refreshed.length, ACTIVE_COLLECTOR_JOBS.length);
+  assert.ok(ACTIVE_COLLECTOR_JOBS.includes("digest"));
+});
+
+test("collector-refresh: jobs run one at a time (they share the request's connection budget), digest last after the views it summarizes", async () => {
+  const started: string[] = [];
+  let running = 0;
+  let peak = 0;
+  const w = world({
+    refresh: async ([job]) => {
+      started.push(job!);
+      peak = Math.max(peak, ++running);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      running -= 1;
+      return [{ job: job!, status: "ok", ms: 1 }];
+    },
+  });
+  const response = await w.send("/api/internal/collector-refresh?job=digest&job=github-repo&job=site-deployments", { client: DEPLOYER });
+  assert.deepEqual((await json(response) as { outcomes: CollectorJobOutcome[] }).outcomes.map((outcome) => outcome.job), ["digest", "github-repo", "site-deployments"]);
+  assert.deepEqual(started, ["github-repo", "site-deployments", "digest"]);
+  assert.equal(peak, 1);
+});
+
+test("collector-refresh: ?job= narrows the run, and a failing job turns ok false without hiding the rest", async () => {
+  const w = world();
+  const narrowed = await w.send("/api/internal/collector-refresh?job=digest&job=digest&job=pagespeed", { client: DEPLOYER });
+  assert.deepEqual(w.calls.refreshed, [["pagespeed"], ["digest"]]);
+  assert.equal((await json(narrowed) as { ok: boolean }).ok, true);
+
+  const failing = world({
+    refresh: async ([job]) => {
+      if (job === "digest") throw new Error("ai unavailable");
+      return [{ job: job!, status: job === "pagespeed" ? "error" : "ok", ms: 1 }];
+    },
+  });
+  const response = await failing.send("/api/internal/collector-refresh?job=digest&job=pagespeed&job=github-chart", { client: DEPLOYER });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await json(response), {
+    ok: false,
+    outcomes: [
+      { job: "digest", status: "error", detail: "ai unavailable", ms: 0 },
+      { job: "pagespeed", status: "error", ms: 1 },
+      { job: "github-chart", status: "ok", ms: 1 },
+    ],
+  });
+});
+
+test("collector-refresh: POST only, needs its own permission, and says so when the collector is not bound", async () => {
+  const w = world();
+  assert.equal((await w.send("/api/internal/collector-refresh", { method: "GET", client: DEPLOYER })).status, 405);
+  assert.equal((await w.send("/api/internal/collector-refresh", { client: null })).status, 401);
+  assert.equal((await w.send("/api/internal/collector-refresh", { client: MAC_ONLY })).status, 403);
+  assert.equal((await w.send("/api/internal/collector-refresh", { client: ALL })).status, 403, "report tokens cannot trigger collection");
+  assert.equal(w.calls.refreshed.length, 0);
+  const unbound = await world({ collector: false }).send("/api/internal/collector-refresh", { client: DEPLOYER });
+  assert.equal(unbound.status, 503);
+  assert.deepEqual(await json(unbound), { ok: false, error: "没有绑定采集 Worker" });
 });

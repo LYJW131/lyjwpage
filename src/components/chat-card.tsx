@@ -89,8 +89,8 @@ function Frame({ title, aside, compact = false, children }: { title: string; asi
   return (
     <section className={cn("w-fit min-w-[min(100%,20rem)] overflow-hidden border border-line bg-surface", compact ? "max-w-[min(100%,32rem)]" : "max-w-full")}>
       <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-        <span className="label-mono text-[10px] text-muted-foreground">{title}</span>
-        {aside && <span className="label-mono min-w-0 truncate text-[10px] text-muted-foreground">{aside}</span>}
+        <span className="label-mono text-muted-foreground">{title}</span>
+        {aside && <span className="label-mono min-w-0 truncate text-muted-foreground">{aside}</span>}
       </header>
       {children}
     </section>
@@ -109,7 +109,7 @@ function Idle({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center gap-1.5 px-3 py-3">
       <StatusDot tone="off" />
-      <span className="label-mono text-[10px] text-muted-foreground">{children}</span>
+      <span className="label-mono text-muted-foreground">{children}</span>
     </div>
   );
 }
@@ -152,7 +152,7 @@ function Hero({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <StatusDot tone={tone} />
-          <span className={cn("label-mono text-[10px]", tone === "live" ? "text-live" : "text-muted-foreground")}>{status}</span>
+          <span className={cn("label-mono", tone === "live" ? "text-live-ink" : "text-muted-foreground")}>{status}</span>
         </div>
         <div className="mt-1 truncate text-sm font-medium">
           {href ? (
@@ -165,7 +165,7 @@ function Hero({
         </div>
         {subtitle && <div className="truncate text-xs text-muted-foreground">{subtitle}</div>}
         <ProgressBar percent={progress} className="mt-2 h-1" />
-        {meta && <div className="mt-1 font-mono text-[10px] tabular-nums text-muted-foreground">{meta}</div>}
+        {meta && <div className="mt-1 font-mono text-2xs tabular-nums text-muted-foreground">{meta}</div>}
       </div>
     </div>
   );
@@ -183,7 +183,7 @@ function ProgressBar({ percent, className }: { percent?: number | null; classNam
 function Strip({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="border-t border-line pt-2 [header+&]:border-t-0">
-      <div className="label-mono px-3 text-[10px] text-muted-foreground">{label}</div>
+      <div className="label-mono px-3 text-muted-foreground">{label}</div>
       <ul className="scrollbar-none flex snap-x snap-mandatory scroll-px-3 gap-3 overflow-x-auto px-3 pb-3 pt-2 [&::-webkit-scrollbar]:hidden">
         {children}
       </ul>
@@ -196,8 +196,8 @@ function Tile({ href, image, title, subtitle, progress }: { href?: string | null
     <>
       {image}
       <ProgressBar percent={progress} className="mt-1 h-0.5" />
-      <div className="mt-1.5 truncate text-[11px] leading-tight">{title}</div>
-      {subtitle && <div className="truncate text-[10px] leading-tight text-muted-foreground">{subtitle}</div>}
+      <div className="mt-1.5 truncate text-2xs leading-tight">{title}</div>
+      {subtitle && <div className="truncate text-2xs leading-tight text-muted-foreground">{subtitle}</div>}
     </>
   );
   return (
@@ -444,7 +444,7 @@ function WorkoutsCard() {
     <Frame title="Fitness" aside="Apple Watch">
       {recent?.length ? (
         <div>
-          <div className="label-mono px-3 pt-2 text-[10px] text-muted-foreground">Recent workouts</div>
+          <div className="label-mono px-3 pt-2 text-muted-foreground">Recent workouts</div>
           <ul className="px-3 pb-2">
             {recent.map((workout) => (
               <li key={workout.id} className="flex items-baseline justify-between gap-3 border-b border-line py-1.5 text-xs last:border-b-0">

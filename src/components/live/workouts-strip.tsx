@@ -40,10 +40,10 @@ function WorkoutTile({ workout }: { workout: Workout }) {
   return (
     <li className="flex min-w-0 snap-start items-center gap-4 px-4 py-3 lg:px-5 even:border-t even:border-line" title={details || undefined}>
       <div className="grid min-w-0 flex-1 gap-1">
-          <div className="flex items-baseline gap-2 leading-5"><span className="truncate text-sm font-medium leading-5">{workout.activityType}</span>{workout.indoor != null && <span className="text-[10px] text-muted-foreground">{workout.indoor ? "Indoor" : "Outdoor"}</span>}</div>
-          <time dateTime={new Date(workout.startedAt).toISOString()} className="block text-[11px] leading-5 text-muted-foreground">{stamp(workout)}</time>
+          <div className="flex items-baseline gap-2 leading-5"><span className="truncate text-sm font-medium leading-5">{workout.activityType}</span>{workout.indoor != null && <span className="text-2xs text-muted-foreground">{workout.indoor ? "Indoor" : "Outdoor"}</span>}</div>
+          <time dateTime={new Date(workout.startedAt).toISOString()} className="block text-2xs leading-5 text-muted-foreground">{stamp(workout)}</time>
         <dl className="flex flex-wrap gap-x-5 gap-y-1 text-xs leading-5 tabular-nums">
-          {workoutMetrics(workout).map(({ label, value }) => <div key={label} className="flex min-w-0 items-baseline gap-2"><dt className="text-[10px] text-muted-foreground">{label}</dt><dd className="whitespace-nowrap" title={label}>{value}</dd></div>)}
+          {workoutMetrics(workout).map(({ label, value }) => <div key={label} className="flex min-w-0 items-baseline gap-2"><dt className="text-2xs text-muted-foreground">{label}</dt><dd className="whitespace-nowrap" title={label}>{value}</dd></div>)}
         </dl>
       </div>
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-lime-400/10 text-lime-600 dark:text-lime-400"><Icon size={16} aria-hidden="true" /></span>
@@ -80,9 +80,9 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
   return (
     <section id="workouts" aria-label="Recent workouts" className="@container flex min-w-0 flex-col justify-center border-t border-line md:border-t-0 md:border-l">
       {!data ? (
-        <p className="p-4 text-sm text-muted-foreground">{error ? "Workout history unavailable" : "Awaiting workout report"}</p>
+        <p className="p-4 text-sm text-muted-foreground lg:p-5">{error ? "Workout history unavailable" : "Awaiting workout report"}</p>
       ) : data.items.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">No readable workouts</p>
+        <p className="p-4 text-sm text-muted-foreground lg:p-5">No readable workouts</p>
       ) : (
         <ul ref={listRef} id="workout-list" aria-label="Recent workouts" tabIndex={0} className="grid h-[207px] lg:h-[215px] grid-flow-col grid-rows-2 auto-cols-[100%] overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden snap-x snap-mandatory">
           {items.map((workout) => <WorkoutTile key={workout.id} workout={workout} />)}

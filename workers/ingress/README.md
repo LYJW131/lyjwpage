@@ -2,7 +2,7 @@
 
 外部上报器的唯一入口，无状态。它在 Cloudflare Access 之后验明上报器身份，读出并校验报文，按来源收敛成命令，
 再按数据层拆开写：实时那一半经 Service Binding 交给状态核心（[`workers/core`](../core/README.md)），
-可滞后层、长期归档和 Apple Music 凭据自己写。GitHub Actions 的部署通知也从这里进。
+可滞后层、长期归档和 Apple Music 凭据自己写。GitHub Actions 的部署通知与手动跑采集也从这里进。
 
 拆出来的理由只有一条：校验和拆分的规则经常改，而状态核心带着 Durable Object 和所有页面的 WebSocket。
 改校验只发布这个 Worker，状态核心不重启、推送连接不断。
@@ -24,6 +24,7 @@
 | POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
 | POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` | Claude Code 云端线程的内置遥测（OTLP/HTTP JSON 指标，可 gzip） |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
+| POST | `/api/internal/collector-refresh` | `internal:collector-refresh` | 立刻跑一遍采集任务，见下文「手动跑采集」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
 
 其余路径一律 404。公开读取与 `/ws` 在站点域名上，由 site Worker 转交 core，都不在这里。
@@ -127,6 +128,23 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 2. 在 `waitUntil` 里请采集 Worker 按 `workers/ingress/src/worker.ts#DEPLOYMENT_JOBS` 立刻重拉部署列表与仓库统计（首页「最近提交」读后者）
    （契约 `shared/collector.ts`），不等下一次 cron；失败只记日志，不拖慢回执（工作流的 curl 只等有限时间，见 `.github/workflows/purge-esa.yml`）。
 
+## 手动跑采集
+
+`POST https://ingest.homepage.lyjw.llc/api/internal/collector-refresh` 不等 cron，立刻把采集 Worker 的任务各跑一次，
+默认是 `shared/collector.ts#ACTIVE_COLLECTOR_JOBS` 全部（含 `digest`）；查询串带 `job=<任务>`（可重复）只跑点名的几个。
+请求体不读。任务逐个串行，每个单独一次 `Collector.refresh([任务])`（经 Service Binding 触发的采集 Worker 和这次请求共用等响应头的连接额度，并发扇出会让短预算任务耗在排队上）；`digest` 排在最后，它总结的是别的任务写出的视图。全部跑完才回（`pagespeed` 最慢）：
+
+| 状态 | 正文 | 什么时候 |
+| --- | --- | --- |
+| 200 | `{ ok, outcomes }` | 采集 Worker 答了。`outcomes` 是各任务的 `CollectorJobOutcome`（`shared/collector.ts`），顺序同请求；有任务 `error`（含 RPC 抛错、点名了不认识的任务）时 `ok` 为 `false` |
+| 405 / 401 / 403 | `{ ok: false, error }` | 不是 POST / 没有合法的 Access JWT / 这把凭据没有 `internal:collector-refresh` |
+| 503 | `{ ok: false, error: "没有绑定采集 Worker" }` | 没绑 `COLLECTOR` |
+| 404 | `Not found` | 预览版本 |
+
+任务按手动方式跑（`scheduled: false`）：不看到期、不向 Sentry 报到，真失败照常开 issue（见[采集 Worker README](../collector/README.md)）。
+权限只授给 `lyjwpage-github-actions` 那把 token，平时在 GitHub Actions 里手动运行 `.github/workflows/collector-refresh.yml`
+（输入 `jobs` 留空跑全部，或填空格分隔的任务名），结果表写在那次运行的摘要里，有任务失败时运行标红。
+
 ## 配置
 
 公开变量与绑定全在 `wrangler.toml`，没有 secret：
@@ -158,7 +176,7 @@ core 以后怎么重建都不会把它要回去。Access 应用按主机名挂�
 ## 本地开发
 
 `pnpm dev:worker`（仓库根目录）以多配置方式把这个 Worker 和 dev-router、core、采集 Worker 一起起在 8788；dev-router 把
-`/api/ingest/*` 与 `/api/internal/site-deployed` 转到这里，其余给 core。本地用 `wrangler.test.toml`：Service Binding 按生产名字
+`/api/ingest/*`、`/api/internal/site-deployed` 与 `/api/internal/collector-refresh` 转到这里，其余给 core。本地用 `wrangler.test.toml`：Service Binding 按生产名字
 （`core`、`collector`）找到本地那两个，KV 与另外两份测试配置同 id，没有 D1（归档跳过）。
 
 本地没有 Access：先 `node scripts/dev-access.mjs init` 生成测试钥匙（写在本目录 `.dev.vars.access-key.json`，已被 gitignore），
