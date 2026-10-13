@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, chatResumePoint, createChatArchiveStore, designEndReason, designSessionEnded, proposalChoiceOpen, readChatArchive, type ChatBubble } from "./chat-archive.ts";
+import { CHAT_ARCHIVE_KEY, CHAT_ARCHIVE_LIMITS, activeChatDesign, boundChatArchive, chatReplyMessages, chatResumePoint, createChatArchiveStore, designEndReason, designSessionEnded, proposalBuildOpen, proposalChoiceOpen, readChatArchive, type ChatBubble } from "./chat-archive.ts";
 
 function storage() {
   const values = new Map<string, string>();
@@ -241,4 +241,7 @@ test("opening the GitHub issue form keeps Start build available until a build st
   assert.equal(proposalChoiceOpen({ ...plan, issueOpened: true, build: proposal.build }, 0), false);
   assert.equal(proposalChoiceOpen({ ...plan, issue: { number: 1, url: "https://github.com/LYJW131/lyjwpage/issues/1" } }, 0), false);
   assert.equal(proposalChoiceOpen({ ...plan, issueOpened: true }, plan.expiresAt), false);
+  assert.equal(proposalBuildOpen({ ...plan, issueRef: "ref", issueOpened: true }, 0), true);
+  assert.equal(proposalBuildOpen({ ...plan, issueOpened: true }, 0), false, "a plan without issueRef cannot confirm its issue, so the form closes Start build");
+  assert.equal(proposalBuildOpen(plan, 0), true);
 });
