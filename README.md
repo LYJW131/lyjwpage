@@ -209,7 +209,7 @@ Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取�
 | 页面托管与分发 | Cloudflare Workers · 阿里云 ESA |
 | 报错与性能监控 | Sentry |
 
-AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md) 执行；站点域名与 api 公开地址上的请求都经 Service Binding 转交给它，状态数据仍经 api 的只读接口读取。Pulse Coding 评分仍由 api 编排。
+AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md) 执行；站点域名上的请求经 Service Binding 转交给它，状态数据仍经 api 的只读接口读取。Pulse Coding 评分仍由 api 编排。
 
 ## 从哪里读源码
 
