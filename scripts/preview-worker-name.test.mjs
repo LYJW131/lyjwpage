@@ -49,7 +49,7 @@ test("Preview 配置挂在生产 wrangler.toml 里，不带生产域名、cron�
   assert.equal(/^\s*PREVIEW_WORKER\s*=/m.test(top), false);
   assert.equal(/^\s*UPSTREAM_API_URL\s*=/m.test(top), false);
   assert.match(previews, /PREVIEW_WORKER = "true"/);
-  assert.match(previews, /UPSTREAM_API_URL = "https:\/\/api\.homepage\.lyjw\.llc"/);
+  assert.match(previews, /UPSTREAM_API_URL = "https:\/\/lyjw\.me"/);
   assert.match(previews, /name = "STATE"/);
   assert.match(previews, /name = "LIVE_PUSH"/);
   assert.match(previews, /name = "CHAT_QUOTA"/);
