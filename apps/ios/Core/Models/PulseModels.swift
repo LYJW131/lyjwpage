@@ -157,7 +157,7 @@ struct PulseStepsLane: Decodable, Sendable, Equatable {
 }
 
 struct PulseTokenBucket: Sendable, Equatable {
-    let total: Double
+    let fresh: Double
     let output: Double
     let cacheRead: Double
 }
@@ -166,27 +166,27 @@ struct PulseTokensLane: Decodable, Sendable, Equatable {
     let buckets: [PulseSpan<PulseTokenBucket>]
     let peakPerMinute: Double?
     let currentPerMinute: Double?
-    let totalTokens: Double
+    let freshTokens: Double
 
     private struct Columns: Decodable {
         let startSec: [Double]; let endSec: [Double]
-        let total: [Double]; let output: [Double]; let cacheRead: [Double]
+        let fresh: [Double]; let output: [Double]; let cacheRead: [Double]
     }
-    private struct Summary: Decodable { let peakPerMinute: Double?; let currentPerMinute: Double?; let totalTokens: Double }
+    private struct Summary: Decodable { let peakPerMinute: Double?; let currentPerMinute: Double?; let freshTokens: Double }
     private struct Raw: Decodable { let buckets: Columns; let summary: Summary }
 
     init(from decoder: Decoder) throws {
         let raw = try Raw(from: decoder)
         let columns = raw.buckets
-        guard columns.total.count == columns.output.count, columns.output.count == columns.cacheRead.count else {
+        guard columns.fresh.count == columns.output.count, columns.output.count == columns.cacheRead.count else {
             throw PulseColumnMismatch()
         }
-        let values = columns.total.indices.map {
-            PulseTokenBucket(total: columns.total[$0], output: columns.output[$0], cacheRead: columns.cacheRead[$0])
+        let values = columns.fresh.indices.map {
+            PulseTokenBucket(fresh: columns.fresh[$0], output: columns.output[$0], cacheRead: columns.cacheRead[$0])
         }
         buckets = try zipColumns(columns.startSec, columns.endSec, values)
         peakPerMinute = raw.summary.peakPerMinute
         currentPerMinute = raw.summary.currentPerMinute
-        totalTokens = raw.summary.totalTokens
+        freshTokens = raw.summary.freshTokens
     }
 }
