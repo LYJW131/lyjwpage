@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
+delete process.env.BUILD_TIME;
+const {
   formatTimezoneRegion,
   formatUTCOffset,
   resolveTimezoneDisplay,
   timezoneAbbreviation,
   timezoneOffsetSeconds,
   validTimezone,
-} from "./timezone-display.ts";
+} = await import("./timezone-display.ts");
 
 const WINTER = Date.parse("2026-01-15T12:00:00Z");
 const SUMMER = Date.parse("2026-07-15T12:00:00Z");
