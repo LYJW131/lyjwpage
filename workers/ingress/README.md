@@ -1,7 +1,7 @@
 # 上报入口
 
 外部上报器的唯一入口，无状态。它在 Cloudflare Access 之后验明上报器身份，读出并校验报文，按来源收敛成命令，
-再按数据层拆开写：实时那一半经 Service Binding 交给状态核心（[`workers/api`](../api/README.md)），
+再按数据层拆开写：实时那一半经 Service Binding 交给状态核心（[`workers/core`](../core/README.md)），
 可滞后层、长期归档和 Apple Music 凭据自己写。GitHub Actions 的部署通知也从这里进。
 
 拆出来的理由只有一条：校验和拆分的规则经常改，而状态核心带着 Durable Object 和所有页面的 WebSocket。
@@ -26,7 +26,7 @@
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
 
-其余路径一律 404。公开读取与 `/ws` 在站点域名上，由 site Worker 转交 api，都不在这里。
+其余路径一律 404。公开读取与 `/ws` 在站点域名上，由 site Worker 转交 core，都不在这里。
 
 ### 回执
 
@@ -113,7 +113,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 生产使用独立 service token `lyjwpage-claude-cloud`，已加入 `lyjwpage ingest` 应用的 Service Auth 策略，client id 登记在
 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`；Client Secret 只放云端环境，不用配置 Worker secret。
 请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
-收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [api README](../api/README.md#claude-code-云端线程用量)。
+收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#claude-code-云端线程用量)。
 
 ## 部署通知
 
@@ -134,8 +134,8 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 - `[vars]`：`ACCESS_TEAM_DOMAIN`、`ACCESS_AUD`、`[vars.ACCESS_CLIENTS]`（见「鉴权」）；`EMBY_PUBLIC_URL`（Emby 条目的
   「在 Emby 里打开」链接，prepare 时拼进条目）；`SENTRY_DSN`。
 - `CORE`：状态核心的具名 entrypoint `StateCore`；`COLLECTOR`：采集 Worker 的具名 entrypoint `Collector`（补全「正在听」、部署通知后重拉）。
-- `IMAGES`：上报器直传图片的 R2 桶，只 HEAD；`LAG`、`CREDENTIALS`：可滞后层与共享凭据 KV，和 api、采集 Worker 同一份；
-  `HISTORY`：D1 `lyjwpage-history`，表结构归 `workers/api/migrations`，这里只写。
+- `IMAGES`：上报器直传图片的 R2 桶，只 HEAD；`LAG`、`CREDENTIALS`：可滞后层与共享凭据 KV，和 core、采集 Worker 同一份；
+  `HISTORY`：D1 `lyjwpage-history`，表结构归 `workers/core/migrations`，这里只写。
 - `CF_VERSION_METADATA`：Sentry 取 release（Worker 版本 ID）。
 
 Sentry 沿用 `api-worker` 项目（同一个 DSN），每个事件带 `worker: ingress` 标签；排查上报问题在那个项目里按 `worker:ingress`
@@ -148,22 +148,22 @@ Sentry 沿用 `api-worker` 项目（同一个 DSN），每个事件带 `worker: 
 
 ### 上线与域名
 
-自定义域名 `ingest.homepage.lyjw.llc` 写在本目录的 `wrangler.toml`，api 那份不列它。Workers Builds 不是交互终端，
+自定义域名 `ingest.homepage.lyjw.llc` 写在本目录的 `wrangler.toml`，core 那份不列它。Workers Builds 不是交互终端，
 `wrangler deploy` 遇到挂在别的 Worker 上的自定义域名会直接接管（`override_existing_origin`），所以域名跟着这份配置走，
-api 以后怎么重建都不会把它要回去。Access 应用按主机名挂，跟着域名走。
+core 以后怎么重建都不会把它要回去。Access 应用按主机名挂，跟着域名走。
 
 状态核心的 RPC（`ready`、`commitIngest`、`broadcastVersion`）要先于这个 Worker 接流量上线。改动契约照「只加不改」：
 先加 RPC、上线，再让调用方用。
 
 ## 本地开发
 
-`pnpm dev:worker`（仓库根目录）以多配置方式把这个 Worker 和 dev-router、api、采集 Worker 一起起在 8788；dev-router 把
-`/api/ingest/*` 与 `/api/internal/site-deployed` 转到这里，其余给 api。本地用 `wrangler.test.toml`：Service Binding 按生产名字
-（`api`、`collector`）找到本地那两个，KV 与另外两份测试配置同 id，没有 D1（归档跳过）。
+`pnpm dev:worker`（仓库根目录）以多配置方式把这个 Worker 和 dev-router、core、采集 Worker 一起起在 8788；dev-router 把
+`/api/ingest/*` 与 `/api/internal/site-deployed` 转到这里，其余给 core。本地用 `wrangler.test.toml`：Service Binding 按生产名字
+（`core`、`collector`）找到本地那两个，KV 与另外两份测试配置同 id，没有 D1（归档跳过）。
 
 本地没有 Access：先 `node scripts/dev-access.mjs init` 生成测试钥匙（写在本目录 `.dev.vars.access-key.json`，已被 gitignore），
 把它打印的 `ACCESS_DEV_JWKS=` 那一行填进本目录的 `.dev.vars`（参照 `.dev.vars.example`；wrangler 按配置文件所在目录读
-`.dev.vars`，所以不是 api 那份）。推的时候带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效）：
+`.dev.vars`，所以不是 core 那份）。推的时候带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效）：
 
 ```sh
 curl -X POST http://localhost:8788/api/ingest/homepod -H "$(node scripts/dev-access.mjs header)" \
@@ -177,13 +177,13 @@ curl -X POST http://localhost:8788/api/ingest/homepod -H "$(node scripts/dev-acc
 ```sh
 pnpm --dir workers/ingress typecheck
 pnpm --dir workers/ingress test
-node scripts/verify-api-worker.mjs
+node scripts/verify-core-worker.mjs
 ```
 
 单测覆盖鉴权与权限表、路由、回执契约、拆分（落地节点绕过状态核心、iPhone 部分收下）、OTLP gzip、部署通知的转发，
 以及各来源的命令都能结构化复制。集成脚本和 `pnpm dev:worker` 一样用 dev-router 把上报路由到这个 Worker，
-经 Service Binding 打隔离的 api，从上报一路验到公开读取、WebSocket 推送和首屏失效。
+经 Service Binding 打隔离的 core，从上报一路验到公开读取、WebSocket 推送和首屏失效。
 
 ## Quest 实时游戏状态
 
-Discord Gateway 上报器只交 `meta_quest` 的 Playing 快照，入口 `/api/ingest/quest`，权限 `ingest:quest`。信封为 `{ version: 1, presence: { observedAt, discordStatus, playing } }`，收敛与字段约束见 `shared/ingest/quest.ts#prepareQuestReport`。没有游戏用 `playing: null`，未知 Gateway 状态不上报；Discord 资料、关联账号不采集。实时命令交 StateCore，查询与推送见 [API Worker](../api/README.md)。
+Discord Gateway 上报器只交 `meta_quest` 的 Playing 快照，入口 `/api/ingest/quest`，权限 `ingest:quest`。信封为 `{ version: 1, presence: { observedAt, discordStatus, playing } }`，收敛与字段约束见 `shared/ingest/quest.ts#prepareQuestReport`。没有游戏用 `playing: null`，未知 Gateway 状态不上报；Discord 资料、关联账号不采集。实时命令交 StateCore，查询与推送见 [core Worker](../core/README.md)。

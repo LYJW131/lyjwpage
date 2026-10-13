@@ -18,7 +18,7 @@ export interface StateCoreRpc {
   broadcastVersion(): Promise<number>;
   audience(): Promise<CoreAudience>;
   playstationPower(): Promise<CorePower>;
-  // api 不持有 Apple 私钥，恒抛错；留在契约里是因为只加不改。
+  // core 不持有 Apple 私钥，恒抛错；留在契约里是因为只加不改。
   appleDeveloperToken(): Promise<{ token: string; expiresAt: number }>;
   // container：items[0] 的曲目顺序，null 表示它没有曲目（电台）；缺省时保留上一份。
   // items[0].motion：null 表示确定没有动态封面，undefined 表示调用方没查出结果。

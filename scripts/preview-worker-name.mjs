@@ -1,6 +1,6 @@
 
 export const PREVIEW_WORKERS_SUBDOMAIN = "lyjw.workers.dev";
-export const PREVIEW_WORKER_SCRIPT = "api";
+export const PREVIEW_WORKER_SCRIPT = "core";
 export const SITE_PREVIEW_WORKER_SCRIPT = "site";
 export const PREVIEW_REVISION_PATH = "/api/preview/revision";
 const MAX_LABEL = 63;

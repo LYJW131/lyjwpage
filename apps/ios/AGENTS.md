@@ -39,7 +39,7 @@ Swift 里抄过来的常量逐个标了 `源：path#symbol`。站点重命名字
 
 ## 本地验证
 
-- `swift test`（本目录）：编 `Core/` 并跑 `Tests/`，Linux 与 macOS 都行；对着 `Tests/Fixtures/` 与 `workers/api/dev-fixtures/` 解码。
+- `swift test`（本目录）：编 `Core/` 并跑 `Tests/`，Linux 与 macOS 都行；对着 `Tests/Fixtures/` 与 `workers/core/dev-fixtures/` 解码。
 - `xcodegen generate && xcodebuild -project Lyjwpage.xcodeproj -scheme Lyjwpage -destination 'generic/platform=iOS Simulator' build`：界面层只能在 Mac 上编。
 - `xcodebuild … -scheme Lyjwpage -destination 'platform=iOS Simulator,name=<机型>' test`：同一批测试在 Xcode 里跑。
 - 装到真机：`./build-install.sh`（要对着具体设备编，见 README「装不上的两种」）。

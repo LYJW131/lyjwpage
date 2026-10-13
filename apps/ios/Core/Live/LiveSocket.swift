@@ -3,7 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-// 握手必须带白名单里的 Origin（api Worker 对 /ws 缺来源一律 403），所以自报站点域名。
+// 握手必须带白名单里的 Origin（core Worker 对 /ws 缺来源一律 403），所以自报站点域名。
 // 连着就算进站点「Online now」，只能在前台连。心跳与退避照浏览器端，源：shared/live-heartbeat.ts#LIVE_HEARTBEAT_MS、src/hooks/use-live-events.ts
 @MainActor
 final class LiveSocket {

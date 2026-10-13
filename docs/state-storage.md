@@ -2,27 +2,27 @@
 
 > 类型：reference
 
-Worker 是唯一数据后端。上报、状态 API、WebSocket、在线人数均在 Cloudflare：上报先到无状态的上报入口 Worker（`workers/ingress`），状态核心（`workers/api`，持有 Durable Object）只收它 prepare 好的命令；外部数据（Apple、GitHub、Cloudflare 等）由采集 Worker（`workers/collector`）定时拉取。site Worker（React Router SSR）渲染首页时按卡读各条状态视图：可滞后层直接读 `LAG` KV，实时层经 `PUBLIC_STATUS` 读 api。站点域名上的 `/api/*` 也由 site 回答，可滞后视图读 `LAG` KV，其余经 Service Binding 原样交给 api / ai / collector；浏览器挂载后请求 `PUBLIC_BACKEND_URL` 指向的源。没有聚合端点。`lyjw131.com` 经 ESA 回源 `lyjw.me`（回源 Host 同为 `lyjw.me`），ESA 缓存首页 HTML 与静态 JS。
+Worker 是唯一数据后端。上报、状态 API、WebSocket、在线人数均在 Cloudflare：上报先到无状态的上报入口 Worker（`workers/ingress`），状态核心（`workers/core`，持有 Durable Object）只收它 prepare 好的命令；外部数据（Apple、GitHub、Cloudflare 等）由采集 Worker（`workers/collector`）定时拉取。site Worker（React Router SSR）渲染首页时按卡读各条状态视图：可滞后层直接读 `LAG` KV，实时层经 `PUBLIC_STATUS` 读 core。站点域名上的 `/api/*` 也由 site 回答，可滞后视图读 `LAG` KV，其余经 Service Binding 原样交给 core / ai / collector；浏览器挂载后请求 `PUBLIC_BACKEND_URL` 指向的源。没有聚合端点。`lyjw131.com` 经 ESA 回源 `lyjw.me`（回源 Host 同为 `lyjw.me`），ESA 缓存首页 HTML 与静态 JS。
 
 ## 数据及权限
 
 - `StateHub` 使用 SQLite Durable Object，`entries`、`fields`、`samples` 分别保存快照、字段和历史。SQLite 是实时层的唯一权威，DO 重启不丢数据。
 - 上报先在上报入口 Worker 完成鉴权、独立校验、归一化和 R2 HEAD（`shared/ingest/`），命令经 Service Binding 交给状态核心的 `StateCore.commitIngest`，再由 StateHub 按对象队列串行合并权威状态；提交后状态核心的普通 Worker 部分才广播和通知。每次请求有独立工作副本，存储批次由同步事务提交，返回 202 前已确认写入。状态核心只 `import type` 命令的类型，改校验只重新发布上报入口，不动 Durable Object。
 - TTL 读取时检查，闹钟每小时分批回收过期项。
-- `/api/status/*` 在普通 Worker 取数，只输出明确的公开模型。实时层端点按请求合并相邻只读批次，每批一次 `StateHub.publicRead`，在同一次调用里等待已经进入 `commitIngest()` 队列的提交；仍在上报入口准备输入的上报尚未进入该边界。可滞后层端点只读 `LAG` KV、不等提交队列，和未知路径一样不进入 DO；site 在站点域名上回这些视图时调同一份 loader（`shared/lag-views.ts`）。没有 HTTP 通用数据库读写端点，服务端凭据不进入站点、HTML 或状态响应。公开 MCP 端点 `/mcp` 与首页对话的站点工具（`workers/ai/src/tools/registry.ts#SITE_TOOLS`）经 Service Binding 调 `PublicStatus.readStatus`，由 api 的 `executePublicRequest` 读同一批 `/api/status/*` 视图；AI Worker 不绑定状态存储。
+- `/api/status/*` 在普通 Worker 取数，只输出明确的公开模型。实时层端点按请求合并相邻只读批次，每批一次 `StateHub.publicRead`，在同一次调用里等待已经进入 `commitIngest()` 队列的提交；仍在上报入口准备输入的上报尚未进入该边界。可滞后层端点只读 `LAG` KV、不等提交队列，和未知路径一样不进入 DO；site 在站点域名上回这些视图时调同一份 loader（`shared/lag-views.ts`）。没有 HTTP 通用数据库读写端点，服务端凭据不进入站点、HTML 或状态响应。公开 MCP 端点 `/mcp` 与首页对话的站点工具（`workers/ai/src/tools/registry.ts#SITE_TOOLS`）经 Service Binding 调 `PublicStatus.readStatus`，由 core 的 `executePublicRequest` 读同一批 `/api/status/*` 视图；AI Worker 不绑定状态存储。
 - 上报缺的外部信息在写入时补全，读取路径只读存好的结果：Mac 与 HomePod 的「正在听」由上报入口在提交前请采集 Worker 查 Apple（目录、动态封面，回执后再预热歌词），补全结果随命令交给 `StateCore.commitIngest`，和播放状态同一次提交落库（采集 Worker 调不通时不带补全照样提交，状态核心沿用同一曲目已存的那份）；最近播放首项的动态封面由采集 Worker 查好随列表交来（`shared/track-enrichment.ts#enrichRecentlyPlayed`），没查出结果时沿用同一项已存的那份。状态核心不请求 Apple，补全不占提交队列。唯一例外是给网页播放器按任意曲目查的 `/api/lyrics`、`/api/motion-artwork`（站点域名上由采集 Worker 回答；卡片与首屏的歌词也走 `/api/lyrics`，多数命中写入时预热的缓存），没命中时会现查 Apple。
 - Apple 接口结果的缓存在 KV `lyjwpage-apple-cache`（binding `APPLE_CACHE`，`shared/apple-cache.ts`），不在 StateHub：它们不是状态，不需要串行和事务。KV 过期时间不短于 60 秒，所以查询失败只记在本次请求的内存里，不写 KV。
 - `/api/ingest/*` 只在上报入口，使用 Cloudflare Access service token，每个上报方一把，权限按来源限定（登记表 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，验证在 `workers/ingress/src/access-auth.ts`）。
-- 跨域活动脉搏（pulse）是事实时间线，只存原始值，TTL 是 `shared/limits.ts` 的 `PULSE_TTL_MS`：听、看、玩各一个开着的区间 `pulse:v2:<道>:open` 加一串已关闭区间 `pulse:v2:<道>`（同一状态每分钟最多续写一次，变了才换段）；「最近播放的歌」里新播的每首记在 `pulse:v2:listening-traces`（开播落在两次刷新之间，带时长，出口推成别处播放）；充电瓦数 `pulse:v2:charging`（写入闸门见 `shared/pulse-timeline.ts` 的 `planChargingSample`，条数上限 `CHARGING_SAMPLE_CAP`）；活动五分钟桶 `pulse:v2:activity`（权威范围替换，只从第一处变化往后重写，范围与版本在 `pulse:v2:activity:range` / `:revision`）；训练区间 `pulse:v2:workouts`。Coding 三色带读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端桶 `pulse:token-buckets:agents-otlp` 现算；Tokens 道读时把各来源的 5 分钟 token 桶 `pulse:token-buckets:<来源>`（TTL `CODING_BUCKET_TTL_MS`）相加。公开出口是 `GET /api/status/pulse`（裁最近 24 小时，只给媒体与游戏标题，应用名、模型名、设备名不出门，token 只以各来源各模型相加后的五分钟桶出现）。契约见 [跨域活动脉搏](../workers/api/README.md#跨域活动脉搏pulse)。
-- coding agent 的 token 用量不是时间线，是各来源的账本：`coding:usage:<来源>`（字段 = agent id，整份替换）、由它们在同一次提交里算好的视图 `coding:usage:view` 与年度视图 `coding:usage:year`、各来源最近事件 `coding:activity:<来源>`、上一次推出去的 `coding-now`（`coding:now:pushed`，推送门槛拿它比）、云端 OTLP 做差用的计数器 `coding:otlp`，以及 D1 归档当水位用的两个修订号 `coding:usage:revision`、`pulse:token-buckets:revision`。放在 DO 而不是 KV：云端那份只有 DO 串行做差才算得出，多来源合并要串行的读-改-写。契约见 [coding agent 的 token 用量](../workers/api/README.md#coding-agent-的-token-用量)。
-- API Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，一条连接数出两个口径（`workers/api/src/live-census.ts`）：`connections` 含后台页面，`online` 只数页面报了 `visible` 且 `VISIBLE_STALE_MS` 内有心跳的连接，可见人数一变就广播 `online` 事件，有人可见时挂清扫闹钟（`SWEEP_INTERVAL_MS`）。api 的 `/count` 一次返回两个数（api 没有公开地址，只在本地与验证脚本里直接访问）。
+- 跨域活动脉搏（pulse）是事实时间线，只存原始值，TTL 是 `shared/limits.ts` 的 `PULSE_TTL_MS`：听、看、玩各一个开着的区间 `pulse:v2:<道>:open` 加一串已关闭区间 `pulse:v2:<道>`（同一状态每分钟最多续写一次，变了才换段）；「最近播放的歌」里新播的每首记在 `pulse:v2:listening-traces`（开播落在两次刷新之间，带时长，出口推成别处播放）；充电瓦数 `pulse:v2:charging`（写入闸门见 `shared/pulse-timeline.ts` 的 `planChargingSample`，条数上限 `CHARGING_SAMPLE_CAP`）；活动五分钟桶 `pulse:v2:activity`（权威范围替换，只从第一处变化往后重写，范围与版本在 `pulse:v2:activity:range` / `:revision`）；训练区间 `pulse:v2:workouts`。Coding 三色带读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端桶 `pulse:token-buckets:agents-otlp` 现算；Tokens 道读时把各来源的 5 分钟 token 桶 `pulse:token-buckets:<来源>`（TTL `CODING_BUCKET_TTL_MS`）相加。公开出口是 `GET /api/status/pulse`（裁最近 24 小时，只给媒体与游戏标题，应用名、模型名、设备名不出门，token 只以各来源各模型相加后的五分钟桶出现）。契约见 [跨域活动脉搏](../workers/core/README.md#跨域活动脉搏pulse)。
+- coding agent 的 token 用量不是时间线，是各来源的账本：`coding:usage:<来源>`（字段 = agent id，整份替换）、由它们在同一次提交里算好的视图 `coding:usage:view` 与年度视图 `coding:usage:year`、各来源最近事件 `coding:activity:<来源>`、上一次推出去的 `coding-now`（`coding:now:pushed`，推送门槛拿它比）、云端 OTLP 做差用的计数器 `coding:otlp`，以及 D1 归档当水位用的两个修订号 `coding:usage:revision`、`pulse:token-buckets:revision`。放在 DO 而不是 KV：云端那份只有 DO 串行做差才算得出，多来源合并要串行的读-改-写。契约见 [coding agent 的 token 用量](../workers/core/README.md#coding-agent-的-token-用量)。
+- core Worker 的 `LIVE_PUSH` 使用可休眠 WebSocket，一条连接数出两个口径（`workers/core/src/live-census.ts`）：`connections` 含后台页面，`online` 只数页面报了 `visible` 且 `VISIBLE_STALE_MS` 内有心跳的连接，可见人数一变就广播 `online` 事件，有人可见时挂清扫闹钟（`SWEEP_INTERVAL_MS`）。core 的 `/count` 一次返回两个数（core 没有公开地址，只在本地与验证脚本里直接访问）。
 
 ## 可滞后层（KV）
 
 判断标准只有一条：这份数据是否需要「变了立刻推、读到必是最新」，或是否参与 pulse 计算（另有一类：必须由 DO 串行合并的账本，如 coding 用量）。是则归实时层（状态核心 DO），否则归可滞后层，存在 KV 命名空间 `lyjwpage-lag`（binding `LAG`，键表与 `{ updatedAt, data }` 格式见 `shared/lag.ts`）。
 
 - 写入方直接写 KV、不推送：上报入口写落地节点、限额、时区、常驻上报器账本、活动圆环读数与最近训练（`workers/ingress/src/lag-ingest.ts`，在这封上报的状态核心那一半成功之后）；采集 Worker 写外部拉取的结果。取数失败不写，KV 里的值本身就是上次成功值，不另存 last-good。iPhone 那一封里，状态核心只留 Pulse 的输入（五分钟统计桶、训练区间），圆环读数（`activity:v1`，只在这封带了当天圆环时写）和训练列表（`workouts:v1`，整份替换）在 KV，`updatedAt` 是最后一次带来它的那封上报的收到时刻。
-- 状态核心的公开读取端点只读 KV（`shared/lag-result.ts` 经 `shared/lag.ts#readLagEntry` 读 `LAG`，读取实现由 `workers/api/src/ports.ts` 装上），信封里带上 `updatedAt`；服务端不下「过没过时」的结论。
+- 状态核心的公开读取端点只读 KV（`shared/lag-result.ts` 经 `shared/lag.ts#readLagEntry` 读 `LAG`，读取实现由 `workers/core/src/ports.ts` 装上），信封里带上 `updatedAt`；服务端不下「过没过时」的结论。
 - 浏览器按各卡阈值判断：超过就显示 Unavailable（落地节点 `SERVER_STALE_MS`，限额 `AGENT_LIMITS_STALE_MS`，账本各格同限额，活动圆环 `ACTIVITY_STALE_MS`：iPhone 只在 HealthKit 有新样本时被唤起，睡一夜一封都没有是正常的，所以它的窗口要跨过整夜；各窗口须覆盖对应上报器或采集任务的多轮间隔，理由与调整顺序见 `shared/freshness.ts#AGENT_LIMITS_STALE_MS`、`PLAYSTATION_STALE_MS`、`SERVER_STALE_MS` 等常量上方的注释）。训练列表不设阈值：完成过的训练是历史事实，手机多久没报也不会变假。页面打开后可滞后卡直接用首屏那份，只有 `updatedAt` 已超过它的轮询间隔才补取一次。
 - 首屏缓存失效由写 KV 的一方发起，判据仍是布局变化（见 `shared/home-layout.ts`）：落地节点首报 / 断流回来 / 流量行出没，限额的来源集合变化，训练那一块在「没收到过 / 一条都读不出 / 有训练」三种占位之间换。圆环读数的变化只是内容，不失效首屏。
 - Apple Music user token 在另一个命名空间 `lyjwpage-credentials`（binding `CREDENTIALS`，`shared/credentials.ts`）：公开读取的代码路径只碰 `LAG`，白名单写错也漏不出凭据。
@@ -53,34 +53,34 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 
 上报入口的四张表由 `shared/history-ingest.ts` 拼语句，上报入口 Worker（`workers/ingress/src/ingest-archive.ts`）在状态核心那一半提交成功之后 `waitUntil` 整批提交；失败只记 `[history]` 日志，不让已收下的上报重发。迁移 `0005_history_ingest.sql` 建表，部署写这些表的版本之前先应用。
 
-- Pulse 事实表由状态核心写：cron 每 5 分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 按自然键拼成 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写；活动桶另有受版本保护的范围删除）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`（coding 用量与桶两路是修订号，其余是时刻），确认按 max 单调前进；失败留待下一轮重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/api/README.md#长期归档d1)，迁移 `0007_history_pulse.sql` 与 coding 用量的 `0008_coding_usage.sql`（`0006` 留给采集 Worker）。
+- Pulse 事实表由状态核心写：cron 每 5 分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 按自然键拼成 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写；活动桶另有受版本保护的范围删除）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`（coding 用量与桶两路是修订号，其余是时刻），确认按 max 单调前进；失败留待下一轮重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/core/README.md#长期归档d1)，迁移 `0007_history_pulse.sql` 与 coding 用量的 `0008_coding_usage.sql`（`0006` 留给采集 Worker）。
 - 旧表 `pulse_samples(domain, t, level, hint, until_at, power_w)` 原样冻结。StateHub 仍是实时层的唯一权威，只留 `PULSE_TTL_MS` 那么久，归档保留全部历史。
 - 本地和夹具环境不写归档：`historyArchiveEnabled` 和 Clef 打分用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
 - 归档没有公开 HTTP 读路径，只作备份；公开的那份走 `GET /api/status/pulse`，从 StateHub 的序列里裁最近 24 小时，不读 D1。
-- 建表只在迁移里做，Worker 不会自己建：`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
+- 建表只在迁移里做，Worker 不会自己建：`pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
 - 回滚就是从 `wrangler.toml` 删掉 `[[d1_databases]]`，归档随即停用，StateHub 与站点行为不变；库和已归档的数据留着，重新加回绑定后从水位线继续。
 
 ## Coding 评估（pulse:assessments）
 
-- Clef 只给 Coding 打分，其余道画的是事实本身。一个十五分钟评分调度器和 `pulse:assessments` 列表，保留 `PULSE_TTL_MS`；输入哈希相同不重复调用，晚到的 token 可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`（源：`shared/pulse-assessment.ts#PULSE_ASSESSMENT_VERSION`）。StateHub metadata 持久化 claim token、generation、lease（`workers/api/src/pulse-score-state.ts` 的 `PULSE_SCORE_LEASE_MS`）与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
-- 列表追加写：每轮只追加新评出来的几行，同一窗口以最后一行为准（读者一律走 `latestPulseAssessments`）。被覆盖的旧行和过期行多过有效行的 `COMPACT_GARBAGE_RATIO`、或总行数超过 `COMPACT_MAX_ROWS`（均在 `workers/api/src/pulse-score-state.ts`）时才整表压缩重写：整表重写的写入行数随窗口数成倍放大，DO 的写入行数按套餐计量。非 Coding 的旧评估读时丢掉，下次压缩时清出。
-- 评估只出现在 Coding 悬停里（强度、置信度、模式）。Coding 内部观测在 `pulse:coding-observations`，token 证据是三个来源的 `pulse:token-buckets:<来源>`（「确定为零」只认 Mac 本机扫描的覆盖，账号与云端的桶只作正证据）；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [Coding 的 Clef 评估](../workers/api/README.md#coding-的-clef-评估)。
+- Clef 只给 Coding 打分，其余道画的是事实本身。一个十五分钟评分调度器和 `pulse:assessments` 列表，保留 `PULSE_TTL_MS`；输入哈希相同不重复调用，晚到的 token 可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`（源：`shared/pulse-assessment.ts#PULSE_ASSESSMENT_VERSION`）。StateHub metadata 持久化 claim token、generation、lease（`workers/core/src/pulse-score-state.ts` 的 `PULSE_SCORE_LEASE_MS`）与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
+- 列表追加写：每轮只追加新评出来的几行，同一窗口以最后一行为准（读者一律走 `latestPulseAssessments`）。被覆盖的旧行和过期行多过有效行的 `COMPACT_GARBAGE_RATIO`、或总行数超过 `COMPACT_MAX_ROWS`（均在 `workers/core/src/pulse-score-state.ts`）时才整表压缩重写：整表重写的写入行数随窗口数成倍放大，DO 的写入行数按套餐计量。非 Coding 的旧评估读时丢掉，下次压缩时清出。
+- 评估只出现在 Coding 悬停里（强度、置信度、模式）。Coding 内部观测在 `pulse:coding-observations`，token 证据是三个来源的 `pulse:token-buckets:<来源>`（「确定为零」只认 Mac 本机扫描的覆盖，账号与云端的桶只作正证据）；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [Coding 的 Clef 评估](../workers/core/README.md#coding-的-clef-评估)。
 
 ## 首屏与浏览器
 
 公开状态视图登记在 `shared/status-views.ts`：路径、所在的数据层（`realtime` / `lag`）、站点缓存标签（`page:<tag>`）、WebSocket 事件都从这一行派生，可滞后层不许带推送事件（模块加载时断言）。`SITE_CACHE` 失效的标签白名单也来自这张表。
 
-首屏按卡读取（`src/lib/first-screen.ts`）：每条状态视图各挂自己的 `page:<tag>`、各读自己的端点，由 `StatusSnapshot` 入口按视图缓存，并行发出。实时卡的端点读状态核心 DO，可滞后卡的端点读 KV，都不在请求路径上现拉外部 API；冷缓存时首页 loader 等齐全部视图（`src/app/page.tsx` 的 `Promise.all`），已缓存的视图直接命中。成功快照的缓存期限是 `src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`；端点回 `ok:false` 或还没部署（404）时用卡片降级信封，只按 `STATUS_DEGRADED_CACHE_CONTROL` 短缓存；网络失败、5xx 与非法信封回 503 且不缓存，已有快照按 `stale-if-error` 继续用，没有快照时整页渲染失败、不进缓存。首屏歌词在拿到「此刻在听」之后按曲目直取 `/api/lyrics`，不经 `StatusSnapshot` 缓存，失败时不带歌词（这首的歌词多数已在写入时预热进 `APPLE_CACHE`）。
+首屏按卡读取（`src/lib/first-screen.ts`）：每条状态视图各挂自己的 `page:<tag>`、各读自己的端点，由 `StatusSnapshot` 入口按视图缓存，并行发出。实时卡的端点读状态核心 DO，可滞后卡的端点读 KV，都不在请求路径上现拉外部 API；冷缓存时首页 loader 等齐全部视图（`src/app/page.tsx` 的 `Promise.all`），已缓存的视图直接命中。成功快照的缓存期限是 `src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`；端点回 `ok:false` 或还没部署（404）时用卡片降级信封，只按 `STATUS_DEGRADED_CACHE_CONTROL` 短缓存；网络失败、5xx 与非法信封回 503 且不缓存，已有快照按 `stale-if-error` 继续用；没有快照时（部署后的冷缓存、布局失效刚清掉）这张卡按降级信封渲染、浏览器挂载后再取，这份首页回 `no-store` 不进缓存（`src/app/page.tsx` 的 `loader`）。首屏歌词在拿到「此刻在听」之后按曲目直取 `/api/lyrics`，不经 `StatusSnapshot` 缓存，失败时不带歌词（这首的歌词多数已在写入时预热进 `APPLE_CACHE`）。
 
 浏览器读路径在 `src/lib/status-reads.ts` 与 `src/hooks/use-status.ts`。页面打开后只有实时卡各自回源校验一次，补上 HTML 生成后到推送连上之间的空窗；可滞后卡直接用首屏那份，按各自节奏轮询——只有首屏那份的 `updatedAt` 已经超过它的轮询间隔（没人访问时首页可能几个小时没重建）才在挂载后补取一次。有单调时间戳的 payload 按代数挡旧值。时间相关的新鲜度每次读取现算。
 
 实时卡的「此刻在不在线 / 断没断流」一律由浏览器判（`src/hooks/use-stale.ts`，纯逻辑在 `shared/freshness.ts`）：源站只给 `lastSeenAt`、`declaredOffline`、`heartbeatWindowMs`、`pushedAt`、`staleAfterMs`、`observedAt` 这类原始事实，不在读取时下结论，免得结论跟着首屏缓存冻住。成功信封带 `servedAt`（源站交出这份的时刻，`statusEnvelope` 盖）：首屏那份连它一起冻进缓存，首帧没有访客钟时拿它当钟，服务端预渲染和 hydrate 判出同一个结论；浏览器取回的信封在进 SWR 之前摘掉它。挂载后换浏览器自己的钟，按钟判出的过期要等挂载校验或切回前台的那次回源回来才认，认下之后只有数据重新新鲜才松开。
 
-Worker 写入完成后，只有首屏布局变化才经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（判据见 `shared/home-layout.ts` 与 `workers/api/README.md`），内容变化交给视图快照的缓存期限自然过期。失效按标签白名单先清除对应 `page:<tag>` 快照，再清除 `home` 首页文档，下一次请求重新渲染。可滞后层的标签等 KV 写入各机房可见后还会再失效一次（`workers/api/src/lag-repurge.ts#LAG_REPURGE_DELAY_MS`）。不因纯心跳刷新首页。ESA 首页不走通知：边缘按源站 `Cache-Control` 的 SWR（由 site Worker 响应给出）自行过期与后台取新，控制台缓存规则见 [仓库外事实](./ops-facts.md)。站点缓存的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker。
+Worker 写入完成后，只有首屏布局变化才经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（判据见 `shared/home-layout.ts` 与 `workers/core/README.md`），内容变化交给视图快照的缓存期限自然过期。失效按标签白名单先清除对应 `page:<tag>` 快照，再清除 `home` 首页文档，下一次请求重新渲染。可滞后层的标签等 KV 写入各机房可见后还会再失效一次（`workers/core/src/lag-repurge.ts#LAG_REPURGE_DELAY_MS`）。不因纯心跳刷新首页。ESA 首页不走通知：边缘按源站 `Cache-Control` 的 SWR（由 site Worker 响应给出）自行过期与后台取新，控制台缓存规则见 [仓库外事实](./ops-facts.md)。站点缓存的后台重建与 ESA 后台回源独立完成，ESA 可能取到重建中的旧 HTML，下一轮收敛；不能把标签失效当成两层 HTML 同步更新完成。浏览器查询直接访问 Worker。
 
 ## 配置
 
-站点参照根 `.env.example`，仅公开后端源、Turnstile site key、按域名的 Web Analytics token 表等 `PUBLIC_*` 白名单，以及本地回退用的 R2 公开源（Worker 不配交付域）。Worker 参照各自的 `.dev.vars.example` 与 wrangler.toml；外部数据的令牌（GitHub 等）是采集 Worker 的 Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 出现在本地 `.dev.vars` 和 `wrangler.toml` 的 `[previews.vars]`：以生产为主、本地或 Preview 按端点整份补缺（规则见 `workers/api/README.md`「本地开发」），生产版本不设它。`PUBLIC_BACKEND_URL` 构建期写入前端，状态、推送与在线人数同源；`PREVIEW_BACKEND_URL` 一旦设置压过它，站点预览构建怎么选它见 [Workers 构建](./workers-builds.md)「分支预览」。改值需要重新部署。
+站点参照根 `.env.example`，仅公开后端源、Turnstile site key、按域名的 Web Analytics token 表等 `PUBLIC_*` 白名单，以及本地回退用的 R2 公开源（Worker 不配交付域）。Worker 参照各自的 `.dev.vars.example` 与 wrangler.toml；外部数据的令牌（GitHub 等）是采集 Worker 的 Secret，Apple Music 凭据来自 Mac 上报。`UPSTREAM_API_URL` 出现在本地 `.dev.vars` 和 `wrangler.toml` 的 `[previews.vars]`：以生产为主、本地或 Preview 按端点整份补缺（规则见 `workers/core/README.md`「本地开发」），生产版本不设它。`PUBLIC_BACKEND_URL` 构建期写入前端，状态、推送与在线人数同源；`PREVIEW_BACKEND_URL` 一旦设置压过它，站点预览构建怎么选它见 [Workers 构建](./workers-builds.md)「分支预览」。改值需要重新部署。
 
 站点构建只为图标与 OG 图取一次 GitHub 头像（`scripts/site-assets/avatar.ts`），不读仓库数据。「本仓库」卡的贡献统计、最近提交和贡献日历一样由采集 Worker 取数、写进可滞后层，经 `/api/status/github-repo` 提供。贡献者名单走 REST `/stats/contributors`（匿名也能读），顶部 COMMITS / ADDITIONS / DELETIONS 三个总数走 GraphQL，必须有采集 Worker 上的 `GITHUB_TOKEN`，没有就显示「—」；这三个数不能由名单加总得出，因为 `Co-authored-by` 的提交在贡献口径下会按人各记一遍。增删行要翻整条提交历史，结果以 `github-repo:churn` 锚在当前 HEAD 上，存在采集 Worker 的 KV 里，之后每轮只补新增的那几条。同一个任务还顺带取默认分支最新的几次提交（`shared/github-repo.ts#RECENT_COMMIT_LIMIT`）写进 `recentCommits`，协作者与头像另走一次 GraphQL，取不到就退回 REST 主作者加 `Co-authored-by` 尾注；整份取不到就沿用上一份。首页「最近提交」列表、首页对话与 `/mcp` 的 `get_site_status` 都读它；站点每次生产部署的通知会让采集 Worker 立刻重拉一次（`workers/ingress/src/worker.ts#DEPLOYMENT_JOBS`）：这次重拉跑在上报入口的 `waitUntil` 里，统计预算缩短（`workers/collector/src/jobs/github-repo.ts#REFRESH_BUDGET_MS`），统计取不到的那一轮（定时任务也一样）仍把新提交并进上一份，但 `updatedAt` 留旧值，卡片照常显出统计过时；定时任务与重拉并发时，慢的一轮不会拿更旧的提交盖掉新的。提交列表变了就按 `github-repo` 标签让首屏失效；可滞后层 KV 各地最长约一分钟才一致，失效后紧接着的那次回源仍可能读到旧列表。
 
@@ -90,7 +90,7 @@ Worker 写入完成后，只有首屏布局变化才经 `SITE_CACHE` Service Bin
 
 验证命令与部署流程见根 [`AGENTS.md`](../AGENTS.md)「项目入口与验证」「部署流程」。后端相关的几点：
 
-1. `node scripts/verify-api-worker.mjs` 以隔离的路由、上报入口、api 与 ai 配置启动 SQLite 和模拟缓存通知服务器，上报经上报入口、Service Binding 进 api，验证鉴权、CORS、直接查询、WebSocket、部署通知、心跳无失效、并发合并及重启持久化，并覆盖 MCP 的只读 RPC、对话流式转发与错误透传；`--build` 还会拿它当后端跑一遍生产构建。
+1. `node scripts/verify-core-worker.mjs` 以隔离的路由、上报入口、core 与 ai 配置启动 SQLite 和模拟缓存通知服务器，上报经上报入口、Service Binding 进 core，验证鉴权、CORS、直接查询、WebSocket、部署通知、心跳无失效、并发合并及重启持久化，并覆盖 MCP 的只读 RPC、对话流式转发与错误透传；`--build` 还会拿它当后端跑一遍生产构建。
 2. `PUBLIC_BACKEND_URL=<测试 Worker 源> pnpm build`；在小号仓库验证静态首页、缓存后台刷新以及浏览器网络路径。
 3. 测试 Worker 用 `wrangler.test.toml`，独立对象命名空间，无生产域名或 cron。
 4. 测试通过后才合并主分支；生产采用 Git 自动部署（Workers Builds），不手动发布站点。缓存通知改动还需核验 ESA 刷新任务与域名响应。

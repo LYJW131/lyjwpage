@@ -50,7 +50,7 @@ except ImportError as error:
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "docs/screenshots"
-FIXTURES = ROOT / "workers/api/dev-fixtures"
+FIXTURES = ROOT / "workers/core/dev-fixtures"
 SITE_URL = os.environ.get("SITE_URL", "http://localhost:3211/")
 WORKER_URL = os.environ.get("DEV_WORKER_URL", "http://localhost:8788").rstrip("/")
 BROWSER_CHANNEL = os.environ.get("PLAYWRIGHT_CHANNEL") or None

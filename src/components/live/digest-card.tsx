@@ -10,7 +10,7 @@ import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { digestFigure } from "@/lib/digest-figure";
 import { STRIP_BINS, topicStrip } from "@/lib/digest-strips";
-import { DIGEST_PATH, PULSE_PATH } from "@/lib/paths";
+import { DIGEST_PATH, PULSE_PATH, TIMEZONE_PATH } from "@/lib/paths";
 import { formatUTCOffset, resolveTimezoneDisplay } from "@/lib/timezone-display";
 import { cn } from "@/lib/utils";
 import type { DigestPayload, DigestTopic } from "@shared/digest";
@@ -130,6 +130,8 @@ export function DigestCard({
 }) {
   const { data, updatedAt, servedAt } = useStatus<DigestPayload>(DIGEST_PATH, { fallback });
   const { data: pulse } = useStatus<PulsePayload>(PULSE_PATH, PULSE_REFRESH_MS, { fallback: pulseFallback });
+  const { data: zone } = useStatus<TimezonePayload>(TIMEZONE_PATH, { fallback: timezoneFallback });
+  const timezoneEnvelope: StatusResponse<TimezonePayload> = zone ? { ok: true, data: zone } : timezoneFallback;
   const stale = useStale(updatedAt, DIGEST_STALE_MS, servedAt);
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
@@ -137,10 +139,10 @@ export function DigestCard({
     const timer = window.setInterval(() => setTicked(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  if (!data || !updatedAt || data.quiet) return <TimezoneCard fallback={timezoneFallback} className={className} />;
+  if (!data || !updatedAt || data.quiet) return <TimezoneCard fallback={timezoneEnvelope} className={className} />;
 
-  const now = ticked || mountedAt || (timezoneFallback.ok ? timezoneFallback.data.snapshotAt : updatedAt);
-  const { identifier: timezone, abbreviation, offsetSeconds } = resolveTimezoneDisplay(timezoneFallback.ok ? timezoneFallback.data.timezone : null, now);
+  const now = ticked || mountedAt || (zone ? zone.snapshotAt : updatedAt);
+  const { identifier: timezone, abbreviation, offsetSeconds } = resolveTimezoneDisplay(zone?.timezone ?? null, now);
   const tracks = pulse && !stale
     ? data.highlights.flatMap((item) => {
       const bins = topicStrip(item.topic, pulse);
