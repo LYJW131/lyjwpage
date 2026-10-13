@@ -20,7 +20,7 @@ export const RULES = {
   },
   fontSize: {
     label: "任意值字号",
-    re: new RegExp(String.raw`${BOUNDARY}text-(?:\[(?:length:[^\]\s]+|calc\([^\]\s]*|[\d.][^\]\s]*)\]|\(length:[^)\s]+\))${END}`, "g"),
+    re: new RegExp(String.raw`${BOUNDARY}text-(?:\[(?:length:[^\]\s]+|(?:calc|clamp|min|max)\([^\]\s]*|[\d.][^\]\s]*)\]|\(length:[^)\s]+\))${END}`, "g"),
     offScale: () => true,
   },
   translate: {
