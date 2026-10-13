@@ -1,9 +1,12 @@
-import { WorkerEntrypoint } from "cloudflare:workers";
+import { WorkerEntrypoint, env as workerEnv } from "cloudflare:workers";
 import { RouterContextProvider, createRequestHandler } from "react-router";
 
 import * as Sentry from "@sentry/cloudflare";
 
+import { installLagReader, readLag } from "@shared/lag";
+import { lagEnvelope, serveLagStatus } from "@shared/lag-views";
 import type { SiteCacheRpc } from "@shared/site-cache";
+import { statusResponse } from "@shared/status-response";
 
 import {
   FIRST_SCREEN_FETCH_TIMEOUT_MS,
@@ -48,6 +51,7 @@ import {
 import {
   STATUS_VIEWS,
   filterStatusTags,
+  lagViewKeyByPath,
   viewKeyByPath,
   type StatusViewKey,
 } from "@shared/status-views";
@@ -59,6 +63,8 @@ const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
   import.meta.env.MODE,
 );
+
+installLagReader((key) => readLag(workerEnv.LAG, key));
 
 const DEFAULT_BACKEND_ORIGIN = "https://api.homepage.lyjw.llc";
 
@@ -108,11 +114,7 @@ class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
 
     let upstream: Response;
     try {
-      upstream = isProduction(this.env)
-        ? await this.env.PUBLIC_STATUS.readStatus(url.pathname)
-        : await fetch(`${backendOrigin(this.env)}${url.pathname}`, {
-            signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS),
-          });
+      upstream = await this.readStatus(url.pathname);
     } catch {
       return errorResponse(503, "Status upstream failed");
     }
@@ -143,6 +145,17 @@ class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
     const valid = filterStatusTags(tags);
     if (!valid.length) return;
     await purgeTags(this.ctx.cache, "StatusSnapshot", valid.map(statusCacheTag));
+  }
+
+  private async readStatus(path: string): Promise<Response> {
+    if (!isProduction(this.env)) {
+      return fetch(`${backendOrigin(this.env)}${path}`, {
+        signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS),
+      });
+    }
+    const lagView = lagViewKeyByPath(path);
+    if (lagView) return statusResponse(await lagEnvelope(lagView));
+    return await this.env.PUBLIC_STATUS.readStatus(path);
   }
 }
 
@@ -313,11 +326,11 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
         return (await response.json()) as FirstScreen<K>;
       },
       lyrics: async (songId: string): Promise<LyricsResult | null> => {
+        // api 的边缘缓存按请求 URL 的源分键：SSR 用浏览器取歌词的同一个源（PUBLIC_BACKEND_URL），两边才共用一份。
+        const url = `${backendOrigin(env)}/api/lyrics?song=${encodeURIComponent(songId)}`;
+        const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
         try {
-          const response = await fetch(
-            `${backendOrigin(env)}/api/lyrics?song=${encodeURIComponent(songId)}`,
-            { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) },
-          );
+          const response = isProduction(env) ? await env.API_SERVICE.fetch(url, init) : await fetch(url, init);
           if (!response.ok) return null;
           return (await response.json()) as LyricsResult;
         } catch {
@@ -360,7 +373,11 @@ const siteWorker = {
     const url = new URL(request.url);
     const route = classifyGatewayRequest(request.method, url.pathname);
     switch (route.kind) {
-      case "mcp":
+      case "lag-status":
+        if (isProduction(env)) return serveLagStatus(request, route.view, env);
+        return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
+      case "api":
+      case "ai":
         return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
       case "sentry-relay":
         return relaySentry(request, env);
@@ -383,7 +400,28 @@ const siteWorker = {
   },
 };
 
+function withoutTraceHeaders(request: Request): Request {
+  if (!request.headers.has("sentry-trace") && !request.headers.has("baggage")) return request;
+  const headers = new Headers(request.headers);
+  headers.delete("sentry-trace");
+  headers.delete("baggage");
+  return new Request(request, { headers });
+}
+
+const instrumentedSite = Sentry.withSentry(sentryOptions, siteWorker);
+
 export const StatusSnapshot = Sentry.withSentry(sentryOptions, StatusSnapshotBase);
 export const ImageVariants = Sentry.withSentry(sentryOptions, ImageVariantsBase);
 export const RenderedSite = Sentry.withSentry(sentryOptions, RenderedSiteBase);
-export default Sentry.withSentry(sentryOptions, siteWorker);
+
+// 转交 api / ai 的请求在 Sentry 包装之外分流，由各自的 Worker 上报；去掉浏览器带来的追踪头，后端才按自己的采样率采样。
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (isProduction(env)) {
+      const { kind } = classifyGatewayRequest(request.method, new URL(request.url).pathname);
+      if (kind === "api") return env.API_SERVICE.fetch(withoutTraceHeaders(request));
+      if (kind === "ai") return env.AI_SERVICE.fetch(withoutTraceHeaders(request));
+    }
+    return instrumentedSite.fetch(request, env, ctx);
+  },
+} satisfies ExportedHandler<Env>;

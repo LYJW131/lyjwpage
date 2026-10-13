@@ -10,9 +10,9 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 - `LivePushRoom` 只通过 `src/live-platform.ts#liveRoom` 取：`locationHint` 只在对象首次创建时生效，换位置只能换 `ROOM_ID`（旧对象不会搬家也不会删）；房间只有连接、不存数据，换名无数据要迁。
 - 提交持久化确认后才返回 202；推送、首屏失效在 `waitUntil` 里做，失败只记日志，不让已落库的上报重发。
 - 上报缺的外部信息（Apple 目录、动态封面）在 `StateCore` 交给 StateHub 之前补全，随状态落库（`src/listening-enrichment.ts`）；歌词预热和失败后的重查在回执后的 `waitUntil` 里做，重查结果经 `StateHub.commitEnrichmentPatch` 按 `trackKey` 补写；StateHub 里不请求网络，读取和推送只读存好的补全。只有 `/api/lyrics`、`/api/motion-artwork` 这两个按需端点允许现查 Apple。Apple 结果缓存在 `APPLE_CACHE` KV（`shared/apple-cache.ts`），不进 StateHub。
-- 公开读取只输出明确的公开模型：没有通用 HTTP 数据库端点，凭据不进任何公开响应。可滞后层的端点只读 `LAG` KV，不持有外部令牌、不现拉、不推送，也不过公开读屏障、不唤醒 StateHub（`src/public-execution.ts`）：它的 loader 不许读 DO 存储。
+- 公开读取只输出明确的公开模型：没有通用 HTTP 数据库端点，凭据不进任何公开响应。可滞后层的 loader 在 `shared/lag-views.ts#LAG_VIEW_LOADERS`，site Worker 直接调同一份读 `LAG` KV：只读 KV，不持有外部令牌、不现拉、不推送，也不过公开读屏障、不唤醒 StateHub（`src/public-execution.ts`），不许读 DO 存储（site 没有 DO）。两边回的信封逐字一致由 `src/lag-parity.test.ts` 守着。
 - 首屏标签只在布局变化时失效（判据在 `shared/home-layout.ts`）；读数、标题、进度、纯心跳都不触发，交给首屏快照的定时重建。
-- 新增公开状态视图只在 `shared/status-views.ts` 加一行、在 `shared/status-payloads.ts` 写载荷类型、在 `src/status-loaders.ts` 登记 loader，三张表由 `satisfies` 对齐；可滞后层视图不许带推送事件（模块加载时断言）。
+- 新增公开状态视图只在 `shared/status-views.ts` 加一行、在 `shared/status-payloads.ts` 写载荷类型、在 `src/status-loaders.ts` 登记 loader（可滞后层的 loader 写进 `shared/lag-views.ts#LAG_VIEW_LOADERS`，这里引用它），几张表由 `satisfies` 对齐；可滞后层视图不许带推送事件（模块加载时断言）。
 - `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 中的精确路径，契约为 `shared/public-status.ts`；不开放参数查询、凭据、写入或通用存储接口。AI 只能经这个入口读公开状态。
 - `shared/ai-paths.ts#AI_HTTP_PATHS` 中的 HTTP 请求经 `AI_SERVICE` 原样转发给 AI Worker；不要在 api 重建聊天、配额或 MCP 逻辑。Pulse 的 Coding 评估与租约仍属于本 Worker 和 StateHub。
 
@@ -28,7 +28,7 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 
 - 浏览器与 Worker 共用 `shared/live-heartbeat.ts#LIVE_HEARTBEAT_MS`；可见连接失活窗口从这个间隔推导。
 - 改 Coding 评估的判据要升 `shared/pulse-assessment.ts#PULSE_ASSESSMENT_VERSION`（升版本会让最近 24 小时全部重评），先用 `scripts/clef-probe.mts` 试。
-- 状态端点新增或改形：登记表 `shared/status-views.ts`、载荷类型表 `shared/status-payloads.ts`、loader 表 `src/status-loaders.ts`、站点读取侧 `src/lib/status-reads.ts`、首屏 `src/lib/first-screen.ts` 一起看，推送事件和端点含义保持一致；新增视图还要在 `workers/ai/src/tools/site-status.ts#VIEW_NOTES` 写一行说明，否则 ai 的类型检查失败。
+- 状态端点新增或改形：登记表 `shared/status-views.ts`、载荷类型表 `shared/status-payloads.ts`、loader 表 `src/status-loaders.ts`（可滞后层另有 `shared/lag-views.ts`）、站点读取侧 `src/lib/status-reads.ts`、首屏 `src/lib/first-screen.ts` 一起看，推送事件和端点含义保持一致；新增视图还要在 `workers/ai/src/tools/site-status.ts#VIEW_NOTES` 写一行说明，否则 ai 的类型检查失败。
 
 ## 本地开发与验证
 
