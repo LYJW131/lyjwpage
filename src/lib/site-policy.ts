@@ -16,7 +16,7 @@ export const HOME_CACHE_TAG = "home";
 export const STATUS_CACHE_CONTROL = "public, max-age=600, stale-if-error=604200";
 
 // 充电头 / 充电宝那一格亮不亮还看上报新不新（shared/freshness.ts#chargingFeedClockStale），
-// 上报断档或恢复不发失效，快照只能靠短期限跟上。
+// 断档那一刻没有上报能触发失效（断档后恢复由 core 失效，见 workers/core/src/stores/telemetry.ts），快照只能靠短期限跟上。
 export const CLOCKED_LAYOUT_STATUS_CACHE_CONTROL = "public, max-age=60, stale-if-error=604200";
 const CLOCKED_LAYOUT_TAGS: ReadonlySet<string> = new Set([STATUS_VIEWS.charger.tag, STATUS_VIEWS.powerBank.tag]);
 

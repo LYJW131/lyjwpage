@@ -15,7 +15,7 @@ import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG } from "@sha
 import type { PlayingQueueTrack } from "@shared/playing-queue";
 import { powerBankPushPayload } from "../powerbank";
 import { readPowerBankState } from "../powerbank-store";
-import { nextLiveness, readLiveness, type Liveness } from "@shared/reporter-liveness";
+import { nextLiveness, offlineByLiveness, readLiveness, type Liveness } from "@shared/reporter-liveness";
 import type {
   ChargerStatus,
   LocalNowPlaying,
@@ -133,6 +133,9 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
     notify.push({ type: "presence", payload: null });
     tags.push(DESKTOP_TAG);
     tags.push(NOW_LISTENING_TAG, CHARGER_TAG);
+  } else if (presence !== "offline" && previousLiveness.lastSeenAt > 0 && offlineByLiveness(previousLiveness, receivedAt)) {
+    // 心跳断档超窗后恢复：离线标志没变，但首屏按时钟藏起的卡要回来，不失效就要等首屏快照自己过期。
+    tags.push(DESKTOP_TAG, NOW_LISTENING_TAG, CHARGER_TAG);
   }
 
   // finally 必须等待已启动的写入，后续模块抛错不能让此前接受的数据失去落库确认。
