@@ -72,6 +72,7 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
   - 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的，单列为环境噪声，不算站点错误。
 - 宽度：至少 1280 桌面与 375 手机（高 812）；改到布局行数或网格时加 iPad（820 / 1024）；有深色样式的改动加 `colorScheme: "dark"`。
 - 每个宽度：测可量化的预期（元素 boundingBox、computed style），截元素图或整页图，收集控制台错误与 `pageerror`。
+- 改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；站主一眼就能看出差几像素。
 - SSR 相关：`curl -sS <url>` 看原始 HTML，或用 `javaScriptEnabled: false` 的上下文截图。
 - 首帧、跳动类问题：录帧或按时间点截图（DOMContentLoaded 后第一帧、水合后、拿到新数据后），给出每一跳的毫秒数。
 - 云端没有 Safari / WebKit：凡是 WebKit 才有的行为，写进「没验到」，请站主实机看。
@@ -79,7 +80,7 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
 
 ### 3. PR 合并门槛（验证员汇总，主线程判断）
 
-- 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（站主定的规矩）。下面的汇总只用于要等评审的 PR。
+- 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（站主定的规矩）。有 UI / UX 变化的 PR 另要站主看过效果、点头才合（站主明确要求的小改动除外，见根 `DESIGN.md`「交付与合并」）。下面的汇总只用于要等评审的 PR。
 - 当前 head 提交上的所有 check run 结论（含 `Workers Builds: site` 等），以及哪些还在跑。
 - 读全 `get_reviews`、`get_review_comments`、`get_comments`（GitHub MCP 工具，没加载就用 ToolSearch 加载；仓库 `LYJW131/lyjwpage`）。逐条列出每个机器评审（Claude review、Devin、Codex、Cursor Bugbot、CodeQL）的意见：所在文件行、严重度标记、讨论是否已解决、最后一条是不是我们的回复、它评审的是哪个提交。
 - Codex 已跑了几轮（每次推送自动算一轮，上限 3 轮）。Cursor Bugbot 额度用完时当它不存在，不等它也不提（站主定的规矩）；它真跑出来的意见照常列。

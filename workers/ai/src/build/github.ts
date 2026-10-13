@@ -287,9 +287,21 @@ export async function recoverBuildPublication(api: GithubBuildApi, run: StoredRu
     try { await api.repo(`/git/refs/heads/${run.state.branch}`, "PATCH", { sha: run.implementationHeadSha, force: false }); }
     catch (error) { if (await branchHead(api, run.state.branch) !== run.implementationHeadSha) throw error; }
   }
-  const updated = await existingPullRequest(api, run);
+  const updated = await pullRequestAfterPush(api, run);
   if (!updated) throw new Error("GitHub pull request confirmation is unavailable.");
+  if (updated.head?.sha === run.planCommitSha) throw new Error("GitHub has not moved the pull request to the implementation commit yet.");
   return confirmedPublication(api, run, updated);
+}
+
+// GitHub 推进 PR 的 head 晚于分支 ref；仍停在计划提交时只算结果未知（failed，可经状态查询恢复），不当成篡改报 blocked
+const PR_HEAD_SYNC_DELAYS_MS = [250, 500, 1000, 2000];
+
+async function pullRequestAfterPush(api: GithubBuildApi, run: StoredRun): Promise<GithubPullRequest | null> {
+  for (let attempt = 0; ; attempt += 1) {
+    const pr = await existingPullRequest(api, run);
+    if (pr?.head?.sha !== run.planCommitSha || attempt >= PR_HEAD_SYNC_DELAYS_MS.length) return pr;
+    await new Promise((resolve) => setTimeout(resolve, PR_HEAD_SYNC_DELAYS_MS[attempt]));
+  }
 }
 
 export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, upload: BuildUpload, validatedBaseTree: string | undefined, recordImplementationHead: (sha: string, body: string) => Promise<void>): Promise<NonNullable<BuildRun["pr"]>> {
