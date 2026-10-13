@@ -4,7 +4,7 @@ import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
 
-import { ActionsOidcUnavailableError, verifyActionsToken } from "./actions-oidc";
+import { ActionsOidcUnavailableError, buildWorkflowAudience, verifyActionsToken } from "./actions-oidc";
 import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, GithubBuildApi, GithubRequestError, installationApi, reconcileBuild } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan } from "./plan";
@@ -189,7 +189,7 @@ async function workflowUploadHash(request: Request, env: Env, fetcher: typeof fe
   const run = await env.BUILD_COORDINATOR!.getByName("global").readRun(runId);
   if (!run?.callbackOrigin) return fail(401, invalid);
   try {
-    if (!await verifyActionsToken(token, run.callbackOrigin, fetcher)) return fail(401, invalid);
+    if (!await verifyActionsToken(token, buildWorkflowAudience(run.callbackOrigin, runId), fetcher)) return fail(401, invalid);
   } catch (error) {
     if (error instanceof ActionsOidcUnavailableError) return fail(503, "Build authorization cannot be checked right now.");
     throw error;

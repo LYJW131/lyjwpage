@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ACTIONS_OIDC_ISSUER, ACTIONS_OIDC_JWKS_URL, ActionsOidcUnavailableError, BUILD_WORKFLOW_REF, verifyActionsToken } from "./build/actions-oidc.ts";
+import { ACTIONS_OIDC_ISSUER, ACTIONS_OIDC_JWKS_URL, ActionsOidcUnavailableError, BUILD_WORKFLOW_REF, buildWorkflowAudience, verifyActionsToken } from "./build/actions-oidc.ts";
 import { actionsClaims, createActionsOidcFixture } from "./build/testing/actions-oidc.ts";
 import { base64url, hmacKey } from "./crypto.ts";
 
@@ -12,6 +12,10 @@ test("the trusted identity is GitHub's Actions issuer and the build workflow on 
   assert.equal(ACTIONS_OIDC_ISSUER, "https://token.actions.githubusercontent.com");
   assert.equal(ACTIONS_OIDC_JWKS_URL, "https://token.actions.githubusercontent.com/.well-known/jwks");
   assert.equal(BUILD_WORKFLOW_REF, "LYJW131/lyjwpage/.github/workflows/build.yml@refs/heads/main");
+});
+
+test("the workflow audience binds the callback origin and the runId in the format scripts/build-actions.mjs requests", () => {
+  assert.equal(buildWorkflowAudience("https://api.homepage.lyjw.llc", "0123456789abcdef0123456789abcdef"), "https://api.homepage.lyjw.llc/builds/0123456789abcdef0123456789abcdef");
 });
 
 test("a build workflow token for the run's callback origin is accepted, also as one of several audiences", async () => {
