@@ -4,21 +4,20 @@ import { pathToFileURL } from "node:url";
 
 import { authorFromTrailer } from "../shared/commit-authors.ts";
 
-// 提交作者只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。
+// 只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。
 export function mergeMessage({ number, title, subjects, authors, coAuthors, owner }) {
   const suffix = `(#${number})`;
   const trimmed = title.trim();
   const commitTitle = trimmed.endsWith(suffix) ? trimmed : `${trimmed} ${suffix}`;
   const seen = new Set();
   const trailers = [];
-  const people = [...coAuthors.map((line) => [line, false]), ...authors.map((line) => [line, true])];
-  for (const [person, knownOnly] of people) {
+  for (const person of [...coAuthors, ...authors]) {
     const match = /^(.*?)\s*<([^>]+)>$/.exec(person.trim());
     if (!match) continue;
     const [, name, email] = match;
     const identity = authorFromTrailer(name, email);
     if (owner && identity.login?.toLowerCase() === owner.toLowerCase()) continue;
-    if (knownOnly && !identity.agent && !identity.login) continue;
+    if (!identity.agent && !identity.login) continue;
     const key = `${name} <${email}>`.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
