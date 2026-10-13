@@ -29,7 +29,7 @@ export function AnswerCard({ answers }: { answers: ChatAnswer[] }) {
     <dl aria-label="Answers" className="space-y-2 rounded-lg border border-line-strong bg-surface px-3 py-2.5 text-foreground">
       {answers.map((item, index) => (
         <div key={index} className="min-w-0">
-          <dt className="label-mono text-[10px] text-muted-foreground" title={item.question || undefined}>{item.header}</dt>
+          <dt className="label-mono text-muted-foreground" title={item.question || undefined}>{item.header}</dt>
           <dd className="mt-1 whitespace-pre-wrap text-sm">{item.answer}</dd>
         </div>
       ))}
@@ -65,7 +65,7 @@ export function AskCard({ questions, active, onAnswer }: { questions: GodChatQue
     <section aria-label="Questions" className="mt-3 space-y-4 rounded-lg border border-line-strong bg-surface p-3">
       {questions.map((question, index) => (
         <fieldset key={index} disabled={!active} className="min-w-0 space-y-2">
-          <legend className="label-mono text-[10px] text-muted-foreground">{question.header}{question.multiSelect && " · Choose any"}</legend>
+          <legend className="label-mono text-muted-foreground">{question.header}{question.multiSelect && " · Choose any"}</legend>
           <p className="font-semibold">{question.question}</p>
           <div className="space-y-1.5">
             {question.options.map((option) => {
