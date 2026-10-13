@@ -339,6 +339,9 @@ export const WORKER_TIMING = {
 // 只重试 0（网络错误或超时）与 502/503/504：Worker 在领取上传凭据之前失败时重试安全；已领取的话重试只会拿到 401，结果不变。
 const RETRYABLE_STATUS = new Set([0, 502, 503, 504]);
 
+// 须与 workers/ai/src/build/actions-oidc.ts#buildWorkflowAudience 一致：Worker 按 run 核对受众。
+export const workflowAudience = (origin, runId) => `${origin}/builds/${runId}`;
+
 // GitHub 的 OIDC 令牌只活几分钟，每次尝试都现取一张，不跨请求缓存。
 function workerClient({ env, origin, runId, io, deadline }) {
   return async (pathname, body, { timeoutMs = WORKER_TIMING.requestMs, retry = true, until = deadline } = {}) => {
@@ -351,7 +354,7 @@ function workerClient({ env, origin, runId, io, deadline }) {
     for (let attempt = 0; ; attempt += 1) {
       status = 0;
       try {
-        const token = await mintIdToken(env, origin, io, Math.max(1, Math.min(WORKER_TIMING.mintMs, until - Date.now())));
+        const token = await mintIdToken(env, workflowAudience(origin, runId), io, Math.max(1, Math.min(WORKER_TIMING.mintMs, until - Date.now())));
         const response = await io.fetch(`${origin}${pathname}?runId=${runId}`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
