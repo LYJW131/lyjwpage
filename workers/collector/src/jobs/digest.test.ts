@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import type { DigestOutcome, DigestRecord, DigestRequest } from "@shared/digest";
 import { LAG_KEYS, readLag } from "@shared/lag";
+import { STATUS_VIEWS } from "@shared/status-views";
 
 import type { Env } from "../env";
 import { MemoryKv } from "../testing/memory-kv";
@@ -59,6 +60,7 @@ test("the first digest is written and revalidated; an unchanged hour only moves 
   assert.deepEqual(await readLag(deps.lag, LAG_KEYS.digest), { updatedAt: now + 2 * HOUR, data: second });
   assert.deepEqual(deps.revalidated, [["digest"]], "only the first digest changes the page layout");
   assert.deepEqual(deps.requests.map((request) => request.previousInputHash), [null, "hash-1", "hash-1"]);
+  assert.deepEqual(deps.requests.map((request) => request.previousHeadline), [null, "Coding all day", "Coding all day"]);
 });
 
 test("switching between a digest and a quiet day revalidates the page both ways", async () => {
@@ -82,4 +84,8 @@ test("a failed round keeps the last digest, and a failed revalidation does not f
   assert.deepEqual(await refreshDigest(deps, now), { status: "ok", detail: "composed" });
   await assert.rejects(refreshDigest(deps, now + HOUR), /model down/);
   assert.deepEqual(await readLag(deps.lag, LAG_KEYS.digest), { updatedAt: now, data: first });
+});
+
+test("the browser polls the digest on the same cadence the job refreshes it", () => {
+  assert.equal(STATUS_VIEWS.digest.cadenceMs, digestJob.everyMinutes * 60_000);
 });

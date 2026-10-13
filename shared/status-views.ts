@@ -39,7 +39,7 @@ export const STATUS_VIEWS = {
   sentry: { path: "/api/status/sentry", layer: "lag", cadenceMs: 5 * 60_000 },
   reporters: { path: "/api/status/reporters", layer: "lag", cadenceMs: 60_000 },
   pulse: { path: "/api/status/pulse", layer: "realtime" },
-  digest: { path: "/api/status/digest", layer: "lag", tag: "digest", cadenceMs: 3_600_000 },
+  digest: { path: "/api/status/digest", layer: "lag", tag: "digest", cadenceMs: 900_000 },
 } as const satisfies Record<string, StatusView>;
 
 export type StatusViewKey = keyof typeof STATUS_VIEWS;
