@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import { BUILD_REPO, PLAN_LABELS, branchForRun, type BuildUpload } from "@shared/build-routine";
 import type { StoredRun } from "./build/coordinator.ts";
-import { BuildBlockedError, createBuildPullRequest, GithubBuildApi, markBuildReady, prepareBuildPullRequest, reconcileBuild, recoverBuildPublication } from "./build/github.ts";
+import { BuildBlockedError, BuildPublicationPendingError, createBuildPullRequest, GithubBuildApi, markBuildReady, prepareBuildPullRequest, reconcileBuild, recoverBuildPublication } from "./build/github.ts";
 
 const baseSha = "a".repeat(40);
 const baseTree = "b".repeat(40);
@@ -196,7 +196,7 @@ test("body update failure is recoverable before pushing and ambiguous push succe
   assert.equal(setup.state.pr!.body, setup.stored.publicationBody);
 });
 
-test("a pull request head that lags the pushed branch is awaited, then reported as unknown rather than blocked", async () => {
+test("a pull request head that lags the pushed branch is awaited, then left pending rather than blocked", async () => {
   const setup = await prepared();
   setup.state.prHeadLag = 2;
   const result = await createBuildPullRequest(setup.api, setup.stored, upload, baseTree, async (sha, body) => { setup.stored.implementationHeadSha = sha; setup.stored.publicationBody = body; });
@@ -205,7 +205,7 @@ test("a pull request head that lags the pushed branch is awaited, then reported 
   const stale = await prepared();
   stale.state.prHeadLag = 100;
   const error = await createBuildPullRequest(stale.api, stale.stored, upload, baseTree, async (sha, body) => { stale.stored.implementationHeadSha = sha; stale.stored.publicationBody = body; }).then(() => null, (error: unknown) => error);
-  assert.ok(error instanceof Error && !(error instanceof BuildBlockedError) && /not moved the pull request/.test(error.message));
+  assert.ok(error instanceof BuildPublicationPendingError && !(error instanceof BuildBlockedError));
   assert.equal(stale.state.head, stale.stored.implementationHeadSha);
   stale.state.prHeadLag = 1;
   assert.equal((await recoverBuildPublication(stale.api, stale.stored)).headSha, stale.stored.implementationHeadSha);
