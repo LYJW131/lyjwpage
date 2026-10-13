@@ -59,9 +59,10 @@ jobs:
     needs: changes
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
-    # 并发放在任务上：PR 上打别的标签或没打 codeql 时的推送也会起一次运行（任务全跳过），放在工作流上会把正在扫的那次取消掉
+    # 并发放在任务上：PR 上打别的标签或没打 codeql 时的推送也会起一次运行（任务全跳过），放在工作流上会把正在扫的那次取消掉。
+    # PR 上按 head 分组：任务进组的先后不保证，按 ref 分组时旧提交的扫描可能反过来取消当前 head 的必需检查
     concurrency:
-      group: codeql-${{ github.ref }}-${{ matrix.language }}
+      group: codeql-${{ github.ref }}-${{ github.event.pull_request.head.sha }}-${{ matrix.language }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
