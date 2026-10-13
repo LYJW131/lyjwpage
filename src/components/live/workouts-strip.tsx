@@ -80,9 +80,9 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
   return (
     <section id="workouts" aria-label="Recent workouts" className="@container flex min-w-0 flex-col justify-center border-t border-line md:border-t-0 md:border-l">
       {!data ? (
-        <p className="p-4 text-sm text-muted-foreground">{error ? "Workout history unavailable" : "Awaiting workout report"}</p>
+        <p className="p-4 text-sm text-muted-foreground lg:p-5">{error ? "Workout history unavailable" : "Awaiting workout report"}</p>
       ) : data.items.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">No readable workouts</p>
+        <p className="p-4 text-sm text-muted-foreground lg:p-5">No readable workouts</p>
       ) : (
         <ul ref={listRef} id="workout-list" aria-label="Recent workouts" tabIndex={0} className="grid h-[207px] lg:h-[215px] grid-flow-col grid-rows-2 auto-cols-[100%] overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden snap-x snap-mandatory">
           {items.map((workout) => <WorkoutTile key={workout.id} workout={workout} />)}

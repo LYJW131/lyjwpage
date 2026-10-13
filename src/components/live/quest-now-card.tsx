@@ -43,7 +43,7 @@ function QuestHero({ playing }: { playing: QuestPlaying }) {
   const now = useNow(playing.startedAt != null);
   const detail = [playing.details, playing.state].filter(Boolean).join(" · ");
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 px-3 py-3 sm:gap-x-4">
+    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 px-4 py-3 sm:gap-x-4 lg:px-5">
       <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-muted text-muted-foreground sm:size-20">
         {playing.largeImageUrl ? (
           <Image src={playing.largeImageUrl} alt={playing.name} fill sizes="80px" loading="eager" className="object-cover" unoptimized />

@@ -83,7 +83,7 @@ export function TrophyTeaser({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 px-3 py-3 md:flex-row md:flex-wrap md:items-center md:gap-x-5 lg:flex-nowrap",
+        "flex flex-col gap-3 px-4 py-3 md:flex-row md:flex-wrap md:items-center md:gap-x-5 lg:flex-nowrap lg:px-5",
         embedded
           ? "border-b border-line"
           : "paper-card mb-3 border border-line-strong bg-surface",
