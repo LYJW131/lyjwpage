@@ -74,11 +74,11 @@
 
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`。PR 开出来时给你一次链接，CI 绿、评审处理完后再说一次；中间的合 main、修 CI、回评审不打扰你。
 - 合并前的门槛，缺一不可：
-  1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）；CodeQL 不在 PR 上跑，合进 main 后与每天定时扫描，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
+  1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）；CodeQL 不随每次推送跑，合并前 Claude 在 PR 分支上触发一次，两项 `Analyze` 是分支保护的必需检查，不绿合不进去（另有合进 main 后与每天定时扫描，告警由 CodeQL Autofix 各开修复 PR，见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
   2. PR 讨论区里每条机器评审（Claude review、Devin、Codex、Cursor Bugbot）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Bugbot 没跑成算「没跑」，不算过。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。
-  5. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
+  5. main 的分支保护要求 PR 里的行内评审线程都解决了、CodeQL 两项必需检查过了才能合，直推 main 会被拒；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
 - 谁合：你说「合」才合。合并方式是 merge commit；分支落后时把 main 合进来，不 rebase。
 - 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。
 
