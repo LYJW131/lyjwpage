@@ -60,9 +60,9 @@ for (const model of models) {
       });
       if (outcome.status !== "composed") throw new Error(`unexpected outcome ${outcome.status}`);
       const tokens = usage as Anthropic.Usage | null;
-      const words = outcome.digest.text.split(/\s+/).filter(Boolean).length;
-      console.log(`── ${model} #${run} · ${words} words · ${outcome.digest.text.length} chars · in ${tokens?.input_tokens ?? "?"} / out ${tokens?.output_tokens ?? "?"} tokens · ${((Date.now() - started) / 1000).toFixed(1)} s`);
-      console.log(`${outcome.digest.text}\n`);
+      const { headline, highlights } = outcome.digest;
+      console.log(`── ${model} #${run} · in ${tokens?.input_tokens ?? "?"} / out ${tokens?.output_tokens ?? "?"} tokens · ${((Date.now() - started) / 1000).toFixed(1)} s`);
+      console.log([headline, ...highlights.map(({ topic, figure, caption }) => `  [${topic}] ${figure} · ${caption}`)].join("\n") + "\n");
     } catch (error) {
       console.log(`── ${model} #${run} failed: ${error instanceof Error ? error.message : String(error)}\n`);
     }

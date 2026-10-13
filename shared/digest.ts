@@ -1,8 +1,20 @@
 // 契约只加不改：采集 Worker 的 digest 任务经 Service Binding 调 ai 的 Digest 入口。ai 只能 import type：本文件不在 ai 的构建监视路径里。
 
+export type DigestTopic = "coding" | "agents" | "tokens" | "site" | "music" | "watching" | "gaming" | "trophies" | "fitness";
+
+export type DigestHighlight = {
+  topic: DigestTopic;
+  // 事实清单里取整后的数字，带单位或后缀，如 "22 h"、"44M"、"10+"。
+  figure: string;
+  // 接在数字后面读的英文短语，人名、歌名、剧名照数据原样。
+  caption: string;
+};
+
 export type DigestPayload = {
-  // 模型写的两三句英文近况；人名、歌名、剧名照数据原样。
-  text: string;
+  // 一句不带句号的英文短标题，点出这一天的主线。
+  headline: string;
+  // 按重要性排好的两到三件事，topic 互不重复。
+  highlights: DigestHighlight[];
   model: string;
   // 模型写出这段文字的 epoch 毫秒；可滞后层条目的 updatedAt 是最近一次确认输入没变的时刻，二者可以相差好几个小时。
   generatedAt: number;
@@ -27,6 +39,6 @@ export interface DigestRpc {
   compose(request: DigestRequest): Promise<DigestOutcome>;
 }
 
-export function publicDigest({ text, model, generatedAt }: DigestPayload): DigestPayload {
-  return { text, model, generatedAt };
+export function publicDigest({ headline, highlights, model, generatedAt }: DigestPayload): DigestPayload {
+  return { headline, highlights, model, generatedAt };
 }

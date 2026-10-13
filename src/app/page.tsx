@@ -73,7 +73,7 @@ const SLOT = {
 
 const READS = {
   contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],
-  digest: [DIGEST_PATH],
+  digest: [DIGEST_PATH, PULSE_PATH],
   nowWatching: [NOW_WATCHING_PATH],
   questNow: [STATUS_VIEWS.questNow.path],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
@@ -242,7 +242,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </div>
 
               <CardBoundary label="In Brief" silent paths={READS.digest}>
-                <DigestCard fallback={loaderData.digest} className="mt-3" />
+                <DigestCard fallback={loaderData.digest} pulseFallback={loaderData.pulse} className="mt-3" />
               </CardBoundary>
 
               {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}

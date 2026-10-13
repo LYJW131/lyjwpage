@@ -11,8 +11,9 @@ import { digestJob, refreshDigest } from "./digest";
 const now = 1_700_000_000_000;
 const HOUR = 3_600_000;
 
-function record(text: string, inputHash: string, generatedAt: number): DigestRecord {
-  return { text, model: "claude-sonnet-5-5", generatedAt, inputHash };
+function record(headline: string, inputHash: string, generatedAt: number): DigestRecord {
+  const highlights = [{ topic: "coding", figure: "22 h", caption: "coding" }, { topic: "music", figure: "8 h", caption: "of music" }] as const;
+  return { headline, highlights: [...highlights], model: "claude-sonnet-5-5", generatedAt, inputHash };
 }
 
 function setup(outcomes: (DigestOutcome | Error)[]) {
@@ -43,8 +44,8 @@ test("digest skips cleanly while ai has no model key or the binding is missing",
 });
 
 test("the first digest is written and revalidated; an unchanged hour only moves updatedAt", async () => {
-  const first = record("LYJW coded most of the day.", "hash-1", now);
-  const second = record("LYJW coded, then listened to Suisei.", "hash-2", now + 2 * HOUR);
+  const first = record("Coding all day", "hash-1", now);
+  const second = record("Coding, then Suisei", "hash-2", now + 2 * HOUR);
   const deps = setup([{ status: "composed", digest: first }, { status: "unchanged" }, { status: "composed", digest: second }]);
 
   assert.deepEqual(await refreshDigest(deps, now), { status: "ok", detail: "composed" });
@@ -62,7 +63,7 @@ test("the first digest is written and revalidated; an unchanged hour only moves 
 
 test("a failed round keeps the last digest, and a failed revalidation does not fail the round", async (t) => {
   t.mock.method(console, "warn", () => {});
-  const first = record("LYJW coded most of the day.", "hash-1", now);
+  const first = record("Coding all day", "hash-1", now);
   const deps = setup([{ status: "composed", digest: first }, new Error("model down")]);
   deps.core.revalidate = async () => { throw new Error("core down"); };
 
