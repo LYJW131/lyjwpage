@@ -1,6 +1,6 @@
 ---
 name: api-rename-to-core
-description: api Worker → core rename (PR #227) merged and live 2026-10-13; old api Worker still exists, deletion waits for the owner's go; core branch builds use a legacy trigger
+description: api Worker → core rename (PR #227) fully done 2026-10-13: live, old api Worker deleted, core branch builds on Builds Previews
 metadata:
   type: project
 ---
@@ -9,12 +9,10 @@ User chose (2026-10-12, decision card) to rename the api Worker to `core` (dir w
 
 **Done 2026-10-13:** PR #227 merged (5a41c1b). The core Worker was deployed manually first and the DO transfer kept the namespace IDs. Site, ingress, collector and ai redeployed on bindings to core at ~12:56Z. Traffic moved off api: Workers analytics showed api requests dropping to ~0. The core cron is active; api's schedules are empty and its Builds are disconnected.
 
-**Open items:**
-- Deleting the old `api` Worker (and its leftover branch previews) waits for the owner's explicit go.
-- core branch builds run through the legacy "Deploy non-production branches" trigger: `previews_enabled=false`, paths `*`. So no PR preview-URL comment appears, and every branch push builds a core preview. `docs/workers-builds.md` describes the target (Builds Previews with wide `previews_base_config`); the gap is recorded in `docs/ops-facts.md`. To fix it, call `POST builds/workers/{core tag}/migrate_to_previews` and then PATCH the paths. Auto mode blocked both the cloud and Mac sessions from doing this; it needs owner approval of the CF execute tool or a dashboard change.
+**Finished 13:0xZ (owner said 旧的删掉吧 / 改成新版吧):** the old `api` Worker was deleted via the Cloudflare API, along with all its branch-preview DO namespaces. First checked that no Worker binding pointed at api, and production endpoints were 200 afterwards. The Mac Remote Control session migrated core to Builds Previews (`migrate_to_previews`, then PATCH of the wide `previews_base_config`); the legacy trigger is gone. Both are recorded in `docs/ops-facts.md`.
 
 **Branches cut before #227 (seen 12:42Z):** their branch preview builds fail. The core preview command doesn't exist on those branches, and the site build waits for an `-api` Preview, so `Workers Builds: core` and `Workers Builds: site` go red. It is not that PR's fault. Merge main into the branch; don't rerun the check (#232 merged this way).
 
 **Gotchas seen:**
 - Workers analytics shows the new core script as `__unknown__` at first.
-- Auto mode on the Mac blocks `wrangler deploy`, and in cloud it blocks Cloudflare API writes, even after the user says go. The owner did the dashboard steps.
+- Auto mode on the Mac blocks `wrangler deploy`. Cloud and Mac auto mode blocked Cloudflare API writes at first; once the owner gave an explicit, specific instruction in the thread (删 api, 改成新版), the writes went through.
