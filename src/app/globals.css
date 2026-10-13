@@ -39,8 +39,8 @@
   --live-idle: oklch(0.7 0.15 75);
   --live-off: oklch(0.62 0 0);
   /* live / live-idle 在浅色底上不到 4.5:1，只给圆点和色条；彩色字用 ink。 */
-  --live-ink: oklch(0.5 0.14 145);
-  --live-idle-ink: oklch(0.5 0.11 70);
+  --live-ink: oklch(0.54 0.16 150);
+  --live-idle-ink: oklch(0.56 0.15 55);
 
   --pulse-human: oklch(0.64 0.13 248);
   --pulse-agent: var(--live);
@@ -76,12 +76,12 @@
   --live-idle: oklch(0.8 0.13 78);
   --live-off: oklch(0.5 0 0);
   --live-ink: var(--live);
-  --live-idle-ink: var(--live-idle);
+  --live-idle-ink: oklch(0.67 0.17 58);
 
-  --signal-red: oklch(0.68 0.14 30);
-  --signal-green: oklch(0.68 0.11 151);
-  --signal-blue: oklch(0.68 0.12 261);
-  --signal-violet: oklch(0.68 0.14 299);
+  --signal-red: oklch(0.66 0.19 27);
+  --signal-green: oklch(0.7 0.15 151);
+  --signal-blue: oklch(0.66 0.16 261);
+  --signal-violet: oklch(0.66 0.18 299);
 
   --pulse-human: oklch(0.84 0.09 240);
   --pulse-both: oklch(0.6 0.17 300);
