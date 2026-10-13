@@ -7,7 +7,7 @@ import { compare, scan, sortedBaseline, SPACING_SCALE } from "./design-scale-che
 const tokens = (text) => scan(text).map((hit) => `${hit.kind}:${hit.token}`);
 
 test("阶梯内的间距、变体前缀和负外边距不算违规", () => {
-  assert.deepEqual(tokens(`cn("p-4 lg:p-5 gap-3 -mx-2 px-2 space-y-1.5 hover:mt-0.5 m-auto px-px", ok && "gap-y-8")`), []);
+  assert.deepEqual(tokens(`cn("p-4 lg:p-5 gap-3 -mx-2 px-2 space-y-1.5 m-auto px-px", ok && "gap-y-8")`), []);
 });
 
 test("半步、刻度外整数与任意值间距算违规", () => {
@@ -49,7 +49,7 @@ test("自定义属性简写、calc 字号与不带轴的任意位移也算", () 
 });
 
 test("块方向逻辑间距 pbs / pbe / mbs / mbe 也算", () => {
-  assert.deepEqual(tokens(`"pbs-2.5 mbe-12 pbs-4"`), ["spacing:pbs-2.5", "spacing:mbe-12"]);
+  assert.deepEqual(tokens(`"pbs-2.5 mbe-12 pbs-4"`), ["spacing:pbs-2.5", "spacing:mbe-12", "margin:mbe-12"]);
 });
 
 test("带重要性后缀、行高修饰符或 length: 类型的违规也算", () => {
@@ -58,7 +58,36 @@ test("带重要性后缀、行高修饰符或 length: 类型的违规也算", ()
     "spacing:mt-3.5",
     "fontSize:text-[13px]",
     "fontSize:text-[length:13px]",
+    "margin:mt-3.5",
   ]);
+});
+
+test("任意值圆角算违规，rounded-full 与被映射成 0 的具名圆角不算", () => {
+  assert.deepEqual(tokens(`"rounded-[2px] rounded-t-[3px] rounded-(--r) rounded-md rounded-full -rounded-b-[1px]"`), [
+    "radius:rounded-[2px]",
+    "radius:rounded-t-[3px]",
+    "radius:rounded-(--r)",
+    "radius:-rounded-b-[1px]",
+  ]);
+});
+
+test("子级竖向外边距算违规：mt/mb/my/m/mbs/mbe；归零、auto、横向与 scroll-mt 不算", () => {
+  assert.deepEqual(tokens(`"mt-3 hover:mb-2 my-1.5 -mt-px m-4 mbs-2 mbe-6 mt-0 mb-0 mt-auto ml-2 mx-auto -mx-2 scroll-mt-12 mse-4"`), [
+    "margin:mt-3",
+    "margin:mb-2",
+    "margin:my-1.5",
+    "margin:-mt-px",
+    "margin:m-4",
+    "margin:mbs-2",
+    "margin:mbe-6",
+  ]);
+});
+
+test("裸 hex 与 oklch/rgb/hsl 色值算违规，token 引用与锚点/id 不算", () => {
+  assert.deepEqual(
+    tokens(`const C = "#f5c542"; fill="#FFE842" bg-[oklch(0.65_0.17_145)] style={{ color: "#fff6d5" }} "rgba(0,0,0,.5)" url(#paint0) href="#section" id="intro" `),
+    ["rawColor:#f5c542", "rawColor:#FFE842", "rawColor:oklch(0.65_0.17_145)", "rawColor:#fff6d5", "rawColor:rgba(0,0,0,.5)"],
+  );
 });
 
 test("按类名比较：换成另一个违规值算增加，变少只报 shrank", () => {
