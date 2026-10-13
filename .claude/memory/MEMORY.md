@@ -35,3 +35,4 @@
 - Now-playing first screen decisions (#218/#220/#224): [[now-playing-first-screen-decisions]].
 - Cloud env gaps; #226 auto-creates .dev.vars, dev:worker runs without CF creds: [[cloud-env-gaps]].
 - **Hand-offs carry the user's constraints:** route a follow-up once; briefs and Mac briefs copy what the user already removed/rejected/set; a later relay overrides an earlier one: [[handoff-carry-user-constraints]].
+- **X/Twitter (user 2026-10-13 16:12Z):** read X via `api.x.com` directly; the proxy injects the owner's credentials, never add a key: [[x-api-via-proxy]].
