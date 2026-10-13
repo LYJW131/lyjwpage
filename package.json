@@ -22,7 +22,6 @@
   },
   "dependencies": {
     "@clock-ui/react": "^0.1.2",
-    "@fontsource/ma-shan-zheng": "^5.3.1",
     "@lobehub/icons": "^5.23.0",
     "@number-flow/react": "^0.6.2",
     "@sentry/cloudflare": "11.7.0",
