@@ -15,7 +15,7 @@ type PullRequest = { number: number; node_id: string; html_url: string; state: s
 type Call = { path: string; method: string; body: Record<string, unknown> };
 
 function fixture() {
-  const state = { head: null as string | null, pr: null as PullRequest | null, loseRefResponse: false, losePrResponse: false, losePushResponse: false, rejectPr: false, rejectBody: false, check: "success", otherCheck: "success", checkApp: "github-actions", checkName: "check", codeql: "success" as string | null, readyCalls: 0, changeReadyHead: false };
+  const state = { head: null as string | null, pr: null as PullRequest | null, loseRefResponse: false, losePrResponse: false, losePushResponse: false, rejectPr: false, rejectBody: false, check: "success", otherCheck: "success", checkApp: "github-actions", checkName: "check", codeql: "success" as string | null, readyCalls: 0, changeReadyHead: false, prHeadLag: 0 };
   const calls: Call[] = [];
   const trees = new Map<string, Entry[]>([[baseTree, []]]);
   const commits = new Map<string, { sha: string; tree: { sha: string }; parents: { sha: string }[] }>([[baseSha, { sha: baseSha, tree: { sha: baseTree }, parents: [] }]]);
@@ -53,7 +53,7 @@ function fixture() {
     if (path.startsWith("/git/refs/heads/") && method === "PATCH") {
       assert.equal(body.force, false);
       state.head = body.sha;
-      if (state.pr) state.pr.head.sha = body.sha;
+      if (state.pr && !state.prHeadLag) state.pr.head.sha = body.sha;
       if (state.losePushResponse) throw new Error("Lost push response");
       return Response.json({ object: { sha: state.head } });
     }
@@ -66,6 +66,7 @@ function fixture() {
       return Response.json(state.pr);
     }
     if (path === "/pulls/80") {
+      if (method === "GET" && state.prHeadLag && state.pr!.head.sha !== state.head && --state.prHeadLag === 0) state.pr!.head.sha = state.head!;
       if (method === "PATCH") {
         if (state.rejectBody) return Response.json({}, { status: 502 });
         state.pr!.body = body.body;
@@ -193,6 +194,21 @@ test("body update failure is recoverable before pushing and ambiguous push succe
   const result = await recoverBuildPublication(setup.api, setup.stored);
   assert.equal(result.headSha, setup.stored.implementationHeadSha);
   assert.equal(setup.state.pr!.body, setup.stored.publicationBody);
+});
+
+test("a pull request head that lags the pushed branch is awaited, then reported as unknown rather than blocked", async () => {
+  const setup = await prepared();
+  setup.state.prHeadLag = 2;
+  const result = await createBuildPullRequest(setup.api, setup.stored, upload, baseTree, async (sha, body) => { setup.stored.implementationHeadSha = sha; setup.stored.publicationBody = body; });
+  assert.equal(result.headSha, setup.stored.implementationHeadSha);
+
+  const stale = await prepared();
+  stale.state.prHeadLag = 100;
+  const error = await createBuildPullRequest(stale.api, stale.stored, upload, baseTree, async (sha, body) => { stale.stored.implementationHeadSha = sha; stale.stored.publicationBody = body; }).then(() => null, (error: unknown) => error);
+  assert.ok(error instanceof Error && !(error instanceof BuildBlockedError) && /not moved the pull request/.test(error.message));
+  assert.equal(stale.state.head, stale.stored.implementationHeadSha);
+  stale.state.prHeadLag = 1;
+  assert.equal((await recoverBuildPublication(stale.api, stale.stored)).headSha, stale.stored.implementationHeadSha);
 });
 
 test("plan-only drafts preserve active and failure phases during reconciliation", async () => {
