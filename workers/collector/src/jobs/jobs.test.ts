@@ -126,11 +126,16 @@ test("pagespeed waits per request for less than the job's runtime budget", () =>
   assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
 });
 
-test("apple-recent 缺签 developer token 的配置时干净跳过，不去读凭据", async (t) => {
+test("apple-recent 缺签 developer token 或真名打码的配置时干净跳过，不去读凭据", async (t) => {
   t.mock.method(console, "warn", () => {});
   assert.deepEqual(await appleRecentJob.run({ env: { APPLE_MUSIC_TEAM_ID: "TEAM000000" } as Env, now, scheduled: false }), {
     status: "skipped",
-    detail: "missing APPLE_MUSIC_PRIVATE_KEY, APPLE_MUSIC_KEY_ID",
+    detail: "missing APPLE_MUSIC_PRIVATE_KEY, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_OWNER_NAME",
+  });
+  const signed = { APPLE_MUSIC_TEAM_ID: "TEAM000000", APPLE_MUSIC_KEY_ID: "KEY0000000", APPLE_MUSIC_PRIVATE_KEY: "p8" } as Env;
+  assert.deepEqual(await appleRecentJob.run({ env: signed, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing APPLE_MUSIC_OWNER_NAME",
   });
 });
 

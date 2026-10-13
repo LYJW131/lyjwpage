@@ -25,7 +25,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 
 | 任务 | 去向 | 需要 |
 | --- | --- | --- |
-| `apple-recent` | `CORE.commitRecentlyPlayed(items, container)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；`APPLE_MUSIC_PRIVATE_KEY` 与 `APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID`（自签 developer token） |
+| `apple-recent` | `CORE.commitRecentlyPlayed(items, container)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；`APPLE_MUSIC_PRIVATE_KEY` 与 `APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID`（自签 developer token）；`APPLE_MUSIC_OWNER_NAME`（真名打码） |
 | `provider-status` | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 |
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
@@ -153,6 +153,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | `SENTRY_API_TOKEN` | Sentry 组织只读：`org:read` / `project:read` / `event:read` |
 | `PAGESPEED_API_KEY` | Google PageSpeed Insights |
 | `APPLE_MUSIC_PRIVATE_KEY` | Apple Music 开发者私钥（`.p8`）：签服务端调 Apple 用的 developer token 和给网页播放器的 MusicKit token；缺了 `apple-recent` 跳过，令牌路由回 500 |
+| `APPLE_MUSIC_OWNER_NAME` | Apple ID 上的真名：`apple-recent` 出站前把它（含 URL 编码形式）换成 `src/jobs/apple-recent.ts#OWNER_ALIAS`，自己的歌单、音乐回忆署名与个人电台标题不露真名；缺了 `apple-recent` 跳过，宁可不更新也不漏 |
 
 `SITE_WORKER_TAG`（site Worker 的 Builds tag）与 `SITE_ANALYTICS_SITES`（JSON：`{"lyjw.me":"<site_tag>","lyjw131.com":"<site_tag>"}`，两站缺一不可）是 `[vars]` 配置；缺哪个跳过哪个任务，不算故障。
 
