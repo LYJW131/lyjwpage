@@ -53,7 +53,11 @@ import {
   SITE_DEPLOYMENTS_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
-import { STATUS_VIEWS } from "@shared/status-views";
+import { data } from "react-router";
+
+import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
+import { NO_STORE } from "@/lib/site-policy";
+import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
 import { siteContext } from "@/server/site-context";
 
@@ -88,7 +92,13 @@ const READS = {
 
 export async function loader({ context }: Route.LoaderArgs) {
   const site = context.get(siteContext);
-  const status = site.status;
+  let degraded = false;
+  const status = <K extends StatusViewKey>(key: K): Promise<FirstScreen<K>> =>
+    site.status(key).catch((error: unknown) => {
+      degraded = true;
+      console.error("[first-screen]", key, error instanceof Error ? error.message : String(error));
+      return { ok: false, error: FIRST_SCREEN_UNAVAILABLE };
+    });
   const avatar = githubAvatarDataUri(site);
   const [
     desktop,
@@ -170,7 +180,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     nowSongId ? site.lyrics(nowSongId) : Promise.resolve(null),
   ]);
 
-  return {
+  const payload = {
     desktop,
     timezone,
     workouts,
@@ -207,6 +217,12 @@ export async function loader({ context }: Route.LoaderArgs) {
         ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
         : null,
   };
+  // 有视图读不到时那张卡按降级信封渲染、浏览器挂载后再取；这份首页不能进缓存，否则 Unavailable 会撑满整个 SWR 期限。
+  return degraded ? data(payload, { headers: { "Cache-Control": NO_STORE } }) : payload;
+}
+
+export function headers({ loaderHeaders }: Route.HeadersArgs) {
+  return loaderHeaders;
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
