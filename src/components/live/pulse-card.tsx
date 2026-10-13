@@ -587,9 +587,9 @@ export function PulseCard({
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-agent)" />Agent</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-both)" />Both</span>
           <span className="flex items-center gap-1"><span className="h-2 w-3 border-t border-(--pulse-agent) bg-(--pulse-agent)/30" />Tokens/min</span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1" title="Played elsewhere (estimated)">
             <span className={cn("pulse-trace relative inline-block h-2 w-3", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")} />
-            Played elsewhere, estimated
+            Elsewhere (est.)
           </span>
           <span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-current opacity-45" />Idle</span>
         </div>
