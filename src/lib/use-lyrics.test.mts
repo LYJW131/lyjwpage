@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 
-import { useLyrics, type UseLyricsResult } from "../hooks/use-lyrics.ts";
+import { useLyrics, type LyricsFallback, type UseLyricsResult } from "../hooks/use-lyrics.ts";
 
 const firstSong = {
   songId: "fallback-song-a",
@@ -11,7 +11,7 @@ const firstSong = {
   songwriters: ["Writer A"],
 };
 
-function renderLyrics(songId: string, initialData = firstSong): UseLyricsResult {
+function renderLyrics(songId: string, initialData: LyricsFallback = firstSong): UseLyricsResult {
   let result: UseLyricsResult | undefined;
   function Probe() {
     result = useLyrics(songId, true, initialData);
@@ -47,4 +47,13 @@ test("首屏快照落后于实时曲目时，不显示快照中另一首歌的�
   assert.equal(result.lyrics, null);
   assert.equal(result.songwriters, undefined);
   assert.equal(result.isLoading, true);
+});
+
+test("首屏取到的歌词为空时首帧就是无歌词，不先画占位", () => {
+  const empty: LyricsFallback = { songId: "fallback-song-empty", lines: [] };
+  const result = renderLyrics(empty.songId, empty);
+  assert.equal(result.lyrics, null);
+  assert.equal(result.isLoading, false);
+
+  assert.equal(renderLyrics("live-song-d", empty).isLoading, true);
 });
