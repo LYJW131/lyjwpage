@@ -114,7 +114,7 @@ export function AppVersionCard() {
                   </button>
                 }
               >
-                <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5">
+                <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 lg:px-5">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm font-medium">
                       <div className="flex items-center gap-1.5">

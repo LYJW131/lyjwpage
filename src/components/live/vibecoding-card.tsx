@@ -1115,7 +1115,7 @@ export function VibeCodingCard({
         </>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-5 border-b border-line px-5 py-5 md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-5 border-b border-line px-4 py-5 md:grid-cols-3 lg:px-5">
             {[0, 1, 2].map((index) => (
               <div key={index} className="animate-pulse">
                 <div className="h-3 w-20 rounded bg-muted" />
@@ -1125,7 +1125,7 @@ export function VibeCodingCard({
           </div>
           <div className="grid min-h-64 grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
             {["Claude Code", "Cursor"].map((label) => (
-              <div key={label} className="animate-pulse px-5 py-4">
+              <div key={label} className="animate-pulse p-4 lg:p-5">
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-24 rounded bg-muted" />
                   <div className="h-4 w-14 bg-muted" />
