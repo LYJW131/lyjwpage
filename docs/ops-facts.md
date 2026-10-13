@@ -73,7 +73,7 @@
 
 | 事实 | 核对 |
 | --- | --- |
-| 访客构建用 routine「lyjwpage /build」`trig_014sUCU54BW4Bd39UmcWjLK6`：只有 API 触发、不挂仓库（`sources` 为空），模型 Opus 5.5，工具 Bash/Read/Write/Edit/Glob/Grep，提示词取自 [访客协作构建](./build-routine.md) 的「Routine 提示词」；fire 地址与令牌是 ai Worker 的 Secret `ROUTINE_FIRE_URL`、`ROUTINE_FIRE_TOKEN`，构建令牌签名用 ai 的 `BUILD_SESSION_SECRET`。改提示词或工具用 RemoteTrigger 的 update 整份提交 `job_config` | 核对于 2026-10-10，方式：RemoteTrigger get 读回，生产首页对话发起一次构建并在 routine 的运行记录里看到会话 <!-- allow: 核对戳 --> |
+| routine「lyjwpage /build」`trig_014sUCU54BW4Bd39UmcWjLK6`：只有 API 触发、不挂仓库（`sources` 为空），模型 Opus 5.5，工具 Bash/Read/Write/Edit/Glob/Grep。访客构建不经它（由 `.github/workflows/build.yml` 跑，见 [访客协作构建](./build-routine.md)），ai Worker 的 Secret `ROUTINE_FIRE_URL`、`ROUTINE_FIRE_TOKEN` 没有代码读取；按该文「待配置与验收」第 1、6 步删除 Secret、停用 routine 后改写本节 | 核对于 2026-10-10，方式：RemoteTrigger get 读回 routine 配置 <!-- allow: 核对戳 -->；Secret 无代码读取按仓库代码核对于 2026-10-12 <!-- allow: 核对戳 --> |
 | 它跑在 claude.ai 环境 `lyjwpage-build`（`env_014uCQ1YF1gu2qTf1K5vJKqR`）：网络为 Custom，只放行 `github.com`、`registry.npmjs.org`、`api.homepage.lyjw.llc`、`lyjw.me`，以及截图用的远端图片主机 `avatars.githubusercontent.com`、`*.blobstore.apple.com`、`psn-rsc.prod.dl.playstation.net`（与 `src/lib/image-proxy.ts#allowedImageHost` 对应），不勾「默认的常用包管理器列表」，无 setup 脚本、环境变量与网络密钥；环境的网络设置只能在网页编辑 | 核对于 2026-10-11，方式：claude.ai 新建会话页的环境设置保存后重新打开读回 <!-- allow: 核对戳 --> |
 | 测试用 routine `trig_01D64vPhffksi2pfXDPHzRPp`（「lyjwpage build (preview test)」，环境 `lyjwpage-canary`，Custom 只放行 `github.com`、`registry.npmjs.org`）已停用；分支 Preview 实测时把要用的预览 Worker 域名加进这个环境、Secret 写进那个预览，测完移除 | 核对于 2026-10-10，方式：RemoteTrigger get 读回 `enabled: false`，环境设置页读回 <!-- allow: 核对戳 --> |
 

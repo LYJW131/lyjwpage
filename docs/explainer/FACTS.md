@@ -388,9 +388,9 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 ### 构建
 
-- Start build：Worker 用 GitHub App 把签名计划写成 `builds/<runId>.md`，提交到分支 `claude/build-<runId>`（`shared/build-routine.ts#branchForRun`）并开草稿 PR，再把计划交给 routine（Claude Code）去写代码（`docs/build-routine.md`「上传与 PR」）。
-- routine 不持有仓库推送凭据：改动回传 Worker，校验路径与大小后由 GitHub App 提交到同一分支和 PR（`workers/ai/src/build/validation.ts`）。PR 上的 Claude 审查只作参考，不授权合并（`workers/ai/AGENTS.md`）；合不合并由站长决定。
-- 片中不画：计划令牌与额度的消费细节、截图上传、构建状态的恢复。
+- Start build：Worker 用 GitHub App 把签名计划写成 `builds/<runId>.md`，提交到分支 `claude/build-<runId>`（`shared/build-routine.ts#branchForRun`）并开草稿 PR，再以 `repository_dispatch` 派发 GitHub Actions 构建工作流（`.github/workflows/build.yml`）：一个 Claude 先审查计划，通过后另一个 Claude 在只读、拿不到回传凭据的 job 里按计划写代码（`docs/build-routine.md`「草稿与派发」「构建工作流」）。
+- 工作流不持有仓库写凭据：改动由不跑 Claude 的 publish job 凭 GitHub Actions OIDC 令牌回传 Worker（`workers/ai/src/build/actions-oidc.ts#verifyActionsToken`），校验路径与大小后由 GitHub App 提交到同一分支和 PR（`workers/ai/src/build/validation.ts`）。PR 上的 Claude 审查只作参考，不授权合并（`workers/ai/AGENTS.md`）；合不合并由站长决定。
+- 片中不画：计划审查、计划令牌与额度的消费细节、截图上传、构建状态的恢复。
 
 ## 10 发布（推到 main 之后）
 

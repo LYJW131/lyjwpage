@@ -4,7 +4,7 @@ import { BUILD_ACTIVE_PHASES, BUILD_CLOSED_PHASES, BUILD_DESIGN_LIMITS, BUILD_FA
 import type { Env } from "../runtime";
 import { BuildBlockedError, closeFailedDraft, installationApi, validSha } from "./github";
 
-export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; draftClose?: "closed" | "skipped"; screenshots?: BuildScreenshot[] };
+export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; draftClose?: "closed" | "skipped"; screenshots?: BuildScreenshot[] };
 type PlanReservation = { runId: string; accountId?: number };
 const PREPARATION_LEASE_MS = 60_000;
 // 只罩住「查到空会话 → 开场发进会话」那几秒；发送前就失败的开场，租约过了还能重开。
@@ -20,7 +20,7 @@ function preparedRun(run: StoredRun): boolean {
 }
 
 function acceptsAgentUpdates(run: StoredRun): boolean {
-  return !preparedRun(run) || !!(run.dispatchAttempted && run.planCommitSha && run.state.pr);
+  return !!(run.dispatchAttempted && run.planCommitSha && run.state.pr);
 }
 
 function validPreparedPullRequest(planCommitSha: string, pr: NonNullable<BuildRun["pr"]>): boolean {
@@ -149,15 +149,6 @@ export class BuildCoordinator extends DurableObject<Env> {
     return run;
   }
 
-  setSessionUrl(runId: string, sessionUrl: string): void {
-    this.ctx.storage.transactionSync(() => {
-      const run = this.readRun(runId);
-      if (!run) return;
-      run.sessionUrl = sessionUrl;
-      this.saveRun(run);
-    });
-  }
-
   claimPreparation(runId: string): string | null {
     return this.ctx.storage.transactionSync(() => {
       const run = this.readRun(runId);
@@ -197,18 +188,6 @@ export class BuildCoordinator extends DurableObject<Env> {
       run.state = { ...run.state, pr, reason: undefined, updatedAt: Date.now() };
       this.saveRun(run);
       return run.state;
-    });
-  }
-
-  setLegacyPrepared(runId: string, planCommitSha: string, pr: NonNullable<BuildRun["pr"]>): boolean {
-    return this.ctx.storage.transactionSync(() => {
-      const run = this.readRun(runId);
-      if (!run || run.callbackOrigin !== undefined || run.planCommitSha !== undefined || !run.uploadUsed || run.state.phase !== "validated") return false;
-      if (!validPreparedPullRequest(planCommitSha, pr) || planCommitSha === run.baseSha || run.state.pr && (run.state.pr.number !== pr.number || run.state.pr.url !== pr.url || run.state.pr.headSha !== planCommitSha)) return false;
-      run.planCommitSha = planCommitSha;
-      run.state = { ...run.state, pr, updatedAt: Date.now() };
-      this.saveRun(run);
-      return true;
     });
   }
 
@@ -311,7 +290,7 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
-  // 计划路径加计划外名额仍不够、只能靠断言或放宽测试才能完成时，routine 用它停下：同样占用上传令牌，停下后不能再上传。
+  // 停下同样占用上传令牌：停下后不能再上传。
   blockRun(runId: string, hash: string, reason: string): boolean {
     return this.ctx.storage.transactionSync(() => {
       const run = this.awaitingUpload(runId, hash);

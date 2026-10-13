@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "reject"],
+      "description": "approve lets the build start; reject stops it."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Shown to the visitor and posted on the pull request. Plain sentences in the plan's language."
+    }
+  },
+  "required": ["verdict", "reason"],
+  "additionalProperties": false
+}

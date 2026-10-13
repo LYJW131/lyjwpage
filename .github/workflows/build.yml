@@ -1,0 +1,268 @@
+name: Visitor build
+
+on:
+  repository_dispatch:
+    types: [build]
+
+permissions: {}
+
+concurrency:
+  group: build-${{ github.event.client_payload.runId }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+# 载荷只经环境变量进脚本，每个 job 先校验再用。这些 job 跑在默认分支的缓存作用域里，implement 还执行不可信代码，所以全程不读写缓存。
+env:
+  RUN_ID: ${{ github.event.client_payload.runId }}
+  PLAN_COMMIT_SHA: ${{ github.event.client_payload.planCommitSha }}
+  BASE_SHA: ${{ github.event.client_payload.baseSha }}
+  PR_NUMBER: ${{ github.event.client_payload.prNumber }}
+  CALLBACK_ORIGIN: ${{ github.event.client_payload.callbackOrigin }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  CLAUDE_CODE_VERSION: 2.1.287
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+    outputs:
+      verdict: ${{ steps.result.outputs.verdict }}
+      reason: ${{ steps.result.outputs.reason }}
+    steps:
+      - name: Validate payload
+        run: |
+          [[ $RUN_ID =~ ^[a-f0-9]{32}$ && $PLAN_COMMIT_SHA =~ ^[a-f0-9]{40}$ && $BASE_SHA =~ ^[a-f0-9]{40}$ && $PR_NUMBER =~ ^[1-9][0-9]{0,8}$ && $CALLBACK_ORIGIN =~ ^https://[A-Za-z0-9.-]+$ ]] || { echo "::error::Invalid build dispatch payload."; exit 1; }
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Read the plan
+        run: |
+          git fetch --no-tags --depth=1 origin "$PLAN_COMMIT_SHA"
+          git show "$PLAN_COMMIT_SHA:builds/$RUN_ID.md" > "$RUNNER_TEMP/plan.md"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+
+      - name: Build the review prompt
+        run: node scripts/build-actions.mjs prompt --template .github/build/review.md --plan "$RUNNER_TEMP/plan.md" > "$RUNNER_TEMP/review-prompt.md"
+
+      - name: Review the plan
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DISABLE_AUTOUPDATER: "1"
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+        run: |
+          claude -p --model claude-sonnet-5-5 --settings .github/build/review-settings.json --permission-mode dontAsk \
+            --allowedTools "Read,Glob,Grep" --max-turns 40 --output-format json \
+            --json-schema "$(cat .github/build/review-schema.json)" \
+            < "$RUNNER_TEMP/review-prompt.md" > "$RUNNER_TEMP/review.json"
+
+      - name: Read the verdict
+        id: result
+        run: node scripts/build-actions.mjs review-result "$RUNNER_TEMP/review.json"
+
+  gate:
+    needs: review
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    outputs:
+      approved: ${{ steps.gate.outputs.approved }}
+    steps:
+      - name: Validate payload
+        run: |
+          [[ $RUN_ID =~ ^[a-f0-9]{32}$ && $PLAN_COMMIT_SHA =~ ^[a-f0-9]{40}$ && $BASE_SHA =~ ^[a-f0-9]{40}$ && $PR_NUMBER =~ ^[1-9][0-9]{0,8}$ && $CALLBACK_ORIGIN =~ ^https://[A-Za-z0-9.-]+$ ]] || { echo "::error::Invalid build dispatch payload."; exit 1; }
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Report the review
+        id: gate
+        env:
+          REVIEW_RESULT: ${{ needs.review.result }}
+          VERDICT: ${{ needs.review.outputs.verdict }}
+          REASON: ${{ needs.review.outputs.reason }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/build-actions.mjs gate
+
+  # 不可信的实现阶段：只读仓库，没有 id-token，Claude 的令牌只给运行 CLI 的那一步，Bash 在沙盒里跑。
+  implement:
+    needs: gate
+    if: needs.gate.outputs.approved == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    permissions:
+      contents: read
+    steps:
+      - name: Validate payload
+        run: |
+          [[ $RUN_ID =~ ^[a-f0-9]{32}$ && $PLAN_COMMIT_SHA =~ ^[a-f0-9]{40}$ && $BASE_SHA =~ ^[a-f0-9]{40}$ && $PR_NUMBER =~ ^[1-9][0-9]{0,8}$ && $CALLBACK_ORIGIN =~ ^https://[A-Za-z0-9.-]+$ ]] || { echo "::error::Invalid build dispatch payload."; exit 1; }
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.PLAN_COMMIT_SHA }}
+          persist-credentials: false
+
+      # 提示词、沙盒配置和打包脚本只取工作流自己的提交，不用构建分支上的副本。
+      - name: Copy the trusted build config
+        run: |
+          git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          mkdir -p "$RUNNER_TEMP/build-config"
+          for file in .github/build/implement.md .github/build/implement-settings.json .github/build/dev-net.mjs scripts/build-actions.mjs; do
+            git show "$GITHUB_SHA:$file" > "$RUNNER_TEMP/build-config/${file##*/}"
+          done
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+
+      # 沙盒要 bubblewrap 与 socat；Ubuntu 24.04 的 AppArmor 默认不许 bwrap 建用户命名空间。
+      # failIfUnavailable 只查这两个程序在不在 PATH 上，所以这里自己试建一次命名空间，建不起来就失败。
+      # runner 用户经 docker.sock 就能拿到 root，沙盒之外再停掉 Docker 并确认连不上。
+      # 沙盒只放行已存在的 allowWrite 路径，wrangler 的配置目录要先建好。
+      - name: Prepare the sandbox
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends bubblewrap socat
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+            sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
+          abi <abi/4.0>,
+          include <tunables/global>
+
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/bwrap>
+          }
+          EOF
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all --die-with-parent true || { echo "::error::bubblewrap cannot create namespaces."; exit 1; }
+          sudo systemctl stop docker.socket docker.service
+          if docker info > /dev/null 2>&1; then echo "::error::Docker is still reachable."; exit 1; fi
+          mkdir -p ~/.config/.wrangler
+
+      # 沙盒里的 seccomp 会杀掉完整版 Chrome，截图只能用 headless shell；装不上就让 Claude 跳过截图。
+      # 这一步在沙盒外运行且有 sudo，而这个 job 持有 Claude 的凭据：只下固定版本并核对 SHA-256，不用 npx 之类现场解析依赖的安装器。
+      - name: Install the screenshot browser
+        timeout-minutes: 3
+        continue-on-error: true
+        env:
+          CHROME_VERSION: 155.0.8059.39
+          CHROME_SHA256: 39dcb8c46550632a3d911850ab3b8af840b4e3f6d8622faa2018eb8756278786
+        run: |
+          archive="$RUNNER_TEMP/chrome-headless-shell.zip"
+          browser="$RUNNER_TEMP/browsers/chrome-headless-shell-linux64/chrome-headless-shell"
+          if curl -fsSL --retry 2 -o "$archive" "https://storage.googleapis.com/chrome-for-testing-public/$CHROME_VERSION/linux64/chrome-headless-shell-linux64.zip" \
+            && echo "$CHROME_SHA256  $archive" | sha256sum --check --quiet - \
+            && unzip -q "$archive" -d "$RUNNER_TEMP/browsers" && [ -x "$browser" ]; then
+            echo "CHROME_HEADLESS_SHELL=$browser" >> "$GITHUB_ENV"
+          else
+            echo "::warning::The screenshot browser could not be installed; screenshots will be skipped."
+          fi
+          rm -f "$archive"
+
+      # 打包只用开工前的 .git 副本，不读会话改过的仓库配置和索引。
+      - name: Snapshot the repository metadata
+        run: cp -a .git "$RUNNER_TEMP/build-git"
+
+      - name: Build the implementation prompt
+        run: node "$RUNNER_TEMP/build-config/build-actions.mjs" prompt --template "$RUNNER_TEMP/build-config/implement.md" --plan "builds/$RUN_ID.md" > "$RUNNER_TEMP/implement-prompt.md"
+
+      - name: Implement the plan
+        timeout-minutes: 18
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DISABLE_AUTOUPDATER: "1"
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+        run: |
+          claude -p --model claude-opus-5-5 --settings "$RUNNER_TEMP/build-config/implement-settings.json" --permission-mode dontAsk \
+            --allowedTools "Bash,Read,Glob,Grep,Edit(./**)" --max-turns 400 --output-format json \
+            < "$RUNNER_TEMP/implement-prompt.md" > "$RUNNER_TEMP/implement.json"
+
+      - name: Check the session result
+        run: node "$RUNNER_TEMP/build-config/build-actions.mjs" implement-result "$RUNNER_TEMP/implement.json"
+
+      - name: Package the changes
+        run: node "$RUNNER_TEMP/build-config/build-actions.mjs" package --out "$RUNNER_TEMP/build-output" --git-dir "$RUNNER_TEMP/build-git"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: ${{ runner.temp }}/build-output
+          retention-days: 3
+          if-no-files-found: error
+          include-hidden-files: true
+
+  # Worker 是唯一的校验者和提交者：这里只把补丁读成上传请求，不持有仓库写权限。
+  publish:
+    needs: [gate, implement]
+    if: always() && needs.gate.outputs.approved == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Validate payload
+        run: |
+          [[ $RUN_ID =~ ^[a-f0-9]{32}$ && $PLAN_COMMIT_SHA =~ ^[a-f0-9]{40}$ && $BASE_SHA =~ ^[a-f0-9]{40}$ && $PR_NUMBER =~ ^[1-9][0-9]{0,8}$ && $CALLBACK_ORIGIN =~ ^https://[A-Za-z0-9.-]+$ ]] || { echo "::error::Invalid build dispatch payload."; exit 1; }
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.PLAN_COMMIT_SHA }}
+          path: work
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: build-output
+          path: artifact
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Publish the implementation
+        env:
+          IMPLEMENT_RESULT: ${{ needs.implement.result }}
+        run: node scripts/build-actions.mjs publish --work work --artifact artifact

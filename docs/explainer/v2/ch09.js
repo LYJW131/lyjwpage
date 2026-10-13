@@ -45,7 +45,7 @@
       "ch09.p.gh": ["先看 GitHub 授权说明", "GitHub consent first"],
       "ch09.n5a": ["想改站，Sonnet 开一个设计会话；", "Site ideas open a design session;"],
       "ch09.n5b": ["Opus 只读仓库，出题、出计划。", "Opus reads the repo, asks, plans."],
-      "ch09.b.routine": ["不持有推送凭据", "holds no push credentials"],
+      "ch09.b.actions": ["不持有写凭据", "holds no write credentials"],
       "ch09.b.upload": ["上传改动，Worker 校验后提交", "Uploads; the Worker checks, commits"],
       "ch09.b.review": ["审查只作参考", "Reviews are advisory"],
       "ch09.b.owner": ["合不合并：站长决定", "Merging: the owner decides"],
@@ -478,8 +478,8 @@
       const ra = prog(b, AT.pr + 0.1, AT.upload) * a;
       card(d, RT.x, RT.y, RT.w, RT.h, ra);
       if (ra > 0) {
-        text(d, "routine · Claude Code", RT.x + 40, RT.y + 76, { font: FONT.mono(46, 600), alpha: ra, maxW: RT.w - 80 });
-        text(d, tr("ch09.b.routine"), RT.x + 40, RT.y + 140, { font: FONT.cjk(44, 600), color: gr, alpha: ra, maxW: RT.w - 80 });
+        text(d, "Actions · Claude Code", RT.x + 40, RT.y + 76, { font: FONT.mono(46, 600), alpha: ra, maxW: RT.w - 80 });
+        text(d, tr("ch09.b.actions"), RT.x + 40, RT.y + 140, { font: FONT.cjk(44, 600), color: gr, alpha: ra, maxW: RT.w - 80 });
       }
       const uk = prog(b, AT.upload, AT.implCommit, E.io);
       if (uk > 0) {

@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 
 import { BuildCoordinator } from '../../workers/ai/src/build/coordinator.ts';
-import { handleBuild, handleBuildProgress, handleBuildStatus, handleBuildUpload, handleGithubWebhook } from '../../workers/ai/src/build/handlers.ts';
+import { handleBuild, handleBuildProgress, handleBuildScreenshot, handleBuildStatus, handleBuildUpload, handleGithubWebhook } from '../../workers/ai/src/build/handlers.ts';
 import { issuePlan } from '../../workers/ai/src/build/plan.ts';
 
 export { BuildCoordinator };
@@ -52,7 +52,8 @@ export class BuildFixture extends DurableObject {
 
   inspect() {
     return {
-      fires: this.get('fires', []),
+      dispatches: this.get('dispatches', []),
+      answered: this.get('answered', []),
       jwtVerified: this.get('jwtVerified', false),
       prs: this.get('prs', []),
       objects: this.ctx.storage.sql.exec("SELECT key, value FROM fixture_values WHERE key LIKE 'branch:%' OR key LIKE 'commit:%' OR key LIKE 'tree:%' OR key LIKE 'blob:%'").toArray().map((row) => ({ key: row.key, value: JSON.parse(row.value) })),
@@ -64,18 +65,10 @@ export class BuildFixture extends DurableObject {
     const url = new URL(request.url);
     const path = url.pathname;
     const body = request.method === 'GET' ? null : await request.json().catch(() => null);
-    const recordedBody = path.startsWith(`${repo}/git/`) || path.startsWith(`${repo}/pulls`) || path === '/graphql' || path === '/app/installations/7/access_tokens' ? body : null;
+    const recordedBody = path.startsWith(`${repo}/git/`) || path.startsWith(`${repo}/pulls`) || path === `${repo}/dispatches` || path === '/graphql' || path === '/app/installations/7/access_tokens' ? body : null;
     this.ctx.storage.sql.exec('INSERT INTO fixture_calls VALUES (?, ?, ?)', request.method, `${url.host}${path}${url.search}`, recordedBody ? JSON.stringify(recordedBody) : null);
     const scenario = this.get('scenario', {});
-    if (url.host === 'fixture.invalid' && path === '/fire') {
-      if (request.headers.get('Authorization') !== `Bearer ${this.env.ROUTINE_FIRE_TOKEN}`) throw new Error('Fixture fire authorization failed');
-      const fired = JSON.parse(body.text);
-      const pr = this.get('prs', []).find((entry) => entry.html_url === fired.prUrl);
-      if (!pr?.draft || pr.head.ref !== fired.branch || pr.head.sha !== fired.planCommitSha) throw new Error('Routine must start after its matching draft is confirmed');
-      this.put('fires', [...this.get('fires', []), fired]);
-      if (scenario.delayDispatchMs) await new Promise((resolve) => setTimeout(resolve, scenario.delayDispatchMs));
-      return scenario.rejectDispatch ? json({ error: 'Fixture dispatch rejected' }, 503) : json({ claude_code_session_url: 'https://claude.ai/code/session_fixture' });
-    }
+    if (url.host === 'token.actions.githubusercontent.com' && path === '/.well-known/jwks') return json(JSON.parse(this.env.FIXTURE_OIDC_JWKS));
     if (url.host === 'github.com' && path === '/login/oauth/access_token') return json({ access_token: 'fixture-user-token' });
     if (url.host !== 'api.github.com') throw new Error(`Blocked unexpected fixture host: ${url.host}`);
     if (path === '/user') return json({ id: scenario.accountId ?? 131, login: scenario.account ?? 'fixture-visitor', name: 'Fixture Visitor' });
@@ -95,7 +88,16 @@ export class BuildFixture extends DurableObject {
       return json({ id: 7, permissions: { checks: 'read', statuses: 'read' } });
     }
     if (path === '/app/installations/7/access_tokens') return json({ token: body.permissions.contents === 'read' ? 'fixture-readonly-token' : 'fixture-installation-token' });
-    if (request.method !== 'GET' && (path.startsWith(`${repo}/git/`) || path.startsWith(`${repo}/pulls`) || path === '/graphql') && request.headers.get('Authorization') !== 'Bearer fixture-installation-token') throw new Error('GitHub mutations must use the write installation token');
+    if (request.method !== 'GET' && (path.startsWith(`${repo}/git/`) || path.startsWith(`${repo}/pulls`) || path === `${repo}/dispatches` || path === '/graphql') && request.headers.get('Authorization') !== 'Bearer fixture-installation-token') throw new Error('GitHub mutations must use the write installation token');
+    if (path === `${repo}/dispatches` && request.method === 'POST') {
+      const payload = body?.client_payload;
+      const pr = this.get('prs', []).find((entry) => entry.number === payload?.prNumber);
+      if (body?.event_type !== 'build' || !pr?.draft || pr.head.ref !== `claude/build-${payload.runId}` || pr.head.sha !== payload.planCommitSha) throw new Error('The build workflow must start after its matching draft is confirmed');
+      this.put('dispatches', [...this.get('dispatches', []), payload]);
+      if (scenario.delayDispatchMs) await new Promise((resolve) => setTimeout(resolve, scenario.delayDispatchMs));
+      this.put('answered', [...this.get('answered', []), payload.runId]);
+      return scenario.dispatchStatus ? json({ message: 'Fixture dispatch failed' }, scenario.dispatchStatus) : new Response(null, { status: 204 });
+    }
     if (path === `${repo}/compare/${baseSha}...main`) return json({ status: scenario.ancestor === false ? 'diverged' : 'ahead', merge_base_commit: { sha: scenario.ancestor === false ? 'f'.repeat(40) : baseSha } });
     if (path === `${repo}/git/commits/${baseSha}`) return json({ sha: baseSha, tree: { sha: baseTree }, parents: [] });
     if (path === `${repo}/git/trees/${baseTree}`) return json({ truncated: false, tree: initialTree });
@@ -204,7 +206,8 @@ const fixtureWorker = {
     if (path === '/api/build') return handleBuild(request, env, fetcher, ctx);
     if (path === '/api/build/status') return handleBuildStatus(request, env, fetcher, ctx);
     if (path === '/api/build/upload') return handleBuildUpload(request, env, fetcher);
-    if (path === '/api/build/progress') return handleBuildProgress(request, env);
+    if (path === '/api/build/progress') return handleBuildProgress(request, env, fetcher);
+    if (path === '/api/build/screenshot') return handleBuildScreenshot(request, env, fetcher);
     if (path === '/api/build/webhook') return handleGithubWebhook(request, env);
     return json({ error: 'Unknown fixture route' }, 404);
   },
