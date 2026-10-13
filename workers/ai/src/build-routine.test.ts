@@ -11,6 +11,7 @@ import { allowedBuildPath, parseBuildPlan, parseBuildUpload } from "./build/vali
 import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest as publishBuild, prepareBuildPullRequest, validateBuildBase, reconcileBuild } from "./build/github.ts";
 import { verifyGithubWebhook, applyGithubWebhook } from "./build/webhook.ts";
 import { buildGithubFixture, FIXTURE_PLAN_SHA, FIXTURE_PLAN_TREE } from "./build/testing/github-fixture.ts";
+import { buildWorkflowAudience } from "./build/actions-oidc.ts";
 import { createActionsOidcFixture } from "./build/testing/actions-oidc.ts";
 import { consumePlan, issuePlan } from "./build/plan.ts";
 
@@ -144,7 +145,7 @@ test("build quotas atomically cap accounts and the site without consuming denied
 test("a blocked report consumes the upload token and stops the run", async () => {
   const { env, instance } = coordinator();
   instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, runId));
   const fetcher = oidc.serve();
   assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "x".repeat(601), blocked: true }, token), env, fetcher)).status, 400);
   assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Plan needs shared/collector.ts", blocked: true }, token), env, fetcher)).status, 200);
@@ -290,7 +291,7 @@ test("upload rejection consumes the token, stores a safe reason and does no exte
   const { env, instance } = coordinator();
   instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
   const denied = oidc.serve(async () => assert.fail("No GitHub request on rejected uploads"));
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, runId));
   const bad = { ...upload, files: [{ ...upload.files[0], path: ".github/workflows/evil.yml" }] };
   assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, bad, token), env, denied)).status, 400);
   assert.equal(instance.readRun(runId)?.state.phase, "blocked");
@@ -300,7 +301,7 @@ test("upload rejection consumes the token, stores a safe reason and does no exte
 test("valid upload creates and returns a confirmed PR without secret fields", async () => {
   const { env, instance } = coordinator();
   instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, runId));
   const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), env, githubFixture().fetcher);
   assert.equal(response.status, 201);
   const body = await response.json() as BuildRun;
@@ -324,7 +325,7 @@ test("screenshots need workflow authorization before upload, real image bytes an
   const withImages = { ...env, IMAGES: bucket } as Env;
   instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
   const fetcher = oidc.serve();
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, runId));
   const shot = (body: unknown, auth = token) => handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, body, auth), withImages, fetcher);
   assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home", content: png(0) }, token), env, fetcher)).status, 503);
   assert.equal((await shot({ caption: "Home", content: png(0) }, await oidc.token("https://other.test"))).status, 401);
@@ -344,7 +345,7 @@ test("the App comments the screenshots on the opened PR, and screenshots close w
   const { bucket } = imageBucket();
   const withImages = { ...env, IMAGES: bucket } as Env;
   instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, runId));
   const { fetcher, calls } = githubFixture();
   assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home desktop", content: png(1) }, token), withImages, fetcher)).status, 201);
   assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), withImages, fetcher)).status, 201);
@@ -454,7 +455,7 @@ test("dispatch sends only run identifiers to the build workflow and accepts a la
   assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
   assert.match(instance.readRun(result.runId)?.state.reason ?? "", /build workflow result is unknown/);
   assert.equal("uploadToken" in result, false);
-  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${result.runId}`, { message: "Working" }, await oidc.token(callbackOrigin)), env, oidc.serve())).status, 200);
+  assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${result.runId}`, { message: "Working" }, await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId))), env, oidc.serve())).status, 200);
   const replay = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
   assert.equal(replay.status, 202);
   assert.equal((await replay.json() as { runId: string }).runId, result.runId);
@@ -464,7 +465,7 @@ test("dispatch sends only run identifiers to the build workflow and accepts a la
   assert.equal((await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}&token=${result.statusToken}`), env)).status, 401);
 });
 
-test("workflow endpoints accept only a build workflow OIDC token whose audience is the run's callback origin", async () => {
+test("workflow endpoints accept only a build workflow OIDC token whose audience binds the run's callback origin and runId", async () => {
   const { env, instance } = coordinator();
   const { objects, bucket } = imageBucket();
   const withImages = { ...env, IMAGES: bucket } as Env;
@@ -476,16 +477,16 @@ test("workflow endpoints accept only a build workflow OIDC token whose audience 
     handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home", content: png(7) }, token), withImages, fixture.fetcher),
     handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), env, fixture.fetcher),
   ];
-  for (const token of [undefined, await uploadTokenForRun(runId, buildSecret), await oidc.token("https://ai.test"), await oidc.token(callbackOrigin, { workflow_ref: `${BUILD_REPO}/.github/workflows/claude.yml@refs/heads/main` }), await forger.token(callbackOrigin)]) {
+  for (const token of [undefined, await uploadTokenForRun(runId, buildSecret), await oidc.token("https://ai.test"), await oidc.token(callbackOrigin), await oidc.token(buildWorkflowAudience(callbackOrigin, "b".repeat(32))), await oidc.token(buildWorkflowAudience(callbackOrigin, runId), { workflow_ref: `${BUILD_REPO}/.github/workflows/claude.yml@refs/heads/main` }), await forger.token(buildWorkflowAudience(callbackOrigin, runId))]) {
     for (const response of await Promise.all(endpoints(token))) assert.equal(response.status, 401);
   }
-  const unknownRun = await handleBuildProgress(post(`/api/build/progress?runId=${"b".repeat(32)}`, { message: "Working" }, await oidc.token(callbackOrigin)), env, fixture.fetcher);
+  const unknownRun = await handleBuildProgress(post(`/api/build/progress?runId=${"b".repeat(32)}`, { message: "Working" }, await oidc.token(buildWorkflowAudience(callbackOrigin, runId))), env, fixture.fetcher);
   assert.equal(unknownRun.status, 401);
   assert.equal(instance.readRun(runId)?.uploadUsed, false);
   assert.equal(instance.readRun(runId)?.state.phase, "triggered");
   assert.equal(objects.size, 0);
   assert.equal(fixture.calls.length, 0);
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, runId));
   assert.equal((await handleBuildProgress(post(`/api/build/progress?runId=${runId}`, { message: "Working" }, token), env, fixture.fetcher)).status, 200);
   assert.equal(instance.readRun(runId)?.state.progress, "Working");
   assert.equal((await handleBuildScreenshot(post(`/api/build/screenshot?runId=${runId}`, { caption: "Home", content: png(7) }, token), withImages, fixture.fetcher)).status, 201);
@@ -497,7 +498,7 @@ test("runs without a callback origin refuse workflow tokens and an unavailable k
   const { env, instance } = coordinator();
   instance.reserveRun(await stored(), "legacy", Date.now() + 60_000);
   const fetcher = oidc.serve(async () => assert.fail("No GitHub request without workflow authorization"));
-  for (const audience of [callbackOrigin, "undefined", ""]) {
+  for (const audience of [callbackOrigin, buildWorkflowAudience(callbackOrigin, runId), "undefined", ""]) {
     assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await oidc.token(audience)), env, fetcher)).status, 401);
   }
   assert.equal(instance.readRun(runId)?.uploadUsed, false);
@@ -505,7 +506,7 @@ test("runs without a callback origin refuse workflow tokens and an unavailable k
   current.instance.reserveRun(await dispatched(), "current", Date.now() + 60_000);
   const keys = await createActionsOidcFixture();
   keys.jwksStatus = 502;
-  const unavailable = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await keys.token(callbackOrigin)), current.env, keys.serve());
+  const unavailable = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await keys.token(buildWorkflowAudience(callbackOrigin, runId))), current.env, keys.serve());
   assert.equal(unavailable.status, 503);
   assert.equal(current.instance.readRun(runId)?.uploadUsed, false);
 });

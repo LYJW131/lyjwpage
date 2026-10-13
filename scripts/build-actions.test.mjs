@@ -305,7 +305,7 @@ test("gate approves only after the Worker accepts the progress update", async (t
   assert.equal(progress.url, `${WORKER_PATHS.progress}?runId=${RUN_ID}`);
   assert.equal(progress.authorization, `Bearer ${JWT}`);
   assert.deepEqual(body(progress), { message: "Plan review approved the plan; implementation is starting." });
-  assert.ok(approved.requests.find((entry) => entry.url.startsWith("/oidc")).url.endsWith(`&audience=${encodeURIComponent(ORIGIN)}`));
+  assert.ok(approved.requests.find((entry) => entry.url.startsWith("/oidc")).url.endsWith(`&audience=${encodeURIComponent(`${ORIGIN}/builds/${RUN_ID}`)}`));
   assert.ok(approved.logs.includes(`::add-mask::${JWT}`));
 
   const declined = await gate(t, { REVIEW_RESULT: "success", VERDICT: "reject", REASON: "Collects emails." });

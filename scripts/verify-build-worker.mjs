@@ -206,8 +206,9 @@ try {
   assert.equal((await webhook('pull_request', { pull_request: fixture.prs[0] }, 'plan-only-draft')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'triggered');
   assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.draft, true);
-  const workflowAuth = { Authorization: `Bearer ${actionsToken(callbackOrigin)}` };
-  for (const authorization of [`Bearer ${uploadCapability(build.runId)}`, `Bearer ${actionsToken('https://api.homepage.lyjw.llc')}`, `Bearer ${actionsToken(callbackOrigin, { workflow_ref: 'LYJW131/lyjwpage/.github/workflows/ci.yml@refs/heads/main' })}`, `Bearer ${actionsToken(callbackOrigin, { runner_environment: 'self-hosted' })}`]) {
+  const runAudience = (runId) => `${callbackOrigin}/builds/${runId}`;
+  const workflowAuth = { Authorization: `Bearer ${actionsToken(runAudience(build.runId))}` };
+  for (const authorization of [`Bearer ${uploadCapability(build.runId)}`, `Bearer ${actionsToken('https://api.homepage.lyjw.llc')}`, `Bearer ${actionsToken(callbackOrigin)}`, `Bearer ${actionsToken(runAudience('f'.repeat(32)))}`, `Bearer ${actionsToken(runAudience(build.runId), { workflow_ref: 'LYJW131/lyjwpage/.github/workflows/ci.yml@refs/heads/main' })}`, `Bearer ${actionsToken(runAudience(build.runId), { runner_environment: 'self-hosted' })}`]) {
     assert.equal((await post(`/api/build/progress?runId=${build.runId}`, { message: 'Forged progress.' }, { Authorization: authorization })).status, 401);
     assert.equal((await post(`/api/build/upload?runId=${build.runId}`, { baseSha }, { Authorization: authorization })).status, 401);
   }
@@ -252,7 +253,7 @@ try {
   assert.equal(status.preview.state, 'success');
   assert.match(status.review.state, /Fixture review/);
   assert.equal((await inspect()).calls.filter((call) => call.path === 'api.github.com/graphql').length, 1);
-  console.log('PASS: concurrent Build clicks return one run, draft PR and plan file before one dispatch; only build workflow OIDC tokens for the callback origin report, and one upload continues the same branch and becomes ready only after implementation CI');
+  console.log('PASS: concurrent Build clicks return one run, draft PR and plan file before one dispatch; only build workflow OIDC tokens bound to this run report, and one upload continues the same branch and becomes ready only after implementation CI');
 
   const newHead = '9'.repeat(40);
   async function webhook(event, payload, delivery, valid = true) {
@@ -305,7 +306,7 @@ try {
   }
   async function uploadBuild(build, changedUpload = upload) {
     assert.ok((await inspect()).dispatches.some((entry) => entry.runId === build.runId));
-    return post(`/api/build/upload?runId=${build.runId}`, changedUpload, { Authorization: `Bearer ${actionsToken(callbackOrigin)}` });
+    return post(`/api/build/upload?runId=${build.runId}`, changedUpload, { Authorization: `Bearer ${actionsToken(runAudience(build.runId))}` });
   }
 
   const preparing = await nextBuild({ rejectPr: true, refResponseLost: true });
@@ -367,7 +368,7 @@ try {
   const workflowOrigin = 'https://worker.test';
   const workflowIo = {
     fetch: (url, init) => String(url).startsWith('https://oidc.test/')
-      ? Promise.resolve(Response.json({ value: actionsToken(callbackOrigin) }))
+      ? Promise.resolve(Response.json({ value: actionsToken(new URL(String(url)).searchParams.get('audience').replace(workflowOrigin, callbackOrigin)) }))
       : fetch(String(url).replace(workflowOrigin, worker), init),
     log: () => {},
   };
