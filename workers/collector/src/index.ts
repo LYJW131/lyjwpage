@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/cloudflare";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { APPLE_MUSIC_HTTP_PATHS } from "@shared/apple-music-paths";
+import { cronCheckIns } from "@shared/cron-check-ins";
 import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
 import type { PlayingQueueTrack } from "@shared/playing-queue";
 import type { EnrichmentFollowUp, EnrichmentOutcome } from "@shared/track-enrichment";
@@ -50,7 +51,7 @@ const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     await Promise.all([
-      runScheduled(bindEnv(env), controller.scheduledTime, { monitor: cronMonitor(env, Sentry.withMonitor), report: reportJobFailure }),
+      runScheduled(bindEnv(env), controller.scheduledTime, { monitor: cronMonitor(env, cronCheckIns(Sentry)), report: reportJobFailure }),
       driveCoreRound(env.CORE, controller.scheduledTime),
     ]);
   },
