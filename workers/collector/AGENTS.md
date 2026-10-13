@@ -7,6 +7,7 @@
 - 只展示的结果直接写可滞后层 KV，**成功才写**：KV 里的值本身就是上次成功值，不另存 last-good；失败时旧值原样留着，过没过时由浏览器按各卡阈值判断。状态核心要拿来算的（最近在听）经 `CORE`（`core` 的 `StateCore`）交付。
 - 缺令牌的任务干净地跳过，不算故障（监控照常报 ok）；没配是配置状态，不是失败。
 - 一次调用同时只能有 6 个连接在等响应头。带 `headStart` 的任务先跑（`src/registry.ts#HEAD_START_MS`）；目前没有任务设置它。新增任务时想想会不会在同一分钟大量并发出网。
+- core 不挂 cron，它的定时一轮（pulse 归档、评分、断流告警）靠本 Worker 每分钟调 `CORE.cronRound`（`src/core-round.ts`）；这一调用停了，那些就全停。
 - 预览与非生产分支构建关闭：`CORE` 指向生产 `core`，预览版一跑就会往生产状态里写。
 - 新增 `StateCore` 方法先发布 `workers/core`，再发布本 Worker；`DIGEST`（ai 的 `Digest`）同理先发布 `workers/ai`。契约只加不改（`shared/state-core.ts`、`shared/collector.ts`、`shared/digest.ts`）。
 - D1 表结构归 `workers/core/migrations`：新表先在 core 那边 `pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。奖杯表由 core 写（`workers/core/src/stores/trophy-history.ts#archiveTrophies`），这里只写 `site_deploys`。

@@ -6,6 +6,7 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 
 - 上报器不直连这里：外部上报由 `workers/ingress` 验明身份、校验后，实时那一半经 Service Binding 调 `StateCore.commitIngest`；采集 Worker 同样经 `StateCore` 交数据。这里没有 `/api/ingest/*`。
 - `StateCore` 的 RPC 契约是 `shared/state-core.ts`：只加不改；新增方法先发布本 Worker，再让 `workers/ingress`、`workers/collector` 去调。
+- 本 Worker 不挂 Cloudflare cron（`wrangler.toml` 的 `crons = []`）：定时一轮由采集 Worker 每分钟调 `StateCore.cronRound` 驱动，加回 cron 会每轮跑两次。
 - 从 `shared/ingest/` 只能 `import type`（源：`eslint.config.mjs#no-restricted-imports`）：校验与收敛在上报入口，改校验不该重新发布带 Durable Object 的本 Worker，Workers Builds 监视路径据此排除该目录。命令形状变了（新字段、新模块）要同时改 `src/stores/` 里提交那一半。
 - `LivePushRoom` 只通过 `src/live-platform.ts#liveRoom` 取：`locationHint` 只在对象首次创建时生效，换位置只能换 `ROOM_ID`（旧对象不会搬家也不会删）；房间只有连接、不存数据，换名无数据要迁。
 - 提交持久化确认后才返回 202；推送、首屏失效在 `waitUntil` 里做，失败只记日志，不让已落库的上报重发。
