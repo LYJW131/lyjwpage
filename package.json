@@ -13,6 +13,8 @@
     "design:scale": "node scripts/design-scale-check.mjs",
     "docs:check": "node scripts/docs-check.mjs",
     "docs:comment-only": "node scripts/comment-only-check.mjs",
+    "rules:check": "node scripts/rules-check.mjs",
+    "ui:copy": "node scripts/ui-copy-check.mjs",
     "memory:mirror": "node scripts/memory-mirror.mjs",
     "build": "node scripts/build.mjs",
     "merge-message": "node scripts/merge-message.mjs",
