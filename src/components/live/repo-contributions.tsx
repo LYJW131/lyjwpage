@@ -18,7 +18,7 @@ export const CONTRIBUTOR_LIMIT = 6;
 
 const AVATAR_ACCENTS: Record<string, string> = {
   lyjw131: "var(--avatar-lyjw131)",
-  claude: "var(--claude)",
+  claude: "var(--avatar-claude)",
   codex: "var(--avatar-codex)",
   cursoragent: "var(--avatar-cursor)",
   an0nch1hayaa: "var(--avatar-chihaya)",

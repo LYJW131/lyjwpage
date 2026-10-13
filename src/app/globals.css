@@ -47,8 +47,9 @@
   --pulse-both: oklch(0.42 0.17 300);
 
   --claude: oklch(0.672 0.131 38.8);
-  /* 贡献者色条取头像主色；两张黑白头像用明暗区分。 */
+  /* 贡献者色条取头像主色，对 muted 轨道 ≥ 3:1；两张黑白头像用明暗区分。 */
   --avatar-lyjw131: oklch(0.55 0.07 250);
+  --avatar-claude: oklch(0.62 0.14 39);
   --avatar-codex: oklch(0.57 0.2 278);
   --avatar-cursor: oklch(0.3 0.005 80);
   --avatar-chihaya: oklch(0.64 0.17 350);
@@ -94,6 +95,7 @@
 
   --claude: oklch(0.74 0.115 39);
   --avatar-lyjw131: oklch(0.7 0.07 250);
+  --avatar-claude: var(--claude);
   --avatar-codex: oklch(0.68 0.17 278);
   --avatar-cursor: oklch(0.9 0.005 80);
   --avatar-chihaya: oklch(0.74 0.14 350);
