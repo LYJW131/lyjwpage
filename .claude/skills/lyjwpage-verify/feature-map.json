@@ -26,6 +26,7 @@
       "alternates": [".paper-card:has(time[aria-label])"],
       "endpoints": {
         "/api/status/digest": ["digest.json", "digest-quiet.json", "digest-stale.json"],
+        "/api/status/pulse": ["pulse-busy-day.json", "pulse-empty.json", "pulse-zero-lanes.json", "pulse-tokens-idle.json", "pulse-activity-boundary.json"],
         "/api/status/timezone": []
       },
       "conditional": false,
