@@ -14,8 +14,10 @@ export type RecentCommit = {
 
 const nameOnly = (name: string): CommitAuthor => ({ name, login: null, avatarUrl: null, agent: null, model: null });
 
+const SYNC_MERGE = /^Merge (?:remote-tracking )?branch(?:es)? '/;
+
 export function recentCommitsFrom(commits: GithubRepoCommit[] | undefined, limit: number): RecentCommit[] {
-  return (commits ?? []).slice(0, limit).map((commit) => ({
+  return (commits ?? []).filter((commit) => !SYNC_MERGE.test(commit.title)).slice(0, limit).map((commit) => ({
     sha: commit.sha,
     oid: commit.oid ?? null,
     title: commit.title,
