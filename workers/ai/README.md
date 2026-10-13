@@ -63,9 +63,15 @@
 
 ## 近况摘要
 
-具名入口 `Digest`（`src/digest/entrypoint.ts`，契约 `shared/digest.ts#DigestRpc`）只给采集 Worker 的 `digest` 任务经 Service Binding 调用，不开 HTTP 路径。每次 `compose` 经 `PUBLIC_STATUS` 读 `src/digest/facts.ts#DIGEST_VIEWS` 登记的公开视图（任一读不到就整轮失败，采集 Worker 留着上一份摘要），压成一份英文事实清单，连同提示词与模型算出输入哈希：与上一份相同就回 `unchanged`，不调模型；变了才按 `src/digest/compose.ts` 的 `DIGEST_MODEL`、`DIGEST_EFFORT` 经 `AnthropicEgress` 用结构化输出写一个三到五个汉字的中文标题（不合格式整轮失败），并从事实清单末尾的可选格里挑两三格（`shared/digest.ts#DigestPayload`）；模型也可以判这 24 小时太安静、回 `quiet`，这时摘要不带标题和格子，站点照旧显示时钟卡。可选格的数字和图例由 `src/digest/facts.ts#digestHighlightOptions` 按事实清单同样的取粗算出，模型只选主题，越界、重复和条数在 `compose.ts#parseDigest` 把关，没配 `ANTHROPIC_API_KEY` 时回 `unconfigured`。摘要不经 `ChatQuota`：它不由访客触发，调用次数由采集节奏和输入哈希封顶，事实清单里的数字取粗就是为了让哈希只在有看得出的变化时才变。写入可滞后层、节奏与首屏失效见 [采集 Worker](../collector/README.md)。
+具名入口 `Digest`（`src/digest/entrypoint.ts`，契约 `shared/digest.ts#DigestRpc`）只给采集 Worker 的 `digest` 任务经 Service Binding 调用，不开 HTTP 路径。每次 `compose` 经 `PUBLIC_STATUS` 读 `src/digest/facts.ts#DIGEST_VIEWS` 登记的公开视图（任一读不到就整轮失败，采集 Worker 留着上一份摘要），压成一份英文事实清单，连同情境说明、文案库与挑选说明算出输入哈希：与上一份相同就回 `unchanged`。变了才往下走，全程不调付费模型：
 
-改提示词、事实清单或换模型后，用 `pnpm --dir workers/ai digest:probe` 读线上公开视图、打印事实清单，再用真实模型写几版对比（`--models`、`--runs`，用法见 `scripts/digest-probe.ts` 的 `USAGE`）。
+- 情境：`src/digest/situation.ts#digestScene` 按规则从可选格（`src/digest/facts.ts#digestHighlightOptions`，数字与图例按事实清单同样的取粗）和 `digestSignals`（周末、窗口内锻炼时长、当地日期）判出主情境与附带情境，并按主情境挑两三格；整体太少时判 `quiet`，摘要不带标题和格子，站点照旧显示时钟卡。情境清单与每种的中文说明在 `DIGEST_SITUATIONS`，阈值的取舍写在同文件的注释里。
+- 文案库：`src/digest/taglines.ts#DIGEST_TAGLINES` 按情境存好的三到五字中文标语，由 `pnpm --dir workers/ai digest:taglines` 用 Claude 批量写出后人工删改（用法见 `scripts/digest-taglines.ts` 的 `USAGE`）。改情境说明或删了太多行后重跑它补齐。
+- 挑选：`compose.ts#taglineCandidates` 按当地日期从主情境抽几条、每个附带情境抽两条做候选；上一份的标题还在主情境那几条里就沿用（`compose.ts#keepsHeadline`，`model` 记 `rules`；附带情境的句子跨主情境共用，不沿用），否则经 `AI` 绑定让 Clef（`DIGEST_PICKER_MODEL`）按事实挑一条；每个选项标明写给哪个情境、是主线还是附带（`compose.ts#taglineCriteria`），提示词要它优先主线。没有 `AI` 绑定、Clef 出错或答到候选外时取第一条候选，也记 `rules`。
+
+摘要不经 `ChatQuota`：它不由访客触发，Clef 调用次数由采集节奏和输入哈希封顶，事实清单里的数字取粗就是为了让哈希只在有看得出的变化时才变。写入可滞后层、节奏与首屏失效见 [采集 Worker](../collector/README.md)。
+
+改情境规则、文案库或事实清单后，用 `pnpm --dir workers/ai digest:probe` 读线上公开视图，打印事实清单、情境、格子和这一轮的候选，再让 Clef 挑几次（`--runs`、`--previous`，用法见 `scripts/digest-probe.ts` 的 `USAGE`）。
 
 ## MCP
 
