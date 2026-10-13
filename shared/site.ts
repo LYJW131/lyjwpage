@@ -17,3 +17,10 @@ export const site = {
 
   timezone: "Asia/Shanghai",
 } as const;
+
+export const ogImage = {
+  width: 1200,
+  height: 630,
+  type: "image/png",
+  alt: `${site.name} — live status of devices, music, media and AI coding`,
+} as const;

@@ -30,7 +30,7 @@ import { commitSha } from "@/lib/build-info";
 import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
-import { site } from "@shared/site";
+import { ogImage, site } from "@shared/site";
 import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript } from "@/lib/theme";
 
 import "./globals.css";
@@ -59,6 +59,14 @@ export function meta({ error }: MetaArgs): MetaDescriptor[] {
     { property: "og:locale", content: "en_US" },
     { property: "og:type", content: "website" },
     { property: "og:image", content: `${site.url}/opengraph-image` },
+    { property: "og:image:width", content: String(ogImage.width) },
+    { property: "og:image:height", content: String(ogImage.height) },
+    { property: "og:image:type", content: ogImage.type },
+    { property: "og:image:alt", content: ogImage.alt },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: site.name },
+    { name: "twitter:description", content: site.description },
+    { name: "twitter:image", content: `${site.url}/opengraph-image` },
     { name: "apple-mobile-web-app-capable", content: "yes" },
     { name: "apple-mobile-web-app-title", content: site.shortName },
     { name: "apple-mobile-web-app-status-bar-style", content: "default" },
