@@ -78,11 +78,10 @@ test("指标窗口结束在最近的 15 分钟边界、长 12 小时，取回的
     });
   });
 
-  const before = Date.now();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-13T10:07:30Z") });
   assert.deepEqual(await cloudflareMetricsJob.run({ env, now, scheduled: true }), { status: "ok" });
   const end = Date.parse(variables?.end ?? "");
-  assert.equal(end % (15 * 60_000), 0, "窗口右端对齐 15 分钟边界");
-  assert.ok(end <= before && end > before - 15 * 60_000, "结束在这一响之前的最近一个边界上");
+  assert.equal(end, Date.parse("2026-10-13T10:00:00Z"));
   assert.equal(end - Date.parse(variables?.start ?? ""), 12 * 3_600_000);
   assert.equal(variables?.account, "account-1");
 
