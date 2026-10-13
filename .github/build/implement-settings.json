@@ -48,7 +48,6 @@
       "strictAllowlist": true,
       "allowedDomains": [
         "registry.npmjs.org",
-        "api.homepage.lyjw.llc",
         "lyjw.me",
         "avatars.githubusercontent.com",
         "psn-rsc.prod.dl.playstation.net",
