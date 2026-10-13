@@ -39,7 +39,7 @@ function fnv(text: string): number {
 const sample = (situation: DigestSituation, seed: string, size: number) =>
   [...DIGEST_TAGLINES[situation]].sort((a, b) => fnv(`${seed}|${situation}|${a}`) - fnv(`${seed}|${situation}|${b}`)).slice(0, size);
 
-// 候选按当地日期抽样：同一天里同一情境的候选不变，上一条还在候选里就留着，标题不会每小时换一次；过了零点换一批，同一句不会一连挂好几天。
+// 候选按当地日期抽样：同一天里同一情境的候选不变，上一条还在候选里就留着，标题不会每一轮都换；过了零点换一批，同一句不会一连挂好几天。
 export function taglineCandidates(primary: DigestSituation, accents: DigestSituation[], date: string): string[] {
   return [...new Set([...sample(primary, date, PRIMARY_CANDIDATES), ...accents.flatMap((accent) => sample(accent, date, ACCENT_CANDIDATES))])];
 }

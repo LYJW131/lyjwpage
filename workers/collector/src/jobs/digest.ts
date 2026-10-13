@@ -30,7 +30,7 @@ export async function refreshDigest(
 
 export const digestJob: Job = {
   name: "digest",
-  everyMinutes: 60,
+  everyMinutes: 15,
   offset: 5,
   maxRuntimeMinutes: 2,
   run: ({ env, now }) => env.DIGEST
