@@ -21,12 +21,12 @@ node .claude/skills/lyjwpage-ui-design/ui-audit.mjs                      # 1280 
 node .claude/skills/lyjwpage-ui-design/ui-audit.mjs --dark --only=digest # 深色，只看一张卡
 ```
 
-输出每张卡的尺寸、表头标签左边距、正文内容的左边缘集合、不在字号阶梯上的文字，以及全页的同排不等高、小于 24px 的点击目标、没有可访问名称的控件。读法：
+输出每张卡的尺寸、表头标签左边距、正文文字与图形各自的左边缘集合、不在字号阶梯上的文字，以及全页的同排不等高、小于 24px 的点击目标、没有可访问名称的控件。读法：
 
 - 读数含 1px 外框：规范的 16 / 20px 内边距读出来是 17 / 21。
-- `headerLabelInset` 应等于 `contentInsets` 里最小的那个；多出来的值是有意的缩进（图标后的文字、第二栏）还是错位，要逐个说得出理由。
+- `headerLabelInset` 应等于 `textInsets` 里最小的那个；多出来的值是有意的缩进（图标后的文字、第二栏）还是错位，要逐个说得出理由。`mediaInsets` 是封面、图表、头像的左边缘：贴边的图形可以小于 inset，不贴边的应与文字同线。
 - `offScaleText` 里只允许图形内部的 10px 刻度；其余都是要改的字号。
-- `unequalRows` 必须为空；`smallTargets` 和 `unnamed` 不能比改动前多。
+- `unequalRows` 必须为空（带 `--only` 时只看那张卡所在的行）；`smallTargets` 和 `unnamed` 不能比改动前多。
 - 脚本不判断好不好看，只给数；数对了还要看截图。
 
 ## 交付前清单

@@ -7,7 +7,17 @@ const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith("--")) ?? "http://localhost:3211/";
 const dark = args.includes("--dark");
 const only = args.find((a) => a.startsWith("--only="))?.slice(7).toLowerCase();
-const { chromium } = createRequire("/opt/node22/lib/node_modules/")("playwright");
+// 先找项目或全局 node_modules 里的 playwright，再退到云端容器预装的那份。
+const loadPlaywright = () => {
+  for (const base of [`${process.cwd()}/`, "/opt/node22/lib/node_modules/"]) {
+    try {
+      return createRequire(base)("playwright");
+    } catch {}
+  }
+  console.error("找不到 playwright：本机先 `npm i -g playwright && npx playwright install chromium`，或在云端容器里跑。");
+  process.exit(1);
+};
+const { chromium } = loadPlaywright();
 
 const TYPE_SCALE = [11, 12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72, 96];
 
@@ -49,14 +59,12 @@ for (const [width, height] of [[1280, 900], [375, 812]]) {
       const box = card.getBoundingClientRect();
       const header = card.querySelector(":scope > .border-b.bg-muted");
       const name = card.id || header?.innerText.split("\n")[0].trim() || card.innerText.slice(0, 24).trim();
-      if (only && !name.toLowerCase().includes(only)) continue;
       const top = Math.round(box.top + scrollY);
       rows.set(top, [...(rows.get(top) ?? []), { name, h: Math.round(box.height) }]);
+      if (only && !name.toLowerCase().includes(only)) continue;
       const texts = textBoxes(card, header);
       const media = [...card.querySelectorAll("img, canvas, video, svg:not(svg svg)")].filter((el) => visible(el) && !(header && header.contains(el)));
-      const lefts = [...texts.map((t) => t.box), ...media.map((el) => el.getBoundingClientRect())]
-        .map((b) => Math.round(b.left - box.left))
-        .filter((x) => x < 48);
+      const edges = (boxes) => [...new Set(boxes.map((b) => Math.round(b.left - box.left)).filter((x) => x < 48))].sort((a, b) => a - b);
       const headerLabel = header && textBoxes(header)[0];
       const sizes = {};
       for (const t of texts) sizes[`${t.size}/${t.weight}`] = (sizes[`${t.size}/${t.weight}`] ?? 0) + 1;
@@ -64,7 +72,8 @@ for (const [width, height] of [[1280, 900], [375, 812]]) {
         card: name,
         size: `${Math.round(box.width)}×${Math.round(box.height)}`,
         headerLabelInset: headerLabel ? Math.round(headerLabel.box.left - box.left) : null,
-        contentInsets: [...new Set(lefts)].sort((a, b) => a - b),
+        textInsets: edges(texts.map((t) => t.box)),
+        mediaInsets: edges(media.map((el) => el.getBoundingClientRect())),
         offScaleText: texts.filter((t) => !TYPE_SCALE.includes(t.size)).map((t) => `${t.size}px "${t.el.textContent.trim().slice(0, 16)}"`).slice(0, 8),
         typeUsage: sizes,
       });
@@ -76,7 +85,9 @@ for (const [width, height] of [[1280, 900], [375, 812]]) {
       .filter(({ el, box }) => (box.width < 24 || box.height < 24) && !el.closest(".github-chart"))
       .map(({ el, box }) => `${label(el).slice(0, 24) || el.tagName} ${Math.round(box.width)}×${Math.round(box.height)}`);
     const unnamed = controls.filter((el) => !label(el) && !el.getAttribute("aria-labelledby")).map((el) => el.outerHTML.slice(0, 90));
-    const unequalRows = [...rows.values()].filter((r) => r.length > 1 && new Set(r.map((c) => c.h)).size > 1);
+    const unequalRows = [...rows.values()]
+      .filter((r) => !only || r.some((c) => c.name.toLowerCase().includes(only)))
+      .filter((r) => r.length > 1 && new Set(r.map((c) => c.h)).size > 1);
     return { cards: result, unequalRows, smallTargets: [...new Set(smallTargets)], unnamed };
   }, { only, TYPE_SCALE });
   console.log(`\n===== ${width}px${dark ? " dark" : ""} =====`);
