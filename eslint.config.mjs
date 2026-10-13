@@ -65,6 +65,16 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/components/app-image.tsx"],
+    rules: {
+      "no-restricted-syntax": ["error", {
+        selector: "JSXOpeningElement[name.name='img']",
+        message: "站点组件不手写 <img>：用 @/components/app-image（懒加载、rest-ready 门控、优化器）；静态图标记得带 unoptimized。",
+      }],
+    },
+  },
+  {
     files: ["shared/**/*.{ts,mts}"],
     rules: {
       "no-restricted-imports": ["error", {
