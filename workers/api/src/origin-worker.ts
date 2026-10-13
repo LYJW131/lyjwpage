@@ -14,14 +14,10 @@ import {
   type SocketSample,
 } from "./live-census";
 import { liveRoom } from "./live-platform";
-import { ConfigError, issueMusicKitToken } from "@shared/musickit-token";
-import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, requestOrigin } from "@shared/http-origins";
-import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
+import { getCorsHeaders, isAllowedOrigin, isForeignOrigin } from "@shared/http-origins";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
-import { isLookupPath, serveLookup } from "./lookup-routes";
 import { AI_HTTP_PATHS } from "@shared/ai-paths";
-import { MUSICKIT_TOKEN_PATH } from "@shared/apple-music-paths";
 import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
 import { withPublicCors } from "@shared/status-response";
 import type { Env } from "./runtime";
@@ -50,25 +46,6 @@ function rejectSocket(request: Request, env: Env): Response | null {
 
 function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-async function handleMusicKitToken(request: Request, env: Env, cors: Headers): Promise<Response> {
-  if (request.method !== "GET") {
-    return jsonResponse({ error: "只接受 GET" }, { status: 405, headers: cors });
-  }
-  if (!isAllowedOrigin(request, env)) {
-    return jsonResponse({ error: "来源不在允许的域名内" }, { status: 403, headers: cors });
-  }
-
-  try {
-    const { token, issuedAt, expiresAt } = await issueMusicKitToken(requestOrigin(request), env);
-    // 缓存令牌可能已消耗半段寿命，客户端必须用签发时刻而非收到时刻计算续期。
-    return jsonResponse({ token, issuedAt, expiresAt }, { headers: cors });
-  } catch (error) {
-    console.error("[musickit-token] 签发失败：", error);
-    const hint = error instanceof ConfigError ? error.hint : "签发失败，详情见 Worker 日志";
-    return jsonResponse({ error: hint }, { status: 500, headers: cors });
-  }
 }
 
 const SWEEP_INTERVAL_MS = HEARTBEAT_INTERVAL_MS;
@@ -281,28 +258,12 @@ const worker = {
       return new Response(null, { status: 204, headers: cors });
     }
 
-    if (previewWorkerEnabled() && isPreviewProxyPath(url.pathname)) {
-      if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: cors });
-      if (!isAllowedOrigin(request, env)) {
-        return jsonResponse({ error: "来源不在允许的域名内" }, { status: 403, headers: cors });
-      }
-      const upstream = await fetchPreviewUpstream(request);
-      const headers = new Headers(upstream.headers);
-      cors.forEach((value, name) => headers.set(name, value));
-      return new Response(upstream.body, { status: upstream.status, headers });
-    }
-
-    if (url.pathname === MUSICKIT_TOKEN_PATH) {
-      return handleMusicKitToken(request, env, cors);
-    }
-
     if (url.pathname.startsWith("/api/")) {
       const devOverride = process.env.DEV_OVERRIDES?.trim() === "true" && url.pathname.startsWith("/api/dev/");
       if (request.method !== "GET" && !devOverride) return new Response("Method not allowed", { status: 405, headers: cors });
       if (isForeignOrigin(request, env)) return jsonResponse({ ok: false }, { status: 403, headers: cors });
-      const lookup = isLookupPath(url.pathname);
-      if (!lookup && !isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
-      return withPublicCors(lookup ? await serveLookup(request, env, ctx) : await executePublicRequest(request, env, ctx), cors);
+      if (!isPublicApiPath(url.pathname)) return new Response("Not found", { status: 404, headers: cors });
+      return withPublicCors(await executePublicRequest(request, env, ctx), cors);
     }
 
     if (url.pathname === LIVE_SOCKET_PATH) {

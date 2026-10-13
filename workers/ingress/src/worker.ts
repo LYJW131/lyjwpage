@@ -141,7 +141,7 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
   }
 }
 
-// collector 调不通时原样提交：没带 enrichment 的命令由状态核心自己补，补全失败不该挡住上报。
+// collector 调不通时原样提交：状态核心不请求 Apple，没带 enrichment 只沿用同一曲目已存的补全；补全失败不该挡住上报。
 async function enrichListening(env: Env, command: CoreCommand): Promise<EnrichedCommand> {
   const collector = env.COLLECTOR;
   if (!collector) return { command, followUp: null };

@@ -74,7 +74,7 @@ prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIng
 1. **实时那一半**先请采集 Worker 补全「正在听」：Mac 的 `appleMusic` 模块与 HomePod 的报文经 `COLLECTOR.enrichTrack`
    查 Apple 目录与动态封面（`shared/command-enrichment.ts#enrichCommand`，规则见 [collector README](../collector/README.md#apple-music)），
    补好的命令再经 Service Binding 调状态核心的 `StateCore.commitIngest(command)`（契约 `shared/state-core.ts`）。
-   采集 Worker 调不通时只记一行 `[enrichment]` warn，命令原样提交，由状态核心自己补。
+   采集 Worker 调不通时只记一行 `[enrichment]` warn，命令不带补全原样提交，状态核心沿用同一曲目已存的补全（没有就是未补全）。
    StateHub 串行提交，回 `{ ready, ok, data | error }`；推送和首屏失效在状态核心里派发。收下之后在 `waitUntil` 里
    请采集 Worker 预热歌词、重查写入时没查出的段（`COLLECTOR.followUpTrack`）。
    落地节点（`server`）整封在可滞后层，不去状态核心。
