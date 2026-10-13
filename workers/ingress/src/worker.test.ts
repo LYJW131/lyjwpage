@@ -564,7 +564,7 @@ test("site-deployed: a failing or missing collector never fails the notification
   assert.equal((await unbound.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 200);
 });
 
-test("collector-refresh: runs every active job now, one collector call per job, and reports each outcome", async () => {
+test("collector-refresh: runs every active job now, one collector call per job, and reports each outcome in request order", async () => {
   const w = world();
   const response = await w.send("/api/internal/collector-refresh", { client: DEPLOYER });
   assert.equal(response.status, 200);
@@ -576,21 +576,23 @@ test("collector-refresh: runs every active job now, one collector call per job, 
   assert.ok(ACTIVE_COLLECTOR_JOBS.includes("digest"));
 });
 
-test("collector-refresh: digest starts only after the other jobs have finished writing the views it summarizes", async () => {
+test("collector-refresh: jobs run one at a time (they share the request's connection budget), digest last after the views it summarizes", async () => {
   const started: string[] = [];
-  const finished: string[] = [];
+  let running = 0;
+  let peak = 0;
   const w = world({
     refresh: async ([job]) => {
       started.push(job!);
-      await new Promise((resolve) => setTimeout(resolve, job === "github-repo" ? 20 : 1));
-      finished.push(job!);
+      peak = Math.max(peak, ++running);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      running -= 1;
       return [{ job: job!, status: "ok", ms: 1 }];
     },
   });
   const response = await w.send("/api/internal/collector-refresh?job=digest&job=github-repo&job=site-deployments", { client: DEPLOYER });
   assert.deepEqual((await json(response) as { outcomes: CollectorJobOutcome[] }).outcomes.map((outcome) => outcome.job), ["digest", "github-repo", "site-deployments"]);
-  assert.equal(started.at(-1), "digest");
-  assert.deepEqual(finished.slice(0, 2).sort(), ["github-repo", "site-deployments"]);
+  assert.deepEqual(started, ["github-repo", "site-deployments", "digest"]);
+  assert.equal(peak, 1);
 });
 
 test("collector-refresh: ?job= narrows the run, and a failing job turns ok false without hiding the rest", async () => {
