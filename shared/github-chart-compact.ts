@@ -3,12 +3,11 @@ import type { GithubChartDay } from "./types";
 
 export const CELL = 10;
 export const STEP = 12;
-export const LEFT = 27;
+export const LEFT = 2;
 export const TOP = 20;
 // 须与 globals.css 里 .github-chart 的 data-score 档位数同步。
 export const HEATMAP_LEVELS = 8;
 export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-export const DAY_LABEL_Y = [28, 40, 52, 64, 77, 89, 101] as const;
 export const VISIBLE_WEEKDAYS = new Set([1, 3, 5]);
 const MONTHS = [
   "Jan",
@@ -42,8 +41,7 @@ const MONTH_NAMES = [
 
 export type ChartLabel = {
   x: number;
-  y: number;
-  fontSize: number;
+  gap: number;
   hidden: boolean;
   text: string;
 };
@@ -91,16 +89,6 @@ export function groupWeeks(days: GithubChartDay[]): GithubChartDay[][] {
   return weeks;
 }
 
-export function dayLabels(): ChartLabel[] {
-  return DAY_NAMES.map((text, weekday) => ({
-    x: 0,
-    y: DAY_LABEL_Y[weekday] ?? 0,
-    fontSize: 9,
-    hidden: !VISIBLE_WEEKDAYS.has(weekday),
-    text,
-  }));
-}
-
 export function monthLabels(weeks: GithubChartDay[][]): ChartLabel[] {
   const labels: ChartLabel[] = [];
   let lastMonth: string | null = null;
@@ -114,17 +102,16 @@ export function monthLabels(weeks: GithubChartDay[][]): ChartLabel[] {
     if (!name) return;
     labels.push({
       x: LEFT + index * STEP,
-      y: 10,
-      fontSize: 10,
+      gap: 0,
       hidden: false,
       text: name,
     });
   });
   const right = chartSize(weeks.length).width;
-  return labels.map((label, index) => ({
-    ...label,
-    hidden: (labels[index + 1]?.x ?? right) - label.x < 2 * STEP,
-  }));
+  return labels.map((label, index) => {
+    const gap = (labels[index + 1]?.x ?? right) - label.x;
+    return { ...label, gap, hidden: gap < 3 * STEP };
+  });
 }
 
 export function chartSize(weekCount: number) {

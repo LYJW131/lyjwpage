@@ -15,11 +15,12 @@ import { createPortal } from "react-dom";
 
 import {
   CELL,
+  DAY_NAMES,
   LEFT,
   STEP,
   TOP,
+  VISIBLE_WEEKDAYS,
   chartSize,
-  dayLabels,
   formatDayHeading,
   monthLabels,
 } from "@shared/github-chart-compact";
@@ -241,93 +242,99 @@ export function HeatmapGrid({
   };
 
   return (
-    <svg
-      ref={svgRef}
-      viewBox={`0 0 ${width} ${height}`}
-      shapeRendering="geometricPrecision"
-      className="block h-auto w-full"
-      role="group"
-      aria-label={label}
-      onPointerLeave={(event) => {
-        if (event.pointerType === "mouse" && hoverCapable()) onCellClear();
-      }}
-      onPointerDown={(event) => {
-        if (event.pointerType === "mouse") return;
-        touchAtRef.current = event.timeStamp;
-        scrubRef.current = { pointerId: event.pointerId, date: null };
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerMove={(event) => {
-        if (scrubRef.current?.pointerId !== event.pointerId) return;
-        touchAtRef.current = event.timeStamp;
-        scrubTo(event.clientX, event.clientY);
-      }}
-      onPointerUp={(event) => {
-        if (scrubRef.current?.pointerId !== event.pointerId) return;
-        touchAtRef.current = event.timeStamp;
-        scrubTo(event.clientX, event.clientY);
-        scrubRef.current = null;
-      }}
-      onPointerCancel={() => {
-        scrubRef.current = null;
-      }}
-    >
-      {monthLabels(weeks).map((item) => (
-        <text
-          key={`m-${item.text}-${item.x}`}
-          x={item.x}
-          y={item.y}
-          fontSize={item.fontSize}
-          display={item.hidden ? "none" : undefined}
-          aria-hidden
+    <div className="flex">
+      <div aria-hidden className="pointer-events-none relative w-6 shrink-0">
+        {DAY_NAMES.map((name, weekday) =>
+          VISIBLE_WEEKDAYS.has(weekday) ? (
+            <span
+              key={name}
+              className="absolute left-0 -translate-y-1/2 text-2xs leading-none text-muted-foreground"
+              style={{ top: `${((TOP + weekday * STEP + CELL / 2) / height) * 100}%` }}
+            >
+              {name}
+            </span>
+          ) : null,
+        )}
+      </div>
+      <div className="relative min-w-0 flex-1">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${width} ${height}`}
+          shapeRendering="geometricPrecision"
+          className="block h-auto w-full"
+          role="group"
+          aria-label={label}
+          onPointerLeave={(event) => {
+            if (event.pointerType === "mouse" && hoverCapable()) onCellClear();
+          }}
+          onPointerDown={(event) => {
+            if (event.pointerType === "mouse") return;
+            touchAtRef.current = event.timeStamp;
+            scrubRef.current = { pointerId: event.pointerId, date: null };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (scrubRef.current?.pointerId !== event.pointerId) return;
+            touchAtRef.current = event.timeStamp;
+            scrubTo(event.clientX, event.clientY);
+          }}
+          onPointerUp={(event) => {
+            if (scrubRef.current?.pointerId !== event.pointerId) return;
+            touchAtRef.current = event.timeStamp;
+            scrubTo(event.clientX, event.clientY);
+            scrubRef.current = null;
+          }}
+          onPointerCancel={() => {
+            scrubRef.current = null;
+          }}
         >
-          {item.text}
-        </text>
-      ))}
-      {dayLabels().map((item) => (
-        <text
-          key={`d-${item.text}`}
-          x={item.x}
-          y={item.y}
-          fontSize={item.fontSize}
-          display={item.hidden ? "none" : undefined}
-          aria-hidden
-        >
-          {item.text}
-        </text>
-      ))}
-      {cells.map(({ day, weekIndex }, index) => (
-        <rect
-          key={day.date}
-          x={LEFT + weekIndex * STEP}
-          y={TOP + day.weekday * STEP}
-          data-score={day.score}
-          data-hot={hotDate === day.date ? "" : undefined}
-          role="button"
-          aria-label={day.label}
-          tabIndex={index === activeIndex ? 0 : -1}
-          onFocus={(event) => {
-            if (touchGhost(event)) return;
-            onCellPreview(day, event.currentTarget);
-          }}
-          onBlur={() => {
-            onCellClear();
-          }}
-          onKeyDown={(event) => {
-            onCellKeyDown(event, index);
-          }}
-          onPointerEnter={(event) => {
-            if (event.pointerType === "mouse" && hoverCapable()) {
-              onCellPreview(day, event.currentTarget);
-            }
-          }}
-          onClick={(event) => {
-            if (touchGhost(event)) return;
-            onCellToggle(day, event.currentTarget);
-          }}
-        />
-      ))}
-    </svg>
+          {cells.map(({ day, weekIndex }, index) => (
+            <rect
+              key={day.date}
+              x={LEFT + weekIndex * STEP}
+              y={TOP + day.weekday * STEP}
+              data-score={day.score}
+              data-hot={hotDate === day.date ? "" : undefined}
+              role="button"
+              aria-label={day.label}
+              tabIndex={index === activeIndex ? 0 : -1}
+              onFocus={(event) => {
+                if (touchGhost(event)) return;
+                onCellPreview(day, event.currentTarget);
+              }}
+              onBlur={() => {
+                onCellClear();
+              }}
+              onKeyDown={(event) => {
+                onCellKeyDown(event, index);
+              }}
+              onPointerEnter={(event) => {
+                if (event.pointerType === "mouse" && hoverCapable()) {
+                  onCellPreview(day, event.currentTarget);
+                }
+              }}
+              onClick={(event) => {
+                if (touchGhost(event)) return;
+                onCellToggle(day, event.currentTarget);
+              }}
+            />
+          ))}
+        </svg>
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          {monthLabels(weeks).map((item) =>
+            item.hidden ? null : (
+              <span
+                key={`m-${item.text}-${item.x}`}
+                className={`absolute -translate-y-full text-2xs leading-none text-muted-foreground${item.gap >= 5 * STEP ? "" : item.gap >= 4 * STEP ? " hidden sm:block" : " hidden lg:block"}`}
+                style={{ left: `${(item.x / width) * 100}%`, top: `${((TOP - 3) / height) * 100}%` }}
+              >
+                {item.text}
+              </span>
+            ),
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

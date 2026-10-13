@@ -95,10 +95,6 @@ function DayDial({
               const [x1, y1] = polar(CENTER - TICK_INNER, index / 12);
               return <line key={index} x1={x0} y1={y0} x2={x1} y2={y1} stroke="var(--foreground)" strokeWidth={2} />;
             })}
-            {[0, 6, 12, 18].map((hour) => {
-              const [x, y] = polar(CENTER - (TICK_OUTER + TICK_INNER) / 2, hour / 24);
-              return <text key={hour} x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize="11" fill="var(--muted-foreground)">{hour}</text>;
-            })}
             {tracks.map((track, ring) => {
               const radius = CENTER - 34 - ring * (TRACK_WIDTH + 4);
               return (
@@ -111,9 +107,19 @@ function DayDial({
               );
             })}
             <line x1={handX0} y1={handY0} x2={handX1} y2={handY1} stroke="var(--signal-red)" strokeWidth={1.5} strokeLinecap="round" />
-            <text x={CENTER} y={CENTER - 4} textAnchor="middle" dominantBaseline="central" fontSize="20" fontWeight="600" fill="var(--foreground)">{clockLabel(now, timezone)}</text>
-            <text x={CENTER} y={CENTER + 14} textAnchor="middle" dominantBaseline="central" fontSize="9" fill="var(--muted-foreground)">{zoneLabel}</text>
+            <text x={CENTER} y={CENTER - 4} textAnchor="middle" dominantBaseline="central" fontSize="24" fontWeight="600" fill="var(--foreground)">{clockLabel(now, timezone)}</text>
           </svg>
+          <div aria-hidden className="pointer-events-none absolute inset-0 z-10">
+            {[
+              { hour: 0, left: "50%", top: "6.5%" },
+              { hour: 6, left: "93.5%", top: "50%" },
+              { hour: 12, left: "50%", top: "93.5%" },
+              { hour: 18, left: "6.5%", top: "50%" },
+            ].map(({ hour, left, top }) => (
+              <span key={hour} className="absolute -translate-x-1/2 -translate-y-1/2 text-2xs leading-none text-muted-foreground" style={{ left, top }}>{hour}</span>
+            ))}
+            <span className="absolute inset-x-0 -translate-y-1/2 text-center text-2xs leading-none text-muted-foreground" style={{ top: "57%" }}>{zoneLabel}</span>
+          </div>
         </div>
       </div>
     </div>

@@ -36,12 +36,12 @@ test("月份标在该月第一个周日那列", () => {
   const labels = monthLabels(weeks);
   assert.deepEqual(
     labels.map((label) => `${label.text}@${label.x}`),
-    ["Aug@27", "Sep@63"],
+    ["Aug@2", "Sep@38"],
   );
 });
 
-test("53 周画布对上从前的 663×104", () => {
-  assert.deepEqual(chartSize(53), { width: 663, height: 104 });
+test("53 周画布对上 638×104", () => {
+  assert.deepEqual(chartSize(53), { width: 638, height: 104 });
 });
 
 test("年度窗口边缘的单列月份隐藏标题，避免跨月重叠和右侧越界", () => {

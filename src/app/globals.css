@@ -892,11 +892,6 @@ html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"] {
   stroke-width: 2;
 }
 
-.github-chart svg text {
-  fill: var(--muted-foreground) !important;
-  font-family: var(--font-mono) !important;
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
