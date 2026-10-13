@@ -14,7 +14,7 @@ function pulse(lanes: Partial<Record<"coding" | "listening" | "tokens", unknown>
     window: { from: 0, to: 24 * HOUR * 1000 },
     lanes: {
       coding: { kind: "coding", segments: { ...empty, value: [], agentSources: [] } },
-      tokens: { kind: "tokens", buckets: { ...empty, fresh: [], output: [], cacheRead: [] } },
+      tokens: { kind: "tokens", buckets: { ...empty, total: [], output: [], cacheRead: [] } },
       listening: { kind: "state", segments: { ...empty, state: [], title: [], subtitle: [] } },
       watching: { kind: "state", segments: { ...empty, state: [], title: [], subtitle: [] } },
       gaming: { kind: "state", segments: { ...empty, state: [], title: [], subtitle: [] } },
@@ -42,7 +42,7 @@ test("paused music and human-only coding stay out of the music and agents strips
 
 test("token bars are scaled to the day's busiest bin, and topics without a lane get no strip", () => {
   const strip = topicStrip("tokens", pulse({
-    tokens: { kind: "tokens", buckets: { startSec: [0, 60, 10 * HOUR], endSec: [60, 120, 10 * HOUR + 60], fresh: [100, 100, 400], output: [], cacheRead: [] } },
+    tokens: { kind: "tokens", buckets: { startSec: [0, 60, 10 * HOUR], endSec: [60, 120, 10 * HOUR + 60], total: [100, 100, 400], output: [], cacheRead: [] } },
   }));
   assert.equal(strip?.[0], 0.5);
   assert.equal(strip?.[20], 1);
