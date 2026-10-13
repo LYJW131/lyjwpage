@@ -9,6 +9,21 @@ test("displayGrokPlanName 把 heavy 收成 SuperGrok Heavy", () => {
   assert.equal(displayGrokPlanName("heavy"), "SuperGrok Heavy");
 });
 
+test("displayGrokPlanName 把 /user 的套餐码收成展示名", () => {
+  assert.equal(displayGrokPlanName("GrokPro"), "SuperGrok");
+  assert.equal(displayGrokPlanName("SuperGrokPro"), "SuperGrok Heavy");
+  assert.equal(displayGrokPlanName("SuperGrokPlus"), "SuperGrok Plus");
+  assert.equal(displayGrokPlanName("supergrok_plus"), "SuperGrok Plus");
+  assert.equal(displayGrokPlanName("SuperGrokLite"), "SuperGrok Lite");
+  assert.equal(displayGrokPlanName("supergrok_lite"), "SuperGrok Lite");
+  assert.equal(displayGrokPlanName("XPremiumPlus"), "X Premium+");
+  assert.equal(displayGrokPlanName("X Premium+"), "X Premium+");
+  assert.equal(displayGrokPlanName("x_premium_plus"), "X Premium+");
+  assert.equal(displayGrokPlanName("XPremium"), "X Premium");
+  assert.equal(displayGrokPlanName("XBasic"), "X Basic");
+  assert.equal(displayGrokPlanName("Free"), "Free");
+});
+
 test("normalizeGrokBillingResponse 把 unified format=credits 周池收成主窗口", () => {
   const result = normalizeGrokBillingResponse({
     config: {

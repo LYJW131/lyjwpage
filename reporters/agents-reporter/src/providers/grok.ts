@@ -132,7 +132,7 @@ function inferGrokPeriodTypeFromDates(startIso: string | null, endIso: string | 
 }
 
 function compactGrokPlanToken(raw: string): string {
-  return String(raw).toLowerCase().replace(/[^a-z]/g, "");
+  return String(raw).toLowerCase().replace(/[^a-z+]/g, "");
 }
 
 export function displayGrokPlanName(raw: unknown): string | null {
@@ -140,8 +140,14 @@ export function displayGrokPlanName(raw: unknown): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   const token = compactGrokPlanToken(trimmed);
-  if (token === "supergrokheavy" || token === "heavy") return "SuperGrok Heavy";
-  if (token === "supergrok") return "SuperGrok";
+  if (token === "supergrokheavy" || token === "supergrokpro" || token === "heavy") return "SuperGrok Heavy";
+  if (token === "supergrokplus") return "SuperGrok Plus";
+  if (token === "supergroklite") return "SuperGrok Lite";
+  if (token === "supergrok" || token === "grokpro") return "SuperGrok";
+  if (token === "xpremium+" || token === "xpremiumplus") return "X Premium+";
+  if (token === "xpremium") return "X Premium";
+  if (token === "xbasic") return "X Basic";
+  if (token === "free") return "Free";
   return trimmed;
 }
 
@@ -160,6 +166,12 @@ function parseGrokSettingsTier(body: unknown): string | null {
   return displayGrokPlanName(
     rec.subscription_tier_display ?? settings?.subscription_tier_display ?? cfg?.subscription_tier_display,
   );
+}
+
+function parseGrokUserTier(body: unknown): string | null {
+  const rec = asRecord(body);
+  if (!rec) return null;
+  return displayGrokPlanName(rec.subscriptionTier ?? rec.subscription_tier);
 }
 
 function sumProductUsagePercent(productUsage: unknown): number | null {
@@ -480,7 +492,11 @@ async function fetchGrokBilling(accessToken: string): Promise<unknown> {
   return legacyResult.body;
 }
 
-async function fetchGrokSettingsTier(accessToken: string): Promise<string | null> {
+async function fetchGrokNamedTier(
+  accessToken: string,
+  path: string,
+  parse: (body: unknown) => string | null,
+): Promise<string | null> {
   const root = (
     (typeof process.env.GROK_CLI_CHAT_PROXY_BASE_URL === "string" &&
       process.env.GROK_CLI_CHAT_PROXY_BASE_URL.trim()) ||
@@ -488,15 +504,23 @@ async function fetchGrokSettingsTier(accessToken: string): Promise<string | null
   ).replace(/\/$/, "");
   try {
     const result = await fetchGrokBillingAttempt(
-      `${root}/v1/settings`,
+      `${root}${path}`,
       grokHeaders(accessToken),
       Date.now() + DEFAULT_SETTINGS_TIMEOUT_MS,
     );
     if (!result.ok) return null;
-    return parseGrokSettingsTier(result.body);
+    return parse(result.body);
   } catch {
     return null;
   }
+}
+
+async function fetchGrokUserTier(accessToken: string): Promise<string | null> {
+  return fetchGrokNamedTier(accessToken, "/v1/user?include=subscription", parseGrokUserTier);
+}
+
+async function fetchGrokSettingsTier(accessToken: string): Promise<string | null> {
+  return fetchGrokNamedTier(accessToken, "/v1/settings", parseGrokSettingsTier);
 }
 
 export async function fetchGrok(): Promise<AgentRow | null> {
@@ -538,8 +562,10 @@ export async function fetchGrok(): Promise<AgentRow | null> {
         throw error;
       }
     }
-    const settingsTier = await fetchGrokSettingsTier(accessToken);
-    const planName = settingsTier || parseGrokBillingSubscriptionTier(body);
+    // /v1/settings 的 subscription_tier_display 换套餐后仍是旧名字；/user 的 subscriptionTier 才是当前套餐。
+    const userTier = await fetchGrokUserTier(accessToken);
+    const settingsTier = userTier ? null : await fetchGrokSettingsTier(accessToken);
+    const planName = userTier || settingsTier || parseGrokBillingSubscriptionTier(body);
     return rowFromGrokBilling(body, planName);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

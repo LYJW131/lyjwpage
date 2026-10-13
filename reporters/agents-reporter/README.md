@@ -100,6 +100,8 @@ Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录�
 CLI 升级改变配置结构时，可更新扫描规则，或成对填写 `CLAUDE_OAUTH_TOKEN_URL` / `CLAUDE_OAUTH_CLIENT_ID` 暂时覆盖。日志不会输出令牌；撤销登录或 refresh token 本身失效仍需重新登录。
 
 Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的 `/data/.codex/auth.json`、`/data/.grok/auth.json`。
+Grok 的套餐名读 `/v1/user?include=subscription` 的 `subscriptionTier`（`GrokPro` 显示成 SuperGrok，`SuperGrokPro` 显示成 SuperGrok Heavy）。
+`/v1/settings` 的 `subscription_tier_display` 换套餐后会停在旧名字上，只在用户接口没有套餐时才用。
 
 ## cursor / antigravity
 
