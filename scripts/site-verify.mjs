@@ -88,6 +88,26 @@ export function requiredCardIds(map, wanted, explicit) {
   return explicit ? wanted : wanted.filter((id) => !map.cards[id].conditional);
 }
 
+// 把 sink 的脏处点成一句话，写进失败输出的 next。
+export function consoleProblems(sink) {
+  const bad = [];
+  if (sink.errors.length) bad.push(`console.errors ${sink.errors.length} 条`);
+  if (sink.pageErrors.length) bad.push(`pageErrors ${sink.pageErrors.length} 条`);
+  const sameOrigin = sink.failedRequests.filter((r) => r.sameOrigin);
+  if (sameOrigin.length) bad.push(`同源失败请求 ${sameOrigin.length} 条（如 ${sameOrigin[0].url}）`);
+  return bad.join("；");
+}
+
+function cardsNext(missing, sink) {
+  const hints = [];
+  if (missing.length) {
+    hints.push(`缺卡 ${missing.join(", ")}：先查 feature-map 里 selector / alternates 是否还有效；卡该显示却没挂时按 endpoints 注夹具（override --endpoint <端点> --fixture <夹具.json>）`);
+  }
+  const problems = consoleProblems(sink);
+  if (problems) hints.push(`控制台不干净：${problems}，逐条看 console 字段取证`);
+  return hints.join("。");
+}
+
 function print(payload, flags = {}) {
   console.log(flags.compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2));
 }
@@ -147,7 +167,7 @@ override（会改本地 Worker 状态；先 pnpm dev:worker + pnpm dev:local，w
   例子  node scripts/site-verify.mjs override --endpoint /api/status/pulse --fixture pulse-busy-day.json --dry-run
 `;
 
-async function resolvePlaywright() {
+export async function resolvePlaywright() {
   const asApi = (mod, source) => {
     const api = mod?.chromium ? mod : (mod?.default?.chromium ? mod.default : null);
     return api ? { api, source } : null;
@@ -388,7 +408,7 @@ async function cmdCards(flags) {
     const required = requiredCardIds(map, wanted, Boolean(flags.card));
     const missingRequired = required.filter((id) => cards[id].status !== "visible");
     const ok = missingRequired.length === 0 && consoleClean(sink);
-    print({ ok, url: flags.url, viewport, cards, console: sink }, flags);
+    print({ ok, ...(ok ? {} : { next: cardsNext(missingRequired, sink) }), url: flags.url, viewport, cards, console: sink }, flags);
     if (!ok) process.exitCode = 1;
   } finally {
     await browser.close();
@@ -449,7 +469,14 @@ async function cmdShot(flags) {
     }
   }
   const ok = !failed && shots.every((s) => s.file && consoleClean(s.console));
-  print({ ok, out: path.resolve(flags.out), shots }, flags);
+  // !ok 时 problems 必非空：failed 只跟着 problems 类条目出现，every 不过也必有脏 shot。
+  const next = ok
+    ? undefined
+    : shots
+        .filter((s) => !s.file || !consoleClean(s.console))
+        .map((s) => `${s.card ?? "page"}-${s.width}x${s.height}-${s.theme}：${s.error ?? `控制台不干净（${consoleProblems(s.console)}）`}`)
+        .join("；");
+  print({ ok, ...(next ? { next } : {}), out: path.resolve(flags.out), shots }, flags);
   if (!ok) process.exitCode = 1;
 }
 

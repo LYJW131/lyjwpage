@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { classifyRequest, consoleClean, isEnvNoise, loadFeatureMap, newSink, parseArgs, parseWidths, requiredCardIds } from "./site-verify.mjs";
+import { classifyRequest, consoleClean, consoleProblems, isEnvNoise, loadFeatureMap, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright } from "./site-verify.mjs";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -143,10 +144,39 @@ test("doctor 对死端口报 site fail 且输出仍是 JSON", () => {
   assert.notEqual(result.status, 0);
 });
 
-test("cards 找不到 required 卡片：退出码 1、ok:false，且不遗留 headless Chrome", () => {
+test("consoleProblems 把 sink 脏处写成给人看的列表", () => {
+  const sink = newSink();
+  assert.equal(consoleProblems(sink), "");
+  sink.pageErrors.push("TypeError: x");
+  sink.failedRequests.push({ url: "http://localhost:3211/api/status/pulse", status: 500, sameOrigin: true });
+  assert.match(consoleProblems(sink), /pageErrors 1 条；同源失败请求 1 条（如 http:\/\/localhost:3211\/api\/status\/pulse）/);
+});
+
+test("cards 找不到 required 卡片：退出码 1、ok:false 带 next，且不遗留 headless Chrome", async (t) => {
+  const pw = await resolvePlaywright();
+  if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器清理路径验不了");
   const before = headlessChromeCount();
   const result = run(["cards", "--url", "data:text/html,<title>empty</title>", "--settle", "500"]);
   assert.equal(result.status, 1, result.stderr || result.stdout);
-  assert.equal(JSON.parse(result.stdout).ok, false);
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.ok, false);
+  // cards 字段非空才证明进了 openPage；没它说明死在更早的地方、退出码 1 是别的失败给的
+  assert.ok(body.cards && Object.keys(body.cards).length > 0, "输出里没 cards，没走到浏览器那一步");
+  assert.match(body.next, /缺卡|selector|夹具/);
   assert.equal(headlessChromeCount(), before, "cards 失败路径必须走 finally 关浏览器");
+});
+
+test("shot 控制台脏时退出码 1 且 next 指明哪张图什么原因", async (t) => {
+  const pw = await resolvePlaywright();
+  if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器路径验不了");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-"));
+  try {
+    const result = run(["shot", "--url", "data:text/html,<script>throw new Error('boom')</script>", "--widths", "375", "--out", out, "--settle", "500"]);
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    const body = JSON.parse(result.stdout);
+    assert.equal(body.ok, false);
+    assert.match(body.next, /page-375x\d+-light.*pageErrors 1 条/);
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
 });
