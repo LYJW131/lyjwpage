@@ -139,15 +139,16 @@ export function DigestCard({
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   useEffect(() => {
-    let interval: number | undefined;
-    const timeout = window.setTimeout(() => {
-      setTicked(Date.now());
-      interval = window.setInterval(() => setTicked(Date.now()), 60_000);
-    }, 60_000 - (Date.now() % 60_000));
-    return () => {
-      window.clearTimeout(timeout);
-      if (interval !== undefined) window.clearInterval(interval);
+    let timer: number;
+    // 每次都按墙上时钟重排到下一个整分钟：后台标签页会推迟定时器，固定间隔的 setInterval 回到前台后会一直错位。
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        setTicked(Date.now());
+        schedule();
+      }, 60_000 - (Date.now() % 60_000));
     };
+    schedule();
+    return () => window.clearTimeout(timer);
   }, []);
   if (!data || !updatedAt || data.quiet) return <TimezoneCard fallback={timezoneEnvelope} className={className} />;
 
