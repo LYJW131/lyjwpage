@@ -301,12 +301,12 @@ function compactCount(value: number): string {
 const TOKEN_SCALE_MIN = 10_000;
 
 function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
-  const buckets = columnRows(lane.buckets, ["fresh", "output", "cacheRead"]);
+  const buckets = columnRows(lane.buckets, ["total", "output", "cacheRead"]);
   if (!buckets || !lane.summary) return null;
   const rows = buckets.map((row) => {
     const { from, to } = absolute(range, row);
     const minutes = Math.max(1 / 60, (to - from) / 60_000);
-    return { from, to, rate: row.fresh / minutes, output: row.output / minutes, cacheRead: row.cacheRead / minutes };
+    return { from, to, rate: row.total / minutes, output: row.output / minutes, cacheRead: row.cacheRead / minutes };
   });
   const scale = Math.max(TOKEN_SCALE_MIN, ...rows.map((row) => row.rate));
   const y = (rate: number) => LANE_HEIGHT - Math.max(1.5, Math.sqrt(rate / scale) * (LANE_HEIGHT - BAND_TOP));
@@ -320,7 +320,7 @@ function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
   const steps = (chain: typeof rows) => chain.map((row) => ` L${fixed(x(range, row.from))} ${fixed(y(row.rate))} L${fixed(x(range, row.to))} ${fixed(y(row.rate))}`).join("");
   const area = chains.map((chain) => `M${fixed(x(range, chain[0].from))} ${LANE_HEIGHT}${steps(chain)} L${fixed(x(range, chain.at(-1)!.to))} ${LANE_HEIGHT} Z`).join(" ");
   const line = chains.map((chain) => `M${fixed(x(range, chain[0].from))} ${fixed(y(chain[0].rate))}${steps(chain)}`).join(" ");
-  const { peakPerMinute, currentPerMinute, freshTokens } = lane.summary;
+  const { peakPerMinute, currentPerMinute, totalTokens } = lane.summary;
   return {
     items: rows.map((row, index) => ({
       from: row.from, to: row.to, rank: 0,
@@ -339,10 +339,10 @@ function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
     summary: rows.length && peakPerMinute != null
       ? {
         value: `Peak ${compactCount(peakPerMinute)}/min`,
-        detail: currentPerMinute != null && currentPerMinute > 0 ? `now ${compactCount(currentPerMinute)}/min` : `${compactCount(freshTokens)} in 24h`,
+        detail: currentPerMinute != null && currentPerMinute > 0 ? `now ${compactCount(currentPerMinute)}/min` : `${compactCount(totalTokens)} in 24h`,
       }
       : null,
-    aria: "new tokens per minute across coding agents, excluding cache reads",
+    aria: "tokens per minute across coding agents, including cache reads",
   };
 }
 
@@ -558,7 +558,7 @@ export function PulseCard({
                 className="label-mono truncate text-muted-foreground"
                 title={domain === "activity"
                   ? "Steps from closed HealthKit five-minute buckets; gaps are unknown, not still."
-                  : domain === "tokens" ? "New tokens per minute across all coding agents and sources, excluding cache reads." : undefined}
+                  : domain === "tokens" ? "Tokens per minute across all coding agents and sources, including cache reads." : undefined}
               >
                 {label}
               </span>
@@ -586,7 +586,7 @@ export function PulseCard({
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-human)" />Coding app</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-agent)" />Agent</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-both)" />Both</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-3 border-t border-(--pulse-agent) bg-(--pulse-agent)/30" />Tokens/min (excl. cache reads)</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-3 border-t border-(--pulse-agent) bg-(--pulse-agent)/30" />Tokens/min</span>
           <span className="flex items-center gap-1">
             <span className={cn("pulse-trace relative inline-block h-2 w-3", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")} />
             Played elsewhere, estimated
