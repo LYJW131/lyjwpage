@@ -29,12 +29,7 @@ import { prepareIngest as prepareShared, type CoreCommand } from "@shared/ingest
 import { resetStoredImageCacheForTests, type ImageBucket } from "@shared/ingest/r2-assets";
 import type { PreparedTelemetryEnvelope } from "@shared/ingest/telemetry";
 import { commitPreparedIngest } from "./ingest-handlers";
-import { enrichCommand } from "./listening-enrichment";
-import { trackLookupCacheKey } from "@shared/apple-music";
-import { installAppleCache } from "@shared/apple-cache";
-import { motionArtworkCacheKey } from "@shared/motion-artwork";
-import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
-import { MemoryKv } from "@shared/testing/memory-kv";
+import { trackKeyOf } from "@shared/track-enrichment";
 import { requestStore, type Env } from "./runtime";
 
 const NOW = 1_800_000_000_000;
@@ -703,17 +698,10 @@ test("listening effects retain the track from their own commit", async () => {
   }
 });
 
-test("StateCore enrichment is stored with the track and the push reads it without network", async () => {
+test("enrichment carried by the command is stored with the track and the push reads it without network", async () => {
   const storage = new FakeStorage();
   installTestStorage(storage);
-  const kv = new MemoryKv();
-  installAppleCache(() => kv);
   const env = testEnv();
-  const link = "https://music.apple.com/cn/album/x/1500?i=1501";
-  kv.values.set(`lyjwpage:${trackLookupCacheKey({ title: "First", artist: "Artist", album: null })}`,
-    JSON.stringify({ link, artwork: null, id: "1500", songId: "1501", hasLyrics: false }));
-  kv.values.set(`lyjwpage:${motionArtworkCacheKey(parseAppleMusicUrl(link)!)}`,
-    JSON.stringify({ hasMotion: true, videoUrl: "https://mvod/x.m3u8", colors: null }));
   const originalFetch = globalThis.fetch;
   let fetches = 0;
   globalThis.fetch = (async () => {
@@ -724,8 +712,16 @@ test("StateCore enrichment is stored with the track and the push reads it withou
     const prepared = await inRequest(env, () => prepareIngest("mac", envelope({
       appleMusic: { state: "playing", title: "First", artist: "Artist", observedAt: NOW },
     }, ["appleMusic"]), NOW));
-    const { command: enriched } = await inRequest(env, () => enrichCommand(prepared));
-    const result = await commit(env, enriched);
+    assert.ok(prepared.source === "mac" && prepared.modules.appleMusic);
+    const enrichment = {
+      trackKey: trackKeyOf({ title: "First", artist: "Artist", album: null }), id: "1500",
+      link: "https://music.apple.com/cn/album/x/1500?i=1501", songId: "1501", artwork: null,
+      hasLyrics: false, upcomingSongIds: [], motion: { videoUrl: "https://mvod/x.m3u8", colors: null },
+    };
+    const result = await commit(env, {
+      ...prepared,
+      modules: { ...prepared.modules, appleMusic: { ...prepared.modules.appleMusic, enrichment } },
+    });
     assert.equal(result.ok, true);
     const stored = await inRequest(env, () => telemetryMirror.get());
     assert.equal(stored?.musicEnrichment?.songId, "1501");
@@ -742,7 +738,6 @@ test("StateCore enrichment is stored with the track and the push reads it withou
     assert.equal(fetches, 0);
   } finally {
     globalThis.fetch = originalFetch;
-    installAppleCache(null);
     installTestStorage(null);
   }
 });

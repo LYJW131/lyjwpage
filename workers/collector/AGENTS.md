@@ -1,6 +1,6 @@
 # workers/collector（采集 Worker）
 
-站点所有定时的外部拉取都在这里：cron 每分钟响一次，按 `src/registry.ts` 挑出这一分钟到期的任务并行跑，一个失败不连累别的。任务表和 `COLLECTOR_KV` 的键在 `README.md`，这里只写不变量、坑和须成对修改的文件。
+站点所有定时的外部拉取都在这里：cron 每分钟响一次，按 `src/registry.ts` 挑出这一分钟到期的任务并行跑，一个失败不连累别的。Apple Music 的按需查询、MusicKit 令牌与「正在听」的补全也在这里，由 site 与上报入口经 Service Binding 调用。任务表、`COLLECTOR_KV` 的键与 Apple Music 的说明在 `README.md`，这里只写不变量、坑和须成对修改的文件。
 
 ## 不变量
 
@@ -12,14 +12,13 @@
 - D1 表结构归 `workers/api/migrations`：新表先在 api 那边 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。奖杯表由 api 写（`workers/api/src/stores/trophy-history.ts#archiveTrophies`），这里只写 `site_deploys`。
 - `shared/cache` 在这里背后是 KV（`src/storage-driver.ts`，由 `src/ports.ts` 装上）：TTL 最短 60 秒，KV 读还有最长 60 秒的边缘缓存，两分钟以内要读回的东西不走它；列表、哈希操作直接抛错。
 - Workers Caching 只开在 `AppleLookups` 上（`wrangler.toml#exports`），默认入口和 `Collector` 不开：方法、来源和 CORS 头在默认入口（`src/apple-music-http.ts`）按每次请求判，经自绑定 `APPLE_LOOKUPS` 再进缓存层。缓存键只有 entrypoint、路径与查询串，`AppleLookups` 的响应不许带 CORS 头或随请求头变化的内容。
-- `APPLE_CACHE` 与 api 绑同一个 KV 命名空间：`STORAGE_PREFIX`、`APPLE_MUSIC_STOREFRONT` 两边须一致，否则互相读不到对方查好的结果（`src/apple-music-http.test.ts` 核对两边的生产与本地配置）。
 - 手动触发（`Collector.refresh`、本地调试入口）不向 Sentry 报到；cron 监控名额不够，`collector-<任务>` 报到默认关（`SENTRY_CRON_CHECKINS`），任务真失败靠 `src/sentry.ts#reportJobFailure` 开 issue（tag `collector.job`）。
 
 ## 须成对修改
 
 - 新增任务 ⇄ `shared/collector.ts#COLLECTOR_JOBS`（只加不改）与 `src/registry.ts`；退役任务只挪进 `RETIRED_COLLECTOR_JOBS`，不从契约删名字。`src/registry.test.ts` 核对两边全集相等（去掉退役的），不用类型断言或放宽测试绕过。
 - 新增或改节奏的任务 ⇄ `shared/status-views.ts` 里对应视图的 `cadenceMs`，浏览器据此在下一次预期写入之后去取。
-- `shared/collector.ts`（`Collector` 的 RPC 契约，只加不改）⇄ `workers/ingress/src/worker.ts` 的部署通知，后者点名重拉部署列表。
+- `shared/collector.ts`（`Collector` 的 RPC 契约，只加不改）⇄ `workers/ingress/src/worker.ts`：部署通知点名重拉部署列表，上报提交前后调补全。
 - `shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS` ⇄ 默认入口的分流（`src/index.ts`）与 `src/apple-music-http.ts`：加路径要同时决定它进不进缓存层。
 
 ## 本地开发与验证

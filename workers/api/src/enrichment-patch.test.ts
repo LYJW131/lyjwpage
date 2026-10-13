@@ -7,9 +7,10 @@ import { motionArtworkCacheKey } from "@shared/motion-artwork";
 import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
 import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { MemoryKv } from "@shared/testing/memory-kv";
-import { followUpEnrichment, trackKeyOf, upcomingKeyOf, type EnrichmentFollowUp, type EnrichmentPatch } from "@shared/track-enrichment";
+import { enrichTrackOutcome, followUpEnrichment, trackKeyOf, upcomingKeyOf, type EnrichmentFollowUp, type EnrichmentPatch } from "@shared/track-enrichment";
 import type { ListeningItem } from "@shared/types";
 import { mirror as recentMirror } from "@shared/apple-music-store";
+import { enrichCommand } from "@shared/command-enrichment";
 import { mirror as homePodMirror } from "@shared/homepod-store";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
 import { withRequestState } from "@shared/request-state";
@@ -18,13 +19,13 @@ import { mirror as telemetryMirror } from "@shared/telemetry";
 import { applyEnrichmentPatch } from "./enrichment-patch";
 import { collectIngestEffects } from "./ingest-effects";
 import { commitPreparedIngest } from "./ingest-handlers";
-import { enrichCommand } from "./listening-enrichment";
 import { requestStore, type Env } from "./runtime";
 import { prepareRecentlyPlayed } from "./stores/apple-music-store";
 
 const NOW = 1_800_000_000_000;
 const LINK = "https://music.apple.com/cn/album/x/1500?i=1501";
 const env = {} as Env;
+const enrichAsCollector = (command: CoreCommand) => enrichCommand(command, enrichTrackOutcome);
 
 function inRequest<T>(run: () => Promise<T>): Promise<T> {
   return requestStore.run({ env, ctx: { waitUntil: () => {} } as unknown as ExecutionContext }, () => withRequestState(run));
@@ -81,7 +82,7 @@ function isolated(t: { after: (fn: () => void) => void }): MemoryKv {
 
 test("写入时目录查询失败：回执后重查成功，补丁按 trackKey 写回并推送", async (t) => {
   const kv = isolated(t);
-  const { command, followUp } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW)));
+  const { command, followUp } = await inRequest(async () => enrichAsCollector(await prepareMac("First", NOW)));
   assert.equal(followUp?.outcome.catalogKnown, false);
   await inRequest(() => collectIngestEffects(() => commitPreparedIngest(command)));
   assert.equal((await inRequest(() => telemetryMirror.get()))?.musicEnrichment?.songId, null);
@@ -105,9 +106,9 @@ test("写入时目录查询失败：回执后重查成功，补丁按 trackKey �
 
 test("补丁到达前曲目已换：丢弃，不写不推", async (t) => {
   const kv = isolated(t);
-  const { command, followUp } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW)));
+  const { command, followUp } = await inRequest(async () => enrichAsCollector(await prepareMac("First", NOW)));
   await inRequest(() => collectIngestEffects(() => commitPreparedIngest(command)));
-  const { command: next } = await inRequest(async () => enrichCommand(await prepareMac("Second", NOW + 1_000)));
+  const { command: next } = await inRequest(async () => enrichAsCollector(await prepareMac("Second", NOW + 1_000)));
   await inRequest(() => collectIngestEffects(() => commitPreparedIngest(next)));
 
   seedFirst(kv);
@@ -123,10 +124,10 @@ test("补丁到达前曲目已换：丢弃，不写不推", async (t) => {
 
 test("同一首歌期间队列已更新：迟到的补丁补上目录，不带回旧队列的歌曲 ID", async (t) => {
   const kv = isolated(t);
-  const { command, followUp } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW, ["Old Next"])));
+  const { command, followUp } = await inRequest(async () => enrichAsCollector(await prepareMac("First", NOW, ["Old Next"])));
   await inRequest(() => collectIngestEffects(() => commitPreparedIngest(command)));
   seedUpcoming(kv, "New Next", "2002");
-  const { command: requeued } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW + 1_000, ["New Next"])));
+  const { command: requeued } = await inRequest(async () => enrichAsCollector(await prepareMac("First", NOW + 1_000, ["New Next"])));
   await inRequest(() => collectIngestEffects(() => commitPreparedIngest(requeued)));
   assert.deepEqual((await inRequest(() => telemetryMirror.get()))?.musicEnrichment?.upcomingSongIds, ["2002"]);
 
@@ -146,7 +147,7 @@ test("同一首歌期间队列已更新：迟到的补丁补上目录，不带�
 test("只有队列查询失败：回执后重查，补丁只补队列歌曲 ID", async (t) => {
   const kv = isolated(t);
   seedFirst(kv);
-  const { command, followUp } = await inRequest(async () => enrichCommand(await prepareMac("First", NOW, ["Next"])));
+  const { command, followUp } = await inRequest(async () => enrichAsCollector(await prepareMac("First", NOW, ["Next"])));
   assert.deepEqual(
     [followUp?.outcome.catalogKnown, followUp?.outcome.motionKnown, followUp?.outcome.upcomingKnown],
     [true, true, false],
@@ -203,7 +204,7 @@ test("命令已带 enrichment（含 null）时原样提交：不查 Apple，也�
       { source: "homepod", stored: { music, receivedAt: NOW, enrichment: given } },
     ];
     for (const command of commands) {
-      const result = await inRequest(() => enrichCommand(command));
+      const result = await inRequest(() => enrichAsCollector(command));
       assert.equal(result.command, command);
       assert.equal(result.followUp, null);
     }

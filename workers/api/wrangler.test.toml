@@ -17,20 +17,11 @@ entrypoint = "DevOverrideReader"
 [vars]
 STORAGE_PREFIX = "lyjwpage-test"
 ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
-APPLE_MUSIC_STOREFRONT = "cn"
 
 # 跨本地 Worker 共享 KV 必须使用同一个 id。
 [[kv_namespaces]]
-binding = "CREDENTIALS"
-id = "00000000000000000000000000000002"
-
-[[kv_namespaces]]
 binding = "LAG"
 id = "00000000000000000000000000000001"
-
-[[kv_namespaces]]
-binding = "APPLE_CACHE"
-id = "00000000000000000000000000000003"
 
 [[durable_objects.bindings]]
 name = "LIVE_PUSH"
