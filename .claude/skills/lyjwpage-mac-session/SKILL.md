@@ -9,7 +9,7 @@ Mac 会话有站主的 checkout、登录态和凭据，云端没有。代价是�
 
 ## 什么时候去 Mac
 
-- 去：凭据（灌 Worker Secret、用本机文件里的 key），要站主账号权限的 `gh` 写操作（分支保护、仓库合并设置），AGENTS.md「禁区」里唯一允许的手动 `wrangler deploy`，ssh 到 misaka-jp、dsm、n100，站主要对着 Mac 侧边浏览器实时调 UI。
+- 去：凭据（灌 Worker Secret、用本机文件里的 key），要站主账号权限的 `gh` 写操作（分支保护、仓库合并设置），AGENTS.md「禁区」里唯一允许的手动 `wrangler deploy`（agent 发出的部署命令会被仓库的 PreToolUse 钩子拦下，Mac 会话也一样：简报里写好完整命令，请站主在那个会话的输入框用 `!` 前缀自己跑，再由 Mac 会话读回核对），ssh 到 misaka-jp、dsm、n100，站主要对着 Mac 侧边浏览器实时调 UI。
 - 不去：真模型试跑先用云端会话环境变量里的 Anthropic key（变量名见项目记忆 cloud-env-gaps）；Cloudflare 只读查询走 Cloudflare MCP。
 - 文件夹用 `list_devices` 里已批准的那个，照列出的绝对路径传给 `start_rc_session`。
 
