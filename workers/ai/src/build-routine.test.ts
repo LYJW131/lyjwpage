@@ -8,7 +8,7 @@ import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url, uploadTokenForRun } from "./build/token.ts";
 import { allowedBuildPath, parseBuildPlan, parseBuildUpload } from "./build/validation.ts";
-import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest as publishBuild, prepareBuildPullRequest, validateBuildBase, reconcileBuild } from "./build/github.ts";
+import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest as publishBuild, findPlanIssue, prepareBuildPullRequest, validateBuildBase, reconcileBuild } from "./build/github.ts";
 import { verifyGithubWebhook, applyGithubWebhook } from "./build/webhook.ts";
 import { buildGithubFixture, FIXTURE_PLAN_SHA, FIXTURE_PLAN_TREE } from "./build/testing/github-fixture.ts";
 import { buildWorkflowAudience } from "./build/actions-oidc.ts";
@@ -643,6 +643,24 @@ test("issue lookup finds the plan's issue by its marker, throttles GitHub and ke
   assert.equal(listed.length, 0, "a recorded issue is answered without GitHub");
   t.mock.timers.setTime(proposal.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS + 1);
   assert.equal((await lookup()).status, 401);
+});
+
+test("issue lookup pages past newer issues until it reaches ones created before the plan", async () => {
+  const since = Date.parse("2026-01-01T00:00:00Z");
+  const at = (offset: number) => new Date(since + offset).toISOString();
+  const filler = (from: number) => Array.from({ length: 100 }, (_, i) => ({ number: from - i, html_url: `https://github.com/${BUILD_REPO}/issues/${from - i}`, created_at: at(60_000), body: "" }));
+  const pages: unknown[][] = [filler(300), [{ number: 7, html_url: `https://github.com/${BUILD_REPO}/issues/7`, created_at: at(1_000), body: buildIssueMarker("ref") }, { number: 3, html_url: `https://github.com/${BUILD_REPO}/issues/3`, created_at: at(-1_000), body: "" }]];
+  const requested: string[] = [];
+  const api = new GithubBuildApi("token", (async (input: RequestInfo | URL) => {
+    const page = new URL(String(input)).searchParams.get("page")!;
+    requested.push(page);
+    return json(pages[Number(page) - 1] ?? []);
+  }) as typeof fetch);
+  assert.deepEqual(await findPlanIssue(api, "ref", since), { number: 7, url: `https://github.com/${BUILD_REPO}/issues/7` });
+  assert.deepEqual(requested, ["1", "2"]);
+
+  const flood = new GithubBuildApi("token", (async () => json(filler(5000))) as typeof fetch);
+  await assert.rejects(findPlanIssue(flood, "ref", since), /Too many GitHub issues/);
 });
 
 test("Start build checks GitHub once for the plan's issue and refuses without consuming the plan or quota", async () => {
