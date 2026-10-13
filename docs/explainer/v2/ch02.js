@@ -44,7 +44,7 @@
     "ch02.n5a": ["鉴权已在边界做过一次，", "Auth already happened at the edge;"],
     "ch02.n5b": ["这一跳只认绑定，不再验钥匙。", "this hop trusts the binding alone."],
     "ch02.foot1": ["改校验只需重新发布入口：", "Changing validation redeploys only the ingress:"],
-    "ch02.foot2": ["api Worker 只引用类型，Durable Object 不重启，连接不断。", "the api Worker imports types only; the DO keeps running."],
+    "ch02.foot2": ["core Worker 只引用类型，Durable Object 不重启，连接不断。", "the core Worker imports types only; the DO keeps running."],
     "ch02.waits": ["回 202 之前，入口依次等：", "Before 202, the ingress awaits:"],
     "ch02.lamp.do": ["状态核心已提交", "State core committed"],
     "ch02.lamp.lag": ["LAG 已写", "LAG written"],
@@ -410,7 +410,7 @@
     wall(x, 1790, lerp(1790, 2080, dk), 1);
     text(x, "ingress Worker", WALL_X - 40, 1440, { font: FONT.mono(32, 600), color: pink, align: "right", alpha: dk });
     text(x, tr("ch02.gateSide"), WALL_X - 40, 1482, { font: FONT.cjk(28, 600), color: graphite, align: "right", alpha: dk });
-    text(x, "api Worker", WALL_X + 40, 1440, { font: FONT.mono(32, 600), color: pink, alpha: dk });
+    text(x, "core Worker", WALL_X + 40, 1440, { font: FONT.mono(32, 600), color: pink, alpha: dk });
     text(x, tr("ch02.coreSide"), WALL_X + 40, 1482, { font: FONT.cjk(28, 600), color: graphite, alpha: dk });
     fillRect(x, WALL_X - 20, PIPE_Y - 34, 40, 68, css("paper"), dk);
     rect(x, WALL_X - 20, PIPE_Y - 34, 40, 68, 2.2, pink, dk);

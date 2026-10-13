@@ -64,10 +64,10 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
   );
 }
 
-export function UptimeStrip({ site, api, siteStale = false, apiStale = false }: {
-  site: SentryUptime | null; api: HealthSeries | null; siteStale?: boolean; apiStale?: boolean;
+export function UptimeStrip({ site, core, siteStale = false, coreStale = false }: {
+  site: SentryUptime | null; core: HealthSeries | null; siteStale?: boolean; coreStale?: boolean;
 }) {
-  if (!site && !api) return null;
+  if (!site && !core) return null;
   return (
     <div className="flex flex-col gap-5 border-t border-line px-4 py-4 md:px-5">
       {site && (
@@ -75,9 +75,9 @@ export function UptimeStrip({ site, api, siteStale = false, apiStale = false }: 
           statusTitle={`Per-minute check · HEAD ${site.url || "https://lyjw.me/"}`}
           footTitle={`checked every ${site.intervalSeconds}s`} />
       )}
-      {api && (
-        <HealthRow name="API" health={api} unit="heartbeats" stale={apiStale}
-          statusTitle={`Cron heartbeat of the api Worker every ${HEARTBEAT_EVERY} (Durable Objects and KV)`}
+      {core && (
+        <HealthRow name="Core" health={core} unit="heartbeats" stale={coreStale}
+          statusTitle={`Cron heartbeat of the core Worker every ${HEARTBEAT_EVERY} (Durable Objects and KV)`}
           footTitle={`cron heartbeat every ${HEARTBEAT_EVERY}`} />
       )}
     </div>

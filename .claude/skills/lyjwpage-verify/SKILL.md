@@ -55,7 +55,7 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
 
 ### 2. UI 浏览器端到端
 
-- 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `pnpm dev:override <端点> <夹具>`（夹具在 `workers/api/dev-fixtures/`，收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
+- 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `pnpm dev:override <端点> <夹具>`（夹具在 `workers/core/dev-fixtures/`，收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
 - 首屏（SSR）要渲染指定数据：本机起一个 node 代理转发 `https://lyjw.me`、只改被测端点，`PUBLIC_BACKEND_URL=http://localhost:<端口> pnpm dev`，node 用 `NODE_USE_ENV_PROXY=1` 走代理。只改浏览器请求用 Playwright `context.route`。
 - Playwright 用全局安装（容器里已验证可用）：
 
@@ -72,6 +72,7 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
   - 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的，单列为环境噪声，不算站点错误。
 - 宽度：至少 1280 桌面与 375 手机（高 812）；改到布局行数或网格时加 iPad（820 / 1024）；有深色样式的改动加 `colorScheme: "dark"`。
 - 每个宽度：测可量化的预期（元素 boundingBox、computed style），截元素图或整页图，收集控制台错误与 `pageerror`。
+- 改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；站主一眼就能看出差几像素。
 - SSR 相关：`curl -sS <url>` 看原始 HTML，或用 `javaScriptEnabled: false` 的上下文截图。
 - 首帧、跳动类问题：录帧或按时间点截图（DOMContentLoaded 后第一帧、水合后、拿到新数据后），给出每一跳的毫秒数。
 - 云端没有 Safari / WebKit：凡是 WebKit 才有的行为，写进「没验到」，请站主实机看。

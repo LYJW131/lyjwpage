@@ -5,7 +5,7 @@ import { APPLE_MUSIC_HTTP_PATHS } from "../../../shared/apple-music-paths";
 type Fetcher = { fetch(input: Request | string, init?: RequestInit): Promise<Response> };
 
 interface Env {
-  API: Fetcher;
+  CORE: Fetcher;
   INGRESS: Fetcher;
   COLLECTOR: Fetcher;
   COLLECTOR_RPC: { refresh(jobs: string[]): Promise<unknown> };
@@ -34,7 +34,7 @@ const router = {
 
     if (APPLE_MUSIC_HTTP_PATHS.has(url.pathname)) return env.COLLECTOR.fetch(request);
 
-    return env.API.fetch(request);
+    return env.CORE.fetch(request);
   },
 
   async scheduled(controller: { scheduledTime: number }, env: Env): Promise<void> {

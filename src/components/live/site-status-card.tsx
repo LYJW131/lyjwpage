@@ -108,7 +108,7 @@ function ReporterTile({ name, stat, staleMs, servedAt, title }: {
     </div>
     <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">
       <Fact label="Push" value={stat ? number.format(stat.pushes) : "—"} title="Reports this reporter pushed successfully" />
-      <Fact label="RTT" value={rtt(stat?.rttMs)} title="Median round trip of a successful push to the API Worker" />
+      <Fact label="RTT" value={rtt(stat?.rttMs)} title="Median round trip of a successful push to the core Worker" />
       <CollectionWindow start={stat?.start} end={stat?.end} />
     </div>
   </li>;
@@ -141,7 +141,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
   const analytics = analyticsStale ? null : siteDeployments?.analytics;
   const totals = githubStale ? null : github?.totals;
   const production = deploymentsStale ? null : siteDeployments?.production;
-  const siteErrors = errorsStale ? undefined : sentry?.errors?.site, apiErrors = errorsStale ? undefined : sentry?.errors?.worker;
+  const siteErrors = errorsStale ? undefined : sentry?.errors?.site, coreErrors = errorsStale ? undefined : sentry?.errors?.worker;
   const siteWorker = cloudflare?.workers.find(w => w.name === "site");
   const siteMetrics = workerMetricsStale ? null : siteWorker?.metrics;
   const { data: server } = useStatus<ServerPayload>(SERVER_PATH, { fallback: serverFallback });
@@ -183,7 +183,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       )}
     </div>
     <RepoContributions data={github} deploymentsBySha={deploymentsBySha} />
-    {sentry && <UptimeStrip site={sentry.uptime} api={sentry.heartbeat ?? null} siteStale={uptimeStale} apiStale={heartbeatStale} />}
+    {sentry && <UptimeStrip site={sentry.uptime} core={sentry.heartbeat ?? null} siteStale={uptimeStale} coreStale={heartbeatStale} />}
     <div className="grid border-t border-line lg:grid-cols-2">
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2">
@@ -233,7 +233,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>
-                {name === "api" && <ErrorCount series={apiErrors} title="API Worker errors in the last 12h" />}
+                {name === "core" && <ErrorCount series={coreErrors} title="Core Worker errors in the last 12h" />}
                 <CommitSha commit={deployment?.commit} />
               </div>
               <div className="mt-1 flex gap-x-3 text-[10px] tabular-nums text-muted-foreground">

@@ -16,7 +16,7 @@ ACCESS_AUD = "local-dev"
 
 [[services]]
 binding = "CORE"
-service = "api"
+service = "core"
 entrypoint = "StateCore"
 
 [[services]]

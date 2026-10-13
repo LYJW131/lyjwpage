@@ -23,7 +23,7 @@
       "ch10.n2a": ["CI 和 CodeQL 只检查、不发布；", "CI and CodeQL check but never ship;"],
       "ch10.n2b": ["站点构建留给 Workers Builds。", "the site build is left to Workers Builds."],
       "ch10.pB": ["Worker", "Workers"],
-      "ch10.b.ingest": ["改上报校验不会重新发布 api：Durable Object 不重启", "Ingest validation changes skip api: the DO keeps running"],
+      "ch10.b.ingest": ["改上报校验不会重新发布 core：Durable Object 不重启", "Ingest validation changes skip core: the DO keeps running"],
       "ch10.b.miss": ["没改到：不构建，线上仍是上一版", "Untouched: no build, the live version stays"],
       "ch10.b.deps": ["四个都另盯着根目录的依赖与配置", "All four also watch the root deps and config"],
       "ch10.n3a": ["Worker 各自构建、互不等待：", "Each Worker builds on its own;"],
@@ -91,7 +91,7 @@
       { id: "codeql", y: 240, name: "CodeQL", gate: null, on: true, pips: AT.cq, lamp: AT.cqLamp },
       { id: "ci", y: 390, name: "CI", gate: null, on: true, pips: AT.ci, lamp: AT.ciLamp },
       { id: "site", y: Y0, name: "site Worker", gate: "src/components/…", on: true, pips: [], lamp: AT.land },
-      { id: "api", y: 690, name: "api", gate: "workers/api/…", on: true, pips: AT.api, lamp: AT.apiLamp },
+      { id: "api", y: 690, name: "core", gate: "workers/core/…", on: true, pips: AT.api, lamp: AT.apiLamp },
       { id: "ingress", y: 810, name: "ingress", gate: "", on: false },
       { id: "collector", y: 930, name: "collector", gate: "", on: false },
       { id: "ai", y: 1050, name: "ai", gate: "", on: false },
@@ -244,7 +244,7 @@
       text(x, `${SHA_OLD}..${SHA_NEW}  main -> main`, 560, 476, { font: FONT.mono(32), color: css("graphite"), alpha: prog(b, AT.enter, AT.enter + 0.05) * a });
       text(x, SHA_NEW, HEAD[0], Y0 + 64, { font: FONT.mono(30, 600), color: css("signal"), align: "center", alpha: prog(b, AT.enter, AT.enter + 0.05) * a });
     }
-    const DIFF = ["src/components/…", "workers/api/…", "reporters/server-reporter/…", "reporters/mac-telemetry-hub"];
+    const DIFF = ["src/components/…", "workers/core/…", "reporters/server-reporter/…", "reporters/mac-telemetry-hub"];
     function diffCard(d, b, a) {
       const k = prog(b, 0.35, 0.5, E.outBack);
       if (k <= 0 || a <= 0) return;
@@ -332,7 +332,7 @@
     }
 
     const WROWS = [
-      { id: "api", y: 1810, paths: "workers/api/*   shared/*   src/lib/*", on: true },
+      { id: "api", y: 1810, paths: "workers/core/*   shared/*   src/lib/*", on: true },
       { id: "ai", y: 2050, paths: "workers/ai/*   shared/ai-paths.ts   …", on: false, flash: AT.miss[2] },
       { id: "ingress", y: 2170, paths: "workers/ingress/*   shared/*   src/lib/*", on: false, flash: AT.miss[0] },
       { id: "collector", y: 2290, paths: "workers/collector/*   shared/*   src/lib/*", on: false, flash: AT.miss[1] },
@@ -350,7 +350,7 @@
         text(x, r.paths, P.x + 60, r.y + 36, { font: FONT.mono(30), color: gr, alpha: a });
         if (r.on) {
           gate(x, TX0, r.y, true, 1, a);
-          text(x, "workers/api/…", TX0 - 30, r.y + 64, { font: FONT.mono(30, 500), color: css("signal"), alpha: a });
+          text(x, "workers/core/…", TX0 - 30, r.y + 64, { font: FONT.mono(30, 500), color: css("signal"), alpha: a });
           runLine(Ly, b, a, { y: r.y, x0: TX0, x1: TX1, xs: XS, times: AT.api, lampT: AT.apiLamp, t0: 5.5 });
           text(x, "api.homepage.lyjw.llc", TX1 + 28, r.y + 76, { font: FONT.mono(30, 500), align: "right", alpha: a * prog(b, AT.apiLamp, AT.apiLamp + 0.1) });
           text(x, "− shared/ingest/*", P.x + 60, r.y + 80, { font: FONT.mono(30, 600), color: css("signal"), alpha: a });
