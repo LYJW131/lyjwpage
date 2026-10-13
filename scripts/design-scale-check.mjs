@@ -4,6 +4,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { maskComments } from "./rules-check.mjs";
+
 export const BASELINE_PATH = "scripts/design-scale-baseline.json";
 
 export const SPACING_SCALE = new Set(["0", "px", "0.5", "1", "1.5", "2", "3", "4", "5", "6", "8"]);
@@ -11,6 +13,9 @@ export const SPACING_SCALE = new Set(["0", "px", "0.5", "1", "1.5", "2", "3", "4
 const BOUNDARY = String.raw`(?<=^|[\s"'\`:!{(])`;
 const END = String.raw`(?=$|[\s"'\`)}!/])`;
 const ARBITRARY = String.raw`\[[^\]\s]*\]|\([^)\s]*\)`;
+
+const FRAGMENT_CTX = /(?:querySelectorAll|querySelector|getElementById|closest|matches|location\.hash|hash|href|xlink:href|xlinkHref|to|url|anchor|fragment)\s*[=(]?\s*["'`]?\s*$/i;
+const COLOR_PROP_CTX = /(?:stroke|fill|stopColor|color|background|accent|caret|border|outline|shadow|decoration|ring|tint|theme)\s*[:=]?\s*["'`]?\s*$/i;
 
 export const RULES = {
   spacing: {
@@ -45,8 +50,16 @@ export const RULES = {
   },
   rawColor: {
     label: "裸色值",
-    re: /(?<=["'`(:=,\s[])#[0-9a-fA-F]{8}(?![0-9a-zA-Z])|(?<=["'`(:=,\s[])#[0-9a-fA-F]{6}(?![0-9a-zA-Z])|\b(?:oklch|oklab|rgba?|hsla?)\([^)\n]*\)/g,
-    offScale: () => true,
+    re: /(?<=["'`(:=,\s[])#[0-9a-fA-F]{8}(?![0-9a-zA-Z])|(?<=["'`(:=,\s[])#[0-9a-fA-F]{6}(?![0-9a-zA-Z])|(?<=["'`(:=,\s[])#[0-9a-fA-F]{3,4}(?![0-9a-zA-Z])|\b(?:oklch|oklab|rgba?|hsla?)\([^)\n]*\)/g,
+    // `#` 前文是选择器 / 锚点 / URL 片段写法的（querySelector("…"、href="…"、url(…)）不算；
+    // 3/4 位全数字形如工单号（#123、#1234），只在颜色属性上下文（stopColor="…"、bg-[#…]）算。
+    offScale: (match) => {
+      const token = match[0];
+      const before = match.input.slice(Math.max(0, match.index - 48), match.index);
+      if (match.input[match.index - 1] === "[") return true;
+      if (/^#[0-9a-fA-F]{3,4}$/.test(token) && !/[a-fA-F]/.test(token)) return COLOR_PROP_CTX.test(before);
+      return !FRAGMENT_CTX.test(before);
+    },
     hint: "组件里不写裸 hex / oklch：颜色只用 globals.css 的语义 token 与 signal 系（DESIGN.md「Colors」）。品牌图标、PWA manifest 这类确需原色的，跑 --update 并在 PR 里说明。",
   },
 };
@@ -64,11 +77,15 @@ export function scan(text) {
   return hits;
 }
 
+export function scanSource(file, text) {
+  return scan(maskComments(file, text));
+}
+
 export function countTokens(files, readText) {
   const counts = {};
   const hits = {};
   for (const file of files) {
-    for (const { kind, token, line } of scan(readText(file))) {
+    for (const { kind, token, line } of scanSource(file, readText(file))) {
       const key = `${kind}:${token}`;
       counts[key] = (counts[key] ?? 0) + 1;
       (hits[key] ??= []).push(`${file}:${line}`);

@@ -4,8 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 
-import { compare, sortedBaseline } from "./design-scale-check.mjs";
-import { scanText } from "./ui-copy-check.mjs";
+import { compareCopy, copyBaseline, scanText } from "./ui-copy-check.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ts = createRequire(path.join(root, "package.json"))("typescript");
@@ -46,8 +45,29 @@ test("tsx 与 ts 分别按 ScriptKind 解析", () => {
   assert.equal(scan("src/lib/x.tsx", "const t = <div>确定</div>;").length, 1);
 });
 
-test("基线比较沿用 design:scale 语义：新增算 grew，减少算 shrank", () => {
-  const baseline = sortedBaseline({ "src/a.tsx": 2 });
-  assert.deepEqual(compare(baseline, { "src/a.tsx": 3 }), { grew: [{ token: "src/a.tsx", before: 2, after: 3 }], shrank: [] });
-  assert.deepEqual(compare(baseline, { "src/a.tsx": 1 }), { grew: [], shrank: [{ token: "src/a.tsx", before: 2, after: 1 }] });
+test("谚文也拦：JSX 文本与字符串属性各一条", () => {
+  const hits = scan("src/components/x.tsx", `export function X() {
+  return <button aria-label="닫기">확인</button>;
+}`);
+  assert.equal(hits.length, 2);
+  assert.deepEqual(hits.map((h) => h.text), ["닫기", "확인"]);
+});
+
+test("基线按「文件 → 命中文本」逐条比：同文件删一条加一条不能抵消", () => {
+  const baseline = copyBaseline({ "src/a.tsx": [{ line: 3, text: "旧文案" }] });
+  const swapped = compareCopy(baseline, { "src/a.tsx": [{ line: 7, text: "新文案" }] });
+  assert.equal(swapped.grew.length, 1);
+  assert.equal(swapped.grew[0].extras[0].text, "新文案");
+  assert.equal(swapped.shrank.length, 1);
+  assert.equal(swapped.shrank[0].missing[0].text, "旧文案");
+});
+
+test("同一文本按出现次数计：基线两次、现状三次算新增", () => {
+  const baseline = { "src/a.tsx": ["确定", "确定"] };
+  const hits = { "src/a.tsx": [{ line: 1, text: "确定" }, { line: 2, text: "确定" }, { line: 9, text: "确定" }] };
+  const { grew } = compareCopy(baseline, hits);
+  assert.equal(grew.length, 1);
+  assert.equal(grew[0].extras[0].extra, 1);
+  assert.deepEqual(grew[0].extras[0].lines, [1, 2, 9]);
+  assert.equal(compareCopy(baseline, { "src/a.tsx": hits["src/a.tsx"].slice(0, 2) }).grew.length, 0);
 });

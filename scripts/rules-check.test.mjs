@@ -11,6 +11,15 @@ test("不带单号的 TODO / FIXME 被拦，带 #单号或链接的放行", () =
   assert.equal(checkTodo("src/lib/x.ts", "/* TODO(#1) 块注释也行 */\n/* 等上游 API，见 https://linear.app/x/ISSUE-2 */").length, 0);
 });
 
+test("块注释里的 TODO：同行闭合、多行首行、注释后还有代码、一行多个注释", () => {
+  assert.deepEqual(checkTodo("src/lib/x.ts", "/* TODO fix */ const a = 1;").map((i) => i.line), [1]);
+  assert.deepEqual(checkTodo("src/lib/x.ts", "/* TODO 头行就带标记\n * 说明\n */\nconst a = 1;").map((i) => i.line), [1]);
+  assert.deepEqual(checkTodo("src/lib/x.ts", "const a = 1; /* ok */ const b = 2; /* TODO 收尾 */").map((i) => i.line), [1]);
+  assert.deepEqual(checkTodo("src/lib/x.ts", "/* TODO(#12) 有单号 */ /* FIXME 没单号 */").map((i) => i.line), [1]);
+  assert.equal(checkTodo("src/lib/x.ts", "const a = 1; /* 正常注释 */ const b = 2; // 也正常").length, 0);
+  assert.equal(checkTodo("src/lib/x.ts", 'const s = "/* TODO 字符串里的不算 */";').length, 0);
+});
+
 test("字符串与 URL 里的斜杠不当注释，// 在引号内不算注释", () => {
   assert.equal(checkTodo("src/lib/x.ts", 'const u = "https://a.b/c"; // 正常注释\nconst s = "字串里的待办词不算"').length, 0);
   // 跨行块注释也认得
@@ -44,6 +53,34 @@ test("隐藏滚动条两句缺一不可", () => {
   );
   // 注入 iframe 的原生 CSS（::-webkit-scrollbar{display:none}）不是 Tailwind 类，不算
   assert.equal(rules("src/lib/html-preview.ts", 'const css = "html{scrollbar-width:none}html::-webkit-scrollbar{display:none}";').length, 0);
+});
+
+test("滚动条配对按 className 表达式合并判断，不按源码行", () => {
+  // cn() 多参数分行写：合起来看，两句齐就不报
+  assert.equal(
+    rules("src/components/x.tsx", 'const c = cn(\n  "overflow-y-auto scrollbar-none",\n  "[&::-webkit-scrollbar]:hidden",\n);').length,
+    0,
+  );
+  // className={cn(...)} 跨行同理
+  assert.equal(
+    rules("src/components/x.tsx", '<div className={cn(\n  "scrollbar-none",\n  "[&::-webkit-scrollbar]:hidden",\n)} />').length,
+    0,
+  );
+  // 拆进两个表达式：各自缺一半，两个单元都报
+  assert.deepEqual(
+    rules("src/components/x.tsx", '<div className={cn("overflow-y-auto scrollbar-none")} />\n<div className="[&::-webkit-scrollbar]:hidden" />'),
+    ["scrollbar-pair@1", "scrollbar-pair@2"],
+  );
+  // cn() 结果存进变量再传给 className：cn 调用本身是一个单元
+  assert.deepEqual(
+    rules("src/components/x.tsx", 'const cls = cn("overflow-y-auto scrollbar-none");\n<div className={cls} />'),
+    ["scrollbar-pair@1"],
+  );
+  // 模板串里混动态值：同一个 className 表达式里两句齐就行
+  assert.equal(
+    rules("src/components/x.tsx", '<div className={`overflow-y-auto scrollbar-none ${x} [&::-webkit-scrollbar]:hidden`} />').length,
+    0,
+  );
 });
 
 test("git 历史里的真实旧错误形态会被拦下", () => {
