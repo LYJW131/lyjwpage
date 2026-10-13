@@ -88,7 +88,7 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["workers/{api,ai,ingress,collector,dev-router}/**/*.{ts,mts}"],
+    files: ["workers/{core,ai,ingress,collector,dev-router}/**/*.{ts,mts}"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
