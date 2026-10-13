@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// 生成 PR 合并提交的标题与正文，格式见根 AGENTS.md「部署流程」。
-// 用法（在 PR 分支上、先 git fetch origin main）：pnpm merge-message <PR 号> "<PR 标题>" [基线，默认 origin/main]
-// 输出 JSON { commit_title, commit_message }，原样作为合并接口的同名参数。
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
