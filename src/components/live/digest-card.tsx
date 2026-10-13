@@ -77,7 +77,7 @@ function DayDial({
   const [handX0, handY0] = polar(36, nowTurn);
   const [handX1, handY1] = polar(CENTER - 4, nowTurn);
   return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="col-start-2 row-start-1 size-32 shrink-0 self-center md:row-span-2 lg:size-44" role="img" aria-label="The past 24 hours on a 24-hour dial">
+    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="col-start-2 row-start-1 size-32 shrink-0 self-center md:row-span-2 lg:size-40" role="img" aria-label="The past 24 hours on a 24-hour dial">
       <circle cx={CENTER} cy={CENTER} r={CENTER - 2} fill="none" stroke="var(--line)" />
       {Array.from({ length: 24 }, (_, hour) => {
         const major = hour % 6 === 0;
