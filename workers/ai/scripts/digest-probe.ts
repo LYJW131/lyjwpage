@@ -60,9 +60,9 @@ for (const model of models) {
       });
       if (outcome.status !== "composed") throw new Error(`unexpected outcome ${outcome.status}`);
       const tokens = usage as Anthropic.Usage | null;
-      const { headline, highlights } = outcome.digest;
+      const { headline, highlights, quiet } = outcome.digest;
       console.log(`── ${model} #${run} · in ${tokens?.input_tokens ?? "?"} / out ${tokens?.output_tokens ?? "?"} tokens · ${((Date.now() - started) / 1000).toFixed(1)} s`);
-      console.log([headline, ...highlights.map(({ topic, value, unit, atLeast, caption }) => `  [${topic}] ${value}${atLeast ? "+" : ""} ${unit} · ${caption}`)].join("\n") + "\n");
+      console.log([quiet ? "(quiet: the card shows the clock)" : headline, ...highlights.map(({ topic, value, unit, atLeast, caption }) => `  [${topic}] ${value}${atLeast ? "+" : ""} ${unit} · ${caption}`)].join("\n") + "\n");
     } catch (error) {
       console.log(`── ${model} #${run} failed: ${error instanceof Error ? error.message : String(error)}\n`);
     }

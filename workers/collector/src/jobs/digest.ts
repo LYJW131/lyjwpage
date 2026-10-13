@@ -17,7 +17,8 @@ export async function refreshDigest(
     return ok("unchanged");
   }
   await writeLag(deps.lag, LAG_KEYS.digest, outcome.digest, now);
-  if (!previous) {
+  // 首屏缓存只在卡片换形时失效：第一份摘要、摘要与时钟（quiet）互换；只换标题和数字的等轮询刷新。
+  if (!previous || Boolean(previous.data.quiet) !== Boolean(outcome.digest.quiet)) {
     try {
       await deps.core.revalidate(["digest"]);
     } catch (error) {
