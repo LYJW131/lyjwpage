@@ -8,6 +8,7 @@ import {
   IMMUTABLE_ASSET_CACHE_CONTROL,
   NO_STORE,
   STATUS_CACHE_CONTROL,
+  CLOCKED_LAYOUT_STATUS_CACHE_CONTROL,
   STATUS_DEGRADED_CACHE_CONTROL,
   classifyGatewayRequest,
   classifyRenderRequest,
@@ -211,6 +212,23 @@ test("状态快照可缓存并带白名单标签", () => {
     "Cache-Tag": "page:listening",
   });
   assert.doesNotMatch(STATUS_DEGRADED_CACHE_CONTROL, /stale-/);
+});
+
+test("首页后台重建读到的快照不再是过期仍在用的那份", () => {
+  for (const control of [STATUS_CACHE_CONTROL, CLOCKED_LAYOUT_STATUS_CACHE_CONTROL]) {
+    assert.doesNotMatch(control, /stale-while-revalidate/);
+    assert.match(control, /stale-if-error/);
+  }
+});
+
+test("充电头与充电宝的快照按短期限过期，跟上上报断档与恢复", () => {
+  for (const tag of ["charger", "powerbank"]) {
+    assert.deepEqual(statusSnapshotHeaders(tag, true), {
+      "Cache-Control": CLOCKED_LAYOUT_STATUS_CACHE_CONTROL,
+      "Cache-Tag": `page:${tag}`,
+    });
+  }
+  assert.deepEqual(statusSnapshotHeaders("charger", false)["Cache-Control"], STATUS_DEGRADED_CACHE_CONTROL);
 });
 
 test("失效标签白名单过滤、去重、空输入", () => {
