@@ -13,7 +13,6 @@ import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
 import { Card } from "@/components/ui/card";
 import { MacBookProIcon } from "@/components/ui/device-icons";
-import { FitNumber } from "@/components/ui/fit-number";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -748,6 +747,12 @@ function formatSiteDay(date: string) {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+function kiloMega(value: number) {
+  if (value >= 1e6) return { value: value / 1e6, suffix: "M" };
+  if (value >= 1e3) return { value: value / 1e3, suffix: "K" };
+  return { value };
+}
+
 function AgentPanel({
   row,
   macDeclaredOffline,
@@ -800,7 +805,13 @@ function AgentPanel({
             <SourceIssue failing={failing} hasValue={lastDay != null} />
           </div>
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
-            {lastDay ? <FitNumber value={lastDay.totalTokens} /> : <FlowDash />}
+            {lastDay ? (
+              <NumberFlow
+                {...kiloMega(lastDay.totalTokens)}
+                locales="en-US"
+                format={{ maximumFractionDigits: 1, useGrouping: false }}
+              />
+            ) : <FlowDash />}
           </div>
         </div>
         <div className="grid gap-3 border-l border-line pl-4">
