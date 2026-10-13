@@ -32,20 +32,26 @@ test("不在类名边界上的同形片段不算", () => {
   assert.deepEqual(tokens(`scroll-mt-12 size-3.5 h-2.5 w-[3px] data-p-2.5`), []);
 });
 
-test("按文件比较：增加报 grew，减少报 shrank", () => {
-  const baseline = { "a.tsx": { spacing: 2 }, "b.tsx": { fontSize: 1 } };
-  const counts = { "a.tsx": { spacing: 3 }, "c.tsx": { translate: 1 } };
+test("带重要性后缀、行高修饰符或 length: 类型的违规也算", () => {
+  assert.deepEqual(tokens(`"p-2.5! text-[13px]/4 text-[length:13px] !mt-3.5"`), [
+    "spacing:p-2.5",
+    "spacing:mt-3.5",
+    "fontSize:text-[13px]",
+    "fontSize:text-[length:13px]",
+  ]);
+});
+
+test("按类名比较：换成另一个违规值算增加，变少只报 shrank", () => {
+  const baseline = { "text-[10px]": 2, "py-2.5": 1 };
+  const counts = { "text-[10px]": 1, "text-[9px]": 1, "py-2.5": 1 };
   assert.deepEqual(compare(baseline, counts), {
-    grew: [
-      { file: "a.tsx", kind: "spacing", before: 2, after: 3 },
-      { file: "c.tsx", kind: "translate", before: 0, after: 1 },
-    ],
-    shrank: [{ file: "b.tsx", kind: "fontSize", before: 1, after: 0 }],
+    grew: [{ token: "text-[9px]", before: 0, after: 1 }],
+    shrank: [{ token: "text-[10px]", before: 2, after: 1 }],
   });
 });
 
-test("基线按文件名排序", () => {
-  assert.deepEqual(Object.keys(sortedBaseline({ "z.tsx": { spacing: 1 }, "a.tsx": { fontSize: 2 } })), ["a.tsx", "z.tsx"]);
+test("基线按类名排序", () => {
+  assert.deepEqual(Object.keys(sortedBaseline({ "text-[9px]": 1, "gap-2.5": 2 })), ["gap-2.5", "text-[9px]"]);
 });
 
 test("SPACING_SCALE 与 DESIGN.md「Layout」的间距刻度表一致（另加 0 与 px）", () => {

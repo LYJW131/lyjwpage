@@ -1,120 +1,27 @@
 {
-  "src/app/not-found.tsx": {
-    "spacing": 1
-  },
-  "src/app/page.tsx": {
-    "spacing": 1
-  },
-  "src/app/root.tsx": {
-    "spacing": 1
-  },
-  "src/components/app-version-card.tsx": {
-    "spacing": 4,
-    "fontSize": 2
-  },
-  "src/components/ask-card.tsx": {
-    "spacing": 1,
-    "fontSize": 2
-  },
-  "src/components/build-plan-card.tsx": {
-    "fontSize": 7
-  },
-  "src/components/chat-card.tsx": {
-    "spacing": 1,
-    "fontSize": 9
-  },
-  "src/components/chat-markdown.tsx": {
-    "fontSize": 1
-  },
-  "src/components/chat-visual.tsx": {
-    "spacing": 1,
-    "fontSize": 2
-  },
-  "src/components/footer.tsx": {
-    "fontSize": 1
-  },
-  "src/components/github-consent.tsx": {
-    "fontSize": 1
-  },
-  "src/components/god-chat.tsx": {
-    "spacing": 2,
-    "fontSize": 26
-  },
-  "src/components/live/agent-status-card.tsx": {
-    "spacing": 1
-  },
-  "src/components/live/charger-card.tsx": {
-    "spacing": 1,
-    "fontSize": 2
-  },
-  "src/components/live/digest-card.tsx": {
-    "spacing": 2,
-    "translate": 1
-  },
-  "src/components/live/heatmap-hover.tsx": {
-    "fontSize": 1
-  },
-  "src/components/live/listening-card.tsx": {
-    "spacing": 4,
-    "fontSize": 3
-  },
-  "src/components/live/live-desk-card.tsx": {
-    "fontSize": 2
-  },
-  "src/components/live/now-watching-card.tsx": {
-    "spacing": 4,
-    "fontSize": 1
-  },
-  "src/components/live/online-count.tsx": {
-    "spacing": 1
-  },
-  "src/components/live/powerbank-card.tsx": {
-    "spacing": 1,
-    "fontSize": 2
-  },
-  "src/components/live/pulse-card.tsx": {
-    "fontSize": 4
-  },
-  "src/components/live/quest-now-card.tsx": {
-    "spacing": 3
-  },
-  "src/components/live/repo-contributions.tsx": {
-    "spacing": 2,
-    "fontSize": 5
-  },
-  "src/components/live/site-status-card.tsx": {
-    "spacing": 3,
-    "fontSize": 15
-  },
-  "src/components/live/timezone-card.tsx": {
-    "spacing": 1
-  },
-  "src/components/live/uptime-strip.tsx": {
-    "spacing": 2,
-    "fontSize": 1
-  },
-  "src/components/live/vibe-year-chart.tsx": {
-    "fontSize": 3
-  },
-  "src/components/live/watching-card.tsx": {
-    "spacing": 3
-  },
-  "src/components/live/workouts-strip.tsx": {
-    "fontSize": 3
-  },
-  "src/components/trophies/game-flags.tsx": {
-    "fontSize": 1
-  },
-  "src/components/trophies/trophy-details.tsx": {
-    "spacing": 2
-  },
-  "src/components/ui/flow-dash.tsx": {
-    "spacing": 1
-  },
-  "src/components/ui/section.tsx": {
-    "spacing": 1
-  },
-  "src/components/web-player/web-player-dialog.tsx": {
-    "spacing": 2
-  }
+  "-mr-[3px]": 4,
+  "-translate-y-[3px]": 1,
+  "gap-2.5": 4,
+  "gap-[3px]": 1,
+  "gap-x-2.5": 2,
+  "gap-y-2.5": 1,
+  "mb-2.5": 1,
+  "mt-2.5": 1,
+  "my-3.5": 1,
+  "pb-[3px]": 4,
+  "pl-3.5": 1,
+  "pl-4.5": 2,
+  "pl-9": 1,
+  "pr-[3px]": 3,
+  "pt-2.5": 3,
+  "px-2.5": 5,
+  "py-10": 1,
+  "py-12": 2,
+  "py-2.5": 8,
+  "py-[0.25em]": 1,
+  "text-[0.6875rem]": 4,
+  "text-[0.85em]": 1,
+  "text-[10px]": 61,
+  "text-[11px]": 23,
+  "text-[9px]": 5
 }

@@ -9,7 +9,7 @@ export const BASELINE_PATH = "scripts/design-scale-baseline.json";
 export const SPACING_SCALE = new Set(["0", "px", "0.5", "1", "1.5", "2", "3", "4", "5", "6", "8"]);
 
 const BOUNDARY = String.raw`(?<=^|[\s"'\`:!{(])`;
-const END = String.raw`(?=$|[\s"'\`)}])`;
+const END = String.raw`(?=$|[\s"'\`)}!/])`;
 
 export const RULES = {
   spacing: {
@@ -19,7 +19,7 @@ export const RULES = {
   },
   fontSize: {
     label: "任意值字号",
-    re: new RegExp(String.raw`${BOUNDARY}text-\[[\d.][^\]\s]*\]${END}`, "g"),
+    re: new RegExp(String.raw`${BOUNDARY}text-\[(?:length:)?[\d.][^\]\s]*\]${END}`, "g"),
     offScale: () => true,
   },
   translate: {
@@ -42,15 +42,14 @@ export function scan(text) {
   return hits;
 }
 
-export function countByFile(files, readText) {
+export function countTokens(files, readText) {
   const counts = {};
   const hits = {};
   for (const file of files) {
-    const found = scan(readText(file));
-    if (found.length === 0) continue;
-    hits[file] = found;
-    counts[file] = {};
-    for (const { kind } of found) counts[file][kind] = (counts[file][kind] ?? 0) + 1;
+    for (const { token, line } of scan(readText(file))) {
+      counts[token] = (counts[token] ?? 0) + 1;
+      (hits[token] ??= []).push(`${file}:${line}`);
+    }
   }
   return { counts, hits };
 }
@@ -58,24 +57,17 @@ export function countByFile(files, readText) {
 export function compare(baseline, counts) {
   const grew = [];
   const shrank = [];
-  for (const file of new Set([...Object.keys(baseline), ...Object.keys(counts)])) {
-    for (const kind of Object.keys(RULES)) {
-      const before = baseline[file]?.[kind] ?? 0;
-      const after = counts[file]?.[kind] ?? 0;
-      if (after > before) grew.push({ file, kind, before, after });
-      else if (after < before) shrank.push({ file, kind, before, after });
-    }
+  for (const token of [...new Set([...Object.keys(baseline), ...Object.keys(counts)])].sort()) {
+    const before = baseline[token] ?? 0;
+    const after = counts[token] ?? 0;
+    if (after > before) grew.push({ token, before, after });
+    else if (after < before) shrank.push({ token, before, after });
   }
   return { grew, shrank };
 }
 
 export function sortedBaseline(counts) {
-  const out = {};
-  for (const file of Object.keys(counts).sort()) {
-    out[file] = {};
-    for (const kind of Object.keys(RULES)) if (counts[file][kind]) out[file][kind] = counts[file][kind];
-  }
-  return out;
+  return Object.fromEntries(Object.keys(counts).sort().map((token) => [token, counts[token]]));
 }
 
 function trackedSources(root) {
@@ -88,7 +80,7 @@ function main() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const update = process.argv.includes("--update");
   const files = trackedSources(root);
-  const { counts, hits } = countByFile(files, (file) => readFileSync(path.join(root, file), "utf8"));
+  const { counts, hits } = countTokens(files, (file) => readFileSync(path.join(root, file), "utf8"));
   const baselineFile = path.join(root, BASELINE_PATH);
 
   if (update) {
@@ -99,21 +91,19 @@ function main() {
 
   const baseline = JSON.parse(readFileSync(baselineFile, "utf8"));
   const { grew, shrank } = compare(baseline, counts);
-  for (const { file, kind, before, after } of grew) {
-    console.error(`✗ ${file}：${RULES[kind].label} ${before} → ${after}`);
-    for (const hit of hits[file].filter((h) => h.kind === kind)) console.error(`    ${file}:${hit.line}  ${hit.token}`);
-  }
-  for (const { file, kind, before, after } of shrank) {
-    console.error(`✗ ${file}：${RULES[kind].label} ${before} → ${after}，基线没跟着收紧`);
+  for (const { token, before, after } of grew) {
+    console.error(`✗ ${token}：${before} → ${after}`);
+    for (const at of hits[token]) console.error(`    ${at}`);
   }
   if (grew.length > 0) {
     console.error("\n新代码只用 DESIGN.md 阶梯里的间距与字号。确属图形内部的 10px 刻度或光学对齐微调，跑 `pnpm design:scale --update` 并在 PR 里说明。");
+    process.exit(1);
   }
+  // 变少不算失败：访客构建（.github/build/implement.md）只能改 src/，写不了这份基线。
   if (shrank.length > 0) {
-    console.error("\n违规变少了：跑 `pnpm design:scale --update` 把基线收紧后一起提交。");
+    console.log(`存量变少：${shrank.map(({ token, before, after }) => `${token} ${before} → ${after}`).join("，")}。跑 \`pnpm design:scale --update\` 收紧基线。`);
   }
-  if (grew.length > 0 || shrank.length > 0) process.exit(1);
-  const total = Object.values(counts).reduce((sum, kinds) => sum + Object.values(kinds).reduce((a, b) => a + b, 0), 0);
+  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
   console.log(`design:scale 通过（存量 ${total} 处，未增加）`);
 }
 
