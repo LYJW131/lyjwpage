@@ -180,11 +180,11 @@ Pulse 卡片首屏按卡读它（`src/lib/first-screen.ts`）、挂载后自己�
       // Clef 的十五分钟评估：强度 0–4、置信度、模式；只在悬停里出现
       "assessments": { "startSec": [0], "endSec": [900], "intensity": [3], "confidence": [0.88], "mode": ["mixed"] },
       "summary": { "humanSeconds": 3600, "agentSeconds": 0, "bothSeconds": 3600 } },
-    // 各来源、各 agent、各模型相加后的五分钟桶：fresh = input + output + cache 写入，cache 读单列
+    // 各来源、各 agent、各模型相加后的五分钟桶：total = input + output + cache 读 + cache 写（`shared/coding-usage.ts#codingRowTokens`），output、cacheRead 是其中的分项
     "tokens": { "kind": "tokens",
-      "buckets": { "startSec": [3600, 3900], "endSec": [3900, 4200], "fresh": [120000, 64000], "output": [9000, 5100], "cacheRead": [2400000, 1300000] },
-      // peak / current 是 fresh 的每分钟速率；current 为 0 是看得见、没在用，null 是未知
-      "summary": { "peakPerMinute": 24000, "currentPerMinute": null, "freshTokens": 184000 } },
+      "buckets": { "startSec": [3600, 3900], "endSec": [3900, 4200], "total": [2520000, 1364000], "output": [9000, 5100], "cacheRead": [2400000, 1300000] },
+      // peak / current 是 total 的每分钟速率；current 为 0 是看得见、没在用，null 是未知
+      "summary": { "peakPerMinute": 504000, "currentPerMinute": null, "totalTokens": 3884000 } },
     // listening / watching：0 空闲，1 暂停，2 在放；gaming：0 离线，1 在线，2 在游戏里
     "listening": { "kind": "state",
       "segments": { "startSec": [1800], "endSec": [2040], "state": [2], "title": ["群青"], "subtitle": ["YOASOBI"] },

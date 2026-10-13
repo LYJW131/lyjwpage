@@ -55,6 +55,10 @@ export type CodingTokenBucketReport = {
   }>;
 };
 
+export function codingRowTokens(row: Pick<CodingTokenBucketRow, "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheCreationTokens">): number {
+  return row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheCreationTokens;
+}
+
 export const CODING_BUCKET_MS = 300_000;
 export const CODING_ACTIVE_MS = 5 * 60_000;
 export const CODING_ACTIVITY_STALE_MS = 10 * 60_000;

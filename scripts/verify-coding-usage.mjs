@@ -189,8 +189,8 @@ pass("Year: 371 days from the Sunday 52 weeks back, exact per-day model split ac
 const pulse = await data("/api/status/pulse");
 const lane = pulse.lanes.tokens;
 assert.equal(lane.kind, "tokens");
-assert.ok(lane.buckets.fresh.some((value) => value >= 6_500), JSON.stringify(lane));
-assert.ok(lane.summary.freshTokens >= 6_500);
+assert.ok(lane.buckets.total.some((value) => value >= 56_500), JSON.stringify(lane));
+assert.ok(lane.summary.totalTokens >= 56_500);
 assert.equal(JSON.stringify(lane).includes("claude"), false);
 pass("Pulse Tokens lane sums the token buckets without model or source names");
 
