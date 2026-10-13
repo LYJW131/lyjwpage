@@ -9,6 +9,11 @@ export const CRON_SCHEDULE = `${Array.from(
   (_, index) => index * CRON_HEARTBEAT_EVERY_MINUTES + CRON_OFFSET_MINUTES,
 ).join(",")} * * * *`;
 
+// scheduledTime 是驱动方那一分钟的触发时刻；60 能被周期整除，按纪元分钟取模与按钟面分钟取模等价。
+export function cronRoundDue(scheduledTime: number): boolean {
+  return Math.floor(scheduledTime / 60_000) % CRON_HEARTBEAT_EVERY_MINUTES === CRON_OFFSET_MINUTES;
+}
+
 export const CRON_MONITOR_SLUG = SENTRY_CRON_MONITOR_SLUG;
 export const CRON_MONITOR_CONFIG = {
   schedule: { type: "crontab", value: CRON_SCHEDULE },
