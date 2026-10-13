@@ -13,7 +13,7 @@ description: lyjwpage 的「提炼 skill」定时任务按它跑：从书签起�
 
 - 跨运行状态在项目共享目录 `/mnt/project-files/skill-mining/`，不在本会话记忆里：
   - `/mnt/project-files/skill-mining/state.json`：`threads`（每个线程的书签：`lastMessageId`、`lastActivityAt`、`title`），`ledger`（候选与提议，见下），`feedback`（`phase`、`reportsSent`、`reportsLimit`、`lastReportMessageId`），`runs`（已跑次数）。
-  - `/mnt/project-files/skill-mining/runs/<上海日期>.md`：每次运行一份记录，开头写 `开始`，结束改成 `完成 | 部分完成 | 失败`。
+  - `/mnt/project-files/skill-mining/runs/<上海日期>-<HHMM>.md`（开始时间）：每次运行一份记录，同一天重跑不覆盖，开头写 `开始`，结束改成 `完成 | 部分完成 | 失败`。
 - `ledger` 每项：`id`、`kind`（`new` / `improve` / `prune`）、`skill`、`summary`、`evidence`（线程 id + 消息 id）、`status`（`watching` 只见过一次 / `proposed` / `pr-open` / `merged` / `rejected` / `deferred`）、`pr`、`firstSeen`、`lastSeen`。已有项不重复报告，状态没变的只在记录里一行带过。
 - 偏好每次重读，不抄进本文件：根 `AGENTS.md`、`HUMAN.md`、项目记忆（索引及相关条目）、本线程里站主对上次报告的回复。站主的话优先于本文件。
 - 读不到状态文件：第一次运行（目录不存在）就建一个空的；目录在但文件坏了，停下，在本线程说明，不拿默认值重扫。
@@ -34,7 +34,7 @@ description: lyjwpage 的「提炼 skill」定时任务按它跑：从书签起�
 
 ### 1. 读状态、开运行记录
 
-`git fetch origin main`，读状态文件，写当天的运行记录：`开始`、本次要读的书签范围。
+`git fetch origin main`，读状态文件，新建本次的运行记录：`开始`、本次要读的书签范围。
 
 ### 2. 收反馈
 
@@ -69,7 +69,7 @@ description: lyjwpage 的「提炼 skill」定时任务按它跑：从书签起�
 ### 6. 写 skill、自测、开 PR
 
 - 写法照仓库现有 skill（`lyjwpage-verify`）和「参考」里的写作要点：
-  - `name` 用 `lyjwpage-<动作>` 小写连字符；`description` 第一句写做什么、第二句写什么时候用，触发词放前面，这是唯一常驻上下文的部分。
+  - `name` 用 `lyjwpage-<动作>` 小写连字符；`description` 写清做什么和什么时候用，触发词放前面，这是唯一常驻上下文的部分。
   - 正文写到 Claude 能照做为止，不解释 Claude 已经懂的东西；超过约 200 行就把细节拆到同目录的一级引用文件，从 `SKILL.md` 直接链接。
   - 遵守根 `AGENTS.md`「文档与注释」：不写时间线、不抄易变的值、一个事实一个出处，规则在别处已有就写指针。
   - 给执行者选模型时写明 `model` 与 `effort`，依据见「参考」。
