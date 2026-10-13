@@ -19,17 +19,13 @@ type DigestViewKey = (typeof DIGEST_VIEWS)[number];
 
 export type DigestViews = { [K in DigestViewKey]: StatusPayloads[K] | null };
 
+// 任一视图读不到就让整轮失败、保留上一份摘要：当成没有事实会让新摘要悄悄漏掉整类近况。
 export async function readDigestViews(readStatus: (path: string) => Promise<Response>): Promise<DigestViews> {
   const entries = await Promise.all(DIGEST_VIEWS.map(async (key) => {
-    try {
-      const response = await readStatus(STATUS_VIEWS[key].path);
-      if (!response.ok) return [key, null] as const;
-      const envelope = (await response.json()) as StatusResponse<unknown>;
-      return [key, envelope.ok ? envelope.data : null] as const;
-    } catch (error) {
-      console.warn("[digest] read", key, error instanceof Error ? error.message : String(error));
-      return [key, null] as const;
-    }
+    const response = await readStatus(STATUS_VIEWS[key].path);
+    const envelope = response.ok ? ((await response.json()) as StatusResponse<unknown>) : null;
+    if (!envelope?.ok) throw new Error(`Digest view ${key} unavailable: ${envelope ? envelope.error : `HTTP ${response.status}`}`);
+    return [key, envelope.data] as const;
   }));
   return Object.fromEntries(entries) as DigestViews;
 }
@@ -173,26 +169,34 @@ function codingLines(views: DigestViews, windowFrom: number, today: string): str
   return lines;
 }
 
+// 来源列表有条数上限：列出的最旧一条还在窗口里，窗口里就可能还有没列出的，只能写下限。
+function windowCount(count: number, listedAt: (number | null)[], windowFrom: number): string {
+  const times = listedAt.filter((at): at is number => at != null && Number.isFinite(at));
+  return count > 0 && times.length > 0 && Math.min(...times) >= windowFrom ? `${count}+` : String(count);
+}
+
 function siteLine(views: DigestViews, windowFrom: number): string | null {
   const commits = views.githubRepo?.recentCommits ?? [];
-  const inWindow = commits.filter((commit) => commit.committedAt && Date.parse(commit.committedAt) >= windowFrom);
+  const committedAt = (commit: (typeof commits)[number]) => (commit.committedAt ? Date.parse(commit.committedAt) : null);
+  const inWindow = commits.filter((commit) => (committedAt(commit) ?? -Infinity) >= windowFrom);
   const deploys = views.siteDeployments?.recent ?? [];
   const shipped = deploys.filter((deploy) => deploy.target === "production" && deploy.state === "READY" && deploy.createdAt >= windowFrom);
   if (!inWindow.length && !shipped.length) return null;
-  const atLeast = (count: number, listed: number) => (count && count === listed ? `${count}+` : String(count));
   const scopes = [...new Set(inWindow.flatMap((commit) => {
     const scope = /^\w+\(([^)]+)\)!?:/.exec(commit.title)?.[1];
     return scope ? [scope] : [];
   }))].slice(0, 5);
   return [
-    `This homepage's own code: ${atLeast(inWindow.length, commits.length)} commits, ${atLeast(shipped.length, deploys.length)} production deploys`,
+    `This homepage's own code: ${windowCount(inWindow.length, commits.map(committedAt), windowFrom)} commits, ${windowCount(shipped.length, deploys.map((deploy) => deploy.createdAt), windowFrom)} production deploys`,
     scopes.length ? `areas touched ${scopes.join(", ")}` : null,
   ].filter(Boolean).join("; ");
 }
 
 function fitnessLines(views: DigestViews, windowFrom: number, now: number): string[] {
   const lines: string[] = [];
-  const steps = views.pulse!.lanes.activity.summary.steps;
+  const steps = Math.round(views.pulse!.lanes.activity.summary.steps / 100) * 100;
+  // 步数桶只在有步数时才上报，零步分不清是没走还是没上报，只能不写。
+  if (steps > 0) lines.push(`Steps: ${steps.toLocaleString("en-US")} in 24 h`);
   const workouts = (views.workouts?.items ?? []).filter((workout) => workout.endedAt >= windowFrom);
   const described = workouts.map((workout) => {
     const distance = workout.distanceMeters && workout.distanceMeters >= 100 ? `, ${Math.round(workout.distanceMeters / 100) / 10} km` : "";
@@ -200,12 +204,8 @@ function fitnessLines(views: DigestViews, windowFrom: number, now: number): stri
   });
   const last = views.workouts?.items.reduce<(typeof workouts)[number] | null>((latest, workout) => (!latest || workout.startedAt > latest.startedAt ? workout : latest), null);
   const sinceLast = last ? Math.floor((now - last.endedAt) / 86_400_000) : null;
-  lines.push([
-    `Steps: ${(Math.round(steps / 100) * 100).toLocaleString("en-US")} in 24 h`,
-    described.length
-      ? `workouts ${described.join(", ")}`
-      : last && sinceLast != null ? `no workout (last one: ${last.activityType}, ${sinceLast} ${sinceLast === 1 ? "day" : "days"} ago)` : null,
-  ].filter(Boolean).join("; "));
+  if (described.length) lines.push(`Workouts: ${described.join(", ")}`);
+  else if (last && sinceLast != null) lines.push(`No workout (last one: ${last.activityType}, ${sinceLast} ${sinceLast === 1 ? "day" : "days"} ago)`);
   const rings = views.activity;
   if (rings?.currentAtSource) {
     const percent = (value: number, goal: number) => `${goal > 0 ? Math.min(100, Math.round((value / goal) * 10) * 10) : 0}%`;
@@ -215,10 +215,11 @@ function fitnessLines(views: DigestViews, windowFrom: number, now: number): stri
 }
 
 function trophyLine(trophies: TrophiesSummaryPayload | null, windowFrom: number): string | null {
-  const earned = (trophies?.recent ?? []).filter((trophy) => trophy.earnedAt >= windowFrom);
+  const recent = trophies?.recent ?? [];
+  const earned = recent.filter((trophy) => trophy.earnedAt >= windowFrom);
   if (!earned.length) return null;
   const listed = earned.slice(0, 3).map((trophy) => `${trophy.trophyName} (${trophy.type}, ${trophy.titleName})`);
-  return `PlayStation trophies earned: ${earned.length}; ${listed.join(", ")}`;
+  return `PlayStation trophies earned: ${windowCount(earned.length, recent.map((trophy) => trophy.earnedAt), windowFrom)}; ${listed.join(", ")}`;
 }
 
 export function digestFacts(views: DigestViews, now: number): string {

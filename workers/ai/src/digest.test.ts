@@ -94,10 +94,7 @@ function baseViews(): DigestViews {
 
 function reader(views: DigestViews) {
   const byPath = new Map<string, unknown>(Object.entries(views).map(([key, data]) => [STATUS_VIEWS[key as keyof typeof STATUS_VIEWS].path, data]));
-  return async (path: string) => {
-    const data = byPath.get(path);
-    return data ? Response.json({ ok: true, data }) : Response.json({ ok: false, error: "Unknown status view." }, { status: 404 });
-  };
+  return async (path: string) => Response.json({ ok: true, data: byPath.get(path) ?? null });
 }
 
 function message(text: string, stop: Anthropic.Message["stop_reason"] = "end_turn"): Anthropic.Message {
@@ -117,7 +114,47 @@ test("facts keep the day's highlights, in the owner's time zone, and leave empty
   assert.match(facts, /Music: 3\.5 h, 14 tracks; top artists Hoshimachi Suisei \(3 h\), Houshou Marine & Hoshimachi Suisei \(25 min\); most played tracks GUM&DROP \(30 min\)/);
   assert.match(facts, /Watching on Emby: 50 min; 辉夜大小姐想让我告白 \[S3:E4, S3:E5\] \(50 min\)/);
   assert.doesNotMatch(facts, /Gaming|trophies|homepage's own code/);
-  assert.match(facts, /Steps: 3,300 in 24 h; no workout \(last one: Walking, 8 days ago\)/);
+  assert.match(facts, /Steps: 3,300 in 24 h\nNo workout \(last one: Walking, 8 days ago\)$/);
+});
+
+test("facts leave steps out when no step buckets arrived, instead of claiming zero", () => {
+  const views = baseViews();
+  views.pulse!.lanes.activity.summary.steps = 0;
+  const facts = digestFacts(views, NOW);
+  assert.doesNotMatch(facts, /Steps/);
+  assert.match(facts, /\nNo workout \(last one: Walking, 8 days ago\)$/);
+});
+
+test("counts from capped source lists read as lower bounds while the oldest listed entry is inside the window", () => {
+  const views = baseViews();
+  const at = (hoursAgo: number) => NOW - hoursAgo * HOUR;
+  const commits = Array.from({ length: 10 }, (_, index) => ({ title: `feat(site): change ${index}`, committedAt: new Date(at(1 + index)).toISOString() }));
+  const deploys = [
+    { target: "production", state: "READY", createdAt: at(1) },
+    { target: "preview", state: "READY", createdAt: at(2) },
+    { target: "production", state: "ERROR", createdAt: at(3) },
+    { target: "production", state: "READY", createdAt: at(4) },
+    { target: "production", state: "READY", createdAt: at(5) },
+  ];
+  const trophies = [
+    { trophyName: "Gold Rush", type: "gold", titleName: "ASTRO BOT", earnedAt: at(1) },
+    { trophyName: "Silver Lining", type: "silver", titleName: "ASTRO BOT", earnedAt: at(2) },
+    { trophyName: "Bronze Age", type: "bronze", titleName: "ASTRO BOT", earnedAt: at(3) },
+  ];
+  views.githubRepo = { recentCommits: commits } as unknown as DigestViews["githubRepo"];
+  views.siteDeployments = { recent: deploys } as unknown as DigestViews["siteDeployments"];
+  views.trophies = { recent: trophies } as unknown as DigestViews["trophies"];
+
+  let facts = digestFacts(views, NOW);
+  assert.match(facts, /This homepage's own code: 10\+ commits, 3\+ production deploys; areas touched site\n/);
+  assert.match(facts, /PlayStation trophies earned: 3\+; Gold Rush \(gold, ASTRO BOT\), Silver Lining \(silver, ASTRO BOT\), Bronze Age \(bronze, ASTRO BOT\)\n/);
+
+  commits[9].committedAt = new Date(at(30)).toISOString();
+  deploys[4].createdAt = at(30);
+  trophies[2].earnedAt = at(30);
+  facts = digestFacts(views, NOW);
+  assert.match(facts, /This homepage's own code: 9 commits, 2 production deploys;/);
+  assert.match(facts, /PlayStation trophies earned: 2; Gold Rush \(gold, ASTRO BOT\), Silver Lining \(silver, ASTRO BOT\)\n/);
 });
 
 test("facts round small changes away, so an unchanged hour keeps the same input hash", async () => {
@@ -164,7 +201,7 @@ test("compose calls the model once per new input and keeps the old digest while 
   assert.equal(calls.length, 1);
 });
 
-test("compose fails the round instead of publishing a refusal, a cut-off answer or a digest without the pulse view", async () => {
+test("compose fails the round instead of publishing a refusal, a cut-off answer or a digest missing a view", async () => {
   const readStatus = reader(baseViews());
   for (const stop of ["refusal", "max_tokens"] as const) {
     await assert.rejects(
@@ -181,6 +218,20 @@ test("compose fails the round instead of publishing a refusal, a cut-off answer 
     composeDigest({ readStatus: reader(withoutPulse), createMessage: async () => message("x"), previousInputHash: null, now: NOW }),
     /Pulse view unavailable/,
   );
+  const workoutsPath = STATUS_VIEWS.workouts.path;
+  const failures: [(path: string) => Promise<Response>, RegExp][] = [
+    [async (path) => (path === workoutsPath ? Response.json({ ok: false, error: "状态暂不可用" }) : readStatus(path)), /Digest view workouts unavailable: 状态暂不可用/],
+    [async (path) => (path === workoutsPath ? new Response("Bad gateway", { status: 502 }) : readStatus(path)), /Digest view workouts unavailable: HTTP 502/],
+    [async (path) => { if (path === workoutsPath) throw new Error("RPC dropped"); return readStatus(path); }, /RPC dropped/],
+  ];
+  let modelCalls = 0;
+  for (const [failing, error] of failures) {
+    await assert.rejects(
+      composeDigest({ readStatus: failing, createMessage: async () => { modelCalls += 1; return message("x"); }, previousInputHash: null, now: NOW }),
+      error,
+    );
+  }
+  assert.equal(modelCalls, 0);
 });
 
 test("an overlong answer is cut at a sentence end, never mid-sentence", () => {
