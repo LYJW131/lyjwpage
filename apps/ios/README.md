@@ -69,7 +69,7 @@ Listen Along 用 `SystemMusic.swift#SystemMusic.listenAlong` 调用系统音乐 
 cd apps/ios && swift test
 ```
 
-测试对着两份样本解码：`Tests/Fixtures/` 是某一刻从生产 api Worker 抓的快照；站点本地开发用的 `workers/api/dev-fixtures/` 直接读仓库里那一份，覆盖此刻没发生的状态。站点契约变了两边一起红。Xcode 里同一批测试在 `LyjwpageTests` 目标（不挂宿主 App）。
+测试对着两份样本解码：`Tests/Fixtures/` 是某一刻从生产 api Worker 抓的快照；站点本地开发用的 `workers/core/dev-fixtures/` 直接读仓库里那一份，覆盖此刻没发生的状态。站点契约变了两边一起红。Xcode 里同一批测试在 `LyjwpageTests` 目标（不挂宿主 App）。
 
 模拟器端到端测试使用 `UITests/SimulatorTests.swift`，覆盖生产分区、刷新、排序与显隐保存、播放器与歌词、Pulse 选点、看片左滑与分享、缓存与失败状态、设置及横屏大字体。先在仓库根启动 `pnpm dev:worker`（`.dev.vars` 配 `DEV_OVERRIDES=true`），运行 `pnpm dev:override --on`，再启动目标模拟器：
 

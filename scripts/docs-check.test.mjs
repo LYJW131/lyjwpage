@@ -87,17 +87,17 @@ test("文首类型：只认前 6 行的 `> 类型：`，record 的核对句要�
 });
 
 test("哪些反引号内容算仓库路径：宁可漏查也不误报", () => {
-  const ctx = ctxOf({ "src/lib/a.ts": "", "workers/api/src/stores/x.ts": "", "package.json": "" });
+  const ctx = ctxOf({ "src/lib/a.ts": "", "workers/core/src/stores/x.ts": "", "package.json": "" });
   const ref = (token) => parsePathToken(token, ctx)?.ref ?? null;
   assert.equal(ref("src/lib/a.ts"), "src/lib/a.ts");
   assert.equal(ref("./src/lib/a.ts"), "src/lib/a.ts");
   assert.equal(ref("package.json"), "package.json");
-  assert.equal(ref("workers/api/src/stores"), "workers/api/src/stores");
+  assert.equal(ref("workers/core/src/stores"), "workers/core/src/stores");
   assert.equal(ref("src/lib/a.ts:12-30"), "src/lib/a.ts");
   assert.equal(ref("src/lib/a.ts#Sym"), "src/lib/a.ts");
   for (const skipped of [
     "https://lyjw.me/a.ts", "dsm:/volume3/docker/x.yml", "file://x.md", "/data/traffic.json", "/api/status/x", "~/.claude/skills",
-    "src/lib/<名称>.ts", "docs/*.md", "sha256….png", "pnpm dev", "pnpm --dir workers/api test", "Next.js", ".env", ".mts",
+    "src/lib/<名称>.ts", "docs/*.md", "sha256….png", "pnpm dev", "pnpm --dir workers/core test", "Next.js", ".env", ".mts",
     "lyjw.me", "api2.cursor.sh", "X/now", "positionMs", "@lobehub/icons/es/x", "node_modules/next/dist/docs/",
   ]) {
     assert.equal(parsePathToken(skipped, ctx), null, skipped);
@@ -106,18 +106,18 @@ test("哪些反引号内容算仓库路径：宁可漏查也不误报", () => {
 
 test("解析路径：先按 md 所在目录，再按仓库根；裸文件名只要仓库里有同名文件", () => {
   const ctx = ctxOf(
-    { "workers/api/README.md": "", "workers/api/src/index.ts": "", "src/lib/status-views.ts": "", "shared/lag.ts": "" },
-    { submodules: ["reporters/hub"], ignored: ["public/explainer/", "workers/api/.dev.vars"] },
+    { "workers/core/README.md": "", "workers/core/src/index.ts": "", "src/lib/status-views.ts": "", "shared/lag.ts": "" },
+    { submodules: ["reporters/hub"], ignored: ["public/explainer/", "workers/core/.dev.vars"] },
   );
-  assert.equal(resolveRef(ctx, "workers/api/README.md", "src/index.ts"), "workers/api/src/index.ts");
-  assert.equal(resolveRef(ctx, "workers/api/README.md", "src/lib/status-views.ts"), "src/lib/status-views.ts");
-  assert.equal(resolveRef(ctx, "workers/api/README.md", "../../shared/lag.ts"), "shared/lag.ts");
-  assert.equal(resolveRef(ctx, "workers/api/README.md", "shared"), "shared");
+  assert.equal(resolveRef(ctx, "workers/core/README.md", "src/index.ts"), "workers/core/src/index.ts");
+  assert.equal(resolveRef(ctx, "workers/core/README.md", "src/lib/status-views.ts"), "src/lib/status-views.ts");
+  assert.equal(resolveRef(ctx, "workers/core/README.md", "../../shared/lag.ts"), "shared/lag.ts");
+  assert.equal(resolveRef(ctx, "workers/core/README.md", "shared"), "shared");
   assert.equal(resolveRef(ctx, "docs/x.md", "status-views.ts", { bare: true }), "status-views.ts");
   assert.equal(resolveRef(ctx, "docs/x.md", "src/lib/status-views", {}), "src/lib/status-views.ts");
   assert.equal(resolveRef(ctx, "docs/x.md", "reporters/hub/build.sh"), "reporters/hub/build.sh");
   assert.equal(resolveRef(ctx, "docs/x.md", "public/explainer/", { dirRef: true }), "public/explainer");
-  assert.equal(resolveRef(ctx, "workers/api/README.md", ".dev.vars"), "workers/api/.dev.vars");
+  assert.equal(resolveRef(ctx, "workers/core/README.md", ".dev.vars"), "workers/core/.dev.vars");
   assert.equal(resolveRef(ctx, "docs/x.md", "src/gone.ts"), null);
   assert.equal(resolveRef(ctx, "docs/x.md", "../../outside.ts"), null);
 });

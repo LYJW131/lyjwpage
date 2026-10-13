@@ -14,7 +14,7 @@ registerHooks({
 const { handleChat } = await import("../src/chat/handler.ts");
 
 const USAGE = `用法：pnpm --dir workers/ai chat:probe [--tier haiku-medium] [--runs 5] [--fixture listening-now-elsewhere-estimated] "问题"
-用真实模型跑首页对话（跳过 Clef 与验人），状态视图读 workers/api/dev-fixtures/ 里同名端点的夹具，没有夹具的视图回 404。
+用真实模型跑首页对话（跳过 Clef 与验人），状态视图读 workers/core/dev-fixtures/ 里同名端点的夹具，没有夹具的视图回 404。
 ANTHROPIC_API_KEY 取环境变量或 workers/ai/.dev.vars。`;
 
 const args = process.argv.slice(2);
@@ -52,7 +52,7 @@ const fixtureByPath = new Map(fixtures.map((name) => {
   const slug = (path: string) => path.replace(/^\/api\/status\//, "").replaceAll("/", "-");
   const view = Object.values(STATUS_VIEWS).filter((entry) => name.startsWith(slug(entry.path))).sort((a, b) => b.path.length - a.path.length)[0];
   if (!view) throw new Error(`夹具 ${name} 对不上任何状态视图`);
-  return [view.path, JSON.parse(readFileSync(new URL(`../../api/dev-fixtures/${name}.json`, import.meta.url), "utf8"))] as const;
+  return [view.path, JSON.parse(readFileSync(new URL(`../../core/dev-fixtures/${name}.json`, import.meta.url), "utf8"))] as const;
 }));
 
 // 和生产一样直连 api.anthropic.com：SDK 会读 ANTHROPIC_BASE_URL，本机若设了它就会绕到别处。

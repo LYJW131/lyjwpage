@@ -43,7 +43,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@api/*", "**/workers/api/**"],
+          group: ["@core/*", "**/workers/core/**"],
           message: "上报写入和实时发布只属于 Worker；共享类型、键和计算放在 shared。",
         }, {
           group: ["**/workers/collector/**"],
@@ -69,7 +69,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@api/*", "**/workers/api/**"],
+          group: ["@core/*", "**/workers/core/**"],
           message: "上报写入和实时发布只属于 Worker；共享类型、键和计算放在 shared。",
         }, {
           group: ["**/workers/collector/**"],
@@ -100,8 +100,8 @@ const eslintConfig = defineConfig([
   },
   {
     // 上报校验不能进入状态核心运行依赖，否则会绕过 Workers Builds 的监视路径隔离。
-    files: ["workers/api/src/**/*.ts"],
-    ignores: ["workers/api/src/**/*.test.ts", "workers/api/src/preview-entry.ts"],
+    files: ["workers/core/src/**/*.ts"],
+    ignores: ["workers/core/src/**/*.test.ts", "workers/core/src/preview-entry.ts"],
     rules: {
       "@typescript-eslint/no-restricted-imports": ["error", {
         patterns: [{
@@ -121,7 +121,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@api/*", "**/api/src/**", "@shared/storage", "@shared/state-core"],
+          group: ["@core/*", "**/core/src/**", "@shared/storage", "@shared/state-core"],
           message: "AI 只能通过 PublicStatus 读取公开模型，不能导入状态核心或存储实现。",
         }, {
           group: ["@/*"],

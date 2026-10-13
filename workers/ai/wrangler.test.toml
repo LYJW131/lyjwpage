@@ -17,7 +17,7 @@ binding = "AI"
 
 [[services]]
 binding = "PUBLIC_STATUS"
-service = "api"
+service = "core"
 entrypoint = "PublicStatus"
 
 [[durable_objects.bindings]]

@@ -35,7 +35,7 @@ export type GatewayClass =
   | { kind: "lag-status"; view: LagViewKey }
   | {
       kind:
-        | "api"
+        | "core"
         | "ai"
         | "collector"
         | "sentry-relay"
@@ -134,7 +134,7 @@ export function classifyGatewayRequest(method: string, pathname: string): Gatewa
   if (APPLE_MUSIC_HTTP_PATHS.has(pathname)) return { kind: "collector" };
   if (pathname === LIVE_SOCKET_PATH || (pathname.startsWith("/api/") && pathname !== APP_VERSION_PATH)) {
     const view = method === "GET" ? lagViewKeyByPath(pathname) : undefined;
-    return view ? { kind: "lag-status", view } : { kind: "api" };
+    return view ? { kind: "lag-status", view } : { kind: "core" };
   }
   if (pathname === SENTRY_RELAY_PREFIX || pathname.startsWith(`${SENTRY_RELAY_PREFIX}/`)) {
     return { kind: method === "POST" ? "sentry-relay" : "invalid" };

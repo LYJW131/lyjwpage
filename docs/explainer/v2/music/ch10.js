@@ -39,7 +39,7 @@
           kick: "X.......X.x.....", duck: 0.5, snare: "....x.......x...", snareKind: "thud",
           hat: "o.x.oox.o.x.oox.", hatKind: "type",
           bass: "groove", arp: { p: "332", lo: 69, inst: "pluck", v: 0.36 }, pad: 0.72, lp: 3000, padVerb: 0.26 },
-        { from: 6, to: 7, id: "release-workers", name: "详图 B Worker：api 构建、发布；ingress、collector 这次不跑", energy: 0.7,
+        { from: 6, to: 7, id: "release-workers", name: "详图 B Worker：core 构建、发布；ingress、collector 这次不跑", energy: 0.7,
           kick: "X.......X.x.....", duck: 0.5, snare: "....x.......x...", snareKind: "thud",
           hat: "..x...x...x...x.", hatKind: "flip",
           bass: "groove", arp: { p: "queue", lo: 62, inst: "pluckDark", v: 0.4 }, pad: 0.75, lp: 2600, padVerb: 0.3 },

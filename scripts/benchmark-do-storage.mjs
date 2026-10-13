@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 
 const root = resolve(import.meta.dirname, "..");
-const require = createRequire(join(root, "workers/api/package.json"));
+const require = createRequire(join(root, "workers/core/package.json"));
 
 function option(name, fallback) {
   const index = process.argv.indexOf(name);

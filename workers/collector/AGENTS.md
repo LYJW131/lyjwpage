@@ -4,12 +4,12 @@
 
 ## 不变量
 
-- 只展示的结果直接写可滞后层 KV，**成功才写**：KV 里的值本身就是上次成功值，不另存 last-good；失败时旧值原样留着，过没过时由浏览器按各卡阈值判断。状态核心要拿来算的（最近在听）经 `CORE`（`api` 的 `StateCore`）交付。
+- 只展示的结果直接写可滞后层 KV，**成功才写**：KV 里的值本身就是上次成功值，不另存 last-good；失败时旧值原样留着，过没过时由浏览器按各卡阈值判断。状态核心要拿来算的（最近在听）经 `CORE`（`core` 的 `StateCore`）交付。
 - 缺令牌的任务干净地跳过，不算故障（监控照常报 ok）；没配是配置状态，不是失败。
 - 一次调用同时只能有 6 个连接在等响应头。带 `headStart` 的任务先跑（`src/registry.ts#HEAD_START_MS`）；目前没有任务设置它。新增任务时想想会不会在同一分钟大量并发出网。
-- 预览与非生产分支构建关闭：`CORE` 指向生产 `api`，预览版一跑就会往生产状态里写。
-- 新增 `StateCore` 方法先发布 `workers/api`，再发布本 Worker；契约只加不改（`shared/state-core.ts`、`shared/collector.ts`）。
-- D1 表结构归 `workers/api/migrations`：新表先在 api 那边 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。奖杯表由 api 写（`workers/api/src/stores/trophy-history.ts#archiveTrophies`），这里只写 `site_deploys`。
+- 预览与非生产分支构建关闭：`CORE` 指向生产 `core`，预览版一跑就会往生产状态里写。
+- 新增 `StateCore` 方法先发布 `workers/core`，再发布本 Worker；契约只加不改（`shared/state-core.ts`、`shared/collector.ts`）。
+- D1 表结构归 `workers/core/migrations`：新表先在 core 那边 `pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。奖杯表由 core 写（`workers/core/src/stores/trophy-history.ts#archiveTrophies`），这里只写 `site_deploys`。
 - `shared/cache` 在这里背后是 KV（`src/storage-driver.ts`，由 `src/ports.ts` 装上）：TTL 最短 60 秒，KV 读还有最长 60 秒的边缘缓存，两分钟以内要读回的东西不走它；列表、哈希操作直接抛错。
 - Workers Caching 只开在 `AppleLookups` 上（`wrangler.toml#exports`），默认入口和 `Collector` 不开：方法、来源和 CORS 头在默认入口（`src/apple-music-http.ts`）按每次请求判，经自绑定 `APPLE_LOOKUPS` 再进缓存层。缓存键只有 entrypoint、路径与查询串，`AppleLookups` 的响应不许带 CORS 头或随请求头变化的内容。
 - 手动触发（`Collector.refresh`、本地调试入口）不向 Sentry 报到；cron 监控名额不够，`collector-<任务>` 报到默认关（`SENTRY_CRON_CHECKINS`），任务真失败靠 `src/sentry.ts#reportJobFailure` 开 issue（tag `collector.job`）。

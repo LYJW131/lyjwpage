@@ -376,7 +376,7 @@ const siteWorker = {
       case "lag-status":
         if (isProduction(env)) return serveLagStatus(request, route.view, env);
         return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
-      case "api":
+      case "core":
       case "ai":
       case "collector":
         return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
@@ -415,12 +415,12 @@ export const StatusSnapshot = Sentry.withSentry(sentryOptions, StatusSnapshotBas
 export const ImageVariants = Sentry.withSentry(sentryOptions, ImageVariantsBase);
 export const RenderedSite = Sentry.withSentry(sentryOptions, RenderedSiteBase);
 
-// 转交 api / ai / collector 的请求在 Sentry 包装之外分流，由各自的 Worker 上报；去掉浏览器带来的追踪头，后端才按自己的采样率采样。
+// 转交 core / ai / collector 的请求在 Sentry 包装之外分流，由各自的 Worker 上报；去掉浏览器带来的追踪头，后端才按自己的采样率采样。
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (isProduction(env)) {
       const { kind } = classifyGatewayRequest(request.method, new URL(request.url).pathname);
-      if (kind === "api") return env.API_SERVICE.fetch(withoutTraceHeaders(request));
+      if (kind === "core") return env.CORE_SERVICE.fetch(withoutTraceHeaders(request));
       if (kind === "ai") return env.AI_SERVICE.fetch(withoutTraceHeaders(request));
       if (kind === "collector") return env.COLLECTOR_SERVICE.fetch(withoutTraceHeaders(request));
     }

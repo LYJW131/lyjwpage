@@ -4,7 +4,7 @@ docs/explainer/artifact.html
 docs/explainer/v2/score.mp3
 .pnpm-store/
 .wrangler/
-workers/api/wrangler.preview.json
+workers/core/wrangler.preview.json
 dist/
 /.pnp
 .pnp.*

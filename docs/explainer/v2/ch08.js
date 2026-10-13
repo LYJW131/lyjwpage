@@ -191,7 +191,7 @@
     const { x: bx, y: by, w, h } = SENTRY;
     box(x, bx, by, w, h, a);
     text(x, "Sentry", bx + 22, by + 44, { font: FONT.mono(34, 600), color: css("bone"), alpha: a });
-    [["lyjw.me", KNOCKS], ["API", CHECKS]].forEach(([name, list], r) => {
+    [["lyjw.me", KNOCKS], ["Core", CHECKS]].forEach(([name, list], r) => {
       const y = by + 92 + r * 46;
       text(x, name, bx + 22, y + 9, { font: FONT.mono(28, 500), color: css("ash"), alpha: a });
       const seen = list.filter((t) => t <= phi);
@@ -210,7 +210,7 @@
     text(x, "lyjw.me", SITE.x + 20, SITE.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
     text(x, "site Worker", SITE.x + 20, SITE.y + 88, { font: FONT.mono(28, 500), color: css("ash"), alpha: a, maxW: SITE.w - 40 });
     box(x, API.x, API.y, API.w, API.h, a);
-    text(x, "workers/api", API.x + 20, API.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
+    text(x, "workers/core", API.x + 20, API.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
     text(x, tr("ch08.cron"), API.x + 20, API.y + 88, { font: FONT.cjk(28, 600), color: css("ash"), alpha: a });
     dial(x, API.x + API.w - 40, API.y + 70, 22, phi % 60, a, 0);
   }
@@ -267,7 +267,7 @@
     line(d, cx + 30, cy + 78, cx + w - 30, cy + 78, 1.4, css("pink"), a);
     const lit = prog(b, AT.lit, AT.lit + 0.1, E.outBack);
     const cw = (w - 72 - (UPTIME_CELLS - 1) * 4) / UPTIME_CELLS;
-    ["lyjw.me", "API"].forEach((name, r) => {
+    ["lyjw.me", "Core"].forEach((name, r) => {
       const top = cy + 122 + r * 136;
       text(d, name, cx + 36, top, { font: FONT.sans(32, 600), alpha: a });
       text(d, "Operational", cx + w - 36, top - 2, { font: FONT.sans(28, 500), color: css("graphite"), align: "right", alpha: a });
@@ -455,7 +455,7 @@
     const bone = css("bone");
     text(x, "08", 110, 196, { font: FONT.pixel(112), color: css("signalD"), alpha: a });
     text(x, tr("ch08.title"), 290, 176, { font: FONT.cjk(58, 600), color: bone, reveal: prog(b, 0.5, 1.0), alpha: a });
-    text(x, "Sentry · workers/api · D1", 292, 226, { font: FONT.mono(28), color: css("ash"), reveal: prog(b, 0.6, 1.1), alpha: a });
+    text(x, "Sentry · workers/core · D1", 292, 226, { font: FONT.mono(28), color: css("ash"), reveal: prog(b, 0.6, 1.1), alpha: a });
     line(x, 110, 262, 110 + 900 * prog(b, 0.55, 1.2, E.outExpo), 262, 1.4, bone, 0.6 * a);
   }
 

@@ -11,7 +11,7 @@ export function sentryOptions(env: Env): CloudflareOptions {
     integrations: [
       consoleLoggingIntegration({ levels: ["warn", "error"] }),
     ],
-    // 每项都显式关掉，原因见 workers/api/src/sentry.ts#sentryOptions。
+    // 每项都显式关掉，原因见 workers/core/src/sentry.ts#sentryOptions。
     dataCollection: {
       userInfo: false,
       cookies: false,

@@ -31,7 +31,7 @@ HTTP 参数处理、输入归一化、展示计算、第三方请求和结果解
 | 导入 | 空键导入、过期时间、初始化标记、初始化后任务入队 | HTTP 鉴权和有界请求读取 |
 | `LivePushRoom` | WebSocket 接入、连接存活、广播和人数 | 本地中继的假数据查询经内部 renderer 执行，不再调用 StateHub 公开路由 |
 
-主要调用点位于 `workers/api/src/origin-worker.ts`、`index.ts`、`storage-driver.ts` 和 `live-platform.ts`。
+主要调用点位于 `workers/core/src/origin-worker.ts`、`index.ts`、`storage-driver.ts` 和 `live-platform.ts`。
 
 `LivePushRoom` 的本地开发上游 WebSocket 中继依赖房间连接生命周期，可以继续由房间管理。这里不能套用“所有外部请求都必须移出 DO”：持久连接本来就属于房间职责。中继读取本地假数据时，不需要再让 StateHub 执行完整 HTTP 路由。
 
@@ -100,8 +100,8 @@ DO 保留队列、修订号、Alarm 重试和最终 KV 发布。JSON 生成交�
 - 评分测试覆盖 claim、generation、lease 与过期提交；归档测试覆盖失败隔离和确认水位单调推进。
 - 读模型测试覆盖队列合并、revision、失败重试、过龄投影和 KV 单写者。
 - API Worker 类型检查通过，Worker 单测 82 项、根单测 312 项通过。
-- `scripts/verify-api-worker.mjs` 通过初始化 503、未知路由 404、并发 override 索引、上报、WebSocket、CORS、重启持久化等隔离链路。
+- `scripts/verify-core-worker.mjs` 通过初始化 503、未知路由 404、并发 override 索引、上报、WebSocket、CORS、重启持久化等隔离链路。
 - `scripts/verify-kv-read-model.mjs` 在 Wrangler 3.114.17 / compatibility date 2025-02-14 下实际完成 `StateHub alarm → self Service Binding → ReadModelRenderer → StateHub publicRead → KV`，没有循环等待。<!-- allow: 快照引用当时的脚本，已随读模型一起删除 -->
 - production/test TOML 已解析；生产 custom domain route 保持顶层。生产配置 `wrangler deploy --dry-run` 打包成功并识别 `api#ReadModelRenderer`。
 
-根类型检查通过。首次直接运行 `pnpm build` 在预渲染阶段因未设置必需的 `NEXT_PUBLIC_BACKEND_URL` 停止；有效验收随后通过 `node scripts/verify-api-worker.mjs --build` 完成，构建期后端和在线人数源都指向脚本内已初始化的隔离 Worker，生产构建成功且未使用生产后端或凭据。部署后的平台状态不在本地验证范围内。
+根类型检查通过。首次直接运行 `pnpm build` 在预渲染阶段因未设置必需的 `NEXT_PUBLIC_BACKEND_URL` 停止；有效验收随后通过 `node scripts/verify-core-worker.mjs --build` 完成，构建期后端和在线人数源都指向脚本内已初始化的隔离 Worker，生产构建成功且未使用生产后端或凭据。部署后的平台状态不在本地验证范围内。
