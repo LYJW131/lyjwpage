@@ -25,7 +25,7 @@ export function SyncPlaybackButton({ player }: { player: WebPlayer }) {
       onClick={player.toggleSync}
       className={cn(
         "label-mono inline-flex items-center gap-1.5 rounded-sm px-1 py-0.5 transition-colors hover:bg-surface-hover disabled:cursor-default disabled:opacity-40",
-        player.syncing ? "text-live" : "text-muted-foreground hover:text-foreground",
+        player.syncing ? "text-live-ink" : "text-muted-foreground hover:text-foreground",
       )}
     >
       <Icon className={cn("size-3 shrink-0", connecting && "animate-spin")} aria-hidden />
