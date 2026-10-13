@@ -670,7 +670,7 @@ function Conversation({ className, archive, session: conversation }: { className
                     {message.thinking && (
                       <details open={live && !message.content} className="mb-1.5">
                         <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
-                          {live && !message.content ? "Thinking…" : "Thought process"}
+                          {live && !message.content ? <span className="thinking-shimmer">Thinking</span> : "Thought process"}
                         </summary>
                         {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
                         <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
@@ -709,6 +709,7 @@ function Conversation({ className, archive, session: conversation }: { className
                             cards={message.cards}
                             designAt={message.designAt}
                             live={live}
+                            awaiting={live && !(message.thinking && !message.content)}
                             handoff={<PlannerActivity message={message} live={live} />}
                             designConsentNode={designConsentNode}
                             showDesignContent={!unrevealedDesign}
@@ -1180,6 +1181,7 @@ function ReplyBody({
   cards = [],
   designAt,
   live,
+  awaiting,
   handoff,
   designConsentNode,
   showDesignContent = true,
@@ -1188,6 +1190,7 @@ function ReplyBody({
   cards?: ChatShownCard[];
   designAt?: number;
   live: boolean;
+  awaiting: boolean;
   handoff?: ReactNode;
   designConsentNode?: ReactNode;
   showDesignContent?: boolean;
@@ -1220,7 +1223,7 @@ function ReplyBody({
   }
   const rest = content.slice(from);
   if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} visuals>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
-  if (live && !rest.trim() && (showDesignContent || designAt === undefined)) parts.push(<span key="typing" className="animate-pulse text-muted-foreground">…</span>);
+  if (awaiting && !rest.trim() && (showDesignContent || designAt === undefined)) parts.push(<div key="thinking" role="status" className="thinking-shimmer label-mono w-fit text-[10px]">Thinking</div>);
   return <div className="space-y-2">{parts}</div>;
 }
 
