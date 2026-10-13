@@ -371,9 +371,19 @@ test("活动道：无步数的桶不画，跨窗口边界的桶按在内部分�
   const clipped = activityLaneView([
     { from: 0, to: 300_000, steps: 200, moveKcal: null, exerciseMinutes: null },
   ], [], { from: 150_000, to: 450_000 });
-  assert.deepEqual(clipped.buckets.steps, [200]);
+  assert.deepEqual(clipped.buckets.steps, [100]);
   assert.deepEqual(clipped.buckets.endSec, [150]);
   assert.equal(clipped.summary.steps, 100);
+});
+
+test("活动道：各桶步数之和等于 summary.steps", () => {
+  const lane = activityLaneView([
+    { from: -120_000, to: 60_000, steps: 50, moveKcal: null, exerciseMinutes: null },
+    { from: 60_000, to: 360_000, steps: 90, moveKcal: null, exerciseMinutes: null },
+    { from: 360_000, to: 720_000, steps: 100, moveKcal: null, exerciseMinutes: null },
+  ], [], W);
+  assert.deepEqual(lane.buckets.steps, [17, 90, 67]);
+  assert.equal(lane.buckets.steps.reduce((sum, steps) => sum + steps, 0), lane.summary.steps);
 });
 
 test("训练按窗口裁剪出列", () => {

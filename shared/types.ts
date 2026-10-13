@@ -701,6 +701,7 @@ export type PulsePowerLane = {
 
 export type PulseStepsLane = {
   kind: "steps";
+  // steps 是桶分摊到 [startSec,endSec) 内的步数，跨窗口边界的桶按在内时长折算；各桶之和等于 summary.steps
   buckets: PulseSpanColumns & { steps: number[] };
   workouts: PulseSpanColumns & { activityType: string[] };
   summary: { steps: number };

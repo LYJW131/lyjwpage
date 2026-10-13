@@ -246,13 +246,12 @@ export function chargingLaneView(samples: ChargingSample[], window: PulseWindow)
 }
 
 export function activityLaneView(buckets: ActivityBucket[], workouts: WorkoutInterval[], window: PulseWindow): PulseStepsLane {
-  let steps = 0;
   const rows = buckets.flatMap((bucket) => {
     const from = Math.max(window.from, bucket.from), to = Math.min(window.to, bucket.to);
     if (to <= from || bucket.steps == null) return [];
-    steps += bucket.steps * (to - from) / (bucket.to - bucket.from);
     const at = span(window, from, to);
-    return at.endSec > at.startSec ? [{ ...at, steps: bucket.steps }] : [];
+    if (at.endSec <= at.startSec) return [];
+    return [{ ...at, steps: Math.round(bucket.steps * (to - from) / (bucket.to - bucket.from)) }];
   });
   const sessions = workouts.flatMap((workout) => {
     const from = Math.max(window.from, workout.startedAt), to = Math.min(window.to, workout.endedAt);
@@ -264,7 +263,7 @@ export function activityLaneView(buckets: ActivityBucket[], workouts: WorkoutInt
     kind: "steps",
     buckets: toColumns(rows, ["steps"] as const),
     workouts: toColumns(sessions, ["activityType"] as const),
-    summary: { steps: Math.round(steps) },
+    summary: { steps: rows.reduce((sum, row) => sum + row.steps, 0) },
   };
 }
 
