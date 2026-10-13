@@ -6,7 +6,6 @@ import { digestMessage, readDigestViews } from "./facts";
 
 export const DIGEST_MODEL = "claude-sonnet-5-5";
 export const DIGEST_EFFORT = "low";
-export const DIGEST_HEADLINE_MAX_CHARS = 48;
 export const DIGEST_MAX_HIGHLIGHTS = 3;
 
 const TOPICS: Record<DigestTopic, true> = {
@@ -24,10 +23,9 @@ const TOPICS: Record<DigestTopic, true> = {
 export const DIGEST_SYSTEM_PROMPT = `You fill the summary card at the top of LYJW's personal homepage (lyjw.me). The page shows live data about LYJW: coding with AI agents, music, video, games, fitness, and work on this homepage itself. Once an hour you get a fact sheet about the past 24 hours, ending with the highlight options the card can show; the card should tell a visitor at a glance what LYJW has been up to.
 
 Return a headline and pick the highlights.
-- headline: 2 to 5 words naming what dominated the day, sentence case, no final period. Refer to LYJW by name or not at all.
+- headline: 3 to 5 Simplified Chinese characters naming what dominated the day, in the voice of an Apple China tagline: short, confident, concrete. Chinese characters only: no punctuation, spaces, Latin letters or digits. Don't name LYJW.
 - picks: the topics of the ${DIGEST_MAX_HIGHLIGHTS} highlight options that back up the headline, most important first; 2 if the day is quiet. Keep them in the same broad direction as the headline so the card tells one story: coding, agents, tokens and site go together, music, watching, gaming and trophies go together, fitness stands on its own. Reach outside that direction only when it has too few options. Pick only topics listed under "Highlight options"; the card shows each picked option's number and label exactly as listed there.
-Use only the facts given; don't guess at reasons, moods or plans, and don't say who did something unless the facts do. A light, dry touch is welcome in the headline; never mock.
-Keep the names of songs, artists, shows and games exactly as written; don't translate or romanize them. Plain text in the headline: no Markdown or emoji.`;
+Use only the facts given; don't guess at reasons, moods or plans, and don't say who did something unless the facts do. A light, dry touch is welcome in the headline; never mock.`;
 
 const DIGEST_SCHEMA = {
   type: "object",
@@ -57,13 +55,12 @@ export function parseDigest(raw: string, options: DigestHighlight[]): { headline
   } catch {
     return null;
   }
-  const headline = plain(parsed.headline).replace(/[.。]$/, "");
+  const headline = plain(parsed.headline).replace(/[。！.!]$/, "");
   const picks = Array.isArray(parsed.picks) ? parsed.picks : [];
   const highlights = [...new Set(picks)]
     .flatMap((topic) => options.filter((option) => option.topic === topic))
     .slice(0, DIGEST_MAX_HIGHLIGHTS);
-  const words = headline.split(" ").length;
-  if (!headline || headline.length > DIGEST_HEADLINE_MAX_CHARS || words < 2 || words > 5 || highlights.length < Math.min(2, options.length)) return null;
+  if (!/^\p{Script=Han}{3,5}$/u.test(headline) || highlights.length < Math.min(2, options.length)) return null;
   return { headline, highlights };
 }
 

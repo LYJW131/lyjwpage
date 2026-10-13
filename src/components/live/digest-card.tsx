@@ -153,7 +153,7 @@ export function DigestCard({
       <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-2.5 p-4 pl-4.5 lg:gap-x-4 lg:p-5">
         <div className="col-start-1 row-start-1 flex min-w-0 flex-col gap-1">
           <div className="text-xs text-muted-foreground">Last 24 hours</div>
-          <h2 className="text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
+          <h2 lang="zh-CN" className="font-brush whitespace-nowrap text-[28px] leading-none md:text-4xl lg:text-5xl">{data.headline}</h2>
         </div>
         <ul className={cn("col-start-1 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-1.5 gap-y-1.5 sm:gap-x-2", stale && "opacity-60")}>
           {data.highlights.map((item) => (

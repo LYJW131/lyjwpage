@@ -2,7 +2,7 @@
   "ok": true,
   "updatedAt": "$now-1500000",
   "data": {
-    "headline": "Agents ran the day",
+    "headline": "代码不停歇",
     "highlights": [
       { "topic": "coding", "value": 22, "unit": "hours", "atLeast": false, "caption": "coding" },
       { "topic": "tokens", "value": 44000000, "unit": "count", "atLeast": false, "caption": "tokens" },

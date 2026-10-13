@@ -1,6 +1,7 @@
 @import "tailwindcss";
 /* 合并时钟样式，避免首屏多出一条渲染阻塞 CSS 请求。 */
 @import "@clock-ui/react/base.css";
+@import "./brush-font.css";
 
 @font-face {
   font-family: "Geist Mono";
@@ -107,6 +108,8 @@
   --radius-4xl: var(--radius);
 
   --font-geist-mono: "Geist Mono";
+  --font-brush: "Ma Shan Zheng", "STKaiti", "KaiTi", serif;
+  --font-tagline: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --font-sans:
     system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC",
     "Microsoft YaHei", sans-serif;
