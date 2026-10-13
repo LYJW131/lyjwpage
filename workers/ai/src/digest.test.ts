@@ -4,7 +4,7 @@ import test from "node:test";
 import type Anthropic from "@anthropic-ai/sdk";
 import { STATUS_VIEWS } from "@shared/status-views";
 
-import { cleanDigestText, composeDigest, DIGEST_MAX_CHARS, DIGEST_SYSTEM_PROMPT, digestInputHash } from "./digest/compose";
+import { composeDigest, DIGEST_SYSTEM_PROMPT, digestInputHash, parseDigest } from "./digest/compose";
 import { digestFacts, type DigestViews } from "./digest/facts";
 
 const HOUR = 3_600_000;
@@ -179,22 +179,34 @@ test("an unknown time zone falls back to the site's", () => {
   assert.match(digestFacts(views, NOW), /^Now: Tuesday afternoon in LYJW's time zone \(Asia\/Shanghai\)/);
 });
 
+const ANSWER = {
+  headline: "Agents ran the day.",
+  highlights: [
+    { topic: "coding", figure: "22 h", caption: "coding, **16 h** of it with agents" },
+    { topic: "tokens", figure: "44M", caption: "tokens across four agents" },
+    { topic: "music", figure: "8 h", caption: "of music, mostly Hoshimachi Suisei" },
+  ],
+};
+
 test("compose calls the model once per new input and keeps the old digest while the facts stand still", async () => {
   const calls: Anthropic.MessageCreateParamsNonStreaming[] = [];
   const createMessage = async (params: Anthropic.MessageCreateParamsNonStreaming) => {
     calls.push(params);
-    return message("“LYJW spent **most of the day** coding.\n\nSuisei kept them company.”");
+    return message(JSON.stringify(ANSWER));
   };
   const readStatus = reader(baseViews());
 
   const first = await composeDigest({ readStatus, createMessage, previousInputHash: null, now: NOW });
   assert.equal(first.status, "composed");
   if (first.status !== "composed") return;
-  assert.equal(first.digest.text, "LYJW spent most of the day coding. Suisei kept them company.");
+  assert.equal(first.digest.headline, "Agents ran the day");
+  assert.deepEqual(first.digest.highlights[0], { topic: "coding", figure: "22 h", caption: "coding, 16 h of it with agents" });
+  assert.equal(first.digest.highlights.length, 3);
   assert.equal(first.digest.model, "claude-sonnet-5-5");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].system, DIGEST_SYSTEM_PROMPT);
-  assert.deepEqual(calls[0].output_config, { effort: "low" });
+  assert.equal(calls[0].output_config?.effort, "low");
+  assert.equal(calls[0].output_config?.format?.type, "json_schema");
   assert.equal(calls[0].messages[0].content, digestFacts(baseViews(), NOW));
 
   assert.deepEqual(await composeDigest({ readStatus, createMessage, previousInputHash: first.digest.inputHash, now: NOW }), { status: "unchanged" });
@@ -205,17 +217,17 @@ test("compose fails the round instead of publishing a refusal, a cut-off answer 
   const readStatus = reader(baseViews());
   for (const stop of ["refusal", "max_tokens"] as const) {
     await assert.rejects(
-      composeDigest({ readStatus, createMessage: async () => message("Partial", stop), previousInputHash: null, now: NOW }),
+      composeDigest({ readStatus, createMessage: async () => message("{", stop), previousInputHash: null, now: NOW }),
       new RegExp(stop),
     );
   }
   await assert.rejects(
-    composeDigest({ readStatus, createMessage: async () => message("  "), previousInputHash: null, now: NOW }),
-    /no usable text/,
+    composeDigest({ readStatus, createMessage: async () => message("not json"), previousInputHash: null, now: NOW }),
+    /no usable headline and highlights/,
   );
   const withoutPulse = { ...baseViews(), pulse: null };
   await assert.rejects(
-    composeDigest({ readStatus: reader(withoutPulse), createMessage: async () => message("x"), previousInputHash: null, now: NOW }),
+    composeDigest({ readStatus: reader(withoutPulse), createMessage: async () => message(JSON.stringify(ANSWER)), previousInputHash: null, now: NOW }),
     /Pulse view unavailable/,
   );
   const workoutsPath = STATUS_VIEWS.workouts.path;
@@ -227,17 +239,21 @@ test("compose fails the round instead of publishing a refusal, a cut-off answer 
   let modelCalls = 0;
   for (const [failing, error] of failures) {
     await assert.rejects(
-      composeDigest({ readStatus: failing, createMessage: async () => { modelCalls += 1; return message("x"); }, previousInputHash: null, now: NOW }),
+      composeDigest({ readStatus: failing, createMessage: async () => { modelCalls += 1; return message(JSON.stringify(ANSWER)); }, previousInputHash: null, now: NOW }),
       error,
     );
   }
   assert.equal(modelCalls, 0);
 });
 
-test("an overlong answer is cut at a sentence end, never mid-sentence", () => {
-  const sentence = "LYJW coded with Claude Code for most of the day while agents kept working through the night. ";
-  const text = cleanDigestText(sentence.repeat(8));
-  assert.ok(text.length <= DIGEST_MAX_CHARS);
-  assert.ok(text.endsWith("night."));
-  assert.equal(cleanDigestText("Short and sweet."), "Short and sweet.");
+test("a highlight that breaks the card's limits is dropped, and fewer than two left fails the round", () => {
+  const [coding, tokens, music] = ANSWER.highlights;
+  const parsed = parseDigest(JSON.stringify({
+    headline: ANSWER.headline,
+    highlights: [coding, { ...coding, figure: "11 h" }, { ...tokens, figure: "44 million" }, music, { topic: "weather", figure: "31°", caption: "and sunny" }],
+  }));
+  assert.deepEqual(parsed?.highlights.map((item) => item.topic), ["coding", "music"]);
+  assert.equal(parseDigest(JSON.stringify({ headline: ANSWER.headline, highlights: [coding, { ...tokens, caption: "" }] })), null);
+  assert.equal(parseDigest(JSON.stringify({ headline: "A".repeat(60), highlights: ANSWER.highlights })), null);
+  assert.equal(parseDigest(JSON.stringify({ ...ANSWER, highlights: [...ANSWER.highlights, { topic: "site", figure: "10+", caption: "commits" }] }))?.highlights.length, 3);
 });

@@ -88,11 +88,11 @@ test("site 直读可滞后层：贡献日历按 since 切窗", async (t) => {
 test("the digest view keeps the input hash on the collector side", async (t) => {
   const kv = new MemoryKv();
   const updatedAt = Date.now() - 60_000;
-  await writeLag(kv, LAG_KEYS.digest, { text: "LYJW coded all day.", model: "claude-sonnet-5-5", generatedAt: updatedAt - 3_600_000, inputHash: "abc" }, updatedAt);
+  await writeLag(kv, LAG_KEYS.digest, { headline: "Coding all day", highlights: [{ topic: "coding", figure: "22 h", caption: "coding" }], model: "claude-sonnet-5-5", generatedAt: updatedAt - 3_600_000, inputHash: "abc" }, updatedAt);
   installLagReader((key) => readLag(kv, key));
   t.after(() => installLagReader(null));
 
   const digest = await getDigest();
   assert.equal(digest.updatedAt, updatedAt);
-  assert.deepEqual(digest.data, { text: "LYJW coded all day.", model: "claude-sonnet-5-5", generatedAt: updatedAt - 3_600_000 });
+  assert.deepEqual(digest.data, { headline: "Coding all day", highlights: [{ topic: "coding", figure: "22 h", caption: "coding" }], model: "claude-sonnet-5-5", generatedAt: updatedAt - 3_600_000 });
 });
