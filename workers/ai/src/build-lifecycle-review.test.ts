@@ -8,6 +8,7 @@ import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { BuildPullRequestRejectedError, createBuildPullRequest as publishBuild, prepareBuildPullRequest, validateBuildBase, GithubBuildApi, reconcileBuild } from "./build/github.ts";
 import { buildGithubFixture, FIXTURE_PLAN_SHA } from "./build/testing/github-fixture.ts";
+import { buildWorkflowAudience } from "./build/actions-oidc.ts";
 import { createActionsOidcFixture } from "./build/testing/actions-oidc.ts";
 import { issuePlan } from "./build/plan.ts";
 import { hashToken, signBuildToken, uploadTokenForRun } from "./build/token.ts";
@@ -222,7 +223,7 @@ test("a run without a callback origin cannot be claimed by a workflow token", as
   t.after(() => db.close());
   instance.reserveRun(await stored(), "upload-plan", Date.now() + 60_000);
   const fixture = githubFixture();
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await oidc.token(callbackOrigin)), env, fixture.fetcher);
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await oidc.token(buildWorkflowAudience(callbackOrigin, runId))), env, fixture.fetcher);
   assert.equal(response.status, 401);
   assert.equal(instance.readRun(runId)?.uploadUsed, false);
   assert.equal(instance.readRun(runId)?.state.phase, "triggered");
@@ -235,7 +236,7 @@ test("uploads with too many paths outside the plan are blocked with the paths an
   instance.reserveRun(await dispatched(), "scope-plan", Date.now() + 60_000);
   const denied = oidc.serve(async () => assert.fail("Unapproved paths must be rejected before GitHub access"));
   const unplanned = Array.from({ length: BUILD_UPLOAD_LIMITS.outsidePlanFiles + 1 }, (_, index) => ({ ...upload.files[0], path: `src/lib/unplanned-${index}.ts` }));
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: unplanned }, await oidc.token(callbackOrigin)), env, denied);
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: unplanned }, await oidc.token(buildWorkflowAudience(callbackOrigin, runId))), env, denied);
   assert.equal(response.status, 400);
   assert.equal(instance.readRun(runId)?.state.phase, "blocked");
   assert.match(instance.readRun(runId)?.state.reason ?? "", /outside the approved plan paths.*src\/lib\/unplanned-0\.ts/);
@@ -379,7 +380,7 @@ test("recorded implementation and review body recover after a GitHub write failu
   let rejectBody = true;
   const fixture = githubFixture((call) => rejectBody && call.path.endsWith("/pulls/12") && call.method === "PATCH" ? Response.json({}, { status: 503 }) : undefined);
   const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId));
   const changed: BuildUpload = { ...upload, files: [...upload.files, { path: "shared/fixture.ts", mode: "100644", content: btoa("export const fixture = true;") }] };
   const response = await handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, changed, token), env, fixture.fetcher);
   assert.equal(response.status, 502);
@@ -427,7 +428,7 @@ for (const loseResponse of [false, true]) test(`status completion survives a lat
   const proposal = await issuePlan(env, plan);
   const fixture = githubFixture();
   const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId));
   const delayed = holdFinalPublicationRead(fixture, result.branch, loseResponse);
   t.after(delayed.release);
   const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, token), env, delayed.fetcher);
@@ -453,7 +454,7 @@ test("a frozen draft publication confirmation cannot replace readiness completed
   const proposal = await issuePlan(env, plan);
   const fixture = githubFixture();
   const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId));
   let release!: () => void;
   let reached!: () => void;
   let holding = false;
@@ -497,7 +498,7 @@ test("a late reconciliation rejection cannot overwrite a concurrently confirmed 
   const proposal = await issuePlan(env, plan);
   const fixture = githubFixture();
   const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const token = await oidc.token(callbackOrigin);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId));
   const delayed = holdFinalPublicationRead(fixture, result.branch, false);
   t.after(delayed.release);
   const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, token), env, delayed.fetcher);
