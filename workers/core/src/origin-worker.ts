@@ -14,7 +14,7 @@ import {
   type SocketSample,
 } from "./live-census";
 import { liveRoom } from "./live-platform";
-import { getCorsHeaders, isAllowedOrigin, isForeignOrigin } from "@shared/http-origins";
+import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, jsonResponse } from "@shared/http-origins";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { AI_HTTP_PATHS } from "@shared/ai-paths";
@@ -26,13 +26,6 @@ import { site } from "@shared/site";
 
 export type { Env };
 export { StateHub };
-
-function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(data), { ...init, headers });
-}
 
 function rejectSocket(request: Request, env: Env): Response | null {
   if (!isAllowedOrigin(request, env)) {

@@ -9,6 +9,9 @@
  *                  （PUBLIC_BACKEND_URL），浏览器必须直连的第三方主机在 ALLOWED_FETCH_HOSTS 登记
  *   scrollbar-pair 隐藏滚动条两句缺一不可：scrollbar-none 管 Firefox，
  *                  [&::-webkit-scrollbar]:hidden 管 Chromium（DESIGN.md「滚动区」）
+ *   json-response-literal
+ *                  Worker 与 shared/ 的 JSON 响应统一走 shared/http-origins.ts#jsonResponse，
+ *                  不再手写 new Response(JSON.stringify(...))
  *
  * 退出码：有违例为 1。测试见 scripts/rules-check.test.mjs。
  */
@@ -215,12 +218,26 @@ export function checkScrollbarPair(file, text) {
 }
 
 const SITE_SOURCE = /^src\//;
+const WORKER_OR_SHARED_TS = /^(?:workers\/[^/]+\/src|shared)\/.+\.ts$/;
 const TEST_OR_FIXTURE = /\.test\.|(^|\/)(?:__tests__|tests?|fixtures|dev-fixtures)\//i;
+const JSON_RESPONSE_LITERAL_RE = /new Response\(JSON\.stringify\(/;
+const JSON_RESPONSE_IMPL = new Set(["shared/http-origins.ts"]);
+
+export function checkJsonResponseLiteral(file, text) {
+  const issues = [];
+  maskComments(file, text).split("\n").forEach((line, index) => {
+    if (JSON_RESPONSE_LITERAL_RE.test(line)) {
+      issues.push({ file, line: index + 1, rule: "json-response-literal", message: "JSON 响应统一走 shared/http-origins.ts#jsonResponse（Content-Type 与 Cache-Control 一处定义），不手写 new Response(JSON.stringify(...))。" });
+    }
+  });
+  return issues;
+}
 
 export function checkFile(file, text) {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
   const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
+  if (WORKER_OR_SHARED_TS.test(file) && !JSON_RESPONSE_IMPL.has(file)) issues.push(...checkJsonResponseLiteral(file, text));
   return issues;
 }
 
