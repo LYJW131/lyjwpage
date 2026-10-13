@@ -59,6 +59,7 @@ test("the first digest is written and revalidated; an unchanged hour only moves 
   assert.deepEqual(await readLag(deps.lag, LAG_KEYS.digest), { updatedAt: now + 2 * HOUR, data: second });
   assert.deepEqual(deps.revalidated, [["digest"]], "only the first digest changes the page layout");
   assert.deepEqual(deps.requests.map((request) => request.previousInputHash), [null, "hash-1", "hash-1"]);
+  assert.deepEqual(deps.requests.map((request) => request.previousHeadline), [null, "Coding all day", "Coding all day"]);
 });
 
 test("switching between a digest and a quiet day revalidates the page both ways", async () => {
