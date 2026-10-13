@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-import { classifyRequest, consoleClean, loadFeatureMap, newSink, parseArgs, parseWidths, requiredCardIds } from "./site-verify.mjs";
+import { classifyRequest, consoleClean, isEnvNoise, loadFeatureMap, newSink, parseArgs, parseWidths, requiredCardIds } from "./site-verify.mjs";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -51,12 +51,26 @@ test("consoleClean：控制台错误、pageerror、同源失败请求都算脏�
   assert.equal(consoleClean(externalOnly), true);
 });
 
-test("classifyRequest：favicon 与 wss 归噪声，同源 / 外源分开", () => {
+test("classifyRequest：favicon 与 ws 426 归噪声，同源 / 外源分开", () => {
   const origin = "http://localhost:3211";
-  assert.equal(classifyRequest("http://localhost:3211/favicon.ico", origin), "noise");
-  assert.equal(classifyRequest("wss://lyjw.me/ws", origin), "noise");
-  assert.equal(classifyRequest("http://localhost:3211/api/status/pulse", origin), "same-origin");
-  assert.equal(classifyRequest("https://is1-ssl.mzstatic.com/a.webp", origin), "external");
+  assert.equal(classifyRequest("http://localhost:3211/favicon.ico", 404, origin), "noise");
+  assert.equal(classifyRequest("wss://localhost:3211/ws", 426, origin), "noise");
+  assert.equal(classifyRequest("http://localhost:3211/api/status/pulse", 500, origin), "same-origin");
+  assert.equal(classifyRequest("https://is1-ssl.mzstatic.com/a.webp", 404, origin), "external");
+});
+
+test("classifyRequest：ws 只有 426 豁免，其它失败按源分类", () => {
+  const origin = "http://localhost:3211";
+  assert.equal(classifyRequest("http://localhost:3211/ws", 500, origin), "same-origin");
+  assert.equal(classifyRequest("wss://localhost:3211/ws", 401, origin), "same-origin");
+  assert.equal(classifyRequest("wss://localhost:3211/ws", null, origin), "same-origin");
+  assert.equal(classifyRequest("wss://lyjw.me/ws", null, origin), "external");
+});
+
+test("isEnvNoise：ws 失败消息必须含 426 才豁免", () => {
+  assert.ok(isEnvNoise("WebSocket connection to 'wss://lyjw.me/ws' failed: Unexpected response code: 426"));
+  assert.ok(!isEnvNoise("WebSocket connection to 'wss://lyjw.me/ws' failed: Unexpected response code: 401"));
+  assert.ok(!isEnvNoise("WebSocket connection to 'wss://lyjw.me/ws' failed"));
 });
 
 test("requiredCardIds：不显式点名时跳过 conditional；--card 点名就算 required", () => {

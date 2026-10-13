@@ -13,11 +13,16 @@ const RENDER_PLAYWRIGHT = path.join(ROOT, "docs", "explainer", "render", "node_m
 const DEFAULT_URL = `http://localhost:${process.env.DEV_SITE_PORT || "3211"}`;
 const WORKER_URL = (process.env.DEV_WORKER_URL || "http://localhost:8788").replace(/\/+$/, "");
 const HEIGHT_BY_WIDTH = { 375: 812, 768: 1024, 820: 1180, 1024: 768, 1280: 900, 1440: 900 };
-// 环境噪声不是站点错误（SKILL.md 约定）：容器代理让 WebSocket 握手拿 426；Vite dev 重优化依赖时偶发 504。
+// 环境噪声不是站点错误（SKILL.md 约定）：容器代理把 WebSocket 升级挡成 426，消息里必须同时有 426 才豁免；
+// Vite dev 重优化依赖时偶发 504。其它 ws 失败（鉴权、路由、5xx）照常算。
 const ENV_NOISE = [
-  /WebSocket connection to '\w+:\/\/[^']*\/ws[^']*' failed/i,
+  /WebSocket connection to '\w+:\/\/[^']*\/ws[^']*' failed.*\b426\b/i,
   /Outdated Optimize Dep/,
 ];
+
+export function isEnvNoise(text) {
+  return ENV_NOISE.some((pattern) => pattern.test(text));
+}
 
 export function parseArgs(argv) {
   const flags = {};
@@ -66,11 +71,16 @@ export function newSink() {
 }
 
 // 返回 "noise" | "same-origin" | "external"。noise 只放确定的环境原因：/favicon.ico 是浏览器自动探测
-// （站点图标在 /icon，生产同样 404）；wss 握手失败同容器代理 426 的约定。
-export function classifyRequest(url, origin) {
+// （站点图标在 /icon，生产同样 404）；WebSocket 升级只豁免容器代理回的 426，requestfailed 没有状态码、
+// 其它 ws 失败（鉴权 4xx、路由、5xx、断网）一律按源分类，同源计入失败。
+export function classifyRequest(url, status, origin) {
   const parsed = new URL(url);
-  if (parsed.pathname === "/favicon.ico" || parsed.protocol.startsWith("ws")) return "noise";
-  return parsed.origin === origin ? "same-origin" : "external";
+  if (parsed.pathname === "/favicon.ico") return "noise";
+  const isWebSocket = parsed.protocol === "ws:" || parsed.protocol === "wss:";
+  if ((isWebSocket || parsed.pathname === "/ws") && status === 426) return "noise";
+  // ws(s): 的 origin 是 ws 方案、和 http(s) origin 比不等；同站 ws 按 host 相等判。
+  const sameOrigin = isWebSocket ? parsed.host === new URL(origin).host : parsed.origin === origin;
+  return sameOrigin ? "same-origin" : "external";
 }
 
 // --card 显式点名就是期望它出现：conditional 卡被点名时也算 required。
@@ -180,7 +190,7 @@ function watchConsole(page, sink, origin) {
   };
   page.on("console", (msg) => {
     const text = msg.text();
-    if (ENV_NOISE.some((pattern) => pattern.test(text))) return push(sink.envNoise, text);
+    if (isEnvNoise(text)) return push(sink.envNoise, text);
     // 「Failed to load resource」不带 URL，具体哪条失败由下面的 response 监听记。
     if (/Failed to load resource/.test(text)) return;
     if (msg.type() === "error") push(sink.errors, text);
@@ -190,7 +200,7 @@ function watchConsole(page, sink, origin) {
   page.on("response", (response) => {
     if (response.status() < 400) return;
     const url = response.url();
-    if (classifyRequest(url, origin) === "noise") {
+    if (classifyRequest(url, response.status(), origin) === "noise") {
       return push(sink.envNoise, `${response.request().method()} ${new URL(url).pathname} → ${response.status()}`);
     }
     sink.failedRequests.push({ url, status: response.status(), sameOrigin: new URL(url).origin === origin });
@@ -198,7 +208,7 @@ function watchConsole(page, sink, origin) {
   // 连接被拒 / DNS / 超时等连响应都没有的失败只走 requestfailed；4xx/5xx 归上面 response。
   page.on("requestfailed", (request) => {
     const url = request.url();
-    const kind = classifyRequest(url, origin);
+    const kind = classifyRequest(url, null, origin);
     if (kind === "noise") {
       return push(sink.envNoise, `${request.method()} ${new URL(url).pathname || url} → ${request.failure()?.errorText ?? "failed"}`);
     }
