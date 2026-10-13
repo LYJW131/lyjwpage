@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+
+import { loadFeatureMap, parseArgs, parseWidths } from "./site-verify.mjs";
+import { STATUS_VIEWS } from "../shared/status-views.ts";
+
+const ROOT = path.resolve(import.meta.dirname, "..");
+const SCRIPT = path.join(ROOT, "scripts", "site-verify.mjs");
+const FIXTURES = path.join(ROOT, "workers", "core", "dev-fixtures");
+const KNOWN_PATHS = new Set(Object.values(STATUS_VIEWS).map((view) => view.path));
+
+function run(args) {
+  return spawnSync("node", [SCRIPT, ...args], { cwd: ROOT, encoding: "utf8", timeout: 60_000 });
+}
+
+test("parseArgs 解析 --key value、--key=value、布尔开关与位置参数", () => {
+  const { flags, positional } = parseArgs(["cards", "--url", "http://x:1", "--theme=dark", "--list", "--card", "a,b"]);
+  assert.deepEqual(positional, ["cards"]);
+  assert.equal(flags.url, "http://x:1");
+  assert.equal(flags.theme, "dark");
+  assert.equal(flags.list, true);
+  assert.equal(flags.card, "a,b");
+});
+
+test("parseWidths 按宽度表补高度，非法输入返回 null", () => {
+  assert.deepEqual(parseWidths("1280,375"), [
+    { width: 1280, height: 900 },
+    { width: 375, height: 812 },
+  ]);
+  assert.equal(parseWidths("abc"), null);
+  assert.equal(parseWidths("50"), null);
+});
+
+test("功能地图每张卡有选择器或表头标签，组件、端点、夹具都真实存在", () => {
+  const map = loadFeatureMap();
+  assert.ok(map?.cards, "feature-map.json 读不到");
+  for (const [id, card] of Object.entries(map.cards)) {
+    assert.ok(card.selector || card.cardLabel, `${id} 缺 selector / cardLabel`);
+    assert.ok(fs.existsSync(path.join(ROOT, card.component)), `${id} 组件不存在：${card.component}`);
+    assert.ok(typeof card.proves === "string" && card.proves.length > 0, `${id} 缺 proves`);
+    for (const [endpoint, fixtures] of Object.entries(card.endpoints)) {
+      assert.ok(KNOWN_PATHS.has(endpoint), `${id} 端点不在 STATUS_VIEWS：${endpoint}`);
+      for (const fixture of fixtures) {
+        assert.ok(fs.existsSync(path.join(FIXTURES, fixture)), `${id} 夹具不存在：${fixture}`);
+      }
+    }
+  }
+});
+
+test("--help 退出 0 并列出全部子命令", () => {
+  const result = run(["--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  for (const sub of ["doctor", "cards", "shot", "override"]) assert.match(result.stdout, new RegExp(`\\b${sub}\\b`));
+});
+
+test("未知子命令退出 2，输出带 next 的 JSON 错误", () => {
+  const result = run(["bogus"]);
+  assert.equal(result.status, 2);
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.ok, false);
+  assert.match(body.error, /bogus/);
+  assert.ok(body.next);
+});
+
+test("override --dry-run 不执行、只回显将跑的 dev:override 命令", () => {
+  const result = run(["override", "--endpoint", "/api/status/pulse", "--fixture", "pulse-empty.json", "--dry-run"]);
+  assert.equal(result.status, 0, result.stderr);
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.ok, true);
+  assert.equal(body.dryRun, true);
+  assert.equal(body.command, "pnpm dev:override /api/status/pulse pulse-empty.json");
+});
+
+test("override 缺参数退出 2 并说明正确形状", () => {
+  const result = run(["override", "--endpoint", "/api/status/pulse"]);
+  assert.equal(result.status, 2);
+  assert.match(JSON.parse(result.stdout).next, /--fixture|--clear/);
+});
+
+test("doctor 对死端口报 site fail 且输出仍是 JSON", () => {
+  const result = run(["doctor", "--url", "http://localhost:59999"]);
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.ok, false);
+  const site = body.checks.find((c) => c.name === "site");
+  assert.equal(site.status, "fail");
+  assert.ok(site.next);
+  assert.notEqual(result.status, 0);
+});

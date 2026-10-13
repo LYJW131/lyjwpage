@@ -1,0 +1,171 @@
+{
+  "page": "/",
+  "cards": {
+    "header-desktop": {
+      "component": "src/components/live/live-desk-card.tsx",
+      "selector": "[aria-label^='Using '], [aria-label='Mac reporter offline']",
+      "endpoints": {
+        "/api/status/desktop": ["desktop-claude-code.json", "desktop-cursor.json", "desktop-ghostty.json", "desktop-antigravity.json"]
+      },
+      "conditional": false,
+      "proves": "顶栏中间显示 Mac 当前应用徽章（Using <应用名>），离线是 Mac reporter offline"
+    },
+    "contact": {
+      "component": "src/components/contact-card.tsx",
+      "selector": "#contact",
+      "endpoints": {
+        "/api/status/github-chart": ["github-chart-stale.json"],
+        "/api/status/coding/year": ["coding-year.json", "coding-unavailable.json"]
+      },
+      "conditional": false,
+      "proves": "头像、LYJW131 站名与贡献热力 / 年度编码图在 SSR HTML 里就有值"
+    },
+    "digest": {
+      "component": "src/components/live/digest-card.tsx",
+      "selector": "#digest",
+      "endpoints": {
+        "/api/status/digest": ["digest.json", "digest-quiet.json", "digest-stale.json"],
+        "/api/status/timezone": []
+      },
+      "conditional": false,
+      "proves": "有摘要时渲染中文标语与 24 小时表盘；digest-quiet 让整卡换成 TimezoneCard 时钟"
+    },
+    "now-watching": {
+      "component": "src/components/live/now-watching-card.tsx",
+      "selector": "#now-watching",
+      "endpoints": {
+        "/api/status/watching/now": ["watching-now.json", "watching-now-paused.json"]
+      },
+      "conditional": true,
+      "proves": "Emby 正在看的标题、海报与播放进度渲染；没在看不挂载整卡"
+    },
+    "now-gaming": {
+      "component": "src/components/live/quest-now-card.tsx",
+      "selector": "#now-gaming",
+      "endpoints": {
+        "/api/status/quest/now": ["quest-now-playing.json"]
+      },
+      "conditional": true,
+      "proves": "Meta Quest 正在玩的游戏名渲染；没在玩不挂载整卡"
+    },
+    "charger": {
+      "component": "src/components/live/charger-card.tsx",
+      "cardLabel": "Charger",
+      "endpoints": {
+        "/api/status/charger": ["charger-idle.json", "charger-macbook-iphone.json"]
+      },
+      "conditional": true,
+      "proves": "连接的充电设备与输入功率渲染；无连接时收起（aria-hidden + 高度 0）"
+    },
+    "powerbank": {
+      "component": "src/components/live/powerbank-card.tsx",
+      "cardLabel": "Power Bank",
+      "endpoints": {
+        "/api/status/powerbank": ["powerbank-charging.json"]
+      },
+      "conditional": true,
+      "proves": "电量百分比与输入 / 输出 / 充满时间数值渲染；无连接时收起"
+    },
+    "listening": {
+      "component": "src/components/live/listening-card.tsx",
+      "cardLabel": "Recently Played",
+      "endpoints": {
+        "/api/status/listening": [],
+        "/api/status/listening/now": ["listening-now-yoasobi.json", "listening-now-elsewhere-estimated.json"]
+      },
+      "conditional": false,
+      "proves": "正在听的曲目、封面与歌词区，或最近播放列表渲染"
+    },
+    "god-chat": {
+      "component": "src/components/god-chat.tsx",
+      "cardLabel": "Talk to God",
+      "endpoints": {},
+      "conditional": false,
+      "proves": "聊天卡渲染输入区与历史按钮，无控制台错误（数据走 /api/god，非状态端点）"
+    },
+    "activity": {
+      "component": "src/components/live/activity-card.tsx",
+      "cardLabel": "Activity",
+      "endpoints": {
+        "/api/status/activity": ["activity-afternoon.json"],
+        "/api/status/workouts": ["workouts.json"]
+      },
+      "conditional": false,
+      "proves": "Apple Watch 活动圆环渲染，下方 WorkoutsStrip 训练行渲染"
+    },
+    "server": {
+      "component": "src/components/live/server-card.tsx",
+      "selector": "#exit-node",
+      "endpoints": {
+        "/api/status/server": ["server-traffic.json"]
+      },
+      "conditional": false,
+      "proves": "出口节点上下行速率与 CPU / 内存 / 磁盘数值渲染"
+    },
+    "agent-status": {
+      "component": "src/components/live/agent-status-card.tsx",
+      "selector": "#agent-status",
+      "endpoints": {
+        "/api/status/agent-status": ["agent-status-boundary.json", "agent-status-degraded.json", "agent-status-empty.json", "agent-status-stale.json"]
+      },
+      "conditional": false,
+      "proves": "各家 coding agent provider 的状态行渲染，degraded 时能看到非绿状态"
+    },
+    "vibe-coding": {
+      "component": "src/components/live/vibecoding-card.tsx",
+      "selector": "#vibe-coding",
+      "endpoints": {
+        "/api/status/coding": ["coding-multi-source.json", "coding-mac-only.json", "coding-no-mac.json", "coding-claude-cloud-today.json", "coding-source-error.json", "coding-unavailable.json"],
+        "/api/status/coding/now": ["coding-now-active.json", "coding-now-idle.json", "coding-now-mac-offline.json"],
+        "/api/status/coding/year": ["coding-year.json", "coding-unavailable.json"],
+        "/api/status/limits": ["limits-steady.json"]
+      },
+      "conditional": false,
+      "proves": "各 agent 的用量行、此刻活动徽标与限额条渲染"
+    },
+    "playstation": {
+      "component": "src/components/live/playstation-block.tsx",
+      "selector": "#playing",
+      "endpoints": {
+        "/api/status/playing": [],
+        "/api/status/playing/now": ["playing-now-pragmata.json"],
+        "/api/status/trophies": []
+      },
+      "conditional": false,
+      "proves": "正在玩 / 最近玩的游戏与奖杯组（#playstation-trophies）渲染"
+    },
+    "pulse": {
+      "component": "src/components/live/pulse-card.tsx",
+      "cardLabel": "Pulse",
+      "endpoints": {
+        "/api/status/pulse": ["pulse-busy-day.json", "pulse-empty.json", "pulse-zero-lanes.json", "pulse-tokens-idle.json", "pulse-activity-boundary.json"]
+      },
+      "conditional": false,
+      "proves": "最近 24 小时各泳道的时段图渲染，箭头键可逐段查看"
+    },
+    "site-status": {
+      "component": "src/components/live/site-status-card.tsx",
+      "selector": "#site-status",
+      "endpoints": {
+        "/api/status/github-repo": ["github-repo-no-totals.json", "github-repo-stale.json"],
+        "/api/status/site-deployments": ["site-deployments.json", "vercel-deployments-stale.json"],
+        "/api/status/cloudflare-workers": ["cloudflare-workers-stale.json"],
+        "/api/status/sentry": ["sentry-steady.json", "sentry-stale.json"],
+        "/api/status/reporters": ["reporters-steady.json"],
+        "/api/status/server": ["server-traffic.json"]
+      },
+      "conditional": false,
+      "proves": "视图数、提交统计、部署列表、监控与上报器各行渲染"
+    },
+    "watching": {
+      "component": "src/components/live/watching-card.tsx",
+      "selector": "#watching",
+      "endpoints": {
+        "/api/status/watching": [],
+        "/api/status/watching/now": ["watching-now.json", "watching-now-paused.json"]
+      },
+      "conditional": false,
+      "proves": "Recently Watched 瓷砖行渲染，正在看的条目带进度条"
+    }
+  }
+}
