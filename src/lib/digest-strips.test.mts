@@ -48,3 +48,14 @@ test("token bars are scaled to the day's busiest bin, and topics without a lane 
   assert.equal(strip?.[20], 1);
   assert.equal(topicStrip("site", pulse({})), null);
 });
+
+test("inferred Apple plays alone still draw the music strip", () => {
+  const strip = topicStrip("music", pulse({
+    listening: {
+      kind: "state",
+      segments: { startSec: [], endSec: [], state: [], title: [], subtitle: [] },
+      uncertain: { startSec: [HOUR], endSec: [2 * HOUR], title: [null], subtitle: [null], marginSec: [0] },
+    },
+  }));
+  assert.ok(strip && strip.some((value) => value > 0));
+});
