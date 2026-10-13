@@ -206,7 +206,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - 写 D1 的有三方：上报入口（训练、圆环日读数、限额快照、服务器小时汇总）、采集 Worker（站点部署记录，`workers/collector/src/history.ts#archiveSiteDeploys`）、core（cron 每 5 分钟一轮的 pulse 归档，含编码用量的账本和 5 分钟桶；以及收下奖杯信封后的 `workers/core/src/stores/trophy-history.ts#archiveTrophies`）。
 - 活动历史桶在入口量化（eb429ed），防止 HealthKit 的浮点抖动让 D1 每次重写整个 24 小时窗口。
 
-### core 的 cron（`workers/core/src/index.ts#runScheduled`）
+### core 的 cron（`workers/core/src/cron-round.ts#runCronRound`）
 
 这一节和下面的「Pulse 事实时间线」是第 08 章用的，按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
@@ -217,8 +217,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
      - 全零的窗不问 Clef，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
      - 每轮最多 36 个窗，从新到旧，每批并发 3，超时 10 秒。
      - 打分写回 StateHub 的评估列表，和 pulse 时间线一样只留 `shared/limits.ts#PULSE_TTL_MS`（`workers/core/src/pulse-score-state.ts#finishPulseScore`）；归档的各路（`ARCHIVE_STREAMS`）里没有它，**不进 D1**。第 08 章在 Clef 那一格上方注「打分只在屋里放 7 天，不进 D1」。
-- 每一轮都包在 `Sentry.withMonitor` 里，向 `api-minute-cron` 报到（`workers/core/src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`、`shared/sentry.ts#CRON_HEARTBEAT_EVERY_MINUTES`）。
-- StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档、打分和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/index.ts#runScheduled`）。
+- 每一轮都包在 `shared/cron-check-ins.ts#cronCheckIns` 里，向 `api-minute-cron` 报到（`workers/core/src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`、`shared/sentry.ts#CRON_HEARTBEAT_EVERY_MINUTES`）。
+- StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档、打分和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/cron-round.ts#runCronRound`）。
+- 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是它的轮次（`workers/collector/src/core-round.ts#driveCoreRound`）。
 
 ### 闹钟
 
@@ -347,7 +348,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 两个方向相反的信号：
 
-- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明站点（site Worker）还在出页面（`src/app/api/version/route.ts#loader`）；后端那一截看 core Worker 的 cron 心跳（`workers/core/src/index.ts#runScheduled`）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
+- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明站点（site Worker）还在出页面（`src/app/api/version/route.ts#loader`）；后端那一截看 core Worker 的 cron 心跳（`workers/core/src/cron-round.ts#runCronRound`）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
 - **Worker 每 5 分钟去报到**：core cron 的每一轮（见 §3「core 的 cron」）。
 
 Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回，页面和首屏都不直连 Sentry，只读可滞后层里的这份结果（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`shared/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。

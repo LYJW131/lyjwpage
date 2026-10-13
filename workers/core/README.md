@@ -1,16 +1,16 @@
 # API 中枢（状态核心）
 
-实时状态的唯一权威：StateHub 的 SQLite、公开读取、WebSocket 推送、首屏缓存失效和 pulse 的定时 cron。
+实时状态的唯一权威：StateHub 的 SQLite、公开读取、WebSocket 推送、首屏缓存失效和 pulse 的定时一轮。
 上报器不直连这里：外部上报由上报入口 Worker（[`workers/ingress`](../ingress/README.md)）验明身份、校验收敛、按数据层拆开，
 实时那一半经 Service Binding 调这里的 `StateCore.commitIngest`；采集 Worker 同样经 `StateCore` 交数据。
 站点没有上报路由、rewrite、中继和事件发布逻辑。
 
 ## 代码职责
 
-- `src/index.ts`：默认 Worker 入口与 cron（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分，每几轮顺带做一次断流检测，见下文「断流告警」）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
+- `src/index.ts`：默认 Worker 入口；`src/cron-round.ts`：定时一轮（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分，每几轮顺带做一次断流检测，见下文「断流告警」）。本 Worker 不挂 Cloudflare cron（`wrangler.toml` 的 `crons = []`，理由写在那里），采集 Worker 每分钟调 `StateCore.cronRound(scheduledTime)`，由 `src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是 core 的轮次；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
 - `src/state-core.ts`：对内的 RPC 入口 `StateCore`（契约 `shared/state-core.ts`），上报入口和采集 Worker 经 Service Binding 调：
   `ready()`（恒为 `true`，契约只加不改而保留）、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`audience()`、
-  `playstationPower()`、`appleDeveloperToken()`（core 不持有 Apple 私钥，恒抛错；契约只加不改而保留）、`commitRecentlyPlayed()`、`commitRecentTracks()`、`commitEnrichmentPatch(patch)`（采集 Worker 回执后重查到的补全，按 `trackKey` 补写）、`revalidate()`。
+  `playstationPower()`、`appleDeveloperToken()`（core 不持有 Apple 私钥，恒抛错；契约只加不改而保留）、`commitRecentlyPlayed()`、`commitRecentTracks()`、`commitEnrichmentPatch(patch)`（采集 Worker 回执后重查到的补全，按 `trackKey` 补写）、`revalidate()`、`cronRound(scheduledTime)`（采集 Worker 每分钟驱动的定时一轮，见上一条）。
 - `src/live-census.ts`：推送房间的两个人头数（开着 / 可见）怎么数，纯函数；房间 `LivePushRoom` 在 `src/origin-worker.ts`。
 - `src/ingest-handlers.ts`、`src/stores/`：上报的 StateHub 提交阶段，按来源分发；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
   准备阶段（收敛、校验、Emby 的 R2 HEAD）在根目录 `shared/ingest/`，跑在上报入口；这里只 `import type` 命令的类型（eslint 挡住值导入）。
@@ -404,7 +404,7 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 
 ### cron 失败口径
 
-- StateHub 整个调不通（`pulseTick` 抛错）：这一轮抛给 `Sentry.withMonitor`，按失败报到，`withSentry` 同时记一条异常。监控 `failureIssueThreshold` 见 `src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`。
+- StateHub 整个调不通（`pulseTick` 抛错）：这一轮抛给 `shared/cron-check-ins.ts#cronCheckIns`，按失败报到，`withSentry` 同时记一条异常。监控 `failureIssueThreshold` 见 `src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`。
 - 子步骤失败（归档、评分、断流检测）：只打 `console.warn` 并记一条 `warning` 级异常（tag `cron.step=pulse-archive | pulse-score | freshness-watch`），这一轮照常报 ok。取舍：站点「API」在线行读的就是这个监控，子步骤坏了 API 本身仍在服务，不该让在线行闪；子步骤的故障靠事件看。StateHub 内部 `pulseTick` 里读归档快照、领评分任务各自兜底，只记 warn，不算 StateHub 调不通。
 
 ## 配置与部署
@@ -445,9 +445,8 @@ dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入�
 `/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，Apple Music 的三条路径（`shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS`）给采集 Worker，其余一切（含 `/ws`）给 core；AI 路由由 core 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，
 `LAG`、`CREDENTIALS` 两个本地 KV 用同一个 id，一边写的另一边读得到；Service Binding 按生产名字
 （`core`、`ai`、`ingress`、`collector`）互相找到，所以本地 core 的名字也是 `core`。
-`curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；
-core 自己的 cron 本地触发不到（Service Binding 调不了别的 Worker 的 `scheduled`），它本地要做的
-D1 归档、Clef 打分本来也被隔离开关关着。
+`curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务，并像生产一样调 core 的 `cronRound`；
+core 这一轮本地要做的 D1 归档、Clef 打分被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
 `AI` 绑定只能连远程 Workers AI：`scripts/dev-worker.mjs` 在没有 `CLOUDFLARE_API_TOKEN` 也没有 `wrangler login` 时，把 core 与 ai 的测试配置去掉 `[ai]` 段另存为 `wrangler.test.offline.toml` 再起，否则整个会话起不来；去掉后对话路由走兜底档位。`DEV_WORKER_AI=remote` / `off` 强制选择。
@@ -534,7 +533,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 ### Sentry
 
 四块数据：`uptime`（对 `https://lyjw.me/api/version` 的在线探测，配置见 [仓库外事实](../../docs/ops-facts.md)）、`heartbeat`（本 Worker cron 的
-心跳监控 `api-minute-cron`，只算 production；cron 每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/sentry.ts`，站点卡片上的文案也读它）分钟一轮，每轮都报到，监控的 crontab 与 wrangler 触发器同是 `src/cron-heartbeat.ts#CRON_SCHEDULE`；slug 里的 minute 不改，改了丢监控历史）、
+心跳监控 `api-minute-cron`，只算 production；cron 每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/sentry.ts`，站点卡片上的文案也读它）分钟一轮，每轮都报到，监控的 crontab 是 `src/cron-heartbeat.ts#CRON_SCHEDULE`，与 `cronRoundDue` 判定的分钟一致（`src/cron-heartbeat.test.ts` 守着）；slug 里的 minute 不改，改了丢监控历史）、
 `errors`（production 报错：`site` 是站点项目，`worker` 是 core 与采集 Worker 两个项目合计）、
 `vitals`（站点 production 的 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。

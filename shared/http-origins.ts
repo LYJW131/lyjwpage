@@ -66,3 +66,10 @@ export function getCorsHeaders(request: Request, env: OriginEnv): Headers {
   headers.set("Access-Control-Max-Age", "86400");
   return headers;
 }
+
+export function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.set("Cache-Control", "no-store");
+  return new Response(JSON.stringify(data), { ...init, headers });
+}
