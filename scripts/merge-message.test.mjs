@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { mergeMessage } from "./merge-message.mjs";
 
-test("标题用 PR 标题加号，正文列提交主题并汇总去重后的协作者", () => {
+test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓库主人，提交作者只收认得出的身份", () => {
   const result = mergeMessage({
     number: "207",
     title: "feat(site): 最近提交不显示同步合并",
@@ -11,12 +11,15 @@ test("标题用 PR 标题加号，正文列提交主题并汇总去重后的协�
     authors: [
       "LYJW131 <153256373+LYJW131@users.noreply.github.com>",
       "Cursor Agent <cursoragent@cursor.com>",
+      "千早 愛音 <lyjw131@icloud.com>",
+      "An0nCh1hayaa <300701323+An0nCh1hayaa@users.noreply.github.com>",
     ],
     coAuthors: [
       "Claude Opus 5.5 (1M context) <noreply@anthropic.com>",
       "claude opus 5.5 (1M context) <NOREPLY@anthropic.com>",
       "gpt-6.1-sol <codex@openai.com>",
       "Claude Opus 5.5 <noreply@anthropic.com>",
+      "Yangjunwei Liang <LYJW131@users.noreply.github.com>",
     ],
     owner: "LYJW131",
   });
@@ -29,6 +32,7 @@ test("标题用 PR 标题加号，正文列提交主题并汇总去重后的协�
     "Co-Authored-By: gpt-6.1-sol <codex@openai.com>",
     "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
     "Co-Authored-By: Cursor Agent <cursoragent@cursor.com>",
+    "Co-Authored-By: An0nCh1hayaa <300701323+An0nCh1hayaa@users.noreply.github.com>",
   ].join("\n"));
 });
 
