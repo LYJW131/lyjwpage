@@ -314,6 +314,7 @@ export function HeaderDesktop({
                     initial={false}
                     animate={{ width: glyphSize, height: glyphSize }}
                     transition={sizeTransition}
+                    title={activeOverride.key === "claude-code" ? "Using Claude Code" : undefined}
                   >
                     {activeOverride.renderIcon({ size: 24, className: "size-full" })}
                   </motion.span>
