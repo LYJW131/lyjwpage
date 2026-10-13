@@ -634,7 +634,7 @@ function Conversation({ className, archive, session: conversation }: { className
         {!expanded ? (
           <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Ask anything. The oracle sees what LYJW is up to, knows how this site is built, and can search the web.
+              Ask about LYJW, this site, or anything on the web.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((suggestion) => (
