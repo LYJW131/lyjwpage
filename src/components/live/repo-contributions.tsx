@@ -162,7 +162,7 @@ function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; commi
   const agentNames = agents.map((author, index) => {
     const model = author.model && author.model.toLowerCase() !== author.name.toLowerCase() ? author.model : null;
     const name = author.login && !author.login.endsWith("[bot]")
-      ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="py-1.5 font-medium text-foreground hover:underline">{author.name}</a>
+      ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="-my-1 inline-block py-1 font-medium text-foreground hover:underline">{author.name}</a>
       : <span className="font-medium text-foreground">{author.name}</span>;
     return (
       <Fragment key={authorKey(author)}>
@@ -172,14 +172,14 @@ function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; commi
     );
   });
   return (
-    <>
+    <div className="flex flex-col gap-2">
       {people.length > 0 ? (
         <AuthorLine authors={people}>
           {people.map((author, index) => (
             <Fragment key={authorKey(author)}>
               {joinLabels(people.length, index)}
               {author.login
-                ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="py-1.5 font-medium text-foreground hover:underline">{author.name}</a>
+                ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="-my-1 inline-block py-1 font-medium text-foreground hover:underline">{author.name}</a>
                 : <span className="font-medium text-foreground">{author.name}</span>}
             </Fragment>
           ))}
@@ -191,7 +191,7 @@ function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; commi
         <div className="min-w-0 truncate text-2xs leading-4 text-muted-foreground">committed {time}</div>
       )}
       {people.length > 0 && agents.length > 0 && <AuthorLine authors={agents}>with {agentNames}</AuthorLine>}
-    </>
+    </div>
   );
 }
 

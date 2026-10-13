@@ -72,7 +72,7 @@ const SLOT = {
   playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_655px] md:[contain-intrinsic-size:auto_595px] lg:[contain-intrinsic-size:auto_525px]",
   godChat: "md:col-span-2",
   pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_559px] sm:[contain-intrinsic-size:auto_355px] lg:[contain-intrinsic-size:auto_363px]",
-  siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1721px] sm:[contain-intrinsic-size:auto_1524px] md:[contain-intrinsic-size:auto_1083px] lg:[contain-intrinsic-size:auto_932px]",
+  siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1711px] sm:[contain-intrinsic-size:auto_1530px] md:[contain-intrinsic-size:auto_1089px] lg:[contain-intrinsic-size:auto_938px]",
 } as const;
 
 const READS = {
