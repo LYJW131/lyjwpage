@@ -47,7 +47,7 @@ export default defineConfig(({ command, mode }) => {
   }
 
   const backendUrl =
-    env.PREVIEW_BACKEND_URL || env.PUBLIC_BACKEND_URL || "https://api.homepage.lyjw.llc";
+    env.PREVIEW_BACKEND_URL || env.PUBLIC_BACKEND_URL || "https://lyjw.me";
 
   return {
     plugins: [
