@@ -160,8 +160,8 @@ function codingLines(views: DigestViews, windowFrom: number, today: string): str
     return [{ at: recent[0].lastActivityAt, text: `${AGENT_LABELS[agent.id] ?? agent.id}${models.length ? ` (${models.join(", ")})` : ""}` }];
   }).sort((a, b) => b.at - a.at);
   if (agents.length) lines.push(`Coding agents used: ${agents.map((agent) => agent.text).join(", ")}`);
-  const tokens = pulse.lanes.tokens.summary.freshTokens;
-  if (tokens > 0) lines.push(`Tokens through the agents: ${compactCount(tokens)} (cache reads excluded)`);
+  const tokens = pulse.lanes.tokens.summary.totalTokens;
+  if (tokens > 0) lines.push(`Tokens through the agents: ${compactCount(tokens)}`);
   const cost = (views.coding?.agents ?? [])
     .filter((agent) => agent.lastDay?.date === today)
     .reduce((sum, agent) => sum + (agent.lastDay?.apiEquivalentCostUSD ?? 0), 0);

@@ -38,7 +38,7 @@ export function topicStrip(topic: DigestTopic, pulse: PulsePayload): number[] | 
     switch (topic) {
       case "coding": return coverage(lanes.coding.segments, (index) => lanes.coding.segments.value[index] > 0, seconds);
       case "agents": return coverage(lanes.coding.segments, (index) => lanes.coding.segments.value[index] >= 2, seconds);
-      case "tokens": return amounts(lanes.tokens.buckets, lanes.tokens.buckets.fresh, seconds);
+      case "tokens": return amounts(lanes.tokens.buckets, lanes.tokens.buckets.total, seconds);
       case "music": return coverage(lanes.listening.segments, (index) => lanes.listening.segments.state[index] >= 2, seconds);
       case "watching": return coverage(lanes.watching.segments, (index) => lanes.watching.segments.state[index] >= 2, seconds);
       case "gaming": return coverage(lanes.gaming.segments, (index) => lanes.gaming.segments.state[index] >= 2, seconds);

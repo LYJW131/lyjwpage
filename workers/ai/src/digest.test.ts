@@ -56,8 +56,8 @@ function baseViews(): DigestViews {
         },
         tokens: {
           kind: "tokens",
-          buckets: { startSec: [], endSec: [], fresh: [], output: [], cacheRead: [] },
-          summary: { peakPerMinute: null, currentPerMinute: null, freshTokens: 41_522_932 },
+          buckets: { startSec: [], endSec: [], total: [], output: [], cacheRead: [] },
+          summary: { peakPerMinute: null, currentPerMinute: null, totalTokens: 41_522_932 },
         },
         listening: stateLane(
           [...songs, { at: 9, minutes: 30, title: "GUM&DROP", subtitle: "Hoshimachi Suisei" }],
@@ -172,7 +172,7 @@ test("facts round small changes away, so an unchanged hour keeps the same input 
   const coding = after.pulse!.lanes.coding.summary;
   coding.humanSeconds += 240;
   after.pulse!.lanes.activity.summary.steps += 30;
-  after.pulse!.lanes.tokens.summary.freshTokens += 200_000;
+  after.pulse!.lanes.tokens.summary.totalTokens += 200_000;
   after.pulse!.window = { from: FROM + 20 * 60_000, to: NOW + 20 * 60_000 };
   assert.equal(digestFacts(after, NOW + 20 * 60_000), digestFacts(before, NOW));
   assert.equal(
