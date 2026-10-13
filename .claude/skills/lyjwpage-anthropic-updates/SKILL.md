@@ -28,7 +28,7 @@ description: lyjwpage 的「Anthropic 官方动态」定时任务按它跑：按
 | `anthropic` | anthropic.com 的 news 与 engineering 文章（读 sitemap） | 已见链接集合 |
 | `claude-dev` | claude.dev 博客（读 sitemap） | 已见链接集合 |
 | `release-notes` | Claude Platform release notes 的每条要点 | 已见条目哈希集合（日期 + 前 100 字） |
-| `docs` | platform.claude.com 与 code.claude.com 的英文文档页（读 sitemap） | 已见链接集合 |
+| `docs` | platform.claude.com 与 code.claude.com 的英文文档页（读 sitemap），只报新页面；已有页面的改动有意不报，实质变化看 `release-notes` 与 `claude-code` | 已见链接集合 |
 | `claude-code` | Claude Code 仓库的 CHANGELOG | 最后读到的版本号 |
 | `x` | @AnthropicAI 时间线，不含回复与转推（X API，代理注入凭据，不加也不打印密钥） | 最后读到的推文 id |
 

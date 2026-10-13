@@ -9,6 +9,8 @@ import urllib.request
 
 STATE_DIR = os.environ.get("ANTHROPIC_UPDATES_DIR", "/mnt/project-files/anthropic-updates")
 X_USER_ID = "1353836358901501952"
+RELEASE_NOTES_URL = "https://platform.claude.com/docs/en/release-notes/overview"
+CHANGELOG_URL = "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md"
 UA = "Mozilla/5.0 (lyjwpage anthropic-updates)"
 
 
@@ -54,7 +56,7 @@ def docs_pages():
 
 
 def release_notes():
-    text = get("https://platform.claude.com/docs/en/release-notes/overview.md")
+    text = get(RELEASE_NOTES_URL + ".md")
     items = {}
     date = None
     for line in text.splitlines():
@@ -65,7 +67,7 @@ def release_notes():
         b = re.match(r"^\*\s+(.*)$", line)
         if b and date:
             key = hashlib.sha1(f"{date}|{b.group(1)[:100]}".encode()).hexdigest()[:16]
-            items[key] = {"date": date, "text": b.group(1)}
+            items[key] = {"date": date, "text": b.group(1), "url": RELEASE_NOTES_URL}
     if not items:
         raise RuntimeError("release notes 里没解析出条目，页面结构可能变了")
     return items
@@ -170,7 +172,7 @@ def scan(init=False):
         elif last not in names:
             raise RuntimeError(f"书签版本 {last} 不在 CHANGELOG 里，不猜，停下")
         else:
-            new = [{"version": v, "notes": b} for v, b in versions[: names.index(last)]]
+            new = [{"version": v, "notes": b, "url": CHANGELOG_URL} for v, b in versions[: names.index(last)]]
         pending["cursors"]["claude-code"] = names[0]
         report["claude-code"] = {"ok": True, "latest": names[0], "new": new}
     except Exception as e:
