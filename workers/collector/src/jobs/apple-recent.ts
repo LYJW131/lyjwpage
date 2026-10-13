@@ -286,14 +286,16 @@ export const appleRecentJob: Job = {
     const resolved = await resolveCredentials();
     const ownerName = signing.values.APPLE_MUSIC_OWNER_NAME;
     const recentTracks = async () => maskOwnerName(await assembleRecentTracks(resolved), ownerName);
+    // 失败信息里拼着 Apple 的响应正文，进日志和 Sentry 之前同样打码。
+    const masked = (error: unknown) => new Error(maskOwnerName(explain(error), ownerName));
     const polledAt = Date.now();
     const [items, tracks] = await Promise.allSettled([
       assemble(resolved).then((value) => maskOwnerName(value, ownerName)),
       recentTracks().then((list) => ({ list, observedAt: Date.now() })),
     ]);
-    if (items.status === "rejected") throw items.reason;
+    if (items.status === "rejected") throw masked(items.reason);
     const { changed } = await env.CORE.commitRecentlyPlayed(await enrichRecentlyPlayed(items.value.items), items.value.container);
-    if (tracks.status === "rejected") throw tracks.reason;
+    if (tracks.status === "rejected") throw masked(tracks.reason);
     const { traced, nextBy } = await env.CORE.commitRecentTracks(tracks.value.list, tracks.value.observedAt);
     if (changed || traced) await put(LAST_CHANGE_KEY, now, ACTIVE_HOLD_MS);
     const flags = [changed && "changed", traced && "traced"];
@@ -308,7 +310,7 @@ export const appleRecentJob: Job = {
         wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         clock: Date.now,
       }, { polledAt, nextBy, until: now + ACTIVE_FOLLOW_MS });
-      if (followed.error) console.warn(JSON.stringify({ event: "apple-recent-follow", polls: followed.polls, error: followed.error }));
+      if (followed.error) console.warn(JSON.stringify({ event: "apple-recent-follow", polls: followed.polls, error: maskOwnerName(followed.error, ownerName) }));
       flags.push(followed.traced > 0 && `followed:${followed.traced}`);
     }
     return ok(flags.filter(Boolean).join(",") || undefined);
