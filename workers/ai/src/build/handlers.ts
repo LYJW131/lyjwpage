@@ -12,7 +12,7 @@ import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screensh
 import { fail, readBoundedBytes } from "./http";
 import { hashToken, signBuildToken, uploadTokenForRun, verifyBuildToken } from "./token";
 import { parseBuildUpload } from "./validation";
-import { applyGithubWebhook, verifyGithubWebhook } from "./webhook";
+import { applyGithubWebhook, outsideBuildBranches, verifyGithubWebhook } from "./webhook";
 
 type StatusPayload = { kind: "status"; runId: string; expiresAt: number };
 const noStore = { "Cache-Control": "no-store" };
@@ -286,9 +286,11 @@ export async function handleGithubWebhook(request: Request, env: Env): Promise<R
   if (!delivery || !/^[\w-]{1,100}$/.test(delivery)) return fail(400, "Invalid delivery identifier.");
   let payload;
   try { payload = JSON.parse(new TextDecoder().decode(body)); } catch { return fail(400, "Invalid webhook body."); }
+  const event = request.headers.get("X-GitHub-Event") ?? "";
+  if (outsideBuildBranches(event, payload)) return Response.json({ accepted: true }, { headers: noStore });
   const coordinator = env.BUILD_COORDINATOR.getByName("global");
   if (!await coordinator.hasDelivery(delivery)) {
-    await applyGithubWebhook(env, request.headers.get("X-GitHub-Event") ?? "", payload);
+    await applyGithubWebhook(env, event, payload);
     await coordinator.completeDelivery(delivery);
   }
   return Response.json({ accepted: true }, { headers: noStore });

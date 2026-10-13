@@ -383,6 +383,39 @@ test("webhooks verify exact bytes, reject invalid signatures and deduplicate del
   assert.equal(instance.readRun(runId)?.state.pr?.number, 12);
 });
 
+test("CI deliveries for other branches are acknowledged without touching the BuildCoordinator; build-branch and branchless ones are deduplicated and looked up", async () => {
+  const calls: string[] = [];
+  const env = {
+    GITHUB_WEBHOOK_SECRET: "webhook-secret",
+    BUILD_COORDINATOR: { getByName: () => ({
+      hasDelivery(id: string) { calls.push(`has ${id}`); return false; },
+      findRun(sha: string) { calls.push(`find ${sha}`); return null; },
+      completeDelivery(id: string) { calls.push(`done ${id}`); },
+    }) },
+  } as unknown as Env;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("webhook-secret"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const deliver = async (delivery: string, event: string, payload: object) => {
+    const text = JSON.stringify({ repository: { full_name: BUILD_REPO }, ...payload });
+    const signature = `sha256=${Buffer.from(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text))).toString("hex")}`;
+    const response = await handleGithubWebhook(new Request("https://api.test/api/build/webhook", { method: "POST", body: text, headers: { "X-Hub-Signature-256": signature, "X-GitHub-Delivery": delivery, "X-GitHub-Event": event } }), env);
+    assert.equal(response.status, 200, delivery);
+  };
+  const checkRun = (branch: string | null) => ({ check_run: { name: "check", head_sha: headSha, status: "completed", conclusion: "success", check_suite: { head_branch: branch } } });
+  const checkSuite = (branch: string | null) => ({ check_suite: { head_sha: headSha, status: "completed", conclusion: "success", head_branch: branch } });
+  const status = (...branches: string[]) => ({ sha: headSha, state: "success", branches: branches.map((name) => ({ name })) });
+
+  await deliver("main-run", "check_run", checkRun("main"));
+  await deliver("thread-suite", "check_suite", checkSuite("claude/project-thread-x"));
+  await deliver("other-status", "status", status("main", "claude/project-thread-x"));
+  assert.deepEqual(calls, []);
+
+  await deliver("build-run", "check_run", checkRun(branchForRun(runId)));
+  await deliver("build-status", "status", status("main", branchForRun(runId)));
+  await deliver("branchless-suite", "check_suite", checkSuite(null));
+  await deliver("branchless-status", "status", status());
+  assert.deepEqual(calls, ["build-run", "build-status", "branchless-suite", "branchless-status"].flatMap((id) => [`has ${id}`, `find ${headSha}`, `done ${id}`]));
+});
+
 test("every build signs in with PKCE, accepts any account, uses the identity once and revokes the OAuth token", async () => {
   const { env, instance } = coordinator();
   const proposal = await issuePlan(env, plan);

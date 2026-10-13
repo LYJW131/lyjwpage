@@ -4,7 +4,7 @@
 
 ## 入口与权限
 
-生产配置 `wrangler.toml` 设 `workers_dev=false`、`preview_urls=false`，不绑定独立公开域名，也没有 workers.dev 地址。生产 HTTP 只经 api 对外公开。浏览器与 MCP 客户端继续访问 api 的公开地址，api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 经 `AI_SERVICE.fetch(request)` 原样转发请求与响应流；来源校验、预检、限流和协议处理由本 Worker 执行。
+生产配置 `wrangler.toml` 设 `workers_dev=false`、`preview_urls=false`，不绑定独立公开域名，也没有 workers.dev 地址。生产 HTTP 经站点和 api 的公开地址进来：站点域名上的请求由 site Worker 按 `src/lib/site-policy.ts#classifyGatewayRequest` 分出，api 公开地址上的由 api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 认出，两边都经各自的 `AI_SERVICE.fetch(request)` 原样转发请求与响应流；浏览器走哪个地址由站点的 `PUBLIC_BACKEND_URL` 决定。来源校验、预检、限流和协议处理由本 Worker 执行。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -61,7 +61,7 @@
 
 ## MCP
 
-`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。站点的 site Worker 网关将 `/mcp` 用 307 跳到 `PUBLIC_BACKEND_URL` 对应的 api，api 再经 Service Binding 交给本 Worker。307 保留 POST 与请求体；不走缓存层 rewrite，避免 `CF-Connecting-IP` 变成共用的出口 IP。公开访问域名见 `docs/ops-facts.md`。
+`POST /mcp`（`src/mcp.ts`）是给外部 AI 用的公开 MCP 端点，无鉴权。生产里站点域名上的 `/mcp` 由 site Worker 经 Service Binding 直接交给本 Worker，api 公开地址上的由 api 同样转交；Service Binding 保留访客的 `CF-Connecting-IP`，跨域 `fetch` 或缓存层 rewrite 会把它换成共用的出口 IP。site 的分支 Preview 与本地没有这些绑定，仍用 307 跳到 `PUBLIC_BACKEND_URL` 对应的后端，307 保留 POST 与请求体。公开访问域名见 `docs/ops-facts.md`。
 
 - 工具就是 `src/tools/registry.ts#SITE_TOOLS`，和首页对话同一份定义与执行。这里只放只读、只读公开模型的工具：`start_design`、`ask_visitor`、`propose_build`（要访客在卡片里操作）、`show_card`（只对对话卡片有意义）和 `web_search`（Anthropic 服务端工具）只在对话里。每次调用各开一本账本，单次调用的视图数与截断长度和对话相同，跨调用不累计。
 - 协议：无状态，只回 JSON，不发会话 ID，不开 SSE（GET、DELETE 回 405），JSON-RPC 批量请求回 400。两代客户端都收：`_meta` 里带版本的新协议（`MODERN_VERSIONS`）逐个请求核对 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头与正文一致，`server/discover`、`tools/list` 带缓存提示（`CACHE_HINTS`，缺了 Claude Code 整张工具表都不认）；旧协议（`LEGACY_VERSIONS`）先 `initialize` 握手。

@@ -39,18 +39,6 @@ export function redactSentryEvent<T extends Event>(event: T): T {
       }
     }
   }
-  if (Array.isArray(event.spans)) {
-    for (const span of event.spans) {
-      const data = span?.data;
-      if (data) {
-        for (const key of SPAN_URL_KEYS) {
-          if (typeof data[key] === "string") data[key] = stripUrlQuery(data[key]);
-        }
-      }
-      const match = typeof span?.description === "string" ? SPAN_METHOD_URL.exec(span.description) : null;
-      if (match) span.description = `${match[1]} ${stripUrlQuery(match[2])}`;
-    }
-  }
   return event;
 }
 

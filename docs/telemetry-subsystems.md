@@ -29,7 +29,7 @@
 
 ### 架构边界
 - **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/api`）。
-- **无状态渲染**：site Worker 仅负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化；站点内没有状态 API 代理或数据库直连端点。
+- **站点是读取边缘**：site Worker 负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化，并在站点域名上回答 `/api/*`：可滞后视图直接读 `LAG` KV（`shared/lag-views.ts`），其余经 Service Binding 原样交给 api / ai。它不写状态、不持有密钥。
 - **客户端直连**：浏览器端配置 `PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
 - **原生客户端**：[`apps/ios`](../apps/ios/README.md) 读同一个 api Worker：状态 GET 不带 `Origin`（api Worker 只拦带了且不在白名单的来源），推送长连接自报站点域名作 `Origin`（`/ws` 缺来源一律 403），所以改 `ALLOWED_ORIGINS` 时要保留站点域名。取数节奏照浏览器端的登记表，只在前台连推送、退后台即断，在线人数的语义和关掉标签页一致。
 
@@ -92,7 +92,7 @@
 - **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），最前那个容器经 `href` 深入查询曲目，累计出时长，按容器顺序的可播曲目（带时长与封面）随 `commitRecentlyPlayed` 交给状态核心推下一首；自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `CONTAINER_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
-- **私钥只在 api Worker**：Apple Music 开发者私钥（`.p8`）是 api Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`，Mac、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由 api 自己签发（`workers/api/src/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签），采集 Worker 经 `StateCore.appleDeveloperToken()` 取。
+- **私钥在 Worker Secret 里**：Apple Music 开发者私钥（`.p8`）是 Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`（api 签发时读它；放在哪些 Worker、本机原件在哪见 `docs/ops-facts.md`），Mac Telemetry Hub、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由 api 自己签发（`workers/api/src/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签），采集 Worker 经 `StateCore.appleDeveloperToken()` 取。
 - **Mac 只上报 user token**：Mac Telemetry Hub 通过 `/api/ingest/mac` 的 `appleMusicCredentials` 模块只上报 `Music-User-Token`；带 `developerToken` / `expiresAt` 的旧合同会被上报入口拒收。
 - **凭据隔离**：收到的 user token 由上报入口写进独立的凭据 KV（`shared/credentials.ts`），与可滞后层的展示数据分命名空间，不提供任何外部 GET 端点。
 
@@ -129,7 +129,7 @@
   - 由 API Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token。
   - 有效期默认 `DEFAULT_TTL_SECONDS`（`workers/api/src/musickit-token.ts`），过了「签发 → 到期」的中点自动换新。
 - **双重域名安全闸**：
-  1. 第一道：Worker 检查请求 `Origin` 是否在 `ALLOWED_ORIGINS` 白名单中。
+  1. 第一道：Worker 检查请求来源是否在 `ALLOWED_ORIGINS` 白名单中：带 `Origin` 看它，浏览器同源请求不带 `Origin` 时按请求自己的源（`shared/http-origins.ts#requestOrigin`）。
   2. 第二道：签发 JWT 时将当前具体 Origin 写入 Token 的 `origin` 声明中，由 Apple 端负责最终校验，防止 Token 被盗用至非授权站点。
 
 ### 同步与防抖算法

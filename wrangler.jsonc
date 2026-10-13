@@ -14,10 +14,16 @@
   "vars": {
     "SITE_ENV": "production",
     "PUBLIC_BACKEND_URL": "https://api.homepage.lyjw.llc",
+    "ALLOWED_ORIGINS": "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me",
     "SENTRY_DSN": "https://13d4c7b65d377b6a3e1e546f9d940b9d@o4511888459890688.ingest.us.sentry.io/4512132602331136"
   },
   "services": [
-    { "binding": "PUBLIC_STATUS", "service": "api", "entrypoint": "PublicStatus" }
+    { "binding": "PUBLIC_STATUS", "service": "api", "entrypoint": "PublicStatus" },
+    { "binding": "API_SERVICE", "service": "api" },
+    { "binding": "AI_SERVICE", "service": "ai" }
+  ],
+  "kv_namespaces": [
+    { "binding": "LAG", "id": "e9c72a9517884aeb95db7386b630a691" }
   ],
   "r2_buckets": [
     { "binding": "IMAGE_OBJECTS", "bucket_name": "lyjw-homepage" }

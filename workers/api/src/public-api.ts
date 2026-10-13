@@ -1,12 +1,6 @@
 import { get as cacheGet, put as cachePut } from "@shared/cache";
-import {
-  sinceDateParam,
-  sinceParam,
-  statusEnvelope,
-  statusResponse,
-  titleIdsParam,
-} from "./api";
-import { loadEndpoint, type StatusLoaderParams } from "./status-loaders";
+import { loaderParams, statusEnvelope, statusResponse } from "@shared/status-response";
+import { loadEndpoint } from "./status-loaders";
 import { pathByEvent, viewKeyByPath } from "@shared/status-views";
 import {
   DEV_OVERRIDE_ENABLED_KEY,
@@ -137,14 +131,6 @@ async function devOverrideResponse(request: Request, url: URL): Promise<Response
   const envelope: Envelope = isEnvelope(body) ? body : { ok: true, data: body };
   await writeOverride(target, envelope);
   return Response.json({ ok: true, path: target }, { headers: statusHeaders() });
-}
-
-function loaderParams(request: Request): StatusLoaderParams {
-  return {
-    since: sinceParam(request),
-    sinceDate: sinceDateParam(request),
-    titleIds: titleIdsParam(request),
-  };
 }
 
 async function serveStatus(request: Request): Promise<Response | null> {

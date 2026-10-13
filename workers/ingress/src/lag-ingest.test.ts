@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { SERVER_STALE_MS } from "@shared/freshness";
 import { installLagReader } from "@shared/lag";
-import { getServerSnapshot } from "../../api/src/server";
+import { getServerSnapshot } from "@shared/lag-views";
 import { STATUS_VIEWS } from "@shared/status-views";
 import { MemoryKv } from "@shared/testing/memory-kv";
 import type { AgentLimitsPayload } from "@shared/vibecoding-limits";

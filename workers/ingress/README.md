@@ -26,7 +26,7 @@
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
 
-其余路径一律 404。公开读取、`/ws`、`/count` 都在 `api.homepage.lyjw.llc`，不在这里。
+其余路径一律 404。公开读取与 `/ws` 在 api 公开地址（`api.homepage.lyjw.llc`）和站点域名上，`/count` 只在 api 公开地址，都不在这里。
 
 ### 回执
 
