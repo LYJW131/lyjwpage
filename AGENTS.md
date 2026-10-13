@@ -79,7 +79,7 @@
 
 - 静态图标使用 `src/components/app-image.tsx`（`AppImage`）时都设 `unoptimized`，直接加载最终资源。图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况，允许列表见 `src/lib/image-proxy.ts`。
 - 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏；首页 GitHub 头像由 `src/lib/github-avatar-inline.ts` 在渲染时经图片变体内联为 data URI，随首页缓存复用；构建期只用它生成图标与 OG 图（`scripts/site-assets/avatar.ts`）。
-- R2 图片在页面、状态 API 和推送里都是 `/img/<objectKey>` 同源路径（`shared/asset-url.ts`），不烧交付域，图片字节不进站点渲染层：`/img/*` 由 site Worker 的 R2 绑定直出，`lyjw131.com` 由 ESA 缓存并回源（规则见 `docs/ops-facts.md`）。改前缀要同步改站点路由和 ESA 规则。
+- R2 图片在页面、状态 API 和推送里都是 `/img/<objectKey>` 同源路径（`shared/asset-url.ts`），不烧交付域（字面量由 `pnpm rules:check` 拦），图片字节不进站点渲染层：`/img/*` 由 site Worker 的 R2 绑定直出，`lyjw131.com` 由 ESA 缓存并回源（规则见 `docs/ops-facts.md`）。改前缀要同步改站点路由和 ESA 规则。
 
 # 文档与注释
 
@@ -90,7 +90,7 @@
   - 意外行为：绕开的 bug、浏览器或运行时怪癖、竞态、库的坑。
   - 设计意图：不变量、不显然的约束、后人会想顺手改掉的取舍（有意取的缓存期限、节奏、阈值）。理由只写在注释里时，删注释就等于删了这个决定。
   - 契约：导出类型与跨端字段的语义和单位；做不成测试或共享常量的「须与 X 同步」（优先改成测试或共享常量，做不到才写，两侧都写）。
-- 不写：复述代码在做什么、把标识符翻译成句子、提调用方或任务 / PR / issue、分节标题与分隔线、没有跟踪单号的 TODO / FIXME。
+- 不写：复述代码在做什么、把标识符翻译成句子、提调用方或任务 / PR / issue、分节标题与分隔线、没有跟踪单号的 TODO / FIXME（由 `pnpm rules:check` 拦）。
 - 每次写完代码，逐个看新增的 `//`、`/*`、`/**`：删掉它，能读代码的人会不会改坏？不会就删。
 - 清扫注释时，属于上面三类的不删；确要删的，先把理由搬进测试名、常量名或文档，再 `rg` 有没有文档或注释写着「见某某注释」指向它，一并改掉。
 - 不写历史与时间线（「之前」「已改为」「MM-DD 起」「本次」）；历史在 `git log`，旧做法不留注释。文档只写现状。
@@ -103,6 +103,19 @@
 - 改代码的同一提交里更新受影响的文档与注释。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
 - 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.mjs` 文件头。
 - 确需保留时间线写法（如核对戳）时，在同一行末尾加 `<!-- allow: 理由 -->`。
+
+## 规则 → 由什么强制
+
+| 规则 | 由什么强制 |
+| --- | --- |
+| 不手跑 `wrangler deploy`、不强制提交 `.env*` / `.dev.vars` | PreToolUse 钩子 `scripts/guard-forbidden-commands.mjs` |
+| 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 行数、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
+| 「只改注释」的清扫证明 | `pnpm docs:comment-only` |
+| Worker / shared / `src/` 之间的 import 边界 | `eslint.config.mjs` 的 `no-restricted-imports` |
+| `src/` 组件不手写 `<img>`，用 `AppImage` | `eslint.config.mjs` 的 `no-restricted-syntax`（`app-image.tsx` 除外） |
+| 阶梯外间距、任意值字号 / 位移 / 圆角、子级外边距、裸 hex / oklch 色值 | `pnpm design:scale`（基线 `scripts/design-scale-baseline.json`） |
+| `TODO` / `FIXME` 须带单号、`/img/` 不烧交付域、`src/` 网络调用不写字面量主机、隐藏滚动条两句同现 | `pnpm rules:check` |
+| 界面文案用英文 | `pnpm ui:copy`（基线 `scripts/ui-copy-baseline.json`） |
 
 ## Reasoning Strategy
 
