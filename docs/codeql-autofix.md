@@ -10,7 +10,7 @@
 - 告警按安全等级、严重度、编号排序；单次运行新派的数量上限是 `scripts/codeql-autofix.mjs#DEFAULT_LIMIT`，手动运行可用 `limit` 输入覆盖，超出的标 `deferred`，下次再派。
 - 提示词由 `buildAlertPrompt` 生成：只修这一条、修根因，不许加压制注释、改 CodeQL 配置或跳过测试；判断为误报或需要大改设计时不改代码并说明原因。
 - 任务会等这批 agent 结束（上限 `DEFAULT_WAIT_MS`），把告警、结果、PR 与 agent 链接写进 job summary；没改代码的附上 agent 的说明。Actions 取消任务时会一并取消还在跑的 Cursor 运行。
-- 只接 main 上的 CodeQL 运行（推送、定时或手动）；PR 上打 `codeql` 标签跑的扫描不触发（触发方式见 `.github/workflows/codeql.yml` 的 `on`）。脚本固定从默认分支检出。
+- 只接 main 上的 CodeQL 运行（推送、定时或手动）；访客构建 PR 上的扫描不触发（触发方式见 `.github/workflows/codeql.yml` 的 `on`）。脚本固定从默认分支检出。
 
 ## 配置
 

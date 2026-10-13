@@ -15,7 +15,7 @@ type PullRequest = { number: number; node_id: string; html_url: string; state: s
 type Call = { path: string; method: string; body: Record<string, unknown> };
 
 function fixture() {
-  const state = { head: null as string | null, pr: null as PullRequest | null, loseRefResponse: false, losePrResponse: false, losePushResponse: false, rejectPr: false, rejectBody: false, check: "success", otherCheck: "success", checkApp: "github-actions", checkName: "check", readyCalls: 0, changeReadyHead: false };
+  const state = { head: null as string | null, pr: null as PullRequest | null, loseRefResponse: false, losePrResponse: false, losePushResponse: false, rejectPr: false, rejectBody: false, check: "success", otherCheck: "success", checkApp: "github-actions", checkName: "check", codeql: "success" as string | null, readyCalls: 0, changeReadyHead: false };
   const calls: Call[] = [];
   const trees = new Map<string, Entry[]>([[baseTree, []]]);
   const commits = new Map<string, { sha: string; tree: { sha: string }; parents: { sha: string }[] }>([[baseSha, { sha: baseSha, tree: { sha: baseTree }, parents: [] }]]);
@@ -72,7 +72,11 @@ function fixture() {
       }
       return Response.json(state.pr);
     }
-    if (path.includes("/check-runs?")) return Response.json({ total_count: 2, check_runs: [{ name: state.checkName, status: "completed", conclusion: state.check, app: { slug: state.checkApp } }, { name: "Other check", status: "completed", conclusion: state.otherCheck, app: { slug: "github-actions" } }] });
+    if (path.includes("/check-runs?")) {
+      const codeql = state.codeql === null ? [] : ["javascript-typescript", "actions"].map((language) => ({ name: `Analyze (${language})`, status: "completed", conclusion: state.codeql, app: { slug: "github-actions" } }));
+      const checkRuns = [{ name: state.checkName, status: "completed", conclusion: state.check, app: { slug: state.checkApp } }, { name: "Other check", status: "completed", conclusion: state.otherCheck, app: { slug: "github-actions" } }, ...codeql];
+      return Response.json({ total_count: checkRuns.length, check_runs: checkRuns });
+    }
     if (path.includes("/status?")) return Response.json({ total_count: 0, state: "pending", statuses: [] });
     if (path.includes("/comments?")) return Response.json([]);
     if (path === "/graphql") {
@@ -220,6 +224,17 @@ test("only successful check from GitHub Actions on the implementation head marks
   assert.equal(setup.state.readyCalls, 1);
   assert.equal((await markBuildReady(setup.api, setup.stored))?.draft, false);
   assert.equal(setup.state.readyCalls, 1);
+});
+
+test("the implementation stays draft until both CodeQL analyses succeed", async () => {
+  const setup = await published();
+  for (const codeql of [null, "failure", "skipped"]) {
+    setup.state.codeql = codeql;
+    assert.equal(await markBuildReady(setup.api, setup.stored), null);
+  }
+  assert.equal(setup.state.readyCalls, 0);
+  setup.state.codeql = "success";
+  assert.equal((await markBuildReady(setup.api, setup.stored))?.draft, false);
 });
 
 test("failed or blocked runs and a mismatched implementation head never request readiness", async () => {
