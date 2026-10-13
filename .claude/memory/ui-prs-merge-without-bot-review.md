@@ -12,3 +12,5 @@ Rule: for a PR that only changes site UI (classes, layout, copy, styling in comp
 **Why:** waiting several minutes per round for bots on small UI tweaks slows the user's live iteration loop for little value.
 
 **How to apply:** this narrows [[merge-requires-bot-review-pass]] / [[pr-merge-bot-reviews]] for UI-only PRs. Logic, API, worker, security or contract changes still go through the full bot-review gate. HUMAN.md should say the same ([[human-md-collaboration-guide]]).
+
+Superseded for merge timing by [[design-md-ui-approval]]: UI/UX PRs still skip the bot-review wait, but now wait for the owner's OK (unless a small change they explicitly asked for).

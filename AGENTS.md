@@ -69,19 +69,16 @@
 - 同步更新所有受影响的生产者、接收端、消费者、推送事件、测试和文档；按实际调用链确定范围。
 - 跨仓库改动在已授权且可访问的范围内完成。外部配置或部署尚未同步时，列出具体对象和待办，不能把站点单侧修改报告成迁移完成。
 
-# 图标与图片
+# 界面设计
 
-- 新增品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)。项目已装 `@lobehub/icons`，按深路径导入 React 组件：单色 `@lobehub/icons/es/<名字>/components/Mono`（继承文字色）、彩色 `.../Color`、带字 `.../Text`；示例见 `src/components/live/vibecoding-card.tsx`。
-- LobeHub 没有的品牌再找官方 SVG：含 `fill="currentColor"` 的要内联为组件，通过 `<img>` 或 `AppImage` 加载时无法继承页面文字色；示例见 `src/components/live/agent-status-card.tsx` 的 `TypesafeIcon`。只有位图时，先压到展示所需尺寸再入库。
+- 改站点 UI 前先读根 `DESIGN.md`：颜色、字号、间距、卡片结构、图标、滚动、动效、界面文案语言都以它为准，自查清单与量尺脚本在 `.claude/skills/lyjwpage-ui-design/SKILL.md`。
+- 有 UI / UX 变化的改动进 main 前，先给站主看效果、等他点头再合；站主明确要求的小改动除外。这条优先于「小改动 CI 绿就合」。
+
+# 图片交付
+
 - 静态图标使用 `src/components/app-image.tsx`（`AppImage`）时一律设 `unoptimized`，直接加载最终资源。图片优化器仅用于远端原图比展示尺寸大、且源站无法提供合适尺寸的情况，允许列表见 `src/lib/image-proxy.ts`。
 - 不在每个请求中重复压图。允许按不可变内容地址压缩一次并缓存：`src/lib/desktop-icon-inline.ts` 按 `objectKey` 压缩 R2 原件、内联首屏；首页 GitHub 头像由 `src/lib/github-avatar-inline.ts` 在渲染时经图片变体内联为 data URI，随首页缓存复用；构建期只用它生成图标与 OG 图（`scripts/site-assets/avatar.ts`）。
 - R2 图片在页面、状态 API 和推送里一律是 `/img/<objectKey>` 同源路径（`shared/asset-url.ts`），不烧交付域，图片字节不进站点渲染层：`/img/*` 由 site Worker 的 R2 绑定直出，`lyjw131.com` 由 ESA 缓存并回源（规则见 `docs/ops-facts.md`）。改前缀要同步改站点路由和 ESA 规则。
-
-# 界面与交互
-
-- 站内滚动条默认隐藏：可滚动区域一律加 `scrollbar-none [&::-webkit-scrollbar]:hidden`（前者管 Firefox 的 `scrollbar-width`，后者管 Chromium 系，两句缺一不可）。现有示例：播放器队列。
-- 界面文案一律英文：标注、正文、状态、按钮、提示、无障碍文案、错误页和元数据都用英文，`<html lang>` 为 `en`；日期用 en-US（`Jun 22`、`Mon 11:00 AM`），数字用 en-US 分组。来自数据源的内容（歌名、游戏名、剧名、歌词、提交信息）照原样，不翻译。仅开发环境可见的调试开关提示可以用中文。
-- 条目式滚动要吸附：容器加 `snap-y snap-mandatory`（横向用 `snap-x`，见奖杯组、在看瓷砖），子项加 `snap-start`，滚动停稳后永远是整行对齐；多栏并排时各行等高（如 44px），吸住后两边才对得齐。
 
 # 文档与注释
 
