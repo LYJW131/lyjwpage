@@ -45,7 +45,7 @@ import {
   STATIC_VARIANTS,
 } from "@/lib/motion";
 import { LISTENING_PATH, NOW_LISTENING_PATH } from "@/lib/paths";
-import { trackPositionMs } from "@/lib/track-position";
+import { trackEnded, trackPositionMs } from "@/lib/track-position";
 import type {
   ListeningItem,
   ListeningPayload,
@@ -581,8 +581,21 @@ export function ListeningCard({
   const localTrack = liveTrack(localMusic);
   const localActive = Boolean(localTrack);
 
+  const fallbackNow = nowFallback.ok ? nowFallback.data : undefined;
+  const [nowRefresh, setNowRefresh] = useState<"pending" | "fetching" | "done">("pending");
+  if (nowRefresh !== "done") {
+    if (nowListening !== fallbackNow || (nowRefresh === "fetching" && !nowValidating)) setNowRefresh("done");
+    else if (nowRefresh === "pending" && nowValidating) setNowRefresh("fetching");
+  }
+
   // 推断的别处播放没有上报来续命：和源站一样按时长放完再留 LISTENING_ELSEWHERE_HOLD_MS 等下一首被推过来，到点就撤下并重新取一次。
   const mountedAt = useMountedAt();
+  // 首屏快照里的歌按此刻的钟已经放完，说明快照旧了：在头一次回源确认前停在首屏画的锚点上，
+  // 否则水合后进度先拉满、歌词先跳到尾，新歌到了再换一次。观测时刻推到无穷远，进度就不随钟走。
+  const heldTrack: LocalNowPlaying | null =
+    localTrack && nowRefresh !== "done" && mountedAt > 0 && trackEnded(localTrack, mountedAt)
+      ? { ...localTrack, observedAt: Number.POSITIVE_INFINITY }
+      : localTrack;
   const [elsewhereTick, setElsewhereTick] = useState(0);
   const { mutate } = useSWRConfig();
   const inferred = live?.elsewhere ?? null;
@@ -718,7 +731,7 @@ export function ListeningCard({
         palette:
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
         durationMs: null,
-        track: localTrack,
+        track: heldTrack,
         motion: live?.songId ? live.motion : latched?.motion ?? null,
       }
     : elsewhere
