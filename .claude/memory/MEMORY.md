@@ -21,9 +21,12 @@
 - Retire api.homepage.lyjw.llc done; Apple Music → collector done: [[apple-music-to-collector]], [[same-origin-api-assessment]], [[same-origin-api-traps]]; api→core rename fully done 2026-10-13 (PR #227 live, old api Worker deleted, core on Builds Previews, #236): [[api-rename-to-core]].
 - ISR after Vercel→CF: replaced by Workers Caching entrypoints (StatusSnapshot, RenderedSite, ImageVariants) with Cache-Tag purge via SITE_CACHE. Post-deploy empty-cache home page 500 fixed by per-card degrade (#232, 2026-10-13).
 - Digest card: Chinese Apple-tagline-style headline in progress (#233, user rejected calligraphy); quiet → old clock option (#235, user said 合).
+- **Long-term idea, not now (user 2026-10-13 14:19Z):** digest/clock card headline copy should eventually be pre-generated in bulk per situation and stored; at render, code rules pick the situation and optionally a Cloudflare Workers AI model picks which stored line. Don't start unprompted.
+- Vercel design.md (vercel.com/design.md) compared 2026-10-13: borrow methods only (gap ownership, CI ladder check, rule priority, anti-patterns); comparison at /mnt/project-files/design-md/vercel-design-md-compare.md.
 - Owner's real name → LYJW in collector output (secret APPLE_MUSIC_OWNER_NAME), #225 verified in prod.
 - Secrets: only via Remote Control on the Mac, piped, never read: [[credentials-pipe-only]].
 - #173 build → GitHub Actions: #200/#204 merged; real build test and routine cutover pending: [[build-actions-migration]].
-- After merge check /api/version (parallel builds race): [[workers-builds-parallel-race]]. Bot review details: [[pr-merge-bot-reviews]]. Merge commits: [[merge-commit-format]]. CodeQL: [[codeql-policy]].
+- After merge check /api/version (parallel builds race): [[workers-builds-parallel-race]]. Bot review gate (logic changes only): [[merge-requires-bot-review-pass]]. Merge commits: [[merge-commit-format]]. CodeQL: [[codeql-policy]].
 - Now-playing first screen decisions (#218/#220/#224): [[now-playing-first-screen-decisions]].
 - Cloud env gaps; #226 auto-creates .dev.vars, dev:worker runs without CF creds: [[cloud-env-gaps]].
+- **Hand-offs carry the user's constraints:** route a follow-up once; briefs and Mac briefs copy what the user already removed/rejected/set; a later relay overrides an earlier one: [[handoff-carry-user-constraints]].
