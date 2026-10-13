@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import * as Sentry from "@sentry/react";
 import {
   isRouteErrorResponse,
@@ -27,11 +27,11 @@ import { Card } from "@/components/ui/card";
 import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { DOCUMENT_COMMIT_META } from "@/lib/app-version";
 import { commitSha } from "@/lib/build-info";
-import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
+import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { site } from "@shared/site";
-import { themeBootScript } from "@/lib/theme";
+import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript } from "@/lib/theme";
 
 import "./globals.css";
 
@@ -77,6 +77,16 @@ export function links(): LinkDescriptor[] {
   ];
 }
 
+// 水合不一致时 React 退回整页客户端渲染，会清空 <html> 上全部属性（react-dom 的 commitHostSingletonAcquisition），
+// 启动脚本写的主题和热力图选择随之丢失；在同一次提交、绘制之前按存储补回。
+function BootAttributes() {
+  useLayoutEffect(() => {
+    syncThemeToDocument(readThemeChoice(), readSystemDark());
+    syncHeatmapToDocument();
+  }, []);
+  return null;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const earlyLiveSocket = pathname === "/" ? liveSocketUrl() : null;
@@ -97,6 +107,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         ) : null}
       </head>
       <body className="flex min-h-full flex-col">
+        <BootAttributes />
         <PsPlusSprite />
         <ThemeProvider>{children}</ThemeProvider>
         <PwaRegistration />

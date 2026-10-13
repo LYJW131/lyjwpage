@@ -39,4 +39,16 @@ if (SENTRY_ENABLED) {
   else setTimeout(loadReplay, 3000);
 }
 
-hydrateRoot(document, <HydratedRouter />);
+hydrateRoot(document, <HydratedRouter />, {
+  onRecoverableError(error, errorInfo) {
+    console.error(error);
+    // Sentry 项目开着入站过滤「React hydration errors」，原样的 #418 / #423 会被整条丢掉；换成自己的消息上报才看得到哪里不一致。
+    Sentry.captureMessage("Hydration fell back to client rendering", {
+      level: "warning",
+      extra: {
+        reactError: error instanceof Error ? error.message : String(error),
+        componentStack: errorInfo.componentStack,
+      },
+    });
+  },
+});
