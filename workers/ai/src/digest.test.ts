@@ -188,7 +188,7 @@ test("an unknown time zone falls back to the site's", () => {
   assert.match(digestFacts(views, NOW), /^Now: Tuesday afternoon in LYJW's time zone \(Asia\/Shanghai\)/);
 });
 
-const ANSWER = { headline: "Agents ran the day.", picks: ["coding", "tokens", "music"] };
+const ANSWER = { quiet: false, headline: "Agents ran the day.", picks: ["coding", "tokens", "music"] };
 
 test("highlight options carry the card's numbers and labels, rounded like the facts, for non-empty topics only", () => {
   assert.deepEqual(digestHighlightOptions(baseViews()), [
@@ -269,6 +269,23 @@ test("picks outside the options, repeats and extras are dropped, and too few lef
   assert.equal(parseDigest(JSON.stringify({ headline: "Agents", picks: ANSWER.picks }), options), null);
   assert.equal(parseDigest(JSON.stringify({ headline: "Agents ran all of the day", picks: ANSWER.picks }), options), null);
   assert.deepEqual(parseDigest(JSON.stringify({ headline: "Quiet day", picks: ["fitness"] }), options.filter((item) => item.topic === "fitness"))?.highlights.map((item) => item.topic), ["fitness"]);
+});
+
+test("a quiet day publishes an empty digest that the card shows as the clock, and keeps the input hash", async () => {
+  const readStatus = reader(baseViews());
+  const outcome = await composeDigest({
+    readStatus,
+    createMessage: async () => message(JSON.stringify({ quiet: true, headline: "Ignored", picks: ["coding"] })),
+    previousInputHash: null,
+    now: NOW,
+  });
+  assert.equal(outcome.status, "composed");
+  if (outcome.status !== "composed") return;
+  assert.equal(outcome.digest.quiet, true);
+  assert.equal(outcome.digest.headline, "");
+  assert.deepEqual(outcome.digest.highlights, []);
+  assert.match(outcome.digest.inputHash, /^[0-9a-f]{64}$/);
+  assert.equal(parseDigest(JSON.stringify({ ...ANSWER, quiet: false }), digestHighlightOptions(baseViews()))?.quiet, undefined);
 });
 
 test("a trophy count from a capped list becomes an at-least option", () => {

@@ -137,7 +137,7 @@ export function DigestCard({
     const timer = window.setInterval(() => setTicked(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  if (!data || !updatedAt) return <TimezoneCard fallback={timezoneFallback} className={className} />;
+  if (!data || !updatedAt || data.quiet) return <TimezoneCard fallback={timezoneFallback} className={className} />;
 
   const now = ticked || mountedAt || (timezoneFallback.ok ? timezoneFallback.data.snapshotAt : updatedAt);
   const { identifier: timezone, abbreviation, offsetSeconds } = resolveTimezoneDisplay(timezoneFallback.ok ? timezoneFallback.data.timezone : null, now);
