@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-import { loadFeatureMap, parseArgs, parseWidths } from "./site-verify.mjs";
+import { classifyRequest, consoleClean, loadFeatureMap, newSink, parseArgs, parseWidths, requiredCardIds } from "./site-verify.mjs";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -34,11 +34,45 @@ test("parseWidths 按宽度表补高度，非法输入返回 null", () => {
   assert.equal(parseWidths("50"), null);
 });
 
+test("consoleClean：控制台错误、pageerror、同源失败请求都算脏；外源与 envNoise 不算", () => {
+  assert.equal(consoleClean(newSink()), true);
+  const withError = newSink();
+  withError.errors.push("TypeError: x");
+  assert.equal(consoleClean(withError), false);
+  const withPageError = newSink();
+  withPageError.pageErrors.push("ReferenceError: y");
+  assert.equal(consoleClean(withPageError), false);
+  const sameOrigin = newSink();
+  sameOrigin.failedRequests.push({ url: "http://localhost:3211/api/status/x", status: 500, sameOrigin: true });
+  assert.equal(consoleClean(sameOrigin), false);
+  const externalOnly = newSink();
+  externalOnly.failedRequests.push({ url: "https://cdn.example.com/a.png", status: 404, sameOrigin: false });
+  externalOnly.envNoise.push("GET /favicon.ico → 404");
+  assert.equal(consoleClean(externalOnly), true);
+});
+
+test("classifyRequest：favicon 与 wss 归噪声，同源 / 外源分开", () => {
+  const origin = "http://localhost:3211";
+  assert.equal(classifyRequest("http://localhost:3211/favicon.ico", origin), "noise");
+  assert.equal(classifyRequest("wss://lyjw.me/ws", origin), "noise");
+  assert.equal(classifyRequest("http://localhost:3211/api/status/pulse", origin), "same-origin");
+  assert.equal(classifyRequest("https://is1-ssl.mzstatic.com/a.webp", origin), "external");
+});
+
+test("requiredCardIds：不显式点名时跳过 conditional；--card 点名就算 required", () => {
+  const map = { cards: { pulse: { conditional: false }, charger: { conditional: true } } };
+  assert.deepEqual(requiredCardIds(map, ["pulse", "charger"], false), ["pulse"]);
+  assert.deepEqual(requiredCardIds(map, ["pulse", "charger"], true), ["pulse", "charger"]);
+});
+
 test("功能地图每张卡有选择器或表头标签，组件、端点、夹具都真实存在", () => {
   const map = loadFeatureMap();
   assert.ok(map?.cards, "feature-map.json 读不到");
   for (const [id, card] of Object.entries(map.cards)) {
     assert.ok(card.selector || card.cardLabel, `${id} 缺 selector / cardLabel`);
+    if (card.alternates !== undefined) {
+      assert.ok(Array.isArray(card.alternates) && card.alternates.every((s) => typeof s === "string" && s.length > 0), `${id} alternates 要是非空字符串数组`);
+    }
     assert.ok(fs.existsSync(path.join(ROOT, card.component)), `${id} 组件不存在：${card.component}`);
     assert.ok(typeof card.proves === "string" && card.proves.length > 0, `${id} 缺 proves`);
     for (const [endpoint, fixtures] of Object.entries(card.endpoints)) {

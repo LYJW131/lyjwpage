@@ -23,6 +23,7 @@
     "digest": {
       "component": "src/components/live/digest-card.tsx",
       "selector": "#digest",
+      "alternates": [".paper-card:has(time[aria-label])"],
       "endpoints": {
         "/api/status/digest": ["digest.json", "digest-quiet.json", "digest-stale.json"],
         "/api/status/timezone": []

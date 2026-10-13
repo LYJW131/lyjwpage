@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// 站点验证共用 CLI：给 lyjwpage-verify 的验证员用，不各自重写 Playwright 片段。
-// 子命令：doctor 检查环境；cards 按功能地图逐卡核对；shot 截图收控制台；override 注入夹具（转 dev-override.mjs）。
-// 只管检查与取证，不起停开发服务器；所有结果输出 JSON，失败时 next 字段写下一步。
-
 import { execSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -54,6 +50,32 @@ export function parseWidths(value) {
 export function loadFeatureMap(mapPath = MAP_PATH) {
   if (!fs.existsSync(mapPath)) return null;
   return JSON.parse(fs.readFileSync(mapPath, "utf8"));
+}
+
+// 归一化「这条控制台面干不干净」：cards 与 shot 同一份判据，envNoise 不算。
+export function consoleClean(sink) {
+  return (
+    sink.errors.length === 0 &&
+    sink.pageErrors.length === 0 &&
+    !sink.failedRequests.some((request) => request.sameOrigin)
+  );
+}
+
+export function newSink() {
+  return { errors: [], warnings: [], pageErrors: [], envNoise: [], failedRequests: [] };
+}
+
+// 返回 "noise" | "same-origin" | "external"。noise 只放确定的环境原因：/favicon.ico 是浏览器自动探测
+// （站点图标在 /icon，生产同样 404）；wss 握手失败同容器代理 426 的约定。
+export function classifyRequest(url, origin) {
+  const parsed = new URL(url);
+  if (parsed.pathname === "/favicon.ico" || parsed.protocol.startsWith("ws")) return "noise";
+  return parsed.origin === origin ? "same-origin" : "external";
+}
+
+// --card 显式点名就是期望它出现：conditional 卡被点名时也算 required。
+export function requiredCardIds(map, wanted, explicit) {
+  return explicit ? wanted : wanted.filter((id) => !map.cards[id].conditional);
 }
 
 function print(payload, flags = {}) {
@@ -168,11 +190,24 @@ function watchConsole(page, sink, origin) {
   page.on("response", (response) => {
     if (response.status() < 400) return;
     const url = response.url();
-    // 浏览器会自动探 /favicon.ico，站点图标走 /icon，生产同样 404。
-    if (new URL(url).pathname === "/favicon.ico") {
-      return push(sink.envNoise, `GET /favicon.ico → 404（浏览器自动探测，站点图标在 /icon）`);
+    if (classifyRequest(url, origin) === "noise") {
+      return push(sink.envNoise, `${response.request().method()} ${new URL(url).pathname} → ${response.status()}`);
     }
     sink.failedRequests.push({ url, status: response.status(), sameOrigin: new URL(url).origin === origin });
+  });
+  // 连接被拒 / DNS / 超时等连响应都没有的失败只走 requestfailed；4xx/5xx 归上面 response。
+  page.on("requestfailed", (request) => {
+    const url = request.url();
+    const kind = classifyRequest(url, origin);
+    if (kind === "noise") {
+      return push(sink.envNoise, `${request.method()} ${new URL(url).pathname || url} → ${request.failure()?.errorText ?? "failed"}`);
+    }
+    sink.failedRequests.push({
+      url,
+      status: null,
+      error: request.failure()?.errorText ?? "unknown",
+      sameOrigin: kind === "same-origin",
+    });
   });
 }
 
@@ -206,7 +241,10 @@ async function scrollSweep(page) {
 
 const FIND_EL = `(spec) => {
   let el = null;
-  if (spec.selector) el = document.querySelector(spec.selector);
+  for (const selector of [spec.selector, ...(spec.alternates ?? [])].filter(Boolean)) {
+    el = document.querySelector(selector);
+    if (el) break;
+  }
   if (!el && spec.cardLabel) {
     el = [...document.querySelectorAll(".paper-card")].find((card) => {
       const label = card.querySelector(".label-mono");
@@ -236,7 +274,7 @@ async function locateHandle(page, spec) {
 }
 
 function cardSpec(id, entry) {
-  return { id, selector: entry.selector, cardLabel: entry.cardLabel };
+  return { id, selector: entry.selector, alternates: entry.alternates, cardLabel: entry.cardLabel };
 }
 
 async function cmdDoctor(flags) {
@@ -302,7 +340,7 @@ async function cmdCards(flags) {
   if (flags.ssr) fail("cards 靠页面内 evaluate 定位卡片，--ssr 禁了 JavaScript", "看 SSR 用 shot --ssr 截整页，或 curl -sS <url> 看 HTML", 2);
   const pw = await resolvePlaywright() ?? fail("解不到 playwright / playwright-core", PLAYWRIGHT_NEXT);
   const viewport = { width: Number(flags.width || 1280), height: Number(flags.height || 900) };
-  const sink = { errors: [], warnings: [], pageErrors: [], envNoise: [], failedRequests: [] };
+  const sink = newSink();
   const { browser, page } = await openPage(pw.api, flags, viewport, sink);
   try {
     await page.waitForTimeout(Number(flags.settle || 4000));
@@ -315,13 +353,15 @@ async function cmdCards(flags) {
       cards[id] = {
         status,
         ...(found?.box ? { box: found.box } : {}),
-        ...(entry.conditional && status !== "visible" ? { note: "conditional 卡片，当前数据下不显示是正常；要看用 override 注夹具" } : {}),
+        ...(entry.conditional && status !== "visible"
+          ? { note: flags.card ? "conditional 卡片，但 --card 点名了就期望它出现：缺失算失败；要看用 override 注夹具" : "conditional 卡片，当前数据下不显示是正常；要看用 override 注夹具" }
+          : {}),
         proves: entry.proves,
       };
     }
-    const required = wanted.filter((id) => !map.cards[id].conditional);
+    const required = requiredCardIds(map, wanted, Boolean(flags.card));
     const missingRequired = required.filter((id) => cards[id].status !== "visible");
-    const ok = missingRequired.length === 0 && sink.errors.length === 0 && sink.pageErrors.length === 0 && !sink.failedRequests.some((r) => r.sameOrigin);
+    const ok = missingRequired.length === 0 && consoleClean(sink);
     print({ ok, url: flags.url, viewport, cards, console: sink }, flags);
     if (!ok) process.exit(1);
   } finally {
@@ -344,7 +384,7 @@ async function cmdShot(flags) {
   let failed = false;
   for (const theme of themes) {
     for (const viewport of viewports) {
-      const sink = { errors: [], warnings: [], pageErrors: [], envNoise: [], failedRequests: [] };
+      const sink = newSink();
       const runFlags = { ...flags, theme };
       let browser;
       try {
@@ -382,7 +422,7 @@ async function cmdShot(flags) {
       }
     }
   }
-  const ok = !failed && shots.every((s) => s.file);
+  const ok = !failed && shots.every((s) => s.file && consoleClean(s.console));
   print({ ok, out: path.resolve(flags.out), shots }, flags);
   if (!ok) process.exit(1);
 }
