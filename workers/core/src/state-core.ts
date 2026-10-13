@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/cloudflare";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { withRequestState } from "@shared/request-state";
 import type { CoreCommand } from "@shared/ingest/prepare";
@@ -8,9 +9,12 @@ import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types
 import type { EnrichmentPatch } from "@shared/track-enrichment";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
+import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, cronRoundDue } from "./cron-heartbeat";
+import { runCronRound } from "./cron-round";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { expireStatusTags, liveRoom } from "./live-platform";
 import { lagStatusTags } from "./lag-repurge";
+import { previewWorkerEnabled } from "./preview";
 import { requestStore, type Env } from "./runtime";
 
 function transientFailure(error: unknown): boolean {
@@ -79,6 +83,13 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
     await this.hub().deferStatusRepurge(unique).catch((error: unknown) => {
       console.warn("[revalidate] defer", error instanceof Error ? error.message : String(error));
     });
+  }
+
+  // Preview 仍可能连着共享归档，必须独立禁止这一轮写入。
+  async cronRound(scheduledTime: number): Promise<{ ran: boolean }> {
+    if (previewWorkerEnabled() || !cronRoundDue(scheduledTime)) return { ran: false };
+    await Sentry.withMonitor(CRON_MONITOR_SLUG, () => runCronRound(this.env, scheduledTime), CRON_MONITOR_CONFIG);
+    return { ran: true };
   }
 
   private async applyPatch(patch: EnrichmentPatch): Promise<{ applied: boolean }> {
