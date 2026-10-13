@@ -66,18 +66,27 @@ export async function currentMain(api: GithubBuildApi): Promise<string> {
   return data.object.sha;
 }
 
-type GithubIssue = { number: number; html_url: string; body?: string | null; pull_request?: unknown };
+type GithubIssue = { number: number; html_url: string; created_at?: string; body?: string | null; pull_request?: unknown };
+const ISSUE_PAGE_SIZE = 100;
+const ISSUE_PAGE_LIMIT = 10;
 
 // 列表接口按创建时间倒序、立即可见；搜索接口有索引延迟，访客刚提交就回来时查不到。
+// since 按更新时间过滤，翻到创建时间早于计划签发的条目为止；翻不完就报错，不能当成没有 issue。
 export async function findPlanIssue(api: GithubBuildApi, issueRef: string, since: number): Promise<GithubIssueResult | null> {
   const marker = buildIssueMarker(issueRef);
-  const params = new URLSearchParams({ state: "all", sort: "created", direction: "desc", per_page: "50", since: new Date(since).toISOString() });
-  const issues = await api.repo<GithubIssue[]>(`/issues?${params}`);
-  if (!Array.isArray(issues)) throw new Error("GitHub returned an invalid issue list.");
-  const found = issues
-    .filter((issue) => !issue.pull_request && Number.isSafeInteger(issue.number) && issue.number > 0 && typeof issue.body === "string" && issue.body.includes(marker) && issue.html_url === `https://github.com/${BUILD_REPO}/issues/${issue.number}`)
-    .sort((a, b) => a.number - b.number)[0];
-  return found ? { number: found.number, url: found.html_url } : null;
+  const matches: GithubIssue[] = [];
+  for (let page = 1; page <= ISSUE_PAGE_LIMIT; page += 1) {
+    const params = new URLSearchParams({ state: "all", sort: "created", direction: "desc", per_page: String(ISSUE_PAGE_SIZE), page: String(page), since: new Date(since).toISOString() });
+    const issues = await api.repo<GithubIssue[]>(`/issues?${params}`);
+    if (!Array.isArray(issues)) throw new Error("GitHub returned an invalid issue list.");
+    matches.push(...issues.filter((issue) => !issue.pull_request && Number.isSafeInteger(issue.number) && issue.number > 0 && typeof issue.body === "string" && issue.body.includes(marker) && issue.html_url === `https://github.com/${BUILD_REPO}/issues/${issue.number}`));
+    const oldest = Date.parse(issues.at(-1)?.created_at ?? "");
+    if (issues.length < ISSUE_PAGE_SIZE || oldest < since) {
+      const found = matches.sort((a, b) => a.number - b.number)[0];
+      return found ? { number: found.number, url: found.html_url } : null;
+    }
+  }
+  throw new Error("Too many GitHub issues to check for this plan.");
 }
 
 export class BuildBlockedError extends Error {}
