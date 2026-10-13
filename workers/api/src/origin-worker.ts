@@ -14,13 +14,14 @@ import {
   type SocketSample,
 } from "./live-census";
 import { liveRoom } from "./live-platform";
-import { ConfigError, issueMusicKitToken } from "./musickit-token";
+import { ConfigError, issueMusicKitToken } from "@shared/musickit-token";
 import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, requestOrigin } from "@shared/http-origins";
 import { fetchPreviewUpstream, isPreviewProxyPath, previewWorkerEnabled } from "./preview";
 import { isPublicApiPath, pathForEventType } from "./public-api";
 import { executePublicRequest } from "./public-execution";
 import { isLookupPath, serveLookup } from "./lookup-routes";
 import { AI_HTTP_PATHS } from "@shared/ai-paths";
+import { MUSICKIT_TOKEN_PATH } from "@shared/apple-music-paths";
 import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
 import { withPublicCors } from "@shared/status-response";
 import type { Env } from "./runtime";
@@ -29,8 +30,6 @@ import { site } from "@shared/site";
 
 export type { Env };
 export { StateHub };
-
-const MUSICKIT_TOKEN_PATH = "/api/musickit/token";
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
