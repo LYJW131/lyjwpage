@@ -1,5 +1,6 @@
 import { enrichCommand, type EnrichedCommand } from "@shared/command-enrichment";
 import { writeAppleMusicCredentials } from "@shared/credentials";
+import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collector";
 import { describeRejections } from "@shared/ingest/coding";
 import { INGEST_SOURCES, prepareIngest, type CoreCommand, type PreparedIngest } from "@shared/ingest/prepare";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
@@ -13,6 +14,8 @@ import { commitLagIngest } from "./lag-ingest";
 const INGEST_PREFIX = "/api/ingest/";
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
+const COLLECTOR_REFRESH_PATH = "/api/internal/collector-refresh";
+const COLLECT_LAST: ReadonlySet<string> = new Set(["digest"]);
 
 export const DEPLOYMENT_JOBS = ["site-deployments", "cloudflare-deployments", "github-repo"];
 
@@ -22,6 +25,11 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   if (url.pathname === SITE_DEPLOYED_PATH) {
     if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
     return handleSiteDeployed(request, env, ctx);
+  }
+
+  if (url.pathname === COLLECTOR_REFRESH_PATH) {
+    if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
+    return handleCollectorRefresh(request, env, ctx, url.searchParams.getAll("job"));
   }
 
   if (url.pathname === OTLP_INGEST_PATH) {
@@ -207,4 +215,32 @@ async function refreshDeployments(collector: NonNullable<Env["COLLECTOR"]>): Pro
   } catch (error) {
     console.warn("[site-deployed] 调不到采集 Worker", reason(error));
   }
+}
+
+function runOne(collector: NonNullable<Env["COLLECTOR"]>, job: string): Promise<CollectorJobOutcome> {
+  return collector.refresh([job]).then(
+    ([outcome]): CollectorJobOutcome => outcome ?? { job, status: "error", detail: "采集 Worker 没有回结果", ms: 0 },
+    (error: unknown): CollectorJobOutcome => ({ job, status: "error", detail: reason(error), ms: 0 }),
+  );
+}
+
+async function handleCollectorRefresh(request: Request, env: Env, ctx: ExecutionContext, named: string[]): Promise<Response> {
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+  const auth = await authorize(request, env, "internal:collector-refresh");
+  if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
+  const collector = env.COLLECTOR;
+  if (!collector) return jsonResponse({ ok: false, error: "没有绑定采集 Worker" }, { status: 503 });
+  const jobs = named.length ? [...new Set(named)] : ACTIVE_COLLECTOR_JOBS;
+  const ordered = [...jobs.filter((job) => !COLLECT_LAST.has(job)), ...jobs.filter((job) => COLLECT_LAST.has(job))];
+  // 逐个串行跑：经 Service Binding 触发的 Worker 和这次请求共用 6 个等响应头的连接，并发扇出会让短预算任务耗在排队上。
+  // 摘要读的是别的任务写出的视图（仓库提交、站点部署……），排在最后才总结得到这一轮刚采集的数据。
+  const run = (async () => {
+    const byJob = new Map<string, CollectorJobOutcome>();
+    for (const job of ordered) byJob.set(job, await runOne(collector, job));
+    return jobs.map((job) => byJob.get(job)!);
+  })();
+  // 调用方断开（如 curl 超时）时任务不随连接立刻取消，但只多 waitUntil 的宽限，长任务不保证跑完。
+  ctx.waitUntil(run);
+  const outcomes = await run;
+  return jsonResponse({ ok: outcomes.every((outcome) => outcome.status !== "error"), outcomes });
 }
