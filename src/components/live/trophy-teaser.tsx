@@ -7,6 +7,7 @@ import {
   playstationAvatarNeedsOptimizing,
   playstationImage,
 } from "@/lib/playstation-image";
+import { formatMonthDay, zonedWallClock } from "@/lib/format-time";
 import type { PlaystationPresenceKind } from "@/lib/playstation-presence";
 import { site } from "@shared/site";
 import type {
@@ -46,11 +47,7 @@ function ProfileAvatar({ url, alt }: { url: string; alt: string }) {
 }
 
 function formatUnlock(ms: number): string {
-  return new Date(ms).toLocaleString("en-US", {
-    timeZone: site.timezone,
-    month: "short",
-    day: "numeric",
-  });
+  return formatMonthDay(zonedWallClock(ms, site.timezone));
 }
 
 function Count({ type, value }: { type: TrophyType; value: number }) {

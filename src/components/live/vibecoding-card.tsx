@@ -20,6 +20,7 @@ import { useSiteDay } from "@/hooks/use-site-day";
 import { useConfirmedClockStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
+import { formatClock12, formatMonthDay, formatWeekday, localWallClock, utcWallClock } from "@/lib/format-time";
 import {
   CODING_ACTIVE_WINDOW_MS,
   CODING_SOURCE_LABELS,
@@ -487,16 +488,11 @@ function formatReset(resetsAt: number | null, referenceTime: number): ResetDispl
   const remain = resetsAt * 1000 - referenceTime;
   if (remain <= 0) return null;
   if (remain >= 86_400_000) {
-    const at = new Date(Math.round(resetsAt / 60) * 60_000);
+    const at = localWallClock(Math.round(resetsAt / 60) * 60_000);
     if (remain >= WEEK_MS) {
-      return {
-        kind: "absolute",
-        text: `Resets ${at.toLocaleString("en-US", { month: "short", day: "numeric" })}`,
-      };
+      return { kind: "absolute", text: `Resets ${formatMonthDay(at)}` };
     }
-    const weekday = at.toLocaleString("en-US", { weekday: "short" });
-    const clock = at.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
-    return { kind: "absolute", text: `Resets ${weekday} ${clock}` };
+    return { kind: "absolute", text: `Resets ${formatWeekday(at)} ${formatClock12(at)}` };
   }
   const totalMinutes = Math.floor(remain / 60_000);
   return {
@@ -744,7 +740,7 @@ function FeaturedMark({ row, active }: { row: Pick<CodingAgentRow, "id" | "icon"
 const LIMITS_SILENT = "Limits reporter is silent";
 
 function formatSiteDay(date: string) {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return formatMonthDay(utcWallClock(Date.parse(`${date}T00:00:00Z`)));
 }
 
 function kiloMega(value: number) {

@@ -7,13 +7,12 @@ import {
 } from "lucide-react";
 import { useStatus } from "@/hooks/use-status";
 import { STATUS_VIEWS } from "@shared/status-views";
+import { formatDateTime12, formatMonthDay, utcWallClock } from "@/lib/format-time";
 import { workoutMetrics } from "@/lib/workout-display";
 import type { StatusResponse, Workout, WorkoutsPayload } from "@shared/types";
 
 function stamp(workout: Workout) {
-  return new Date(workout.startedAt + workout.secondsFromGMT * 1000).toLocaleString("en-US", {
-    timeZone: "UTC", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-  });
+  return formatDateTime12(utcWallClock(workout.startedAt + workout.secondsFromGMT * 1000));
 }
 
 // 键是 iOS WorkoutsModule 上报的英文训练类型名；没有专门图标的落到 Activity，不冒充力量训练。
@@ -88,7 +87,7 @@ export function WorkoutsStrip({ fallback }: { fallback: StatusResponse<WorkoutsP
           {items.map((workout) => <WorkoutTile key={workout.id} workout={workout} />)}
         </ul>
       )}
-      {data && error && <p className="border-t border-line p-4 text-xs lg:p-5 text-muted-foreground">Sync delayed · Last report {new Date(data.pushedAt).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" })} (UTC)</p>}
+      {data && error && <p className="border-t border-line p-4 text-xs lg:p-5 text-muted-foreground">Sync delayed · Last report {formatMonthDay(utcWallClock(data.pushedAt))} (UTC)</p>}
     </section>
   );
 }

@@ -10,6 +10,23 @@ import tseslint from "typescript-eslint";
 // eslint-plugin-react 与 jsx-a11y 仍调用 ESLint 10 已删除的 context 方法（如 getFilename），由 @eslint/compat 补上。
 const withFixedPlugin = (config, name, plugin) => ({ ...config, plugins: { ...config.plugins, [name]: fixupPluginRules(plugin) } });
 
+const APP_IMAGE = "src/components/app-image.tsx";
+const FORMAT_TIME = "src/lib/format-time.ts";
+
+const NO_RAW_IMG = {
+  selector: "JSXOpeningElement[name.name='img']",
+  message: "站点组件不手写 <img>：用 @/components/app-image（懒加载、rest-ready 门控、优化器）；静态图标记得带 unoptimized。",
+};
+
+// 按选项键判断而不是整个禁掉 toLocaleString：数字的 toLocaleString("en-US", …) 各引擎一致，到处在用。
+const LOCALE_DATE_MESSAGE = "日期时间文本不用 toLocale*：workerd 与 Safari 拼接不同（\", \" 对 \" at \"），服务端渲染会水合不一致；用 @/lib/format-time。";
+const DATE_OPTION_KEYS = "/^(year|month|day|weekday|era|hour|minute|second|dayPeriod|hour12|hourCycle|timeZone|timeZoneName|dateStyle|timeStyle)$/";
+const NO_LOCALE_DATE_TEXT = [
+  { selector: "CallExpression[callee.property.name=/^toLocale(Date|Time)String$/]", message: LOCALE_DATE_MESSAGE },
+  { selector: `CallExpression[callee.property.name='toLocaleString'] > ObjectExpression.arguments > Property[key.name=${DATE_OPTION_KEYS}]`, message: LOCALE_DATE_MESSAGE },
+  { selector: "CallExpression[callee.property.name='toLocaleString'][callee.object.type='NewExpression'][callee.object.callee.name='Date']", message: LOCALE_DATE_MESSAGE },
+];
+
 const eslintConfig = defineConfig([
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -66,13 +83,16 @@ const eslintConfig = defineConfig([
   },
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/components/app-image.tsx"],
-    rules: {
-      "no-restricted-syntax": ["error", {
-        selector: "JSXOpeningElement[name.name='img']",
-        message: "站点组件不手写 <img>：用 @/components/app-image（懒加载、rest-ready 门控、优化器）；静态图标记得带 unoptimized。",
-      }],
-    },
+    ignores: [APP_IMAGE, FORMAT_TIME],
+    rules: { "no-restricted-syntax": ["error", NO_RAW_IMG, ...NO_LOCALE_DATE_TEXT] },
+  },
+  {
+    files: [APP_IMAGE],
+    rules: { "no-restricted-syntax": ["error", ...NO_LOCALE_DATE_TEXT] },
+  },
+  {
+    files: ["shared/**/*.{ts,mts}"],
+    rules: { "no-restricted-syntax": ["error", ...NO_LOCALE_DATE_TEXT] },
   },
   {
     files: ["shared/**/*.{ts,mts}"],

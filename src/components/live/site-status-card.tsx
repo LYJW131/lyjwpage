@@ -12,6 +12,7 @@ import { SentryMark } from "@/components/live/sentry-mark";
 import { UptimeStrip } from "@/components/live/uptime-strip";
 import { useStale } from "@/hooks/use-stale";
 import { fieldPerformanceScore } from "@/lib/field-score";
+import { formatMonthDayClock24, zonedWallClock } from "@/lib/format-time";
 import {
   AGENT_LIMITS_STALE_MS,
   CLOUDFLARE_DEPLOYMENTS_STALE_MS,
@@ -34,14 +35,14 @@ import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
-const time = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+const time = (ms: number) => formatMonthDayClock24(zonedWallClock(ms, site.timezone));
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : ms < 10 ? `${Number(ms.toFixed(1))}ms` : `${Math.round(ms)}ms`;
 
 function CollectionWindow({ start, end }: { start?: number; end?: number }) {
   if (start == null || end == null) return null;
   const minutes = Math.round((end - start) / 60_000);
   const duration = minutes % 1440 === 0 ? `${minutes / 1440}d` : minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
-  return <span className="ml-auto whitespace-nowrap" title={`${time.format(start)} — ${time.format(end)} · UTC+8`}>Last {duration}</span>;
+  return <span className="ml-auto whitespace-nowrap" title={`${time(start)} — ${time(end)} · UTC+8`}>Last {duration}</span>;
 }
 
 function CommitSha({ commit }: { commit: { sha: string; branch: string | null; message: string | null } | null | undefined }) {
@@ -169,7 +170,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
   }>
     <div className="border-b border-line px-4 py-5 lg:px-5">
       <div className="grid grid-cols-2 gap-5 md:grid-cols-4">
-        <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `Cloudflare Web Analytics pageviews · last 7 × 24h · ${time.format(analytics.start)} — ${time.format(analytics.end)} · UTC+8` : analyticsStale ? "Unavailable" : undefined} />
+        <Stat label="VIEWS · 7D" value={analytics?.pageviews} title={analytics ? `Cloudflare Web Analytics pageviews · last 7 × 24h · ${time(analytics.start)} — ${time(analytics.end)} · UTC+8` : analyticsStale ? "Unavailable" : undefined} />
         <Stat label="COMMITS" value={totals?.commits} title={githubStale ? "Unavailable" : "Commits on the default branch"} />
         <Stat label="ADDITIONS" value={totals?.additions} prefix="+" title={githubStale ? "Unavailable" : "Total lines added"} />
         <Stat label="DELETIONS" value={totals?.deletions} prefix="−" title={githubStale ? "Unavailable" : "Total lines removed"} />
@@ -190,7 +191,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
         <div className="px-4 pt-3 pb-2 lg:px-5">
           <div className="grid grid-cols-[48px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-2xs text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))]">
             <span />
-            <span title={`Lighthouse performance score, lab run on a simulated device${pagespeed ? `\nPageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "\nUnavailable" : ""}`}>PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label.replaceAll("/", "/\u200b")}</span>)}
+            <span title={`Lighthouse performance score, lab run on a simulated device${pagespeed ? `\nPageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time(pagespeed.start)} — ${time(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "\nUnavailable" : ""}`}>PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label.replaceAll("/", "/\u200b")}</span>)}
           </div>
           {(["desktop", "mobile"] as const).map(device => {
             const score = pagespeed?.[device].score;
@@ -230,7 +231,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
           {CLOUDFLARE_WORKERS.filter(({ name }) => name !== "site").map(({ name }) => {
             const worker = cloudflare?.workers.find(w => w.name === name);
             const metrics = workerMetricsStale ? null : worker?.metrics, deployment = workerDeploymentsStale ? null : worker?.deployment;
-            return <li key={name} className="bg-surface px-4 py-2.5 lg:px-5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
+            return <li key={name} className="bg-surface px-4 py-2.5 lg:px-5" title={deployment ? `Deployed ${time(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
               <div className="flex min-w-0 items-center gap-1.5 text-2xs leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <span className="min-w-0 truncate">{name}</span>

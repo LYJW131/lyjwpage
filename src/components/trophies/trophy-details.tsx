@@ -15,6 +15,7 @@ import useSWR, { useSWRConfig } from "swr";
 
 import Image from "@/components/app-image";
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
+import { formatClock24, zonedWallClock } from "@/lib/format-time";
 import { trophyGroupSnapClass, trophyGroupTrackClass } from "@/lib/gaming-columns";
 import { LIST_TRANSITION, STATIC_TRANSITION } from "@/lib/motion";
 import { trophiesTilePath } from "@/lib/paths";
@@ -56,15 +57,8 @@ const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 function formatStamp(ms: number): string {
-  return new Date(ms).toLocaleString("zh-CN", {
-    timeZone: site.timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const at = zonedWallClock(ms, site.timezone);
+  return `${at.year}/${String(at.month).padStart(2, "0")}/${String(at.day).padStart(2, "0")} ${formatClock24(at)}`;
 }
 
 function trophyDetail(trophy: Trophy): string | null {

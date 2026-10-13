@@ -13,6 +13,7 @@ import { stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent } from "@/lib/chat-consent";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
+import { formatClock12, formatMonthDay, localWallClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
@@ -945,7 +946,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
           <li key={session.id} className="flex h-11 snap-start items-center gap-2">
             <button type="button" aria-current={session.id === archive.activeId ? "true" : undefined} onClick={() => chatArchive.select(session.id)} className={cn("flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs", session.id === archive.activeId ? "bg-surface text-foreground" : "text-muted-foreground hover:bg-surface-hover")}>
               <span className="truncate">{session.title}</span>
-              <time className="shrink-0 text-2xs" dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</time>
+              <time className="shrink-0 text-2xs" dateTime={new Date(session.updatedAt).toISOString()}>{formatMonthDay(localWallClock(session.updatedAt))}</time>
             </button>
             <button type="button" aria-label={`Delete conversation: ${session.title}`} onClick={() => remove(session.id)} className="p-2 text-muted-foreground hover:text-signal-red"><Trash2 className="size-3.5" /></button>
           </li>
@@ -1136,7 +1137,7 @@ function DesignStatus({ design }: { design: ChatDesign }) {
   return (
     <p className="mb-2 flex items-center gap-1.5 text-2xs text-signal-blue">
       <PencilRuler className="size-3 shrink-0" />
-      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left · ends {new Date(design.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+      <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left · ends {formatClock12(localWallClock(design.expiresAt))}</span>
     </p>
   );
 }

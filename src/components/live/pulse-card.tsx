@@ -10,6 +10,7 @@ import { DevToggle, DevToggleSlot, isDev } from "@/components/dev-toggles";
 import { Card } from "@/components/ui/card";
 import { MacBookProIcon } from "@/components/ui/device-icons";
 import { useStatus } from "@/hooks/use-status";
+import { formatClock12, localWallClock } from "@/lib/format-time";
 import { PULSE_PATH } from "@/lib/paths";
 import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC } from "@shared/pulse-coding";
 import { gamingSummaryDetail } from "@/lib/gaming-lane-detail";
@@ -64,7 +65,7 @@ type LaneModel = {
   aria: string;
 };
 
-const time = (at: number) => new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+const time = (at: number) => formatClock12(localWallClock(at));
 
 export function pulseDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);

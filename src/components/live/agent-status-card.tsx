@@ -16,6 +16,7 @@ import { Modal } from "@/components/ui/modal";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { formatClock12, formatMonthDayClock12, zonedWallClock } from "@/lib/format-time";
 import {
   indicatorLabel,
   type AgentIndicator,
@@ -29,19 +30,7 @@ import { cn } from "@/lib/utils";
 
 const ROWS_PER_COLUMN = 3;
 
-const checkedAt = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Shanghai",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-const incidentAt = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Shanghai",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
+const checkedAt = (ms: number) => formatClock12(zonedWallClock(ms, "Asia/Shanghai"));
 
 function indicatorDot(indicator: AgentIndicator): string {
   switch (indicator) {
@@ -117,7 +106,7 @@ function formatWhen(value: string | null): string | null {
   if (!value) return null;
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return null;
-  return incidentAt.format(parsed);
+  return formatMonthDayClock12(zonedWallClock(parsed, "Asia/Shanghai"));
 }
 
 function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void }) {
@@ -225,13 +214,13 @@ export function AgentStatusCard({
     ? {
         ...fetched,
         agents: fetched.agents.map((agent) =>
-          unavailableRow(agent, `No status check since ${checkedAt.format(fetched.fetchedAt)} UTC+8.`)),
+          unavailableRow(agent, `No status check since ${checkedAt(fetched.fetchedAt)} UTC+8.`)),
       }
     : fetched;
   const [openId, setOpenId] = useState<AgentStatusRow["id"] | null>(null);
   const close = useCallback(() => setOpenId(null), []);
   const open = data?.agents.find((agent) => agent.id === openId) ?? null;
-  const checked = data ? checkedAt.format(data.fetchedAt) : null;
+  const checked = data ? checkedAt(data.fetchedAt) : null;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const hasColumns = Boolean(data?.agents.length);
   useEffect(() => {
