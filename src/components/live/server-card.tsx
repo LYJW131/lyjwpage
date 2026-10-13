@@ -52,12 +52,20 @@ function nodeId(id: string): string {
   return `${name.charAt(0).toUpperCase()}${name.slice(1)}-${rest.toUpperCase()}`;
 }
 
-function Rate({ label, bytesPerSec }: { label: string; bytesPerSec: number | null }) {
+function Rate({
+  label,
+  bytesPerSec,
+  endOnMobile = false,
+}: {
+  label: string;
+  bytesPerSec: number | null;
+  endOnMobile?: boolean;
+}) {
   const parts = bytesPerSec == null ? null : rateParts(bytesPerSec);
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", endOnMobile && "text-right md:text-left")}>
       <div className="label-mono text-muted-foreground">{label}</div>
-      <div className="flex h-9 items-end gap-1">
+      <div className={cn("flex h-9 items-end gap-1", endOnMobile && "justify-end md:justify-start")}>
         {parts ? (
           <>
             <span className="text-2xl font-medium tracking-tight tabular-nums">
@@ -174,18 +182,24 @@ export function ServerCard({
       className={cn("h-full scroll-mt-28", className)}
     >
       <div className="flex h-full min-h-44 flex-col justify-between gap-3 p-4 lg:p-5">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 md:grid md:grid-cols-2">
           <div className="min-w-0">
-            <div className="truncate font-medium" title={location ?? undefined}>
+            <div
+              className="truncate font-medium md:label-mono md:font-normal md:text-muted-foreground"
+              title={location ?? undefined}
+            >
               {location ?? <span className="text-muted-foreground">—</span>}
             </div>
-            <div className="truncate text-sm text-muted-foreground" title={isp ?? undefined}>
-              {isp ?? "—"}
+            <div
+              className="truncate text-sm text-muted-foreground md:text-2xl md:leading-9 md:font-medium md:tracking-tight md:text-foreground"
+              title={isp ?? undefined}
+            >
+              {isp ?? <span className="text-muted-foreground">—</span>}
             </div>
           </div>
-          <div className="shrink-0 text-right">
+          <div className="shrink-0 text-right md:min-w-0 md:text-left">
             <div className="label-mono text-muted-foreground">Uptime</div>
-            <div className="font-mono text-lg tabular-nums">
+            <div className="font-mono text-lg tabular-nums md:text-2xl md:leading-9 md:font-medium md:tracking-tight">
               {data ? formatUptime(data.uptimeSeconds) : <span className="text-muted-foreground">—</span>}
             </div>
           </div>
@@ -200,6 +214,7 @@ export function ServerCard({
             <Rate
               label="Upload"
               bytesPerSec={data ? data.networkTxBytesPerSec : null}
+              endOnMobile
             />
           </div>
         </NumberFlowGroup>
