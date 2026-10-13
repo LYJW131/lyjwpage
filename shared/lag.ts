@@ -21,6 +21,7 @@ export const LAG_KEYS = {
   reporterServer: "reporter:server-reporter:v1",
   reporterAgents: "reporter:agents-reporter:v1",
   freshnessWatch: "freshness-watch:v1",
+  digest: "digest:v1",
 } as const;
 
 export type LagKey = (typeof LAG_KEYS)[keyof typeof LAG_KEYS];

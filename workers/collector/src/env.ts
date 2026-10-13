@@ -1,3 +1,4 @@
+import type { DigestRpc } from "@shared/digest";
 import type { StateCoreRpc } from "@shared/state-core";
 
 export interface Env {
@@ -5,6 +6,7 @@ export interface Env {
   LAG: KVNamespace;
   CREDENTIALS: KVNamespace;
   CORE: StateCoreRpc;
+  DIGEST?: DigestRpc;
   HISTORY?: D1Database;
 
   STORAGE_PREFIX?: string;

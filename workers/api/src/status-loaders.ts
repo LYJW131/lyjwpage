@@ -59,6 +59,7 @@ export const statusLoaders = {
   sentry: { endpoint: LAG_VIEW_LOADERS.sentry },
   reporters: { endpoint: LAG_VIEW_LOADERS.reporters },
   pulse: { endpoint: unparam(() => getPulseStatus()) },
+  digest: { endpoint: LAG_VIEW_LOADERS.digest },
 } satisfies { [K in StatusViewKey]: EndpointLoader<StatusPayloads[K]> };
 
 export function loadEndpoint(key: EndpointViewKey, params: StatusLoaderParams = {}): Promise<unknown> {

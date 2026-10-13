@@ -78,7 +78,7 @@ PR 关闭时 `.github/workflows/preview-api-worker.yml` 检出默认分支，用
 | `ingress` | `workers/ingress/*`、`shared/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
 | `collector` | `workers/collector/*`、`shared/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
 
-AI 的提示词、SDK 使用和工具编排留在 `workers/ai`，仅面向浏览器的对话契约保留在所排除的共享文件。公开路径单独定义在 `shared/ai-paths.ts`，路径变化仍触发 api；其他文件只重导出这些路径。eslint 阻止 api 的生产实现导入 AI 业务契约或运行时，防止排除路径后悄悄漏发。
+AI 的提示词、SDK 使用和工具编排留在 `workers/ai`，仅面向浏览器的对话契约保留在所排除的共享文件。采集 Worker 调 ai 近况摘要入口的契约 `shared/digest.ts` 只被 ai type-import，不进 ai 的包含路径。公开路径单独定义在 `shared/ai-paths.ts`，路径变化仍触发 api；其他文件只重导出这些路径。eslint 阻止 api 的生产实现导入 AI 业务契约或运行时，防止排除路径后悄悄漏发。
 
 api、site 的分支 Preview 走 Builds Previews：每个分支的 Preview 建立时复制一份当时的 `previews_base_config`，改基础配置不回写已有分支，要按 [仓库外事实](./ops-facts.md) 记的方式经 Builds API 逐份读改。
 

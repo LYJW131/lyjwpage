@@ -37,6 +37,7 @@
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
+| `digest` | `DIGEST.compose`（ai 的 `Digest`，带上一份的输入哈希）写成的近况摘要进 `LAG digest:v1`；输入没变时 ai 不调模型，这里照样重写一次刷新 `updatedAt`；第一次写出才 `CORE.revalidate(["digest"])` | ai 上的 `ANTHROPIC_API_KEY`（没配时 ai 回 `unconfigured`，这里跳过） |
 
 每个任务可有一条 Sentry cron 监控 `collector-<任务>`（默认不报到，由 `SENTRY_CRON_CHECKINS=true` 开启），报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
 
@@ -109,7 +110,7 @@
 Apple Music 不在这里配：user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推来的），
 developer token 经 `CORE.appleDeveloperToken()` 由 api 签。
 
-绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS` 三个 KV，`CORE`（`api` 的 `StateCore`），D1 `HISTORY`
+绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS` 三个 KV，`CORE`（`api` 的 `StateCore`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`
 （`lyjwpage-history`）。D1 表结构归 `workers/api/migrations` 管：新表先在 api 那边
 `pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
 Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION_METADATA`。
@@ -119,7 +120,7 @@ Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION
 推到 `main` 由 Cloudflare Workers Builds 原生 Git 集成部署（根目录 `/`，配置与监视路径见
 [原生部署配置](../../docs/workers-builds.md)）；不开分支预览：预览版的 `CORE` 会调到生产的 api。
 
-新增 `StateCore` 方法时先发布 api，再发布这里；两边独立构建。
+新增 `StateCore` 方法时先发布 api，再发布这里；`Digest` 的契约同理，先发布 ai。各自独立构建。
 
 ## 本地开发
 
