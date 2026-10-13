@@ -5,12 +5,10 @@ import type { CommitReply, CoreAudience, CorePower, StateCoreRpc } from "@shared
 import type { LiveEvent } from "@shared/live-events";
 import { getPlaystationPower } from "./playstation-store";
 import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types";
-import { issueApiDeveloperToken } from "@shared/musickit-token";
-import { enrichRecentlyPlayed, followUpEnrichment, type EnrichmentFollowUp, type EnrichmentPatch } from "@shared/track-enrichment";
+import type { EnrichmentPatch } from "@shared/track-enrichment";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
 import { dispatchIngestEffects } from "./ingest-effects";
-import { enrichCommand } from "./listening-enrichment";
 import { expireStatusTags, liveRoom } from "./live-platform";
 import { lagStatusTags } from "./lag-repurge";
 import { requestStore, type Env } from "./runtime";
@@ -29,8 +27,7 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   async commitIngest(command: CoreCommand): Promise<CommitReply> {
     return this.scoped(async () => {
       // DO 重置、过载抛的错带 retryable / overloaded；这些属性过不了上报入口那条 Service Binding，在这里转成回执。
-      const { command: enriched, followUp } = await enrichCommand(command);
-      const result = await this.hub().commitIngest(enriched).catch((error: unknown) => {
+      const result = await this.hub().commitIngest(command).catch((error: unknown) => {
         if (!transientFailure(error)) throw error;
         return error instanceof Error ? error.message : String(error);
       });
@@ -40,7 +37,6 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
       }
       await dispatchIngestEffects(result.effects);
       if (!result.ok) return { ready: true, ok: false, error: result.error };
-      if (followUp) this.ctx.waitUntil(this.followUp(followUp));
       return { ready: true, ok: true, data: JSON.parse(result.json) as unknown };
     });
   }
@@ -61,13 +57,11 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   }
 
   async appleDeveloperToken(): Promise<{ token: string; expiresAt: number }> {
-    const issued = await issueApiDeveloperToken(this.env);
-    return { token: issued.token, expiresAt: issued.expiresAt * 1000 };
+    throw new Error("api 不持有 Apple 私钥：developer token 由采集 Worker 自己签");
   }
 
-  // 首项已带 motion（含 null）说明 collector 查过动态封面；undefined 才在这里补查。
   async commitRecentlyPlayed(items: ListeningItem[], container?: PlayingContainer | null): Promise<{ changed: boolean }> {
-    return this.scoped(async () => commitRecentlyPlayed(items[0]?.motion !== undefined ? items : await enrichRecentlyPlayed(items), container));
+    return this.scoped(() => commitRecentlyPlayed(items, container));
   }
 
   async commitRecentTracks(tracks: RecentTrack[], observedAt?: number): Promise<{ traced: boolean; nextBy?: number }> {
@@ -91,14 +85,6 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
     const { applied, effects } = await this.hub().commitEnrichmentPatch(patch);
     await dispatchIngestEffects(effects);
     return { applied };
-  }
-
-  private followUp(followUp: EnrichmentFollowUp): Promise<void> {
-    return this.scoped(() => followUpEnrichment(followUp, async (patch) => {
-      await this.applyPatch(patch);
-    })).catch((error: unknown) => {
-      console.warn("[enrichment] follow-up", followUp.target, followUp.music.title, error instanceof Error ? error.message : String(error));
-    });
   }
 
   private hub() {

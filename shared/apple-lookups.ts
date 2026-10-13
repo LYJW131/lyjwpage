@@ -1,7 +1,7 @@
 import { LYRICS_PATH, MOTION_ARTWORK_PATH } from "@shared/apple-music-paths";
-import { lyricsCacheKey, lyricsTtlMs, resolveLyrics } from "@shared/lyrics";
+import { lyricsTtlMs, resolveLyrics } from "@shared/lyrics";
 import type { LyricsResult } from "@shared/lyrics-ttml";
-import { motionArtworkCacheKey, motionTtlMs, NO_MOTION, resolveMotionArtwork, type MotionResult } from "@shared/motion-artwork";
+import { motionTtlMs, NO_MOTION, resolveMotionArtwork, type MotionResult } from "@shared/motion-artwork";
 import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
 
 export type LyricsResponse = LyricsResult & { songId: string | null };
@@ -9,7 +9,6 @@ export type MotionResponse = MotionResult & { link: string | null };
 
 export type AppleLookup = {
   GET(request: Request): Promise<Response>;
-  edgeCacheKey(request: Request): string | null;
 };
 
 function requestedSong(request: Request): string {
@@ -19,11 +18,6 @@ function requestedSong(request: Request): string {
 const validSong = (song: string): boolean => /^\d{1,20}$/.test(song);
 
 const lyrics: AppleLookup = {
-  edgeCacheKey(request) {
-    const requested = requestedSong(request);
-    return validSong(requested) ? lyricsCacheKey(requested) : null;
-  },
-
   async GET(request) {
     const requested = requestedSong(request);
     if (!validSong(requested)) {
@@ -51,13 +45,6 @@ function requestedLink(request: Request): string {
 }
 
 const motionArtwork: AppleLookup = {
-  // 响应回显原始 link，缓存键必须包含原链接，不能只按解析后的身份合并。
-  edgeCacheKey(request) {
-    const requested = requestedLink(request);
-    const parsed = requested ? parseAppleMusicUrl(requested) : null;
-    return parsed ? `${motionArtworkCacheKey(parsed)}:${encodeURIComponent(requested)}` : null;
-  },
-
   async GET(request) {
     const requested = requestedLink(request);
     const parsed = requested ? parseAppleMusicUrl(requested) : null;

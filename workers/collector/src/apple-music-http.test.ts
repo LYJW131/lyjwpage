@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { afterEach, test } from "node:test";
-import { fileURLToPath } from "node:url";
 
 import { lyricsCacheKey } from "@shared/lyrics";
 
@@ -99,22 +96,4 @@ test("the lookup entrypoint answers from APPLE_CACHE without the network and rej
   assert.equal(invalid.status, 400);
   assert.equal(invalid.headers.get("Cache-Control"), "no-store, no-cache, must-revalidate");
   assert.equal((await serveAppleLookup(new Request(`${SITE}/api/musickit/token`))).status, 404);
-});
-
-function appleCacheConfig(path: string): { id?: string; prefix?: string; storefront?: string } {
-  const text = readFileSync(`${dirname(fileURLToPath(import.meta.url))}/${path}`, "utf8").split(/^\[previews/m)[0] ?? "";
-  const value = (name: string) => text.match(new RegExp(`^${name} = "([^"]*)"$`, "m"))?.[1];
-  return {
-    id: text.match(/^binding = "APPLE_CACHE"\nid = "([^"]+)"$/m)?.[1],
-    prefix: value("STORAGE_PREFIX"),
-    storefront: value("APPLE_MUSIC_STOREFRONT"),
-  };
-}
-
-test("APPLE_CACHE is shared with api: namespace, key prefix and storefront match in production and local configs", () => {
-  for (const file of ["wrangler.toml", "wrangler.test.toml"]) {
-    const collector = appleCacheConfig(`../${file}`);
-    assert.ok(collector.id && collector.prefix && collector.storefront, file);
-    assert.deepEqual(appleCacheConfig(`../../api/${file}`), collector, file);
-  }
 });
