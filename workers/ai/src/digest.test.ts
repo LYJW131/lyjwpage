@@ -158,6 +158,12 @@ test("counts from capped source lists read as lower bounds while the oldest list
 
   views.siteDeployments = { recent: deploys.map((deploy) => ({ ...deploy, target: "preview", createdAt: at(2) })) } as unknown as DigestViews["siteDeployments"];
   assert.match(digestFacts(views, NOW), /This homepage's own code: 9 commits; areas touched site\n/);
+
+  views.githubRepo = {} as unknown as DigestViews["githubRepo"];
+  views.siteDeployments = { recent: deploys } as unknown as DigestViews["siteDeployments"];
+  facts = digestFacts(views, NOW);
+  assert.match(facts, /This homepage's own code: 2 production deploys\n/);
+  assert.doesNotMatch(facts, /commits/);
 });
 
 test("facts round small changes away, so an unchanged hour keeps the same input hash", async () => {
