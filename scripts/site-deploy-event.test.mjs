@@ -21,7 +21,7 @@ test("可信的 main site 构建检查产出提交 SHA", () => {
 });
 
 test("其他 Worker、失败检查、github-actions 应用、非 main 分支都不算数", () => {
-  assert.equal(siteDeploymentSha("check_run", { check_run: siteCheck({ name: "Workers Builds: api" }) }), null);
+  assert.equal(siteDeploymentSha("check_run", { check_run: siteCheck({ name: "Workers Builds: core" }) }), null);
   assert.equal(siteDeploymentSha("check_run", { check_run: siteCheck({ conclusion: "failure" }) }), null);
   assert.equal(siteDeploymentSha("check_run", { check_run: siteCheck({ app: { slug: "github-actions" } }) }), null);
   assert.equal(siteDeploymentSha("check_run", { check_run: siteCheck({ check_suite: { head_branch: "devin/cloudflare-react-router" } }) }), null);

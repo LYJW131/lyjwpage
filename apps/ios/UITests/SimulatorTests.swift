@@ -52,7 +52,7 @@ final class SimulatorTests: XCTestCase {
 
     private func fixture(_ path: String, _ name: String) async throws {
         let here = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let url = here.appending(path: "../../../workers/api/dev-fixtures/" + name + ".json").standardizedFileURL
+        let url = here.appending(path: "../../../workers/core/dev-fixtures/" + name + ".json").standardizedFileURL
         var text = try String(contentsOf: url, encoding: .utf8)
         let now = Date().timeIntervalSince1970 * 1000
         text = text.replacing(/"\$now(?<offset>[+-]\d+)?"/) { match in

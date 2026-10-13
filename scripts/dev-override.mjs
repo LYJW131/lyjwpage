@@ -5,7 +5,7 @@ import { site } from "../shared/site.ts";
 
 
 const BASE = (process.env.DEV_WORKER_URL ?? "http://localhost:8788").replace(/\/+$/, "");
-const FIXTURES_DIR = path.join(process.cwd(), "workers", "api", "dev-fixtures");
+const FIXTURES_DIR = path.join(process.cwd(), "workers", "core", "dev-fixtures");
 
 const [first, second] = process.argv.slice(2);
 
