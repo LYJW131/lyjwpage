@@ -51,6 +51,7 @@ import {
   SERVER_PATH,
   TROPHIES_PATH,
   SITE_DEPLOYMENTS_PATH,
+  TIMEZONE_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
 import { data } from "react-router";
@@ -76,7 +77,7 @@ const SLOT = {
 
 const READS = {
   contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],
-  digest: [DIGEST_PATH, PULSE_PATH],
+  digest: [DIGEST_PATH, PULSE_PATH, TIMEZONE_PATH],
   nowWatching: [NOW_WATCHING_PATH],
   questNow: [STATUS_VIEWS.questNow.path],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
@@ -217,7 +218,7 @@ export async function loader({ context }: Route.LoaderArgs) {
         ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
         : null,
   };
-  // 有视图读不到时那张卡按降级信封渲染、浏览器挂载后再取；这份首页不能进缓存，否则 Unavailable 会撑满整个 SWR 期限。
+  // 降级的首页不能进缓存，否则 Unavailable 会撑满整个 SWR 期限。
   return degraded ? data(payload, { headers: { "Cache-Control": NO_STORE } }) : payload;
 }
 
