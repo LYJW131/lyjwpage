@@ -439,7 +439,7 @@ pnpm dev:worker                     # 仓库根目录执行；http://localhost:8
 pnpm dev:local                      # 站点指向本地 Worker
 ```
 
-`pnpm dev:worker` 是一个 `wrangler dev` 进程，配置入口在根目录 `package.json`：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
+`pnpm dev:worker` 是一个 `wrangler dev` 进程，由 `scripts/dev-worker.mjs` 拼参数启动（凭据判断见下文）：`workers/dev-router/wrangler.toml`（第一个，拿端口）、
 本目录的 `wrangler.test.toml`、`workers/ai/wrangler.test.toml`、`workers/ingress/wrangler.test.toml` 和 `workers/collector/wrangler.test.toml`。多配置下只有第一个 Worker 有端口，
 dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入口（见它的 README），
 `/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，Apple Music 的三条路径（`shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS`）给采集 Worker，其余一切（含 `/ws`）给 api；AI 路由由 api 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，

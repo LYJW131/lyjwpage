@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
-// Cloudflare 公开的 Turnstile 测试密钥，验证恒通过；ai 只在 AI_DEV 下认它的结果，生产不受影响。
+// Cloudflare 文档公开的 Turnstile 测试密钥，不是凭据。
 const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
 const TURNSTILE_TEST_SECRET = "1x0000000000000000000000000000000AA";
 
