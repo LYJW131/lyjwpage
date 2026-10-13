@@ -571,14 +571,32 @@ test("collector-refresh: runs every active job now, one collector call per job, 
   const body = await json(response) as { ok: boolean; outcomes: CollectorJobOutcome[] };
   assert.equal(body.ok, true);
   assert.deepEqual(body.outcomes.map((outcome) => outcome.job), [...ACTIVE_COLLECTOR_JOBS]);
-  assert.deepEqual(w.calls.refreshed, ACTIVE_COLLECTOR_JOBS.map((job) => [job]));
+  assert.deepEqual(new Set(w.calls.refreshed.map(([job]) => job)), new Set(ACTIVE_COLLECTOR_JOBS));
+  assert.equal(w.calls.refreshed.length, ACTIVE_COLLECTOR_JOBS.length);
   assert.ok(ACTIVE_COLLECTOR_JOBS.includes("digest"));
+});
+
+test("collector-refresh: digest starts only after the other jobs have finished writing the views it summarizes", async () => {
+  const started: string[] = [];
+  const finished: string[] = [];
+  const w = world({
+    refresh: async ([job]) => {
+      started.push(job!);
+      await new Promise((resolve) => setTimeout(resolve, job === "github-repo" ? 20 : 1));
+      finished.push(job!);
+      return [{ job: job!, status: "ok", ms: 1 }];
+    },
+  });
+  const response = await w.send("/api/internal/collector-refresh?job=digest&job=github-repo&job=site-deployments", { client: DEPLOYER });
+  assert.deepEqual((await json(response) as { outcomes: CollectorJobOutcome[] }).outcomes.map((outcome) => outcome.job), ["digest", "github-repo", "site-deployments"]);
+  assert.equal(started.at(-1), "digest");
+  assert.deepEqual(finished.slice(0, 2).sort(), ["github-repo", "site-deployments"]);
 });
 
 test("collector-refresh: ?job= narrows the run, and a failing job turns ok false without hiding the rest", async () => {
   const w = world();
   const narrowed = await w.send("/api/internal/collector-refresh?job=digest&job=digest&job=pagespeed", { client: DEPLOYER });
-  assert.deepEqual(w.calls.refreshed, [["digest"], ["pagespeed"]]);
+  assert.deepEqual(w.calls.refreshed, [["pagespeed"], ["digest"]]);
   assert.equal((await json(narrowed) as { ok: boolean }).ok, true);
 
   const failing = world({
