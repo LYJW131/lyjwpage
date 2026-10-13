@@ -14,7 +14,7 @@
 
 - **ingress**：无状态的上报入口，负责鉴权、校验、分流。
 - **api**：状态核心 `StateCore`（RPC 入口）加上 `StateHub` DO，以及推送房间 `LivePushRoom`。
-- **collector**：每分钟一响的采集 Worker。
+- **collector**：每分钟一响的采集 Worker；Apple Music 的按需查询与「正在听」的补全也在这里，由 site 与上报入口经 Service Binding 调用。
 - **ai**：首页对话、访客构建和公开 MCP；不挂公开域名，site 与 api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 把这几条路径经 Service Binding 原样转给它，它经 Service Binding `PUBLIC_STATUS` 只读 api 的状态（`workers/ai/README.md`「入口与权限」、`workers/ai/wrangler.toml`）。它不在一首歌的链路上，片中在第 00 章总览、第 09 章「对话」和第 10 章发布里出现。
 
 数据按层落地：实时层在 DO，可滞后层在 KV `LAG`，长期历史在 D1 `lyjwpage-history`，凭据在 KV `CREDENTIALS`。
@@ -137,14 +137,14 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 实时那一半怎么交出去（Service Binding）
 
-- `CORE` 是 Service Binding：`workers/ingress/wrangler.toml` 里 `[[services]]` 的 `service = "api"`、`entrypoint = "StateCore"`；入口 `await env.CORE.commitIngest(command)`（`workers/ingress/src/worker.ts#commitIngest`）。
+- `CORE` 是 Service Binding：`workers/ingress/wrangler.toml` 里 `[[services]]` 的 `service = "api"`、`entrypoint = "StateCore"`；入口先请采集 Worker 补全换歌那封（`COLLECTOR.enrichTrack`），再 `await env.CORE.commitIngest(enriched)`（`workers/ingress/src/worker.ts#commitIngest`）。
 - Cloudflare 内部调用，不走公网、不带凭据：只有声明了这个 binding 的 Worker 调得到，所以这一跳不再鉴权，鉴权只在入口做一次（`workers/api/AGENTS.md`「不变量」；`workers/api/src/state-core.ts#StateCore`）。
 - 交过去的是 prepare 的产物 `PreparedIngest`，必须能结构化复制；状态核心只 import 它的类型，不 import 校验实现，所以改校验只发布入口（`workers/ingress/AGENTS.md`「不变量」；`shared/state-core.ts#StateCoreRpc`）。RPC 方法只加不改，api 与调用方分开部署（`workers/api/AGENTS.md`「不变量」）。
 - `StateCore` 是 RPC 入口（`WorkerEntrypoint`），它把命令交给唯一的状态 DO `StateHub` 按到达顺序提交（§3），回 `CommitReply`：`ok: true` 的 `data` 原样放进 202；`ok: false` 带 `retryable`（DO 重置或过载）时入口回 503，其余 `ok: false` 回 400（`shared/state-core.ts#CommitReply`）。推送和首屏失效在 StateCore 自己的 waitUntil 里派发，不经入口（§3「效果清单」）。
 
 ### 202 的时机
 
-**202 要等三样**，而且是依次等：StateCore 回执 → `LAG` 写完 → 凭据写完 → 回 202。D1 归档在拿到回执后、写 LAG 之前交给 waitUntil，不等，失败只记日志；凭据只在 mac 带来 Apple Music user token 时才写（`workers/ingress/src/worker.ts#commitIngest`）。所以 202 的意思是：实时层已在 StateHub 落账，LAG 和凭据已写；D1 归档、推送、首屏失效还在后台，入口不等。
+**202 要等三样**，而且是依次等：StateCore 回执 → `LAG` 写完 → 凭据写完 → 回 202。换歌那封在交给 StateCore 之前还先等采集 Worker 补全（§3「效果清单」）。D1 归档在拿到回执后、写 LAG 之前交给 waitUntil，不等，失败只记日志；凭据只在 mac 带来 Apple Music user token 时才写（`workers/ingress/src/worker.ts#commitIngest`）。所以 202 的意思是：实时层已在 StateHub 落账，LAG 和凭据已写；D1 归档、推送、首屏失效还在后台，入口不等。
 
 失败时：DO 重置、过载这类标记为 retryable 的暂时故障回 503，上报器稍后重发；其余校验或处理失败回 400，上报器整封重发；各路按自然键或整份覆盖写，重发不重复（`workers/ingress/src/worker.ts#commitIngest`、`workers/ingress/src/worker.ts#unavailable`）。
 
@@ -174,7 +174,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   2. 再把布局标签一次性经 Service Binding `SITE_CACHE` 交给 site Worker 的 `invalidate`，5 秒超时（`workers/api/src/live-platform.ts#expireStatusTags`、`REVALIDATE_TIMEOUT_MS`）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
 - 效果在 StateHub 之外派发：`StateCore.commitIngest` 拿到 StateHub 交回的效果，交给 `dispatchIngestEffects`，后者经 `afterResponse` 放进 `ctx.waitUntil`；网络请求不占 StateHub 的执行时间，串行的提交队列不被推送和失效拖住（`workers/api/src/ingest-effects.ts#dispatchIngestEffects`、`workers/api/src/live-platform.ts#afterResponse`）。第 03 章旁白「网络请求不占 StateHub 的时间」出自这里。
-- 换歌那封上报在交给 StateHub 之前，由 StateCore 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随状态落库；推送和读取只用存好的这份（`workers/api/src/listening-enrichment.ts#enrichCommand`、`shared/track-enrichment.ts#candidateFrom`）。
+- 换歌那封上报在交给状态核心之前，由上报入口请采集 Worker 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随命令交给 StateHub 落库；采集 Worker 调不通时由 StateCore 自己补。推送和读取只用存好的这份（`shared/command-enrichment.ts#enrichCommand`、`shared/track-enrichment.ts#candidateFrom`）。
 - 各模块交回什么（workers/api/src/stores/telemetry.ts）：
   - **切应用**只交回一条 `desktop` 事件，不失效首屏：页头那一格定宽，换应用只换内容（354-355）。所以片中「切应用」不配「通知 site Worker」。
   - **换歌**交回 `listening`：StateCore 用提交时存好的补全拼出 `listening-now` 再广播（`workers/api/src/ingest-effects.ts#dispatchIngestEffect`）。只有开始或停止放歌才另失效在听那张卡的标签 `NOW_LISTENING_TAG`（telemetry.ts:392-393），换一首不失效。

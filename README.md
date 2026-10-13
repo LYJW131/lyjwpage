@@ -134,12 +134,12 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img src="docs/architecture-light.png" alt="多端上报经 Access 进 ingress Worker，拆成 Durable Object 实时层与 KV/D1 可滞后层，采集 Worker 拉外部服务，浏览器只连 site Worker，由它直读可滞后层、经 Service Binding 把实时状态与推送交给 api Worker，对话、设计会话与访客构建交给 AI Worker" width="100%">
+  <img src="docs/architecture-light.png" alt="多端上报经 Access 进 ingress Worker，经采集 Worker 补全「正在听」后拆成 Durable Object 实时层与 KV/D1 可滞后层，采集 Worker 拉外部服务、查 Apple Music，浏览器只连 site Worker，由它直读可滞后层、经 Service Binding 把实时状态与推送交给 api Worker、Apple Music 查询交给采集 Worker，对话、设计会话与访客构建交给 AI Worker" width="100%">
 </picture>
 
 [打开交互式架构图](https://lyjw131.github.io/lyjwpage/)
 
-**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标、Agent 限额与 Cursor、Devin CLI 用量，Claude Code 云端环境用内置遥测直接上报。Home Assistant 接入 HomePod 等家庭设备；PlayStation 由家里的容器按局域网里的主机状态拉取，Apple Music 最近在听以及 GitHub、站点部署与访问量（Cloudflare）、Sentry、PageSpeed 这些外部数据由采集 Worker 定时拉取。
+**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标、Agent 限额与 Cursor、Devin CLI 用量，Claude Code 云端环境用内置遥测直接上报。Home Assistant 接入 HomePod 等家庭设备；PlayStation 由家里的容器按局域网里的主机状态拉取，Apple Music 最近在听以及 GitHub、站点部署与访问量（Cloudflare）、Sentry、PageSpeed 这些外部数据由采集 Worker 定时拉取。Apple Music 的歌词、动态封面、网页播放器令牌和「正在听」的目录补全也归采集 Worker：上报入口提交前请它补全，站点域名上的这几条路径由 site Worker 转交给它。
 
 **状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。上报先到无状态的上报入口 Worker：它在 Cloudflare Access 之后验明每个上报器的身份，校验、收敛报文，再按数据层拆开——实时那一半经 Service Binding 交给持有 Durable Objects 的状态核心（api Worker），可滞后层、归档与凭据自己写。改校验只重新发布上报入口，状态核心不重启、页面的推送连接不断。Durable Objects SQLite 保存实时层的快照与历史，是唯一权威；只展示、可以晚几分钟的数据（外部服务的统计、落地节点、限额等）由写入方直接写进 KV 可滞后层，每条带更新时刻，过没过时由浏览器按各卡阈值判断。R2 保存海报等图片资源，D1 归档训练、圆环、限额、服务器小时汇总、coding 用量与 Pulse 的事实时间线；在线访客由推送那条 WebSocket 顺带计数。
 
