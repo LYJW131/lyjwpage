@@ -327,6 +327,9 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
 type GithubCheck = { id?: number; name: string; status: string; conclusion: string | null; html_url?: string; details_url?: string; completed_at?: string; started_at?: string; app?: { slug: string } };
 type GithubStatus = { context: string; state: string; target_url?: string; updated_at: string };
 
+// 须与 .github/workflows/ci.yml 的 check 任务、codeql.yml 的 Analyze 任务名同步：缺一项草稿就不转待审
+export const BUILD_READY_CHECKS = ["check", "Analyze (javascript-typescript)", "Analyze (actions)"] as const;
+
 function checkKind(check: GithubCheck): "ci" | "preview" {
   return check.app?.slug === "cloudflare-workers-and-pages" && check.name === "Workers Builds: site" ? "preview" : "ci";
 }
@@ -437,7 +440,7 @@ export async function markBuildReady(api: GithubBuildApi, run: StoredRun): Promi
     api.repo<{ statuses: GithubStatus[]; total_count: number }>(`/commits/${run.implementationHeadSha}/status?per_page=100`),
   ]);
   if (!Number.isSafeInteger(statuses.total_count) || statuses.total_count > statuses.statuses.length) return null;
-  if (!checks.some((check) => checkKind(check) === "ci" && check.name === "check" && check.app?.slug === "github-actions" && check.status === "completed" && check.conclusion === "success")
+  if (!BUILD_READY_CHECKS.every((name) => checks.some((check) => checkKind(check) === "ci" && check.name === name && check.app?.slug === "github-actions" && check.status === "completed" && check.conclusion === "success"))
     || ciState(checks, statuses.statuses) !== "success") return null;
   const latest = await existingPullRequest(api, run);
   if (!latest) return null;

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { BUILD_REPO, branchForRun } from "@shared/build-routine";
 import { ACTIONS_OIDC_JWKS_URL } from "../actions-oidc";
+import { BUILD_READY_CHECKS } from "../github";
 import type { ActionsOidcFixture } from "./actions-oidc";
 
 export type GithubFixtureCall = { path: string; method: string; headers: Headers; body: Record<string, unknown> | null; auth?: string };
@@ -125,7 +126,10 @@ export function buildGithubFixture(options: {
       if (call.method === "PATCH") pr = { ...pr!, ...body };
       return Response.json(pr);
     }
-    if (path.endsWith("/check-runs")) return Response.json({ total_count: 1, check_runs: [{ name: "check", status: "completed", conclusion: "success", app: { slug: "github-actions" } }] });
+    if (path.endsWith("/check-runs")) {
+      const checkRuns = BUILD_READY_CHECKS.map((name) => ({ name, status: "completed", conclusion: "success", app: { slug: "github-actions" } }));
+      return Response.json({ total_count: checkRuns.length, check_runs: checkRuns });
+    }
     if (path.endsWith("/status")) return Response.json({ total_count: 0, statuses: [] });
     if (path === `${repoPath}/issues` && call.method === "GET") return Response.json([]);
     if (path === `${repoPath}/issues/12/comments`) return call.method === "POST" ? Response.json({ id: 1 }, { status: 201 }) : Response.json([]);
