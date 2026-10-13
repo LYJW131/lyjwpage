@@ -52,12 +52,20 @@ function nodeId(id: string): string {
   return `${name.charAt(0).toUpperCase()}${name.slice(1)}-${rest.toUpperCase()}`;
 }
 
-function Rate({ label, bytesPerSec }: { label: string; bytesPerSec: number | null }) {
+function Rate({
+  label,
+  bytesPerSec,
+  endOnMobile = false,
+}: {
+  label: string;
+  bytesPerSec: number | null;
+  endOnMobile?: boolean;
+}) {
   const parts = bytesPerSec == null ? null : rateParts(bytesPerSec);
   return (
-    <div className="min-w-0">
+    <div className={cn("min-w-0", endOnMobile && "text-right md:text-left")}>
       <div className="label-mono text-muted-foreground">{label}</div>
-      <div className="flex h-9 items-end gap-1">
+      <div className={cn("flex h-9 items-end gap-1", endOnMobile && "justify-end md:justify-start")}>
         {parts ? (
           <>
             <span className="text-2xl font-medium tracking-tight tabular-nums">
@@ -206,6 +214,7 @@ export function ServerCard({
             <Rate
               label="Upload"
               bytesPerSec={data ? data.networkTxBytesPerSec : null}
+              endOnMobile
             />
           </div>
         </NumberFlowGroup>
