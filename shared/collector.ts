@@ -1,3 +1,7 @@
+import type { PlayingQueueTrack } from "@shared/playing-queue";
+import type { EnrichmentFollowUp, EnrichmentOutcome } from "@shared/track-enrichment";
+import type { LocalNowPlaying } from "@shared/types";
+
 export const COLLECTOR_JOBS = [
   "apple-recent",
   "provider-status",
@@ -34,4 +38,8 @@ export type CollectorJobOutcome = {
 
 export interface CollectorRpc {
   refresh(jobs: string[]): Promise<CollectorJobOutcome[]>;
+  // 上报提交前补全 Apple 目录、动态封面与队列 ID；music 为空、已停止或没有标题时回 null。每段各自限时，没查出的段记为未知，不抛错。
+  enrichTrack(music: LocalNowPlaying | null, upcomingTracks: PlayingQueueTrack[]): Promise<EnrichmentOutcome | null>;
+  // 提交成功后调：预热歌词，写入时没查全的整份重查，查到更多就经 StateCore.commitEnrichmentPatch 补写。调用立即返回，其余在采集 Worker 的 waitUntil 里跑。
+  followUpTrack(followUp: EnrichmentFollowUp): Promise<void>;
 }
