@@ -25,6 +25,7 @@
 - 主站完整单测为 `pnpm test`；单文件可用 `node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs src/lib/<名称>.test.mts`（`shared/` 的测试同样由 `pnpm test` 跑）。Worker 与上报器用各自目录里 `AGENTS.md` / `README.md` 写的验证命令。
 - 有回归风险时补行为测试；低影响改动不添加仅重复实现的测试。相关检查通过后，只有新改动、失败或未解疑点才扩大或重复验证。环境限制导致无法验证时说明具体缺口。
 - CI 的门禁清单以 `.github/workflows/ci.yml` 为准（含 `pnpm docs:check`）。本地不必全跑，但改动波及处对应的那几项必须通过。
+- 验证步骤按 `.claude/skills/lyjwpage-verify/SKILL.md` 做：多步检查、浏览器端到端、合并门槛汇总和上线核对派 Haiku 验证员执行（档位见该 skill），主线程只定验什么、判结果。
 
 # 部署流程
 
