@@ -1,4 +1,5 @@
 import { modelLabel } from "@shared/god-chat-tiers";
+import { site } from "@shared/site";
 import type { StatusPayloads } from "@shared/status-payloads";
 import { STATUS_VIEWS } from "@shared/status-views";
 import type { PulseStateLane, StatusResponse, TrophiesSummaryPayload } from "@shared/types";
@@ -29,8 +30,6 @@ export async function readDigestViews(readStatus: (path: string) => Promise<Resp
   }));
   return Object.fromEntries(entries) as DigestViews;
 }
-
-const DEFAULT_TIME_ZONE = "Asia/Shanghai";
 
 const AGENT_LABELS: Record<string, string> = {
   claude: "Claude Code",
@@ -72,12 +71,12 @@ function localClock(now: number, timeZone: string): { weekday: string; hour: num
 }
 
 function validTimeZone(identifier: string | undefined): string {
-  if (!identifier) return DEFAULT_TIME_ZONE;
+  if (!identifier) return site.timezone;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: identifier });
     return identifier;
   } catch {
-    return DEFAULT_TIME_ZONE;
+    return site.timezone;
   }
 }
 
@@ -203,7 +202,7 @@ function fitnessLines(views: DigestViews, windowFrom: number, now: number): stri
   const steps = Math.round(views.pulse!.lanes.activity.summary.steps / 100) * 100;
   // 步数桶只在有步数时才上报，零步分不清是没走还是没上报，只能不写。
   if (steps > 0) lines.push(`Steps: ${steps.toLocaleString("en-US")} in 24 h`);
-  const workouts = (views.workouts?.items ?? []).filter((workout) => workout.endedAt >= windowFrom);
+  const workouts = (views.workouts?.items ?? []).filter((workout) => workout.startedAt >= windowFrom);
   const described = workouts.map((workout) => {
     const distance = workout.distanceMeters && workout.distanceMeters >= 100 ? `, ${Math.round(workout.distanceMeters / 100) / 10} km` : "";
     return `${workout.activityType} ${duration(workout.durationSeconds)}${distance}`;
