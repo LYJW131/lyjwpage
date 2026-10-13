@@ -7,13 +7,15 @@ import {
 } from "lucide-react";
 import { useStatus } from "@/hooks/use-status";
 import { STATUS_VIEWS } from "@shared/status-views";
+import { dateTimeText } from "@/lib/date-time-text";
 import { workoutMetrics } from "@/lib/workout-display";
 import type { StatusResponse, Workout, WorkoutsPayload } from "@shared/types";
 
+const stampDate = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", year: "numeric", month: "short", day: "numeric" });
+const stampTime = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit" });
+
 function stamp(workout: Workout) {
-  return new Date(workout.startedAt + workout.secondsFromGMT * 1000).toLocaleString("en-US", {
-    timeZone: "UTC", year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-  });
+  return dateTimeText(workout.startedAt + workout.secondsFromGMT * 1000, stampDate, stampTime);
 }
 
 // 键是 iOS WorkoutsModule 上报的英文训练类型名；没有专门图标的落到 Activity，不冒充力量训练。
