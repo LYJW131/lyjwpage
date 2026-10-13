@@ -20,7 +20,7 @@ export function consoleLabel(platforms: Array<string | null | undefined>): strin
 
 function BoxMark({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-0.5 border border-line px-0.5 py-px font-mono text-[10px] leading-none tracking-wide text-muted-foreground uppercase">
+    <span className="inline-flex items-center gap-0.5 border border-line px-0.5 py-px font-mono text-2xs leading-none tracking-wide text-muted-foreground uppercase">
       {children}
     </span>
   );

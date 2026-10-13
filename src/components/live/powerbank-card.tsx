@@ -155,7 +155,7 @@ export function PowerBankCard({
     >
       <div
         className={cn(
-          "flex min-h-0 flex-1 flex-col px-4 pb-4 pt-2",
+          "flex min-h-0 flex-1 flex-col px-4 pb-4 pt-2 lg:px-5 lg:pb-5",
         )}
       >
         <div className="flex h-18 items-end gap-1.5">

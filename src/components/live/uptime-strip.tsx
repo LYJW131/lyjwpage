@@ -51,7 +51,7 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
           })}
         </div>
       )}
-      <div className="mt-2 flex items-center gap-3 text-[11px] tabular-nums text-muted-foreground">
+      <div className="mt-2 flex items-center gap-3 text-2xs tabular-nums text-muted-foreground">
         <span className="shrink-0">{health.days.length || 30} days ago</span>
         <span className="h-px min-w-3 flex-1 bg-line" aria-hidden />
         <span className="shrink-0 whitespace-nowrap" title={`24h ${percent(health.availability24h)} · ${footTitle}`}>
@@ -69,7 +69,7 @@ export function UptimeStrip({ site, core, siteStale = false, coreStale = false }
 }) {
   if (!site && !core) return null;
   return (
-    <div className="flex flex-col gap-5 border-t border-line px-4 py-4 md:px-5">
+    <div className="flex flex-col gap-5 border-t border-line p-4 lg:p-5">
       {site && (
         <HealthRow name={site.url ? new URL(site.url).host : "lyjw.me"} health={site} unit="checks" stale={siteStale}
           statusTitle={`Per-minute check · HEAD ${site.url || "https://lyjw.me/"}`}

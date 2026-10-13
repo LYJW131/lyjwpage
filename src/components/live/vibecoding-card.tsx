@@ -90,7 +90,7 @@ function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) 
   const labels = sources.map((source) => CODING_SOURCE_LABELS[source] ?? source);
   return (
     <span
-      className="flex shrink-0 items-center gap-1 text-live"
+      className="flex shrink-0 items-center gap-1 text-live-ink"
       title={labels.length ? `Active on ${labels.join(" + ")}` : undefined}
     >
       <span className="label-mono">Active</span>
@@ -237,7 +237,7 @@ function formatModelName(model: string) {
 function SourceIssue({ failing, hasValue }: { failing: CodingSourceNote[]; hasValue: boolean }) {
   if (failing.length === 0) return null;
   return (
-    <span className="text-live-idle">
+    <span className="text-live-idle-ink">
       <span aria-hidden className="mx-1.5">
         ·
       </span>
@@ -266,7 +266,7 @@ function TotalUsage({
   return (
     <div
       className={cn(
-        "border-b border-line px-4 pt-5 md:px-5",
+        "border-b border-line px-4 pt-5 lg:px-5",
         topModels.length === 0 && "pb-5",
       )}
     >
@@ -747,6 +747,12 @@ function formatSiteDay(date: string) {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+function kiloMega(value: number) {
+  if (value >= 1e6) return { value: value / 1e6, suffix: "M" };
+  if (value >= 1e3) return { value: value / 1e3, suffix: "K" };
+  return { value };
+}
+
 function AgentPanel({
   row,
   macDeclaredOffline,
@@ -774,7 +780,7 @@ function AgentPanel({
   const rows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
   const usageUrl = agentUsageUrl(row.id);
   return (
-    <div className="flex min-w-0 flex-col px-4 py-4 md:px-5">
+    <div className="flex min-w-0 flex-col p-4 lg:p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <FeaturedMark row={row} active={active} />
@@ -784,7 +790,7 @@ function AgentPanel({
         <span
           className={cn(
             "label-mono truncate",
-            active ? "text-live" : "text-muted-foreground",
+            active ? "text-live-ink" : "text-muted-foreground",
           )}
           title={row.usage?.models.join(" · ") || undefined}
         >
@@ -801,9 +807,9 @@ function AgentPanel({
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
             {lastDay ? (
               <NumberFlow
-                value={lastDay.totalTokens}
+                {...kiloMega(lastDay.totalTokens)}
                 locales="en-US"
-                format={{ notation: "compact", maximumFractionDigits: 1 }}
+                format={{ maximumFractionDigits: 1, useGrouping: false }}
               />
             ) : <FlowDash />}
           </div>
@@ -1032,7 +1038,7 @@ function CompactAgents({
     return rightUsed - leftUsed;
   });
   return (
-    <div className="border-t border-line px-4 md:px-5">
+    <div className="border-t border-line px-4 lg:px-5">
       <div className="grid divide-y divide-line">
         {sortedRows.map((row) => (
           <CompactAgentRow
@@ -1092,7 +1098,7 @@ export function VibeCodingCard({
           {usage?.totals ? (
             <TotalUsage totals={usage.totals} topModels={usage.topModels} failing={totalFailing} />
           ) : (
-            <div className="border-b border-line px-4 py-5 text-sm text-muted-foreground md:px-5">
+            <div className="border-b border-line px-4 py-5 text-sm text-muted-foreground lg:px-5">
               Waiting for usage reports
             </div>
           )}
@@ -1115,7 +1121,7 @@ export function VibeCodingCard({
         </>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-5 border-b border-line px-5 py-5 md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-5 border-b border-line px-4 py-5 md:grid-cols-3 lg:px-5">
             {[0, 1, 2].map((index) => (
               <div key={index} className="animate-pulse">
                 <div className="h-3 w-20 rounded bg-muted" />
@@ -1125,7 +1131,7 @@ export function VibeCodingCard({
           </div>
           <div className="grid min-h-64 grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
             {["Claude Code", "Cursor"].map((label) => (
-              <div key={label} className="animate-pulse px-5 py-4">
+              <div key={label} className="animate-pulse p-4 lg:p-5">
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-24 rounded bg-muted" />
                   <div className="h-4 w-14 bg-muted" />

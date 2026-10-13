@@ -9,7 +9,7 @@ Mac 会话有站主的 checkout、登录态和凭据，云端没有。代价是�
 
 ## 什么时候去 Mac
 
-- 去：凭据（灌 Worker Secret、用本机文件里的 key），要站主账号权限的 `gh` 写操作（分支保护、仓库合并设置），AGENTS.md「禁区」里唯一允许的手动 `wrangler deploy`，ssh 到 misaka-jp、dsm、n100，站主要对着 Mac 侧边浏览器实时调 UI。
+- 去：凭据（灌 Worker Secret、用本机文件里的 key），要站主账号权限的 `gh` 写操作（分支保护、仓库合并设置），AGENTS.md「禁区」里唯一允许的手动 `wrangler deploy`（agent 发出的部署命令会被仓库的 PreToolUse 钩子拦下，Mac 会话也一样：简报里写好完整命令，请站主在那个会话的输入框用 `!` 前缀自己跑，再由 Mac 会话读回核对），ssh 到 misaka-jp、dsm、n100，站主要对着 Mac 侧边浏览器实时调 UI。
 - 不去：真模型试跑先用云端会话环境变量里的 Anthropic key（变量名见项目记忆 cloud-env-gaps）；Cloudflare 只读查询走 Cloudflare MCP。
 - 文件夹用 `list_devices` 里已批准的那个，照列出的绝对路径传给 `start_rc_session`。
 
@@ -19,7 +19,7 @@ Mac 会话只看得到简报。只交给它这一步，不要把线程的原始�
 
 1. **身份**：你是哪个云端线程的助手（写线程标题和要回报的会话 id；本会话的 id 用 claude-code-remote 的 `get_session` 不传参数读），只做下面这一件事。
 2. **起点**：要用到仓库代码时，写分支与提交 sha，在独立 worktree 里做：先 `git fetch origin <分支>`，再 `git worktree add --detach ../lyjwpage-<事> <sha>`，进去核对 `git rev-parse HEAD`；只调 API 的步骤不用 worktree。无论哪种都不动站主现有 checkout 的分支和文件。
-3. **步骤**：精确命令，按顺序。会改东西的那条写明「只跑一次；失败不重试、不改参数，原样回报」。
+3. **步骤**：精确命令，按顺序。改 UI 时把站主在本线程里对这块已经说过的要求（删掉的、不要的、指定的尺寸和样式）逐条抄进去，Mac 会话看不到它们。会改东西的那条写明「只跑一次；失败不重试、不改参数，原样回报」。
 4. **禁区**：不读、不打印、不 `cat` / `echo` 任何凭据、`.dev.vars` 或环境变量值；凭据按文件名定位，用管道写进去（`wrangler secret put <名> -c wrangler.toml < <文件>`）。不动其他 Worker，不删云端资源，不提交不推送（除非这一步就是推送）。被自动模式拦下就停，直接回报，不要绕开。
 5. **读回**：改完用读接口读回，和改前逐字段对比（`gh api` 读回 JSON、`wrangler secret list` 只看名字）。
 6. **回报**：用 `send_message` 发给云端会话：执行的 sha、完整命令输出（凭据除外）、读回结果。在线程里最多发一行中文。

@@ -30,11 +30,12 @@
 | 次级文字 | `muted-foreground` | 标签、单位、时间、副标题 |
 | 线 | `line` / `line-strong` | 内部分隔 / 卡片外框 |
 | 状态 | `live` / `live-idle` / `live-off` | 在线、空闲、离线；通过 `StatusDot` 用 |
-| 分类色 | `--signal-red/orange/yellow/green/blue/violet` | 图表系列、图例方块、分类标记 |
+| 状态字 | `live-ink` / `live-idle-ink` | 写成字的状态（`Now Playing`、`Operational`、性能分）；深色下 `live-ink` 与 `live` 同值 |
+| 分类色 | `signal-red/orange/yellow/green/blue/violet` | 图表系列、图例方块、分类标记；Tailwind 类 `text-signal-red`、`bg-signal-blue` |
 | 品牌色 | `claude`、活动圆环 `--activity-*` | 只给对应品牌或 Apple 活动圆环 |
 
 - 对比度：文字对它的底色至少 4.5:1；24px 以上或 18.7px 以上加粗的大字至少 3:1；圆点、色条、圆环这类非文字图形至少 3:1。浅色和深色两套都要过。
-- 彩色字要先算对比度。达不到 4.5:1 的颜色（如浅色主题下的 `live`、`claude`、`signal-orange`、`signal-yellow`，深色主题下的 `signal-green/blue/violet`）只用在色块、圆点、线条上，旁边的字用 `foreground`；要用彩色字就先给这个 token 补一个够深 / 够亮的文字变体。
+- 彩色字要先算对比度。浅色主题下的 `live`、`live-idle`、`claude`、`signal-orange`、`signal-yellow` 在 `surface` 上不到 4.5:1，只用在色块、圆点、线条上，旁边的字用 `foreground`；状态写成字用 `live-ink` / `live-idle-ink`。`signal-red/green/blue/violet` 两套主题在 `surface` 上都过 4.5:1，可以直接写字。其他颜色要写字，先给它补一个够深 / 够亮的文字变体，只调明度、不降彩度，降了彩度看上去发灰。
 - 颜色不单独承载意思：状态有文字（`Operational`、`Now Playing`），图表系列直接标注，标不下才用图例。
 - 颜色只表达状态或分类；数值「好」或「重要」不是上色的理由（省了多少、排第一都不染绿）。
 - 新 token 同时定义 `:root` 与 `.dark` 两个值；深色值是降饱和、提亮度的同色相，不是反色。
@@ -52,6 +53,7 @@
 | 级别 | 类 | 字重 | 用途 |
 | --- | --- | --- | --- |
 | label | `label-mono`（11px，大写，字距 0.08em） | 400 | 卡片表头、字段标签（`DOWNLOAD`、`UPTIME`） |
+| meta | `text-2xs`（11px） | 400 / 500 | 密集格子、图例、徽标里的次要元信息（不大写）；放得下就用 caption |
 | caption | `text-xs`（12px） | 400 | 时间、单位、次要元信息 |
 | body | `text-sm`（14px） | 400 / 500 | 列表行主文字、名称、正文 |
 | lead | `text-base`（16px） | 400 / 500 | 卡内唯一的主名称（正在播放的歌名、手机上的地点） |
@@ -171,5 +173,6 @@
 ## 交付与合并
 
 - UI 改动交付桌面（1280）与手机（375）截图，至少一张深色；什么时候附图见 `AGENTS.md`「项目入口与验证」与 `HUMAN.md`。改到同一行的卡片或替换部件时，报前后各卡高度与相邻同类文字的字号字重（验证怎么做见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
+- CI 跑 `pnpm design:scale`（`scripts/design-scale-check.mjs`）：按类名数 `src/` 里阶梯外的间距、任意值字号与任意值位移，任何一个类名的出现次数比基线 `scripts/design-scale-baseline.json` 多就失败（把 `text-[10px]` 换成 `text-[9px]` 也算多）；变少只提示，跑 `pnpm design:scale --update` 收紧基线。图形内的 10px 刻度、带注释的光学微调这类合规例外也用 `--update` 记进基线，并在 PR 里说明。
 - 自查用 `.claude/skills/lyjwpage-ui-design/SKILL.md`：它有对照本文件的检查清单和一个量间距、字号、点击区的浏览器脚本。
 - 有 UI / UX 变化的改动进 main 前，先给站主看效果、等他点头再合；站主明确要求的小改动除外。
