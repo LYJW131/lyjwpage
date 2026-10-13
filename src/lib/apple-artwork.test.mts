@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { appleArtwork, needsOptimizing } from "./apple-artwork.ts";
+delete process.env.PUBLIC_SIGNED_IMAGE_OPTIMIZATION;
+const { appleArtwork, needsOptimizing } = await import("./apple-artwork.ts");
 
 test("appleArtwork：尺寸占位换成请求像素，{w}x{h} 段的 jpg/jpeg 后缀换成 webp", () => {
   const template = "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/ab/cd/{w}x{h}bb.jpg";
