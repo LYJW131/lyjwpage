@@ -16,7 +16,6 @@ import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
-import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { QuestNowCard } from "@/components/live/quest-now-card";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
@@ -236,14 +235,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     yearFallback={loaderData.codingYear}
                   />
                 </CardBoundary>
-                <CardBoundary label="Timezone">
-                  <TimezoneCard fallback={loaderData.timezone} />
+                <CardBoundary label="In Brief" paths={READS.digest}>
+                  <DigestCard fallback={loaderData.digest} pulseFallback={loaderData.pulse} timezoneFallback={loaderData.timezone} />
                 </CardBoundary>
               </div>
-
-              <CardBoundary label="In Brief" silent paths={READS.digest}>
-                <DigestCard fallback={loaderData.digest} pulseFallback={loaderData.pulse} className="mt-3" />
-              </CardBoundary>
 
               {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}
               <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>
