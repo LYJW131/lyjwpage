@@ -20,7 +20,8 @@
   "services": [
     { "binding": "PUBLIC_STATUS", "service": "api", "entrypoint": "PublicStatus" },
     { "binding": "API_SERVICE", "service": "api" },
-    { "binding": "AI_SERVICE", "service": "ai" }
+    { "binding": "AI_SERVICE", "service": "ai" },
+    { "binding": "COLLECTOR_SERVICE", "service": "collector" }
   ],
   "kv_namespaces": [
     { "binding": "LAG", "id": "e9c72a9517884aeb95db7386b630a691" }

@@ -1,15 +1,17 @@
-import { enrichTrackOutcome, type EnrichmentFollowUp } from "@shared/track-enrichment";
 import type { CoreCommand } from "@shared/ingest/prepare";
+import type { PlayingQueueTrack } from "@shared/playing-queue";
+import type { EnrichmentFollowUp, EnrichmentOutcome } from "@shared/track-enrichment";
+import type { LocalNowPlaying } from "@shared/types";
 
 export type EnrichedCommand = { command: CoreCommand; followUp: EnrichmentFollowUp | null };
+export type EnrichTrack = (music: LocalNowPlaying | null, upcomingTracks: PlayingQueueTrack[]) => Promise<EnrichmentOutcome | null>;
 
-// 在 StateCore（DO 外）请求 Apple：补全完再交给 StateHub 落库，网络耗时不占提交队列。
-// 命令已带 enrichment（含 null）表示上报入口已经请 collector 补全过，回执后的预热与重查也归它，这里原样提交。
-export async function enrichCommand(command: CoreCommand): Promise<EnrichedCommand> {
+// 命令已带 enrichment（含 null）表示补全过，原样返回，回执后的预热与重查归补全它的一方。
+export async function enrichCommand(command: CoreCommand, enrich: EnrichTrack): Promise<EnrichedCommand> {
   if (command.source === "homepod") {
     if (command.stored.enrichment !== undefined) return { command, followUp: null };
     const music = command.stored.music;
-    const outcome = await enrichTrackOutcome(music);
+    const outcome = await enrich(music, []);
     return {
       command: { ...command, stored: { ...command.stored, enrichment: outcome?.enrichment ?? null } },
       followUp: outcome ? { target: "homepod", music, upcomingTracks: [], outcome } : null,
@@ -18,7 +20,7 @@ export async function enrichCommand(command: CoreCommand): Promise<EnrichedComma
   if (command.source === "mac" && command.modules.appleMusic) {
     const appleMusic = command.modules.appleMusic;
     if (appleMusic.enrichment !== undefined) return { command, followUp: null };
-    const outcome = await enrichTrackOutcome(appleMusic.music, appleMusic.upcomingTracks);
+    const outcome = await enrich(appleMusic.music, appleMusic.upcomingTracks);
     return {
       command: { ...command, modules: { ...command.modules, appleMusic: { ...appleMusic, enrichment: outcome?.enrichment ?? null } } },
       followUp: outcome && appleMusic.music

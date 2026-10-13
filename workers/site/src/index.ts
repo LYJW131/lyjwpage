@@ -28,6 +28,7 @@ import {
   readImageBytes,
   variantShape,
 } from "@/lib/image-proxy";
+import { LYRICS_PATH } from "@shared/apple-music-paths";
 import type { LyricsResult } from "@shared/lyrics-ttml";
 import { relaySentryEnvelope } from "@/lib/sentry-tunnel";
 import {
@@ -326,11 +327,10 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
         return (await response.json()) as FirstScreen<K>;
       },
       lyrics: async (songId: string): Promise<LyricsResult | null> => {
-        // api 的边缘缓存按请求 URL 的源分键：SSR 用浏览器取歌词的同一个源（PUBLIC_BACKEND_URL），两边才共用一份。
-        const url = `${backendOrigin(env)}/api/lyrics?song=${encodeURIComponent(songId)}`;
+        const url = `${backendOrigin(env)}${LYRICS_PATH}?song=${encodeURIComponent(songId)}`;
         const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
         try {
-          const response = isProduction(env) ? await env.API_SERVICE.fetch(url, init) : await fetch(url, init);
+          const response = isProduction(env) ? await env.COLLECTOR_SERVICE.fetch(url, init) : await fetch(url, init);
           if (!response.ok) return null;
           return (await response.json()) as LyricsResult;
         } catch {
@@ -378,6 +378,7 @@ const siteWorker = {
         return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
       case "api":
       case "ai":
+      case "collector":
         return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
       case "sentry-relay":
         return relaySentry(request, env);
@@ -414,13 +415,14 @@ export const StatusSnapshot = Sentry.withSentry(sentryOptions, StatusSnapshotBas
 export const ImageVariants = Sentry.withSentry(sentryOptions, ImageVariantsBase);
 export const RenderedSite = Sentry.withSentry(sentryOptions, RenderedSiteBase);
 
-// 转交 api / ai 的请求在 Sentry 包装之外分流，由各自的 Worker 上报；去掉浏览器带来的追踪头，后端才按自己的采样率采样。
+// 转交 api / ai / collector 的请求在 Sentry 包装之外分流，由各自的 Worker 上报；去掉浏览器带来的追踪头，后端才按自己的采样率采样。
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (isProduction(env)) {
       const { kind } = classifyGatewayRequest(request.method, new URL(request.url).pathname);
       if (kind === "api") return env.API_SERVICE.fetch(withoutTraceHeaders(request));
       if (kind === "ai") return env.AI_SERVICE.fetch(withoutTraceHeaders(request));
+      if (kind === "collector") return env.COLLECTOR_SERVICE.fetch(withoutTraceHeaders(request));
     }
     return instrumentedSite.fetch(request, env, ctx);
   },

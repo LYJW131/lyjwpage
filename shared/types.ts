@@ -708,11 +708,12 @@ export type PulseStepsLane = {
 
 export type PulseTokensLane = {
   kind: "tokens";
-  buckets: PulseSpanColumns & { fresh: number[]; output: number[]; cacheRead: number[] };
+  // total = input + output + cache 读 + cache 写，与 CodingUsageDay.totalTokens 同口径；output、cacheRead 是 total 的分项。
+  buckets: PulseSpanColumns & { total: number[]; output: number[]; cacheRead: number[] };
   summary: {
     peakPerMinute: number | null;
     currentPerMinute: number | null;
-    freshTokens: number;
+    totalTokens: number;
   };
 };
 

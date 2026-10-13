@@ -7,12 +7,12 @@
     "source": "isolated pinned checkout"
   },
   "specification": {
-    "sha256": "ec6f3ef813fe9b1110c80a057165c0bbadf603b900e99e4f7de94675b1459893",
-    "bytes": 16308
+    "sha256": "e2d152bde108505656dd9d9c2e77e03c1d5491450cfbe46e19a4816f262a91b3",
+    "bytes": 16827
   },
   "artifact": {
-    "sha256": "3a30f0a535b1e47e167aa78ce80f8af364d201d4290ebb13da12ce1fbd9a7933",
-    "bytes": 814250
+    "sha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
+    "bytes": 816984
   },
   "validation": {
     "checksPassed": 9,
@@ -25,7 +25,7 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "d6ad2e68422ce199b4a6633cb9d38429f5fffa4d",
+    "revision": "97576eda0c9853cad316189ec74f1114d86b230e",
     "references": 47
   },
   "output": "architecture.html",
@@ -44,11 +44,11 @@
     "status": "pass",
     "visualReview": "not-requested",
     "provenance": "current",
-    "deliveryReceiptId": "2cb54f41-2cae-45bb-b6bd-4bc8016b554c",
+    "deliveryReceiptId": "75a1653e-a9c2-4680-92b7-4a492b772d97",
     "artifact": {
       "path": "/home/user/lyjwpage/docs/architecture.html",
-      "sha256": "3a30f0a535b1e47e167aa78ce80f8af364d201d4290ebb13da12ce1fbd9a7933",
-      "bytes": 814250
+      "sha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
+      "bytes": 816984
     },
     "state": {
       "detail": "read",
@@ -70,7 +70,7 @@
           "innerWidth": 1440,
           "innerHeight": 900,
           "scrollWidth": 1440,
-          "scrollHeight": 1000,
+          "scrollHeight": 991,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -85,14 +85,14 @@
             "bodyPaddingPx": 12,
             "headerPx": 52,
             "diagramChromePx": 78,
-            "svgPx": 858,
+            "svgPx": 848,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 6.9470967741935485,
-          "minimumProjectedNonEdgeTextPx": 7.815483870967742,
-          "minimumProjectedEdgeTextPx": 6.9470967741935485,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 6.841168996188056,
+          "minimumProjectedNonEdgeTextPx": 7.696315120711564,
+          "minimumProjectedEdgeTextPx": 6.841168996188056,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -122,7 +122,7 @@
           "innerWidth": 1600,
           "innerHeight": 1000,
           "scrollWidth": 1600,
-          "scrollHeight": 1135,
+          "scrollHeight": 1139,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -131,20 +131,20 @@
           "readerOverflow": "authored",
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1484,
-          "diagramWidth": 1454,
+          "readerWidth": 1506,
+          "diagramWidth": 1476,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 60,
             "diagramChromePx": 84,
-            "svgPx": 927,
+            "svgPx": 930,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 7.504516129032258,
-          "minimumProjectedNonEdgeTextPx": 8.442580645161291,
-          "minimumProjectedEdgeTextPx": 7.504516129032258,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 7.501905972045743,
+          "minimumProjectedNonEdgeTextPx": 8.43964421855146,
+          "minimumProjectedEdgeTextPx": 7.501905972045743,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -174,7 +174,7 @@
           "innerWidth": 1920,
           "innerHeight": 1080,
           "scrollWidth": 1920,
-          "scrollHeight": 1135,
+          "scrollHeight": 1139,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -183,20 +183,20 @@
           "readerOverflow": "authored",
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1484,
-          "diagramWidth": 1454,
+          "readerWidth": 1506,
+          "diagramWidth": 1476,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 60,
             "diagramChromePx": 84,
-            "svgPx": 927,
+            "svgPx": 930,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 7.504516129032258,
-          "minimumProjectedNonEdgeTextPx": 8.442580645161291,
-          "minimumProjectedEdgeTextPx": 7.504516129032258,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 7.501905972045743,
+          "minimumProjectedNonEdgeTextPx": 8.43964421855146,
+          "minimumProjectedEdgeTextPx": 7.501905972045743,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -235,17 +235,17 @@
           "readerOverflow": null,
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1747,
-          "diagramWidth": 1697,
+          "readerWidth": 1767,
+          "diagramWidth": 1717,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 68,
             "diagramChromePx": 94,
             "svgPx": 1082,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
+          "viewBoxWidth": 1574,
           "minimumProjectedNodeTextPx": 8,
           "minimumProjectedNonEdgeTextPx": 9,
           "minimumProjectedEdgeTextPx": 8,
@@ -331,7 +331,7 @@
           "innerWidth": 1440,
           "innerHeight": 900,
           "scrollWidth": 1440,
-          "scrollHeight": 1000,
+          "scrollHeight": 991,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -346,14 +346,14 @@
             "bodyPaddingPx": 12,
             "headerPx": 52,
             "diagramChromePx": 78,
-            "svgPx": 858,
+            "svgPx": 848,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 6.9470967741935485,
-          "minimumProjectedNonEdgeTextPx": 7.815483870967742,
-          "minimumProjectedEdgeTextPx": 6.9470967741935485,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 6.841168996188056,
+          "minimumProjectedNonEdgeTextPx": 7.696315120711564,
+          "minimumProjectedEdgeTextPx": 6.841168996188056,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -383,7 +383,7 @@
           "innerWidth": 1600,
           "innerHeight": 1000,
           "scrollWidth": 1600,
-          "scrollHeight": 1135,
+          "scrollHeight": 1139,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -392,20 +392,20 @@
           "readerOverflow": "authored",
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1484,
-          "diagramWidth": 1454,
+          "readerWidth": 1506,
+          "diagramWidth": 1476,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 60,
             "diagramChromePx": 84,
-            "svgPx": 927,
+            "svgPx": 930,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 7.504516129032258,
-          "minimumProjectedNonEdgeTextPx": 8.442580645161291,
-          "minimumProjectedEdgeTextPx": 7.504516129032258,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 7.501905972045743,
+          "minimumProjectedNonEdgeTextPx": 8.43964421855146,
+          "minimumProjectedEdgeTextPx": 7.501905972045743,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -435,7 +435,7 @@
           "innerWidth": 1920,
           "innerHeight": 1080,
           "scrollWidth": 1920,
-          "scrollHeight": 1135,
+          "scrollHeight": 1139,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -444,20 +444,20 @@
           "readerOverflow": "authored",
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1484,
-          "diagramWidth": 1454,
+          "readerWidth": 1506,
+          "diagramWidth": 1476,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 60,
             "diagramChromePx": 84,
-            "svgPx": 927,
+            "svgPx": 930,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 7.504516129032258,
-          "minimumProjectedNonEdgeTextPx": 8.442580645161291,
-          "minimumProjectedEdgeTextPx": 7.504516129032258,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 7.501905972045743,
+          "minimumProjectedNonEdgeTextPx": 8.43964421855146,
+          "minimumProjectedEdgeTextPx": 7.501905972045743,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -496,17 +496,17 @@
           "readerOverflow": null,
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1747,
-          "diagramWidth": 1697,
+          "readerWidth": 1767,
+          "diagramWidth": 1717,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 68,
             "diagramChromePx": 94,
             "svgPx": 1082,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
+          "viewBoxWidth": 1574,
           "minimumProjectedNodeTextPx": 8,
           "minimumProjectedNonEdgeTextPx": 9,
           "minimumProjectedEdgeTextPx": 8,
@@ -544,7 +544,7 @@
           "innerWidth": 1440,
           "innerHeight": 900,
           "scrollWidth": 1440,
-          "scrollHeight": 1000,
+          "scrollHeight": 991,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -559,14 +559,14 @@
             "bodyPaddingPx": 12,
             "headerPx": 52,
             "diagramChromePx": 78,
-            "svgPx": 858,
+            "svgPx": 848,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 6.9470967741935485,
-          "minimumProjectedNonEdgeTextPx": 7.815483870967742,
-          "minimumProjectedEdgeTextPx": 6.9470967741935485,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 6.841168996188056,
+          "minimumProjectedNonEdgeTextPx": 7.696315120711564,
+          "minimumProjectedEdgeTextPx": 6.841168996188056,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -596,7 +596,7 @@
           "innerWidth": 1600,
           "innerHeight": 1000,
           "scrollWidth": 1600,
-          "scrollHeight": 1135,
+          "scrollHeight": 1139,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -605,20 +605,20 @@
           "readerOverflow": "authored",
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1484,
-          "diagramWidth": 1454,
+          "readerWidth": 1506,
+          "diagramWidth": 1476,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 60,
             "diagramChromePx": 84,
-            "svgPx": 927,
+            "svgPx": 930,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 7.504516129032258,
-          "minimumProjectedNonEdgeTextPx": 8.442580645161291,
-          "minimumProjectedEdgeTextPx": 7.504516129032258,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 7.501905972045743,
+          "minimumProjectedNonEdgeTextPx": 8.43964421855146,
+          "minimumProjectedEdgeTextPx": 7.501905972045743,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -648,7 +648,7 @@
           "innerWidth": 1920,
           "innerHeight": 1080,
           "scrollWidth": 1920,
-          "scrollHeight": 1135,
+          "scrollHeight": 1139,
           "overflowX": false,
           "overflowY": true,
           "verticalScrollAccepted": true,
@@ -657,20 +657,20 @@
           "readerOverflow": "authored",
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1484,
-          "diagramWidth": 1454,
+          "readerWidth": 1506,
+          "diagramWidth": 1476,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 60,
             "diagramChromePx": 84,
-            "svgPx": 927,
+            "svgPx": 930,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
-          "minimumProjectedNodeTextPx": 7.504516129032258,
-          "minimumProjectedNonEdgeTextPx": 8.442580645161291,
-          "minimumProjectedEdgeTextPx": 7.504516129032258,
+          "viewBoxWidth": 1574,
+          "minimumProjectedNodeTextPx": 7.501905972045743,
+          "minimumProjectedNonEdgeTextPx": 8.43964421855146,
+          "minimumProjectedEdgeTextPx": 7.501905972045743,
           "minimumProjectedNodeText": "鉴权上报",
           "minimumProjectedNodeTextDetail": "edge",
           "minimumProjectedNodeTextOwner": {
@@ -709,17 +709,17 @@
           "readerOverflow": null,
           "readerFit": "intrinsic-height",
           "ok": true,
-          "readerWidth": 1747,
-          "diagramWidth": 1697,
+          "readerWidth": 1767,
+          "diagramWidth": 1717,
           "pageComposition": {
             "bodyPaddingPx": 64,
             "headerPx": 68,
             "diagramChromePx": 94,
             "svgPx": 1082,
             "cardsPx": 0,
-            "viewBoxHeight": 988
+            "viewBoxHeight": 992
           },
-          "viewBoxWidth": 1550,
+          "viewBoxWidth": 1574,
           "minimumProjectedNodeTextPx": 8,
           "minimumProjectedNonEdgeTextPx": 9,
           "minimumProjectedEdgeTextPx": 8,
@@ -753,7 +753,7 @@
       "contactSheet": null
     },
     "sidecars": {
-      "directory": "/home/user/lyjwpage/.archify/evidence/architecture-hbB039",
+      "directory": "/home/user/lyjwpage/.archify/evidence/architecture-bqNz78",
       "receipt": "architecture.browser-check.json",
       "files": []
     }
@@ -771,8 +771,8 @@
   "visualReviewRecommendation": {
     "action": "inspect-route-readability",
     "signals": {
-      "resolvedCrossovers": 31,
-      "routesOverSuggestedBends": 6,
+      "resolvedCrossovers": 33,
+      "routesOverSuggestedBends": 10,
       "routesOverSuggestedStretch": 2
     },
     "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
@@ -788,17 +788,18 @@
             "artifactIndex": 2
           },
           "right": {
-            "id": "site_lag",
-            "from": "site",
+            "id": "lag_read",
+            "from": "api",
             "to": "lag",
-            "label": "可滞后视图直读",
-            "collectionIndex": 15,
-            "artifactIndex": 16
+            "label": "读取 KV",
+            "collectionIndex": 5,
+            "artifactIndex": 6
           },
           "point": [
-            693,
-            466.94999999999953
-          ]
+            828.066371681416,
+            461.00442477876106
+          ],
+          "sharedNode": "api"
         },
         {
           "left": {
@@ -810,25 +811,92 @@
             "artifactIndex": 2
           },
           "right": {
-            "id": "ai_status",
-            "from": "ai",
-            "to": "api",
-            "label": "PublicStatus RPC",
-            "collectionIndex": 23,
-            "artifactIndex": 24
+            "id": "api_archive",
+            "from": "api",
+            "to": "history",
+            "label": "Cron 归档",
+            "collectionIndex": 10,
+            "artifactIndex": 11
           },
           "point": [
-            836.0000000000001,
-            445.95000000000033
+            857,
+            483.0499999999992
           ],
           "sharedNode": "api"
         },
         {
           "left": {
-            "id": "state_io",
+            "id": "commit",
+            "from": "ingress",
+            "to": "api",
+            "label": "Service Binding",
+            "collectionIndex": 1,
+            "artifactIndex": 2
+          },
+          "right": {
+            "id": "site_lag",
+            "from": "site",
+            "to": "lag",
+            "label": "可滞后视图直读",
+            "collectionIndex": 16,
+            "artifactIndex": 17
+          },
+          "point": [
+            693,
+            461
+          ]
+        },
+        {
+          "left": {
+            "id": "enrich",
+            "from": "ingress",
+            "to": "collector",
+            "label": "补全在听 · RPC",
+            "collectionIndex": 2,
+            "artifactIndex": 3
+          },
+          "right": {
+            "id": "lag_read",
             "from": "api",
-            "to": "state",
-            "label": "读写实时状态",
+            "to": "lag",
+            "label": "读取 KV",
+            "collectionIndex": 5,
+            "artifactIndex": 6
+          },
+          "point": [
+            714,
+            586
+          ]
+        },
+        {
+          "left": {
+            "id": "enrich",
+            "from": "ingress",
+            "to": "collector",
+            "label": "补全在听 · RPC",
+            "collectionIndex": 2,
+            "artifactIndex": 3
+          },
+          "right": {
+            "id": "collect_realtime",
+            "from": "collector",
+            "to": "api",
+            "label": "最近播放 · RPC",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "point": [
+            714,
+            742
+          ],
+          "sharedNode": "collector"
+        },
+        {
+          "left": {
+            "id": "enrich",
+            "from": "ingress",
+            "to": "collector",
+            "label": "补全在听 · RPC",
             "collectionIndex": 2,
             "artifactIndex": 3
           },
@@ -837,12 +905,12 @@
             "from": "site",
             "to": "lag",
             "label": "可滞后视图直读",
-            "collectionIndex": 15,
-            "artifactIndex": 16
+            "collectionIndex": 16,
+            "artifactIndex": 17
           },
           "point": [
-            980,
-            363.00000000000006
+            693,
+            503
           ]
         },
         {
@@ -851,43 +919,20 @@
             "from": "api",
             "to": "state",
             "label": "读写实时状态",
-            "collectionIndex": 2,
-            "artifactIndex": 3
+            "collectionIndex": 3,
+            "artifactIndex": 4
           },
           "right": {
-            "id": "revalidate",
-            "from": "api",
-            "to": "site",
-            "label": "布局变化通知",
+            "id": "site_lag",
+            "from": "site",
+            "to": "lag",
+            "label": "可滞后视图直读",
             "collectionIndex": 16,
             "artifactIndex": 17
           },
           "point": [
             980,
-            396
-          ],
-          "sharedNode": "api"
-        },
-        {
-          "left": {
-            "id": "state_io",
-            "from": "api",
-            "to": "state",
-            "label": "读写实时状态",
-            "collectionIndex": 2,
-            "artifactIndex": 3
-          },
-          "right": {
-            "id": "image_upload",
-            "from": "reporters",
-            "to": "images",
-            "label": "Mac / Emby 直传",
-            "collectionIndex": 18,
-            "artifactIndex": 19
-          },
-          "point": [
-            980.0000000000001,
-            387.00000000000006
+            363
           ]
         },
         {
@@ -896,80 +941,71 @@
             "from": "api",
             "to": "state",
             "label": "读写实时状态",
-            "collectionIndex": 2,
-            "artifactIndex": 3
+            "collectionIndex": 3,
+            "artifactIndex": 4
           },
           "right": {
             "id": "build_screenshot",
             "from": "ai",
             "to": "images",
             "label": "写构建截图",
-            "collectionIndex": 30,
-            "artifactIndex": 31
+            "collectionIndex": 32,
+            "artifactIndex": 33
           },
           "point": [
             980,
             417
-          ]
-        },
-        {
-          "left": {
-            "id": "lag_read",
-            "from": "api",
-            "to": "lag",
-            "label": "读取 KV",
-            "collectionIndex": 4,
-            "artifactIndex": 5
-          },
-          "right": {
-            "id": "collect_realtime",
-            "from": "collector",
-            "to": "api",
-            "label": "最近播放 · RPC",
-            "collectionIndex": 7,
-            "artifactIndex": 8
-          },
-          "point": [
-            714,
-            554
-          ],
-          "sharedNode": "api"
-        },
-        {
-          "left": {
-            "id": "lag_read",
-            "from": "api",
-            "to": "lag",
-            "label": "读取 KV",
-            "collectionIndex": 4,
-            "artifactIndex": 5
-          },
-          "right": {
-            "id": "ingress_archive",
-            "from": "ingress",
-            "to": "history",
-            "label": "异步归档",
-            "collectionIndex": 8,
-            "artifactIndex": 9
-          },
-          "point": [
-            836,
-            554
           ]
         }
       ],
       "detours": [
         {
           "relationship": {
+            "id": "lag_read",
+            "from": "api",
+            "to": "lag",
+            "label": "读取 KV",
+            "collectionIndex": 5,
+            "artifactIndex": 6
+          },
+          "bends": 3,
+          "stretch": 1
+        },
+        {
+          "relationship": {
+            "id": "collect_realtime",
+            "from": "collector",
+            "to": "api",
+            "label": "最近播放 · RPC",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "bends": 3,
+          "stretch": 1
+        },
+        {
+          "relationship": {
+            "id": "ingress_archive",
+            "from": "ingress",
+            "to": "history",
+            "label": "异步归档",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "bends": 5,
+          "stretch": 1
+        },
+        {
+          "relationship": {
             "id": "api_archive",
             "from": "api",
             "to": "history",
             "label": "Cron 归档",
-            "collectionIndex": 9,
-            "artifactIndex": 10
+            "collectionIndex": 10,
+            "artifactIndex": 11
           },
           "bends": 4,
-          "stretch": 1.911,
+          "stretch": 1.668,
           "directCorridorBlockers": [
             {
               "id": "live",
@@ -989,11 +1025,23 @@
             "from": "site",
             "to": "lag",
             "label": "可滞后视图直读",
-            "collectionIndex": 15,
-            "artifactIndex": 16
+            "collectionIndex": 16,
+            "artifactIndex": 17
           },
           "bends": 6,
           "stretch": 1.117
+        },
+        {
+          "relationship": {
+            "id": "apple_lookup",
+            "from": "site",
+            "to": "collector",
+            "label": "歌词 · 令牌 · Binding",
+            "collectionIndex": 17,
+            "artifactIndex": 18
+          },
+          "bends": 3,
+          "stretch": 1.07
         },
         {
           "relationship": {
@@ -1001,11 +1049,11 @@
             "from": "reporters",
             "to": "images",
             "label": "Mac / Emby 直传",
-            "collectionIndex": 18,
-            "artifactIndex": 19
+            "collectionIndex": 20,
+            "artifactIndex": 21
           },
           "bends": 7,
-          "stretch": 1.102
+          "stretch": 1.206
         },
         {
           "relationship": {
@@ -1013,8 +1061,8 @@
             "from": "esa",
             "to": "site",
             "label": "缓存回源",
-            "collectionIndex": 20,
-            "artifactIndex": 21
+            "collectionIndex": 22,
+            "artifactIndex": 23
           },
           "bends": 4,
           "stretch": 1.963,
@@ -1030,43 +1078,19 @@
               ]
             }
           ]
-        },
-        {
-          "relationship": {
-            "id": "ai_forward",
-            "from": "site",
-            "to": "ai",
-            "label": "转发对话 · 构建 · /mcp",
-            "collectionIndex": 22,
-            "artifactIndex": 23
-          },
-          "bends": 3,
-          "stretch": 1.051
-        },
-        {
-          "relationship": {
-            "id": "build_screenshot",
-            "from": "ai",
-            "to": "images",
-            "label": "写构建截图",
-            "collectionIndex": 30,
-            "artifactIndex": 31
-          },
-          "bends": 3,
-          "stretch": 1.203
         }
       ],
       "truncated": true
     },
     "hints": [
+      "ingress → api and api → lag cross next to api: move node ingress or lag so the two reach api from different sides (for example one level with it, one directly above or below it).",
+      "ingress → api and api → history cross next to api: move node ingress or history so the two reach api from different sides (for example one level with it, one directly above or below it).",
       "ingress → api crosses site → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
-      "ingress → api and ai → api cross next to api: move node ingress or ai so the two reach api from different sides (for example one level with it, one directly above or below it).",
+      "ingress → collector crosses api → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "ingress → collector and collector → api cross next to collector: move node ingress or api so the two reach collector from different sides (for example one level with it, one directly above or below it).",
+      "ingress → collector crosses site → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
       "api → state crosses site → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
-      "api → state and api → site cross next to api: move node state or site so the two reach api from different sides (for example one level with it, one directly above or below it).",
-      "api → state crosses reporters → images: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
-      "api → state crosses ai → images: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
-      "api → lag and collector → api cross next to api: move node lag or collector so the two reach api from different sides (for example one level with it, one directly above or below it).",
-      "api → lag crosses ingress → history: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor."
+      "api → state crosses ai → images: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor."
     ],
     "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
   },
@@ -1077,10 +1101,10 @@
     "status": "pass",
     "artifact": {
       "path": "/home/user/lyjwpage/docs/architecture.html",
-      "sha256": "3a30f0a535b1e47e167aa78ce80f8af364d201d4290ebb13da12ce1fbd9a7933",
-      "bytes": 814250
+      "sha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
+      "bytes": 816984
     },
-    "evidenceDirectory": ".archify/evidence/architecture-hbB039"
+    "evidenceDirectory": ".archify/evidence/architecture-bqNz78"
   },
   "viewports": [
     {
@@ -1090,7 +1114,7 @@
       "innerWidth": 1440,
       "innerHeight": 900,
       "scrollWidth": 1440,
-      "scrollHeight": 1000,
+      "scrollHeight": 991,
       "overflowX": false,
       "overflowY": true,
       "verticalScrollAccepted": true,
@@ -1105,14 +1129,14 @@
         "bodyPaddingPx": 12,
         "headerPx": 52,
         "diagramChromePx": 78,
-        "svgPx": 858,
+        "svgPx": 848,
         "cardsPx": 0,
-        "viewBoxHeight": 988
+        "viewBoxHeight": 992
       },
-      "viewBoxWidth": 1550,
-      "minimumProjectedNodeTextPx": 6.9470967741935485,
-      "minimumProjectedNonEdgeTextPx": 7.815483870967742,
-      "minimumProjectedEdgeTextPx": 6.9470967741935485,
+      "viewBoxWidth": 1574,
+      "minimumProjectedNodeTextPx": 6.841168996188056,
+      "minimumProjectedNonEdgeTextPx": 7.696315120711564,
+      "minimumProjectedEdgeTextPx": 6.841168996188056,
       "minimumProjectedNodeText": "鉴权上报",
       "minimumProjectedNodeTextDetail": "edge",
       "minimumProjectedNodeTextOwner": {
@@ -1142,7 +1166,7 @@
       "innerWidth": 1600,
       "innerHeight": 1000,
       "scrollWidth": 1600,
-      "scrollHeight": 1135,
+      "scrollHeight": 1139,
       "overflowX": false,
       "overflowY": true,
       "verticalScrollAccepted": true,
@@ -1151,20 +1175,20 @@
       "readerOverflow": "authored",
       "readerFit": "intrinsic-height",
       "ok": true,
-      "readerWidth": 1484,
-      "diagramWidth": 1454,
+      "readerWidth": 1506,
+      "diagramWidth": 1476,
       "pageComposition": {
         "bodyPaddingPx": 64,
         "headerPx": 60,
         "diagramChromePx": 84,
-        "svgPx": 927,
+        "svgPx": 930,
         "cardsPx": 0,
-        "viewBoxHeight": 988
+        "viewBoxHeight": 992
       },
-      "viewBoxWidth": 1550,
-      "minimumProjectedNodeTextPx": 7.504516129032258,
-      "minimumProjectedNonEdgeTextPx": 8.442580645161291,
-      "minimumProjectedEdgeTextPx": 7.504516129032258,
+      "viewBoxWidth": 1574,
+      "minimumProjectedNodeTextPx": 7.501905972045743,
+      "minimumProjectedNonEdgeTextPx": 8.43964421855146,
+      "minimumProjectedEdgeTextPx": 7.501905972045743,
       "minimumProjectedNodeText": "鉴权上报",
       "minimumProjectedNodeTextDetail": "edge",
       "minimumProjectedNodeTextOwner": {
@@ -1194,7 +1218,7 @@
       "innerWidth": 1920,
       "innerHeight": 1080,
       "scrollWidth": 1920,
-      "scrollHeight": 1135,
+      "scrollHeight": 1139,
       "overflowX": false,
       "overflowY": true,
       "verticalScrollAccepted": true,
@@ -1203,20 +1227,20 @@
       "readerOverflow": "authored",
       "readerFit": "intrinsic-height",
       "ok": true,
-      "readerWidth": 1484,
-      "diagramWidth": 1454,
+      "readerWidth": 1506,
+      "diagramWidth": 1476,
       "pageComposition": {
         "bodyPaddingPx": 64,
         "headerPx": 60,
         "diagramChromePx": 84,
-        "svgPx": 927,
+        "svgPx": 930,
         "cardsPx": 0,
-        "viewBoxHeight": 988
+        "viewBoxHeight": 992
       },
-      "viewBoxWidth": 1550,
-      "minimumProjectedNodeTextPx": 7.504516129032258,
-      "minimumProjectedNonEdgeTextPx": 8.442580645161291,
-      "minimumProjectedEdgeTextPx": 7.504516129032258,
+      "viewBoxWidth": 1574,
+      "minimumProjectedNodeTextPx": 7.501905972045743,
+      "minimumProjectedNonEdgeTextPx": 8.43964421855146,
+      "minimumProjectedEdgeTextPx": 7.501905972045743,
       "minimumProjectedNodeText": "鉴权上报",
       "minimumProjectedNodeTextDetail": "edge",
       "minimumProjectedNodeTextOwner": {
@@ -1255,17 +1279,17 @@
       "readerOverflow": null,
       "readerFit": "intrinsic-height",
       "ok": true,
-      "readerWidth": 1747,
-      "diagramWidth": 1697,
+      "readerWidth": 1767,
+      "diagramWidth": 1717,
       "pageComposition": {
         "bodyPaddingPx": 64,
         "headerPx": 68,
         "diagramChromePx": 94,
         "svgPx": 1082,
         "cardsPx": 0,
-        "viewBoxHeight": 988
+        "viewBoxHeight": 992
       },
-      "viewBoxWidth": 1550,
+      "viewBoxWidth": 1574,
       "minimumProjectedNodeTextPx": 8,
       "minimumProjectedNonEdgeTextPx": 9,
       "minimumProjectedEdgeTextPx": 8,
@@ -1305,18 +1329,18 @@
         "effort": 10,
         "compressionLevel": 9
       },
-      "width": 3100,
-      "height": 2140,
+      "width": 3148,
+      "height": 2150,
       "original": {
-        "path": ".archify/evidence/architecture-hbB039/architecture-light.viewer-original.png",
-        "sha256": "9d159a02790be9ec4d72f55b485895d9b765ef4fb1bf969bea8f3b72dc771d5d",
-        "bytes": 763350,
-        "width": 3308,
-        "height": 2284
+        "path": ".archify/evidence/architecture-bqNz78/architecture-light.viewer-original.png",
+        "sha256": "41970ca2d5e283b5e9541addb3d13e36dbee6dbb7ebc3159e86ea6baa6345cc2",
+        "bytes": 784441,
+        "width": 3356,
+        "height": 2292
       },
-      "artifactSha256": "3a30f0a535b1e47e167aa78ce80f8af364d201d4290ebb13da12ce1fbd9a7933",
-      "sha256": "ea63c9c3aad72e506f5c6786de7cbc744145b7aacf71e73364fdaa6ef52f4185",
-      "bytes": 265792
+      "artifactSha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
+      "sha256": "9c731ada2b7443ee3cc6872fe7b97d9acf5ca4d7914af799287e070b4b892d16",
+      "bytes": 281160
     },
     "architecture-dark.png": {
       "kind": "viewer-png-export",
@@ -1330,18 +1354,18 @@
         "effort": 10,
         "compressionLevel": 9
       },
-      "width": 3100,
-      "height": 2140,
+      "width": 3148,
+      "height": 2150,
       "original": {
-        "path": ".archify/evidence/architecture-hbB039/architecture-dark.viewer-original.png",
-        "sha256": "3d8ff92d421bfdace34d661a6ecbf830552b1d1c3918e0bbbae473b1da9508e6",
-        "bytes": 833559,
-        "width": 3308,
-        "height": 2284
+        "path": ".archify/evidence/architecture-bqNz78/architecture-dark.viewer-original.png",
+        "sha256": "e1aa85a3a361d42242d2e232af1f4877936c0a5f4a04a0bcaf7c01a9452cd613",
+        "bytes": 858541,
+        "width": 3356,
+        "height": 2292
       },
-      "artifactSha256": "3a30f0a535b1e47e167aa78ce80f8af364d201d4290ebb13da12ce1fbd9a7933",
-      "sha256": "e4e2c7f419025705cd82afcf6d0c31b95189b894baa21507da30088a209ce6f4",
-      "bytes": 264745
+      "artifactSha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
+      "sha256": "850c680d7c6a83b4973a0fd9141f3ad4d0204e623eddba36ea716ce164eacac8",
+      "bytes": 288901
     }
   }
 }

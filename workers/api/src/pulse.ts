@@ -21,7 +21,7 @@ import type {
 } from "@shared/types";
 import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from "@shared/coding-buckets";
 import { codingBucketsKey } from "@shared/coding-store";
-import { CODING_BUCKET_MS } from "@shared/coding-usage";
+import { CODING_BUCKET_MS, codingRowTokens } from "@shared/coding-usage";
 import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { cloudAgentActivity, codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
@@ -183,7 +183,7 @@ function coverageEnd(source: CodingUsageSource, store: StoredCodingBuckets, at: 
 }
 
 export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow): PulseTokensLane {
-  const sums = new Map<number, { fresh: number; output: number; cacheRead: number; end: number }>();
+  const sums = new Map<number, { total: number; output: number; cacheRead: number; end: number }>();
   for (const source of CODING_USAGE_SOURCE_NAMES) {
     const store = stores[source];
     if (!store) continue;
@@ -191,15 +191,15 @@ export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow):
       if (bucket.from < window.from) continue;
       const end = coverageEnd(source, store, bucket.from);
       if (end == null) continue;
-      let fresh = 0, output = 0, cacheRead = 0;
+      let total = 0, output = 0, cacheRead = 0;
       for (const row of bucket.agents) {
-        fresh += row.inputTokens + row.outputTokens + row.cacheCreationTokens;
+        total += codingRowTokens(row);
         output += row.outputTokens;
         cacheRead += row.cacheReadTokens;
       }
-      if (fresh + cacheRead <= 0) continue;
-      const sum = sums.get(bucket.from) ?? { fresh: 0, output: 0, cacheRead: 0, end: bucket.from };
-      sum.fresh += fresh;
+      if (total <= 0) continue;
+      const sum = sums.get(bucket.from) ?? { total: 0, output: 0, cacheRead: 0, end: bucket.from };
+      sum.total += total;
       sum.output += output;
       sum.cacheRead += cacheRead;
       sum.end = Math.max(sum.end, end);
@@ -211,7 +211,7 @@ export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow):
     .flatMap(([from, sum]) => {
       const to = Math.min(from + CODING_BUCKET_MS, sum.end, window.to);
       if (to - from < TOKEN_MIN_SPAN_MS) return [];
-      return [{ ...span(window, from, to), to, perMinute: sum.fresh / ((to - from) / 60_000), fresh: sum.fresh, output: sum.output, cacheRead: sum.cacheRead }];
+      return [{ ...span(window, from, to), to, perMinute: sum.total / ((to - from) / 60_000), total: sum.total, output: sum.output, cacheRead: sum.cacheRead }];
     });
   const last = rows.at(-1);
   const seen = CODING_USAGE_SOURCE_NAMES.some((source) => {
@@ -222,11 +222,11 @@ export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow):
   });
   return {
     kind: "tokens",
-    buckets: toColumns(rows, ["fresh", "output", "cacheRead"] as const),
+    buckets: toColumns(rows, ["total", "output", "cacheRead"] as const),
     summary: {
       peakPerMinute: rows.length ? Math.round(Math.max(...rows.map((row) => row.perMinute))) : null,
       currentPerMinute: last && last.to >= window.to - TOKEN_CURRENT_MS ? Math.round(last.perMinute) : seen ? 0 : null,
-      freshTokens: rows.reduce((sum, row) => sum + row.fresh, 0),
+      totalTokens: rows.reduce((sum, row) => sum + row.total, 0),
     },
   };
 }

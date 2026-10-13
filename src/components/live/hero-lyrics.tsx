@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useLeap } from "@/hooks/use-leap";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { cueAt } from "@/lib/lyrics-cue";
 import type { LyricLine, LyricWord } from "@shared/lyrics-ttml";
@@ -111,7 +112,7 @@ export function HeroLyrics({
   const playing = track.state === "playing";
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
-  const now = (playing && mountedAt ? Math.max(ticked, track.observedAt) : ticked) || mountedAt;
+  const now = Math.max(ticked, mountedAt);
 
   useEffect(() => {
     if (!playing) return;
@@ -191,17 +192,18 @@ export function HeroLyrics({
   const maxIdx = lastLyricIdx;
   const scrollIdx = Math.max(1, Math.min(activeIdx, maxIdx));
   const targetY = 27 - scrollIdx * LINE_HEIGHT;
+  const leap = useLeap(activeIdx, 1);
+  const snap = reduced || leap;
+  const lineTransition = snap ? { duration: 0 } : { duration: 0.36, ease: [0.22, 1, 0.36, 1] as const };
 
   return (
     <div className="relative h-20 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_84%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_84%,transparent_100%)]">
+      {/* 换歌时外层 hero 正带着 initial 变体入场，子级会继承那个变体名：不写 initial={false} 首帧就没有位移和透明度，从第一行滚下来。 */}
       <motion.div
         className="flex flex-col"
+        initial={false}
         animate={{ y: targetY }}
-        transition={
-          reduced
-            ? { duration: 0 }
-            : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
-        }
+        transition={lineTransition}
       >
         {displayLyrics.map((line, i) => {
           const isCurrent = i === activeIdx;
@@ -219,7 +221,8 @@ export function HeroLyrics({
                   isOutro
                     ? "block truncate text-xs text-muted-foreground/60 origin-left"
                     : cn(
-                        "block truncate text-sm font-medium origin-left transition-colors duration-500 ease-out",
+                        "block truncate text-sm font-medium origin-left",
+                        !snap && "transition-colors duration-500 ease-out",
                         isIntro && "tracking-[0.08em] font-bold",
                         isCurrent
                           ? isSinging
@@ -230,15 +233,12 @@ export function HeroLyrics({
                             : "text-muted-foreground",
                       )
                 }
+                initial={false}
                 animate={{
                   scale: isOutro ? 1 : isCurrent ? 1 : 0.88,
                   opacity: isOutro ? 0.6 : isCurrent ? 1 : 0.4,
                 }}
-                transition={
-                  reduced
-                    ? { duration: 0 }
-                    : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
-                }
+                transition={lineTransition}
                 title={line.text}
               >
                 {isCurrent && isSinging && line.words ? (

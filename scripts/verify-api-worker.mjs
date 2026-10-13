@@ -62,13 +62,7 @@ try {
       method: 'POST', headers: { ...await access.headers(clientId), 'content-type': 'application/json', ...headers }, body,
     });
   }
-  const musicKitKeys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
-  const musicKitPem = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(await crypto.subtle.exportKey('pkcs8', musicKitKeys.privateKey)).toString('base64')}\n-----END PRIVATE KEY-----`;
-  const kv = [
-    { binding: 'LAG', id: '00000000000000000000000000000001' },
-    { binding: 'CREDENTIALS', id: '00000000000000000000000000000002' },
-  ];
-  const apiKv = [...kv, { binding: 'APPLE_CACHE', id: '00000000000000000000000000000003' }];
+  const lag = { binding: 'LAG', id: '00000000000000000000000000000001' };
   // Configs live outside the checkout so Wrangler cannot load real .dev.vars or production bindings.
   const api = {
     name: 'isolated-api', main: join(root, 'workers/api/src/index.ts'),
@@ -77,7 +71,6 @@ try {
       STORAGE_PREFIX: 'isolated-verify',
       ALLOWED_ORIGINS: '',
       DEV_OVERRIDES: 'true',
-      APPLE_MUSIC_PRIVATE_KEY: musicKitPem, APPLE_MUSIC_TEAM_ID: 'ISOLATEDTM', APPLE_MUSIC_KEY_ID: 'ISOLATEDKY',
     },
     durable_objects: { bindings: [
       { name: 'LIVE_PUSH', class_name: 'LivePushRoom' },
@@ -92,7 +85,7 @@ try {
       { tag: 'v1', new_sqlite_classes: ['LivePushRoom'] },
       { tag: 'v3', new_sqlite_classes: ['StateHub'] },
     ],
-    kv_namespaces: apiKv,
+    kv_namespaces: [lag],
   };
   const ai = {
     name: 'isolated-ai', main: join(root, 'workers/ai/src/index.ts'),
@@ -124,9 +117,17 @@ try {
     name: 'isolated-ingress', main: join(root, 'workers/ingress/src/index.ts'),
     compatibility_date: '2026-09-08', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
     vars: { ...access.vars, EMBY_PUBLIC_URL: '' },
-    services: [{ binding: 'CORE', service: 'isolated-api', entrypoint: 'StateCore' }],
+    services: [
+      { binding: 'CORE', service: 'isolated-api', entrypoint: 'StateCore' },
+      { binding: 'COLLECTOR', service: 'isolated-collector', entrypoint: 'Collector' },
+    ],
     r2_buckets: [{ binding: 'IMAGES', bucket_name: 'isolated-images' }],
-    kv_namespaces: kv,
+    kv_namespaces: [lag, { binding: 'CREDENTIALS', id: '00000000000000000000000000000002' }],
+  };
+  const collectorFixture = {
+    name: 'isolated-collector', main: join(root, 'scripts/fixtures/collector.mjs'),
+    compatibility_date: '2026-09-08',
+    services: [{ binding: 'CORE', service: 'isolated-api', entrypoint: 'StateCore' }],
   };
   const routerMain = join(temporary, 'router.mjs');
   await writeFile(routerMain, `import router from ${JSON.stringify(join(root, 'workers/dev-router/src/index.ts'))};
@@ -144,11 +145,12 @@ export default { fetch(request, env) {
     services: [
       { binding: 'API', service: 'isolated-api' },
       { binding: 'INGRESS', service: 'isolated-ingress' },
+      { binding: 'COLLECTOR', service: 'isolated-collector' },
       { binding: 'VERIFY', service: 'isolated-ai-fixture', entrypoint: 'Verification' },
     ],
   };
   const configPaths = [];
-  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture, siteCacheFixture })) {
+  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture, siteCacheFixture, collectorFixture })) {
     const path = join(temporary, `${name}.wrangler.json`);
     await writeFile(path, JSON.stringify(config));
     configPaths.push(path);
@@ -377,15 +379,24 @@ export default { fetch(request, env) {
   assert.equal(invalidJson.status, 400);
   assert.deepEqual(await invalidJson.json(), { ok: false, error: '上报数据无效或处理失败' });
   assert.equal(invalidJson.headers.get('cache-control'), 'no-store');
+  async function listeningNow() {
+    return (await (await fetch(`${worker}/api/status/listening/now`)).json()).data;
+  }
   async function nowPlaying() {
-    return (await (await fetch(`${worker}/api/status/listening/now`)).json()).data?.music?.title;
+    return (await listeningNow())?.music?.title;
   }
   for (const title of ['isolated-first', 'isolated-second']) {
     const body = { entityId: 'media_player.isolated', state: 'playing', title, positionMs: 0, durationMs: 3600000, observedAt: Date.now() };
     assert.equal((await post(worker, '/api/ingest/homepod', body)).status, 202);
     await eventually(async () => assert.equal(await nowPlaying(), title));
     await eventually(async () => assert.ok(events.some(e => e.type === 'listening-now' && e.payload.music?.title === title)));
+    await eventually(async () => {
+      const now = await listeningNow();
+      assert.equal(now.songId, `fixture-${title}`);
+      assert.equal(now.motion?.videoUrl, `https://fixture.invalid/${title}.m3u8`);
+    });
   }
+  console.log('PASS: ingress commits what Collector.enrichTrack returns, and Collector.followUpTrack patches the motion in through StateCore.commitEnrichmentPatch');
   const statusTool = await mcp('tools/call', { name: 'get_site_status', arguments: { views: ['nowListening'] } });
   assert.equal(statusTool.result.isError, false);
   const statusText = statusTool.result.content[0].text;
@@ -462,19 +473,10 @@ export default { fetch(request, env) {
   assert.equal((await post(worker, '/api/ingest/emby', { playing: null })).status, 202);
   await eventually(async () => assert.equal((await (await fetch(`${worker}/api/status/watching/now`)).json()).data.nowPlaying, null));
   console.log('PASS: Emby playback carries device, play method and media spec; junk fields are dropped');
-  const tokenResponse = await fetch(`${worker}/api/musickit/token`, { headers: { Origin: 'http://localhost:3000' } });
-  const tokenBody = await tokenResponse.text();
-  assert.equal(tokenResponse.status, 200, tokenBody);
-  assert.equal(tokenResponse.headers.get('cache-control'), 'no-store');
-  assert.equal(tokenResponse.headers.get('access-control-allow-origin'), 'http://localhost:3000');
-  const issued = JSON.parse(tokenBody);
-  assert.ok(Number.isSafeInteger(issued.issuedAt) && issued.expiresAt === issued.issuedAt + 7 * 24 * 3600);
-  const [tokenHeader, tokenPayload, tokenSignature] = issued.token.split('.');
-  assert.deepEqual(JSON.parse(Buffer.from(tokenHeader, 'base64url')), { alg: 'ES256', kid: 'ISOLATEDKY' });
-  assert.deepEqual(JSON.parse(Buffer.from(tokenPayload, 'base64url')), { iss: 'ISOLATEDTM', iat: issued.issuedAt, exp: issued.expiresAt });
-  assert.ok(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, musicKitKeys.publicKey, Buffer.from(tokenSignature, 'base64url'), Buffer.from(`${tokenHeader}.${tokenPayload}`)));
-  assert.equal((await post(worker, '/api/musickit/token', {})).status, 405);
-  console.log('PASS: /api/musickit/token issues a verifiable ES256 developer token');
+  for (const path of ['/api/lyrics?song=1501', '/api/motion-artwork?url=x', '/api/musickit/token']) {
+    assert.equal(await (await fetch(`${worker}${path}`)).text(), 'collector fixture', path);
+  }
+  console.log('PASS: dev-router sends Apple Music paths to collector, not api');
   const coding = start(process.execPath, [join(root, 'scripts/verify-coding-usage.mjs'), '--base', worker, '--ingest', worker, '--storage-prefix', 'isolated-verify'], { LOCAL_ACCESS_PRIVATE_JWK: JSON.stringify(access.privateJwk) });
   coding.stdout.pipe(process.stdout, { end: false });
   const [codingExit] = await once(coding, 'exit');

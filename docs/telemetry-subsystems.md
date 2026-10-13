@@ -29,7 +29,7 @@
 
 ### 架构边界
 - **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/api`）。
-- **站点是读取边缘**：site Worker 负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化，并在站点域名上回答 `/api/*`：可滞后视图直接读 `LAG` KV（`shared/lag-views.ts`），其余经 Service Binding 原样交给 api / ai。它不写状态、不持有密钥。
+- **站点是读取边缘**：site Worker 负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化，并在站点域名上回答 `/api/*`：可滞后视图直接读 `LAG` KV（`shared/lag-views.ts`），其余经 Service Binding 原样交给 api / ai / collector。它不写状态、不持有密钥。
 - **客户端只连站点**：浏览器按 `PUBLIC_BACKEND_URL`（生产是站点域名）读状态、连 `/ws`，由 site Worker 按归属回答或转交，SWR 统一管理数据缓存与实时更新。
 - **原生客户端**：[`apps/ios`](../apps/ios/README.md) 读同一个 api Worker：状态 GET 不带 `Origin`（api Worker 只拦带了且不在白名单的来源），推送长连接自报站点域名作 `Origin`（`/ws` 缺来源一律 403），所以改 `ALLOWED_ORIGINS` 时要保留站点域名。取数节奏照浏览器端的登记表，只在前台连推送、退后台即断，在线人数的语义和关掉标签页一致。
 
@@ -92,7 +92,7 @@
 - **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），最前那个容器经 `href` 深入查询曲目，累计出时长，按容器顺序的可播曲目（带时长与封面）随 `commitRecentlyPlayed` 交给状态核心推下一首；自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `CONTAINER_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
-- **私钥在 Worker Secret 里**：Apple Music 开发者私钥（`.p8`）是 Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`（签发令牌的 Worker 各读自己那份；放在哪些 Worker、本机原件在哪见 `docs/ops-facts.md`），Mac Telemetry Hub、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由调用的 Worker 自己签发（`shared/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签）。
+- **私钥在 Worker Secret 里**：Apple Music 开发者私钥（`.p8`）是 Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`（放在哪个 Worker、本机原件在哪见 `docs/ops-facts.md`），Mac Telemetry Hub、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由调用的 Worker 自己签发（`shared/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签）。
 - **Mac 只上报 user token**：Mac Telemetry Hub 通过 `/api/ingest/mac` 的 `appleMusicCredentials` 模块只上报 `Music-User-Token`；带 `developerToken` / `expiresAt` 的旧合同会被上报入口拒收。
 - **凭据隔离**：收到的 user token 由上报入口写进独立的凭据 KV（`shared/credentials.ts`），与可滞后层的展示数据分命名空间，不提供任何外部 GET 端点。
 
@@ -116,7 +116,7 @@
   - 换句动作由边界精确定时器驱动，与当前音轨算法一致。
 
 ### 接口缓存与公开查询策略
-- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `shared/lyrics.ts#lyricsTtlMs`）。
+- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；站点域名上由采集 Worker 回答，结果在它的 `AppleLookups` 入口按路径与查询串缓存，期限跟响应的 `public, s-maxage` 走（有词与无词的缓存期不同，见 `shared/lyrics.ts#lyricsTtlMs`）。
 - 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用。
 
 ---
@@ -126,7 +126,7 @@
 ### 访客跟听机制
 - **架构隔离**：访客在前端播放器使用自己的 Apple Music 订阅。站点不中转音频，播放发生在访客浏览器与 Apple CDN 之间。
 - **独立访客 Token 签发**：
-  - 由 API Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token。
+  - 由采集 Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token（站点域名上经 site Worker 转交）。
   - 有效期默认 `DEFAULT_TTL_SECONDS`（`shared/musickit-token.ts`），过了「签发 → 到期」的中点自动换新。
 - **双重域名安全闸**：
   1. 第一道：Worker 检查请求来源是否在 `ALLOWED_ORIGINS` 白名单中：带 `Origin` 看它，浏览器同源请求不带 `Origin` 时按请求自己的源（`shared/http-origins.ts#requestOrigin`）。
@@ -318,7 +318,7 @@ payload: >-
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
   （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code 的 token 桶）现算。Clef 只给 Coding 打十五分钟强度与模式，
   只在悬停里出现；别的道不再有模型分。
-- Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（不含 cache read），不带模型名和来源；
+- Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（含 cache read，口径见 `shared/coding-usage.ts#codingRowTokens`），不带模型名和来源；
   取桶规则见 `workers/api/src/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
 - 这些事实由 API 定时任务按归档水位写入 D1 的事实表（迁移 `0007_history_pulse.sql`；周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）。

@@ -1,4 +1,5 @@
 import { AI_HTTP_PATHS, MCP_PATH } from "@shared/ai-paths";
+import { APPLE_MUSIC_HTTP_PATHS } from "@shared/apple-music-paths";
 import { IMAGE_PATH_PREFIX } from "@shared/asset-url";
 import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
 import { SENTRY_RELAY_PREFIX } from "@shared/sentry";
@@ -36,6 +37,7 @@ export type GatewayClass =
       kind:
         | "api"
         | "ai"
+        | "collector"
         | "sentry-relay"
         | "image-proxy"
         | "image-object"
@@ -129,6 +131,7 @@ export function imageObjectHeaders(
 
 export function classifyGatewayRequest(method: string, pathname: string): GatewayClass {
   if (AI_HTTP_PATHS.has(pathname) || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "ai" };
+  if (APPLE_MUSIC_HTTP_PATHS.has(pathname)) return { kind: "collector" };
   if (pathname === LIVE_SOCKET_PATH || (pathname.startsWith("/api/") && pathname !== APP_VERSION_PATH)) {
     const view = method === "GET" ? lagViewKeyByPath(pathname) : undefined;
     return view ? { kind: "lag-status", view } : { kind: "api" };

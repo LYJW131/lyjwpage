@@ -1,5 +1,6 @@
 import {
   CODING_BUCKET_MS,
+  codingRowTokens,
   type CodingTokenBucketReport,
   type CodingTokenBucketRow,
   type CodingTokenBucketState,
@@ -24,10 +25,6 @@ type Row = CodingTokenBucketRow;
 
 function rowKey(row: Pick<Row, "id" | "model">): string {
   return JSON.stringify([row.id, row.model]);
-}
-
-function tokens(row: Row): number {
-  return row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheCreationTokens;
 }
 
 function sortRows(rows: Row[]): Row[] {
@@ -66,7 +63,7 @@ export function mergeBucketReport(
     const kept = new Map((windows.get(window.from) ?? []).map((row) => [rowKey(row), row]));
     for (const row of window.agents) {
       const old = kept.get(rowKey(row));
-      if (!old || tokens(row) > tokens(old)) kept.set(rowKey(row), { ...row });
+      if (!old || codingRowTokens(row) > codingRowTokens(old)) kept.set(rowKey(row), { ...row });
     }
     windows.set(window.from, [...kept.values()]);
   }
