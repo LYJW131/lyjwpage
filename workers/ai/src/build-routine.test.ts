@@ -643,3 +643,16 @@ test("issue lookup finds the plan's issue by its marker, throttles GitHub and ke
   t.mock.timers.setTime(proposal.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS + 1);
   assert.equal((await lookup()).status, 401);
 });
+
+test("Start build checks GitHub once for the plan's issue and refuses without consuming the plan or quota", async () => {
+  const { env, instance } = coordinator();
+  const proposal = await issuePlan(env, plan);
+  const issue = { number: 31, html_url: `https://github.com/${BUILD_REPO}/issues/31`, body: buildIssueMarker(proposal.issueRef) };
+  const { fetcher, calls } = githubFixture((path) => path === "/user" ? json({ id: 432, login: "any-visitor", name: null }) : path.startsWith(`/repos/${BUILD_REPO}/issues?`) ? json([issue]) : undefined);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
+  assert.equal(response.status, 409);
+  assert.deepEqual((await response.json() as { issue: unknown }).issue, { number: 31, url: issue.html_url });
+  assert.equal(calls.some((call) => call.path.endsWith("/git/ref/heads/main")), false);
+  assert.equal(instance.isPlanUsed(proposal.issueRef!), false);
+  assert.deepEqual(instance.planIssue(proposal.issueRef!), { number: 31, url: issue.html_url });
+});
