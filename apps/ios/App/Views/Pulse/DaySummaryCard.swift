@@ -70,7 +70,7 @@ struct DaySummaryCard: View {
             lines.append("Coding: \(Format.duration(seconds: coding.humanSeconds)) with only the editor, \(Format.duration(seconds: coding.agentSeconds)) with only AI agents, \(Format.duration(seconds: coding.bothSeconds)) with both.")
         }
         if let tokens = pulse.lanes.tokens {
-            lines.append("AI tokens (incl. cache reads): \(Format.compact(tokens.totalTokens)).")
+            lines.append("AI tokens (fresh input + output): \(Format.compact(tokens.freshTokens)).")
         }
         for (name, lane) in [("Music", pulse.lanes.listening), ("TV and movies", pulse.lanes.watching), ("PlayStation", pulse.lanes.gaming)] {
             guard let lane, lane.activeSeconds > 0 else { continue }
