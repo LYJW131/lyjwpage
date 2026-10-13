@@ -156,7 +156,7 @@ export function DigestCard({
   return (
     <Card id="digest" className={cn("h-full scroll-mt-28", className)}>
       <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-4 p-4 lg:gap-x-4 lg:gap-y-5 lg:p-5">
-        <h2 lang="zh-CN" className="col-start-1 row-start-1 min-w-0 whitespace-nowrap font-sans text-2xl font-bold leading-none tracking-tight md:text-3xl lg:text-4xl">{data.headline}。</h2>
+        <h2 lang="zh-CN" className="col-start-1 row-start-1 min-w-0 text-balance font-sans text-2xl font-bold leading-none tracking-tight lg:text-4xl">{data.headline}。</h2>
         <ul className={cn("col-start-1 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-1.5 gap-y-1.5 sm:gap-x-2", stale && "opacity-60")}>
           {data.highlights.map((item) => (
             <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
