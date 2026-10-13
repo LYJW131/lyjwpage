@@ -2,20 +2,23 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-const OWNER_NOREPLY = (owner) => new RegExp(`^(?:\\d+\\+)?${owner.replace(/[^\w-]/g, "")}@users\\.noreply\\.github\\.com$`, "i");
+import { authorFromTrailer } from "../shared/commit-authors.ts";
 
+// 提交作者只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。
 export function mergeMessage({ number, title, subjects, authors, coAuthors, owner }) {
   const suffix = `(#${number})`;
   const trimmed = title.trim();
   const commitTitle = trimmed.endsWith(suffix) ? trimmed : `${trimmed} ${suffix}`;
-  const isOwner = owner ? OWNER_NOREPLY(owner) : null;
   const seen = new Set();
   const trailers = [];
-  for (const person of [...coAuthors, ...authors]) {
+  const people = [...coAuthors.map((line) => [line, false]), ...authors.map((line) => [line, true])];
+  for (const [person, knownOnly] of people) {
     const match = /^(.*?)\s*<([^>]+)>$/.exec(person.trim());
     if (!match) continue;
     const [, name, email] = match;
-    if (isOwner?.test(email)) continue;
+    const identity = authorFromTrailer(name, email);
+    if (owner && identity.login?.toLowerCase() === owner.toLowerCase()) continue;
+    if (knownOnly && !identity.agent && !identity.login) continue;
     const key = `${name} <${email}>`.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
