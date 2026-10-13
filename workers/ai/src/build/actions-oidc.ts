@@ -89,7 +89,8 @@ function trustedClaims(claims: Record<string, unknown>, audience: string, now: n
     && claims.repository_id === BUILD_REPO_ID
     && claims.repository_owner_id === BUILD_REPO_OWNER_ID
     && claims.workflow_ref === BUILD_WORKFLOW_REF
-    && claims.job_workflow_ref === BUILD_WORKFLOW_REF
+    // 实测普通 job 的令牌也带 job_workflow_ref（等于 workflow_ref），但 GitHub 文档只对可复用工作流承诺它；缺失时只靠 workflow_ref，出现时必须也是 build.yml，挡住 build.yml 调用的其他可复用工作流。
+    && (claims.job_workflow_ref === undefined || claims.job_workflow_ref === BUILD_WORKFLOW_REF)
     && claims.event_name === "repository_dispatch"
     && claims.ref === "refs/heads/main"
     && claims.runner_environment === "github-hosted"
