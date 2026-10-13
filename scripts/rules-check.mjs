@@ -220,16 +220,24 @@ export function checkScrollbarPair(file, text) {
 const SITE_SOURCE = /^src\//;
 const WORKER_OR_SHARED_TS = /^(?:workers\/[^/]+\/src|shared)\/.+\.ts$/;
 const TEST_OR_FIXTURE = /\.test\.|(^|\/)(?:__tests__|tests?|fixtures|dev-fixtures)\//i;
-const JSON_RESPONSE_LITERAL_RE = /new Response\(JSON\.stringify\(/;
 const JSON_RESPONSE_IMPL = new Set(["shared/http-origins.ts"]);
 
 export function checkJsonResponseLiteral(file, text) {
+  const ts = loadTs();
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const issues = [];
-  maskComments(file, text).split("\n").forEach((line, index) => {
-    if (JSON_RESPONSE_LITERAL_RE.test(line)) {
-      issues.push({ file, line: index + 1, rule: "json-response-literal", message: "JSON 响应统一走 shared/http-origins.ts#jsonResponse（Content-Type 与 Cache-Control 一处定义），不手写 new Response(JSON.stringify(...))。" });
+  const isJsonStringify = (node) => ts.isCallExpression(node)
+    && ts.isPropertyAccessExpression(node.expression)
+    && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "JSON"
+    && node.expression.name.text === "stringify";
+  const visit = (node) => {
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Response" && node.arguments?.[0] && isJsonStringify(node.arguments[0])) {
+      const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+      issues.push({ file, line: line + 1, rule: "json-response-literal", message: "JSON 响应统一走 shared/http-origins.ts#jsonResponse（Content-Type 与 Cache-Control 一处定义），不手写 new Response(JSON.stringify(...))。" });
     }
-  });
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
   return issues;
 }
 
