@@ -27,7 +27,7 @@ for (const path of [
 }
 
 test("source, asset, documentation, shared, and worker roots still admit ordinary files and colocated tests", () => {
-  for (const path of ["src/app/[slug]/page.tsx", "public/card.svg", "docs/card.md", "shared/card.ts", "workers/ai/src/card.ts", "src/card.test.mts", "workers/api/src/card.spec.ts"]) {
+  for (const path of ["src/app/[slug]/page.tsx", "public/card.svg", "docs/card.md", "shared/card.ts", "workers/ai/src/card.ts", "src/card.test.mts", "workers/core/src/card.spec.ts"]) {
     assert.equal(allowedBuildPath(path), true, path);
     assert.equal(parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, [path]).files[0].path, path);
   }
@@ -52,7 +52,7 @@ test("upload allows a few files outside the plan, counts them, and rejects more"
     const parsed = parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, plan.paths);
     assert.deepEqual(outsidePlanPaths(parsed, plan.paths), [path]);
   }
-  const docs = ["workers/ai/README.md", "README.md", "apps/ios/README.md", "docs/a.md", "src/x.md", "workers/api/NOTES.md"];
+  const docs = ["workers/ai/README.md", "README.md", "apps/ios/README.md", "docs/a.md", "src/x.md", "workers/core/NOTES.md"];
   assert.equal(parseBuildUpload({ ...upload, files: docs.map((path) => ({ ...upload.files[0], path })) }, plan.paths).files.length, docs.length);
   for (const path of ["AGENTS.md", "workers/ai/AGENTS.md", "CLAUDE.md", ".github/README.md", "reporters/server-reporter/README.md"]) assert.equal(allowedBuildPath(path), false, path);
   const allowed = outside.slice(0, BUILD_UPLOAD_LIMITS.outsidePlanFiles);

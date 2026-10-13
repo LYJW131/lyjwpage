@@ -37,10 +37,10 @@ test("a successful site build links the stable Access-protected preview for the 
   assert.ok(!patch.preview?.url?.includes("?"));
 });
 
-test("api and ai deployment checks stay CI and never yield a site preview", async () => {
+test("core and ai deployment checks stay CI and never yield a site preview", async () => {
   const patch = await reconcileBuild(githubFixture([
     ci,
-    { name: "Workers Builds: api", status: "completed", conclusion: "success", app: { slug: "cloudflare-workers-and-pages" } },
+    { name: "Workers Builds: core", status: "completed", conclusion: "success", app: { slug: "cloudflare-workers-and-pages" } },
     { name: "Workers Builds: ai", status: "completed", conclusion: "success", app: { slug: "cloudflare-workers-and-pages" } },
   ], []), run);
   assert.equal(patch.ci?.state, "success");
@@ -119,7 +119,7 @@ test("provider words and unrelated app checks remain CI", async () => {
     { name: "Netlify – Code Owners", app: { slug: "netlify" } },
     { name: "Workers Builds: site", app: { slug: "netlify" } },
     { name: "Workers Builds: site", app: undefined },
-    { name: "Workers Builds: api", app: { slug: "cloudflare-workers-and-pages" } },
+    { name: "Workers Builds: core", app: { slug: "cloudflare-workers-and-pages" } },
     { name: "Cloudflare integration tests", app: { slug: "cloudflare-workers-and-pages" } },
   ];
   for (const check of checks) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Workers Builds 的预览构建要等本分支同提交的 api Preview；等不到直接失败，不回退生产后端。
+// Workers Builds 的预览构建要等本分支同提交的 core Preview；等不到直接失败，不回退生产后端。
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 

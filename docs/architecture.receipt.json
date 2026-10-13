@@ -7,12 +7,12 @@
     "source": "isolated pinned checkout"
   },
   "specification": {
-    "sha256": "e2d152bde108505656dd9d9c2e77e03c1d5491450cfbe46e19a4816f262a91b3",
-    "bytes": 16827
+    "sha256": "7c09f4ff5fab39b6fbe4321125e9a5f258ab2313c5de715277fc2b50a294618f",
+    "bytes": 16828
   },
   "artifact": {
-    "sha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
-    "bytes": 816984
+    "sha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
+    "bytes": 817009
   },
   "validation": {
     "checksPassed": 9,
@@ -25,7 +25,7 @@
   "evidence": {
     "verified": true,
     "repository": "https://github.com/LYJW131/lyjwpage",
-    "revision": "97576eda0c9853cad316189ec74f1114d86b230e",
+    "revision": "b3694ae1587906ca4f2ec1b432575c3d073640f7",
     "references": 47
   },
   "output": "architecture.html",
@@ -44,11 +44,11 @@
     "status": "pass",
     "visualReview": "not-requested",
     "provenance": "current",
-    "deliveryReceiptId": "75a1653e-a9c2-4680-92b7-4a492b772d97",
+    "deliveryReceiptId": "23172dcd-4252-4f1f-8161-123f84935e5b",
     "artifact": {
       "path": "/home/user/lyjwpage/docs/architecture.html",
-      "sha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
-      "bytes": 816984
+      "sha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
+      "bytes": 817009
     },
     "state": {
       "detail": "read",
@@ -753,7 +753,7 @@
       "contactSheet": null
     },
     "sidecars": {
-      "directory": "/home/user/lyjwpage/.archify/evidence/architecture-bqNz78",
+      "directory": "/home/user/lyjwpage/.archify/evidence/architecture-T4gMAm",
       "receipt": "architecture.browser-check.json",
       "files": []
     }
@@ -763,7 +763,7 @@
     "installedVersion": "3.0.1",
     "availableVersion": "3.0.1",
     "releaseNotes": null,
-    "checkedAt": "2026-10-13T05:31:43.999Z",
+    "checkedAt": "2026-10-13T11:55:15.270Z",
     "source": "cache",
     "noticeRequired": false,
     "noticeText": null
@@ -782,14 +782,14 @@
           "left": {
             "id": "commit",
             "from": "ingress",
-            "to": "api",
+            "to": "core",
             "label": "Service Binding",
             "collectionIndex": 1,
             "artifactIndex": 2
           },
           "right": {
             "id": "lag_read",
-            "from": "api",
+            "from": "core",
             "to": "lag",
             "label": "读取 KV",
             "collectionIndex": 5,
@@ -799,20 +799,20 @@
             828.066371681416,
             461.00442477876106
           ],
-          "sharedNode": "api"
+          "sharedNode": "core"
         },
         {
           "left": {
             "id": "commit",
             "from": "ingress",
-            "to": "api",
+            "to": "core",
             "label": "Service Binding",
             "collectionIndex": 1,
             "artifactIndex": 2
           },
           "right": {
             "id": "api_archive",
-            "from": "api",
+            "from": "core",
             "to": "history",
             "label": "Cron 归档",
             "collectionIndex": 10,
@@ -822,13 +822,13 @@
             857,
             483.0499999999992
           ],
-          "sharedNode": "api"
+          "sharedNode": "core"
         },
         {
           "left": {
             "id": "commit",
             "from": "ingress",
-            "to": "api",
+            "to": "core",
             "label": "Service Binding",
             "collectionIndex": 1,
             "artifactIndex": 2
@@ -857,7 +857,7 @@
           },
           "right": {
             "id": "lag_read",
-            "from": "api",
+            "from": "core",
             "to": "lag",
             "label": "读取 KV",
             "collectionIndex": 5,
@@ -880,7 +880,7 @@
           "right": {
             "id": "collect_realtime",
             "from": "collector",
-            "to": "api",
+            "to": "core",
             "label": "最近播放 · RPC",
             "collectionIndex": 8,
             "artifactIndex": 9
@@ -916,7 +916,7 @@
         {
           "left": {
             "id": "state_io",
-            "from": "api",
+            "from": "core",
             "to": "state",
             "label": "读写实时状态",
             "collectionIndex": 3,
@@ -938,7 +938,7 @@
         {
           "left": {
             "id": "state_io",
-            "from": "api",
+            "from": "core",
             "to": "state",
             "label": "读写实时状态",
             "collectionIndex": 3,
@@ -962,7 +962,7 @@
         {
           "relationship": {
             "id": "lag_read",
-            "from": "api",
+            "from": "core",
             "to": "lag",
             "label": "读取 KV",
             "collectionIndex": 5,
@@ -975,7 +975,7 @@
           "relationship": {
             "id": "collect_realtime",
             "from": "collector",
-            "to": "api",
+            "to": "core",
             "label": "最近播放 · RPC",
             "collectionIndex": 8,
             "artifactIndex": 9
@@ -998,7 +998,7 @@
         {
           "relationship": {
             "id": "api_archive",
-            "from": "api",
+            "from": "core",
             "to": "history",
             "label": "Cron 归档",
             "collectionIndex": 10,
@@ -1083,14 +1083,14 @@
       "truncated": true
     },
     "hints": [
-      "ingress → api and api → lag cross next to api: move node ingress or lag so the two reach api from different sides (for example one level with it, one directly above or below it).",
-      "ingress → api and api → history cross next to api: move node ingress or history so the two reach api from different sides (for example one level with it, one directly above or below it).",
-      "ingress → api crosses site → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
-      "ingress → collector crosses api → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
-      "ingress → collector and collector → api cross next to collector: move node ingress or api so the two reach collector from different sides (for example one level with it, one directly above or below it).",
+      "ingress → core and core → lag cross next to core: move node ingress or lag so the two reach core from different sides (for example one level with it, one directly above or below it).",
+      "ingress → core and core → history cross next to core: move node ingress or history so the two reach core from different sides (for example one level with it, one directly above or below it).",
+      "ingress → core crosses site → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "ingress → collector crosses core → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "ingress → collector and collector → core cross next to collector: move node ingress or core so the two reach collector from different sides (for example one level with it, one directly above or below it).",
       "ingress → collector crosses site → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
-      "api → state crosses site → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
-      "api → state crosses ai → images: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor."
+      "core → state crosses site → lag: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "core → state crosses ai → images: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor."
     ],
     "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
   },
@@ -1101,10 +1101,10 @@
     "status": "pass",
     "artifact": {
       "path": "/home/user/lyjwpage/docs/architecture.html",
-      "sha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
-      "bytes": 816984
+      "sha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
+      "bytes": 817009
     },
-    "evidenceDirectory": ".archify/evidence/architecture-bqNz78"
+    "evidenceDirectory": ".archify/evidence/architecture-T4gMAm"
   },
   "viewports": [
     {
@@ -1332,15 +1332,15 @@
       "width": 3148,
       "height": 2150,
       "original": {
-        "path": ".archify/evidence/architecture-bqNz78/architecture-light.viewer-original.png",
-        "sha256": "41970ca2d5e283b5e9541addb3d13e36dbee6dbb7ebc3159e86ea6baa6345cc2",
-        "bytes": 784441,
+        "path": ".archify/evidence/architecture-T4gMAm/architecture-light.viewer-original.png",
+        "sha256": "2c3fa7ce0ca7e59bdb31dbf05385619541b23e40f0224c4cfdeaf78da8e69334",
+        "bytes": 799558,
         "width": 3356,
         "height": 2292
       },
-      "artifactSha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
-      "sha256": "9c731ada2b7443ee3cc6872fe7b97d9acf5ca4d7914af799287e070b4b892d16",
-      "bytes": 281160
+      "artifactSha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
+      "sha256": "9bd9f8fc3fc0a4b506d73b9f81f4c7fbec51cc3e5e674b1cb8b0e7779630d551",
+      "bytes": 281719
     },
     "architecture-dark.png": {
       "kind": "viewer-png-export",
@@ -1357,15 +1357,15 @@
       "width": 3148,
       "height": 2150,
       "original": {
-        "path": ".archify/evidence/architecture-bqNz78/architecture-dark.viewer-original.png",
-        "sha256": "e1aa85a3a361d42242d2e232af1f4877936c0a5f4a04a0bcaf7c01a9452cd613",
-        "bytes": 858541,
+        "path": ".archify/evidence/architecture-T4gMAm/architecture-dark.viewer-original.png",
+        "sha256": "4476f27f379d67b379da45d9c3997f6f9f1df41403a49bdae57adf49820d3441",
+        "bytes": 869707,
         "width": 3356,
         "height": 2292
       },
-      "artifactSha256": "aad29af7a01b3d18e08894d300b8c52ea51b59ba7384e7a5603843c9fed43282",
-      "sha256": "850c680d7c6a83b4973a0fd9141f3ad4d0204e623eddba36ea716ce164eacac8",
-      "bytes": 288901
+      "artifactSha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
+      "sha256": "c7344faccdfd81e11a785abce2b4e9b0ca7c10cf1a1caa00863d9115f6095625",
+      "bytes": 277040
     }
   }
 }

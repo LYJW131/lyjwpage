@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage.git",
-      "revision": "97576eda0c9853cad316189ec74f1114d86b230e"
+      "revision": "b3694ae1587906ca4f2ec1b432575c3d073640f7"
     }
   },
   "components": [
@@ -65,9 +65,9 @@
       ]
     },
     {
-      "id": "api",
+      "id": "core",
       "type": "backend",
-      "label": "API Worker · StateCore",
+      "label": "Core Worker · StateCore",
       "sublabel": "提交实时状态 · 提供公开模型",
       "tag": "/api/status/* · 布局变化才失效缓存",
       "pos": [
@@ -80,13 +80,13 @@
       ],
       "sources": [
         {
-          "path": "workers/api/src/state-core.ts"
+          "path": "workers/core/src/state-core.ts"
         },
         {
-          "path": "workers/api/src/public-api.ts"
+          "path": "workers/core/src/public-api.ts"
         },
         {
-          "path": "workers/api/src/live-platform.ts"
+          "path": "workers/core/src/live-platform.ts"
         }
       ]
     },
@@ -106,10 +106,10 @@
       ],
       "sources": [
         {
-          "path": "workers/api/src/state-hub.ts"
+          "path": "workers/core/src/state-hub.ts"
         },
         {
-          "path": "workers/api/src/storage-driver.ts"
+          "path": "workers/core/src/storage-driver.ts"
         }
       ]
     },
@@ -118,7 +118,7 @@
       "type": "database",
       "label": "KV · 可滞后快照",
       "sublabel": "限额 · 活动 · 外部服务统计",
-      "tag": "写入方直写 · site 与 API 只读",
+      "tag": "写入方直写 · site 与 core 只读",
       "pos": [
         450,
         610
@@ -155,13 +155,13 @@
       ],
       "sources": [
         {
-          "path": "workers/api/src/live-platform.ts"
+          "path": "workers/core/src/live-platform.ts"
         },
         {
-          "path": "workers/api/src/origin-worker.ts"
+          "path": "workers/core/src/origin-worker.ts"
         },
         {
-          "path": "workers/api/src/live-census.ts"
+          "path": "workers/core/src/live-census.ts"
         }
       ]
     },
@@ -230,7 +230,7 @@
           "path": "workers/ingress/src/ingest-archive.ts"
         },
         {
-          "path": "workers/api/src/index.ts"
+          "path": "workers/core/src/index.ts"
         },
         {
           "path": "workers/collector/src/history.ts"
@@ -466,7 +466,7 @@
       "label": "Cloudflare · 上报、状态、对话与持久化",
       "wraps": [
         "ingress",
-        "api",
+        "core",
         "state",
         "lag",
         "live",
@@ -488,7 +488,7 @@
     {
       "id": "commit",
       "from": "ingress",
-      "to": "api",
+      "to": "core",
       "label": "Service Binding",
       "variant": "emphasis"
     },
@@ -503,7 +503,7 @@
     },
     {
       "id": "state_io",
-      "from": "api",
+      "from": "core",
       "to": "state",
       "label": "读写实时状态",
       "variant": "emphasis"
@@ -517,7 +517,7 @@
     },
     {
       "id": "lag_read",
-      "from": "api",
+      "from": "core",
       "to": "lag",
       "label": "读取 KV",
       "variant": "default"
@@ -539,7 +539,7 @@
     {
       "id": "collect_realtime",
       "from": "collector",
-      "to": "api",
+      "to": "core",
       "label": "最近播放 · RPC",
       "variant": "default"
     },
@@ -552,7 +552,7 @@
     },
     {
       "id": "api_archive",
-      "from": "api",
+      "from": "core",
       "to": "history",
       "label": "Cron 归档",
       "variant": "dashed"
@@ -566,7 +566,7 @@
     },
     {
       "id": "broadcast",
-      "from": "api",
+      "from": "core",
       "to": "live",
       "label": "提交后广播",
       "variant": "emphasis"
@@ -588,7 +588,7 @@
     {
       "id": "first_screen",
       "from": "site",
-      "to": "api",
+      "to": "core",
       "label": "实时视图 · /ws · Binding",
       "variant": "default"
     },
@@ -611,7 +611,7 @@
     },
     {
       "id": "revalidate",
-      "from": "api",
+      "from": "core",
       "to": "site",
       "label": "布局变化通知",
       "variant": "dashed"
@@ -661,7 +661,7 @@
     {
       "id": "ai_status",
       "from": "ai",
-      "to": "api",
+      "to": "core",
       "label": "PublicStatus RPC",
       "variant": "default"
     },
@@ -736,7 +736,7 @@
       "dot": "emerald",
       "title": "首屏快，状态也要新",
       "items": [
-        "site Worker 生成首屏时按卡读状态：可滞后层直读 KV，实时层经 Service Binding 问 api，歌词问 collector；浏览器挂载后只连站点域名，实时变化走站点转交的 WebSocket，可滞后卡按各自节奏轮询。",
+        "site Worker 生成首屏时按卡读状态：可滞后层直读 KV，实时层经 Service Binding 问 core，歌词问 collector；浏览器挂载后只连站点域名，实时变化走站点转交的 WebSocket，可滞后卡按各自节奏轮询。",
         "只有布局变化触发 site Worker 标签失效。ESA 按 SWR 独立更新；图片走同源 /img/*，在边缘回源。"
       ]
     },
@@ -746,7 +746,7 @@
       "items": [
         "首条消息前先接受隐私说明，Turnstile 验人后发 30 分钟通行证；Clef 选 Haiku、Sonnet 或 Fable，额度满了逐档降级。",
         "改站请求由 Sonnet 开设计会话，交给 Managed Agents 里的 Opus 出计划；访客授权 GitHub 后，Actions 先审计划再改代码、凭 OIDC 回传，ai 校验再以 App 开 PR，截图存 R2 并评论进 PR。",
-        "ai 没有公开域名：浏览器、MCP 客户端与构建工作流打到站点域名，GitHub webhook 仍打 api 公开地址，都经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
+        "ai 没有公开域名：浏览器、MCP 客户端、构建工作流与 GitHub webhook 都打到站点域名，经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
       ]
     }
   ]

@@ -6,7 +6,7 @@
 
 ## 页面效果图
 
-[`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份；静态的是 WebP，会动的是 GIF。用本地 Worker 的假数据注入把平时不显示的状态点亮后截的，夹具在 [`workers/api/dev-fixtures/`](../workers/api/dev-fixtures/)，注入方式见 [`workers/api/README.md`](../workers/api/README.md)。截图用无头 Chrome（playwright-core 的 `channel: "chrome"`）开 1280 宽、2 倍像素密度，`colorScheme` 切明暗；裁卡片按元素 boundingBox 外扩 12px 取 `clip`，并把目标之外的兄弟节点 `visibility: hidden`，边距里才不会露出邻居卡片的边；PNG 用项目自带的 sharp 转 WebP（q 88）。
+[`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份；静态的是 WebP，会动的是 GIF。用本地 Worker 的假数据注入把平时不显示的状态点亮后截的，夹具在 [`workers/core/dev-fixtures/`](../workers/core/dev-fixtures/)，注入方式见 [`workers/core/README.md`](../workers/core/README.md)。截图用无头 Chrome（playwright-core 的 `channel: "chrome"`）开 1280 宽、2 倍像素密度，`colorScheme` 切明暗；裁卡片按元素 boundingBox 外扩 12px 取 `clip`，并把目标之外的兄弟节点 `visibility: hidden`，边距里才不会露出邻居卡片的边；PNG 用项目自带的 sharp 转 WebP（q 88）。
 
 Pulse 的时段详情需要额外动作：用鼠标停在泳道上，把 `[role="tooltip"]`（body 上的浮层）和卡片的 boundingBox 取并集再裁，并顺手把上一张卡 `visibility: hidden`——浮层画在卡片上方，那 12px 的缝里会露出它的下边和硬阴影。
 

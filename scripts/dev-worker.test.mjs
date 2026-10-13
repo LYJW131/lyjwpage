@@ -5,7 +5,7 @@ import test from "node:test";
 import { remoteAiEnabled, withoutAiBinding } from "./dev-worker.mjs";
 
 test("离线配置只去掉 [ai] 段，其余绑定原样保留", () => {
-  for (const file of ["workers/api/wrangler.test.toml", "workers/ai/wrangler.test.toml"]) {
+  for (const file of ["workers/core/wrangler.test.toml", "workers/ai/wrangler.test.toml"]) {
     const source = fs.readFileSync(file, "utf8");
     const offline = withoutAiBinding(source);
     assert.match(source, /^\[ai\]$/m, `${file} 没有 [ai] 段，去掉逻辑已无对象`);

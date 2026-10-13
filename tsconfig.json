@@ -19,7 +19,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["./shared/*"],
-      "@api/*": ["./workers/api/src/*"]
+      "@core/*": ["./workers/core/src/*"]
     }
   },
   "include": [
@@ -32,7 +32,7 @@
   "exclude": [
     "node_modules",
     "reporters",
-    "workers/api",
+    "workers/core",
     "workers/ai",
     "workers/collector",
     "workers/dev-router",
