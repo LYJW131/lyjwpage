@@ -61,6 +61,18 @@ test("the first digest is written and revalidated; an unchanged hour only moves 
   assert.deepEqual(deps.requests.map((request) => request.previousInputHash), [null, "hash-1", "hash-1"]);
 });
 
+test("switching between a digest and a quiet day revalidates the page both ways", async () => {
+  const busy = record("Coding all day", "hash-1", now);
+  const quiet: DigestRecord = { headline: "", highlights: [], quiet: true, model: "claude-sonnet-5-5", generatedAt: now + HOUR, inputHash: "hash-2" };
+  const stillQuiet: DigestRecord = { ...quiet, generatedAt: now + 2 * HOUR, inputHash: "hash-3" };
+  const back = record("Back to coding", "hash-4", now + 3 * HOUR);
+  const deps = setup([busy, quiet, stillQuiet, back].map((digest) => ({ status: "composed", digest })));
+
+  for (const hour of [0, 1, 2, 3]) await refreshDigest(deps, now + hour * HOUR);
+  assert.equal(deps.revalidated.length, 3, "first digest, digest → quiet and quiet → digest; quiet → quiet stays put");
+  assert.deepEqual(await readLag(deps.lag, LAG_KEYS.digest), { updatedAt: now + 3 * HOUR, data: back });
+});
+
 test("a failed round keeps the last digest, and a failed revalidation does not fail the round", async (t) => {
   t.mock.method(console, "warn", () => {});
   const first = record("Coding all day", "hash-1", now);

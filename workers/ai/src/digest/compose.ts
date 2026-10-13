@@ -23,19 +23,21 @@ const TOPICS: Record<DigestTopic, true> = {
 
 export const DIGEST_SYSTEM_PROMPT = `You fill the summary card at the top of LYJW's personal homepage (lyjw.me). The page shows live data about LYJW: coding with AI agents, music, video, games, fitness, and work on this homepage itself. Once an hour you get a fact sheet about the past 24 hours, ending with the highlight options the card can show; the card should tell a visitor at a glance what LYJW has been up to.
 
-Return a headline and pick the highlights.
+Return a headline and pick the highlights, unless the day is too quiet for a card.
+- quiet: true when the past 24 hours had too little going on to be worth a card, such as only a few minutes of one or two things; the card then shows a plain clock, so return an empty headline and no picks. A day with even one substantial activity is not quiet.
 - headline: 2 to 5 words naming what dominated the day, sentence case, no final period. Refer to LYJW by name or not at all.
-- picks: the topics of the ${DIGEST_MAX_HIGHLIGHTS} highlight options that back up the headline, most important first; 2 if the day is quiet. Keep them in the same broad direction as the headline so the card tells one story: coding, agents, tokens and site go together, music, watching, gaming and trophies go together, fitness stands on its own. Reach outside that direction only when it has too few options. Pick only topics listed under "Highlight options"; the card shows each picked option's number and label exactly as listed there.
+- picks: the topics of the ${DIGEST_MAX_HIGHLIGHTS} highlight options that back up the headline, most important first; 2 if the day is light. Keep them in the same broad direction as the headline so the card tells one story: coding, agents, tokens and site go together, music, watching, gaming and trophies go together, fitness stands on its own. Reach outside that direction only when it has too few options. Pick only topics listed under "Highlight options"; the card shows each picked option's number and label exactly as listed there.
 Use only the facts given; don't guess at reasons, moods or plans, and don't say who did something unless the facts do. A light, dry touch is welcome in the headline; never mock.
 Keep the names of songs, artists, shows and games exactly as written; don't translate or romanize them. Plain text in the headline: no Markdown or emoji.`;
 
 const DIGEST_SCHEMA = {
   type: "object",
   properties: {
+    quiet: { type: "boolean" },
     headline: { type: "string" },
     picks: { type: "array", items: { type: "string", enum: Object.keys(TOPICS) } },
   },
-  required: ["headline", "picks"],
+  required: ["quiet", "headline", "picks"],
   additionalProperties: false,
 };
 
@@ -49,14 +51,15 @@ export async function digestInputHash(model: string, facts: string): Promise<str
 
 const plain = (value: unknown) => (typeof value === "string" ? value.replace(/\*\*|`/g, "").replace(/\s+/g, " ").trim() : "");
 
-// 结构化输出只保证形状；标题长度、选项外的主题、重复和条数在这里把关。选项不足两条的安静日子，有几条就要几条。
-export function parseDigest(raw: string, options: DigestHighlight[]): { headline: string; highlights: DigestHighlight[] } | null {
-  let parsed: { headline?: unknown; picks?: unknown };
+// 结构化输出只保证形状。quiet 一律发零格的空摘要；其余摘要的标题长度、选项外的主题、重复和条数在这里把关，可选格不足两条时有几条就要几条。
+export function parseDigest(raw: string, options: DigestHighlight[]): { headline: string; highlights: DigestHighlight[]; quiet?: true } | null {
+  let parsed: { quiet?: unknown; headline?: unknown; picks?: unknown };
   try {
     parsed = JSON.parse(raw);
   } catch {
     return null;
   }
+  if (parsed.quiet === true) return { headline: "", highlights: [], quiet: true };
   const headline = plain(parsed.headline).replace(/[.。]$/, "");
   const picks = Array.isArray(parsed.picks) ? parsed.picks : [];
   const highlights = [...new Set(picks)]
