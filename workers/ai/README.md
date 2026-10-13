@@ -1,6 +1,6 @@
 # AI Worker
 
-负责首页对话、设计与访客构建、模型调用、配额、GitHub issue 提交、站点工具与公开 MCP。站点状态的唯一权威仍是 [api Worker](../api/README.md)；Coding 的 Pulse 评估也留在 api 的 cron 中。
+负责首页对话、设计与访客构建、首页近况摘要、模型调用、配额、GitHub issue 提交、站点工具与公开 MCP。站点状态的唯一权威仍是 [api Worker](../api/README.md)；Coding 的 Pulse 评估也留在 api 的 cron 中。
 
 ## 入口与权限
 
@@ -25,10 +25,11 @@
 
 ## 代码职责
 
-- `src/index.ts`：Sentry 包装的 HTTP 入口，导出 `ChatQuota`、`AnthropicEgress`、`BuildCoordinator`。
+- `src/index.ts`：Sentry 包装的 HTTP 入口，导出 `ChatQuota`、`AnthropicEgress`、`BuildCoordinator` 与具名入口 `Digest`。
 - `src/chat/`：Turnstile、模型分流、工具循环、流式事件、历史验签、配额与 Anthropic 出口。
 - `src/tools/registry.ts#SITE_TOOLS`：首页对话与 MCP 共用的只读站点工具；读取由 `ToolIO` 注入。
 - `src/mcp.ts`：MCP 协议处理，不调用模型。
+- `src/digest/`：首页近况摘要，见「近况摘要」。
 - `src/build/`：构建令牌、构建工作流的 OIDC 校验、上传路径验证、GitHub App 调用与工作流派发、webhook、状态对账与 `BuildCoordinator`。构建工作流、提示词指针与完整配置见 [访客协作构建](../../docs/build-routine.md)。
 - `src/sentry.ts#sentryOptions`：关闭请求正文、请求头与 cookie 收集；对话、OAuth code 和代理请求中的密钥不能进入 Sentry。`SENTRY_ENVIRONMENT` 优先，未配置时由 `PREVIEW_WORKER` 选择预览或生产环境。
 
@@ -59,6 +60,12 @@
 浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化。设计会话到期、轮数耗尽或访客输入 `/exit`（只在设计会话里列出）时清除设计令牌并退回普通对话。localStorage 不可用时只保留内存状态。
 
 访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`，按这条消息用中文、日文或英文，判断见 `shared/build-routine.ts#textLanguage`），接受之前不向 Worker 发任何请求，但说明一出现就在后台跑 Turnstile，接受时多半已拿到 token；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.mjs#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。说明逐条列出对话数据的出站去向（`CONSENT_COPY` 的 `destinations`；Turnstile 不收对话内容，不列），新增模型供应商、第三方工具或日志出口时同步改它。
+
+## 近况摘要
+
+具名入口 `Digest`（`src/digest/entrypoint.ts`，契约 `shared/digest.ts#DigestRpc`）只给采集 Worker 的 `digest` 任务经 Service Binding 调用，不开 HTTP 路径。每次 `compose` 经 `PUBLIC_STATUS` 读 `src/digest/facts.ts#DIGEST_VIEWS` 登记的公开视图，压成一份英文事实清单，连同提示词与模型算出输入哈希：与上一份相同就回 `unchanged`，不调模型；变了才按 `src/digest/compose.ts` 的 `DIGEST_MODEL`、`DIGEST_EFFORT` 经 `AnthropicEgress` 写两三句英文，没配 `ANTHROPIC_API_KEY` 时回 `unconfigured`。摘要不经 `ChatQuota`：它不由访客触发，调用次数由采集节奏和输入哈希封顶，事实清单里的数字取粗就是为了让哈希只在有看得出的变化时才变。写入可滞后层、节奏与首屏失效见 [采集 Worker](../collector/README.md)。
+
+改提示词、事实清单或换模型后，用 `pnpm --dir workers/ai digest:probe` 读线上公开视图、打印事实清单，再用真实模型写几版对比（`--models`、`--runs`，用法见 `scripts/digest-probe.ts` 的 `USAGE`）。
 
 ## MCP
 

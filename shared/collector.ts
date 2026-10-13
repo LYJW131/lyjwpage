@@ -12,6 +12,7 @@ export const COLLECTOR_JOBS = [
   "cloudflare-metrics",
   "sentry-status",
   "avatar-watch",
+  "digest",
 ] as const;
 
 export type CollectorJobName = (typeof COLLECTOR_JOBS)[number];

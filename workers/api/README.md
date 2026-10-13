@@ -522,7 +522,7 @@ SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md
 
 ## 外部数据卡片（可滞后层）
 
-厂商状态、GitHub 贡献日历与仓库统计、站点、Cloudflare Workers、Sentry 这几条端点的数据都由采集 Worker
+厂商状态、GitHub 贡献日历与仓库统计、站点、Cloudflare Workers、Sentry、近况摘要这几条端点的数据都由采集 Worker
 （`workers/collector`）按各自节奏拉取、写进可滞后层 KV（`shared/lag.ts` 的键表），这里的公开端点**只读**：
 不持有任何外部令牌、不在读路径上现拉、不推送。每条都带写入方最后一次成功取到的时刻，信封里给 `updatedAt`；
 过没过时由浏览器按 `shared/freshness.ts` 里各块的阈值判断，过了那一格回到「—」或 Unavailable，服务端不下结论。
@@ -537,6 +537,7 @@ SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md
 | `/api/status/site-deployments` | `site-deployments:v1` + `site-analytics:v1` + `pagespeed:v1` | 部署 `SITE_DEPLOYMENTS_STALE_MS`、访问量 `SITE_ANALYTICS_STALE_MS`、PageSpeed `PAGESPEED_STALE_MS` |
 | `/api/status/cloudflare-workers` | `cloudflare-metrics:v1` + `cloudflare-deployments:v1`，按 Worker 名拼 | 统计 `CLOUDFLARE_METRICS_STALE_MS`、部署 `CLOUDFLARE_DEPLOYMENTS_STALE_MS` |
 | `/api/status/sentry` | `sentry:v1` | 各块 `SENTRY_STALE_MS` |
+| `/api/status/digest` | `digest:v1`，去掉只给采集 Worker 用的输入哈希（`shared/digest.ts#publicDigest`） | `DIGEST_STALE_MS` |
 
 几份拼起来的端点，各部分带自己的采集时刻（站点部署的 `fetchedAt`、访问量与指标每组的 `fetchedAt`、PageSpeed 最近一轮的
 `fetchedAt`；Cloudflare 统计的 `fetchedAt` 与部署的 `deploymentsFetchedAt`；Sentry 各块的 `blockAt`），卡片分别判过期。

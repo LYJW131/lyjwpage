@@ -10,6 +10,7 @@ import { DevToggleDock } from "@/components/dev-toggles";
 import { GodChat } from "@/components/god-chat";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { ActivityCard } from "@/components/live/activity-card";
+import { DigestCard } from "@/components/live/digest-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
@@ -35,6 +36,7 @@ import {
   CODING_NOW_PATH,
   CODING_PATH,
   CODING_YEAR_PATH,
+  DIGEST_PATH,
   GITHUB_CHART_PATH,
   GITHUB_REPO_PATH,
   LIMITS_PATH,
@@ -71,6 +73,7 @@ const SLOT = {
 
 const READS = {
   contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],
+  digest: [DIGEST_PATH],
   nowWatching: [NOW_WATCHING_PATH],
   questNow: [STATUS_VIEWS.questNow.path],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
@@ -116,6 +119,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     sentry,
     reporters,
     pulse,
+    digest,
   ] = await Promise.all([
     status("desktop"),
     status("timezone"),
@@ -144,6 +148,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     status("sentry"),
     status("reporters"),
     status("pulse"),
+    status("digest"),
   ]);
 
   const nowSongId =
@@ -194,6 +199,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     sentry,
     reporters,
     pulse,
+    digest,
     avatarDataUri,
     desktopIcon,
     artwork,
@@ -234,6 +240,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   <TimezoneCard fallback={loaderData.timezone} />
                 </CardBoundary>
               </div>
+
+              <CardBoundary label="In Brief" silent paths={READS.digest}>
+                <DigestCard fallback={loaderData.digest} className="mt-3" />
+              </CardBoundary>
 
               {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}
               <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>

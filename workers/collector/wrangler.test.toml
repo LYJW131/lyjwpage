@@ -17,6 +17,11 @@ binding = "CORE"
 service = "api"
 entrypoint = "StateCore"
 
+[[services]]
+binding = "DIGEST"
+service = "ai"
+entrypoint = "Digest"
+
 [[kv_namespaces]]
 binding = "LAG"
 id = "00000000000000000000000000000001"

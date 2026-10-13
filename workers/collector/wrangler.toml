@@ -21,6 +21,11 @@ binding = "CORE"
 service = "api"
 entrypoint = "StateCore"
 
+[[services]]
+binding = "DIGEST"
+service = "ai"
+entrypoint = "Digest"
+
 [[kv_namespaces]]
 binding = "COLLECTOR_KV"
 id = "0f9b584f71634776ba3bc081a7aa4498"
