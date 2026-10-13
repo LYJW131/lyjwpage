@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "updatedAt": "$now-1500000",
+  "data": {
+    "headline": "",
+    "highlights": [],
+    "model": "claude-sonnet-5-5",
+    "generatedAt": "$now-1500000",
+    "quiet": true
+  }
+}
