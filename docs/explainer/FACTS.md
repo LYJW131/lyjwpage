@@ -217,7 +217,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
      - 全零的窗不问 Clef，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
      - 每轮最多 36 个窗，从新到旧，每批并发 3，超时 10 秒。
      - 打分写回 StateHub 的评估列表，和 pulse 时间线一样只留 `shared/limits.ts#PULSE_TTL_MS`（`workers/core/src/pulse-score-state.ts#finishPulseScore`）；归档的各路（`ARCHIVE_STREAMS`）里没有它，**不进 D1**。第 08 章在 Clef 那一格上方注「打分只在屋里放 7 天，不进 D1」。
-- 每一轮都包在 `Sentry.withMonitor` 里，向 `api-minute-cron` 报到（`workers/core/src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`、`shared/sentry.ts#CRON_HEARTBEAT_EVERY_MINUTES`）。
+- 每一轮都包在 `shared/cron-check-ins.ts#cronCheckIns` 里，向 `api-minute-cron` 报到（`workers/core/src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`、`shared/sentry.ts#CRON_HEARTBEAT_EVERY_MINUTES`）。
 - StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档、打分和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/cron-round.ts#runCronRound`）。
 - 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是它的轮次（`workers/collector/src/core-round.ts#driveCoreRound`）。
 

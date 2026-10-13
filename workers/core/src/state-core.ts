@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/cloudflare";
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { cronCheckIns } from "@shared/cron-check-ins";
 import { withRequestState } from "@shared/request-state";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import type { CommitReply, CoreAudience, CorePower, StateCoreRpc } from "@shared/state-core";
@@ -88,7 +89,7 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
   // Preview 仍可能连着共享归档，必须独立禁止这一轮写入。
   async cronRound(scheduledTime: number): Promise<{ ran: boolean }> {
     if (previewWorkerEnabled() || !cronRoundDue(scheduledTime)) return { ran: false };
-    await Sentry.withMonitor(CRON_MONITOR_SLUG, () => runCronRound(this.env, scheduledTime), CRON_MONITOR_CONFIG);
+    await cronCheckIns(Sentry)(CRON_MONITOR_SLUG, () => runCronRound(this.env, scheduledTime), CRON_MONITOR_CONFIG);
     return { ran: true };
   }
 
