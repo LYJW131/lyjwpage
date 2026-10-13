@@ -50,7 +50,9 @@ export default function AppImage({
   fetchPriority,
   ...rest
 }: ImageProps) {
-  const fixed = Boolean(priority) || loading === "eager";
+  // WebKit 对 lazy 图（data URI 也一样）先挂可见性观察，回调在首帧绘制之后，内联图首帧必空。
+  const inline = src.startsWith("data:");
+  const fixed = Boolean(priority) || inline || loading === "eager";
   const restReady = useSyncExternalStore(
     fixed ? subscribeNothing : subscribeRestReady,
     fixed ? notReady : isRestReady,
@@ -77,7 +79,7 @@ export default function AppImage({
       srcSet={optimizable && displayWidth !== undefined ? optimizerSrcSet(src, q, displayWidth) : undefined}
       alt={alt ?? ""}
       width={width}
-      loading={priority ? undefined : (resolved.loading ?? "lazy")}
+      loading={priority || inline ? undefined : (resolved.loading ?? "lazy")}
       decoding={decoding ?? "async"}
       fetchPriority={fetchPriority ?? (priority ? "high" : undefined)}
       style={fill ? { ...FILL_STYLE, ...style } : style}
