@@ -21,7 +21,7 @@ Clef 将站点改动请求路由给 Sonnet；Sonnet 先判断是否值得做，�
 
 Worker 用 App 的只读安装令牌读取 main 的当前提交作为 `baseSha`，再将它与 runId、一次性上传凭据绑定并原子占用计划与额度。上传凭据由 `BUILD_SESSION_SECRET` 按 runId 派生（`workers/ai/src/build/token.ts#uploadTokenForRun`），DO 只存它的哈希，凭据本身不发给任何人。随后用写入安装令牌将已确认计划保存为 `builds/<runId>.md`，以真实文件差异提交到 `branchForRun(runId)` 分支并创建草稿 PR。计划文件只包含 `BuildPlan` 的标题、规格、验收项和预计路径，不加入会话记录、令牌或访客身份。构建响应带当前 run 与草稿链接，浏览器立即显示并保存。
 
-草稿 PR 经 GitHub 确认后，Worker 才用写入安装令牌向本仓库发 `repository_dispatch`（`event_type` 为 `build`）。`client_payload` 只有 runId、planCommitSha、baseSha、PR 号和回调源 `callbackOrigin`：Build 请求到达的 api 源，生产是公开 API 地址，分支 Preview 是该 Preview 的地址。计划正文不进 payload，工作流从固定的 planCommitSha 读计划文件。GitHub 回 2xx 即算派发成功，HTTP 响应不等待工作流启动。GitHub 以 408、429 之外的 4xx 拒绝时 run 直接 `failed`；网络错误、5xx、408、429 视为结果未知，run 保持原阶段并附上原因，之后由超时收尾；两种情况 PR 都保持草稿。派发由 `BuildCoordinator` 的 `claimDispatch` 原子标记限制为一次。
+草稿 PR 经 GitHub 确认后，Worker 才用写入安装令牌向本仓库发 `repository_dispatch`（`event_type` 为 `build`）。`client_payload` 只有 runId、planCommitSha、baseSha、PR 号和回调源 `callbackOrigin`：Build 请求到达的源，生产是站点域名（站点经 Service Binding 交给 ai，请求 URL 不变），分支 Preview 是该 Preview 的地址。计划正文不进 payload，工作流从固定的 planCommitSha 读计划文件。GitHub 回 2xx 即算派发成功，HTTP 响应不等待工作流启动。GitHub 以 408、429 之外的 4xx 拒绝时 run 直接 `failed`；网络错误、5xx、408、429 视为结果未知，run 保持原阶段并附上原因，之后由超时收尾；两种情况 PR 都保持草稿。派发由 `BuildCoordinator` 的 `claimDispatch` 原子标记限制为一次。
 
 ## 构建工作流
 
