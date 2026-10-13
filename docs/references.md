@@ -135,6 +135,10 @@
   - 是什么：修正 CommonMark 在中日韩标点旁不认 `**` 收尾的 remark 插件。
   - 取了什么：对话里「？」后紧跟中文的加粗会原样显示星号，接上它和配套的删除线插件。
   - 状态：采用。落在 [chat-markdown-plugins.ts](../src/lib/chat-markdown-plugins.ts)。
+- **[`<Activity>`](https://react.dev/reference/react/Activity)**（React 文档）与 **[Next.js layout-router](https://github.com/vercel/next.js/blob/canary/packages/next/src/client/components/layout-router.tsx)**
+  - 是什么：React 19.2 的 Activity 组件；服务端渲染时输出 `<!--&-->` 边界，水合不一致只在边界内改走客户端渲染。Next 开 `cacheComponents` 后给每个路由段包一层。
+  - 取了什么：照 Next 的做法在根布局的页面内容外和每张卡片外各包一层 `mode="visible"` 的 Activity，不一致不再从文档根重建、清掉 `<html>` 上 boot 脚本写的属性；不用 Suspense，它在流式输出里会被拆出去，首帧留空位。
+  - 状态：采用。落在 [root.tsx](../src/app/root.tsx)「Layout」与 [card-boundary.tsx](../src/components/card-boundary.tsx)。
 
 ## 交互与文案参照
 

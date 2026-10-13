@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Activity, useEffect, useLayoutEffect } from "react";
 import * as Sentry from "@sentry/react";
 import {
   isRouteErrorResponse,
@@ -27,7 +27,7 @@ import { Card } from "@/components/ui/card";
 import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { DOCUMENT_COMMIT_META } from "@/lib/app-version";
 import { commitSha } from "@/lib/build-info";
-import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
+import { HEATMAP_STORAGE_KEY, restoreHeatmapMode } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { site } from "@shared/site";
@@ -80,6 +80,8 @@ export function links(): LinkDescriptor[] {
 export function Layout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const earlyLiveSocket = pathname === "/" ? liveSocketUrl() : null;
+  // 根部重建会清掉 boot 脚本写的 data-heatmap，绘制前从 localStorage 补回。
+  useLayoutEffect(restoreHeatmapMode, []);
 
   return (
     <html lang="en" suppressHydrationWarning className="h-full">
@@ -98,7 +100,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="flex min-h-full flex-col">
         <PsPlusSprite />
-        <ThemeProvider>{children}</ThemeProvider>
+        {/* 水合不一致时 React 只重建最近的 Activity 子树；没有这层就从文档根重建，<html> 上 boot 脚本写的属性会被清掉。 */}
+        <ThemeProvider>
+          <Activity mode="visible">{children}</Activity>
+        </ThemeProvider>
         <PwaRegistration />
         <RestReady />
         <SiteAnalytics />

@@ -25,6 +25,15 @@ export function readHeatmapMode(): HeatmapMode {
   }
 }
 
+export function restoreHeatmapMode() {
+  if (document.documentElement.dataset.heatmap) return;
+  try {
+    applyDocument(coerce(localStorage.getItem(HEATMAP_STORAGE_KEY)));
+  } catch {
+    applyDocument("tokens");
+  }
+}
+
 export function writeHeatmapMode(mode: HeatmapMode) {
   try {
     localStorage.setItem(HEATMAP_STORAGE_KEY, mode);

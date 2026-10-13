@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import { Activity, Component, useEffect, useRef, useState, type ReactNode } from "react";
 import * as Sentry from "@sentry/react";
 import { RefreshCw, RotateCw } from "lucide-react";
 import { useSWRConfig } from "swr";
@@ -155,6 +155,7 @@ export class CardBoundary extends Component<CardErrorBoundaryProps, CardErrorBou
       void children;
       return <CardFault {...props} error={error} reset={this.reset} />;
     }
-    return this.props.children;
+    // 每张卡自成一个水合边界：这张卡文本对不上时只重建它自己，见 root.tsx 的 Layout。
+    return <Activity mode="visible">{this.props.children}</Activity>;
   }
 }
