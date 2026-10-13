@@ -7,6 +7,7 @@ import type { EnrichmentFollowUp, EnrichmentOutcome } from "@shared/track-enrich
 import type { LocalNowPlaying } from "@shared/types";
 
 import { serveAppleLookup, serveAppleMusic } from "./apple-music-http";
+import { driveCoreRound } from "./core-round";
 import { enrichTrack, followUpTrack } from "./enrichment";
 import type { Env } from "./env";
 import { runNamed, runScheduled } from "./registry";
@@ -48,7 +49,10 @@ const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status
 
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await runScheduled(bindEnv(env), controller.scheduledTime, { monitor: cronMonitor(env, Sentry.withMonitor), report: reportJobFailure });
+    await Promise.all([
+      runScheduled(bindEnv(env), controller.scheduledTime, { monitor: cronMonitor(env, Sentry.withMonitor), report: reportJobFailure }),
+      driveCoreRound(env.CORE, controller.scheduledTime),
+    ]);
   },
 
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -64,7 +68,8 @@ const collector = {
     }
     if (url.pathname === "/__dev/scheduled") {
       const time = Number(url.searchParams.get("time")) || Date.now();
-      return Response.json(await runScheduled(env, time));
+      const [outcomes] = await Promise.all([runScheduled(env, time), driveCoreRound(env.CORE, time)]);
+      return Response.json(outcomes);
     }
     return notFound();
   },

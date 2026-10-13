@@ -42,8 +42,10 @@ database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 [observability]
 enabled = true
 
+# Cloudflare 派给 core 的 cron 每轮都在进代码前 internalError，这一轮改由采集 Worker 每分钟经 StateCore.cronRound 驱动。
+# 空表让生产部署清掉残留的触发器；加回 cron 会和采集 Worker 的驱动叠成每轮两次。
 [triggers]
-crons = ["2,7,12,17,22,27,32,37,42,47,52,57 * * * *"]
+crons = []
 
 [[durable_objects.bindings]]
 name = "STATE"

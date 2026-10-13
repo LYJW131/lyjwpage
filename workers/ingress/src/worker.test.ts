@@ -82,6 +82,7 @@ function world(setup: Setup = {}) {
     commitRecentlyPlayed: async () => { throw new Error("not used"); },
     commitRecentTracks: async () => { throw new Error("not used"); },
     commitEnrichmentPatch: async () => { throw new Error("not used"); },
+    cronRound: async () => { throw new Error("not used"); },
   };
   const collector: CollectorRpc = {
     refresh: setup.refresh ?? (async (jobs) => {
