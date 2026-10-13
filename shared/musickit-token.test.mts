@@ -11,7 +11,7 @@ import {
   pastHalfLife,
   resolveTtlSeconds,
   signedOrigins,
-} from "@api/musickit-token";
+} from "@shared/musickit-token";
 
 const PRODUCTION = "https://lyjw.me,https://lyjw131.com,https://*.lyjw.workers.dev";
 const LITERAL = ["https://lyjw.me", "https://lyjw131.com"];
@@ -23,11 +23,11 @@ async function generateKeyPair(): Promise<{ pem: string; publicKey: CryptoKey }>
   return { pem: `-----BEGIN PRIVATE KEY-----\n${base64}\n-----END PRIVATE KEY-----\n`, publicKey: pair.publicKey };
 }
 
-function base64UrlDecode(text: string): Uint8Array {
+function base64UrlDecode(text: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array(Buffer.from(text.replace(/-/g, "+").replace(/_/g, "/"), "base64"));
 }
 
-function decodeJwt(token: string): { header: Record<string, unknown>; payload: Record<string, unknown>; signingInput: string; signature: Uint8Array } {
+function decodeJwt(token: string): { header: Record<string, unknown>; payload: Record<string, unknown>; signingInput: string; signature: Uint8Array<ArrayBuffer> } {
   const [header, payload, signature] = token.split(".");
   assert.ok(header && payload && signature, "JWT 应有三段");
   return {

@@ -1,27 +1,16 @@
+import { APPLE_LOOKUPS } from "@shared/apple-lookups";
 import { withRequestState } from "@shared/request-state";
 import { defaultEdgeCache, edgeCacheRequest, serveWithEdgeCache } from "./edge-cache";
-import * as lyrics from "./routes/lyrics/route";
-import * as motionArtwork from "./routes/motion-artwork/route";
 import { requestStore, type Env } from "./runtime";
 import { createPublicStorage } from "./storage-driver";
 
-type LookupRoute = {
-  GET(request: Request): Promise<Response>;
-  edgeCacheKey(request: Request): string | null;
-};
-
-const LOOKUP_ROUTES: Record<string, LookupRoute> = {
-  "/api/lyrics": lyrics,
-  "/api/motion-artwork": motionArtwork,
-};
-
 export function isLookupPath(path: string): boolean {
-  return Object.hasOwn(LOOKUP_ROUTES, path);
+  return APPLE_LOOKUPS.has(path);
 }
 
 export async function serveLookup(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
-  const route = LOOKUP_ROUTES[url.pathname];
+  const route = APPLE_LOOKUPS.get(url.pathname);
   if (!route) return new Response("Not found", { status: 404 });
   const key = route.edgeCacheKey(request);
   return serveWithEdgeCache({

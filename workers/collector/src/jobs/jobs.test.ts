@@ -12,6 +12,7 @@ import type { GithubRepoPayload } from "@shared/types";
 import { MemoryKv } from "../testing/memory-kv";
 import type { Env } from "../env";
 import { mergeRepoStats, refreshGithubRepo } from "./github-repo";
+import { appleRecentJob } from "./apple-recent";
 import { pagespeedJob } from "./pagespeed";
 import { refreshProviderStatus } from "./provider-status";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
@@ -123,6 +124,14 @@ test("sentry status carries a failed block with its own time, and only for a whi
 
 test("pagespeed waits per request for less than the job's runtime budget", () => {
   assert.ok(PAGESPEED_TIMEOUT_MS < pagespeedJob.maxRuntimeMinutes * 60_000);
+});
+
+test("apple-recent 缺签 developer token 的配置时干净跳过，不去读凭据", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  assert.deepEqual(await appleRecentJob.run({ env: { APPLE_MUSIC_TEAM_ID: "TEAM000000" } as Env, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing APPLE_MUSIC_PRIVATE_KEY, APPLE_MUSIC_KEY_ID",
+  });
 });
 
 test("site-deployments 缺配置干净跳过，缺哪个报哪个", async (t) => {

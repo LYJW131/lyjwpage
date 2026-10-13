@@ -5,7 +5,7 @@ import { SqliteStore } from "@shared/sqlite-store";
 import type { StorageCommand, StorageResult } from "@shared/storage-contract";
 import { commitPreparedIngest } from "./ingest-handlers";
 import { applyEnrichmentPatch } from "./enrichment-patch";
-import type { EnrichmentPatch } from "./listening-enrichment";
+import type { EnrichmentPatch } from "@shared/track-enrichment";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
 import { historyArchiveEnabled, pulseScoringEnabled, requestStore, type Env } from "./runtime";

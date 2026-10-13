@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
+import { appleDeveloperToken, readAppleMusicCredentials } from "@shared/apple-music-auth";
 import { CREDENTIAL_KEYS } from "@shared/credentials";
 
-import { appleDeveloperToken, resetAppleDeveloperTokenForTests } from "./apple-developer-token";
-import { readAppleMusicCredentials } from "@shared/apple-music-auth";
 import { installCollectorPorts } from "./ports";
 import type { Env } from "./env";
 import { bindEnv, unbindEnvForTests } from "./runtime";
@@ -13,21 +12,35 @@ import { MemoryKv } from "./testing/memory-kv";
 installCollectorPorts();
 
 afterEach(() => {
-  resetAppleDeveloperTokenForTests();
   unbindEnvForTests();
 });
 
-test("the developer token comes from the core and is reused until ten minutes before expiry", async (t) => {
-  let issued = 0;
-  let expiresAt = Date.now() + 60 * 60_000;
-  bindEnv({ CORE: { appleDeveloperToken: async () => ({ token: `t${++issued}`, expiresAt }) } } as unknown as Env);
-  assert.equal(await appleDeveloperToken(), "t1");
-  assert.equal(await appleDeveloperToken(), "t1");
-  assert.equal(issued, 1);
+function decodePart(part: string): Record<string, unknown> {
+  return JSON.parse(Buffer.from(part, "base64url").toString());
+}
 
-  t.mock.method(Date, "now", () => expiresAt - 9 * 60_000);
-  expiresAt += 60 * 60_000;
-  assert.equal(await appleDeveloperToken(), "t2");
+test("the developer token is signed here from APPLE_MUSIC_PRIVATE_KEY, without an origin claim and without asking the core", async () => {
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"])) as CryptoKeyPair;
+  const pkcs8 = Buffer.from((await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer).toString("base64");
+  bindEnv({
+    APPLE_MUSIC_PRIVATE_KEY: `-----BEGIN PRIVATE KEY-----\n${pkcs8}\n-----END PRIVATE KEY-----`,
+    APPLE_MUSIC_TEAM_ID: "TEAM000000",
+    APPLE_MUSIC_KEY_ID: "KEY0000000",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    CORE: { appleDeveloperToken: async () => assert.fail("采集 Worker 不应再向状态核心要令牌") },
+  } as unknown as Env);
+
+  const [header, payload, signature] = (await appleDeveloperToken()).split(".");
+  assert.ok(header && payload && signature, "JWT 应有三段");
+  assert.deepEqual(decodePart(header), { alg: "ES256", kid: "KEY0000000" });
+  assert.equal(decodePart(payload).iss, "TEAM000000");
+  assert.equal("origin" in decodePart(payload), false);
+  assert.ok(await crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    pair.publicKey,
+    Buffer.from(signature, "base64url"),
+    new TextEncoder().encode(`${header}.${payload}`),
+  ));
 });
 
 test("the music user token is read from the credentials KV with the reason when absent", async () => {
