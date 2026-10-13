@@ -40,8 +40,11 @@ function dayTurn(at: number, offsetSeconds: number) {
   return ((((at / 1000 + offsetSeconds) % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS) / DAY_SECONDS;
 }
 
+// workerd 与浏览器的三角函数末位可能不同，不取整会让 SSR 的 path 与水合对不上。
+const coordinate = (value: number) => Math.round(value * 100) / 100;
+
 function polar(radius: number, turn: number) {
-  return [CENTER + radius * Math.sin(turn * 2 * Math.PI), CENTER - radius * Math.cos(turn * 2 * Math.PI)] as const;
+  return [coordinate(CENTER + radius * Math.sin(turn * 2 * Math.PI)), coordinate(CENTER - radius * Math.cos(turn * 2 * Math.PI))] as const;
 }
 
 function arc(radius: number, from: number, to: number) {
@@ -152,16 +155,13 @@ export function DigestCard({
 
   return (
     <Card id="digest" className={cn("h-full scroll-mt-28", className)}>
-      <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-2.5 p-4 pl-4.5 lg:gap-x-4 lg:p-5">
-        <div className="col-start-1 row-start-1 flex min-w-0 flex-col gap-1">
-          <div className="text-xs text-muted-foreground">Last 24 hours</div>
-          <h2 className="text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
-        </div>
+      <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-4 p-4 lg:gap-x-4 lg:gap-y-5 lg:p-5">
+        <h2 lang="zh-CN" className="col-start-1 row-start-1 min-w-0 text-balance font-sans text-2xl font-bold leading-none tracking-tight lg:text-4xl">{data.headline}。</h2>
         <ul className={cn("col-start-1 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-1.5 gap-y-1.5 sm:gap-x-2", stale && "opacity-60")}>
           {data.highlights.map((item) => (
             <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
-              <span className="size-2 -translate-y-[3px] bg-(--tone)" aria-hidden />
-              <span className="whitespace-nowrap text-lg font-semibold leading-none tabular-nums text-(--tone)">{digestFigure(item)}</span>
+              <span className="size-2 self-center bg-(--tone)" aria-hidden />
+              <span className="whitespace-nowrap text-lg font-semibold leading-none tabular-nums">{digestFigure(item)}</span>
               <span className="truncate text-sm text-muted-foreground">{item.caption}</span>
             </li>
           ))}
