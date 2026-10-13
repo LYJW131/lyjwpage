@@ -56,25 +56,22 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
 
 ### 2. UI 浏览器端到端
 
-- 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `pnpm dev:override <端点> <夹具>`（夹具在 `workers/core/dev-fixtures/`，收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
-- 首屏（SSR）要渲染指定数据：本机起一个 node 代理转发 `https://lyjw.me`、只改被测端点，`PUBLIC_BACKEND_URL=http://localhost:<端口> pnpm dev`，node 用 `NODE_USE_ENV_PROXY=1` 走代理。只改浏览器请求用 Playwright `context.route`。
-- Playwright 用全局安装（容器里已验证可用）：
+浏览器取证先调共用脚本 `scripts/site-verify.mjs`（`--help` 看全部选项，输出 JSON，失败时 `next` 字段写下一步），不现写 Playwright 片段。每张卡的端点、可用夹具、选择器与「什么状态证明它对」在同目录 [`feature-map.json`](./feature-map.json)。
 
-  ```js
-  import { createRequire } from "node:module";
-  const { chromium } = createRequire("/opt/node22/lib/node_modules/")("playwright");
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  await page.goto(url, { waitUntil: "load", timeout: 45000 });
-  await page.waitForTimeout(4000);
-  ```
+`cards` 只检查三件事：卡片在、可见、无控制台错误与同源失败请求（环境噪声除外）。`feature-map.json` 的 `proves` 写的是「这张卡对了长什么样」的目标描述——里面的内容、数值、布局条件 `cards` 不查，由验证员用 `shot` 截图和 `page.evaluate` 量值自己取证。
 
-  - 不要用 `waitUntil: "networkidle"`：页面在轮询并开着 WebSocket，永远不会 idle。
-  - 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的，单列为环境噪声，不算站点错误。
-- 宽度：至少 1280 桌面与 375 手机（高 812）；改到布局行数或网格时加 iPad（820 / 1024）；有深色样式的改动加 `colorScheme: "dark"`。
-- 每个宽度：测可量化的预期（元素 boundingBox、computed style），截元素图或整页图，收集控制台错误与 `pageerror`。
-- 改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；站主一眼就能看出差几像素。
-- SSR 相关：`curl -sS <url>` 看原始 HTML，或用 `javaScriptEnabled: false` 的上下文截图。
+```bash
+node scripts/site-verify.mjs doctor --url http://localhost:3211        # 先体检：站点可达、playwright、Chrome、夹具开关
+node scripts/site-verify.mjs cards --url http://localhost:3211         # 逐卡检查存在与可见 + 控制台错误
+node scripts/site-verify.mjs shot --url http://localhost:3211 --widths 1280,375 --out /tmp/shots  # 两宽度整页截图
+node scripts/site-verify.mjs shot --url http://localhost:3211 --card pulse --theme both --out /tmp/shots  # 单卡明暗 clip
+```
+
+- 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `node scripts/site-verify.mjs override --endpoint <端点> --fixture <夹具> --dry-run`，确认命令后去掉 `--dry-run` 执行（夹具名从 feature-map.json 的 `endpoints` 里挑；收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
+- 首屏（SSR）要渲染指定数据：本机起一个 node 代理转发 `https://lyjw.me`、只改被测端点，`PUBLIC_BACKEND_URL=http://localhost:<端口> pnpm dev`，node 用 `NODE_USE_ENV_PROXY=1` 走代理。只改浏览器请求用 Playwright `context.route`；只看 SSR 长什么样用 `shot --ssr`，看文字用 `curl -sS <url>`。
+- 宽度：至少 1280 桌面与 375 手机；改到布局行数或网格时加 iPad（`--widths 1280,820,1024,375`）；有深色样式的改动加 `--theme dark`（或 `both`）。
+- 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的环境噪声，脚本单列为 `envNoise`，不算站点错误。页面常开 WebSocket、在轮询，没有 networkidle：脚本按 `--settle` 毫秒等待（默认 4000），别自己写 networkidle。
+- 脚本量不到的量化预期才自己补 `page.evaluate`：改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；站主一眼就能看出差几像素。量间距、字号、点击区还有 `node .claude/skills/lyjwpage-ui-design/ui-audit.mjs`。
 - 首帧、跳动类问题：录帧或按时间点截图（DOMContentLoaded 后第一帧、水合后、拿到新数据后），给出每一跳的毫秒数。
 - 云端没有 Safari / WebKit：凡是 WebKit 才有的行为，写进「没验到」，请站主实机看。
 - 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` 注入由主线程起、主线程管，保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
