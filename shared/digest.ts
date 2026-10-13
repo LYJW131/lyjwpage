@@ -17,7 +17,7 @@ export type DigestHighlight = {
 };
 
 export type DigestPayload = {
-  // 两到五个词、不带句号的英文短标题，点出这一天的主线。
+  // 三到五个汉字、不带标点的中文短标题，点出这一天的主线。
   headline: string;
   // 模型按重要性挑出的两到三格，topic 互不重复；可选项不足两格时可以更少。
   highlights: DigestHighlight[];

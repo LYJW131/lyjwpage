@@ -188,7 +188,7 @@ test("an unknown time zone falls back to the site's", () => {
   assert.match(digestFacts(views, NOW), /^Now: Tuesday afternoon in LYJW's time zone \(Asia\/Shanghai\)/);
 });
 
-const ANSWER = { headline: "Agents ran the day.", picks: ["coding", "tokens", "music"] };
+const ANSWER = { headline: "代码不停歇。", picks: ["coding", "tokens", "music"] };
 
 test("highlight options carry the card's numbers and labels, rounded like the facts, for non-empty topics only", () => {
   assert.deepEqual(digestHighlightOptions(baseViews()), [
@@ -213,7 +213,7 @@ test("compose calls the model once per new input and keeps the old digest while 
   const first = await composeDigest({ readStatus, createMessage, previousInputHash: null, now: NOW });
   assert.equal(first.status, "composed");
   if (first.status !== "composed") return;
-  assert.equal(first.digest.headline, "Agents ran the day");
+  assert.equal(first.digest.headline, "代码不停歇");
   assert.deepEqual(first.digest.highlights.map((item) => item.topic), ["coding", "tokens", "music"]);
   assert.deepEqual(first.digest.highlights[0], { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" });
   assert.equal(first.digest.model, "claude-sonnet-5-5");
@@ -266,9 +266,11 @@ test("picks outside the options, repeats and extras are dropped, and too few lef
   assert.deepEqual(parsed?.highlights.map((item) => item.topic), ["coding", "music", "tokens"]);
   assert.equal(parseDigest(JSON.stringify({ headline: ANSWER.headline, picks: ["coding", "site"] }), options), null);
   assert.equal(parseDigest(JSON.stringify({ headline: "A".repeat(60), picks: ANSWER.picks }), options), null);
-  assert.equal(parseDigest(JSON.stringify({ headline: "Agents", picks: ANSWER.picks }), options), null);
-  assert.equal(parseDigest(JSON.stringify({ headline: "Agents ran all of the day", picks: ANSWER.picks }), options), null);
-  assert.deepEqual(parseDigest(JSON.stringify({ headline: "Quiet day", picks: ["fitness"] }), options.filter((item) => item.topic === "fitness"))?.highlights.map((item) => item.topic), ["fitness"]);
+  assert.equal(parseDigest(JSON.stringify({ headline: "写代码", picks: ANSWER.picks }), options)?.headline, "写代码");
+  for (const headline of ["代码", "代码一整天不停", "Agents ran the day", "代码，不停", "M5 驱动"]) {
+    assert.equal(parseDigest(JSON.stringify({ headline, picks: ANSWER.picks }), options), null, headline);
+  }
+  assert.deepEqual(parseDigest(JSON.stringify({ headline: "安静的一天", picks: ["fitness"] }), options.filter((item) => item.topic === "fitness"))?.highlights.map((item) => item.topic), ["fitness"]);
 });
 
 test("a trophy count from a capped list becomes an at-least option", () => {
