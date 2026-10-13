@@ -6,6 +6,7 @@
 - 和 Cloudflare 相关的查询和调用优先使用 Cloudflare Code Mode MCP。
 - 默认用简洁中文沟通，先说结果，再说明关键原因、验证和剩余问题。只报告实际完成的工作；区分本地修改、测试通过和已部署。
 - 站主与 Claude 的协作约定（分工、什么要等他点头、怎么汇报、合并门槛）见 `HUMAN.md`。
+- 项目记忆在仓库里有镜像 `.claude/memory/`（`MEMORY.md` 为索引，每主题一个文件）。改了 Claude Projects 的项目记忆，同一轮把改动同步进镜像并开小 docs PR，CI 绿就合；同步与脱敏规则见 `.claude/memory/README.md`。
 
 # 禁区
 

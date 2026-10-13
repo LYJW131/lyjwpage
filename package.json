@@ -12,6 +12,7 @@
     "docs:architecture": "node scripts/architecture-diagram.mjs",
     "docs:check": "node scripts/docs-check.mjs",
     "docs:comment-only": "node scripts/comment-only-check.mjs",
+    "memory:mirror": "node scripts/memory-mirror.mjs",
     "build": "node scripts/build.mjs",
     "merge-message": "node scripts/merge-message.mjs",
     "preview:deploy": "node scripts/deploy-site-preview.mjs",

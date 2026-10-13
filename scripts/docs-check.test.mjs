@@ -246,11 +246,12 @@ test("record 的 sha：非浅克隆时核实存在，浅克隆里跳过", () => 
   assert.deepEqual(list(ctxOf(files, { commits: ["abc1234"], shallow: true })), []);
 });
 
-test("整体：跳过子模块与 node_modules 里的 md，结果按文件与行号排序，输出可读", () => {
+test("整体：跳过子模块、node_modules 与项目记忆镜像里的 md，结果按文件与行号排序，输出可读", () => {
   const ctx = ctxOf(
     {
       "README.md": "`src/gone.ts`\n[断](./none.md)\n",
       "node_modules/pkg/README.md": "`src/gone.ts`\n",
+      ".claude/memory/topic.md": "`src/gone.ts` 2026-10 起\n",
       "reporters/hub/README.md": "`src/gone.ts`\n",
       "src/a.ts": "",
     },
