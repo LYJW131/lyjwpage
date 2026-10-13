@@ -14,7 +14,7 @@ import type { SiteDeployment, SiteDeploymentState } from "@shared/site-deploymen
 
 const AVATAR_PX = 28;
 
-const CONTRIBUTOR_LIMIT = 6;
+export const CONTRIBUTOR_LIMIT = 6;
 
 const RANK_COLORS = [
   "var(--signal-blue)",
