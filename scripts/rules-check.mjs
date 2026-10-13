@@ -14,6 +14,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -34,47 +35,82 @@ const FETCH_HOST_RE = /\b(?:fetch|sendBeacon|EventSource|WebSocket)\s*\(\s*["'`]
 const extOf = (file) => path.posix.extname(file).slice(1).toLowerCase();
 
 
-// 行内注释起点：跳过引号内的内容；`//` 不认 `://`（URL）；`/*` 会跨行。
-export function commentRegion(line, inBlock, slashed, hashed) {
-  let quote = null;
-  for (let i = 0; i < line.length; i += 1) {
-    if (inBlock) {
-      const close = line.indexOf("*/", i);
-      if (close === -1) return { index: 0, inBlock: true };
-      inBlock = false;
-      i = close + 1;
-      continue;
-    }
-    const char = line[i];
-    if (quote) {
-      if (char === "\\") i += 1;
-      else if (char === quote) quote = null;
-      continue;
-    }
-    if (char === '"' || char === "'" || char === "`") { quote = char; continue; }
-    if (slashed && char === "/" && line[i + 1] === "/" && line[i - 1] !== ":") return { index: i, inBlock: false };
-    if (slashed && char === "/" && line[i + 1] === "*") { inBlock = true; i += 1; continue; }
-    if (hashed && char === "#" && (i === 0 || /\s/.test(line[i - 1]))) return { index: i, inBlock: false };
-  }
-  return { index: -1, inBlock };
-}
-
-export function checkTodo(file, text) {
+// 全文件注释扫描：跳过引号与模板串内容，逐条给出注释的行号与起止偏移；
+// 同行多个注释、块注释同行闭合、注释后还有代码都各自成条。
+export function commentTexts(file, text) {
   const ext = extOf(file);
   const slashed = SLASH_COMMENT_EXTS.has(ext);
   const hashed = HASH_COMMENT_EXTS.has(ext);
   if (!slashed && !hashed) return [];
-  const issues = [];
-  let inBlock = false;
-  text.split("\n").forEach((line, index) => {
-    const region = commentRegion(line, inBlock, slashed, hashed);
-    inBlock = region.inBlock;
-    if (region.index === -1) return;
-    const comment = line.slice(region.index);
-    if (TODO_RE.test(comment) && !TICKET_RE.test(comment)) {
-      issues.push({ file, line: index + 1, rule: "todo-ticket", message: `待办标记要挂跟踪单号：写成 TODO(#123) 或带上链接；现在就去做的就别留标记（AGENTS.md「文档与注释」）。` });
+  const comments = [];
+  const n = text.length;
+  let i = 0;
+  let line = 1;
+  let quote = null;
+  while (i < n) {
+    const char = text[i];
+    if (char === "\n") { line += 1; i += 1; continue; }
+    if (quote) {
+      if (char === "\\") { if (text[i + 1] === "\n") line += 1; i += 2; continue; }
+      if (char === quote) quote = null;
+      i += 1;
+      continue;
     }
-  });
+    if (slashed && (char === '"' || char === "'" || char === "`")) { quote = char; i += 1; continue; }
+    if (slashed && char === "/" && text[i + 1] === "/" && text[i - 1] !== ":") {
+      const start = i;
+      let end = i;
+      while (end < n && text[end] !== "\n") end += 1;
+      comments.push({ line, start, end, text: text.slice(start, end) });
+      i = end;
+      continue;
+    }
+    if (slashed && char === "/" && text[i + 1] === "*") {
+      const start = i;
+      const startLine = line;
+      let end = i + 2;
+      while (end < n && !(text[end] === "*" && text[end + 1] === "/")) end += 1;
+      end = Math.min(end + 2, n);
+      const comment = text.slice(start, end);
+      comments.push({ line: startLine, start, end, text: comment });
+      line += (comment.match(/\n/g) ?? []).length;
+      i = end;
+      continue;
+    }
+    if (hashed && char === "#" && (i === 0 || /\s/.test(text[i - 1]))) {
+      const start = i;
+      let end = i;
+      while (end < n && text[end] !== "\n") end += 1;
+      comments.push({ line, start, end, text: text.slice(start, end) });
+      i = end;
+      continue;
+    }
+    i += 1;
+  }
+  return comments;
+}
+
+// 把注释内容抹成等长空位（保留换行与行号），供逐行扫描的检查跳过注释里的字样。
+export function maskComments(file, text) {
+  const comments = commentTexts(file, text);
+  if (comments.length === 0) return text;
+  let out = "";
+  let cursor = 0;
+  for (const { start, end } of comments) {
+    out += text.slice(cursor, start) + text.slice(start, end).replace(/[^\n]/g, " ");
+    cursor = end;
+  }
+  return out + text.slice(cursor);
+}
+
+export function checkTodo(file, text) {
+  const issues = [];
+  for (const comment of commentTexts(file, text)) {
+    const match = TODO_RE.exec(comment.text);
+    if (!match || TICKET_RE.test(comment.text)) continue;
+    const line = comment.line + (comment.text.slice(0, match.index).match(/\n/g) ?? []).length;
+    issues.push({ file, line, rule: "todo-ticket", message: `待办标记要挂跟踪单号：写成 TODO(#123) 或带上链接；现在就去做的就别留标记（AGENTS.md「文档与注释」）。` });
+  }
   return issues;
 }
 
@@ -99,18 +135,62 @@ export function checkFetchHost(file, text) {
   return issues;
 }
 
+const TS_PARSE_EXTS = new Set(["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"]);
+const JSX_EXTS = new Set(["tsx", "jsx"]);
+const MERGE_CALLS = new Set(["cn", "clsx", "classNames", "twMerge"]);
+const TS_PACKAGE = createRequire(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"));
+let tsModule;
+const loadTs = () => (tsModule ??= TS_PACKAGE("typescript"));
+
+// 同一串类名才谈得上配对：JSX 的 className 属性是一个单元（其中 cn()/clsx() 的参数一起算），
+// 没有 className 包裹时以最外层的类名合并调用为单元，都不是就按单个字符串字面量判断。
 export function checkScrollbarPair(file, text) {
+  const ext = extOf(file);
+  if (!TS_PARSE_EXTS.has(ext)) return [];
+  const ts = loadTs();
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const isClassNameAttr = (node) => ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === "className";
+  const isMergeCall = (node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && MERGE_CALLS.has(node.expression.text);
+  const unitOf = (node) => {
+    let outerCall = null;
+    for (let n = node.parent; n; n = n.parent) {
+      if (isClassNameAttr(n)) return n;
+      if (isMergeCall(n)) outerCall = n;
+    }
+    return outerCall ?? node;
+  };
+  const units = new Map();
+  const addPiece = (node, raw) => {
+    const unit = unitOf(node);
+    let entry = units.get(unit);
+    if (!entry) {
+      const { line } = sf.getLineAndCharacterOfPosition(unit.getStart(sf));
+      entry = { line: line + 1, parts: [] };
+      units.set(unit, entry);
+    }
+    entry.parts.push(raw);
+  };
+  const visit = (node) => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) addPiece(node, node.text);
+    else if (ts.isTemplateExpression(node)) {
+      addPiece(node.head, node.head.text);
+      for (const span of node.templateSpans) addPiece(span.literal, span.literal.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
   const issues = [];
-  text.split("\n").forEach((line, index) => {
+  for (const { line, parts } of units.values()) {
     // 只认 Tailwind 写法：scrollbar-none 类与 [&::-webkit-scrollbar]:… 任意变体；
     // 原生 CSS（html-preview 里注入 iframe 的 ::-webkit-scrollbar{display:none}）不算。
-    const ff = line.includes("scrollbar-none");
-    const webkit = line.includes("::-webkit-scrollbar]");
+    const joined = parts.join(" ");
+    const ff = joined.includes("scrollbar-none");
+    const webkit = joined.includes("::-webkit-scrollbar]");
     if (ff !== webkit) {
-      issues.push({ file, line: index + 1, rule: "scrollbar-pair", message: "隐藏滚动条两句缺一不可：scrollbar-none 管 Firefox，[&::-webkit-scrollbar]:hidden 管 Chromium，写在同一行（DESIGN.md「滚动区」）。" });
+      issues.push({ file, line, rule: "scrollbar-pair", message: "隐藏滚动条两句缺一不可：scrollbar-none 管 Firefox，[&::-webkit-scrollbar]:hidden 管 Chromium，写在同一个 className 表达式里（DESIGN.md「滚动区」）。" });
     }
-  });
-  return issues;
+  }
+  return issues.sort((a, b) => a.line - b.line);
 }
 
 const SITE_SOURCE = /^src\//;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { compare, scan, sortedBaseline, SPACING_SCALE } from "./design-scale-check.mjs";
+import { compare, scan, scanSource, sortedBaseline, SPACING_SCALE } from "./design-scale-check.mjs";
 
 const tokens = (text) => scan(text).map((hit) => `${hit.kind}:${hit.token}`);
 
@@ -88,6 +88,27 @@ test("裸 hex 与 oklch/rgb/hsl 色值算违规，token 引用与锚点/id 不�
     tokens(`const C = "#f5c542"; fill="#FFE842" bg-[oklch(0.65_0.17_145)] style={{ color: "#fff6d5" }} "rgba(0,0,0,.5)" url(#paint0) href="#section" id="intro" `),
     ["rawColor:#f5c542", "rawColor:#FFE842", "rawColor:oklch(0.65_0.17_145)", "rawColor:#fff6d5", "rawColor:rgba(0,0,0,.5)"],
   );
+});
+
+test("3/4 位 hex 也算：任意值、SVG 属性、颜色属性上下文", () => {
+  assert.deepEqual(
+    tokens(`className="bg-[#f00] text-[#abc8]" stroke="#fff" stopColor="#000" `),
+    ["rawColor:#f00", "rawColor:#abc8", "rawColor:#fff", "rawColor:#000"],
+  );
+});
+
+test("3/4 位 hex 不误伤：#id 选择器、href 锚点、url(#…)、工单号", () => {
+  assert.deepEqual(
+    tokens(`document.querySelector("#abc") el.closest("#def") <a href="#abc"> url(#fff) location.hash = "#123" "see #123 for details" `),
+    [],
+  );
+  // 全数字的 3/4 位（#000、#123）只在颜色属性上下文算，裸文本里像工单号不算
+  assert.deepEqual(tokens(`"issue #123" stroke="#123" fill: "#4567" `), ["rawColor:#123", "rawColor:#4567"]);
+});
+
+test("注释里的类名与色值不进场（scanSource 先屏蔽注释）", () => {
+  const hits = scanSource("src/lib/x.ts", `const a = "mt-3"; // TODO(#256) 之后改 mt-4\n/* p-9 #fff 注释里的都不算 */\nconst b = "gap-2.5";`);
+  assert.deepEqual(hits.map((h) => `${h.kind}:${h.token}`), ["margin:mt-3", "spacing:gap-2.5"]);
 });
 
 test("按类名比较：换成另一个违规值算增加，变少只报 shrank", () => {
