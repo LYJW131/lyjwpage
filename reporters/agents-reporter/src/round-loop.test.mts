@@ -33,15 +33,21 @@ function harness(pushResults: boolean[], { reuseMs = 300_000, stepMs = 0 } = {})
   return { loop, stats: () => ({ collected, pushed, sleeps }) };
 }
 
-test("上报失败按退避重发同一封，不重新采集", async () => {
-  const { loop, stats } = harness([false, false, true]);
+test("上报失败按退避重发同一份采集结果，成功后立即重采一次再等下一轮", async () => {
+  const { loop, stats } = harness([false, false, true, true]);
   await assert.rejects(loop, Stop);
-  assert.deepEqual(stats(), { collected: 1, pushed: [1, 1, 1], sleeps: [2_000, 4_000] });
+  assert.deepEqual(stats(), { collected: 2, pushed: [1, 1, 1, 2], sleeps: [2_000, 4_000] });
+});
+
+test("一次成功的上报直接进入正常等待", async () => {
+  const { loop, stats } = harness([true]);
+  await assert.rejects(loop, Stop);
+  assert.deepEqual(stats(), { collected: 1, pushed: [1], sleeps: [] });
 });
 
 test("待发信封超过 reuseMs 才重新采集", async () => {
-  const { loop, stats } = harness([false, false, true], { reuseMs: 5_000, stepMs: 3_000 });
+  const { loop, stats } = harness([false, false, true, true], { reuseMs: 5_000, stepMs: 3_000 });
   await assert.rejects(loop, Stop);
-  assert.deepEqual(stats().collected, 2);
-  assert.deepEqual(stats().pushed, [1, 1, 2]);
+  assert.deepEqual(stats().collected, 3);
+  assert.deepEqual(stats().pushed, [1, 1, 2, 3]);
 });

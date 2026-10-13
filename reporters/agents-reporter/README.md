@@ -259,7 +259,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 
 - 单家失败发错误行；整轮采集或上报失败才退避，进程不退。
 - 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
-- 整轮采集 / 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查活动。上报失败只重发同一封，待发信封超过在用档间隔才重新采集（`src/round-loop.ts#runRounds`）。单家失败仍照发错误行，成功上报后按两档等下一轮。
+- 整轮采集 / 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查活动。上报失败只重发同一份采集结果，超过在用档间隔才重新采集，重发成功后立即重采一次（`src/round-loop.ts#runRounds`）。单家失败仍照发错误行，成功上报后按两档等下一轮。
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
 
