@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type Anthropic from "@anthropic-ai/sdk";
 import { STATUS_VIEWS } from "@shared/status-views";
 
-import { composeDigest, DIGEST_SYSTEM_PROMPT, digestInputHash, parseDigest } from "./digest/compose";
+import type { DigestHighlight, DigestTopic } from "@shared/digest";
+
+import { composeDigest, digestInputHash, isTagline, PRIMARY_CANDIDATES, taglineCandidates, TAGLINE_INSTRUCTIONS, type PickTagline } from "./digest/compose";
 import { digestFacts, digestHighlightOptions, digestMessage, type DigestViews } from "./digest/facts";
+import { DIGEST_SITUATIONS, digestScene, type DigestSituation } from "./digest/situation";
+import { DIGEST_TAGLINES } from "./digest/taglines";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -97,14 +100,6 @@ function reader(views: DigestViews) {
   return async (path: string) => Response.json({ ok: true, data: byPath.get(path) ?? null });
 }
 
-function message(text: string, stop: Anthropic.Message["stop_reason"] = "end_turn"): Anthropic.Message {
-  return {
-    id: "msg_1", type: "message", role: "assistant", model: "claude-sonnet-5-5",
-    content: [{ type: "text", text, citations: null }],
-    stop_reason: stop, stop_sequence: null,
-  } as unknown as Anthropic.Message;
-}
-
 test("facts keep the day's highlights, in the owner's time zone, and leave empty lanes out", () => {
   const facts = digestFacts(baseViews(), NOW);
   assert.match(facts, /^Now: Tuesday afternoon in LYJW's time zone \(Asia\/Singapore\)/);
@@ -175,11 +170,7 @@ test("facts round small changes away, so an unchanged hour keeps the same input 
   after.pulse!.lanes.tokens.summary.totalTokens += 200_000;
   after.pulse!.window = { from: FROM + 20 * 60_000, to: NOW + 20 * 60_000 };
   assert.equal(digestFacts(after, NOW + 20 * 60_000), digestFacts(before, NOW));
-  assert.equal(
-    await digestInputHash("claude-sonnet-5-5", digestFacts(after, NOW + 20 * 60_000)),
-    await digestInputHash("claude-sonnet-5-5", digestFacts(before, NOW)),
-  );
-  assert.notEqual(await digestInputHash("claude-haiku-5-5", digestFacts(before, NOW)), await digestInputHash("claude-sonnet-5-5", digestFacts(before, NOW)));
+  assert.equal(await digestInputHash(digestFacts(after, NOW + 20 * 60_000)), await digestInputHash(digestFacts(before, NOW)));
 });
 
 test("an unknown time zone falls back to the site's", () => {
@@ -188,7 +179,17 @@ test("an unknown time zone falls back to the site's", () => {
   assert.match(digestFacts(views, NOW), /^Now: Tuesday afternoon in LYJW's time zone \(Asia\/Shanghai\)/);
 });
 
-const ANSWER = { quiet: false, headline: "代码不停歇。", picks: ["coding", "tokens", "music"] };
+function recorder(choice: unknown = "t2") {
+  const calls: { state: unknown; questions: Record<string, unknown> }[] = [];
+  const pick: PickTagline = async (input) => {
+    calls.push(input);
+    if (choice instanceof Error) throw choice;
+    return { answers: { tagline: { type: "choice", choice } } };
+  };
+  return { calls, pick };
+}
+
+const LOCAL_DATE = "2026-10-13";
 
 test("highlight options carry the card's numbers and labels, rounded like the facts, for non-empty topics only", () => {
   assert.deepEqual(digestHighlightOptions(baseViews()), [
@@ -202,92 +203,143 @@ test("highlight options carry the card's numbers and labels, rounded like the fa
   assert.match(digestMessage(baseViews(), NOW).content, /\n\nHighlight options: coding: 9 h coding; agents: 7 h agent time; tokens: 42M tokens; music: 3\.5 h music; watching: 50 min watching; fitness: 3\.3K steps$/);
 });
 
-test("compose calls the model once per new input and keeps the old digest while the facts stand still", async () => {
-  const calls: Anthropic.MessageCreateParamsNonStreaming[] = [];
-  const createMessage = async (params: Anthropic.MessageCreateParamsNonStreaming) => {
-    calls.push(params);
-    return message(JSON.stringify(ANSWER));
-  };
+test("compose reads the situation by rule, lets Clef pick one stored tagline, and skips the round while the facts stand still", async () => {
+  const { calls, pick } = recorder("t2");
   const readStatus = reader(baseViews());
+  const candidates = taglineCandidates("agentsLead", [], LOCAL_DATE);
 
-  const first = await composeDigest({ readStatus, createMessage, previousInputHash: null, now: NOW });
+  const first = await composeDigest({ readStatus, pick, previousInputHash: null, previousHeadline: null, now: NOW });
   assert.equal(first.status, "composed");
   if (first.status !== "composed") return;
-  assert.equal(first.digest.headline, "代码不停歇");
-  assert.deepEqual(first.digest.highlights.map((item) => item.topic), ["coding", "tokens", "music"]);
+  assert.equal(first.digest.headline, candidates[2]);
+  assert.equal(first.digest.model, "@cf/cloudflare/clef");
+  assert.deepEqual(first.digest.highlights.map((item) => item.topic), ["coding", "agents", "tokens"]);
   assert.deepEqual(first.digest.highlights[0], { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" });
-  assert.equal(first.digest.model, "claude-sonnet-5-5");
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].system, DIGEST_SYSTEM_PROMPT);
-  assert.equal(calls[0].output_config?.effort, "low");
-  assert.equal(calls[0].output_config?.format?.type, "json_schema");
-  assert.equal(calls[0].messages[0].content, digestMessage(baseViews(), NOW).content);
+  assert.deepEqual(calls[0].questions, {
+    tagline: { type: "choice", instructions: TAGLINE_INSTRUCTIONS, criteria: Object.fromEntries(candidates.map((line, index) => [`t${index}`, line])) },
+  });
+  assert.deepEqual(calls[0].state, { facts: digestMessage(baseViews(), NOW).content.split("\n").filter(Boolean), situation: DIGEST_SITUATIONS.agentsLead, accents: [] });
 
-  assert.deepEqual(await composeDigest({ readStatus, createMessage, previousInputHash: first.digest.inputHash, now: NOW }), { status: "unchanged" });
+  assert.deepEqual(await composeDigest({ readStatus, pick, previousInputHash: first.digest.inputHash, previousHeadline: first.digest.headline, now: NOW }), { status: "unchanged" });
   assert.equal(calls.length, 1);
 });
 
-test("compose fails the round instead of publishing a refusal, a cut-off answer or a digest missing a view", async () => {
+test("the last headline stays while it is still a candidate, and a new one is picked once it is not", async () => {
+  const { calls, pick } = recorder("t0");
   const readStatus = reader(baseViews());
-  for (const stop of ["refusal", "max_tokens"] as const) {
-    await assert.rejects(
-      composeDigest({ readStatus, createMessage: async () => message("{", stop), previousInputHash: null, now: NOW }),
-      new RegExp(stop),
-    );
+  const kept = taglineCandidates("agentsLead", [], LOCAL_DATE)[4];
+  const stay = await composeDigest({ readStatus, pick, previousInputHash: "older", previousHeadline: kept, now: NOW });
+  assert.equal(stay.status === "composed" && stay.digest.headline, kept);
+  assert.equal(stay.status === "composed" && stay.digest.model, "rules");
+  assert.equal(calls.length, 0);
+
+  const gone = await composeDigest({ readStatus, pick, previousInputHash: "older", previousHeadline: DIGEST_TAGLINES.trophyHunt[0], now: NOW });
+  assert.equal(gone.status === "composed" && gone.digest.headline, taglineCandidates("agentsLead", [], LOCAL_DATE)[0]);
+  assert.equal(calls.length, 1);
+});
+
+test("without Clef, or when Clef fails or answers off the list, the rules take the first candidate", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const readStatus = reader(baseViews());
+  const first = taglineCandidates("agentsLead", [], LOCAL_DATE)[0];
+  for (const pick of [undefined, recorder(new Error("AI down")).pick, recorder("t99").pick, recorder("coding").pick]) {
+    const outcome = await composeDigest({ readStatus, pick, previousInputHash: null, previousHeadline: null, now: NOW });
+    assert.equal(outcome.status === "composed" && outcome.digest.headline, first);
+    assert.equal(outcome.status === "composed" && outcome.digest.model, "rules");
   }
-  await assert.rejects(
-    composeDigest({ readStatus, createMessage: async () => message("not json"), previousInputHash: null, now: NOW }),
-    /no usable headline and highlights/,
-  );
+});
+
+test("compose fails the round instead of publishing a digest missing a view", async () => {
+  const readStatus = reader(baseViews());
   const withoutPulse = { ...baseViews(), pulse: null };
-  await assert.rejects(
-    composeDigest({ readStatus: reader(withoutPulse), createMessage: async () => message(JSON.stringify(ANSWER)), previousInputHash: null, now: NOW }),
-    /Pulse view unavailable/,
-  );
+  const { calls, pick } = recorder();
+  await assert.rejects(composeDigest({ readStatus: reader(withoutPulse), pick, previousInputHash: null, previousHeadline: null, now: NOW }), /Pulse view unavailable/);
   const workoutsPath = STATUS_VIEWS.workouts.path;
   const failures: [(path: string) => Promise<Response>, RegExp][] = [
     [async (path) => (path === workoutsPath ? Response.json({ ok: false, error: "状态暂不可用" }) : readStatus(path)), /Digest view workouts unavailable: 状态暂不可用/],
     [async (path) => (path === workoutsPath ? new Response("Bad gateway", { status: 502 }) : readStatus(path)), /Digest view workouts unavailable: HTTP 502/],
     [async (path) => { if (path === workoutsPath) throw new Error("RPC dropped"); return readStatus(path); }, /RPC dropped/],
   ];
-  let modelCalls = 0;
   for (const [failing, error] of failures) {
-    await assert.rejects(
-      composeDigest({ readStatus: failing, createMessage: async () => { modelCalls += 1; return message(JSON.stringify(ANSWER)); }, previousInputHash: null, now: NOW }),
-      error,
-    );
+    await assert.rejects(composeDigest({ readStatus: failing, pick, previousInputHash: null, previousHeadline: null, now: NOW }), error);
   }
-  assert.equal(modelCalls, 0);
+  assert.equal(calls.length, 0);
 });
 
-test("picks outside the options, repeats and extras are dropped, and too few left fails the round", () => {
-  const options = digestHighlightOptions(baseViews());
-  const parsed = parseDigest(JSON.stringify({ headline: ANSWER.headline, picks: ["coding", "coding", "site", "weather", "music", "tokens", "fitness"] }), options);
-  assert.deepEqual(parsed?.highlights.map((item) => item.topic), ["coding", "music", "tokens"]);
-  assert.equal(parseDigest(JSON.stringify({ headline: ANSWER.headline, picks: ["coding", "site"] }), options), null);
-  assert.equal(parseDigest(JSON.stringify({ headline: "A".repeat(60), picks: ANSWER.picks }), options), null);
-  assert.equal(parseDigest(JSON.stringify({ headline: "写代码", picks: ANSWER.picks }), options)?.headline, "写代码");
-  for (const headline of ["代码", "代码一整天不停", "Agents ran the day", "代码，不停", "M5 驱动"]) {
-    assert.equal(parseDigest(JSON.stringify({ headline, picks: ANSWER.picks }), options), null, headline);
-  }
-  assert.deepEqual(parseDigest(JSON.stringify({ headline: "安静的一天", picks: ["fitness"] }), options.filter((item) => item.topic === "fitness"))?.highlights.map((item) => item.topic), ["fitness"]);
-});
+const hoursOption = (topic: DigestTopic, value: number, caption: string = topic): DigestHighlight => ({ topic, value, unit: "hours", atLeast: false, caption });
+const minutesOption = (topic: DigestTopic, value: number): DigestHighlight => ({ topic, value, unit: "minutes", atLeast: false, caption: topic });
+const countOption = (topic: DigestTopic, value: number, caption: string): DigestHighlight => ({ topic, value, unit: "count", atLeast: false, caption });
+const NO_SIGNALS = { weekend: false, workoutMinutes: 0, date: LOCAL_DATE };
 
 test("a quiet day publishes an empty digest that the card shows as the clock, and keeps the input hash", async () => {
-  const readStatus = reader(baseViews());
-  const outcome = await composeDigest({
-    readStatus,
-    createMessage: async () => message(JSON.stringify({ quiet: true, headline: "Ignored", picks: ["coding"] })),
-    previousInputHash: null,
-    now: NOW,
-  });
+  const views = baseViews();
+  const lanes = views.pulse!.lanes;
+  lanes.coding.summary = { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 };
+  lanes.tokens.summary.totalTokens = 0;
+  lanes.listening = stateLane([{ at: 9, minutes: 15, title: "GUM&DROP", subtitle: "Hoshimachi Suisei" }]) as typeof lanes.listening;
+  lanes.watching = stateLane([]) as typeof lanes.watching;
+  const { calls, pick } = recorder();
+  const outcome = await composeDigest({ readStatus: reader(views), pick, previousInputHash: null, previousHeadline: "代码不停歇", now: NOW });
   assert.equal(outcome.status, "composed");
   if (outcome.status !== "composed") return;
   assert.equal(outcome.digest.quiet, true);
   assert.equal(outcome.digest.headline, "");
   assert.deepEqual(outcome.digest.highlights, []);
   assert.match(outcome.digest.inputHash, /^[0-9a-f]{64}$/);
-  assert.equal(parseDigest(JSON.stringify({ ...ANSWER, quiet: false }), digestHighlightOptions(baseViews()))?.quiet, undefined);
+  assert.equal(calls.length, 0);
+});
+
+test("the quiet line matches what the model used to call quiet", () => {
+  const steps = countOption("fitness", 3_300, "steps");
+  assert.deepEqual(digestScene([minutesOption("music", 15), steps], NO_SIGNALS), { quiet: true });
+  assert.deepEqual(digestScene([steps], NO_SIGNALS), { quiet: true });
+  assert.equal(digestScene([hoursOption("coding", 1.5), steps], NO_SIGNALS).quiet, false);
+  assert.equal(digestScene([hoursOption("music", 2.5), steps], NO_SIGNALS).quiet, false);
+  assert.equal(digestScene([steps], { ...NO_SIGNALS, workoutMinutes: 40 }).quiet, false);
+  assert.equal(digestScene([countOption("trophies", 1, "trophies")], NO_SIGNALS).quiet, false);
+});
+
+test("situations, accents and picks follow the day's lead", () => {
+  const scene = (options: DigestHighlight[], signals = NO_SIGNALS) => {
+    const result = digestScene(options, signals);
+    return result.quiet ? "quiet" : `${result.primary} [${result.accents.join(",")}] ${result.highlights.map((item) => item.topic).join(",")}`;
+  };
+  const tokens = (value: number) => countOption("tokens", value, "tokens");
+  const commits = (value: number) => countOption("site", value, "commits");
+  const cases: [DigestHighlight[], typeof NO_SIGNALS, string][] = [
+    [[hoursOption("coding", 23), hoursOption("agents", 17.5, "agent time"), tokens(3e9), commits(10), hoursOption("music", 12.5), countOption("fitness", 2_300, "steps")], NO_SIGNALS,
+      "agentsAllDay [soundtrack,shipping,tokenFlood] coding,agents,tokens"],
+    [[hoursOption("coding", 13), hoursOption("agents", 2, "agent time"), tokens(5e6)], NO_SIGNALS, "codingAllDay [] coding,tokens,agents"],
+    [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time"), commits(12)], { ...NO_SIGNALS, weekend: true }, "shipping [weekend] site,coding,agents"],
+    [[hoursOption("coding", 6), hoursOption("agents", 5, "agent time"), tokens(8e7)], NO_SIGNALS, "agentsLead [] coding,agents,tokens"],
+    [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time")], { ...NO_SIGNALS, workoutMinutes: 45 }, "handsOn [workoutToo] coding,agents"],
+    [[hoursOption("coding", 2), tokens(1e6), hoursOption("music", 1)], NO_SIGNALS, "codingLight [] coding,tokens"],
+    [[hoursOption("coding", 2), hoursOption("music", 8)], NO_SIGNALS, "musicLong [] music,coding"],
+    [[hoursOption("watching", 4), hoursOption("music", 1), hoursOption("coding", 1)], NO_SIGNALS, "watchingBinge [] watching,music"],
+    [[hoursOption("gaming", 2), countOption("trophies", 4, "trophies"), hoursOption("coding", 1)], NO_SIGNALS, "trophyHunt [] trophies,gaming"],
+    [[hoursOption("coding", 6), hoursOption("agents", 1, "agent time"), hoursOption("gaming", 3)], NO_SIGNALS, "workAndPlay [] coding,gaming,agents"],
+    [[countOption("fitness", 9_000, "steps"), hoursOption("music", 1)], { ...NO_SIGNALS, workoutMinutes: 60 }, "workout [] fitness,music"],
+    [[countOption("fitness", 16_000, "steps"), minutesOption("coding", 30)], NO_SIGNALS, "walking [] fitness,coding"],
+  ];
+  for (const [options, signals, expected] of cases) assert.equal(scene(options, signals), expected);
+});
+
+test("the tagline library covers every situation with enough well-formed, distinct lines", () => {
+  const all = Object.values(DIGEST_TAGLINES).flat();
+  assert.deepEqual(Object.keys(DIGEST_TAGLINES).sort(), Object.keys(DIGEST_SITUATIONS).sort());
+  for (const [situation, lines] of Object.entries(DIGEST_TAGLINES)) assert.ok(lines.length >= PRIMARY_CANDIDATES * 2, situation);
+  assert.deepEqual(all.filter((line) => !isTagline(line)), []);
+  assert.equal(new Set(all).size, all.length);
+});
+
+test("candidates stay put through the day and rotate at midnight", () => {
+  const today = taglineCandidates("agentsAllDay", ["soundtrack", "weekend"], LOCAL_DATE);
+  assert.equal(today.length, PRIMARY_CANDIDATES + 4);
+  assert.deepEqual(taglineCandidates("agentsAllDay", ["soundtrack", "weekend"], LOCAL_DATE), today);
+  assert.notDeepEqual(taglineCandidates("agentsAllDay", ["soundtrack", "weekend"], "2026-10-14"), today);
+  for (const line of today.slice(0, PRIMARY_CANDIDATES)) assert.ok(DIGEST_TAGLINES.agentsAllDay.includes(line));
+  assert.ok((["soundtrack", "weekend"] as DigestSituation[]).every((accent) => today.some((line) => DIGEST_TAGLINES[accent].includes(line))));
 });
 
 test("a trophy count from a capped list becomes an at-least option", () => {
