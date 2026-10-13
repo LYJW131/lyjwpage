@@ -4,8 +4,8 @@
   "data": {
     "headline": "A quiet coding day",
     "highlights": [
-      { "topic": "coding", "figure": "9 h", "caption": "coding" },
-      { "topic": "site", "figure": "3", "caption": "commits" }
+      { "topic": "coding", "value": 9, "unit": "hours", "atLeast": false, "caption": "coding" },
+      { "topic": "site", "value": 3, "unit": "count", "atLeast": false, "caption": "commits" }
     ],
     "model": "claude-sonnet-5-5",
     "generatedAt": "$now-18600000"

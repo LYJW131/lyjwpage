@@ -5,7 +5,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { STATUS_VIEWS } from "@shared/status-views";
 
 import { composeDigest, DIGEST_SYSTEM_PROMPT, digestInputHash, parseDigest } from "./digest/compose";
-import { digestFacts, type DigestViews } from "./digest/facts";
+import { digestFacts, digestHighlightOptions, digestMessage, type DigestViews } from "./digest/facts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -188,14 +188,19 @@ test("an unknown time zone falls back to the site's", () => {
   assert.match(digestFacts(views, NOW), /^Now: Tuesday afternoon in LYJW's time zone \(Asia\/Shanghai\)/);
 });
 
-const ANSWER = {
-  headline: "Agents ran the day.",
-  highlights: [
-    { topic: "coding", figure: "22 h", caption: "**coding**" },
-    { topic: "tokens", figure: "44M", caption: "tokens" },
-    { topic: "music", figure: "8 h", caption: "of music" },
-  ],
-};
+const ANSWER = { headline: "Agents ran the day.", picks: ["coding", "tokens", "music"] };
+
+test("highlight options carry the card's numbers and labels, rounded like the facts, for non-empty topics only", () => {
+  assert.deepEqual(digestHighlightOptions(baseViews()), [
+    { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" },
+    { topic: "agents", value: 7, unit: "hours", atLeast: false, caption: "agent time" },
+    { topic: "tokens", value: 42_000_000, unit: "count", atLeast: false, caption: "tokens" },
+    { topic: "music", value: 3.5, unit: "hours", atLeast: false, caption: "music" },
+    { topic: "watching", value: 50, unit: "minutes", atLeast: false, caption: "watching" },
+    { topic: "fitness", value: 3_300, unit: "count", atLeast: false, caption: "steps" },
+  ]);
+  assert.match(digestMessage(baseViews(), NOW).content, /\n\nHighlight options: coding: 9 h coding; agents: 7 h agent time; tokens: 42M tokens; music: 3\.5 h music; watching: 50 min watching; fitness: 3\.3K steps$/);
+});
 
 test("compose calls the model once per new input and keeps the old digest while the facts stand still", async () => {
   const calls: Anthropic.MessageCreateParamsNonStreaming[] = [];
@@ -209,14 +214,14 @@ test("compose calls the model once per new input and keeps the old digest while 
   assert.equal(first.status, "composed");
   if (first.status !== "composed") return;
   assert.equal(first.digest.headline, "Agents ran the day");
-  assert.deepEqual(first.digest.highlights[0], { topic: "coding", figure: "22 h", caption: "coding" });
-  assert.equal(first.digest.highlights.length, 3);
+  assert.deepEqual(first.digest.highlights.map((item) => item.topic), ["coding", "tokens", "music"]);
+  assert.deepEqual(first.digest.highlights[0], { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" });
   assert.equal(first.digest.model, "claude-sonnet-5-5");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].system, DIGEST_SYSTEM_PROMPT);
   assert.equal(calls[0].output_config?.effort, "low");
   assert.equal(calls[0].output_config?.format?.type, "json_schema");
-  assert.equal(calls[0].messages[0].content, digestFacts(baseViews(), NOW));
+  assert.equal(calls[0].messages[0].content, digestMessage(baseViews(), NOW).content);
 
   assert.deepEqual(await composeDigest({ readStatus, createMessage, previousInputHash: first.digest.inputHash, now: NOW }), { status: "unchanged" });
   assert.equal(calls.length, 1);
@@ -255,14 +260,17 @@ test("compose fails the round instead of publishing a refusal, a cut-off answer 
   assert.equal(modelCalls, 0);
 });
 
-test("a highlight that breaks the card's limits is dropped, and fewer than two left fails the round", () => {
-  const [coding, tokens, music] = ANSWER.highlights;
-  const parsed = parseDigest(JSON.stringify({
-    headline: ANSWER.headline,
-    highlights: [coding, { ...coding, figure: "11 h" }, { ...tokens, caption: "tokens across four coding agents" }, music, { topic: "weather", figure: "31°", caption: "and sunny" }],
-  }));
-  assert.deepEqual(parsed?.highlights.map((item) => item.topic), ["coding", "music"]);
-  assert.equal(parseDigest(JSON.stringify({ headline: ANSWER.headline, highlights: [coding, { ...tokens, caption: "" }] })), null);
-  assert.equal(parseDigest(JSON.stringify({ headline: "A".repeat(60), highlights: ANSWER.highlights })), null);
-  assert.equal(parseDigest(JSON.stringify({ ...ANSWER, highlights: [...ANSWER.highlights, { topic: "site", figure: "10+", caption: "commits" }] }))?.highlights.length, 3);
+test("picks outside the options, repeats and extras are dropped, and too few left fails the round", () => {
+  const options = digestHighlightOptions(baseViews());
+  const parsed = parseDigest(JSON.stringify({ headline: ANSWER.headline, picks: ["coding", "coding", "site", "weather", "music", "tokens", "fitness"] }), options);
+  assert.deepEqual(parsed?.highlights.map((item) => item.topic), ["coding", "music", "tokens"]);
+  assert.equal(parseDigest(JSON.stringify({ headline: ANSWER.headline, picks: ["coding", "site"] }), options), null);
+  assert.equal(parseDigest(JSON.stringify({ headline: "A".repeat(60), picks: ANSWER.picks }), options), null);
+  assert.deepEqual(parseDigest(JSON.stringify({ headline: "Quiet day", picks: ["fitness"] }), options.filter((item) => item.topic === "fitness"))?.highlights.map((item) => item.topic), ["fitness"]);
+});
+
+test("a trophy count from a capped list becomes an at-least option", () => {
+  const views = baseViews();
+  views.trophies = { recent: [{ trophyName: "Gold Rush", type: "gold", titleName: "ASTRO BOT", earnedAt: NOW - HOUR }] } as unknown as DigestViews["trophies"];
+  assert.deepEqual(digestHighlightOptions(views).find((item) => item.topic === "trophies"), { topic: "trophies", value: 1, unit: "count", atLeast: true, caption: "trophies" });
 });

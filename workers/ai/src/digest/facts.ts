@@ -1,3 +1,4 @@
+import type { DigestHighlight, DigestTopic } from "@shared/digest";
 import { modelLabel } from "@shared/god-chat-tiers";
 import { site } from "@shared/site";
 import type { StatusPayloads } from "@shared/status-payloads";
@@ -42,10 +43,23 @@ const AGENT_LABELS: Record<string, string> = {
   devin: "Devin CLI",
 };
 
-// 事实清单的数字有意取粗：小时级以下的抖动不改变清单，输入哈希不变，这一轮就不调模型。
+type Figure = Pick<DigestHighlight, "value" | "unit" | "atLeast">;
+
+// 事实清单的数字有意取粗：小时级以下的抖动不改变清单，输入哈希不变，这一轮就不调模型。卡片上的数取自同一套取粗。
+function timeFigure(seconds: number): Figure {
+  return seconds < 3_600
+    ? { value: Math.max(5, Math.round(seconds / 300) * 5), unit: "minutes", atLeast: false }
+    : { value: Math.round(seconds / 1_800) / 2, unit: "hours", atLeast: false };
+}
+
 export function duration(seconds: number): string {
-  if (seconds < 3_600) return `${Math.max(5, Math.round(seconds / 300) * 5)} min`;
-  return `${Math.round(seconds / 1_800) / 2} h`;
+  const { value, unit } = timeFigure(seconds);
+  return unit === "minutes" ? `${value} min` : `${value} h`;
+}
+
+function roundCount(value: number): number {
+  const divisor = value >= 1e9 ? 1e9 : value >= 1e6 ? 1e6 : value >= 1e3 ? 1e3 : 1;
+  return Number((value / divisor).toPrecision(2)) * divisor;
 }
 
 export function compactCount(value: number): string {
@@ -170,36 +184,58 @@ function codingLines(views: DigestViews, windowFrom: number, today: string): str
 
 // 来源列表有条数上限：列出的最旧一条还在窗口里，窗口里就可能还有没列出的，只能写下限；这时一条都没筛中也不能说成零，返回 null 不写。
 // 列表为空（如仓库提交没取到时视图里没有 recentCommits）同样是不知道，不是零。
-function windowCount(count: number, listedAt: (number | null)[], windowFrom: number): string | null {
+function windowTally(count: number, listedAt: (number | null)[], windowFrom: number): Figure | null {
   const times = listedAt.filter((at): at is number => at != null && Number.isFinite(at));
   if (!times.length) return null;
-  if (Math.min(...times) < windowFrom) return String(count);
-  return count > 0 ? `${count}+` : null;
+  if (Math.min(...times) < windowFrom) return { value: count, unit: "count", atLeast: false };
+  return count > 0 ? { value: count, unit: "count", atLeast: true } : null;
 }
 
-function siteLine(views: DigestViews, windowFrom: number): string | null {
+function tallyText(tally: Figure | null): string | null {
+  return tally && `${tally.value}${tally.atLeast ? "+" : ""}`;
+}
+
+function siteTallies(views: DigestViews, windowFrom: number) {
   const commits = views.githubRepo?.recentCommits ?? [];
   const committedAt = (commit: (typeof commits)[number]) => (commit.committedAt ? Date.parse(commit.committedAt) : null);
   const inWindow = commits.filter((commit) => (committedAt(commit) ?? -Infinity) >= windowFrom);
   const deploys = views.siteDeployments?.recent ?? [];
   const shipped = deploys.filter((deploy) => deploy.target === "production" && deploy.state === "READY" && deploy.createdAt >= windowFrom);
-  if (!inWindow.length && !shipped.length) return null;
+  return {
+    inWindow,
+    commits: inWindow.length || shipped.length ? windowTally(inWindow.length, commits.map(committedAt), windowFrom) : null,
+    deploys: inWindow.length || shipped.length ? windowTally(shipped.length, deploys.map((deploy) => deploy.createdAt), windowFrom) : null,
+  };
+}
+
+function trophyTally(trophies: TrophiesSummaryPayload | null, windowFrom: number) {
+  const recent = trophies?.recent ?? [];
+  const earned = recent.filter((trophy) => trophy.earnedAt >= windowFrom);
+  if (!earned.length) return null;
+  return { earned, tally: windowTally(earned.length, recent.map((trophy) => trophy.earnedAt), windowFrom) ?? { value: earned.length, unit: "count", atLeast: false } as Figure };
+}
+
+function siteLine(views: DigestViews, windowFrom: number): string | null {
+  const { inWindow, commits, deploys } = siteTallies(views, windowFrom);
+  if (!commits && !deploys) return null;
   const scopes = [...new Set(inWindow.flatMap((commit) => {
     const scope = /^\w+\(([^)]+)\)!?:/.exec(commit.title)?.[1];
     return scope ? [scope] : [];
   }))].slice(0, 5);
-  const commitCount = windowCount(inWindow.length, commits.map(committedAt), windowFrom);
-  const deployCount = windowCount(shipped.length, deploys.map((deploy) => deploy.createdAt), windowFrom);
-  const counts = [commitCount && `${commitCount} commits`, deployCount && `${deployCount} production deploys`].filter(Boolean).join(", ");
+  const counts = [commits && `${tallyText(commits)} commits`, deploys && `${tallyText(deploys)} production deploys`].filter(Boolean).join(", ");
   return [
     `This homepage's own code: ${counts}`,
     scopes.length ? `areas touched ${scopes.join(", ")}` : null,
   ].filter(Boolean).join("; ");
 }
 
+function roundSteps(steps: number): number {
+  return Math.round(steps / 100) * 100;
+}
+
 function fitnessLines(views: DigestViews, windowFrom: number, now: number): string[] {
   const lines: string[] = [];
-  const steps = Math.round(views.pulse!.lanes.activity.summary.steps / 100) * 100;
+  const steps = roundSteps(views.pulse!.lanes.activity.summary.steps);
   // 步数桶只在有步数时才上报，零步分不清是没走还是没上报，只能不写。
   if (steps > 0) lines.push(`Steps: ${steps.toLocaleString("en-US")} in 24 h`);
   const workouts = (views.workouts?.items ?? []).filter((workout) => workout.startedAt >= windowFrom);
@@ -220,11 +256,10 @@ function fitnessLines(views: DigestViews, windowFrom: number, now: number): stri
 }
 
 function trophyLine(trophies: TrophiesSummaryPayload | null, windowFrom: number): string | null {
-  const recent = trophies?.recent ?? [];
-  const earned = recent.filter((trophy) => trophy.earnedAt >= windowFrom);
-  if (!earned.length) return null;
-  const listed = earned.slice(0, 3).map((trophy) => `${trophy.trophyName} (${trophy.type}, ${trophy.titleName})`);
-  return `PlayStation trophies earned: ${windowCount(earned.length, recent.map((trophy) => trophy.earnedAt), windowFrom) ?? earned.length}; ${listed.join(", ")}`;
+  const found = trophyTally(trophies, windowFrom);
+  if (!found) return null;
+  const listed = found.earned.slice(0, 3).map((trophy) => `${trophy.trophyName} (${trophy.type}, ${trophy.titleName})`);
+  return `PlayStation trophies earned: ${tallyText(found.tally)}; ${listed.join(", ")}`;
 }
 
 export function digestFacts(views: DigestViews, now: number): string {
@@ -244,4 +279,43 @@ export function digestFacts(views: DigestViews, now: number): string {
     trophyLine(trophies, windowFrom),
     ...fitnessLines(views, windowFrom, now),
   ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+const MIN_ACTIVE_SECONDS = 300;
+
+// 卡片上的三格只从这里挑：数由代码按事实清单同样的取粗算出，模型只选主题，不写数字和说明。
+export function digestHighlightOptions(views: DigestViews): DigestHighlight[] {
+  const pulse = views.pulse;
+  if (!pulse) throw new Error("Pulse view unavailable");
+  const windowFrom = pulse.window.from;
+  const options: DigestHighlight[] = [];
+  const add = (topic: DigestTopic, figure: Figure | null, caption: string) => {
+    if (figure) options.push({ topic, ...figure, caption });
+  };
+  const time = (seconds: number) => (seconds >= MIN_ACTIVE_SECONDS ? timeFigure(seconds) : null);
+  const count = (value: number): Figure | null => (value > 0 ? { value, unit: "count", atLeast: false } : null);
+  const { humanSeconds, agentSeconds, bothSeconds } = pulse.lanes.coding.summary;
+  add("coding", time(humanSeconds + agentSeconds + bothSeconds), "coding");
+  add("agents", time(agentSeconds + bothSeconds), "agent time");
+  add("tokens", count(roundCount(pulse.lanes.tokens.summary.totalTokens)), "tokens");
+  const site = siteTallies(views, windowFrom);
+  if (site.commits?.value) add("site", site.commits, "commits");
+  else if (site.deploys?.value) add("site", site.deploys, "deploys");
+  add("music", time(pulse.lanes.listening.summary.activeSeconds), "music");
+  add("watching", time(pulse.lanes.watching.summary.activeSeconds), "watching");
+  add("gaming", time(pulse.lanes.gaming.summary.activeSeconds), "gaming");
+  add("trophies", trophyTally(views.trophies && "recent" in views.trophies ? views.trophies : null, windowFrom)?.tally ?? null, "trophies");
+  add("fitness", count(roundSteps(pulse.lanes.activity.summary.steps)), "steps");
+  return options;
+}
+
+function figureText({ value, unit, atLeast }: Figure): string {
+  const number = unit === "minutes" ? `${value} min` : unit === "hours" ? `${value} h` : value >= 1_000 ? compactCount(value) : String(value);
+  return `${number}${atLeast ? "+" : ""}`;
+}
+
+export function digestMessage(views: DigestViews, now: number): { content: string; options: DigestHighlight[] } {
+  const options = digestHighlightOptions(views);
+  const listed = options.length ? options.map((option) => `${option.topic}: ${figureText(option)} ${option.caption}`).join("; ") : "none";
+  return { content: `${digestFacts(views, now)}\n\nHighlight options: ${listed}`, options };
 }

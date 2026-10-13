@@ -63,7 +63,7 @@
 
 ## 近况摘要
 
-具名入口 `Digest`（`src/digest/entrypoint.ts`，契约 `shared/digest.ts#DigestRpc`）只给采集 Worker 的 `digest` 任务经 Service Binding 调用，不开 HTTP 路径。每次 `compose` 经 `PUBLIC_STATUS` 读 `src/digest/facts.ts#DIGEST_VIEWS` 登记的公开视图（任一读不到就整轮失败，采集 Worker 留着上一份摘要），压成一份英文事实清单，连同提示词与模型算出输入哈希：与上一份相同就回 `unchanged`，不调模型；变了才按 `src/digest/compose.ts` 的 `DIGEST_MODEL`、`DIGEST_EFFORT` 经 `AnthropicEgress` 用结构化输出写一行英文标题和两三条带数字的重点（`shared/digest.ts#DigestPayload`，长度与主题去重在 `compose.ts#parseDigest` 把关），没配 `ANTHROPIC_API_KEY` 时回 `unconfigured`。摘要不经 `ChatQuota`：它不由访客触发，调用次数由采集节奏和输入哈希封顶，事实清单里的数字取粗就是为了让哈希只在有看得出的变化时才变。写入可滞后层、节奏与首屏失效见 [采集 Worker](../collector/README.md)。
+具名入口 `Digest`（`src/digest/entrypoint.ts`，契约 `shared/digest.ts#DigestRpc`）只给采集 Worker 的 `digest` 任务经 Service Binding 调用，不开 HTTP 路径。每次 `compose` 经 `PUBLIC_STATUS` 读 `src/digest/facts.ts#DIGEST_VIEWS` 登记的公开视图（任一读不到就整轮失败，采集 Worker 留着上一份摘要），压成一份英文事实清单，连同提示词与模型算出输入哈希：与上一份相同就回 `unchanged`，不调模型；变了才按 `src/digest/compose.ts` 的 `DIGEST_MODEL`、`DIGEST_EFFORT` 经 `AnthropicEgress` 用结构化输出写一行英文标题，并从事实清单末尾的可选格里挑两三格（`shared/digest.ts#DigestPayload`）。可选格的数字和图例由 `src/digest/facts.ts#digestHighlightOptions` 按事实清单同样的取粗算出，模型只选主题，越界、重复和条数在 `compose.ts#parseDigest` 把关，没配 `ANTHROPIC_API_KEY` 时回 `unconfigured`。摘要不经 `ChatQuota`：它不由访客触发，调用次数由采集节奏和输入哈希封顶，事实清单里的数字取粗就是为了让哈希只在有看得出的变化时才变。写入可滞后层、节奏与首屏失效见 [采集 Worker](../collector/README.md)。
 
 改提示词、事实清单或换模型后，用 `pnpm --dir workers/ai digest:probe` 读线上公开视图、打印事实清单，再用真实模型写几版对比（`--models`、`--runs`，用法见 `scripts/digest-probe.ts` 的 `USAGE`）。
 
