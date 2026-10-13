@@ -124,9 +124,17 @@ try {
     name: 'isolated-ingress', main: join(root, 'workers/ingress/src/index.ts'),
     compatibility_date: '2026-09-08', compatibility_flags: ['nodejs_compat', 'nodejs_compat_populate_process_env'],
     vars: { ...access.vars, EMBY_PUBLIC_URL: '' },
-    services: [{ binding: 'CORE', service: 'isolated-api', entrypoint: 'StateCore' }],
+    services: [
+      { binding: 'CORE', service: 'isolated-api', entrypoint: 'StateCore' },
+      { binding: 'COLLECTOR', service: 'isolated-collector', entrypoint: 'Collector' },
+    ],
     r2_buckets: [{ binding: 'IMAGES', bucket_name: 'isolated-images' }],
     kv_namespaces: kv,
+  };
+  const collectorFixture = {
+    name: 'isolated-collector', main: join(root, 'scripts/fixtures/collector.mjs'),
+    compatibility_date: '2026-09-08',
+    services: [{ binding: 'CORE', service: 'isolated-api', entrypoint: 'StateCore' }],
   };
   const routerMain = join(temporary, 'router.mjs');
   await writeFile(routerMain, `import router from ${JSON.stringify(join(root, 'workers/dev-router/src/index.ts'))};
@@ -148,7 +156,7 @@ export default { fetch(request, env) {
     ],
   };
   const configPaths = [];
-  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture, siteCacheFixture })) {
+  for (const [name, config] of Object.entries({ router, api, ingress, ai, streamGateway, aiFixture, siteCacheFixture, collectorFixture })) {
     const path = join(temporary, `${name}.wrangler.json`);
     await writeFile(path, JSON.stringify(config));
     configPaths.push(path);
@@ -377,15 +385,24 @@ export default { fetch(request, env) {
   assert.equal(invalidJson.status, 400);
   assert.deepEqual(await invalidJson.json(), { ok: false, error: '上报数据无效或处理失败' });
   assert.equal(invalidJson.headers.get('cache-control'), 'no-store');
+  async function listeningNow() {
+    return (await (await fetch(`${worker}/api/status/listening/now`)).json()).data;
+  }
   async function nowPlaying() {
-    return (await (await fetch(`${worker}/api/status/listening/now`)).json()).data?.music?.title;
+    return (await listeningNow())?.music?.title;
   }
   for (const title of ['isolated-first', 'isolated-second']) {
     const body = { entityId: 'media_player.isolated', state: 'playing', title, positionMs: 0, durationMs: 3600000, observedAt: Date.now() };
     assert.equal((await post(worker, '/api/ingest/homepod', body)).status, 202);
     await eventually(async () => assert.equal(await nowPlaying(), title));
     await eventually(async () => assert.ok(events.some(e => e.type === 'listening-now' && e.payload.music?.title === title)));
+    await eventually(async () => {
+      const now = await listeningNow();
+      assert.equal(now.songId, `fixture-${title}`);
+      assert.equal(now.motion?.videoUrl, `https://fixture.invalid/${title}.m3u8`);
+    });
   }
+  console.log('PASS: ingress commits what Collector.enrichTrack returns, and Collector.followUpTrack patches the motion in through StateCore.commitEnrichmentPatch');
   const statusTool = await mcp('tools/call', { name: 'get_site_status', arguments: { views: ['nowListening'] } });
   assert.equal(statusTool.result.isError, false);
   const statusText = statusTool.result.content[0].text;

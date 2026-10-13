@@ -169,7 +169,7 @@
       "id": "collector",
       "type": "backend",
       "label": "Collector Worker",
-      "sublabel": "Cron 调度 · 按任务节奏拉取",
+      "sublabel": "Cron 拉取 · Apple 查询与补全",
       "tag": "Apple 最近播放写实时层",
       "pos": [
         450,
@@ -187,7 +187,7 @@
           "path": "workers/collector/src/jobs/apple-recent.ts"
         },
         {
-          "path": "workers/collector/wrangler.toml"
+          "path": "workers/collector/src/index.ts"
         }
       ]
     },
@@ -493,6 +493,15 @@
       "variant": "emphasis"
     },
     {
+      "id": "enrich",
+      "from": "ingress",
+      "to": "collector",
+      "label": "补全在听 · RPC",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "right"
+    },
+    {
       "id": "state_io",
       "from": "api",
       "to": "state",
@@ -589,6 +598,16 @@
       "to": "lag",
       "label": "可滞后视图直读",
       "variant": "default"
+    },
+    {
+      "id": "apple_lookup",
+      "from": "site",
+      "to": "collector",
+      "label": "歌词 · 令牌 · Binding",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "labelSegment": 2
     },
     {
       "id": "revalidate",
@@ -702,7 +721,7 @@
       "title": "输入按信任边界收敛",
       "items": [
         "Mac / iPhone、Home Assistant、Emby、PlayStation、misaka-jp 上报器与 Claude Code OTLP 各用自己的 Access token。",
-        "Ingress 限定每个来源的权限，准备数据后才通过内部 Service Binding 提交；图片由 Mac / Emby 直传 R2。"
+        "Ingress 限定每个来源的权限，准备数据（「正在听」先请 collector 补全 Apple 目录）后才通过内部 Service Binding 提交；图片由 Mac / Emby 直传 R2。"
       ]
     },
     {
@@ -717,7 +736,7 @@
       "dot": "emerald",
       "title": "首屏快，状态也要新",
       "items": [
-        "site Worker 生成首屏时按卡读状态：可滞后层直读 KV，实时层经 Service Binding 问 api；浏览器挂载后只连站点域名，实时变化走站点转交的 WebSocket，可滞后卡按各自节奏轮询。",
+        "site Worker 生成首屏时按卡读状态：可滞后层直读 KV，实时层经 Service Binding 问 api，歌词问 collector；浏览器挂载后只连站点域名，实时变化走站点转交的 WebSocket，可滞后卡按各自节奏轮询。",
         "只有布局变化触发 site Worker 标签失效。ESA 按 SWR 独立更新；图片走同源 /img/*，在边缘回源。"
       ]
     },

@@ -116,7 +116,7 @@
   - 换句动作由边界精确定时器驱动，与当前音轨算法一致。
 
 ### 接口缓存与公开查询策略
-- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `shared/lyrics.ts#lyricsTtlMs`）。
+- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；站点域名上由采集 Worker 回答，结果在它的 `AppleLookups` 入口按路径与查询串缓存，期限跟响应的 `public, s-maxage` 走（有词与无词的缓存期不同，见 `shared/lyrics.ts#lyricsTtlMs`）。
 - 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用。
 
 ---
@@ -126,7 +126,7 @@
 ### 访客跟听机制
 - **架构隔离**：访客在前端播放器使用自己的 Apple Music 订阅。站点不中转音频，播放发生在访客浏览器与 Apple CDN 之间。
 - **独立访客 Token 签发**：
-  - 由 API Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token。
+  - 由采集 Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token（站点域名上经 site Worker 转交）。
   - 有效期默认 `DEFAULT_TTL_SECONDS`（`shared/musickit-token.ts`），过了「签发 → 到期」的中点自动换新。
 - **双重域名安全闸**：
   1. 第一道：Worker 检查请求来源是否在 `ALLOWED_ORIGINS` 白名单中：带 `Origin` 看它，浏览器同源请求不带 `Origin` 时按请求自己的源（`shared/http-origins.ts#requestOrigin`）。

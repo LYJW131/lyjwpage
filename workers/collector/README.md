@@ -86,6 +86,9 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 
 ## Apple Music
 
+站点域名上的三条路径由 site Worker 经 `COLLECTOR_SERVICE` 原样转来（`src/lib/site-policy.ts#classifyGatewayRequest`），
+首屏那首的歌词也从这里取；上报入口在提交前调 `enrichTrack`、收下之后调 `followUpTrack`（见 [ingress README](../ingress/README.md#拆分)）。
+
 - **按需查询**：`/api/lyrics`、`/api/motion-artwork`（实现在 `shared/apple-lookups.ts`）在具名 entrypoint `AppleLookups` 里跑，
   它开了 Workers Caching（`wrangler.toml` 的 `[exports.AppleLookups.cache]`）：按 entrypoint、路径与查询串缓存，不分主机名，
   每次部署从空缓存开始，期限按响应的 `Cache-Control`（出错的响应是 `no-store`，不进缓存）。默认 `fetch` 是挡在它前面的一层，

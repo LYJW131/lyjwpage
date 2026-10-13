@@ -1,6 +1,7 @@
+import { enrichCommand, type EnrichedCommand } from "@shared/command-enrichment";
 import { writeAppleMusicCredentials } from "@shared/credentials";
 import { describeRejections } from "@shared/ingest/coding";
-import { INGEST_SOURCES, prepareIngest, type PreparedIngest } from "@shared/ingest/prepare";
+import { INGEST_SOURCES, prepareIngest, type CoreCommand, type PreparedIngest } from "@shared/ingest/prepare";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 
 import { authorize } from "./access-auth";
@@ -104,7 +105,8 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
     if (command.source === "server") {
       data = { id: command.status.id };
     } else {
-      const reply = await env.CORE.commitIngest(command);
+      const { command: enriched, followUp } = await enrichListening(env, command);
+      const reply = await env.CORE.commitIngest(enriched);
       if (!reply.ready) return unavailable(source, "state core not ready");
       if (!reply.ok && reply.retryable) return unavailable(source, reply.error);
       if (!reply.ok) {
@@ -112,6 +114,9 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
         coreError = reply.error;
       } else {
         data = receiptData(command, reply.data);
+        if (followUp && env.COLLECTOR) {
+          ctx.waitUntil(env.COLLECTOR.followUpTrack(followUp).catch((error: unknown) => console.warn("[enrichment] follow-up", reason(error))));
+        }
       }
     }
     // 归档须先于 KV 写入启动，避免 KV 失败使状态核心已接受的数据漏归档。
@@ -133,6 +138,18 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
     if ((error as { retryable?: unknown } | null)?.retryable === true) return unavailable(source, reason(error));
     console.error("[ingest]", source, reason(error));
     return jsonResponse({ ok: false, error: "上报数据无效或处理失败" }, { status: 400 });
+  }
+}
+
+// collector 调不通时原样提交：没带 enrichment 的命令由状态核心自己补，补全失败不该挡住上报。
+async function enrichListening(env: Env, command: CoreCommand): Promise<EnrichedCommand> {
+  const collector = env.COLLECTOR;
+  if (!collector) return { command, followUp: null };
+  try {
+    return await enrichCommand(command, (music, upcomingTracks) => collector.enrichTrack(music, upcomingTracks));
+  } catch (error) {
+    console.warn("[enrichment]", command.source, reason(error));
+    return { command, followUp: null };
   }
 }
 
