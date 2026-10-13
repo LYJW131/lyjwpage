@@ -62,6 +62,16 @@ test("基线按「文件 → 命中文本」逐条比：同文件删一条加一
   assert.equal(swapped.shrank[0].missing[0].text, "旧文案");
 });
 
+test("超过 36 字的差异也分得清：比较用全文，截断只做展示", () => {
+  const head = "相同前缀".repeat(10); // 40 字，超过截断长度
+  const hits = scan("src/lib/x.ts", `const s = "${head}尾巴新";`);
+  assert.equal(hits[0].text, `${head}尾巴新`); // 存的是完整规范化文本
+  const baseline = copyBaseline({ "src/a.tsx": [{ line: 1, text: `${head}尾巴旧` }] });
+  const { grew } = compareCopy(baseline, { "src/a.tsx": [{ line: 2, text: `${head}尾巴新` }] });
+  assert.equal(grew.length, 1);
+  assert.equal(grew[0].extras[0].text, `${head}尾巴新`);
+});
+
 test("同一文本按出现次数计：基线两次、现状三次算新增", () => {
   const baseline = { "src/a.tsx": ["确定", "确定"] };
   const hits = { "src/a.tsx": [{ line: 1, text: "确定" }, { line: 2, text: "确定" }, { line: 9, text: "确定" }] };

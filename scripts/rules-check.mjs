@@ -30,7 +30,8 @@ export const ALLOWED_FETCH_HOSTS = new Set(["api.music.apple.com"]);
 const TICKET_RE = /#\d+|https?:\/\/\S+/;
 const TODO_RE = /\b(?:TODO|FIXME)\b/;
 const BAKED_IMG_RE = /https?:\/\/[^\s"')`]+\/img\//;
-const FETCH_HOST_RE = /\b(?:fetch|sendBeacon|EventSource|WebSocket)\s*\(\s*["'`]\s*(?:https?|wss?):\/\/([a-zA-Z0-9.-]+)/g;
+const FETCH_CALLS = new Set(["fetch", "sendBeacon", "EventSource", "WebSocket"]);
+const ABSOLUTE_URL_RE = /^\s*(?:https?|wss?):\/\/([a-zA-Z0-9.-]+)/;
 
 const extOf = (file) => path.posix.extname(file).slice(1).toLowerCase();
 
@@ -125,13 +126,33 @@ export function checkBakedImgUrl(file, text) {
 }
 
 export function checkFetchHost(file, text) {
+  const ext = extOf(file);
+  if (!TS_PARSE_EXTS.has(ext)) return [];
+  const ts = loadTs();
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const issues = [];
-  text.split("\n").forEach((line, index) => {
-    for (const match of line.matchAll(FETCH_HOST_RE)) {
-      if (ALLOWED_FETCH_HOSTS.has(match[1])) continue;
-      issues.push({ file, line: index + 1, rule: "site-fetch-host", message: `站点不字面量请求主机 ${match[1]}：后端调用走 backendUrl / workerUrl(PUBLIC_BACKEND_URL)，经 Service Binding 分流（跨域 fetch 会改写 CF-Connecting-IP，限流失效）；第三方 API 进后端 Worker，浏览器必须直连的登记进 rules-check 的 ALLOWED_FETCH_HOSTS（AGENTS.md「禁区」）。` });
+  const literalText = (arg) => {
+    if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) return arg.text;
+    if (ts.isTemplateExpression(arg)) return arg.head.text;
+    return null;
+  };
+  const visit = (node) => {
+    if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.length > 0) {
+      const callee = node.expression;
+      const name = ts.isIdentifier(callee) ? callee.text
+        : ts.isPropertyAccessExpression(callee) ? callee.name.text : null;
+      if (name && FETCH_CALLS.has(name)) {
+        const raw = literalText(node.arguments[0]);
+        const match = raw && ABSOLUTE_URL_RE.exec(raw);
+        if (match && !ALLOWED_FETCH_HOSTS.has(match[1])) {
+          const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+          issues.push({ file, line: line + 1, rule: "site-fetch-host", message: `站点不字面量请求主机 ${match[1]}：后端调用走 backendUrl / workerUrl(PUBLIC_BACKEND_URL)，经 Service Binding 分流（跨域 fetch 会改写 CF-Connecting-IP，限流失效）；第三方 API 进后端 Worker，浏览器必须直连的登记进 rules-check 的 ALLOWED_FETCH_HOSTS（AGENTS.md「禁区」）。` });
+        }
+      }
     }
-  });
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
   return issues;
 }
 
@@ -181,11 +202,11 @@ export function checkScrollbarPair(file, text) {
   visit(sf);
   const issues = [];
   for (const { line, parts } of units.values()) {
-    // 只认 Tailwind 写法：scrollbar-none 类与 [&::-webkit-scrollbar]:… 任意变体；
+    // 只认 Tailwind 写法：scrollbar-none 类与 [&::-webkit-scrollbar]:hidden 成对；
     // 原生 CSS（html-preview 里注入 iframe 的 ::-webkit-scrollbar{display:none}）不算。
     const joined = parts.join(" ");
     const ff = joined.includes("scrollbar-none");
-    const webkit = joined.includes("::-webkit-scrollbar]");
+    const webkit = joined.includes("::-webkit-scrollbar]:hidden");
     if (ff !== webkit) {
       issues.push({ file, line, rule: "scrollbar-pair", message: "隐藏滚动条两句缺一不可：scrollbar-none 管 Firefox，[&::-webkit-scrollbar]:hidden 管 Chromium，写在同一个 className 表达式里（DESIGN.md「滚动区」）。" });
     }
