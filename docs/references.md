@@ -93,8 +93,8 @@
   - 状态：采用。落在 [state-storage.md](./state-storage.md) 首屏一节与 [card-boundary.tsx](../src/components/card-boundary.tsx)。
 - **Cloudflare Access 的 Instant Auth（`auto_redirect_to_identity`）**（Cloudflare 控制台设置，讨论里没留链接）
   - 是什么：只允许一种登录方式时跳过选择页，直接跳到身份提供方。
-  - 取了什么：站点分支预览只留「Cloudflare account members」一种登录方式并打开它，点开预览直接登录。
-  - 状态：采用。落在 [ops-facts.md](./ops-facts.md) 的站点 Preview Access 条目。
+  - 取了什么：站点分支预览用它省掉登录方式选择页，点开预览直接登录。
+  - 状态：采用。当前 Access 配置只以 [ops-facts.md](./ops-facts.md) 的站点 Preview 条目为准。
 - **[Workers Observability](https://developers.cloudflare.com/workers/observability/)** 与 Workers Issues、Web Analytics（Cloudflare 文档）
   - 是什么：Cloudflare 自带的报错分组、日志与 Web Vitals。
   - 取了什么：评估了能否完全替代 Sentry：心跳与在线条自建、报错数取 Observability、Vitals 取 Web Analytics、浏览器报错经 `/relay` 进 Worker 日志。
@@ -111,7 +111,7 @@
 
 - **[Infisical](https://infisical.com/pricing)**（及其 [Cloudflare Workers 同步](https://infisical.com/docs/integrations/secret-syncs/cloudflare-workers)）
   - 是什么：开源的密钥管理平台，可自建或托管。
-  - 状态：不采用。一个人的仓库用不上免费档缺的轮换、审计与权限；它会多一个持有全部密钥的第三方；Cloudflare 读不回已有 Secret，要全部重灌；分支预览的 Secret、Builds 变量和别处的凭据它也管不到。密钥清单仍以 [ops-facts.md](./ops-facts.md) 为准，灌 Secret 走 [lyjwpage-mac-session](../.claude/skills/lyjwpage-mac-session/SKILL.md)。
+  - 状态：不采用。对一个人维护的仓库，收益抵不过多一个持有全部密钥的第三方和整套重灌的成本；套餐与集成能力会变，要重新考虑时按当时的产品现状重评，不沿用旧结论。密钥清单仍以 [ops-facts.md](./ops-facts.md) 为准，灌 Secret 走 [lyjwpage-mac-session](../.claude/skills/lyjwpage-mac-session/SKILL.md)。
 
 ## 前端与工具链
 
