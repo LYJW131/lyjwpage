@@ -31,6 +31,9 @@ const updatedDay = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
+// 输入没变的轮次只刷新 updatedAt，文字可能是好几个小时前写的；隔得久了带上日期，免得把昨晚写的读成今天。
+const WRITTEN_DAY_AFTER_MS = 12 * 3_600_000;
+
 const TONES: Record<DigestTopic, string> = {
   coding: "var(--signal-blue)",
   agents: "var(--claude)",
@@ -169,8 +172,10 @@ export function DigestCard({
             </li>
           ))}
         </ul>
-        <p className="col-span-2 row-start-3 text-xs text-muted-foreground md:col-span-1" title={`${updatedDay.format(updatedAt)} UTC+8`}>
-          {stale ? `Not updated since ${updatedDay.format(updatedAt)}` : `by ${modelLabel(data.model)} at ${updatedTime.format(updatedAt)}`}
+        <p className="col-span-2 row-start-3 text-xs text-muted-foreground md:col-span-1" title={`${updatedDay.format(stale ? updatedAt : data.generatedAt)} UTC+8`}>
+          {stale
+            ? `Not updated since ${updatedDay.format(updatedAt)}`
+            : `by ${modelLabel(data.model)} at ${(updatedAt - data.generatedAt > WRITTEN_DAY_AFTER_MS ? updatedDay : updatedTime).format(data.generatedAt)}`}
         </p>
         <DayDial tracks={tracks} window={pulse?.window ?? null} now={now} timezone={timezone} offsetSeconds={offsetSeconds ?? 0} />
       </div>
