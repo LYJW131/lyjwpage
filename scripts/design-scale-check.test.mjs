@@ -32,6 +32,10 @@ test("不在类名边界上的同形片段不算", () => {
   assert.deepEqual(tokens(`scroll-mt-12 size-3.5 h-2.5 w-[3px] data-p-2.5`), []);
 });
 
+test("块方向逻辑间距 pbs / pbe / mbs / mbe 也算", () => {
+  assert.deepEqual(tokens(`"pbs-2.5 mbe-12 pbs-4"`), ["spacing:pbs-2.5", "spacing:mbe-12"]);
+});
+
 test("带重要性后缀、行高修饰符或 length: 类型的违规也算", () => {
   assert.deepEqual(tokens(`"p-2.5! text-[13px]/4 text-[length:13px] !mt-3.5"`), [
     "spacing:p-2.5",

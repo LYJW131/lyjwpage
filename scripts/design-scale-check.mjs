@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -14,7 +14,7 @@ const END = String.raw`(?=$|[\s"'\`)}!/])`;
 export const RULES = {
   spacing: {
     label: "阶梯外的间距",
-    re: new RegExp(String.raw`${BOUNDARY}-?(?:p[xytrblse]?|m[xytrblse]?|gap(?:-[xy])?|space-[xy])-(\[[^\]\s]*\]|\d+(?:\.\d+)?|px)${END}`, "g"),
+    re: new RegExp(String.raw`${BOUNDARY}-?(?:p(?:b[se]|[xytrblse])?|m(?:b[se]|[xytrblse])?|gap(?:-[xy])?|space-[xy])-(\[[^\]\s]*\]|\d+(?:\.\d+)?|px)${END}`, "g"),
     offScale: (match) => !SPACING_SCALE.has(match[1]),
   },
   fontSize: {
@@ -71,9 +71,9 @@ export function sortedBaseline(counts) {
 }
 
 function trackedSources(root) {
-  return execFileSync("git", ["ls-files", "-z", "--", "src/*.ts", "src/*.tsx"], { cwd: root, encoding: "utf8" })
+  return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "src/*.ts", "src/*.tsx"], { cwd: root, encoding: "utf8" })
     .split("\0")
-    .filter((file) => file && !/\.test\.m?tsx?$/.test(file));
+    .filter((file, index, all) => file && all.indexOf(file) === index && existsSync(path.join(root, file)) && !/\.test\.m?tsx?$/.test(file));
 }
 
 function main() {
