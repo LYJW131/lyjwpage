@@ -12,7 +12,7 @@ const TURNSTILE_TEST_SECRET = "1x0000000000000000000000000000000AA";
 const secret = () => randomBytes(32).toString("base64url");
 
 export function cloudDevFiles(env, makeSecret = secret) {
-  const apiExample = fs.readFileSync(path.join(ROOT, "workers/api/.dev.vars.example"), "utf8");
+  const apiExample = fs.readFileSync(path.join(ROOT, "workers/core/.dev.vars.example"), "utf8");
   const ai = [
     `ANTHROPIC_API_KEY=${env.LYJWPAGE_ANTHROPIC_API_KEY ?? ""}`,
     `TURNSTILE_SECRET_KEY=${TURNSTILE_TEST_SECRET}`,
@@ -21,7 +21,7 @@ export function cloudDevFiles(env, makeSecret = secret) {
     "ALLOWED_ORIGINS=http://localhost:3211",
   ];
   return {
-    "workers/api/.dev.vars": apiExample,
+    "workers/core/.dev.vars": apiExample,
     "workers/ai/.dev.vars": `${ai.join("\n")}\n`,
     ".env.local": `PUBLIC_TURNSTILE_SITE_KEY=${TURNSTILE_TEST_SITE_KEY}\n`,
   };

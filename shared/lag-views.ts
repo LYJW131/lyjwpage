@@ -110,7 +110,7 @@ export function lagEnvelope(view: LagViewKey, params: StatusLoaderParams = {}): 
   return statusEnvelope(() => loader(params));
 }
 
-// 与 api 的 /api/* 同口径：带了 Origin 且不在名单里回 403，其余照常回公开模型。
+// 与 core 的 /api/* 同口径：带了 Origin 且不在名单里回 403，其余照常回公开模型。
 export async function serveLagStatus(request: Request, view: LagViewKey, env: OriginEnv): Promise<Response> {
   const cors = getCorsHeaders(request, env);
   if (isForeignOrigin(request, env)) {

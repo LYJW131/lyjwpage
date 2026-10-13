@@ -1,10 +1,10 @@
 # AI Worker
 
-负责首页对话、设计与访客构建、首页近况摘要、模型调用、配额、GitHub issue 提交、站点工具与公开 MCP。站点状态的唯一权威仍是 [api Worker](../api/README.md)；Coding 的 Pulse 评估也留在 api 的 cron 中。
+负责首页对话、设计与访客构建、首页近况摘要、模型调用、配额、GitHub issue 提交、站点工具与公开 MCP。站点状态的唯一权威仍是 [core Worker](../core/README.md)；Coding 的 Pulse 评估也留在 core 的 cron 中。
 
 ## 入口与权限
 
-生产配置 `wrangler.toml` 设 `workers_dev=false`、`preview_urls=false`，不绑定独立公开域名，也没有 workers.dev 地址。生产 HTTP 只经站点域名进来：site Worker 按 `src/lib/site-policy.ts#classifyGatewayRequest` 分出，经 `AI_SERVICE.fetch(request)` 原样转发请求与响应流。api 没有公开地址，它按 `shared/ai-paths.ts#AI_HTTP_PATHS` 认出并转发的那条路只在分支 Preview 与本地用到。来源校验、预检、限流和协议处理由本 Worker 执行。
+生产配置 `wrangler.toml` 设 `workers_dev=false`、`preview_urls=false`，不绑定独立公开域名，也没有 workers.dev 地址。生产 HTTP 只经站点域名进来：site Worker 按 `src/lib/site-policy.ts#classifyGatewayRequest` 分出，经 `AI_SERVICE.fetch(request)` 原样转发请求与响应流。core 没有公开地址，它按 `shared/ai-paths.ts#AI_HTTP_PATHS` 认出并转发的那条路只在分支 Preview 与本地用到。来源校验、预检、限流和协议处理由本 Worker 执行。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -21,7 +21,7 @@
 
 浏览器端点检查允许来源；上传、进度、截图和 webhook 接受无 Origin 的服务器请求，前三者验证 GitHub Actions OIDC 令牌（`src/build/actions-oidc.ts#verifyActionsToken`），webhook 验证原始正文 HMAC。这些路径接受 CORS 预检；其他路径，包括未知路径的预检，均返回 404。入口在 `src/worker.ts`，共享来源匹配在根目录 `shared/http-origins.ts`。
 
-`PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。api 的 `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
+`PUBLIC_STATUS` 是唯一的站点状态读取权限，契约为根目录 `shared/public-status.ts#PublicStatusRpc` 的 `readStatus(path: string): Promise<Response>`。core 的 `PublicStatus` 只接受 `shared/status-views.ts#STATUS_VIEWS` 登记的精确路径，返回浏览器使用的公开模型；不接受查询参数、任意 URL、凭据读取或写入。AI Worker 不绑定 `STATE`、`LAG`、`HISTORY`、`CREDENTIALS` 或 `StateCore`。
 
 ## 代码职责
 
@@ -50,7 +50,7 @@
 - 回复里的其他图示不走工具：提示词印出 `shared/god-chat.ts#GOD_CHAT_VISUAL_EXAMPLES` 的组件（`stats`、`chart`、`timeline`、`media`），模型在正文里写以组件名为语言标记、内容为 JSON 的代码块，站点在 `src/lib/chat-visuals.ts` 校验后用 `src/components/chat-visual.tsx` 画，校验不过就照原样显示代码；组件画不了的才写 `html` 代码块，进断网沙箱（`src/lib/html-preview.ts`）。图示是正文的一部分，随回复进历史签章。
 - 请求带 `thinking.display: "summarized"`：模型思考时流出 `thinking` 事件（思考摘要），卡片在正文出来前显示，正文开始后折叠；摘要不进对话历史。
 - 模型由 Anthropic 的拒答兜底（`fallbacks: "default"`，Haiku 没有）换掉时，NDJSON 末尾多一行 `served`，卡片标出实际作答的模型；下一轮的 trace 带 `fallback`。兜底按单次请求生效、兜底模型自己也可能拒，所以只按给出最终答案的那一轮、且它没被拒时才报。
-- 读取类工具有三种。前两种是和 `/mcp` 共用的站点工具（`src/tools/registry.ts#SITE_TOOLS`），对话把整条回复的调用记在同一本账本（`newLedger`）上：`get_site_status` 经 `PUBLIC_STATUS.readStatus(path)` 调 api 的 `PublicStatus` 入口（和浏览器看到的同一份公开模型，走 Service Binding），一条回复里所有调用合计有读取次数上限，「视图 + 位置 + query + detail」完全相同的读取不再读，换页或换 query 另算一次，trace 里仍只记读过哪些视图（`src/tools/site-status.ts#claimViews`）。拿到完整 JSON 后才在本 Worker 加工，`readStatus` 契约不变：`detail` 缺省为 `"summary"`，删掉图片字段（判定见 `isImageField`），`"full"` 保留全部字段；`query` 按 NFKC 加小写匹配，只保留递归包含该文本的列表项；处理后超过 `PAGE_SIZE` 的列表（或带 query 时被搜索的列表）换成 `{ total, items, nextCursor? }`，带 query 时另有 `totalBeforeQuery`。只处理最外层的对象列表，匹配的条目整项保留；纯数值或字符串数组（如热力图的逐日序列）整份保留、不分页也不按 query 筛，带合法 `origin` 日期的数值数组另附按月合计 `<数组名>ByMonth`（`withMonthlyTotals`）；同一视图的长列表共用一个位置。分页沿用 MCP 规范 Pagination 的约定，用在工具参数上：页面大小由服务端决定，`cursor` 不透明，须原样传回，它决定视图、query 与 detail，同时传入的这几个参数被忽略并附提示；没有 `nextCursor` 就是最后一页；列表总数与 cursor 记录的不一致时照常返回并提示；非法或越界的 cursor 回工具错误、不占额度。每个视图先给一行摘要（分页列表、总数、`nextCursor`），兜底截断只截后面的 JSON。`show_card` 回给模型的数据走同一套默认处理；`read_project_doc` 读本项目的设计文档（`src/tools/project-docs.ts`），只认 `PROJECT_DOCS` 白名单里的文档键，运行时从公开仓库 main 分支的 raw.githubusercontent.com 取并在边缘缓存，所以改文档不用重发 Worker、新增文档才要加一行；长文档先回目录和开头，模型再按章节读，一条回复的读取次数有上限（`claimDoc`，上限说明经 `replyCap` 只附给对话）。`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/web-search.ts#webSearchTool`），每轮请求的 `max_uses` 是这条回复还剩的次数，用完就不再带这个工具。
+- 读取类工具有三种。前两种是和 `/mcp` 共用的站点工具（`src/tools/registry.ts#SITE_TOOLS`），对话把整条回复的调用记在同一本账本（`newLedger`）上：`get_site_status` 经 `PUBLIC_STATUS.readStatus(path)` 调 core 的 `PublicStatus` 入口（和浏览器看到的同一份公开模型，走 Service Binding），一条回复里所有调用合计有读取次数上限，「视图 + 位置 + query + detail」完全相同的读取不再读，换页或换 query 另算一次，trace 里仍只记读过哪些视图（`src/tools/site-status.ts#claimViews`）。拿到完整 JSON 后才在本 Worker 加工，`readStatus` 契约不变：`detail` 缺省为 `"summary"`，删掉图片字段（判定见 `isImageField`），`"full"` 保留全部字段；`query` 按 NFKC 加小写匹配，只保留递归包含该文本的列表项；处理后超过 `PAGE_SIZE` 的列表（或带 query 时被搜索的列表）换成 `{ total, items, nextCursor? }`，带 query 时另有 `totalBeforeQuery`。只处理最外层的对象列表，匹配的条目整项保留；纯数值或字符串数组（如热力图的逐日序列）整份保留、不分页也不按 query 筛，带合法 `origin` 日期的数值数组另附按月合计 `<数组名>ByMonth`（`withMonthlyTotals`）；同一视图的长列表共用一个位置。分页沿用 MCP 规范 Pagination 的约定，用在工具参数上：页面大小由服务端决定，`cursor` 不透明，须原样传回，它决定视图、query 与 detail，同时传入的这几个参数被忽略并附提示；没有 `nextCursor` 就是最后一页；列表总数与 cursor 记录的不一致时照常返回并提示；非法或越界的 cursor 回工具错误、不占额度。每个视图先给一行摘要（分页列表、总数、`nextCursor`），兜底截断只截后面的 JSON。`show_card` 回给模型的数据走同一套默认处理；`read_project_doc` 读本项目的设计文档（`src/tools/project-docs.ts`），只认 `PROJECT_DOCS` 白名单里的文档键，运行时从公开仓库 main 分支的 raw.githubusercontent.com 取并在边缘缓存，所以改文档不用重发 Worker、新增文档才要加一行；长文档先回目录和开头，模型再按章节读，一条回复的读取次数有上限（`claimDoc`，上限说明经 `replyCap` 只附给对话）。`web_search` 是服务端工具，Haiku 用基础版，其余用带动态过滤的版本（原因写在 `src/chat/web-search.ts#webSearchTool`），每轮请求的 `max_uses` 是这条回复还剩的次数，用完就不再带这个工具。
 - AI 资讯走 Anthropic 的 MCP 连接器：普通对话（非设计会话）每轮请求带 `mcp_servers`（`https://aihot.news/api/mcp`，无鉴权、只读）和只启用白名单工具的 `mcp_toolset`（`src/chat/ai-news.ts`），由 Anthropic 服务端代连，Worker 不出站；收尾轮不带工具时 `mcp_servers` 与 `mcp-client-2025-11-20` beta 一并不带。`aihot_search` 的搜索词会像 `web_search` 一样作为 `search` 事件展示。MCP 调用不计入 `web_search` 的 `max_uses`，一条回复的用量只受输出预算约束。
 
 - 历史由浏览器提交，Worker 给每一问一答盖章（`src/chat/seal.ts`，HMAC 密钥是 Secret `CHAT_HISTORY_SECRET`，缺了对话端点回 503）：回复正常结束时 NDJSON 末尾发一行 `seal`，带章和 trace（哪一档答的、实际 effort、读过哪些视图与文档、搜了几次、是否兜底代答、是否进入设计、是否生成计划、画过哪些卡片），浏览器原样带回。章签的是「访客消息 + 回复 + trace + 计划 token」整对；设计会话与构建状态另用带用途的 HMAC token 验证，进 Clef 与模型之前先验章，没有章或对不上的一对整对丢掉：Clef 拒掉的、模型拒答的、半路中断的、浏览器伪造或改过的都进不了上下文。验过章的 trace 拼成一条说明附在那条回复之前的访客消息里（`src/chat/history.ts`），模型因此知道那条回复当时查过什么；说明只用枚举与计数拼，不带自由文本。
@@ -82,9 +82,9 @@
 
 绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、构建工作流与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
 
-生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管 api 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
+生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管旧 `api` Worker 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
 
-Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在 api 的同一隔离 Preview 内运行 api 与 AI，不连接生产 Service Binding；ai 自己不发布分支 Preview。Secret 配在 api parent 的具体 Preview 上；创建、解析和配置步骤只在构建文档维护。
+Workers Builds 的监视路径和部署命令统一见 [Workers 构建](../../docs/workers-builds.md)。分支预览使用组合入口，在 core 的同一隔离 Preview 内运行 core 与 AI，不连接生产 Service Binding；ai 自己不发布分支 Preview。Secret 配在 core parent 的具体 Preview 上；创建、解析和配置步骤只在构建文档维护。
 
 ## 本地开发
 
@@ -96,16 +96,16 @@ pnpm dev:worker
 pnpm dev:local
 ```
 
-`pnpm dev:worker` 同时启动 dev-router、api、ai、ingress、collector；请求从本地 api 经 Service Binding 到 ai，工具再经 `PUBLIC_STATUS` 读本地 api。端口、状态持久化与假数据注入见 [api 本地开发](../api/README.md#本地开发)。`workers/api/.dev.vars` 的 `UPSTREAM_API_URL` 只控制 api 的公开状态兜底，不启用 AI 调试权限。
+`pnpm dev:worker` 同时启动 dev-router、core、ai、ingress、collector；请求从本地 core 经 Service Binding 到 ai，工具再经 `PUBLIC_STATUS` 读本地 core。端口、状态持久化与假数据注入见 [core 本地开发](../core/README.md#本地开发)。`workers/core/.dev.vars` 的 `UPSTREAM_API_URL` 只控制 core 的公开状态兜底，不启用 AI 调试权限。
 
 聊天凭据放 `workers/ai/.dev.vars`：`ANTHROPIC_API_KEY`、`TURNSTILE_SECRET_KEY`、`CHAT_HISTORY_SECRET` 必须齐全，否则聊天回 503；设计与签名计划另需 `BUILD_SESSION_SECRET`、`BUILD_COORDINATOR` 绑定，以及与该 key 同一工作区的 `DESIGN_AGENT_ID`、`DESIGN_ENVIRONMENT_ID`（`wrangler.toml` 与 `wrangler.test.toml` 的 `[vars]` 已填；换工作区时用新 key 跑 `pnpm --dir workers/ai designer:setup`，按名字找或建并打印两个 ID），缺任何一项时 Sonnet 拿不到 `start_design`；issue 提交还需 `GITHUB_APP_CLIENT_SECRET`。本地 `wrangler.test.toml` 设置 `AI_DEV=true`；`src/runtime.ts#aiDevEnabled` 只在 `AI_DEV=true` 或 `PREVIEW_WORKER=true` 时放宽 localhost / Turnstile 测试密钥校验，并启用以下调试变量：
 
 - `CHAT_RATE_LIMIT=off`：普通聊天配额仍记账、`/usage` 仍显示用量，但不拦截；设计轮数与会话上限仍执行。
 - `CHAT_FORCE_TIER=<档位或 CLEF_CHOICES 的键>`：无设计会话时跳过 Clef；合法值见根目录 `shared/god-chat-tiers.ts#GOD_CHAT_TIERS` 与 `src/chat/router.ts#CLEF_CHOICES`。有效设计会话始终由规划者回答。
 
-生产缺省不开调试权限，不能靠 `UPSTREAM_API_URL` 或只设置调试变量绕过验人及配额。使用 `pnpm dev` 让本地页面连接生产 api 时，localhost 的 Turnstile 结果不会被当成本地测试放行；调试对话应使用上面的本地 Worker 栈。本地 `AI` 绑定调用远程 Workers AI，需要 Wrangler 具备访问权限，没有时 `pnpm dev:worker` 去掉这个绑定、路由走兜底档位（见 [api 本地开发](../api/README.md#本地开发)）；强制档位只跳过 Clef，仍会调用所选 Anthropic 模型。
+生产缺省不开调试权限，不能靠 `UPSTREAM_API_URL` 或只设置调试变量绕过验人及配额。使用 `pnpm dev` 让本地页面连接生产 core 时，localhost 的 Turnstile 结果不会被当成本地测试放行；调试对话应使用上面的本地 Worker 栈。本地 `AI` 绑定调用远程 Workers AI，需要 Wrangler 具备访问权限，没有时 `pnpm dev:worker` 去掉这个绑定、路由走兜底档位（见 [core 本地开发](../core/README.md#本地开发)）；强制档位只跳过 Clef，仍会调用所选 Anthropic 模型。
 
-改提示词、工具说明或工具结果的措辞后，用 `pnpm --dir workers/ai chat:probe` 对真实模型连问几次再看回答（语言、说法）：它在 Node 里直接调 `src/chat/handler.ts#handleChat`，跳过 Clef 与验人，状态视图读 `workers/api/dev-fixtures/` 的夹具，用法见 `scripts/chat-probe.ts` 的 `USAGE`。
+改提示词、工具说明或工具结果的措辞后，用 `pnpm --dir workers/ai chat:probe` 对真实模型连问几次再看回答（语言、说法）：它在 Node 里直接调 `src/chat/handler.ts#handleChat`，跳过 Clef 与验人，状态视图读 `workers/core/dev-fixtures/` 的夹具，用法见 `scripts/chat-probe.ts` 的 `USAGE`。
 
 ## 验证
 
@@ -120,4 +120,4 @@ node scripts/verify-build-worker.mjs
 
 `scripts/verify-build-worker.mjs` 用临时配置启动本地 workerd，以真实 Durable Object RPC 和 SQLite 验证并发一次性消费、额度、状态恢复与重启持久化；GitHub 出站（含工作流派发与 Actions OIDC 公钥）使用夹具。若依赖锁定的 workerd 不支持脚本配置的 `compatibility_date`，设置 `MINIFLARE_WORKERD_PATH` 指向支持该日期的本地 workerd 可执行文件。
 
-`src/worker.test.ts` 验证路由边界、CORS、MCP 的公开状态 RPC、缺绑定时关闭入口与环境选择；聊天、配额和 MCP 的行为测试随实现放在本目录。涉及跨 Worker 读取或转发时，还要运行 [api 集成验证](../api/README.md#验证)。MCP 协议变更必须按上文「MCP」用真实客户端连接本地入口，不能仅以单元测试作为客户端兼容的证明。
+`src/worker.test.ts` 验证路由边界、CORS、MCP 的公开状态 RPC、缺绑定时关闭入口与环境选择；聊天、配额和 MCP 的行为测试随实现放在本目录。涉及跨 Worker 读取或转发时，还要运行 [core 集成验证](../core/README.md#验证)。MCP 协议变更必须按上文「MCP」用真实客户端连接本地入口，不能仅以单元测试作为客户端兼容的证明。

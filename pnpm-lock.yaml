@@ -233,14 +233,14 @@ importers:
         specifier: 4.149.0
         version: 4.149.0(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3)
 
-  workers/api:
+  workers/collector:
     dependencies:
       '@sentry/cloudflare':
         specifier: 11.7.0
         version: 11.7.0(@cloudflare/workers-types@4.20260702.1)(wrangler@4.149.0(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3))
     devDependencies:
       '@cloudflare/workers-types':
-        specifier: ^4.20250214.0
+        specifier: 4.20260702.1
         version: 4.20260702.1
       '@types/node':
         specifier: ^24.0.0
@@ -252,14 +252,14 @@ importers:
         specifier: 4.149.0
         version: 4.149.0(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3)
 
-  workers/collector:
+  workers/core:
     dependencies:
       '@sentry/cloudflare':
         specifier: 11.7.0
         version: 11.7.0(@cloudflare/workers-types@4.20260702.1)(wrangler@4.149.0(@cloudflare/workers-types@4.20260702.1)(@types/node@24.13.3))
     devDependencies:
       '@cloudflare/workers-types':
-        specifier: 4.20260702.1
+        specifier: ^4.20250214.0
         version: 4.20260702.1
       '@types/node':
         specifier: ^24.0.0

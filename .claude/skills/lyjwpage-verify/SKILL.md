@@ -55,7 +55,7 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
 
 ### 2. UI 浏览器端到端
 
-- 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `pnpm dev:override <端点> <夹具>`（夹具在 `workers/api/dev-fixtures/`，收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
+- 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `pnpm dev:override <端点> <夹具>`（夹具在 `workers/core/dev-fixtures/`，收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
 - 首屏（SSR）要渲染指定数据：本机起一个 node 代理转发 `https://lyjw.me`、只改被测端点，`PUBLIC_BACKEND_URL=http://localhost:<端口> pnpm dev`，node 用 `NODE_USE_ENV_PROXY=1` 走代理。只改浏览器请求用 Playwright `context.route`。
 - Playwright 用全局安装（容器里已验证可用）：
 

@@ -1,5 +1,5 @@
 # 本地名字须与 Service Binding 的生产名字一致。
-# 共享 KV 的 id 必须与 api 的本地配置一致。
+# 共享 KV 的 id 必须与 core 的本地配置一致。
 name = "collector"
 main = "src/index.ts"
 compatibility_date = "2026-09-08"
@@ -15,7 +15,7 @@ DEV_TRIGGERS = "true"
 
 [[services]]
 binding = "CORE"
-service = "api"
+service = "core"
 entrypoint = "StateCore"
 
 [[services]]

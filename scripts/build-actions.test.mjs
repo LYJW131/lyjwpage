@@ -453,15 +453,15 @@ test("blocked.md stops the upload and is capped", async (t) => {
   const fixture = repo(t);
   writeFile(fixture.checkout, "src/edit.ts", "export const value = 6;\n");
   const lure = "[claim it](https://evil.example) <img src=https://evil.example/x.png>";
-  writeFile(fixture.checkout, ".build-output/blocked.md", `  Needs workers/api/src/x.ts. ${lure} ${"z".repeat(800)}`);
+  writeFile(fixture.checkout, ".build-output/blocked.md", `  Needs workers/core/src/x.ts. ${lure} ${"z".repeat(800)}`);
   const run = await packageAndPublish(t, fixture);
   assert.equal(run.ok, true);
   assert.deepEqual(run.workerRequests().map(workerPath), [WORKER_PATHS.progress]);
   const blocked = body(run.workerRequests()[0]);
   assert.equal(blocked.blocked, true);
   assert.equal(blocked.message.length, TEXT_LIMITS.blockedChars);
-  assert.ok(blocked.message.startsWith(`Needs workers/api/src/x.ts. ${lure} zzz`));
-  assert.ok(run.logs.some((line) => line.startsWith("Build blocked: \"Needs workers/api/src/x.ts.")));
+  assert.ok(blocked.message.startsWith(`Needs workers/core/src/x.ts. ${lure} zzz`));
+  assert.ok(run.logs.some((line) => line.startsWith("Build blocked: \"Needs workers/core/src/x.ts.")));
   assert.equal(fs.readFileSync(run.env.GITHUB_STEP_SUMMARY, "utf8"), "Build blocked; the reason is in the job log (Worker HTTP 200).\n");
 });
 

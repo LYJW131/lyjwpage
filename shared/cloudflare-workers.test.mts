@@ -7,12 +7,12 @@ import { fetchWorkerDeployments, fetchWorkersMetrics, getCloudflareWorkers, pars
 const start = Date.parse("2026-09-10T12:30:00Z");
 const end = start + 43_200_000;
 const analytics = () => ({ data: { viewer: { accounts: [{
-  summary: [{ dimensions: { scriptName: "api" }, sum: { requests: 20, errors: 2, subrequests: 30 }, quantiles: { cpuTimeP50: 735 } }],
+  summary: [{ dimensions: { scriptName: "core" }, sum: { requests: 20, errors: 2, subrequests: 30 }, quantiles: { cpuTimeP50: 735 } }],
 }] } }, errors: null });
 
 test("summary maps every repo worker in order, converts microseconds, and leaves absent workers null", () => {
   const result = parseWorkersMetrics(analytics(), start, end);
-  assert.deepEqual(result.workers.map((worker) => worker.name), ["site", "api", "ingress", "collector"]);
+  assert.deepEqual(result.workers.map((worker) => worker.name), ["site", "core", "ingress", "collector"]);
   assert.equal(result.workers[0].metrics, null);
   assert.deepEqual(result.workers[1].metrics, { requests: 20, errors: 2, subrequests: 30, cpuTimeP50Ms: 0.735 });
   assert.equal(result.workers[2].metrics, null);
@@ -89,7 +89,7 @@ test("deployments join the commit of the highest-traffic version in one batched 
         v1: { build_trigger_metadata: { branch: "main", commit_hash: sha, commit_message: "feat: x" } },
       } } });
     }
-    if (url.includes("/workers/scripts/api/deployments")) {
+    if (url.includes("/workers/scripts/core/deployments")) {
       return Response.json({ success: true, result: { deployments: [
         { created_on: "2026-09-11T00:00:00Z", versions: [{ version_id: "v1", percentage: 100 }] },
       ] } });
@@ -114,12 +114,12 @@ test("a deployed version without a build record borrows the commit of the previo
         "older-v": { build_trigger_metadata: { branch: "main", commit_hash: "f".repeat(40), commit_message: "old" } },
       } } });
     }
-    if (url.includes("/workers/scripts/api/deployments")) {
+    if (url.includes("/workers/scripts/core/deployments")) {
       return Response.json({ success: true, result: { deployments: [
         { created_on: "2026-09-12T18:30:00Z", versions: [{ version_id: "secret-v", percentage: 100 }] },
       ] } });
     }
-    if (url.includes("/workers/scripts/api/versions")) {
+    if (url.includes("/workers/scripts/core/versions")) {
       return Response.json({ success: true, result: { items: [
         { id: "older-v", number: 46 }, { id: "secret-v", number: 48 }, { id: "built-v", number: 47 },
       ] } });
@@ -134,7 +134,7 @@ test("a deployed version without a build record borrows the commit of the previo
 test("the public payload joins metrics and deployments by name, each half with its own time", async (t) => {
   const metrics = { ...parseWorkersMetrics(analytics(), start, end), fetchedAt: end + 5 };
   const deployment = { deployedAt: 1, versions: [{ id: "v1", percentage: 100 }], commit: null };
-  const deployments = { fetchedAt: end + 60, workers: [{ name: "collector", deployment }, { name: "api", deployment: null }] };
+  const deployments = { fetchedAt: end + 60, workers: [{ name: "collector", deployment }, { name: "core", deployment: null }] };
   const store = new Map<string, LagEntry<unknown>>([
     [LAG_KEYS.cloudflareMetrics, { updatedAt: end + 5, data: metrics }],
     [LAG_KEYS.cloudflareDeployments, { updatedAt: end + 60, data: deployments }],
@@ -147,7 +147,7 @@ test("the public payload joins metrics and deployments by name, each half with i
   assert.equal(result.data.fetchedAt, end + 5);
   assert.equal(result.data.deploymentsFetchedAt, end + 60);
   assert.deepEqual(result.data.workers.map((worker) => [worker.name, worker.metrics?.requests ?? null, worker.deployment?.versions[0].id ?? null]), [
-    ["site", null, null], ["api", 20, null], ["ingress", null, null], ["collector", null, "v1"],
+    ["site", null, null], ["core", 20, null], ["ingress", null, null], ["collector", null, "v1"],
   ]);
 
   store.delete(LAG_KEYS.cloudflareMetrics);

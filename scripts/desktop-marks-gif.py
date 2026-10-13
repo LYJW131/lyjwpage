@@ -19,7 +19,7 @@ GIF 一轮的长度等于 Ghostty 一轮（CYCLE_MS = 帧数 × 帧时长）：C
 四条时间线上任何一段换帧就出一张 GIF 帧，其余段保持上一帧。
 
 前置：
-  1. pnpm dev:worker 与 pnpm dev:local 已在跑（workers/api/.dev.vars 里 DEV_OVERRIDES=true）
+  1. pnpm dev:worker 与 pnpm dev:local 已在跑（workers/core/.dev.vars 里 DEV_OVERRIDES=true）
   2. Python 3 + playwright + Pillow：pip install playwright pillow && playwright install chromium
      （装了 Google Chrome 的机器可设 PLAYWRIGHT_CHANNEL=chrome 免下载）
 用法：
@@ -230,7 +230,7 @@ def capture_ghostty(page, sel: str, frames_dir: Path, theme: str) -> Timeline:
 
 
 def titled_fixture(base: str, title: str | None, path: Path) -> Path:
-    fixture = json.loads((ROOT / "workers/api/dev-fixtures" / base).read_text())
+    fixture = json.loads((ROOT / "workers/core/dev-fixtures" / base).read_text())
     fixture["data"]["desktop"]["windowTitle"] = title
     path.write_text(json.dumps(fixture, ensure_ascii=False))
     return path

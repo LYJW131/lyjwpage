@@ -9,7 +9,7 @@
 - `src/cadence.ts#IDLE_TICK_INTERVAL_MS` ⇄ 站点 `shared/freshness.ts#PLAYSTATION_STALE_MS`：要放宽闲档，先改站点窗口并部署完，再改这边。
 - 局域网电源探测只用于调频，不进入上报信封。
 - 上报鉴权是单独一把 Access service token（`ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`），只在控制台创建或轮换时显示一次；`.env` 不进仓库。client id 登记进 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`。
-- 原始信封 POST 到 `/api/ingest/playstation`，收敛在 `shared/ingest/playstation.ts`。奖杯进 D1 由 api 在收下之后做（`workers/api/src/stores/trophy-history.ts#archiveTrophies`），容器里不写。
+- 原始信封 POST 到 `/api/ingest/playstation`，收敛在 `shared/ingest/playstation.ts`。奖杯进 D1 由 core 在收下之后做（`workers/core/src/stores/trophy-history.ts#archiveTrophies`），容器里不写。
 - 依赖站点新契约的改动，先确认站点与 Worker 已生效，再换容器（根 `AGENTS.md`「部署流程」）。
 
 ## 部署

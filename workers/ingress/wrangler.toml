@@ -28,7 +28,7 @@ ACCESS_AUD = "a1557bcf1114491b462c7ee722ae97032405c43fa831812c8403e6d7366fba01"
 
 [[services]]
 binding = "CORE"
-service = "api"
+service = "core"
 entrypoint = "StateCore"
 
 [[services]]

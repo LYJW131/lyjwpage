@@ -50,7 +50,7 @@ test("one failing block degrades to null without failing the round", async () =>
   await assert.rejects(fetchSentryStatus(async () => { throw new Error("down"); }));
 });
 
-test("the API error row counts the api and collector Worker projects together", async () => {
+test("the API error row counts the core and collector Worker projects together", async () => {
   const projects: unknown[] = [];
   const payload = await fetchSentryStatus(async (path, params) => {
     if ((path.endsWith("/events/") && params.dataset === "errors") || path.endsWith("/issues-count/")) projects.push(params.project);

@@ -4,7 +4,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-// GET 不带 Origin：api Worker 只拦「带了且不在白名单」的来源；推送长连接反过来必须带，见 LiveSocket。
+// GET 不带 Origin：core Worker 只拦「带了且不在白名单」的来源；推送长连接反过来必须带，见 LiveSocket。
 enum SiteHosts {
     static let production = URL(string: "https://api.homepage.lyjw.llc")!
 
@@ -12,7 +12,7 @@ enum SiteHosts {
     static let api: URL = ProcessInfo.processInfo.environment["LYJWPAGE_API"].flatMap(URL.init(string:)) ?? production
     static let site = URL(string: "https://lyjw.me")!
     static var socket: URL { socketURL(for: api) }
-    // 必须在 api Worker 的 ALLOWED_ORIGINS 里。
+    // 必须在 core Worker 的 ALLOWED_ORIGINS 里。
     static let socketOrigin = "https://lyjw.me"
 
     static func socketURL(for api: URL) -> URL {
@@ -147,7 +147,7 @@ struct StatusClient: Sendable {
 
     static let versionURL = SiteHosts.site.appending(path: "api/version")
 
-    // /api/version 在站点域名上，不在 api Worker 上。
+    // /api/version 在站点域名上，不在 core Worker 上。
     func version() async throws -> AppVersionPayload {
         try await get(Self.versionURL, as: AppVersionPayload.self)
     }
