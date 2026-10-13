@@ -147,6 +147,7 @@ def check(repo):
     if d:
         stale("cloudflare-workers", "Worker 部署", d.get("deploymentsFetchedAt"), "CLOUDFLARE_DEPLOYMENTS_STALE_MS")
         stale("cloudflare-workers", "Worker 指标", d.get("fetchedAt"), "CLOUDFLARE_METRICS_STALE_MS")
+        snap["cloudflare-workers"]["workers"] = sorted(w.get("name") for w in d.get("workers", []))
         for w in d.get("workers", []):
             missing = [k for k in ("metrics", "deployment") if not w.get(k)]
             if missing:
