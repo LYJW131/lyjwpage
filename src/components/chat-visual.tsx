@@ -57,8 +57,8 @@ function Stats({ visual }: { visual: StatsVisual }) {
           <div
             className={cn(
               "text-lg leading-tight font-semibold",
-              summary.tone === "good" && "text-[var(--signal-green)]",
-              summary.tone === "bad" && "text-[var(--signal-red)]",
+              summary.tone === "good" && "text-signal-green",
+              summary.tone === "bad" && "text-signal-red",
             )}
           >
             {summary.value}
@@ -274,7 +274,7 @@ function Timeline({ visual }: { visual: TimelineVisual }) {
         {visual.items.map((item, i) => (
           <div key={i} className="relative pb-3 pl-4 last:pb-0">
             <span aria-hidden className="absolute top-[0.4rem] -left-[3.5px] size-1.5 bg-foreground" />
-            <div className="font-mono text-[11px] text-muted-foreground">{item.time}</div>
+            <div className="font-mono text-2xs text-muted-foreground">{item.time}</div>
             <div className="font-medium">{item.title}</div>
             {item.text && <div className="text-muted-foreground">{item.text}</div>}
           </div>

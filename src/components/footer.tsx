@@ -30,7 +30,7 @@ export function Footer() {
         <OnlineCount />
       </div>
       {EXTRA_TEXT ? (
-        <div className="px-4 pb-4 text-center text-[11px] leading-relaxed text-muted-foreground">
+        <div className="px-4 pb-4 text-center text-2xs leading-relaxed text-muted-foreground">
           {EXTRA_HREF ? (
             <a
               href={EXTRA_HREF}

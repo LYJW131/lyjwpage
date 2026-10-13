@@ -211,7 +211,7 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
         content: <Tooltip key={`t${index}`} from={from} to={to} head="Played elsewhere (estimated)" lines={[
           row.title,
           row.subtitle && <span className="text-muted-foreground">{row.subtitle}</span>,
-          <span key="n" className="text-[10px] text-muted-foreground">
+          <span key="n" className="text-2xs text-muted-foreground">
             Estimated from Apple Music&apos;s recently played list and track lengths{typeof margin === "number" ? `, ideal start error ±${margin < 90 ? `${Math.max(1, margin)}s` : pulseDuration(margin)}` : ""}
           </span>,
         ]} />,
@@ -389,14 +389,14 @@ function stepsModel(lane: PulseStepsLane, range: Range, width: number): LaneMode
     )),
     over: sessions.map((session, index) => {
       const room = ((Math.min(range.to, sessions[index + 1]?.from ?? range.to) - session.from) / Math.max(1, range.to - range.from)) * width;
-      if (room < session.activityType.length * 5.5 + 6) return null;
+      if (room < session.activityType.length * 6.1 + 6) return null;
       const left = (session.from - range.from) / Math.max(1, range.to - range.from) * width;
-      const shift = Math.min(0, width - left - (session.activityType.length * 5.5 + 6));
+      const shift = Math.min(0, width - left - (session.activityType.length * 6.1 + 6));
       return (
         <span
           key={index}
           aria-hidden
-          className="pointer-events-none absolute top-0.5 whitespace-nowrap bg-surface/85 px-0.5 text-[9px] font-medium leading-none text-foreground"
+          className="pointer-events-none absolute top-0.5 whitespace-nowrap bg-surface/85 px-0.5 text-[10px] font-medium leading-none text-foreground"
           style={{ left: percent(range, session.from), transform: shift ? `translateX(${shift}px)` : undefined }}
         >
           {session.activityType}
@@ -573,7 +573,7 @@ export function PulseCard({
                 {model?.summary ? (
                   <>
                     <span className="max-w-full truncate font-mono text-xs font-medium tabular-nums">{model.summary.value}</span>
-                    <span className="max-w-full truncate text-[10px] text-muted-foreground">{model.summary.detail}</span>
+                    <span className="max-w-full truncate text-2xs text-muted-foreground">{model.summary.detail}</span>
                   </>
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
@@ -582,14 +582,14 @@ export function PulseCard({
             </div>
           );
         })}
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground" aria-hidden>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground" aria-hidden>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-human)" />Coding app</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-agent)" />Agent</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-both)" />Both</span>
           <span className="flex items-center gap-1"><span className="h-2 w-3 border-t border-(--pulse-agent) bg-(--pulse-agent)/30" />Tokens/min</span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1" title="Played elsewhere (estimated)">
             <span className={cn("pulse-trace relative inline-block h-2 w-3", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")} />
-            Played elsewhere, estimated
+            Elsewhere (est.)
           </span>
           <span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-current opacity-45" />Idle</span>
         </div>

@@ -139,7 +139,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   return (
     <section ref={cardRef} aria-label={`Build plan: ${proposal.plan.title}`} className="mt-3 min-w-0 space-y-3 rounded-lg border border-line-strong bg-surface p-3">
       <div className="flex flex-wrap items-center justify-between gap-1">
-        <span className="label-mono text-[10px] text-muted-foreground">Site improvement plan</span>
+        <span className="label-mono text-muted-foreground">Site improvement plan</span>
         {expired && !used && <span className="text-xs text-muted-foreground">Plan expired</span>}
       </div>
       <h3 className="font-semibold">{proposal.plan.title}</h3>
@@ -147,7 +147,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
         <summary className="cursor-pointer text-xs text-muted-foreground">Specification & acceptance criteria</summary>
         <div className="mt-2 text-xs"><ChatMarkdown>{proposal.plan.spec}</ChatMarkdown></div>
         <ul className="mt-2 list-disc space-y-1 pl-4 text-xs">{proposal.plan.acceptance.map((item, index) => <li key={index}>{item}</li>)}</ul>
-        <p className="mt-2 break-all font-mono text-[10px] text-muted-foreground">{proposal.plan.paths.join(", ")}</p>
+        <p className="mt-2 break-all font-mono text-2xs text-muted-foreground">{proposal.plan.paths.join(", ")}</p>
       </details>
       {proposal.issue ? (
         <p className="text-xs">Filed as <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
@@ -177,12 +177,12 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
             <button type="button" onClick={() => { setError(null); setBuildOpen(true); checkIssueRef.current?.(); }} disabled={disabled || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
           </div>
           {proposal.issueOpened && !expired && <p className="text-xs">Opened GitHub&apos;s new issue form. {awaitingIssue ? "Once you submit it there, this card links to the issue. You can still start a build instead." : proposal.issueRef ? "Submit it there to file this plan, or start a build instead." : "Submit it there to file this plan."}</p>}
-          <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
+          <p className="text-2xs text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {buildOpen && <GithubConsent language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} cancellable={working !== "preparing"} onCancel={leaveBuild} />}
         </>
       )}
-      {error && !buildOpen && <p role="alert" className="text-xs text-red-500">{error}</p>}
+      {error && !buildOpen && <p role="alert" className="text-xs text-signal-red">{error}</p>}
     </section>
   );
 }
@@ -245,10 +245,10 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
         <dt>Preview</dt><dd><Signal signal={savedRun?.preview} note="sign-in required" /></dd>
         <dt>Claude review</dt><dd><Signal signal={savedRun?.review} label={buildReviewSummary(savedRun?.review?.state)} /></dd>
       </dl>
-      <p className="text-[10px] text-muted-foreground">Claude review is advisory. {terminal ? "Automatic refresh is off. Refresh to check for updates." : "Status refreshes while this card is visible."}</p>
+      <p className="text-2xs text-muted-foreground">Claude review is advisory. {terminal ? "Automatic refresh is off. Refresh to check for updates." : "Status refreshes while this card is visible."}</p>
       {(terminal || error) && <button type="button" onClick={() => void refreshStatus()} disabled={refreshing} className="rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover disabled:opacity-40">{refreshing ? "Refreshing…" : "Refresh status"}</button>}
-      <details className="text-[10px] text-muted-foreground"><summary className="cursor-pointer">Build details</summary><p className="mt-1 break-all font-mono">{build.runId}</p></details>
-      {error && <p role="status" className="text-red-500">{error}</p>}
+      <details className="text-2xs text-muted-foreground"><summary className="cursor-pointer">Build details</summary><p className="mt-1 break-all font-mono">{build.runId}</p></details>
+      {error && <p role="status" className="text-signal-red">{error}</p>}
     </div>
   );
 }
@@ -324,13 +324,13 @@ function BuildProgress({ run }: { run: BuildRun }) {
                 here && active && "animate-pulse border-foreground bg-foreground/60",
                 here && failed && "border-red-500 bg-red-500",
               )} />
-              <span className={cn("shrink-0 text-[10px]", here || reached ? "text-foreground" : "text-muted-foreground")}>{step}</span>
+              <span className={cn("shrink-0 text-2xs", here || reached ? "text-foreground" : "text-muted-foreground")}>{step}</span>
               {index < STEPS.length - 1 && <span className={cn("h-px min-w-2 flex-1", index < current ? "bg-foreground" : "bg-line")} />}
             </li>
           );
         })}
       </ol>
-      {active && <p className="font-mono text-[10px] tabular-nums text-muted-foreground">Running for {elapsed(now - run.createdAt)} · {TYPICAL_BUILD}</p>}
+      {active && <p className="font-mono text-2xs tabular-nums text-muted-foreground">Running for {elapsed(now - run.createdAt)} · {TYPICAL_BUILD}</p>}
       {active && log.length > 0 && (
         <ul className="space-y-0.5 text-muted-foreground">
           {log.map((entry, index) => <li key={entry} className={cn("break-words", index === log.length - 1 && "text-foreground")}>{entry}</li>)}
