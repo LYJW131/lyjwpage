@@ -1,7 +1,6 @@
 @import "tailwindcss";
 /* 合并时钟样式，避免首屏多出一条渲染阻塞 CSS 请求。 */
 @import "@clock-ui/react/base.css";
-@import "./brush-font.css";
 
 @font-face {
   font-family: "Geist Mono";

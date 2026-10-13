@@ -33,6 +33,7 @@ import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { site } from "@shared/site";
 import { themeBootScript } from "@/lib/theme";
 
+import "@fontsource/ma-shan-zheng/400.css";
 import "./globals.css";
 
 function bootScript(): string {
