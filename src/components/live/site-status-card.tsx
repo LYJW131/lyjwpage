@@ -146,7 +146,6 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
   const siteMetrics = workerMetricsStale ? null : siteWorker?.metrics;
   const { data: server } = useStatus<ServerPayload>(SERVER_PATH, { fallback: serverFallback });
   const { data: reporters, servedAt: reportersServedAt } = useStatus<ReportersPayload>(REPORTERS_PATH, { fallback: reportersFallback });
-  const measured = siteDeployments?.pagespeed ? new URL(siteDeployments.pagespeed.url).host : null;
   const pagespeed = pagespeedStale ? null : siteDeployments?.pagespeed;
   const deploymentsBySha = new Map<string, { deployment: SiteDeployment; production: boolean }>();
   for (const deployment of [...siteDeployments?.recent ?? [], ...siteDeployments?.production ? [siteDeployments.production] : []]) {
@@ -190,8 +189,8 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       <section className="min-w-0 border-b border-line lg:border-b-0" aria-label="Performance">
         <div className="px-4 pt-3 pb-2 lg:px-5">
           <div className="grid grid-cols-[48px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-2xs text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))]">
-            <span className="truncate text-left" title={pagespeed ? `PageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "Unavailable" : undefined}>{measured}</span>
-            <span title="Lighthouse performance score, lab run on a simulated device">PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label.replaceAll("/", "/\u200b")}</span>)}
+            <span />
+            <span title={`Lighthouse performance score, lab run on a simulated device${pagespeed ? `\nPageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "\nUnavailable" : ""}`}>PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label.replaceAll("/", "/\u200b")}</span>)}
           </div>
           {(["desktop", "mobile"] as const).map(device => {
             const score = pagespeed?.[device].score;
