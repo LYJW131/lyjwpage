@@ -18,6 +18,8 @@ Sentry.init({
   release: commitSha ?? undefined,
   tunnel: SENTRY_RELAY_PREFIX,
   tracesSampleRate: 0.1,
+  // 只给 React Router 的 .data 请求带追踪头。/api/* 与页面同源后若也带，已采样的页面开多久，site 读可滞后视图就跟着采多久。
+  tracePropagationTargets: [/\.data$/],
   integrations: [
     Sentry.browserTracingIntegration(),
     Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] }),

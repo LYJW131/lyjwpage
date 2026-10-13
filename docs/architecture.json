@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage.git",
-      "revision": "af504d82289553557e8934ac923350f14ef4fc10"
+      "revision": "d6ad2e68422ce199b4a6633cb9d38429f5fffa4d"
     }
   },
   "components": [
@@ -118,7 +118,7 @@
       "type": "database",
       "label": "KV · 可滞后快照",
       "sublabel": "限额 · 活动 · 外部服务统计",
-      "tag": "写入方直写 · API 只读此层",
+      "tag": "写入方直写 · site 与 API 只读",
       "pos": [
         450,
         610
@@ -135,7 +135,7 @@
           "path": "workers/ingress/src/lag-ingest.ts"
         },
         {
-          "path": "workers/api/src/ports.ts"
+          "path": "shared/lag-views.ts"
         }
       ]
     },
@@ -294,7 +294,7 @@
       "type": "frontend",
       "label": "访客浏览器",
       "sublabel": "SWR · 逐卡新鲜度",
-      "tag": "挂载后直连 API 与 /ws",
+      "tag": "挂载后只连站点：状态 · /ws",
       "pos": [
         1270,
         610
@@ -566,21 +566,28 @@
       "id": "ws",
       "from": "live",
       "to": "browser",
-      "label": "/ws · 事件",
+      "label": "/ws 事件 · 经 site 透传",
       "variant": "emphasis"
     },
     {
       "id": "direct_read",
       "from": "browser",
-      "to": "api",
-      "label": "状态 · 对话 API",
+      "to": "site",
+      "label": "状态 · 对话 · /ws",
       "variant": "default"
     },
     {
       "id": "first_screen",
       "from": "site",
       "to": "api",
-      "label": "逐卡状态 API",
+      "label": "实时视图 · /ws · Binding",
+      "variant": "default"
+    },
+    {
+      "id": "site_lag",
+      "from": "site",
+      "to": "lag",
+      "label": "可滞后视图直读",
       "variant": "default"
     },
     {
@@ -627,9 +634,9 @@
     },
     {
       "id": "ai_forward",
-      "from": "api",
+      "from": "site",
       "to": "ai",
-      "label": "转发 /api/chat · /mcp",
+      "label": "转发对话 · 构建 · /mcp",
       "variant": "emphasis"
     },
     {
@@ -710,7 +717,7 @@
       "dot": "emerald",
       "title": "首屏快，状态也要新",
       "items": [
-        "site Worker 生成首屏时按卡读 API；浏览器挂载后直连 Worker，实时变化走 WebSocket，可滞后卡按各自节奏轮询。",
+        "site Worker 生成首屏时按卡读状态：可滞后层直读 KV，实时层经 Service Binding 问 api；浏览器挂载后只连站点域名，实时变化走站点转交的 WebSocket，可滞后卡按各自节奏轮询。",
         "只有布局变化触发 site Worker 标签失效。ESA 按 SWR 独立更新；图片走同源 /img/*，在边缘回源。"
       ]
     },
@@ -720,7 +727,7 @@
       "items": [
         "首条消息前先接受隐私说明，Turnstile 验人后发 30 分钟通行证；Clef 选 Haiku、Sonnet 或 Fable，额度满了逐档降级。",
         "改站请求由 Sonnet 开设计会话，交给 Managed Agents 里的 Opus 出计划；访客授权 GitHub 后，Actions 先审计划再改代码、凭 OIDC 回传，ai 校验再以 App 开 PR，截图存 R2 并评论进 PR。",
-        "ai 没有公开域名：浏览器、MCP 客户端、构建工作流与 GitHub webhook 都打到 api，经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
+        "ai 没有公开域名：浏览器、MCP 客户端与构建工作流打到站点域名，GitHub webhook 仍打 api 公开地址，都经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
       ]
     }
   ]

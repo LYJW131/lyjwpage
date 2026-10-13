@@ -460,8 +460,8 @@ AI 模型、验人、对话签名与 issue 提交凭据见 [AI Worker](../ai/REA
 
 外部数据的令牌（GitHub、Cloudflare、Sentry、PageSpeed）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。PSN 登录在 `reporters/playstation-reporter` 的数据卷里。
 
-站点配置 `PUBLIC_BACKEND_URL=https://api.homepage.lyjw.llc`；浏览器由这一个源拼 `/ws` 和 `/api/musickit/token`。所有上报器的目标为
-上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点。PlayStation 的游戏数据也走这一条：`reporters/playstation-reporter` POST 原始信封。agents-reporter 按此源公开的 `/api/status/coding/now` 判断 agent 在不在用来调频；server-reporter 节奏固定，PlayStation 按局域网发现包调频；上报器都不读 `/count`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
+站点配置 `PUBLIC_BACKEND_URL=https://lyjw.me`：浏览器的请求都发往站点域名，实时视图、`/ws` 和 `/api/musickit/token` 由 site Worker 经 Service Binding 转交本 Worker，可滞后视图由它直读 KV。所有上报器的目标为
+上报入口 Worker（`workers/ingress`）在 ingest 域名上的 `/api/ingest/<来源>`，不经过站点。PlayStation 的游戏数据也走这一条：`reporters/playstation-reporter` POST 原始信封。agents-reporter 按 `SITE_URL` 指向的源读 `/api/status/coding/now`，判断 agent 在不在用来调频；server-reporter 节奏固定，PlayStation 按局域网发现包调频；上报器都不读 `/count`。实例清单见 [端点核验记录](../../docs/reporter-endpoints.md)。
 
 提交并推送 main，由 Cloudflare Workers Builds 原生 Git 集成自动部署。
 `shared/`（`shared/ingest/` 除外，校验改了只发布上报入口）、根依赖及路径配置变化也触发 api 部署，见 [原生部署配置](../../docs/workers-builds.md)。

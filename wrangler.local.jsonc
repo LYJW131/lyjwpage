@@ -11,7 +11,7 @@
   },
   "vars": {
     "SITE_ENV": "development",
-    "PUBLIC_BACKEND_URL": "https://api.homepage.lyjw.llc",
+    "PUBLIC_BACKEND_URL": "https://lyjw.me",
     "R2_PUBLIC_BASE_URL": "https://lyjw.me/img"
   },
   "images": { "binding": "IMAGES" },
