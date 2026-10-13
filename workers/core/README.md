@@ -404,7 +404,7 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 
 ### cron 失败口径
 
-- StateHub 整个调不通（`pulseTick` 抛错）：这一轮抛给 `Sentry.withMonitor`，按失败报到，`withSentry` 同时记一条异常。监控 `failureIssueThreshold` 见 `src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`。
+- StateHub 整个调不通（`pulseTick` 抛错）：这一轮抛给 `shared/cron-check-ins.ts#cronCheckIns`，按失败报到，`withSentry` 同时记一条异常。监控 `failureIssueThreshold` 见 `src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`。
 - 子步骤失败（归档、评分、断流检测）：只打 `console.warn` 并记一条 `warning` 级异常（tag `cron.step=pulse-archive | pulse-score | freshness-watch`），这一轮照常报 ok。取舍：站点「API」在线行读的就是这个监控，子步骤坏了 API 本身仍在服务，不该让在线行闪；子步骤的故障靠事件看。StateHub 内部 `pulseTick` 里读归档快照、领评分任务各自兜底，只记 warn，不算 StateHub 调不通。
 
 ## 配置与部署
