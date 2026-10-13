@@ -5,7 +5,7 @@ import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
 
 import { ActionsOidcUnavailableError, buildWorkflowAudience, verifyActionsToken } from "./actions-oidc";
-import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, findPlanIssue, GithubBuildApi, GithubRequestError, installationApi, reconcileBuild } from "./github";
+import { BuildBlockedError, BuildPublicationPendingError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, findPlanIssue, GithubBuildApi, GithubRequestError, installationApi, reconcileBuild } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan, type PlanPayload } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
@@ -255,6 +255,7 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
     }
     return Response.json(state, { status: 201, headers: noStore });
   } catch (error) {
+    if (error instanceof BuildPublicationPendingError) return Response.json((await coordinator.readRun(runId))!.state, { status: 202, headers: noStore });
     const blocked = error instanceof BuildBlockedError;
     const reason = blocked || error instanceof BuildPullRequestRejectedError ? (error as Error).message : "GitHub did not confirm publication of the implementation; the result is unknown. The pull request remains a draft.";
     await coordinator.failPublication(runId, { phase: blocked ? "blocked" : "failed", reason }, publicationState);

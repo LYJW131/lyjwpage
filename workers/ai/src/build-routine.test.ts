@@ -312,7 +312,22 @@ test("valid upload creates and returns a confirmed PR without secret fields", as
   assert.equal("plan" in body, false);
 });
 
-const png = (seed: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from([seed])]).toString("base64");
+test("an upload whose pull request head lags the pushed branch is accepted and stays pending", async () => {
+  const { env, instance } = coordinator();
+  instance.reserveRun(await dispatched(), "p", Date.now() + 60_000);
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, runId));
+  let pushed = false;
+  const { fetcher } = githubFixture((path, body) => {
+    if (path.includes("/git/refs/heads/") && body?.sha) pushed = true;
+    if (pushed && path.endsWith("/pulls/12") && body === null) return Response.json({ head: { sha: FIXTURE_PLAN_SHA } });
+  });
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, token), env, fetcher);
+  assert.equal(response.status, 202);
+  assert.equal((await response.json() as BuildRun).phase, "validated");
+  assert.equal(instance.readRun(runId)?.state.phase, "validated");
+});
+
+const png =(seed: number) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from([seed])]).toString("base64");
 function imageBucket() {
   const objects = new Map<string, { bytes: Uint8Array; contentType?: string }>();
   const bucket = { async put(key: string, bytes: Uint8Array, options?: { httpMetadata?: { contentType?: string } }) { objects.set(key, { bytes, contentType: options?.httpMetadata?.contentType }); } };
