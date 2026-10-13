@@ -8,7 +8,7 @@
 - 你要做的只有四种事：拍板、给凭据或控制台权限、批准生产上的动作、说一句「合」。其余 Claude 自己推进。
 - 分叉用决策卡问你，推荐项已标出。你不点，Claude 按推荐项继续；没法撤销的那一步会等你。
 - PR 合并要同时满足：CI 全绿、PR 里每条机器评审都处理过、你说过合（每日审查自己的 `chore(review):` PR 除外）。
-- 合进 main 就是部署，但「已部署」以 `/api/version` 返回的提交等于 main 为准，不以构建检查绿了为准。
+- 碰到 Worker 监视路径的改动合进 main 就自动构建部署；「已部署」以 `/api/version` 返回的提交为准，不以构建检查绿了为准。
 
 ## 1. 场面上有谁
 
@@ -73,19 +73,19 @@
 
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`。PR 开出来时给你一次链接，CI 绿、评审处理完后再说一次；中间的合 main、修 CI、回评审不打扰你。
 - 合并前的门槛，缺一不可：
-  1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`），Workers Builds 与 CodeQL 也绿。
+  1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`），CodeQL 也绿；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
   2. PR 讨论区里每条机器评审（Claude review、Devin、Codex、Cursor Bugbot、CodeQL）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Bugbot 没跑成算「没跑」，不算过。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。
-  5. main 开着分支保护：PR 里的行内评审线程都解决了才能合，对你本人也生效；不要求审批人数，直接推 main 不受影响（见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」）。
+  5. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
 - 谁合：你说「合」才合。合并方式是 merge commit；分支落后时把 main 合进来，不 rebase。
 - 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。
 
 ## 6. 部署与「已部署」
 
 - 站点和各 Worker 都走 Workers Builds：合进 main 就自动构建部署，Claude 不手跑 `wrangler deploy`，唯一例外和顺序见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。
-- 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 的 HEAD。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你。
-- 上报器：misaka-jp 上的 `server-reporter`、`agents-reporter`、`discord-reporter` 合进 main 后自动换镜像；dsm 上的 `emby-reporter` 和 n100 上的 `playstation-reporter` 手动，Claude 会派你电脑上的会话去做。
+- 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你。
+- 上报器哪些合进 main 后自动换镜像、哪些手动，见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」；手动的那几个 Claude 会派你电脑上的会话去做。
 - 每次汇报都分清四层：本地改了 / 测试过了 / 已部署 / 在生产上验证过了。
 
 ## 7. Claude 怎么向你汇报
