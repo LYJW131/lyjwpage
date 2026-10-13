@@ -35,10 +35,14 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   const [buildOpen, setBuildOpen] = useState(false);
   const [working, setWorking] = useState<"signing_in" | "preparing" | null>(null);
   const startingRef = useRef(false);
+  const signInRef = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const expired = now >= proposal.expiresAt;
   const used = Boolean(proposal.issue || proposal.build);
-  const disabled = !proposalChoiceOpen(proposal, now) || working !== null || inactive;
+  const choiceClosed = !proposalChoiceOpen(proposal, now) || inactive;
+  const disabled = choiceClosed || working !== null;
+  // 授权弹窗还开着时访客仍可改选 Open issue（会关掉弹窗）；登录完成、Worker 正在受理构建时才两边都锁。
+  const issueDisabled = choiceClosed || working === "preparing";
   const [lookupRejected, setLookupRejected] = useState(false);
   const awaitingIssue = Boolean(ISSUE_URL && proposal.issueRef && proposal.issueOpened && !used && !lookupRejected && now < proposal.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS);
   const latest = useRef({ proposal, onChange });
@@ -85,18 +89,30 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
     startingRef.current = true;
     setWorking("signing_in");
     setError(null);
+    const signIn = new AbortController();
+    signInRef.current = signIn;
     try {
       if (!BUILD_URL) throw new Error("Builds are offline right now.");
-      const signIn = await signInWithGithub();
+      const code = await signInWithGithub(signIn.signal);
+      signInRef.current = null;
       setWorking("preparing");
-      const response = await fetch(BUILD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...signIn, planToken: proposal.token }) });
+      const response = await fetch(BUILD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...code, planToken: proposal.token }) });
       const result = await response.json() as BuildFireResult & { error?: string };
       if (!response.ok || !result.runId || !result.statusToken) throw new Error(result.error ?? "Couldn't start the build.");
       onChange({ ...proposal, build: { runId: result.runId, branch: result.branch, statusToken: result.statusToken }, run: result.run });
     } catch (err) {
       startingRef.current = false;
-      setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't reach the server.");
-    } finally { setWorking(null); }
+      if (!signIn.signal.aborted) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : "Couldn't reach the server.");
+    } finally {
+      if (signInRef.current === signIn) signInRef.current = null;
+      setWorking(null);
+    }
+  }
+
+  function leaveBuild() {
+    signInRef.current?.abort();
+    setError(null);
+    setBuildOpen(false);
   }
 
   return (
@@ -123,12 +139,16 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
               href={buildIssueUrl(proposal.plan, proposal.issueRef)}
               target="_blank"
               rel="noreferrer noopener"
-              aria-disabled={disabled || buildOpen || undefined}
-              tabIndex={disabled || buildOpen ? -1 : undefined}
-              onClick={() => { if (!proposal.issueOpened) onChange({ ...proposal, issueOpened: true }); }}
+              aria-disabled={issueDisabled || undefined}
+              tabIndex={issueDisabled ? -1 : undefined}
+              onClick={(event) => {
+                if (issueDisabled) { event.preventDefault(); return; }
+                leaveBuild();
+                if (!proposal.issueOpened) onChange({ ...proposal, issueOpened: true });
+              }}
               className={cn(
                 "rounded-md border border-line-strong px-3 py-2 text-xs transition-colors hover:bg-surface-hover",
-                (disabled || buildOpen) && "pointer-events-none opacity-40",
+                issueDisabled && "pointer-events-none opacity-40",
               )}
             >
               Open issue
@@ -138,7 +158,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
           {proposal.issueOpened && !expired && <p className="text-xs">Opened GitHub&apos;s new issue form. {awaitingIssue ? "Once you submit it there, this card links to the issue. You can still start a build instead." : "Submit it there to file this plan, or start a build instead."}</p>}
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
-          {buildOpen && <GithubConsent language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
+          {buildOpen && <GithubConsent language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} cancellable={working !== "preparing"} onCancel={leaveBuild} />}
         </>
       )}
       {error && !buildOpen && <p role="alert" className="text-xs text-red-500">{error}</p>}
