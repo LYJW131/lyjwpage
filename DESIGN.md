@@ -66,6 +66,7 @@
 - 字重只用 400 / 500 / 600；700 只给站名（Contact 卡的 `LYJW131`）与中文标语。
 - 字距：`label-mono` 自带；标题可 `tracking-tight`；正文不改字距。行高：多行正文 `leading-relaxed`，单行数值 `leading-none` / `leading-tight`。
 - 数字一律等宽（全站默认 `tabular-nums`），变化的数字用 NumberFlow，并保证服务端 HTML 里就有值。
+- 大数字放得下就写全（`3,012,345,678`），放不下才用缩写（`3B`）：用 `src/components/ui/fit-number.tsx#FitNumber`，按容器宽度纯 CSS 切换，首屏不跳。
 - 长文字：标题 `text-balance`；名称类单行截断（`truncate`）且在别处能看到全文；URL / ID 用 `break-words`，不用 `break-all`。
 
 ## Layout
@@ -171,5 +172,6 @@
 ## 交付与合并
 
 - UI 改动交付桌面（1280）与手机（375）截图，至少一张深色；什么时候附图见 `AGENTS.md`「项目入口与验证」与 `HUMAN.md`。改到同一行的卡片或替换部件时，报前后各卡高度与相邻同类文字的字号字重（验证怎么做见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
+- CI 跑 `pnpm design:scale`（`scripts/design-scale-check.mjs`）：按类名数 `src/` 里阶梯外的间距、任意值字号与任意值位移，任何一个类名的出现次数比基线 `scripts/design-scale-baseline.json` 多就失败（把 `text-[10px]` 换成 `text-[9px]` 也算多）；变少只提示，跑 `pnpm design:scale --update` 收紧基线。图形内的 10px 刻度、带注释的光学微调这类合规例外也用 `--update` 记进基线，并在 PR 里说明。
 - 自查用 `.claude/skills/lyjwpage-ui-design/SKILL.md`：它有对照本文件的检查清单和一个量间距、字号、点击区的浏览器脚本。
 - 有 UI / UX 变化的改动进 main 前，先给站主看效果、等他点头再合；站主明确要求的小改动除外。
