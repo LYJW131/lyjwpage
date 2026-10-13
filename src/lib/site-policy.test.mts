@@ -43,7 +43,7 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("POST", "/opengraph-image"), { kind: "invalid" });
 });
 
-test("API 路径按数据归属分流：可滞后视图 site 自己读，其余交给 api 或 ai", () => {
+test("API 路径按数据归属分流：可滞后视图 site 自己读，Apple Music 交给 collector，其余交给 api 或 ai", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/api/status/server"), { kind: "lag-status", view: "server" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/status/github-chart"), { kind: "lag-status", view: "githubChart" });
   assert.deepEqual(classifyGatewayRequest("HEAD", "/api/status/server"), { kind: "api" }, "只有 GET 由 site 回，其余方法照旧交给 api");
@@ -51,8 +51,10 @@ test("API 路径按数据归属分流：可滞后视图 site 自己读，其余�
   assert.deepEqual(classifyGatewayRequest("GET", "/api/status/listening/now"), { kind: "api" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/status/vercel-deployments"), { kind: "api" }, "未登记的视图由 api 回 404");
   assert.deepEqual(classifyGatewayRequest("GET", "/ws"), { kind: "api" });
-  assert.deepEqual(classifyGatewayRequest("GET", "/api/lyrics"), { kind: "api" });
-  assert.deepEqual(classifyGatewayRequest("GET", "/api/musickit/token"), { kind: "api" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/lyrics"), { kind: "collector" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/motion-artwork"), { kind: "collector" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/musickit/token"), { kind: "collector" });
+  assert.deepEqual(classifyGatewayRequest("OPTIONS", "/api/lyrics"), { kind: "collector" }, "预检也交给 collector 现判来源");
   assert.deepEqual(classifyGatewayRequest("PUT", "/api/dev/override/api/status/server"), { kind: "api" });
   assert.deepEqual(classifyGatewayRequest("POST", "/api/chat"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/chat/usage"), { kind: "ai" });

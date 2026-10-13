@@ -71,8 +71,12 @@ Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签�
 
 prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIngest`）：
 
-1. **实时那一半**经 Service Binding 调状态核心的 `StateCore.commitIngest(command)`（契约 `shared/state-core.ts`）。
-   StateHub 串行提交，回 `{ ready, ok, data | error }`；推送、Apple 目录补充和首屏失效在状态核心里派发。
+1. **实时那一半**先请采集 Worker 补全「正在听」：Mac 的 `appleMusic` 模块与 HomePod 的报文经 `COLLECTOR.enrichTrack`
+   查 Apple 目录与动态封面（`shared/command-enrichment.ts#enrichCommand`，规则见 [collector README](../collector/README.md#apple-music)），
+   补好的命令再经 Service Binding 调状态核心的 `StateCore.commitIngest(command)`（契约 `shared/state-core.ts`）。
+   采集 Worker 调不通时只记一行 `[enrichment]` warn，命令原样提交，由状态核心自己补。
+   StateHub 串行提交，回 `{ ready, ok, data | error }`；推送和首屏失效在状态核心里派发。收下之后在 `waitUntil` 里
+   请采集 Worker 预热歌词、重查写入时没查出的段（`COLLECTOR.followUpTrack`）。
    落地节点（`server`）整封在可滞后层，不去状态核心。
 2. **长期归档**进 D1 `HISTORY`（`src/ingest-archive.ts`），排在可滞后层之前，按自然键幂等，失败只记日志。
 3. **可滞后层**直接写 KV `LAG`（`src/lag-ingest.ts`）：落地节点读数、限额、常驻上报器账本、Mac 时区、iPhone 圆环读数与训练列表。
@@ -129,7 +133,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 - `[vars]`：`ACCESS_TEAM_DOMAIN`、`ACCESS_AUD`、`[vars.ACCESS_CLIENTS]`（见「鉴权」）；`EMBY_PUBLIC_URL`（Emby 条目的
   「在 Emby 里打开」链接，prepare 时拼进条目）；`SENTRY_DSN`。
-- `CORE`：状态核心的具名 entrypoint `StateCore`；`COLLECTOR`：采集 Worker 的具名 entrypoint `Collector`。
+- `CORE`：状态核心的具名 entrypoint `StateCore`；`COLLECTOR`：采集 Worker 的具名 entrypoint `Collector`（补全「正在听」、部署通知后重拉）。
 - `IMAGES`：上报器直传图片的 R2 桶，只 HEAD；`LAG`、`CREDENTIALS`：可滞后层与共享凭据 KV，和 api、采集 Worker 同一份；
   `HISTORY`：D1 `lyjwpage-history`，表结构归 `workers/api/migrations`，这里只写。
 - `CF_VERSION_METADATA`：Sentry 取 release（Worker 版本 ID）。

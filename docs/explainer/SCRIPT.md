@@ -134,7 +134,7 @@
 |---|---|---|
 | 0–2 | 黑里先亮一盏桌灯（接第 02 章冲进去的那盏灯），平面图一笔一笔画出来：左边一路进口（上报入口）排成一条队，栏杆只围出一条（采集 Worker 写实时层不排这条队，这里不画）；进口那条线上注 `Service Binding` `→ StateCore`：入口调的是 StateCore，由它串进 StateHub 这条队；中间一间屋子（墙体剖切斜线、门洞、一张桌、一把椅子、一盏灯、一本摊开的账本），右墙一道缝；标题「03 一间屋子的账房」、`workers/api · StateCore → StateHub`；引线标注 `StateHub · idFromName("global")`「全站只有这一个实例」。旁白 `n1` | 0:0 落地一声低「咚」，FM 铃唱主题 |
 | 2–5 | 每拍一封进门落账，右栏「StateHub 账本」详图每拍写一行打勾（mac · desktop、homepod · nowPlaying、emby · watching……；playstation 那几封是 n100 容器 POST 的原始信封，和别的一样从上报入口来）；屋里标 `ingestTail`；主角 mac · appleMusic 带着橙色火花在队里等。旁白 `n2` | 底鼓每拍，十六分钟摆 |
-| 5–6 | 5:0 主角落账；托盘上出一张小纸条，右栏「要做的事」（角标 `IngestEffect`）固定三行 event / listening / tags：listening 写「广播 listening-now · 用落账前补好的封面和链接」（查 Apple 目录在 StateCore 交给 StateHub 之前做完，随状态落库），tags 空着「换歌不失效；开始或停止放歌才有」，方框不勾。旁白 `n3` | |
+| 5–6 | 5:0 主角落账；托盘上出一张小纸条，右栏「要做的事」（角标 `IngestEffect`）固定三行 event / listening / tags：listening 写「广播 listening-now · 用落账前补好的封面和链接」（上报入口在交给 StateCore 之前请采集 Worker 查好 Apple 目录，随状态落库），tags 空着「换歌不失效；开始或停止放歌才有」，方框不勾。旁白 `n3` | |
 | 6–8 | 6:0 纸条从墙缝递出，镜头甩到门外岗亭 StateCore「RPC 入口 · 照单去办」；6:2 盖 waitUntil 章、listening 打勾；同一拍两条虚线出发：去天线 LivePushRoom（另一个单例 DO），橙环荡开，所有开着的页面依次翻面、标 listening-now；回执 `ok · data` 飞回入口，标「回执 → 入口」「入口接着写 LAG 和凭据，都写完才盖 202」，两条路中间「‖ 并行 ‖」。旁白 `n4` | 6:0 纸滑出，6:2 广播 + 印章 |
 | 8–10.5 | 甩回屋里：又进两封（playstation、emby），9:0 一封纯心跳（信封上一颗心跟着底鼓跳）：账本记「♥ 存活 + pulse 观测」，「要做的事（空）」注「不推送」「不失效首屏」；Clawd 在桌角冒出来说一句。旁白 `n5` | 心跳段半速，底鼓变成扑通扑通 |
 | 10.5–12 | 一封在线 → 离线（mac · presence）落账：「要做的事」写 event「广播 presence」、tags「失效页头、在听、充电头 → site Worker，5 秒超时」；11:0 两项打勾，纸条递出，橙环从右边扫进来。旁白 `n6` | 11:0 翻转一记，11:3 吸一口气 |
