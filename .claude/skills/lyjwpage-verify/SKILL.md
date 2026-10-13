@@ -75,18 +75,19 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
 - SSR 相关：`curl -sS <url>` 看原始 HTML，或用 `javaScriptEnabled: false` 的上下文截图。
 - 首帧、跳动类问题：录帧或按时间点截图（DOMContentLoaded 后第一帧、水合后、拿到新数据后），给出每一跳的毫秒数。
 - 云端没有 Safari / WebKit：凡是 WebKit 才有的行为，写进「没验到」，请站主实机看。
-- 收尾：停掉开发服务器、清掉 `dev:override` 注入、关掉浏览器。
+- 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` 注入由主线程起、主线程管，保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
 
 ### 3. PR 合并门槛（验证员汇总，主线程判断）
 
 - 当前 head 提交上的所有 check run 结论（含 `Workers Builds: site` 等），以及哪些还在跑。
-- 读全 `get_reviews`、`get_review_comments`、`get_comments`（GitHub MCP 工具，没加载就用 ToolSearch 加载；仓库 `LYJW131/lyjwpage`）。逐条列出每个机器评审（Claude review、Devin、Codex、CodeQL）的意见：所在文件行、严重度标记、讨论是否已解决、最后一条是不是我们的回复、它评审的是哪个提交。
-- Codex 已跑了几轮（每次推送自动算一轮，上限 3 轮）。Cursor Bugbot 额度用完时当它不存在，不等它也不提。
+- 读全 `get_reviews`、`get_review_comments`、`get_comments`（GitHub MCP 工具，没加载就用 ToolSearch 加载；仓库 `LYJW131/lyjwpage`）。逐条列出每个机器评审（Claude review、Devin、Codex、Cursor Bugbot、CodeQL）的意见：所在文件行、严重度标记、讨论是否已解决、最后一条是不是我们的回复、它评审的是哪个提交。
+- Codex 已跑了几轮（每次推送自动算一轮，上限 3 轮）。Cursor Bugbot 额度用完时当它不存在，不等它也不提（站主定的规矩）；它真跑出来的意见照常列。
 - 验证员只列清单；哪条要修、哪条回复说明不修，由主线程决定。
 
 ### 4. 合并后部署与生产核对
 
-- 每 20 秒轮询 `curl -sS -H 'Cache-Control: no-cache' https://lyjw.me/api/version` 与 `https://lyjw131.com/api/version`，最多 10 分钟，直到 `.commit` 等于合并提交的完整 sha。
+- 先看合并改到了哪些 Worker 的监视路径（`docs/workers-builds.md`「构建监视路径」）。没碰到 site 的（只改文档、只改别的 Worker），`/api/version` 本来就不会变，跳过下面的版本等待，只核对碰到的那几个 Worker 的构建和受影响的生产行为。
+- 碰到 site 时，每 20 秒轮询 `curl -sS -H 'Cache-Control: no-cache' https://lyjw.me/api/version` 与 `https://lyjw131.com/api/version`，最多 10 分钟，直到 `.commit` 等于合并提交的完整 sha。
   - 是更新的提交且以合并 sha 为祖先（`git merge-base --is-ancestor`）：通过（被后来的部署覆盖）。
   - 10 分钟后仍是更旧的提交：FAIL，可能是两次合并并行构建、旧版本后完成。只报告，是否重跑 main 的构建由主线程决定（生产动作，要站主点头，从不手跑 `wrangler deploy`）。
 - 合并提交上对应 Worker 的 Workers Builds 检查结论（`Workers Builds: site`，改到哪个 Worker 就看哪个）。GitHub MCP 的检查工具只看得到 PR head 上的检查；main 上合并提交的检查用只读的 `gh api repos/LYJW131/lyjwpage/commits/<sha>/check-runs`。
@@ -95,7 +96,9 @@ CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_test
 
 ## 主线程收到报告后
 
+磨合期：这一节在 skill 里时，主线程不只抽查，要逐条核对 Haiku 交回的证据，重跑一两项对比结果。发现 skill 写漏、写错，或者简报模板不够用，直接改本文件，单独提一个小 PR，过合并门槛后自己合，不用问站主。站主说磨合结束后删掉这一段。
+
 - 先抽查一条证据：至少打开一张截图看一眼（验证员对视觉判断可能出错），核对一个 sha 或数值。
 - 有 FAIL：自己分析根因、修，再派一次验证员复测。
-- 全 PASS：按项目规矩汇报。UI 改动每一轮把截图发到讨论串（`attached_outputs` 附 `/mnt/project-files/...`）；合并后汇报写明线上 `/api/version` 的 sha 和生产实测结果。
+- 全 PASS：按项目规矩汇报。UI 截图：云端会话里站主看不到开发服务器，每一轮都把截图发到讨论串（`attached_outputs` 附 `/mnt/project-files/...`，站主定的规矩）；站主在看开发服务器时按 AGENTS.md，只在首次交付附图。合并后汇报写明线上 `/api/version` 的 sha 和生产实测结果。
 - 汇报只写实际验到的，「没验到」那一栏原样告诉站主。
