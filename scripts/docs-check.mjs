@@ -449,8 +449,11 @@ export function checkStructure(ctx, mdFiles) {
 }
 
 
+// 项目记忆镜像记的是写入时的事实，带日期、可能指向后来改名的路径，不按现状文档检查
+export const MEMORY_MIRROR_DIR = ".claude/memory/";
+
 export function isScannedMarkdown(file, ctx) {
-  return /\.md$/.test(file) && !/(^|\/)node_modules\//.test(file) && !ctx.inSubmodule(file);
+  return /\.md$/.test(file) && !/(^|\/)node_modules\//.test(file) && !file.startsWith(MEMORY_MIRROR_DIR) && !ctx.inSubmodule(file);
 }
 
 export function runChecks(ctx) {
