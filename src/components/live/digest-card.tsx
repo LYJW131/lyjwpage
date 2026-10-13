@@ -112,7 +112,7 @@ function DayDial({
             })}
             <line x1={handX0} y1={handY0} x2={handX1} y2={handY1} stroke="var(--signal-red)" strokeWidth={1.5} strokeLinecap="round" />
             <text x={CENTER} y={CENTER - 4} textAnchor="middle" dominantBaseline="central" fontSize="20" fontWeight="600" fill="var(--foreground)">{clockLabel(now, timezone)}</text>
-            <text x={CENTER} y={CENTER + 15} textAnchor="middle" dominantBaseline="central" fontSize="16" fill="var(--muted-foreground)">{zoneLabel}</text>
+            <text x={CENTER} y={CENTER + 17} textAnchor="middle" dominantBaseline="central" fontSize="18" fill="var(--muted-foreground)">{zoneLabel}</text>
           </svg>
         </div>
       </div>
