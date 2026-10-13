@@ -15,7 +15,7 @@
 - **[Creating in-house source control](https://www.anthropic.com/engineering/redesigning-source-control)**（Anthropic Engineering）
   - 是什么：Anthropic 自研版本控制 Scion 的设计与迁移，附带 agent 规模下的工程体会。
   - 取了什么：「superfan」，即一个 Claude 专盯一个组件的遥测和日志，抓传统告警漏掉的细微异常；评审区分只改注释和改逻辑、别为假想风险过度设计，本项目已有同类规则。
-  - 状态：待定。superfan 是否先给 collector Worker 开一个定时任务，等站主决定。
+  - 状态：部分采用。superfan 落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md)，先只盯 collector Worker。
 - **[here's how i shipped 2,500 PRs last month](https://x.com/poteto/status/2102050467505430555)**（poteto / Lauren Tan，X 上的演讲视频）
   - 是什么：一个人同时驱动大量 agent 的做法。主线是「先让环境值得信任，并行是信任的结果」。
   - 取了什么：纠错阶梯，即每次纠正 agent 都落到能挡住它的最高一层（代码库 → lint / CI → 规则 → skill → 人工 review）；验证 skill 做成「共用 CLI + 功能地图」；让一个「园丁」专找正在被复制的坏写法，先写 lint 止血。
