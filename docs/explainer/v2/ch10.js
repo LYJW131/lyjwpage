@@ -17,7 +17,7 @@
       "ch10.a.test": ["站点 · Worker · 上报器 · 脚本", "site · Workers · reporters · scripts"],
       "ch10.a.docs": ["文档与注释的漂移", "doc and comment drift"],
       "ch10.a.act": ["工作流本身", "the workflows themselves"],
-      "ch10.a.weekly": ["另有每周一次定时扫描", "plus a weekly scheduled scan"],
+      "ch10.a.sched": ["另有每天两次定时扫描", "plus scheduled scans twice a day"],
       "ch10.a.nobuild": ["不跑站点构建：交给 Workers Builds", "No site build here: Workers Builds does that"],
       "ch10.a.cancel": ["同一分支连推几次，只留最后一次", "Rapid pushes to one branch: only the last one runs"],
       "ch10.n2a": ["CI 和 CodeQL 只检查、不发布；", "CI and CodeQL check but never ship;"],
@@ -326,7 +326,7 @@
       col(P.x + 60, "CI", CI_ROWS, AT.ci, AT.ciLamp, P.x + 900);
       line(x, P.x + 1010, P.y + 160, P.x + 1010, P.y + 640, 1, css("pink"), 0.35 * a);
       col(P.x + 1060, "CodeQL", CQ_ROWS, AT.cq, AT.cqLamp, P.x + P.w - 70);
-      text(x, tr("ch10.a.weekly"), P.x + 1060, P.y + 306 + 2 * 86, { font: FONT.cjk(30, 600), color: gr, alpha: a, maxW: P.w - 1130 });
+      text(x, tr("ch10.a.sched"), P.x + 1060, P.y + 306 + 2 * 86, { font: FONT.cjk(30, 600), color: gr, alpha: a, maxW: P.w - 1130 });
       text(x, tr("ch10.a.nobuild"), P.x + 60, P.y + 718, { font: FONT.cjk(32, 600), color: gr, alpha: a * prog(b, 4.6, 4.75), maxW: P.w - 120 });
       text(x, tr("ch10.a.cancel"), P.x + 60, P.y + 772, { font: FONT.cjk(32, 600), color: gr, alpha: a * prog(b, 4.8, 4.95), maxW: P.w - 120 });
     }
