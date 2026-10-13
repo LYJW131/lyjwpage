@@ -111,7 +111,14 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
   const branch = branchForRun(runId);
   let reserved = false;
   try {
-    const baseSha = await currentMain(await installationApi(env, fetcher, true));
+    const readApi = await installationApi(env, fetcher, true);
+    // 不走 handleBuildIssue 的节流：访客已经登录、马上要花一次构建额度，这里必须看到 GitHub 当下的状态。
+    const issue = await coordinator.planIssue(plan.id) ?? await findPlanIssue(readApi, plan.id, plan.expiresAt - BUILD_PLAN_TTL_MS);
+    if (issue) {
+      await coordinator.recordPlanIssue(plan.id, issue, plan.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS);
+      return Response.json({ error: `This plan was already filed as issue #${issue.number}.`, issue }, { status: 409, headers: noStore });
+    }
+    const baseSha = await currentMain(readApi);
     const coauthor = `${session.name || session.account} <${session.userId}+${session.account}@users.noreply.github.com>`;
     const run: StoredRun = { state: { runId, branch, phase: "triggered", createdAt, updatedAt: createdAt }, plan: plan.plan, account: session.account, accountId: session.userId, coauthor, baseSha, callbackOrigin: new URL(request.url).origin, uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: createdAt + BUILD_TIMEOUT_MS };
     const admission = await coordinator.reserveRun(run, plan.id, plan.expiresAt);
