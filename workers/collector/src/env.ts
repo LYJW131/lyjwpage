@@ -1,3 +1,4 @@
+import type { DigestRpc } from "@shared/digest";
 import type { MusicKitTokenEnv } from "@shared/musickit-token";
 import type { StateCoreRpc } from "@shared/state-core";
 
@@ -8,6 +9,7 @@ export interface Env extends MusicKitTokenEnv {
   APPLE_CACHE?: KVNamespace;
   APPLE_LOOKUPS: Pick<Fetcher, "fetch">;
   CORE: StateCoreRpc;
+  DIGEST?: DigestRpc;
   HISTORY?: D1Database;
 
   STORAGE_PREFIX?: string;

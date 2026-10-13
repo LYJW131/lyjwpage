@@ -1,6 +1,7 @@
 import { getAgentStatus } from "@shared/agent-status";
 import { AwaitingReport } from "@shared/awaiting-report";
 import { getCloudflareWorkers } from "@shared/cloudflare-workers";
+import { publicDigest, type DigestPayload, type DigestRecord } from "@shared/digest";
 import { localDate } from "@shared/freshness";
 import { getGithubChart, sliceGithubChart } from "@shared/github-chart";
 import { getGithubRepo } from "@shared/github-repo";
@@ -81,6 +82,10 @@ export async function getReportersStatus(): Promise<LagResult<ReportersPayload>>
   );
 }
 
+export async function getDigest(): Promise<LagResult<DigestPayload>> {
+  return (await loadLag<DigestRecord>(LAG_KEYS.digest, "Awaiting first digest")).map(publicDigest);
+}
+
 type LagViewLoader<T> = (params: StatusLoaderParams) => Promise<T | LagResult<T>>;
 
 export const LAG_VIEW_LOADERS = {
@@ -97,6 +102,7 @@ export const LAG_VIEW_LOADERS = {
   siteDeployments: getSiteDeployments,
   sentry: getSentryStatus,
   reporters: getReportersStatus,
+  digest: getDigest,
 } satisfies { [K in LagViewKey]: LagViewLoader<StatusPayloads[K]> };
 
 export function lagEnvelope(view: LagViewKey, params: StatusLoaderParams = {}): Promise<StatusResponse<unknown>> {
