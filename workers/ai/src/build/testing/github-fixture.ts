@@ -127,6 +127,7 @@ export function buildGithubFixture(options: {
     }
     if (path.endsWith("/check-runs")) return Response.json({ total_count: 1, check_runs: [{ name: "check", status: "completed", conclusion: "success", app: { slug: "github-actions" } }] });
     if (path.endsWith("/status")) return Response.json({ total_count: 0, statuses: [] });
+    if (path === `${repoPath}/issues` && call.method === "GET") return Response.json([]);
     if (path === `${repoPath}/issues/12/comments`) return call.method === "POST" ? Response.json({ id: 1 }, { status: 201 }) : Response.json([]);
     if (path === "/graphql") {
       pr = { ...pr!, draft: false };

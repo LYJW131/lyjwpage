@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/cloudflare";
 import { DurableObject } from "cloudflare:workers";
 import { BUILD_ACTIVE_PHASES, BUILD_CLOSED_PHASES, BUILD_DESIGN_LIMITS, BUILD_FAILED_PHASES, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_REPO, BUILD_SCREENSHOT_LIMITS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun, type BuildScreenshot } from "@shared/build-routine";
+import type { GithubIssueResult } from "@shared/github-issue";
 import type { Env } from "../runtime";
 import { BuildBlockedError, closeFailedDraft, installationApi, validSha } from "./github";
 
@@ -12,6 +13,8 @@ const DESIGN_OPEN_LEASE_MS = 60_000;
 const PUBLICATION_BODY_MAX_CHARS = 64_000;
 // 失败草稿的关闭与超时的发现都靠 alarm 扫描，间隔即两者的最大延迟。
 const DRAFT_SWEEP_MS = 60_000;
+// 同一计划多久才再去 GitHub 列一次 issue：一次查询要三次 GitHub 请求，多标签页或刷新也只按这个节奏打到 GitHub。
+const ISSUE_CHECK_MS = 10_000;
 const GITHUB_SNAPSHOT_FIELDS = ["pr", "ci", "preview", "review"] as const;
 const phases = { triggered: 0, running: 1, uploaded: 2, validated: 3, pr_open: 4, blocked: 5, failed: 5, timeout: 5, merged: 6, closed: 6 } as const;
 
@@ -119,6 +122,22 @@ export class BuildCoordinator extends DurableObject<Env> {
       this.ctx.storage.sql.exec("INSERT INTO build_hits VALUES (?, ?, ?)", "fire", String(run.accountId ?? run.account), Date.now());
       return "ok";
     });
+  }
+
+  planIssue(id: string): GithubIssueResult | null {
+    return this.get<GithubIssueResult>(`issue:${id}`);
+  }
+
+  claimIssueCheck(id: string): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      if (this.get(`issue-check:${id}`)) return false;
+      this.put(`issue-check:${id}`, true, Date.now() + ISSUE_CHECK_MS);
+      return true;
+    });
+  }
+
+  recordPlanIssue(id: string, issue: GithubIssueResult, expires: number): void {
+    this.put(`issue:${id}`, issue, expires);
   }
 
   isPlanUsed(id: string): boolean {

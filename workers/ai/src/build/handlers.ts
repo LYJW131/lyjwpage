@@ -1,13 +1,13 @@
 import * as Sentry from "@sentry/cloudflare";
-import { BUILD_CLOSED_PHASES, BUILD_PROGRESS_LIMITS, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, branchForRun, newRunId, type BuildFireResult } from "@shared/build-routine";
+import { BUILD_CLOSED_PHASES, BUILD_ISSUE_LOOKUP_GRACE_MS, BUILD_PLAN_TTL_MS, BUILD_PROGRESS_LIMITS, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, branchForRun, newRunId, type BuildFireResult, type BuildIssueLookup } from "@shared/build-routine";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
 
 import { ActionsOidcUnavailableError, buildWorkflowAudience, verifyActionsToken } from "./actions-oidc";
-import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, GithubBuildApi, GithubRequestError, installationApi, reconcileBuild } from "./github";
+import { BuildBlockedError, BuildPullRequestRejectedError, validateBuildBase, createBuildPullRequest, prepareBuildPullRequest, recoverBuildPublication, markBuildReady, currentMain, findPlanIssue, GithubBuildApi, GithubRequestError, installationApi, reconcileBuild } from "./github";
 import { exchangeCode, revoke } from "./github-oauth";
-import { readPlan } from "./plan";
+import { readPlan, type PlanPayload } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
 import { fail, readBoundedBytes } from "./http";
 import { hashToken, signBuildToken, uploadTokenForRun, verifyBuildToken } from "./token";
@@ -111,7 +111,14 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
   const branch = branchForRun(runId);
   let reserved = false;
   try {
-    const baseSha = await currentMain(await installationApi(env, fetcher, true));
+    const readApi = await installationApi(env, fetcher, true);
+    // 不走 handleBuildIssue 的节流：访客已经登录、马上要花一次构建额度，这里必须看到 GitHub 当下的状态。
+    const issue = await coordinator.planIssue(plan.id) ?? await findPlanIssue(readApi, plan.id, plan.expiresAt - BUILD_PLAN_TTL_MS);
+    if (issue) {
+      await coordinator.recordPlanIssue(plan.id, issue, plan.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS);
+      return Response.json({ error: `This plan was already filed as issue #${issue.number}.`, issue }, { status: 409, headers: noStore });
+    }
+    const baseSha = await currentMain(readApi);
     const coauthor = `${session.name || session.account} <${session.userId}+${session.account}@users.noreply.github.com>`;
     const run: StoredRun = { state: { runId, branch, phase: "triggered", createdAt, updatedAt: createdAt }, plan: plan.plan, account: session.account, accountId: session.userId, coauthor, baseSha, callbackOrigin: new URL(request.url).origin, uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: createdAt + BUILD_TIMEOUT_MS };
     const admission = await coordinator.reserveRun(run, plan.id, plan.expiresAt);
@@ -135,6 +142,22 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
 
 function publishedImplementation(run: StoredRun): boolean {
   return run.uploadUsed && !!run.implementationHeadSha && run.state.pr?.headSha === run.implementationHeadSha && ["pr_open", "closed", "merged"].includes(run.state.phase);
+}
+
+export async function handleBuildIssue(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
+  if (request.method !== "GET") return fail(405, "Method not allowed.");
+  if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR || !env.GITHUB_APP_PRIVATE_KEY) return fail(503, "Issue lookup is unavailable.");
+  const token = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  const plan = token ? await verifyBuildToken<PlanPayload>(token, env.BUILD_SESSION_SECRET, "plan", Date.now() - BUILD_ISSUE_LOOKUP_GRACE_MS) : null;
+  if (!plan || typeof plan.id !== "string") return fail(401, "The plan link is invalid or expired.");
+  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const recorded = await coordinator.planIssue(plan.id);
+  if (recorded || !await coordinator.claimIssueCheck(plan.id)) return Response.json({ issue: recorded } satisfies BuildIssueLookup, { headers: noStore });
+  try {
+    const issue = await findPlanIssue(await installationApi(env, fetcher, true), plan.id, plan.expiresAt - BUILD_PLAN_TTL_MS);
+    if (issue) await coordinator.recordPlanIssue(plan.id, issue, plan.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS);
+    return Response.json({ issue } satisfies BuildIssueLookup, { headers: noStore });
+  } catch { return fail(502, "GitHub could not be checked right now."); }
 }
 
 export async function handleBuildStatus(request: Request, env: Env, fetcher: typeof fetch = fetch, ctx?: BuildContext): Promise<Response> {

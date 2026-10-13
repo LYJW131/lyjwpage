@@ -3,12 +3,12 @@ import { generateKeyPairSync } from "node:crypto";
 import { registerHooks } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { BUILD_DESIGN_LIMITS, BUILD_PLAN_TTL_MS, BUILD_SCREENSHOT_LIMITS, buildIssueBody, buildIssueUrl, planLanguage, visitorLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
+import { BUILD_DESIGN_LIMITS, BUILD_ISSUE_LOOKUP_GRACE_MS, BUILD_PLAN_TTL_MS, buildIssueMarker, BUILD_SCREENSHOT_LIMITS, buildIssueBody, buildIssueUrl, planLanguage, visitorLanguage, BUILD_QUOTA, BUILD_REPO, BUILD_TIMEOUT_MS, BUILD_UPLOAD_LIMITS, branchForRun, type BuildPlan, type BuildRun, type BuildUpload } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { signBuildToken, verifyBuildToken, hashToken, decodeBase64url, uploadTokenForRun } from "./build/token.ts";
 import { allowedBuildPath, parseBuildPlan, parseBuildUpload } from "./build/validation.ts";
-import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest as publishBuild, prepareBuildPullRequest, validateBuildBase, reconcileBuild } from "./build/github.ts";
+import { githubAppJwt, GithubBuildApi, assertMainAncestor, createBuildPullRequest as publishBuild, findPlanIssue, prepareBuildPullRequest, validateBuildBase, reconcileBuild } from "./build/github.ts";
 import { verifyGithubWebhook, applyGithubWebhook } from "./build/webhook.ts";
 import { buildGithubFixture, FIXTURE_PLAN_SHA, FIXTURE_PLAN_TREE } from "./build/testing/github-fixture.ts";
 import { buildWorkflowAudience } from "./build/actions-oidc.ts";
@@ -19,7 +19,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
   return { url: "data:text/javascript,export class DurableObject{constructor(ctx,env){this.ctx=ctx;this.env=env}}", shortCircuit: true };
 } });
-const { handleBuild, handleBuildProgress, handleBuildScreenshot, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
+const { handleBuild, handleBuildIssue, handleBuildProgress, handleBuildScreenshot, handleBuildStatus, handleBuildUpload, handleGithubWebhook } = await import("./build/handlers.ts");
 const { BuildCoordinator } = await import("./build/coordinator.ts");
 const plan: BuildPlan = { title: "Improve the page", spec: "Improve the public layout.", acceptance: ["Mobile layout fits."], paths: ["src/card.tsx"] };
 const sha = "a".repeat(40);
@@ -602,4 +602,76 @@ test("a replayed build never reaches GitHub and account renames do not reset quo
   const next = await stored("e".repeat(32), "another-name");
   next.accountId = 1;
   assert.equal(instance.reserveRun(next, "quota-overflow", Date.now() + 60_000), "account");
+});
+
+test("issue lookup finds the plan's issue by its marker, throttles GitHub and keeps the result past plan expiry", async (t) => {
+  const { env } = coordinator();
+  const proposal = await issuePlan(env, plan);
+  assert.ok(proposal.issueRef);
+  assert.ok(new URL(buildIssueUrl(plan, proposal.issueRef)).searchParams.get("context")?.includes(buildIssueMarker(proposal.issueRef)));
+  let listed: { auth: string | null; query: URLSearchParams }[] = [];
+  let issues: unknown[] = [];
+  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname === `/repos/${BUILD_REPO}/installation`) return json({ id: 1 });
+    if (url.pathname === "/app/installations/1/access_tokens") return json({ token: "installation-fixture" });
+    if (url.pathname === `/repos/${BUILD_REPO}/issues`) { listed.push({ auth: new Headers(init?.headers).get("Authorization"), query: url.searchParams }); return json(issues); }
+    return json({}, 404);
+  }) as typeof fetch;
+  const lookup = (token = proposal.token) => handleBuildIssue(new Request("https://api.test/api/build/issue", { headers: { Authorization: `Bearer ${token}` } }), env, fetcher);
+
+  assert.equal((await lookup("not-a-plan")).status, 401);
+  assert.deepEqual(await (await lookup()).json(), { issue: null });
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].auth, "Bearer installation-fixture");
+  assert.equal(listed[0].query.get("state"), "all");
+  assert.equal(Date.parse(listed[0].query.get("since")!), proposal.expiresAt - BUILD_PLAN_TTL_MS);
+
+  issues = [
+    { number: 9, html_url: `https://github.com/${BUILD_REPO}/pull/9`, body: buildIssueMarker(proposal.issueRef), pull_request: {} },
+    { number: 8, html_url: `https://github.com/${BUILD_REPO}/issues/8`, body: buildIssueMarker("another-plan") },
+    { number: 7, html_url: `https://github.com/${BUILD_REPO}/issues/7`, body: `context\n${buildIssueMarker(proposal.issueRef)}` },
+  ];
+  assert.deepEqual(await (await lookup()).json(), { issue: null }, "a second check within the throttle window does not reach GitHub");
+  assert.equal(listed.length, 1);
+
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() + 11_000 });
+  assert.deepEqual(await (await lookup()).json(), { issue: { number: 7, url: `https://github.com/${BUILD_REPO}/issues/7` } });
+  listed = [];
+  t.mock.timers.setTime(proposal.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS / 2);
+  assert.deepEqual(await (await lookup()).json(), { issue: { number: 7, url: `https://github.com/${BUILD_REPO}/issues/7` } });
+  assert.equal(listed.length, 0, "a recorded issue is answered without GitHub");
+  t.mock.timers.setTime(proposal.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS + 1);
+  assert.equal((await lookup()).status, 401);
+});
+
+test("issue lookup pages past newer issues until it reaches ones created before the plan", async () => {
+  const since = Date.parse("2026-01-01T00:00:00Z");
+  const at = (offset: number) => new Date(since + offset).toISOString();
+  const filler = (from: number) => Array.from({ length: 100 }, (_, i) => ({ number: from - i, html_url: `https://github.com/${BUILD_REPO}/issues/${from - i}`, created_at: at(60_000), body: "" }));
+  const pages: unknown[][] = [filler(300), [{ number: 7, html_url: `https://github.com/${BUILD_REPO}/issues/7`, created_at: at(1_000), body: buildIssueMarker("ref") }, { number: 3, html_url: `https://github.com/${BUILD_REPO}/issues/3`, created_at: at(-1_000), body: "" }]];
+  const requested: string[] = [];
+  const api = new GithubBuildApi("token", (async (input: RequestInfo | URL) => {
+    const page = new URL(String(input)).searchParams.get("page")!;
+    requested.push(page);
+    return json(pages[Number(page) - 1] ?? []);
+  }) as typeof fetch);
+  assert.deepEqual(await findPlanIssue(api, "ref", since), { number: 7, url: `https://github.com/${BUILD_REPO}/issues/7` });
+  assert.deepEqual(requested, ["1", "2"]);
+
+  const flood = new GithubBuildApi("token", (async () => json(filler(5000))) as typeof fetch);
+  await assert.rejects(findPlanIssue(flood, "ref", since), /Too many GitHub issues/);
+});
+
+test("Start build checks GitHub once for the plan's issue and refuses without consuming the plan or quota", async () => {
+  const { env, instance } = coordinator();
+  const proposal = await issuePlan(env, plan);
+  const issue = { number: 31, html_url: `https://github.com/${BUILD_REPO}/issues/31`, body: buildIssueMarker(proposal.issueRef) };
+  const { fetcher, calls } = githubFixture((path) => path === "/user" ? json({ id: 432, login: "any-visitor", name: null }) : path.startsWith(`/repos/${BUILD_REPO}/issues?`) ? json([issue]) : undefined);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
+  assert.equal(response.status, 409);
+  assert.deepEqual((await response.json() as { issue: unknown }).issue, { number: 31, url: issue.html_url });
+  assert.equal(calls.some((call) => call.path.endsWith("/git/ref/heads/main")), false);
+  assert.equal(instance.isPlanUsed(proposal.issueRef!), false);
+  assert.deepEqual(instance.planIssue(proposal.issueRef!), { number: 31, url: issue.html_url });
 });
