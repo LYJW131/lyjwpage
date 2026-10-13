@@ -561,6 +561,7 @@ export function ListeningCard({
   const player = useWebPlayer();
   const {
     data: nowListening,
+    error: nowError,
     isValidating: nowValidating,
     servedAt: nowServedAt,
   } = useStatus<NowListeningPayload>(
@@ -584,7 +585,8 @@ export function ListeningCard({
   const fallbackNow = nowFallback.ok ? nowFallback.data : undefined;
   const [nowRefresh, setNowRefresh] = useState<"pending" | "fetching" | "done">("pending");
   if (nowRefresh !== "done") {
-    if (nowListening !== fallbackNow || (nowRefresh === "fetching" && !nowValidating)) setNowRefresh("done");
+    if (nowListening !== fallbackNow) setNowRefresh("done");
+    else if (nowRefresh === "fetching" && !nowValidating) setNowRefresh(nowError ? "pending" : "done");
     else if (nowRefresh === "pending" && nowValidating) setNowRefresh("fetching");
   }
 
