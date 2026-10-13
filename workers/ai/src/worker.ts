@@ -11,7 +11,7 @@ import {
   BUILD_WEBHOOK_PATH,
 } from "@shared/ai-paths";
 import { GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
-import { getCorsHeaders, isAllowedOrigin, isForeignOrigin } from "@shared/http-origins";
+import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, jsonResponse } from "@shared/http-origins";
 import { MCP_PATH } from "@shared/mcp";
 
 import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
@@ -34,13 +34,6 @@ const BUILD_HANDLERS = new Map<string, (request: Request, env: Env, fetcher?: ty
   [BUILD_WEBHOOK_PATH, handleGithubWebhook],
 ]);
 const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH]);
-
-function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(data), { ...init, headers });
-}
 
 function withCors(response: Response, cors: Headers): Response {
   const headers = new Headers(response.headers);
