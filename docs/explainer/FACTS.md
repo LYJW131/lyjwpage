@@ -15,7 +15,7 @@
 - **ingress**：无状态的上报入口，负责鉴权、校验、分流。
 - **api**：状态核心 `StateCore`（RPC 入口）加上 `StateHub` DO，以及推送房间 `LivePushRoom`。
 - **collector**：每分钟一响的采集 Worker。
-- **ai**：首页对话、访客构建和公开 MCP；不挂公开域名，api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 把这几条路径原样转给它，它经 Service Binding `PUBLIC_STATUS` 只读 api 的状态（`workers/ai/README.md`「入口与权限」、`workers/ai/wrangler.toml`）。它不在一首歌的链路上，片中在第 00 章总览、第 09 章「对话」和第 10 章发布里出现。
+- **ai**：首页对话、访客构建和公开 MCP；不挂公开域名，site 与 api 按 `shared/ai-paths.ts#AI_HTTP_PATHS` 把这几条路径经 Service Binding 原样转给它，它经 Service Binding `PUBLIC_STATUS` 只读 api 的状态（`workers/ai/README.md`「入口与权限」、`workers/ai/wrangler.toml`）。它不在一首歌的链路上，片中在第 00 章总览、第 09 章「对话」和第 10 章发布里出现。
 
 数据按层落地：实时层在 DO，可滞后层在 KV `LAG`，长期历史在 D1 `lyjwpage-history`，凭据在 KV `CREDENTIALS`。
 

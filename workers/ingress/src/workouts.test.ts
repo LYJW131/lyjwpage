@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getWorkoutsSnapshot } from "../../api/src/workouts";
+import { getWorkoutsSnapshot } from "@shared/lag-views";
 import { MemoryKv } from "@shared/testing/memory-kv";
 import { viewKeyByPath } from "@shared/status-views";
 import { prepareIngest } from "@shared/ingest/prepare";

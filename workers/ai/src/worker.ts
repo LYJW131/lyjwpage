@@ -10,7 +10,7 @@ import {
   BUILD_WEBHOOK_PATH,
 } from "@shared/ai-paths";
 import { GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
-import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "@shared/http-origins";
+import { getCorsHeaders, isAllowedOrigin, isForeignOrigin } from "@shared/http-origins";
 import { MCP_PATH } from "@shared/mcp";
 
 import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
@@ -91,8 +91,7 @@ const worker = {
     };
     let response: Response;
     if (pathname === MCP_PATH) {
-      const origin = request.headers.get("Origin");
-      if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
+      if (isForeignOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
         return tooMany("Too many requests.", cors, "60");
       }
