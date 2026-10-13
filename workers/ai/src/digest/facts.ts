@@ -170,9 +170,11 @@ function codingLines(views: DigestViews, windowFrom: number, today: string): str
 }
 
 // 来源列表有条数上限：列出的最旧一条还在窗口里，窗口里就可能还有没列出的，只能写下限；这时一条都没筛中也不能说成零，返回 null 不写。
+// 列表为空（如仓库提交没取到时视图里没有 recentCommits）同样是不知道，不是零。
 function windowCount(count: number, listedAt: (number | null)[], windowFrom: number): string | null {
   const times = listedAt.filter((at): at is number => at != null && Number.isFinite(at));
-  if (!times.length || Math.min(...times) < windowFrom) return String(count);
+  if (!times.length) return null;
+  if (Math.min(...times) < windowFrom) return String(count);
   return count > 0 ? `${count}+` : null;
 }
 
