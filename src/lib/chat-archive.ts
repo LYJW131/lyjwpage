@@ -21,7 +21,7 @@ export function designEndReason(design: ChatDesign, now = Date.now()): DesignEnd
   return design.remaining <= 0 && design.expiresAt > now ? "exhausted" : "expired";
 }
 
-// issueOpened 只记「打开过 GitHub 的新 issue 表单」：GitHub 原生提交不会回传结果，访客可能没提交就回来改选构建，所以它不关闭任何出口。
+// issueOpened 只记「打开过 GitHub 的新 issue 表单」，不关闭任何出口：访客可能没提交就回来改选构建。出口在 issue 经 Worker 按 issueRef 确认（issue）或构建开始（build）后才关。
 export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; issueOpened?: boolean; build?: BuildFireResult; run?: BuildRun };
 export function proposalChoiceOpen(proposal: ChatProposal, now = Date.now()): boolean {
   return !proposal.issue && !proposal.build && now < proposal.expiresAt;
@@ -105,6 +105,7 @@ function validBubble(value: unknown): value is ChatBubble {
     if (typeof plan.title !== "string" || typeof plan.spec !== "string" || !strings(plan.acceptance) || !strings(plan.paths)) return false;
     if (proposal.issue && (!object(proposal.issue) || typeof proposal.issue.url !== "string" || typeof proposal.issue.number !== "number")) return false;
     if (proposal.issueOpened !== undefined && proposal.issueOpened !== true) return false;
+    if (!optionalString(proposal.issueRef)) return false;
     if (proposal.build && (!object(proposal.build) || typeof proposal.build.runId !== "string" || typeof proposal.build.statusToken !== "string" || typeof proposal.build.branch !== "string")) return false;
     return proposal.run === undefined || validRun(proposal.run);
   }))) return false;

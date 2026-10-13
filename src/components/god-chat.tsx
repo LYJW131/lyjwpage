@@ -387,7 +387,7 @@ function Conversation({ className, archive, session: conversation }: { className
           } else if (event.type === "ask") {
             meta = { ...meta, asks: event.questions };
           } else if (event.type === "plan") {
-            meta = { ...meta, proposals: [...(meta.proposals ?? []), { plan: event.plan, token: event.token, expiresAt: event.expiresAt }] };
+            meta = { ...meta, proposals: [...(meta.proposals ?? []), { plan: event.plan, token: event.token, expiresAt: event.expiresAt, ...(event.issueRef && { issueRef: event.issueRef }) }] };
           }
         }
         show();
