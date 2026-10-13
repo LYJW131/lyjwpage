@@ -34,11 +34,12 @@ test("不在类名边界上的同形片段不算", () => {
 
 test("自定义属性简写、calc 字号与不带轴的任意位移也算", () => {
   assert.deepEqual(
-    tokens(`"p-(--pad) space-x-(--gap) text-[calc(1rem+1px)] text-[length:var(--size)] text-(length:--size) translate-[3px] -translate-y-(--offset) text-(--brand)"`),
+    tokens(`"p-(--pad) space-x-(--gap) text-[calc(1rem+1px)] text-[clamp(1rem,2vw,2rem)] text-[length:var(--size)] text-(length:--size) translate-[3px] -translate-y-(--offset) text-(--brand)"`),
     [
       "spacing:p-(--pad)",
       "spacing:space-x-(--gap)",
       "fontSize:text-[calc(1rem+1px)]",
+      "fontSize:text-[clamp(1rem,2vw,2rem)]",
       "fontSize:text-[length:var(--size)]",
       "fontSize:text-(length:--size)",
       "translate:translate-[3px]",
