@@ -78,9 +78,22 @@ export function classifyRequest(url, status, origin) {
   if (parsed.pathname === "/favicon.ico") return "noise";
   const isWebSocket = parsed.protocol === "ws:" || parsed.protocol === "wss:";
   if ((isWebSocket || parsed.pathname === "/ws") && status === 426) return "noise";
+  if (!origin) return "external";
   // ws(s): 的 origin 是 ws 方案、和 http(s) origin 比不等；同站 ws 按 host 相等判。
   const sameOrigin = isWebSocket ? parsed.host === new URL(origin).host : parsed.origin === origin;
   return sameOrigin ? "same-origin" : "external";
+}
+
+// 导航目的地的 origin；about:blank / data: / chrome-error: 这类没有有效 origin 的返回 null，由调用方决定保不保留旧值。
+export function navOrigin(url) {
+  const origin = new URL(url).origin;
+  return origin === "null" ? null : origin;
+}
+
+export function updateOrigin(current, url) {
+  const origin = navOrigin(url);
+  if (origin) current.origin = origin;
+  return current.origin;
 }
 
 // --card 显式点名就是期望它出现：conditional 卡被点名时也算 required。
@@ -212,10 +225,14 @@ async function launchBrowser(pw, flags = {}) {
   throw lastError;
 }
 
-function watchConsole(page, sink, origin) {
+function watchConsole(page, sink, current) {
   const push = (list, text) => {
     if (!list.includes(text)) list.push(text);
   };
+  // 同源判定跟当前页面走：跳转换域后，新域的第一方失败也要计入。
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) updateOrigin(current, frame.url());
+  });
   page.on("console", (msg) => {
     const text = msg.text();
     if (isEnvNoise(text)) return push(sink.envNoise, text);
@@ -228,15 +245,15 @@ function watchConsole(page, sink, origin) {
   page.on("response", (response) => {
     if (response.status() < 400) return;
     const url = response.url();
-    if (classifyRequest(url, response.status(), origin) === "noise") {
+    if (classifyRequest(url, response.status(), current.origin) === "noise") {
       return push(sink.envNoise, `${response.request().method()} ${new URL(url).pathname} → ${response.status()}`);
     }
-    sink.failedRequests.push({ url, status: response.status(), sameOrigin: new URL(url).origin === origin });
+    sink.failedRequests.push({ url, status: response.status(), sameOrigin: new URL(url).origin === current.origin });
   });
   // 连接被拒 / DNS / 超时等连响应都没有的失败只走 requestfailed；4xx/5xx 归上面 response。
   page.on("requestfailed", (request) => {
     const url = request.url();
-    const kind = classifyRequest(url, null, origin);
+    const kind = classifyRequest(url, null, current.origin);
     if (kind === "noise") {
       return push(sink.envNoise, `${request.method()} ${new URL(url).pathname || url} → ${request.failure()?.errorText ?? "failed"}`);
     }
@@ -259,7 +276,7 @@ async function openPage(pwApi, flags, { width, height }, sink) {
       javaScriptEnabled: flags.ssr !== true,
     });
     const page = await context.newPage();
-    watchConsole(page, sink, new URL(flags.url).origin);
+    watchConsole(page, sink, { origin: navOrigin(flags.url) });
     await page.goto(flags.url, { waitUntil: "load", timeout: 60_000 });
     return { browser, page, via };
   } catch (error) {
@@ -432,6 +449,10 @@ async function cmdShot(flags) {
     for (const viewport of viewports) {
       const sink = newSink();
       const runFlags = { ...flags, theme };
+      const name = `${flags.card ?? "page"}-${viewport.width}x${viewport.height}-${theme}${runFlags.ssr ? "-ssr" : ""}.png`;
+      const file = path.join(flags.out, name);
+      // 先删同名旧图：这次失败时目录里不留上一轮产物冒充本轮证据。
+      fs.rmSync(file, { force: true });
       let browser;
       try {
         const session = await openPage(pw.api, runFlags, viewport, sink);
@@ -439,8 +460,6 @@ async function cmdShot(flags) {
         const { page } = session;
         await page.waitForTimeout(Number(flags.settle || 4000));
         if (!runFlags.ssr) await scrollSweep(page);
-        const name = `${flags.card ?? "page"}-${viewport.width}x${viewport.height}-${theme}${runFlags.ssr ? "-ssr" : ""}.png`;
-        const file = path.join(flags.out, name);
         if (flags.card && runFlags.ssr) {
           shots.push({ file: null, card: flags.card, ...viewport, theme, error: "--ssr 禁了 JavaScript，不能定位卡片；要 SSR 截图截整页", console: sink });
           failed = true;

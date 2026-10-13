@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { classifyRequest, consoleClean, consoleProblems, isEnvNoise, loadFeatureMap, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright } from "./site-verify.mjs";
+import { classifyRequest, consoleClean, consoleProblems, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright, updateOrigin } from "./site-verify.mjs";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -71,6 +71,18 @@ test("classifyRequest：ws 只有 426 豁免，其它失败按源分类", () => 
   assert.equal(classifyRequest("wss://localhost:3211/ws", 401, origin), "same-origin");
   assert.equal(classifyRequest("wss://localhost:3211/ws", null, origin), "same-origin");
   assert.equal(classifyRequest("wss://lyjw.me/ws", null, origin), "external");
+});
+
+test("navOrigin / updateOrigin：跳转换域后第一方失败按新 origin 算同源", () => {
+  const current = { origin: navOrigin("http://localhost:3211") };
+  assert.equal(classifyRequest("https://lyjw.me/api/status/pulse", 500, current.origin), "external");
+  updateOrigin(current, "https://lyjw.me/#frag");
+  assert.equal(current.origin, "https://lyjw.me");
+  assert.equal(classifyRequest("https://lyjw.me/api/status/pulse", 500, current.origin), "same-origin");
+  // about:blank / data: 没有有效 origin，不改写（沿用跳转后的真实域）
+  updateOrigin(current, "about:blank");
+  assert.equal(current.origin, "https://lyjw.me");
+  assert.equal(navOrigin("data:text/html,<p>x</p>"), null);
 });
 
 test("isEnvNoise：ws 失败消息必须含 426 才豁免", () => {
@@ -176,6 +188,22 @@ test("shot 控制台脏时退出码 1 且 next 指明哪张图什么原因", asy
     const body = JSON.parse(result.stdout);
     assert.equal(body.ok, false);
     assert.match(body.next, /page-375x\d+-light.*pageErrors 1 条/);
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test("shot 失败时删掉同名旧图，不留上一轮产物冒充证据", async (t) => {
+  const pw = await resolvePlaywright();
+  if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器路径验不了");
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-"));
+  try {
+    const stale = path.join(out, "digest-375x812-light.png");
+    fs.writeFileSync(stale, "上一轮旧图");
+    const result = run(["shot", "--url", "data:text/html,<title>empty</title>", "--widths", "375", "--card", "digest", "--out", out, "--settle", "300"]);
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    assert.equal(fs.existsSync(stale), false, "失败时旧图必须先被删掉");
+    assert.equal(JSON.parse(result.stdout).shots[0].file, null);
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
   }
