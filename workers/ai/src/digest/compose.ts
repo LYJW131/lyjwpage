@@ -51,7 +51,7 @@ export async function digestInputHash(model: string, facts: string): Promise<str
 
 const plain = (value: unknown) => (typeof value === "string" ? value.replace(/\*\*|`/g, "").replace(/\s+/g, " ").trim() : "");
 
-// 结构化输出只保证形状；标题长度、选项外的主题、重复和条数在这里把关。选项不足两条的安静日子，有几条就要几条。
+// 结构化输出只保证形状。quiet 一律发零格的空摘要；其余摘要的标题长度、选项外的主题、重复和条数在这里把关，可选格不足两条时有几条就要几条。
 export function parseDigest(raw: string, options: DigestHighlight[]): { headline: string; highlights: DigestHighlight[]; quiet?: true } | null {
   let parsed: { quiet?: unknown; headline?: unknown; picks?: unknown };
   try {
