@@ -104,8 +104,10 @@ test("git 历史里的真实旧错误形态会被拦下", () => {
 test("workers/*/src 与 shared/ 手写 new Response(JSON.stringify(...)) 被拦，其余形态与范围外放行", () => {
   assert.deepEqual(rules("workers/example/src/x.ts", 'return new Response(JSON.stringify(data), { status: 200 });'), ["json-response-literal@1"]);
   assert.deepEqual(rules("shared/x.ts", 'const r = new Response(JSON.stringify(data));'), ["json-response-literal@1"]);
-  // 注释里的字样不算违例
-  assert.equal(rules("shared/x.ts", '// 以前写成 new Response(JSON.stringify(data))，现在走 jsonResponse').length, 0);
+  assert.deepEqual(rules("workers/example/src/x.ts", 'return new Response (\n  JSON.stringify(data),\n);'), ["json-response-literal@1"]);
+  assert.equal(rules("shared/x.ts", '// new Response(JSON.stringify(data))').length, 0);
+  assert.equal(rules("workers/example/src/x.ts", 'const hint = "new Response(JSON.stringify(data))";').length, 0);
+  assert.equal(rules("workers/example/src/x.ts", 'const hint = `new Response(JSON.stringify(${data}))`;').length, 0);
   // 共享实现自身豁免；范围外（src/、测试文件）与合规写法放行
   assert.equal(rules("shared/http-origins.ts", 'return new Response(JSON.stringify(data), { ...init, headers });').length, 0);
   assert.equal(rules("src/lib/x.ts", 'return new Response(JSON.stringify(data));').length, 0);
