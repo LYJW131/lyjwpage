@@ -16,6 +16,11 @@ function run(args) {
   return spawnSync("node", [SCRIPT, ...args], { cwd: ROOT, encoding: "utf8", timeout: 60_000 });
 }
 
+function headlessChromeCount() {
+  const result = spawnSync("pgrep", ["-if", "chrom.*--headless"], { encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim().split("\n").filter(Boolean).length : 0;
+}
+
 test("parseArgs 解析 --key value、--key=value、布尔开关与位置参数", () => {
   const { flags, positional } = parseArgs(["cards", "--url", "http://x:1", "--theme=dark", "--list", "--card", "a,b"]);
   assert.deepEqual(positional, ["cards"]);
@@ -136,4 +141,12 @@ test("doctor 对死端口报 site fail 且输出仍是 JSON", () => {
   assert.equal(site.status, "fail");
   assert.ok(site.next);
   assert.notEqual(result.status, 0);
+});
+
+test("cards 找不到 required 卡片：退出码 1、ok:false，且不遗留 headless Chrome", () => {
+  const before = headlessChromeCount();
+  const result = run(["cards", "--url", "data:text/html,<title>empty</title>", "--settle", "500"]);
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.equal(JSON.parse(result.stdout).ok, false);
+  assert.equal(headlessChromeCount(), before, "cards 失败路径必须走 finally 关浏览器");
 });
