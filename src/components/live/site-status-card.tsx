@@ -6,7 +6,7 @@ import NumberFlow from "@number-flow/react";
 import { Container } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FlowDash } from "@/components/ui/flow-dash";
-import { colorForRank, CONTRIBUTOR_LIMIT, RepoContributions } from "@/components/live/repo-contributions";
+import { colorForContributor, CONTRIBUTOR_LIMIT, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
 import { UptimeStrip } from "@/components/live/uptime-strip";
@@ -177,9 +177,9 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
       {contributionShare > 0 && (
         <div className="mt-6 flex h-2 overflow-hidden bg-muted" role="img" aria-label="Contribution share by commits">
           {contributors.slice(0, CONTRIBUTOR_LIMIT).map((person, index) => person.commits > 0 ? (
-            <span key={person.login} title={`${person.login} · ${number.format(person.commits)} commits`} style={{ width: `${person.commits / contributionShare * 100}%`, backgroundColor: colorForRank(index) }} />
+            <span key={person.login} title={`${person.login} · ${number.format(person.commits)} commits`} style={{ width: `${person.commits / contributionShare * 100}%`, backgroundColor: colorForContributor(person.login, index) }} />
           ) : null)}
-          {otherCommits > 0 && <span title={`Others · ${number.format(otherCommits)} commits`} className="bg-muted-foreground" style={{ width: `${otherCommits / contributionShare * 100}%` }} />}
+          {otherCommits > 0 && <span title={`Others · ${number.format(otherCommits)} commits`} className="bg-[repeating-linear-gradient(135deg,var(--muted-foreground)_0_2px,transparent_2px_4px)]" style={{ width: `${otherCommits / contributionShare * 100}%` }} />}
         </div>
       )}
     </div>

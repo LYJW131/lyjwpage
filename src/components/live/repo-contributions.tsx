@@ -16,7 +16,16 @@ const AVATAR_PX = 28;
 
 export const CONTRIBUTOR_LIMIT = 6;
 
-const RANK_COLORS = [
+const AVATAR_ACCENTS: Record<string, string> = {
+  lyjw131: "var(--avatar-lyjw131)",
+  claude: "var(--claude)",
+  codex: "var(--avatar-codex)",
+  cursoragent: "var(--avatar-cursor)",
+  an0nch1hayaa: "var(--avatar-chihaya)",
+  "grokkybara[bot]": "var(--avatar-grok)",
+};
+
+const FALLBACK_COLORS = [
   "var(--signal-blue)",
   "var(--signal-green)",
   "var(--signal-orange)",
@@ -25,8 +34,8 @@ const RANK_COLORS = [
   "var(--signal-yellow)",
 ] as const;
 
-export function colorForRank(index: number): string {
-  return RANK_COLORS[index % RANK_COLORS.length];
+export function colorForContributor(login: string, index: number): string {
+  return AVATAR_ACCENTS[login.toLowerCase()] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
 }
 
 function avatarSrc(url: string): string {
@@ -269,7 +278,7 @@ export function RepoContributions({
             <div className="label-mono text-muted-foreground">Contributors</div>
             <div className="mt-2 grid min-w-0 flex-1 grid-cols-1 content-start gap-2 md:auto-rows-fr md:content-stretch">
               {shown.map((person, index) => (
-                <ContributorRow key={person.login} person={person} color={colorForRank(index)} />
+                <ContributorRow key={person.login} person={person} color={colorForContributor(person.login, index)} />
               ))}
             </div>
           </div>
