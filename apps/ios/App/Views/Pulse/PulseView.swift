@@ -138,7 +138,7 @@ private struct ReadingsCard: View {
                     ForEach(Array(tokens.buckets.enumerated()), id: \.offset) { _, bucket in
                         BarMark(
                             x: .value("Time", pulse.window.date(bucket.startSec)),
-                            y: .value("Tokens", bucket.value.fresh + bucket.value.output)
+                            y: .value("Tokens", bucket.value.total)
                         )
                         .foregroundStyle(PulseLaneKind.coding.tint)
                     }
@@ -249,7 +249,7 @@ private struct SummaryCard: View {
                     Metric(value: Format.duration(seconds: coding.humanSeconds + coding.agentSeconds + coding.bothSeconds), caption: "Coding")
                 }
                 if let tokens = pulse.lanes.tokens {
-                    Metric(value: Format.compact(tokens.freshTokens), caption: "Fresh tokens")
+                    Metric(value: Format.compact(tokens.totalTokens), caption: "Tokens")
                 }
                 if let listening = pulse.lanes.listening {
                     Metric(value: Format.duration(seconds: listening.activeSeconds), caption: "\(listening.titles) tracks")

@@ -41,8 +41,8 @@ test("empty storage is an all-unknown timeline, not an error", async () => {
     assert.deepEqual(payload.lanes.coding.summary, { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 });
     assert.deepEqual(payload.lanes.tokens, {
       kind: "tokens",
-      buckets: { startSec: [], endSec: [], fresh: [], output: [], cacheRead: [] },
-      summary: { peakPerMinute: null, currentPerMinute: null, freshTokens: 0 },
+      buckets: { startSec: [], endSec: [], total: [], output: [], cacheRead: [] },
+      summary: { peakPerMinute: null, currentPerMinute: null, totalTokens: 0 },
     });
   });
 });
@@ -55,7 +55,7 @@ function report(from: number, to: number, agents: string[], windows: Array<[numb
   return { from, to, collectedAt: to, agents: agents.map((id) => ({ id, state: "ok" as const })), windows: windows.map(([start, rows]) => ({ from: start, agents: rows })) };
 }
 
-test("tokens lane sums every source per bucket, drops the partial leading and window-cut buckets, clips the trailing one and hides names", async () => {
+test("tokens lane sums every source per bucket including cache reads, drops the partial leading and window-cut buckets, clips the trailing one and hides names", async () => {
   await withStorage(async (storage) => {
     const mac = mergeBucketReport(null, report(NOW - 18 * M, NOW - 2 * M, ["codex", "claude"], [
       [NOW - 20 * M, [tokens("codex", "secret-model", 100, 10, 1000, 0)]],
@@ -74,11 +74,11 @@ test("tokens lane sums every source per bucket, drops the partial leading and wi
       .set(codingBucketsKey("agents-otlp"), JSON.stringify(cloud))
       .execute();
     const lane = (await getPulseStatus(NOW)).lanes.tokens;
-    assert.deepEqual(columnRows(lane.buckets, ["fresh", "output", "cacheRead"]), [
-      { startSec: sec(NOW - 15 * M), endSec: sec(NOW - 10 * M), fresh: 4_000, output: 500, cacheRead: 95_000 },
-      { startSec: sec(NOW - 5 * M), endSec: sec(NOW - M), fresh: 770, output: 70, cacheRead: 0 },
+    assert.deepEqual(columnRows(lane.buckets, ["total", "output", "cacheRead"]), [
+      { startSec: sec(NOW - 15 * M), endSec: sec(NOW - 10 * M), total: 99_000, output: 500, cacheRead: 95_000 },
+      { startSec: sec(NOW - 5 * M), endSec: sec(NOW - M), total: 770, output: 70, cacheRead: 0 },
     ]);
-    assert.deepEqual(lane.summary, { peakPerMinute: 800, currentPerMinute: 193, freshTokens: 4_770 });
+    assert.deepEqual(lane.summary, { peakPerMinute: 19_800, currentPerMinute: 193, totalTokens: 99_770 });
     const wire = JSON.stringify(lane);
     for (const secret of ["secret-model", "composer-2", "claude", "codex", "cursor", "mac", "agents"]) assert.equal(wire.includes(secret), false, secret);
   });
@@ -91,7 +91,7 @@ test("tokens lane: the current rate is the last bucket's, or 0 when a source sti
     await extra(storage);
     const { summary } = (await getPulseStatus(NOW)).lanes.tokens;
     assert.equal(summary.peakPerMinute, 100);
-    assert.equal(summary.freshTokens, 500);
+    assert.equal(summary.totalTokens, 500);
     result = summary.currentPerMinute;
   });
   let result: number | null | undefined;

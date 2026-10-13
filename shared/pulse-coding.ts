@@ -1,5 +1,5 @@
 import type { StoredCodingBuckets } from './coding-buckets';
-import { CODING_BUCKET_MS } from './coding-usage';
+import { CODING_BUCKET_MS, codingRowTokens } from './coding-usage';
 import { cursorWindowFeatures, type CursorObservation } from './pulse-cursor';
 import { mergeCoverage, type Coverage } from './pulse-features';
 
@@ -52,8 +52,7 @@ export type CodingWindowFeatures = {
 // 云端没有在线心跳，只有用量桶这一正证据：有用量的桶算 agent 在跑，没有桶是未知而非空闲。
 export function cloudAgentActivity(store: StoredCodingBuckets | null): Coverage[] {
   if (!store) return [];
-  return mergeCoverage(store.windows.flatMap((window) => window.agents.some((row) =>
-    row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheCreationTokens > 0)
+  return mergeCoverage(store.windows.flatMap((window) => window.agents.some((row) => codingRowTokens(row) > 0)
     ? [{ from: window.from, to: Math.min(window.from + CODING_BUCKET_MS, store.receivedAt) }] : []));
 }
 
