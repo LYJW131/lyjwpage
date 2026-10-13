@@ -2,7 +2,7 @@
   "ok": true,
   "updatedAt": "$now-15000000",
   "data": {
-    "headline": "A quiet coding day",
+    "headline": "代码不停歇",
     "highlights": [
       { "topic": "coding", "value": 9, "unit": "hours", "atLeast": false, "caption": "coding" },
       { "topic": "site", "value": 3, "unit": "count", "atLeast": false, "caption": "commits" }
