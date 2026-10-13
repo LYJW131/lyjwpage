@@ -18,12 +18,13 @@ test("the workflow audience binds the callback origin and the runId in the forma
   assert.equal(buildWorkflowAudience("https://api.homepage.lyjw.llc", "0123456789abcdef0123456789abcdef"), "https://api.homepage.lyjw.llc/builds/0123456789abcdef0123456789abcdef");
 });
 
-test("a build workflow token for the run's callback origin is accepted, also as one of several audiences", async () => {
+test("a build workflow token for the run's callback origin is accepted, also as one of several audiences and without job_workflow_ref", async () => {
   const oidc = await createActionsOidcFixture();
   const fetcher = oidc.serve();
   assert.equal((await verifyActionsToken(await oidc.token(audience, {}, now), audience, fetcher, now))?.run_id, "1");
   assert.ok(await verifyActionsToken(await oidc.token(audience, { aud: ["https://other.example", audience] }, now), audience, fetcher, now));
   assert.ok(await verifyActionsToken(await oidc.token(audience, { nbf: undefined }, now), audience, fetcher, now));
+  assert.ok(await verifyActionsToken(await oidc.token(audience, { job_workflow_ref: undefined }, now), audience, fetcher, now));
   assert.equal(oidc.jwksRequests, 1);
 });
 
