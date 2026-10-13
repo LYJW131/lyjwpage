@@ -4,10 +4,10 @@ name: CodeQL
 on:
   push:
     branches: [main, dev]
-  pull_request:
   workflow_dispatch:
+  # 不跑 PR：每次推送都等扫描拖慢迭代，改由合入后与每天两次定时扫（北京时间 03:27 / 15:27）兜底
   schedule:
-    - cron: "27 4 * * 1"
+    - cron: "27 7,19 * * *"
 
 permissions:
   contents: read
@@ -42,7 +42,7 @@ jobs:
               - .github/workflows/**
               - "**/action.{yml,yaml}"
 
-      # 只有推 main / dev 按改动过滤；PR、每周定时扫和手动触发都两种语言全扫
+      # 只有推 main / dev 按改动过滤；定时扫和手动触发都两种语言全扫
       - id: pick
         env:
           CHANGED: ${{ steps.filter.outputs.changes }}
@@ -61,7 +61,7 @@ jobs:
       matrix:
         language: [javascript-typescript, actions]
 
-    # 没改到这门语言时只跳过步骤、不跳过任务：跳过的 matrix 任务不展开，检查名会停在未展开的模板上，必需检查就一直等不到
+    # 没改到这门语言时只跳过步骤、不跳过任务：跳过的 matrix 任务不展开，检查名会停在未展开的模板上
     env:
       SCAN: ${{ contains(fromJSON(needs.changes.outputs.languages), matrix.language) }}
     steps:
