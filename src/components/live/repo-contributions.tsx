@@ -220,7 +220,7 @@ function CommitCard({ commit, deploy }: {
   const production = deploy?.production ?? false;
   const status = production ? "Live" : !deployment ? "Committed" : deployment.state === "READY" && deployment.target === "preview" ? "Preview ready" : stateLabels[deployment.state];
   return (
-    <li className="flex min-h-[98px] flex-col justify-center gap-1 border border-line bg-muted/40 px-3 py-2">
+    <li className="flex min-h-24 flex-col justify-center gap-1 border border-line bg-muted/40 px-3 py-1.5">
       <a href={commit.url} target="_blank" rel="noreferrer noopener" title={commit.title} className="-mt-2 block truncate pt-2 text-sm leading-5 hover:underline">{commit.title}</a>
       <CommitByline authors={commit.authors} committedAt={commit.committedAt} />
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 whitespace-nowrap text-[10px] leading-4 text-muted-foreground">
@@ -266,18 +266,19 @@ export function RepoContributions({
     <section id="github-repo" className="min-w-0 scroll-mt-28" aria-label="Repository contributions">
       {hasContributors ? (
         <div className="grid grid-cols-1 md:grid-cols-2">
-          <div className="min-w-0 p-4 md:pr-4 lg:pl-5">
+          {/* 两栏并排时列表撑满同一高度、行按 1fr 均分，内容高度对不上时底边也对齐。 */}
+          <div className="flex min-w-0 flex-col p-4 md:pr-4 lg:pl-5">
             <div className="label-mono text-muted-foreground">Contributors</div>
-            <div className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
+            <div className="mt-2 grid min-w-0 flex-1 grid-cols-1 content-start gap-2 md:auto-rows-fr md:content-stretch">
               {shown.map((person, index) => (
                 <ContributorRow key={person.login} person={person} color={colorForRank(index)} />
               ))}
             </div>
           </div>
           {commits.length > 0 && (
-            <div className="min-w-0 border-t border-line p-4 md:border-t-0 md:border-l md:border-line md:pl-4 lg:pr-5">
+            <div className="flex min-w-0 flex-col border-t border-line p-4 md:border-t-0 md:border-l md:border-line md:pl-4 lg:pr-5">
               <div className="label-mono text-muted-foreground">Commits</div>
-              <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
+              <ul className="mt-2 grid min-w-0 flex-1 grid-cols-1 content-start gap-2 md:auto-rows-fr md:content-stretch">
                 {commits.map((commit) => (
                   <CommitCard key={commit.sha} commit={commit} deploy={deploymentFor(commit, deploymentsBySha)} />
                 ))}
