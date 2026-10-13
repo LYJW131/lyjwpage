@@ -54,7 +54,7 @@ function QuestHero({ playing }: { playing: QuestPlaying }) {
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <StatusDot tone="live" />
-          <span className="label-mono shrink-0 text-live">In Game</span>
+          <span className="label-mono shrink-0 text-live-ink">In Game</span>
           {now != null && playing.startedAt != null && (
             <span className="label-mono min-w-0 truncate normal-case text-muted-foreground">
               · {playingFor(Math.max(0, now - playing.startedAt))}
