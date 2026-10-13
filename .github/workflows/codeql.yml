@@ -5,7 +5,7 @@ on:
   push:
     branches: [main, dev]
   workflow_dispatch:
-  # 不跑 PR：每次推送都等扫描拖慢迭代，改由合入后与每天两次定时扫（北京时间 03:27 / 15:27）兜底
+  # 有意不扫 PR，免得 PR 每次推送都等扫描；由推 main / dev 与每天两次定时扫（北京时间 03:27 / 15:27）覆盖
   schedule:
     - cron: "27 7,19 * * *"
 
