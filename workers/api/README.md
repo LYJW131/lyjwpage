@@ -284,7 +284,7 @@ cron 落在窗口结束后 `PULSE_SCORE_SETTLE_MS`（`src/pulse-score.ts`，等�
 未知的窗口，每个十五分钟一份 Clef 请求（型号写在 `src/pulse-score.ts#clefDecide`），强度、连续性、模式一起评估。窗口被完整观测且信号
 全是 0 时不请求模型，写成确定的最低档（强度 0、连续性 0、置信度 1、mode idle，模型名 `rules`）。每轮最多
 36 份请求、并发最多 3，优先新窗口再补最近 24 小时，稳定时每小时最多 4 次。没有观测不调用，也不写评分。
-没有 `AI` 绑定（`wrangler.test.toml` 不配，本地起的 Worker 都不评分）、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用。
+没有 `AI` 绑定、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用（`src/runtime.ts#isolatedFromSharedWrites`），按 example 配的本地 Worker 不评分。
 
 决策模型不会数数、不会算时长、不比时间戳，所以发给它的 state 是代码算好的命名秒数和次数
 （`shared/pulse-coding.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
@@ -450,6 +450,8 @@ api 自己的 cron 本地触发不到（Service Binding 调不了别的 Worker �
 D1 归档、Clef 打分本来也被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
+`AI` 绑定只能连远程 Workers AI：`scripts/dev-worker.mjs` 在没有 `CLOUDFLARE_API_TOKEN` 也没有 `wrangler login` 时，把 api 与 ai 的测试配置去掉 `[ai]` 段另存为 `wrangler.test.offline.toml` 再起，否则整个会话起不来；去掉后对话路由走兜底档位。`DEV_WORKER_AI=remote` / `off` 强制选择。
+云端会话启动时 `.claude/hooks/session-start.sh` 跑 `scripts/cloud-dev-vars.mjs`，补上缺的 `workers/api/.dev.vars`（照抄 example）、`workers/ai/.dev.vars`（key 取环境变量 `LYJWPAGE_ANTHROPIC_API_KEY`，Turnstile 用 Cloudflare 测试密钥，签章密钥随机生成）与根 `.env.local`（Turnstile 测试 site key），已有的文件不动。
 状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，新目录直接以空状态起。
 
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 按端点整份兜底（`src/public-api.ts#overlayResponse`）：生产回 `ok:true` 的端点整份用生产的，
