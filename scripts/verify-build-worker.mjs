@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { stripVTControlCharacters } from 'node:util';
 
 import '../src/lib/testing/register-alias.mjs';
@@ -20,7 +21,7 @@ const require = createRequire(join(root, 'workers/ai/package.json'));
 const temporary = await mkdtemp(join(tmpdir(), 'lyjw-build-verify-'));
 const children = [];
 const logs = [];
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const baseSha = 'a'.repeat(40);
 const fixtureSecret = 'local-build-fixture-only';
 const plan = { title: 'Improve the fixture card', spec: 'Render the fixture card clearly.', acceptance: ['Readable on a phone'], paths: ['src/components/fixture.tsx'] };

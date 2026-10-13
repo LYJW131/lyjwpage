@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 import Anthropic from "@anthropic-ai/sdk";
 import * as Sentry from "@sentry/cloudflare";
 
@@ -246,7 +248,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
 
 async function openedTurn(api: DesignApi, sessionId: string, signal: AbortSignal): Promise<SessionEvent[]> {
   for (let tries = 0; tries < OPENED_TURN_POLLS && !signal.aborted; tries++) {
-    await new Promise((resolve) => setTimeout(resolve, OPENED_TURN_POLL_MS));
+    await sleep(OPENED_TURN_POLL_MS);
     const turn = await api.turn(sessionId);
     if (turn.length) return turn;
   }

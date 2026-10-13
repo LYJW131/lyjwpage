@@ -9,6 +9,10 @@
  *                  （PUBLIC_BACKEND_URL），浏览器必须直连的第三方主机在 ALLOWED_FETCH_HOSTS 登记
  *   scrollbar-pair 隐藏滚动条两句缺一不可：scrollbar-none 管 Firefox，
  *                  [&::-webkit-scrollbar]:hidden 管 Chromium（DESIGN.md「滚动区」）
+ *   manual-sleep   scripts/、shared/、workers/<x>/src/ 里等一段时间一律用
+ *                  import { setTimeout as sleep } from "node:timers/promises"，不手写
+ *                  new Promise 包 setTimeout；跑在浏览器里的代码例外，登记
+ *                  HANDWRITTEN_SLEEP_ALLOW
  *
  * 退出码：有违例为 1。测试见 scripts/rules-check.test.mjs。
  */
@@ -214,12 +218,52 @@ export function checkScrollbarPair(file, text) {
   return issues.sort((a, b) => a.line - b.line);
 }
 
+const NODE_SLEEP_SOURCE = /^(?:scripts|shared)\/|^workers\/[^/]+\/src\//;
+// site-verify 的滚动扫频是 page.evaluate 的页面内代码，没有 node:timers/promises
+const HANDWRITTEN_SLEEP_ALLOW = new Set(["scripts/site-verify.mjs"]);
+
+export function checkManualSleep(file, text) {
+  if (!NODE_SLEEP_SOURCE.test(file) || HANDWRITTEN_SLEEP_ALLOW.has(file)) return [];
+  const ext = extOf(file);
+  if (!TS_PARSE_EXTS.has(ext)) return [];
+  const ts = loadTs();
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const isSetTimeoutCallee = (expr) =>
+    (ts.isIdentifier(expr) && expr.text === "setTimeout")
+    || (ts.isPropertyAccessExpression(expr) && expr.name.text === "setTimeout");
+  const issues = [];
+  const visit = (node) => {
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
+      const executor = node.arguments?.[0];
+      const param = executor && (ts.isArrowFunction(executor) || ts.isFunctionExpression(executor)) ? executor.parameters[0] : undefined;
+      const resolved = param && ts.isIdentifier(param.name) ? param.name.text : null;
+      let hit = false;
+      if (resolved && executor.body) {
+        const scan = (n) => {
+          if (hit) return;
+          if (ts.isCallExpression(n) && isSetTimeoutCallee(n.expression)
+              && n.arguments.length > 0 && ts.isIdentifier(n.arguments[0]) && n.arguments[0].text === resolved) hit = true;
+          else ts.forEachChild(n, scan);
+        };
+        scan(executor.body);
+      }
+      if (hit) {
+        const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+        issues.push({ file, line: line + 1, rule: "manual-sleep", message: '等一段时间用 import { setTimeout as sleep } from "node:timers/promises"，不手写 new Promise 包 setTimeout；跑在浏览器里的代码才例外，登记进 HANDWRITTEN_SLEEP_ALLOW。' });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return issues;
+}
+
 const SITE_SOURCE = /^src\//;
 const TEST_OR_FIXTURE = /\.test\.|(^|\/)(?:__tests__|tests?|fixtures|dev-fixtures)\//i;
 
 export function checkFile(file, text) {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
-  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text)];
+  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
   return issues;
 }
