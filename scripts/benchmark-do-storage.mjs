@@ -255,6 +255,6 @@ try {
   throw error;
 } finally {
   child?.kill("SIGTERM");
-  if (child && child.exitCode === null) await Promise.race([once(child, "exit"), sleep(3000)]);
+  if (child && child.exitCode === null) await Promise.race([once(child, "exit"), sleep(3000, undefined, { ref: false })]);
   await rm(temporary, { recursive: true, force: true });
 }

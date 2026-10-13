@@ -189,7 +189,7 @@ async function exportPreviews(chromePath, evidenceDirectory) {
   const cleanup = async () => {
     // Chrome 退出时还会往 profile 里写几笔，等它真正退出再删，否则 rm 会撞上 ENOTEMPTY
     child.kill();
-    await Promise.race([exited, sleep(5_000)]);
+    await Promise.race([exited, sleep(5_000, undefined, { ref: false })]);
     fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     fs.rmSync(downloads, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   };
