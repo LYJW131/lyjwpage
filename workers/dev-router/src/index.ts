@@ -12,7 +12,7 @@ interface Env {
 }
 
 const COLLECTOR_PREFIX = "/__dev/collector/";
-const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
+const INGRESS_INTERNAL_PATHS = new Set(["/api/internal/site-deployed", "/api/internal/collector-refresh"]);
 
 const router = {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -28,7 +28,7 @@ const router = {
       return env.COLLECTOR.fetch(new Request(target, request));
     }
 
-    if (url.pathname.startsWith("/api/ingest/") || url.pathname === SITE_DEPLOYED_PATH) {
+    if (url.pathname.startsWith("/api/ingest/") || INGRESS_INTERNAL_PATHS.has(url.pathname)) {
       return env.INGRESS.fetch(request);
     }
 

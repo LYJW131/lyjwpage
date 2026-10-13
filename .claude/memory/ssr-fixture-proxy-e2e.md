@@ -14,4 +14,4 @@ Playwright `context.route` only rewrites browser requests; the SSR loader fetche
 
 Also seen: Apple's catalog can say `hasLyrics: true` while `/api/lyrics` returns `lines: []` for that song (e.g. songId 1888044596, cn storefront).
 
-Related: [[pr-merge-bot-reviews]].
+Related: [[merge-requires-bot-review-pass]].
