@@ -32,6 +32,21 @@ test("不在类名边界上的同形片段不算", () => {
   assert.deepEqual(tokens(`scroll-mt-12 size-3.5 h-2.5 w-[3px] data-p-2.5`), []);
 });
 
+test("自定义属性简写、calc 字号与不带轴的任意位移也算", () => {
+  assert.deepEqual(
+    tokens(`"p-(--pad) space-x-(--gap) text-[calc(1rem+1px)] text-[length:var(--size)] text-(length:--size) translate-[3px] -translate-y-(--offset) text-(--brand)"`),
+    [
+      "spacing:p-(--pad)",
+      "spacing:space-x-(--gap)",
+      "fontSize:text-[calc(1rem+1px)]",
+      "fontSize:text-[length:var(--size)]",
+      "fontSize:text-(length:--size)",
+      "translate:translate-[3px]",
+      "translate:-translate-y-(--offset)",
+    ],
+  );
+});
+
 test("块方向逻辑间距 pbs / pbe / mbs / mbe 也算", () => {
   assert.deepEqual(tokens(`"pbs-2.5 mbe-12 pbs-4"`), ["spacing:pbs-2.5", "spacing:mbe-12"]);
 });

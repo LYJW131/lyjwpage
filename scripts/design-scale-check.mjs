@@ -10,21 +10,22 @@ export const SPACING_SCALE = new Set(["0", "px", "0.5", "1", "1.5", "2", "3", "4
 
 const BOUNDARY = String.raw`(?<=^|[\s"'\`:!{(])`;
 const END = String.raw`(?=$|[\s"'\`)}!/])`;
+const ARBITRARY = String.raw`\[[^\]\s]*\]|\([^)\s]*\)`;
 
 export const RULES = {
   spacing: {
     label: "阶梯外的间距",
-    re: new RegExp(String.raw`${BOUNDARY}-?(?:p(?:b[se]|[xytrblse])?|m(?:b[se]|[xytrblse])?|gap(?:-[xy])?|space-[xy])-(\[[^\]\s]*\]|\d+(?:\.\d+)?|px)${END}`, "g"),
+    re: new RegExp(String.raw`${BOUNDARY}-?(?:p(?:b[se]|[xytrblse])?|m(?:b[se]|[xytrblse])?|gap(?:-[xy])?|space-[xy])-(${ARBITRARY}|\d+(?:\.\d+)?|px)${END}`, "g"),
     offScale: (match) => !SPACING_SCALE.has(match[1]),
   },
   fontSize: {
     label: "任意值字号",
-    re: new RegExp(String.raw`${BOUNDARY}text-\[(?:length:)?[\d.][^\]\s]*\]${END}`, "g"),
+    re: new RegExp(String.raw`${BOUNDARY}text-(?:\[(?:length:[^\]\s]+|calc\([^\]\s]*|[\d.][^\]\s]*)\]|\(length:[^)\s]+\))${END}`, "g"),
     offScale: () => true,
   },
   translate: {
     label: "任意值位移",
-    re: new RegExp(String.raw`${BOUNDARY}-?translate-[xy]-\[[^\]\s]*\]${END}`, "g"),
+    re: new RegExp(String.raw`${BOUNDARY}-?translate(?:-[xyz])?-(?:${ARBITRARY})${END}`, "g"),
     offScale: () => true,
   },
 };
