@@ -183,7 +183,7 @@ export function ServerCard({
               {location ?? <span className="text-muted-foreground">—</span>}
             </div>
             <div
-              className="truncate text-sm text-muted-foreground md:font-mono md:text-lg md:text-foreground"
+              className="truncate text-sm text-muted-foreground md:text-2xl md:leading-9 md:font-medium md:tracking-tight md:text-foreground"
               title={isp ?? undefined}
             >
               {isp ?? <span className="text-muted-foreground">—</span>}
@@ -191,7 +191,7 @@ export function ServerCard({
           </div>
           <div className="shrink-0 text-right md:min-w-0 md:text-left">
             <div className="label-mono text-muted-foreground">Uptime</div>
-            <div className="font-mono text-lg tabular-nums">
+            <div className="font-mono text-lg tabular-nums md:text-2xl md:leading-9 md:font-medium md:tracking-tight">
               {data ? formatUptime(data.uptimeSeconds) : <span className="text-muted-foreground">—</span>}
             </div>
           </div>
