@@ -6,14 +6,16 @@ const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).rep
 type GithubSignIn = { code: string; codeVerifier: string };
 
 // PKCE hashes asynchronously, but opening the popup must stay in the click's synchronous call stack.
-export function signInWithGithub(): Promise<GithubSignIn> {
+export function signInWithGithub(signal?: AbortSignal): Promise<GithubSignIn> {
   if (!crypto.subtle) return Promise.reject(new Error(UNAVAILABLE));
+  if (signal?.aborted) return Promise.reject(new Error(CANCELLED));
   const state = crypto.randomUUID();
   const codeVerifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
   const popup = window.open("about:blank", "github-sign-in", "popup,width=520,height=720");
   if (!popup) return Promise.reject(new Error("Allow pop-ups for this site to sign in with GitHub."));
   return new Promise((resolve, reject) => {
-    const done = () => { window.removeEventListener("message", onMessage); clearInterval(timer); popup.close(); };
+    const done = () => { window.removeEventListener("message", onMessage); signal?.removeEventListener("abort", onAbort); clearInterval(timer); popup.close(); };
+    const onAbort = () => { done(); reject(new Error(CANCELLED)); };
     const onMessage = (event: MessageEvent) => {
       const data = event.data as { type?: unknown; state?: unknown; code?: unknown } | null;
       if (event.source !== popup || event.origin !== location.origin || data?.type !== GITHUB_SIGN_IN_MESSAGE || data.state !== state) return;
@@ -23,6 +25,7 @@ export function signInWithGithub(): Promise<GithubSignIn> {
     };
     const timer = setInterval(() => { if (popup.closed) { done(); reject(new Error(CANCELLED)); } }, 500);
     window.addEventListener("message", onMessage);
+    signal?.addEventListener("abort", onAbort);
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier)).then((hash) => {
       const url = new URL("https://github.com/login/oauth/authorize");
       url.searchParams.set("client_id", GITHUB_APP_CLIENT_ID);
