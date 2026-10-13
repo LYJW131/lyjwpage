@@ -245,10 +245,11 @@ function watchConsole(page, sink, current) {
   page.on("response", (response) => {
     if (response.status() < 400) return;
     const url = response.url();
-    if (classifyRequest(url, response.status(), current.origin) === "noise") {
+    const kind = classifyRequest(url, response.status(), current.origin);
+    if (kind === "noise") {
       return push(sink.envNoise, `${response.request().method()} ${new URL(url).pathname} → ${response.status()}`);
     }
-    sink.failedRequests.push({ url, status: response.status(), sameOrigin: new URL(url).origin === current.origin });
+    sink.failedRequests.push({ url, status: response.status(), sameOrigin: kind === "same-origin" });
   });
   // 连接被拒 / DNS / 超时等连响应都没有的失败只走 requestfailed；4xx/5xx 归上面 response。
   page.on("requestfailed", (request) => {
@@ -466,7 +467,9 @@ async function cmdShot(flags) {
           continue;
         }
         if (flags.card) {
-          const el = await locateHandle(page, cardSpec(flags.card, cardEntry));
+          const spec = cardSpec(flags.card, cardEntry);
+          const found = await locate(page, spec);
+          const el = found?.visible ? await locateHandle(page, spec) : null;
           if (!el) {
             shots.push({ file: null, card: flags.card, ...viewport, theme, error: "卡片在当前数据下不显示", console: sink });
             failed = true;
