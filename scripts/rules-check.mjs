@@ -11,8 +11,7 @@
  *                  [&::-webkit-scrollbar]:hidden 管 Chromium（DESIGN.md「滚动区」）
  *   manual-sleep   scripts/、shared/、workers/<x>/src/ 里等一段时间一律用
  *                  import { setTimeout as sleep } from "node:timers/promises"，不手写
- *                  new Promise 包 setTimeout；跑在浏览器里的代码例外，登记
- *                  HANDWRITTEN_SLEEP_ALLOW
+ *                  new Promise 包 setTimeout；字符串里交给浏览器执行的代码不算
  *
  * 退出码：有违例为 1。测试见 scripts/rules-check.test.mjs。
  */
@@ -219,11 +218,9 @@ export function checkScrollbarPair(file, text) {
 }
 
 const NODE_SLEEP_SOURCE = /^(?:scripts|shared)\/|^workers\/[^/]+\/src\//;
-// site-verify 的滚动扫频是 page.evaluate 的页面内代码，没有 node:timers/promises
-const HANDWRITTEN_SLEEP_ALLOW = new Set(["scripts/site-verify.mjs"]);
 
 export function checkManualSleep(file, text) {
-  if (!NODE_SLEEP_SOURCE.test(file) || HANDWRITTEN_SLEEP_ALLOW.has(file)) return [];
+  if (!NODE_SLEEP_SOURCE.test(file)) return [];
   const ext = extOf(file);
   if (!TS_PARSE_EXTS.has(ext)) return [];
   const ts = loadTs();
@@ -231,6 +228,14 @@ export function checkManualSleep(file, text) {
   const isSetTimeoutCallee = (expr) =>
     (ts.isIdentifier(expr) && expr.text === "setTimeout")
     || (ts.isPropertyAccessExpression(expr) && expr.name.text === "setTimeout");
+  const callsBare = (expr, name) => ts.isCallExpression(expr) && expr.arguments.length === 0 && ts.isIdentifier(expr.expression) && expr.expression.text === name;
+  const resolvesBare = (arg, name) => {
+    if (ts.isIdentifier(arg)) return arg.text === name;
+    if (!(ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) || arg.parameters.length > 0) return false;
+    if (!ts.isBlock(arg.body)) return callsBare(arg.body, name);
+    const [only] = arg.body.statements;
+    return arg.body.statements.length === 1 && ts.isExpressionStatement(only) && callsBare(only.expression, name);
+  };
   const issues = [];
   const visit = (node) => {
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
@@ -241,15 +246,14 @@ export function checkManualSleep(file, text) {
       if (resolved && executor.body) {
         const scan = (n) => {
           if (hit) return;
-          if (ts.isCallExpression(n) && isSetTimeoutCallee(n.expression)
-              && n.arguments.length > 0 && ts.isIdentifier(n.arguments[0]) && n.arguments[0].text === resolved) hit = true;
+          if (ts.isCallExpression(n) && isSetTimeoutCallee(n.expression) && n.arguments.length > 0 && resolvesBare(n.arguments[0], resolved)) hit = true;
           else ts.forEachChild(n, scan);
         };
         scan(executor.body);
       }
       if (hit) {
         const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-        issues.push({ file, line: line + 1, rule: "manual-sleep", message: '等一段时间用 import { setTimeout as sleep } from "node:timers/promises"，不手写 new Promise 包 setTimeout；跑在浏览器里的代码才例外，登记进 HANDWRITTEN_SLEEP_ALLOW。' });
+        issues.push({ file, line: line + 1, rule: "manual-sleep", message: '等一段时间用 import { setTimeout as sleep } from "node:timers/promises"，不手写 new Promise 包 setTimeout。' });
       }
     }
     ts.forEachChild(node, visit);

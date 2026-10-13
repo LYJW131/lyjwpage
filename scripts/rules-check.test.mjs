@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkFetchHost, checkFile, checkManualSleep, checkScrollbarPair, checkTodo } from "./rules-check.mjs";
+import { checkFetchHost, checkFile, checkScrollbarPair, checkTodo } from "./rules-check.mjs";
 
 const rules = (file, text) => checkFile(file, text).map((issue) => `${issue.rule}@${issue.line}`);
 
@@ -121,7 +121,9 @@ test("manual-sleep 放行：node:timers/promises、带值 resolve、reject 超�
   assert.equal(rules("scripts/x.test.mjs", 'await new Promise((resolve) => setTimeout(resolve, 1));').length, 0);
   assert.equal(rules("scripts/fixtures/x.mjs", 'await new Promise((resolve) => setTimeout(resolve, 1));').length, 0);
   // 白名单文件即使出现真实代码形态也放行
-  assert.equal(checkManualSleep("scripts/site-verify.mjs", 'await new Promise((resolve) => setTimeout(resolve, 1));').length, 0);
+  assert.deepEqual(rules("scripts/x.mjs", 'await new Promise((resolve) => setTimeout(() => resolve(), 100));'), ["manual-sleep@1"]);
+  assert.deepEqual(rules("shared/x.ts", 'await new Promise((done) => setTimeout(function () { done(); }, 100));'), ["manual-sleep@1"]);
+  assert.equal(rules("shared/x.ts", 'await new Promise((resolve) => setTimeout(() => resolve(value), 100));').length, 0);
 });
 
 test("checkFile 只扫认识的代码扩展名", () => {
