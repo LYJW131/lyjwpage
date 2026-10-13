@@ -12,6 +12,7 @@ export function HomeLink() {
     <Link
       to="/"
       prefetch="none"
+      title="Back to top"
       className="-m-2 min-w-0 justify-self-start truncate p-2 text-sm font-bold tracking-tight"
       onClick={(event) => {
         if (window.location.pathname !== "/") return;
