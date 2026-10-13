@@ -10,10 +10,12 @@ import { proposalChoiceOpen, type ChatProposal } from "@/lib/chat-archive";
 import { signInWithGithub } from "@/lib/github-sign-in";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
-import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_PATH, BUILD_STATUS_PATH, buildIssueUrl, visitorLanguage, type BuildFireResult, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
+import { BUILD_ACTIVE_PHASES, BUILD_FAILED_PHASES, BUILD_ISSUE_LOOKUP_GRACE_MS, BUILD_ISSUE_PATH, BUILD_ISSUE_POLL_MS, BUILD_PATH, BUILD_STATUS_PATH, buildIssueUrl, visitorLanguage, type BuildFireResult, type BuildIssueLookup, type BuildPhase, type BuildRun, type BuildSignal } from "@shared/build-routine";
+import type { GithubIssueResult } from "@shared/github-issue";
 
 const BUILD_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, BUILD_PATH);
 const STATUS_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, BUILD_STATUS_PATH);
+const ISSUE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, BUILD_ISSUE_PATH);
 
 const phaseLabels: Record<BuildPhase, string> = {
   triggered: "Preparing build",
@@ -37,6 +39,41 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
   const expired = now >= proposal.expiresAt;
   const used = Boolean(proposal.issue || proposal.build);
   const disabled = !proposalChoiceOpen(proposal, now) || working !== null || inactive;
+  const [lookupRejected, setLookupRejected] = useState(false);
+  const awaitingIssue = Boolean(ISSUE_URL && proposal.issueRef && proposal.issueOpened && !used && !lookupRejected && now < proposal.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS);
+  const latest = useRef({ proposal, onChange });
+  useEffect(() => { latest.current = { proposal, onChange }; });
+
+  useEffect(() => {
+    if (!awaitingIssue) return;
+    let controller: AbortController | null = null;
+    const check = async () => {
+      if (controller || document.visibilityState !== "visible") return;
+      const current = new AbortController();
+      controller = current;
+      try {
+        const issue = await lookupPlanIssue(proposal.token, current.signal);
+        if (current.signal.aborted) return;
+        if (issue === "rejected") setLookupRejected(true);
+        else if (issue) latest.current.onChange({ ...latest.current.proposal, issue });
+      } catch {
+        // 查不到就等下一轮：卡片照旧开着两个出口，访客随时能改选构建。
+      } finally {
+        if (controller === current) controller = null;
+      }
+    };
+    void check();
+    const timer = setInterval(() => void check(), BUILD_ISSUE_POLL_MS);
+    const onReturn = () => void check();
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
+    return () => {
+      clearInterval(timer);
+      controller?.abort();
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
+    };
+  }, [awaitingIssue, proposal.token]);
 
   useEffect(() => {
     const timer = setTimeout(() => setNow(Date.now()), Math.max(0, proposal.expiresAt - Date.now()) + 20);
@@ -76,14 +113,14 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
         <p className="mt-2 break-all font-mono text-[10px] text-muted-foreground">{proposal.plan.paths.join(", ")}</p>
       </details>
       {proposal.issue ? (
-        <p className="text-xs">Opened <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
+        <p className="text-xs">Filed as <a href={proposal.issue.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">issue #{proposal.issue.number}</a> on GitHub.</p>
       ) : proposal.build ? (
         <BuildStatusCard key={proposal.build.runId} build={proposal.build} savedRun={proposal.run} onRun={(run) => { if (JSON.stringify(run) !== JSON.stringify(proposal.run)) onChange({ ...proposal, run }); }} />
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
             <a
-              href={buildIssueUrl(proposal.plan)}
+              href={buildIssueUrl(proposal.plan, proposal.issueRef)}
               target="_blank"
               rel="noreferrer noopener"
               aria-disabled={disabled || buildOpen || undefined}
@@ -98,7 +135,7 @@ export function BuildPlanCard({ proposal, onChange, inactive = false }: { propos
             </a>
             <button type="button" onClick={() => { setError(null); setBuildOpen(true); }} disabled={disabled || buildOpen} className="rounded-md bg-foreground px-3 py-2 text-xs text-background disabled:opacity-40">Start build</button>
           </div>
-          {proposal.issueOpened && !expired && <p className="text-xs">Opened GitHub&apos;s new issue form. Submit it there to file this plan, or start a build instead.</p>}
+          {proposal.issueOpened && !expired && <p className="text-xs">Opened GitHub&apos;s new issue form. {awaitingIssue ? "Once you submit it there, this card links to the issue. You can still start a build instead." : "Submit it there to file this plan, or start a build instead."}</p>}
           <p className="text-[11px] text-muted-foreground">Choose one destination. Builds publish this plan in a draft pull request, then add changes to the same PR with your GitHub account as co-author.</p>
           {expired && <p className="text-xs text-muted-foreground">Ask for a fresh plan to continue.</p>}
           {buildOpen && <GithubConsent language={visitorLanguage(proposal.plan)} working={working !== null} disabled={disabled} error={error} onAccept={() => void startBuild()} onCancel={() => { setError(null); setBuildOpen(false); }} />}
@@ -173,6 +210,13 @@ function BuildStatusCard({ build, savedRun, onRun }: { build: BuildFireResult; s
       {error && <p role="status" className="text-red-500">{error}</p>}
     </div>
   );
+}
+
+async function lookupPlanIssue(planToken: string, signal: AbortSignal): Promise<GithubIssueResult | null | "rejected"> {
+  const response = await fetch(ISSUE_URL!, { headers: { Authorization: `Bearer ${planToken}` }, signal, cache: "no-store", referrerPolicy: "no-referrer" });
+  if (response.status === 401) return "rejected";
+  if (!response.ok) throw new Error("Issue lookup failed.");
+  return ((await response.json()) as BuildIssueLookup).issue;
 }
 
 async function loadBuildRun(runId: string, statusToken: string, signal: AbortSignal): Promise<BuildRun> {
