@@ -266,6 +266,8 @@ test("picks outside the options, repeats and extras are dropped, and too few lef
   assert.deepEqual(parsed?.highlights.map((item) => item.topic), ["coding", "music", "tokens"]);
   assert.equal(parseDigest(JSON.stringify({ headline: ANSWER.headline, picks: ["coding", "site"] }), options), null);
   assert.equal(parseDigest(JSON.stringify({ headline: "A".repeat(60), picks: ANSWER.picks }), options), null);
+  assert.equal(parseDigest(JSON.stringify({ headline: "Agents", picks: ANSWER.picks }), options), null);
+  assert.equal(parseDigest(JSON.stringify({ headline: "Agents ran all of the day", picks: ANSWER.picks }), options), null);
   assert.deepEqual(parseDigest(JSON.stringify({ headline: "Quiet day", picks: ["fitness"] }), options.filter((item) => item.topic === "fitness"))?.highlights.map((item) => item.topic), ["fitness"]);
 });
 
