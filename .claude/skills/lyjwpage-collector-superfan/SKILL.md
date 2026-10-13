@@ -57,7 +57,7 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 逐条看第 2、3 步的结果，再和 `snapshots` 比：
 
 - 同一个任务在窗口里反复失败（比如 `apple-recent` 的 403 令牌失效、`pagespeed` 一直超时），即使端点还没过阈值，也算异常：给出 `detail` 原文和次数。
-- 内容冻住：`updatedAt` 在走但内容哈希（脚本已剔除各种 `*At` 时间戳）连续 12 份没变，而它本该变（`github-repo` 在 main 有新提交时、`listening` 在站主听歌时、`digest` 隔几个小时），算 `warn`。
+- 内容冻住：`updatedAt` 在走但内容哈希（脚本已剔除各种 `*At` 时间戳）连续 12 份没变（复合视图看 `parts` 里各部分各自的哈希：`site-deployments` 的部署、访问量、PageSpeed，`cloudflare-workers` 的每个 Worker），而它本该变（`github-repo` 在 main 有新提交时、`listening` 在站主听歌时、`digest` 隔几个小时），算 `warn`。
 - 端点数值突变：厂商数、Worker 数、访问量、PageSpeed 分数比上几份掉了一半以上。
 - `health`（或迁移前的 `sentry`）视图里 `heartbeat` / `uptime` 不是 `up` 也照报：它测的是站点和 core 的 cron，不归 collector，但盯防时看到了就说，并注明不归 collector。
 - 每条结论写依据（端点字段、日志条数与原文）；是推断就写「推断」。能定位到源码的给路径加符号。

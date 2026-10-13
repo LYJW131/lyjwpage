@@ -53,6 +53,10 @@ def content(x):
     return x
 
 
+def digest(x):
+    return hashlib.sha1(json.dumps(content(x), sort_keys=True).encode()).hexdigest()[:12]
+
+
 def age(now, at):
     return now - at if isinstance(at, (int, float)) else None
 
@@ -94,7 +98,7 @@ def check(repo):
             continue
         data[view] = body
         snap[view] = {
-            "hash": hashlib.sha1(json.dumps(content(body.get("data")), sort_keys=True).encode()).hexdigest()[:12],
+            "hash": digest(body.get("data")),
             "updatedAt": body.get("updatedAt"),
         }
 
@@ -140,6 +144,7 @@ def check(repo):
             add("site-deployments", "warn", "近 7 天访问量是 0")
         ps = d.get("pagespeed") or {}
         stale("site-deployments", "PageSpeed", ps.get("fetchedAt"), "PAGESPEED_STALE_MS")
+        snap["site-deployments"]["parts"] = {k: digest(d.get(k)) for k in ("production", "analytics", "pagespeed")}
         snap["site-deployments"]["pageviews"] = an.get("pageviews")
         snap["site-deployments"]["pagespeed"] = {k: (ps.get(k) or {}).get("score") for k in ("desktop", "mobile")}
 
@@ -148,6 +153,7 @@ def check(repo):
         stale("cloudflare-workers", "Worker 部署", d.get("deploymentsFetchedAt"), "CLOUDFLARE_DEPLOYMENTS_STALE_MS")
         stale("cloudflare-workers", "Worker 指标", d.get("fetchedAt"), "CLOUDFLARE_METRICS_STALE_MS")
         snap["cloudflare-workers"]["workers"] = sorted(w.get("name") for w in d.get("workers", []))
+        snap["cloudflare-workers"]["parts"] = {f"{w.get('name')}.{k}": digest(w.get(k)) for w in d.get("workers", []) for k in ("metrics", "deployment")}
         for w in d.get("workers", []):
             missing = [k for k in ("metrics", "deployment") if not w.get(k)]
             if missing:
