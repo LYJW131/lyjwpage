@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { digestFigure } from "@/lib/digest-figure";
 import { STRIP_BINS, topicStrip } from "@/lib/digest-strips";
 import { DIGEST_PATH, PULSE_PATH } from "@/lib/paths";
 import { formatUTCOffset, resolveTimezoneDisplay } from "@/lib/timezone-display";
@@ -32,6 +33,8 @@ const DAY_SECONDS = 86_400;
 const SIZE = 200;
 const CENTER = SIZE / 2;
 const TRACK_WIDTH = 9;
+const TICK_OUTER = 5;
+const TICK_INNER = 12;
 
 function dayTurn(at: number, offsetSeconds: number) {
   return ((((at / 1000 + offsetSeconds) % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS) / DAY_SECONDS;
@@ -64,12 +67,14 @@ function DayDial({
   now,
   timezone,
   offsetSeconds,
+  zoneLabel,
 }: {
   tracks: { topic: DigestTopic; bins: number[] }[];
   window: { from: number; to: number } | null;
   now: number;
   timezone: string;
   offsetSeconds: number;
+  zoneLabel: string;
 }) {
   const nowTurn = dayTurn(now, offsetSeconds);
   const startTurn = window ? dayTurn(window.from, offsetSeconds) : 0;
@@ -77,33 +82,38 @@ function DayDial({
   const [handX0, handY0] = polar(36, nowTurn);
   const [handX1, handY1] = polar(CENTER - 4, nowTurn);
   return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="col-start-2 row-start-1 size-32 shrink-0 self-center md:row-span-2 lg:size-40" role="img" aria-label="The past 24 hours on a 24-hour dial">
-      <circle cx={CENTER} cy={CENTER} r={CENTER - 2} fill="none" stroke="var(--line)" />
-      {Array.from({ length: 24 }, (_, hour) => {
-        const major = hour % 6 === 0;
-        const [x0, y0] = polar(CENTER - 4, hour / 24);
-        const [x1, y1] = polar(CENTER - (major ? 10 : 7), hour / 24);
-        return <line key={hour} x1={x0} y1={y0} x2={x1} y2={y1} stroke="var(--foreground)" strokeWidth={major ? 2 : 1} opacity={major ? 0.8 : 0.35} />;
-      })}
-      {[0, 6, 12, 18].map((hour) => {
-        const [x, y] = polar(CENTER - 19, hour / 24);
-        return <text key={hour} x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize="11" fill="var(--muted-foreground)">{hour}</text>;
-      })}
-      {tracks.map((track, ring) => {
-        const radius = CENTER - 34 - ring * (TRACK_WIDTH + 4);
-        return (
-          <g key={track.topic} style={{ "--tone": TONES[track.topic] } as CSSProperties}>
-            <circle cx={CENTER} cy={CENTER} r={radius} fill="none" stroke="var(--tone)" strokeOpacity={0.12} strokeWidth={TRACK_WIDTH} />
-            {track.bins.map((value, index) => (value > 0.02 ? (
-              <path key={index} d={arc(radius, startTurn + index * binTurn, startTurn + (index + 1) * binTurn)} fill="none" stroke="var(--tone)" strokeWidth={TRACK_WIDTH} strokeOpacity={0.35 + 0.65 * value} />
-            ) : null))}
-          </g>
-        );
-      })}
-      <line x1={handX0} y1={handY0} x2={handX1} y2={handY1} stroke="var(--signal-red)" strokeWidth={1.5} strokeLinecap="round" />
-      <text x={CENTER} y={CENTER - 4} textAnchor="middle" dominantBaseline="central" fontSize="20" fontWeight="600" fill="var(--foreground)">{clockLabel(now, timezone)}</text>
-      <text x={CENTER} y={CENTER + 14} textAnchor="middle" dominantBaseline="central" fontSize="9" fill="var(--muted-foreground)">{formatUTCOffset(offsetSeconds)}</text>
-    </svg>
+    <div className="clock-ui-host col-start-2 row-span-2 row-start-1 size-32 shrink-0 self-center max-[359px]:size-28 lg:size-40">
+      <div className="clock-ui clock-ui--bordered">
+        <div className="clock-ui__face">
+          <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="absolute inset-0 size-full" role="img" aria-label="The past 24 hours on a 24-hour dial">
+            {Array.from({ length: 12 }, (_, index) => {
+              if (index % 3 === 0) return null;
+              const [x0, y0] = polar(CENTER - TICK_OUTER, index / 12);
+              const [x1, y1] = polar(CENTER - TICK_INNER, index / 12);
+              return <line key={index} x1={x0} y1={y0} x2={x1} y2={y1} stroke="var(--foreground)" strokeWidth={2} />;
+            })}
+            {[0, 6, 12, 18].map((hour) => {
+              const [x, y] = polar(CENTER - (TICK_OUTER + TICK_INNER) / 2, hour / 24);
+              return <text key={hour} x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize="11" fill="var(--muted-foreground)">{hour}</text>;
+            })}
+            {tracks.map((track, ring) => {
+              const radius = CENTER - 34 - ring * (TRACK_WIDTH + 4);
+              return (
+                <g key={track.topic} style={{ "--tone": TONES[track.topic] } as CSSProperties}>
+                  <circle cx={CENTER} cy={CENTER} r={radius} fill="none" stroke="var(--tone)" strokeOpacity={0.12} strokeWidth={TRACK_WIDTH} />
+                  {track.bins.map((value, index) => (value > 0.02 ? (
+                    <path key={index} d={arc(radius, startTurn + index * binTurn, startTurn + (index + 1) * binTurn)} fill="none" stroke="var(--tone)" strokeWidth={TRACK_WIDTH} strokeOpacity={0.35 + 0.65 * value} />
+                  ) : null))}
+                </g>
+              );
+            })}
+            <line x1={handX0} y1={handY0} x2={handX1} y2={handY1} stroke="var(--signal-red)" strokeWidth={1.5} strokeLinecap="round" />
+            <text x={CENTER} y={CENTER - 4} textAnchor="middle" dominantBaseline="central" fontSize="20" fontWeight="600" fill="var(--foreground)">{clockLabel(now, timezone)}</text>
+            <text x={CENTER} y={CENTER + 14} textAnchor="middle" dominantBaseline="central" fontSize="9" fill="var(--muted-foreground)">{zoneLabel}</text>
+          </svg>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -130,7 +140,7 @@ export function DigestCard({
   if (!data || !updatedAt) return <TimezoneCard fallback={timezoneFallback} className={className} />;
 
   const now = ticked || mountedAt || (timezoneFallback.ok ? timezoneFallback.data.snapshotAt : updatedAt);
-  const { identifier: timezone, offsetSeconds } = resolveTimezoneDisplay(timezoneFallback.ok ? timezoneFallback.data.timezone : null, now);
+  const { identifier: timezone, abbreviation, offsetSeconds } = resolveTimezoneDisplay(timezoneFallback.ok ? timezoneFallback.data.timezone : null, now);
   const tracks = pulse && !stale
     ? data.highlights.flatMap((item) => {
       const bins = topicStrip(item.topic, pulse);
@@ -141,17 +151,20 @@ export function DigestCard({
   return (
     <Card id="digest" className={cn("h-full scroll-mt-28", className)}>
       <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-2.5 p-4 pl-4.5 lg:gap-x-4 lg:p-5">
-        <h2 className="col-start-1 row-start-1 min-w-0 text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
-        <ul className={cn("col-span-2 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1.5 md:col-span-1", stale && "opacity-60")}>
+        <div className="col-start-1 row-start-1 flex min-w-0 flex-col gap-1">
+          <div className="text-xs text-muted-foreground">Last 24 hours</div>
+          <h2 className="text-lg font-semibold leading-tight tracking-[-0.02em] text-balance lg:text-xl">{data.headline}</h2>
+        </div>
+        <ul className={cn("col-start-1 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-1.5 gap-y-1.5 sm:gap-x-2", stale && "opacity-60")}>
           {data.highlights.map((item) => (
             <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
-              <span className="size-2 bg-(--tone)" aria-hidden />
-              <span className="whitespace-nowrap text-lg font-semibold leading-none tabular-nums text-(--tone)">{item.figure}</span>
+              <span className="size-2 -translate-y-[3px] bg-(--tone)" aria-hidden />
+              <span className="whitespace-nowrap text-lg font-semibold leading-none tabular-nums text-(--tone)">{digestFigure(item)}</span>
               <span className="truncate text-sm text-muted-foreground">{item.caption}</span>
             </li>
           ))}
         </ul>
-        <DayDial tracks={tracks} window={pulse?.window ?? null} now={now} timezone={timezone} offsetSeconds={offsetSeconds ?? 0} />
+        <DayDial tracks={tracks} window={pulse?.window ?? null} now={now} timezone={timezone} offsetSeconds={offsetSeconds ?? 0} zoneLabel={abbreviation ?? formatUTCOffset(offsetSeconds ?? 0)} />
       </div>
     </Card>
   );

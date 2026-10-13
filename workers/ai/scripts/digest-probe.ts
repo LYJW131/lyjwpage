@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { composeDigest, DIGEST_MODEL } from "../src/digest/compose.ts";
-import { digestFacts, readDigestViews } from "../src/digest/facts.ts";
+import { digestMessage, readDigestViews } from "../src/digest/facts.ts";
 
 const USAGE = `用法：pnpm --dir workers/ai digest:probe [--models claude-sonnet-5-5,claude-haiku-5-5] [--runs 3] [--origin https://lyjw.me]
 读站点的公开状态视图，打印事实清单，再用真实模型逐个写几版摘要，附词数与 token 用量。
@@ -32,7 +32,7 @@ const readStatus = async (path: string) => {
 };
 
 const now = Date.now();
-console.log(`${digestFacts(await readDigestViews(readStatus), now)}\n`);
+console.log(`${digestMessage(await readDigestViews(readStatus), now).content}\n`);
 if (!apiKey) {
   console.error("缺 ANTHROPIC_API_KEY（环境变量或 workers/ai/.dev.vars），只打印事实清单");
   process.exit(0);
@@ -62,7 +62,7 @@ for (const model of models) {
       const tokens = usage as Anthropic.Usage | null;
       const { headline, highlights } = outcome.digest;
       console.log(`── ${model} #${run} · in ${tokens?.input_tokens ?? "?"} / out ${tokens?.output_tokens ?? "?"} tokens · ${((Date.now() - started) / 1000).toFixed(1)} s`);
-      console.log([headline, ...highlights.map(({ topic, figure, caption }) => `  [${topic}] ${figure} · ${caption}`)].join("\n") + "\n");
+      console.log([headline, ...highlights.map(({ topic, value, unit, atLeast, caption }) => `  [${topic}] ${value}${atLeast ? "+" : ""} ${unit} · ${caption}`)].join("\n") + "\n");
     } catch (error) {
       console.log(`── ${model} #${run} failed: ${error instanceof Error ? error.message : String(error)}\n`);
     }

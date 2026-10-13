@@ -2,18 +2,24 @@
 
 export type DigestTopic = "coding" | "agents" | "tokens" | "site" | "music" | "watching" | "gaming" | "trophies" | "fitness";
 
+export type DigestUnit = "hours" | "minutes" | "count";
+
+// 每一格由 ai 的代码从公开视图算出，模型只挑选哪几格，不写数字和说明。
 export type DigestHighlight = {
   topic: DigestTopic;
-  // 事实清单里取整后的数字，带单位或后缀，如 "22 h"、"44M"、"10+"。
-  figure: string;
-  // 接在数字后面读的一到三个英文小写词，像图例一样只说数字数的是什么，如 "coding"、"of music"。
+  // 按 unit 写的裸数，取粗方式与事实清单相同；排版归站点。count 是完整的数（42M 写 42000000），hours 可带 .5。
+  value: number;
+  unit: DigestUnit;
+  // 来源列表到了条数上限、窗口里可能还有没列出的：实际至少是 value。
+  atLeast: boolean;
+  // 接在数字后面的英文小写图例，如 "coding"、"music"、"agent time"。
   caption: string;
 };
 
 export type DigestPayload = {
   // 两到五个词、不带句号的英文短标题，点出这一天的主线。
   headline: string;
-  // 按重要性排好的两到三件事，topic 互不重复。
+  // 模型按重要性挑出的两到三格，topic 互不重复；可选项不足两格时可以更少。
   highlights: DigestHighlight[];
   model: string;
   // 模型写出这段文字的 epoch 毫秒；可滞后层条目的 updatedAt 是最近一次确认输入没变的时刻，二者可以相差好几个小时。
@@ -21,7 +27,7 @@ export type DigestPayload = {
 };
 
 export type DigestRecord = DigestPayload & {
-  // 模型输入（事实清单、提示词版本、模型）的哈希，下一轮据此判断输入有没有变。
+  // 模型输入（事实清单与可选格、提示词版本、模型）的哈希，下一轮据此判断输入有没有变。
   inputHash: string;
 };
 

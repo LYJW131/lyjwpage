@@ -12,7 +12,7 @@ const now = 1_700_000_000_000;
 const HOUR = 3_600_000;
 
 function record(headline: string, inputHash: string, generatedAt: number): DigestRecord {
-  const highlights = [{ topic: "coding", figure: "22 h", caption: "coding" }, { topic: "music", figure: "8 h", caption: "of music" }] as const;
+  const highlights = [{ topic: "coding", value: 22, unit: "hours", atLeast: false, caption: "coding" }, { topic: "music", value: 8, unit: "hours", atLeast: false, caption: "music" }] as const;
   return { headline, highlights: [...highlights], model: "claude-sonnet-5-5", generatedAt, inputHash };
 }
 
