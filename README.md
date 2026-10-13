@@ -134,7 +134,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img src="docs/architecture-light.png" alt="多端上报经 Access 进 ingress Worker，拆成 Durable Object 实时层与 KV/D1 可滞后层，采集 Worker 拉外部服务，site Worker 与浏览器从 api Worker 读取；对话、设计会话与访客构建由 api 转发给 AI Worker" width="100%">
+  <img src="docs/architecture-light.png" alt="多端上报经 Access 进 ingress Worker，拆成 Durable Object 实时层与 KV/D1 可滞后层，采集 Worker 拉外部服务，浏览器只连 site Worker，由它直读可滞后层、经 Service Binding 把实时状态与推送交给 api Worker，对话、设计会话与访客构建交给 AI Worker" width="100%">
 </picture>
 
 [打开交互式架构图](https://lyjw131.github.io/lyjwpage/)
@@ -143,7 +143,7 @@
 
 **状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。上报先到无状态的上报入口 Worker：它在 Cloudflare Access 之后验明每个上报器的身份，校验、收敛报文，再按数据层拆开——实时那一半经 Service Binding 交给持有 Durable Objects 的状态核心（api Worker），可滞后层、归档与凭据自己写。改校验只重新发布上报入口，状态核心不重启、页面的推送连接不断。Durable Objects SQLite 保存实时层的快照与历史，是唯一权威；只展示、可以晚几分钟的数据（外部服务的统计、落地节点、限额等）由写入方直接写进 KV 可滞后层，每条带更新时刻，过没过时由浏览器按各卡阈值判断。R2 保存海报等图片资源，D1 归档训练、圆环、限额、服务器小时汇总、coding 用量与 Pulse 的事实时间线；在线访客由推送那条 WebSocket 顺带计数。
 
-**展示端**是 `site` Worker：React Router SSR 在 Cloudflare Workers 上生成首页，按卡读取状态（可滞后视图直接读 KV，实时视图经 Service Binding 问 api Worker），站点域名上的 `/api/*` 也由它按数据归属回答或转交；浏览器挂载后直接连接 api Worker 获取最新状态。中国大陆访问入口通过阿里云 ESA 加速页面与静态资源。
+**展示端**是 `site` Worker：React Router SSR 在 Cloudflare Workers 上生成首页，按卡读取状态（可滞后视图直接读 KV，实时视图经 Service Binding 问 api Worker），站点域名上的 `/api/*` 与 `/ws` 也由它按数据归属回答或转交；浏览器挂载后取最新状态、连推送都只找站点域名。中国大陆访问入口通过阿里云 ESA 加速页面与静态资源。
 
 ## 几个关键设计
 
