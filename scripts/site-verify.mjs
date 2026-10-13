@@ -92,9 +92,17 @@ function print(payload, flags = {}) {
   console.log(flags.compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2));
 }
 
+// fail 只抛不调 process.exit：直接 exit 会跳过 try/finally，浏览器关不掉；退出码统一在入口映射。
+class ExitError extends Error {
+  constructor(code) {
+    super(`exit ${code}`);
+    this.code = code;
+  }
+}
+
 function fail(message, next, code = 1) {
   print({ ok: false, error: message, next });
-  process.exit(code);
+  throw new ExitError(code);
 }
 
 const HELP = `site-verify — 站点验证共用脚本（lyjwpage-verify）
@@ -223,16 +231,21 @@ function watchConsole(page, sink, origin) {
 
 async function openPage(pwApi, flags, { width, height }, sink) {
   const { browser, via } = await launchBrowser(pwApi, flags);
-  const context = await browser.newContext({
-    viewport: { width, height },
-    colorScheme: flags.theme === "dark" ? "dark" : "light",
-    deviceScaleFactor: Number(flags.dpr || 1),
-    javaScriptEnabled: flags.ssr !== true,
-  });
-  const page = await context.newPage();
-  watchConsole(page, sink, new URL(flags.url).origin);
-  await page.goto(flags.url, { waitUntil: "load", timeout: 60_000 });
-  return { browser, page, via };
+  try {
+    const context = await browser.newContext({
+      viewport: { width, height },
+      colorScheme: flags.theme === "dark" ? "dark" : "light",
+      deviceScaleFactor: Number(flags.dpr || 1),
+      javaScriptEnabled: flags.ssr !== true,
+    });
+    const page = await context.newPage();
+    watchConsole(page, sink, new URL(flags.url).origin);
+    await page.goto(flags.url, { waitUntil: "load", timeout: 60_000 });
+    return { browser, page, via };
+  } catch (error) {
+    await browser.close();
+    throw error;
+  }
 }
 
 // 屏外卡片用 content-visibility 延迟布局，先滚一遍再量。
@@ -306,8 +319,11 @@ async function cmdDoctor(flags) {
   if (pw) {
     try {
       const { browser, via } = await launchBrowser(pw.api, flags);
-      add("chrome", "pass", { via, version: browser.version() });
-      await browser.close();
+      try {
+        add("chrome", "pass", { via, version: browser.version() });
+      } finally {
+        await browser.close();
+      }
     } catch (error) {
       add("chrome", "fail", String(error?.message ?? error).slice(0, 300), "装 Google Chrome（playwright-core 用 channel chrome），或 `--chrome <路径>` / SITE_VERIFY_CHROME 指定可执行文件。");
     }
@@ -338,7 +354,7 @@ async function cmdDoctor(flags) {
 
   const ok = checks.every((c) => c.status !== "fail");
   print({ ok, checks }, flags);
-  if (!ok) process.exit(1);
+  if (!ok) process.exitCode = 1;
 }
 
 async function cmdCards(flags) {
@@ -373,7 +389,7 @@ async function cmdCards(flags) {
     const missingRequired = required.filter((id) => cards[id].status !== "visible");
     const ok = missingRequired.length === 0 && consoleClean(sink);
     print({ ok, url: flags.url, viewport, cards, console: sink }, flags);
-    if (!ok) process.exit(1);
+    if (!ok) process.exitCode = 1;
   } finally {
     await browser.close();
   }
@@ -434,7 +450,7 @@ async function cmdShot(flags) {
   }
   const ok = !failed && shots.every((s) => s.file && consoleClean(s.console));
   print({ ok, out: path.resolve(flags.out), shots }, flags);
-  if (!ok) process.exit(1);
+  if (!ok) process.exitCode = 1;
 }
 
 function cmdOverride(flags) {
@@ -473,7 +489,7 @@ function cmdOverride(flags) {
     },
     flags,
   );
-  if (!ok) process.exit(result.status || 1);
+  if (!ok) process.exitCode = result.status || 1;
 }
 
 async function main() {
@@ -482,7 +498,7 @@ async function main() {
   flags.url = String(flags.url || DEFAULT_URL).replace(/\/+$/, "");
   if (!command || command === "help" || flags.help === true) {
     process.stdout.write(HELP);
-    if (!command && !flags.help) process.exit(2);
+    if (!command && !flags.help) process.exitCode = 2;
     return;
   }
   if (command === "doctor") return cmdDoctor(flags);
@@ -493,5 +509,11 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch((error) => fail(String(error?.message ?? error), "带 --help 看用法；疑似 bug 时把这条错误贴回主线程"));
+  main().catch((error) => {
+    if (!(error instanceof ExitError)) {
+      print({ ok: false, error: String(error?.message ?? error), next: "带 --help 看用法；疑似 bug 时把这条错误贴回主线程" });
+      error = new ExitError(1);
+    }
+    process.exitCode = error.code;
+  });
 }
