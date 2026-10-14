@@ -396,10 +396,12 @@
     const bone = css("bone"), ash = css("ash");
     const y0 = laneY(0), y1 = laneY(1);
     const done = CODING.filter((w) => w.from + 15 + 2 <= phi && tx(phi, w.from + 15) > 250);
-    box(x, SCORER.x, SCORER.y, SCORER.w, SCORER.h, a);
-    text(x, "Clef", SCORER.x + 16, SCORER.y + 38, { font: FONT.mono(28, 600), color: bone, alpha: a });
-    text(x, tr("ch06.jevNote"), SCORER.x + 90, SCORER.y + 36, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: SCORER.w - 100 });
-    text(x, tr("ch06.jevKeep"), SCORER.x, SCORER.y - 16, { font: FONT.cjk(21, 600), color: ash, alpha: a, maxW: 540 });
+    // Clef 框和 lyjw.me 卡片在世界坐标里叠在一起，镜头拉远、卡片淡入之前就得收掉。
+    const sa = a * (1 - prog(b, 9.75, 9.9));
+    box(x, SCORER.x, SCORER.y, SCORER.w, SCORER.h, sa);
+    text(x, "Clef", SCORER.x + 16, SCORER.y + 38, { font: FONT.mono(28, 600), color: bone, alpha: sa });
+    text(x, tr("ch06.jevNote"), SCORER.x + 90, SCORER.y + 36, { font: FONT.cjk(21, 600), color: ash, alpha: sa, maxW: SCORER.w - 100 });
+    text(x, tr("ch06.jevKeep"), SCORER.x, SCORER.y - 16, { font: FONT.cjk(21, 600), color: ash, alpha: sa, maxW: 540 });
     for (const w of CODING) {
       const x0 = tx(phi, w.from), x1 = tx(phi, w.from + 15);
       if (x1 < 200 || x0 > NOW_X) continue;
