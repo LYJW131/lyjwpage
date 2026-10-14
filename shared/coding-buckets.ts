@@ -9,7 +9,7 @@ import { mergeCoverage, type Coverage } from "./pulse-features";
 
 export type StoredCodingBuckets = {
   coverage: Coverage[];
-  agents: Array<{ id: string; state: CodingTokenBucketState }>;
+  agents: Array<{ id: string; state: CodingTokenBucketState; collectedAt?: number }>;
   windows: Array<{ from: number; agents: CodingTokenBucketRow[] }>;
   collectedAt: number;
   receivedAt: number;
@@ -44,20 +44,24 @@ function retained(windows: Map<number, Row[]>, coverage: Coverage[], receivedAt:
   };
 }
 
+// 一份报告只替换它声明的 agent：同一来源下的 agent 各报各的范围和采集时刻（Cursor 与 Devin 都走 agents），互不冲掉、互不挡。
 // 报告首桶可能只覆盖后半截，不能用这份局部计数覆盖已有的完整桶。
 export function mergeBucketReport(
   previous: StoredCodingBuckets | null,
   report: CodingTokenBucketReport,
   receivedAt: number,
 ): StoredCodingBuckets | null {
-  if (previous && report.collectedAt < previous.collectedAt) return null;
+  const declared = new Set(report.agents.map((agent) => agent.id));
+  if (previous && (declared.size === 0
+    ? report.collectedAt < previous.collectedAt
+    : previous.agents.some((agent) => declared.has(agent.id) && report.collectedAt < (agent.collectedAt ?? previous.collectedAt)))) return null;
   const windows = new Map((previous?.windows ?? []).map((window) => [window.from, window.agents.map((row) => ({ ...row }))]));
-  for (const from of [...windows.keys()]) {
-    if (from >= report.from && from < report.to) windows.delete(from);
+  for (const [from, rows] of windows) {
+    if (from >= report.from && from < report.to) windows.set(from, rows.filter((row) => !declared.has(row.id)));
   }
   for (const window of report.windows) {
     if (window.from >= report.from) {
-      windows.set(window.from, window.agents.map((row) => ({ ...row })));
+      windows.set(window.from, [...(windows.get(window.from) ?? []), ...window.agents.map((row) => ({ ...row }))]);
       continue;
     }
     const kept = new Map((windows.get(window.from) ?? []).map((row) => [rowKey(row), row]));
@@ -68,10 +72,23 @@ export function mergeBucketReport(
     windows.set(window.from, [...kept.values()]);
   }
   const coverage = mergeCoverage([...(previous?.coverage ?? []), { from: report.from, to: report.to }]);
+  const kept = retained(windows, coverage, receivedAt);
+  const reporting = new Set(kept.windows.flatMap((window) => window.agents.map((row) => row.id)));
+  const fresh = new Map(report.agents.map((agent) => [agent.id, { ...agent, collectedAt: report.collectedAt }]));
+  const known = new Set((previous?.agents ?? []).map((agent) => agent.id));
+  // agents 的顺序进了评分输入哈希（pulse-score.ts#windowTokenUsage），按已存顺序原地替换，Cursor 与 Devin 轮流到也不抖。
+  const agents = [
+    ...(previous?.agents ?? []).flatMap((agent) => {
+      const replaced = fresh.get(agent.id);
+      if (replaced) return [replaced];
+      return reporting.has(agent.id) || (agent.collectedAt ?? 0) > receivedAt - CODING_BUCKET_KEEP_MS ? [{ ...agent }] : [];
+    }),
+    ...[...fresh.values()].filter((agent) => !known.has(agent.id)),
+  ];
   return {
-    ...retained(windows, coverage, receivedAt),
-    agents: report.agents.map((agent) => ({ ...agent })),
-    collectedAt: report.collectedAt,
+    ...kept,
+    agents,
+    collectedAt: Math.max(report.collectedAt, previous?.collectedAt ?? 0),
     receivedAt,
   };
 }
