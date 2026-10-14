@@ -14,7 +14,7 @@ test("the trusted identity is GitHub's Actions issuer and the build workflow on 
   assert.equal(BUILD_WORKFLOW_REF, "LYJW131/lyjwpage/.github/workflows/build.yml@refs/heads/main");
 });
 
-test("the workflow audience binds the callback origin and the runId in the format scripts/build-actions.mjs requests", () => {
+test("the workflow audience binds the callback origin and the runId in the format scripts/build-actions.ts requests", () => {
   assert.equal(buildWorkflowAudience("https://api.homepage.lyjw.llc", "0123456789abcdef0123456789abcdef"), "https://api.homepage.lyjw.llc/builds/0123456789abcdef0123456789abcdef");
 });
 
