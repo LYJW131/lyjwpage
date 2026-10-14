@@ -20,6 +20,10 @@ export interface Env {
   SENTRY_ENVIRONMENT?: string;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
   AI_SERVICE?: Pick<Fetcher, "fetch">;
+  ESA_SITE_ID?: string;
+  ESA_HOME_URL?: string;
+  ALIYUN_ESA_ACCESS_KEY_ID?: string;
+  ALIYUN_ESA_ACCESS_KEY_SECRET?: string;
 }
 
 // 本地夹具与上游覆盖值不能进入共享归档或覆盖生产评分。
