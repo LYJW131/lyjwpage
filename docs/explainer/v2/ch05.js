@@ -229,7 +229,8 @@
   const CELLS = [["<html>", 110, 235], ["<head>", 241, 366], ["<script>", 372, 530], ["</head>", 536, 678], ["<body>", 684, 809], ["<main>", 815, 940], ["…", 946, 1000], ["</html>", 1006, 1148]];
   const STRIP = { y: 694, h: 72 };
   const TRAY = { x: 730, y: 522, w: 250, h: 60 };
-  const trayAt = (i) => [TRAY.x + TRAY.w / 2 + i * 8, TRAY.y + TRAY.h - 26 - i * 12];
+  // 托盘里后来的那张只压住前一张的上沿：叠得再密，前一张的名字就被盖住了。
+  const trayAt = (i) => [TRAY.x + TRAY.w / 2 + i * 8, TRAY.y + TRAY.h - 26 - i * 40];
   const LIVE_BOX = { x: 1250, y: 494, w: 470, h: 92 };
   const boxSlot = (i) => [1576 + i * 50, LIVE_BOX.y + LIVE_BOX.h / 2];
   const HYD_X = beamX(AT.hydrate);
@@ -282,9 +283,10 @@
         const px = lerp(p.x, tx, k), py = lerp(TY + p.amp + 18, ty, k) - Math.sin(k * Math.PI) * 16;
         slip(d, px, py, p.label, prog(b, p.b, p.b + 0.04) * cA);
       } else if (b < r1 + 0.02) {
-        const k = prog(b, r0, r1, E.io);
-        const px = lerp(tx, sx, k), py = lerp(ty, sy, k) - Math.sin(k * Math.PI) * 70;
-        slip(d, px, py, p.label, (1 - prog(k, 0.85, 1)) * cA);
+        // 重放的纸条飞到计数格正上方就淡掉，格子自己亮：飞进框里会压住 useLiveEvents 那行字。
+        const k = prog(b, r0, r1, E.io), u = 1 - k, ey = LIVE_BOX.y - 34, qx = (tx + sx) / 2, qy = ty - 120;
+        const px = u * u * tx + 2 * u * k * qx + k * k * sx, py = u * u * ty + 2 * u * k * qy + k * k * ey;
+        slip(d, px, py, p.label, (1 - prog(k, 0.75, 1)) * cA);
       }
     });
     const hk = prog(b, 3.38, 3.55, E.out);

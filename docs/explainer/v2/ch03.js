@@ -545,7 +545,8 @@
     booth(x, outA);
     const ringAt = b >= 10.95 ? 11.0 : b >= 6.45 ? 6.5 : null;
     const pulse = ringAt != null ? Math.exp(-(b - ringAt) * BARs * 1.8) : 0;
-    mast(x, Math.max(outA, ringAt === 11.0 ? 1 : 0) * (inC || inB ? 1 : 0), pulse);
+    // 第三幕的天线等效果单淡完再出来：它就在效果单 tags 那一行底下。
+    mast(x, Math.max(outA, ringAt === 11.0 ? 1 : 0) * (inB ? 1 : inC ? prog(b, 11.8, 12.0) : 0), pulse);
     if (ringAt != null && b < (ringAt === 6.5 ? 8.2 : 12.2)) {
       const RR = rings(e, x, ringAt, b, ringAt === 6.5 ? 1500 : 1900);
       if (ringAt === 6.5) PAGES.forEach(([px, py], i) => {

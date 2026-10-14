@@ -401,15 +401,22 @@
   const TAG_FLY = 5.25, CHIP_X = 1270;
   function flipTags(x, b) {
     if (b < 4.98 || b > 5.8) return;
+    const cws = RECAST.map(([id]) => K.measure(x, "page:" + id, FONT.mono(30, 500)) + 36);
     RECAST.forEach(([id], j) => {
       const p = byId[id], label = "page:" + id;
       const [px, py, w, h] = p.r;
       const tx = px + w - 22, ty = py + (h < 80 ? h / 2 : 22);
-      const cw = K.measure(x, label, FONT.mono(30, 500)) + 36;
-      const sx = CHIP_X + cw / 2, sy = 690 + j * 60;
+      const cw = cws[j];
+      // 三张排两行（desktop、charger 一行，listening-now 一行）：排成一列，最下面那张贴着旁白。
+      const sx = CHIP_X + (j === 2 ? cws[0] + 14 : 0) + cw / 2, sy = j === 1 ? 762 : 700;
       const t0 = TAG_FLY + j * 0.08, k = prog(b, t0, t0 + 0.28, E.io);
       if (k >= 1) return;
-      const cx = lerp(sx, tx, k), cy = lerp(sy, ty, k) - Math.sin(k * Math.PI) * 80;
+      // 先平着往左滑出标题那一栏，再拐上去：直着往左上飞，会从「在线 → 离线」和 cache.invalidate 两行字上划过去；
+      // 往下兜又会碰到旁白。拐弯那段的起始速度接着平滑那段，不顿。
+      const xl = 1240 - cw / 2 - 30, qx = xl + ((xl - sx) * 0.7) / 0.6;
+      const k2 = clamp((k - 0.3) / 0.7), u = 1 - k2;
+      const cx = k < 0.3 ? lerp(sx, xl, k / 0.3) : u * u * xl + 2 * u * k2 * qx + k2 * k2 * tx;
+      const cy = k < 0.3 ? sy : u * u * sy + 2 * u * k2 * sy + k2 * k2 * ty;
       chip(x, label, cx, cy, true, prog(b, 5.0 + j * 0.05, 5.08 + j * 0.05) * (1 - prog(k, 0.8, 1)));
     });
   }
@@ -446,7 +453,8 @@
         const arrive = TAG_FLY + 0.28 + RECAST.findIndex(([id]) => id === p.id) * 0.08;
         o.tagHot = b >= arrive && b < rc + 0.3;
         const lift = keys(b, [[arrive + 0.08, 0], [arrive + 0.3, 1, E.outBack], [rc - 0.07, 1], [rc, 0, E.in]]);
-        o.dx = -9 * lift; o.dy = -24 * lift; o.sh = lerp(6, 36, lift); o.shA = lerp(0.28, 0.55, lift);
+        // 抬起只往上挪半个缝：挪多了会盖住上一行小牌的名字，「浮起来」交给阴影。
+        o.dx = -5 * lift; o.dy = -12 * lift; o.sh = lerp(6, 40, lift); o.shA = lerp(0.28, 0.6, lift);
         o.fresh = b >= rc && b < 11.5;
         o.hot = b >= rc && b < rc + 0.55;
         if (lift > 0) { lifted.push([p, o]); continue; }

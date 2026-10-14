@@ -34,7 +34,7 @@
     "ch10.slip": ["要做的事", "To do"],
     "ch10.listen": ["广播 listening-now", "push listening-now"],
     "ch10.noRecast1": ["换歌不重印：", "No recast:"],
-    "ch10.noRecast2": ["交给推送", "the push handles it"],
+    "ch10.noRecast2": ["交给推送", "push does it"],
     "ch10.swr": ["浏览器缓存", "browser cache"],
   });
   const tr = (k) => I18N.tr(k);
@@ -218,6 +218,8 @@
   const DOORS = ["/mac", "/iphone", "/homepod"];
   const DX = (i) => 160 + i * 190, DW = 150, DTOP = 330, DH = 360;
   const LOCK = [DX(0) + DW * 0.8, DTOP + DH * 0.6];
+  // 钥匙卡停在锁下方、偏左：信封和骑在上面的 Clawd 沿 SPINE 从锁旁经过，卡停在锁上会被整只盖住；再往右会压到 /iphone 的门框。
+  const KEYC = [LOCK[0] - 62, LOCK[1] + 72];
   const SCALE = [1260, 540];
   const TUBES = [["cred", 1760], ["d1", 2010], ["lag", 2260], ["rt", 2510]];
   const MOUTH_Y = 330, OPEN_AT = [2140, 250];
@@ -258,7 +260,7 @@
     line(d, 100, DTOP + DH, 760, DTOP + DH, 2, inkC);
     const openK = keys(b, [[AT.door, 0], [AT.door + 0.12, 1, E.outExpo], [2.45, 1], [2.6, 0, E.in]]);
     DOORS.forEach((_, i) => door2(d, i, i === 0 ? openK : 0));
-    const kk = keys(b, [[1.8, [-120, LOCK[1] + 150]], [AT.door, LOCK, E.outExpo], [2.3, LOCK], [2.5, [LOCK[0], LOCK[1] + 40], E.in]]);
+    const kk = keys(b, [[1.8, [-120, KEYC[1] + 110]], [AT.door, KEYC, E.outExpo], [2.3, KEYC], [2.5, [KEYC[0], KEYC[1] + 40], E.in]]);
     keycard2(d, kk[0], kk[1], prog(b, 1.8, 1.86) * (1 - prog(b, 2.3, 2.5)), b > 1.95 && b < 2.4);
     {
       const [cx, py] = SCALE, cy = py + 140, R = 86;
@@ -271,12 +273,13 @@
       line(d, cx, cy, cx + Math.cos(na) * (R - 18), cy + Math.sin(na) * (R - 18), 3, css("signal"));
       text(d, tr("ch10.limit"), cx, cy + 90, { font: FONT.cjk(34, 600), align: "center" });
     }
+    // 管名同第 02 章，标在储存图标下面：漏斗口上方要留给信封、胶囊和 Clawd 飞过。
     TUBES.forEach(([k, tx]) => {
       const hot = k === "rt", col = hot ? css("signal") : inkC;
-      text(d, tr(`ch10.t.${k}`), tx, MOUTH_Y - 60, { font: FONT.cjk(34, 600), color: col, align: "center" });
+      text(d, tr(`ch10.t.${k}`), tx, 700, { font: FONT.cjk(34, 600), color: col, align: "center" });
       polyline(d, [[tx - 70, MOUTH_Y], [tx - 22, MOUTH_Y + 60]], 1, 2.4, col); polyline(d, [[tx + 70, MOUTH_Y], [tx + 22, MOUTH_Y + 60]], 1, 2.4, col);
       if (hot) tube2(d, RT_TUBE, col);
-      else { tube2(d, [[tx, MOUTH_Y + 60], [tx, 640]], col); glyph(d, k, tx, 700, col, 0.9); }
+      else { tube2(d, [[tx, MOUTH_Y + 60], [tx, 560]], col); glyph(d, k, tx, 612, col, 0.9); }
       const p = hot ? impact(b, AT.open + 0.12, 0.12) : 0;
       if (p > 0.02) polyline(d, [[tx - 70, MOUTH_Y], [tx + 70, MOUTH_Y]], 1, 4, css("signal"), p);
     });
@@ -453,8 +456,9 @@
     if (na > 0) {
       const [u, v, w] = P4[6];
       polyline(d, [[G4.x + (u + w) * G4.s, G4.y + (v + 26) * G4.s], [1000, G4.y + (v + 26) * G4.s], [1000, 640]], prog(b, AT.plate4, AT.plate4 + 0.15, E.out), 5, css("signal"));
-      text(d, tr("ch10.noRecast1"), 90, 800, { font: FONT.cjk(124, 600), color: css("signal"), reveal: prog(b, AT.plate4 + 0.05, AT.plate4 + 0.3), maxW: 1280 });
-      text(d, tr("ch10.noRecast2"), 90, 950, { font: FONT.cjk(124, 600), color: css("signal"), reveal: prog(b, AT.plate4 + 0.3, AT.plate4 + 0.5), maxW: 1280 });
+      // 大字放在字架右边、主线下方，红线的落点正对着它；从左边铺过去会压在字架上。
+      text(d, tr("ch10.noRecast1"), 880, 790, { font: FONT.cjk(86, 600), color: css("signal"), reveal: prog(b, AT.plate4 + 0.05, AT.plate4 + 0.3), maxW: 520 });
+      text(d, tr("ch10.noRecast2"), 880, 910, { font: FONT.cjk(86, 600), color: css("signal"), reveal: prog(b, AT.plate4 + 0.3, AT.plate4 + 0.5), maxW: 520 });
     }
     d.restore(); e.restore();
   }
@@ -585,10 +589,17 @@
     [AT.toTubes[1], [Wx(1, OPEN_AT[0]), OPEN_AT[1]]], [AT.open + 0.05, [Wx(1, OPEN_AT[0]), OPEN_AT[1]]],
   ];
   const heroSize = (b) => lerp(24, 64, prog(b, AT.envOut, AT.park));
+  // 秤到开封点这段走一道弧：直线会让信封和骑在上面的 Clawd 擦过「凭据」「归档」的漏斗口。
+  const RISE = [[Wx(1, SCALE[0]), SCALE[1] - 42], [Wx(1, 1800), 100], [Wx(1, OPEN_AT[0]), OPEN_AT[1]]];
+  function heroPos(b) {
+    if (b <= AT.toTubes[0] || b >= AT.toTubes[1]) return keys(b, HERO_PATH);
+    const t = E.io(prog(b, AT.toTubes[0], AT.toTubes[1])), u = 1 - t;
+    return [0, 1].map((i) => u * u * RISE[0][i] + 2 * u * t * RISE[1][i] + t * t * RISE[2][i]);
+  }
   function heroEnvelope(L, b) {
     const { tp, e } = L;
     if (b < AT.envOut || b >= AT.open + 0.1) return;
-    const pos = keys(b, HERO_PATH), size = heroSize(b);
+    const pos = heroPos(b), size = heroSize(b);
     const open = prog(b, AT.open - 0.1, AT.open + 0.05);
     const onPaper = pos[0] >= CELLS[1].X;
     envelope(tp, pos[0], pos[1], size, onPaper ? css("signal") : css("signalD"), { lw: 2.4, fill: onPaper ? css("paper") : css("ink2"), open, alpha: 1 - prog(b, AT.open + 0.02, AT.open + 0.1) });
@@ -652,7 +663,7 @@
   const frameAt = (b, t0) => Math.floor((b - t0) / FR + 1e-6);
   // 两段 hop 对齐 Clawd.SEQ.jump 里两组 arms-up 帧（第 2–4、8–10 帧）。
   const jumpUp = (b, t0, q) => K.hop(b, t0 + 2 * FR, t0 + 5 * FR, 1.8 * q) + K.hop(b, t0 + 8 * FR, t0 + 11 * FR, 1.2 * q);
-  const onEnv = (b) => { const p = keys(b, HERO_PATH); return [p[0], p[1] - heroSize(b) * 0.32]; };
+  const onEnv = (b) => { const p = heroPos(b); return [p[0], p[1] - heroSize(b) * 0.32]; };
   const onPush = (b) => { const p = pathAt(PUSH, pushD(b)); return [p[0], p[1] - qAt(b)]; };
   // 每段 [起跳, 落地, 落点, 弧高, 横向缓动, 落地后]；落点是脚下的面 [x, y]，或骑乘函数 (b) => 所骑东西的顶边。
   // 弧高和缓动按画面量过：起落都绕开管口标签、"wss://…/ws" 和账房那格的标题与下划线。

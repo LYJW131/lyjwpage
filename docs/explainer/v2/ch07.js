@@ -171,8 +171,10 @@
       [AT.pass, [2420, LANE]], [5.0, [3350, LANE], E.io], [5.6, [3900, LANE], E.io], [AT.clef, [4400, LANE], E.io],
       [6.15, [4750, -600], E.io], [AT.down, [4750, -600]], [AT.haiku, [4750, -320], E.io],
     ];
-    const CALL = [[8.0, [5550, -320]], [AT.call, [6250, -460], E.io], [8.4, [6750, -230], E.io], [AT.data, [6750, -60], E.io]];
-    const BACK = [[AT.data + 0.05, [6750, -60]], [8.8, [6750, -230], E.io]];
+    // 火花沿画出来的折线走，进了 SITE_TOOLS 卡就藏在卡里，从卡底出来再往下：斜穿卡面会划过卡上的字。
+    const CALL = [[8.0, [5550, -320]], [8.104, [5900, -320]], [8.146, [5900, -460]], [AT.call, [6250, -460], E.out]];
+    const CALL_OUT = [[8.36, [6750, -230]], [AT.data, [6750, -60], E.io]];
+    const BACK = [[AT.data + 0.05, [6750, -126]], [8.8, [6750, -230], E.io]];
     const MCP = [[AT.mcp, [7680, -870]], [9.3, [7200, -560], E.io]];
     function along(path, b) {
       if (b <= path[0][0]) return path[0][1];
@@ -188,7 +190,12 @@
       if (b < t0 || b > t1 + 0.02) return;
       const head = along(path, b);
       const trail = [];
-      for (let i = 14; i >= 1; i--) trail.push(along(path, Math.max(t0, b - i * 0.012)));
+      // 拐角那一下落在两次取样之间时补进拐点：只连取样点，拖尾会斜着抄近路，离开画出来的折线。
+      for (let i = 14; i >= 1; i--) {
+        const ta = Math.max(t0, b - i * 0.012), tb = Math.max(t0, b - (i - 1) * 0.012);
+        trail.push(along(path, ta));
+        for (const [tk, pk] of path) if (tk > ta && tk < tb) trail.push(pk);
+      }
       spark(Ly.e, Ly.tp, head, trail, { t: G.t, size, lw: 3 });
       dot(Ly.tp, head[0], head[1], 6.5 * size, css("signal"), null, 0);
     }
@@ -253,7 +260,7 @@
       const idle = box * (b > AT.send1 + 0.05 && vk <= 0 ? 1 : 0) * (b < AT.send1 ? 0 : 1);
       if (inText) text(d, inText, C.x + 80, IY - 32, { font: FONT.cjk(52, 600) });
       if (vk > 0) text(d, "Verifying you are human…", C.x + 80, IY - 34, { font: FONT.mono(46, 500), color: gr, alpha: vk });
-      else if (idle > 0 && b < AT.send2 - 0.15) text(d, "Speak, mortal… (type /)", C.x + 80, IY - 34, { font: FONT.mono(46, 500), color: gr, alpha: 0.6 * idle });
+      else if (idle > 0 && (b < AT.send2 - 0.15 || b > AT.send2 + 0.05)) text(d, "Speak, mortal… (type /)", C.x + 80, IY - 34, { font: FONT.mono(46, 500), color: gr, alpha: 0.6 * idle * (b > AT.send2 ? prog(b, AT.send2 + 0.05, AT.send2 + 0.15) : 1) });
       const caretX = C.x + 84 + (inText ? measure(d, inText, FONT.cjk(52, 600)) : 0);
       const cx = lerp(CAM0[0] + 390, caretX, k), cy = lerp(IY, IY - 50, k);
       if (k < 0.9) dot(d, cx, cy, 9, css("signal"), null, 0, 1 - prog(k, 0.6, 0.9));
@@ -286,7 +293,10 @@
 
       const sk = prog(b, AT.seal, AT.seal + 0.14);
       if (sk > 0 && b < AT.send2) {
+        // 印章跟着消息一起上滑，和消息一样裁在消息区里，不压到标题栏上。
+        s.save(); s.beginPath(); s.rect(C.x - 400, MSG_TOP, C.w + 800, MSG_BOT - MSG_TOP); s.clip();
         stamp(s, "SEAL", C.x + 1180, by + 470, { k: sk, px: 84, rot: -0.1 });
+        s.restore();
         const la = prog(b, AT.seal + 0.05, AT.seal + 0.15) * oldA;
         K.leader(x, C.x + 1060, by + 500, tr("ch07.seal"), -1220, 150, { font: FONT.cjk(52, 600), color: css("pink"), alpha: la });
       }
@@ -326,8 +336,9 @@
       const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
       if (a <= 0) return;
       card(d, 3900, -640, 500, 280, a);
-      text(d, "Clef", 4150, -500, { font: FONT.sans(72, 600), align: "center", alpha: a });
-      text(d, tr("ch07.k.sub"), 4150, -420, { font: FONT.cjk(40, 600), color: gr, align: "center", alpha: a, maxW: 470 });
+      // 标题和副标分在 LANE 两边：消息的火花沿 LANE 横穿这张卡。
+      text(d, "Clef", 4150, -530, { font: FONT.sans(72, 600), align: "center", alpha: a });
+      text(d, tr("ch07.k.sub"), 4150, -432, { font: FONT.cjk(40, 600), color: gr, align: "center", alpha: a, maxW: 470 });
       const pick = prog(b, AT.clef, AT.clef + 0.08), downK = prog(b, AT.down, AT.down + 0.2, E.io);
       TIERS.forEach((t, j) => {
         const on = j === 1 ? pick * (1 - downK) : j === 2 ? prog(b, AT.haiku, AT.haiku + 0.06) : 0;
@@ -539,6 +550,7 @@
       tools(Ly, b, prog(b, 7.6, 7.9) * (1 - prog(b, 9.6, 9.8)));
       runner(Ly, MSG, b);
       runner(Ly, CALL, b, 0.8);
+      runner(Ly, CALL_OUT, b, 0.8);
       runner(Ly, MCP, b, 0.7);
       sandbox(Ly, b, 1 - prog(b, 13.4, 13.6));
       if (b >= 13.3) { history(x, e, b); build(Ly, b, keep); }
