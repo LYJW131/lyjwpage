@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 合规例外由 lyjw 给 PR 打 `baseline-exception` 标签放行（ci.yml 把标签传成 BASELINE_EXCEPTION=true）。
+// 合规例外由 lyjw 给 PR 打 `baseline-exception` 标签放行：ci.yml 只在打这个标签触发的那次运行里传 BASELINE_EXCEPTION=true。
 // CI 的 pull_request 检出的是合并结果，直接比目标分支最新提交；本地比与 origin/main 的分叉点，
 // 免得分支落后于 main 时把 main 上删掉的条目误报成新增。
 import { execFileSync } from "node:child_process";
@@ -81,7 +81,7 @@ function main() {
     console.log(`\nbaselines:check 放行：PR 带 ${EXCEPTION_LABEL} 标签。`);
     return;
   }
-  console.error(`\n基线只减不增。确属合规例外，在 PR 里写明理由，由 lyjw 打上 ${EXCEPTION_LABEL} 标签后重跑 CI。`);
+  console.error(`\n基线只减不增。确属合规例外，在 PR 里写明理由，由 lyjw 打上 ${EXCEPTION_LABEL} 标签（之后每次推送都要摘了重打）。`);
   process.exitCode = 1;
 }
 
