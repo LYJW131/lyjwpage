@@ -151,6 +151,7 @@ void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)
   const freeRT = (rt) => { if (rt) { gl.deleteTexture(rt.tex); gl.deleteFramebuffer(rt.fb); } };
 
   const layers = [];
+  const BLANK = new ImageData(1, 1);
   class Layer {
     constructor(scale = 1) {
       this.scale = scale;
@@ -168,6 +169,8 @@ void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)
       const x = this.ctx;
       x.setTransform(1, 0, 0, 1, 0, 0);
       x.clearRect(0, 0, this.c.width, this.c.height);
+      // Chrome 里画布只 clearRect、这一帧再没画东西时，传成纹理拿到的还是上一帧；放一个空像素逼它重新上传。
+      x.putImageData(BLANK, 0, 0);
       const k = G.S * this.scale;
       x.setTransform(k, 0, 0, k, 0, 0);
       x.globalAlpha = 1;

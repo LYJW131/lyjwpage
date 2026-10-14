@@ -13,7 +13,7 @@
         kick: [null, "X.......x......."], kickKind: "light", duck: 0.35,
         hat: ["......x.......x.", "..x...x...x...x."], hatKind: "flip", hatVol: 0.8,
         bass: "light", arp: { p: "sparse", lo: 69, inst: "pluck", v: 0.34 }, pad: 0.85, lp: 2200, padVerb: 0.34 },
-      { from: 4, to: 5, id: "open-flip", name: "火花落到卡上、歌名翻面；大字问题", energy: 0.45,
+      { from: 4, to: 5, id: "open-flip", name: "火花落到卡上、歌名翻面，线上的 Clawd 跟着跳（3:3.2 落地、4:0 起两声 hop）；大字问题", energy: 0.45,
         kick: "X.......x.......", kickKind: "light", duck: 0.4, hat: "..x...x...x...x.", hatKind: "flip", hatVol: 0.85,
         bass: "light", arp: { p: "sparse", lo: 69, inst: "bell", v: 0.3 }, pad: 0.85, lp: 2400, padVerb: 0.34 },
       { from: 6, to: 7, id: "open-follow", name: "问题收到左上，旁白：跟着一封信走一遍；7:2 往回拉", energy: 0.55,
@@ -37,7 +37,9 @@
     story: [
       { bar: 2, beat: 0, kind: "boom" },
       { bar: 3, beat: 3, kind: "swell" },
+      { bar: 3, beat: 3.2, kind: "hop", m: midi("D6"), v: 0.6, pan: -0.5 },
       { bar: 4, beat: 0, kind: "accent", what: "flip" },
+      { bar: 4, beat: 0.22, kind: "hop", m: midi("A5"), pan: -0.5 }, { bar: 4, beat: 0.86, kind: "hop", m: midi("E6"), pan: -0.5 },
       { bar: 7, beat: 2, kind: "whoosh", tube: 1 },
       { bar: 8, beat: 2, kind: "lamp", m: midi("A5"), i: 0 }, { bar: 8, beat: 3, kind: "lamp", m: midi("D6"), i: 1 }, { bar: 9, beat: 0, kind: "lamp", m: midi("F6"), i: 2 },
       { bar: 9, beat: 2, kind: "whoosh", tube: "down" },
