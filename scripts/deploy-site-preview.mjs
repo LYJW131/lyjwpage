@@ -5,14 +5,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
-  SITE_PREVIEW_ACCESS_VAR,
   SITE_PREVIEW_MANIFEST_PATH,
   sitePreviewConfig,
   sitePreviewDeployEnv,
   sitePreviewManifest,
   sitePreviewName,
 } from "./site-preview.mjs";
-import { SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.mjs";
+import { SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,9 +33,6 @@ export function deploySitePreview({ env = process.env, spawn = spawnSync, log = 
   const deployEnv = sitePreviewDeployEnv(env);
   if (deployEnv.branch !== manifest.branch || deployEnv.commit !== manifest.commit) {
     throw new Error("WORKERS_CI_BRANCH / WORKERS_CI_COMMIT_SHA 与构建时的冻结记录不一致，重新构建");
-  }
-  if (!deployEnv.accessReady) {
-    throw new Error(`站点的 Cloudflare Access 预览保护需先在面板配置（Workers & Pages → site → Access → Protect this Worker → Previews only），确认后设 ${SITE_PREVIEW_ACCESS_VAR}=true`);
   }
 
   const built = JSON.parse(readFileSync(builtConfigPath, "utf8"));

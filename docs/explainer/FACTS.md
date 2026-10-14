@@ -331,7 +331,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | 上报器 | 快 | 慢 | 怎么定 |
 |---|---|---|---|
 | PlayStation（n100 容器） | 主机醒着：`reporters/playstation-reporter/src/cadence.ts#AWAKE_TICK_INTERVAL_MS` | 休息或确认关机：`reporters/playstation-reporter/src/cadence.ts#IDLE_TICK_INTERVAL_MS` | 局域网发现包 UDP 9302，不问人数 |
-| agents（限额） | agent 在用：5 分钟 | 都没在用：60 分钟 | `SITE_URL/api/status/coding/now`，不问人数 |
+| agents（限额） | 有一家在用：5 分钟（只取在用的那家） | 都没在用：60 分钟 | `SITE_URL/api/status/coding/now`，不问人数 |
 | 服务器（对照） | 60 秒 | 60 秒 | 不问 |
 
 片中没有专讲这一节的章，第 01 章 FIG. 3 用到 PlayStation 那一行（§1）。按 main e10a75a 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
@@ -339,10 +339,10 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - PlayStation 大约每 `reporters/playstation-reporter/src/cadence.ts#PROBE_INTERVAL_MS` 发一次发现包，只在该打的时候打 PSN。`HTTP/1.1 200` 是醒着，`620` 是休息，超时或别的回复先记一笔，连续 `reporters/playstation-reporter/src/cadence.ts#OFF_STREAK_TO_REST` 次才离开醒着。醒着和没醒对调立刻打一轮，休息和关机来回切不额外打。退避（`reporters/playstation-reporter/src/state.ts#backoffMs`）没到时这些都不放行。
   - `AWAKE_TICK_INTERVAL_MS` 是醒着那一档的间隔，不是两轮之间的下限：对调那一轮不等它（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`）。门只在每次探测时判，醒着时要等到过线之后的那一探，实际约每分钟一轮。
   - 下游的窗口都锚在闲档：站点判 PS 上报器断没断流用 `shared/freshness.ts#PLAYSTATION_STALE_MS`（闲档三轮多一点，只有浏览器判）。Pulse 玩那条道每次观测的有效期是 `shared/pulse-timeline.ts#GAMING_HOLD_MS`（盖过闲档再留投递抖动，`shared/pulse-timeline.ts#stateHoldMs`）：有效期内来了新观测，这一段就接着开，过期还没等到才在最后一次确认处收尾（`shared/pulse-timeline.ts#planStateObservation`）；容器每个完整 tick 都发 presence（`reporters/playstation-reporter/src/tick.ts#tick`），闲档一轮一封就接得上。主机醒着时只会更快，判活的下限由闲档决定。第 06 章不画这两个窗口。
-- agents 的两档是 `reporters/agents-reporter/src/config.ts` 里 `cadence` 的默认值（容器 `.env` 可覆盖，线上值没记进 `docs/ops-facts.md`）。每跑完一轮才按 agent 最近一次使用定下一次等多久（`reporters/agents-reporter/src/cadence.ts#ACTIVE_WINDOW_MS` 内算在用）；等的时候每 5 分钟醒来重查一次，开始使用立刻提前跑，停用不延后已定的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。「在用」是最近一次使用落在 `ACTIVE_WINDOW_MS` 之内（写章时 15 分钟），读的是取限额的几家 agent（`reporters/agents-reporter/src/config.ts` 的 `agentIds`）在 `coding/now` 里的 `lastActivityAt`（同文件 `latestActivityAt`）。停手后那两轮仍是 5 分钟，过了窗口才换 60 分钟。
+- agents 的两档是 `reporters/agents-reporter/src/config.ts` 里 `cadence` 的默认值（容器 `.env` 可覆盖，线上值没记进 `docs/ops-facts.md`）。每家各排各的（`reporters/agents-reporter/src/cadence.ts#Schedule`）：在用的那家取完过一个快档再取，其余过一个闲档；一轮只取到期的那几家，所以有一家在用时上报器每 5 分钟跑一轮、只打那一家的限额接口，都没在用时 60 分钟一轮。等的时候每 5 分钟醒来重查一次，闲着的那家开始使用立刻提前，停用不延后已排好的那一次（`reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。闲档 60 分钟 ÷ 5 = 12 次小睡。「在用」是最近一次使用落在 `reporters/agents-reporter/src/cadence.ts#ACTIVE_WINDOW_MS` 之内（写章时 15 分钟），读的是取限额的几家 agent（`reporters/agents-reporter/src/config.ts` 的 `agentIds`）在 `coding/now` 里各自的 `lastActivityAt`（`reporters/agents-reporter/src/cadence.ts#activeAgentIds`）。停手后那两轮仍是 5 分钟，过了窗口才换 60 分钟。
 - 服务器上报器固定每分钟推，不问人数：这份快照本身就是心跳，站点按信封的 `updatedAt` 判它还活着没有；上报不经过站点，没有函数调用量要省，闲着时先问一次人数比直接推一次还费（`reporters/server-reporter/README.md`「节奏」）。
 - 限额那一台按 agent 使用情况调频，是因为每一轮都要打各家厂商的限额接口，限额只在用的时候变（`reporters/agents-reporter/README.md`「它做什么」的每轮流程与 `reporters/agents-reporter/src/cadence.ts#waitForNextRound`）。
-- agents 的活动查询读不到、超时、格式不对一律当没在用，所以故障只会让它变慢，不会变快（`reporters/agents-reporter/src/cadence.ts#nextDelay`）。PlayStation 和服务器都不问人数。
+- agents 的活动查询读不到、超时、格式不对一律当没在用，所以故障只会让它变慢，不会变快（`reporters/agents-reporter/src/cadence.ts#readActiveAgents`）。PlayStation 和服务器都不问人数。
 
 ## 8 站点自检
 
@@ -367,7 +367,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 发第一句之前
 
-- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Turnstile、Workers AI 的 Clef、Anthropic、GitHub、这个浏览器等）；点 Accept 之前不加载 Turnstile、不发任何请求（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.mjs#CHAT_CODE_PATHS`）。
+- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Turnstile、Workers AI 的 Clef、Anthropic、GitHub、这个浏览器等）；点 Accept 之前不加载 Turnstile、不发任何请求（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
 
 ### 过闸（花钱之前）
 

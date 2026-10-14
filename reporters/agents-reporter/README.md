@@ -16,20 +16,24 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 
 ## 它做什么
 
-启动立即采集一轮，之后按 agent 的使用情况选档：在用走快档，闲着走闲档。两档间隔见 `src/config.ts#config.cadence`。每轮：
+启动立即每家各采集一次，之后每家各排各的：在用的那家走快档，其余走闲档。两档间隔见 `src/config.ts#config.cadence`。
+一轮只取到期的那几家（`src/cadence.ts#Schedule`），每轮：
 
 1. 需要的话刷新 Claude 的 OAuth
-2. 五家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）；同时并行拉 Cursor 的用量事件，产出 `codingUsage` / `codingActivity` / `codingTokenBuckets`
+2. 到期的那几家自己打各家限额接口（参考了 TokenTracker 的读取逻辑，没有依赖它）；同时并行拉 Cursor 的用量事件，产出 `codingUsage` / `codingActivity` / `codingTokenBuckets`
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
-4. POST 到站点
+4. POST 到站点：这一轮没取的几家不带，站点按 id 留着各自上一次的值和时间
 
-每轮收尾读站点公开的 `SITE_URL/api/status/coding/now`：本容器取限额的那几家（`AGENT_IDS`）里，任何一家在任何来源
-（Mac 日志、Claude Code 云端、Cursor 账号）的 `lastActivityAt` 落在 `src/cadence.ts#ACTIVE_WINDOW_MS` 内就走快档，否则走闲档。
-分档见 `src/cadence.ts#nextDelay`，调的是打各家限额接口的频率；不看有没有人开着页面。PlayStation 上报器按局域网探测到的主机状态调频。
-活动接口超时、非成功响应、形状不对一律当没在用，只会变慢，不触发上报失败重试。
-未配 `SITE_URL` 时使用 `src/config.ts#config.cadence.idleIntervalMs`。
+Cursor 用量与 Devin 用量不按家分档：有哪家到期才有这一轮，每轮都顺带拉一次。
 
-闲档按 `src/config.ts#config.cadence.activeIntervalMs` 重查活动（`src/cadence.ts#waitForNextRound`），开始使用立即采集；停用不延后已经定好的下一轮。
+等下一轮时读站点公开的 `SITE_URL/api/status/coding/now`：本容器取限额的那几家（`AGENT_IDS`）里，哪一家在任何来源
+（Mac 日志、Claude Code 云端、Cursor 账号）的 `lastActivityAt` 落在 `src/cadence.ts#ACTIVE_WINDOW_MS` 内，那一家就走快档，
+其余照旧走闲档（`src/cadence.ts#activeAgentIds`）。调的是打各家限额接口的频率；不看有没有人开着页面。PlayStation 上报器按局域网探测到的主机状态调频。
+活动接口超时、非成功响应、形状不对一律当谁也没在用，只会变慢，不触发上报失败重试。
+未配 `SITE_URL` 时每家都用 `src/config.ts#config.cadence.idleIntervalMs`。
+
+等待中按 `src/config.ts#config.cadence.activeIntervalMs` 重查活动（`src/cadence.ts#waitForNextRound`）：闲着的那家开始用，
+离它上次采集已过一个快档就立即采集它；停用不延后已经排好的那一轮。
 只读公开状态接口，不带 ingest 密钥，也不在这些检查里访问厂商限额接口。
 
 默认清单见 `src/config.ts#agentIds`。一家失败只影响那一行。
@@ -44,8 +48,8 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 | `SITE_INGEST_URL` | ✅ | 上报端点 `https://ingest.homepage.lyjw.llc/api/ingest/agents` |
 | `ACCESS_CLIENT_ID` | ✅ | Cloudflare Access service token `lyjwpage-agents` 的 client id |
 | `ACCESS_CLIENT_SECRET` | ✅ | 同一把 token 的 secret，只在 Zero Trust 控制台创建或轮换时显示一次 |
-| `ACTIVE_INTERVAL_MS` | | agent 在用时的间隔，也是闲档重查活动的间隔。默认见 `src/config.ts#config.cadence` |
-| `IDLE_INTERVAL_MS` | | 都没在用时的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `shared/freshness.ts#AGENT_LIMITS_STALE_MS` |
+| `ACTIVE_INTERVAL_MS` | | 在用的那家的间隔，也是等待中重查活动的间隔。默认见 `src/config.ts#config.cadence` |
+| `IDLE_INTERVAL_MS` | | 没在用的那几家的间隔。默认见 `src/config.ts#config.cadence`。改长时先放宽站点 `shared/freshness.ts#AGENT_LIMITS_STALE_MS` |
 | `ACTIVITY_TIMEOUT_MS` | | 每个活动请求的超时。默认见 `src/config.ts#config.cadence` |
 | `CURSOR_NOW_FAST_INTERVAL_MS` | | Cursor 在用时查最近用量事件的间隔，要小于活动窗口 `src/cursor-now.ts#ACTIVE_WINDOW_MS`。默认见 `src/config.ts#config.cursorNow` |
 | `CURSOR_NOW_MAX_INTERVAL_MS` | | 没新事件时间隔翻倍拉长的上限。默认见 `src/config.ts#config.cursorNow` |
@@ -165,8 +169,14 @@ Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺�
 翻成 `codingUsage` 里 `id: "devin"` 的一行，`days` 整份替换站点那份（`src/devin-usage.ts#devinUsageDays`）。日期照
 tokens.ci 给的原样用，不换算时区。tokens.ci 的 `reasoning` 与 `output` 分列相加，站点契约里
 reasoning 是 output 的子集，所以并进 `outputTokens`；费用用 tokens.ci 的估价，Devin 自家模型记 0，那天 `costComplete` 为
-false。第一次出现 Devin CLI 之后，tokens.ci 有记录而没有它的日子发一行全 0。不带活动和桶。拉失败只发 `state: "error"`，
+false。第一次出现 Devin CLI 之后，tokens.ci 有记录而没有它的日子发一行全 0。不带活动。拉失败只发 `state: "error"`，
 `collectedAt` 是上一次成功的时刻（落在数据卷的 `/data/devin-usage.json`，跨重启保留）。`LIMITS_FIXTURE` 模式下不拉。
+
+tokens.ci 只给日累计，Pulse 的 Tokens 道只认 5 分钟桶，所以另记一本桶账（同一个状态文件）：每次拉到的各日各模型累计
+和上一次比，涨的部分按两次提交时刻（tokens.ci 的 `updatedAt`）之间的时长均摊进桶（`src/devin-buckets.ts#advanceDevinLedger`）。
+总量是实的，桶里的时间分布是推出来的，精度取决于 Mac 上 tokens.ci 客户端多久提交一次。第一次只立基线；两次提交隔了
+`DEVIN_BUCKET_SPAN_MS` 以上就重立基线、那段不补。每轮主信封发完后，单独一封只带 `codingTokenBuckets`，范围是账本起点与
+往前推 `DEVIN_BUCKET_SPAN_MS` 取晚的那个到最后一次提交，整份重发（丢一封下一轮自己补）；站点按 agent 替换桶，所以和 Cursor 的桶互不冲掉。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向
@@ -259,7 +269,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 
 - 单家失败发错误行；整轮采集或上报失败才退避，进程不退。
 - 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
-- 整轮采集 / 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查活动。上报失败只重发同一份采集结果，超过在用档间隔才重新采集，重发成功后立即重采一次（`src/round-loop.ts#runRounds`）。单家失败仍照发错误行，成功上报后按两档等下一轮。
+- 整轮采集 / 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查活动。上报失败只重发同一份采集结果，超过在用档间隔才重新采集，重发成功后立即重采一次（`src/round-loop.ts#runRounds`）。单家失败仍照发错误行，成功上报后各家按自己的档等下一轮。
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
 

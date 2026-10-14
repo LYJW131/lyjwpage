@@ -1,10 +1,10 @@
 import type { CodingUsageAgent } from "./coding-usage.js";
-import { config } from "./config.js";
-import { waitForNextRound } from "./cadence.js";
+import { config, type AgentId } from "./config.js";
+import { Schedule, waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
 import { observeCursorActivity, runCursorNowLoop } from "./cursor-now.js";
 import { collectCursorUsage, cursorUsageFailure } from "./cursor-usage.js";
-import { collectDevinUsage, devinUsageFailure } from "./devin-usage.js";
+import { collectDevinUsage, devinBucketReportNow, devinUsageFailure } from "./devin-usage.js";
 import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
 import { runRounds } from "./round-loop.js";
@@ -50,7 +50,7 @@ async function collectDevin(): Promise<CodingUsageAgent | null> {
   }
 }
 
-async function collectPayload(): Promise<PushPayload> {
+async function collectPayload(ids: readonly AgentId[] = config.agentIds): Promise<PushPayload> {
   const [agents, cursor, devin] = await Promise.all([
     (async () => {
       try {
@@ -58,7 +58,7 @@ async function collectPayload(): Promise<PushPayload> {
       } catch (error) {
         failure("claude-oauth", error);
       }
-      return collectAgents();
+      return collectAgents(ids);
     })(),
     collectCursor(),
     collectDevin(),
@@ -72,17 +72,27 @@ async function collectPayload(): Promise<PushPayload> {
   };
 }
 
-async function collectRound(): Promise<PushPayload | null> {
-  const payload = await collectPayload();
-  if (!payload.agents?.length) {
-    failure("collect", new Error("一家都没登录，没有可发的限额行"));
-    return null;
+type Round = { payload: PushPayload; agentIds: AgentId[]; at: number };
+
+const schedule = new Schedule(config.agentIds);
+
+async function collectRound(): Promise<Round | null> {
+  const at = performance.now();
+  const agentIds = schedule.due(at);
+  if (agentIds.length === 0) return null;
+  const { agents, ...payload } = await collectPayload(agentIds);
+  if (agents?.length) recovered("collect");
+  else if (agentIds.length === config.agentIds.length) failure("collect", new Error("一家都没登录，没有可发的限额行"));
+  const round: PushPayload = agents?.length ? { ...payload, agents } : payload;
+  if (round.agents || round.codingUsage || round.codingActivity || round.codingTokenBuckets) {
+    return { payload: round, agentIds, at };
   }
-  recovered("collect");
-  return payload;
+  // 没登录的那几家也记作这一轮取过，否则它们一直到期，等待会立刻返回、空转。
+  schedule.collected(agentIds, at);
+  return null;
 }
 
-async function pushRound(payload: PushPayload): Promise<void> {
+async function pushRound({ payload, agentIds, at }: Round): Promise<void> {
   if (!config.site.ingestUrl) {
     throw new Error("缺少环境变量 SITE_INGEST_URL");
   }
@@ -90,7 +100,21 @@ async function pushRound(payload: PushPayload): Promise<void> {
     throw new Error("缺少环境变量 ACCESS_CLIENT_ID / ACCESS_CLIENT_SECRET");
   }
   await push(payload);
+  schedule.collected(agentIds, at);
   recovered("push");
+  await pushDevinBuckets();
+}
+
+// Devin 的桶单独一封：和 Cursor 的桶范围不同，同一份报告里装不下两个范围。失败不重发整轮，下一轮整份账本再发一次。
+async function pushDevinBuckets(): Promise<void> {
+  try {
+    const report = await devinBucketReportNow();
+    if (!report) return;
+    await push({ collectedAt: new Date(report.collectedAt).toISOString(), codingTokenBuckets: report });
+    recovered("devin-buckets");
+  } catch (error) {
+    failure("devin-buckets", error);
+  }
 }
 
 async function main() {
@@ -101,13 +125,15 @@ async function main() {
   );
   if (config.dryRun) {
     process.stdout.write(`${JSON.stringify(await collectPayload(), null, 2)}\n`);
+    const devin = await devinBucketReportNow();
+    if (devin) process.stdout.write(`${JSON.stringify({ codingTokenBuckets: devin }, null, 2)}\n`);
     return;
   }
   if (!config.limitsFixture && config.site.ingestUrl) void runCursorNowLoop();
   await runRounds({
     collect: collectRound,
     push: pushRound,
-    waitForNextRound: () => waitForNextRound(),
+    waitForNextRound: () => waitForNextRound(schedule),
     sleep,
     onPushFailure: (error) => failure("push", error),
     now: () => Date.now(),

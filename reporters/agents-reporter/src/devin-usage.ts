@@ -1,8 +1,16 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { type CodingUsageAgent, type CodingUsageDay, MAX_DAY_MODELS, OVERFLOW_MODEL } from "./coding-usage.js";
+import { type CodingTokenBucketReport, type CodingUsageAgent, type CodingUsageDay, MAX_DAY_MODELS, OVERFLOW_MODEL } from "./coding-usage.js";
 import { config } from "./config.js";
+import {
+  advanceDevinLedger,
+  devinBucketReport,
+  devinSnapshot,
+  type DevinBucketLedger,
+  type DevinSnapshot,
+  type DevinTokens,
+} from "./devin-buckets.js";
 
 
 export const DEVIN_AGENT_ID = "devin";
@@ -103,8 +111,10 @@ function usageDay(date: string, rows: ModelRow[]): CodingUsageDay {
   return day;
 }
 
+type DevinDay = { date: string; rows: ModelRow[] };
+
 // 只要 devin-cli 第一次出现之后的日子：那之后 tokens.ci 有记录而没有 devin-cli 的一天记全 0（确认没用），之前算未知。
-export function devinUsageDays(body: unknown): CodingUsageDay[] {
+function devinDays(body: unknown): DevinDay[] {
   const root = object(body, "response");
   if (!Array.isArray(root.contributions)) throw new DevinUsageError("tokens.ci: contributions missing");
   const days = root.contributions.map((entry) => {
@@ -120,28 +130,68 @@ export function devinUsageDays(body: unknown): CodingUsageDay[] {
   if (first === -1) return [];
   const merged = new Map<string, ModelRow[]>();
   for (const day of days.slice(first)) merged.set(day.date, [...(merged.get(day.date) ?? []), ...day.rows]);
-  return [...merged].map(([date, rows]) => usageDay(date, rows));
+  return [...merged].map(([date, rows]) => ({ date, rows }));
+}
+
+export function devinUsageDays(body: unknown): CodingUsageDay[] {
+  return devinDays(body).map((day) => usageDay(day.date, day.rows));
+}
+
+function submittedAt(body: unknown): number | null {
+  const at = (body as { updatedAt?: unknown } | null)?.updatedAt;
+  const parsed = typeof at === "string" ? Date.parse(at) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function devinSnapshotOf(body: unknown, now: number): DevinSnapshot {
+  const days = devinDays(body).map((day) => {
+    const models: Record<string, DevinTokens> = {};
+    for (const row of day.rows) {
+      const into = models[row.model] ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
+      into.input = add(into.input, row.input);
+      into.output = add(into.output, row.output, row.reasoning);
+      into.cacheRead = add(into.cacheRead, row.cacheRead);
+      into.cacheWrite = add(into.cacheWrite, row.cacheWrite);
+      into.reasoning = add(into.reasoning, row.reasoning);
+      models[row.model] = into;
+    }
+    return { date: day.date, models };
+  });
+  return devinSnapshot(days, Math.min(submittedAt(body) ?? now, now), now);
 }
 
 function statePath(): string {
   return path.join(config.home || "/data", "devin-usage.json");
 }
 
-// 站点拒收 collectedAt 早于已存账本的行，失败行要带上次成功的时刻才进得去，所以跨重启落盘。
-async function readLastSuccessAt(): Promise<number | null> {
+type DevinState = { collectedAt: number | null; buckets: DevinBucketLedger | null };
+
+function ledgerOf(value: unknown): DevinBucketLedger | null {
+  const ledger = value as Partial<DevinBucketLedger> | null;
+  if (!ledger || typeof ledger.since !== "number" || !Array.isArray(ledger.windows)) return null;
+  const snapshot = ledger.snapshot as Partial<DevinSnapshot> | undefined;
+  if (!snapshot || typeof snapshot.at !== "number" || !snapshot.days || typeof snapshot.days !== "object") return null;
+  return ledger as DevinBucketLedger;
+}
+
+// 站点拒收 collectedAt 早于已存账本的行，失败行要带上次成功的时刻才进得去；桶账本要接着上次的快照算增量。两者都跨重启落盘。
+async function readState(): Promise<DevinState> {
   try {
-    const parsed: unknown = JSON.parse(await readFile(statePath(), "utf8"));
-    const at = (parsed as { collectedAt?: unknown } | null)?.collectedAt;
-    return typeof at === "number" && Number.isSafeInteger(at) && at > 0 ? at : null;
+    const parsed = JSON.parse(await readFile(statePath(), "utf8")) as { collectedAt?: unknown; buckets?: unknown } | null;
+    const at = parsed?.collectedAt;
+    return {
+      collectedAt: typeof at === "number" && Number.isSafeInteger(at) && at > 0 ? at : null,
+      buckets: ledgerOf(parsed?.buckets),
+    };
   } catch {
-    return null;
+    return { collectedAt: null, buckets: null };
   }
 }
 
-async function writeLastSuccessAt(collectedAt: number): Promise<void> {
+async function writeState(state: DevinState): Promise<void> {
   const file = statePath();
   const temporary = `${file}.${process.pid}.tmp`;
-  await writeFile(temporary, JSON.stringify({ collectedAt }), { mode: 0o600 });
+  await writeFile(temporary, JSON.stringify(state), { mode: 0o600 });
   await rename(temporary, file);
 }
 
@@ -149,7 +199,7 @@ export async function devinUsageFailure(error: unknown): Promise<CodingUsageAgen
   return {
     id: DEVIN_AGENT_ID,
     state: "error",
-    collectedAt: await readLastSuccessAt(),
+    collectedAt: (await readState()).collectedAt,
     error: error instanceof Error ? error.message : String(error),
     warning: null,
     sessionCount: null,
@@ -161,7 +211,15 @@ export async function collectDevinUsage(now = Date.now()): Promise<CodingUsageAg
   const url = `https://tokens.ci/api/users/${encodeURIComponent(config.tokensCiUser)}`;
   const response = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!response.ok) throw new DevinUsageError(`tokens.ci responded ${response.status}`);
-  const days = devinUsageDays(await response.json());
-  await writeLastSuccessAt(now);
+  const body: unknown = await response.json();
+  const days = devinUsageDays(body);
+  const previous = await readState();
+  await writeState({ collectedAt: now, buckets: advanceDevinLedger(previous.buckets, devinSnapshotOf(body, now), DEVIN_AGENT_ID, now) });
   return { id: DEVIN_AGENT_ID, state: "ok", collectedAt: now, error: null, warning: null, sessionCount: null, days };
+}
+
+export async function devinBucketReportNow(now = Date.now()): Promise<CodingTokenBucketReport | null> {
+  if (config.limitsFixture || !config.tokensCiUser) return null;
+  const { buckets } = await readState();
+  return buckets ? devinBucketReport(buckets, DEVIN_AGENT_ID, now) : null;
 }

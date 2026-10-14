@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PREVIEW_WORKER_SCRIPT, SITE_PREVIEW_WORKER_SCRIPT, previewWorkerName } from "../../../scripts/preview-worker-name.mjs";
+import { PREVIEW_WORKER_SCRIPT, SITE_PREVIEW_WORKER_SCRIPT, previewWorkerName } from "../../../scripts/preview-worker-name.ts";
 
 const branch = (process.env.PREVIEW_BRANCH ?? process.env.WORKERS_CI_BRANCH ?? "").trim();
 const name = previewWorkerName(branch);

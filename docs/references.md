@@ -78,7 +78,7 @@
 - **[LobeHub Icons](https://lobehub.com/icons)**
   - 是什么：AI 与开发者品牌的图标集。
   - 取了什么：品牌和产品图标先查它，按深路径导入 `@lobehub/icons`；它的模型→厂商关键字表 `modelMappings`（包内 features 目录的 modelConfig）在构建时读成数据，给模型排行榜配厂商图标，不导入它会连带 `@lobehub/ui` 的 `ModelIcon` 组件。
-  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)「Components」的图标条目；模型表落在 `scripts/model-icons.mjs`（`virtual:model-icons`）与 `src/lib/model-icon.ts`，各厂商单色图标由 `scripts/build-site-assets.tsx` 渲染成静态 SVG。
+  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)「Components」的图标条目；模型表落在 `scripts/model-icons.ts`（`virtual:model-icons`）与 `src/lib/model-icon.ts`，各厂商单色图标由 `scripts/build-site-assets.tsx` 渲染成静态 SVG。
 
 ## Cloudflare 平台
 
@@ -102,7 +102,7 @@
 - **Cloudflare Access 的 Instant Auth（`auto_redirect_to_identity`）**（Cloudflare 控制台设置，讨论里没留链接）
   - 是什么：只允许一种登录方式时跳过选择页，直接跳到身份提供方。
   - 取了什么：站点分支预览用它省掉登录方式选择页，点开预览直接登录。
-  - 状态：采用。当前 Access 配置只以 [ops-facts.md](./ops-facts.md) 的站点 Preview 条目为准。
+  - 状态：不再使用。站点分支预览不设登录，理由见 [workers-builds.md](./workers-builds.md)「分支预览」。
 - **[Workers Observability](https://developers.cloudflare.com/workers/observability/)** 与 Workers Issues、Web Analytics（Cloudflare 文档）
   - 是什么：Cloudflare 自带的报错分组、日志与 Web Vitals。
   - 取了什么：完全替代 Sentry：心跳与在线条自建在 D1 `health_buckets`，报错数取 Observability 遥测查询，Vitals 取 Web Analytics，浏览器报错经 `/relay` 进 site Worker 日志，告警出口用 Workers Issues。
@@ -136,6 +136,10 @@
   - 是什么：修正 CommonMark 在中日韩标点旁不认 `**` 收尾的 remark 插件。
   - 取了什么：对话里「？」后紧跟中文的加粗会原样显示星号，接上它和配套的删除线插件。
   - 状态：采用。落在 [chat-markdown-plugins.ts](../src/lib/chat-markdown-plugins.ts)。
+- **[TanStack Start 1.0 is Stable](https://tanstack.com/blog/tanstack-start-1-0)** 与 **[We stopped using RSC on tanstack.com](https://tanstack.com/blog/we-stopped-using-rsc-on-tanstack-com)**（Tanner Linsley）
+  - 是什么：TanStack Start 稳定版公告；tanstack.com 发现 RSC 主要在替一套过大的 Markdown 与高亮依赖遮丑，改为把依赖做小、回到普通 SSR。
+  - 取了什么：先量首屏包里谁大。聊天的 react-markdown 与 remark 插件原本在首页路由块里，拆成按需加载的独立块，聊天卡片进入视口时预加载。
+  - 状态：部分采用。落在 [lazy-chat-markdown.tsx](../src/components/lazy-chat-markdown.tsx)。不迁到 TanStack Start：React Router 已有类型化路由与 Workers 上的 SSR，Start 主打的 server function 与根 [AGENTS.md](../AGENTS.md)「禁区」的站点侧不写后端相冲。不换 `@tanstack/markdown`：它没有 remark 插件链，会丢掉 `remark-cjk-friendly` 的中文加粗修正。
 
 ## 交互与文案参照
 

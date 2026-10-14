@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-import { lobehubIconsDir, parseModelMappings } from "../../scripts/model-icons.mjs";
+import { lobehubIconsDir, parseModelMappings } from "../../scripts/model-icons.ts";
 import { BUNDLED_MODEL_ICONS, modelIconResolver, SITE_MODEL_ICONS } from "./model-icon.ts";
 
 const upstream = parseModelMappings(fs.readFileSync(path.join(lobehubIconsDir(), "es/features/modelConfig.js"), "utf8"));
