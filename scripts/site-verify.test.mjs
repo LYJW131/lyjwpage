@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { classifyRequest, consoleClean, consoleProblems, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright, updateOrigin } from "./site-verify.mjs";
+import { classifyRequest, consoleClean, consoleProblems, findJumps, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright, textJumps, updateOrigin } from "./site-verify.mjs";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -205,6 +206,53 @@ test("shot 失败时删掉同名旧图，不留上一轮产物冒充证据", asy
     assert.equal(fs.existsSync(stale), false, "失败时旧图必须先被删掉");
     assert.equal(JSON.parse(result.stdout).shots[0].file, null);
   } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test("findJumps：旧页面遮罩之后的首帧起算，只变一次的区域是跳动，反复变的算常动，grace 内的算补齐", () => {
+  const changed = [[], [], [0, 1], [5], [], [9], [9], [9], [2]];
+  const oldPage = [false, true, true, false, false, false, false, false, false];
+  const times = [0, 10, 20, 30, 80, 200, 300, 400, 500];
+  const { start, jumps, live } = findJumps({ times, changed, oldPage, cols: 4, grid: 16 });
+  assert.equal(start, 3);
+  assert.deepEqual(jumps, [{ frame: 8, atMs: 470, rect: { x: 32, y: 0, width: 16, height: 16 } }]);
+  assert.deepEqual(live, [{ x: 16, y: 32, width: 16, height: 16 }]);
+});
+
+test("findJumps：录到的帧里没有遮罩就找不到新页面首帧", () => {
+  assert.equal(findJumps({ times: [0, 10], changed: [[], [1]], oldPage: [false, false], cols: 4 }).start, -1);
+});
+
+test("textJumps：同一处变一两次是跳动，三次起算常动，grace 内忽略", () => {
+  const changes = [
+    { at: 50, where: "#digest text", before: "", after: "12:00" },
+    { at: 300, where: "#digest text", before: "12:00", after: "12:02" },
+    ...[400, 800, 1200].map((at) => ({ at, where: "#live span", before: "a", after: "b" })),
+  ];
+  const { jumps, live } = textJumps(changes);
+  assert.deepEqual(jumps.map((j) => [j.where, j.after]), [["#digest text", "12:02"]]);
+  assert.deepEqual(live.map((l) => [l.where, l.count]), [["#live span", 3]]);
+});
+
+test("reload 抓到首帧后才改的时间文字，退出码 1", async (t) => {
+  const pw = await resolvePlaywright();
+  if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器路径验不了");
+  const page = `<!doctype html><body><p id="clock">00:00</p><script>setTimeout(() => { document.querySelector("#clock").firstChild.data = "12:34"; }, 400);</script>`;
+  const server = http.createServer((_, res) => res.writeHead(200, { "content-type": "text/html" }).end(page));
+  await new Promise((resolve) => server.listen(0, resolve));
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-"));
+  try {
+    // 不能用 spawnSync：它阻塞事件循环，同进程里的测试服务器就回不了请求。
+    const result = await new Promise((resolve) => {
+      execFile("node", [SCRIPT, "reload", "--url", `http://localhost:${server.address().port}`, "--out", out, "--watch", "1500", "--skew", "0"], { cwd: ROOT, encoding: "utf8", timeout: 60_000 }, (error, stdout, stderr) => resolve({ status: error ? error.code : 0, stdout, stderr }));
+    });
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    const body = JSON.parse(result.stdout);
+    assert.deepEqual(body.textJumps.map((j) => [j.where, j.before, j.after]), [["#clock p", "00:00", "12:34"]]);
+    assert.ok(body.frameJumps.some((j) => j.element?.startsWith("#clock")), JSON.stringify(body.frameJumps));
+  } finally {
+    server.close();
     fs.rmSync(out, { recursive: true, force: true });
   }
 });
