@@ -60,6 +60,8 @@ test("改提交身份、关签名要拦", () => {
     "git config user.email noreply@anthropic.com",
     "git config --global user.name Claude",
     "git config --unset commit.gpgsign",
+    "git config set user.email noreply@anthropic.com",
+    "git -C /tmp/repo commit --author=Claude -m x",
   ]) {
     assert.ok(blocked(command), command);
   }
@@ -75,6 +77,10 @@ test("读取身份、普通提交和提交信息里的署名不拦", () => {
     "git commit -F - <<'EOF'\nfix: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nGIT_COMMITTER_NAME=Claude\nEOF",
     "rg -n 'GIT_COMMITTER_NAME=' scripts",
     "git merge --no-edit origin/main",
+    "git log --author=Claude --oneline",
+    "git shortlog -sn --author=Claude",
+    "git config --get-regexp user.email '.*'",
+    "git config get user.email",
   ]) {
     assert.equal(forbiddenReason(command), null, command);
   }

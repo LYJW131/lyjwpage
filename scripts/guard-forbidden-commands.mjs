@@ -118,14 +118,30 @@ function overridesCommitIdentity(tokens) {
     const value = rest[i] === "-c" ? rest[i + 1] : rest[i].startsWith("-c") ? rest[i].slice(2) : null;
     if (value && IDENTITY_KEYS.has(value.split("=")[0].toLowerCase()) && value.includes("=")) return true;
   }
-  if (rest.some((token) => token === "--author" || token.startsWith("--author=") || token === "--no-gpg-sign")) return true;
-  const config = rest.indexOf("config");
-  if (config === -1) return false;
-  const configArgs = rest.slice(config + 1);
-  if (configArgs.some((token) => token === "--get" || token === "--get-all" || token === "--list" || token === "-l")) return false;
-  const operands = configArgs.filter((token) => !token.startsWith("-"));
-  const unset = configArgs.some((token) => token.startsWith("--unset") || token === "--replace-all");
+  if (rest.includes("--no-gpg-sign")) return true;
+  const sub = subcommand(rest);
+  if (sub === -1) return false;
+  const args = rest.slice(sub + 1);
+  if (rest[sub] === "commit") return args.some((token) => token === "--author" || token.startsWith("--author="));
+  if (rest[sub] !== "config") return false;
+  if (args.some((token) => CONFIG_READS.has(token) || token.startsWith("--get"))) return false;
+  let operands = args.filter((token) => !token.startsWith("-"));
+  if (operands[0] === "get" || operands[0] === "list") return false;
+  const verb = operands[0] === "set" || operands[0] === "unset";
+  if (verb) operands = operands.slice(1);
+  const unset = verb || args.some((token) => token.startsWith("--unset") || token === "--replace-all");
   return IDENTITY_KEYS.has((operands[0] ?? "").toLowerCase()) && (operands.length >= 2 || unset);
+}
+
+const CONFIG_READS = new Set(["--list", "-l"]);
+const GIT_OPTIONS_WITH_VALUE = new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace"]);
+
+function subcommand(rest) {
+  for (let i = 0; i < rest.length; i += 1) {
+    if (GIT_OPTIONS_WITH_VALUE.has(rest[i])) i += 1;
+    else if (!rest[i].startsWith("-")) return i;
+  }
+  return -1;
 }
 
 const DEPLOY_REASON =
