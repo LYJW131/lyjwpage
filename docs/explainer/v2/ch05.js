@@ -313,6 +313,41 @@
     nar(x, "ch05.n1b", 110, 1024, prog(b, 1.9, 2.6), win(b, 1.0, 1.1, 3.35, 3.5) * cA);
     nar(x, "ch05.n2a", 110, 944, prog(b, 3.5, 3.85), win(b, 3.5, 3.6, 4.8, 4.98) * cA);
     nar(x, "ch05.n2b", 110, 1024, prog(b, 3.85, 4.4), win(b, 3.5, 3.6, 4.8, 4.98) * cA);
+    teleKey(x, e, b, prog(b, 1.9, AT.connect) * cA);
+  }
+
+  // 报务员在线上面（源站一侧），电键贴着线的起点；按键落在 AT.tele，和 music/ch05.js 的三声 morse 同拍。
+  // 只画在机位 A：AT.pull 起拉远的全景里不能有它。
+  const OP = { cx: 330, base: TY - 1, q: 7, enter: [1.75, AT.connect] };
+  const KEY_K = OP.cx + 8.6 * OP.q, KEY_P = KEY_K + 100, KEY_C = KEY_K + 44;
+  const keyPress = (b) => Math.max(0, ...AT.tele.map((t) => (b >= t && b < t + 0.12 ? 1 - prog(b, t + 0.03, t + 0.12, E.out) : 0)));
+  function teleKey(x, e, b, a) {
+    if (a <= 0) return;
+    const bone = css("bone"), p = keyPress(b), yb = OP.base;
+    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.fillRect(KEY_K - 8, yb - 9, KEY_P + 22 - KEY_K, 9); x.restore();
+    K.rect(x, KEY_K - 8, yb - 9, KEY_P + 22 - KEY_K, 9, 2, bone, a);
+    K.rect(x, KEY_P - 5, yb - 29, 10, 20, 2, bone, a);
+    const ky = yb - 31 + p * 6, py = yb - 25;
+    const lever = (u) => lerp(ky, py, (u - KEY_K) / (KEY_P - KEY_K));
+    line(x, KEY_K, ky, KEY_P, py, 4, bone, a);
+    line(x, KEY_C, lever(KEY_C), KEY_C, lever(KEY_C) + 5, 3, bone, a);
+    line(x, KEY_C, yb - 9, KEY_C, yb - 21, 3, bone, a);
+    line(x, KEY_K, ky, KEY_K, ky - 5, 3, bone, a);
+    x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.ellipse(KEY_K, ky - 7, 10, 4.5, 0, 0, TAU); x.fill(); x.restore();
+    for (const t of AT.tele) { const k = impact(b, t, 0.1); if (k > 0.02) glow(e, KEY_C, yb - 21, 34, 0.9 * k * a); }
+  }
+  function operator(tp, b, BAR) {
+    if (b < OP.enter[0] || b >= 5.3) return;
+    const { q } = OP;
+    const air = b < OP.enter[1];
+    const fr = air ? { pose: "arms-up", offset: 0 }
+      : K.clawdSeq("land", b, OP.enter[1], BAR) || K.clawdSeq("look", b, AT.hydrate, BAR)
+        || { pose: AT.tele.some((t) => b >= t - 0.08 && b < t) ? "arms-up" : "default", offset: 0 };
+    const cx = air ? lerp(-110, OP.cx, prog(b, OP.enter[0], OP.enter[1])) : OP.cx;
+    const mid = (OP.enter[0] + OP.enter[1]) / 2;
+    const bottom = OP.base - K.hop(b, OP.enter[0], mid, 34) - K.hop(b, mid, OP.enter[1], 22) + keyPress(b) * 6;
+    K.clawdFrame(tp, fr, cx, bottom, q);
+    K.clawdProp(tp, "headset", cx, bottom, q, { color: css("bone"), crouch: fr.offset || 0 });
   }
 
   const SWR = { x: 2550, y: 480, w: 760, h: 340 };
@@ -698,11 +733,12 @@
     const e = emit.begin(); emit.cam(cam);
     const d = paper.begin(); paper.cam(cam);
     const s = stampL.begin(); stampL.cam(cam);
-    top.begin(); top.cam(cam);
+    const tp = top.begin(); top.cam(cam);
 
     const cA = (1 - 0.7 * prog(b, 17.25, 17.45)) * (1 - prog(b, 17.62, 17.8));
     const near = (b0, b1) => (b > b0 && b < b1) || b > 17.2;
     if (near(-1, 5.3)) stationA(x, d, e, b, cA);
+    operator(tp, b, f.BAR);
     if (near(4.6, 8.9)) stationB(x, d, e, s, b, cA);
     if (near(8.1, 10.9)) stationC(x, e, b, f, cA);
     if (near(10.1, 12.9)) stationD(x, e, b, cA);

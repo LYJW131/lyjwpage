@@ -40,7 +40,7 @@
     "ch02.noNet": ["内部调用：不走公网，不带凭据", "internal call: no public network, no credentials"],
     "ch02.bound": ["只有绑定了 CORE 的 Worker 调得到", "only Workers bound to CORE can call it"],
     "ch02.n4a": ["实时那一半经 Service Binding，", "Realtime rides a Service Binding"],
-    "ch02.n4b": ["交给 api Worker 里的 StateCore。", "to StateCore in the api Worker."],
+    "ch02.n4b": ["交给 core Worker 里的 StateCore。", "to StateCore in the core Worker."],
     "ch02.n5a": ["鉴权已在边界做过一次，", "Auth already happened at the edge;"],
     "ch02.n5b": ["这一跳只认绑定，不再验钥匙。", "this hop trusts the binding alone."],
     "ch02.foot1": ["改校验只需重新发布入口：", "Changing validation redeploys only the ingress:"],
@@ -515,9 +515,11 @@
 
   const A_PATH = [[-420, 652], [120, 640], [DX(0) + DW / 2, 600]];
   const A_LEN = pathLen(A_PATH);
+  const sparkD = (b) => keys(b, [[0, 400], [1.9, A_LEN - 40, E.out], [2.35, A_LEN, E.in]]);
+  const sparkA = (b) => pathAt(A_PATH, sparkD(b));
   function sparkAll(x, e, b) {
     if (b < 2.5) {
-      const d = keys(b, [[0, 400], [1.9, A_LEN - 40, E.out], [2.35, A_LEN, E.in]]);
+      const d = sparkD(b);
       const head = pathAt(A_PATH, d);
       sparkP(e, x, head, trailOn(A_PATH, d, 320), { t: G.t, size: lerp(1.1, 0.4, prog(b, 2.0, 2.4)), lw: 2.2 });
     } else if (b >= 4.7 && b < 8.9) {
@@ -529,6 +531,37 @@
       const fade = 1 - prog(b, AT.hub, AT.hub + 0.2);
       sparkP(e, x, pathAt(RT_FULL, d), trailOn(RT_FULL, d, 300), { t: G.t, size: 1.0 * fade + 0.001, lw: 3 });
     }
+  }
+
+  // 接第 01 章（ch01.js#clawdRide），两边须同步：蹲着、不翻转，屏幕上 18 格 × 7 px = 126 px 宽，底边比亮核高 7 px（镜头 1.4 × 5）。
+  // 起跳后格子从 5 长到 7，镜头同时从 1.4 拉到 1，屏幕上大小不变。
+  const CL = { leap: 0.5, land: 1.125, look: 2.0, exit: 4.5, gone: 4.75, spot: [1700, 262], qRide: 5, q: 7 };
+  const frameAt = (b, t0, BAR) => Math.floor(((b - t0) * BAR * 1000) / window.Clawd.FRAME_MS + 1e-6);
+  function clawdA(tp, b, BAR) {
+    if (b >= CL.gone) return;
+    const o = { poofColor: css("graphite") };
+    const takeoff = (t0) => { const i = frameAt(b, t0, BAR); return i < 2 ? window.Clawd.SEQ.jump[i] : { pose: "arms-up", offset: 0 }; };
+    if (b < CL.leap) {
+      const [hx, hy] = sparkA(b);
+      clawd(tp, hx, hy - 5, CL.qRide, { crouch: 1, pose: b < 0.3 ? "default" : "look-right" });
+      return;
+    }
+    const [sx, sy] = sparkA(CL.leap), [px, py] = CL.spot;
+    if (b < CL.land) {
+      const k = prog(b, CL.leap, CL.land);
+      const cx = lerp(sx, px, k), bottom = lerp(sy - 5, py, k) - K.hop(b, CL.leap, CL.land, 170);
+      K.clawdFrame(tp, takeoff(CL.leap), cx, bottom, lerp(CL.qRide, CL.q, E.io(k)), o);
+      return;
+    }
+    if (b >= CL.exit) {
+      const k = prog(b, CL.exit, CL.gone);
+      K.clawdFrame(tp, takeoff(CL.exit), lerp(px, px + 330, k), py - K.hop(b, CL.exit, CL.gone, 90), CL.q, o);
+      return;
+    }
+    const fr = K.clawdSeq("land", b, CL.land, BAR) || K.clawdSeq("flinch", b, AT.e403, BAR) || { pose: b < CL.look ? "default" : "look-left", offset: 0 };
+    K.clawdFrame(tp, fr, px, py, CL.q, o);
+    const bk = prog(b, 1.15, 1.4) * (1 - prog(b, 2.35, 2.5));
+    bubble(tp, tr("ch02.clawd"), px - 72, py - 60, { px: 34, k: bk, reveal: prog(b, 1.2, 1.9), tail: "right" });
   }
 
   function render(f) {
@@ -554,15 +587,7 @@
     plateFrame(x, b);
     sparkAll(x, e, b);
 
-    const cIn = prog(b, 0.45, 0.8, E.lin), cOut = prog(b, 2.45, 2.8, E.lin);
-    if (cIn > 0 && cOut < 1) {
-      const baseY = 262;
-      const cx = lerp(2000, 1700, E.out(cIn)) + lerp(0, 320, E.in(cOut));
-      const hop = Math.sin(cIn * Math.PI) * 110 * (1 - cIn) + Math.sin(cOut * Math.PI) * 90;
-      const land = impact(b, 0.8, 0.07);
-      clawd(tp, cx, baseY - hop, 8, { pose: cIn < 1 || cOut > 0 ? "arms-up" : b > 1.8 ? "look-left" : "default", crouch: land > 0.4 ? 1 : 0 });
-      bubble(tp, tr("ch02.clawd"), cx - 90, baseY - 118, { px: 34, k: prog(b, 0.95, 1.2) * (1 - prog(b, 2.3, 2.45)), reveal: prog(b, 1.0, 1.7), tail: "right" });
-    }
+    clawdA(tp, b, f.BAR);
 
     G.composite(ink.upload(), { mode: G.MODE.ink, seed: 3.1 });
     G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 7.7 });
