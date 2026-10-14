@@ -4,7 +4,7 @@ const API = "https://api.cloudflare.com/client/v4";
 
 // 浏览器错误经 site Worker 的 /relay 打成日志，所以 site 一组同时包含服务端与浏览器错误。
 export const HEALTH_SITE_SERVICES = ["site"] as const;
-export const HEALTH_WORKER_SERVICES = ["api", "ai", "ingress", "collector"] as const;
+export const HEALTH_WORKER_SERVICES = ["core", "ai", "ingress", "collector"] as const;
 
 type Json = Record<string, unknown>;
 
