@@ -1,5 +1,6 @@
 // 一次性：把 Sentry 视图里现有的 30 天日条换成 health_buckets 的小时格，切换当天站点卡片的两条在线条不变空。
 // 用法：node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/sentry-health-import.mts --from <sentry.json|URL> --out <file.sql>
+// --from 收 `/api/status/sentry` 的响应或 LAG KV 里 `sentry:v1` 的原值（两者都是 `{ data }` 包着载荷）；站点切换后那个端点没了，就读 KV。
 // 只生成 SQL、不连生产；写库由人执行：pnpm --dir workers/core exec wrangler d1 execute lyjwpage-history --remote -c wrangler.toml --file <file.sql>
 // 写法是累加的 upsert，同一份 SQL 只能执行一次。
 import fs from "node:fs";
