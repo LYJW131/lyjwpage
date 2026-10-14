@@ -66,7 +66,9 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 - **PageSpeed** 桌面、移动并行测，单端常要一分钟上下，长尾更久，所以单端等到 `PAGESPEED_TIMEOUT_MS`
   才放弃，合成一个样本并进滚动窗口（窗口与样本上限见 `src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），样本窗口存在 `COLLECTOR_KV`。
   密钥只进查询参数，日志里只有状态码。两端各算各的：一端失败，这一轮样本里那端为空，另一端照常进窗口并写可滞后层，
-  另记一条 `status: "partial"` 的 warn；两端都失败才算任务失败、不写；窗口里某端一轮都没有时也不写。
+  另记一条 `status: "partial"` 的 warn；两端都失败才算任务失败、不写。窗口里某端一轮都没有时样本照存、可滞后层不写。
+  轮次上限截不掉某端在窗口里仅剩的那条。结果的 `fetchedAt` 与可滞后层的写入时刻都取两端最近一次实测里较旧的那个，
+  一端一直测不出时卡片和 freshness-watch 照样按它判过期。
 - **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由本 Worker 自签
   （`shared/musickit-token.ts#issueApiDeveloperToken`，同一 isolate 里过了签发到期的中点才重签），签名配置缺了也跳过。
   列表首项的动态封面在这里查好再交给状态核心（`shared/track-enrichment.ts#enrichRecentlyPlayed`），查不出结果时
