@@ -205,7 +205,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 ## 8. AI Coding Agent 账号限额
 
 ### 容器化上报架构
-- **独立容器运行**：`reporters/agents-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封可以另带 Cursor 账号的三种 coding 事实（`codingUsage` / `codingActivity` / `codingTokenBuckets`，见上一节），Mac 不在线时 Cursor 的用量与活动灯照样更新；Devin CLI 的日行也放在同一封的 `codingUsage` 里。
+- **独立容器运行**：`reporters/agents-reporter` 运行在独立 Linux 容器中，每轮通过 `POST /api/ingest/agents` 统一上报限额。同一封可以另带 Cursor 账号的三种 coding 事实（`codingUsage` / `codingActivity` / `codingTokenBuckets`，见上一节），Mac 不在线时 Cursor 的用量与活动灯照样更新；Devin CLI 的日行也放在同一封的 `codingUsage` 里，按 tokens.ci 两次提交的增量摊成的 5 分钟桶另发一封（`reporters/agents-reporter/README.md`「devin」）。
 - **凭据完全隔离**：容器内部独立维护各家 CLI（Claude Code、Codex 等）登录 Session，严禁复制宿主机凭据，防止 refresh token 竞态失效。
 - **心跳与超时**：
   - 即使数据无变化，每轮上报依然执行（作为存活心跳）。

@@ -1,4 +1,4 @@
-import { PREVIEW_REVISION_PATH } from "./preview-worker-name.mjs";
+import { PREVIEW_REVISION_PATH } from "./preview-worker-name.ts";
 
 const READY_PATH = "/api/status/listening/now";
 

@@ -1,7 +1,6 @@
-import { previewWorkerName, previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.mjs";
+import { previewWorkerName, previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
 
 export const SITE_PREVIEW_MANIFEST_PATH = "build/site-preview.json";
-export const SITE_PREVIEW_ACCESS_VAR = "SITE_PREVIEW_ACCESS_READY";
 
 const BUILT_CONFIG_KEYS = [
   "name", "main", "assets", "rules", "no_bundle",
@@ -29,7 +28,7 @@ export function sitePreviewManifest({ branch = "", commit, backendUrl = null }) 
 export function sitePreviewDeployEnv(env = process.env) {
   const branch = env.WORKERS_CI_BRANCH?.trim() ?? "";
   const commit = env.WORKERS_CI_COMMIT_SHA?.trim() ?? "";
-  return { branch, commit, accessReady: env[SITE_PREVIEW_ACCESS_VAR]?.trim() === "true" };
+  return { branch, commit };
 }
 
 export function sitePreviewVars(manifest) {

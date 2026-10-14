@@ -14,7 +14,7 @@ workspace_tests() {
 }
 
 script_tests() {
-  node --test scripts/*.test.mjs
+  node --test scripts/*.test.mjs scripts/*.test.ts
 }
 
 docs() {

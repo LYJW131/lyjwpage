@@ -39,7 +39,7 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 [Cloudflare Preview 的 Service Binding 指向目标 Worker 的生产部署](https://developers.cloudflare.com/workers/previews/resources/#service-bindings)，不能用生产 Service Binding 配置连接同名分支。因此预览采用专用组合入口 `workers/core/src/preview-entry.ts`，在一个 Preview 内运行 core 与 ai，并注入本实例内的状态读取和请求转发。生产入口不导入这个组合模块。
 
-只有 core 的非生产分支构建发布后端 Preview，parent 固定为 `core`，Preview 同时包含本提交的状态与 AI 代码。命名与地址算法在 `scripts/preview-worker-name.mjs`；分支名中的 `/` 收成短横线，过长时截断并带 hash。
+只有 core 的非生产分支构建发布后端 Preview，parent 固定为 `core`，Preview 同时包含本提交的状态与 AI 代码。命名与地址算法在 `scripts/preview-worker-name.ts`；分支名中的 `/` 收成短横线，过长时截断并带 hash。
 
 `deploy-preview.mjs` 读取 core 的 `wrangler.toml`，生成临时 `workers/core/wrangler.preview.json`，执行 `wrangler preview` 后删除。它明确设置：
 
@@ -50,13 +50,13 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 预览绑定由 core 配置的 `[previews]` 段提供，状态、聊天与构建 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
 
-core 与 site 的 Preview 和生产同服务名，Workers Issues 的摘要只能按服务名数、分不出 Preview，所以两边的 Preview 只留日志与 traces，关掉 Issues：core 写在 `wrangler.toml` 的 `[previews.observability]`，site 由 `scripts/site-preview.mjs#sitePreviewConfig` 生成。查 Preview 的报错用遥测查询，按请求主机是 `*.workers.dev` 区分。
+core 与 site 的 Preview 和生产同服务名，Workers Issues 的摘要只能按服务名数、分不出 Preview，所以两边的 Preview 只留日志与 traces，关掉 Issues：core 写在 `wrangler.toml` 的 `[previews.observability]`，site 由 `scripts/site-preview.mjs#sitePreviewConfig` 生成。查 Preview 的报错用遥测查询，按有没有 `$workers.preview.slug` 区分。
 
 `scripts/build.mjs` 在预览构建里等待本分支 core Preview，`scripts/preview-backend.mjs#isMatchingPreview` 只接受 revision 与 `WORKERS_CI_COMMIT_SHA` 一致且状态读取就绪的地址。等待上限见 `WAIT_MS`；等不到匹配时构建直接失败，预览构建永不回退生产后端。选中的地址既是构建期的 `PREVIEW_BACKEND_URL`，也是运行时的预览后端，构建成功后冻结在 `build/site-preview.json`；`scripts/deploy-site-preview.mjs`（`pnpm preview:deploy`）只按这份冻结记录发布 `site` 的 Preview，不重查后端。预览构建强制清空 `PUBLIC_CF_WEB_ANALYTICS_TOKENS`，不带生产凭据。
 
 为了让只改前端或只改 AI 的分支也有同提交后端可用，core 的非生产分支构建（Builds 配置里的 `previews_base_config`）另配包含路径：同时覆盖前端、状态与 AI 依赖（`src/*`、`shared/*`、`workers/core/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单），只排除 ingress 独有的 `shared/ingest/*`；生产配置的监视路径不变。
 
-站点 Preview 地址是 `<预览名>-site.lyjw.workers.dev`，由 Cloudflare Access 保护，访问者要先登录，没有免登录分享链接；应用与策略见 [仓库外事实](./ops-facts.md)。这个地址要 `site` 的 Worker 级 Preview URL 开关开着，而每次生产 `wrangler deploy` 都按 `wrangler.jsonc` 的 `preview_urls` 重写它（缺省为关），所以根配置必须写 `preview_urls: true`；关着时 `wrangler preview` 仍报成功，只是日志写「no active URLs」，PR 上也没有站点地址。PR 上带地址的「Deploying Preview」评论只有走 Builds Previews（`previews_enabled` 与 `previews_base_config`）的 Worker 才会发，旧版「非生产分支触发」只给构建状态表；core 与 site 都要走 Previews。只保护 `site` 的 Preview，不要开账号级保护，以免挡住 core 预览的构建就绪检查。`preview:deploy` 只在 site 的 Previews 构建变量 `SITE_PREVIEW_ACCESS_READY` 为 `true` 时执行，没确认 Access 生效前不要打开它。
+站点 Preview 对外地址是 `<预览名>.preview.lyjw.dev`（`scripts/preview-worker-name.ts#SITE_PREVIEW_DOMAIN`），来自 `wrangler.jsonc` 里只开 `previews_enabled`、`enabled: false` 的自定义域名，生产部署时生效，Cloudflare 自动建通配 DNS 与证书；`<预览名>-site.lyjw.workers.dev` 也仍可用。不设登录，谁拿到地址都能打开：仓库公开，同分支的 core Preview 本来也公开，登录挡不住什么。workers.dev 预览由 Cloudflare 自动加 `X-Robots-Tag: noindex`，自定义域名不加，所以自己加：Worker 渲染的响应由 `workers/site/src/index.ts#withoutIndexing` 加，不经 Worker 的静态资源（如 `/explainer/`、`/offline.html`）由 `public/_headers` 按 `preview.lyjw.dev` 主机加。core Preview 的 `ALLOWED_ORIGINS` 要同时放行这两种站点预览源。workers.dev 地址要 `site` 的 Worker 级 Preview URL 开关开着，而每次生产 `wrangler deploy` 都按 `wrangler.jsonc` 的 `preview_urls` 重写它（缺省为关），所以根配置必须写 `preview_urls: true`；关着时 `wrangler preview` 仍报成功，只是日志写「no active URLs」，PR 上也没有站点地址。PR 上带地址的「Deploying Preview」评论只有走 Builds Previews（`previews_enabled` 与 `previews_base_config`）的 Worker 才会发，旧版「非生产分支触发」只给构建状态表；core 与 site 都要走 Previews。不要开账号级的 Workers Access 保护，它会挡住 core 预览的构建就绪检查。
 
 AI 端点需要的 Secret 设在 core parent 的本分支 Preview 上：
 

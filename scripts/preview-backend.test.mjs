@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { isMatchingPreview } from "./preview-backend.mjs";
-import { PREVIEW_REVISION_PATH } from "./preview-worker-name.mjs";
+import { PREVIEW_REVISION_PATH } from "./preview-worker-name.ts";
 
 const origin = "https://branch-api.example";
 

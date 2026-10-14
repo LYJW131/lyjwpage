@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { BUNDLED_MODEL_ICONS, MODEL_ICON_DIR } from "@/lib/model-icon";
 
-import { modelIconMappings } from "./model-icons.mjs";
+import { modelIconMappings } from "./model-icons.ts";
 import { githubAvatarPng, githubAvatarSource } from "./site-assets/avatar";
 import { ogPng } from "./site-assets/og";
 

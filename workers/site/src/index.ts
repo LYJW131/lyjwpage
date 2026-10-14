@@ -374,46 +374,59 @@ async function serveArchivedAsset(request: Request, env: Env): Promise<Response>
   return object ? new Response(object.body, { headers: archivedAssetHeaders(object) }) : errorResponse(404);
 }
 
+async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
+  const route = classifyGatewayRequest(request.method, url.pathname);
+  switch (route.kind) {
+    case "lag-status":
+      if (isProduction(env)) return serveLagStatus(request, route.view, env);
+      return backendRedirect(env, url);
+    case "core":
+      return isProduction(env) ? env.CORE_SERVICE.fetch(request) : backendRedirect(env, url);
+    case "ai":
+      return isProduction(env) ? env.AI_SERVICE.fetch(request) : backendRedirect(env, url);
+    case "collector":
+      return isProduction(env) ? env.COLLECTOR_SERVICE.fetch(request) : backendRedirect(env, url);
+    case "error-relay": {
+      if (!isSiteOrigin(request)) return errorResponse(403, "Foreign origin");
+      if (!(await env.RELAY_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") ?? "" })).success) {
+        return errorResponse(429, "Too many error reports");
+      }
+      const status = await relayClientError(request);
+      return status === 204 ? new Response(null, { status, headers: { "Cache-Control": NO_STORE } }) : errorResponse(status, "Invalid error report");
+    }
+    case "image-proxy":
+      return ctx.exports.ImageVariants.fetch(request);
+    case "image-object":
+      return ctx.exports.ImageVariants.fetch(imageObjectRequest(request));
+    case "site-asset": {
+      const { asset, cacheControl } = SITE_ASSET_ROUTES.get(url.pathname)!;
+      const response = await env.ASSETS.fetch(new Request(new URL(asset, url), request));
+      const headers = new Headers(response.headers);
+      headers.set("Cache-Control", response.ok ? cacheControl : NO_STORE);
+      return new Response(response.body, { status: response.status, headers });
+    }
+    case "archived-asset":
+      return serveArchivedAsset(request, env);
+    case "render":
+      return ctx.exports.RenderedSite.fetch(request);
+    default:
+      return errorResponse(404);
+  }
+}
+
+// Cloudflare 只给 workers.dev 上的 Preview 自动加 noindex，preview.lyjw.dev 上的要自己加。
+function withoutIndexing(response: Response): Response {
+  if (response.webSocket) return response;
+  const headers = new Headers(response.headers);
+  headers.set("X-Robots-Tag", "noindex, nofollow");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 const siteWorker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    const route = classifyGatewayRequest(request.method, url.pathname);
-    switch (route.kind) {
-      case "lag-status":
-        if (isProduction(env)) return serveLagStatus(request, route.view, env);
-        return backendRedirect(env, url);
-      case "core":
-        return isProduction(env) ? env.CORE_SERVICE.fetch(request) : backendRedirect(env, url);
-      case "ai":
-        return isProduction(env) ? env.AI_SERVICE.fetch(request) : backendRedirect(env, url);
-      case "collector":
-        return isProduction(env) ? env.COLLECTOR_SERVICE.fetch(request) : backendRedirect(env, url);
-      case "error-relay": {
-        if (!isSiteOrigin(request)) return errorResponse(403, "Foreign origin");
-        if (!(await env.RELAY_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") ?? "" })).success) {
-          return errorResponse(429, "Too many error reports");
-        }
-        const status = await relayClientError(request);
-        return status === 204 ? new Response(null, { status, headers: { "Cache-Control": NO_STORE } }) : errorResponse(status, "Invalid error report");
-      }
-      case "image-proxy":
-        return ctx.exports.ImageVariants.fetch(request);
-      case "image-object":
-        return ctx.exports.ImageVariants.fetch(imageObjectRequest(request));
-      case "site-asset": {
-        const { asset, cacheControl } = SITE_ASSET_ROUTES.get(url.pathname)!;
-        const response = await env.ASSETS.fetch(new Request(new URL(asset, url), request));
-        const headers = new Headers(response.headers);
-        headers.set("Cache-Control", response.ok ? cacheControl : NO_STORE);
-        return new Response(response.body, { status: response.status, headers });
-      }
-      case "archived-asset":
-        return serveArchivedAsset(request, env);
-      case "render":
-        return ctx.exports.RenderedSite.fetch(request);
-      default:
-        return errorResponse(404);
-    }
+    const response = await routeRequest(request, env, ctx);
+    return isProduction(env) ? response : withoutIndexing(response);
   },
 };
 

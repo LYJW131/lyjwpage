@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 
-import { PREVIEW_WORKER_SCRIPT, SITE_PREVIEW_WORKER_SCRIPT, previewWorkerName, previewWorkerOrigin } from "./preview-worker-name.mjs";
+import {
+  PREVIEW_WORKER_SCRIPT,
+  SITE_PREVIEW_WORKER_SCRIPT,
+  previewWorkerName,
+  previewWorkerOrigin,
+  type PreviewWorkerScript,
+} from "./preview-worker-name.ts";
 
 test("分支名变成稳定的 Preview 名和地址", () => {
   assert.equal(previewWorkerName("feat/agent-status"), "feat-agent-status");
@@ -11,9 +17,9 @@ test("分支名变成稳定的 Preview 名和地址", () => {
     previewWorkerOrigin("feat/agent-status"),
     "https://feat-agent-status-core.lyjw.workers.dev",
   );
-  assert.equal(previewWorkerOrigin("feat/agent-status", "site"), "https://feat-agent-status-site.lyjw.workers.dev");
-  assert.throws(() => previewWorkerOrigin("feat/agent-status", "ai"), /Unknown Preview Worker/);
-  assert.throws(() => previewWorkerOrigin("feat/agent-status", "ingress"), /Unknown Preview Worker/);
+  assert.equal(previewWorkerOrigin("feat/agent-status", "site"), "https://feat-agent-status.preview.lyjw.dev");
+  assert.throws(() => previewWorkerOrigin("feat/agent-status", "ai" as PreviewWorkerScript), /Unknown Preview Worker/);
+  assert.throws(() => previewWorkerOrigin("feat/agent-status", "ingress" as PreviewWorkerScript), /Unknown Preview Worker/);
 });
 
 test("main 和空分支不分配 Preview", () => {
@@ -31,10 +37,11 @@ test("超长分支名截到 DNS 标签上限，两次结果相同", () => {
   const branch = `feat/${"segment-".repeat(20)}tail`;
   const name = previewWorkerName(branch);
   assert.ok(name);
-  for (const worker of [PREVIEW_WORKER_SCRIPT, SITE_PREVIEW_WORKER_SCRIPT]) {
-    const label = new URL(previewWorkerOrigin(branch, worker)).hostname.split(".")[0];
+  for (const worker of [PREVIEW_WORKER_SCRIPT, SITE_PREVIEW_WORKER_SCRIPT] as const) {
+    const label = new URL(previewWorkerOrigin(branch, worker) ?? assert.fail("no origin")).hostname.split(".")[0];
     assert.equal(label.length <= 63, true);
-    assert.equal(label, `${previewWorkerName(branch, worker)}-${worker}`);
+    const base = previewWorkerName(branch, worker);
+    assert.equal(label, worker === SITE_PREVIEW_WORKER_SCRIPT ? base : `${base}-${worker}`);
   }
   assert.match(name, /^[a-z0-9-]+-[0-9a-f]{8}$/);
   assert.equal(name.endsWith("-"), false);
