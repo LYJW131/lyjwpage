@@ -12,6 +12,7 @@ import {
   summarizeBuckets,
   type HealthBucket,
 } from "./health.ts";
+import { parseFieldVitals } from "./health-cloudflare.ts";
 import type { HealthPayload } from "./health-types.ts";
 
 const HOUR = HEALTH_BUCKET_MS;
@@ -95,4 +96,10 @@ test("blocks that failed this round carry over for a day", () => {
   assert.deepEqual(mergeHealth(next, previous).errors, previous.errors);
   assert.equal(mergeHealth(next, previous).blockAt?.errors, 1000);
   assert.equal(mergeHealth({ ...next, fetchedAt: 1000 + DAY }, previous).errors, null);
+});
+
+test("negative Web Analytics quantiles read as unavailable, while a zero CLS stays", () => {
+  const vitals = (quantiles: Record<string, number>) => parseFieldVitals({ data: { viewer: { accounts: [{ vitals: [{ count: 12, quantiles }] }] } } });
+  assert.deepEqual(vitals({ largestContentfulPaintP75: -1, cumulativeLayoutShiftP75: -1 }), { lcpP75Ms: null, inpP75Ms: null, clsP75: null, fcpP75Ms: null, ttfbP75Ms: null, samples: 12 });
+  assert.equal(vitals({ cumulativeLayoutShiftP75: 0 }).clsP75, 0);
 });
