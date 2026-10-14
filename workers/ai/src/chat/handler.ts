@@ -32,7 +32,7 @@ import { admitDesign, claimDesignOpen, designAvailable, plannerHistory, startDes
 import { designApi, designTurn, turnMatches, type DesignApi, type DesignTurnInput, type SessionEvent } from "./designer";
 import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
-import { webSearchTool } from "./web-search";
+import { awaitsServerTool, webSearchTool } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
@@ -328,9 +328,12 @@ async function converse({
     const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
     if (lastRound) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
     const searchesLeft = GOD_CHAT_LIMITS.maxWebSearches - searches;
-    const tools = lastRound ? [] : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
+    // 上一轮留下没跑完的搜索时，这一轮不带搜索工具 API 就整轮 400；为接上它允许超出搜索次数一次，收尾轮也只带它。
+    const resumeSearch = awaitsServerTool(messages);
+    const search = searchesLeft > 0 || resumeSearch ? [webSearchTool(model, Math.max(searchesLeft, 1))] : [];
+    const tools = lastRound ? (resumeSearch ? search : []) : [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
         ...(openDesign ? [START_DESIGN_TOOL] : []),
-        ...(searchesLeft > 0 ? [webSearchTool(model, searchesLeft)] : []),
+        ...search,
         ...(upgradeOpen ? [UPGRADE_TOOL] : [])];
     const betas = betasFor(tier);
     const stream = client.beta.messages.stream(
