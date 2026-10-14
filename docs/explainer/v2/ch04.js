@@ -9,7 +9,7 @@
     "ch04.visitor": ["访客", "Visitor"],
     "ch04.rt": ["实时", "Realtime"],
     "ch04.lag": ["可滞后", "Lag-tolerant"],
-    "ch04.foot": ["Cache-Tag · max-age 600 / stale-while-revalidate 604200", "Cache-Tag · max-age 600 / stale-while-revalidate 604200"],
+    "ch04.foot": ["Cache-Tag · max-age 600 / stale-if-error 604200", "Cache-Tag · max-age 600 / stale-if-error 604200"],
     "ch04.flip": ["在线 → 离线：这几块的标签失效", "Online → offline: tags expire"],
     "ch04.old": ["旧页照发", "The old page still ships"],
     "ch04.new": ["新页 · 后台印", "New page · printing"],

@@ -296,7 +296,7 @@ payload: >-
 ## 13. PWA 与边缘缓存规则
 
 ### PWA 缓存策略
-- 生产环境注册 `/sw.js`，仅持久化缓存离线提示页 `/offline.html`。
+- 生产环境注册 `/sw.js`，仅持久化缓存离线提示页 `/offline`（`public/offline.html` 去掉后缀的地址，源：`public/sw.js#OFFLINE_URL`）。
 - 首页 HTML、RSC 数据、状态 API 及媒体资源均不写入 Service Worker 离线缓存，保证用户时刻获取最新实时流。
 
 ### 边缘缓存规则

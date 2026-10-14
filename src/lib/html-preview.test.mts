@@ -23,7 +23,7 @@ test("外壳与里层都带 CSP：不准连网，外壳的 frame-src 'none' 拦�
     assert.match(policy, /frame-src 'none'/);
     assert.doesNotMatch(policy, /connect-src|\s\*(\s|;|$)/);
     assert.match(policy, /img-src data: blob: https:\/\/lyjw\.me\/img\/ /);
-    assert.match(policy, /font-src data: https:\/\/lyjw\.me\/site-assets\/;/);
+    assert.match(policy, /font-src data: https:\/\/lyjw\.me\/assets\/;/);
   }
 });
 
