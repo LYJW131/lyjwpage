@@ -35,6 +35,6 @@ StateHub 的 SQLite 是实时状态的唯一权威。人读的说明在 `README.
 ## 本地开发与验证
 
 - `pnpm dev:worker`（仓库根）用一个 `wrangler dev` 进程起 dev-router、core、ai、ingress、collector；本地名字须与 Service Binding 对齐。状态在 `.wrangler/dev-state`，空目录直接以空状态起，想清库就删它。
-- 本地是空库：`.dev.vars` 配 `UPSTREAM_API_URL` 后按端点整份兜底：生产 `ok:true` 的端点整份用生产的，已有端点的新字段本地看不到，要用 `pnpm dev:override` 注入（见 `README.md`「本地开发」）；测上报链路要把它注释掉。`DEV_OVERRIDES=true` 才开假数据注入端点，夹具里的时间戳用 `"$now"` 令牌（用法见 `pnpm dev:override --help`）。
+- 本地是空库：`.dev.vars` 配 `UPSTREAM_API_URL` 后按端点整份兜底：生产 `ok:true` 的端点整份用生产的，已有端点的新字段本地看不到，要用 `pnpm dev:override` 注入（见 `README.md`「本地开发」）；测上报链路要把它注释掉。`DEV_OVERRIDES=true` 才开假数据注入端点，夹具里的时间戳用 `"$now"` 令牌（用法见 `pnpm dev:override --help`）；成套场景（`dev-fixtures/scenes/`）用 `pnpm dev:scene`，摘要三格由 `scripts/dev-scene.ts` 调 ai 的 `workers/ai/src/digest/` 同一份规则重算，改那里的规则或载荷形状时一并跑 `scripts/dev-scene.test.ts`。
 - 验证：`pnpm --dir workers/core typecheck`、`pnpm --dir workers/core test`、`node scripts/verify-core-worker.mjs --build`（隔离链路，不碰生产绑定和凭据）。
 - AI 转发链路的协议与真实 MCP 客户端验证见 `workers/ai/README.md`「MCP」，不能只验证 core 返回了 HTTP 200。

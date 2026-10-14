@@ -466,7 +466,22 @@ core 这一轮本地要做的 D1 归档、Clef 打分被隔离开关关着。
 `DEV_OVERRIDES=true` 时另开 `PUT` / `DELETE /api/dev/override/<端点路径>` 和 `GET /api/dev/overrides`，往本地 SQLite 里注入某条端点的信封，
 优先于上游和本地；夹具放 `dev-fixtures/`，用根目录的 `pnpm dev:override` 推。`src/origin-worker.ts` 只在这个变量开着时放行非 GET。
 夹具里的时间戳写成 `"$now"` / `"$now-90000"`（毫秒偏移），推送脚本在发出前换成当下 —— 注入绕过路由，没人替它续心跳，写死的 `pushedAt` 几分钟就会被判成过期。
-按站点日判的日期串写成 `"$today"` / `"$today-1"`（按日历加减天数，站点时区），「最近一天是不是今天」这类夹具靠它。
+按站点日判的日期串写成 `"$today"` / `"$today-1"`（按日历加减天数，站点时区），「最近一天是不是今天」这类夹具靠它；ISO 时刻串写成 `"$iso-60000"`。
+端点路径可以带查询串（`/api/lyrics?song=…`），带了就只答同一个查询；不带的也答同路径的增量请求（`?since=`），只有奖杯的 `?titleids=` 切片不拿无参注入去答（形状不同），没有精确注入时照常走本地与上游（`src/public-api.ts#matchOverride`）。
+`/api/lyrics` 等 Apple Music 路径由采集 Worker 回答，dev-router 先问一次这里的注入（`workers/dev-router/src/index.ts`），SSR 与浏览器都读得到。
+
+单条注入只盖一个端点，其余仍走生产兜底：只注 Pulse 时摘要卡的数字还是生产的，两边对不上。要截图或要多张卡互相对得上，用场景一次注入整份快照：
+
+```sh
+pnpm dev:scene readme                                   # 清掉现有注入，场景里每条端点用同一个 now 注入
+NODE_USE_ENV_PROXY=1 pnpm dev:scene --capture <场景>    # 把生产此刻的全部状态视图抓成场景（云端会话要那个变量走代理）
+pnpm dev:scene --reset                                  # 收尾
+```
+
+场景在 `dev-fixtures/scenes/<场景>.json`：`views` 按端点写夹具文件名、内联信封，或 `{ "fetch": "<地址>" }`（注入时现取，歌词这类不入库的内容用它）；`extends` 继承另一个场景再覆盖几条，`headline` 固定标题。
+`--capture` 抓下的时刻、ISO 时刻、站点日期都改写成相对令牌（`scripts/dev-fixtures.ts#tokenize`），哪天注入都像刚抓的。
+注入前摘要的三格按场景里的其他视图重算（调 `workers/ai/src/digest/` 与生成时同一份规则），标题池收成一句：首屏内联脚本和客户端轮换都从池里随机取，一句就没得随机，SSR、浏览器、明暗两次截图看到的是同一份。
+场景缺的状态视图（以及正在听那首的歌词）会列在输出的 `unpinned` 里，它们仍走生产兜底。根 README 的静态效果图用 `pnpm readme:shots` 按 `readme` 场景截，见 [效果图](../../docs/screenshots.md)。
 
 ## 验证
 
