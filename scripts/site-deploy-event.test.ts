@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { siteDeploymentSha } from "./site-deploy-event.mjs";
+import { siteDeploymentSha } from "./site-deploy-event.ts";
 
 const SHA = "f72dd525b8c1befb018b76ca041a9a6d0c27ce84";
 
