@@ -485,7 +485,8 @@
     text(x, tr("ch02.foot2"), WALL_X + 40, 2064, { font: FONT.cjk(28, 600), color: graphite, reveal: prog(b, 14.9, 15.3), maxW: 1150 });
     if (b >= AT.reply[0] && b < AT.drop[1]) {
       const dropK = prog(b, AT.drop[0], AT.drop[1], E.in);
-      const rx = lerp(cb.x + 30, DROP_X, rp), ry = dropK > 0 ? lerp(PIPE_Y + 8, LAMP_Y - 60, dropK) : PIPE_Y + 8;
+      // 回执从方框左边线上出发：再往里，就压住英文版「RPC entrypoint」的头一个字母。
+      const rx = lerp(cb.x, DROP_X, rp), ry = dropK > 0 ? lerp(PIPE_Y + 8, LAMP_Y - 60, dropK) : PIPE_Y + 8;
       if (dropK > 0) line(x, DROP_X, PIPE_Y + 24, DROP_X, ry, 2.4, css("signal"));
       receipt(x, e, rx, ry, 1);
     }

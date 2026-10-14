@@ -51,8 +51,8 @@
   const UP = [[-98, 0], [0, -220], [34, 46], [62, 0]];
   const DOWN = [[-16, 0], [0, 104], [14, -22], [30, 0]];
   const LEDGER = { x: 1210, y: 120, w: 280, h: 170 };
-  const SITE = { x: 1110, y: 700, w: 200, h: 110 };
-  const API = { x: 1400, y: 700, w: 270, h: 110 };
+  const SITE = { x: 1110, y: 700, w: 200, h: 124 };
+  const API = { x: 1400, y: 700, w: 270, h: 124 };
   const KNOCK_PATH = [[NOW_X, LEDGER.y + LEDGER.h], [NOW_X, Y0], [SITE.x + SITE.w / 2, SITE.y]];
   const CHECK_PATH = [[API.x + 60, API.y], [NOW_X, Y0], [NOW_X, LEDGER.y + LEDGER.h]];
   const COL = [1830, 250], COL_R = 62;
@@ -201,11 +201,12 @@
     if (a <= 0) return;
     box(x, SITE.x, SITE.y, SITE.w, SITE.h, a);
     text(x, "lyjw.me", SITE.x + 20, SITE.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
-    text(x, "site Worker", SITE.x + 20, SITE.y + 88, { font: FONT.mono(28, 500), color: css("ash"), alpha: a, maxW: SITE.w - 40 });
+    text(x, "site Worker", SITE.x + 20, SITE.y + 94, { font: FONT.mono(28, 500), color: css("ash"), alpha: a, maxW: SITE.w - 40 });
     box(x, API.x, API.y, API.w, API.h, a);
     text(x, "workers/core", API.x + 20, API.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
-    text(x, tr("ch06.cron"), API.x + 20, API.y + 88, { font: FONT.cjk(28, 600), color: css("ash"), alpha: a });
-    dial(x, API.x + API.w - 40, API.y + 70, 22, phi % 60, a, 0);
+    text(x, tr("ch06.cron"), API.x + 20, API.y + 94, { font: FONT.cjk(28, 600), color: css("ash"), alpha: a });
+    // 计时圈压在「core」字底下方，方框加高到 124 才让圈顶和标题基线隔开 16 px；圈再往上就贴住字。
+    dial(x, API.x + API.w - 40, API.y + 84, 20, phi % 60, a, 0);
   }
   function signalLabels(x, a, footA) {
     if (a <= 0) return;

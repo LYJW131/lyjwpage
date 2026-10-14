@@ -150,7 +150,7 @@
       case "tiles": for (let i = 0; i < 5; i++) { const tx = X0 + i * 56; if (tx + 44 > px + w - 12) break; x.strokeRect(tx, Y0, 44, 62); } break;
       case "poster": x.strokeRect(X0, Y0, 70, 62); bar(X0 + 84, Y0 + 8, 90); bar(X0 + 84, Y0 + 28, 60); break;
       // 整组压低一截，让出右上角的「600 s」和计时圈。
-      case "lanes": for (let i = 0; i < 3; i++) { line(x, X0, Y0 + 32 + i * 36, px + w - 20, Y0 + 32 + i * 36, 1, c); for (let j = 0; j < 5; j++) { const sx = X0 + 30 + j * 100 + 40 * K.hash(i * 7 + j); bar(sx, Y0 + 26 + i * 36, 40 + 40 * K.hash(j * 3 + i), 12); } } break;
+      case "lanes": for (let i = 0; i < 3; i++) { line(x, X0, Y0 + 46 + i * 36, px + w - 20, Y0 + 46 + i * 36, 1, c); for (let j = 0; j < 5; j++) { const sx = X0 + 30 + j * 100 + 40 * K.hash(i * 7 + j); bar(sx, Y0 + 40 + i * 36, 40 + 40 * K.hash(j * 3 + i), 12); } } break;
       case "text": for (let i = 0; i < 2; i++) bar(X0, Y0 + i * 20, 300 - i * 90); break;
       // 实心的可用率条；空心小方框缩小后像缺字的方块。条数让出右上角的「600 s」。
       case "cells": for (let i = 0; i < 24; i++) bar(X0 + i * 17, Y0 + 4, 10, 22); break;

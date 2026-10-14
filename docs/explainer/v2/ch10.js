@@ -61,7 +61,8 @@
     { n: "01", key: "ch10.c1", X: -12040, W: 1920, paper: false },
     { n: "02", key: "ch10.c2", X: -9920, W: 2880, paper: true },
     { n: "03", key: "ch10.c3", X: -6840, W: 2400, paper: false },
-    { n: "04", key: "ch10.c4", X: -4240, W: 1440, paper: true },
+    // tw 限标题宽：04 格那摞铅字（G4）从格内 620 起，英文标题不限宽就压上去。
+    { n: "04", key: "ch10.c4", X: -4240, W: 1440, paper: true, tw: 320 },
     { n: "05", key: "ch10.c5", X: -2600, W: 2400, paper: false },
     { n: "06", key: "ch10.c6", X: 0, W: 1920, paper: false },
     { n: "07", key: "ch10.c7", X: 2120, W: 1440, paper: true },
@@ -124,7 +125,7 @@
     if (a <= 0) return;
     const col = c.paper ? css("signal") : css("signalD");
     text(ctx, c.n, c.X + 90, 196, { font: FONT.pixel(112), color: col, alpha: a, texture: FAR.has(i) });
-    text(ctx, tr(c.key), c.X + 270, 176, { font: FONT.cjk(58, 600), color: lit > 0.5 ? col : c.paper ? css("pink") : css("bone"), alpha: a, maxW: c.W - 330, texture: FAR.has(i) });
+    text(ctx, tr(c.key), c.X + 270, 176, { font: FONT.cjk(58, 600), color: lit > 0.5 ? col : c.paper ? css("pink") : css("bone"), alpha: a, maxW: c.tw ?? c.W - 330, texture: FAR.has(i) });
     line(ctx, c.X + 90, 226, c.X + 90 + Math.min(900, c.W - 180), 226, 1.4, c.paper ? css("pink") : css("bone"), 0.5 * a);
   }
   function cellMark(L, i, a) {
