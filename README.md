@@ -12,55 +12,57 @@
 
 </div>
 
-听什么、看什么、玩什么，正在使用哪些应用，设备如何运行——这个主页把分散在 Mac、iPhone、NAS 和云端服务中的状态汇集到同一个页面。
-
-它既是我的个人主页，也是一套持续演进的个人遥测系统。这个仓库记录网站源码，以及从设备采集、状态聚合到页面呈现的架构与实现。
+听什么、看什么、玩什么，正在用哪些应用，设备状态如何：这个主页把 Mac、iPhone、NAS 和云端服务里分散的状态汇到同一页，也是一套持续演进的个人遥测系统。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
-  <img src="docs/screenshots/overview-light.webp" alt="首页总览：正在看、充电头与充电宝、正在听、活动圆环与最近训练、落地节点同时点亮" width="100%">
+  <img src="docs/screenshots/overview-light.webp" alt="首页总览：每日摘要、正在看、充电头与充电宝、正在听、与神对话、活动圆环与最近训练、落地节点同时点亮" width="100%">
 </picture>
 
 ## 页面里有什么
 
-| 模块 | 展示与交互 |
+| 模块 | 内容 |
 | --- | --- |
-| **本机与充电设备** | Mac 前台应用（几款常用工具换成品牌标识和动画），以及通过隐私判断放行的窗口标题；Anker 充电器、充电宝的端口状态、电压、电流和功率变化。 |
-| **影视** | Emby 正在播放与最近观看，呈现播放进度、剧集信息、画面与音轨规格。 |
-| **音乐** | Apple Music 与 HomePod 播放状态、最近收听、逐字歌词和动态封面；访客可通过自己的 Apple Music 账号与订阅使用网页播放器和「一起听」。 |
-| **运动活动** | 通过 iPhone 的 HealthKit 数据展示 Apple Watch 活动、锻炼与站立三环，以及最近训练的时长、能量和心率。 |
-| **服务器** | 落地节点的运行时间、CPU、内存、磁盘、网络吞吐，以及按计费周期累计的流量。 |
-| **AI Coding** | 编码工具的 Token 用量（Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并）、API 等值成本估算、此刻在用的 agent、年度热力图与账号限额窗口。 |
-| **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
-| **Pulse** | 编码、听、看、玩、充电、身体活动最近 24 小时的事实时间线：编码分前台应用 / agent / 两者同时，另有一条 token 速率，听看玩按在放、暂停、空闲画出并带曲目与片名，充电画瓦数，活动画步数与训练；悬停任一时段可看当时的状态与标题。 |
-| **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态）；站点与 API 两行 30 天在线状态，PageSpeed 实验室指标的滚动中位数与真实访客的性能分；Cloudflare Workers Builds 部署与 Cloudflare Web Analytics 访问量、Workers 调用统计与 12 小时报错数，以及落地节点上两个常驻上报器的推送次数、往返延迟和线上版本。 |
-| **与神对话** | 首页对话卡片：Clef 按问题难度把每条消息派给 Haiku（杂鱼）、Sonnet（先知）或 Fable（神，降临时有特效），或直接拒绝；模型可读取站点各卡片的实时数据、查阅本项目的设计文档、联网搜索并附来源，`/new` 新开会话并保留本地存档，回复渲染 Markdown，模型会在回答里自己插入数字卡、柱状 / 折线图、时间线、带封面的列表等图示，由站点组件按主题画在正文里（`src/components/chat-visual.tsx`），组件画不了的图示改写 HTML、在断网沙箱中渲染（`src/lib/html-preview.ts`）；访客可在对话中规划站点改动，确认计划后用 GitHub 身份提 issue 或启动构建，卡片跟踪 PR、检查与预览；发送前过 Cloudflare Turnstile 人机验证，并按访客限流、限定上下文与输出长度。 |
+| **每日摘要** | 一句标语加几项读数概括最近 24 小时，配 24 小时表盘 |
+| **本机与充电** | Mac 前台应用与窗口标题，Anker 充电头、充电宝的端口与功率 |
+| **影视 / 音乐** | Emby 正在播放；Apple Music 与 HomePod 在听、逐字歌词，访客可用网页播放器「一起听」 |
+| **运动** | Apple Watch 三环与最近训练 |
+| **服务器** | 落地节点的速率、流量、CPU、内存、磁盘 |
+| **AI Coding** | 各编码工具的 Token 用量、成本估算、在用的 agent、年度热力图与限额 |
+| **游戏** | PlayStation 在线状态与奖杯 |
+| **Pulse** | 编码、听、看、玩、充电、运动的 24 小时时间线 |
+| **服务状态** | Claude、ChatGPT、Cursor、GitHub、Cloudflare 等官方状态页汇总 |
+| **站点自身** | 仓库与提交、30 天在线状态、性能分、各 Worker 与上报器指标 |
+| **与神对话** | 按问题难度派给不同档位的 Claude，可读各卡实时数据、联网搜索、规划站点改动 |
 
-界面以灰阶、细线边界和卡片布局为基础，用等宽数字稳定动态指标的排版。颜色与动效主要服务于媒体内容、状态变化和交互反馈。
-
-这些数据也开放给 AI：`https://lyjw.me/mcp` 是公开的 MCP 端点（Streamable HTTP，无需鉴权），加进任意 MCP 客户端（ChatGPT 里身份验证选「无身份验证」），就能读到每张卡片背后的实时数据、查阅本项目的设计文档；与神对话用的正是同一套工具。
+同一套数据也开放给 AI：`https://lyjw.me/mcp` 是公开 MCP 端点（Streamable HTTP，无需鉴权）。
 
 ## 页面效果
 
-首页是动态的：正在播放、正在充电、正在游玩这些卡片只在对应的事情发生时出现，平时看不到。开头的总览图和下面的效果图都在本地用示例数据把这些状态同时点亮，明暗主题跟随系统；会动的那几张是从站点上真实录下来的。
+正在看、正在听、充电、游戏这类状态卡片只在对应的事情发生时出现。下面的图在本地用示例数据把这些状态同时点亮，明暗跟随系统；录制方法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
 
-**页头的前台应用**：页头中央显示 Mac 此刻的前台应用，图标和名字由 Mac 上报器上报。几款常用工具换成了品牌标识：Claude Code 是像素吉祥物的取物动画，来自 [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop)（从屏幕录像逐帧复原的 19 个姿势，站点内联其精灵数据自行播放，[在线预览](https://lyjw131.github.io/mascot-fetch-loop/)）；Ghostty 是[官网首页](https://ghostty.org/)那只 ASCII 幽灵，`scripts/ghostty-frames.mjs` 从首页载荷里取出字符画帧，按字形墨量把单元分成本体和光环各几档，抽帧压成粗网格（`src/lib/ghostty-frames.json`，参数见 `scripts/ghostty-frames.mjs#CROP` 等常量），站内用 SVG 路径循环播放，本体跟随页面文字色、光环保持官网的蓝；Cursor 与 Antigravity 用 [LobeHub 图标集](https://github.com/lobehub/lobe-icons)的字标。
+**页头前台应用**：Claude Code、Ghostty、Cursor、Antigravity 换成品牌动画，窗口标题过了隐私判断才显示。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
-  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识：Claude Code 吉祥物取物动画、Ghostty ASCII 幽灵动画、Cursor 与 Antigravity 下方窗口标题的出现、变化与消失" width="788">
+  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识与窗口标题的出现、变化与消失" width="788">
 </picture>
 
-应用名下面那行淡色小字是当前窗口的标题，Cursor 和 Antigravity 两段演示了它出现、变化和消失的样子——但只有通过隐私判断的标题才会出现，见下文。
+**每日摘要**
 
-**Emby 正在播放**：海报、剧集、进度，以及画面、音轨与码率规格。
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/digest-dark.webp">
+  <img src="docs/screenshots/digest-light.webp" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
+</picture>
+
+**Emby 正在播放**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-watching-dark.webp">
   <img src="docs/screenshots/now-watching-light.webp" alt="Emby 正在播放卡片" width="100%">
 </picture>
 
-**充电设备**：Anker 充电头各端口的功率、设备与协议，以及总功率曲线；充电宝的电量、收放电、温度与健康度。
+**充电头与充电宝**
 
 <table>
   <tr>
@@ -79,123 +81,83 @@
   </tr>
 </table>
 
-**Apple Music 正在播放**：封面、来源设备、进度与逐字高亮的同步歌词，下方是最近收听。
+**Apple Music 正在播放**：逐字高亮的同步歌词，下方是最近收听。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.gif">
-  <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music 正在播放：逐字高亮的歌词一句扫过、换到下一句，下方是最近收听" width="100%">
+  <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music 正在播放：逐字歌词扫过，下方是最近收听" width="100%">
 </picture>
 
-**活动与训练**：Apple Watch 的活动、锻炼、站立三环与步数、距离、爬楼，右侧是最近训练，横向翻页。
+**与神对话**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.webp">
+  <img src="docs/screenshots/chat-light.webp" alt="与神对话卡片：示例问题与输入框" width="100%">
+</picture>
+
+**活动与训练**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.gif">
-  <img src="docs/screenshots/activity-light.gif" alt="活动卡片：读数从上午换到下午，三环转到新位置、数字滚动，右侧是最近训练" width="100%">
+  <img src="docs/screenshots/activity-light.gif" alt="活动卡片：三环与读数变化，右侧是最近训练" width="100%">
 </picture>
 
-**落地节点**：位置与运营商、上下行速率、本计费周期已用流量，以及 CPU、内存与磁盘。
+**落地节点**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
-  <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：上下行速率、CPU 与内存换档时读数滚动" width="100%">
+  <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
 </picture>
 
-**AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。用量有三处来源：Mac 本机日志、Cursor 账号侧的历史、Claude Code 云端的遥测，来源只报原始事实，合计、排名、今日和年度格子在状态核心一处算（同一 agent 有账号级历史时只算它，否则相加）。哪个 agent 此刻在用看它最近一次用量事件，Mac 合盖时云端和 Cursor 的灯照样亮；某个来源采集失败时，读数旁标出 Partial，不把缺的那部分当成 0。
+**AI Coding**：Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并计算。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.gif">
-  <img src="docs/screenshots/vibecoding-light.gif" alt="AI Coding 卡片：汇总多来源用量，展示活跃工具与账号限额；Token 和成本随用量增长滚动" width="100%">
+  <img src="docs/screenshots/vibecoding-light.gif" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
 </picture>
 
-**PlayStation**：在线状态、正在游玩的游戏、奖杯统计与最近解锁；展开游戏卡片查看奖杯组与逐条成就。
+**PlayStation**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/playstation-trophies-dark.webp">
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
 </picture>
 
-**Pulse**：最近 24 小时「在做什么」的事实时间线。编码是三色带：前台开着编码应用、只有 agent 在跑、两者同时，下面的 Tokens 道画三处来源相加后的每分钟 token（和站内所有 token 数一样含 cache read）；听、看、玩按状态画出在放 / 暂停 / 空闲（在游戏里 / 在线 / 离线），并带上当时的曲目、影视或游戏名；充电画实测瓦数；身体活动画 HealthKit 闭合五分钟桶的步数，训练叠成带项目名的区间。没有观测的时段留空，和观测到的空闲分开。没有上报器的 Apple Music 播放（iPhone、iPad、网页版等），从「最近播放的歌」列表推出来：一首歌开播几秒后就排到列表最前，结合每首时长把连续播放的一串对齐，画成每首一段的斜线区间，悬停可看开播时刻的理想误差。右侧是这一天的事实摘要（编码时长与其中 agent 的时长、在放时长与曲目数、Token 速率峰值与当前速率、充电峰值与电量、步数）。只存原始值，档位与颜色在展示时现算；Jev 只给编码的十五分钟窗口打强度与模式，出现在悬停里。事实每 5 分钟归档到 D1。悬停、点击或用方向键走到某一段，会显示这一段的时间范围和当时的状态与标题。
+**Pulse**：悬停任一时段看当时的状态与标题。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-detail-dark.webp">
-  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：包含 Tokens 速率的事实时间线与右侧摘要，悬停听歌道的一段显示时间范围、状态与当时的曲目" width="100%">
+  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：事实时间线与右侧摘要，悬停显示一段的详情" width="100%">
 </picture>
 
-**站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看采集 Worker 每分钟的在线探测，`Core` 看 core Worker 定时一轮的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
+**服务状态**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/provider-status-dark.webp">
+  <img src="docs/screenshots/provider-status-light.webp" alt="服务状态卡片：各服务的运行状态" width="100%">
+</picture>
+
+**站点自身**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
-  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE 卡片：仓库统计与提交、lyjw.me 与 API 两行 30 天在线状态、性能分与各服务、上报器的 12 小时指标" width="100%">
+  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
 </picture>
 
 ## 系统架构
 
-系统分为三部分：**采集端适配不同来源，Cloudflare 统一管理状态，site Worker（React Router SSR）负责页面呈现。**
+**采集端适配不同来源，Cloudflare Workers 统一管理状态，site Worker（React Router SSR）负责页面。**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
   <img src="docs/architecture-light.png" alt="多端上报经 Access 进 ingress Worker，经采集 Worker 补全「正在听」后拆成 Durable Object 实时层与 KV/D1 可滞后层，采集 Worker 拉外部服务、查 Apple Music，浏览器只连 site Worker，由它直读可滞后层、经 Service Binding 把实时状态与推送交给 core Worker、Apple Music 查询交给采集 Worker，对话、设计会话与访客构建交给 AI Worker" width="100%">
 </picture>
 
-[打开交互式架构图](https://lyjw131.github.io/lyjwpage/)
+- **采集端**跑在数据产生的地方：Mac、iPhone、NAS、Linux 上报器、Home Assistant、Claude Code 云端遥测；外部服务（Apple Music、GitHub、Cloudflare、PageSpeed）由采集 Worker 定时拉取。
+- **状态中枢**：上报入口 Worker 在 Cloudflare Access 之后验身份、校验，实时数据交给持有 Durable Objects 的 core Worker，可滞后数据写 KV，归档进 D1，图片进 R2。
+- **展示端**：site Worker 按卡读状态生成首页，之后由 WebSocket 推送与轮询追上；中国大陆入口经阿里云 ESA 加速。
 
-**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标、Agent 限额与 Cursor、Devin CLI 用量，Claude Code 云端环境用内置遥测直接上报。Home Assistant 接入 HomePod 等家庭设备；PlayStation 由家里的容器按局域网里的主机状态拉取，Apple Music 最近在听以及 GitHub、站点部署、访问量与健康数据（Cloudflare）、PageSpeed 这些外部数据由采集 Worker 定时拉取。Apple Music 的歌词、动态封面、网页播放器令牌和「正在听」的目录补全也归采集 Worker：上报入口提交前请它补全，站点域名上的这几条路径由 site Worker 转交给它。
-
-**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。上报先到无状态的上报入口 Worker：它在 Cloudflare Access 之后验明每个上报器的身份，校验、收敛报文，再按数据层拆开——实时那一半经 Service Binding 交给持有 Durable Objects 的状态核心（core Worker），可滞后层、归档与凭据自己写。改校验只重新发布上报入口，状态核心不重启、页面的推送连接不断。Durable Objects SQLite 保存实时层的快照与历史，是唯一权威；只展示、可以晚几分钟的数据（外部服务的统计、落地节点、限额等）由写入方直接写进 KV 可滞后层，每条带更新时刻，过没过时由浏览器按各卡阈值判断。R2 保存海报等图片资源，D1 归档训练、圆环、限额、服务器小时汇总、coding 用量与 Pulse 的事实时间线；在线访客由推送那条 WebSocket 顺带计数。
-
-**展示端**是 `site` Worker：React Router SSR 在 Cloudflare Workers 上生成首页，按卡读取状态（可滞后视图直接读 KV，实时视图经 Service Binding 问 core Worker），站点域名上的 `/api/*` 与 `/ws` 也由它按数据归属回答或转交；浏览器挂载后取最新状态、连推送都只找站点域名。中国大陆访问入口通过阿里云 ESA 加速页面与静态资源。
-
-## 几个关键设计
-
-### 首屏快照与实时更新分开处理
-
-首页生成时按卡并行读取各模块的端点，每条状态读取由 `StatusSnapshot` 入口按 `page:<标签>` 缓存，让首次展示不依赖浏览器逐张卡片请求数据。实时卡读状态核心，可滞后卡读 KV，任何一张都不在请求路径上现拉外部 API。首屏从各视图缓存并行读取数据；整页缓存命中时无需重新取数，冷缓存渲染仍会等待所需视图。
-
-页面加载后，实时卡各自回源校验一次、之后由推送与轮询更新；可滞后卡直接用首屏那份，之后在写入方的下一次预期写入之后几秒去取（节奏登记在 `shared/status-views.ts` 的 `cadenceMs`，排期见 `src/lib/poll-schedule.ts`）。首页缓存只在布局变化时（卡片出现或消失、换形态、行数变化，判据见 `shared/home-layout.ts`）按标签清除，下一次请求重新渲染；读数、标题、进度这类内容变化交给 `StatusSnapshot` 视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`，各视图统一，不随 `cadenceMs`）自然过期，纯心跳不触发重建。
-
-因此，缓存页面负责首次展示，客户端负责追上当前状态；不要求每次设备变化都同步刷新整页 HTML。
-
-### 推送、轮询与本地推算各有分工
-
-切歌、前台应用切换、设备插拔等事件通过 WebSocket 推送。多数事件直接携带新数据并写入 SWR 缓存，避免每个访客收到通知后再发起一次相同查询。
-
-功率曲线、累计用量等连续指标按需轮询，播放进度则根据时间锚点在浏览器本地推算。推送连接正常时，推送覆盖整份的实时卡只保留兜底轮询（`src/lib/poll-schedule.ts` 的 `PUSH_SAFETY_NET_MS`），断开时回到卡片自己的快间隔，重连后回源一次带推送事件的视图（页面在后台时等回到前台再取）；客户端的新鲜度检查防止较旧的轮询结果覆盖已收到的新状态。
-
-### 不同来源共享状态与故障边界
-
-设备协议和第三方接口由各自的采集器适配，页面消费统一的公开状态模型，不直接依赖家庭内网服务。
-
-状态读改写在 Durable Object 内串行合并并持久化。单个数据源不可用时，通过统一的状态响应让对应卡片降级，而不是让整页等待所有设备在线。
-
-上报写入需要鉴权，公开查询只返回明确的展示模型，服务端凭据与公开状态分开处理。
-
-### 站点与 Worker 分头部署，旧页面遇到新数据只降级一张卡
-
-Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天前的旧标签页：旧脚本会读到新形状的数据。每张卡外面各有一层错误边界（`src/components/card-boundary.tsx`），一张卡渲染抛错只有那一格退成 Unavailable，并带着卡片名经 `/relay` 报一条错误（同一张卡同样的错一轮只报一次），别的卡和整页照常。兜底卡片上有 Retry，页面没过期时还会自动重试几次（间隔见 `src/lib/card-recovery.ts` 的 `RECOVERY_DELAYS_MS`，页面在后台就等回到前台）；重试前先主动取一份此刻的数据写进这张卡读的 SWR 缓存（取不到的键退回清掉缓存），否则重新挂载会拿着让它崩的那份数据（连首屏那份也算）在渲染阶段再抛一次，连回源都跑不到。取数途中这个键若被推送或同键别的卡的轮询写进了更新的值（按 `src/lib/status-reads.ts` 的 `writeGeneration` 判，没有时间戳的键也一样），或者这张卡已经卸载，这一份就不再写，慢回来的响应盖不掉更新的值。页面已经知道自己旧了（`/api/version`，以及新版本部署完成后的 `version` 推送），且重取当前页面时 HTML 头部的 `build-commit` 已是新版（边缘缓存还在回旧 HTML 时不算旧，免得刷新后版本提示又弹，判定见 `src/lib/app-version.ts` 的 `resolveVersionStatus`）时，躺在后台的旧标签页会自己刷新成新版；前台只提示（顶部的版本提示卡，兜底卡片上的说明），不自动刷，免得一张卡出错就打断人在别处的操作，只有整页被错误页顶替时才前台刷新。每个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次，账按目标分别记而不是只记最后一个（`lyjw131.com` 的首页 HTML 由 ESA 缓存，刷回来可能还是旧的，版本接口在两个版本间来回也刷不成环）；试满的目标要等 `AUTO_RELOAD_RETRY_AFTER_MS` 才清零重来，边缘缓存恢复后还能刷到它；同一个标签页两次自动刷新至少隔 `AUTO_RELOAD_COOLDOWN_MS`（以上常量都在 `src/lib/app-version.ts`，系统时钟被拨回过时冷却从现在重新数），播放器在放音乐时不刷。判定逻辑见 `src/lib/app-version.ts` 的 `autoReloadDecision`。
-
-旧标签页还有一种坏法，连脚本都轮不到跑：iOS Safari 回收了后台标签，切回来时按缓存取回旧 HTML，它引用的带指纹 CSS / JS 在新版本部署后已经不在静态资源里，页面没了样式，首页那些铺满父元素的图片按视口叠满整屏。Workers 静态资源只留当前版本，所以 site 的生产与预览构建把 `build/client/assets` 整份存进 R2（`scripts/archive-site-assets.mjs`），生产上当前版本缺的 `/assets/*` 由 site Worker 从存档读出（`src/lib/asset-archive.ts`；分支 Preview 没有 R2 绑定，不读存档），旧页面照常加载。存档也没有时，`<head>` 里在样式表之前的内联脚本（`src/lib/asset-recovery-boot.ts`）兜底：站内样式表、modulepreload 或模块脚本加载失败时，先强制重取当前页面把 HTTP 缓存里的旧 HTML 换掉，再刷新一次；同一版本冷却期内只救一次，刷回来还坏就停手。
-
-### 窗口标题在上报之前先过一道判断
-
-窗口标题是页面上唯一一项窗口内容，也是唯一一项不能靠规则穷举的内容：应用名就那么多个，标题却是此刻打开的文件、网页或聊天对象。所以它在离开 Mac 之前先过一道隐私判断，由 [TypeSafe](https://www.typesafe.ai/) 的 Jev 参与判断能不能公开，拿不准的留给本人在 Mac 上决定；只有放行的标题才进上报信封。站点这一侧不参与判断，只认信封里有没有标题。
-
-### 根据活动与访问情况调整开销
-
-部分采集器根据设备活动和访客连接情况调整上报频率；浏览器标签页不可见时暂停状态轮询。WebSocket 使用 Hibernation API，让连接在没有业务事件时保持而无需实例持续运行。
-
-实时推送连接与可见访客计数分别维护：前者关注状态同步，后者关注此刻正在查看页面的人数。
-
-### 图片按内容寻址，交付域由访客域名的边缘决定
-
-海报和应用图标由上报器一次压好、以 `<sha256>.<ext>` 直传 R2，状态里只存对象键。Worker 和站点把对象键拼成同源路径 `/img/<对象键>`，页面、状态 API 和推送里都不出现交付域。
-
-`/img/*` 由 `site` Worker 的 R2 绑定直出：整份对象流式返回并带一年不可变缓存头，平台缓存层负责 Range 切片与条件请求。`lyjw131.com` 上由 ESA 按静态后缀缓存同一路径并回源，中国大陆访客不再直连 Cloudflare。对象带一年不可变缓存，地址即内容指纹，所以两层边缘都不需要主动刷新。
-
-### 报错与性能交给 Workers Observability
-
-五个 Worker（`site`、`core`、`ai`、`ingress`、`collector`）都开着 Cloudflare Workers Observability：日志、1% 采样的 Traces、Workers Issues（未捕获异常、5xx 与 `console.error` 自动归组），Worker 包的 source map 随部署上传，线上调用栈能对回源码。浏览器端没有 SDK：[`src/lib/error-report.ts`](./src/lib/error-report.ts) 接住 `error`、`unhandledrejection`、水合回退和两层错误边界，经 `/relay` 发给 site Worker（`lyjw131.com` 的页面和 API 调用一样直连 `lyjw.me`，不经 ESA，限流按的是访客自己的 IP），[`src/lib/error-relay.ts`](./src/lib/error-relay.ts) 校验、去掉页面地址和消息与调用栈里 URL 的查询串后记成 `[browser-error]` 日志，归进 `site` 的 Issues（`/relay` 拒收别的网站发来的报告，再按 IP 限流，绑定 `RELAY_LIMIT` 在 `wrangler.jsonc`）；浏览器包不出 source map，调用栈是压缩后的代码。本地默认不上报，要试就在 `.env.local` 设 `PUBLIC_ERROR_REPORT_DEV=true`。
-
-健康数据回到页面上自己算：采集 Worker 每分钟探测一次 `lyjw.me/api/version`，core Worker 每跑完一轮定时任务记一次心跳，两者都按小时累进 D1 的 `health_buckets`；`site-health` 任务每 5 分钟把它们汇成 30 天每天一格与可用率，再加上 Workers Observability 的报错数（采样估计）与 active issue 数、Web Analytics 的真实访客 Web Vitals，写进可滞后层给站点卡片（`/api/status/health`，计算在 [`shared/health.ts`](./shared/health.ts)）。在线状态分两行：`lyjw.me` 那行只说明前端还在出页面；`Core` 那行看 core Worker 的心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。探测、心跳的驱动和汇总都在采集 Worker 里，它的 cron 一停三者一起停，卡片显示过期而不是失败；探测从 Cloudflare 内部发出，Cloudflare 整体故障时这一行看不出来。排查线上报错时 agent 先经 Cloudflare MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
+[交互式架构图](https://lyjw131.github.io/lyjwpage/) · [页面细节与关键设计](./docs/design-notes.md)（首屏缓存、推送与轮询分工、旧页面降级、窗口标题隐私判断、图片寻址、可观测性）
 
 ## 技术组成
 
@@ -210,8 +172,6 @@ Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天�
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Cloudflare Workers · 阿里云 ESA |
 | 报错与性能监控 | Cloudflare Workers Observability · Web Analytics |
-
-AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md) 执行；站点域名上的请求经 Service Binding 转交给它，状态数据仍经 core 的只读接口读取。Pulse Coding 评分仍由 core 编排。
 
 ## 从哪里读源码
 
@@ -229,16 +189,12 @@ AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md
 | 原生 iOS App 如何读站点、如何上报 | [`apps/ios/`](./apps/ios/) |
 | 在线访客如何统计 | [`workers/core/src/live-census.ts`](./workers/core/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
 
-Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) 独立维护，通过 Git submodule 接入 `reporters/mac-telemetry-hub/`。
-
-本地开发时 `pnpm dev:worker` 用一个 `wrangler dev` 进程起本地 Worker 栈：`workers/dev-router`（拿 8788 端口、按路径分发）、`core`、`ai`、上报入口 `ingress` 和采集 Worker `collector`，状态保存在本地；AI 经只读 Service Binding 查询 core，上报打 `/api/ingest/<来源>` 走上报入口；`/__dev/collector/run?job=<任务>` 立刻跑一个采集任务，`/cdn-cgi/local/scheduled` 让采集 Worker 跑这一分钟到期的任务。步骤见 [`workers/core/README.md`](./workers/core/README.md) 的「本地开发」与 [`workers/collector/README.md`](./workers/collector/README.md)。
+Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) 以 submodule 接入 `reporters/mac-telemetry-hub/`。本地开发见 [`workers/core/README.md`](./workers/core/README.md)「本地开发」。
 
 ## 进一步了解
 
-[遥测与实时状态子系统](./docs/telemetry-subsystems.md) 记录各数据源的接入方式、通信协议与具体实现。
-
-[Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、实时层与可滞后层的划分、公开数据边界、缓存失效与页面更新之间的关系。
-
-[lyjwpage iOS App](./apps/ios/README.md)（iOS 27 原生 SwiftUI）是站点的原生客户端：读同一套公开状态 API 与推送，把首页各卡、Pulse 时间线和最近记录用原生界面呈现，带桌面与锁屏小组件；它同时是 iPhone 端上报器，上报活动圆环与最近的训练，协议和部署顺序见其 README 与 [core Worker](./workers/core/README.md#最近训练)。
-
-Quest 游戏实时数据由 [Discord Gateway 上报器](./reporters/discord-reporter/README.md) 采集，经专用 Access 权限交入 Ingress 与 StateHub；查询 `/api/status/quest/now`，变化推送 `quest-now`；在玩时首页出现 Now Playing 卡，玩过的时段画进 Pulse 的游戏道。协议见 [core Worker](./workers/core/README.md#quest-实时游戏状态)。
+- [遥测与实时状态子系统](./docs/telemetry-subsystems.md)：各数据源的接入方式与协议
+- [Worker 数据后端与首屏缓存](./docs/state-storage.md)：存储分层、公开数据边界与缓存失效
+- [lyjwpage iOS App](./apps/ios/README.md)：原生客户端与 iPhone 端上报器
+- [Discord Gateway 上报器](./reporters/discord-reporter/README.md)：Quest 游戏实时数据
+- [文档索引](./docs/README.md)
