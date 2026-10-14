@@ -19,7 +19,8 @@ import {
 } from "./dev-fixtures.ts";
 
 const USAGE = `用法：
-  pnpm dev:scene <场景>                 清掉现有注入，把场景里的每条端点用同一个 now 一次注入
+  pnpm dev:scene <场景> [--age <时长>]  清掉现有注入，把场景里的每条端点用同一个 now 一次注入；
+                                        --age 20m 把整份快照往回拨（如 30s、20m、2h），造「首屏快照是旧的」「歌已放完」这类态
   pnpm dev:scene --capture <场景> [--from <站点>]
                                         把站点此刻的全部状态视图（连同正在听那首的歌词）抓成场景，
                                         时间改写成相对令牌；默认抓 https://lyjw.me，云端会话加 NODE_USE_ENV_PROXY=1
@@ -28,13 +29,18 @@ const USAGE = `用法：
 
 场景放在 workers/core/dev-fixtures/scenes/<场景>.json：
   { "description": "…", "extends": "<另一个场景>", "headline": "<固定的标题>",
-    "views": { "<端点路径>": "<夹具.json>" | <信封> | { "fetch": "<注入时现取的地址>" } } }
+    "views": { "<端点路径>": "<夹具.json>" | <信封> | { "fetch": "<注入时现取的地址>" }
+                         | { "from": <以上任一种>, "set": { "data.字段.路径": <值> } } } }
+  set 只改几个读数派生变体，不用为每个状态复制一份夹具。
 注入时摘要卡的三格按场景里的其他视图重算（与 ai Worker 的生成规则同一份代码），标题池收成一句，
 SSR、浏览器、明暗两次截图读到的是同一份数据。场景缺的状态视图会列出来：它们仍走生产兜底。`;
 
 export type Envelope = { ok: boolean; [field: string]: unknown };
 type FetchEntry = { fetch: string };
-export type Scene = { description?: string; extends?: string; headline?: string; views: Record<string, string | Envelope | FetchEntry> };
+type BaseEntry = string | Envelope | FetchEntry;
+type PatchEntry = { from: BaseEntry; set: Record<string, unknown> };
+export type SceneEntry = BaseEntry | PatchEntry;
+export type Scene = { description?: string; extends?: string; headline?: string; views: Record<string, SceneEntry> };
 
 const STATUS_PATHS = Object.values(STATUS_VIEWS).map((view) => view.path);
 const DIGEST_PATH = STATUS_VIEWS.digest.path;
@@ -59,8 +65,28 @@ export function loadScene(name: string, seen: string[] = []): Scene {
 
 const isFetchEntry = (entry: unknown): entry is FetchEntry => typeof (entry as FetchEntry | null)?.fetch === "string";
 
+const isPatchEntry = (entry: unknown): entry is PatchEntry =>
+  typeof entry === "object" && entry !== null && "from" in entry && typeof (entry as PatchEntry).set === "object";
+
+export function setPath(target: Envelope, dotted: string, value: unknown): Envelope {
+  const copy = structuredClone(target);
+  const keys = dotted.split(".");
+  let node = copy as Record<string, unknown>;
+  for (const key of keys.slice(0, -1)) {
+    const next = node[key];
+    if (!next || typeof next !== "object") throw new UsageError(`set 的路径 ${dotted} 在 ${key} 处断了`);
+    node = next as Record<string, unknown>;
+  }
+  node[keys.at(-1)!] = value;
+  return copy;
+}
+
 // { "fetch": url } 在注入时现取：歌词这类不宜进仓库的内容不入库，非信封的响应包一层 ok。
-async function resolveEnvelope(entry: string | Envelope | FetchEntry): Promise<Envelope> {
+async function resolveEnvelope(entry: SceneEntry): Promise<Envelope> {
+  if (isPatchEntry(entry)) {
+    const base = await resolveEnvelope(entry.from);
+    return Object.entries(entry.set).reduce((envelope, [dotted, value]) => setPath(envelope, dotted, value), base);
+  }
   if (isFetchEntry(entry)) {
     const value = await fetchJson(entry.fetch);
     return value && typeof value === "object" && typeof (value as Envelope).ok === "boolean" ? (value as Envelope) : { ok: true, ...(value as object) };
@@ -105,14 +131,24 @@ export async function buildScene(scene: Scene, now: number): Promise<{ views: Ma
   return { views, missing, derived: derived !== null };
 }
 
-export async function applyScene(name: string): Promise<unknown> {
-  const { views, missing, derived } = await buildScene(loadScene(name), Date.now());
+const DURATION = /^(\d+)(ms|s|m|h)?$/;
+const UNIT_MS = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 } as const;
+
+export function parseDuration(text: string): number {
+  const match = DURATION.exec(text.trim());
+  if (!match) throw new UsageError(`时长写成 30s、20m、2h 或毫秒数：${text}`);
+  return Number(match[1]) * UNIT_MS[(match[2] ?? "ms") as keyof typeof UNIT_MS];
+}
+
+export async function applyScene(name: string, ageMs = 0): Promise<unknown> {
+  const { views, missing, derived } = await buildScene(loadScene(name), Date.now() - ageMs);
   await switchOverrides(true);
   for (const endpoint of (await listOverrides()).paths) await clearOverride(endpoint);
   await Promise.all([...views].map(([endpoint, envelope]) => putOverride(endpoint, envelope)));
   return {
     ok: true,
     scene: name,
+    ...(ageMs ? { agedMs: ageMs } : {}),
     injected: views.size,
     digest: derived ? "derived from scene views" : "kept as written (scene lacks some digest views)",
     unpinned: missing,
@@ -186,7 +222,8 @@ async function main(args: string[]): Promise<unknown> {
     return captureScene(second, fromIndex > 0 ? args[fromIndex + 1] : "https://lyjw.me");
   }
   if (!first || first.startsWith("--")) throw new UsageError(USAGE);
-  return applyScene(first);
+  const ageIndex = args.indexOf("--age");
+  return applyScene(first, ageIndex > 0 ? parseDuration(args[ageIndex + 1] ?? "") : 0);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

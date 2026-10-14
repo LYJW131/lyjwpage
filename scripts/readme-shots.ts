@@ -7,7 +7,7 @@ import sharp from "sharp";
 
 import { ROOT } from "./dev-fixtures.ts";
 import { applyScene } from "./dev-scene.ts";
-import { resolvePlaywright } from "./site-verify.ts";
+import { HIDE_DEV_UI, resolvePlaywright } from "./site-verify.ts";
 
 const USAGE = `用法：pnpm readme:shots [--scene <场景>] [--only <名[,名]>] [--theme light|dark|both] [--out <目录>]
 
@@ -21,6 +21,7 @@ type Page = {
   goto(url: string, options: { waitUntil: "load"; timeout: number }): Promise<unknown>;
   waitForTimeout(ms: number): Promise<void>;
   evaluate(expression: string): Promise<unknown>;
+  addStyleTag(options: { content: string }): Promise<unknown>;
   screenshot(options: { clip?: Box; fullPage?: boolean; scale?: "device" }): Promise<Buffer>;
   hover(selector: string): Promise<void>;
 };
@@ -112,6 +113,7 @@ async function captureTheme(browser: Browser, url: string, theme: "light" | "dar
     const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE, colorScheme: theme });
     const page = await context.newPage();
     await page.goto(url, { waitUntil: "load", timeout: 60_000 });
+    await page.addStyleTag({ content: HIDE_DEV_UI });
     await page.waitForTimeout(SETTLE_MS);
     await page.evaluate(`(async () => { for (let y = 0; y < document.body.scrollHeight + 1200; y += 600) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); } scrollTo(0, 0); })()`);
     return page;

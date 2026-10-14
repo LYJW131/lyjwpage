@@ -478,7 +478,8 @@ NODE_USE_ENV_PROXY=1 pnpm dev:scene --capture <场景>    # 把生产此刻的�
 pnpm dev:scene --reset                                  # 收尾
 ```
 
-场景在 `dev-fixtures/scenes/<场景>.json`：`views` 按端点写夹具文件名、内联信封，或 `{ "fetch": "<地址>" }`（注入时现取，歌词这类不入库的内容用它）；`extends` 继承另一个场景再覆盖几条，`headline` 固定标题。
+场景在 `dev-fixtures/scenes/<场景>.json`：`views` 按端点写夹具文件名、内联信封，或 `{ "fetch": "<地址>" }`（注入时现取，歌词这类不入库的内容用它）；`{ "from": <以上任一种>, "set": { "data.ports.0.power": 96 } }` 从夹具派生只改几个读数的变体；`extends` 继承另一个场景再覆盖几条，`headline` 固定标题。
+`--age 20m` 把整份快照往回拨，造「首屏快照是旧的」「快照里那首歌已放完」这类态，不用拨浏览器时钟。
 `--capture` 抓下的时刻、ISO 时刻、站点日期都改写成相对令牌（`scripts/dev-fixtures.ts#tokenize`），哪天注入都像刚抓的。
 注入前摘要的三格按场景里的其他视图重算（调 `workers/ai/src/digest/` 与生成时同一份规则），标题池收成一句：首屏内联脚本和客户端轮换都从池里随机取，一句就没得随机，SSR、浏览器、明暗两次截图看到的是同一份。
 场景缺的状态视图（以及正在听那首的歌词）会列在输出的 `unpinned` 里，它们仍走生产兜底。根 README 的静态效果图用 `pnpm readme:shots` 按 `readme` 场景截，见 [效果图](../../docs/screenshots.md)。
