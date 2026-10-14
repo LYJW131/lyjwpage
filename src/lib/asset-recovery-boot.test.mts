@@ -95,7 +95,7 @@ test("站内样式表 404：先强制重取这页再刷新一次，并按版本�
   assert.equal(h.reloads(), 0, "缓存换新之前不刷新");
   await h.settle();
   assert.equal(h.reloads(), 1);
-  assert.deepEqual(JSON.parse(h.storage.get(ASSET_RECOVERY_KEY)!), { c: "abc1234", t: 1_000_000 });
+  assert.deepEqual(JSON.parse(h.storage.get(ASSET_RECOVERY_KEY)!), { abc1234: 1_000_000 });
   h.fire("error", link("modulepreload", "/assets/page-old.js"));
   assert.equal(h.fetches.length, 1, "同一页只自救一次");
 });
@@ -117,19 +117,40 @@ test("load 时样式表没挂上（请求断在半路、没有 error 事件）�
 });
 
 test("同一版本冷却期内刷回来还是坏的，就停手不刷成环", () => {
-  const stored = JSON.stringify({ c: "abc1234", t: 1_000_000 - ASSET_RECOVERY_COOLDOWN_MS + 1 });
+  const stored = JSON.stringify({ abc1234: 1_000_000 - ASSET_RECOVERY_COOLDOWN_MS + 1 });
   const h = harness({ stored });
   h.fire("error", link("stylesheet", "/assets/root-old.css"));
   assert.equal(h.fetches.length, 0);
 });
 
 test("刷回来换了版本仍坏、或冷却已过，再救一次", () => {
-  const otherCommit = harness({ stored: JSON.stringify({ c: "old0000", t: 1_000_000 }) });
+  const otherCommit = harness({ stored: JSON.stringify({ old0000: 1_000_000 }) });
   otherCommit.fire("error", link("stylesheet", "/assets/root-new.css"));
   assert.equal(otherCommit.fetches.length, 1);
-  const expired = harness({ stored: JSON.stringify({ c: "abc1234", t: 1_000_000 - ASSET_RECOVERY_COOLDOWN_MS }) });
+  assert.deepEqual(JSON.parse(otherCommit.storage.get(ASSET_RECOVERY_KEY)!), { old0000: 1_000_000, abc1234: 1_000_000 });
+  const expired = harness({ stored: JSON.stringify({ abc1234: 1_000_000 - ASSET_RECOVERY_COOLDOWN_MS }) });
   expired.fire("error", link("stylesheet", "/assets/root-old.css"));
   assert.equal(expired.fetches.length, 1);
+  assert.deepEqual(JSON.parse(expired.storage.get(ASSET_RECOVERY_KEY)!), { abc1234: 1_000_000 }, "过期的账顺手清掉");
+});
+
+test("边缘缓存在两个旧版本间来回时，各救一次就停", () => {
+  const storage = new Map<string, string>();
+  let total = 0;
+  for (const commit of ["aaa1111", "bbb2222", "aaa1111", "bbb2222"]) {
+    const h = harness({ commit, stored: storage.get(ASSET_RECOVERY_KEY) ?? null });
+    h.fire("error", link("stylesheet", "/assets/root-old.css"));
+    total += h.fetches.length;
+    const saved = h.storage.get(ASSET_RECOVERY_KEY);
+    if (saved) storage.set(ASSET_RECOVERY_KEY, saved);
+  }
+  assert.equal(total, 2);
+});
+
+test("账写坏了（不是对象）当作空账", () => {
+  const h = harness({ stored: "42" });
+  h.fire("error", link("stylesheet", "/assets/root-old.css"));
+  assert.equal(h.fetches.length, 1);
 });
 
 test("模块脚本的依赖图取不到（入口或路由模块 404）也自救", () => {
