@@ -40,9 +40,14 @@ const SETTLE_MS = 4_000;
 const IMAGE_WAIT_MS = 15_000;
 const WEBP_QUALITY = 88;
 
-const byId = (id: string) => `document.getElementById(${JSON.stringify(id)})`;
-const byLabel = (label: string) =>
-  `[...document.querySelectorAll(".paper-card")].find((card) => card.querySelector(".label-mono")?.textContent.trim() === ${JSON.stringify(label)})`;
+const JS_EMBED_ESCAPE: Record<string, string> = { "<": "\\u003C", ">": "\\u003E", "/": "\\u002F", "\u2028": "\\u2028", "\u2029": "\\u2029" };
+
+// JSON.stringify 留下 <>/ 与 U+2028/U+2029，嵌进脚本字面量时要再写成 \uXXXX。
+export const jsLiteral = (value: string) => JSON.stringify(value).replace(/[<>/\u2028\u2029]/g, (char) => JS_EMBED_ESCAPE[char]);
+
+const byId = (id: string) => `document.getElementById(${jsLiteral(id)})`;
+export const byLabel = (label: string) =>
+  `[...document.querySelectorAll(".paper-card")].find((card) => card.querySelector(".label-mono")?.textContent.trim() === ${jsLiteral(label)})`;
 
 async function boxOf(page: Page, find: string, scroll = true): Promise<Box | null> {
   return (await page.evaluate(`(() => {
