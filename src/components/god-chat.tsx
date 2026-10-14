@@ -128,15 +128,28 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
-// 站主要求示例中英轮播，中文是「界面文案英文」的例外。四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
+// 站主要求示例用中文，是「界面文案英文」的例外。首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
+// 每条须在 14 个汉字宽以内：桌面两列等宽格放得下，换题时按钮尺寸不变。
 const SUGGESTIONS = [
-  { zh: "LYJW 现在在忙什么？", en: "What is LYJW up to right now?" },
-  { zh: "这个网站是怎么搭起来的？", en: "How is this site built?" },
-  { zh: "这周 AI 圈有什么大新闻？", en: "Any big AI news this week?" },
-  { zh: "我想给这个网站提个改进", en: "Got an idea for this site" },
-] as const;
-const SUGGESTION_LANGS = ["zh", "en"] as const;
-const SUGGESTION_ROTATE_MS = 5_000;
+  "LYJW 现在在忙什么？",
+  "这个网站是怎么搭起来的？",
+  "这周 AI 圈有什么大新闻？",
+  "我想给这个网站提个改进",
+  "LYJW 最近在听什么歌？",
+  "首页的实时数据从哪来？",
+  "今天科技圈有什么新鲜事？",
+  "LYJW 最近在玩什么游戏？",
+  "这个网站用了哪些技术？",
+  "比较一下最新的几款大模型",
+  "LYJW 最近在追什么番？",
+  "网站最近的提交改了什么？",
+  "LYJW 今天运动了吗？",
+  "LYJW 用 AI 写了多少代码？",
+];
+const SUGGESTION_SLOTS = 4;
+// 每隔这么久只换一格，四格轮流；淡出时长与 globals.css 的 headline-in 一起凑成一次换题。
+const SUGGESTION_ROTATE_MS = 3_000;
+const SUGGESTION_FADE_MS = 150;
 
 export function GodChat({ className }: { className?: string }) {
   const archive = useSyncExternalStore(subscribeChatArchive, chatArchive.getSnapshot, chatArchive.getServerSnapshot);
@@ -1049,46 +1062,53 @@ const DESIGN_CONSENT_COPY: Record<PlanLanguage, DesignConsentCopy> = {
 };
 
 function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
-  const [lang, setLang] = useState(0);
+  const [slots, setSlots] = useState(() => SUGGESTIONS.slice(0, SUGGESTION_SLOTS).map((text) => ({ text, rotated: false })));
+  const [leaving, setLeaving] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
+  const turn = useRef({ slot: 0, next: SUGGESTION_SLOTS });
   useEffect(() => {
     if (paused) return;
-    const timer = setInterval(() => setLang((current) => (current + 1) % SUGGESTION_LANGS.length), SUGGESTION_ROTATE_MS);
-    return () => clearInterval(timer);
+    let swap: ReturnType<typeof setTimeout> | undefined;
+    const timer = setInterval(() => {
+      const { slot, next } = turn.current;
+      turn.current = { slot: (slot + 1) % SUGGESTION_SLOTS, next: (next + 1) % SUGGESTIONS.length };
+      setLeaving(slot);
+      swap = setTimeout(() => {
+        setSlots((current) => current.map((entry, index) => (index === slot ? { text: SUGGESTIONS[next], rotated: true } : entry)));
+        setLeaving(null);
+      }, SUGGESTION_FADE_MS);
+    }, SUGGESTION_ROTATE_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(swap);
+      setLeaving(null);
+    };
   }, [paused]);
   return (
-    // 悬停或聚焦时停住轮播，免得点下去的那一刻换了语言。
+    // 悬停或聚焦时停住轮播，免得点下去的那一刻换了题。
     <div
-      className="flex flex-wrap justify-center gap-2"
+      className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2"
       onPointerEnter={() => setPaused(true)}
       onPointerLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false); }}
     >
-      {SUGGESTIONS.map((suggestion) => {
-        const shown = suggestion[SUGGESTION_LANGS[lang]];
-        return (
-          <button
-            key={suggestion.en}
-            type="button"
-            disabled={disabled}
-            onClick={() => onPick(shown)}
-            className="paper-card inline-grid rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-surface-hover disabled:opacity-50"
-          >
-            {/* 两种语言叠在同一格里，按钮取较宽的那个，换语言时不重排。 */}
-            {SUGGESTION_LANGS.map((code, index) => (
-              <span
-                key={code}
-                lang={code}
-                aria-hidden={index !== lang}
-                className={cn("col-start-1 row-start-1 transition-opacity duration-200", index === lang ? "opacity-100" : "opacity-0")}
-              >
-                {suggestion[code]}
-              </span>
-            ))}
-          </button>
-        );
-      })}
+      {slots.map(({ text, rotated }, index) => (
+        <button
+          key={index}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(text)}
+          className="paper-card overflow-hidden rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs whitespace-nowrap text-foreground transition-colors hover:bg-surface-hover disabled:opacity-50"
+        >
+          {/* 淡出与淡入分在两层：入场动画的填充会盖住同一层上的 opacity 过渡。 */}
+          <span className={cn("inline-block transition-opacity duration-150", leaving === index && "opacity-0")}>
+            <span key={text} className={cn("inline-block", rotated && "animate-headline-in")}>
+              {text}
+            </span>
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
