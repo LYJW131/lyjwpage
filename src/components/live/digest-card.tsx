@@ -37,7 +37,8 @@ const headlinePickScript = (pool: readonly string[]) =>
   `(()=>{const p=${JSON.stringify(pool).replace(/</g, "\\u003c")},h=p[Math.floor(Math.random()*p.length)],t=document.currentScript?.previousElementSibling?.querySelector("[data-headline]")?.firstChild;window.${HEADLINE_PICK}=h;if(t)t.nodeValue=h})()`;
 
 const otherLine = (lines: readonly string[], line: string) => {
-  const rest = lines.filter((candidate) => candidate !== line);
+  const shown = lines.includes(line) ? line : lines[0];
+  const rest = lines.filter((candidate) => candidate !== shown);
   return rest[Math.floor(Math.random() * rest.length)];
 };
 
