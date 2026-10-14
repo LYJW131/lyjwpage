@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const encode = (value) =>
@@ -48,8 +49,6 @@ const TRANSIENT_NETWORK_CODES = new Set([
   "UND_ERR_BODY_TIMEOUT",
   "UND_ERR_ABORTED",
 ]);
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function isTransientStatus(status) {
   return status === 408 || status === 429 || status >= 500;

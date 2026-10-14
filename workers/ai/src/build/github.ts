@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { BUILD_CLOSED_PHASES, BUILD_REPO, branchForRun, buildIssueBody, buildIssueMarker, PLAN_LABELS, planLanguage, type BuildRun, type BuildSignal, type BuildUpload } from "@shared/build-routine";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "../../../../scripts/preview-worker-name.mjs";
 import { GITHUB_APP_CLIENT_ID, type GithubIssueResult } from "@shared/github-issue";
@@ -301,7 +303,7 @@ async function pullRequestAfterPush(api: GithubBuildApi, run: StoredRun): Promis
   for (let attempt = 0; ; attempt += 1) {
     const pr = await existingPullRequest(api, run);
     if (pr?.head?.sha !== run.planCommitSha || attempt >= PR_HEAD_SYNC_DELAYS_MS.length) return pr;
-    await new Promise((resolve) => setTimeout(resolve, PR_HEAD_SYNC_DELAYS_MS[attempt]));
+    await sleep(PR_HEAD_SYNC_DELAYS_MS[attempt]);
   }
 }
 

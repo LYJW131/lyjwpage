@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 
 import { devAccessFromEnv } from "./dev-access.mjs";
@@ -35,7 +36,6 @@ assert.ok(prefix && /^[a-zA-Z0-9:_-]+$/.test(prefix) && /(?:^|[-_:])(test|dev|ve
 
 const access = await devAccessFromEnv();
 assert.ok(access, "LOCAL_ACCESS_PRIVATE_JWK is required: run through scripts/verify-core-worker.mjs, or export the key from scripts/dev-access.mjs");
-const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const MINUTE = 60_000;
 const BUCKET = 5 * MINUTE;
 const siteDay = (stamp) => new Date(stamp + 8 * 3_600_000).toISOString().slice(0, 10);

@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import { BuildCoordinator } from '../../workers/ai/src/build/coordinator.ts';
 import { handleBuild, handleBuildProgress, handleBuildScreenshot, handleBuildStatus, handleBuildUpload, handleGithubWebhook } from '../../workers/ai/src/build/handlers.ts';
@@ -94,7 +95,7 @@ export class BuildFixture extends DurableObject {
       const pr = this.get('prs', []).find((entry) => entry.number === payload?.prNumber);
       if (body?.event_type !== 'build' || !pr?.draft || pr.head.ref !== `claude/build-${payload.runId}` || pr.head.sha !== payload.planCommitSha) throw new Error('The build workflow must start after its matching draft is confirmed');
       this.put('dispatches', [...this.get('dispatches', []), payload]);
-      if (scenario.delayDispatchMs) await new Promise((resolve) => setTimeout(resolve, scenario.delayDispatchMs));
+      if (scenario.delayDispatchMs) await sleep(scenario.delayDispatchMs);
       this.put('answered', [...this.get('answered', []), payload.runId]);
       return scenario.dispatchStatus ? json({ message: 'Fixture dispatch failed' }, scenario.dispatchStatus) : new Response(null, { status: 204 });
     }

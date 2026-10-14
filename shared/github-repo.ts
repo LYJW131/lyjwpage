@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { get, put } from "@shared/cache";
 import { loadLag, type LagResult } from "@shared/lag-result";
 import { site } from "@shared/site";
@@ -164,8 +166,6 @@ export async function fetchRecentCommits(token: string, owner: string, name: str
   });
   return repoCommitsFrom(body, githubAuthors);
 }
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function fetchRepoStats(
   token: string | null,
