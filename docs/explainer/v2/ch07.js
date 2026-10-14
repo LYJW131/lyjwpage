@@ -359,7 +359,8 @@
       if (downK > 0) {
         const head = polyline(x, [[5620, -560], [5620, -380]], downK, 4, sig, a);
         if (downK >= 1) arrowHead(x, head[0], head[1], Math.PI / 2, sig, a);
-        text(x, tr("ch07.k.down"), 5660, -455, { font: FONT.cjk(44, 600), color: sig, alpha: a * downK });
+        // 离箭头只留 24：再往右，这一段镜头下英文「Step down」就贴到画面右边了。
+        text(x, tr("ch07.k.down"), 5644, -455, { font: FONT.cjk(44, 600), color: sig, alpha: a * downK });
       }
       text(x, tr("ch07.k.refuse"), 4750, -110, { font: FONT.cjk(42, 600), color: gr, alpha: a * prog(b, 6.9, 7.1), maxW: 900 });
     }
