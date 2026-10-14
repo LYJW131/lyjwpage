@@ -107,7 +107,7 @@
 
 - 每天一次的代码审查定时任务：从上次游标起对 main 的改动跑 /code-review 和 /simplify，有值得改的就开 `chore(review):` PR，检查和机器评审都处理完后自动合并。时间、游标位置和它的边界见 ops-facts 的「[Claude Code 云端 routine](./docs/ops-facts.md#claude-code-云端-routine)」。
 - 每天一次的提炼 skill 与偏差复盘定时任务：从上次书签起读各线程，把反复出现的流程和你反复纠正的做法写成或改进 `.claude/skills/` 下的 skill；再对照每件做完的事你第一次怎么说、最后交付了什么，找出弯路，改 Claude 的默认做法（`AGENTS.md`「工作方式」、`HUMAN.md`、项目记忆）或让它在该问的地方早点问。开 `docs(skills):` 小 PR，CI 绿就合；动禁区、合并门槛或放松审批的改动只提议、等你一句话。磨合期里它每跑一次都在自己的线程汇报并问你反应，回「有用 / 没用 / 写偏了」或只回编号都行，它据此改 skill 和它自己；说「磨合结束」就不再每次汇报。流程见 `.claude/skills/lyjwpage-skill-mining/SKILL.md`。
-- 每天 08:41（上海时间）的 Anthropic 官方动态定时任务：按书签拉 anthropic.com、claude.dev、Claude 文档与 release notes、Claude Code CHANGELOG、@AnthropicAI 的新内容，逐条判断能否吸收进本站，写进共享目录 `anthropic-updates/<日期>.md`，9:00 晨报读它转告你。它自己不发言、不开 PR；想吸收哪条，晨报后说一句，另开线程按上面的合并门槛做。流程见 `.claude/skills/lyjwpage-anthropic-updates/SKILL.md`。
+- 每天 08:41（上海时间）的 Anthropic 官方动态定时任务：按书签拉 Anthropic 官方博客、文档、release notes、Claude Code 与 SDK 更新日志，几个官方账号、Anthropic 工程师和前沿作者（如 poteto、Matt Pocock）的 X，以及 Simon Willison、Latent Space、Cloudflare changelog、Hacker News 热帖的新内容，逐条判断能否吸收进本站，写进共享目录 `anthropic-updates/<日期>.md`，9:00 晨报读它转告你。它自己不发言、不开 PR；想吸收哪条，晨报后说一句，另开线程按上面的合并门槛做。流程见 `.claude/skills/lyjwpage-anthropic-updates/SKILL.md`。
 - 每天 4 次（上海时间 01:53、07:53、13:53、19:53）的 collector 盯防定时任务：一个只盯采集 Worker 的 Claude，读站点公开状态端点和 collector 的 Cloudflare 日志，找时间戳在走、内容却不对的细微异常（部分成功沿用旧值、数据冻住、任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、两次复现后归成批，写进共享目录 `superfan-collector/<日期>.md` 供晨报读取；只读不修，复现过的批次由你在晨报后决定要不要开线程修，新出现的要紧异常才在「Anthropic 官方动态日更 + collector 盯防」线程里说一声。流程见 `.claude/skills/lyjwpage-collector-superfan/SKILL.md`。
 - 所有自动化都遵守：按游标不按时间窗；读不到就报失败，不当作没事；动手前再核一次线上状态；写操作确认成功才记账；最小权限和花费上限。
 - 想加、改、停一个定时任务，在项目聊天说一句就行。
