@@ -216,7 +216,7 @@
     text(x, tr("ch06.knockOnly"), NOW_X + 24, 494, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 1900 - NOW_X - 24 });
     text(x, "↑ " + tr("ch06.checkin") + (footA > 0.02 ? " *" : ""), API.x + API.w + 18, API.y + 40, { font: FONT.cjk(34, 600), color: bone, alpha: a });
     text(x, tr("ch06.checkinSub"), API.x + API.w + 18, API.y + 80, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 1900 - API.x - API.w - 18 });
-    if (footA > 0) text(x, "* " + tr("ch06.foot"), 1130, 880, { font: FONT.cjk(36, 600), color: css("signalD"), alpha: footA, maxW: 760 });
+    if (footA > 0) text(x, "* " + tr("ch06.foot"), SITE.x, 880, { font: FONT.cjk(36, 600), color: css("signalD"), alpha: footA, maxW: 760 });
   }
   function signalPaths(x, e, phi, a) {
     if (a <= 0) return;

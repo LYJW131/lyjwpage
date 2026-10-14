@@ -421,9 +421,11 @@
       if (split <= 0) { envelope(x, sx, sy, 180, css("pink"), { lw: 2.6, fill: css("paper") }); faceLabel(x, "server", sx, sy, 180, 0, 1); }
       else if (split < 1) {
         const t = fall(split);
+        // 名字只跟着画在上面的那封淡出：两封都带名字，错开时两行字叠在一起。
         for (const key of ["lag", "d1"]) {
-          const [cx, cy] = splitPath(sx, sy, TUBE_X[key], t);
-          envelope(x, cx, cy, lerp(180, 90, t), css("pink"), { lw: 2.4, fill: css("paper"), alpha: 1 - prog(t, 0.85, 1) });
+          const [cx, cy] = splitPath(sx, sy, TUBE_X[key], t), w = lerp(180, 90, t);
+          envelope(x, cx, cy, w, css("pink"), { lw: 2.4, fill: css("paper"), alpha: 1 - prog(t, 0.85, 1) });
+          if (key === "d1") faceLabel(x, "server", cx, cy, w, 0, 1 - prog(t, 0, 0.35));
         }
       }
       text(x, tr("ch02.server"), 120, 1485, { maxW: 900, font: FONT.cjk(28, 600), color: css("graphite"), reveal: prog(b, AT.fork, AT.fork + 0.6) });
