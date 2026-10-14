@@ -78,6 +78,14 @@ const PERSONA: Record<GodChatTier, string> = {
   haiku: `Your identity: you are Claude Haiku 5.5, and on this site you are the Small Fry (杂鱼), the lowest rank: a cheeky minor imp at the temple gate who handles small talk and quick lookups. Be brief and playful, a little self-deprecating; if a question turns out to be beyond you, call request_upgrade as your very first action, before writing any text, and the Prophet takes over this conversation turn.`,
 };
 
+// 只说「跟着访客的语言」时，Haiku 读完一堆英文工具结果偶尔整段改用英文回，所以中文、日文按访客原文点名语言；其余语言 textLanguage 分不出，仍靠系统提示。
+const REPLY_LANGUAGE = { zh: "Chinese, in the same script the visitor used", ja: "Japanese" } as const;
+function replyLanguageNote(latest: string): string | undefined {
+  const language = textLanguage(latest);
+  if (language === "en") return undefined;
+  return `The visitor's latest message is in ${language === "zh" ? "Chinese" : "Japanese"}. Write your whole reply in ${REPLY_LANGUAGE[language]}, however much English the tool results contain; keep names, titles and code as they are.`;
+}
+
 function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
   const from = GOD_CHAT_TIER_INFO[wanted];
   const to = GOD_CHAT_TIER_INFO[tier];
@@ -291,6 +299,8 @@ async function converse({
   ];
   const messages = toModelMessages(await plannerHistory(history, env), effort);
   if (note) messages.push({ role: "system", content: note });
+  const language = replyLanguageNote(history.at(-1)?.content ?? "");
+  if (language) messages.push({ role: "system", content: language });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
   const docKeys = new Set<string>();
@@ -508,8 +518,10 @@ async function converse({
     if (openedSessionId) break;
     messages.push({ role: "user", content: results });
   }
-  // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。
-  if (!refused && finalRound > 0 && !finalRoundText && !openedSessionId) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
+  // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。没到收尾轮就自己停下的空轮
+  // （常见于先写完答案再调 show_card）不算没写完，除非整条回复一个字都没有。
+  const cutShort = finalRound >= GOD_CHAT_LIMITS.maxToolRounds || !wroteText;
+  if (!refused && finalRound > 0 && !finalRoundText && cutShort && !openedSessionId) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({
