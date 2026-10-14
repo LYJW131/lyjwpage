@@ -164,4 +164,6 @@ test("JSDoc 块注释被拦，行注释、普通块注释与字符串里的 /** 
   assert.deepEqual(rules("src/lib/x.ts", "const q = /\"/;\n/** 正则后面的 */\nexport const b = 2;"), ["jsdoc-internal@2"]);
   assert.deepEqual(rules("src/components/x.tsx", "export const A = () => <p>it's {/** JSX 里的 */ 1}</p>;"), ["jsdoc-internal@1"]);
   assert.equal(rules("src/components/x.tsx", "export const A = () => <p>/** JSX 文本 */</p>;").length, 0);
+  assert.deepEqual(rules("src/lib/x.ts", "const x = 1;\n/** 文件末尾 */"), ["jsdoc-internal@2"]);
+  assert.deepEqual(rules("src/lib/x.ts", "/** 声明前 */\nexport function f() { return 1; }"), ["jsdoc-internal@1"]);
 });

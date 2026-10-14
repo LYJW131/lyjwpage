@@ -310,7 +310,8 @@ export function checkJsdoc(file: string, text: string) {
   };
   const walk = (node: TS.Node) => {
     if (ts.isJsxText(node)) { jsxText.push([node.pos, node.end]); return; }
-    const children = node.getChildren(sf);
+    // JSDoc 会作为子节点挂在声明（以及文件末尾的 EndOfFileToken）下面，不跳过就会把注释内部当词元走，漏掉它本身。
+    const children = node.getChildren(sf).filter((child) => child.kind < ts.SyntaxKind.FirstJSDocNode || child.kind > ts.SyntaxKind.LastJSDocNode);
     if (children.length > 0) { children.forEach(walk); return; }
     add(ts.getLeadingCommentRanges(text, node.getFullStart()));
     add(ts.getTrailingCommentRanges(text, node.getEnd()));
