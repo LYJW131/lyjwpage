@@ -222,6 +222,8 @@ function GameTile({
             width={COVER_PX}
             height={COVER_PX}
             loading={eager ? "eager" : "lazy"}
+            // React SSR 会把非 lazy、非 low 的 <img> 提成 <head> 里排在样式表前的 preload，屏外的行首图跟样式表抢带宽会推迟首帧。
+            fetchPriority={eager ? "low" : undefined}
             unoptimized
             className="h-28 w-28 object-cover"
           />
