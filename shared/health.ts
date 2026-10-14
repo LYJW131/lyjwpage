@@ -76,10 +76,12 @@ export interface HealthReadDb {
   prepare(sql: string): { bind(...values: unknown[]): { all<T>(): Promise<{ results: T[] }> } };
 }
 
+// 连带窗口前最近的一格（还在保留期里时）一起读：summarizeBuckets 据此知道序列早于窗口，停机跨过窗口起点时，窗口开头那段照算漏跑。
 export async function readBuckets(db: HealthReadDb, series: HealthSeriesSpec, now: number): Promise<HealthBucket[]> {
   const today = Math.floor(now / DAY_MS) * DAY_MS;
   const { results } = await db.prepare(
-    "SELECT hour_start, success, failure, first_at, last_at, last_ok FROM health_buckets WHERE series = ? AND hour_start >= ? ORDER BY hour_start",
+    "SELECT hour_start, success, failure, first_at, last_at, last_ok FROM health_buckets WHERE series = ?1 AND hour_start >= " +
+      "COALESCE((SELECT MAX(hour_start) FROM health_buckets WHERE series = ?1 AND hour_start < ?2), ?2) ORDER BY hour_start",
   ).bind(series.name, today - (HEALTH_DAYS - 1) * DAY_MS).all<BucketRow>();
   return results.map((row) => ({
     hourStart: row.hour_start,
@@ -124,7 +126,7 @@ function status(series: HealthSeriesSpec, latest: HealthBucket | undefined, now:
   return latest.lastOk ? "up" : "down";
 }
 
-// 第一格数据之前没有检查可数，那些天按 No data 显示；第一格也从它的第一次检查算起，不把上线前那几分钟算成漏跑。
+// 第一格（buckets 里最早的一格，可能在窗口之前，见 readBuckets）之前没有检查可数，那些天按 No data 显示；第一格也从它的第一次检查算起，不把上线前那几分钟算成漏跑。
 export function summarizeBuckets(series: HealthSeriesSpec, buckets: readonly HealthBucket[], now: number): HealthSeries {
   const today = Math.floor(now / DAY_MS) * DAY_MS;
   const firstDay = today - (HEALTH_DAYS - 1) * DAY_MS;

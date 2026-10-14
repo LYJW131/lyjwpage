@@ -58,6 +58,16 @@ test("the first bucket counts from its first check, later buckets from the top o
   assert.deepEqual([gap.days.at(-1)!.success, gap.days.at(-1)!.failure], [18, 6]);
 });
 
+test("a bucket before the window means the oldest day counts from midnight, not from its first bucket", () => {
+  const firstDay = TODAY - (HEALTH_DAYS - 1) * DAY;
+  const back = bucket(firstDay + 3 * HOUR, 12);
+  const alone = summarizeBuckets(HEARTBEAT_SERIES, [back], NOW).days[0];
+  const older = summarizeBuckets(HEARTBEAT_SERIES, [bucket(firstDay - 2 * HOUR, 12), back], NOW).days[0];
+  assert.equal(alone.dayStart, firstDay);
+  assert.equal(older.success, alone.success);
+  assert.equal(older.failure - alone.failure, 3 * 12);
+});
+
 test("the 24h availability keeps the hour the window starts in", () => {
   const yesterday = bucket(TODAY + 10 * HOUR - DAY, 59, 1);
   const summary = summarizeBuckets(UPTIME_SERIES, [yesterday, bucket(TODAY + 10 * HOUR, 30)], NOW);
