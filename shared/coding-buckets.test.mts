@@ -73,10 +73,20 @@ test("同一来源下各 agent 只替换自己声明的那份：Cursor 的报告
     [T0, [["devin", 100]]],
     [T0 + 25 * M, [["cursor", 3], ["devin", 7]]],
   ]);
-  assert.deepEqual(second.agents, [{ id: "devin", state: "ok" }, { id: "cursor", state: "ok" }]);
+  assert.deepEqual(second.agents, [{ id: "devin", state: "ok", collectedAt: T0 + 30 * M }, { id: "cursor", state: "ok", collectedAt: T0 + 35 * M }]);
   const third = mergeBucketReport(second, { ...devin, from: T0 + 20 * M, collectedAt: T0 + 40 * M, windows: [] }, T0 + 40 * M)!;
   assert.deepEqual(third.windows.map((window) => [window.from, window.agents.map((entry) => entry.id)]), [
     [T0, ["devin"]],
     [T0 + 25 * M, ["cursor"]],
   ]);
+});
+
+test("采集时刻按 agent 比：Cursor 更新过不挡稍早采集的 Devin，同一 agent 的旧报告照样不收", () => {
+  const cursor = { ...report(T0, T0 + 10 * M, [[T0, [row("cursor", "c", 3)]]]), collectedAt: T0 + 10 * M, agents: [{ id: "cursor", state: "ok" as const }] };
+  const devin = { ...report(T0, T0 + 9 * M, [[T0, [row("devin", "swe", 5)]]]), collectedAt: T0 + 9 * M, agents: [{ id: "devin", state: "ok" as const }] };
+  const first = mergeBucketReport(null, cursor, T0 + 10 * M)!;
+  const second = mergeBucketReport(first, devin, T0 + 10 * M)!;
+  assert.deepEqual(second.windows[0]?.agents.map((entry) => entry.id), ["cursor", "devin"]);
+  assert.equal(second.collectedAt, T0 + 10 * M);
+  assert.equal(mergeBucketReport(second, { ...cursor, collectedAt: T0 + 8 * M }, T0 + 11 * M), null);
 });

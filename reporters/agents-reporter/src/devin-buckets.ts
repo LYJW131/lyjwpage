@@ -42,7 +42,6 @@ export function devinSnapshot(days: Array<{ date: string; models: Record<string,
 
 function spread(total: number, from: number, to: number): Array<[number, number]> {
   if (total <= 0) return [];
-  if (to <= from) return [[bucketStart(from), total]];
   const parts: Array<{ start: number; exact: number; amount: number }> = [];
   for (let start = bucketStart(from); start < to; start += CODING_BUCKET_MS) {
     const overlap = Math.min(to, start + CODING_BUCKET_MS) - Math.max(from, start);
@@ -110,11 +109,13 @@ export function advanceDevinLedger(
 ): DevinBucketLedger {
   const cutoff = bucketStart(now - DEVIN_BUCKET_SPAN_MS);
   if (!previous || snapshot.at - previous.snapshot.at > DEVIN_BUCKET_SPAN_MS) return { since: snapshot.at, snapshot, windows: [] };
+  // 没有新提交就没有新的时刻可摊，涨的部分留到下一次提交一起算。
+  if (snapshot.at <= previous.snapshot.at) return previous;
   const windows = new Map(previous.windows
     .filter((window) => window.from >= cutoff)
     .map((window) => [window.from, new Map(window.agents.map((row) => [row.model ?? "", { ...row }]))]));
   const from = previous.snapshot.at;
-  const to = Math.max(snapshot.at, from + 1);
+  const to = snapshot.at;
   for (const [date, models] of Object.entries(snapshot.days)) {
     for (const [model, tokens] of Object.entries(models)) {
       const before = previous.snapshot.days[date]?.[model] ?? ZERO;

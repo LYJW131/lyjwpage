@@ -52,7 +52,7 @@
 | 来源（= 上报入口） | 范围 | 带来什么 |
 | --- | --- | --- |
 | `mac`（`modules.codingUsage` / `codingActivity` / `codingTokenBuckets`） | 设备：这台 Mac 本地日志里的会话 | 各 agent 的日行账本、最近事件、5 分钟桶 |
-| `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史 | 同上，眼下只有 `cursor` |
+| `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史；Devin CLI 取自 tokens.ci | `cursor` 同上；`devin` 是日行账本，加按 tokens.ci 提交增量摊出的 5 分钟桶，没有活动 |
 | `agents-otlp`（Claude Code 云端遥测） | 环境：那个托管环境里的会话 | 状态核心做差后整理成同形的三种事实，agent 恒为 `claude` |
 
 同一 agent 有账号级来源时只算它，别的来源的同 agent 行标 `superseded`、不相加（Mac 就算又报 `cursor` 也不会双算）；
@@ -79,7 +79,7 @@
 - **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Coding 评估与归档，不推送。Mac / agents 按报告
   范围替换，只替换报告 `agents` 里声明的 agent（`[from, to)` 内这几家以新报告为准，缺席的桶是 0，范围外和没声明的 agent
   不动，报告范围并进覆盖；同一来源下 Cursor 与 Devin 各报各的范围，靠这条互不冲掉）；跨着报告起点的那一桶只数了
-  一截，按 (agent, 模型) 取大的那行，不盖掉旧报告里数全了的桶。合并规则在 `shared/coding-buckets.ts`。
+  一截，按 (agent, 模型) 取大的那行，不盖掉旧报告里数全了的桶。采集时刻按 agent 比：报告里声明的 agent 有一家已存的比它新就整份不收。合并规则在 `shared/coding-buckets.ts`。
 - **Cursor 账号观测**：agents 来源的 cursor 行另记一笔 `pulse:cursor-observations`（Coding 三色带与 Coding 评估的独立来源）：
   用量历史采集成功就是一次心跳（时刻取采集时刻），只有活动的那封时刻往前走了才记。
 
