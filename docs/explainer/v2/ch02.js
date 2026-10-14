@@ -239,6 +239,9 @@
     ["ch02.r5", "JSON.parse", "400"],
     ["ch02.r6", "PreparedIngest", "400"],
   ];
+  // 信封停在秤台上：底边贴着台面，弹簧的过冲被台面挡住，不穿过去。
+  const SCALE_Y = 790, ENV_W = 230, ENV_REST = SCALE_Y - ENV_W * 0.32;
+  const envY = (b) => Math.min(ENV_REST, keys(b, [[4.7, 470], [6.5, 470], [6.72, ENV_REST, E.spring]]));
   function panelB(x, s, b) {
     const X = 2000, Y = 110, FW = 1080, FH = 880;
     const fk = prog(b, 4.55, 5.05, E.io);
@@ -268,7 +271,7 @@
     nar(x, "ch02.n2a", 3150, 200, prog(b, 4.9, 5.4), 1, { px: 60, maxW: 650 });
     nar(x, "ch02.n2b", 3150, 282, prog(b, 5.4, 6.4), 1, { px: 60, maxW: 650 });
     const ex = 3440;
-    const ey = keys(b, [[4.7, 470], [6.5, 470], [6.72, 742, E.spring]]);
+    const ey = envY(b);
     const eIn = prog(b, 4.6, 4.95, E.outExpo);
     const envX = lerp(3180, ex, eIn);
     text(x, "POST", ex, 340, { font: FONT.mono(34, 600), color: b < 5.25 ? css("signal") : css("pink"), align: "center", alpha: prog(b, 5.0, 5.08) * (1 - prog(b, 6.35, 6.5)) });
@@ -281,9 +284,9 @@
     }
     const sk = prog(b, 6.2, 6.5, E.out);
     if (sk > 0) {
-      const py = 790, cx = ex, cy = 905, R = 70;
-      line(x, cx - 150, py, cx + 150, py, 3, css("pink"), sk);
-      line(x, cx, py, cx, cy - R, 2, css("pink"), sk);
+      const cx = ex, cy = 905, R = 70;
+      line(x, cx - 150, SCALE_Y, cx + 150, SCALE_Y, 3, css("pink"), sk);
+      line(x, cx, SCALE_Y, cx, cy - R, 2, css("pink"), sk);
       x.save(); x.globalAlpha = sk; x.strokeStyle = css("pink"); x.lineWidth = 2.5; x.beginPath(); x.arc(cx, cy, R, Math.PI * 0.85, Math.PI * 2.15); x.stroke();
       for (let j = 0; j <= 10; j++) { const a = Math.PI * (0.85 + 1.3 * j / 10); line(x, cx + Math.cos(a) * (R - 12), cy + Math.sin(a) * (R - 12), cx + Math.cos(a) * R, cy + Math.sin(a) * R, j === 10 ? 4 : 1.5, j === 10 ? css("signal") : css("pink")); }
       x.restore();
@@ -298,7 +301,7 @@
       text(x, "}", ex + 170 + (1 - jb) * 30, ey + 26, { font: FONT.mono(80, 500), color: css("graphite"), align: "center", alpha: jb });
     }
     const open = prog(b, 7.5, 7.75, E.io);
-    envelope(x, envX, ey, 230, css("pink"), { lw: 3, open, fill: css("paper"), alpha: eIn });
+    envelope(x, envX, ey, ENV_W, css("pink"), { lw: 3, open, fill: css("paper"), alpha: eIn });
     const rk = prog(b, 7.62, 7.95, E.outExpo);
     if (rk > 0) {
       const rx = lerp(3960, 3640, rk), ry = 440;
@@ -523,7 +526,7 @@
       const head = pathAt(A_PATH, d);
       sparkP(e, x, head, trailOn(A_PATH, d, 320), { t: G.t, size: lerp(1.1, 0.4, prog(b, 2.0, 2.4)), lw: 2.2 });
     } else if (b >= 4.7 && b < 8.9) {
-      const ey = keys(b, [[4.7, 470], [6.5, 470], [6.72, 742, E.spring]]);
+      const ey = envY(b);
       const ex = lerp(3180, 3440, prog(b, 4.6, 4.95, E.outExpo));
       sparkP(e, x, [ex, ey - 20], null, { t: G.t, size: 0.8 });
     } else if (b >= 8.95 && b < AT.hub + 0.2) {
