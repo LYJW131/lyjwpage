@@ -52,7 +52,7 @@
 
 **一定等你一句话**：
 
-- 生产上的动作：手动触发 Workers Builds 重建、`wrangler deploy` 的那个唯一例外、切域名、改 ESA 规则（规则见 AGENTS.md「[禁区](./AGENTS.md#禁区)」与「[部署流程](./AGENTS.md#部署流程)」）。
+- 生产上的动作：手动触发 Workers Builds 重建（main 构建因 Cloudflare 临时错误失败、重跑同一提交的除外）、`wrangler deploy` 的那个唯一例外、切域名、改 ESA 规则（规则见 AGENTS.md「[禁区](./AGENTS.md#禁区)」与「[部署流程](./AGENTS.md#部署流程)」）。
 - 删除：远端分支、KV 键、Sentry 数据、账号里的资源。
 - 对外发消息、花钱的东西。
 - 控制台与账号设置：Access 策略、GitHub 仓库设置与分支保护、App 权限、告警规则。
