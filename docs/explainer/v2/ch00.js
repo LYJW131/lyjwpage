@@ -497,6 +497,6 @@
     id: "ch00", title: "ch.00", bars: 10,
     init() { G.pass(K.PLATE.ink); G.pass(K.PLATE.paper); lay(); },
     render,
-    share: { termFrame, termState, terminal, paperFrame, AT, TW, L2 },
+    share: { termFrame, termState, terminal, paperFrame, AT, TW, L2, BOX },
   });
 })();
