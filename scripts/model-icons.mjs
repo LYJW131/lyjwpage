@@ -37,21 +37,15 @@ export function parseModelMappings(source) {
   });
 }
 
-export function modelIconsModule({ bundled = [], iconsDir = lobehubIconsDir() } = {}) {
+export function modelIconMappings(iconsDir = lobehubIconsDir()) {
   const source = fs.readFileSync(path.join(iconsDir, "es/features/modelConfig.js"), "utf8");
-  const mappings = parseModelMappings(source).filter(({ icon }) => fs.existsSync(path.join(iconsDir, "es", icon, "components/Mono.js")));
-  const icons = [...new Set(mappings.map(({ icon }) => icon))].filter((icon) => !bundled.includes(icon)).sort();
-  const loaders = icons.map((icon) => `  ${JSON.stringify(icon)}: () => import(${JSON.stringify(`@lobehub/icons/es/${icon}/components/Mono`)}),`);
-  return [
-    `export const MODEL_ICON_MAPPINGS = ${JSON.stringify(mappings)};`,
-    `export const MODEL_ICON_LOADERS = {\n${loaders.join("\n")}\n};`,
-  ].join("\n");
+  return parseModelMappings(source).filter(({ icon }) => fs.existsSync(path.join(iconsDir, "es", icon, "components/Mono.js")));
 }
 
-export function modelIcons(options) {
+export function modelIcons() {
   return {
     name: "model-icons",
     resolveId: (id) => (id === VIRTUAL_ID ? RESOLVED_ID : null),
-    load: (id) => (id === RESOLVED_ID ? modelIconsModule(options) : null),
+    load: (id) => (id === RESOLVED_ID ? `export const MODEL_ICON_MAPPINGS = ${JSON.stringify(modelIconMappings())};` : null),
   };
 }

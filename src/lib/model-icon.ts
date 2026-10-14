@@ -1,3 +1,5 @@
+import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
+
 export type ModelIconMapping = { icon: string; keywords: readonly string[] };
 
 // 排在 LobeHub 上游表之前：站点自己的品牌取舍（Claude 用 Anthropic 标）、上游还没收录的模型家族、
@@ -9,10 +11,17 @@ export const SITE_MODEL_ICONS = [
   { icon: "Grok", keywords: ["(^|[/-])grok-"] },
 ] as const satisfies readonly ModelIconMapping[];
 
-// 首屏常见的几家随卡片打包，其余经 `virtual:model-icons` 按需加载（构建插件按这份名单把它们排除在懒加载之外）。
+// 常见的几家作为组件随卡片打包；其余厂商由 `pnpm assets` 渲染成 `MODEL_ICON_DIR` 下的 SVG，按 CSS mask 着色。
+// 不走 React.lazy：首页 SSR 很大，React 会把 Suspense 边界外移到文档末尾流式补上，图标首绘为空、水合时还会闪没。
 export const BUNDLED_MODEL_ICONS = ["Anthropic", "Cursor", "Devin", "Grok", "OpenAI"] as const;
 
 export type BundledModelIcon = (typeof BUNDLED_MODEL_ICONS)[number];
+
+export const MODEL_ICON_DIR = `${SITE_ASSETS_PREFIX}/model-icons`;
+
+export function modelIconUrl(icon: string) {
+  return `${MODEL_ICON_DIR}/${icon}.svg`;
+}
 
 // 上报方会给模型 ID 加来源前缀，如 Pi 的 `[pi] kimi-k3`；上游关键字多以 `^` 锚定，先去掉。
 function normalizeModelId(model: string) {
