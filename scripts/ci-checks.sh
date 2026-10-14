@@ -14,7 +14,7 @@ workspace_tests() {
 }
 
 script_tests() {
-  node --test scripts/*.test.mjs scripts/*.test.ts
+  node --test --import ./src/lib/testing/register-alias.mjs scripts/*.test.mjs scripts/*.test.ts
 }
 
 docs() {
@@ -33,6 +33,10 @@ copy() {
   pnpm ui:copy
 }
 
+baselines() {
+  pnpm baselines:check
+}
+
 if [ "${1:-}" = '--gate' ]; then
   case "$2" in
     lint) lint ;;
@@ -43,6 +47,7 @@ if [ "${1:-}" = '--gate' ]; then
     design) design ;;
     rules) rules ;;
     copy) copy ;;
+    baselines) baselines ;;
     *) exit 2 ;;
   esac
   exit 0
@@ -58,7 +63,7 @@ run_gate() {
   return "$status"
 }
 
-gates=(lint typecheck workspace_tests script_tests docs design rules copy)
+gates=(lint typecheck workspace_tests script_tests docs design rules copy baselines)
 status=0
 for gate in "${gates[@]}"; do
   echo "Starting $gate"

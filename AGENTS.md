@@ -23,7 +23,7 @@
 
 - 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
 - 根 `package.json` 的 `typescript` 是 `@typescript/typescript6` 的别名，`tsc` 来自 `@typescript/native`（TypeScript 7 原生编译器）：typescript-eslint 与 `scripts/comment-only-check.test.ts` 要 6.0 的 JS API，TypeScript 7 没有。两项不要合并；Worker 与上报器目录只跑 `tsc`，直接依赖 `typescript` 7。
-- 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，但按端点整份兜底：新端点看本地，已有端点的新字段要用下面的注入看（见 `workers/core/README.md`「本地开发」）。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/core/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/core/README.md`「本地开发」）。
+- 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，但按端点整份兜底：新端点看本地，已有端点的新字段要用下面的注入看（见 `workers/core/README.md`「本地开发」）。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据，截图或要多张卡数据对得上时用 `pnpm dev:scene <场景>` 一次注入整份快照（夹具在 `workers/core/dev-fixtures/`，场景在其 `scenes/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/core/README.md`「本地开发」）。
 - 修改路由与加载器前，读 `node_modules/react-router/docs/` 与 `@react-router` 的类型。按需检索，不为小改动遍历整个文档或技能目录。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
 - 站点 UI 改动以浏览器端到端测试为准，单元测试不是必需：起开发服务器，在浏览器里实际打开受影响页面，覆盖相关宽度（至少桌面与 375px 手机）、交互和不同数据状态（此刻没发生的状态用 `pnpm dev:override` 注入夹具），并查看控制台错误。同一项 UI 改动只在首次交付时附效果图（浏览器面板截不出图时改用无头 Chrome 截图）；之后 lyjw 提出的修改请求若没有另行要求，视为 lyjw 正看着开发服务器，改完照常自测，但不再单独截图。开发服务器保持运行并给出地址，让 lyjw 能亲自测试；这轮修改提交推送并确认部署后，由 agent 自行清掉注入、停掉开发服务器。在生产域名上验证完就关掉页面：开着的可见标签会按轮询节奏一直请求 API。
@@ -120,6 +120,7 @@
 | 阶梯外间距、任意值字号 / 位移 / 圆角、子级外边距、裸 hex / oklch 色值 | `pnpm design:scale`（基线 `scripts/design-scale-baseline.json`） |
 | `TODO` / `FIXME` 须带单号、`/img/` 不烧交付域、`src/` 网络调用不写字面量主机、隐藏滚动条两句同现、`scripts/` 不新增 `.mjs`（存量见 `scripts/mjs-baseline.json`） | `pnpm rules:check` |
 | 界面文案用英文 | `pnpm ui:copy`（基线 `scripts/ui-copy-baseline.json`） |
+| 三份存量基线只减不增（例外由 lyjw 打 `baseline-exception` 标签放行，agent 不打） | `pnpm baselines:check` |
 
 ## Reasoning Strategy
 

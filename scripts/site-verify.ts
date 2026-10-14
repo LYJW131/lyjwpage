@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const MAP_PATH = path.join(ROOT, ".claude", "skills", "lyjwpage-verify", "feature-map.json");
-const DEV_OVERRIDE = path.join(ROOT, "scripts", "dev-override.mjs");
+const DEV_OVERRIDE = path.join(ROOT, "scripts", "dev-override.ts");
 const RENDER_PLAYWRIGHT = path.join(ROOT, "docs", "explainer", "render", "node_modules", "playwright-core", "index.mjs");
 
 type Flags = { [key: string]: string | boolean | undefined; url: string };
@@ -54,6 +54,7 @@ type PwPage = {
   reload(options: { waitUntil: "commit" }): Promise<unknown>;
   waitForTimeout(ms: number): Promise<void>;
   evaluate(expression: string): Promise<unknown>;
+  addStyleTag(options: { content: string }): Promise<unknown>;
   evaluateHandle(expression: string): Promise<{ asElement(): PwElement | null }>;
   screenshot(options: { path: string; fullPage?: boolean }): Promise<unknown>;
   route(matcher: (url: URL) => boolean, handler: (route: PwRoute) => Promise<void>): Promise<void>;
@@ -216,7 +217,7 @@ const HELP = `site-verify — 站点验证共用脚本（lyjwpage-verify）
   shot      按宽度截图（整页或单卡 clip），同时收集控制台 error / warn / pageerror
   reload    热缓存刷新，查首次绘制后的跳动（字体换装、时间跳、卡片晚到）
   skew      旧页面撞上新部署：用旧 HTML 打开当前站点，查它引用的资源取不取得到、页面有没有样式与水合
-  override  夹具注入，转发给 scripts/dev-override.mjs；--dry-run 只打印命令不执行
+  override  夹具注入，转发给 scripts/dev-override.ts（成套注入用 pnpm dev:scene）；--dry-run 只打印命令不执行
 
 公共选项：
   --url <url>         被测站点（默认 http://localhost:3211，或 DEV_SITE_PORT 环境变量）
@@ -240,6 +241,7 @@ shot:
   --theme dark|light|both（默认 light）  --dpr <n> 像素密度（默认 1）
   --out <目录>        截图输出目录（必填）  --settle <ms>（默认 4000）
   --ssr               禁用 JavaScript，看 SSR HTML 长什么样
+  截图藏起开发环境的调试按钮坞与 Vite 报错浮层（报错照样进控制台记录）；多张卡的数据要对得上时先 pnpm dev:scene
   例子  node scripts/site-verify.ts shot --url http://localhost:3291 --widths 1280,375 --out /tmp/shots
 
 reload（热缓存刷新：先加载一次暖缓存，再刷新，查首次绘制之后又变过的文字、画面和字体）：
@@ -298,9 +300,12 @@ export async function resolvePlaywright(): Promise<{ api: PwApi; source: string 
   return null;
 }
 
+// 开发环境才有的调试按钮坞（src/components/dev-toggles.tsx#DevToggleDock）与 Vite 报错浮层不进截图，免得被当成站点界面。
+export const HIDE_DEV_UI = "#dev-toggles, vite-error-overlay { display: none !important; }";
+
 const PLAYWRIGHT_NEXT = "仓库自带 playwright-core 在 docs/explainer/render，先跑 `pnpm --dir docs/explainer/render install --ignore-workspace`；云端容器通常已全局安装。";
 
-async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
+export async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
   const explicit = stringFlag(flags.chrome) || process.env.SITE_VERIFY_CHROME;
   const attempts: Record<string, string>[] = explicit
     ? [{ executablePath: explicit }]
@@ -552,6 +557,7 @@ async function cmdShot(flags: Flags) {
         const session = await openPage(pw.api, runFlags, viewport, sink);
         browser = session.browser;
         const { page } = session;
+        if (!runFlags.ssr) await page.addStyleTag({ content: HIDE_DEV_UI });
         await page.waitForTimeout(Number(flags.settle || 4000));
         if (!runFlags.ssr) await scrollSweep(page);
         if (card && runFlags.ssr) {
