@@ -102,7 +102,7 @@
 - **Cloudflare Access 的 Instant Auth（`auto_redirect_to_identity`）**（Cloudflare 控制台设置，讨论里没留链接）
   - 是什么：只允许一种登录方式时跳过选择页，直接跳到身份提供方。
   - 取了什么：站点分支预览用它省掉登录方式选择页，点开预览直接登录。
-  - 状态：采用。当前 Access 配置只以 [ops-facts.md](./ops-facts.md) 的站点 Preview 条目为准。
+  - 状态：不再使用。站点分支预览不设登录，理由见 [workers-builds.md](./workers-builds.md)「分支预览」。
 - **[Workers Observability](https://developers.cloudflare.com/workers/observability/)** 与 Workers Issues、Web Analytics（Cloudflare 文档）
   - 是什么：Cloudflare 自带的报错分组、日志与 Web Vitals。
   - 取了什么：完全替代 Sentry：心跳与在线条自建在 D1 `health_buckets`，报错数取 Observability 遥测查询，Vitals 取 Web Analytics，浏览器报错经 `/relay` 进 site Worker 日志，告警出口用 Workers Issues。

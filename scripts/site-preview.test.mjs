@@ -64,18 +64,16 @@ function deployFixture({ manifest, built, env } = {}) {
   writeFileSync(path.join(root, "build/site-preview.json"), JSON.stringify(manifest ?? sitePreviewManifest({ branch, commit, backendUrl: coreOrigin })));
   const calls = [];
   const spawn = (...args) => { calls.push(args); return { status: 0, stdout: "", stderr: "" }; };
-  const run = () => deploySitePreview({ env: env ?? { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit, SITE_PREVIEW_ACCESS_READY: "true" }, spawn, log: () => {}, root });
+  const run = () => deploySitePreview({ env: env ?? { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit }, spawn, log: () => {}, root });
   return { root, calls, run };
 }
 
-test("deploy refuses production manifests, env mismatch and unasserted Access", () => {
-  const env = { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit, SITE_PREVIEW_ACCESS_READY: "true" };
+test("deploy refuses production manifests and env mismatch", () => {
+  const env = { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit };
   for (const [options, pattern] of [
     [{ manifest: sitePreviewManifest({ branch: "main", commit }), env }, /不是预览/],
     [{ env: { ...env, WORKERS_CI_COMMIT_SHA: "b".repeat(40) } }, /冻结记录不一致/],
     [{ env: { ...env, WORKERS_CI_BRANCH: "other" } }, /冻结记录不一致/],
-    [{ env: { ...env, SITE_PREVIEW_ACCESS_READY: "" } }, /SITE_PREVIEW_ACCESS_READY/],
-    [{ env: { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit } }, /SITE_PREVIEW_ACCESS_READY/],
   ]) {
     const { calls, run } = deployFixture(options);
     assert.throws(run, pattern);
@@ -84,7 +82,7 @@ test("deploy refuses production manifests, env mismatch and unasserted Access", 
 });
 
 test("deploy rejects a disk manifest that fails consumer validation", () => {
-  const env = { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit, SITE_PREVIEW_ACCESS_READY: "true" };
+  const env = { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit };
   for (const [manifest, pattern] of [
     [{ version: 1, mode: "preview", branch, commit: "z".repeat(40), backendUrl: coreOrigin }, /40-char/],
     [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }, /core Preview origin/],
