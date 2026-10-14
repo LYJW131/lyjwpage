@@ -87,6 +87,15 @@ function Rect({ range, from, to, top, fill, opacity = 1 }: { range: Range; from:
   return <rect x={left} y={top} width={Math.max(0.2, x(range, to) - left)} height={LANE_HEIGHT - top} fill={fill} fillOpacity={opacity} />;
 }
 
+// 编码泳道一天能有几百段，逐段一个 <rect> 会让首屏 HTML 与 DOM 膨胀；同色段并进一条 path，画出来与逐段 Rect 一致。
+function bars(range: Range, rows: { from: number; to: number }[], top: number): string {
+  const fixed = (value: number) => Number(value.toFixed(2));
+  return rows.map(({ from, to }) => {
+    const width = fixed(Math.max(0.2, x(range, to) - x(range, from)));
+    return `M${fixed(x(range, from))} ${top}h${width}v${LANE_HEIGHT - top}h${-width}z`;
+  }).join("");
+}
+
 function IdleLine({ range, from, to }: { range: Range; from: number; to: number }) {
   return <Rect range={range} from={from} to={to} top={LANE_HEIGHT - IDLE_HEIGHT} fill="currentColor" opacity={0.42} />;
 }
@@ -149,9 +158,12 @@ function codingModel(lane: PulseCodingLane, range: Range): LaneModel | null {
   const total = humanSeconds + agentSeconds + bothSeconds;
   return {
     items,
-    svg: segments.map((row, index) => {
-      const { from, to } = absolute(range, row);
-      return row.value ? <Rect key={index} range={range} from={from} to={to} top={BAND_TOP} fill={CODING_FILLS[row.value] ?? "var(--pulse-both)"} /> : <IdleLine key={index} range={range} from={from} to={to} />;
+    svg: CODING_FILLS.map((fill, value) => {
+      const rows = runs(segments.map((row) => ({ ...absolute(range, row), state: row.value }))).filter((row) => row.state === value);
+      if (!rows.length) return null;
+      return value
+        ? <path key={value} d={bars(range, rows, BAND_TOP)} fill={fill} />
+        : <path key={value} d={bars(range, rows, LANE_HEIGHT - IDLE_HEIGHT)} fill="currentColor" fillOpacity={0.42} />;
     }),
     summary: segments.length ? { value: pulseDuration(total), detail: `agent ${pulseDuration(agentSeconds + bothSeconds)}` } : null,
     aria: "coding timeline: coding app in front, agent running, or both",

@@ -100,6 +100,8 @@ function Tile({
             fill
             sizes="216px"
             loading={eager ? "eager" : "lazy"}
+            // React SSR 会把非 lazy、非 low 的 <img> 提成 <head> 里排在样式表前的 preload，屏外的行首图跟样式表抢带宽会推迟首帧。
+            fetchPriority={eager ? "low" : undefined}
             className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             unoptimized
           />
