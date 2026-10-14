@@ -7,7 +7,12 @@ metadata:
 
 Created 2026-10-14 at lyjw's request ("每天定时去拉 Anthropic 官方博客，新文档这些的…在晨报中给我总结，并且研究一下能否吸收"). Routine `trig_018iJkbi7mFUooibqwrbW7N8` ("lyjwpage Anthropic 官方动态"), cron `CRON_TZ=Asia/Shanghai 41 8 * * *`, fires into the project thread "Anthropic 官方动态日更 + collector 盯防". Thin prompt: each run reads `origin/main:.claude/skills/lyjwpage-anthropic-updates/SKILL.md` and runs its `fetch.py`.
 
-Sources (6): anthropic.com news+engineering (sitemap), claude.dev blog (sitemap), platform release notes (`overview.md`), platform+code.claude.com English docs pages (sitemaps), Claude Code CHANGELOG (raw.githubusercontent), @AnthropicAI X timeline (user id 1353836358901501952, via [[x-api-via-proxy]]).
+Sources (expanded 2026-10-14 06:32Z at lyjw's request "信息来源可以多一点…土豆…我给你发那个人…再去找一些其他的信息来源", PR #290). The lists live in `fetch.py`: `SET_SOURCES` (anthropic.com news and engineering, claude.dev blog, the claude.com/resources/articles blog, docs, release notes, Simon Willison entries, Latent Space, the Cloudflare changelog filtered by `CLOUDFLARE_PRODUCTS`, and HN stories over 150 points whose title or URL names Claude or Anthropic), `VERSION_SOURCES` (the Claude Code and anthropic-sdk-typescript CHANGELOGs) and `X_ACCOUNTS`:
+- official: AnthropicAI, claudeai, ClaudeDevs
+- anthropic: bcherny, _catwu, trq212, alexalbert__
+- builders: poteto (土豆 = Lauren Tan), mattpocockuk ("the person the user sent"), karpathy, HamelHusain
+
+X cursors are kept per account (`cursors.x` = {username: since_id}). A new source or account reports only its last 36h on first sight. GitHub releases.atom is blocked in cloud sessions, so use raw CHANGELOG files instead.
 
 **State:** `/mnt/project-files/anthropic-updates/` — `state.json` (cursors for claude-code version and x since_id, `ledger` of open "可吸收" items), `seen/<source>.txt` seen-key sets, `runs/` records, `<Shanghai date>.md` summary (appends when the file exists). `fetch.py scan` writes `pending.json`; `commit <sources>` advances only after the summary is read back.
 
