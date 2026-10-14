@@ -7,7 +7,7 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 
 源在 `docs/explainer/v2/`，站点版由 `scripts/build-explainer.mjs` 在构建时生成。动手前读 `docs/explainer/AGENTS.md`（口径、须成对修改）；章节契约在 `docs/explainer/v2/CONVENTIONS.md`，派写章作者的简报模板是 `docs/explainer/v2/CHAPTER-BRIEF.md`，配乐与发布在 `docs/explainer/README.md`「站点版」。
 
-工具都在 `docs/explainer/v2/tools/`，各自 `--help` 看用法。浏览器由 `docs/explainer/v2/tools/browser.mjs` 选：Mac 上用本机 Chrome，云端用 Playwright 自带的 Chromium（软件渲染）。先装渲染依赖 `pnpm --dir docs/explainer/render install --ignore-workspace`（工作树里软链主仓那份）；Python 工具要 Pillow，`flicker.py` 另要 numpy。
+工具都在 `docs/explainer/v2/tools/`，命令行工具都能 `--help` 看用法，配乐的 `score-*.mjs` 除外（见 `docs/explainer/README.md`「站点版」）。浏览器由 `docs/explainer/v2/tools/browser.mjs` 选：Mac 上用本机 Chrome，云端用 Playwright 自带的 Chromium（软件渲染）。先装渲染依赖 `pnpm --dir docs/explainer/render install --ignore-workspace`（工作树里软链主仓那份）；Python 工具要 Pillow，`flicker.py` 另要 numpy。
 
 整片重做这种要跑好几个小时的活，开一个进度 Artifact（各章状态、验收轮次），随进展更新：lyjw 要过。
 
@@ -48,21 +48,27 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 ### 4. 合拢
 
 - 主线程按汇报改共用件、统一提交，逐对核交界：上一章最后一帧接本章第一帧（`stills.mjs`，中英各一组）。
-- `node docs/explainer/v2/tools/check.mjs`（不带章号查全部章，中英都查）退出码 0。
+- `node docs/explainer/v2/tools/check.mjs` 退出码 0：不带章号查全部已写的章，带 `02` 或 `ch02` 只查那几章，中英都查。
 - `node docs/explainer/v2/tools/en-cjk.mjs <输出.json>`：缺文字为 0；列出的中文逐条判断，只该剩歌名、PR 标题这类数据。
 
 做完：上面两条命令都过，交界逐对看过。
 
 ### 5. 逐帧验收
 
-中文版逐帧看，英文版每 4 帧看 1 帧（画面和中文版同一套，只有字不同，每秒 6 帧够查排版）。每一轮：
+中文版逐帧看，英文版每 4 帧看 1 帧（画面和中文版同一套，只有字不同，每秒 6 帧够查排版）。下面 `$F` 是这一轮的帧目录，每轮一个新的（如 scratchpad 里的 `frames/r1`），上一轮的留着做比对；`$Q` 放拼图批次，各轮共用。每一轮：
 
-1. 渲帧，每轮渲进新目录，上一轮的留着做比对。按 CPU 核数把整片分段并行，最后一段不写 `--to`：
+1. 渲帧，中文按 CPU 核数分段并行：
    ```bash
-   node docs/explainer/v2/tools/frames.mjs $F/zh --from 0 --to 2440 &
+   for i in 1 2 3 4; do node docs/explainer/v2/tools/frames.mjs $F/zh --part $i/4 & done
    node docs/explainer/v2/tools/frames.mjs $F/en --lang en --every 4 &
+   wait
    ```
-2. 拼图并写好派单：`python3 docs/explainer/v2/tools/sheets.py $F/zh $Q --tag r1-`（默认每张 2 帧、每批 60 张）。复查轮只挑变了的帧，加 `--changed-vs <上一轮帧目录>`；这一轮修过什么，用 `--focus` 写进派单让 Haiku 重点看。
+2. 拼图并写好派单，中英各一次：
+   ```bash
+   python3 docs/explainer/v2/tools/sheets.py $F/zh $Q --tag r1-
+   python3 docs/explainer/v2/tools/sheets.py $F/en $Q --tag r1-
+   ```
+   默认每张 2 帧、每批 60 张，批目录名带轮次和语种（`$Q/r1-zh-b<首帧号>`），已经存在就停下不写。复查轮换个 tag，只挑变了的帧，加 `--changed-vs <上一轮帧目录>/zh`（英文版对应 `/en`）；这一轮修过什么写成 JSON 文件，用 `--focus <文件>` 写进派单让 Haiku 重点看，格式见 `--help`。
 3. 每个批目录派一个 Haiku，提示词是该目录 `<批目录>/prompt.md` 的全文（它让 Haiku 先读本目录的 [frame-qa.md](frame-qa.md)），全部批次在一条消息里同时派出：
    ```
    Agent(description: "Haiku 逐帧验收 <批目录名>", subagent_type: "general-purpose",
@@ -71,7 +77,7 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
    靠完成通知收结果，不轮询；30 分钟没回来的批次算失败、重派。`<批目录>/report.json` 里 `sheets_reviewed` 小于 `sheets_total` 的也重派。
 4. 机器兜底，和 Haiku 同时跑：
    - `python3 docs/explainer/v2/tools/flicker.py $F/zh <输出.tsv>`：只闪一帧的细小毛病，Haiku 基本看不出来。
-   - `node docs/explainer/v2/tools/textlog.mjs <记录.jsonl>`，再 `python3 docs/explainer/v2/tools/textcheck.py <记录.jsonl>`：叠字、出画、单帧跳变，中英各跑一次。
+   - `node docs/explainer/v2/tools/textlog.mjs <记录.jsonl>`（英文版加 `--lang en`），再 `python3 docs/explainer/v2/tools/textcheck.py <记录.jsonl>`：叠字、出画、单帧跳变。
 5. 判定：主线程逐条打开对应的帧看，记进 scratchpad 里的台账，列为「批、帧、Haiku 说的、判定、依据」，判定只用「已改、设计如此、误报、不改」四种。Haiku 和两个比对工具的输出都是线索，误报不少，不看图不下结论。
 6. 修完先重跑第 4 步的 `check.mjs` 和 `en-cjk.mjs`，再回到第 1 步：修出框时给字加的限宽（`maxW`）会把字等比缩小，常缩到字号下限以下。
 

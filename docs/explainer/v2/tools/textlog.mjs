@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { launch, openFilm } from "./browser.mjs";
 
-const HELP = `用法：node docs/explainer/v2/tools/textlog.mjs <输出.jsonl> [--lang en] [--every 1] [--from 帧] [--to 帧]
+const HELP = `用法：node docs/explainer/v2/tools/textlog.mjs <输出.jsonl> [--lang en] [--from 帧] [--to 帧]
 
 逐帧记下每次 fillText / strokeText 画了什么字、在屏幕上的包围盒（1920×1080 坐标）和透明度，交给 textcheck.py 找叠字、出画、单帧跳变。
 第一行是片子信息（帧率、小节长、章节表），之后每行 [帧号, [[字, x0, y0, x1, y1, 透明度], …]]，帧号与 frames.mjs 相同。
@@ -15,7 +15,7 @@ if (!args.length || args.includes("--help")) {
 const out = args.shift();
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const FPS = 24;
-const lang = opt("--lang", "zh"), every = +opt("--every", 1);
+const lang = opt("--lang", "zh");
 
 function hook() {
   window.__tl = null;
@@ -48,7 +48,6 @@ const fd = fs.openSync(out, "w");
 fs.writeSync(fd, JSON.stringify({ fps: FPS, lang, BAR: film.BAR, chapters: film.chapters }) + "\n");
 const t0 = Date.now();
 for (let f = from; f < to; f++) {
-  if (f % every) continue;
   const items = await page.evaluate((s) => { window.__tl = []; window.__seek(s); const r = window.__tl; window.__tl = null; return r; }, f / FPS);
   fs.writeSync(fd, JSON.stringify([f, items]) + "\n");
 }

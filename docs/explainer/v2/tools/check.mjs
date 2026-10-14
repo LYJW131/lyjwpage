@@ -1,13 +1,37 @@
 import { launch, openFilm } from "./browser.mjs";
+
+const HELP = `用法：node docs/explainer/v2/tools/check.mjs [章号…] [--step 0.125]
+
+中英两版各把要查的章每 --step 小节画一帧，报出字号低于下限的字（要读的标注 28 px、旁白 56 px，见 CONVENTIONS「字号下限」）、
+缺文字键和控制台报错，有一条就退出码 1。章号写 02 或 ch02，可以写几个；不写就查全部已写的章。`;
+
 const args = process.argv.slice(2);
+if (args.includes("--help")) {
+  console.log(HELP);
+  process.exit(0);
+}
 let step = 0.125;
 const want = [];
-for (let i = 0; i < args.length; i++) { if (args[i] === "--step") step = +args[++i]; else want.push(args[i].replace(/^(\d\d)$/, "ch$1")); }
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--step") step = +args[++i];
+  else if (/^(ch)?\d\d$/.test(args[i])) want.push(args[i].replace(/^(\d\d)$/, "ch$1"));
+  else {
+    console.error(`看不懂的参数：${args[i]}\n\n${HELP}`);
+    process.exit(2);
+  }
+}
 const b = await launch();
 let bad = 0;
 for (const lang of ["zh", "en"]) {
-  const { page: p, errors: errs, missing, film } = await openFilm(b, { lang, check: true });
+  // 字号按逻辑像素量，和画布分辨率无关；画得小一些，云端软件渲染也快。
+  const { page: p, errors: errs, missing, film } = await openFilm(b, { lang, check: true, scale: 0.25 });
   const chs = film.chapters, BAR = film.BAR;
+  const unknown = want.filter((id) => !chs.some((c) => c.id === id));
+  if (unknown.length) {
+    console.error(`没有这一章：${unknown.join(" ")}`);
+    await b.close();
+    process.exit(2);
+  }
   const todo = chs.filter((c) => c.placeholder).map((c) => c.id);
   const run = chs.filter((c) => (want.length ? want.includes(c.id) : !c.placeholder));
   for (const c of run) {

@@ -21,8 +21,9 @@ HELP = """把 frames.mjs 渲出的帧拼成带标签的验收图，每 --batch �
   python3 docs/explainer/v2/tools/sheets.py <帧目录> <输出目录> --changed-vs <旧帧目录>
   python3 docs/explainer/v2/tools/sheets.py <帧目录> <输出目录> --frames <帧号列表文件>
 
-每批一个目录 <输出目录>/<tag>b<首帧号>/：s0000.jpg… 验收图、sheets.txt（图的路径）、frames.txt（帧号）、
-prompt.md（派单提示词，照抄给 Agent）。只挑部分帧时，每段连续帧补成偶数，同一张图里的两格总是相邻的两帧。"""
+每批一个目录 <输出目录>/<tag><语种>-b<首帧号>/：s0000.jpg… 验收图、sheets.txt（图的路径）、frames.txt（帧号）、
+prompt.md（派单提示词，照抄给 Agent）。批目录已经存在就停下不写，免得盖掉上次的图和报告。
+只挑部分帧时，每段连续帧补成偶数，同一张图里的两格总是相邻的两帧。"""
 
 
 def font():
@@ -118,7 +119,7 @@ def main():
     ap.add_argument("--per", type=int, default=2, choices=sorted(LAYOUT), help="每张拼几帧，默认 2（实测的甜点）")
     ap.add_argument("--batch", type=int, default=60, help="每批几张图，默认 60")
     ap.add_argument("--tag", default="", help="批目录名前缀，如 r2-")
-    ap.add_argument("--focus", help='这一轮要特别注意的 JSON：[{"from": 帧, "to": 帧, "lang": "zh", "text": "…"}]')
+    ap.add_argument("--focus", help='这一轮要特别注意什么，传 JSON 文件的路径，内容如 [{"from": 帧, "to": 帧, "lang": "zh", "text": "…"}]')
     ap.add_argument("--brief", default=BRIEF)
     a = ap.parse_args()
 
@@ -151,9 +152,12 @@ def main():
 
     focus = json.load(open(a.focus)) if a.focus else []
     size = a.per * a.batch
-    for b0 in range(0, len(review), size):
-        part = review[b0:b0 + size]
-        d = os.path.abspath(os.path.join(a.out_dir, f"{a.tag}b{part[0]:05d}"))
+    parts = [review[b0:b0 + size] for b0 in range(0, len(review), size)]
+    dirs = [os.path.abspath(os.path.join(a.out_dir, f"{a.tag}{film['lang']}-b{part[0]:05d}")) for part in parts]
+    taken = [d for d in dirs if os.path.exists(d)]
+    if taken:
+        sys.exit("批目录已存在，换个 --tag 或先删掉：\n" + "\n".join(taken))
+    for part, d in zip(parts, dirs):
         names = build(d, a.per, [(path(f), label(f)) for f in part])
         open(f"{d}/sheets.txt", "w").write("\n".join(names) + "\n")
         open(f"{d}/frames.txt", "w").write("\n".join(map(str, part)) + "\n")
