@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { siteDay, stampNow, tokenize } from "./dev-fixtures.ts";
-import { buildScene, formatScene, loadScene, parseDuration, setPath, trophySlices, type Envelope } from "./dev-scene.ts";
+import { buildScene, formatScene, loadScene, parseDuration, setPath, trophyTitleIds, type Envelope } from "./dev-scene.ts";
 
 const NOW = Date.parse("2026-10-14T10:00:00Z");
 
@@ -31,20 +31,12 @@ test("字段名带非时间单位的大数不当成时刻", () => {
   assert.deepEqual(tokenize(captured, NOW), { networkRxBytes: NOW + 5_000, traffic: { quotaBytes: 2_000_000_000_000 }, samples: [{ t: "$now-1000" }] });
 });
 
-test("奖杯切片按瓷砖的合并规则逐组列出，presence 里不在列表的游戏单列一组", () => {
+test("奖杯目录覆盖游玩列表与 presence 里的全部游戏", () => {
   const views = {
-    "/api/status/playing": { ok: true, data: { items: [
-      { titleId: "PPSA2", name: "A", imageUrl: "a.png" },
-      { titleId: "CUSA1", name: "A", imageUrl: "a.png" },
-      { titleId: "PPSA3", name: "B", imageUrl: null },
-    ] } },
+    "/api/status/playing": { ok: true, data: { items: [{ titleId: "PPSA2" }, { titleId: "CUSA1" }, { titleId: "PPSA2" }] } },
     "/api/status/playing/now": { ok: true, data: { playing: { titleId: "PPSA9" } } },
   };
-  assert.deepEqual(trophySlices(views), [
-    "/api/status/trophies?titleids=CUSA1%2CPPSA2",
-    "/api/status/trophies?titleids=PPSA3",
-    "/api/status/trophies?titleids=PPSA9",
-  ]);
+  assert.deepEqual(trophyTitleIds(views), ["PPSA2", "CUSA1", "PPSA9"]);
 });
 
 test("场景文件把原始值数组压成一行，内容不变", () => {
