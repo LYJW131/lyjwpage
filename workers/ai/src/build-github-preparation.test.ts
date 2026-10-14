@@ -329,3 +329,11 @@ test("historical PR reconciliation accepts only the exact legacy run footer and 
     await assert.rejects(() => prepareBuildPullRequest(setup.api, setup.stored), BuildBlockedError);
   }
 });
+
+test("GithubBuildApi calls its fetcher without a receiver, as workerd's global fetch requires", async () => {
+  const fetcher = async function (this: unknown) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    return Response.json({ id: 1, login: "visitor" });
+  } as typeof fetch;
+  assert.deepEqual(await new GithubBuildApi("token", fetcher).request("/user"), { id: 1, login: "visitor" });
+});

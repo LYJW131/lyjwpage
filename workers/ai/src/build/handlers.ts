@@ -29,7 +29,10 @@ async function verifyGithubVisitor(code: string, codeVerifier: string, secret: s
     if (!Number.isSafeInteger(user.id) || !/^[A-Za-z0-9-]{1,39}$/.test(user.login)) return fail(502, "GitHub identity could not be verified.");
     const name = typeof user.name === "string" ? user.name.replace(/[\r\n<>]/g, " ").trim().slice(0, 100) || null : null;
     return { account: user.login, userId: user.id, name };
-  } catch { return fail(502, "GitHub sign-in is temporarily unavailable."); }
+  } catch (error) {
+    console.error("[build] GitHub sign-in failed", error instanceof Error ? error.message : String(error));
+    return fail(502, "GitHub sign-in is temporarily unavailable.");
+  }
   finally { if (token) await revoke(token, secret, fetcher); }
 }
 
