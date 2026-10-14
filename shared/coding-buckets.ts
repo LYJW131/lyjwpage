@@ -44,6 +44,7 @@ function retained(windows: Map<number, Row[]>, coverage: Coverage[], receivedAt:
   };
 }
 
+// 一份报告只替换它声明的 agent：同一来源下的 agent 各报各的范围（Cursor 与 Devin 都走 agents），互不冲掉。
 // 报告首桶可能只覆盖后半截，不能用这份局部计数覆盖已有的完整桶。
 export function mergeBucketReport(
   previous: StoredCodingBuckets | null,
@@ -51,13 +52,14 @@ export function mergeBucketReport(
   receivedAt: number,
 ): StoredCodingBuckets | null {
   if (previous && report.collectedAt < previous.collectedAt) return null;
+  const declared = new Set(report.agents.map((agent) => agent.id));
   const windows = new Map((previous?.windows ?? []).map((window) => [window.from, window.agents.map((row) => ({ ...row }))]));
-  for (const from of [...windows.keys()]) {
-    if (from >= report.from && from < report.to) windows.delete(from);
+  for (const [from, rows] of windows) {
+    if (from >= report.from && from < report.to) windows.set(from, rows.filter((row) => !declared.has(row.id)));
   }
   for (const window of report.windows) {
     if (window.from >= report.from) {
-      windows.set(window.from, window.agents.map((row) => ({ ...row })));
+      windows.set(window.from, [...(windows.get(window.from) ?? []), ...window.agents.map((row) => ({ ...row }))]);
       continue;
     }
     const kept = new Map((windows.get(window.from) ?? []).map((row) => [rowKey(row), row]));
@@ -68,9 +70,12 @@ export function mergeBucketReport(
     windows.set(window.from, [...kept.values()]);
   }
   const coverage = mergeCoverage([...(previous?.coverage ?? []), { from: report.from, to: report.to }]);
+  const kept = retained(windows, coverage, receivedAt);
+  const reporting = new Set(kept.windows.flatMap((window) => window.agents.map((row) => row.id)));
+  const others = (previous?.agents ?? []).filter((agent) => !declared.has(agent.id) && reporting.has(agent.id));
   return {
-    ...retained(windows, coverage, receivedAt),
-    agents: report.agents.map((agent) => ({ ...agent })),
+    ...kept,
+    agents: [...others, ...report.agents].map((agent) => ({ ...agent })),
     collectedAt: report.collectedAt,
     receivedAt,
   };

@@ -77,7 +77,8 @@
   `src/stores/coding-activity.ts#PUSH_STEP_MS` 以上才推，保活不推。灯由浏览器按
   「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废 `mac` 那条（`src/lib/coding-agents.ts`）。
 - **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Coding 评估与归档，不推送。Mac / agents 按报告
-  范围替换（`[from, to)` 内以新报告为准，缺席的桶是 0，范围外不动，报告范围并进覆盖）；跨着报告起点的那一桶只数了
+  范围替换，只替换报告 `agents` 里声明的 agent（`[from, to)` 内这几家以新报告为准，缺席的桶是 0，范围外和没声明的 agent
+  不动，报告范围并进覆盖；同一来源下 Cursor 与 Devin 各报各的范围，靠这条互不冲掉）；跨着报告起点的那一桶只数了
   一截，按 (agent, 模型) 取大的那行，不盖掉旧报告里数全了的桶。合并规则在 `shared/coding-buckets.ts`。
 - **Cursor 账号观测**：agents 来源的 cursor 行另记一笔 `pulse:cursor-observations`（Coding 三色带与 Coding 评估的独立来源）：
   用量历史采集成功就是一次心跳（时刻取采集时刻），只有活动的那封时刻往前走了才记。

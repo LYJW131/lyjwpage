@@ -165,8 +165,14 @@ Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺�
 翻成 `codingUsage` 里 `id: "devin"` 的一行，`days` 整份替换站点那份（`src/devin-usage.ts#devinUsageDays`）。日期照
 tokens.ci 给的原样用，不换算时区。tokens.ci 的 `reasoning` 与 `output` 分列相加，站点契约里
 reasoning 是 output 的子集，所以并进 `outputTokens`；费用用 tokens.ci 的估价，Devin 自家模型记 0，那天 `costComplete` 为
-false。第一次出现 Devin CLI 之后，tokens.ci 有记录而没有它的日子发一行全 0。不带活动和桶。拉失败只发 `state: "error"`，
+false。第一次出现 Devin CLI 之后，tokens.ci 有记录而没有它的日子发一行全 0。不带活动。拉失败只发 `state: "error"`，
 `collectedAt` 是上一次成功的时刻（落在数据卷的 `/data/devin-usage.json`，跨重启保留）。`LIMITS_FIXTURE` 模式下不拉。
+
+tokens.ci 只给日累计，Pulse 的 Tokens 道只认 5 分钟桶，所以另记一本桶账（同一个状态文件）：每次拉到的各日各模型累计
+和上一次比，涨的部分按两次提交时刻（tokens.ci 的 `updatedAt`）之间的时长均摊进桶（`src/devin-buckets.ts#advanceDevinLedger`）。
+总量是实的，桶里的时间分布是推出来的，精度取决于 Mac 上 tokens.ci 客户端多久提交一次。第一次只立基线；两次提交隔了
+`DEVIN_BUCKET_SPAN_MS` 以上就重立基线、那段不补。每轮主信封发完后，单独一封只带 `codingTokenBuckets`，范围是账本起点与
+24 小时前取晚的那个到最后一次提交，整份重发（丢一封下一轮自己补）；站点按 agent 替换桶，所以和 Cursor 的桶互不冲掉。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向
