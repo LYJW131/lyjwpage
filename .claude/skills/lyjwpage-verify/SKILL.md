@@ -84,6 +84,26 @@ node scripts/site-verify.mjs shot --url http://localhost:3211 --card pulse --the
 - Codex 已跑了几轮（每次推送自动算一轮，上限 3 轮）。Cursor Bugbot 额度用完时当它不存在，不等它也不提（站主定的规矩）；它真跑出来的意见照常列。
 - 验证员只列清单；哪条要修、哪条回复说明不修，由主线程决定。
 
+### 3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有
+
+只用于上面要等机器评审的那类 PR。写代码的线程不判自己的活：CI 绿、评审意见都处理完后，合并前派一个新的判定员。
+
+```
+Agent(
+  description: "Judge PR #<号> at <head 短 sha>",
+  subagent_type: "general-purpose",
+  model: "opus",           // 判断活留在主模型
+  effort: "high",
+  run_in_background: false,
+  prompt: <下面的简报>
+)
+```
+
+- 简报只给：站主的原话（线程根消息和后来补的要求，原文照贴）、PR 号与当前 head 的完整 SHA、这轮验证员的证据表。不给 PR 描述和线程里的推理，让它自己读 `git diff origin/main...<sha>` 和调用方。
+- 它回答三件事：diff 是否做到了站主要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）；证据表里有没有没验到却算通过的项。结论写 `PASS` 或 `FAIL`，FAIL 列出要修的项。
+- 判定员只读：不改文件、不提交、不在 GitHub 上评论。主线程把结论原样发成一条 PR 评论，第一行写 `判定 <head 完整 SHA>：PASS` 或 `FAIL`。
+- 结论只对那个 SHA 有效：之后再推提交，合并前按新 head 重派一次。FAIL 的项修完再判，不和判定员争；确实判错了（比如误读了站主原话），在 PR 评论里写明依据，交站主定。
+
 ### 4. 合并后部署与生产核对
 
 - 先看合并改到了哪些 Worker 的监视路径（`docs/workers-builds.md`「构建监视路径」）。没碰到 site 的（只改文档、只改别的 Worker），`/api/version` 本来就不会变，跳过下面的版本等待，只核对碰到的那几个 Worker 的构建和受影响的生产行为。
