@@ -108,7 +108,7 @@ async function errorCounts(api: CloudflareApi, account: string, from: number, to
         calculations: [{ operator: "count" }],
         filters: [
           { key: "$metadata.level", operation: "eq", type: "string", value: "error" },
-          // 分支预览与生产同名同服务，只能靠 workers.dev 主机名分开；定时任务没有主机名，要留下。
+          // 分支预览与生产同名同服务。RPC、Durable Object 与定时任务的事件没有主机名，要留下生产的、去掉预览的：预览的事件都带 $workers.preview。
           {
             kind: "group",
             filterCombination: "or",
@@ -117,6 +117,7 @@ async function errorCounts(api: CloudflareApi, account: string, from: number, to
               { key: "$workers.event.request.headers.host", operation: "not_includes", type: "string", value: "workers.dev" },
             ],
           },
+          { key: "$workers.preview.slug", operation: "is_null", type: "string" },
         ],
         groupBys: [{ type: "string", value: "$metadata.service" }],
       },
