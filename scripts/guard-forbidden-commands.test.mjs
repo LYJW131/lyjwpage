@@ -47,6 +47,49 @@ test("强制提交本地凭据文件要拦，示例文件和普通 add 不拦", 
   assert.equal(forbiddenReason("git add -f src/env.ts"), null);
 });
 
+test("改提交身份、关签名要拦", () => {
+  for (const command of [
+    "GIT_COMMITTER_NAME=Claude GIT_COMMITTER_EMAIL=noreply@anthropic.com git commit -q -F - <<'EOF'\nfix: x\nEOF",
+    "GIT_AUTHOR_EMAIL=noreply@anthropic.com git merge origin/main",
+    "export GIT_COMMITTER_EMAIL=noreply@anthropic.com && git commit -m x",
+    "env GIT_COMMITTER_NAME=Claude git commit -m x",
+    "git -c user.email=noreply@anthropic.com commit -m x",
+    "git -c commit.gpgsign=false commit -m x",
+    "git commit --no-gpg-sign -m x",
+    'git commit --author="Claude <noreply@anthropic.com>" -m x',
+    "git config user.email noreply@anthropic.com",
+    "git config --global user.name Claude",
+    "git config --unset commit.gpgsign",
+    "git config set user.email noreply@anthropic.com",
+    "git config --file .git/config user.email noreply@anthropic.com",
+    "git config --type string user.name Claude",
+    "EMAIL=noreply@anthropic.com git --config-env=user.email=EMAIL commit -m x",
+    "git -C /tmp/repo commit --author=Claude -m x",
+  ]) {
+    assert.ok(blocked(command), command);
+  }
+});
+
+test("读取身份、普通提交和提交信息里的署名不拦", () => {
+  for (const command of [
+    "git config user.email",
+    "git config --get user.name",
+    "git config --list | grep user",
+    "env | grep -E '^GIT_'",
+    "git log --format='%an %cn'",
+    "git commit -F - <<'EOF'\nfix: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nGIT_COMMITTER_NAME=Claude\nEOF",
+    "rg -n 'GIT_COMMITTER_NAME=' scripts",
+    "git merge --no-edit origin/main",
+    "git log --author=Claude --oneline",
+    "git shortlog -sn --author=Claude",
+    "git config --get-regexp user.email '.*'",
+    "git config get user.email",
+    "git config --file .git/config user.email",
+  ]) {
+    assert.equal(forbiddenReason(command), null, command);
+  }
+});
+
 test("作为 PreToolUse 钩子：命中退出 2 并在 stderr 说明，其余静默放行", () => {
   const run = (command) =>
     spawnSync(process.execPath, ["scripts/guard-forbidden-commands.mjs"], {
