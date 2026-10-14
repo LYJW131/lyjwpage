@@ -64,8 +64,18 @@ export async function signAcs3(options: Acs3Request): Promise<{ url: string; hea
 }
 
 const PURGE_TIMEOUT_MS = 10_000;
+const PURGE_BACKOFF_MS = [1_000, 2_000];
 
-export async function purgeEsaHome(config: EsaHomeConfig, fetcher: typeof fetch = fetch): Promise<string> {
+class EsaPurgeError extends Error {
+  readonly retryable: boolean;
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.retryable = retryable;
+  }
+}
+
+// 每次尝试都要重新签名：复用日期或 nonce 的请求会被拒。
+async function purgeOnce(config: EsaHomeConfig, fetcher: typeof fetch): Promise<string> {
   const { url, headers } = await signAcs3({
     endpoint: "esa.cn-hangzhou.aliyuncs.com",
     action: "PurgeCaches",
@@ -78,17 +88,39 @@ export async function purgeEsaHome(config: EsaHomeConfig, fetcher: typeof fetch 
     accessKeyId: config.accessKeyId,
     accessKeySecret: config.accessKeySecret,
   });
-  const response = await fetcher(url, {
-    method: "POST",
-    headers,
-    redirect: "manual",
-    signal: AbortSignal.timeout(PURGE_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetcher(url, {
+      method: "POST",
+      headers,
+      redirect: "manual",
+      signal: AbortSignal.timeout(PURGE_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new EsaPurgeError(`ESA purge network: ${error instanceof Error ? error.message : String(error)}`, true);
+  }
   const result = (await response.json().catch(() => null)) as { TaskId?: unknown; Code?: unknown; Message?: unknown } | null;
   if (!response.ok || typeof result?.TaskId !== "string" || !result.TaskId) {
     const code = typeof result?.Code === "string" ? result.Code : "InvalidResponse";
     const message = typeof result?.Message === "string" ? result.Message : "";
-    throw new Error(`ESA purge HTTP ${response.status}: ${code} ${message}`.trim());
+    const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+    throw new EsaPurgeError(`ESA purge HTTP ${response.status}: ${code} ${message}`.trim(), retryable);
   }
   return result.TaskId;
+}
+
+export async function purgeEsaHome(
+  config: EsaHomeConfig,
+  fetcher: typeof fetch = fetch,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<string> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await purgeOnce(config, fetcher);
+    } catch (error) {
+      const delay = PURGE_BACKOFF_MS[attempt];
+      if (!(error instanceof EsaPurgeError) || !error.retryable || delay === undefined) throw error;
+      await wait(delay);
+    }
+  }
 }
