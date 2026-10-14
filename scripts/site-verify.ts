@@ -10,9 +10,76 @@ const MAP_PATH = path.join(ROOT, ".claude", "skills", "lyjwpage-verify", "featur
 const DEV_OVERRIDE = path.join(ROOT, "scripts", "dev-override.mjs");
 const RENDER_PLAYWRIGHT = path.join(ROOT, "docs", "explainer", "render", "node_modules", "playwright-core", "index.mjs");
 
+type Flags = { [key: string]: string | boolean | undefined; url: string };
+type Box = { x: number; y: number; width: number; height: number };
+type FailedRequest = { url: string; status: number | null; error?: string; sameOrigin: boolean };
+export type Sink = { errors: string[]; warnings: string[]; pageErrors: string[]; envNoise: string[]; failedRequests: FailedRequest[] };
+type CardEntry = { component: string; selector?: string; alternates?: string[]; cardLabel?: string; conditional?: boolean; endpoints?: Record<string, string[]>; proves?: unknown };
+export type FeatureMap = { cards: Record<string, CardEntry> };
+type CardSpec = { id: string; selector?: string; alternates?: string[]; cardLabel?: string };
+type Located = { visible: boolean; box: Box } | null;
+type TextChange = { at: number; where: string; before: string; after: string };
+type Viewport = { width: number; height: number };
+
+type PwRequest = {
+  url(): string;
+  method(): string;
+  failure(): { errorText: string } | null;
+  isNavigationRequest(): boolean;
+  frame(): PwFrame;
+  resourceType(): string;
+};
+type PwResponse = { url(): string; status(): number; request(): PwRequest; text(): Promise<string> };
+type PwFrame = { url(): string };
+type PwConsoleMessage = { text(): string; type(): string };
+type PwElement = { scrollIntoViewIfNeeded(): Promise<void>; screenshot(options: { path: string }): Promise<unknown> };
+type PwRoute = {
+  request(): PwRequest;
+  continue(): Promise<void>;
+  fetch(): Promise<PwResponse>;
+  fulfill(options: { status?: number; contentType?: string; body?: string; response?: PwResponse }): Promise<void>;
+};
+type PwCdpSession = {
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  on(event: "Page.screencastFrame", handler: (frame: { data: string; sessionId: number; metadata: { timestamp: number } }) => void): void;
+};
+type PwPage = {
+  on(event: "framenavigated", handler: (frame: PwFrame) => void): void;
+  on(event: "console", handler: (message: PwConsoleMessage) => void): void;
+  on(event: "pageerror", handler: (error: Error) => void): void;
+  on(event: "response", handler: (response: PwResponse) => void): void;
+  on(event: "request" | "requestfailed", handler: (request: PwRequest) => void): void;
+  mainFrame(): PwFrame;
+  goto(url: string, options: { waitUntil: "load"; timeout: number }): Promise<unknown>;
+  reload(options: { waitUntil: "commit" }): Promise<unknown>;
+  waitForTimeout(ms: number): Promise<void>;
+  evaluate(expression: string): Promise<unknown>;
+  evaluateHandle(expression: string): Promise<{ asElement(): PwElement | null }>;
+  screenshot(options: { path: string; fullPage?: boolean }): Promise<unknown>;
+  route(matcher: (url: URL) => boolean, handler: (route: PwRoute) => Promise<void>): Promise<void>;
+  context(): PwContext;
+  close(): Promise<void>;
+};
+type PwContext = {
+  newPage(): Promise<PwPage>;
+  addInitScript(script: string): Promise<void>;
+  newCDPSession(page: PwPage): Promise<PwCdpSession>;
+  clock: { setSystemTime(time: number): Promise<void> };
+};
+type PwBrowser = {
+  newContext(options: Record<string, unknown>): Promise<PwContext>;
+  version(): string;
+  close(): Promise<void>;
+};
+type PwBrowserType = { launch(options: Record<string, unknown>): Promise<PwBrowser> };
+type PwApi = { chromium: PwBrowserType; webkit: PwBrowserType };
+
+const errorText = (error: unknown) => String((error as { message?: unknown } | null)?.message ?? error);
+const stringFlag = (value: string | boolean | undefined) => (typeof value === "string" ? value : undefined);
+
 const DEFAULT_URL = `http://localhost:${process.env.DEV_SITE_PORT || "3211"}`;
 const WORKER_URL = (process.env.DEV_WORKER_URL || "http://localhost:8788").replace(/\/+$/, "");
-const HEIGHT_BY_WIDTH = { 375: 812, 768: 1024, 820: 1180, 1024: 768, 1280: 900, 1440: 900 };
+const HEIGHT_BY_WIDTH: Record<number, number> = { 375: 812, 768: 1024, 820: 1180, 1024: 768, 1280: 900, 1440: 900 };
 // 环境噪声不是站点错误（SKILL.md 约定）：容器代理把 WebSocket 升级挡成 426，消息里必须同时有 426 才豁免；
 // Vite dev 重优化依赖时偶发 504。其它 ws 失败（鉴权、路由、5xx）照常算。
 const ENV_NOISE = [
@@ -20,15 +87,15 @@ const ENV_NOISE = [
   /Outdated Optimize Dep/,
 ];
 
-export function isEnvNoise(text) {
+export function isEnvNoise(text: string): boolean {
   return ENV_NOISE.some((pattern) => pattern.test(text));
 }
 
-export function parseArgs(argv) {
-  const flags = {};
-  const positional = [];
+export function parseArgs(argv: string[]): { flags: Record<string, string | true>; positional: string[] } {
+  const flags: Record<string, string | true> = {};
+  const positional: string[] = [];
   for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
+    const arg = argv[i] ?? "";
     if (!arg.startsWith("--")) {
       positional.push(arg);
       continue;
@@ -36,8 +103,8 @@ export function parseArgs(argv) {
     const eq = arg.indexOf("=");
     if (eq !== -1) {
       flags[arg.slice(2, eq)] = arg.slice(eq + 1);
-    } else if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
-      flags[arg.slice(2)] = argv[i + 1];
+    } else if (i + 1 < argv.length && !(argv[i + 1] ?? "").startsWith("--")) {
+      flags[arg.slice(2)] = argv[i + 1] ?? "";
       i += 1;
     } else {
       flags[arg.slice(2)] = true;
@@ -46,19 +113,19 @@ export function parseArgs(argv) {
   return { flags, positional };
 }
 
-export function parseWidths(value) {
+export function parseWidths(value: unknown): Viewport[] | null {
   const list = String(value ?? "1280,375").split(",").map((w) => Number(w.trim()));
   if (list.some((w) => !Number.isInteger(w) || w < 200 || w > 4000)) return null;
   return list.map((width) => ({ width, height: HEIGHT_BY_WIDTH[width] ?? 900 }));
 }
 
-export function loadFeatureMap(mapPath = MAP_PATH) {
+export function loadFeatureMap(mapPath = MAP_PATH): FeatureMap | null {
   if (!fs.existsSync(mapPath)) return null;
-  return JSON.parse(fs.readFileSync(mapPath, "utf8"));
+  return JSON.parse(fs.readFileSync(mapPath, "utf8")) as FeatureMap;
 }
 
 // 归一化「这条控制台面干不干净」：cards 与 shot 同一份判据，envNoise 不算。
-export function consoleClean(sink) {
+export function consoleClean(sink: Sink): boolean {
   return (
     sink.errors.length === 0 &&
     sink.pageErrors.length === 0 &&
@@ -66,14 +133,14 @@ export function consoleClean(sink) {
   );
 }
 
-export function newSink() {
+export function newSink(): Sink {
   return { errors: [], warnings: [], pageErrors: [], envNoise: [], failedRequests: [] };
 }
 
 // 返回 "noise" | "same-origin" | "external"。noise 只放确定的环境原因：/favicon.ico 是浏览器自动探测
 // （站点图标在 /icon，生产同样 404）；WebSocket 升级只豁免容器代理回的 426，requestfailed 没有状态码、
 // 其它 ws 失败（鉴权 4xx、路由、5xx、断网）一律按源分类，同源计入失败。
-export function classifyRequest(url, status, origin) {
+export function classifyRequest(url: string, status: number | null, origin: string | null): "noise" | "same-origin" | "external" {
   const parsed = new URL(url);
   if (parsed.pathname === "/favicon.ico") return "noise";
   const isWebSocket = parsed.protocol === "ws:" || parsed.protocol === "wss:";
@@ -85,34 +152,34 @@ export function classifyRequest(url, status, origin) {
 }
 
 // 导航目的地的 origin；about:blank / data: / chrome-error: 这类没有有效 origin 的返回 null，由调用方决定保不保留旧值。
-export function navOrigin(url) {
+export function navOrigin(url: string): string | null {
   const origin = new URL(url).origin;
   return origin === "null" ? null : origin;
 }
 
-export function updateOrigin(current, url) {
+export function updateOrigin(current: { origin: string | null }, url: string): string | null {
   const origin = navOrigin(url);
   if (origin) current.origin = origin;
   return current.origin;
 }
 
 // --card 显式点名就是期望它出现：conditional 卡被点名时也算 required。
-export function requiredCardIds(map, wanted, explicit) {
-  return explicit ? wanted : wanted.filter((id) => !map.cards[id].conditional);
+export function requiredCardIds(map: { cards: Record<string, { conditional?: boolean }> }, wanted: string[], explicit: boolean): string[] {
+  return explicit ? wanted : wanted.filter((id) => !map.cards[id]?.conditional);
 }
 
 // 把 sink 的脏处点成一句话，写进失败输出的 next。
-export function consoleProblems(sink) {
-  const bad = [];
+export function consoleProblems(sink: Sink): string {
+  const bad: string[] = [];
   if (sink.errors.length) bad.push(`console.errors ${sink.errors.length} 条`);
   if (sink.pageErrors.length) bad.push(`pageErrors ${sink.pageErrors.length} 条`);
   const sameOrigin = sink.failedRequests.filter((r) => r.sameOrigin);
-  if (sameOrigin.length) bad.push(`同源失败请求 ${sameOrigin.length} 条（如 ${sameOrigin[0].url}）`);
+  if (sameOrigin.length) bad.push(`同源失败请求 ${sameOrigin.length} 条（如 ${sameOrigin[0]?.url}）`);
   return bad.join("；");
 }
 
-function cardsNext(missing, sink) {
-  const hints = [];
+function cardsNext(missing: string[], sink: Sink): string {
+  const hints: string[] = [];
   if (missing.length) {
     hints.push(`缺卡 ${missing.join(", ")}：先查 feature-map 里 selector / alternates 是否还有效；卡该显示却没挂时按 endpoints 注夹具（override --endpoint <端点> --fixture <夹具.json>）`);
   }
@@ -121,26 +188,27 @@ function cardsNext(missing, sink) {
   return hints.join("。");
 }
 
-function print(payload, flags = {}) {
+function print(payload: unknown, flags: Partial<Flags> = {}) {
   console.log(flags.compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2));
 }
 
 // fail 只抛不调 process.exit：直接 exit 会跳过 try/finally，浏览器关不掉；退出码统一在入口映射。
 class ExitError extends Error {
-  constructor(code) {
+  code: number;
+  constructor(code: number) {
     super(`exit ${code}`);
     this.code = code;
   }
 }
 
-function fail(message, next, code = 1) {
+function fail(message: string, next?: string, code = 1): never {
   print({ ok: false, error: message, next });
   throw new ExitError(code);
 }
 
 const HELP = `site-verify — 站点验证共用脚本（lyjwpage-verify）
 
-用法：node scripts/site-verify.mjs <子命令> [选项]   输出一律 JSON，--compact 单行。
+用法：node scripts/site-verify.ts <子命令> [选项]   输出一律 JSON，--compact 单行。
 
 子命令：
   doctor    检查环境：站点可访问、playwright 可加载、Chrome 能起、本地 Worker 夹具开关
@@ -156,14 +224,14 @@ const HELP = `site-verify — 站点验证共用脚本（lyjwpage-verify）
   --chrome <path>     Chrome 可执行文件（也可设 SITE_VERIFY_CHROME）
 
 doctor:
-  例子  node scripts/site-verify.mjs doctor --url http://localhost:3291
+  例子  node scripts/site-verify.ts doctor --url http://localhost:3291
 
 cards:
   --card <id[,id]>    只查指定卡片
   --width <px>        视口宽（默认 1280）  --height <px> 视口高（默认 900）
   --theme dark|light  色彩方案（默认 light）
   --settle <ms>       加载后等待毫秒（默认 4000；页面常开 WebSocket，没有 networkidle）
-  例子  node scripts/site-verify.mjs cards --url http://localhost:3291 --card pulse,vibe-coding
+  例子  node scripts/site-verify.ts cards --url http://localhost:3291 --card pulse,vibe-coding
 
 shot:
   --widths <w,w>      宽度列表（默认 1280,375；高度按常用机型取，可用 --height 覆盖）
@@ -172,7 +240,7 @@ shot:
   --theme dark|light|both（默认 light）  --dpr <n> 像素密度（默认 1）
   --out <目录>        截图输出目录（必填）  --settle <ms>（默认 4000）
   --ssr               禁用 JavaScript，看 SSR HTML 长什么样
-  例子  node scripts/site-verify.mjs shot --url http://localhost:3291 --widths 1280,375 --out /tmp/shots
+  例子  node scripts/site-verify.ts shot --url http://localhost:3291 --widths 1280,375 --out /tmp/shots
 
 reload（热缓存刷新：先加载一次暖缓存，再刷新，查首次绘制之后又变过的文字、画面和字体）：
   --engine chromium|webkit  浏览器（默认 chromium；webkit 要装 Playwright 的 WebKit，只查文字与字体，不录屏）
@@ -184,7 +252,7 @@ reload（热缓存刷新：先加载一次暖缓存，再刷新，查首次绘�
   判据：textJumps 是首次绘制后只变过一两次的文字（时间从快照跳到此刻、水合才补上的内容）；
   frameJumps 是录屏里只变过一两次的画面区域（字体换装、卡片晚到、布局挪动），帧存在 --out；
   fontsAfterPaint 是首帧时还没加载完的字体；liveText / liveRegions 是反复变化的地方（歌词、进度、视频），只列出不判失败。
-  例子  node scripts/site-verify.mjs reload --url http://localhost:3211 --out /tmp/reload
+  例子  node scripts/site-verify.ts reload --url http://localhost:3211 --out /tmp/reload
 
 skew（模拟 Safari 恢复后台标签时按缓存取回的旧 HTML）：
   --old-html <文件>   用这份旧首页 HTML（合并前 curl -s https://lyjw.me/ > 文件 存下）。判据：它引用的 /assets/ 全取得到
@@ -192,20 +260,21 @@ skew（模拟 Safari 恢复后台标签时按缓存取回的旧 HTML）：
   不带 --old-html     把当前首页的 JS / CSS 指纹全改成不存在的，判据：自动刷新恰好 1 次后有样式、已水合
   --engine chromium|webkit（默认 chromium）  --width <px> --height <px>（默认 375x812）
   --watch <ms>        打开后等多久再判（默认 8000）   --out <目录>  存一张最后停下的截图（可选）
-  例子  node scripts/site-verify.mjs skew --url https://lyjw.me --old-html /tmp/old-home.html
+  例子  node scripts/site-verify.ts skew --url https://lyjw.me --old-html /tmp/old-home.html
 
 override（会改本地 Worker 状态；先 pnpm dev:worker + pnpm dev:local，workers/core/.dev.vars 需 DEV_OVERRIDES=true）：
   --endpoint <路径> --fixture <夹具.json>   注入（夹具名见功能地图 endpoints）
   --endpoint <路径> --clear                 清掉一条注入
   --on | --off                              总开关        --list  列出当前注入（只读）
   --dry-run                                 只打印将执行的 pnpm dev:override 命令
-  例子  node scripts/site-verify.mjs override --endpoint /api/status/pulse --fixture pulse-busy-day.json --dry-run
+  例子  node scripts/site-verify.ts override --endpoint /api/status/pulse --fixture pulse-busy-day.json --dry-run
 `;
 
-export async function resolvePlaywright() {
-  const asApi = (mod, source) => {
-    const api = mod?.chromium ? mod : (mod?.default?.chromium ? mod.default : null);
-    return api ? { api, source } : null;
+export async function resolvePlaywright(): Promise<{ api: PwApi; source: string } | null> {
+  const asApi = (mod: unknown, source: string) => {
+    const candidate = mod as { chromium?: unknown; default?: { chromium?: unknown } } | null;
+    const api = candidate?.chromium ? candidate : (candidate?.default?.chromium ? candidate.default : null);
+    return api ? { api: api as PwApi, source } : null;
   };
   if (process.env.SITE_VERIFY_PLAYWRIGHT) {
     return asApi(createRequire(`${ROOT}/x`)(process.env.SITE_VERIFY_PLAYWRIGHT), process.env.SITE_VERIFY_PLAYWRIGHT);
@@ -231,12 +300,12 @@ export async function resolvePlaywright() {
 
 const PLAYWRIGHT_NEXT = "仓库自带 playwright-core 在 docs/explainer/render，先跑 `pnpm --dir docs/explainer/render install --ignore-workspace`；云端容器通常已全局安装。";
 
-async function launchBrowser(pw, flags = {}) {
-  const explicit = flags.chrome || process.env.SITE_VERIFY_CHROME;
-  const attempts = explicit
+async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
+  const explicit = stringFlag(flags.chrome) || process.env.SITE_VERIFY_CHROME;
+  const attempts: Record<string, string>[] = explicit
     ? [{ executablePath: explicit }]
     : [{ channel: "chrome" }, { executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" }, {}];
-  let lastError;
+  let lastError: unknown;
   for (const opts of attempts) {
     try {
       return { browser: await pw.chromium.launch({ headless: true, ...opts }), via: opts };
@@ -247,8 +316,8 @@ async function launchBrowser(pw, flags = {}) {
   throw lastError;
 }
 
-function watchConsole(page, sink, current) {
-  const push = (list, text) => {
+function watchConsole(page: PwPage, sink: Sink, current: { origin: string | null }) {
+  const push = (list: string[], text: string) => {
     if (!list.includes(text)) list.push(text);
   };
   // 同源判定跟当前页面走：跳转换域后，新域的第一方失败也要计入。
@@ -289,7 +358,7 @@ function watchConsole(page, sink, current) {
   });
 }
 
-async function openPage(pwApi, flags, { width, height }, sink) {
+async function openPage(pwApi: PwApi, flags: Flags, { width, height }: Viewport, sink: Sink) {
   const { browser, via } = await launchBrowser(pwApi, flags);
   try {
     const context = await browser.newContext({
@@ -317,7 +386,7 @@ const SCROLL_SWEEP = `(async () => {
   scrollTo(0, 0);
 })()`;
 
-async function scrollSweep(page) {
+async function scrollSweep(page: PwPage) {
   await page.evaluate(SCROLL_SWEEP);
   await page.waitForTimeout(300);
 }
@@ -347,30 +416,30 @@ const LOCATE_FN = `(spec) => {
   return { visible, box: { x: box.x, y: box.y, width: box.width, height: box.height } };
 }`;
 
-async function locate(page, spec) {
-  return page.evaluate(`(${LOCATE_FN})(${JSON.stringify(spec)})`);
+async function locate(page: PwPage, spec: CardSpec): Promise<Located> {
+  return page.evaluate(`(${LOCATE_FN})(${JSON.stringify(spec)})`) as Promise<Located>;
 }
 
-async function locateHandle(page, spec) {
+async function locateHandle(page: PwPage, spec: CardSpec) {
   const handle = await page.evaluateHandle(`(${FIND_EL})(${JSON.stringify(spec)})`);
   return handle.asElement();
 }
 
-function cardSpec(id, entry) {
+function cardSpec(id: string, entry: CardEntry): CardSpec {
   return { id, selector: entry.selector, alternates: entry.alternates, cardLabel: entry.cardLabel };
 }
 
-async function cmdDoctor(flags) {
-  const checks = [];
-  const add = (name, status, detail, next) => checks.push({ name, status, detail, ...(next ? { next } : {}) });
+async function cmdDoctor(flags: Flags) {
+  const checks: { name: string; status: string; detail: unknown; next?: string }[] = [];
+  const add = (name: string, status: string, detail: unknown, next?: string) => checks.push({ name, status, detail, ...(next ? { next } : {}) });
 
   try {
     const response = await fetch(`${flags.url}/api/version`, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const body = await response.json();
+    const body = (await response.json()) as { commit?: string } | null;
     add("site", "pass", { url: flags.url, commit: body?.commit ?? null });
   } catch (error) {
-    add("site", "fail", String(error?.message ?? error), "先起服务：DEV_SITE_PORT=<端口> pnpm dev（连生产 Worker）；要整套本地 Worker 用 pnpm dev:worker + pnpm dev:local。本脚本不负责起停。");
+    add("site", "fail", errorText(error), "先起服务：DEV_SITE_PORT=<端口> pnpm dev（连生产 Worker）；要整套本地 Worker 用 pnpm dev:worker + pnpm dev:local。本脚本不负责起停。");
   }
 
   const pw = await resolvePlaywright().catch(() => null);
@@ -385,7 +454,7 @@ async function cmdDoctor(flags) {
         await browser.close();
       }
     } catch (error) {
-      add("chrome", "fail", String(error?.message ?? error).slice(0, 300), "装 Google Chrome（playwright-core 用 channel chrome），或 `--chrome <路径>` / SITE_VERIFY_CHROME 指定可执行文件。");
+      add("chrome", "fail", errorText(error).slice(0, 300), "装 Google Chrome（playwright-core 用 channel chrome），或 `--chrome <路径>` / SITE_VERIFY_CHROME 指定可执行文件。");
     }
   } else {
     add("chrome", "fail", "跳过：playwright 没解到", PLAYWRIGHT_NEXT);
@@ -394,15 +463,15 @@ async function cmdDoctor(flags) {
   try {
     const response = await fetch(`${WORKER_URL}/api/dev/overrides`, { signal: AbortSignal.timeout(3000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    add("dev-worker", "pass", { url: WORKER_URL, ...(await response.json()) });
+    add("dev-worker", "pass", { url: WORKER_URL, ...((await response.json()) as object) });
   } catch (error) {
-    add("dev-worker", "warn", `本地 Worker 不可达（${String(error?.message ?? error).slice(0, 120)}）`, "要注入夹具先 pnpm dev:worker + pnpm dev:local，且 workers/core/.dev.vars 有 DEV_OVERRIDES=true；只验生产数据可忽略此项。");
+    add("dev-worker", "warn", `本地 Worker 不可达（${errorText(error).slice(0, 120)}）`, "要注入夹具先 pnpm dev:worker + pnpm dev:local，且 workers/core/.dev.vars 有 DEV_OVERRIDES=true；只验生产数据可忽略此项。");
   }
 
   const map = loadFeatureMap();
   if (!map) add("feature-map", "fail", `读不到 ${path.relative(ROOT, MAP_PATH)}`);
   else {
-    const missing = [];
+    const missing: string[] = [];
     for (const entry of Object.values(map.cards)) {
       if (!fs.existsSync(path.join(ROOT, entry.component))) missing.push(entry.component);
       for (const list of Object.values(entry.endpoints ?? {})) {
@@ -417,7 +486,7 @@ async function cmdDoctor(flags) {
   if (!ok) process.exitCode = 1;
 }
 
-async function cmdCards(flags) {
+async function cmdCards(flags: Flags) {
   const map = loadFeatureMap() ?? fail(`读不到功能地图 ${path.relative(ROOT, MAP_PATH)}`, "先确认在仓库根目录跑");
   const wanted = flags.card ? String(flags.card).split(",").map((s) => s.trim()) : Object.keys(map.cards);
   const unknown = wanted.filter((id) => !map.cards[id]);
@@ -431,9 +500,9 @@ async function cmdCards(flags) {
   try {
     await page.waitForTimeout(Number(flags.settle || 4000));
     await scrollSweep(page);
-    const cards = {};
+    const cards: Record<string, { status: string; box?: Box; note?: string; proves: unknown }> = {};
     for (const id of wanted) {
-      const entry = map.cards[id];
+      const entry = map.cards[id] as CardEntry;
       const found = await locate(page, cardSpec(id, entry));
       const status = !found ? "absent" : found.visible ? "visible" : "hidden";
       cards[id] = {
@@ -446,7 +515,7 @@ async function cmdCards(flags) {
       };
     }
     const required = requiredCardIds(map, wanted, Boolean(flags.card));
-    const missingRequired = required.filter((id) => cards[id].status !== "visible");
+    const missingRequired = required.filter((id) => cards[id]?.status !== "visible");
     const ok = missingRequired.length === 0 && consoleClean(sink);
     print({ ok, ...(ok ? {} : { next: cardsNext(missingRequired, sink) }), url: flags.url, viewport, cards, console: sink }, flags);
     if (!ok) process.exitCode = 1;
@@ -455,45 +524,46 @@ async function cmdCards(flags) {
   }
 }
 
-async function cmdShot(flags) {
-  if (!flags.out) fail("shot 需要 --out <目录>", "例子：shot --url http://localhost:3291 --widths 1280,375 --out /tmp/shots", 2);
+async function cmdShot(flags: Flags) {
+  const out = stringFlag(flags.out) ?? fail("shot 需要 --out <目录>", "例子：shot --url http://localhost:3291 --widths 1280,375 --out /tmp/shots", 2);
   const map = loadFeatureMap();
-  const cardEntry = flags.card ? map?.cards?.[flags.card] : null;
-  if (flags.card && !cardEntry) fail(`未知卡片 id：${flags.card}`, `可选：${map ? Object.keys(map.cards).join(", ") : "功能地图读不到"}`, 2);
+  const card = stringFlag(flags.card);
+  const cardEntry = card ? map?.cards?.[card] : null;
+  if (card && !cardEntry) fail(`未知卡片 id：${card}`, `可选：${map ? Object.keys(map.cards).join(", ") : "功能地图读不到"}`, 2);
   const viewports = parseWidths(flags.widths) ?? fail("--widths 格式如 1280,375", undefined, 2);
   if (flags.height) for (const v of viewports) v.height = Number(flags.height);
   const themes = flags.theme === "both" ? ["light", "dark"] : [flags.theme === "dark" ? "dark" : "light"];
-  fs.mkdirSync(flags.out, { recursive: true });
+  fs.mkdirSync(out, { recursive: true });
 
   const pw = await resolvePlaywright() ?? fail("解不到 playwright / playwright-core", PLAYWRIGHT_NEXT);
-  const shots = [];
+  const shots: ({ file: string | null; card: string | null; theme: string; error?: string; console: Sink } & Viewport)[] = [];
   let failed = false;
   for (const theme of themes) {
     for (const viewport of viewports) {
       const sink = newSink();
-      const runFlags = { ...flags, theme };
-      const name = `${flags.card ?? "page"}-${viewport.width}x${viewport.height}-${theme}${runFlags.ssr ? "-ssr" : ""}.png`;
-      const file = path.join(flags.out, name);
+      const runFlags: Flags = { ...flags, theme };
+      const name = `${card ?? "page"}-${viewport.width}x${viewport.height}-${theme}${runFlags.ssr ? "-ssr" : ""}.png`;
+      const file = path.join(out, name);
       // 先删同名旧图：这次失败时目录里不留上一轮产物冒充本轮证据。
       fs.rmSync(file, { force: true });
-      let browser;
+      let browser: PwBrowser | undefined;
       try {
         const session = await openPage(pw.api, runFlags, viewport, sink);
         browser = session.browser;
         const { page } = session;
         await page.waitForTimeout(Number(flags.settle || 4000));
         if (!runFlags.ssr) await scrollSweep(page);
-        if (flags.card && runFlags.ssr) {
-          shots.push({ file: null, card: flags.card, ...viewport, theme, error: "--ssr 禁了 JavaScript，不能定位卡片；要 SSR 截图截整页", console: sink });
+        if (card && runFlags.ssr) {
+          shots.push({ file: null, card, ...viewport, theme, error: "--ssr 禁了 JavaScript，不能定位卡片；要 SSR 截图截整页", console: sink });
           failed = true;
           continue;
         }
-        if (flags.card) {
-          const spec = cardSpec(flags.card, cardEntry);
+        if (card && cardEntry) {
+          const spec = cardSpec(card, cardEntry);
           const found = await locate(page, spec);
           const el = found?.visible ? await locateHandle(page, spec) : null;
           if (!el) {
-            shots.push({ file: null, card: flags.card, ...viewport, theme, error: "卡片在当前数据下不显示", console: sink });
+            shots.push({ file: null, card, ...viewport, theme, error: "卡片在当前数据下不显示", console: sink });
             failed = true;
             continue;
           }
@@ -503,10 +573,10 @@ async function cmdShot(flags) {
         } else {
           await page.screenshot({ path: file, fullPage: flags.viewport !== true });
         }
-        shots.push({ file, card: flags.card ?? null, ...viewport, theme, console: sink });
+        shots.push({ file, card: card ?? null, ...viewport, theme, console: sink });
       } catch (error) {
         failed = true;
-        shots.push({ file: null, card: flags.card ?? null, ...viewport, theme, error: String(error?.message ?? error), console: sink });
+        shots.push({ file: null, card: card ?? null, ...viewport, theme, error: errorText(error), console: sink });
       } finally {
         await browser?.close();
       }
@@ -520,7 +590,7 @@ async function cmdShot(flags) {
         .filter((s) => !s.file || !consoleClean(s.console))
         .map((s) => `${s.card ?? "page"}-${s.width}x${s.height}-${s.theme}：${s.error ?? `控制台不干净（${consoleProblems(s.console)}）`}`)
         .join("；");
-  print({ ok, ...(next ? { next } : {}), out: path.resolve(flags.out), shots }, flags);
+  print({ ok, ...(next ? { next } : {}), out: path.resolve(out), shots }, flags);
   if (!ok) process.exitCode = 1;
 }
 
@@ -628,16 +698,16 @@ const FRAME_DIFF = `async ({ frames, grid, oldRgb, threshold }) => {
   return { changed, oldPage, cols, rows };
 }`;
 
-function cellRects(cells, cols, grid) {
+function cellRects(cells: number[], cols: number, grid: number): Box[] {
   const pending = new Set(cells);
-  const rects = [];
+  const rects: Box[] = [];
   for (const seed of cells) {
     if (!pending.has(seed)) continue;
     pending.delete(seed);
     const stack = [seed];
     let [minCol, maxCol, minRow, maxRow] = [Infinity, -Infinity, Infinity, -Infinity];
     while (stack.length) {
-      const cell = stack.pop();
+      const cell = stack.pop() as number;
       const row = Math.floor(cell / cols);
       const col = cell % cols;
       minCol = Math.min(minCol, col);
@@ -659,27 +729,27 @@ function cellRects(cells, cols, grid) {
 
 // 首次绘制之后：反复变化（≥ liveMin 次）的方格算常动区域；其余变过的方格按最后一次变化的帧归组，
 // 过了 grace 才定下来的就是跳动（字体换装、时间从快照跳到此刻、卡片晚到都只变一两次）。
-export function findJumps({ times, changed, oldPage, cols, grid = RELOAD_GRID, grace = 100, liveMin = 3 }) {
+export function findJumps({ times, changed, oldPage, cols, grid = RELOAD_GRID, grace = 100, liveMin = 3 }: { times: number[]; changed: number[][]; oldPage: boolean[]; cols: number; grid?: number; grace?: number; liveMin?: number }) {
   const marked = oldPage.indexOf(true);
   const start = marked === -1 ? -1 : oldPage.findIndex((old, index) => index > marked && !old);
   if (start === -1) return { start: -1, jumps: [], live: [] };
-  const count = new Map();
-  const last = new Map();
+  const count = new Map<number, number>();
+  const last = new Map<number, number>();
   for (let frame = start + 1; frame < changed.length; frame += 1) {
-    for (const cell of changed[frame]) {
+    for (const cell of changed[frame] ?? []) {
       count.set(cell, (count.get(cell) ?? 0) + 1);
       last.set(cell, frame);
     }
   }
   const liveCells = [...count].filter(([, n]) => n >= liveMin).map(([cell]) => cell);
-  const byFrame = new Map();
+  const byFrame = new Map<number, number[]>();
   for (const [cell, frame] of last) {
-    if (count.get(cell) >= liveMin || times[frame] - times[start] <= grace) continue;
+    if ((count.get(cell) ?? 0) >= liveMin || (times[frame] ?? 0) - (times[start] ?? 0) <= grace) continue;
     byFrame.set(frame, [...(byFrame.get(frame) ?? []), cell]);
   }
   const jumps = [...byFrame]
     .sort(([a], [b]) => a - b)
-    .flatMap(([frame, cells]) => cellRects(cells, cols, grid).map((rect) => ({ frame, atMs: Math.round(times[frame] - times[start]), rect })));
+    .flatMap(([frame, cells]) => cellRects(cells, cols, grid).map((rect) => ({ frame, atMs: Math.round((times[frame] ?? 0) - (times[start] ?? 0)), rect })));
   return { start, jumps, live: cellRects(liveCells, cols, grid) };
 }
 
@@ -691,8 +761,8 @@ const DESCRIBE_AT = `(points) => points.map(({ x, y }) => {
   return [owner ? "#" + owner.id : null, el.tagName.toLowerCase(), text ? JSON.stringify(text) : null].filter(Boolean).join(" ");
 })`;
 
-async function screencastReload(page, watch, latency) {
-  const frames = [];
+async function screencastReload(page: PwPage, watch: number, latency: number) {
+  const frames: { t: number; data: string }[] = [];
   const cdp = await page.context().newCDPSession(page);
   // 只拖慢真正走网络的请求（含重新验证），命中内存 / 磁盘缓存的不受影响，正好区分长缓存与每次重新验证的资源。
   if (latency) await cdp.send("Network.emulateNetworkConditions", { offline: false, latency, downloadThroughput: -1, uploadThroughput: -1 });
@@ -711,31 +781,31 @@ async function screencastReload(page, watch, latency) {
 const DIFF_THRESHOLD = 6;
 
 // 同一处文字反复变（歌词、进度、数字滚动）算常动；只变一两次的是跳动。
-export function textJumps(changes, { grace = 100, liveMin = 3 } = {}) {
-  const byWhere = new Map();
+export function textJumps(changes: TextChange[], { grace = 100, liveMin = 3 } = {}) {
+  const byWhere = new Map<string, TextChange[]>();
   for (const change of changes) {
     if (change.at <= grace) continue;
     byWhere.set(change.where, [...(byWhere.get(change.where) ?? []), change]);
   }
-  const jumps = [];
-  const live = [];
+  const jumps: TextChange[] = [];
+  const live: { where: string; count: number; sample: string | undefined }[] = [];
   for (const [where, list] of byWhere) {
-    if (list.length >= liveMin) live.push({ where, count: list.length, sample: list.at(-1).after });
+    if (list.length >= liveMin) live.push({ where, count: list.length, sample: list.at(-1)?.after });
     else jumps.push(...list);
   }
   return { jumps: jumps.sort((a, b) => a.at - b.at), live };
 }
 
-export function staleAssetHtml(html) {
+export function staleAssetHtml(html: string): string {
   return html.replace(/(\/assets\/[A-Za-z0-9_.-]+?)-[A-Za-z0-9_-]{8}\.(js|css)\b/g, "$1-SKEW0000.$2");
 }
 
-export function documentCommit(html) {
+export function documentCommit(html: string): string | null {
   return /<meta name="build-commit" content="([^"]*)"/.exec(html)?.[1] ?? null;
 }
 
-export function skewVerdict({ mode, documents, assetFailures, styled, hydrated }) {
-  const problems = [];
+export function skewVerdict({ mode, documents, assetFailures, styled, hydrated }: { mode: string; documents: number; assetFailures: unknown[]; styled: boolean; hydrated: boolean }): string[] {
+  const problems: string[] = [];
   if (!styled) problems.push("最后停下的页面样式表没挂上（整屏大图那种）");
   if (!hydrated) problems.push("最后停下的页面没水合（点不动）");
   if (mode === "archive") {
@@ -758,7 +828,7 @@ const SKEW_STATE = `(() => {
   };
 })()`;
 
-async function cmdSkew(flags) {
+async function cmdSkew(flags: Flags) {
   const engine = flags.engine === "webkit" ? "webkit" : "chromium";
   const oldHtmlPath = typeof flags["old-html"] === "string" ? flags["old-html"] : null;
   if (oldHtmlPath && !fs.existsSync(oldHtmlPath)) fail(`没有 ${oldHtmlPath}`, "合并前先存一份：curl -s https://lyjw.me/ > <文件>", 2);
@@ -770,22 +840,22 @@ async function cmdSkew(flags) {
 
   const pw = await resolvePlaywright() ?? fail("解不到 playwright / playwright-core", PLAYWRIGHT_NEXT);
   const sink = newSink();
-  let browser;
+  let browser: PwBrowser;
   try {
     browser = engine === "webkit" ? await pw.api.webkit.launch({ headless: true }) : (await launchBrowser(pw.api, flags)).browser;
   } catch (error) {
-    fail(`起不来 ${engine}：${String(error?.message ?? error).slice(0, 200)}`, engine === "webkit" ? "WebKit 要 Playwright 自带的构建：npx playwright install webkit，或 PLAYWRIGHT_BROWSERS_PATH 指向已装的目录" : "同 doctor 的 chrome 项");
+    fail(`起不来 ${engine}：${errorText(error).slice(0, 200)}`, engine === "webkit" ? "WebKit 要 Playwright 自带的构建：npx playwright install webkit，或 PLAYWRIGHT_BROWSERS_PATH 指向已装的目录" : "同 doctor 的 chrome 项");
   }
   try {
     const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
     const page = await context.newPage();
     watchConsole(page, sink, { origin: target.origin });
-    const documents = [];
-    const assetFailures = [];
+    const documents: string[] = [];
+    const assetFailures: { url: string; status?: number; error?: string }[] = [];
     page.on("request", (request) => {
       if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents.push(request.url());
     });
-    const isOwnAsset = (url) => {
+    const isOwnAsset = (url: string) => {
       const parsed = new URL(url);
       return parsed.origin === target.origin && parsed.pathname.startsWith("/assets/");
     };
@@ -808,10 +878,11 @@ async function cmdSkew(flags) {
     });
     await page.goto(target.href, { waitUntil: "load", timeout: 60_000 });
     await page.waitForTimeout(watch);
-    const state = await page.evaluate(SKEW_STATE);
-    if (flags.out) {
-      fs.mkdirSync(flags.out, { recursive: true });
-      await page.screenshot({ path: path.join(flags.out, `skew-${engine}-${mode}.png`) });
+    const state = (await page.evaluate(SKEW_STATE)) as { buildCommit: string | null; styled: boolean; hydrated: boolean };
+    const out = stringFlag(flags.out);
+    if (out) {
+      fs.mkdirSync(out, { recursive: true });
+      await page.screenshot({ path: path.join(out, `skew-${engine}-${mode}.png`) });
     }
     const problems = skewVerdict({ mode, documents: documents.length, assetFailures, ...state });
     const ok = problems.length === 0;
@@ -826,7 +897,7 @@ async function cmdSkew(flags) {
       assetFailures,
       styled: state.styled,
       hydrated: state.hydrated,
-      ...(flags.out ? { out: path.resolve(flags.out) } : {}),
+      ...(out ? { out: path.resolve(out) } : {}),
       console: sink,
     }, flags);
     if (!ok) process.exitCode = 1;
@@ -835,24 +906,24 @@ async function cmdSkew(flags) {
   }
 }
 
-async function cmdReload(flags) {
-  if (!flags.out) fail("reload 需要 --out <目录>", "例子：reload --url http://localhost:3211 --out /tmp/reload", 2);
+async function cmdReload(flags: Flags) {
+  const out = stringFlag(flags.out) ?? fail("reload 需要 --out <目录>", "例子：reload --url http://localhost:3211 --out /tmp/reload", 2);
   const engine = flags.engine === "webkit" ? "webkit" : "chromium";
   const viewport = { width: Number(flags.width || 375), height: Number(flags.height || 1600) };
   const skewMinutes = Number(flags.skew ?? 2);
   const watch = Number(flags.watch || 5000);
   const grace = Number(flags.grace ?? 100);
   const latency = Number(flags.latency ?? 100);
-  fs.rmSync(flags.out, { recursive: true, force: true });
-  fs.mkdirSync(flags.out, { recursive: true });
+  fs.rmSync(out, { recursive: true, force: true });
+  fs.mkdirSync(out, { recursive: true });
 
   const pw = await resolvePlaywright() ?? fail("解不到 playwright / playwright-core", PLAYWRIGHT_NEXT);
   const sink = newSink();
-  let browser;
+  let browser: PwBrowser;
   try {
     browser = engine === "webkit" ? await pw.api.webkit.launch({ headless: true }) : (await launchBrowser(pw.api, flags)).browser;
   } catch (error) {
-    fail(`起不来 ${engine}：${String(error?.message ?? error).slice(0, 200)}`, engine === "webkit" ? "WebKit 要 Playwright 自带的构建：npx playwright install webkit，或 PLAYWRIGHT_BROWSERS_PATH 指向已装的目录" : "同 doctor 的 chrome 项");
+    fail(`起不来 ${engine}：${errorText(error).slice(0, 200)}`, engine === "webkit" ? "WebKit 要 Playwright 自带的构建：npx playwright install webkit，或 PLAYWRIGHT_BROWSERS_PATH 指向已装的目录" : "同 doctor 的 chrome 项");
   }
   try {
     const context = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: flags.theme === "light" ? "light" : "dark" });
@@ -862,7 +933,7 @@ async function cmdReload(flags) {
     await page.goto(flags.url, { waitUntil: "load", timeout: 60_000 });
     await page.waitForTimeout(2000);
     if (skewMinutes) await context.clock.setSystemTime(Date.now() + skewMinutes * 60_000);
-    let frames = null;
+    let frames: { t: number; data: string }[] | null = null;
     if (engine === "chromium") {
       await page.evaluate(MARK_OLD_PAGE);
       frames = await screencastReload(page, watch, latency);
@@ -871,27 +942,28 @@ async function cmdReload(flags) {
       await page.waitForTimeout(watch);
     }
 
-    const fontsAfterPaint = await page.evaluate(FONTS_AFTER_PAINT);
-    const text = textJumps(await page.evaluate("window.__siteVerifyText ?? []"), { grace });
-    await page.screenshot({ path: path.join(flags.out, "settled.png") });
+    const fontsAfterPaint = (await page.evaluate(FONTS_AFTER_PAINT)) as { family: string; weight: string; status: string }[];
+    const text = textJumps((await page.evaluate("window.__siteVerifyText ?? []")) as TextChange[], { grace });
+    await page.screenshot({ path: path.join(out, "settled.png") });
 
-    let frameReport = null;
+    let frameReport: { frames: number; jumps: { atMs: number; rect: Box; element: string | null | undefined; before: string | undefined; after: string | undefined }[]; live: { rect: Box; element: string | null | undefined }[] } | null = null;
     if (frames) {
       if (frames.length < 2) fail(`只录到 ${frames.length} 帧`, "加长 --watch 再试");
       const cols = Math.ceil(viewport.width / RELOAD_GRID);
       const rows = Math.ceil(viewport.height / RELOAD_GRID);
       const centres = Array.from({ length: cols * rows }, (_, cell) => ({ x: (cell % cols) * RELOAD_GRID + RELOAD_GRID / 2, y: Math.floor(cell / cols) * RELOAD_GRID + RELOAD_GRID / 2 }));
-      const cellLabels = await page.evaluate(`(${DESCRIBE_AT})(${JSON.stringify(centres)})`);
-      const label = (rect) => cellLabels[Math.min(rows - 1, Math.floor((rect.y + rect.height / 2) / RELOAD_GRID)) * cols + Math.min(cols - 1, Math.floor((rect.x + rect.width / 2) / RELOAD_GRID))];
+      const cellLabels = (await page.evaluate(`(${DESCRIBE_AT})(${JSON.stringify(centres)})`)) as (string | null)[];
+      const label = (rect: Box) => cellLabels[Math.min(rows - 1, Math.floor((rect.y + rect.height / 2) / RELOAD_GRID)) * cols + Math.min(cols - 1, Math.floor((rect.x + rect.width / 2) / RELOAD_GRID))];
       const analysis = await context.newPage();
-      const diff = await analysis.evaluate(`(${FRAME_DIFF})(${JSON.stringify({ frames: frames.map((f) => `data:image/png;base64,${f.data}`), grid: RELOAD_GRID, oldRgb: OLD_PAGE_RGB, threshold: DIFF_THRESHOLD })})`);
+      const diff = (await analysis.evaluate(`(${FRAME_DIFF})(${JSON.stringify({ frames: frames.map((f) => `data:image/png;base64,${f.data}`), grid: RELOAD_GRID, oldRgb: OLD_PAGE_RGB, threshold: DIFF_THRESHOLD })})`)) as { changed: number[][]; oldPage: boolean[]; cols: number; rows: number };
       await analysis.close();
       const times = frames.map((f) => f.t);
       const { start, jumps, live } = findJumps({ times, changed: diff.changed, oldPage: diff.oldPage, cols: diff.cols, grace });
       if (start === -1) fail("没录到新页面的首帧（旧页面遮罩之后没有新画面）", "加长 --watch，或先确认页面能打开");
-      const names = frames.map((frame, index) => `frame-${String(index).padStart(3, "0")}-${Math.round(frame.t - times[start])}ms.png`);
+      const startTime = times[start] ?? 0;
+      const names = frames.map((frame, index) => `frame-${String(index).padStart(3, "0")}-${Math.round(frame.t - startTime)}ms.png`);
       frames.forEach((frame, index) => {
-        if (index >= start) fs.writeFileSync(path.join(flags.out, names[index]), Buffer.from(frame.data, "base64"));
+        if (index >= start) fs.writeFileSync(path.join(out, names[index] ?? ""), Buffer.from(frame.data, "base64"));
       });
       frameReport = {
         frames: frames.length - start,
@@ -920,15 +992,15 @@ async function cmdReload(flags) {
           fontsAfterPaint.length ? `首帧时字体还没加载完：${[...new Set(fontsAfterPaint.map((f) => f.family))].join(", ")}，首帧画的是回退字体` : null,
           consoleClean(sink) ? null : `控制台不干净：${consoleProblems(sink)}`,
         ].filter(Boolean).join("；");
-    print({ ok, ...(next ? { next } : {}), out: path.resolve(flags.out), ...report, console: sink }, flags);
+    print({ ok, ...(next ? { next } : {}), out: path.resolve(out), ...report, console: sink }, flags);
     if (!ok) process.exitCode = 1;
   } finally {
     await browser.close();
   }
 }
 
-function cmdOverride(flags) {
-  const argv = [];
+function cmdOverride(flags: Flags) {
+  const argv: string[] = [];
   if (flags.list) argv.push("--list");
   else if (flags.on || flags.off) argv.push(flags.on ? "--on" : "--off");
   else if (flags.endpoint && flags.clear) argv.push(String(flags.endpoint), "--clear");
@@ -967,9 +1039,9 @@ function cmdOverride(flags) {
 }
 
 async function main() {
-  const { flags, positional } = parseArgs(process.argv.slice(2));
-  const command = positional[0] ?? (flags.help ? "help" : null);
-  flags.url = String(flags.url || DEFAULT_URL).replace(/\/+$/, "");
+  const parsed = parseArgs(process.argv.slice(2));
+  const command = parsed.positional[0] ?? (parsed.flags.help ? "help" : null);
+  const flags: Flags = { ...parsed.flags, url: String(parsed.flags.url || DEFAULT_URL).replace(/\/+$/, "") };
   if (!command || command === "help" || flags.help === true) {
     process.stdout.write(HELP);
     if (!command && !flags.help) process.exitCode = 2;
@@ -985,11 +1057,12 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch((error) => {
+  main().catch((caught: unknown) => {
+    let error = caught;
     if (!(error instanceof ExitError)) {
-      print({ ok: false, error: String(error?.message ?? error), next: "带 --help 看用法；疑似 bug 时把这条错误贴回主线程" });
+      print({ ok: false, error: errorText(error), next: "带 --help 看用法；疑似 bug 时把这条错误贴回主线程" });
       error = new ExitError(1);
     }
-    process.exitCode = error.code;
+    process.exitCode = (error as ExitError).code;
   });
 }
