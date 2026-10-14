@@ -1,4 +1,4 @@
-import { previewWorkerName, previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.mjs";
+import { previewWorkerName, previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
 
 export const SITE_PREVIEW_MANIFEST_PATH = "build/site-preview.json";
 

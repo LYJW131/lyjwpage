@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 
-import { CHAT_CODE_PATHS, chatCodeVersion } from "../../scripts/chat-code-version.mjs";
+import { CHAT_CODE_PATHS, chatCodeVersion } from "../../scripts/chat-code-version.ts";
 import { textLanguage } from "@shared/build-routine";
 import { CHAT_CONSENT_KEY, createChatConsentStore } from "./chat-consent.ts";
 
