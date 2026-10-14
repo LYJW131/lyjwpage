@@ -4,19 +4,20 @@ import {
   AI_HTTP_PATHS,
   BUILD_PATH,
   BUILD_STATUS_PATH,
+  BUILD_ISSUE_PATH,
   BUILD_UPLOAD_PATH,
   BUILD_PROGRESS_PATH,
   BUILD_SCREENSHOT_PATH,
   BUILD_WEBHOOK_PATH,
 } from "@shared/ai-paths";
 import { GOD_CHAT_USAGE_PATH } from "@shared/god-chat";
-import { getAllowedOrigins, getCorsHeaders, isAllowedOrigin, isAllowedOriginValue } from "@shared/http-origins";
+import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, jsonResponse } from "@shared/http-origins";
 import { MCP_PATH } from "@shared/mcp";
 
 import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
 import { anthropicFetch } from "./chat/egress";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
-import { handleBuild, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
+import { handleBuild, handleBuildIssue, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
 import { handleMcp } from "./mcp";
 import { mcpCodeModeEnabled, type Env } from "./runtime";
 import { fetchProjectDoc } from "./tools/project-docs";
@@ -26,19 +27,13 @@ import type { ToolIO } from "./tools/registry";
 const BUILD_HANDLERS = new Map<string, (request: Request, env: Env, fetcher?: typeof fetch, ctx?: Pick<ExecutionContext, "waitUntil">) => Promise<Response>>([
   [BUILD_PATH, handleBuild],
   [BUILD_STATUS_PATH, handleBuildStatus],
+  [BUILD_ISSUE_PATH, handleBuildIssue],
   [BUILD_UPLOAD_PATH, handleBuildUpload],
   [BUILD_PROGRESS_PATH, handleBuildProgress],
   [BUILD_SCREENSHOT_PATH, handleBuildScreenshot],
   [BUILD_WEBHOOK_PATH, handleGithubWebhook],
 ]);
 const SERVER_BUILD_PATHS = new Set([BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH]);
-
-function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(data), { ...init, headers });
-}
 
 function withCors(response: Response, cors: Headers): Response {
   const headers = new Headers(response.headers);
@@ -91,8 +86,7 @@ const worker = {
     };
     let response: Response;
     if (pathname === MCP_PATH) {
-      const origin = request.headers.get("Origin");
-      if (origin && !isAllowedOriginValue(origin, getAllowedOrigins(env))) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
+      if (isForeignOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
       if (env.MCP_LIMIT && !(await env.MCP_LIMIT.limit({ key: clientIp(request) })).success) {
         return tooMany("Too many requests.", cors, "60");
       }

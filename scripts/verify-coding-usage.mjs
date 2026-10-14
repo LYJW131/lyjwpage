@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
 
 import { devAccessFromEnv } from "./dev-access.mjs";
@@ -34,8 +35,7 @@ const prefix = values["storage-prefix"];
 assert.ok(prefix && /^[a-zA-Z0-9:_-]+$/.test(prefix) && /(?:^|[-_:])(test|dev|verify)(?:[-_:]|$)/.test(prefix), "Supply an explicit test/dev/verify storage prefix; production prefixes are forbidden");
 
 const access = await devAccessFromEnv();
-assert.ok(access, "LOCAL_ACCESS_PRIVATE_JWK is required: run through scripts/verify-api-worker.mjs, or export the key from scripts/dev-access.mjs");
-const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+assert.ok(access, "LOCAL_ACCESS_PRIVATE_JWK is required: run through scripts/verify-core-worker.mjs, or export the key from scripts/dev-access.mjs");
 const MINUTE = 60_000;
 const BUCKET = 5 * MINUTE;
 const siteDay = (stamp) => new Date(stamp + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -189,8 +189,8 @@ pass("Year: 371 days from the Sunday 52 weeks back, exact per-day model split ac
 const pulse = await data("/api/status/pulse");
 const lane = pulse.lanes.tokens;
 assert.equal(lane.kind, "tokens");
-assert.ok(lane.buckets.fresh.some((value) => value >= 6_500), JSON.stringify(lane));
-assert.ok(lane.summary.freshTokens >= 6_500);
+assert.ok(lane.buckets.total.some((value) => value >= 56_500), JSON.stringify(lane));
+assert.ok(lane.summary.totalTokens >= 56_500);
 assert.equal(JSON.stringify(lane).includes("claude"), false);
 pass("Pulse Tokens lane sums the token buckets without model or source names");
 

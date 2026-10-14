@@ -29,7 +29,7 @@
 | **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
 | **Pulse** | 编码、听、看、玩、充电、身体活动最近 24 小时的事实时间线：编码分前台应用 / agent / 两者同时，另有一条 token 速率，听看玩按在放、暂停、空闲画出并带曲目与片名，充电画瓦数，活动画步数与训练；悬停任一时段可看当时的状态与标题。 |
 | **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态）；站点与 API 两行 30 天在线状态，PageSpeed 实验室指标的滚动中位数与真实访客的性能分；Cloudflare Workers Builds 部署与 Cloudflare Web Analytics 访问量、Workers 调用统计与 12 小时报错数，以及落地节点上两个常驻上报器的推送次数、往返延迟和线上版本。 |
-| **与神对话** | 首页对话卡片：Clef 按问题难度把每条消息派给 Haiku（杂鱼）、Sonnet（先知）或 Fable（神，降临时有特效），或直接拒绝；模型可读取站点各卡片的实时数据、查阅本项目的设计文档、联网搜索并附来源，`/new` 新开会话并保留本地存档，回复渲染 Markdown，模型会在回答里自己插入图表、带封面的列表等图示，按站点主题内嵌在正文里、在断网沙箱中渲染（`src/lib/html-preview.ts`）；访客可在对话中规划站点改动，确认计划后用 GitHub 身份提 issue 或启动构建，卡片跟踪 PR、检查与预览；发送前过 Cloudflare Turnstile 人机验证，并按访客限流、限定上下文与输出长度。 |
+| **与神对话** | 首页对话卡片：Clef 按问题难度把每条消息派给 Haiku（杂鱼）、Sonnet（先知）或 Fable（神，降临时有特效），或直接拒绝；模型可读取站点各卡片的实时数据、查阅本项目的设计文档、联网搜索并附来源，`/new` 新开会话并保留本地存档，回复渲染 Markdown，模型会在回答里自己插入数字卡、柱状 / 折线图、时间线、带封面的列表等图示，由站点组件按主题画在正文里（`src/components/chat-visual.tsx`），组件画不了的图示改写 HTML、在断网沙箱中渲染（`src/lib/html-preview.ts`）；访客可在对话中规划站点改动，确认计划后用 GitHub 身份提 issue 或启动构建，卡片跟踪 PR、检查与预览；发送前过 Cloudflare Turnstile 人机验证，并按访客限流、限定上下文与输出长度。 |
 
 界面以灰阶、细线边界和卡片布局为基础，用等宽数字稳定动态指标的排版。颜色与动效主要服务于媒体内容、状态变化和交互反馈。
 
@@ -114,14 +114,14 @@
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
 </picture>
 
-**Pulse**：最近 24 小时「在做什么」的事实时间线。编码是三色带：前台开着编码应用、只有 agent 在跑、两者同时，下面的 Tokens 道画三处来源相加后的每分钟新 token（不含 cache read）；听、看、玩按状态画出在放 / 暂停 / 空闲（在游戏里 / 在线 / 离线），并带上当时的曲目、影视或游戏名；充电画实测瓦数；身体活动画 HealthKit 闭合五分钟桶的步数，训练叠成带项目名的区间。没有观测的时段留空，和观测到的空闲分开。没有上报器的 Apple Music 播放（iPhone、iPad、网页版等），从「最近播放的歌」列表推出来：一首歌开播几秒后就排到列表最前，结合每首时长把连续播放的一串对齐，画成每首一段的斜线区间，悬停可看开播时刻的理想误差。右侧是这一天的事实摘要（编码时长与其中 agent 的时长、在放时长与曲目数、Token 速率峰值与当前速率、充电峰值与电量、步数）。只存原始值，档位与颜色在展示时现算；Jev 只给编码的十五分钟窗口打强度与模式，出现在悬停里。事实每 5 分钟归档到 D1。悬停、点击或用方向键走到某一段，会显示这一段的时间范围和当时的状态与标题。
+**Pulse**：最近 24 小时「在做什么」的事实时间线。编码是三色带：前台开着编码应用、只有 agent 在跑、两者同时，下面的 Tokens 道画三处来源相加后的每分钟 token（和站内所有 token 数一样含 cache read）；听、看、玩按状态画出在放 / 暂停 / 空闲（在游戏里 / 在线 / 离线），并带上当时的曲目、影视或游戏名；充电画实测瓦数；身体活动画 HealthKit 闭合五分钟桶的步数，训练叠成带项目名的区间。没有观测的时段留空，和观测到的空闲分开。没有上报器的 Apple Music 播放（iPhone、iPad、网页版等），从「最近播放的歌」列表推出来：一首歌开播几秒后就排到列表最前，结合每首时长把连续播放的一串对齐，画成每首一段的斜线区间，悬停可看开播时刻的理想误差。右侧是这一天的事实摘要（编码时长与其中 agent 的时长、在放时长与曲目数、Token 速率峰值与当前速率、充电峰值与电量、步数）。只存原始值，档位与颜色在展示时现算；Jev 只给编码的十五分钟窗口打强度与模式，出现在悬停里。事实每 5 分钟归档到 D1。悬停、点击或用方向键走到某一段，会显示这一段的时间范围和当时的状态与标题。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-detail-dark.webp">
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：包含 Tokens 速率的事实时间线与右侧摘要，悬停听歌道的一段显示时间范围、状态与当时的曲目" width="100%">
 </picture>
 
-**站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看采集 Worker 每分钟的在线探测，`API` 看 api Worker cron 的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
+**站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看采集 Worker 每分钟的在线探测，`Core` 看 core Worker 定时一轮的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
@@ -134,16 +134,16 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img src="docs/architecture-light.png" alt="多端上报经 Access 进 ingress Worker，拆成 Durable Object 实时层与 KV/D1 可滞后层，采集 Worker 拉外部服务，site Worker 与浏览器从 api Worker 读取；对话、设计会话与访客构建由 api 转发给 AI Worker" width="100%">
+  <img src="docs/architecture-light.png" alt="多端上报经 Access 进 ingress Worker，经采集 Worker 补全「正在听」后拆成 Durable Object 实时层与 KV/D1 可滞后层，采集 Worker 拉外部服务、查 Apple Music，浏览器只连 site Worker，由它直读可滞后层、经 Service Binding 把实时状态与推送交给 core Worker、Apple Music 查询交给采集 Worker，对话、设计会话与访客构建交给 AI Worker" width="100%">
 </picture>
 
 [打开交互式架构图](https://lyjw131.github.io/lyjwpage/)
 
-**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标、Agent 限额与 Cursor、Devin CLI 用量，Claude Code 云端环境用内置遥测直接上报。Home Assistant 接入 HomePod 等家庭设备；PlayStation 由家里的容器按局域网里的主机状态拉取，Apple Music 最近在听以及 GitHub、站点部署、访问量与健康数据（Cloudflare）、PageSpeed 这些外部数据由采集 Worker 定时拉取。
+**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标、Agent 限额与 Cursor、Devin CLI 用量，Claude Code 云端环境用内置遥测直接上报。Home Assistant 接入 HomePod 等家庭设备；PlayStation 由家里的容器按局域网里的主机状态拉取，Apple Music 最近在听以及 GitHub、站点部署、访问量与健康数据（Cloudflare）、PageSpeed 这些外部数据由采集 Worker 定时拉取。Apple Music 的歌词、动态封面、网页播放器令牌和「正在听」的目录补全也归采集 Worker：上报入口提交前请它补全，站点域名上的这几条路径由 site Worker 转交给它。
 
-**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。上报先到无状态的上报入口 Worker：它在 Cloudflare Access 之后验明每个上报器的身份，校验、收敛报文，再按数据层拆开——实时那一半经 Service Binding 交给持有 Durable Objects 的状态核心（api Worker），可滞后层、归档与凭据自己写。改校验只重新发布上报入口，状态核心不重启、页面的推送连接不断。Durable Objects SQLite 保存实时层的快照与历史，是唯一权威；只展示、可以晚几分钟的数据（外部服务的统计、落地节点、限额等）由写入方直接写进 KV 可滞后层，每条带更新时刻，过没过时由浏览器按各卡阈值判断。R2 保存海报等图片资源，D1 归档训练、圆环、限额、服务器小时汇总、coding 用量与 Pulse 的事实时间线；在线访客由推送那条 WebSocket 顺带计数。
+**状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。上报先到无状态的上报入口 Worker：它在 Cloudflare Access 之后验明每个上报器的身份，校验、收敛报文，再按数据层拆开——实时那一半经 Service Binding 交给持有 Durable Objects 的状态核心（core Worker），可滞后层、归档与凭据自己写。改校验只重新发布上报入口，状态核心不重启、页面的推送连接不断。Durable Objects SQLite 保存实时层的快照与历史，是唯一权威；只展示、可以晚几分钟的数据（外部服务的统计、落地节点、限额等）由写入方直接写进 KV 可滞后层，每条带更新时刻，过没过时由浏览器按各卡阈值判断。R2 保存海报等图片资源，D1 归档训练、圆环、限额、服务器小时汇总、coding 用量与 Pulse 的事实时间线；在线访客由推送那条 WebSocket 顺带计数。
 
-**展示端**是 `site` Worker：React Router SSR 在 Cloudflare Workers 上生成首页，按卡读取 api Worker 的各状态端点，浏览器挂载后直接连接 api Worker 获取最新状态。中国大陆访问入口通过阿里云 ESA 加速页面与静态资源。
+**展示端**是 `site` Worker：React Router SSR 在 Cloudflare Workers 上生成首页，按卡读取状态（可滞后视图直接读 KV，实时视图经 Service Binding 问 core Worker），站点域名上的 `/api/*` 与 `/ws` 也由它按数据归属回答或转交；浏览器挂载后取最新状态、连推送都只找站点域名。中国大陆访问入口通过阿里云 ESA 加速页面与静态资源。
 
 ## 几个关键设计
 
@@ -191,9 +191,9 @@ Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天�
 
 ### 报错与性能交给 Workers Observability
 
-五个 Worker（`site`、`api`、`ai`、`ingress`、`collector`）都开着 Cloudflare Workers Observability：日志、1% 采样的 Traces、Workers Issues（未捕获异常、5xx 与 `console.error` 自动归组），Worker 包的 source map 随部署上传，线上调用栈能对回源码。浏览器端没有 SDK：[`src/lib/error-report.ts`](./src/lib/error-report.ts) 接住 `error`、`unhandledrejection` 和两层错误边界，去掉查询串后经同源 `/relay` 发给 site Worker，[`src/lib/error-relay.ts`](./src/lib/error-relay.ts) 校验后记成 `[browser-error]` 日志，归进 `site` 的 Issues；浏览器包不出 source map，调用栈是压缩后的代码。本地默认不上报，要试就在 `.env.local` 设 `PUBLIC_ERROR_REPORT_DEV=true`。
+五个 Worker（`site`、`core`、`ai`、`ingress`、`collector`）都开着 Cloudflare Workers Observability：日志、1% 采样的 Traces、Workers Issues（未捕获异常、5xx 与 `console.error` 自动归组），Worker 包的 source map 随部署上传，线上调用栈能对回源码。浏览器端没有 SDK：[`src/lib/error-report.ts`](./src/lib/error-report.ts) 接住 `error`、`unhandledrejection`、水合回退和两层错误边界，去掉查询串后经同源 `/relay` 发给 site Worker，[`src/lib/error-relay.ts`](./src/lib/error-relay.ts) 校验后记成 `[browser-error]` 日志，归进 `site` 的 Issues；浏览器包不出 source map，调用栈是压缩后的代码。本地默认不上报，要试就在 `.env.local` 设 `PUBLIC_ERROR_REPORT_DEV=true`。
 
-健康数据回到页面上自己算：采集 Worker 每分钟探测一次 `lyjw.me/api/version`，api Worker 每轮 cron 跑完记一次心跳，两者都按小时累进 D1 的 `health_buckets`；`site-health` 任务每 5 分钟把它们汇成 30 天每天一格与可用率，再加上 Workers Observability 的报错数（采样估计）与 active issue 数、Web Analytics 的真实访客 Web Vitals，写进可滞后层给站点卡片（`/api/status/health`，计算在 [`shared/health.ts`](./shared/health.ts)）。在线状态分两行：`lyjw.me` 那行只说明前端还在出页面；`API` 那行看 api Worker 的 cron 心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。探测从 Cloudflare 内部发出，Cloudflare 整体故障时这一行看不出来。排查线上报错时 agent 先经 Cloudflare MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
+健康数据回到页面上自己算：采集 Worker 每分钟探测一次 `lyjw.me/api/version`，core Worker 每跑完一轮定时任务记一次心跳，两者都按小时累进 D1 的 `health_buckets`；`site-health` 任务每 5 分钟把它们汇成 30 天每天一格与可用率，再加上 Workers Observability 的报错数（采样估计）与 active issue 数、Web Analytics 的真实访客 Web Vitals，写进可滞后层给站点卡片（`/api/status/health`，计算在 [`shared/health.ts`](./shared/health.ts)）。在线状态分两行：`lyjw.me` 那行只说明前端还在出页面；`Core` 那行看 core Worker 的心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。探测、心跳的驱动和汇总都在采集 Worker 里，它的 cron 一停三者一起停，卡片显示过期而不是失败；探测从 Cloudflare 内部发出，Cloudflare 整体故障时这一行看不出来。排查线上报错时 agent 先经 Cloudflare MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
 
 ## 技术组成
 
@@ -209,7 +209,7 @@ Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天�
 | 页面托管与分发 | Cloudflare Workers · 阿里云 ESA |
 | 报错与性能监控 | Cloudflare Workers Observability · Web Analytics |
 
-AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md) 执行；公开地址经 api 转发，状态数据仍经 api 的只读接口读取。Pulse Coding 评分仍由 api 编排。
+AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md) 执行；站点域名上的请求经 Service Binding 转交给它，状态数据仍经 core 的只读接口读取。Pulse Coding 评分仍由 core 编排。
 
 ## 从哪里读源码
 
@@ -217,19 +217,19 @@ AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md
 | --- | --- |
 | 首页如何组合各个模块 | [`src/app/page.tsx`](./src/app/page.tsx) · [`src/components/live/`](./src/components/live/) |
 | 首屏如何按卡读取和缓存状态 | [`src/lib/first-screen.ts`](./src/lib/first-screen.ts) |
-| 状态视图在两侧如何登记 | [`shared/status-views.ts`](./shared/status-views.ts) · [`workers/api/src/status-loaders.ts`](./workers/api/src/status-loaders.ts) |
+| 状态视图在两侧如何登记 | [`shared/status-views.ts`](./shared/status-views.ts) · [`workers/core/src/status-loaders.ts`](./workers/core/src/status-loaders.ts) |
 | 推送与轮询如何更新同一份客户端状态 | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | 网页播放器与歌词如何工作 | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
 | 上报如何鉴权、校验与按数据层拆分 | [`workers/ingress/`](./workers/ingress/) |
-| 状态存储、实时推送与公开 API 如何组织 | [`workers/api/`](./workers/api/) |
+| 状态存储、实时推送与公开 API 如何组织 | [`workers/core/`](./workers/core/) |
 | 首页对话、MCP 与模型工具如何运行 | [`workers/ai/`](./workers/ai/) |
 | 各类设备与服务如何接入 | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
 | 原生 iOS App 如何读站点、如何上报 | [`apps/ios/`](./apps/ios/) |
-| 在线访客如何统计 | [`workers/api/src/live-census.ts`](./workers/api/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
+| 在线访客如何统计 | [`workers/core/src/live-census.ts`](./workers/core/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
 
 Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) 独立维护，通过 Git submodule 接入 `reporters/mac-telemetry-hub/`。
 
-本地开发时 `pnpm dev:worker` 用一个 `wrangler dev` 进程起本地 Worker 栈：`workers/dev-router`（拿 8788 端口、按路径分发）、`api`、`ai`、上报入口 `ingress` 和采集 Worker `collector`，状态保存在本地；AI 经只读 Service Binding 查询 api，上报打 `/api/ingest/<来源>` 走上报入口；`/__dev/collector/run?job=<任务>` 立刻跑一个采集任务，`/cdn-cgi/local/scheduled` 让采集 Worker 跑这一分钟到期的任务。步骤见 [`workers/api/README.md`](./workers/api/README.md) 的「本地开发」与 [`workers/collector/README.md`](./workers/collector/README.md)。
+本地开发时 `pnpm dev:worker` 用一个 `wrangler dev` 进程起本地 Worker 栈：`workers/dev-router`（拿 8788 端口、按路径分发）、`core`、`ai`、上报入口 `ingress` 和采集 Worker `collector`，状态保存在本地；AI 经只读 Service Binding 查询 core，上报打 `/api/ingest/<来源>` 走上报入口；`/__dev/collector/run?job=<任务>` 立刻跑一个采集任务，`/cdn-cgi/local/scheduled` 让采集 Worker 跑这一分钟到期的任务。步骤见 [`workers/core/README.md`](./workers/core/README.md) 的「本地开发」与 [`workers/collector/README.md`](./workers/collector/README.md)。
 
 ## 进一步了解
 
@@ -237,6 +237,6 @@ Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) �
 
 [Worker 数据后端与首屏缓存](./docs/state-storage.md) 说明状态持久化、实时层与可滞后层的划分、公开数据边界、缓存失效与页面更新之间的关系。
 
-[lyjwpage iOS App](./apps/ios/README.md)（iOS 27 原生 SwiftUI）是站点的原生客户端：读同一套公开状态 API 与推送，把首页各卡、Pulse 时间线和最近记录用原生界面呈现，带桌面与锁屏小组件；它同时是 iPhone 端上报器，上报活动圆环与最近的训练，协议和部署顺序见其 README 与 [API Worker](./workers/api/README.md#最近训练)。
+[lyjwpage iOS App](./apps/ios/README.md)（iOS 27 原生 SwiftUI）是站点的原生客户端：读同一套公开状态 API 与推送，把首页各卡、Pulse 时间线和最近记录用原生界面呈现，带桌面与锁屏小组件；它同时是 iPhone 端上报器，上报活动圆环与最近的训练，协议和部署顺序见其 README 与 [core Worker](./workers/core/README.md#最近训练)。
 
-Quest 游戏实时数据由 [Discord Gateway 上报器](./reporters/discord-reporter/README.md) 采集，经专用 Access 权限交入 Ingress 与 StateHub；查询 `/api/status/quest/now`，变化推送 `quest-now`；在玩时首页出现 Now Playing 卡，玩过的时段画进 Pulse 的游戏道。协议见 [API Worker](./workers/api/README.md#quest-实时游戏状态)。
+Quest 游戏实时数据由 [Discord Gateway 上报器](./reporters/discord-reporter/README.md) 采集，经专用 Access 权限交入 Ingress 与 StateHub；查询 `/api/status/quest/now`，变化推送 `quest-now`；在玩时首页出现 Now Playing 卡，玩过的时段画进 Pulse 的游戏道。协议见 [core Worker](./workers/core/README.md#quest-实时游戏状态)。

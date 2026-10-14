@@ -8,7 +8,7 @@
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/LYJW131/lyjwpage.git",
-      "revision": "9de4de40d6bad7edb2e38af0bd18464a3fee9f97"
+      "revision": "b3694ae1587906ca4f2ec1b432575c3d073640f7"
     }
   },
   "components": [
@@ -65,9 +65,9 @@
       ]
     },
     {
-      "id": "api",
+      "id": "core",
       "type": "backend",
-      "label": "API Worker · StateCore",
+      "label": "Core Worker · StateCore",
       "sublabel": "提交实时状态 · 提供公开模型",
       "tag": "/api/status/* · 布局变化才失效缓存",
       "pos": [
@@ -80,13 +80,13 @@
       ],
       "sources": [
         {
-          "path": "workers/api/src/state-core.ts"
+          "path": "workers/core/src/state-core.ts"
         },
         {
-          "path": "workers/api/src/public-api.ts"
+          "path": "workers/core/src/public-api.ts"
         },
         {
-          "path": "workers/api/src/live-platform.ts"
+          "path": "workers/core/src/live-platform.ts"
         }
       ]
     },
@@ -106,10 +106,10 @@
       ],
       "sources": [
         {
-          "path": "workers/api/src/state-hub.ts"
+          "path": "workers/core/src/state-hub.ts"
         },
         {
-          "path": "workers/api/src/storage-driver.ts"
+          "path": "workers/core/src/storage-driver.ts"
         }
       ]
     },
@@ -118,7 +118,7 @@
       "type": "database",
       "label": "KV · 可滞后快照",
       "sublabel": "限额 · 活动 · 外部服务统计",
-      "tag": "写入方直写 · API 只读此层",
+      "tag": "写入方直写 · site 与 core 只读",
       "pos": [
         450,
         610
@@ -135,7 +135,7 @@
           "path": "workers/ingress/src/lag-ingest.ts"
         },
         {
-          "path": "workers/api/src/ports.ts"
+          "path": "shared/lag-views.ts"
         }
       ]
     },
@@ -155,13 +155,13 @@
       ],
       "sources": [
         {
-          "path": "workers/api/src/live-platform.ts"
+          "path": "workers/core/src/live-platform.ts"
         },
         {
-          "path": "workers/api/src/origin-worker.ts"
+          "path": "workers/core/src/origin-worker.ts"
         },
         {
-          "path": "workers/api/src/live-census.ts"
+          "path": "workers/core/src/live-census.ts"
         }
       ]
     },
@@ -169,7 +169,7 @@
       "id": "collector",
       "type": "backend",
       "label": "Collector Worker",
-      "sublabel": "Cron 调度 · 按任务节奏拉取",
+      "sublabel": "Cron 拉取 · Apple 查询与补全",
       "tag": "Apple 最近播放写实时层",
       "pos": [
         450,
@@ -187,7 +187,7 @@
           "path": "workers/collector/src/jobs/apple-recent.ts"
         },
         {
-          "path": "workers/collector/wrangler.toml"
+          "path": "workers/collector/src/index.ts"
         }
       ]
     },
@@ -230,7 +230,7 @@
           "path": "workers/ingress/src/ingest-archive.ts"
         },
         {
-          "path": "workers/api/src/index.ts"
+          "path": "workers/core/src/index.ts"
         },
         {
           "path": "workers/collector/src/history.ts"
@@ -294,7 +294,7 @@
       "type": "frontend",
       "label": "访客浏览器",
       "sublabel": "SWR · 逐卡新鲜度",
-      "tag": "挂载后直连 API 与 /ws",
+      "tag": "挂载后只连站点：状态 · /ws",
       "pos": [
         1270,
         610
@@ -411,11 +411,11 @@
       ]
     },
     {
-      "id": "routine",
+      "id": "build_workflow",
       "type": "external",
-      "label": "Claude Code routine",
-      "sublabel": "按签名计划改代码",
-      "tag": "无推送凭据 · 截桌面与 375px",
+      "label": "GitHub Actions 构建",
+      "sublabel": "先审计划 · 沙盒里改代码",
+      "tag": "无写凭据 · OIDC 回传",
       "pos": [
         40,
         230
@@ -426,10 +426,10 @@
       ],
       "sources": [
         {
-          "path": "workers/ai/src/build/handlers.ts"
+          "path": ".github/workflows/build.yml"
         },
         {
-          "path": "docs/build-routine.md"
+          "path": "scripts/build-actions.mjs"
         }
       ]
     },
@@ -455,7 +455,7 @@
           "path": "workers/ai/src/build/webhook.ts"
         },
         {
-          "path": "workers/ai/src/github-issue.ts"
+          "path": "shared/build-routine.ts"
         }
       ]
     }
@@ -466,7 +466,7 @@
       "label": "Cloudflare · 上报、状态、对话与持久化",
       "wraps": [
         "ingress",
-        "api",
+        "core",
         "state",
         "lag",
         "live",
@@ -488,13 +488,22 @@
     {
       "id": "commit",
       "from": "ingress",
-      "to": "api",
+      "to": "core",
       "label": "Service Binding",
       "variant": "emphasis"
     },
     {
+      "id": "enrich",
+      "from": "ingress",
+      "to": "collector",
+      "label": "补全在听 · RPC",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "right"
+    },
+    {
       "id": "state_io",
-      "from": "api",
+      "from": "core",
       "to": "state",
       "label": "读写实时状态",
       "variant": "emphasis"
@@ -508,7 +517,7 @@
     },
     {
       "id": "lag_read",
-      "from": "api",
+      "from": "core",
       "to": "lag",
       "label": "读取 KV",
       "variant": "default"
@@ -530,7 +539,7 @@
     {
       "id": "collect_realtime",
       "from": "collector",
-      "to": "api",
+      "to": "core",
       "label": "最近播放 · RPC",
       "variant": "default"
     },
@@ -543,7 +552,7 @@
     },
     {
       "id": "api_archive",
-      "from": "api",
+      "from": "core",
       "to": "history",
       "label": "Cron 归档",
       "variant": "dashed"
@@ -557,7 +566,7 @@
     },
     {
       "id": "broadcast",
-      "from": "api",
+      "from": "core",
       "to": "live",
       "label": "提交后广播",
       "variant": "emphasis"
@@ -566,26 +575,43 @@
       "id": "ws",
       "from": "live",
       "to": "browser",
-      "label": "/ws · 事件",
+      "label": "/ws 事件 · 经 site 透传",
       "variant": "emphasis"
     },
     {
       "id": "direct_read",
       "from": "browser",
-      "to": "api",
-      "label": "状态 · 对话 API",
+      "to": "site",
+      "label": "状态 · 对话 · /ws",
       "variant": "default"
     },
     {
       "id": "first_screen",
       "from": "site",
-      "to": "api",
-      "label": "逐卡状态 API",
+      "to": "core",
+      "label": "实时视图 · /ws · Binding",
       "variant": "default"
     },
     {
+      "id": "site_lag",
+      "from": "site",
+      "to": "lag",
+      "label": "可滞后视图直读",
+      "variant": "default"
+    },
+    {
+      "id": "apple_lookup",
+      "from": "site",
+      "to": "collector",
+      "label": "歌词 · 令牌 · Binding",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "labelSegment": 2
+    },
+    {
       "id": "revalidate",
-      "from": "api",
+      "from": "core",
       "to": "site",
       "label": "布局变化通知",
       "variant": "dashed"
@@ -627,15 +653,15 @@
     },
     {
       "id": "ai_forward",
-      "from": "api",
+      "from": "site",
       "to": "ai",
-      "label": "转发 /api/chat · /mcp",
+      "label": "转发对话 · 构建 · /mcp",
       "variant": "emphasis"
     },
     {
       "id": "ai_status",
       "from": "ai",
-      "to": "api",
+      "to": "core",
       "label": "PublicStatus RPC",
       "variant": "default"
     },
@@ -654,17 +680,17 @@
       "variant": "default"
     },
     {
-      "id": "build_fire",
+      "id": "build_dispatch",
       "from": "ai",
-      "to": "routine",
-      "label": "/fire 触发",
+      "to": "build_workflow",
+      "label": "派发构建",
       "variant": "default"
     },
     {
       "id": "build_upload",
-      "from": "routine",
+      "from": "build_workflow",
       "to": "ai",
-      "label": "上传文件 · 截图",
+      "label": "OIDC 上传 · 截图",
       "variant": "default"
     },
     {
@@ -695,7 +721,7 @@
       "title": "输入按信任边界收敛",
       "items": [
         "Mac / iPhone、Home Assistant、Emby、PlayStation、misaka-jp 上报器与 Claude Code OTLP 各用自己的 Access token。",
-        "Ingress 限定每个来源的权限，准备数据后才通过内部 Service Binding 提交；图片由 Mac / Emby 直传 R2。"
+        "Ingress 限定每个来源的权限，准备数据（「正在听」先请 collector 补全 Apple 目录）后才通过内部 Service Binding 提交；图片由 Mac / Emby 直传 R2。"
       ]
     },
     {
@@ -710,7 +736,7 @@
       "dot": "emerald",
       "title": "首屏快，状态也要新",
       "items": [
-        "site Worker 生成首屏时按卡读 API；浏览器挂载后直连 Worker，实时变化走 WebSocket，可滞后卡按各自节奏轮询。",
+        "site Worker 生成首屏时按卡读状态：可滞后层直读 KV，实时层经 Service Binding 问 core，歌词问 collector；浏览器挂载后只连站点域名，实时变化走站点转交的 WebSocket，可滞后卡按各自节奏轮询。",
         "只有布局变化触发 site Worker 标签失效。ESA 按 SWR 独立更新；图片走同源 /img/*，在边缘回源。"
       ]
     },
@@ -719,8 +745,8 @@
       "title": "对话与访客构建",
       "items": [
         "首条消息前先接受隐私说明，Turnstile 验人后发 30 分钟通行证；Clef 选 Haiku、Sonnet 或 Fable，额度满了逐档降级。",
-        "改站请求由 Sonnet 开设计会话，交给 Managed Agents 里的 Opus 出计划；访客授权 GitHub 后，routine 改代码上传，ai 校验再以 App 开 PR，截图存 R2 并评论进 PR。",
-        "ai 没有公开域名：浏览器、MCP 客户端、routine 与 GitHub webhook 都打到 api，经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
+        "改站请求由 Sonnet 开设计会话，交给 Managed Agents 里的 Opus 出计划；访客授权 GitHub 后，Actions 先审计划再改代码、凭 OIDC 回传，ai 校验再以 App 开 PR，截图存 R2 并评论进 PR。",
+        "ai 没有公开域名：浏览器、MCP 客户端、构建工作流与 GitHub webhook 都打到站点域名，经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
       ]
     }
   ]

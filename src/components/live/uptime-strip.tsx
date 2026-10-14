@@ -47,11 +47,11 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
           {health.days.map((entry) => {
             const tone = dayTone(entry);
             const failed = entry.failure ? ` · ${number.format(entry.failure)} failed ${unit}${entry.failure === 1 ? "" : "s"}` : "";
-            return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1 rounded-[2px]", tone.className)} />;
+            return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1", tone.className)} />;
           })}
         </div>
       )}
-      <div className="mt-2 flex items-center gap-3 text-[11px] tabular-nums text-muted-foreground">
+      <div className="mt-2 flex items-center gap-3 text-2xs tabular-nums text-muted-foreground">
         <span className="shrink-0">{health.days.length || 30} days ago</span>
         <span className="h-px min-w-3 flex-1 bg-line" aria-hidden />
         <span className="shrink-0 whitespace-nowrap" title={`24h ${percent(health.availability24h)} · ${footTitle}`}>
@@ -64,20 +64,20 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
   );
 }
 
-export function UptimeStrip({ site, api, siteStale = false, apiStale = false }: {
-  site: SiteUptime | null; api: HealthSeries | null; siteStale?: boolean; apiStale?: boolean;
+export function UptimeStrip({ site, core, siteStale = false, coreStale = false }: {
+  site: SiteUptime | null; core: HealthSeries | null; siteStale?: boolean; coreStale?: boolean;
 }) {
-  if (!site && !api) return null;
+  if (!site && !core) return null;
   return (
-    <div className="flex flex-col gap-5 border-t border-line px-4 py-4 md:px-5">
+    <div className="flex flex-col gap-5 border-t border-line p-4 lg:p-5">
       {site && (
         <HealthRow name={new URL(site.url).host} health={site} unit="check" stale={siteStale}
           statusTitle={`Per-minute check from the collector Worker · GET ${site.url}`}
           footTitle={`checked every ${site.intervalSeconds}s`} />
       )}
-      {api && (
-        <HealthRow name="API" health={api} unit="heartbeat" stale={apiStale}
-          statusTitle={`Cron heartbeat of the api Worker every ${HEARTBEAT_EVERY} (Durable Objects and KV)`}
+      {core && (
+        <HealthRow name="Core" health={core} unit="heartbeat" stale={coreStale}
+          statusTitle={`Cron heartbeat of the core Worker every ${HEARTBEAT_EVERY} (Durable Objects and KV)`}
           footTitle={`cron heartbeat every ${HEARTBEAT_EVERY}`} />
       )}
     </div>

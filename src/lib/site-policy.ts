@@ -1,6 +1,9 @@
-import { MCP_PATH } from "@shared/mcp";
-
+import { AI_HTTP_PATHS, MCP_PATH } from "@shared/ai-paths";
+import { APPLE_MUSIC_HTTP_PATHS } from "@shared/apple-music-paths";
 import { IMAGE_PATH_PREFIX } from "@shared/asset-url";
+import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
+import { lagViewKeyByPath, STATUS_VIEWS, type LagViewKey } from "@shared/status-views";
+import { APP_VERSION_PATH } from "@/lib/app-version";
 import { ERROR_RELAY_PATH } from "@/lib/error-relay";
 import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
@@ -9,8 +12,13 @@ export const HOME_CACHE_CONTROL =
   "public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400";
 export const HOME_CACHE_TAG = "home";
 
-export const STATUS_CACHE_CONTROL =
-  "public, max-age=600, stale-while-revalidate=604200, stale-if-error=604200";
+// 不带 stale-while-revalidate：首页在自己的 SWR 里后台重建时若再拿到过期快照，重建出的还是旧版面，要再等一整轮。
+export const STATUS_CACHE_CONTROL = "public, max-age=600, stale-if-error=604200";
+
+// 充电头 / 充电宝那一格亮不亮还看上报新不新（shared/freshness.ts#chargingFeedClockStale），
+// 断档那一刻没有上报能触发失效（断档后恢复由 core 失效，见 workers/core/src/stores/telemetry.ts），快照只能靠短期限跟上。
+export const CLOCKED_LAYOUT_STATUS_CACHE_CONTROL = "public, max-age=60, stale-if-error=604200";
+const CLOCKED_LAYOUT_TAGS: ReadonlySet<string> = new Set([STATUS_VIEWS.charger.tag, STATUS_VIEWS.powerBank.tag]);
 
 // 降级信封（ok:false 或端点未部署）只短缓存、不带 SWR / stale-if-error：一次暂时故障不能顶替上一份好快照撑满 7 天。
 export const STATUS_DEGRADED_CACHE_CONTROL = "public, max-age=60";
@@ -28,18 +36,20 @@ export const STABLE_ASSET_CACHE_CONTROL = "public, max-age=0, must-revalidate";
 
 export const NO_STORE = "no-store";
 
-export type GatewayKind =
-  | "mcp"
-  | "error-relay"
-  | "image-proxy"
-  | "image-object"
-  | "site-asset"
-  | "render"
-  | "invalid";
-
-export type GatewayClass = {
-  kind: GatewayKind;
-};
+export type GatewayClass =
+  | { kind: "lag-status"; view: LagViewKey }
+  | {
+      kind:
+        | "core"
+        | "ai"
+        | "collector"
+        | "error-relay"
+        | "image-proxy"
+        | "image-object"
+        | "site-asset"
+        | "render"
+        | "invalid";
+    };
 
 export type SiteAssetRoute = { asset: string; cacheControl: string };
 
@@ -125,7 +135,12 @@ export function imageObjectHeaders(
 }
 
 export function classifyGatewayRequest(method: string, pathname: string): GatewayClass {
-  if (pathname === MCP_PATH || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "mcp" };
+  if (AI_HTTP_PATHS.has(pathname) || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "ai" };
+  if (APPLE_MUSIC_HTTP_PATHS.has(pathname)) return { kind: "collector" };
+  if (pathname === LIVE_SOCKET_PATH || (pathname.startsWith("/api/") && pathname !== APP_VERSION_PATH)) {
+    const view = method === "GET" ? lagViewKeyByPath(pathname) : undefined;
+    return view ? { kind: "lag-status", view } : { kind: "core" };
+  }
   if (pathname === ERROR_RELAY_PATH) return { kind: method === "POST" ? "error-relay" : "invalid" };
   if (method !== "GET" && method !== "HEAD") return { kind: "invalid" };
   if (pathname.endsWith(".data")) return { kind: "render" };
@@ -178,7 +193,11 @@ export function statusCacheTag(tag: string): string {
 
 export function statusSnapshotHeaders(tag: string | undefined, ok: boolean): Record<string, string> {
   const headers: Record<string, string> = {
-    "Cache-Control": ok ? STATUS_CACHE_CONTROL : STATUS_DEGRADED_CACHE_CONTROL,
+    "Cache-Control": !ok
+      ? STATUS_DEGRADED_CACHE_CONTROL
+      : tag && CLOCKED_LAYOUT_TAGS.has(tag)
+        ? CLOCKED_LAYOUT_STATUS_CACHE_CONTROL
+        : STATUS_CACHE_CONTROL,
   };
   if (tag) headers["Cache-Tag"] = statusCacheTag(tag);
   return headers;

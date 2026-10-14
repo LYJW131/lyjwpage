@@ -9,7 +9,7 @@ import { sitePreviewConfig, sitePreviewManifest, sitePreviewName } from "./site-
 
 const commit = "a".repeat(40);
 const branch = "feat/agent-status";
-const apiOrigin = "https://feat-agent-status-api.lyjw.workers.dev";
+const coreOrigin = "https://feat-agent-status-core.lyjw.workers.dev";
 
 const builtConfig = () => ({
   name: "site",
@@ -20,8 +20,8 @@ const builtConfig = () => ({
   no_bundle: true,
   exports: { RenderedSite: { type: "worker" } },
   images: { binding: "IMAGES" },
-  vars: { SITE_ENV: "production", PUBLIC_BACKEND_URL: "https://api.homepage.lyjw.llc" },
-  services: [{ binding: "PUBLIC_STATUS", service: "api", entrypoint: "PublicStatus" }],
+  vars: { SITE_ENV: "production", PUBLIC_BACKEND_URL: "https://lyjw.me" },
+  services: [{ binding: "PUBLIC_STATUS", service: "core", entrypoint: "PublicStatus" }],
   r2_buckets: [{ binding: "IMAGE_OBJECTS", bucket_name: "lyjw-homepage" }],
   kv_namespaces: [{ binding: "KV", id: "prod" }],
   d1_databases: [{ binding: "DB", database_id: "prod" }],
@@ -34,31 +34,31 @@ const builtConfig = () => ({
 });
 
 test("manifest rejects bad commits, main backends and non-branch origins", () => {
-  assert.throws(() => sitePreviewManifest({ branch, commit: "ABC", backendUrl: apiOrigin }), /40-char/);
-  assert.throws(() => sitePreviewManifest({ branch, commit: "z".repeat(40), backendUrl: apiOrigin }), /40-char/);
-  assert.throws(() => sitePreviewManifest({ branch: "main", commit, backendUrl: apiOrigin }), /production/);
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }), /api Preview origin/);
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: null }), /api Preview origin/);
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: `${apiOrigin}/evil` }), /api Preview origin/);
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://other-api.lyjw.workers.dev" }), /api Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit: "ABC", backendUrl: coreOrigin }), /40-char/);
+  assert.throws(() => sitePreviewManifest({ branch, commit: "z".repeat(40), backendUrl: coreOrigin }), /40-char/);
+  assert.throws(() => sitePreviewManifest({ branch: "main", commit, backendUrl: coreOrigin }), /production/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }), /core Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: null }), /core Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: `${coreOrigin}/evil` }), /core Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://other-core.lyjw.workers.dev" }), /core Preview origin/);
 });
 
-test("manifest pins the branch's api preview origin", () => {
-  assert.deepEqual(sitePreviewManifest({ branch, commit, backendUrl: apiOrigin }), {
-    version: 1, mode: "preview", branch, commit, backendUrl: apiOrigin,
+test("manifest pins the branch's core preview origin", () => {
+  assert.deepEqual(sitePreviewManifest({ branch, commit, backendUrl: coreOrigin }), {
+    version: 1, mode: "preview", branch, commit, backendUrl: coreOrigin,
   });
-  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://feat-agent-status-ai.lyjw.workers.dev" }), /api Preview origin/);
+  assert.throws(() => sitePreviewManifest({ branch, commit, backendUrl: "https://feat-agent-status-ai.lyjw.workers.dev" }), /core Preview origin/);
   assert.deepEqual(sitePreviewManifest({ branch: "", commit }), {
     version: 1, mode: "production", branch: "main", commit, backendUrl: null,
   });
-  assert.equal(sitePreviewName(sitePreviewManifest({ branch, commit, backendUrl: apiOrigin })), "feat-agent-status");
+  assert.equal(sitePreviewName(sitePreviewManifest({ branch, commit, backendUrl: coreOrigin })), "feat-agent-status");
 });
 
 function deployFixture({ manifest, built, env } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "site-preview-"));
   mkdirSync(path.join(root, "build/server"), { recursive: true });
   writeFileSync(path.join(root, "build/server/wrangler.json"), JSON.stringify(built ?? builtConfig()));
-  writeFileSync(path.join(root, "build/site-preview.json"), JSON.stringify(manifest ?? sitePreviewManifest({ branch, commit, backendUrl: apiOrigin })));
+  writeFileSync(path.join(root, "build/site-preview.json"), JSON.stringify(manifest ?? sitePreviewManifest({ branch, commit, backendUrl: coreOrigin })));
   const calls = [];
   const spawn = (...args) => { calls.push(args); return { status: 0, stdout: "", stderr: "" }; };
   const run = () => deploySitePreview({ env: env ?? { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit, SITE_PREVIEW_ACCESS_READY: "true" }, spawn, log: () => {}, root });
@@ -83,12 +83,12 @@ test("deploy refuses production manifests, env mismatch and unasserted Access", 
 test("deploy rejects a disk manifest that fails consumer validation", () => {
   const env = { WORKERS_CI_BRANCH: branch, WORKERS_CI_COMMIT_SHA: commit, SITE_PREVIEW_ACCESS_READY: "true" };
   for (const [manifest, pattern] of [
-    [{ version: 1, mode: "preview", branch, commit: "z".repeat(40), backendUrl: apiOrigin }, /40-char/],
-    [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }, /api Preview origin/],
-    [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://other-branch-api.lyjw.workers.dev" }, /api Preview origin/],
-    [{ version: 2, mode: "preview", branch, commit, backendUrl: apiOrigin }, /版本/],
-    [{ version: 1, mode: "preview", branch: "main", commit, backendUrl: apiOrigin }, /production/],
-    [{ version: 1, mode: "preview", branch, commit, backendUrl: null }, /api Preview origin/],
+    [{ version: 1, mode: "preview", branch, commit: "z".repeat(40), backendUrl: coreOrigin }, /40-char/],
+    [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://api.homepage.lyjw.llc" }, /core Preview origin/],
+    [{ version: 1, mode: "preview", branch, commit, backendUrl: "https://other-branch-core.lyjw.workers.dev" }, /core Preview origin/],
+    [{ version: 2, mode: "preview", branch, commit, backendUrl: coreOrigin }, /版本/],
+    [{ version: 1, mode: "preview", branch: "main", commit, backendUrl: coreOrigin }, /production/],
+    [{ version: 1, mode: "preview", branch, commit, backendUrl: null }, /core Preview origin/],
     [{ version: 1, mode: "building", branch, commit, backendUrl: null }, /不是预览/],
   ]) {
     const { calls, run } = deployFixture({ manifest, env });
@@ -107,12 +107,12 @@ test("deploy writes a whitelisted preview config, spawns the site preview name a
   const configPath = path.join(root, "build/server/wrangler.preview-site.json");
   assert.throws(() => readFileSync(configPath), /ENOENT/);
 
-  const config = sitePreviewConfig(builtConfig(), sitePreviewManifest({ branch, commit, backendUrl: apiOrigin }));
+  const config = sitePreviewConfig(builtConfig(), sitePreviewManifest({ branch, commit, backendUrl: coreOrigin }));
   assert.equal(config.main, "index.js");
   assert.equal(config.workers_dev, false);
   assert.deepEqual(config.vars, {
     SITE_ENV: "preview",
-    PUBLIC_BACKEND_URL: apiOrigin,
+    PUBLIC_BACKEND_URL: coreOrigin,
     R2_PUBLIC_BASE_URL: "https://lyjw.me/img",
   });
   assert.deepEqual(config.services, []);

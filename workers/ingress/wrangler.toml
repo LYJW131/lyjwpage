@@ -24,11 +24,11 @@ ACCESS_AUD = "a1557bcf1114491b462c7ee722ae97032405c43fa831812c8403e6d7366fba01"
 "fd30812b4dfd526c6ffd7801f07a6563.access" = ["ingest:server"]
 "ef47dda27da6a8428cee4cdebbf2951b.access" = ["ingest:agents"]
 "04fb01940873a28a7ef42f9b5bfbad9d.access" = ["ingest:homepod"]
-"c9437b45b762a36199e243df0df35ec4.access" = ["internal:site-deployed"]
+"c9437b45b762a36199e243df0df35ec4.access" = ["internal:site-deployed", "internal:collector-refresh"]
 
 [[services]]
 binding = "CORE"
-service = "api"
+service = "core"
 entrypoint = "StateCore"
 
 [[services]]

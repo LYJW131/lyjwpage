@@ -4,10 +4,11 @@ name: CodeQL
 on:
   push:
     branches: [main, dev]
+  # 有意只扫访客构建的 PR（分支前缀见 shared/build-routine.ts#branchForRun）：两项 Analyze 是它转待审的门槛（workers/ai/src/build/github.ts#BUILD_READY_CHECKS）；其他 PR 不扫，免得拖慢迭代
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: "27 4 * * 1"
+    - cron: "27 7,19 * * *"
 
 permissions:
   contents: read
@@ -15,12 +16,9 @@ permissions:
   actions: read
   packages: read
 
-concurrency:
-  group: codeql-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   changes:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'claude/build-')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,7 +40,7 @@ jobs:
               - .github/workflows/**
               - "**/action.{yml,yaml}"
 
-      # 只有推 main / dev 按改动过滤；PR、每周定时扫和手动触发都两种语言全扫
+      # 只有推 main / dev 按改动过滤；PR、定时扫和手动触发都两种语言全扫，PR 上是转待审的门槛，不能按改动跳过
       - id: pick
         env:
           CHANGED: ${{ steps.filter.outputs.changes }}
@@ -56,12 +54,16 @@ jobs:
     needs: changes
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # PR 上按 head 分组：任务进组的先后不保证，按 ref 分组时旧提交的扫描可能反过来取消当前 head 的扫描
+    concurrency:
+      group: codeql-${{ github.ref }}-${{ github.event.pull_request.head.sha }}-${{ matrix.language }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
         language: [javascript-typescript, actions]
 
-    # 没改到这门语言时只跳过步骤、不跳过任务：跳过的 matrix 任务不展开，检查名会停在未展开的模板上，必需检查就一直等不到
+    # 没改到这门语言时只跳过步骤、不跳过任务：跳过的 matrix 任务不展开，检查名会停在未展开的模板上
     env:
       SCAN: ${{ contains(fromJSON(needs.changes.outputs.languages), matrix.language) }}
     steps:

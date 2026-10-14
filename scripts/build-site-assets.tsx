@@ -1,4 +1,4 @@
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { githubAvatarPng, githubAvatarSource } from "./site-assets/avatar";
@@ -20,10 +20,6 @@ async function main() {
   ]);
 
   await Promise.all([
-    copyFile(
-      join(process.cwd(), "node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2"),
-      join(OUT_DIR, "GeistMono-Variable.woff2"),
-    ),
     writeFile(join(OUT_DIR, "icon.png"), icon32),
     writeFile(join(OUT_DIR, "apple-icon.png"), icon180),
     writeFile(join(OUT_DIR, "icon-192.png"), icon192),

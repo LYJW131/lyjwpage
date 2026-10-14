@@ -27,6 +27,7 @@ import { HeroMotionArtwork } from "@/components/live/hero-motion-artwork";
 import { PlayerArtworkPreload } from "@/components/web-player/player-artwork";
 import { useWebPlayer } from "@/components/web-player/web-player-provider";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { useLeap } from "@/hooks/use-leap";
 import { useLyrics, type LyricsFallback } from "@/hooks/use-lyrics";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useLiveNowListening } from "@/hooks/use-stale";
@@ -44,7 +45,7 @@ import {
   STATIC_VARIANTS,
 } from "@/lib/motion";
 import { LISTENING_PATH, NOW_LISTENING_PATH } from "@/lib/paths";
-import { trackPositionMs } from "@/lib/track-position";
+import { trackEnded, trackPositionMs } from "@/lib/track-position";
 import type {
   ListeningItem,
   ListeningPayload,
@@ -65,10 +66,11 @@ const REFRESH_MS = 10 * 60_000;
 const EMPTY_UPCOMING: string[] = [];
 const EMPTY_REFRESH_MS = 60_000;
 const MUSIC_REFRESH_MS = 60_000;
+// 正常走表一步不超过 1 秒（每秒一拍，换句定时器拍得更密），超过这个跨度就是对时或换锚点。
+const PROGRESS_LEAP_MS = 2_500;
 
-// VISIBLE_ROWS × 2 须与 globals.css 的 recent-tracks-track nth-child 上限对齐。
+// 须与 globals.css 的 recent-tracks-track 行数上限对齐；实际行数按视口高度由容器查询决定。
 const VISIBLE_ROWS = 4;
-const MIN_ROW_HEIGHT_PX = 56;
 
 function formatDuration(milliseconds: number) {
   const total = Math.max(0, Math.round(milliseconds / 1000));
@@ -182,16 +184,17 @@ function Bars({ state }: { state: BarsState }) {
   );
 }
 
-function Clock({ milliseconds }: { milliseconds: number }) {
+function Clock({ milliseconds, animated = true }: { milliseconds: number; animated?: boolean }) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
   return (
     <>
-      <NumberFlow value={Math.floor(seconds / 60)} locales="en-US" />
+      <NumberFlow value={Math.floor(seconds / 60)} locales="en-US" animated={animated} />
       <span>:</span>
       <NumberFlow
         value={seconds % 60}
         locales="en-US"
         format={{ minimumIntegerDigits: 2 }}
+        animated={animated}
       />
     </>
   );
@@ -226,6 +229,7 @@ function HeroProgress({
 
   const position = trackPositionMs(track, now);
   const percent = track.durationMs ? (position / track.durationMs) * 100 : 0;
+  const leap = useLeap(position, PROGRESS_LEAP_MS);
   const gradient = palette && palette.length >= 2 ? paletteGradient(palette) : undefined;
 
   const { observedAt, positionMs, durationMs, repeatOne } = track;
@@ -280,15 +284,15 @@ function HeroProgress({
         </span>
         <NumberFlowGroup>
           <span className="label-mono shrink-0 tabular-nums">
-            <Clock milliseconds={position} />
+            <Clock milliseconds={position} animated={!leap} />
             <span> / </span>
-            <Clock milliseconds={track.durationMs} />
+            <Clock milliseconds={track.durationMs} animated={!leap} />
           </span>
         </NumberFlowGroup>
       </div>
       <div className="mt-1.5 h-0.75 overflow-hidden bg-muted">
         <PaletteBar
-          className="h-full transition-[width] duration-700 ease-linear"
+          className={cn("h-full", !leap && "transition-[width] duration-700 ease-linear")}
           base={playing ? gradient : undefined}
           motion={playing ? motionGradient : undefined}
           idleClassName={playing ? "bg-live" : "bg-muted-foreground"}
@@ -438,7 +442,7 @@ const NEXT_BASIS = {
 function NextBadge({ basis, className }: { basis: NowListeningNext["basis"]; className?: string }) {
   return (
     <span
-      className={cn("inline-flex shrink-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground", className)}
+      className={cn("inline-flex shrink-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-2xs leading-4 text-muted-foreground", className)}
       title={NEXT_BASIS[basis].hint}
     >
       {NEXT_BASIS[basis].label}
@@ -557,6 +561,7 @@ export function ListeningCard({
   const player = useWebPlayer();
   const {
     data: nowListening,
+    error: nowError,
     isValidating: nowValidating,
     servedAt: nowServedAt,
   } = useStatus<NowListeningPayload>(
@@ -577,8 +582,22 @@ export function ListeningCard({
   const localTrack = liveTrack(localMusic);
   const localActive = Boolean(localTrack);
 
+  const fallbackNow = nowFallback.ok ? nowFallback.data : undefined;
+  const [nowRefresh, setNowRefresh] = useState<"pending" | "fetching" | "done">("pending");
+  if (nowRefresh !== "done") {
+    if (nowListening !== fallbackNow) setNowRefresh("done");
+    else if (nowRefresh === "fetching" && !nowValidating) setNowRefresh(nowError ? "pending" : "done");
+    else if (nowRefresh === "pending" && nowValidating) setNowRefresh("fetching");
+  }
+
   // 推断的别处播放没有上报来续命：和源站一样按时长放完再留 LISTENING_ELSEWHERE_HOLD_MS 等下一首被推过来，到点就撤下并重新取一次。
   const mountedAt = useMountedAt();
+  // 首屏快照里的歌按此刻的钟已经放完，说明快照旧了：在头一次回源确认前停在首屏画的锚点上，
+  // 否则水合后进度先拉满、歌词先跳到尾，新歌到了再换一次。观测时刻推到无穷远，进度就不随钟走。
+  const heldTrack: LocalNowPlaying | null =
+    localTrack && nowRefresh !== "done" && mountedAt > 0 && trackEnded(localTrack, mountedAt)
+      ? { ...localTrack, observedAt: Number.POSITIVE_INFINITY }
+      : localTrack;
   const [elsewhereTick, setElsewhereTick] = useState(0);
   const { mutate } = useSWRConfig();
   const inferred = live?.elsewhere ?? null;
@@ -714,7 +733,7 @@ export function ListeningCard({
         palette:
           data?.items.find((item) => item.id === live?.id)?.palette ?? [],
         durationMs: null,
-        track: localTrack,
+        track: heldTrack,
         motion: live?.songId ? live.motion : latched?.motion ?? null,
       }
     : elsewhere
@@ -828,7 +847,7 @@ export function ListeningCard({
       action="Apple Music"
       className={cn("h-full min-h-93.5", className)}
     >
-      <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3 lg:px-5 lg:pb-5">
         <div className="relative h-20 shrink-0">
           {!hero ? (
             <HeroWrapper link={null}>
@@ -885,7 +904,7 @@ export function ListeningCard({
                         <span
                           className={cn(
                             "label-mono shrink-0",
-                            hero.playing ? "text-live" : "text-muted-foreground",
+                            hero.playing ? "text-live-ink" : "text-muted-foreground",
                           )}
                         >
                           {hero.label}
@@ -894,14 +913,14 @@ export function ListeningCard({
                           <NextBadge basis={hero.predictedBasis} className="ml-0.5" />
                         ) : hero.track && hero.estimatedMarginMs != null ? (
                           <span
-                            className="ml-0.5 inline-flex min-w-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-[10px] leading-4 tabular-nums text-muted-foreground"
+                            className="ml-0.5 inline-flex min-w-0 items-center rounded-sm border border-dashed border-line px-1.5 py-px text-2xs leading-4 tabular-nums text-muted-foreground"
                             title={`Estimated from Apple Music's recently played list and track lengths; ideal start error ${formatMargin(hero.estimatedMarginMs)}`}
                           >
                             <span className="sr-only">Estimated, ideal start error </span>
                             <span className="truncate">{formatMargin(hero.estimatedMarginMs)}</span>
                           </span>
                         ) : hero.track && (
-                          <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-[10px] leading-4 text-muted-foreground">
+                          <span className="ml-0.5 inline-flex min-w-0 items-center gap-1 rounded-sm border border-line px-1.5 py-px text-2xs leading-4 text-muted-foreground">
                             {hero.track.source === "homepod" ? (
                               <HomePodMiniIcon className="size-3 shrink-0" aria-hidden />
                             ) : (
@@ -1032,15 +1051,7 @@ export function ListeningCard({
         {/* 空列表也须保留视口，否则客户端补数据时会撑高整行。 */}
         <div className="mt-3 flex min-h-0 flex-1 flex-col border-t border-line pt-2">
           {/* 滚动内容不能参与网格的固有高度计算，否则整份列表会撑高卡片。 */}
-          <div
-            className="relative min-h-0 flex-1"
-            style={
-              {
-                minHeight: `${MIN_ROW_HEIGHT_PX * VISIBLE_ROWS}px`,
-                "--recent-track-rows": VISIBLE_ROWS,
-              } as CSSProperties
-            }
-          >
+          <div className="recent-tracks-viewport relative -mx-2 flex-1">
             <div
               ref={listRef}
               // Firefox / 部分 Safari 的滚动容器需要 tabindex 才能获得键盘焦点。
@@ -1070,7 +1081,7 @@ export function ListeningCard({
                         animate="animate"
                         exit="exit"
                         transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
-                        className={cn("min-w-0", index % VISIBLE_ROWS === 0 && "snap-start")}
+                        className="min-w-0 snap-start"
                       >
                         <TrackRow
                           track={item}

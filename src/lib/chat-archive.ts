@@ -21,8 +21,15 @@ export function designEndReason(design: ChatDesign, now = Date.now()): DesignEnd
   return design.remaining <= 0 && design.expiresAt > now ? "exhausted" : "expired";
 }
 
-// issueOpened 是浏览器记下的已选出口：GitHub 原生提交不会回传结果，点过 Open issue 就当作这个计划已经选了 issue，两个出口都关掉。
+// issueOpened 只记「打开过 GitHub 的新 issue 表单」，不关闭任何出口：访客可能没提交就回来改选构建。出口在 issue 经 Worker 按 issueRef 确认（issue）或构建开始（build）后才关。
 export type ChatProposal = BuildProposal & { issue?: GithubIssueResult; issueOpened?: boolean; build?: BuildFireResult; run?: BuildRun };
+export function proposalChoiceOpen(proposal: ChatProposal, now = Date.now()): boolean {
+  return !proposal.issue && !proposal.build && now < proposal.expiresAt;
+}
+// 没有 issueRef 的旧计划无从确认 issue 是否已提交，打开过表单就不再放行构建。
+export function proposalBuildOpen(proposal: ChatProposal, now = Date.now()): boolean {
+  return proposalChoiceOpen(proposal, now) && !(proposal.issueOpened && !proposal.issueRef);
+}
 // at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
 export type ChatShownCard = { card: GodChatCard; at: number };
 export type ChatAnswer = { header: string; question: string; answer: string };
@@ -102,6 +109,7 @@ function validBubble(value: unknown): value is ChatBubble {
     if (typeof plan.title !== "string" || typeof plan.spec !== "string" || !strings(plan.acceptance) || !strings(plan.paths)) return false;
     if (proposal.issue && (!object(proposal.issue) || typeof proposal.issue.url !== "string" || typeof proposal.issue.number !== "number")) return false;
     if (proposal.issueOpened !== undefined && proposal.issueOpened !== true) return false;
+    if (!optionalString(proposal.issueRef)) return false;
     if (proposal.build && (!object(proposal.build) || typeof proposal.build.runId !== "string" || typeof proposal.build.statusToken !== "string" || typeof proposal.build.branch !== "string")) return false;
     return proposal.run === undefined || validRun(proposal.run);
   }))) return false;

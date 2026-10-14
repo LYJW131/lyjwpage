@@ -5,7 +5,7 @@ import { resolveMotionArtwork } from "@shared/motion-artwork";
 import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
 import type { NowListeningCandidate } from "@shared/now-listening";
 import type { PlayingQueueTrack } from "@shared/playing-queue";
-import type { LocalNowPlaying, TrackMotion } from "@shared/types";
+import type { ListeningItem, LocalNowPlaying, TrackMotion } from "@shared/types";
 
 // 上报只带本地播放信息；目录字段在写入时补全并随状态落库，读取与推送只读存好的这份。
 export type TrackEnrichment = {
@@ -148,6 +148,43 @@ export function mergeEnrichment(
     : same.upcomingSongIds;
   if (catalog === same && motion === same.motion && upcomingSongIds === same.upcomingSongIds) return null;
   return { ...catalog, motion, upcomingSongIds };
+}
+
+export type EnrichmentTarget = "mac" | "homepod";
+// upcomingKey 是 enrichment.upcomingSongIds 所查的那份队列（upcomingKeyOf），写回时与已存的队列比对。
+export type EnrichmentPatch = { target: EnrichmentTarget; enrichment: TrackEnrichment; upcomingKey: string };
+
+export type EnrichmentFollowUp = {
+  target: EnrichmentTarget;
+  music: LocalNowPlaying;
+  upcomingTracks: PlayingQueueTrack[];
+  outcome: EnrichmentOutcome;
+};
+
+// 回执之后跑：歌词预热；写入时有段没查出结果就整份重查一次，比写入时那份多查到东西才交给 commit 补写。
+// 必须在新的请求状态里调用：apple-cache 按请求记住失败，同一请求里重试会直接拿到上次的错误。
+export async function followUpEnrichment(
+  followUp: EnrichmentFollowUp,
+  commit: (patch: EnrichmentPatch) => Promise<void>,
+): Promise<void> {
+  const { target, music, upcomingTracks, outcome } = followUp;
+  if (outcome.catalogKnown && outcome.upcomingKnown && outcome.motionKnown) {
+    await prewarmLyrics(outcome.enrichment, music.title);
+    return;
+  }
+  const retried = (await enrichTrackOutcome(music, upcomingTracks, RETRY_BUDGET))?.enrichment ?? null;
+  const merged = retried && mergeEnrichment(outcome.enrichment, retried, true);
+  await Promise.all([
+    prewarmLyrics(merged || outcome.enrichment, music.title),
+    merged ? commit({ target, enrichment: retried, upcomingKey: upcomingKeyOf(upcomingTracks) }) : null,
+  ]);
+}
+
+// 首项是没在播放时的主图，只给它补动态封面；查不出结果时 motion 留 undefined，由提交侧沿用已存的那份。
+export async function enrichRecentlyPlayed(items: ListeningItem[]): Promise<ListeningItem[]> {
+  const [first, ...rest] = items;
+  if (!first) return items;
+  return [{ ...first, motion: await resolveMotion(first.link, first.title) }, ...rest];
 }
 
 // 同一曲目这次目录没查到（失败、超时）时沿用已存的目录与动态封面，不让一次失败抹掉卡片的链接与封面；

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Workers Builds 的预览构建要等本分支同提交的 api Preview；等不到直接失败，不回退生产后端。
+// Workers Builds 的预览构建要等本分支同提交的 core Preview；等不到直接失败，不回退生产后端。
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const envFile = new URL("../.env.local", import.meta.url);
 if (existsSync(envFile)) process.loadEnvFile(envFile);
@@ -20,7 +21,7 @@ async function waitForPreview(origin, commitSha) {
     if (await isMatchingPreview(origin, commitSha)) return origin;
     console.log(`[preview] 等待本分支 ${commitSha.slice(0, 8)} 的 Worker Preview`);
     if (Date.now() + POLL_MS > deadline) return null;
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    await sleep(POLL_MS);
   }
 }
 

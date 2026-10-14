@@ -41,6 +41,42 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
   return GOD_CHAT_CARDS.includes(value as GodChatCard);
 }
 
+// 回复里的原生图示：模型在正文里写一个以图示名为语言标记的代码块，内容是 JSON，浏览器按 src/lib/chat-visuals.ts 校验后用站点组件画。
+// 提示词直接印这些例子，测试保证每个例子都能过校验，两边不会各说各的。
+export const GOD_CHAT_VISUAL_EXAMPLES = {
+  stats: {
+    items: [
+      { label: "5% a year", value: "$166K", note: "after 30 years" },
+      { label: "8% a year", value: "$282K", note: "after 30 years" },
+    ],
+    summary: { label: "Difference", value: "+$116K", note: "same $72K deposited", tone: "good" },
+  },
+  chart: {
+    type: "bar",
+    title: "PS5 play time",
+    subtitle: "Last 30 days",
+    unit: "h",
+    labels: ["Astro Bot", "Gran Turismo 7"],
+    series: [{ name: "Hours", values: [12.5, 7] }],
+  },
+  timeline: {
+    title: "2013 to 2019",
+    items: [
+      { time: "2013", title: "React released", text: "Declarative components and a virtual DOM." },
+      { time: "2019", title: "Hooks", text: "State and effects without classes." },
+    ],
+  },
+  media: {
+    shape: "square",
+    items: [{ title: "Song or album", subtitle: "Artist", meta: "2h ago", image: "https://is1-ssl.mzstatic.com/image/thumb/a/b/{w}x{h}bb.jpg", url: "https://music.apple.com/" }],
+  },
+} as const;
+
+export type GodChatVisualKind = keyof typeof GOD_CHAT_VISUAL_EXAMPLES;
+export const GOD_CHAT_VISUAL_KINDS = Object.keys(GOD_CHAT_VISUAL_EXAMPLES) as GodChatVisualKind[];
+export const GOD_CHAT_CHART_SERIES = 4;
+export const GOD_CHAT_HTML_THEME_VARS = ["--fg", "--muted", "--line", "--surface", "--accent", "--red", "--orange", "--yellow", "--green", "--blue", "--violet"] as const;
+
 export function readGodChatRoute(tier: unknown, downgradedFrom?: unknown): { tier: GodChatServedTier | null; downgradedFrom?: GodChatServedTier } | undefined {
   if (tier === null) return { tier: null };
   if (!isGodChatServedTier(tier)) return undefined;

@@ -30,12 +30,25 @@ export function isAllowedOriginValue(origin: string, allowed: string[]): boolean
   return allowed.some((pattern) => originMatches(origin, pattern));
 }
 
+// 浏览器的同源 GET / HEAD 不带 Origin，只带 Sec-Fetch-Site: same-origin（页面脚本改不了这个头）；这时来源就是请求自己的源。
+// site 经 Service Binding 转发时原样带着请求 URL，所以后端看到的仍是站点的源。
+export function requestOrigin(request: Request): string | null {
+  const origin = request.headers.get("Origin");
+  if (origin) return origin;
+  return request.headers.get("Sec-Fetch-Site") === "same-origin" ? new URL(request.url).origin : null;
+}
+
 export function isAllowedOrigin(request: Request, env: OriginEnv): boolean {
   const allowed = getAllowedOrigins(env);
   if (allowed.length === 0) return true;
-  const origin = request.headers.get("Origin");
+  const origin = requestOrigin(request);
   if (!origin) return false;
   return isAllowedOriginValue(origin, allowed);
+}
+
+export function isForeignOrigin(request: Request, env: OriginEnv): boolean {
+  const origin = request.headers.get("Origin");
+  return !!origin && !isAllowedOriginValue(origin, getAllowedOrigins(env));
 }
 
 export function getCorsHeaders(request: Request, env: OriginEnv): Headers {
@@ -52,4 +65,11 @@ export function getCorsHeaders(request: Request, env: OriginEnv): Headers {
   headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   headers.set("Access-Control-Max-Age", "86400");
   return headers;
+}
+
+export function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.set("Cache-Control", "no-store");
+  return new Response(JSON.stringify(data), { ...init, headers });
 }

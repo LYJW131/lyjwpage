@@ -13,3 +13,8 @@ export function trackPositionMs(track: PlaybackAnchor, now: number): number {
   // 不是钉在 100%；不循环时超出就 clamp，等下一条锚点纠正
   return track.repeatOne ? elapsed % track.durationMs : Math.min(track.durationMs, elapsed);
 }
+
+export function trackEnded(track: PlaybackAnchor, now: number): boolean {
+  if (track.state !== "playing" || track.repeatOne || track.durationMs <= 0) return false;
+  return track.positionMs + Math.max(0, now - track.observedAt) >= track.durationMs;
+}

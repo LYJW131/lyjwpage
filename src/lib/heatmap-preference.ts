@@ -25,6 +25,10 @@ export function readHeatmapMode(): HeatmapMode {
   }
 }
 
+export function syncHeatmapToDocument() {
+  applyDocument(readHeatmapMode());
+}
+
 export function writeHeatmapMode(mode: HeatmapMode) {
   try {
     localStorage.setItem(HEATMAP_STORAGE_KEY, mode);

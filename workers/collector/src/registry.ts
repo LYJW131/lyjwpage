@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { RETIRED_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collector";
 import { withRequestState } from "@shared/request-state";
 
@@ -5,6 +7,7 @@ import type { Env } from "./env";
 import { explain, type Job } from "./job";
 import { appleRecentJob } from "./jobs/apple-recent";
 import { cloudflareDeploymentsJob, cloudflareMetricsJob } from "./jobs/cloudflare";
+import { digestJob } from "./jobs/digest";
 import { githubChartJob } from "./jobs/github-chart";
 import { githubRepoJob } from "./jobs/github-repo";
 import { pagespeedJob } from "./jobs/pagespeed";
@@ -26,6 +29,7 @@ export const JOBS: readonly Job[] = [
   cloudflareMetricsJob,
   uptimeProbeJob,
   siteHealthJob,
+  digestJob,
 ];
 
 export function findJob(name: string, jobs: readonly Job[] = JOBS): Job | undefined {
@@ -44,8 +48,8 @@ export async function runJob(job: Job, env: Env, options: { now?: number; schedu
     return outcome(job, result.status, result.detail, started);
   } catch (error) {
     const failed = outcome(job, "error", explain(error), started);
-    if ((error as { outage?: unknown } | null)?.outage === true) console.warn(JSON.stringify({ event: "collector-job", ...failed }));
-    else console.error(`[collector-job] ${job.name}`, error);
+    const outage = (error as { outage?: unknown } | null)?.outage === true;
+    (outage ? console.warn : console.error)(JSON.stringify({ event: "collector-job", ...failed }));
     return failed;
   }
 }
@@ -66,12 +70,12 @@ export async function runScheduled(
   const first = due.filter((job) => job.headStart).map(run);
   const rest = due.filter((job) => !job.headStart);
   if (first.length && rest.length) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const headStart = new AbortController();
     await Promise.race([
       Promise.allSettled(first),
-      new Promise((resolve) => { timer = setTimeout(resolve, options.headStartMs ?? HEAD_START_MS); }),
+      sleep(options.headStartMs ?? HEAD_START_MS, undefined, { signal: headStart.signal }),
     ]);
-    clearTimeout(timer);
+    headStart.abort();
   }
   const settled = await Promise.allSettled([...first, ...rest.map(run)]);
   return settled.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));

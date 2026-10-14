@@ -86,8 +86,8 @@ test("额度查询仍只收 GET，缺计数绑定时关闭入口且响应不可�
 });
 
 
-test("routine 与 webhook 无 Origin 也交给各自鉴权，缺配置时关闭", async () => {
-  for (const path of ["/api/build/upload", "/api/build/progress", "/api/build/webhook"]) {
+test("构建工作流回调与 webhook 无 Origin 也交给各自鉴权，缺配置时关闭", async () => {
+  for (const path of ["/api/build/upload", "/api/build/progress", "/api/build/screenshot", "/api/build/webhook"]) {
     const response = await worker.fetch(request(path, "POST"), env());
     assert.equal(response.status, 503, path);
     assert.equal(response.headers.get("Cache-Control"), "no-store");

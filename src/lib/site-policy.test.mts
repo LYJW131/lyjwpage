@@ -8,6 +8,7 @@ import {
   IMMUTABLE_ASSET_CACHE_CONTROL,
   NO_STORE,
   STATUS_CACHE_CONTROL,
+  CLOCKED_LAYOUT_STATUS_CACHE_CONTROL,
   STATUS_DEGRADED_CACHE_CONTROL,
   classifyGatewayRequest,
   classifyRenderRequest,
@@ -29,8 +30,8 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/no-such-page"), { kind: "render" });
   assert.deepEqual(classifyGatewayRequest("GET", "/_.data"), { kind: "render" });
   assert.deepEqual(classifyGatewayRequest("GET", "/github-callback.data"), { kind: "render" });
-  assert.deepEqual(classifyGatewayRequest("GET", "/mcp"), { kind: "mcp" });
-  assert.deepEqual(classifyGatewayRequest("POST", "/mcp/tools/call"), { kind: "mcp" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/mcp"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/mcp/tools/call"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("POST", "/relay"), { kind: "error-relay" });
   assert.deepEqual(classifyGatewayRequest("GET", "/relay"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("POST", "/relay/api/1/envelope/"), { kind: "invalid" });
@@ -40,6 +41,27 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/icon"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("HEAD", "/pwa/icon-192.png"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("POST", "/opengraph-image"), { kind: "invalid" });
+});
+
+test("API 路径按数据归属分流：可滞后视图 site 自己读，Apple Music 交给 collector，其余交给 core 或 ai", () => {
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/status/server"), { kind: "lag-status", view: "server" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/status/github-chart"), { kind: "lag-status", view: "githubChart" });
+  assert.deepEqual(classifyGatewayRequest("HEAD", "/api/status/server"), { kind: "core" }, "只有 GET 由 site 回，其余方法照旧交给 core");
+  assert.deepEqual(classifyGatewayRequest("OPTIONS", "/api/status/server"), { kind: "core" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/status/listening/now"), { kind: "core" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/status/vercel-deployments"), { kind: "core" }, "未登记的视图由 core 回 404");
+  assert.deepEqual(classifyGatewayRequest("GET", "/ws"), { kind: "core" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/lyrics"), { kind: "collector" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/motion-artwork"), { kind: "collector" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/musickit/token"), { kind: "collector" });
+  assert.deepEqual(classifyGatewayRequest("OPTIONS", "/api/lyrics"), { kind: "collector" }, "预检也交给 collector 现判来源");
+  assert.deepEqual(classifyGatewayRequest("PUT", "/api/dev/override/api/status/server"), { kind: "core" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/api/chat"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/chat/usage"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/build/status"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/build/issue"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/api/build/webhook"), { kind: "ai" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/version"), { kind: "render" });
 });
 
 test("/img 只放行内容地址键", () => {
@@ -189,6 +211,23 @@ test("状态快照可缓存并带白名单标签", () => {
     "Cache-Tag": "page:listening",
   });
   assert.doesNotMatch(STATUS_DEGRADED_CACHE_CONTROL, /stale-/);
+});
+
+test("首页后台重建读到的快照不再是过期仍在用的那份", () => {
+  for (const control of [STATUS_CACHE_CONTROL, CLOCKED_LAYOUT_STATUS_CACHE_CONTROL]) {
+    assert.doesNotMatch(control, /stale-while-revalidate/);
+    assert.match(control, /stale-if-error/);
+  }
+});
+
+test("充电头与充电宝的快照按短期限过期，跟上上报断档与恢复", () => {
+  for (const tag of ["charger", "powerbank"]) {
+    assert.deepEqual(statusSnapshotHeaders(tag, true), {
+      "Cache-Control": CLOCKED_LAYOUT_STATUS_CACHE_CONTROL,
+      "Cache-Tag": `page:${tag}`,
+    });
+  }
+  assert.deepEqual(statusSnapshotHeaders("charger", false)["Cache-Control"], STATUS_DEGRADED_CACHE_CONTROL);
 });
 
 test("失效标签白名单过滤、去重、空输入", () => {

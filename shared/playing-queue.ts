@@ -1,16 +1,4 @@
-function object(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function text(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function number(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
+import { number, object, text } from "./json.ts";
 
 export const PRELOAD_AHEAD = 2;
 

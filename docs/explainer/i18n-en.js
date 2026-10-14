@@ -28,7 +28,7 @@ window.EXPLAINER_EN = {
   "夜に駆ける": "夜に駆ける",
   "SennaRin &amp; 泽野弘之": "SennaRin &amp; 泽野弘之",
   "还没想好叫什么": "还没想好叫什么",
-  "梁杨峻玮": "梁杨峻玮",
+  "LYJW": "LYJW",
   "星の消えた夜に": "星の消えた夜に",
   "群青": "群青",
   "Song from Tv Series 【Oshi No Ko】 Vol.5": "Song from Tv Series 【Oshi No Ko】 Vol.5",

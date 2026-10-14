@@ -28,17 +28,17 @@
 ## 1. 统一数据后端与通信模型
 
 ### 架构边界
-- **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/api`）。
-- **无状态渲染**：site Worker 仅负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化；站点内没有状态 API 代理或数据库直连端点。
-- **客户端直连**：浏览器端配置 `PUBLIC_BACKEND_URL` 直接与 Worker 通信，SWR 统一管理数据缓存与实时更新。
-- **原生客户端**：[`apps/ios`](../apps/ios/README.md) 读同一个 api Worker：状态 GET 不带 `Origin`（api Worker 只拦带了且不在白名单的来源），推送长连接自报站点域名作 `Origin`（`/ws` 缺来源一律 403），所以改 `ALLOWED_ORIGINS` 时要保留站点域名。取数节奏照浏览器端的登记表，只在前台连推送、退后台即断，在线人数的语义和关掉标签页一致。
+- **唯一数据后端**：Cloudflare Workers 承担接收上报、持久化（Durable Objects SQLite）、提供状态 API、缓存外部数据、WebSocket 广播以及在线人数统计。上报由无状态的上报入口 Worker（`workers/ingress`）鉴权、校验并按数据层拆开，实时那一半经 Service Binding 交给持有 Durable Object 的状态核心（`workers/core`）。
+- **站点是读取边缘**：site Worker 负责 SSR 首屏、页面与状态缓存、静态资源分发和图片优化，并在站点域名上回答 `/api/*`：可滞后视图直接读 `LAG` KV（`shared/lag-views.ts`），其余经 Service Binding 原样交给 core / ai / collector。它不写状态、不持有密钥。
+- **客户端只连站点**：浏览器按 `PUBLIC_BACKEND_URL`（生产是站点域名）读状态、连 `/ws`，由 site Worker 按归属回答或转交，SWR 统一管理数据缓存与实时更新。
+- **原生客户端**：[`apps/ios`](../apps/ios/README.md) 读同一个 core Worker：状态 GET 不带 `Origin`（core Worker 只拦带了且不在白名单的来源），推送长连接自报站点域名作 `Origin`（`/ws` 缺来源一律 403），所以改 `ALLOWED_ORIGINS` 时要保留站点域名。取数节奏照浏览器端的登记表，只在前台连推送、退后台即断，在线人数的语义和关掉标签页一致。
 
 ### 通信端点规范
 
 | 方法 | 路径 | 鉴权 | 作用 |
 | --- | --- | --- | --- |
 | `POST` | `ingest.homepage.lyjw.llc/api/ingest/<来源>` | Cloudflare Access service token（每个上报方一把、可授权多个来源，上报入口 Worker 再验 JWT 并按来源限权） | 上报入口校验、拆分；状态核心落库、触发广播与首页缓存失效 |
-| `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 浏览器直连的实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden` |
+| `GET` | `/ws?visible=1\|0` | 来源校验（`ALLOWED_ORIGINS`） | 实时事件推送长连接，也是在线人数的来源：页面切到后台不断开，只发 `visible` / `hidden` |
 | `GET` | `/count` | 公开 | `{ connections, online }`：开着的页面（含后台）与此刻可见的页面 |
 | `GET` | `/api/status/<模块>` | 公开 | 状态列表或历史数据查询 |
 | `GET` | `/api/status/<模块>/now` | 公开 | 状态即时快照查询 |
@@ -86,13 +86,13 @@
 ## 3. 最近在听 — Apple Music 深度集成
 
 ### 数据抓取
-- **采集 Worker 驱动**：`workers/collector` 的 `apple-recent` 任务按自己的节奏请求 Apple 的两个最近播放接口，不看有没有访客在线（见 `workers/api/src/apple-music-recent.ts`）。api 自己不拉，WebSocket 连上也不触发。
+- **采集 Worker 驱动**：`workers/collector` 的 `apple-recent` 任务按自己的节奏请求 Apple 的两个最近播放接口，不看有没有访客在线（见 `workers/core/src/apple-music-recent.ts`）。core 自己不拉，WebSocket 连上也不触发。
   - `/v1/me/recent/played`（专辑 / 歌单 / 电台）：给「最近在听」卡片，经 `StateCore.commitRecentlyPlayed` 交给状态核心差分、落库、推送 `listening`。
   - `/v1/me/recent/played/tracks`（单曲）：给 Pulse 听歌道的「Played elsewhere」，经 `StateCore.commitRecentTracks` 与上一轮比较，新播的每首（带时长）记一行；不推 Pulse 事件，有新歌时推一次 `listening-now`（`elsewhere`，见下文「设备优先级抢占与暂停宽限期」）。活跃时采集 Worker 在一分钟里多拉几次单曲列表，并按回执里的 `nextBy`（照推断接着放、下一首最晚上榜的时刻）提前补拉，节奏见 `workers/collector/README.md`。
 - **容器与单曲解算**：Apple 返回的是容器（专辑/歌单/电台），最前那个容器经 `href` 深入查询曲目，累计出时长，按容器顺序的可播曲目（带时长与封面）随 `commitRecentlyPlayed` 交给状态核心推下一首；自建歌单封面单独查；这两类缓存在采集 Worker 的 `COLLECTOR_KV`（期限见 `workers/collector/src/jobs/apple-recent.ts` 的 `CONTAINER_TTL_MS`、`LIBRARY_ARTWORK_TTL_MS`）。
 
 ### 凭据与安全模型
-- **私钥只在 api Worker**：Apple Music 开发者私钥（`.p8`）是 api Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`，Mac、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由 api 自己签发（`workers/api/src/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签），采集 Worker 经 `StateCore.appleDeveloperToken()` 取。
+- **私钥在 Worker Secret 里**：Apple Music 开发者私钥（`.p8`）是 Worker 的 secret `APPLE_MUSIC_PRIVATE_KEY`（放在哪个 Worker、本机原件在哪见 `docs/ops-facts.md`），Mac Telemetry Hub、站点与代码库都不持有。服务端调 Apple API 用的 Developer Token 由调用的 Worker 自己签发（`shared/musickit-token.ts#issueApiDeveloperToken`，过了签发到期的中点重签）。
 - **Mac 只上报 user token**：Mac Telemetry Hub 通过 `/api/ingest/mac` 的 `appleMusicCredentials` 模块只上报 `Music-User-Token`；带 `developerToken` / `expiresAt` 的旧合同会被上报入口拒收。
 - **凭据隔离**：收到的 user token 由上报入口写进独立的凭据 KV（`shared/credentials.ts`），与可滞后层的展示数据分命名空间，不提供任何外部 GET 端点。
 
@@ -103,7 +103,7 @@
 ### 双凭据调用机制
 - **未公开接口**：歌词与动态封面通过 Apple Web 播放器使用的内部端点 `amp-api.music.apple.com` 获取。
 - **鉴权要求**：
-  - `Authorization`：从 `music.apple.com` 网页 bundle 动态提取的 Web Token（由 Worker 定期抓取并缓存在 SQLite 中）。
+  - `Authorization`：从 `music.apple.com` 网页 bundle 动态提取的 Web Token（用到时才抓，缓存在 `APPLE_CACHE` KV 和 isolate 内存里，见 `shared/apple-web-token.ts#getWebToken`）。
   - `Media-User-Token`：Mac Telemetry Hub 上报的主人个人 Music-User-Token。若缺少此 Token，amp-api 返回 404（表现与无歌词相同）。
 
 ### 歌词解析与逐字点亮
@@ -116,7 +116,7 @@
   - 换句动作由边界精确定时器驱动，与当前音轨算法一致。
 
 ### 接口缓存与公开查询策略
-- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；结果按 URL 进行 `public, s-maxage` 长效缓存（有词与无词的缓存期不同，见 `workers/api/src/routes/lyrics/route.ts`）。
+- `GET /api/lyrics?song=<ID>`：按曲目 ID 查询，`song` 必填，卡片 hero 与网页播放器都走这条（「正在听」那首在写入时已预热进 `APPLE_CACHE`，网页播放器播到别的曲目才现查 Apple）；站点域名上由采集 Worker 回答，结果在它的 `AppleLookups` 入口按路径与查询串缓存，期限跟响应的 `public, s-maxage` 走（有词与无词的缓存期不同，见 `shared/lyrics.ts#lyricsTtlMs`）。
 - 首屏那首的歌词由站点在拿到「此刻在听」之后按曲目读 `/api/lyrics`；`/api/lyrics` 与 `/api/motion-artwork` 只做按键查询，不回答「此刻」，所以不归 `/api/status/*`。卡片主图的动态封面不再查 `/api/motion-artwork`，读 `listening/now` 与最近播放首项里存好的 `motion`；`/api/motion-artwork` 只剩网页播放器在用。
 
 ---
@@ -126,10 +126,10 @@
 ### 访客跟听机制
 - **架构隔离**：访客在前端播放器使用自己的 Apple Music 订阅。站点不中转音频，播放发生在访客浏览器与 Apple CDN 之间。
 - **独立访客 Token 签发**：
-  - 由 API Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token。
-  - 有效期默认 `DEFAULT_TTL_SECONDS`（`workers/api/src/musickit-token.ts`），过了「签发 → 到期」的中点自动换新。
+  - 由采集 Worker 的 `GET /api/musickit/token` 动态生成访客 Developer Token（站点域名上经 site Worker 转交）。
+  - 有效期默认 `DEFAULT_TTL_SECONDS`（`shared/musickit-token.ts`），过了「签发 → 到期」的中点自动换新。
 - **双重域名安全闸**：
-  1. 第一道：Worker 检查请求 `Origin` 是否在 `ALLOWED_ORIGINS` 白名单中。
+  1. 第一道：Worker 检查请求来源是否在 `ALLOWED_ORIGINS` 白名单中：带 `Origin` 看它，浏览器同源请求不带 `Origin` 时按请求自己的源（`shared/http-origins.ts#requestOrigin`）。
   2. 第二道：签发 JWT 时将当前具体 Origin 写入 Token 的 `origin` 声明中，由 Apple 端负责最终校验，防止 Token 被盗用至非授权站点。
 
 ### 同步与防抖算法
@@ -144,7 +144,7 @@
 ```text
 Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──> 上报入口 ──> 状态核心 SQLite
 ```
-- 设备序列号（`device.serialNumber`）随上报存进状态核心，只用来判断结构变化（`workers/api/src/stores/charger-store.ts`、`powerbank-store.ts` 的 `structuralKey`）；状态接口和推送都经 `shared/charging-devices.ts` 的投影出去，不带序列号。
+- 设备序列号（`device.serialNumber`）随上报存进状态核心，只用来判断结构变化（`workers/core/src/stores/charger-store.ts`、`powerbank-store.ts` 的 `structuralKey`）；状态接口和推送都经 `shared/charging-devices.ts` 的投影出去，不带序列号。
 - 充电头卡片的端口认不出设备时，在设备名的位置画电压和电流（`shared/charging-device.ts#formatPortElectrical`，缺一就写 Unknown）；认得出就只写设备名。外壳名字和图标用公开状态里的 `cover`，放在卡片角标上。iOS 的充电段同样只在设备未知时画这两项。
 
 ### 本地高速 SSE 切换
@@ -152,9 +152,9 @@ Anker 硬件 (BLE) ──> Mac Telemetry Hub ──> POST /api/ingest/mac ──
 - 此时页面跳过远端 Worker，直接连接本机 `http://127.0.0.1:8787/sse/charger` 和 `/sse/powerbank`，享受约 1 Hz 的秒级高刷功率流。连接断开则平滑降级回远端推送。
 
 ### 功率曲线与历史回放
-- **服务端环形缓冲**：StateHub 的 SQLite 为充电头保留最近 `CHARGER_HISTORY_LIMIT`（`shared/limits.ts`）个采样点（最小间隔 `MIN_SAMPLE_GAP_MS`，见 `workers/api/src/stores/charger-store.ts`），新进网页可直接绘制完整历史曲线。
+- **服务端环形缓冲**：StateHub 的 SQLite 为充电头保留最近 `CHARGER_HISTORY_LIMIT`（`shared/limits.ts`）个采样点（最小间隔 `MIN_SAMPLE_GAP_MS`，见 `workers/core/src/stores/charger-store.ts`），新进网页可直接绘制完整历史曲线。
 - **真实时间映射**：图表横坐标必须按时间戳间距绘制，禁止按采样序号等宽平铺，以真实还原丢包或断流空档。
-- **断流检测**：超过 `chargerStaleAfterMs()`（`workers/api/src/anker.ts`：`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）未收到新读数，状态判定为断流，卡片置灰。
+- **断流检测**：超过 `chargerStaleAfterMs()`（`workers/core/src/anker.ts`：`CHARGER_STALE_MS`、推送间隔的三倍、心跳窗口三者取大）未收到新读数，状态判定为断流，卡片置灰。
 
 ### A110G 充电宝差异
 - 充电宝电量变化缓慢，因此服务端**不记录历史曲线**，仅保存当前快照。
@@ -177,8 +177,8 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 
 ### 合并规则与出口
 - 同一 agent 有账号级来源时只算它，其余来源的同 agent 账本标 `superseded`、不相加；只有设备级 / 环境级来源时相加（claude 的本机与云端，前提是云端遥测变量只配在云端）。规则在 `shared/coding-usage-sources.ts#resolveCodingUsageSources`。
-- 日子或会话数变了才重算视图与年度（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前三模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与前几名模型；只有状态变了就在存着的视图上换状态，不重扫日行。Mac、agents 采集时刻比存着的旧的账本不收；云端 OTLP 的账本由状态核心按提交顺序做差攒出，不走这道淘汰，也只收 cumulative 时序。存储键与归档见 [coding agent 的 token 用量](../workers/api/README.md#coding-agent-的-token-用量)。
-- 三条读出口都在实时层（`workers/api/src/coding-usage.ts`）：
+- 日子或会话数变了才重算视图与年度（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前三模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与前几名模型；只有状态变了就在存着的视图上换状态，不重扫日行。Mac、agents 采集时刻比存着的旧的账本不收；云端 OTLP 的账本由状态核心按提交顺序做差攒出，不走这道淘汰，也只收 cumulative 时序。存储键与归档见 [coding agent 的 token 用量](../workers/core/README.md#coding-agent-的-token-用量)。
+- 三条读出口都在实时层（`workers/core/src/coding-usage.ts`）：
   - `/api/status/coding`：视图原样给，不推送，卡片自己轮询。
   - `/api/status/coding/now`：各 agent 各来源最近一条事件，带 Mac 的存活；变了推 `coding-now`，带整份。
   - `/api/status/coding/year`：按站点今天切出 53 周（`shared/coding-year.ts#encodeCodingYear`），任一来源有日行就出图；不推送、没有首屏失效，年度图自己长间隔轮询、切回标签页时再取；首屏那份放得比轮询间隔还久时挂载补取一次（`src/lib/poll-schedule.ts#fallbackOutlived`）。
@@ -197,8 +197,8 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 - **模型名**：按来源给的字符串原样分组，不做跨来源别名合并，只去掉末尾的上下文档位标记（如 `[1m]`，`shared/coding-models.ts#codingModelName`）；占位名（`shared/coding-models.ts#HIDDEN_CODING_MODELS`）不进排名、不当模型名展示。
 
 ### 本地测试与校验脚本
-- 执行 `node scripts/verify-api-worker.mjs`：启动内存隔离的 SQLite Worker，验证协议校验、并发合并与持久化，其中 `scripts/verify-coding-usage.mjs` 往三个入口推事实、断言三条出口。
-- 浏览器里看此刻没发生的状态：`workers/api/dev-fixtures/` 下的 `coding-*.json` 夹具，注入方法见 [本地开发](../workers/api/README.md#本地开发)。
+- 执行 `node scripts/verify-core-worker.mjs`：启动内存隔离的 SQLite Worker，验证协议校验、并发合并与持久化，其中 `scripts/verify-coding-usage.mjs` 往三个入口推事实、断言三条出口。
+- 浏览器里看此刻没发生的状态：`workers/core/dev-fixtures/` 下的 `coding-*.json` 夹具，注入方法见 [本地开发](../workers/core/README.md#本地开发)。
 
 ---
 
@@ -257,7 +257,7 @@ payload: >-
 - `/api/status/listening/now` 动态裁决优先级：
   `MacBook 正在播放` > `MacBook 暂停未过宽限期` > `HomePod 正在播放` > `HomePod 暂停未过宽限期`（宽限期 `shared/now-listening.ts#MUSIC_PAUSE_GRACE_MS`）。
 - 服务端通过 `observedAt` 动态计算 `expiresInMs` 下发给客户端，由浏览器精确调度下一次查询时间，避免在服务端无状态实例上挂载定时器。
-- 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等任一客户端）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），按时长还没放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS`（`shared/limits.ts`）就给开播时刻、时长与理想误差；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」、估算进度和虚线框里的理想误差（如 `±3s`），不同步歌词；放完再留 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首被推过来，到点还没有就撤下并重取一次。`elsewhere.next` 是按循环或容器顺序推出的下一首（规则见 [最近在听](../workers/api/README.md#最近在听)），卡片把它放在歌词的位置：独占整行时在 Hero 右栏，否则在 Hero 下面一行，带 `Loop` / `In Order` 标明依据；推不出来就不显示。当前这首按时长放完、下一首还没被看见时，Hero 先换成猜的那首（开播取上一首的推断曲终，徽标换成依据），确认上榜的是同一首就原地接上，等待窗口过了还没确认就照常撤下。
+- 没有上报器的 Apple Music 播放（iPhone、iPad、网页版等任一客户端）另走 `elsewhere`：读时按 Pulse 存的「最近播放的歌」痕迹推出最后一首（`shared/pulse-listening.ts#playingElsewhere`），按时长还没放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS`（`shared/limits.ts`）就给开播时刻、时长与理想误差；Mac / HomePod 在放同一首（`sameSong`：歌名与艺人）时为 null。采集 Worker 每记下新播的歌就推一次 `listening-now`，其余推送也带着它。卡片只在 Mac / HomePod 都没在放时用它画「Likely Playing」、估算进度和虚线框里的理想误差（如 `±3s`），不同步歌词；放完再留 `LISTENING_ELSEWHERE_HOLD_MS` 等下一首被推过来，到点还没有就撤下并重取一次。`elsewhere.next` 是按循环或容器顺序推出的下一首（规则见 [最近在听](../workers/core/README.md#最近在听)），卡片把它放在歌词的位置：独占整行时在 Hero 右栏，否则在 Hero 下面一行，带 `Loop` / `In Order` 标明依据；推不出来就不显示。当前这首按时长放完、下一首还没被看见时，Hero 先换成猜的那首（开播取上一首的推断曲终，徽标换成依据），确认上榜的是同一首就原地接上，等待窗口过了还没确认就照常撤下。
 
 ---
 
@@ -296,7 +296,7 @@ payload: >-
 ## 13. PWA 与边缘缓存规则
 
 ### PWA 缓存策略
-- 生产环境注册 `/sw.js`，仅持久化缓存离线提示页 `/offline.html`。
+- 生产环境注册 `/sw.js`，仅持久化缓存离线提示页 `/offline`（`public/offline.html` 去掉后缀的地址，源：`public/sw.js#OFFLINE_URL`）。
 - 首页 HTML、RSC 数据、状态 API 及媒体资源均不写入 Service Worker 离线缓存，保证用户时刻获取最新实时流。
 
 ### 边缘缓存规则
@@ -307,18 +307,18 @@ payload: >-
 ## 14. 跨域活动脉搏（Pulse）
 
 首页 Pulse 是最近 24 小时「在做什么」的事实时间线：只存原始值，档位、颜色、摘要在卡片里现算。
-契约与存储见 [跨域活动脉搏（Pulse）](../workers/api/README.md#跨域活动脉搏pulse)。
+契约与存储见 [跨域活动脉搏（Pulse）](../workers/core/README.md#跨域活动脉搏pulse)。
 
 - 听、看、玩是状态区间：每条道一个开着的区间加一串已关闭区间（`pulse:v2:<道>`），同一状态只续
   最后确认时刻、每分钟最多写一次，状态或标题变了才换段；超过有效期没有观测就是未知，不是空闲。
   曲名、艺人、专辑、片名、集数、游戏名分字段存。
 - 「最近播放的歌」没有时刻：一首歌开播就排到最前，所以只知道它在两次刷新之间开播，每首存一行
   （`pulse:v2:listening-traces`）；出口按时长把连续播放的一串对齐，推出每首的起止，用斜线画出来，
-  算法见 [API Worker](../workers/api/README.md#存储事实时间线)。
+  算法见 [core Worker](../workers/core/README.md#存储事实时间线)。
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
   （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code 的 token 桶）现算。Clef 只给 Coding 打十五分钟强度与模式，
   只在悬停里出现；别的道不再有模型分。
-- Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（不含 cache read），不带模型名和来源；
-  取桶规则见 `workers/api/src/pulse.ts#tokensLaneView`。
+- Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（含 cache read，口径见 `shared/coding-usage.ts#codingRowTokens`），不带模型名和来源；
+  取桶规则见 `workers/core/src/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
-- 这些事实由 API 定时任务按归档水位写入 D1 的事实表（迁移 `0007_history_pulse.sql`；周期见 `workers/api/src/cron-heartbeat.ts#CRON_SCHEDULE`）。
+- 这些事实由 API 定时任务按归档水位写入 D1 的事实表（迁移 `0007_history_pulse.sql`；周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`）。

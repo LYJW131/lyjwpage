@@ -1,6 +1,7 @@
 /* Live HTML, RSC, API and media must remain network-only to avoid stale application state. */
-const OFFLINE_CACHE = "lyjw-offline-v1";
-const OFFLINE_URL = "/offline.html";
+const OFFLINE_CACHE = "lyjw-offline-v2";
+// Workers 静态资源把 /offline.html 307 到 /offline；缓存的若是重定向过的响应，导航请求不认，离线页就出不来。
+const OFFLINE_URL = "/offline";
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {

@@ -9,7 +9,7 @@ test("分支名变成稳定的 Preview 名和地址", () => {
   assert.equal(previewWorkerName("  Codex/Fix-Pulse  "), "codex-fix-pulse");
   assert.equal(
     previewWorkerOrigin("feat/agent-status"),
-    "https://feat-agent-status-api.lyjw.workers.dev",
+    "https://feat-agent-status-core.lyjw.workers.dev",
   );
   assert.equal(previewWorkerOrigin("feat/agent-status", "site"), "https://feat-agent-status-site.lyjw.workers.dev");
   assert.throws(() => previewWorkerOrigin("feat/agent-status", "ai"), /Unknown Preview Worker/);
@@ -43,13 +43,16 @@ test("超长分支名截到 DNS 标签上限，两次结果相同", () => {
 });
 
 test("Preview 配置挂在生产 wrangler.toml 里，不带生产域名、cron、KV 或 D1", () => {
-  const production = readFileSync(new URL("../workers/api/wrangler.toml", import.meta.url), "utf8");
+  const production = readFileSync(new URL("../workers/core/wrangler.toml", import.meta.url), "utf8");
   const [top, previews] = production.split("[previews.vars]");
   assert.ok(previews);
   assert.equal(/^\s*PREVIEW_WORKER\s*=/m.test(top), false);
   assert.equal(/^\s*UPSTREAM_API_URL\s*=/m.test(top), false);
+  assert.equal(/^\s*routes\s*=/m.test(top), false);
+  assert.match(top, /^workers_dev = false$/m);
+  assert.match(top, /^preview_urls = true$/m);
   assert.match(previews, /PREVIEW_WORKER = "true"/);
-  assert.match(previews, /UPSTREAM_API_URL = "https:\/\/api\.homepage\.lyjw\.llc"/);
+  assert.match(previews, /UPSTREAM_API_URL = "https:\/\/lyjw\.me"/);
   assert.match(previews, /name = "STATE"/);
   assert.match(previews, /name = "LIVE_PUSH"/);
   assert.match(previews, /name = "CHAT_QUOTA"/);

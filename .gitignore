@@ -4,7 +4,7 @@ docs/explainer/artifact.html
 docs/explainer/v2/score.mp3
 .pnpm-store/
 .wrangler/
-workers/api/wrangler.preview.json
+workers/core/wrangler.preview.json
 dist/
 /.pnp
 .pnp.*
@@ -31,6 +31,7 @@ yarn-error.log*
 
 .dev.vars*
 !.dev.vars.example
+/workers/*/wrangler.test.offline.toml
 
 /.claude/settings.local.json
 /.claude/worktrees/

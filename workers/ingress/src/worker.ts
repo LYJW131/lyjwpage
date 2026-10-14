@@ -1,6 +1,9 @@
+import { enrichCommand, type EnrichedCommand } from "@shared/command-enrichment";
 import { writeAppleMusicCredentials } from "@shared/credentials";
+import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collector";
+import { jsonResponse } from "@shared/http-origins";
 import { describeRejections } from "@shared/ingest/coding";
-import { INGEST_SOURCES, prepareIngest, type PreparedIngest } from "@shared/ingest/prepare";
+import { INGEST_SOURCES, prepareIngest, type CoreCommand, type PreparedIngest } from "@shared/ingest/prepare";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
 
 import { authorize } from "./access-auth";
@@ -12,6 +15,8 @@ import { commitLagIngest } from "./lag-ingest";
 const INGEST_PREFIX = "/api/ingest/";
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
+const COLLECTOR_REFRESH_PATH = "/api/internal/collector-refresh";
+const COLLECT_LAST: ReadonlySet<string> = new Set(["digest"]);
 
 export const DEPLOYMENT_JOBS = ["site-deployments", "cloudflare-deployments", "github-repo"];
 
@@ -21,6 +26,11 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   if (url.pathname === SITE_DEPLOYED_PATH) {
     if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
     return handleSiteDeployed(request, env, ctx);
+  }
+
+  if (url.pathname === COLLECTOR_REFRESH_PATH) {
+    if (previewWorkerEnabled()) return new Response("Not found", { status: 404 });
+    return handleCollectorRefresh(request, env, ctx, url.searchParams.getAll("job"));
   }
 
   if (url.pathname === OTLP_INGEST_PATH) {
@@ -36,13 +46,6 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   }
 
   return new Response("Not found", { status: 404 });
-}
-
-function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(data), { ...init, headers });
 }
 
 function reason(error: unknown): string {
@@ -104,7 +107,8 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
     if (command.source === "server") {
       data = { id: command.status.id };
     } else {
-      const reply = await env.CORE.commitIngest(command);
+      const { command: enriched, followUp } = await enrichListening(env, command);
+      const reply = await env.CORE.commitIngest(enriched);
       if (!reply.ready) return unavailable(source, "state core not ready");
       if (!reply.ok && reply.retryable) return unavailable(source, reply.error);
       if (!reply.ok) {
@@ -112,6 +116,9 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
         coreError = reply.error;
       } else {
         data = receiptData(command, reply.data);
+        if (followUp && env.COLLECTOR) {
+          ctx.waitUntil(env.COLLECTOR.followUpTrack(followUp).catch((error: unknown) => console.warn("[enrichment] follow-up", reason(error))));
+        }
       }
     }
     // 归档须先于 KV 写入启动，避免 KV 失败使状态核心已接受的数据漏归档。
@@ -133,6 +140,18 @@ async function commitIngest(env: Env, ctx: ExecutionContext, source: string, raw
     if ((error as { retryable?: unknown } | null)?.retryable === true) return unavailable(source, reason(error));
     console.error("[ingest]", source, reason(error));
     return jsonResponse({ ok: false, error: "上报数据无效或处理失败" }, { status: 400 });
+  }
+}
+
+// collector 调不通时原样提交：状态核心不请求 Apple，没带 enrichment 只沿用同一曲目已存的补全；补全失败不该挡住上报。
+async function enrichListening(env: Env, command: CoreCommand): Promise<EnrichedCommand> {
+  const collector = env.COLLECTOR;
+  if (!collector) return { command, followUp: null };
+  try {
+    return await enrichCommand(command, (music, upcomingTracks) => collector.enrichTrack(music, upcomingTracks));
+  } catch (error) {
+    console.warn("[enrichment]", command.source, reason(error));
+    return { command, followUp: null };
   }
 }
 
@@ -190,4 +209,32 @@ async function refreshDeployments(collector: NonNullable<Env["COLLECTOR"]>): Pro
   } catch (error) {
     console.warn("[site-deployed] 调不到采集 Worker", reason(error));
   }
+}
+
+function runOne(collector: NonNullable<Env["COLLECTOR"]>, job: string): Promise<CollectorJobOutcome> {
+  return collector.refresh([job]).then(
+    ([outcome]): CollectorJobOutcome => outcome ?? { job, status: "error", detail: "采集 Worker 没有回结果", ms: 0 },
+    (error: unknown): CollectorJobOutcome => ({ job, status: "error", detail: reason(error), ms: 0 }),
+  );
+}
+
+async function handleCollectorRefresh(request: Request, env: Env, ctx: ExecutionContext, named: string[]): Promise<Response> {
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
+  const auth = await authorize(request, env, "internal:collector-refresh");
+  if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
+  const collector = env.COLLECTOR;
+  if (!collector) return jsonResponse({ ok: false, error: "没有绑定采集 Worker" }, { status: 503 });
+  const jobs = named.length ? [...new Set(named)] : ACTIVE_COLLECTOR_JOBS;
+  const ordered = [...jobs.filter((job) => !COLLECT_LAST.has(job)), ...jobs.filter((job) => COLLECT_LAST.has(job))];
+  // 逐个串行跑：经 Service Binding 触发的 Worker 和这次请求共用 6 个等响应头的连接，并发扇出会让短预算任务耗在排队上。
+  // 摘要读的是别的任务写出的视图（仓库提交、站点部署……），排在最后才总结得到这一轮刚采集的数据。
+  const run = (async () => {
+    const byJob = new Map<string, CollectorJobOutcome>();
+    for (const job of ordered) byJob.set(job, await runOne(collector, job));
+    return jobs.map((job) => byJob.get(job)!);
+  })();
+  // 调用方断开（如 curl 超时）时任务不随连接立刻取消，但只多 waitUntil 的宽限，长任务不保证跑完。
+  ctx.waitUntil(run);
+  const outcomes = await run;
+  return jsonResponse({ ok: outcomes.every((outcome) => outcome.status !== "error"), outcomes });
 }

@@ -4,7 +4,7 @@ import { LAG_KEYS } from "@shared/lag";
 import type { HealthBlock, HealthPayload, HealthSeries, UptimeDay } from "@shared/health-types";
 
 export const CRON_HEARTBEAT_EVERY_MINUTES = 5;
-// 须等于 workers/api/src/pulse-score.ts#PULSE_SCORE_SETTLE_MS 的分钟数（workers/api/src/cron-heartbeat.test.ts 核对）。
+// 须等于 workers/core/src/pulse-score.ts#PULSE_SCORE_SETTLE_MS 的分钟数（workers/core/src/cron-heartbeat.test.ts 核对）。
 export const CRON_HEARTBEAT_OFFSET_MINUTES = 2;
 
 export const SITE_UPTIME_URL = "https://lyjw.me/api/version";
@@ -27,7 +27,7 @@ export type HealthSeriesSpec = {
 };
 
 export const HEARTBEAT_SERIES: HealthSeriesSpec = {
-  name: "api-cron",
+  name: "core-cron",
   everyMinutes: CRON_HEARTBEAT_EVERY_MINUTES,
   offsetMinutes: CRON_HEARTBEAT_OFFSET_MINUTES,
   graceMs: 10 * 60_000,

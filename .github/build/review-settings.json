@@ -1,0 +1,32 @@
+{
+  "disableAllHooks": true,
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "blockReadsOutsideWorkingDirectories": true,
+    "allow": ["Read", "Glob", "Grep"],
+    "deny": [
+      "Bash",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "EnterWorktree",
+      "ExitWorktree",
+      "ListAgents",
+      "ReportFindings",
+      "ScheduleWakeup",
+      "SendMessage",
+      "Skill",
+      "TaskStop",
+      "Workflow",
+      "Read(//proc/**)",
+      "Read(~/.claude/**)",
+      "Read(~/.claude.json)"
+    ]
+  }
+}

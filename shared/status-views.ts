@@ -39,11 +39,15 @@ export const STATUS_VIEWS = {
   health: { path: "/api/status/health", layer: "lag", cadenceMs: 5 * 60_000 },
   reporters: { path: "/api/status/reporters", layer: "lag", cadenceMs: 60_000 },
   pulse: { path: "/api/status/pulse", layer: "realtime" },
+  digest: { path: "/api/status/digest", layer: "lag", tag: "digest", cadenceMs: 900_000 },
 } as const satisfies Record<string, StatusView>;
 
 export type StatusViewKey = keyof typeof STATUS_VIEWS;
 export type EndpointViewKey = StatusViewKey;
 export type StatusPath = (typeof STATUS_VIEWS)[StatusViewKey]["path"];
+export type LagViewKey = {
+  [K in StatusViewKey]: (typeof STATUS_VIEWS)[K]["layer"] extends "lag" ? K : never;
+}[StatusViewKey];
 
 export const STATUS_VIEW_KEYS = Object.keys(STATUS_VIEWS) as StatusViewKey[];
 
@@ -63,6 +67,11 @@ export function viewKeyByPath(path: string): EndpointViewKey | undefined {
 export function layerOfPath(path: string): StatusLayer {
   const key = viewKeyByPath(path);
   return key ? (STATUS_VIEWS[key] as StatusView).layer : "realtime";
+}
+
+export function lagViewKeyByPath(path: string): LagViewKey | undefined {
+  const key = viewKeyByPath(path);
+  return key && STATUS_VIEWS[key].layer === "lag" ? (key as LagViewKey) : undefined;
 }
 
 const PATH_BY_EVENT = new Map<string, string>(

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { COLLECTOR_JOBS, RETIRED_COLLECTOR_JOBS } from "@shared/collector";
+import { ACTIVE_COLLECTOR_JOBS, COLLECTOR_JOBS, RETIRED_COLLECTOR_JOBS } from "@shared/collector";
 
 import type { Env } from "./env";
 import type { Job } from "./job";
@@ -24,6 +24,7 @@ test("a job is due when the epoch minute lands on its offset", () => {
 test("the registry covers every shared job name once, with periods that divide an hour", () => {
   const retired: readonly string[] = RETIRED_COLLECTOR_JOBS;
   assert.deepEqual(JOBS.map((job) => job.name).sort(), COLLECTOR_JOBS.filter((name) => !retired.includes(name)).sort());
+  assert.deepEqual([...ACTIVE_COLLECTOR_JOBS].sort(), JOBS.map((job) => job.name).sort());
   for (const job of JOBS) {
     assert.equal(60 % job.everyMinutes, 0, job.name);
     assert.ok(job.offset >= 0 && job.offset < job.everyMinutes, job.name);
@@ -47,7 +48,9 @@ test("a job failure becomes an error outcome and an error log instead of rejecti
   assert.equal(result.status, "error");
   assert.equal(result.detail, "upstream 503");
   assert.equal(logged.mock.callCount(), 1);
-  assert.equal(logged.mock.calls[0].arguments[0], "[collector-job] github-chart");
+  const { ms, ...line } = JSON.parse(String(logged.mock.calls[0].arguments[0]));
+  assert.deepEqual(line, { event: "collector-job", job: "github-chart", status: "error", detail: "upstream 503" });
+  assert.equal(typeof ms, "number");
 });
 
 test("a known upstream outage is logged at warn so it does not open an issue", async (t) => {

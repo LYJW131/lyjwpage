@@ -14,21 +14,28 @@ import type { SiteDeployment, SiteDeploymentState } from "@shared/site-deploymen
 
 const AVATAR_PX = 28;
 
-const CONTRIBUTOR_LIMIT = 6;
+export const CONTRIBUTOR_LIMIT = 6;
 
-const RANK_COLORS = [
-  "#3e70c9",
-  "#3d7f50",
-  "#d66b35",
-  "#8255c7",
-  "#c84d3d",
-  "#b8962a",
-  "#0f9b9b",
-  "#d64f7e",
+const AVATAR_ACCENTS: Record<string, string> = {
+  lyjw131: "var(--avatar-lyjw131)",
+  claude: "var(--avatar-claude)",
+  codex: "var(--avatar-codex)",
+  cursoragent: "var(--avatar-cursor)",
+  an0nch1hayaa: "var(--avatar-chihaya)",
+  "grokkybara[bot]": "var(--avatar-grok)",
+};
+
+const FALLBACK_COLORS = [
+  "var(--signal-blue)",
+  "var(--signal-green)",
+  "var(--signal-orange)",
+  "var(--signal-violet)",
+  "var(--signal-red)",
+  "var(--signal-yellow)",
 ] as const;
 
-export function colorForRank(index: number): string {
-  return RANK_COLORS[index % RANK_COLORS.length] ?? "#3e70c9";
+export function colorForContributor(login: string, index: number): string {
+  return AVATAR_ACCENTS[login.toLowerCase()] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
 }
 
 function avatarSrc(url: string): string {
@@ -92,12 +99,12 @@ function ContributorRow({
           {person.login}
         </span>
       </a>
-      <span className="flex shrink-0 gap-2 font-mono text-[11px] leading-4 tabular-nums max-sm:-mt-3 max-sm:basis-full max-sm:pl-9">
+      <span className="flex shrink-0 gap-2 font-mono text-2xs leading-4 tabular-nums max-sm:-mt-3 max-sm:basis-full max-sm:pl-9">
         <span className="text-muted-foreground">{person.commits.toLocaleString("en-US")} commits</span>
         <span>
-          <span style={{ color: "var(--signal-green)" }}>+{person.additions.toLocaleString("en-US")}</span>
+          <span className="text-signal-green">+{person.additions.toLocaleString("en-US")}</span>
           <span className="text-muted-foreground">/</span>
-          <span style={{ color: "var(--signal-red)" }}>−{person.deletions.toLocaleString("en-US")}</span>
+          <span className="text-signal-red">−{person.deletions.toLocaleString("en-US")}</span>
         </span>
       </span>
     </div>
@@ -124,7 +131,7 @@ function AuthorAvatar({ author }: { author: CommitAuthor }) {
   if (author.avatarUrl) {
     return <Image src={avatarSrc(author.avatarUrl).replace(`s=${AVATAR_PX * 2}`, `s=${AUTHOR_PX * 2}`)} alt="" width={AUTHOR_PX} height={AUTHOR_PX} unoptimized className={AVATAR_CLASS} />;
   }
-  return <span aria-hidden className={cn(AVATAR_CLASS, "flex items-center justify-center text-[9px] text-muted-foreground")}>{author.name.slice(0, 1).toUpperCase()}</span>;
+  return <span aria-hidden className={cn(AVATAR_CLASS, "flex items-center justify-center text-2xs text-muted-foreground")}>{author.name.slice(0, 1).toUpperCase()}</span>;
 }
 
 function authorKey(author: CommitAuthor): string {
@@ -133,11 +140,11 @@ function authorKey(author: CommitAuthor): string {
 
 function AuthorLine({ authors, children }: { authors: CommitAuthor[]; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+    <div className="flex min-w-0 items-center gap-1.5 text-2xs leading-4 text-muted-foreground">
       <span className="flex shrink-0 -space-x-1">
         {authors.map((author) => <AuthorAvatar key={authorKey(author)} author={author} />)}
       </span>
-      <span className="min-w-0 truncate">{children}</span>
+      <span className="-my-1 min-w-0 truncate py-1">{children}</span>
     </div>
   );
 }
@@ -164,7 +171,7 @@ function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; commi
   const agentNames = agents.map((author, index) => {
     const model = author.model && author.model.toLowerCase() !== author.name.toLowerCase() ? author.model : null;
     const name = author.login && !author.login.endsWith("[bot]")
-      ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="font-medium text-foreground hover:underline">{author.name}</a>
+      ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="-my-1 inline-block py-1 font-medium text-foreground hover:underline">{author.name}</a>
       : <span className="font-medium text-foreground">{author.name}</span>;
     return (
       <Fragment key={authorKey(author)}>
@@ -174,14 +181,14 @@ function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; commi
     );
   });
   return (
-    <>
+    <div className="flex flex-col gap-2">
       {people.length > 0 ? (
         <AuthorLine authors={people}>
           {people.map((author, index) => (
             <Fragment key={authorKey(author)}>
               {joinLabels(people.length, index)}
               {author.login
-                ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="font-medium text-foreground hover:underline">{author.name}</a>
+                ? <a href={`https://github.com/${author.login}`} target="_blank" rel="noreferrer noopener" className="-my-1 inline-block py-1 font-medium text-foreground hover:underline">{author.name}</a>
                 : <span className="font-medium text-foreground">{author.name}</span>}
             </Fragment>
           ))}
@@ -190,10 +197,10 @@ function CommitByline({ authors, committedAt }: { authors: CommitAuthor[]; commi
       ) : agents.length > 0 ? (
         <AuthorLine authors={agents}>{agentNames}{" committed "}{time}</AuthorLine>
       ) : (
-        <div className="min-w-0 truncate text-[11px] leading-4 text-muted-foreground">committed {time}</div>
+        <div className="min-w-0 truncate text-2xs leading-4 text-muted-foreground">committed {time}</div>
       )}
       {people.length > 0 && agents.length > 0 && <AuthorLine authors={agents}>with {agentNames}</AuthorLine>}
-    </>
+    </div>
   );
 }
 
@@ -220,13 +227,13 @@ function CommitCard({ commit, deploy }: {
   const production = deploy?.production ?? false;
   const status = production ? "Live" : !deployment ? "Committed" : deployment.state === "READY" && deployment.target === "preview" ? "Preview ready" : stateLabels[deployment.state];
   return (
-    <li className="flex min-h-[98px] flex-col justify-center gap-1 border border-line bg-muted/40 px-3 py-2">
+    <li className="flex min-h-24 flex-col justify-center gap-1 border border-line bg-muted/40 px-3 py-1.5">
       <a href={commit.url} target="_blank" rel="noreferrer noopener" title={commit.title} className="-mt-2 block truncate pt-2 text-sm leading-5 hover:underline">{commit.title}</a>
       <CommitByline authors={commit.authors} committedAt={commit.committedAt} />
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 whitespace-nowrap text-[10px] leading-4 text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 whitespace-nowrap text-2xs leading-4 text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className={cn("size-1.5 shrink-0 rounded-full", production ? "bg-emerald-500" : deployment?.state === "ERROR" ? "bg-red-500" : deployment?.state === "BUILDING" ? "bg-amber-500" : "bg-muted-foreground/40")} />
-          <span className={cn(production ? "text-emerald-600 dark:text-emerald-400" : deployment?.state === "ERROR" ? "text-red-500" : undefined)}>{status}</span>
+          <span className={cn(production ? "text-live-ink" : deployment?.state === "ERROR" ? "text-signal-red" : undefined)}>{status}</span>
         </span>
         <a
           href={commit.url}
@@ -266,18 +273,19 @@ export function RepoContributions({
     <section id="github-repo" className="min-w-0 scroll-mt-28" aria-label="Repository contributions">
       {hasContributors ? (
         <div className="grid grid-cols-1 md:grid-cols-2">
-          <div className="min-w-0 p-4 md:pr-4 lg:pl-5">
+          {/* 两栏并排时列表撑满同一高度、行按 1fr 均分，内容高度对不上时底边也对齐。 */}
+          <div className="flex min-w-0 flex-col p-4 md:pr-4 lg:pl-5">
             <div className="label-mono text-muted-foreground">Contributors</div>
-            <div className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
+            <div className="mt-2 grid min-w-0 flex-1 grid-cols-1 content-start gap-2 md:auto-rows-fr md:content-stretch">
               {shown.map((person, index) => (
-                <ContributorRow key={person.login} person={person} color={colorForRank(index)} />
+                <ContributorRow key={person.login} person={person} color={colorForContributor(person.login, index)} />
               ))}
             </div>
           </div>
           {commits.length > 0 && (
-            <div className="min-w-0 border-t border-line p-4 md:border-t-0 md:border-l md:border-line md:pl-4 lg:pr-5">
+            <div className="flex min-w-0 flex-col border-t border-line p-4 md:border-t-0 md:border-l md:border-line md:pl-4 lg:pr-5">
               <div className="label-mono text-muted-foreground">Commits</div>
-              <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
+              <ul className="mt-2 grid min-w-0 flex-1 grid-cols-1 content-start gap-2 md:auto-rows-fr md:content-stretch">
                 {commits.map((commit) => (
                   <CommitCard key={commit.sha} commit={commit} deploy={deploymentFor(commit, deploymentsBySha)} />
                 ))}
@@ -286,7 +294,7 @@ export function RepoContributions({
           )}
         </div>
       ) : (
-        <div className="p-4 lg:px-5">
+        <div className="p-4 lg:p-5">
           <div className="label-mono text-muted-foreground">Commits</div>
           <ul className="mt-2 grid min-w-0 grid-cols-1 content-start gap-2">
             {commits.map((commit) => (

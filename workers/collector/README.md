@@ -1,21 +1,25 @@
 # collector
 
-采集 Worker：站点所有**定时的外部拉取**都在这里。cron 每分钟响一次，按登记表
-（`src/registry.ts`）挑出这一分钟到期的任务并行跑，一个失败不连累别的。
+采集 Worker：站点所有**定时的外部拉取**都在这里，Apple Music 的按需查询与「正在听」的补全也在这里（见下文「Apple Music」）。
+cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟到期的任务并行跑，一个失败不连累别的。
+同一次 cron 还调 core 的 `StateCore.cronRound(scheduledTime)`：core 不挂自己的 cron，由它判断这一分钟是不是它的轮次（`src/core-round.ts`，失败只记 warn）。
 
 结果分两个去向：
 
 - **只展示、不参与计算的**直接写可滞后层 KV（`LAG`，键表见 `shared/lag.ts`），每条带
   `updatedAt`。**成功才写**：KV 里的值本身就是上次成功值，失败时旧值原样留着，
   不另存 last-good；过没过时由浏览器按各卡片的阈值判断。
-- **状态核心要拿来算的**（最近在听）经 Service Binding RPC 交给 api Worker
+- **状态核心要拿来算的**（最近在听）经 Service Binding RPC 交给 core Worker
   的具名 entrypoint `StateCore`（binding `CORE`，契约见 `shared/state-core.ts`）：
   差分、推送、pulse 证据都在那边做。
 
 另开一个具名 entrypoint `Collector`（契约见 `shared/collector.ts`）：同账号的 Worker 调
 `refresh(jobs)` 就能点名立刻跑几个任务，比如上报入口（`workers/ingress`）收到站点部署通知后请它重拉
-`site-deployments` 与 `cloudflare-deployments`。
-没有路由、没有域名；生产上 `fetch` 一律 404。
+`site-deployments` 与 `cloudflare-deployments`；`enrichTrack`、`followUpTrack` 见「Apple Music」。
+生产上要手动跑一遍全部任务（含 `digest`），走上报入口的 `POST /api/internal/collector-refresh`，或在 GitHub Actions
+手动运行 `.github/workflows/collector-refresh.yml`，见[上报入口 README](../ingress/README.md#手动跑采集)。
+没有路由、没有域名，只能经 Service Binding 调到；默认 `fetch` 只答 Apple Music 的三条路径（`shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS`），
+其余一律 404。
 
 ## 任务
 
@@ -24,7 +28,7 @@
 
 | 任务 | 去向 | 需要 |
 | --- | --- | --- |
-| `apple-recent` | `CORE.commitRecentlyPlayed(items, container)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；developer token 经 `CORE` 取 |
+| `apple-recent` | `CORE.commitRecentlyPlayed(items, container)`；`CORE.commitRecentTracks(tracks)` | 凭据 KV 里的 user token；`APPLE_MUSIC_PRIVATE_KEY` 与 `APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID`（自签 developer token）；`APPLE_MUSIC_OWNER_NAME`（真名打码） |
 | `provider-status` | `LAG agent-status:v1`；灯色变了才 `CORE.revalidate(["agent-status"])` | 无 |
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
@@ -38,7 +42,8 @@
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | 已退役：同上 | 无 |
 | `uptime-probe` | 每分钟 GET `shared/health.ts#SITE_UPTIME_URL`，成败累进 D1 `health_buckets`（只有定时轮次记，手动点名不记） | D1 `HISTORY` |
-| `site-health` | `LAG health:v1`：D1 里的在线探测与 api cron 心跳汇成 30 天每天一格，加上 Workers Observability 报错数与 Web Analytics 真实访客 Web Vitals（没取到的块沿用上一份）；顺带清掉超出 `HEALTH_RETENTION_MS` 的格子 | D1 `HISTORY`；`CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
+| `site-health` | `LAG health:v1`：D1 里的在线探测与 core 心跳汇成 30 天每天一格，加上 Workers Observability 报错数与 Web Analytics 真实访客 Web Vitals（没取到的块沿用上一份）；顺带清掉超出 `HEALTH_RETENTION_MS` 的格子 | D1 `HISTORY`；`CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
+| `digest` | `DIGEST.compose`（ai 的 `Digest`，带上一份的输入哈希与标题）写成的近况摘要进 `LAG digest:v1`；输入没变时 ai 回 `unchanged`，这里照样重写一次刷新 `updatedAt`；第一次写出、或摘要与 `quiet`（时钟卡）互换时才 `CORE.revalidate(["digest"])` | 无（ai 回 `unconfigured` 时这里跳过） |
 
 任务失败怎么被看见见下文「失败」。
 
@@ -60,8 +65,10 @@
 - **PageSpeed** 桌面、移动并行测，单端通常二三十秒，偶尔长尾到一分钟以上，所以单端等到 `PAGESPEED_TIMEOUT_MS`
   才放弃，合成一个样本并进滚动窗口（窗口与样本上限见 `src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），样本窗口存在 `COLLECTOR_KV`。
   密钥只进查询参数，日志里只有状态码。任一端失败这一轮就空过，可滞后层沿用上一份。
-- **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由
-  状态核心签（私钥只在 api 上），本 isolate 缓存到离到期 `RENEW_BEFORE_MS`。封面、时长的缓存经 `shared/cache`
+- **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由本 Worker 自签
+  （`shared/musickit-token.ts#issueApiDeveloperToken`，同一 isolate 里过了签发到期的中点才重签），签名配置缺了也跳过。
+  列表首项的动态封面在这里查好再交给状态核心（`shared/track-enrichment.ts#enrichRecentlyPlayed`），查不出结果时
+  `motion` 留 `undefined`，状态核心沿用同一项已存的那份。封面、时长的缓存经 `shared/cache`
   存在 `COLLECTOR_KV`（期限见 `apple-recent.ts` 的 `LIBRARY_ARTWORK_TTL_MS`、`CONTAINER_TTL_MS`），稳定状态下一轮只有拉两份列表出网。
   节奏分两档：任务每分钟排期，闲时只在整 `IDLE_EVERY_MINUTES` 分钟真去拉；任一份列表变了就记下时刻（`COLLECTOR_KV`），
   之后 `ACTIVE_HOLD_MS` 内每分钟都拉，并在同一响里接着每 `ACTIVE_POLL_MS` 再拉一次单曲列表（专辑列表仍是一响一次），
@@ -71,8 +78,54 @@
 
 ### 失败
 
-任务真失败（已知的外部故障除外）由 `src/registry.ts#runJob` 记一条 `console.error("[collector-job] <任务>", error)`，Workers Issues 按它归组；
-带 `outage: true` 的已知外部故障只记 warn，不进 Issues。没有逐任务的 cron 报到：漏跑本身看不出来，只有 api cron 心跳与在线探测按排定次数算漏跑。
+任务真失败（已知的外部故障除外）由 `src/registry.ts#runJob` 记一条 error 级的 JSON 日志 `{ event: "collector-job", job, status, detail, ms }`，进 Workers Issues，盯防 routine 也按它查；
+带 `outage: true` 的已知外部故障记同样结构的 warn。没有逐任务的 cron 报到：漏跑本身看不出来，只有 core 心跳与在线探测按排定次数算漏跑。
+
+## Apple Music
+
+站点域名上的三条路径由 site Worker 经 `COLLECTOR_SERVICE` 原样转来（`src/lib/site-policy.ts#classifyGatewayRequest`），
+首屏那首的歌词也从这里取；上报入口在提交前调 `enrichTrack`、收下之后调 `followUpTrack`（见 [ingress README](../ingress/README.md#拆分)）。
+
+- **按需查询**：`/api/lyrics`、`/api/motion-artwork`（实现在 `shared/apple-lookups.ts`）在具名 entrypoint `AppleLookups` 里跑，
+  它开了 Workers Caching（`wrangler.toml` 的 `[exports.AppleLookups.cache]`）：按 entrypoint、路径与查询串缓存，不分主机名，
+  每次部署从空缓存开始，期限按响应的 `Cache-Control`（出错的响应是 `no-store`，不进缓存）。默认 `fetch` 是挡在它前面的一层，
+  预检、方法、来源判断和 CORS 头每次按这次请求现做（`src/apple-music-http.ts`），再经 `APPLE_LOOKUPS` 调 `AppleLookups`，
+  所以缓存里的响应不带 CORS 头。
+- **`/api/musickit/token`**：给网页播放器按来源签 MusicKit token（`shared/musickit-token.ts#issueMusicKitToken`），
+  由默认 `fetch` 直接回、不进缓存，规则见下文「MusicKit 令牌」。
+- **写入时补全**：`Collector.enrichTrack(music, upcomingTracks)` 查当前曲目的目录、队列里接下来几首（`shared/playing-queue.ts#PRELOAD_AHEAD`）的目录和动态封面，每段各自限时
+  （`shared/track-enrichment.ts` 的 `WRITE_BUDGET`），目录与队列并行、动态封面排在目录之后；某段失败或超时只丢那一段、
+  打一条带阶段与曲目的 `[enrichment]` warn，记为未知，不抛错。`Collector.followUpTrack(followUp)` 立即返回，
+  在 `waitUntil` 里预热歌词，写入时有段没查出的在新的请求状态里按 `RETRY_BUDGET` 整份重查一次（`shared/track-enrichment.ts#followUpEnrichment`），
+  查到更多就经 `CORE.commitEnrichmentPatch` 补写（按块合并，见 `shared/track-enrichment.ts#mergeEnrichment`）。
+- Apple 的结果缓存在 `APPLE_CACHE` KV（`shared/apple-cache.ts`）：键以 `STORAGE_PREFIX` 开头，查询按 `APPLE_MUSIC_STOREFRONT` 的店面。
+
+### MusicKit 令牌
+
+访客用自己的 Apple Music 订阅跟听之前，先得有一份 developer token 才能把 MusicKit JS 配起来。
+这份令牌发给**任何一个访客**，和凭据 KV 里 Mac 上报的那份私人凭据（带 music user token）
+不是一回事、不共用路径。
+
+`ALLOWED_ORIGINS` 一份名单，两道限制：
+
+1. **谁能来要令牌** —— 比请求的来源：带 `Origin` 头就看它；浏览器的同源 GET 不带 `Origin`，
+   只带 `Sec-Fetch-Site: same-origin`，这时按请求自己的源算（`shared/http-origins.ts#requestOrigin`，
+   经站点 Service Binding 转来的请求 URL 仍是站点的源）。配了名单之后两样都没有的一律拒绝。这道只是让
+   「拿一份」不那么随手，这两个头非浏览器都伪造得了。
+2. **令牌只在这些域上有效** —— 名单里写死的域签进 JWT 的 `origin` 声明，由 Apple 校验。
+   通配项（`https://*.lyjw.workers.dev`）Apple 不解析，匹配到的预览域名和 localhost **只签它自己一个**，
+   不把生产域名一起捎上；否则任何人带一句 `Origin: http://localhost:3000` 就能要走一份在
+   `lyjw.me` 上可用的令牌。
+
+同一份 origin 声明的令牌在 isolate 里复用，过了「签发 → 到期」的中点才重签；`issuedAt` 和
+`expiresAt` 一起给，站点用同一条半衰期规则决定何时再要。响应一律 `Cache-Control: no-store`。
+出错时 `{ "error": "..." }`：403 来源不对、405 方法不对、500 变量没配或私钥坏（只有自己写死
+的配置提示外带，运行时异常只进日志）。
+
+私钥与两个 ID 来自 [Apple Developer](https://developer.apple.com/account/resources/authkeys/list) 勾了
+**MusicKit** 的密钥（放哪见下文「配置」）；`APPLE_MUSIC_PRIVATE_KEY` 是 `.p8` 全文，带不带 PEM 头尾、换行是真的还是 `\n` 都吃。
+有效期 `MUSICKIT_TOKEN_TTL_SECONDS` 不填按 `DEFAULT_TTL_SECONDS`，上限 `MAX_TTL_SECONDS`（Apple 允许的最长期限）；不取上限是因为令牌一旦被复制走，
+域名限制之外就只剩有效期这一道闸。
 
 ## COLLECTOR_KV 的键
 
@@ -81,7 +134,7 @@
 
 | 键 | 内容 |
 | --- | --- |
-| `lyjwpage:cache:*` | `shared/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v1:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*` |
+| `lyjwpage:cache:*` | `shared/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v2:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*` |
 
 `shared/cache` 在这里背后是 KV（`src/storage-driver.ts`，由 `src/ports.ts` 装上）：TTL 最短 60 秒（5 秒的负缓存会活满一分钟），KV 的读还有最长 60 秒的边缘缓存 ——
 两分钟以内要读回的东西不走它。列表、哈希操作直接抛错。
@@ -95,29 +148,31 @@
 | `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计与最近提交（REST + GraphQL 取协作者） |
 | `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取；健康汇总另要 Workers Observability 读取 |
 | `PAGESPEED_API_KEY` | Google PageSpeed Insights |
+| `APPLE_MUSIC_PRIVATE_KEY` | Apple Music 开发者私钥（`.p8`）：签服务端调 Apple 用的 developer token 和给网页播放器的 MusicKit token；缺了 `apple-recent` 跳过，令牌路由回 500 |
+| `APPLE_MUSIC_OWNER_NAME` | Apple ID 上的真名：`apple-recent` 出站前把它（含 URL 编码形式）换成 `src/jobs/apple-recent.ts#OWNER_ALIAS`，自己的歌单、音乐回忆署名与个人电台标题不露真名；缺了 `apple-recent` 跳过，宁可不更新也不漏 |
 
 `SITE_WORKER_TAG`（site Worker 的 Builds tag）与 `SITE_ANALYTICS_SITES`（JSON：`{"lyjw.me":"<site_tag>","lyjw131.com":"<site_tag>"}`，两站缺一不可）是 `[vars]` 配置；缺哪个跳过哪个任务，不算故障。
 
-Apple Music 不在这里配：user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推来的），
-developer token 经 `CORE.appleDeveloperToken()` 由 api 签。
+Apple Music 的 user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推来的）；`APPLE_MUSIC_TEAM_ID`、`APPLE_MUSIC_KEY_ID`、
+`ALLOWED_ORIGINS`（MusicKit token 按它签 origin 声明）在 `[vars]`。
 
-绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS` 三个 KV，`CORE`（`api` 的 `StateCore`），D1 `HISTORY`
-（`lyjwpage-history`）。D1 表结构归 `workers/api/migrations` 管：新表先在 api 那边
-`pnpm --dir workers/api exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
+绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS`、`APPLE_CACHE` 四个 KV，`CORE`（`core` 的 `StateCore`），
+`APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`（`lyjwpage-history`）。D1 表结构归 `workers/core/migrations` 管：新表先在 core 那边
+`pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
 
 ## 部署
 
 推到 `main` 由 Cloudflare Workers Builds 原生 Git 集成部署（根目录 `/`，配置与监视路径见
-[原生部署配置](../../docs/workers-builds.md)）；不开分支预览：预览版的 `CORE` 会调到生产的 api。
+[原生部署配置](../../docs/workers-builds.md)）；不开分支预览：预览版的 `CORE` 会调到生产的 core。
 
-新增 `StateCore` 方法时先发布 api，再发布这里；两边独立构建。
+新增 `StateCore` 方法时先发布 core，再发布这里；`Digest` 的契约同理，先发布 ai。各自独立构建。
 
 ## 本地开发
 
 根目录 `pnpm dev:worker` 以多配置方式起四个 Worker（配置清单见根 `package.json` 的 `dev:worker`）：`workers/dev-router`（拿端口，按路径分发）、
-api、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档、在线探测与健康汇总跳过），
-三个 KV 都是本地的（`LAG`、`CREDENTIALS` 和 api 共用同一个本地 id）。
-令牌照需要放 `workers/collector/.dev.vars`（照 `.dev.vars.example`），不放的任务直接跳过。
+core、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档、在线探测与健康汇总跳过），
+KV 都是本地的（`LAG`、`CREDENTIALS` 和上报入口共用同一个本地 id，`LAG` 还和 core 共用）。
+令牌照需要放 `workers/collector/.dev.vars`（照 `.dev.vars.example`），不放的任务直接跳过。本地不开 Workers Caching。
 
 ```sh
 curl -X POST 'localhost:8788/__dev/collector/run?job=provider-status'     # 立刻跑一个任务，返回结果
@@ -134,5 +189,6 @@ pnpm --dir workers/collector typecheck
 pnpm --dir workers/collector test
 ```
 
-单测覆盖节奏与报到、KV 存储驱动（含 `shared/cache` 跑在它上面）、D1 `site_deploys` 的 upsert
-（真实 SQLite 跑 api 的全部迁移）、厂商状态变了才失效首屏，以及几处部分成功的合并口径。
+单测覆盖节奏、KV 存储驱动（含 `shared/cache` 跑在它上面）、D1 `site_deploys` 的 upsert
+（真实 SQLite 跑 core 的全部迁移）、厂商状态变了才失效首屏、几处部分成功的合并口径，以及 Apple Music 的
+入口层（预检、来源、令牌）、`APPLE_CACHE` 命中不出网和补全后的补写。

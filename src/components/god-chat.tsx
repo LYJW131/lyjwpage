@@ -387,7 +387,7 @@ function Conversation({ className, archive, session: conversation }: { className
           } else if (event.type === "ask") {
             meta = { ...meta, asks: event.questions };
           } else if (event.type === "plan") {
-            meta = { ...meta, proposals: [...(meta.proposals ?? []), { plan: event.plan, token: event.token, expiresAt: event.expiresAt }] };
+            meta = { ...meta, proposals: [...(meta.proposals ?? []), { plan: event.plan, token: event.token, expiresAt: event.expiresAt, ...(event.issueRef && { issueRef: event.issueRef }) }] };
           }
         }
         show();
@@ -596,7 +596,7 @@ function Conversation({ className, archive, session: conversation }: { className
   return (
     <Card
       label="Talk to God"
-      action={conversation?.design && designConsented ? <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400"><PencilRuler className="size-3" />Design · Opus</span> : <RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
+      action={conversation?.design && designConsented ? <span className="flex items-center gap-1 text-signal-blue"><PencilRuler className="size-3" />Design · Opus</span> : <RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
       className={cn(
         "transition-[height,box-shadow] duration-700 ease-out motion-reduce:transition-none",
         expanded ? "h-[calc(100dvh-var(--chat-inset))]" : "h-[25rem] sm:h-[22rem]",
@@ -608,9 +608,9 @@ function Conversation({ className, archive, session: conversation }: { className
     >
       <div ref={anchorRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <FableDescent descent={descent} />
-      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs text-muted-foreground">
-        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="flex min-w-0 items-center gap-1.5 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedCount > 0 ? ` (${savedCount})` : ""}</span></button>
-        <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
+      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2 text-xs text-muted-foreground lg:px-5">
+        <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="-my-1 flex min-w-0 items-center gap-1.5 py-1 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedCount > 0 ? ` (${savedCount})` : ""}</span></button>
+        <button type="button" onClick={() => runCommand("/clear")} className="-my-1 flex shrink-0 items-center gap-1 py-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
       </div>
       {historyOpen && <SessionList archive={archive} />}
       {(armed || warm) && (
@@ -625,12 +625,12 @@ function Conversation({ className, archive, session: conversation }: { className
           const el = event.currentTarget;
           stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
         }}
-        className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden"
+        className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-5 [&::-webkit-scrollbar]:hidden"
       >
         {!expanded ? (
           <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Ask anything. The oracle sees what LYJW is up to, knows how this site is built, and can search the web.
+              Ask about LYJW, this site, or anything on the web.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((suggestion) => (
@@ -665,8 +665,8 @@ function Conversation({ className, archive, session: conversation }: { className
                     {message.role === "assistant" && message.tier !== undefined && <RankLabel reply={message} />}
                     {message.thinking && (
                       <details open={live && !message.content} className="mb-1.5">
-                        <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">
-                          {live && !message.content ? "Thinking…" : "Thought process"}
+                        <summary className="label-mono cursor-pointer text-muted-foreground">
+                          {live && !message.content ? <span className="thinking-shimmer">Thinking</span> : "Thought process"}
                         </summary>
                         {/* column-reverse 让溢出时停在最底下，摘要往下长时始终看得到最新一句。 */}
                         <div className="scrollbar-none mt-1 flex max-h-32 flex-col-reverse overflow-y-auto text-xs text-muted-foreground [&::-webkit-scrollbar]:hidden">
@@ -675,7 +675,7 @@ function Conversation({ className, archive, session: conversation }: { className
                       </details>
                     )}
                     {message.lookups?.length ? (
-                      <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">
+                      <div className="label-mono mb-1.5 text-muted-foreground">
                         Looked at {message.lookups.join(", ")}
                       </div>
                     ) : null}
@@ -705,6 +705,7 @@ function Conversation({ className, archive, session: conversation }: { className
                             cards={message.cards}
                             designAt={message.designAt}
                             live={live}
+                            awaiting={live && !(message.thinking && !message.content)}
                             handoff={<PlannerActivity message={message} live={live} />}
                             designConsentNode={designConsentNode}
                             showDesignContent={!unrevealedDesign}
@@ -727,7 +728,7 @@ function Conversation({ className, archive, session: conversation }: { className
                       message.content
                     )}
                     {message.sources?.length ? (
-                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-[11px]">
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-2xs">
                         {message.sources.map((source) => (
                           <a
                             key={source.url}
@@ -752,8 +753,8 @@ function Conversation({ className, archive, session: conversation }: { className
         {queued !== null && <UserBubble text={queued} />}
       </div>
 
-      <div className="border-t border-line p-3">
-        {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+      <div className="border-t border-line px-4 py-3 lg:px-5">
+        {error && <p className="mb-2 text-xs text-signal-red">{error}</p>}
         {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
         {conversation?.design && designConsented && <DesignStatus design={conversation.design} />}
         <div ref={widgetRef} />
@@ -872,7 +873,7 @@ function savedSessions(archive: ChatArchive): ChatSession[] {
 
 function DocRead({ read, prefix }: { read: NonNullable<ChatBubble["docs"]>[number]; prefix: boolean }) {
   return (
-    <div className="label-mono text-[10px] text-muted-foreground">
+    <div className="label-mono text-muted-foreground">
       {prefix && "Read "}
       <a href={read.url} target="_blank" rel="noreferrer noopener" className="underline underline-offset-2 hover:text-foreground">
         {read.path}
@@ -890,7 +891,7 @@ function PlannerActivity({ message, live }: { message: ChatBubble; live: boolean
       {message.docs?.length ? <DocReads docs={message.docs} /> : null}
       {message.steps?.length ? <PlannerSteps steps={message.steps} live={live} /> : null}
       {message.searches?.map((query, i) => (
-        <div key={i} className="label-mono mb-1.5 text-[10px] text-muted-foreground">
+        <div key={i} className="label-mono mb-1.5 text-muted-foreground">
           Searched “{query}”
         </div>
       ))}
@@ -901,10 +902,10 @@ function PlannerActivity({ message, live }: { message: ChatBubble; live: boolean
 function PlannerSteps({ steps, live }: { steps: string[]; live: boolean }) {
   return (
     <details className="mb-1.5">
-      <summary className={`label-mono cursor-pointer truncate text-[10px] text-muted-foreground ${live ? "normal-case" : ""}`}>
+      <summary className={`label-mono cursor-pointer truncate text-muted-foreground ${live ? "normal-case" : ""}`}>
         {live ? steps[steps.length - 1] : `${steps.length.toLocaleString("en-US")} step${steps.length > 1 ? "s" : ""} in the sandbox`}
       </summary>
-      <ol className="mt-1 space-y-0.5 pl-3 text-[10px] text-muted-foreground">
+      <ol className="mt-1 space-y-0.5 pl-3 text-2xs text-muted-foreground">
         {steps.map((step, i) => <li key={i} className="label-mono normal-case leading-snug [overflow-wrap:anywhere]">{step}</li>)}
       </ol>
     </details>
@@ -915,7 +916,7 @@ function DocReads({ docs }: { docs: NonNullable<ChatBubble["docs"]> }) {
   if (docs.length === 1) return <div className="mb-1.5"><DocRead read={docs[0]} prefix /></div>;
   return (
     <details className="mb-1.5">
-      <summary className="label-mono cursor-pointer text-[10px] text-muted-foreground">Read {docs.length} docs</summary>
+      <summary className="label-mono cursor-pointer text-muted-foreground">Read {docs.length} docs</summary>
       <div className="mt-1 space-y-1 pl-3">
         {docs.map((read, i) => <DocRead key={i} read={read} prefix={false} />)}
       </div>
@@ -930,19 +931,19 @@ function SessionList({ archive }: { archive: ChatArchive }) {
     if (!chatArchive.getSnapshot().sessions.length) chatArchive.start();
   }
   return (
-    <div className="border-b border-line bg-muted px-3 py-2">
-      <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+    <div className="border-b border-line bg-muted px-4 py-2 lg:px-5">
+      <div className="mb-2 flex items-center justify-between gap-2 text-2xs text-muted-foreground">
         <span>{sessions.length ? "Saved in this browser" : "No saved conversations yet"}</span>
-        {sessions.length > 0 && <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-red-500">Clear all conversations</button>}
+        {sessions.length > 0 && <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-signal-red">Clear all conversations</button>}
       </div>
       {sessions.length > 0 && <ul className="scrollbar-none max-h-36 snap-y snap-mandatory overflow-y-auto [&::-webkit-scrollbar]:hidden">
         {sessions.map((session) => (
           <li key={session.id} className="flex h-11 snap-start items-center gap-2">
             <button type="button" aria-current={session.id === archive.activeId ? "true" : undefined} onClick={() => chatArchive.select(session.id)} className={cn("flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs", session.id === archive.activeId ? "bg-surface text-foreground" : "text-muted-foreground hover:bg-surface-hover")}>
               <span className="truncate">{session.title}</span>
-              <time className="shrink-0 text-[10px]" dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</time>
+              <time className="shrink-0 text-2xs" dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</time>
             </button>
-            <button type="button" aria-label={`Delete conversation: ${session.title}`} onClick={() => remove(session.id)} className="p-2 text-muted-foreground hover:text-red-500"><Trash2 className="size-3.5" /></button>
+            <button type="button" aria-label={`Delete conversation: ${session.title}`} onClick={() => remove(session.id)} className="p-2 text-muted-foreground hover:text-signal-red"><Trash2 className="size-3.5" /></button>
           </li>
         ))}
       </ul>}
@@ -1062,7 +1063,7 @@ function DesignConsentPrompt({
   const copy = DESIGN_CONSENT_COPY[language];
   return (
     <div role="group" aria-label={copy.label} lang={copy.lang} className="mt-2 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-sm leading-relaxed text-foreground">
-      <div className="label-mono mb-1.5 flex items-center gap-1.5 text-[10px] text-sky-600 dark:text-sky-400">
+      <div className="label-mono mb-1.5 flex items-center gap-1.5 text-signal-blue">
         <PencilRuler className="size-3" />
         <span>{copy.label}</span>
       </div>
@@ -1084,7 +1085,7 @@ function DesignConsentPrompt({
           {copy.decline}
         </button>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">{copy.remember}</p>
+      <p className="mt-2 text-2xs text-muted-foreground">{copy.remember}</p>
     </div>
   );
 }
@@ -1103,7 +1104,7 @@ function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: 
     <>
       <UserBubble text={text} />
       <div role="group" aria-label={copy.label} lang={copy.lang} className="w-full text-sm leading-relaxed text-foreground">
-        <div className="label-mono mb-1.5 text-[10px] text-muted-foreground">{copy.label}</div>
+        <div className="label-mono mb-1.5 text-muted-foreground">{copy.label}</div>
         <p>{copy.intro}</p>
         <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
           {copy.destinations.map(({ name, detail }) => (
@@ -1118,7 +1119,7 @@ function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: 
           <button type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">{copy.accept}</button>
           <button type="button" onClick={onDecline} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover">{copy.decline}</button>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">{copy.remember}</p>
+        <p className="mt-2 text-2xs text-muted-foreground">{copy.remember}</p>
       </div>
     </>
   );
@@ -1126,7 +1127,7 @@ function ConsentPrompt({ text, onAccept, onDecline }: { text: string; onAccept: 
 
 function DesignStatus({ design }: { design: ChatDesign }) {
   return (
-    <p className="mb-2 flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
+    <p className="mb-2 flex items-center gap-1.5 text-2xs text-signal-blue">
       <PencilRuler className="size-3 shrink-0" />
       <span>Design session with Opus · {design.remaining.toLocaleString("en-US")} turns left · ends {new Date(design.expiresAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
     </p>
@@ -1144,22 +1145,22 @@ function DesignEndNotice({ reason }: { reason: DesignEndReason }) {
     <div role="status" className="space-y-1 py-1 text-center">
       <div className="flex items-center gap-2 text-muted-foreground">
         <span className="h-px flex-1 bg-line" />
-        <span className="label-mono flex min-w-0 items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-1 text-[10px]">
+        <span className="label-mono flex min-w-0 items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-1">
           <PencilRuler className="size-3 shrink-0" />
           {DESIGN_END_LABELS[reason]}
         </span>
         <span className="h-px flex-1 bg-line" />
       </div>
-      <p className="text-[11px] text-muted-foreground">You&apos;re back in ordinary chat, which can&apos;t make plans. To keep planning, describe the change again and a new design session will start.</p>
+      <p className="text-2xs text-muted-foreground">You&apos;re back in ordinary chat, which can&apos;t make plans. To keep planning, describe the change again and a new design session will start.</p>
     </div>
   );
 }
 
 function DesignDivider() {
   return (
-    <div role="separator" aria-label="Design session started" className="design-divider flex items-center gap-2 py-1 text-sky-600 dark:text-sky-400">
+    <div role="separator" aria-label="Design session started" className="design-divider flex items-center gap-2 py-1 text-signal-blue">
       <span className="h-px flex-1 bg-sky-500/40" />
-      <span className="label-mono flex shrink-0 items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-1 text-[10px]">
+      <span className="label-mono flex shrink-0 items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-1">
         <PencilRuler className="size-3" />
         Design session · {GOD_CHAT_TIER_INFO.opus.persona} takes over
       </span>
@@ -1173,6 +1174,7 @@ function ReplyBody({
   cards = [],
   designAt,
   live,
+  awaiting,
   handoff,
   designConsentNode,
   showDesignContent = true,
@@ -1181,6 +1183,7 @@ function ReplyBody({
   cards?: ChatShownCard[];
   designAt?: number;
   live: boolean;
+  awaiting: boolean;
   handoff?: ReactNode;
   designConsentNode?: ReactNode;
   showDesignContent?: boolean;
@@ -1207,13 +1210,13 @@ function ReplyBody({
   ].sort((a, b) => a.at - b.at);
   for (const { at, node, design } of marks) {
     const text = content.slice(from, at);
-    if (text.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} htmlPreview>{text}</ChatMarkdown>);
+    if (text.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} visuals>{text}</ChatMarkdown>);
     if (!design || showDesignContent || designAt === undefined || at < designAt) parts.push(node);
     from = at;
   }
   const rest = content.slice(from);
-  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} htmlPreview>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
-  if (live && !rest.trim() && (showDesignContent || designAt === undefined)) parts.push(<span key="typing" className="animate-pulse text-muted-foreground">…</span>);
+  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} visuals>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
+  if (awaiting && !rest.trim() && (showDesignContent || designAt === undefined)) parts.push(<div key="thinking" role="status" className="thinking-shimmer label-mono w-fit">Thinking</div>);
   return <div className="space-y-2">{parts}</div>;
 }
 
@@ -1226,7 +1229,7 @@ const RANK_TONE: Record<GodChatServedTier, string> = {
 
 function RankLabel({ reply }: { reply: Reply }) {
   if (reply.tier === null) {
-    return <div className="label-mono mb-1.5 text-[10px] text-red-500">Gates closed</div>;
+    return <div className="label-mono mb-1.5 text-signal-red">Gates closed</div>;
   }
   if (!reply.tier) return null;
   const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
@@ -1234,16 +1237,16 @@ function RankLabel({ reply }: { reply: Reply }) {
   const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.sonnet : undefined;
   return (
     <div className="mb-1.5">
-      <div className={cn("label-mono text-[10px]", RANK_TONE[reply.tier])}>
+      <div className={cn("label-mono", RANK_TONE[reply.tier])}>
         {opener && `${opener.persona} · ${opener.label} → `}{persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
       </div>
       {from && (
-        <div className="label-mono text-[10px] text-muted-foreground">
+        <div className="label-mono text-muted-foreground">
           {from.persona} is resting; the {persona} answers instead
         </div>
       )}
       {reply.servedBy && (
-        <div className="label-mono text-[10px] text-muted-foreground">
+        <div className="label-mono text-muted-foreground">
           {label} declined; {modelLabel(reply.servedBy)} stood in
         </div>
       )}
@@ -1256,7 +1259,7 @@ function RouteStatus({ last, streaming }: { last?: ChatBubble; streaming: boolea
   if (last.tier === undefined) {
     return streaming ? <span className="animate-pulse">Clef routing…</span> : <>Routed by Clef</>;
   }
-  if (last.tier === null) return <span className="text-red-500">Gates closed</span>;
+  if (last.tier === null) return <span className="text-signal-red">Gates closed</span>;
   const { persona, label } = GOD_CHAT_TIER_INFO[last.tier];
   const from = last.downgradedFrom && GOD_CHAT_TIER_INFO[last.downgradedFrom];
   return (
@@ -1283,7 +1286,7 @@ function UsageBar({ count }: { count: GodChatCount }) {
           style={{ width: `${Math.min(100, (count.used / count.limit) * 100)}%` }}
         />
       </span>
-      <span className={cn("tabular-nums", full && "text-red-500")}>
+      <span className={cn("tabular-nums", full && "text-signal-red")}>
         {count.used}/{count.limit}
       </span>
     </span>
@@ -1325,7 +1328,7 @@ function UsagePanel({
   const ticking = usage !== "loading" && usage.resetInMs > 0 ? usage.resetAt : null;
   const secondsLeft = useCountdown(ticking, onReset);
   return (
-    <div className="mb-2 rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-[11px] text-muted-foreground">
+    <div className="mb-2 rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-2xs text-muted-foreground">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="text-foreground">
           Usage
@@ -1345,8 +1348,8 @@ function UsagePanel({
       ) : (
         <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-3 gap-y-1">
           <span />
-          <span className="label-mono text-[9px]">you</span>
-          <span className="label-mono text-[9px]">whole site</span>
+          <span className="label-mono">you</span>
+          <span className="label-mono">whole site</span>
           <span>All messages</span>
           <UsageBar count={usage.visitor} />
           <span>—</span>

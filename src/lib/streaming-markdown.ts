@@ -1,3 +1,5 @@
+import { GOD_CHAT_VISUAL_KINDS } from "@shared/god-chat";
+
 const FENCE = /^\s{0,3}(```|~~~)/;
 
 function positions(text: string, token: string): number[] {
@@ -30,17 +32,17 @@ function inlineCut(block: string): number {
   return cut;
 }
 
-const HTML_FENCE = /^\s{0,3}(`{3,}|~{3,})\s*html\s*$/i;
+const VISUAL_FENCE = new RegExp(`^\\s{0,3}(\`{3,}|~{3,})\\s*(html|${GOD_CHAT_VISUAL_KINDS.join("|")})\\s*$`);
 
 // 流式输出时只交出已经闭合的 Markdown：没收尾的代码块、正在长的表格、没配对的行内标记先压着，闭合后整块出现。
-// 例外是 html 代码块：换成一个空的 html 代码块，图示先占位，收尾后整块画出来。
+// 例外是图示代码块（html 与原生图示）：换成同语言的空代码块，图示先占位，收尾后整块画出来。
 export function stableMarkdown(text: string): string {
   const lines = text.split("\n");
   const fences = lines.flatMap((line, i) => (FENCE.test(line) ? [i] : []));
   if (fences.length % 2 === 1) {
-    const open = lines[fences[fences.length - 1]].match(HTML_FENCE);
+    const open = lines[fences[fences.length - 1]].match(VISUAL_FENCE);
     const head = lines.slice(0, fences[fences.length - 1]).join("\n").trimEnd();
-    return open ? `${head}\n\n${open[1]}html\n${open[1]}` : head;
+    return open ? `${head}\n\n${open[1]}${open[2]}\n${open[1]}` : head;
   }
 
   const lastFenceEnd = fences.length ? lines.slice(0, fences[fences.length - 1] + 1).join("\n").length : 0;

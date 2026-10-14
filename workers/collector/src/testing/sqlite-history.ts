@@ -10,7 +10,7 @@ type Value = string | number | null;
 
 export function historyDb() {
   const sqlite = new DatabaseSync(":memory:");
-  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../../../api/migrations/`;
+  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../../../core/migrations/`;
   for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
     sqlite.exec(readFileSync(`${migrations}${file}`, "utf8"));
   }

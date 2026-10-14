@@ -118,26 +118,26 @@ struct CloudflareWorkersPayload: Decodable, Sendable, Equatable {
     let workers: [CloudflareWorker]
 }
 
-struct SiteUptime: Decodable, Sendable, Equatable {
+struct SentryUptime: Decodable, Sendable, Equatable {
     let status: String?
     // 0–1，不是百分比。
     let availability30d: Double?
 }
 
-struct ErrorSeries: Decodable, Sendable, Equatable {
+struct SentryErrorCounts: Decodable, Sendable, Equatable {
     let count12h: Int?
     let unresolved: Int?
 }
 
-struct HealthErrors: Decodable, Sendable, Equatable {
-    let site: ErrorSeries?
-    let worker: ErrorSeries?
+struct SentryErrors: Decodable, Sendable, Equatable {
+    let site: SentryErrorCounts?
+    let worker: SentryErrorCounts?
 }
 
-struct HealthPayload: Decodable, Sendable, Equatable {
+struct SentryStatusPayload: Decodable, Sendable, Equatable {
     let fetchedAt: Double
-    let uptime: SiteUptime?
-    let errors: HealthErrors?
+    let uptime: SentryUptime?
+    let errors: SentryErrors?
 }
 
 struct ReporterBlock: Decodable, Sendable, Equatable {

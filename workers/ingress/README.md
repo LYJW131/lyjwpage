@@ -1,8 +1,8 @@
 # 上报入口
 
 外部上报器的唯一入口，无状态。它在 Cloudflare Access 之后验明上报器身份，读出并校验报文，按来源收敛成命令，
-再按数据层拆开写：实时那一半经 Service Binding 交给状态核心（[`workers/api`](../api/README.md)），
-可滞后层、长期归档和 Apple Music 凭据自己写。GitHub Actions 的部署通知也从这里进。
+再按数据层拆开写：实时那一半经 Service Binding 交给状态核心（[`workers/core`](../core/README.md)），
+可滞后层、长期归档和 Apple Music 凭据自己写。GitHub Actions 的部署通知与手动跑采集也从这里进。
 
 拆出来的理由只有一条：校验和拆分的规则经常改，而状态核心带着 Durable Object 和所有页面的 WebSocket。
 改校验只发布这个 Worker，状态核心不重启、推送连接不断。
@@ -24,9 +24,10 @@
 | POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
 | POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` | Claude Code 云端线程的内置遥测（OTLP/HTTP JSON 指标，可 gzip） |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
+| POST | `/api/internal/collector-refresh` | `internal:collector-refresh` | 立刻跑一遍采集任务，见下文「手动跑采集」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
 
-其余路径一律 404。公开读取、`/ws`、`/count` 都在 `api.homepage.lyjw.llc`，不在这里。
+其余路径一律 404。公开读取与 `/ws` 在站点域名上，由 site Worker 转交 core，都不在这里。
 
 ### 回执
 
@@ -71,8 +72,12 @@ Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签�
 
 prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIngest`）：
 
-1. **实时那一半**经 Service Binding 调状态核心的 `StateCore.commitIngest(command)`（契约 `shared/state-core.ts`）。
-   StateHub 串行提交，回 `{ ready, ok, data | error }`；推送、Apple 目录补充和首屏失效在状态核心里派发。
+1. **实时那一半**先请采集 Worker 补全「正在听」：Mac 的 `appleMusic` 模块与 HomePod 的报文经 `COLLECTOR.enrichTrack`
+   查 Apple 目录与动态封面（`shared/command-enrichment.ts#enrichCommand`，规则见 [collector README](../collector/README.md#apple-music)），
+   补好的命令再经 Service Binding 调状态核心的 `StateCore.commitIngest(command)`（契约 `shared/state-core.ts`）。
+   采集 Worker 调不通时只记一行 `[enrichment]` warn，命令不带补全原样提交，状态核心沿用同一曲目已存的补全（没有就是未补全）。
+   StateHub 串行提交，回 `{ ready, ok, data | error }`；推送和首屏失效在状态核心里派发。收下之后在 `waitUntil` 里
+   请采集 Worker 预热歌词、重查写入时没查出的段（`COLLECTOR.followUpTrack`）。
    落地节点（`server`）整封在可滞后层，不去状态核心。
 2. **长期归档**进 D1 `HISTORY`（`src/ingest-archive.ts`），排在可滞后层之前，按自然键幂等，失败只记日志。
 3. **可滞后层**直接写 KV `LAG`（`src/lag-ingest.ts`）：落地节点读数、限额、常驻上报器账本、Mac 时区、iPhone 圆环读数与训练列表。
@@ -109,7 +114,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 生产使用独立 service token `lyjwpage-claude-cloud`，已加入 `lyjwpage ingest` 应用的 Service Auth 策略，client id 登记在
 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`；Client Secret 只放云端环境，不用配置 Worker secret。
 请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
-收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [api README](../api/README.md#claude-code-云端线程用量)。
+收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#claude-code-云端线程用量)。
 
 ## 部署通知
 
@@ -123,15 +128,33 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 2. 在 `waitUntil` 里请采集 Worker 按 `workers/ingress/src/worker.ts#DEPLOYMENT_JOBS` 立刻重拉部署列表与仓库统计（首页「最近提交」读后者）
    （契约 `shared/collector.ts`），不等下一次 cron；失败只记日志，不拖慢回执（工作流的 curl 只等有限时间，见 `.github/workflows/purge-esa.yml`）。
 
+## 手动跑采集
+
+`POST https://ingest.homepage.lyjw.llc/api/internal/collector-refresh` 不等 cron，立刻把采集 Worker 的任务各跑一次，
+默认是 `shared/collector.ts#ACTIVE_COLLECTOR_JOBS` 全部（含 `digest`）；查询串带 `job=<任务>`（可重复）只跑点名的几个。
+请求体不读。任务逐个串行，每个单独一次 `Collector.refresh([任务])`（经 Service Binding 触发的采集 Worker 和这次请求共用等响应头的连接额度，并发扇出会让短预算任务耗在排队上）；`digest` 排在最后，它总结的是别的任务写出的视图。全部跑完才回（`pagespeed` 最慢）：
+
+| 状态 | 正文 | 什么时候 |
+| --- | --- | --- |
+| 200 | `{ ok, outcomes }` | 采集 Worker 答了。`outcomes` 是各任务的 `CollectorJobOutcome`（`shared/collector.ts`），顺序同请求；有任务 `error`（含 RPC 抛错、点名了不认识的任务）时 `ok` 为 `false` |
+| 405 / 401 / 403 | `{ ok: false, error }` | 不是 POST / 没有合法的 Access JWT / 这把凭据没有 `internal:collector-refresh` |
+| 503 | `{ ok: false, error: "没有绑定采集 Worker" }` | 没绑 `COLLECTOR` |
+| 404 | `Not found` | 预览版本 |
+
+任务按手动方式跑（`scheduled: false`）：不看到期，真失败照常记 error 级日志、进 Workers Issues（见[采集 Worker README](../collector/README.md)）。
+权限只授给 `lyjwpage-github-actions` 那把 token，平时在 GitHub Actions 里手动运行 `.github/workflows/collector-refresh.yml`
+（输入 `jobs` 留空跑全部，或填空格分隔的任务名），结果表写在那次运行的摘要里，有任务失败时运行标红。
+
 ## 配置
 
 公开变量与绑定全在 `wrangler.toml`，没有 secret：
 
 - `[vars]`：`ACCESS_TEAM_DOMAIN`、`ACCESS_AUD`、`[vars.ACCESS_CLIENTS]`（见「鉴权」）；`EMBY_PUBLIC_URL`（Emby 条目的
   「在 Emby 里打开」链接，prepare 时拼进条目）。
-- `CORE`：状态核心的具名 entrypoint `StateCore`；`COLLECTOR`：采集 Worker 的具名 entrypoint `Collector`。
-- `IMAGES`：上报器直传图片的 R2 桶，只 HEAD；`LAG`、`CREDENTIALS`：可滞后层与共享凭据 KV，和 api、采集 Worker 同一份；
-  `HISTORY`：D1 `lyjwpage-history`，表结构归 `workers/api/migrations`，这里只写。
+- `CORE`：状态核心的具名 entrypoint `StateCore`；`COLLECTOR`：采集 Worker 的具名 entrypoint `Collector`（补全「正在听」、部署通知后重拉）。
+- `IMAGES`：上报器直传图片的 R2 桶，只 HEAD；`LAG`、`CREDENTIALS`：可滞后层与共享凭据 KV，和 core、采集 Worker 同一份；
+  `HISTORY`：D1 `lyjwpage-history`，表结构归 `workers/core/migrations`，这里只写。
+
 日志与 Issues 在 Workers Observability 的服务 `ingress` 下；`[ingest]` 拒收、`[auth]` 越权是 warn 级日志，按消息前缀查。
 
 发布走 Cloudflare Workers Builds 原生 Git 集成：构建 `pnpm --dir workers/ingress typecheck`，部署
@@ -141,22 +164,22 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 
 ### 上线与域名
 
-自定义域名 `ingest.homepage.lyjw.llc` 写在本目录的 `wrangler.toml`，api 那份不列它。Workers Builds 不是交互终端，
+自定义域名 `ingest.homepage.lyjw.llc` 写在本目录的 `wrangler.toml`，core 那份不列它。Workers Builds 不是交互终端，
 `wrangler deploy` 遇到挂在别的 Worker 上的自定义域名会直接接管（`override_existing_origin`），所以域名跟着这份配置走，
-api 以后怎么重建都不会把它要回去。Access 应用按主机名挂，跟着域名走。
+core 以后怎么重建都不会把它要回去。Access 应用按主机名挂，跟着域名走。
 
 状态核心的 RPC（`ready`、`commitIngest`、`broadcastVersion`）要先于这个 Worker 接流量上线。改动契约照「只加不改」：
 先加 RPC、上线，再让调用方用。
 
 ## 本地开发
 
-`pnpm dev:worker`（仓库根目录）以多配置方式把这个 Worker 和 dev-router、api、采集 Worker 一起起在 8788；dev-router 把
-`/api/ingest/*` 与 `/api/internal/site-deployed` 转到这里，其余给 api。本地用 `wrangler.test.toml`：Service Binding 按生产名字
-（`api`、`collector`）找到本地那两个，KV 与另外两份测试配置同 id，没有 D1（归档跳过）。
+`pnpm dev:worker`（仓库根目录）以多配置方式把这个 Worker 和 dev-router、core、采集 Worker 一起起在 8788；dev-router 把
+`/api/ingest/*`、`/api/internal/site-deployed` 与 `/api/internal/collector-refresh` 转到这里，其余给 core。本地用 `wrangler.test.toml`：Service Binding 按生产名字
+（`core`、`collector`）找到本地那两个，KV 与另外两份测试配置同 id，没有 D1（归档跳过）。
 
 本地没有 Access：先 `node scripts/dev-access.mjs init` 生成测试钥匙（写在本目录 `.dev.vars.access-key.json`，已被 gitignore），
 把它打印的 `ACCESS_DEV_JWKS=` 那一行填进本目录的 `.dev.vars`（参照 `.dev.vars.example`；wrangler 按配置文件所在目录读
-`.dev.vars`，所以不是 api 那份）。推的时候带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效）：
+`.dev.vars`，所以不是 core 那份）。推的时候带 `node scripts/dev-access.mjs header` 打出的 `Cf-Access-Jwt-Assertion` 头（10 分钟有效）：
 
 ```sh
 curl -X POST http://localhost:8788/api/ingest/homepod -H "$(node scripts/dev-access.mjs header)" \
@@ -170,13 +193,13 @@ curl -X POST http://localhost:8788/api/ingest/homepod -H "$(node scripts/dev-acc
 ```sh
 pnpm --dir workers/ingress typecheck
 pnpm --dir workers/ingress test
-node scripts/verify-api-worker.mjs
+node scripts/verify-core-worker.mjs
 ```
 
 单测覆盖鉴权与权限表、路由、回执契约、拆分（落地节点绕过状态核心、iPhone 部分收下）、OTLP gzip、部署通知的转发，
 以及各来源的命令都能结构化复制。集成脚本和 `pnpm dev:worker` 一样用 dev-router 把上报路由到这个 Worker，
-经 Service Binding 打隔离的 api，从上报一路验到公开读取、WebSocket 推送和首屏失效。
+经 Service Binding 打隔离的 core，从上报一路验到公开读取、WebSocket 推送和首屏失效。
 
 ## Quest 实时游戏状态
 
-Discord Gateway 上报器只交 `meta_quest` 的 Playing 快照，入口 `/api/ingest/quest`，权限 `ingest:quest`。信封为 `{ version: 1, presence: { observedAt, discordStatus, playing } }`，收敛与字段约束见 `shared/ingest/quest.ts#prepareQuestReport`。没有游戏用 `playing: null`，未知 Gateway 状态不上报；Discord 资料、关联账号不采集。实时命令交 StateCore，查询与推送见 [API Worker](../api/README.md)。
+Discord Gateway 上报器只交 `meta_quest` 的 Playing 快照，入口 `/api/ingest/quest`，权限 `ingest:quest`。信封为 `{ version: 1, presence: { observedAt, discordStatus, playing } }`，收敛与字段约束见 `shared/ingest/quest.ts#prepareQuestReport`。没有游戏用 `playing: null`，未知 Gateway 状态不上报；Discord 资料、关联账号不采集。实时命令交 StateCore，查询与推送见 [core Worker](../core/README.md)。

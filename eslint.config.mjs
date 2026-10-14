@@ -43,7 +43,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@api/*", "**/workers/api/**"],
+          group: ["@core/*", "**/workers/core/**"],
           message: "上报写入和实时发布只属于 Worker；共享类型、键和计算放在 shared。",
         }, {
           group: ["**/workers/collector/**"],
@@ -59,8 +59,18 @@ const eslintConfig = defineConfig([
             "@shared/storage", "@shared/cache", "@shared/lag", "@shared/lag-result", "@shared/apple-music-auth", "@shared/apple-cache",
             "**/shared/storage", "**/shared/cache", "**/shared/lag", "**/shared/lag-result", "**/shared/apple-music-auth", "**/shared/apple-cache",
           ],
-          message: "这些模块要 Worker 入口先 install 端口，站点里没人安装，调用即抛错；状态经 API Worker 读。",
+          message: "这些模块要 Worker 入口先 install 端口，站点里没人安装，调用即抛错；状态经 core Worker 读。",
         }],
+      }],
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/components/app-image.tsx"],
+    rules: {
+      "no-restricted-syntax": ["error", {
+        selector: "JSXOpeningElement[name.name='img']",
+        message: "站点组件不手写 <img>：用 @/components/app-image（懒加载、rest-ready 门控、优化器）；静态图标记得带 unoptimized。",
       }],
     },
   },
@@ -69,7 +79,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@api/*", "**/workers/api/**"],
+          group: ["@core/*", "**/workers/core/**"],
           message: "上报写入和实时发布只属于 Worker；共享类型、键和计算放在 shared。",
         }, {
           group: ["**/workers/collector/**"],
@@ -88,7 +98,7 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["workers/{api,ai,ingress,collector,dev-router}/**/*.{ts,mts}"],
+    files: ["workers/{core,ai,ingress,collector,dev-router}/**/*.{ts,mts}"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
@@ -100,8 +110,8 @@ const eslintConfig = defineConfig([
   },
   {
     // 上报校验不能进入状态核心运行依赖，否则会绕过 Workers Builds 的监视路径隔离。
-    files: ["workers/api/src/**/*.ts"],
-    ignores: ["workers/api/src/**/*.test.ts", "workers/api/src/preview-entry.ts"],
+    files: ["workers/core/src/**/*.ts"],
+    ignores: ["workers/core/src/**/*.test.ts", "workers/core/src/preview-entry.ts"],
     rules: {
       "@typescript-eslint/no-restricted-imports": ["error", {
         patterns: [{
@@ -121,7 +131,7 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@api/*", "**/api/src/**", "@shared/storage", "@shared/state-core"],
+          group: ["@core/*", "**/core/src/**", "@shared/storage", "@shared/state-core"],
           message: "AI 只能通过 PublicStatus 读取公开模型，不能导入状态核心或存储实现。",
         }, {
           group: ["@/*"],

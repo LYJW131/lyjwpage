@@ -1,7 +1,10 @@
-import { WorkerEntrypoint } from "cloudflare:workers";
+import { WorkerEntrypoint, env as workerEnv } from "cloudflare:workers";
 import { RouterContextProvider, createRequestHandler } from "react-router";
 
+import { installLagReader, readLag } from "@shared/lag";
+import { lagEnvelope, serveLagStatus } from "@shared/lag-views";
 import type { SiteCacheRpc } from "@shared/site-cache";
+import { statusResponse } from "@shared/status-response";
 
 import {
   FIRST_SCREEN_FETCH_TIMEOUT_MS,
@@ -23,6 +26,7 @@ import {
   readImageBytes,
   variantShape,
 } from "@/lib/image-proxy";
+import { LYRICS_PATH } from "@shared/apple-music-paths";
 import type { LyricsResult } from "@shared/lyrics-ttml";
 import { relayClientError } from "@/lib/error-relay";
 import {
@@ -46,6 +50,7 @@ import {
 import {
   STATUS_VIEWS,
   filterStatusTags,
+  lagViewKeyByPath,
   viewKeyByPath,
   type StatusViewKey,
 } from "@shared/status-views";
@@ -56,7 +61,9 @@ const requestHandler = createRequestHandler(
   import.meta.env.MODE,
 );
 
-const DEFAULT_BACKEND_ORIGIN = "https://api.homepage.lyjw.llc";
+installLagReader((key) => readLag(workerEnv.LAG, key));
+
+const DEFAULT_BACKEND_ORIGIN = "https://lyjw.me";
 
 function isProduction(env: Env): boolean {
   return env.SITE_ENV === "production";
@@ -82,7 +89,7 @@ function errorResponse(status: number, message = "Not Found"): Response {
   });
 }
 
-// 用 purge 而非 invalidate：响应不带 ETag / Last-Modified 且有 stale-while-revalidate，软失效会先回旧正文，首页后台重建时读到的也还是旧快照。
+// 用 purge 而非 invalidate：响应不带 ETag / Last-Modified，首页文档还带 stale-while-revalidate，软失效后的下一次请求仍先拿到旧版面。
 async function purgeTags(cache: CacheContext | undefined, owner: string, tags: string[]): Promise<void> {
   if (!cache) throw new Error(`${owner} cache is not enabled`);
   const result = await cache.purge({ tags });
@@ -104,11 +111,7 @@ export class StatusSnapshot extends WorkerEntrypoint<Env> implements SiteCacheRp
 
     let upstream: Response;
     try {
-      upstream = isProduction(this.env)
-        ? await this.env.PUBLIC_STATUS.readStatus(url.pathname)
-        : await fetch(`${backendOrigin(this.env)}${url.pathname}`, {
-            signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS),
-          });
+      upstream = await this.readStatus(url.pathname);
     } catch {
       return errorResponse(503, "Status upstream failed");
     }
@@ -139,6 +142,17 @@ export class StatusSnapshot extends WorkerEntrypoint<Env> implements SiteCacheRp
     const valid = filterStatusTags(tags);
     if (!valid.length) return;
     await purgeTags(this.ctx.cache, "StatusSnapshot", valid.map(statusCacheTag));
+  }
+
+  private async readStatus(path: string): Promise<Response> {
+    if (!isProduction(this.env)) {
+      return fetch(`${backendOrigin(this.env)}${path}`, {
+        signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS),
+      });
+    }
+    const lagView = lagViewKeyByPath(path);
+    if (lagView) return statusResponse(await lagEnvelope(lagView));
+    return await this.env.PUBLIC_STATUS.readStatus(path);
   }
 }
 
@@ -309,11 +323,10 @@ export class RenderedSite extends WorkerEntrypoint<Env> implements SiteCacheRpc 
         return (await response.json()) as FirstScreen<K>;
       },
       lyrics: async (songId: string): Promise<LyricsResult | null> => {
+        const url = `${backendOrigin(env)}${LYRICS_PATH}?song=${encodeURIComponent(songId)}`;
+        const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
         try {
-          const response = await fetch(
-            `${backendOrigin(env)}/api/lyrics?song=${encodeURIComponent(songId)}`,
-            { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) },
-          );
+          const response = isProduction(env) ? await env.COLLECTOR_SERVICE.fetch(url, init) : await fetch(url, init);
           if (!response.ok) return null;
           return (await response.json()) as LyricsResult;
         } catch {
@@ -342,13 +355,24 @@ export class RenderedSite extends WorkerEntrypoint<Env> implements SiteCacheRpc 
   }
 }
 
+function backendRedirect(env: Env, url: URL): Response {
+  return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
+}
+
 const siteWorker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const route = classifyGatewayRequest(request.method, url.pathname);
     switch (route.kind) {
-      case "mcp":
-        return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
+      case "lag-status":
+        if (isProduction(env)) return serveLagStatus(request, route.view, env);
+        return backendRedirect(env, url);
+      case "core":
+        return isProduction(env) ? env.CORE_SERVICE.fetch(request) : backendRedirect(env, url);
+      case "ai":
+        return isProduction(env) ? env.AI_SERVICE.fetch(request) : backendRedirect(env, url);
+      case "collector":
+        return isProduction(env) ? env.COLLECTOR_SERVICE.fetch(request) : backendRedirect(env, url);
       case "error-relay": {
         const status = await relayClientError(request);
         return status === 204 ? new Response(null, { status, headers: { "Cache-Control": NO_STORE } }) : errorResponse(status, "Invalid error report");
@@ -372,4 +396,4 @@ const siteWorker = {
   },
 };
 
-export default siteWorker;
+export default siteWorker satisfies ExportedHandler<Env>;

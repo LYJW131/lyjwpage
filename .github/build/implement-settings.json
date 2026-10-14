@@ -1,0 +1,80 @@
+{
+  "disableAllHooks": true,
+  "env": {
+    "NODE_USE_ENV_PROXY": "1",
+    "WRANGLER_SEND_METRICS": "false",
+    "WRANGLER_SEND_ERROR_REPORTS": "false"
+  },
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": ["Bash", "Read", "Glob", "Grep", "Edit(./**)"],
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "NotebookEdit",
+      "Agent",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "EnterWorktree",
+      "ExitWorktree",
+      "ListAgents",
+      "ReportFindings",
+      "ScheduleWakeup",
+      "SendMessage",
+      "Skill",
+      "TaskStop",
+      "Workflow",
+      "Read(//proc/**)",
+      "Read(~/.claude/**)",
+      "Read(~/.claude.json)",
+      "Edit(./.git/**)",
+      "Edit(./.claude/**)",
+      "Edit(./.mcp.json)",
+      "Edit(~/.claude/**)",
+      "Edit(~/.claude.json)",
+      "Edit(~/setup-pnpm/**)",
+      "Edit(//home/runner/work/_temp/**)",
+      "Edit(//home/runner/work/_actions/**)",
+      "Edit(//opt/hostedtoolcache/**)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": true,
+    "network": {
+      "strictAllowlist": true,
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "lyjw.me",
+        "avatars.githubusercontent.com",
+        "psn-rsc.prod.dl.playstation.net",
+        "blobstore.apple.com",
+        "*.blobstore.apple.com",
+        "mzstatic.com",
+        "*.mzstatic.com"
+      ]
+    },
+    "filesystem": {
+      "allowWrite": ["~/.config/.wrangler"]
+    },
+    "credentials": {
+      "envVars": [
+        { "name": "CLAUDE_CODE_OAUTH_TOKEN", "mode": "deny" },
+        { "name": "ANTHROPIC_API_KEY", "mode": "deny" },
+        { "name": "ANTHROPIC_AUTH_TOKEN", "mode": "deny" },
+        { "name": "GITHUB_TOKEN", "mode": "deny" },
+        { "name": "GH_TOKEN", "mode": "deny" },
+        { "name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny" },
+        { "name": "ACTIONS_ID_TOKEN_REQUEST_URL", "mode": "deny" },
+        { "name": "ACTIONS_RUNTIME_TOKEN", "mode": "deny" },
+        { "name": "ACTIONS_RESULTS_URL", "mode": "deny" },
+        { "name": "ACTIONS_CACHE_URL", "mode": "deny" },
+        { "name": "NODE_AUTH_TOKEN", "mode": "deny" },
+        { "name": "NPM_TOKEN", "mode": "deny" }
+      ]
+    }
+  }
+}

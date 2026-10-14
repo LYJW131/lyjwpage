@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useLayoutEffect, useSyncExternalStore, type ReactNode } from "react";
 
 import {
   readSystemDark,
@@ -23,6 +23,7 @@ export function useTheme(): { theme: ThemeChoice; setTheme: (next: ThemeChoice) 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { theme } = useTheme();
   const systemDark = useSyncExternalStore(subscribeSystemDark, readSystemDark, serverSystemDark);
-  useEffect(() => syncThemeToDocument(theme, systemDark), [theme, systemDark]);
+  // 水合那一轮拿到的是服务端快照（system、非深色），按它写会把已是深色的首屏刷成浅色一帧；只用作触发，值现读。
+  useLayoutEffect(() => syncThemeToDocument(readThemeChoice(), readSystemDark()), [theme, systemDark]);
   return children;
 }
