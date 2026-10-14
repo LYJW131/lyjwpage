@@ -23,11 +23,13 @@ export const siteHealthJob: Job = {
   offset: 4,
   async run({ env, now }) {
     if (!env.HISTORY) return skipMissing("site-health", ["HISTORY"]);
+    // 缺 Cloudflare 配置只空出错误与 Web Vitals 两块；在线条只靠 D1，照常刷新。
     const config = settings(env, SITE_HEALTH_SETTINGS);
-    if ("missing" in config) return skipMissing("site-health", config.missing);
-    const { CLOUDFLARE_METRICS_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account, SITE_ANALYTICS_SITES: sitesJson } = config.values;
+    const skipped = "missing" in config ? skipMissing("site-health", config.missing) : null;
+    const cloudflare = "values" in config
+      ? { api: cloudflareApi(config.values.CLOUDFLARE_METRICS_TOKEN), account: config.values.CLOUDFLARE_ACCOUNT_ID, sitesJson: config.values.SITE_ANALYTICS_SITES }
+      : null;
     const db = env.HISTORY;
-    const api = cloudflareApi(token);
     const failed: string[] = [];
     const settle = <T>(block: HealthBlock, promise: Promise<T>) => promise.catch((error: unknown) => {
       failed.push(block);
@@ -41,14 +43,15 @@ export const siteHealthJob: Job = {
         intervalSeconds: UPTIME_PROBE_EVERY_MINUTES * 60,
       }))),
       settle("heartbeat", readBuckets(db, HEARTBEAT_SERIES, now).then((buckets) => summarizeBuckets(HEARTBEAT_SERIES, buckets, now))),
-      settle("errors", fetchErrorSeries(api, account, now)),
-      settle("vitals", fetchFieldVitals(api, account, parseSiteAnalyticsSources(sitesJson).map((site) => site.siteTag), now)),
+      cloudflare && settle("errors", fetchErrorSeries(cloudflare.api, cloudflare.account, now)),
+      cloudflare && settle("vitals", fetchFieldVitals(cloudflare.api, cloudflare.account, parseSiteAnalyticsSources(cloudflare.sitesJson).map((site) => site.siteTag), now)),
     ]);
-    if (failed.length === 4) throw new Error("健康检查全部查询失败");
+    if (failed.length === (cloudflare ? 4 : 2)) throw new Error("健康检查全部查询失败");
     const next: HealthPayload = { fetchedAt: now, uptime, heartbeat, errors, vitals };
     const previous = (await readLag<HealthPayload>(env.LAG, LAG_KEYS.health))?.data ?? null;
     await writeLag(env.LAG, LAG_KEYS.health, mergeHealth(next, previous), now);
     await pruneChecks(db, now);
-    return ok(failed.length ? `${failed.join(", ")} carried over` : undefined);
+    const notes = [failed.length ? `${failed.join(", ")} carried over` : null, skipped?.detail ?? null].filter((note) => note !== null);
+    return ok(notes.length ? notes.join("; ") : undefined);
   },
 };

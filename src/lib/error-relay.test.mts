@@ -27,6 +27,16 @@ test("a client report is trimmed to the contract and loses query strings and odd
   assert.equal(parseClientErrorReport({ ...report, message: "m".repeat(5_000) })?.message.length, 1_000);
 });
 
+test("URLs inside the message and stack lose credentials, query strings and fragments but keep line and column", () => {
+  const parsed = parseClientErrorReport({
+    ...report,
+    message: "Failed to fetch https://user:pw@api.example.com/x?token=secret#frag",
+    stack: "Error\n    at f (https://lyjw.me/assets/a.js?token=abc:10:20)\n    at https://lyjw.me/assets/b.js:3:4",
+  });
+  assert.equal(parsed?.message, "Failed to fetch https://api.example.com/x");
+  assert.equal(parsed?.stack, "Error\n    at f (https://lyjw.me/assets/a.js:10:20)\n    at https://lyjw.me/assets/b.js:3:4");
+});
+
 test("the relay logs a valid report as an Error with the browser stack and rejects the rest", async () => {
   const logged: unknown[][] = [];
   const log = (...args: unknown[]) => { logged.push(args); };

@@ -2,7 +2,7 @@
 // 用法：node --experimental-strip-types --import ./src/lib/testing/register-alias.mjs scripts/sentry-health-import.mts --from <sentry.json|URL> --out <file.sql>
 // --from 收 `/api/status/sentry` 的响应或 LAG KV 里 `sentry:v1` 的原值（两者都是 `{ data }` 包着载荷）；站点切换后那个端点没了，就读 KV。
 // 只生成 SQL、不连生产；写库由人执行：pnpm --dir workers/core exec wrangler d1 execute lyjwpage-history --remote -c wrangler.toml --file <file.sql>
-// 写法是累加的 upsert，同一份 SQL 只能执行一次。
+// 每个序列只写 D1 里该序列第一格之前的小时：新链路已在记的那一小时及以后只留新链路的数据，重复执行也不会重复计数。
 import fs from "node:fs";
 
 import {
@@ -79,19 +79,21 @@ export function mismatches(series: HealthSeriesSpec, days: readonly UptimeDay[],
   return problems;
 }
 
+// D1 单条语句上限 100 KB；截止点是语句里的不相关子查询，SQLite 只求一次值，所以一个序列的全部小时放进同一条 INSERT，
+// 拆成几条的话，前一条写进去的旧小时会把后一条的截止点往前挪。
+const D1_STATEMENT_MAX_BYTES = 100_000;
+
 function sql(series: HealthSeriesSpec, buckets: readonly HealthBucket[]): string {
+  if (!buckets.length) return "";
   const rows = buckets.map((b) => `('${series.name}', ${b.hourStart}, ${b.success}, ${b.failure}, ${b.lastAt}, ${b.lastOk ? 1 : 0})`);
-  const statements: string[] = [];
-  for (let i = 0; i < rows.length; i += 100) {
-    statements.push(`INSERT INTO health_buckets(series, hour_start, success, failure, last_at, last_ok) VALUES
-${rows.slice(i, i + 100).join(",\n")}
-ON CONFLICT(series, hour_start) DO UPDATE SET
-  success = health_buckets.success + excluded.success,
-  failure = health_buckets.failure + excluded.failure,
-  last_at = MAX(health_buckets.last_at, excluded.last_at),
-  last_ok = CASE WHEN excluded.last_at >= health_buckets.last_at THEN excluded.last_ok ELSE health_buckets.last_ok END;`);
-  }
-  return statements.join("\n");
+  const statement = `INSERT INTO health_buckets(series, hour_start, success, failure, last_at, last_ok)
+SELECT column1, column2, column3, column4, column5, column6 FROM (VALUES
+${rows.join(",\n")}
+)
+WHERE column2 < COALESCE((SELECT MIN(hour_start) FROM health_buckets WHERE series = '${series.name}'), ${Number.MAX_SAFE_INTEGER})
+ON CONFLICT(series, hour_start) DO NOTHING;`;
+  if (new TextEncoder().encode(statement).length > D1_STATEMENT_MAX_BYTES) throw new Error(`${series.name} 的 INSERT 超过 D1 单条语句上限`);
+  return statement;
 }
 
 async function main(argv: string[]): Promise<void> {
@@ -118,7 +120,7 @@ async function main(argv: string[]): Promise<void> {
   }
   if (problems.length) throw new Error(`换算与 Sentry 日总数不一致：\n${problems.join("\n")}`);
   fs.writeFileSync(out, `${parts.join("\n")}\n`);
-  console.error(`已写 ${out}；切换后排定的检查从 ${new Date(until).toISOString()} 起由新链路记，两边在同一小时里相加。`);
+  console.error(`已写 ${out}；D1 里已有新链路数据的那一小时及以后不导入。`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) await main(process.argv.slice(2));

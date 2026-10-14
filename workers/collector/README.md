@@ -42,7 +42,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
 | `sentry-status` | 已退役：同上 | 无 |
 | `uptime-probe` | 每分钟 GET `shared/health.ts#SITE_UPTIME_URL`，成败累进 D1 `health_buckets`（只有定时轮次记，手动点名不记） | D1 `HISTORY` |
-| `site-health` | `LAG health:v1`：D1 里的在线探测与 core 心跳汇成 30 天每天一格，加上 Workers Observability 报错数与 Web Analytics 真实访客 Web Vitals（没取到的块沿用上一份）；顺带清掉超出 `HEALTH_RETENTION_MS` 的格子 | D1 `HISTORY`；`CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
+| `site-health` | `LAG health:v1`：D1 里的在线探测与 core 心跳汇成 30 天每天一格，加上 Workers Observability 报错数与 Web Analytics 真实访客 Web Vitals（没取到的块沿用上一份）；顺带清掉超出 `HEALTH_RETENTION_MS` 的格子 | D1 `HISTORY`；`CLOUDFLARE_METRICS_TOKEN`、`SITE_ANALYTICS_SITES`（缺了只空出报错与 Web Vitals，在线条照常） |
 | `digest` | `DIGEST.compose`（ai 的 `Digest`，带上一份的输入哈希与标题）写成的近况摘要进 `LAG digest:v1`；输入没变时 ai 回 `unchanged`，这里照样重写一次刷新 `updatedAt`；第一次写出、或摘要与 `quiet`（时钟卡）互换时才 `CORE.revalidate(["digest"])` | 无（ai 回 `unconfigured` 时这里跳过） |
 
 任务失败怎么被看见见下文「失败」。

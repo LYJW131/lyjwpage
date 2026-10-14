@@ -33,6 +33,13 @@ export function stripUrlQuery(url: string): string {
   }
 }
 
+// 消息与调用栈里的 URL 同样去掉查询串、片段与账号密码，留下栈帧末尾的 :行:列。
+const URL_IN_TEXT = /\b(https?:\/\/)(?:[^\s/@"'()<>]*@)?([^\s?#"'()<>]+?)(?:[?#][^\s"'()<>]*?)?(?=(?::\d+){1,2}(?=[\s"'()<>]|$)|[\s"'()<>]|$)/g;
+
+function stripUrlsInText(value: string): string {
+  return value.replace(URL_IN_TEXT, "$1$2");
+}
+
 const text = (value: unknown, max: number): string | null =>
   typeof value === "string" && value.trim() ? value.slice(0, max) : null;
 
@@ -43,6 +50,7 @@ export function parseClientErrorReport(raw: unknown): ClientErrorReport | null {
   const message = text(body.message, LIMITS.message);
   const url = text(body.url, LIMITS.url);
   if (!source || !message || !url) return null;
+  const stack = text(body.stack, LIMITS.stack);
   const tags: Record<string, string> = {};
   if (body.tags && typeof body.tags === "object" && !Array.isArray(body.tags)) {
     for (const [key, value] of Object.entries(body.tags).slice(0, LIMITS.tags)) {
@@ -53,8 +61,8 @@ export function parseClientErrorReport(raw: unknown): ClientErrorReport | null {
   return {
     source,
     name: text(body.name, LIMITS.name) ?? "Error",
-    message,
-    stack: text(body.stack, LIMITS.stack),
+    message: stripUrlsInText(message),
+    stack: stack && stripUrlsInText(stack),
     url: stripUrlQuery(url),
     release: text(body.release, 64),
     tags,
