@@ -52,7 +52,7 @@
 
 **一定等你一句话**：
 
-- 生产上的动作：手动触发 Workers Builds 重建、`wrangler deploy` 的那个唯一例外、切域名、改 ESA 规则（规则见 AGENTS.md「[禁区](./AGENTS.md#禁区)」与「[部署流程](./AGENTS.md#部署流程)」）。
+- 生产上的动作：手动触发 Workers Builds 重建（main 构建因 Cloudflare 临时错误失败、重跑同一提交的除外）、`wrangler deploy` 的那个唯一例外、切域名、改 ESA 规则（规则见 AGENTS.md「[禁区](./AGENTS.md#禁区)」与「[部署流程](./AGENTS.md#部署流程)」）。
 - 删除：远端分支、KV 键、Sentry 数据、账号里的资源。
 - 对外发消息、花钱的东西。
 - 控制台与账号设置：Access 策略、GitHub 仓库设置与分支保护、App 权限、告警规则。
@@ -86,7 +86,7 @@
 ## 6. 部署与「已部署」
 
 - 站点和各 Worker 都走 Workers Builds：合进 main 就自动构建部署，Claude 不手跑 `wrangler deploy`，唯一例外和顺序见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。
-- 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你。
+- 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。
 - 上报器哪些合进 main 后自动换镜像、哪些手动，见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」；手动的那几个 Claude 会派你电脑上的会话去做。
 - 每次汇报都分清四层：本地改了 / 测试过了 / 已部署 / 在生产上验证过了。
 - 跑检查、开浏览器截图、等部署和核对生产这些验证活，Claude 交给更便宜的 Haiku 验证员做，自己只定验什么、看结果，至少抽看一张截图再汇报（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
@@ -123,4 +123,4 @@
 
 - 决策卡、权限提示，和「只有你能做的事」那一节里的事。
 - 线程卡住（失败、丢了工作、等权限）时，项目聊天里会有一行告诉你卡在哪。
-- 不会打扰你的：进度推进、修 CI、回机器评审、合入 main、重跑预览构建。
+- 不会打扰你的：进度推进、修 CI、回机器评审、合入 main、重跑预览构建，以及因 Cloudflare 临时错误失败的 main 构建。
