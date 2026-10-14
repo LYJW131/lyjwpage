@@ -1261,7 +1261,10 @@
     const head = pathAt(OUT, dd);
     const trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, 34.8)), 18);
     spark(e, x, head, trail, { t: G.t, size: 1.1, lw: 2.4, color: css("signalD") });
-    envelope(x, head[0], head[1], 44, css("signalD"), { lw: 2, fill: css("ink2"), alpha: 1 - prog(b, CL.leap[0], CL.leap[1] + 0.04) });
+    // 起跑这一帧接停靠时的大小和光晕，不然信封一帧缩一圈、光晕一帧没了。
+    const shrink = prog(b, AT.launch, AT.launch + 0.12, E.out);
+    envelope(x, head[0], head[1], lerp(60, 44, shrink), css("signalD"), { lw: lerp(2.2, 2, shrink), fill: css("ink2"), alpha: 1 - prog(b, CL.leap[0], CL.leap[1] + 0.04) });
+    glow(e, head[0], head[1], 150, 0.6 * impact(b, AT.back, 0.25));
   }
   // 末端 1100 让 Clawd 在最后两帧前整只出右缘，屏幕上只剩拖尾贴着右边。
   const rideD = (b) => keys(b, [[AT.launch, 0], [34.98, 1100, E.inExpo]]);
