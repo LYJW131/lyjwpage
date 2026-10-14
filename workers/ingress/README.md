@@ -121,7 +121,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 `.github/workflows/purge-esa.yml` 在 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 都答出这次部署的 sha 之后，
 用 `lyjwpage-github-actions` 那把 service token（仓库 secret `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET`）调
 `POST https://ingest.homepage.lyjw.llc/api/internal/site-deployed`。请求体不读 —— 推什么版本由域名上那次部署自己回答。
-等待途中某个域名已答出更新的提交（这次 sha 是它的祖先）时，这一次不通知，由更新那次部署自己的工作流通知（`scripts/wait-site-version.mjs#waitForSiteVersion`）。
+等待途中某个域名已答出更新的提交（这次 sha 是它的祖先）时，这一次不通知，由更新那次部署自己的工作流通知（`scripts/wait-site-version.ts#waitForSiteVersion`）。
 
 1. 请状态核心 `StateCore.broadcastVersion()` 向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version`
    并弹出更新提示；回执 `{ ok: true, delivered }` 里是送达的连接数。

@@ -1,17 +1,28 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const sha256 = (value) => createHash("sha256").update(value).digest("hex");
-const encode = (value) =>
+const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+const encode = (value: string) =>
   encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 
-export function signAliyunRequest(options) {
+export type AliyunRequest = {
+  endpoint: string;
+  action: string;
+  version: string;
+  query: Record<string, string>;
+  accessKeyId: string;
+  accessKeySecret: string;
+  date?: string;
+  nonce?: string;
+};
+
+export function signAliyunRequest(options: AliyunRequest) {
   const query = Object.keys(options.query)
     .sort()
     .map((key) => `${encode(key)}=${encode(options.query[key])}`)
     .join("&");
   const payloadHash = sha256("");
-  const headers = {
+  const headers: Record<string, string> = {
     host: options.endpoint,
     "x-acs-action": options.action,
     "x-acs-content-sha256": payloadHash,
@@ -50,12 +61,12 @@ const TRANSIENT_NETWORK_CODES = new Set([
   "UND_ERR_ABORTED",
 ]);
 
-function isTransientStatus(status) {
+function isTransientStatus(status: number) {
   return status === 408 || status === 429 || status >= 500;
 }
 
 // Node fetch 将连接错误码藏在 cause 上；超时另用 TimeoutError / AbortError。
-function isTransientNetworkError(error) {
+function isTransientNetworkError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const name = "name" in error ? error.name : "";
   if (name === "TimeoutError" || name === "AbortError") return true;
@@ -69,7 +80,7 @@ function isTransientNetworkError(error) {
 
 const CAUSE_LOG_KEYS = ["name", "code", "errno", "syscall", "hostname", "address", "port"];
 
-function scrubLogValue(value, secrets = []) {
+function scrubLogValue(value: unknown, secrets: unknown[] = []) {
   let text = String(value);
   for (const secret of secrets) {
     if (typeof secret === "string" && secret.length > 0) text = text.split(secret).join("[redacted]");
@@ -88,24 +99,28 @@ function scrubLogValue(value, secrets = []) {
   );
 }
 
-function pickCauseNode(error) {
+type CauseNode = Record<string, unknown>;
+
+function pickCauseNode(error: unknown): CauseNode | undefined {
   const cause = error instanceof Error ? error.cause : undefined;
   if (!cause || typeof cause !== "object") return undefined;
-  if (Array.isArray(cause.errors)) {
-    const inner = cause.errors.find(
-      (item) => item && typeof item === "object" && (item.code || item.syscall || item.hostname),
+  if ("errors" in cause && Array.isArray(cause.errors)) {
+    const inner = (cause.errors as unknown[]).find(
+      (item): item is CauseNode =>
+        !!item && typeof item === "object" && !!((item as CauseNode).code || (item as CauseNode).syscall || (item as CauseNode).hostname),
     );
     if (inner) return inner;
   }
-  return cause;
+  return cause as CauseNode;
 }
 
-function networkLogFields(error) {
-  const fields = {};
+function networkLogFields(error: unknown) {
+  const fields: Record<string, string | number> = {};
   if (error instanceof Error) {
     if (error.name) fields.name = error.name;
     if (error.message) fields.message = error.message;
-    if (typeof error.code === "string" || typeof error.code === "number") fields.code = error.code;
+    const code = (error as Error & { code?: unknown }).code;
+    if (typeof code === "string" || typeof code === "number") fields.code = code;
   } else {
     fields.message = String(error);
   }
@@ -120,7 +135,21 @@ function networkLogFields(error) {
   return fields;
 }
 
-function logAttemptFailure({ attempt, attempts, willRetry, delayMs, fields, secrets }) {
+function logAttemptFailure({
+  attempt,
+  attempts,
+  willRetry,
+  delayMs,
+  fields,
+  secrets,
+}: {
+  attempt: number;
+  attempts: number;
+  willRetry: boolean;
+  delayMs: number;
+  fields: Record<string, unknown>;
+  secrets: unknown[];
+}) {
   const decision = willRetry ? `还会重试（${delayMs}ms 后）` : "不再重试";
   const parts = [`[esa-purge] 第 ${attempt}/${attempts} 次失败，${decision}`];
   for (const [key, value] of Object.entries(fields)) {
@@ -130,7 +159,7 @@ function logAttemptFailure({ attempt, attempts, willRetry, delayMs, fields, secr
   console.warn(parts.join(" "));
 }
 
-function describeFetchError(error, secrets = []) {
+function describeFetchError(error: unknown, secrets: unknown[] = []) {
   const message = error instanceof Error ? error.message : String(error);
   const cause = pickCauseNode(error);
   const code = cause && "code" in cause ? cause.code : undefined;
@@ -142,7 +171,15 @@ function describeFetchError(error, secrets = []) {
 }
 
 // 每次重试必须重新签名，复用 nonce 或日期会使请求失效。
-async function requestPurge(config) {
+export type EsaPurgeConfig = { siteId?: string; cacheUrl?: string; accessKeyId?: string; accessKeySecret?: string };
+type RequestConfig = Required<EsaPurgeConfig>;
+type PurgeResponse = { Code?: unknown; RequestId?: unknown; TaskId?: unknown; Message?: unknown };
+
+export type EsaPurgeResult =
+  | { ok: true; taskId: string; requestId: string | undefined }
+  | { ok: false; error: string; requestId?: string };
+
+async function requestPurge(config: RequestConfig) {
   const { url, headers } = signAliyunRequest({
     endpoint: "esa.cn-hangzhou.aliyuncs.com",
     action: "PurgeCaches",
@@ -164,9 +201,9 @@ async function requestPurge(config) {
   });
 
   // 非法 JSON 仍当无效应答，不重试。读 body 时的断连和 UND_ERR_BODY_TIMEOUT 要抛给外层重试。
-  let result = null;
+  let result: PurgeResponse | null = null;
   try {
-    result = await response.json();
+    result = (await response.json()) as PurgeResponse | null;
   } catch (error) {
     if (isTransientNetworkError(error)) throw error;
   }
@@ -175,7 +212,7 @@ async function requestPurge(config) {
 
   if (!response.ok || code || typeof result?.TaskId !== "string" || !result.TaskId) {
     return {
-      ok: false,
+      ok: false as const,
       retryable: isTransientStatus(response.status),
       error: scrubLogValue(
         `ESA 刷新失败 (HTTP ${response.status}): ${code ?? "InvalidResponse"} - ${result?.Message ?? ""}`.trim(),
@@ -188,13 +225,16 @@ async function requestPurge(config) {
   }
 
   return {
-    ok: true,
+    ok: true as const,
     taskId: result.TaskId,
-    requestId: result.RequestId,
+    requestId,
   };
 }
 
-export async function purgeEsaHomepage(config, options = {}) {
+export async function purgeEsaHomepage(
+  config: EsaPurgeConfig,
+  options: { attempts?: number; backoffMs?: number[]; sleep?: (ms: number) => Promise<unknown> } = {},
+): Promise<EsaPurgeResult> {
   const { siteId, cacheUrl, accessKeyId, accessKeySecret } = config;
   if (!siteId || !cacheUrl || !accessKeyId || !accessKeySecret) {
     return { ok: false, error: "缺少必要配置：ESA_SITE_ID, ESA_CACHE_URL, ALIYUN_ACCESS_KEY_ID 或 ALIYUN_ACCESS_KEY_SECRET" };
@@ -204,7 +244,7 @@ export async function purgeEsaHomepage(config, options = {}) {
   const backoffMs = options.backoffMs ?? PURGE_BACKOFF_MS;
   const wait = options.sleep ?? sleep;
   const secrets = [accessKeyId, accessKeySecret];
-  let last = { ok: false, error: "ESA 刷新失败" };
+  let last: EsaPurgeResult = { ok: false, error: "ESA 刷新失败" };
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const delay = backoffMs[Math.min(attempt - 1, backoffMs.length - 1)] ?? 1_000;
@@ -242,7 +282,10 @@ export async function purgeEsaHomepage(config, options = {}) {
   return last;
 }
 
-export async function warmupEsaCache(url, options = {}) {
+export async function warmupEsaCache(
+  url: string,
+  options: { timeoutMs?: number } = {},
+): Promise<{ ok: boolean; status?: number; error?: string }> {
   const { timeoutMs = 15_000 } = options;
   try {
     const response = await fetch(url, {
