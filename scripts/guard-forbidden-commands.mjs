@@ -101,14 +101,44 @@ function forceAddsLocalCredential(tokens) {
   return force && rest.some((token) => LOCAL_CREDENTIAL.test(token) && !EXAMPLE.test(token));
 }
 
+const IDENTITY_ENV = /^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL)=/;
+const IDENTITY_KEYS = new Set(["user.name", "user.email", "user.signingkey", "commit.gpgsign", "gpg.format", "gpg.ssh.program"]);
+const ASSIGNMENT = /^[A-Za-z_]\w*=/;
+const ENV_SETTERS = new Set(["export", "env", "declare", "typeset"]);
+
+function overridesCommitIdentity(tokens) {
+  const lead = tokens.findIndex((token) => !ASSIGNMENT.test(token));
+  const assignments = lead === -1 ? tokens : tokens.slice(0, lead);
+  if (assignments.some((token) => IDENTITY_ENV.test(token))) return true;
+  if (lead !== -1 && ENV_SETTERS.has(program(tokens[lead])) && tokens.slice(lead + 1).some((token) => IDENTITY_ENV.test(token))) return true;
+  const git = tokens.findIndex((token) => program(token) === "git");
+  if (git === -1) return false;
+  const rest = tokens.slice(git + 1);
+  for (let i = 0; i < rest.length; i += 1) {
+    const value = rest[i] === "-c" ? rest[i + 1] : rest[i].startsWith("-c") ? rest[i].slice(2) : null;
+    if (value && IDENTITY_KEYS.has(value.split("=")[0].toLowerCase()) && value.includes("=")) return true;
+  }
+  if (rest.some((token) => token === "--author" || token.startsWith("--author=") || token === "--no-gpg-sign")) return true;
+  const config = rest.indexOf("config");
+  if (config === -1) return false;
+  const configArgs = rest.slice(config + 1);
+  if (configArgs.some((token) => token === "--get" || token === "--get-all" || token === "--list" || token === "-l")) return false;
+  const operands = configArgs.filter((token) => !token.startsWith("-"));
+  const unset = configArgs.some((token) => token.startsWith("--unset") || token === "--replace-all");
+  return IDENTITY_KEYS.has((operands[0] ?? "").toLowerCase()) && (operands.length >= 2 || unset);
+}
+
 const DEPLOY_REASON =
   "手动部署 Worker 是 AGENTS.md「禁区」：Worker 只经 Workers Builds 部署。跨 Worker 契约切换那唯一的例外由站主在自己的 shell 里跑（Mac 会话输入框用 `!` 前缀），见 .claude/skills/lyjwpage-mac-session/SKILL.md「自动模式拦了」。`wrangler deploy --dry-run` 不受限。";
+const IDENTITY_REASON =
+  "改提交身份或关掉签名是 AGENTS.md「禁区」：环境已把 author / committer 设成站主的 noreply 邮箱并用站主的 SSH 钥签名，GitHub 按 committer 邮箱找签名钥，换成别的身份就显示 Unverified。agent 署名只写进提交信息末尾的 Co-Authored-By。";
 const CREDENTIAL_REASON = "强制提交 .dev.vars / .env* 这类本地凭据文件是 AGENTS.md「禁区」；示例文件（*.example）照常提交。";
 
 export function forbiddenReason(command) {
   for (const tokens of segments(command)) {
     if (wranglerDeploy(tokens) || deployScript(tokens)) return DEPLOY_REASON;
     if (forceAddsLocalCredential(tokens)) return CREDENTIAL_REASON;
+    if (overridesCommitIdentity(tokens)) return IDENTITY_REASON;
   }
   return null;
 }

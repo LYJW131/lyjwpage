@@ -16,6 +16,7 @@
 - 不手跑 `wrangler deploy`：非交互部署会直接接管挂在别的 Worker 上的自定义域名，Worker 默认只走 Workers Builds。唯一例外是跨 Worker 的契约切换：按被调用方 → 调用方的顺序手动部署，再推 main 让 Workers Builds 同码重建（见「部署流程」）。agent 发出的部署命令由 PreToolUse 钩子拦下（`scripts/guard-forbidden-commands.mjs`），这个例外由站主在自己的 shell 里跑。
 - 不在站点侧写后端：调第三方 API、持有密钥、写状态的逻辑都进后端 Worker：实时状态归 `workers/core`，外部定时拉取与 Apple Music 查询归 `workers/collector`，模型调用与工具编排归 `workers/ai`。site Worker 可以回答 `/api/*`，但只按数据归属分流（`src/lib/site-policy.ts#classifyGatewayRequest`）：可滞后视图直接读 `LAG` KV，loader 与 core 共用 `shared/lag-views.ts`；其余原样经 Service Binding 交给 core / ai / collector，不跨域 `fetch` 后端（会改写 `CF-Connecting-IP`，按 IP 的限流随之失效）。分支上试新后端走 Worker 分支预览，Secret 也设在对应预览上，见 `docs/workers-builds.md`「分支预览」。
 - 不提交 `.env.local`、`.dev.vars` 这类本地凭据文件（`.gitignore` 已忽略，强制 `git add -f` 由同一个钩子拦下）。
+- 不改提交身份、不关签名：云端环境已把 author / committer 设成站主的 noreply 邮箱并用站主的钥签名，GitHub 按 committer 邮箱认钥，换成 `Claude <noreply@anthropic.com>` 之类的身份签名就显示 Unverified。agent 署名只写进提交信息的 `Co-Authored-By`。设 `GIT_AUTHOR_*` / `GIT_COMMITTER_*`、`-c user.*`、`--author`、`--no-gpg-sign` 由同一个钩子拦下。
 
 # 项目入口与验证
 
@@ -110,7 +111,7 @@
 
 | 规则 | 由什么强制 |
 | --- | --- |
-| 不手跑 `wrangler deploy`、不强制提交 `.env*` / `.dev.vars` | PreToolUse 钩子 `scripts/guard-forbidden-commands.mjs` |
+| 不手跑 `wrangler deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子 `scripts/guard-forbidden-commands.mjs` |
 | 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 行数、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
 | 「只改注释」的清扫证明 | `pnpm docs:comment-only` |
 | Worker / shared / `src/` 之间的 import 边界 | `eslint.config.mjs` 的 `no-restricted-imports` |
