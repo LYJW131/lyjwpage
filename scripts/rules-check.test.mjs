@@ -101,6 +101,30 @@ test("git 历史里的真实旧错误形态会被拦下", () => {
   assert.equal(checkScrollbarPair("src/components/x.tsx", 'className="rounded-[2px]"').length, 0);
 });
 
+test("手写 sleep 被拦：具名封装、内联、改名 resolve、块里暂存 timer、无参回调", () => {
+  assert.deepEqual(rules("scripts/x.mjs", 'await new Promise((resolve) => setTimeout(resolve, 100));'), ["manual-sleep@1"]);
+  assert.deepEqual(rules("workers/core/src/x.ts", 'const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));'), ["manual-sleep@1"]);
+  assert.deepEqual(rules("shared/x.ts", 'await new Promise((r) => setTimeout(r, 5));'), ["manual-sleep@1"]);
+  assert.deepEqual(rules("workers/collector/src/x.ts", 'await Promise.race([a, new Promise((resolve) => { t = setTimeout(resolve, 5); })]);'), ["manual-sleep@1"]);
+  assert.deepEqual(rules("scripts/x.mjs", 'await new Promise((resolve) => setTimeout(() => resolve(), 100));'), ["manual-sleep@1"]);
+  assert.deepEqual(rules("shared/x.ts", 'await new Promise((done) => setTimeout(function () { done(); }, 100));'), ["manual-sleep@1"]);
+});
+
+test("manual-sleep 放行：node:timers/promises、带值 resolve、reject 超时、字符串与范围外", () => {
+  assert.equal(rules("scripts/x.mjs", 'import { setTimeout as sleep } from "node:timers/promises";\nawait sleep(100);').length, 0);
+  // 到时带值或 reject 的是超时 / 竞速，不是 sleep 壳子
+  assert.equal(rules("shared/x.ts", 'const p = new Promise((resolve) => { t = setTimeout(() => resolve(x), 5); });').length, 0);
+  assert.equal(rules("workers/ai/src/x.ts", 'const p = new Promise((_, reject) => { t = setTimeout(() => reject(e), 5); });').length, 0);
+  // page.evaluate 的页面内代码是字符串，不是本文件代码
+  assert.equal(rules("scripts/x.mjs", 'const SNIPPET = `await new Promise((resolve) => setTimeout(resolve, 60));`;').length, 0);
+  // src/ 跑在浏览器里没有 node:timers/promises，不在范围内
+  assert.equal(rules("src/lib/x.ts", 'await new Promise((resolve) => setTimeout(resolve, 100));').length, 0);
+  // 测试与 fixtures 由 checkFile 统一跳过
+  assert.equal(rules("scripts/x.test.mjs", 'await new Promise((resolve) => setTimeout(resolve, 1));').length, 0);
+  assert.equal(rules("scripts/fixtures/x.mjs", 'await new Promise((resolve) => setTimeout(resolve, 1));').length, 0);
+  assert.equal(rules("shared/x.ts", 'await new Promise((resolve) => setTimeout(() => resolve(value), 100));').length, 0);
+});
+
 test("workers/*/src 与 shared/ 手写 new Response(JSON.stringify(...)) 被拦，其余形态与范围外放行", () => {
   assert.deepEqual(rules("workers/example/src/x.ts", 'return new Response(JSON.stringify(data), { status: 200 });'), ["json-response-literal@1"]);
   assert.deepEqual(rules("shared/x.ts", 'const r = new Response(JSON.stringify(data));'), ["json-response-literal@1"]);
