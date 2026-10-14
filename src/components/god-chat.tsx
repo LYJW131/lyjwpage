@@ -128,13 +128,28 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
-// 站主要求示例用中文，是「界面文案英文」的例外。
+// 站主要求示例用中文，是「界面文案英文」的例外。首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
+// 每条须在 14 个汉字宽以内：桌面两列等宽格放得下，换题时按钮尺寸不变。
 const SUGGESTIONS = [
-  "LYJW 正在听什么歌？",
-  "这个网站的实时数据是怎么来的？",
-  "帮我搜一下这周 AI 圈的新闻",
-  "我想给这个网站加个小功能",
+  "LYJW 现在在忙什么？",
+  "这个网站是怎么搭起来的？",
+  "这周 AI 圈有什么大新闻？",
+  "我想给这个网站提个改进",
+  "LYJW 最近在听什么歌？",
+  "首页的实时数据从哪来？",
+  "今天科技圈有什么新鲜事？",
+  "LYJW 最近在玩什么游戏？",
+  "这个网站用了哪些技术？",
+  "比较一下最新的几款大模型",
+  "LYJW 最近在追什么番？",
+  "网站最近的提交改了什么？",
+  "LYJW 今天运动了吗？",
+  "LYJW 用 AI 写了多少代码？",
 ];
+const SUGGESTION_SLOTS = 4;
+// 每隔这么久只换一格，四格轮流；淡出时长与 globals.css 的 headline-in 一起凑成一次换题。
+const SUGGESTION_ROTATE_MS = 3_000;
+const SUGGESTION_FADE_MS = 150;
 
 export function GodChat({ className }: { className?: string }) {
   const archive = useSyncExternalStore(subscribeChatArchive, chatArchive.getSnapshot, chatArchive.getServerSnapshot);
@@ -632,19 +647,7 @@ function Conversation({ className, archive, session: conversation }: { className
             <p className="text-sm leading-relaxed text-muted-foreground">
               Ask about LYJW, this site, or anything on the web.
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  disabled={streaming}
-                  onClick={() => submit(suggestion)}
-                  className="paper-card rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-surface-hover disabled:opacity-50"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
+            <Suggestions disabled={streaming} onPick={submit} />
           </div>
         ) : (
           messages.map((message, index) => {
@@ -1050,6 +1053,60 @@ const DESIGN_CONSENT_COPY: Record<PlanLanguage, DesignConsentCopy> = {
     remember: "同意内容はブラウザに保存され、チャット関連のコードが更新された際に改めて確認されます。",
   },
 };
+
+function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
+  const [slots, setSlots] = useState(() => SUGGESTIONS.slice(0, SUGGESTION_SLOTS).map((text) => ({ text, rotated: false })));
+  const [leaving, setLeaving] = useState<number | null>(null);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const paused = hovered || focused;
+  const turn = useRef({ slot: 0, next: SUGGESTION_SLOTS });
+  useEffect(() => {
+    if (paused) return;
+    let swap: ReturnType<typeof setTimeout> | undefined;
+    const timer = setInterval(() => {
+      const { slot, next } = turn.current;
+      turn.current = { slot: (slot + 1) % SUGGESTION_SLOTS, next: (next + 1) % SUGGESTIONS.length };
+      setLeaving(slot);
+      swap = setTimeout(() => {
+        setSlots((current) => current.map((entry, index) => (index === slot ? { text: SUGGESTIONS[next], rotated: true } : entry)));
+        setLeaving(null);
+      }, SUGGESTION_FADE_MS);
+    }, SUGGESTION_ROTATE_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(swap);
+      setLeaving(null);
+    };
+  }, [paused]);
+  return (
+    // 悬停或聚焦时停住轮播，免得点下去的那一刻换了题。
+    <div
+      className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2"
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
+    >
+      {slots.map(({ text, rotated }, index) => (
+        <button
+          key={index}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(text)}
+          className="paper-card overflow-hidden rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs whitespace-nowrap text-foreground transition-colors hover:bg-surface-hover disabled:opacity-50"
+        >
+          {/* 淡出与淡入分在两层：入场动画的填充会盖住同一层上的 opacity 过渡。 */}
+          <span className={cn("inline-block transition-opacity duration-150", leaving === index && "opacity-0")}>
+            <span key={text} className={cn("inline-block", rotated && "animate-headline-in")}>
+              {text}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function DesignConsentPrompt({
   language,

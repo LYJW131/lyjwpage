@@ -25,6 +25,7 @@ import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { Card } from "@/components/ui/card";
 import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { DOCUMENT_COMMIT_META } from "@/lib/app-version";
+import { assetRecoveryScript } from "@/lib/asset-recovery-boot";
 import { commitSha } from "@/lib/build-info";
 import { reportError } from "@/lib/error-report";
 import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-preference";
@@ -111,6 +112,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
         <Meta />
+        <script dangerouslySetInnerHTML={{ __html: assetRecoveryScript() }} />
         <Links />
         <script dangerouslySetInnerHTML={{ __html: bootScript() }} />
         {earlyLiveSocket ? (
