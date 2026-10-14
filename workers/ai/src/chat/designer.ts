@@ -13,6 +13,7 @@ import type { Env } from "../runtime";
 import { newLedger, replyToolDescription, type ToolIO } from "../tools/registry";
 import { SITE_STATUS_TOOL } from "../tools/site-status";
 import { ASK_VISITOR_TOOL, DESIGN_BUDGET_CENTS, DESIGN_REPO_DIR, PLANNER_PROMPT, PROPOSE_BUILD_TOOL } from "./design";
+import { DESIGN_WEB_HOSTS } from "./design-hosts";
 
 export type SessionEvent = BetaManagedAgentsStreamSessionEvents;
 export type SendEvent = BetaManagedAgentsEventParams;
@@ -38,8 +39,8 @@ const AGENT_TOOLSET: BetaManagedAgentsAgentToolset20260401Params = {
     { name: "bash", permission_policy: { type: "auto" } },
     { name: "write", enabled: false },
     { name: "edit", enabled: false },
-    { name: "web_search", permission_policy: { type: "auto" } },
-    { name: "web_fetch", permission_policy: { type: "auto" }, max_content_tokens: 20_000 },
+    { name: "web_search", permission_policy: { type: "auto" }, allowed_domains: [...DESIGN_WEB_HOSTS] },
+    { name: "web_fetch", permission_policy: { type: "auto" }, max_content_tokens: 20_000, allowed_domains: [...DESIGN_WEB_HOSTS] },
   ],
 };
 
