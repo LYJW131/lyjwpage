@@ -37,6 +37,7 @@ const SCALE = 2;
 const VIEWPORT = { width: 1280, height: 2200 };
 const PAD = 12;
 const SETTLE_MS = 4_000;
+const IMAGE_WAIT_MS = 15_000;
 const WEBP_QUALITY = 88;
 
 const byId = (id: string) => `document.getElementById(${JSON.stringify(id)})`;
@@ -115,6 +116,11 @@ async function captureTheme(browser: Browser, url: string, theme: "light" | "dar
     await page.addStyleTag({ content: HIDE_DEV_UI });
     await page.waitForTimeout(SETTLE_MS);
     await page.evaluate(`(async () => { for (let y = 0; y < document.body.scrollHeight + 1200; y += 600) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); } scrollTo(0, 0); })()`);
+    // 图片默认懒加载，滚动只触发请求；等触发过的都落地再截，冷缓存下总览底部才不缺图。
+    await page.evaluate(`Promise.race([
+      Promise.all([...document.images].filter((img) => img.loading !== "lazy" || img.currentSrc).map((img) => img.complete ? null : new Promise((r) => { img.addEventListener("load", r, { once: true }); img.addEventListener("error", r, { once: true }); }))),
+      new Promise((r) => setTimeout(r, ${IMAGE_WAIT_MS})),
+    ])`);
     return page;
   };
   const save = async (name: string, png: Buffer) => {

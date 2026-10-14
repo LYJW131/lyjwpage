@@ -5,9 +5,9 @@ import { pathToFileURL } from "node:url";
 
 import type { DigestPayload } from "../shared/digest.ts";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
+import { TROPHY_CATALOG_OVERRIDE_SEARCH } from "../shared/trophy-slice.ts";
 import type { PlaystationGame } from "../shared/types.ts";
 import { trophiesTilePath } from "../src/lib/paths.ts";
-import { variantGroups } from "../src/lib/playstation-variants.ts";
 import {
   clearOverride,
   fixturePath,
@@ -50,6 +50,7 @@ const DIGEST_PATH = STATUS_VIEWS.digest.path;
 const LISTENING_NOW_PATH = STATUS_VIEWS.nowListening.path;
 const PLAYING_PATH = STATUS_VIEWS.playing.path;
 const PLAYING_NOW_PATH = STATUS_VIEWS.playingNow.path;
+export const TROPHY_CATALOG_PATH = `${STATUS_VIEWS.trophies.path}${TROPHY_CATALOG_OVERRIDE_SEARCH}`;
 const CAPTURE_TIMEOUT_MS = 20_000;
 const LIVE_SITE = "https://lyjw.me";
 const SIGNED_URL = /^https:\/\/[^"\s]+[?&]X-Amz-Date=(\d{8}T\d{6}Z)&[^"\s]*X-Amz-Expires=(\d+)/;
@@ -135,7 +136,8 @@ export async function buildScene(scene: Scene, now: number): Promise<{ views: Ma
   if (digest) views.set(DIGEST_PATH, { ...(current ?? { ok: true }), ok: true, data: pinHeadline(digest, scene.headline) });
   const songId = listeningSong(views.get(LISTENING_NOW_PATH));
   const lyrics = songId ? `/api/lyrics?song=${songId}` : null;
-  const missing = [...STATUS_PATHS, ...(lyrics ? [lyrics] : []), ...trophySlices(views)].filter((endpoint) => !views.has(endpoint));
+  const catalog = trophyTitleIds(views).length ? [TROPHY_CATALOG_PATH] : [];
+  const missing = [...STATUS_PATHS, ...(lyrics ? [lyrics] : []), ...catalog].filter((endpoint) => !views.has(endpoint));
   return { views, missing, derived: derived !== null };
 }
 
@@ -185,16 +187,14 @@ export function formatScene(scene: Scene): string {
   return `${pretty}\n`;
 }
 
-// 展开奖杯瓷砖时组件按瓷砖的 titleId 组查 ?titleids= 切片，core 不拿无参摘要答它，场景要逐组带上。
-export function trophySlices(views: Map<string, Envelope> | Record<string, Envelope>): string[] {
+// 奖杯明细按 ?titleids= 查，组合随可见瓷砖变；场景注入整份目录，core 按请求现切（public-api.ts#matchOverride）。
+export function trophyTitleIds(views: Map<string, Envelope> | Record<string, Envelope>): string[] {
   const get = (endpoint: string) => (views instanceof Map ? views.get(endpoint) : views[endpoint]);
   const list = get(PLAYING_PATH);
   const games = list?.ok ? ((list.data as { items?: PlaystationGame[] } | null)?.items ?? []) : [];
-  const groups = variantGroups(games);
   const presence = get(PLAYING_NOW_PATH);
   const live = presence?.ok ? (presence.data as { playing?: { titleId?: string } | null } | null)?.playing?.titleId : undefined;
-  if (live && !groups.some((ids) => ids.includes(live))) groups.push([live]);
-  return groups.map((ids) => trophiesTilePath(ids));
+  return [...new Set([...games.map((game) => game.titleId), ...(live ? [live] : [])])];
 }
 
 function signedExpiry(value: string): number | null {
@@ -257,7 +257,8 @@ async function captureScene(name: string, from: string): Promise<unknown> {
     const lyrics = await fetchJson(`${base}/api/lyrics?song=${encodeURIComponent(songId)}`).catch(() => null);
     if (lyrics && typeof lyrics === "object") views[`/api/lyrics?song=${songId}`] = { ok: true, ...(lyrics as object) };
   }
-  for (const slice of trophySlices(views)) views[slice] = stripServedAt((await fetchJson(`${base}${slice}`)) as Envelope);
+  const titleIds = trophyTitleIds(views);
+  if (titleIds.length) views[TROPHY_CATALOG_PATH] = stripServedAt((await fetchJson(`${base}${trophiesTilePath(titleIds)}`)) as Envelope);
   const scene: Scene = {
     description: `${base} 于 ${new Date(capturedAt).toISOString()} 的全部状态视图；时间已改写成相对令牌`,
     views: tokenize(views, capturedAt) as Record<string, Envelope>,
