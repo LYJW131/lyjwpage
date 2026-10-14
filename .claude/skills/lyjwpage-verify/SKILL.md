@@ -15,6 +15,13 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 - 自己跑：只有一条命令且输出很短（一次 `curl /api/version`、一个单测文件）。写简报比自己跑还贵。
 - 验证员不做判断类工作：不判断机器评审意见值不值得改，不分析失败根因，不决定合并或重跑构建。
 
+## 等待要有上限
+
+PR 检查、机器评审、Workers Builds、`/api/version`、后台 `until` 循环，每一种等待都带上限。到点还没等到就记 FAIL「超时」，附上最后一次看到的状态，然后接着做不依赖它的下一步，不原地干等。理由：等的条件可能永远不会成立，比如 SHA 拼错、运行被取消或被新提交顶掉、评审没触发，没有上限的循环会让线程无声卡住。
+
+- 手写循环用 `timeout <秒>` 或计数上限包住：CI 与 Workers Builds 15 分钟，机器评审 15 分钟；部署核对用 `scripts/deploy-check.mjs` 自带的 `--timeout`。
+- 进循环前先确认等的对象查得到：SHA 用 `git rev-parse` 取完整值，`gh run list --commit <sha>` 先确认能查到这次运行。`cancelled`、被更新提交顶掉（`superseded`）都算终态，不再等。
+
 ## 派法
 
 ```
