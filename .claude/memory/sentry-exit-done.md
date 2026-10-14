@@ -1,6 +1,6 @@
 ---
 name: sentry-exit-done
-description: Sentry fully removed (PR #198 merged 2026-10-14); what replaced it, how history was imported, Workers Issues email alerts, and the one owner-gated leftover (delete Sentry projects)
+description: Sentry fully removed (PR #198 merged 2026-10-14); what replaced it, how history was imported, Workers Issues email alerts, and the finished Sentry cleanup
 metadata:
   type: project
 ---
@@ -11,6 +11,6 @@ History: Sentry's last snapshot (`sentry:v1`, fetched 09:47:44Z) is saved at `/m
 
 The site error count is much higher than Sentry's was (35 in 12h vs Sentry's 6), because level=error now includes every `/image` proxy failure on Apple blobstore URLs and "Can't read from request stream after response has been sent." These are real pre-existing errors, not a regression. The 7d count also still carries old Sentry-tunnel `POST /relay` failures until they age out.
 
-**Leftovers (owner said 继续 2026-10-14 10:32Z):** done 10:35-10:40Z: deleted site Builds var `SENTRY_AUTH_TOKEN` and collector secret `SENTRY_API_TOKEN`, disabled Sentry uptime monitor `lyjw.me`, created Workers Issues alerts (two account-level automations: first occurrence + recurrence after 24h, to notification policy "Workers 实时异常", email to the owner; test email arrived). Owner chose 删三个 on the card (10:42Z). I deleted the uptime monitor and both environments of cron monitor `api-minute-cron` (no more missed check-ins). Sentry MCP has no delete-project tool and returns 403 on alert-rule deletion, so the owner removes projects `api-worker`, `collector-worker`, `lyjwpage` in each project's settings page (General Settings → Remove Project). `kanadera` is not this site's; leave it. Current state lives in `docs/ops-facts.md`.
+**Leftovers (owner said 继续 2026-10-14 10:32Z):** done 10:35-10:40Z: deleted site Builds var `SENTRY_AUTH_TOKEN` and collector secret `SENTRY_API_TOKEN`, disabled Sentry uptime monitor `lyjw.me`, created Workers Issues alerts (two account-level automations: first occurrence + recurrence after 24h, to notification policy "Workers 实时异常", email to the owner; test email arrived). Owner chose 删三个 on the card (10:42Z); I deleted the uptime monitor and the cron monitor's environments (Sentry MCP has no delete-project tool and gets 403 on alert-rule deletion), and the owner removed the projects in the Sentry UI (said 都删了 10:56Z). Read back 10:57Z: org `yangjunwei-liang` has no projects (kanadera is gone too), no cron monitors, no uptime monitors; only the org-wide "pull requests are ready" alert rule is left. Nothing about Sentry is left to clean up. Current state lives in `docs/ops-facts.md`.
 
 **How to apply:** for any "where do the uptime/error numbers come from" question, or when touching health/relay code, start here. See [[collector-superfan-routine]] for the error triage loop.
