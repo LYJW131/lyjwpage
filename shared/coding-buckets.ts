@@ -52,7 +52,9 @@ export function mergeBucketReport(
   receivedAt: number,
 ): StoredCodingBuckets | null {
   const declared = new Set(report.agents.map((agent) => agent.id));
-  if (previous && previous.agents.some((agent) => declared.has(agent.id) && report.collectedAt < (agent.collectedAt ?? previous.collectedAt))) return null;
+  if (previous && (declared.size === 0
+    ? report.collectedAt < previous.collectedAt
+    : previous.agents.some((agent) => declared.has(agent.id) && report.collectedAt < (agent.collectedAt ?? previous.collectedAt)))) return null;
   const windows = new Map((previous?.windows ?? []).map((window) => [window.from, window.agents.map((row) => ({ ...row }))]));
   for (const [from, rows] of windows) {
     if (from >= report.from && from < report.to) windows.set(from, rows.filter((row) => !declared.has(row.id)));
@@ -72,11 +74,20 @@ export function mergeBucketReport(
   const coverage = mergeCoverage([...(previous?.coverage ?? []), { from: report.from, to: report.to }]);
   const kept = retained(windows, coverage, receivedAt);
   const reporting = new Set(kept.windows.flatMap((window) => window.agents.map((row) => row.id)));
-  const others = (previous?.agents ?? []).filter((agent) => !declared.has(agent.id)
-    && (reporting.has(agent.id) || (agent.collectedAt ?? 0) > receivedAt - CODING_BUCKET_KEEP_MS));
+  const fresh = new Map(report.agents.map((agent) => [agent.id, { ...agent, collectedAt: report.collectedAt }]));
+  const known = new Set((previous?.agents ?? []).map((agent) => agent.id));
+  // agents 的顺序进了评分输入哈希（pulse-score.ts#windowTokenUsage），按已存顺序原地替换，Cursor 与 Devin 轮流到也不抖。
+  const agents = [
+    ...(previous?.agents ?? []).flatMap((agent) => {
+      const replaced = fresh.get(agent.id);
+      if (replaced) return [replaced];
+      return reporting.has(agent.id) || (agent.collectedAt ?? 0) > receivedAt - CODING_BUCKET_KEEP_MS ? [{ ...agent }] : [];
+    }),
+    ...[...fresh.values()].filter((agent) => !known.has(agent.id)),
+  ];
   return {
     ...kept,
-    agents: [...others.map((agent) => ({ ...agent })), ...report.agents.map((agent) => ({ ...agent, collectedAt: report.collectedAt }))],
+    agents,
     collectedAt: Math.max(report.collectedAt, previous?.collectedAt ?? 0),
     receivedAt,
   };

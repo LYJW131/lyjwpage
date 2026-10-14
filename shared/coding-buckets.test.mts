@@ -98,3 +98,14 @@ test("没有行的 agent 也留着它的采集时刻，它的旧报告照样不�
   assert.deepEqual(merged.agents.map((agent) => agent.id), ["cursor", "devin"]);
   assert.equal(mergeBucketReport(merged, { ...idle, collectedAt: T0 + 9 * M }, T0 + 13 * M), null);
 });
+
+test("agent 顺序按已存的原地替换，轮流到也不变；不声明 agent 的旧报告按来源比", () => {
+  const cursor = (at: number) => ({ ...report(T0, at, [[T0, [row("cursor", "c", 3)]]]), collectedAt: at, agents: [{ id: "cursor", state: "ok" as const }] });
+  const devin = (at: number) => ({ ...report(T0, at, [[T0, [row("devin", "swe", 5)]]]), collectedAt: at, agents: [{ id: "devin", state: "ok" as const }] });
+  let stored = mergeBucketReport(mergeBucketReport(null, cursor(T0 + 10 * M), T0 + 10 * M), devin(T0 + 11 * M), T0 + 11 * M)!;
+  stored = mergeBucketReport(stored, cursor(T0 + 12 * M), T0 + 12 * M)!;
+  assert.deepEqual(stored.agents.map((agent) => agent.id), ["cursor", "devin"]);
+  stored = mergeBucketReport(stored, devin(T0 + 13 * M), T0 + 13 * M)!;
+  assert.deepEqual(stored.agents.map((agent) => agent.id), ["cursor", "devin"]);
+  assert.equal(mergeBucketReport(stored, { ...report(T0, T0 + 5 * M, []), collectedAt: T0 + 5 * M, agents: [] }, T0 + 14 * M), null);
+});
