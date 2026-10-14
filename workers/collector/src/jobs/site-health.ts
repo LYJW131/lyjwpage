@@ -44,7 +44,8 @@ export const siteHealthJob: Job = {
       }))),
       settle("heartbeat", readBuckets(db, HEARTBEAT_SERIES, now).then((buckets) => summarizeBuckets(HEARTBEAT_SERIES, buckets, now))),
       cloudflare && settle("errors", fetchErrorSeries(cloudflare.api, cloudflare.account, now)),
-      cloudflare && settle("vitals", fetchFieldVitals(cloudflare.api, cloudflare.account, parseSiteAnalyticsSources(cloudflare.sitesJson).map((site) => site.siteTag), now)),
+      // 站点配置在 then 里解析：格式不对只算 Web Vitals 这一块失败，不连累在线条。
+      cloudflare && settle("vitals", Promise.resolve().then(() => fetchFieldVitals(cloudflare.api, cloudflare.account, parseSiteAnalyticsSources(cloudflare.sitesJson).map((site) => site.siteTag), now))),
     ]);
     if (failed.length === (cloudflare ? 4 : 2)) throw new Error("健康检查全部查询失败");
     const next: HealthPayload = { fetchedAt: now, uptime, heartbeat, errors, vitals };

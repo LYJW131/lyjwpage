@@ -46,29 +46,31 @@ export type HealthBucket = {
   hourStart: number;
   success: number;
   failure: number;
+  firstAt: number;
   lastAt: number;
   lastOk: boolean;
 };
 
-const RECORD_CHECK = `INSERT INTO health_buckets(series, hour_start, success, failure, last_at, last_ok)
-  VALUES (?, ?, ?, ?, ?, ?)
+const RECORD_CHECK = `INSERT INTO health_buckets(series, hour_start, success, failure, first_at, last_at, last_ok)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(series, hour_start) DO UPDATE SET
     success = health_buckets.success + excluded.success,
     failure = health_buckets.failure + excluded.failure,
+    first_at = MIN(health_buckets.first_at, excluded.first_at),
     last_at = MAX(health_buckets.last_at, excluded.last_at),
     last_ok = CASE WHEN excluded.last_at >= health_buckets.last_at THEN excluded.last_ok ELSE health_buckets.last_ok END`;
 
 // at 取排定时刻而不是记录时刻，跑得慢的一轮也落进它该在的那一格。
 export async function recordCheck(db: HistoryDb, series: HealthSeriesSpec, at: number, ok: boolean): Promise<void> {
   const hourStart = Math.floor(at / HEALTH_BUCKET_MS) * HEALTH_BUCKET_MS;
-  await db.batch([db.prepare(RECORD_CHECK).bind(series.name, hourStart, ok ? 1 : 0, ok ? 0 : 1, at, ok ? 1 : 0)]);
+  await db.batch([db.prepare(RECORD_CHECK).bind(series.name, hourStart, ok ? 1 : 0, ok ? 0 : 1, at, at, ok ? 1 : 0)]);
 }
 
 export async function pruneChecks(db: HistoryDb, now: number): Promise<void> {
   await db.batch([db.prepare("DELETE FROM health_buckets WHERE hour_start < ?").bind(now - HEALTH_RETENTION_MS)]);
 }
 
-type BucketRow = { hour_start: number; success: number; failure: number; last_at: number; last_ok: number };
+type BucketRow = { hour_start: number; success: number; failure: number; first_at: number; last_at: number; last_ok: number };
 
 export interface HealthReadDb {
   prepare(sql: string): { bind(...values: unknown[]): { all<T>(): Promise<{ results: T[] }> } };
@@ -77,22 +79,25 @@ export interface HealthReadDb {
 export async function readBuckets(db: HealthReadDb, series: HealthSeriesSpec, now: number): Promise<HealthBucket[]> {
   const today = Math.floor(now / DAY_MS) * DAY_MS;
   const { results } = await db.prepare(
-    "SELECT hour_start, success, failure, last_at, last_ok FROM health_buckets WHERE series = ? AND hour_start >= ? ORDER BY hour_start",
+    "SELECT hour_start, success, failure, first_at, last_at, last_ok FROM health_buckets WHERE series = ? AND hour_start >= ? ORDER BY hour_start",
   ).bind(series.name, today - (HEALTH_DAYS - 1) * DAY_MS).all<BucketRow>();
   return results.map((row) => ({
     hourStart: row.hour_start,
     success: row.success,
     failure: row.failure,
+    firstAt: row.first_at,
     lastAt: row.last_at,
     lastOk: row.last_ok === 1,
   }));
 }
 
-export function expectedRuns(series: HealthSeriesSpec, hourStart: number, now: number): number {
+export function expectedRuns(series: HealthSeriesSpec, hourStart: number, now: number, from = hourStart): number {
+  const since = Math.floor(from / 60_000) * 60_000;
   let count = 0;
   for (let minute = 0; minute < 60; minute++) {
     if ((minute - series.offsetMinutes) % series.everyMinutes !== 0) continue;
-    if (hourStart + minute * 60_000 + series.graceMs <= now) count++;
+    const at = hourStart + minute * 60_000;
+    if (at >= since && at + series.graceMs <= now) count++;
   }
   return count;
 }
@@ -105,10 +110,10 @@ export function availability(days: Pick<UptimeDay, "success" | "failure">[]): nu
 
 type Tally = { success: number; failure: number; missed: number };
 
-function tally(series: HealthSeriesSpec, bucket: HealthBucket | undefined, hourStart: number, now: number): Tally {
+function tally(series: HealthSeriesSpec, bucket: HealthBucket | undefined, hourStart: number, now: number, from: number): Tally {
   const success = bucket?.success ?? 0;
   const failure = bucket?.failure ?? 0;
-  const missed = Math.max(0, expectedRuns(series, hourStart, now) - success - failure);
+  const missed = Math.max(0, expectedRuns(series, hourStart, now, from) - success - failure);
   return series.missedIsFailure ? { success, failure: failure + missed, missed: 0 } : { success, failure, missed };
 }
 
@@ -119,12 +124,13 @@ function status(series: HealthSeriesSpec, latest: HealthBucket | undefined, now:
   return latest.lastOk ? "up" : "down";
 }
 
-// 第一格数据之前没有检查可数，那些天按 No data 显示，不把上线前算成漏跑。
+// 第一格数据之前没有检查可数，那些天按 No data 显示；第一格也从它的第一次检查算起，不把上线前那几分钟算成漏跑。
 export function summarizeBuckets(series: HealthSeriesSpec, buckets: readonly HealthBucket[], now: number): HealthSeries {
   const today = Math.floor(now / DAY_MS) * DAY_MS;
   const firstDay = today - (HEALTH_DAYS - 1) * DAY_MS;
   const byHour = new Map(buckets.map((bucket) => [bucket.hourStart, bucket]));
-  const first = buckets.length ? Math.min(...buckets.map((bucket) => bucket.hourStart)) : Infinity;
+  const firstBucket = buckets.reduce<HealthBucket | undefined>((best, bucket) => (!best || bucket.hourStart < best.hourStart ? bucket : best), undefined);
+  const first = firstBucket?.hourStart ?? Infinity;
   const currentHour = Math.floor(now / HEALTH_BUCKET_MS) * HEALTH_BUCKET_MS;
   const days: UptimeDay[] = [];
   const recent: Tally[] = [];
@@ -132,7 +138,7 @@ export function summarizeBuckets(series: HealthSeriesSpec, buckets: readonly Hea
     const day: UptimeDay = { dayStart, success: 0, failure: 0, missed: 0 };
     for (let hourStart = dayStart; hourStart < dayStart + DAY_MS && hourStart <= currentHour; hourStart += HEALTH_BUCKET_MS) {
       if (hourStart < first) continue;
-      const counts = tally(series, byHour.get(hourStart), hourStart, now);
+      const counts = tally(series, byHour.get(hourStart), hourStart, now, hourStart === first ? firstBucket!.firstAt : hourStart);
       day.success += counts.success;
       day.failure += counts.failure;
       day.missed += counts.missed;
