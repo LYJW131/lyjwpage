@@ -29,7 +29,7 @@ Agent(
   description: "Haiku verifies <对象>",
   subagent_type: "general-purpose",
   model: "haiku",          // 当前一代 Haiku（Haiku 5.5）
-  effort: "high",          // 站主指定的档位
+  effort: "high",          // lyjw 指定的档位
   run_in_background: true, // 主线程可以继续干别的；下一步依赖结果时才用 false
   prompt: <下面的简报>
 )
@@ -78,23 +78,23 @@ node scripts/site-verify.mjs shot --url http://localhost:3211 --card pulse --the
 - 首屏（SSR）要渲染指定数据：本机起一个 node 代理转发 `https://lyjw.me`、只改被测端点，`PUBLIC_BACKEND_URL=http://localhost:<端口> pnpm dev`，node 用 `NODE_USE_ENV_PROXY=1` 走代理。只改浏览器请求用 Playwright `context.route`；只看 SSR 长什么样用 `shot --ssr`，看文字用 `curl -sS <url>`。
 - 宽度：至少 1280 桌面与 375 手机；改到布局行数或网格时加 iPad（`--widths 1280,820,1024,375`）；有深色样式的改动加 `--theme dark`（或 `both`）。
 - 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的环境噪声，脚本单列为 `envNoise`，不算站点错误。页面常开 WebSocket、在轮询，没有 networkidle：脚本按 `--settle` 毫秒等待（默认 4000），别自己写 networkidle。
-- 脚本量不到的量化预期才自己补 `page.evaluate`：改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；站主一眼就能看出差几像素。量间距、字号、点击区还有 `node .claude/skills/lyjwpage-ui-design/ui-audit.mjs`。
-- 首屏跳动用 `reload`：先加载一次暖缓存再刷新，报三样东西——首帧时还没加载完的字体（`fontsAfterPaint`）、首帧后只变了一两次的文字（`textJumps`，带 before → after）、录屏里只变了一两次的画面（`frameJumps`，带前后帧文件）。浏览器时钟默认拨快 2 分钟（`--skew`），模拟站主刷到的是缓存过几分钟的首屏 HTML；只开一次页面、不刷新、时钟和服务端一致时，这类跳动根本不出现。
+- 脚本量不到的量化预期才自己补 `page.evaluate`：改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；lyjw 一眼就能看出差几像素。量间距、字号、点击区还有 `node .claude/skills/lyjwpage-ui-design/ui-audit.mjs`。
+- 首屏跳动用 `reload`：先加载一次暖缓存再刷新，报三样东西——首帧时还没加载完的字体（`fontsAfterPaint`）、首帧后只变了一两次的文字（`textJumps`，带 before → after）、录屏里只变了一两次的画面（`frameJumps`，带前后帧文件）。浏览器时钟默认拨快 2 分钟（`--skew`），模拟 lyjw 刷到的是缓存过几分钟的首屏 HTML；只开一次页面、不刷新、时钟和服务端一致时，这类跳动根本不出现。
   ```bash
   node scripts/site-verify.mjs reload --url http://localhost:3300 --out /tmp/reload                  # Chromium：录屏 + 文字 + 字体
   PLAYWRIGHT_BROWSERS_PATH=<装了 WebKit 的目录> node scripts/site-verify.mjs reload --engine webkit --url http://localhost:3300 --out /tmp/reload-wk
   ```
 - 什么时候必须跑 `reload`：改到首页首屏、字体或 `@font-face`、缓存头、SSR 或水合、任何按时间算出来的文字（时钟、相对时间、进度）。跑在**生产构建**上（`pnpm build` 后 `DEV_SITE_PORT=<端口> pnpm start`）或 Workers 预览 / 生产地址；`pnpm dev` 的字体、模块加载和缓存头都和线上不同，开发服务器上没跳不算数。要比修复前后，就把修复前的构建也起在另一个端口一起跑。
-- `reload` 的每一条 `textJumps` / `frameJumps` 都要在报告里归类，不能只报 ok 与否：时间类文字（时钟、几分钟前、进度）在水合时跳到此刻是缺陷；轮询或推送带来的新数值（计数、费用）是数据刷新；正在播放卡的进度和歌词在水合时从快照跳到此刻是站主接受过的行为（项目记忆 now-playing-first-screen-decisions）。`liveText` / `liveRegions` 是反复变化的地方，只列不判。`fontsAfterPaint` 只在 Chromium 上可靠：它按 `--latency` 给走网络的请求加往返延迟，每次都要重新验证的字体会晚到，WebKit 没有这个开关。
-- 云端没有真 Safari：Playwright 的 WebKit 能装在 scratchpad 里（`PLAYWRIGHT_BROWSERS_PATH=<目录> npx playwright install webkit`，版本跟 `doctor` 报的 playwright 一致），`reload --engine webkit` 查文字与字体、不录屏。只有真机才有的行为（地址栏、触控、系统字体），写进「没验到」，请站主实机看。
+- `reload` 的每一条 `textJumps` / `frameJumps` 都要在报告里归类，不能只报 ok 与否：时间类文字（时钟、几分钟前、进度）在水合时跳到此刻是缺陷；轮询或推送带来的新数值（计数、费用）是数据刷新；正在播放卡的进度和歌词在水合时从快照跳到此刻是 lyjw 接受过的行为（项目记忆 now-playing-first-screen-decisions）。`liveText` / `liveRegions` 是反复变化的地方，只列不判。`fontsAfterPaint` 只在 Chromium 上可靠：它按 `--latency` 给走网络的请求加往返延迟，每次都要重新验证的字体会晚到，WebKit 没有这个开关。
+- 云端没有真 Safari：Playwright 的 WebKit 能装在 scratchpad 里（`PLAYWRIGHT_BROWSERS_PATH=<目录> npx playwright install webkit`，版本跟 `doctor` 报的 playwright 一致），`reload --engine webkit` 查文字与字体、不录屏。只有真机才有的行为（地址栏、触控、系统字体），写进「没验到」，请 lyjw 实机看。
 - 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` 注入由主线程起、主线程管，保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
 
 ### 3. PR 合并门槛（验证员汇总，主线程判断）
 
-- 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（站主定的规矩）。有 UI / UX 变化的 PR 另要站主看过效果、点头才合（站主明确要求的小改动除外，见根 `DESIGN.md`「交付与合并」）。下面的汇总只用于要等评审的 PR。
+- 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（lyjw 定的规矩）。有 UI / UX 变化的 PR 另要 lyjw 看过效果、点头才合（lyjw 明确要求的小改动除外，见根 `DESIGN.md`「交付与合并」）。下面的汇总只用于要等评审的 PR。
 - 当前 head 提交上的所有 check run 结论（含 `Workers Builds: site` 等），以及哪些还在跑。
 - 读全 `get_reviews`、`get_review_comments`、`get_comments`（GitHub MCP 工具，没加载就用 ToolSearch 加载；仓库 `LYJW131/lyjwpage`）。逐条列出每个机器评审（Claude review、Devin、Codex、Cursor Bugbot、CodeQL）的意见：所在文件行、严重度标记、讨论是否已解决、最后一条是不是我们的回复、它评审的是哪个提交。
-- Codex 已跑了几轮（每次推送自动算一轮，上限 3 轮）。Cursor Bugbot 额度用完时当它不存在，不等它也不提（站主定的规矩）；它真跑出来的意见照常列。
+- Codex 已跑了几轮（每次推送自动算一轮，上限 3 轮）。Cursor Bugbot 额度用完时当它不存在，不等它也不提（lyjw 定的规矩）；它真跑出来的意见照常列。
 - 验证员只列清单；哪条要修、哪条回复说明不修，由主线程决定。
 
 ### 3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有
@@ -112,17 +112,17 @@ Agent(
 )
 ```
 
-- 简报只给：站主的原话（线程根消息和后来补的要求，原文照贴）、PR 号与当前 head 的完整 SHA、这轮验证员的证据表。不给 PR 描述和线程里的推理，让它自己读 `git diff origin/main...<sha>` 和调用方。
-- 它回答三件事：diff 是否做到了站主要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）；证据表里有没有没验到却算通过的项。结论写 `PASS` 或 `FAIL`，FAIL 列出要修的项。
+- 简报只给：lyjw 的原话（线程根消息和后来补的要求，原文照贴）、PR 号与当前 head 的完整 SHA、这轮验证员的证据表。不给 PR 描述和线程里的推理，让它自己读 `git diff origin/main...<sha>` 和调用方。
+- 它回答三件事：diff 是否做到了 lyjw 要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）；证据表里有没有没验到却算通过的项。结论写 `PASS` 或 `FAIL`，FAIL 列出要修的项。
 - 判定员只读：不改文件、不提交、不在 GitHub 上评论。主线程把结论原样发成一条 PR 评论，第一行写 `判定 <head 完整 SHA>：PASS` 或 `FAIL`。
-- 结论只对那个 SHA 的补丁有效：之后再推提交，合并前跑 `scripts/verify-receipt.mjs check --pr <号> --judge`；只把 main 合进了分支、补丁没变的照旧算数，补丁变了就按新 head 重派一次。FAIL 的项修完再判，不和判定员争；确实判错了（比如误读了站主原话），在 PR 评论里写明依据，交站主定。
+- 结论只对那个 SHA 的补丁有效：之后再推提交，合并前跑 `scripts/verify-receipt.mjs check --pr <号> --judge`；只把 main 合进了分支、补丁没变的照旧算数，补丁变了就按新 head 重派一次。FAIL 的项修完再判，不和判定员争；确实判错了（比如误读了 lyjw 原话），在 PR 评论里写明依据，交 lyjw 定。
 
 ### 4. 合并后部署与生产核对
 
 - 合并没碰到 site 的监视路径时（`docs/workers-builds.md`「构建监视路径」），`/api/version` 本来就不会变；下面的脚本没看到 site 的构建检查就不等版本，只核对碰到的那几个 Worker 的构建，受影响的生产行为照样要复测。
 - 构建与版本等待交给共用脚本，不手写轮询：跑 `NODE_USE_ENV_PROXY=1 node scripts/deploy-check.mjs --sha <合并提交完整 sha> --expect <这次碰到监视路径的 Worker，如 site,core>`（`--help` 看选项）。`--expect` 由主线程按生产的监视路径表定好写进简报（不照 PR 上出现过的构建检查：core 的分支预览路径更宽，PR 上有 core 构建不代表合进 main 会重建 core），列出的 Worker 没有成功构建就不通过。它等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 重跑过只认最新那条）；有 site 的构建就再等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 跟上这个提交，被之后的提交覆盖也算通过（`superseded`）。输出 JSON，`pass` 为假时 `next` 写下一步。
   - 构建失败或超时、版本停在更旧的提交：FAIL，原样报告 `next`。是否重跑 main 的构建由主线程按下一条决定（从不手跑 `wrangler deploy`）。
-- main 上的构建失败时，主线程先读构建日志（Cloudflare Builds API 的 `/builds/builds/<build_uuid>/logs`）。是平台临时错误（部署步 Cloudflare 内部错误、代码与 typecheck 都过了）就直接用 Builds API 对同一 trigger 带 `commit_hash` 重跑，不用问站主，跑完核对结论并在汇报里提一句；main 头已有更新的同 Worker 提交时重跑 main 头，免得回滚。代码或配置导致的失败照常先修。
+- main 上的构建失败时，主线程先读构建日志（Cloudflare Builds API 的 `/builds/builds/<build_uuid>/logs`）。是平台临时错误（部署步 Cloudflare 内部错误、代码与 typecheck 都过了）就直接用 Builds API 对同一 trigger 带 `commit_hash` 重跑，不用问 lyjw，跑完核对结论并在汇报里提一句；main 头已有更新的同 Worker 提交时重跑 main 头，免得回滚。代码或配置导致的失败照常先修。
 - 碰到 site 的合并，合并前先存一份生产首页：`curl -s https://lyjw.me/ > <scratchpad>/old-home.html`；部署核对通过后跑 `node scripts/site-verify.mjs skew --url https://lyjw.me --old-html <scratchpad>/old-home.html`，WebKit 再加 `--engine webkit` 跑一遍。它模拟 Safari 恢复后台标签时按缓存取回的旧 HTML：旧 HTML 引用的 `/assets/*` 要全部从 R2 存档取到、只加载 1 次、有样式、已水合。`ok` 为假时照 `next` 报 FAIL；文件取不到先看这次 site 构建日志里的 `[asset-archive]` 行。
 - 在生产域名上复测这次受影响的行为（同第 2 节的方法，URL 换成 `https://lyjw.me/`；涉及 ESA 缓存的也看 `https://lyjw131.com/`）。看完立刻关浏览器：开着的页面会按轮询节奏一直请求 API。
 - 定时任务产出的东西（摘要、采集）要等到下一个整点任务跑过再核对，不要在任务跑之前判失败。
@@ -140,9 +140,9 @@ Agent(
 
 - SHA 不手抄：用 `git rev-parse <简报给的 SHA>` 的输出原样粘贴，并核对它与简报里的一致。手抄过 40 位 SHA 会错字，脚本按 SHA 认回执，错一位整张作废。
 - 等级只能写下面五档之一，原样照抄，不自拟新名字（如 `local-ui-verified`）：本地开发服务器或本地生产构建上的真页面检查属于 `live-ui-verified`，没上生产写进「没验到」。
-- 等级从高到低：`live-ui-verified`（在真页面上按站主会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，改动涉及的单测与门禁也要跑过并列进证据，同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
+- 等级从高到低：`live-ui-verified`（在真页面上按 lyjw 会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，改动涉及的单测与门禁也要跑过并列进证据，同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
 - 改了行为的不收 `type-check-only`。UI 改动要 `live-ui-verified`；后端与脚本至少 `unit-test-verified`。
-- 有 PR 时，主线程把回执原样发成一条 PR 评论，第一行不动（脚本只认站主账号 `LYJW131` 发的回执与判定，别人发的同格式评论不算）；还没开 PR 的，随汇报交给站主，开 PR 时再发。一行命令就能验完、主线程自己跑的，主线程照同样格式自签，验证员那一行写主线程的模型 ID 和「自验」。
+- 有 PR 时，主线程把回执原样发成一条 PR 评论，第一行不动（脚本只认 lyjw 账号 `LYJW131` 发的回执与判定，别人发的同格式评论不算）；还没开 PR 的，随汇报交给 lyjw，开 PR 时再发。一行命令就能验完、主线程自己跑的，主线程照同样格式自签，验证员那一行写主线程的模型 ID 和「自验」。
 - 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.mjs check --pr <号> --need <等级>`（要等机器评审的 PR 加 `--judge`）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（逐字节相同，含空白与二进制，只忽略行号；`carried`），就照旧算数；补丁变了（`stale`）就按新 head 重派验证员。
 - 回执只说「验过什么、到什么程度」，不替主线程判断合不合；合并门槛照第 3 节与「3b」。
 
@@ -150,5 +150,5 @@ Agent(
 
 - 先看回执：等级够、盖住要验的提交才往下走。不重跑回执里的检查，只抽查一条证据：至少打开一张截图看一眼（验证员对视觉判断可能出错），核对一个 sha 或数值；抽查对不上，回执作废、重派验证员，并改本文件把漏洞补上。
 - 有 FAIL：自己分析根因、修，再派一次验证员复测。
-- 全 PASS：按项目规矩汇报。UI 截图：云端会话里站主看不到开发服务器，每一轮都把截图发到讨论串（`attached_outputs` 附 `/mnt/project-files/...`，站主定的规矩）；站主在看开发服务器时按 AGENTS.md，只在首次交付附图。合并后汇报写明线上 `/api/version` 的 sha 和生产实测结果。
-- 汇报只写实际验到的，「没验到」那一栏原样告诉站主。
+- 全 PASS：按项目规矩汇报。UI 截图：云端会话里 lyjw 看不到开发服务器，每一轮都把截图发到讨论串（`attached_outputs` 附 `/mnt/project-files/...`，lyjw 定的规矩）；lyjw 在看开发服务器时按 AGENTS.md，只在首次交付附图。合并后汇报写明线上 `/api/version` 的 sha 和生产实测结果。
+- 汇报只写实际验到的，「没验到」那一栏原样告诉 lyjw。

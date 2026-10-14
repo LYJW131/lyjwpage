@@ -128,7 +128,7 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
-// 站主要求示例用中文，是「界面文案英文」的例外。首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
+// lyjw 要求示例用中文，是「界面文案英文」的例外。首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
 // 每条须在 14 个汉字宽以内：桌面两列等宽格放得下，换题时按钮尺寸不变。
 const SUGGESTIONS = [
   "LYJW 现在在忙什么？",
@@ -536,7 +536,7 @@ function Conversation({ className, archive, session: conversation }: { className
   function ask(text: string) {
     if (!text.trim() || streaming) return;
     setUsage(null);
-    // 同意前消息只留在本地、不发给 Worker；站主要求说明一出现就在后台跑 Turnstile，访客读完点接受时多半已验完，可以直接发。
+    // 同意前消息只留在本地、不发给 Worker；lyjw 要求说明一出现就在后台跑 Turnstile，访客读完点接受时多半已验完，可以直接发。
     if (!chatConsent.getSnapshot()) {
       if (!messages.length && consentPending === null) reveal();
       setConsentPending(text.trim());
@@ -954,8 +954,8 @@ function SessionList({ archive }: { archive: ChatArchive }) {
   );
 }
 
-// 站主要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
-// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，站主定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步。
+// lyjw 要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
+// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，lyjw 定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步。
 type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
 const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   en: {

@@ -1,11 +1,11 @@
 ---
 name: agent-automation-practices
-description: Reusable rules for scheduled/recurring agent automations (from claude.dev "Building effective agent automations", 2026-10-08); user wants these applied in all future projects
+description: Reusable rules for scheduled/recurring agent automations (from claude.dev "Building effective agent automations", 2026-10-08); lyjw wants these applied in all future projects
 metadata:
   type: reference
 ---
 
-Source: https://claude.dev/blog/building-effective-agent-automations/ (Lance Martin, CJ Avilla). Owner lyjw asked (2026-10-12) to reuse these for every future automation, not just lyjwpage.
+Source: https://claude.dev/blog/building-effective-agent-automations/ (Lance Martin, CJ Avilla). lyjw asked (2026-10-12) to reuse these for every future automation, not just lyjwpage.
 
 Six rules:
 1. **Bookmark, not time window.** Keep a cursor per source (last item / commit read). "Last 24h" leaves gaps on late runs and repeats on early ones.

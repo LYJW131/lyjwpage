@@ -104,7 +104,7 @@
 - **未公开接口**：歌词与动态封面通过 Apple Web 播放器使用的内部端点 `amp-api.music.apple.com` 获取。
 - **鉴权要求**：
   - `Authorization`：从 `music.apple.com` 网页 bundle 动态提取的 Web Token（用到时才抓，缓存在 `APPLE_CACHE` KV 和 isolate 内存里，见 `shared/apple-web-token.ts#getWebToken`）。
-  - `Media-User-Token`：Mac Telemetry Hub 上报的主人个人 Music-User-Token。若缺少此 Token，amp-api 返回 404（表现与无歌词相同）。
+  - `Media-User-Token`：Mac Telemetry Hub 上报的 lyjw 个人 Music-User-Token。若缺少此 Token，amp-api 返回 404（表现与无歌词相同）。
 
 ### 歌词解析与逐字点亮
 - **优先级降级**：优先请求字级歌词（`/syllable-lyrics`，带每个字词的时间戳），404 时降级为行级歌词（`/lyrics`）。
