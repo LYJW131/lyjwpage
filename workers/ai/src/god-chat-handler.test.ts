@@ -662,15 +662,15 @@ test("先写完答案再调 show_card、下一轮空收尾时不提示步数用�
   }
 });
 
-test("中文与日文提问时点名回复语言，英文不加", async (t) => {
+test("汉字假名提问时点名不许改英文，有假名才说日文，英文不加", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  for (const [content, expected] of [["LYJW 现在在忙什么？", "Chinese"], ["LYJWは今なにをしていますか？", "Japanese"], ["What is LYJW up to?", undefined]] as const) {
+  for (const [content, expected] of [["LYJW 现在在忙什么？", "Chinese or Japanese"], ["今何時", "Chinese or Japanese"], ["今日の天気", "Japanese"], ["LYJWは今なにをしていますか？", "Japanese"], ["What is LYJW up to?", undefined]] as const) {
     const { env, requests } = designEnv();
     await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content }]), env, toolIO));
     const notes = requests[0].messages.filter((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("The visitor's latest message is in"));
-    assert.deepEqual(notes.map((m) => (m.content as string).split(" ")[6]), expected ? [`${expected}.`] : []);
+    assert.deepEqual(notes.map((m) => (m.content as string).match(/is in (.+?)\. /)?.[1]), expected ? [expected] : [], content);
   }
 });
 
