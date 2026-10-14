@@ -30,6 +30,26 @@ import { cn } from "@/lib/utils";
 
 const ROWS_PER_COLUMN = 3;
 
+const TROUBLE_RANK: Partial<Record<AgentIndicator, number>> = {
+  major_outage: 0,
+  partial_outage: 1,
+  degraded: 2,
+  maintenance: 3,
+};
+
+function troubleFirst(agents: AgentStatusRow[]): AgentStatusRow[] {
+  const rank = (agent: AgentStatusRow) => TROUBLE_RANK[agent.indicator] ?? Infinity;
+  return agents.toSorted((a, b) => rank(a) - rank(b));
+}
+
+function toColumns(agents: AgentStatusRow[]): AgentStatusRow[][] {
+  const columns: AgentStatusRow[][] = [];
+  for (let start = 0; start < agents.length; start += ROWS_PER_COLUMN) {
+    columns.push(agents.slice(start, start + ROWS_PER_COLUMN));
+  }
+  return columns;
+}
+
 const checkedAt = new Intl.DateTimeFormat("en-US", {
   timeZone: "Asia/Shanghai",
   hour: "numeric",
@@ -263,10 +283,16 @@ export function AgentStatusCard({
       scroller.removeEventListener("scroll", home);
     };
   }, [hasColumns]);
-  const columns: AgentStatusRow[][] = [];
-  for (let start = 0; data && start < data.agents.length; start += ROWS_PER_COLUMN) {
-    columns.push(data.agents.slice(start, start + ROWS_PER_COLUMN));
-  }
+  const agents = data?.agents ?? [];
+  const narrowAgents = troubleFirst(agents);
+  const reordered = narrowAgents.some((agent, index) => agent !== agents[index]);
+  // 只有三列都在视口内（@[54rem] 起）时保持原顺序；放不下时异常服务排前。两套都渲染、按容器宽度切换，首屏不随测宽跳动。
+  const columnSets = reordered
+    ? [
+        { key: "narrow", columns: toColumns(narrowAgents), className: "@[54rem]:hidden" },
+        { key: "wide", columns: toColumns(agents), className: "hidden @[54rem]:block" },
+      ]
+    : [{ key: "all", columns: toColumns(agents), className: "" }];
 
   return (
     <Card
@@ -280,10 +306,14 @@ export function AgentStatusCard({
           ref={scrollerRef}
           className="@container flex snap-x snap-mandatory gap-px overflow-x-auto overscroll-x-contain scrollbar-none [&::-webkit-scrollbar]:hidden"
         >
-          {columns.map((column) => (
+          {columnSets.flatMap((set) => set.columns.map((column, index) => (
             <ul
-              key={column[0]?.id ?? "column"}
-              className="relative w-full shrink-0 snap-start divide-y divide-line not-first:before:absolute not-first:before:inset-y-0 not-first:before:-left-px not-first:before:w-px not-first:before:bg-line @[36rem]:w-[calc((100%-1px)/2)] @[54rem]:w-[calc((100%-2px)/3)]"
+              key={`${set.key}-${column[0]?.id ?? index}`}
+              className={cn(
+                "relative w-full shrink-0 snap-start divide-y divide-line @[36rem]:w-[calc((100%-1px)/2)] @[54rem]:w-[calc((100%-2px)/3)]",
+                index > 0 && "before:absolute before:inset-y-0 before:-left-px before:w-px before:bg-line",
+                set.className,
+              )}
             >
               {column.map((agent) => {
                 const label = indicatorLabel(agent.indicator);
@@ -316,7 +346,7 @@ export function AgentStatusCard({
                 );
               })}
             </ul>
-          ))}
+          )))}
         </div>
       ) : (
         <p className="px-4 py-5 text-sm text-muted-foreground lg:px-5">

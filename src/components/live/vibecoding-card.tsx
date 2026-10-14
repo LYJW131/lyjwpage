@@ -3,11 +3,13 @@
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
 import AntigravityColor from "@lobehub/icons/es/Antigravity/components/Color";
 import CursorIcon from "@lobehub/icons/es/Cursor/components/Mono";
+import DevinIcon from "@lobehub/icons/es/Devin/components/Mono";
 import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Cloud } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { MODEL_ICON_MAPPINGS, MODEL_ICONS_VERSION } from "virtual:model-icons";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
@@ -32,6 +34,7 @@ import {
   type CodingAgentRow,
   type CodingSourceNote,
 } from "@/lib/coding-agents";
+import { modelIconResolver, modelIconUrl, type BundledModelIcon } from "@/lib/model-icon";
 import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
 import { zonedDay } from "@shared/heatmap-window";
 import { CODING_NOW_PATH, CODING_PATH, LIMITS_PATH } from "@/lib/paths";
@@ -176,19 +179,38 @@ function BrandMark({
   }
 }
 
-function ModelProviderIcon({ model }: { model: string }) {
-  const name = model.toLowerCase();
-  const mark = name.startsWith("claude") ? (
-    <AnthropicIcon size={16} />
-  ) : name.startsWith("grok") ? (
-    <GrokIcon size={16} />
-  ) : /^(gpt|codex|chatgpt|o\d)/.test(name) ? (
-    <OpenAIIcon size={16} />
-  ) : null;
-  if (!mark) return null;
+type ModelIconComponent = ComponentType<{ size?: number | string; className?: string }>;
+
+const modelIconOf = modelIconResolver(MODEL_ICON_MAPPINGS);
+
+const BUNDLED_MODEL_ICONS: Record<BundledModelIcon, ModelIconComponent> = {
+  Anthropic: AnthropicIcon,
+  Cursor: CursorIcon,
+  Devin: DevinIcon,
+  Grok: GrokIcon,
+  OpenAI: OpenAIIcon,
+};
+
+function ModelIconMark({ icon, label }: { icon: string | null; label: string }) {
+  if (icon && Object.hasOwn(BUNDLED_MODEL_ICONS, icon)) {
+    const Icon = BUNDLED_MODEL_ICONS[icon as BundledModelIcon];
+    return <Icon size={16} />;
+  }
+  if (icon) {
+    const mask = `url(${modelIconUrl(icon, MODEL_ICONS_VERSION)}) center / contain no-repeat`;
+    return <span className="size-4 bg-current" style={{ mask, WebkitMask: mask }} />;
+  }
+  return (
+    <span className="flex size-4 items-center justify-center border border-line text-2xs font-medium leading-none text-muted-foreground">
+      {label.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+function ModelProviderIcon({ model, label }: { model: string; label: string }) {
   return (
     <span className="flex size-6 shrink-0 items-center justify-center text-foreground" aria-hidden>
-      {mark}
+      <ModelIconMark icon={modelIconOf(model)} label={label} />
     </span>
   );
 }
@@ -218,6 +240,8 @@ function capitalize(part: string) {
   return part ? `${part[0].toUpperCase()}${part.slice(1)}` : part;
 }
 
+const MODEL_NAME_ACRONYMS = new Set(["swe", "glm", "oss"]);
+
 function formatModelName(model: string) {
   if (!model) return model;
   const claude = /^claude-([a-z]+)-(\d+)(?:-(\d+))?$/i.exec(model);
@@ -231,7 +255,11 @@ function formatModelName(model: string) {
     const suffix = variant ? ` ${variant.split("-").map(capitalize).join(" ")}` : "";
     return `GPT ${version}${suffix}`;
   }
-  return model.split("-").map(capitalize).join(" ");
+  return model
+    .split("-")
+    .map((part) => (MODEL_NAME_ACRONYMS.has(part.toLowerCase()) ? part.toUpperCase() : capitalize(part)))
+    .join(" ")
+    .replace(/\b([A-Z]{2,}) (\d)/, "$1-$2");
 }
 
 function SourceIssue({ failing, hasValue }: { failing: CodingSourceNote[]; hasValue: boolean }) {
@@ -362,7 +390,7 @@ function TotalUsage({
                 <RankMark rank={index} />
                 <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
-                    <ModelProviderIcon model={item.model} />
+                    <ModelProviderIcon model={item.model} label={formatModelName(item.model)} />
                     <div className="truncate text-sm font-medium" title={item.model}>
                       {formatModelName(item.model)}
                     </div>
