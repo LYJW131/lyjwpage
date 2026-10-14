@@ -22,6 +22,7 @@ import {
   type AgentStatusPayload,
   type AgentStatusRow,
 } from "@shared/agent-status-types";
+import { dateTimeText } from "@/lib/date-time-text";
 import { AGENT_STATUS_STALE_MS } from "@shared/freshness";
 import { AGENT_STATUS_PATH } from "@/lib/paths";
 import type { StatusResponse } from "@shared/types";
@@ -35,12 +36,10 @@ const checkedAt = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
-const incidentAt = new Intl.DateTimeFormat("en-US", {
+const incidentDate = new Intl.DateTimeFormat("en-US", {
   timeZone: "Asia/Shanghai",
   month: "short",
   day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
 });
 
 function indicatorDot(indicator: AgentIndicator): string {
@@ -117,7 +116,7 @@ function formatWhen(value: string | null): string | null {
   if (!value) return null;
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return null;
-  return incidentAt.format(parsed);
+  return dateTimeText(parsed, incidentDate, checkedAt);
 }
 
 function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void }) {

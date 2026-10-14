@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import * as Sentry from "@sentry/react";
 import {
   isRouteErrorResponse,
@@ -27,12 +27,14 @@ import { Card } from "@/components/ui/card";
 import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { DOCUMENT_COMMIT_META } from "@/lib/app-version";
 import { commitSha } from "@/lib/build-info";
-import { HEATMAP_STORAGE_KEY } from "@/lib/heatmap-preference";
+import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
-import { site } from "@shared/site";
-import { themeBootScript } from "@/lib/theme";
+import { ogImage, site } from "@shared/site";
+import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript } from "@/lib/theme";
 
+// 须与 globals.css 的 Geist Mono @font-face 指向同一个文件，预加载才会被字体规则复用。
+import geistMonoUrl from "../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2?url";
 import "./globals.css";
 
 function bootScript(): string {
@@ -59,6 +61,14 @@ export function meta({ error }: MetaArgs): MetaDescriptor[] {
     { property: "og:locale", content: "en_US" },
     { property: "og:type", content: "website" },
     { property: "og:image", content: `${site.url}/opengraph-image` },
+    { property: "og:image:width", content: String(ogImage.width) },
+    { property: "og:image:height", content: String(ogImage.height) },
+    { property: "og:image:type", content: ogImage.type },
+    { property: "og:image:alt", content: ogImage.alt },
+    { name: "twitter:card", content: "summary_large_image" },
+    { name: "twitter:title", content: site.name },
+    { name: "twitter:description", content: site.description },
+    { name: "twitter:image", content: `${site.url}/opengraph-image` },
     { name: "apple-mobile-web-app-capable", content: "yes" },
     { name: "apple-mobile-web-app-title", content: site.shortName },
     { name: "apple-mobile-web-app-status-bar-style", content: "default" },
@@ -70,11 +80,22 @@ export function links(): LinkDescriptor[] {
   return [
     { rel: "canonical", href: site.url },
     { rel: "manifest", href: "/manifest.webmanifest" },
+    { rel: "preload", href: geistMonoUrl, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
     { rel: "icon", href: "/icon", type: "image/png", sizes: "32x32" },
     { rel: "apple-touch-icon", href: "/apple-icon" },
     // 普通图片使用 no-cors；带 crossOrigin 的预连接无法被它复用。
     { rel: "preconnect", href: "https://is1-ssl.mzstatic.com" },
   ];
+}
+
+// 水合不一致时 React 退回整页客户端渲染，会清空 <html> 上全部属性（react-dom 的 commitHostSingletonAcquisition），
+// 启动脚本写的主题和热力图选择随之丢失；在同一次提交、绘制之前按存储补回。
+function BootAttributes() {
+  useLayoutEffect(() => {
+    syncThemeToDocument(readThemeChoice(), readSystemDark());
+    syncHeatmapToDocument();
+  }, []);
+  return null;
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -97,6 +118,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         ) : null}
       </head>
       <body className="flex min-h-full flex-col">
+        <BootAttributes />
         <PsPlusSprite />
         <ThemeProvider>{children}</ThemeProvider>
         <PwaRegistration />

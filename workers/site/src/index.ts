@@ -93,7 +93,7 @@ function errorResponse(status: number, message = "Not Found"): Response {
   });
 }
 
-// 用 purge 而非 invalidate：响应不带 ETag / Last-Modified 且有 stale-while-revalidate，软失效会先回旧正文，首页后台重建时读到的也还是旧快照。
+// 用 purge 而非 invalidate：响应不带 ETag / Last-Modified，首页文档还带 stale-while-revalidate，软失效后的下一次请求仍先拿到旧版面。
 async function purgeTags(cache: CacheContext | undefined, owner: string, tags: string[]): Promise<void> {
   if (!cache) throw new Error(`${owner} cache is not enabled`);
   const result = await cache.purge({ tags });

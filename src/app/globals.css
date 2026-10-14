@@ -4,7 +4,9 @@
 
 @font-face {
   font-family: "Geist Mono";
-  src: url("/site-assets/GeistMono-Variable.woff2") format("woff2") tech("variations");
+  /* tech() 只收关键字；写成带引号的字符串整条 src 不合法，整个 @font-face 被丢掉。woff2 本身就能装可变字体，不写 tech。
+     走 Vite 资源拿到带哈希的 /assets 地址（长期缓存）；须与 root.tsx 的预加载指向同一个文件。 */
+  src: url("../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
   font-weight: 100 900;
   font-display: swap;
 }
