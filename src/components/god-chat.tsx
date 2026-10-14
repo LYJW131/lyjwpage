@@ -128,13 +128,15 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
-// 站主要求示例用中文，是「界面文案英文」的例外。
+// 站主要求示例中英轮播，中文是「界面文案英文」的例外。四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
 const SUGGESTIONS = [
-  "LYJW 正在听什么歌？",
-  "这个网站的实时数据是怎么来的？",
-  "帮我搜一下这周 AI 圈的新闻",
-  "我想给这个网站加个小功能",
-];
+  { zh: "LYJW 现在在忙什么？", en: "What is LYJW up to right now?" },
+  { zh: "这个网站是怎么搭起来的？", en: "How is this site built?" },
+  { zh: "这周 AI 圈有什么大新闻？", en: "What's the big AI news this week?" },
+  { zh: "我想给这个网站提个改进", en: "I have an idea for this site" },
+] as const;
+const SUGGESTION_LANGS = ["zh", "en"] as const;
+const SUGGESTION_ROTATE_MS = 5_000;
 
 export function GodChat({ className }: { className?: string }) {
   const archive = useSyncExternalStore(subscribeChatArchive, chatArchive.getSnapshot, chatArchive.getServerSnapshot);
@@ -636,19 +638,7 @@ function Conversation({ className, archive, session: conversation }: { className
             <p className="text-sm leading-relaxed text-muted-foreground">
               Ask about LYJW, this site, or anything on the web.
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  disabled={streaming}
-                  onClick={() => submit(suggestion)}
-                  className="paper-card rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-surface-hover disabled:opacity-50"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
+            <Suggestions disabled={streaming} onPick={submit} />
           </div>
         ) : (
           messages.map((message, index) => {
@@ -1057,6 +1047,51 @@ const DESIGN_CONSENT_COPY: Record<PlanLanguage, DesignConsentCopy> = {
     remember: "同意内容はブラウザに保存され、チャット関連のコードが更新された際に改めて確認されます。",
   },
 };
+
+function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
+  const [lang, setLang] = useState(0);
+  const [paused, setPaused] = useState(false);
+  useEffect(() => {
+    if (paused) return;
+    const timer = setInterval(() => setLang((current) => (current + 1) % SUGGESTION_LANGS.length), SUGGESTION_ROTATE_MS);
+    return () => clearInterval(timer);
+  }, [paused]);
+  return (
+    // 悬停或聚焦时停住轮播，免得点下去的那一刻换了语言。
+    <div
+      className="flex flex-wrap justify-center gap-2"
+      onPointerEnter={() => setPaused(true)}
+      onPointerLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false); }}
+    >
+      {SUGGESTIONS.map((suggestion) => {
+        const shown = suggestion[SUGGESTION_LANGS[lang]];
+        return (
+          <button
+            key={suggestion.en}
+            type="button"
+            disabled={disabled}
+            onClick={() => onPick(shown)}
+            className="paper-card inline-grid rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-surface-hover disabled:opacity-50"
+          >
+            {/* 两种语言叠在同一格里，按钮取较宽的那个，换语言时不重排。 */}
+            {SUGGESTION_LANGS.map((code, index) => (
+              <span
+                key={code}
+                lang={code}
+                aria-hidden={index !== lang}
+                className={cn("col-start-1 row-start-1 transition-opacity duration-200", index === lang ? "opacity-100" : "opacity-0")}
+              >
+                {suggestion[code]}
+              </span>
+            ))}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function DesignConsentPrompt({
   language,
