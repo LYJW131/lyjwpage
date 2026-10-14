@@ -1,0 +1,14 @@
+{
+  "description": "根 README 效果图：生产快照 readme-base 上点亮正在看、充电头与充电宝、正在听、活动圆环与最近训练、落地节点",
+  "extends": "readme-base",
+  "views": {
+    "/api/status/watching/now": "watching-now.json",
+    "/api/status/charger": "charger-macbook-iphone.json",
+    "/api/status/powerbank": "powerbank-charging.json",
+    "/api/status/listening/now": "listening-now-yoasobi.json",
+    "/api/lyrics?song=1490256995": { "fetch": "https://lyjw.me/api/lyrics?song=1490256995" },
+    "/api/status/activity": "activity-afternoon.json",
+    "/api/status/workouts": "workouts.json",
+    "/api/status/server": "server-traffic.json"
+  }
+}

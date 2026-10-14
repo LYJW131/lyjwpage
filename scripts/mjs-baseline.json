@@ -14,7 +14,6 @@
   "scripts/cursor-cloud.mjs",
   "scripts/deploy-site-preview.mjs",
   "scripts/dev-access.mjs",
-  "scripts/dev-override.mjs",
   "scripts/dev-worker.mjs",
   "scripts/dev-worker.test.mjs",
   "scripts/eslint-rules.test.mjs",

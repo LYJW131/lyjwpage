@@ -2,6 +2,8 @@ import { get as cacheGet, put as cachePut } from "@shared/cache";
 import { loaderParams, statusEnvelope, statusResponse } from "@shared/status-response";
 import { loadEndpoint } from "./status-loaders";
 import { pathByEvent, viewKeyByPath } from "@shared/status-views";
+import { sliceTrophies, TROPHY_CATALOG_OVERRIDE_SEARCH } from "@shared/trophy-slice";
+import type { TrophiesPayload } from "@shared/types";
 import {
   DEV_OVERRIDE_ENABLED_KEY,
   DEV_OVERRIDE_INDEX_KEY,
@@ -70,6 +72,19 @@ async function readOverride(path: string): Promise<Envelope | undefined> {
   return cacheGet<Envelope>(`${DEV_OVERRIDE_KEY}${path}`);
 }
 
+// 带查询串的注入只答同一个查询；不带的兜住同路径的增量请求（?since=）。
+// titleids 回的是奖杯切片，与无参摘要不同形，不能拿无参注入去答，只从注入的整份目录现切。
+export async function matchOverride(url: URL, read: (path: string) => Promise<Envelope | undefined>): Promise<Envelope | undefined> {
+  if (!url.search) return read(url.pathname);
+  const exact = await read(`${url.pathname}${url.search}`);
+  if (exact) return exact;
+  const titleIds = url.searchParams.get("titleids");
+  if (titleIds == null) return read(url.pathname);
+  const catalog = await read(`${url.pathname}${TROPHY_CATALOG_OVERRIDE_SEARCH}`);
+  if (!catalog?.ok) return catalog;
+  return { ...catalog, data: sliceTrophies(catalog.data as TrophiesPayload, titleIds.split(",").filter(Boolean)) };
+}
+
 async function listOverrides(): Promise<string[]> {
   return (await cacheGet<string[]>(DEV_OVERRIDE_INDEX_KEY)) ?? [];
 }
@@ -110,7 +125,7 @@ async function devOverrideResponse(request: Request, url: URL): Promise<Response
       { headers: statusHeaders() },
     );
   }
-  const target = url.pathname.slice(DEV_OVERRIDE_PREFIX.length);
+  const target = `${url.pathname.slice(DEV_OVERRIDE_PREFIX.length)}${url.search}`;
   if (!target.startsWith("/api/")) {
     return Response.json({ ok: false, error: "路径要写成 /api/dev/override/api/status/…" }, { status: 400 });
   }
@@ -151,7 +166,7 @@ export async function publicResponse(request: Request): Promise<Response> {
   const upstream = upstreamBase();
 
   if (overrides && (await overridesSwitchedOn())) {
-    const override = await readOverride(url.pathname);
+    const override = await matchOverride(url, readOverride);
     if (override) return Response.json(withServedAt(override), { headers: statusHeaders() });
   }
   const response = await serveStatus(request);
