@@ -575,6 +575,60 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
 });
 
+function pendingSearchStream(model: string, round: number, searches: number): Response {
+  const events = [
+    { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
+    { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: `tool_${round}`, name: "get_site_status", input: {} } },
+    { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ views: ["timezone"] }) } },
+    { type: "content_block_stop", index: 0 },
+    { type: "content_block_start", index: 1, content_block: { type: "server_tool_use", id: `srvtoolu_${round}`, name: "code_execution", input: {} } },
+    { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: JSON.stringify({ code: "await web_search({ query: 'deepseek pricing' })" }) } },
+    { type: "content_block_stop", index: 1 },
+    { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 10, server_tool_use: { web_search_requests: searches } } },
+    { type: "message_stop" },
+  ];
+  return new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+function rejectsUnresolvedServerTool(body: Anthropic.Beta.MessageCreateParamsStreaming): Response | undefined {
+  const open = new Set<string>();
+  for (const message of body.messages) {
+    if (message.role !== "assistant" || typeof message.content === "string") continue;
+    for (const block of message.content) {
+      if (block.type === "server_tool_use") open.add(block.id);
+      else if ("tool_use_id" in block) open.delete(block.tool_use_id);
+    }
+  }
+  if (!open.size || body.tools?.some((tool) => "name" in tool && tool.name === "web_search")) return undefined;
+  return Response.json({ type: "error", error: { type: "invalid_request_error", message: "`code_execution` tool use was found without a corresponding `code_execution_tool_result` block, but no `code_execution` tool was provided" } }, { status: 400 });
+}
+
+test("动态过滤搜索与客户端工具同轮时，下一轮（含收尾轮、搜索次数用完）仍带搜索工具接上，不断流", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  for (const searches of [0, GOD_CHAT_LIMITS.maxWebSearches]) {
+    await t.test(`每轮记 ${searches} 次搜索`, async () => {
+      let round = 0;
+      const { env, requests } = designEnv({
+        reply: (body) => rejectsUnresolvedServerTool(body)
+          ?? (body.tools?.length === 1 ? modelStream(body.model, false) : pendingSearchStream(body.model, round++, searches)),
+      });
+      const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
+      assert.ok(events.every((event) => event.type !== "text" || !event.text.includes("connection to the heavens was lost")));
+      assert.ok(events.some((event) => event.type === "text" && event.text === "Done."));
+      for (const request of requests.slice(1)) {
+        const search = request.tools?.find((tool) => "name" in tool && tool.name === "web_search");
+        assert.ok(search && "max_uses" in search && search.max_uses! >= 1);
+      }
+      assert.deepEqual(requests.at(-1)?.tools?.map((tool) => "name" in tool && tool.name), ["web_search"]);
+      assert.equal(requests.length, searches ? 2 : GOD_CHAT_LIMITS.maxToolRounds + 1);
+    });
+  }
+});
+
 function upgradeEnv(sonnetFree: boolean) {
   const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
   const admitted: { tier: string; allowDowngrade?: boolean }[] = [];
