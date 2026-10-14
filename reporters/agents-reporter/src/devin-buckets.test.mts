@@ -29,7 +29,7 @@ test("两次提交之间的增量按时长摊进 5 分钟桶，总数一个不�
   assert.equal(second.since, first.since);
 });
 
-test("跨日：新日期整份算增量，旧日期只算涨的部分；回落不算负数", () => {
+test("跨日：新日期整份算增量，旧日期只算涨的部分；回落不算负数，回升只算超过历来最高的部分", () => {
   const first = advanceDevinLedger(null, devinSnapshot([{ date: "2026-10-13", models: { swe: tokens(500) } }], T0, T0), "devin", T0);
   const second = advanceDevinLedger(first, devinSnapshot([
     { date: "2026-10-13", models: { swe: tokens(520), compactor: tokens(0) } },
@@ -38,6 +38,9 @@ test("跨日：新日期整份算增量，旧日期只算涨的部分；回落�
   assert.deepEqual(second.windows, [{ from: T0, agents: [{ id: "devin", model: "swe", inputTokens: 50, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount: null }] }]);
   const third = advanceDevinLedger(second, devinSnapshot([{ date: "2026-10-14", models: { swe: tokens(10) } }], T0 + 6 * M, T0 + 6 * M), "devin", T0 + 6 * M);
   assert.deepEqual(third.windows, second.windows);
+  const fourth = advanceDevinLedger(third, devinSnapshot([{ date: "2026-10-14", models: { swe: tokens(45) } }], T0 + 8 * M, T0 + 8 * M), "devin", T0 + 8 * M);
+  assert.equal(fourth.windows.reduce((sum, window) => sum + window.agents[0].inputTokens, 0), 50 + 15);
+  assert.equal(fourth.snapshot.days["2026-10-13"].swe.input, 520);
 });
 
 test("报告从账本起点或 24 小时前开始，到最后一次提交为止；隔了一天以上就重立基线", () => {

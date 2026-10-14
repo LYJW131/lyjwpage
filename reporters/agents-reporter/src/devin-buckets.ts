@@ -27,8 +27,12 @@ export type DevinBucketLedger = { since: number; snapshot: DevinSnapshot; window
 
 const ZERO: DevinTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
 
+function snapshotCutoff(now: number): string {
+  return new Date(now - SNAPSHOT_DAYS * DAY_MS).toISOString().slice(0, 10);
+}
+
 export function devinSnapshot(days: Array<{ date: string; models: Record<string, DevinTokens> }>, at: number, now: number): DevinSnapshot {
-  const cutoff = new Date(now - SNAPSHOT_DAYS * DAY_MS).toISOString().slice(0, 10);
+  const cutoff = snapshotCutoff(now);
   const kept: DevinSnapshot["days"] = {};
   for (const day of days) {
     if (day.date >= cutoff) kept[day.date] = { ...kept[day.date], ...day.models };
@@ -81,6 +85,23 @@ function capRows(rows: CodingTokenBucketRow[], id: string): CodingTokenBucketRow
   return [...kept, overflow];
 }
 
+// 基线按列取历来最高：tokens.ci 的累计偶尔回落（缺行、旧缓存、修正），恢复时不能把同一段再记一次。
+function highWater(before: DevinSnapshot, after: DevinSnapshot, now: number): DevinSnapshot {
+  const cutoff = snapshotCutoff(now);
+  const days: DevinSnapshot["days"] = {};
+  for (const source of [before.days, after.days]) {
+    for (const [date, models] of Object.entries(source)) {
+      if (date < cutoff) continue;
+      const into = (days[date] ??= {});
+      for (const [model, tokens] of Object.entries(models)) {
+        const kept = into[model] ?? ZERO;
+        into[model] = Object.fromEntries(COLUMNS.map((column) => [column, Math.max(kept[column], tokens[column])])) as DevinTokens;
+      }
+    }
+  }
+  return { at: after.at, days };
+}
+
 export function advanceDevinLedger(
   previous: DevinBucketLedger | null,
   snapshot: DevinSnapshot,
@@ -111,7 +132,7 @@ export function advanceDevinLedger(
   }
   return {
     since: previous.since,
-    snapshot,
+    snapshot: highWater(previous.snapshot, snapshot, now),
     windows: [...windows]
       .sort(([left], [right]) => left - right)
       .map(([start, rows]) => ({
