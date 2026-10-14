@@ -37,7 +37,7 @@ export function CodexActivityIndicator({
     <span
       className={cn(
         "relative grid size-5 shrink-0 place-items-center font-mono text-base leading-none",
-        active && "text-live",
+        active && "text-live-ink",
         className,
       )}
       aria-hidden

@@ -4,7 +4,7 @@ import { gzipSync } from "node:zlib";
 
 import { SERVER_TAG } from "@shared/live-events";
 import { MemoryKv } from "@shared/testing/memory-kv";
-import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
+import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome, type CollectorRpc } from "@shared/collector";
 import { CREDENTIAL_KEYS } from "@shared/credentials";
 import type { HistoryDb, HistoryStatement } from "@shared/history-ingest";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
@@ -12,6 +12,7 @@ import { resetStoredImageCacheForTests } from "@shared/ingest/r2-assets";
 import { LAG_KEYS, readLag } from "@shared/lag";
 import type { CommitReply, StateCoreRpc } from "@shared/state-core";
 import { STORAGE_MAX_BYTES } from "@shared/storage-contract";
+import type { EnrichmentFollowUp, EnrichmentOutcome } from "@shared/track-enrichment";
 
 import { DEV_ACCESS_ISSUER } from "./access-auth";
 import type { Env } from "./env";
@@ -51,16 +52,19 @@ type Calls = {
   refreshed: string[][];
   heads: string[];
   archived: string[][];
+  enriched: Parameters<CollectorRpc["enrichTrack"]>[];
+  followUps: EnrichmentFollowUp[];
 };
 
 type Setup = {
   reply?: (command: CoreCommand) => CommitReply | Promise<CommitReply>;
   refresh?: CollectorRpc["refresh"];
+  enrichTrack?: CollectorRpc["enrichTrack"];
   collector?: boolean;
 };
 
 function world(setup: Setup = {}) {
-  const calls: Calls = { ready: 0, commits: [], revalidated: [], broadcasts: 0, refreshed: [], heads: [], archived: [] };
+  const calls: Calls = { ready: 0, commits: [], revalidated: [], broadcasts: 0, refreshed: [], heads: [], archived: [], enriched: [], followUps: [] };
   const lag = new MemoryKv();
   const credentials = new MemoryKv();
   const core: StateCoreRpc = {
@@ -77,12 +81,22 @@ function world(setup: Setup = {}) {
     appleDeveloperToken: async () => { throw new Error("not used"); },
     commitRecentlyPlayed: async () => { throw new Error("not used"); },
     commitRecentTracks: async () => { throw new Error("not used"); },
+    commitEnrichmentPatch: async () => { throw new Error("not used"); },
+    cronRound: async () => { throw new Error("not used"); },
   };
   const collector: CollectorRpc = {
     refresh: setup.refresh ?? (async (jobs) => {
       calls.refreshed.push(jobs);
       return jobs.map((job): CollectorJobOutcome => ({ job, status: "ok", ms: 1 }));
     }),
+    enrichTrack: async (music, upcomingTracks) => {
+      calls.enriched.push([music, upcomingTracks]);
+      return setup.enrichTrack ? setup.enrichTrack(music, upcomingTracks) : null;
+    },
+    followUpTrack: async (followUp) => {
+      assert.deepEqual(structuredClone(followUp), followUp);
+      calls.followUps.push(followUp);
+    },
   };
   const history: HistoryDb = {
     prepare: (sql) => ({ sql, bind() { return this; } }) as unknown as HistoryStatement,
@@ -101,7 +115,7 @@ function world(setup: Setup = {}) {
     ACCESS_CLIENTS: {
       [ALL]: [...SOURCES.map((source) => `ingest:${source}`), "ingest:agents-otlp"],
       [MAC_ONLY]: ["ingest:mac"],
-      [DEPLOYER]: ["internal:site-deployed"],
+      [DEPLOYER]: ["internal:site-deployed", "internal:collector-refresh"],
     },
   } satisfies Env;
   const pending: Promise<unknown>[] = [];
@@ -179,7 +193,8 @@ test("preview versions refuse every report and hide site-deployed", async () => 
     assert.deepEqual(await json(refused), { ok: false, error: "预览 Worker 不接收上报" });
     assert.equal((await w.send("/api/ingest/agents/otlp", post({ resourceMetrics: [] }))).status, 403);
     assert.equal((await w.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 404);
-    assert.equal(w.calls.commits.length + w.calls.broadcasts, 0);
+    assert.equal((await w.send("/api/internal/collector-refresh", { client: DEPLOYER })).status, 404);
+    assert.equal(w.calls.commits.length + w.calls.broadcasts + w.calls.refreshed.length, 0);
   } finally {
     if (previous === undefined) delete process.env.PREVIEW_WORKER; else process.env.PREVIEW_WORKER = previous;
   }
@@ -313,6 +328,67 @@ test("split: agents limits land in the lag layer while the coding half still rea
   assert.equal(command?.source === "agents" ? command.codingActivity?.agents[0]?.id : null, "cursor");
   assert.ok((await readLag<{ agents: Record<string, unknown> }>(w.lag, LAG_KEYS.limits))?.data.agents.codex);
   assert.equal(w.calls.archived.length, 1, "limit snapshots are archived");
+});
+
+function outcomeFor(title: string): EnrichmentOutcome {
+  return {
+    enrichment: { trackKey: title, id: "1500", link: "https://music.apple.com/cn/album/x/1500?i=1501", songId: "1501", artwork: null, hasLyrics: true, upcomingSongIds: [], motion: null },
+    catalogKnown: true,
+    upcomingKnown: true,
+    motionKnown: false,
+  };
+}
+
+test("listening: the collector enriches before the commit and takes the follow-up after the receipt", async () => {
+  const w = world({ enrichTrack: async (music) => outcomeFor(music?.title ?? "") });
+  const queue = { index: 0, tracks: [{ title: "Song" }, { title: "Next" }] };
+  const response = await w.send("/api/ingest/mac", post(mac({ appleMusic: { state: "playing", title: "Song", queue } })));
+  assert.equal(response.status, 202);
+  const [command] = w.calls.commits;
+  assert.ok(command?.source === "mac" && command.modules.appleMusic);
+  const { music, upcomingTracks, enrichment } = command.modules.appleMusic;
+  assert.equal(music?.title, "Song");
+  assert.deepEqual(w.calls.enriched, [[music, upcomingTracks]]);
+  assert.deepEqual(upcomingTracks.map((track) => track.title), ["Next"]);
+  assert.deepEqual(enrichment, outcomeFor("Song").enrichment);
+  assert.deepEqual(w.calls.followUps, [{ target: "mac", music, upcomingTracks, outcome: outcomeFor("Song") }]);
+
+  const homepod = await w.send("/api/ingest/homepod", post({ state: "playing", title: "Pod", artist: "Artist", entityId: "media_player.homepod" }));
+  assert.equal(homepod.status, 202);
+  const pod = w.calls.commits[1];
+  assert.ok(pod?.source === "homepod");
+  assert.deepEqual(pod.stored.enrichment, outcomeFor("Pod").enrichment);
+  assert.deepEqual(w.calls.followUps[1], { target: "homepod", music: pod.stored.music, upcomingTracks: [], outcome: outcomeFor("Pod") });
+});
+
+test("listening: nothing to enrich commits enrichment null; a rejected commit gets no follow-up", async () => {
+  const stopped = world();
+  assert.equal((await stopped.send("/api/ingest/homepod", post({ state: "idle", entityId: "media_player.homepod" }))).status, 202);
+  const [command] = stopped.calls.commits;
+  assert.equal(command?.source === "homepod" ? command.stored.enrichment : undefined, null);
+  assert.deepEqual(stopped.calls.followUps, []);
+
+  const rejected = world({ enrichTrack: async (music) => outcomeFor(music?.title ?? ""), reply: () => ({ ready: true, ok: false, error: "bad" }) });
+  assert.equal((await rejected.send("/api/ingest/homepod", post({ state: "playing", title: "Pod", entityId: "media_player.homepod" }))).status, 400);
+  assert.equal(rejected.calls.enriched.length, 1);
+  assert.deepEqual(rejected.calls.followUps, []);
+});
+
+test("listening: an unreachable collector leaves the command unenriched for the state core, and the report still lands", async (t) => {
+  const warned = t.mock.method(console, "warn", () => {});
+  const broken = world({ enrichTrack: async () => { throw new Error("Network connection lost."); } });
+  assert.equal((await broken.send("/api/ingest/homepod", post({ state: "playing", title: "Pod", entityId: "media_player.homepod" }))).status, 202);
+  const [command] = broken.calls.commits;
+  assert.ok(command?.source === "homepod");
+  assert.equal("enrichment" in command.stored, false);
+  assert.deepEqual(broken.calls.followUps, []);
+  assert.deepEqual(warned.mock.calls.map((call) => call.arguments), [["[enrichment]", "homepod", "Network connection lost."]]);
+
+  const unbound = world({ collector: false });
+  assert.equal((await unbound.send("/api/ingest/mac", post(mac({ appleMusic: { state: "playing", title: "Song" } })))).status, 202);
+  const [mac0] = unbound.calls.commits;
+  assert.ok(mac0?.source === "mac" && mac0.modules.appleMusic);
+  assert.equal("enrichment" in mac0.modules.appleMusic, false);
 });
 
 function codingUsage(totalTokens: number) {
@@ -487,4 +563,71 @@ test("site-deployed: a failing or missing collector never fails the notification
   assert.equal(warned.mock.callCount(), 1 + DEPLOYMENT_JOBS.length);
   const unbound = world({ collector: false });
   assert.equal((await unbound.send("/api/internal/site-deployed", { client: DEPLOYER })).status, 200);
+});
+
+test("collector-refresh: runs every active job now, one collector call per job, and reports each outcome in request order", async () => {
+  const w = world();
+  const response = await w.send("/api/internal/collector-refresh", { client: DEPLOYER });
+  assert.equal(response.status, 200);
+  const body = await json(response) as { ok: boolean; outcomes: CollectorJobOutcome[] };
+  assert.equal(body.ok, true);
+  assert.deepEqual(body.outcomes.map((outcome) => outcome.job), [...ACTIVE_COLLECTOR_JOBS]);
+  assert.deepEqual(new Set(w.calls.refreshed.map(([job]) => job)), new Set(ACTIVE_COLLECTOR_JOBS));
+  assert.equal(w.calls.refreshed.length, ACTIVE_COLLECTOR_JOBS.length);
+  assert.ok(ACTIVE_COLLECTOR_JOBS.includes("digest"));
+});
+
+test("collector-refresh: jobs run one at a time (they share the request's connection budget), digest last after the views it summarizes", async () => {
+  const started: string[] = [];
+  let running = 0;
+  let peak = 0;
+  const w = world({
+    refresh: async ([job]) => {
+      started.push(job!);
+      peak = Math.max(peak, ++running);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      running -= 1;
+      return [{ job: job!, status: "ok", ms: 1 }];
+    },
+  });
+  const response = await w.send("/api/internal/collector-refresh?job=digest&job=github-repo&job=site-deployments", { client: DEPLOYER });
+  assert.deepEqual((await json(response) as { outcomes: CollectorJobOutcome[] }).outcomes.map((outcome) => outcome.job), ["digest", "github-repo", "site-deployments"]);
+  assert.deepEqual(started, ["github-repo", "site-deployments", "digest"]);
+  assert.equal(peak, 1);
+});
+
+test("collector-refresh: ?job= narrows the run, and a failing job turns ok false without hiding the rest", async () => {
+  const w = world();
+  const narrowed = await w.send("/api/internal/collector-refresh?job=digest&job=digest&job=pagespeed", { client: DEPLOYER });
+  assert.deepEqual(w.calls.refreshed, [["pagespeed"], ["digest"]]);
+  assert.equal((await json(narrowed) as { ok: boolean }).ok, true);
+
+  const failing = world({
+    refresh: async ([job]) => {
+      if (job === "digest") throw new Error("ai unavailable");
+      return [{ job: job!, status: job === "pagespeed" ? "error" : "ok", ms: 1 }];
+    },
+  });
+  const response = await failing.send("/api/internal/collector-refresh?job=digest&job=pagespeed&job=github-chart", { client: DEPLOYER });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await json(response), {
+    ok: false,
+    outcomes: [
+      { job: "digest", status: "error", detail: "ai unavailable", ms: 0 },
+      { job: "pagespeed", status: "error", ms: 1 },
+      { job: "github-chart", status: "ok", ms: 1 },
+    ],
+  });
+});
+
+test("collector-refresh: POST only, needs its own permission, and says so when the collector is not bound", async () => {
+  const w = world();
+  assert.equal((await w.send("/api/internal/collector-refresh", { method: "GET", client: DEPLOYER })).status, 405);
+  assert.equal((await w.send("/api/internal/collector-refresh", { client: null })).status, 401);
+  assert.equal((await w.send("/api/internal/collector-refresh", { client: MAC_ONLY })).status, 403);
+  assert.equal((await w.send("/api/internal/collector-refresh", { client: ALL })).status, 403, "report tokens cannot trigger collection");
+  assert.equal(w.calls.refreshed.length, 0);
+  const unbound = await world({ collector: false }).send("/api/internal/collector-refresh", { client: DEPLOYER });
+  assert.equal(unbound.status, 503);
+  assert.deepEqual(await json(unbound), { ok: false, error: "没有绑定采集 Worker" });
 });

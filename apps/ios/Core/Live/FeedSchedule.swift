@@ -4,7 +4,7 @@ import Foundation
 enum FeedKey: String, CaseIterable, Sendable {
     case desktop, timezone, activity, workouts, server, charger, powerBank, listening, nowListening
     case coding, codingNow, codingYear, limits, agentStatus, watching, nowWatching, playing, playingNow
-    case trophies, githubRepo, vercelDeployments, cloudflareWorkers, health, reporters, pulse, version
+    case trophies, githubRepo, vercelDeployments, cloudflareWorkers, sentry, reporters, pulse, version
 
     enum Policy {
         // pushCovers 为真时，推送连着就只按兜底间隔取。
@@ -29,7 +29,7 @@ enum FeedKey: String, CaseIterable, Sendable {
         case .activity, .workouts: .lag(cadence: 3600)
         case .server, .agentStatus, .vercelDeployments, .reporters: .lag(cadence: 60)
         case .cloudflareWorkers: .lag(cadence: 120)
-        case .limits, .health: .lag(cadence: 300)
+        case .limits, .sentry: .lag(cadence: 300)
         case .githubRepo: .lag(cadence: 1800)
         }
     }

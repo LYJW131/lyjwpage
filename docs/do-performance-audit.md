@@ -65,7 +65,7 @@ Workers Logs 的原始 invocation 记录按窗口分别取回 **264 / 545** 条�
 - API Worker 类型检查通过。
 - Worker 测试 **84 / 84** 通过，包括合法输入不调用 `ready()`、非法输入的初始化错误优先级，以及列表边界。
 - 主站 / 共享库测试 **313 / 313** 通过。
-- `node scripts/verify-api-worker.mjs` 隔离验证通过：合法 / 非法输入在已初始化 / 未初始化状态的响应、上报持久化、WebSocket、缓存通知、重启持久化等行为均通过。
+- `node scripts/verify-core-worker.mjs` 隔离验证通过：合法 / 非法输入在已初始化 / 未初始化状态的响应、上报持久化、WebSocket、缓存通知、重启持久化等行为均通过。
 - 修改文件的 ESLint 与 `git diff --check` 通过。
 - 首轮验证时，所有追加修改均为**本地未提交、未推送、未部署**，线上版本为本报告评估的 `04edf60`。最终提交与发布状态见文末；上表的生产收益不能当作追加修改的生产实测结果。
 
@@ -131,7 +131,7 @@ node scripts/benchmark-do-storage.mjs --ref 04edf6087dc9fb7b93d58109d9070882fcb7
 - 独立范围矩阵 **48,074** 组、裁剪矩阵 **19,220** 组通过，覆盖正负索引、越界、极值、序号断档、空 entry 删除、TTL 保持和其他 key 隔离。
 - Worker 类型检查、**87 / 87** Worker 测试、**316 / 316** 主站与共享库测试通过。
 - 修改文件的 ESLint、基准脚本语法检查和 `git diff --check` 通过。
-- `verify-api-worker.mjs` 隔离链路通过；`verify-kv-read-model.mjs` 确认上报、DO Alarm、内部 renderer、KV、边缘命中及故障回退正常。<!-- allow: 快照引用当时的脚本，已随读模型一起删除 -->
+- `verify-core-worker.mjs` 隔离链路通过；`verify-kv-read-model.mjs` 确认上报、DO Alarm、内部 renderer、KV、边缘命中及故障回退正常。<!-- allow: 快照引用当时的脚本，已随读模型一起删除 -->
 
 本地版本在当前规模下已达到合理的性能与代码质量平衡：高频末条读取只扫描结果及 entry，完整列表去掉重复扫描，采样存储循环降低约三分之二扫描量。保留的 `append COUNT` 负责准确返回长度，尾部裁剪仍需扫描到保留边界。继续消除这些成本需要新增派生状态或改变契约，目前没有相称的收益证据，停止继续扩大实现。
 

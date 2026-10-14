@@ -98,7 +98,7 @@ export function PlaystationPanel({
           addEventListener("keydown", stop);
         }}
       />
-      <div className="px-3 pb-3 pt-3">
+      <div className="p-4 lg:p-5">
         <PlaystationRow
           fallback={playing}
           nowFallback={playingNow}

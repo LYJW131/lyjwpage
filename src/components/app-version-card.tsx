@@ -114,19 +114,19 @@ export function AppVersionCard() {
                   </button>
                 }
               >
-                <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5">
+                <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 lg:px-5">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm font-medium">
                       <div className="flex items-center gap-1.5">
                         <StatusDot tone="idle" />
                         <span>New version</span>
                       </div>
-                      <span className="label-mono rounded-sm border border-line bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      <span className="label-mono rounded-sm border border-line bg-muted px-1.5 py-0.5 text-muted-foreground">
                         {displayPageCommit ? `${displayPageCommit.slice(0, 7)} → ` : ""}
                         {displayLatestCommit.slice(0, 7)}
                       </span>
                       {buildDuration && (
-                        <span className="label-mono text-[10px] text-muted-foreground">
+                        <span className="label-mono text-muted-foreground">
                           <span className="max-sm:hidden">· </span>built in {buildDuration}
                         </span>
                       )}

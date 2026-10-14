@@ -183,7 +183,9 @@ export function HeroMotionArtwork({
           />
         )}
 
-        {videoUrl && !reduced && (
+        {/* 有没有 video 只看 videoUrl：reduced 来自 motion 的 useReducedMotion，水合那一轮就读 matchMedia、没有服务端快照，
+            按它增删节点会在开着「减弱动态效果」的 iPhone 上水合失败；减弱时由下方 effect 不挂片源、样式隐藏。 */}
+        {videoUrl && (
           <video
             ref={videoRef}
             autoPlay
@@ -194,7 +196,7 @@ export function HeroMotionArtwork({
             /* Safari 会为空 video 绘制问号占位，poster 必须与底下的静态图一致。 */
             poster={artwork ? (appleArtwork(artwork, sizePx * ARTWORK_SCALE) ?? undefined) : undefined}
             className={cn(
-              "absolute inset-0 size-full object-cover transition-opacity duration-[1.2s] ease-[cubic-bezier(0.45,0,0.55,1)]",
+              "absolute inset-0 size-full object-cover transition-opacity duration-[1.2s] ease-[cubic-bezier(0.45,0,0.55,1)] motion-reduce:hidden",
               isPlaying ? "opacity-100" : "pointer-events-none opacity-0",
             )}
           />

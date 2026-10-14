@@ -12,6 +12,7 @@ import { MemoryKv } from "../testing/memory-kv";
 import { historyDb } from "../testing/sqlite-history";
 import type { Env } from "../env";
 import { mergeRepoStats, refreshGithubRepo } from "./github-repo";
+import { appleRecentJob } from "./apple-recent";
 import { refreshProviderStatus } from "./provider-status";
 import { siteHealthJob } from "./site-health";
 import { siteAnalyticsJob, siteDeploymentsJob } from "./site-status";
@@ -165,6 +166,19 @@ test("site health summarizes D1 checks with Cloudflare errors and vitals, carryi
   const second = (await readLag<HealthPayload>(lag, LAG_KEYS.health))!.data;
   assert.deepEqual(second.vitals, first.vitals);
   assert.equal(second.blockAt?.vitals, now);
+});
+
+test("apple-recent 缺签 developer token 或真名打码的配置时干净跳过，不去读凭据", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  assert.deepEqual(await appleRecentJob.run({ env: { APPLE_MUSIC_TEAM_ID: "TEAM000000" } as Env, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing APPLE_MUSIC_PRIVATE_KEY, APPLE_MUSIC_KEY_ID, APPLE_MUSIC_OWNER_NAME",
+  });
+  const signed = { APPLE_MUSIC_TEAM_ID: "TEAM000000", APPLE_MUSIC_KEY_ID: "KEY0000000", APPLE_MUSIC_PRIVATE_KEY: "p8" } as Env;
+  assert.deepEqual(await appleRecentJob.run({ env: signed, now, scheduled: false }), {
+    status: "skipped",
+    detail: "missing APPLE_MUSIC_OWNER_NAME",
+  });
 });
 
 test("site-deployments 缺配置干净跳过，缺哪个报哪个", async (t) => {

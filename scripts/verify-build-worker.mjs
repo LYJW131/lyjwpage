@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { generateKeyPairSync, createHmac, createHash } from 'node:crypto';
+import { execFileSync, spawn } from 'node:child_process';
+import { generateKeyPairSync, createHmac, createHash, sign } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { stripVTControlCharacters } from 'node:util';
 
 import '../src/lib/testing/register-alias.mjs';
 
+const { packageBuild, runGate, runPublish } = await import('./build-actions.mjs');
 const { BUILD_DESIGN_LIMITS, BUILD_QUOTA, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, branchForRun } = await import('../shared/build-routine.ts');
 
 const root = resolve(import.meta.dirname, '..');
@@ -19,10 +21,14 @@ const require = createRequire(join(root, 'workers/ai/package.json'));
 const temporary = await mkdtemp(join(tmpdir(), 'lyjw-build-verify-'));
 const children = [];
 const logs = [];
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const baseSha = 'a'.repeat(40);
 const fixtureSecret = 'local-build-fixture-only';
 const plan = { title: 'Improve the fixture card', spec: 'Render the fixture card clearly.', acceptance: ['Readable on a phone'], paths: ['src/components/fixture.tsx'] };
+const oidcKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const oidcJwks = { keys: [{ ...oidcKeys.publicKey.export({ format: 'jwk' }), kid: 'fixture-oidc', alg: 'RS256', use: 'sig' }] };
+const buildWorkflowRef = 'LYJW131/lyjwpage/.github/workflows/build.yml@refs/heads/main';
+const screenshot = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]).toString('base64');
 
 async function availablePort() {
   const server = createServer();
@@ -47,6 +53,16 @@ function storedRun(runId, account = 'visitor', createdAt = Date.now()) {
   return { state: { runId, branch: branchForRun(runId), phase: 'triggered', createdAt, updatedAt: createdAt }, plan, account, accountId: Number(account.replace(/\D/g, '')) || 1, coauthor: 'Fixture <1+fixture@users.noreply.github.com>', baseSha, uploadHash: createHash('sha256').update('fixture-upload').digest('base64url'), uploadUsed: false, uploadExpiresAt: Date.now() + BUILD_TIMEOUT_MS };
 }
 
+function actionsToken(audience, patch = {}) {
+  const iat = Math.floor(Date.now() / 1000);
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const claims = { iss: 'https://token.actions.githubusercontent.com', aud: audience, repository: 'LYJW131/lyjwpage', repository_id: '1331086735', repository_owner_id: '153256373', workflow_ref: buildWorkflowRef, job_workflow_ref: buildWorkflowRef, event_name: 'repository_dispatch', ref: 'refs/heads/main', runner_environment: 'github-hosted', iat, nbf: iat - 600, exp: iat + 300, ...patch };
+  const body = `${encode({ alg: 'RS256', typ: 'JWT', kid: 'fixture-oidc' })}.${encode(claims)}`;
+  return `${body}.${sign('sha256', Buffer.from(body), oidcKeys.privateKey).toString('base64url')}`;
+}
+
+const uploadCapability = (runId) => createHmac('sha256', fixtureSecret).update(`build-upload:${runId}`).digest('base64url');
+
 async function stop(child) {
   if (child.exitCode !== null) return;
   const exited = once(child, 'exit');
@@ -64,11 +80,12 @@ try {
     name: 'isolated-build-verification', main: join(root, 'scripts/fixtures/build-worker.mjs'),
     compatibility_date: '2026-10-09', compatibility_flags: ['nodejs_compat', 'enable_request_signal'],
     vars: {
-      BUILD_SESSION_SECRET: fixtureSecret, GITHUB_WEBHOOK_SECRET: fixtureSecret, ROUTINE_FIRE_TOKEN: fixtureSecret,
-      ROUTINE_FIRE_URL: 'https://fixture.invalid/fire', GITHUB_APP_CLIENT_SECRET: fixtureSecret,
+      BUILD_SESSION_SECRET: fixtureSecret, GITHUB_WEBHOOK_SECRET: fixtureSecret, GITHUB_APP_CLIENT_SECRET: fixtureSecret,
       GITHUB_APP_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }),
       FIXTURE_PUBLIC_JWK: JSON.stringify(publicKey.export({ format: 'jwk' })),
+      FIXTURE_OIDC_JWKS: JSON.stringify(oidcJwks),
     },
+    r2_buckets: [{ binding: 'IMAGES', bucket_name: 'fixture-images' }],
     durable_objects: { bindings: [{ name: 'BUILD_COORDINATOR', class_name: 'BuildCoordinator' }, { name: 'BUILD_FIXTURE', class_name: 'BuildFixture' }] },
     migrations: [{ tag: 'v1', new_sqlite_classes: ['BuildCoordinator', 'BuildFixture'] }],
   }));
@@ -103,7 +120,8 @@ try {
     rpc('plan-exits', 'reserveRun', storedRun('4'.repeat(32)), 'shared-destination-plan', expiresAt),
   ]);
   assert.equal(exits.filter((result) => result === true || result === 'ok').length, 1);
-  const uploadRun = storedRun('1'.repeat(32));
+  const dispatchedRun = storedRun('1'.repeat(32));
+  const uploadRun = { ...dispatchedRun, callbackOrigin: 'https://api.homepage.lyjw.llc', planCommitSha: 'b'.repeat(40), dispatchAttempted: true, state: { ...dispatchedRun.state, pr: { number: 7, url: 'https://github.com/LYJW131/lyjwpage/pull/7', headSha: 'b'.repeat(40), draft: true } } };
   assert.equal(await rpc('upload-race', 'reserveRun', uploadRun, 'upload-plan', expiresAt), 'ok');
   const uploads = await Promise.all(Array.from({ length: 16 }, () => rpc('upload-race', 'claimUpload', uploadRun.state.runId, uploadRun.uploadHash)));
   assert.equal(uploads.filter(Boolean).length, 1);
@@ -148,19 +166,20 @@ try {
   for (let n = 0; n <= BUILD_QUOTA.fire.account; n += 1) {
     assert.equal((await post('/api/build', { ...signIn, planToken: proposal.token })).status, 502);
   }
-  assert.equal((await inspect()).fires.length, 0);
+  assert.equal((await inspect()).dispatches.length, 0);
   await post('/__fixture/configure', { mainUnavailable: false, delayDispatchMs: 1500 });
   const fires = await Promise.all(Array.from({ length: 8 }, () => post('/api/build', { ...signIn, planToken: proposal.token })));
   assert.equal(fires.filter((response) => response.status === 202).length, 8);
   const fireResults = await Promise.all(fires.map((response) => response.json()));
   assert.equal(new Set(fireResults.map((result) => result.runId)).size, 1);
   const build = fireResults.find((result) => result.run?.pr) ?? fireResults[0];
-  const fixture = await eventually(async () => { const snapshot = await inspect(); assert.equal(snapshot.fires.length, 1); return snapshot; });
-  assert.equal((await rpc('global', 'readRun', build.runId)).sessionUrl, undefined);
+  const fixture = await eventually(async () => { const snapshot = await inspect(); assert.equal(snapshot.dispatches.length, 1); return snapshot; });
+  assert.deepEqual(fixture.answered, []);
   assert.ok(build.run.pr?.draft);
-  await eventually(async () => assert.equal((await rpc('global', 'readRun', build.runId)).sessionUrl, 'https://claude.ai/code/session_fixture'));
+  await eventually(async () => assert.deepEqual((await inspect()).answered, [build.runId]));
+  assert.equal((await rpc('global', 'readRun', build.runId)).state.reason, undefined);
   await post('/__fixture/configure', { delayDispatchMs: 0 });
-  console.log('PASS: ExecutionContext.waitUntil returns the draft PR response before routine dispatch confirmation');
+  console.log('PASS: ExecutionContext.waitUntil returns the draft PR response before the build workflow dispatch is answered');
   const installationCalls = fixture.calls.filter((call) => call.path.endsWith('/access_tokens'));
   assert.ok(installationCalls.length > BUILD_QUOTA.fire.account);
   assert.ok(installationCalls.filter((call) => call.body.permissions.contents === 'read').every((call) => Object.values(call.body.permissions).every((permission) => permission === 'read')));
@@ -176,27 +195,36 @@ try {
   assert.ok(planFile);
   const planBlob = fixture.objects.find((object) => object.key === `blob:${planFile.sha}`).value;
   assert.match(planBlob.content, /Render the fixture card clearly/);
-  assert.doesNotMatch(planBlob.content, /fixture-visitor|uploadToken|session_fixture|Fixture Visitor/);
+  assert.doesNotMatch(planBlob.content, /fixture-visitor|uploadToken|Fixture Visitor/);
   console.log('PASS: main uses a read-only App installation token and repeated read failures do not consume the plan or build quota');
-  const fired = fixture.fires[0];
-  assert.equal(fired.runId, build.runId);
-  assert.equal(fired.baseSha, baseSha);
-  assert.match(fired.coauthor, /131\+fixture-visitor@users\.noreply\.github\.com/);
+  const callbackOrigin = prepared.callbackOrigin;
+  assert.match(callbackOrigin, /^http:\/\/(127\.0\.0\.1|localhost):\d+$/);
+  assert.deepEqual(fixture.dispatches[0], { runId: build.runId, planCommitSha: prepared.planCommitSha, baseSha, prNumber: prepared.state.pr.number, callbackOrigin });
+  assert.equal(fixture.calls.find((call) => call.path.endsWith('/dispatches')).body.event_type, 'build');
   const exchanges = fixture.calls.filter((call) => call.path.includes('/login/oauth/access_token')).length;
   assert.ok(exchanges > BUILD_QUOTA.fire.account);
   assert.equal(fixture.calls.filter((call) => call.method === 'DELETE' && call.path.includes('/applications/')).length, exchanges);
   assert.equal((await webhook('pull_request', { pull_request: fixture.prs[0] }, 'plan-only-draft')).status, 200);
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'triggered');
   assert.equal((await rpc('global', 'readRun', build.runId)).state.pr.draft, true);
-  const progress = await post(`/api/build/progress?runId=${build.runId}`, { message: 'Fixture implementation underway.' }, { Authorization: `Bearer ${fired.uploadToken}` });
+  const runAudience = (runId) => `${callbackOrigin}/builds/${runId}`;
+  const workflowAuth = { Authorization: `Bearer ${actionsToken(runAudience(build.runId))}` };
+  for (const authorization of [`Bearer ${uploadCapability(build.runId)}`, `Bearer ${actionsToken('https://api.homepage.lyjw.llc')}`, `Bearer ${actionsToken(callbackOrigin)}`, `Bearer ${actionsToken(runAudience('f'.repeat(32)))}`, `Bearer ${actionsToken(runAudience(build.runId), { workflow_ref: 'LYJW131/lyjwpage/.github/workflows/ci.yml@refs/heads/main' })}`, `Bearer ${actionsToken(runAudience(build.runId), { runner_environment: 'self-hosted' })}`]) {
+    assert.equal((await post(`/api/build/progress?runId=${build.runId}`, { message: 'Forged progress.' }, { Authorization: authorization })).status, 401);
+    assert.equal((await post(`/api/build/upload?runId=${build.runId}`, { baseSha }, { Authorization: authorization })).status, 401);
+  }
+  assert.equal((await rpc('global', 'readRun', build.runId)).uploadUsed, false);
+  const progress = await post(`/api/build/progress?runId=${build.runId}`, { message: 'Fixture implementation underway.' }, workflowAuth);
   assert.equal(progress.status, 200);
+  assert.equal((await post(`/api/build/screenshot?runId=${build.runId}`, { caption: 'Fixture card on a phone', content: screenshot }, workflowAuth)).status, 201);
   const getStatus = () => fetch(`${worker}/api/build/status?runId=${build.runId}`, { headers: { Authorization: `Bearer ${build.statusToken}` } });
   assert.equal((await rpc('global', 'readRun', build.runId)).state.phase, 'running');
   const upload = { baseSha, message: 'feat: improve fixture card', files: [{ path: 'src/components/fixture.tsx', content: Buffer.from('export const fixture = true;\n').toString('base64'), mode: '100644' }], deletions: [] };
-  const uploaded = await Promise.all(Array.from({ length: 8 }, () => post(`/api/build/upload?runId=${build.runId}`, upload, { Authorization: `Bearer ${fired.uploadToken}` })));
+  const uploaded = await Promise.all(Array.from({ length: 8 }, () => post(`/api/build/upload?runId=${build.runId}`, upload, workflowAuth)));
   assert.equal(uploaded.filter((response) => response.status === 201).length, 1);
   assert.equal(uploaded.filter((response) => response.status === 401).length, 7);
-  assert.equal((await post(`/api/build/progress?runId=${build.runId}`, { message: 'Too late' }, { Authorization: `Bearer ${fired.uploadToken}` })).status, 401);
+  assert.equal((await post(`/api/build/progress?runId=${build.runId}`, { message: 'Too late' }, workflowAuth)).status, 401);
+  assert.equal((await post(`/api/build/screenshot?runId=${build.runId}`, { caption: 'Too late', content: screenshot }, workflowAuth)).status, 409);
   const afterUpload = await inspect();
   assert.equal(afterUpload.jwtVerified, true);
   const writes = afterUpload.calls.filter((call) => call.method === 'POST' && call.path.startsWith('api.github.com/repos/'));
@@ -216,6 +244,8 @@ try {
   assert.ok(implementationTree.some((entry) => entry.path === `builds/${build.runId}.md` && entry.sha === planFile.sha));
   assert.ok(implementationTree.some((entry) => entry.path === upload.files[0].path));
   assert.equal(afterUpload.calls.filter((call) => call.path === 'api.github.com/graphql').length, 0);
+  assert.equal(afterUpload.calls.filter((call) => call.method === 'POST' && call.path === `api.github.com/repos/LYJW131/lyjwpage/issues/${prepared.state.pr.number}/comments`).length, 1);
+  assert.ok(afterUpload.calls.some((call) => call.path === 'token.actions.githubusercontent.com/.well-known/jwks'));
   const status = await (await getStatus()).json();
   assert.equal(status.phase, 'pr_open');
   assert.equal(status.pr.number, 101);
@@ -224,7 +254,7 @@ try {
   assert.equal(status.preview.state, 'success');
   assert.match(status.review.state, /Fixture review/);
   assert.equal((await inspect()).calls.filter((call) => call.path === 'api.github.com/graphql').length, 1);
-  console.log('PASS: concurrent Build clicks return one run, draft PR and plan file before one dispatch; one upload continues the same branch and becomes ready only after implementation CI');
+  console.log('PASS: concurrent Build clicks return one run, draft PR and plan file before one dispatch; only build workflow OIDC tokens bound to this run report, and one upload continues the same branch and becomes ready only after implementation CI');
 
   const newHead = '9'.repeat(40);
   async function webhook(event, payload, delivery, valid = true) {
@@ -263,37 +293,35 @@ try {
   let fixtureAccount = 200;
   async function nextBuild(scenario = {}) {
     fixtureAccount += 1;
-    await post('/__fixture/configure', { accountId: fixtureAccount, account: `fixture-${fixtureAccount}`, ancestor: true, rejectPr: false, rejectBody: false, rejectDispatch: false, check: 'success', ...scenario });
+    await post('/__fixture/configure', { accountId: fixtureAccount, account: `fixture-${fixtureAccount}`, ancestor: true, rejectPr: false, rejectBody: false, dispatchStatus: 0, check: 'success', ...scenario });
     const proposal = await (await post('/__fixture/plan', plan)).json();
     const response = await post('/api/build', { ...signIn, planToken: proposal.token });
     assert.equal(response.status, 202);
     const build = await response.json();
     if (!scenario.rejectPr) await eventually(async () => {
-      const stored = await rpc('global', 'readRun', build.runId);
-      assert.equal(stored.dispatchAttempted, true);
-      assert.ok(stored.sessionUrl || stored.state.phase === 'failed');
+      assert.equal((await rpc('global', 'readRun', build.runId)).dispatchAttempted, true);
+      assert.ok((await inspect()).answered.includes(build.runId));
     });
     const status = () => fetch(`${worker}/api/build/status?runId=${build.runId}`, { headers: { Authorization: `Bearer ${build.statusToken}` } });
     return { build, proposal, status };
   }
   async function uploadBuild(build, changedUpload = upload) {
-    const fire = (await inspect()).fires.find((entry) => entry.runId === build.runId);
-    assert.ok(fire);
-    return post(`/api/build/upload?runId=${build.runId}`, changedUpload, { Authorization: `Bearer ${fire.uploadToken}` });
+    assert.ok((await inspect()).dispatches.some((entry) => entry.runId === build.runId));
+    return post(`/api/build/upload?runId=${build.runId}`, changedUpload, { Authorization: `Bearer ${actionsToken(runAudience(build.runId))}` });
   }
 
   const preparing = await nextBuild({ rejectPr: true, refResponseLost: true });
   const unconfirmed = await rpc('global', 'readRun', preparing.build.runId);
   assert.equal(unconfirmed.state.phase, 'triggered');
   assert.equal(unconfirmed.state.pr, undefined);
-  assert.equal((await inspect()).fires.some((fire) => fire.runId === preparing.build.runId), false);
+  assert.equal((await inspect()).dispatches.some((dispatch) => dispatch.runId === preparing.build.runId), false);
   const retainedBranch = (await inspect()).objects.find((object) => object.key === `branch:${preparing.build.branch}`).value;
   await post('/__fixture/configure', { rejectPr: false, prResponseLost: true });
   const retry = await post('/api/build', { ...signIn, planToken: preparing.proposal.token });
   assert.equal(retry.status, 202);
   assert.equal((await retry.json()).runId, preparing.build.runId);
   assert.equal((await rpc('global', 'readRun', preparing.build.runId)).planCommitSha, retainedBranch);
-  await eventually(async () => assert.equal((await inspect()).fires.filter((fire) => fire.runId === preparing.build.runId).length, 1));
+  await eventually(async () => assert.equal((await inspect()).dispatches.filter((dispatch) => dispatch.runId === preparing.build.runId).length, 1));
   assert.equal((await inspect()).prs.filter((pr) => pr.head.ref === preparing.build.branch).length, 1);
   console.log('PASS: partially successful ref and PR requests retain the plan branch, recover the same draft and dispatch once');
 
@@ -324,22 +352,72 @@ try {
   assert.equal((await inspect()).objects.find((object) => object.key === `branch:${foreign.build.branch}`).value, newHead);
   console.log('PASS: an unexpected branch head is neither overwritten nor adopted');
 
-  const rejectedDispatch = await nextBuild({ rejectDispatch: true });
-  const failedDispatch = await (await rejectedDispatch.status()).json();
-  assert.equal(failedDispatch.phase, 'failed');
-  assert.equal(failedDispatch.pr.draft, true);
-  const dispatchAttempts = (await inspect()).fires.filter((fire) => fire.runId === rejectedDispatch.build.runId).length;
-  await post('/api/build', { ...signIn, planToken: rejectedDispatch.proposal.token });
-  assert.equal((await inspect()).fires.filter((fire) => fire.runId === rejectedDispatch.build.runId).length, dispatchAttempts);
-  console.log('PASS: routine rejection keeps the visible draft and retries do not dispatch another agent');
+  let unconfirmedDispatch;
+  for (const [dispatchStatus, phase, reason] of [[422, 'failed', /GitHub rejected the build workflow dispatch/], [503, 'triggered', /build workflow result is unknown/]]) {
+    const dispatchFailure = await nextBuild({ dispatchStatus });
+    if (phase === 'triggered') unconfirmedDispatch = dispatchFailure;
+    await eventually(async () => assert.match((await rpc('global', 'readRun', dispatchFailure.build.runId)).state.reason ?? '', reason));
+    const failedDispatch = await (await dispatchFailure.status()).json();
+    assert.equal(failedDispatch.phase, phase);
+    assert.equal(failedDispatch.pr.draft, true);
+    await post('/api/build', { ...signIn, planToken: dispatchFailure.proposal.token });
+    await dispatchFailure.status();
+    assert.equal((await inspect()).dispatches.filter((dispatch) => dispatch.runId === dispatchFailure.build.runId).length, 1);
+  }
+  console.log('PASS: rejected or unconfirmed workflow dispatch keeps the visible draft and retries never dispatch the same run again');
 
-  const cancelled = await nextBuild({ check: 'cancelled' });
-  assert.equal((await uploadBuild(cancelled.build)).status, 201);
-  const cancelledStatus = await (await cancelled.status()).json();
+  const workflowOrigin = 'https://worker.test';
+  const workflowIo = {
+    fetch: (url, init) => String(url).startsWith('https://oidc.test/')
+      ? Promise.resolve(Response.json({ value: actionsToken(new URL(String(url)).searchParams.get('audience').replace(workflowOrigin, callbackOrigin)) }))
+      : fetch(String(url).replace(workflowOrigin, worker), init),
+    log: () => {},
+  };
+  const workflowEnv = async (run, extra) => {
+    const outputs = join(temporary, `outputs-${run.build.runId}`);
+    await writeFile(outputs, '');
+    return { outputs, env: { RUN_ID: run.build.runId, BASE_SHA: baseSha, PR_NUMBER: String((await rpc('global', 'readRun', run.build.runId)).state.pr.number), CALLBACK_ORIGIN: workflowOrigin, RUN_URL: 'https://github.com/LYJW131/lyjwpage/actions/runs/1', ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.test/token?api-version=2.0', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'fixture', GITHUB_OUTPUT: outputs, ...extra } };
+  };
+  const declined = unconfirmedDispatch;
+  const declinedGate = await workflowEnv(declined, { REVIEW_RESULT: 'success', VERDICT: 'reject', REASON: 'The plan needs a deploy change.' });
+  await runGate({ env: declinedGate.env, io: workflowIo });
+  assert.match(await readFile(declinedGate.outputs, 'utf8'), /^approved<<\S+\nfalse\n/);
+  const declinedRun = (await rpc('global', 'readRun', declined.build.runId)).state;
+  assert.equal(declinedRun.phase, 'blocked');
+  assert.equal(declinedRun.reason, 'The builder stopped without uploading: Plan review declined: The plan needs a deploy change.');
+
+  const scripted = await nextBuild({ check: 'cancelled' });
+  const gate = await workflowEnv(scripted, { REVIEW_RESULT: 'success', VERDICT: 'approve', REASON: 'Small card change.' });
+  await runGate({ env: gate.env, io: workflowIo });
+  assert.match(await readFile(gate.outputs, 'utf8'), /^approved<<\S+\ntrue\n/);
+  assert.equal((await rpc('global', 'readRun', scripted.build.runId)).state.phase, 'running');
+  const checkout = join(temporary, 'scripted-checkout');
+  const gitIn = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } }).toString().trim();
+  await mkdir(join(checkout, 'builds'), { recursive: true });
+  await writeFile(join(checkout, `builds/${scripted.build.runId}.md`), '# Plan\n');
+  gitIn(temporary, 'init', '-q', checkout);
+  gitIn(checkout, 'add', '-A');
+  gitIn(checkout, 'commit', '-q', '-m', 'plan');
+  const scriptedPlanSha = gitIn(checkout, 'rev-parse', 'HEAD');
+  gitIn(temporary, 'clone', '-q', checkout, join(temporary, 'scripted-work'));
+  await mkdir(join(checkout, 'src/components'), { recursive: true });
+  await writeFile(join(checkout, 'src/components/fixture.tsx'), 'export const fixture = "scripted";\n');
+  await mkdir(join(checkout, '.build-output/screenshots'), { recursive: true });
+  await writeFile(join(checkout, '.build-output/message.md'), 'feat(fixture): 脚本上传\n\n经 build-actions 打包。\n');
+  await writeFile(join(checkout, '.build-output/screenshots/card.png'), Buffer.from(screenshot, 'base64'));
+  await writeFile(join(checkout, '.build-output/screenshots.json'), JSON.stringify([{ file: 'card.png', caption: 'Fixture card, desktop 1440px' }]));
+  packageBuild({ cwd: checkout, out: join(temporary, 'scripted-artifact'), planCommitSha: scriptedPlanSha, io: workflowIo });
+  const { env: publishEnv } = await workflowEnv(scripted, { IMPLEMENT_RESULT: 'success' });
+  assert.equal(await runPublish({ env: publishEnv, work: join(temporary, 'scripted-work'), artifact: join(temporary, 'scripted-artifact'), io: workflowIo }), true);
+  assert.equal((await rpc('global', 'readRun', scripted.build.runId)).screenshots.length, 1);
+  const scriptedCommit = (await inspect()).calls.filter((call) => call.method === 'POST' && call.path.endsWith('/git/commits')).at(-1);
+  assert.match(scriptedCommit.body.message, /^feat\(fixture\): 脚本上传\n\n经 build-actions 打包。\n\nCo-authored-by: /);
+  const cancelledStatus = await (await scripted.status()).json();
   assert.equal(cancelledStatus.phase, 'pr_open');
   assert.equal(cancelledStatus.ci.state, 'failure');
   assert.equal(cancelledStatus.pr.draft, true);
-  console.log('PASS: cancelled implementation CI keeps its PR draft');
+  console.log('PASS: scripts/build-actions.mjs gate and publish work against the real Worker (a declined review blocks the run; an approved one uploads the packaged patch, message and screenshot), and cancelled implementation CI keeps the PR draft');
+
 
   for (const [scenario, changedUpload, errorPattern] of [
     [{ ancestor: true }, { ...upload, files: [{ ...upload.files[0], path: 'src/package.json' }] }, /protected|allowed|blocked/i],

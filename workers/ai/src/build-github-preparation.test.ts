@@ -3,19 +3,19 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import { BUILD_REPO, PLAN_LABELS, branchForRun, type BuildUpload } from "@shared/build-routine";
 import type { StoredRun } from "./build/coordinator.ts";
-import { BuildBlockedError, createBuildPullRequest, GithubBuildApi, markBuildReady, prepareBuildPullRequest, reconcileBuild, recoverBuildPublication } from "./build/github.ts";
+import { BuildBlockedError, BuildPublicationPendingError, createBuildPullRequest, GithubBuildApi, markBuildReady, prepareBuildPullRequest, reconcileBuild, recoverBuildPublication } from "./build/github.ts";
 
 const baseSha = "a".repeat(40);
 const baseTree = "b".repeat(40);
 const runId = "c".repeat(32);
 const upload: BuildUpload = { baseSha, message: "feat: improve card", files: [{ path: "src/card.ts", mode: "100644", content: btoa("export const improved = true;") }], deletions: [] };
-const run = (): StoredRun => ({ state: { runId, branch: branchForRun(runId), phase: "triggered", createdAt: 1791590400000, updatedAt: 1791590400000 }, plan: { title: "Improve card", spec: "Make the public card clearer.", acceptance: ["The card is readable."], paths: ["src/card.ts"] }, account: "private-visitor", coauthor: "Private Visitor <private-visitor@example.test>", sessionUrl: "https://claude.ai/code/private-session", baseSha, uploadHash: "private-upload-hash", uploadUsed: false, uploadExpiresAt: Date.now() + 60000 });
+const run = (): StoredRun => ({ state: { runId, branch: branchForRun(runId), phase: "triggered", createdAt: 1791590400000, updatedAt: 1791590400000 }, plan: { title: "Improve card", spec: "Make the public card clearer.", acceptance: ["The card is readable."], paths: ["src/card.ts"] }, account: "private-visitor", coauthor: "Private Visitor <private-visitor@example.test>", baseSha, uploadHash: "private-upload-hash", uploadUsed: false, uploadExpiresAt: Date.now() + 60000 });
 type Entry = { path: string; type: string; mode: string; sha: string | null };
 type PullRequest = { number: number; node_id: string; html_url: string; state: string; merged: boolean; draft: boolean; body: string; updated_at: string; head: { sha: string; ref: string; repo: { full_name: string } }; base: { ref: string; repo: { full_name: string } }; user: { id: number; login: string; type: string } };
 type Call = { path: string; method: string; body: Record<string, unknown> };
 
 function fixture() {
-  const state = { head: null as string | null, pr: null as PullRequest | null, loseRefResponse: false, losePrResponse: false, losePushResponse: false, rejectPr: false, rejectBody: false, check: "success", otherCheck: "success", checkApp: "github-actions", checkName: "check", readyCalls: 0, changeReadyHead: false };
+  const state = { head: null as string | null, pr: null as PullRequest | null, loseRefResponse: false, losePrResponse: false, losePushResponse: false, rejectPr: false, rejectBody: false, check: "success", otherCheck: "success", checkApp: "github-actions", checkName: "check", codeql: "success" as string | null, readyCalls: 0, changeReadyHead: false, prHeadLag: 0 };
   const calls: Call[] = [];
   const trees = new Map<string, Entry[]>([[baseTree, []]]);
   const commits = new Map<string, { sha: string; tree: { sha: string }; parents: { sha: string }[] }>([[baseSha, { sha: baseSha, tree: { sha: baseTree }, parents: [] }]]);
@@ -53,7 +53,7 @@ function fixture() {
     if (path.startsWith("/git/refs/heads/") && method === "PATCH") {
       assert.equal(body.force, false);
       state.head = body.sha;
-      if (state.pr) state.pr.head.sha = body.sha;
+      if (state.pr && !state.prHeadLag) state.pr.head.sha = body.sha;
       if (state.losePushResponse) throw new Error("Lost push response");
       return Response.json({ object: { sha: state.head } });
     }
@@ -66,13 +66,18 @@ function fixture() {
       return Response.json(state.pr);
     }
     if (path === "/pulls/80") {
+      if (method === "GET" && state.prHeadLag && state.pr!.head.sha !== state.head && --state.prHeadLag === 0) state.pr!.head.sha = state.head!;
       if (method === "PATCH") {
         if (state.rejectBody) return Response.json({}, { status: 502 });
         state.pr!.body = body.body;
       }
       return Response.json(state.pr);
     }
-    if (path.includes("/check-runs?")) return Response.json({ total_count: 2, check_runs: [{ name: state.checkName, status: "completed", conclusion: state.check, app: { slug: state.checkApp } }, { name: "Other check", status: "completed", conclusion: state.otherCheck, app: { slug: "github-actions" } }] });
+    if (path.includes("/check-runs?")) {
+      const codeql = state.codeql === null ? [] : ["javascript-typescript", "actions"].map((language) => ({ name: `Analyze (${language})`, status: "completed", conclusion: state.codeql, app: { slug: "github-actions" } }));
+      const checkRuns = [{ name: state.checkName, status: "completed", conclusion: state.check, app: { slug: state.checkApp } }, { name: "Other check", status: "completed", conclusion: state.otherCheck, app: { slug: "github-actions" } }, ...codeql];
+      return Response.json({ total_count: checkRuns.length, check_runs: checkRuns });
+    }
     if (path.includes("/status?")) return Response.json({ total_count: 0, state: "pending", statuses: [] });
     if (path.includes("/comments?")) return Response.json([]);
     if (path === "/graphql") {
@@ -191,6 +196,21 @@ test("body update failure is recoverable before pushing and ambiguous push succe
   assert.equal(setup.state.pr!.body, setup.stored.publicationBody);
 });
 
+test("a pull request head that lags the pushed branch is awaited, then left pending rather than blocked", async () => {
+  const setup = await prepared();
+  setup.state.prHeadLag = 2;
+  const result = await createBuildPullRequest(setup.api, setup.stored, upload, baseTree, async (sha, body) => { setup.stored.implementationHeadSha = sha; setup.stored.publicationBody = body; });
+  assert.equal(result.headSha, setup.stored.implementationHeadSha);
+
+  const stale = await prepared();
+  stale.state.prHeadLag = 100;
+  const error = await createBuildPullRequest(stale.api, stale.stored, upload, baseTree, async (sha, body) => { stale.stored.implementationHeadSha = sha; stale.stored.publicationBody = body; }).then(() => null, (error: unknown) => error);
+  assert.ok(error instanceof BuildPublicationPendingError && !(error instanceof BuildBlockedError));
+  assert.equal(stale.state.head, stale.stored.implementationHeadSha);
+  stale.state.prHeadLag = 1;
+  assert.equal((await recoverBuildPublication(stale.api, stale.stored)).headSha, stale.stored.implementationHeadSha);
+});
+
 test("plan-only drafts preserve active and failure phases during reconciliation", async () => {
   const setup = await prepared();
   for (const phase of ["triggered", "running", "uploaded", "validated", "blocked", "failed", "timeout"] as const) {
@@ -220,6 +240,17 @@ test("only successful check from GitHub Actions on the implementation head marks
   assert.equal(setup.state.readyCalls, 1);
   assert.equal((await markBuildReady(setup.api, setup.stored))?.draft, false);
   assert.equal(setup.state.readyCalls, 1);
+});
+
+test("the implementation stays draft until both CodeQL analyses succeed", async () => {
+  const setup = await published();
+  for (const codeql of [null, "failure", "skipped"]) {
+    setup.state.codeql = codeql;
+    assert.equal(await markBuildReady(setup.api, setup.stored), null);
+  }
+  assert.equal(setup.state.readyCalls, 0);
+  setup.state.codeql = "success";
+  assert.equal((await markBuildReady(setup.api, setup.stored))?.draft, false);
 });
 
 test("failed or blocked runs and a mismatched implementation head never request readiness", async () => {

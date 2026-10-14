@@ -106,7 +106,7 @@ PSN 拉取并进 `workers/collector`（任务 `playstation`，见它的 README�
 上报的鉴权、校验与拆分从 api Worker 拆到无状态的上报入口 Worker `ingress`（`workers/ingress`，见它的 README）。
 对上报器什么都没变：URL（`https://ingest.homepage.lyjw.llc/api/ingest/<来源>`、`/api/ingest/agents/otlp`、
 `/api/internal/site-deployed`）、Access 应用「lyjwpage ingest」、各把 service token 与权限、报文格式、回执状态码和正文
-都照旧，远端配置不用改，也没有备份。`[vars.ACCESS_CLIENTS]` 从 `workers/api/wrangler.toml` 搬到 `workers/ingress/wrangler.toml`。
+都照旧，远端配置不用改，也没有备份。`[vars.ACCESS_CLIENTS]` 从 workers/api/wrangler.toml 搬到 `workers/ingress/wrangler.toml`。
 
 上报入口验完 Access、prepare 好之后，实时那一半经 Service Binding 调 api 的 `StateCore.commitIngest(command)`，
 可滞后层、D1 归档和 Apple Music 凭据自己写；部署通知改由它调 `StateCore.broadcastVersion()`，并请采集 Worker
@@ -121,7 +121,7 @@ prepare 后交给 `StateCore.commitIngest`，`StateCore.ingest` 删除；此处�
 
 独立的 `online-counter` Worker（`online.homepage.lyjw.llc`，不休眠的 `OnlineCounterRoom`）退役。浏览器只剩一条
 `/ws`：握手带 `?visible=1|0`，切标签时发 `visible` / `hidden`，api 的 `LivePushRoom` 在同一条连接上数出
-`connections` 与 `online`（口径见 `workers/api/src/live-census.ts`），可见人数变了广播 `online` 事件。
+`connections` 与 `online`（口径见 workers/api/src/live-census.ts），可见人数变了广播 `online` 事件。
 `api.homepage.lyjw.llc/count` 改回 `{ ok, connections, online }`；采集 Worker 改调 `StateCore.audience()`（取代 `connections()`），
 agents-reporter 只读 `SITE_URL/count`。站点删掉 `NEXT_PUBLIC_ONLINE_COUNTER_URL`，采集 Worker 删掉 `ONLINE_COUNTER_URL`。
 api 没有新迁移。旧 Worker、它的自定义域、Workers Builds 项目和 Vercel 上的旧变量在新版核验后手工删除。

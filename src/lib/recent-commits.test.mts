@@ -36,3 +36,17 @@ test("部署按完整 sha 对上；旧载荷只有短 sha 时按前缀对", () =
   assert.equal(deploymentFor({ sha: "34d1780", oid: null, title: "", url: "", authors: [], committedAt: null, verified: false }, bySha), "live");
   assert.equal(deploymentFor({ sha: "fffffff", oid: null, title: "", url: "", authors: [], committedAt: null, verified: false }, bySha), undefined);
 });
+
+test("跳过把 main 同步进分支的合并，PR 合并照常显示", () => {
+  const commit = (sha: string, title: string) => ({ sha, title, authors: [], committedAt: null });
+  const shown = recentCommitsFrom([
+    commit("0000001", "feat(site): x (#207)"),
+    commit("0000002", "Merge remote-tracking branch 'origin/main' into claude/project-thread-g4mayg"),
+    commit("0000003", "Merge branch 'main' into feature"),
+    commit("0000004", "Merge origin/main into claude/project-thread-gxk17u"),
+    commit("0000005", "Merge origin/main, resolve conflict in docs/build-routine.md"),
+    commit("0000006", "Merge pull request #205 from LYJW131/claude/project-thread-1062yf"),
+    commit("0000007", "Merge branch 'feature' into main"),
+  ], 3);
+  assert.deepEqual(shown.map((c) => c.sha), ["0000001", "0000006", "0000007"]);
+});

@@ -1,0 +1,114 @@
+name = "core"
+main = "src/index.ts"
+compatibility_date = "2026-09-08"
+compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
+# 没有公开地址，生产流量只经 Service Binding 进来。生产部署会按这里重写整个 Worker 的 Preview URL 开关，分支 Preview 靠 preview_urls 保持打开。
+workers_dev = false
+preview_urls = true
+upload_source_maps = true
+
+[vars]
+ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me"
+STORAGE_PREFIX = "lyjwpage"
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "AI_SERVICE"
+service = "ai"
+
+[[services]]
+binding = "SITE_CACHE"
+service = "site"
+entrypoint = "RenderedSite"
+
+[[durable_objects.bindings]]
+name = "LIVE_PUSH"
+class_name = "LivePushRoom"
+
+[[kv_namespaces]]
+binding = "LAG"
+id = "e9c72a9517884aeb95db7386b630a691"
+
+[[d1_databases]]
+binding = "HISTORY"
+database_name = "lyjwpage-history"
+database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
+
+[observability]
+enabled = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
+
+[observability.issues]
+enabled = true
+
+# 定时一轮由采集 Worker 每分钟经 StateCore.cronRound 驱动（为什么不用 Cloudflare cron 见 docs/ops-facts.md）。
+# 空表让生产部署清掉触发器；加回 cron 会和采集 Worker 的驱动叠成每轮两次。
+[triggers]
+crons = []
+
+[[durable_objects.bindings]]
+name = "STATE"
+class_name = "StateHub"
+
+[[migrations]]
+tag = "v1-transfer-from-api"
+
+[[migrations.transferred_classes]]
+from = "LivePushRoom"
+from_script = "api"
+to = "LivePushRoom"
+
+[[migrations.transferred_classes]]
+from = "StateHub"
+from_script = "api"
+to = "StateHub"
+
+# Preview 不继承生产绑定，要用的绑定（DO、AI、限流）都得在下面重声明。
+[previews.vars]
+PREVIEW_WORKER = "true"
+UPSTREAM_API_URL = "https://lyjw.me"
+STORAGE_PREFIX = "lyjwpage-preview"
+ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
+
+[[previews.durable_objects.bindings]]
+name = "LIVE_PUSH"
+class_name = "LivePushRoom"
+
+[[previews.durable_objects.bindings]]
+name = "STATE"
+class_name = "StateHub"
+
+[[previews.durable_objects.bindings]]
+name = "CHAT_QUOTA"
+class_name = "ChatQuota"
+
+[[previews.durable_objects.bindings]]
+name = "ANTHROPIC_EGRESS"
+class_name = "AnthropicEgress"
+
+[[previews.durable_objects.bindings]]
+name = "BUILD_COORDINATOR"
+class_name = "BuildCoordinator"
+
+[previews.ai]
+binding = "AI"
+
+[[previews.ratelimits]]
+name = "CHAT_USAGE_LIMIT"
+namespace_id = "13101"
+simple = { limit = 30, period = 10 }
+
+[[previews.ratelimits]]
+name = "MCP_LIMIT"
+namespace_id = "13103"
+simple = { limit = 60, period = 60 }
+
+[[previews.ratelimits]]
+name = "BUILD_REQUEST_LIMIT"
+namespace_id = "13104"
+simple = { limit = 30, period = 60 }

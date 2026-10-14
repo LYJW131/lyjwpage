@@ -8,8 +8,10 @@ import type { Env } from "./runtime.ts";
 import type { StoredRun } from "./build/coordinator.ts";
 import { BuildPullRequestRejectedError, createBuildPullRequest as publishBuild, prepareBuildPullRequest, validateBuildBase, GithubBuildApi, reconcileBuild } from "./build/github.ts";
 import { buildGithubFixture, FIXTURE_PLAN_SHA } from "./build/testing/github-fixture.ts";
+import { buildWorkflowAudience } from "./build/actions-oidc.ts";
+import { createActionsOidcFixture } from "./build/testing/actions-oidc.ts";
 import { issuePlan } from "./build/plan.ts";
-import { hashToken, signBuildToken } from "./build/token.ts";
+import { hashToken, signBuildToken, uploadTokenForRun } from "./build/token.ts";
 
 registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier !== "cloudflare:workers") return nextResolve(specifier, context);
@@ -22,7 +24,10 @@ const baseSha = "a".repeat(40);
 const treeSha = "b".repeat(40);
 const headSha = "c".repeat(40);
 const runId = "d".repeat(32);
-const uploadToken = "e".repeat(64);
+const buildSecret = "local-review-fixture";
+const callbackOrigin = "https://api.test";
+const dispatchPath = `/repos/${BUILD_REPO}/dispatches`;
+const oidc = await createActionsOidcFixture();
 const privatePem = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ format: "pem", type: "pkcs8" }).toString();
 const upload: BuildUpload = { baseSha, message: "feat: improve card", files: [{ path: plan.paths[0], mode: "100644", content: btoa("export const card = true;") }], deletions: [] };
 
@@ -35,16 +40,20 @@ function coordinator() {
   } };
   const transactionSync = <T>(fn: () => T): T => { db.exec("BEGIN"); try { const value = fn(); db.exec("COMMIT"); return value; } catch (error) { db.exec("ROLLBACK"); throw error; } };
   const instance = new BuildCoordinator({ storage: { sql, transactionSync, getAlarm: async () => null, setAlarm: async () => undefined } } as unknown as DurableObjectState, {} as Env);
-  const env = { BUILD_COORDINATOR: { getByName: () => instance }, BUILD_SESSION_SECRET: "local-review-fixture", GITHUB_APP_PRIVATE_KEY: privatePem, GITHUB_WEBHOOK_SECRET: "local-webhook-fixture", ROUTINE_FIRE_URL: "https://fixture.invalid/fire", ROUTINE_FIRE_TOKEN: "local-fire-fixture", GITHUB_APP_CLIENT_SECRET: "local-oauth-fixture" } as unknown as Env;
+  const env = { BUILD_COORDINATOR: { getByName: () => instance }, BUILD_SESSION_SECRET: buildSecret, GITHUB_APP_PRIVATE_KEY: privatePem, GITHUB_WEBHOOK_SECRET: "local-webhook-fixture", GITHUB_APP_CLIENT_SECRET: "local-oauth-fixture" } as unknown as Env;
   return { db, instance, env };
 }
 
-const sessionUrl = "https://claude.ai/code/session_01Fixture";
 const signIn = { code: "github-code", codeVerifier: "a".repeat(43) };
 
 async function stored(): Promise<StoredRun> {
   const now = Date.now();
-  return { state: { runId, branch: branchForRun(runId), phase: "triggered", createdAt: now, updatedAt: now }, plan, account: "visitor", accountId: 1, coauthor: "Visitor <1+visitor@users.noreply.github.com>", baseSha, uploadHash: await hashToken(uploadToken), uploadUsed: false, uploadExpiresAt: now + BUILD_TIMEOUT_MS };
+  return { state: { runId, branch: branchForRun(runId), phase: "triggered", createdAt: now, updatedAt: now }, plan, account: "visitor", accountId: 1, coauthor: "Visitor <1+visitor@users.noreply.github.com>", baseSha, uploadHash: await hashToken(await uploadTokenForRun(runId, buildSecret)), uploadUsed: false, uploadExpiresAt: now + BUILD_TIMEOUT_MS };
+}
+
+async function dispatched(): Promise<StoredRun> {
+  const run = await stored();
+  return { ...run, callbackOrigin, planCommitSha: FIXTURE_PLAN_SHA, dispatchAttempted: true, state: { ...run.state, pr: { number: 12, url: `https://github.com/${BUILD_REPO}/pull/12`, headSha: FIXTURE_PLAN_SHA, draft: true } } };
 }
 
 function post(path: string, body: unknown, token?: string): Request {
@@ -53,7 +62,7 @@ function post(path: string, body: unknown, token?: string): Request {
 
 type GithubCall = { path: string; method: string; headers: Headers; body: Record<string, unknown> | null };
 function githubFixture(override: (call: GithubCall) => Response | undefined = () => undefined) {
-  return buildGithubFixture({ runId, baseSha, baseTree: treeSha, headSha, override });
+  return buildGithubFixture({ runId, baseSha, baseTree: treeSha, headSha, override, oidc });
 }
 
 async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, changed: BuildUpload, validatedBaseTree?: string) {
@@ -83,7 +92,7 @@ test("build reads main with a read-only installation token before consuming the 
   const result = await response.json() as BuildFireResult;
   assert.equal(instance.readRun(result.runId)?.baseSha, baseSha);
   assert.deepEqual(fixture.calls.find((call) => call.path.endsWith("/access_tokens"))?.body?.permissions, { contents: "read", pull_requests: "read", issues: "read", checks: "read", statuses: "read" });
-  assert.equal(fixture.calls.filter((call) => call.path === "/fire").length, 1);
+  assert.equal(fixture.calls.filter((call) => call.path === dispatchPath).length, 1);
 });
 
 test("main lookup failure leaves the signed plan and build quota available for retry", async (t) => {
@@ -94,73 +103,80 @@ test("main lookup failure leaves the signed plan and build quota available for r
   assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).status, 502);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_hits WHERE kind = 'fire'").get()?.n, 0);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_records WHERE key LIKE 'plan:%' OR key LIKE 'run:%'").get()?.n, 0);
-  assert.equal(fixture.calls.some((call) => call.path === "/fire"), false);
+  assert.equal(fixture.calls.some((call) => call.path === dispatchPath), false);
   assert.equal((await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, githubFixture().fetcher)).status, 202);
 });
 
-for (const useEgress of [true, false]) {
-  test(`build fire ${useEgress ? "uses Anthropic egress without routing GitHub through it" : "uses the injected fetcher when Anthropic egress is absent"}`, async (t) => {
+test("dispatch sends the contract payload to repository_dispatch with the write installation token and no Anthropic egress", async (t) => {
+  const { env, instance, db } = coordinator();
+  t.after(() => db.close());
+  env.ANTHROPIC_EGRESS = { idFromName: () => assert.fail("Builds must not use Anthropic egress"), get: () => assert.fail("Builds must not use Anthropic egress") } as unknown as Env["ANTHROPIC_EGRESS"];
+  const requests: Request[] = [];
+  const github = githubFixture();
+  const fetcher: typeof fetch = async (input, init) => {
+    requests.push(new Request(input, init));
+    return github.fetcher(input, init);
+  };
+  const abort = new AbortController();
+  t.mock.method(AbortSignal, "timeout", () => abort.signal);
+  const proposal = await issuePlan(env, plan);
+  const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
+  assert.equal(response.status, 202);
+  const result = await response.json() as BuildFireResult;
+  const prepared = instance.readRun(result.runId)!;
+  assert.equal(prepared.state.phase, "triggered");
+  assert.equal(prepared.state.reason, undefined);
+  assert.equal(prepared.dispatchAttempted, true);
+  assert.equal(prepared.state.pr?.draft, true);
+  assert.equal(prepared.planCommitSha, FIXTURE_PLAN_SHA);
+  assert.ok(requests.every((request) => ["github.com", "api.github.com"].includes(new URL(request.url).hostname)));
+  const dispatches = requests.filter((request) => new URL(request.url).pathname === dispatchPath);
+  assert.equal(dispatches.length, 1);
+  const [dispatch] = dispatches;
+  assert.equal(dispatch.method, "POST");
+  assert.equal(dispatch.headers.get("Authorization"), "Bearer installation-fixture");
+  const tokenRequest = github.calls.filter((call) => call.path.endsWith("/access_tokens")).at(-1);
+  assert.deepEqual(tokenRequest?.body?.permissions, { contents: "write", pull_requests: "write", issues: "read", checks: "read", statuses: "read" });
+  assert.deepEqual(await dispatch.json(), { event_type: "build", client_payload: { runId: result.runId, planCommitSha: FIXTURE_PLAN_SHA, baseSha, prNumber: 12, callbackOrigin } });
+  abort.abort();
+  assert.equal(dispatch.signal.aborted, true);
+});
+
+for (const [outcome, status, phase, reason] of [
+  ["rejection", 422, "failed", /GitHub rejected the build workflow dispatch/],
+  ["missing workflow", 404, "failed", /GitHub rejected the build workflow dispatch/],
+  ["rate limit", 429, "triggered", /build workflow result is unknown/],
+  ["timeout", 408, "triggered", /build workflow result is unknown/],
+  ["server error", 502, "triggered", /build workflow result is unknown/],
+  ["lost response", 0, "triggered", /build workflow result is unknown/],
+] as const) {
+  test(`dispatch ${outcome} is recorded once and never dispatched again`, async (t) => {
     const { env, instance, db } = coordinator();
     t.after(() => db.close());
-    env.ROUTINE_FIRE_URL = "https://api.anthropic.com/v1/claude_code/routines/fixture/fire";
-    const egressRequests: Request[] = [];
-    if (useEgress) {
-      env.ANTHROPIC_EGRESS = {
-        idFromName: (name: string) => name,
-        get: () => ({ fetch: async (request: Request) => {
-          egressRequests.push(request);
-          return Response.json({ claude_code_session_url: sessionUrl });
-        } }),
-      } as unknown as Env["ANTHROPIC_EGRESS"];
-    }
-    const directRequests: Request[] = [];
-    const github = githubFixture();
-    const fetcher: typeof fetch = async (input, init) => {
-      const request = new Request(input, init);
-      directRequests.push(request);
-      if (request.url === env.ROUTINE_FIRE_URL) return Response.json({ claude_code_session_url: sessionUrl });
-      return github.fetcher(input, init);
-    };
-    const abort = new AbortController();
-    t.mock.method(AbortSignal, "timeout", () => abort.signal);
+    const fixture = githubFixture((call) => {
+      if (call.path !== dispatchPath) return undefined;
+      if (!status) throw new Error("Dispatch response was lost");
+      return Response.json({ message: "fixture" }, { status });
+    });
     const proposal = await issuePlan(env, plan);
-    const response = await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fetcher);
-    assert.equal(response.status, 202);
-    const result = await response.json() as BuildFireResult;
-    assert.equal(instance.readRun(result.runId)?.state.phase, "triggered");
-    assert.equal(instance.readRun(result.runId)?.state.reason, undefined);
-    assert.equal(instance.readRun(result.runId)?.sessionUrl, sessionUrl);
-    assert.deepEqual(egressRequests.map((request) => request.url), useEgress ? [env.ROUTINE_FIRE_URL] : []);
-    const externalHosts = directRequests.map((request) => new URL(request.url).hostname);
-    assert.equal(externalHosts[0], "github.com");
-    assert.equal(externalHosts.filter((host) => host === "api.anthropic.com").length, useEgress ? 0 : 1);
-    assert.ok(externalHosts.slice(1, useEgress ? undefined : -1).every((host) => host === "api.github.com"));
-    const prepared = instance.readRun(result.runId)!;
-    assert.equal(prepared.state.pr?.draft, true);
-    assert.equal(prepared.planCommitSha, FIXTURE_PLAN_SHA);
-    assert.ok(github.calls.some((call) => call.path.endsWith("/git/ref/heads/main")));
-    const fire = useEgress ? egressRequests[0] : directRequests.at(-1)!;
-    assert.equal(fire.url, env.ROUTINE_FIRE_URL);
-    assert.equal(fire.method, "POST");
-    assert.equal(fire.headers.get("Authorization"), `Bearer ${env.ROUTINE_FIRE_TOKEN}`);
-    assert.equal(fire.headers.get("anthropic-version"), "2023-06-01");
-    assert.equal(fire.headers.get("Content-Type"), "application/json");
-    const payload = JSON.parse((await fire.json() as { text: string }).text);
-    assert.deepEqual(payload.plan, plan);
-    assert.equal(payload.runId, result.runId);
-    assert.equal(payload.baseSha, baseSha);
-    abort.abort();
-    assert.equal(fire.signal.aborted, true);
+    const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
+    const run = instance.readRun(result.runId)!;
+    assert.equal(run.state.phase, phase);
+    assert.match(run.state.reason ?? "", reason);
+    assert.match(run.state.reason ?? "", /pull request remains a draft/);
+    await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher);
+    await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, fixture.fetcher);
+    assert.equal(fixture.calls.filter((call) => call.path === dispatchPath).length, 1);
   });
 }
 
 test("publishing keeps the prepared PR draft, replaces supplied trailers and neutralizes body mentions", async () => {
-  const run = { ...await stored(), sessionUrl };
+  const run = await stored();
   run.plan = { ...plan, spec: "Ask @someone and \\@another", acceptance: ["Review by @team/name"], paths: ["src/@scope/card.tsx"] };
   const fixture = githubFixture();
   await createBuildPullRequest(new GithubBuildApi("fixture", fixture.fetcher), run, { ...upload, message: "feat: card\r\n\r\nCo-authored-by: Forged <forged@example.test>\n  co-AUTHORED-by: Other <other@example.test>\nClaude-Session: https://claude.ai/code/session_forged\nKeep this detail." }, treeSha);
   const message = String(fixture.calls.filter((call) => call.path.endsWith("/git/commits") && call.method === "POST").at(-1)?.body?.message);
-  assert.equal(message, `feat: card\n\nKeep this detail.\n\nCo-authored-by: ${run.coauthor}\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: ${sessionUrl}`);
+  assert.equal(message, `feat: card\n\nKeep this detail.\n\nCo-authored-by: ${run.coauthor}\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`);
   const creation = fixture.calls.find((call) => call.path.endsWith("/pulls") && call.method === "POST")?.body;
   assert.equal(creation?.draft, true);
   const pr = fixture.calls.find((call) => call.path.endsWith("/pulls/12") && call.method === "PATCH")?.body;
@@ -202,24 +218,25 @@ test("PR timeout and explicit rejection both preserve the plan branch without cl
   await assert.rejects(() => createBuildPullRequest(new GithubBuildApi("fixture", denied.fetcher), run, upload, treeSha), /branch was preserved/);
 });
 
-test("a legacy upload records draft PR rejection and preserves its plan branch for inspection", async (t) => {
+test("a run without a callback origin cannot be claimed by a workflow token", async (t) => {
   const { instance, env, db } = coordinator();
   t.after(() => db.close());
   instance.reserveRun(await stored(), "upload-plan", Date.now() + 60_000);
-  const fixture = githubFixture((call) => call.path.endsWith("/pulls") ? Response.json({}, { status: 422 }) : undefined);
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, uploadToken), env, fixture.fetcher);
-  assert.equal(response.status, 502);
-  assert.equal(instance.readRun(runId)?.state.phase, "failed");
-  assert.match(instance.readRun(runId)?.state.reason ?? "", /branch was preserved/);
+  const fixture = githubFixture();
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, upload, await oidc.token(buildWorkflowAudience(callbackOrigin, runId))), env, fixture.fetcher);
+  assert.equal(response.status, 401);
+  assert.equal(instance.readRun(runId)?.uploadUsed, false);
+  assert.equal(instance.readRun(runId)?.state.phase, "triggered");
+  assert.equal(fixture.calls.length, 0);
 });
 
 test("uploads with too many paths outside the plan are blocked with the paths and no GitHub request", async (t) => {
   const { instance, env, db } = coordinator();
   t.after(() => db.close());
-  instance.reserveRun(await stored(), "scope-plan", Date.now() + 60_000);
-  const denied: typeof fetch = async () => assert.fail("Unapproved paths must be rejected before GitHub access");
+  instance.reserveRun(await dispatched(), "scope-plan", Date.now() + 60_000);
+  const denied = oidc.serve(async () => assert.fail("Unapproved paths must be rejected before GitHub access"));
   const unplanned = Array.from({ length: BUILD_UPLOAD_LIMITS.outsidePlanFiles + 1 }, (_, index) => ({ ...upload.files[0], path: `src/lib/unplanned-${index}.ts` }));
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: unplanned }, uploadToken), env, denied);
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${runId}`, { ...upload, files: unplanned }, await oidc.token(buildWorkflowAudience(callbackOrigin, runId))), env, denied);
   assert.equal(response.status, 400);
   assert.equal(instance.readRun(runId)?.state.phase, "blocked");
   assert.match(instance.readRun(runId)?.state.reason ?? "", /outside the approved plan paths.*src\/lib\/unplanned-0\.ts/);
@@ -275,18 +292,21 @@ test("webhook processing failures do not consume delivery IDs and successful ret
   assert.equal((await handleGithubWebhook(request(), env)).status, 200);
 });
 
-test("the draft link is returned while routine dispatch continues in the execution context", async (t) => {
+test("the draft link is returned while workflow dispatch continues in the execution context", async (t) => {
   const { env, instance, db } = coordinator();
   t.after(() => db.close());
   const proposal = await issuePlan(env, plan);
+  let finishDispatch!: () => void;
+  const dispatchPending = new Promise<void>((resolve) => { finishDispatch = resolve; });
+  let reachedDispatch!: () => void;
+  const dispatchReached = new Promise<void>((resolve) => { reachedDispatch = resolve; });
   const fixture = githubFixture();
-  let finishFire!: () => void;
-  const firePending = new Promise<void>((resolve) => { finishFire = resolve; });
   const jobs: Promise<unknown>[] = [];
   const fetcher: typeof fetch = async (input, init) => {
-    if (String(input) === env.ROUTINE_FIRE_URL) {
-      await firePending;
-      return Response.json({ claude_code_session_url: sessionUrl });
+    if (new URL(String(input)).pathname === dispatchPath) {
+      reachedDispatch();
+      await dispatchPending;
+      return new Response(null, { status: 503 });
     }
     return fixture.fetcher(input, init);
   };
@@ -297,11 +317,13 @@ test("the draft link is returned while routine dispatch continues in the executi
   assert.equal(result.run?.pr?.url, `https://github.com/${BUILD_REPO}/pull/12`);
   assert.equal(result.run?.phase, "triggered");
   assert.equal(jobs.length, 1);
-  assert.equal(instance.readRun(result.runId)?.sessionUrl, undefined);
   assert.equal("uploadHash" in result.run!, false);
-  finishFire();
+  await dispatchReached;
+  assert.equal(instance.readRun(result.runId)?.dispatchAttempted, true);
+  assert.equal(instance.readRun(result.runId)?.state.reason, undefined);
+  finishDispatch();
   await Promise.all(jobs);
-  assert.equal(instance.readRun(result.runId)?.sessionUrl, sessionUrl);
+  assert.match(instance.readRun(result.runId)?.state.reason ?? "", /build workflow result is unknown/);
 });
 
 test("concurrent clicks and same-account retry share one run, quota hit, branch, PR and dispatch", async (t) => {
@@ -316,7 +338,7 @@ test("concurrent clicks and same-account retry share one run, quota hit, branch,
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_hits WHERE kind = 'fire'").get()?.n, 1);
   assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/pulls")).length, 1);
   assert.equal(fixture.calls.filter((call) => call.method === "POST" && call.path.endsWith("/git/refs")).length, 1);
-  assert.equal(fixture.calls.filter((call) => call.path === "/fire").length, 1);
+  assert.equal(fixture.calls.filter((call) => call.path === dispatchPath).length, 1);
   const other: typeof fetch = (input, init) => String(input).endsWith("/user")
     ? Promise.resolve(Response.json({ id: 2, login: "another-visitor", name: null }))
     : fixture.fetcher(input, init);
@@ -335,9 +357,9 @@ test("status recovers draft creation failure without dispatching early or markin
   const result = await response.json() as BuildFireResult;
   assert.equal(result.run?.phase, "triggered");
   assert.equal(result.run?.pr, undefined);
-  assert.match(result.run?.reason ?? "", /routine was not started/);
+  assert.match(result.run?.reason ?? "", /build workflow was not started/);
   assert.equal(fixture.refs.get(result.branch), FIXTURE_PLAN_SHA);
-  assert.equal(fixture.calls.filter((call) => call.path === "/fire").length, 0);
+  assert.equal(fixture.calls.filter((call) => call.path === dispatchPath).length, 0);
   rejectPr = false;
   const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, fixture.fetcher);
   const state = await status.json() as BuildRun;
@@ -346,7 +368,7 @@ test("status recovers draft creation failure without dispatching early or markin
   assert.equal(state.ci?.state, "success");
   assert.equal(state.reason, undefined);
   assert.equal(fixture.calls.filter((call) => call.path === "/graphql").length, 0);
-  assert.equal(fixture.calls.filter((call) => call.path === "/fire").length, 1);
+  assert.equal(fixture.calls.filter((call) => call.path === dispatchPath).length, 1);
   assert.equal(instance.readRun(result.runId)?.dispatchAttempted, true);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM build_hits WHERE kind = 'fire'").get()?.n, 1);
 });
@@ -358,9 +380,9 @@ test("recorded implementation and review body recover after a GitHub write failu
   let rejectBody = true;
   const fixture = githubFixture((call) => rejectBody && call.path.endsWith("/pulls/12") && call.method === "PATCH" ? Response.json({}, { status: 503 }) : undefined);
   const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId));
   const changed: BuildUpload = { ...upload, files: [...upload.files, { path: "shared/fixture.ts", mode: "100644", content: btoa("export const fixture = true;") }] };
-  const response = await handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, changed, fire.uploadToken), env, fixture.fetcher);
+  const response = await handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, changed, token), env, fixture.fetcher);
   assert.equal(response.status, 502);
   const pending = instance.readRun(result.runId)!;
   assert.equal(pending.state.phase, "failed");
@@ -377,8 +399,8 @@ test("recorded implementation and review body recover after a GitHub write failu
   assert.equal(state.reason, undefined);
   assert.equal(fixture.refs.get(result.branch), headSha);
   assert.equal(fixture.calls.filter((call) => call.path.endsWith("/pulls") && call.method === "POST").length, 1);
-  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, changed, fire.uploadToken), env, fixture.fetcher)).status, 401);
-  assert.equal(JSON.stringify(state).includes(fire.uploadToken), false);
+  assert.equal((await handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, changed, token), env, fixture.fetcher)).status, 401);
+  assert.equal(JSON.stringify(state).includes(await uploadTokenForRun(result.runId, buildSecret)), false);
   assert.equal("publicationBody" in state, false);
 });
 
@@ -406,10 +428,10 @@ for (const loseResponse of [false, true]) test(`status completion survives a lat
   const proposal = await issuePlan(env, plan);
   const fixture = githubFixture();
   const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId));
   const delayed = holdFinalPublicationRead(fixture, result.branch, loseResponse);
   t.after(delayed.release);
-  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, fire.uploadToken), env, delayed.fetcher);
+  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, token), env, delayed.fetcher);
   await delayed.held;
   assert.equal(instance.readRun(result.runId)?.state.phase, "validated");
   const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, fixture.fetcher);
@@ -432,7 +454,7 @@ test("a frozen draft publication confirmation cannot replace readiness completed
   const proposal = await issuePlan(env, plan);
   const fixture = githubFixture();
   const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId));
   let release!: () => void;
   let reached!: () => void;
   let holding = false;
@@ -454,7 +476,7 @@ test("a frozen draft publication confirmation cannot replace readiness completed
     return typeof value === "function" ? value.bind(target) : value;
   } });
   const delayedEnv = { ...env, BUILD_COORDINATOR: { getByName: () => delayedCoordinator } } as unknown as Env;
-  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, fire.uploadToken), delayedEnv, fixture.fetcher);
+  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, token), delayedEnv, fixture.fetcher);
   await held;
   const status = await handleBuildStatus(new Request(`https://api.test/api/build/status?runId=${result.runId}`, { headers: { Authorization: `Bearer ${result.statusToken}` } }), env, fixture.fetcher);
   const ready = await status.json() as BuildRun;
@@ -476,10 +498,10 @@ test("a late reconciliation rejection cannot overwrite a concurrently confirmed 
   const proposal = await issuePlan(env, plan);
   const fixture = githubFixture();
   const result = await (await handleBuild(post("/api/build", { ...signIn, planToken: proposal.token }), env, fixture.fetcher)).json() as BuildFireResult;
-  const fire = JSON.parse(String(fixture.calls.find((call) => call.path === "/fire")?.body?.text)) as { uploadToken: string };
+  const token = await oidc.token(buildWorkflowAudience(callbackOrigin, result.runId));
   const delayed = holdFinalPublicationRead(fixture, result.branch, false);
   t.after(delayed.release);
-  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, fire.uploadToken), env, delayed.fetcher);
+  const uploading = handleBuildUpload(post(`/api/build/upload?runId=${result.runId}`, upload, token), env, delayed.fetcher);
   await delayed.held;
   let releaseStatus!: () => void;
   let reachedStatus!: () => void;

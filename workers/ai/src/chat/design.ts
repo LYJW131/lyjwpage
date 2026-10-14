@@ -5,6 +5,7 @@ import { BUILD_DESIGN_LIMITS, BUILD_PLAN_LIMITS, BUILD_REPO, buildIssueBody } fr
 import { GOD_CHAT_ASK_LIMITS } from "@shared/god-chat";
 import type { GodChatDesign, GodChatMessage } from "@shared/god-chat";
 
+import { buildCoordinator } from "../build/http";
 import { signBuildToken, verifyBuildToken } from "../build/token";
 import { readPlan } from "../build/plan";
 import type { Env } from "../runtime";
@@ -21,7 +22,7 @@ export async function startDesign(env: Env, openSession: (designId: string) => P
   if (!designAvailable(env)) return { status: 503, error: "Design sessions are unavailable." };
   const id = crypto.randomUUID();
   const expiresAt = Date.now() + BUILD_DESIGN_LIMITS.ttlMs;
-  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
+  const coordinator = buildCoordinator(env);
   if (!(await coordinator.createDesign(id, expiresAt))) return { status: 429, error: "The design sessions for this hour are full. Please try again later." };
   const sessionId = await openSession(id).catch((error: unknown) => {
     console.error("[god-chat] design session create failed", error);
@@ -39,7 +40,7 @@ export async function admitDesign(env: Env, token: string, resume = false): Prom
   if (!designAvailable(env)) return { status: 503, error: "Design sessions are unavailable." };
   const payload = await verifyBuildToken<DesignToken>(token, env.BUILD_SESSION_SECRET!, "design");
   if (!payload || typeof payload.id !== "string" || !/^[a-f0-9-]{36}$/.test(payload.id) || typeof payload.sessionId !== "string" || !/^sesn_\w+$/.test(payload.sessionId)) return { status: 400, code: "design_session_expired", error: "This design session is invalid or expired. Continue in ordinary chat." };
-  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
+  const coordinator = buildCoordinator(env);
   const admitted = resume ? await coordinator.peekDesign(payload.id) : await coordinator.admitDesign(payload.id);
   if (admitted.status !== "ok") return {
     status: admitted.status === "expired" ? 400 : 429,
@@ -50,7 +51,7 @@ export async function admitDesign(env: Env, token: string, resume = false): Prom
 }
 
 export async function claimDesignOpen(env: Env, sessionId: string): Promise<boolean> {
-  return env.BUILD_COORDINATOR!.getByName("global").claimDesignOpen(sessionId);
+  return buildCoordinator(env).claimDesignOpen(sessionId);
 }
 
 export async function plannerHistory(history: GodChatMessage[], env: Env): Promise<GodChatMessage[]> {

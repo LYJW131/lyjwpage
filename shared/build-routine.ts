@@ -1,4 +1,6 @@
-export { BUILD_PATH, BUILD_STATUS_PATH, BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH } from "./ai-paths";
+import type { GithubIssueResult } from "./github-issue";
+
+export { BUILD_PATH, BUILD_STATUS_PATH, BUILD_ISSUE_PATH, BUILD_UPLOAD_PATH, BUILD_PROGRESS_PATH, BUILD_SCREENSHOT_PATH, BUILD_WEBHOOK_PATH } from "./ai-paths";
 
 export const BUILD_REPO = "LYJW131/lyjwpage";
 
@@ -9,15 +11,22 @@ export const BUILD_PLAN_TTL_MS = 60 * 60_000;
 export const BUILD_TIMEOUT_MS = 45 * 60_000;
 export const BUILD_STATUS_TTL_MS = 30 * 24 * 60 * 60_000;
 export const BUILD_RECONCILE_MS = 60_000;
+// 计划过期后仍可凭计划令牌确认它的 issue 这么久：访客可能在过期前打开表单、过期后才提交。
+export const BUILD_ISSUE_LOOKUP_GRACE_MS = 24 * 60 * 60_000;
+// 浏览器等待 issue 确认时的轮询间隔；Worker 对同一计划查 GitHub 另有更短的节流（workers/ai/src/build/coordinator.ts#ISSUE_CHECK_MS）。
+export const BUILD_ISSUE_POLL_MS = 15_000;
 export const BUILD_PLAN_LIMITS = { titleChars: 100, specChars: 6000, acceptanceItems: 8, acceptanceChars: 300, paths: 30 } as const;
 export const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone: 10 } } as const;
 // outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。
 export const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;
 // 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。
 export const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;
+export const BUILD_PROGRESS_LIMITS = { messageChars: 200, blockedChars: 600 } as const;
 
 export type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };
-export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number };
+// issueRef 写进预填 issue 的隐藏标记，Worker 凭它在 GitHub 上认出这份计划的 issue；早于它的存档计划没有这个字段。
+export type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number; issueRef?: string };
+export type BuildIssueLookup = { issue: GithubIssueResult | null };
 export type BuildFireResult = { runId: string; branch: string; statusToken: string; run?: BuildRun };
 export const BUILD_PHASES = ["triggered", "running", "uploaded", "validated", "blocked", "pr_open", "merged", "closed", "timeout", "failed"] as const;
 export type BuildPhase = (typeof BUILD_PHASES)[number];
@@ -85,7 +94,7 @@ export const PLAN_LABELS = {
     askReady: "Pick your answers below.",
     handoff: "Good idea. I'll bring in the planner to work it out with you.",
     screenshots: "Screenshots",
-    screenshotsNote: "Captured by the build routine before upload; the deployed preview requires Cloudflare Access sign-in.",
+    screenshotsNote: "Captured by the build workflow before upload; the deployed preview requires Cloudflare Access sign-in.",
   },
   zh: {
     request: "想要什么",
@@ -100,7 +109,7 @@ export const PLAN_LABELS = {
     askReady: "请在下面选一下。",
     handoff: "好主意，我请规划者来和你一起把它想清楚。",
     screenshots: "截图",
-    screenshotsNote: "由构建 routine 在上传前截取；部署后的预览需要通过 Cloudflare Access 登录。",
+    screenshotsNote: "由构建工作流在上传前截取；部署后的预览需要通过 Cloudflare Access 登录。",
   },
   ja: {
     request: "要望",
@@ -115,7 +124,7 @@ export const PLAN_LABELS = {
     askReady: "下から選んでください。",
     handoff: "いいですね。プランナーに引き継いで、一緒に詰めていきます。",
     screenshots: "スクリーンショット",
-    screenshotsNote: "アップロード前にビルド routine が撮影したものです。デプロイ後のプレビューには Cloudflare Access へのサインインが必要です。",
+    screenshotsNote: "アップロード前にビルドワークフローが撮影したものです。デプロイ後のプレビューには Cloudflare Access へのサインインが必要です。",
   },
 } as const satisfies Record<PlanLanguage, unknown>;
 
@@ -128,9 +137,13 @@ export function buildIssueBody(plan: BuildPlan): string {
 export const BUILD_ISSUE_URL_LIMIT = 7_500;
 export const BUILD_ISSUE_ORIGIN = "filed-from-homepage-chat";
 
-export function buildIssueUrl(plan: BuildPlan): string {
+export function buildIssueMarker(issueRef?: string): string {
+  return issueRef ? `<!-- ${BUILD_ISSUE_ORIGIN} plan:${issueRef} -->` : `<!-- ${BUILD_ISSUE_ORIGIN} -->`;
+}
+
+export function buildIssueUrl(plan: BuildPlan, issueRef?: string): string {
   const labels = PLAN_LABELS[planLanguage(plan)];
-  const context = `${labels.issueFooter}\n<!-- ${BUILD_ISSUE_ORIGIN} -->`;
+  const context = `${labels.issueFooter}\n${buildIssueMarker(issueRef)}`;
   const fields = {
     title: plan.title,
     what: plan.spec,

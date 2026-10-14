@@ -28,6 +28,7 @@ export const PAGESPEED_STALE_MS = 3 * 3_600_000;
 export const CLOUDFLARE_DEPLOYMENTS_STALE_MS = 15 * 60_000;
 export const CLOUDFLARE_METRICS_STALE_MS = 3_600_000;
 export const HEALTH_STALE_MS = 30 * 60_000;
+export const DIGEST_STALE_MS = 3 * 3_600_000;
 
 // HealthKit 后台投递按小时节流；没有新样本时整夜不更新不等于上报器故障。
 export const ACTIVITY_STALE_MS = 12 * 3_600_000;

@@ -1,6 +1,8 @@
-import { BUILD_CLOSED_PHASES, BUILD_REPO, branchForRun, buildIssueBody, PLAN_LABELS, planLanguage, type BuildRun, type BuildSignal, type BuildUpload } from "@shared/build-routine";
+import { setTimeout as sleep } from "node:timers/promises";
+
+import { BUILD_CLOSED_PHASES, BUILD_REPO, branchForRun, buildIssueBody, buildIssueMarker, PLAN_LABELS, planLanguage, type BuildRun, type BuildSignal, type BuildUpload } from "@shared/build-routine";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "../../../../scripts/preview-worker-name.mjs";
-import { GITHUB_APP_CLIENT_ID } from "@shared/github-issue";
+import { GITHUB_APP_CLIENT_ID, type GithubIssueResult } from "@shared/github-issue";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
 import { readBoundedJson } from "./http";
@@ -27,7 +29,7 @@ export async function githubAppJwt(privateKey: string, now = Date.now()): Promis
   return `${head}.${body}.${base64url(new Uint8Array(signature))}`;
 }
 
-class GithubRequestError extends Error {
+export class GithubRequestError extends Error {
   status: number;
   constructor(status: number) { super(`GitHub request failed (${status}).`); this.status = status; }
 }
@@ -66,15 +68,39 @@ export async function currentMain(api: GithubBuildApi): Promise<string> {
   return data.object.sha;
 }
 
+type GithubIssue = { number: number; html_url: string; created_at?: string; body?: string | null; pull_request?: unknown };
+const ISSUE_PAGE_SIZE = 100;
+const ISSUE_PAGE_LIMIT = 10;
+
+// 列表接口按创建时间倒序、立即可见；搜索接口有索引延迟，访客刚提交就回来时查不到。
+// since 按更新时间过滤，翻到创建时间早于计划签发的条目为止；翻不完就报错，不能当成没有 issue。
+export async function findPlanIssue(api: GithubBuildApi, issueRef: string, since: number): Promise<GithubIssueResult | null> {
+  const marker = buildIssueMarker(issueRef);
+  const matches: GithubIssue[] = [];
+  for (let page = 1; page <= ISSUE_PAGE_LIMIT; page += 1) {
+    const params = new URLSearchParams({ state: "all", sort: "created", direction: "desc", per_page: String(ISSUE_PAGE_SIZE), page: String(page), since: new Date(since).toISOString() });
+    const issues = await api.repo<GithubIssue[]>(`/issues?${params}`);
+    if (!Array.isArray(issues)) throw new Error("GitHub returned an invalid issue list.");
+    matches.push(...issues.filter((issue) => !issue.pull_request && Number.isSafeInteger(issue.number) && issue.number > 0 && typeof issue.body === "string" && issue.body.includes(marker) && issue.html_url === `https://github.com/${BUILD_REPO}/issues/${issue.number}`));
+    const oldest = Date.parse(issues.at(-1)?.created_at ?? "");
+    if (issues.length < ISSUE_PAGE_SIZE || oldest < since) {
+      const found = matches.sort((a, b) => a.number - b.number)[0];
+      return found ? { number: found.number, url: found.html_url } : null;
+    }
+  }
+  throw new Error("Too many GitHub issues to check for this plan.");
+}
+
 export class BuildBlockedError extends Error {}
 export class BuildPullRequestRejectedError extends Error {}
+export class BuildPublicationPendingError extends Error {}
 
 export async function assertMainAncestor(api: GithubBuildApi, baseSha: string): Promise<void> {
   const comparison = await api.repo<{ status: string; merge_base_commit?: { sha: string } }>(`/compare/${baseSha}...main`);
   if (!["ahead", "identical"].includes(comparison.status) || comparison.merge_base_commit?.sha !== baseSha) throw new BuildBlockedError("The base commit is not in main history.");
 }
 
-// Must name the model configured on the build routine (docs/ops-facts.md「Claude Code 云端 routine」).
+// 须与 .github/workflows/build.yml 中 implement job 的 --model 对应，scripts/build-actions.test.mjs 核对。
 const BUILD_CLAUDE_COAUTHOR = "Claude Opus 5.5 <noreply@anthropic.com>";
 
 export function validSha(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }
@@ -264,9 +290,21 @@ export async function recoverBuildPublication(api: GithubBuildApi, run: StoredRu
     try { await api.repo(`/git/refs/heads/${run.state.branch}`, "PATCH", { sha: run.implementationHeadSha, force: false }); }
     catch (error) { if (await branchHead(api, run.state.branch) !== run.implementationHeadSha) throw error; }
   }
-  const updated = await existingPullRequest(api, run);
+  const updated = await pullRequestAfterPush(api, run);
   if (!updated) throw new Error("GitHub pull request confirmation is unavailable.");
+  if (updated.head?.sha === run.planCommitSha) throw new BuildPublicationPendingError("GitHub has not moved the pull request to the implementation commit yet.");
   return confirmedPublication(api, run, updated);
+}
+
+// GitHub 推进 PR 的 head 晚于分支 ref，实测可滞后数分钟；仍停在计划提交时 run 留在 validated 由状态查询接着恢复，不当成篡改报 blocked
+const PR_HEAD_SYNC_DELAYS_MS = [250, 500, 1000, 2000];
+
+async function pullRequestAfterPush(api: GithubBuildApi, run: StoredRun): Promise<GithubPullRequest | null> {
+  for (let attempt = 0; ; attempt += 1) {
+    const pr = await existingPullRequest(api, run);
+    if (pr?.head?.sha !== run.planCommitSha || attempt >= PR_HEAD_SYNC_DELAYS_MS.length) return pr;
+    await sleep(PR_HEAD_SYNC_DELAYS_MS[attempt]);
+  }
 }
 
 export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun, upload: BuildUpload, validatedBaseTree: string | undefined, recordImplementationHead: (sha: string, body: string) => Promise<void>): Promise<NonNullable<BuildRun["pr"]>> {
@@ -289,7 +327,7 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
   const tree = await api.repo<{ sha: string }>("/git/trees", "POST", { base_tree: planCommit.tree.sha, tree: entries });
   if (!validSha(tree.sha) || tree.sha === planCommit.tree.sha) throw new BuildBlockedError("The upload does not contain implementation changes.");
   const message = upload.message.split(/\r\n?|\n/).filter((line) => !/^\s*(co-authored-by|claude-session)\s*:/i.test(line)).join("\n").trim() || run.plan.title;
-  const trailers = [`Co-authored-by: ${run.coauthor}`, `Co-Authored-By: ${BUILD_CLAUDE_COAUTHOR}`, ...(run.sessionUrl ? [`Claude-Session: ${run.sessionUrl}`] : [])].join("\n");
+  const trailers = `Co-authored-by: ${run.coauthor}\nCo-Authored-By: ${BUILD_CLAUDE_COAUTHOR}`;
   const commit = await api.repo<{ sha: string }>("/git/commits", "POST", { message: `${message}\n\n${trailers}`, tree: tree.sha, parents: [run.planCommitSha] });
   if (!validSha(commit.sha)) throw new Error("GitHub commit confirmation is unavailable.");
   const pr = run.state.pr!;
@@ -303,6 +341,9 @@ export async function createBuildPullRequest(api: GithubBuildApi, run: StoredRun
 
 type GithubCheck = { id?: number; name: string; status: string; conclusion: string | null; html_url?: string; details_url?: string; completed_at?: string; started_at?: string; app?: { slug: string } };
 type GithubStatus = { context: string; state: string; target_url?: string; updated_at: string };
+
+// 须与 .github/workflows/ci.yml 的 check 任务、codeql.yml 的 Analyze 任务名同步：缺一项草稿就不转待审
+export const BUILD_READY_CHECKS = ["check", "Analyze (javascript-typescript)", "Analyze (actions)"] as const;
 
 function checkKind(check: GithubCheck): "ci" | "preview" {
   return check.app?.slug === "cloudflare-workers-and-pages" && check.name === "Workers Builds: site" ? "preview" : "ci";
@@ -414,7 +455,7 @@ export async function markBuildReady(api: GithubBuildApi, run: StoredRun): Promi
     api.repo<{ statuses: GithubStatus[]; total_count: number }>(`/commits/${run.implementationHeadSha}/status?per_page=100`),
   ]);
   if (!Number.isSafeInteger(statuses.total_count) || statuses.total_count > statuses.statuses.length) return null;
-  if (!checks.some((check) => checkKind(check) === "ci" && check.name === "check" && check.app?.slug === "github-actions" && check.status === "completed" && check.conclusion === "success")
+  if (!BUILD_READY_CHECKS.every((name) => checks.some((check) => checkKind(check) === "ci" && check.name === name && check.app?.slug === "github-actions" && check.status === "completed" && check.conclusion === "success"))
     || ciState(checks, statuses.statuses) !== "success") return null;
   const latest = await existingPullRequest(api, run);
   if (!latest) return null;

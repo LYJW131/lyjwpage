@@ -27,7 +27,7 @@ import type {
 } from "@shared/types";
 import { cn } from "@/lib/utils";
 
-const REFRESH_MS = 5 * 60_000;
+export const PULSE_REFRESH_MS = 5 * 60_000;
 
 const LANES: ReadonlyArray<{ domain: PulseDomain; label: string }> = [
   { domain: "coding", label: "Coding" },
@@ -211,7 +211,7 @@ function stateModel(domain: "listening" | "watching" | "gaming", lane: PulseStat
         content: <Tooltip key={`t${index}`} from={from} to={to} head="Played elsewhere (estimated)" lines={[
           row.title,
           row.subtitle && <span className="text-muted-foreground">{row.subtitle}</span>,
-          <span key="n" className="text-[10px] text-muted-foreground">
+          <span key="n" className="text-2xs text-muted-foreground">
             Estimated from Apple Music&apos;s recently played list and track lengths{typeof margin === "number" ? `, ideal start error ±${margin < 90 ? `${Math.max(1, margin)}s` : pulseDuration(margin)}` : ""}
           </span>,
         ]} />,
@@ -301,12 +301,12 @@ function compactCount(value: number): string {
 const TOKEN_SCALE_MIN = 10_000;
 
 function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
-  const buckets = columnRows(lane.buckets, ["fresh", "output", "cacheRead"]);
+  const buckets = columnRows(lane.buckets, ["total", "output", "cacheRead"]);
   if (!buckets || !lane.summary) return null;
   const rows = buckets.map((row) => {
     const { from, to } = absolute(range, row);
     const minutes = Math.max(1 / 60, (to - from) / 60_000);
-    return { from, to, rate: row.fresh / minutes, output: row.output / minutes, cacheRead: row.cacheRead / minutes };
+    return { from, to, rate: row.total / minutes, output: row.output / minutes, cacheRead: row.cacheRead / minutes };
   });
   const scale = Math.max(TOKEN_SCALE_MIN, ...rows.map((row) => row.rate));
   const y = (rate: number) => LANE_HEIGHT - Math.max(1.5, Math.sqrt(rate / scale) * (LANE_HEIGHT - BAND_TOP));
@@ -320,7 +320,7 @@ function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
   const steps = (chain: typeof rows) => chain.map((row) => ` L${fixed(x(range, row.from))} ${fixed(y(row.rate))} L${fixed(x(range, row.to))} ${fixed(y(row.rate))}`).join("");
   const area = chains.map((chain) => `M${fixed(x(range, chain[0].from))} ${LANE_HEIGHT}${steps(chain)} L${fixed(x(range, chain.at(-1)!.to))} ${LANE_HEIGHT} Z`).join(" ");
   const line = chains.map((chain) => `M${fixed(x(range, chain[0].from))} ${fixed(y(chain[0].rate))}${steps(chain)}`).join(" ");
-  const { peakPerMinute, currentPerMinute, freshTokens } = lane.summary;
+  const { peakPerMinute, currentPerMinute, totalTokens } = lane.summary;
   return {
     items: rows.map((row, index) => ({
       from: row.from, to: row.to, rank: 0,
@@ -339,10 +339,10 @@ function tokensModel(lane: PulseTokensLane, range: Range): LaneModel | null {
     summary: rows.length && peakPerMinute != null
       ? {
         value: `Peak ${compactCount(peakPerMinute)}/min`,
-        detail: currentPerMinute != null && currentPerMinute > 0 ? `now ${compactCount(currentPerMinute)}/min` : `${compactCount(freshTokens)} in 24h`,
+        detail: currentPerMinute != null && currentPerMinute > 0 ? `now ${compactCount(currentPerMinute)}/min` : `${compactCount(totalTokens)} in 24h`,
       }
       : null,
-    aria: "new tokens per minute across coding agents, excluding cache reads",
+    aria: "tokens per minute across coding agents, including cache reads",
   };
 }
 
@@ -389,14 +389,14 @@ function stepsModel(lane: PulseStepsLane, range: Range, width: number): LaneMode
     )),
     over: sessions.map((session, index) => {
       const room = ((Math.min(range.to, sessions[index + 1]?.from ?? range.to) - session.from) / Math.max(1, range.to - range.from)) * width;
-      if (room < session.activityType.length * 5.5 + 6) return null;
+      if (room < session.activityType.length * 6.1 + 6) return null;
       const left = (session.from - range.from) / Math.max(1, range.to - range.from) * width;
-      const shift = Math.min(0, width - left - (session.activityType.length * 5.5 + 6));
+      const shift = Math.min(0, width - left - (session.activityType.length * 6.1 + 6));
       return (
         <span
           key={index}
           aria-hidden
-          className="pointer-events-none absolute top-0.5 whitespace-nowrap bg-surface/85 px-0.5 text-[9px] font-medium leading-none text-foreground"
+          className="pointer-events-none absolute top-0.5 whitespace-nowrap bg-surface/85 px-0.5 text-[10px] font-medium leading-none text-foreground"
           style={{ left: percent(range, session.from), transform: shift ? `translateX(${shift}px)` : undefined }}
         >
           {session.activityType}
@@ -534,7 +534,7 @@ export function PulseCard({
   fallback: StatusResponse<PulsePayload>;
   className?: string;
 }) {
-  const { data } = useStatus<PulsePayload>(PULSE_PATH, REFRESH_MS, { fallback });
+  const { data } = useStatus<PulsePayload>(PULSE_PATH, PULSE_REFRESH_MS, { fallback });
   const range = data?.window ?? { from: 0, to: 0 };
   const lanes = data?.lanes;
   const traceStyle = useSyncExternalStore(subscribeTraceStyle, readTraceStyle, () => "hatched" as const);
@@ -558,7 +558,7 @@ export function PulseCard({
                 className="label-mono truncate text-muted-foreground"
                 title={domain === "activity"
                   ? "Steps from closed HealthKit five-minute buckets; gaps are unknown, not still."
-                  : domain === "tokens" ? "New tokens per minute across all coding agents and sources, excluding cache reads." : undefined}
+                  : domain === "tokens" ? "Tokens per minute across all coding agents and sources, including cache reads." : undefined}
               >
                 {label}
               </span>
@@ -573,7 +573,7 @@ export function PulseCard({
                 {model?.summary ? (
                   <>
                     <span className="max-w-full truncate font-mono text-xs font-medium tabular-nums">{model.summary.value}</span>
-                    <span className="max-w-full truncate text-[10px] text-muted-foreground">{model.summary.detail}</span>
+                    <span className="max-w-full truncate text-2xs text-muted-foreground">{model.summary.detail}</span>
                   </>
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
@@ -582,14 +582,14 @@ export function PulseCard({
             </div>
           );
         })}
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground" aria-hidden>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground" aria-hidden>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-human)" />Coding app</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-agent)" />Agent</span>
           <span className="flex items-center gap-1"><span className="size-2 bg-(--pulse-both)" />Both</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-3 border-t border-(--pulse-agent) bg-(--pulse-agent)/30" />Tokens/min (excl. cache reads)</span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1"><span className="h-2 w-3 border-t border-(--pulse-agent) bg-(--pulse-agent)/30" />Tokens/min</span>
+          <span className="flex items-center gap-1" title="Played elsewhere (estimated)">
             <span className={cn("pulse-trace relative inline-block h-2 w-3", traceStyle === "hatched" ? "pulse-trace-hatched" : "pulse-trace-faint")} />
-            Played elsewhere, estimated
+            Elsewhere (est.)
           </span>
           <span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-current opacity-45" />Idle</span>
         </div>

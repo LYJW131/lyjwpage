@@ -30,7 +30,7 @@ export function Card({
       )}
     >
       {(label || action) && (
-        <div className="flex min-h-9 items-center justify-between gap-2 border-b border-line bg-muted px-3 py-2">
+        <div className="flex min-h-9 items-center justify-between gap-2 border-b border-line bg-muted px-4 py-2 lg:px-5">
           <div className="flex items-center gap-2">
             {tone && <StatusDot tone={tone} />}
             {label && <span className="label-mono text-muted-foreground">{label}</span>}

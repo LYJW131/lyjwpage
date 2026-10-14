@@ -26,7 +26,7 @@ Listen Along 用 `SystemMusic.swift#SystemMusic.listenAlong` 调用系统音乐 
 
 ## 读：和访客看同一份
 
-- 状态 API 在 api Worker（`Core/StatusClient.swift#SiteHosts`），GET 不带 `Origin`；推送长连接 `/ws` 必须带白名单里的来源，App 自报站点域名。站点改 `ALLOWED_ORIGINS` 时要留着它。
+- 状态 API 在 core Worker（`Core/StatusClient.swift#SiteHosts`），GET 不带 `Origin`；推送长连接 `/ws` 必须带白名单里的来源，App 自报站点域名。站点改 `ALLOWED_ORIGINS` 时要留着它。
 - 哪一路多久取一次照浏览器端：实时层按卡片自己的间隔，推送连着时能退成兜底的退成兜底；可滞后层按 `updatedAt + 节奏 + 宽限` 去取、逾期退避。登记在 `Core/Live/FeedSchedule.swift`，每条标了站点侧的出处。
 - 推送与轮询交错时按代际戳丢掉旧的（`LiveStore` 的顺序闸），充电头推送不带历史，接在手上的曲线后面。
 - 过期规则（多久没更新写 Unavailable、Mac 掉线时正在听换成 HomePod 那一路）照站点的 `shared/freshness.ts`，见 `Core/Freshness.swift` 与 `Core/Live/LiveStore+Derived.swift`。
@@ -69,7 +69,7 @@ Listen Along 用 `SystemMusic.swift#SystemMusic.listenAlong` 调用系统音乐 
 cd apps/ios && swift test
 ```
 
-测试对着两份样本解码：`Tests/Fixtures/` 是某一刻从生产 api Worker 抓的快照；站点本地开发用的 `workers/api/dev-fixtures/` 直接读仓库里那一份，覆盖此刻没发生的状态。站点契约变了两边一起红。Xcode 里同一批测试在 `LyjwpageTests` 目标（不挂宿主 App）。
+测试对着两份样本解码：`Tests/Fixtures/` 是某一刻从生产状态接口抓的快照；站点本地开发用的 `workers/core/dev-fixtures/` 直接读仓库里那一份，覆盖此刻没发生的状态。站点契约变了两边一起红。Xcode 里同一批测试在 `LyjwpageTests` 目标（不挂宿主 App）。
 
 模拟器端到端测试使用 `UITests/SimulatorTests.swift`，覆盖生产分区、刷新、排序与显隐保存、播放器与歌词、Pulse 选点、看片左滑与分享、缓存与失败状态、设置及横屏大字体。先在仓库根启动 `pnpm dev:worker`（`.dev.vars` 配 `DEV_OVERRIDES=true`），运行 `pnpm dev:override --on`，再启动目标模拟器：
 

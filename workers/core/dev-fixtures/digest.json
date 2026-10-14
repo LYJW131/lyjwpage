@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "updatedAt": "$now-1500000",
+  "data": {
+    "headline": "代码不停歇",
+    "headlines": ["代码不停歇", "昼夜不停", "全天候开工", "一刻没闲着", "连轴转", "马不停蹄", "火力全开", "日夜兼程", "满负荷", "一天写到底"],
+    "highlights": [
+      { "topic": "coding", "value": 22, "unit": "hours", "atLeast": false, "caption": "coding" },
+      { "topic": "tokens", "value": 44000000, "unit": "count", "atLeast": false, "caption": "tokens" },
+      { "topic": "music", "value": 8, "unit": "hours", "atLeast": false, "caption": "music" }
+    ],
+    "model": "claude-sonnet-5-5",
+    "generatedAt": "$now-1500000"
+  }
+}

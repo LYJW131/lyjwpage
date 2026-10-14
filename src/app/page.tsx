@@ -10,12 +10,12 @@ import { DevToggleDock } from "@/components/dev-toggles";
 import { GodChat } from "@/components/god-chat";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { ActivityCard } from "@/components/live/activity-card";
+import { DigestCard } from "@/components/live/digest-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
 import { ServerCard } from "@/components/live/server-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
-import { TimezoneCard } from "@/components/live/timezone-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { QuestNowCard } from "@/components/live/quest-now-card";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
@@ -35,6 +35,7 @@ import {
   CODING_NOW_PATH,
   CODING_PATH,
   CODING_YEAR_PATH,
+  DIGEST_PATH,
   GITHUB_CHART_PATH,
   GITHUB_REPO_PATH,
   HEALTH_PATH,
@@ -50,9 +51,14 @@ import {
   SERVER_PATH,
   TROPHIES_PATH,
   SITE_DEPLOYMENTS_PATH,
+  TIMEZONE_PATH,
   WATCHING_PATH,
 } from "@/lib/paths";
-import { STATUS_VIEWS } from "@shared/status-views";
+import { data } from "react-router";
+
+import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
+import { NO_STORE } from "@/lib/site-policy";
+import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
 import { siteContext } from "@/server/site-context";
 
@@ -63,14 +69,15 @@ const SLOT = {
   server: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_281px]",
   agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
   vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1372px]",
-  playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_643px]",
+  playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_655px] md:[contain-intrinsic-size:auto_595px] lg:[contain-intrinsic-size:auto_525px]",
   godChat: "md:col-span-2",
-  pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_575px] sm:[contain-intrinsic-size:auto_276px]",
-  siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1440px]",
+  pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_559px] sm:[contain-intrinsic-size:auto_355px] lg:[contain-intrinsic-size:auto_363px]",
+  siteStatus: "mt-3 defer-offscreen-always [contain-intrinsic-size:auto_1711px] sm:[contain-intrinsic-size:auto_1530px] md:[contain-intrinsic-size:auto_1089px] lg:[contain-intrinsic-size:auto_938px]",
 } as const;
 
 const READS = {
   contact: [GITHUB_CHART_PATH, CODING_YEAR_PATH],
+  digest: [DIGEST_PATH, PULSE_PATH, TIMEZONE_PATH],
   nowWatching: [NOW_WATCHING_PATH],
   questNow: [STATUS_VIEWS.questNow.path],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
@@ -86,7 +93,13 @@ const READS = {
 
 export async function loader({ context }: Route.LoaderArgs) {
   const site = context.get(siteContext);
-  const status = site.status;
+  let degraded = false;
+  const status = <K extends StatusViewKey>(key: K): Promise<FirstScreen<K>> =>
+    site.status(key).catch((error: unknown) => {
+      degraded = true;
+      console.error("[first-screen]", key, error instanceof Error ? error.message : String(error));
+      return { ok: false, error: FIRST_SCREEN_UNAVAILABLE };
+    });
   const avatar = githubAvatarDataUri(site);
   const [
     desktop,
@@ -116,6 +129,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     health,
     reporters,
     pulse,
+    digest,
   ] = await Promise.all([
     status("desktop"),
     status("timezone"),
@@ -144,6 +158,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     status("health"),
     status("reporters"),
     status("pulse"),
+    status("digest"),
   ]);
 
   const nowSongId =
@@ -166,7 +181,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     nowSongId ? site.lyrics(nowSongId) : Promise.resolve(null),
   ]);
 
-  return {
+  const payload = {
     desktop,
     timezone,
     workouts,
@@ -194,14 +209,21 @@ export async function loader({ context }: Route.LoaderArgs) {
     health,
     reporters,
     pulse,
+    digest,
     avatarDataUri,
     desktopIcon,
     artwork,
     lyricsFallback:
-      nowSongId && lyrics && lyrics.lines.length
+      nowSongId && lyrics
         ? { songId: nowSongId, lines: lyrics.lines, songwriters: lyrics.songwriters }
         : null,
   };
+  // 降级的首页不能进缓存，否则 Unavailable 会撑满整个 SWR 期限。
+  return degraded ? data(payload, { headers: { "Cache-Control": NO_STORE } }) : payload;
+}
+
+export function headers({ loaderHeaders }: Route.HeadersArgs) {
+  return loaderHeaders;
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
@@ -230,8 +252,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     yearFallback={loaderData.codingYear}
                   />
                 </CardBoundary>
-                <CardBoundary label="Timezone">
-                  <TimezoneCard fallback={loaderData.timezone} />
+                <CardBoundary label="In Brief" paths={READS.digest}>
+                  <DigestCard fallback={loaderData.digest} pulseFallback={loaderData.pulse} timezoneFallback={loaderData.timezone} />
                 </CardBoundary>
               </div>
 

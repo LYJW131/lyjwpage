@@ -1,9 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { BUILD_ACTIVE_PHASES, BUILD_CLOSED_PHASES, BUILD_DESIGN_LIMITS, BUILD_FAILED_PHASES, BUILD_QUOTA, BUILD_RECONCILE_MS, BUILD_REPO, BUILD_SCREENSHOT_LIMITS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, type BuildPlan, type BuildRun, type BuildScreenshot } from "@shared/build-routine";
+import type { GithubIssueResult } from "@shared/github-issue";
 import type { Env } from "../runtime";
 import { BuildBlockedError, closeFailedDraft, installationApi, validSha } from "./github";
 
-export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; sessionUrl?: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; draftClose?: "closed" | "skipped"; screenshots?: BuildScreenshot[] };
+export type StoredRun = { state: BuildRun; plan: BuildPlan; account: string; accountId?: number; coauthor: string; baseSha: string; uploadHash: string; uploadUsed: boolean; uploadExpiresAt: number; callbackOrigin?: string; planCommitSha?: string; implementationHeadSha?: string; publicationBody?: string; preparation?: { token: string; expiresAt: number }; dispatchAttempted?: boolean; draftClose?: "closed" | "skipped"; screenshots?: BuildScreenshot[] };
 type PlanReservation = { runId: string; accountId?: number };
 const PREPARATION_LEASE_MS = 60_000;
 // 只罩住「查到空会话 → 开场发进会话」那几秒；发送前就失败的开场，租约过了还能重开。
@@ -11,6 +12,8 @@ const DESIGN_OPEN_LEASE_MS = 60_000;
 const PUBLICATION_BODY_MAX_CHARS = 64_000;
 // 失败草稿的关闭与超时的发现都靠 alarm 扫描，间隔即两者的最大延迟。
 const DRAFT_SWEEP_MS = 60_000;
+// 同一计划多久才再去 GitHub 列一次 issue：一次查询要三次 GitHub 请求，多标签页或刷新也只按这个节奏打到 GitHub。
+const ISSUE_CHECK_MS = 10_000;
 const GITHUB_SNAPSHOT_FIELDS = ["pr", "ci", "preview", "review"] as const;
 const phases = { triggered: 0, running: 1, uploaded: 2, validated: 3, pr_open: 4, blocked: 5, failed: 5, timeout: 5, merged: 6, closed: 6 } as const;
 
@@ -19,7 +22,7 @@ function preparedRun(run: StoredRun): boolean {
 }
 
 function acceptsAgentUpdates(run: StoredRun): boolean {
-  return !preparedRun(run) || !!(run.dispatchAttempted && run.planCommitSha && run.state.pr);
+  return !!(run.dispatchAttempted && run.planCommitSha && run.state.pr);
 }
 
 function validPreparedPullRequest(planCommitSha: string, pr: NonNullable<BuildRun["pr"]>): boolean {
@@ -120,6 +123,22 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
+  planIssue(id: string): GithubIssueResult | null {
+    return this.get<GithubIssueResult>(`issue:${id}`);
+  }
+
+  claimIssueCheck(id: string): boolean {
+    return this.ctx.storage.transactionSync(() => {
+      if (this.get(`issue-check:${id}`)) return false;
+      this.put(`issue-check:${id}`, true, Date.now() + ISSUE_CHECK_MS);
+      return true;
+    });
+  }
+
+  recordPlanIssue(id: string, issue: GithubIssueResult, expires: number): void {
+    this.put(`issue:${id}`, issue, expires);
+  }
+
   isPlanUsed(id: string): boolean {
     return !!this.get(`plan:${id}`);
   }
@@ -146,15 +165,6 @@ export class BuildCoordinator extends DurableObject<Env> {
       this.saveRun(run);
     }
     return run;
-  }
-
-  setSessionUrl(runId: string, sessionUrl: string): void {
-    this.ctx.storage.transactionSync(() => {
-      const run = this.readRun(runId);
-      if (!run) return;
-      run.sessionUrl = sessionUrl;
-      this.saveRun(run);
-    });
   }
 
   claimPreparation(runId: string): string | null {
@@ -196,18 +206,6 @@ export class BuildCoordinator extends DurableObject<Env> {
       run.state = { ...run.state, pr, reason: undefined, updatedAt: Date.now() };
       this.saveRun(run);
       return run.state;
-    });
-  }
-
-  setLegacyPrepared(runId: string, planCommitSha: string, pr: NonNullable<BuildRun["pr"]>): boolean {
-    return this.ctx.storage.transactionSync(() => {
-      const run = this.readRun(runId);
-      if (!run || run.callbackOrigin !== undefined || run.planCommitSha !== undefined || !run.uploadUsed || run.state.phase !== "validated") return false;
-      if (!validPreparedPullRequest(planCommitSha, pr) || planCommitSha === run.baseSha || run.state.pr && (run.state.pr.number !== pr.number || run.state.pr.url !== pr.url || run.state.pr.headSha !== planCommitSha)) return false;
-      run.planCommitSha = planCommitSha;
-      run.state = { ...run.state, pr, updatedAt: Date.now() };
-      this.saveRun(run);
-      return true;
     });
   }
 
@@ -310,7 +308,7 @@ export class BuildCoordinator extends DurableObject<Env> {
     });
   }
 
-  // 计划路径加计划外名额仍不够、只能靠断言或放宽测试才能完成时，routine 用它停下：同样占用上传令牌，停下后不能再上传。
+  // 停下同样占用上传令牌：停下后不能再上传。
   blockRun(runId: string, hash: string, reason: string): boolean {
     return this.ctx.storage.transactionSync(() => {
       const run = this.awaitingUpload(runId, hash);

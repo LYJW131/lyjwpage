@@ -1,16 +1,18 @@
 // Wrangler 多配置模式只有第一个 Worker 获得端口，其余本地入口必须通过绑定转发。
 
+import { APPLE_MUSIC_HTTP_PATHS } from "../../../shared/apple-music-paths";
+
 type Fetcher = { fetch(input: Request | string, init?: RequestInit): Promise<Response> };
 
 interface Env {
-  API: Fetcher;
+  CORE: Fetcher;
   INGRESS: Fetcher;
   COLLECTOR: Fetcher;
   COLLECTOR_RPC: { refresh(jobs: string[]): Promise<unknown> };
 }
 
 const COLLECTOR_PREFIX = "/__dev/collector/";
-const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
+const INGRESS_INTERNAL_PATHS = new Set(["/api/internal/site-deployed", "/api/internal/collector-refresh"]);
 
 const router = {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -26,11 +28,13 @@ const router = {
       return env.COLLECTOR.fetch(new Request(target, request));
     }
 
-    if (url.pathname.startsWith("/api/ingest/") || url.pathname === SITE_DEPLOYED_PATH) {
+    if (url.pathname.startsWith("/api/ingest/") || INGRESS_INTERNAL_PATHS.has(url.pathname)) {
       return env.INGRESS.fetch(request);
     }
 
-    return env.API.fetch(request);
+    if (APPLE_MUSIC_HTTP_PATHS.has(url.pathname)) return env.COLLECTOR.fetch(request);
+
+    return env.CORE.fetch(request);
   },
 
   async scheduled(controller: { scheduledTime: number }, env: Env): Promise<void> {

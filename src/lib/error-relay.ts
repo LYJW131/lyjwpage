@@ -5,7 +5,7 @@ export const ERROR_RELAY_MAX_BYTES = 16_384;
 
 const LIMITS = { name: 120, message: 1_000, stack: 8_000, url: 500, tagKey: 40, tagValue: 120, tags: 8 } as const;
 
-export const CLIENT_ERROR_SOURCES = ["window", "rejection", "route", "boundary"] as const;
+export const CLIENT_ERROR_SOURCES = ["window", "rejection", "route", "boundary", "hydration"] as const;
 export type ClientErrorSource = (typeof CLIENT_ERROR_SOURCES)[number];
 
 // 浏览器 → site Worker 的上报正文；url 不带查询串与片段，访客输入可能出现在查询串里。

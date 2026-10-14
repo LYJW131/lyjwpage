@@ -4,7 +4,7 @@ import test from "node:test";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@shared/limits";
 import { LISTENING_TRACE_JITTER_MS, LISTENING_TRACE_LAG_MS } from "@shared/pulse-listening";
 
-import { ACTIVE_FOLLOW_MS, ACTIVE_HOLD_MS, ACTIVE_POLL_MS, appleRecentDue, followRecentTracks, IDLE_EVERY_MINUTES, nextPollAt } from "./apple-recent";
+import { ACTIVE_FOLLOW_MS, ACTIVE_HOLD_MS, ACTIVE_POLL_MS, appleRecentDue, followRecentTracks, IDLE_EVERY_MINUTES, maskOwnerName, nextPollAt, OWNER_ALIAS } from "./apple-recent";
 
 const MINUTE = 60_000;
 const BOUNDARY = 29_000_000 * MINUTE;
@@ -75,4 +75,27 @@ test("接着拉的某一次失败就停在这一响", async () => {
 
 test("推断的那首放完后留着的时长盖得住上榜滞后、抖动和一次活跃档拉取", () => {
   assert.ok(LISTENING_ELSEWHERE_HOLD_MS >= LISTENING_TRACE_LAG_MS + LISTENING_TRACE_JITTER_MS + ACTIVE_POLL_MS);
+});
+
+test("真名在署名、标题和链接 slug 里都换成站名，其余字段原样", () => {
+  const owner = "张三丰";
+  const station = `https://music.apple.com/cn/station/${encodeURIComponent(`${owner}的电台`)}/ra.u-1`;
+  const masked = maskOwnerName({
+    items: [
+      { id: "pl.u-1", title: "心血来潮", artist: owner, link: null, durationMs: null, palette: ["#bc5692"] },
+      { id: "pl.rp-1", title: "音乐回忆 2025", artist: `${owner}的 Apple Music`, link: null, durationMs: 1 },
+      { id: "ra.u-1", title: `${owner}的电台`, artist: "", link: station, durationMs: null },
+    ],
+    container: { id: "pl.u-1", tracks: [{ id: "t", title: "群青", artist: "YOASOBI" }] },
+  }, owner);
+  assert.equal(JSON.stringify(masked).includes(owner), false);
+  assert.equal(JSON.stringify(masked).includes(encodeURIComponent(owner)), false);
+  assert.deepEqual(masked.items.map((item) => [item.title, item.artist]), [
+    ["心血来潮", OWNER_ALIAS],
+    ["音乐回忆 2025", `${OWNER_ALIAS}的 Apple Music`],
+    [`${OWNER_ALIAS}的电台`, ""],
+  ]);
+  assert.equal(masked.items[2]?.link, `https://music.apple.com/cn/station/${OWNER_ALIAS}${encodeURIComponent("的电台")}/ra.u-1`);
+  assert.deepEqual(masked.items[0]?.palette, ["#bc5692"]);
+  assert.deepEqual(masked.container, { id: "pl.u-1", tracks: [{ id: "t", title: "群青", artist: "YOASOBI" }] });
 });
