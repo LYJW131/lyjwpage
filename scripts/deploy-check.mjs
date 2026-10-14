@@ -183,7 +183,7 @@ export async function run(options, deps = {}) {
     await wait(intervalMs);
   }
   const behind = result.versions.filter((v) => v.state !== "live" && v.state !== "superseded");
-  result.next = `${behind.map((v) => `${v.host}=${v.commit ?? "读不到"}`).join("、")} 仍不是这次合并或之后的提交；多半是并行构建让旧提交后完成。是否给 main 重跑 site 构建是生产动作，交站主决定`;
+  result.next = `${behind.map((v) => `${v.host}=${v.commit ?? "读不到"}`).join("、")} 仍不是这次合并或之后的提交；多半是并行构建让旧提交后完成。是否给 main 重跑 site 构建是生产动作，交 lyjw 决定`;
   return result;
 }
 

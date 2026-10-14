@@ -4,7 +4,7 @@
 
 ## 触发描述与指针
 
-- `description` 先写最主要的用途，再写站主实际会说的触发词；它在每一轮都占上下文，超出 1,536 字符的部分会被截掉。源：[Claude Code skills](https://code.claude.com/docs/en/skills)
+- `description` 先写最主要的用途，再写 lyjw 实际会说的触发词；它在每一轮都占上下文，超出 1,536 字符的部分会被截掉。源：[Claude Code skills](https://code.claude.com/docs/en/skills)
 - 文档里指向别的文件的那一行（`AGENTS.md` 里点名 skill、skill 里点名引用文件）决定 agent 会不会去读。内容写了却没被读到，先把这一行写得更具体、更显眼，再考虑把内容搬过来。源：[Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)「Observe how Claude navigates Skills」
 - 同一个东西全文只用一个叫法。源：同上「Use consistent terminology」
 

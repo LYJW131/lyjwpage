@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const REPO = "LYJW131/lyjwpage";
-// 回执和判定都由主线程用站主的账号发；别人发的同格式评论不算。
+// 回执和判定都由主线程用 lyjw 的账号发；别人发的同格式评论不算。
 const TRUSTED_AUTHOR = "LYJW131";
 const REQUEST_TIMEOUT_MS = 30_000;
 

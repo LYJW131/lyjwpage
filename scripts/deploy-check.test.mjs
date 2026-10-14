@@ -105,7 +105,7 @@ test("构建失败直接不通过并给出下一步", async () => {
   assert.match(result.next, /site=failure/);
 });
 
-test("超时仍停在旧提交时不通过，提示交站主决定重跑", async () => {
+test("超时仍停在旧提交时不通过，提示交 lyjw 决定重跑", async () => {
   const result = await run(options, {
     ...fakeClock(),
     isAncestor: async () => false,
@@ -116,7 +116,7 @@ test("超时仍停在旧提交时不通过，提示交站主决定重跑", async
   });
   assert.equal(result.pass, false);
   assert.match(result.next, /lyjw\.me=c{40}/);
-  assert.match(result.next, /站主/);
+  assert.match(result.next, /lyjw/);
 });
 
 test("宽限期内没有构建检查且没列 --expect 时通过，并说明没碰到 Worker", async () => {

@@ -15,4 +15,4 @@ These agents only send daily ledgers:
 
 On 2026-10-13 Claude was about 1.92B tokens/day and Grok about 6M, so the gap was under 1%.
 
-**How to apply:** if the user wants the lane to match the daily total, that is reporter work in the MacTelemetryHub repo, per-event parsing, Grok first. Devin cannot be covered. The iOS app was not updated for the rename (display side paused, [[ios-paused]]).
+**How to apply:** if lyjw wants the lane to match the daily total, that is reporter work in the MacTelemetryHub repo, per-event parsing, Grok first. Devin cannot be covered. The iOS app was not updated for the rename (display side paused, [[ios-paused]]).

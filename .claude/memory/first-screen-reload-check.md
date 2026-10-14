@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-On 2026-10-14 the owner caught a font swap and a clock jump on page refresh that my verification missed ("中间有一段字体和时间跳了 你没看出来 … 改进一下验证流程"). Filmstrips on `pnpm dev`, opened once with a cold cache and the server clock in sync, cannot show either problem.
+On 2026-10-14 lyjw caught a font swap and a clock jump on page refresh that my verification missed ("中间有一段字体和时间跳了 你没看出来 … 改进一下验证流程"). Filmstrips on `pnpm dev`, opened once with a cold cache and the server clock in sync, cannot show either problem.
 
 **Why:** both problems only appear when you **refresh** (warm cache) a **cached first-screen HTML** (older than the client clock) on a **production build**. Two causes. A font URL that revalidates on every load paints the fallback font first. Time-derived SSR text anchored to the snapshot jumps when hydration happens.
 
