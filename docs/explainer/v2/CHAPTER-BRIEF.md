@@ -13,10 +13,11 @@ lyjw 已定、不要再讨论的：全篇 2D，没有透视和 3D；第 02 章�
 
 ## 在哪做
 
-- 仓库 `/Users/liangyangjunwei/Developer/lyjwpage`，讲解片的阶段分支 `worktree-agent-ac4062c4eeafc53fa`，基线提交 `31fe736`。
-- 在自己的工作树上做：`git worktree add .claude/worktrees/explainer-ch{{NN}} -b explainer/ch{{NN}} 31fe736`。已经给你分配了工作树的，先看 `git log --oneline -3` 里有没有 `31fe736`，没有就 `git switch -c explainer/ch{{NN}} 31fe736`。
-- 本机 git 要带前缀：`DEVELOPER_DIR=/Library/Developer/CommandLineTools git …`（Xcode 许可没接受，不带会报错）。
-- 渲染工具的依赖在主仓装好了，工作树里建软链：`ln -s /Users/liangyangjunwei/Developer/lyjwpage/docs/explainer/render/node_modules docs/explainer/render/node_modules`。
+{{两种写法留一种}}
+
+- 云端：仓库 `{{仓库路径}}`，各位作者在同一个工作树里并行写，基线是当前的 `{{基线提交}}`。只写自己的文件（见「不能碰」），不提交、不切分支、不用 `git stash`；交回时列出改了哪些文件，主创统一提交。
+- Mac：仓库 `{{仓库路径}}`，讲解片的阶段分支 `{{阶段分支}}`，基线提交 `{{基线提交}}`。在自己的工作树上做：`git worktree add .claude/worktrees/explainer-ch{{NN}} -b explainer/ch{{NN}} {{基线提交}}`；已经给你分配了工作树的，先看 `git log --oneline -3` 里有没有 `{{基线提交}}`，没有就 `git switch -c explainer/ch{{NN}} {{基线提交}}`。git 报 Xcode 许可没接受时，命令前加 `DEVELOPER_DIR=/Library/Developer/CommandLineTools`。
+- 渲染工具的依赖装在主仓，工作树里建软链：`ln -s {{主仓路径}}/docs/explainer/render/node_modules docs/explainer/render/node_modules`。
 
 ## 先读（按顺序）
 
@@ -36,8 +37,8 @@ lyjw 已定、不要再讨论的：全篇 2D，没有透视和 3D；第 02 章�
 - `docs/explainer/v2/ch{{NN}}.js`：画面。顶部 `I18N.add` 是这一章的全部文字（键 `ch{{NN}}.*`），旁白原文照 SCRIPT。
 - `docs/explainer/v2/music/ch{{NN}}.js`：配乐。锚点对齐 SCRIPT 的配乐栏和画面里「落在拍上」的动作；信封主题换一件本章的乐器唱。
 - 可选：SCRIPT 里你那一章的修订（旁白改字、段落时点微调；小节数不能改）；FACTS 对应那一节补的出处。
-- 提交：只 `git add` 上面这些路径，中文提交信息（如 `docs(explainer): 第 {{NN}} 章{{章名}}`），签名提交。1Password 锁着时签名会挂住或报 `failed to fill whole buffer`：别加 `--no-gpgsign`，把改动留在暂存区，在汇报里说。
-- 汇报（不超过 300 字）：提交 SHA；`check.mjs` 结果；中、英联系表的路径；前后两章的交接怎么做的、有没有偏离 SCRIPT；要主创做的事（该提进 `kit.js` 的局部函数、要加的音色或剧情音、FACTS 待核的事实、要相邻章配合的地方）。
+- 提交（只在 Mac 上）：只 `git add` 上面这些路径，中文提交信息（如 `docs(explainer): 第 {{NN}} 章{{章名}}`），签名提交。1Password 锁着时签名会挂住或报 `failed to fill whole buffer`：别加 `--no-gpgsign`，把改动留在暂存区，在汇报里说。云端不提交，汇报里列出改了的文件。
+- 汇报（不超过 300 字）：提交 SHA（云端写改了的文件）；`check.mjs` 结果；中、英联系表的路径；前后两章的交接怎么做的、有没有偏离 SCRIPT；要主创做的事（该提进 `kit.js` 的局部函数、要加的音色或剧情音、FACTS 待核的事实、要相邻章配合的地方）。
 
 ## 怎么自检
 
@@ -79,7 +80,7 @@ for (const [k,v] of Object.entries(S.events)) if (v.length) console.log(k.padEnd
 - 要新的共用件：写成本章文件里的局部函数，汇报里列出来，收尾由主创提进 `kit.js`。
 - 要新和弦：写在本章乐谱的 `chords` 里（名字全片唯一）。要新音色、新剧情音：先用现有的顶上，汇报里写清要什么声音、落在哪几拍。
 - 交接照 SCRIPT 章节表做；需要相邻章配合的，写进汇报，由主创转达，不去改别人的文件。
-- 交回前 `git rebase worktree-agent-ac4062c4eeafc53fa`（阶段分支可能已经合进了别的章）。
+- Mac 上交回前 `git rebase {{阶段分支}}`（阶段分支可能已经合进了别的章）。
 
 ## 各章要点（派单时挑对应的贴进「本章要点」）
 

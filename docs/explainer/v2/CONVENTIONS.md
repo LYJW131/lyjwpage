@@ -146,7 +146,7 @@
 
 ## 自检
 
-在仓库根目录跑。工作树里先接上渲染工具的依赖（`playwright-core`，用本机 Chrome）：
+在仓库根目录跑。工作树里先接上渲染工具的依赖（`playwright-core`；工具在 Mac 上用本机 Chrome，在云端用 Playwright 自带的 Chromium，见 `tools/browser.mjs`）：
 
 ```bash
 ln -s <主仓>/docs/explainer/render/node_modules docs/explainer/render/node_modules   # 主仓也没装就：pnpm --dir docs/explainer/render install --ignore-workspace
@@ -160,6 +160,8 @@ node docs/explainer/render/serve.mjs docs/explainer 4827      # 预览：http://
 
 交付前：`check.mjs` 通过；中英各一张联系表，覆盖每个机位、每句旁白、每个配乐锚点，外加和前后章交界处各一帧（上一章最后一帧、本章第一帧、本章最后一帧、下一章第一帧；相邻章还没写时那边是占位画面，只核自己这一侧，接不接得上由主创合并后再核）；逐张看过：字够大、没有压字和出界、英文不溢出、交接连得上。
 
+整片的逐帧验收（渲帧、拼图、派 Haiku 看图、像素比对）由主创在合拢后做，见 `.claude/skills/lyjwpage-explainer/SKILL.md`。
+
 ## 提交
 
-每章在自己的分支 / 工作树上做，从讲解片的阶段分支开出来。只 `git add` 明确路径（`docs/explainer/v2/ch<NN>.js`、`docs/explainer/v2/music/ch<NN>.js`，改了旁白、补了事实再加 `docs/explainer/SCRIPT.md`、`docs/explainer/FACTS.md`），不用 `git add -A`；中文提交信息，形如 `docs(explainer): 第 05 章电报线`；提交走签名，不加 `--no-gpgsign`；不 push、不合 main，交回前先 rebase 到阶段分支的最新提交。
+云端几位作者在同一个工作树里并行时不提交、不切分支、不用 `git stash`，交回时列出改了哪些文件，由主创统一提交；下面是 Mac 上各开工作树时的规矩。每章在自己的分支 / 工作树上做，从讲解片的阶段分支开出来。只 `git add` 明确路径（`docs/explainer/v2/ch<NN>.js`、`docs/explainer/v2/music/ch<NN>.js`，改了旁白、补了事实再加 `docs/explainer/SCRIPT.md`、`docs/explainer/FACTS.md`），不用 `git add -A`；中文提交信息，形如 `docs(explainer): 第 05 章电报线`；提交走签名，不加 `--no-gpgsign`；不 push、不合 main，交回前先 rebase 到阶段分支的最新提交。

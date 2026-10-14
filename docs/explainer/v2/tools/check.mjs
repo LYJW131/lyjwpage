@@ -1,32 +1,43 @@
-import { chromium } from "../../render/node_modules/playwright-core/index.mjs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { launch, openFilm } from "./browser.mjs";
+
+const HELP = `用法：node docs/explainer/v2/tools/check.mjs [章号…] [--step 0.125]
+
+中英两版各把要查的章每 --step 小节画一帧，报出字号低于下限的字（要读的标注 28 px、旁白 56 px，见 CONVENTIONS「字号下限」）、
+缺文字键和控制台报错，有一条就退出码 1。章号写 02 或 ch02，可以写几个；不写就查全部已写的章。`;
+
 const args = process.argv.slice(2);
+if (args.includes("--help")) {
+  console.log(HELP);
+  process.exit(0);
+}
 let step = 0.125;
 const want = [];
-for (let i = 0; i < args.length; i++) { if (args[i] === "--step") step = +args[++i]; else want.push(args[i].replace(/^(\d\d)$/, "ch$1")); }
-const page = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../index.html");
-const expectedMissing = (m) => /Failed to load resource|ERR_FILE_NOT_FOUND/.test(m.text()) && /\/(music\/)?ch\d\d\.js$/.test(m.location()?.url || "");
-const b = await chromium.launch({ channel: "chrome", headless: true, args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--step") step = +args[++i];
+  else if (/^(ch)?\d\d$/.test(args[i])) want.push(args[i].replace(/^(\d\d)$/, "ch$1"));
+  else {
+    console.error(`看不懂的参数：${args[i]}\n\n${HELP}`);
+    process.exit(2);
+  }
+}
+const b = await launch();
 let bad = 0;
 for (const lang of ["zh", "en"]) {
-  const p = await b.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 0.5 });
-  const errs = [], missing = new Set();
-  p.on("console", (m) => {
-    if (expectedMissing(m)) return;
-    if (m.type() === "warning" && m.text().startsWith("缺文字")) missing.add(m.text().replace(/^缺文字：\s*/, ""));
-    else if (m.type() === "error") errs.push(m.text());
-  });
-  p.on("pageerror", (e) => errs.push("pageerror: " + e.message));
-  await p.goto(`file://${page}?export&check&lang=${lang}`);
-  await p.evaluate(() => window.__ready);
-  const chs = await p.evaluate(() => window.__chapters);
+  // 字号按逻辑像素量，和画布分辨率无关；画得小一些，云端软件渲染也快。
+  const { page: p, errors: errs, missing, film } = await openFilm(b, { lang, check: true, scale: 0.25 });
+  const chs = film.chapters, BAR = film.BAR;
+  const unknown = want.filter((id) => !chs.some((c) => c.id === id));
+  if (unknown.length) {
+    console.error(`没有这一章：${unknown.join(" ")}`);
+    await b.close();
+    process.exit(2);
+  }
   const todo = chs.filter((c) => c.placeholder).map((c) => c.id);
   const run = chs.filter((c) => (want.length ? want.includes(c.id) : !c.placeholder));
   for (const c of run) {
     await p.evaluate(({ c, step, BAR }) => {
       for (let bar = 0; bar < c.bars; bar += step) window.__seek(c.t0 + bar * BAR);
-    }, { c, step, BAR: await p.evaluate(() => window.__BAR) });
+    }, { c, step, BAR });
   }
   const C = await p.evaluate(() => window.__CHECK);
   const fold = (list, min) => {
@@ -34,7 +45,6 @@ for (const lang of ["zh", "en"]) {
     for (const e of list) { const k = `${e.ch}|${e.str}`; const o = m.get(k); if (!o || e.px > o.px) m.set(k, e); }
     return [...m.values()].filter((e) => e.px < min);
   };
-  const BAR = await p.evaluate(() => window.__BAR);
   const where = (e) => { const c = chs.find((c) => c.id === e.ch); return `${e.ch}:${((e.t - c.t0) / BAR).toFixed(2)}`; };
   const small = fold(C.all.filter((e) => !e.narr), 27.5), narr = fold(C.all.filter((e) => e.narr), 55.5);
   console.log(`\n== ${lang} · 查了 ${run.map((c) => c.id).join(" ") || "（没有已写的章）"} · 每 ${step} 小节一帧`);
@@ -46,7 +56,7 @@ for (const lang of ["zh", "en"]) {
   const n = small.length + narr.length + missing.size + errs.length;
   if (!n) console.log("  没有问题");
   bad += n;
-  await p.close();
+  await p.context().close();
 }
 await b.close();
 process.exit(bad ? 1 : 0);
