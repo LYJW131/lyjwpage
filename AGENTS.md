@@ -35,7 +35,7 @@
 # 部署流程
 
 - 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由 Workers Builds 自动部署 `site` Worker（域名切换步骤见 `docs/workers-builds.md`）。lyjw 要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
-- 合并 PR 用合并提交，不用 GitHub 默认的 `Merge pull request #N from …`：在 PR 分支上 `git fetch origin main` 后跑 `pnpm merge-message <PR 号> "<PR 标题>"`，把输出的 `commit_title` / `commit_message` 原样传给合并接口。标题是 `<PR 标题> (#N)`，正文列 PR 内各提交主题，末尾汇总这些提交的 `Co-Authored-By` 与提交作者，去重后只留认得出身份（agent 或 GitHub noreply）且不是仓库主人的，站点「最近提交」靠它显示参与的 agent 与模型。PR 标题照提交规范写成 `type(scope): 描述`。把 main 同步进分支照常 merge、不改写已推送历史；「最近提交」不显示这类同步合并（`src/lib/recent-commits.ts#recentCommitsFrom`）。
+- 合并 PR 用合并提交，不用 GitHub 默认的 `Merge pull request #N from …`：在 PR 分支上 `git fetch origin main` 后跑 `pnpm merge-message <PR 号> "<PR 标题>"`，把输出的 `commit_title` / `commit_message` 原样传给合并接口。标题是 `<PR 标题> (#N)`，正文列 PR 内各提交主题，末尾汇总这些提交的 `Co-Authored-By` 与提交作者，去重后只留认得出身份（agent 或 GitHub noreply）且不是仓库主人 lyjw 的，站点「最近提交」靠它显示参与的 agent 与模型。PR 标题照提交规范写成 `type(scope): 描述`。把 main 同步进分支照常 merge、不改写已推送历史；「最近提交」不显示这类同步合并（`src/lib/recent-commits.ts#recentCommitsFrom`）。
 - 域名与缓存链路（`lyjw.me` 由 `site` Worker 直出，`lyjw131.com` 经阿里云 ESA 回源）见 `docs/ops-facts.md`。core Worker 对展示变化经 `SITE_CACHE` 通知 site Worker 标签失效，ESA 首页按源站的 SWR 头自行更新；新版本部署成功后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
 - 自动部署失败时先检查并修复现有流程，不改用手工发布。
 - `workers/core`、`workers/ai`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/public-status.ts`、`shared/collector.ts`、`shared/digest.ts`）只加不改，被调用方先发布（Workers Builds 并行构建，保证顺序靠「禁区」里的手动部署例外）。
@@ -48,7 +48,7 @@
 - 线上报错、页面异常、Worker 或 cron 失败，先用 Cloudflare Code Mode MCP 查 Workers Observability 的证据，再读代码：Workers Issues（`/accounts/{id}/workers/observability/issues`）看已归组的异常、5xx 与 `console.error`，遥测查询（`.../workers/observability/telemetry/query`）按 `$metadata.service`、`$metadata.level` 找日志和调用栈，拿到 `$workers.scriptVersion.id` 再对源码定位，复现、定位与修复按 `.claude/skills/lyjwpage-diagnose/SKILL.md`。不凭猜测改代码，也不借浏览器登录态调接口；MCP 不可用时告诉 lyjw，而不是绕开。
 - 服务名就是 Worker 名：`site`（含浏览器经 `/relay` 转来的 `[browser-error]`，`release` 是提交 SHA；浏览器调用栈是压缩后的代码）、`core`（含 Durable Object 与采集 Worker 驱动的定时一轮，周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`）、`ai`、`ingress`、`collector`（任务失败是 `source.event = "collector-job"` 的结构化日志）。分支预览与生产同名，按请求主机是不是 `*.workers.dev` 区分，没有主机名的事件（RPC、Durable Object）看有没有 `$workers.preview.slug`；保留期与采样见 `docs/ops-facts.md`，在线探测与 core 心跳的口径见 `shared/health.ts`。
 - `reporters/` 下的上报器不进 Workers Observability，查所在机器的容器日志。
-- Workers Issues 里只读不写是默认。把 issue 标为 resolved / ignored 这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；改 Issues 自动化、告警或可观测性设置，先问lyjw。
+- Workers Issues 里只读不写是默认。把 issue 标为 resolved / ignored 这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；改 Issues 自动化、告警或可观测性设置，先问 lyjw。
 
 # API 命名与跨端契约
 
