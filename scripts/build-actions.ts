@@ -14,7 +14,15 @@ export const TEXT_LIMITS = { blockedChars: 600, reasonChars: 500, outputFileByte
 export const OUTPUT_DIR = ".build-output";
 export const SCREENSHOT_FILE = /^[A-Za-z0-9._-]{1,80}\.(?:png|jpe?g|webp)$/;
 
-const ENV_PATTERNS = {
+export type EnvName = "RUN_ID" | "PLAN_COMMIT_SHA" | "BASE_SHA" | "PR_NUMBER" | "CALLBACK_ORIGIN" | "RUN_URL";
+type Env = Record<string, string | undefined>;
+type FetchLike = (input: string, init?: RequestInit) => Promise<Pick<Response, "ok" | "status" | "text" | "json">>;
+export type Io = { fetch: FetchLike; log: (line: string) => void; sleep?: (ms: number) => Promise<unknown>; write?: (text: string) => unknown };
+type Screenshot = { file: string; caption: string };
+type Upload = { baseSha: string; message: string; files: { path: string; content: string; mode: string }[]; deletions: string[] };
+type Publication = { blocked: string } | { blocked?: undefined; upload: Upload; screenshots: (Screenshot & { bytes: Buffer })[] };
+
+const ENV_PATTERNS: Record<EnvName, RegExp> = {
   RUN_ID: /^[a-f0-9]{32}$/,
   PLAN_COMMIT_SHA: /^[a-f0-9]{40}$/,
   BASE_SHA: /^[a-f0-9]{40}$/,
@@ -23,14 +31,14 @@ const ENV_PATTERNS = {
   RUN_URL: /^https:\/\/[A-Za-z0-9.-]+\/[\w.-]+\/[\w.-]+\/actions\/runs\/[0-9]+$/,
 };
 
-const defaultIo = {
-  fetch: (...args) => globalThis.fetch(...args),
+const defaultIo: Io = {
+  fetch: (input, init) => globalThis.fetch(input, init),
   log: (line) => console.log(line),
   sleep,
 };
 
-export function readEnv(env, names) {
-  const values = {};
+export function readEnv<N extends EnvName>(env: Env, names: N[]): Record<N, string> {
+  const values = {} as Record<N, string>;
   for (const name of names) {
     const value = env[name];
     if (typeof value !== "string" || !ENV_PATTERNS[name].test(value)) throw new Error(`${name} is missing or invalid.`);
@@ -40,41 +48,43 @@ export function readEnv(env, names) {
 }
 
 // 日志里的外来文本一律 JSON 引号化：行首的 ::xxx:: 会被 runner 当工作流命令执行。
-const quote = (value) => JSON.stringify(value);
+const quote = (value: unknown) => JSON.stringify(value);
 
-export function cleanText(value) {
+export function cleanText(value: string): string {
   return value.toWellFormed().replace(/\r\n?/g, "\n").replace(/[^\P{Cc}\n\t]/gu, " ");
 }
 
-export function cut(value, max) {
+export function cut(value: string, max: number): string {
   if (value.length <= max) return value;
-  const end = /[\uD800-\uDBFF]/.test(value[max - 1]) ? max - 1 : max;
+  const end = /[\uD800-\uDBFF]/.test(value[max - 1] ?? "") ? max - 1 : max;
   return value.slice(0, end);
 }
 
-const clip = (value, max) => cut(cleanText(value).trim(), max).trimEnd();
+const clip = (value: string, max: number) => cut(cleanText(value).trim(), max).trimEnd();
 
-export function neutralizePlan(text) {
+export function neutralizePlan(text: string): string {
   return text.toWellFormed().replace(/<([\s\p{Cf}]*)\/([\s\p{Cf}]*)plan/giu, "&lt;$1/$2plan");
 }
 
-export function renderPrompt(template, { runId, planCommitSha, baseSha, plan }) {
-  const values = { RUN_ID: runId, PLAN_COMMIT_SHA: planCommitSha, BASE_SHA: baseSha, PLAN: neutralizePlan(plan) };
-  return template.replace(/\{\{(RUN_ID|PLAN_COMMIT_SHA|BASE_SHA|PLAN)\}\}/g, (_, key) => values[key]);
+export function renderPrompt(template: string, { runId, planCommitSha, baseSha, plan }: { runId: string; planCommitSha: string; baseSha: string; plan: string }): string {
+  const values: Record<string, string> = { RUN_ID: runId, PLAN_COMMIT_SHA: planCommitSha, BASE_SHA: baseSha, PLAN: neutralizePlan(plan) };
+  return template.replace(/\{\{(RUN_ID|PLAN_COMMIT_SHA|BASE_SHA|PLAN)\}\}/g, (_, key: string) => values[key] ?? "");
 }
 
-function parseCliResult(text, what) {
-  let data;
+type CliResult = { type?: unknown; is_error?: unknown; subtype?: unknown; structured_output?: unknown; num_turns?: unknown; total_cost_usd?: unknown };
+
+function parseCliResult(text: string, what: string): CliResult {
+  let data: unknown;
   try { data = JSON.parse(text); } catch { throw new Error(`${what} is not valid JSON.`); }
-  if (Array.isArray(data)) data = data.findLast((message) => message?.type === "result");
+  if (Array.isArray(data)) data = data.findLast((message: CliResult | null) => message?.type === "result");
   if (!data || typeof data !== "object") throw new Error(`${what} is not a CLI result object.`);
-  return data;
+  return data as CliResult;
 }
 
-export function parseReviewResult(text) {
+export function parseReviewResult(text: string): { verdict: "approve" | "reject"; reason: string } {
   const data = parseCliResult(text, "The review output");
   if (data.is_error === true) throw new Error(`The review session ended with an error (${quote(String(data.subtype ?? "unknown"))}).`);
-  const output = data.structured_output;
+  const output = data.structured_output as { verdict?: unknown; reason?: unknown } | null | undefined;
   if (!output || typeof output !== "object") throw new Error("The review output has no structured verdict.");
   if (output.verdict !== "approve" && output.verdict !== "reject") throw new Error(`The review verdict ${quote(String(output.verdict))} is not approve or reject.`);
   const reason = typeof output.reason === "string" ? clip(output.reason, TEXT_LIMITS.reasonChars) : "";
@@ -82,42 +92,43 @@ export function parseReviewResult(text) {
   return { verdict: output.verdict, reason };
 }
 
-export function parseImplementResult(text) {
+export function parseImplementResult(text: string) {
   const data = parseCliResult(text, "The implementation output");
   const subtype = typeof data.subtype === "string" ? data.subtype : null;
   if (data.is_error === true || subtype && subtype !== "success") throw new Error(`The implementation session ended with an error (${quote(subtype ?? "unknown")}).`);
   return { subtype, turns: data.num_turns, costUsd: data.total_cost_usd };
 }
 
-export function formatOutputs(values, delimiter = `ghadelimiter_${randomBytes(16).toString("hex")}`) {
+export function formatOutputs(values: Record<string, string>, delimiter = `ghadelimiter_${randomBytes(16).toString("hex")}`) {
   return Object.entries(values).map(([name, value]) => {
     if (value.includes(delimiter)) throw new Error("The output value contains the heredoc delimiter.");
     return `${name}<<${delimiter}\n${value}\n${delimiter}\n`;
   }).join("");
 }
 
-function writeOutputs(env, values) {
+function writeOutputs(env: Env, values: Record<string, string>) {
   if (!env.GITHUB_OUTPUT) throw new Error("GITHUB_OUTPUT is not set.");
   fs.appendFileSync(env.GITHUB_OUTPUT, formatOutputs(values));
 }
 
-function appendSummary(env, line) {
+function appendSummary(env: Env, line: string) {
   if (env.GITHUB_STEP_SUMMARY) fs.appendFileSync(env.GITHUB_STEP_SUMMARY, `${line}\n`);
 }
 
-function isRealDirectory(dir) {
+function isRealDirectory(dir: string): boolean {
   try { return fs.lstatSync(dir).isDirectory(); } catch { return false; }
 }
 
 class OutputFileError extends Error {}
 
 // O_NOFOLLOW 拒绝最后一段是符号链接，O_NONBLOCK 让打开 FIFO 不阻塞；父目录由调用方用 lstat 确认。
-export function readRegularFile(file, maxBytes, { truncate = false } = {}) {
-  let fd;
+export function readRegularFile(file: string, maxBytes: number, { truncate = false } = {}): Buffer | null {
+  let fd: number;
   try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); }
   catch (error) {
-    if (error.code === "ENOENT") return null;
-    if (error.code === "ELOOP") throw new OutputFileError(`${quote(file)} is a symbolic link.`);
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    if (code === "ELOOP") throw new OutputFileError(`${quote(file)} is a symbolic link.`);
     throw error;
   }
   try {
@@ -137,7 +148,7 @@ export function readRegularFile(file, maxBytes, { truncate = false } = {}) {
   }
 }
 
-function readOptional(file, maxBytes, io, options) {
+function readOptional(file: string, maxBytes: number, io: Io, options?: { truncate?: boolean }): Buffer | null {
   try { return readRegularFile(file, maxBytes, options); }
   catch (error) {
     if (!(error instanceof OutputFileError)) throw error;
@@ -146,12 +157,12 @@ function readOptional(file, maxBytes, io, options) {
   }
 }
 
-export function screenshotEntries(value) {
-  const accepted = [];
-  const rejected = [];
+export function screenshotEntries(value: unknown): { accepted: Screenshot[]; rejected: string[] } {
+  const accepted: Screenshot[] = [];
+  const rejected: string[] = [];
   if (!Array.isArray(value)) return { accepted, rejected: ["screenshots.json is not an array"] };
   for (const entry of value) {
-    const file = entry && typeof entry === "object" ? entry.file : undefined;
+    const file: unknown = entry && typeof entry === "object" ? entry.file : undefined;
     const caption = entry && typeof entry === "object" && typeof entry.caption === "string" ? clip(entry.caption.replace(/\s+/g, " "), SCREENSHOT_LIMITS.captionChars) : "";
     if (typeof file !== "string" || !SCREENSHOT_FILE.test(file)) rejected.push(`invalid file name ${quote(file)}`);
     else if (!caption) rejected.push(`${quote(file)} has no caption`);
@@ -162,10 +173,10 @@ export function screenshotEntries(value) {
   return { accepted, rejected };
 }
 
-function readScreenshots(dir, io) {
+function readScreenshots(dir: string, io: Io): (Screenshot & { bytes: Buffer })[] {
   const list = readOptional(path.join(dir, "screenshots.json"), TEXT_LIMITS.outputFileBytes, io);
   if (!list) return [];
-  let parsed;
+  let parsed: unknown;
   try { parsed = JSON.parse(list.toString("utf8")); } catch { io.log("Ignored build output: screenshots.json is not valid JSON."); return []; }
   const { accepted, rejected } = screenshotEntries(parsed);
   for (const reason of rejected) io.log(`Ignored screenshot: ${reason}.`);
@@ -185,10 +196,10 @@ const GIT_ENV = { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_
 class GitError extends Error {}
 
 // 构建检出的 .git 被 Claude 会话碰过，git 读到的配置可能让它执行任意命令：不读系统与全局配置，关掉钩子和 fsmonitor；给了 gitDir 就改用开工前的副本。
-function gitRunner(cwd, gitDir) {
-  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), ...GIT_ENV };
+function gitRunner(cwd: string, gitDir?: string | null) {
+  const env = { ...(Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))) as NodeJS.ProcessEnv), ...GIT_ENV };
   const base = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...(gitDir ? [`--git-dir=${path.resolve(gitDir)}`, `--work-tree=${path.resolve(cwd)}`] : [])];
-  return (args, { stdout = "pipe", maxBuffer = 64 * 1024 * 1024 } = {}) => {
+  return (args: string[], { stdout = "pipe", maxBuffer = 64 * 1024 * 1024 }: { stdout?: "pipe" | number; maxBuffer?: number } = {}): Buffer => {
     const result = spawnSync("git", [...base, ...args], { cwd, env, maxBuffer, stdio: ["ignore", stdout, "pipe"] });
     if (result.error) throw result.error;
     if (result.status !== 0) throw new GitError(`git ${args[0]} failed: ${quote(result.stderr.toString("utf8").trim().slice(0, 500))}`);
@@ -196,14 +207,14 @@ function gitRunner(cwd, gitDir) {
   };
 }
 
-const splitNul = (buffer) => buffer.toString("utf8").split("\0").filter(Boolean);
+const splitNul = (buffer: Buffer) => buffer.toString("utf8").split("\0").filter(Boolean);
 
 // 构建产物目录不是改动；builds/ 下是 Worker 已提交的计划，带上它整次上传都会被 Worker 拒绝。
-export function droppedPath(file) {
+export function droppedPath(file: string): boolean {
   return [OUTPUT_DIR, "builds"].some((dir) => file === dir || file.startsWith(`${dir}/`));
 }
 
-export function packageBuild({ cwd, out, gitDir, planCommitSha, io = defaultIo }) {
+export function packageBuild({ cwd, out, gitDir, planCommitSha, io = defaultIo }: { cwd: string; out: string; gitDir?: string | null; planCommitSha: string; io?: Io }): void {
   const git = gitRunner(cwd, gitDir);
   git(["add", "-A", "--", ".", `:(exclude)${OUTPUT_DIR}`]);
   fs.mkdirSync(out, { recursive: true });
@@ -225,7 +236,7 @@ export function packageBuild({ cwd, out, gitDir, planCommitSha, io = defaultIo }
   } else if (fs.existsSync(outputs)) {
     io.log(`Ignored build output: ${OUTPUT_DIR} is not a directory.`);
   }
-  const block = (message) => {
+  const block = (message: string) => {
     if (!blocked) fs.writeFileSync(path.join(out, "blocked.md"), message);
     io.log(`Packaging stopped: ${message}`);
   };
@@ -242,15 +253,15 @@ export function packageBuild({ cwd, out, gitDir, planCommitSha, io = defaultIo }
   io.log(`Packaged ${changed.length} changed paths.`);
 }
 
-export function parseNameStatus(buffer) {
+export function parseNameStatus(buffer: Buffer): { status: string; path: string }[] {
   const parts = splitNul(buffer);
-  const entries = [];
-  for (let index = 0; index + 1 < parts.length; index += 2) entries.push({ status: parts[index], path: parts[index + 1] });
+  const entries: { status: string; path: string }[] = [];
+  for (let index = 0; index + 1 < parts.length; index += 2) entries.push({ status: parts[index] ?? "", path: parts[index + 1] ?? "" });
   return entries;
 }
 
-export function parseIndex(buffer) {
-  const index = new Map();
+export function parseIndex(buffer: Buffer): Map<string, { mode: string | undefined; sha: string | undefined }> {
+  const index = new Map<string, { mode: string | undefined; sha: string | undefined }>();
   for (const record of splitNul(buffer)) {
     const tab = record.indexOf("\t");
     const [mode, sha] = record.slice(0, tab).split(" ");
@@ -259,16 +270,16 @@ export function parseIndex(buffer) {
   return index;
 }
 
-const blockedResult = (message) => ({ blocked: message });
+const blockedResult = (message: string): Publication => ({ blocked: message });
 
-export function preparePublication({ env, work, artifact, runId, baseSha, io = defaultIo }) {
+export function preparePublication({ env, work, artifact, runId, baseSha, io = defaultIo }: { env: Env; work: string; artifact: string; runId: string; baseSha: string; io?: Io }): Publication {
   const result = typeof env.IMPLEMENT_RESULT === "string" && /^[a-z_]{1,20}$/.test(env.IMPLEMENT_RESULT) ? env.IMPLEMENT_RESULT : "unknown";
   if (result !== "success") return blockedResult(`The implementation job did not finish (${result}).`);
   if (!isRealDirectory(artifact)) return blockedResult("The implementation job did not finish (missing output).");
   const blocked = readOptional(path.join(artifact, "blocked.md"), TEXT_LIMITS.outputFileBytes, io, { truncate: true });
   if (blocked) return blockedResult(clip(blocked.toString("utf8"), TEXT_LIMITS.blockedChars) || "The implementation stopped without giving a reason.");
   const patchFile = path.join(artifact, "changes.patch");
-  let patchStat;
+  let patchStat: fs.Stats;
   try { patchStat = fs.lstatSync(patchFile); } catch { return blockedResult("The implementation job did not finish (missing output)."); }
   if (!patchStat.isFile()) return blockedResult("The implementation job did not finish (missing output).");
   if (patchStat.size > TEXT_LIMITS.patchBytes) return blockedResult("The implementation diff is too large to upload.");
@@ -291,8 +302,8 @@ export function preparePublication({ env, work, artifact, runId, baseSha, io = d
   if (unsupported) return blockedResult(`${unsupported.path} changed in an unsupported way (${unsupported.status}); only regular file additions, edits and deletions can be uploaded.`);
 
   const index = parseIndex(git(["ls-files", "-s", "-z"]));
-  const files = [];
-  const deletions = [];
+  const files: Upload["files"] = [];
+  const deletions: string[] = [];
   let total = 0;
   for (const change of changes) {
     if (change.status === "D") { deletions.push(change.path); continue; }
@@ -301,11 +312,11 @@ export function preparePublication({ env, work, artifact, runId, baseSha, io = d
     if (entry.mode === "120000") return blockedResult(`${change.path} is a symbolic link; only regular files can be uploaded.`);
     if (entry.mode === "160000") return blockedResult(`${change.path} is a submodule; only regular files can be uploaded.`);
     if (entry.mode !== "100644" && entry.mode !== "100755") return blockedResult(`${change.path} has unsupported mode ${entry.mode}; only regular files can be uploaded.`);
-    const size = Number(git(["cat-file", "-s", entry.sha]).toString("utf8").trim());
+    const size = Number(git(["cat-file", "-s", entry.sha ?? ""]).toString("utf8").trim());
     if (!Number.isSafeInteger(size) || size > UPLOAD_LIMITS.fileBytes) return blockedResult(`${change.path} is larger than the ${UPLOAD_LIMITS.fileBytes}-byte file limit.`);
     total += size;
     if (total > UPLOAD_LIMITS.totalBytes) return blockedResult(`The changed files exceed the ${UPLOAD_LIMITS.totalBytes}-byte upload limit.`);
-    const bytes = git(["cat-file", "blob", entry.sha], { maxBuffer: UPLOAD_LIMITS.fileBytes + 1 });
+    const bytes = git(["cat-file", "blob", entry.sha ?? ""], { maxBuffer: UPLOAD_LIMITS.fileBytes + 1 });
     files.push({ path: change.path, content: bytes.toString("base64"), mode: entry.mode });
   }
 
@@ -316,12 +327,12 @@ export function preparePublication({ env, work, artifact, runId, baseSha, io = d
   return { upload, screenshots: readScreenshots(artifact, io) };
 }
 
-async function mintIdToken(env, audience, io, timeoutMs) {
+async function mintIdToken(env: Env, audience: string, io: Io, timeoutMs: number): Promise<string> {
   const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: token } = env;
   if (!url || !token) throw new Error("GitHub Actions OIDC is unavailable; the job needs id-token: write.");
   const response = await io.fetch(`${url}&audience=${encodeURIComponent(audience)}`, { headers: { Authorization: `bearer ${token}` }, signal: AbortSignal.timeout(timeoutMs) });
   if (!response.ok) throw new Error(`GitHub Actions OIDC answered HTTP ${response.status}.`);
-  const { value } = await response.json();
+  const { value } = (await response.json()) as { value?: unknown };
   if (typeof value !== "string" || !/^[\w-]+\.[\w-]+\.[\w-]+$/.test(value)) throw new Error("GitHub Actions OIDC returned no token.");
   io.log(`::add-mask::${value}`);
   return value;
@@ -341,17 +352,17 @@ export const WORKER_TIMING = {
 const RETRYABLE_STATUS = new Set([0, 502, 503, 504]);
 
 // 须与 workers/ai/src/build/actions-oidc.ts#buildWorkflowAudience 一致：Worker 按 run 核对受众。
-export const workflowAudience = (origin, runId) => `${origin}/builds/${runId}`;
+export const workflowAudience = (origin: string, runId: string) => `${origin}/builds/${runId}`;
 
 // GitHub 的 OIDC 令牌只活几分钟，每次尝试都现取一张，不跨请求缓存。
-function workerClient({ env, origin, runId, io, deadline }) {
-  return async (pathname, body, { timeoutMs = WORKER_TIMING.requestMs, retry = true, until = deadline } = {}) => {
+function workerClient({ env, origin, runId, io, deadline }: { env: Env; origin: string; runId: string; io: Io; deadline: number }) {
+  return async (pathname: string, body: unknown, { timeoutMs = WORKER_TIMING.requestMs, retry = true, until = deadline } = {}): Promise<{ ok: boolean; status: number; text: string }> => {
     if (until - Date.now() < WORKER_TIMING.minAttemptMs) {
       io.log(`Worker ${pathname}: skipped; the time budget ran out.`);
       return { ok: false, status: 0, text: "" };
     }
-    let status;
-    let text;
+    let status: number;
+    let text: string;
     for (let attempt = 0; ; attempt += 1) {
       status = 0;
       try {
@@ -370,7 +381,7 @@ function workerClient({ env, origin, runId, io, deadline }) {
       io.log(`Worker ${pathname}: HTTP ${status} ${quote(text.slice(0, 2000))}`);
       const delay = WORKER_TIMING.retryDelaysMs[attempt];
       if (!retry || !RETRYABLE_STATUS.has(status) || delay === undefined || until - Date.now() - delay < WORKER_TIMING.minAttemptMs) break;
-      await (io.sleep ?? defaultIo.sleep)(delay);
+      await (io.sleep ?? sleep)(delay);
     }
     return { ok: status >= 200 && status < 300, status, text };
   };
@@ -378,21 +389,23 @@ function workerClient({ env, origin, runId, io, deadline }) {
 
 const GATE_PROGRESS = "Plan review approved the plan; implementation is starting.";
 
-export function gateDecision({ reviewResult, verdict, reason }) {
+type GateDecision = { approved: boolean; label: string; reason: string; worker: { blocked?: true; message: string } };
+
+export function gateDecision({ reviewResult, verdict, reason }: { reviewResult?: string; verdict?: string; reason?: unknown }): GateDecision {
   const text = typeof reason === "string" ? clip(reason, TEXT_LIMITS.reasonChars) : "";
   if (reviewResult === "success" && verdict === "approve") return { approved: true, label: "approved", reason: text, worker: { message: GATE_PROGRESS } };
   if (reviewResult === "success" && verdict === "reject") return { approved: false, label: "declined", reason: text, worker: { blocked: true, message: cut(`Plan review declined: ${text || "no reason was given."}`, TEXT_LIMITS.blockedChars) } };
   return { approved: false, label: "did not finish", reason: "", worker: { blocked: true, message: "The plan review did not finish." } };
 }
 
-export function reviewComment(decision, runUrl) {
+export function reviewComment(decision: GateDecision, runUrl: string): string {
   const lines = [`**Plan review: ${decision.label}**`];
   if (decision.reason) lines.push("", decision.reason.split("\n").map((line) => `> ${line}`).join("\n"));
   lines.push("", `[Workflow run](${runUrl})`);
   return lines.join("\n").replaceAll("@", "@​");
 }
 
-async function postReviewComment(env, prNumber, body, io) {
+async function postReviewComment(env: Env, prNumber: string, body: string, io: Io) {
   const repository = env.GITHUB_REPOSITORY;
   if (!env.GITHUB_TOKEN || !repository || !/^[\w.-]+\/[\w.-]+$/.test(repository)) {
     io.log("Plan review comment skipped: GITHUB_TOKEN or GITHUB_REPOSITORY is not set.");
@@ -411,7 +424,7 @@ async function postReviewComment(env, prNumber, body, io) {
   }
 }
 
-export async function runGate({ env, io = defaultIo }) {
+export async function runGate({ env, io = defaultIo }: { env: Env; io?: Io }): Promise<boolean> {
   let approved = false;
   try {
     const { RUN_ID, PR_NUMBER, CALLBACK_ORIGIN, RUN_URL } = readEnv(env, ["RUN_ID", "PR_NUMBER", "CALLBACK_ORIGIN", "RUN_URL"]);
@@ -429,12 +442,12 @@ export async function runGate({ env, io = defaultIo }) {
   return true;
 }
 
-export async function runPublish({ env, work, artifact, io = defaultIo }) {
+export async function runPublish({ env, work, artifact, io = defaultIo }: { env: Env; work: string; artifact: string; io?: Io }): Promise<boolean> {
   const { RUN_ID, BASE_SHA, CALLBACK_ORIGIN } = readEnv(env, ["RUN_ID", "BASE_SHA", "CALLBACK_ORIGIN"]);
   const publication = preparePublication({ env, work, artifact, runId: RUN_ID, baseSha: BASE_SHA, io });
   const deadline = Date.now() + WORKER_TIMING.publishBudgetMs;
   const post = workerClient({ env, origin: CALLBACK_ORIGIN, runId: RUN_ID, io, deadline });
-  if (publication.blocked) {
+  if (publication.blocked !== undefined) {
     io.log(`Build blocked: ${quote(publication.blocked)}`);
     const response = await post(WORKER_PATHS.progress, { blocked: true, message: clip(publication.blocked, TEXT_LIMITS.blockedChars) });
     // 运行摘要按 Markdown 渲染且对外公开，停下原因来自 Claude 和补丁里的路径，只进日志。
@@ -452,13 +465,17 @@ export async function runPublish({ env, work, artifact, io = defaultIo }) {
   return response.ok;
 }
 
-function readText(file, maxBytes) {
+function readText(file: string, maxBytes: number): string {
   const bytes = readRegularFile(file, maxBytes);
   if (!bytes) throw new Error(`${quote(file)} does not exist.`);
   return bytes.toString("utf8");
 }
 
-const COMMANDS = {
+type CommandIo = Io & { write: (text: string) => unknown };
+type CommandContext = { values: Record<string, string | undefined>; positionals: string[]; env: Env; io: CommandIo };
+type Command = { options?: Record<string, { type: "string" }>; run: (context: CommandContext) => boolean | Promise<boolean> };
+
+const COMMANDS: Record<string, Command> = {
   prompt: {
     options: { template: { type: "string" }, plan: { type: "string" } },
     run: ({ values, env, io }) => {
@@ -504,12 +521,12 @@ const COMMANDS = {
   },
 };
 
-export async function main(argv, { env = process.env, io = { ...defaultIo, write: (text) => process.stdout.write(text) } } = {}) {
+export async function main(argv: string[], { env = process.env, io = { ...defaultIo, write: (text: string) => process.stdout.write(text) } }: { env?: Env; io?: Partial<CommandIo> & Pick<Io, "log"> } = {}): Promise<boolean> {
   const [name, ...args] = argv;
-  const command = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : null;
+  const command = name !== undefined && Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : null;
   if (!command) throw new Error(`Unknown command ${quote(name ?? "")}; expected one of ${Object.keys(COMMANDS).join(", ")}.`);
   const { values, positionals } = parseArgs({ args, options: command.options ?? {}, allowPositionals: true, strict: true });
-  return command.run({ values, positionals, env, io });
+  return command.run({ values: values as Record<string, string | undefined>, positionals, env, io: io as CommandIo });
 }
 
 function invokedDirectly() {
