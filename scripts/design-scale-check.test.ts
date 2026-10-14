@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { compare, scan, scanSource, sortedBaseline, SPACING_SCALE } from "./design-scale-check.mjs";
+import { compare, scan, scanSource, sortedBaseline, SPACING_SCALE } from "./design-scale-check.ts";
 
-const tokens = (text) => scan(text).map((hit) => `${hit.kind}:${hit.token}`);
+const tokens = (text: string) => scan(text).map((hit) => `${hit.kind}:${hit.token}`);
 
 test("阶梯内的间距、变体前缀和负外边距不算违规", () => {
   assert.deepEqual(tokens(`cn("p-4 lg:p-5 gap-3 -mx-2 px-2 space-y-1.5 m-auto px-px", ok && "gap-y-8")`), []);

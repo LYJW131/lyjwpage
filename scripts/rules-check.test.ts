@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkFetchHost, checkFile, checkScrollbarPair, checkTodo } from "./rules-check.mjs";
+import { checkFetchHost, checkFile, checkScrollbarPair, checkTodo } from "./rules-check.ts";
 
-const rules = (file, text) => checkFile(file, text).map((issue) => `${issue.rule}@${issue.line}`);
+const rules = (file: string, text: string) => checkFile(file, text).map((issue) => `${issue.rule}@${issue.line}`);
 
 test("不带单号的 TODO / FIXME 被拦，带 #单号或链接的放行", () => {
   assert.deepEqual(rules("src/lib/x.ts", "// TODO: 以后处理\nconst a = 1; // FIXME 同上"), ["todo-ticket@1", "todo-ticket@2"]);

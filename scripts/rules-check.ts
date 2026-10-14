@@ -16,13 +16,18 @@
  *                  Worker 与 shared/ 的 JSON 响应统一走 shared/http-origins.ts#jsonResponse，
  *                  不再手写 new Response(JSON.stringify(...))
  *
- * 退出码：有违例为 1。测试见 scripts/rules-check.test.mjs。
+ * 退出码：有违例为 1。测试见 scripts/rules-check.test.ts。
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import type * as TS from "typescript";
+
+export type Issue = { file: string; line: number; rule: string; message: string };
+type Comment = { line: number; start: number; end: number; text: string };
 
 const CODE_EXTS = new Set([
   "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "swift", "py", "sh",
@@ -39,21 +44,21 @@ const BAKED_IMG_RE = /https?:\/\/[^\s"')`]+\/img\//;
 const FETCH_CALLS = new Set(["fetch", "sendBeacon", "EventSource", "WebSocket"]);
 const ABSOLUTE_URL_RE = /^\s*(?:https?|wss?):\/\/([a-zA-Z0-9.-]+)/;
 
-const extOf = (file) => path.posix.extname(file).slice(1).toLowerCase();
+const extOf = (file: string) => path.posix.extname(file).slice(1).toLowerCase();
 
 
 // 全文件注释扫描：跳过引号与模板串内容，逐条给出注释的行号与起止偏移；
 // 同行多个注释、块注释同行闭合、注释后还有代码都各自成条。
-export function commentTexts(file, text) {
+export function commentTexts(file: string, text: string): Comment[] {
   const ext = extOf(file);
   const slashed = SLASH_COMMENT_EXTS.has(ext);
   const hashed = HASH_COMMENT_EXTS.has(ext);
   if (!slashed && !hashed) return [];
-  const comments = [];
+  const comments: Comment[] = [];
   const n = text.length;
   let i = 0;
   let line = 1;
-  let quote = null;
+  let quote: string | null = null;
   while (i < n) {
     const char = text[i];
     if (char === "\n") { line += 1; i += 1; continue; }
@@ -98,7 +103,7 @@ export function commentTexts(file, text) {
 }
 
 // 把注释内容抹成等长空位（保留换行与行号），供逐行扫描的检查跳过注释里的字样。
-export function maskComments(file, text) {
+export function maskComments(file: string, text: string) {
   const comments = commentTexts(file, text);
   if (comments.length === 0) return text;
   let out = "";
@@ -110,8 +115,8 @@ export function maskComments(file, text) {
   return out + text.slice(cursor);
 }
 
-export function checkTodo(file, text) {
-  const issues = [];
+export function checkTodo(file: string, text: string) {
+  const issues: Issue[] = [];
   for (const comment of commentTexts(file, text)) {
     const match = TODO_RE.exec(comment.text);
     if (!match || TICKET_RE.test(comment.text)) continue;
@@ -121,8 +126,8 @@ export function checkTodo(file, text) {
   return issues;
 }
 
-export function checkBakedImgUrl(file, text) {
-  const issues = [];
+export function checkBakedImgUrl(file: string, text: string) {
+  const issues: Issue[] = [];
   text.split("\n").forEach((line, index) => {
     if (BAKED_IMG_RE.test(line)) {
       issues.push({ file, line: index + 1, rule: "img-baked-url", message: "R2 图片一律同源 /img/<objectKey>（shared/asset-url.ts#publicAssetPath），不烧交付域；要绝对地址的场合读环境变量。" });
@@ -131,19 +136,19 @@ export function checkBakedImgUrl(file, text) {
   return issues;
 }
 
-export function checkFetchHost(file, text) {
+export function checkFetchHost(file: string, text: string) {
   const ext = extOf(file);
   if (!TS_PARSE_EXTS.has(ext)) return [];
   const ts = loadTs();
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const issues = [];
-  const literalText = (arg) => {
+  const issues: Issue[] = [];
+  const literalText = (arg: TS.Expression) => {
     if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) return arg.text;
     if (ts.isTemplateExpression(arg)) return arg.head.text;
     return null;
   };
-  const visit = (node) => {
-    if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.length > 0) {
+  const visit = (node: TS.Node) => {
+    if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments && node.arguments.length > 0) {
       const callee = node.expression;
       const name = ts.isIdentifier(callee) ? callee.text
         : ts.isPropertyAccessExpression(callee) ? callee.name.text : null;
@@ -166,28 +171,28 @@ const TS_PARSE_EXTS = new Set(["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "c
 const JSX_EXTS = new Set(["tsx", "jsx"]);
 const MERGE_CALLS = new Set(["cn", "clsx", "classNames", "twMerge"]);
 const TS_PACKAGE = createRequire(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"));
-let tsModule;
-const loadTs = () => (tsModule ??= TS_PACKAGE("typescript"));
+let tsModule: typeof TS | undefined;
+const loadTs = (): typeof TS => (tsModule ??= TS_PACKAGE("typescript") as typeof TS);
 
 // 同一串类名才谈得上配对：JSX 的 className 属性是一个单元（其中 cn()/clsx() 的参数一起算），
 // 没有 className 包裹时以最外层的类名合并调用为单元，都不是就按单个字符串字面量判断。
-export function checkScrollbarPair(file, text) {
+export function checkScrollbarPair(file: string, text: string) {
   const ext = extOf(file);
   if (!TS_PARSE_EXTS.has(ext)) return [];
   const ts = loadTs();
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const isClassNameAttr = (node) => ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === "className";
-  const isMergeCall = (node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && MERGE_CALLS.has(node.expression.text);
-  const unitOf = (node) => {
-    let outerCall = null;
+  const isClassNameAttr = (node: TS.Node) => ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === "className";
+  const isMergeCall = (node: TS.Node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && MERGE_CALLS.has(node.expression.text);
+  const unitOf = (node: TS.Node) => {
+    let outerCall: TS.Node | null = null;
     for (let n = node.parent; n; n = n.parent) {
       if (isClassNameAttr(n)) return n;
       if (isMergeCall(n)) outerCall = n;
     }
     return outerCall ?? node;
   };
-  const units = new Map();
-  const addPiece = (node, raw) => {
+  const units = new Map<TS.Node, { line: number; parts: string[] }>();
+  const addPiece = (node: TS.Node, raw: string) => {
     const unit = unitOf(node);
     let entry = units.get(unit);
     if (!entry) {
@@ -197,7 +202,7 @@ export function checkScrollbarPair(file, text) {
     }
     entry.parts.push(raw);
   };
-  const visit = (node) => {
+  const visit = (node: TS.Node) => {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) addPiece(node, node.text);
     else if (ts.isTemplateExpression(node)) {
       addPiece(node.head, node.head.text);
@@ -206,7 +211,7 @@ export function checkScrollbarPair(file, text) {
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  const issues = [];
+  const issues: Issue[] = [];
   for (const { line, parts } of units.values()) {
     // 只认 Tailwind 写法：scrollbar-none 类与 [&::-webkit-scrollbar]:hidden 成对；
     // 原生 CSS（html-preview 里注入 iframe 的 ::-webkit-scrollbar{display:none}）不算。
@@ -222,32 +227,32 @@ export function checkScrollbarPair(file, text) {
 
 const NODE_SLEEP_SOURCE = /^(?:scripts|shared)\/|^workers\/[^/]+\/src\//;
 
-export function checkManualSleep(file, text) {
+export function checkManualSleep(file: string, text: string) {
   if (!NODE_SLEEP_SOURCE.test(file)) return [];
   const ext = extOf(file);
   if (!TS_PARSE_EXTS.has(ext)) return [];
   const ts = loadTs();
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const isSetTimeoutCallee = (expr) =>
+  const isSetTimeoutCallee = (expr: TS.Expression) =>
     (ts.isIdentifier(expr) && expr.text === "setTimeout")
     || (ts.isPropertyAccessExpression(expr) && expr.name.text === "setTimeout");
-  const callsBare = (expr, name) => ts.isCallExpression(expr) && expr.arguments.length === 0 && ts.isIdentifier(expr.expression) && expr.expression.text === name;
-  const resolvesBare = (arg, name) => {
+  const callsBare = (expr: TS.Node, name: string) => ts.isCallExpression(expr) && expr.arguments.length === 0 && ts.isIdentifier(expr.expression) && expr.expression.text === name;
+  const resolvesBare = (arg: TS.Expression, name: string) => {
     if (ts.isIdentifier(arg)) return arg.text === name;
     if (!(ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) || arg.parameters.length > 0) return false;
     if (!ts.isBlock(arg.body)) return callsBare(arg.body, name);
     const [only] = arg.body.statements;
     return arg.body.statements.length === 1 && ts.isExpressionStatement(only) && callsBare(only.expression, name);
   };
-  const issues = [];
-  const visit = (node) => {
+  const issues: Issue[] = [];
+  const visit = (node: TS.Node) => {
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
       const executor = node.arguments?.[0];
       const param = executor && (ts.isArrowFunction(executor) || ts.isFunctionExpression(executor)) ? executor.parameters[0] : undefined;
       const resolved = param && ts.isIdentifier(param.name) ? param.name.text : null;
       let hit = false;
-      if (resolved && executor.body) {
-        const scan = (n) => {
+      if (resolved && executor && (ts.isArrowFunction(executor) || ts.isFunctionExpression(executor))) {
+        const scan = (n: TS.Node) => {
           if (hit) return;
           if (ts.isCallExpression(n) && isSetTimeoutCallee(n.expression) && n.arguments.length > 0 && resolvesBare(n.arguments[0], resolved)) hit = true;
           else ts.forEachChild(n, scan);
@@ -270,15 +275,15 @@ const WORKER_OR_SHARED_TS = /^(?:workers\/[^/]+\/src|shared)\/.+\.ts$/;
 const TEST_OR_FIXTURE = /\.test\.|(^|\/)(?:__tests__|tests?|fixtures|dev-fixtures)\//i;
 const JSON_RESPONSE_IMPL = new Set(["shared/http-origins.ts"]);
 
-export function checkJsonResponseLiteral(file, text) {
+export function checkJsonResponseLiteral(file: string, text: string) {
   const ts = loadTs();
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const issues = [];
-  const isJsonStringify = (node) => ts.isCallExpression(node)
+  const issues: Issue[] = [];
+  const isJsonStringify = (node: TS.Node) => ts.isCallExpression(node)
     && ts.isPropertyAccessExpression(node.expression)
     && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "JSON"
     && node.expression.name.text === "stringify";
-  const visit = (node) => {
+  const visit = (node: TS.Node) => {
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Response" && node.arguments?.[0] && isJsonStringify(node.arguments[0])) {
       const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
       issues.push({ file, line: line + 1, rule: "json-response-literal", message: "JSON 响应统一走 shared/http-origins.ts#jsonResponse（Content-Type 与 Cache-Control 一处定义），不手写 new Response(JSON.stringify(...))。" });
@@ -289,7 +294,7 @@ export function checkJsonResponseLiteral(file, text) {
   return issues;
 }
 
-export function checkFile(file, text) {
+export function checkFile(file: string, text: string): Issue[] {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
   const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
@@ -297,7 +302,7 @@ export function checkFile(file, text) {
   return issues;
 }
 
-function trackedSources(root) {
+function trackedSources(root: string) {
   return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8" })
     .split("\0")
     .filter((file, index, all) => {
@@ -310,7 +315,7 @@ function trackedSources(root) {
 
 function main() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const issues = [];
+  const issues: Issue[] = [];
   const files = trackedSources(root);
   for (const file of files) issues.push(...checkFile(file, readFileSync(path.join(root, file), "utf8")));
   issues.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.rule.localeCompare(b.rule));

@@ -19,10 +19,21 @@ const NON_FILE_NAMES = new Set(["next.js", "node.js", "hls.js", "vue.js", "three
 const SYMBOL_RE = /^[A-Za-z_$][\w$-]*(?:\.[A-Za-z_$][\w$-]*)*(?:\(\))?$/;
 const IMPLICIT_MODULE_EXTENSIONS = ["ts", "tsx", "mts", "mjs", "js", "json"];
 
-export function makeContext({ tracked, submodules = [], ignored = () => new Set(), readText, shallow = false, commitExists = () => true }) {
+export type Issue = { file: string; line: number; rule: string; message: string };
+export type ContextInput = {
+  tracked: Iterable<string>;
+  submodules?: string[];
+  ignored?: (paths: string[]) => Set<string>;
+  readText: (rel: string) => string | null;
+  shallow?: boolean;
+  commitExists?: (sha: string) => boolean;
+};
+export type DocsContext = ReturnType<typeof makeContext>;
+
+export function makeContext({ tracked, submodules = [], ignored = () => new Set<string>(), readText, shallow = false, commitExists = () => true }: ContextInput) {
   const files = new Set(tracked);
-  const dirs = new Set();
-  const basenames = new Set();
+  const dirs = new Set<string>();
+  const basenames = new Set<string>();
   for (const file of files) {
     basenames.add(posix.basename(file));
     let dir = posix.dirname(file);
@@ -32,7 +43,7 @@ export function makeContext({ tracked, submodules = [], ignored = () => new Set(
     }
   }
   const topDirs = new Set([...dirs].filter((dir) => !dir.includes("/")));
-  const cache = new Map();
+  const cache = new Map<string, string | null>();
   return {
     files,
     dirs,
@@ -42,35 +53,35 @@ export function makeContext({ tracked, submodules = [], ignored = () => new Set(
     ignored,
     shallow,
     commitExists,
-    text(rel) {
+    text(rel: string): string | null {
       if (!cache.has(rel)) cache.set(rel, files.has(rel) ? readText(rel) : null);
-      return cache.get(rel);
+      return cache.get(rel) ?? null;
     },
-    inSubmodule(rel) {
+    inSubmodule(rel: string): boolean {
       return submodules.some((sub) => rel === sub || rel.startsWith(`${sub}/`));
     },
-    exists(rel) {
+    exists(rel: string): boolean {
       const clean = rel.replace(/\/+$/, "");
       return files.has(clean) || dirs.has(clean) || this.inSubmodule(clean);
     },
   };
 }
 
-export function gitContext(root) {
-  const git = (args, input) => execFileSync("git", args, { cwd: root, encoding: "utf8", input, maxBuffer: 1 << 28, stdio: ["pipe", "pipe", "pipe"] });
+export function gitContext(root: string) {
+  const git = (args: string[], input?: string) => execFileSync("git", args, { cwd: root, encoding: "utf8", input, maxBuffer: 1 << 28, stdio: ["pipe", "pipe", "pipe"] });
   const tracked = git(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
     .split("\0")
     .filter((file) => file && existsSync(path.join(root, file)));
   const submodules = git(["ls-files", "-s", "-z"])
     .split("\0")
     .filter((entry) => entry.startsWith("160000 "))
-    .map((entry) => entry.split("\t")[1]);
+    .map((entry) => entry.split("\t")[1] ?? "");
   return makeContext({
     tracked,
     submodules,
-    readText: (rel) => readFileSync(path.join(root, rel), "utf8"),
+    readText: (rel: string) => readFileSync(path.join(root, rel), "utf8"),
     shallow: git(["rev-parse", "--is-shallow-repository"]).trim() === "true",
-    commitExists: (sha) => {
+    commitExists: (sha: string) => {
       try {
         git(["cat-file", "-e", `${sha}^{commit}`]);
         return true;
@@ -78,14 +89,14 @@ export function gitContext(root) {
         return false;
       }
     },
-    ignored: (paths) => {
-      const checkIgnore = (batch) => git(["check-ignore", "--no-index", "-z", "--stdin"], `${batch.join("\0")}\0`).split("\0").filter(Boolean);
-      const hits = new Set();
+    ignored: (paths: string[]) => {
+      const checkIgnore = (batch: string[]) => git(["check-ignore", "--no-index", "-z", "--stdin"], `${batch.join("\0")}\0`).split("\0").filter(Boolean);
+      const hits = new Set<string>();
       if (paths.length === 0) return hits;
       try {
         for (const hit of checkIgnore(paths)) hits.add(hit);
       } catch (error) {
-        if (error.status === 1) return hits;
+        if ((error as { status?: number }).status === 1) return hits;
         // 有路径落在符号链接后面（pnpm 的 node_modules）时整批被拒：逐个问，问不了的当没命中
         for (const one of paths) {
           try {
@@ -100,7 +111,7 @@ export function gitContext(root) {
 }
 
 
-export function scanLines(text) {
+export function scanLines(text: string) {
   const lines = text.split(/\r?\n/);
   const out = [];
   let fence = null;
@@ -122,7 +133,7 @@ export function scanLines(text) {
   return out;
 }
 
-export function splitInlineCode(line) {
+export function splitInlineCode(line: string) {
   const spans = [];
   let rest = "";
   let i = 0;
@@ -157,7 +168,7 @@ export function splitInlineCode(line) {
   return { spans, rest };
 }
 
-export function githubSlug(heading) {
+export function githubSlug(heading: string): string {
   let plain = heading.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1");
   let previous;
   do {
@@ -172,9 +183,9 @@ export function githubSlug(heading) {
     .replace(/ /g, "-");
 }
 
-export function collectAnchors(text) {
-  const anchors = new Set();
-  const seen = new Map();
+export function collectAnchors(text: string): Set<string> {
+  const anchors = new Set<string>();
+  const seen = new Map<string, number>();
   for (const line of scanLines(text)) {
     if (line.inFence) continue;
     const heading = /^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(line.text);
@@ -199,8 +210,8 @@ const TIMELINE_PATTERNS = [
   /20\d{2}\s*年\s*\d{1,2}\s*月/g,
 ];
 
-export function findTimeline(rest) {
-  const hits = [];
+export function findTimeline(rest: string): string[] {
+  const hits: string[] = [];
   for (const pattern of TIMELINE_PATTERNS) {
     for (const match of rest.matchAll(pattern)) {
       const before = rest.slice(0, match.index);
@@ -212,12 +223,12 @@ export function findTimeline(rest) {
   return hits;
 }
 
-export function parseDocType(text) {
+export function parseDocType(text: string) {
   const lines = text.split(/\r?\n/).slice(0, 6);
   const at = lines.findIndex((line) => /^>\s*类型：/.test(line));
   if (at === -1) return null;
-  const quote = [];
-  for (let i = at; i < lines.length && /^>/.test(lines[i]) && quote.length < 3; i++) quote.push(lines[i].replace(/^>\s*/, ""));
+  const quote: string[] = [];
+  for (let i = at; i < lines.length && /^>/.test(lines[i] ?? "") && quote.length < 3; i++) quote.push((lines[i] ?? "").replace(/^>\s*/, ""));
   const joined = quote.join(" ");
   const type = /类型：\s*([A-Za-z]+)/.exec(joined)?.[1] ?? "";
   const stamp = /按\s+([0-9a-f]{7,40})\s+(20\d{2}-\d{2}-\d{2})\s+核对，快照不维护，不当现状引用/.exec(joined);
@@ -225,7 +236,7 @@ export function parseDocType(text) {
 }
 
 
-export function parsePathToken(raw, ctx) {
+export function parsePathToken(raw: string, ctx: DocsContext) {
   let token = raw.trim().replace(/\(\)$/, "");
   if (!token || /\s/.test(token)) return null;
   if (/[<>*{}|()=,;$"'\\^!?[\]@…]/.test(token)) return null;
@@ -260,7 +271,7 @@ export function parsePathToken(raw, ctx) {
   return { ref, symbol: stamp, symbolOk: stamp === null || ref.endsWith(".md") || SYMBOL_RE.test(stamp), bare: !ref.includes("/"), dirRef };
 }
 
-export function resolveRef(ctx, mdFile, ref, { bare = false, dirRef = false } = {}) {
+export function resolveRef(ctx: DocsContext, mdFile: string, ref: string, { bare = false, dirRef = false } = {}): string | null {
   const mdDir = posix.dirname(mdFile);
   const clean = ref.replace(/^\/+/, "");
   const candidates = (ref.startsWith("/") ? [clean] : [posix.join(mdDir, ref), ref])
@@ -279,17 +290,17 @@ export function resolveRef(ctx, mdFile, ref, { bare = false, dirRef = false } = 
   const probes = candidates.map((candidate) => (dirRef ? `${candidate}/` : candidate));
   const ignored = ctx.ignored(probes);
   const hit = probes.findIndex((probe) => ignored.has(probe));
-  return hit === -1 ? null : candidates[hit];
+  return hit === -1 ? null : (candidates[hit] ?? null);
 }
 
-function symbolPresent(text, symbol) {
+function symbolPresent(text: string, symbol: string): boolean {
   return symbol
     .replace(/\(\)$/, "")
     .split(".")
     .every((part) => new RegExp(`(?<![\\w$])${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w$])`).test(text));
 }
 
-function anchorExists(anchors, fragment) {
+function anchorExists(anchors: Set<string>, fragment: string): boolean {
   let wanted = fragment;
   try {
     wanted = decodeURIComponent(fragment);
@@ -303,8 +314,8 @@ const LINK_RE = /!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
 const DEFINITION_RE = /^\s{0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s+"[^"]*")?\s*$/;
 const HTML_REF_RE = /\b(?:src|href|srcset)\s*=\s*"([^"]+)"/gi;
 
-function linkTargets(rest) {
-  const targets = [];
+function linkTargets(rest: string): string[] {
+  const targets: string[] = [];
   for (const match of rest.matchAll(LINK_RE)) targets.push(match[1]);
   const definition = DEFINITION_RE.exec(rest);
   if (definition) targets.push(definition[1]);
@@ -317,11 +328,11 @@ function linkTargets(rest) {
   return targets;
 }
 
-export function checkMarkdown(ctx, file, text, { docType = null } = {}) {
-  const issues = [];
-  const add = (n, rule, message) => issues.push({ file, line: n, rule, message });
+export function checkMarkdown(ctx: DocsContext, file: string, text: string, { docType = null }: { docType?: string | null } = {}): Issue[] {
+  const issues: Issue[] = [];
+  const add = (n: number, rule: string, message: string) => issues.push({ file, line: n, rule, message });
   const ownAnchors = collectAnchors(text);
-  const anchorsOf = (rel) => {
+  const anchorsOf = (rel: string) => {
     const other = ctx.text(rel);
     return other === null ? null : collectAnchors(other);
   };
@@ -384,13 +395,13 @@ export function checkMarkdown(ctx, file, text, { docType = null } = {}) {
 }
 
 
-function isDocsPage(file) {
+function isDocsPage(file: string): boolean {
   return file.startsWith("docs/") && /\.md$/.test(file) && !/(^|\/)(AGENTS|CLAUDE)\.md$/.test(file);
 }
 
-export function checkStructure(ctx, mdFiles) {
-  const issues = [];
-  const add = (file, line, rule, message) => issues.push({ file, line, rule, message });
+export function checkStructure(ctx: DocsContext, mdFiles: string[]): Issue[] {
+  const issues: Issue[] = [];
+  const add = (file: string, line: number, rule: string, message: string) => issues.push({ file, line, rule, message });
 
   for (const file of mdFiles) {
     if (posix.basename(file) === "AGENTS.md") {
@@ -408,7 +419,7 @@ export function checkStructure(ctx, mdFiles) {
 
   const pages = mdFiles.filter(isDocsPage);
   const indexText = ctx.text("docs/README.md");
-  const indexed = new Set();
+  const indexed = new Set<string>();
   if (indexText !== null) {
     for (const line of scanLines(indexText)) {
       if (line.inFence) continue;
@@ -452,13 +463,13 @@ export function checkStructure(ctx, mdFiles) {
 // 项目记忆镜像记的是写入时的事实，带日期、可能指向后来改名的路径，不按现状文档检查
 export const MEMORY_MIRROR_DIR = ".claude/memory/";
 
-export function isScannedMarkdown(file, ctx) {
+export function isScannedMarkdown(file: string, ctx: DocsContext): boolean {
   return /\.md$/.test(file) && !/(^|\/)node_modules\//.test(file) && !file.startsWith(MEMORY_MIRROR_DIR) && !ctx.inSubmodule(file);
 }
 
-export function runChecks(ctx) {
+export function runChecks(ctx: DocsContext) {
   const mdFiles = [...ctx.files].filter((file) => isScannedMarkdown(file, ctx)).sort();
-  const issues = [];
+  const issues: Issue[] = [];
   for (const file of mdFiles) {
     const text = ctx.text(file) ?? "";
     const docType = isDocsPage(file) ? parseDocType(text)?.type ?? null : null;
@@ -469,7 +480,7 @@ export function runChecks(ctx) {
   return { issues, checked: mdFiles.length };
 }
 
-export function formatIssues(issues) {
+export function formatIssues(issues: Issue[]): string {
   return issues.map((issue) => `${issue.file}:${issue.line}  [${issue.rule}] ${issue.message}`).join("\n");
 }
 
