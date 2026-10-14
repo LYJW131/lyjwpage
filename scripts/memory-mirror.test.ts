@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findSecrets, sanitize, syncMirror } from "./memory-mirror.mjs";
+import { findSecrets, sanitize, syncMirror } from "./memory-mirror.ts";
 
 test("脱敏：去掉 modified 行、私有链接、内部 ID 与 Mac 用户目录", () => {
   const input = [
@@ -40,7 +40,7 @@ test("同步：写入新增与变更，删除源里已没有的主题，保留 R
 });
 
 test("凭据检测：真凭据报出来，记忆里常见的名字、引用、sha 与路径不误报", () => {
-  const hits = (text) => findSecrets(text);
+  const hits = (text: string) => findSecrets(text);
   assert.deepEqual(hits("key sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv"), ["Anthropic / OpenAI key"]);
   assert.deepEqual(hits("ghp_AbCdEfGhIjKlMnOpQrStUvWxYz012345"), ["GitHub token"]);
   assert.deepEqual(hits("-----BEGIN PRIVATE KEY-----"), ["private key"]);

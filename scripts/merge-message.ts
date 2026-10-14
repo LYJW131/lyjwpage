@@ -5,12 +5,26 @@ import { pathToFileURL } from "node:url";
 import { authorFromTrailer } from "../shared/commit-authors.ts";
 
 // 只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。
-export function mergeMessage({ number, title, subjects, authors, coAuthors, owner }) {
+export function mergeMessage({
+  number,
+  title,
+  subjects,
+  authors,
+  coAuthors,
+  owner,
+}: {
+  number: string | number;
+  title: string;
+  subjects: string[];
+  authors: string[];
+  coAuthors: string[];
+  owner: string | null;
+}) {
   const suffix = `(#${number})`;
   const trimmed = title.trim();
   const commitTitle = trimmed.endsWith(suffix) ? trimmed : `${trimmed} ${suffix}`;
-  const seen = new Set();
-  const trailers = [];
+  const seen = new Set<string>();
+  const trailers: string[] = [];
   for (const person of [...coAuthors, ...authors]) {
     const match = /^(.*?)\s*<([^>]+)>$/.exec(person.trim());
     if (!match) continue;
@@ -30,10 +44,10 @@ export function mergeMessage({ number, title, subjects, authors, coAuthors, owne
   };
 }
 
-const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
-const lines = (text) => text.split("\n").map((line) => line.trim()).filter(Boolean);
+const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" });
+const lines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
 
-function main(argv) {
+function main(argv: string[]) {
   const [number, title, base = "origin/main"] = argv;
   if (!/^\d+$/.test(number ?? "") || !title?.trim()) {
     console.error('用法：pnpm merge-message <PR 号> "<PR 标题>" [基线，默认 origin/main]');
