@@ -19,7 +19,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 
 PR 检查、机器评审、Workers Builds、`/api/version`、后台 `until` 循环，每一种等待都带上限。到点还没等到就记 FAIL「超时」，附上最后一次看到的状态，然后接着做不依赖它的下一步，不原地干等。理由：等的条件可能永远不会成立，比如 SHA 拼错、运行被取消或被新提交顶掉、评审没触发，没有上限的循环会让线程无声卡住。
 
-- 手写的循环用 `timeout <秒>` 或计数上限包住，PR 检查和机器评审各给 15 分钟。部署核对不手写循环，由 `scripts/deploy-check.mjs` 的 `--timeout` 管上限（默认值以脚本 `--help` 为准），构建确实慢时调大这个参数。
+- 手写的循环用 `timeout <秒>` 或计数上限包住，PR 检查和机器评审各给 15 分钟。部署核对不手写循环，由 `scripts/deploy-check.ts` 的 `--timeout` 管上限（默认值以脚本 `--help` 为准），构建确实慢时调大这个参数。
 - 等的对象要写对：SHA 用 `git rev-parse` 取完整值；PR 的检查用 `gh pr checks <PR 号>`，不按提交号查 `gh run list`，因为 PR 的运行可能挂在合成的合并提交上。刚推送后查不到运行是正常的，在同一个上限内继续重试，到点仍查不到就记「超时：没有出现运行」。`cancelled`、被更新提交顶掉（`superseded`）都算终态，不再等。
 
 ## 派法
@@ -120,7 +120,7 @@ Agent(
 ### 4. 合并后部署与生产核对
 
 - 合并没碰到 site 的监视路径时（`docs/workers-builds.md`「构建监视路径」），`/api/version` 本来就不会变；下面的脚本没看到 site 的构建检查就不等版本，只核对碰到的那几个 Worker 的构建，受影响的生产行为照样要复测。
-- 构建与版本等待交给共用脚本，不手写轮询：跑 `NODE_USE_ENV_PROXY=1 node scripts/deploy-check.mjs --sha <合并提交完整 sha> --expect <这次碰到监视路径的 Worker，如 site,core>`（`--help` 看选项）。`--expect` 由主线程按生产的监视路径表定好写进简报（不照 PR 上出现过的构建检查：core 的分支预览路径更宽，PR 上有 core 构建不代表合进 main 会重建 core），列出的 Worker 没有成功构建就不通过。它等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 重跑过只认最新那条）；有 site 的构建就再等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 跟上这个提交，被之后的提交覆盖也算通过（`superseded`）。输出 JSON，`pass` 为假时 `next` 写下一步。
+- 构建与版本等待交给共用脚本，不手写轮询：跑 `NODE_USE_ENV_PROXY=1 node scripts/deploy-check.ts --sha <合并提交完整 sha> --expect <这次碰到监视路径的 Worker，如 site,core>`（`--help` 看选项）。`--expect` 由主线程按生产的监视路径表定好写进简报（不照 PR 上出现过的构建检查：core 的分支预览路径更宽，PR 上有 core 构建不代表合进 main 会重建 core），列出的 Worker 没有成功构建就不通过。它等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 重跑过只认最新那条）；有 site 的构建就再等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 跟上这个提交，被之后的提交覆盖也算通过（`superseded`）。输出 JSON，`pass` 为假时 `next` 写下一步。
   - 构建失败或超时、版本停在更旧的提交：FAIL，原样报告 `next`。是否重跑 main 的构建由主线程按下一条决定（从不手跑 `wrangler deploy`）。
 - main 上的构建失败时，主线程先读构建日志（Cloudflare Builds API 的 `/builds/builds/<build_uuid>/logs`）。是平台临时错误（部署步 Cloudflare 内部错误、代码与 typecheck 都过了）就直接用 Builds API 对同一 trigger 带 `commit_hash` 重跑，不用问 lyjw，跑完核对结论并在汇报里提一句；main 头已有更新的同 Worker 提交时重跑 main 头，免得回滚。代码或配置导致的失败照常先修。
 - 碰到 site 的合并，合并前先存一份生产首页：`curl -s https://lyjw.me/ > <scratchpad>/old-home.html`；部署核对通过后跑 `node scripts/site-verify.mjs skew --url https://lyjw.me --old-html <scratchpad>/old-home.html`，WebKit 再加 `--engine webkit` 跑一遍。它模拟 Safari 恢复后台标签时按缓存取回的旧 HTML：旧 HTML 引用的 `/assets/*` 要全部从 R2 存档取到、只加载 1 次、有样式、已水合。`ok` 为假时照 `next` 报 FAIL；文件取不到先看这次 site 构建日志里的 `[asset-archive]` 行。

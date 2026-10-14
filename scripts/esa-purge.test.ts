@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { purgeEsaHomepage, signAliyunRequest, warmupEsaCache } from "./esa-purge.mjs";
+import { purgeEsaHomepage, signAliyunRequest, warmupEsaCache } from "./esa-purge.ts";
+
+type TestContext = Parameters<NonNullable<Parameters<typeof test>[0]>>[0];
 
 const config = {
   siteId: "1113300533463584",
@@ -31,8 +33,8 @@ test("ACS3 签名匹配阿里云官方固定向量", () => {
 });
 
 test("ESA 按控制台元数据以 POST query 刷新唯一首页 cachekey", async (t) => {
-  const calls = [];
-  t.mock.method(globalThis, "fetch", async (input, init) => {
+  const calls: URL[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string, init: RequestInit) => {
     const url = new URL(input);
     calls.push(url);
     assert.equal(url.hostname, "esa.cn-hangzhou.aliyuncs.com");
@@ -41,7 +43,7 @@ test("ESA 按控制台元数据以 POST query 刷新唯一首页 cachekey", asyn
     assert.equal(init.redirect, "manual");
     assert.equal(url.searchParams.get("SiteId"), config.siteId);
     assert.equal(url.searchParams.get("Type"), "cachekey");
-    assert.deepEqual(JSON.parse(url.searchParams.get("Content")), {
+    assert.deepEqual(JSON.parse(url.searchParams.get("Content") ?? ""), {
       CacheKeys: [{ Url: config.cacheUrl, Headers: {} }],
     });
     assert.equal(new Headers(init.headers).get("x-acs-action"), "PurgeCaches");
@@ -82,7 +84,7 @@ test("ESA 拒绝错误应答与缺少 TaskId 的假成功", async (t) => {
 });
 
 test("ESA 瞬时网络失败会按 1s、2s 退避重试，成功后停止", async (t) => {
-  const delays = [];
+  const delays: number[] = [];
   let calls = 0;
   t.mock.method(globalThis, "fetch", async () => {
     calls += 1;
@@ -95,7 +97,7 @@ test("ESA 瞬时网络失败会按 1s、2s 退避重试，成功后停止", asyn
   });
 
   const result = await purgeEsaHomepage(config, {
-    sleep: async (ms) => {
+    sleep: async (ms: number) => {
       delays.push(ms);
     },
   });
@@ -173,9 +175,9 @@ test("ESA 5xx 会重试，成功后停止", async (t) => {
   assert.equal(result.taskId, "task-503");
 });
 
-function captureWarn(t) {
-  const lines = [];
-  t.mock.method(console, "warn", (line) => {
+function captureWarn(t: TestContext) {
+  const lines: string[] = [];
+  t.mock.method(console, "warn", (line: unknown) => {
     lines.push(String(line));
   });
   return lines;
@@ -269,10 +271,11 @@ test("网络错误摘要去掉密钥和带 query 的 URL", async (t) => {
   assert.match(lines[0], /cause\.code=ECONNRESET/);
   assert.match(lines[0], /https:\/\/esa\.cn-hangzhou\.aliyuncs\.com\//);
   assert.doesNotMatch(lines[0], /test-secret|deadbeef|Signature=|AccessKeyId=/);
+  assert.equal(result.ok, false);
   assert.doesNotMatch(result.error, /test-secret|deadbeef|Signature=/);
 });
 
-function bodyErrorResponse(error) {
+function bodyErrorResponse(error: Error) {
   const stream = new ReadableStream({
     start(controller) {
       controller.error(error);
@@ -287,7 +290,7 @@ test("HTTP 200 后 body 超时或断连会重试，非法 JSON 不重试", async
   t.mock.method(globalThis, "fetch", async () => {
     calls += 1;
     if (calls === 1) {
-      const error = new Error("Body Timeout Error");
+      const error: Error & { code?: string } = new Error("Body Timeout Error");
       error.name = "BodyTimeoutError";
       error.code = "UND_ERR_BODY_TIMEOUT";
       return bodyErrorResponse(error);
@@ -327,8 +330,8 @@ test("HTTP 200 后 body 超时或断连会重试，非法 JSON 不重试", async
 });
 
 test("warmupEsaCache 发送带标准请求头的 GET 请求预热边缘缓存", async (t) => {
-  const calls = [];
-  t.mock.method(globalThis, "fetch", async (input, init) => {
+  const calls: { input: string; init: RequestInit & { headers: Record<string, string> } }[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string, init: RequestInit & { headers: Record<string, string> }) => {
     calls.push({ input, init });
     return new Response("<!DOCTYPE html><html>ok</html>", { status: 200 });
   });
@@ -349,5 +352,5 @@ test("warmupEsaCache 妥善处理超时或网络失败", async (t) => {
 
   const res = await warmupEsaCache("https://lyjw131.com/");
   assert.equal(res.ok, false);
-  assert.match(res.error, /connection timeout/);
+  assert.match(res.error ?? "", /connection timeout/);
 });

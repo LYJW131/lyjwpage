@@ -2,8 +2,20 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-export function siteDeploymentSha(eventName, event, defaultSha = "") {
-  let sha;
+export type DeployEvent = {
+  [key: string]: unknown;
+  inputs?: { commit?: string };
+  check_run?: {
+    app?: { slug?: string };
+    name?: string;
+    conclusion?: string | null;
+    check_suite?: { head_branch?: string | null };
+    head_sha?: string;
+  };
+};
+
+export function siteDeploymentSha(eventName: string | undefined, event: DeployEvent, defaultSha = "") {
+  let sha: unknown;
   if (eventName === "workflow_dispatch") {
     sha = event.inputs?.commit || defaultSha;
   } else if (eventName === "check_run") {
@@ -23,7 +35,7 @@ export function siteDeploymentSha(eventName, event, defaultSha = "") {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
+  const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH ?? "", "utf8")) as DeployEvent;
   const sha = siteDeploymentSha(
     process.env.GITHUB_EVENT_NAME,
     event,

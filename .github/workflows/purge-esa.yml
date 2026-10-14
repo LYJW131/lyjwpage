@@ -40,14 +40,14 @@ jobs:
           package-manager-cache: false
       - name: Validate production deployment
         id: commit
-        run: node scripts/site-deploy-event.mjs >> "$GITHUB_OUTPUT"
+        run: node scripts/site-deploy-event.ts >> "$GITHUB_OUTPUT"
       - name: Wait for the source domain
         id: source
         if: steps.commit.outputs.eligible == 'true'
         env:
           EXPECTED_SHA: ${{ steps.commit.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/wait-site-version.mjs https://lyjw.me
+        run: node scripts/wait-site-version.ts https://lyjw.me
 
   purge:
     needs: deployment
@@ -67,7 +67,7 @@ jobs:
           ESA_CACHE_URL: "https://lyjw131.com/"
           ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
-        run: node scripts/run-esa-purge.mjs
+        run: node scripts/run-esa-purge.ts
 
   # 必须先刷 ESA 再通知页面，并等待域名切换到新版本，否则刷新仍会拿到旧 HTML。
   notify:
@@ -87,7 +87,7 @@ jobs:
         env:
           EXPECTED_SHA: ${{ needs.deployment.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/wait-site-version.mjs https://lyjw.me https://lyjw131.com
+        run: node scripts/wait-site-version.ts https://lyjw.me https://lyjw131.com
 
       # 各 Worker 并行上线；接收端尚未换版时会短暂返回 404/405，需重试。
       - name: Notify open pages
