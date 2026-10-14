@@ -17,11 +17,8 @@ Web Animations API，假时钟拨不动它（见 desktop-marks-gif.py）。
 变体时冻成绝对时间：`$now-…` 令牌每次注入都按新的当下重算，曲线会整条平移、和已有点对不上。
 AI Coding 的基线直接取本地 Worker 此刻的 /api/status/coding（生产数据经上游补缺；也可以先注入 coding-multi-source.json）。
 
-前置：本地 Worker 与 pnpm dev:local 在跑、总开关已开，并且这些夹具已注入（脚本不替你注入基线）：
-  listening/now  listening-now-yoasobi.json     （/api/lyrics 由脚本在浏览器里换成生产站响应）
-  charger        charger-macbook-iphone.json    powerbank         powerbank-charging.json
-  activity       activity-afternoon.json        workouts          workouts.json
-  server         server-traffic.json
+前置：本地 Worker 与 pnpm dev:local 在跑，并且已 pnpm dev:scene readme 注入基线（脚本不替你注入；
+场景里有 listening-now-yoasobi、它的歌词、charger-macbook-iphone、powerbank-charging、activity-afternoon、workouts、server-traffic）。
 Python 3 + playwright + Pillow：pip install playwright pillow（装了 Google Chrome 可设
 PLAYWRIGHT_CHANNEL=chrome 免下载）。站点或 Worker 不在默认端口时用 SITE_URL / DEV_WORKER_URL。
 用法：
@@ -54,7 +51,6 @@ FIXTURES = ROOT / "workers/core/dev-fixtures"
 SITE_URL = os.environ.get("SITE_URL", "http://localhost:3211/")
 WORKER_URL = os.environ.get("DEV_WORKER_URL", "http://localhost:8788").rstrip("/")
 BROWSER_CHANNEL = os.environ.get("PLAYWRIGHT_CHANNEL") or None
-LYRICS_ORIGIN = "https://lyjw.me"
 
 SCALE = 2
 PAD = 12
@@ -164,8 +160,6 @@ def open_page(browser, theme: str):
         color_scheme=theme,
         locale="en-US",
     )
-    # 本地没有 Apple Music 凭据，/api/lyrics 归采集 Worker、不经 dev:override，只能在浏览器里换成生产站的响应。
-    ctx.route("**/api/lyrics*", lambda route: route.fulfill(response=route.fetch(url=LYRICS_ORIGIN + route.request.url[route.request.url.index("/api/lyrics"):])))
     page = ctx.new_page()
     page.goto(SITE_URL, wait_until="load", timeout=120_000)
     try:
