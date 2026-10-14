@@ -327,6 +327,7 @@ async function converse({
   let wroteThinking = false;
   let finalRound = 0;
   let finalRoundText = false;
+  let cardAfterAnswer = false;
 
   for (let round = 0; ; round++) {
     signal.throwIfAborted();
@@ -461,6 +462,7 @@ async function converse({
       }
       upgradeOpen = false;
     }
+    cardAfterAnswer = wroteText && calls.every((call) => call.name === SHOW_CARD_TOOL.name);
     messages.push({ role: "assistant", content: final.content });
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const call of calls) {
@@ -518,10 +520,10 @@ async function converse({
     if (openedSessionId) break;
     messages.push({ role: "user", content: results });
   }
-  // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。没到收尾轮就自己停下的空轮
-  // （常见于先写完答案再调 show_card）不算没写完，除非整条回复一个字都没有。
-  const cutShort = finalRound >= GOD_CHAT_LIMITS.maxToolRounds || !wroteText;
-  if (!refused && finalRound > 0 && !finalRoundText && cutShort && !openedSessionId) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
+  // 最后一轮一个字没写时，访客多半只看得到开场白，像是对话卡死了。例外是先写完答案、上一轮只调了 show_card，
+  // 没到收尾轮就空着停下：卡片本身就是收尾。查数据类工具之后的空轮仍要提示，那时访客手里没有答案。
+  const answeredWithCard = cardAfterAnswer && finalRound < GOD_CHAT_LIMITS.maxToolRounds;
+  if (!refused && finalRound > 0 && !finalRoundText && !answeredWithCard && !openedSessionId) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({

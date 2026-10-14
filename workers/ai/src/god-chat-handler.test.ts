@@ -643,19 +643,23 @@ function scriptedStream(model: string, blocks: Record<string, unknown>[], stop: 
   });
 }
 
-test("先写完答案再调 show_card、下一轮空收尾时不提示步数用完", async (t) => {
+test("先写完答案再调 show_card、下一轮空收尾时不提示步数用完；查数据后空收尾仍提示", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const { env, requests } = designEnv({
-    reply: (body) => requests.length === 1
-      ? scriptedStream(body.model, [{ type: "text", text: "LYJW is listening to music." }, { type: "tool_use", id: "tool_card", name: "show_card", input: { card: "nowListening" } }], "tool_use")
-      : scriptedStream(body.model, [], "end_turn"),
-  });
-  const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
-  assert.equal(requests.length, 2);
-  assert.ok(events.some((event) => event.type === "card" && event.card === "nowListening"));
-  assert.ok(events.every((event) => event.type !== "text" || !event.text.includes("ran out of steps")));
+  for (const [call, warned] of [
+    [{ type: "tool_use", id: "tool_card", name: "show_card", input: { card: "nowListening" } }, false],
+    [{ type: "tool_use", id: "tool_status", name: "get_site_status", input: { views: ["timezone"] } }, true],
+  ] as const) {
+    const { env, requests } = designEnv({
+      reply: (body) => requests.length === 1
+        ? scriptedStream(body.model, [{ type: "text", text: "Let me check." }, call], "tool_use")
+        : scriptedStream(body.model, [], "end_turn"),
+    });
+    const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
+    assert.equal(requests.length, 2);
+    assert.equal(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")), warned, call.name);
+  }
 });
 
 test("中文与日文提问时点名回复语言，英文不加", async (t) => {
