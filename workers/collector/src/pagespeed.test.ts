@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fetchPageSpeed, mergePageSpeed, parsePageSpeed } from "./pagespeed.ts";
-import type { LighthouseVitals, PageSpeedSample } from "@shared/site-deployments-types.ts";
+import { refreshPageSpeed } from "./jobs/pagespeed.ts";
+import { kvStorage } from "./storage-driver.ts";
+import { MemoryKv } from "./testing/memory-kv.ts";
+import { LAG_KEYS, readLag } from "@shared/lag";
+import { installStorage } from "@shared/storage";
+import type { LighthouseVitals, PageSpeedPayload, PageSpeedSample } from "@shared/site-deployments-types.ts";
 
 const response = (overrides: Record<string, unknown> = {}) => ({
   captchaResult: "CAPTCHA_NOT_NEEDED",
@@ -78,7 +83,7 @@ test("跑测机卡住的那一轮被窗口里其余几轮的中位数压住", ()
 
 test("窗口按时间滚动，超出六小时的旧实测不再参与", () => {
   const { payload, history } = mergePageSpeed([at(9, 20), at(7, 20), at(5, 90), at(1, 94)], at(0, 98));
-  assert.deepEqual(history.map(row => row.desktop.score), [90, 94, 98]);
+  assert.deepEqual(history.map(row => row.desktop?.score), [90, 94, 98]);
   assert.equal(payload.samples, 3);
   assert.equal(payload.desktop.score, 94);
   assert.equal(payload.start, NOW - 5 * HOUR);
@@ -99,4 +104,37 @@ test("某几轮测不出的指标只按测出来的那几轮算，一轮都没�
   assert.equal(payload.desktop.tbtMs, 150);
   assert.equal(payload.desktop.cls, null);
   assert.equal(payload.desktop.lcpMs, 900);
+});
+
+test("一端没测出来的那几轮，这一端只按测出来的轮次算，另一端照常进窗口", () => {
+  const previous: PageSpeedSample[] = [{ ...at(2, 90), mobile: null }, { ...at(1, 94), desktop: null }];
+  const { payload, history } = mergePageSpeed(previous, at(0, 98));
+  assert.equal(history.length, 3);
+  assert.equal(payload.desktop.score, 94);
+  assert.equal(payload.mobile.score, 86);
+  assert.throws(() => mergePageSpeed([], { ...at(0, 98), mobile: null }), /mobile/);
+});
+
+test("一端超时不连累另一端：测出来的那端写进可滞后层，两端都失败才算任务失败", async (t) => {
+  t.after(() => installStorage(null));
+  const storage = kvStorage(new MemoryKv());
+  installStorage(() => storage);
+  const lag = new MemoryKv() as unknown as KVNamespace;
+  const seed = async (_url: string, device: "desktop" | "mobile") => vitals(device === "desktop" ? 92 : 70);
+  await refreshPageSpeed("k", lag, NOW - HOUR, seed);
+
+  const timeout = async (_url: string, device: "desktop" | "mobile") => {
+    if (device === "mobile") throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    return vitals(96);
+  };
+  const result = await refreshPageSpeed("k", lag, NOW, timeout);
+  assert.match(result.detail ?? "", /mobile failed/);
+  const stored = await readLag<PageSpeedPayload>(lag, LAG_KEYS.pagespeed);
+  assert.equal(stored?.data.fetchedAt, NOW);
+  assert.equal(stored?.data.samples, 2);
+  assert.equal(stored?.data.desktop.score, 94);
+  assert.equal(stored?.data.mobile.score, 70);
+
+  await assert.rejects(refreshPageSpeed("k", lag, NOW + HOUR, async () => { throw new Error("boom"); }), /desktop boom.*mobile boom/);
+  assert.equal((await readLag<PageSpeedPayload>(lag, LAG_KEYS.pagespeed))?.data.fetchedAt, NOW);
 });
