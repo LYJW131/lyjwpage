@@ -554,5 +554,6 @@
     id: "ch04", title: "ch.04", bars: 12,
     init() { plate = G.pass(K.PLATE.paper); ink = G.layer("ink"); paper = G.layer("paper"); emit = G.layer("emit", 0.5); stampL = G.layer("stamp"); top = G.layer("top"); },
     render,
+    share: { P },
   });
 })();
