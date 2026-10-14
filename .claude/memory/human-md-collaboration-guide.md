@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-lyjw asked (2026-10-13) for a Chinese `HUMAN.md` at the repo root, written for him, that sets how he and Claude communicate and split work. It mirrors the conventions already in memory ([[merge-requires-bot-review-pass]], [[credentials-pipe-only]], [[workers-builds-parallel-race]], [[lyjwpage-daily-review-routine]], the ToDo list on the Overview "Custom view" tab) and points to AGENTS.md / docs/ops-facts.md instead of copying values. Delivered and merged as PR #208 (thread "写 HUMAN.md 协作指南"); the owner said 合 after reading it, without waiting for Codex round 2 on a docs-only PR. The same PR fixed two stale doc lines: ops-facts now says `main` has branch protection (required conversation resolution only), and AGENTS.md lists `discord-reporter` among the misaka-jp reporters that auto-deploy.
+lyjw asked (2026-10-13) for a Chinese `HUMAN.md` at the repo root, written for him, that sets how he and Claude communicate and split work. It mirrors the conventions already in memory ([[merge-requires-bot-review-pass]], [[credentials-pipe-only]], [[workers-builds-parallel-race]], [[lyjwpage-daily-review-routine]]) and points to AGENTS.md / docs/ops-facts.md instead of copying values. Delivered and merged as PR #208 (thread "写 HUMAN.md 协作指南"); the owner said 合 after reading it, without waiting for Codex round 2 on a docs-only PR. The same PR fixed two stale doc lines: ops-facts now says `main` has branch protection (required conversation resolution only), and AGENTS.md lists `discord-reporter` among the misaka-jp reporters that auto-deploy.
 
 **Why:** the owner wants one place that states the collaboration protocol for himself; threads should not re-derive it from scattered memory.
 
