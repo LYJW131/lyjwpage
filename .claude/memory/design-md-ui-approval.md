@@ -1,6 +1,6 @@
 ---
 name: design-md-ui-approval
-description: Site UI follows root DESIGN.md (spacing/type/color spec, 2026-10-13); any UI/UX change needs lyjw's look-and-OK before merging to main unless it is a small change they explicitly asked for
+description: Site UI follows root DESIGN.md (spacing/type/color spec, 2026-10-13); any UI/UX change needs lyjw's look-and-OK before merging to main unless it is a small change lyjw explicitly asked for
 metadata:
   type: feedback
 ---

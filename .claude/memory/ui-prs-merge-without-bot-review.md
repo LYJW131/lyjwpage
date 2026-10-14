@@ -13,4 +13,4 @@ Rule: for a PR that only changes site UI (classes, layout, copy, styling in comp
 
 **How to apply:** this narrows [[merge-requires-bot-review-pass]] for UI-only PRs. Logic, API, worker, security or contract changes still go through the full bot-review gate. HUMAN.md should say the same ([[human-md-collaboration-guide]]).
 
-Superseded for merge timing by [[design-md-ui-approval]]: UI/UX PRs still skip the bot-review wait, but now wait for lyjw's OK (unless a small change they explicitly asked for).
+Superseded for merge timing by [[design-md-ui-approval]]: UI/UX PRs still skip the bot-review wait, but now wait for lyjw's OK (unless a small change lyjw explicitly asked for).

@@ -14,6 +14,6 @@ On 2026-10-14 lyjw said "我还是喜欢原来的 代价都是可以接受的 �
 
 The site Builds main trigger got `.github/github-avatar.sha256` back in `path_includes`, via the CF API.
 
-**Why:** lyjw values the avatar updating everywhere within minutes over fewer moving parts. They accept a bot commit on each avatar change, a rebuild, and credential upkeep.
+**Why:** lyjw values the avatar updating everywhere within minutes over fewer moving parts. lyjw accepts a bot commit on each avatar change, a rebuild, and credential upkeep.
 
 **How to apply:** don't propose retiring it again for simplicity. Its credentials (collector `GITHUB_DISPATCH_TOKEN`, repo secret `AVATAR_APP_PRIVATE_KEY`) and their current state live only in docs/ops-facts.md; read them there.
