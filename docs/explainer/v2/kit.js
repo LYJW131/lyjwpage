@@ -365,15 +365,17 @@ void main(){
 }`,
   };
 
-  function glyph(x, kind, cx, cy, color, s = 1) {
-    x.save(); x.strokeStyle = color; x.lineWidth = 2.2;
+  // line() 的 alpha 是绝对值、不乘外层 globalAlpha，所以里面的 line() 都显式乘 a，否则淡入淡出时这几笔是实的。
+  function glyph(x, kind, cx, cy, color, s = 1, a = 1) {
+    if (a <= 0) return;
+    x.save(); x.globalAlpha *= a; x.strokeStyle = color; x.lineWidth = 2.2;
     if (s !== 1) { x.translate(cx, cy); x.scale(s, s); x.translate(-cx, -cy); }
     if (kind === "cred") {
-      x.strokeRect(cx - 60, cy - 30, 120, 60); line(x, cx - 22, cy - 2, cx + 22, cy - 2, 3, color);
+      x.strokeRect(cx - 60, cy - 30, 120, 60); line(x, cx - 22, cy - 2, cx + 22, cy - 2, 3, color, a);
       x.beginPath(); x.arc(cx, cy + 14, 7, 0, Math.PI * 2); x.stroke();
     } else if (kind === "d1") {
-      for (let j = 0; j < 4; j++) { const w = 130 - j * 26, y = cy - 30 + j * 20; line(x, cx - w / 2, y, cx + w / 2, y, 2.2 - j * 0.4, color, 1 - j * 0.18); }
-      line(x, cx - 65, cy - 30, cx - 26, cy + 30, 1.2, color, 0.5); line(x, cx + 65, cy - 30, cx + 26, cy + 30, 1.2, color, 0.5);
+      for (let j = 0; j < 4; j++) { const w = 130 - j * 26, y = cy - 30 + j * 20; line(x, cx - w / 2, y, cx + w / 2, y, 2.2 - j * 0.4, color, a * (1 - j * 0.18)); }
+      line(x, cx - 65, cy - 30, cx - 26, cy + 30, 1.2, color, 0.5 * a); line(x, cx + 65, cy - 30, cx + 26, cy + 30, 1.2, color, 0.5 * a);
     } else if (kind === "lag") {
       for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { x.strokeRect(cx - 64 + c * 32, cy - 36 + r * 24, 28, 20); }
     } else {

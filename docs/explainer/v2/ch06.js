@@ -238,7 +238,7 @@
     dial(x, COL[0], COL[1], COL_R, phi % 60, a, hot);
     text(x, tr("ch06.collector"), COL[0], COL[1] + COL_R + 44, { font: FONT.cjk(30, 600), color: css("bone"), align: "center", alpha: a });
     text(x, tr("ch06.every5"), COL[0], COL[1] + COL_R + 82, { font: FONT.cjk(28, 600), color: css("ash"), align: "center", alpha: a });
-    glyph(x, "lag", LAGG[0], LAGG[1], css("bone"), 0.8);
+    glyph(x, "lag", LAGG[0], LAGG[1], css("bone"), 0.8, a);
     text(x, "KV LAG", LAGG[0], LAGG[1] + 58, { font: FONT.mono(28, 500), color: css("ash"), align: "center", alpha: a });
     dashPath(x, toLedger, 0.4 * a);
     dashPath(x, [[COL[0], COL[1] + COL_R + 96], [LAGG[0], LAGG[1] - 36]], 0.4 * a);
@@ -384,7 +384,7 @@
   function strataNotes(x, b, a) {
     if (a <= 0) return;
     const bone = css("bone"), ash = css("ash");
-    glyph(x, "d1", NOW_X + 170, 1060, bone, 1);
+    glyph(x, "d1", NOW_X + 170, 1060, bone, 1, a);
     text(x, "D1", NOW_X + 90, 1150, { font: FONT.mono(38, 600), color: bone, alpha: a });
     text(x, "lyjwpage-history", NOW_X + 90, 1196, { font: FONT.mono(34, 500), color: ash, alpha: a });
     text(x, tr("ch06.keep"), NOW_X + 90, 1250, { font: FONT.cjk(38, 600), color: css("signalD"), alpha: a });
@@ -478,8 +478,9 @@
     ledgerBox(x, phi, labA);
     siteBoxes(x, phi, labA);
     signalPaths(x, e, phi, labA);
-    signalLabels(x, win(b, 0.6, 0.95, 3.85, 4.0), win(b, 2.5, 2.7, 3.85, 4.0));
-    const bA = win(b, 3.85, 4.1, 5.95, 6.2);
+    // 上一幕的标签淡完，KV LAG 这一幕才进：「只说明 site Worker 还在出页面」那行（英文更长）伸到了 KV LAG 图标底下。
+    signalLabels(x, win(b, 0.6, 0.95, 3.76, 3.88), win(b, 2.5, 2.7, 3.76, 3.88));
+    const bA = win(b, 3.88, 4.1, 5.95, 6.2);
     collector(x, e, b, bA);
     card(d, b, bA);
     const sA = prog(b, 5.9, 6.2) * (1 - prog(b, 11.2, 11.7));
