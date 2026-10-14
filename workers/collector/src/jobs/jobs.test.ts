@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 import type { AgentStatusPayload, AgentStatusRow } from "@shared/agent-status-types";
-import { HEARTBEAT_SERIES, UPTIME_SERIES, recordCheck } from "@shared/health";
+import { HEALTH_DAYS, HEARTBEAT_SERIES, UPTIME_SERIES, readBuckets, recordCheck } from "@shared/health";
 import type { HealthPayload } from "@shared/health-types";
 import { ContributorsUnavailable } from "@shared/github-repo";
 import type { GithubRepoPayload } from "@shared/types";
@@ -178,6 +178,18 @@ test("site health summarizes D1 checks with Cloudflare errors and vitals, carryi
   const second = (await readLag<HealthPayload>(lag, LAG_KEYS.health))!.data;
   assert.deepEqual(second.vitals, first.vitals);
   assert.equal(second.blockAt?.vitals, now);
+});
+
+test("health buckets come back with the last hour before the window, when one is kept", async () => {
+  const { db } = historyDb();
+  const day = 86_400_000;
+  const windowStart = Math.floor(now / day) * day - (HEALTH_DAYS - 1) * day;
+  await recordCheck(db, HEARTBEAT_SERIES, windowStart - 5 * 3_600_000, true);
+  await recordCheck(db, HEARTBEAT_SERIES, windowStart - 2 * 3_600_000, true);
+  await recordCheck(db, HEARTBEAT_SERIES, windowStart + 3 * 3_600_000, true);
+  await recordCheck(db, UPTIME_SERIES, windowStart + 3 * 3_600_000, true);
+  assert.deepEqual((await readBuckets(db, HEARTBEAT_SERIES, now)).map((b) => b.hourStart), [windowStart - 2 * 3_600_000, windowStart + 3 * 3_600_000]);
+  assert.deepEqual((await readBuckets(db, UPTIME_SERIES, now)).map((b) => b.hourStart), [windowStart + 3 * 3_600_000]);
 });
 
 test("site health without Cloudflare settings still refreshes the D1 uptime rows", async (t) => {
