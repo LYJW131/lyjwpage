@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const MAP_PATH = path.join(ROOT, ".claude", "skills", "lyjwpage-verify", "feature-map.json");
-const DEV_OVERRIDE = path.join(ROOT, "scripts", "dev-override.mjs");
+const DEV_OVERRIDE = path.join(ROOT, "scripts", "dev-override.ts");
 const RENDER_PLAYWRIGHT = path.join(ROOT, "docs", "explainer", "render", "node_modules", "playwright-core", "index.mjs");
 
 type Flags = { [key: string]: string | boolean | undefined; url: string };
@@ -216,7 +216,7 @@ const HELP = `site-verify — 站点验证共用脚本（lyjwpage-verify）
   shot      按宽度截图（整页或单卡 clip），同时收集控制台 error / warn / pageerror
   reload    热缓存刷新，查首次绘制后的跳动（字体换装、时间跳、卡片晚到）
   skew      旧页面撞上新部署：用旧 HTML 打开当前站点，查它引用的资源取不取得到、页面有没有样式与水合
-  override  夹具注入，转发给 scripts/dev-override.mjs；--dry-run 只打印命令不执行
+  override  夹具注入，转发给 scripts/dev-override.ts（成套注入用 pnpm dev:scene）；--dry-run 只打印命令不执行
 
 公共选项：
   --url <url>         被测站点（默认 http://localhost:3211，或 DEV_SITE_PORT 环境变量）

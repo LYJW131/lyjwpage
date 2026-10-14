@@ -14,7 +14,7 @@ workspace_tests() {
 }
 
 script_tests() {
-  node --test scripts/*.test.mjs scripts/*.test.ts
+  node --test --import ./src/lib/testing/register-alias.mjs scripts/*.test.mjs scripts/*.test.ts
 }
 
 docs() {

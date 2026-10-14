@@ -14,6 +14,15 @@ interface Env {
 const COLLECTOR_PREFIX = "/__dev/collector/";
 const INGRESS_INTERNAL_PATHS = new Set(["/api/internal/site-deployed", "/api/internal/collector-refresh"]);
 
+// 注入存在 core 里，采集 Worker 的路径（歌词等）不经 core，要在这里先问一次，SSR 与浏览器才都拿到注入。
+async function devOverride(env: Env, url: URL): Promise<Response | null> {
+  const response = await env.CORE.fetch(`http://core/api/dev/override${url.pathname}${url.search}`);
+  if (response.ok) return response;
+  if (!url.search) return null;
+  const fallback = await env.CORE.fetch(`http://core/api/dev/override${url.pathname}`);
+  return fallback.ok ? fallback : null;
+}
+
 const router = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -32,7 +41,9 @@ const router = {
       return env.INGRESS.fetch(request);
     }
 
-    if (APPLE_MUSIC_HTTP_PATHS.has(url.pathname)) return env.COLLECTOR.fetch(request);
+    if (APPLE_MUSIC_HTTP_PATHS.has(url.pathname)) {
+      return (request.method === "GET" && (await devOverride(env, url))) || env.COLLECTOR.fetch(request);
+    }
 
     return env.CORE.fetch(request);
   },
