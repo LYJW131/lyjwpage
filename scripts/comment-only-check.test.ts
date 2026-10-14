@@ -8,10 +8,10 @@ import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
 
-import { checkFiles, compareContents, stripSwift } from "./comment-only-check.mjs";
+import { checkFiles, compareContents, stripSwift } from "./comment-only-check.ts";
 
-const SCRIPT = fileURLToPath(new URL("./comment-only-check.mjs", import.meta.url));
-const status = (file, before, after, options = {}) => compareContents({ ts, file, before, after, ...options }).status;
+const SCRIPT = fileURLToPath(new URL("./comment-only-check.ts", import.meta.url));
+const status = (file: string, before: string | null, after: string | null, options: { loose?: boolean } = {}) => compareContents({ ts, file, before, after, ...options }).status;
 
 const CASES = [
   ["TS：加、改、删注释，代码不动", "a.ts",
@@ -290,7 +290,7 @@ test("已知局限：Swift 正则字面量里的 // 会被当成行注释（文�
 
 function tempRepo() {
   const dir = mkdtempSync(path.join(os.tmpdir(), "comment-only-test-"));
-  const run = (...args) => {
+  const run = (...args: string[]) => {
     const result = spawnSync("git", args, { cwd: dir, encoding: "utf8" });
     assert.equal(result.status, 0, `git ${args.join(" ")}\n${result.stderr}`);
     return result.stdout;
@@ -302,7 +302,7 @@ function tempRepo() {
   return {
     dir,
     run,
-    write: (name, text) => writeFileSync(path.join(dir, name), text),
+    write: (name: string, text: string) => writeFileSync(path.join(dir, name), text),
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }
@@ -344,7 +344,7 @@ test("命令行：有除注释外的改动退出码为 1 并点名文件、附�
     repo.run("commit", "-q", "-m", "base");
     repo.write("only-comments.ts", "// 说明\nexport const a = 1;\n");
     repo.write("code-changed.ts", "export const n = 186;\n");
-    const cli = (...args) => spawnSync(process.execPath, [SCRIPT, "--repo", repo.dir, ...args], { cwd: repo.dir, encoding: "utf8" });
+    const cli = (...args: string[]) => spawnSync(process.execPath, [SCRIPT, "--repo", repo.dir, ...args], { cwd: repo.dir, encoding: "utf8" });
 
     const fine = cli("only-comments.ts");
     assert.equal(fine.status, 0, fine.stderr);
@@ -387,7 +387,7 @@ test("命令行：指令性注释挪了位置，退出码为 1，逐条列出基
   }
 });
 
-test("命令行：没有可比较的文件为 0，不认识的选项为 2，--help 打印文件头里的用法", () => {
+test("命令行：没有可比较的文件为 0，不认识的选项与缺值的选项为 2，--help 打印文件头里的用法", () => {
   const repo = tempRepo();
   try {
     repo.write("notes.txt", "a\n");
@@ -403,6 +403,11 @@ test("命令行：没有可比较的文件为 0，不认识的选项为 2，--he
   const unknown = spawnSync(process.execPath, [SCRIPT, "--nope"], { encoding: "utf8" });
   assert.equal(unknown.status, 2);
   assert.match(unknown.stderr, /不认识的选项 --nope/);
+  for (const args of [["--base"], ["--to", "--loose"], ["--context"]]) {
+    const missing = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
+    assert.equal(missing.status, 2, args.join(" "));
+    assert.match(missing.stderr, /后面缺值/);
+  }
   const help = spawnSync(process.execPath, [SCRIPT, "--help"], { encoding: "utf8" });
   assert.equal(help.status, 0);
   assert.match(help.stdout, /pnpm docs:comment-only/);

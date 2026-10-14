@@ -104,7 +104,7 @@ export async function assertMainAncestor(api: GithubBuildApi, baseSha: string): 
   if (!["ahead", "identical"].includes(comparison.status) || comparison.merge_base_commit?.sha !== baseSha) throw new BuildBlockedError("The base commit is not in main history.");
 }
 
-// 须与 .github/workflows/build.yml 中 implement job 的 --model 对应，scripts/build-actions.test.mjs 核对。
+// 须与 .github/workflows/build.yml 中 implement job 的 --model 对应，scripts/build-actions.test.ts 核对。
 const BUILD_CLAUDE_COAUTHOR = "Claude Opus 5.5 <noreply@anthropic.com>";
 
 export function validSha(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{40}$/.test(value); }

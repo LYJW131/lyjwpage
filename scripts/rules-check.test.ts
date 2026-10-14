@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkFetchHost, checkFile, checkScrollbarPair, checkTodo } from "./rules-check.mjs";
+import { checkFetchHost, checkFile, checkScriptsMjs, checkScrollbarPair, checkTodo } from "./rules-check.ts";
 
-const rules = (file, text) => checkFile(file, text).map((issue) => `${issue.rule}@${issue.line}`);
+const rules = (file: string, text: string) => checkFile(file, text).map((issue) => `${issue.rule}@${issue.line}`);
 
 test("不带单号的 TODO / FIXME 被拦，带 #单号或链接的放行", () => {
   assert.deepEqual(rules("src/lib/x.ts", "// TODO: 以后处理\nconst a = 1; // FIXME 同上"), ["todo-ticket@1", "todo-ticket@2"]);
@@ -142,4 +142,13 @@ test("workers/*/src 与 shared/ 手写 new Response(JSON.stringify(...)) 被拦�
 test("checkFile 只扫认识的代码扩展名", () => {
   assert.equal(checkFile("AGENTS.md", "// TODO 文档不走这条").length, 0);
   assert.equal(checkFile("src/lib/x.md", "// TODO").length, 0);
+});
+
+test("scripts/ 新增 .mjs 被拦，基线里已迁走的条目要删，其余目录与 .ts 不管", () => {
+  const baseline = ["scripts/old.mjs", "scripts/gone.mjs"];
+  const files = ["scripts/old.mjs", "scripts/new.mjs", "scripts/fixtures/x.mjs", "scripts/ok.ts", "docs/explainer/a.mjs", "eslint.config.mjs"];
+  const issues = checkScriptsMjs(files, baseline);
+  assert.deepEqual(issues.map((issue) => issue.file), ["scripts/new.mjs", "scripts/fixtures/x.mjs", "scripts/mjs-baseline.json"]);
+  assert.match(issues[2].message, /scripts\/gone\.mjs/);
+  assert.equal(checkScriptsMjs(["scripts/old.mjs", "scripts/gone.mjs"], baseline).length, 0);
 });

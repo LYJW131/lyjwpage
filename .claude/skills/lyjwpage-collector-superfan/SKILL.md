@@ -61,7 +61,7 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 
 1. **归类**：按 Worker 加错误消息归成签名（只把请求 id、UUID、时间戳、URL 查询串这类每次都变的值换成占位，HTTP 状态码和其他决定错误类别的数字保留，再取前 120 字）。`ledger` 里开着、且已复现过（`repro: confirmed`）的签名只更新 `lastSeen` 与次数；`muted` 的跳过。`resolved` 的签名再出现算新签名：重新打开，从第 2 条起走一遍并照新异常通知。
 2. **分诊**：新签名逐个看日志原文和源码（路径加符号）。是预期行为（上游限流后的正常重试、客户端断开、已知噪声）就记 `muted` 并写一句理由，停在这一步。
-3. **复现**：能用一条只读命令复现的（`curl` 生产公开端点、`node scripts/site-verify.mjs` 对 `https://lyjw.me/` 取证），跑两次，两次都打到同一个坏状态才算复现，记下命令和输出原文，`ledger` 记 `repro: confirmed`；只读命令复现不了的写「未复现」和原因，记 `repro: none`，不为复现去写生产数据。`repro: none` 的签名之后每次再出现都重试一次复现，复现了就按新批次报告。
+3. **复现**：能用一条只读命令复现的（`curl` 生产公开端点、`node scripts/site-verify.ts` 对 `https://lyjw.me/` 取证），跑两次，两次都打到同一个坏状态才算复现，记下命令和输出原文，`ledger` 记 `repro: confirmed`；只读命令复现不了的写「未复现」和原因，记 `repro: none`，不为复现去写生产数据。`repro: none` 的签名之后每次再出现都重试一次复现，复现了就按新批次报告。
 4. **成批**：几个新签名指向同一处源码、同一个上游或同一次部署（看 `$workers.scriptVersion`），合成一条 `ledger` 记录，列出各签名。修复建议按批写，不按签名写。
 
 一次运行只看签名，不改代码、不开线程；复现过的批次在报告里写成「建议另开一个线程修：<批次>，复现命令 …」，由 lyjw 在晨报后决定开不开（这就是否决窗口）。
