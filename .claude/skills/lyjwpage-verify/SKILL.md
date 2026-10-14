@@ -108,7 +108,8 @@ Agent(
 
 - 合并没碰到 site 的监视路径时（`docs/workers-builds.md`「构建监视路径」），`/api/version` 本来就不会变；下面的脚本没看到 site 的构建检查就不等版本，只核对碰到的那几个 Worker 的构建，受影响的生产行为照样要复测。
 - 构建与版本等待交给共用脚本，不手写轮询：`git fetch origin main` 后跑 `NODE_USE_ENV_PROXY=1 node scripts/deploy-check.mjs --sha <合并提交完整 sha> --expect <这次碰到监视路径的 Worker，如 site,core>`（`--help` 看选项）。`--expect` 由主线程按监视路径定好写进简报，列出的 Worker 没有成功构建就不通过。它等合并提交上的 `Workers Builds: *` 检查跑完；有 site 的构建就再等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 跟上这个提交，被之后的提交覆盖也算通过（`superseded`）。输出 JSON，`pass` 为假时 `next` 写下一步。
-  - 构建失败或超时、版本停在更旧的提交：FAIL，原样报告 `next`。是否重跑 main 的构建由主线程决定（生产动作，要站主点头，从不手跑 `wrangler deploy`）。
+  - 构建失败或超时、版本停在更旧的提交：FAIL，原样报告 `next`。是否重跑 main 的构建由主线程按下一条决定（从不手跑 `wrangler deploy`）。
+- main 上的构建失败时，主线程先读构建日志（Cloudflare Builds API 的 `/builds/builds/<build_uuid>/logs`）。是平台临时错误（部署步 Cloudflare 内部错误、代码与 typecheck 都过了）就直接用 Builds API 对同一 trigger 带 `commit_hash` 重跑，不用问站主，跑完核对结论并在汇报里提一句；main 头已有更新的同 Worker 提交时重跑 main 头，免得回滚。代码或配置导致的失败照常先修。
 - 在生产域名上复测这次受影响的行为（同第 2 节的方法，URL 换成 `https://lyjw.me/`；涉及 ESA 缓存的也看 `https://lyjw131.com/`）。看完立刻关浏览器：开着的页面会按轮询节奏一直请求 API。
 - 定时任务产出的东西（摘要、采集）要等到下一个整点任务跑过再核对，不要在任务跑之前判失败。
 
