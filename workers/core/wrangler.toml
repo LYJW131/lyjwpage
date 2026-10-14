@@ -98,6 +98,17 @@ class_name = "BuildCoordinator"
 [previews.ai]
 binding = "AI"
 
+# Preview 与生产同服务名，Issues 摘要只能按服务数，分不出 Preview；Preview 只留日志与 traces，不进 Issues。
+[previews.observability]
+enabled = true
+
+[previews.observability.traces]
+enabled = true
+head_sampling_rate = 0.01
+
+[previews.observability.issues]
+enabled = false
+
 [[previews.ratelimits]]
 name = "CHAT_USAGE_LIMIT"
 namespace_id = "13101"

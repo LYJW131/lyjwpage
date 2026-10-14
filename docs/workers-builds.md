@@ -50,6 +50,8 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 预览绑定由 core 配置的 `[previews]` 段提供，状态、聊天与构建 DO 都是隔离空库，不挂生产域名、cron、KV 或 D1，也不复制 Secret。状态只读允许经 `UPSTREAM_API_URL` 按端点整份补缺，生产有 `ok:true` 的端点仍整份取生产；写入被隔离，上报入口不参加预览。测已有端点的新字段仍需本地注入夹具。
 
+core 与 site 的 Preview 和生产同服务名，Workers Issues 的摘要只能按服务名数、分不出 Preview，所以两边的 Preview 只留日志与 traces，关掉 Issues：core 写在 `wrangler.toml` 的 `[previews.observability]`，site 由 `scripts/site-preview.mjs#sitePreviewConfig` 生成。查 Preview 的报错用遥测查询，按请求主机是 `*.workers.dev` 区分。
+
 `scripts/build.mjs` 在预览构建里等待本分支 core Preview，`scripts/preview-backend.mjs#isMatchingPreview` 只接受 revision 与 `WORKERS_CI_COMMIT_SHA` 一致且状态读取就绪的地址。等待上限见 `WAIT_MS`；等不到匹配时构建直接失败，预览构建永不回退生产后端。选中的地址既是构建期的 `PREVIEW_BACKEND_URL`，也是运行时的预览后端，构建成功后冻结在 `build/site-preview.json`；`scripts/deploy-site-preview.mjs`（`pnpm preview:deploy`）只按这份冻结记录发布 `site` 的 Preview，不重查后端。预览构建强制清空 `PUBLIC_CF_WEB_ANALYTICS_TOKENS`，不带生产凭据。
 
 为了让只改前端或只改 AI 的分支也有同提交后端可用，core 的非生产分支构建（Builds 配置里的 `previews_base_config`）另配包含路径：同时覆盖前端、状态与 AI 依赖（`src/*`、`shared/*`、`workers/core/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单），只排除 ingress 独有的 `shared/ingest/*`；生产配置的监视路径不变。
