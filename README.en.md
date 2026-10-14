@@ -16,6 +16,11 @@ What I'm listening to, watching and playing, which apps are in use, how my devic
 
 It is both my personal homepage and a personal telemetry system that keeps evolving. This repository holds the site's source code, plus the architecture and implementation from device collection and state aggregation to page rendering.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
+  <img src="docs/screenshots/overview-light.webp" alt="Homepage overview: now watching, charger and power bank, now listening, activity rings with recent workouts, and the exit node lit up at once" width="100%">
+</picture>
+
 ## What's on the page
 
 | Module | What it shows |
@@ -37,12 +42,7 @@ The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoi
 
 ## Screenshots
 
-The homepage is dynamic: cards like now watching, charging or playing only appear while that thing is happening. The images below light up all of those states at once using sample data on a local build, following the system light or dark theme; the animated ones were recorded from the live site.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
-  <img src="docs/screenshots/overview-light.webp" alt="Homepage overview: now watching, charger and power bank, now listening, activity rings with recent workouts, and the exit node lit up at once" width="100%">
-</picture>
+The homepage is dynamic: cards like now watching, charging or playing only appear while that thing is happening. The overview at the top and the images below light up all of those states at once using sample data on a local build, following the system light or dark theme; the animated ones were recorded from the live site.
 
 **Front app in the header**: the middle of the header shows the Mac's current front app, with the icon and name reported by the Mac reporter. A few everyday tools get brand marks instead. Claude Code is the pixel mascot's fetch animation from [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop): 19 poses rebuilt frame by frame from a screen recording, with the sprite data inlined and played by the site itself ([live preview](https://lyjw131.github.io/mascot-fetch-loop/)). Ghostty is the ASCII ghost from its [homepage](https://ghostty.org/). `scripts/ghostty-frames.mjs` pulls the character frames out of the homepage payload, buckets glyph ink into a few body levels and a few halo levels, and samples frames down to a coarse grid (`src/lib/ghostty-frames.json`; parameters are at the top of the script). The site loops it as SVG paths; the body follows the page's text color while the halo keeps the homepage blue. Cursor and Antigravity use wordmarks from the [LobeHub icon set](https://github.com/lobehub/lobe-icons).
 
