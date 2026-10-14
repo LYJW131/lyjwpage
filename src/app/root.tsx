@@ -33,6 +33,8 @@ import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { ogImage, site } from "@shared/site";
 import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript } from "@/lib/theme";
 
+// 须与 globals.css 的 Geist Mono @font-face 指向同一个文件，预加载才会被字体规则复用。
+import geistMonoUrl from "../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2?url";
 import "./globals.css";
 
 function bootScript(): string {
@@ -78,7 +80,7 @@ export function links(): LinkDescriptor[] {
   return [
     { rel: "canonical", href: site.url },
     { rel: "manifest", href: "/manifest.webmanifest" },
-    { rel: "preload", href: "/site-assets/GeistMono-Variable.woff2", as: "font", type: "font/woff2", crossOrigin: "anonymous" },
+    { rel: "preload", href: geistMonoUrl, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
     { rel: "icon", href: "/icon", type: "image/png", sizes: "32x32" },
     { rel: "apple-touch-icon", href: "/apple-icon" },
     // 普通图片使用 no-cors；带 crossOrigin 的预连接无法被它复用。
