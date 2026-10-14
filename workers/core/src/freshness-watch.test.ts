@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/health";
 import { SERVER_STALE_MS } from "@shared/freshness";
 import { LAG_KEYS, readLag } from "@shared/lag";
 import { QUEST_STALE_MS, questMirror } from "@shared/quest";

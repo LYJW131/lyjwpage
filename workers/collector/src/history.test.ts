@@ -1,46 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import type { HistoryDb } from "@shared/history-ingest";
 import type { SiteDeployment } from "@shared/site-deployments-types";
 
 import { archiveSiteDeploys } from "./history";
-
-type Statement = { query: string; values: unknown[] };
-
-function historyDb() {
-  const sqlite = new DatabaseSync(":memory:");
-  const migrations = `${dirname(fileURLToPath(import.meta.url))}/../../core/migrations/`;
-  for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) {
-    sqlite.exec(readFileSync(`${migrations}${file}`, "utf8"));
-  }
-  let changes = 0;
-  const batches: number[] = [];
-  const db: HistoryDb = {
-    prepare: (query) => {
-      const statement: Statement & { bind(...values: unknown[]): typeof statement } = {
-        query,
-        values: [],
-        bind: (...values) => ({ ...statement, values }),
-      };
-      return statement;
-    },
-    async batch(statements) {
-      batches.push(statements.length);
-      sqlite.exec("BEGIN");
-      for (const { query, values } of statements as unknown as Statement[]) {
-        changes += Number(sqlite.prepare(query).run(...(values as (string | number | null)[])).changes);
-      }
-      sqlite.exec("COMMIT");
-      return [];
-    },
-  };
-  return { db, all: (query: string) => sqlite.prepare(query).all().map((row) => ({ ...row })), changes: () => changes, batches };
-}
+import { historyDb } from "./testing/sqlite-history";
 
 const T0 = Date.UTC(2026, 8, 28, 3, 0, 0);
 

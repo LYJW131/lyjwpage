@@ -121,7 +121,7 @@
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：包含 Tokens 速率的事实时间线与右侧摘要，悬停听歌道的一段显示时间范围、状态与当时的曲目" width="100%">
 </picture>
 
-**站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看 Sentry 的在线探测，`Core` 看 core Worker cron 的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
+**站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看采集 Worker 每分钟的在线探测，`Core` 看 core Worker 定时一轮的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
@@ -139,7 +139,7 @@
 
 [打开交互式架构图](https://lyjw131.github.io/lyjwpage/)
 
-**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标、Agent 限额与 Cursor、Devin CLI 用量，Claude Code 云端环境用内置遥测直接上报。Home Assistant 接入 HomePod 等家庭设备；PlayStation 由家里的容器按局域网里的主机状态拉取，Apple Music 最近在听以及 GitHub、站点部署与访问量（Cloudflare）、Sentry、PageSpeed 这些外部数据由采集 Worker 定时拉取。Apple Music 的歌词、动态封面、网页播放器令牌和「正在听」的目录补全也归采集 Worker：上报入口提交前请它补全，站点域名上的这几条路径由 site Worker 转交给它。
+**采集端**运行在数据产生的位置。Mac 采集本机应用、音乐、BLE 设备与编码用量，iPhone 读取运动活动，NAS 代理 Emby 播放状态，Linux 上报器提供服务器指标、Agent 限额与 Cursor、Devin CLI 用量，Claude Code 云端环境用内置遥测直接上报。Home Assistant 接入 HomePod 等家庭设备；PlayStation 由家里的容器按局域网里的主机状态拉取，Apple Music 最近在听以及 GitHub、站点部署、访问量与健康数据（Cloudflare）、PageSpeed 这些外部数据由采集 Worker 定时拉取。Apple Music 的歌词、动态封面、网页播放器令牌和「正在听」的目录补全也归采集 Worker：上报入口提交前请它补全，站点域名上的这几条路径由 site Worker 转交给它。
 
 **状态中枢**由 Cloudflare Workers 承担，负责接收上报、整合外部服务数据、提供公开状态 API 和实时推送。上报先到无状态的上报入口 Worker：它在 Cloudflare Access 之后验明每个上报器的身份，校验、收敛报文，再按数据层拆开——实时那一半经 Service Binding 交给持有 Durable Objects 的状态核心（core Worker），可滞后层、归档与凭据自己写。改校验只重新发布上报入口，状态核心不重启、页面的推送连接不断。Durable Objects SQLite 保存实时层的快照与历史，是唯一权威；只展示、可以晚几分钟的数据（外部服务的统计、落地节点、限额等）由写入方直接写进 KV 可滞后层，每条带更新时刻，过没过时由浏览器按各卡阈值判断。R2 保存海报等图片资源，D1 归档训练、圆环、限额、服务器小时汇总、coding 用量与 Pulse 的事实时间线；在线访客由推送那条 WebSocket 顺带计数。
 
@@ -171,7 +171,7 @@
 
 ### 站点与 Worker 分头部署，旧页面遇到新数据只降级一张卡
 
-Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天前的旧标签页：旧脚本会读到新形状的数据。每张卡外面各有一层错误边界（`src/components/card-boundary.tsx`），一张卡渲染抛错只有那一格退成 Unavailable，并带着卡片名报 Sentry（同一张卡同样的错一轮只报一次），别的卡和整页照常。兜底卡片上有 Retry，页面没过期时还会自动重试几次（间隔见 `src/lib/card-recovery.ts` 的 `RECOVERY_DELAYS_MS`，页面在后台就等回到前台）；重试前先主动取一份此刻的数据写进这张卡读的 SWR 缓存（取不到的键退回清掉缓存），否则重新挂载会拿着让它崩的那份数据（连首屏那份也算）在渲染阶段再抛一次，连回源都跑不到。取数途中这个键若被推送或同键别的卡的轮询写进了更新的值（按 `src/lib/status-reads.ts` 的 `writeGeneration` 判，没有时间戳的键也一样），或者这张卡已经卸载，这一份就不再写，慢回来的响应盖不掉更新的值。页面已经知道自己旧了（`/api/version`，以及新版本部署完成后的 `version` 推送），且重取当前页面时 HTML 头部的 `build-commit` 已是新版（边缘缓存还在回旧 HTML 时不算旧，免得刷新后版本提示又弹，判定见 `src/lib/app-version.ts` 的 `resolveVersionStatus`）时，躺在后台的旧标签页会自己刷新成新版；前台只提示（顶部的版本提示卡，兜底卡片上的说明），不自动刷，免得一张卡出错就打断人在别处的操作，只有整页被错误页顶替时才前台刷新。每个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次，账按目标分别记而不是只记最后一个（`lyjw131.com` 的首页 HTML 由 ESA 缓存，刷回来可能还是旧的，版本接口在两个版本间来回也刷不成环）；试满的目标要等 `AUTO_RELOAD_RETRY_AFTER_MS` 才清零重来，边缘缓存恢复后还能刷到它；同一个标签页两次自动刷新至少隔 `AUTO_RELOAD_COOLDOWN_MS`（以上常量都在 `src/lib/app-version.ts`，系统时钟被拨回过时冷却从现在重新数），播放器在放音乐时不刷。判定逻辑见 `src/lib/app-version.ts` 的 `autoReloadDecision`。
+Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天前的旧标签页：旧脚本会读到新形状的数据。每张卡外面各有一层错误边界（`src/components/card-boundary.tsx`），一张卡渲染抛错只有那一格退成 Unavailable，并带着卡片名经 `/relay` 报一条错误（同一张卡同样的错一轮只报一次），别的卡和整页照常。兜底卡片上有 Retry，页面没过期时还会自动重试几次（间隔见 `src/lib/card-recovery.ts` 的 `RECOVERY_DELAYS_MS`，页面在后台就等回到前台）；重试前先主动取一份此刻的数据写进这张卡读的 SWR 缓存（取不到的键退回清掉缓存），否则重新挂载会拿着让它崩的那份数据（连首屏那份也算）在渲染阶段再抛一次，连回源都跑不到。取数途中这个键若被推送或同键别的卡的轮询写进了更新的值（按 `src/lib/status-reads.ts` 的 `writeGeneration` 判，没有时间戳的键也一样），或者这张卡已经卸载，这一份就不再写，慢回来的响应盖不掉更新的值。页面已经知道自己旧了（`/api/version`，以及新版本部署完成后的 `version` 推送），且重取当前页面时 HTML 头部的 `build-commit` 已是新版（边缘缓存还在回旧 HTML 时不算旧，免得刷新后版本提示又弹，判定见 `src/lib/app-version.ts` 的 `resolveVersionStatus`）时，躺在后台的旧标签页会自己刷新成新版；前台只提示（顶部的版本提示卡，兜底卡片上的说明），不自动刷，免得一张卡出错就打断人在别处的操作，只有整页被错误页顶替时才前台刷新。每个目标版本一轮最多试 `AUTO_RELOAD_MAX_TRIES` 次，账按目标分别记而不是只记最后一个（`lyjw131.com` 的首页 HTML 由 ESA 缓存，刷回来可能还是旧的，版本接口在两个版本间来回也刷不成环）；试满的目标要等 `AUTO_RELOAD_RETRY_AFTER_MS` 才清零重来，边缘缓存恢复后还能刷到它；同一个标签页两次自动刷新至少隔 `AUTO_RELOAD_COOLDOWN_MS`（以上常量都在 `src/lib/app-version.ts`，系统时钟被拨回过时冷却从现在重新数），播放器在放音乐时不刷。判定逻辑见 `src/lib/app-version.ts` 的 `autoReloadDecision`。
 
 旧标签页还有一种坏法，连脚本都轮不到跑：iOS Safari 回收了后台标签，切回来时按缓存取回旧 HTML，它引用的带指纹 CSS / JS 在新版本部署后已经不在静态资源里，页面没了样式，首页那些铺满父元素的图片按视口叠满整屏。Workers 静态资源只留当前版本，所以 site 的生产与预览构建把 `build/client/assets` 整份存进 R2（`scripts/archive-site-assets.mjs`），生产上当前版本缺的 `/assets/*` 由 site Worker 从存档读出（`src/lib/asset-archive.ts`；分支 Preview 没有 R2 绑定，不读存档），旧页面照常加载。存档也没有时，`<head>` 里在样式表之前的内联脚本（`src/lib/asset-recovery-boot.ts`）兜底：站内样式表、modulepreload 或模块脚本加载失败时，先强制重取当前页面把 HTTP 缓存里的旧 HTML 换掉，再刷新一次；同一版本冷却期内只救一次，刷回来还坏就停手。
 
@@ -191,11 +191,11 @@ Worker 和站点各自部署，浏览器里又可能放着几小时甚至几天�
 
 `/img/*` 由 `site` Worker 的 R2 绑定直出：整份对象流式返回并带一年不可变缓存头，平台缓存层负责 Range 切片与条件请求。`lyjw131.com` 上由 ESA 按静态后缀缓存同一路径并回源，中国大陆访客不再直连 Cloudflare。对象带一年不可变缓存，地址即内容指纹，所以两层边缘都不需要主动刷新。
 
-### 报错与性能交给 Sentry
+### 报错与性能交给 Workers Observability
 
-站点（浏览器与 site Worker）、`core` Worker（请求、API 定时任务、两个 Durable Object）和采集 Worker（各定时任务，失败上报 Sentry；逐任务 cron 报到由 `SENTRY_CRON_CHECKINS` 控制，见 [`workers/collector/README.md`](./workers/collector/README.md)）各报到一个 Sentry 项目；上报入口与 AI Worker 和 `core` 同报一个项目，事件分别带 `worker:ingress`、`worker:ai` 标签。浏览器端经同源的 `/relay` 转发，广告拦截和直连不上 sentry.io 的访客也报得上来；Session Replay 单独成块、页面空闲后才加载，只保留出错那一段。API 定时任务定时报心跳（周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`），`lyjw.me` 有在线探测。采样按免费额度设，入口见 [`shared/sentry.ts`](./shared/sentry.ts)、[`workers/core/src/sentry.ts`](./workers/core/src/sentry.ts)、[`workers/ingress/src/sentry.ts`](./workers/ingress/src/sentry.ts)、[`workers/ai/src/sentry.ts`](./workers/ai/src/sentry.ts) 与 [`workers/collector/src/sentry.ts`](./workers/collector/src/sentry.ts)；本地默认不上报，要试就在 `.env.local` 设 `PUBLIC_SENTRY_DEV=true`。
+五个 Worker（`site`、`core`、`ai`、`ingress`、`collector`）都开着 Cloudflare Workers Observability：日志、1% 采样的 Traces、Workers Issues（未捕获异常、5xx 与 `console.error` 自动归组），Worker 包的 source map 随部署上传，线上调用栈能对回源码。浏览器端没有 SDK：[`src/lib/error-report.ts`](./src/lib/error-report.ts) 接住 `error`、`unhandledrejection`、水合回退和两层错误边界，经 `/relay` 发给 site Worker（`lyjw131.com` 的页面和 API 调用一样直连 `lyjw.me`，不经 ESA，限流按的是访客自己的 IP），[`src/lib/error-relay.ts`](./src/lib/error-relay.ts) 校验、去掉页面地址和消息与调用栈里 URL 的查询串后记成 `[browser-error]` 日志，归进 `site` 的 Issues（`/relay` 拒收别的网站发来的报告，再按 IP 限流，绑定 `RELAY_LIMIT` 在 `wrangler.jsonc`）；浏览器包不出 source map，调用栈是压缩后的代码。本地默认不上报，要试就在 `.env.local` 设 `PUBLIC_ERROR_REPORT_DEV=true`。
 
-Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取回站点与后端（core、采集两个 Worker 项目合计）的报错数、真实访客的 Web Vitals、在线探测与 cron 心跳，写进可滞后层给站点卡片（`/api/status/sentry`）。在线状态分两行：`lyjw.me` 那行探测的是站点上的静态路由，只说明前端还在出页面；`Core` 那行看 core Worker 的 cron 心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。排查线上报错时 agent 先经 Sentry MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
+健康数据回到页面上自己算：采集 Worker 每分钟探测一次 `lyjw.me/api/version`，core Worker 每跑完一轮定时任务记一次心跳，两者都按小时累进 D1 的 `health_buckets`；`site-health` 任务每 5 分钟把它们汇成 30 天每天一格与可用率，再加上 Workers Observability 的报错数（采样估计）与 active issue 数、Web Analytics 的真实访客 Web Vitals，写进可滞后层给站点卡片（`/api/status/health`，计算在 [`shared/health.ts`](./shared/health.ts)）。在线状态分两行：`lyjw.me` 那行只说明前端还在出页面；`Core` 那行看 core Worker 的心跳，每一轮都要经过 Worker 和 Durable Object，补上后端那一截。探测、心跳的驱动和汇总都在采集 Worker 里，它的 cron 一停三者一起停，卡片显示过期而不是失败；探测从 Cloudflare 内部发出，Cloudflare 整体故障时这一行看不出来。排查线上报错时 agent 先经 Cloudflare MCP 查证据再读代码，规矩写在 [`AGENTS.md`](./AGENTS.md)。
 
 ## 技术组成
 
@@ -209,7 +209,7 @@ Sentry 里的数据也回到页面上：采集 Worker 用只读令牌定时取�
 | 首页对话 | Anthropic Claude（Clef 选档）、Cloudflare Turnstile |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Cloudflare Workers · 阿里云 ESA |
-| 报错与性能监控 | Sentry |
+| 报错与性能监控 | Cloudflare Workers Observability · Web Analytics |
 
 AI 对话、MCP 和 GitHub issue 工具由 [`workers/ai`](./workers/ai/README.md) 执行；站点域名上的请求经 Service Binding 转交给它，状态数据仍经 core 的只读接口读取。Pulse Coding 评分仍由 core 编排。
 

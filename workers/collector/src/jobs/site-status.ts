@@ -12,7 +12,6 @@ export const siteDeploymentsJob: Job = {
   name: "site-deployments",
   everyMinutes: 1,
   offset: 0,
-  maxRuntimeMinutes: 2,
   async run({ env, now }) {
     const config = settings(env, SITE_DEPLOYMENTS_SETTINGS);
     if ("missing" in config) return skipMissing("site-deployments", config.missing);
@@ -28,7 +27,6 @@ export const siteAnalyticsJob: Job = {
   name: "site-analytics",
   everyMinutes: 15,
   offset: 3,
-  maxRuntimeMinutes: 2,
   async run({ env, now }) {
     const config = settings(env, SITE_ANALYTICS_SETTINGS);
     if ("missing" in config) return skipMissing("site-analytics", config.missing);

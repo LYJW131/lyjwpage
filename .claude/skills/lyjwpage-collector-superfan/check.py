@@ -20,7 +20,6 @@ VIEWS = {
     "cloudflare-workers": ["cloudflare-deployments", "cloudflare-metrics"],
     "site-deployments": ["site-deployments", "site-analytics", "pagespeed"],
     "health": ["site-health"],
-    "sentry": ["sentry-status"],
     "digest": ["digest"],
     "listening": ["apple-recent"],
 }
@@ -86,8 +85,6 @@ def check(repo):
         try:
             status, body = get(f"/api/status/{view}")
         except urllib.error.HTTPError as e:
-            if e.code == 404 and view in ("health", "sentry"):
-                continue
             add(view, "alert", f"端点返回 HTTP {e.code}")
             continue
         except Exception as e:
@@ -159,19 +156,17 @@ def check(repo):
             if missing:
                 add("cloudflare-workers", "warn", f"{w.get('name')} 缺 {', '.join(missing)}")
 
-    for view in ("health", "sentry"):
-        d = data.get(view, {}).get("data")
-        if not d:
-            continue
+    d = data.get("health", {}).get("data")
+    if d:
         for block, at in (d.get("blockAt") or {}).items():
-            stale(view, f"{block} 块", at, "SENTRY_STALE_MS" if view == "sentry" else "HEALTH_STALE_MS")
+            stale("health", f"{block} 块", at, "HEALTH_STALE_MS")
         for probe in ("uptime", "heartbeat"):
             p = d.get(probe) or {}
             if p.get("status") and p.get("status") != "up":
                 rate = p.get("availability24h")
                 rate_text = f"{rate:.1%}" if isinstance(rate, (int, float)) else "无数据"
-                add(view, "alert", f"{probe} 状态 {p.get('status')}，24h 可用率 {rate_text}")
-        snap[view]["errors"] = d.get("errors")
+                add("health", "alert", f"{probe} 状态 {p.get('status')}，24h 可用率 {rate_text}")
+        snap["health"]["errors"] = d.get("errors")
 
     d = data.get("digest", {}).get("data")
     if d:

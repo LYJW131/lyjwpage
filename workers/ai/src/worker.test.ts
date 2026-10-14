@@ -13,7 +13,6 @@ registerHooks({
   },
 });
 const { default: worker } = await import("./worker.ts");
-const { sentryOptions } = await import("./sentry.ts");
 
 const env = (overrides: Partial<Env> = {}): Env => ({
   PUBLIC_STATUS: { readStatus: async () => { throw new Error("Unexpected status read"); } },
@@ -84,13 +83,6 @@ test("额度查询仍只收 GET，缺计数绑定时关闭入口且响应不可�
   const response = await worker.fetch(request("/api/chat/usage", "GET", "https://lyjw.me"), env());
   assert.equal(response.status, 503);
   assert.equal(response.headers.get("Cache-Control"), "no-store");
-});
-
-test("Sentry 默认标为 production，只有显式预览开关或环境设置才改变", () => {
-  assert.equal(sentryOptions(env()).environment, "production");
-  assert.equal(sentryOptions(env({ PREVIEW_WORKER: "true" })).environment, "preview");
-  assert.equal(sentryOptions(env({ SENTRY_ENVIRONMENT: "development" })).environment, "development");
-  assert.equal(sentryOptions(env()).dataCollection?.userInfo, false);
 });
 
 

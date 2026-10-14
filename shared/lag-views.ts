@@ -9,7 +9,7 @@ import { getCorsHeaders, isForeignOrigin, jsonResponse, type OriginEnv } from "@
 import { LAG_KEYS, readLagEntry } from "@shared/lag";
 import { LagResult, loadLag } from "@shared/lag-result";
 import type { ReporterStat, ReportersPayload } from "@shared/reporter-ledger";
-import { getSentryStatus } from "@shared/sentry-status";
+import { getHealth } from "@shared/health";
 import { publicServer } from "@shared/server";
 import { getSiteDeployments } from "@shared/site-deployments";
 import type { StatusPayloads } from "@shared/status-payloads";
@@ -100,7 +100,7 @@ export const LAG_VIEW_LOADERS = {
   githubRepo: getGithubRepo,
   cloudflareWorkers: getCloudflareWorkers,
   siteDeployments: getSiteDeployments,
-  sentry: getSentryStatus,
+  health: getHealth,
   reporters: getReportersStatus,
   digest: getDigest,
 } satisfies { [K in LagViewKey]: LagViewLoader<StatusPayloads[K]> };

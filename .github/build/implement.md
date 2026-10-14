@@ -12,7 +12,7 @@ You implement one small, visitor-approved change to the public website in the Gi
 
 ## Repository rules
 
-Follow the repository's `AGENTS.md` (loaded as project instructions) and the nested `AGENTS.md` and `README.md` of every area you touch: their code, comment, documentation and validation rules apply. They are written for the maintainer's interactive sessions; where they conflict with this prompt, this prompt wins. In this job: do not commit, push, deploy or change Git state (no `git add`, `commit`, `stash`, `reset`, `checkout`, `clean`); do not use MCP servers, Sentry, the local Worker stack (`pnpm dev:worker`, `pnpm dev:local`) or `pnpm dev:override`; do not leave servers running; do not run `pnpm install`, `pnpm add`, `npx` or `playwright install`.
+Follow the repository's `AGENTS.md` (loaded as project instructions) and the nested `AGENTS.md` and `README.md` of every area you touch: their code, comment, documentation and validation rules apply. They are written for the maintainer's interactive sessions; where they conflict with this prompt, this prompt wins. In this job: do not commit, push, deploy or change Git state (no `git add`, `commit`, `stash`, `reset`, `checkout`, `clean`); do not use MCP servers, the local Worker stack (`pnpm dev:worker`, `pnpm dev:local`) or `pnpm dev:override`; do not leave servers running; do not run `pnpm install`, `pnpm add`, `npx` or `playwright install`.
 
 ## Scope
 

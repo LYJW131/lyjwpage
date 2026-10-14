@@ -73,7 +73,6 @@ export const avatarWatchJob: Job = {
   name: "avatar-watch",
   everyMinutes: 5,
   offset: 1,
-  maxRuntimeMinutes: 1,
   async run({ env }) {
     const token = env.GITHUB_DISPATCH_TOKEN?.trim();
     if (!token) return skipMissing("avatar-watch", ["GITHUB_DISPATCH_TOKEN"]);

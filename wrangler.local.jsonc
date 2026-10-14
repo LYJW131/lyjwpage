@@ -15,5 +15,8 @@
     "R2_PUBLIC_BASE_URL": "https://lyjw.me/img"
   },
   "images": { "binding": "IMAGES" },
+  "ratelimits": [
+    { "name": "RELAY_LIMIT", "namespace_id": "13105", "simple": { "limit": 20, "period": 60 } }
+  ],
   "observability": { "enabled": true }
 }

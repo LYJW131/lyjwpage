@@ -5,18 +5,18 @@
   I18N.add({
     "ch08.title": ["心电图与地层", "Heartbeat and strata"],
     "ch08.knock": ["敲门", "knock"],
-    "ch08.knockSub": ["每分钟一次", "every minute"],
+    "ch08.knockSub": ["采集 Worker · 每分钟一次", "collector · every minute"],
     "ch08.knockOnly": ["只说明 site Worker 还在出页面", "only proves the site Worker serves"],
     "ch08.checkin": ["报到", "check-in"],
     "ch08.checkinSub": ["每 5 分钟一次", "every 5 minutes"],
     "ch08.cron": ["cron", "cron"],
-    "ch08.n1a": ["外部探测从 Sentry 打进来，", "Sentry probes in from outside;"],
-    "ch08.n1b": ["cron 从 Worker 里主动报出去。", "the Worker's cron reports out."],
+    "ch08.n1a": ["探测每分钟从采集 Worker 打进来，", "The collector probes in every minute;"],
+    "ch08.n1b": ["cron 每轮跑完，自己记一笔心跳。", "the Worker's cron logs its own beat."],
     "ch08.foot": ["报到只证明 cron 跑完了。", "A check-in only proves the cron ran."],
     "ch08.collector": ["采集 Worker", "Collector"],
     "ch08.every5": ["每 5 分钟", "every 5 minutes"],
-    "ch08.n2a": ["查 Sentry 的是采集 Worker，", "The collector queries Sentry;"],
-    "ch08.n2b": ["页面只读可滞后层，不碰 Sentry。", "pages only read the lag layer."],
+    "ch08.n2a": ["汇总这两行的是采集 Worker，", "The collector sums up both rows;"],
+    "ch08.n2b": ["页面只读可滞后层，不碰 D1。", "pages only read the lag layer."],
     "ch08.archive": ["每 5 分钟压进一薄片", "a thin slice every 5 minutes"],
     "ch08.keep": ["长期保存", "kept long-term"],
     "ch08.older": ["越往左越早，一直留着", "older to the left, kept long-term"],
@@ -30,7 +30,7 @@
     "ch08.open": ["还没满", "not closed yet"],
     "ch08.n4a": ["窗关上两分钟后才交给 Clef，", "Two minutes after a window closes,"],
     "ch08.n4b": ["输入是前台应用、agent 与 token。", "Clef weighs apps, agents and tokens."],
-    "ch08.clawd": ["线上出错时，\n我先去 Sentry 查证据。", "When something breaks,\nI check Sentry first."],
+    "ch08.clawd": ["线上出错时，\n我先去 Workers Issues 查证据。", "When something breaks,\nI check Workers Issues first."],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
@@ -50,11 +50,11 @@
   const V = 200;
   const UP = [[-98, 0], [0, -220], [34, 46], [62, 0]];
   const DOWN = [[-16, 0], [0, 104], [14, -22], [30, 0]];
-  const SENTRY = { x: 1210, y: 120, w: 280, h: 170 };
+  const LEDGER = { x: 1210, y: 120, w: 280, h: 170 };
   const SITE = { x: 1110, y: 700, w: 200, h: 110 };
   const API = { x: 1400, y: 700, w: 250, h: 110 };
-  const KNOCK_PATH = [[NOW_X, SENTRY.y + SENTRY.h], [NOW_X, Y0], [SITE.x + SITE.w / 2, SITE.y]];
-  const CHECK_PATH = [[API.x + 60, API.y], [NOW_X, Y0], [NOW_X, SENTRY.y + SENTRY.h]];
+  const KNOCK_PATH = [[NOW_X, LEDGER.y + LEDGER.h], [NOW_X, Y0], [SITE.x + SITE.w / 2, SITE.y]];
+  const CHECK_PATH = [[API.x + 60, API.y], [NOW_X, Y0], [NOW_X, LEDGER.y + LEDGER.h]];
   const COL = [1830, 250], COL_R = 62;
   const LAGG = [1840, 470];
   const CARD = { x: 2080, y: 150, w: 780, h: 400 };
@@ -123,15 +123,6 @@
     line(x, cx, cy, cx + Math.cos(an) * r * 0.74, cy + Math.sin(an) * r * 0.74, 3.2, hot > 0.05 ? css("signalD") : bone, a);
     x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(cx, cy, 5, 0, TAU); x.fill(); x.restore();
   }
-  function keycard(x, cx, cy, a) {
-    if (a <= 0) return;
-    const w = 96, h = 44, col = css("signalD");
-    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.strokeStyle = col; x.lineWidth = 2.2;
-    roundRect(x, cx - w / 2, cy - h / 2, w, h, 7); x.fill(); x.stroke();
-    x.lineWidth = 1.4; x.strokeRect(cx - w / 2 + 10, cy - 8, 18, 14);
-    for (let j = 0; j < 2; j++) { x.beginPath(); x.moveTo(cx - 6, cy - 6 + j * 12); x.lineTo(cx + 34 - j * 12, cy - 6 + j * 12); x.stroke(); }
-    x.restore();
-  }
 
   function shapeY(shape, dx) {
     if (dx <= shape[0][0] || dx >= shape[shape.length - 1][0]) return 0;
@@ -186,11 +177,11 @@
     return py;
   }
 
-  function sentryBox(x, phi, a) {
+  function ledgerBox(x, phi, a) {
     if (a <= 0) return;
-    const { x: bx, y: by, w, h } = SENTRY;
+    const { x: bx, y: by, w, h } = LEDGER;
     box(x, bx, by, w, h, a);
-    text(x, "Sentry", bx + 22, by + 44, { font: FONT.mono(34, 600), color: css("bone"), alpha: a });
+    text(x, "health_buckets", bx + 22, by + 44, { font: FONT.mono(28, 600), color: css("bone"), alpha: a, maxW: w - 44 });
     [["lyjw.me", KNOCKS], ["Core", CHECKS]].forEach(([name, list], r) => {
       const y = by + 92 + r * 46;
       text(x, name, bx + 22, y + 9, { font: FONT.mono(28, 500), color: css("ash"), alpha: a });
@@ -218,7 +209,7 @@
     if (a <= 0) return;
     const bone = css("bone"), ash = css("ash");
     text(x, "↓ " + tr("ch08.knock"), NOW_X + 24, 372, { font: FONT.cjk(34, 600), color: bone, alpha: a });
-    text(x, "HEAD /api/version", NOW_X + 24, 414, { font: FONT.mono(28, 500), color: bone, alpha: a });
+    text(x, "GET /api/version", NOW_X + 24, 414, { font: FONT.mono(28, 500), color: bone, alpha: a });
     text(x, tr("ch08.knockSub"), NOW_X + 24, 454, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 1900 - NOW_X - 24 });
     text(x, tr("ch08.knockOnly"), NOW_X + 24, 494, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 1900 - NOW_X - 24 });
     text(x, "↑ " + tr("ch08.checkin") + (footA > 0.02 ? " *" : ""), API.x + API.w + 18, API.y + 40, { font: FONT.cjk(34, 600), color: bone, alpha: a });
@@ -235,7 +226,7 @@
 
   const lagPath = [[COL[0], COL[1] + COL_R], [LAGG[0], LAGG[1] - 40]];
   const toCard = [[LAGG[0] + 70, LAGG[1]], [CARD.x - 10, LAGG[1]]];
-  const toSentry = [[COL[0] - COL_R, COL[1]], [SENTRY.x + SENTRY.w + 8, COL[1]]];
+  const toLedger = [[COL[0] - COL_R, COL[1]], [LEDGER.x + LEDGER.w + 8, COL[1]]];
   function collector(x, e, b, a) {
     if (a <= 0) return;
     const phi = b * 4;
@@ -245,15 +236,16 @@
     text(x, tr("ch08.every5"), COL[0], COL[1] + COL_R + 82, { font: FONT.cjk(28, 600), color: css("ash"), align: "center", alpha: a });
     glyph(x, "lag", LAGG[0], LAGG[1], css("bone"), 0.8);
     text(x, "KV LAG", LAGG[0], LAGG[1] + 58, { font: FONT.mono(28, 500), color: css("ash"), align: "center", alpha: a });
-    dashPath(x, toSentry, 0.4 * a);
+    dashPath(x, toLedger, 0.4 * a);
     dashPath(x, [[COL[0], COL[1] + COL_R + 96], [LAGG[0], LAGG[1] - 36]], 0.4 * a);
     dashPath(x, toCard, 0.4 * a);
     const kGo = prog(b, AT.fetch, AT.fetch + 0.22, E.io), kBack = prog(b, AT.back, AT.back + 0.25, E.io);
     if (b >= AT.fetch && b < AT.back + 0.3) {
       const k = b < AT.back ? kGo : 1 - kBack;
-      const px = lerp(toSentry[0][0] - 60, toSentry[1][0] + 60, k);
-      keycard(x, px, COL[1], a);
-      text(x, "GET", px, COL[1] - 36, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: a });
+      const px = lerp(toLedger[0][0] - 60, toLedger[1][0] + 60, k);
+      x.save(); x.globalAlpha = a; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, COL[1], 9, 0, TAU); x.fill(); x.restore();
+      glow(e, px, COL[1], 34, 0.55 * a);
+      text(x, "SELECT", px, COL[1] - 30, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: a });
     }
     const dk = prog(b, AT.back + 0.25, AT.lit, E.io);
     if (dk > 0 && dk < 1) dot(x, e, [[COL[0], COL[1] + COL_R + 96], [LAGG[0], LAGG[1] - 36], [LAGG[0] + 70, LAGG[1]], [CARD.x - 10, LAGG[1]]], dk, a, 7);
@@ -263,7 +255,7 @@
     const { x: cx, y: cy, w, h } = CARD;
     sheet(d, cx, cy, w, h, { alpha: a });
     text(d, "LYJWPAGE", cx + 36, cy + 56, { font: FONT.mono(32, 700), alpha: a });
-    text(d, "/api/status/sentry", cx + w - 36, cy + 54, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: a });
+    text(d, "/api/status/health", cx + w - 36, cy + 54, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: a });
     line(d, cx + 30, cy + 78, cx + w - 30, cy + 78, 1.4, css("pink"), a);
     const lit = prog(b, AT.lit, AT.lit + 0.1, E.outBack);
     const cw = (w - 72 - (UPTIME_CELLS - 1) * 4) / UPTIME_CELLS;
@@ -455,7 +447,7 @@
     const bone = css("bone");
     text(x, "08", 110, 196, { font: FONT.pixel(112), color: css("signalD"), alpha: a });
     text(x, tr("ch08.title"), 290, 176, { font: FONT.cjk(58, 600), color: bone, reveal: prog(b, 0.5, 1.0), alpha: a });
-    text(x, "Sentry · workers/core · D1", 292, 226, { font: FONT.mono(28), color: css("ash"), reveal: prog(b, 0.6, 1.1), alpha: a });
+    text(x, "collector · workers/core · D1", 292, 226, { font: FONT.mono(28), color: css("ash"), reveal: prog(b, 0.6, 1.1), alpha: a });
     line(x, 110, 262, 110 + 900 * prog(b, 0.55, 1.2, E.outExpo), 262, 1.4, bone, 0.6 * a);
   }
 
@@ -477,7 +469,7 @@
     const labA = prog(b, 0.55, 0.95) * outA * (1 - win(b, 7.85, 8.05, 9.9, 10.1));
     title(x, b);
     ecg(x, e, b, cam, labA * (1 - prog(b, 3.9, 4.0)), 1 - 0.65 * win(b, 6.0, 6.4, 10.6, 11.3));
-    sentryBox(x, phi, labA);
+    ledgerBox(x, phi, labA);
     siteBoxes(x, phi, labA);
     signalPaths(x, e, phi, labA);
     signalLabels(x, win(b, 0.6, 0.95, 3.85, 4.0), win(b, 2.5, 2.7, 3.85, 4.0));

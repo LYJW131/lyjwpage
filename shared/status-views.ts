@@ -36,7 +36,7 @@ export const STATUS_VIEWS = {
   githubRepo: { path: "/api/status/github-repo", layer: "lag", tag: "github-repo", cadenceMs: 30 * 60_000 },
   cloudflareWorkers: { path: "/api/status/cloudflare-workers", layer: "lag", cadenceMs: 2 * 60_000 },
   siteDeployments: { path: "/api/status/site-deployments", layer: "lag", cadenceMs: 60_000 },
-  sentry: { path: "/api/status/sentry", layer: "lag", cadenceMs: 5 * 60_000 },
+  health: { path: "/api/status/health", layer: "lag", cadenceMs: 5 * 60_000 },
   reporters: { path: "/api/status/reporters", layer: "lag", cadenceMs: 60_000 },
   pulse: { path: "/api/status/pulse", layer: "realtime" },
   digest: { path: "/api/status/digest", layer: "lag", tag: "digest", cadenceMs: 900_000 },

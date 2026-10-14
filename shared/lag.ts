@@ -12,7 +12,7 @@ export const LAG_KEYS = {
   pagespeed: "pagespeed:v1",
   cloudflareDeployments: "cloudflare-deployments:v1",
   cloudflareMetrics: "cloudflare-metrics:v1",
-  sentry: "sentry:v1",
+  health: "health:v1",
   server: "server:v1",
   limits: "limits:v1",
   timezone: "timezone:v1",

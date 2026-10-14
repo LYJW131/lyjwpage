@@ -7,7 +7,6 @@ export const githubChartJob: Job = {
   name: "github-chart",
   everyMinutes: 10,
   offset: 1,
-  maxRuntimeMinutes: 2,
   async run({ env }) {
     const token = env.GITHUB_TOKEN?.trim();
     if (!token) return skipMissing("github-chart", ["GITHUB_TOKEN"]);

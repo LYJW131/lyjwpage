@@ -98,7 +98,6 @@ export const githubRepoJob: Job = {
   name: "github-repo",
   everyMinutes: 30,
   offset: 2,
-  maxRuntimeMinutes: 3,
   async run({ env, scheduled }) {
     // Workers 出口共享匿名限额；总数接口也要求令牌，不能仅凭名单可匿名读就省略它。
     const token = env.GITHUB_TOKEN?.trim();

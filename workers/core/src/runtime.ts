@@ -16,9 +16,6 @@ export interface Env {
   SITE_CACHE?: SiteCacheRpc;
   STORAGE_PREFIX?: string;
   ALLOWED_ORIGINS?: string;
-  SENTRY_DSN?: string;
-  SENTRY_ENVIRONMENT?: string;
-  CF_VERSION_METADATA?: WorkerVersionMetadata;
   AI_SERVICE?: Pick<Fetcher, "fetch">;
 }
 

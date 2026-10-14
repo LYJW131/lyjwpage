@@ -1,8 +1,6 @@
 import { WorkerEntrypoint, env as workerEnv } from "cloudflare:workers";
 import { RouterContextProvider, createRequestHandler } from "react-router";
 
-import * as Sentry from "@sentry/cloudflare";
-
 import { installLagReader, readLag } from "@shared/lag";
 import { lagEnvelope, serveLagStatus } from "@shared/lag-views";
 import type { SiteCacheRpc } from "@shared/site-cache";
@@ -30,8 +28,8 @@ import {
 } from "@/lib/image-proxy";
 import { LYRICS_PATH } from "@shared/apple-music-paths";
 import type { LyricsResult } from "@shared/lyrics-ttml";
-import { relaySentryEnvelope } from "@/lib/sentry-tunnel";
 import { archivedAssetKey } from "@/lib/asset-archive";
+import { isSiteOrigin, relayClientError } from "@/lib/error-relay";
 import {
   HOME_CACHE_TAG,
   IMMUTABLE_ASSET_CACHE_CONTROL,
@@ -59,8 +57,6 @@ import {
   type StatusViewKey,
 } from "@shared/status-views";
 import { siteContext, type SiteServices } from "@/server/site-context";
-
-import { sentryOptions } from "./sentry";
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
@@ -105,7 +101,7 @@ async function purgeTags(cache: CacheContext | undefined, owner: string, tags: s
   }
 }
 
-class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
+export class StatusSnapshot extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const key =
@@ -162,7 +158,7 @@ class StatusSnapshotBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   }
 }
 
-class ImageVariantsBase extends WorkerEntrypoint<Env> {
+export class ImageVariants extends WorkerEntrypoint<Env> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== "GET" && request.method !== "HEAD") return errorResponse(404);
@@ -285,7 +281,7 @@ function bytesStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
   });
 }
 
-class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
+export class RenderedSite extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   async fetch(request: Request): Promise<Response> {
     const context = new RouterContextProvider();
     context.set(siteContext, this.services());
@@ -361,6 +357,10 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   }
 }
 
+function backendRedirect(env: Env, url: URL): Response {
+  return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
+}
+
 // 分支 Preview 去掉了 R2 绑定（scripts/site-preview.mjs#sitePreviewConfig），没有绑定就按缺档处理。
 async function serveArchivedAsset(request: Request, env: Env): Promise<Response> {
   const key = archivedAssetKey(new URL(request.url).pathname);
@@ -374,15 +374,6 @@ async function serveArchivedAsset(request: Request, env: Env): Promise<Response>
   return object ? new Response(object.body, { headers: archivedAssetHeaders(object) }) : errorResponse(404);
 }
 
-async function relaySentry(request: Request, env: Env): Promise<Response> {
-  const result = await relaySentryEnvelope(request, env.SENTRY_DSN);
-  if ("reject" in result) return errorResponse(result.reject);
-  const headers = new Headers({ "Cache-Control": NO_STORE });
-  const type = result.response.headers.get("Content-Type");
-  if (type) headers.set("Content-Type", type);
-  return new Response(result.response.body, { status: result.response.status, headers });
-}
-
 const siteWorker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -390,13 +381,21 @@ const siteWorker = {
     switch (route.kind) {
       case "lag-status":
         if (isProduction(env)) return serveLagStatus(request, route.view, env);
-        return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
+        return backendRedirect(env, url);
       case "core":
+        return isProduction(env) ? env.CORE_SERVICE.fetch(request) : backendRedirect(env, url);
       case "ai":
+        return isProduction(env) ? env.AI_SERVICE.fetch(request) : backendRedirect(env, url);
       case "collector":
-        return Response.redirect(`${backendOrigin(env)}${url.pathname}${url.search}`, 307);
-      case "sentry-relay":
-        return relaySentry(request, env);
+        return isProduction(env) ? env.COLLECTOR_SERVICE.fetch(request) : backendRedirect(env, url);
+      case "error-relay": {
+        if (!isSiteOrigin(request)) return errorResponse(403, "Foreign origin");
+        if (!(await env.RELAY_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") ?? "" })).success) {
+          return errorResponse(429, "Too many error reports");
+        }
+        const status = await relayClientError(request);
+        return status === 204 ? new Response(null, { status, headers: { "Cache-Control": NO_STORE } }) : errorResponse(status, "Invalid error report");
+      }
       case "image-proxy":
         return ctx.exports.ImageVariants.fetch(request);
       case "image-object":
@@ -418,29 +417,4 @@ const siteWorker = {
   },
 };
 
-function withoutTraceHeaders(request: Request): Request {
-  if (!request.headers.has("sentry-trace") && !request.headers.has("baggage")) return request;
-  const headers = new Headers(request.headers);
-  headers.delete("sentry-trace");
-  headers.delete("baggage");
-  return new Request(request, { headers });
-}
-
-const instrumentedSite = Sentry.withSentry(sentryOptions, siteWorker);
-
-export const StatusSnapshot = Sentry.withSentry(sentryOptions, StatusSnapshotBase);
-export const ImageVariants = Sentry.withSentry(sentryOptions, ImageVariantsBase);
-export const RenderedSite = Sentry.withSentry(sentryOptions, RenderedSiteBase);
-
-// 转交 core / ai / collector 的请求在 Sentry 包装之外分流，由各自的 Worker 上报；去掉浏览器带来的追踪头，后端才按自己的采样率采样。
-export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (isProduction(env)) {
-      const { kind } = classifyGatewayRequest(request.method, new URL(request.url).pathname);
-      if (kind === "core") return env.CORE_SERVICE.fetch(withoutTraceHeaders(request));
-      if (kind === "ai") return env.AI_SERVICE.fetch(withoutTraceHeaders(request));
-      if (kind === "collector") return env.COLLECTOR_SERVICE.fetch(withoutTraceHeaders(request));
-    }
-    return instrumentedSite.fetch(request, env, ctx);
-  },
-} satisfies ExportedHandler<Env>;
+export default siteWorker satisfies ExportedHandler<Env>;

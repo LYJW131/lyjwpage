@@ -1,13 +1,13 @@
 "use client";
 
 import { Component, useEffect, useRef, useState, type ReactNode } from "react";
-import * as Sentry from "@sentry/react";
 import { RefreshCw, RotateCw } from "lucide-react";
 import { useSWRConfig } from "swr";
 
 import { Card } from "@/components/ui/card";
 import { useVersionStatus } from "@/hooks/use-app-version";
 import { createFaultLedger, describeFault, primeCardCache, type FaultRecord } from "@/lib/card-recovery";
+import { reportError } from "@/lib/error-report";
 import { fetchStatus, guardPolled, writeGeneration } from "@/lib/status-reads";
 import { viewKeyByPath } from "@shared/status-views";
 import { cn } from "@/lib/utils";
@@ -77,9 +77,7 @@ function CardFault({
     const current = episode.current;
     if (!current.report || current.reported) return;
     current.reported = true;
-    Sentry.captureException(error, {
-      tags: { boundary: "card", card: label, versionStatus: status, retries: String(current.attempt) },
-    });
+    reportError(error, "boundary", { card: label, versionStatus: status, retries: String(current.attempt) });
   }, [error, label, status]);
 
   useEffect(() => {

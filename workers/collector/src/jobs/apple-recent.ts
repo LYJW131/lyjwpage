@@ -274,7 +274,6 @@ export const appleRecentJob: Job = {
   name: "apple-recent",
   everyMinutes: 1,
   offset: 0,
-  maxRuntimeMinutes: 2,
   async run({ env, now, scheduled }) {
     const lastChangeAt = scheduled ? await get<number>(LAST_CHANGE_KEY) : undefined;
     if (scheduled && !appleRecentDue(now, lastChangeAt)) return { status: "skipped", detail: "idle" };
@@ -287,7 +286,7 @@ export const appleRecentJob: Job = {
     const resolved = await resolveCredentials();
     const ownerName = signing.values.APPLE_MUSIC_OWNER_NAME;
     const recentTracks = async () => maskOwnerName(await assembleRecentTracks(resolved), ownerName);
-    // 失败信息里拼着 Apple 的响应正文，进日志和 Sentry 之前同样打码。
+    // 失败信息里拼着 Apple 的响应正文，进日志之前同样打码。
     const masked = (error: unknown) => new Error(maskOwnerName(explain(error), ownerName));
     const polledAt = Date.now();
     const [items, tracks] = await Promise.allSettled([

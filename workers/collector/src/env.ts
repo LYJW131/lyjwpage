@@ -23,12 +23,6 @@ export interface Env extends MusicKitTokenEnv {
   GITHUB_TOKEN?: string;
   GITHUB_DISPATCH_TOKEN?: string;
   CLOUDFLARE_METRICS_TOKEN?: string;
-  SENTRY_API_TOKEN?: string;
   PAGESPEED_API_KEY?: string;
   APPLE_MUSIC_OWNER_NAME?: string;
-
-  SENTRY_DSN?: string;
-  SENTRY_ENVIRONMENT?: string;
-  SENTRY_CRON_CHECKINS?: string;
-  CF_VERSION_METADATA?: WorkerVersionMetadata;
 }

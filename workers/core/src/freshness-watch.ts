@@ -6,14 +6,14 @@ import {
   DIGEST_STALE_MS,
   GITHUB_CHART_STALE_MS,
   GITHUB_REPO_STALE_MS,
+  HEALTH_STALE_MS,
   PAGESPEED_STALE_MS,
   PLAYSTATION_STALE_MS,
-  SENTRY_STALE_MS,
   SERVER_STALE_MS,
   SITE_ANALYTICS_STALE_MS,
   SITE_DEPLOYMENTS_STALE_MS,
 } from "@shared/freshness";
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/health";
 import { RESUME_STALE_MS, resumeMirror } from "@shared/emby-store";
 import { LAG_KEYS, readLag, writeLag, type LagKey, type LagStore } from "@shared/lag";
 import { presenceMirror } from "@shared/playstation-store";
@@ -65,7 +65,7 @@ export const LAG_FEEDS: readonly LagFeed[] = [
   { source: "pagespeed", key: LAG_KEYS.pagespeed, thresholdMs: PAGESPEED_STALE_MS },
   { source: "cloudflare-deployments", key: LAG_KEYS.cloudflareDeployments, thresholdMs: CLOUDFLARE_DEPLOYMENTS_STALE_MS },
   { source: "cloudflare-metrics", key: LAG_KEYS.cloudflareMetrics, thresholdMs: CLOUDFLARE_METRICS_STALE_MS },
-  { source: "sentry", key: LAG_KEYS.sentry, thresholdMs: SENTRY_STALE_MS },
+  { source: "health", key: LAG_KEYS.health, thresholdMs: HEALTH_STALE_MS },
   { source: "digest", key: LAG_KEYS.digest, thresholdMs: DIGEST_STALE_MS },
 ];
 

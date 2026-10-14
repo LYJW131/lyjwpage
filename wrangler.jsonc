@@ -14,8 +14,7 @@
   "vars": {
     "SITE_ENV": "production",
     "PUBLIC_BACKEND_URL": "https://lyjw.me",
-    "ALLOWED_ORIGINS": "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me",
-    "SENTRY_DSN": "https://13d4c7b65d377b6a3e1e546f9d940b9d@o4511888459890688.ingest.us.sentry.io/4512132602331136"
+    "ALLOWED_ORIGINS": "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me"
   },
   "services": [
     { "binding": "PUBLIC_STATUS", "service": "core", "entrypoint": "PublicStatus" },
@@ -31,7 +30,17 @@
     { "binding": "ASSET_ARCHIVE", "bucket_name": "lyjw-homepage" }
   ],
   "images": { "binding": "IMAGES" },
-  "observability": { "enabled": true, "head_sampling_rate": 1, "issues": { "enabled": true } },
+  // 一页最多报 MAX_REPORTS_PER_PAGE（src/lib/error-report.ts）条；按 IP 的限额给刷新留余量，超出的不进日志。
+  "ratelimits": [
+    { "name": "RELAY_LIMIT", "namespace_id": "13105", "simple": { "limit": 20, "period": 60 } }
+  ],
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 },
+    "issues": { "enabled": true }
+  },
   "cache": { "enabled": false },
   "exports": {
     "RenderedSite": { "type": "worker", "cache": { "enabled": true } },

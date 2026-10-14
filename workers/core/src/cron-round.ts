@@ -1,12 +1,10 @@
-import * as Sentry from "@sentry/cloudflare";
-
 import { historyArchiveEnabled, pulseScoringEnabled, type Env } from "./runtime";
 import { PulseArchive } from "./pulse-archive";
 import { PulseScorer, clefDecide } from "./pulse-score";
 import { freshnessCheckDue, watchFreshness, type FreshnessEvent } from "./freshness-watch";
 import type { PulseTick } from "./state-hub";
 
-// 只有 StateHub 整个调不通才让这一轮按失败报到；子步骤失败只记 warn 和一条事件，站点的 Core 在线行不跟着闪。
+// 只有 StateHub 整个调不通才让这一轮记成失败心跳；子步骤失败只记一条错误日志，站点的 Core 在线行不跟着闪。
 export async function runCronRound(env: Env, scheduledTime: number): Promise<void> {
   const archiving = historyArchiveEnabled(env);
   const scoring = pulseScoringEnabled(env);
@@ -52,15 +50,12 @@ function tickShape({ archive, score }: PulseTick) {
 }
 
 function stepFailed(step: string, error: unknown): void {
-  console.warn(`[${step}]`, error);
-  Sentry.captureException(error, { level: "warning", tags: { "cron.step": step } });
+  console.error(`[cron-step] ${step}`, error);
 }
 
+// 断流记 error 级，Workers Issues 按来源各开一条；恢复只记 info，不进 Issues。
 function reportFreshness({ source, state, lastSeenAt, ageMs, thresholdMs }: FreshnessEvent): void {
-  Sentry.captureMessage(state === "stale" ? `Feed stale: ${source}` : `Feed recovered: ${source}`, {
-    level: state === "stale" ? "warning" : "info",
-    tags: { "freshness.source": source, "freshness.state": state },
-    extra: { lastSeenAt: new Date(lastSeenAt).toISOString(), ageMinutes: Math.round(ageMs / 60_000), thresholdMinutes: thresholdMs / 60_000 },
-    fingerprint: ["freshness", source, state],
-  });
+  const detail = { source, lastSeenAt: new Date(lastSeenAt).toISOString(), ageMinutes: Math.round(ageMs / 60_000), thresholdMinutes: thresholdMs / 60_000 };
+  if (state === "stale") console.error(`Feed stale: ${source}`, JSON.stringify(detail));
+  else console.info(`Feed recovered: ${source}`, JSON.stringify(detail));
 }
