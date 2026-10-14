@@ -84,13 +84,31 @@ node scripts/site-verify.mjs shot --url http://localhost:3211 --card pulse --the
 - Codex 已跑了几轮（每次推送自动算一轮，上限 3 轮）。Cursor Bugbot 额度用完时当它不存在，不等它也不提（站主定的规矩）；它真跑出来的意见照常列。
 - 验证员只列清单；哪条要修、哪条回复说明不修，由主线程决定。
 
+### 3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有
+
+只用于上面要等机器评审的那类 PR。写代码的线程不判自己的活：CI 绿、评审意见都处理完后，合并前派一个新的判定员。
+
+```
+Agent(
+  description: "Judge PR #<号> at <head 短 sha>",
+  subagent_type: "general-purpose",
+  model: "opus",           // 判断活留在主模型
+  effort: "high",
+  run_in_background: false,
+  prompt: <下面的简报>
+)
+```
+
+- 简报只给：站主的原话（线程根消息和后来补的要求，原文照贴）、PR 号与当前 head 的完整 SHA、这轮验证员的证据表。不给 PR 描述和线程里的推理，让它自己读 `git diff origin/main...<sha>` 和调用方。
+- 它回答三件事：diff 是否做到了站主要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）；证据表里有没有没验到却算通过的项。结论写 `PASS` 或 `FAIL`，FAIL 列出要修的项。
+- 判定员只读：不改文件、不提交、不在 GitHub 上评论。主线程把结论原样发成一条 PR 评论，第一行写 `判定 <head 完整 SHA>：PASS` 或 `FAIL`。
+- 结论只对那个 SHA 有效：之后再推提交，合并前按新 head 重派一次。FAIL 的项修完再判，不和判定员争；确实判错了（比如误读了站主原话），在 PR 评论里写明依据，交站主定。
+
 ### 4. 合并后部署与生产核对
 
-- 先看合并改到了哪些 Worker 的监视路径（`docs/workers-builds.md`「构建监视路径」）。没碰到 site 的（只改文档、只改别的 Worker），`/api/version` 本来就不会变，跳过下面的版本等待，只核对碰到的那几个 Worker 的构建和受影响的生产行为。
-- 碰到 site 时，每 20 秒轮询 `curl -sS -H 'Cache-Control: no-cache' https://lyjw.me/api/version` 与 `https://lyjw131.com/api/version`，最多 10 分钟，直到 `.commit` 等于合并提交的完整 sha。
-  - 是更新的提交且以合并 sha 为祖先（`git merge-base --is-ancestor`）：通过（被后来的部署覆盖）。
-  - 10 分钟后仍是更旧的提交：FAIL，可能是两次合并并行构建、旧版本后完成。只报告，是否重跑 main 的构建由主线程决定（从不手跑 `wrangler deploy`）。
-- 合并提交上对应 Worker 的 Workers Builds 检查结论（`Workers Builds: site`，改到哪个 Worker 就看哪个）。GitHub MCP 的检查工具只看得到 PR head 上的检查；main 上合并提交的检查用只读的 `gh api repos/LYJW131/lyjwpage/commits/<sha>/check-runs`。
+- 合并没碰到 site 的监视路径时（`docs/workers-builds.md`「构建监视路径」），`/api/version` 本来就不会变；下面的脚本没看到 site 的构建检查就不等版本，只核对碰到的那几个 Worker 的构建，受影响的生产行为照样要复测。
+- 构建与版本等待交给共用脚本，不手写轮询：跑 `NODE_USE_ENV_PROXY=1 node scripts/deploy-check.mjs --sha <合并提交完整 sha> --expect <这次碰到监视路径的 Worker，如 site,core>`（`--help` 看选项）。`--expect` 由主线程按监视路径定好写进简报，列出的 Worker 没有成功构建就不通过。它等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 重跑过只认最新那条）；有 site 的构建就再等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 跟上这个提交，被之后的提交覆盖也算通过（`superseded`）。输出 JSON，`pass` 为假时 `next` 写下一步。
+  - 构建失败或超时、版本停在更旧的提交：FAIL，原样报告 `next`。是否重跑 main 的构建由主线程按下一条决定（从不手跑 `wrangler deploy`）。
 - main 上的构建失败时，主线程先读构建日志（Cloudflare Builds API 的 `/builds/builds/<build_uuid>/logs`）。是平台临时错误（部署步 Cloudflare 内部错误、代码与 typecheck 都过了）就直接用 Builds API 对同一 trigger 带 `commit_hash` 重跑，不用问站主，跑完核对结论并在汇报里提一句；main 头已有更新的同 Worker 提交时重跑 main 头，免得回滚。代码或配置导致的失败照常先修。
 - 在生产域名上复测这次受影响的行为（同第 2 节的方法，URL 换成 `https://lyjw.me/`；涉及 ESA 缓存的也看 `https://lyjw131.com/`）。看完立刻关浏览器：开着的页面会按轮询节奏一直请求 API。
 - 定时任务产出的东西（摘要、采集）要等到下一个整点任务跑过再核对，不要在任务跑之前判失败。
