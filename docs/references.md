@@ -19,7 +19,7 @@
 - **[here's how i shipped 2,500 PRs last month](https://x.com/poteto/status/2102050467505430555)**（poteto / Lauren Tan，X 上的演讲视频）
   - 是什么：一个人同时驱动大量 agent 的做法。主线是「先让环境值得信任，并行是信任的结果」。
   - 取了什么：纠错阶梯，即每次纠正 agent 都落到能挡住它的最高一层（代码库 → lint / CI → 规则 → skill → 人工 review）；验证 skill 做成「共用 CLI + 功能地图」；让一个「园丁」专找正在被复制的坏写法，先写 lint 止血。
-  - 状态：部分采用。纠错阶梯落在根 `AGENTS.md`「规则 → 由什么强制」表与 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「复盘需求偏差」的修正分档，配套检查是 `scripts/rules-check.mjs`、`scripts/ui-copy-check.mjs` 和 `design-scale-check.mjs` 扩项；验证 skill 见下面 pstack 一条；园丁并进每日代码审查定时任务，发现记在缓冲 issue #280（定时任务登记见 [ops-facts.md](./ops-facts.md)）。外环（错误 → 分诊 → 两次复现 → 留给 lyjw 否决 → 另开线程修）落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3b 步，读 Workers Observability，不读 Sentry。
+  - 状态：部分采用。纠错阶梯落在根 `AGENTS.md`「规则 → 由什么强制」表与 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「复盘需求偏差」的修正分档，配套检查是 `scripts/rules-check.ts`、`scripts/ui-copy-check.ts` 和 `design-scale-check.ts` 扩项；验证 skill 见下面 pstack 一条；园丁并进每日代码审查定时任务，发现记在缓冲 issue #280（定时任务登记见 [ops-facts.md](./ops-facts.md)）。外环（错误 → 分诊 → 两次复现 → 留给 lyjw 否决 → 另开线程修）落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3b 步，读 Workers Observability，不读 Sentry。
   - 相关：她的长文 [Loops You Can Trust](https://x.com/poteto/status/2069824386283319343)、[The Complete Guide to pstack Pt. 1](https://x.com/poteto/status/2094457600259842065)、[Pt. 2](https://x.com/poteto/status/2097732320606507506)。
 - **[LIVE: Poteto (creator of pstack) on shipping 1,000's of PR's a month at SpaceX](https://www.youtube.com/watch?v=MN9dGgmLyso)**（Matt Pocock 对 poteto 的直播访谈，YouTube）
   - 是什么：上面那场演讲的延伸问答，讲这套做法每天怎么运转：内外循环、协调者、合并后抽检、full autopilot。
@@ -62,7 +62,7 @@
 - **[Vercel design.md](https://vercel.com/design.md)** 与博文 **[How our agents build on-brand pages with design.md](https://vercel.com/blog/how-our-agents-build-on-brand-pages-with-design-md)**（Vercel）
   - 是什么：教 agent 做 Vercel 署名报告页的公开 skill，配一套评测循环。
   - 取了什么：只取方法，不取视觉语言。具体是：每个间距只有一个主人；规则冲突时的优先级；同级数值不因内容更长单独缩字号；一组条形共用轨道和比例尺；分开诊断「太多」和「太吵」；能机检的规则交给代码。
-  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)、[lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)，以及只减不增的门禁 [design-scale-check.mjs](../scripts/design-scale-check.mjs)（`pnpm design:scale`）。
+  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)、[lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)，以及只减不增的门禁 [design-scale-check.ts](../scripts/design-scale-check.ts)（`pnpm design:scale`）。
 - **[Google Labs DESIGN.md 格式](https://github.com/google-labs-code/design.md)**
   - 是什么：给 agent 读的设计规范文件格式。
   - 取了什么：章节顺序。

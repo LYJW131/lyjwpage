@@ -24,12 +24,12 @@
 
 - 把所有采纳合并成类：问题的根因相同才算一类（「注释漏写新例外」和「文档指针失效」是两类）。
 - 一类进提议要满足：在两个以上不同 PR 里被采纳；只出现一次的记进 `ledger`，`kind: "review"`、`status: "watching"`，`evidence` 写 PR 号和评审线程链接，下次再见到才提。
-- 先查是否已有约束：根 `AGENTS.md`「规则 → 由什么强制」表、`eslint.config.mjs`、`scripts/rules-check.mjs`、`.claude/settings.json` 的钩子、`.claude/skills/`、子目录 `AGENTS.md`。已有约束却还被评审抓到，查它为什么没拦住（范围漏了目录、写法没被匹配、规则写在没人读的位置），改那一处，不另起一份。
+- 先查是否已有约束：根 `AGENTS.md`「规则 → 由什么强制」表、`eslint.config.mjs`、`scripts/rules-check.ts`、`.claude/settings.json` 的钩子、`.claude/skills/`、子目录 `AGENTS.md`。已有约束却还被评审抓到，查它为什么没拦住（范围漏了目录、写法没被匹配、规则写在没人读的位置），改那一处，不另起一份。
 
 ## 落地（纠错阶梯，能用上一档就不用下一档）
 
 1. **代码结构**（改类型或 API 形状让错写法编译不过）：只写成提议放进报告，等 lyjw 一句话。
-2. **确定性检查**：ESLint 规则（`eslint.config.mjs`，自定义规则配 `scripts/eslint-rules.test.mjs`）、`scripts/rules-check.mjs` 的新条目（配 `scripts/rules-check.test.mjs`）、或 `.claude/settings.json` 的钩子（照 `scripts/guard-forbidden-commands.mjs` 配测试）。要求：
+2. **确定性检查**：ESLint 规则（`eslint.config.mjs`，自定义规则配 `scripts/eslint-rules.test.mjs`）、`scripts/rules-check.ts` 的新条目（配 `scripts/rules-check.test.ts`）、或 `.claude/settings.json` 的钩子（照 `scripts/guard-forbidden-commands.mjs` 配测试）。要求：
    - 用被评审抓到的那次真实错误证明会报错：在修复提交的父提交上跑，或把那段旧代码写进测试用例。
    - 在当前 main 上不报错。已有零星违例的，同 PR 顺手改掉；违例多到要加基线豁免的，不加这条检查，退到下一档并在报告里说明。
    - 钩子只用来拦 `AGENTS.md` 已经禁止的事，或在写代码时提醒（不拦）；拿不准会不会误拦正常操作的，不做成拦截。

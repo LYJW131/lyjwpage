@@ -59,7 +59,7 @@ node .claude/skills/lyjwpage-ui-design/ui-audit.mjs --dark --only=digest # 深�
 - 太吵：颜色、字号、字重、边框、动效在抢。降低这些的强度，但留一个视觉重点，不把整张卡压平。
 - 不齐：跑量尺脚本看左边缘、字号阶梯、同排等高；读数对了再看是不是间距主人乱了（子元素各带外边距）。
 
-修完把这次纠正写成 `DESIGN.md` 里一条能被人或脚本核对的句子（「组间距等于 inset」，而不是「更透气」）；能机检的，同时加进 `ui-audit.mjs`（看渲染结果）或 `scripts/design-scale-check.mjs`（看源码里的类名）。改规则，不只手调这一张卡。
+修完把这次纠正写成 `DESIGN.md` 里一条能被人或脚本核对的句子（「组间距等于 inset」，而不是「更透气」）；能机检的，同时加进 `ui-audit.mjs`（看渲染结果）或 `scripts/design-scale-check.ts`（看源码里的类名）。改规则，不只手调这一张卡。
 
 ## 外部设计 skill 怎么用
 
