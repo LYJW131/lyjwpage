@@ -30,7 +30,7 @@
     { "binding": "IMAGE_OBJECTS", "bucket_name": "lyjw-homepage" }
   ],
   "images": { "binding": "IMAGES" },
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "observability": { "enabled": true, "head_sampling_rate": 1, "issues": { "enabled": true } },
   "cache": { "enabled": false },
   "exports": {
     "RenderedSite": { "type": "worker", "cache": { "enabled": true } },

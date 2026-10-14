@@ -106,6 +106,7 @@
 - **[Workers Observability](https://developers.cloudflare.com/workers/observability/)** 与 Workers Issues、Web Analytics（Cloudflare 文档）
   - 是什么：Cloudflare 自带的报错分组、日志与 Web Vitals。
   - 取了什么：评估了能否完全替代 Sentry：心跳与在线条自建、报错数取 Observability、Vitals 取 Web Analytics、浏览器报错经 `/relay` 进 Worker 日志。
+  - 已开：后端 4 个 Worker 与站点 Worker 的 Workers Issues（各自 wrangler 配置的 `observability.issues.enabled`），后端 4 个另开 `upload_source_maps` 让调用栈对回源码。
   - 状态：待定。PR #198 是草稿，站主记作长期待办；在那之前线上排查仍以根 [AGENTS.md](../AGENTS.md)「排查线上错误」的 Sentry 为准。
 - **[Durable Object 的 transfer 迁移](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/#transfer-migration)**（Cloudflare 文档）
   - 是什么：把 DO 类从一个 Worker 转到另一个。

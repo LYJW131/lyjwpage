@@ -1,5 +1,6 @@
 name = "core"
 main = "src/index.ts"
+upload_source_maps = true
 compatibility_date = "2026-09-08"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
 # 没有公开地址，生产流量只经 Service Binding 进来。生产部署会按这里重写整个 Worker 的 Preview URL 开关，分支 Preview 靠 preview_urls 保持打开。
@@ -40,6 +41,9 @@ database_name = "lyjwpage-history"
 database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 
 [observability]
+enabled = true
+
+[observability.issues]
 enabled = true
 
 # 定时一轮由采集 Worker 每分钟经 StateCore.cronRound 驱动（为什么不用 Cloudflare cron 见 docs/ops-facts.md）。
