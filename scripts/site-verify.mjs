@@ -147,6 +147,7 @@ const HELP = `site-verify — 站点验证共用脚本（lyjwpage-verify）
   cards     按 .claude/skills/lyjwpage-verify/feature-map.json 逐张卡片检查存在与可见
   shot      按宽度截图（整页或单卡 clip），同时收集控制台 error / warn / pageerror
   reload    热缓存刷新，查首次绘制后的跳动（字体换装、时间跳、卡片晚到）
+  skew      旧页面撞上新部署：用旧 HTML 打开当前站点，查它引用的资源取不取得到、页面有没有样式与水合
   override  夹具注入，转发给 scripts/dev-override.mjs；--dry-run 只打印命令不执行
 
 公共选项：
@@ -184,6 +185,14 @@ reload（热缓存刷新：先加载一次暖缓存，再刷新，查首次绘�
   frameJumps 是录屏里只变过一两次的画面区域（字体换装、卡片晚到、布局挪动），帧存在 --out；
   fontsAfterPaint 是首帧时还没加载完的字体；liveText / liveRegions 是反复变化的地方（歌词、进度、视频），只列出不判失败。
   例子  node scripts/site-verify.mjs reload --url http://localhost:3211 --out /tmp/reload
+
+skew（模拟 Safari 恢复后台标签时按缓存取回的旧 HTML）：
+  --old-html <文件>   用这份旧首页 HTML（合并前 curl -s https://lyjw.me/ > 文件 存下）。判据：它引用的 /assets/ 全取得到
+                      （R2 存档兜住）、只加载 1 次、有样式、已水合
+  不带 --old-html     把当前首页的 JS / CSS 指纹全改成不存在的，判据：自动刷新恰好 1 次后有样式、已水合
+  --engine chromium|webkit（默认 chromium）  --width <px> --height <px>（默认 375x812）
+  --watch <ms>        打开后等多久再判（默认 8000）   --out <目录>  存一张最后停下的截图（可选）
+  例子  node scripts/site-verify.mjs skew --url https://lyjw.me --old-html /tmp/old-home.html
 
 override（会改本地 Worker 状态；先 pnpm dev:worker + pnpm dev:local，workers/core/.dev.vars 需 DEV_OVERRIDES=true）：
   --endpoint <路径> --fixture <夹具.json>   注入（夹具名见功能地图 endpoints）
@@ -717,6 +726,115 @@ export function textJumps(changes, { grace = 100, liveMin = 3 } = {}) {
   return { jumps: jumps.sort((a, b) => a.at - b.at), live };
 }
 
+export function staleAssetHtml(html) {
+  return html.replace(/(\/assets\/[A-Za-z0-9_.-]+?)-[A-Za-z0-9_-]{8}\.(js|css)\b/g, "$1-SKEW0000.$2");
+}
+
+export function documentCommit(html) {
+  return /<meta name="build-commit" content="([^"]*)"/.exec(html)?.[1] ?? null;
+}
+
+export function skewVerdict({ mode, documents, assetFailures, styled, hydrated }) {
+  const problems = [];
+  if (!styled) problems.push("最后停下的页面样式表没挂上（整屏大图那种）");
+  if (!hydrated) problems.push("最后停下的页面没水合（点不动）");
+  if (mode === "archive") {
+    if (assetFailures.length) problems.push(`旧 HTML 引用的 ${assetFailures.length} 个文件取不到：R2 存档里没有，看这次构建日志里的 [asset-archive] 行`);
+    if (documents > 1) problems.push("页面是靠自动刷新才恢复的，存档没兜住");
+  } else if (documents !== 2) {
+    problems.push(`文档加载了 ${documents} 次，自动刷新应当恰好 1 次（共 2 次）`);
+  }
+  return problems;
+}
+
+const SKEW_STATE = `(() => {
+  const own = (href) => { try { const u = new URL(href, location.href); return u.origin === location.origin && u.pathname.startsWith("/assets/"); } catch { return false; } };
+  const rules = (link) => { try { return link.sheet ? link.sheet.cssRules.length : 0; } catch { return 0; } };
+  const sheets = [...document.querySelectorAll('link[rel="stylesheet"]')].filter((link) => own(link.href));
+  return {
+    buildCommit: document.querySelector('meta[name="build-commit"]')?.getAttribute("content") ?? null,
+    styled: sheets.length > 0 && sheets.every((link) => rules(link) > 0),
+    hydrated: Object.keys(document.body).some((key) => key.startsWith("__react")),
+  };
+})()`;
+
+async function cmdSkew(flags) {
+  const engine = flags.engine === "webkit" ? "webkit" : "chromium";
+  const oldHtmlPath = typeof flags["old-html"] === "string" ? flags["old-html"] : null;
+  if (oldHtmlPath && !fs.existsSync(oldHtmlPath)) fail(`没有 ${oldHtmlPath}`, "合并前先存一份：curl -s https://lyjw.me/ > <文件>", 2);
+  const oldHtml = oldHtmlPath ? fs.readFileSync(oldHtmlPath, "utf8") : null;
+  const mode = oldHtml ? "archive" : "recover";
+  const viewport = { width: Number(flags.width || 375), height: Number(flags.height || 812) };
+  const watch = Number(flags.watch || 8000);
+  const target = new URL(`${flags.url}/`);
+
+  const pw = await resolvePlaywright() ?? fail("解不到 playwright / playwright-core", PLAYWRIGHT_NEXT);
+  const sink = newSink();
+  let browser;
+  try {
+    browser = engine === "webkit" ? await pw.api.webkit.launch({ headless: true }) : (await launchBrowser(pw.api, flags)).browser;
+  } catch (error) {
+    fail(`起不来 ${engine}：${String(error?.message ?? error).slice(0, 200)}`, engine === "webkit" ? "WebKit 要 Playwright 自带的构建：npx playwright install webkit，或 PLAYWRIGHT_BROWSERS_PATH 指向已装的目录" : "同 doctor 的 chrome 项");
+  }
+  try {
+    const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    watchConsole(page, sink, { origin: target.origin });
+    const documents = [];
+    const assetFailures = [];
+    page.on("request", (request) => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents.push(request.url());
+    });
+    const isOwnAsset = (url) => {
+      const parsed = new URL(url);
+      return parsed.origin === target.origin && parsed.pathname.startsWith("/assets/");
+    };
+    page.on("response", (response) => {
+      if (response.status() >= 400 && isOwnAsset(response.url())) assetFailures.push({ url: response.url(), status: response.status() });
+    });
+    page.on("requestfailed", (request) => {
+      if (isOwnAsset(request.url())) assetFailures.push({ url: request.url(), error: request.failure()?.errorText ?? "failed" });
+    });
+    let staleCommit = oldHtml ? documentCommit(oldHtml) : null;
+    let served = false;
+    await page.route((url) => url.origin === target.origin && url.pathname === target.pathname, async (route) => {
+      if (served || route.request().resourceType() !== "document") return route.continue();
+      served = true;
+      if (oldHtml) return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: oldHtml });
+      const response = await route.fetch();
+      const body = await response.text();
+      staleCommit = documentCommit(body);
+      return route.fulfill({ response, body: staleAssetHtml(body) });
+    });
+    await page.goto(target.href, { waitUntil: "load", timeout: 60_000 });
+    await page.waitForTimeout(watch);
+    const state = await page.evaluate(SKEW_STATE);
+    if (flags.out) {
+      fs.mkdirSync(flags.out, { recursive: true });
+      await page.screenshot({ path: path.join(flags.out, `skew-${engine}-${mode}.png`) });
+    }
+    const problems = skewVerdict({ mode, documents: documents.length, assetFailures, ...state });
+    const ok = problems.length === 0;
+    print({
+      ok,
+      ...(ok ? {} : { next: problems.join("；") }),
+      engine,
+      mode,
+      staleCommit,
+      finalCommit: state.buildCommit,
+      documentLoads: documents.length,
+      assetFailures,
+      styled: state.styled,
+      hydrated: state.hydrated,
+      ...(flags.out ? { out: path.resolve(flags.out) } : {}),
+      console: sink,
+    }, flags);
+    if (!ok) process.exitCode = 1;
+  } finally {
+    await browser.close();
+  }
+}
+
 async function cmdReload(flags) {
   if (!flags.out) fail("reload 需要 --out <目录>", "例子：reload --url http://localhost:3211 --out /tmp/reload", 2);
   const engine = flags.engine === "webkit" ? "webkit" : "chromium";
@@ -862,7 +980,8 @@ async function main() {
   if (command === "shot") return cmdShot(flags);
   if (command === "override") return cmdOverride(flags);
   if (command === "reload") return cmdReload(flags);
-  fail(`未知子命令：${command}`, "可用：doctor / cards / shot / reload / override；--help 看全部选项", 2);
+  if (command === "skew") return cmdSkew(flags);
+  fail(`未知子命令：${command}`, "可用：doctor / cards / shot / reload / skew / override；--help 看全部选项", 2);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
