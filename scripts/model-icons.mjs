@@ -42,10 +42,20 @@ export function modelIconMappings(iconsDir = lobehubIconsDir()) {
   return parseModelMappings(source).filter(({ icon }) => fs.existsSync(path.join(iconsDir, "es", icon, "components/Mono.js")));
 }
 
+export function lobehubIconsVersion(iconsDir = lobehubIconsDir()) {
+  return JSON.parse(fs.readFileSync(path.join(iconsDir, "package.json"), "utf8")).version;
+}
+
 export function modelIcons() {
   return {
     name: "model-icons",
     resolveId: (id) => (id === VIRTUAL_ID ? RESOLVED_ID : null),
-    load: (id) => (id === RESOLVED_ID ? `export const MODEL_ICON_MAPPINGS = ${JSON.stringify(modelIconMappings())};` : null),
+    load: (id) =>
+      id === RESOLVED_ID
+        ? [
+            `export const MODEL_ICON_MAPPINGS = ${JSON.stringify(modelIconMappings())};`,
+            `export const MODEL_ICONS_VERSION = ${JSON.stringify(lobehubIconsVersion())};`,
+          ].join("\n")
+        : null,
   };
 }

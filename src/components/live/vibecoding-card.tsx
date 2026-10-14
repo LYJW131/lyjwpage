@@ -9,7 +9,7 @@ import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Cloud } from "lucide-react";
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
-import { MODEL_ICON_MAPPINGS } from "virtual:model-icons";
+import { MODEL_ICON_MAPPINGS, MODEL_ICONS_VERSION } from "virtual:model-icons";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
@@ -197,7 +197,7 @@ function ModelIconMark({ icon, label }: { icon: string | null; label: string }) 
     return <Icon size={16} />;
   }
   if (icon) {
-    const mask = `url(${modelIconUrl(icon)}) center / contain no-repeat`;
+    const mask = `url(${modelIconUrl(icon, MODEL_ICONS_VERSION)}) center / contain no-repeat`;
     return <span className="size-4 bg-current" style={{ mask, WebkitMask: mask }} />;
   }
   return (
