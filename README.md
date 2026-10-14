@@ -34,7 +34,7 @@
 | **AI Coding** | 编码工具的 Token 用量（Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并）、API 等值成本估算、此刻在用的 agent、年度热力图与账号限额窗口。 |
 | **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
 | **Pulse** | 编码、听、看、玩、充电、身体活动最近 24 小时的事实时间线：编码分前台应用 / agent / 两者同时，另有一条 token 速率，听看玩按在放、暂停、空闲画出并带曲目与片名，充电画瓦数，活动画步数与训练；悬停任一时段可看当时的状态与标题。 |
-| **服务状态** | Claude、ChatGPT、Cursor、Devin、GitHub、Cloudflare 等常用服务官方状态页的汇总，有故障的排在前面，可点开看事件。 |
+| **服务状态** | Claude、ChatGPT、Cursor、Devin、GitHub、Cloudflare 等常用服务官方状态页的汇总，窄屏放不下时有故障的排前，可点开看事件。 |
 | **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态）；站点与 API 两行 30 天在线状态，PageSpeed 实验室指标的滚动中位数与真实访客的性能分；Cloudflare Workers Builds 部署与 Cloudflare Web Analytics 访问量、Workers 调用统计与 12 小时报错数，以及落地节点上两个常驻上报器的推送次数、往返延迟和线上版本。 |
 | **与神对话** | 首页对话卡片：Clef 按问题难度把每条消息派给 Haiku（杂鱼）、Sonnet（先知）或 Fable（神，降临时有特效），或直接拒绝；模型可读取站点各卡片的实时数据、查阅本项目的设计文档、联网搜索并附来源，`/new` 新开会话并保留本地存档，回复渲染 Markdown，模型会在回答里自己插入数字卡、柱状 / 折线图、时间线、带封面的列表等图示，由站点组件按主题画在正文里（`src/components/chat-visual.tsx`），组件画不了的图示改写 HTML、在断网沙箱中渲染（`src/lib/html-preview.ts`）；访客可在对话中规划站点改动，确认计划后用 GitHub 身份提 issue 或启动构建，卡片跟踪 PR、检查与预览；发送前过 Cloudflare Turnstile 人机验证，并按访客限流、限定上下文与输出长度。 |
 
@@ -137,7 +137,7 @@
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：包含 Tokens 速率的事实时间线与右侧摘要，悬停听歌道的一段显示时间范围、状态与当时的曲目" width="100%">
 </picture>
 
-**服务状态**：Claude、ChatGPT、Cursor、Devin、GitHub、Cloudflare 等常用服务官方状态页的汇总，有故障的排在前面，点开看事件详情。
+**服务状态**：Claude、ChatGPT、Cursor、Devin、GitHub、Cloudflare 等常用服务官方状态页的汇总，窄屏一屏放不下时有故障的排到前面，点开看事件详情。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/provider-status-dark.webp">
