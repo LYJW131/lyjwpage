@@ -32,4 +32,5 @@ jobs:
       - name: Validate workspace
         run: bash scripts/ci-checks.sh
         env:
-          BASELINE_EXCEPTION: ${{ contains(github.event.pull_request.labels.*.name, 'baseline-exception') }}
+          # 只认打标签触发的那一次运行：之后再推送，标签还挂着也不放行，要 lyjw 摘了重打。
+          BASELINE_EXCEPTION: ${{ github.event.action == 'labeled' && github.event.label.name == 'baseline-exception' }}
