@@ -17,6 +17,7 @@
 | [参考文献](./references.md) | reference | 塑造本项目做法的外部文章、演讲、仓库与官方文档，各取了什么、落在哪 |
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
 | [自建 Actions runner 实测](./actions-runner-benchmark.md) | record | 同一提交的托管机与自建机 CI、CodeQL 耗时及配置验证 |
+| [页面细节与关键设计](./design-notes.md) | reference | 首页各卡的细节，以及首屏缓存、推送分工、旧页面降级、窗口标题隐私判断、图片寻址、可观测性等贯穿全站的设计 |
 | [页面效果图、GIF 与架构图产物](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图重生成 |
 | [iOS App 上机验证](./ios-app-handoff.md) | runbook | `apps/ios` 的系统音乐、健康上报、小组件、快捷指令及后台设备验收 |
 | [iOS App 验证记录](./ios-app-verification.md) | record | SDK 构建、模拟器端到端验证与签名装机的核验快照 |
