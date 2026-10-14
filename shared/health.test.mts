@@ -20,7 +20,7 @@ const NOW = Date.UTC(2026, 9, 12, 10, 30);
 const TODAY = Date.UTC(2026, 9, 12);
 
 const bucket = (hourStart: number, success: number, failure = 0, lastOk = true): HealthBucket => ({
-  hourStart, success, failure, lastAt: hourStart + 55 * 60_000, lastOk,
+  hourStart, success, failure, firstAt: hourStart, lastAt: hourStart + 55 * 60_000, lastOk,
 });
 
 test("expected runs follow the schedule offset and wait for the grace period", () => {
@@ -49,6 +49,15 @@ test("days before the first bucket stay empty instead of counting as missed", ()
   assert.equal(summarizeBuckets(HEARTBEAT_SERIES, [], NOW).availability30d, null);
 });
 
+test("the first bucket counts from its first check, later buckets from the top of the hour", () => {
+  const started = { ...bucket(TODAY + 8 * HOUR, 6), firstAt: TODAY + 8 * HOUR + 32 * 60_000 };
+  const fresh = summarizeBuckets(HEARTBEAT_SERIES, [started, bucket(TODAY + 9 * HOUR, 12)], TODAY + 10 * HOUR + HEARTBEAT_SERIES.graceMs);
+  assert.deepEqual([fresh.days.at(-1)!.success, fresh.days.at(-1)!.failure], [18, 0]);
+  const resumed = { ...bucket(TODAY + 9 * HOUR, 6), firstAt: TODAY + 9 * HOUR + 32 * 60_000 };
+  const gap = summarizeBuckets(HEARTBEAT_SERIES, [bucket(TODAY + 8 * HOUR, 12), resumed], TODAY + 10 * HOUR + HEARTBEAT_SERIES.graceMs);
+  assert.deepEqual([gap.days.at(-1)!.success, gap.days.at(-1)!.failure], [18, 6]);
+});
+
 test("the 24h availability keeps the hour the window starts in", () => {
   const yesterday = bucket(TODAY + 10 * HOUR - DAY, 59, 1);
   const summary = summarizeBuckets(UPTIME_SERIES, [yesterday, bucket(TODAY + 10 * HOUR, 30)], NOW);
@@ -57,7 +66,7 @@ test("the 24h availability keeps the hour the window starts in", () => {
 });
 
 test("status follows the latest result and goes down when the heartbeat stops", () => {
-  const recent = (ok: boolean): HealthBucket => ({ hourStart: TODAY + 10 * HOUR, success: ok ? 6 : 5, failure: ok ? 0 : 1, lastAt: NOW - 60_000, lastOk: ok });
+  const recent = (ok: boolean): HealthBucket => ({ hourStart: TODAY + 10 * HOUR, success: ok ? 6 : 5, failure: ok ? 0 : 1, firstAt: TODAY + 10 * HOUR, lastAt: NOW - 60_000, lastOk: ok });
   assert.equal(summarizeBuckets(HEARTBEAT_SERIES, [recent(true)], NOW).status, "up");
   assert.equal(summarizeBuckets(HEARTBEAT_SERIES, [recent(false)], NOW).status, "down");
   const old = { ...recent(true), lastAt: NOW - HOUR };
