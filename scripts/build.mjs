@@ -63,6 +63,10 @@ if (assets.status !== 0) process.exit(assets.status ?? 1);
 const result = spawnSync("react-router", ["build"], { stdio: "inherit", env });
 if (result.status !== 0) process.exit(result.status ?? 1);
 
+if (process.env.WORKERS_CI === "1") {
+  spawnSync(process.execPath, ["--import", "tsx", "scripts/archive-site-assets.mjs", "build/client/assets"], { stdio: "inherit", env });
+}
+
 const manifest = sitePreviewManifest({ branch, commit, backendUrl });
 writeFileSync(SITE_PREVIEW_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
 process.exit(0);
