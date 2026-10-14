@@ -160,8 +160,8 @@
       screen(x, () => {
         text(x, "07", 110, 196, { font: FONT.pixel(112), color: css("signal"), alpha: a });
         text(x, tr("ch07.title"), 290, 176, { font: FONT.cjk(58, 600), reveal: prog(b, 0.35, 0.8), alpha: a });
-        text(x, "Talk to God · ai Worker · Clef · Claude", 292, 226, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.45, 1.0), alpha: a, maxW: 636 });
-        line(x, 110, 262, 110 + 820 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("pink"), a);
+        text(x, "Talk to God · ai Worker · Clef · Claude", 292, 226, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.45, 1.0), alpha: a });
+        line(x, 110, 262, 110 + 850 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("pink"), a);
       });
     }
 
