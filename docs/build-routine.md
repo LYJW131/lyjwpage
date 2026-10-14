@@ -58,7 +58,7 @@ GitHub webhook 按原始正文验证 `X-Hub-Signature-256`，并核对目标仓�
 
 Claude review 卡片通过 `src/lib/build-review-summary.ts#buildReviewSummary` 将可识别的审查结论显示为 No issues 或 Issues found；缺失、失败或无法识别的结论显示 Unknown。评论正文不直接显示，链接仍指向 GitHub 原评论；本地保存的会话也使用同一展示规则。
 
-CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类和汇总：只有 `cloudflare-workers-and-pages` 应用的 `Workers Builds: site` 检查计入 Preview，其余检查和全部 commit status 都计入 CI。Preview 取 `started_at` 最新（再按 check id 决胜）的那一条 site 检查：完成且成功时链接指向该分支稳定的 `https://<分支>-site.lyjw.workers.dev` 预览地址，由 Cloudflare Access 保护、访问要登录，不使用任何第三方 `details_url`；进行中显示等待，失败结论显示失败，skipped / neutral 或没有该检查时显示未知；读取失败或不完整时同样显示未知。检查与部署 webhook 只标记状态需要重新对账，单条事件不能覆盖整体结论。
+CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类和汇总：只有 `cloudflare-workers-and-pages` 应用的 `Workers Builds: site` 检查计入 Preview，其余检查和全部 commit status 都计入 CI。Preview 取 `started_at` 最新（再按 check id 决胜）的那一条 site 检查：完成且成功时链接指向该分支稳定的预览地址 `https://<预览名>.preview.lyjw.dev`（`scripts/preview-worker-name.mjs#previewWorkerOrigin`），不设登录、访客也能打开，不使用任何第三方 `details_url`；进行中显示等待，失败结论显示失败，skipped / neutral 或没有该检查时显示未知；读取失败或不完整时同样显示未知。检查与部署 webhook 只标记状态需要重新对账，单条事件不能覆盖整体结论。
 
 卡片可见且构建未到终态时轮询；`merged`、`closed`、`blocked`、`failed`、`timeout` 停止自动轮询，卡片保留手动 Refresh status 入口。刷新失败保留最后已知状态和 PR 链接；已记录实现提交的发布歧义可通过状态查询核对并恢复。`merged` / `closed` 不再调用 GitHub 对账。其他已有 PR 的陈旧状态按 `BUILD_RECONCILE_MS` 限制对账频率，通过 GitHub API 查询 PR、检查和预览状态。无法读取 PR 时保留最后观测到的事实；PR 查询成功后，读取失败或不完整的检查、预览与审查结果显示未知，不用构建工作流的运行结论推断结果。对账按 head SHA 与 GitHub 更新时间防止旧结果覆盖新提交。状态访问需要绑定 runId 的签名 token。
 

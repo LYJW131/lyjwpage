@@ -11,7 +11,7 @@ test("分支名变成稳定的 Preview 名和地址", () => {
     previewWorkerOrigin("feat/agent-status"),
     "https://feat-agent-status-core.lyjw.workers.dev",
   );
-  assert.equal(previewWorkerOrigin("feat/agent-status", "site"), "https://feat-agent-status-site.lyjw.workers.dev");
+  assert.equal(previewWorkerOrigin("feat/agent-status", "site"), "https://feat-agent-status.preview.lyjw.dev");
   assert.throws(() => previewWorkerOrigin("feat/agent-status", "ai"), /Unknown Preview Worker/);
   assert.throws(() => previewWorkerOrigin("feat/agent-status", "ingress"), /Unknown Preview Worker/);
 });
@@ -34,7 +34,8 @@ test("超长分支名截到 DNS 标签上限，两次结果相同", () => {
   for (const worker of [PREVIEW_WORKER_SCRIPT, SITE_PREVIEW_WORKER_SCRIPT]) {
     const label = new URL(previewWorkerOrigin(branch, worker)).hostname.split(".")[0];
     assert.equal(label.length <= 63, true);
-    assert.equal(label, `${previewWorkerName(branch, worker)}-${worker}`);
+    const base = previewWorkerName(branch, worker);
+    assert.equal(label, worker === SITE_PREVIEW_WORKER_SCRIPT ? base : `${base}-${worker}`);
   }
   assert.match(name, /^[a-z0-9-]+-[0-9a-f]{8}$/);
   assert.equal(name.endsWith("-"), false);
