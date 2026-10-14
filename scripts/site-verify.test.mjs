@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { classifyRequest, consoleClean, consoleProblems, findJumps, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright, textJumps, updateOrigin } from "./site-verify.mjs";
+import { classifyRequest, consoleClean, consoleProblems, documentCommit, findJumps, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright, skewVerdict, staleAssetHtml, textJumps, updateOrigin } from "./site-verify.mjs";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -255,4 +255,31 @@ test("reload 抓到首帧后才改的时间文字，退出码 1", async (t) => {
     server.close();
     fs.rmSync(out, { recursive: true, force: true });
   }
+});
+
+test("staleAssetHtml 把 JS / CSS 指纹换成不存在的，字体与别的路径不动", () => {
+  const html = '<link rel="stylesheet" href="/assets/root-C_I5jH7t.css"/><link rel="modulepreload" href="/assets/entry.client-DEFjIM2L.js"/>'
+    + '<link rel="modulepreload" href="/assets/local-charging-arm-Ab_c-123.js"/><link rel="preload" href="/assets/GeistMono-Variable-Dispecij.woff2"/>'
+    + '<script type="module">import "/assets/page-DVkeLdAJ.js";</script><img src="/img/abc.png"/>';
+  assert.equal(
+    staleAssetHtml(html),
+    '<link rel="stylesheet" href="/assets/root-SKEW0000.css"/><link rel="modulepreload" href="/assets/entry.client-SKEW0000.js"/>'
+      + '<link rel="modulepreload" href="/assets/local-charging-arm-SKEW0000.js"/><link rel="preload" href="/assets/GeistMono-Variable-Dispecij.woff2"/>'
+      + '<script type="module">import "/assets/page-SKEW0000.js";</script><img src="/img/abc.png"/>',
+  );
+});
+
+test("documentCommit 读 build-commit，缺了给 null", () => {
+  assert.equal(documentCommit('<meta name="build-commit" content="abc123"/>'), "abc123");
+  assert.equal(documentCommit("<html></html>"), null);
+});
+
+test("skewVerdict：存档模式要求一次加载且资源全到，刷新模式要求恰好刷新一次", () => {
+  const good = { styled: true, hydrated: true, assetFailures: [] };
+  assert.deepEqual(skewVerdict({ mode: "archive", documents: 1, ...good }), []);
+  assert.equal(skewVerdict({ mode: "archive", documents: 2, ...good }).length, 1);
+  assert.equal(skewVerdict({ mode: "archive", documents: 1, ...good, assetFailures: [{ url: "x", status: 404 }] }).length, 1);
+  assert.deepEqual(skewVerdict({ mode: "recover", documents: 2, ...good }), []);
+  assert.equal(skewVerdict({ mode: "recover", documents: 3, ...good }).length, 1);
+  assert.equal(skewVerdict({ mode: "recover", documents: 2, ...good, styled: false, hydrated: false }).length, 2);
 });
