@@ -37,7 +37,6 @@ export const pagespeedJob: Job = {
   name: "pagespeed",
   everyMinutes: 60,
   offset: 7,
-  headStart: true,
   async run({ env }) {
     const key = env.PAGESPEED_API_KEY?.trim();
     if (!key) return skipMissing("pagespeed", ["PAGESPEED_API_KEY"]);
