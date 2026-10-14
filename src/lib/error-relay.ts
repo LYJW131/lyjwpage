@@ -78,7 +78,7 @@ export function reportAsError(report: ClientErrorReport): Error {
   return error;
 }
 
-// 别的网站能不经预检让访客的浏览器发 text/plain 的 POST，所以带 Origin 的只收本站：同主机（含分支预览与本地），或经 ESA 回源到 lyjw.me 的 lyjw131.com。
+// 别的网站能不经预检让访客的浏览器发 text/plain 的 POST，所以带 Origin 的只收本站：同主机（含分支预览与本地），或跨域直连 lyjw.me 上报的 lyjw131.com（见 error-report.ts#relayTarget）。
 export function isSiteOrigin(request: Request): boolean {
   const origin = request.headers.get("Origin");
   if (origin === null) return true;

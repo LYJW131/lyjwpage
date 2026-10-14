@@ -1,3 +1,6 @@
+import { SITE_ANALYTICS_HOSTS } from "@shared/site-analytics";
+
+import { backendUrl } from "@/lib/backend-url";
 import { commitSha } from "@/lib/build-info";
 import { ERROR_RELAY_PATH, stripUrlQuery, type ClientErrorReport, type ClientErrorSource } from "@/lib/error-relay";
 
@@ -21,6 +24,11 @@ export function clientErrorReport(error: unknown, source: ClientErrorSource, tag
   };
 }
 
+// 经 ESA 转来的请求 CF-Connecting-IP 是 ESA 出口，/relay 按 IP 限流时同一出口的访客会共用额度；生产页面和 API 调用一样直连后端域名，分支预览与本地报给自己。
+export function relayTarget(pageHost: string): string {
+  return (SITE_ANALYTICS_HOSTS as readonly string[]).includes(pageHost) ? backendUrl(ERROR_RELAY_PATH) : ERROR_RELAY_PATH;
+}
+
 export function reportError(error: unknown, source: ClientErrorSource, tags?: Record<string, string>): void {
   if (!ERROR_REPORT_ENABLED || typeof window === "undefined") return;
   const report = clientErrorReport(error, source, tags);
@@ -29,8 +37,9 @@ export function reportError(error: unknown, source: ClientErrorSource, tags?: Re
   seen.add(key);
   const body = JSON.stringify(report);
   // 用 text/plain：sendBeacon 遇到非 CORS 安全的 Blob 类型，部分浏览器会直接抛错；中转按 JSON 解析，不看类型。
-  if (navigator.sendBeacon?.(ERROR_RELAY_PATH, new Blob([body], { type: "text/plain" }))) return;
-  fetch(ERROR_RELAY_PATH, { method: "POST", body, keepalive: true }).catch(() => {});
+  const target = relayTarget(window.location.host);
+  if (navigator.sendBeacon?.(target, new Blob([body], { type: "text/plain" }))) return;
+  fetch(target, { method: "POST", body, keepalive: true, mode: "no-cors" }).catch(() => {});
 }
 
 // 跨域脚本的错误被浏览器抹成 "Script error."，没有可查的内容；扩展注入的脚本也不归本站。
