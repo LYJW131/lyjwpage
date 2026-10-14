@@ -461,7 +461,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - lyjw 在项目聊天里说一句要什么。项目聊天里只有一个 Claude 接话，它把每句话派到线程；一件事一个线程，线程里的 Claude 从头跟到尾，只在有结果、卡住或要 lyjw 决定时回复，平时只刷状态行（`HUMAN.md`「一眼看完」「1. 场面上有谁」）。
 - lyjw 要做的只有四种事：拍板、点头让 Claude 办凭据或给控制台权限、批准生产上的动作、说一句「合」。分叉用决策卡问，推荐项已标出；不点就按推荐项走，只有没法撤销的那一步停下来等（`HUMAN.md`「一眼看完」「3. 什么 Claude 自己定，什么来问你」）。
 - 要用 lyjw 的 Mac 的事（凭据、ssh、`gh`）走 Mac 上的 Remote Control 会话；能拆开并行的实现活可以派给 Mac 上的 Devin CLI，一件事一个 git worktree，跑完由云端 Claude 审 diff、重跑检查、开 PR，Devin 不合任何东西（`HUMAN.md`「1. 场面上有谁」）。片中不画这一路；副标题里的 Devin 指的是 PR 上的 Devin Review。
-- 项目记忆：lyjw 用「以后…」定的规矩和做过的决定记进去一次，所有线程都遵守（`HUMAN.md`「2. 怎么说一句话最快」「9. 项目记忆」）。仓库里有镜像 `.claude/memory/`，`MEMORY.md` 是索引、每主题一个文件；项目记忆是源，镜像只用 `pnpm memory:mirror` 同步，脚本自动脱敏，遇到像凭据的内容一个文件都不写（`.claude/memory/README.md`、`scripts/memory-mirror.mjs#sanitize`、`scripts/memory-mirror.mjs#findSecrets`）。片中记忆卡上的三条（第三人称写 lyjw、等待都有上限、改界面等 lyjw 点头）都在根 `AGENTS.md`「工作方式」与「界面设计」里。
+- 项目记忆：lyjw 用「以后…」定的规矩和做过的决定记进去一次，所有线程都遵守（`HUMAN.md`「2. 怎么说一句话最快」「9. 项目记忆」）。仓库里有镜像 `.claude/memory/`，`MEMORY.md` 是索引、每主题一个文件；项目记忆是源，镜像只用 `pnpm memory:mirror` 同步，脚本自动脱敏，遇到像凭据的内容一个文件都不写（`.claude/memory/README.md`、`scripts/memory-mirror.ts#sanitize`、`scripts/memory-mirror.ts#findSecrets`）。片中记忆卡上的三条（第三人称写 lyjw、等待都有上限、改界面等 lyjw 点头）都在根 `AGENTS.md`「工作方式」与「界面设计」里。
 
 ### 线程怎么干活
 
@@ -487,10 +487,10 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   验证员：<模型 ID>，没写这段代码
   ```
 
-- 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.mjs#LEVELS`、`scripts/verify-receipt.mjs#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。
+- 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.ts#LEVELS`、`scripts/verify-receipt.ts#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。
 - SHA 不手抄：用 `git rev-parse` 的输出原样粘贴；脚本按 SHA 认回执，错一位整张作废（同文件「回执」）。
-- 合并前跑 `node scripts/verify-receipt.mjs check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 LYJW131 账号发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.mjs#TRUSTED_AUTHOR`、`scripts/verify-receipt.mjs#coverage`、`scripts/verify-receipt.mjs#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
-- 大改代码逻辑的 PR 合并前再派判定员：一个没写这段代码的 agent，只拿 lyjw 的原话、PR 号与 head 的完整 SHA、验证员的证据表，自己读 diff，判做没做到、有没有回归。主线程把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，FAIL 不合（同文件「3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有」、`scripts/verify-receipt.mjs#JUDGE_LINE`）。
+- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 LYJW131 账号发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#TRUSTED_AUTHOR`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
+- 大改代码逻辑的 PR 合并前再派判定员：一个没写这段代码的 agent，只拿 lyjw 的原话、PR 号与 head 的完整 SHA、验证员的证据表，自己读 diff，判做没做到、有没有回归。主线程把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，FAIL 不合（同文件「3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有」、`scripts/verify-receipt.ts#JUDGE_LINE`）。
 
 ### 合并
 
@@ -499,21 +499,21 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   2. 大改代码逻辑的：另要处理完机器评审，并有判定员的 PASS 盖住当前 head。
   3. 有 UI / UX 变化的：先给 lyjw 看效果（桌面与 375px 截图），lyjw 点头才合；lyjw 明确要求的小改动除外（根 `DESIGN.md`「交付与合并」）。
 - 大方向、大改动也等 lyjw 点头（`HUMAN.md`「3. 什么 Claude 自己定，什么来问你」）。片中三道闸各过一个 PR：文档、界面两个是示意，第二档过的是 #308。
-- 用 merge commit，不 rebase。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.mjs#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
+- 用 merge commit，不 rebase。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
 - 站点状态卡的 Commits 一栏靠这些尾注显示参与者：collector 从 GitHub 取最近提交（`shared/github-repo.ts#fetchRecentCommits`），卡上列最近几条（`src/components/live/repo-contributions.tsx#COMMIT_LIMIT`），把 main 同步进分支的合并不显示（`src/lib/recent-commits.ts#recentCommitsFrom`）。每条先写提交的人（线程的提交是「LYJW131 committed <相对时间>」），下一行写 agent「with claude (<尾注里的模型名>)」：名字是 agent 的 GitHub 账号，前面一排 16px 头像，按尾注邮箱从 `shared/commit-authors.ts#AGENTS` 认（`src/components/live/repo-contributions.tsx#CommitByline`）。片中首页提交卡省掉了模型名与头像，只画「LYJW131 committed」「with claude」和短 SHA。
 
 ### 合并之后：怎么算已部署
 
-- 推送成功不等于部署完成。跑 `node scripts/deploy-check.mjs --sha <合并提交完整 SHA> --expect <这次碰到监视路径的 Worker>`：等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 只认最新那条），`--expect` 列的每个都要成功；site 重建了，再等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 回的 `commit` 跟上这个提交，被更新的提交覆盖也算过（`superseded`）；等待有上限（`--timeout`），输出 JSON，`pass` 为假时 `next` 写下一步（`scripts/deploy-check.mjs#run`、`scripts/deploy-check.mjs#classifyVersion`、根 `AGENTS.md`「部署流程」）。
-- 「已部署」以 `/api/version` 回的 commit 为准，不以构建检查绿了为准（`HUMAN.md`「6. 部署与「已部署」」）；之后在生产域名上复测受影响的行为，看完关掉页面（`.claude/skills/lyjwpage-verify/SKILL.md`「4. 合并后部署与生产核对」）。刷新 ESA、广播 `version` 见 §10。第 09 章落地那段，拿放大镜的小 Clawd 客串的就是这一步：两个域名的 `/api/version` 先后答出 `cf92f7c`，它各跳一下（`scripts/deploy-check.mjs#run`）。
+- 推送成功不等于部署完成。跑 `node scripts/deploy-check.ts --sha <合并提交完整 SHA> --expect <这次碰到监视路径的 Worker>`：等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 只认最新那条），`--expect` 列的每个都要成功；site 重建了，再等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 回的 `commit` 跟上这个提交，被更新的提交覆盖也算过（`superseded`）；等待有上限（`--timeout`），输出 JSON，`pass` 为假时 `next` 写下一步（`scripts/deploy-check.ts#run`、`scripts/deploy-check.ts#classifyVersion`、根 `AGENTS.md`「部署流程」）。
+- 「已部署」以 `/api/version` 回的 commit 为准，不以构建检查绿了为准（`HUMAN.md`「6. 部署与「已部署」」）；之后在生产域名上复测受影响的行为，看完关掉页面（`.claude/skills/lyjwpage-verify/SKILL.md`「4. 合并后部署与生产核对」）。刷新 ESA、广播 `version` 见 §10。第 09 章落地那段，拿放大镜的小 Clawd 客串的就是这一步：两个域名的 `/api/version` 先后答出 `cf92f7c`，它各跳一下（`scripts/deploy-check.ts#run`）。
 
 ### 片中的例子：PR #308（按 GitHub 读回）
 
 - 标题「fix(collector): PageSpeed 两端各算各的，放宽超时」，18:52 合并；main 上的合并提交 `cf92f7c`，标题带 `(#308)`，正文列 4 个提交主题，尾注一行 `Co-Authored-By: Claude Opus 5.5 (1M context)`。片中合并卡照抄这 4 行主题，尾注只画到 `Co-Authored-By: Claude …`。
 - 修的是：站点状态卡 Performance 区 PageSpeed 的 Desktop / Mobile 两行大部分时间是「—」。collector 每小时那一轮约一半在 120 秒处超时，桌面、移动绑在一起，一端超时整轮作废，连续作废超过 `PAGESPEED_STALE_MS` 后卡上两行就空着；改成单端等到 `PAGESPEED_TIMEOUT_MS`，一端失败只空那一端（`workers/collector/src/pagespeed.ts#PAGESPEED_TIMEOUT_MS`、`shared/freshness.ts#PAGESPEED_STALE_MS`、`src/components/live/site-status-card.tsx#SiteStatusCard`）。片中 lyjw 那张纸条「PageSpeed 两行老显示「—」」说的就是这个。
 - 评审：Devin 提 2 条，Codex 审 3 轮提 3 条；4 条改了、1 条回复了不改的理由，5 个线程全部解决；Claude review 回「No issues found」。片中评审卡的先后是示意，条数和改与不改照这个。
-- 验证：Haiku 验证员在 `f6ef255` 签 `unit-test-verified`；判定员在同一提交判 FAIL（README 里一句解释与代码不符）；修完后在新 head `e3886f1` 重签回执，判定员判 PASS。对 #308 跑 `verify-receipt.mjs check --pr 308 --need unit-test-verified --judge`，回执与判定的 `coverage` 都是 `exact`，`pass` 为 true。
-- 部署：合并提交上 site、core、ingress、collector 四个 `Workers Builds:` 检查都成功（`deploy-check.mjs` 读回）。
+- 验证：Haiku 验证员在 `f6ef255` 签 `unit-test-verified`；判定员在同一提交判 FAIL（README 里一句解释与代码不符）；修完后在新 head `e3886f1` 重签回执，判定员判 PASS。对 #308 跑 `verify-receipt.ts check --pr 308 --need unit-test-verified --judge`，回执与判定的 `coverage` 都是 `exact`，`pass` 为 true。
+- 部署：合并提交上 site、core、ingress、collector 四个 `Workers Builds:` 检查都成功（`deploy-check.ts` 读回）。
 
 ### 夜班（定时任务，cron 都写 `CRON_TZ=Asia/Shanghai`，与新加坡时间同为 UTC+8）
 

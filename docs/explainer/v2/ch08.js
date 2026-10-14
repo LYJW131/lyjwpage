@@ -536,7 +536,7 @@
       }
       const ck = prog(b, AT.check[0], AT.check[1]);
       if (ck > 0) {
-        const cmd = "$ verify-receipt.mjs check --pr 308";
+        const cmd = "$ verify-receipt.ts check --pr 308";
         text(x, cmd.slice(0, Math.ceil(ck * cmd.length)), S.x(950), S.y(650), { font: FONT.mono(S.s(28), 500), color: bone, alpha: a });
         const ex = prog(b, AT.exact, AT.exact + 0.06);
         // 灯放在输出行行首：结果出来之前它挂在空行末尾，像个掉落的小点。
