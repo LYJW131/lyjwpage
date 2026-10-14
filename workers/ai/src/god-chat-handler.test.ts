@@ -623,10 +623,8 @@ test("动态过滤搜索与客户端工具同轮时，下一轮（含收尾轮�
         const search = request.tools?.find((tool) => "name" in tool && tool.name === "web_search");
         assert.ok(search && "max_uses" in search && search.max_uses! >= 1);
       }
-      if (!searches) {
-        assert.equal(requests.length, GOD_CHAT_LIMITS.maxToolRounds + 1);
-        assert.deepEqual(requests.at(-1)?.tools?.map((tool) => "name" in tool && tool.name), ["web_search"]);
-      }
+      assert.deepEqual(requests.at(-1)?.tools?.map((tool) => "name" in tool && tool.name), ["web_search"]);
+      assert.equal(requests.length, searches ? 2 : GOD_CHAT_LIMITS.maxToolRounds + 1);
     });
   }
 });
