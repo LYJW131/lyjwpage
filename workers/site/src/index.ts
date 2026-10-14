@@ -415,7 +415,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
   }
 }
 
-// 分支 Preview 不设登录，靠这个头不让搜索引擎收录；静态资源不经 Worker，不带这个头，只有页面要它。
+// Cloudflare 只给 workers.dev 上的 Preview 自动加 noindex，preview.lyjw.dev 上的要自己加。
 function withoutIndexing(response: Response): Response {
   if (response.webSocket) return response;
   const headers = new Headers(response.headers);
