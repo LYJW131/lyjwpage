@@ -35,11 +35,11 @@
 - Digest card: Chinese Apple-tagline headline live (#233); quiet → old clock option (#235). Copy library #247 merged 2026-10-13 with 15-minute digest. #261 (merged 2026-10-14): owner pruned the library line by line on a phone page (772 lines left; selections in /mnt/project-files/digest-card/taglines/review-final.json), watching lines rewritten for anime (Emby holds only anime), and each digest carries a 10-line `headlines` pool the card picks randomly per load and rotates every 60 s.
 - Vercel design.md (vercel.com/design.md) compared 2026-10-13: borrow methods only (gap ownership, CI ladder check `pnpm design:scale`, rule priority, anti-patterns); comparison at /mnt/project-files/design-md/vercel-design-md-compare.md.
 - Owner's real name → LYJW in collector output (secret APPLE_MUSIC_OWNER_NAME), #225 verified in prod.
-- Secrets: only via Remote Control on the Mac, piped, never read: [[credentials-pipe-only]].
+- **Secrets (user 2026-10-14 08:44Z):** new or rotated credentials are generated and piped in by Claude on the Mac with the user-level `rotate-secret` skill (`~/.claude/skills/rotate-secret`; Chrome Copy/download → stdin → `wrangler secret put` / `gh secret set`; 1Password via `op run`; values never enter context). Don't ask the owner to paste values; ask once for a go-ahead naming each key and its scope: [[credentials-pipe-only]].
 - #173 build → GitHub Actions: verified end-to-end (#239, #242); cutover fully done 2026-10-13 (old routine and ROUTINE_FIRE_* secrets deleted): [[build-actions-migration]].
 - After merge check /api/version (parallel builds race): [[workers-builds-parallel-race]]. Bot review gate (logic changes only): [[merge-requires-bot-review-pass]]. Merge commits: [[merge-commit-format]]. CodeQL: [[codeql-policy]].
 - Now-playing first screen decisions (#218/#220/#224): [[now-playing-first-screen-decisions]].
-- Avatar auto-rebuild (avatar-watch + avatar-sync) restored by owner choice 2026-10-14, PR #298; two credentials pending: [[avatar-watch-restored]].
+- Avatar auto-rebuild (avatar-watch + avatar-sync) restored by owner choice 2026-10-14, PR #298; credentials recreated and E2E verified (#301): [[avatar-watch-restored]].
 - Cloud env gaps; #226 auto-creates .dev.vars, dev:worker runs without CF creds: [[cloud-env-gaps]].
 - **Hand-offs carry the user's constraints:** route a follow-up once; briefs and Mac briefs copy what the user already removed/rejected/set; a later relay overrides an earlier one: [[handoff-carry-user-constraints]].
 - **Contrast fixes keep chroma (user 2026-10-13 16:31Z):** text-colour variants change oklch lightness only; desaturating made #251 look grey to the owner: [[ink-tokens-keep-chroma]].
