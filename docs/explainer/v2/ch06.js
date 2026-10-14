@@ -27,7 +27,6 @@
     "ch06.jevKeep": ["打分只在屋里放 7 天，不进 D1", "scores stay 7 days in the room, not in D1"],
     "ch06.window": ["一窗 = 三个 5 分钟桶", "one window = three 5-min buckets"],
     "ch06.skip": ["不问 Clef，直接最低档", "no Clef: lowest level"],
-    "ch06.open": ["还没满", "not closed yet"],
     "ch06.n4a": ["窗关上两分钟后才交给 Clef，", "Two minutes after a window closes,"],
     "ch06.n4b": ["输入是前台应用、agent 与 token。", "Clef weighs apps, agents and tokens."],
     "ch06.clawd": ["线上出错时，\n我先去 Workers Issues 查证据。", "When something breaks,\nI check Workers Issues first."],
@@ -172,9 +171,10 @@
       glow(e, v.x, Y0 + (v.up ? -220 : 104) * 0.9, (v.up ? 110 : 60) * gz, (v.up ? 0.8 : 0.45) * k * dimK);
     }
     for (const v of ev) if (v.up && v.t > 0 && v.t <= 15 && phi >= v.t) {
-      // 尖峰离开 health_buckets 卡的下沿之后再亮标签，免得「报到」压在卡角上。
-      const a = labA * prog(NOW_X - v.x, 175, 255) * (v.x > 90 ? 1 : 0);
-      text(x, tr("ch06.checkin"), v.x, Y0 - 236, { font: FONT.cjk(30, 600), color: css("bone"), align: "center", alpha: a });
+      // 标签右端离开 health_buckets 卡的左沿之后再亮，免得压在卡角上；英文比中文宽，按实测宽度算。
+      const str = tr("ch06.checkin"), f = FONT.cjk(30, 600), hw = K.measure(x, str, f) / 2;
+      const a = labA * prog(LEDGER.x - (v.x + hw), 10, 90) * (v.x > 90 ? 1 : 0);
+      text(x, str, v.x, Y0 - 236, { font: f, color: css("bone"), align: "center", alpha: a });
     }
     return py;
   }
@@ -189,7 +189,8 @@
       text(x, name, bx + 22, y + 9, { font: FONT.mono(28, 500), color: css("ash"), alpha: a });
       const seen = list.filter((t) => t <= phi);
       const n = seen.length;
-      for (let j = 0; j < Math.min(n, 9); j++) {
+      // 最多 8 条：再多一条就贴上左边的「lyjw.me」。
+      for (let j = 0; j < Math.min(n, 8); j++) {
         const t = seen[n - 1 - j];
         const tx = bx + w - 26 - j * 13;
         const k = prog(phi, t, t + 0.15);
@@ -410,7 +411,7 @@
       x.save(); x.globalAlpha = a; x.strokeStyle = bone; x.lineWidth = 1.6; if (!closed) x.setLineDash([6, 6]);
       x.strokeRect(x0 + 2, y0 + 3, Math.min(x1, NOW_X) - x0 - 4, LANE_H - 6); x.restore();
       for (let j = 1; j < 3; j++) { const u = tx(phi, w.from + j * 5); if (u < NOW_X) line(x, u, y0 + LANE_H - 16, u, y0 + LANE_H - 4, 1.2, bone, 0.6 * a); }
-      if (!closed) { text(x, tr("ch06.open"), (x0 + NOW_X) / 2, y0 + 40, { font: FONT.cjk(21, 600), color: ash, align: "center", alpha: a * (x0 < NOW_X - 90 ? 1 : 0), maxW: Math.max(60, NOW_X - x0 - 10) }); continue; }
+      if (!closed) continue;
       let k = 0;
       if (w.zero) k = prog(b, AT.zero, AT.zero + 0.1);
       else {
@@ -485,7 +486,8 @@
     const focus = win(b, 7.9, 8.1, 9.9, 10.1);
     strata(x, e, d, b, sA, focus);
     strataNotes(x, b, win(b, 6.1, 6.4, 7.85, 8.0));
-    coding(x, e, d, b, win(b, 7.95, 8.15, 9.9, 10.05), cam);
+    // 等上一幕的 lyjw.me、core 方框淡完再进：Clef 框和它们在世界坐标里叠在一起。
+    coding(x, e, d, b, win(b, 8.05, 8.2, 9.9, 10.05), cam);
     // 字要先于垫底淡出：垫底一变透明，下面的条就露出来，字还在就压在条上。
     laneLabels(x, cam, sA * (1 - prog(b, 9.95, 10.15)), sA * (1 - prog(b, 9.82, 9.94)), focus);
     nar(x, "ch06.n1a", 110, 944, prog(b, 1.0, 1.6), win(b, 1.0, 1.1, 3.8, 3.95));

@@ -131,12 +131,13 @@
         else { x.beginPath(); x.moveTo(X0 + 26, Y0); x.lineTo(X0 + 10, Y0 + 26); x.lineTo(X0 + 28, Y0 + 26); x.lineTo(X0 + 14, Y0 + 50); x.stroke(); bar(X0 + 50, Y0 + 12, 90); bar(X0 + 50, Y0 + 32, 60); }
         break;
       case "battery": x.strokeRect(X0, Y0 + 6, 110, 38); x.fillRect(X0 + 110, Y0 + 18, 7, 14); bar(X0 + 6, Y0 + 12, 60, 26); break;
+      // 卡名压在卡底（plateAt 里基线 py + h - 16），封面和进度条都收在它的字头之上。
       case "hero": {
-        const s = h - 28;
+        const s = h - 64, ly = py + s + 10;
         x.strokeRect(px + 14, py + 14, s, s);
         if (!fresh) x.fillRect(px + 20, py + 20, s - 12, s - 12);
-        bar(px + s + 32, py + 22, 150); bar(px + s + 32, py + 44, 100);
-        if (!fresh) { line(x, px + s + 32, py + 72, px + w - 30, py + 72, 2, c); bar(px + s + 32, py + 67, 90); }
+        bar(px + s + 32, py + 18, 150); bar(px + s + 32, py + 36, 100);
+        if (!fresh) { line(x, px + s + 32, ly, px + w - 30, ly, 2, c); bar(px + s + 32, ly - 5, 90); }
         break;
       }
       case "row": for (let i = 0; i < 6; i++) x.strokeRect(px + 16 + i * 60, py + 12, 46, 30); break;

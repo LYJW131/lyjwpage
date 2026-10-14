@@ -1135,11 +1135,12 @@
     polyline(d, [[x1 - serif, y - h / 2], [x1, y - h / 2], [x1, y + h / 2], [x1 - serif, y + h / 2]], 1, 2.4, col, a);
     d.restore();
   }
-  // 游标竖线会扫过这两行注：垫一块纸色底，线从字后面过去而不是穿字。先画注再画括号，底色不盖括号。
-  function note7(d, str, lx, ly, color, a) {
-    if (a <= 0) return;
+  // 游标竖线会扫过这两行注：垫一块纸色底，线从字后面过去而不是穿字。底色按面板的透明度画、不跟字一起淡入，
+  // 否则淡入那几帧线会透出来穿字。先画注再画括号，底色不盖括号。
+  function note7(d, str, lx, ly, color, a, k) {
+    if (a <= 0 || k <= 0) return;
     fillRect(d, lx - 8, ly - 30, measure(d, str, FONT.cjk(28, 600)) + 16, 38, css("paper"), a);
-    text(d, str, lx, ly, { font: FONT.cjk(28, 600), color, alpha: a });
+    text(d, str, lx, ly, { font: FONT.cjk(28, 600), color, alpha: a * k });
   }
 
   function inferSheet(d, e, b, a) {
@@ -1163,13 +1164,13 @@
     PLAYS.forEach((p, i) => text(d, p.title, IS.x + 30, ROW[i] + 11, { font: FONT.cjk(32, 600), alpha: a * prog(b, minuteBar(p.seen), minuteBar(p.seen) + 0.1) }));
     const crossK = prog(b, T7.cross, T7.cross + 0.08);
     const winA = win(b, T7.seen1 + 0.05, T7.seen1 + 0.2, T7.shift - 0.1, T7.shift);
-    note7(d, tr("ch01.win"), mx(W1[0]) - 6, ROW[0] - 32, css("signal"), a * winA);
+    note7(d, tr("ch01.win"), mx(W1[0]) - 6, ROW[0] - 32, css("signal"), a, winA);
     const sk = prog(b, T7.shift, T7.cross, E.io);
     const m0 = lerp(W2[0], W2B[0], sk), m1 = lerp(W2[1], W2B[1], sk), y = lerp(ROW[1], ROW[0], sk);
     if (b >= T7.shift) {
       const str = tr("ch01.shift"), sw = measure(d, str, FONT.cjk(28, 600));
       // 英文那行比中文长一倍：跟着括号右端走会冲出面板右边，所以不越过面板右内沿。
-      note7(d, str, Math.min(mx(m1) + 14, IS.x + IS.w - 30 - sw), y - 26, gr, a * win(b, T7.shift, T7.shift + 0.08, T7.cross - 0.06, T7.cross));
+      note7(d, str, Math.min(mx(m1) + 14, IS.x + IS.w - 30 - sw), y - 26, gr, a, win(b, T7.shift, T7.shift + 0.08, T7.cross - 0.06, T7.cross));
     }
     bracket7(d, W1[0], W1[1], ROW[0], a * prog(b, T7.seen1, T7.seen1 + 0.08, E.out), crossK < 0.5);
     bracket7(d, W2[0], W2[1], ROW[1], a * prog(b, T7.seen2, T7.seen2 + 0.08, E.out), b < T7.shift);
