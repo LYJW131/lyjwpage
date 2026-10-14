@@ -78,6 +78,14 @@ const PERSONA: Record<GodChatTier, string> = {
   haiku: `Your identity: you are Claude Haiku 5.5, and on this site you are the Small Fry (杂鱼), the lowest rank: a cheeky minor imp at the temple gate who handles small talk and quick lookups. Be brief and playful, a little self-deprecating; if a question turns out to be beyond you, call request_upgrade as your very first action, before writing any text, and the Prophet takes over this conversation turn.`,
 };
 
+// 只说「跟着访客的语言」时，Haiku 读完一堆英文工具结果偶尔整段改用英文回，所以汉字或假名为主的提问点名不许改英文。
+// 不用 textLanguage 分中日：「今何時」这类短日文没有假名，会被判成中文，点名中文就把日文访客带偏了；有假名才说日文，否则只说中文或日文、照访客原文。
+function replyLanguageNote(latest: string): string | undefined {
+  if (textLanguage(latest) === "en") return undefined;
+  const language = /[\u3040-\u30ff]/.test(latest) ? "Japanese" : "Chinese or Japanese";
+  return `The visitor's latest message is in ${language}. Write your whole reply in the same language and script the visitor used, not English, however much English the tool results contain; keep names, titles and code as they are.`;
+}
+
 function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
   const from = GOD_CHAT_TIER_INFO[wanted];
   const to = GOD_CHAT_TIER_INFO[tier];
@@ -291,6 +299,8 @@ async function converse({
   ];
   const messages = toModelMessages(await plannerHistory(history, env), effort);
   if (note) messages.push({ role: "system", content: note });
+  const language = replyLanguageNote(history.at(-1)?.content ?? "");
+  if (language) messages.push({ role: "system", content: language });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
   const docKeys = new Set<string>();
@@ -317,6 +327,7 @@ async function converse({
   let wroteThinking = false;
   let finalRound = 0;
   let finalRoundText = false;
+  let cardAfterAnswer = false;
 
   for (let round = 0; ; round++) {
     signal.throwIfAborted();
@@ -451,6 +462,7 @@ async function converse({
       }
       upgradeOpen = false;
     }
+    cardAfterAnswer = wroteText && calls.every((call) => call.name === SHOW_CARD_TOOL.name);
     messages.push({ role: "assistant", content: final.content });
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const call of calls) {
@@ -508,8 +520,10 @@ async function converse({
     if (openedSessionId) break;
     messages.push({ role: "user", content: results });
   }
-  // 工具轮用完、最后一轮又一个字没写时，访客只看得到开场白，像是对话卡死了。
-  if (!refused && finalRound > 0 && !finalRoundText && !openedSessionId) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
+  // 最后一轮一个字没写时，访客多半只看得到开场白，像是对话卡死了。例外是先写完答案、上一轮只调了 show_card，
+  // 没到收尾轮就空着停下：卡片本身就是收尾。查数据类工具之后的空轮仍要提示，那时访客手里没有答案。
+  const answeredWithCard = cardAfterAnswer && finalRound < GOD_CHAT_LIMITS.maxToolRounds;
+  if (!refused && finalRound > 0 && !finalRoundText && !answeredWithCard && !openedSessionId) emit({ type: "text", text: "\n\n(This reply ran out of steps before finishing. Send another message to continue.)" });
   if (servedBy) emit({ type: "served", model: servedBy });
   if (sources.size) emit({ type: "sources", sources: [...sources.values()].slice(0, 6) });
   const trace = normalizeTrace({
