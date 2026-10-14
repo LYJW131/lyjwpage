@@ -117,7 +117,7 @@ function main() {
     }
   }
   if (grew.length > 0) {
-    console.error("\n界面文案一律英文（DESIGN.md「Copy」）。确属例外——仅开发环境可见的调试提示、按约定写中文的展示内容、数据源原文——跑 `pnpm ui:copy --update` 记进基线，并在 PR 里说明。");
+    console.error("\n界面文案一律英文（DESIGN.md「Copy」）。确属例外——仅开发环境可见的调试提示、按约定写中文的展示内容、数据源原文——跑 `pnpm ui:copy --update` 记进基线，并在 PR 里说明理由；基线变多要 lyjw 打 baseline-exception 标签放行。");
     process.exit(1);
   }
   if (shrank.length > 0) {

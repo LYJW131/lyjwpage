@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -30,3 +31,6 @@ jobs:
 
       - name: Validate workspace
         run: bash scripts/ci-checks.sh
+        env:
+          # 只认 lyjw 打标签触发的那一次运行：之后再推送，标签还挂着也不放行，要 lyjw 摘了重打。
+          BASELINE_EXCEPTION: ${{ github.event.action == 'labeled' && github.event.label.name == 'baseline-exception' && github.actor == 'LYJW131' }}
