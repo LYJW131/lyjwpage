@@ -1,6 +1,6 @@
 import { LAG_KEYS, writeLag } from "@shared/lag";
 import { get, put } from "@shared/cache";
-import { fetchPageSpeed, mergePageSpeed, type Device } from "../pagespeed";
+import { DEVICES, fetchPageSpeed, mergePageSpeed, type Device } from "../pagespeed";
 import { site } from "@shared/site";
 import type { LighthouseVitals, PageSpeedSample } from "@shared/site-deployments-types";
 
@@ -8,7 +8,6 @@ import { explain, ok, skipMissing, type Job } from "../job";
 
 const HISTORY_KEY = `pagespeed:history:v1:${site.url}`;
 const HISTORY_TTL_MS = 24 * 3_600_000;
-const DEVICES = ["desktop", "mobile"] as const satisfies readonly Device[];
 
 type Fetch = (url: string, strategy: Device, key: string) => Promise<LighthouseVitals>;
 
@@ -27,7 +26,9 @@ export async function refreshPageSpeed(key: string, lag: KVNamespace, now = Date
   const [desktop, mobile] = runs.map((run) => run.vitals);
   const { history, payload } = mergePageSpeed(await get(HISTORY_KEY), { at: now, desktop, mobile });
   await put<PageSpeedSample[]>(HISTORY_KEY, history, HISTORY_TTL_MS);
-  await writeLag(lag, LAG_KEYS.pagespeed, payload, now);
+  if (!payload) throw new Error(`窗口里还没有 ${failed[0].device} 样本`);
+  // 用两端里较旧的那次实测当写入时刻，一端一直测不出时 freshness-watch 照样按它报过期。
+  await writeLag(lag, LAG_KEYS.pagespeed, payload, payload.fetchedAt);
   if (failed.length) console.warn(JSON.stringify({ event: "collector-job", job: "pagespeed", status: "partial", detail }));
   return ok([`${history.length} samples`, ...runs.map((run) => `${run.device} ${run.vitals ? "ok" : "failed"} ${run.ms}ms`)].join(", "));
 }

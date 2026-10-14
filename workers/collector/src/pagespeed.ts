@@ -77,15 +77,28 @@ function isSample(value: unknown): value is PageSpeedSample {
   return typeof row.at === "number" && Number.isFinite(row.at) && slot(row.desktop) && slot(row.mobile) && (vitals(row.desktop) || vitals(row.mobile));
 }
 
-export function mergePageSpeed(previous: unknown, next: PageSpeedSample): { history: PageSpeedSample[]; payload: PageSpeedPayload } {
-  const history = [...(Array.isArray(previous) ? previous.filter(isSample) : []), next]
+export const DEVICES = ["desktop", "mobile"] as const satisfies readonly Device[];
+
+// 只按轮次截最近 MAX_SAMPLES 条会把一端在窗口里仅剩的样本截掉，所以每端最近一次测出的那条总留着。
+function trim(rows: PageSpeedSample[]): PageSpeedSample[] {
+  const kept = rows.slice(-MAX_SAMPLES);
+  for (const device of DEVICES) {
+    const last = rows.findLast((row) => row[device]);
+    if (last && !kept.includes(last)) kept.push(last);
+  }
+  return kept.sort((a, b) => a.at - b.at);
+}
+
+export function mergePageSpeed(previous: unknown, next: PageSpeedSample): { history: PageSpeedSample[]; payload: PageSpeedPayload | null } {
+  const history = trim([...(Array.isArray(previous) ? previous.filter(isSample) : []), next]
     .filter((row) => next.at - row.at < WINDOW_MS)
-    .sort((a, b) => a.at - b.at)
-    .slice(-MAX_SAMPLES);
+    .sort((a, b) => a.at - b.at));
+  const latest = DEVICES.map((device) => history.findLast((row) => row[device])?.at);
+  if (latest.some((at) => at == null)) return { history, payload: null };
   return {
     history,
     payload: {
-      fetchedAt: next.at, url: site.url, samples: history.length, start: history[0].at,
+      fetchedAt: Math.min(...latest as number[]), url: site.url, samples: history.length, start: history[0].at,
       desktop: summarize(history, "desktop"), mobile: summarize(history, "mobile"),
     },
   };
