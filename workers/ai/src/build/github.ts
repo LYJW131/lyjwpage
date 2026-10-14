@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { BUILD_CLOSED_PHASES, BUILD_REPO, branchForRun, buildIssueBody, buildIssueMarker, PLAN_LABELS, planLanguage, type BuildRun, type BuildSignal, type BuildUpload } from "@shared/build-routine";
-import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "../../../../scripts/preview-worker-name.mjs";
+import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "../../../../scripts/preview-worker-name.ts";
 import { GITHUB_APP_CLIENT_ID, type GithubIssueResult } from "@shared/github-issue";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";

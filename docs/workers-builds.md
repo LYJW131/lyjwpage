@@ -39,7 +39,7 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 [Cloudflare Preview 的 Service Binding 指向目标 Worker 的生产部署](https://developers.cloudflare.com/workers/previews/resources/#service-bindings)，不能用生产 Service Binding 配置连接同名分支。因此预览采用专用组合入口 `workers/core/src/preview-entry.ts`，在一个 Preview 内运行 core 与 ai，并注入本实例内的状态读取和请求转发。生产入口不导入这个组合模块。
 
-只有 core 的非生产分支构建发布后端 Preview，parent 固定为 `core`，Preview 同时包含本提交的状态与 AI 代码。命名与地址算法在 `scripts/preview-worker-name.mjs`；分支名中的 `/` 收成短横线，过长时截断并带 hash。
+只有 core 的非生产分支构建发布后端 Preview，parent 固定为 `core`，Preview 同时包含本提交的状态与 AI 代码。命名与地址算法在 `scripts/preview-worker-name.ts`；分支名中的 `/` 收成短横线，过长时截断并带 hash。
 
 `deploy-preview.mjs` 读取 core 的 `wrangler.toml`，生成临时 `workers/core/wrangler.preview.json`，执行 `wrangler preview` 后删除。它明确设置：
 
@@ -56,7 +56,7 @@ core 与 site 的 Preview 和生产同服务名，Workers Issues 的摘要只能
 
 为了让只改前端或只改 AI 的分支也有同提交后端可用，core 的非生产分支构建（Builds 配置里的 `previews_base_config`）另配包含路径：同时覆盖前端、状态与 AI 依赖（`src/*`、`shared/*`、`workers/core/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单），只排除 ingress 独有的 `shared/ingest/*`；生产配置的监视路径不变。
 
-站点 Preview 对外地址是 `<预览名>.preview.lyjw.dev`（`scripts/preview-worker-name.mjs#SITE_PREVIEW_DOMAIN`），来自 `wrangler.jsonc` 里只开 `previews_enabled`、`enabled: false` 的自定义域名，生产部署时生效，Cloudflare 自动建通配 DNS 与证书；`<预览名>-site.lyjw.workers.dev` 也仍可用。不设登录，谁拿到地址都能打开：仓库公开，同分支的 core Preview 本来也公开，登录挡不住什么。workers.dev 预览由 Cloudflare 自动加 `X-Robots-Tag: noindex`，自定义域名不加，所以自己加：Worker 渲染的响应由 `workers/site/src/index.ts#withoutIndexing` 加，不经 Worker 的静态资源（如 `/explainer/`、`/offline.html`）由 `public/_headers` 按 `preview.lyjw.dev` 主机加。core Preview 的 `ALLOWED_ORIGINS` 要同时放行这两种站点预览源。workers.dev 地址要 `site` 的 Worker 级 Preview URL 开关开着，而每次生产 `wrangler deploy` 都按 `wrangler.jsonc` 的 `preview_urls` 重写它（缺省为关），所以根配置必须写 `preview_urls: true`；关着时 `wrangler preview` 仍报成功，只是日志写「no active URLs」，PR 上也没有站点地址。PR 上带地址的「Deploying Preview」评论只有走 Builds Previews（`previews_enabled` 与 `previews_base_config`）的 Worker 才会发，旧版「非生产分支触发」只给构建状态表；core 与 site 都要走 Previews。不要开账号级的 Workers Access 保护，它会挡住 core 预览的构建就绪检查。
+站点 Preview 对外地址是 `<预览名>.preview.lyjw.dev`（`scripts/preview-worker-name.ts#SITE_PREVIEW_DOMAIN`），来自 `wrangler.jsonc` 里只开 `previews_enabled`、`enabled: false` 的自定义域名，生产部署时生效，Cloudflare 自动建通配 DNS 与证书；`<预览名>-site.lyjw.workers.dev` 也仍可用。不设登录，谁拿到地址都能打开：仓库公开，同分支的 core Preview 本来也公开，登录挡不住什么。workers.dev 预览由 Cloudflare 自动加 `X-Robots-Tag: noindex`，自定义域名不加，所以自己加：Worker 渲染的响应由 `workers/site/src/index.ts#withoutIndexing` 加，不经 Worker 的静态资源（如 `/explainer/`、`/offline.html`）由 `public/_headers` 按 `preview.lyjw.dev` 主机加。core Preview 的 `ALLOWED_ORIGINS` 要同时放行这两种站点预览源。workers.dev 地址要 `site` 的 Worker 级 Preview URL 开关开着，而每次生产 `wrangler deploy` 都按 `wrangler.jsonc` 的 `preview_urls` 重写它（缺省为关），所以根配置必须写 `preview_urls: true`；关着时 `wrangler preview` 仍报成功，只是日志写「no active URLs」，PR 上也没有站点地址。PR 上带地址的「Deploying Preview」评论只有走 Builds Previews（`previews_enabled` 与 `previews_base_config`）的 Worker 才会发，旧版「非生产分支触发」只给构建状态表；core 与 site 都要走 Previews。不要开账号级的 Workers Access 保护，它会挡住 core 预览的构建就绪检查。
 
 AI 端点需要的 Secret 设在 core parent 的本分支 Preview 上：
 

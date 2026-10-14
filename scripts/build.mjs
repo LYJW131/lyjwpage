@@ -8,7 +8,7 @@ const envFile = new URL("../.env.local", import.meta.url);
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 import { isMatchingPreview } from "./preview-backend.mjs";
-import { previewWorkerOrigin } from "./preview-worker-name.mjs";
+import { previewWorkerOrigin } from "./preview-worker-name.ts";
 import { SITE_PREVIEW_MANIFEST_PATH, sitePreviewManifest } from "./site-preview.mjs";
 
 const WAIT_MS = 180_000;
