@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
@@ -24,7 +23,7 @@ const HELP = `用法：node scripts/deploy-check.mjs --sha <合并提交完整 s
 
 GitHub 有 GITHUB_TOKEN / GH_TOKEN 时带上，没有就匿名读（公开仓库）。
 云端容器的出站要走代理：NODE_USE_ENV_PROXY=1 node scripts/deploy-check.mjs …，否则请求不经代理会 401 或连不上。
-判断「被更新的部署覆盖」用本地 git：先 git fetch origin main。`;
+判断「被更新的部署覆盖」用 GitHub 的提交比较接口，不依赖本地 git 有没有那个提交。`;
 
 export function parseArgs(argv) {
   const flags = {};
@@ -39,10 +38,23 @@ export function parseArgs(argv) {
   return flags;
 }
 
+// 同一提交重跑构建后，旧的失败检查和新的检查同名并存，每个 Worker 只认最新那条。
+function newestPerWorker(checkRuns) {
+  const newest = new Map();
+  for (const run of checkRuns) {
+    if (!run.name.startsWith(BUILD_PREFIX)) continue;
+    const worker = run.name.slice(BUILD_PREFIX.length);
+    const current = newest.get(worker);
+    const key = [run.started_at ?? "", run.id ?? 0];
+    if (!current || key[0] > current.key[0] || (key[0] === current.key[0] && key[1] > current.key[1])) {
+      newest.set(worker, { key, run });
+    }
+  }
+  return [...newest].map(([worker, { run }]) => ({ worker, status: run.status, conclusion: run.conclusion }));
+}
+
 export function summarizeBuilds(checkRuns) {
-  const builds = checkRuns
-    .filter((run) => run.name.startsWith(BUILD_PREFIX))
-    .map((run) => ({ worker: run.name.slice(BUILD_PREFIX.length), status: run.status, conclusion: run.conclusion }));
+  const builds = newestPerWorker(checkRuns);
   const pending = builds.filter((build) => build.status !== "completed");
   const failed = builds.filter(
     (build) => build.status === "completed" && !["success", "neutral", "skipped"].includes(build.conclusion),
@@ -52,26 +64,37 @@ export function summarizeBuilds(checkRuns) {
 }
 
 // commit 等于目标：已上线；目标是 commit 的祖先：被之后的部署覆盖，同样算通过；否则还停在旧版本。
-export function classifyVersion(commit, sha, isAncestor) {
+export async function classifyVersion(commit, sha, isAncestor) {
   if (!commit) return "unreadable";
   if (commit === sha) return "live";
-  if (isAncestor(sha, commit)) return "superseded";
+  if (await isAncestor(sha, commit)) return "superseded";
   return "stale";
 }
 
-export function gitIsAncestor(ancestor, descendant) {
-  try {
-    execFileSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
+function githubHeaders() {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  return { accept: "application/vnd.github+json", ...(token ? { authorization: `Bearer ${token}` } : {}) };
+}
+
+// 用 GitHub 比较而不是本地 git：轮询期间新合并的提交本地还没有，merge-base 会把它误判成旧提交。
+function githubIsAncestor(fetchImpl, signal) {
+  return async (ancestor, descendant) => {
+    try {
+      const response = await fetchImpl(
+        `https://api.github.com/repos/${REPO}/compare/${ancestor}...${descendant}?per_page=1`,
+        { headers: githubHeaders(), signal: signal() },
+      );
+      if (!response.ok) return false;
+      return (await response.json()).status === "ahead";
+    } catch {
+      return false;
+    }
+  };
 }
 
 async function fetchCheckRuns(sha, fetchImpl, signal) {
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const response = await fetchImpl(`https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100`, {
-    headers: { accept: "application/vnd.github+json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    headers: githubHeaders(),
     signal,
   });
   if (!response.ok) throw new Error(`check-runs HTTP ${response.status}`);
@@ -92,11 +115,11 @@ export async function run(options, deps = {}) {
   const fetchImpl = deps.fetch ?? fetch;
   const wait = deps.sleep ?? sleep;
   const now = deps.now ?? Date.now;
-  const isAncestor = deps.isAncestor ?? gitIsAncestor;
   const { sha, timeoutMs, intervalMs, graceMs, site, expect = [] } = options;
   const startedAt = now();
   const elapsed = () => now() - startedAt;
   const requestSignal = () => AbortSignal.timeout(Math.max(1000, Math.min(REQUEST_TIMEOUT_MS, timeoutMs - elapsed())));
+  const isAncestor = deps.isAncestor ?? githubIsAncestor(fetchImpl, requestSignal);
 
   let summary = { builds: [], pending: [], failed: [], siteBuilt: false };
   let buildError;
@@ -107,10 +130,10 @@ export async function run(options, deps = {}) {
     } catch (error) {
       buildError = String(error.message ?? error);
     }
-    const settled = !buildError && summary.builds.length > 0 && summary.pending.length === 0;
+    const graceOver = elapsed() >= graceMs;
+    const settled = !buildError && summary.pending.length === 0 && (summary.builds.length > 0 || graceOver);
     const seen = new Set(summary.builds.map((build) => build.worker));
     const expectedSeen = expect.every((worker) => seen.has(worker));
-    const graceOver = elapsed() >= graceMs;
     if (settled && expectedSeen && (seen.has("site") || site !== "auto" || graceOver)) break;
     if (elapsed() >= timeoutMs) break;
     await wait(intervalMs);
@@ -123,10 +146,6 @@ export async function run(options, deps = {}) {
   }
   if (summary.pending.length > 0) {
     result.next = `构建超时仍在跑：${summary.pending.map((b) => b.worker).join("、")}；去 Cloudflare 看构建日志，别手跑 wrangler deploy`;
-    return result;
-  }
-  if (summary.builds.length === 0) {
-    result.next = "合并提交上一个 Workers Builds 检查都没有；Workers Builds 可能没收到这次推送，去 Cloudflare 看构建列表";
     return result;
   }
   const missing = expect.filter(
@@ -145,6 +164,7 @@ export async function run(options, deps = {}) {
   result.siteChecked = waitVersion;
   if (!waitVersion) {
     result.pass = true;
+    if (summary.builds.length === 0) result.note = "宽限期内没有任何 Workers Builds 检查，这次合并没碰到 Worker 的监视路径；碰到了的话用 --expect 列出来";
     return result;
   }
 
@@ -152,7 +172,7 @@ export async function run(options, deps = {}) {
     const versions = [];
     for (const host of HOSTS) {
       const commit = await fetchVersion(host, fetchImpl, requestSignal());
-      versions.push({ host, commit, state: classifyVersion(commit, sha, isAncestor) });
+      versions.push({ host, commit, state: await classifyVersion(commit, sha, isAncestor) });
     }
     result.versions = versions;
     if (versions.every((v) => v.state === "live" || v.state === "superseded")) {
