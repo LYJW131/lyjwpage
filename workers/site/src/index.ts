@@ -28,7 +28,7 @@ import {
 } from "@/lib/image-proxy";
 import { LYRICS_PATH } from "@shared/apple-music-paths";
 import type { LyricsResult } from "@shared/lyrics-ttml";
-import { relayClientError } from "@/lib/error-relay";
+import { isSiteOrigin, relayClientError } from "@/lib/error-relay";
 import {
   HOME_CACHE_TAG,
   IMMUTABLE_ASSET_CACHE_CONTROL,
@@ -374,6 +374,7 @@ const siteWorker = {
       case "collector":
         return isProduction(env) ? env.COLLECTOR_SERVICE.fetch(request) : backendRedirect(env, url);
       case "error-relay": {
+        if (!isSiteOrigin(request)) return errorResponse(403, "Foreign origin");
         if (!(await env.RELAY_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") ?? "" })).success) {
           return errorResponse(429, "Too many error reports");
         }

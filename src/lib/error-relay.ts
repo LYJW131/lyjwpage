@@ -1,4 +1,5 @@
 import { BodyTooLargeError, readBoundedBytes } from "@shared/read-bounded-bytes";
+import { SITE_ANALYTICS_HOSTS } from "@shared/site-analytics";
 
 export const ERROR_RELAY_PATH = "/relay";
 export const ERROR_RELAY_MAX_BYTES = 16_384;
@@ -75,6 +76,18 @@ export function reportAsError(report: ClientErrorReport): Error {
   error.name = report.name;
   error.stack = report.stack ?? `${report.name}: ${report.message}`;
   return error;
+}
+
+// 别的网站能不经预检让访客的浏览器发 text/plain 的 POST，所以带 Origin 的只收本站：同主机（含分支预览与本地），或经 ESA 回源到 lyjw.me 的 lyjw131.com。
+export function isSiteOrigin(request: Request): boolean {
+  const origin = request.headers.get("Origin");
+  if (origin === null) return true;
+  try {
+    const { host, protocol } = new URL(origin);
+    return host === new URL(request.url).host || (protocol === "https:" && (SITE_ANALYTICS_HOSTS as readonly string[]).includes(host));
+  } catch {
+    return false;
+  }
 }
 
 export async function relayClientError(

@@ -146,7 +146,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | Secret | 用途 |
 | --- | --- |
 | `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计与最近提交（REST + GraphQL 取协作者） |
-| `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取；健康汇总另要 Workers Observability 读取 |
+| `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取；健康汇总另要 Workers Observability 写（遥测查询接口只认写权限） |
 | `PAGESPEED_API_KEY` | Google PageSpeed Insights |
 | `APPLE_MUSIC_PRIVATE_KEY` | Apple Music 开发者私钥（`.p8`）：签服务端调 Apple 用的 developer token 和给网页播放器的 MusicKit token；缺了 `apple-recent` 跳过，令牌路由回 500 |
 | `APPLE_MUSIC_OWNER_NAME` | Apple ID 上的真名：`apple-recent` 出站前把它（含 URL 编码形式）换成 `src/jobs/apple-recent.ts#OWNER_ALIAS`，自己的歌单、音乐回忆署名与个人电台标题不露真名；缺了 `apple-recent` 跳过，宁可不更新也不漏 |
