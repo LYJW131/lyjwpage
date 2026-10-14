@@ -88,6 +88,16 @@ test("充电头与充电宝：心跳断档超窗后恢复，同样插着也失�
   assert.ok(!steady.includes(bankTag));
 }));
 
+test("充电头与充电宝：Mac 宣告离线和重新上线都失效首屏", withStorage(async () => {
+  const env = testEnv();
+  const tags = [STATUS_VIEWS.charger.tag, STATUS_VIEWS.powerBank.tag];
+  await land(env, "mac", charger(true, 40, NOW), NOW);
+  const offline = tagsOf(await land(env, "mac", { ...charger(true, 40, NOW + 5_000), presence: "offline" }, NOW + 5_000));
+  for (const tag of tags) assert.ok(offline.includes(tag), tag);
+  const online = tagsOf(await land(env, "mac", charger(true, 40, NOW + 10_000), NOW + 10_000));
+  for (const tag of tags) assert.ok(online.includes(tag), tag);
+}));
+
 function playing(positionTicks: number | null) {
   return {
     playing: positionTicks === null ? null : {
