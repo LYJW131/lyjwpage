@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { LAG_KEYS, readLag, writeLag } from "@shared/lag";
 import type { AgentStatusPayload, AgentStatusRow } from "@shared/agent-status-types";
-import { HEALTH_DAYS, HEARTBEAT_SERIES, UPTIME_SERIES, readBuckets, recordCheck } from "@shared/health";
+import { HEALTH_DAYS, HEALTH_RETENTION_MS, HEARTBEAT_SERIES, UPTIME_SERIES, pruneChecks, readBuckets, recordCheck, summarizeBuckets } from "@shared/health";
 import type { HealthPayload } from "@shared/health-types";
 import { ContributorsUnavailable } from "@shared/github-repo";
 import type { GithubRepoPayload } from "@shared/types";
@@ -160,6 +160,7 @@ test("site health summarizes D1 checks with Cloudflare errors and vitals, carryi
   await recordCheck(db, HEARTBEAT_SERIES, now - 3 * 60_000, true);
   await recordCheck(db, UPTIME_SERIES, now - 60_000, false);
   await recordCheck(db, UPTIME_SERIES, now - 40 * 86_400_000, true);
+  await recordCheck(db, UPTIME_SERIES, now - 41 * 86_400_000, true);
   const inFlight = { now: 0, peak: 0 };
   const fetches = t.mock.method(globalThis, "fetch", cloudflareHealthFetch({ inFlight }));
 
@@ -171,7 +172,7 @@ test("site health summarizes D1 checks with Cloudflare errors and vitals, carryi
   assert.equal(first.uptime?.intervalSeconds, 60);
   assert.deepEqual(first.errors, { site: { count12h: 3, count7d: 30, unresolved: 0 }, worker: { count12h: 1, count7d: 15, unresolved: 2 } });
   assert.deepEqual(first.vitals, { lcpP75Ms: 609, inpP75Ms: 48, clsP75: 0.001, fcpP75Ms: 588, ttfbP75Ms: null, samples: 44 });
-  assert.equal(all("SELECT COUNT(*) AS n FROM health_buckets")[0].n, 2, "超出保留期的格子被清掉");
+  assert.equal(all("SELECT COUNT(*) AS n FROM health_buckets")[0].n, 3, "保留期外的格子清掉，每个序列只留最新的一格");
 
   fetches.mock.mockImplementation(cloudflareHealthFetch({ vitalsDown: true }));
   assert.deepEqual(await siteHealthJob.run({ env, now: now + 300_000, scheduled: true }), { status: "ok", detail: "vitals carried over" });
@@ -190,6 +191,24 @@ test("health buckets come back with the last hour before the window, when one is
   await recordCheck(db, UPTIME_SERIES, windowStart + 3 * 3_600_000, true);
   assert.deepEqual((await readBuckets(db, HEARTBEAT_SERIES, now)).map((b) => b.hourStart), [windowStart - 2 * 3_600_000, windowStart + 3 * 3_600_000]);
   assert.deepEqual((await readBuckets(db, UPTIME_SERIES, now)).map((b) => b.hourStart), [windowStart + 3 * 3_600_000]);
+});
+
+test("an outage longer than retention keeps each series' newest expired hour, so the heartbeat still reads down", async () => {
+  const { db } = historyDb();
+  const hour = 3_600_000;
+  const hourOf = (at: number) => Math.floor(at / hour) * hour;
+  const cut = now - HEALTH_RETENTION_MS;
+  await recordCheck(db, HEARTBEAT_SERIES, cut - 30 * hour, true);
+  await recordCheck(db, HEARTBEAT_SERIES, cut - 10 * hour, true);
+  await recordCheck(db, UPTIME_SERIES, cut - 20 * hour, true);
+  await pruneChecks(db, now);
+  await pruneChecks(db, now);
+  const heartbeat = await readBuckets(db, HEARTBEAT_SERIES, now);
+  assert.deepEqual(heartbeat.map((b) => b.hourStart), [hourOf(cut - 10 * hour)]);
+  assert.deepEqual((await readBuckets(db, UPTIME_SERIES, now)).map((b) => b.hourStart), [hourOf(cut - 20 * hour)]);
+  const summary = summarizeBuckets(HEARTBEAT_SERIES, heartbeat, now);
+  assert.equal(summary.status, "down");
+  assert.equal(summary.availability30d, 0);
 });
 
 test("site health without Cloudflare settings still refreshes the D1 uptime rows", async (t) => {
