@@ -9,6 +9,7 @@ import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types
 import type { EnrichmentPatch } from "@shared/track-enrichment";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
+import { watchClockLayout } from "./clock-layout-watch";
 import { cronRoundDue } from "./cron-heartbeat";
 import { runCronRound } from "./cron-round";
 import { dispatchIngestEffects } from "./ingest-effects";
@@ -87,7 +88,11 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
 
   // Preview 仍可能连着共享归档，必须独立禁止这一轮写入。
   async cronRound(scheduledTime: number): Promise<{ ran: boolean }> {
-    if (previewWorkerEnabled() || !cronRoundDue(scheduledTime)) return { ran: false };
+    if (previewWorkerEnabled()) return { ran: false };
+    await this.scoped(() => watchClockLayout()).catch((error: unknown) => {
+      console.warn("[clock-layout]", error instanceof Error ? error.message : String(error));
+    });
+    if (!cronRoundDue(scheduledTime)) return { ran: false };
     let ok = false;
     try {
       await runCronRound(this.env, scheduledTime);
