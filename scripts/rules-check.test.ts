@@ -159,4 +159,9 @@ test("JSDoc 块注释被拦，行注释、普通块注释与字符串里的 /** 
   assert.deepEqual(rules("src/lib/x.ts", "const a = 1;\n/** 说明 */\nexport const b = 2;"), ["jsdoc-internal@2"]);
   assert.equal(rules("src/lib/x.ts", '// 文件头\n/* 普通块注释 */\nconst s = "/** 字符串里的不算 */";\nconst e = 1; /**/').length, 0);
   assert.equal(rules("docs/x.md", "/** markdown 不查 */").length, 0);
+  assert.equal(rules("src/lib/x.ts", "const pattern = /[/**]/;\nconst q = /\"/; const t = `/** 模板文本 */`;").length, 0);
+  assert.deepEqual(rules("src/lib/x.ts", "const v = 1;\nconst r = `${/** 插值里的 */ v}`;"), ["jsdoc-internal@2"]);
+  assert.deepEqual(rules("src/lib/x.ts", "const q = /\"/;\n/** 正则后面的 */\nexport const b = 2;"), ["jsdoc-internal@2"]);
+  assert.deepEqual(rules("src/components/x.tsx", "export const A = () => <p>it's {/** JSX 里的 */ 1}</p>;"), ["jsdoc-internal@1"]);
+  assert.equal(rules("src/components/x.tsx", "export const A = () => <p>/** JSX 文本 */</p>;").length, 0);
 });

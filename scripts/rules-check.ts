@@ -296,11 +296,36 @@ export function checkJsonResponseLiteral(file: string, text: string) {
   return issues;
 }
 
+// 注释范围取自 TypeScript 词法：正则字面量、模板插值、JSX 文本里的 /** 都按语法分清。
 export function checkJsdoc(file: string, text: string) {
-  if (!TS_PARSE_EXTS.has(extOf(file))) return [];
-  return commentTexts(file, text)
-    .filter((comment) => comment.text.startsWith("/**") && comment.text !== "/**/")
-    .map((comment) => ({ file, line: comment.line, rule: "jsdoc-internal", message: "仓库里没有对外发布的库接口，不写 JSDoc 块注释（/** 开头）：文件头和必要的说明用 // 行注释，能删的删掉（AGENTS.md「文档与注释」）。" }));
+  const ext = extOf(file);
+  if (!TS_PARSE_EXTS.has(ext)) return [];
+  const ts = loadTs();
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const seen = new Set<number>();
+  const ranges: TS.CommentRange[] = [];
+  const jsxText: Array<[number, number]> = [];
+  const add = (found: TS.CommentRange[] | undefined) => {
+    for (const range of found ?? []) if (!seen.has(range.pos)) { seen.add(range.pos); ranges.push(range); }
+  };
+  const walk = (node: TS.Node) => {
+    if (ts.isJsxText(node)) { jsxText.push([node.pos, node.end]); return; }
+    const children = node.getChildren(sf);
+    if (children.length > 0) { children.forEach(walk); return; }
+    add(ts.getLeadingCommentRanges(text, node.getFullStart()));
+    add(ts.getTrailingCommentRanges(text, node.getEnd()));
+  };
+  walk(sf);
+  const issues: Issue[] = [];
+  for (const range of ranges) {
+    // 开标签的尾随注释扫描会把紧跟的 JSX 文本当注释读，落在 JSX 文本里的不算。
+    if (jsxText.some(([from, to]) => range.pos >= from && range.pos < to)) continue;
+    const body = text.slice(range.pos, range.end);
+    if (range.kind !== ts.SyntaxKind.MultiLineCommentTrivia || !body.startsWith("/**") || body === "/**/") continue;
+    const { line } = sf.getLineAndCharacterOfPosition(range.pos);
+    issues.push({ file, line: line + 1, rule: "jsdoc-internal", message: "仓库里没有对外发布的库接口，不写 JSDoc 块注释（/** 开头）：文件头和必要的说明用 // 行注释，能删的删掉（AGENTS.md「文档与注释」）。" });
+  }
+  return issues.sort((a, b) => a.line - b.line);
 }
 
 export function checkFile(file: string, text: string): Issue[] {
