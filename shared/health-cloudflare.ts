@@ -51,7 +51,7 @@ query FieldVitals($account: string, $sites: [string!], $start: Time, $end: Time)
   }
 }`;
 
-// Web Analytics 的时长分位数单位是微秒；没有样本时返回 0，不当成 0 毫秒。
+// Web Analytics 的时长分位数单位是微秒；没有样本时返回 0，取不到时返回负数，两种都不当成真实数值。
 function microsToMs(value: unknown): number | null {
   const micros = num(value);
   return micros > 0 ? Math.round(micros / 1000) : null;
@@ -69,7 +69,7 @@ export function parseFieldVitals(raw: unknown): FieldVitals {
   return {
     lcpP75Ms: microsToMs(q.largestContentfulPaintP75),
     inpP75Ms: microsToMs(q.interactionToNextPaintP75),
-    clsP75: samples > 0 && typeof q.cumulativeLayoutShiftP75 === "number" ? q.cumulativeLayoutShiftP75 : null,
+    clsP75: samples > 0 && typeof q.cumulativeLayoutShiftP75 === "number" && q.cumulativeLayoutShiftP75 >= 0 ? q.cumulativeLayoutShiftP75 : null,
     fcpP75Ms: microsToMs(q.firstContentfulPaintP75),
     ttfbP75Ms: microsToMs(q.timeToFirstByteP75),
     samples,
