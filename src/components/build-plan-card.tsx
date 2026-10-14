@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { ChatMarkdown } from "@/components/chat-markdown";
+import { ChatMarkdown } from "@/components/lazy-chat-markdown";
 import { GithubConsent } from "@/components/github-consent";
 import { buildReviewSummary } from "@/lib/build-review-summary";
 import { createBuildStatusPoller, isBuildTerminal } from "@/lib/build-status-polling";

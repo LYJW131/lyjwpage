@@ -136,6 +136,10 @@
   - 是什么：修正 CommonMark 在中日韩标点旁不认 `**` 收尾的 remark 插件。
   - 取了什么：对话里「？」后紧跟中文的加粗会原样显示星号，接上它和配套的删除线插件。
   - 状态：采用。落在 [chat-markdown-plugins.ts](../src/lib/chat-markdown-plugins.ts)。
+- **[TanStack Start 1.0 is Stable](https://tanstack.com/blog/tanstack-start-1-0)** 与 **[We stopped using RSC on tanstack.com](https://tanstack.com/blog/we-stopped-using-rsc-on-tanstack-com)**（Tanner Linsley）
+  - 是什么：TanStack Start 稳定版公告；tanstack.com 发现 RSC 主要在替一套过大的 Markdown 与高亮依赖遮丑，改为把依赖做小、回到普通 SSR。
+  - 取了什么：先量首屏包里谁大。聊天的 react-markdown 与 remark 插件原本在首页路由块里，拆成按需加载的独立块，聊天卡片进入视口时预加载。
+  - 状态：部分采用。落在 [lazy-chat-markdown.tsx](../src/components/lazy-chat-markdown.tsx)。不迁到 TanStack Start：React Router 已有类型化路由与 Workers 上的 SSR，Start 主打的 server function 与根 [AGENTS.md](../AGENTS.md)「禁区」的站点侧不写后端相冲。不换 `@tanstack/markdown`：它没有 remark 插件链，会丢掉 `remark-cjk-friendly` 的中文加粗修正。
 
 ## 交互与文案参照
 
