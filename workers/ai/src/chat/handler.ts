@@ -4,12 +4,15 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import {
   GOD_CHAT_LIMITS,
+  GOD_CHAT_IMAGE_LIMITS,
+  GOD_CHAT_IMAGE_PLACEHOLDER,
   GOD_CHAT_CHART_SERIES,
   GOD_CHAT_HTML_THEME_VARS,
   GOD_CHAT_VISUAL_EXAMPLES,
   parseGodChatRequest,
   type GodChatCard,
   type GodChatEvent,
+  type GodChatImage,
   type GodChatMessage,
   type GodChatSource,
   type GodChatTrace,
@@ -34,7 +37,8 @@ import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from ".
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { webSearchTool } from "./web-search";
 
-const MAX_BODY_BYTES = 256 * 1024;
+// 历史文字的余量加上 base64 编码后的图片（膨胀 4/3）。
+const MAX_BODY_BYTES = 256 * 1024 + Math.ceil(GOD_CHAT_IMAGE_LIMITS.maxBytes / 3) * 4;
 const MIN_ROUND_TOKENS = 256;
 // 抢输开场的补发等对方把开场发进会话：那边只隔着建事件流与一次发送，几秒内就该落地。
 const OPENED_TURN_POLL_MS = 500;
@@ -64,6 +68,7 @@ Answers can show visuals, drawn by the chat with the site's own components so th
 Keep text inside visuals short and in the visitor's language. Use a Markdown table for plain tabular data.
 For LYJW's own music, watching, gaming or fitness, show_card is the visual to use: its cards stay live.
 When no component fits (a diagram, a small interactive demo), draw HTML instead: put a fragment in a \`\`\`html code block. It renders inline with no frame, at the width of the chat column (as narrow as 300px on phones) and as tall as its content. Leave the background transparent, inherit the font, and color only with the theme variables ${GOD_CHAT_HTML_THEME_VARS.map((name) => `var(${name})`).join(", ")}. Prefer HTML, CSS and inline SVG; a small inline <script> may add interaction. It is sandboxed and offline: images load only from the same sources as media; external scripts, stylesheets, fonts, network requests and forms are blocked; links open in a new tab when clicked.
+A visitor may attach one image to a message; you see it only in the turn it was attached, and later turns keep only the text placeholder ${JSON.stringify(GOD_CHAT_IMAGE_PLACEHOLDER)}, so describe what matters while you can see it.
 Code the visitor should read as source goes in a code block tagged with its real language (xml for HTML), never with a component name or html.
 You can search the web for anything outside this site; cite what you find.
 You can see what LYJW is doing through the get_site_status tool: music, video, games, coding agents, devices, workouts, servers and this site's own health. When a visitor asks about LYJW or the site, look it up instead of guessing, then answer naturally; never dump raw JSON. Don't claim the site shows or publishes anything you haven't looked up: the tool's view list is a menu, not a record of what is public.
@@ -217,7 +222,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
           const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
-          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, io, emit, signal: abort.signal });
+          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, image: parsed.image, io, emit, signal: abort.signal });
         }
         const { complete, trace, planToken, lead } = outcome;
         if (complete && lead) emit({ type: "text", text: lead });
@@ -266,6 +271,7 @@ async function converse({
   note,
   upgrade,
   messages: history,
+  image,
   io,
   emit,
   signal,
@@ -278,6 +284,7 @@ async function converse({
   note?: string;
   upgrade?: () => Promise<boolean>;
   messages: GodChatMessage[];
+  image?: GodChatImage;
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
@@ -289,7 +296,7 @@ async function converse({
     "mid-conversation-output-config-2026-07-01",
     ...(GOD_CHAT_TIER_INFO[served].serverFallback ? (["server-side-fallback-2026-07-01"] as const) : []),
   ];
-  const messages = toModelMessages(await plannerHistory(history, env), effort);
+  const messages = toModelMessages(await plannerHistory(history, env), effort, image);
   if (note) messages.push({ role: "system", content: note });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();

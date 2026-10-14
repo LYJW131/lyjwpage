@@ -156,6 +156,52 @@ test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效"
   }
 });
 
+test("访客附的图片只在当轮作为最后一条 user 消息的 image 块交给模型，下一轮历史里只剩文字", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
+  const env: Env = {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "sonnet",
+    ANTHROPIC_API_KEY: "test-key",
+    TURNSTILE_SECRET_KEY: "test-key",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    CHAT_QUOTA: binding<ChatQuota>({ admitVisitor: async () => "ok" as const, admitTier: async () => "sonnet" as const }),
+    ANTHROPIC_EGRESS: binding<AnthropicEgress>({
+      fetch: async (request: Request) => {
+        const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+        requests.push(body);
+        return modelStream(body.model, false);
+      },
+    }),
+  };
+  const io = { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") };
+  const chat = async (body: unknown) => (await (await handleChat(new Request("https://ai.test/api/chat", { method: "POST", body: JSON.stringify(body) }), env, io)).text())
+    .trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
+  const image = { mediaType: "image/jpeg", data: Buffer.from("jpeg bytes").toString("base64") };
+  const first = await chat({ turnstileToken: "test-token", messages: [{ role: "user", content: "What is in this picture?" }], image });
+  const last = requests[0].messages.at(-1)!;
+  assert.equal(last.role, "user");
+  assert.deepEqual(last.content, [
+    { type: "image", source: { type: "base64", media_type: "image/jpeg", data: image.data } },
+    { type: "text", text: "What is in this picture?" },
+  ]);
+  const seal = first.find((event) => event.type === "seal");
+  assert.ok(seal?.type === "seal");
+  await chat({ turnstileToken: "test-token", messages: [
+    { role: "user", content: "What is in this picture?" },
+    { role: "assistant", content: "Done.", seal: seal.seal, trace: seal.trace },
+    { role: "user", content: "And now?" },
+  ] });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].messages.filter((message) => message.role === "user").length, 2);
+  assert.ok(!JSON.stringify(requests[1].messages).includes(image.data));
+  assert.ok(requests[1].messages.every((message) => typeof message.content === "string" || message.content.every((block) => block.type !== "image")));
+});
+
 const plan: BuildPlan = {
   title: "Improve the music card empty state",
   spec: "Show an English empty-state label when no music is playing, including at mobile widths.",
