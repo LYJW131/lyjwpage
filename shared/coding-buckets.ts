@@ -9,7 +9,7 @@ import { mergeCoverage, type Coverage } from "./pulse-features";
 
 export type StoredCodingBuckets = {
   coverage: Coverage[];
-  agents: Array<{ id: string; state: CodingTokenBucketState }>;
+  agents: Array<{ id: string; state: CodingTokenBucketState; collectedAt?: number }>;
   windows: Array<{ from: number; agents: CodingTokenBucketRow[] }>;
   collectedAt: number;
   receivedAt: number;
@@ -44,15 +44,15 @@ function retained(windows: Map<number, Row[]>, coverage: Coverage[], receivedAt:
   };
 }
 
-// 一份报告只替换它声明的 agent：同一来源下的 agent 各报各的范围（Cursor 与 Devin 都走 agents），互不冲掉。
+// 一份报告只替换它声明的 agent：同一来源下的 agent 各报各的范围和采集时刻（Cursor 与 Devin 都走 agents），互不冲掉、互不挡。
 // 报告首桶可能只覆盖后半截，不能用这份局部计数覆盖已有的完整桶。
 export function mergeBucketReport(
   previous: StoredCodingBuckets | null,
   report: CodingTokenBucketReport,
   receivedAt: number,
 ): StoredCodingBuckets | null {
-  if (previous && report.collectedAt < previous.collectedAt) return null;
   const declared = new Set(report.agents.map((agent) => agent.id));
+  if (previous && previous.agents.some((agent) => declared.has(agent.id) && report.collectedAt < (agent.collectedAt ?? previous.collectedAt))) return null;
   const windows = new Map((previous?.windows ?? []).map((window) => [window.from, window.agents.map((row) => ({ ...row }))]));
   for (const [from, rows] of windows) {
     if (from >= report.from && from < report.to) windows.set(from, rows.filter((row) => !declared.has(row.id)));
@@ -75,8 +75,8 @@ export function mergeBucketReport(
   const others = (previous?.agents ?? []).filter((agent) => !declared.has(agent.id) && reporting.has(agent.id));
   return {
     ...kept,
-    agents: [...others, ...report.agents].map((agent) => ({ ...agent })),
-    collectedAt: report.collectedAt,
+    agents: [...others.map((agent) => ({ ...agent })), ...report.agents.map((agent) => ({ ...agent, collectedAt: report.collectedAt }))],
+    collectedAt: Math.max(report.collectedAt, previous?.collectedAt ?? 0),
     receivedAt,
   };
 }

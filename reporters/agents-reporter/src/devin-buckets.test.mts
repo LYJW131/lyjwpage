@@ -59,3 +59,11 @@ test("报告从账本起点或 24 小时前开始，到最后一次提交为止�
   assert.deepEqual(devinBucketReport(first, "devin", T0 + 2 * M).windows, []);
   assert.equal(devinBucketReport(advanceDevinLedger(null, snapshot(T0, { swe: tokens(0) }), "devin", T0), "devin", T0 + M), null);
 });
+
+test("tokens.ci 的提交时刻没往前走就不摊，涨的部分等下一次提交一起算", () => {
+  const first = advanceDevinLedger(null, snapshot(T0 + 2 * M, { swe: tokens(10) }), "devin", T0 + 2 * M);
+  const same = advanceDevinLedger(first, snapshot(T0 + 2 * M, { swe: tokens(110) }), "devin", T0 + 4 * M);
+  assert.equal(same, first);
+  const next = advanceDevinLedger(same, snapshot(T0 + 7 * M, { swe: tokens(160) }), "devin", T0 + 8 * M);
+  assert.deepEqual(next.windows.map((window) => [window.from, window.agents[0].inputTokens]), [[T0, 90], [T0 + 5 * M, 60]]);
+});
