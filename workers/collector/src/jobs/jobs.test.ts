@@ -108,8 +108,18 @@ test("repo stats keep the good half of a partial round", () => {
 
 const HEALTH_SITES = JSON.stringify({ "lyjw.me": "a".repeat(32), "lyjw131.com": "b".repeat(32) });
 
-function cloudflareHealthFetch(options: { vitalsDown?: boolean } = {}) {
+function cloudflareHealthFetch(options: { vitalsDown?: boolean; inFlight?: { now: number; peak: number } } = {}) {
   return async (url: string | URL, init?: RequestInit) => {
+    const flight = options.inFlight;
+    if (flight) flight.peak = Math.max(flight.peak, ++flight.now);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      return await answer(url, init);
+    } finally {
+      if (flight) flight.now--;
+    }
+  };
+  async function answer(url: string | URL, init?: RequestInit) {
     const path = new URL(String(url)).pathname;
     if (path.endsWith("/graphql")) {
       if (options.vitalsDown) return new Response("down", { status: 503 });
@@ -128,7 +138,7 @@ function cloudflareHealthFetch(options: { vitalsDown?: boolean } = {}) {
     return Response.json({ success: true, result: { calculations: [{ aggregates: [
       group("site", week ? 30 : 3), group("core", week ? 10 : 1), group("collector", week ? 5 : 0), group("other-worker", 99),
     ] }] } });
-  };
+  }
 }
 
 test("uptime probe records scheduled runs only, and a failed fetch counts as down", async (t) => {
@@ -150,9 +160,11 @@ test("site health summarizes D1 checks with Cloudflare errors and vitals, carryi
   await recordCheck(db, HEARTBEAT_SERIES, now - 3 * 60_000, true);
   await recordCheck(db, UPTIME_SERIES, now - 60_000, false);
   await recordCheck(db, UPTIME_SERIES, now - 40 * 86_400_000, true);
-  const fetches = t.mock.method(globalThis, "fetch", cloudflareHealthFetch());
+  const inFlight = { now: 0, peak: 0 };
+  const fetches = t.mock.method(globalThis, "fetch", cloudflareHealthFetch({ inFlight }));
 
   assert.deepEqual(await siteHealthJob.run({ env, now, scheduled: true }), { status: "ok" });
+  assert.ok(inFlight.peak <= 4, `同时在等的 Cloudflare 请求 ${inFlight.peak} 个，collector 一次调用最多 6 个`);
   const first = (await readLag<HealthPayload>(lag, LAG_KEYS.health))!.data;
   assert.equal(first.heartbeat?.status, "up");
   assert.equal(first.uptime?.status, "down");

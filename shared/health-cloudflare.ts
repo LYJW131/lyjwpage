@@ -124,25 +124,28 @@ async function errorCounts(api: CloudflareApi, account: string, from: number, to
   }));
 }
 
-async function activeIssues(api: CloudflareApi, account: string, services: readonly string[]): Promise<number> {
-  const summaries = await Promise.all(services.map((service) =>
-    api(`/accounts/${account}/workers/observability/issues/summary`, { query: { service } })));
-  return summaries.reduce<number>((sum, summary) => sum + num(record(summary).activeIssues), 0);
+// issue 摘要一个服务一次请求，逐个查：这一块和 Web Vitals 同时跑，collector 一次调用同时最多 6 个连接在等响应头。
+async function activeIssues(api: CloudflareApi, account: string, services: readonly string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  for (const service of services) {
+    const summary = await api(`/accounts/${account}/workers/observability/issues/summary`, { query: { service } });
+    counts.set(service, num(record(summary).activeIssues));
+  }
+  return counts;
 }
 
 export async function fetchErrorSeries(api: CloudflareApi, account: string, now: number): Promise<{ site: ErrorSeries; worker: ErrorSeries }> {
-  const [recent, week, siteIssues, workerIssues] = await Promise.all([
+  const [recent, week, issues] = await Promise.all([
     errorCounts(api, account, now - 12 * 3_600_000, now),
     errorCounts(api, account, now - 7 * 86_400_000, now),
-    activeIssues(api, account, HEALTH_SITE_SERVICES),
-    activeIssues(api, account, HEALTH_WORKER_SERVICES),
+    activeIssues(api, account, [...HEALTH_SITE_SERVICES, ...HEALTH_WORKER_SERVICES]),
   ]);
-  const series = (services: readonly string[], unresolved: number): ErrorSeries => ({
+  const series = (services: readonly string[]): ErrorSeries => ({
     count12h: sumOf(recent, services),
     count7d: sumOf(week, services),
-    unresolved,
+    unresolved: sumOf(issues, services),
   });
-  return { site: series(HEALTH_SITE_SERVICES, siteIssues), worker: series(HEALTH_WORKER_SERVICES, workerIssues) };
+  return { site: series(HEALTH_SITE_SERVICES), worker: series(HEALTH_WORKER_SERVICES) };
 }
 
 export async function fetchFieldVitals(api: CloudflareApi, account: string, siteTags: readonly string[], now: number): Promise<FieldVitals> {
