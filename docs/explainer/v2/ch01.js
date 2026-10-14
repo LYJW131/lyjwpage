@@ -205,13 +205,19 @@
     box(x, rx, ry, w, h, a, { lw: 2.6 });
     const cw = (w - 20) / cols, ch = (h - 20) / rows;
     for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) {
+      if (open && open.k > 0 && open.c === c && open.r === r) continue;
       const px = rx + 10 + c * cw, py = ry + 10 + r * ch;
-      const isOpen = open && open.c === c && open.r === r ? open.k : 0;
-      if (isOpen > 0) fillRect(x, px + 4, py + 4, cw - 8, ch - 8, css("ink"), a);
-      const dy = isOpen * ch * 0.42;
-      box(x, px + 4, py + 4 + dy, cw - 8, ch - 8, a, { lw: 1.4, color: open && open.hot && isOpen > 0 ? css("signalD") : css("bone") });
-      line(x, px + cw / 2 - 12, py + ch / 2 + dy, px + cw / 2 + 12, py + ch / 2 + dy, 3, css("bone"), a * 0.8);
+      box(x, px + 4, py + 4, cw - 8, ch - 8, a, { lw: 1.4 });
+      line(x, px + cw / 2 - 12, py + ch / 2, px + cw / 2 + 12, py + ch / 2, 3, css("bone"), a * 0.8);
     }
+    if (!open || open.k <= 0) return;
+    // 拉开的抽屉画在最上层：朝镜头放大、略往下错，两角连回格口。只往下平移会被下一格盖住，像错了半格。
+    const k = open.k, px = rx + 10 + open.c * cw, py = ry + 10 + open.r * ch, col = open.hot ? css("signalD") : css("bone");
+    fillRect(x, px + 4, py + 4, cw - 8, ch - 8, css("ink"), a);
+    const fw = (cw - 8) * (1 + 0.14 * k), fh = (ch - 8) * (1 + 0.14 * k), fx = px + cw / 2 - fw / 2, fy = py + ch / 2 - fh / 2 + 10 * k;
+    line(x, px + 4, py + 4, fx, fy, 1.4, col, a); line(x, px + cw - 4, py + 4, fx + fw, fy, 1.4, col, a);
+    box(x, fx, fy, fw, fh, a, { lw: 1.4, color: col });
+    line(x, fx + fw / 2 - 12, fy + fh / 2, fx + fw / 2 + 12, fy + fh / 2, 3, css("bone"), a * 0.8);
   }
   function keycard(x, cx, cy, a, hot = false) {
     if (a <= 0) return;
@@ -540,17 +546,20 @@
     const hk = prog(b, AT.hash - 0.02, AT.hash + 0.2);
     const fall = prog(b, AT.drop, AT.shut - 0.04, E.in);
     const [sx, sy] = slotCenter();
+    text(x, "R2", CAB.x, CAB.y - 22, { font: FONT.mono(44, 600), color: bone, alpha: a });
+    text(x, "immutable", CAB.x + CAB.w, CAB.y - 24, { font: FONT.mono(28, 500), color: ash, align: "right", alpha: a });
     if (hk > 0 && fall < 1) {
       text(x, tr("ch01.byContent"), HASH[0], HASH[1] - 50, { font: FONT.mono(28, 500), color: ash, alpha: a * hk * (1 - fall) });
       const hx = lerp(HASH[0], sx - 120, fall), hy = lerp(HASH[1], sy + 8, fall);
       x.save(); x.translate(hx, hy); x.scale(lerp(1, 0.55, fall), lerp(1, 0.55, fall));
+      // 落进抽屉的路上要穿过「R2」那行表头：垫一块底色压住它，而不是字叠字。
+      const pa = a * prog(fall, 0, 0.08) * (1 - prog(fall, 0.85, 1));
+      if (pa > 0) { x.save(); x.font = FONT.mono(34, 600); const kw = x.measureText(KEY_SHORT).width; x.globalAlpha = pa; x.fillStyle = css("ink2"); roundRect(x, -14, -34, kw + 28, 48, 8); x.fill(); x.restore(); }
       text(x, KEY_SHORT, 0, 0, { font: FONT.mono(34, 600), color: bone, alpha: a * (1 - prog(fall, 0.85, 1)), reveal: hk, perChar: hk < 1 });
       x.restore();
     }
     const openK = keys(b, [[AT.hash, 0], [AT.hash + 0.12, 1, E.out], [AT.shut - 0.04, 1], [AT.shut + 0.02, 0, E.in]]);
     cabinet(x, CAB.x, CAB.y, CAB.w, CAB.h, CAB.cols, CAB.rows, a, { ...SLOT, k: openK, hot: true });
-    text(x, "R2", CAB.x, CAB.y - 22, { font: FONT.mono(44, 600), color: bone, alpha: a });
-    text(x, "immutable", CAB.x + CAB.w, CAB.y - 24, { font: FONT.mono(28, 500), color: ash, align: "right", alpha: a });
     const shut = impact(b, AT.shut, 0.16);
     if (shut > 0.02) glow(e, sx, sy, 110, 0.8 * shut);
     const oa = prog(b, AT.objKey - 0.06, AT.objKey + 0.06, E.outBack);
@@ -1227,7 +1236,8 @@
     const gA = prog(b, AT.back + 0.02, AT.back + 0.16, E.out);
     if (gA <= 0) return;
     dashPath(x, [[PARK[0] + 44, 540], [3960, 540]], gA, 1.4, css("bone"), 0.45, [8, 8]);
-    text(x, "→ ingest.homepage.lyjw.llc", 3790, 512, { font: FONT.mono(28, 500), color: css("ash"), align: "right", alpha: gA });
+    // 标在线下：Clawd 骑着火花沿线跑过去，标在线上会被它整只盖住。
+    text(x, "→ ingest.homepage.lyjw.llc", 3790, 584, { font: FONT.mono(28, 500), color: css("ash"), align: "right", alpha: gA });
   }
   function hero(x, e, b) {
     if (b < AT.post) return;

@@ -168,7 +168,7 @@
         text(x, "08", 110, 196, { font: FONT.pixel(112), color: css("signalD"), alpha: a });
         text(x, tr("ch08.title"), 290, 176, { font: FONT.cjk(58, 600), color: css("bone"), reveal: prog(b, 0.35, 0.8), alpha: a });
         text(x, "Claude Projects · GitHub · Codex · Devin · Haiku", 292, 226, { font: FONT.mono(28), color: css("ash"), reveal: prog(b, 0.45, 1.0), alpha: a });
-        line(x, 110, 262, 110 + 900 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("bone"), 0.6 * a);
+        line(x, 110, 262, 110 + 990 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("bone"), 0.6 * a);
       });
     }
 

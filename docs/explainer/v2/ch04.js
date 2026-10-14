@@ -151,7 +151,8 @@
       case "poster": x.strokeRect(X0, Y0, 70, 62); bar(X0 + 84, Y0 + 8, 90); bar(X0 + 84, Y0 + 28, 60); break;
       case "lanes": for (let i = 0; i < 3; i++) { line(x, X0, Y0 + 20 + i * 36, px + w - 20, Y0 + 20 + i * 36, 1, c); for (let j = 0; j < 5; j++) { const sx = X0 + 30 + j * 100 + 40 * K.hash(i * 7 + j); bar(sx, Y0 + 14 + i * 36, 40 + 40 * K.hash(j * 3 + i), 12); } } break;
       case "text": for (let i = 0; i < 2; i++) bar(X0, Y0 + i * 20, 300 - i * 90); break;
-      case "cells": for (let i = 0; i < 30; i++) x.strokeRect(X0 + i * 17, Y0 + 4, 13, 22); break;
+      // 实心的可用率条；空心小方框缩小后像缺字的方块。条数让出右上角的「600 s」。
+      case "cells": for (let i = 0; i < 24; i++) bar(X0 + i * 17, Y0 + 4, 10, 22); break;
     }
     x.restore();
   }
@@ -187,7 +188,7 @@
     x.restore();
     relief(x, { ...p, r: [px, py, w, h] }, a, o.fresh);
     const small = h < 80, lx = px + (p.k === "badge" ? 42 : 14), ly = small ? py + h / 2 + 12 : py + h - 16;
-    text(x, p.id, lx, ly, { font: FONT.mono(36, 500), color: o.hot ? css("signal") : css("pink"), alpha: a });
+    text(x, p.id, lx, ly, { font: FONT.mono(36, 500), color: o.hot ? css("signal") : css("pink"), alpha: a, maxW: w - (lx - px) - (small ? 50 : 14) });
     const cx = px + w - 22, cy = py + (small ? h / 2 : 22);
     if (p.tag) hangTag(x, cx, cy, o.tagHot ? css("signal") : css("pink"), a, o.tagHot ? 1.15 : 1);
     else if (o.timer != null) timerRing(x, e, cx, cy, o.timer, a * o.timerA);

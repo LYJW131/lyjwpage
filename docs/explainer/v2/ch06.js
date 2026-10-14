@@ -52,7 +52,7 @@
   const DOWN = [[-16, 0], [0, 104], [14, -22], [30, 0]];
   const LEDGER = { x: 1210, y: 120, w: 280, h: 170 };
   const SITE = { x: 1110, y: 700, w: 200, h: 110 };
-  const API = { x: 1400, y: 700, w: 250, h: 110 };
+  const API = { x: 1400, y: 700, w: 270, h: 110 };
   const KNOCK_PATH = [[NOW_X, LEDGER.y + LEDGER.h], [NOW_X, Y0], [SITE.x + SITE.w / 2, SITE.y]];
   const CHECK_PATH = [[API.x + 60, API.y], [NOW_X, Y0], [NOW_X, LEDGER.y + LEDGER.h]];
   const COL = [1830, 250], COL_R = 62;
@@ -172,7 +172,8 @@
       glow(e, v.x, Y0 + (v.up ? -220 : 104) * 0.9, (v.up ? 110 : 60) * gz, (v.up ? 0.8 : 0.45) * k * dimK);
     }
     for (const v of ev) if (v.up && v.t > 0 && v.t <= 15 && phi >= v.t) {
-      const a = labA * prog(NOW_X - v.x, 120, 200) * (v.x > 90 ? 1 : 0);
+      // 尖峰离开 health_buckets 卡的下沿之后再亮标签，免得「报到」压在卡角上。
+      const a = labA * prog(NOW_X - v.x, 175, 255) * (v.x > 90 ? 1 : 0);
       text(x, tr("ch06.checkin"), v.x, Y0 - 236, { font: FONT.cjk(30, 600), color: css("bone"), align: "center", alpha: a });
     }
     return py;

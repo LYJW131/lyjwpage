@@ -345,6 +345,14 @@
     for (let j = 0; j < 3; j++) line(d, -12, -5 + j * 6, 8, -5 + j * 6, 1, css("pink"), 0.6);
     d.restore();
   }
+  // 同第 03 章：信封上的标签垫一块底色，穿过门弧和墙时读得清。
+  function tag(x, s, cx, cy, color, a) {
+    if (a <= 0) return;
+    const font = FONT.mono(28, 500);
+    x.save(); x.font = font; const w = x.measureText(s).width + 24;
+    x.globalAlpha = a; x.fillStyle = css("ink2"); roundRect(x, cx - w / 2, cy - 30, w, 42, 8); x.fill(); x.restore();
+    text(x, s, cx, cy, { font, color, align: "center", alpha: a });
+  }
   function cell3(L, b, a) {
     const { x, e, d, s } = L, X = CELLS[2].X, bone = css("bone"), ash = css("ash");
     for (const c of [x, e, d, s]) { c.save(); c.translate(X, 0); }
@@ -359,7 +367,7 @@
       const [px, py] = pos >= 0 ? pathAt(QPATH, Q_FRONT - pos * GAP) : pathAt(QPATH, Q_FRONT + -pos * (Q_BOOK - Q_FRONT));
       if (px < 10) return;
       envelope(x, px, py, 58, q.hero ? css("signalD") : bone, { lw: 2.2, fill: css("ink2") });
-      if (q.hero) { spark(e, null, [px, py - 6], null, { t: G.t, size: 0.75 }); if (b > q.t - 0.7) text(x, "mac · appleMusic", px, py - 56, { font: FONT.mono(28, 500), color: css("signalD"), align: "center", alpha: prog(b, q.t - 0.7, q.t - 0.6) * (1 - prog(pos, -0.4, -0.8)) }); }
+      if (q.hero) { spark(e, null, [px, py - 6], null, { t: G.t, size: 0.75 }); if (b > q.t - 0.7) tag(x, "mac · appleMusic", px, py - 56, css("signalD"), prog(b, q.t - 0.7, q.t - 0.6) * (1 - prog(pos, -0.4, -0.8))); }
     });
     const la = 1 - prog(b, AT.slipWrite - 0.12, AT.slipWrite - 0.04);
     if (la > 0) {

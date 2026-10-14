@@ -49,7 +49,7 @@
     "ch05.n7b": ["可见人数变了，房间才广播 online。", "online is broadcast only on change."],
     "ch05.table": ["预期到货表", "Expected deliveries"],
     "ch05.colCard": ["可滞后卡", "Lag-tolerant card"],
-    "ch05.colFetch": ["去取", "fetch at"],
+    "ch05.colFetch": ["何时去取", "fetch at"],
     "ch05.rServer": ["服务器", "Server"],
     "ch05.rChart": ["GitHub 贡献图", "GitHub chart"],
     "ch05.rRings": ["活动圆环", "Activity rings"],
@@ -447,7 +447,8 @@
       const inK = prog(b, AT.poll, AT.bounce, E.lin);
       const out = prog(b, AT.bounce, AT.bounce + 0.42);
       const ex = out > 0 ? CONTACT + 260 * E.out(out) : lerp(4330, CONTACT, inK);
-      const ey = POLL_Y + 200 * out * out;
+      // 往右上弹走：往下落会划过闸门下面那行「10:35:12 < 10:35:17」。
+      const ey = POLL_Y - 110 * E.out(out);
       const a = (1 - prog(out, 0.6, 1)) * cA;
       envelope(x, ex, ey, 84, css("ash"), { lw: 2.4, fill: css("ink2"), rot: 1.1 * out, alpha: a });
       if (out <= 0) {
