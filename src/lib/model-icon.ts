@@ -19,8 +19,9 @@ export type BundledModelIcon = (typeof BUNDLED_MODEL_ICONS)[number];
 
 export const MODEL_ICON_DIR = `${SITE_ASSETS_PREFIX}/model-icons`;
 
-export function modelIconUrl(icon: string) {
-  return `${MODEL_ICON_DIR}/${icon}.svg`;
+// SVG 按图标名落盘、缓存一天；带上 `@lobehub/icons` 版本号，升级后同名图标换了图形也换地址。
+export function modelIconUrl(icon: string, version: string) {
+  return `${MODEL_ICON_DIR}/${icon}.svg?v=${encodeURIComponent(version)}`;
 }
 
 // 上报方会给模型 ID 加来源前缀，如 Pi 的 `[pi] kimi-k3`；上游关键字多以 `^` 锚定，先去掉。
