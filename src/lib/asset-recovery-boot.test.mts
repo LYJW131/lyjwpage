@@ -42,6 +42,7 @@ function harness(options: { commit?: string; stored?: string | null; online?: bo
     },
     {
       href: "https://lyjw.me/",
+      origin: "https://lyjw.me",
       reload: () => {
         reloads += 1;
       },
@@ -131,9 +132,21 @@ test("刷回来换了版本仍坏、或冷却已过，再救一次", () => {
   assert.equal(expired.fetches.length, 1);
 });
 
-test("站外资源、图片和离线时不动", () => {
+test("模块脚本的依赖图取不到（入口或路由模块 404）也自救", () => {
+  const inline = harness();
+  inline.fire("error", { tagName: "SCRIPT", type: "module", src: "" });
+  assert.equal(inline.fetches.length, 1);
+  const external = harness();
+  external.fire("error", { tagName: "SCRIPT", type: "module", src: "https://lyjw.me/assets/entry.client-old.js" });
+  assert.equal(external.fetches.length, 1);
+});
+
+test("站外资源（含站外的 /assets/）、普通脚本、图片和离线时不动", () => {
   const h = harness();
   h.fire("error", link("stylesheet", "https://fonts.example/a.css"));
+  h.fire("error", link("stylesheet", "https://cdn.example/assets/theme.css"));
+  h.fire("error", { tagName: "SCRIPT", type: "module", src: "https://cdn.example/assets/x.js" });
+  h.fire("error", { tagName: "SCRIPT", type: "", src: "/assets/classic.js" });
   h.fire("error", link("preload", "/assets/font.woff2"));
   h.fire("error", { tagName: "IMG", rel: "", href: "/assets/x.png" });
   assert.equal(h.fetches.length, 0);
