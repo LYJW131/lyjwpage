@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -30,3 +31,5 @@ jobs:
 
       - name: Validate workspace
         run: bash scripts/ci-checks.sh
+        env:
+          BASELINE_EXCEPTION: ${{ contains(github.event.pull_request.labels.*.name, 'baseline-exception') }}

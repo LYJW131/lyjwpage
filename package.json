@@ -14,6 +14,7 @@
     "docs:check": "node scripts/docs-check.ts",
     "docs:comment-only": "node scripts/comment-only-check.ts",
     "rules:check": "node scripts/rules-check.ts",
+    "baselines:check": "node scripts/baseline-growth-check.ts",
     "ui:copy": "node scripts/ui-copy-check.ts",
     "memory:mirror": "node scripts/memory-mirror.ts",
     "build": "node scripts/build.mjs",
