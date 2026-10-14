@@ -1,13 +1,11 @@
 #!/usr/bin/env node
-/**
- * 界面文案英文（DESIGN.md「Copy」）：收集 src/ 里 JSX 文本与字符串字面量中
- * 含中日韩字符的命中，按「文件 → 命中文本清单」与基线
- * scripts/ui-copy-baseline.json 逐条比，出现基线外的文本（或同文本
- * 出现次数变多）就失败——同文件删一条加一条不能互相抵消。
- * 注释、import 路径、正则字面量不进 AST 的字符串节点，天然不算。
- * 例外（仅开发可见的调试提示、按约定写中文的展示内容、数据源原文）跑
- * `pnpm ui:copy --update` 记进基线，并在 PR 里说明。
- */
+// 界面文案英文（DESIGN.md「Copy」）：收集 src/ 里 JSX 文本与字符串字面量中
+// 含中日韩字符的命中，按「文件 → 命中文本清单」与基线
+// scripts/ui-copy-baseline.json 逐条比，出现基线外的文本（或同文本
+// 出现次数变多）就失败——同文件删一条加一条不能互相抵消。
+// 注释、import 路径、正则字面量不进 AST 的字符串节点，天然不算。
+// 例外（仅开发可见的调试提示、按约定写中文的展示内容、数据源原文）跑
+// `pnpm ui:copy --update` 记进基线，并在 PR 里说明。
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
