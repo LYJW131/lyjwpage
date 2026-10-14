@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import { launch, openFilm } from "./browser.mjs";
 
-const HELP = `用法：node docs/explainer/v2/tools/frames.mjs <输出目录> [--lang en] [--every 4] [--from 帧] [--to 帧] [--scale 0.5]
+const HELP = `用法：node docs/explainer/v2/tools/frames.mjs <输出目录> [--lang en] [--every 4] [--part i/n | --from 帧 --to 帧] [--scale 0.5]
 
 把整片按 24 帧每秒逐帧渲成 JPEG，文件名是 24 fps 的帧号（00000.jpg 起），中英两版、多次渲染的同一帧同名，可以逐字节比对。
   --every k   只渲帧号能被 k 整除的帧（英文版用 4，即每秒 6 帧）
+  --part i/n  把整片均分成 n 段，只渲第 i 段（i 从 1 起）；分段并行时用，不必先知道整片多少帧
   --from/--to 帧号范围，左闭右开；默认整片
   --scale     输出相对 1920×1080 的倍数，默认 0.5（960×540）
-目录里已有的帧跳过，所以中断后重跑接着渲；分几段并行时各给一段 --from/--to。
+目录里已有的帧跳过，所以中断后重跑接着渲。
 另写 film.json（帧率、小节长、章节表），sheets.py、flicker.py 按它标章节与小节。`;
 
 const args = process.argv.slice(2);
@@ -19,12 +20,22 @@ const out = args.shift();
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const FPS = 24;
 const lang = opt("--lang", "zh"), every = +opt("--every", 1), scale = +opt("--scale", 0.5);
+const part = /^(\d+)\/(\d+)$/.exec(opt("--part", ""));
+if (args.includes("--part") && !(part && +part[1] >= 1 && +part[1] <= +part[2])) {
+  console.error(`--part 要写成 i/n，i 从 1 到 n：${opt("--part", "")}`);
+  process.exit(2);
+}
 
 fs.mkdirSync(out, { recursive: true });
 const browser = await launch();
 const { page, errors, film } = await openFilm(browser, { lang, scale });
 fs.writeFileSync(`${out}/film.json`, JSON.stringify({ fps: FPS, lang, duration: film.duration, BAR: film.BAR, chapters: film.chapters }, null, 1));
-const from = +opt("--from", 0), to = Math.min(+opt("--to", Infinity), Math.ceil(film.duration * FPS));
+const total = Math.ceil(film.duration * FPS);
+let from = +opt("--from", 0), to = Math.min(+opt("--to", Infinity), total);
+if (part) {
+  from = Math.floor((total * (+part[1] - 1)) / +part[2]);
+  to = Math.floor((total * +part[1]) / +part[2]);
+}
 const t0 = Date.now();
 let rendered = 0;
 for (let f = from; f < to; f++) {
