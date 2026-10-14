@@ -1,4 +1,5 @@
 import { WorkerEntrypoint } from 'cloudflare:workers';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 const cancellations = new Set();
 
@@ -20,7 +21,7 @@ export class Verification extends WorkerEntrypoint {
       await reader.cancel('verification complete');
       controller.abort();
       // Keep this invocation alive while workerd delivers cancellation to the downstream handler.
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await sleep(100);
       return new Response(null, { status: 204 });
     }
     return this.env.GATEWAY.fetch(new Request(new URL(`/api/chat${url.search}`, 'http://gateway'), request));
