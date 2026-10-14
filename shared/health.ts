@@ -66,8 +66,12 @@ export async function recordCheck(db: HistoryDb, series: HealthSeriesSpec, at: n
   await db.batch([db.prepare(RECORD_CHECK).bind(series.name, hourStart, ok ? 1 : 0, ok ? 0 : 1, at, at, ok ? 1 : 0)]);
 }
 
+// 每个序列在保留期外留下最新的一格：停机长到盖住整个保留期时，readBuckets 仍能读到窗口前的一格，窗口照算漏跑，而不是变成 No data。
 export async function pruneChecks(db: HistoryDb, now: number): Promise<void> {
-  await db.batch([db.prepare("DELETE FROM health_buckets WHERE hour_start < ?").bind(now - HEALTH_RETENTION_MS)]);
+  await db.batch([db.prepare(
+    "DELETE FROM health_buckets WHERE hour_start < ?1 AND hour_start < " +
+      "(SELECT MAX(kept.hour_start) FROM health_buckets AS kept WHERE kept.series = health_buckets.series AND kept.hour_start < ?1)",
+  ).bind(now - HEALTH_RETENTION_MS)]);
 }
 
 type BucketRow = { hour_start: number; success: number; failure: number; first_at: number; last_at: number; last_ok: number };
@@ -76,7 +80,7 @@ export interface HealthReadDb {
   prepare(sql: string): { bind(...values: unknown[]): { all<T>(): Promise<{ results: T[] }> } };
 }
 
-// 连带窗口前最近的一格（还在保留期里时）一起读：summarizeBuckets 据此知道序列早于窗口，停机跨过窗口起点时，窗口开头那段照算漏跑。
+// 连带窗口前最近的一格一起读（pruneChecks 总给每个序列留着一格）：summarizeBuckets 据此知道序列早于窗口，停机跨过窗口起点时，窗口开头那段照算漏跑。
 export async function readBuckets(db: HealthReadDb, series: HealthSeriesSpec, now: number): Promise<HealthBucket[]> {
   const today = Math.floor(now / DAY_MS) * DAY_MS;
   const { results } = await db.prepare(
