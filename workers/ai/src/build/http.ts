@@ -1,5 +1,18 @@
+import type { Env } from "../runtime";
+import type { BuildCoordinator } from "./coordinator";
+
+export const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+
 export function fail(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+export function bearerToken(request: Request): string | undefined {
+  return /^Bearer ([A-Za-z0-9_.-]+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+}
+
+export function buildCoordinator(env: Env): DurableObjectStub<BuildCoordinator> {
+  return env.BUILD_COORDINATOR!.getByName("global");
 }
 
 export async function readBoundedBytes(body: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<Uint8Array | null> {
