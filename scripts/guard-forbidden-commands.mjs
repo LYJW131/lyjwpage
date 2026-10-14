@@ -115,7 +115,12 @@ function overridesCommitIdentity(tokens) {
   if (git === -1) return false;
   const rest = tokens.slice(git + 1);
   for (let i = 0; i < rest.length; i += 1) {
-    const value = rest[i] === "-c" ? rest[i + 1] : rest[i].startsWith("-c") ? rest[i].slice(2) : null;
+    const token = rest[i];
+    const value =
+      token === "-c" || token === "--config-env" ? rest[i + 1]
+      : token.startsWith("--config-env=") ? token.slice("--config-env=".length)
+      : token.startsWith("-c") ? token.slice(2)
+      : null;
     if (value && IDENTITY_KEYS.has(value.split("=")[0].toLowerCase()) && value.includes("=")) return true;
   }
   if (rest.includes("--no-gpg-sign")) return true;
@@ -125,7 +130,7 @@ function overridesCommitIdentity(tokens) {
   if (rest[sub] === "commit") return args.some((token) => token === "--author" || token.startsWith("--author="));
   if (rest[sub] !== "config") return false;
   if (args.some((token) => CONFIG_READS.has(token) || token.startsWith("--get"))) return false;
-  let operands = args.filter((token) => !token.startsWith("-"));
+  let operands = args.filter((token, i) => !token.startsWith("-") && !CONFIG_OPTIONS_WITH_VALUE.has(args[i - 1]));
   if (operands[0] === "get" || operands[0] === "list") return false;
   const verb = operands[0] === "set" || operands[0] === "unset";
   if (verb) operands = operands.slice(1);
@@ -134,7 +139,8 @@ function overridesCommitIdentity(tokens) {
 }
 
 const CONFIG_READS = new Set(["--list", "-l"]);
-const GIT_OPTIONS_WITH_VALUE = new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace"]);
+const CONFIG_OPTIONS_WITH_VALUE = new Set(["--file", "-f", "--blob", "--type", "--default", "--comment", "--value"]);
+const GIT_OPTIONS_WITH_VALUE = new Set(["-c", "-C", "--config-env", "--git-dir", "--work-tree", "--namespace"]);
 
 function subcommand(rest) {
   for (let i = 0; i < rest.length; i += 1) {

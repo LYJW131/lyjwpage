@@ -61,6 +61,9 @@ test("改提交身份、关签名要拦", () => {
     "git config --global user.name Claude",
     "git config --unset commit.gpgsign",
     "git config set user.email noreply@anthropic.com",
+    "git config --file .git/config user.email noreply@anthropic.com",
+    "git config --type string user.name Claude",
+    "EMAIL=noreply@anthropic.com git --config-env=user.email=EMAIL commit -m x",
     "git -C /tmp/repo commit --author=Claude -m x",
   ]) {
     assert.ok(blocked(command), command);
@@ -81,6 +84,7 @@ test("读取身份、普通提交和提交信息里的署名不拦", () => {
     "git shortlog -sn --author=Claude",
     "git config --get-regexp user.email '.*'",
     "git config get user.email",
+    "git config --file .git/config user.email",
   ]) {
     assert.equal(forbiddenReason(command), null, command);
   }
