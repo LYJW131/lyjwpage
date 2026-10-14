@@ -59,7 +59,7 @@ Agent(
 | `workers/*`、`reporters/*` | 该目录 `AGENTS.md` / `README.md` 里写的验证命令 |
 | 脚本 | `node --test scripts/<名>.test.mjs` |
 
-CI 的完整门禁在 `scripts/ci-checks.sh`（lint、typecheck、workspace_tests、script_tests、docs、design）。本地跑它要先设 `RUNNER_TEMP`（指到 scratchpad 里的目录），否则报 `RUNNER_TEMP: unbound variable`、一项门禁都没跑。
+CI 的完整门禁是 `scripts/ci-checks.sh` 里的 `gates`。本地跑它要先设 `RUNNER_TEMP`（指到 scratchpad 里的目录），否则报 `RUNNER_TEMP: unbound variable`、一项门禁都没跑。
 
 ### 2. UI 浏览器端到端
 

@@ -30,9 +30,10 @@
 
   const P = [
     { id: "desktop", rt: 1, tag: 1, r: [190, 8, 234, 40], k: "badge" },
-    { id: "coding-year", rt: 0, tag: 1, r: [0, 64, 304, 56], k: "none" },
+    { id: "coding-year", rt: 1, tag: 1, r: [0, 64, 304, 56], k: "none" },
     { id: "github-chart", rt: 0, tag: 0, r: [0, 124, 304, 61], k: "none" },
-    { id: "timezone", rt: 0, tag: 1, r: [310, 64, 304, 121], k: "clock" },
+    { id: "digest", rt: 0, tag: 1, r: [310, 64, 304, 56], k: "brief" },
+    { id: "timezone", rt: 0, tag: 1, r: [310, 124, 304, 61], k: "dial" },
     { id: "charger", rt: 1, tag: 1, r: [0, 192, 214, 117], k: "charge" },
     { id: "powerbank", rt: 1, tag: 1, r: [0, 313, 214, 117], k: "battery" },
     { id: "listening-now", rt: 1, tag: 1, r: [218, 192, 396, 142], k: "hero" },
@@ -41,7 +42,7 @@
     { id: "workouts", rt: 0, tag: 1, r: [376, 437, 238, 152], k: "bars" },
     { id: "server", rt: 0, tag: 1, r: [0, 596, 614, 152], k: "spark" },
     { id: "agent-status", rt: 0, tag: 1, r: [0, 755, 614, 103], k: "dots" },
-    { id: "coding", rt: 0, tag: 1, r: [0, 865, 614, 258], k: "chart" },
+    { id: "coding", rt: 1, tag: 1, r: [0, 865, 614, 258], k: "chart" },
     { id: "coding-now", rt: 1, tag: 1, r: [0, 1127, 362, 200], k: "list" },
     { id: "limits", rt: 0, tag: 1, r: [366, 1127, 248, 200], k: "meters" },
     { id: "playing-now", rt: 1, tag: 1, r: [0, 1334, 362, 118], k: "hero" },
@@ -49,7 +50,7 @@
     { id: "playing", rt: 1, tag: 1, r: [0, 1456, 362, 183], k: "list" },
     { id: "trophies", rt: 1, tag: 1, r: [366, 1456, 248, 183], k: "tiles" },
     { id: "pulse", rt: 1, tag: 0, r: [0, 1646, 614, 212], k: "lanes" },
-    { id: "github-repo", rt: 0, tag: 0, r: [0, 1865, 614, 106], k: "text" },
+    { id: "github-repo", rt: 0, tag: 1, r: [0, 1865, 614, 106], k: "text" },
     { id: "site-deployments", rt: 0, tag: 0, r: [0, 1975, 614, 106], k: "text" },
     { id: "cloudflare-workers", rt: 0, tag: 0, r: [0, 2085, 614, 106], k: "text" },
     { id: "health", rt: 0, tag: 0, r: [0, 2195, 614, 106], k: "cells" },
@@ -59,7 +60,7 @@
   ];
   const PAGE_W = 614, PAGE_H = 2582;
   const byId = Object.fromEntries(P.map((p) => [p.id, p]));
-  const TAP = { "listening-now": 30, listening: 20, "github-chart": 10, activity: 60, trophies: 50, watching: 50, "quest-now": 30 };
+  const TAP = { "listening-now": 30, listening: 20, "github-chart": -2, activity: 60, trophies: 50, watching: 50, "quest-now": 30 };
   for (const p of P) {
     const [x, y, w, h] = p.r;
     p.ty = y + (TAP[p.id] ?? h / 2);
@@ -68,7 +69,7 @@
   const RAIL = { rt: -70, lag: 684 }, GLYPH_Y = 2760;
   const RECAST = [["desktop", 6.0], ["listening-now", 6.5], ["charger", 7.0]];
   const recastAt = Object.fromEntries(RECAST);
-  const TIMERS = [["github-chart", 8.0], ["pulse", 8.125], ["github-repo", 8.25], ["site-deployments", 8.375], ["cloudflare-workers", 8.5], ["health", 8.625], ["reporters", 8.75]];
+  const TIMERS = [["github-chart", 8.0], ["pulse", 8.125], ["site-deployments", 8.25], ["cloudflare-workers", 8.375], ["health", 8.5], ["reporters", 8.625]];
   const timerAt = Object.fromEntries(TIMERS);
   const FAIL = "pulse", FAIL_T = 9.5;
 
@@ -119,7 +120,12 @@
         if (fresh) { x.beginPath(); x.arc(px + 22, py + 20, 9, 0, Math.PI * 2); x.stroke(); }
         else x.fillRect(px + 11, py + 9, 22, 22);
         break;
-      case "clock": for (let i = 0; i < 4; i++) x.strokeRect(X0 + i * 58 + (i > 1 ? 20 : 0), Y0 + 4, 44, 40); break;
+      case "brief": for (let i = 0; i < 3; i++) { x.fillRect(px + 160, py + 11 + i * 13, 7, 7); bar(px + 172, py + 12 + i * 13, 74 - i * 16, 5); } break;
+      case "dial": {
+        const dx = px + 228, dy = py + h / 2;
+        x.beginPath(); x.arc(dx, dy, 21, 0, Math.PI * 2); x.moveTo(dx, dy); x.lineTo(dx + 9, dy - 15); x.stroke();
+        break;
+      }
       case "charge":
         if (fresh) { x.strokeRect(X0, Y0 + 10, 40, 26); line(x, X0 + 40, Y0 + 23, X0 + 70, Y0 + 23, 2, c); }
         else { x.beginPath(); x.moveTo(X0 + 26, Y0); x.lineTo(X0 + 10, Y0 + 26); x.lineTo(X0 + 28, Y0 + 26); x.lineTo(X0 + 14, Y0 + 50); x.stroke(); bar(X0 + 50, Y0 + 12, 90); bar(X0 + 50, Y0 + 32, 60); }
@@ -338,6 +344,59 @@
   }
   const freshMap = (b) => Object.fromEntries(RECAST.map(([id, t]) => [id, prog(b, t, t + 0.06) * (1 - prog(b, 9, 9.5))]));
 
+  // 印刷手柄只占可滞后轨与「印好的页」之间那条空地，往两边挪就压到轨线或纸堆。
+  // 转轴由 Clawd 右手（arms-up）的两个位置反推：跳到最高时握住球头，落地蹲下时正好拽到底；落地的那一刻取 RECAST 的拍。
+  const PR = { x: 760, floor: 352, q: 5, jump: 46, L: 50, draw: [5.5, 5.7], drop: [5.62, 5.75], exit: [7.25, 7.5], fade: [7.8, 8.0] };
+  const handAt = (bottom, crouch) => [PR.x + 8 * PR.q, bottom - (crouch ? 5 : 9) * PR.q];
+  const KNOB_UP = handAt(PR.floor - PR.jump, 0), KNOB_DOWN = handAt(PR.floor, 1);
+  const PIVOT = [KNOB_UP[0] + Math.sqrt(PR.L ** 2 - ((KNOB_DOWN[1] - KNOB_UP[1]) / 2) ** 2), (KNOB_UP[1] + KNOB_DOWN[1]) / 2];
+  // 角度取 [0, 2π)：手柄只在转轴左侧摆，回弹插值要经过 π，不能绕到右边去。
+  const angTo = ([hx, hy]) => { const a = Math.atan2(hy - PIVOT[1], hx - PIVOT[0]); return a < 0 ? a + 2 * Math.PI : a; };
+  const ANG_UP = angTo(KNOB_UP), ANG_DOWN = angTo(KNOB_DOWN);
+  const PULL = { air: 0.116, hold: 0.1, back: 0.22 };
+  const AIR = { pose: "arms-up", offset: 0 }, HOLD = { pose: "arms-up", offset: 1 };
+
+  function pressState(b, BAR) {
+    const o = { bottom: PR.floor, fr: null, ang: ANG_UP, held: false };
+    const [d0, d1] = PR.drop, [e0, e1] = PR.exit;
+    const crouch = (2 * window.Clawd.FRAME_MS) / 1000 / BAR;
+    const takeoff = (t0) => window.Clawd.SEQ.jump[Math.floor(((b - t0) * BAR * 1000) / window.Clawd.FRAME_MS + 1e-6)];
+    if (b < d1) return { ...o, bottom: PR.floor - K.hop(b, 2 * d0 - d1, d1, PR.floor + 170), fr: AIR };
+    for (const [, t] of RECAST) {
+      const up = t - PULL.air, rel = t + PULL.hold;
+      if (b >= up - crouch && b < up) o.fr = takeoff(up - crouch);
+      else if (b >= up && b < t) { o.bottom = PR.floor - K.hop(b, up, t, PR.jump); o.fr = AIR; }
+      else if (b >= t && b < rel) o.fr = HOLD;
+      if (b >= t - PULL.air / 2 && b < rel) { o.held = true; o.ang = angTo(handAt(o.bottom, o.fr.offset)); }
+      else if (b >= rel && b < rel + PULL.back) o.ang = lerp(ANG_DOWN, ANG_UP, E.outBack(prog(b, rel, rel + PULL.back)));
+    }
+    if (b >= e0) {
+      const up = e0 + crouch;
+      o.fr = b < up ? takeoff(e0) : AIR;
+      o.bottom = PR.floor - K.hop(b, up, 2 * e1 - up, PR.floor + 170);
+    }
+    if (!o.fr) o.fr = K.clawdSeq("land", b, d1, BAR) || { pose: "look-left", offset: 0 };
+    return o;
+  }
+  function press(x, tp, b, BAR) {
+    const [w0, w1] = PR.draw, a = 1 - prog(b, PR.fade[0], PR.fade[1]);
+    if (b < w0 || a <= 0) return;
+    const k = prog(b, w0, w1, E.out), [px, py] = PIVOT, pink = css("pink");
+    const st = b < PR.exit[1] && b >= PR.drop[0] ? pressState(b, BAR) : null;
+    polyline(x, [[PR.x - 56, PR.floor], [px + 30, PR.floor]], k, 2.2, pink, a);
+    rect(x, px - 13, PR.floor - 12, 26, 12, 2, pink, a * k);
+    polyline(x, [[px, PR.floor - 12], [px, py]], k, 3, pink, a);
+    const ang = st ? st.ang : ANG_UP, hk = prog(b, w0 + 0.1, w1 + 0.05);
+    if (hk > 0) {
+      const kx = px + Math.cos(ang) * PR.L, ky = py + Math.sin(ang) * PR.L;
+      line(x, px, py, lerp(px, kx, hk), lerp(py, ky, hk), 3.2, pink, a);
+      x.save(); x.globalAlpha = a * prog(hk, 0.75, 1); x.lineWidth = 2.2; x.strokeStyle = pink; x.fillStyle = st && st.held ? css("signal") : css("paper");
+      x.beginPath(); x.arc(kx, ky, 8, 0, Math.PI * 2); x.fill(); x.stroke();
+      x.fillStyle = pink; x.beginPath(); x.arc(px, py, 4, 0, Math.PI * 2); x.fill(); x.restore();
+    }
+    if (st) K.clawdFrame(tp, st.fr, PR.x, st.bottom, PR.q, { poofColor: css("graphite") });
+  }
+
   const TAG_FLY = 5.25, CHIP_X = 1270;
   function flipTags(x, b) {
     if (b < 4.98 || b > 5.8) return;
@@ -374,6 +433,7 @@
     title(x, b);
     galleyFrame(x, b);
     rails(x, b);
+    press(x, tp, b, f.BAR);
 
     const lifted = [];
     for (const p of P) {

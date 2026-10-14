@@ -537,6 +537,13 @@
       for (let i = 0; i < pn; i++) d[i] += 0.25 * th[i] * Math.exp(-i / sr / 0.005);
       return finish(d, 0.002);
     });
+    const kalimba = (m) => get("kb:" + m, () => {
+      const f = hz(m), tau = 0.7 * Math.pow(440 / f, 0.35), d = arr(Math.min(2, tau * 4)), n = d.length, r = mulberry32(1300 + m);
+      for (const [k, amp, tk] of [[1, 1, tau], [2.003, 0.05, tau * 0.4], [6.27, 0.2, 0.06], [17.55, 0.05, 0.012]]) partial(d, f * k, amp, tk, r() * TAU);
+      const th = nz(n, 1310 + m, "bp", 2400, 0.9), pn = Math.min(n, Math.round(0.012 * sr));
+      for (let i = 0; i < pn; i++) d[i] += 0.18 * th[i] * Math.exp(-i / sr / 0.002);
+      return finish(d, 0.0015);
+    });
     const morse = (m, len) => get("ms:" + m + ":" + len, () => {
       const f = hz(m), d = arr(len + 0.06), n = d.length, c = nz(n, 301, "bp", 2600, 1.2);
       for (let i = 0; i < n; i++) {
@@ -615,7 +622,7 @@
       return finish(d, 0.0005);
     });
 
-    const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit, glass, marimba, morse, gate, off, whip, knock, ping, clear, hop };
+    const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit, glass, marimba, kalimba, morse, gate, off, whip, knock, ping, clear, hop };
     SAMPLE_BANKS.set(sr, bank);
     return bank;
   }
@@ -811,8 +818,8 @@
     }
     const KICK_G = { tight: 0.9, light: 0.65, lub: 0.85, dub: 0.85, boom: 0.6 };
     const LAMP_PAN = [-0.4, 0, 0.4];
-    // 这几件的电平按隔离渲染的 LUFS-M（400 ms 窗）对到同一位置上别的剧情音；knock 频谱偏低，同样响度下比 tick 听着轻，所以高约 3 dB。改音色要重新对
-    const GLASS_G = 0.62, MARIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 0.75, MORSE_G = 0.21, GATE_G = 0.49, OFF_G = 0.19, PING_G = [0.84, 0.25], CLEAR_G = 0.13, HOP_G = 0.24;
+    // 这几件的电平按隔离渲染的 LUFS-M（400 ms 窗）对到同一位置上别的剧情音；拇指琴对到马林巴弹同一段主题；knock 频谱偏低，同样响度下比 tick 听着轻，所以高约 3 dB。改音色要重新对
+    const GLASS_G = 0.62, MARIMBA_G = 0.42, KALIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 0.75, MORSE_G = 0.21, GATE_G = 0.49, OFF_G = 0.19, PING_G = [0.84, 0.25], CLEAR_G = 0.13, HOP_G = 0.24;
     const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7];
 
     let next = 0, controlAt = 0;
@@ -855,6 +862,7 @@
               play(S.bell(n.m, n.tone || "bright"), t, { g: 0.36 * n.v, pan: n.inst === "bell" ? 0.1 : -0.25, to, verbAmt: 0.4, delayAmt: n.inst === "bell" ? 0.26 : 0.15 });
             else if (n.inst === "glass") play(S.glass(n.m), t, { g: GLASS_G * n.v, pan: 0, to, verbAmt: 0.35, delayAmt: 0.22 });
             else if (n.inst === "marimba") play(S.marimba(n.m), t, { g: MARIMBA_G * n.v, pan: -0.1, to, verbAmt: 0.3, delayAmt: 0.12 });
+            else if (n.inst === "kalimba") play(S.kalimba(n.m), t, { g: KALIMBA_G * n.v, pan: n.arp ? n.pan : 0.1, to, verbAmt: 0.3, delayAmt: 0.18 });
             else
               play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
             break;

@@ -24,9 +24,9 @@
     "ch01.judge": ["隐私判断", "privacy check"],
     "ch01.illus": ["概率条为示意", "bars are illustrative"],
     "ch01.pass": ["放行 → 进信封", "cleared → envelope"],
-    "ch01.owner": ["拿不准 → 交给主人", "unsure → the owner"],
+    "ch01.owner": ["拿不准 → 交给 lyjw", "unsure → lyjw"],
     "ch01.n3a": ["窗口标题先经 Jev 做隐私判断；", "Jev screens window titles first;"],
-    "ch01.n3b": ["拿不准的交给主人，放行的才进信封。", "unsure ones go to the owner."],
+    "ch01.n3b": ["拿不准的交给 lyjw，放行的才进信封。", "unsure ones go to lyjw."],
     "ch01.f1b": ["应用图标 → R2", "App icon → R2"],
     "ch01.byContent": ["sha256(内容)", "sha256(content)"],
     "ch01.sameKey": ["同一内容，同一个键", "same bytes, same key"],
@@ -107,10 +107,11 @@
     "ch01.n13b": ["采集 Worker 去拉 Apple 最近播放。", "the collector polls Apple's recents."],
     "ch01.n14a": ["新歌开播几秒，就排到列表最前；", "A song tops the list seconds in;"],
     "ch01.n14b": ["按时长接成一串，推出起止和误差。", "lengths chain them: start ± margin."],
+    "ch01.clawd": ["我跟着这一封走。", "I'll ride along with this one."],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
-  let plate, ink, emit, paper;
+  let plate, ink, emit, paper, top;
   let BARs = (60 / 108) * 4;
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
   const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
@@ -937,7 +938,7 @@
     ["apple-recent", 1, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
     ["github-chart", 10, 1], ["github-repo", 30, 2], ["site-deployments", 1, 0], ["site-analytics", 15, 3],
     ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["uptime-probe", 1, 0], ["site-health", 5, 4],
-    ["avatar-watch", 5, 1],
+    ["digest", 15, 5], ["avatar-watch", 5, 1],
   ];
   const MINUTES = 12;
   const APPLE_IDLE = 5, APPLE_HOLD = 10, APPLE_CHANGED = 5;
@@ -945,7 +946,7 @@
     ? m % APPLE_IDLE === 0 || (m > APPLE_CHANGED && m - APPLE_CHANGED < APPLE_HOLD)
     : m % JOBS[j][1] === JOBS[j][2]);
   const DC = [17870, 500], DR = 262;
-  const TC = { x: 18236, y: 174, w: 880, h: 652 };
+  const TC = { x: 18236, y: 174, w: 880, h: 664 };
   const minuteAt = (b) => Math.floor((b - AT.dial) * 4 + 1e-9);
   function handSteps(j, b) {
     if (b < AT.dial) return 0;
@@ -976,7 +977,7 @@
       text(x, `:${String(m).padStart(2, "0")}`, cx + 56, cy + DR + 80, { font: FONT.mono(40, 600), color: bone, alpha: a });
     }
     JOBS.forEach((job, j) => {
-      const len = DR * (0.4 + 0.042 * j), ang = -Math.PI / 2 + (j / JOBS.length) * TAU + handSteps(j, b) * (TAU / 12);
+      const len = DR * (0.4 + (0.46 * j) / (JOBS.length - 1)), ang = -Math.PI / 2 + (j / JOBS.length) * TAU + handSteps(j, b) * (TAU / 12);
       const ran = m >= 0 && due(j, m) ? Math.exp(-((beatF - m) * 60 / 108) / 0.2) : 0;
       const tx = cx + Math.cos(ang) * len, ty = cy + Math.sin(ang) * len;
       line(x, cx, cy, tx, ty, 2, ran > 0.3 ? css("signalD") : bone, a * 0.9);
@@ -998,7 +999,7 @@
     text(d, tr("ch01.chart"), TC.x + 34, TC.y + 60, { font: FONT.cjk(36, 600), alpha: ca });
     text(d, tr("ch01.perMin"), TC.x + TC.w - 34, TC.y + 58, { font: FONT.cjk(28, 600), color: css("graphite"), align: "right", alpha: ca });
     line(d, TC.x + 28, TC.y + 86, TC.x + TC.w - 28, TC.y + 86, 1.4, css("pink"), ca);
-    const gx = TC.x + 438, pitch = 34, y0 = TC.y + 150, ROW = 46;
+    const gx = TC.x + 438, pitch = 34, y0 = TC.y + 148, ROW = 40;
     [0, 5, 10].forEach((mm) => text(d, `:${String(mm).padStart(2, "0")}`, gx + mm * pitch + 13, TC.y + 122, { font: FONT.mono(28, 500), color: css("graphite"), align: "center", alpha: ca }));
     if (m >= 0) fillRect(d, gx + m * pitch - 3, y0 - 26, pitch, JOBS.length * ROW + 4, css("pink"), 0.07 * ca);
     JOBS.forEach(([name], j) => {
@@ -1246,11 +1247,42 @@
       return;
     }
     guide(x, b);
-    const dd = keys(b, [[AT.launch, 0], [34.98, 1000, E.inExpo]]);
+    const dd = rideD(b);
     const head = pathAt(OUT, dd);
     const trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, 34.8)), 18);
     spark(e, x, head, trail, { t: G.t, size: 1.1, lw: 2.4, color: css("signalD") });
-    envelope(x, head[0], head[1], 44, css("signalD"), { lw: 2, fill: css("ink2"), alpha: 1 - prog(b, 34.5, 34.7) });
+    envelope(x, head[0], head[1], 44, css("signalD"), { lw: 2, fill: css("ink2"), alpha: 1 - prog(b, CL.leap[0], CL.leap[1] + 0.04) });
+  }
+  // 末端 1100 让 Clawd 在最后两帧前整只出右缘，屏幕上只剩拖尾贴着右边。
+  const rideD = (b) => keys(b, [[AT.launch, 0], [34.98, 1100, E.inExpo]]);
+
+  // 交给第 02 章：骑行时 Clawd 蹲着（pose default、crouch 1、不翻转），屏幕上 18 格宽 126 px，
+  // 中心对着火花亮核，底边比亮核高 7 px；亮核在屏幕 y 540。第 02 章 0:0 照这个从左缘接（ch02.js 的 CL.qRide）。
+  const CL = { drop: [34.0, 34.08], say: [34.09, 34.68], leap: [34.66, 34.77], stand: [3070, 539.3], qs: 7, lift: 7 };
+  function clawdRide(tp, b, z, BAR) {
+    if (b < CL.drop[0]) return;
+    const q = CL.qs / z, [sx, sy] = CL.stand;
+    const frameAt = (t0) => Math.floor(((b - t0) * BAR * 1000) / window.Clawd.FRAME_MS + 1e-6);
+    const [hx, hy] = pathAt(OUT, rideD(b)), ride = hy - CL.lift / z;
+    let fr, cx = sx, cy = sy;
+    if (b < CL.drop[1]) {
+      fr = { pose: "arms-up", offset: 0 };
+      cy = lerp(sy - 660, sy, prog(b, CL.drop[0], CL.drop[1], E.in));
+    } else if (b < CL.leap[0]) {
+      fr = K.clawdSeq("land", b, CL.drop[1], BAR) || { pose: b < CL.say[0] + 0.2 ? "default" : "look-left", offset: 0 };
+    } else if (b < CL.leap[1]) {
+      const k = prog(b, CL.leap[0], CL.leap[1]), i = frameAt(CL.leap[0]);
+      fr = i < 2 ? window.Clawd.SEQ.jump[i] : { pose: "arms-up", offset: 0 };
+      cx = lerp(sx, hx, k);
+      cy = lerp(sy, ride, k) - K.hop(b, CL.leap[0], CL.leap[1], 56);
+    } else {
+      const i = frameAt(CL.leap[1]);
+      fr = i < 2 ? window.Clawd.SEQ.land[i] : { pose: "default", offset: 1 };
+      cx = hx; cy = ride;
+    }
+    K.clawdFrame(tp, fr, cx, cy, q, { poofColor: css("ash") });
+    const k = prog(b, CL.say[0], CL.say[0] + 0.06) * (1 - prog(b, CL.say[1] - 0.04, CL.say[1]));
+    if (k > 0) K.bubble(tp, tr("ch01.clawd"), sx - 56 / z, sy - 12 * q - 10 / z, { px: 34 / z, k, reveal: prog(b, CL.say[0] + 0.01, CL.say[0] + 0.13) });
   }
 
   function render(f) {
@@ -1265,6 +1297,7 @@
     const x = ink.begin(); ink.cam(cam);
     const e = emit.begin(); emit.cam(cam);
     const d = paper.begin(); paper.cam(cam);
+    const tp = top.begin(); top.cam(cam);
 
     const half = 960 / cam.zoom + 400;
     const seen = (k) => Math.abs(FX[k] - cam.x) < half + 960;
@@ -1281,10 +1314,12 @@
     if (seen("F7")) stationF7(x, e, d, b);
     if (seen("F7A")) stationF7A(x, e, d, b);
     hero(x, e, b);
+    clawdRide(tp, b, cam.zoom, f.BAR);
 
     G.composite(ink.upload(), { mode: G.MODE.ink, seed: 1.7 });
     G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.5 });
     G.composite(paper.upload(), { mode: G.MODE.paper });
+    G.composite(top.upload(), { mode: G.MODE.normal });
 
     const sh = hitS * 6;
     f.post = {
@@ -1297,7 +1332,7 @@
 
   window.CHAPTERS.push({
     id: "ch01", title: "ch.01", bars: 35,
-    init() { plate = G.pass(K.PLATE.ink); ink = G.layer("ink"); emit = G.layer("emit", 0.5); paper = G.layer("paper"); },
+    init() { plate = G.pass(K.PLATE.ink); ink = G.layer("ink"); emit = G.layer("emit", 0.5); paper = G.layer("paper"); top = G.layer("top"); },
     render,
   });
 })();

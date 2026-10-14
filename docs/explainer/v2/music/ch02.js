@@ -46,9 +46,11 @@
       ...phrase(1, withNotes(["D5", "B4", "A4", "G4"]), "pluck", 0.55),
     ],
     story: [
+      { bar: 0, beat: 2, kind: "hop", m: midi("A5"), pan: -0.35 },
       { bar: 2, beat: 0, kind: "key", pan: -0.2 },
       { bar: 3, beat: 2, kind: "stamp", size: "mid" },
       { bar: 4, beat: 0, kind: "key", pan: -0.2 }, { bar: 4, beat: 0.5, kind: "key", v: 0.85, pan: 0.3 },
+      { bar: 4, beat: 2, kind: "hop", m: midi("D6"), v: 0.8, pan: 0.45 },
       ...[[5, 0, "A5"], [5, 2, "C6"], [6, 0, "D6"], [6, 2, "E6"], [7, 0, "G6"], [7, 2, "A6"]].map(([bar, beat, n], i) => ({ bar, beat, kind: "tick", m: midi(n), i })),
       { bar: 8, beat: 0, kind: "stamp", size: "big" },
       { bar: 9, beat: 0, kind: "whoosh", tube: 0 }, { bar: 9, beat: 2, kind: "whoosh", tube: 1 },
