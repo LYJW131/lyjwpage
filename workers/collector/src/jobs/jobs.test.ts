@@ -120,13 +120,13 @@ function cloudflareHealthFetch(options: { vitalsDown?: boolean } = {}) {
     }
     if (path.endsWith("/issues/summary")) {
       const service = new URL(String(url)).searchParams.get("service");
-      return Response.json({ success: true, result: { activeIssues: service === "api" ? 2 : 0, activeOccurrences: 0, lastIssue: null, resolvedIssues: 0 } });
+      return Response.json({ success: true, result: { activeIssues: service === "core" ? 2 : 0, activeOccurrences: 0, lastIssue: null, resolvedIssues: 0 } });
     }
     const body = JSON.parse(String(init?.body)) as { timeframe: { from: number; to: number } };
     const week = body.timeframe.to - body.timeframe.from > 86_400_000;
     const group = (service: string, count: number) => ({ groups: [{ key: "$metadata.service", value: service }], count });
     return Response.json({ success: true, result: { calculations: [{ aggregates: [
-      group("site", week ? 30 : 3), group("api", week ? 10 : 1), group("collector", week ? 5 : 0), group("other-worker", 99),
+      group("site", week ? 30 : 3), group("core", week ? 10 : 1), group("collector", week ? 5 : 0), group("other-worker", 99),
     ] }] } });
   };
 }
