@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 export const MIRROR_KEEP = new Set(["README.md"]);
 
-const REDACTIONS = [
+const REDACTIONS: [RegExp, string][] = [
   [/^ {2}modified: .*\n/gm, ""],
   [/https:\/\/claude\.ai\/\S*artifact\/[\w-]+/g, "<private claude.ai link>"],
   [/\b(?:env|session|cse|cagt)_[0-9A-Za-z]{10,}\b/g, "<internal id>"],
@@ -15,7 +15,7 @@ const REDACTIONS = [
 // 云端环境的显示名不是凭据，但同样不进公开镜像；新建环境时把名字加进来
 export const CLOUD_ENV_NAMES = ["lyjwMain", "lyjwpage-build", "lyjwpage-canary"];
 
-const SECRET_PATTERNS = [
+const SECRET_PATTERNS: [string, RegExp][] = [
   ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
   ["Anthropic / OpenAI key", /\bsk-(?:ant-)?[A-Za-z0-9_-]{20,}/],
   ["GitHub token", /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/],
@@ -27,23 +27,23 @@ const SECRET_PATTERNS = [
   ["opaque token", /(?<![\w/.-])(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{40,}(?![\w/.-])/],
 ];
 
-export function sanitize(text) {
+export function sanitize(text: string) {
   const redacted = REDACTIONS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), text);
   return CLOUD_ENV_NAMES.reduce((out, name) => out.replaceAll(name, "<cloud env>"), redacted);
 }
 
-export function findSecrets(text) {
+export function findSecrets(text: string) {
   return SECRET_PATTERNS.filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
 }
 
-export function syncMirror(sourceDir, mirrorDir) {
+export function syncMirror(sourceDir: string, mirrorDir: string) {
   const sources = readdirSync(sourceDir).filter((name) => name.endsWith(".md") && !name.startsWith("."));
   const outputs = new Map(sources.map((name) => [name, sanitize(readFileSync(path.join(sourceDir, name), "utf8"))]));
   const leaks = [...outputs].flatMap(([name, text]) => findSecrets(text).map((label) => `${name}: ${label}`));
   if (leaks.length) throw new Error(`疑似凭据，未写入任何文件（先在项目记忆里删掉，或扩充 sanitize）：\n${leaks.join("\n")}`);
-  const changed = [];
+  const changed: string[] = [];
   for (const [name, next] of outputs) {
-    let current = null;
+    let current: string | null = null;
     try {
       current = readFileSync(path.join(mirrorDir, name), "utf8");
     } catch {}
@@ -65,14 +65,14 @@ export function syncMirror(sourceDir, mirrorDir) {
 function main() {
   const [sourceDir, mirrorDir = ".claude/memory"] = process.argv.slice(2);
   if (!sourceDir) {
-    console.error("用法：node scripts/memory-mirror.mjs <项目记忆目录> [镜像目录，默认 .claude/memory]");
+    console.error("用法：node scripts/memory-mirror.ts <项目记忆目录> [镜像目录，默认 .claude/memory]");
     process.exit(2);
   }
   let changed;
   try {
     changed = syncMirror(sourceDir, mirrorDir);
   } catch (error) {
-    console.error(error.message);
+    console.error((error as Error).message);
     process.exit(1);
   }
   console.log(changed.length ? `已同步：${changed.join(" ")}` : "镜像已是最新");
