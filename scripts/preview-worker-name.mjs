@@ -1,5 +1,7 @@
 
 export const PREVIEW_WORKERS_SUBDOMAIN = "lyjw.workers.dev";
+// 须与 wrangler.jsonc 里 previews_enabled 的那条自定义域名同步。
+export const SITE_PREVIEW_DOMAIN = "preview.lyjw.dev";
 export const PREVIEW_WORKER_SCRIPT = "core";
 export const SITE_PREVIEW_WORKER_SCRIPT = "site";
 export const PREVIEW_REVISION_PATH = "/api/preview/revision";
@@ -35,7 +37,8 @@ export function previewWorkerOrigin(branch, workerName = PREVIEW_WORKER_SCRIPT) 
     throw new Error(`Unknown Preview Worker: ${workerName}`);
   }
   const name = previewWorkerName(branch, workerName);
-  return name
-    ? `https://${name}-${workerName}.${PREVIEW_WORKERS_SUBDOMAIN}`
-    : null;
+  if (!name) return null;
+  return workerName === SITE_PREVIEW_WORKER_SCRIPT
+    ? `https://${name}.${SITE_PREVIEW_DOMAIN}`
+    : `https://${name}-${workerName}.${PREVIEW_WORKERS_SUBDOMAIN}`;
 }
