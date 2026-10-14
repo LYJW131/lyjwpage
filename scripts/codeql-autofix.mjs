@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { HttpError, parseModel, readError, TERMINAL_RUN_STATUSES } from "./cursor-cloud.mjs";
 
 // 分支既是 agent 的工作分支，也是「这条告警已经派过」的标记：分支在就跳过，删掉分支即重试。
@@ -99,7 +101,6 @@ export function githubClient({ token, repo, fetch = globalThis.fetch }) {
   };
 }
 
-const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const prUrlOf = (run) => run?.git?.branches?.find((branch) => branch.prUrl)?.prUrl;
 
 export async function runCodeqlAutofix({
@@ -112,7 +113,7 @@ export async function runCodeqlAutofix({
   dryRun = false,
   waitMs = DEFAULT_WAIT_MS,
   log = console,
-  sleep = sleepMs,
+  sleep: sleepImpl = sleep,
   now = Date.now,
   signal,
 }) {
@@ -169,7 +170,7 @@ export async function runCodeqlAutofix({
   const running = () => items.filter((item) => item.run && !TERMINAL_RUN_STATUSES.has(item.run.status));
   const deadline = now() + waitMs;
   while (running().length && !signal?.aborted && now() < deadline) {
-    await sleep(POLL_INTERVAL_MS);
+    await sleepImpl(POLL_INTERVAL_MS);
     for (const item of running()) {
       try {
         item.run = await cursor.getRun(item.agent.id, item.run.id);
@@ -188,7 +189,7 @@ export async function runCodeqlAutofix({
   // PR 在运行结束后才由 Cursor 打开，刚 FINISHED 时 git 里可能还没有 prUrl。
   const awaitingPr = () => items.filter((item) => item.run?.status === "FINISHED" && !prUrlOf(item.run));
   for (let attempt = 0; attempt < 4 && awaitingPr().length && !signal?.aborted; attempt += 1) {
-    await sleep(POLL_INTERVAL_MS);
+    await sleepImpl(POLL_INTERVAL_MS);
     for (const item of awaitingPr()) item.run = await cursor.getRun(item.agent.id, item.run.id).catch(() => item.run);
   }
 

@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { gzipSync } from 'node:zlib';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { stripVTControlCharacters } from 'node:util';
 import { createDevAccess } from './dev-access.mjs';
 
@@ -31,7 +32,7 @@ Object.assign(access.vars.ACCESS_CLIENTS, {
 });
 const verifyBuild = process.argv.includes('--build');
 const verifyMcpClient = process.argv.includes('--mcp-client');
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 async function port() {
   const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const value = server.address().port; await new Promise(resolve => server.close(resolve)); return value;
