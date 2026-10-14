@@ -10,6 +10,8 @@ import { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 
 import { chatCodeVersion } from "./scripts/chat-code-version.mjs";
+import { modelIcons } from "./scripts/model-icons.mjs";
+import { BUNDLED_MODEL_ICONS } from "./src/lib/model-icon";
 
 const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
 
@@ -56,6 +58,7 @@ export default defineConfig(({ command, mode }) => {
         configPath: command === "serve" ? "wrangler.local.jsonc" : "wrangler.jsonc",
       }),
       esmEnvServerNotBrowser(),
+      modelIcons({ bundled: BUNDLED_MODEL_ICONS }),
       reactRouter(),
       babel({ presets: [reactCompilerPreset()] }),
       ...(env.SENTRY_AUTH_TOKEN
