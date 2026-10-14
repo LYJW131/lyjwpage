@@ -1,5 +1,5 @@
 import { AwaitingReport } from "@shared/awaiting-report";
-import { getStored, lastPushReceivedAt } from "./charger-store";
+import { getLatestStatus, getStored, lastPushReceivedAt } from "./charger-store";
 import { CHARGER_STALE_MS, heartbeatWindowMs } from "@shared/freshness";
 import { publicAssetPath } from "@shared/asset-url";
 import { readLiveness, withPresence, type Liveness } from "@shared/reporter-liveness";
@@ -35,6 +35,13 @@ export async function getChargerSnapshot(): Promise<ChargerPayload> {
     }),
     live,
   );
+}
+
+export async function getChargerLayoutFeed() {
+  const [status, pushedAt, live] = await Promise.all([getLatestStatus(), lastPushReceivedAt(), readLiveness()]);
+  if (!status) return null;
+  const { connected, totalPower } = status;
+  return withPresence({ connected, totalPower, pushedAt, staleAfterMs: chargerStaleAfterMs() }, live);
 }
 
 export function sliceChargerHistory(payload: ChargerPayload, since?: number): ChargerPayload {
