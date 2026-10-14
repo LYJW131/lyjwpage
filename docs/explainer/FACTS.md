@@ -468,7 +468,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`（`HUMAN.md`「5. PR 与合并」）；同一线程可以从这个分支先后开几个 PR。定时任务与访客构建用别的分支（`docs/ops-facts.md`「Claude Code 云端 routine」），片中不画。
 - 提交以 lyjw 的身份、用 lyjw 的钥签名，Claude 只出现在 `Co-Authored-By` 尾注里，另带会话链接；标题写 `type(scope): 中文描述`（根 `AGENTS.md`「禁区」、`HUMAN.md`「5. PR 与合并」、`docs/ops-facts.md`「Claude Code 云端 routine」）。所以 GitHub 上 PR 的作者与合并人都显示 LYJW131。
 - 推送前按改动类型跑受影响的那几项，不是每次全跑：文档 `pnpm docs:check`；逻辑跑相关单测或 `pnpm test`；类型 `pnpm typecheck`；代码 `pnpm exec eslint <改动文件>`；构建、路由、缓存 `pnpm build`；站点 UI 以浏览器端到端为准，至少桌面与 375px 手机（根 `AGENTS.md`「项目入口与验证」）。片中本地门禁卡列 docs:check、typecheck、test、eslint、build 五项，#308 没碰构建，build 那一项是灰的。
-- CI 是工作流 `CI` 里唯一的 job `check`，依次过 `lint`、`typecheck`、`workspace_tests`、`script_tests`、`docs`、`design`、`rules`、`copy` 八道门（`.github/workflows/ci.yml#check`、`scripts/ci-checks.sh` 的 `gates`）。CI 不构建站点，见 §10「检查：CI 与 CodeQL（只检查、不发布）」。
+- CI 是工作流 `CI` 里唯一的 job `check`，依次过 `lint`、`typecheck`、`workspace_tests`、`script_tests`、`docs`、`design`、`rules`、`copy`、`baselines` 九道门（`.github/workflows/ci.yml#check`、`scripts/ci-checks.sh` 的 `gates`）。CI 不构建站点，见 §10「检查：CI 与 CodeQL（只检查、不发布）」。
 
 ### 机器评审
 
