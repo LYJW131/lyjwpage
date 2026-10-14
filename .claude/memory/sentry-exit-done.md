@@ -1,6 +1,6 @@
 ---
 name: sentry-exit-done
-description: Sentry fully removed (PR #198 merged 2026-10-14); what replaced it, how history was imported, and the owner-gated leftovers
+description: Sentry fully removed (PR #198 merged 2026-10-14); what replaced it, how history was imported, Workers Issues email alerts, and the one owner-gated leftover (delete Sentry projects)
 metadata:
   type: project
 ---
@@ -11,6 +11,6 @@ History: Sentry's last snapshot (`sentry:v1`, fetched 09:47:44Z) is saved at `/m
 
 The site error count is much higher than Sentry's was (35 in 12h vs Sentry's 6), because level=error now includes every `/image` proxy failure on Apple blobstore URLs and "Can't read from request stream after response has been sent." These are real pre-existing errors, not a regression. The 7d count also still carries old Sentry-tunnel `POST /relay` failures until they age out.
 
-**Still waiting on the owner (all listed in the #198 body):** delete Workers Builds env `SENTRY_AUTH_TOKEN` and collector secret `SENTRY_API_TOKEN`; set up Workers Issues alert automation; clean up the Sentry project. Don't do these without asking first.
+**Leftovers (owner said 继续 2026-10-14 10:32Z):** done 10:35-10:40Z: deleted site Builds var `SENTRY_AUTH_TOKEN` and collector secret `SENTRY_API_TOKEN`, disabled Sentry uptime monitor `lyjw.me`, created Workers Issues alerts (two account-level automations: first occurrence + recurrence after 24h, to notification policy "Workers 实时异常", email to the owner; test email arrived). Still open: deleting Sentry projects `api-worker`, `collector-worker`, `lyjwpage` is irreversible, so it waits for the owner's own go. Cron monitor `api-minute-cron` can't be disabled via Sentry MCP and goes with `api-worker`. Current state lives in `docs/ops-facts.md`.
 
 **How to apply:** for any "where do the uptime/error numbers come from" question, or when touching health/relay code, start here. See [[collector-superfan-routine]] for the error triage loop.
