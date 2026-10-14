@@ -20,7 +20,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 PR 检查、机器评审、Workers Builds、`/api/version`、后台 `until` 循环，每一种等待都带上限。到点还没等到就记 FAIL「超时」，附上最后一次看到的状态，然后接着做不依赖它的下一步，不原地干等。理由：等的条件可能永远不会成立，比如 SHA 拼错、运行被取消或被新提交顶掉、评审没触发，没有上限的循环会让线程无声卡住。
 
 - 手写循环用 `timeout <秒>` 或计数上限包住：CI 与 Workers Builds 15 分钟，机器评审 15 分钟；部署核对用 `scripts/deploy-check.mjs` 自带的 `--timeout`。
-- 进循环前先确认等的对象查得到：SHA 用 `git rev-parse` 取完整值，`gh run list --commit <sha>` 先确认能查到这次运行。`cancelled`、被更新提交顶掉（`superseded`）都算终态，不再等。
+- 等的对象要写对：SHA 用 `git rev-parse` 取完整值；PR 的检查用 `gh pr checks <PR 号>`，不按提交号查 `gh run list`，因为 PR 的运行可能挂在合成的合并提交上。刚推送后查不到运行是正常的，在同一个上限内继续重试，到点仍查不到就记「超时：没有出现运行」。`cancelled`、被更新提交顶掉（`superseded`）都算终态，不再等。
 
 ## 派法
 
