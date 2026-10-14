@@ -42,7 +42,7 @@ X_ACCOUNTS = {
 # 本站用到或可能用到的 Cloudflare 产品；changelog 其余分类（Zero Trust、WAN 等）不报。
 CLOUDFLARE_PRODUCTS = {
     "Workers", "Durable Objects", "KV", "D1", "R2", "Workers AI", "Agents", "AI Gateway", "Cache",
-    "Access", "Images", "Workflows", "Queues", "Containers", "Sandboxes", "Browser Run", "Logs",
+    "Access", "Cloudflare Images", "Workflows", "Queues", "Containers", "Sandboxes", "Browser Run", "Logs",
     "Cloudflare Web Analytics", "Analytics", "Rules",
 }
 
