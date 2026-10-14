@@ -1,6 +1,6 @@
 ---
 name: lyjwpage-collector-superfan
-description: lyjwpage 的「collector 盯防」定时任务按它跑：一个专盯采集 Worker 的 Claude，读站点公开状态端点与 Workers Observability 日志，找告警漏掉的细微异常（部分成功沿用旧值、数据冻住、某个任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、复现后归成批，写进共享目录供晨报读取，新出现的要紧异常在本线程说一声；站主问「collector 最近怎么样」「线上最近有什么新错误」时也用。
+description: lyjwpage 的「collector 盯防」定时任务按它跑：一个专盯采集 Worker 的 Claude，读站点公开状态端点与 Workers Observability 日志，找告警漏掉的细微异常（部分成功沿用旧值、数据冻住、某个任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、复现后归成批，写进共享目录供晨报读取，新出现的要紧异常在本线程说一声；站主问「collector 最近怎么样」时也用；线上报错的排查不归它，照根 `AGENTS.md`「排查线上错误」走。
 ---
 
 # collector 盯防（superfan）
@@ -59,7 +59,7 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 
 同一个 telemetry 查询，过滤 `$workers.scriptName` 为 `core`、`site`、`ai`、`ingress`，`$metadata.level = error`，时间窗同第 3 步。这里的查询失败同第 3 步：报告里写明哪个 Worker 没读到，本次不推进 `lastRunAt`。
 
-1. **归类**：按 Worker 加错误消息归成签名（去掉数字、id、URL 查询串后取前 120 字）。`ledger` 里开着、且已复现过（`repro: confirmed`）的签名只更新 `lastSeen` 与次数；`muted` 的跳过。`resolved` 的签名再出现算新签名：重新打开，从第 2 条起走一遍并照新异常通知。
+1. **归类**：按 Worker 加错误消息归成签名（只把请求 id、UUID、时间戳、URL 查询串这类每次都变的值换成占位，HTTP 状态码和其他决定错误类别的数字保留，再取前 120 字）。`ledger` 里开着、且已复现过（`repro: confirmed`）的签名只更新 `lastSeen` 与次数；`muted` 的跳过。`resolved` 的签名再出现算新签名：重新打开，从第 2 条起走一遍并照新异常通知。
 2. **分诊**：新签名逐个看日志原文和源码（路径加符号）。是预期行为（上游限流后的正常重试、客户端断开、已知噪声）就记 `muted` 并写一句理由，停在这一步。
 3. **复现**：能用一条只读命令复现的（`curl` 生产公开端点、`node scripts/site-verify.mjs` 对 `https://lyjw.me/` 取证），跑两次，两次都打到同一个坏状态才算复现，记下命令和输出原文，`ledger` 记 `repro: confirmed`；只读命令复现不了的写「未复现」和原因，记 `repro: none`，不为复现去写生产数据。`repro: none` 的签名之后每次再出现都重试一次复现，复现了就按新批次报告。
 4. **成批**：几个新签名指向同一处源码、同一个上游或同一次部署（看 `$workers.scriptVersion`），合成一条 `ledger` 记录，列出各签名。修复建议按批写，不按签名写。
