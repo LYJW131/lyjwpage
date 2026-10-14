@@ -147,7 +147,7 @@ function main() {
       const rule = RULES[kind];
       if (rule) console.error(`\n${rule.label}：${rule.hint}`);
     }
-    console.error("\n确属合规例外时跑 `pnpm design:scale --update` 记进基线，并在 PR 里说明（见 DESIGN.md「交付与合并」）。");
+    console.error("\n确属合规例外时跑 `pnpm design:scale --update` 记进基线，并在 PR 里说明理由；基线变多要 lyjw 打 baseline-exception 标签放行（见 DESIGN.md「交付与合并」）。");
     process.exit(1);
   }
   // 变少不算失败：访客构建（.github/build/implement.md）只能改 src/，写不了这份基线。

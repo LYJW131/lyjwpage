@@ -75,7 +75,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 ```
 
 - 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `node scripts/site-verify.ts override --endpoint <端点> --fixture <夹具> --dry-run`，确认命令后去掉 `--dry-run` 执行（夹具名从 feature-map.json 的 `endpoints` 里挑；收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
-- 首屏（SSR）要渲染指定数据：本机起一个 node 代理转发 `https://lyjw.me`、只改被测端点，`PUBLIC_BACKEND_URL=http://localhost:<端口> pnpm dev`，node 用 `NODE_USE_ENV_PROXY=1` 走代理。只改浏览器请求用 Playwright `context.route`；只看 SSR 长什么样用 `shot --ssr`，看文字用 `curl -sS <url>`。
+- 首屏（SSR）要渲染指定数据：`pnpm dev:local` 的 SSR 与浏览器读同一个本地 Worker，注入同时管两边，不用再起 node 代理。截图、前后对比、要多张卡互相对得上（摘要数字与 Pulse 表盘、明暗两张）时用场景一次注入整份快照：`pnpm dev:scene <场景>`（写法与 `--capture`、`--age` 见 `workers/core/README.md`「本地开发」）。前后对比先 `--capture` 一次，修复前后的本地构建各注入同一场景，不拿漂着的生产数据当基线。只改浏览器请求用 Playwright `context.route`；只看 SSR 长什么样用 `shot --ssr`，看文字用 `curl -sS <url>`。
 - 宽度：至少 1280 桌面与 375 手机；改到布局行数或网格时加 iPad（`--widths 1280,820,1024,375`）；有深色样式的改动加 `--theme dark`（或 `both`）。
 - 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的环境噪声，脚本单列为 `envNoise`，不算站点错误。页面常开 WebSocket、在轮询，没有 networkidle：脚本按 `--settle` 毫秒等待（默认 4000），别自己写 networkidle。
 - 脚本量不到的量化预期才自己补 `page.evaluate`：改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；lyjw 一眼就能看出差几像素。量间距、字号、点击区还有 `node .claude/skills/lyjwpage-ui-design/ui-audit.mjs`。
@@ -87,7 +87,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - 什么时候必须跑 `reload`：改到首页首屏、字体或 `@font-face`、缓存头、SSR 或水合、任何按时间算出来的文字（时钟、相对时间、进度）。跑在**生产构建**上（`pnpm build` 后 `DEV_SITE_PORT=<端口> pnpm start`）或 Workers 预览 / 生产地址；`pnpm dev` 的字体、模块加载和缓存头都和线上不同，开发服务器上没跳不算数。要比修复前后，就把修复前的构建也起在另一个端口一起跑。
 - `reload` 的每一条 `textJumps` / `frameJumps` 都要在报告里归类，不能只报 ok 与否：时间类文字（时钟、几分钟前、进度）在水合时跳到此刻是缺陷；轮询或推送带来的新数值（计数、费用）是数据刷新；正在播放卡的进度和歌词在水合时从快照跳到此刻是 lyjw 接受过的行为（项目记忆 now-playing-first-screen-decisions）。`liveText` / `liveRegions` 是反复变化的地方，只列不判。`fontsAfterPaint` 只在 Chromium 上可靠：它按 `--latency` 给走网络的请求加往返延迟，每次都要重新验证的字体会晚到，WebKit 没有这个开关。
 - 云端没有真 Safari：Playwright 的 WebKit 能装在 scratchpad 里（`PLAYWRIGHT_BROWSERS_PATH=<目录> npx playwright install webkit`，版本跟 `doctor` 报的 playwright 一致），`reload --engine webkit` 查文字与字体、不录屏。只有真机才有的行为（地址栏、触控、系统字体），写进「没验到」，请 lyjw 实机看。
-- 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` 注入由主线程起、主线程管，保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
+- 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` / `dev:scene` 注入由主线程起、主线程管（`pnpm dev:scene --reset` 一次清完），保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
 
 ### 3. PR 合并门槛（验证员汇总，主线程判断）
 

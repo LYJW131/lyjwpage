@@ -6,22 +6,20 @@
 
 ## 页面效果图
 
-[`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份；静态的是 WebP，会动的是 GIF。用本地 Worker 的假数据注入把平时不显示的状态点亮后截的，夹具在 [`workers/core/dev-fixtures/`](../workers/core/dev-fixtures/)，注入方式见 [`workers/core/README.md`](../workers/core/README.md)。截图用无头 Chrome（playwright-core 的 `channel: "chrome"`）开 1280 宽、2 倍像素密度，`colorScheme` 切明暗；裁卡片按元素 boundingBox 外扩 12px 取 `clip`，并把目标之外的兄弟节点 `visibility: hidden`，边距里才不会露出邻居卡片的边；PNG 用项目自带的 sharp 转 WebP（q 88）。
+[`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份；静态的是 WebP，会动的是 GIF。数据来自场景 [`readme`](../workers/core/dev-fixtures/scenes/readme.json)：在生产快照 `readme-base` 上用夹具点亮平时不显示的卡片，`pnpm dev:scene readme` 一次注入全部端点，摘要的三格按同一份 Pulse 重算、标题池收成一句，SSR 与浏览器、明暗两轮读到的是同一份数据。场景的写法与 `--capture` 重新抓生产快照见 [`workers/core/README.md`](../workers/core/README.md#本地开发)。
 
-Pulse 的时段详情需要额外动作：用鼠标停在泳道上，把 `[role="tooltip"]`（body 上的浮层）和卡片的 boundingBox 取并集再裁，并顺手把上一张卡 `visibility: hidden`——浮层画在卡片上方，那 12px 的缝里会露出它的下边和硬阴影。
-
-3211 / 8788 被别的实例占着时，用 `.claude/launch.json` 里的 `api-worker-alt`（8790）和 `lyjwpage-local-alt`（3213）另起一套：`dev:worker` / `dev:local` / `dev` / `start` 认 `DEV_WORKER_PORT` / `DEV_SITE_PORT`（如 `DEV_SITE_PORT=3213 pnpm dev`），`pnpm dev:override` 和截图脚本分别用 `DEV_WORKER_URL` / `SITE_URL` 指过去。
-
-歌词不入库：本地 Worker 没有 Apple Music 凭据，`/api/lyrics` 也不走上游兜底，所以截「正在听」时把生产站的响应包一层 `ok` 直接注入（`song` 取 `listening-now-*.json` 里的 `songId`）：
+静态图（总览、正在看、充电宝、PlayStation 奖杯展开、Pulse 悬停详情、LYJWPAGE）由 [`scripts/readme-shots.ts`](../scripts/readme-shots.ts) 一条命令截出：先注入场景，再用无头 Chromium 开 1280 宽、2 倍像素密度，`colorScheme` 切明暗；裁卡片按元素框外扩 12px，并把目标之外的兄弟节点 `visibility: hidden`，边距里才不会露出邻居卡片的边；Pulse 悬停在听歌道上，把浮层和卡片的框取并集再裁（上一张卡同样藏起，浮层画在卡片上方，缝里会露出它的下边和硬阴影）；PNG 用项目自带的 sharp 转 WebP（q 88），写进 `docs/screenshots/`。截完场景留在本地 Worker 里供对照，看完 `pnpm dev:scene --reset`：
 
 ```sh
-curl -s 'https://lyjw.me/api/lyrics?song=1490256995' \
-  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.stringify({ok:true,...JSON.parse(s)})))' \
-  > /tmp/lyrics-override.json
-pnpm dev:override /api/lyrics /tmp/lyrics-override.json
+pnpm readme:shots                                   # 全部静态图，明暗各一张
+pnpm readme:shots --only pulse-detail --theme dark  # 单张；--out 改输出目录，--scene 换场景
 ```
 
-五张会动的卡片（正在听、充电头、活动、落地节点、AI Coding）由 [`scripts/card-gifs.py`](../scripts/card-gifs.py) 录制：把卡片滚到视口、藏起邻居，在真实时间里连续截图，画面一变留一帧，帧时长按真实经过的毫秒记（motion 把不少动画交给 Web Animations API，假时钟拨不动，所以不用假时钟）。正在听录的是歌词从一句收尾到「二人だけの空が広がる夜に」整句扫完，靠注入 `positionMs` 改过的变体把播放位置拨到句前，录前清掉充电头和充电宝——它们在场时这张卡只占右边一列；其余四张靠换夹具驱动——从夹具派生只改几个读数的临时变体逐份注入，借 SWR 的 `revalidateOnFocus` 让卡片回源（对 focus 节流 5 秒），换夹具的等待不进时间线。充电头的历史点在派生变体时冻成绝对时间（`$now-…` 每次注入都按新的当下重算，曲线会整条平移），录的时候先清掉充电宝——它在场时充电头是紧凑布局、没有曲线。AI Coding 的基线直接取本地 Worker 此刻的 `/api/status/coding`（生产数据经上游补缺；也可以先注入 `coding-multi-source.json`），再派生读数涨一档的变体。总览、Emby 正在播放、充电宝、PlayStation、Pulse 仍是静态图：总览本来就是全貌，其余几张要么几秒内没什么在动，要么静态一张已经说清。跑之前先按脚本开头列的清单注入基线夹具，跑法和下面的 GIF 脚本一样：
+3211 / 8788 被别的实例占着时，用 `.claude/launch.json` 里的 `api-worker-alt`（8790）和 `lyjwpage-local-alt`（3213）另起一套：`dev:worker` / `dev:local` / `dev` / `start` 认 `DEV_WORKER_PORT` / `DEV_SITE_PORT`（如 `DEV_SITE_PORT=3213 pnpm dev`），`pnpm dev:override`、`pnpm dev:scene` 和截图脚本分别用 `DEV_WORKER_URL` / `SITE_URL` 指过去。
+
+歌词不入库：本地 Worker 没有 Apple Music 凭据，场景里 `/api/lyrics?song=<songId>` 写成 `{ "fetch": "https://lyjw.me/api/lyrics?song=<songId>" }`，注入时现取生产站的响应（`songId` 取 `listening-now-*.json` 里的）。
+
+五张会动的卡片（正在听、充电头、活动、落地节点、AI Coding）由 [`scripts/card-gifs.py`](../scripts/card-gifs.py) 录制：把卡片滚到视口、藏起邻居，在真实时间里连续截图，画面一变留一帧，帧时长按真实经过的毫秒记（motion 把不少动画交给 Web Animations API，假时钟拨不动，所以不用假时钟）。正在听录的是歌词从一句收尾到「二人だけの空が広がる夜に」整句扫完，靠注入 `positionMs` 改过的变体把播放位置拨到句前，录前清掉充电头和充电宝——它们在场时这张卡只占右边一列；其余四张靠换夹具驱动——从夹具派生只改几个读数的临时变体逐份注入，借 SWR 的 `revalidateOnFocus` 让卡片回源（对 focus 节流 5 秒），换夹具的等待不进时间线。充电头的历史点在派生变体时冻成绝对时间（`$now-…` 每次注入都按新的当下重算，曲线会整条平移），录的时候先清掉充电宝——它在场时充电头是紧凑布局、没有曲线。AI Coding 的基线直接取本地 Worker 此刻的 `/api/status/coding`（生产数据经上游补缺；也可以先注入 `coding-multi-source.json`），再派生读数涨一档的变体。总览、Emby 正在播放、充电宝、PlayStation、Pulse 仍是静态图：总览本来就是全貌，其余几张要么几秒内没什么在动，要么静态一张已经说清。跑之前先 `pnpm dev:scene readme` 注入基线，跑法和下面的 GIF 脚本一样：
 
 ```sh
 python3 scripts/card-gifs.py                      # 全部场景，明暗各一张

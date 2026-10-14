@@ -17,11 +17,8 @@ Web Animations API，假时钟拨不动它（见 desktop-marks-gif.py）。
 变体时冻成绝对时间：`$now-…` 令牌每次注入都按新的当下重算，曲线会整条平移、和已有点对不上。
 AI Coding 的基线直接取本地 Worker 此刻的 /api/status/coding（生产数据经上游补缺；也可以先注入 coding-multi-source.json）。
 
-前置：本地 Worker 与 pnpm dev:local 在跑、总开关已开，并且这些夹具已注入（脚本不替你注入基线）：
-  listening/now  listening-now-yoasobi.json     /api/lyrics       生产站响应包一层 ok（见 docs/screenshots.md）
-  charger        charger-macbook-iphone.json    powerbank         powerbank-charging.json
-  activity       activity-afternoon.json        workouts          workouts.json
-  server         server-traffic.json
+前置：本地 Worker 与 pnpm dev:local 在跑，并且已 pnpm dev:scene readme 注入基线（脚本不替你注入；
+场景里有 listening-now-yoasobi、它的歌词、charger-macbook-iphone、powerbank-charging、activity-afternoon、workouts、server-traffic）。
 Python 3 + playwright + Pillow：pip install playwright pillow（装了 Google Chrome 可设
 PLAYWRIGHT_CHANNEL=chrome 免下载）。站点或 Worker 不在默认端口时用 SITE_URL / DEV_WORKER_URL。
 用法：
