@@ -7,7 +7,7 @@ const OLD = "b".repeat(40);
 const patchIds = (map) => (sha) => map[sha] ?? null;
 const owner = { login: "LYJW131" };
 
-test("parseComments 每类只认站主账号发的最新一条，第一行不对格式的不算", () => {
+test("parseComments 每类只认 lyjw 账号发的最新一条，第一行不对格式的不算", () => {
   const { receipt, judge } = parseComments([
     { user: owner, body: `验证回执 ${OLD}：type-check-only` },
     { user: owner, body: `顺便说一句\n验证回执 ${HEAD}：live-ui-verified` },

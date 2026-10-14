@@ -151,9 +151,9 @@ function subcommand(rest) {
 }
 
 const DEPLOY_REASON =
-  "手动部署 Worker 是 AGENTS.md「禁区」：Worker 只经 Workers Builds 部署。跨 Worker 契约切换那唯一的例外由站主在自己的 shell 里跑（Mac 会话输入框用 `!` 前缀），见 .claude/skills/lyjwpage-mac-session/SKILL.md「自动模式拦了」。`wrangler deploy --dry-run` 不受限。";
+  "手动部署 Worker 是 AGENTS.md「禁区」：Worker 只经 Workers Builds 部署。跨 Worker 契约切换那唯一的例外由 lyjw 在自己的 shell 里跑（Mac 会话输入框用 `!` 前缀），见 .claude/skills/lyjwpage-mac-session/SKILL.md「自动模式拦了」。`wrangler deploy --dry-run` 不受限。";
 const IDENTITY_REASON =
-  "改提交身份或关掉签名是 AGENTS.md「禁区」：环境已把 author / committer 设成站主的 noreply 邮箱并用站主的 SSH 钥签名，GitHub 按 committer 邮箱找签名钥，换成别的身份就显示 Unverified。agent 署名只写进提交信息末尾的 Co-Authored-By。云端 Stop 钩子（~/.claude/stop-hook-git-check.sh）报「Unverified」并让改成 noreply@anthropic.com 时不照做，直接 push 即可。";
+  "改提交身份或关掉签名是 AGENTS.md「禁区」：环境已把 author / committer 设成 lyjw 的 noreply 邮箱并用 lyjw 的 SSH 钥签名，GitHub 按 committer 邮箱找签名钥，换成别的身份就显示 Unverified。agent 署名只写进提交信息末尾的 Co-Authored-By。云端 Stop 钩子（~/.claude/stop-hook-git-check.sh）报「Unverified」并让改成 noreply@anthropic.com 时不照做，直接 push 即可。";
 const CREDENTIAL_REASON = "强制提交 .dev.vars / .env* 这类本地凭据文件是 AGENTS.md「禁区」；示例文件（*.example）照常提交。";
 
 export function forbiddenReason(command) {
