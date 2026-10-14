@@ -19,6 +19,8 @@ export type DigestHighlight = {
 export type DigestPayload = {
   // 三到五个汉字、不带标点的中文短标题，点出这一天的主线。
   headline: string;
+  // 站点轮换显示的标题池，headline 在首位，条目与 headline 同格式、互不重复；旧记录没有这一项，只显示 headline。
+  headlines?: string[];
   // 按情境规则挑出的两到三格，最重要的在前，topic 互不重复；可选项不足两格时可以更少。
   highlights: DigestHighlight[];
   // 谁定的标题：从文案库里挑中它的模型（如 "@cf/cloudflare/clef"），或按规则直接取用时为 "rules"。
@@ -50,6 +52,6 @@ export interface DigestRpc {
   compose(request: DigestRequest): Promise<DigestOutcome>;
 }
 
-export function publicDigest({ headline, highlights, quiet, model, generatedAt }: DigestPayload): DigestPayload {
-  return { headline, highlights, ...(quiet ? { quiet } : {}), model, generatedAt };
+export function publicDigest({ headline, headlines, highlights, quiet, model, generatedAt }: DigestPayload): DigestPayload {
+  return { headline, ...(headlines ? { headlines } : {}), highlights, ...(quiet ? { quiet } : {}), model, generatedAt };
 }

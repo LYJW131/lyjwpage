@@ -9,6 +9,7 @@ export const DIGEST_RULES_MODEL = "rules";
 const CLEF_TIMEOUT_MS = 10_000;
 export const PRIMARY_CANDIDATES = 6;
 export const ACCENT_CANDIDATES = 2;
+export const HEADLINE_POOL = 10;
 
 export const isTagline = (line: string) => /^\p{Script=Han}{3,5}$/u.test(line);
 
@@ -57,6 +58,11 @@ export function taglineCandidates(primary: DigestSituation, accents: DigestSitua
 // 只留主情境的句子：附带情境（周末、背景音乐）的句子在多种主情境间共用，主线换了它还在候选里，会挂在不相干的卡片上。
 export function keepsHeadline(previous: string | null, primary: DigestSituation, date: string): previous is string {
   return !!previous && sample(primary, date, PRIMARY_CANDIDATES).includes(previous);
+}
+
+// 与 Clef 的候选同种子同序：池子的前几条就是当天候选，同一天里池子不变。
+export function headlinePool(headline: string, primary: DigestSituation, date: string): string[] {
+  return [...new Set([headline, ...sample(primary, date, HEADLINE_POOL)])].slice(0, HEADLINE_POOL);
 }
 
 function parseChoice(body: unknown, candidates: string[]): string | null {
@@ -110,5 +116,5 @@ export async function composeDigest({
       situation: DIGEST_SITUATIONS[scene.primary],
       accents: scene.accents.map((accent) => DIGEST_SITUATIONS[accent]),
     });
-  return { status: "composed", digest: { headline, highlights: scene.highlights, model, generatedAt: Date.now(), inputHash } };
+  return { status: "composed", digest: { headline, headlines: headlinePool(headline, scene.primary, signals.date), highlights: scene.highlights, model, generatedAt: Date.now(), inputHash } };
 }
