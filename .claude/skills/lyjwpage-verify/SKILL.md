@@ -115,7 +115,7 @@ Agent(
 - 简报只给：lyjw 的原话（线程根消息和后来补的要求，原文照贴）、PR 号与当前 head 的完整 SHA、这轮验证员的证据表。不给 PR 描述和线程里的推理，让它自己读 `git diff origin/main...<sha>` 和调用方。
 - 它回答三件事：diff 是否做到了 lyjw 要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）；证据表里有没有没验到却算通过的项。结论写 `PASS` 或 `FAIL`，FAIL 列出要修的项。
 - 判定员只读：不改文件、不提交、不在 GitHub 上评论。主线程把结论原样发成一条 PR 评论，第一行写 `判定 <head 完整 SHA>：PASS` 或 `FAIL`。
-- 结论只对那个 SHA 的补丁有效：之后再推提交，合并前跑 `scripts/verify-receipt.mjs check --pr <号> --judge`；只把 main 合进了分支、补丁没变的照旧算数，补丁变了就按新 head 重派一次。FAIL 的项修完再判，不和判定员争；确实判错了（比如误读了 lyjw 原话），在 PR 评论里写明依据，交 lyjw 定。
+- 结论只对那个 SHA 的补丁有效：之后再推提交，合并前跑 `scripts/verify-receipt.ts check --pr <号> --judge`；只把 main 合进了分支、补丁没变的照旧算数，补丁变了就按新 head 重派一次。FAIL 的项修完再判，不和判定员争；确实判错了（比如误读了 lyjw 原话），在 PR 评论里写明依据，交 lyjw 定。
 
 ### 4. 合并后部署与生产核对
 
@@ -143,7 +143,7 @@ Agent(
 - 等级从高到低：`live-ui-verified`（在真页面上按 lyjw 会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，改动涉及的单测与门禁也要跑过并列进证据，同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
 - 改了行为的不收 `type-check-only`。UI 改动要 `live-ui-verified`；后端与脚本至少 `unit-test-verified`。
 - 有 PR 时，主线程把回执原样发成一条 PR 评论，第一行不动（脚本只认 lyjw 账号 `LYJW131` 发的回执与判定，别人发的同格式评论不算）；还没开 PR 的，随汇报交给 lyjw，开 PR 时再发。一行命令就能验完、主线程自己跑的，主线程照同样格式自签，验证员那一行写主线程的模型 ID 和「自验」。
-- 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.mjs check --pr <号> --need <等级>`（要等机器评审的 PR 加 `--judge`）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（逐字节相同，含空白与二进制，只忽略行号；`carried`），就照旧算数；补丁变了（`stale`）就按新 head 重派验证员。
+- 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check --pr <号> --need <等级>`（要等机器评审的 PR 加 `--judge`）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（逐字节相同，含空白与二进制，只忽略行号；`carried`），就照旧算数；补丁变了（`stale`）就按新 head 重派验证员。
 - 回执只说「验过什么、到什么程度」，不替主线程判断合不合；合并门槛照第 3 节与「3b」。
 
 ## 主线程收到报告后
