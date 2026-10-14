@@ -6,7 +6,7 @@ import { CHARGER_TAG, DESKTOP_TAG, NOW_LISTENING_TAG, POWERBANK_TAG } from "@sha
 import { offlineByLiveness, readLiveness, type Liveness } from "@shared/reporter-liveness";
 import type { ChargerStatus, PowerBankStatus } from "@shared/types";
 
-import { getChargerSnapshot } from "./anker";
+import { getChargerLayoutFeed } from "./anker";
 import { expireStatusTags } from "./live-platform";
 import { getPowerBankSnapshot } from "./powerbank";
 import { currentContext, requestStore } from "./runtime";
@@ -51,7 +51,7 @@ export async function watchClockLayout(now = Date.now()): Promise<string[]> {
   return withRequestState(() => requestStore.run({ env, ctx, storage }, async () => {
     const [liveness, charger, powerBank] = await Promise.all([
       readLiveness(),
-      awaiting(getChargerSnapshot()),
+      getChargerLayoutFeed(),
       awaiting(getPowerBankSnapshot()),
     ]);
     const tags = clockLayoutTags({ liveness, charger, powerBank }, now);

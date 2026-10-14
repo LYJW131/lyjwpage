@@ -53,8 +53,34 @@ test("按 cachekey 只刷首页，应答没有 TaskId 时抛错", async () => {
   assert.equal(url.searchParams.get("SiteId"), "1113300533463584");
   assert.deepEqual(JSON.parse(url.searchParams.get("Content")!), { CacheKeys: [{ Url: "https://lyjw131.com/", Headers: {} }] });
 
-  const denied = (async () => Response.json({ Code: "Forbidden.RAM", Message: "no" }, { status: 403 })) as typeof fetch;
-  await assert.rejects(purgeEsaHome(config, denied), /403: Forbidden\.RAM/);
+  let deniedCalls = 0;
+  const denied = (async () => {
+    deniedCalls += 1;
+    return Response.json({ Code: "Forbidden.RAM", Message: "no" }, { status: 403 });
+  }) as typeof fetch;
+  await assert.rejects(purgeEsaHome(config, denied, async () => {}), /403: Forbidden\.RAM/);
+  assert.equal(deniedCalls, 1);
+});
+
+test("限流、5xx 与网络错误重新签名后有限次重试", async () => {
+  const config = esaHomeConfig(CONFIGURED as unknown as Env)!;
+  const nonces: string[] = [];
+  const waits: number[] = [];
+  const replies = [
+    () => Response.json({ Code: "Throttling" }, { status: 429 }),
+    () => { throw new TypeError("fetch failed"); },
+    () => Response.json({ TaskId: "task-3" }),
+  ];
+  const flaky = (async (_input: string | URL | Request, init?: RequestInit) => {
+    nonces.push((init?.headers as Record<string, string>)["x-acs-signature-nonce"]!);
+    return replies[nonces.length - 1]!();
+  }) as typeof fetch;
+  assert.equal(await purgeEsaHome(config, flaky, async (ms) => { waits.push(ms); }), "task-3");
+  assert.deepEqual(waits, [1_000, 2_000]);
+  assert.equal(new Set(nonces).size, 3);
+
+  const down = (async () => Response.json({}, { status: 503 })) as typeof fetch;
+  await assert.rejects(purgeEsaHome(config, down, async () => {}), /HTTP 503/);
 });
 
 async function expire(env: Partial<Env>, tags: string[]) {

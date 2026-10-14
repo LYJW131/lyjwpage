@@ -48,6 +48,10 @@ export async function getStored() {
   };
 }
 
+export async function getLatestStatus() {
+  return (await readLatest())?.status ?? null;
+}
+
 export async function lastPushReceivedAt() {
   const raw = await getStorage().get(K_LAST_PUSH);
   return (raw ? Number(raw) : 0) || 0;
