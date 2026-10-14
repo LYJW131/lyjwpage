@@ -432,22 +432,16 @@
     for (const c of [x, e, d, s]) c.restore();
   }
 
-  const P4 = [
-    [190, 8, 234, 40, 1], [0, 64, 304, 56, 1], [0, 124, 304, 61, 0], [310, 64, 304, 121, 1], [0, 192, 214, 117, 1], [0, 313, 214, 117, 1],
-    [218, 192, 396, 142, 1, "listening-now"], [218, 338, 396, 92, 1], [0, 437, 372, 152, 1], [376, 437, 238, 152, 1], [0, 596, 614, 152, 1],
-    [0, 755, 614, 103, 1], [0, 865, 614, 258, 1], [0, 1127, 362, 200, 1], [366, 1127, 248, 200, 1], [0, 1334, 614, 118, 1], [0, 1456, 362, 183, 1],
-    [366, 1456, 248, 183, 1], [0, 1646, 614, 212, 0], [0, 1865, 614, 106, 0], [0, 1975, 614, 106, 0], [0, 2085, 614, 106, 0], [0, 2195, 614, 106, 0],
-    [0, 2305, 614, 111, 0], [0, 2430, 270, 152, 1], [274, 2430, 340, 152, 1],
-  ];
+  const ch04 = () => (window.CHAPTERS.find((c) => c.id === "ch04") || {}).share;
   const G4 = { x: 620, y: 110, s: 0.36 };
   function cell4(L, b) {
-    const { d, e } = L, X = CELLS[3].X;
+    const { d, e } = L, X = CELLS[3].X, P4 = ch04().P;
     d.save(); d.translate(X, 0); e.save(); e.translate(X, 0);
     line(d, 0, SPINE, CELLS[3].W, SPINE, 2, css("pink"), 0.6);
     const hot = win(b, AT.plate4 - 0.05, AT.plate4 + 0.05, AT.plate4 + 0.6, AT.plate4 + 1.0);
-    for (const [u, v, w, h, tag, id] of P4) {
+    for (const { id, tag, r: [u, v, w, h] } of P4) {
       const px = G4.x + u * G4.s, py = G4.y + v * G4.s, W = w * G4.s - 2, H = h * G4.s - 2;
-      const lit = id ? hot : 0;
+      const lit = id === "listening-now" ? hot : 0;
       d.save(); d.fillStyle = css("paper"); d.shadowColor = "rgba(0,0,0,0.25)"; d.shadowBlur = 4; d.shadowOffsetY = 2; d.fillRect(px, py, W, H); d.restore();
       K.rect(d, px, py, W, H, lit > 0.3 ? 3 : 1.6, lit > 0.3 ? css("signal") : css("pink"));
       if (tag) { d.save(); d.strokeStyle = css("pink"); d.lineWidth = 1.2; d.beginPath(); d.moveTo(px + W - 12, py + 4); d.lineTo(px + W - 4, py + 4); d.lineTo(px + W - 4, py + 12); d.stroke(); d.restore(); }
@@ -455,7 +449,7 @@
     }
     const na = prog(b, AT.plate4, AT.plate4 + 0.1);
     if (na > 0) {
-      const [u, v, w] = P4[6];
+      const [u, v, w] = P4.find((p) => p.id === "listening-now").r;
       polyline(d, [[G4.x + (u + w) * G4.s, G4.y + (v + 26) * G4.s], [1000, G4.y + (v + 26) * G4.s], [1000, 640]], prog(b, AT.plate4, AT.plate4 + 0.15, E.out), 5, css("signal"));
       // 大字放在字架右边、主线下方，红线的落点正对着它；从左边铺过去会压在字架上。
       text(d, tr("ch10.noRecast1"), 880, 790, { font: FONT.cjk(86, 600), color: css("signal"), reveal: prog(b, AT.plate4 + 0.05, AT.plate4 + 0.3), maxW: 520 });
