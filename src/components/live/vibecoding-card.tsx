@@ -8,8 +8,8 @@ import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Cloud } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
-import { MODEL_ICON_LOADERS, MODEL_ICON_MAPPINGS } from "virtual:model-icons";
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { MODEL_ICON_MAPPINGS } from "virtual:model-icons";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
@@ -34,7 +34,7 @@ import {
   type CodingAgentRow,
   type CodingSourceNote,
 } from "@/lib/coding-agents";
-import { modelIconResolver, type BundledModelIcon } from "@/lib/model-icon";
+import { modelIconResolver, modelIconUrl, type BundledModelIcon } from "@/lib/model-icon";
 import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
 import { zonedDay } from "@shared/heatmap-window";
 import { CODING_NOW_PATH, CODING_PATH, LIMITS_PATH } from "@/lib/paths";
@@ -191,25 +191,26 @@ const BUNDLED_MODEL_ICONS: Record<BundledModelIcon, ModelIconComponent> = {
   OpenAI: OpenAIIcon,
 };
 
-// 其余厂商按需拆包：SSR 等 allReady 才出 HTML，首屏里已是最终图标；水合时 Suspense 保留服务端那份，不闪占位。
-const LAZY_MODEL_ICONS: Record<string, ModelIconComponent> = Object.fromEntries(
-  Object.entries(MODEL_ICON_LOADERS).map(([icon, load]) => [icon, lazy(load)]),
-);
+function ModelIconMark({ icon, label }: { icon: string | null; label: string }) {
+  if (icon && Object.hasOwn(BUNDLED_MODEL_ICONS, icon)) {
+    const Icon = BUNDLED_MODEL_ICONS[icon as BundledModelIcon];
+    return <Icon size={16} />;
+  }
+  if (icon) {
+    const mask = `url(${modelIconUrl(icon)}) center / contain no-repeat`;
+    return <span className="size-4 bg-current" style={{ mask, WebkitMask: mask }} />;
+  }
+  return (
+    <span className="flex size-4 items-center justify-center border border-line text-2xs font-medium leading-none text-muted-foreground">
+      {label.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
 
 function ModelProviderIcon({ model, label }: { model: string; label: string }) {
-  const icon = modelIconOf(model);
-  const Icon = icon ? (Object.hasOwn(BUNDLED_MODEL_ICONS, icon) ? BUNDLED_MODEL_ICONS[icon as BundledModelIcon] : LAZY_MODEL_ICONS[icon]) : undefined;
   return (
     <span className="flex size-6 shrink-0 items-center justify-center text-foreground" aria-hidden>
-      {Icon ? (
-        <Suspense fallback={null}>
-          <Icon size={16} />
-        </Suspense>
-      ) : (
-        <span className="flex size-4 items-center justify-center border border-line text-2xs font-medium leading-none text-muted-foreground">
-          {label.slice(0, 1).toUpperCase()}
-        </span>
-      )}
+      <ModelIconMark icon={modelIconOf(model)} label={label} />
     </span>
   );
 }
@@ -257,7 +258,8 @@ function formatModelName(model: string) {
   return model
     .split("-")
     .map((part) => (MODEL_NAME_ACRONYMS.has(part.toLowerCase()) ? part.toUpperCase() : capitalize(part)))
-    .join(" ");
+    .join(" ")
+    .replace(/\b([A-Z]{2,}) (\d)/, "$1-$2");
 }
 
 function SourceIssue({ failing, hasValue }: { failing: CodingSourceNote[]; hasValue: boolean }) {
