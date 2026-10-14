@@ -2,7 +2,7 @@
 
 > 类型：runbook
 
-线上地址 `https://lyjw.me/explainer`，发布的是 `v2/` 这一版：分镜与旁白见 [SCRIPT.md](SCRIPT.md)，写章约定、预览和自检见 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)，怎么发布见下文「站点版」。
+线上地址 `https://lyjw.me/explainer`，发布的是 `v2/` 这一版：分镜与旁白见 [SCRIPT.md](SCRIPT.md)，写章约定、预览和自检见 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)，改片子与整片逐帧验收的流程见 [lyjwpage-explainer](../../.claude/skills/lyjwpage-explainer/SKILL.md)，怎么发布见下文「站点版」。
 
 这个目录根上是上一版的页面源，保留作参考和 Artifact 发布，不进站点构建；其中 `clawd.js` 和 `fonts/` 也被 v2 引用，随站点版发布。上一版里 Claude Code 的像素螃蟹 Clawd 讲解这个站点怎么运转：10 章、130 小节（100 BPM，约 5 分 13 秒）。画面、配乐和音效都在浏览器里按同一条时间轴确定地生成，同一个时刻总是同一帧。除「站点版」一节外，本文说的都是上一版。
 
