@@ -200,6 +200,15 @@
     x.fill(); x.restore();
   }
 
+  // 信封上的标签要穿过门弧、墙和书桌：垫一块底色，压在线上也读得清。
+  function tag(x, s, cx, cy, color, a) {
+    if (a <= 0) return;
+    const font = FONT.mono(28, 500);
+    x.save(); x.font = font; const w = x.measureText(s).width + 24;
+    x.globalAlpha = a; x.fillStyle = css("ink2"); roundRect(x, cx - w / 2, cy - 30, w, 42, 8); x.fill(); x.restore();
+    text(x, s, cx, cy, { font, color, align: "center", alpha: a });
+  }
+
   function queue(x, e, b, f) {
     const mv = moved(b), arr = arrive(b);
     for (let i = Q.length - 1; i >= 0; i--) {
@@ -217,7 +226,7 @@
       if (qq.heart) heart(x, px, py + 4, 9 * (1 + 0.25 * beat), css("signalD"));
       if (qq.hero && e) spark(e, null, [px, py - 6], null, { t: G.t, size: 0.75 });
       const lab = qq.hero ? "mac · appleMusic" : qq.heart ? tr("ch03.hbTag") : qq.flip ? "mac · presence" : null;
-      if (lab && near) text(x, lab, px, py - 58, { font: FONT.mono(28, 500), color: hot ? css("signalD") : css("ash"), align: "center", alpha: prog(b, qq.t - 0.5, qq.t - 0.4) * (1 - prog(q, -0.55, -0.85)) });
+      if (lab && near) tag(x, lab, px, py - 58, hot ? css("signalD") : css("ash"), prog(b, qq.t - 0.5, qq.t - 0.4) * (1 - prog(q, -0.55, -0.85)));
     }
   }
 

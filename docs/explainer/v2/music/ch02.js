@@ -54,7 +54,7 @@
       ...[[5, 0, "A5"], [5, 2, "C6"], [6, 0, "D6"], [6, 2, "E6"], [7, 0, "G6"], [7, 2, "A6"]].map(([bar, beat, n], i) => ({ bar, beat, kind: "tick", m: midi(n), i })),
       { bar: 8, beat: 0, kind: "stamp", size: "big" },
       { bar: 9, beat: 0, kind: "whoosh", tube: 0 }, { bar: 9, beat: 2, kind: "whoosh", tube: 1 },
-      { bar: 10, beat: 0, kind: "whoosh", tube: 2 }, { bar: 10, beat: 2, kind: "whoosh", tube: 3 },
+      { bar: 10, beat: 0, kind: "whoosh", tube: 2 }, { bar: 10, beat: 1, kind: "whoosh", tube: 1 }, { bar: 10, beat: 2, kind: "whoosh", tube: 3 },
       { bar: 11, beat: 0, kind: "whoosh", tube: "fork" },
       { bar: 12, beat: 2, kind: "whoosh", tube: 0 },
       { bar: 13, beat: 0, kind: "key", v: 0.6, pan: 0.3 },
