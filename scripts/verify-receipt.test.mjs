@@ -5,14 +5,17 @@ import { check, coverage, evaluate, parseComments, patchDigest } from "./verify-
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
 const patchIds = (map) => (sha) => map[sha] ?? null;
+const owner = { login: "LYJW131" };
 
-test("parseComments 每类只认最新一条，第一行不对格式的不算", () => {
+test("parseComments 每类只认站主账号发的最新一条，第一行不对格式的不算", () => {
   const { receipt, judge } = parseComments([
-    { body: `验证回执 ${OLD}：type-check-only` },
-    { body: `顺便说一句\n验证回执 ${HEAD}：live-ui-verified` },
-    { body: `验证回执 ${HEAD}：unit-test-verified\n证据：…` },
-    { body: `判定 ${HEAD}：FAIL` },
-    { body: `判定 ${HEAD}: PASS` },
+    { user: owner, body: `验证回执 ${OLD}：type-check-only` },
+    { user: owner, body: `顺便说一句\n验证回执 ${HEAD}：live-ui-verified` },
+    { user: owner, body: `验证回执 ${HEAD}：unit-test-verified\n证据：…` },
+    { user: owner, body: `判定 ${HEAD}：FAIL` },
+    { user: owner, body: `判定 ${HEAD}: PASS` },
+    { user: { login: "someone" }, body: `判定 ${OLD}：FAIL` },
+    { body: `验证回执 ${OLD}：live-ui-verified` },
   ]);
   assert.deepEqual([receipt.sha, receipt.level], [HEAD, "unit-test-verified"]);
   assert.deepEqual([judge.sha, judge.verdict], [HEAD, "PASS"]);
@@ -66,7 +69,7 @@ test("check 读 PR head 与分页评论", async () => {
     const page = Number(new URL(url).searchParams.get("page"));
     const body = page === 1
       ? Array.from({ length: 100 }, () => ({ body: "普通评论" }))
-      : [{ body: `验证回执 ${HEAD}：unit-test-verified` }];
+      : [{ user: owner, body: `验证回执 ${HEAD}：unit-test-verified` }];
     return { ok: true, json: async () => body };
   };
   const result = await check({ pr: 7, need: "unit-test-verified", wantJudge: false }, { fetch, patchId: patchIds({}) });

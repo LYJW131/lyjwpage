@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const REPO = "LYJW131/lyjwpage";
+// 回执和判定都由主线程用站主的账号发；别人发的同格式评论不算。
+const TRUSTED_AUTHOR = "LYJW131";
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const LEVELS = ["live-ui-verified", "unit-test-verified", "type-check-only", "verifier-blocked", "verifier-failed"];
@@ -32,6 +34,7 @@ export function parseComments(comments) {
   let receipt = null;
   let judge = null;
   for (const comment of comments) {
+    if (comment.user?.login !== TRUSTED_AUTHOR) continue;
     const first = (comment.body ?? "").split("\n", 1)[0].trim();
     const r = RECEIPT_LINE.exec(first);
     if (r) receipt = { sha: r[1], level: r[2], url: comment.html_url ?? null };
