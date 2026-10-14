@@ -63,3 +63,20 @@ test("OTLP 的正差值加进所在的桶，没有覆盖区间，事件数是 nu
   ]);
   assert.equal(second.receivedAt, T0 + 7 * M);
 });
+
+test("同一来源下各 agent 只替换自己声明的那份：Cursor 的报告不冲掉范围内 Devin 的桶", () => {
+  const devin = { ...report(T0, T0 + 30 * M, [[T0, [row("devin", "swe", 100)]], [T0 + 25 * M, [row("devin", "swe", 7)]]]), agents: [{ id: "devin", state: "ok" as const }] };
+  const cursor = { ...report(T0 + 20 * M, T0 + 35 * M, [[T0 + 25 * M, [row("cursor", "c", 3)]]]), agents: [{ id: "cursor", state: "ok" as const }] };
+  const first = mergeBucketReport(null, devin, T0 + 30 * M)!;
+  const second = mergeBucketReport(first, cursor, T0 + 35 * M)!;
+  assert.deepEqual(second.windows.map((window) => [window.from, window.agents.map((entry) => [entry.id, entry.inputTokens])]), [
+    [T0, [["devin", 100]]],
+    [T0 + 25 * M, [["cursor", 3], ["devin", 7]]],
+  ]);
+  assert.deepEqual(second.agents, [{ id: "devin", state: "ok" }, { id: "cursor", state: "ok" }]);
+  const third = mergeBucketReport(second, { ...devin, from: T0 + 20 * M, collectedAt: T0 + 40 * M, windows: [] }, T0 + 40 * M)!;
+  assert.deepEqual(third.windows.map((window) => [window.from, window.agents.map((entry) => entry.id)]), [
+    [T0, ["devin"]],
+    [T0 + 25 * M, ["cursor"]],
+  ]);
+});
