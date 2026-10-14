@@ -1,6 +1,6 @@
 import type { CodingUsageAgent } from "./coding-usage.js";
-import { config } from "./config.js";
-import { waitForNextRound } from "./cadence.js";
+import { config, type AgentId } from "./config.js";
+import { Schedule, waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
 import { observeCursorActivity, runCursorNowLoop } from "./cursor-now.js";
 import { collectCursorUsage, cursorUsageFailure } from "./cursor-usage.js";
@@ -50,7 +50,7 @@ async function collectDevin(): Promise<CodingUsageAgent | null> {
   }
 }
 
-async function collectPayload(): Promise<PushPayload> {
+async function collectPayload(ids: readonly AgentId[] = config.agentIds): Promise<PushPayload> {
   const [agents, cursor, devin] = await Promise.all([
     (async () => {
       try {
@@ -58,7 +58,7 @@ async function collectPayload(): Promise<PushPayload> {
       } catch (error) {
         failure("claude-oauth", error);
       }
-      return collectAgents();
+      return collectAgents(ids);
     })(),
     collectCursor(),
     collectDevin(),
@@ -72,17 +72,27 @@ async function collectPayload(): Promise<PushPayload> {
   };
 }
 
-async function collectRound(): Promise<PushPayload | null> {
-  const payload = await collectPayload();
-  if (!payload.agents?.length) {
-    failure("collect", new Error("一家都没登录，没有可发的限额行"));
-    return null;
+type Round = { payload: PushPayload; agentIds: AgentId[]; at: number };
+
+const schedule = new Schedule(config.agentIds);
+
+async function collectRound(): Promise<Round | null> {
+  const at = performance.now();
+  const agentIds = schedule.due(at);
+  if (agentIds.length === 0) return null;
+  const { agents, ...payload } = await collectPayload(agentIds);
+  if (agents?.length) recovered("collect");
+  else if (agentIds.length === config.agentIds.length) failure("collect", new Error("一家都没登录，没有可发的限额行"));
+  const round: PushPayload = agents?.length ? { ...payload, agents } : payload;
+  if (round.agents || round.codingUsage || round.codingActivity || round.codingTokenBuckets) {
+    return { payload: round, agentIds, at };
   }
-  recovered("collect");
-  return payload;
+  // 没登录的那几家也记作这一轮取过，否则它们一直到期，等待会立刻返回、空转。
+  schedule.collected(agentIds, at);
+  return null;
 }
 
-async function pushRound(payload: PushPayload): Promise<void> {
+async function pushRound({ payload, agentIds, at }: Round): Promise<void> {
   if (!config.site.ingestUrl) {
     throw new Error("缺少环境变量 SITE_INGEST_URL");
   }
@@ -90,6 +100,7 @@ async function pushRound(payload: PushPayload): Promise<void> {
     throw new Error("缺少环境变量 ACCESS_CLIENT_ID / ACCESS_CLIENT_SECRET");
   }
   await push(payload);
+  schedule.collected(agentIds, at);
   recovered("push");
 }
 
@@ -107,7 +118,7 @@ async function main() {
   await runRounds({
     collect: collectRound,
     push: pushRound,
-    waitForNextRound: () => waitForNextRound(),
+    waitForNextRound: () => waitForNextRound(schedule),
     sleep,
     onPushFailure: (error) => failure("push", error),
     now: () => Date.now(),
