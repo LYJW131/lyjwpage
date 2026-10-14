@@ -12,14 +12,14 @@ export const DIGEST_SITUATIONS = {
   codingLight: "写了一会儿代码，不算多，但是这一天的主线",
   musicLong: "音乐几乎放了一整天，一首接一首",
   music: "这一天以听歌为主",
-  watchingBinge: "追剧追了好几个小时，一集接一集",
-  watching: "这一天主要在看剧、看番",
+  watchingBinge: "追番追了好几个小时，一集接一集",
+  watching: "这一天主要在看番（日本动画番剧）",
   gamingLong: "打了好几个小时游戏",
   gaming: "这一天主要在玩游戏",
   trophyHunt: "打游戏拿了好几个 PlayStation 奖杯",
   workout: "这一天以运动为主，有一次像样的锻炼",
   walking: "这一天走了很多路",
-  workAndPlay: "写代码和娱乐（看剧或打游戏）各占一大块，张弛有度",
+  workAndPlay: "写代码和娱乐（看番或打游戏）各占一大块，张弛有度",
   soundtrack: "做别的事时音乐一直在放，当背景声",
   tokenFlood: "AI 代理消耗的 token 多到惊人，算力全开",
   workoutToo: "忙别的之余还抽空锻炼了一次",
@@ -62,7 +62,7 @@ export type DigestScene =
 
 const hours = (option: DigestHighlight | undefined) => (!option ? 0 : option.unit === "hours" ? option.value : option.unit === "minutes" ? option.value / 60 : 0);
 
-// 阈值是有意取的：音乐常当背景声放一整天，按半价计；看剧、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。
+// 阈值是有意取的：音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。
 // 安静的门槛对齐模型判 quiet 时的真实表现：15 分钟音乐加步数算安静，1.5 小时代码或 2.5 小时音乐不算。
 export const QUIET_SCORE = 1;
 export const SHIPPING_COMMITS = 8;
