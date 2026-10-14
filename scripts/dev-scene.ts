@@ -5,6 +5,9 @@ import { pathToFileURL } from "node:url";
 
 import type { DigestPayload } from "../shared/digest.ts";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
+import type { PlaystationGame } from "../shared/types.ts";
+import { trophiesTilePath } from "../src/lib/paths.ts";
+import { variantGroups } from "../src/lib/playstation-variants.ts";
 import {
   clearOverride,
   fixturePath,
@@ -45,7 +48,12 @@ export type Scene = { description?: string; extends?: string; headline?: string;
 const STATUS_PATHS = Object.values(STATUS_VIEWS).map((view) => view.path);
 const DIGEST_PATH = STATUS_VIEWS.digest.path;
 const LISTENING_NOW_PATH = STATUS_VIEWS.nowListening.path;
+const PLAYING_PATH = STATUS_VIEWS.playing.path;
+const PLAYING_NOW_PATH = STATUS_VIEWS.playingNow.path;
 const CAPTURE_TIMEOUT_MS = 20_000;
+const LIVE_SITE = "https://lyjw.me";
+const SIGNED_URL = /^https:\/\/[^"\s]+[?&]X-Amz-Date=(\d{8}T\d{6}Z)&[^"\s]*X-Amz-Expires=(\d+)/;
+const SIGNED_URL_MARGIN_MS = 3_600_000;
 
 class UsageError extends Error {}
 
@@ -127,7 +135,7 @@ export async function buildScene(scene: Scene, now: number): Promise<{ views: Ma
   if (digest) views.set(DIGEST_PATH, { ...(current ?? { ok: true }), ok: true, data: pinHeadline(digest, scene.headline) });
   const songId = listeningSong(views.get(LISTENING_NOW_PATH));
   const lyrics = songId ? `/api/lyrics?song=${songId}` : null;
-  const missing = [...STATUS_PATHS, ...(lyrics ? [lyrics] : [])].filter((endpoint) => !views.has(endpoint));
+  const missing = [...STATUS_PATHS, ...(lyrics ? [lyrics] : []), ...trophySlices(views)].filter((endpoint) => !views.has(endpoint));
   return { views, missing, derived: derived !== null };
 }
 
@@ -142,6 +150,7 @@ export function parseDuration(text: string): number {
 
 export async function applyScene(name: string, ageMs = 0): Promise<unknown> {
   const { views, missing, derived } = await buildScene(loadScene(name), Date.now() - ageMs);
+  const signed = await refreshSignedUrls(views, Date.now());
   await switchOverrides(true);
   for (const endpoint of (await listOverrides()).paths) await clearOverride(endpoint);
   await Promise.all([...views].map(([endpoint, envelope]) => putOverride(endpoint, envelope)));
@@ -152,6 +161,8 @@ export async function applyScene(name: string, ageMs = 0): Promise<unknown> {
     injected: views.size,
     digest: derived ? "derived from scene views" : "kept as written (scene lacks some digest views)",
     unpinned: missing,
+    ...(signed.refreshed ? { refreshedSignedUrls: signed.refreshed } : {}),
+    ...(signed.expired.length ? { expiredSignedUrls: signed.expired } : {}),
     next: missing.length ? "unpinned 里的视图仍走生产兜底，截图会混入真实数据；要固定就补进场景（--capture 可抓全量）" : undefined,
   };
 }
@@ -174,6 +185,63 @@ export function formatScene(scene: Scene): string {
   return `${pretty}\n`;
 }
 
+// 展开奖杯瓷砖时组件按瓷砖的 titleId 组查 ?titleids= 切片，core 不拿无参摘要答它，场景要逐组带上。
+export function trophySlices(views: Map<string, Envelope> | Record<string, Envelope>): string[] {
+  const get = (endpoint: string) => (views instanceof Map ? views.get(endpoint) : views[endpoint]);
+  const list = get(PLAYING_PATH);
+  const games = list?.ok ? ((list.data as { items?: PlaystationGame[] } | null)?.items ?? []) : [];
+  const groups = variantGroups(games);
+  const presence = get(PLAYING_NOW_PATH);
+  const live = presence?.ok ? (presence.data as { playing?: { titleId?: string } | null } | null)?.playing?.titleId : undefined;
+  if (live && !groups.some((ids) => ids.includes(live))) groups.push([live]);
+  return groups.map((ids) => trophiesTilePath(ids));
+}
+
+function signedExpiry(value: string): number | null {
+  const match = SIGNED_URL.exec(value);
+  if (!match) return null;
+  const [, date, seconds] = match;
+  const iso = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${date.slice(9, 11)}:${date.slice(11, 13)}:${date.slice(13, 15)}Z`;
+  return Date.parse(iso) + Number(seconds) * 1_000;
+}
+
+function collectStrings(value: unknown, into: string[] = []): string[] {
+  if (typeof value === "string") into.push(value);
+  else if (Array.isArray(value)) value.forEach((item) => collectStrings(item, into));
+  else if (value && typeof value === "object") Object.values(value).forEach((item) => collectStrings(item, into));
+  return into;
+}
+
+function replaceStrings(value: unknown, map: Map<string, string>): unknown {
+  if (typeof value === "string") return map.get(value) ?? value;
+  if (Array.isArray(value)) return value.map((item) => replaceStrings(item, map));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceStrings(item, map)]));
+  return value;
+}
+
+const unsigned = (url: string) => url.split("?")[0];
+
+// Apple 歌单封面是带时效签名的直链，抓下来一天后就打不开；注入前对快到期的，按去掉签名的地址从线上同一视图换新链。
+async function refreshSignedUrls(views: Map<string, Envelope>, now: number): Promise<{ refreshed: number; expired: string[] }> {
+  let refreshed = 0;
+  const expired: string[] = [];
+  for (const [endpoint, envelope] of views) {
+    const stale = collectStrings(envelope).filter((value) => (signedExpiry(value) ?? Infinity) < now + SIGNED_URL_MARGIN_MS);
+    if (!stale.length) continue;
+    const live = await fetchJson(`${LIVE_SITE}${endpoint}`).catch(() => null);
+    const fresh = new Map(
+      collectStrings(live)
+        .filter((value) => (signedExpiry(value) ?? 0) >= now + SIGNED_URL_MARGIN_MS)
+        .map((value) => [unsigned(value), value]),
+    );
+    const map = new Map(stale.flatMap((value) => (fresh.has(unsigned(value)) ? [[value, fresh.get(unsigned(value))!] as const] : [])));
+    refreshed += map.size;
+    if (map.size < stale.length) expired.push(endpoint);
+    if (map.size) views.set(endpoint, replaceStrings(envelope, map) as Envelope);
+  }
+  return { refreshed, expired };
+}
+
 function listeningSong(envelope: Envelope | undefined): string | null {
   const songId = envelope?.ok ? (envelope.data as { songId?: unknown } | null)?.songId : null;
   return typeof songId === "string" && songId ? songId : null;
@@ -189,6 +257,7 @@ async function captureScene(name: string, from: string): Promise<unknown> {
     const lyrics = await fetchJson(`${base}/api/lyrics?song=${encodeURIComponent(songId)}`).catch(() => null);
     if (lyrics && typeof lyrics === "object") views[`/api/lyrics?song=${songId}`] = { ok: true, ...(lyrics as object) };
   }
+  for (const slice of trophySlices(views)) views[slice] = stripServedAt((await fetchJson(`${base}${slice}`)) as Envelope);
   const scene: Scene = {
     description: `${base} 于 ${new Date(capturedAt).toISOString()} 的全部状态视图；时间已改写成相对令牌`,
     views: tokenize(views, capturedAt) as Record<string, Envelope>,
@@ -219,7 +288,7 @@ async function main(args: string[]): Promise<unknown> {
   if (first === "--capture") {
     if (!second) throw new UsageError("--capture 要给场景名");
     const fromIndex = args.indexOf("--from");
-    return captureScene(second, fromIndex > 0 ? args[fromIndex + 1] : "https://lyjw.me");
+    return captureScene(second, fromIndex > 0 ? args[fromIndex + 1] : LIVE_SITE);
   }
   if (!first || first.startsWith("--")) throw new UsageError(USAGE);
   const ageIndex = args.indexOf("--age");

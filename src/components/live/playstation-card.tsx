@@ -38,6 +38,7 @@ import {
   STATIC_VARIANTS,
 } from "@/lib/motion";
 import { NOW_PLAYING_PATH, PLAYING_PATH } from "@/lib/paths";
+import { variantLook } from "@/lib/playstation-variants";
 import type {
   PlaystationGame,
   PlaystationPlayingPayload,
@@ -300,7 +301,7 @@ export function mergeVariants(games: PlaystationGame[]): MergedGame[] {
   const merged: MergedGame[] = [];
   const byLook = new Map<string, MergedGame>();
   for (const game of games) {
-    const look = `${game.name}\n${game.imageUrl ?? ""}`;
+    const look = variantLook(game);
     const prior = byLook.get(look);
     if (!prior) {
       const entry: MergedGame = {
