@@ -1,11 +1,7 @@
 #!/usr/bin/env node
-/**
- * 三份存量基线（scripts/ 的 .mjs、design:scale、ui:copy）只许比目标分支少：PR 里基线文件比 main 多出的条目即失败。
- * 合规例外由 lyjw 给 PR 打 `baseline-exception` 标签放行（CI 把标签传成 BASELINE_EXCEPTION=true）。
- *
- * 对比对象：CI 的 pull_request 检出的是合并结果，直接比目标分支的最新提交；本地比 HEAD 与 origin/main 的分叉点，
- * 免得分支落后于 main 时把 main 上删掉的条目误报成新增。可用 BASELINE_BASE 指定别的提交。
- */
+// 合规例外由 lyjw 给 PR 打 `baseline-exception` 标签放行（ci.yml 把标签传成 BASELINE_EXCEPTION=true）。
+// CI 的 pull_request 检出的是合并结果，直接比目标分支最新提交；本地比与 origin/main 的分叉点，
+// 免得分支落后于 main 时把 main 上删掉的条目误报成新增。
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
