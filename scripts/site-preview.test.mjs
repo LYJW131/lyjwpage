@@ -20,6 +20,7 @@ const builtConfig = () => ({
   no_bundle: true,
   exports: { RenderedSite: { type: "worker" } },
   images: { binding: "IMAGES" },
+  ratelimits: [{ name: "RELAY_LIMIT", namespace_id: "1", simple: { limit: 20, period: 60 } }],
   vars: { SITE_ENV: "production", PUBLIC_BACKEND_URL: "https://lyjw.me" },
   services: [{ binding: "PUBLIC_STATUS", service: "core", entrypoint: "PublicStatus" }],
   r2_buckets: [{ binding: "IMAGE_OBJECTS", bucket_name: "lyjw-homepage" }],
@@ -128,6 +129,8 @@ test("deploy writes a whitelisted preview config, spawns the site preview name a
   assert.deepEqual(config.previews.services, []);
   assert.deepEqual(config.previews.durable_objects, { bindings: [] });
   assert.deepEqual(config.previews.images, { binding: "IMAGES" });
+  assert.deepEqual(config.ratelimits, builtConfig().ratelimits);
+  assert.deepEqual(config.previews.ratelimits, builtConfig().ratelimits);
 });
 
 test("production config keeps preview_urls on, since every production deploy rewrites the Worker-wide Preview URL switch", () => {

@@ -136,7 +136,8 @@ export function summarizeBuckets(series: HealthSeriesSpec, buckets: readonly Hea
       day.success += counts.success;
       day.failure += counts.failure;
       day.missed += counts.missed;
-      if (hourStart > currentHour - DAY_MS) recent.push(counts);
+      // 只有小时格：24h 含窗口起点所在的那一小时，宁可多算近一小时，也不漏掉 24 小时内的失败。
+      if (hourStart >= currentHour - DAY_MS) recent.push(counts);
     }
     days.push(day);
   }

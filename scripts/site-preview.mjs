@@ -5,7 +5,7 @@ export const SITE_PREVIEW_ACCESS_VAR = "SITE_PREVIEW_ACCESS_READY";
 
 const BUILT_CONFIG_KEYS = [
   "name", "main", "assets", "rules", "no_bundle",
-  "compatibility_date", "compatibility_flags", "cache", "exports", "images",
+  "compatibility_date", "compatibility_flags", "cache", "exports", "images", "ratelimits",
 ];
 
 export function sitePreviewManifest({ branch = "", commit, backendUrl = null }) {
@@ -48,7 +48,7 @@ export function sitePreviewConfig(built, manifest) {
   const vars = sitePreviewVars(manifest);
   const empty = { services: [], r2_buckets: [], kv_namespaces: [], d1_databases: [], durable_objects: { bindings: [] }, images: { binding: "IMAGES" } };
   Object.assign(config, empty, { workers_dev: false, vars });
-  config.previews = { vars, ...empty };
+  config.previews = { vars, ...empty, ...(config.ratelimits ? { ratelimits: config.ratelimits } : {}) };
   return config;
 }
 

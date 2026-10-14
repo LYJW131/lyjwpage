@@ -168,6 +168,24 @@ test("site health summarizes D1 checks with Cloudflare errors and vitals, carryi
   assert.equal(second.blockAt?.vitals, now);
 });
 
+test("site health without Cloudflare settings still refreshes the D1 uptime rows", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const { db } = historyDb();
+  const lag = new MemoryKv();
+  const env = { HISTORY: db, LAG: lag } as unknown as Env;
+  await recordCheck(db, UPTIME_SERIES, now - 60_000, true);
+  const fetches = t.mock.method(globalThis, "fetch", cloudflareHealthFetch());
+  assert.deepEqual(await siteHealthJob.run({ env, now, scheduled: true }), {
+    status: "ok",
+    detail: "missing CLOUDFLARE_METRICS_TOKEN, CLOUDFLARE_ACCOUNT_ID, SITE_ANALYTICS_SITES",
+  });
+  const data = (await readLag<HealthPayload>(lag, LAG_KEYS.health))!.data;
+  assert.equal(data.uptime?.status, "up");
+  assert.equal(data.errors, null);
+  assert.equal(data.vitals, null);
+  assert.equal(fetches.mock.callCount(), 0);
+});
+
 test("apple-recent 缺签 developer token 或真名打码的配置时干净跳过，不去读凭据", async (t) => {
   t.mock.method(console, "warn", () => {});
   assert.deepEqual(await appleRecentJob.run({ env: { APPLE_MUSIC_TEAM_ID: "TEAM000000" } as Env, now, scheduled: false }), {

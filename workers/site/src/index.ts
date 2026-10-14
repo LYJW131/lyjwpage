@@ -374,6 +374,9 @@ const siteWorker = {
       case "collector":
         return isProduction(env) ? env.COLLECTOR_SERVICE.fetch(request) : backendRedirect(env, url);
       case "error-relay": {
+        if (!(await env.RELAY_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") ?? "" })).success) {
+          return errorResponse(429, "Too many error reports");
+        }
         const status = await relayClientError(request);
         return status === 204 ? new Response(null, { status, headers: { "Cache-Control": NO_STORE } }) : errorResponse(status, "Invalid error report");
       }

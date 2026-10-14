@@ -49,6 +49,13 @@ test("days before the first bucket stay empty instead of counting as missed", ()
   assert.equal(summarizeBuckets(HEARTBEAT_SERIES, [], NOW).availability30d, null);
 });
 
+test("the 24h availability keeps the hour the window starts in", () => {
+  const yesterday = bucket(TODAY + 10 * HOUR - DAY, 59, 1);
+  const summary = summarizeBuckets(UPTIME_SERIES, [yesterday, bucket(TODAY + 10 * HOUR, 30)], NOW);
+  assert.equal(summary.availability24h, 89 / 90);
+  assert.equal(summarizeBuckets(UPTIME_SERIES, [bucket(TODAY + 9 * HOUR - DAY, 0, 5), bucket(TODAY + 10 * HOUR, 30)], NOW).availability24h, 1);
+});
+
 test("status follows the latest result and goes down when the heartbeat stops", () => {
   const recent = (ok: boolean): HealthBucket => ({ hourStart: TODAY + 10 * HOUR, success: ok ? 6 : 5, failure: ok ? 0 : 1, lastAt: NOW - 60_000, lastOk: ok });
   assert.equal(summarizeBuckets(HEARTBEAT_SERIES, [recent(true)], NOW).status, "up");

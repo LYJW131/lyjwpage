@@ -29,6 +29,10 @@
     { "binding": "IMAGE_OBJECTS", "bucket_name": "lyjw-homepage" }
   ],
   "images": { "binding": "IMAGES" },
+  // 一页最多报 MAX_REPORTS_PER_PAGE（src/lib/error-report.ts）条；按 IP 的限额给刷新留余量，超出的不进日志。
+  "ratelimits": [
+    { "name": "RELAY_LIMIT", "namespace_id": "13105", "simple": { "limit": 20, "period": 60 } }
+  ],
   "upload_source_maps": true,
   "observability": {
     "enabled": true,

@@ -24,7 +24,7 @@ export function clientErrorReport(error: unknown, source: ClientErrorSource, tag
 export function reportError(error: unknown, source: ClientErrorSource, tags?: Record<string, string>): void {
   if (!ERROR_REPORT_ENABLED || typeof window === "undefined") return;
   const report = clientErrorReport(error, source, tags);
-  const key = `${report.name}:${report.message}`;
+  const key = JSON.stringify([report.source, report.tags.card ?? null, report.name, report.message]);
   if (seen.has(key) || seen.size >= MAX_REPORTS_PER_PAGE) return;
   seen.add(key);
   const body = JSON.stringify(report);
