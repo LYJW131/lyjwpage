@@ -1,4 +1,4 @@
-import { PREVIEW_REVISION_PATH } from "../../../scripts/preview-worker-name.mjs";
+import { PREVIEW_REVISION_PATH } from "../../../scripts/preview-worker-name.ts";
 import { AnthropicEgress, BuildCoordinator, ChatQuota } from "../../ai/src/index";
 import type { Env as AiEnv } from "../../ai/src/runtime";
 import aiWorker from "../../ai/src/worker";

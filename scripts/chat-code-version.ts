@@ -19,15 +19,15 @@ export const CHAT_CODE_PATHS = [
   "workers/ai/src",
 ];
 
-const isTest = (path) => /\.test\.[cm]?[jt]sx?$/.test(path);
+const isTest = (path: string) => /\.test\.[cm]?[jt]sx?$/.test(path);
 
-function files(root, path) {
+function files(root: string, path: string): string[] {
   const full = join(root, path);
   if (!statSync(full).isDirectory()) return [path];
   return readdirSync(full).flatMap((name) => files(root, join(path, name)));
 }
 
-export function chatCodeVersion(root) {
+export function chatCodeVersion(root: string) {
   const hash = createHash("sha256");
   const paths = CHAT_CODE_PATHS.flatMap((path) => files(root, path))
     .map((path) => relative(root, join(root, path)).split(sep).join("/"))

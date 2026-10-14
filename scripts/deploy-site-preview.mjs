@@ -11,7 +11,7 @@ import {
   sitePreviewManifest,
   sitePreviewName,
 } from "./site-preview.mjs";
-import { SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.mjs";
+import { SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

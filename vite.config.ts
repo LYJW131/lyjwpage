@@ -8,8 +8,8 @@ import babel from "@rolldown/plugin-babel";
 import { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 
-import { chatCodeVersion } from "./scripts/chat-code-version.mjs";
-import { modelIcons } from "./scripts/model-icons.mjs";
+import { chatCodeVersion } from "./scripts/chat-code-version.ts";
+import { modelIcons } from "./scripts/model-icons.ts";
 
 const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
 
