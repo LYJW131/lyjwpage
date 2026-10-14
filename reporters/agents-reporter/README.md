@@ -172,7 +172,7 @@ tokens.ci 只给日累计，Pulse 的 Tokens 道只认 5 分钟桶，所以另�
 和上一次比，涨的部分按两次提交时刻（tokens.ci 的 `updatedAt`）之间的时长均摊进桶（`src/devin-buckets.ts#advanceDevinLedger`）。
 总量是实的，桶里的时间分布是推出来的，精度取决于 Mac 上 tokens.ci 客户端多久提交一次。第一次只立基线；两次提交隔了
 `DEVIN_BUCKET_SPAN_MS` 以上就重立基线、那段不补。每轮主信封发完后，单独一封只带 `codingTokenBuckets`，范围是账本起点与
-24 小时前取晚的那个到最后一次提交，整份重发（丢一封下一轮自己补）；站点按 agent 替换桶，所以和 Cursor 的桶互不冲掉。
+往前推 `DEVIN_BUCKET_SPAN_MS` 取晚的那个到最后一次提交，整份重发（丢一封下一轮自己补）；站点按 agent 替换桶，所以和 Cursor 的桶互不冲掉。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向
