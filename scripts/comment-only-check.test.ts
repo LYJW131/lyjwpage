@@ -387,7 +387,7 @@ test("命令行：指令性注释挪了位置，退出码为 1，逐条列出基
   }
 });
 
-test("命令行：没有可比较的文件为 0，不认识的选项为 2，--help 打印文件头里的用法", () => {
+test("命令行：没有可比较的文件为 0，不认识的选项与缺值的选项为 2，--help 打印文件头里的用法", () => {
   const repo = tempRepo();
   try {
     repo.write("notes.txt", "a\n");
@@ -403,6 +403,11 @@ test("命令行：没有可比较的文件为 0，不认识的选项为 2，--he
   const unknown = spawnSync(process.execPath, [SCRIPT, "--nope"], { encoding: "utf8" });
   assert.equal(unknown.status, 2);
   assert.match(unknown.stderr, /不认识的选项 --nope/);
+  for (const args of [["--base"], ["--to", "--loose"], ["--context"]]) {
+    const missing = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
+    assert.equal(missing.status, 2, args.join(" "));
+    assert.match(missing.stderr, /后面缺值/);
+  }
   const help = spawnSync(process.execPath, [SCRIPT, "--help"], { encoding: "utf8" });
   assert.equal(help.status, 0);
   assert.match(help.stdout, /pnpm docs:comment-only/);

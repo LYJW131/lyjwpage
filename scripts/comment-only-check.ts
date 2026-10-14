@@ -469,10 +469,15 @@ function parseArgs(argv: string[]): Options {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === undefined) continue;
-    if (arg === "--base") opts.base = argv[++i] ?? opts.base;
-    else if (arg === "--to") opts.to = argv[++i] ?? null;
-    else if (arg === "--repo") opts.repo = argv[++i] ?? null;
-    else if (arg === "--context") opts.context = Number(argv[++i]);
+    const value = () => {
+      const next = argv[++i];
+      if (next === undefined || next.startsWith("--")) throw new Error(`${arg} 后面缺值`);
+      return next;
+    };
+    if (arg === "--base") opts.base = value();
+    else if (arg === "--to") opts.to = value();
+    else if (arg === "--repo") opts.repo = value();
+    else if (arg === "--context") opts.context = Number(value());
     else if (arg === "--loose") opts.loose = true;
     else if (arg === "-h" || arg === "--help") opts.help = true;
     else if (arg.startsWith("--")) throw new Error(`不认识的选项 ${arg}`);
