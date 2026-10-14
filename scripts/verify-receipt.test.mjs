@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { check, coverage, evaluate, parseComments } from "./verify-receipt.mjs";
+import { check, coverage, evaluate, parseComments, patchDigest } from "./verify-receipt.mjs";
 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
@@ -72,4 +72,14 @@ test("check 读 PR head 与分页评论", async () => {
   const result = await check({ pr: 7, need: "unit-test-verified", wantJudge: false }, { fetch, patchId: patchIds({}) });
   assert.equal(result.pass, true);
   assert.equal(result.receipt.coverage, "exact");
+});
+
+test("patchDigest 只忽略行号，空白和二进制内容变了都算补丁变了", () => {
+  const diff = (header, line) => `diff --git a/x b/x\nindex 1111111..2222222 100644\n${header}\n${line}\n`;
+  const a = patchDigest(diff("@@ -1,2 +1,2 @@", '+const label = "a b"'));
+  assert.equal(a, patchDigest(diff("@@ -40,2 +40,2 @@", '+const label = "a b"')));
+  assert.notEqual(a, patchDigest(diff("@@ -1,2 +1,2 @@", '+const label = "ab"')));
+  const bin = (blob) => `diff --git a/i.png b/i.png\nindex 0000000..${blob}\nGIT binary patch\nliteral 4\n`;
+  assert.notEqual(patchDigest(bin("aaaaaaa")), patchDigest(bin("bbbbbbb")));
+  assert.equal(patchDigest(""), null);
 });

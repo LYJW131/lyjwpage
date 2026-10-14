@@ -137,10 +137,10 @@ Agent(
 验证员：<模型 ID>，没写这段代码
 ```
 
-- 等级从高到低：`live-ui-verified`（在真页面上按站主会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
+- 等级从高到低：`live-ui-verified`（在真页面上按站主会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，改动涉及的单测与门禁也要跑过并列进证据，同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
 - 改了行为的不收 `type-check-only`。UI 改动要 `live-ui-verified`；后端与脚本至少 `unit-test-verified`。
 - 有 PR 时，主线程把回执原样发成一条 PR 评论，第一行不动；还没开 PR 的，随汇报交给站主，开 PR 时再发。一行命令就能验完、主线程自己跑的，主线程照同样格式自签，验证员那一行写主线程的模型 ID 和「自验」。
-- 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.mjs check --pr <号> --need <等级>`（要等机器评审的 PR 加 `--judge`）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（`git patch-id` 相同，`carried`），就照旧算数；补丁变了（`stale`）就按新 head 重派验证员。
+- 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.mjs check --pr <号> --need <等级>`（要等机器评审的 PR 加 `--judge`）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（逐字节相同，含空白与二进制，只忽略行号；`carried`），就照旧算数；补丁变了（`stale`）就按新 head 重派验证员。
 - 回执只说「验过什么、到什么程度」，不替主线程判断合不合；合并门槛照第 3 节与「3b」。
 
 ## 主线程收到报告后
