@@ -39,7 +39,7 @@ The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoi
 
 ## Screenshots
 
-Cards only appear while their thing is happening. The images below light up all of them at once with sample data on a local build, following the system light or dark theme. How they are recorded: [docs/screenshots.md](./docs/screenshots.md); card details: [page details and key design choices](./docs/design-notes.md) (Chinese).
+Status cards such as now watching, now listening, charging and games only appear while that thing is happening. The images below light up all of them at once with sample data on a local build, following the system light or dark theme. How they are recorded: [docs/screenshots.md](./docs/screenshots.md); card details: [page details and key design choices](./docs/design-notes.md) (Chinese).
 
 **Front app in the header**: Claude Code, Ghostty, Cursor and Antigravity get animated brand marks; a window title shows only after it passes a privacy check.
 
