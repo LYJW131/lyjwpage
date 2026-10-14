@@ -7,7 +7,7 @@ const HOSTS = ["lyjw.me", "lyjw131.com"];
 const BUILD_PREFIX = "Workers Builds: ";
 const REQUEST_TIMEOUT_MS = 30_000;
 
-const HELP = `用法：node scripts/deploy-check.mjs --sha <合并提交完整 sha> [选项]
+const HELP = `用法：node scripts/deploy-check.ts --sha <合并提交完整 sha> [选项]
 
 合并后的部署核对：等合并提交上的 Workers Builds 检查跑完，site 重建了就等两个生产域名的
 /api/version 跟上这个提交。输出 JSON，失败时 next 写下一步；退出码 0 通过、1 不通过、2 参数错。
@@ -22,11 +22,46 @@ const HELP = `用法：node scripts/deploy-check.mjs --sha <合并提交完整 s
   --help               显示本说明
 
 GitHub 有 GITHUB_TOKEN / GH_TOKEN 时带上，没有就匿名读（公开仓库）。
-云端容器的出站要走代理：NODE_USE_ENV_PROXY=1 node scripts/deploy-check.mjs …，否则请求不经代理会 401 或连不上。
+云端容器的出站要走代理：NODE_USE_ENV_PROXY=1 node scripts/deploy-check.ts …，否则请求不经代理会 401 或连不上。
 判断「被更新的部署覆盖」用 GitHub 的提交比较接口，不依赖本地 git 有没有那个提交。`;
 
-export function parseArgs(argv) {
-  const flags = {};
+type Flags = Record<string, string | true>;
+
+export type CheckRun = { name: string; status: string; conclusion: string | null; started_at?: string | null; id?: number };
+export type Build = { worker: string; status: string; conclusion: string | null };
+type VersionState = "unreadable" | "live" | "superseded" | "stale";
+type IsAncestor = (ancestor: string, descendant: string) => Promise<boolean>;
+type FetchResponse = { ok: boolean; status?: number; json(): Promise<unknown> };
+type FetchLike = (url: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<FetchResponse>;
+
+export type RunOptions = {
+  sha: string;
+  timeoutMs: number;
+  intervalMs: number;
+  graceMs: number;
+  site: string;
+  expect?: string[];
+};
+
+export type RunDeps = {
+  fetch?: FetchLike;
+  sleep?: (ms: number) => Promise<unknown>;
+  now?: () => number;
+  isAncestor?: IsAncestor;
+};
+
+export type RunResult = {
+  sha: string;
+  builds: Build[];
+  versions: { host: string; commit: string | null; state: VersionState }[];
+  pass: boolean;
+  next: string | null;
+  siteChecked?: boolean;
+  note?: string;
+};
+
+export function parseArgs(argv: string[]) {
+  const flags: Flags = {};
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (!arg.startsWith("--")) continue;
@@ -39,13 +74,13 @@ export function parseArgs(argv) {
 }
 
 // 同一提交重跑构建后，旧的失败检查和新的检查同名并存，每个 Worker 只认最新那条。
-function newestPerWorker(checkRuns) {
-  const newest = new Map();
+function newestPerWorker(checkRuns: CheckRun[]): Build[] {
+  const newest = new Map<string, { key: [string, number]; run: CheckRun }>();
   for (const run of checkRuns) {
     if (!run.name.startsWith(BUILD_PREFIX)) continue;
     const worker = run.name.slice(BUILD_PREFIX.length);
     const current = newest.get(worker);
-    const key = [run.started_at ?? "", run.id ?? 0];
+    const key: [string, number] = [run.started_at ?? "", run.id ?? 0];
     if (!current || key[0] > current.key[0] || (key[0] === current.key[0] && key[1] > current.key[1])) {
       newest.set(worker, { key, run });
     }
@@ -53,31 +88,31 @@ function newestPerWorker(checkRuns) {
   return [...newest].map(([worker, { run }]) => ({ worker, status: run.status, conclusion: run.conclusion }));
 }
 
-export function summarizeBuilds(checkRuns) {
+export function summarizeBuilds(checkRuns: CheckRun[]) {
   const builds = newestPerWorker(checkRuns);
   const pending = builds.filter((build) => build.status !== "completed");
   const failed = builds.filter(
-    (build) => build.status === "completed" && !["success", "neutral", "skipped"].includes(build.conclusion),
+    (build) => build.status === "completed" && !["success", "neutral", "skipped"].includes(build.conclusion ?? ""),
   );
   const site = builds.find((build) => build.worker === "site");
   return { builds, pending, failed, siteBuilt: site?.status === "completed" && site.conclusion === "success" };
 }
 
 // commit 等于目标：已上线；目标是 commit 的祖先：被之后的部署覆盖，同样算通过；否则还停在旧版本。
-export async function classifyVersion(commit, sha, isAncestor) {
+export async function classifyVersion(commit: string | null, sha: string, isAncestor: IsAncestor): Promise<VersionState> {
   if (!commit) return "unreadable";
   if (commit === sha) return "live";
   if (await isAncestor(sha, commit)) return "superseded";
   return "stale";
 }
 
-function githubHeaders() {
+function githubHeaders(): Record<string, string> {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   return { accept: "application/vnd.github+json", ...(token ? { authorization: `Bearer ${token}` } : {}) };
 }
 
 // 用 GitHub 比较而不是本地 git：轮询期间新合并的提交本地还没有，merge-base 会把它误判成旧提交。
-function githubIsAncestor(fetchImpl, signal) {
+function githubIsAncestor(fetchImpl: FetchLike, signal: () => AbortSignal): IsAncestor {
   return async (ancestor, descendant) => {
     try {
       const response = await fetchImpl(
@@ -85,34 +120,34 @@ function githubIsAncestor(fetchImpl, signal) {
         { headers: githubHeaders(), signal: signal() },
       );
       if (!response.ok) return false;
-      return (await response.json()).status === "ahead";
+      return ((await response.json()) as { status?: string }).status === "ahead";
     } catch {
       return false;
     }
   };
 }
 
-async function fetchCheckRuns(sha, fetchImpl, signal) {
+async function fetchCheckRuns(sha: string, fetchImpl: FetchLike, signal: AbortSignal): Promise<CheckRun[]> {
   const response = await fetchImpl(`https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100`, {
     headers: githubHeaders(),
     signal,
   });
   if (!response.ok) throw new Error(`check-runs HTTP ${response.status}`);
-  return (await response.json()).check_runs ?? [];
+  return ((await response.json()) as { check_runs?: CheckRun[] }).check_runs ?? [];
 }
 
-async function fetchVersion(host, fetchImpl, signal) {
+async function fetchVersion(host: string, fetchImpl: FetchLike, signal: AbortSignal): Promise<string | null> {
   try {
     const response = await fetchImpl(`https://${host}/api/version`, { headers: { "cache-control": "no-cache" }, signal });
     if (!response.ok) return null;
-    return (await response.json()).commit ?? null;
+    return ((await response.json()) as { commit?: string | null }).commit ?? null;
   } catch {
     return null;
   }
 }
 
-export async function run(options, deps = {}) {
-  const fetchImpl = deps.fetch ?? fetch;
+export async function run(options: RunOptions, deps: RunDeps = {}): Promise<RunResult> {
+  const fetchImpl: FetchLike = deps.fetch ?? fetch;
   const wait = deps.sleep ?? sleep;
   const now = deps.now ?? Date.now;
   const { sha, timeoutMs, intervalMs, graceMs, site, expect = [] } = options;
@@ -121,14 +156,14 @@ export async function run(options, deps = {}) {
   const requestSignal = () => AbortSignal.timeout(Math.max(1000, Math.min(REQUEST_TIMEOUT_MS, timeoutMs - elapsed())));
   const isAncestor = deps.isAncestor ?? githubIsAncestor(fetchImpl, requestSignal);
 
-  let summary = { builds: [], pending: [], failed: [], siteBuilt: false };
-  let buildError;
+  let summary: ReturnType<typeof summarizeBuilds> = { builds: [], pending: [], failed: [], siteBuilt: false };
+  let buildError: string | null;
   for (;;) {
     buildError = null;
     try {
       summary = summarizeBuilds(await fetchCheckRuns(sha, fetchImpl, requestSignal()));
     } catch (error) {
-      buildError = String(error.message ?? error);
+      buildError = String((error as { message?: unknown } | null)?.message ?? error);
     }
     const graceOver = elapsed() >= graceMs;
     const settled = !buildError && summary.pending.length === 0 && (summary.builds.length > 0 || graceOver);
@@ -139,7 +174,7 @@ export async function run(options, deps = {}) {
     await wait(intervalMs);
   }
 
-  const result = { sha, builds: summary.builds, versions: [], pass: false, next: null };
+  const result: RunResult = { sha, builds: summary.builds, versions: [], pass: false, next: null };
   if (buildError) {
     result.next = `读不到合并提交的检查（${buildError}）；确认 sha 是 main 上的合并提交，或设 GITHUB_TOKEN 后重跑`;
     return result;
@@ -169,7 +204,7 @@ export async function run(options, deps = {}) {
   }
 
   for (;;) {
-    const versions = [];
+    const versions: RunResult["versions"] = [];
     for (const host of HOSTS) {
       const commit = await fetchVersion(host, fetchImpl, requestSignal());
       versions.push({ host, commit, state: await classifyVersion(commit, sha, isAncestor) });
@@ -195,11 +230,11 @@ async function main() {
   }
   const sha = typeof flags.sha === "string" ? flags.sha : "";
   const site = flags.site ?? "auto";
-  if (!/^[0-9a-f]{40}$/.test(sha) || !["auto", "yes", "no"].includes(site)) {
+  if (!/^[0-9a-f]{40}$/.test(sha) || typeof site !== "string" || !["auto", "yes", "no"].includes(site)) {
     console.log(JSON.stringify({ pass: false, next: "需要 --sha <40 位小写 sha>，--site 只能是 auto|yes|no；见 --help" }));
     return 2;
   }
-  const seconds = (value, fallback) => (Number(value) > 0 ? Number(value) : fallback) * 1000;
+  const seconds = (value: string | true | undefined, fallback: number) => (Number(value) > 0 ? Number(value) : fallback) * 1000;
   const result = await run({
     sha,
     site,

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { purgeEsaHomepage, warmupEsaCache } from "./esa-purge.mjs";
+import { purgeEsaHomepage, warmupEsaCache } from "./esa-purge.ts";
 
 const siteId = process.env.ESA_SITE_ID || "1113300533463584";
 const cacheUrl = process.env.ESA_CACHE_URL || "https://lyjw131.com/";
