@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { experimental_readRawConfig } from "wrangler";
 
-import { PREVIEW_WORKER_SCRIPT, previewWorkerName, previewWorkerOrigin } from "../../../scripts/preview-worker-name.mjs";
+import { PREVIEW_WORKER_SCRIPT, previewWorkerName, previewWorkerOrigin } from "../../../scripts/preview-worker-name.ts";
 import { previewMigrations } from "../../../scripts/preview-migrations.mjs";
 
 const coreDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");

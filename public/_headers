@@ -11,6 +11,6 @@
 /site-assets/model-icons/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 
-# 须与 scripts/preview-worker-name.mjs#SITE_PREVIEW_DOMAIN 同步；Worker 渲染的页面由 workers/site/src/index.ts#withoutIndexing 加。
+# 须与 scripts/preview-worker-name.ts#SITE_PREVIEW_DOMAIN 同步；Worker 渲染的页面由 workers/site/src/index.ts#withoutIndexing 加。
 https://:preview.preview.lyjw.dev/*
   X-Robots-Tag: noindex, nofollow
