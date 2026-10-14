@@ -78,6 +78,7 @@ export function links(): LinkDescriptor[] {
   return [
     { rel: "canonical", href: site.url },
     { rel: "manifest", href: "/manifest.webmanifest" },
+    { rel: "preload", href: "/site-assets/GeistMono-Variable.woff2", as: "font", type: "font/woff2", crossOrigin: "anonymous" },
     { rel: "icon", href: "/icon", type: "image/png", sizes: "32x32" },
     { rel: "apple-touch-icon", href: "/apple-icon" },
     // 普通图片使用 no-cors；带 crossOrigin 的预连接无法被它复用。
