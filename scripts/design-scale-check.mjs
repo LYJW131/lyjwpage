@@ -4,6 +4,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { maskComments } from "./rules-check.mjs";
+
 export const BASELINE_PATH = "scripts/design-scale-baseline.json";
 
 export const SPACING_SCALE = new Set(["0", "px", "0.5", "1", "1.5", "2", "3", "4", "5", "6", "8"]);
@@ -12,21 +14,53 @@ const BOUNDARY = String.raw`(?<=^|[\s"'\`:!{(])`;
 const END = String.raw`(?=$|[\s"'\`)}!/])`;
 const ARBITRARY = String.raw`\[[^\]\s]*\]|\([^)\s]*\)`;
 
+const FRAGMENT_CTX = /(?:querySelectorAll|querySelector|getElementById|closest|matches|location\.hash|hash|href|xlink:href|xlinkHref|to|url|anchor|fragment)\s*[=(]?\s*["'`]?\s*$/i;
+const COLOR_PROP_CTX = /(?:stroke|fill|stopColor|color|background|accent|caret|border|outline|shadow|decoration|ring|tint|theme)\s*[:=]?\s*["'`]?\s*$/i;
+
 export const RULES = {
   spacing: {
     label: "阶梯外的间距",
     re: new RegExp(String.raw`${BOUNDARY}-?(?:p(?:b[se]|[xytrblse])?|m(?:b[se]|[xytrblse])?|gap(?:-[xy])?|space-[xy])-(${ARBITRARY}|\d+(?:\.\d+)?|px)${END}`, "g"),
     offScale: (match) => !SPACING_SCALE.has(match[1]),
+    hint: "间距只取 DESIGN.md「Layout」阶梯里的刻度。",
   },
   fontSize: {
     label: "任意值字号",
     re: new RegExp(String.raw`${BOUNDARY}text-(?:\[(?:length:[^\]\s]+|(?:calc|clamp|min|max)\([^\]\s]*|[\d.][^\]\s]*)\]|\(length:[^)\s]+\))${END}`, "g"),
     offScale: () => true,
+    hint: "字号只取 DESIGN.md「Typography」的阶梯；图形内部的 10px 刻度这类例外写注释并进基线。",
   },
   translate: {
     label: "任意值位移",
     re: new RegExp(String.raw`${BOUNDARY}-?translate(?:-[xyz])?-(?:${ARBITRARY})${END}`, "g"),
     offScale: () => true,
+    hint: "任意值位移只留给光学对齐微调，旁边写一行注释说明对齐的是什么。",
+  },
+  radius: {
+    label: "任意值圆角",
+    re: new RegExp(String.raw`${BOUNDARY}-?rounded(?:-[a-z]{1,3})?-(?:${ARBITRARY})${END}`, "g"),
+    offScale: () => true,
+    hint: "圆角一律 0：globals.css 已把所有 rounded-* 映射成 0，不写 rounded-[…] 绕开它；真正的圆（状态点、圆环、品牌圆标）才用 rounded-full。",
+  },
+  margin: {
+    label: "子级外边距",
+    re: new RegExp(String.raw`${BOUNDARY}-?m(?:[tby]|b[se])?-(\d+(?:\.\d+)?|px)${END}`, "g"),
+    offScale: (match) => match[1] !== "0",
+    hint: "间距只有一个主人：兄弟间距由父级 gap / space-* 设，子元素不各自带 mt- / mb- / my- / m-；光学对齐微调改用 translate 并写注释（DESIGN.md「Layout」）。",
+  },
+  rawColor: {
+    label: "裸色值",
+    re: /(?<=["'`(:=,\s[])#[0-9a-fA-F]{8}(?![0-9a-zA-Z])|(?<=["'`(:=,\s[])#[0-9a-fA-F]{6}(?![0-9a-zA-Z])|(?<=["'`(:=,\s[])#[0-9a-fA-F]{3,4}(?![0-9a-zA-Z])|\b(?:oklch|oklab|rgba?|hsla?)\([^)\n]*\)/g,
+    // `#` 前文是选择器 / 锚点 / URL 片段写法的（querySelector("…"、href="…"、url(…)）不算；
+    // 3/4 位全数字形如工单号（#123、#1234），只在颜色属性上下文（stopColor="…"、bg-[#…]）算。
+    offScale: (match) => {
+      const token = match[0];
+      const before = match.input.slice(Math.max(0, match.index - 48), match.index);
+      if (match.input[match.index - 1] === "[") return true;
+      if (/^#[0-9a-fA-F]{3,4}$/.test(token) && !/[a-fA-F]/.test(token)) return COLOR_PROP_CTX.test(before);
+      return !FRAGMENT_CTX.test(before);
+    },
+    hint: "组件里不写裸 hex / oklch：颜色只用 globals.css 的语义 token 与 signal 系（DESIGN.md「Colors」）。品牌图标、PWA manifest 这类确需原色的，跑 --update 并在 PR 里说明。",
   },
 };
 
@@ -43,13 +77,18 @@ export function scan(text) {
   return hits;
 }
 
+export function scanSource(file, text) {
+  return scan(maskComments(file, text));
+}
+
 export function countTokens(files, readText) {
   const counts = {};
   const hits = {};
   for (const file of files) {
-    for (const { token, line } of scan(readText(file))) {
-      counts[token] = (counts[token] ?? 0) + 1;
-      (hits[token] ??= []).push(`${file}:${line}`);
+    for (const { kind, token, line } of scanSource(file, readText(file))) {
+      const key = `${kind}:${token}`;
+      counts[key] = (counts[key] ?? 0) + 1;
+      (hits[key] ??= []).push(`${file}:${line}`);
     }
   }
   return { counts, hits };
@@ -97,7 +136,10 @@ function main() {
     for (const at of hits[token]) console.error(`    ${at}`);
   }
   if (grew.length > 0) {
-    console.error("\n新代码只用 DESIGN.md 阶梯里的间距与字号。确属图形内部的 10px 刻度或光学对齐微调，跑 `pnpm design:scale --update` 并在 PR 里说明。");
+    for (const kind of new Set(grew.map(({ token }) => token.slice(0, token.indexOf(":"))))) {
+      console.error(`\n${RULES[kind].label}：${RULES[kind].hint}`);
+    }
+    console.error("\n确属合规例外时跑 `pnpm design:scale --update` 记进基线，并在 PR 里说明（见 DESIGN.md「交付与合并」）。");
     process.exit(1);
   }
   // 变少不算失败：访客构建（.github/build/implement.md）只能改 src/，写不了这份基线。

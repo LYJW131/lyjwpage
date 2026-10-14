@@ -47,7 +47,7 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
           {health.days.map((entry) => {
             const tone = dayTone(entry);
             const failed = entry.failure ? ` · ${number.format(entry.failure)} failed ${unit}` : "";
-            return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1 rounded-[2px]", tone.className)} />;
+            return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1", tone.className)} />;
           })}
         </div>
       )}

@@ -205,7 +205,7 @@ test("charging draws measured watts with outages left empty; activity exposes st
     assert.deepEqual(charging.summary, { peakW: 65, energyWh: 10.4 });
     assert.equal(JSON.stringify(charging).includes("Private"), false);
     assert.deepEqual(columnRows(activity.buckets, ["steps"]), [
-      { startSec: 0, endSec: 180, steps: 500 },
+      { startSec: 0, endSec: 180, steps: 300 },
       { startSec: sec(NOW - 30 * M), endSec: sec(NOW - 25 * M), steps: 812 },
     ], "buckets without a step count stay unknown");
     assert.deepEqual(activity.summary, { steps: 300 + 812 });

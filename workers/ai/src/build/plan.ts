@@ -1,5 +1,6 @@
 import { BUILD_PLAN_TTL_MS, BUILD_TOKEN_MAX_CHARS, type BuildPlan, type BuildProposal } from "@shared/build-routine";
 import type { Env } from "../runtime";
+import { buildCoordinator } from "./http";
 import { signBuildToken, verifyBuildToken } from "./token";
 import { parseBuildPlan } from "./validation";
 export { parseBuildPlan } from "./validation";
@@ -26,5 +27,5 @@ export async function readPlan(env: Env, token: string): Promise<PlanPayload | n
 export async function consumePlan(env: Env, token: string): Promise<BuildPlan | null> {
   const payload = await readPlan(env, token);
   if (!payload || !env.BUILD_COORDINATOR) return null;
-  return await env.BUILD_COORDINATOR.getByName("global").claimPlan(payload.id, payload.expiresAt) ? payload.plan : null;
+  return await buildCoordinator(env).claimPlan(payload.id, payload.expiresAt) ? payload.plan : null;
 }

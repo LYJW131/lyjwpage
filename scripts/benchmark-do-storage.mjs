@@ -7,6 +7,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { createRequire } from "node:module";
 
 const root = resolve(import.meta.dirname, "..");
@@ -50,7 +51,7 @@ async function eventually(check) {
   let failure;
   do {
     try { return await check(); } catch (error) { failure = error; }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    await sleep(100);
   } while (Date.now() < deadline);
   throw failure;
 }
@@ -254,6 +255,6 @@ try {
   throw error;
 } finally {
   child?.kill("SIGTERM");
-  if (child && child.exitCode === null) await Promise.race([once(child, "exit"), new Promise((resolveWait) => setTimeout(resolveWait, 3000))]);
+  if (child && child.exitCode === null) await Promise.race([once(child, "exit"), sleep(3000, undefined, { ref: false })]);
   await rm(temporary, { recursive: true, force: true });
 }
