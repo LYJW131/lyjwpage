@@ -98,3 +98,39 @@ test("超时仍停在旧提交时不通过，提示交站主决定重跑", async
   assert.match(result.next, /lyjw\.me=c{40}/);
   assert.match(result.next, /站主/);
 });
+
+test("一个构建检查都没有时不通过", async () => {
+  const result = await run(options, {
+    ...fakeClock(),
+    isAncestor: () => false,
+    fetch: fakeFetch({ checkRuns: [], versions: {} }),
+  });
+  assert.equal(result.pass, false);
+  assert.match(result.next, /一个 Workers Builds 检查都没有/);
+});
+
+test("--expect 列出的 Worker 没有成功构建时不通过", async () => {
+  const result = await run({ ...options, expect: ["core"] }, {
+    ...fakeClock(),
+    isAncestor: () => false,
+    fetch: fakeFetch({
+      checkRuns: [build("site", "completed", "success"), build("core", "completed", "skipped")],
+      versions: { "lyjw.me": SHA, "lyjw131.com": SHA },
+    }),
+  });
+  assert.equal(result.pass, false);
+  assert.match(result.next, /core/);
+});
+
+test("请求挂住时按总时限中止，不会一直卡住", async () => {
+  const hanging = (url, init) =>
+    new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason)));
+  // AbortSignal.timeout 的计时器不占住事件循环，测试里另挂一个，免得 node:test 提前判挂起
+  const keepAlive = setInterval(() => {}, 1000);
+  const result = await run({ ...options, timeoutMs: 1500, intervalMs: 100, graceMs: 100 }, {
+    isAncestor: () => false,
+    fetch: hanging,
+  }).finally(() => clearInterval(keepAlive));
+  assert.equal(result.pass, false);
+  assert.match(result.next, /读不到合并提交的检查/);
+});

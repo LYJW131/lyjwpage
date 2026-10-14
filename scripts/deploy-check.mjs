@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 const REPO = "LYJW131/lyjwpage";
 const HOSTS = ["lyjw.me", "lyjw131.com"];
 const BUILD_PREFIX = "Workers Builds: ";
+const REQUEST_TIMEOUT_MS = 30_000;
 
 const HELP = `用法：node scripts/deploy-check.mjs --sha <合并提交完整 sha> [选项]
 
@@ -18,6 +19,7 @@ const HELP = `用法：node scripts/deploy-check.mjs --sha <合并提交完整 s
   --interval <秒>      轮询间隔，默认 20
   --build-grace <秒>   多久内没出现 site 的构建检查就当这次没碰到 site，默认 180
   --site auto|yes|no   是否等 /api/version；auto 按有没有 site 的构建检查判断，默认 auto
+  --expect <a,b>       这次合并碰到了哪些 Worker 的监视路径（如 site,core）；列出的每个都要构建成功才算通过
   --help               显示本说明
 
 GitHub 有 GITHUB_TOKEN / GH_TOKEN 时带上，没有就匿名读（公开仓库）。
@@ -66,18 +68,19 @@ export function gitIsAncestor(ancestor, descendant) {
   }
 }
 
-async function fetchCheckRuns(sha, fetchImpl) {
+async function fetchCheckRuns(sha, fetchImpl, signal) {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const response = await fetchImpl(`https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100`, {
     headers: { accept: "application/vnd.github+json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    signal,
   });
   if (!response.ok) throw new Error(`check-runs HTTP ${response.status}`);
   return (await response.json()).check_runs ?? [];
 }
 
-async function fetchVersion(host, fetchImpl) {
+async function fetchVersion(host, fetchImpl, signal) {
   try {
-    const response = await fetchImpl(`https://${host}/api/version`, { headers: { "cache-control": "no-cache" } });
+    const response = await fetchImpl(`https://${host}/api/version`, { headers: { "cache-control": "no-cache" }, signal });
     if (!response.ok) return null;
     return (await response.json()).commit ?? null;
   } catch {
@@ -90,23 +93,25 @@ export async function run(options, deps = {}) {
   const wait = deps.sleep ?? sleep;
   const now = deps.now ?? Date.now;
   const isAncestor = deps.isAncestor ?? gitIsAncestor;
-  const { sha, timeoutMs, intervalMs, graceMs, site } = options;
+  const { sha, timeoutMs, intervalMs, graceMs, site, expect = [] } = options;
   const startedAt = now();
   const elapsed = () => now() - startedAt;
+  const requestSignal = () => AbortSignal.timeout(Math.max(1000, Math.min(REQUEST_TIMEOUT_MS, timeoutMs - elapsed())));
 
   let summary = { builds: [], pending: [], failed: [], siteBuilt: false };
   let buildError;
   for (;;) {
     buildError = null;
     try {
-      summary = summarizeBuilds(await fetchCheckRuns(sha, fetchImpl));
+      summary = summarizeBuilds(await fetchCheckRuns(sha, fetchImpl, requestSignal()));
     } catch (error) {
       buildError = String(error.message ?? error);
     }
     const settled = !buildError && summary.builds.length > 0 && summary.pending.length === 0;
-    const siteAppeared = summary.builds.some((build) => build.worker === "site");
+    const seen = new Set(summary.builds.map((build) => build.worker));
+    const expectedSeen = expect.every((worker) => seen.has(worker));
     const graceOver = elapsed() >= graceMs;
-    if (settled && (siteAppeared || site !== "auto" || graceOver)) break;
+    if (settled && expectedSeen && (seen.has("site") || site !== "auto" || graceOver)) break;
     if (elapsed() >= timeoutMs) break;
     await wait(intervalMs);
   }
@@ -118,6 +123,17 @@ export async function run(options, deps = {}) {
   }
   if (summary.pending.length > 0) {
     result.next = `构建超时仍在跑：${summary.pending.map((b) => b.worker).join("、")}；去 Cloudflare 看构建日志，别手跑 wrangler deploy`;
+    return result;
+  }
+  if (summary.builds.length === 0) {
+    result.next = "合并提交上一个 Workers Builds 检查都没有；Workers Builds 可能没收到这次推送，去 Cloudflare 看构建列表";
+    return result;
+  }
+  const missing = expect.filter(
+    (worker) => !summary.builds.some((build) => build.worker === worker && build.conclusion === "success"),
+  );
+  if (missing.length > 0) {
+    result.next = `预期要构建的 Worker 没有成功的构建检查：${missing.join("、")}；去 Cloudflare 看这几个 Worker 的构建列表`;
     return result;
   }
   if (summary.failed.length > 0) {
@@ -135,7 +151,7 @@ export async function run(options, deps = {}) {
   for (;;) {
     const versions = [];
     for (const host of HOSTS) {
-      const commit = await fetchVersion(host, fetchImpl);
+      const commit = await fetchVersion(host, fetchImpl, requestSignal());
       versions.push({ host, commit, state: classifyVersion(commit, sha, isAncestor) });
     }
     result.versions = versions;
@@ -170,6 +186,7 @@ async function main() {
     timeoutMs: seconds(flags.timeout, 600),
     intervalMs: seconds(flags.interval, 20),
     graceMs: seconds(flags["build-grace"], 180),
+    expect: typeof flags.expect === "string" ? flags.expect.split(",").map((w) => w.trim()).filter(Boolean) : [],
   });
   console.log(JSON.stringify(result, null, 2));
   return result.pass ? 0 : 1;
