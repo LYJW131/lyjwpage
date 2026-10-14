@@ -15,12 +15,19 @@ EOF
 fi
 
 src=$1 out=$2 audio=${3:-}
-want=$(python3 -c 'import json, math, sys; f = json.load(open(sys.argv[1])); print(math.ceil(f["duration"] * f["fps"]))' "$src/film.json")
-n=$(find "$src" -maxdepth 1 -name '[0-9][0-9][0-9][0-9][0-9].jpg' | wc -l)
-if [ "$n" -ne "$want" ]; then
-  echo "帧不齐：$src 里有 $n 帧，整片是 $want 帧；用 frames.mjs 不带 --every 渲整片" >&2
-  exit 1
-fi
+# ffmpeg 按编号读到第一个缺口就停，只数张数会放过「中间缺一帧、末尾多一帧」：逐个编号核对。
+n=$(python3 - "$src" <<'PY'
+import json, math, os, sys
+d = sys.argv[1]
+f = json.load(open(os.path.join(d, "film.json")))
+want = math.ceil(f["duration"] * f["fps"])
+have = sorted(int(n[:5]) for n in os.listdir(d) if len(n) == 9 and n.endswith(".jpg") and n[:5].isdigit())
+if have != list(range(want)):
+    gap = next((i for i in range(want) if i >= len(have) or have[i] != i), want)
+    sys.exit(f"帧不齐：{d} 里有 {len(have)} 帧，整片是 00000–{want - 1:05d}，第一处对不上在 {gap:05d}；用 frames.mjs 不带 --every 渲整片")
+print(want)
+PY
+)
 
 args=(-v error -y -framerate 24 -i "$src/%05d.jpg")
 if [ -n "$audio" ]; then

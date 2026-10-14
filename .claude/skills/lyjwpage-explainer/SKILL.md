@@ -7,7 +7,7 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 
 源在 `docs/explainer/v2/`，站点版由 `scripts/build-explainer.mjs` 在构建时生成。动手前读 `docs/explainer/AGENTS.md`（口径、须成对修改）；章节契约在 `docs/explainer/v2/CONVENTIONS.md`，派写章作者的简报模板是 `docs/explainer/v2/CHAPTER-BRIEF.md`，配乐与发布在 `docs/explainer/README.md`「站点版」。
 
-工具都在 `docs/explainer/v2/tools/`，命令行工具都能 `--help` 看用法，配乐的 `score-*.mjs` 除外（见 `docs/explainer/README.md`「站点版」）。浏览器由 `docs/explainer/v2/tools/browser.mjs` 选：Mac 上用本机 Chrome，云端用 Playwright 自带的 Chromium（软件渲染）。先装渲染依赖 `pnpm --dir docs/explainer/render install --ignore-workspace`（工作树里软链主仓那份）；Python 工具要 Pillow，`flicker.py` 另要 numpy。
+工具都在 `docs/explainer/v2/tools/`，命令行工具都能 `--help` 看用法，配乐的 `score-*.mjs` 除外（见 `docs/explainer/README.md`「站点版」）。浏览器由 `docs/explainer/v2/tools/browser.mjs` 选：Mac 上用本机 Chrome，云端用容器里预装的 Playwright Chromium（`/opt/pw-browsers/chromium`，软件渲染），别的机器用环境变量 `CHROME_PATH` 指定。先装渲染依赖 `pnpm --dir docs/explainer/render install --ignore-workspace`（工作树里软链主仓那份）；Python 工具要 Pillow，`flicker.py` 另要 numpy。
 
 整片重做这种要跑好几个小时的活，开一个进度 Artifact（各章状态、验收轮次），随进展更新：lyjw 要过。
 
@@ -79,7 +79,7 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
    - `python3 docs/explainer/v2/tools/flicker.py $F/zh <输出.tsv>`：只闪一帧的细小毛病，Haiku 基本看不出来。
    - `node docs/explainer/v2/tools/textlog.mjs <记录.jsonl>`（英文版加 `--lang en`），再 `python3 docs/explainer/v2/tools/textcheck.py <记录.jsonl>`：叠字、出画、单帧跳变。
 5. 判定：主线程逐条打开对应的帧看，记进 scratchpad 里的台账，列为「批、帧、Haiku 说的、判定、依据」，判定只用「已改、设计如此、误报、不改」四种。Haiku 和两个比对工具的输出都是线索，误报不少，不看图不下结论。
-6. 修完先重跑第 4 步的 `check.mjs` 和 `en-cjk.mjs`，再回到第 1 步：修出框时给字加的限宽（`maxW`）会把字等比缩小，常缩到字号下限以下。
+6. 修完先重跑「4. 合拢」里的 `check.mjs` 和 `en-cjk.mjs`，再回到第 1 步：修出框时给字加的限宽（`maxW`）会把字等比缩小，常缩到字号下限以下。
 
 做完：最近一轮的台账里没有「已改」，比对工具的线索都判过。
 
