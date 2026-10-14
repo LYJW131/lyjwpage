@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const REPO = "LYJW131/lyjwpage";
@@ -23,7 +24,7 @@ const HELP = `用法：NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.mjs chec
   --judge          还要一条 PASS 的「判定」盖住 head（lyjwpage-verify「3b」那类 PR）
   --help           显示本说明
 
-回执或判定按的提交不是当前 head 时，比两边相对 main 的补丁（git patch-id）：
+回执或判定按的提交不是当前 head 时，比两边相对 main 的补丁（逐字节，含空白与二进制，只忽略行号）：
 相同就沿用（coverage=carried，常见于只把 main 合进分支），不同就作废（coverage=stale）。
 比补丁要用本地 git：先 git fetch origin main。`;
 
@@ -38,6 +39,12 @@ export function parseComments(comments) {
     if (j) judge = { sha: j[1], verdict: j[2], url: comment.html_url ?? null };
   }
   return { receipt, judge };
+}
+
+export function patchDigest(diff) {
+  if (!diff) return null;
+  const normalized = diff.replace(/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/gm, "@@");
+  return createHash("sha256").update(normalized).digest("hex");
 }
 
 export function coverage(sha, head, patchId) {
@@ -87,13 +94,15 @@ function ensureCommit(sha) {
   }
 }
 
+// 不用 git patch-id：它忽略空白，也分不清同一路径的不同二进制内容，这两种改动都可能改变用户看到的东西。
 export function gitPatchId(sha) {
   ensureCommit(sha);
   const base = execFileSync("git", ["merge-base", "origin/main", sha], { encoding: "utf8" }).trim();
-  const diff = execFileSync("git", ["diff", base, sha], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  if (!diff) return null;
-  const out = execFileSync("git", ["patch-id", "--stable"], { input: diff, encoding: "utf8" });
-  return out.split(" ", 1)[0] || null;
+  const diff = execFileSync("git", ["diff", "--binary", "--full-index", base, sha], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return patchDigest(diff);
 }
 
 async function github(path, fetchImpl) {
@@ -138,12 +147,19 @@ async function main() {
   }
   const pr = Number(flags.pr);
   const need = flags.need ?? "unit-test-verified";
-  if (flags._[0] !== "check" || !Number.isInteger(pr) || pr <= 0 || !(need in PASSING_RANK)) {
+  const judge = flags.judge ?? false;
+  if (
+    flags._[0] !== "check" ||
+    !Number.isInteger(pr) ||
+    pr <= 0 ||
+    !Object.hasOwn(PASSING_RANK, need) ||
+    ![true, false, "true", "false"].includes(judge)
+  ) {
     console.log(JSON.stringify({ pass: false, next: "用法：check --pr <号> [--need 等级] [--judge]；见 --help" }));
     return 2;
   }
   try {
-    const result = await check({ pr, need, wantJudge: flags.judge === true });
+    const result = await check({ pr, need, wantJudge: judge === true || judge === "true" });
     console.log(JSON.stringify(result, null, 2));
     return result.pass ? 0 : 1;
   } catch (error) {
