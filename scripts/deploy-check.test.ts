@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyVersion, run, summarizeBuilds } from "./deploy-check.mjs";
+import { classifyVersion, run, summarizeBuilds, type CheckRun } from "./deploy-check.ts";
 
 const SHA = "a".repeat(40);
 const NEWER = "b".repeat(40);
@@ -8,13 +8,15 @@ const OLDER = "c".repeat(40);
 
 function fakeClock() {
   let t = 0;
-  return { now: () => t, sleep: async (ms) => { t += ms; } };
+  return { now: () => t, sleep: async (ms: number) => { t += ms; } };
 }
 
-function fakeFetch({ checkRuns, versions }) {
+type Versions = Record<string, string | null> | ((host: string, n: number) => string | null);
+
+function fakeFetch({ checkRuns, versions }: { checkRuns: CheckRun[] | ((n: number) => CheckRun[]); versions: Versions }) {
   let checkCalls = 0;
   let versionCalls = 0;
-  return async (url) => {
+  return async (url: string) => {
     if (url.includes("/check-runs")) {
       const runs = typeof checkRuns === "function" ? checkRuns(checkCalls++) : checkRuns;
       return { ok: true, json: async () => ({ check_runs: runs }) };
@@ -25,7 +27,7 @@ function fakeFetch({ checkRuns, versions }) {
   };
 }
 
-const build = (worker, status, conclusion) => ({ name: `Workers Builds: ${worker}`, status, conclusion });
+const build = (worker: string, status: string, conclusion: string | null): CheckRun => ({ name: `Workers Builds: ${worker}`, status, conclusion });
 const options = { sha: SHA, site: "auto", timeoutMs: 600_000, intervalMs: 20_000, graceMs: 180_000 };
 
 test("summarizeBuilds 只看 Workers Builds，区分进行中与失败", () => {
@@ -50,7 +52,7 @@ test("summarizeBuilds 同一 Worker 重跑过时只认最新一条检查", () =>
 });
 
 test("classifyVersion：被之后的提交覆盖算通过，更旧的算没跟上", async () => {
-  const isAncestor = async (a, d) => a === SHA && d === NEWER;
+  const isAncestor = async (a: string, d: string) => a === SHA && d === NEWER;
   assert.equal(await classifyVersion(SHA, SHA, isAncestor), "live");
   assert.equal(await classifyVersion(NEWER, SHA, isAncestor), "superseded");
   assert.equal(await classifyVersion(OLDER, SHA, isAncestor), "stale");
@@ -58,7 +60,7 @@ test("classifyVersion：被之后的提交覆盖算通过，更旧的算没跟�
 });
 
 test("不传 isAncestor 时用 GitHub 比较判断被覆盖", async () => {
-  const fetch = async (url) => {
+  const fetch = async (url: string) => {
     if (url.includes("/check-runs")) return { ok: true, json: async () => ({ check_runs: [build("site", "completed", "success")] }) };
     if (url.includes(`/compare/${SHA}...${NEWER}`)) return { ok: true, json: async () => ({ status: "ahead" }) };
     return { ok: true, json: async () => ({ commit: NEWER }) };
@@ -74,8 +76,8 @@ test("site 构建成功且两个域名都跟上时通过", async () => {
     ...clock,
     isAncestor: async () => false,
     fetch: fakeFetch({
-      checkRuns: (n) => [build("site", n === 0 ? "in_progress" : "completed", n === 0 ? null : "success")],
-      versions: (host, n) => (n < 2 ? OLDER : SHA),
+      checkRuns: (n: number) => [build("site", n === 0 ? "in_progress" : "completed", n === 0 ? null : "success")],
+      versions: (host: string, n: number) => (n < 2 ? OLDER : SHA),
     }),
   });
   assert.equal(result.pass, true);
@@ -102,7 +104,7 @@ test("构建失败直接不通过并给出下一步", async () => {
     fetch: fakeFetch({ checkRuns: [build("site", "completed", "failure")], versions: {} }),
   });
   assert.equal(result.pass, false);
-  assert.match(result.next, /site=failure/);
+  assert.match(result.next ?? "", /site=failure/);
 });
 
 test("超时仍停在旧提交时不通过，提示交 lyjw 决定重跑", async () => {
@@ -115,8 +117,8 @@ test("超时仍停在旧提交时不通过，提示交 lyjw 决定重跑", async
     }),
   });
   assert.equal(result.pass, false);
-  assert.match(result.next, /lyjw\.me=c{40}/);
-  assert.match(result.next, /lyjw/);
+  assert.match(result.next ?? "", /lyjw\.me=c{40}/);
+  assert.match(result.next ?? "", /lyjw/);
 });
 
 test("宽限期内没有构建检查且没列 --expect 时通过，并说明没碰到 Worker", async () => {
@@ -127,7 +129,7 @@ test("宽限期内没有构建检查且没列 --expect 时通过，并说明没�
     fetch: fakeFetch({ checkRuns: [], versions: {} }),
   });
   assert.equal(result.pass, true);
-  assert.match(result.note, /没碰到 Worker/);
+  assert.match(result.note ?? "", /没碰到 Worker/);
   assert.ok(clock.now() >= options.graceMs && clock.now() < options.timeoutMs);
 });
 
@@ -138,7 +140,7 @@ test("列了 --expect 却一个构建检查都没有时不通过", async () => {
     fetch: fakeFetch({ checkRuns: [], versions: {} }),
   });
   assert.equal(result.pass, false);
-  assert.match(result.next, /site/);
+  assert.match(result.next ?? "", /site/);
 });
 
 test("--expect 列出的 Worker 没有成功构建时不通过", async () => {
@@ -151,12 +153,12 @@ test("--expect 列出的 Worker 没有成功构建时不通过", async () => {
     }),
   });
   assert.equal(result.pass, false);
-  assert.match(result.next, /core/);
+  assert.match(result.next ?? "", /core/);
 });
 
 test("请求挂住时按总时限中止，不会一直卡住", async () => {
-  const hanging = (url, init) =>
-    new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason)));
+  const hanging = (_url: string, init: { signal: AbortSignal }) =>
+    new Promise<never>((_, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason)));
   // AbortSignal.timeout 的计时器不占住事件循环，测试里另挂一个，免得 node:test 提前判挂起
   const keepAlive = setInterval(() => {}, 1000);
   const result = await run({ ...options, timeoutMs: 1500, intervalMs: 100, graceMs: 100 }, {
@@ -164,5 +166,5 @@ test("请求挂住时按总时限中止，不会一直卡住", async () => {
     fetch: hanging,
   }).finally(() => clearInterval(keepAlive));
   assert.equal(result.pass, false);
-  assert.match(result.next, /读不到合并提交的检查/);
+  assert.match(result.next ?? "", /读不到合并提交的检查/);
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { waitForSiteVersion } from "./wait-site-version.mjs";
+import { waitForSiteVersion } from "./wait-site-version.ts";
 
 const EXPECTED = "a".repeat(40);
 const OLDER = "b".repeat(40);
@@ -9,8 +9,10 @@ const NEWER = "c".repeat(40);
 const SOURCE = "https://lyjw.me";
 const EDGE = "https://lyjw131.com";
 
-function harness(served, ancestry = {}) {
-  const calls = { served: [], ancestor: [], sleeps: 0 };
+type Verdict = boolean | null | undefined;
+
+function harness(served: Record<string, (string | null)[]>, ancestry: Record<string, Verdict | (() => Verdict)> = {}) {
+  const calls = { served: [] as string[], ancestor: [] as [string | undefined, string][], sleeps: 0 };
   const queues = Object.fromEntries(Object.entries(served).map(([origin, list]) => [origin, [...list]]));
   return {
     calls,
@@ -19,15 +21,15 @@ function harness(served, ancestry = {}) {
       expected: EXPECTED,
       attempts: 4,
       intervalMs: 1,
-      servedCommit: async (origin) => {
+      servedCommit: async (origin: string) => {
         calls.served.push(origin);
         const queue = queues[origin];
-        return queue.length > 1 ? queue.shift() : queue[0];
+        return (queue.length > 1 ? queue.shift() : queue[0]) ?? null;
       },
-      isAncestor: async (base, head) => {
+      isAncestor: async (base: string | undefined, head: string) => {
         calls.ancestor.push([base, head]);
         const verdict = ancestry[head];
-        return typeof verdict === "function" ? verdict() : verdict;
+        return (typeof verdict === "function" ? verdict() : verdict) ?? null;
       },
       sleep: async () => {
         calls.sleeps += 1;

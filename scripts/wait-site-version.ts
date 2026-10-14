@@ -8,6 +8,21 @@ export const INTERVAL_MS = 10_000;
 const SHA = /^[a-f0-9]{40}$/;
 
 // 域名已答出以这次 sha 为祖先的更新提交时让位（superseded）：那次部署有自己的跑次去刷新和通知，这次再等只会超时失败。
+export type WaitResult =
+  | { status: "live" }
+  | { status: "superseded"; origin: string; commit: string }
+  | { status: "timeout"; origin: string; commit: string | null };
+
+type WaitOptions = {
+  origins: string[];
+  expected: string | undefined;
+  servedCommit: (origin: string) => Promise<string | null>;
+  isAncestor: (base: string | undefined, head: string) => Promise<boolean | null>;
+  sleep: (ms: number) => Promise<unknown>;
+  attempts?: number;
+  intervalMs?: number;
+};
+
 export async function waitForSiteVersion({
   origins,
   expected,
@@ -16,14 +31,14 @@ export async function waitForSiteVersion({
   sleep,
   attempts = ATTEMPTS,
   intervalMs = INTERVAL_MS,
-}) {
-  const verdicts = new Map();
+}: WaitOptions): Promise<WaitResult> {
+  const verdicts = new Map<string, boolean>();
   for (const origin of origins) {
     for (let attempt = 1; ; attempt += 1) {
       const commit = await servedCommit(origin);
       if (commit === expected) break;
       if (commit && SHA.test(commit)) {
-        let newer = verdicts.get(commit);
+        let newer: boolean | null | undefined = verdicts.get(commit);
         if (newer === undefined) {
           newer = await isAncestor(expected, commit);
           if (newer !== null) verdicts.set(commit, newer);
@@ -37,22 +52,22 @@ export async function waitForSiteVersion({
   return { status: "live" };
 }
 
-async function servedCommit(origin) {
+async function servedCommit(origin: string): Promise<string | null> {
   try {
     const response = await fetch(`${origin}/api/version`, {
       headers: { "Cache-Control": "no-cache" },
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) return null;
-    const body = await response.json();
+    const body = (await response.json()) as { commit?: unknown } | null;
     return typeof body?.commit === "string" ? body.commit : null;
   } catch {
     return null;
   }
 }
 
-function githubIsAncestor({ apiUrl, repository, token }) {
-  return async (base, head) => {
+function githubIsAncestor({ apiUrl, repository, token }: { apiUrl: string; repository?: string; token?: string }) {
+  return async (base: string | undefined, head: string) => {
     try {
       const response = await fetch(`${apiUrl}/repos/${repository}/compare/${base}...${head}?per_page=1`, {
         headers: {
@@ -66,7 +81,7 @@ function githubIsAncestor({ apiUrl, repository, token }) {
         console.log(`::warning::Comparing ${base}...${head} failed with HTTP ${response.status}`);
         return null;
       }
-      return (await response.json()).status === "ahead";
+      return ((await response.json()) as { status?: string }).status === "ahead";
     } catch (error) {
       console.log(`::warning::Comparing ${base}...${head} failed: ${error}`);
       return null;
@@ -93,5 +108,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (result.status === "superseded") {
     console.log(`::notice::${result.origin} already serves newer commit ${result.commit}; its own run purges and notifies`);
   }
-  appendFileSync(process.env.GITHUB_OUTPUT, `live=${result.status === "live"}\n`);
+  appendFileSync(process.env.GITHUB_OUTPUT ?? "", `live=${result.status === "live"}\n`);
 }

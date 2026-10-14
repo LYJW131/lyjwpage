@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 /public/explainer/
 docs/explainer/artifact.html
 docs/explainer/v2/score.mp3

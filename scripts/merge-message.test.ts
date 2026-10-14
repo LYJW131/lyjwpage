@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergeMessage } from "./merge-message.mjs";
+import { mergeMessage } from "./merge-message.ts";
 
 test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓库主人，只收认得出的身份", () => {
   const result = mergeMessage({
