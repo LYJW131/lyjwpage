@@ -1,7 +1,5 @@
-import { chromium } from "../../render/node_modules/playwright-core/index.mjs";
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { launch, openFilm } from "./browser.mjs";
 const args = process.argv.slice(2);
 const out = args.shift();
 let lang = "zh", scale = 1, only = "";
@@ -13,17 +11,9 @@ for (let i = 0; i < args.length; i++) {
   else times.push(args[i]);
 }
 fs.mkdirSync(out, { recursive: true });
-const page = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../index.html");
-const b = await chromium.launch({ channel: "chrome", headless: true, args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"] });
-const p = await b.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: scale });
-const errs = [];
-const expectedMissing = (m) => /Failed to load resource|ERR_FILE_NOT_FOUND/.test(m.text()) && /\/(music\/)?ch\d\d\.js$/.test(m.location()?.url || "");
-p.on("console", (m) => { if ((m.type() === "error" || m.type() === "warning") && !expectedMissing(m)) errs.push(`${m.type()}: ${m.text()}`); });
-p.on("pageerror", (e) => errs.push("pageerror: " + e.message));
-await p.goto(`file://${page}?export&lang=${lang}${only ? `&only=${only}` : ""}`);
-await p.evaluate(() => window.__ready);
-const chs = await p.evaluate(() => window.__chapters);
-const BAR = await p.evaluate(() => window.__BAR);
+const b = await launch();
+const { page: p, errors: errs, missing, film } = await openFilm(b, { lang, scale, only });
+const chs = film.chapters, BAR = film.BAR;
 for (const t of times) {
   let sec = +t;
   const m = /^c(\d+):([\d.]+)$/.exec(t);
@@ -31,6 +21,7 @@ for (const t of times) {
   await p.evaluate((s) => window.__seek(s), sec);
   await p.screenshot({ path: `${out}/${lang}_${t.replace(/[:.]/g, "_")}.png` });
 }
+for (const k of missing) errs.push(`缺文字：${k}`);
 if (errs.length) console.log(errs.slice(0, 20).join("\n"));
 await b.close();
 console.log("done", times.length);

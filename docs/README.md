@@ -27,6 +27,7 @@
 | [讲解动画 · 分镜与旁白](./explainer/SCRIPT.md) | reference | v2 新片的章节表、每小节画面要点与中英旁白 |
 | [讲解动画 · 写章约定](./explainer/v2/CONVENTIONS.md) | reference | v2 章节作者的契约：章节接口、组件、字号、镜头、自检 |
 | [讲解动画 · 写章任务书](./explainer/v2/CHAPTER-BRIEF.md) | runbook | 并行写章时派单的模板 |
+| [讲解动画 · 逐帧验收拼图实测](./explainer/frame-qa-calibration.md) | record | 给 Haiku 看的验收图每张拼几帧：两轮埋点的抓到率与花费 |
 | [生产上报端点核验记录](./reporter-endpoints.md) | record | 各上报实例的端点核验与迁移记录 |
 | [DO 执行边界审计](./do-execution-audit.md) | record | 哪些工作进 Durable Object、哪些留在普通 Worker 的审计 |
 | [DO 优化线上效果核验](./do-performance-audit.md) | record | 执行边界调整上线前后的线上指标与本地存储基准 |

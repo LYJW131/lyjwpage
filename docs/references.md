@@ -56,6 +56,10 @@
   - 是什么：各类任务的成本、effort 档位怎么选、子代理的 `model` / `effort` 字段。
   - 取了什么：搜索、读日志、读长历史这类出错容易发现的活放 Sonnet 或 Haiku，判断和改代码留在主模型；要验证、有边界情况的用 high；子代理看不到对话，关键规则要在简报里重说。
   - 状态：采用。落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)（验证交给 Haiku 验证员）和 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「派读者读线程」（Sonnet 读者）。
+- **[Vision · Resolution and token cost](https://platform.claude.com/docs/en/build-with-claude/vision#evaluate-image-size)**（Claude 文档）
+  - 是什么：模型按 28×28 px 一块计视觉 token，每档模型有长边和 token 上限，超了先缩小再看。
+  - 取了什么：给 Haiku 逐帧看的验收图按标准档上限拼，每张 2 帧时每格仍是原尺寸、哪档模型看都不会被缩；拼得更多格子就被缩小，细节开始漏，所以默认每张 2 帧。
+  - 状态：采用。落在 [sheets.py](./explainer/v2/tools/sheets.py) 和 [lyjwpage-explainer](../.claude/skills/lyjwpage-explainer/SKILL.md)，实测见 [逐帧验收拼图实测](./explainer/frame-qa-calibration.md)。
 
 ## 设计系统与 UI
 
