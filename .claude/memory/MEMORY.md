@@ -39,6 +39,7 @@
 - #173 build → GitHub Actions: verified end-to-end (#239, #242); cutover fully done 2026-10-13 (old routine and ROUTINE_FIRE_* secrets deleted): [[build-actions-migration]].
 - After merge check /api/version (parallel builds race): [[workers-builds-parallel-race]]. Bot review gate (logic changes only): [[merge-requires-bot-review-pass]]. Merge commits: [[merge-commit-format]]. CodeQL: [[codeql-policy]].
 - Now-playing first screen decisions (#218/#220/#224): [[now-playing-first-screen-decisions]].
+- Avatar auto-rebuild (avatar-watch + avatar-sync) restored by owner choice 2026-10-14, PR #298; two credentials pending: [[avatar-watch-restored]].
 - Cloud env gaps; #226 auto-creates .dev.vars, dev:worker runs without CF creds: [[cloud-env-gaps]].
 - **Hand-offs carry the user's constraints:** route a follow-up once; briefs and Mac briefs copy what the user already removed/rejected/set; a later relay overrides an earlier one: [[handoff-carry-user-constraints]].
 - **Contrast fixes keep chroma (user 2026-10-13 16:31Z):** text-colour variants change oklch lightness only; desaturating made #251 look grey to the owner: [[ink-tokens-keep-chroma]].
