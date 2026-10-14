@@ -1,18 +1,11 @@
 import { APPLE_LOOKUPS } from "@shared/apple-lookups";
 import { MUSICKIT_TOKEN_PATH } from "@shared/apple-music-paths";
-import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, requestOrigin } from "@shared/http-origins";
+import { getCorsHeaders, isAllowedOrigin, isForeignOrigin, jsonResponse, requestOrigin } from "@shared/http-origins";
 import { ConfigError, issueMusicKitToken } from "@shared/musickit-token";
 import { withRequestState } from "@shared/request-state";
 import { withPublicCors } from "@shared/status-response";
 
 import type { Env } from "./env";
-
-function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(data), { ...init, headers });
-}
 
 // 方法、来源与 CORS 头每次按这次请求判，这一层不能进缓存；查询本身交给开了 Workers Caching 的 AppleLookups，缓存里的响应不带 CORS 头。
 export async function serveAppleMusic(request: Request, env: Env): Promise<Response> {

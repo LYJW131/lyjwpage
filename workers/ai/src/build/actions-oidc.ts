@@ -1,6 +1,6 @@
 import { BUILD_REPO } from "@shared/build-routine";
 import { decodeBase64url } from "../crypto";
-import { readBoundedJson } from "./http";
+import { object, readBoundedJson } from "./http";
 
 export const ACTIONS_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 export const ACTIONS_OIDC_JWKS_URL = `${ACTIONS_OIDC_ISSUER}/.well-known/jwks`;
@@ -26,18 +26,17 @@ export class ActionsOidcUnavailableError extends Error {}
 type KeyCache = { keys: Map<string, CryptoKey>; fetchedAt: number; attemptedAt: number; pending?: { promise: Promise<void>; startedAt: number } };
 const keyCaches = new WeakMap<typeof fetch, KeyCache>();
 
-const record = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const seconds = (value: unknown): value is number => Number.isSafeInteger(value);
 
 function decodeJson(part: string): Record<string, unknown> | null {
-  try { return record(JSON.parse(new TextDecoder().decode(decodeBase64url(part)))); } catch { return null; }
+  try { return object(JSON.parse(new TextDecoder().decode(decodeBase64url(part)))); } catch { return null; }
 }
 
 async function importKeys(data: unknown): Promise<Map<string, CryptoKey>> {
   const keys = new Map<string, CryptoKey>();
-  const entries = record(data)?.keys;
+  const entries = object(data)?.keys;
   for (const entry of Array.isArray(entries) ? entries.slice(0, 32) : []) {
-    const jwk = record(entry);
+    const jwk = object(entry);
     if (!jwk || jwk.kty !== "RSA" || typeof jwk.kid !== "string" || typeof jwk.n !== "string" || typeof jwk.e !== "string") continue;
     if (jwk.use !== undefined && jwk.use !== "sig" || jwk.alg !== undefined && jwk.alg !== "RS256") continue;
     try { keys.set(jwk.kid, await crypto.subtle.importKey("jwk", { kty: "RSA", n: jwk.n, e: jwk.e, alg: "RS256", ext: true }, RSA, false, ["verify"])); } catch { continue; }
