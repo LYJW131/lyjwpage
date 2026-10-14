@@ -211,6 +211,60 @@
     return { w, h };
   }
 
+  function clawdSeq(name, b, t0, BAR) {
+    const C = window.Clawd, s = C.SEQ[name];
+    if (!s || b < t0) return null;
+    const i = Math.floor(((b - t0) * BAR * 1000) / C.FRAME_MS + 1e-6);
+    return i < s.length ? s[i] : null;
+  }
+  function clawdFrame(x, fr, cx, bottom, q, o = {}) {
+    const f = fr || { pose: "default", offset: 0 };
+    const px = cx + (f.x || 0) * 2 * q * (o.flip ? -1 : 1);
+    clawd(x, px, bottom, q, { ...o, pose: f.pose, crouch: f.offset || 0 });
+    if (f.poof) for (const s of [-1, 1]) text(x, f.poof === "dot" ? "·" : "~", px + s * 8 * q, bottom - q * 0.6, { font: FONT.mono(q * 2.6, 600), color: o.poofColor || css("ash"), align: "center", texture: true, alpha: o.alpha ?? 1 });
+    return px;
+  }
+  // 道具按 Clawd 的格子坐标画（宽 18q、高 12q，头顶在 bottom − 12q，蹲下整体下移 4q），跟着 flip 镜像。
+  function clawdProp(x, kind, cx, bottom, q, o = {}) {
+    const { color = css("bone"), alpha = 1, crouch = 0, flip = false } = o;
+    if (alpha <= 0) return null;
+    const ox = cx - 9 * q, oy = bottom - 12 * q + crouch * 4 * q;
+    const X = (u) => (flip ? ox + (18 - u) * q : ox + u * q), Y = (v) => oy + v * q;
+    x.save(); x.globalAlpha = alpha; x.fillStyle = color; x.strokeStyle = color; x.lineCap = "round"; x.lineJoin = "round";
+    let out = null;
+    if (kind === "hardhat") {
+      x.fillRect(Math.min(X(2.2), X(16.8)), Y(-0.9), 14.6 * q, 0.9 * q);
+      x.beginPath(); x.moveTo(X(4), Y(-0.9)); x.bezierCurveTo(X(4), Y(-4.2), X(15), Y(-4.2), X(15), Y(-0.9)); x.closePath(); x.fill();
+      x.fillStyle = o.ink || css("ink"); x.fillRect(Math.min(X(9), X(10)), Y(-3.4), q, 2.5 * q);
+    } else if (kind === "headset") {
+      x.lineWidth = 0.7 * q;
+      x.beginPath(); x.moveTo(X(2.6), Y(2.2)); x.bezierCurveTo(X(2.6), Y(-2.6), X(16.4), Y(-2.6), X(16.4), Y(2.2)); x.stroke();
+      x.fillRect(Math.min(X(1.7), X(3.3)), Y(1.2), 1.6 * q, 3 * q);
+      x.fillRect(Math.min(X(15.7), X(17.3)), Y(1.2), 1.6 * q, 3 * q);
+      x.lineWidth = 0.5 * q;
+      x.beginPath(); x.moveTo(X(16.5), Y(4)); x.quadraticCurveTo(X(16), Y(6.4), X(12.6), Y(6.2)); x.stroke();
+      x.beginPath(); x.arc(X(12.4), Y(6.2), 0.6 * q, 0, Math.PI * 2); x.fill();
+    } else if (kind === "magnifier") {
+      const lx = X(19.6), ly = Y(2.2), r = 2.2 * q;
+      x.lineWidth = 0.8 * q;
+      x.beginPath(); x.moveTo(X(17.2), Y(5)); x.lineTo(X(18.3), Y(3.8)); x.stroke();
+      x.save(); x.globalAlpha = alpha * 0.16; x.beginPath(); x.arc(lx, ly, r, 0, Math.PI * 2); x.fill(); x.restore();
+      x.lineWidth = 0.6 * q; x.beginPath(); x.arc(lx, ly, r, 0, Math.PI * 2); x.stroke();
+      out = { x: lx, y: ly, r };
+    } else if (kind === "sign") {
+      const w = (o.w ?? 16) * q, h = (o.h ?? 6) * q;
+      x.lineWidth = 0.6 * q;
+      x.beginPath(); x.moveTo(X(9), Y(0.5)); x.lineTo(X(9), Y(-2.5)); x.stroke();
+      const bx = X(9) - w / 2, by = Y(-2.5) - h;
+      x.fillStyle = o.fill || css("paper"); x.fillRect(bx, by, w, h);
+      x.lineWidth = 0.35 * q; x.strokeRect(bx, by, w, h);
+      out = { x: bx, y: by, w, h };
+    }
+    x.restore();
+    return out;
+  }
+  const hop = (b, t0, t1, h) => { const k = (b - t0) / (t1 - t0); return k <= 0 || k >= 1 ? 0 : 4 * h * k * (1 - k); };
+
   function bubble(x, str, bx, by, o = {}) {
     const { px = 34, color = css("pink"), bg = css("paper"), k = 1, tail = "left" } = o;
     if (k <= 0) return;
@@ -311,15 +365,17 @@ void main(){
 }`,
   };
 
-  function glyph(x, kind, cx, cy, color, s = 1) {
-    x.save(); x.strokeStyle = color; x.lineWidth = 2.2;
+  // line() 的 alpha 是绝对值、不乘外层 globalAlpha，所以里面的 line() 都显式乘 a，否则淡入淡出时这几笔是实的。
+  function glyph(x, kind, cx, cy, color, s = 1, a = 1) {
+    if (a <= 0) return;
+    x.save(); x.globalAlpha *= a; x.strokeStyle = color; x.lineWidth = 2.2;
     if (s !== 1) { x.translate(cx, cy); x.scale(s, s); x.translate(-cx, -cy); }
     if (kind === "cred") {
-      x.strokeRect(cx - 60, cy - 30, 120, 60); line(x, cx - 22, cy - 2, cx + 22, cy - 2, 3, color);
+      x.strokeRect(cx - 60, cy - 30, 120, 60); line(x, cx - 22, cy - 2, cx + 22, cy - 2, 3, color, a);
       x.beginPath(); x.arc(cx, cy + 14, 7, 0, Math.PI * 2); x.stroke();
     } else if (kind === "d1") {
-      for (let j = 0; j < 4; j++) { const w = 130 - j * 26, y = cy - 30 + j * 20; line(x, cx - w / 2, y, cx + w / 2, y, 2.2 - j * 0.4, color, 1 - j * 0.18); }
-      line(x, cx - 65, cy - 30, cx - 26, cy + 30, 1.2, color, 0.5); line(x, cx + 65, cy - 30, cx + 26, cy + 30, 1.2, color, 0.5);
+      for (let j = 0; j < 4; j++) { const w = 130 - j * 26, y = cy - 30 + j * 20; line(x, cx - w / 2, y, cx + w / 2, y, 2.2 - j * 0.4, color, a * (1 - j * 0.18)); }
+      line(x, cx - 65, cy - 30, cx - 26, cy + 30, 1.2, color, 0.5 * a); line(x, cx + 65, cy - 30, cx + 26, cy + 30, 1.2, color, 0.5 * a);
     } else if (kind === "lag") {
       for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { x.strokeRect(cx - 64 + c * 32, cy - 36 + r * 24, 28, 20); }
     } else {
@@ -382,5 +438,5 @@ void main(){
     };
   }
 
-  window.K = { clamp, lerp, E, prog, keys, mulberry32, hash, FONT, text, narration, measure, line, polyline, rect, fillRect, dashed, envelope, stamp, roundRect, clawd, bubble, spark, PLATE, glyph, sheet, checkbox, leader, pathAt, pathLen, trailOn, camera };
+  window.K = { clamp, lerp, E, prog, keys, mulberry32, hash, FONT, text, narration, measure, line, polyline, rect, fillRect, dashed, envelope, stamp, roundRect, clawd, clawdSeq, clawdFrame, clawdProp, hop, bubble, spark, PLATE, glyph, sheet, checkbox, leader, pathAt, pathLen, trailOn, camera };
 })();

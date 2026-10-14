@@ -1,264 +1,534 @@
+// 画面只从这里取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
 (() => {
   const { css } = G;
-  const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, fillRect, stamp, spark, roundRect, pathAt, pathLen, trailOn, mulberry32 } = K;
+  const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, fillRect, rect, clawd, bubble, roundRect, glyph, sheet, pathAt, pathLen, mulberry32 } = K;
   I18N.add({
-    "ch06.title": ["两条线路", "Two lines"],
-    "ch06.origin": ["源站", "origin"],
-    "ch06.esa": ["阿里云 ESA", "Alibaba Cloud ESA"],
-    "ch06.visitors": ["访客", "visitors"],
-    "ch06.mainland": ["大陆访客", "mainland visitors"],
-    "ch06.images": ["图片", "images"],
-    "ch06.n1a": ["ESA 可能回一份旧 HTML，", "ESA may serve a stale shell;"],
-    "ch06.n1b": ["数据在挂载后直连 Worker 取新。", "live data comes from the Worker."],
-    "ch06.stale": ["过期先给旧页，后台回源", "Expired: old page first, refetch later"],
-    "ch06.card": ["借书卡", "Library card"],
-    "ch06.poster": ["Emby 海报", "Emby poster"],
-    "ch06.callno": ["索书号", "Call number"],
-    "ch06.changed": ["内容变了 → 新名字", "New content → new name"],
-    "ch06.noPurge": ["不用刷新", "never purged"],
-    "ch06.apple": ["（在听的封面来自 Apple 目录，不走这条路）", "(Now-playing covers come from Apple's catalog, not /img.)"],
-    "ch06.r2": ["site Worker · R2 绑定", "site Worker · R2 binding"],
-    "ch06.esaImg": ["ESA 缓存同一路径", "ESA caches the same path"],
-    "ch06.n2a": ["文件名就是内容的 sha256：", "Files are named by SHA-256,"],
-    "ch06.n2b": ["地址即版本，缓存一年也不会错。", "so caching them for a year is safe."],
+    "ch06.title": ["心电图与地层", "Heartbeat and strata"],
+    "ch06.knock": ["敲门", "knock"],
+    "ch06.knockSub": ["采集 Worker · 每分钟一次", "collector · every minute"],
+    "ch06.knockOnly": ["只说明 site Worker 还在出页面", "only proves the site Worker serves"],
+    "ch06.checkin": ["报到", "check-in"],
+    "ch06.checkinSub": ["每 5 分钟一次", "every 5 minutes"],
+    "ch06.cron": ["cron", "cron"],
+    "ch06.n1a": ["探测每分钟从采集 Worker 打进来，", "The collector probes in every minute;"],
+    "ch06.n1b": ["cron 每轮跑完，自己记一笔心跳。", "the Worker's cron logs its own beat."],
+    "ch06.foot": ["报到只证明 cron 跑完了。", "A check-in only proves the cron ran."],
+    "ch06.collector": ["采集 Worker", "Collector"],
+    "ch06.every5": ["每 5 分钟", "every 5 minutes"],
+    "ch06.n2a": ["汇总这两行的是采集 Worker，", "The collector sums up both rows;"],
+    "ch06.n2b": ["页面只读可滞后层，不碰 D1。", "pages only read the lag layer."],
+    "ch06.archive": ["每 5 分钟压进一薄片", "a thin slice every 5 minutes"],
+    "ch06.keep": ["长期保存", "kept long-term"],
+    "ch06.older": ["越往左越早，一直留着", "older to the left, kept long-term"],
+    "ch06.sources": ["Mac · 云端 · Cursor", "Mac · cloud · Cursor"],
+    "ch06.n3a": ["cron 每 5 分钟按水位写进 D1，", "Rows past the watermark go to D1;"],
+    "ch06.n3b": ["各路独立，一路坏了不挡别路。", "a failed stream blocks no other."],
+    "ch06.jevNote": ["打分（示意）", "scores (illustrative)"],
+    "ch06.jevKeep": ["打分只在屋里放 7 天，不进 D1", "scores stay 7 days in the room, not in D1"],
+    "ch06.window": ["一窗 = 三个 5 分钟桶", "one window = three 5-min buckets"],
+    "ch06.skip": ["不问 Clef，直接最低档", "no Clef: lowest level"],
+    "ch06.n4a": ["窗关上两分钟后才交给 Clef，", "Two minutes after a window closes,"],
+    "ch06.n4b": ["输入是前台应用、agent 与 token。", "Clef weighs apps, agents and tokens."],
+    "ch06.clawd": ["线上出错时，\n我先去 Workers Issues 查证据。", "When something breaks,\nI check Workers Issues first."],
   });
   const tr = (k) => I18N.tr(k);
-  let plate, ink, emit, paper, stampL, top;
+  const TAU = Math.PI * 2;
+  let plate, ink, emit, paper, top;
   let BARs = (60 / 108) * 4;
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
   const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
 
-  const ME_Y = 540, CN_Y = 840, LW = 14;
-  const O = [400, ME_Y];
-  const ESA = [1400, CN_Y], L = [2400, ME_Y], C = [2400, CN_Y];
-  const R2 = [1000, 250], SPUR_X = 1000;
-  const ME_PATH = [O, L], CN_PATH = [O, [700, CN_Y], C];
-  const CLK = [1620, 1040], CLK_R = 80;
-  const CARD = { x: 1580, y: -10, w: 900, h: 450 };
+  const AT = { fetch: 5.0, back: 5.25, lit: 5.5, sink: 6.0, hero: 7.0, coding: 8.0, zero: 8.25, sweep0: 8.5, sweepStep: 0.125, clawd: 10.25, rise: 11.0 };
+  const CHECKS = [], KNOCKS = [];
+  for (let k = 0; k <= 50; k += 5) CHECKS.push(k);
+  for (let k = 0; k <= 50; k++) KNOCKS.push(k + 0.5);
 
-  const hex64 = (seed) => { const r = mulberry32(seed); let s = ""; for (let i = 0; i < 64; i++) s += "0123456789abcdef"[Math.floor(r() * 16)]; return s; };
-  const KEY_OLD = hex64(606), KEY_NEW = hex64(6060);
-  const callNo = (k) => `/img/${k.slice(0, 10)}…${k.slice(-6)}.webp`;
-  const chipNo = (k) => `/img/${k.slice(0, 8)}….webp`;
+  // ch07 收尾、ch08 与 ch09 的提交落点和 ch10 的回顾几何须与此处一致，章节接缝才能对齐。
+  const Y0 = 540;
+  const NOW_X = 1350;
+  const V = 200;
+  const UP = [[-98, 0], [0, -220], [34, 46], [62, 0]];
+  const DOWN = [[-16, 0], [0, 104], [14, -22], [30, 0]];
+  const LEDGER = { x: 1210, y: 120, w: 280, h: 170 };
+  const SITE = { x: 1110, y: 700, w: 200, h: 124 };
+  const API = { x: 1400, y: 700, w: 270, h: 124 };
+  const KNOCK_PATH = [[NOW_X, LEDGER.y + LEDGER.h], [NOW_X, Y0], [SITE.x + SITE.w / 2, SITE.y]];
+  const CHECK_PATH = [[API.x + 60, API.y], [NOW_X, Y0], [NOW_X, LEDGER.y + LEDGER.h]];
+  const COL = [1830, 250], COL_R = 62;
+  const LAGG = [1840, 470];
+  const CARD = { x: 2080, y: 150, w: 780, h: 400 };
+  const UPTIME_CELLS = 30;
+  const LANES = ["Coding", "Tokens", "Listening", "Watching", "Gaming", "Charging", "Activity"];
+  const ST_TOP = 900, LANE_H = 72, ST_X0 = -2200, SC = 10;
+  const laneY = (i) => ST_TOP + i * LANE_H;
+  const ST_BOT = laneY(LANES.length);
+  const SCORER = { x: 1000, y: 812, w: 300, h: 56 };
 
-  const START = [1400, ME_Y, 1, 0];
-  const OVER = [1230, 560, 0.7, 0];
-  const ESAV = [1500, 900, 1, 0], IMGV = [1500, 560, 0.85, 0];
-  const END = [6400, 690, 0.85, 0];
+  // 首帧接 ch05 末帧那条屏幕 y 540 的直线：它就是心电图的基线，报到尖峰在屏幕 x 1100 处立起来。
+  const Z0 = 1.5;
+  const FIRST = [NOW_X + (960 - 1100) / Z0, Y0, Z0, 0];
+  const A = [960, 540, 1, 0], B = [1960, 480, 1, 0], C = [700, 1180, 0.85, 0], D = [900, 1000, 1.45, 0], CL = [880, 790, 1.1, 0];
   const CAM = [
-    [0, START],
-    [0.12, START],
-    [0.95, OVER, E.io],
-    [1.3, [1232, 561, 0.705, 0], E.lin],
-    [1.55, ESAV, E.io],
-    [3.85, [1506, 902, 1.02, 0], E.lin],
-    [4.1, IMGV, E.io],
-    [6.85, [1508, 562, 0.866, 0], E.lin],
-    [9.0, END, E.io],
+    [0, FIRST],
+    [0.95, A, E.io],
+    [3.76, [966, 540, 1.012, 0], E.lin],
+    [4.0, B, E.io],
+    [5.76, [1968, 482, 1.012, 0], E.lin],
+    [6.34, C, E.io],
+    [7.76, [706, 1184, 0.862, 0], E.lin],
+    [8.0, D, E.io],
+    [9.76, [906, 1000, 1.47, 0], E.lin],
+    [10.0, CL, E.io],
+    [AT.rise, [886, 786, 1.115, 0], E.lin],
+    [12.0, A, E.io],
   ];
-  const camAt = (b) => keys(b, CAM);
+  const PLATE_RECT = [-2400, -300, 3400, 1900];
 
-  function station(x, cx, cy, a, o = {}) {
-    if (a <= 0) return;
-    const r = o.r ?? 18;
-    x.save(); x.globalAlpha = a;
-    x.fillStyle = css("paper"); x.strokeStyle = o.hot ? css("signal") : css("pink"); x.lineWidth = o.lw ?? 6;
-    x.beginPath(); x.arc(cx, cy, r * lerp(0.6, 1, E.outBack(clamp(a))), 0, Math.PI * 2); x.fill(); x.stroke();
-    x.restore();
-  }
-  function pageIcon(x, cx, cy, col, a, s = 1) {
-    if (a <= 0) return;
-    x.save(); x.globalAlpha = a; x.translate(cx, cy); x.scale(s, s);
-    x.fillStyle = css("paper"); x.strokeStyle = col; x.lineWidth = 3;
-    x.beginPath(); x.moveTo(-22, -30); x.lineTo(10, -30); x.lineTo(22, -18); x.lineTo(22, 30); x.lineTo(-22, 30); x.closePath(); x.fill(); x.stroke();
-    for (let j = 0; j < 3; j++) { x.beginPath(); x.moveTo(-12, -12 + j * 12); x.lineTo(12 - (j === 2 ? 10 : 0), -12 + j * 12); x.stroke(); }
-    x.restore();
-  }
-  function chip(x, label, cx, cy, hot, alpha, px = 32) {
-    if (alpha <= 0) return;
-    x.save(); x.globalAlpha = alpha; x.font = FONT.mono(px, 500);
-    const w = x.measureText(label).width + px * 1.2, h = px * 1.66;
-    x.fillStyle = css("paper"); x.strokeStyle = hot ? css("signal") : css("pink"); x.lineWidth = 2.4;
-    roundRect(x, cx - w / 2, cy - h / 2, w, h, h / 2); x.fill(); x.stroke();
-    x.restore();
-    text(x, label, cx, cy + px * 0.36, { font: FONT.mono(px, 500), color: hot ? css("signal") : css("pink"), align: "center", alpha });
-  }
   function glow(e, cx, cy, r, a) {
     if (a <= 0) return;
     const g = e.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, `rgba(255,200,150,${a})`); g.addColorStop(0.35, `rgba(235,130,85,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
-    e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, Math.PI * 2); e.fill(); e.restore();
+    g.addColorStop(0, `rgba(255,205,160,${a})`); g.addColorStop(0.3, `rgba(235,135,90,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
+    e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill(); e.restore();
   }
-  function nar(x, key, px, py, r, a, size, maxW) {
+  function box(x, bx, by, w, h, a, o = {}) {
     if (a <= 0) return;
-    K.narration(x, tr(key), px, py, { px: size, maxW, reveal: r, alpha: a, dim: 0.12 });
+    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.strokeStyle = o.color || css("bone"); x.lineWidth = o.lw ?? 2.2;
+    roundRect(x, bx, by, w, h, o.r ?? 8); x.fill(); x.stroke(); x.restore();
+  }
+  function dashPath(x, pts, a, color = css("bone"), dash = [6, 7], w = 1.4) {
+    if (a <= 0) return;
+    x.save(); x.globalAlpha = a; x.strokeStyle = color; x.lineWidth = w; x.setLineDash(dash); x.lineJoin = "round";
+    x.beginPath(); pts.forEach(([u, v], i) => (i ? x.lineTo(u, v) : x.moveTo(u, v))); x.stroke(); x.restore();
+  }
+  function dot(x, e, pts, k, a, r = 6) {
+    if (k <= 0 || k >= 1 || a <= 0) return;
+    const [px, py] = pathAt(pts, k * pathLen(pts));
+    x.save(); x.globalAlpha = a; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, py, r, 0, TAU); x.fill(); x.restore();
+    glow(e, px, py, 28, 0.55 * a);
+  }
+  function nar(x, key, px, py, r, a, size = 60, maxW = 1040) {
+    if (a <= 0) return;
+    K.narration(x, tr(key), px, py, { px: size, maxW, color: css("bone"), reveal: r, alpha: a });
+  }
+  function dial(x, cx, cy, r, minute, a, hot = 0) {
+    if (a <= 0) return;
+    const bone = css("bone");
+    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.fill();
+    x.strokeStyle = bone; x.lineWidth = 2.4; x.stroke(); x.restore();
+    for (let i = 0; i < 12; i++) {
+      const an = (i / 12) * TAU - Math.PI / 2;
+      line(x, cx + Math.cos(an) * (r - 14), cy + Math.sin(an) * (r - 14), cx + Math.cos(an) * (r - 5), cy + Math.sin(an) * (r - 5), i % 3 ? 1.4 : 2.6, bone, a * (i % 3 ? 0.5 : 0.9));
+    }
+    const an = (minute / 60) * TAU - Math.PI / 2;
+    line(x, cx, cy, cx + Math.cos(an) * r * 0.74, cy + Math.sin(an) * r * 0.74, 3.2, hot > 0.05 ? css("signalD") : bone, a);
+    x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(cx, cy, 5, 0, TAU); x.fill(); x.restore();
+  }
+
+  function shapeY(shape, dx) {
+    if (dx <= shape[0][0] || dx >= shape[shape.length - 1][0]) return 0;
+    for (let i = 1; i < shape.length; i++) if (dx <= shape[i][0]) {
+      const [x0, y0] = shape[i - 1], [x1, y1] = shape[i];
+      return lerp(y0, y1, (dx - x0) / (x1 - x0));
+    }
+    return 0;
+  }
+  function events(phi) {
+    const ev = [];
+    for (const t of CHECKS) ev.push({ t, x: NOW_X - (phi - t) * V, s: UP, up: true });
+    for (const t of KNOCKS) ev.push({ t, x: NOW_X - (phi - t) * V, s: DOWN, up: false });
+    return ev.filter((v) => v.x + v.s[0][0] < NOW_X && v.x + v.s[v.s.length - 1][0] > -3000);
+  }
+  const traceY = (ev, u) => ev.reduce((y, v) => y + shapeY(v.s, u - v.x), Y0);
+  function tracePts(phi, x0) {
+    const ev = events(phi), xs = [x0, NOW_X];
+    for (const v of ev) for (const [dx] of v.s) { const u = v.x + dx; if (u > x0 && u < NOW_X) xs.push(u); }
+    xs.sort((a, c) => a - c);
+    return { ev, pts: xs.map((u) => [u, traceY(ev, u)]) };
+  }
+  function strokePts(x, pts, lw, color, alpha = 1) {
+    if (pts.length < 2 || alpha <= 0) return;
+    x.save(); x.globalAlpha = alpha; x.strokeStyle = color; x.lineWidth = lw; x.lineCap = "round"; x.lineJoin = "round";
+    x.beginPath(); pts.forEach(([u, v], i) => (i ? x.lineTo(u, v) : x.moveTo(u, v))); x.stroke(); x.restore();
+  }
+  function ecg(x, e, b, cam, labA, dimK = 1) {
+    const phi = b * 4;
+    const left = Math.min(NOW_X - 40, cam.x - 960 / cam.zoom - 60);
+    const { ev, pts } = tracePts(phi, left);
+    const lw = Math.max(2.4, 1.6 / cam.zoom);
+    strokePts(x, pts, lw, css("bone"), 0.9 * dimK);
+    const tail = pts.filter(([u]) => u > NOW_X - 150);
+    for (let i = 1; i < tail.length; i++) {
+      const k = (tail[i][0] - (NOW_X - 150)) / 150;
+      strokePts(x, [tail[i - 1], tail[i]], lw * 1.2, css("signalD"), k * dimK);
+    }
+    strokePts(e, tail, lw * 3, "rgb(240,150,105)", 0.35 * dimK);
+    const py = traceY(ev, NOW_X);
+    const gz = 1 / Math.sqrt(Math.max(1, cam.zoom));
+    glow(e, NOW_X, py, 38 * gz, 0.95 * dimK);
+    x.save(); x.fillStyle = css("ember"); x.beginPath(); x.arc(NOW_X, py, 5, 0, TAU); x.fill(); x.restore();
+    for (const v of ev) if (phi >= v.t && phi - v.t < 1.2) {
+      const k = Math.exp(-(phi - v.t) * 3.2);
+      glow(e, v.x, Y0 + (v.up ? -220 : 104) * 0.9, (v.up ? 110 : 60) * gz, (v.up ? 0.8 : 0.45) * k * dimK);
+    }
+    for (const v of ev) if (v.up && v.t > 0 && v.t <= 15 && phi >= v.t) {
+      // 标签右端离开 health_buckets 卡的左沿之后再亮，免得压在卡角上；英文比中文宽，按实测宽度算。
+      const str = tr("ch06.checkin"), f = FONT.cjk(30, 600), hw = K.measure(x, str, f) / 2;
+      const a = labA * prog(LEDGER.x - (v.x + hw), 10, 90) * (v.x > 90 ? 1 : 0);
+      text(x, str, v.x, Y0 - 236, { font: f, color: css("bone"), align: "center", alpha: a });
+    }
+    return py;
+  }
+
+  function ledgerBox(x, phi, a) {
+    if (a <= 0) return;
+    const { x: bx, y: by, w, h } = LEDGER;
+    box(x, bx, by, w, h, a);
+    text(x, "health_buckets", bx + 22, by + 44, { font: FONT.mono(28, 600), color: css("bone"), alpha: a, maxW: w - 44 });
+    [["lyjw.me", KNOCKS], ["Core", CHECKS]].forEach(([name, list], r) => {
+      const y = by + 92 + r * 46;
+      text(x, name, bx + 22, y + 9, { font: FONT.mono(28, 500), color: css("ash"), alpha: a });
+      const seen = list.filter((t) => t <= phi);
+      const n = seen.length;
+      // 最多 8 条：再多一条就贴上左边的「lyjw.me」。
+      for (let j = 0; j < Math.min(n, 8); j++) {
+        const t = seen[n - 1 - j];
+        const tx = bx + w - 26 - j * 13;
+        const k = prog(phi, t, t + 0.15);
+        fillRect(x, tx - 4, y - 12, 8, 22, css("bone"), a * (0.35 + 0.6 * k) * (1 - j / 10));
+      }
+    });
+  }
+  function siteBoxes(x, phi, a) {
+    if (a <= 0) return;
+    box(x, SITE.x, SITE.y, SITE.w, SITE.h, a);
+    text(x, "lyjw.me", SITE.x + 20, SITE.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
+    text(x, "site Worker", SITE.x + 20, SITE.y + 94, { font: FONT.mono(28, 500), color: css("ash"), alpha: a, maxW: SITE.w - 40 });
+    box(x, API.x, API.y, API.w, API.h, a);
+    text(x, "workers/core", API.x + 20, API.y + 46, { font: FONT.mono(32, 600), color: css("bone"), alpha: a });
+    text(x, tr("ch06.cron"), API.x + 20, API.y + 94, { font: FONT.cjk(28, 600), color: css("ash"), alpha: a });
+    // 计时圈压在「core」字底下方，方框加高到 124 才让圈顶和标题基线隔开 16 px；圈再往上就贴住字。
+    dial(x, API.x + API.w - 40, API.y + 84, 20, phi % 60, a, 0);
+  }
+  function signalLabels(x, a, footA) {
+    if (a <= 0) return;
+    const bone = css("bone"), ash = css("ash");
+    text(x, "↓ " + tr("ch06.knock"), NOW_X + 24, 372, { font: FONT.cjk(34, 600), color: bone, alpha: a });
+    text(x, "GET /api/version", NOW_X + 24, 414, { font: FONT.mono(28, 500), color: bone, alpha: a });
+    text(x, tr("ch06.knockSub"), NOW_X + 24, 454, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 1900 - NOW_X - 24 });
+    text(x, tr("ch06.knockOnly"), NOW_X + 24, 494, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 1900 - NOW_X - 24 });
+    text(x, "↑ " + tr("ch06.checkin") + (footA > 0.02 ? " *" : ""), API.x + API.w + 18, API.y + 40, { font: FONT.cjk(34, 600), color: bone, alpha: a });
+    text(x, tr("ch06.checkinSub"), API.x + API.w + 18, API.y + 80, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 1900 - API.x - API.w - 18 });
+    if (footA > 0) text(x, "* " + tr("ch06.foot"), SITE.x, 880, { font: FONT.cjk(36, 600), color: css("signalD"), alpha: footA, maxW: 760 });
+  }
+  function signalPaths(x, e, phi, a) {
+    if (a <= 0) return;
+    dashPath(x, KNOCK_PATH, 0.35 * a);
+    dashPath(x, [CHECK_PATH[0], CHECK_PATH[1]], 0.35 * a);
+    for (const t of KNOCKS) if (phi > t - 0.3 && phi < t + 0.3) dot(x, e, KNOCK_PATH, (phi - (t - 0.3)) / 0.6, a, 5);
+    for (const t of CHECKS) if (phi > t - 0.35 && phi < t + 0.35) dot(x, e, CHECK_PATH, (phi - (t - 0.35)) / 0.7, a, 7);
+  }
+
+  const lagPath = [[COL[0], COL[1] + COL_R], [LAGG[0], LAGG[1] - 40]];
+  const toCard = [[LAGG[0] + 70, LAGG[1]], [CARD.x - 10, LAGG[1]]];
+  const toLedger = [[COL[0] - COL_R, COL[1]], [LEDGER.x + LEDGER.w + 8, COL[1]]];
+  function collector(x, e, b, a) {
+    if (a <= 0) return;
+    const phi = b * 4;
+    const hot = impact(b, AT.fetch, 0.15);
+    dial(x, COL[0], COL[1], COL_R, phi % 60, a, hot);
+    text(x, tr("ch06.collector"), COL[0], COL[1] + COL_R + 44, { font: FONT.cjk(30, 600), color: css("bone"), align: "center", alpha: a });
+    text(x, tr("ch06.every5"), COL[0], COL[1] + COL_R + 82, { font: FONT.cjk(28, 600), color: css("ash"), align: "center", alpha: a });
+    glyph(x, "lag", LAGG[0], LAGG[1], css("bone"), 0.8, a);
+    text(x, "KV LAG", LAGG[0], LAGG[1] + 58, { font: FONT.mono(28, 500), color: css("ash"), align: "center", alpha: a });
+    dashPath(x, toLedger, 0.4 * a);
+    dashPath(x, [[COL[0], COL[1] + COL_R + 96], [LAGG[0], LAGG[1] - 36]], 0.4 * a);
+    dashPath(x, toCard, 0.4 * a);
+    const kGo = prog(b, AT.fetch, AT.fetch + 0.22, E.io), kBack = prog(b, AT.back, AT.back + 0.25, E.io);
+    if (b >= AT.fetch && b < AT.back + 0.3) {
+      const k = b < AT.back ? kGo : 1 - kBack;
+      const px = lerp(toLedger[0][0] - 60, toLedger[1][0] + 60, k);
+      x.save(); x.globalAlpha = a; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, COL[1], 9, 0, TAU); x.fill(); x.restore();
+      glow(e, px, COL[1], 34, 0.55 * a);
+      text(x, "SELECT", px, COL[1] - 30, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: a });
+    }
+    const dk = prog(b, AT.back + 0.25, AT.lit, E.io);
+    if (dk > 0 && dk < 1) dot(x, e, [[COL[0], COL[1] + COL_R + 96], [LAGG[0], LAGG[1] - 36], [LAGG[0] + 70, LAGG[1]], [CARD.x - 10, LAGG[1]]], dk, a, 7);
+  }
+  function card(d, b, a) {
+    if (a <= 0) return;
+    const { x: cx, y: cy, w, h } = CARD;
+    sheet(d, cx, cy, w, h, { alpha: a });
+    text(d, "LYJWPAGE", cx + 36, cy + 56, { font: FONT.mono(32, 700), alpha: a });
+    text(d, "/api/status/health", cx + w - 36, cy + 54, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: a });
+    line(d, cx + 30, cy + 78, cx + w - 30, cy + 78, 1.4, css("pink"), a);
+    const lit = prog(b, AT.lit, AT.lit + 0.1, E.outBack);
+    const cw = (w - 72 - (UPTIME_CELLS - 1) * 4) / UPTIME_CELLS;
+    ["lyjw.me", "Core"].forEach((name, r) => {
+      const top = cy + 122 + r * 136;
+      text(d, name, cx + 36, top, { font: FONT.sans(32, 600), alpha: a });
+      text(d, "Operational", cx + w - 36, top - 2, { font: FONT.sans(28, 500), color: css("graphite"), align: "right", alpha: a });
+      for (let i = 0; i < UPTIME_CELLS; i++) {
+        const x0 = cx + 36 + i * (cw + 4), y0 = top + 18;
+        const today = i === UPTIME_CELLS - 1;
+        const rk = prog(b, 4.1 + i * 0.012 + r * 0.05, 4.25 + i * 0.012 + r * 0.05);
+        if (!today) { fillRect(d, x0, y0, cw, 40, css("pink"), 0.26 * a * rk); continue; }
+        rect(d, x0, y0, cw, 40, 1.6, css("pink"), a * rk);
+        if (lit > 0) {
+          const s = lerp(1.25, 1, clamp(lit));
+          d.save(); d.translate(x0 + cw / 2, y0 + 20); d.scale(s, s);
+          fillRect(d, -cw / 2, -20, cw, 40, css("liveL"), a * clamp(lit * 1.5));
+          d.restore();
+        }
+      }
+      text(d, "30 days ago", cx + 36, top + 96, { font: FONT.mono(28, 500), color: css("graphite"), alpha: a });
+      text(d, "Today", cx + w - 36, top + 96, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: a });
+      line(d, cx + 250, top + 86, cx + w - 150, top + 86, 1, css("pink"), 0.3 * a);
+    });
+  }
+
+  const R = mulberry32(8080);
+  const WIN0 = 1;
+  const CODING = [];
+  for (let k = -16; k <= 3; k++) {
+    const from = 15 * k + WIN0;
+    const zero = k === -5 || k === -1 || k === -9 || k === -12;
+    const level = zero ? 0 : 1 + Math.floor(R() * 4);
+    const band = [];
+    if (!zero) for (let m = 0; m < 15;) { const len = 2 + Math.floor(R() * 5), v = R() < 0.25 ? 0 : 1 + Math.floor(R() * 3); band.push([from + m, from + Math.min(15, m + len), v]); m += len; }
+    CODING.push({ from, level, band, zero, prob: 0.35 + 0.55 * R() });
+  }
+  const TOKENS = [];
+  for (const w of CODING) for (let j = 0; j < 3; j++) TOKENS.push([w.from + j * 5, w.zero ? [0, 0, 0] : [R() * 0.6, R() * 0.35, R() * 0.25]]);
+  const LISTEN = [];
+  for (let t = -240; t < -130;) { const len = 3 + R() * 1.5; LISTEN.push([t, t + len, false]); t += len + 0.3; }
+  for (let t = -6; t < 22;) { const len = 3 + R() * 1.4; LISTEN.push([t, t + len, false]); t += len + 0.3; }
+  LISTEN.push([22, 60, true]);
+  const WATCH = [[-128, -84]];
+  const GAME = [[-78, -40, 1], [-40, -32, 0.5]];
+  const WORKOUT = [-62, -44];
+  const STEPS = [];
+  for (let t = -300; t < 60; t += 5) STEPS.push([t, t >= WORKOUT[0] && t < WORKOUT[1] ? 0.7 + 0.3 * R() : R() < 0.55 ? R() * 0.35 : 0]);
+  const tx = (phi, t) => NOW_X - (phi - t) * SC;
+  const ORDER = CODING.filter((w) => !w.zero && w.from + 15 + 2 <= AT.sweep0 * 4 && tx(AT.sweep0 * 4, w.from + 15) > 250);
+
+  function strata(x, e, d, b, a, focus) {
+    if (a <= 0) return;
+    const phi = b * 4;
+    const bone = css("bone"), ash = css("ash");
+    LANES.forEach((name, i) => {
+      const y = laneY(i);
+      x.save(); x.globalAlpha = a * (i % 2 ? 0.55 : 0.85); x.fillStyle = css("ink2"); x.fillRect(ST_X0, y, NOW_X - ST_X0, LANE_H); x.restore();
+      line(x, ST_X0, y, NOW_X, y, 1.2, bone, 0.28 * a);
+    });
+    line(x, ST_X0, ST_BOT, NOW_X, ST_BOT, 1.2, bone, 0.28 * a);
+    const clipL = ST_X0, clipR = NOW_X;
+    const seg = (i, t0, t1, h, alpha, color = bone) => {
+      const x0 = Math.max(clipL, tx(phi, t0)), x1 = Math.min(clipR, tx(phi, t1));
+      if (x1 <= x0) return;
+      fillRect(x, x0, laneY(i) + LANE_H - 12 - h, x1 - x0, h, color, alpha);
+    };
+    const dimOf = (i) => a * (i <= 1 ? 1 : 1 - focus);
+    for (const w of CODING) for (const [t0, t1, v] of w.band) if (v && t1 <= phi) seg(0, t0, Math.min(t1, phi), 12, dimOf(0) * [0, 0.3, 0.55, 0.85][v]);
+    for (const [t0, [m, c, u]] of TOKENS) {
+      if (t0 + 5 > phi) continue;
+      const x0 = tx(phi, t0) + 3, x1 = tx(phi, t0 + 5) - 3;
+      if (x1 < clipL || x0 > clipR) continue;
+      let y = laneY(1) + LANE_H - 8;
+      [[m, 0.85], [c, 0.55], [u, 0.3]].forEach(([v, al]) => { const hh = v * 52; fillRect(x, x0, y - hh, x1 - x0, hh, bone, dimOf(1) * al); y -= hh; });
+    }
+    for (const [t0, t1, hero] of LISTEN) {
+      if (t0 > phi) continue;
+      if (hero) {
+        const k = impact(b, AT.hero, 0.35);
+        seg(2, t0, Math.min(t1, phi), 30, dimOf(2) * (0.7 + 0.3 * k), css("signalD"));
+        if (k > 0.02) glow(e, (tx(phi, t0) + NOW_X) / 2, laneY(2) + LANE_H - 27, 90, 0.7 * k * a);
+      } else seg(2, t0, Math.min(t1, phi) - 0.25, 22, dimOf(2) * 0.6);
+    }
+    for (const [t0, t1] of WATCH) seg(3, t0, t1, 22, dimOf(3) * 0.6);
+    for (const [t0, t1, v] of GAME) seg(4, t0, t1, v > 0.9 ? 22 : 10, dimOf(4) * 0.6);
+    {
+      const pts = [];
+      for (let t = -300; t <= phi; t += 2) {
+        const u = t < -96 || t > 16 ? 0.04 : t < -88 ? 0.04 + (t + 96) / 8 * 0.96 : 0.04 + 0.96 * Math.exp(-(t + 88) / 34);
+        pts.push([tx(phi, t), laneY(5) + LANE_H - 10 - u * 44]);
+      }
+      strokePts(x, pts.filter(([u]) => u >= clipL && u <= clipR), 2.4, bone, dimOf(5) * 0.8);
+    }
+    for (const [t0, v] of STEPS) if (v > 0 && t0 + 5 <= phi) seg(6, t0 + 0.4, t0 + 4.6, v * 44, dimOf(6) * 0.6);
+    {
+      const x0 = tx(phi, WORKOUT[0]), x1 = tx(phi, WORKOUT[1]);
+      if (x1 > clipL && x0 < clipR) { line(x, x0, laneY(6) + 10, x1, laneY(6) + 10, 2, bone, dimOf(6) * 0.8); line(x, x0, laneY(6) + 4, x0, laneY(6) + 16, 2, bone, dimOf(6) * 0.8); line(x, x1, laneY(6) + 4, x1, laneY(6) + 16, 2, bone, dimOf(6) * 0.8); }
+    }
+    line(x, NOW_X, ST_TOP, NOW_X, ST_BOT, 2, bone, 0.6 * a);
+    const fk = phi - Math.floor(phi / 5) * 5;
+    const flash = Math.exp(-fk * 6);
+    fillRect(x, NOW_X - SC, ST_TOP, SC, ST_BOT - ST_TOP, css("signalD"), 0.55 * flash * a);
+    glow(e, NOW_X - 4, (ST_TOP + ST_BOT) / 2, 70, 0.25 * flash * a);
+    const drop = [[API.x + 40, API.y + API.h], [API.x + 40, ST_TOP - 20], [NOW_X - 4, ST_TOP - 20], [NOW_X - 4, ST_TOP]];
+    const da = a * (1 - focus);
+    dashPath(x, drop, 0.35 * da);
+    const dk = (phi + 0.55) % 5;
+    if (dk < 0.55) dot(x, e, drop, dk / 0.55, da, 5);
+  }
+  function laneLabels(x, cam, a, ta, focus) {
+    if (a <= 0) return;
+    const z = cam.zoom, wx = (sx) => cam.x + (sx - 960) / z;
+    x.save(); x.globalAlpha = 0.92 * a; x.fillStyle = css("ink"); x.fillRect(wx(0), ST_TOP - 70, wx(290) - wx(0), ST_BOT - ST_TOP + 90); x.restore();
+    line(x, wx(290), ST_TOP - 70, wx(290), ST_BOT + 20, 1.4 / z, css("bone"), 0.5 * a);
+    text(x, "Pulse", wx(40), ST_TOP - 22, { font: FONT.mono(34 / z, 600), color: css("bone"), alpha: ta });
+    LANES.forEach((name, i) => {
+      const hot = i <= 1 ? 1 : 1 - focus;
+      text(x, name, wx(40), laneY(i) + LANE_H / 2 + 11 / z, { font: FONT.mono(32 / z, 500), color: i <= 1 && focus > 0.5 ? css("bone") : css("ash"), alpha: ta * hot });
+    });
+  }
+  function strataNotes(x, b, a) {
+    if (a <= 0) return;
+    const bone = css("bone"), ash = css("ash");
+    glyph(x, "d1", NOW_X + 170, 1060, bone, 1, a);
+    text(x, "D1", NOW_X + 90, 1150, { font: FONT.mono(38, 600), color: bone, alpha: a });
+    text(x, "lyjwpage-history", NOW_X + 90, 1196, { font: FONT.mono(34, 500), color: ash, alpha: a });
+    text(x, tr("ch06.keep"), NOW_X + 90, 1250, { font: FONT.cjk(38, 600), color: css("signalD"), alpha: a });
+    text(x, tr("ch06.archive"), NOW_X - 50, ST_TOP - 32, { font: FONT.cjk(34, 600), color: bone, align: "right", alpha: a, maxW: 640 });
+    text(x, "← " + tr("ch06.older"), 20, ST_BOT + 64, { font: FONT.cjk(36, 600), color: ash, alpha: a, maxW: 1000 });
+  }
+
+  function coding(x, e, d, b, a, cam) {
+    if (a <= 0) return;
+    const phi = b * 4;
+    const bone = css("bone"), ash = css("ash");
+    const y0 = laneY(0), y1 = laneY(1);
+    const done = CODING.filter((w) => w.from + 15 + 2 <= phi && tx(phi, w.from + 15) > 250);
+    // Clef 框和 lyjw.me 卡片在世界坐标里叠在一起，镜头拉远、卡片淡入之前就得收掉。
+    const sa = a * (1 - prog(b, 9.75, 9.9));
+    box(x, SCORER.x, SCORER.y, SCORER.w, SCORER.h, sa);
+    text(x, "Clef", SCORER.x + 16, SCORER.y + 38, { font: FONT.mono(28, 600), color: bone, alpha: sa });
+    text(x, tr("ch06.jevNote"), SCORER.x + 90, SCORER.y + 36, { font: FONT.cjk(21, 600), color: ash, alpha: sa, maxW: SCORER.w - 100 });
+    text(x, tr("ch06.jevKeep"), SCORER.x, SCORER.y - 16, { font: FONT.cjk(21, 600), color: ash, alpha: sa, maxW: 540 });
+    for (const w of CODING) {
+      const x0 = tx(phi, w.from), x1 = tx(phi, w.from + 15);
+      if (x1 < 200 || x0 > NOW_X) continue;
+      const closed = w.from + 15 + 2 <= phi;
+      x.save(); x.globalAlpha = a; x.strokeStyle = bone; x.lineWidth = 1.6; if (!closed) x.setLineDash([6, 6]);
+      x.strokeRect(x0 + 2, y0 + 3, Math.min(x1, NOW_X) - x0 - 4, LANE_H - 6); x.restore();
+      for (let j = 1; j < 3; j++) { const u = tx(phi, w.from + j * 5); if (u < NOW_X) line(x, u, y0 + LANE_H - 16, u, y0 + LANE_H - 4, 1.2, bone, 0.6 * a); }
+      if (!closed) continue;
+      let k = 0;
+      if (w.zero) k = prog(b, AT.zero, AT.zero + 0.1);
+      else {
+        const idx = ORDER.indexOf(w);
+        const t0 = AT.sweep0 + idx * AT.sweepStep;
+        k = prog(b, t0 + 0.06, t0 + 0.12, E.out);
+        const ask = win(b, t0 - 0.02, t0, t0 + 0.1, t0 + 0.16);
+        if (ask > 0) {
+          const cx = (x0 + x1) / 2;
+          dashPath(x, [[SCORER.x + SCORER.w / 2, SCORER.y + SCORER.h], [cx, y0 - 4]], 0.9 * ask, css("signalD"), [5, 5], 2);
+          glow(e, cx, y0 + 10, 60, 0.5 * ask);
+        }
+      }
+      if (k <= 0) continue;
+      const hh = w.zero ? 0 : 8 + w.level * 10;
+      const yb = y0 + LANE_H - 20, lx0 = x0 + 12, lw = x1 - x0 - 24;
+      const fresh = w.zero ? 0 : impact(b, AT.sweep0 + ORDER.indexOf(w) * AT.sweepStep + 0.08, 0.25);
+      if (!w.zero) fillRect(x, lx0, yb - hh * k, lw, hh * k, bone, 0.16 * a);
+      fillRect(x, lx0, yb - hh * k - 2, lw, 4, fresh > 0.05 ? css("signalD") : bone, a * (w.zero ? 0.7 : 0.9));
+      if (fresh > 0.05) glow(e, (x0 + x1) / 2, yb - hh * k, 50, 0.5 * fresh * a);
+      if (w.zero) text(x, "0", (x0 + x1) / 2, y0 + 34, { font: FONT.mono(24, 600), color: ash, align: "center", alpha: a * k });
+    }
+    const zw = done.filter((w) => w.zero).pop();
+    if (zw) {
+      const za = prog(b, AT.zero, AT.zero + 0.15) * a;
+      const cx = (tx(phi, zw.from) + tx(phi, zw.from + 15)) / 2;
+      K.leader(x, cx, y0 + 4, tr("ch06.skip"), -30, -56, { font: FONT.cjk(22, 600), color: bone, alpha: za, dot: 4 });
+    }
+    const lx = cam.x + (310 - 960) / cam.zoom;
+    text(x, tr("ch06.sources"), lx, laneY(2) + 30, { font: FONT.cjk(21, 600), color: bone, alpha: a });
+    const wn = tr("ch06.window"), wf = FONT.cjk(21, 600);
+    fillRect(x, lx - 8, ST_TOP - 42, K.measure(x, wn, wf) + 16, 34, css("ink"), a);
+    text(x, wn, lx, ST_TOP - 16, { font: wf, color: ash, alpha: a });
   }
 
   function title(x, b) {
-    const a = prog(b, 0.3, 0.7) * (1 - prog(b, 1.32, 1.46));
+    const a = prog(b, 0.45, 0.95, E.out) * (1 - prog(b, 3.8, 4.0));
     if (a <= 0) return;
-    text(x, "06", -100, 170, { font: FONT.pixel(180), color: css("signal"), alpha: a });
-    text(x, tr("ch06.title"), 200, 150, { font: FONT.cjk(94, 600), reveal: prog(b, 0.35, 0.9), alpha: a, maxW: 700 });
-    text(x, "lyjw.me · lyjw131.com", 204, 222, { font: FONT.mono(46), color: css("graphite"), reveal: prog(b, 0.5, 1.0), alpha: a });
-    line(x, -100, 262, lerp(-100, 900, prog(b, 0.4, 1.0, E.outExpo)), 262, 2.4, css("pink"), a);
-    const la = prog(b, 0.65, 0.9) * (1 - prog(b, 1.32, 1.46));
-    line(x, -100, 340, -10, 340, LW, css("pink"), la);
-    text(x, "lyjw.me", 14, 356, { font: FONT.mono(46, 500), alpha: la });
-    line(x, -100, 420, -10, 420, LW, css("signal"), la);
-    text(x, "lyjw131.com", 14, 436, { font: FONT.mono(46, 500), color: css("signal"), alpha: la });
-  }
-
-  function lines(x, b) {
-    const cam = camAt(b);
-    const reach = b < 7.0 ? L[0] : lerp(L[0], cam[0] + 960 / cam[2] + 250, prog(b, 7.0, 7.5, E.out));
-    const lw = lerp(4, LW, prog(b, 0.05, 0.5, E.io));
-    line(x, O[0], ME_Y, reach, ME_Y, lw, css("pink"));
-    const ck = prog(b, 0.3, 0.9, E.io);
-    polyline(x, CN_PATH, ck, LW, css("signal"));
-    if (reach > C[0]) line(x, C[0], CN_Y, reach, CN_Y, LW, css("signal"));
-    polyline(x, [[SPUR_X, ME_Y], [SPUR_X, R2[1] + 20]], prog(b, 0.6, 0.85), 6, css("pink"));
-  }
-
-  function stations(x, b) {
-    station(x, O[0], O[1], prog(b, 0.35, 0.5), { r: 30, lw: 7 });
-    station(x, ESA[0], ESA[1], prog(b, 0.6, 0.72));
-    station(x, L[0], L[1], prog(b, 0.5, 0.62));
-    station(x, C[0], C[1], prog(b, 0.8, 0.92));
-    station(x, R2[0], R2[1], prog(b, 0.72, 0.84), { r: 16, lw: 5 });
-    const la = (t0) => prog(b, t0, t0 + 0.15);
-    text(x, "site Worker", O[0] - 50, O[1] + 16, { font: FONT.mono(46, 600), align: "right", alpha: la(0.45) });
-    text(x, tr("ch06.origin"), O[0] - 50, O[1] + 66, { font: FONT.cjk(40, 600), color: css("graphite"), align: "right", alpha: la(0.5) });
-    text(x, tr("ch06.esa"), ESA[0] - 34, ESA[1] - 34, { font: FONT.mono(46, 600), align: "right", alpha: la(0.66), maxW: 560 });
-    text(x, "lyjw.me", L[0] - 40, L[1] + 72, { font: FONT.mono(46, 600), align: "right", alpha: la(0.56) });
-    text(x, tr("ch06.visitors"), L[0] - 40, L[1] + 120, { font: FONT.cjk(40, 600), color: css("graphite"), align: "right", alpha: la(0.6) });
-    text(x, "lyjw131.com", C[0] - 40, C[1] + 72, { font: FONT.mono(46, 600), color: css("signal"), align: "right", alpha: la(0.86) });
-    text(x, tr("ch06.mainland"), C[0] - 40, C[1] + 120, { font: FONT.cjk(40, 600), color: css("graphite"), align: "right", alpha: la(0.9) });
-    text(x, "R2", R2[0] + 36, R2[1] + 16, { font: FONT.mono(46, 600), alpha: la(0.78) });
-    text(x, tr("ch06.images"), R2[0] + 104, R2[1] + 16, { font: FONT.cjk(40, 600), color: css("graphite"), alpha: la(0.82) });
-  }
-
-  function esaBeat(x, e, b) {
-    const a = win(b, 1.55, 1.7, 3.85, 4.0);
-    if (a <= 0) return;
-    const [cx, cy] = CLK;
-    line(x, cx, CN_Y + LW / 2, cx, cy - CLK_R, 2, css("pink"), a);
-    const fillK = b < 3.5 ? prog(b, 1.75, 2.5) : 0;
-    const expired = b >= 2.5 && b < 3.5;
-    x.save(); x.globalAlpha = a;
-    x.fillStyle = css("paper"); x.strokeStyle = expired ? css("signal") : css("pink"); x.lineWidth = 4;
-    x.beginPath(); x.arc(cx, cy, CLK_R, 0, Math.PI * 2); x.fill(); x.stroke();
-    for (let i = 0; i < 10; i++) { const an = -Math.PI / 2 + (i / 10) * Math.PI * 2; line(x, cx + Math.cos(an) * (CLK_R - 14), cy + Math.sin(an) * (CLK_R - 14), cx + Math.cos(an) * (CLK_R - 4), cy + Math.sin(an) * (CLK_R - 4), i % 5 ? 2 : 4, css("pink")); }
-    if (fillK > 0) { x.globalAlpha = a * 0.28; x.fillStyle = css("signal"); x.beginPath(); x.moveTo(cx, cy); x.arc(cx, cy, CLK_R - 18, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fillK); x.closePath(); x.fill(); }
-    x.globalAlpha = a;
-    const hand = -Math.PI / 2 + Math.PI * 2 * fillK;
-    line(x, cx, cy, cx + Math.cos(hand) * (CLK_R - 20), cy + Math.sin(hand) * (CLK_R - 20), 4, expired ? css("signal") : css("pink"), a);
-    x.restore();
-    if (expired) glow(e, cx, cy, 170, 0.35 * impact(b, 2.5, 0.25));
-    text(x, "max-age=300", cx + 110, cy + 44, { font: FONT.mono(30), color: css("graphite"), alpha: a * prog(b, 1.65, 1.8) });
-    text(x, "stale-while-revalidate=86400", cx + 110, cy + 88, { font: FONT.mono(30), color: css("graphite"), alpha: a * prog(b, 1.7, 1.85) });
-    text(x, tr("ch06.stale"), cx + 110, cy - 14, { font: FONT.cjk(38, 600), color: css("signal"), reveal: prog(b, 2.5, 2.95), alpha: a, maxW: 720 });
-    const fresh = b >= 3.5;
-    pageIcon(x, ESA[0], ESA[1] + 90, fresh ? css("signal") : css("pink"), a * (b > 2.95 && b < 3.45 ? 0.35 : 1));
-    if (b >= 2.5 && b < 3.0) {
-      const k = prog(b, 2.5, 2.9, E.io);
-      pageIcon(x, lerp(ESA[0] + 60, C[0] - 90, k), CN_Y - 60, css("graphite"), a * (1 - prog(k, 0.85, 1)), 0.8);
-      const back = [ESA, [700, CN_Y], O];
-      const d = prog(b, 2.5, 2.9, E.in) * pathLen(back);
-      x.save(); x.setLineDash([12, 10]);
-      polyline(x, back, prog(b, 2.5, 2.9, E.in), 4, css("pink"), a);
-      x.restore();
-      spark(e, null, pathAt(back, d), null, { t: G.t, size: 0.55 });
-    }
-    if (b >= 2.95 && b < 3.5) {
-      const k = prog(b, 2.95, 3.45, E.io), fwd = [[O[0] + 60, O[1] + 90], [760, CN_Y + 62], [ESA[0], CN_Y + 62], [ESA[0], CN_Y + 90]];
-      pageIcon(x, ...pathAt(fwd, k * pathLen(fwd)), css("signal"), a, 0.8);
-    }
-  }
-
-  function imgBeat(x, d, s, e, b) {
-    const a = win(b, 4.1, 4.25, 6.85, 7.0);
-    if (a <= 0) return;
-    const { x: px, y: py, w, h } = CARD;
-    const pop = E.outBack(prog(b, 4.1, 4.28));
-    d.save(); d.globalAlpha = a; d.translate(px + w / 2, py + h / 2); d.scale(lerp(0.8, 1, pop), lerp(0.8, 1, pop)); d.translate(-px - w / 2, -py - h / 2);
-    d.shadowColor = "rgba(0,0,0,0.3)"; d.shadowBlur = 18; d.shadowOffsetY = 8;
-    d.fillStyle = css("paper"); d.fillRect(px, py, w, h);
-    d.shadowColor = "transparent";
-    d.strokeStyle = css("pink"); d.lineWidth = 2.4; d.strokeRect(px, py, w, h);
-    d.strokeStyle = css("signal"); d.lineWidth = 1.2; d.globalAlpha = a * 0.5;
-    for (let j = 0; j < 4; j++) { d.beginPath(); d.moveTo(px + 24, py + 226 + j * 70); d.lineTo(px + w - 24, py + 226 + j * 70); d.stroke(); }
-    d.restore();
-    text(d, tr("ch06.card"), px + 36, py + 66, { font: FONT.cjk(46, 600), alpha: a });
-    text(d, tr("ch06.poster"), px + w - 36, py + 64, { font: FONT.cjk(38, 600), color: css("graphite"), align: "right", alpha: a });
-    line(d, px + 28, py + 92, px + w - 28, py + 92, 2, css("pink"), a);
-    text(d, tr("ch06.callno"), px + 36, py + 148, { font: FONT.cjk(36, 600), color: css("graphite"), alpha: a });
-    text(d, callNo(KEY_OLD), px + 36, py + 206, { font: FONT.mono(38, 500), alpha: a, reveal: prog(b, 4.2, 4.7), perChar: true });
-    const nk = prog(b, 5.5, 5.62);
-    if (nk > 0) {
-      text(d, tr("ch06.changed"), px + 36, py + 290, { font: FONT.cjk(36, 600), color: css("graphite"), alpha: a * nk });
-      text(d, callNo(KEY_NEW), px + 36, py + 346, { font: FONT.mono(38, 500), color: css("signal"), alpha: a, reveal: prog(b, 5.55, 6.0), perChar: true });
-    }
-    text(d, "max-age=31536000, immutable", px + 36, py + h - 34, { font: FONT.mono(34), color: css("graphite"), alpha: a * prog(b, 4.6, 4.75) });
-    stamp(s, "immutable", px + w - 128, py + 250, { k: prog(b, 6.0, 6.12), px: 50, rot: -0.12, sub: tr("ch06.noPurge"), subPx: 36, alpha: a });
-    text(d, tr("ch06.apple"), px - 20, 1012, { font: FONT.cjk(34, 600), color: css("graphite"), reveal: prog(b, 6.15, 6.6), alpha: a, maxW: 1000 });
-    const lab = chipNo(KEY_OLD);
-    const kA = prog(b, 4.75, 5.12, E.io), kUp = prog(b, 5.12, 5.3, E.in);
-    if (kA > 0 && kA < 1) chip(d, lab, lerp(L[0], SPUR_X + 200, kA), ME_Y - 50, false, 1);
-    if (kA >= 1 && kUp < 1) spark(e, d, [SPUR_X, lerp(ME_Y, R2[1] + 24, kUp)], [[SPUR_X, ME_Y], [SPUR_X, lerp(ME_Y, R2[1] + 24, kUp)]], { t: G.t, size: 0.6, lw: 3 });
-    const kB = prog(b, 4.875, 5.3, E.io);
-    if (kB > 0) {
-      chip(d, lab, lerp(C[0] - 150, ESA[0] + 210, kB), CN_Y - 50, true, a);
-    }
-    const ra = prog(b, 5.0, 5.2) * a;
-    text(d, tr("ch06.r2"), SPUR_X - 28, 470, { font: FONT.cjk(36, 600), align: "right", alpha: ra });
-    text(d, "/img/*", SPUR_X - 28, 420, { font: FONT.mono(36, 500), color: css("graphite"), align: "right", alpha: ra });
-    if (kUp >= 1) glow(e, R2[0], R2[1], 110, 0.5 * impact(b, 5.3, 0.3));
-    text(d, tr("ch06.esaImg"), ESA[0] + 210, CN_Y + 72, { font: FONT.cjk(36, 600), color: css("signal"), align: "center", alpha: prog(b, 5.25, 5.45) * a, maxW: 560 });
+    const bone = css("bone");
+    text(x, "06", 110, 196, { font: FONT.pixel(112), color: css("signalD"), alpha: a });
+    text(x, tr("ch06.title"), 290, 176, { font: FONT.cjk(58, 600), color: bone, reveal: prog(b, 0.5, 1.0), alpha: a });
+    text(x, "collector · workers/core · D1", 292, 226, { font: FONT.mono(28), color: css("ash"), reveal: prog(b, 0.6, 1.1), alpha: a });
+    line(x, 110, 262, 110 + 900 * prog(b, 0.55, 1.2, E.outExpo), 262, 1.4, bone, 0.6 * a);
   }
 
   function render(f) {
     BARs = f.BAR;
-    const b = f.bar;
+    const b = f.bar, phi = b * 4;
     const { cam, blur, zoomBlur } = K.camera(CAM, b, f.BAR);
-    const hitS = impact(b, 6.0);
-    cam.zoom *= 1 + 0.015 * hitS;
+    const hitS = Math.max(impact(b, AT.lit, 0.12), impact(b, 0, 0.1) * 0.6);
+    cam.zoom *= 1 + 0.012 * hitS;
     G.setCam(cam);
-    G.fill(plate, { uGridA: 1, uPlate: [-600, -300, 9000, 2400] });
+    G.fill(plate, { uGridA: prog(b, 0.1, 0.8), uPlate: PLATE_RECT });
 
     const x = ink.begin(); ink.cam(cam);
-    const d = paper.begin(); paper.cam(cam);
     const e = emit.begin(); emit.cam(cam);
-    const s = stampL.begin(); stampL.cam(cam);
+    const d = paper.begin(); paper.cam(cam);
     const tp = top.begin(); top.cam(cam);
 
+    const outA = 1 - prog(b, 11.35, 11.85);
+    const labA = prog(b, 0.55, 0.95) * outA * (1 - win(b, 7.85, 8.05, 9.9, 10.1));
     title(x, b);
-    lines(x, b);
-    stations(x, b);
-    esaBeat(x, e, b);
-    imgBeat(x, d, s, e, b);
+    ecg(x, e, b, cam, labA * (1 - prog(b, 3.9, 4.0)), 1 - 0.65 * win(b, 6.0, 6.4, 10.6, 11.3));
+    ledgerBox(x, phi, labA);
+    siteBoxes(x, phi, labA);
+    signalPaths(x, e, phi, labA);
+    // 上一幕的标签淡完，KV LAG 这一幕才进：「只说明 site Worker 还在出页面」那行（英文更长）伸到了 KV LAG 图标底下。
+    signalLabels(x, win(b, 0.6, 0.95, 3.76, 3.88), win(b, 2.5, 2.7, 3.76, 3.88));
+    const bA = win(b, 3.88, 4.1, 5.95, 6.2);
+    collector(x, e, b, bA);
+    card(d, b, bA);
+    const sA = prog(b, 5.9, 6.2) * (1 - prog(b, 11.2, 11.7));
+    const focus = win(b, 7.9, 8.1, 9.9, 10.1);
+    strata(x, e, d, b, sA, focus);
+    strataNotes(x, b, win(b, 6.1, 6.4, 7.85, 8.0));
+    // 等上一幕的 lyjw.me、core 方框淡完再进：Clef 框和它们在世界坐标里叠在一起。
+    coding(x, e, d, b, win(b, 8.05, 8.2, 9.9, 10.05), cam);
+    // 字要先于垫底淡出：垫底一变透明，下面的条就露出来，字还在就压在条上。
+    laneLabels(x, cam, sA * (1 - prog(b, 9.95, 10.15)), sA * (1 - prog(b, 9.82, 9.94)), focus);
+    nar(x, "ch06.n1a", 110, 944, prog(b, 1.0, 1.6), win(b, 1.0, 1.1, 3.8, 3.95));
+    nar(x, "ch06.n1b", 110, 1024, prog(b, 1.6, 2.4), win(b, 1.0, 1.1, 3.8, 3.95));
+    const at = (sx, sy, c) => [c[0] + (sx - 960) / c[2], c[1] + (sy - 540) / c[2]];
+    { const [nx, ny] = at(110, 944, B), [, ny2] = at(110, 1024, B);
+      nar(x, "ch06.n2a", nx, ny, prog(b, 4.1, 4.6), win(b, 4.05, 4.15, 5.85, 5.98));
+      nar(x, "ch06.n2b", nx, ny2, prog(b, 4.6, 5.3), win(b, 4.05, 4.15, 5.85, 5.98)); }
+    { const s = 1 / C[2], [nx, ny] = at(110, 944, C), [, ny2] = at(110, 1024, C);
+      nar(x, "ch06.n3a", nx, ny, prog(b, 6.35, 6.9), win(b, 6.3, 6.4, 7.85, 7.98), 60 * s, 1040 * s);
+      nar(x, "ch06.n3b", nx, ny2, prog(b, 6.9, 7.5), win(b, 6.3, 6.4, 7.85, 7.98), 60 * s, 1040 * s); }
+    { const s = 1 / D[2], [nx, ny] = at(110, 944, D), [, ny2] = at(110, 1024, D);
+      nar(x, "ch06.n4a", nx, ny, prog(b, 8.1, 8.6), win(b, 8.05, 8.15, 9.85, 9.98), 60 * s, 1040 * s);
+      nar(x, "ch06.n4b", nx, ny2, prog(b, 8.6, 9.2), win(b, 8.05, 8.15, 9.85, 9.98), 60 * s, 1040 * s); }
+    const cIn = prog(b, AT.clawd - 0.2, AT.clawd), cOut = prog(b, 11.45, 11.7);
+    if (cIn > 0 && cOut < 1) {
+      const rise = E.outBack(cIn) * (1 - E.in(cOut));
+      const cx = 760, base = ST_TOP + 4;
+      tp.save(); tp.beginPath(); tp.rect(cx - 200, base - 260, 400, 260); tp.clip();
+      clawd(tp, cx, base + (1 - rise) * 90, 6, { pose: cIn < 1 ? "arms-up" : "default" });
+      tp.restore();
+      bubble(tp, tr("ch06.clawd"), cx - 70, base - 110, { px: 34, k: prog(b, AT.clawd + 0.1, AT.clawd + 0.25) * (1 - prog(b, 11.35, 11.45)), reveal: prog(b, AT.clawd + 0.15, 10.9), tail: "right" });
+    }
 
-    nar(d, "ch06.n1a", 650, 1290, prog(b, 1.6, 2.1), win(b, 1.6, 1.7, 3.8, 3.95), 60, 1040);
-    nar(d, "ch06.n1b", 650, 1375, prog(b, 2.1, 2.75), win(b, 1.6, 1.7, 3.8, 3.95), 60, 1040);
-    nar(d, "ch06.n2a", 460, 1030, prog(b, 4.15, 4.7), win(b, 4.15, 4.25, 6.8, 6.95), 71, 1224);
-    nar(d, "ch06.n2b", 460, 1115, prog(b, 4.7, 5.6), win(b, 4.15, 4.25, 6.8, 6.95), 71, 1224);
-
-    G.composite(ink.upload(), { mode: G.MODE.ink, seed: 8.3 });
+    G.composite(ink.upload(), { mode: G.MODE.ink, seed: 6.7 });
+    G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.5 });
     G.composite(paper.upload(), { mode: G.MODE.paper });
-    G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.4 });
-    G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 1.7 });
     G.composite(top.upload(), { mode: G.MODE.normal });
 
     const sh = hitS * 6;
     f.post = {
-      bloom: 0.55, threshold: 0.95, halation: 0.18, grain: 0.042, vignette: 0.26, ca: 0.35,
+      bloom: 0.7, threshold: 0.9, halation: 0.28, grain: 0.05, vignette: 0.42, ca: 0.4,
       shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
       blur, zoomBlur,
     };
   }
 
   window.CHAPTERS.push({
-    id: "ch06", title: "ch.06", bars: 9,
-    init() { plate = G.pass(K.PLATE.paper); ink = G.layer("ink"); paper = G.layer("paper"); emit = G.layer("emit", 0.5); stampL = G.layer("stamp"); top = G.layer("top"); },
+    id: "ch06", title: "ch.06", bars: 12,
+    init() { plate = G.pass(K.PLATE.ink); ink = G.layer("ink"); emit = G.layer("emit", 0.5); paper = G.layer("paper"); top = G.layer("top"); },
     render,
   });
 })();

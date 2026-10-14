@@ -54,7 +54,7 @@
         kick: "X.......X.......", kickKind: "light", duck: 0.45,
         clock: "X...x...x...x...", clockVol: 0.95,
         bass: "offbeat", bassVol: 1, arp: { p: "queue", lo: 57, inst: "pluckDark", v: 0.32 }, pad: 0.8, lp: 2100, padVerb: 0.34 },
-      { from: 34, to: 34, id: "field-launch", name: "甩回 Mac：那封信亮起、飞出画面；收在 A7sus4 上，给第 02 章 0:0 的主题让路", energy: 0.35,
+      { from: 34, to: 34, id: "field-launch", name: "甩回 Mac：那封信亮起，Clawd 落在旁边（34:0.32 hop）、34:2.64 跳上去，骑着它飞出画面；收在 A7sus4 上，给第 02 章 0:0 的主题让路", energy: 0.35,
         kick: "X...............", kickKind: "light", duck: 0.4, bass: "hold", pad: 0.9, lp: 1800, padVerb: 0.45 },
     ],
     melody: [
@@ -93,7 +93,9 @@
       { bar: 32, beat: 0, kind: "lamp", m: midi("A5"), i: 0 },
       { bar: 32, beat: 2, kind: "accent", what: "flip" },
       { bar: 34, beat: 0, kind: "lamp", m: midi("D6"), i: 1 },
+      { bar: 34, beat: 0.32, kind: "hop", m: midi("A5"), v: 0.7, pan: 0.15 },
       { bar: 34, beat: 1, kind: "whoosh", tube: 3 },
+      { bar: 34, beat: 2.64, kind: "hop", m: midi("E6"), pan: 0.1 },
       { bar: 34, beat: 3, kind: "swell" },
     ],
   }),

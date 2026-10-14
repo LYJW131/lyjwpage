@@ -43,7 +43,7 @@
       { bar: 5, beat: 2, kind: "accent", what: "slip" },
       { bar: 6, beat: 0, kind: "stamp", size: "mid" }, { bar: 6, beat: 2, kind: "stamp", size: "mid" }, { bar: 7, beat: 0, kind: "stamp", size: "mid" },
       { bar: 7, beat: 2, kind: "accent", what: "slip" },
-      ...["A5", "C6", "D6", "E6", "G6", "A6", "C7"].map((n, i) => ({ bar: 8, beat: i * 0.5, kind: "tick", m: midi(n), i })),
+      ...["A5", "C6", "D6", "E6", "G6", "A6"].map((n, i) => ({ bar: 8, beat: i * 0.5, kind: "tick", m: midi(n), i })),
       { bar: 9, beat: 2, kind: "whoosh", tube: 2 },
       { bar: 10, beat: 0, kind: "stamp", size: "big" },
       { bar: 11, beat: 3, kind: "swell" },

@@ -1,42 +1,54 @@
 (window.SCORE_PARTS = window.SCORE_PARTS || []).push({
   id: "ch06",
-  tone: { bell: "bright", pluckPan: 0.35, snareVerb: 0.2 },
+  tone: { bell: "warm", pluckPan: -0.2, snareVerb: 0.16 },
   chords: {
-    Em9: ["E3", "B3", "D4", "F#4", "G4"],
-    A6: ["A3", "C#4", "E4", "F#4"],
-    Gmaj7: ["G3", "B3", "D4", "F#4"],
-    D69: ["D3", "A3", "E4", "F#4", "B4"],
-    Bm7: ["B2", "F#3", "A3", "D4"],
+    Dm11: ["D3", "A3", "C4", "F4", "G4"],
+    Bbmaj9: ["Bb2", "F3", "A3", "C4", "D4"],
   },
-  score: ({ withNotes, phrase, midi }) => ({
-    harm: [
-      "Em9", "A6", "Gmaj7", "D69", "Em9", "A6", [["Bm7", 0], ["D69", 2]],
-      "Gmaj7", [["D69", 0], ["A7sus4", 2]],
-    ],
-    sections: [
-      { from: 0, to: 0, id: "lines-open", name: "硬切纸面、转调：一条线变成地铁图，声场铺开", energy: 0.4,
-        ghost: [1, 0.2, 0.22], bass: "hold", arp: { p: "sparse", lo: 64, inst: "bell", v: 0.32 }, pad: 1, lp: 2600, padVerb: 0.5 },
-      { from: 1, to: 3, id: "lines-esa", name: "ESA 站：5 分钟的钟每拍走一格，过期先给旧页、后台回源", energy: 0.5,
-        kick: "X.......x.......", duck: 0.45, hat: "..x...x...x...x.", hatKind: "flip",
-        clock: "o...o...o...o...", clockVol: 0.8, bass: "light", arp: { p: "sparse", lo: 64, inst: "pluck", v: 0.45 }, pad: 0.85, lp: 2400, padVerb: 0.42 },
-      { from: 4, to: 6, id: "lines-img", name: "借书卡：打字机敲出索书号，同一个路径在两条线上各走各的", energy: 0.62,
-        kick: "X.......X.x.....", duck: 0.5, snare: "....x.......x...", snareKind: "rim",
-        hat: "o.x.o.x.o.x.o.x.", hatKind: "type", hatVol: 0.8,
-        bass: "groove", arp: { p: "332", lo: 64, inst: "pluck", v: 0.42 }, pad: 0.75, lp: 2800, padVerb: 0.38 },
-      { from: 7, to: 8, id: "lines-extend", name: "两条线往右延伸、镜头横移，收在 A7sus4 上交给第 07 章", energy: 0.45,
-        kick: ["X.......X.......", "X..............."], duck: 0.45, bass: "hold",
-        arp: { p: "sparse", lo: 64, inst: "bell", v: 0.3 }, pad: 0.9, lp: 2400, padVerb: 0.45 },
-    ],
-    melody: [
-      [0, 0, 4, "E5", "bell", 0.7, false], [0, 0, 4, "B5", "bell2", 0.45, false],
-      ...phrase(7, withNotes(["F#5", "E5", "D5", "B4"]), "pluck", 0.4),
-    ],
-    story: [
-      { bar: 0, beat: 0, kind: "boom" },
-      { bar: 2, beat: 2, kind: "tick", m: midi("E6"), i: 2 },
-      { bar: 3, beat: 2, kind: "accent", what: "slip" },
-      { bar: 4, beat: 3, kind: "whoosh", tube: 0 }, { bar: 4, beat: 3.5, kind: "whoosh", tube: 3 },
-      { bar: 6, beat: 0, kind: "stamp", size: "mid" },
-    ],
-  }),
+  score: ({ withNotes, phrase, midi }) => {
+    const checks = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45].map((phi) => ({
+      bar: Math.floor(phi / 4), beat: phi % 4, kind: "ping", m: midi("D3"), late: phi >= 24 && phi < 40,
+    }));
+    return {
+      harm: [
+        "Dm9", "Bbmaj7", "Gm9", [["A7sus4", 0], ["A7", 2]],
+        "Fmaj7", "C69",
+        "Dm11", "Bbmaj9", "Gm9", [["Em7b5", 0], ["A7", 2]],
+        "Dm9", [["Bbmaj7", 0], ["A7sus4", 2]],
+      ],
+      sections: [
+        { from: 0, to: 3, id: "ecg-line", name: "心电图：心跳每拍一下，敲门在后半拍，报到每 5 拍一声低音", energy: 0.55,
+          kick: "Xx..Xx..Xx..Xx..", kickKind: "heart", duck: 0.4, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 1,
+          bass: "light", pad: 0.8, lp: 2200, padVerb: 0.32 },
+        { from: 4, to: 5, id: "ecg-results", name: "结果取回来：5:0 令牌出门，5:2 今天那一格亮", energy: 0.5,
+          kick: "Xx......Xx......", kickKind: "heart", duck: 0.35, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.8,
+          bass: "half", arp: { p: "sparse", lo: 69, inst: "bell2", v: 0.28 }, pad: 0.85, lp: 2600, padVerb: 0.34 },
+        { from: 6, to: 7, id: "strata-sink", name: "沉进地层：敲门变闷，报到那一拍压进一片；7:0 这首歌亮一下，低音马林巴唱主题", energy: 0.32,
+          kick: "X.......X.......", kickKind: "heart", duck: 0.35, clock: "..o...o...o...o.", clockKind: "knockFar", clockVol: 0.5,
+          hat: ["....x...........", "........x......."], hatKind: "flip", hatVol: 0.5, bass: "hold", bassVol: 0.85, pad: 1, lp: 950, padVerb: 0.5 },
+        { from: 8, to: 9, id: "strata-coding", name: "Coding 一窗一窗交给 Clef：全零的一声闷拨弦，打分的一声小铃", energy: 0.4,
+          kick: "X.......X.......", kickKind: "heart", duck: 0.35, clock: "..o...o...o...o.", clockKind: "knockFar", clockVol: 0.5,
+          hat: ["............x...", null], hatKind: "flip", hatVol: 0.45, bass: "hold", bassVol: 0.8, pad: 0.9, lp: 1300, padVerb: 0.45 },
+        { from: 10, to: 10, id: "strata-clawd", name: "Clawd 冒出来说收尾那句", energy: 0.42,
+          kick: "Xx......Xx......", kickKind: "heart", duck: 0.35, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.75,
+          bass: "light", pad: 0.85, lp: 1800, padVerb: 0.38 },
+        { from: 11, to: 11, id: "strata-rise", name: "升回地面：心跳回到每拍，收在 A7sus4 交给第 07 章（对话）", energy: 0.5,
+          kick: "Xx..Xx..Xx..Xx..", kickKind: "heart", duck: 0.4, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.9,
+          bass: "light", pad: 0.8, lp: 2200, padVerb: 0.34 },
+      ],
+      melody: [
+        ...phrase(7, withNotes(["A3", "D4", "F4", "E4"]), "marimba", 1, true),
+        ...phrase(7, withNotes(["D3", "F3", "A3", "G3"]), "pluckDark", 0.35),
+        [8, 1, 1.5, "D3", "pluckMute", 0.5, false],
+      ],
+      story: [
+        ...checks,
+        { bar: 5, beat: 0, kind: "key", v: 0.7, pan: 0.3 },
+        { bar: 5, beat: 2, kind: "lamp", m: midi("A5"), i: 2 },
+        ...["G5", "A5", "Bb5", "D6", "E6", "G6"].map((n, i) => ({ bar: 8 + Math.floor((2 + i * 0.5) / 4), beat: (2 + i * 0.5) % 4, kind: "tick", m: midi(n), i: i % 3 })),
+        { bar: 10, beat: 1, kind: "accent", what: "flip" },
+        { bar: 11, beat: 3, kind: "swell" },
+      ],
+    };
+  },
 });

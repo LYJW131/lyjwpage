@@ -4,7 +4,7 @@
   const { E, prog, keys, lerp, text, FONT, line, polyline, fillRect, roundRect, clawd, bubble, spark, glyph, pathAt, trailOn, measure } = K;
   I18N.add({
     "ch00.title": ["这张卡片从哪来", "Where does this card come from?"],
-    "ch00.clawd": ["带你拆开 lyjw.me 看看。", "Let me open up\nlyjw.me for you."],
+    "ch00.clawd": ["lyjw 出主意，\n我们几个 Claude 动手。\n先带你拆开 lyjw.me 看看。", "lyjw has the ideas;\na few of us Claudes build.\nFirst, let me open up lyjw.me."],
     "ch00.q": ["这张卡片，是怎么知道的？", "How does this card know?"],
     "ch00.n1a": ["全片跟踪一封上报信封：", "We trace one report end to end:"],
     "ch00.n1b": ["Mac 上 Apple Music 换了一首歌。", "a song change on the Mac."],
@@ -37,8 +37,9 @@
   const AT = {
     type0: 0.125, enter: 0.5,
     skip: 0.5, jump: 0.875, look: 1.1875, celebrate: 1.5,
-    say: 0.95, cut: 2.0,
+    say: 0.75, cut: 2.0,
     push: 3.0, dot: 3.55, flip: 4.0, q: 4.25, shrink: 6.0,
+    cIn: [3.62, 3.71, 3.8], cLook: 4.75, cOut: [5.5, 5.58, 5.66],
     pull: 7.5, pulled: 8.3, pops: [8.5, 8.75, 9.0], rush: 9.5,
   };
 
@@ -69,7 +70,7 @@
     const on = b < 0.625 || (b * 4) % 1 < 0.5;
     return {
       typed, welcome: prog(b, AT.enter, AT.enter + 0.06), clawd: clawdFrame(b),
-      say: prog(b, AT.say, AT.say + 0.12) * (1 - prog(b, 1.97, 2.0)), sayReveal: prog(b, AT.say, AT.say + 0.4),
+      say: prog(b, AT.say, AT.say + 0.1) * (1 - prog(b, 1.97, 2.0)), sayReveal: prog(b, AT.say + 0.02, AT.say + 0.37),
       cursor: { line: entered ? 2 : 1, on },
       endcard: null, clear: 0,
     };
@@ -102,7 +103,7 @@
         tp.restore();
         if (cf.poof) for (const s of [-1, 1]) text(tp, cf.poof === "dot" ? "·" : "~", cx + s * 8 * CLAWD_Q, CLAWD_BASE - CLAWD_Q * 0.6, { font: FONT.mono(CLAWD_Q * 2.6, 600), color: ash, align: "center", texture: true, alpha: a });
       }
-      if (st.say > 0) bubble(tp, tr("ch00.clawd"), CLAWD_X - 64, CLAWD_BASE - 146, { px: 36, k: st.say, reveal: st.sayReveal });
+      if (st.say > 0) bubble(tp, tr("ch00.clawd"), CLAWD_X - 84, CLAWD_BASE - 160, { px: 34, k: st.say, reveal: st.sayReveal });
     }
     const ec = st.endcard;
     if (ec && ec.a > 0 && keep(L2 + 160)) {
@@ -146,7 +147,7 @@
   const PX = (u) => WIN.x + 20 + u * PSC, PY = (v) => WIN.y + WIN.bar + v * PSC;
   const CARDS = [
     { id: "contact", r: [0, 64, 304, 121] },
-    { id: "timezone", r: [310, 64, 304, 121] },
+    { id: "digest", r: [310, 64, 304, 121] },
     { id: "listening", r: [0, 192, 614, 238] },
     { id: "chat", r: [0, 437, 614, 152] },
   ];
@@ -165,6 +166,28 @@
     polyline(x, pts, k, hot > 0.5 ? 3 : 2, hot > 0.5 ? css("signal") : css("pink"), a);
   }
   const bar = (x, u, v, w, h, a, c = css("pink")) => fillRect(x, PX(u), PY(v), w * PSC, h * PSC, c, a);
+  // 照 src/components/live/digest-card.tsx#DayDial 画；弧段是示意，不是数据。
+  function digestDial(x, cx, cy, r, a) {
+    if (a <= 0) return;
+    const pink = css("pink");
+    x.save(); x.globalAlpha = a; x.strokeStyle = pink; x.lineWidth = 1.6; x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.stroke(); x.restore();
+    for (let i = 0; i < 12; i++) {
+      if (i % 3 === 0) continue;
+      const t = (i / 12) * TAU, s = Math.sin(t), c = Math.cos(t);
+      line(x, cx + s * r * 0.95, cy - c * r * 0.95, cx + s * r * 0.88, cy - c * r * 0.88, 1.4, pink, a);
+    }
+    [[0.66, [[0.05, 0.2], [0.42, 0.61]]], [0.53, [[0.3, 0.38], [0.7, 0.84]]]].forEach(([k, arcs]) => {
+      x.save(); x.strokeStyle = pink; x.lineWidth = r * 0.09;
+      x.globalAlpha = a * 0.12; x.beginPath(); x.arc(cx, cy, r * k, 0, TAU); x.stroke();
+      x.globalAlpha = a * 0.5;
+      for (const [t0, t1] of arcs) { x.beginPath(); x.arc(cx, cy, r * k, t0 * TAU - Math.PI / 2, t1 * TAU - Math.PI / 2); x.stroke(); }
+      x.restore();
+    });
+    const hand = 0.62 * TAU, hs = Math.sin(hand), hc = Math.cos(hand);
+    line(x, cx + hs * r * 0.36, cy - hc * r * 0.36, cx + hs * r * 0.96, cy - hc * r * 0.96, 1.6, pink, a);
+    fillRect(x, cx - r * 0.22, cy - r * 0.12, r * 0.44, r * 0.1, pink, 0.6 * a);
+    fillRect(x, cx - r * 0.12, cy + r * 0.08, r * 0.24, r * 0.05, pink, 0.3 * a);
+  }
   function heroRow(x, flipK, a, hot) {
     const [cu, cv, cs] = COVER;
     const cy = PY(cv + cs / 2), s = flipK > 0 && flipK < 1 ? Math.max(0.03, Math.abs(Math.cos(flipK * Math.PI))) : 1;
@@ -216,9 +239,15 @@
         x.save(); x.globalAlpha = ia; x.strokeStyle = css("pink"); x.lineWidth = 1.6; x.beginPath(); x.arc(PX(u + 30), PY(v + 30), 16 * PSC, 0, TAU); x.stroke(); x.restore();
         bar(x, u + 56, v + 20, 90, 8, 0.7 * ia); bar(x, u + 56, v + 34, 60, 6, 0.35 * ia);
         for (let r = 0; r < 4; r++) for (let q = 0; q < 26; q++) fillRect(x, PX(u + 14 + q * 10.6), PY(v + 64 + r * 12), 8 * PSC, 8 * PSC, css("pink"), ia * (0.08 + 0.3 * K.hash(q * 7 + r * 13)));
-      } else if (c.id === "timezone") {
-        for (let j = 0; j < 3; j++) { x.save(); x.globalAlpha = ia; x.strokeStyle = css("pink"); x.lineWidth = 1.6; x.beginPath(); x.arc(PX(u + 52 + j * 100), PY(v + 56), 26 * PSC, 0, TAU); x.stroke(); x.restore(); line(x, PX(u + 52 + j * 100), PY(v + 56), PX(u + 52 + j * 100 + 12), PY(v + 46), 2, css("pink"), ia); }
-        for (let j = 0; j < 3; j++) bar(x, u + 32 + j * 100, v + 96, 40, 6, 0.35 * ia);
+      } else if (c.id === "digest") {
+        bar(x, u + 14, v + 22, 112, 16, 0.75 * ia);
+        for (let j = 0; j < 3; j++) {
+          const ry = v + 58 + j * 17;
+          fillRect(x, PX(u + 14), PY(ry), 6 * PSC, 6 * PSC, css("pink"), 0.6 * ia);
+          bar(x, u + 26, ry - 1, 34 - j * 6, 8, 0.6 * ia);
+          bar(x, u + 68 - j * 6, ry + 1, 52 - j * 10, 5, 0.3 * ia);
+        }
+        digestDial(x, PX(u + w - 60), PY(v + h / 2), 46 * PSC, ia);
       } else if (c.id === "listening") {
         line(x, PX(u), PY(v + 21), PX(u + w), PY(v + 21), 1.4, css("pink"), 0.6 * ia);
         text(x, tr("ch00.recent"), PX(u + 10), PY(v + 14), { font: FONT.mono(14, 500), color: css("graphite"), alpha: ia, texture: true, tracking: 1 });
@@ -402,6 +431,25 @@
     x.restore();
   }
 
+  // 翻面那一刻镜头在 CARDV，窗口标题栏在画面外：Clawd 站在火花那根线上、窗口左边，屏幕上约 120 px 宽，不压卡片和旁白。
+  const CQ = 4.6, PERCH = [2590, ML];
+  const IN_X = [PERCH[0] - 250, PERCH[0] - 115, PERCH[0]], OUT_X = [PERCH[0], PERCH[0] - 125, PERCH[0] - 260];
+  function hops(b, ts, xs, h) {
+    for (let i = 0; i < 2; i++) {
+      if (b < ts[i + 1]) return [lerp(xs[i], xs[i + 1], prog(b, ts[i], ts[i + 1])), K.hop(b, ts[i], ts[i + 1], h[i])];
+    }
+    return [xs[2], 0];
+  }
+  function cameo(tp, b) {
+    if (b < AT.cIn[0] || b >= AT.cOut[2]) return;
+    const air = b < AT.cIn[2] || b >= AT.cOut[0];
+    const [cx, up] = b < AT.cIn[2] ? hops(b, AT.cIn, IN_X, [60, 44]) : b >= AT.cOut[0] ? hops(b, AT.cOut, OUT_X, [34, 48]) : [PERCH[0], 0];
+    const fr = air ? { pose: "arms-up", offset: 0 }
+      : K.clawdSeq("land", b, AT.cIn[2], BARS) || K.clawdSeq("jump", b, AT.flip, BARS) || K.clawdSeq("look", b, AT.cLook, BARS)
+        || { pose: "look-right", offset: 0 };
+    K.clawdFrame(tp, fr, cx, PERCH[1] - 1.5 - up, CQ, { poofColor: css("graphite") });
+  }
+
   const POST_PAPER = { bloom: 0.55, threshold: 0.95, halation: 0.18, grain: 0.042, vignette: 0.26, ca: 0.35 };
   const SEED_PAPER = 7.1;
   function paperFrame(f, b, o = {}) {
@@ -422,6 +470,8 @@
     home(Lr, { k: prog(b, AT.cut - 0.03, 2.75), flip: prog(b, AT.flip - 0.08, AT.flip + 0.08), hot: win(b, AT.flip, AT.flip + 0.05, 5.6, 6.0), focus });
     route(Lr, b);
     if (ov > 0) { block(x, BLK.ingress, prog(ov, 0.3, 0.5, E.out), true); block(x, BLK.core, prog(ov, 0.35, 0.55, E.out), true); }
+    // 第 10 章借 paperFrame 重放翻面那一段，不带 Clawd：只有本章自己的 render 传 cameo。
+    if (o.cameo) cameo(tp, b);
     if (o.hud !== false) hud(x, b);
     if (o.extra) o.extra(Lr);
     G.composite(X.upload(), { mode: G.MODE.ink, seed: SEED_PAPER });
@@ -440,13 +490,13 @@
   function render(f) {
     const b = f.bar;
     if (b < AT.cut) termFrame(f, termState(b), { x: 960, y: 540, zoom: 1 + 0.018 * prog(b, 0.5, 2, E.lin), rot: 0 });
-    else paperFrame(f, b);
+    else paperFrame(f, b, { cameo: true });
   }
 
   window.CHAPTERS.push({
     id: "ch00", title: "ch.00", bars: 10,
     init() { G.pass(K.PLATE.ink); G.pass(K.PLATE.paper); lay(); },
     render,
-    share: { termFrame, termState, terminal, paperFrame, AT, TW, L2 },
+    share: { termFrame, termState, terminal, paperFrame, AT, TW, L2, BOX },
   });
 })();
