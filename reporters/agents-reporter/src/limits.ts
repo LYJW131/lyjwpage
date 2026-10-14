@@ -80,17 +80,17 @@ async function collectLive(id: AgentId): Promise<AgentRow | null> {
   }
 }
 
-export async function collectAgents(): Promise<AgentRow[]> {
+export async function collectAgents(ids: readonly AgentId[] = config.agentIds): Promise<AgentRow[]> {
   const fixture = config.limitsFixture ? await loadFixture(config.limitsFixture) : null;
   const settled = await Promise.allSettled(
-    config.agentIds.map(async (id) => {
+    ids.map(async (id) => {
       if (fixture) return rowFromFixture(id, fixture[id]);
       return collectLive(id);
     }),
   );
   const agents: AgentRow[] = [];
   for (const [index, result] of settled.entries()) {
-    const id = config.agentIds[index] ?? "unknown";
+    const id = ids[index] ?? "unknown";
     if (result.status === "fulfilled") {
       if (result.value) agents.push(result.value);
       continue;
