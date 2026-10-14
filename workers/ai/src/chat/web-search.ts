@@ -12,3 +12,17 @@ export function webSearchTool(model: string, maxUses: number): Anthropic.Beta.Be
     ? { type: "web_search_20250305", name: "web_search", max_uses: maxUses }
     : { type: "web_search_20260318", name: "web_search", max_uses: maxUses };
 }
+
+// 带动态过滤的搜索跑在服务端 code_execution 里；模型同一轮又调了客户端工具时，回复停在 tool_use，
+// code_execution 留到下一轮请求才出结果，而那一轮的 tools 里必须还有搜索工具。
+export function awaitsServerTool(messages: Anthropic.Beta.BetaMessageParam[]): boolean {
+  const open = new Set<string>();
+  for (const message of messages) {
+    if (message.role !== "assistant" || typeof message.content === "string") continue;
+    for (const block of message.content) {
+      if (block.type === "server_tool_use") open.add(block.id);
+      else if ("tool_use_id" in block) open.delete(block.tool_use_id);
+    }
+  }
+  return open.size > 0;
+}
