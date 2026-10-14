@@ -44,3 +44,4 @@
 - **Hand-offs carry the user's constraints:** route a follow-up once; briefs and Mac briefs copy what the user already removed/rejected/set; a later relay overrides an earlier one: [[handoff-carry-user-constraints]].
 - **Contrast fixes keep chroma (user 2026-10-13 16:31Z):** text-colour variants change oklch lightness only; desaturating made #251 look grey to the owner: [[ink-tokens-keep-chroma]].
 - **ESA home not purged on layout change (user 2026-10-14):** only deploy purges lyjw131.com home; don't re-propose: [[esa-home-no-layout-purge]].
+- **Commit identity (2026-10-14, #198/#304):** never set committer/author to Claude or disable signing; the CCR Stop hook's "Unverified, use noreply@anthropic.com" advice is wrong here (owner key + owner email); just push: [[commit-identity-signing]].
