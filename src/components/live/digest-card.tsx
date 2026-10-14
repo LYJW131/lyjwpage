@@ -29,6 +29,33 @@ const TONES: Record<DigestTopic, string> = {
   fitness: "var(--activity-move)",
 };
 
+const HEADLINE_ROTATE_MS = 60_000;
+const HEADLINE_PICK = "__digestHeadline";
+
+// 首屏的随机一条由紧跟标题的内联脚本在绘制前写进 DOM 并记下，水合时沿用它，刷新换句却不闪。
+const headlinePickScript = (pool: readonly string[]) =>
+  `(()=>{const p=${JSON.stringify(pool).replace(/</g, "\\u003c")},h=p[Math.floor(Math.random()*p.length)],t=document.currentScript?.previousElementSibling?.firstElementChild?.firstChild;window.${HEADLINE_PICK}=h;if(t)t.nodeValue=h})()`;
+
+function useRotatingHeadline(pool: readonly string[]) {
+  const [state, setState] = useState(() => {
+    if (typeof window === "undefined") return { line: pool[0], rotated: false };
+    const picked = (window as unknown as Record<string, unknown>)[HEADLINE_PICK];
+    delete (window as unknown as Record<string, unknown>)[HEADLINE_PICK];
+    return { line: typeof picked === "string" && pool.includes(picked) ? picked : pool[Math.floor(Math.random() * pool.length)], rotated: false };
+  });
+  const key = pool.join("|");
+  useEffect(() => {
+    const lines = key.split("|");
+    if (lines.length < 2) return;
+    const timer = window.setInterval(() => setState(({ line }) => {
+      const rest = lines.filter((candidate) => candidate !== line);
+      return { line: rest[Math.floor(Math.random() * rest.length)], rotated: true };
+    }), HEADLINE_ROTATE_MS);
+    return () => window.clearInterval(timer);
+  }, [key]);
+  return pool.includes(state.line) ? state : { line: pool[0], rotated: false };
+}
+
 const DAY_SECONDS = 86_400;
 const SIZE = 200;
 const CENTER = SIZE / 2;
@@ -137,6 +164,8 @@ export function DigestCard({
   const timezoneEnvelope: StatusResponse<TimezonePayload> = zone ? { ok: true, data: zone } : timezoneFallback;
   const stale = useStale(updatedAt, DIGEST_STALE_MS, servedAt);
   const mountedAt = useMountedAt();
+  const pool = data?.headlines?.length ? data.headlines : [data?.headline ?? ""];
+  const headline = useRotatingHeadline(pool);
   const [ticked, setTicked] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(() => setTicked(Date.now()), 30_000);
@@ -156,7 +185,10 @@ export function DigestCard({
   return (
     <Card id="digest" className={cn("h-full scroll-mt-28", className)}>
       <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-4 p-4 lg:gap-x-4 lg:gap-y-5 lg:p-5">
-        <h2 lang="zh-CN" className="col-start-1 row-start-1 min-w-0 text-balance font-sans text-2xl font-bold leading-none tracking-tight lg:text-4xl">{data.headline}。</h2>
+        <h2 lang="zh-CN" className="col-start-1 row-start-1 min-w-0 text-balance font-sans text-2xl font-bold leading-none tracking-tight lg:text-4xl">
+          <span key={headline.line} suppressHydrationWarning className={cn("inline-block", headline.rotated && "animate-headline-in")}>{headline.line}。</span>
+        </h2>
+        {pool.length > 1 && <script dangerouslySetInnerHTML={{ __html: headlinePickScript(pool) }} />}
         <ul className={cn("col-start-1 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-1.5 gap-y-1.5 sm:gap-x-2", stale && "opacity-60")}>
           {data.highlights.map((item) => (
             <li key={item.topic} className="col-span-3 grid grid-cols-subgrid items-baseline" style={{ "--tone": TONES[item.topic] ?? TONES.coding } as CSSProperties}>
