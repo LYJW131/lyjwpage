@@ -1,8 +1,9 @@
 import { DOCUMENT_COMMIT_META } from "@/lib/app-version";
 
-export const ASSET_RECOVERY_KEY = "lyjw:asset-recovery:v1";
+export const ASSET_RECOVERY_KEY = "lyjw:asset-recovery:v2";
 
 // 同一版本的页面在这段时间内只自救一次：刷回来还是坏的（真坏了的部署、断网）就停在原地，不刷成环。
+// 账按版本分别记，边缘缓存在两个旧版本间来回时也只各救一次。
 export const ASSET_RECOVERY_COOLDOWN_MS = 5 * 60_000;
 
 export const ASSET_RECOVERY_FETCH_TIMEOUT_MS = 4_000;
@@ -20,9 +21,10 @@ export function assetRecoveryScript(): string {
     `function go(){if(g)return;g=true;location.reload()}` +
     `function recover(){if(f||navigator.onLine===false)return;f=true;` +
     `var m=d.querySelector(${meta}),c=m?m.getAttribute("content")||"":"",n=Date.now();` +
-    `try{var p=JSON.parse(sessionStorage.getItem(${key})||"null");` +
-    `if(p&&p.c===c&&n-p.t>=0&&n-p.t<${ASSET_RECOVERY_COOLDOWN_MS})return;` +
-    `var raw=JSON.stringify({c:c,t:n});sessionStorage.setItem(${key},raw);if(sessionStorage.getItem(${key})!==raw)return}catch(e){return}` +
+    `function live(t){return typeof t==="number"&&n-t>=0&&n-t<${ASSET_RECOVERY_COOLDOWN_MS}}` +
+    `try{var p=JSON.parse(sessionStorage.getItem(${key})||"{}"),q={};if(!p||typeof p!=="object")p={};` +
+    `for(var k in p)if(Object.prototype.hasOwnProperty.call(p,k)&&live(p[k]))q[k]=p[k];if(q[c]!==undefined)return;q[c]=n;` +
+    `var raw=JSON.stringify(q);sessionStorage.setItem(${key},raw);if(sessionStorage.getItem(${key})!==raw)return}catch(e){return}` +
     `var t=setTimeout(go,${ASSET_RECOVERY_FETCH_TIMEOUT_MS});` +
     `fetch(location.href,{cache:"reload",credentials:"same-origin"}).then(function(r){return r.text()})` +
     `.catch(function(){}).then(function(){clearTimeout(t);go()})}` +
