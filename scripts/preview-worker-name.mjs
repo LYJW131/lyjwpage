@@ -1,6 +1,6 @@
 
 export const PREVIEW_WORKERS_SUBDOMAIN = "lyjw.workers.dev";
-// 须与 wrangler.jsonc 里 previews_enabled 的那条自定义域名同步。
+// 须与 wrangler.jsonc 里 previews_enabled 的那条自定义域名、public/_headers 的预览主机规则同步。
 export const SITE_PREVIEW_DOMAIN = "preview.lyjw.dev";
 export const PREVIEW_WORKER_SCRIPT = "core";
 export const SITE_PREVIEW_WORKER_SCRIPT = "site";
