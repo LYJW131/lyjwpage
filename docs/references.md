@@ -19,16 +19,16 @@
 - **[here's how i shipped 2,500 PRs last month](https://x.com/poteto/status/2102050467505430555)**（poteto / Lauren Tan，X 上的演讲视频）
   - 是什么：一个人同时驱动大量 agent 的做法。主线是「先让环境值得信任，并行是信任的结果」。
   - 取了什么：纠错阶梯，即每次纠正 agent 都落到能挡住它的最高一层（代码库 → lint / CI → 规则 → skill → 人工 review）；验证 skill 做成「共用 CLI + 功能地图」；让一个「园丁」专找正在被复制的坏写法，先写 lint 止血。
-  - 状态：部分采用。纠错阶梯落在根 `AGENTS.md`「规则 → 由什么强制」表与 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「复盘需求偏差」的修正分档，配套检查是 `scripts/rules-check.mjs`、`scripts/ui-copy-check.mjs` 和 `design-scale-check.mjs` 扩项；验证 skill 与园丁 routine 待定。
+  - 状态：部分采用。纠错阶梯落在根 `AGENTS.md`「规则 → 由什么强制」表与 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「复盘需求偏差」的修正分档，配套检查是 `scripts/rules-check.mjs`、`scripts/ui-copy-check.mjs` 和 `design-scale-check.mjs` 扩项；验证 skill 见下面 pstack 一条；园丁并进每日代码审查定时任务，发现记在缓冲 issue #280（定时任务登记见 [ops-facts.md](./ops-facts.md)）。外环（错误 → 分诊 → 两次复现 → 留给站主否决 → 另开线程修）落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3b 步，读 Workers Observability，不读 Sentry。
   - 相关：她的长文 [Loops You Can Trust](https://x.com/poteto/status/2069824386283319343)、[The Complete Guide to pstack Pt. 1](https://x.com/poteto/status/2094457600259842065)、[Pt. 2](https://x.com/poteto/status/2097732320606507506)。
 - **[LIVE: Poteto (creator of pstack) on shipping 1,000's of PR's a month at SpaceX](https://www.youtube.com/watch?v=MN9dGgmLyso)**（Matt Pocock 对 poteto 的直播访谈，YouTube）
   - 是什么：上面那场演讲的延伸问答，讲这套做法每天怎么运转：内外循环、协调者、合并后抽检、full autopilot。
   - 取了什么：skill 只写流程，确定性的步骤下沉成脚本；园丁的发现先进缓冲文档、成批看出共同根因；合并后抽检，多个 agent 犯同样的错就改环境；常问「我在哪成了瓶颈」，让 agent 自己拿到原本要人转述的信息；翻过去的对话找反复纠正处，变成 lint 或 skill。
-  - 状态：待定。
+  - 状态：部分采用。「站主成了瓶颈」落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「复盘需求偏差」；缓冲文档与合并后抽检随园丁并进每日代码审查定时任务（缓冲 issue #280）；相关错误归成一批落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3b 步。不采用 full autopilot（agent 自己合并、合并后才审）：前提是验证已经足够可信，本仓库 UI 改动要站主看图再合。
 - **[pstack](https://github.com/cursor/plugins/tree/main/pstack)** 与 **[verification-skill-example](https://github.com/poteto/verification-skill-example)**（poteto）
   - 是什么：上面那套做法的 skill 实现，含协调者 playbook、纠错 skill `correct`、验证 skill 模板。
   - 取了什么：验证 skill = 共用 CLI + 功能地图（materialized memory），验证员不各自写一次性脚本；CLI 对 agent 友好：输出 JSON、报错写下一步、破坏性操作带 `--dry-run`。派活简报固定栏目、常驻指令原样贴入；写代码的不判自己的活，验证结论绑 head SHA；验证 skill 分 Launch / Doctor / Drive / Evidence / Cleanup 五节。
-  - 状态：部分采用。共用 CLI 与功能地图落在 [site-verify.mjs](../scripts/site-verify.mjs) 与 [feature-map.json](../.claude/skills/lyjwpage-verify/feature-map.json)，由 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md) 调用；简报固定栏目等其余做法待定。
+  - 状态：部分采用。共用 CLI 与功能地图落在 [site-verify.mjs](../scripts/site-verify.mjs) 与 [feature-map.json](../.claude/skills/lyjwpage-verify/feature-map.json)，由 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md) 调用；写代码的不判自己的活落在 lyjwpage-verify「3b」（大改逻辑的 PR 合并前派判定员，结论按 head SHA 记在 PR 评论里）；先复述再动手落在根 `AGENTS.md`「工作方式」与 `HUMAN.md`「7」。不采用简报九栏：项目的协作规则限定简报只带站主原话、记忆里的约束和分叉默认，常驻约束随记忆贴入已由项目记忆 handoff-carry-user-constraints 覆盖。
 - **[Automating eval design and hillclimbing with Claude](https://claude.dev/blog/automating-eval-design-and-hillclimbing/)**（claude.dev）
   - 是什么：用 Claude 设计评测、按证据迭代提示词。
   - 取了什么：一次只改一处、改动可归因到根因，不把失败样例原文贴进提示词。
