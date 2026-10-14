@@ -8,7 +8,7 @@
 
 [`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份；静态的是 WebP，会动的是 GIF。数据来自场景 [`readme`](../workers/core/dev-fixtures/scenes/readme.json)：在生产快照 `readme-base` 上用夹具点亮平时不显示的卡片，`pnpm dev:scene readme` 一次注入全部端点，摘要的三格按同一份 Pulse 重算、标题池收成一句，SSR 与浏览器、明暗两轮读到的是同一份数据。场景的写法与 `--capture` 重新抓生产快照见 [`workers/core/README.md`](../workers/core/README.md#本地开发)。
 
-静态图（总览、正在看、充电宝、PlayStation 奖杯展开、Pulse 悬停详情、LYJWPAGE）由 [`scripts/readme-shots.ts`](../scripts/readme-shots.ts) 一条命令截出：先注入场景，再用无头 Chromium 开 1280 宽、2 倍像素密度，`colorScheme` 切明暗；裁卡片按元素框外扩 12px，并把目标之外的兄弟节点 `visibility: hidden`，边距里才不会露出邻居卡片的边；Pulse 悬停在听歌道上，把浮层和卡片的框取并集再裁；PNG 用项目自带的 sharp 转 WebP（q 88），写进 `docs/screenshots/`。截完场景留在本地 Worker 里供对照，看完 `pnpm dev:scene --reset`：
+静态图（总览、正在看、充电宝、PlayStation 奖杯展开、Pulse 悬停详情、LYJWPAGE）由 [`scripts/readme-shots.ts`](../scripts/readme-shots.ts) 一条命令截出：先注入场景，再用无头 Chromium 开 1280 宽、2 倍像素密度，`colorScheme` 切明暗；裁卡片按元素框外扩 12px，并把目标之外的兄弟节点 `visibility: hidden`，边距里才不会露出邻居卡片的边；Pulse 悬停在听歌道上，把浮层和卡片的框取并集再裁（上一张卡同样藏起，浮层画在卡片上方，缝里会露出它的下边和硬阴影）；PNG 用项目自带的 sharp 转 WebP（q 88），写进 `docs/screenshots/`。截完场景留在本地 Worker 里供对照，看完 `pnpm dev:scene --reset`：
 
 ```sh
 pnpm readme:shots                                   # 全部静态图，明暗各一张

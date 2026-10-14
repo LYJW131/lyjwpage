@@ -148,7 +148,7 @@
 
 ## Copy
 
-- 界面文案一律英文：标注、正文、状态、按钮、提示、无障碍文案、错误页和元数据都用英文，`<html lang>` 为 `en`；日期用 en-US（`Jun 22`、`Mon 11:00 AM`），数字用 en-US 分组。`pnpm ui:copy` 数代码里的非英文文案字面量，存量例外冻结在 `scripts/ui-copy-baseline.json`，新增即失败。
+- 界面文案一律英文：标注、正文、状态、按钮、提示、无障碍文案、错误页和元数据都用英文，`<html lang>` 为 `en`；日期用 en-US（`Jun 22`、`Mon 11:00 AM`），数字用 en-US 分组。`pnpm ui:copy` 数代码里的非英文文案字面量，存量例外冻结在 `scripts/ui-copy-baseline.json`，新增即失败；基线本身也只减不增（`pnpm baselines:check`）。
 - 来自数据源的内容（歌名、游戏名、剧名、歌词、提交信息）照原样，不翻译。模型生成、按约定写成中文的展示内容（摘要卡的中文标语）按它自己的约定走。
 - lyjw 的中文全名不出现在站点任何位置，显示为 `LYJW`。
 - 仅开发环境可见的调试开关提示可以用中文。
@@ -174,6 +174,6 @@
 ## 交付与合并
 
 - UI 改动交付桌面（1280）与手机（375）截图，至少一张深色；什么时候附图见 `AGENTS.md`「项目入口与验证」与 `HUMAN.md`。改到同一行的卡片或替换部件时，报前后各卡高度与相邻同类文字的字号字重（验证怎么做见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
-- CI 跑 `pnpm design:scale`（`scripts/design-scale-check.ts`）：按类名数 `src/` 里阶梯外的间距、任意值字号与位移、任意值圆角、元素间 `mt` / `mb` / `my` / `m` 外边距、未走 token 的裸 hex / oklch / rgb 色值，任何一个类名的出现次数比基线 `scripts/design-scale-baseline.json` 多就失败（把 `text-[10px]` 换成 `text-[9px]` 也算多）；变少只提示，跑 `pnpm design:scale --update` 收紧基线。图形内的 10px 刻度、图表 / SVG / 品牌色、带注释的光学微调这类合规例外也用 `--update` 记进基线，并在 PR 里说明。
+- CI 跑 `pnpm design:scale`（`scripts/design-scale-check.ts`）：按类名数 `src/` 里阶梯外的间距、任意值字号与位移、任意值圆角、元素间 `mt` / `mb` / `my` / `m` 外边距、未走 token 的裸 hex / oklch / rgb 色值，任何一个类名的出现次数比基线 `scripts/design-scale-baseline.json` 多就失败（把 `text-[10px]` 换成 `text-[9px]` 也算多）；变少只提示，跑 `pnpm design:scale --update` 收紧基线。图形内的 10px 刻度、图表 / SVG / 品牌色、带注释的光学微调这类合规例外也用 `--update` 记进基线，并在 PR 里说明；基线比 main 多出的条目会被 `pnpm baselines:check` 拦下，要 lyjw 给 PR 打 `baseline-exception` 标签才放行。
 - 自查用 `.claude/skills/lyjwpage-ui-design/SKILL.md`：它有对照本文件的检查清单和一个量间距、字号、点击区的浏览器脚本。
 - 有 UI / UX 变化的改动进 main 前，先给 lyjw 看效果、等 lyjw 点头再合；lyjw 明确要求的小改动除外。
