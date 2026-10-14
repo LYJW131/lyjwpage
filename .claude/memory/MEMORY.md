@@ -42,3 +42,4 @@
 - Cloud env gaps; #226 auto-creates .dev.vars, dev:worker runs without CF creds: [[cloud-env-gaps]].
 - **Hand-offs carry the user's constraints:** route a follow-up once; briefs and Mac briefs copy what the user already removed/rejected/set; a later relay overrides an earlier one: [[handoff-carry-user-constraints]].
 - **Contrast fixes keep chroma (user 2026-10-13 16:31Z):** text-colour variants change oklch lightness only; desaturating made #251 look grey to the owner: [[ink-tokens-keep-chroma]].
+- **ESA home not purged on layout change (user 2026-10-14):** only deploy purges lyjw131.com home; don't re-propose: [[esa-home-no-layout-purge]].
