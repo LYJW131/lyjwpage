@@ -1064,7 +1064,9 @@ const DESIGN_CONSENT_COPY: Record<PlanLanguage, DesignConsentCopy> = {
 function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
   const [slots, setSlots] = useState(() => SUGGESTIONS.slice(0, SUGGESTION_SLOTS).map((text) => ({ text, rotated: false })));
   const [leaving, setLeaving] = useState<number | null>(null);
-  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const paused = hovered || focused;
   const turn = useRef({ slot: 0, next: SUGGESTION_SLOTS });
   useEffect(() => {
     if (paused) return;
@@ -1088,10 +1090,10 @@ function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: s
     // 悬停或聚焦时停住轮播，免得点下去的那一刻换了题。
     <div
       className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2"
-      onPointerEnter={() => setPaused(true)}
-      onPointerLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false); }}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
     >
       {slots.map(({ text, rotated }, index) => (
         <button
