@@ -2,10 +2,10 @@ import { AI_HTTP_PATHS, MCP_PATH } from "@shared/ai-paths";
 import { APPLE_MUSIC_HTTP_PATHS } from "@shared/apple-music-paths";
 import { IMAGE_PATH_PREFIX } from "@shared/asset-url";
 import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
-import { SENTRY_RELAY_PREFIX } from "@shared/sentry";
 import { lagViewKeyByPath, STATUS_VIEWS, type LagViewKey } from "@shared/status-views";
 import { APP_VERSION_PATH } from "@/lib/app-version";
 import { archivedAssetKey } from "@/lib/asset-archive";
+import { ERROR_RELAY_PATH } from "@/lib/error-relay";
 import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
 
@@ -44,7 +44,7 @@ export type GatewayClass =
         | "core"
         | "ai"
         | "collector"
-        | "sentry-relay"
+        | "error-relay"
         | "image-proxy"
         | "image-object"
         | "site-asset"
@@ -156,9 +156,7 @@ export function classifyGatewayRequest(method: string, pathname: string): Gatewa
     const view = method === "GET" ? lagViewKeyByPath(pathname) : undefined;
     return view ? { kind: "lag-status", view } : { kind: "core" };
   }
-  if (pathname === SENTRY_RELAY_PREFIX || pathname.startsWith(`${SENTRY_RELAY_PREFIX}/`)) {
-    return { kind: method === "POST" ? "sentry-relay" : "invalid" };
-  }
+  if (pathname === ERROR_RELAY_PATH) return { kind: method === "POST" ? "error-relay" : "invalid" };
   if (method !== "GET" && method !== "HEAD") return { kind: "invalid" };
   if (pathname.endsWith(".data")) return { kind: "render" };
   if (pathname === IMAGE_PROXY_PATH) return { kind: "image-proxy" };

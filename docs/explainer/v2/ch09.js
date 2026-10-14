@@ -201,7 +201,7 @@
       text(d, str, px + 32, y + 64, { font: f, color: css("paper"), alpha: a, reveal: o.reveal ?? 1 });
       return h;
     }
-    const DEST = ["Cloudflare Workers", "Cloudflare Turnstile", "Workers AI · Clef", "Anthropic · Claude API", "Sentry", "GitHub", "ch09.c.browser"];
+    const DEST = ["Cloudflare Workers", "Cloudflare Turnstile", "Workers AI · Clef", "Anthropic · Claude API", "GitHub", "ch09.c.browser"];
     function consent(d, b, y0, a) {
       if (a <= 0) return;
       const gr = css("graphite");

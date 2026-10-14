@@ -1,7 +1,5 @@
-import * as Sentry from "@sentry/cloudflare";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { APPLE_MUSIC_HTTP_PATHS } from "@shared/apple-music-paths";
-import { cronCheckIns } from "@shared/cron-check-ins";
 import type { CollectorJobOutcome, CollectorRpc } from "@shared/collector";
 import type { PlayingQueueTrack } from "@shared/playing-queue";
 import type { EnrichmentFollowUp, EnrichmentOutcome } from "@shared/track-enrichment";
@@ -14,16 +12,14 @@ import type { Env } from "./env";
 import { runNamed, runScheduled } from "./registry";
 import { installCollectorPorts } from "./ports";
 import { bindEnv } from "./runtime";
-import { cronMonitor } from "./schedule";
-import { reportJobFailure, sentryOptions } from "./sentry";
 
 export type { Env } from "./env";
 
 installCollectorPorts();
 
-class CollectorBase extends WorkerEntrypoint<Env> implements CollectorRpc {
+export class Collector extends WorkerEntrypoint<Env> implements CollectorRpc {
   async refresh(jobs: string[]): Promise<CollectorJobOutcome[]> {
-    return runNamed(bindEnv(this.env), Array.isArray(jobs) ? jobs.filter((job) => typeof job === "string") : [], { report: reportJobFailure });
+    return runNamed(bindEnv(this.env), Array.isArray(jobs) ? jobs.filter((job) => typeof job === "string") : []);
   }
 
   async enrichTrack(music: LocalNowPlaying | null, upcomingTracks: PlayingQueueTrack[]): Promise<EnrichmentOutcome | null> {
@@ -36,22 +32,19 @@ class CollectorBase extends WorkerEntrypoint<Env> implements CollectorRpc {
   }
 }
 
-class AppleLookupsBase extends WorkerEntrypoint<Env> {
+export class AppleLookups extends WorkerEntrypoint<Env> {
   fetch(request: Request): Promise<Response> {
     bindEnv(this.env);
     return serveAppleLookup(request);
   }
 }
 
-export const Collector = Sentry.withSentry(sentryOptions, CollectorBase);
-export const AppleLookups = Sentry.withSentry(sentryOptions, AppleLookupsBase);
-
 const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status: 404 });
 
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     await Promise.all([
-      runScheduled(bindEnv(env), controller.scheduledTime, { monitor: cronMonitor(env, cronCheckIns(Sentry)), report: reportJobFailure }),
+      runScheduled(bindEnv(env), controller.scheduledTime),
       driveCoreRound(env.CORE, controller.scheduledTime),
     ]);
   },
@@ -76,4 +69,4 @@ const collector = {
   },
 };
 
-export default Sentry.withSentry(sentryOptions, collector);
+export default collector;

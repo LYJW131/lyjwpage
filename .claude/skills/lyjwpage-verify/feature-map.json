@@ -152,7 +152,7 @@
         "/api/status/github-repo": ["github-repo-no-totals.json", "github-repo-stale.json"],
         "/api/status/site-deployments": ["site-deployments.json", "vercel-deployments-stale.json"],
         "/api/status/cloudflare-workers": ["cloudflare-workers-stale.json"],
-        "/api/status/sentry": ["sentry-steady.json", "sentry-stale.json"],
+        "/api/status/health": ["health-steady.json", "health-stale.json"],
         "/api/status/reporters": ["reporters-steady.json"],
         "/api/status/server": ["server-traffic.json"]
       },

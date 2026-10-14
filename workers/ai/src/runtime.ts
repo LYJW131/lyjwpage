@@ -8,8 +8,6 @@ export interface Env {
   PUBLIC_STATUS: PublicStatusRpc;
   AI?: Ai;
   ALLOWED_ORIGINS?: string;
-  SENTRY_DSN?: string;
-  SENTRY_ENVIRONMENT?: string;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
   ANTHROPIC_API_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;

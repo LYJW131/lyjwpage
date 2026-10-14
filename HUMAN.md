@@ -53,10 +53,10 @@
 **一定等你一句话**：
 
 - 生产上的动作：手动触发 Workers Builds 重建（main 构建因 Cloudflare 临时错误失败、重跑同一提交的除外）、`wrangler deploy` 的那个唯一例外、切域名、改 ESA 规则（规则见 AGENTS.md「[禁区](./AGENTS.md#禁区)」与「[部署流程](./AGENTS.md#部署流程)」）。
-- 删除：远端分支、KV 键、Sentry 数据、账号里的资源。
+- 删除：远端分支、KV 键、D1 数据、账号里的资源。
 - 对外发消息、花钱的东西。
 - 控制台与账号设置：Access 策略、GitHub 仓库设置与分支保护、App 权限、告警规则。
-- Sentry 里的写操作：标 resolved、改负责人在修复部署并验证后才做，删数据和改规则先问（见 AGENTS.md「[排查线上错误](./AGENTS.md#排查线上错误)」）。
+- Workers Issues 里的写操作：标 resolved / ignored 在修复部署并验证后才做，改自动化、告警和可观测性设置先问（见 AGENTS.md「[排查线上错误](./AGENTS.md#排查线上错误)」）。
 - 合并该等你点头的 PR：大方向、大改动，以及有 UI / UX 变化的改动（你明确要求的小改动除外）；其余 PR 门槛过了 Claude 自己合，见「[5. PR 与合并](#5-pr-与合并)」。
 
 **先不碰的**：iOS App 暂停开发，只当上报器用；除了上报链路，其余一概不管它，也不给它同步新的展示契约（见 [`apps/ios/README.md`](./apps/ios/README.md)）。

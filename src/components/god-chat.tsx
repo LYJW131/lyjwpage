@@ -609,9 +609,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const lastDesignAtIndex = messages.findLastIndex((message) => message.designAt !== undefined);
 
   return (
-    // 对话、设计与构建计划包含访客原文，Replay 需要遮住整张卡片。
     <Card
-      data-sentry-mask
       label="Talk to God"
       action={conversation?.design && designConsented ? <span className="flex items-center gap-1 text-signal-blue"><PencilRuler className="size-3" />Design · Opus</span> : <RouteStatus last={messages[messages.length - 1]} streaming={streaming} />}
       className={cn(
@@ -636,10 +634,8 @@ function Conversation({ className, archive, session: conversation }: { className
           onError={() => verificationFailed(VERIFY_UNAVAILABLE, "unavailable")}
         />
       )}
-      {/* 遮罩只遮文字，链接的 href 照样进录像（rrweb 对 href、src 不走属性遮罩），模型能把对话拼进链接：消息列表整块不录。 */}
       <div
         ref={scrollRef}
-        data-sentry-block
         onScroll={(event) => {
           const el = event.currentTarget;
           stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
@@ -938,7 +934,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
     if (!chatArchive.getSnapshot().sessions.length) chatArchive.start();
   }
   return (
-    <div data-sentry-block className="border-b border-line bg-muted px-4 py-2 lg:px-5">
+    <div className="border-b border-line bg-muted px-4 py-2 lg:px-5">
       <div className="mb-2 flex items-center justify-between gap-2 text-2xs text-muted-foreground">
         <span>{sessions.length ? "Saved in this browser" : "No saved conversations yet"}</span>
         {sessions.length > 0 && <button type="button" onClick={() => { if (window.confirm("Clear all conversations saved in this browser? This cannot be undone.")) { chatArchive.clear(); chatArchive.start(); } }} className="hover:text-signal-red">Clear all conversations</button>}
@@ -970,7 +966,6 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
       { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and conversation history, and temporarily keeps your IP address within the rate-limit window. Transcripts are not stored; server logs only contain request metadata, usage counts, and errors—never message text." },
       { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message and brief excerpts from recent context to select the appropriate Claude model. Cloudflare does not store this content or use it for training." },
       { name: "Anthropic (Claude API)", detail: "receives the full conversation to generate replies, perform web searches, and query external tools. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
-      { name: "Sentry", detail: "receives error reports. Chat text is masked in session replays, and request bodies are never transmitted." },
       { name: "This browser", detail: "stores your conversations and this consent locally." },
     ],
     accept: "Accept",
@@ -986,7 +981,6 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
       { name: "Cloudflare Workers（本站后端）", detail: "负责转发消息与本次对话历史，并在限流窗口内临时保留 IP 地址。不存储对话记录，日志仅包含请求元数据、用量计数与错误信息，不记录任何消息原文。" },
       { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取最新消息及上下文的简短摘录，用于路由选择合适的 Claude 模型。Cloudflare 不存储这些内容，亦不用于模型训练。" },
       { name: "Anthropic（Claude API）", detail: "接收完整对话以生成回复，并按需执行联网搜索与外部工具检索。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
-      { name: "Sentry", detail: "接收前端错误与异常报告；会话录屏（Session Replay）中所有对话文字均已遮蔽，且绝不上传请求正文。" },
       { name: "当前浏览器", detail: "在本地保存你的对话记录与本次同意状态。" },
     ],
     accept: "接受",
@@ -1002,7 +996,6 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
       { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージおよび会話履歴を中継し、レート制限期間中のみ IP アドレスを一時保持します。会話の記録は保存されず、ログにはリクエストのメタデータ、利用回数、エラー情報のみが記録され、メッセージ本文は一切含まれません。" },
       { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージおよび直前の短い会話抜粋を読み取り、最適な Claude モデルを選択します。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
       { name: "Anthropic（Claude API）", detail: "回答生成、Web 検索、および外部ツールの呼び出しのために会話全体を受信します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
-      { name: "Sentry", detail: "エラーレポートを受信します。セッションリプレイではチャット文字列がマスキングされ、リクエスト本文は送信されません。" },
       { name: "このブラウザ", detail: "会話履歴と今回の同意状況をローカルに保存します。" },
     ],
     accept: "同意する",

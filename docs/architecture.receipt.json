@@ -7,12 +7,12 @@
     "source": "isolated pinned checkout"
   },
   "specification": {
-    "sha256": "7c09f4ff5fab39b6fbe4321125e9a5f258ab2313c5de715277fc2b50a294618f",
-    "bytes": 16828
+    "sha256": "6faf82a38ab762e8641c30d85546fe2642dd3b50da0fa67ad03fa18f9e1de256",
+    "bytes": 16818
   },
   "artifact": {
-    "sha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
-    "bytes": 817009
+    "sha256": "23ecac2db9ab742cb6d23f0873f1b31a1218c5abb9b7d457ef9134975afff845",
+    "bytes": 816979
   },
   "validation": {
     "checksPassed": 9,
@@ -44,11 +44,11 @@
     "status": "pass",
     "visualReview": "not-requested",
     "provenance": "current",
-    "deliveryReceiptId": "23172dcd-4252-4f1f-8161-123f84935e5b",
+    "deliveryReceiptId": "8ba49767-ea3b-4d6c-991d-7458b171c5f3",
     "artifact": {
       "path": "/home/user/lyjwpage/docs/architecture.html",
-      "sha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
-      "bytes": 817009
+      "sha256": "23ecac2db9ab742cb6d23f0873f1b31a1218c5abb9b7d457ef9134975afff845",
+      "bytes": 816979
     },
     "state": {
       "detail": "read",
@@ -753,20 +753,22 @@
       "contactSheet": null
     },
     "sidecars": {
-      "directory": "/home/user/lyjwpage/.archify/evidence/architecture-T4gMAm",
+      "directory": "/home/user/lyjwpage/.archify/evidence/architecture-Kgt6FA",
       "receipt": "architecture.browser-check.json",
       "files": []
     }
   },
   "update": {
-    "status": "current",
+    "status": "update_available",
     "installedVersion": "3.0.1",
-    "availableVersion": "3.0.1",
-    "releaseNotes": null,
-    "checkedAt": "2026-10-13T11:55:15.270Z",
+    "availableVersion": "3.1.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.1.0",
+    "severity": "normal",
+    "checkedAt": "2026-10-14T06:05:05.877Z",
     "source": "cache",
-    "noticeRequired": false,
-    "noticeText": null
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.1.0. A previous check at 2026-10-14T06:05:05.877Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.1.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:ffedc53390c9da6e859f41e432c5d2d0615a23cf00a503181f07efbba88a7ce8"
   },
   "visualReviewRecommendation": {
     "action": "inspect-route-readability",
@@ -1101,10 +1103,10 @@
     "status": "pass",
     "artifact": {
       "path": "/home/user/lyjwpage/docs/architecture.html",
-      "sha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
-      "bytes": 817009
+      "sha256": "23ecac2db9ab742cb6d23f0873f1b31a1218c5abb9b7d457ef9134975afff845",
+      "bytes": 816979
     },
-    "evidenceDirectory": ".archify/evidence/architecture-T4gMAm"
+    "evidenceDirectory": ".archify/evidence/architecture-Kgt6FA"
   },
   "viewports": [
     {
@@ -1332,15 +1334,15 @@
       "width": 3148,
       "height": 2150,
       "original": {
-        "path": ".archify/evidence/architecture-T4gMAm/architecture-light.viewer-original.png",
-        "sha256": "2c3fa7ce0ca7e59bdb31dbf05385619541b23e40f0224c4cfdeaf78da8e69334",
-        "bytes": 799558,
+        "path": ".archify/evidence/architecture-Kgt6FA/architecture-light.viewer-original.png",
+        "sha256": "9fba47d034cef052292d084a17d9f99e2bc596577f28d5f4878f1b7ec9770ad7",
+        "bytes": 797701,
         "width": 3356,
         "height": 2292
       },
-      "artifactSha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
-      "sha256": "9bd9f8fc3fc0a4b506d73b9f81f4c7fbec51cc3e5e674b1cb8b0e7779630d551",
-      "bytes": 281719
+      "artifactSha256": "23ecac2db9ab742cb6d23f0873f1b31a1218c5abb9b7d457ef9134975afff845",
+      "sha256": "b648bac1d4d83a4e54add60877605cdce27b360088bd0a12f3426491f4587b9f",
+      "bytes": 279787
     },
     "architecture-dark.png": {
       "kind": "viewer-png-export",
@@ -1357,15 +1359,15 @@
       "width": 3148,
       "height": 2150,
       "original": {
-        "path": ".archify/evidence/architecture-T4gMAm/architecture-dark.viewer-original.png",
-        "sha256": "4476f27f379d67b379da45d9c3997f6f9f1df41403a49bdae57adf49820d3441",
-        "bytes": 869707,
+        "path": ".archify/evidence/architecture-Kgt6FA/architecture-dark.viewer-original.png",
+        "sha256": "9dbfd93bb25a467d477a68479e6e244e964cb5212db7b8366dabd4951ca997ee",
+        "bytes": 870084,
         "width": 3356,
         "height": 2292
       },
-      "artifactSha256": "30f741aaf27252e02d4ed91d1f815f0843e0ab2929e38c90be0baf401b92a776",
-      "sha256": "c7344faccdfd81e11a785abce2b4e9b0ca7c10cf1a1caa00863d9115f6095625",
-      "bytes": 277040
+      "artifactSha256": "23ecac2db9ab742cb6d23f0873f1b31a1218c5abb9b7d457ef9134975afff845",
+      "sha256": "aecfe60d6250caf94740a58ddf396e0a1afa58d78acf44d327e11bfcdfbe004b",
+      "bytes": 269607
     }
   }
 }

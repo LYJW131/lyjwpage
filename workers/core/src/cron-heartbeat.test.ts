@@ -4,13 +4,14 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
-import { CRON_MONITOR_CONFIG, CRON_SCHEDULE, cronRoundDue } from "./cron-heartbeat.ts";
+import { CRON_HEARTBEAT_EVERY_MINUTES, CRON_HEARTBEAT_OFFSET_MINUTES } from "@shared/health";
+import { CRON_SCHEDULE, cronRoundDue } from "./cron-heartbeat.ts";
+import { PULSE_SCORE_SETTLE_MS } from "./pulse-score.ts";
 import { PULSE_SCORE_LEASE_MS } from "./pulse-score-state.ts";
 
-test("每 5 分钟一轮、落在评分余量之后，轮次判定与监控 crontab 同一份时刻表", () => {
+test("每 5 分钟一轮、落在评分余量之后，轮次判定与心跳计数同一份时刻表", () => {
   assert.equal(CRON_SCHEDULE, "2,7,12,17,22,27,32,37,42,47,52,57 * * * *");
-  assert.equal(CRON_MONITOR_CONFIG.schedule.value, CRON_SCHEDULE);
+  assert.equal(CRON_HEARTBEAT_OFFSET_MINUTES, PULSE_SCORE_SETTLE_MS / 60_000);
   const hour = Date.UTC(2026, 9, 13, 18);
   const due = Array.from({ length: 60 }, (_, minute) => minute).filter((minute) => cronRoundDue(hour + minute * 60_000 + 48_000));
   assert.deepEqual(due, [2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57]);

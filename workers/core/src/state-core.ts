@@ -1,6 +1,5 @@
-import * as Sentry from "@sentry/cloudflare";
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { cronCheckIns } from "@shared/cron-check-ins";
+import { HEARTBEAT_SERIES, recordCheck } from "@shared/health";
 import { withRequestState } from "@shared/request-state";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import type { CommitReply, CoreAudience, CorePower, StateCoreRpc } from "@shared/state-core";
@@ -10,14 +9,14 @@ import type { ListeningItem, PlayingContainer, RecentTrack } from "@shared/types
 import type { EnrichmentPatch } from "@shared/track-enrichment";
 
 import { commitRecentlyPlayed, commitRecentTracks } from "./apple-music-recent";
-import { CRON_MONITOR_CONFIG, CRON_MONITOR_SLUG, cronRoundDue } from "./cron-heartbeat";
 import { watchClockLayout } from "./clock-layout-watch";
+import { cronRoundDue } from "./cron-heartbeat";
 import { runCronRound } from "./cron-round";
 import { dispatchIngestEffects } from "./ingest-effects";
 import { expireStatusTags, liveRoom } from "./live-platform";
 import { lagStatusTags } from "./lag-repurge";
 import { previewWorkerEnabled } from "./preview";
-import { requestStore, type Env } from "./runtime";
+import { historyArchiveEnabled, requestStore, type Env } from "./runtime";
 
 function transientFailure(error: unknown): boolean {
   const flags = error as { retryable?: unknown; overloaded?: unknown } | null;
@@ -94,7 +93,16 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
       console.warn("[clock-layout]", error instanceof Error ? error.message : String(error));
     });
     if (!cronRoundDue(scheduledTime)) return { ran: false };
-    await cronCheckIns(Sentry)(CRON_MONITOR_SLUG, () => runCronRound(this.env, scheduledTime), CRON_MONITOR_CONFIG);
+    let ok = false;
+    try {
+      await runCronRound(this.env, scheduledTime);
+      ok = true;
+    } finally {
+      if (historyArchiveEnabled(this.env)) {
+        await recordCheck(this.env.HISTORY!, HEARTBEAT_SERIES, scheduledTime, ok)
+          .catch((error: unknown) => console.error("[cron-heartbeat]", error));
+      }
+    }
     return { ran: true };
   }
 

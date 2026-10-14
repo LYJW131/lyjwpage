@@ -38,6 +38,7 @@ import {
   DIGEST_PATH,
   GITHUB_CHART_PATH,
   GITHUB_REPO_PATH,
+  HEALTH_PATH,
   LIMITS_PATH,
   LISTENING_PATH,
   NOW_LISTENING_PATH,
@@ -47,7 +48,6 @@ import {
   POWERBANK_PATH,
   PULSE_PATH,
   REPORTERS_PATH,
-  SENTRY_PATH,
   SERVER_PATH,
   TROPHIES_PATH,
   SITE_DEPLOYMENTS_PATH,
@@ -87,7 +87,7 @@ const READS = {
   vibeCoding: [CODING_PATH, CODING_NOW_PATH, LIMITS_PATH],
   playstation: [NOW_PLAYING_PATH, PLAYING_PATH, TROPHIES_PATH],
   pulse: [PULSE_PATH],
-  siteStatus: [GITHUB_REPO_PATH, SITE_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, SENTRY_PATH, SERVER_PATH, REPORTERS_PATH],
+  siteStatus: [GITHUB_REPO_PATH, SITE_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, HEALTH_PATH, SERVER_PATH, REPORTERS_PATH],
   emby: [WATCHING_PATH, NOW_WATCHING_PATH],
 } as const;
 
@@ -126,7 +126,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     githubRepo,
     cloudflareWorkers,
     siteDeployments,
-    sentry,
+    health,
     reporters,
     pulse,
     digest,
@@ -155,7 +155,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     status("githubRepo"),
     status("cloudflareWorkers"),
     status("siteDeployments"),
-    status("sentry"),
+    status("health"),
     status("reporters"),
     status("pulse"),
     status("digest"),
@@ -206,7 +206,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     githubRepo,
     cloudflareWorkers,
     siteDeployments,
-    sentry,
+    health,
     reporters,
     pulse,
     digest,
@@ -316,7 +316,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   githubFallback={loaderData.githubRepo}
                   siteFallback={loaderData.siteDeployments}
                   cloudflareFallback={loaderData.cloudflareWorkers}
-                  sentryFallback={loaderData.sentry}
+                  healthFallback={loaderData.health}
                   serverFallback={loaderData.server}
                   reportersFallback={loaderData.reporters}
                   className={SLOT.siteStatus}

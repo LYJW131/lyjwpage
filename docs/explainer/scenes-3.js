@@ -564,9 +564,8 @@
   shake(c7, 16.8, 6, 0.3);
   sfx(c7, 17.4, "heartbeat", { x: 1760 });
 
-  const cS = chapter("站点自检", "报错和在线，交给 Sentry", 8);
+  const cS = chapter("站点自检", "在线自己记，报错交给 Workers Issues", 8);
   css(`
-    .s8-mk{width:54px;height:54px;border:2px solid var(--ink);background:#fff;display:flex;align-items:center;justify-content:center;flex:none;color:#362D59}
     .s8-chain{display:flex;align-items:center;gap:8px;margin-top:12px}
     .s8-chain b{font:600 17px var(--mono);border:2px solid var(--line);padding:3px 10px;background:#fff;color:var(--muted);white-space:nowrap}
     .s8-chain i{color:var(--faint);font-style:normal;font-size:18px}
@@ -581,14 +580,12 @@
     .s8-cells i{flex:1;border-radius:3px;background:#E6E3DC}
     .s8-note{font-size:17px;color:var(--muted);margin-top:8px;white-space:nowrap}
   `);
-  // Sentry 标志来自 Simple Icons，CC0。
-  const SENTRY_MARK = `<svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M13.91 2.505c-.873-1.448-2.972-1.448-3.844 0L6.904 7.92a15.478 15.478 0 0 1 8.53 12.811h-2.221A13.301 13.301 0 0 0 5.784 9.814l-2.926 5.06a7.65 7.65 0 0 1 4.435 5.848H2.194a.365.365 0 0 1-.298-.534l1.413-2.402a5.16 5.16 0 0 0-1.614-.913L.296 19.275a2.182 2.182 0 0 0 .812 2.999 2.24 2.24 0 0 0 1.086.288h6.983a9.322 9.322 0 0 0-3.845-8.318l1.11-1.922a11.47 11.47 0 0 1 4.95 10.24h5.915a17.242 17.242 0 0 0-7.885-15.28l2.244-3.845a.37.37 0 0 1 .504-.13c.255.14 9.75 16.708 9.928 16.9a.365.365 0 0 1-.327.543h-2.287c.029.612.029 1.223 0 1.831h2.297a2.206 2.206 0 0 0 1.922-3.31z"/></svg>`;
   const PROBES = [3.2, 5.6, 8.0, 10.4, 14.4, 16.8], BEATS = [6.8, 15.6];
   scene(cS, 1.9, 19.2, (root, s) => {
     const T0 = s.t0 - cS.t0;
     const wl = wireLayer(root);
     const site = card(root, { x: 90, y: 240, w: 300, tint: "green", icon: "globe", title: "lyjw.me", sub: "Vercel · 出页面" });
-    const sentry = card(root, { x: 770, y: 240, w: 380, tint: "purple", title: `<span class="s8-mk">${SENTRY_MARK}</span><span>Sentry</span>`, sub: "报错 · 性能 · 在线" });
+    const ledger = card(root, { x: 770, y: 240, w: 380, tint: "purple", icon: "database", title: "health_buckets", mono: true, sub: "D1 · 按小时记成败" });
     const worker = card(root, { x: 1470, y: 240, w: 360, tint: "orange", icon: "cloud", title: "API Worker", mono: true, sub: "定时归档与评分",
       lines: [`<div class="s8-chain"><b>cron</b><i>→</i><b>DO</b></div>`] });
     worker.querySelector(".hd").style.fontSize = "24px";
@@ -599,7 +596,7 @@
     const cells = (n) => Array.from({ length: n }, () => "<i></i>").join("");
     const panel = L("card s8-panel", root);
     panel.innerHTML = `<div class="s8-top"><b>LYJWPAGE</b><span>站点卡片里的在线状态</span></div>` +
-      `<div class="s8-row"><div class="s8-rh">lyjw.me<span>Operational</span></div><div class="s8-cells">${cells(30)}</div><div class="s8-note">Sentry 每分钟来敲门 · 只说明页面还在出</div></div>` +
+      `<div class="s8-row"><div class="s8-rh">lyjw.me<span>Operational</span></div><div class="s8-cells">${cells(30)}</div><div class="s8-note">采集 Worker 每分钟来敲门 · 只说明页面还在出</div></div>` +
       `<div class="s8-row"><div class="s8-rh">API<span>Operational</span></div><div class="s8-cells">${cells(30)}</div><div class="s8-note">Worker 每 5 分钟去报到 · cron 跑完一整轮才算</div></div>`;
     panel.__x = 1060; panel.__y = 560;
     const rows = [...panel.querySelectorAll(".s8-cells")].map((r) => [...r.children]);
@@ -620,7 +617,7 @@
         relink(wl);
       }
       const END = 18.5;
-      const vS = popAt(site, T, 2.1, END), vY = popAt(sentry, T, 2.3, END), vW = popAt(worker, T, 2.5, END);
+      const vS = popAt(site, T, 2.1, END), vY = popAt(ledger, T, 2.3, END), vW = popAt(worker, T, 2.5, END);
       const wout = 1 - seg(T, END - 0.15, END + 0.05);
       drawWire(W.probe, seg(T, 2.75, 3.1), Math.min(vS, vY) * wout);
       drawWire(W.beat, seg(T, 2.85, 3.2), Math.min(vY, vW) * wout);
@@ -639,7 +636,7 @@
         const on = lit === i;
         b.style.borderColor = on ? "var(--orange)" : ""; b.style.color = on ? "var(--orange-d)" : ""; b.style.background = on ? "var(--orange-t)" : "";
       });
-      sentry.style.outline = T > 11.7 && T < 12.0 ? "4px solid rgba(116,88,210,.55)" : ""; sentry.style.outlineOffset = "3px";
+      ledger.style.outline = T > 11.7 && T < 12.0 ? "4px solid rgba(116,88,210,.55)" : ""; ledger.style.outlineOffset = "3px";
       const vP = popAt(panel, T, 13.05, END);
       wv2(W.down, seg(T, 12.6, 12.9), T, END, vW, vP);
       rows.forEach((cs, r) => cs.forEach((c, i) => {
@@ -648,11 +645,11 @@
         c.style.background = today ? "#1F7A3D" : on ? "var(--green)" : "";
       }));
       const P = [], add = (i, x) => { if (x) P[i] = x; };
-      PROBES.forEach((t) => add(0, trip(W.probe, T, t, t + 0.55, "HEAD /api/version", "purple")));
+      PROBES.forEach((t) => add(0, trip(W.probe, T, t, t + 0.55, "GET /api/version", "purple")));
       BEATS.forEach((t) => add(1, trip(W.beat, T, t, t + 0.5, "心跳", "")));
-      add(2, trip(W.beat, T, 11.15, 11.7, "只读令牌 · 取数", "ink"));
-      add(3, trip(W.back, T, 11.9, 12.45, "报错 · 在线 · 性能", "green"));
-      add(4, trip(W.down, T, 12.75, 13.25, "/api/status/sentry", "ink", 0.2));
+      add(2, trip(W.beat, T, 11.15, 11.7, "采集 Worker · SELECT", "ink"));
+      add(3, trip(W.back, T, 11.9, 12.45, "在线 · 心跳 · 按天汇总", "green"));
+      add(4, trip(W.down, T, 12.75, 13.25, "/api/status/health", "ink", 0.2));
       pk(P);
     };
   });
@@ -660,8 +657,8 @@
   at(cS, 0, LEFT[0], LEFT[1]);
   look(cS, 0.5, 1);
   emote(cS, 13.2, "spark", 1.0);
-  say(cS, 2.6, 6.6, "两个信号，方向相反：Sentry 每分钟\n来敲门，Worker 每 5 分钟去报到。");
+  say(cS, 2.6, 6.6, "两个信号，方向相反：探测每分钟\n来敲门，Worker 每 5 分钟去报到。");
   say(cS, 7.0, 10.8, "敲门只说明页面还在出；\n报到说明 cron 跑完了一整轮。");
-  say(cS, 12.2, 16.0, "Worker 用只读令牌取回结果，\n变成卡片上的两行在线状态。");
-  say(cS, 16.05, 18.6, "线上出错时，\n我先来这儿查证据。");
+  say(cS, 12.2, 16.0, "采集 Worker 每 5 分钟汇总一次，\n变成卡片上的两行在线状态。");
+  say(cS, 16.05, 18.6, "出错先查\nWorkers Issues");
 })();

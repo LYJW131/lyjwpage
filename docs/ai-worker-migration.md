@@ -15,7 +15,7 @@
 
 1. **先让 api 提供只读入口。** 部署桥接提交 `c8515e86`：它只增加 `PublicStatus` 与 `shared/public-status.ts`，仍保留 api 原有聊天处理和两个聊天 DO。使用单独的干净 checkout 运行 `pnpm --dir workers/api typecheck` 和 `pnpm --dir workers/api exec wrangler deploy`。不要用最终拆分提交替代这一步；ai 的 `PUBLIC_STATUS` 依赖这个具名入口。
 2. **发布 ai 并转移聊天命名空间。** 在最终拆分提交上运行 `pnpm --dir workers/ai typecheck`，再执行 `pnpm --dir workers/ai exec wrangler deploy`。`workers/ai/wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接收 `ChatQuota` 与 `AnthropicEgress`，不得先创建同名的新命名空间，不得在 api 加 `deleted_classes`。Cloudflare 转移后原 api 的旧绑定仍指向同一批对象，聊天入口可以继续服务。
-3. **配置 ai 的 Secret。** 对准备好的各变量运行 `pnpm --dir workers/ai exec wrangler secret put <NAME>`，从标准输入或安全凭据流程传值。不要为历史签名重新生成密钥。Sentry 目标以 ai 的 `wrangler.toml` 为准，事件带 `worker:ai`。保持生产默认地址关闭；分支 Preview 的 URL 开关按构建文档设置。
+3. **配置 ai 的 Secret。** 对准备好的各变量运行 `pnpm --dir workers/ai exec wrangler secret put <NAME>`，从标准输入或安全凭据流程传值。不要为历史签名重新生成密钥。日志与 Issues 在 Workers Observability 的服务 `ai` 下。保持生产默认地址关闭；分支 Preview 的 URL 开关按构建文档设置。
 4. **切换 api 为转发入口。** 在最终拆分提交上运行 `pnpm --dir workers/api exec wrangler deploy`。其生产绑定删除聊天 DO，保留历史迁移记录，通过 `AI_SERVICE` 调 ai；`StateHub`、`LivePushRoom` 与 Pulse 留在 api。确认 `/mcp`、聊天、额度和 GitHub issue 入口行为后，再移除 api 不再使用的聊天 Secret；旧绑定移除不等于删除命名空间。
 5. **配置 Git 构建并合并。** 按构建文档连接 ai 的 Workers Builds，设置各 Worker 包含与排除路径、预览命令及清理权限。确认之后才合并并推送 `main`，让 Workers Builds 按同一份代码重建。不要用另一条 GitHub Actions 发布流水线接管。
 

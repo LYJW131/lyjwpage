@@ -5,7 +5,7 @@ export const SITE_PREVIEW_ACCESS_VAR = "SITE_PREVIEW_ACCESS_READY";
 
 const BUILT_CONFIG_KEYS = [
   "name", "main", "assets", "rules", "no_bundle",
-  "compatibility_date", "compatibility_flags", "cache", "exports", "images",
+  "compatibility_date", "compatibility_flags", "cache", "exports", "images", "ratelimits", "upload_source_maps",
 ];
 
 export function sitePreviewManifest({ branch = "", commit, backendUrl = null }) {
@@ -48,7 +48,9 @@ export function sitePreviewConfig(built, manifest) {
   const vars = sitePreviewVars(manifest);
   const empty = { services: [], r2_buckets: [], kv_namespaces: [], d1_databases: [], durable_objects: { bindings: [] }, images: { binding: "IMAGES" } };
   Object.assign(config, empty, { workers_dev: false, vars });
-  config.previews = { vars, ...empty };
+  config.previews = { vars, ...empty, ...(config.ratelimits ? { ratelimits: config.ratelimits } : {}) };
+  // Preview 与生产同服务名，Issues 摘要只能按服务数，分不出 Preview；Preview 只留日志与 traces，不进 Issues。
+  if (built.observability) config.previews.observability = { ...built.observability, issues: { enabled: false } };
   return config;
 }
 

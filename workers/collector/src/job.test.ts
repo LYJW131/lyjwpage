@@ -12,12 +12,12 @@ test("ok 只在有内容时带 detail", () => {
 test("setting 去首尾空白，空白串与非字符串值都算没配", () => {
   const env = {
     GITHUB_TOKEN: "  ghp_abc  ",
-    SENTRY_API_TOKEN: "   ",
+    APPLE_MUSIC_OWNER_NAME: "   ",
     CLOUDFLARE_ACCOUNT_ID: 42 as unknown as string,
     LAG: {} as Env["LAG"],
   } as Env;
   assert.equal(setting(env, "GITHUB_TOKEN"), "ghp_abc");
-  assert.equal(setting(env, "SENTRY_API_TOKEN"), undefined);
+  assert.equal(setting(env, "APPLE_MUSIC_OWNER_NAME"), undefined);
   assert.equal(setting(env, "CLOUDFLARE_ACCOUNT_ID"), undefined);
   assert.equal(setting(env, "LAG"), undefined);
   assert.equal(setting(env, "PAGESPEED_API_KEY"), undefined);
@@ -31,8 +31,8 @@ test("settings 按声明顺序报缺失，值都去过空白", () => {
   assert.deepEqual(settings(env, ["CLOUDFLARE_METRICS_TOKEN", "GITHUB_TOKEN"]), {
     values: { CLOUDFLARE_METRICS_TOKEN: "t", GITHUB_TOKEN: "g" },
   });
-  assert.deepEqual(settings({} as Env, ["GITHUB_TOKEN", "SENTRY_API_TOKEN"]), {
-    missing: ["GITHUB_TOKEN", "SENTRY_API_TOKEN"],
+  assert.deepEqual(settings({} as Env, ["GITHUB_TOKEN", "PAGESPEED_API_KEY"]), {
+    missing: ["GITHUB_TOKEN", "PAGESPEED_API_KEY"],
   });
 });
 

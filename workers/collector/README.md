@@ -39,26 +39,29 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | `vercel-metrics` | 已退役：同上 | 无 |
 | `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
 | `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
-| `sentry-status` | `LAG sentry:v1`（没取到的块沿用上一份） | `SENTRY_API_TOKEN` |
+| `sentry-status` | 已退役：同上 | 无 |
+| `uptime-probe` | 每分钟 GET `shared/health.ts#SITE_UPTIME_URL`，成败累进 D1 `health_buckets`（只有定时轮次记，手动点名不记） | D1 `HISTORY` |
+| `site-health` | `LAG health:v1`：D1 里的在线探测与 core 心跳汇成 30 天每天一格，加上 Workers Observability 报错数与 Web Analytics 真实访客 Web Vitals（没取到的块沿用上一份）；顺带清掉超出 `HEALTH_RETENTION_MS` 的格子 | D1 `HISTORY`；`CLOUDFLARE_METRICS_TOKEN`、`SITE_ANALYTICS_SITES`（缺了只空出报错与 Web Vitals，在线条照常） |
 | `digest` | `DIGEST.compose`（ai 的 `Digest`，带上一份的输入哈希与标题）写成的近况摘要进 `LAG digest:v1`；输入没变时 ai 回 `unchanged`，这里照样重写一次刷新 `updatedAt`；第一次写出、或摘要与 `quiet`（时钟卡）互换时才 `CORE.revalidate(["digest"])` | 无（ai 回 `unconfigured` 时这里跳过） |
 | `avatar-watch` | 不写状态：GitHub 头像的 sha256 与 main 上 `.github/github-avatar.sha256` 不一致时触发 `.github/workflows/avatar-sync.yml`，由它提交新哈希、触发站点重建；同一哈希在 `REDISPATCH_AFTER_MS` 内只触发一次 | `GITHUB_DISPATCH_TOKEN` |
 
-每个任务可有一条 Sentry cron 监控 `collector-<任务>`（默认不报到，由 `SENTRY_CRON_CHECKINS=true` 开启），报到节奏由 `src/schedule.ts` 的 `checkinCrontab` 按 `everyMinutes` / `offset` 算出，见下文「Sentry 监控」。
+任务失败怎么被看见见下文「失败」。
 
 几条取数口径：
 
 - **缺令牌就干净地跳过**：每个 isolate 每个任务只 `console.warn` 一次
-  （`{"event":"collector-skip",…}`），监控照常报 ok —— 没配是配置状态，不是故障。
-- **部分成功**：GitHub 仓库统计的名单和总数、Sentry 的五路查询（合成四块，其中 `errors` 要站点、后端两路
-  都取到才更新）都是各拉各的，这一轮没取到的那一部分沿用可滞后层里上一份的（带着它原来的采集时刻）；全都没取到才算失败、不写。
-  Sentry 各块取到的时刻记在 `blockAt`，卡片按它判过期（`SENTRY_STALE_MS`）；沿用最多 `SENTRY_BLOCK_CARRY_MS`，再旧那一块才回到「没有」。
+  （`{"event":"collector-skip",…}`），不记错误 —— 没配是配置状态，不是故障。
+- **部分成功**：GitHub 仓库统计的名单和总数、健康汇总的四块（`uptime`、`heartbeat` 读 D1，`errors` 读遥测查询与 Issues 汇总，`vitals` 读 Web Analytics）
+  都是各拉各的，这一轮没取到的那一部分沿用可滞后层里上一份的（带着它原来的采集时刻）；全都没取到才算失败、不写。
+  健康各块取到的时刻记在 `blockAt`，卡片按它判过期（`HEALTH_STALE_MS`）；沿用最多 `HEALTH_BLOCK_CARRY_MS`，再旧那一块才回到「没有」。
+  报错数是遥测查询按 `$metadata.service` 分组的 error 级事件数，按采样率放大的估计值，并排除 `*.workers.dev` 上的分支预览（`shared/health-cloudflare.ts`）。
   Cloudflare 部署逐个 Worker 查，单个查不到只空那一格（某个 Worker 还没部署时就是这样），
   全部查不到才算失败。
 - **厂商状态**已登记的各家（`src/agent-status-parse.ts` 的 `FALLBACK`）各自降级：某一家失败沿用上一轮那一行并标 `stale`；
-  全部失败是这边出不去，整轮抛错、不写，监控报 error。上一轮是 KV 里那份，同一 isolate 里自己上一轮写的更新时用它
+  全部失败是这边出不去，整轮抛错、不写，记成任务失败。上一轮是 KV 里那份，同一 isolate 里自己上一轮写的更新时用它
   （KV 读可能落后一分钟）。
 - **同一响里的出站**：一次调用同时只能有 6 个连接在等响应头。带 `headStart` 的任务先跑一阵
-  （`src/registry.ts` 的 `HEAD_START_MS`，或先跑完），其余再开跑。目前没有任务设置它。
+  （`src/registry.ts` 的 `HEAD_START_MS`，或先跑完），其余再开跑。`uptime-probe` 设了它：排队等连接的时间也算进探测超时，会把站点误判成掉线。
 - **PageSpeed** 桌面、移动并行测，单端通常二三十秒，偶尔长尾到一分钟以上，所以单端等到 `PAGESPEED_TIMEOUT_MS`
   才放弃，合成一个样本并进滚动窗口（窗口与样本上限见 `src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），样本窗口存在 `COLLECTOR_KV`。
   密钥只进查询参数，日志里只有状态码。任一端失败这一轮就空过，可滞后层沿用上一份。
@@ -73,20 +76,10 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
   `commitRecentTracks` 回执里的 `nextBy`（照推断接着放、下一首最晚上榜的时刻）早于下一次拉时，提前到那一刻拉，接着放的下一首一上榜就被看见。
   接着拉的某一次失败只记一条 warn（`apple-recent-follow`）并停在这一响，持续的故障由下一响的头一次报出来。手动 `refresh` 只拉一次，不受闲档限制。
 
-### Sentry 监控
+### 失败
 
-`SENTRY_CRON_CHECKINS` 为 `true` 时每个任务一条 cron 监控，slug `collector-<任务>`，设置随报到同步（`src/schedule.ts`）：
-连续两次 error 或漏报开 issue，一次恢复就关，时区 UTC。周期不短于 `MIN_CHECKIN_MINUTES` 的每轮都报到；
-更短的只在「既是它的一轮、又是 `MIN_CHECKIN_MINUTES` 的倍数分钟」那几轮报（`checkinEveryMinutes`），否则那一格它根本不跑，
-会被记成漏报。报到的开始、结束各是一次请求，分钟级的任务每轮都报太费。
-
-手动触发（`Collector.refresh`、本地调试入口）不报到。
-
-**名额**：组织的 cron 监控名额只有一个（见 [仓库外事实](../../docs/ops-facts.md)），给了 core 的 `api-minute-cron`；`collector-<任务>` 监控超出名额只能停用，报到会被 Sentry 丢弃，
-所以 `SENTRY_CRON_CHECKINS` 默认关（`src/schedule.ts#cronMonitor`），关着时不发报到，失败照常开 issue。加了名额后在 `wrangler.toml` 的 `[vars]` 设 `SENTRY_CRON_CHECKINS = "true"` 并在 Sentry 的 Crons 页启用。
-另一路：任务真失败（已知的外部故障除外）会直接开一个 Sentry issue，
-按任务分组（fingerprint `collector-job` + 任务名，tag `collector.job`），同一任务在一个 isolate 里最多隔 `REPORT_EVERY_MS` 报一次
-（`src/sentry.ts` 的 `reportJobFailure`）。
+任务真失败（已知的外部故障除外）由 `src/registry.ts#runJob` 记一条 error 级的 JSON 日志 `{ event: "collector-job", job, status, detail, ms }`，进 Workers Issues，盯防 routine 也按它查；
+带 `outage: true` 的已知外部故障记同样结构的 warn。没有逐任务的 cron 报到：漏跑本身看不出来，只有 core 心跳与在线探测按排定次数算漏跑。
 
 ## Apple Music
 
@@ -154,8 +147,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | --- | --- |
 | `GITHUB_TOKEN` | classic PAT：贡献日历（GraphQL）、仓库统计与最近提交（REST + GraphQL 取协作者） |
 | `GITHUB_DISPATCH_TOKEN` | fine-grained PAT，只授权 `LYJW131/lyjwpage`：Actions 读写（触发 `avatar-sync.yml`）、Contents 只读（读标记文件） |
-| `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取 |
-| `SENTRY_API_TOKEN` | Sentry 组织只读：`org:read` / `project:read` / `event:read` |
+| `CLOUDFLARE_METRICS_TOKEN` | 账号分析、Workers 脚本与构建读取；健康汇总另要 Workers Observability 写（遥测查询接口只认写权限） |
 | `PAGESPEED_API_KEY` | Google PageSpeed Insights |
 | `APPLE_MUSIC_PRIVATE_KEY` | Apple Music 开发者私钥（`.p8`）：签服务端调 Apple 用的 developer token 和给网页播放器的 MusicKit token；缺了 `apple-recent` 跳过，令牌路由回 500 |
 | `APPLE_MUSIC_OWNER_NAME` | Apple ID 上的真名：`apple-recent` 出站前把它（含 URL 编码形式）换成 `src/jobs/apple-recent.ts#OWNER_ALIAS`，自己的歌单、音乐回忆署名与个人电台标题不露真名；缺了 `apple-recent` 跳过，宁可不更新也不漏 |
@@ -168,7 +160,6 @@ Apple Music 的 user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推
 绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS`、`APPLE_CACHE` 四个 KV，`CORE`（`core` 的 `StateCore`），
 `APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`（`lyjwpage-history`）。D1 表结构归 `workers/core/migrations` 管：新表先在 core 那边
 `pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
-Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION_METADATA`。
 
 ## 部署
 
@@ -180,13 +171,13 @@ Sentry 项目 `collector-worker`，DSN 写在 `[vars]`，release 取 `CF_VERSION
 ## 本地开发
 
 根目录 `pnpm dev:worker` 以多配置方式起四个 Worker（配置清单见根 `package.json` 的 `dev:worker`）：`workers/dev-router`（拿端口，按路径分发）、
-core、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档那一步跳过），
+core、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档、在线探测与健康汇总跳过），
 KV 都是本地的（`LAG`、`CREDENTIALS` 和上报入口共用同一个本地 id，`LAG` 还和 core 共用）。
 令牌照需要放 `workers/collector/.dev.vars`（照 `.dev.vars.example`），不放的任务直接跳过。本地不开 Workers Caching。
 
 ```sh
 curl -X POST 'localhost:8788/__dev/collector/run?job=provider-status'     # 立刻跑一个任务，返回结果
-curl 'localhost:8788/__dev/collector/refresh?jobs=github-chart,sentry-status'  # 经 Collector RPC 点名跑
+curl 'localhost:8788/__dev/collector/refresh?jobs=github-chart,site-health'    # 经 Collector RPC 点名跑
 curl localhost:8788/cdn-cgi/local/scheduled                                  # 当作 cron 响了一次：跑这一分钟到期的任务
 ```
 
@@ -199,6 +190,6 @@ pnpm --dir workers/collector typecheck
 pnpm --dir workers/collector test
 ```
 
-单测覆盖节奏与报到、KV 存储驱动（含 `shared/cache` 跑在它上面）、D1 `site_deploys` 的 upsert
+单测覆盖节奏、KV 存储驱动（含 `shared/cache` 跑在它上面）、D1 `site_deploys` 的 upsert
 （真实 SQLite 跑 core 的全部迁移）、厂商状态变了才失效首屏、几处部分成功的合并口径，以及 Apple Music 的
 入口层（预检、来源、令牌）、`APPLE_CACHE` 命中不出网和补全后的补写。

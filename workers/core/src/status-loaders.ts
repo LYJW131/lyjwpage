@@ -56,7 +56,7 @@ export const statusLoaders = {
   githubRepo: { endpoint: LAG_VIEW_LOADERS.githubRepo },
   cloudflareWorkers: { endpoint: LAG_VIEW_LOADERS.cloudflareWorkers },
   siteDeployments: { endpoint: LAG_VIEW_LOADERS.siteDeployments },
-  sentry: { endpoint: LAG_VIEW_LOADERS.sentry },
+  health: { endpoint: LAG_VIEW_LOADERS.health },
   reporters: { endpoint: LAG_VIEW_LOADERS.reporters },
   pulse: { endpoint: unparam(() => getPulseStatus()) },
   digest: { endpoint: LAG_VIEW_LOADERS.digest },

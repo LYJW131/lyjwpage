@@ -11,7 +11,6 @@ export function Card({
   children,
   className,
   style,
-  "data-sentry-mask": sentryMask,
 }: {
   id?: string;
   label?: string;
@@ -20,13 +19,11 @@ export function Card({
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
-  "data-sentry-mask"?: true;
 }) {
   return (
     <div
       id={id}
       style={style}
-      data-sentry-mask={sentryMask}
       className={cn(
         "paper-card relative flex flex-col overflow-hidden rounded-lg border border-line-strong bg-surface",
         className,

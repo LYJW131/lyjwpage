@@ -1,21 +1,18 @@
-import * as Sentry from "@sentry/cloudflare";
-
 import originWorker, { LivePushRoom as LivePushRoomBase, StateHub as StateHubBase } from "./origin-worker";
 import type { Env } from "./runtime";
 import { DevOverrideReader as DevOverrideReaderBase } from "./dev-override-reader";
 import { StateCore as StateCoreBase } from "./state-core";
 import { PublicStatus as PublicStatusBase } from "./public-status";
 import { installApiPorts } from "./ports";
-import { sentryOptions } from "./sentry";
 
 installApiPorts();
 
-// Wrangler 迁移按导出名识别 DO；Sentry 包装不能改变这些名称。
-export const LivePushRoom = Sentry.instrumentDurableObjectWithSentry(sentryOptions, LivePushRoomBase);
-export const StateHub = Sentry.instrumentDurableObjectWithSentry(sentryOptions, StateHubBase);
-export const StateCore = Sentry.withSentry(sentryOptions, StateCoreBase);
-export const PublicStatus = Sentry.withSentry(sentryOptions, PublicStatusBase);
-export const DevOverrideReader = Sentry.withSentry(sentryOptions, DevOverrideReaderBase);
+// Wrangler 迁移按导出名识别 DO，这些导出名不能改。
+export const LivePushRoom = LivePushRoomBase;
+export const StateHub = StateHubBase;
+export const StateCore = StateCoreBase;
+export const PublicStatus = PublicStatusBase;
+export const DevOverrideReader = DevOverrideReaderBase;
 export type { Env } from "./runtime";
 
 const coreWorker = {
@@ -24,4 +21,4 @@ const coreWorker = {
   },
 };
 
-export default Sentry.withSentry(sentryOptions, coreWorker);
+export default coreWorker;

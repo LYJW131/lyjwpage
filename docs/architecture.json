@@ -196,7 +196,7 @@
       "type": "external",
       "label": "外部服务",
       "sublabel": "Apple · GitHub",
-      "tag": "Cloudflare · Sentry · PSI · 厂商状态",
+      "tag": "Cloudflare · PSI · 厂商状态",
       "pos": [
         40,
         800

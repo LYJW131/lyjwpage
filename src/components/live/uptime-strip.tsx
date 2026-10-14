@@ -1,7 +1,7 @@
 "use client";
 
-import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/sentry";
-import type { HealthSeries, SentryUptime, UptimeDay } from "@shared/sentry-status-types";
+import { CRON_HEARTBEAT_EVERY_MINUTES } from "@shared/health";
+import type { HealthSeries, SiteUptime, UptimeDay } from "@shared/health-types";
 import { cn } from "@/lib/utils";
 
 const day = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
@@ -46,7 +46,7 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
         <div className="flex h-6 gap-[3px]" role="img" aria-label={`${name} daily availability, last ${health.days.length} days`}>
           {health.days.map((entry) => {
             const tone = dayTone(entry);
-            const failed = entry.failure ? ` · ${number.format(entry.failure)} failed ${unit}` : "";
+            const failed = entry.failure ? ` · ${number.format(entry.failure)} failed ${unit}${entry.failure === 1 ? "" : "s"}` : "";
             return <span key={entry.dayStart} title={`${day.format(entry.dayStart)} · ${tone.label}${failed}`} className={cn("min-w-0 flex-1", tone.className)} />;
           })}
         </div>
@@ -65,18 +65,18 @@ function HealthRow({ name, health, statusTitle, footTitle, unit, stale }: {
 }
 
 export function UptimeStrip({ site, core, siteStale = false, coreStale = false }: {
-  site: SentryUptime | null; core: HealthSeries | null; siteStale?: boolean; coreStale?: boolean;
+  site: SiteUptime | null; core: HealthSeries | null; siteStale?: boolean; coreStale?: boolean;
 }) {
   if (!site && !core) return null;
   return (
     <div className="flex flex-col gap-5 border-t border-line p-4 lg:p-5">
       {site && (
-        <HealthRow name={site.url ? new URL(site.url).host : "lyjw.me"} health={site} unit="checks" stale={siteStale}
-          statusTitle={`Per-minute check · HEAD ${site.url || "https://lyjw.me/"}`}
+        <HealthRow name={new URL(site.url).host} health={site} unit="check" stale={siteStale}
+          statusTitle={`Per-minute check from the collector Worker · GET ${site.url}`}
           footTitle={`checked every ${site.intervalSeconds}s`} />
       )}
       {core && (
-        <HealthRow name="Core" health={core} unit="heartbeats" stale={coreStale}
+        <HealthRow name="Core" health={core} unit="heartbeat" stale={coreStale}
           statusTitle={`Cron heartbeat of the core Worker every ${HEARTBEAT_EVERY} (Durable Objects and KV)`}
           footTitle={`cron heartbeat every ${HEARTBEAT_EVERY}`} />
       )}

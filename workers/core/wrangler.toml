@@ -10,10 +10,6 @@ preview_urls = true
 [vars]
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me"
 STORAGE_PREFIX = "lyjwpage"
-SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
-
-[version_metadata]
-binding = "CF_VERSION_METADATA"
 
 [ai]
 binding = "AI"
@@ -43,6 +39,10 @@ database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 [observability]
 enabled = true
 
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01
+
 [observability.issues]
 enabled = true
 
@@ -71,7 +71,6 @@ to = "StateHub"
 # Preview 不继承生产绑定，要用的绑定（DO、AI、限流）都得在下面重声明。
 [previews.vars]
 PREVIEW_WORKER = "true"
-SENTRY_DSN = "https://13ba806bda9ae5a9086576b2e3d23cfb@o4511888459890688.ingest.us.sentry.io/4512132602855424"
 UPSTREAM_API_URL = "https://lyjw.me"
 STORAGE_PREFIX = "lyjwpage-preview"
 ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
@@ -98,6 +97,17 @@ class_name = "BuildCoordinator"
 
 [previews.ai]
 binding = "AI"
+
+# Preview 与生产同服务名，Issues 摘要只能按服务数，分不出 Preview；Preview 只留日志与 traces，不进 Issues。
+[previews.observability]
+enabled = true
+
+[previews.observability.traces]
+enabled = true
+head_sampling_rate = 0.01
+
+[previews.observability.issues]
+enabled = false
 
 [[previews.ratelimits]]
 name = "CHAT_USAGE_LIMIT"

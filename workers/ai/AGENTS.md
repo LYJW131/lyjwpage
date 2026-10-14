@@ -14,7 +14,7 @@
 - 构建工作流不持有仓库写凭据；上传、进度、截图只认 `src/build/actions-oidc.ts#verifyActionsToken` 验过的 main 上 build.yml 的 OIDC 令牌（受众绑定回调源与 runId），再按该 run 的上传凭据哈希交给 `BuildCoordinator`，经 `src/build/validation.ts` 的路径与大小校验后由 GitHub App 写入构建分支。webhook 必须验证原始正文 HMAC；Claude 审查只作参考，不授权合并。
 - `Digest`（`src/digest/`）只经采集 Worker 的 Service Binding 调用，不开 HTTP 路径、不进 `SITE_TOOLS`；它不过 `ChatQuota`，Clef 调用次数靠采集节奏和输入哈希封顶：事实清单里的数字取粗是有意的，改细会让哈希每轮都变、每轮都调 Clef。标题只能出自 `src/digest/taglines.ts#DIGEST_TAGLINES`，运行时不让模型现写。
 - Anthropic 出站经 `src/chat/egress.ts#anthropicFetch`；不要把任意主机转发能力加进 `AnthropicEgress`，取消信号须贯穿请求与响应管道。
-- `src/sentry.ts#sentryOptions` 禁止收集请求正文、请求头和 cookie；不能把对话、OAuth code 或出站密钥写入日志与错误上下文。
+- Workers Observability 收下所有 `console` 输出：不能把请求正文、请求头、cookie、对话、OAuth code 或出站密钥写进日志与错误消息。
 - 开发权限只由 `src/runtime.ts#aiDevEnabled` 判定；生产缺省关闭，不能用 `UPSTREAM_API_URL` 推断开发环境。分支预览使用组合入口，不能绑定生产状态或生产配额对象。
 
 ## 迁移与成对修改

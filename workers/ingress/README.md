@@ -9,13 +9,13 @@
 
 ## 代码职责
 
-- `src/index.ts`：入口，`Sentry.withSentry` 包一层；`src/worker.ts` 是全部路由、回执与拆分。
+- `src/index.ts`：入口；`src/worker.ts` 是全部路由、回执与拆分。
 - `src/access-auth.ts`：验 Access 签的 JWT，按 `[vars.ACCESS_CLIENTS]` 查这把 service token 许不许做这件事。
 - 根目录 `shared/ingest/`：各来源的 prepare（收敛、逐字段校验、Emby 的 R2 HEAD），产出能结构化复制的命令。
   状态核心只 `import type` 这里的命令类型；PlayStation 上报器通过 `/api/ingest/playstation` 交入原始信封，由本入口 prepare。
 - `src/lag-ingest.ts`：可滞后层那一半（KV `LAG`，格式见 `shared/lag.ts`），布局变了才请状态核心失效首屏。
 - `src/ingest-archive.ts`：长期归档那一半（D1 `HISTORY`），训练、圆环日读数、落地节点小时汇总、限额快照。
-- `src/env.ts`：绑定与变量；`src/sentry.ts`：Sentry 配置。
+- `src/env.ts`：绑定与变量。
 
 ## 端点
 
@@ -51,7 +51,7 @@
 - `ignored`（只有 `mac`）：信封里站点不认识的模块名（包括站点不收的旧模块名），原样回给上报器；不影响别的模块。
 - `rejected`：`[{ module, error }]`，三份 coding 数据（`codingUsage` / `codingActivity` / `codingTokenBuckets`，契约见
   `shared/coding-usage.ts`）里校验不过的那几份。坏的只丢它自己，原因带路径（如 `agents[0].days[2].totalTokens 小于四列之和`），
-  别的模块、存活、限额照常收下，另记一行 `[ingest] rejected` 警告进 Sentry Logs。`agents` 那封里被拒的不算「带了」：
+  别的模块、存活、限额照常收下，另记一行 `[ingest] rejected` 警告日志。`agents` 那封里被拒的不算「带了」：
   限额和 coding 数据一份可收的都没有时整封 400（原因只进日志）。
 
 大小按实际读到的字节限制（`STORAGE_MAX_BYTES`），不信 `Content-Length`；超过也回 400，没有 413。
@@ -141,7 +141,7 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 | 503 | `{ ok: false, error: "没有绑定采集 Worker" }` | 没绑 `COLLECTOR` |
 | 404 | `Not found` | 预览版本 |
 
-任务按手动方式跑（`scheduled: false`）：不看到期、不向 Sentry 报到，真失败照常开 issue（见[采集 Worker README](../collector/README.md)）。
+任务按手动方式跑（`scheduled: false`）：不看到期，真失败照常记 error 级日志、进 Workers Issues（见[采集 Worker README](../collector/README.md)）。
 权限只授给 `lyjwpage-github-actions` 那把 token，平时在 GitHub Actions 里手动运行 `.github/workflows/collector-refresh.yml`
 （输入 `jobs` 留空跑全部，或填空格分隔的任务名），结果表写在那次运行的摘要里，有任务失败时运行标红。
 
@@ -150,14 +150,12 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 公开变量与绑定全在 `wrangler.toml`，没有 secret：
 
 - `[vars]`：`ACCESS_TEAM_DOMAIN`、`ACCESS_AUD`、`[vars.ACCESS_CLIENTS]`（见「鉴权」）；`EMBY_PUBLIC_URL`（Emby 条目的
-  「在 Emby 里打开」链接，prepare 时拼进条目）；`SENTRY_DSN`。
+  「在 Emby 里打开」链接，prepare 时拼进条目）。
 - `CORE`：状态核心的具名 entrypoint `StateCore`；`COLLECTOR`：采集 Worker 的具名 entrypoint `Collector`（补全「正在听」、部署通知后重拉）。
 - `IMAGES`：上报器直传图片的 R2 桶，只 HEAD；`LAG`、`CREDENTIALS`：可滞后层与共享凭据 KV，和 core、采集 Worker 同一份；
   `HISTORY`：D1 `lyjwpage-history`，表结构归 `workers/core/migrations`，这里只写。
-- `CF_VERSION_METADATA`：Sentry 取 release（Worker 版本 ID）。
 
-Sentry 沿用 `api-worker` 项目（同一个 DSN），每个事件带 `worker: ingress` 标签；排查上报问题在那个项目里按 `worker:ingress`
-过滤。日志只收 warn / error，`[ingest]` 拒收、`[auth]` 越权原样进 Sentry Logs。
+日志与 Issues 在 Workers Observability 的服务 `ingress` 下；`[ingest]` 拒收、`[auth]` 越权是 warn 级日志，按消息前缀查。
 
 发布走 Cloudflare Workers Builds 原生 Git 集成：构建 `pnpm --dir workers/ingress typecheck`，部署
 `pnpm --dir workers/ingress exec wrangler deploy -c wrangler.toml`，监视路径与「预览构建和非生产分支构建都关掉」的理由见

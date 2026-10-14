@@ -245,27 +245,27 @@
 
 ## 08 心电图与地层（12 小节）
 
-事实：FACTS §3「core 的 cron」「Pulse 事实时间线」、§8。画面标题「心电图与地层 / Heartbeat and strata」。暗底 + 白卡；Sentry 那边不出组织名、监控 ID、真实报错标题、可用率数字；令牌只画成一张卡、标 `GET`（采集 Worker 只拿它发 GET 查询；权限范围未核，不说「只读」，见 FACTS §8）。live 绿在这一章第二次、也是最后一次出现，只给 LYJWPAGE 卡上今天那一格。一拍 = 一分钟（接第 07 章）。一张暗底图纸：地面是一条心电图横线，线上是外面（Sentry），线下是站点（lyjw.me、workers/core），再往下是地层（D1）。心电图是往左卷的监护仪，笔尖固定，右边是还没发生的；尖峰朝信号走的方向：敲门从上往下进来（尖朝下，落在每拍的后半拍），报到从下往上出去（尖朝上，落在整 5 拍上）。拍位和 `v2/music/ch08.js` 是同一张表（`v2/ch08.js` 的 `CHECKS` / `KNOCKS` / `AT`）。
+事实：FACTS §3「core 的 cron」「Pulse 事实时间线」、§8。画面标题「心电图与地层 / Heartbeat and strata」。暗底 + 白卡；站点自检不出 Cloudflare 账号 ID、真实报错标题、可用率数字；不画令牌，采集 Worker 去 D1 那一趟只标 `SELECT`（向 Cloudflare 取数那把令牌的权限范围未核，不说「只读」，见 FACTS §8）。live 绿在这一章第二次、也是最后一次出现，只给 LYJWPAGE 卡上今天那一格。一拍 = 一分钟（接第 07 章）。一张暗底图纸：地面是一条心电图横线，线上是记账的那张表（D1 `health_buckets`），线下是站点（lyjw.me、workers/core），再往下是地层（D1）。心电图是往左卷的监护仪，笔尖固定，右边是还没发生的；尖峰朝信号走的方向：敲门从上往下进来（尖朝下，落在每拍的后半拍），报到从下往上出去（尖朝上，落在整 5 拍上）。拍位和 `v2/music/ch08.js` 是同一张表（`v2/ch08.js` 的 `CHECKS` / `KNOCKS` / `AT`）。
 
 交接：0:0 接第 07 章冲进服务器那台的最后一帧，硬切暗底、不落黑：首帧只有一根报到尖峰，尖在屏幕 (1100, 300)（第 07 章摆尖的位置），左边那条斜边和摆杆一样斜，笔尖停在尖上发亮；0–0.95 往后拉出整条心电图。12:0 镜头已经从地层升回地面，停在 `[960, 540]`、缩放 1：画面上只剩心电图横线（屏幕 y 540，笔尖在屏幕 x 1350），标签、方框、地层都已收掉；第 09 章从这一帧硬切纸面，横线收成对话卡的输入框。
 
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–1 | 首帧那根尖峰往后拉开，心电图横线出来；标题 | 底鼓就是心跳（lub-dub）；0:0 报到一声往上挑的低音 |
-| 1–4 | 同一条线上两种方向相反的信号：线上的 Sentry 每分钟来敲门（HEAD `/api/version`，尖朝下，进 lyjw.me，注「只说明 site Worker 还在出页面」）；线下 workers/core 的 cron 每 5 分钟一轮，每轮去报到（尖朝上，到 Sentry）；Sentry 的框里 lyjw.me、API 两行记录一格一格往里加；2.5 起冷面脚注「* 报到只证明 cron 跑完了。」。旁白 `n1` | 敲门是后半拍一声指节叩木门，报到是整 5 拍一声往上挑的低音（1:1、2:2、3:3） |
-| 4–6 | 往右：采集 Worker 的小钟走到整 5 分钟，5:0 拿令牌去 Sentry 查（卡上标 `GET`），5:1 结果带回来，经可滞后层（KV LAG）上 LYJWPAGE 白卡：lyjw.me、API 两行各 30 天一格，5:2 今天那一格亮（live 绿）；卡上只写 Operational 和 30 days ago / Today，不出可用率。旁白 `n2` | 5:0 令牌一声；5:2 高音灯 |
+| 1–4 | 同一条线上两种方向相反的信号：采集 Worker 每分钟来敲门（GET `/api/version`，尖朝下，进 lyjw.me，注「采集 Worker · 每分钟一次」「只说明 site Worker 还在出页面」）；线下 workers/core 的 cron 每 5 分钟一轮，每轮跑完去报到（尖朝上，到 `health_buckets`）；`health_buckets` 的框里 lyjw.me、Core 两行记录一格一格往里加；2.5 起冷面脚注「* 报到只证明 cron 跑完了。」。旁白 `n1` | 敲门是后半拍一声指节叩木门，报到是整 5 拍一声往上挑的低音（1:1、2:2、3:3） |
+| 4–6 | 往右：采集 Worker 的小钟走到整 5 分钟，5:0 去 `health_buckets` 读两行（标 `SELECT`），5:1 汇总带回来，经可滞后层（KV LAG）上 LYJWPAGE 白卡：lyjw.me、Core 两行各 30 天一格，5:2 今天那一格亮（live 绿）；卡上只写 Operational 和 30 days ago / Today，不出可用率。旁白 `n2` | 5:0 取数一声；5:2 高音灯 |
 | 6–8 | 镜头纵向下沉进地层：一层一层是 Pulse 卡上那几条道（道名一栏贴着画面左边，顺序照 Pulse 卡），墨色深浅交替，里面是原始事实的示意（区间、瓦数、桶）；右沿是此刻，workers/core 的 cron 每 5 拍（和报到同一轮）掉下一片压进右沿（注「每 5 分钟压进一薄片」）；右边 D1 档案架「lyjwpage-history · 长期保存」，底下「← 越往左越早，一直留着」；7:0 Listening 那一层里正在放的这首歌亮一下。旁白 `n3` | 低通收窄，敲门隔着地层变闷，压进一片时一声翻纸（和报到同一拍：6:1、7:2、8:3）；7:0 低音马林巴唱信封主题 |
 | 8–10 | 推近 Coding 那一层（其余几层的数据和道名淡掉）：一窗一格，格里两道细刻线分出三个 5 分钟桶（注「一窗 = 三个 5 分钟桶」），下面 Tokens 那层是三个来源的桶叠在一起（注「Mac · 云端 · Cursor」）；8:1 全零的窗先落到最低档，标「不问 Clef，直接最低档」；8:2 起 Clef（「打分（示意）」）一窗一窗往右打，每半拍一窗（先后和快慢都是示意），打出来的档是窗里的一根横线（高低是示意）；贴着此刻那一窗还没满，不打；Clef 那一格上方注「打分只在屋里放 7 天，不进 D1」（打分记在 StateHub，不归档）。旁白 `n4` | 8:1 一声闷拨弦；8:2 起每打一窗一声小铃 |
 | 10–12 | Clawd 从地层上沿冒出来说收尾那句（气泡）；11:0 起镜头升回地面，标签、方框、地层一起收掉，停在只剩心电图的一帧 | 10:1 冒出来一声；11:3 吸一口气，收在 A7sus4，交给第 09 章 |
 
 | 键 | 小节 | 中文 | English |
 |---|---|---|---|
-| `ch08.n1a` / `n1b` | 1–4 | 外部探测从 Sentry 打进来，／cron 从 Worker 里主动报出去。 | Sentry probes in from outside; / the Worker's cron reports out. |
+| `ch08.n1a` / `n1b` | 1–4 | 探测每分钟从采集 Worker 打进来，／cron 每轮跑完，自己记一笔心跳。 | The collector probes in every minute; / the Worker's cron logs its own beat. |
 | `ch08.foot` | 2.5–4 | 报到只证明 cron 跑完了。 | A check-in only proves the cron ran. |
-| `ch08.n2a` / `n2b` | 4–6 | 查 Sentry 的是采集 Worker，／页面只读可滞后层，不碰 Sentry。 | The collector queries Sentry; / pages only read the lag layer. |
+| `ch08.n2a` / `n2b` | 4–6 | 汇总这两行的是采集 Worker，／页面只读可滞后层，不碰 D1。 | The collector sums up both rows; / pages only read the lag layer. |
 | `ch08.n3a` / `n3b` | 6–8 | cron 每 5 分钟按水位写进 D1，／各路独立，一路坏了不挡别路。 | Rows past the watermark go to D1; / a failed stream blocks no other. |
 | `ch08.n4a` / `n4b` | 8–10 | 窗关上两分钟后才交给 Clef，／输入是前台应用、agent 与 token。 | Two minutes after a window closes, / Clef weighs apps, agents and tokens. |
-| `ch08.clawd`（气泡） | 10.35–11.45 | 线上出错时，／我先去 Sentry 查证据。 | When something breaks, / I check Sentry first. |
+| `ch08.clawd`（气泡） | 10.35–11.45 | 线上出错时，／我先去 Workers Issues 查证据。 | When something breaks, / I check Workers Issues first. |
 
 ## 09 对话（16 小节）
 
@@ -276,7 +276,7 @@
 | 小节 | 画面 | 配乐 |
 |---|---|---|
 | 0–1 | 墨线收成输入框，镜头拉出整张对话卡（右边），左上标题；0.6 起打出「你最近在听什么？」 | 只有 pad 和打字机 |
-| 1–2.5 | 1:0 发出，气泡上去；卡片先回隐私说明（去向一行一行亮：Cloudflare Workers、Turnstile、Workers AI 的 Clef、Anthropic、Sentry、GitHub、这个浏览器）；2:0 点接受，说明收起，输入框里 Verifying you are human…。旁白 `n1` | 1:0 纸滑；2:0 一声叮；2:2 气动管（消息出门） |
+| 1–2.5 | 1:0 发出，气泡上去；卡片先回隐私说明（去向一行一行亮：Cloudflare Workers、Turnstile、Workers AI 的 Clef、Anthropic、GitHub、这个浏览器）；2:0 点接受，说明收起，输入框里 Verifying you are human…。旁白 `n1` | 1:0 纸滑；2:0 一声叮；2:2 气动管（消息出门） |
 | 2.5–5.4 | 火花出卡片往右：3:1 验人（通行证 · Turnstile）打勾；进 ChatQuota，三道（访客自己的总量、全站路由次数、至少一档还有空位）3:3、4:0、4:1 各勾一项；4:2 一旁盖 429（Too many prayers），脚注「挡下：回 429，不调 Clef」；4:3 放行。旁白 `n2` | 一项一声叮；4:2 印章；4:3 气动管 |
 | 5.4–7.9 | Clef 分拣台：三档 Fable · God、Sonnet · Prophet、Haiku · Small Fry，各一排名额格；6:0 挑中 Sonnet，6:1 它的格子已满、标「满了」，6:2 往下降一档，6:3 Haiku 亮灯、占一格；7:0 前后注 refuse。旁白 `n3` | 6:0 叮；6:1 熄灯往下滑；6:2 下坠；6:3 灯 |
 | 7.9–9.7 | 工具：8:1 Haiku 调 `get_site_status`，经 `PUBLIC_STATUS` 下到 core · PublicStatus，8:2 `listening/now` 回来，注「和浏览器看到的同一份」；9:0 右上外部 AI 客户端经 `POST /mcp` 接进同一张 `SITE_TOOLS`。旁白 `n4` | 8:1 气动管；8:2 灯；9:0 叮、9:1 灯；9:2 甩镜头 |

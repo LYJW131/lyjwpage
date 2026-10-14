@@ -32,7 +32,6 @@ export const digestJob: Job = {
   name: "digest",
   everyMinutes: 15,
   offset: 5,
-  maxRuntimeMinutes: 2,
   run: ({ env, now }) => env.DIGEST
     ? refreshDigest({ lag: env.LAG, core: env.CORE, digest: env.DIGEST }, now)
     : Promise.resolve(skipMissing("digest", ["DIGEST"])),

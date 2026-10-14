@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect } from "react";
-import * as Sentry from "@sentry/react";
 import {
   isRouteErrorResponse,
   Links,
@@ -28,6 +27,7 @@ import { useStaleAutoReload } from "@/hooks/use-stale-auto-reload";
 import { DOCUMENT_COMMIT_META } from "@/lib/app-version";
 import { assetRecoveryScript } from "@/lib/asset-recovery-boot";
 import { commitSha } from "@/lib/build-info";
+import { reportError } from "@/lib/error-report";
 import { HEATMAP_STORAGE_KEY, syncHeatmapToDocument } from "@/lib/heatmap-preference";
 import { liveSocketUrl } from "@/lib/live-socket";
 import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
@@ -140,7 +140,7 @@ export default function App() {
 function PageError({ error }: { error: unknown }) {
   useEffect(() => {
     console.error(error);
-    Sentry.captureException(error);
+    reportError(error, "route");
   }, [error]);
   useStaleAutoReload("page-crash");
 

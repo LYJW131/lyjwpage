@@ -80,7 +80,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章表盘的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），表盘让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
 - 最近在听：apple-recent 任务，专辑 / 歌单粒度的列表交给 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
-- GitHub、站点部署与访问量、Cloudflare、Sentry、PageSpeed、厂商状态：直接写 `LAG`；站点部署列表那一轮（`site-deployments`，每分钟）另把部署记录写进 D1，访问量是 `site-analytics`，每 15 分钟第 3 分钟（`workers/collector/src/jobs/site-status.ts#siteDeploymentsJob`、`workers/collector/src/jobs/site-status.ts#siteAnalyticsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
+- GitHub、站点部署与访问量、Cloudflare、站点健康、PageSpeed、厂商状态：直接写 `LAG`；站点部署列表那一轮（`site-deployments`，每分钟）另把部署记录写进 D1，访问量是 `site-analytics`，每 15 分钟第 3 分钟（`workers/collector/src/jobs/site-status.ts#siteDeploymentsJob`、`workers/collector/src/jobs/site-status.ts#siteAnalyticsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。在线探测 `uptime-probe` 每分钟只把成败记进 D1，站点健康 `site-health` 每 5 分钟第 4 分钟把它汇总进 `LAG`（§8）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - GitHub 头像：avatar-watch 每 5 分钟第 1 分钟比对头像的 sha256 与 main 上的 `.github/github-avatar.sha256`，不一致才触发 `.github/workflows/avatar-sync.yml` 提交新哈希、让站点重建；不写状态（`workers/collector/src/jobs/avatar-watch.ts#avatarWatchJob`）。
 - PlayStation 不在这张表里。
 
@@ -218,7 +218,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
      - 全零的窗不问 Clef，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
      - 每轮最多 36 个窗，从新到旧，每批并发 3，超时 10 秒。
      - 打分写回 StateHub 的评估列表，和 pulse 时间线一样只留 `shared/limits.ts#PULSE_TTL_MS`（`workers/core/src/pulse-score-state.ts#finishPulseScore`）；归档的各路（`ARCHIVE_STREAMS`）里没有它，**不进 D1**。第 08 章在 Clef 那一格上方注「打分只在屋里放 7 天，不进 D1」。
-- 每一轮都包在 `shared/cron-check-ins.ts#cronCheckIns` 里，向 `api-minute-cron` 报到（`workers/core/src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`、`shared/sentry.ts#CRON_HEARTBEAT_EVERY_MINUTES`）。
+- 每一轮跑完，不论成败，都按排定时刻往 D1 的 `health_buckets` 记一笔心跳，这一笔就是第 08 章的「报到」；只在开着历史归档时记（`workers/core/src/state-core.ts#StateCore`、`shared/health.ts#HEARTBEAT_SERIES`、`shared/health.ts#CRON_HEARTBEAT_EVERY_MINUTES`、`workers/core/src/runtime.ts#historyArchiveEnabled`）。
 - StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档、打分和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/cron-round.ts#runCronRound`）。
 - 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是它的轮次（`workers/collector/src/core-round.ts#driveCoreRound`）。
 
@@ -243,10 +243,10 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - `/api/home` 已删除（8977457）。首屏 loader 按视图并行调 `status(key)`，一个视图一次（按 e10a75a 现数 **27 次**），最近提交随 `githubRepo` 视图到达，头像内联与之同时开始；第二轮再取图标内联、封面占位和歌词（`src/app/page.tsx#loader`）。
 - 每张卡读自己的 `/api/status/*`：实时卡读 DO，可滞后卡读 `LAG`（`src/server/site-context.ts#SiteServices`）。
 - 实时层的公开读取在 `StateHub.publicRead()` 里随读取一起过提交可见性屏障，每次读一个 RPC；可滞后层只读 KV，不过屏障、不唤醒 DO（`workers/core/src/public-execution.ts#executePublicRequest`）。
-- **视图响应由 site Worker 的 `StatusSnapshot` 缓存入口回源**：成功 200 挂 `Cache-Tag: page:<tag>`、Cache-Control 600 秒且不带 SWR，充电头与充电宝两格 60 秒（`src/lib/site-policy.ts#CLOCKED_LAYOUT_STATUS_CACHE_CONTROL`）；`ok:false` 与端点 404 的降级信封只缓存 60 秒（`src/lib/site-policy.ts#STATUS_DEGRADED_CACHE_CONTROL`）；歌词由 `site.lyrics` 直取后端 `/api/lyrics`，不进这条缓存（`workers/site/src/index.ts#StatusSnapshotBase`、`src/lib/site-policy.ts#statusSnapshotHeaders`）。整页 SSR 文档与数据响应另挂 `Cache-Tag: home`、max-age 300 / SWR 86400（`src/lib/site-policy.ts#HOME_CACHE_TAG`）。
-- 标签：按 e10a75a 现数 20 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、站点部署、Cloudflare、Sentry、上报器账本、pulse），只靠 600 秒缓存过期重建（`shared/status-views.ts#STATUS_VIEWS`）。
+- **视图响应由 site Worker 的 `StatusSnapshot` 缓存入口回源**：成功 200 挂 `Cache-Tag: page:<tag>`、Cache-Control 600 秒且不带 SWR，充电头与充电宝两格 60 秒（`src/lib/site-policy.ts#CLOCKED_LAYOUT_STATUS_CACHE_CONTROL`）；`ok:false` 与端点 404 的降级信封只缓存 60 秒（`src/lib/site-policy.ts#STATUS_DEGRADED_CACHE_CONTROL`）；歌词由 `site.lyrics` 直取后端 `/api/lyrics`，不进这条缓存（`workers/site/src/index.ts#StatusSnapshot`、`src/lib/site-policy.ts#statusSnapshotHeaders`）。整页 SSR 文档与数据响应另挂 `Cache-Tag: home`、max-age 300 / SWR 86400（`src/lib/site-policy.ts#HOME_CACHE_TAG`）。
+- 标签：按 e10a75a 现数 20 个视图挂 `page:` 标签；另有 7 个视图不带标签（GitHub 两份、站点部署、Cloudflare、站点健康、上报器账本、pulse），只靠 600 秒缓存过期重建（`shared/status-views.ts#STATUS_VIEWS`）。
 - 一个标签失效，先清除那份视图快照，再清除首页文档，下一次请求重新渲染；失效经私有 RPC 调进站点缓存，用的是 purge 而不是软失效（`shared/site-cache.ts#SiteCacheRpc`、`workers/site/src/index.ts#purgeTags`）。
-- 请求路径上不现拉外部 API：每条缓存只读自己的状态端点（实时读 DO，可滞后读 KV），GitHub、Sentry 这些外部来源只由采集 Worker 定时去取（按卡读取见 `src/app/page.tsx#loader`，端点的数据层与读取实现见 `shared/status-views.ts`、`workers/core/src/status-loaders.ts`）。
+- 请求路径上不现拉外部 API：每条缓存只读自己的状态端点（实时读 DO，可滞后读 KV），GitHub、Cloudflare 这些外部来源只由采集 Worker 定时去取（按卡读取见 `src/app/page.tsx#loader`，端点的数据层与读取实现见 `shared/status-views.ts`、`workers/core/src/status-loaders.ts`）。
 - 失效通知只带标签名、不带数据：数据已经落在 Worker 上，下一次读端点自己去拿。通知不再是站点 HTTP 路由：core Worker 经私有 `SITE_CACHE` Service Binding 调 `invalidate(tags)`（`workers/core/src/live-platform.ts#expireStatusTags`、`shared/site-cache.ts#SiteCacheRpc`），白名单过滤后按 `page:<tag>` 清除视图快照，再清除 `home` 首页文档。
 - 标签只为布局变化而发：首屏版面变了（例如在线 / 离线翻转、Mac 心跳断档后回来、充电头接上或拔下、开始或停止放歌）才通知失效；只变内容的交给 600 秒缓存过期自己重建（布局判据见 `shared/home-layout.ts`，写 KV 的一方在 `workers/ingress/src/lag-ingest.ts#commitLagIngest` 返回要失效的标签；快照有效期见 `src/lib/site-policy.ts#STATUS_CACHE_CONTROL`）。
 - 首页文档带两个值：max-age 是响应在边缘直接可用的时长；stale-while-revalidate 是过了这个时长后先给旧副本、后台再回源重建的窗口。视图快照不带后者，只多一个 stale-if-error：回源出错时继续用旧副本的窗口（`src/lib/site-policy.ts#STATUS_CACHE_CONTROL`）。
@@ -256,7 +256,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - Worker 降级：回 `ok:false` 加 HTTP 200。
 - 404：显示 "Status unavailable"。
-- 5xx 或网络错误：抛出，本次渲染失败回 500 且不缓存；`StatusSnapshot` 上游失败或非法包回 503（`workers/site/src/index.ts#StatusSnapshotBase`）。
+- 5xx 或网络错误：抛出，本次渲染失败回 500 且不缓存；`StatusSnapshot` 上游失败或非法包回 503（`workers/site/src/index.ts#StatusSnapshot`）。
 
 ## 5 浏览器
 
@@ -349,12 +349,14 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 两个方向相反的信号：
 
-- **Sentry 每分钟来敲门**：在线探测 HEAD `/api/version`，只说明站点（site Worker）还在出页面（`src/app/api/version/route.ts#loader`）；后端那一截看 core Worker 的 cron 心跳（`workers/core/src/cron-round.ts#runCronRound`）。探测配在 Sentry 侧，记在 `docs/ops-facts.md` 的「Sentry」一节，那一条标的是「核对于 未记录」。
-- **Worker 每 5 分钟去报到**：core cron 的每一轮（见 §3「core 的 cron」）。
+- **每分钟来敲门**：collector 的 `uptime-probe` 任务每分钟 GET `https://lyjw.me/api/version`（`shared/health.ts#SITE_UPTIME_URL`、`UPTIME_PROBE_EVERY_MINUTES`），只说明站点（site Worker）还在出页面（`src/app/api/version/route.ts#loader`）；成败按小时一格累加进 D1 的 `health_buckets` 表（`workers/collector/src/jobs/uptime-probe.ts#uptimeProbeJob`、`shared/health.ts#recordCheck`）。探测从 Cloudflare 里面发出，Cloudflare 整体出事时这一行看不出来。后端那一截看 core Worker 的 cron 心跳。
+- **Worker 每 5 分钟去报到**：core cron 的每一轮跑完，自己往同一张表记一笔心跳（见 §3「core 的 cron」）。
 
-Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回，页面和首屏都不直连 Sentry，只读可滞后层里的这份结果（`workers/collector/src/jobs/sentry-status.ts#sentryStatusJob`），写进 `LAG` 的 `sentry:v1` 键，经 `/api/status/sentry` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、API 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`、`shared/sentry-status.ts#UPTIME_DAYS`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率。
+两条记录由 **collector** 的 `site-health` 任务每 5 分钟汇总（`workers/collector/src/jobs/site-health.ts#siteHealthJob`）：各按 UTC 日切成 30 格，算 24 小时与 30 天可用率（`shared/health.ts#summarizeBuckets`、`HEALTH_DAYS`）；同一轮还向 Cloudflare 取报错数（Workers Observability 遥测查询，12 小时 / 7 天，site 与后端几个 Worker 分开，采样后的估计值）、Workers Issues 里未解决的条数，以及 Web Analytics 的真实访客 Web Vitals p75（`shared/health-cloudflare.ts#fetchErrorSeries`、`fetchFieldVitals`）。结果写进 `LAG` 的 `health:v1` 键（`shared/lag.ts#LAG_KEYS`），页面和首屏都不直连 D1 和 Cloudflare，只读可滞后层里的这份结果，经 `/api/status/health` 上 LYJWPAGE 卡：两行，lyjw.me 是每分钟那次敲门、Core 是 cron 的报到，各 30 天一天一格（`src/components/live/uptime-strip.tsx#UptimeStrip`）。站点按每天的成功率给格子上色；片中只点亮今天那一格，不出可用率，也不画报错数和 Web Vitals。
 
-取数带的是 `SENTRY_API_TOKEN`，代码只拿它发 GET 查询（`shared/sentry-status.ts#sentryClient`）。令牌的权限范围是 Sentry 侧的配置：`workers/collector/README.md` 写的是组织只读（org:read / project:read / event:read），`docs/ops-facts.md` 没有这一条，**未核**。片中令牌只画成一张卡、标 `GET`，不说「只读」。
+汇总读 D1 走绑定、不带令牌；向 Cloudflare 取数带的是 `CLOUDFLARE_METRICS_TOKEN`（`shared/health-cloudflare.ts#cloudflareApi`），它的权限是否覆盖 Workers Observability 在 `docs/ops-facts.md` 里标的是未核对。片中不画令牌：采集 Worker 去 D1 那一趟只标 `SELECT`。
+
+线上报错不经过这张卡：五个 Worker 都开了 Workers Observability 和 Workers Issues（各自 wrangler 配置的 `observability.issues`），未捕获异常、5xx 和 `console.error` 按服务归组；浏览器里的报错由 `src/lib/error-report.ts#reportError` 经同源 `/relay` 交给 site Worker，校验后记成 `console.error("[browser-error]", …)`，落在服务 `site` 名下（`src/lib/error-relay.ts#ERROR_RELAY_PATH`、`parseClientErrorReport`）；采集任务失败记成一行 `event` 为 `collector-job` 的 JSON（`workers/collector/src/registry.ts#runJob`）。第 08 章收尾 Clawd 那句「我先去 Workers Issues 查证据」出自这里（根 `AGENTS.md`「排查线上错误」）。
 
 ## 9 对话与构建（workers/ai）
 
@@ -364,7 +366,7 @@ Sentry 的结果由 **collector** 的 `sentry-status` 任务每 5 分钟取回�
 
 ### 发第一句之前
 
-- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Turnstile、Workers AI 的 Clef、Anthropic、Sentry、GitHub、这个浏览器等）；点 Accept 之前不加载 Turnstile、不发任何请求（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.mjs#CHAT_CODE_PATHS`）。
+- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Turnstile、Workers AI 的 Clef、Anthropic、GitHub、这个浏览器等）；点 Accept 之前不加载 Turnstile、不发任何请求（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.mjs#CHAT_CODE_PATHS`）。
 
 ### 过闸（花钱之前）
 
