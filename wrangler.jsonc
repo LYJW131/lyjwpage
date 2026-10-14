@@ -6,7 +6,10 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": false,
   "preview_urls": true,
-  "routes": [{ "pattern": "lyjw.me", "custom_domain": true }],
+  "routes": [
+    { "pattern": "lyjw.me", "custom_domain": true },
+    { "pattern": "preview.lyjw.dev", "custom_domain": true, "previews_enabled": true, "enabled": false }
+  ],
   "assets": {
     "directory": "./build/client",
     "binding": "ASSETS"

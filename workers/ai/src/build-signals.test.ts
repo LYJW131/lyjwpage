@@ -11,7 +11,7 @@ const run: BuildRun = {
   runId: "b".repeat(32), branch: "claude/build-fixture", phase: "pr_open", createdAt: 1, updatedAt: 1,
   pr: { number: 12, url: `https://github.com/${BUILD_REPO}/pull/12`, headSha },
 };
-const siteUrl = "https://claude-build-fixture-site.lyjw.workers.dev";
+const siteUrl = "https://claude-build-fixture.preview.lyjw.dev";
 const ci = { name: "check", status: "completed", conclusion: "success", app: { slug: "github-actions" } };
 const siteCheck = { name: "Workers Builds: site", status: "in_progress", conclusion: null, app: { slug: "cloudflare-workers-and-pages" }, started_at: "2026-10-11T00:00:00Z" };
 

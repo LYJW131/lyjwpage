@@ -73,7 +73,7 @@ to = "StateHub"
 PREVIEW_WORKER = "true"
 UPSTREAM_API_URL = "https://lyjw.me"
 STORAGE_PREFIX = "lyjwpage-preview"
-ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
+ALLOWED_ORIGINS = "https://*.lyjw.workers.dev,https://*.preview.lyjw.dev"
 
 [[previews.durable_objects.bindings]]
 name = "LIVE_PUSH"
