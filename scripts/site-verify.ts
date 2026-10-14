@@ -305,7 +305,7 @@ export const HIDE_DEV_UI = "#dev-toggles, vite-error-overlay { display: none !im
 
 const PLAYWRIGHT_NEXT = "仓库自带 playwright-core 在 docs/explainer/render，先跑 `pnpm --dir docs/explainer/render install --ignore-workspace`；云端容器通常已全局安装。";
 
-async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
+export async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
   const explicit = stringFlag(flags.chrome) || process.env.SITE_VERIFY_CHROME;
   const attempts: Record<string, string>[] = explicit
     ? [{ executablePath: explicit }]
