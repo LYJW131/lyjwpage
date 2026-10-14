@@ -166,6 +166,8 @@ def hacker_news():
         q = urllib.parse.urlencode({"query": query, "tags": "story", "numericFilters": "points>150", "hitsPerPage": "50"})
         data = json.loads(get(f"https://hn.algolia.com/api/v1/search_by_date?{q}"))
         for h in data.get("hits", []):
+            if not re.search(r"claude|anthropic", f"{h.get('title') or ''} {h.get('url') or ''}", re.I):
+                continue
             out[h["objectID"]] = {
                 "title": h.get("title"),
                 "url": h.get("url") or f"https://news.ycombinator.com/item?id={h['objectID']}",
@@ -196,7 +198,7 @@ def changelog_versions(raw_url, heading):
 
 VERSION_SOURCES = {
     "claude-code": ("https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md", r"^##\s+(\d+\.\d+\.\d+)\s*$", CHANGELOG_URL),
-    "anthropic-sdk": ("https://raw.githubusercontent.com/anthropics/anthropic-sdk-typescript/main/CHANGELOG.md", r"^##\s+\[(\d+\.\d+\.\d+)\]", SDK_CHANGELOG_URL),
+    "anthropic-sdk": ("https://raw.githubusercontent.com/anthropics/anthropic-sdk-typescript/main/CHANGELOG.md", r"^##\s+\[?(\d+\.\d+\.\d+)\b", SDK_CHANGELOG_URL),
 }
 
 
@@ -311,6 +313,7 @@ def scan(init=False):
             cur = fn()
             first = init or not os.path.exists(seen_path(name))
             old = set() if first else read_seen(name)
+            undated = first and not init and not any(epoch(v.get("date")) for v in cur.values())
             if first:
                 new = [] if init else [{"key": k, **v} for k, v in cur.items() if recent(v)]
             else:
@@ -318,7 +321,7 @@ def scan(init=False):
                 if name == "docs" and len(cur) < 0.8 * len(old):
                     raise RuntimeError(f"文档页数从 {len(old)} 掉到 {len(cur)}，可能没抓全，不推进书签")
             pending["seen"][name] = sorted(old | set(cur))
-            report[name] = {"ok": True, "total": len(cur), "new": new, **({"firstRun": True} if first else {})}
+            report[name] = {"ok": True, "total": len(cur), "new": new, **({"firstRun": True} if first else {}), **({"firstRunUndated": True} if undated else {})}
         except Exception as e:
             report[name] = {"ok": False, "error": str(e)[:300]}
     for name, (raw_url, heading, link) in VERSION_SOURCES.items():

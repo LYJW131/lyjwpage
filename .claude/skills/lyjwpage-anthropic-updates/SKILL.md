@@ -27,7 +27,7 @@ description: lyjwpage 的「Anthropic 官方动态」定时任务按它跑：按
 - 版本型（`VERSION_SOURCES`）：记最后读到的版本号，读 CHANGELOG 里比它新的版本。
 - `x`：每个账号一个推文 id 书签，不含回复与转推（X API，代理注入凭据，不加也不打印密钥）。账号分三组：`official`（官方账号）、`anthropic`（Anthropic 里做 Claude / Claude Code 的人）、`builders`（站主关注的前沿作者）。
 
-来源或账号第一次出现时（没有已见集合或书签），只报最近一天半的条目，其余直接记为已见，扫描结果里标 `firstRun` / `firstRunAccounts`。
+来源或账号第一次出现时（没有已见集合或书签），只报最近一天半的条目，其余直接记为已见，扫描结果里标 `firstRun` / `firstRunAccounts`。来源本身不带日期时标 `firstRunUndated`，这次一条都报不出，摘要里写明「首次扫描、来源无日期，未报存量」。
 
 ## 运行步骤
 
