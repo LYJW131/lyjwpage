@@ -5,6 +5,7 @@ import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
 import { SENTRY_RELAY_PREFIX } from "@shared/sentry";
 import { lagViewKeyByPath, STATUS_VIEWS, type LagViewKey } from "@shared/status-views";
 import { APP_VERSION_PATH } from "@/lib/app-version";
+import { archivedAssetKey } from "@/lib/asset-archive";
 import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
 
@@ -47,6 +48,7 @@ export type GatewayClass =
         | "image-proxy"
         | "image-object"
         | "site-asset"
+        | "archived-asset"
         | "render"
         | "invalid";
     };
@@ -134,6 +136,19 @@ export function imageObjectHeaders(
   return headers;
 }
 
+export function archivedAssetHeaders(object: {
+  httpEtag: string;
+  size: number;
+  writeHttpMetadata(headers: Headers): void;
+}): Headers {
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("ETag", object.httpEtag);
+  headers.set("Cache-Control", IMMUTABLE_ASSET_CACHE_CONTROL);
+  headers.set("Content-Length", String(object.size));
+  return headers;
+}
+
 export function classifyGatewayRequest(method: string, pathname: string): GatewayClass {
   if (AI_HTTP_PATHS.has(pathname) || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "ai" };
   if (APPLE_MUSIC_HTTP_PATHS.has(pathname)) return { kind: "collector" };
@@ -151,6 +166,7 @@ export function classifyGatewayRequest(method: string, pathname: string): Gatewa
     return { kind: imageObjectKeyFromPath(pathname) ? "image-object" : "invalid" };
   }
   if (SITE_ASSET_ROUTES.has(pathname)) return { kind: "site-asset" };
+  if (archivedAssetKey(pathname)) return { kind: "archived-asset" };
   return { kind: "render" };
 }
 
