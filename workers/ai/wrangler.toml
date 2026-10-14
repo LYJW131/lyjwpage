@@ -1,5 +1,6 @@
 name = "ai"
 main = "src/index.ts"
+upload_source_maps = true
 compatibility_date = "2026-10-09"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env", "enable_request_signal"]
 workers_dev = false
@@ -80,4 +81,7 @@ namespace_id = "13104"
 simple = { limit = 30, period = 60 }
 
 [observability]
+enabled = true
+
+[observability.issues]
 enabled = true
