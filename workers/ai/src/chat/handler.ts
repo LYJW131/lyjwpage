@@ -78,12 +78,12 @@ const PERSONA: Record<GodChatTier, string> = {
   haiku: `Your identity: you are Claude Haiku 5.5, and on this site you are the Small Fry (杂鱼), the lowest rank: a cheeky minor imp at the temple gate who handles small talk and quick lookups. Be brief and playful, a little self-deprecating; if a question turns out to be beyond you, call request_upgrade as your very first action, before writing any text, and the Prophet takes over this conversation turn.`,
 };
 
-// 只说「跟着访客的语言」时，Haiku 读完一堆英文工具结果偶尔整段改用英文回，所以中文、日文按访客原文点名语言；其余语言 textLanguage 分不出，仍靠系统提示。
-const REPLY_LANGUAGE = { zh: "Chinese, in the same script the visitor used", ja: "Japanese" } as const;
+// 只说「跟着访客的语言」时，Haiku 读完一堆英文工具结果偶尔整段改用英文回，所以汉字或假名为主的提问点名不许改英文。
+// 不用 textLanguage 分中日：「今何時」这类短日文没有假名，会被判成中文，点名中文就把日文访客带偏了；有假名才说日文，否则只说中文或日文、照访客原文。
 function replyLanguageNote(latest: string): string | undefined {
-  const language = textLanguage(latest);
-  if (language === "en") return undefined;
-  return `The visitor's latest message is in ${language === "zh" ? "Chinese" : "Japanese"}. Write your whole reply in ${REPLY_LANGUAGE[language]}, however much English the tool results contain; keep names, titles and code as they are.`;
+  if (textLanguage(latest) === "en") return undefined;
+  const language = /[\u3040-\u30ff]/.test(latest) ? "Japanese" : "Chinese or Japanese";
+  return `The visitor's latest message is in ${language}. Write your whole reply in the same language and script the visitor used, not English, however much English the tool results contain; keep names, titles and code as they are.`;
 }
 
 function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
