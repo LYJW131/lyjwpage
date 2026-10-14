@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSPr
 import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
 import { ChatCard } from "@/components/chat-card";
-import { ChatMarkdown, preloadChatMarkdown } from "@/components/lazy-chat-markdown";
+import { ChatMarkdown, preloadChatMarkdown, useChatMarkdownReady } from "@/components/lazy-chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
 import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
@@ -263,10 +263,11 @@ function Conversation({ className, archive, session: conversation }: { className
     setError(message);
   }
 
+  const markdownReady = useChatMarkdownReady();
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, markdownReady]);
 
   useEffect(() => {
     const el = anchorRef.current;
