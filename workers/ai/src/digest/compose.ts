@@ -60,7 +60,7 @@ export function keepsHeadline(previous: string | null, primary: DigestSituation,
   return !!previous && sample(primary, date, PRIMARY_CANDIDATES).includes(previous);
 }
 
-// 站点在这一池里随机挑、按分钟轮换：选中的那条打头，其余取主情境当天抽样的前几条，和 Clef 的候选同序、同一天不变。
+// 与 Clef 的候选同种子同序：池子的前几条就是当天候选，同一天里池子不变。
 export function headlinePool(headline: string, primary: DigestSituation, date: string): string[] {
   return [...new Set([headline, ...sample(primary, date, HEADLINE_POOL)])].slice(0, HEADLINE_POOL);
 }
