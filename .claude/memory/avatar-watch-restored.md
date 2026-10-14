@@ -16,4 +16,4 @@ The site Builds main trigger got `.github/github-avatar.sha256` back in `path_in
 
 **Why:** the owner values the avatar updating everywhere within minutes over fewer moving parts. They accept a bot commit on each avatar change, a rebuild, and credential upkeep.
 
-**How to apply:** don't propose retiring it again for simplicity. Credentials were recreated by the owner on 2026-10-14 (details in docs/ops-facts.md): collector secret `GITHUB_DISPATCH_TOKEN` (non-expiring PAT) and repo secret `AVATAR_APP_PRIVATE_KEY` (App key SHA256:wza6…). End-to-end verified on 2026-10-14 via PR #301 (placeholder marker → bot commit 29ec3d17 → site rebuilt).
+**How to apply:** don't propose retiring it again for simplicity. Its credentials (collector `GITHUB_DISPATCH_TOKEN`, repo secret `AVATAR_APP_PRIVATE_KEY`) and their current state live only in docs/ops-facts.md; read them there.
