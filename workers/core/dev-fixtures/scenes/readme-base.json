@@ -201,8 +201,8 @@
         "diskTotalBytes": 32118075392,
         "diskUsedBytes": 10811551744,
         "networkInterface": "enp3s0",
-        "networkRxBytes": "$now+63768016348",
-        "networkTxBytes": "$now-804693620",
+        "networkRxBytes": 1855769745661,
+        "networkTxBytes": 1791197035693,
         "networkRxBytesPerSec": 1501997,
         "networkTxBytesPerSec": 1497230,
         "traffic": {
@@ -210,7 +210,7 @@
           "cycleEnd": "$now+1489470687",
           "rxBytes": 418063517517,
           "txBytes": 403760659457,
-          "quotaBytes": "$now+207998270687"
+          "quotaBytes": 2000000000000
         },
         "uptimeSeconds": 4505116,
         "observedAt": "$now-7499",

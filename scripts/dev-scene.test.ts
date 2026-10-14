@@ -26,6 +26,11 @@ test("抓取时把绝对时刻改写成相对令牌，注入时平移到新的�
   });
 });
 
+test("字段名带非时间单位的大数不当成时刻", () => {
+  const captured = { networkRxBytes: NOW + 5_000, traffic: { quotaBytes: 2_000_000_000_000 }, samples: [{ t: NOW - 1_000 }] };
+  assert.deepEqual(tokenize(captured, NOW), { networkRxBytes: NOW + 5_000, traffic: { quotaBytes: 2_000_000_000_000 }, samples: [{ t: "$now-1000" }] });
+});
+
 test("场景文件把原始值数组压成一行，内容不变", () => {
   const scene = { views: { "/api/status/x": { ok: true, data: { values: [1, 2, 3], names: ["a,  b", "c"], nested: [{ a: 1 }] } } } };
   const text = formatScene(scene);

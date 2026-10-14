@@ -17,6 +17,7 @@ const DAY_MS = 86_400_000;
 const EPOCH_MS_FLOOR = 1_500_000_000_000;
 const EPOCH_MS_CEIL = 2_500_000_000_000;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const NON_TIME_UNIT = /(?:Bytes|Count)$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const offset = (delta: number): string => (delta === 0 ? "" : delta > 0 ? `+${delta}` : String(delta));
 
@@ -51,19 +52,21 @@ export function stampNow(value: unknown, now: number): unknown {
 
 // stampNow 的逆运算：抓下来的快照里像 epoch 毫秒、ISO 时刻、站点日期的值改写成相对 capturedAt 的令牌，
 // 日后注入时整份平移到当下，否则「几分钟前」会越放越旧、新鲜度判定把卡片判成过期。
-// 判据是值域：时长、计数、偏移秒数都远小于 EPOCH_MS_FLOOR，只有绝对时刻落在区间里。
-export function tokenize(value: unknown, capturedAt: number): unknown {
+// 判据是值域：时长、偏移秒数都远小于 EPOCH_MS_FLOOR，只有绝对时刻落在区间里；累计字节数、计数会长进这个区间，
+// 按字段名里的单位（跨端契约要求单位写进字段名）排除。
+export function tokenize(value: unknown, capturedAt: number, key = ""): unknown {
   if (typeof value === "number") {
-    return value > EPOCH_MS_FLOOR && value < EPOCH_MS_CEIL ? `$now${offset(Math.round(value - capturedAt))}` : value;
+    const isTime = value > EPOCH_MS_FLOOR && value < EPOCH_MS_CEIL && !NON_TIME_UNIT.test(key);
+    return isTime ? `$now${offset(Math.round(value - capturedAt))}` : value;
   }
   if (typeof value === "string") {
     if (ISO_INSTANT.test(value)) return `$iso${offset(Date.parse(value) - capturedAt)}`;
     if (ISO_DATE.test(value) && Math.abs(dayOffset(capturedAt, value)) <= 400) return `$today${offset(dayOffset(capturedAt, value))}`;
     return value;
   }
-  if (Array.isArray(value)) return value.map((item) => tokenize(item, capturedAt));
+  if (Array.isArray(value)) return value.map((item) => tokenize(item, capturedAt, key));
   if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, tokenize(item, capturedAt)]));
+    return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, tokenize(item, capturedAt, name)]));
   }
   return value;
 }
