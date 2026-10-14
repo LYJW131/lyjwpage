@@ -124,6 +124,15 @@ test("--help 退出 0 并列出全部子命令", () => {
   for (const sub of ["doctor", "cards", "shot", "override"]) assert.match(result.stdout, new RegExp(`\\b${sub}\\b`));
 });
 
+test("shot 的 --card 缺值时退出 2，不退成整页截图", (t) => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-card-"));
+  t.after(() => fs.rmSync(out, { recursive: true, force: true }));
+  const result = run(["shot", "--url", "data:text/html,<title>x</title>", "--out", out, "--card"]);
+  assert.equal(result.status, 2);
+  assert.match(JSON.parse(result.stdout).error, /--card 后面缺卡片 id/);
+  assert.deepEqual(fs.readdirSync(out), []);
+});
+
 test("未知子命令退出 2，输出带 next 的 JSON 错误", () => {
   const result = run(["bogus"]);
   assert.equal(result.status, 2);
