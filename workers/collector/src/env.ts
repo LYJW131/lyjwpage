@@ -21,6 +21,7 @@ export interface Env extends MusicKitTokenEnv {
   SITE_ANALYTICS_SITES?: string;
 
   GITHUB_TOKEN?: string;
+  GITHUB_DISPATCH_TOKEN?: string;
   CLOUDFLARE_METRICS_TOKEN?: string;
   PAGESPEED_API_KEY?: string;
   APPLE_MUSIC_OWNER_NAME?: string;
