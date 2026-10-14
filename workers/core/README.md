@@ -502,7 +502,7 @@ SQLite 空状态、迁移与权限见 [后端架构](../../docs/state-storage.md
 | `/api/status/health` | `health:v1` | 各块 `HEALTH_STALE_MS` |
 | `/api/status/digest` | `digest:v1`，去掉只给采集 Worker 用的输入哈希（`shared/digest.ts#publicDigest`） | `DIGEST_STALE_MS` |
 
-几份拼起来的端点，各部分带自己的采集时刻（站点部署的 `fetchedAt`、访问量与指标每组的 `fetchedAt`、PageSpeed 最近一轮的
+几份拼起来的端点，各部分带自己的采集时刻（站点部署的 `fetchedAt`、访问量与指标每组的 `fetchedAt`、PageSpeed 两端各自最近一次实测里较旧的
 `fetchedAt`；Cloudflare 统计的 `fetchedAt` 与部署的 `deploymentsFetchedAt`；健康各块的 `blockAt`），卡片分别判过期。
 信封的 `updatedAt` 取最常刷新的那一份，用来决定挂载时要不要补取一次，也是后续轮询排期的依据（`src/lib/poll-schedule.ts` 的 `nextLagDelay`）。
 
@@ -527,7 +527,8 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 测的是 `lyjw.me`（`shared/site.ts` 的 `site.url`），载荷里带着这个地址，卡片表头显示它。
 这是**实验室数据**：一台模拟设备上跑出来的，不是访客的真实体验，所以没有 INP，表上那一列是同一轮测出的 TBT。
 **每一格是滚动窗口内各轮实测的中位数**（窗口长度与样本上限见 `workers/collector/src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），一轮异常被旁边几轮压住；
-载荷里的 `samples` 与 `start` 是参与的轮数和最早一轮的时间。
+载荷里的 `samples` 与 `start` 是参与的轮数和最早一轮的时间。桌面、移动各取各自测出来的轮次；`fetchedAt` 是两端各自最近一次实测里较旧的那个，
+一端一直测不出时整块按它过期，freshness-watch 看的可滞后层写入时刻也是它（口径见 [采集 Worker README](../collector/README.md)）。
 
 ### 站点健康
 
