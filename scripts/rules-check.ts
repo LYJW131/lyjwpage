@@ -1,25 +1,25 @@
 #!/usr/bin/env node
-/**
- * 仓库级机械规则检查（AGENTS.md「规则 → 由什么强制」表里的 `pnpm rules:check`）：
- *
- *   todo-ticket    注释里的待办标记必须带跟踪单号（`#123` 或链接），AGENTS.md「文档与注释」
- *   img-baked-url  不烧 `/img/` 交付域：R2 图片一律同源相对路径（shared/asset-url.ts#publicAssetPath），
- *                  需要绝对地址的场合（OG、RSS）读环境变量
- *   site-fetch-host 站点 src/ 里的网络调用不写字面量主机：后端调用走 backendUrl / workerUrl
- *                  （PUBLIC_BACKEND_URL），浏览器必须直连的第三方主机在 ALLOWED_FETCH_HOSTS 登记
- *   scrollbar-pair 隐藏滚动条两句缺一不可：scrollbar-none 管 Firefox，
- *                  [&::-webkit-scrollbar]:hidden 管 Chromium（DESIGN.md「滚动区」）
- *   manual-sleep   scripts/、shared/、workers/<x>/src/ 里等一段时间一律用
- *                  import { setTimeout as sleep } from "node:timers/promises"，不手写
- *                  new Promise 包 setTimeout；字符串里交给浏览器执行的代码不算
- *   json-response-literal
- *                  Worker 与 shared/ 的 JSON 响应统一走 shared/http-origins.ts#jsonResponse，
- *                  不再手写 new Response(JSON.stringify(...))
- *   scripts-mjs    scripts/ 新写的脚本用 .ts（Node 直接跑，进 typecheck）；现存 .mjs 记在
- *                  scripts/mjs-baseline.json，迁走一个就从基线删一个，基线只减不增（scripts/baseline-growth-check.ts）
- *
- * 退出码：有违例为 1。测试见 scripts/rules-check.test.ts。
- */
+// 仓库级机械规则检查（AGENTS.md「规则 → 由什么强制」表里的 `pnpm rules:check`）：
+//
+//   todo-ticket    注释里的待办标记必须带跟踪单号（`#123` 或链接），AGENTS.md「文档与注释」
+//   img-baked-url  不烧 `/img/` 交付域：R2 图片一律同源相对路径（shared/asset-url.ts#publicAssetPath），
+//                  需要绝对地址的场合（OG、RSS）读环境变量
+//   site-fetch-host 站点 src/ 里的网络调用不写字面量主机：后端调用走 backendUrl / workerUrl
+//                  （PUBLIC_BACKEND_URL），浏览器必须直连的第三方主机在 ALLOWED_FETCH_HOSTS 登记
+//   scrollbar-pair 隐藏滚动条两句缺一不可：scrollbar-none 管 Firefox，
+//                  [&::-webkit-scrollbar]:hidden 管 Chromium（DESIGN.md「滚动区」）
+//   manual-sleep   scripts/、shared/、workers/<x>/src/ 里等一段时间一律用
+//                  import { setTimeout as sleep } from "node:timers/promises"，不手写
+//                  new Promise 包 setTimeout；字符串里交给浏览器执行的代码不算
+//   json-response-literal
+//                  Worker 与 shared/ 的 JSON 响应统一走 shared/http-origins.ts#jsonResponse，
+//                  不再手写 new Response(JSON.stringify(...))
+//   jsdoc-internal JS / TS 源码不写 JSDoc 块注释（以 /** 开头）：仓库没有对外发布的库接口，文件头与说明用 //，
+//                  AGENTS.md「文档与注释」
+//   scripts-mjs    scripts/ 新写的脚本用 .ts（Node 直接跑，进 typecheck）；现存 .mjs 记在
+//                  scripts/mjs-baseline.json，迁走一个就从基线删一个，基线只减不增（scripts/baseline-growth-check.ts）
+//
+// 退出码：有违例为 1。测试见 scripts/rules-check.test.ts。
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -296,9 +296,16 @@ export function checkJsonResponseLiteral(file: string, text: string) {
   return issues;
 }
 
+export function checkJsdoc(file: string, text: string) {
+  if (!TS_PARSE_EXTS.has(extOf(file))) return [];
+  return commentTexts(file, text)
+    .filter((comment) => comment.text.startsWith("/**") && comment.text !== "/**/")
+    .map((comment) => ({ file, line: comment.line, rule: "jsdoc-internal", message: "仓库里没有对外发布的库接口，不写 JSDoc 块注释（/** 开头）：文件头和必要的说明用 // 行注释，能删的删掉（AGENTS.md「文档与注释」）。" }));
+}
+
 export function checkFile(file: string, text: string): Issue[] {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
-  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text)];
+  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
   if (WORKER_OR_SHARED_TS.test(file) && !JSON_RESPONSE_IMPL.has(file)) issues.push(...checkJsonResponseLiteral(file, text));
   return issues;
