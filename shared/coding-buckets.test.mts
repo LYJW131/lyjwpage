@@ -90,3 +90,11 @@ test("采集时刻按 agent 比：Cursor 更新过不挡稍早采集的 Devin，
   assert.equal(second.collectedAt, T0 + 10 * M);
   assert.equal(mergeBucketReport(second, { ...cursor, collectedAt: T0 + 8 * M }, T0 + 11 * M), null);
 });
+
+test("没有行的 agent 也留着它的采集时刻，它的旧报告照样不收", () => {
+  const idle = { ...report(T0, T0 + 10 * M, []), collectedAt: T0 + 10 * M, agents: [{ id: "cursor", state: "ok" as const }] };
+  const devin = { ...report(T0, T0 + 12 * M, [[T0, [row("devin", "swe", 5)]]]), collectedAt: T0 + 12 * M, agents: [{ id: "devin", state: "ok" as const }] };
+  const merged = mergeBucketReport(mergeBucketReport(null, idle, T0 + 10 * M), devin, T0 + 12 * M)!;
+  assert.deepEqual(merged.agents.map((agent) => agent.id), ["cursor", "devin"]);
+  assert.equal(mergeBucketReport(merged, { ...idle, collectedAt: T0 + 9 * M }, T0 + 13 * M), null);
+});
