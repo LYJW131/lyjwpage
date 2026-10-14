@@ -55,29 +55,43 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const TS_EXTENSIONS = new Map([
+import type * as TS from "typescript";
+
+type TsKind = "TS" | "TSX" | "JS" | "JSX";
+type CommentRange = { start: number; end: number; text: string };
+type SwiftSpan = { start: number; end: number; at: number };
+type Segment = { kind: "code" | "string"; text: string };
+type Normalized = { code: string; key?: string; directives: string[]; errors: string[] };
+export type Comparison =
+  | { status: "new" | "deleted" | "unchanged" | "unsupported" | "comment-only" }
+  | { status: "parse-error"; detail: string }
+  | { status: "code"; before: string; after: string }
+  | { status: "directive"; before: string[]; after: string[] };
+type Status = Comparison["status"];
+
+const TS_EXTENSIONS = new Map<string, TsKind>([
   [".ts", "TS"], [".mts", "TS"], [".cts", "TS"], [".tsx", "TSX"],
   [".js", "JS"], [".mjs", "JS"], [".cjs", "JS"], [".jsx", "JSX"],
 ]);
 const SWIFT_EXTENSION = ".swift";
 
 
-function bindDirectives(source, comments, wanted, atOf) {
+function bindDirectives<C extends CommentRange>(source: string, comments: C[], wanted: (comment: C) => boolean, atOf: (comment: C) => number | undefined): string[] {
   const lineStarts = [0];
   for (let i = 0; i < source.length; i++) if (source[i] === "\n") lineStarts.push(i + 1);
-  const lineOf = (pos) => {
+  const lineOf = (pos: number) => {
     let lo = 0;
     let hi = lineStarts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
-      if (lineStarts[mid] <= pos) lo = mid;
+      if ((lineStarts[mid] ?? 0) <= pos) lo = mid;
       else hi = mid - 1;
     }
     return lo;
   };
-  const lineEnd = (line) => (line + 1 < lineStarts.length ? lineStarts[line + 1] - 1 : source.length);
-  const squash = (text) => text.replace(/\s+/g, " ").trim();
-  const codeIn = (from, to) => {
+  const lineEnd = (line: number) => (line + 1 < lineStarts.length ? (lineStarts[line + 1] ?? 0) - 1 : source.length);
+  const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+  const codeIn = (from: number, to: number) => {
     let code = "";
     let pos = from;
     for (const comment of comments) {
@@ -94,11 +108,11 @@ function bindDirectives(source, comments, wanted, atOf) {
     const last = lineOf(Math.max(comment.start, comment.end - 1));
     let next = "无";
     if (last + 1 < lineStarts.length) {
-      const [from, to] = [lineStarts[last + 1], lineEnd(last + 1)];
+      const [from, to] = [lineStarts[last + 1] ?? 0, lineEnd(last + 1)];
       const code = codeIn(from, to);
       next = `「${code || (source.slice(from, to).trim() ? "«注释»" : "")}」`;
     }
-    return `${squash(comment.text)}  ‹位置 ${atOf(comment)}，同行前「${codeIn(lineStarts[first], comment.start)}」，同行后「${codeIn(comment.end, lineEnd(last))}」，下一行${next}›`;
+    return `${squash(comment.text)}  ‹位置 ${atOf(comment)}，同行前「${codeIn(lineStarts[first] ?? 0, comment.start)}」，同行后「${codeIn(comment.end, lineEnd(last))}」，下一行${next}›`;
   });
 }
 
@@ -117,14 +131,14 @@ const TS_DIRECTIVES = [
 ];
 const JS_JSDOC_TYPES = /@(type|typedef|param|returns?|template|satisfies|import|callback|this|enum|extends|augments|implements|overload)\b[^*]*\{/;
 
-function isTsDirective(comment, kind) {
+function isTsDirective(comment: string, kind: TsKind): boolean {
   if (TS_DIRECTIVES.some((re) => re.test(comment))) return true;
   return (kind === "JS" || kind === "JSX") && JS_JSDOC_TYPES.test(comment);
 }
 
-function allTokens(ts, sf) {
-  const tokens = [];
-  const walk = (node) => {
+function allTokens(sf: TS.SourceFile): TS.Node[] {
+  const tokens: TS.Node[] = [];
+  const walk = (node: TS.Node) => {
     const children = node.getChildren(sf);
     if (children.length === 0) tokens.push(node);
     else children.forEach(walk);
@@ -133,28 +147,28 @@ function allTokens(ts, sf) {
   return tokens;
 }
 
-function collectTsComments(ts, sf) {
-  const seen = new Map();
+function collectTsComments(ts: typeof TS, sf: TS.SourceFile): CommentRange[] {
+  const seen = new Map<number, CommentRange>();
   const text = sf.text;
-  const add = (ranges) => {
+  const add = (ranges: TS.CommentRange[] | undefined) => {
     for (const range of ranges ?? []) seen.set(range.pos, { start: range.pos, end: range.end, text: text.slice(range.pos, range.end) });
   };
-  for (const token of allTokens(ts, sf)) {
+  for (const token of allTokens(sf)) {
     add(ts.getLeadingCommentRanges(text, token.getFullStart()));
     add(ts.getTrailingCommentRanges(text, token.getEnd()));
   }
   return [...seen.values()].sort((a, b) => a.start - b.start);
 }
 
-function isDroppedJsx(ts, node) {
+function isDroppedJsx(ts: typeof TS, node: TS.Node): boolean {
   if (ts.isJsxText(node)) return node.containsOnlyTriviaWhiteSpaces && node.text.includes("\n");
   return ts.isJsxExpression(node) && !node.expression && !node.dotDotDotToken;
 }
 
 // JSX 空节点会被 printer 丢弃，不能让它们改变后续指令的语法位置。
-function nodeStarts(ts, sf) {
-  const starts = [];
-  const visit = (node) => {
+function nodeStarts(ts: typeof TS, sf: TS.SourceFile): number[] {
+  const starts: number[] = [];
+  const visit = (node: TS.Node): void => {
     if (isDroppedJsx(ts, node)) return;
     starts.push(node.getStart(sf));
     ts.forEachChild(node, visit);
@@ -163,47 +177,47 @@ function nodeStarts(ts, sf) {
   return starts;
 }
 
-function jsxTransformer(ts) {
+function jsxTransformer(ts: typeof TS): TS.TransformerFactory<TS.SourceFile> {
   return (context) => (root) => {
     const f = context.factory;
-    const clean = (children) => children.filter((child) => !isDroppedJsx(ts, child));
-    const visit = (node) => {
+    const clean = (children: TS.NodeArray<TS.JsxChild>) => children.filter((child) => !isDroppedJsx(ts, child));
+    const visit = (node: TS.Node): TS.Node => {
       if (ts.isJsxElement(node)) {
         return f.updateJsxElement(
           node,
-          ts.visitNode(node.openingElement, visit),
-          clean(node.children).map((child) => ts.visitNode(child, visit)),
-          ts.visitNode(node.closingElement, visit),
+          ts.visitNode(node.openingElement, visit, ts.isJsxOpeningElement),
+          clean(node.children).map((child) => ts.visitNode(child, visit, ts.isJsxChild)),
+          ts.visitNode(node.closingElement, visit, ts.isJsxClosingElement),
         );
       }
       if (ts.isJsxFragment(node)) {
         return f.updateJsxFragment(
           node,
-          ts.visitNode(node.openingFragment, visit),
-          clean(node.children).map((child) => ts.visitNode(child, visit)),
-          ts.visitNode(node.closingFragment, visit),
+          ts.visitNode(node.openingFragment, visit, ts.isJsxOpeningFragment),
+          clean(node.children).map((child) => ts.visitNode(child, visit, ts.isJsxChild)),
+          ts.visitNode(node.closingFragment, visit, ts.isJsxClosingFragment),
         );
       }
       return ts.visitEachChild(node, visit, context);
     };
-    return ts.visitNode(root, visit);
+    return ts.visitNode(root, visit, ts.isSourceFile);
   };
 }
 
-export function normalizeTs(ts, text, fileName, kind) {
+export function normalizeTs(ts: typeof TS, text: string, fileName: string, kind: TsKind): Normalized {
   const scriptKind = { TS: ts.ScriptKind.TS, TSX: ts.ScriptKind.TSX, JS: ts.ScriptKind.JS, JSX: ts.ScriptKind.JSX }[kind];
   const sf = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, scriptKind);
-  const errors = (sf.parseDiagnostics ?? []).map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+  const errors = ((sf as TS.SourceFile & { parseDiagnostics?: TS.Diagnostic[] }).parseDiagnostics ?? []).map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
   const printer = ts.createPrinter({ removeComments: true, newLine: ts.NewLineKind.LineFeed });
   const transformed = ts.transform(sf, [jsxTransformer(ts)]);
-  let printed;
+  let printed: string;
   try {
-    printed = printer.printFile(transformed.transformed[0]);
+    printed = printer.printFile(transformed.transformed[0] ?? sf);
   } finally {
     transformed.dispose();
   }
   const comments = collectTsComments(ts, sf);
-  let starts;
+  let starts: number[] | undefined;
   const directives = bindDirectives(text, comments, (comment) => isTsDirective(comment.text, kind), (comment) => {
     starts ??= nodeStarts(ts, sf);
     const index = starts.findIndex((start) => start >= comment.end);
@@ -217,16 +231,16 @@ export function normalizeTs(ts, text, fileName, kind) {
 }
 
 
-export function stripSwift(text) {
+export function stripSwift(text: string): { code: string; comments: string[]; spans: SwiftSpan[]; segments: Segment[] } {
   let i = 0;
   let out = "";
-  const comments = [];
-  const spans = [];
-  const strings = [];
+  const comments: string[] = [];
+  const spans: SwiftSpan[] = [];
+  const strings: [number, number][] = [];
   let stringDepth = 0;
   const n = text.length;
 
-  const comment = (start) => {
+  const comment = (start: number) => {
     comments.push(text.slice(start, i));
     spans.push({ start, end: i, at: out.length });
   };
@@ -242,7 +256,7 @@ export function stripSwift(text) {
     comment(start);
   };
 
-  const string = (hashes, from) => {
+  const string = (hashes: number, from: number) => {
     stringDepth++;
     const closing = "#".repeat(hashes);
     const multi = text.startsWith('"""', i);
@@ -274,7 +288,7 @@ export function stripSwift(text) {
     if (stringDepth === 0) strings.push([from, out.length]);
   };
 
-  const code = (untilParen) => {
+  const code = (untilParen: boolean) => {
     let depth = 0;
     while (i < n) {
       const c = text[i];
@@ -323,7 +337,7 @@ export function stripSwift(text) {
 
   code(false);
 
-  const segments = [];
+  const segments: Segment[] = [];
   let at = 0;
   for (const [from, to] of strings) {
     if (from > at) segments.push({ kind: "code", text: out.slice(at, from) });
@@ -338,9 +352,9 @@ const SWIFT_DIRECTIVES = /\b(?:swiftlint|swiftformat|sourcery|periphery)\s*:|\bs
 // 字符串之外不会出现 NUL，可安全用作保留原文的占位。
 const STRING_SLOT = "\u0000";
 
-export function normalizeSwift(text, { loose = false } = {}) {
+export function normalizeSwift(text: string, { loose = false } = {}): Normalized {
   const { code, comments, spans, segments } = stripSwift(text);
-  const strings = [];
+  const strings: string[] = [];
   const skeleton = segments
     .map((segment) => {
       if (segment.kind === "code") return segment.text;
@@ -358,8 +372,8 @@ export function normalizeSwift(text, { loose = false } = {}) {
   const shown = flat.split(STRING_SLOT).map((part, k) => part + (strings[k] ?? "")).join("");
 
   const significant = [0];
-  for (let k = 0; k < code.length; k++) significant.push(significant[k] + (/\s/.test(code[k]) ? 0 : 1));
-  const ranges = comments.map((body, k) => ({ text: body, ...spans[k] }));
+  for (let k = 0; k < code.length; k++) significant.push((significant[k] ?? 0) + (/\s/.test(code[k] ?? "") ? 0 : 1));
+  const ranges = comments.map((body, k) => ({ text: body, ...(spans[k] as SwiftSpan) }));
   const directives = bindDirectives(text, ranges, (range) => SWIFT_DIRECTIVES.test(range.text), (range) => significant[range.at]);
   const shebang = /^#!.*/.exec(text)?.[0];
   if (shebang) directives.unshift(shebang);
@@ -367,15 +381,15 @@ export function normalizeSwift(text, { loose = false } = {}) {
 }
 
 
-export function compareContents({ ts, file, before, after, loose = false }) {
+export function compareContents({ ts, file, before, after, loose = false }: { ts: typeof TS; file: string; before: string | null; after: string | null; loose?: boolean }): Comparison {
   if (before === null) return { status: "new" };
   if (after === null) return { status: "deleted" };
   if (before === after) return { status: "unchanged" };
   const ext = path.extname(file).toLowerCase();
-  let a;
-  let b;
-  if (TS_EXTENSIONS.has(ext)) {
-    const kind = TS_EXTENSIONS.get(ext);
+  let a: Normalized;
+  let b: Normalized;
+  const kind = TS_EXTENSIONS.get(ext);
+  if (kind) {
     a = normalizeTs(ts, before, file, kind);
     b = normalizeTs(ts, after, file, kind);
   } else if (ext === SWIFT_EXTENSION) {
@@ -392,7 +406,7 @@ export function compareContents({ ts, file, before, after, loose = false }) {
   return { status: "comment-only" };
 }
 
-function unifiedDiff(before, after, context) {
+function unifiedDiff(before: string, after: string, context: number): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "comment-only-"));
   try {
     writeFileSync(path.join(dir, "base"), `${before}\n`);
@@ -408,7 +422,7 @@ function unifiedDiff(before, after, context) {
 }
 
 
-function git(repo, args, { allowFail = false } = {}) {
+function git(repo: string, args: string[], { allowFail = false } = {}): string | null {
   const result = spawnSync("git", args, { cwd: repo, encoding: "utf8", maxBuffer: 1 << 28 });
   if (result.status !== 0) {
     if (allowFail) return null;
@@ -417,21 +431,21 @@ function git(repo, args, { allowFail = false } = {}) {
   return result.stdout;
 }
 
-function loadTypeScript(repo) {
-  const candidates = [repo, path.dirname(fileURLToPath(import.meta.url)), process.env.COMMENT_ONLY_REPO, process.cwd()].filter(Boolean);
+function loadTypeScript(repo: string): typeof TS {
+  const candidates = [repo, path.dirname(fileURLToPath(import.meta.url)), process.env.COMMENT_ONLY_REPO, process.cwd()].filter((base): base is string => Boolean(base));
   for (const base of candidates) {
     try {
-      return createRequire(path.join(base, "package.json"))("typescript");
+      return createRequire(path.join(base, "package.json"))("typescript") as typeof TS;
     } catch {
     }
   }
   throw new Error(`在 ${candidates.join("、")} 的 node_modules 里找不到 typescript：先在仓库里 pnpm install，或用 --repo / COMMENT_ONLY_REPO 指到装了它的仓库`);
 }
 
-export function readVersions({ repo, base, to, file }) {
+export function readVersions({ repo, base, to, file }: { repo: string; base: string; to: string | null; file: string }) {
   const rel = path.isAbsolute(file) ? path.relative(repo, file) : file;
   const before = git(repo, ["show", `${base}:${rel}`], { allowFail: true });
-  let after;
+  let after: string | null;
   if (to) {
     after = git(repo, ["show", `${to}:${rel}`], { allowFail: true });
   } else {
@@ -441,20 +455,23 @@ export function readVersions({ repo, base, to, file }) {
   return { rel, before, after };
 }
 
-export function checkFiles({ repo, base = "HEAD", to = null, files, loose = false, ts }) {
+export function checkFiles({ repo, base = "HEAD", to = null, files, loose = false, ts }: { repo: string; base?: string; to?: string | null; files: string[]; loose?: boolean; ts: typeof TS }) {
   return files.map((file) => {
     const { rel, before, after } = readVersions({ repo, base, to, file });
     return { file: rel, ...compareContents({ ts, file: rel, before, after, loose }) };
   });
 }
 
-function parseArgs(argv) {
-  const opts = { base: "HEAD", to: null, repo: null, loose: false, context: 30, files: [] };
+type Options = { base: string; to: string | null; repo: string | null; loose: boolean; context: number; files: string[]; help?: boolean };
+
+function parseArgs(argv: string[]): Options {
+  const opts: Options = { base: "HEAD", to: null, repo: null, loose: false, context: 30, files: [] };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--base") opts.base = argv[++i];
-    else if (arg === "--to") opts.to = argv[++i];
-    else if (arg === "--repo") opts.repo = argv[++i];
+    if (arg === undefined) continue;
+    if (arg === "--base") opts.base = argv[++i] ?? opts.base;
+    else if (arg === "--to") opts.to = argv[++i] ?? null;
+    else if (arg === "--repo") opts.repo = argv[++i] ?? null;
     else if (arg === "--context") opts.context = Number(argv[++i]);
     else if (arg === "--loose") opts.loose = true;
     else if (arg === "-h" || arg === "--help") opts.help = true;
@@ -464,7 +481,7 @@ function parseArgs(argv) {
   return opts;
 }
 
-const LABELS = {
+const LABELS: Record<Status, string> = {
   "comment-only": "仅注释",
   unchanged: "没变化",
   code: "除注释外有改动",
@@ -484,11 +501,11 @@ function main() {
     console.log(source.slice(start, source.indexOf("*/", start)).replace(/^ \* ?/gm, "").trim());
     return;
   }
-  const repo = path.resolve(opts.repo ?? git(process.cwd(), ["rev-parse", "--show-toplevel"]).trim());
+  const repo = path.resolve(opts.repo ?? (git(process.cwd(), ["rev-parse", "--show-toplevel"]) ?? "").trim());
   const ts = loadTypeScript(repo);
   let files = opts.files;
   if (files.length === 0) {
-    const changed = git(repo, ["diff", "--name-only", ...(opts.to ? [opts.base, opts.to] : [opts.base])]).split("\n").filter(Boolean);
+    const changed = (git(repo, ["diff", "--name-only", ...(opts.to ? [opts.base, opts.to] : [opts.base])]) ?? "").split("\n").filter(Boolean);
     files = changed.filter((file) => TS_EXTENSIONS.has(path.extname(file).toLowerCase()) || path.extname(file).toLowerCase() === SWIFT_EXTENSION);
     if (files.length === 0) {
       console.log("没有可比较的 ts/tsx/mts/mjs/js/swift 改动");
@@ -496,14 +513,14 @@ function main() {
     }
   }
   const results = checkFiles({ repo, base: opts.base, to: opts.to, files, loose: opts.loose, ts });
-  const counts = {};
+  const counts: Partial<Record<Status, number>> = {};
   for (const result of results) {
     counts[result.status] = (counts[result.status] ?? 0) + 1;
     if (result.status === "unchanged") continue;
     console.log(`${LABELS[result.status].padEnd(10, "　")} ${result.file}`);
     if (result.status === "code" && opts.context > 0) console.log(`${unifiedDiff(result.before, result.after, opts.context).replace(/^/gm, "    ")}`);
     if (result.status === "directive") {
-      const list = (entries) => (entries.length ? entries.map((entry) => `      ${entry}`).join("\n") : "      （没有）");
+      const list = (entries: string[]) => (entries.length ? entries.map((entry) => `      ${entry}`).join("\n") : "      （没有）");
       console.log(`    基准：\n${list(result.before)}\n    当前：\n${list(result.after)}`);
     }
     if (result.status === "parse-error") console.log(`    ${result.detail.replace(/\n/g, "\n    ")}`);
@@ -517,7 +534,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   try {
     main();
   } catch (error) {
-    console.error(error.message);
+    console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 2;
   }
 }

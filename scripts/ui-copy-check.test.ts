@@ -4,12 +4,12 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 
-import { compareCopy, copyBaseline, scanText } from "./ui-copy-check.mjs";
+import { compareCopy, copyBaseline, scanText } from "./ui-copy-check.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ts = createRequire(path.join(root, "package.json"))("typescript");
 
-const scan = (file, text) => scanText(ts, file, text);
+const scan = (file: string, text: string) => scanText(ts, file, text);
 
 test("JSX 文本、字符串属性与按钮文案里的中文被拦", () => {
   const hits = scan("src/components/x.tsx", `export function X() {

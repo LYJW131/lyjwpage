@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { maskComments } from "./rules-check.mjs";
+import { maskComments } from "./rules-check.ts";
 
 export const BASELINE_PATH = "scripts/design-scale-baseline.json";
 
@@ -17,7 +17,12 @@ const ARBITRARY = String.raw`\[[^\]\s]*\]|\([^)\s]*\)`;
 const FRAGMENT_CTX = /(?:querySelectorAll|querySelector|getElementById|closest|matches|location\.hash|hash|href|xlink:href|xlinkHref|to|url|anchor|fragment)\s*[=(]?\s*["'`]?\s*$/i;
 const COLOR_PROP_CTX = /(?:stroke|fill|stopColor|color|background|accent|caret|border|outline|shadow|decoration|ring|tint|theme)\s*[:=]?\s*["'`]?\s*$/i;
 
-export const RULES = {
+type Rule = { label: string; re: RegExp; offScale: (match: RegExpMatchArray) => boolean; hint: string };
+export type Hit = { kind: string; token: string; line: number };
+export type Counts = Record<string, number>;
+export type Change = { token: string; before: number; after: number };
+
+export const RULES: Record<string, Rule> = {
   spacing: {
     label: "阶梯外的间距",
     re: new RegExp(String.raw`${BOUNDARY}-?(?:p(?:b[se]|[xytrblse])?|m(?:b[se]|[xytrblse])?|gap(?:-[xy])?|space-[xy])-(${ARBITRARY}|\d+(?:\.\d+)?|px)${END}`, "g"),
@@ -55,8 +60,10 @@ export const RULES = {
     // 3/4 位全数字形如工单号（#123、#1234），只在颜色属性上下文（stopColor="…"、bg-[#…]）算。
     offScale: (match) => {
       const token = match[0];
-      const before = match.input.slice(Math.max(0, match.index - 48), match.index);
-      if (match.input[match.index - 1] === "[") return true;
+      const input = match.input ?? "";
+      const index = match.index ?? 0;
+      const before = input.slice(Math.max(0, index - 48), index);
+      if (input[index - 1] === "[") return true;
       if (/^#[0-9a-fA-F]{3,4}$/.test(token) && !/[a-fA-F]/.test(token)) return COLOR_PROP_CTX.test(before);
       return !FRAGMENT_CTX.test(before);
     },
@@ -64,8 +71,8 @@ export const RULES = {
   },
 };
 
-export function scan(text) {
-  const hits = [];
+export function scan(text: string): Hit[] {
+  const hits: Hit[] = [];
   const lines = text.split("\n");
   lines.forEach((line, index) => {
     for (const [kind, rule] of Object.entries(RULES)) {
@@ -77,13 +84,13 @@ export function scan(text) {
   return hits;
 }
 
-export function scanSource(file, text) {
+export function scanSource(file: string, text: string): Hit[] {
   return scan(maskComments(file, text));
 }
 
-export function countTokens(files, readText) {
-  const counts = {};
-  const hits = {};
+export function countTokens(files: string[], readText: (file: string) => string): { counts: Counts; hits: Record<string, string[]> } {
+  const counts: Counts = {};
+  const hits: Record<string, string[]> = {};
   for (const file of files) {
     for (const { kind, token, line } of scanSource(file, readText(file))) {
       const key = `${kind}:${token}`;
@@ -94,9 +101,9 @@ export function countTokens(files, readText) {
   return { counts, hits };
 }
 
-export function compare(baseline, counts) {
-  const grew = [];
-  const shrank = [];
+export function compare(baseline: Counts, counts: Counts): { grew: Change[]; shrank: Change[] } {
+  const grew: Change[] = [];
+  const shrank: Change[] = [];
   for (const token of [...new Set([...Object.keys(baseline), ...Object.keys(counts)])].sort()) {
     const before = baseline[token] ?? 0;
     const after = counts[token] ?? 0;
@@ -106,11 +113,11 @@ export function compare(baseline, counts) {
   return { grew, shrank };
 }
 
-export function sortedBaseline(counts) {
+export function sortedBaseline(counts: Counts): Counts {
   return Object.fromEntries(Object.keys(counts).sort().map((token) => [token, counts[token]]));
 }
 
-function trackedSources(root) {
+function trackedSources(root: string): string[] {
   return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "src/*.ts", "src/*.tsx"], { cwd: root, encoding: "utf8" })
     .split("\0")
     .filter((file, index, all) => file && all.indexOf(file) === index && existsSync(path.join(root, file)) && !/\.test\.m?tsx?$/.test(file));
@@ -129,15 +136,16 @@ function main() {
     return;
   }
 
-  const baseline = JSON.parse(readFileSync(baselineFile, "utf8"));
+  const baseline = JSON.parse(readFileSync(baselineFile, "utf8")) as Counts;
   const { grew, shrank } = compare(baseline, counts);
   for (const { token, before, after } of grew) {
     console.error(`✗ ${token}：${before} → ${after}`);
-    for (const at of hits[token]) console.error(`    ${at}`);
+    for (const at of hits[token] ?? []) console.error(`    ${at}`);
   }
   if (grew.length > 0) {
     for (const kind of new Set(grew.map(({ token }) => token.slice(0, token.indexOf(":"))))) {
-      console.error(`\n${RULES[kind].label}：${RULES[kind].hint}`);
+      const rule = RULES[kind];
+      if (rule) console.error(`\n${rule.label}：${rule.hint}`);
     }
     console.error("\n确属合规例外时跑 `pnpm design:scale --update` 记进基线，并在 PR 里说明（见 DESIGN.md「交付与合并」）。");
     process.exit(1);
