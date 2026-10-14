@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSPr
 import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
 import { ChatCard } from "@/components/chat-card";
-import { ChatMarkdown } from "@/components/chat-markdown";
+import { ChatMarkdown, preloadChatMarkdown, useChatMarkdownReady } from "@/components/lazy-chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
 import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
@@ -263,16 +263,18 @@ function Conversation({ className, archive, session: conversation }: { className
     setError(message);
   }
 
+  const markdownReady = useChatMarkdownReady();
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, markdownReady]);
 
   useEffect(() => {
     const el = anchorRef.current;
     if (!el) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
+        preloadChatMarkdown();
         if (!readPass() && chatConsent.getSnapshot()) setWarm(true);
         observer.disconnect();
       }
