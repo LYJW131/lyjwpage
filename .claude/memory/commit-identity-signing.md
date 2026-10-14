@@ -11,4 +11,4 @@ The harness Stop hook `~/.claude/stop-hook-git-check.sh` assumes CCR's default k
 
 **Why:** the owner asked why #198 was full of unsigned commits.
 
-**How to apply:** never override commit identity or disable signing. When the Stop hook complains, just push; the hook only looks at unpushed commits. PR #304 adds a PreToolUse guard and an AGENTS.md line for this (pending owner OK as of 2026-10-14). Put this in briefs for any session that commits.
+**How to apply:** never override commit identity or disable signing. When the Stop hook complains, just push; the hook only looks at unpushed commits. PR #304 (merged 2026-10-14) adds a PreToolUse guard, an AGENTS.md line and a docs/ops-facts.md row for this. #198 was re-signed the same day (all 24 commits verified). Put this in briefs for any session that commits.
