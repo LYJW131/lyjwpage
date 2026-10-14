@@ -11,7 +11,8 @@ const WORKFLOW_FILE = "avatar-sync.yml";
 
 const DISPATCHED_KEY = "avatar-watch:dispatched:v1";
 // Action 提交失败时标记文件不会更新；同一个哈希在这段时间内只触发一次，不让每轮都再跑一次失败的 Action。
-export const REDISPATCH_AFTER_MS = 6 * 60 * 60_000;
+// 取一小时：补好凭据后不用久等，坏着时一天也只多跑 24 次。
+export const REDISPATCH_AFTER_MS = 60 * 60_000;
 
 export type AvatarWatchDeps = {
   fetch: typeof fetch;
