@@ -87,13 +87,21 @@ function Rect({ range, from, to, top, fill, opacity = 1 }: { range: Range; from:
   return <rect x={left} y={top} width={Math.max(0.2, x(range, to) - left)} height={LANE_HEIGHT - top} fill={fill} fillOpacity={opacity} />;
 }
 
-// 编码泳道一天能有几百段，逐段一个 <rect> 会让首屏 HTML 与 DOM 膨胀；同色段并进一条 path，画出来与逐段 Rect 一致。
-function bars(range: Range, rows: { from: number; to: number }[], top: number): string {
+// 编码泳道一天能有几百段，逐段一个 <rect> 会让首屏 HTML 与 DOM 膨胀，所以同色段并进一条 path。
+// 不足最小宽度的段，溢出部分应让给紧随其后的彩色段；按颜色分组绘制不是时间顺序，所以先按时间裁掉溢出。
+function codingBars(range: Range, rows: { from: number; to: number; state: number }[]) {
+  const merged = runs(rows);
+  return merged.map((row, index) => {
+    const left = x(range, row.from);
+    const next = merged[index + 1];
+    const limit = next && next.state ? x(range, next.from) : Infinity;
+    return { state: row.state, left, width: Math.max(0, Math.min(Math.max(0.2, x(range, row.to) - left), limit - left)) };
+  });
+}
+
+function barPath(rows: { left: number; width: number }[], top: number): string {
   const fixed = (value: number) => Number(value.toFixed(2));
-  return rows.map(({ from, to }) => {
-    const width = fixed(Math.max(0.2, x(range, to) - x(range, from)));
-    return `M${fixed(x(range, from))} ${top}h${width}v${LANE_HEIGHT - top}h${-width}z`;
-  }).join("");
+  return rows.map(({ left, width }) => `M${fixed(left)} ${top}h${fixed(width)}v${LANE_HEIGHT - top}h${-fixed(width)}z`).join("");
 }
 
 function IdleLine({ range, from, to }: { range: Range; from: number; to: number }) {
@@ -158,13 +166,16 @@ function codingModel(lane: PulseCodingLane, range: Range): LaneModel | null {
   const total = humanSeconds + agentSeconds + bothSeconds;
   return {
     items,
-    svg: CODING_FILLS.map((fill, value) => {
-      const rows = runs(segments.map((row) => ({ ...absolute(range, row), state: row.value }))).filter((row) => row.state === value);
-      if (!rows.length) return null;
-      return value
-        ? <path key={value} d={bars(range, rows, BAND_TOP)} fill={fill} />
-        : <path key={value} d={bars(range, rows, LANE_HEIGHT - IDLE_HEIGHT)} fill="currentColor" fillOpacity={0.42} />;
-    }),
+    svg: (() => {
+      const bars = codingBars(range, segments.map((row) => ({ ...absolute(range, row), state: row.value })));
+      return CODING_FILLS.map((fill, value) => {
+        const rows = bars.filter((bar) => bar.state === value);
+        if (!rows.length) return null;
+        return value
+          ? <path key={value} d={barPath(rows, BAND_TOP)} fill={fill} />
+          : <path key={value} d={barPath(rows, LANE_HEIGHT - IDLE_HEIGHT)} fill="currentColor" fillOpacity={0.42} />;
+      });
+    })(),
     summary: segments.length ? { value: pulseDuration(total), detail: `agent ${pulseDuration(agentSeconds + bothSeconds)}` } : null,
     aria: "coding timeline: coding app in front, agent running, or both",
   };
