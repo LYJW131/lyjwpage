@@ -7,13 +7,13 @@ import sharp from "sharp";
 
 import { ROOT } from "./dev-fixtures.ts";
 import { applyScene } from "./dev-scene.ts";
-import { HIDE_DEV_UI, resolvePlaywright } from "./site-verify.ts";
+import { HIDE_DEV_UI, launchBrowser, resolvePlaywright } from "./site-verify.ts";
 
 const USAGE = `用法：pnpm readme:shots [--scene <场景>] [--only <名[,名]>] [--theme light|dark|both] [--out <目录>]
 
 先用 pnpm dev:scene 注入整份场景（默认 readme），再按 SHOTS 清单在 1280 宽、2 倍像素密度下截根 README 的静态效果图，
 明暗各一份，转 WebP 写进 docs/screenshots/。注入一次、明暗两轮读同一份数据，标题池已收成一句。
-前置：pnpm dev:worker 与 pnpm dev:local 在跑（不在默认端口时用 SITE_URL / DEV_WORKER_URL）。
+前置：pnpm dev:worker 与 pnpm dev:local 在跑（不在默认端口时用 SITE_URL / DEV_WORKER_URL）。浏览器的启动顺序与 site-verify 相同，SITE_VERIFY_CHROME 可指定路径。
 场景留在本地 Worker 里供对照，收尾 pnpm dev:scene --reset。会动的卡片见 scripts/card-gifs.py。`;
 
 type Box = { x: number; y: number; width: number; height: number };
@@ -26,7 +26,6 @@ type Page = {
   hover(selector: string): Promise<void>;
 };
 type Browser = { newContext(options: Record<string, unknown>): Promise<{ newPage(): Promise<Page> }>; close(): Promise<void> };
-type Launcher = { chromium: { launch(options: Record<string, unknown>): Promise<Browser> } };
 
 export type Shot = {
   name: string;
@@ -156,10 +155,10 @@ async function main(args: string[]): Promise<unknown> {
   const overview = !only || only.includes("overview");
   const themes = theme === "both" ? (["light", "dark"] as const) : ([theme === "dark" ? "dark" : "light"] as const);
   const applied = await applyScene(scene);
-  const pw = (await resolvePlaywright())?.api as unknown as Launcher | undefined;
+  const pw = (await resolvePlaywright())?.api;
   if (!pw) throw new Error("解不到 playwright / playwright-core（node scripts/site-verify.ts doctor 看原因）");
   fs.mkdirSync(out, { recursive: true });
-  const browser = await pw.chromium.launch({ headless: true });
+  const browser = (await launchBrowser(pw)).browser as unknown as Browser;
   try {
     const written: string[] = [];
     for (const each of themes) written.push(...(await captureTheme(browser, url, each, shots, overview, out)));
