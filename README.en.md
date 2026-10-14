@@ -34,7 +34,7 @@ It is both my personal homepage and a personal telemetry system that keeps evolv
 | **AI Coding** | Token usage of coding tools (merged from Mac logs, Cursor account history and Claude Code cloud telemetry), API-equivalent cost estimates, which agent is in use right now, a yearly heatmap and account limit windows. |
 | **Games** | PlayStation online status, game history and trophy progress; expand a game card for per-trophy details. |
 | **Pulse** | A factual 24-hour timeline for coding, listening, watching, playing, charging and physical activity: coding split into coding app / agent / both plus a token-rate lane, listening, watching and playing drawn as playing, paused or idle with the track or title, watts for charging, steps and workouts for activity. Hover any segment to see its state and title. |
-| **Provider status** | Official status pages of everyday services such as Claude, ChatGPT, Cursor, Devin, GitHub and Cloudflare, with trouble sorted first and incidents a click away. |
+| **Provider status** | Official status pages of everyday services such as Claude, ChatGPT, Cursor, Devin, GitHub and Cloudflare, with trouble moved to the front on narrow screens and incidents a click away. |
 | **The site itself** | Site version, GitHub repository stats and recent commits (with signature status); 30-day uptime rows for the site and the API, rolling medians of PageSpeed lab scores and a real-visitor performance score; Cloudflare Workers Builds deployments and Cloudflare Web Analytics pageviews, request stats and 12-hour error counts for Cloudflare Workers, plus push counts, round-trip latency and live versions of the two resident reporters on the exit node. |
 | **Talk to God** | A chat card where Clef routes each message by difficulty to Haiku (small fry), Sonnet (prophet) or Fable (God, with a descent effect), or refuses it; the model can read the live data behind every card, look up this project's design docs, and search the web with cited sources; `/new` starts a new conversation while retaining local session archives, with Markdown replies in which the model adds stat tiles, bar and line charts, timelines and artwork lists drawn by the site's own components (`src/components/chat-visual.tsx`), falling back to HTML in an offline sandbox for anything else (`src/lib/html-preview.ts`); visitors can plan site changes and confirm a signed plan to open an issue or start a build, then follow its PR, checks and preview; each message passes Cloudflare Turnstile, and requests are rate-limited per visitor with capped context and output length. |
 
@@ -137,7 +137,7 @@ The faint line under the app name is the current window title; the Cursor and An
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse card: factual timelines including token rates, with daily summaries; hovering a listening segment shows its time range, state and the track playing then" width="100%">
 </picture>
 
-**Provider status**: the official status pages of everyday services such as Claude, ChatGPT, Cursor, Devin, GitHub and Cloudflare in one card, with anything in trouble sorted first; click one to see its incidents.
+**Provider status**: the official status pages of everyday services such as Claude, ChatGPT, Cursor, Devin, GitHub and Cloudflare in one card, with anything in trouble moved to the front when the columns don't fit on a narrow screen; click one to see its incidents.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/provider-status-dark.webp">
