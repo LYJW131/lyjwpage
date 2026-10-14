@@ -18,7 +18,8 @@ export const GOD_CHAT_LIMITS = {
   maxTotalChars: 16000,
   maxPlanHistoryChars: BUILD_TOKEN_MAX_CHARS,
   maxToolRounds: 3,
-  maxWebSearches: 2,
+  // 带动态过滤的搜索会在代码里并发搜 2–3 条，第一版处理代码常猜错结果格式崩掉、整批重搜；额度要容得下这一次重搜，否则模型只能说次数用完。
+  maxWebSearches: 6,
 } as const;
 
 // show_card 能画的卡片：模型只选卡片名，卡片由浏览器按这里登记的状态视图读公开数据自己画，Worker 也读同一组视图回给模型。
