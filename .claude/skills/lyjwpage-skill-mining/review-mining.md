@@ -4,7 +4,7 @@
 
 ## 范围与书签
 
-- 书签在 `/mnt/project-files/skill-mining/state.json` 的 `prs`：`lastMergedAt`（ISO）与 `lastNumber`，合起来是已连续处理完的最后一个 PR。没有书签时从上一次运行的开始时间起（`runs/` 里最近一份记录），没有上一次运行就从最近一天起。
+- 书签在 `/mnt/project-files/skill-mining/state.json` 的 `prs`：`lastMergedAt`（ISO）与 `lastNumber`，合起来是已连续处理完的最后一个 PR。没有书签时从上一次完成的运行的开始时间起（`runs/` 里最近一份结论为 `完成` 的记录；失败或部分完成的不算，否则它没读完的 PR 会被跳过），没有就从最近一天起。
 - 列 PR：`mcp__github__search_pull_requests`，查询 `repo:lyjw131/lyjwpage is:pr is:merged merged:>=<lastMergedAt 的日期>`（含书签当天），翻完所有页。按 `(合并时间, PR 号)` 从小到大排，只留严格大于书签 `(lastMergedAt, lastNumber)` 的，合并时间相同的靠 PR 号分先后。一次最多取前 70 个（每天合并的 PR 常在 60 个上下，取少了积压只增不减），其余留到下次，记录里写「积压 N 个」。
 - 评审者只看 Codex 和 Devin Review。作者登录名按前缀认：`chatgpt-codex-connector`、`devin-ai-integration`，带不带 `[bot]` 后缀都算（不同接口返回的写法不一样）。两家都没留过评论的 PR 也要记为已处理，书签照常越过。
 
