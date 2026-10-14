@@ -57,7 +57,7 @@ jobs:
         run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
 
       - name: Build the review prompt
-        run: node scripts/build-actions.mjs prompt --template .github/build/review.md --plan "$RUNNER_TEMP/plan.md" > "$RUNNER_TEMP/review-prompt.md"
+        run: node scripts/build-actions.ts prompt --template .github/build/review.md --plan "$RUNNER_TEMP/plan.md" > "$RUNNER_TEMP/review-prompt.md"
 
       - name: Review the plan
         env:
@@ -72,7 +72,7 @@ jobs:
 
       - name: Read the verdict
         id: result
-        run: node scripts/build-actions.mjs review-result "$RUNNER_TEMP/review.json"
+        run: node scripts/build-actions.ts review-result "$RUNNER_TEMP/review.json"
 
   gate:
     needs: review
@@ -107,7 +107,7 @@ jobs:
           VERDICT: ${{ needs.review.outputs.verdict }}
           REASON: ${{ needs.review.outputs.reason }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/build-actions.mjs gate
+        run: node scripts/build-actions.ts gate
 
   # 不可信的实现阶段：只读仓库，没有 id-token，Claude 的令牌只给运行 CLI 的那一步，Bash 在沙盒里跑。
   implement:
@@ -132,7 +132,7 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
           mkdir -p "$RUNNER_TEMP/build-config"
-          for file in .github/build/implement.md .github/build/implement-settings.json .github/build/dev-net.mjs scripts/build-actions.mjs; do
+          for file in .github/build/implement.md .github/build/implement-settings.json .github/build/dev-net.mjs scripts/build-actions.ts; do
             git show "$GITHUB_SHA:$file" > "$RUNNER_TEMP/build-config/${file##*/}"
           done
 
@@ -199,7 +199,7 @@ jobs:
         run: cp -a .git "$RUNNER_TEMP/build-git"
 
       - name: Build the implementation prompt
-        run: node "$RUNNER_TEMP/build-config/build-actions.mjs" prompt --template "$RUNNER_TEMP/build-config/implement.md" --plan "builds/$RUN_ID.md" > "$RUNNER_TEMP/implement-prompt.md"
+        run: node "$RUNNER_TEMP/build-config/build-actions.ts" prompt --template "$RUNNER_TEMP/build-config/implement.md" --plan "builds/$RUN_ID.md" > "$RUNNER_TEMP/implement-prompt.md"
 
       - name: Implement the plan
         timeout-minutes: 18
@@ -213,10 +213,10 @@ jobs:
             < "$RUNNER_TEMP/implement-prompt.md" > "$RUNNER_TEMP/implement.json"
 
       - name: Check the session result
-        run: node "$RUNNER_TEMP/build-config/build-actions.mjs" implement-result "$RUNNER_TEMP/implement.json"
+        run: node "$RUNNER_TEMP/build-config/build-actions.ts" implement-result "$RUNNER_TEMP/implement.json"
 
       - name: Package the changes
-        run: node "$RUNNER_TEMP/build-config/build-actions.mjs" package --out "$RUNNER_TEMP/build-output" --git-dir "$RUNNER_TEMP/build-git"
+        run: node "$RUNNER_TEMP/build-config/build-actions.ts" package --out "$RUNNER_TEMP/build-output" --git-dir "$RUNNER_TEMP/build-git"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -265,4 +265,4 @@ jobs:
       - name: Publish the implementation
         env:
           IMPLEMENT_RESULT: ${{ needs.implement.result }}
-        run: node scripts/build-actions.mjs publish --work work --artifact artifact
+        run: node scripts/build-actions.ts publish --work work --artifact artifact

@@ -8,7 +8,7 @@ export const BUILD_WORKFLOW_REF = `${BUILD_REPO}/.github/workflows/build.yml@ref
 // 名字在改名或删除后可被别人注册，数字 ID 不会复用；令牌里两者都是字符串。
 export const BUILD_REPO_ID = "1331086735";
 export const BUILD_REPO_OWNER_ID = "153256373";
-// 受众把令牌绑到单个 run：同一回调源下，一张令牌不能替别的 run 报告或上传。须与 scripts/build-actions.mjs#workflowAudience 一致，两边的测试都核对这个格式。
+// 受众把令牌绑到单个 run：同一回调源下，一张令牌不能替别的 run 报告或上传。须与 scripts/build-actions.ts#workflowAudience 一致，两边的测试都核对这个格式。
 export const buildWorkflowAudience = (callbackOrigin: string, runId: string) => `${callbackOrigin}/builds/${runId}`;
 const MAX_TOKEN_CHARS = 8192;
 const JWKS_MAX_BYTES = 64 * 1024;

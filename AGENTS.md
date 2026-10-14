@@ -22,7 +22,7 @@
 # 项目入口与验证
 
 - 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
-- 根 `package.json` 的 `typescript` 是 `@typescript/typescript6` 的别名，`tsc` 来自 `@typescript/native`（TypeScript 7 原生编译器）：typescript-eslint 与 `scripts/comment-only-check.test.mjs` 要 6.0 的 JS API，TypeScript 7 没有。两项不要合并；Worker 与上报器目录只跑 `tsc`，直接依赖 `typescript` 7。
+- 根 `package.json` 的 `typescript` 是 `@typescript/typescript6` 的别名，`tsc` 来自 `@typescript/native`（TypeScript 7 原生编译器）：typescript-eslint 与 `scripts/comment-only-check.test.ts` 要 6.0 的 JS API，TypeScript 7 没有。两项不要合并；Worker 与上报器目录只跑 `tsc`，直接依赖 `typescript` 7。
 - 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，但按端点整份兜底：新端点看本地，已有端点的新字段要用下面的注入看（见 `workers/core/README.md`「本地开发」）。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据（夹具在 `workers/core/dev-fixtures/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/core/README.md`「本地开发」）。
 - 修改路由与加载器前，读 `node_modules/react-router/docs/` 与 `@react-router` 的类型。按需检索，不为小改动遍历整个文档或技能目录。
 - 验证覆盖受影响的行为和契约。纯文档改动跑 `pnpm docs:check` 并检查 diff 与命令；逻辑修复优先跑相关测试；类型或接口改动运行 `pnpm typecheck`；代码规范检查运行 `pnpm exec eslint <改动文件>`；涉及构建、路由或缓存行为时运行 `pnpm build`。站点 UI 改动按下一条走浏览器端到端测试。
@@ -105,7 +105,7 @@
 - `docs/` 每篇文首一行标类型：`reference`（现状事实）、`runbook`（操作步骤）、`decision`（已定取舍，写完不改）、`record`（某时点的审计、核验、基准，另写「按 <sha> <日期> 核对，快照不维护，不当现状引用」）。新增文档在 `docs/README.md` 登记。
 - 根 `AGENTS.md` ≤ 150 行，只写硬规则与禁区、完成条件、权威事实源的指针，不写目录或文件清单、来源枚举、数量版本日期、部署拓扑、迁移步骤。子目录 `AGENTS.md` ≤ 60 行，同目录放一行 `@AGENTS.md` 的 `CLAUDE.md`，只写不变量、坑、本地验证命令、须成对修改的文件；人读的说明留在 `README.md`。
 - 改代码的同一提交里更新受影响的文档与注释。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
-- 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.mjs` 文件头。
+- 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.ts` 文件头。
 - 确需保留时间线写法（如核对戳）时，在同一行末尾加 `<!-- allow: 理由 -->`。
 
 ## 规则 → 由什么强制
@@ -118,7 +118,7 @@
 | Worker / shared / `src/` 之间的 import 边界 | `eslint.config.mjs` 的 `no-restricted-imports` |
 | `src/` 组件不手写 `<img>`，用 `AppImage` | `eslint.config.mjs` 的 `no-restricted-syntax`（`app-image.tsx` 除外） |
 | 阶梯外间距、任意值字号 / 位移 / 圆角、子级外边距、裸 hex / oklch 色值 | `pnpm design:scale`（基线 `scripts/design-scale-baseline.json`） |
-| `TODO` / `FIXME` 须带单号、`/img/` 不烧交付域、`src/` 网络调用不写字面量主机、隐藏滚动条两句同现 | `pnpm rules:check` |
+| `TODO` / `FIXME` 须带单号、`/img/` 不烧交付域、`src/` 网络调用不写字面量主机、隐藏滚动条两句同现、`scripts/` 不新增 `.mjs`（存量见 `scripts/mjs-baseline.json`） | `pnpm rules:check` |
 | 界面文案用英文 | `pnpm ui:copy`（基线 `scripts/ui-copy-baseline.json`） |
 
 ## Reasoning Strategy

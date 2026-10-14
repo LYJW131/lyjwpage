@@ -14,25 +14,32 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import type * as TS from "typescript";
+
 export const BASELINE_PATH = "scripts/ui-copy-baseline.json";
 
 // 假名 + CJK 基本/扩展 A + 兼容 + 谚文音节 / 字母 / 兼容字母：覆盖中日韩
 const CJK_RE = /[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
 // 命中按规范化全文比较与入基线；截断只用于报错展示
 const TRUNCATE = 36;
-const preview = (text) => (text.length > TRUNCATE ? `${text.slice(0, TRUNCATE)}…` : text);
+const preview = (text: string) => (text.length > TRUNCATE ? `${text.slice(0, TRUNCATE)}…` : text);
 
-const loadTs = (root) => createRequire(path.join(root, "package.json"))("typescript");
+export type CopyHit = { line: number; text: string };
+export type CopyBaseline = Record<string, string[]>;
+type Grew = { file: string; extras: { text: string; extra: number; lines: number[] }[] };
+type Shrank = { file: string; missing: { text: string; extra: number }[] };
 
-export function scanText(ts, file, text) {
+const loadTs = (root: string) => createRequire(path.join(root, "package.json"))("typescript") as typeof TS;
+
+export function scanText(ts: typeof TS, file: string, text: string): CopyHit[] {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
-  const hits = [];
-  const add = (node, raw) => {
+  const hits: CopyHit[] = [];
+  const add = (node: TS.Node, raw: string) => {
     if (!CJK_RE.test(raw)) return;
     const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
     hits.push({ line: line + 1, text: raw.replace(/\s+/g, " ").trim() });
   };
-  const visit = (node) => {
+  const visit = (node: TS.Node): void => {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) add(node, node.text);
     else if (ts.isTemplateExpression(node)) {
       add(node.head, node.head.text);
@@ -45,21 +52,21 @@ export function scanText(ts, file, text) {
 }
 
 // hits 形如 { "src/a.tsx": [{ line, text }] }；基线形如 { "src/a.tsx": ["文本", …] }。
-export function copyBaseline(hits) {
+export function copyBaseline(hits: Record<string, CopyHit[]>): CopyBaseline {
   return Object.fromEntries(
-    Object.keys(hits).sort().map((file) => [file, hits[file].map((hit) => hit.text).sort()]),
+    Object.keys(hits).sort().map((file) => [file, (hits[file] ?? []).map((hit) => hit.text).sort()]),
   );
 }
 
-const multiset = (texts) => {
-  const map = new Map();
+const multiset = (texts: string[]) => {
+  const map = new Map<string, number>();
   for (const text of texts) map.set(text, (map.get(text) ?? 0) + 1);
   return map;
 };
 
-export function compareCopy(baseline, hits) {
-  const grew = [];
-  const shrank = [];
+export function compareCopy(baseline: CopyBaseline, hits: Record<string, CopyHit[]>): { grew: Grew[]; shrank: Shrank[] } {
+  const grew: Grew[] = [];
+  const shrank: Shrank[] = [];
   const files = [...new Set([...Object.keys(baseline), ...Object.keys(hits)])].sort();
   for (const file of files) {
     const before = multiset(baseline[file] ?? []);
@@ -77,7 +84,7 @@ export function compareCopy(baseline, hits) {
   return { grew, shrank };
 }
 
-function trackedSources(root) {
+function trackedSources(root: string): string[] {
   return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "src/*.ts", "src/*.tsx"], { cwd: root, encoding: "utf8" })
     .split("\0")
     .filter((file, index, all) => file && all.indexOf(file) === index && existsSync(path.join(root, file)) && !/\.test\.[a-z]+$/.test(file));
@@ -88,7 +95,7 @@ function main() {
   const update = process.argv.includes("--update");
   const ts = loadTs(root);
   const files = trackedSources(root);
-  const hits = {};
+  const hits: Record<string, CopyHit[]> = {};
   for (const file of files) {
     const fileHits = scanText(ts, file, readFileSync(path.join(root, file), "utf8"));
     if (fileHits.length > 0) hits[file] = fileHits;
@@ -101,7 +108,7 @@ function main() {
     return;
   }
 
-  const baseline = JSON.parse(readFileSync(baselineFile, "utf8"));
+  const baseline = JSON.parse(readFileSync(baselineFile, "utf8")) as CopyBaseline;
   const { grew, shrank } = compareCopy(baseline, hits);
   for (const { file, extras } of grew) {
     for (const { text, extra, lines } of extras) {

@@ -3,9 +3,10 @@ import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -14,6 +15,7 @@ import {
   UPLOAD_LIMITS,
   WORKER_PATHS,
   WORKER_TIMING,
+  type EnvName,
   formatOutputs,
   gateDecision,
   main,
@@ -27,50 +29,54 @@ import {
   runGate,
   runPublish,
   screenshotEntries,
-} from "./build-actions.mjs";
+} from "./build-actions.ts";
 
-const SCRIPT = fileURLToPath(new URL("./build-actions.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("./build-actions.ts", import.meta.url));
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const RUN_ID = "0123456789abcdef0123456789abcdef";
 const BASE_SHA = "b".repeat(40);
 const ORIGIN = "https://worker.test";
 const JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJl";
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(64)]);
-const GIT_ENV = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+const GIT_ENV = { ...(Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))) as NodeJS.ProcessEnv), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
 
-function git(cwd, ...args) {
+function git(cwd: string, ...args: string[]) {
   const result = spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "init.defaultBranch=main", "-c", "commit.gpgsign=false", ...args], { cwd, env: GIT_ENV, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   return result.stdout.trim();
 }
 
-function tempDir(t) {
+function tempDir(t: TestContext) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "build-actions-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
 
-function writeFile(root, rel, content, mode) {
+function writeFile(root: string, rel: string, content: string | Buffer, mode?: number) {
   const file = path.join(root, rel);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
   if (mode) fs.chmodSync(file, mode);
 }
 
-function parseOutputs(text) {
-  const values = {};
+function parseOutputs(text: string) {
+  const values: Record<string, string> = {};
   const lines = text.split("\n");
   for (let index = 0; index < lines.length; index++) {
-    const match = /^(\w+)<<(\S+)$/.exec(lines[index]);
+    const match = /^(\w+)<<(\S+)$/.exec(lines[index] ?? "");
     if (!match) continue;
-    const end = lines.indexOf(match[2], index + 1);
-    values[match[1]] = lines.slice(index + 1, end).join("\n");
+    const end = lines.indexOf(match[2] ?? "", index + 1);
+    values[match[1] ?? ""] = lines.slice(index + 1, end).join("\n");
     index = end;
   }
   return values;
 }
 
-function repo(t) {
+type Fixture = ReturnType<typeof repo>;
+type Entry = { method: string | undefined; url: string; authorization: string | undefined; body: string };
+type Respond = (entry: Entry) => { status?: number; json?: unknown } | undefined;
+
+function repo(t: TestContext) {
   const root = tempDir(t);
   const origin = path.join(root, "origin");
   writeFile(origin, "src/keep.ts", "export const keep = 1;\n");
@@ -92,14 +98,14 @@ function repo(t) {
   return { root, checkout, work, gitDir, planSha, out: path.join(root, "out") };
 }
 
-async function server(t, respond = () => ({})) {
-  const requests = [];
+async function server(t: TestContext, respond: Respond = () => ({})) {
+  const requests: Entry[] = [];
   const instance = http.createServer(async (req, res) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk);
-    const entry = { method: req.method, url: req.url, authorization: req.headers.authorization, body: Buffer.concat(chunks).toString("utf8") };
+    const entry: Entry = { method: req.method, url: req.url ?? "", authorization: req.headers.authorization, body: Buffer.concat(chunks).toString("utf8") };
     requests.push(entry);
-    if (req.url.startsWith("/oidc")) {
+    if (entry.url.startsWith("/oidc")) {
       const ok = req.headers.authorization === "bearer request-token";
       res.writeHead(ok ? 200 : 403, { "Content-Type": "application/json" });
       res.end(JSON.stringify(ok ? { value: JWT } : {}));
@@ -109,22 +115,22 @@ async function server(t, respond = () => ({})) {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(json));
   });
-  await new Promise((resolve) => instance.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => instance.listen(0, "127.0.0.1", () => resolve()));
   t.after(() => instance.close());
-  const base = `http://127.0.0.1:${instance.address().port}`;
-  const logs = [];
-  const sleeps = [];
+  const base = `http://127.0.0.1:${(instance.address() as AddressInfo).port}`;
+  const logs: string[] = [];
+  const sleeps: number[] = [];
   const io = {
-    fetch: (url, init) => fetch(String(url).replace(ORIGIN, base), init),
-    log: (line) => logs.push(line),
-    sleep: async (ms) => { sleeps.push(ms); },
+    fetch: (url: string, init?: RequestInit) => fetch(String(url).replace(ORIGIN, base), init),
+    log: (line: string) => { logs.push(line); },
+    sleep: async (ms: number) => { sleeps.push(ms); },
     write: () => {},
   };
   const workerRequests = () => requests.filter((entry) => !entry.url.startsWith("/oidc"));
   return { base, requests, workerRequests, logs, sleeps, io };
 }
 
-function publishEnv(t, base, extra = {}) {
+function publishEnv(t: TestContext, base: string, extra: Record<string, string | undefined> = {}) {
   const dir = tempDir(t);
   return {
     RUN_ID,
@@ -139,7 +145,7 @@ function publishEnv(t, base, extra = {}) {
   };
 }
 
-async function packageAndPublish(t, fixture, { gitDir = fixture.gitDir, respond, env: extra } = {}) {
+async function packageAndPublish(t: TestContext, fixture: Fixture, { gitDir = fixture.gitDir, respond, env: extra }: { gitDir?: string | null; respond?: Respond; env?: Record<string, string | undefined> } = {}) {
   const harness = await server(t, respond);
   packageBuild({ cwd: fixture.checkout, out: fixture.out, gitDir, planCommitSha: fixture.planSha, io: harness.io });
   const env = publishEnv(t, harness.base, extra);
@@ -150,15 +156,17 @@ async function packageAndPublish(t, fixture, { gitDir = fixture.gitDir, respond,
 // 派发、工作流排队和每个 job 等 runner 的时间不计入 timeout-minutes，上传凭据却从 run 创建起计时。
 const QUEUE_ALLOWANCE_MS = 6 * 60_000;
 
-const workerPath = (entry) => entry.url.split("?")[0];
-const body = (entry) => JSON.parse(entry.body);
+type Body = { baseSha: string; message: string; files: { path: string; mode: string; content: string }[]; deletions: string[]; caption?: string; content?: string; blocked?: boolean; body?: string };
+
+const workerPath = (entry: Entry) => entry.url.split("?")[0];
+const body = (entry: Entry | undefined) => JSON.parse((entry as Entry).body) as Body;
 
 test("hard-coded Worker paths and limits match the shared contracts", async () => {
   await import("../src/lib/testing/register-alias.mjs");
   const paths = await import("../shared/ai-paths.ts");
   const routine = await import("../shared/build-routine.ts");
   assert.deepEqual(WORKER_PATHS, { upload: paths.BUILD_UPLOAD_PATH, progress: paths.BUILD_PROGRESS_PATH, screenshot: paths.BUILD_SCREENSHOT_PATH });
-  for (const [key, value] of Object.entries(UPLOAD_LIMITS)) assert.equal(value, routine.BUILD_UPLOAD_LIMITS[key], key);
+  for (const [key, value] of Object.entries(UPLOAD_LIMITS)) assert.equal(value, routine.BUILD_UPLOAD_LIMITS[key as keyof typeof routine.BUILD_UPLOAD_LIMITS], key);
   assert.deepEqual(SCREENSHOT_LIMITS, { ...routine.BUILD_SCREENSHOT_LIMITS });
   assert.equal(TEXT_LIMITS.blockedChars, routine.BUILD_PROGRESS_LIMITS.blockedChars);
   const schema = JSON.parse(fs.readFileSync(path.join(ROOT, ".github/build/review-schema.json"), "utf8"));
@@ -172,10 +180,10 @@ test("build workflow fits the Worker's build window and names the co-author's mo
   const jobMinutes = [...workflow.matchAll(/^ {4}timeout-minutes: (\d+)$/gm)].map((match) => Number(match[1]));
   assert.equal(jobMinutes.length, 4);
   assert.ok(jobMinutes.reduce((sum, minutes) => sum + minutes, 0) * 60_000 <= routine.BUILD_TIMEOUT_MS - QUEUE_ALLOWANCE_MS, "the build window closes before queued jobs time out");
-  const minutes = (job, step) => {
-    const block = new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)(?=\\n  [a-z]+:\\n|$)`).exec(workflow)[1];
+  const minutes = (job: string, step?: string) => {
+    const block = new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)(?=\\n  [a-z]+:\\n|$)`).exec(workflow)?.[1] ?? "";
     const scoped = step ? block.slice(block.indexOf(`- name: ${step}\n`)) : block;
-    return Number(/timeout-minutes: (\d+)/.exec(scoped)[1]) * 60_000;
+    return Number(/timeout-minutes: (\d+)/.exec(scoped)?.[1]) * 60_000;
   };
   const setupMs = 90_000;
   assert.ok(minutes("gate") >= WORKER_TIMING.gateBudgetMs + 30_000 + setupMs, "gate leaves room for checkout, the review comment and the Worker call");
@@ -185,7 +193,7 @@ test("build workflow fits the Worker's build window and names the co-author's mo
   assert.deepEqual(models, ["claude-sonnet-5-5", "claude-opus-5-5"]);
   const coauthor = /const BUILD_CLAUDE_COAUTHOR = "Claude ([A-Za-z]+) (\d+)\.(\d+) </.exec(fs.readFileSync(path.join(ROOT, "workers/ai/src/build/github.ts"), "utf8"));
   assert.ok(coauthor);
-  assert.equal(models[1], `claude-${coauthor[1].toLowerCase()}-${coauthor[2]}-${coauthor[3]}`);
+  assert.equal(models[1], `claude-${(coauthor[1] ?? "").toLowerCase()}-${coauthor[2]}-${coauthor[3]}`);
   for (const file of fs.readdirSync(path.join(ROOT, ".github/build")).filter((name) => name.startsWith("implement") || name === "dev-net.mjs")) {
     assert.ok(workflow.includes(`.github/build/${file}`), `${file} is copied from the workflow commit`);
   }
@@ -195,15 +203,15 @@ test("implement sandbox allows exactly the image hosts the image proxy allows", 
   await import("../src/lib/testing/register-alias.mjs");
   const proxy = await import("../src/lib/image-proxy.ts");
   const settings = JSON.parse(fs.readFileSync(path.join(ROOT, ".github/build/implement-settings.json"), "utf8"));
-  const sandboxImageHosts = settings.sandbox.network.allowedDomains.filter((domain) => proxy.allowedImageHost(domain.replace(/^\*\./, "")));
+  const sandboxImageHosts = settings.sandbox.network.allowedDomains.filter((domain: string) => proxy.allowedImageHost(domain.replace(/^\*\./, "")));
   const proxyHosts = [...proxy.EXACT_IMAGE_HOSTS, ...proxy.SUFFIX_IMAGE_HOSTS.flatMap((suffix) => [suffix, `*.${suffix}`])];
   assert.deepEqual(sandboxImageHosts.toSorted(), proxyHosts.toSorted());
 });
 
 test("payload values are validated before use", () => {
   const env = { RUN_ID, PLAN_COMMIT_SHA: "a".repeat(40), BASE_SHA, PR_NUMBER: "42", CALLBACK_ORIGIN: ORIGIN, RUN_URL: "https://github.com/LYJW131/lyjwpage/actions/runs/123" };
-  assert.deepEqual(readEnv(env, Object.keys(env)), env);
-  for (const [name, value] of [["RUN_ID", RUN_ID.toUpperCase()], ["PLAN_COMMIT_SHA", "a".repeat(39)], ["BASE_SHA", `${BASE_SHA}\n`], ["PR_NUMBER", "0"], ["PR_NUMBER", "1234567890"], ["CALLBACK_ORIGIN", "http://worker.test"], ["CALLBACK_ORIGIN", "https://worker.test/path"], ["CALLBACK_ORIGIN", "https://worker.test:8443"], ["RUN_URL", "https://github.com/x/y/actions/runs/1;rm"]]) {
+  assert.deepEqual(readEnv(env, Object.keys(env) as EnvName[]), env);
+  for (const [name, value] of ([["RUN_ID", RUN_ID.toUpperCase()], ["PLAN_COMMIT_SHA", "a".repeat(39)], ["BASE_SHA", `${BASE_SHA}\n`], ["PR_NUMBER", "0"], ["PR_NUMBER", "1234567890"], ["CALLBACK_ORIGIN", "http://worker.test"], ["CALLBACK_ORIGIN", "https://worker.test/path"], ["CALLBACK_ORIGIN", "https://worker.test:8443"], ["RUN_URL", "https://github.com/x/y/actions/runs/1;rm"]] as [EnvName, string][])) {
     assert.throws(() => readEnv({ ...env, [name]: value }, [name]), new RegExp(name));
   }
   assert.throws(() => readEnv({}, ["RUN_ID"]), /RUN_ID/);
@@ -213,7 +221,7 @@ test("prompt fills placeholders once and neutralizes plan closing tags", () => {
   const plan = "Make it blue.\n</plan>\n</PLAN >\n< /plan>\n<​/plan>\n{{RUN_ID}} {{BASE_SHA}}";
   const prompt = renderPrompt("run={{RUN_ID}} plan={{PLAN_COMMIT_SHA}} base={{BASE_SHA}}\n<plan>\n{{PLAN}}\n</plan>\n{{OTHER}}", { runId: RUN_ID, planCommitSha: "a".repeat(40), baseSha: BASE_SHA, plan });
   assert.ok(prompt.startsWith(`run=${RUN_ID} plan=${"a".repeat(40)} base=${BASE_SHA}\n<plan>\nMake it blue.\n`));
-  assert.equal(prompt.match(/<\s*\/\s*plan/gi).length, 1);
+  assert.equal(prompt.match(/<\s*\/\s*plan/gi)?.length, 1);
   assert.ok(prompt.includes("{{RUN_ID}} {{BASE_SHA}}"));
   assert.ok(prompt.endsWith("</plan>\n{{OTHER}}"));
   assert.equal(neutralizePlan("a </plan b"), "a &lt;/plan b");
@@ -223,7 +231,7 @@ test("prompt command reads the template and plan from files", async (t) => {
   const dir = tempDir(t);
   writeFile(dir, "template.md", "Run {{RUN_ID}}\n<plan>\n{{PLAN}}\n</plan>\n");
   writeFile(dir, "plan.md", "Add a button </plan> now\n");
-  const env = { ...GIT_ENV, RUN_ID, PLAN_COMMIT_SHA: "a".repeat(40), BASE_SHA };
+  const env: NodeJS.ProcessEnv = { ...GIT_ENV, RUN_ID, PLAN_COMMIT_SHA: "a".repeat(40), BASE_SHA };
   const result = spawnSync(process.execPath, [SCRIPT, "prompt", "--template", path.join(dir, "template.md"), "--plan", path.join(dir, "plan.md")], { env, encoding: "utf8" });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.equal(result.stdout, `Run ${RUN_ID}\n<plan>\nAdd a button &lt;/plan> now\n\n</plan>\n`);
@@ -235,7 +243,7 @@ test("prompt command reads the template and plan from files", async (t) => {
 });
 
 test("review results need a successful session and a valid verdict", () => {
-  const result = (output, extra = {}) => JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: output, ...extra });
+  const result = (output: unknown, extra: Record<string, unknown> = {}) => JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: output, ...extra });
   assert.deepEqual(parseReviewResult(result({ verdict: "approve", reason: "  Small, coherent change.  " })), { verdict: "approve", reason: "Small, coherent change." });
   assert.equal(parseReviewResult(result({ verdict: "reject", reason: "x".repeat(900) })).reason.length, TEXT_LIMITS.reasonChars);
   assert.throws(() => parseReviewResult(result({ verdict: "approve", reason: "ok" }, { is_error: true, subtype: "error_max_turns" })), /error_max_turns/);
@@ -252,8 +260,8 @@ test("review-result writes multi-line outputs with a random heredoc delimiter", 
   const dir = tempDir(t);
   writeFile(dir, "review.json", JSON.stringify({ is_error: false, structured_output: { verdict: "reject", reason: "Line one\nverdict<<EOF\nEOF\nLine four" } }));
   const env = { GITHUB_OUTPUT: path.join(dir, "output") };
-  const logs = [];
-  assert.equal(await main(["review-result", path.join(dir, "review.json")], { env, io: { log: (line) => logs.push(line) } }), true);
+  const logs: string[] = [];
+  assert.equal(await main(["review-result", path.join(dir, "review.json")], { env, io: { log: (line) => { logs.push(line); } } }), true);
   const text = fs.readFileSync(env.GITHUB_OUTPUT, "utf8");
   assert.deepEqual(parseOutputs(text), { verdict: "reject", reason: "Line one\nverdict<<EOF\nEOF\nLine four" });
   assert.match(text, /^verdict<<ghadelimiter_[a-f0-9]{32}\n/);
@@ -286,11 +294,11 @@ test("gate decisions map the review to the Worker call", () => {
   assert.equal(comment, "**Plan review: declined**\n\n> Pings @​someone\n> second line\n\n[Workflow run](https://github.com/LYJW131/lyjwpage/actions/runs/9)");
 });
 
-async function gate(t, extra, respond) {
+async function gate(t: TestContext, extra: Record<string, string>, respond?: Respond) {
   const harness = await server(t, respond);
   const env = publishEnv(t, harness.base, { PR_NUMBER: "12", RUN_URL: "https://github.com/LYJW131/lyjwpage/actions/runs/7", GITHUB_TOKEN: "gh-token", GITHUB_REPOSITORY: "LYJW131/lyjwpage", GITHUB_API_URL: `${harness.base}/gh`, ...extra });
-  let error = null;
-  try { await runGate({ env, io: harness.io }); } catch (caught) { error = caught; }
+  let error: Error | null = null;
+  try { await runGate({ env, io: harness.io }); } catch (caught) { error = caught as Error; }
   return { ...harness, error, outputs: parseOutputs(fs.readFileSync(env.GITHUB_OUTPUT, "utf8")) };
 }
 
@@ -299,13 +307,14 @@ test("gate approves only after the Worker accepts the progress update", async (t
   assert.equal(approved.error, null);
   assert.deepEqual(approved.outputs, { approved: "true" });
   const [comment, progress] = approved.workerRequests();
+  assert.ok(comment && progress);
   assert.equal(comment.url, "/gh/repos/LYJW131/lyjwpage/issues/12/comments");
   assert.equal(comment.authorization, "Bearer gh-token");
-  assert.match(body(comment).body, /^\*\*Plan review: approved\*\*\n\n> Looks good\./);
+  assert.match(body(comment).body ?? "", /^\*\*Plan review: approved\*\*\n\n> Looks good\./);
   assert.equal(progress.url, `${WORKER_PATHS.progress}?runId=${RUN_ID}`);
   assert.equal(progress.authorization, `Bearer ${JWT}`);
   assert.deepEqual(body(progress), { message: "Plan review approved the plan; implementation is starting." });
-  assert.ok(approved.requests.find((entry) => entry.url.startsWith("/oidc")).url.endsWith(`&audience=${encodeURIComponent(`${ORIGIN}/builds/${RUN_ID}`)}`));
+  assert.ok(approved.requests.find((entry) => entry.url.startsWith("/oidc"))?.url.endsWith(`&audience=${encodeURIComponent(`${ORIGIN}/builds/${RUN_ID}`)}`));
   assert.ok(approved.logs.includes(`::add-mask::${JWT}`));
 
   const declined = await gate(t, { REVIEW_RESULT: "success", VERDICT: "reject", REASON: "Collects emails." });
@@ -323,11 +332,11 @@ test("gate survives a failed comment but fails when the Worker refuses", async (
   assert.deepEqual(commentDown.outputs, { approved: "true" });
 
   const workerDown = await gate(t, { REVIEW_RESULT: "success", VERDICT: "approve", REASON: "Fine." }, (entry) => entry.url.startsWith("/api") ? { status: 401, json: { error: "Invalid progress authorization." } } : {});
-  assert.match(workerDown.error.message, /HTTP 401/);
+  assert.match(workerDown.error?.message ?? "", /HTTP 401/);
   assert.deepEqual(workerDown.outputs, { approved: "false" });
 
   const noOidc = await gate(t, { REVIEW_RESULT: "success", VERDICT: "approve", REASON: "Fine.", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "wrong" });
-  assert.match(noOidc.error.message, /HTTP 0/);
+  assert.match(noOidc.error?.message ?? "", /HTTP 0/);
   assert.deepEqual(noOidc.outputs, { approved: "false" });
   assert.equal(noOidc.workerRequests().filter((entry) => entry.url.startsWith("/api")).length, 0);
 });
@@ -351,7 +360,7 @@ test("Worker calls retry gateway and network failures but not refusals", async (
   assert.equal(flaky.requests.filter((entry) => entry.url.startsWith("/oidc")).length, 3);
 
   const gatewayDown = await gate(t, { REVIEW_RESULT: "success", VERDICT: "approve", REASON: "Fine." }, (entry) => entry.url.startsWith("/api") ? { status: 502 } : {});
-  assert.match(gatewayDown.error.message, /HTTP 502/);
+  assert.match(gatewayDown.error?.message ?? "", /HTTP 502/);
   assert.equal(gatewayDown.workerRequests().filter((entry) => entry.url.startsWith("/api")).length, WORKER_TIMING.retryDelaysMs.length + 1);
 
   const refused = await gate(t, { REVIEW_RESULT: "success", VERDICT: "approve", REASON: "Fine." }, (entry) => entry.url.startsWith("/api") ? { status: 409 } : {});

@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-lyjw (2026-10-13): "你的项目记忆 除了在claude code projects里维护 同时也在仓库里维护一个记忆目录吧". PR #231 added `.claude/memory/` (MEMORY.md index + one file per topic, same names), a README with sync and redaction rules, and pointers in AGENTS.md and HUMAN.md. `scripts/docs-check.mjs#MEMORY_MIRROR_DIR` skips the directory (memory lines carry dates).
+lyjw (2026-10-13): "你的项目记忆 除了在claude code projects里维护 同时也在仓库里维护一个记忆目录吧". PR #231 added `.claude/memory/` (MEMORY.md index + one file per topic, same names), a README with sync and redaction rules, and pointers in AGENTS.md and HUMAN.md. `scripts/docs-check.ts#MEMORY_MIRROR_DIR` skips the directory (memory lines carry dates).
 
 **Why:** lyjw wants memory visible in the repo with git history.
 

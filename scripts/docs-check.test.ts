@@ -17,9 +17,13 @@ import {
   runChecks,
   scanLines,
   splitInlineCode,
-} from "./docs-check.mjs";
+  type DocsContext,
+  type Issue,
+} from "./docs-check.ts";
 
-function ctxOf(files, { submodules = [], ignored = [], shallow = false, commits = null } = {}) {
+type CtxOptions = { submodules?: string[]; ignored?: string[]; shallow?: boolean; commits?: string[] | null };
+
+function ctxOf(files: Record<string, string>, { submodules = [], ignored = [], shallow = false, commits = null }: CtxOptions = {}) {
   const texts = new Map(Object.entries(files));
   const ignoredSet = new Set(ignored);
   return makeContext({
@@ -32,8 +36,8 @@ function ctxOf(files, { submodules = [], ignored = [], shallow = false, commits 
   });
 }
 
-const tags = (issues) => issues.map((issue) => `${issue.rule}@${issue.line}`);
-const typeLine = (type) => `# 标题\n\n> 类型：${type}\n\n正文\n`;
+const tags = (issues: Issue[]) => issues.map((issue) => `${issue.rule}@${issue.line}`);
+const typeLine = (type: string) => `# 标题\n\n> 类型：${type}\n\n正文\n`;
 
 test("标题锚点按 GitHub 规则：中文保留、全角标点去掉、空格变连字符", () => {
   assert.equal(githubSlug("跨域活动脉搏（Pulse）"), "跨域活动脉搏pulse");
@@ -88,7 +92,7 @@ test("文首类型：只认前 6 行的 `> 类型：`，record 的核对句要�
 
 test("哪些反引号内容算仓库路径：宁可漏查也不误报", () => {
   const ctx = ctxOf({ "src/lib/a.ts": "", "workers/core/src/stores/x.ts": "", "package.json": "" });
-  const ref = (token) => parsePathToken(token, ctx)?.ref ?? null;
+  const ref = (token: string) => parsePathToken(token, ctx)?.ref ?? null;
   assert.equal(ref("src/lib/a.ts"), "src/lib/a.ts");
   assert.equal(ref("./src/lib/a.ts"), "src/lib/a.ts");
   assert.equal(ref("package.json"), "package.json");
@@ -190,7 +194,7 @@ test("record 不查时间线，但引用照查；围栏与行内代码里的日�
 });
 
 test("结构：体积上限与 CLAUDE.md 配对", () => {
-  const lines = (n) => `${Array.from({ length: n }, (_, i) => `行 ${i}`).join("\n")}\n`;
+  const lines = (n: number) => `${Array.from({ length: n }, (_, i) => `行 ${i}`).join("\n")}\n`;
   const ctx = ctxOf({
     "AGENTS.md": lines(ROOT_AGENTS_MAX_LINES + 1),
     "CLAUDE.md": "@AGENTS.md\n",
@@ -241,7 +245,7 @@ test("record 的 sha：非浅克隆时核实存在，浅克隆里跳过", () => 
     "docs/README.md": "# 索引\n\n> 类型：reference\n\n| [记录](./rec.md) | record | x |\n",
     "docs/rec.md": "# 记录\n\n> 类型：record。按 deadbee 2026-09-22 核对，快照不维护，不当现状引用。\n",
   };
-  const list = (ctx) => checkStructure(ctx, [...ctx.files].sort()).map((issue) => issue.rule);
+  const list = (ctx: DocsContext) => checkStructure(ctx, [...ctx.files].sort()).map((issue) => issue.rule);
   assert.deepEqual(list(ctxOf(files, { commits: ["abc1234"] })), ["type"]);
   assert.deepEqual(list(ctxOf(files, { commits: ["abc1234"], shallow: true })), []);
 });

@@ -13,7 +13,7 @@ import { stripVTControlCharacters } from 'node:util';
 
 import '../src/lib/testing/register-alias.mjs';
 
-const { packageBuild, runGate, runPublish } = await import('./build-actions.mjs');
+const { packageBuild, runGate, runPublish } = await import('./build-actions.ts');
 const { BUILD_DESIGN_LIMITS, BUILD_QUOTA, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, branchForRun } = await import('../shared/build-routine.ts');
 
 const root = resolve(import.meta.dirname, '..');
@@ -416,7 +416,7 @@ try {
   assert.equal(cancelledStatus.phase, 'pr_open');
   assert.equal(cancelledStatus.ci.state, 'failure');
   assert.equal(cancelledStatus.pr.draft, true);
-  console.log('PASS: scripts/build-actions.mjs gate and publish work against the real Worker (a declined review blocks the run; an approved one uploads the packaged patch, message and screenshot), and cancelled implementation CI keeps the PR draft');
+  console.log('PASS: scripts/build-actions.ts gate and publish work against the real Worker (a declined review blocks the run; an approved one uploads the packaged patch, message and screenshot), and cancelled implementation CI keeps the PR draft');
 
 
   for (const [scenario, changedUpload, errorPattern] of [

@@ -2,19 +2,20 @@ import assert from "node:assert/strict";
 import { execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { classifyRequest, consoleClean, consoleProblems, documentCommit, findJumps, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright, skewVerdict, staleAssetHtml, textJumps, updateOrigin } from "./site-verify.mjs";
+import { classifyRequest, consoleClean, consoleProblems, documentCommit, findJumps, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright, skewVerdict, staleAssetHtml, textJumps, updateOrigin } from "./site-verify.ts";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const SCRIPT = path.join(ROOT, "scripts", "site-verify.mjs");
+const SCRIPT = path.join(ROOT, "scripts", "site-verify.ts");
 const FIXTURES = path.join(ROOT, "workers", "core", "dev-fixtures");
-const KNOWN_PATHS = new Set(Object.values(STATUS_VIEWS).map((view) => view.path));
+const KNOWN_PATHS = new Set<string>(Object.values(STATUS_VIEWS).map((view) => view.path));
 
-function run(args) {
+function run(args: string[]) {
   return spawnSync("node", [SCRIPT, ...args], { cwd: ROOT, encoding: "utf8", timeout: 60_000 });
 }
 
@@ -108,7 +109,7 @@ test("功能地图每张卡有选择器或表头标签，组件、端点、夹�
     }
     assert.ok(fs.existsSync(path.join(ROOT, card.component)), `${id} 组件不存在：${card.component}`);
     assert.ok(typeof card.proves === "string" && card.proves.length > 0, `${id} 缺 proves`);
-    for (const [endpoint, fixtures] of Object.entries(card.endpoints)) {
+    for (const [endpoint, fixtures] of Object.entries(card.endpoints ?? {})) {
       assert.ok(KNOWN_PATHS.has(endpoint), `${id} 端点不在 STATUS_VIEWS：${endpoint}`);
       for (const fixture of fixtures) {
         assert.ok(fs.existsSync(path.join(FIXTURES, fixture)), `${id} 夹具不存在：${fixture}`);
@@ -121,6 +122,15 @@ test("--help 退出 0 并列出全部子命令", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0, result.stderr);
   for (const sub of ["doctor", "cards", "shot", "override"]) assert.match(result.stdout, new RegExp(`\\b${sub}\\b`));
+});
+
+test("shot 的 --card 缺值时退出 2，不退成整页截图", (t) => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-card-"));
+  t.after(() => fs.rmSync(out, { recursive: true, force: true }));
+  const result = run(["shot", "--url", "data:text/html,<title>x</title>", "--out", out, "--card"]);
+  assert.equal(result.status, 2);
+  assert.match(JSON.parse(result.stdout).error, /--card 后面缺卡片 id/);
+  assert.deepEqual(fs.readdirSync(out), []);
 });
 
 test("未知子命令退出 2，输出带 next 的 JSON 错误", () => {
@@ -151,7 +161,7 @@ test("doctor 对死端口报 site fail 且输出仍是 JSON", () => {
   const result = run(["doctor", "--url", "http://localhost:59999"]);
   const body = JSON.parse(result.stdout);
   assert.equal(body.ok, false);
-  const site = body.checks.find((c) => c.name === "site");
+  const site = body.checks.find((c: { name: string }) => c.name === "site");
   assert.equal(site.status, "fail");
   assert.ok(site.next);
   assert.notEqual(result.status, 0);
@@ -240,17 +250,17 @@ test("reload 抓到首帧后才改的时间文字，退出码 1", async (t) => {
   if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器路径验不了");
   const page = `<!doctype html><body><p id="clock">00:00</p><script>setTimeout(() => { document.querySelector("#clock").firstChild.data = "12:34"; }, 400);</script>`;
   const server = http.createServer((_, res) => res.writeHead(200, { "content-type": "text/html" }).end(page));
-  await new Promise((resolve) => server.listen(0, resolve));
+  await new Promise<void>((resolve) => server.listen(0, () => resolve()));
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-"));
   try {
     // 不能用 spawnSync：它阻塞事件循环，同进程里的测试服务器就回不了请求。
-    const result = await new Promise((resolve) => {
-      execFile("node", [SCRIPT, "reload", "--url", `http://localhost:${server.address().port}`, "--out", out, "--watch", "1500", "--skew", "0"], { cwd: ROOT, encoding: "utf8", timeout: 60_000 }, (error, stdout, stderr) => resolve({ status: error ? error.code : 0, stdout, stderr }));
+    const result = await new Promise<{ status: number | string | null | undefined; stdout: string; stderr: string }>((resolve) => {
+      execFile("node", [SCRIPT, "reload", "--url", `http://localhost:${(server.address() as AddressInfo).port}`, "--out", out, "--watch", "1500", "--skew", "0"], { cwd: ROOT, encoding: "utf8", timeout: 60_000 }, (error, stdout, stderr) => resolve({ status: error ? error.code : 0, stdout, stderr }));
     });
     assert.equal(result.status, 1, result.stderr || result.stdout);
     const body = JSON.parse(result.stdout);
-    assert.deepEqual(body.textJumps.map((j) => [j.where, j.before, j.after]), [["#clock p", "00:00", "12:34"]]);
-    assert.ok(body.frameJumps.some((j) => j.element?.startsWith("#clock")), JSON.stringify(body.frameJumps));
+    assert.deepEqual(body.textJumps.map((j: { where: string; before: string; after: string }) => [j.where, j.before, j.after]), [["#clock p", "00:00", "12:34"]]);
+    assert.ok(body.frameJumps.some((j: { element?: string }) => j.element?.startsWith("#clock")), JSON.stringify(body.frameJumps));
   } finally {
     server.close();
     fs.rmSync(out, { recursive: true, force: true });
