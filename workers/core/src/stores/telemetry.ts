@@ -131,8 +131,7 @@ export async function commitPreparedTelemetryEnvelope(command: PreparedTelemetry
 
   if (presenceFlipped) {
     notify.push({ type: "presence", payload: null });
-    tags.push(DESKTOP_TAG);
-    tags.push(NOW_LISTENING_TAG, CHARGER_TAG);
+    tags.push(DESKTOP_TAG, NOW_LISTENING_TAG, CHARGER_TAG, POWERBANK_TAG);
   } else if (presence !== "offline" && previousLiveness.lastSeenAt > 0 && offlineByLiveness(previousLiveness, receivedAt)) {
     // 心跳断档超窗后恢复：离线标志没变，但首屏按时钟藏起的卡要回来，不失效就要等首屏快照自己过期。
     tags.push(DESKTOP_TAG, NOW_LISTENING_TAG, CHARGER_TAG, POWERBANK_TAG);
