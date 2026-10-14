@@ -132,8 +132,8 @@ const EDGE_GAP_PX = 12;
 const SUGGESTIONS = [
   { zh: "LYJW 现在在忙什么？", en: "What is LYJW up to right now?" },
   { zh: "这个网站是怎么搭起来的？", en: "How is this site built?" },
-  { zh: "这周 AI 圈有什么大新闻？", en: "What's the big AI news this week?" },
-  { zh: "我想给这个网站提个改进", en: "I have an idea for this site" },
+  { zh: "这周 AI 圈有什么大新闻？", en: "Any big AI news this week?" },
+  { zh: "我想给这个网站提个改进", en: "Got an idea for this site" },
 ] as const;
 const SUGGESTION_LANGS = ["zh", "en"] as const;
 const SUGGESTION_ROTATE_MS = 5_000;
