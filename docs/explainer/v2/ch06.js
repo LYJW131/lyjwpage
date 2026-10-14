@@ -368,15 +368,15 @@
     const dk = (phi + 0.55) % 5;
     if (dk < 0.55) dot(x, e, drop, dk / 0.55, da, 5);
   }
-  function laneLabels(x, cam, a, focus) {
+  function laneLabels(x, cam, a, ta, focus) {
     if (a <= 0) return;
     const z = cam.zoom, wx = (sx) => cam.x + (sx - 960) / z;
     x.save(); x.globalAlpha = 0.92 * a; x.fillStyle = css("ink"); x.fillRect(wx(0), ST_TOP - 70, wx(290) - wx(0), ST_BOT - ST_TOP + 90); x.restore();
     line(x, wx(290), ST_TOP - 70, wx(290), ST_BOT + 20, 1.4 / z, css("bone"), 0.5 * a);
-    text(x, "Pulse", wx(40), ST_TOP - 22, { font: FONT.mono(34 / z, 600), color: css("bone"), alpha: a });
+    text(x, "Pulse", wx(40), ST_TOP - 22, { font: FONT.mono(34 / z, 600), color: css("bone"), alpha: ta });
     LANES.forEach((name, i) => {
       const hot = i <= 1 ? 1 : 1 - focus;
-      text(x, name, wx(40), laneY(i) + LANE_H / 2 + 11 / z, { font: FONT.mono(32 / z, 500), color: i <= 1 && focus > 0.5 ? css("bone") : css("ash"), alpha: a * hot });
+      text(x, name, wx(40), laneY(i) + LANE_H / 2 + 11 / z, { font: FONT.mono(32 / z, 500), color: i <= 1 && focus > 0.5 ? css("bone") : css("ash"), alpha: ta * hot });
     });
   }
   function strataNotes(x, b, a) {
@@ -485,7 +485,8 @@
     strata(x, e, d, b, sA, focus);
     strataNotes(x, b, win(b, 6.1, 6.4, 7.85, 8.0));
     coding(x, e, d, b, win(b, 7.95, 8.15, 9.9, 10.05), cam);
-    laneLabels(x, cam, sA * (1 - prog(b, 9.95, 10.15)), focus);
+    // 字要先于垫底淡出：垫底一变透明，下面的条就露出来，字还在就压在条上。
+    laneLabels(x, cam, sA * (1 - prog(b, 9.95, 10.15)), sA * (1 - prog(b, 9.82, 9.94)), focus);
     nar(x, "ch06.n1a", 110, 944, prog(b, 1.0, 1.6), win(b, 1.0, 1.1, 3.8, 3.95));
     nar(x, "ch06.n1b", 110, 1024, prog(b, 1.6, 2.4), win(b, 1.0, 1.1, 3.8, 3.95));
     const at = (sx, sy, c) => [c[0] + (sx - 960) / c[2], c[1] + (sy - 540) / c[2]];

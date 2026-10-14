@@ -355,7 +355,7 @@
         if (j === 2) lamp(d, e, 5500, t.y - 64, 18, prog(b, AT.haiku, AT.haiku + 0.06), a);
       });
       const fk = prog(b, AT.full, AT.full + 0.06);
-      if (fk > 0) text(d, tr("ch07.k.full"), 5470, -690, { font: FONT.cjk(48, 600), color: sig, align: "right", alpha: a * fk });
+      if (fk > 0) text(d, tr("ch07.k.full"), 5470, -722, { font: FONT.cjk(48, 600), color: sig, align: "right", alpha: a * fk });
       if (downK > 0) {
         const head = polyline(x, [[5620, -560], [5620, -380]], downK, 4, sig, a);
         if (downK >= 1) arrowHead(x, head[0], head[1], Math.PI / 2, sig, a);
