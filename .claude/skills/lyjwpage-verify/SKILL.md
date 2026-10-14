@@ -106,11 +106,9 @@ Agent(
 
 ### 4. 合并后部署与生产核对
 
-- 先看合并改到了哪些 Worker 的监视路径（`docs/workers-builds.md`「构建监视路径」）。没碰到 site 的（只改文档、只改别的 Worker），`/api/version` 本来就不会变，跳过下面的版本等待，只核对碰到的那几个 Worker 的构建和受影响的生产行为。
-- 碰到 site 时，每 20 秒轮询 `curl -sS -H 'Cache-Control: no-cache' https://lyjw.me/api/version` 与 `https://lyjw131.com/api/version`，最多 10 分钟，直到 `.commit` 等于合并提交的完整 sha。
-  - 是更新的提交且以合并 sha 为祖先（`git merge-base --is-ancestor`）：通过（被后来的部署覆盖）。
-  - 10 分钟后仍是更旧的提交：FAIL，可能是两次合并并行构建、旧版本后完成。只报告，是否重跑 main 的构建由主线程决定（生产动作，要站主点头，从不手跑 `wrangler deploy`）。
-- 合并提交上对应 Worker 的 Workers Builds 检查结论（`Workers Builds: site`，改到哪个 Worker 就看哪个）。GitHub MCP 的检查工具只看得到 PR head 上的检查；main 上合并提交的检查用只读的 `gh api repos/LYJW131/lyjwpage/commits/<sha>/check-runs`。
+- 合并没碰到 site 的监视路径时（`docs/workers-builds.md`「构建监视路径」），`/api/version` 本来就不会变；下面的脚本没看到 site 的构建检查就不等版本，只核对碰到的那几个 Worker 的构建，受影响的生产行为照样要复测。
+- 构建与版本等待交给共用脚本，不手写轮询：`git fetch origin main` 后跑 `NODE_USE_ENV_PROXY=1 node scripts/deploy-check.mjs --sha <合并提交完整 sha>`（`--help` 看选项）。它等合并提交上的 `Workers Builds: *` 检查跑完；有 site 的构建就再等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 跟上这个提交，被之后的提交覆盖也算通过（`superseded`）。输出 JSON，`pass` 为假时 `next` 写下一步。
+  - 构建失败或超时、版本停在更旧的提交：FAIL，原样报告 `next`。是否重跑 main 的构建由主线程决定（生产动作，要站主点头，从不手跑 `wrangler deploy`）。
 - 在生产域名上复测这次受影响的行为（同第 2 节的方法，URL 换成 `https://lyjw.me/`；涉及 ESA 缓存的也看 `https://lyjw131.com/`）。看完立刻关浏览器：开着的页面会按轮询节奏一直请求 API。
 - 定时任务产出的东西（摘要、采集）要等到下一个整点任务跑过再核对，不要在任务跑之前判失败。
 
