@@ -34,26 +34,30 @@ const HEADLINE_PICK = "__digestHeadline";
 
 // 首屏的随机一条由紧跟标题的内联脚本在绘制前写进 DOM 并记下，水合时沿用它，刷新换句却不闪。
 const headlinePickScript = (pool: readonly string[]) =>
-  `(()=>{const p=${JSON.stringify(pool).replace(/</g, "\\u003c")},h=p[Math.floor(Math.random()*p.length)],t=document.currentScript?.previousElementSibling?.firstElementChild?.firstChild;window.${HEADLINE_PICK}=h;if(t)t.nodeValue=h})()`;
+  `(()=>{const p=${JSON.stringify(pool).replace(/</g, "\\u003c")},h=p[Math.floor(Math.random()*p.length)],t=document.currentScript?.previousElementSibling?.querySelector("[data-headline]")?.firstChild;window.${HEADLINE_PICK}=h;if(t)t.nodeValue=h})()`;
+
+const otherLine = (lines: readonly string[], line: string) => {
+  const rest = lines.filter((candidate) => candidate !== line);
+  return rest[Math.floor(Math.random() * rest.length)];
+};
 
 function useRotatingHeadline(pool: readonly string[]) {
   const [state, setState] = useState(() => {
-    if (typeof window === "undefined") return { line: pool[0], rotated: false };
+    if (typeof window === "undefined") return { line: pool[0], rotated: false, clicks: 0 };
     const picked = (window as unknown as Record<string, unknown>)[HEADLINE_PICK];
     delete (window as unknown as Record<string, unknown>)[HEADLINE_PICK];
-    return { line: typeof picked === "string" && pool.includes(picked) ? picked : pool[Math.floor(Math.random() * pool.length)], rotated: false };
+    return { line: typeof picked === "string" && pool.includes(picked) ? picked : pool[Math.floor(Math.random() * pool.length)], rotated: false, clicks: 0 };
   });
   const key = pool.join("|");
+  // 点击后整整一分钟才自动再换，免得刚点出来的那句马上被换掉。
   useEffect(() => {
     const lines = key.split("|");
     if (lines.length < 2) return;
-    const timer = window.setInterval(() => setState(({ line }) => {
-      const rest = lines.filter((candidate) => candidate !== line);
-      return { line: rest[Math.floor(Math.random() * rest.length)], rotated: true };
-    }), HEADLINE_ROTATE_MS);
+    const timer = window.setInterval(() => setState((prev) => ({ ...prev, line: otherLine(lines, prev.line), rotated: true })), HEADLINE_ROTATE_MS);
     return () => window.clearInterval(timer);
-  }, [key]);
-  return pool.includes(state.line) ? state : { line: pool[0], rotated: false };
+  }, [key, state.clicks]);
+  const next = () => setState((prev) => ({ line: otherLine(key.split("|"), prev.line), rotated: true, clicks: prev.clicks + 1 }));
+  return { ...(pool.includes(state.line) ? state : { line: pool[0], rotated: false }), next };
 }
 
 const DAY_SECONDS = 86_400;
@@ -200,11 +204,17 @@ export function DigestCard({
     })
     : [];
 
+  const headlineText = <span key={headline.line} data-headline suppressHydrationWarning className={cn("inline-block", headline.rotated && "animate-headline-in")}>{headline.line}。</span>;
+
   return (
     <Card id="digest" className={cn("h-full scroll-mt-28", className)}>
       <div className="grid h-full min-h-44 grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-3 gap-y-4 p-4 lg:gap-x-4 lg:gap-y-5 lg:p-5">
         <h2 lang="zh-CN" className="col-start-1 row-start-1 min-w-0 text-balance font-sans text-2xl font-bold leading-none tracking-tight lg:text-4xl">
-          <span key={headline.line} suppressHydrationWarning className={cn("inline-block", headline.rotated && "animate-headline-in")}>{headline.line}。</span>
+          {pool.length > 1 ? (
+            <button type="button" onClick={headline.next} title="Show another headline" className="cursor-pointer text-left focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live">
+              {headlineText}
+            </button>
+          ) : headlineText}
         </h2>
         {pool.length > 1 && <script dangerouslySetInnerHTML={{ __html: headlinePickScript(pool) }} />}
         <ul className={cn("col-start-1 row-start-2 grid grid-cols-[auto_auto_minmax(0,1fr)] items-baseline gap-x-1.5 gap-y-1.5 sm:gap-x-2", stale && "opacity-60")}>
