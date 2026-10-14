@@ -62,9 +62,11 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
   （KV 读可能落后一分钟）。
 - **同一响里的出站**：一次调用同时只能有 6 个连接在等响应头。带 `headStart` 的任务先跑一阵
   （`src/registry.ts` 的 `HEAD_START_MS`，或先跑完），其余再开跑。`uptime-probe` 设了它：排队等连接的时间也算进探测超时，会把站点误判成掉线。
-- **PageSpeed** 桌面、移动并行测，单端通常二三十秒，偶尔长尾到一分钟以上，所以单端等到 `PAGESPEED_TIMEOUT_MS`
+  `pagespeed` 也设了：它两条连接要等上一分钟左右，排在厂商状态、最近在听那一批后面时，排队时间会吃掉它的超时。
+- **PageSpeed** 桌面、移动并行测，单端常要一分钟上下，长尾更久，所以单端等到 `PAGESPEED_TIMEOUT_MS`
   才放弃，合成一个样本并进滚动窗口（窗口与样本上限见 `src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），样本窗口存在 `COLLECTOR_KV`。
-  密钥只进查询参数，日志里只有状态码。任一端失败这一轮就空过，可滞后层沿用上一份。
+  密钥只进查询参数，日志里只有状态码。两端各算各的：一端失败，这一轮样本里那端为空，另一端照常进窗口并写可滞后层，
+  另记一条 `status: "partial"` 的 warn；两端都失败才算任务失败、不写；窗口里某端一轮都没有时也不写。
 - **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由本 Worker 自签
   （`shared/musickit-token.ts#issueApiDeveloperToken`，同一 isolate 里过了签发到期的中点才重签），签名配置缺了也跳过。
   列表首项的动态封面在这里查好再交给状态核心（`shared/track-enrichment.ts#enrichRecentlyPlayed`），查不出结果时

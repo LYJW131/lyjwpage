@@ -28,7 +28,8 @@ export type LighthouseVitals = {
   score: number; lcpMs: number | null; tbtMs: number | null; cls: number | null;
   fcpMs: number | null; ttfbMs: number | null;
 };
-export type PageSpeedSample = { at: number; desktop: LighthouseVitals; mobile: LighthouseVitals };
+// 一端没测出来时那一端为 null，两端都没测出来的一轮不入样本。
+export type PageSpeedSample = { at: number; desktop: LighthouseVitals | null; mobile: LighthouseVitals | null };
 export type PageSpeedPayload = {
   fetchedAt: number; start: number; samples: number; url: string;
   desktop: LighthouseVitals; mobile: LighthouseVitals;
