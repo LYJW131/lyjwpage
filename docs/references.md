@@ -77,8 +77,8 @@
   - 状态：部分采用。落在 [lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)「外部设计 skill 怎么用」。
 - **[LobeHub Icons](https://lobehub.com/icons)**
   - 是什么：AI 与开发者品牌的图标集。
-  - 取了什么：品牌和产品图标先查它，按深路径导入 `@lobehub/icons`。
-  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)「Components」的图标条目。
+  - 取了什么：品牌和产品图标先查它，按深路径导入 `@lobehub/icons`；它的模型→厂商关键字表 `modelMappings`（包内 features 目录的 modelConfig）在构建时读成数据，给模型排行榜配厂商图标，不导入它会连带 `@lobehub/ui` 的 `ModelIcon` 组件。
+  - 状态：采用。落在 [DESIGN.md](../DESIGN.md)「Components」的图标条目；模型表落在 `scripts/model-icons.mjs`（`virtual:model-icons`）与 `src/lib/model-icon.ts`，各厂商单色图标由 `scripts/build-site-assets.tsx` 渲染成静态 SVG。
 
 ## Cloudflare 平台
 

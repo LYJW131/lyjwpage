@@ -117,6 +117,7 @@
 - 图片：静态图标走 `AppImage` 并设 `unoptimized`；图片交付与压缩规则见 `AGENTS.md`「图片交付」。
 - 图标：
   - 品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)。项目已装 `@lobehub/icons`，按深路径导入：单色 `@lobehub/icons/es/<名字>/components/Mono`（继承文字色）、彩色 `.../Color`、带字 `.../Text`；示例见 `src/components/live/vibecoding-card.tsx`。
+  - 模型名旁的厂商图标不逐个手配：`src/lib/model-icon.ts` 按 LobeHub 的模型表自动选，上游没收录的模型家族在同文件 `SITE_MODEL_ICONS` 补一行；认不出的显示同尺寸的字母方块，名称列照样对齐。
   - LobeHub 没有的品牌再找官方 SVG：含 `fill="currentColor"` 的要内联为组件，通过 `<img>` 或 `AppImage` 加载时无法继承页面文字色；示例见 `src/components/live/agent-status-card.tsx` 的 `TypesafeIcon`。只有位图时，先压到展示所需尺寸再入库。
   - 界面图标用 `lucide-react`，与文字同色，尺寸跟随相邻文字（14px 文字配 `size-3.5`）。不用 emoji 当图标（数据里自带的 emoji 照原样）。
 - 滚动区：

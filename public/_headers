@@ -7,3 +7,6 @@
 /sw.js
   Content-Type: application/javascript; charset=utf-8
   Cache-Control: no-cache, no-store, must-revalidate
+
+/site-assets/model-icons/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
