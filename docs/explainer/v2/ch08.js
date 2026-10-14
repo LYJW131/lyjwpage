@@ -223,9 +223,10 @@
       if (o.prop) K.clawdProp(tp, o.prop, st.x, bottom, q, { color: css("bone"), crouch: fr.offset || 0, flip: o.flip, alpha: a * (o.propA ?? 1) });
     }
 
+    // 去合并闸门那一跳压低：跳高了会从清单卡、回执卡的底边穿过去，压住卡里的字。
     const PR_PATH = [
       [0, 1750, PR.y], [AT.pop308, AT.c1, 2240, PR.y, 120], [4.9, 5.15, 2900, PR.y, 110], [6.62, AT.c2, 3490, PR.y, 70],
-      [6.87, AT.c3, 3740, PR.y, 70], [10.6, 10.95, 6790, PR.y, 260], [14.5, 14.82, XM, Y0 - 14, 260],
+      [6.87, AT.c3, 3740, PR.y, 70], [10.6, 10.95, 6790, PR.y, 160], [14.5, 14.82, XM, Y0 - 14, 260],
     ];
     const UI_PATH = [[0, 2150, UI.y], [2.2, 2.4, 2350, UI.y, 90], [10.7, 10.71, 6640, UI.y, 0]];
     const DOCS_PATH = [[0, 2550, DOCS.y], [2.65, 2.85, 2750, DOCS.y, 90], [10.7, 10.71, 6600, DOCS.y, 0]];
@@ -477,18 +478,24 @@
     }
 
     const HAIKU_Q = 5.5;
+    // Haiku 贴着清单卡底边往左飞，出了卡的左边再往上：直着往上会从卡里穿过去，压住清单上的字。
+    const HAIKU_EXIT = [[3900, PR.y], [3700, PR.y - 170], [3380, PR.y - 170], [3330, PR.y - 1140]];
     function verify(Ly, b, a) {
       const { x, d, e, tp } = Ly;
-      if (a <= 0) return;
-      const S = scr(VV), gr = css("graphite"), bone = css("bone");
       const hk = prog(b, AT.haiku[0], AT.haiku[1], E.in);
       if (b >= AT.haiku[0] && b < AT.bye + 0.35) {
         const st = { x: 3900, y: lerp(-1500, PR.y, hk), air: b < AT.haiku[1], landT: AT.haiku[1] };
-        const out = prog(b, AT.bye + 0.05, AT.bye + 0.3, E.in);
-        st.y -= 900 * out;
+        const out = prog(b, AT.bye, AT.bye + 0.28);
+        if (out > 0) {
+          const P = HAIKU_EXIT, t = out, u = 1 - t, w = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+          st.x = w.reduce((s0, k, i) => s0 + k * P[i][0], 0);
+          st.y = w.reduce((s0, k, i) => s0 + k * P[i][1], 0);
+        }
         const fr = st.air || out > 0 ? { pose: "arms-up", offset: 0 } : pose(st, b, seqAt(b, [["look", AT.tests[0] - 0.05], ["celebrate", AT.exact]]));
-        crew(tp, st, fr, HAIKU_Q, a, { prop: "magnifier" });
+        crew(tp, st, fr, HAIKU_Q, 1 - prog(b, AT.bye + 0.2, AT.bye + 0.3), { prop: "magnifier", flip: out > 0 });
       }
+      if (a <= 0) return;
+      const S = scr(VV), gr = css("graphite"), bone = css("bone");
       const T = { x: S.x(480), y: S.y(250), w: S.s(420), h: S.s(330) };
       const tk = prog(b, AT.tests[0] - 0.2, AT.tests[0] - 0.08, E.outBack);
       card(d, T.x, T.y, T.w, T.h, a * clamp(tk * 3), tk);
@@ -532,15 +539,17 @@
         const cmd = "$ verify-receipt.mjs check --pr 308";
         text(x, cmd.slice(0, Math.ceil(ck * cmd.length)), S.x(950), S.y(650), { font: FONT.mono(S.s(28), 500), color: bone, alpha: a });
         const ex = prog(b, AT.exact, AT.exact + 0.06);
-        const jw = text(x, '"coverage": "exact", "pass": true', S.x(950), S.y(700), { font: FONT.mono(S.s(28), 600), color: css("signalD"), alpha: a * ex });
-        lamp(x, e, S.x(950) + jw + S.s(36), S.y(690), S.s(14), ex, a * prog(b, AT.check[1], AT.check[1] + 0.05));
+        // 灯放在输出行行首：结果出来之前它挂在空行末尾，像个掉落的小点。
+        lamp(x, e, S.x(950) + S.s(14), S.y(690), S.s(14), ex, a * prog(b, AT.check[1], AT.check[1] + 0.05));
+        text(x, '"coverage": "exact", "pass": true', S.x(950) + S.s(46), S.y(700), { font: FONT.mono(S.s(28), 600), color: css("signalD"), alpha: a * ex });
       }
     }
 
+    // 小牌在闸前原地弹出：从左边滑进来会从三只线程 Clawd 身上穿过去。
     const GATES = [
-      { ln: DOCS, label: "ch08.g1", open: AT.g1, tok: "ch08.t.docs", from: 10.8, arrive: 11.15 },
-      { ln: PR, label: "ch08.g2", open: AT.g2, tok: "#308", from: 10.9, arrive: 11.45 },
-      { ln: UI, label: "ch08.g3", open: AT.g3, tok: "ch08.t.ui", from: 11.0, arrive: 11.6 },
+      { ln: DOCS, label: "ch08.g1", open: AT.g1, tok: "ch08.t.docs", pop: 10.8 },
+      { ln: PR, label: "ch08.g2", open: AT.g2, tok: "#308", pop: 10.9 },
+      { ln: UI, label: "ch08.g3", open: AT.g3, tok: "ch08.t.ui", pop: 11.0 },
     ];
     const JUDGE = [GX + 60, PR.y - 230];
     function mergeGates(Ly, b, a) {
@@ -553,13 +562,16 @@
         line(x, GX - 26, y + 84, GX + 26, y + 84, 3, bone, a);
         line(x, GX, y - 84, GX, lerp(y + 84, y - 76, ok), 7, ok > 0.99 ? css("ash") : bone, a);
         lamp(x, e, GX, y - 108, 13, prog(b, g.open, g.open + 0.05), a);
-        text(x, tr(g.label), GX + 50, y - 52, { font: FONT.cjk(S.s(30), 600), color: bone, alpha: a });
-        const tx = keys(b, [[g.from, GX - 1000], [g.arrive, GX - 150, E.out], [g.open, GX - 150], [g.open + 0.2, GX + 160, E.io]]);
-        const ta = a * prog(b, g.from, g.from + 0.15) * (1 - prog(b, g.open + 0.25, g.open + 0.4));
+        // 闸名和灯并排，小牌过闸后从它下面走，不贴着字。
+        text(x, tr(g.label), GX + 50, y - 96, { font: FONT.cjk(S.s(30), 600), color: bone, alpha: a });
+        // 闸杆收完才放小牌过去：收到一半就走，小牌会压断闸杆。
+        const tx = keys(b, [[g.open + 0.08, GX - 150], [g.open + 0.3, GX + 200, E.io]]);
+        const pk = prog(b, g.pop, g.pop + 0.12, E.outBack);
+        const ta = a * clamp(pk * 3) * (1 - prog(b, g.open + 0.25, g.open + 0.4));
         const tw = S.s(112), th = S.s(46);
-        card(d, tx - tw / 2, y - th / 2, tw, th, ta);
+        card(d, tx - tw / 2, y - th / 2, tw, th, ta, pk);
         const lab = g.tok.startsWith("ch08.") ? tr(g.tok) : g.tok;
-        text(d, lab, tx, y + S.s(11), { font: g.tok.startsWith("ch08.") ? FONT.cjk(S.s(28), 600) : FONT.mono(S.s(28), 600), align: "center", alpha: ta, maxW: tw - S.s(12) });
+        if (pk >= 0.9) text(d, lab, tx, y + S.s(11), { font: g.tok.startsWith("ch08.") ? FONT.cjk(S.s(28), 600) : FONT.mono(S.s(28), 600), align: "center", alpha: ta, maxW: tw - S.s(12) });
       }
       const jIn = prog(b, 11.0, 11.15, E.outBack) * (1 - prog(b, 13.8, 14.0));
       if (jIn > 0) {
@@ -571,12 +583,13 @@
         text(x, tr("ch08.judgeSub"), JUDGE[0] + 130, S.y(304), { font: FONT.cjk(S.s(28), 600), color: ash, alpha: a * clamp(jIn), maxW: S.s(520) });
       }
       const fk = prog(b, AT.fail, AT.fail + 0.14) * (1 - prog(b, AT.pass - 0.12, AT.pass - 0.02));
-      const SY = 110;
-      stamp(s, "FAIL", GX - 150, PR.y - SY, { k: fk, px: S.s(40), rot: -0.14, color: ash, alpha: a });
-      stamp(s, "PASS", GX - 150, PR.y - SY, { k: prog(b, AT.pass, AT.pass + 0.14), px: S.s(40), rot: -0.1, color: css("signalD"), alpha: a * (1 - prog(b, AT.g2 + 0.05, AT.g2 + 0.15)) });
-      stamp(s, "OK", GX - 150, UI.y - SY - 20, { k: prog(b, AT.nod, AT.nod + 0.14), px: S.s(40), rot: -0.12, color: css("signalD"), sub: tr("ch08.nod"), subPx: S.s(28), alpha: a * (1 - prog(b, AT.g3 + 0.05, AT.g3 + 0.15)) });
-      glow(e, GX - 150, PR.y - SY, 140, 0.5 * a * impact(b, AT.pass, 0.3));
-      glow(e, GX - 150, UI.y - SY - 20, 140, 0.5 * a * impact(b, AT.nod, 0.3));
+      // 印章落在小牌正上方、上一条分支的东西下面，和闸灯、小牌都隔开一截：两条分支之间只有这么高。
+      const PS = [GX - 150, PR.y - 135], OS = [GX - 150, UI.y - 145];
+      stamp(s, "FAIL", PS[0], PS[1], { k: fk, px: S.s(40), rot: -0.14, color: ash, alpha: a });
+      stamp(s, "PASS", PS[0], PS[1], { k: prog(b, AT.pass, AT.pass + 0.14), px: S.s(40), rot: -0.1, color: css("signalD"), alpha: a * (1 - prog(b, AT.g2 + 0.05, AT.g2 + 0.15)) });
+      stamp(s, "OK", OS[0], OS[1], { k: prog(b, AT.nod, AT.nod + 0.14), px: S.s(32), rot: -0.12, color: css("signalD"), sub: tr("ch08.nod"), subPx: S.s(20), alpha: a * (1 - prog(b, AT.g3 + 0.05, AT.g3 + 0.15)) });
+      glow(e, PS[0], PS[1], 140, 0.5 * a * impact(b, AT.pass, 0.3));
+      glow(e, OS[0], OS[1], 140, 0.5 * a * impact(b, AT.nod, 0.3));
     }
 
     const SUBJECTS = [
@@ -701,9 +714,11 @@
       lanes(Ly, b);
       localGates(Ly, b, 1 - prog(b, 4.85, 5.05));
       prReviews(Ly, b, 1 - prog(b, 7.3, 7.5));
-      verify(Ly, b, 1 - prog(b, 10.6, 10.8));
+      // 验证这一幕要在 #308 那只 Clawd 跳过终端那两行之前淡完：它的跳线正好横穿那两行字。
+      verify(Ly, b, 1 - prog(b, 10.55, 10.7));
       mergeGates(Ly, b, prog(b, 10.75, 10.95) * (1 - prog(b, 13.9, 14.2)));
-      mergeCards(Ly, b, 1 - prog(b, 15.95, 16.2));
+      // 合并卡在夜班的旁白出来之前淡完：甩镜头时它正落在旁白那块。
+      mergeCards(Ly, b, 1 - prog(b, 15.85, 16.05));
       night(Ly, b, prog(b, 15.95, 16.1) * (1 - prog(b, 17.95, 18.25)));
       threads(Ly, b);
       title(x, b);
