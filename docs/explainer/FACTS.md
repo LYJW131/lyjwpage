@@ -185,7 +185,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 心跳不是什么都不做
 
-纯心跳也会写：存活时间（workers/core/src/stores/telemetry.ts:186）、在听和 coding 各一笔 pulse 观测（450-451），外加遥测状态里的 `telemetryReceivedAt` 和 `activeModules`（456，字段见 46-73）；充电头模块开着时，还续一次充电头心跳和一笔充电采样（318-326）。片中只说「存活 + pulse 观测」，不说「三样」。它**不推送、也不失效首屏**。唯一的例外是在线 / 离线翻转：这时推 `presence`，并失效 3 个标签：页头、在听、充电头三张卡的 `DESKTOP_TAG` / `NOW_LISTENING_TAG` / `CHARGER_TAG`（同文件 199-202；shared/status-tags.ts:4-12）。
+纯心跳也会写：存活时间（workers/core/src/stores/telemetry.ts:186）、在听和 coding 各一笔 pulse 观测（450-451），外加遥测状态里的 `telemetryReceivedAt` 和 `activeModules`（456，字段见 46-73）；充电头模块开着时，还续一次充电头心跳和一笔充电采样（318-326）。片中只说「存活 + pulse 观测」，不说「三样」。它**不推送、也不失效首屏**。唯一的例外是在线 / 离线翻转：这时推 `presence`，并失效 4 个标签：页头、在听、充电头、充电宝四张卡的 `DESKTOP_TAG` / `NOW_LISTENING_TAG` / `CHARGER_TAG` / `POWERBANK_TAG`（同文件 `commitPreparedTelemetryEnvelope` 的 `presenceFlipped` 分支）；片中只画前三张。
 
 ### 推送房间 `LivePushRoom`
 
