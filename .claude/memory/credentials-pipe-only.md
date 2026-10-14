@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-lyjw has a mature credential flow on the Mac and does not want threads asking them to paste or create secrets by hand (2026-10-14: "我mac上有一套非常成熟的agent处理凭据流程 我授权你处理凭据的情况下 凭据本身是不会进到我们上下文的").
+lyjw has a mature credential flow on the Mac and does not want threads asking lyjw to paste or create secrets by hand (2026-10-14: "我mac上有一套非常成熟的agent处理凭据流程 我授权你处理凭据的情况下 凭据本身是不会进到我们上下文的").
 
 The flow, all on the Mac (Remote Control thread or session, see `.claude/skills/lyjwpage-mac-session/SKILL.md`):
 - `~/.claude/skills/rotate-secret/SKILL.md` (user-level skill, only visible to sessions on the Mac). New values are generated in the provider's console through lyjw's logged-in Chrome (Claude in Chrome): click Copy or let the browser download the file, never read page text or screenshot the value. Locally generated secrets use `openssl rand` in the same pipe.

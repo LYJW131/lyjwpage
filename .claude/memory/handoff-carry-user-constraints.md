@@ -17,5 +17,5 @@ Found by the drift review of 2026-10-13 threads (thread "需求偏差复盘并�
 **How to apply:**
 - Coordinator: decide a follow-up's thread once before relaying; don't hand a new ask to a thread busy with something else. If lyjw's message starts its own thread, don't also send it elsewhere.
 - Relay lyjw's latest stance, not a concatenation: when a later message drops or replaces an option ("或者也不用…"), the relay says so and leaves the dropped option out.
-- A brief carries the standing rules and constraints for the area (things lyjw removed, rejected or set; project-wide rules such as iOS paused), copied from their words or pointing to the memory entry.
+- A brief carries the standing rules and constraints for the area (things lyjw removed, rejected or set; project-wide rules such as iOS paused), copied from lyjw's words or pointing to the memory entry.
 - Thread: before pushing or reporting, re-read relays received since you started; a later relay that retracts or reroutes wins. Mac RC briefs list lyjw's earlier requests for the area (see `.claude/skills/lyjwpage-mac-session/SKILL.md`).
