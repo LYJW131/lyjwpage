@@ -27,7 +27,8 @@
     { "binding": "LAG", "id": "e9c72a9517884aeb95db7386b630a691" }
   ],
   "r2_buckets": [
-    { "binding": "IMAGE_OBJECTS", "bucket_name": "lyjw-homepage" }
+    { "binding": "IMAGE_OBJECTS", "bucket_name": "lyjw-homepage" },
+    { "binding": "ASSET_ARCHIVE", "bucket_name": "lyjw-homepage" }
   ],
   "images": { "binding": "IMAGES" },
   "observability": { "enabled": true, "head_sampling_rate": 1, "issues": { "enabled": true } },

@@ -31,12 +31,14 @@ import {
 import { LYRICS_PATH } from "@shared/apple-music-paths";
 import type { LyricsResult } from "@shared/lyrics-ttml";
 import { relaySentryEnvelope } from "@/lib/sentry-tunnel";
+import { archivedAssetKey } from "@/lib/asset-archive";
 import {
   HOME_CACHE_TAG,
   IMMUTABLE_ASSET_CACHE_CONTROL,
   NO_STORE,
   REMOTE_IMAGE_CACHE_CONTROL,
   SITE_ASSET_ROUTES,
+  archivedAssetHeaders,
   classifyGatewayRequest,
   classifyRenderRequest,
   imageObjectHeaders,
@@ -359,6 +361,19 @@ class RenderedSiteBase extends WorkerEntrypoint<Env> implements SiteCacheRpc {
   }
 }
 
+// 分支 Preview 去掉了 R2 绑定（scripts/site-preview.mjs#sitePreviewConfig），没有绑定就按缺档处理。
+async function serveArchivedAsset(request: Request, env: Env): Promise<Response> {
+  const key = archivedAssetKey(new URL(request.url).pathname);
+  const archive = env.ASSET_ARCHIVE as R2Bucket | undefined;
+  if (!key || !archive) return errorResponse(404);
+  if (request.method === "HEAD") {
+    const head = await archive.head(key);
+    return head ? new Response(null, { headers: archivedAssetHeaders(head) }) : errorResponse(404);
+  }
+  const object = await archive.get(key);
+  return object ? new Response(object.body, { headers: archivedAssetHeaders(object) }) : errorResponse(404);
+}
+
 async function relaySentry(request: Request, env: Env): Promise<Response> {
   const result = await relaySentryEnvelope(request, env.SENTRY_DSN);
   if ("reject" in result) return errorResponse(result.reject);
@@ -393,6 +408,8 @@ const siteWorker = {
         headers.set("Cache-Control", response.ok ? cacheControl : NO_STORE);
         return new Response(response.body, { status: response.status, headers });
       }
+      case "archived-asset":
+        return serveArchivedAsset(request, env);
       case "render":
         return ctx.exports.RenderedSite.fetch(request);
       default:
