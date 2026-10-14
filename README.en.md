@@ -18,7 +18,7 @@ It is both my personal homepage and a personal telemetry system that keeps evolv
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
-  <img src="docs/screenshots/overview-light.webp" alt="Homepage overview: now watching, charger and power bank, now listening, activity rings with recent workouts, and the exit node lit up at once" width="100%">
+  <img src="docs/screenshots/overview-light.webp" alt="Homepage overview: the daily digest, now watching, charger and power bank, now listening, Talk to God, activity rings with recent workouts, and the exit node lit up at once" width="100%">
 </picture>
 
 ## What's on the page
@@ -30,9 +30,11 @@ It is both my personal homepage and a personal telemetry system that keeps evolv
 | **Music** | Apple Music and HomePod playback, recently played, word-by-word lyrics and animated covers; visitors can use the web player and "Listen together" with their own Apple Music account and subscription. |
 | **Activity** | Apple Watch Move, Exercise and Stand rings from the iPhone's HealthKit data, plus duration, energy and heart rate of recent workouts. |
 | **Server** | Uptime, CPU, memory, disk and network throughput of the exit node, plus traffic accumulated over the billing cycle. |
+| **Daily digest** | One Chinese tagline and the standout readings sum up the last 24 hours, with a 24-hour dial; quiet days show the timezone clock. |
 | **AI Coding** | Token usage of coding tools (merged from Mac logs, Cursor account history and Claude Code cloud telemetry), API-equivalent cost estimates, which agent is in use right now, a yearly heatmap and account limit windows. |
 | **Games** | PlayStation online status, game history and trophy progress; expand a game card for per-trophy details. |
 | **Pulse** | A factual 24-hour timeline for coding, listening, watching, playing, charging and physical activity: coding split into coding app / agent / both plus a token-rate lane, listening, watching and playing drawn as playing, paused or idle with the track or title, watts for charging, steps and workouts for activity. Hover any segment to see its state and title. |
+| **Provider status** | Official status pages of everyday services such as Claude, ChatGPT, Cursor, Devin, GitHub and Cloudflare, with trouble sorted first and incidents a click away. |
 | **The site itself** | Site version, GitHub repository stats and recent commits (with signature status); 30-day uptime rows for the site and the API, rolling medians of PageSpeed lab scores and a real-visitor performance score; Cloudflare Workers Builds deployments and Cloudflare Web Analytics pageviews, request stats and 12-hour error counts for Cloudflare Workers, plus push counts, round-trip latency and live versions of the two resident reporters on the exit node. |
 | **Talk to God** | A chat card where Clef routes each message by difficulty to Haiku (small fry), Sonnet (prophet) or Fable (God, with a descent effect), or refuses it; the model can read the live data behind every card, look up this project's design docs, and search the web with cited sources; `/new` starts a new conversation while retaining local session archives, with Markdown replies in which the model adds stat tiles, bar and line charts, timelines and artwork lists drawn by the site's own components (`src/components/chat-visual.tsx`), falling back to HTML in an offline sandbox for anything else (`src/lib/html-preview.ts`); visitors can plan site changes and confirm a signed plan to open an issue or start a build, then follow its PR, checks and preview; each message passes Cloudflare Turnstile, and requests are rate-limited per visitor with capped context and output length. |
 
@@ -42,7 +44,7 @@ The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoi
 
 ## Screenshots
 
-The homepage is dynamic: cards like now watching, charging or playing only appear while that thing is happening. The overview at the top and the images below light up all of those states at once using sample data on a local build, following the system light or dark theme; the animated ones were recorded from the live site.
+The homepage is dynamic: cards like now watching, charging or playing only appear while that thing is happening. The overview at the top and the images below light up all of those states at once using sample data on a local build (cards the samples don't cover show production data), following the system light or dark theme; the animated ones were recorded from the live site.
 
 **Front app in the header**: the middle of the header shows the Mac's current front app, with the icon and name reported by the Mac reporter. A few everyday tools get brand marks instead. Claude Code is the pixel mascot's fetch animation from [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop): 19 poses rebuilt frame by frame from a screen recording, with the sprite data inlined and played by the site itself ([live preview](https://lyjw131.github.io/mascot-fetch-loop/)). Ghostty is the ASCII ghost from its [homepage](https://ghostty.org/). `scripts/ghostty-frames.mjs` pulls the character frames out of the homepage payload, buckets glyph ink into a few body levels and a few halo levels, and samples frames down to a coarse grid (`src/lib/ghostty-frames.json`; parameters are at the top of the script). The site loops it as SVG paths; the body follows the page's text color while the halo keeps the homepage blue. Cursor and Antigravity use wordmarks from the [LobeHub icon set](https://github.com/lobehub/lobe-icons).
 
@@ -52,6 +54,13 @@ The homepage is dynamic: cards like now watching, charging or playing only appea
 </picture>
 
 The faint line under the app name is the current window title; the Cursor and Antigravity clips show it appearing, changing and disappearing. Only titles that pass the privacy check show up at all; see below.
+
+**Daily digest**: the top-right card sums up the last 24 hours in one Chinese tagline, lists the standout readings (such as coding hours, agent hours and tokens), and draws them by hour on a 24-hour dial. The tagline is picked at random from a pool and rotates every minute. On quiet days the slot goes back to the timezone clock.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/digest-dark.webp">
+  <img src="docs/screenshots/digest-light.webp" alt="Daily digest card: a Chinese tagline, coding and agent hours and tokens, with a 24-hour dial on the right" width="530">
+</picture>
 
 **Now watching on Emby**: poster, episode, progress, plus video, audio and bitrate specs.
 
@@ -86,6 +95,13 @@ The faint line under the app name is the current window title; the Cursor and An
   <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music now playing: word-by-word lyrics sweep through a line and move to the next, with recently played below" width="100%">
 </picture>
 
+**Talk to God**: Clef routes each question to a model tier by difficulty; the model can read every card's live data, look up the design docs and search the web. When empty, it offers a few sample questions.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.webp">
+  <img src="docs/screenshots/chat-light.webp" alt="Talk to God card: sample questions and the input box in the empty state" width="100%">
+</picture>
+
 **Activity and workouts**: Apple Watch Move, Exercise and Stand rings with steps, distance and flights climbed; recent workouts on the right, paged sideways.
 
 <picture>
@@ -97,7 +113,7 @@ The faint line under the app name is the current window title; the Cursor and An
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
-  <img src="docs/screenshots/server-light.gif" alt="Exit node card: up and down rates, CPU and memory readings roll as they change" width="100%">
+  <img src="docs/screenshots/server-light.gif" alt="Exit node card: up and down rates, traffic, CPU, memory and disk, with readings rolling as they change" width="100%">
 </picture>
 
 **AI Coding**: token usage, cost estimates, today's usage and account limit windows for each coding tool. Usage comes from three sources: local logs on the Mac, Cursor's account-side history and Claude Code's cloud telemetry. Sources report raw facts only; totals, rankings, today and the yearly cells are computed once in the state core (an agent with account-level history counts only that, otherwise sources add up). Whether an agent is in use comes from its latest usage event, so the cloud and Cursor lights stay on while the Mac sleeps; when a source fails to collect, the reading is marked Partial instead of treating the missing part as zero.
@@ -121,11 +137,18 @@ The faint line under the app name is the current window title; the Cursor and An
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse card: factual timelines including token rates, with daily summaries; hovering a listening segment shows its time range, state and the track playing then" width="100%">
 </picture>
 
+**Provider status**: the official status pages of everyday services such as Claude, ChatGPT, Cursor, Devin, GitHub and Cloudflare in one card, with anything in trouble sorted first; click one to see its incidents.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/provider-status-dark.webp">
+  <img src="docs/screenshots/provider-status-light.webp" alt="Provider status card: the operational state of each service" width="100%">
+</picture>
+
 **The site itself (LYJWPAGE)**: repository stats, contributors and recent commits. Below that, two status-page-style uptime rows: `lyjw.me` follows the collector Worker's per-minute uptime probe, and `Core` follows the heartbeat of the core Worker's scheduled round, each with 30 daily cells and an availability figure. Further down are the PageSpeed lab score and the real-visitor Users score, 12-hour requests, CPU and error counts per service, and push counts, round-trip latency and live versions of the two resident reporters on the exit node.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
-  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE card: repository stats and commits, 30-day uptime rows for lyjw.me and API, performance scores, and 12-hour metrics for services and reporters" width="100%">
+  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE card: repository stats and commits, 30-day uptime rows for lyjw.me and Core, performance scores, and 12-hour metrics for services and reporters" width="100%">
 </picture>
 
 ## Architecture

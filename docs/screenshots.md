@@ -12,14 +12,7 @@ Pulse 的时段详情需要额外动作：用鼠标停在泳道上，把 `[role=
 
 3211 / 8788 被别的实例占着时，用 `.claude/launch.json` 里的 `api-worker-alt`（8790）和 `lyjwpage-local-alt`（3213）另起一套：`dev:worker` / `dev:local` / `dev` / `start` 认 `DEV_WORKER_PORT` / `DEV_SITE_PORT`（如 `DEV_SITE_PORT=3213 pnpm dev`），`pnpm dev:override` 和截图脚本分别用 `DEV_WORKER_URL` / `SITE_URL` 指过去。
 
-歌词不入库：本地 Worker 没有 Apple Music 凭据，`/api/lyrics` 也不走上游兜底，所以截「正在听」时把生产站的响应包一层 `ok` 直接注入（`song` 取 `listening-now-*.json` 里的 `songId`）：
-
-```sh
-curl -s 'https://lyjw.me/api/lyrics?song=1490256995' \
-  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.stringify({ok:true,...JSON.parse(s)})))' \
-  > /tmp/lyrics-override.json
-pnpm dev:override /api/lyrics /tmp/lyrics-override.json
-```
+歌词不入库：本地 Worker 没有 Apple Music 凭据，`/api/lyrics` 归采集 Worker、不经 core 的假数据注入，所以截「正在听」时在浏览器里拦下 `/api/lyrics`，换成生产站同一路径的响应（`song` 取 `listening-now-*.json` 里的 `songId`）；`scripts/card-gifs.py` 的 `open_page` 自己装了这条拦截。
 
 五张会动的卡片（正在听、充电头、活动、落地节点、AI Coding）由 [`scripts/card-gifs.py`](../scripts/card-gifs.py) 录制：把卡片滚到视口、藏起邻居，在真实时间里连续截图，画面一变留一帧，帧时长按真实经过的毫秒记（motion 把不少动画交给 Web Animations API，假时钟拨不动，所以不用假时钟）。正在听录的是歌词从一句收尾到「二人だけの空が広がる夜に」整句扫完，靠注入 `positionMs` 改过的变体把播放位置拨到句前，录前清掉充电头和充电宝——它们在场时这张卡只占右边一列；其余四张靠换夹具驱动——从夹具派生只改几个读数的临时变体逐份注入，借 SWR 的 `revalidateOnFocus` 让卡片回源（对 focus 节流 5 秒），换夹具的等待不进时间线。充电头的历史点在派生变体时冻成绝对时间（`$now-…` 每次注入都按新的当下重算，曲线会整条平移），录的时候先清掉充电宝——它在场时充电头是紧凑布局、没有曲线。AI Coding 的基线直接取本地 Worker 此刻的 `/api/status/coding`（生产数据经上游补缺；也可以先注入 `coding-multi-source.json`），再派生读数涨一档的变体。总览、Emby 正在播放、充电宝、PlayStation、Pulse 仍是静态图：总览本来就是全貌，其余几张要么几秒内没什么在动，要么静态一张已经说清。跑之前先按脚本开头列的清单注入基线夹具，跑法和下面的 GIF 脚本一样：
 

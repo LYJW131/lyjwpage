@@ -18,7 +18,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
-  <img src="docs/screenshots/overview-light.webp" alt="首页总览：正在看、充电头与充电宝、正在听、活动圆环与最近训练、落地节点同时点亮" width="100%">
+  <img src="docs/screenshots/overview-light.webp" alt="首页总览：每日摘要、正在看、充电头与充电宝、正在听、与神对话、活动圆环与最近训练、落地节点同时点亮" width="100%">
 </picture>
 
 ## 页面里有什么
@@ -30,9 +30,11 @@
 | **音乐** | Apple Music 与 HomePod 播放状态、最近收听、逐字歌词和动态封面；访客可通过自己的 Apple Music 账号与订阅使用网页播放器和「一起听」。 |
 | **运动活动** | 通过 iPhone 的 HealthKit 数据展示 Apple Watch 活动、锻炼与站立三环，以及最近训练的时长、能量和心率。 |
 | **服务器** | 落地节点的运行时间、CPU、内存、磁盘、网络吞吐，以及按计费周期累计的流量。 |
+| **每日摘要** | 一句中文标语加最突出的几项读数概括最近 24 小时，配 24 小时表盘；没什么事发生时显示时区时钟。 |
 | **AI Coding** | 编码工具的 Token 用量（Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并）、API 等值成本估算、此刻在用的 agent、年度热力图与账号限额窗口。 |
 | **游戏** | PlayStation 在线状态、游戏记录与奖杯进度，展开游戏卡片查看成就明细。 |
 | **Pulse** | 编码、听、看、玩、充电、身体活动最近 24 小时的事实时间线：编码分前台应用 / agent / 两者同时，另有一条 token 速率，听看玩按在放、暂停、空闲画出并带曲目与片名，充电画瓦数，活动画步数与训练；悬停任一时段可看当时的状态与标题。 |
+| **服务状态** | Claude、ChatGPT、Cursor、Devin、GitHub、Cloudflare 等常用服务官方状态页的汇总，有故障的排在前面，可点开看事件。 |
 | **站点自身** | 网站版本、GitHub 仓库统计与最近提交（含签名状态）；站点与 API 两行 30 天在线状态，PageSpeed 实验室指标的滚动中位数与真实访客的性能分；Cloudflare Workers Builds 部署与 Cloudflare Web Analytics 访问量、Workers 调用统计与 12 小时报错数，以及落地节点上两个常驻上报器的推送次数、往返延迟和线上版本。 |
 | **与神对话** | 首页对话卡片：Clef 按问题难度把每条消息派给 Haiku（杂鱼）、Sonnet（先知）或 Fable（神，降临时有特效），或直接拒绝；模型可读取站点各卡片的实时数据、查阅本项目的设计文档、联网搜索并附来源，`/new` 新开会话并保留本地存档，回复渲染 Markdown，模型会在回答里自己插入数字卡、柱状 / 折线图、时间线、带封面的列表等图示，由站点组件按主题画在正文里（`src/components/chat-visual.tsx`），组件画不了的图示改写 HTML、在断网沙箱中渲染（`src/lib/html-preview.ts`）；访客可在对话中规划站点改动，确认计划后用 GitHub 身份提 issue 或启动构建，卡片跟踪 PR、检查与预览；发送前过 Cloudflare Turnstile 人机验证，并按访客限流、限定上下文与输出长度。 |
 
@@ -42,7 +44,7 @@
 
 ## 页面效果
 
-首页是动态的：正在播放、正在充电、正在游玩这些卡片只在对应的事情发生时出现，平时看不到。开头的总览图和下面的效果图都在本地用示例数据把这些状态同时点亮，明暗主题跟随系统；会动的那几张是从站点上真实录下来的。
+首页是动态的：正在播放、正在充电、正在游玩这些卡片只在对应的事情发生时出现，平时看不到。开头的总览图和下面的效果图都在本地用示例数据把这些状态同时点亮（示例数据没覆盖的卡片取生产数据），明暗主题跟随系统；会动的那几张是从站点上真实录下来的。
 
 **页头的前台应用**：页头中央显示 Mac 此刻的前台应用，图标和名字由 Mac 上报器上报。几款常用工具换成了品牌标识：Claude Code 是像素吉祥物的取物动画，来自 [mascot-fetch-loop](https://github.com/LYJW131/mascot-fetch-loop)（从屏幕录像逐帧复原的 19 个姿势，站点内联其精灵数据自行播放，[在线预览](https://lyjw131.github.io/mascot-fetch-loop/)）；Ghostty 是[官网首页](https://ghostty.org/)那只 ASCII 幽灵，`scripts/ghostty-frames.mjs` 从首页载荷里取出字符画帧，按字形墨量把单元分成本体和光环各几档，抽帧压成粗网格（`src/lib/ghostty-frames.json`，参数见 `scripts/ghostty-frames.mjs#CROP` 等常量），站内用 SVG 路径循环播放，本体跟随页面文字色、光环保持官网的蓝；Cursor 与 Antigravity 用 [LobeHub 图标集](https://github.com/lobehub/lobe-icons)的字标。
 
@@ -52,6 +54,13 @@
 </picture>
 
 应用名下面那行淡色小字是当前窗口的标题，Cursor 和 Antigravity 两段演示了它出现、变化和消失的样子——但只有通过隐私判断的标题才会出现，见下文。
+
+**每日摘要**：首页右上角用一句中文标语概括最近 24 小时，下面列出最突出的几项读数（如编码时长、agent 运行时长、token 数），右侧 24 小时表盘按时段画出它们；标语从一组候选里随机挑、每分钟换一句。没什么事发生时，这一格回到时区时钟。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/digest-dark.webp">
+  <img src="docs/screenshots/digest-light.webp" alt="每日摘要卡片：中文标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
+</picture>
 
 **Emby 正在播放**：海报、剧集、进度，以及画面、音轨与码率规格。
 
@@ -86,6 +95,13 @@
   <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music 正在播放：逐字高亮的歌词一句扫过、换到下一句，下方是最近收听" width="100%">
 </picture>
 
+**与神对话**：Clef 按问题难度派给不同档位的模型回答，可读站点各卡片的实时数据、查设计文档、联网搜索；空白时给出几条示例问题。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.webp">
+  <img src="docs/screenshots/chat-light.webp" alt="与神对话卡片：空状态的示例问题与输入框" width="100%">
+</picture>
+
 **活动与训练**：Apple Watch 的活动、锻炼、站立三环与步数、距离、爬楼，右侧是最近训练，横向翻页。
 
 <picture>
@@ -97,7 +113,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
-  <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：上下行速率、CPU 与内存换档时读数滚动" width="100%">
+  <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：上下行速率、流量、CPU、内存与磁盘，换档时读数滚动" width="100%">
 </picture>
 
 **AI Coding**：各编码工具的 Token 用量、成本估算、今日用量与账号限额窗口。用量有三处来源：Mac 本机日志、Cursor 账号侧的历史、Claude Code 云端的遥测，来源只报原始事实，合计、排名、今日和年度格子在状态核心一处算（同一 agent 有账号级历史时只算它，否则相加）。哪个 agent 此刻在用看它最近一次用量事件，Mac 合盖时云端和 Cursor 的灯照样亮；某个来源采集失败时，读数旁标出 Partial，不把缺的那部分当成 0。
@@ -121,11 +137,18 @@
   <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：包含 Tokens 速率的事实时间线与右侧摘要，悬停听歌道的一段显示时间范围、状态与当时的曲目" width="100%">
 </picture>
 
+**服务状态**：Claude、ChatGPT、Cursor、Devin、GitHub、Cloudflare 等常用服务官方状态页的汇总，有故障的排在前面，点开看事件详情。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/provider-status-dark.webp">
+  <img src="docs/screenshots/provider-status-light.webp" alt="服务状态卡片：各服务的运行状态" width="100%">
+</picture>
+
 **站点自身（LYJWPAGE）**：仓库统计、贡献者与最近提交；下面是状态页式的两行在线状态——`lyjw.me` 看采集 Worker 每分钟的在线探测，`Core` 看 core Worker 定时一轮的心跳，各带 30 天每天一格和可用率；再往下是 PageSpeed 实验室分与真实访客的 Users 分，以及各服务 12 小时的请求、CPU、报错数，落地节点上两个常驻上报器的推送次数、往返延迟与线上版本。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
-  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE 卡片：仓库统计与提交、lyjw.me 与 API 两行 30 天在线状态、性能分与各服务、上报器的 12 小时指标" width="100%">
+  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE 卡片：仓库统计与提交、lyjw.me 与 Core 两行 30 天在线状态、性能分与各服务、上报器的 12 小时指标" width="100%">
 </picture>
 
 ## 系统架构
