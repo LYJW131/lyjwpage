@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ERROR_RELAY_MAX_BYTES, parseClientErrorReport, relayClientError } from "./error-relay.ts";
+import { ERROR_RELAY_MAX_BYTES, isSiteOrigin, parseClientErrorReport, relayClientError } from "./error-relay.ts";
 
 const report = {
   source: "boundary",
@@ -52,4 +52,18 @@ test("the relay logs a valid report as an Error with the browser stack and rejec
   assert.equal(await relayClientError(post(JSON.stringify({ source: "window" })), log), 400);
   assert.equal(await relayClientError(post("x".repeat(ERROR_RELAY_MAX_BYTES + 1)), log), 413);
   assert.equal(logged.length, 1);
+});
+
+test("the relay only accepts reports from the site's own origins", () => {
+  const from = (url: string, origin?: string) =>
+    isSiteOrigin(new Request(url, { method: "POST", headers: origin === undefined ? {} : { Origin: origin } }));
+  assert.equal(from("https://lyjw.me/relay", "https://lyjw.me"), true);
+  assert.equal(from("https://lyjw.me/relay", "https://lyjw131.com"), true);
+  assert.equal(from("https://abc-site.lyjw.workers.dev/relay", "https://abc-site.lyjw.workers.dev"), true);
+  assert.equal(from("http://localhost:3211/relay", "http://localhost:3211"), true);
+  assert.equal(from("https://lyjw.me/relay"), true);
+  assert.equal(from("https://lyjw.me/relay", "https://evil.example"), false);
+  assert.equal(from("https://lyjw.me/relay", "http://lyjw131.com"), false);
+  assert.equal(from("https://lyjw.me/relay", "https://abc-site.lyjw.workers.dev"), false);
+  assert.equal(from("https://lyjw.me/relay", "null"), false);
 });
