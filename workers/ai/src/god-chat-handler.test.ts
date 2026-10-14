@@ -103,9 +103,10 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
         assert.equal(body.model, GOD_CHAT_TIER_INFO[tier].model);
         assert.ok(body.tools?.every((tool) => !("name" in tool) || !["draft_github_issue", "start_design", "propose_build"].includes(tool.name)));
         assert.equal(body.output_config, undefined);
-        assert.deepEqual(body.mcp_servers, [{ type: "url", name: "aihot", url: "https://aihot.news/api/mcp" }]);
-        assert.ok(body.tools?.some((tool) => "type" in tool && tool.type === "mcp_toolset" && tool.mcp_server_name === "aihot" && tool.default_config?.enabled === false));
-        assert.ok(headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
+        assert.equal(body.mcp_servers, undefined);
+        assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_search"));
+        assert.ok(body.tools?.every((tool) => !("type" in tool) || tool.type !== "mcp_toolset"));
+        assert.equal(headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"), false);
         assert.deepEqual(body.thinking, { type: "adaptive", display: "summarized" });
         assert.ok(headers.get("anthropic-beta")?.includes("mid-conversation-output-config-2026-07-01"));
         assert.equal(headers.get("anthropic-beta")?.includes("server-side-fallback-2026-07-01"), tier !== "haiku");
