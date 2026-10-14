@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -25,7 +26,7 @@ const ENV_PATTERNS = {
 const defaultIo = {
   fetch: (...args) => globalThis.fetch(...args),
   log: (line) => console.log(line),
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  sleep,
 };
 
 export function readEnv(env, names) {

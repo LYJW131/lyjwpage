@@ -9,14 +9,13 @@ import { BuildBlockedError, BuildPublicationPendingError, BuildPullRequestReject
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan, type PlanPayload } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
-import { fail, readBoundedBytes } from "./http";
+import { bearerToken, buildCoordinator, fail, object, readBoundedBytes } from "./http";
 import { hashToken, signBuildToken, uploadTokenForRun, verifyBuildToken } from "./token";
 import { parseBuildUpload } from "./validation";
 import { applyGithubWebhook, outsideBuildBranches, verifyGithubWebhook } from "./webhook";
 
 type StatusPayload = { kind: "status"; runId: string; expiresAt: number };
 const noStore = { "Cache-Control": "no-store" };
-const object = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const validRunId = (id: string | null): id is string => !!id && /^[a-f0-9]{32}$/.test(id);
 
 type GithubVisitor = { account: string; userId: number; name: string | null };
@@ -44,7 +43,7 @@ async function buildResponse(run: StoredRun, env: Env): Promise<Response> {
 }
 
 async function dispatchBuild(runId: string, env: Env, fetcher: typeof fetch): Promise<void> {
-  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
+  const coordinator = buildCoordinator(env);
   let dispatched = false;
   try {
     const run = await coordinator.readRun(runId);
@@ -67,7 +66,7 @@ async function dispatchBuild(runId: string, env: Env, fetcher: typeof fetch): Pr
 }
 
 async function prepareBuild(runId: string, env: Env, fetcher: typeof fetch, ctx?: BuildContext): Promise<void> {
-  const coordinator = env.BUILD_COORDINATOR!.getByName("global");
+  const coordinator = buildCoordinator(env);
   const lease = await coordinator.claimPreparation(runId);
   if (!lease) return;
   try {
@@ -95,7 +94,7 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
   if (!data || typeof data.planToken !== "string" || typeof data.code !== "string" || !/^[\w.-]{1,512}$/.test(data.code) || typeof data.codeVerifier !== "string" || !/^[A-Za-z0-9._~-]{43,128}$/.test(data.codeVerifier)) return fail(400, "A signed plan and GitHub sign-in are required.");
   const plan = await readPlan(env, data.planToken);
   if (!plan) return fail(401, "The plan has expired.");
-  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const coordinator = buildCoordinator(env);
   if (await coordinator.isPlanUsed(plan.id) && !await coordinator.hasPlanRun(plan.id)) return fail(409, "This plan has already been used.");
   const session = await verifyGithubVisitor(data.code, data.codeVerifier, env.GITHUB_APP_CLIENT_SECRET, fetcher);
   if (session instanceof Response) return session;
@@ -147,10 +146,10 @@ function publishedImplementation(run: StoredRun): boolean {
 export async function handleBuildIssue(request: Request, env: Env, fetcher: typeof fetch = fetch): Promise<Response> {
   if (request.method !== "GET") return fail(405, "Method not allowed.");
   if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR || !env.GITHUB_APP_PRIVATE_KEY) return fail(503, "Issue lookup is unavailable.");
-  const token = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  const token = bearerToken(request);
   const plan = token ? await verifyBuildToken<PlanPayload>(token, env.BUILD_SESSION_SECRET, "plan", Date.now() - BUILD_ISSUE_LOOKUP_GRACE_MS) : null;
   if (!plan || typeof plan.id !== "string") return fail(401, "The plan link is invalid or expired.");
-  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const coordinator = buildCoordinator(env);
   const recorded = await coordinator.planIssue(plan.id);
   if (recorded || !await coordinator.claimIssueCheck(plan.id)) return Response.json({ issue: recorded } satisfies BuildIssueLookup, { headers: noStore });
   try {
@@ -165,10 +164,10 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
   if (!env.BUILD_SESSION_SECRET || !env.BUILD_COORDINATOR) return fail(503, "Build status is unavailable.");
   const url = new URL(request.url);
   const runId = url.searchParams.get("runId");
-  const token = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  const token = bearerToken(request);
   const signature = token ? await verifyBuildToken<StatusPayload>(token, env.BUILD_SESSION_SECRET, "status") : null;
   if (!validRunId(runId) || signature?.runId !== runId) return fail(401, "The build status link is invalid or expired.");
-  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const coordinator = buildCoordinator(env);
   let run = await coordinator.readRun(runId);
   if (!run) return fail(404, "Build not found.");
   if (!run.dispatchAttempted && run.callbackOrigin && run.state.phase === "triggered" && env.GITHUB_APP_PRIVATE_KEY) {
@@ -207,9 +206,9 @@ export async function handleBuildStatus(request: Request, env: Env, fetcher: typ
 // 鉴权后换回该 run 原有的上传令牌哈希：一次性上传、停下即作废、截图只在上传前收，仍全由 coordinator 判定。
 async function workflowUploadHash(request: Request, env: Env, fetcher: typeof fetch, invalid: string): Promise<{ runId: string; hash: string } | Response> {
   const runId = new URL(request.url).searchParams.get("runId");
-  const token = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  const token = bearerToken(request);
   if (!validRunId(runId) || !token || !env.BUILD_SESSION_SECRET) return fail(401, invalid);
-  const run = await env.BUILD_COORDINATOR!.getByName("global").readRun(runId);
+  const run = await buildCoordinator(env).readRun(runId);
   if (!run?.callbackOrigin) return fail(401, invalid);
   try {
     if (!await verifyActionsToken(token, buildWorkflowAudience(run.callbackOrigin, runId), fetcher)) return fail(401, invalid);
@@ -226,7 +225,7 @@ export async function handleBuildUpload(request: Request, env: Env, fetcher: typ
   const authorized = await workflowUploadHash(request, env, fetcher, "Invalid upload authorization.");
   if (authorized instanceof Response) return authorized;
   const { runId } = authorized;
-  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const coordinator = buildCoordinator(env);
   const run = await coordinator.claimUpload(runId, authorized.hash);
   if (!run) return fail(401, "Upload authorization was used or expired.");
   let publicationState = run.state;
@@ -274,7 +273,7 @@ export async function handleBuildProgress(request: Request, env: Env, fetcher: t
   const data = object(await readJsonBody(request, 2048));
   const blocked = data?.blocked === true;
   if (!data || typeof data.message !== "string" || !data.message.trim() || data.message.length > (blocked ? BUILD_PROGRESS_LIMITS.blockedChars : BUILD_PROGRESS_LIMITS.messageChars)) return fail(400, "Invalid progress message.");
-  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const coordinator = buildCoordinator(env);
   const accepted = blocked
     ? await coordinator.blockRun(runId, hash, `The builder stopped without uploading: ${data.message.trim()}`)
     : await coordinator.progress(runId, hash, data.message.trim());
@@ -288,7 +287,7 @@ export async function handleBuildScreenshot(request: Request, env: Env, fetcher:
   const authorized = await workflowUploadHash(request, env, fetcher, "Invalid screenshot authorization.");
   if (authorized instanceof Response) return authorized;
   const { runId, hash } = authorized;
-  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const coordinator = buildCoordinator(env);
   if (!await coordinator.canAddScreenshot(runId, hash)) return fail(409, "Screenshot authorization was used or expired, or the screenshot limit was reached.");
   let shot;
   try { shot = parseScreenshot(await readJsonBody(request, SCREENSHOT_BODY_BYTES)); }
@@ -312,7 +311,7 @@ export async function handleGithubWebhook(request: Request, env: Env): Promise<R
   try { payload = JSON.parse(new TextDecoder().decode(body)); } catch { return fail(400, "Invalid webhook body."); }
   const event = request.headers.get("X-GitHub-Event") ?? "";
   if (outsideBuildBranches(event, payload)) return Response.json({ accepted: true }, { headers: noStore });
-  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const coordinator = buildCoordinator(env);
   if (!await coordinator.hasDelivery(delivery)) {
     await applyGithubWebhook(env, event, payload);
     await coordinator.completeDelivery(delivery);

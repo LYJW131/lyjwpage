@@ -70,7 +70,7 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 
 公开状态视图登记在 `shared/status-views.ts`：路径、所在的数据层（`realtime` / `lag`）、站点缓存标签（`page:<tag>`）、WebSocket 事件都从这一行派生，可滞后层不许带推送事件（模块加载时断言）。`SITE_CACHE` 失效的标签白名单也来自这张表。
 
-首屏按卡读取（`src/lib/first-screen.ts`）：每条状态视图各挂自己的 `page:<tag>`、各读自己的端点，由 `StatusSnapshot` 入口按视图缓存，并行发出。实时卡的端点读状态核心 DO，可滞后卡的端点读 KV，都不在请求路径上现拉外部 API；冷缓存时首页 loader 等齐全部视图（`src/app/page.tsx` 的 `Promise.all`），已缓存的视图直接命中。成功快照的缓存期限是 `src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`；端点回 `ok:false` 或还没部署（404）时用卡片降级信封，只按 `STATUS_DEGRADED_CACHE_CONTROL` 短缓存；网络失败、5xx 与非法信封回 503 且不缓存，已有快照按 `stale-if-error` 继续用；没有快照时（部署后的冷缓存、布局失效刚清掉）这张卡按降级信封渲染、浏览器挂载后再取，这份首页回 `no-store` 不进缓存（`src/app/page.tsx` 的 `loader`）。首屏歌词在拿到「此刻在听」之后按曲目直取 `/api/lyrics`，不经 `StatusSnapshot` 缓存，失败时不带歌词（这首的歌词多数已在写入时预热进 `APPLE_CACHE`）。
+首屏按卡读取（`src/lib/first-screen.ts`）：每条状态视图各挂自己的 `page:<tag>`、各读自己的端点，由 `StatusSnapshot` 入口按视图缓存，并行发出。实时卡的端点读状态核心 DO，可滞后卡的端点读 KV，都不在请求路径上现拉外部 API；冷缓存时首页 loader 等齐全部视图（`src/app/page.tsx` 的 `Promise.all`），已缓存的视图直接命中。成功快照的缓存期限是 `src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`，不带 stale-while-revalidate，首页后台重建时拿到的是重新读过的快照；充电头、充电宝那一格的亮灭还看上报是否新鲜：断档后恢复由 core 发失效，断档那一刻没有上报能触发，快照改按更短的 `CLOCKED_LAYOUT_STATUS_CACHE_CONTROL` 过期；端点回 `ok:false` 或还没部署（404）时用卡片降级信封，只按 `STATUS_DEGRADED_CACHE_CONTROL` 短缓存；网络失败、5xx 与非法信封回 503 且不缓存，已有快照按 `stale-if-error` 继续用；没有快照时（部署后的冷缓存、布局失效刚清掉）这张卡按降级信封渲染、浏览器挂载后再取，这份首页回 `no-store` 不进缓存（`src/app/page.tsx` 的 `loader`）。首屏歌词在拿到「此刻在听」之后按曲目直取 `/api/lyrics`，不经 `StatusSnapshot` 缓存，失败时不带歌词（这首的歌词多数已在写入时预热进 `APPLE_CACHE`）。
 
 浏览器读路径在 `src/lib/status-reads.ts` 与 `src/hooks/use-status.ts`。页面打开后只有实时卡各自回源校验一次，补上 HTML 生成后到推送连上之间的空窗；可滞后卡直接用首屏那份，按各自节奏轮询——只有首屏那份的 `updatedAt` 已经超过它的轮询间隔（没人访问时首页可能几个小时没重建）才在挂载后补取一次。有单调时间戳的 payload 按代数挡旧值。时间相关的新鲜度每次读取现算。
 

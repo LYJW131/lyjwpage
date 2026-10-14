@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { heartbeatWindowMs } from "@shared/freshness";
 import { STATUS_TAGS, STATUS_VIEWS } from "@shared/status-views";
 import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { withRequestState } from "@shared/request-state";
@@ -71,6 +72,20 @@ test("充电头：插上和拔下失效首屏，插着时功率滚动不失效",
   assert.ok(tagsOf(await land(env, "mac", charger(true, 40, NOW), NOW)).includes(tag));
   assert.ok(!tagsOf(await land(env, "mac", charger(true, 41.37, NOW + 5_000), NOW + 5_000)).includes(tag));
   assert.ok(tagsOf(await land(env, "mac", charger(false, 0, NOW + 10_000), NOW + 10_000)).includes(tag));
+}));
+
+test("充电头与充电宝：心跳断档超窗后恢复，同样插着也失效首屏", withStorage(async () => {
+  const env = testEnv();
+  const tag = STATUS_VIEWS.charger.tag;
+  const bankTag = STATUS_VIEWS.powerBank.tag;
+  assert.ok(tagsOf(await land(env, "mac", charger(true, 40, NOW), NOW)).includes(tag));
+  const back = NOW + heartbeatWindowMs() + 1;
+  const resumed = tagsOf(await land(env, "mac", charger(true, 40, back), back));
+  assert.ok(resumed.includes(tag));
+  assert.ok(resumed.includes(bankTag));
+  const steady = tagsOf(await land(env, "mac", charger(true, 40, back + 5_000), back + 5_000));
+  assert.ok(!steady.includes(tag));
+  assert.ok(!steady.includes(bankTag));
 }));
 
 function playing(positionTicks: number | null) {

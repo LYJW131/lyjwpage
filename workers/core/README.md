@@ -1,16 +1,16 @@
 # API 中枢（状态核心）
 
-实时状态的唯一权威：StateHub 的 SQLite、公开读取、WebSocket 推送、首屏缓存失效和 pulse 的定时 cron。
+实时状态的唯一权威：StateHub 的 SQLite、公开读取、WebSocket 推送、首屏缓存失效和 pulse 的定时一轮。
 上报器不直连这里：外部上报由上报入口 Worker（[`workers/ingress`](../ingress/README.md)）验明身份、校验收敛、按数据层拆开，
 实时那一半经 Service Binding 调这里的 `StateCore.commitIngest`；采集 Worker 同样经 `StateCore` 交数据。
 站点没有上报路由、rewrite、中继和事件发布逻辑。
 
 ## 代码职责
 
-- `src/index.ts`：默认 Worker 入口与 cron（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分，每几轮顺带做一次断流检测，见下文「断流告警」）；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
+- `src/index.ts`：默认 Worker 入口；`src/cron-round.ts`：定时一轮（每 `CRON_HEARTBEAT_EVERY_MINUTES` 分钟一轮，时刻表 `src/cron-heartbeat.ts#CRON_SCHEDULE`；pulse 归档与评分，每几轮顺带做一次断流检测，见下文「断流告警」）。本 Worker 不挂 Cloudflare cron（`wrangler.toml` 的 `crons = []`，理由写在那里），采集 Worker 每分钟调 `StateCore.cronRound(scheduledTime)`，由 `src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是 core 的轮次；`src/origin-worker.ts` 负责 WebSocket 接入、人头数和公开 HTTP。
 - `src/state-core.ts`：对内的 RPC 入口 `StateCore`（契约 `shared/state-core.ts`），上报入口和采集 Worker 经 Service Binding 调：
   `ready()`（恒为 `true`，契约只加不改而保留）、`commitIngest(command)`（prepare 好的上报进 StateHub，效果在这里派发）、`broadcastVersion()`、`audience()`、
-  `playstationPower()`、`appleDeveloperToken()`（core 不持有 Apple 私钥，恒抛错；契约只加不改而保留）、`commitRecentlyPlayed()`、`commitRecentTracks()`、`commitEnrichmentPatch(patch)`（采集 Worker 回执后重查到的补全，按 `trackKey` 补写）、`revalidate()`。
+  `playstationPower()`、`appleDeveloperToken()`（core 不持有 Apple 私钥，恒抛错；契约只加不改而保留）、`commitRecentlyPlayed()`、`commitRecentTracks()`、`commitEnrichmentPatch(patch)`（采集 Worker 回执后重查到的补全，按 `trackKey` 补写）、`revalidate()`、`cronRound(scheduledTime)`（采集 Worker 每分钟驱动的定时一轮，见上一条）。
 - `src/live-census.ts`：推送房间的两个人头数（开着 / 可见）怎么数，纯函数；房间 `LivePushRoom` 在 `src/origin-worker.ts`。
 - `src/ingest-handlers.ts`、`src/stores/`：上报的 StateHub 提交阶段，按来源分发；`src/phone-telemetry.ts`、`src/homepod-ingest.ts` 组合设备信封。
   准备阶段（收敛、校验、Emby 的 R2 HEAD）在根目录 `shared/ingest/`，跑在上报入口；这里只 `import type` 命令的类型（eslint 挡住值导入）。
@@ -152,7 +152,7 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 `StateCore.commitIngest` 进这里：StateHub 按到达顺序串行提交，回 `{ ready, ok, data | error }`（`ready` 恒为 `true`）；
 提交确认后，推送与首屏失效由这边的 `waitUntil` 执行。core Worker 上没有 `/api/ingest/*`。
 
-Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（契约 `shared/site-cache.ts`，只收公开状态标签）。失效先清除对应 `page:<tag>` 状态视图，再清除挂 `home` 的首页文档，下一次请求用新快照重新渲染。所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `shared/home-layout.ts`。coding 用量卡片的骨架在状态核心重算视图时比新旧两份，行、总量与常用模型的有无变了才发 `coding`。读数、标题、进度、灯色等内容变化不通知，由视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`）过期后重建；浏览器挂载后直接问 Worker。通知有超时（`src/live-platform.ts` 的 `REVALIDATE_TIMEOUT_MS`），失败只记日志，不能让已落库的上报重发。可滞后层视图的标签（采集 Worker 与上报入口写完 `LAG` 后经 `StateCore.revalidate` 发来）由 StateHub 的 alarm 在 `src/lag-repurge.ts` 的 `LAG_REPURGE_DELAY_MS` 之后再失效一次：KV 写入要等各机房的读缓存过期才处处可见，立刻失效之后别的机房若在这段时间里重建快照，会把旧值再缓存一整轮。纯心跳和没有标签的广播不触发缓存通知。
+Worker 在 SQLite 写入完成后，仅对首屏布局变化在 `waitUntil` 后台任务中经 `SITE_CACHE` Service Binding 调 site Worker 的 `RenderedSite.invalidate(tags)`（契约 `shared/site-cache.ts`，只收公开状态标签）。失效先清除对应 `page:<tag>` 状态视图，再清除挂 `home` 的首页文档，下一次请求用新快照重新渲染。所以各上报在自己手里的新旧两份上判断布局有没有变：充电头 / 充电宝那一格亮灭、在听的 hero 出现或消失、「正在看」开播停播、续看和游玩列表空与非空、服务器首报 / 流量行 / 断流后回来、Mac 心跳断档超窗后回来（离线标志没变也算，`src/stores/telemetry.ts`）、奖杯首次到达、训练那一块换占位（没收到过 / 一条都读不出 / 有训练）。判据与页面共用 `shared/home-layout.ts`。coding 用量卡片的骨架在状态核心重算视图时比新旧两份，行、总量与常用模型的有无变了才发 `coding`。读数、标题、进度、灯色等内容变化不通知，由视图快照的缓存期限（`src/lib/site-policy.ts` 的 `STATUS_CACHE_CONTROL`）过期后重建；浏览器挂载后直接问 Worker。通知有超时（`src/live-platform.ts` 的 `REVALIDATE_TIMEOUT_MS`），失败只记日志，不能让已落库的上报重发。可滞后层视图的标签（采集 Worker 与上报入口写完 `LAG` 后经 `StateCore.revalidate` 发来）由 StateHub 的 alarm 在 `src/lag-repurge.ts` 的 `LAG_REPURGE_DELAY_MS` 之后再失效一次：KV 写入要等各机房的读缓存过期才处处可见，立刻失效之后别的机房若在这段时间里重建快照，会把旧值再缓存一整轮。纯心跳和没有标签的广播不触发缓存通知。
 
 ESA 首页不走数据上报通知：`lyjw131.com` 以 `lyjw.me` 为源站，边缘按源站 `Cache-Control` 的 SWR 头（site Worker 响应）自行缓存与后台取新，控制台缓存规则见 [仓库外事实](../../docs/ops-facts.md)。新版本部署上线时，由 GitHub Actions（`.github/workflows/purge-esa.yml`）刷新首页并预热边缘缓存，等两个域名的 `/api/version` 都答出这次部署的 sha 后，再调上报入口的 `POST /api/internal/site-deployed`；上报入口验过之后调这里的 `StateCore.broadcastVersion()`，向所有连着的页面广播不带数据的 `version` 事件，页面重问 `/api/version` 并弹出更新提示（同时请采集 Worker 重拉部署列表，见上报入口 README）；站点自己的版本轮询因此只作兜底。日常上报不触发刷新。
 
@@ -404,7 +404,7 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 
 ### cron 失败口径
 
-- StateHub 整个调不通（`pulseTick` 抛错）：这一轮抛给 `Sentry.withMonitor`，按失败报到，`withSentry` 同时记一条异常。监控 `failureIssueThreshold` 见 `src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`。
+- StateHub 整个调不通（`pulseTick` 抛错）：这一轮抛给 `shared/cron-check-ins.ts#cronCheckIns`，按失败报到，`withSentry` 同时记一条异常。监控 `failureIssueThreshold` 见 `src/cron-heartbeat.ts#CRON_MONITOR_CONFIG`。
 - 子步骤失败（归档、评分、断流检测）：只打 `console.warn` 并记一条 `warning` 级异常（tag `cron.step=pulse-archive | pulse-score | freshness-watch`），这一轮照常报 ok。取舍：站点「API」在线行读的就是这个监控，子步骤坏了 API 本身仍在服务，不该让在线行闪；子步骤的故障靠事件看。StateHub 内部 `pulseTick` 里读归档快照、领评分任务各自兜底，只记 warn，不算 StateHub 调不通。
 
 ## 配置与部署
@@ -445,9 +445,8 @@ dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入�
 `/api/ingest/*` 与 `/api/internal/site-deployed` 给上报入口，Apple Music 的三条路径（`shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS`）给采集 Worker，其余一切（含 `/ws`）给 core；AI 路由由 core 经 `AI_SERVICE` 交给 ai。各 Worker 共用 `--persist-to`，
 `LAG`、`CREDENTIALS` 两个本地 KV 用同一个 id，一边写的另一边读得到；Service Binding 按生产名字
 （`core`、`ai`、`ingress`、`collector`）互相找到，所以本地 core 的名字也是 `core`。
-`curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务；
-core 自己的 cron 本地触发不到（Service Binding 调不了别的 Worker 的 `scheduled`），它本地要做的
-D1 归档、Clef 打分本来也被隔离开关关着。
+`curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务，并像生产一样调 core 的 `cronRound`；
+core 这一轮本地要做的 D1 归档、Clef 打分被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
 `AI` 绑定只能连远程 Workers AI：`scripts/dev-worker.mjs` 在没有 `CLOUDFLARE_API_TOKEN` 也没有 `wrangler login` 时，把 core 与 ai 的测试配置去掉 `[ai]` 段另存为 `wrangler.test.offline.toml` 再起，否则整个会话起不来；去掉后对话路由走兜底档位。`DEV_WORKER_AI=remote` / `off` 强制选择。
@@ -534,7 +533,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 ### Sentry
 
 四块数据：`uptime`（对 `https://lyjw.me/api/version` 的在线探测，配置见 [仓库外事实](../../docs/ops-facts.md)）、`heartbeat`（本 Worker cron 的
-心跳监控 `api-minute-cron`，只算 production；cron 每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/sentry.ts`，站点卡片上的文案也读它）分钟一轮，每轮都报到，监控的 crontab 与 wrangler 触发器同是 `src/cron-heartbeat.ts#CRON_SCHEDULE`；slug 里的 minute 不改，改了丢监控历史）、
+心跳监控 `api-minute-cron`，只算 production；cron 每 `CRON_HEARTBEAT_EVERY_MINUTES`（`shared/sentry.ts`，站点卡片上的文案也读它）分钟一轮，每轮都报到，监控的 crontab 是 `src/cron-heartbeat.ts#CRON_SCHEDULE`，与 `cronRoundDue` 判定的分钟一致（`src/cron-heartbeat.test.ts` 守着）；slug 里的 minute 不改，改了丢监控历史）、
 `errors`（production 报错：`site` 是站点项目，`worker` 是 core 与采集 Worker 两个项目合计）、
 `vitals`（站点 production 的 7 天 p75 与样本数，站点按 Lighthouse 曲线算出 Users 那行的分）。
 只放计数、比率和时刻，不放 issue 标题、报错内容和调用栈。

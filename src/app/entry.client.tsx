@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
 
+import { DOCUMENT_COMMIT_META } from "@/lib/app-version";
 import { commitSha } from "@/lib/build-info";
 import {
   SENTRY_DSN,
@@ -39,4 +40,26 @@ if (SENTRY_ENABLED) {
   else setTimeout(loadReplay, 3000);
 }
 
-hydrateRoot(document, <HydratedRouter />);
+// Sentry 项目开着入站过滤「React hydration errors」，消息里带 react.dev/errors 链接的报错会被整条丢掉；
+// 换成中性的消息，组件栈作 stack 让 Sentry 按 sourcemap 还原，#423 的真正原因在 cause 里另放进 contexts。
+function reportRecoverableError(error: unknown, componentStack: string | undefined) {
+  console.error(error);
+  const message = error instanceof Error ? error.message : String(error);
+  const code = /#(\d+)/.exec(message)?.[1] ?? "unknown";
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : null;
+  const report = new Error(`Hydration fell back to client rendering (${code})`);
+  report.name = "HydrationFallback";
+  if (componentStack) report.stack = `${report.name}: ${report.message}${componentStack}`;
+  const htmlCommit = document.querySelector(`meta[name="${DOCUMENT_COMMIT_META}"]`)?.getAttribute("content") ?? null;
+  Sentry.captureException(report, {
+    level: "warning",
+    tags: { "react.code": code, "html.current": String(htmlCommit === commitSha) },
+    contexts: {
+      react: { message, cause: cause ? `${cause.name}: ${cause.message}` : null, causeStack: cause?.stack ?? null, htmlCommit },
+    },
+  });
+}
+
+hydrateRoot(document, <HydratedRouter />, {
+  onRecoverableError: (error, errorInfo) => reportRecoverableError(error, errorInfo.componentStack),
+});

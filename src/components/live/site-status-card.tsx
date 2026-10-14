@@ -11,6 +11,7 @@ import { formatUptime } from "@/components/live/server-card";
 import { SentryMark } from "@/components/live/sentry-mark";
 import { UptimeStrip } from "@/components/live/uptime-strip";
 import { useStale } from "@/hooks/use-stale";
+import { dateTimeText } from "@/lib/date-time-text";
 import { fieldPerformanceScore } from "@/lib/field-score";
 import {
   AGENT_LIMITS_STALE_MS,
@@ -34,7 +35,9 @@ import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@
 import { cn } from "@/lib/utils";
 
 const number = new Intl.NumberFormat("en-US");
-const time = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+const timeDate = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, month: "short", day: "numeric" });
+const timeClock = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, hour: "2-digit", minute: "2-digit", hour12: false });
+const time = { format: (at: number | Date) => dateTimeText(at, timeDate, timeClock) };
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : ms < 10 ? `${Number(ms.toFixed(1))}ms` : `${Math.round(ms)}ms`;
 
 function CollectionWindow({ start, end }: { start?: number; end?: number }) {

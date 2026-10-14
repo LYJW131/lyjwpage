@@ -1,6 +1,7 @@
 import { BUILD_REPO, runIdFromBranch, type BuildRun } from "@shared/build-routine";
 import { hmacKey } from "../crypto";
 import type { Env } from "../runtime";
+import { buildCoordinator } from "./http";
 
 export async function verifyGithubWebhook(body: Uint8Array, signature: string | null, secret: string): Promise<boolean> {
   if (!signature || !/^sha256=[a-f0-9]{64}$/.test(signature)) return false;
@@ -29,7 +30,7 @@ export function outsideBuildBranches(event: string, payload: WebhookPayload): bo
 
 export async function applyGithubWebhook(env: Env, event: string, payload: WebhookPayload): Promise<void> {
   if (!env.BUILD_COORDINATOR || payload.repository?.full_name?.toLowerCase() !== BUILD_REPO.toLowerCase()) return;
-  const coordinator = env.BUILD_COORDINATOR.getByName("global");
+  const coordinator = buildCoordinator(env);
   let runId: string | null = null;
   let expectedHeadSha: string | undefined;
   const patch: Partial<BuildRun> = {};
