@@ -149,6 +149,7 @@
 
   --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-trophy-focus: trophy-focus 1s ease-in-out 1;
+  --animate-headline-in: headline-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @layer base {
@@ -652,6 +653,13 @@ html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"] {
   100% {
     opacity: 0;
     transform: scale(2.6);
+  }
+}
+
+@keyframes headline-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
 }
 

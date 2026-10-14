@@ -5,7 +5,7 @@ import { STATUS_VIEWS } from "@shared/status-views";
 
 import type { DigestHighlight, DigestTopic } from "@shared/digest";
 
-import { composeDigest, digestInputHash, isTagline, keepsHeadline, PRIMARY_CANDIDATES, taglineCandidates, taglineCriteria, TAGLINE_INSTRUCTIONS, type PickTagline } from "./digest/compose";
+import { composeDigest, digestInputHash, HEADLINE_POOL, headlinePool, isTagline, keepsHeadline, PRIMARY_CANDIDATES, taglineCandidates, taglineCriteria, TAGLINE_INSTRUCTIONS, type PickTagline } from "./digest/compose";
 import { digestFacts, digestHighlightOptions, digestMessage, type DigestViews } from "./digest/facts";
 import { DIGEST_SITUATIONS, digestScene, type DigestSituation } from "./digest/situation";
 import { DIGEST_TAGLINES } from "./digest/taglines";
@@ -212,6 +212,9 @@ test("compose reads the situation by rule, lets Clef pick one stored tagline, an
   assert.equal(first.status, "composed");
   if (first.status !== "composed") return;
   assert.equal(first.digest.headline, candidates[2]);
+  assert.equal(first.digest.headlines?.[0], candidates[2]);
+  assert.equal(first.digest.headlines?.length, HEADLINE_POOL);
+  assert.ok(first.digest.headlines?.every((line) => DIGEST_TAGLINES.agentsLead.includes(line)));
   assert.equal(first.digest.model, "@cf/cloudflare/clef");
   assert.deepEqual(first.digest.highlights.map((item) => item.topic), ["coding", "agents", "tokens"]);
   assert.deepEqual(first.digest.highlights[0], { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" });
@@ -334,6 +337,17 @@ test("the tagline library covers every situation with enough well-formed, distin
   for (const [situation, lines] of Object.entries(DIGEST_TAGLINES)) assert.ok(lines.length >= PRIMARY_CANDIDATES * 2, situation);
   assert.deepEqual(all.filter((line) => !isTagline(line)), []);
   assert.equal(new Set(all).size, all.length);
+});
+
+test("the headline pool leads with the picked line and fills from the lead theme without repeats", () => {
+  const weekendLine = DIGEST_TAGLINES.weekend[0];
+  const pool = headlinePool(weekendLine, "gaming", LOCAL_DATE);
+  assert.equal(pool[0], weekendLine);
+  assert.equal(pool.length, HEADLINE_POOL);
+  assert.ok(pool.slice(1).every((line) => DIGEST_TAGLINES.gaming.includes(line)));
+  const own = headlinePool(taglineCandidates("gaming", [], LOCAL_DATE)[3], "gaming", LOCAL_DATE);
+  assert.equal(new Set(own).size, HEADLINE_POOL);
+  assert.deepEqual(headlinePool(own[0], "gaming", LOCAL_DATE), own);
 });
 
 test("candidates stay put through the day and rotate at midnight", () => {
