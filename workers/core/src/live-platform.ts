@@ -2,6 +2,7 @@ import type { LiveEvent } from "@shared/live-events";
 import { filterStatusTags } from "@shared/status-views";
 
 import { currentContext, requestStore } from "@core/runtime";
+import { esaHomeConfig, purgeEsaHome } from "./esa-home-purge";
 import type { LivePushRoom } from "./origin-worker";
 import type { Env } from "./runtime";
 
@@ -34,8 +35,21 @@ export async function expireStatusTags(tags: readonly string[]): Promise<void> {
     console.log("[revalidate]", valid.join(","));
   } catch (error) {
     console.error("[revalidate]", error instanceof Error ? error.message : String(error));
+    return;
   } finally {
     if (timer) clearTimeout(timer);
+  }
+  await purgeEsaHomeAfterSite();
+}
+
+// lyjw131.com 的首页由 ESA 按源站头缓存，site 的标签失效清不到它；必须在 site 清完之后刷，否则 ESA 回源又拿到旧版面。
+async function purgeEsaHomeAfterSite(): Promise<void> {
+  const config = esaHomeConfig(currentContext().env);
+  if (!config) return;
+  try {
+    console.log("[esa-purge]", await purgeEsaHome(config));
+  } catch (error) {
+    console.error("[esa-purge]", error instanceof Error ? error.message : String(error));
   }
 }
 

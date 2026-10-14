@@ -62,6 +62,7 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - name: Purge ESA Homepage Cache
+        # 站点 ID 与首页地址须与 workers/core/wrangler.toml 的 ESA_SITE_ID / ESA_HOME_URL 一致（core 在首页布局变化时也刷 ESA）。
         env:
           ESA_SITE_ID: "1113300533463584"
           ESA_CACHE_URL: "https://lyjw131.com/"
