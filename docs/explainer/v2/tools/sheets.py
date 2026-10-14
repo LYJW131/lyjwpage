@@ -85,11 +85,13 @@ def runs_of(idx, per):
 
 
 def prompt(d, film, frames, step, n, per, focus, brief):
+    # 帧目录头尾都没有能补的帧时，最后一张凑不满。
+    tail = f"，最后一张只有 {len(frames) % per} 格" if len(frames) % per else ""
     lang = "英文版，每秒抽 6 帧（格子标签是 24 fps 的帧号，相邻两格差 4）" if film["lang"] == "en" else "中文版，24 帧每秒逐帧"
     p = [
         "不要调用任何 mcp__hearthbot__ 工具（包括 update_status、reply），只用 Read 看图、Write 写报告。",
         f"先用 Read 打开 {brief}，那是你的完整任务说明，照它做。",
-        f"这一批是{lang}。要看的图：{d}/sheets.txt 里每行一个路径，共 {n} 张，每张拼 {per} 帧{'（上下两格）' if per == 2 else ''}。",
+        f"这一批是{lang}。要看的图：{d}/sheets.txt 里每行一个路径，共 {n} 张，每张拼 {per} 帧{'（上下两格）' if per == 2 else ''}{tail}。",
     ]
     segs, a = [], frames[0]
     for x, y in zip(frames, frames[1:]):
