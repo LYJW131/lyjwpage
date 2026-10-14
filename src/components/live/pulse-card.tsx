@@ -88,15 +88,17 @@ function Rect({ range, from, to, top, fill, opacity = 1 }: { range: Range; from:
 }
 
 // 编码泳道一天能有几百段，逐段一个 <rect> 会让首屏 HTML 与 DOM 膨胀，所以同色段并进一条 path。
-// 不足最小宽度的段，溢出部分应让给紧随其后的彩色段；按颜色分组绘制不是时间顺序，所以先按时间裁掉溢出。
+// 不足最小宽度的段，溢出部分应让给其后最近的彩色段；按颜色分组绘制不是时间顺序，所以先按时间裁掉溢出。
 function codingBars(range: Range, rows: { from: number; to: number; state: number }[]) {
   const merged = runs(rows);
-  return merged.map((row, index) => {
+  let limit = Infinity;
+  const bars = [];
+  for (const row of merged.toReversed()) {
     const left = x(range, row.from);
-    const next = merged[index + 1];
-    const limit = next && next.state ? x(range, next.from) : Infinity;
-    return { state: row.state, left, width: Math.max(0, Math.min(Math.max(0.2, x(range, row.to) - left), limit - left)) };
-  });
+    bars.push({ state: row.state, left, width: Math.max(0, Math.min(Math.max(0.2, x(range, row.to) - left), limit - left)) });
+    if (row.state) limit = left;
+  }
+  return bars;
 }
 
 function barPath(rows: { left: number; width: number }[], top: number): string {
