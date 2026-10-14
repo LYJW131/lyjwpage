@@ -1,9 +1,9 @@
 name = "collector"
 main = "src/index.ts"
+upload_source_maps = true
 compatibility_date = "2026-09-08"
 compatibility_flags = ["nodejs_compat", "nodejs_compat_populate_process_env"]
 workers_dev = false
-upload_source_maps = true
 
 [triggers]
 crons = ["* * * * *"]

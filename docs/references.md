@@ -28,7 +28,7 @@
 - **[pstack](https://github.com/cursor/plugins/tree/main/pstack)** 与 **[verification-skill-example](https://github.com/poteto/verification-skill-example)**（poteto）
   - 是什么：上面那套做法的 skill 实现，含协调者 playbook、纠错 skill `correct`、验证 skill 模板。
   - 取了什么：验证 skill = 共用 CLI + 功能地图（materialized memory），验证员不各自写一次性脚本；CLI 对 agent 友好：输出 JSON、报错写下一步、破坏性操作带 `--dry-run`。派活简报固定栏目、常驻指令原样贴入；写代码的不判自己的活，验证结论绑 head SHA；验证 skill 分 Launch / Doctor / Drive / Evidence / Cleanup 五节。
-  - 状态：部分采用。共用 CLI 与功能地图落在 [site-verify.mjs](../scripts/site-verify.mjs) 与 [feature-map.json](../.claude/skills/lyjwpage-verify/feature-map.json)，由 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md) 调用；合并后的构建与版本核对同样下沉成脚本 [deploy-check.mjs](../scripts/deploy-check.mjs)（访谈里「skill 只写流程、机械步骤进脚本」）；写代码的不判自己的活落在 lyjwpage-verify「3b」（大改逻辑的 PR 合并前派判定员，结论按 head SHA 记在 PR 评论里）；先复述再动手落在根 `AGENTS.md`「工作方式」与 `HUMAN.md`「7」。不采用简报九栏：项目的协作规则限定简报只带站主原话、记忆里的约束和分叉默认，常驻约束随记忆贴入已由项目记忆 handoff-carry-user-constraints 覆盖。
+  - 状态：部分采用。共用 CLI 与功能地图落在 [site-verify.mjs](../scripts/site-verify.mjs) 与 [feature-map.json](../.claude/skills/lyjwpage-verify/feature-map.json)，由 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md) 调用；合并后的构建与版本核对同样下沉成脚本 [deploy-check.mjs](../scripts/deploy-check.mjs)（访谈里「skill 只写流程、机械步骤进脚本」）；写代码的不判自己的活落在 lyjwpage-verify「3b」（大改逻辑的 PR 合并前派判定员，结论按 head SHA 记在 PR 评论里）；pstack 的验证账本（`ledger.tsv`：按 PR 加 head SHA 记一行分级结论，补丁没变的沿用，见 poteto-mode 的 [orchestrate](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/orchestrate.md)「Verification」与 [shipping](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/shipping.md)）落成 lyjwpage-verify「回执」：验证员签分级回执、主线程发成 PR 评论，[verify-receipt.mjs](../scripts/verify-receipt.mjs) 按 head 与相对 main 的补丁（逐字节、只忽略行号；不用 `git patch-id`，它忽略空白）判回执还算不算数，主线程不重跑回执里的检查；不采用她的异族模型验证员（只能派 Claude）；先复述再动手落在根 `AGENTS.md`「工作方式」与 `HUMAN.md`「7」。不采用简报九栏：项目的协作规则限定简报只带站主原话、记忆里的约束和分叉默认，常驻约束随记忆贴入已由项目记忆 handoff-carry-user-constraints 覆盖。
 - **[Automating eval design and hillclimbing with Claude](https://claude.dev/blog/automating-eval-design-and-hillclimbing/)**（claude.dev）
   - 是什么：用 Claude 设计评测、按证据迭代提示词。
   - 取了什么：一次只改一处、改动可归因到根因，不把失败样例原文贴进提示词。
@@ -106,6 +106,7 @@
 - **[Workers Observability](https://developers.cloudflare.com/workers/observability/)** 与 Workers Issues、Web Analytics（Cloudflare 文档）
   - 是什么：Cloudflare 自带的报错分组、日志与 Web Vitals。
   - 取了什么：完全替代 Sentry：心跳与在线条自建在 D1 `health_buckets`，报错数取 Observability 遥测查询，Vitals 取 Web Analytics，浏览器报错经 `/relay` 进 site Worker 日志，告警出口用 Workers Issues。
+  - 已开：五个 Worker 的 Workers Issues（各自 wrangler 配置的 `observability.issues.enabled`；core 与 site 的分支预览关掉，见 [workers-builds](./workers-builds.md)「分支预览」），五个都开 `upload_source_maps` 让 Worker 调用栈对回源码。
   - 状态：采用（PR #198）。线上排查按根 [AGENTS.md](../AGENTS.md)「排查线上错误」；没有错误录像，浏览器栈要按 release 重新构建出 map 才能反解（见 [lyjwpage-diagnose](../.claude/skills/lyjwpage-diagnose/SKILL.md)「取证」）。
 - **[Durable Object 的 transfer 迁移](https://developers.cloudflare.com/durable-objects/reference/durable-object-class-migrations-legacy/#transfer-migration)**（Cloudflare 文档）
   - 是什么：把 DO 类从一个 Worker 转到另一个。
