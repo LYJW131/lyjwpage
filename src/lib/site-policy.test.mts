@@ -41,6 +41,10 @@ test("网关按路径分流：渲染、代理、资产、非法", () => {
   assert.deepEqual(classifyGatewayRequest("GET", "/icon"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("HEAD", "/pwa/icon-192.png"), { kind: "site-asset" });
   assert.deepEqual(classifyGatewayRequest("POST", "/opengraph-image"), { kind: "invalid" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/assets/root-C_I5jH7t.css"), { kind: "archived-asset" });
+  assert.deepEqual(classifyGatewayRequest("HEAD", "/assets/page-DVkeLdAJ.js"), { kind: "archived-asset" });
+  assert.deepEqual(classifyGatewayRequest("GET", "/assets/a/b.js"), { kind: "render" });
+  assert.deepEqual(classifyGatewayRequest("POST", "/assets/page-DVkeLdAJ.js"), { kind: "invalid" });
 });
 
 test("API 路径按数据归属分流：可滞后视图 site 自己读，Apple Music 交给 collector，其余交给 core 或 ai", () => {
