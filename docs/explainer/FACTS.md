@@ -401,25 +401,29 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 第 09 章「发布」用的部分，按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
-一次 `git push origin main` 同时触发几条流水线：GitHub Actions 的几个工作流、Cloudflare Workers Builds 的原生 Git 集成（站点和各 Worker 都走它，`docs/workers-builds.md` 开头）。它们各自决定跑不跑、各自构建，互不等待。片中举的那次推送改到 `src/components/`、`workers/core/`、`reporters/server-reporter/` 下的文件和 Hub 的子模块指针，是示意，不对应真实提交；画面上的短哈希也是示意。
+一次合进 main 同时触发几条流水线：GitHub Actions 的几个工作流、Cloudflare Workers Builds 的原生 Git 集成（站点和各 Worker 都走它，`docs/workers-builds.md` 开头）。它们各自决定跑不跑、各自构建，互不等待。
+
+片中讲的是 PR #308 的真实合并（§11「片中的例子：PR #308（按 GitHub 读回）」）：main 从 `a451a72` 到 `cf92f7c`，改到 `shared/site-deployments-types.ts`、`workers/collector/` 下的文件和 `workers/core/README.md`（`git diff --stat a451a72 cf92f7c`）。各条跑没跑照 `cf92f7c` 上的检查；散开那一镜五盏灯从下往上亮（collector、ingress、core、CI、CodeQL），就是这几项检查完成的先后。只有 site 那盏灯放在落地那一拍，先后不对应真实：它其实在 CodeQL 之前就完成了。
 
 ### 检查：CI 与 CodeQL（只检查、不发布）
 
 - CI：推 main 或 dev、开 PR 都跑，一个 job 依次跑 lint、全部工作区的 typecheck、站点单测、core / ai / ingress / collector 的单测、上报器单测、`scripts` 的测试、`pnpm docs:check`、`pnpm design:scale`、`pnpm rules:check`、`pnpm ui:copy`（`.github/workflows/ci.yml#check`）。
 - CI 不跑站点构建：门禁只有 lint、typecheck、单测、脚本测试、docs:check、design:scale、rules:check、ui:copy 八项（`scripts/ci-checks.sh` 的 `gates`），站点构建交给 Workers Builds 的 `site`（下一节）。同一分支连推几次，只留最后一次（同文件的 `concurrency`，`cancel-in-progress`）。
 - CodeQL：推 main 或 dev，外加每天两次定时；PR 只扫访客构建的那些，扫 `javascript-typescript` 和 `actions` 两类（`.github/workflows/codeql.yml#analyze`）。
+- 片中 CI 和 CodeQL 各画成一条亮灯的线，不展开各项。
 
 ### 站点：Workers Builds 的 site
 
 - 站点是 site Worker（根 `wrangler.jsonc`），由 Workers Builds 构建和部署，检查名 `Workers Builds: site`；构建命令 `pnpm build`，部署命令 `wrangler deploy`（`docs/workers-builds.md`「构建配置」）。`pnpm build` 跑 `scripts/build.mjs`：先生成讲解片的静态页和站点资产，再 `react-router build`。
-- 它也按监视路径决定构建不构建，`src/*` 在内（`docs/workers-builds.md`「构建监视路径」）；片中那次推送改到 `src/components/`，所以这次要构建。
+- 它也按监视路径决定构建不构建，`src/*`、`shared/*` 都在内（`docs/workers-builds.md`「构建监视路径」）；片中那次合并改到 `shared/site-deployments-types.ts`，所以这次要构建。
+- UPDATE 卡上的旧版本 `7d35661` 是之前最后一次 site 部署的提交：它之后 main 上的三个合并只改了 `.claude/memory/`、`docs/ops-facts.md` 和 `HUMAN.md`，都不在 site 的监视路径里，site 没有重建，开着的页面里焊进的仍是 `7d35661`（`git diff --stat 7d35661 a451a72`）。
 - `lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`（§6「大陆访问」）。
 - 构建不过就没有新部署，域名上仍是上一版：`/api/version` 由此刻接管生产域名的那次部署自己回答（`src/app/api/version/route.ts#loader`）。
 
 ### Worker：Cloudflare Workers Builds
 
 - core、ai、ingress、collector 各连一个 Workers Builds 项目，生产分支 main：构建命令是各自的 typecheck，部署命令是 `wrangler deploy`（`docs/workers-builds.md`「构建配置」）。
-- 各按自己的监视路径决定这次构建不构建（`docs/workers-builds.md`「构建监视路径」）：四个都盯根目录的依赖与配置文件，另各盯自己的 `workers/<名字>/*`；core、ingress、collector 还盯 `shared/*`（各自排除对话与构建那几份 `shared/` 文件），ai 只盯它点名的几份 `shared/` 文件；core 另排除 `shared/ingest/*`，所以改上报校验不会重新发布带 Durable Object 的 core，页面的 WebSocket 也不断。片中那次推送只改到 core 的目录，ai、ingress、collector 这次不构建，线上仍是上一版。
+- 各按自己的监视路径决定这次构建不构建（`docs/workers-builds.md`「构建监视路径」）：四个都盯根目录的依赖与配置文件，另各盯自己的 `workers/<名字>/*`；core、ingress、collector 还盯 `shared/*`（各自排除对话与构建那几份 `shared/` 文件），ai 只盯它点名的几份 `shared/` 文件；core 另排除 `shared/ingest/*`，所以改上报校验不会重新发布带 Durable Object 的 core，页面的 WebSocket 也不断。片中那次合并改到 `shared/`（core、ingress、collector 都盯）、`workers/collector/` 和 `workers/core/`，这三个都构建成功；`shared/site-deployments-types.ts` 不在 ai 点名的那几份 `shared/` 文件里，ai 这次不构建，线上仍是上一版。
 - Workers Builds 并行构建、不保证先后，Worker 之间的 RPC 契约只加不改，被调用方先上线（根 `AGENTS.md`「部署流程」；契约定义在 `shared/state-core.ts#StateCoreRpc` 与 `shared/collector.ts#COLLECTOR_JOBS`）。跨 Worker 的契约切换靠手动按序部署，片中不画。
 - 片中不画：core 的分支 Preview、ingress 与 collector 关掉预览构建的原因、D1 迁移要先手动 apply（都在 `docs/workers-builds.md`）。
 
@@ -428,6 +432,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - 容器上报器：`.github/workflows/build-reporters.yml#changes` 用 paths-filter 挑出改了的目录；`.github/workflows/build-reporters.yml#build` 只出 `linux/amd64`，合进 main 时打 `latest` 和 `sha-<短哈希>` 推到 GHCR，PR 只 build 不推；`.github/workflows/build-reporters.yml#deploy` 只管 misaka-jp 上的服务：用一把只能执行部署脚本的密钥 ssh 过去，点名 pull、只重建那一个，新容器跑稳后删掉旧镜像（`reporters/misaka-deploy.sh`），再验 `status=running restarts=0`，server-reporter 另验镜像里烧进的提交就是这一版。
 - dsm（emby-reporter）和 n100（playstation-reporter）在内网，Actions 够不着，按各自 README 手动更新（根 `AGENTS.md`「部署流程」）。dsm 那台现在还是现场 build（`docs/ops-facts.md`「机器与部署位置」），所以片中不说「机器只拉镜像」。
 - Mac Telemetry Hub：`reporters/mac-telemetry-hub` 是子模块，main 上的指针一动，macOS runner 就用 Developer ID 签名、`notarytool` 公证、`stapler` 钉上票据，发成本仓库的 Release `hub-build-<运行号>`（`.github/workflows/release-mac-telemetry-hub.yml#release`）；PR 上只走到公证、不发布；没配签名 secret 时整个 job 跳过。
+- 这两个工作流按 `paths` 决定跑不跑（`.github/workflows/build-reporters.yml`、`.github/workflows/release-mac-telemetry-hub.yml` 的 `on.push.paths`）。#308 没改到它们的路径，两个都没跑；片中各画成一条在闸门处划掉、写「没改到」的线。
 
 ### 部署成功之后：刷新 ESA、通知页面
 
@@ -500,7 +505,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 合并之后：怎么算已部署
 
 - 推送成功不等于部署完成。跑 `node scripts/deploy-check.mjs --sha <合并提交完整 SHA> --expect <这次碰到监视路径的 Worker>`：等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 只认最新那条），`--expect` 列的每个都要成功；site 重建了，再等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 回的 `commit` 跟上这个提交，被更新的提交覆盖也算过（`superseded`）；等待有上限（`--timeout`），输出 JSON，`pass` 为假时 `next` 写下一步（`scripts/deploy-check.mjs#run`、`scripts/deploy-check.mjs#classifyVersion`、根 `AGENTS.md`「部署流程」）。
-- 「已部署」以 `/api/version` 回的 commit 为准，不以构建检查绿了为准（`HUMAN.md`「6. 部署与「已部署」」）；之后在生产域名上复测受影响的行为，看完关掉页面（`.claude/skills/lyjwpage-verify/SKILL.md`「4. 合并后部署与生产核对」）。刷新 ESA、广播 `version` 见 §10。片中不画这一步。
+- 「已部署」以 `/api/version` 回的 commit 为准，不以构建检查绿了为准（`HUMAN.md`「6. 部署与「已部署」」）；之后在生产域名上复测受影响的行为，看完关掉页面（`.claude/skills/lyjwpage-verify/SKILL.md`「4. 合并后部署与生产核对」）。刷新 ESA、广播 `version` 见 §10。第 09 章落地那段，拿放大镜的小 Clawd 客串的就是这一步：两个域名的 `/api/version` 先后答出 `cf92f7c`，它各跳一下（`scripts/deploy-check.mjs#run`）。
 
 ### 片中的例子：PR #308（按 GitHub 读回）
 

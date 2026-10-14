@@ -7,7 +7,7 @@
 - **节拍**：108 BPM，4/4，一小节 20/9 秒（约 2.22 秒）。小节从 0 数，章内写「小节:拍」，拍也从 0 数：5:2 是第 5 小节的第三拍；表里「2–5」指第 2 小节开头到第 5 小节开头。
 - **主角**：Mac 上的一次换歌（`mac · appleMusic`）。片子跟着这封信封，从 Mac 一路走到访客屏幕上那张「正在听」卡片翻面。
 - **旁白**：每句两行，逐字亮起，排在图版里，不是字幕，也不是 Clawd 的气泡。按 60 px、`maxW` 1040 排：中文每行不超过 17 字，英文每行不超过 36 个字符（Geist 60 px 平均约 28 px 一个字符），再长会被缩到 56 px 以下。改旁白先改这里，再改章节文件。
-- **Clawd**：片子的脸，每章都有戏，说的话放在气泡里，不算旁白：开场的终端和第 00 章主页上的客串、第 01 章结尾骑上信封、第 02 章骑着火花进门、第 03 章账房桌角、第 04 章拽印刷手柄、第 05 章戴耳机的报务员、第 06 章从地层冒出来、第 07 章 Opus 卡上戴安全帽的 Architect、第 08 章整章（一只 Clawd 就是一个 Claude）、CLAWD09、CLAWD10。
+- **Clawd**：片子的脸，每章都有戏，说的话放在气泡里，不算旁白：开场的终端和第 00 章主页上的客串、第 01 章结尾骑上信封、第 02 章骑着火花进门、第 03 章账房桌角、第 04 章拽印刷手柄、第 05 章戴耳机的报务员、第 06 章从地层冒出来、第 07 章 Opus 卡上戴安全帽的 Architect、第 08 章整章（一只 Clawd 就是一个 Claude）、第 09 章拿放大镜看两个域名换好的小 Clawd、CLAWD10。
 - **不上画面**：见 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)「事实」一节。编码用量只讲到「Mac、云端、容器里的 Cursor 各报原始事实，站点侧合并；Pulse 上有一条 token 处理量（5 分钟平均）」，不点存储键和模块名；不说「生成速度」，也不说它是此刻的精确值（FACTS §1「编码用量」）。
 
 ## 章节表
@@ -25,7 +25,7 @@
 | 06 | 心电图与地层 | 暗 | 12 | 111–123 | 4:06.7–4:33.3 | 镜头从地层升回地面，只剩心电图横线；硬切纸面，横线收成对话卡的输入框，笔尖成了光标 |
 | 07 | 对话 | 纸 | 16 | 123–139 | 4:33.3–5:08.9 | 落回 main 线，只剩提交圆点和 HEAD；硬切暗底，第 08 章首帧是同一条线 |
 | 08 | 一句话之后 | 暗 | 20 | 139–159 | 5:08.9–5:53.3 | 落回 main 线，Clawd 举牌「等 lyjw 验收」后跳出画面；硬切纸面，第 09 章首帧是同一条线 |
-HANDOFF09
+| 09 | 发布 | 纸 | 10 | 159–169 | 5:53.3–6:15.6 | 拉远看整张图版，落回主轴只剩屏幕 y 540 一根墨线；硬切暗底，这条线是第 10 章长图版的脊线 |
 HANDOFF10
 
 合计 183 小节，6 分 46.7 秒；配乐另有 2 秒尾音（`Score.tail`）。
@@ -284,31 +284,25 @@ HANDOFF10
 | `ch08.n7a` / `n7b` | 16.15–17.95 | 夜里也有 Claude 值班：／审代码、提炼做法、写晨报。 | Claudes work the night shift: / review code, distill skills, report. |
 | `ch08.sign`（牌子） | 18.5–19.6 | 等 lyjw 验收 | Waiting on lyjw |
 
-## 10 发布（16 小节）
+## 09 发布（10 小节）
 
-事实：FACTS §10。下表按 `v2/ch10.js` 和 `v2/music/ch10.js` 的现状写。画面标题「发布 / Release」，副标 `main → GitHub Actions · Workers Builds · GHCR`。纸面（接第 09 章的纸面）。一张流水线总图，一根主轴贯穿全章，就是屏幕 y 540 那条线：第 09 章收尾的 git main → site Worker 那条流水线 → 第 06 章的 lyjw.me 线。其余流水线从这次的提交（HEAD）散开，按平台分组：GitHub Actions 在主轴上方，Workers Builds 在下方；三张详图（A 检查、B Worker、C 上报器）排在总图下面，图号和总图右边的分组标记对应；落地时回到主轴，用第 06 章两条线路图的原样几何（整体平移，只画线和站，不讲缓存）。画面和配乐共用 `v2/ch10.js` 顶部的时间表 `AT`。那次推送改到的路径和画面上的短哈希都是示意（FACTS §10）。
+事实：FACTS §10，例子是 §11 里 PR #308 的真实合并。下表按 `v2/ch09.js` 和 `v2/music/ch09.js` 的现状写。画面标题「发布 / Release」，副标 `main → GitHub Actions · Workers Builds`。纸面（硬切，接第 08 章的暗底）。一张流水线总图，一根主轴贯穿全章，就是屏幕 y 540 那条线：第 08 章收尾的 main 线 → site Worker 那条流水线 → lyjw.me 线。其余流水线从这次的合并提交（HEAD）散开，按平台分组：GitHub Actions 在主轴上方，Workers Builds 在下方，各条在散开那一镜里自己跑完；落地时回到主轴，画源站、ESA 与两个域名，只画线和站，不讲缓存。画面和配乐共用 `v2/ch09.js` 顶部的时间表 `AT`。讲的是 main 从 `a451a72` 到 `cf92f7c` 那次合并：改到的路径、跑没跑、亮灯的先后都照 cf92f7c 上的检查（FACTS §10）；只有 site 那盏灯放在落地那一拍，先后不对应真实。
 
-交接：0:0 接第 09 章最后一帧，两帧相同：同一高度一条墨线（git 的 main），提交的圆点落在第 08 章那几处敲门尖峰的横坐标上，这次的提交在笔尖的位置；首帧只有线和圆点。16:0 镜头停在 `[MX + 1400, 540]`、缩放 1，画面上只剩主轴那一段（第 06 章 lyjw.me 线的 O → L）收成的一根 3 px 墨线，横穿屏幕 y 540；第 11 章从这一帧硬切暗底，同一高度的这条线成了它长图版的脊线（见第 11 章）。
+交接：0:0 接第 08 章最后一帧，硬切纸面、几何不变：屏幕 y 540 一条墨线，提交圆点在屏幕 x 50、250…1250，HEAD（`cf92f7c`）在 x 1350（`ch09.js` 的 `Y0`、`HEAD`、`COMMITS`，`ch08.js` 照抄）；首帧只有线和圆点。9.92 到位，镜头停在 `[MX + 1400, 540]`、缩放 1，画面上只剩主轴那一段收成的一根 3 px 墨线，横穿屏幕 y 540；第 10 章从这一帧硬切暗底，同一高度的这条线成了它长图版的脊线（见第 10 章）。
 
 | 小节 | 画面 | 配乐 |
 |---|---|---|
-| 0–1.5 | 接住第 09 章的 main 线与提交圆点；0.3 起标题；0.35 起左下一张「这次改到的路径」（四个目录）；0:1 起打字机敲出 `$ git push origin main`（一个十六分两个字），1:0 回车，下一行 `5939ef8..c47d2a1  main -> main`，HEAD 亮一圈、标出短哈希 | 0:0 一声低「咚」落地，空五度的铃垫着；打字声；1:0 纸滑出去（推上 GitHub） |
-| 1.5–3.5 | 1.45–1.9 拉远，标题、终端、改动卡退掉；1.5 起八条流水线从 HEAD 散开（GitHub Actions：Hub 发布、上报器镜像、CodeQL、CI；主轴：site Worker（闸门写 `src/components/…`）；Workers Builds：api、ingress、collector、ai），右边括线分组，图号 A、B、C 对应下面三张详图；2:0 起每条闸门一个十六分：放行的打勾，线上写放行的理由（改到的路径，或「每次推到 main」），ingress、collector、ai 划一道、写「没改到」，闸门后变虚线、灯是空的；放行的几条同时有火花往前走。旁白 `n1` | 1:2 分叉声；2:0 起闸门一条一声：放行的「叮」往上爬（A5 C6 D6 E6 F6 A6），没改到的三条各一声闷拨弦；律动进来 |
-| 3.5–5.5 | 甩到详图 A「检查」：CI 四项（lint · typecheck 全部工作区 · test 站点、Worker、上报器、脚本 · docs:check 文档与注释的漂移）每拍勾一项，5:0 亮灯；CodeQL 两项（javascript-typescript · actions 工作流本身）在后半拍勾，5:1 亮灯；注「另有每天两次定时扫描」「不跑站点构建：交给 Workers Builds」「同一分支连推几次，只留最后一次」。旁白 `n2` | 每勾一项一声叮；两声灯 |
-| 5.5–7.5 | 甩到详图 B「Worker」（Cloudflare Workers Builds）：四行，各写监视路径；api 那行另写 `− shared/ingest/*` 和「改上报校验不会重新发布 api：Durable Object 不重启」，放行后 typecheck（6:0）→ wrangler deploy（6:2）→ 7:0 亮灯、标 `api.homepage.lyjw.llc`；ai、ingress、collector「没改到：不构建，线上仍是上一版」，6:1、6:1.5、6:3 各闪一下；脚注「四个都另盯着根目录的依赖与配置」。旁白 `n3` | 6:0 叮，6:2 气动管，7:0 灯；6:1、6:1.5、6:3 闷拨弦 |
-| 7.5–10 | 甩到详图 C「上报器」：容器镜像一行（buildx `linux/amd64` → GHCR `latest · sha-c47d2a1` → ssh misaka-jp「受限密钥，只跑部署脚本」→ running `restarts=0`），8:0 起一拍一步，9:0 亮灯 misaka-jp；ssh 那一步往下一根虚线打叉，接 dsm、n100「内网两台：手动更新」；Mac Telemetry Hub 一行（子模块指针）：9:1 Developer ID 签名，公证排队，9:2.5 盖 notarized，9:3 发 Release `hub-build-<运行号>`。旁白 `n4` | 8:0 叮，8:1 气动管，8:2 钥匙，8:3 叮，9:0 灯；9:1 叮，公证时钟摆走，9:2.5 印章，9:3 灯 |
-| 10–12.5 | 甩回主轴，落在第 06 章两条线路图上：10:0 site Worker 那条的火花过 pnpm build、到源站，Production 亮；10:1 一根虚线 `check_run`（`Workers Builds: site` 成功）叫起 GitHub Actions 的单子；10:2 ESA 手上的首页划掉、盖 purge，10:3 新的一份从源站沿 lyjw131.com 线预热回来，第一项打勾；11:0、11:1 两个终点站先后打勾（两个域名的 `/api/version` 答出新版），11:2 第二项打勾；第三项「通知上报入口（ingress Worker）」，注「失败重试，最长 10 分钟」。旁白 `n5` | 10:0 落地一声 + 灯；10:1 叮，10:2 印章，10:3 气动管；11:0、11:1、11:2 三声叮 |
-| 12.5–15 | 12:0 第三项打勾，火花顺着线往右出画；12.25 镜头跟过去：12:2 上报入口放行（权限 `internal:site-deployed`），经 Service Binding 到 StateCore 的 `broadcastVersion()`，13:0 推送房间 LivePushRoom 广播 `version`（不带数据），橙环荡开扫过两个窗口；13:2 两个窗口各自问 `GET /api/version → c47d2a1`；14:0 前台 lyjw.me 纵向弹出 UPDATE 卡（`5939ef8 → c47d2a1`）；14:2 后台 lyjw131.com 的标签页自己刷新，从上往下换成新的一版；脚注「收不到通知也没关系：每 30 分钟、切回前台时各问一次」。旁白 `n6` | 12:0 钥匙，12:2 叮，12:3 吸一口气；13:0 广播，第二支铃唱信封主题（高八度），拨弦低八度跟着；14:0 翻面一记；14:2 纸滑 |
-| 15–16 | 15:0 拉远看整张图纸（PLATE 10 · RELEASE，灯都亮着，开场的标题、终端、改动卡回来）；15.5 起落回主轴，别的一起退掉，主轴收成一根细墨线；最后一帧只剩屏幕 y 540 那条线 | 15:0 呼啸，15:3 吸一口气；收在 Ebmaj7s11 → A9sus4，交给第 11 章 0:0 的 Dm9 |
+| 0–1.45 | 接住第 08 章的 main 线与提交圆点；0.25 起逐字敲出 `PR #308 → main`；左下一张「这次改到的路径」（`shared/site-deployments-types.ts`、`workers/collector/…`、`workers/core/README.md`）；1:0 HEAD 跳一下、亮一圈，下一行 `a451a72..cf92f7c  main -> main`，HEAD 下面标 `cf92f7c` | 0:0 一声低「咚」落地，空五度的铃垫着；一个字一声打字机；1:0 HEAD 一声小跳 |
+| 1.45–4 | 拉远，标题和改动卡退掉；1.5 起九条流水线从 HEAD 散开（GitHub Actions：Hub 发布、上报器镜像、CodeQL、CI；主轴：site Worker；Workers Builds：core、ingress、collector、ai），右边括线分组；2:0 起每条闸门一个十六分：放行的打勾，线上写放行的理由（`shared/…`、`workers/collector/…`，或「每次推到 main」），Hub 发布、上报器镜像、ai 划一道、写「没改到」，闸门后变虚线、灯是空的；放行的几条有火花往前走，3:0 起五盏灯从下往上亮（collector、ingress、core、CI、CodeQL），就是 cf92f7c 上这几项检查完成的先后；site 的火花越走越快，3:3 甩镜头，领着镜头落到源站。旁白 `n1` | 1:2 分叉声；2:0 起闸门一条一声：放行的「叮」往上爬（A5 B5 D6 E6 F6 A6），没改到的三条各一声闷拨弦；律动进来；3:0–3:2 五声灯；3:3 一口风 |
+| 4–6 | 落地：4:0 site Worker 那条的火花过 pnpm build、到源站，Production 亮；4:1 一根虚线 `check_run`（`Workers Builds: site` 成功）叫起 GitHub Actions 的单子；4:2 ESA 手上的首页划掉、盖 purge，4:3 新的一份从源站沿 lyjw131.com 线预热回来，第一项打勾；5:0、5:1 两个终点站先后打勾（两个域名的 `/api/version` 答出 `cf92f7c`），5:2 第二项打勾；第三项「通知上报入口（ingress Worker）」，注「失败重试，最长 10 分钟」。4.69 一只拿放大镜的小 Clawd 从右边跳进来，停在 lyjw.me 站左边看，5:0 跳到 lyjw131.com 线上，5:1 原地跳一下，5.56 从右边跳出画。旁白 `n5` | 4:0 落地一声 + 灯；4:1 叮，4:2 印章，4:3 气动管；5:0、5:1、5:2 三声叮；Clawd 四跳各一声小跳（4:2.75、5:0、5:1、5:2.25） |
+| 6–9 | 6:0 第三项打勾，火花顺着线往右出画；镜头跟过去：6:2 上报入口放行（权限 `internal:site-deployed`），经 Service Binding 到 StateCore 的 `broadcastVersion()`，7:0 推送房间 LivePushRoom 广播 `version`（不带数据），橙环荡开扫过两个窗口；7:2 两个窗口各自问 `GET /api/version → cf92f7c`；8:0 前台 lyjw.me 纵向弹出 UPDATE 卡（`7d35661 → cf92f7c`）；8:2 后台 lyjw131.com 的标签页自己刷新，从上往下换成新的一版；脚注「收不到通知也没关系：每 30 分钟、切回前台时各问一次」。旁白 `n6` | 6:0 钥匙，6:2 叮，6:3 吸一口气；7:0 广播，第二支铃唱信封主题（高八度），拨弦低八度跟着；8:0 翻面一记；8:2 纸滑 |
+| 9–10 | 9:0 拉远看整张图纸（PLATE 09 · RELEASE，灯都亮着，开场的标题、改动卡回来）；9.5 起落回主轴，别的一起退掉，主轴收成一根细墨线；最后一帧只剩屏幕 y 540 那条线 | 9:0 呼啸，9:3 吸一口气；收在 Ebmaj7s11 → A9sus4，交给第 10 章 0:0 的 Dm9 |
 
 | 键 | 小节 | 中文 | English |
 |---|---|---|---|
-| `ch10.n1a` / `n1b` | 1.95–3.3 | 推到 main，几条流水线同时触发；／设了监视路径的，没改到就不跑。 | A push to main fans out at once; / watch paths decide who sits out. |
-| `ch10.n2a` / `n2b` | 3.6–5.25 | CI 和 CodeQL 只检查、不发布；／站点构建留给 Workers Builds。 | CI and CodeQL check but never ship; / the site build is left to Workers Builds. |
-| `ch10.n3a` / `n3b` | 5.6–7.5 | Worker 各自构建、互不等待：／契约只加不改，新接口先发被调用方。 | Each Worker builds on its own; / APIs only grow; ship the callee first. |
-| `ch10.n4a` / `n4b` | 7.85–9.75 | 上报器的镜像推到 GHCR；／Mac 的 Hub 签名、公证后发 Release。 | Reporter images go to GHCR; / the Hub is notarized, then released. |
-| `ch10.n5a` / `n5b` | 10.1–12.25 | 部署成功才刷新 ESA 首页；／先等两个域名换好，再通知页面。 | ESA is purged only after the deploy; / pages hear after both are polled. |
-| `ch10.n6a` / `n6b` | 12.6–14.95 | 页面收到 version，自己去问版本：／前台弹出提示，后台的旧页自己刷新。 | Pages hear “version” and re-check: / visible: a prompt; hidden: a reload. |
+| `ch09.n1a` / `n1b` | 1.95–3.65 | 合进 main，几条流水线同时触发；／设了监视路径的，没改到就不跑。 | A merge to main fans out at once; / watch paths decide who sits out. |
+| `ch09.n5a` / `n5b` | 4.1–6.25 | 部署成功才刷新 ESA 首页；／先等两个域名换好，再通知页面。 | ESA is purged only after the deploy; / pages hear after both are polled. |
+| `ch09.n6a` / `n6b` | 6.6–8.95 | 页面收到 version，自己去问版本：／前台弹出提示，后台的旧页自己刷新。 | Pages hear “version” and re-check: / visible: a prompt; hidden: a reload. |
 
 ## 11 一首歌的旅程（14 小节）
 
