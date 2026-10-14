@@ -152,3 +152,18 @@ test("scripts/ 新增 .mjs 被拦，基线里已迁走的条目要删，其余�
   assert.match(issues[2].message, /scripts\/gone\.mjs/);
   assert.equal(checkScriptsMjs(["scripts/old.mjs", "scripts/gone.mjs"], baseline).length, 0);
 });
+
+test("JSDoc 块注释被拦，行注释、普通块注释与字符串里的 /** 放行", () => {
+  const reviewed = "#!/usr/bin/env node\n/**\n * 三份存量基线只许比目标分支少。\n */\nimport { readFileSync } from \"node:fs\";";
+  assert.deepEqual(rules("scripts/baseline-growth-check.ts", reviewed), ["jsdoc-internal@2"]);
+  assert.deepEqual(rules("src/lib/x.ts", "const a = 1;\n/** 说明 */\nexport const b = 2;"), ["jsdoc-internal@2"]);
+  assert.equal(rules("src/lib/x.ts", '// 文件头\n/* 普通块注释 */\nconst s = "/** 字符串里的不算 */";\nconst e = 1; /**/').length, 0);
+  assert.equal(rules("docs/x.md", "/** markdown 不查 */").length, 0);
+  assert.equal(rules("src/lib/x.ts", "const pattern = /[/**]/;\nconst q = /\"/; const t = `/** 模板文本 */`;").length, 0);
+  assert.deepEqual(rules("src/lib/x.ts", "const v = 1;\nconst r = `${/** 插值里的 */ v}`;"), ["jsdoc-internal@2"]);
+  assert.deepEqual(rules("src/lib/x.ts", "const q = /\"/;\n/** 正则后面的 */\nexport const b = 2;"), ["jsdoc-internal@2"]);
+  assert.deepEqual(rules("src/components/x.tsx", "export const A = () => <p>it's {/** JSX 里的 */ 1}</p>;"), ["jsdoc-internal@1"]);
+  assert.equal(rules("src/components/x.tsx", "export const A = () => <p>/** JSX 文本 */</p>;").length, 0);
+  assert.deepEqual(rules("src/lib/x.ts", "const x = 1;\n/** 文件末尾 */"), ["jsdoc-internal@2"]);
+  assert.deepEqual(rules("src/lib/x.ts", "/** 声明前 */\nexport function f() { return 1; }"), ["jsdoc-internal@1"]);
+});
