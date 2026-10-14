@@ -15,6 +15,7 @@
 - **项目聊天**：你发需求的地方。这里只有一个 Claude 接话，它把每句话派到线程、答项目层面的问题；线程里有决策卡开着时，它会转贴到项目聊天让你直接点。进度不另维护待办列表，你直接看线程列表和各线程的状态行。
 - **线程**：一件事一个线程，线程里的 Claude 从头跟到尾。它只在有结果、卡住或要你决定时才回复，平时只刷状态行。
 - **你电脑上的会话**（Remote Control）：凡是要用你 Mac 的事，凭据、ssh 到机器、`gh`、你的浏览器登录态，都在这里做。它用完会歇着；线程被标成已解决不等于它离线，随便回一句就能唤醒。Claude 怎么给它派活、被自动模式拦下时要你做什么，见 `.claude/skills/lyjwpage-mac-session/SKILL.md`。
+- **你 Mac 上的 Devin CLI**（模型 SWE-2Max）：能拆开并行的实现活，Claude 经你电脑上的会话派给它，一件事一个 git worktree 同时跑；跑完由云端 Claude 审 diff、重跑检查、开 PR，Devin 不直接合任何东西。派法和坑记在项目记忆（镜像 [`.claude/memory/MEMORY.md`](./.claude/memory/MEMORY.md)）。
 - 这些 Claude 共享一份项目记忆：你定的规矩、做过的决定进去一次，所有线程都遵守。
 
 ## 2. 怎么说一句话最快
@@ -74,13 +75,14 @@
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`。PR 开出来时给你一次链接，CI 绿、评审处理完后再说一次；中间的合 main、修 CI、回评审不打扰你。
 - 合并前的门槛，缺一不可：
   1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）；CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
-  2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex、Cursor Bugbot）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Bugbot 额度用完没跑成时当它不存在，不等也不提。
+  2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Cursor Bugbot 你关掉了，不等也不提。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。
   5. 要等机器评审的那类 PR，合并前再派一个没写这段代码的 agent 判做没做完，结论按 head SHA 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
   6. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
 - 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式是 merge commit；分支落后时把 main 合进来，不 rebase。
-- 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。
+- 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。提交以你的身份、用你的钥签名，Claude 只出现在 Co-Authored-By 里；会话自带的钩子把这种提交报成 Unverified、让改成 Claude 的邮箱，是误报，不照做（见 AGENTS.md「[禁区](./AGENTS.md#禁区)」）。
+- 做完上线的线程不标成已解决：它留在你的「等你」列表里等你验收，你回一句或说「关」才收起。
 
 ## 6. 部署与「已部署」
 
@@ -88,7 +90,8 @@
 - 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。
 - 上报器哪些合进 main 后自动换镜像、哪些手动，见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」；手动的那几个 Claude 会派你电脑上的会话去做。
 - 每次汇报都分清四层：本地改了 / 测试过了 / 已部署 / 在生产上验证过了。
-- 跑检查、开浏览器截图、等部署和核对生产这些验证活，Claude 交给更便宜的 Haiku 验证员做，自己只定验什么、看结果，至少抽看一张截图再汇报（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
+- 跑检查、开浏览器截图、等部署和核对生产这些验证活，Claude 交给更便宜的 Haiku 验证员做，自己只定验什么、看结果。验证员最后签一张分级回执（按提交 SHA 记验到了哪一档：真页面、单测、只过类型），Claude 把它原样贴成 PR 评论，合并前用 `scripts/verify-receipt.mjs` 核对它还盖得住当前提交；Claude 不重跑回执里验过的，只抽查一条证据（看一张截图或核一个数）再汇报（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
+- 所有等待（CI、机器评审、部署、后台循环）都有上限，到点记失败、附上最后看到的状态，接着做不依赖它的事，不会无声卡住（见 `lyjwpage-verify`「等待要有上限」）。
 
 ## 7. Claude 怎么向你汇报
 
@@ -98,6 +101,7 @@
 - 超过十几行的东西给文件、页面或 Artifact，不刷屏。
 - 说错了改口用删除线加 [Edit: …]，不悄悄覆盖。
 - 站点的视觉与交互规范在 [DESIGN.md](./DESIGN.md)：间距、字号、颜色、卡片结构都按它来；觉得哪里不舒服，指出来，Claude 改规范或改卡片。
+- 细微的 UI 改动（间距、对齐、大小、颜色）给前后叠在一起的对比图，或带量尺参考线和 px 标注的并排图；整块重做的不用。
 - UI 改动第一次交付附桌面和 375px 两张图；云端线程里你看不到开发服务器，每一轮都附图；你在看开发服务器时，改完自测但不再截图（见 AGENTS.md「[项目入口与验证](./AGENTS.md#项目入口与验证)」）。
 - 每条结论都带证据：链接、文件与符号、命令输出，或者明说是推断。
 - 你的要求有不止一种读法时，第一条回复先用一两句复述 Claude 理解的目标，同时接着做；读偏了回一句就能纠正。
@@ -108,6 +112,8 @@
 - 每天一次的提炼 skill 与偏差复盘定时任务：从上次书签起读各线程，把反复出现的流程和你反复纠正的做法写成或改进 `.claude/skills/` 下的 skill；再对照每件做完的事你第一次怎么说、最后交付了什么，找出弯路，改 Claude 的默认做法（`AGENTS.md`「工作方式」、`HUMAN.md`、项目记忆）或让它在该问的地方早点问。开 `docs(skills):` 小 PR，CI 绿就合；动禁区、合并门槛或放松审批的改动只提议、等你一句话。磨合期里它每跑一次都在自己的线程汇报并问你反应，回「有用 / 没用 / 写偏了」或只回编号都行，它据此改 skill 和它自己；说「磨合结束」就不再每次汇报。流程见 `.claude/skills/lyjwpage-skill-mining/SKILL.md`。
 - 每天 08:41（上海时间）的 Anthropic 官方动态定时任务：按书签拉 Anthropic 官方博客、文档、release notes、Claude Code 与 SDK 更新日志，几个官方账号、Anthropic 工程师和前沿作者（如 poteto、Matt Pocock）的 X，以及 Simon Willison、Latent Space、Cloudflare changelog、Hacker News 热帖的新内容，逐条判断能否吸收进本站，写进共享目录 `anthropic-updates/<日期>.md`，9:00 晨报读它转告你。它自己不发言、不开 PR；想吸收哪条，晨报后说一句，另开线程按上面的合并门槛做。流程见 `.claude/skills/lyjwpage-anthropic-updates/SKILL.md`。
 - 每天 4 次（上海时间 01:53、07:53、13:53、19:53）的 collector 盯防定时任务：一个只盯采集 Worker 的 Claude，读站点公开状态端点和 collector 的 Cloudflare 日志，找时间戳在走、内容却不对的细微异常（部分成功沿用旧值、数据冻住、任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、两次复现后归成批，写进共享目录 `superfan-collector/<日期>.md` 供晨报读取；只读不修，复现过的批次由你在晨报后决定要不要开线程修，新出现的要紧异常才在「Anthropic 官方动态日更 + collector 盯防」线程里说一声。流程见 `.claude/skills/lyjwpage-collector-superfan/SKILL.md`。
+- 每天 03:15（上海时间）的记忆镜像同步定时任务：用 `pnpm memory:mirror` 把项目记忆同步进仓库的 `.claude/memory/`，有变化就开 `docs(memory):` PR，CI 绿就合，没变化不出声。
+- 每天 9:00（上海时间）项目聊天的 Claude 发晨报，读上面 Anthropic 动态和 collector 盯防写的报告，把要你决定的列出来；之后每小时原地更新那一条，直到你开口。
 - 所有自动化都遵守：按游标不按时间窗；读不到就报失败，不当作没事；动手前再核一次线上状态；写操作确认成功才记账；最小权限和花费上限。
 - 想加、改、停一个定时任务，在项目聊天说一句就行。
 
