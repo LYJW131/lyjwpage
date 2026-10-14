@@ -11,4 +11,8 @@ Created 2026-10-12 at lyjw's request. Routine `trig_01C9Jj2Ax3WUm4XxxEke67SY` ("
 
 **Authorization:** owner explicitly allowed auto-merge of the routine's own `chore(review):` PRs after all checks (check, claude-review, CodeQL, Workers Builds) are green and blocking review findings fixed.
 
+**Merge gate (prompt step 9, synced to HUMAN.md 2026-10-14):** bot reviews only for real logic changes; Codex auto-reviews every push, max 3 rounds, no `@codex review`; Bugbot out of quota is ignored; all review threads resolved; UI-visible changes need the owner's OK; merge with `pnpm merge-message` output ([[merge-commit-format]], [[merge-requires-bot-review-pass]]).
+
+**Gardener (step 6b, added 2026-10-14 from the poteto list, owner OK'd):** each run looks for bad patterns being copied (2+ places repo-wide) and spot-checks up to 2 merged logic PRs; findings go as comments into buffer issue #280 and are only logged Tuesday to Sunday. On Mondays (Shanghai) it batch-processes #280: add an eslint / rules-check guard proven against a real old occurrence, add a row to AGENTS.md「规则 → 由什么强制」, clean up occurrences, reply「已处理：#PR」. Run record gets a「园丁」line.
+
 **How to apply:** to change the routine, use update_trigger on that id; to see history, read issue #185. Practices it follows: [[agent-automation-practices]].
