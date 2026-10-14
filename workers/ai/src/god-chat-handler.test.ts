@@ -629,6 +629,47 @@ test("动态过滤搜索与客户端工具同轮时，下一轮（含收尾轮�
   }
 });
 
+function scriptedStream(model: string, blocks: Record<string, unknown>[], stop: string): Response {
+  const events: Record<string, unknown>[] = [
+    { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
+    ...blocks.flatMap((block, index): Record<string, unknown>[] => block.type === "text"
+      ? [{ type: "content_block_start", index, content_block: { type: "text", text: "", citations: [] } }, { type: "content_block_delta", index, delta: { type: "text_delta", text: block.text } }, { type: "content_block_stop", index }]
+      : [{ type: "content_block_start", index, content_block: { ...block, input: {} } }, { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input) } }, { type: "content_block_stop", index }]),
+    { type: "message_delta", delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: 10 } },
+    { type: "message_stop" },
+  ];
+  return new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+test("先写完答案再调 show_card、下一轮空收尾时不提示步数用完", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const { env, requests } = designEnv({
+    reply: (body) => requests.length === 1
+      ? scriptedStream(body.model, [{ type: "text", text: "LYJW is listening to music." }, { type: "tool_use", id: "tool_card", name: "show_card", input: { card: "nowListening" } }], "tool_use")
+      : scriptedStream(body.model, [], "end_turn"),
+  });
+  const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
+  assert.equal(requests.length, 2);
+  assert.ok(events.some((event) => event.type === "card" && event.card === "nowListening"));
+  assert.ok(events.every((event) => event.type !== "text" || !event.text.includes("ran out of steps")));
+});
+
+test("中文与日文提问时点名回复语言，英文不加", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  for (const [content, expected] of [["LYJW 现在在忙什么？", "Chinese"], ["LYJWは今なにをしていますか？", "Japanese"], ["What is LYJW up to?", undefined]] as const) {
+    const { env, requests } = designEnv();
+    await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content }]), env, toolIO));
+    const notes = requests[0].messages.filter((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("The visitor's latest message is in"));
+    assert.deepEqual(notes.map((m) => (m.content as string).split(" ")[6]), expected ? [`${expected}.`] : []);
+  }
+});
+
 function upgradeEnv(sonnetFree: boolean) {
   const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
   const admitted: { tier: string; allowDowngrade?: boolean }[] = [];
