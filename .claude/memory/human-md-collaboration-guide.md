@@ -1,6 +1,6 @@
 ---
 name: human-md-collaboration-guide
-description: Root HUMAN.md is the owner-facing statement of how lyjw and Claude collaborate (asks, decisions, merge gate, deploy acceptance, ToDo, memory); merged as PR #208 on 2026-10-13
+description: Root HUMAN.md is the owner-facing statement of how lyjw and Claude collaborate (asks, decisions, merge gate, deploy acceptance, memory); merged as PR #208 on 2026-10-13
 metadata:
   type: project
 ---
