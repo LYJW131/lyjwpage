@@ -72,7 +72,8 @@ export function mergeBucketReport(
   const coverage = mergeCoverage([...(previous?.coverage ?? []), { from: report.from, to: report.to }]);
   const kept = retained(windows, coverage, receivedAt);
   const reporting = new Set(kept.windows.flatMap((window) => window.agents.map((row) => row.id)));
-  const others = (previous?.agents ?? []).filter((agent) => !declared.has(agent.id) && reporting.has(agent.id));
+  const others = (previous?.agents ?? []).filter((agent) => !declared.has(agent.id)
+    && (reporting.has(agent.id) || (agent.collectedAt ?? 0) > receivedAt - CODING_BUCKET_KEEP_MS));
   return {
     ...kept,
     agents: [...others.map((agent) => ({ ...agent })), ...report.agents.map((agent) => ({ ...agent, collectedAt: report.collectedAt }))],
