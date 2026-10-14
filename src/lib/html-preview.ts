@@ -38,7 +38,7 @@ function csp(origin: string): string {
     "script-src 'unsafe-inline'",
     "style-src 'unsafe-inline'",
     `img-src data: blob: ${images.join(" ")}`,
-    `font-src data: ${origin}/site-assets/`,
+    `font-src data: ${origin}/assets/`,
     "media-src data: blob:",
     "frame-src 'none'",
     "form-action 'none'",

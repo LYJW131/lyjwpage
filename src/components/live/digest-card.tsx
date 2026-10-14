@@ -35,6 +35,8 @@ const CENTER = SIZE / 2;
 const TRACK_WIDTH = 9;
 const TICK_OUTER = 5;
 const TICK_INNER = 12;
+const HAND_INNER = 36;
+const HAND_OUTER = CENTER - 4;
 
 function dayTurn(at: number, offsetSeconds: number) {
   return ((((at / 1000 + offsetSeconds) % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS) / DAY_SECONDS;
@@ -64,6 +66,13 @@ function clockLabel(now: number, timezone: string) {
   return format.format(new Date(now));
 }
 
+// 首屏 HTML 按快照时刻画表盘，缓存过的页面会早几分钟；水合要等脚本下载执行完，表盘先显示旧时刻再跳。
+// 紧跟表盘的内联脚本在首次绘制前按本机时钟改写文字和指针；水合时 React 认这份不一致（suppressHydrationWarning），挂载后再按此刻重画。
+// 取整与 coordinate、格式与 clockLabel 保持一致。
+function dialBootScript(timezone: string) {
+  return `(()=>{try{const s=document.currentScript.previousElementSibling,p={};for(const x of new Intl.DateTimeFormat("en-GB",{timeZone:${JSON.stringify(timezone).replace(/</g, "\\u003c")},hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(new Date()))p[x.type]=x.value;s.querySelector("[data-dial-clock]").textContent=p.hour+":"+p.minute;const a=(p.hour*3600+p.minute*60+ +p.second)/${DAY_SECONDS}*2*Math.PI,h=s.querySelector("[data-dial-hand]"),c=v=>String(Math.round(v*100)/100);h.setAttribute("x1",c(${CENTER}+${HAND_INNER}*Math.sin(a)));h.setAttribute("y1",c(${CENTER}-${HAND_INNER}*Math.cos(a)));h.setAttribute("x2",c(${CENTER}+${HAND_OUTER}*Math.sin(a)));h.setAttribute("y2",c(${CENTER}-${HAND_OUTER}*Math.cos(a)))}catch{}})()`;
+}
+
 function DayDial({
   tracks,
   window,
@@ -82,8 +91,8 @@ function DayDial({
   const nowTurn = dayTurn(now, offsetSeconds);
   const startTurn = window ? dayTurn(window.from, offsetSeconds) : 0;
   const binTurn = window ? (window.to - window.from) / 1000 / STRIP_BINS / DAY_SECONDS : 0;
-  const [handX0, handY0] = polar(36, nowTurn);
-  const [handX1, handY1] = polar(CENTER - 4, nowTurn);
+  const [handX0, handY0] = polar(HAND_INNER, nowTurn);
+  const [handX1, handY1] = polar(HAND_OUTER, nowTurn);
   return (
     <div className="clock-ui-host col-start-2 row-span-2 row-start-1 size-32 shrink-0 self-center max-[359px]:size-28 lg:size-40">
       <div className="clock-ui clock-ui--bordered">
@@ -110,10 +119,11 @@ function DayDial({
                 </g>
               );
             })}
-            <line x1={handX0} y1={handY0} x2={handX1} y2={handY1} stroke="var(--signal-red)" strokeWidth={1.5} strokeLinecap="round" />
-            <text x={CENTER} y={CENTER - 4} textAnchor="middle" dominantBaseline="central" fontSize="20" fontWeight="600" fill="var(--foreground)">{clockLabel(now, timezone)}</text>
+            <line data-dial-hand x1={handX0} y1={handY0} x2={handX1} y2={handY1} stroke="var(--signal-red)" strokeWidth={1.5} strokeLinecap="round" suppressHydrationWarning />
+            <text data-dial-clock x={CENTER} y={CENTER - 4} textAnchor="middle" dominantBaseline="central" fontSize="20" fontWeight="600" fill="var(--foreground)" suppressHydrationWarning>{clockLabel(now, timezone)}</text>
             <text x={CENTER} y={CENTER + 14} textAnchor="middle" dominantBaseline="central" fontSize="9" fill="var(--muted-foreground)">{zoneLabel}</text>
           </svg>
+          <script dangerouslySetInnerHTML={{ __html: dialBootScript(timezone) }} />
         </div>
       </div>
     </div>
