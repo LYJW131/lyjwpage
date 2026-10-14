@@ -37,7 +37,11 @@ export class GithubRequestError extends Error {
 export class GithubBuildApi {
   private token: string | undefined;
   private fetcher: typeof fetch;
-  constructor(token: string | undefined, fetcher: typeof fetch = fetch) { this.token = token; this.fetcher = fetcher; }
+  constructor(token: string | undefined, fetcher: typeof fetch = fetch) {
+    this.token = token;
+    // workerd 的全局 fetch 以别的对象作 this 调用会抛 Illegal invocation，存成方法前要包一层。
+    this.fetcher = (input, init) => fetcher(input, init);
+  }
   async request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
     const response = await this.fetcher(`${GITHUB_API}${path}`, {
       method, headers: { ...GITHUB_API_HEADERS, ...(this.token && { Authorization: `Bearer ${this.token}` }), ...(body !== undefined && { "Content-Type": "application/json" }) },
