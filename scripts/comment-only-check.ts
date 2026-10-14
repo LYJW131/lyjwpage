@@ -498,10 +498,11 @@ const LABELS: Record<Status, string> = {
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) {
-    // 文件头的块注释就是帮助文本
+    // 文件头的行注释就是帮助文本
     const source = readFileSync(fileURLToPath(import.meta.url), "utf8");
-    const start = source.indexOf("/**") + 3;
-    console.log(source.slice(start, source.indexOf("*/", start)).replace(/^ \* ?/gm, "").trim());
+    const header = source.split("\n").slice(1);
+    const end = header.findIndex((line) => !line.startsWith("//"));
+    console.log(header.slice(0, end < 0 ? header.length : end).map((line) => line.replace(/^\/\/ ?/, "")).join("\n").trim());
     return;
   }
   const repo = path.resolve(opts.repo ?? (git(process.cwd(), ["rev-parse", "--show-toplevel"]) ?? "").trim());
