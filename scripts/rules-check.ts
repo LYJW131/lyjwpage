@@ -15,6 +15,8 @@
  *   json-response-literal
  *                  Worker 与 shared/ 的 JSON 响应统一走 shared/http-origins.ts#jsonResponse，
  *                  不再手写 new Response(JSON.stringify(...))
+ *   scripts-mjs    scripts/ 新写的脚本用 .ts（Node 直接跑，进 typecheck）；现存 .mjs 记在
+ *                  scripts/mjs-baseline.json，迁走一个就从基线删一个，基线只减不增
  *
  * 退出码：有违例为 1。测试见 scripts/rules-check.test.ts。
  */
@@ -302,6 +304,24 @@ export function checkFile(file: string, text: string): Issue[] {
   return issues;
 }
 
+const SCRIPTS_MJS = /^scripts\/.+\.mjs$/;
+
+export function checkScriptsMjs(files: string[], baseline: string[]): Issue[] {
+  const listed = new Set(baseline);
+  const present = new Set(files.filter((file) => SCRIPTS_MJS.test(file)));
+  const added = [...present].filter((file) => !listed.has(file))
+    .map((file) => ({ file, line: 1, rule: "scripts-mjs", message: "scripts/ 新脚本用 .ts（Node 直接跑，import 写 .ts 后缀），不再新增 .mjs。" }));
+  const gone = [...listed].filter((file) => !present.has(file))
+    .map((file) => ({ file: "scripts/mjs-baseline.json", line: 1, rule: "scripts-mjs", message: `${file} 已不存在，从基线删掉。` }));
+  return [...added, ...gone];
+}
+
+function trackedFiles(root: string) {
+  return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8" })
+    .split("\0")
+    .filter((file) => file && existsSync(path.join(root, file)));
+}
+
 function trackedSources(root: string) {
   return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8" })
     .split("\0")
@@ -318,6 +338,8 @@ function main() {
   const issues: Issue[] = [];
   const files = trackedSources(root);
   for (const file of files) issues.push(...checkFile(file, readFileSync(path.join(root, file), "utf8")));
+  const baseline = JSON.parse(readFileSync(path.join(root, "scripts/mjs-baseline.json"), "utf8")) as string[];
+  issues.push(...checkScriptsMjs(trackedFiles(root), baseline));
   issues.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.rule.localeCompare(b.rule));
   if (issues.length === 0) {
     console.log(`rules:check 通过（${files.length} 个文件）`);
