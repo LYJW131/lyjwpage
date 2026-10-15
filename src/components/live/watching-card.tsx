@@ -56,7 +56,6 @@ function Tile({
   liveProgress,
   positionMs,
   durationMs,
-  eager,
 }: {
   item: WatchingItem;
   live: boolean;
@@ -64,7 +63,6 @@ function Tile({
   liveProgress: number | null;
   positionMs: number | null;
   durationMs: number | null;
-  eager?: boolean;
 }) {
   const progress = live && liveProgress != null ? liveProgress : item.progress;
 
@@ -99,8 +97,7 @@ function Tile({
             alt={item.title}
             fill
             sizes="216px"
-            loading={eager ? "eager" : "lazy"}
-            noPreload={eager}
+            loading="lazy"
             className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             unoptimized
           />
@@ -270,7 +267,6 @@ export function WatchingRow({
                   liveProgress={live ? (data.nowPlaying?.progress ?? null) : null}
                   positionMs={live ? (data.nowPlaying?.positionMs ?? null) : null}
                   durationMs={live ? (data.nowPlaying?.durationMs ?? null) : null}
-                  eager={index < 4}
                 />
               </motion.div>
             );
