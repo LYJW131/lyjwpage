@@ -50,7 +50,7 @@ flowchart LR
 2. **实现**：可逆的事自己定，有影响的假设说一句。站点 UI 先读 [`DESIGN.md`](../DESIGN.md)，按 [`lyjwpage-ui-design`](../.claude/skills/lyjwpage-ui-design/SKILL.md) 自查；bug 先复现再修，按 [`lyjwpage-diagnose`](../.claude/skills/lyjwpage-diagnose/SKILL.md)。
 3. **验证**：见下一节。
 4. **合并**：门槛分档，见 [`HUMAN.md`「5. PR 与合并」](../HUMAN.md#5-pr-与合并)。大改逻辑的 PR 处理完 Claude、Codex、Devin 的机器评审，并由一个没写这段代码的 agent 判做没做完；UI 变化等 lyjw 看图点头；文档、skill 和小改动 CI 绿就合。合并提交由 `pnpm merge-message` 生成，正文汇总各提交的 `Co-Authored-By`，站点「最近提交」靠它显示参与的 agent 与模型。
-5. **上线**：改动碰到 Worker 的监视路径时，合进 main 由 Workers Builds 自动部署，「已部署」以 `/api/version` 返回的提交为准，再从生产域名核对受影响的行为；只改文档的合并不触发构建，版本不变是正常的。
+5. **上线**：各 Worker 改动碰到自己的监视路径时，合进 main 由 Workers Builds 自动构建部署，看该 Worker 的构建检查，再从生产核对受影响的行为；站点以 `/api/version` 返回的提交为准。只改文档的合并不触发构建。上报器按各自 README 发布（镜像工作流或手动）。细则见 [`AGENTS.md`「部署流程」](../AGENTS.md#部署流程)。
 
 所有等待（CI、机器评审、部署）都带上限，到点记失败、接着做不依赖它的事。
 
