@@ -23,6 +23,7 @@
 
 # 项目入口与验证
 
+- lyjw 和 Claude 共用的词（晨报、盯防、泳道、可滞后视图等）查根 `GLOSSARY.md`。
 - 使用 `pnpm`；命令以各目录的 `package.json` 为准。源码入口查根 `README.md` 的「从哪里读源码」，子项目查各自的 `README.md` 与 `AGENTS.md`（嵌套的 `CLAUDE.md` 在进入该目录时才载入）。
 - 根 `package.json` 的 `typescript` 是 `@typescript/typescript6` 的别名，`tsc` 来自 `@typescript/native`（TypeScript 7 原生编译器）：typescript-eslint 与 `scripts/comment-only-check.test.ts` 要 6.0 的 JS API，TypeScript 7 没有。两项不要合并；Worker 与上报器目录只跑 `tsc`，直接依赖 `typescript` 7。
 - 主站开发入口是 `pnpm dev`，地址 `http://localhost:3211`，连的是生产 Worker。改后端、新增状态端点或新卡片时用 `pnpm dev:worker`（本地起整套 Worker 栈）加 `pnpm dev:local`；本地配了 `.dev.vars` 的 `UPSTREAM_API_URL` 后生产为主、本地补缺，但按端点整份兜底：新端点看本地，已有端点的新字段要用下面的注入看（见 `workers/core/README.md`「本地开发」）。要看此刻没发生的状态用 `pnpm dev:override <端点> <夹具>` 注入假数据，截图或要多张卡数据对得上时用 `pnpm dev:scene <场景>` 一次注入整份快照（夹具在 `workers/core/dev-fixtures/`，场景在其 `scenes/`；前提是 `.dev.vars` 里 `DEV_OVERRIDES=true`，收尾用 `--clear` / `--off`；用法见 `pnpm dev:override --help` 与 `workers/core/README.md`「本地开发」）。
