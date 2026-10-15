@@ -742,3 +742,33 @@ test("只用了检索 MCP 的回复也在签名 trace 里记搜索次数，流�
   assert.equal(seal?.type === "seal" && seal.trace?.searches, 1);
   assert.equal(events.filter((event) => event.type === "search").length, 1);
 });
+
+test("同一轮的多个搜索调用一起发出，结果按调用顺序回", async (t) => {
+  const original = globalThis.fetch;
+  let inFlight = 0;
+  let peak = 0;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (!url.includes("api.exa.ai")) return Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+    inFlight++;
+    peak = Math.max(peak, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    inFlight--;
+    return Response.json({ results: [{ url: "https://e.dev/page", title: "E", highlights: ["fact"] }] });
+  };
+  t.after(() => { globalThis.fetch = original; });
+  const { env, requests } = designEnv({
+    reply: (body) => requests.length === 1
+      ? scriptedStream(body.model, [
+        { type: "tool_use", id: "tool_a", name: "web_search", input: { query: "a", category: "web" } },
+        { type: "tool_use", id: "tool_b", name: "web_search", input: { query: "b", category: "news" } },
+      ], "tool_use")
+      : scriptedStream(body.model, [{ type: "text", text: "Done." }], "end_turn"),
+  });
+  env.EXA_API_KEY = "test-exa";
+  await parseEvents(await handleChat(chatRequest(), env, toolIO));
+  assert.equal(peak, 2);
+  const results = requests[1].messages.at(-1)?.content;
+  assert.ok(Array.isArray(results));
+  assert.deepEqual(results.map((block) => block.type === "tool_result" && block.tool_use_id), ["tool_a", "tool_b"]);
+});
