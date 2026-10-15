@@ -319,6 +319,7 @@ async function converse({
   // 兜底模型还能再用满一次 max_tokens；fallbacks: "default" 不能按跳设上限，要设就得自己列出并维护兜底型号链。
   let outputLeft = GOD_CHAT_TIER_INFO[tier].maxTokens;
   const shownSearches = new Set<string>();
+  const mcpCalls = new Set<string>();
   const showSearch = (id: string, query: string | undefined) => {
     if (shownSearches.has(id) || !query) return;
     shownSearches.add(id);
@@ -385,6 +386,7 @@ async function converse({
         const block = event.content_block;
         if (block.type === "fallback") fallbackModel = block.to.model;
         else if (block.type === "mcp_tool_use") {
+          mcpCalls.add(block.id);
           searchInputs.set(event.index, { id: block.id, server: block.server_name, tool: block.name, json: "" });
         }
       } else if (event.type === "content_block_delta") {
@@ -412,7 +414,10 @@ async function converse({
     const billed = billedOutputTokens(final.usage);
     outputLeft -= billed;
     for (const block of final.content) {
-      if (block.type === "mcp_tool_use") showSearch(block.id, docSearchQuery(block.server_name, block.name, block.input));
+      if (block.type === "mcp_tool_use") {
+        mcpCalls.add(block.id);
+        showSearch(block.id, docSearchQuery(block.server_name, block.name, block.input));
+      }
       if (block.type !== "text") continue;
       for (const citation of block.citations ?? []) {
         if (citation.type === "search_result_location" && /^https?:\/\//.test(citation.source) && !sources.has(citation.source)) {
@@ -587,7 +592,7 @@ async function converse({
     effort,
     views: [...ledger.views],
     docs: [...docKeys],
-    searches,
+    searches: searches + mcpCalls.size,
     fallback: Boolean(servedBy),
     cards: [...cards],
   });

@@ -726,3 +726,19 @@ test("Sonnet 没有空位时 request_upgrade 回错误，Haiku 自己答完", as
   assert.ok(requests[1].tools?.every((tool) => !("name" in tool) || tool.name !== "request_upgrade"));
   assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.tier), ["haiku"]);
 });
+
+test("只用了检索 MCP 的回复也在签名 trace 里记搜索次数，流式块与最终块不重复计", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const { env } = designEnv({
+    reply: (body) => scriptedStream(body.model, [
+      { type: "mcp_tool_use", id: "mcptoolu_1", name: "searchGitHub", server_name: "grep-app", input: { query: "setAlarm" } },
+      { type: "text", text: "Found it." },
+    ], "end_turn"),
+  });
+  const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
+  const seal = events.find((event) => event.type === "seal");
+  assert.equal(seal?.type === "seal" && seal.trace?.searches, 1);
+  assert.equal(events.filter((event) => event.type === "search").length, 1);
+});
