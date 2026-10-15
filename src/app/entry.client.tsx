@@ -25,7 +25,11 @@ function reportRecoverableError(error: unknown, componentStack: string | undefin
   });
 }
 
+let hydrated = false;
+
 function hydrate() {
+  if (hydrated) return;
+  hydrated = true;
   startTransition(() => {
     hydrateRoot(document, <HydratedRouter />, {
       onRecoverableError: (error, errorInfo) => reportRecoverableError(error, errorInfo.componentStack),
@@ -33,6 +37,9 @@ function hydrate() {
   });
 }
 
-// 先让浏览器画出服务端 HTML，再分片水合：同步水合是一整个长任务，慢机上会把首帧压到它跑完之后。后台标签页不跑 requestAnimationFrame，等它会让页面切回前台前一直不水合。
+// 先让浏览器画出服务端 HTML，再分片水合：同步水合是一整个长任务，慢机上会把首帧压到它跑完之后。后台标签页不跑 requestAnimationFrame，排队后切到后台也会卡住，所以转入后台就立刻水合。
 if (document.visibilityState === "hidden") hydrate();
-else requestAnimationFrame(() => setTimeout(hydrate, 0));
+else {
+  requestAnimationFrame(() => setTimeout(hydrate, 0));
+  document.addEventListener("visibilitychange", hydrate, { once: true });
+}
