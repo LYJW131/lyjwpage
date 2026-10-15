@@ -10,7 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # main 按提交分组：同组只留一个排队运行，按 ref 分组时连推三次会顶掉中间那个；main 上每个提交都要有结论，红了才查得到是哪个提交引入的。
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
