@@ -519,7 +519,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 | 时间 | 名称 | 做什么 |
 |---|---|---|
-| 01:53、07:53、13:53、19:53 | collector 盯防 | 只读：看站点公开状态端点与 collector 的 Workers Observability 日志，找告警漏掉的细微异常，顺带分诊别的 Worker 的新错误；写进项目的共享目录，不开 PR |
+| 01:53、07:53、13:53、19:53 | collector 盯防 | 线上只读：看站点公开状态端点与 collector 的 Workers Observability 日志，找告警漏掉的细微异常，顺带分诊别的 Worker 的新错误，两次复现了的开修复草稿 PR（每次最多一个，lyjw 关掉即否决）；写进项目的共享目录 |
 | 03:15 | 记忆镜像同步 | 跑 `pnpm memory:mirror`，有差异开 `docs(memory):` PR，CI 绿就合，没变化不出声 |
 | 04:00 | 每日代码审查 | 从上次游标起审 main 的改动，开 `chore(review):` PR，检查与机器评审处理完自己合 |
 | 04:53 | 提炼 skill 与偏差复盘 | 读各线程，把反复出现的做法写成或改进 skill，对照 lyjw 第一次怎么说和最后交付了什么找弯路；开 `docs(skills):` 小 PR，CI 绿就合 |
