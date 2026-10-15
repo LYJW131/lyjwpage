@@ -1,15 +1,15 @@
 ---
 name: lyjwpage-collector-superfan
-description: lyjwpage 的「collector 盯防」定时任务按它跑：一个专盯采集 Worker 的 Claude，读站点公开状态端点与 Workers Observability 日志，找告警漏掉的细微异常（部分成功沿用旧值、数据冻住、某个任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、复现后归成批，写进共享目录供晨报读取，新出现的要紧异常在本线程说一声；lyjw 问「collector 最近怎么样」时也用；线上报错的排查不归它，照根 `AGENTS.md`「排查线上错误」走。
+description: lyjwpage 的「collector 盯防」定时任务按它跑：一个专盯采集 Worker 的 Claude，读站点公开状态端点与 Workers Observability 日志，找告警漏掉的细微异常（部分成功沿用旧值、数据冻住、某个任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、复现后归成批并开修复草稿 PR，写进共享目录供晨报读取，新出现的要紧异常在本线程说一声；lyjw 问「collector 最近怎么样」时也用；线上报错的排查不归它，照根 `AGENTS.md`「排查线上错误」走。
 ---
 
 # collector 盯防（superfan）
 
 做法来自 Anthropic 的 [Creating in-house source control](https://www.anthropic.com/engineering/redesigning-source-control)：给一个组件配一个专职盯它的 Claude，像一个没别的事干、一直刷图表的资深工程师。core 的 `freshness-watch` 已经按阈值报「多久没更新」，这里要找的是它看不出来的：时间戳在走、内容却不对。
 
-只读，不修。发现问题写进报告；要修的由晨报转给 lyjw，另开线程按常规门槛做。只读站点自己的数据和 Cloudflare 的日志。
+只读线上，不写生产数据。发现问题写进报告；读站点自己的数据和 Cloudflare 日志之外，唯一的写操作是第 3c 步：两次复现了的错误批次直接开修复草稿 PR，lyjw 在 PR 上否决。其余要修的由晨报转给 lyjw，另开线程按常规门槛做。
 
-第 3b 步是外环：其他 Worker 的新错误也在这里分诊、复现，复现结果先留给 lyjw 否决，再由另开的线程修。做法来自 poteto 的 [Loops You Can Trust](https://x.com/poteto/status/2069824386283319343) 和她与 Matt Pocock 的访谈：相关的错误归成一批交给同一个线程，根因常在更上层。
+第 3b、3c 步是外环：其他 Worker 的新错误也在这里分诊、复现，复现了就开修复草稿 PR，lyjw 在 PR 上否决。目标是线上没有新错误，不是报完就结束，取自 Felix Rieseberg 的 [How to be more ambitious](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/)「Altitude」一节。做法来自 poteto 的 [Loops You Can Trust](https://x.com/poteto/status/2069824386283319343) 和她与 Matt Pocock 的访谈：相关的错误归成一批交给同一个线程，根因常在更上层。
 
 ## 状态与偏好
 
@@ -27,6 +27,7 @@ description: lyjwpage 的「collector 盯防」定时任务按它跑：一个专
 - [ ] 2 读站点端点
 - [ ] 3 读 collector 日志
 - [ ] 3b 其他 Worker 的新错误
+- [ ] 3c 复现了的批次开修复草稿 PR
 - [ ] 4 判断
 - [ ] 5 写报告、记账
 - [ ] 6 要紧的新异常在本线程说一声
@@ -64,7 +65,21 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 3. **复现**：能用一条只读命令复现的（`curl` 生产公开端点、`node scripts/site-verify.ts` 对 `https://lyjw.me/` 取证），跑两次，两次都打到同一个坏状态才算复现，记下命令和输出原文，`ledger` 记 `repro: confirmed`；只读命令复现不了的写「未复现」和原因，记 `repro: none`，不为复现去写生产数据。`repro: none` 的签名之后每次再出现都重试一次复现，复现了就按新批次报告。
 4. **成批**：几个新签名指向同一处源码、同一个上游或同一次部署（看 `$workers.scriptVersion`），合成一条 `ledger` 记录，列出各签名。修复建议按批写，不按签名写。
 
-一次运行只看签名，不改代码、不开线程；复现过的批次在报告里写成「建议另开一个线程修：<批次>，复现命令 …」，由 lyjw 在晨报后决定开不开（这就是否决窗口）。
+这一步只分诊和复现，不改代码；复现过的批次交给第 3c 步。
+
+### 3c. 复现了的批次开修复草稿 PR
+
+先看 `ledger` 里带 `pr` 的批次：PR 已合并的，等部署后从生产重跑复现命令，复现不了才标 `resolved`；PR 被关掉没合的，记 `muted`，理由写「lyjw 关了修复 PR」，不再开。
+
+本步加入前已确认、还开着的存量批次不补开 PR：第一次走到本步时在报告里逐条列出，写明「存量，未开修复 PR，要修回编号」，并在 `ledger` 里记 `prSkipped: legacy`，之后不再列。
+
+然后对本次新出现、`repro: confirmed`、还没有 `pr` 的批次，按 `.claude/skills/lyjwpage-diagnose/SKILL.md` 修：
+
+1. 把复现命令变成一条先失败的回归测试，再改代码，测试转绿；跑改动波及处的本地门禁（根 `AGENTS.md`「项目入口与验证」）。
+2. 从 `origin/main` 开分支 `claude/superfan-<批次 id>`，开**草稿** PR，标题 `fix(<worker>): <一句话>`，正文写签名与次数、复现命令和输出原文、根因（证据或推断）、回归测试名。`ledger` 记 `pr`（PR 号）。订阅它的动态，CI 红按常规修到绿。
+3. 草稿不转正、不合并：lyjw 关掉 PR 就是否决；lyjw 说合，按 `HUMAN.md`「5. PR 与合并」的门槛走（改逻辑的等机器评审）。
+
+以下情况不开 PR，退回第 5 步报告里写「建议另开一个线程修：<批次>，复现命令 …」：本次运行已开过 1 个；修复要动 UI、Worker 间契约文件（根 `AGENTS.md`「部署流程」列的那几个）、禁区里的东西或生产数据；回归测试写不出来；本次运行里 GitHub 工具不可用（报告里写明）。
 
 ### 4. 判断
 
@@ -83,7 +98,7 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 追加到 `/mnt/project-files/superfan-collector/<上海日期>.md`，一节 `## <HH:MM> 盯防`：
 
 1. **要紧的**：`alert` 和新出现的 `warn`，每条一行：哪个任务或视图、看到了什么、依据。没有就写「无」。
-2. **其他 Worker 的新错误**：第 3b 步的批次，每批一行：Worker、签名数与次数、复现与否（附命令）、分诊结论、建议。没有新签名就写「无」。
+2. **其他 Worker 的新错误**：第 3b 步的批次，每批一行：Worker、签名数与次数、复现与否（附命令）、分诊结论、修复草稿 PR 链接或建议。没有新签名就写「无」。
 3. **还开着的**：`ledger` 里未解决的，每条一行「第 N 天」。
 4. **已恢复**：本次消失的。
 5. 一切正常时整节只写一行「collector 正常，其他 Worker 无新错误」，加上窗口里的 cron 响数。
@@ -92,4 +107,4 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 
 ### 6. 要紧的新异常在本线程说一声
 
-只有本次新出现、且 `level` 为 `alert`（第 3b 步两次复现了的批次也算 `alert`），或同一 `warn` 已持续 24 小时还没通知过的，才在本线程 `reply`：每条一行，说是什么、依据、建议谁去修；把这些条目的 `notified` 设为 true。其余情况只更新状态行并 `no_reply_needed`。不在项目聊天发言，不开 PR。
+只有本次新出现、且 `level` 为 `alert`（第 3b 步两次复现了的批次也算 `alert`），或同一 `warn` 已持续 24 小时还没通知过的，才在本线程 `reply`：每条一行，说是什么、依据、建议谁去修；把这些条目的 `notified` 设为 true。其余情况只更新状态行并 `no_reply_needed`。不在项目聊天发言；除第 3c 步的修复草稿外不开 PR。

@@ -42,6 +42,7 @@
 - 跟进已有的事，在那个线程里说；在项目聊天里说也会被转过去，并告诉你转到了哪。
 - 中途改方向直接说「你这里先停下来，去调查一下 X」，当前线程会改优先级。
 - 被理解错了，说「你没懂我意思」加一句原则或例子，不用重写整个需求。
+- 想让一件事做得更深而不是更大，派活时贴这段（取自 Felix Rieseberg 的 [How to be more ambitious](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/)）：「我要这件事更深的版本，不是更大的。先别动手：1 这个领域最顶尖的人会多做什么我没要的；2 他们从什么最原始的材料开始，而不是别人消化过的；3 他们用什么具体方法和工具；4 除了你我，什么东西能证明结果是对的。然后按这四点重写我的要求再做。」
 - 定规矩用「以后…」开头，比如「以后也注意一下，不只是 ci，还要看 pr 讨论区的机器评审」，会被记进项目记忆，之后所有线程遵守。说错了说一声就删。
 - 授权合并不用非得说「合」：「合」「完了直接合」「过了直接合」「推进到合并」，以及你明确让推进的事，Claude 门槛过了就自己合，这件事后续拆出的 PR 也算在内，不再回头问。「行」「同意」「就按这个改」只是同意方案；大方向、大改动和 UI / UX 变化仍等你点头（见第 3 节）。想自己再看一眼，说一句「先别合」。
 
@@ -115,7 +116,7 @@
 - 每天一次的代码审查定时任务：从上次游标起对 main 的改动跑 /code-review 和 /simplify，有值得改的就开 `chore(review):` PR，检查和机器评审都处理完后自动合并。时间、游标位置和它的边界见 ops-facts 的「[Claude Code 云端 routine](./docs/ops-facts.md#claude-code-云端-routine)」。
 - 每天一次的提炼 skill 与偏差复盘定时任务：从上次书签起读各线程，把反复出现的流程和你反复纠正的做法写成或改进 `.claude/skills/` 下的 skill；再对照每件做完的事你第一次怎么说、最后交付了什么，找出弯路，改 Claude 的默认做法（`AGENTS.md`「工作方式」、`HUMAN.md`、项目记忆）或让它在该问的地方早点问；还读新合并 PR 里被采纳的 Codex / Devin 建议，同类在两个以上 PR 出现的做成 lint、`rules:check` 或钩子（另开 `chore(checks):` PR），判定不了的写进 skill。开 `docs(skills):` 小 PR，CI 绿就合；动禁区、合并门槛或放松审批的改动只提议、等你一句话。磨合期里它每跑一次都在自己的线程汇报并问你反应，回「有用 / 没用 / 写偏了」或只回编号都行，它据此改 skill 和它自己；说「磨合结束」就不再每次汇报。流程见 `.claude/skills/lyjwpage-skill-mining/SKILL.md`。
 - 每天 08:41（新加坡时间）的 Anthropic 官方动态定时任务：按书签拉 Anthropic 官方博客、文档、release notes、Claude Code 与 SDK 更新日志，几个官方账号、Anthropic 工程师和前沿作者（如 poteto、Matt Pocock）的 X，以及 Simon Willison、Latent Space、Cloudflare changelog、Hacker News 热帖的新内容，逐条判断能否吸收进本站，写进共享目录 `anthropic-updates/<日期>.md`，9:00 晨报读它转告你。它自己不发言、不开 PR；想吸收哪条，晨报后说一句，另开线程按上面的合并门槛做。流程见 `.claude/skills/lyjwpage-anthropic-updates/SKILL.md`。
-- 每天 4 次（新加坡时间 01:53、07:53、13:53、19:53）的 collector 盯防定时任务：一个只盯采集 Worker 的 Claude，读站点公开状态端点和 collector 的 Cloudflare 日志，找时间戳在走、内容却不对的细微异常（部分成功沿用旧值、数据冻住、任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、两次复现后归成批，写进共享目录 `superfan-collector/<日期>.md` 供晨报读取；只读不修，复现过的批次由你在晨报后决定要不要开线程修，新出现的要紧异常才在「Anthropic 官方动态日更 + collector 盯防」线程里说一声。流程见 `.claude/skills/lyjwpage-collector-superfan/SKILL.md`。
+- 每天 4 次（新加坡时间 01:53、07:53、13:53、19:53）的 collector 盯防定时任务：一个只盯采集 Worker 的 Claude，读站点公开状态端点和 collector 的 Cloudflare 日志，找时间戳在走、内容却不对的细微异常（部分成功沿用旧值、数据冻住、任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、两次复现后归成批，写进共享目录 `superfan-collector/<日期>.md` 供晨报读取；复现了的批次它直接开修复草稿 PR（每次最多一个；碰 UI、契约或生产数据的仍由你在晨报后决定要不要开线程修），你关掉 PR 就是否决，说合才按第 5 节门槛合；新出现的要紧异常才在「Anthropic 官方动态日更 + collector 盯防」线程里说一声。流程见 `.claude/skills/lyjwpage-collector-superfan/SKILL.md`。
 - 每天 03:15（新加坡时间）的记忆镜像同步定时任务：把项目记忆目录传给 `pnpm memory:mirror`，同步进仓库的 `.claude/memory/`（用法见 [`.claude/memory/README.md`](./.claude/memory/README.md)），有变化就开 `docs(memory):` PR，CI 绿就合，没变化不出声。配置见 ops-facts 的「[Claude Code 云端 routine](./docs/ops-facts.md#claude-code-云端-routine)」。
 - 每天 9:00（新加坡时间）项目聊天的 Claude 发晨报，读上面 Anthropic 动态和 collector 盯防写的报告，把要你决定的列出来；之后每小时原地更新那一条，直到你开口。
 - 所有自动化都遵守：按游标不按时间窗；读不到就报失败，不当作没事；动手前再核一次线上状态；写操作确认成功才记账；最小权限和花费上限。
