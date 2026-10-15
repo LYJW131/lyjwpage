@@ -187,3 +187,10 @@ test("一两句只判普通对象的单参数函数被拦，用 shared/json 的�
   const validator = 'export function isEnvelope(value: unknown) {\n  if (!value || typeof value !== "object" || Array.isArray(value)) return false;\n  const row = value as Record<string, unknown>;\n  if (typeof row.ok !== "boolean") return false;\n  return true;\n}';
   assert.equal(rules("src/lib/site-policy.ts", validator).length, 0);
 });
+
+test("内联脚本 JSON 的小于号转义在 src/lib/inline-script.ts 以外手写被拦", () => {
+  const copy = 'const p = `${JSON.stringify(pool).replace(/</g, "\\\\u003c")}`;';
+  assert.deepEqual(rules("src/components/live/digest-card.tsx", `const a = 1;\n${copy}`), ["inline-script-json@2"]);
+  assert.equal(rules("src/lib/inline-script.ts", copy).length, 0);
+  assert.equal(rules("src/lib/html-preview.ts", 'const e = (v: string) => v.replace(/</g, "&lt;");').length, 0);
+});

@@ -21,6 +21,8 @@
 //   json-object-guard
 //                  同一范围里「是不是普通对象」只用 shared/json.ts#object 判断：一两句、只做
 //                  typeof 与 Array.isArray 检查的单参数函数要改成调它（失败时抛错或回默认值包在外面）
+//   inline-script-json
+//                  内联脚本里的 JSON 只经 src/lib/inline-script.ts#scriptJson 转义小于号，不再各写一份 replace(/</g, …)
 //   scripts-mjs    scripts/ 新写的脚本用 .ts（Node 直接跑，进 typecheck）；现存 .mjs 记在
 //                  scripts/mjs-baseline.json，迁走一个就从基线删一个，基线只减不增（scripts/baseline-growth-check.ts）
 //
@@ -337,12 +339,21 @@ export function checkJsdoc(file: string, text: string) {
 const HELPER_SCOPE = /^(?:src|shared|workers\/[^/]+\/src)\/.+\.(?:ts|tsx|mts)$/;
 const SHA256_HEX_IMPL = "shared/sha256.ts";
 const JSON_OBJECT_IMPL = "shared/json.ts";
+const INLINE_SCRIPT_JSON_IMPL = "src/lib/inline-script.ts";
+const LT_ESCAPE_RE = /\.replace\(\/<\/g,\s*["'`]\\\\u003c/;
 const HEX_BYTE_RE = /toString\(16\)\.padStart\(2,\s*["'`]0["'`]\)/;
 
 export function checkSha256Hex(file: string, text: string) {
   if (!HELPER_SCOPE.test(file) || file === SHA256_HEX_IMPL) return [];
   return text.split("\n").flatMap((line, index) => HEX_BYTE_RE.test(line)
     ? [{ file, line: index + 1, rule: "sha256-hex", message: "SHA-256 转十六进制用 @shared/sha256#sha256Hex，不再复制一份 toString(16).padStart(2, \"0\")。" }]
+    : []);
+}
+
+export function checkInlineScriptJson(file: string, text: string) {
+  if (!HELPER_SCOPE.test(file) || file === INLINE_SCRIPT_JSON_IMPL) return [];
+  return text.split("\n").flatMap((line, index) => LT_ESCAPE_RE.test(line)
+    ? [{ file, line: index + 1, rule: "inline-script-json", message: "内联脚本里的 JSON 用 @/lib/inline-script#scriptJson 转义，不再各写一份 replace(/</g, \"\\\\u003c\")。" }]
     : []);
 }
 
@@ -370,7 +381,7 @@ export function checkJsonObjectGuard(file: string, text: string) {
 
 export function checkFile(file: string, text: string): Issue[] {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
-  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text), ...checkSha256Hex(file, text), ...checkJsonObjectGuard(file, text)];
+  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text), ...checkSha256Hex(file, text), ...checkJsonObjectGuard(file, text), ...checkInlineScriptJson(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
   if (WORKER_OR_SHARED_TS.test(file) && !JSON_RESPONSE_IMPL.has(file)) issues.push(...checkJsonResponseLiteral(file, text));
   return issues;
