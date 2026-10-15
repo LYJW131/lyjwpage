@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const ENDPOINT = "https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed";
-const FIELDS = "captchaResult,lighthouseResult(audits/largest-contentful-paint/numericValue)";
+const FIELDS = "captchaResult,lighthouseResult(audits)";
 
 // 起点按当前生产中位数再留出 PageSpeed 单次抖动的余量，只拦明显退步；HTML 瘦身后逐步收紧到 2.5 s 的目标。
 export const LCP_BUDGET_MS = 5_500;
@@ -46,6 +46,16 @@ async function measure(url: string, key: string): Promise<number> {
   return lcpOf(await response.json());
 }
 
+async function servedCommit(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(new URL("/api/version", url), { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    const body = response.ok ? await response.json() as { commit?: unknown } : null;
+    return typeof body?.commit === "string" ? body.commit : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   let url: string;
   try {
@@ -61,11 +71,18 @@ async function main() {
     console.log("::error::PAGESPEED_API_KEY is not configured");
     process.exit(1);
   }
+  const expected = process.env.EXPECTED_SHA;
   const samples: number[] = [];
   for (let attempt = 1; attempt <= MAX_ATTEMPTS && samples.length < WANTED_RUNS; attempt++) {
     if (attempt > 1) await delay(RUN_GAP_MS);
     try {
+      // PageSpeed 只拿到地址，答不出测的是哪一版；只收前后都还是这次部署在线时的样本，新部署上线就让位给它自己的检查。
+      const before = await servedCommit(url);
+      if (expected && before && before !== expected) return supersede(before);
       const lcp = await measure(url, key);
+      const after = await servedCommit(url);
+      if (expected && after && after !== expected) return supersede(after);
+      if (expected && (before !== expected || after !== expected)) throw new Error("读不到 /api/version，样本不计");
       samples.push(lcp);
       console.log(`[lcp-budget] 第 ${attempt} 次：LCP ${lcp} ms`);
     } catch (error) {
@@ -83,6 +100,10 @@ async function main() {
     console.log(`::error::${line}`);
     process.exit(1);
   }
+}
+
+function supersede(commit: string) {
+  console.log(`[lcp-budget] 域名已换成 ${commit.slice(0, 7)}，本次让位，由那次部署自己的检查来判`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();

@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: main
+          ref: ${{ needs.deployment.outputs.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -86,6 +86,7 @@ jobs:
       - name: Check mobile LCP budget
         env:
           PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
+          EXPECTED_SHA: ${{ needs.deployment.outputs.sha }}
         run: node scripts/lcp-budget.ts https://lyjw.me/
 
   # 必须先刷 ESA 再通知页面，并等待域名切换到新版本，否则刷新仍会拿到旧 HTML。
