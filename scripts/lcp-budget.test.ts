@@ -12,9 +12,7 @@ test("one slow outlier does not fail the median", () => {
 });
 
 test("a median over budget fails", () => {
-  const verdict = judge([6_000, 6_200, 3_000, 6_100], LCP_BUDGET_MS);
-  assert.equal(verdict.status, "over");
-  assert.equal(verdict.status !== "inconclusive" && verdict.medianMs, 6_050);
+  assert.deepEqual(judge([6_000, 6_200, 3_000, 6_100], LCP_BUDGET_MS), { status: "over", medianMs: 6_050, samples: [6_000, 6_200, 3_000, 6_100] });
 });
 
 test("reads LCP and rejects captcha or missing audits", () => {
