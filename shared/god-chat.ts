@@ -18,7 +18,7 @@ export const GOD_CHAT_LIMITS = {
   maxTotalChars: 16000,
   maxPlanHistoryChars: BUILD_TOKEN_MAX_CHARS,
   maxToolRounds: 3,
-  // 带动态过滤的搜索会在代码里并发搜好几条（问几部番就一部一条），第一版处理代码常猜错结果格式崩掉、整批重搜；额度要容得下一批多条加一次重搜，否则模型只能说次数用完。
+  // 一问涉及好几样东西时模型会在同一轮并发搜好几条（问几部番就一部一条），额度要容得下一批多条再补搜一轮，否则模型只能说次数用完。
   maxWebSearches: 10,
 } as const;
 
