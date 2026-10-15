@@ -90,9 +90,21 @@ export function isSiteOrigin(request: Request): boolean {
   }
 }
 
+// 断网、切后台时各浏览器的 fetch 拒绝文案，以及 ResizeObserver 的良性循环提示：都没有调用栈可查，记成 warn 不进 Workers Issues（Issues 只收 error，每条新 issue 都会发告警邮件）。
+const BROWSER_NOISE = [
+  /^(?:TypeError: )?(?:Load failed|Failed to fetch|NetworkError when attempting to fetch resource\.?)$/,
+  /^ResizeObserver loop (?:limit exceeded|completed with undelivered notifications\.?)$/,
+];
+
+export function isBrowserNoise(report: Pick<ClientErrorReport, "message">): boolean {
+  return BROWSER_NOISE.some((pattern) => pattern.test(report.message));
+}
+
+type RelayLog = (...args: unknown[]) => void;
+
 export async function relayClientError(
   request: Request,
-  log: (...args: unknown[]) => void = console.error,
+  log: { error: RelayLog; warn: RelayLog } = console,
 ): Promise<number> {
   let body: Uint8Array<ArrayBuffer>;
   try {
@@ -108,6 +120,6 @@ export async function relayClientError(
   }
   const report = parseClientErrorReport(raw);
   if (!report) return 400;
-  log("[browser-error]", reportAsError(report), { source: report.source, url: report.url, release: report.release, tags: report.tags });
+  (isBrowserNoise(report) ? log.warn : log.error)("[browser-error]", reportAsError(report), { source: report.source, url: report.url, release: report.release, tags: report.tags });
   return 204;
 }
