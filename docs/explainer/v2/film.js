@@ -143,14 +143,15 @@
   const scrub = $("scrub"), fill = scrub.querySelector(".fill");
   for (const c of chapters) {
     const m = document.createElement("div"); m.className = "mark"; m.style.left = `${(c.t0 / DURATION) * 100}%`; scrub.appendChild(m);
-    const l = document.createElement("div"); l.className = "lab"; l.style.left = `${(c.t0 / DURATION) * 100}%`; l.dataset.key = c.title; l.dataset.span = c.t1 - c.t0; scrub.appendChild(l);
+    const z = document.createElement("div"); z.className = "zone"; z.style.left = `${(c.t0 / DURATION) * 100}%`; z.style.width = `${((c.t1 - c.t0) / DURATION) * 100}%`; z.dataset.key = c.title; scrub.appendChild(z);
+    const l = document.createElement("div"); l.className = "lab"; z.appendChild(l);
   }
   function fitLabels() {
-    const px = scrub.clientWidth / DURATION;
-    scrub.querySelectorAll(".lab").forEach((l) => {
+    scrub.querySelectorAll(".zone").forEach((z) => {
+      const l = z.firstChild, name = I18N.tr(z.dataset.key);
       // 8 = 标签自身右移的 4 px（index.html 的 #scrub .lab）+ 给下一章刻度留的 4 px。
-      const name = I18N.tr(l.dataset.key), room = l.dataset.span * px - 8;
-      l.title = name;
+      const room = z.getBoundingClientRect().width - 8;
+      z.title = name;
       l.textContent = name;
       if (l.scrollWidth > room) l.textContent = name.split(" ")[0];
       l.style.visibility = l.scrollWidth > room ? "hidden" : "";
