@@ -100,6 +100,7 @@ function Tile({
             fill
             sizes="216px"
             loading={eager ? "eager" : "lazy"}
+            noPreload={eager}
             className="object-cover transition-transform duration-500 group-hover:scale-[1.03]"
             unoptimized
           />

@@ -16,6 +16,8 @@ export type ImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> 
   src: string;
   fill?: boolean;
   priority?: boolean;
+  // React SSR 会把非 lazy、非 low 的 <img> 提成 <head> 里排在样式表前的 preload；首屏外的 eager 图跟样式表抢带宽会推迟首帧。
+  noPreload?: boolean;
   unoptimized?: boolean;
   quality?: number;
 };
@@ -39,6 +41,7 @@ export default function AppImage({
   src,
   fill,
   priority,
+  noPreload,
   unoptimized,
   quality,
   loading,
@@ -81,7 +84,7 @@ export default function AppImage({
       width={width}
       loading={priority || inline ? undefined : (resolved.loading ?? "lazy")}
       decoding={decoding ?? "async"}
-      fetchPriority={fetchPriority ?? (priority ? "high" : undefined)}
+      fetchPriority={fetchPriority ?? (priority ? "high" : noPreload ? "low" : undefined)}
       style={fill ? { ...FILL_STYLE, ...style } : style}
     />
   );

@@ -222,6 +222,7 @@ function GameTile({
             width={COVER_PX}
             height={COVER_PX}
             loading={eager ? "eager" : "lazy"}
+            noPreload={eager}
             unoptimized
             className="h-28 w-28 object-cover"
           />
