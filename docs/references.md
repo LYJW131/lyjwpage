@@ -49,6 +49,10 @@
   - 取了什么：从 `diagnosing-bugs` 借排查纪律，先造一条能稳定复现症状的命令，再列可证伪的假设；从 `git-guardrails-claude-code` 借禁区做成钩子；`writing-for-agents` 的写法要点先按 Anthropic 最新文档核对，只并入一致的部分。
   - 不借：先问透的 grilling，和本项目偏行动的规矩冲突；规格与拆票依赖 issue 跟踪器，本项目用线程；PR 模板 lyjw 不要。
   - 状态：部分采用。排查纪律落在 [lyjwpage-diagnose](../.claude/skills/lyjwpage-diagnose/SKILL.md)；禁区钩子是 [guard-forbidden-commands.mjs](../scripts/guard-forbidden-commands.mjs)，由 [.claude/settings.json](../.claude/settings.json) 的 PreToolUse 挂上；写法要点落在 [writing.md](../.claude/skills/lyjwpage-skill-mining/writing.md)。
+- **[Matt Pocock：GLOSSARY.md](https://x.com/mattpocockuk/status/2109735647267430497)**（X 帖子）
+  - 是什么：给 agent 一份项目术语表，让它用你的词说话。
+  - 取了什么：根目录放一份术语表，每条一句定义加出处，根 `AGENTS.md` 指过去。
+  - 状态：采用。落在 [GLOSSARY.md](../GLOSSARY.md)。
 
 ## 模型选择与子代理
 
