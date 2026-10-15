@@ -59,7 +59,7 @@ Agent(
 | `workers/*`、`reporters/*` | 该目录 `AGENTS.md` / `README.md` 里写的验证命令 |
 | 脚本 | `node --test scripts/<名>.test.mjs`；已迁到 TS 的脚本换成 `scripts/<名>.test.ts` |
 
-修 bug 并补了回归测试的改动，验证员另做一次「撤回证明」：用 `git diff --name-only origin/main...HEAD` 列出改动，把 main 上已有的非测试文件临时换回 main（`git checkout origin/main -- <这些文件>`），跑新测试，它必须以断言失败报红，失败信息说的是那个 bug 的行为；编译或导入出错、被跳过都不算。再 `git checkout HEAD -- <这些文件>` 还原，跑同一测试须绿，`git status` 干净。这是「不改仓库文件」的唯一例外，只动工作区、不提交。红与绿两次的命令和输出末几行都写进证据；证明不了的（比如测试离不开新增的文件）写进「没验到」并说明原因，由主线程判断。
+修 bug 并补了回归测试的改动，验证员另做一次「撤回证明」：用 `git diff --name-only origin/main...HEAD` 列出改动，先确认 `git status` 干净，把 main 上已有的非测试文件临时换回 main（`git restore --source=origin/main --worktree -- <这些文件>`），跑新测试，它必须以断言失败报红，失败信息说的是那个 bug 的行为；编译或导入出错、被跳过都不算。再 `git restore --source=HEAD --staged --worktree :/ && git clean -f -- <这些文件>` 还原（逐个文件 restore 遇到修复删掉的文件会整条报错、一个都不还原，`clean` 删掉换回来的那些），跑同一测试须绿，`git status` 干净。这是「不改仓库文件」的唯一例外，只动工作区、不提交。红与绿两次的命令和输出末几行都写进证据；证明不了的（比如测试离不开新增的文件）写进「没验到」并说明原因，由主线程判断。
 
 CI 的完整门禁是 `scripts/ci-checks.sh` 里的 `gates`。本地跑它要先设 `RUNNER_TEMP`（指到 scratchpad 里的目录），否则报 `RUNNER_TEMP: unbound variable`、一项门禁都没跑。
 

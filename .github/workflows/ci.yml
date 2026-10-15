@@ -10,9 +10,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # main 上每个提交都要有完整结论，main 红了才查得到是哪个提交引入的；PR 上的旧运行照常被新推送取消。
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # main 按提交分组：同组只留一个排队运行，按 ref 分组时连推三次会顶掉中间那个；main 上每个提交都要有结论，红了才查得到是哪个提交引入的。
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
