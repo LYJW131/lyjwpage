@@ -165,11 +165,16 @@ Most of the code in this repo is written by Claude; lyjw sets direction, makes t
 
 ```mermaid
 flowchart LR
-  L["lyjw"] --> P["Coordinator Claude"] --> T["Thread Claude"]
-  T -->|parallel work| D["Devin CLI"]
-  T -->|verification| H["Haiku verifier"]
-  T --> PR["PR"] --> G{"Merge gate"} --> M["main"] --> W["Auto deploy"]
-  R["Scheduled agents"] -.-> PR
+  L["lyjw<br/>one-line request"] --> P["Project chat<br/>coordinator Claude"]
+  P --> T["Thread Claude<br/>one thread per task"]
+  T -->|parallel work| D["Devin CLI<br/>(lyjw's Mac)"]
+  T -->|verification| H["Haiku verifier<br/>graded receipt"]
+  T --> PR["PR"]
+  PR --> G{"Merge gate<br/>CI · check scripts<br/>bot review · lyjw's OK"}
+  G --> M["main"] --> W["Workers Builds<br/>auto deploy"]
+  R["Scheduled agents"] -.->|review · distill · watch| PR
+  R -.-> MEM[("Project memory<br/>repo mirror")]
+  T -.-> MEM
 ```
 
 - **Layered rules, enforced where possible**: [`HUMAN.md`](./HUMAN.md) is the collaboration contract for lyjw, [`AGENTS.md`](./AGENTS.md) holds the hard rules for agents, [`.claude/skills/`](./.claude/skills/) holds reusable procedures. Hooks, lint and the CI checks `docs:check`, `rules:check` and `design:scale` block violations, and the baselines of existing violations can only shrink.

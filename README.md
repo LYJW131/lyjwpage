@@ -165,11 +165,16 @@
 
 ```mermaid
 flowchart LR
-  L["lyjw"] --> P["协调 Claude"] --> T["线程 Claude"]
-  T -->|并行实现| D["Devin CLI"]
-  T -->|验证| H["Haiku 验证员"]
-  T --> PR["PR"] --> G{"合并门槛"} --> M["main"] --> W["自动部署"]
-  R["定时任务"] -.-> PR
+  L["lyjw<br/>一句话需求"] --> P["项目聊天<br/>协调 Claude"]
+  P --> T["线程 Claude<br/>一件事一个线程"]
+  T -->|并行实现| D["Devin CLI<br/>（lyjw 的 Mac）"]
+  T -->|验证| H["Haiku 验证员<br/>分级回执"]
+  T --> PR["PR"]
+  PR --> G{"合并门槛<br/>CI · 检查脚本<br/>机器评审 · lyjw 点头"}
+  G --> M["main"] --> W["Workers Builds<br/>自动部署"]
+  R["定时任务"] -.->|审查 · 提炼 · 盯防| PR
+  R -.-> MEM[("项目记忆<br/>仓库镜像")]
+  T -.-> MEM
 ```
 
 - **规则分层，能拦就拦**：[`HUMAN.md`](./HUMAN.md) 是给 lyjw 的协作约定，[`AGENTS.md`](./AGENTS.md) 是给 agent 的硬规则，[`.claude/skills/`](./.claude/skills/) 是可复用流程；违反时由钩子、lint 和 CI 里的 `docs:check`、`rules:check`、`design:scale` 拦下，存量违规的基线只减不增。
