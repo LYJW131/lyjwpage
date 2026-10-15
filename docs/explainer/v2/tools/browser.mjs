@@ -22,6 +22,13 @@ const expectedMissing = (m) => /Failed to load resource|ERR_FILE_NOT_FOUND/.test
 
 export async function openFilm(browser, { lang = "zh", scale = 0.5, only = "", check = false, init } = {}) {
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: scale });
+  // GPU 画布画线段端点的抗锯齿随上一帧画过什么而变（同一时刻乱序 seek 差一两个像素），逐帧比对会误报；工具里一律让 2D 图层走 CPU 光栅。
+  await context.addInitScript(() => {
+    const get = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (kind, opts) {
+      return get.call(this, kind, kind === "2d" ? { ...opts, willReadFrequently: true } : opts);
+    };
+  });
   if (init) await context.addInitScript(init);
   const page = await context.newPage();
   const errors = [], missing = new Set();

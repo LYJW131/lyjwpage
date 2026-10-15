@@ -64,6 +64,10 @@
   - 是什么：模型按 28×28 px 一块计视觉 token，每档模型有长边和 token 上限，超了先缩小再看。
   - 取了什么：给 Haiku 逐帧看的验收图按标准档上限拼，每张 2 帧时每格仍是原尺寸、哪档模型看都不会被缩；拼得更多格子就被缩小，细节开始漏，所以默认每张 2 帧。
   - 状态：采用。落在 [sheets.py](./explainer/v2/tools/sheets.py) 和 [lyjwpage-explainer](../.claude/skills/lyjwpage-explainer/SKILL.md)，实测见 [逐帧验收拼图实测](./explainer/frame-qa-calibration.md)。
+- **[Opus 5.5 Motion Lab: Make Claude Animate Like a Studio](https://x.com/flxrnc/status/2105311836190978392)**（Florence，X Article）
+  - 是什么：用代码出动效的做法，其中的「渲染契约」要求每帧是 t 的纯函数，并按帧号截静帧自查。
+  - 取了什么：按这条契约逐章审 /explainer，同一时刻正序、乱序 seek 比截图。章代码都守约，乱序差异来自 Chrome GPU 画布画线段端点的抗锯齿，于是工具里的 2D 图层改走 CPU 光栅。
+  - 状态：采用。落在 [browser.mjs](./explainer/v2/tools/browser.mjs)#openFilm。
 
 ## 设计系统与 UI
 
