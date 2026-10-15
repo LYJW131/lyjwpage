@@ -4,9 +4,11 @@
 ## How lyjw wants us to work (put the relevant ones in every brief)
 - **Call lyjw "lyjw"** in every third-person reference (docs, skills, memory, PRs, reports, briefs); never 站主/owner/用户/他/they/real name. Direct chat address stays "你". (2026-10-14, #313)
 - **Times in SGT** (UTC+8, e.g. "18:07 (SGT)") in everything shown to lyjw.
+- **Bare link = just tell lyjw what it says** (lyjw 2026-10-15 23:20 SGT: "我只是想看这篇文章讲什么"). When lyjw drops a link with no ask, brief the thread to summarize the content only; no adoption evaluation or numbered proposals unless lyjw asks (看能不能用/调研/借鉴).
 - **Reports for lyjw are Artifacts, never .md** (lyjw 2026-10-15 20:19 SGT: "给我看的报告我不想读md 要artifacts"). Any research write-up, comparison or report meant for lyjw to read is published with the Artifact tool and linked; .md files may stay as working data for other threads but are never the deliverable.
-- **Technical reports: ship two Artifact versions, A and D, side by side** (lyjw 2026-10-15 20:50 SGT: "我选ad 接下来的技术报告都用ad做ab版本artifacts对照给我看"). A = ASD-STE100-style short controlled sentences; D = Axios Smart Brevity. Keep text low, don't grab attention. lyjw will say which they prefer each time. Reference: [报告写法四选一](<private claude.ai link>), thread "报告怎么写得更省注意力".
+- **Technical reports: one Artifact, A style only** (lyjw 2026-10-16 00:00 SGT: "以后都选a"; ends the A/D side-by-side trial). A = ASD-STE100-style short controlled sentences. Keep text low, don't grab attention. No D version anymore. Reference: [报告写法四选一](<private claude.ai link>).
 - **Latest stack, no legacy compat** (lyjw 2026-10-15 00:42 SGT): prefer newest versions/APIs; when upgrading or migrating, drop old shims/fallbacks/dual paths. Exception: iOS reporter endpoints must keep working.
+- **Don't over-engineer** (lyjw 2026-10-15: "你过度设计了 提示词改一下就行了"; also dropped the post-deploy PageSpeed check as unnecessary). Pick the smallest change that does the job.
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
 - **Links as markdown** `[text](url)`, never bare URLs next to Chinese: [[links-as-markdown]].
@@ -38,7 +40,7 @@
 - 04:00 daily code review (cursor in issue #185): [[lyjwpage-daily-review-routine]].
 - 04:53 skill-mining + drift review; also turns adopted Codex/Devin suggestions into lint/hook/skill constraints (#319): [[skill-mining-routine]].
 - 08:41 Anthropic updates digest → read by 09:00 morning report: [[anthropic-updates-routine]].
-- 4x daily collector superfan (Workers Observability, no Sentry): [[collector-superfan-routine]].
+- 4x daily collector superfan (Workers Observability, no Sentry): [[collector-superfan-routine]]. lyjw OK'd 2026-10-15: after reproducing an error it may open a fix draft PR.
 - 09:00 SGT morning report in project chat, hourly in-place updates until lyjw writes.
 - 2026-10-15 17:01 SGT manual fire of all routines failed: routine sessions lacked /mnt/project-files, memory dir, hearthbot thread tools and GitHub tools. Fix the routine environment before relying on them again.
 - Agent automation practices: [[agent-automation-practices]].
@@ -48,14 +50,15 @@
 - Repo has no LICENSE by lyjw's choice (2026-10-15); don't re-propose.
 - README trimmed to essentials (#331, lyjw found it 又臭又长); long design write-ups live in docs/design-notes.md. Keep README short.
 - Sentry fully removed (#198): [[sentry-exit-done]]. api→core rename done: [[api-rename-to-core]]; collector drives the cron round: [[core-cron-internal-error]]. Same-origin API notes: [[same-origin-api-traps]].
-- ISR replaced by Workers Caching entrypoints + Cache-Tag purge; first-screen regressions fixed in #274 (Geist Mono restored). Now-playing decisions: [[now-playing-first-screen-decisions]]. ESA home is purged only on deploy: [[esa-home-no-layout-purge]].
+- ISR replaced by Workers Caching entrypoints + Cache-Tag purge; first-screen regressions fixed in #274 (Geist Mono restored). Now-playing decisions: [[now-playing-first-screen-decisions]]. ESA home is purged only on deploy: [[esa-home-no-layout-purge]]. First-screen LCP fix #364 (mobile 6.4→4.9 s); post-deploy PageSpeed check rejected (#366 closed). HTML slimming options pending lyjw's pick.
 - Old hashed static assets backfilled to R2 prefix `site-assets-legacy/` (no expiry, #354); missing Vercel-era chunks get a reload stub.
-- Digest card: Chinese tagline pool (772 lines, lyjw-pruned), 10-line `headlines` pool rotating every 60 s (#261).
+- Digest card: Chinese tagline pool (772 lines, lyjw-pruned), 10-line `headlines` pool rotating every 60 s (#261). Jev for digest dropped (lyjw 2026-10-15); rules tuned instead (#361).
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Pulse Tokens lane now includes Devin via reporter buckets (#322) plus a backfill for 2026-10-14.
-- Not adopting: OTel export of site AI usage, Max-plan API credit (already claimed) (lyjw 2026-10-15).
+- Not adopting: OTel export of site AI usage, Max-plan API credit (already claimed), Cloudflare AI Search (instance deleted), post-deploy PageSpeed check (lyjw 2026-10-15).
+- Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
 - Parked idea (lyjw 2026-10-15, 先不做): Jev prefetches a short context summary into the first chat call: [[idea-jev-context-prefetch]].
-- Chat web search (#355, merged 2026-10-15 SGT): Exa `fast` only, called directly (not via AI Gateway; Parallel dropped by lyjw); domain tools Bangumi/Steam + MCP Context7/CF docs/grep.app/DeepWiki, all deferred via tool search. Secret and live-check facts: docs/ops-facts.md (EXA_API_KEY row). Mac auto mode blocks opening provider consoles and listing 1Password, so lyjw may have to set new secrets by hand. Clef stays for routing; Jev batch "one scoring run" idea researched (clock card shadow mode proposed).
+- Chat web search (#355, merged 2026-10-15 SGT): Exa `fast` only, called directly (not via AI Gateway; Parallel dropped by lyjw); domain tools Bangumi/Steam + MCP Context7/CF docs/grep.app/DeepWiki, all deferred via tool search. Exa queries English only, via tool description only (no domain blocklist; lyjw 2026-10-15). Bangumi stays. Secret and live-check facts: docs/ops-facts.md (EXA_API_KEY row). Mac auto mode blocks opening provider consoles and listing 1Password, so lyjw may have to set new secrets by hand. Clef stays for routing.
 - **.mjs→TS migration done (2026-10-15 SGT, #327 #328 #330 #332 #333 #334 #335):** CI gate, verify, merge-message, deploy-check and build-actions scripts are now .ts (deploy-site-preview and other low-frequency scripts are still .mjs); `pnpm rules:check` rejects new `scripts/*.mjs` outside `scripts/mjs-baseline.json` (shrink-only; low-frequency scripts migrate when next touched). guard-forbidden-commands hook stays .mjs. `docs/architecture.json` still names build-actions.mjs because it is pinned to revision b3694ae; change it only together with a revision bump and regeneration.
 - **Baselines shrink-only (lyjw 2026-10-15 SGT, #337):** `pnpm baselines:check` fails a PR whose mjs / design-scale / ui-copy baseline has more entries than main. Real exceptions: explain in the PR and wait; only lyjw adds the `baseline-exception` label, agents never do.
