@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GOD_CHAT_CARD_VIEWS, GOD_CHAT_CARDS, GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, fitHistory, parseGodChatRequest, type GodChatMessage } from "@shared/god-chat";
+import { GOD_CHAT_CARD_VIEWS, GOD_CHAT_CARDS, GOD_CHAT_IMAGE_LIMITS, GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, fitHistory, parseGodChatRequest, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, downgradeChain, modelLabel } from "@shared/god-chat-tiers";
 import { readJsonBody, turnstilePassed } from "./chat/guard.ts";
 import { toModelMessages } from "./chat/history.ts";
@@ -20,6 +20,26 @@ const assistant = (content: string) => ({ role: "assistant" as const, content })
 test("对话请求：合法历史去首尾空白，以访客消息结尾", () => {
   const parsed = parseGodChatRequest({ turnstileToken: "t", messages: [user(" hi "), assistant("hello"), user("why?")] });
   assert.deepEqual(parsed?.messages, [user("hi"), assistant("hello"), user("why?")]);
+});
+
+test("对话请求：最后一条访客消息可附一张白名单格式、未超限的 base64 图片，设计会话与补发不收图片", () => {
+  const image = { mediaType: "image/jpeg", data: Buffer.from("jpeg bytes").toString("base64") };
+  assert.deepEqual(parseGodChatRequest({ turnstileToken: "t", messages: [user("what is this?")], image })?.image, image);
+  const atLimit = Buffer.alloc(GOD_CHAT_IMAGE_LIMITS.maxBytes).toString("base64");
+  assert.ok(parseGodChatRequest({ turnstileToken: "t", messages: [user("q")], image: { mediaType: "image/png", data: atLimit } }));
+  const over = Buffer.alloc(GOD_CHAT_IMAGE_LIMITS.maxBytes + 1).toString("base64");
+  for (const bad of [
+    { mediaType: "image/png", data: over },
+    { mediaType: "image/svg+xml", data: image.data },
+    { mediaType: "image/jpeg", data: "not base64!" },
+    { mediaType: "image/jpeg", data: "abc" },
+    { mediaType: "image/jpeg", data: "" },
+    "data:image/jpeg;base64,AAAA",
+  ]) {
+    assert.equal(parseGodChatRequest({ turnstileToken: "t", messages: [user("q")], image: bad }), null);
+  }
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", designToken: "a.b", messages: [user("q")], image }), null);
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", designToken: "a.b", resume: true, messages: [user("q")], image }), null);
 });
 
 test("模型的长回复只截断，总量超了从最早的丢，后续对话照样能发", () => {

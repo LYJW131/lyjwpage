@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
-import { GOD_CHAT_CARD_VIEWS, isGodChatCard, type GodChatMessage, type GodChatTrace } from "@shared/god-chat";
+import { GOD_CHAT_CARD_VIEWS, isGodChatCard, type GodChatImage, type GodChatMessage, type GodChatTrace } from "@shared/god-chat";
 import { GOD_CHAT_TIER_INFO, type GodChatEffort } from "@shared/god-chat-tiers";
 
 import { isProjectDocKey, projectDocPath } from "../tools/project-docs";
@@ -25,8 +25,8 @@ function traceNote({ tier, views, docs, searches, fallback, design, plan, cards 
   return `[Chat server note: the assistant reply that follows was written by ${who}${used.length ? ` after it ${used.join(" and ")}` : " without using tools"}.]`;
 }
 
-// 按 trace 确定性生成，同一段历史每次前缀逐字节相同，缓存才命中。
-export function toModelMessages(history: GodChatMessage[], effort: GodChatEffort): Anthropic.Beta.BetaMessageParam[] {
+// 按 trace 确定性生成，同一段历史每次前缀逐字节相同，缓存才命中。图片只挂在最后一条访客消息上，前缀不受影响。
+export function toModelMessages(history: GodChatMessage[], effort: GodChatEffort, image?: GodChatImage): Anthropic.Beta.BetaMessageParam[] {
   const messages: Anthropic.Beta.BetaMessageParam[] = [];
   let activeEffort: GodChatEffort | undefined;
   for (const [i, m] of history.entries()) {
@@ -37,6 +37,10 @@ export function toModelMessages(history: GodChatMessage[], effort: GodChatEffort
         messages.push({ role: "system", content: [], output_config: { effort: turnEffort } });
         activeEffort = turnEffort;
       }
+    }
+    if (m.role === "user" && image && i === history.length - 1) {
+      messages.push({ role: "user", content: [{ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data } }, { type: "text", text: m.content }] });
+      continue;
     }
     messages.push(m.role === "user" && trace
       ? { role: "user", content: [{ type: "text", text: m.content }, { type: "text", text: traceNote(trace) }] }

@@ -54,6 +54,8 @@ export type ChatBubble = GodChatMessage & {
   proposals?: ChatProposal[];
   asks?: GodChatQuestion[];
   answers?: ChatAnswer[];
+  // 访客这条附过图片；图片本身不存档，只在发出它的那一页内存里。
+  image?: true;
 };
 export type ChatSession = {
   id: string;
@@ -116,6 +118,7 @@ function validBubble(value: unknown): value is ChatBubble {
   if (value.asks !== undefined && !parseQuestions(value.asks)) return false;
   if (value.designAt !== undefined && typeof value.designAt !== "number") return false;
   if (value.designRevealed !== undefined && value.designRevealed !== true) return false;
+  if (value.image !== undefined && value.image !== true) return false;
   if (value.designEnded !== undefined && !(DESIGN_END_REASONS as readonly unknown[]).includes(value.designEnded)) return false;
   if (value.answers !== undefined && (!Array.isArray(value.answers) || !value.answers.every((answer) => object(answer) && ["header", "question", "answer"].every((key) => typeof answer[key] === "string")))) return false;
   if (["lookups", "searches", "steps"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;

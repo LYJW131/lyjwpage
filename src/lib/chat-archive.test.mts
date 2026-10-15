@@ -30,6 +30,20 @@ test("reload resumes the active conversation only while a design session is live
   assert.deepEqual(restored.sessions[0].design, design);
 });
 
+test("a user bubble keeps its image flag through save and reload, without image data", () => {
+  const data = storage();
+  const store = createChatArchiveStore(() => data, () => "one", () => 123);
+  const id = store.getSnapshot().activeId;
+  const withImage: ChatBubble[] = [{ id: "u1", role: "user", content: "[Image]", image: true }, { role: "assistant", content: "A cat." }];
+  store.update(id, { messages: withImage });
+  const raw = data.getItem(CHAT_ARCHIVE_KEY)!;
+  assert.ok(!raw.includes("base64"));
+  assert.deepEqual(readChatArchive(raw).sessions.find((session) => session.id === id)?.messages, withImage);
+  const forged = JSON.parse(raw);
+  forged.sessions[0].messages[0].image = "data:image/jpeg;base64,AAAA";
+  assert.equal(readChatArchive(JSON.stringify(forged)).sessions.length, 0);
+});
+
 test("ending a design session marks the last reply and survives reload", () => {
   const data = storage();
   const store = createChatArchiveStore(() => data, () => "one", () => 123);

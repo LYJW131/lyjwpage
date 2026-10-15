@@ -1,8 +1,9 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
+import { ArrowUp, History, ImagePlus, PencilRuler, Plus, Square, Trash2, X } from "lucide-react";
 
+import AppImage from "@/components/app-image";
 import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown, preloadChatMarkdown, useChatMarkdownReady } from "@/components/lazy-chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
@@ -13,9 +14,12 @@ import { stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent } from "@/lib/chat-consent";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
+import { ChatImageError, prepareChatImage, type ChatAttachment } from "@/lib/chat-image";
 import { cn } from "@/lib/utils";
 import { workerUrl } from "@/lib/worker-url";
 import {
+  GOD_CHAT_IMAGE_LIMITS,
+  GOD_CHAT_IMAGE_PLACEHOLDER,
   GOD_CHAT_LIMITS,
   GOD_CHAT_PATH,
   GOD_CHAT_TURNSTILE_ACTION,
@@ -86,6 +90,8 @@ type Reply = Omit<ChatBubble, "role" | "content">;
 type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; keep: ChatBubble[]; handoff: boolean };
 const RESUME_DELAY_MS = 2000;
 const EMPTY_MESSAGES: ChatBubble[] = [];
+// 图片只留在这一页的内存里、按访客消息 id 取；存档只记 image 标记，刷新后改画 Image 标签。
+const imagePreviews = new Map<string, string>();
 // 须与 globals.css 里 .design-halo 的动画总时长一致。
 const DESIGN_HALO_MS = 2_400;
 
@@ -162,6 +168,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const setMessages = (next: ChatBubble[], persist = true) => { if (conversation) chatArchive.update(conversation.id, { messages: next }, { persist }); };
   const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<ChatAttachment | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
@@ -194,6 +201,8 @@ function Conversation({ className, archive, session: conversation }: { className
   const resumeRef = useRef<() => void>(() => {});
   const conversationId = conversation?.id;
   const design = conversation?.design;
+  const imageAllowed = !design;
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!conversationId || !design) return;
@@ -291,13 +300,29 @@ function Conversation({ className, archive, session: conversation }: { className
     return () => observer.disconnect();
   }, []);
 
+  async function attach(file: File) {
+    if (!imageAllowed) return;
+    setError(null);
+    try {
+      setAttachment(await prepareChatImage(file));
+    } catch (err) {
+      setError(err instanceof ChatImageError ? err.message : "Couldn't read that image.");
+    }
+  }
+
+  function imageFile(files: FileList | null | undefined): File | undefined {
+    return Array.from(files ?? []).find((file) => file.type.startsWith("image/"));
+  }
+
   async function send(text: string, usedToken?: string, resumed?: Resumed) {
     const content = resumed?.user.content ?? text.trim();
     if (!content) return;
+    const sentImage = !resumed && imageAllowed ? attachment : null;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
     const answers = !resumed && answersRef.current?.text.trim() === content ? answersRef.current.answers : undefined;
     if (!resumed) answersRef.current = null;
-    const user: ChatBubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
+    const user: ChatBubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }), ...(sentImage && { image: true as const }) };
+    if (sentImage) imagePreviews.set(user.id, sentImage.preview);
     const shown: ChatBubble[] = [...(resumed?.before ?? messages), user];
     const history: GodChatMessage[] = fitHistory(
       shown
@@ -325,6 +350,7 @@ function Conversation({ className, archive, session: conversation }: { className
     show();
     // 等验证期间输入框还能改，回调发的是排队时那条；框里已经不是它就别清，免得吞掉访客新改的草稿。
     if (!resumed) setDraft((current) => (current === text ? "" : current));
+    if (sentImage) setAttachment(null);
     setError(null);
     setStreaming(true);
     if (usedToken) {
@@ -346,7 +372,7 @@ function Conversation({ className, archive, session: conversation }: { className
       const res = await fetch(CHAT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, ...(usedToken ? { turnstileToken: usedToken } : { humanPass: humanPass?.pass }), ...(designToken && { designToken }), ...(resumed && { resume: true }) }),
+        body: JSON.stringify({ messages: history, ...(usedToken ? { turnstileToken: usedToken } : { humanPass: humanPass?.pass }), ...(designToken && { designToken }), ...(resumed && { resume: true }), ...(sentImage && !designToken && { image: sentImage.image }) }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -424,7 +450,10 @@ function Conversation({ className, archive, session: conversation }: { className
           else setTimeout(() => resumeRef.current(), RESUME_DELAY_MS);
         } else {
           setMessages(replyMessages(kept ? bubble() : undefined));
-          if (!kept) setDraft((current) => current || content);
+          if (!kept) {
+            setDraft((current) => current || (sentImage && content === GOD_CHAT_IMAGE_PLACEHOLDER ? "" : content));
+            if (sentImage) setAttachment((current) => current ?? sentImage);
+          }
           // 设计开场在同意后由补发发出：已同意的访客无缝续上交接，不同意的停在确认框。
           if (!resumed && meta.designAt !== undefined && designConsent.getSnapshot()) setTimeout(() => resumeRef.current(), 0);
         }
@@ -519,6 +548,10 @@ function Conversation({ className, archive, session: conversation }: { className
   }
 
   function submit(text: string) {
+    if (!text.trim() && attachment && imageAllowed) {
+      ask(GOD_CHAT_IMAGE_PLACEHOLDER);
+      return;
+    }
     if (text.trim().startsWith("/")) {
       const exact = commands.find((c) => commandNames(c).includes(text.trim().toLowerCase()));
       const pick = exact ?? matches[active];
@@ -730,7 +763,12 @@ function Conversation({ className, archive, session: conversation }: { className
                     })() : message.answers ? (
                       <AnswerCard answers={message.answers} />
                     ) : (
-                      message.content
+                      message.image ? (
+                        <div className="flex flex-col items-start gap-1.5">
+                          <SentImage preview={message.id ? imagePreviews.get(message.id) : undefined} />
+                          {message.content !== GOD_CHAT_IMAGE_PLACEHOLDER && <span>{message.content}</span>}
+                        </div>
+                      ) : message.content
                     )}
                     {message.sources?.length ? (
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-2xs">
@@ -763,109 +801,162 @@ function Conversation({ className, archive, session: conversation }: { className
         {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
         {conversation?.design && designConsented && <DesignStatus design={conversation.design} />}
         <div ref={widgetRef} />
-        <form
-          className="relative flex items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit(draft);
-          }}
-        >
-          {paletteOpen && (
-            <div
-              role="listbox"
-              aria-label="Commands"
-              className="absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-md border border-line-strong bg-surface py-1 shadow-lg"
-            >
-              {matches.length ? (
-                matches.map((command, i) => (
-                  <button
-                    key={command.name}
-                    type="button"
-                    role="option"
-                    aria-selected={i === active}
-                    onMouseEnter={() => setSelected(i)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => runCommand(command.name)}
-                    className={cn(
-                      "flex w-full items-baseline gap-3 px-3 py-1.5 text-left font-mono text-xs",
-                      i === active ? "bg-surface-hover text-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    <span className="w-3 shrink-0">{i === active ? "❯" : ""}</span>
-                    <span className="shrink-0 text-foreground">
-                      {command.name}
-                      {command.aliases.length > 0 && ` (${command.aliases.map((a) => a.slice(1)).join(", ")})`}
-                    </span>
-                    <span className="truncate">{command.description}</span>
-                  </button>
-                ))
-              ) : (
-                <div className="px-3 py-1.5 font-mono text-xs text-muted-foreground">No matching commands</div>
-              )}
+        <div className="flex flex-col gap-2">
+          {attachment && imageAllowed && (
+            <div className="relative size-16">
+              <AppImage src={attachment.preview} alt="Attached image" fill unoptimized className="rounded-md border border-line-strong object-cover" />
+              <button
+                type="button"
+                aria-label="Remove image"
+                onClick={() => setAttachment(null)}
+                className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-surface text-foreground transition-colors hover:bg-surface-hover"
+              >
+                <X className="size-3" />
+              </button>
             </div>
           )}
-          <textarea
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setSelected(0);
+          <form
+            className="relative flex items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit(draft);
             }}
-            onFocus={() => { if (consented) setArmed(true); }}
-            onKeyDown={(event) => {
-              if (paletteOpen && matches.length) {
-                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            onDragOver={(event) => {
+              if (imageAllowed && event.dataTransfer.types.includes("Files")) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              const file = imageAllowed ? imageFile(event.dataTransfer.files) : undefined;
+              if (!file) return;
+              event.preventDefault();
+              void attach(file);
+            }}
+          >
+            {paletteOpen && (
+              <div
+                role="listbox"
+                aria-label="Commands"
+                className="absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-md border border-line-strong bg-surface py-1 shadow-lg"
+              >
+                {matches.length ? (
+                  matches.map((command, i) => (
+                    <button
+                      key={command.name}
+                      type="button"
+                      role="option"
+                      aria-selected={i === active}
+                      onMouseEnter={() => setSelected(i)}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => runCommand(command.name)}
+                      className={cn(
+                        "flex w-full items-baseline gap-3 px-3 py-1.5 text-left font-mono text-xs",
+                        i === active ? "bg-surface-hover text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      <span className="w-3 shrink-0">{i === active ? "❯" : ""}</span>
+                      <span className="shrink-0 text-foreground">
+                        {command.name}
+                        {command.aliases.length > 0 && ` (${command.aliases.map((a) => a.slice(1)).join(", ")})`}
+                      </span>
+                      <span className="truncate">{command.description}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-1.5 font-mono text-xs text-muted-foreground">No matching commands</div>
+                )}
+              </div>
+            )}
+            {imageAllowed && (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept={GOD_CHAT_IMAGE_LIMITS.mediaTypes.join(",")}
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void attach(file);
+                  }}
+                />
+                <button
+                  type="button"
+                  aria-label="Attach image"
+                  onClick={() => fileRef.current?.click()}
+                  className="paper-card flex size-10 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface text-foreground transition-colors hover:bg-surface-hover"
+                >
+                  <ImagePlus className="size-4" />
+                </button>
+              </>
+            )}
+            <textarea
+              value={draft}
+              onPaste={(event) => {
+                const file = imageAllowed ? imageFile(event.clipboardData.files) : undefined;
+                if (!file) return;
+                event.preventDefault();
+                void attach(file);
+              }}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setSelected(0);
+              }}
+              onFocus={() => { if (consented) setArmed(true); }}
+              onKeyDown={(event) => {
+                if (paletteOpen && matches.length) {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    const step = event.key === "ArrowDown" ? 1 : -1;
+                    setSelected((active + step + matches.length) % matches.length);
+                    return;
+                  }
+                  if (event.key === "Tab") {
+                    event.preventDefault();
+                    setDraft(matches[active].name);
+                    return;
+                  }
+                }
+                if (!paletteOpen && usage && event.key === "Escape") {
                   event.preventDefault();
-                  const step = event.key === "ArrowDown" ? 1 : -1;
-                  setSelected((active + step + matches.length) % matches.length);
+                  setUsage(null);
                   return;
                 }
-                if (event.key === "Tab") {
+                if (paletteOpen && event.key === "Escape") {
                   event.preventDefault();
-                  setDraft(matches[active].name);
+                  setDraft("");
                   return;
                 }
-              }
-              if (!paletteOpen && usage && event.key === "Escape") {
-                event.preventDefault();
-                setUsage(null);
-                return;
-              }
-              if (paletteOpen && event.key === "Escape") {
-                event.preventDefault();
-                setDraft("");
-                return;
-              }
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                submit(draft);
-              }
-            }}
-            maxLength={GOD_CHAT_LIMITS.maxMessageChars}
-            rows={1}
-            placeholder={waiting ? "Verifying you are human…" : "Speak, mortal… (type /)"}
-            aria-label="Message"
-            className="scrollbar-none max-h-32 min-h-10 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus:border-foreground/40 sm:text-sm [&::-webkit-scrollbar]:hidden"
-          />
-          {streaming ? (
-            <button
-              type="button"
-              aria-label="Stop"
-              onClick={() => abortRef.current?.abort()}
-              className="paper-card flex size-10 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface text-foreground transition-colors hover:bg-surface-hover"
-            >
-              <Square className="size-3.5 fill-current" />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              aria-label="Send"
-              disabled={!draft.trim()}
-              className="flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition-opacity disabled:opacity-30"
-            >
-              <ArrowUp className="size-4" />
-            </button>
-          )}
-        </form>
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  submit(draft);
+                }
+              }}
+              maxLength={GOD_CHAT_LIMITS.maxMessageChars}
+              rows={1}
+              placeholder={waiting ? "Verifying you are human…" : "Speak, mortal… (type /)"}
+              aria-label="Message"
+              className="scrollbar-none max-h-32 min-h-10 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus:border-foreground/40 sm:text-sm [&::-webkit-scrollbar]:hidden"
+            />
+            {streaming ? (
+              <button
+                type="button"
+                aria-label="Stop"
+                onClick={() => abortRef.current?.abort()}
+                className="paper-card flex size-10 shrink-0 items-center justify-center rounded-md border border-line-strong bg-surface text-foreground transition-colors hover:bg-surface-hover"
+              >
+                <Square className="size-3.5 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                aria-label="Send"
+                disabled={!draft.trim() && !(attachment && imageAllowed)}
+                className="flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground text-background transition-opacity disabled:opacity-30"
+              >
+                <ArrowUp className="size-4" />
+              </button>
+            )}
+          </form>
+        </div>
       </div>
     </Card>
   );
@@ -1147,6 +1238,11 @@ function DesignConsentPrompt({
       <p className="mt-2 text-2xs text-muted-foreground">{copy.remember}</p>
     </div>
   );
+}
+
+function SentImage({ preview }: { preview?: string }) {
+  if (!preview) return <span className="label-mono text-background/70">Image</span>;
+  return <AppImage src={preview} alt="Attached image" unoptimized className="block max-h-40 w-auto max-w-full rounded-md" />;
 }
 
 function UserBubble({ text }: { text: string }) {

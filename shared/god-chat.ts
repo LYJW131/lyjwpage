@@ -35,6 +35,31 @@ export const GOD_CHAT_CARD_VIEWS = {
   workouts: ["workouts"],
 } as const satisfies Record<string, readonly StatusViewKey[]>;
 
+// 访客随最后一条消息附的一张图：浏览器重新编码后发，只在附图那一轮交给模型，不进历史签章、不存档。
+// maxBytes 是解码后的字节数；请求体上限须给 base64 膨胀（4/3）留余量。
+export const GOD_CHAT_IMAGE_LIMITS = {
+  mediaTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+  maxBytes: 1_500_000,
+  maxEdgePx: 1568,
+} as const;
+export type GodChatImageType = (typeof GOD_CHAT_IMAGE_LIMITS.mediaTypes)[number];
+export type GodChatImage = { mediaType: GodChatImageType; data: string };
+// 只发图片不写字时访客消息的正文。
+export const GOD_CHAT_IMAGE_PLACEHOLDER = "[Image]";
+
+export function isGodChatImageType(value: unknown): value is GodChatImageType {
+  return (GOD_CHAT_IMAGE_LIMITS.mediaTypes as readonly unknown[]).includes(value);
+}
+
+export function parseGodChatImage(value: unknown): GodChatImage | null {
+  if (!value || typeof value !== "object") return null;
+  const { mediaType, data } = value as Record<string, unknown>;
+  if (!isGodChatImageType(mediaType) || typeof data !== "string" || !data) return null;
+  if (data.length > Math.ceil(GOD_CHAT_IMAGE_LIMITS.maxBytes / 3) * 4 || data.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return null;
+  const bytes = (data.length / 4) * 3 - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
+  return bytes <= GOD_CHAT_IMAGE_LIMITS.maxBytes ? { mediaType, data } : null;
+}
+
 export type GodChatCard = keyof typeof GOD_CHAT_CARD_VIEWS;
 export const GOD_CHAT_CARDS = Object.keys(GOD_CHAT_CARD_VIEWS) as GodChatCard[];
 
@@ -162,7 +187,8 @@ export type GodChatEvent =
   | { type: "pass"; pass: string; expiresAt: number };
 
 // resume：设计会话里重新取回访客断线时错过的那条回复，messages 截到访客那条为止；不扣设计轮数。
-export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true };
+// image 只属于最后一条访客消息；设计会话与 resume 不收图片。
+export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true; image?: GodChatImage };
 
 // 访客自己的话超长就拒；模型的旧回复只截断，超出总量从最早的消息丢起，长回答不能让后续对话发不出去。
 // 浏览器发送前先过一遍，Worker 收到后再过一遍。
@@ -212,13 +238,15 @@ export function normalizeTrace(value: unknown): GodChatTrace | undefined {
 
 export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!body || typeof body !== "object") return null;
-  const { messages, turnstileToken, humanPass, designToken, resume } = body as Record<string, unknown>;
+  const { messages, turnstileToken, humanPass, designToken, resume, image } = body as Record<string, unknown>;
   if (turnstileToken !== undefined && (typeof turnstileToken !== "string" || !turnstileToken || turnstileToken.length > 2048)) return null;
   if (humanPass !== undefined && (typeof humanPass !== "string" || !GOD_CHAT_PASS_PATTERN.test(humanPass))) return null;
   if (turnstileToken === undefined && humanPass === undefined) return null;
   if (designToken !== undefined && (typeof designToken !== "string" || !/^[\w-]+\.[\w-]+$/.test(designToken) || designToken.length > 2048)) return null;
   if (resume !== undefined && (resume !== true || designToken === undefined)) return null;
   if (!Array.isArray(messages) || messages.length === 0) return null;
+  const cleanImage = image === undefined ? undefined : parseGodChatImage(image);
+  if (cleanImage === null || (cleanImage && (designToken !== undefined || resume !== undefined))) return null;
 
   const parsed: GodChatMessage[] = [];
   for (const message of messages.slice(-GOD_CHAT_LIMITS.maxMessages)) {
@@ -235,5 +263,5 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   }
   const fitted = fitHistory(parsed);
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
-  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }) };
+  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanImage && { image: cleanImage }) };
 }
