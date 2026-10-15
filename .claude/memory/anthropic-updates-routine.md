@@ -9,7 +9,7 @@ Created 2026-10-14 at lyjw's request ("每天定时去拉 Anthropic 官方博客
 
 Sources (expanded 2026-10-14 06:32Z at lyjw's request "信息来源可以多一点…土豆…我给你发那个人…再去找一些其他的信息来源", PR #290). The lists live in `fetch.py`: `SET_SOURCES` (anthropic.com news and engineering, claude.dev blog, the claude.com/resources/articles blog, docs, release notes, Simon Willison entries, Latent Space, the Cloudflare changelog filtered by `CLOUDFLARE_PRODUCTS`, and HN stories over 150 points whose title or URL names Claude or Anthropic), `VERSION_SOURCES` (the Claude Code and anthropic-sdk-typescript CHANGELOGs) and `X_ACCOUNTS`:
 - official: AnthropicAI, claudeai, ClaudeDevs
-- anthropic: bcherny, _catwu, trq212, alexalbert__, felixrieseberg (added 2026-10-15 at lyjw's request)
+- anthropic: bcherny, _catwu, trq212, alexalbert__, felixrieseberg
 - builders: poteto (土豆 = Lauren Tan), mattpocockuk ("the person lyjw sent"), karpathy, HamelHusain
 
 X cursors are kept per account (`cursors.x` = {username: since_id}). A new source or account reports only its last 36h on first sight. GitHub releases.atom is blocked in cloud sessions, so use raw CHANGELOG files instead.
