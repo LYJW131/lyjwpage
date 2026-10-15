@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
 import { GOD_CHAT_CARD_VIEWS, isGodChatCard, type GodChatMessage, type GodChatTrace } from "@shared/god-chat";
+import { godChatTimeNote } from "@shared/chat-time";
 import { GOD_CHAT_TIER_INFO, type GodChatEffort } from "@shared/god-chat-tiers";
 
 import { isProjectDocKey, projectDocPath } from "../tools/project-docs";
@@ -38,9 +39,10 @@ export function toModelMessages(history: GodChatMessage[], effort: GodChatEffort
         activeEffort = turnEffort;
       }
     }
-    messages.push(m.role === "user" && trace
-      ? { role: "user", content: [{ type: "text", text: m.content }, { type: "text", text: traceNote(trace) }] }
-      : { role: m.role, content: m.content });
+    const blocks: Anthropic.Beta.BetaTextBlockParam[] = [{ type: "text", text: m.content }];
+    if (m.role === "user" && m.time) blocks.push({ type: "text", text: godChatTimeNote(m.time) });
+    if (m.role === "user" && trace) blocks.push({ type: "text", text: traceNote(trace) });
+    messages.push(blocks.length > 1 ? { role: "user", content: blocks } : { role: m.role, content: m.content });
   }
   return messages;
 }
