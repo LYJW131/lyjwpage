@@ -26,12 +26,12 @@ function isolatedFromSharedWrites(): boolean {
     previewWorkerEnabled();
 }
 
-export function historyArchiveEnabled(env: Env): boolean {
-  return !!env.HISTORY && !isolatedFromSharedWrites();
+export function historyArchive(env: Env): D1Database | null {
+  return env.HISTORY && !isolatedFromSharedWrites() ? env.HISTORY : null;
 }
 
-export function pulseScoringEnabled(env: Env): boolean {
-  return !!env.AI && !isolatedFromSharedWrites();
+export function pulseScoringAi(env: Env): Ai | null {
+  return env.AI && !isolatedFromSharedWrites() ? env.AI : null;
 }
 
 export type RequestContext = {

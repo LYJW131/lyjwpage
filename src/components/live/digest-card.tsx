@@ -8,8 +8,10 @@ import { Card } from "@/components/ui/card";
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
+import { arc, CENTER, clockLabel, DAY_SECONDS, dayTurn, dialBootScript, HAND_INNER, HAND_OUTER, polar, SIZE, TICK_INNER, TICK_OUTER, TRACK_WIDTH } from "@/lib/digest-dial";
 import { digestFigure } from "@/lib/digest-figure";
 import { STRIP_BINS, topicStrip } from "@/lib/digest-strips";
+import { scriptJson } from "@/lib/inline-script";
 import { DIGEST_PATH, PULSE_PATH, TIMEZONE_PATH } from "@/lib/paths";
 import { formatUTCOffset, resolveTimezoneDisplay } from "@/lib/timezone-display";
 import { cn } from "@/lib/utils";
@@ -32,9 +34,15 @@ const TONES: Record<DigestTopic, string> = {
 const HEADLINE_ROTATE_MS = 60_000;
 const HEADLINE_PICK = "__digestHeadline";
 
+declare global {
+  interface Window {
+    __digestHeadline?: string;
+  }
+}
+
 // 首屏的随机一条由紧跟标题的内联脚本在绘制前写进 DOM 并记下，水合时沿用它，刷新换句却不闪。
 const headlinePickScript = (pool: readonly string[]) =>
-  `(()=>{const p=${JSON.stringify(pool).replace(/</g, "\\u003c")},h=p[Math.floor(Math.random()*p.length)],t=document.currentScript?.previousElementSibling?.querySelector("[data-headline]")?.firstChild;window.${HEADLINE_PICK}=h;if(t)t.nodeValue=h})()`;
+  `(()=>{const p=${scriptJson(pool)},h=p[Math.floor(Math.random()*p.length)],t=document.currentScript?.previousElementSibling?.querySelector("[data-headline]")?.firstChild;window.${HEADLINE_PICK}=h;if(t)t.nodeValue=h})()`;
 
 const otherLine = (lines: readonly string[], line: string) => {
   const shown = lines.includes(line) ? line : lines[0];
@@ -45,8 +53,8 @@ const otherLine = (lines: readonly string[], line: string) => {
 function useRotatingHeadline(pool: readonly string[]) {
   const [state, setState] = useState(() => {
     if (typeof window === "undefined") return { line: pool[0], rotated: false, clicks: 0 };
-    const picked = (window as unknown as Record<string, unknown>)[HEADLINE_PICK];
-    delete (window as unknown as Record<string, unknown>)[HEADLINE_PICK];
+    const picked = window[HEADLINE_PICK];
+    delete window[HEADLINE_PICK];
     return { line: typeof picked === "string" && pool.includes(picked) ? picked : pool[Math.floor(Math.random() * pool.length)], rotated: false, clicks: 0 };
   });
   const key = pool.join("|");
@@ -59,50 +67,6 @@ function useRotatingHeadline(pool: readonly string[]) {
   }, [key, state.clicks]);
   const next = () => setState((prev) => ({ line: otherLine(key.split("|"), prev.line), rotated: true, clicks: prev.clicks + 1 }));
   return { ...(pool.includes(state.line) ? state : { line: pool[0], rotated: false }), next };
-}
-
-const DAY_SECONDS = 86_400;
-const SIZE = 200;
-const CENTER = SIZE / 2;
-const TRACK_WIDTH = 9;
-const TICK_OUTER = 5;
-const TICK_INNER = 12;
-const HAND_INNER = 36;
-const HAND_OUTER = CENTER - 4;
-
-function dayTurn(at: number, offsetSeconds: number) {
-  return ((((at / 1000 + offsetSeconds) % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS) / DAY_SECONDS;
-}
-
-// workerd 与浏览器的三角函数末位可能不同，不取整会让 SSR 的 path 与水合对不上。
-const coordinate = (value: number) => Math.round(value * 100) / 100;
-
-function polar(radius: number, turn: number) {
-  return [coordinate(CENTER + radius * Math.sin(turn * 2 * Math.PI)), coordinate(CENTER - radius * Math.cos(turn * 2 * Math.PI))] as const;
-}
-
-function arc(radius: number, from: number, to: number) {
-  const [x0, y0] = polar(radius, from);
-  const [x1, y1] = polar(radius, to);
-  return `M ${x0} ${y0} A ${radius} ${radius} 0 0 1 ${x1} ${y1}`;
-}
-
-const clockFormat = new Map<string, Intl.DateTimeFormat>();
-
-function clockLabel(now: number, timezone: string) {
-  let format = clockFormat.get(timezone);
-  if (!format) {
-    format = new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-    clockFormat.set(timezone, format);
-  }
-  return format.format(new Date(now));
-}
-
-// 首屏 HTML 按快照时刻画表盘，缓存过的页面会早几分钟；水合要等脚本下载执行完，表盘先显示旧时刻再跳。
-// 紧跟表盘的内联脚本在首次绘制前按本机时钟改写文字和指针；水合时 React 认这份不一致（suppressHydrationWarning），挂载后再按此刻重画。
-// 取整与 coordinate、格式与 clockLabel 保持一致。
-function dialBootScript(timezone: string) {
-  return `(()=>{try{const s=document.currentScript.previousElementSibling,p={};for(const x of new Intl.DateTimeFormat("en-GB",{timeZone:${JSON.stringify(timezone).replace(/</g, "\\u003c")},hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"}).formatToParts(new Date()))p[x.type]=x.value;s.querySelector("[data-dial-clock]").textContent=p.hour+":"+p.minute;const a=(p.hour*3600+p.minute*60+ +p.second)/${DAY_SECONDS}*2*Math.PI,h=s.querySelector("[data-dial-hand]"),c=v=>String(Math.round(v*100)/100);h.setAttribute("x1",c(${CENTER}+${HAND_INNER}*Math.sin(a)));h.setAttribute("y1",c(${CENTER}-${HAND_INNER}*Math.cos(a)));h.setAttribute("x2",c(${CENTER}+${HAND_OUTER}*Math.sin(a)));h.setAttribute("y2",c(${CENTER}-${HAND_OUTER}*Math.cos(a)))}catch{}})()`;
 }
 
 function DayDial({

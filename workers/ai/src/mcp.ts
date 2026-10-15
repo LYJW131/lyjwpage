@@ -1,3 +1,4 @@
+import { object } from "@shared/json";
 import { site } from "@shared/site";
 
 import { readJsonBody } from "./chat/guard";
@@ -49,8 +50,7 @@ type Id = string | number;
 type Params = Record<string, unknown>;
 type Era = "modern" | "legacy";
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const isObject = (value: unknown): value is Record<string, unknown> => object(value) !== null;
 
 class RpcError extends Error {
   readonly code: number;

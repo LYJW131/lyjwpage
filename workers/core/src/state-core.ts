@@ -16,7 +16,7 @@ import { dispatchIngestEffects } from "./ingest-effects";
 import { expireStatusTags, liveRoom } from "./live-platform";
 import { lagStatusTags } from "./lag-repurge";
 import { previewWorkerEnabled } from "./preview";
-import { historyArchiveEnabled, requestStore, type Env } from "./runtime";
+import { historyArchive, requestStore, type Env } from "./runtime";
 
 function transientFailure(error: unknown): boolean {
   const flags = error as { retryable?: unknown; overloaded?: unknown } | null;
@@ -98,8 +98,9 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
       await runCronRound(this.env, scheduledTime);
       ok = true;
     } finally {
-      if (historyArchiveEnabled(this.env)) {
-        await recordCheck(this.env.HISTORY!, HEARTBEAT_SERIES, scheduledTime, ok)
+      const db = historyArchive(this.env);
+      if (db) {
+        await recordCheck(db, HEARTBEAT_SERIES, scheduledTime, ok)
           .catch((error: unknown) => console.error("[cron-heartbeat]", error));
       }
     }

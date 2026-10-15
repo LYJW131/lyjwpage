@@ -3,6 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { BUILD_CLOSED_PHASES, BUILD_REPO, branchForRun, buildIssueBody, buildIssueMarker, PLAN_LABELS, planLanguage, type BuildRun, type BuildSignal, type BuildUpload } from "@shared/build-routine";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "../../../../scripts/preview-worker-name.ts";
 import { GITHUB_APP_CLIENT_ID, type GithubIssueResult } from "@shared/github-issue";
+import { sha256Hex } from "@shared/sha256";
 import type { Env } from "../runtime";
 import type { StoredRun } from "./coordinator";
 import { readBoundedJson } from "./http";
@@ -159,11 +160,6 @@ function reviewSection(review: { path: string; reasons: ReviewReason[] }[], labe
     return `- ${name} — ${reasons.map((reason) => labels.reasons[reason]).join(", ")}`;
   };
   return `\n\n## ${labels.review}\n${review.map(line).join("\n")}`;
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 type GithubPullRequest = {

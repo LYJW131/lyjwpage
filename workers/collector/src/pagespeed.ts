@@ -1,3 +1,4 @@
+import { object } from "@shared/json";
 import { site } from "@shared/site";
 import type { LighthouseVitals, PageSpeedPayload, PageSpeedSample } from "@shared/site-deployments-types";
 
@@ -7,8 +8,9 @@ const WINDOW_MS = 6 * 3_600_000;
 const MAX_SAMPLES = 12;
 export const PAGESPEED_TIMEOUT_MS = 240_000;
 function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("PageSpeed 结果格式无效");
-  return value as Record<string, unknown>;
+  const row = object(value);
+  if (!row) throw new Error("PageSpeed 结果格式无效");
+  return row;
 }
 
 function numeric(audits: Record<string, unknown>, id: string): number | null {

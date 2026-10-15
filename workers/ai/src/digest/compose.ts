@@ -1,4 +1,5 @@
 import type { DigestOutcome } from "@shared/digest";
+import { sha256Hex } from "@shared/sha256";
 
 import { digestMessage, digestSignals, readDigestViews } from "./facts";
 import { DIGEST_SITUATIONS, digestScene, type DigestSituation } from "./situation";
@@ -32,13 +33,8 @@ export function clefPicker(ai: Ai): PickTagline {
   return (input) => ai.run(DIGEST_PICKER_MODEL as Parameters<Ai["run"]>[0], { model: "clef", ...input } as never, { signal: AbortSignal.timeout(CLEF_TIMEOUT_MS) } as never);
 }
 
-async function sha256(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 export function digestInputHash(facts: string): Promise<string> {
-  return sha256(`${TAGLINE_INSTRUCTIONS}\n\0${JSON.stringify(DIGEST_SITUATIONS)}\n\0${JSON.stringify(DIGEST_TAGLINES)}\n\0${facts}`);
+  return sha256Hex(`${TAGLINE_INSTRUCTIONS}\n\0${JSON.stringify(DIGEST_SITUATIONS)}\n\0${JSON.stringify(DIGEST_TAGLINES)}\n\0${facts}`);
 }
 
 function fnv(text: string): number {

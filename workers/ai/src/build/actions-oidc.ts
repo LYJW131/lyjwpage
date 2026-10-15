@@ -1,6 +1,7 @@
+import { object } from "@shared/json";
 import { BUILD_REPO } from "@shared/build-routine";
 import { decodeBase64url } from "../crypto";
-import { object, readBoundedJson } from "./http";
+import { readBoundedJson } from "./http";
 
 export const ACTIONS_OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 export const ACTIONS_OIDC_JWKS_URL = `${ACTIONS_OIDC_ISSUER}/.well-known/jwks`;

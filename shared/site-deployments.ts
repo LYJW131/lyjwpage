@@ -1,3 +1,4 @@
+import { object } from "@shared/json";
 import { AwaitingReport } from "@shared/awaiting-report";
 import { parseBuildCommit } from "@shared/cloudflare-workers";
 import { LagResult } from "@shared/lag-result";
@@ -12,10 +13,9 @@ import {
 import { LAG_KEYS } from "@shared/lag";
 
 function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Site deployment response is invalid");
-  }
-  return value as Record<string, unknown>;
+  const row = object(value);
+  if (!row) throw new Error("Site deployment response is invalid");
+  return row;
 }
 
 function timestamp(value: unknown): number | null {
