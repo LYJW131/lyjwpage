@@ -841,9 +841,10 @@ html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"] {
   --heatmap-high: #72b0ff;
 }
 
-.github-chart svg rect[data-score] {
+.github-chart svg rect {
   width: 10px;
   height: 10px;
+  fill: transparent;
 }
 
 /* 档位数须与 github-chart-compact.ts#HEATMAP_LEVELS 同步。 */
@@ -885,7 +886,7 @@ html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"] {
   --heatmap-high: oklch(0.76 0.16 148);
 }
 
-.github-chart svg rect[data-hot] {
+.github-chart svg [data-hot] {
   stroke: var(--foreground);
   stroke-width: 1;
 }
