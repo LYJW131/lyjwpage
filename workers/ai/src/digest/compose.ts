@@ -98,10 +98,11 @@ export async function composeDigest({
 }): Promise<DigestOutcome> {
   const views = await readDigestViews(readStatus);
   const { content, options } = digestMessage(views, now);
-  const inputHash = await digestInputHash(content);
-  if (inputHash === previousInputHash) return { status: "unchanged" };
   const signals = digestSignals(views, now);
   const scene = digestScene(options, signals);
+  // 判出的情境也进哈希：只改了情境规则、事实没变时，下一轮照样按新规则重排。
+  const inputHash = await digestInputHash(`${content}\n\0${JSON.stringify(scene)}`);
+  if (inputHash === previousInputHash) return { status: "unchanged" };
   if (scene.quiet) return { status: "composed", digest: { headline: "", highlights: [], quiet: true, model: DIGEST_RULES_MODEL, generatedAt: Date.now(), inputHash } };
   const candidates = taglineCandidates(scene.primary, scene.accents, signals.date);
   if (!candidates.length) throw new Error(`Digest has no taglines for ${scene.primary}`);
