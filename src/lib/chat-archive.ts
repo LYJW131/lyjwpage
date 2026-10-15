@@ -117,6 +117,7 @@ function validBubble(value: unknown): value is ChatBubble {
   if (value.designAt !== undefined && typeof value.designAt !== "number") return false;
   if (value.designRevealed !== undefined && value.designRevealed !== true) return false;
   if (value.designEnded !== undefined && !(DESIGN_END_REASONS as readonly unknown[]).includes(value.designEnded)) return false;
+  if (value.time !== undefined && (!object(value.time) || typeof value.time.iso !== "string" || !optionalString(value.time.zone))) return false;
   if (value.answers !== undefined && (!Array.isArray(value.answers) || !value.answers.every((answer) => object(answer) && ["header", "question", "answer"].every((key) => typeof answer[key] === "string")))) return false;
   if (["lookups", "searches", "steps"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;

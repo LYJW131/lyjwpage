@@ -297,13 +297,13 @@ function Conversation({ className, archive, session: conversation }: { className
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
     const answers = !resumed && answersRef.current?.text.trim() === content ? answersRef.current.answers : undefined;
     if (!resumed) answersRef.current = null;
-    const user: ChatBubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, ...(answers && { answers }) };
+    const user: ChatBubble & { id: string } = resumed?.user ?? { id: crypto.randomUUID(), role: "user", content, time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone }, ...(answers && { answers }) };
     const shown: ChatBubble[] = [...(resumed?.before ?? messages), user];
     const history: GodChatMessage[] = fitHistory(
       shown
         .filter(({ content }) => content.trim())
-        .map(({ role, content, trace, seal, planToken }): GodChatMessage =>
-          role === "assistant" ? { role, content, ...(trace && { trace }), ...(seal && { seal }), ...(planToken && { planToken }) } : { role, content },
+        .map(({ role, content, trace, seal, planToken, time }): GodChatMessage =>
+          role === "assistant" ? { role, content, ...(trace && { trace }), ...(seal && { seal }), ...(planToken && { planToken }) } : { role, content, ...(time && { time }) },
         ),
     );
     let reply = "";
