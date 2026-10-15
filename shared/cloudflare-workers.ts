@@ -1,3 +1,4 @@
+import { object } from "@shared/json";
 import { AwaitingReport } from "@shared/awaiting-report";
 import {
   CLOUDFLARE_WORKERS,
@@ -28,10 +29,9 @@ query WorkersMetrics($account: string, $start: Time, $end: Time) {
 }`;
 
 function record(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Cloudflare 指标格式无效");
-  }
-  return value as Record<string, unknown>;
+  const row = object(value);
+  if (!row) throw new Error("Cloudflare 指标格式无效");
+  return row;
 }
 
 function nonnegative(value: unknown): number {

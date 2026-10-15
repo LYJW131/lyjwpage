@@ -1,4 +1,5 @@
 import type { ErrorSeries, FieldVitals } from "@shared/health-types";
+import { number, object } from "@shared/json";
 
 const API = "https://api.cloudflare.com/client/v4";
 
@@ -9,11 +10,11 @@ export const HEALTH_WORKER_SERVICES = ["core", "ai", "ingress", "collector"] as 
 type Json = Record<string, unknown>;
 
 function record(value: unknown): Json {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Json : {};
+  return object(value) ?? {};
 }
 
 function num(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return number(value) ?? 0;
 }
 
 export function parseErrorCounts(raw: unknown): Map<string, number> {
@@ -130,7 +131,9 @@ async function activeIssues(api: CloudflareApi, account: string, services: reado
   const counts = new Map<string, number>();
   for (const service of services) {
     const summary = await api(`/accounts/${account}/workers/observability/issues/summary`, { query: { service } });
-    counts.set(service, num(record(summary).activeIssues));
+    const active = number(object(summary)?.activeIssues);
+    if (active == null) throw new Error(`Workers Issues 摘要格式无效 (${service})`);
+    counts.set(service, active);
   }
   return counts;
 }

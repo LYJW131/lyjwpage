@@ -1,5 +1,6 @@
 import { get, put } from "@shared/cache";
 import { repoIdFromUrl } from "@shared/github-repo";
+import { sha256Hex } from "@shared/sha256";
 import { site } from "@shared/site";
 
 import { ok, skipMissing, type Job, type JobResult } from "../job";
@@ -19,11 +20,6 @@ export type AvatarWatchDeps = {
   token: string;
   memo: { get(key: string): Promise<string | undefined>; put(key: string, value: string, ttlMs: number): Promise<void> };
 };
-
-async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 
 async function avatarHash(deps: AvatarWatchDeps): Promise<string> {
   const response = await deps.fetch(AVATAR_URL, { redirect: "manual" });

@@ -1,3 +1,5 @@
+import { scriptJson } from "@/lib/inline-script";
+
 
 export const EARLY_LIVE_SOCKET_KEY = "__lyjwLiveSocket" as const;
 
@@ -18,9 +20,8 @@ export const EARLY_LIVE_SOCKET_WATCHDOG_MS = 15_000;
 
 export const EARLY_LIVE_SOCKET_QUEUE_LIMIT = 50;
 
-// 内联脚本须转义小于号，防止 URL 中的结束标签逃逸出 script 元素。
 export function earlyLiveSocketScript(url: string): string {
-  const target = JSON.stringify(`${url}?visible=1`).replace(/</g, "\\u003c");
+  const target = scriptJson(`${url}?visible=1`);
   const key = EARLY_LIVE_SOCKET_KEY;
   return (
     `try{if(document.visibilityState!=="hidden"){` +

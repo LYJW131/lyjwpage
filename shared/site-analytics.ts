@@ -1,3 +1,4 @@
+import { object } from "@shared/json";
 export const SITE_ANALYTICS_HOSTS = ["lyjw.me", "lyjw131.com"] as const;
 
 export type SiteAnalyticsSource = { host: string; siteTag: string };
@@ -24,10 +25,9 @@ query SitePageviews($account: string, $site: string, $host: string, $start: Time
 }`;
 
 function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Site analytics response is invalid");
-  }
-  return value as Record<string, unknown>;
+  const row = object(value);
+  if (!row) throw new Error("Site analytics response is invalid");
+  return row;
 }
 
 export function parseSiteAnalyticsSources(raw: string): SiteAnalyticsSource[] {

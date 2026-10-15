@@ -16,6 +16,13 @@
 //                  不再手写 new Response(JSON.stringify(...))
 //   jsdoc-internal JS / TS 源码不写 JSDoc 块注释（以 /** 开头）：仓库没有对外发布的库接口，文件头与说明用 //，
 //                  AGENTS.md「文档与注释」
+//   sha256-hex     src/、shared/、workers/<x>/src/ 的 SHA-256 十六进制一律用 shared/sha256.ts#sha256Hex，
+//                  不再逐字复制 toString(16).padStart(2, "0")
+//   json-object-guard
+//                  同一范围里「是不是普通对象」只用 shared/json.ts#object 判断：一两句、只做
+//                  typeof 与 Array.isArray 检查的单参数函数要改成调它（失败时抛错或回默认值包在外面）
+//   inline-script-json
+//                  内联脚本里的 JSON 只经 src/lib/inline-script.ts#scriptJson 转义小于号，不再各写一份 replace(/</g, …)
 //   scripts-mjs    scripts/ 新写的脚本用 .ts（Node 直接跑，进 typecheck）；现存 .mjs 记在
 //                  scripts/mjs-baseline.json，迁走一个就从基线删一个，基线只减不增（scripts/baseline-growth-check.ts）
 //
@@ -329,9 +336,52 @@ export function checkJsdoc(file: string, text: string) {
   return issues.sort((a, b) => a.line - b.line);
 }
 
+const HELPER_SCOPE = /^(?:src|shared|workers\/[^/]+\/src)\/.+\.(?:ts|tsx|mts)$/;
+const SHA256_HEX_IMPL = "shared/sha256.ts";
+const JSON_OBJECT_IMPL = "shared/json.ts";
+const INLINE_SCRIPT_JSON_IMPL = "src/lib/inline-script.ts";
+const LT_ESCAPE_RE = /\.replace\(\/<\/g,\s*["'`]\\\\u003c/;
+const HEX_BYTE_RE = /toString\(16\)\.padStart\(2,\s*["'`]0["'`]\)/;
+
+export function checkSha256Hex(file: string, text: string) {
+  if (!HELPER_SCOPE.test(file) || file === SHA256_HEX_IMPL) return [];
+  return text.split("\n").flatMap((line, index) => HEX_BYTE_RE.test(line)
+    ? [{ file, line: index + 1, rule: "sha256-hex", message: "SHA-256 转十六进制用 @shared/sha256#sha256Hex，不再复制一份 toString(16).padStart(2, \"0\")。" }]
+    : []);
+}
+
+export function checkInlineScriptJson(file: string, text: string) {
+  if (!HELPER_SCOPE.test(file) || file === INLINE_SCRIPT_JSON_IMPL) return [];
+  return text.split("\n").flatMap((line, index) => LT_ESCAPE_RE.test(line)
+    ? [{ file, line: index + 1, rule: "inline-script-json", message: "内联脚本里的 JSON 用 @/lib/inline-script#scriptJson 转义，不再各写一份 replace(/</g, \"\\\\u003c\")。" }]
+    : []);
+}
+
+export function checkJsonObjectGuard(file: string, text: string) {
+  if (!HELPER_SCOPE.test(file) || file === JSON_OBJECT_IMPL) return [];
+  const ts = loadTs();
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const issues: Issue[] = [];
+  const visit = (node: TS.Node) => {
+    if ((ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && node.body && node.parameters.length === 1 && ts.isIdentifier(node.parameters[0].name)) {
+      const param = node.parameters[0].name.text;
+      const small = !ts.isBlock(node.body) || node.body.statements.length <= 2;
+      const body = node.body.getText(sf);
+      const typeofObject = new RegExp(`typeof ${param} [!=]== ["']object["']`);
+      if (small && typeofObject.test(body) && body.includes(`Array.isArray(${param})`)) {
+        const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+        issues.push({ file, line: line + 1, rule: "json-object-guard", message: "判断普通对象用 @shared/json#object（失败返回 null），要抛错或回默认值就包在它外面，不再各写一份 typeof / Array.isArray。" });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return issues;
+}
+
 export function checkFile(file: string, text: string): Issue[] {
   if (!CODE_EXTS.has(extOf(file)) || TEST_OR_FIXTURE.test(file)) return [];
-  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text)];
+  const issues = [...checkTodo(file, text), ...checkBakedImgUrl(file, text), ...checkManualSleep(file, text), ...checkJsdoc(file, text), ...checkSha256Hex(file, text), ...checkJsonObjectGuard(file, text), ...checkInlineScriptJson(file, text)];
   if (SITE_SOURCE.test(file)) issues.push(...checkFetchHost(file, text), ...checkScrollbarPair(file, text));
   if (WORKER_OR_SHARED_TS.test(file) && !JSON_RESPONSE_IMPL.has(file)) issues.push(...checkJsonResponseLiteral(file, text));
   return issues;

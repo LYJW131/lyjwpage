@@ -1,3 +1,4 @@
+import { object } from "@shared/json";
 
 import type {
   AgentIncident,
@@ -151,10 +152,6 @@ function plain(html: string): string {
   return decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -219,24 +216,24 @@ function parseStatuspage(body: string, pageUrl: string): {
   incidents: StatuspageIncident[];
   maintenances: StatuspageIncident[];
 } {
-  const root = asRecord(JSON.parse(body));
+  const root = object(JSON.parse(body));
   if (!root) throw new Error("status page JSON is not an object");
-  const page = rollupIndicator(text(asRecord(root.status)?.indicator));
+  const page = rollupIndicator(text(object(root.status)?.indicator));
   const components: StatuspageComponent[] = [];
   for (const item of list(root.components)) {
-    const record = asRecord(item);
+    const record = object(item);
     const name = text(record?.name);
     const indicator = componentIndicator(text(record?.status) ?? "");
     if (name && indicator) components.push({ name, indicator });
   }
   const incident = (item: unknown): StatuspageIncident | null => {
-    const record = asRecord(item);
+    const record = object(item);
     const name = text(record?.name);
     const id = text(record?.id);
     if (!record || !name || !id) return null;
     const updates = list(record.incident_updates)
       .map((update) => {
-        const row = asRecord(update);
+        const row = object(update);
         const created = text(row?.created_at) ?? text(row?.display_at);
         return {
           at: created ? Date.parse(created) : Number.NaN,
@@ -248,7 +245,7 @@ function parseStatuspage(body: string, pageUrl: string): {
     updates.sort((left, right) => (right.at || 0) - (left.at || 0));
     const latest = updates[0];
     const componentNames = list(record.components)
-      .map((component) => text(asRecord(component)?.name))
+      .map((component) => text(object(component)?.name))
       .filter((component): component is string => !!component);
     return {
       id,
@@ -465,15 +462,15 @@ function betterStackIndicator(state: string | null): AgentIndicator | null {
 
 // Better Stack 的 ends_at 可能始终为空；结束状态以 aggregate_state 为准。
 function typesafeRow(body: string, now: number): AgentStatusRow {
-  const root = asRecord(JSON.parse(body));
-  const page = asRecord(asRecord(root?.data)?.attributes);
+  const root = object(JSON.parse(body));
+  const page = object(object(root?.data)?.attributes);
   if (!page) throw new Error("status.typesafe.ai index.json has no page attributes");
-  const included = list(root?.included).map(asRecord).filter((item): item is Record<string, unknown> => !!item);
+  const included = list(root?.included).map(object).filter((item): item is Record<string, unknown> => !!item);
   const ofType = (type: string) => included.filter((item) => item.type === type);
 
   const components: StatuspageComponent[] = [];
   for (const resource of ofType("status_page_resource")) {
-    const attributes = asRecord(resource.attributes);
+    const attributes = object(resource.attributes);
     const name = text(attributes?.public_name);
     const indicator = betterStackIndicator(text(attributes?.status));
     if (name && indicator) components.push({ name, indicator });
@@ -482,7 +479,7 @@ function typesafeRow(body: string, now: number): AgentStatusRow {
   const updates = new Map<string, { at: number; message: string }>();
   for (const update of ofType("status_update")) {
     const id = text(update.id);
-    const attributes = asRecord(update.attributes);
+    const attributes = object(update.attributes);
     const published = text(attributes?.published_at);
     if (id) updates.set(id, { at: published ? Date.parse(published) : Number.NaN, message: text(attributes?.message) ?? "" });
   }
@@ -491,12 +488,12 @@ function typesafeRow(body: string, now: number): AgentStatusRow {
   const scheduled: AgentIncident[] = [];
   for (const report of ofType("status_report")) {
     const id = text(report.id);
-    const attributes = asRecord(report.attributes);
+    const attributes = object(report.attributes);
     const title = text(attributes?.title);
     const state = text(attributes?.aggregate_state) ?? "";
     if (!id || !title || state === "resolved") continue;
-    const latest = list(asRecord(asRecord(report.relationships)?.status_updates)?.data)
-      .map((ref) => updates.get(text(asRecord(ref)?.id) ?? ""))
+    const latest = list(object(object(report.relationships)?.status_updates)?.data)
+      .map((ref) => updates.get(text(object(ref)?.id) ?? ""))
       .filter((update): update is { at: number; message: string } => !!update)
       .sort((left, right) => (right.at || 0) - (left.at || 0))[0];
     const startsAt = Date.parse(text(attributes?.starts_at) ?? "");
@@ -553,17 +550,17 @@ export function parseAppleStatus(body: string): { services: string[]; events: Ap
   const open = body.indexOf("{");
   const close = body.lastIndexOf("}");
   if (open < 0 || close < open) throw new Error("Apple system status is not JSONP");
-  const services = asRecord(JSON.parse(body.slice(open, close + 1)))?.services;
+  const services = object(JSON.parse(body.slice(open, close + 1)))?.services;
   if (!Array.isArray(services)) throw new Error("Apple system status has no services");
   const names: string[] = [];
   const events: AppleEvent[] = [];
   for (const item of services) {
-    const service = asRecord(item);
+    const service = object(item);
     const name = text(service?.serviceName);
     if (!service || !name) continue;
     names.push(name);
     for (const entry of list(service.events)) {
-      const event = asRecord(entry);
+      const event = object(entry);
       if (!event) continue;
       events.push({
         service: name,

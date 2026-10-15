@@ -1,4 +1,6 @@
+import { object } from '@shared/json';
 import { PULSE_TTL_MS, PULSE_WINDOW_MS } from '@shared/limits';
+import { sha256Hex } from '@shared/sha256';
 import { CODING_WINDOW_MS, PULSE_SCORE_WINDOW_MS, cloudAgentActivity, codingQuestions, codingWindowFeatures, judgment, modeJudgment, parseCodingObservation } from '@shared/pulse-coding';
 import { parseCursorObservation } from '@shared/pulse-cursor';
 import { parseStoredCodingBuckets, type StoredCodingBuckets } from '@shared/coding-buckets';
@@ -18,15 +20,12 @@ export function clefDecide(ai: Ai): PulseDecide {
 export const PULSE_SCORE_SETTLE_MS = 120_000;
 const TOKEN_COUNT_KEYS = ["inputTokens", "outputTokens", "cacheReadTokens", "cacheCreationTokens", "reasoningTokens"] as const;
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
 function num(row: Record<string, unknown>, key: string): number | null {
   const value = row[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 function zeroTokens(value: unknown): boolean {
-  const counts = record(value);
+  const counts = object(value);
   if (!counts || !TOKEN_COUNT_KEYS.every((key) => num(counts, key) === 0)) return false;
   return counts.eventCount === null || num(counts, "eventCount") === 0;
 }
@@ -39,32 +38,32 @@ function covers(coverage: Coverage[], from: number, to: number): boolean {
   return cursor >= to;
 }
 function codingZero(state: unknown): boolean {
-  const row = record(state);
-  const facts = row && Array.isArray(row.windows) ? record(row.windows[0]) : null;
+  const row = object(state);
+  const facts = row && Array.isArray(row.windows) ? object(row.windows[0]) : null;
   const observed = facts ? num(facts, "observedSeconds") : null;
   if (!facts || observed == null || observed <= 0) return false;
   if (num(facts, "desktopObservedSeconds") !== observed || num(facts, "macAgentObservedSeconds") !== observed) return false;
   if (num(facts, "cursorActiveSeconds") !== 0) return false;
   if (num(facts, "codingAppSeconds") !== 0 || num(facts, "agentActiveSeconds") !== 0 || num(facts, "longestCodingRunSeconds") !== 0) return false;
   if (!Array.isArray(facts.agents) || facts.agents.length !== 0) return false;
-  const usage = record(facts.tokenUsage);
+  const usage = object(facts.tokenUsage);
   const buckets = PULSE_SCORE_WINDOW_MS / CODING_WINDOW_MS;
   if (!usage || num(usage, "observedBucketCount") !== buckets || num(usage, "unknownBucketCount") !== 0) return false;
   // 账号与云端桶只有正证据，缺行不能证明零；确定为零必须有本机完整覆盖。
-  const mac = Array.isArray(usage.sources) ? usage.sources.filter((source) => record(source)?.source === "mac") : [];
-  if (mac.length === 0 || !mac.every((source) => record(source)?.state === "ok")) return false;
+  const mac = Array.isArray(usage.sources) ? usage.sources.filter((source) => object(source)?.source === "mac") : [];
+  if (mac.length === 0 || !mac.every((source) => object(source)?.state === "ok")) return false;
   return Array.isArray(usage.agents) && usage.agents.every(zeroTokens);
 }
 function definiteZero(state: unknown, coverage: Coverage[], from: number): boolean {
   return covers(coverage, from, from + PULSE_SCORE_WINDOW_MS) && codingZero(state);
 }
 function quietIndependentSource(state: unknown): boolean {
-  const row = record(state);
+  const row = object(state);
   if (!row || !Array.isArray(row.windows)) return false;
-  const facts = record(row.windows[0]);
+  const facts = object(row.windows[0]);
   if (!facts || num(facts, "desktopObservedSeconds") !== 0 || num(facts, "macAgentObservedSeconds") !== 0
     || (num(facts, "cursorObservedSeconds") ?? 0) <= 0 || num(facts, "cursorActiveSeconds") !== 0) return false;
-  const usage = record(facts.tokenUsage);
+  const usage = object(facts.tokenUsage);
   return !usage || (Array.isArray(usage.agents) && usage.agents.every(zeroTokens));
 }
 function baselineScore(question: ScoreQuestion, confidence: number) {
@@ -140,8 +139,7 @@ export class PulseScorer {
         const tokens = windowTokenUsage(buckets, from);
         const built: Built={state:{windows:[{...facts,tokenUsage:tokens}]},coverage:facts.coverage,questions:codingQuestions([facts]) as Record<string, PulseQuestion>,ids:{intensity:'w0Intensity',continuity:'w0Continuity',mode:'w0Mode'}};
         if (!built.coverage.length) continue;
-        const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({version:PULSE_ASSESSMENT_VERSION,state:built.state,questions:built.questions})));
-        const hash=Array.from(new Uint8Array(digest),(b)=>b.toString(16).padStart(2,'0')).join('');
+        const hash=await sha256Hex(JSON.stringify({version:PULSE_ASSESSMENT_VERSION,state:built.state,questions:built.questions}));
         if(completed.get(`${domain}:${from}`)?.inputHash===hash) continue;
         const limitedZero = quietIndependentSource(built.state);
         if (definiteZero(built.state, built.coverage, from) || limitedZero) {
@@ -165,8 +163,8 @@ export class PulseScorer {
       const records: PulseAssessment[]=[...ruled];
       for(let i=0;i<jobs.length;i+=3){
         const results=await Promise.allSettled(jobs.slice(i,i+3).map(async(job)=>{
-          const body=record(await this.options.decide({state:job.state,questions:job.questions}));
-          if (!body || typeof body.model !== 'string' || !body.model || !record(body.answers)) throw Error('Invalid decision response');
+          const body=object(await this.options.decide({state:job.state,questions:job.questions}));
+          if (!body || typeof body.model !== 'string' || !body.model || !object(body.answers)) throw Error('Invalid decision response');
           const answers=body.answers as Record<string,unknown>;
           return {from:job.from,to:job.from+PULSE_SCORE_WINDOW_MS,coverage:job.coverage,
             intensity:judgment(answers[job.ids.intensity],5,true),continuity:judgment(answers[job.ids.continuity],4,true),

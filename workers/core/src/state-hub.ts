@@ -8,7 +8,7 @@ import { applyEnrichmentPatch } from "./enrichment-patch";
 import type { EnrichmentPatch } from "@shared/track-enrichment";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
-import { historyArchiveEnabled, pulseScoringEnabled, requestStore, type Env } from "./runtime";
+import { historyArchive, pulseScoringAi, requestStore, type Env } from "./runtime";
 import { PulseArchiveState, type ArchiveStream, type PulseArchiveSnapshot } from "./pulse-archive";
 import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
 import type { PulseAssessment } from "@shared/pulse-assessment";
@@ -119,29 +119,29 @@ export class StateHub extends DurableObject<Env> {
   async pulseTick(): Promise<PulseTick> {
     const idle: PulseTick = { archive: { now: Date.now(), streams: [] }, score: null };
     await this.ingestTail;
-    const archive = historyArchiveEnabled(this.env)
+    const archive = historyArchive(this.env)
       ? await this.pulseArchiveState.readPulseArchive().catch((error: unknown) => (console.warn("[pulse-archive]", error), idle.archive))
       : idle.archive;
-    const score = pulseScoringEnabled(this.env)
+    const score = pulseScoringAi(this.env)
       ? await this.pulseScoreState.claimPulseScore().catch((error: unknown) => (console.warn("[pulse-score]", error), null))
       : null;
     return { archive, score };
   }
 
   async confirmPulseArchive(stream: ArchiveStream, at: number, replaceToken?: string): Promise<number> {
-    if (!historyArchiveEnabled(this.env)) return 0;
+    if (!historyArchive(this.env)) return 0;
     await this.ingestTail;
     return this.pulseArchiveState.confirmPulseArchive(stream, at, replaceToken);
   }
 
   async activatePulseScore(token: string, generation: number): Promise<boolean> {
-    if (!pulseScoringEnabled(this.env)) return false;
+    if (!pulseScoringAi(this.env)) return false;
     await this.ingestTail;
     return this.pulseScoreState.activatePulseScore(token, generation);
   }
 
   async finishPulseScore(token: string, generation: number, records: PulseAssessment[]): Promise<boolean> {
-    if (!pulseScoringEnabled(this.env)) return false;
+    if (!pulseScoringAi(this.env)) return false;
     await this.ingestTail;
     return this.pulseScoreState.finishPulseScore(token, generation, records);
   }
