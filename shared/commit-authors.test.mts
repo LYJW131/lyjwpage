@@ -12,6 +12,9 @@ test("GitHub noreply 邮箱直接拼出登录名和头像，agent 邮箱换成�
   assert.deepEqual(authorFromTrailer("Devin AI", "158243242+devin-ai-integration[bot]@users.noreply.github.com"), {
     name: "devin-ai-integration[bot]", login: "devin-ai-integration[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/811515?v=4", agent: "devin", model: "Devin AI",
   });
+  assert.deepEqual(authorFromTrailer("DeepSeek Harness", "5334743+lyjw-dsh[bot]@users.noreply.github.com"), {
+    name: "lyjw-dsh[bot]", login: "lyjw-dsh[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/5334743?v=4", agent: "dsh", model: "DeepSeek Harness",
+  });
   assert.deepEqual(authorFromTrailer("Yangjunwei Liang", "LYJW131@users.noreply.github.com"), {
     name: "LYJW131", login: "LYJW131", avatarUrl: "https://github.com/LYJW131.png", agent: null, model: null,
   });

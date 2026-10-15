@@ -56,6 +56,7 @@
   --avatar-cursor: oklch(0.3 0.005 80);
   --avatar-chihaya: oklch(0.64 0.23 355);
   --avatar-grok: oklch(0.6 0.005 80);
+  --avatar-dsh: oklch(0.32 0.01 80);
 
   --activity-move: #f31e59;
   --activity-move-lit: #fd3183;
@@ -102,6 +103,7 @@
   --avatar-cursor: oklch(0.9 0.005 80);
   --avatar-chihaya: oklch(0.74 0.19 355);
   --avatar-grok: oklch(0.55 0.005 80);
+  --avatar-dsh: oklch(0.88 0.005 80);
 
   --activity-shadow: 1;
 
