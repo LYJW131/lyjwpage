@@ -39,7 +39,7 @@ const TROUBLE_RANK: Partial<Record<AgentIndicator, number>> = {
 
 function troubleFirst(agents: AgentStatusRow[]): AgentStatusRow[] {
   const rank = (agent: AgentStatusRow) => TROUBLE_RANK[agent.indicator] ?? Infinity;
-  return agents.toSorted((a, b) => rank(a) - rank(b));
+  return [...agents].sort((a, b) => rank(a) - rank(b));
 }
 
 function toColumns(agents: AgentStatusRow[]): AgentStatusRow[][] {
