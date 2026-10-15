@@ -159,6 +159,27 @@
 
 [交互式架构图](https://lyjw131.github.io/lyjwpage/) · [页面细节与关键设计](./docs/design-notes.md)（首屏缓存、推送与轮询分工、旧页面降级、窗口标题隐私判断、图片寻址、可观测性）
 
+## 开发工作流
+
+这个仓库的代码大多由 Claude 写，lyjw 定方向、拍板和验收。一句话需求进项目聊天，协调 Claude 开线程，线程 Claude 一路做到合并上线；几个定时任务在没人说话时继续审查代码、提炼经验、盯线上。
+
+```mermaid
+flowchart LR
+  L["lyjw"] --> P["协调 Claude"] --> T["线程 Claude"]
+  T -->|并行实现| D["Devin CLI"]
+  T -->|验证| H["Haiku 验证员"]
+  T --> PR["PR"] --> G{"合并门槛"} --> M["main"] --> W["自动部署"]
+  R["定时任务"] -.-> PR
+```
+
+- **规则分层，能拦就拦**：[`HUMAN.md`](./HUMAN.md) 是给 lyjw 的协作约定，[`AGENTS.md`](./AGENTS.md) 是给 agent 的硬规则，[`.claude/skills/`](./.claude/skills/) 是可复用流程；违反时由钩子、lint 和 CI 里的 `docs:check`、`rules:check`、`design:scale` 拦下，存量违规的基线只减不增。
+- **验证有回执**：检查交给 Haiku 验证员，它按提交 SHA 签分级回执，合并前脚本核对回执还盖得住当前提交。
+- **合并分档**：文档和小改动 CI 绿就合，大改逻辑的处理完机器评审，UI 变化等 lyjw 看图点头。
+- **自我改进**：定时任务把反复出现的流程写成 skill、把被采纳的评审意见做成检查，项目记忆镜像在 [`.claude/memory/`](./.claude/memory/MEMORY.md)。
+- **访客也能改站点**：在首页对话里描述改动，Claude 规划、审查、实现，产出 PR 交 lyjw 合并。
+
+全貌见 [人与 agent 的开发工作流](./docs/workflow.md)。
+
 ## 技术组成
 
 | 层次 | 主要技术 |

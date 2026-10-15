@@ -14,6 +14,7 @@
 | [访客协作构建](./build-routine.md) | runbook | 首页设计对话、计划审查与 GitHub Actions 构建工作流、OIDC 回传与一次性上传、GitHub App、状态观察与配置 |
 | [CodeQL 告警自动修复](./codeql-autofix.md) | runbook | CodeQL 扫描后每条未关闭告警派一个 Cursor 云端 agent 修复并各开一个 PR |
 | [AI Worker 首次迁移](./ai-worker-migration.md) | runbook | 公开状态 RPC、聊天 DO 转移、密钥与构建配置的有序切换 |
+| [人与 agent 的开发工作流](./workflow.md) | reference | lyjw 与多个 Claude 怎么分工，规则分层与强制、验证回执、合并门槛、定时任务与访客构建的全貌 |
 | [参考文献](./references.md) | reference | 塑造本项目做法的外部文章、演讲、仓库与官方文档，各取了什么、落在哪 |
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
 | [自建 Actions runner 实测](./actions-runner-benchmark.md) | record | 同一提交的托管机与自建机 CI、CodeQL 耗时及配置验证 |
