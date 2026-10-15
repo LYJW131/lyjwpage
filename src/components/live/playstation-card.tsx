@@ -189,12 +189,10 @@ function digestFor(
 
 function GameTile({
   tile,
-  eager,
   selected,
   onSelect,
 }: {
   tile: Tile;
-  eager?: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -221,8 +219,7 @@ function GameTile({
             alt={tile.name}
             width={COVER_PX}
             height={COVER_PX}
-            loading={eager ? "eager" : "lazy"}
-            noPreload={eager}
+            loading="lazy"
             unoptimized
             className="h-28 w-28 object-cover"
           />
@@ -574,7 +571,6 @@ export function PlaystationRow({
               >
                 <GameTile
                   tile={tile}
-                  eager={index < 3}
                   selected={tile.titleId === openId}
                   onSelect={() => {
                     onJumpDone();
