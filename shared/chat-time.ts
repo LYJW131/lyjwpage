@@ -21,9 +21,12 @@ const validZone = (zone: string | undefined) => {
   }
 };
 
+// 站点与访客时间渲染同一瞬间：以这条消息带的 iso 为准，iso 缺了才用 now 兜底，
+// 否则限流或路由跨过一分钟时两份时间会指向不同时刻。
 export function godChatTimeNote(time: GodChatTimeInput | undefined, now: Date = new Date()): string {
-  const lines = [`site time (${site.timezone}): ${stamp(site.timezone).format(now)}`];
   const visitor = time && at(time.iso);
+  const moment = visitor ?? now;
+  const lines = [`site time (${site.timezone}): ${stamp(site.timezone).format(moment)}`];
   if (visitor) lines.push(`visitor time (${validZone(time.zone)}): ${stamp(validZone(time.zone)).format(visitor)}`);
   return `[Time when this message was sent — ${lines.join("; ")}. Use these for anything time-sensitive instead of asking the visitor.]`;
 }

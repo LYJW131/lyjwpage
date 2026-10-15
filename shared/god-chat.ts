@@ -2,6 +2,7 @@ export { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "./ai-paths";
 import type { StatusViewKey } from "@shared/status-views";
 import { BUILD_TOKEN_MAX_CHARS, type BuildProposal } from "./build-routine";
 import type { GodChatTimeInput } from "./chat-time";
+import { object } from "./json";
 
 import { isGodChatServedTier, type GodChatEffort, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";
 
@@ -214,8 +215,9 @@ export function normalizeTrace(value: unknown): GodChatTrace | undefined {
 
 const parseTime = (value: unknown): GodChatTimeInput | undefined => {
   if (value === undefined) return undefined;
-  if (!value || typeof value !== "object") return null as never;
-  const { iso, zone } = value as Record<string, unknown>;
+  const raw = object(value);
+  if (!raw) return null as never;
+  const { iso, zone } = raw;
   if (typeof iso !== "string" || !iso || iso.length > 64) return null as never;
   if (zone !== undefined && (typeof zone !== "string" || zone.length > 64)) return null as never;
   return { iso, ...(typeof zone === "string" && zone ? { zone } : {}) };
@@ -236,7 +238,7 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   const parsed: GodChatMessage[] = [];
   for (const message of messages.slice(-GOD_CHAT_LIMITS.maxMessages)) {
     if (!message || typeof message !== "object") return null;
-    const { role, content, trace, seal, planToken } = message as Record<string, unknown>;
+    const { role, content, trace, seal, planToken, time } = message as Record<string, unknown>;
     if ((role !== "user" && role !== "assistant") || typeof content !== "string") return null;
     const text = content.trim();
     if (!text) return null;
@@ -244,11 +246,14 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
     const cleanTrace = role === "assistant" ? normalizeTrace(trace) : undefined;
     const cleanSeal = role === "assistant" && typeof seal === "string" && /^[\w-]{20,100}$/.test(seal) ? seal : undefined;
     const cleanPlan = role === "assistant" && typeof planToken === "string" && planToken.length <= BUILD_TOKEN_MAX_CHARS && /^[\w-]+\.[\w-]+$/.test(planToken) ? planToken : undefined;
-    parsed.push({ role, content: text, ...(cleanTrace && { trace: cleanTrace }), ...(cleanSeal && { seal: cleanSeal }), ...(cleanPlan && { planToken: cleanPlan }) });
+    // time 只挂在访客消息上、随历史逐条往返；非法值的整段请求退回，不让伪造时钟进来。
+    const cleanTime = role === "user" && time !== undefined ? parseTime(time) : undefined;
+    if (role === "user" && time !== undefined && !cleanTime) return null;
+    parsed.push({ role, content: text, ...(cleanTrace && { trace: cleanTrace }), ...(cleanSeal && { seal: cleanSeal }), ...(cleanPlan && { planToken: cleanPlan }), ...(cleanTime && { time: cleanTime }) });
   }
   const fitted = fitHistory(parsed);
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
-  // 浏览器报的时钟只贴到最新一条访客消息上：旧消息的 time 留给那一轮，新一轮只刷新这条，缓存前缀不受影响。
-  if (cleanTime) fitted[fitted.length - 1] = { ...fitted[fitted.length - 1], time: cleanTime };
+  // 顶层 time 兜底最新一条：旧会话的访客气泡可能没存 time；逐条保留的那部分在循环里已带上，这里不覆盖它。
+  if (cleanTime) fitted[fitted.length - 1] = { ...fitted[fitted.length - 1], time: fitted[fitted.length - 1].time ?? cleanTime };
   return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanTime && { time: cleanTime }) };
 }
