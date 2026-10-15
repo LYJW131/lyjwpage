@@ -30,6 +30,7 @@ X_ACCOUNTS = {
         "_catwu": "974757274206978049",
         "trq212": "352806502",
         "alexalbert__": "1380719534970040322",
+        "felixrieseberg": "28576494",
     },
     "builders": {
         "poteto": "2832427459",
