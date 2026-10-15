@@ -11,7 +11,7 @@ import { sealExchange, sealedHistory, storedReply } from "./chat/seal.ts";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./chat/show-card.ts";
 import { newLedger, type ToolIO } from "./tools/registry.ts";
 import { claimViews, isStatusViewKey, parseSiteStatusInput } from "./tools/site-status.ts";
-import { webSearchTool } from "./chat/web-search.ts";
+import { pickWebSearcher, searchResultBlocks, urlKey, urlsIn, webSearch } from "./chat/web-search.ts";
 
 const user = (content: string) => ({ role: "user" as const, content });
 const assistant = (content: string) => ({ role: "assistant" as const, content });
@@ -198,11 +198,42 @@ test("兜底模型的展示名从 id 推，本档模型用本档的名字", () =
   assert.equal(modelLabel("claude-fable-5-1"), "Fable 5.1");
 });
 
-test("联网搜索只有 Haiku 用基础版，其余档都用带动态过滤的版本", () => {
-  for (const tier of GOD_CHAT_TIERS) {
-    const expected = tier === "haiku" ? "web_search_20250305" : "web_search_20260318";
-    assert.equal(webSearchTool(GOD_CHAT_TIER_INFO[tier].model, 1).type, expected, tier);
-  }
+test("联网搜索按配置的 key 在 Exa 与 Parallel 间随机分流，没配 key 就不搜", () => {
+  assert.equal(pickWebSearcher({} as never), undefined);
+  assert.equal(pickWebSearcher({ EXA_API_KEY: "e" } as never, () => 0.99)?.provider, "exa");
+  const both = { EXA_API_KEY: "e", PARALLEL_API_KEY: "p" } as never;
+  assert.equal(pickWebSearcher(both, () => 0)?.provider, "exa");
+  assert.equal(pickWebSearcher(both, () => 0.5)?.provider, "parallel");
+});
+
+test("web_fetch 只认 http(s)、不带账号的 URL，去掉片段后比较；中文标点不算进 URL", () => {
+  assert.equal(urlKey("https://example.com/a#b"), "https://example.com/a");
+  assert.equal(urlKey("javascript:alert(1)"), undefined);
+  assert.equal(urlKey("https://user:pw@example.com/"), undefined);
+  assert.deepEqual(urlsIn("看看 https://example.com/x，还有（https://a.dev/y）"), ["https://example.com/x", "https://a.dev/y"]);
+});
+
+test("搜索结果转成带引用的 search_result 块，日期并进标题", () => {
+  assert.deepEqual(searchResultBlocks([{ url: "https://a.dev", title: "A", published: "2026-10-01", text: "body" }]), [
+    { type: "search_result", source: "https://a.dev", title: "A (2026-10-01)", content: [{ type: "text", text: "body" }], citations: { enabled: true } },
+  ]);
+});
+
+test("两家搜索的响应都归一成网页列表，没有正文的结果丢掉", async (t) => {
+  const original = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  globalThis.fetch = async (input, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return String(input).includes("exa.ai")
+      ? Response.json({ results: [{ url: "https://e.dev", title: "E", publishedDate: "2026-09-22T00:00:00Z", highlights: ["h1", "h2"] }, { url: "https://empty.dev", highlights: [] }] })
+      : Response.json({ results: [{ url: "https://p.dev", title: null, publish_date: null, excerpts: ["x"] }] });
+  };
+  t.after(() => { globalThis.fetch = original; });
+  const signal = new AbortController().signal;
+  assert.deepEqual(await webSearch({ provider: "exa", key: "e" }, "q", signal), [{ url: "https://e.dev", title: "E", published: "2026-09-22", text: "h1\n…\nh2" }]);
+  assert.deepEqual(await webSearch({ provider: "parallel", key: "p" }, "q", signal), [{ url: "https://p.dev", title: "https://p.dev", text: "x" }]);
+  assert.equal(bodies[0].query, "q");
+  assert.deepEqual(bodies[1].search_queries, ["q"]);
 });
 
 test("项目文档工具只认白名单里的文档键，章节名去空白", () => {
