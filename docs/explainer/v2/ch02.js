@@ -74,6 +74,8 @@
   };
 
   const DOORS = ["mac", "iphone", "homepod", "playstation", "emby", "server", "agents", "quest", "agents/otlp"];
+  // 「/playstation」比门宽，居中会贴住左边的「/homepod」：往右挪到两边空隙相当，不靠缩字号。
+  const LABEL_NUDGE = { playstation: 12 };
   const DX = (i) => 170 + i * 178, DW = 138, DTOP = 340, DH = 300;
   const lockPos = (i) => [DX(i) + DW / 2, DTOP + DH * 0.6];
   const TUBE_X = { cred: 300, d1: 700, lag: 1100, rt: 1500 };
@@ -153,7 +155,7 @@
     const [lx, ly] = inset(0.8, 0.6);
     x.lineWidth = 2; x.beginPath(); x.arc(lx, ly, 9 * (1 - o * 0.5), 0, TAU); x.stroke();
     x.restore();
-    text(x, "/" + DOORS[i], dx + w / 2, top - 20, { font: FONT.mono(28, 500), color: css("pink"), align: "center", alpha: clamp(drawK * 2 - 1), maxW: 170 });
+    text(x, "/" + DOORS[i], dx + w / 2 + (LABEL_NUDGE[DOORS[i]] || 0), top - 20, { font: FONT.mono(28, 500), color: css("pink"), align: "center", alpha: clamp(drawK * 2 - 1) });
   }
   function keycard(x, label, cx, cy, rot = 0, alpha = 1, hot = false, sc = 1) {
     if (alpha <= 0) return;
