@@ -18,6 +18,8 @@ X cursors are kept per account (`cursors.x` = {username: since_id}). A new sourc
 
 **Contract with the coordinator:** the routine never posts in the project chat and never opens PRs; the coordinator's 9:00 morning report reads the dated file and relays "要你决定的". Absorbing an item is a separate thread under normal merge gates.
 
+**Settled, don't re-propose (lyjw 2026-10-15):** sending the ai Worker's Claude Platform usage/traces (OTel) into Pulse or ingress — "这又不是我的用量" (visitors spend it, not lyjw); Max-plan API credits — already claimed, the ai Worker runs on them.
+
 First item (2026-10-14): Scion engineering post; its "superfan" idea was approved and built as [[collector-superfan-routine]].
 
 Practices: [[agent-automation-practices]]. Siblings: [[lyjwpage-daily-review-routine]], [[skill-mining-routine]].
