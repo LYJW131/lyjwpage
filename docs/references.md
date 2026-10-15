@@ -19,7 +19,7 @@
 - **[here's how i shipped 2,500 PRs last month](https://x.com/poteto/status/2102050467505430555)**（poteto / Lauren Tan，X 上的演讲视频）
   - 是什么：一个人同时驱动大量 agent 的做法。主线是「先让环境值得信任，并行是信任的结果」。
   - 取了什么：纠错阶梯，即每次纠正 agent 都落到能挡住它的最高一层（代码库 → lint / CI → 规则 → skill → 人工 review）；验证 skill 做成「共用 CLI + 功能地图」；让一个「园丁」专找正在被复制的坏写法，先写 lint 止血。
-  - 状态：部分采用。纠错阶梯落在根 `AGENTS.md`「规则 → 由什么强制」表与 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「复盘需求偏差」的修正分档，配套检查是 `scripts/rules-check.ts`、`scripts/ui-copy-check.ts` 和 `design-scale-check.ts` 扩项；验证 skill 见下面 pstack 一条；园丁并进每日代码审查定时任务，发现记在缓冲 issue #280（定时任务登记见 [ops-facts.md](./ops-facts.md)）。外环（错误 → 分诊 → 两次复现 → 留给 lyjw 否决 → 另开线程修）落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3b 步，读 Workers Observability，不读 Sentry。
+  - 状态：部分采用。纠错阶梯落在根 `AGENTS.md`「规则 → 由什么强制」表与 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「复盘需求偏差」的修正分档，配套检查是 `scripts/rules-check.ts`、`scripts/ui-copy-check.ts` 和 `design-scale-check.ts` 扩项；验证 skill 见下面 pstack 一条；园丁并进每日代码审查定时任务，发现记在缓冲 issue #280（定时任务登记见 [ops-facts.md](./ops-facts.md)）。外环（错误 → 分诊 → 两次复现 → 修复草稿 PR，lyjw 在 PR 上否决）落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3b、3c 步，读 Workers Observability，不读 Sentry。
   - 相关：她的长文 [Loops You Can Trust](https://x.com/poteto/status/2069824386283319343)、[The Complete Guide to pstack Pt. 1](https://x.com/poteto/status/2094457600259842065)、[Pt. 2](https://x.com/poteto/status/2097732320606507506)。
 - **[LIVE: Poteto (creator of pstack) on shipping 1,000's of PR's a month at SpaceX](https://www.youtube.com/watch?v=MN9dGgmLyso)**（Matt Pocock 对 poteto 的直播访谈，YouTube）
   - 是什么：上面那场演讲的延伸问答，讲这套做法每天怎么运转：内外循环、协调者、合并后抽检、full autopilot。
@@ -32,7 +32,7 @@
 - **[How to be more ambitious: A tutorial for humans with models](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/)**（Felix Rieseberg，Anthropic）
   - 是什么：把「用 AI 要更有野心」拆成高度（给目标不给任务）、深度（专家的工具、离谱的目标、外部裁判）、广度（名词换动词、按领域组队）。
   - 取了什么：「深一层」四问提示，lyjw 派活时贴。外部裁判本项目已有（验证回执脚本、CI 门禁、机器评审）。
-  - 状态：部分采用。四问落在 `HUMAN.md`「2. 怎么说一句话最快」。待定：盯防复现后直接开修复草稿 PR（高度）、首屏 LCP 定目标并做成部署后检查（深度）。不采用：名词换动词与组队，属写提示的习惯，没有可落地的文件。
+  - 状态：部分采用。四问落在 `HUMAN.md`「2. 怎么说一句话最快」；高度落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3c 步，复现了的错误批次直接开修复草稿 PR，lyjw 在 PR 上否决。待定：首屏 LCP 定目标并做成部署后检查（深度）。不采用：名词换动词与组队，属写提示的习惯，没有可落地的文件。
 - **[Automating eval design and hillclimbing with Claude](https://claude.dev/blog/automating-eval-design-and-hillclimbing/)**（claude.dev）
   - 是什么：用 Claude 设计评测、按证据迭代提示词。
   - 取了什么：一次只改一处、改动可归因到根因，不把失败样例原文贴进提示词。
