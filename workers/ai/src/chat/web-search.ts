@@ -67,10 +67,10 @@ export function urlsIn(text: string): string[] {
   return [...text.matchAll(/https?:\/\/[^\s<>"'`)\]）】，。、；]+/g)].flatMap((match) => urlKey(match[0]) ?? []);
 }
 
-async function call(url: string, key: string, body: unknown, signal: AbortSignal): Promise<Record<string, unknown>> {
+async function call(url: string, auth: Record<string, string>, body: unknown, signal: AbortSignal): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": key },
+    headers: { "content-type": "application/json", ...auth },
     body: JSON.stringify(body),
     signal: AbortSignal.any([signal, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)]),
   });
@@ -96,7 +96,7 @@ const results = (data: Record<string, unknown>) => (Array.isArray(data.results) 
 
 export async function webSearch({ provider, key }: WebSearcher, query: string, signal: AbortSignal): Promise<WebPage[]> {
   if (provider === "exa") {
-    const data = await call("https://api.exa.ai/search", key, {
+    const data = await call("https://api.exa.ai/search", { authorization: `Bearer ${key}` }, {
       query,
       type: "auto",
       numResults: SEARCH_RESULTS,
@@ -104,7 +104,7 @@ export async function webSearch({ provider, key }: WebSearcher, query: string, s
     }, signal);
     return results(data).flatMap((raw) => page(raw, raw ? strings(raw.highlights).join("\n…\n") : undefined, SEARCH_CHARS_PER_RESULT) ?? []);
   }
-  const data = await call("https://api.parallel.ai/v1/search", key, {
+  const data = await call("https://api.parallel.ai/v1/search", { "x-api-key": key }, {
     objective: query,
     search_queries: [query],
     mode: "fast",
@@ -115,11 +115,11 @@ export async function webSearch({ provider, key }: WebSearcher, query: string, s
 
 export async function webFetch({ provider, key }: WebSearcher, url: string, objective: string, signal: AbortSignal): Promise<WebPage | undefined> {
   if (provider === "exa") {
-    const data = await call("https://api.exa.ai/contents", key, { urls: [url], text: { maxCharacters: FETCH_CHARS } }, signal);
+    const data = await call("https://api.exa.ai/contents", { authorization: `Bearer ${key}` }, { urls: [url], text: { maxCharacters: FETCH_CHARS } }, signal);
     const raw = results(data)[0] ?? null;
     return page(raw, typeof raw?.text === "string" ? raw.text : undefined, FETCH_CHARS);
   }
-  const data = await call("https://api.parallel.ai/v1/extract", key, {
+  const data = await call("https://api.parallel.ai/v1/extract", { "x-api-key": key }, {
     urls: [url],
     objective,
     advanced_settings: { full_content: true },
