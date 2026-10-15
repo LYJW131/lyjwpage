@@ -1,6 +1,7 @@
 export { GOD_CHAT_PATH, GOD_CHAT_USAGE_PATH } from "./ai-paths";
 import type { StatusViewKey } from "@shared/status-views";
 import { BUILD_TOKEN_MAX_CHARS, type BuildProposal } from "./build-routine";
+import type { GodChatTimeInput } from "./chat-time";
 
 import { isGodChatServedTier, type GodChatEffort, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";
 
@@ -102,7 +103,8 @@ export type GodChatTrace = {
   cards?: GodChatCard[];
 };
 // seal 是 Worker 给「访客消息 + 这条回复 + trace + planToken」整对盖的章，只在助手消息上；历史里章对不上的一问一答整对丢掉。
-export type GodChatMessage = { role: "user" | "assistant"; content: string; trace?: GodChatTrace; seal?: string; planToken?: string };
+// time 只挂在访客消息上，是该条消息发出时的时钟（ISO 瞬间 + 浏览器时区名），随消息在历史里走；签名外，新一轮请求覆盖最新一条的值。
+export type GodChatMessage = { role: "user" | "assistant"; content: string; trace?: GodChatTrace; seal?: string; planToken?: string; time?: GodChatTimeInput };
 export type GodChatDesign = { token: string; expiresAt: number; remaining: number };
 
 export type GodChatSource = { url: string; title: string };
@@ -162,7 +164,7 @@ export type GodChatEvent =
   | { type: "pass"; pass: string; expiresAt: number };
 
 // resume：设计会话里重新取回访客断线时错过的那条回复，messages 截到访客那条为止；不扣设计轮数。
-export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true };
+export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true; time?: GodChatTimeInput };
 
 // 访客自己的话超长就拒；模型的旧回复只截断，超出总量从最早的消息丢起，长回答不能让后续对话发不出去。
 // 浏览器发送前先过一遍，Worker 收到后再过一遍。
@@ -210,9 +212,20 @@ export function normalizeTrace(value: unknown): GodChatTrace | undefined {
   return Object.keys(trace).length ? trace : undefined;
 }
 
+const parseTime = (value: unknown): GodChatTimeInput | undefined => {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object") return null as never;
+  const { iso, zone } = value as Record<string, unknown>;
+  if (typeof iso !== "string" || !iso || iso.length > 64) return null as never;
+  if (zone !== undefined && (typeof zone !== "string" || zone.length > 64)) return null as never;
+  return { iso, ...(typeof zone === "string" && zone ? { zone } : {}) };
+};
+
 export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!body || typeof body !== "object") return null;
-  const { messages, turnstileToken, humanPass, designToken, resume } = body as Record<string, unknown>;
+  const { messages, turnstileToken, humanPass, designToken, resume, time } = body as Record<string, unknown>;
+  const cleanTime = parseTime(time);
+  if (time !== undefined && !cleanTime) return null;
   if (turnstileToken !== undefined && (typeof turnstileToken !== "string" || !turnstileToken || turnstileToken.length > 2048)) return null;
   if (humanPass !== undefined && (typeof humanPass !== "string" || !GOD_CHAT_PASS_PATTERN.test(humanPass))) return null;
   if (turnstileToken === undefined && humanPass === undefined) return null;
@@ -235,5 +248,7 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   }
   const fitted = fitHistory(parsed);
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
-  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }) };
+  // 浏览器报的时钟只贴到最新一条访客消息上：旧消息的 time 留给那一轮，新一轮只刷新这条，缓存前缀不受影响。
+  if (cleanTime) fitted[fitted.length - 1] = { ...fitted[fitted.length - 1], time: cleanTime };
+  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanTime && { time: cleanTime }) };
 }

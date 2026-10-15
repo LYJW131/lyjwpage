@@ -396,6 +396,17 @@ test("下一轮切换强度只追加消息级设置，历史强度的位置与�
   ]);
 });
 
+test("访客时钟只贴进它那条消息的尾部，前缀与旧消息保持逐字节稳定", () => {
+  const sent = { iso: "2025-01-15T14:30:00.000Z", zone: "America/New_York" };
+  const before = toModelMessages([user("q")], "medium");
+  const after = toModelMessages([{ ...user("q"), time: sent }], "medium");
+  assert.deepEqual(after[0], before[0]);
+  const blocks = (after[1].content as { type: string; text: string }[]);
+  assert.equal(blocks[0].text, "q");
+  assert.match(blocks[1].text, /visitor time \(America\/New_York\)/);
+  assert.match(blocks[1].text, /site time \(Asia\/Shanghai\)/);
+});
+
 test("跨档位重放保留实际强度，相同强度不重复插入，裁掉开头后仍有初始设置", () => {
   const history: GodChatMessage[] = [
     user("q1"), { ...assistant("a1"), trace: { tier: "fable", effort: "low" } },
