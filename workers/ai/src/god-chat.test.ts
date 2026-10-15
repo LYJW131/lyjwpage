@@ -12,7 +12,7 @@ import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./chat/show-car
 import { newLedger, type ToolIO } from "./tools/registry.ts";
 import { claimViews, isStatusViewKey, parseSiteStatusInput } from "./tools/site-status.ts";
 import { animeSearch, gameSearch } from "./chat/domain-search.ts";
-import { searchResultBlocks, urlKey, urlsIn, webSearch } from "./chat/web-search.ts";
+import { chineseQuery, searchResultBlocks, urlKey, urlsIn, webSearch } from "./chat/web-search.ts";
 
 const user = (content: string) => ({ role: "user" as const, content });
 const assistant = (content: string) => ({ role: "assistant" as const, content });
@@ -215,7 +215,13 @@ test("搜索结果转成带引用的 search_result 块，日期并进标题", ()
   ]);
 });
 
-test("Exa 搜索走 fast 档、按分类传 category，响应归一成网页列表，没有正文的结果丢掉", async (t) => {
+test("中文查询不送 Exa，日文和英文照常", () => {
+  assert.equal(chineseQuery("芙莉莲 动画 评价"), true);
+  assert.equal(chineseQuery("葬送のフリーレン 評価"), false);
+  assert.equal(chineseQuery("Frieren anime review"), false);
+});
+
+test("Exa 搜索走 fast 档、按分类传 category、排除中文站点，响应归一成网页列表，没有正文的结果丢掉", async (t) => {
   const original = globalThis.fetch;
   const bodies: Record<string, unknown>[] = [];
   globalThis.fetch = async (_input, init) => {
@@ -229,6 +235,7 @@ test("Exa 搜索走 fast 档、按分类传 category，响应归一成网页列�
   assert.equal(bodies[0].type, "fast");
   assert.equal(bodies[0].category, undefined);
   assert.equal(bodies[1].category, "research paper");
+  assert.ok((bodies[0].excludeDomains as string[]).includes("*.cn"));
 });
 
 test("Bangumi 结果带中日文标题、评分与条目链接，Steam 结果带价格、发售日与商店链接", async (t) => {

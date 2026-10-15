@@ -12,10 +12,18 @@ export const WEB_CATEGORIES = ["web", "news", "papers"] as const;
 export type WebCategory = (typeof WEB_CATEGORIES)[number];
 const EXA_CATEGORY: Record<WebCategory, string | undefined> = { web: undefined, news: "news", papers: "research paper" };
 export const MAX_WEB_FETCHES = 4;
+// lyjw 不要中文互联网的来源：查询只收英文（或日文等非中文原文），再排除常见中文站点兜底；Exa 没有按语言过滤的参数，域名会匹配子域。
+const EXCLUDED_DOMAINS = [
+  "*.cn", "*.tw", "*.hk", "zhihu.com", "baidu.com", "csdn.net", "bilibili.com", "douban.com", "qq.com", "163.com", "sohu.com", "sina.com",
+  "weibo.com", "toutiao.com", "jianshu.com", "cnblogs.com", "segmentfault.com", "oschina.net", "36kr.com", "ithome.com",
+  "smzdm.com", "bgm.tv", "bangumi.tv", "ifeng.com", "xiaohongshu.com", "douyin.com", "gcores.com", "gamersky.com",
+];
+
+export const chineseQuery = (query: string) => /\p{Script=Han}/u.test(query) && !/[\u3040-\u30ff]/.test(query);
 
 export const WEB_SEARCH_TOOL: Anthropic.Beta.BetaTool = {
   name: "web_search",
-  description: "Search the web for anything outside this site. Returns the top pages with relevant excerpts; cite what you use. Write the query as a short, specific search in the language the sources are most likely written in.",
+  description: "Search the web for anything outside this site. Returns the top pages with relevant excerpts; cite what you use. Write the query as a short, specific search in English, even when the visitor writes in Chinese; Chinese-language sites are excluded. A Japanese query is fine for Japanese sources.",
   input_schema: {
     type: "object",
     properties: {
@@ -94,6 +102,7 @@ export async function webSearch(key: string, query: string, category: WebCategor
     query,
     type: "fast",
     numResults: SEARCH_RESULTS,
+    excludeDomains: EXCLUDED_DOMAINS,
     ...(exaCategory && { category: exaCategory }),
     contents: { highlights: { maxCharacters: SEARCH_CHARS_PER_RESULT } },
   }, signal);
