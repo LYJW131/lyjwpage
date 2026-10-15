@@ -63,8 +63,15 @@ export function urlKey(raw: string): string | undefined {
   }
 }
 
+// 句末的英文标点和没配对的右括号不算 URL：「见 https://a.dev/x.」「(https://a.dev/x)」；路径里配对的括号保留，如维基的 Function_(mathematics)。
+function trimUrl(raw: string): string {
+  let url = raw.replace(/[.,;:!?'"]+$/, "");
+  while (url.endsWith(")") && url.split("(").length < url.split(")").length) url = url.slice(0, -1).replace(/[.,;:!?'"]+$/, "");
+  return url;
+}
+
 export function urlsIn(text: string): string[] {
-  return [...text.matchAll(/https?:\/\/[^\s<>"'`)\]）】，。、；]+/g)].flatMap((match) => urlKey(match[0]) ?? []);
+  return [...text.matchAll(/https?:\/\/[^\s<>"`\]）】，。、；！？]+/g)].flatMap((match) => urlKey(trimUrl(match[0])) ?? []);
 }
 
 async function call(url: string, auth: Record<string, string>, body: unknown, signal: AbortSignal): Promise<Record<string, unknown>> {

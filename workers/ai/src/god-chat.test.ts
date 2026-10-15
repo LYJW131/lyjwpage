@@ -211,6 +211,9 @@ test("web_fetch 只认 http(s)、不带账号的 URL，去掉片段后比较；�
   assert.equal(urlKey("javascript:alert(1)"), undefined);
   assert.equal(urlKey("https://user:pw@example.com/"), undefined);
   assert.deepEqual(urlsIn("看看 https://example.com/x，还有（https://a.dev/y）"), ["https://example.com/x", "https://a.dev/y"]);
+  assert.deepEqual(urlsIn("Read https://en.wikipedia.org/wiki/Function_(mathematics). Also (see https://a.dev/z), https://b.dev/p."), [
+    "https://en.wikipedia.org/wiki/Function_(mathematics)", "https://a.dev/z", "https://b.dev/p",
+  ]);
 });
 
 test("搜索结果转成带引用的 search_result 块，日期并进标题", () => {
