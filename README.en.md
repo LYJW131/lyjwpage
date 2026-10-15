@@ -159,6 +159,27 @@ Status cards such as now watching, now listening, charging and games only appear
 
 [Interactive architecture diagram](https://lyjw131.github.io/lyjwpage/) · [Page details and key design choices](./docs/design-notes.md) (Chinese: first-screen caching, push vs. polling, stale-tab degradation, window-title privacy check, image addressing, observability)
 
+## Development workflow
+
+Most of the code in this repo is written by Claude; lyjw sets direction, makes the calls and signs off. A one-line request goes into the project chat, a coordinator Claude opens a thread, and that thread's Claude carries the work through merge and deploy. Scheduled agents keep reviewing code, distilling lessons and watching production when nobody is talking.
+
+```mermaid
+flowchart LR
+  L["lyjw"] --> P["Coordinator Claude"] --> T["Thread Claude"]
+  T -->|parallel work| D["Devin CLI"]
+  T -->|verification| H["Haiku verifier"]
+  T --> PR["PR"] --> G{"Merge gate"} --> M["main"] --> W["Auto deploy"]
+  R["Scheduled agents"] -.-> PR
+```
+
+- **Layered rules, enforced where possible**: [`HUMAN.md`](./HUMAN.md) is the collaboration contract for lyjw, [`AGENTS.md`](./AGENTS.md) holds the hard rules for agents, [`.claude/skills/`](./.claude/skills/) holds reusable procedures. Hooks, lint and the CI checks `docs:check`, `rules:check` and `design:scale` block violations, and the baselines of existing violations can only shrink.
+- **Verification leaves a receipt**: checks run on a Haiku verifier that signs a graded receipt per commit SHA; before merge a script confirms the receipt still covers the current head.
+- **Tiered merge gate**: docs and small changes merge on green CI, large logic changes clear bot reviews first, UI changes wait for lyjw to approve screenshots.
+- **Self-improving**: scheduled agents turn recurring procedures into skills and adopted review findings into checks; project memory is mirrored in [`.claude/memory/`](./.claude/memory/MEMORY.md).
+- **Visitors can change the site too**: describe a change in the homepage chat, and Claude plans, reviews and implements it as a PR for lyjw to merge.
+
+The full picture (in Chinese): [Development workflow](./docs/workflow.md).
+
 ## Tech stack
 
 | Layer | Main technologies |
