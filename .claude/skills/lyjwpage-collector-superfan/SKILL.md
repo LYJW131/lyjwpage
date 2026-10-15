@@ -71,6 +71,8 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 
 先看 `ledger` 里带 `pr` 的批次：PR 已合并的，等部署后从生产重跑复现命令，复现不了才标 `resolved`；PR 被关掉没合的，记 `muted`，理由写「lyjw 关了修复 PR」，不再开。
 
+本步加入前已确认、还开着的存量批次不补开 PR：第一次走到本步时在报告里逐条列出，写明「存量，未开修复 PR，要修回编号」，并在 `ledger` 里记 `prSkipped: legacy`，之后不再列。
+
 然后对本次新出现、`repro: confirmed`、还没有 `pr` 的批次，按 `.claude/skills/lyjwpage-diagnose/SKILL.md` 修：
 
 1. 把复现命令变成一条先失败的回归测试，再改代码，测试转绿；跑改动波及处的本地门禁（根 `AGENTS.md`「项目入口与验证」）。
