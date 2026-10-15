@@ -7,6 +7,7 @@ import {
   ImagePolicyError,
   IMAGE_WIDTHS,
   ImageUpstreamError,
+  imageUpstreamFailureStatus,
   displayWidthFromSizes,
   fetchImageUpstream,
   imageWidthBucket,
@@ -203,4 +204,13 @@ test("读体按真实字节数限流，不限于 Content-Length", async () => {
     },
   });
   assert.deepEqual([...await readBoundedBytes(exact, 4)], [1, 2, 3, 4]);
+});
+
+test("an image the upstream no longer has is a 404, only upstream failures are a 502", () => {
+  const status = (code: number) => imageUpstreamFailureStatus(new ImageUpstreamError(code));
+  assert.equal(status(403), 404);
+  assert.equal(status(404), 404);
+  assert.equal(status(413), 413);
+  assert.equal(status(500), 502);
+  assert.equal(status(504), 502);
 });
