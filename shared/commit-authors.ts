@@ -13,7 +13,7 @@ const AGENTS: Record<string, { agent: NonNullable<CommitAuthor["agent"]>; login:
   "304785771+grokkybara[bot]@users.noreply.github.com": { agent: "grok", login: "grokkybara[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/4293548?v=4" },
   "341015624+lyjw-antigravity[bot]@users.noreply.github.com": { agent: "antigravity", login: "lyjw-antigravity[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/5274597?v=4" },
   "158243242+devin-ai-integration[bot]@users.noreply.github.com": { agent: "devin", login: "devin-ai-integration[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/811515?v=4" },
-  "5334743+lyjw-dsh[bot]@users.noreply.github.com": { agent: "dsh", login: "lyjw-dsh[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/5334743?v=4" },
+  "343145897+lyjw-dsh[bot]@users.noreply.github.com": { agent: "dsh", login: "lyjw-dsh[bot]", avatarUrl: "https://avatars.githubusercontent.com/in/5334743?v=4" },
 };
 
 function agentAuthor(name: string, email: string): CommitAuthor | null {
