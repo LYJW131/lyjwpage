@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import {
   HeatmapGrid,
   HeatmapTooltip,
-  cellAnchor,
   useHeatmapOpen,
   type CellAnchor,
 } from "@/components/live/heatmap-hover";
@@ -144,11 +143,11 @@ export function VibeYearChart({
 
   if (!weeks?.length) return null;
 
-  const cellOf = (day: GithubChartDay, target: Element): HoveredCell => ({
+  const cellOf = (day: GithubChartDay, anchor: CellAnchor): HoveredCell => ({
     date: day.date,
     tokens: day.count,
     models: modelsByDate.get(day.date) ?? [],
-    anchor: cellAnchor(target),
+    anchor,
   });
 
   return (
@@ -158,10 +157,10 @@ export function VibeYearChart({
         weeks={weeks}
         hotDate={hotDate}
         label="Vibe Coding token heatmap"
-        onCellPreview={(day, target) => previewCell(cellOf(day, target))}
+        onCellPreview={(day, anchor) => previewCell(cellOf(day, anchor))}
         onCellClear={clearPreview}
-        onCellToggle={(day, target) => togglePin(cellOf(day, target))}
-        onCellPin={(day, target) => pinCell(cellOf(day, target))}
+        onCellToggle={(day, anchor) => togglePin(cellOf(day, anchor))}
+        onCellPin={(day, anchor) => pinCell(cellOf(day, anchor))}
       />
       {shown && (
         <HeatmapTooltip
