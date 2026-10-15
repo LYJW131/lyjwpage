@@ -71,6 +71,9 @@ const eslintConfig = defineConfig([
       "no-restricted-syntax": ["error", {
         selector: "JSXOpeningElement[name.name='img']",
         message: "站点组件不手写 <img>：用 @/components/app-image（懒加载、rest-ready 门控、优化器）；静态图标记得带 unoptimized。",
+      }, {
+        selector: "CallExpression > MemberExpression.callee[property.name=/^(toSorted|toReversed|toSpliced)$/]",
+        message: "客户端构建不补 polyfill，Safari 16 以下、Chrome 110 以下没有这三个方法，渲染直接抛错：先 [...arr] 拷贝再 sort / reverse / splice。",
       }],
     },
   },

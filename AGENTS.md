@@ -116,7 +116,7 @@
 | 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 行数、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
 | 「只改注释」的清扫证明 | `pnpm docs:comment-only` |
 | Worker / shared / `src/` 之间的 import 边界 | `eslint.config.mjs` 的 `no-restricted-imports` |
-| `src/` 组件不手写 `<img>`，用 `AppImage` | `eslint.config.mjs` 的 `no-restricted-syntax`（`app-image.tsx` 除外） |
+| `src/` 组件不手写 `<img>`，用 `AppImage`；不调 `toSorted` / `toReversed` / `toSpliced`（客户端无 polyfill） | `eslint.config.mjs` 的 `no-restricted-syntax`（`app-image.tsx` 除外） |
 | 阶梯外间距、任意值字号 / 位移 / 圆角、子级外边距、裸 hex / oklch 色值 | `pnpm design:scale`（基线 `scripts/design-scale-baseline.json`） |
 | `TODO` / `FIXME` 须带单号、JS / TS 不写 JSDoc 块注释、`/img/` 不烧交付域、`src/` 网络调用不写字面量主机、隐藏滚动条两句同现、`scripts/` 不新增 `.mjs`（存量见 `scripts/mjs-baseline.json`） | `pnpm rules:check` |
 | 界面文案用英文 | `pnpm ui:copy`（基线 `scripts/ui-copy-baseline.json`） |

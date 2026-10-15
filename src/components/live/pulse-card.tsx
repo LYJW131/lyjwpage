@@ -93,7 +93,7 @@ function codingBars(range: Range, rows: { from: number; to: number; state: numbe
   const merged = runs(rows);
   let limit = Infinity;
   const bars = [];
-  for (const row of merged.toReversed()) {
+  for (const row of [...merged].reverse()) {
     const left = x(range, row.from);
     bars.push({ state: row.state, left, width: Math.max(0, Math.min(Math.max(0.2, x(range, row.to) - left), limit - left)) });
     if (row.state) limit = left;
