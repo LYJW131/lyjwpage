@@ -396,6 +396,46 @@ test("下一轮切换强度只追加消息级设置，历史强度的位置与�
   ]);
 });
 
+test("访客时钟只贴进它那条消息的尾部，前缀与旧消息保持逐字节稳定", () => {
+  const sent = { iso: "2025-01-15T14:30:00.000Z", zone: "America/New_York" };
+  const before = toModelMessages([user("q")], "medium");
+  const after = toModelMessages([{ ...user("q"), time: sent }], "medium");
+  assert.deepEqual(after[0], before[0]);
+  const blocks = (after[1].content as { type: string; text: string }[]);
+  assert.equal(blocks[0].text, "q");
+  assert.match(blocks[1].text, /visitor time \(America\/New_York\)/);
+  assert.match(blocks[1].text, /site time \(Asia\/Shanghai\)/);
+});
+
+// 跨轮缓存稳定的关键：旧访客气泡带它自己发送时的时钟，新一轮时间只换最新那条，
+// 前几条消息（含各自的时间注释）字节不变，前缀缓存才命中。这正是逐条持久化 time 要保的不变量。
+test("上一轮访客气泡的时钟随历史逐条带回，前缀不漂移", () => {
+  const t1 = { iso: "2025-01-15T14:00:00.000Z", zone: "America/New_York" };
+  const t2 = { iso: "2025-01-15T14:05:00.000Z", zone: "America/New_York" };
+  const turn1 = parseGodChatRequest({ turnstileToken: "t", time: t1, messages: [
+    { ...user("q1"), time: t1 },
+  ] });
+  assert.ok(turn1);
+  // 第二轮：浏览器把上一轮已存 time 的气泡原样带回，最新一条带上自己的时刻。
+  const turn2 = parseGodChatRequest({ turnstileToken: "t", time: t2, messages: [
+    { ...user("q1"), time: t1 }, assistant("a1"), { ...user("q2"), time: t2 },
+  ] });
+  assert.ok(turn2);
+  assert.deepEqual(turn2.messages[0].time, t1);
+  assert.deepEqual(turn2.messages[2].time, t2);
+  const m1 = toModelMessages(turn1.messages, "medium");
+  const m2 = toModelMessages(turn2.messages, "medium");
+  // 两轮的 system 块（effort）各自在头；同一条 q1 渲染出的 user 消息逐字节相同。
+  assert.deepEqual(m2.find((m) => m.role === "user"), m1.find((m) => m.role === "user"));
+  // 顶层 time 兜底：气泡已带自己时刻时最新一条不被请求级值覆盖。
+  const legacy = parseGodChatRequest({ turnstileToken: "t", time: t2, messages: [
+    user("no-time"), assistant("a"), user("latest"),
+  ] });
+  assert.ok(legacy);
+  assert.deepEqual(legacy.messages[2].time, t2);
+  assert.equal(legacy.messages[0].time, undefined);
+});
+
 test("跨档位重放保留实际强度，相同强度不重复插入，裁掉开头后仍有初始设置", () => {
   const history: GodChatMessage[] = [
     user("q1"), { ...assistant("a1"), trace: { tier: "fable", effort: "low" } },

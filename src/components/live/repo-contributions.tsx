@@ -23,6 +23,7 @@ const AVATAR_ACCENTS: Record<string, string> = {
   cursoragent: "var(--avatar-cursor)",
   an0nch1hayaa: "var(--avatar-chihaya)",
   "grokkybara[bot]": "var(--avatar-grok)",
+  "lyjw-dsh[bot]": "var(--avatar-dsh)",
 };
 
 const FALLBACK_COLORS = [
