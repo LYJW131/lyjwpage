@@ -175,7 +175,7 @@ export function HeatmapGrid({
       ),
     [weeks],
   );
-  // 一年约 370 格，逐格一个 <rect> 占了首页 DOM 的五分之一；同档的格子并成一条 path，
+  // 逐格一个 <rect> 会让首页 DOM 膨胀；同档的格子并成一条 path，
   // 可交互的只剩键盘游标与高亮两个 <rect>，鼠标与触屏按坐标反算格子。
   const paths = useMemo(() => {
     const byScore = new Map<number, string>();
@@ -320,7 +320,11 @@ export function HeatmapGrid({
       }}
       onClick={(event) => {
         if (touchGhost(event)) return;
-        const index = cellAt(event.clientX, event.clientY, true);
+        // 辅助技术激活游标时发出的 click 没有指针坐标（detail 为 0），按游标所在格处理。
+        const index =
+          event.detail === 0 && event.target === cursorRef.current
+            ? activeIndex
+            : cellAt(event.clientX, event.clientY, true);
         const day = cells[index]?.day;
         const anchor = anchorAt(index);
         if (!day || !anchor) return;
