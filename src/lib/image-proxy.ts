@@ -121,9 +121,10 @@ export class ImageUpstreamError extends Error {
   }
 }
 
-// 上游 4xx 说明原图已经不在（Apple blobstore 的预签名链接过期回 403），对外回 404；只有上游出错或超时才算网关故障回 502，5xx 会进 Workers Issues 发告警。
+// 上游 4xx 说明原图已经不在（Apple blobstore 的预签名链接过期回 403），对外回 404；408、429 是上游暂时不给，和上游出错、超时一样算网关故障回 502，5xx 会进 Workers Issues 发告警。
 export function imageUpstreamFailureStatus(error: ImageUpstreamError): 404 | 413 | 502 {
   if (error.status === 413) return 413;
+  if (error.status === 408 || error.status === 429) return 502;
   return error.status >= 400 && error.status < 500 ? 404 : 502;
 }
 
