@@ -90,7 +90,7 @@ export function isSiteOrigin(request: Request): boolean {
   }
 }
 
-// 断网、切后台时各浏览器的 fetch 拒绝文案，以及 ResizeObserver 的良性循环提示：都没有调用栈可查，记成 warn 不进 Workers Issues（Issues 只收 error，每条新 issue 都会发告警邮件）。
+// 断网、切后台时各浏览器的 fetch 拒绝文案，以及 ResizeObserver 的良性循环提示：只说明网络层失败或布局多跑了一轮，查不出原因，记成 warn 不进 Workers Issues（Issues 只收 error，每条新 issue 都会发告警邮件）。后端连不上由 collector 的 uptime-probe 与 core 心跳报，不靠浏览器上报。
 const BROWSER_NOISE = [
   /^(?:TypeError: )?(?:Load failed|Failed to fetch|NetworkError when attempting to fetch resource\.?)$/,
   /^ResizeObserver loop (?:limit exceeded|completed with undelivered notifications\.?)$/,

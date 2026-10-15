@@ -67,7 +67,8 @@ test("network and ResizeObserver noise from browsers is logged as a warning, not
   ]) {
     assert.equal(await relayClientError(post(JSON.stringify({ ...report, source: "rejection", stack: null, message })), log), 204);
   }
-  assert.deepEqual(levels, ["warn", "warn", "warn", "warn", "warn", "error"]);
+  assert.equal(await relayClientError(post(JSON.stringify({ ...report, message: "Failed to fetch", stack: "TypeError: Failed to fetch\n    at load (https://lyjw.me/assets/a.js:1:2)" })), log), 204);
+  assert.deepEqual(levels, ["warn", "warn", "warn", "warn", "warn", "error", "warn"]);
 });
 
 test("the relay only accepts reports from the site's own origins", () => {
