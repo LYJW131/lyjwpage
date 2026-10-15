@@ -65,10 +65,10 @@ const hours = (option: DigestHighlight | undefined) => (!option ? 0 : option.uni
 // 阈值是有意取的：音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。
 // 安静的门槛对齐模型判 quiet 时的真实表现：15 分钟音乐加步数算安静，1.5 小时代码或 2.5 小时音乐不算。
 export const QUIET_SCORE = 1;
-// 提交和部署各只列最近几条（源：shared/github-repo.ts#RECENT_COMMIT_LIMIT），活跃的日子几乎都满额，「频繁上线」分不出日子，只在代码不到三小时时做主线，其余做附带。
+// 提交和部署各只列最近几条（提交见 shared/github-repo.ts#RECENT_COMMIT_LIMIT，部署见 shared/site-deployments.ts#fetchSiteDeployments），活跃的日子几乎都满额，「频繁上线」分不出日子，只在代码不到三小时时做主线，其余做附带。
 export const SHIPPING_COMMITS = 8;
 export const SHIPPING_DEPLOYS = 4;
-// 一次锻炼按三倍计，一个半小时的散步能盖过一整天的代码；写了两小时以上代码的日子，锻炼只做附带。
+// 一次锻炼按三倍计，一个半小时的散步能盖过一整天的代码；写了两小时以上代码的日子，主线让给其余得分最高的一类，锻炼只做附带。
 export const FITNESS_LEAD_MAX_BUILD_HOURS = 2;
 
 // 卡片上的 site 格有提交数就只放提交数，部署数要从 signals 另看。
@@ -143,8 +143,10 @@ export function digestScene(options: DigestHighlight[], signals: DigestSignals):
   const scores = familyScores(options, signals);
   const site = options.find((option) => option.topic === "site");
   const trophies = options.find((option) => option.topic === "trophies");
-  const [leader, top] = (Object.entries(scores) as [Family, number][]).reduce((best, entry) => (entry[1] > best[1] ? entry : best));
-  const family = leader === "fitness" && scores.build >= FITNESS_LEAD_MAX_BUILD_HOURS ? "build" : leader;
+  const best = (entries: [Family, number][]) => entries.reduce((lead, entry) => (entry[1] > lead[1] ? entry : lead));
+  const ranked = Object.entries(scores) as [Family, number][];
+  const [leader, top] = best(ranked);
+  const [family] = leader === "fitness" && scores.build >= FITNESS_LEAD_MAX_BUILD_HOURS ? best(ranked.filter(([name]) => name !== "fitness")) : [leader];
   if (top < QUIET_SCORE && signals.workoutMinutes < 20 && !trophies && Math.max(site?.value ?? 0, signals.deploys) < 3) return { quiet: true };
   const primary = primarySituation(family, options, scores, signals);
   return { quiet: false, primary, accents: accentSituations(primary, family, options, signals), highlights: pickHighlights(primary, family, options, scores) };
