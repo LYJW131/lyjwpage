@@ -228,6 +228,12 @@ test("compose reads the situation by rule, lets Clef pick one stored tagline, an
   assert.equal(calls.length, 1);
 });
 
+test("a digest hashed before the situation rules changed is recomposed even though its facts stand still", async () => {
+  const facts = digestMessage(baseViews(), NOW).content;
+  const outcome = await composeDigest({ readStatus: reader(baseViews()), pick: recorder("t0").pick, previousInputHash: await digestInputHash(facts), previousHeadline: null, now: NOW });
+  assert.equal(outcome.status, "composed");
+});
+
 test("the last headline stays while it is still a candidate, and a new one is picked once it is not", async () => {
   const { calls, pick } = recorder("t0");
   const readStatus = reader(baseViews());
@@ -328,6 +334,7 @@ test("situations, accents and picks follow the day's lead", () => {
     [[hoursOption("coding", 6), hoursOption("agents", 1, "agent time"), hoursOption("gaming", 3)], NO_SIGNALS, "workAndPlay [] coding,gaming,agents"],
     [[countOption("fitness", 9_000, "steps"), hoursOption("music", 1)], { ...NO_SIGNALS, workoutMinutes: 60 }, "workout [] fitness,music"],
     [[hoursOption("coding", 4), hoursOption("agents", 2.5, "agent time"), countOption("fitness", 14_000, "steps")], { ...NO_SIGNALS, workoutMinutes: 90 }, "agentsLead [workoutToo] coding,agents"],
+    [[hoursOption("coding", 2), hoursOption("music", 10), countOption("fitness", 24_000, "steps")], { ...NO_SIGNALS, workoutMinutes: 90 }, "musicLong [workoutToo] music,fitness"],
     [[countOption("fitness", 16_000, "steps"), minutesOption("coding", 30)], NO_SIGNALS, "walking [] fitness,coding"],
   ];
   for (const [options, signals, expected] of cases) assert.equal(scene(options, signals), expected);
