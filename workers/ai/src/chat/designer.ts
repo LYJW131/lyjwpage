@@ -12,7 +12,7 @@ import { checkBuildPlan } from "../build/validation";
 import type { Env } from "../runtime";
 import { newLedger, replyToolDescription, type ToolIO } from "../tools/registry";
 import { SITE_STATUS_TOOL } from "../tools/site-status";
-import { ASK_VISITOR_TOOL, DESIGN_BUDGET_CENTS, DESIGN_REPO_DIR, PLANNER_PROMPT, PROPOSE_BUILD_TOOL } from "./design";
+import { ASK_VISITOR_TOOL, DESIGN_BUDGET_CENTS, DESIGN_REPO_DIR, designConfig, PLANNER_PROMPT, PROPOSE_BUILD_TOOL } from "./design";
 import { DESIGN_WEB_HOSTS } from "./design-hosts";
 
 export type SessionEvent = BetaManagedAgentsStreamSessionEvents;
@@ -59,15 +59,17 @@ export type DesignApi = {
 export function designApi(client: Anthropic, env: Env): DesignApi {
   return {
     async create(designId) {
+      const config = designConfig(env);
+      if (!config) throw new Error("Design sessions are unavailable.");
       const session = await client.beta.sessions.create({
         agent: {
           type: "agent_with_overrides",
-          id: env.DESIGN_AGENT_ID!,
+          id: config.agentId,
           model: { id: GOD_CHAT_TIER_INFO.opus.model, effort: GOD_CHAT_TIER_INFO.opus.effort },
           system: PLANNER_PROMPT,
           tools: DESIGNER_TOOLS,
         },
-        environment_id: env.DESIGN_ENVIRONMENT_ID!,
+        environment_id: config.environmentId,
         title: `Design ${designId.slice(0, 8)}`,
         metadata: { design: designId },
         budget: { type: "limit", max_list_cost: { amount: String(DESIGN_BUDGET_CENTS), currency: "USD" } },

@@ -1,4 +1,6 @@
 import { publicAssetPath } from "@shared/asset-url";
+import { object } from "@shared/json";
+import { sha256Hex } from "@shared/sha256";
 import { site } from "@shared/site";
 import { BUILD_SCREENSHOT_LIMITS, PLAN_LABELS, planLanguage } from "@shared/build-routine";
 import type { StoredRun } from "./coordinator";
@@ -22,7 +24,7 @@ function cleanCaption(value: string): string {
 }
 
 export function parseScreenshot(value: unknown): ParsedScreenshot {
-  const data = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  const data = object(value);
   if (!data || typeof data.caption !== "string" || typeof data.content !== "string") throw new Error("A caption and base64 image content are required.");
   const caption = cleanCaption(data.caption);
   if (!caption || caption.length > BUILD_SCREENSHOT_LIMITS.captionChars) throw new Error("Invalid screenshot caption.");
@@ -34,8 +36,7 @@ export function parseScreenshot(value: unknown): ParsedScreenshot {
 }
 
 export async function screenshotObjectKey(shot: ParsedScreenshot): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", shot.bytes));
-  return `${[...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("")}.${shot.ext}`;
+  return `${await sha256Hex(shot.bytes)}.${shot.ext}`;
 }
 
 export function screenshotComment(run: Pick<StoredRun, "plan" | "screenshots">): string | null {

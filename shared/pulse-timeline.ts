@@ -1,4 +1,5 @@
 import { CHARGING_IDLE_MAX_W } from "@shared/home-layout";
+import { object } from "@shared/json";
 import { PULSE_REPEAT_AFTER_MS, PULSE_SILENT_AFTER_MS } from "@shared/limits";
 
 
@@ -67,17 +68,13 @@ export function defaultHoldUntil<L extends StateLane>(lane: L, facts: StateLaneF
   return Number.isFinite(hold) ? t + hold : null;
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
 function nullableText(value: unknown): string | null | undefined {
   if (value === null) return null;
   return typeof value === "string" ? pulseText(value) : undefined;
 }
 
 export function laneFacts<L extends StateLane>(lane: L, value: unknown): StateLaneFacts[L] | null {
-  const row = record(value);
+  const row = object(value);
   if (!row) return null;
   const states: readonly string[] = lane === "gaming" ? GAMING_STATES : lane === "watching" ? WATCHING_STATES : LISTENING_STATES;
   if (typeof row.state !== "string" || !states.includes(row.state)) return null;
@@ -112,7 +109,7 @@ function time(value: unknown): number | null {
 export function parseOpenInterval<L extends StateLane>(lane: L, raw: string | null): OpenInterval<StateLaneFacts[L]> | null {
   if (!raw) return null;
   try {
-    const row = record(JSON.parse(raw));
+    const row = object(JSON.parse(raw));
     const facts = laneFacts(lane, row);
     const from = time(row?.from), seenAt = time(row?.seenAt);
     if (!facts || from == null || seenAt == null || seenAt < from) return null;
@@ -125,7 +122,7 @@ export function parseOpenInterval<L extends StateLane>(lane: L, raw: string | nu
 
 export function parseClosedInterval<L extends StateLane>(lane: L, raw: string): ClosedInterval<StateLaneFacts[L]> | null {
   try {
-    const row = record(JSON.parse(raw));
+    const row = object(JSON.parse(raw));
     const facts = laneFacts(lane, row);
     const from = time(row?.from), to = time(row?.to);
     if (!facts || from == null || to == null || to <= from) return null;
@@ -246,7 +243,7 @@ function roundWatts(watts: number): number {
 
 export function parseChargingSample(raw: string): ChargingSample | null {
   try {
-    const row = record(JSON.parse(raw));
+    const row = object(JSON.parse(raw));
     const t = time(row?.t);
     const watts = row?.watts;
     if (t == null || typeof watts !== "number" || !Number.isFinite(watts) || watts < 0) return null;
@@ -338,7 +335,7 @@ function count(value: unknown): number | null | undefined {
 
 export function parseActivityBucket(raw: string): ActivityBucket | null {
   try {
-    const row = record(JSON.parse(raw));
+    const row = object(JSON.parse(raw));
     const from = time(row?.from), to = time(row?.to);
     const steps = count(row?.steps ?? null), moveKcal = count(row?.moveKcal ?? null), exerciseMinutes = count(row?.exerciseMinutes ?? null);
     if (from == null || to == null || to <= from || steps === undefined || moveKcal === undefined || exerciseMinutes === undefined) return null;
@@ -369,10 +366,10 @@ export type WorkoutInterval = { startedAt: number; endedAt: number; activityType
 export function parseWorkoutIntervals(raw: string | null): WorkoutInterval[] {
   if (!raw) return [];
   try {
-    const items = record(JSON.parse(raw))?.items;
+    const items = object(JSON.parse(raw))?.items;
     if (!Array.isArray(items)) return [];
     return items.flatMap((value) => {
-      const row = record(value);
+      const row = object(value);
       const startedAt = time(row?.startedAt), endedAt = time(row?.endedAt);
       const activityType = pulseText(row?.activityType, 64);
       return startedAt != null && endedAt != null && endedAt >= startedAt && activityType ? [{ startedAt, endedAt, activityType }] : [];

@@ -1,3 +1,4 @@
+import { object } from "@shared/json";
 import { BUILD_CLOSED_PHASES, BUILD_ISSUE_LOOKUP_GRACE_MS, BUILD_PLAN_TTL_MS, BUILD_PROGRESS_LIMITS, BUILD_RECONCILE_MS, BUILD_STATUS_TTL_MS, BUILD_TIMEOUT_MS, BUILD_TOKEN_MAX_CHARS, BUILD_UPLOAD_LIMITS, branchForRun, newRunId, type BuildFireResult, type BuildIssueLookup } from "@shared/build-routine";
 import { readJsonBody } from "../chat/guard";
 import type { Env } from "../runtime";
@@ -8,7 +9,7 @@ import { BuildBlockedError, BuildPublicationPendingError, BuildPullRequestReject
 import { exchangeCode, revoke } from "./github-oauth";
 import { readPlan, type PlanPayload } from "./plan";
 import { parseScreenshot, postScreenshotComment, SCREENSHOT_BODY_BYTES, screenshotObjectKey } from "./screenshots";
-import { bearerToken, buildCoordinator, fail, object, readBoundedBytes } from "./http";
+import { bearerToken, buildCoordinator, fail, readBoundedBytes } from "./http";
 import { hashToken, signBuildToken, uploadTokenForRun, verifyBuildToken } from "./token";
 import { parseBuildUpload } from "./validation";
 import { applyGithubWebhook, outsideBuildBranches, verifyGithubWebhook } from "./webhook";
@@ -38,9 +39,9 @@ async function verifyGithubVisitor(code: string, codeVerifier: string, secret: s
 
 type BuildContext = Pick<ExecutionContext, "waitUntil">;
 
-async function buildResponse(run: StoredRun, env: Env): Promise<Response> {
+async function buildResponse(run: StoredRun, secret: string): Promise<Response> {
   const { runId, branch, createdAt } = run.state;
-  const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, env.BUILD_SESSION_SECRET!);
+  const statusToken = await signBuildToken<StatusPayload>({ kind: "status", runId, expiresAt: createdAt + BUILD_STATUS_TTL_MS }, secret);
   return Response.json({ runId, branch, statusToken, run: run.state } satisfies BuildFireResult, { status: 202, headers: noStore });
 }
 
@@ -104,7 +105,7 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
     const existing = await coordinator.findPlanRun(plan.id, session.userId);
     if (!existing) return fail(409, "This plan has already been used by another GitHub account.");
     await prepareBuild(existing.state.runId, env, fetcher, ctx);
-    return buildResponse((await coordinator.readRun(existing.state.runId))!, env);
+    return buildResponse((await coordinator.readRun(existing.state.runId))!, env.BUILD_SESSION_SECRET);
   }
   const runId = newRunId();
   const createdAt = Date.now();
@@ -125,17 +126,17 @@ export async function handleBuild(request: Request, env: Env, fetcher: typeof fe
     const admission = await coordinator.reserveRun(run, plan.id, plan.expiresAt);
     if (admission === "used") {
       const existing = await coordinator.findPlanRun(plan.id, session.userId);
-      return existing ? buildResponse(existing, env) : fail(409, "This plan has already been used.");
+      return existing ? buildResponse(existing, env.BUILD_SESSION_SECRET) : fail(409, "This plan has already been used.");
     }
     if (admission !== "ok") return fail(429, admission === "account" ? "This GitHub account has reached its hourly build limit." : "The site's hourly build limit has been reached.");
     reserved = true;
     await coordinator.scheduleDraftSweep();
     await prepareBuild(runId, env, fetcher, ctx);
-    return buildResponse((await coordinator.readRun(runId))!, env);
+    return buildResponse((await coordinator.readRun(runId))!, env.BUILD_SESSION_SECRET);
   } catch {
     if (reserved) {
       await coordinator.updateRun(runId, { reason: "The draft pull request could not be confirmed; the build workflow was not started." });
-      return buildResponse((await coordinator.readRun(runId))!, env);
+      return buildResponse((await coordinator.readRun(runId))!, env.BUILD_SESSION_SECRET);
     }
     return fail(502, "The build could not be started.");
   }

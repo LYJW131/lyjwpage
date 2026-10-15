@@ -1,3 +1,4 @@
+import { object } from './json';
 import type { StoredCodingBuckets } from './coding-buckets';
 import { CODING_BUCKET_MS, codingRowTokens } from './coding-usage';
 import { cursorWindowFeatures, type CursorObservation } from './pulse-cursor';
@@ -215,37 +216,38 @@ export function codingQuestions(windows: CodingWindowFeatures[]) {
   }));
 }
 
-function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid coding assessment object");
-  return value as Record<string, unknown>;
+function assessmentObject(value: unknown): Record<string, unknown> {
+  const row = object(value);
+  if (!row) throw new Error("Invalid coding assessment object");
+  return row;
 }
 function finite(value: unknown, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) throw new Error("Invalid coding assessment number");
   return value;
 }
 function distribution(value: unknown, keys: readonly string[]): Record<string, number> {
-  const row = object(value);
+  const row = assessmentObject(value);
   if (Object.keys(row).length !== keys.length) throw new Error("Incomplete coding probability distribution");
   const probabilities = Object.fromEntries(keys.map((key) => [key, finite(row[key], 0, 1)]));
   if (Math.abs(Object.values(probabilities).reduce((a, b) => a + b, 0) - 1) > 0.01) throw new Error("Invalid coding probability total");
   return probabilities;
 }
 export function judgment(raw: unknown, levels: number, api: boolean): CodingJudgment {
-  const row = object(raw);
+  const row = assessmentObject(raw);
   if (api && row.type !== "score") throw new Error("Expected coding score");
   return { value: finite(api ? row.score : row.value, 0, levels - 1), confidence: finite(row.confidence, 0, 1),
     probabilities: distribution(row.probabilities, Array.from({ length: levels }, (_, i) => String(i))) };
 }
 export function modeJudgment(raw: unknown, api: boolean): CodingAssessment["mode"] {
-  const row = object(raw);
+  const row = assessmentObject(raw);
   const value = api ? row.choice : row.value;
   if ((api && row.type !== "choice") || !CODING_MODES.includes(value as CodingMode)) throw new Error("Invalid coding mode");
   return { value: value as CodingMode, confidence: finite(row.confidence, 0, 1), probabilities: distribution(row.probabilities, CODING_MODES) };
 }
 export function parseCodingAnswers(raw: unknown, windows: CodingWindowFeatures[], scoredAt: number): CodingAssessment[] {
-  const body = object(raw);
+  const body = assessmentObject(raw);
   if (typeof body.model !== "string" || !body.model) throw new Error("Missing coding model version");
-  const answers = object(body.answers);
+  const answers = assessmentObject(body.answers);
   return windows.map((window, i) => ({ from: window.from, to: window.to, coverage: window.coverage,
     intensity: judgment(answers[`w${i}Intensity`], CODING_INTENSITY.length, true),
     continuity: judgment(answers[`w${i}Continuity`], CODING_CONTINUITY.length, true),
@@ -253,13 +255,13 @@ export function parseCodingAnswers(raw: unknown, windows: CodingWindowFeatures[]
 }
 export function parseCodingAssessment(raw: string): CodingAssessment | null {
   try {
-    const row = object(JSON.parse(raw));
+    const row = assessmentObject(JSON.parse(raw));
     const from = finite(row.from, 0, Number.MAX_SAFE_INTEGER);
     const to = finite(row.to, from + CODING_WINDOW_MS, from + PULSE_SCORE_WINDOW_MS);
     if (to !== from + CODING_WINDOW_MS && to !== from + PULSE_SCORE_WINDOW_MS) return null;
     if (!Array.isArray(row.coverage) || row.coverage.length === 0 || typeof row.model !== "string") return null;
     let end = from;
-    const coverage = row.coverage.map((value) => { const part = object(value); const a = finite(part.from, end, to); const b = finite(part.to, a + 1, to); end = b; return { from: a, to: b }; });
+    const coverage = row.coverage.map((value) => { const part = assessmentObject(value); const a = finite(part.from, end, to); const b = finite(part.to, a + 1, to); end = b; return { from: a, to: b }; });
     return { from, to, coverage, intensity: judgment(row.intensity, CODING_INTENSITY.length, false),
       continuity: judgment(row.continuity, CODING_CONTINUITY.length, false), mode: modeJudgment(row.mode, false),
       model: row.model, scoredAt: finite(row.scoredAt, to, Number.MAX_SAFE_INTEGER) };
@@ -267,15 +269,15 @@ export function parseCodingAssessment(raw: string): CodingAssessment | null {
 }
 export function parseCodingObservation(raw: string): CodingObservation | null {
   try {
-    const row = object(JSON.parse(raw));
+    const row = assessmentObject(JSON.parse(raw));
     const t = finite(row.t, 0, Number.MAX_SAFE_INTEGER);
     if (typeof row.available !== "boolean") return null;
     let desktop: CodingObservation["desktop"] = null;
-    if (row.desktop != null) { const d = object(row.desktop); if (typeof d.application !== "string" || typeof d.coding !== "boolean") return null; desktop = { application: d.application.slice(0, 80), coding: d.coding }; }
+    if (row.desktop != null) { const d = assessmentObject(row.desktop); if (typeof d.application !== "string" || typeof d.coding !== "boolean") return null; desktop = { application: d.application.slice(0, 80), coding: d.coding }; }
     let agents: CodingObservation["agents"] = null;
     if (row.agents != null) {
       if (!Array.isArray(row.agents)) return null;
-      agents = row.agents.slice(0, 16).map((value) => { const a = object(value); if (typeof a.id !== "string" || typeof a.active !== "boolean" || (a.model !== null && typeof a.model !== "string")) throw new Error("Invalid coding agent"); return { id: a.id.slice(0, 40), model: typeof a.model === "string" ? a.model.slice(0, 80) : null, active: a.active }; });
+      agents = row.agents.slice(0, 16).map((value) => { const a = assessmentObject(value); if (typeof a.id !== "string" || typeof a.active !== "boolean" || (a.model !== null && typeof a.model !== "string")) throw new Error("Invalid coding agent"); return { id: a.id.slice(0, 40), model: typeof a.model === "string" ? a.model.slice(0, 80) : null, active: a.active }; });
     }
     return { t, available: row.available, desktop, agents };
   } catch { return null; }
