@@ -62,7 +62,7 @@ flowchart LR
 
 ## 定时任务
 
-几个 Claude Code 云端定时任务让项目在没人说话时也在演进，每个都按一份 skill 跑，时间与配置见 [ops-facts「Claude Code 云端 routine」](./ops-facts.md#claude-code-云端-routine)：
+几个 Claude Code 云端定时任务（routine）让项目在没人说话时也在演进，时间、提示词与配置见 [ops-facts「Claude Code 云端 routine」](./ops-facts.md#claude-code-云端-routine)，有对应 skill 的在表里注明：
 
 | 任务 | 做什么 |
 | --- | --- |
@@ -71,7 +71,8 @@ flowchart LR
 | Anthropic 官方动态 | 拉官方博客、文档、更新日志和前沿作者的新内容，逐条判断能否吸收进本站（[`lyjwpage-anthropic-updates`](../.claude/skills/lyjwpage-anthropic-updates/SKILL.md)） |
 | collector 盯防 | 盯采集 Worker 的公开状态与 Workers Observability 日志，找告警漏掉的细微异常，复现了的错误直接开修复草稿 PR（[`lyjwpage-collector-superfan`](../.claude/skills/lyjwpage-collector-superfan/SKILL.md)） |
 | 记忆镜像同步 | 把项目记忆同步进 `.claude/memory/` |
-| 晨报 | 读上面的报告，在项目聊天列出要 lyjw 决定的事 |
+
+每天的晨报不是 routine，由项目聊天里的协调 Claude 发：读上面的报告，列出要 lyjw 决定的事。
 
 这些任务共守几条规矩：按游标不按时间窗，读失败就报失败、不推进书签，写操作确认成功才记账。依据见 [references.md「Agent 编排与定时自动化」](./references.md#agent-编排与定时自动化)。
 
