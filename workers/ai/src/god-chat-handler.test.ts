@@ -621,6 +621,38 @@ test("web_search 走 Worker 调搜索服务，结果回成 search_result，引�
   assert.deepEqual(events.find((event) => event.type === "sources"), { type: "sources", sources: [{ url: "https://e.dev/page", title: "E" }] });
 });
 
+test("web_search 的非英文查询回工具错误、不调 Exa 也不占次数，改成英文后照常搜", async (t) => {
+  const original = globalThis.fetch;
+  const outbound: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (url.includes("api.exa.ai")) {
+      outbound.push(String(init?.body));
+      return Response.json({ results: [{ url: "https://e.dev/page", title: "E", highlights: ["fact"] }] });
+    }
+    return Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  };
+  t.after(() => { globalThis.fetch = original; });
+  const calls = [
+    { name: "web_search", input: { query: "芙莉莲 评价", category: "web" } },
+    { name: "web_search", input: { query: "Frieren review", category: "web" } },
+  ];
+  const { env, requests } = designEnv({
+    reply: (body) => {
+      const call = calls[requests.length - 1];
+      return call ? modelStream(body.model, call) : scriptedStream(body.model, [{ type: "text", text: "Done." }], "end_turn");
+    },
+  });
+  env.EXA_API_KEY = "test-exa";
+  const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "芙莉莲好看吗" }]), env, toolIO));
+  assert.equal(outbound.length, 1);
+  assert.match(outbound[0], /Frieren review/);
+  const rejected = requests[1].messages.at(-1)?.content;
+  assert.ok(Array.isArray(rejected) && rejected[0].type === "tool_result" && rejected[0].is_error === true);
+  assert.ok(!events.some((event) => event.type === "search" && event.query === "芙莉莲 评价"));
+  assert.ok(requests[2].tools?.some((tool) => "name" in tool && tool.name === "web_search"));
+});
+
 function scriptedStream(model: string, blocks: Record<string, unknown>[], stop: string): Response {
   const events: Record<string, unknown>[] = [
     { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },

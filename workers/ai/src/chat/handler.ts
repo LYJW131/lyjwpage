@@ -34,7 +34,7 @@ import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from ".
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { DOC_SEARCH_BETA, DOC_SEARCH_SERVERS, DOC_SEARCH_TOOLSETS, TOOL_SEARCH_TOOL, docSearchQuery } from "./doc-search";
 import { ANIME_SEARCH_TOOL, DOMAIN_SEARCH_TOOLS, GAME_SEARCH_TOOL, STORE_LANGUAGES, animeSearch, gameSearch } from "./domain-search";
-import { MAX_WEB_FETCHES, WEB_CATEGORIES, chineseQuery, WEB_FETCH_TOOL, WEB_SEARCH_TOOL, searchResultBlocks, urlKey, urlsIn, webFetch, webSearch, type WebPage } from "./web-search";
+import { MAX_WEB_FETCHES, WEB_CATEGORIES, nonEnglishQuery, WEB_FETCH_TOOL, WEB_SEARCH_TOOL, searchResultBlocks, urlKey, urlsIn, webFetch, webSearch, type WebPage } from "./web-search";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MIN_ROUND_TOKENS = 256;
@@ -506,7 +506,7 @@ async function converse({
         const input = call.input as { query?: unknown; category?: unknown; language?: unknown };
         const query = typeof input.query === "string" ? input.query.trim().slice(0, 400) : "";
         if (!query) return result("Give a non-empty query.", true);
-        if (call.name === WEB_SEARCH_TOOL.name && chineseQuery(query)) return result("Rewrite the query in English; Chinese-language sources are not searched.", true);
+        if (call.name === WEB_SEARCH_TOOL.name && nonEnglishQuery(query)) return result("Rewrite the query in English only, with English or romanized names; Chinese-language sources are not searched.", true);
         if (searches >= GOD_CHAT_LIMITS.maxWebSearches) return result("No searches remain for this reply.", true);
         searches++;
         showSearch(call.id, query);
