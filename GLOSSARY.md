@@ -6,7 +6,7 @@ lyjw 和 Claude 在线程、PR、文档里共用的词。每条一句话说是�
 
 | 词 | 是什么 | 出处 |
 | --- | --- | --- |
-| 首屏 | 首页随 HTML 一起直出的那份状态快照，先于浏览器拉 API 显示；改了要失效的叫「首屏缓存」 | `docs/state-storage.md` |
+| 首屏 | 首页随 HTML 一起直出的那份状态快照，先于浏览器拉 API 显示；按视图缓存，什么时候主动失效见出处 | `docs/state-storage.md`「首屏与浏览器」 |
 | 卡 / 卡片 | 首页上一块状态，如充电宝卡、在听卡、agent 状态卡 | `DESIGN.md` |
 | Pulse | 首页按时间铺开的活动图 | `src/components/live/pulse-card.tsx` |
 | 泳道 | Pulse 里的一行，按领域分：Coding、Tokens、Listening 等 | `src/components/live/pulse-card.tsx#LANES` |
@@ -14,7 +14,7 @@ lyjw 和 Claude 在线程、PR、文档里共用的词。每条一句话说是�
 | 实时状态 | 归 core Worker 的状态，经 Service Binding 读 | 根 `AGENTS.md`「禁区」 |
 | 上报器 | 跑在 lyjw 自家机器上、往 `/api/ingest/<来源>` 推数据的程序 | `reporters/` |
 | 来源 | 上报入口按数据归属命名的那一段，不按上报程序命名 | `shared/ingest/prepare.ts#INGEST_SOURCES` |
-| 别处播放 | 不在 Mac / HomePod 上、由 Apple「最近播放」推断出来的在听 | `docs/listening-inference-accuracy.md` |
+| 别处播放 | 不在 Mac / HomePod 上、由 Apple「最近播放」推断出来的在听 | `shared/pulse-listening.ts#playingElsewhere` |
 | 近况卡标语 | 近况卡标题，只从固定的中文标语池里挑 | `workers/ai/src/digest/taglines.ts#DIGEST_TAGLINES` |
 
 ## 首页对话
