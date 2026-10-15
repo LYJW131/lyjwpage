@@ -143,15 +143,26 @@
   const scrub = $("scrub"), fill = scrub.querySelector(".fill");
   for (const c of chapters) {
     const m = document.createElement("div"); m.className = "mark"; m.style.left = `${(c.t0 / DURATION) * 100}%`; scrub.appendChild(m);
-    const l = document.createElement("div"); l.className = "lab"; l.style.left = `${(c.t0 / DURATION) * 100}%`; l.dataset.key = c.title; scrub.appendChild(l);
+    const z = document.createElement("div"); z.className = "zone"; z.style.left = `${(c.t0 / DURATION) * 100}%`; z.style.width = `${((c.t1 - c.t0) / DURATION) * 100}%`; z.dataset.key = c.title; scrub.appendChild(z);
+    const l = document.createElement("div"); l.className = "lab"; z.appendChild(l);
+  }
+  function fitLabels() {
+    scrub.querySelectorAll(".zone").forEach((z) => {
+      const l = z.firstChild, name = I18N.tr(z.dataset.key);
+      // 8 = 标签自身右移的 4 px（index.html 的 #scrub .lab）+ 给下一章刻度留的 4 px。
+      const room = z.getBoundingClientRect().width - 8;
+      z.title = name;
+      l.textContent = name;
+      if (l.scrollWidth > room) l.textContent = name.split(" ")[0];
+      l.style.visibility = l.scrollWidth > room ? "hidden" : "";
+    });
   }
   function ui() {
     $("play").textContent = playing ? I18N.tr("ui.pause") : I18N.tr("ui.play");
     $("lang").textContent = I18N.tr("ui.lang");
-    scrub.querySelectorAll(".lab").forEach((l) => (l.textContent = I18N.tr(l.dataset.key)));
   }
   $("play").onclick = () => (playing ? pause() : play());
-  $("lang").onclick = () => { I18N.set(I18N.lang === "zh" ? "en" : "zh"); dirty = true; ui(); };
+  $("lang").onclick = () => { I18N.set(I18N.lang === "zh" ? "en" : "zh"); dirty = true; ui(); fitLabels(); };
   let dragging = false;
   const scrubTo = (e) => { const r = scrub.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * DURATION); };
   scrub.addEventListener("pointerdown", (e) => { dragging = true; scrub.setPointerCapture(e.pointerId); scrubTo(e); });
@@ -167,6 +178,7 @@
     else if (e.key === "[") { const t = now(); const c = [...chapters].reverse().find((c) => c.t0 < t - 0.3); seek(c ? c.t0 : 0); }
   });
   window.addEventListener("resize", fit);
+  window.addEventListener("resize", fitLabels);
 
   let lastDrawn = -1;
   function loop() {
@@ -190,6 +202,7 @@
     for (const c of chapters) if (c.init) await c.init();
     if (params.has("t")) T = Math.max(0, Math.min(DURATION - 1e-3, +params.get("t")));
     ui();
+    fitLabels();
     if (!EXPORT) {
       requestAnimationFrame(loop);
       let got = null;
