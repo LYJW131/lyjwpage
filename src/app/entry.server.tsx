@@ -1,6 +1,7 @@
 import { renderToReadableStream } from "react-dom/server";
 import { ServerRouter, type EntryContext } from "react-router";
 
+import { deferModulePreloads } from "@/lib/defer-module-preloads";
 import { NO_STORE } from "@/lib/site-policy";
 
 export default async function handleRequest(
@@ -24,7 +25,8 @@ export default async function handleRequest(
   shellReady = true;
   await body.allReady;
   responseHeaders.set("Content-Type", "text/html");
-  return new Response(body, {
+  const html = deferModulePreloads(await new Response(body).text());
+  return new Response(html, {
     headers: responseHeaders,
     status: responseStatusCode,
   });
