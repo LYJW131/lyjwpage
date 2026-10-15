@@ -29,6 +29,10 @@
   - 是什么：上面那套做法的 skill 实现，含协调者 playbook、纠错 skill `correct`、验证 skill 模板。
   - 取了什么：验证 skill = 共用 CLI + 功能地图（materialized memory），验证员不各自写一次性脚本；CLI 对 agent 友好：输出 JSON、报错写下一步、破坏性操作带 `--dry-run`。派活简报固定栏目、常驻指令原样贴入；写代码的不判自己的活，验证结论绑 head SHA；验证 skill 分 Launch / Doctor / Drive / Evidence / Cleanup 五节。
   - 状态：部分采用。共用 CLI 与功能地图落在 [site-verify.ts](../scripts/site-verify.ts) 与 [feature-map.json](../.claude/skills/lyjwpage-verify/feature-map.json)，由 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md) 调用；合并后的构建与版本核对同样下沉成脚本 [deploy-check.ts](../scripts/deploy-check.ts)（访谈里「skill 只写流程、机械步骤进脚本」）；写代码的不判自己的活落在 lyjwpage-verify「3b」（大改逻辑的 PR 合并前派判定员，结论按 head SHA 记在 PR 评论里）；pstack 的验证账本（`ledger.tsv`：按 PR 加 head SHA 记一行分级结论，补丁没变的沿用，见 poteto-mode 的 [orchestrate](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/orchestrate.md)「Verification」与 [shipping](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/shipping.md)）落成 lyjwpage-verify「回执」：验证员签分级回执、主线程发成 PR 评论，[verify-receipt.ts](../scripts/verify-receipt.ts) 按 head 与相对 main 的补丁（逐字节、只忽略行号；不用 `git patch-id`，它忽略空白）判回执还算不算数，主线程不重跑回执里的检查；不采用她的异族模型验证员（只能派 Claude）；先复述再动手落在根 `AGENTS.md`「工作方式」与 `HUMAN.md`「7」。不采用简报九栏：项目的协作规则限定简报只带 lyjw 原话、记忆里的约束和分叉默认，常驻约束随记忆贴入已由项目记忆 handoff-carry-user-constraints 覆盖。
+- **[How to be more ambitious: A tutorial for humans with models](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/)**（Felix Rieseberg，Anthropic）
+  - 是什么：把「用 AI 要更有野心」拆成高度（给目标不给任务）、深度（专家的工具、离谱的目标、外部裁判）、广度（名词换动词、按领域组队）。
+  - 取了什么：「深一层」四问提示，lyjw 派活时贴。外部裁判本项目已有（验证回执脚本、CI 门禁、机器评审）。
+  - 状态：部分采用。四问落在 `HUMAN.md`「2. 怎么说一句话最快」。待定：盯防复现后直接开修复草稿 PR（高度）、首屏 LCP 定目标并做成部署后检查（深度）。不采用：名词换动词与组队，属写提示的习惯，没有可落地的文件。
 - **[Automating eval design and hillclimbing with Claude](https://claude.dev/blog/automating-eval-design-and-hillclimbing/)**（claude.dev）
   - 是什么：用 Claude 设计评测、按证据迭代提示词。
   - 取了什么：一次只改一处、改动可归因到根因，不把失败样例原文贴进提示词。
