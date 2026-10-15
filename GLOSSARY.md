@@ -43,5 +43,5 @@ lyjw 和 Claude 在线程、PR、文档里共用的词。每条一句话说是�
 | 门禁 | CI 必须通过的检查清单 | `.github/workflows/ci.yml` |
 | 基线 | 存量违规的清单，只许减不许增 | 根 `AGENTS.md`「规则 → 由什么强制」 |
 | 夹具 / 场景 | 注入假数据看此刻没发生的状态；场景是一整份互相对得上的快照 | `workers/core/README.md`「本地开发」 |
-| 分支预览 | 每个分支自动部署的预览站点 | `docs/workers-builds.md`「分支预览」 |
+| 分支预览 | 非生产分支改到监视路径时，Workers Builds 自动部署的预览站点 | `docs/workers-builds.md`「分支预览」 |
 | 讲解片 | `/explainer` 上的讲解动画 | `docs/explainer/README.md` |
