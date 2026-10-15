@@ -105,7 +105,7 @@ export async function webSearch({ provider, key }: WebSearcher, query: string, s
   if (provider === "exa") {
     const data = await call("https://api.exa.ai/search", { authorization: `Bearer ${key}` }, {
       query,
-      type: "auto",
+      type: "fast",
       numResults: SEARCH_RESULTS,
       contents: { highlights: { maxCharacters: SEARCH_CHARS_PER_RESULT } },
     }, signal);
