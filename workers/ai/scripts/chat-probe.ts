@@ -13,9 +13,9 @@ registerHooks({
 });
 const { handleChat } = await import("../src/chat/handler.ts");
 
-const USAGE = `用法：pnpm --dir workers/ai chat:probe [--tier haiku-medium] [--runs 5] [--fixture listening-now-elsewhere-estimated] [--web exa|parallel|both] "问题"
+const USAGE = `用法：pnpm --dir workers/ai chat:probe [--tier haiku-medium] [--runs 5] [--fixture listening-now-elsewhere-estimated] "问题"
 用真实模型跑首页对话（跳过 Clef 与验人），状态视图读 workers/core/dev-fixtures/ 里同名端点的夹具，没有夹具的视图回 404。
-ANTHROPIC_API_KEY、EXA_API_KEY、PARALLEL_API_KEY 取环境变量或 workers/ai/.dev.vars；--web 只把选中那家的 key 交给对话，缺省两家都给、随机分流。`;
+ANTHROPIC_API_KEY、EXA_API_KEY 取环境变量或 workers/ai/.dev.vars。`;
 
 const args = process.argv.slice(2);
 const flag = (name: string, fallback: string) => {
@@ -25,7 +25,6 @@ const flag = (name: string, fallback: string) => {
 const tier = flag("tier", "haiku-medium");
 const runs = Number(flag("runs", "1"));
 const fixtures = flag("fixture", "listening-now-elsewhere-estimated").split(",");
-const web = flag("web", "both");
 const question = args.join(" ").trim();
 if (!question || !Number.isSafeInteger(runs) || runs < 1) {
   console.error(USAGE);
@@ -75,8 +74,7 @@ const env = {
   CHAT_FORCE_TIER: tier,
   CHAT_RATE_LIMIT: "off",
   ANTHROPIC_API_KEY: apiKey,
-  EXA_API_KEY: web === "parallel" ? undefined : secret("EXA_API_KEY"),
-  PARALLEL_API_KEY: web === "exa" ? undefined : secret("PARALLEL_API_KEY"),
+  EXA_API_KEY: secret("EXA_API_KEY"),
   TURNSTILE_SECRET_KEY: "probe",
   CHAT_HISTORY_SECRET: "probe",
   ALLOWED_ORIGINS: "https://lyjw.me",
