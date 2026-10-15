@@ -408,7 +408,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 检查：CI 与 CodeQL（只检查、不发布）
 
 - CI：推 main 或 dev、开 PR 都跑，一个 job 依次跑 lint、全部工作区的 typecheck、站点单测、core / ai / ingress / collector 的单测、上报器单测、`scripts` 的测试、`pnpm docs:check`、`pnpm design:scale`、`pnpm rules:check`、`pnpm ui:copy`、`pnpm baselines:check`（`.github/workflows/ci.yml#check`）。
-- CI 不跑站点构建：门禁只有 lint、typecheck、单测、脚本测试、docs:check、design:scale、rules:check、ui:copy、baselines:check 九项（`scripts/ci-checks.sh` 的 `gates`），站点构建交给 Workers Builds 的 `site`（下一节）。同一分支连推几次，只留最后一次（同文件的 `concurrency`，`cancel-in-progress`）。
+- CI 不跑站点构建：门禁只有 lint、typecheck、单测、脚本测试、docs:check、design:scale、rules:check、ui:copy、baselines:check 九项（`scripts/ci-checks.sh` 的 `gates`），站点构建交给 Workers Builds 的 `site`（下一节）。PR 分支连推几次只留最后一次；main 按提交分组，每个提交都跑完（同文件的 `concurrency`）。
 - CodeQL：推 main 或 dev，外加每天两次定时；PR 只扫访客构建的那些，扫 `javascript-typescript` 和 `actions` 两类（`.github/workflows/codeql.yml#analyze`）。
 - 片中 CI 和 CodeQL 各画成一条亮灯的线，不展开各项。
 
