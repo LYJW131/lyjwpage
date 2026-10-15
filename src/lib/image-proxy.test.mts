@@ -212,7 +212,9 @@ test("an image the upstream no longer has is a 404, only upstream failures are a
   assert.equal(status(404), 404);
   assert.equal(status(413), 413);
   assert.equal(status(408), 502);
+  assert.equal(status(425), 502);
   assert.equal(status(429), 502);
+  assert.equal(status(410), 404);
   assert.equal(status(500), 502);
   assert.equal(status(504), 502);
 });
