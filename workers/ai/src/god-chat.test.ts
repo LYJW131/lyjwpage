@@ -11,7 +11,8 @@ import { sealExchange, sealedHistory, storedReply } from "./chat/seal.ts";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./chat/show-card.ts";
 import { newLedger, type ToolIO } from "./tools/registry.ts";
 import { claimViews, isStatusViewKey, parseSiteStatusInput } from "./tools/site-status.ts";
-import { pickWebSearcher, searchResultBlocks, urlKey, urlsIn, webSearch } from "./chat/web-search.ts";
+import { animeSearch, gameSearch } from "./chat/domain-search.ts";
+import { searchResultBlocks, urlKey, urlsIn, webSearch } from "./chat/web-search.ts";
 
 const user = (content: string) => ({ role: "user" as const, content });
 const assistant = (content: string) => ({ role: "assistant" as const, content });
@@ -198,14 +199,6 @@ test("兜底模型的展示名从 id 推，本档模型用本档的名字", () =
   assert.equal(modelLabel("claude-fable-5-1"), "Fable 5.1");
 });
 
-test("联网搜索按配置的 key 在 Exa 与 Parallel 间随机分流，没配 key 就不搜", () => {
-  assert.equal(pickWebSearcher({} as never), undefined);
-  assert.equal(pickWebSearcher({ EXA_API_KEY: "e" } as never, () => 0.99)?.provider, "exa");
-  const both = { EXA_API_KEY: "e", PARALLEL_API_KEY: "p" } as never;
-  assert.equal(pickWebSearcher(both, () => 0)?.provider, "exa");
-  assert.equal(pickWebSearcher(both, () => 0.5)?.provider, "parallel");
-});
-
 test("web_fetch 只认 http(s)、不带账号的 URL，去掉片段后比较；中文标点不算进 URL", () => {
   assert.equal(urlKey("https://example.com/a#b"), "https://example.com/a");
   assert.equal(urlKey("javascript:alert(1)"), undefined);
@@ -222,21 +215,51 @@ test("搜索结果转成带引用的 search_result 块，日期并进标题", ()
   ]);
 });
 
-test("两家搜索的响应都归一成网页列表，没有正文的结果丢掉", async (t) => {
+test("Exa 搜索走 fast 档、按分类传 category，响应归一成网页列表，没有正文的结果丢掉", async (t) => {
   const original = globalThis.fetch;
   const bodies: Record<string, unknown>[] = [];
-  globalThis.fetch = async (input, init) => {
+  globalThis.fetch = async (_input, init) => {
     bodies.push(JSON.parse(String(init?.body)));
-    return String(input).includes("exa.ai")
-      ? Response.json({ results: [{ url: "https://e.dev", title: "E", publishedDate: "2026-09-22T00:00:00Z", highlights: ["h1", "h2"] }, { url: "https://empty.dev", highlights: [] }] })
-      : Response.json({ results: [{ url: "https://p.dev", title: null, publish_date: null, excerpts: ["x"] }] });
+    return Response.json({ results: [{ url: "https://e.dev", title: "E", publishedDate: "2026-09-22T00:00:00Z", highlights: ["h1", "h2"] }, { url: "https://empty.dev", highlights: [] }] });
   };
   t.after(() => { globalThis.fetch = original; });
   const signal = new AbortController().signal;
-  assert.deepEqual(await webSearch({ provider: "exa", key: "e" }, "q", signal), [{ url: "https://e.dev", title: "E", published: "2026-09-22", text: "h1\n…\nh2" }]);
-  assert.deepEqual(await webSearch({ provider: "parallel", key: "p" }, "q", signal), [{ url: "https://p.dev", title: "https://p.dev", text: "x" }]);
-  assert.equal(bodies[0].query, "q");
-  assert.deepEqual(bodies[1].search_queries, ["q"]);
+  assert.deepEqual(await webSearch("e", "q", "web", signal), [{ url: "https://e.dev", title: "E", published: "2026-09-22", text: "h1\n…\nh2" }]);
+  await webSearch("e", "q", "papers", signal);
+  assert.equal(bodies[0].type, "fast");
+  assert.equal(bodies[0].category, undefined);
+  assert.equal(bodies[1].category, "research paper");
+});
+
+test("Bangumi 结果带中日文标题、评分与条目链接，Steam 结果带价格、发售日与商店链接", async (t) => {
+  const original = globalThis.fetch;
+  const requests: { url: string; headers: Headers }[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    requests.push({ url, headers: new Headers(init?.headers) });
+    if (url.includes("bgm.tv")) {
+      return Response.json({ data: [{ id: 400602, name: "葬送のフリーレン", name_cn: "葬送的芙莉莲", date: "2023-09-29", platform: "TV", eps: 28, rating: { score: 8.5, total: 36595, rank: 43 }, tags: [{ name: "治愈" }], summary: "魔法使\r\n芙莉莲" }] });
+    }
+    if (url.includes("storesearch")) {
+      return Response.json({ items: [{ id: 1245620, name: "ELDEN RING", price: { currency: "USD", final: 5999 }, platforms: { windows: true, mac: false } }, { id: 9, name: "Other", price: { currency: "USD", final: 999 } }] });
+    }
+    if (url.includes("appids=1245620")) {
+      return Response.json({ 1245620: { success: true, data: { name: "ELDEN RING", price_overview: { final_formatted: "$59.99", discount_percent: 0 }, release_date: { coming_soon: false, date: "Feb 24, 2022" }, genres: [{ description: "RPG" }], metacritic: { score: 94 } } } });
+    }
+    return Response.json({ 9: { success: false } });
+  };
+  t.after(() => { globalThis.fetch = original; });
+  const signal = new AbortController().signal;
+  const [anime] = await animeSearch("芙莉莲", signal);
+  assert.equal(anime.url, "https://bgm.tv/subject/400602");
+  assert.equal(anime.title, "葬送的芙莉莲 (葬送のフリーレン)");
+  assert.match(anime.text, /Bangumi score: 8.5\/10 from 36595 votes, rank #43/);
+  assert.match(anime.text, /Synopsis: 魔法使 芙莉莲/);
+  assert.ok(requests[0].headers.get("user-agent"));
+  const games = await gameSearch("elden ring", "en", signal);
+  assert.equal(games[0].url, "https://store.steampowered.com/app/1245620/");
+  assert.match(games[0].text, /Price: \$59.99\nRelease date: Feb 24, 2022\nGenres: RPG\nMetacritic: 94\nPlatforms: windows/);
+  assert.equal(games[1].text, "Price: 9.99 USD");
 });
 
 test("项目文档工具只认白名单里的文档键，章节名去空白", () => {

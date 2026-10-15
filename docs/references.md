@@ -130,14 +130,22 @@
 
 ## 联网搜索与文档检索
 
-- **[Exa](https://exa.ai/docs/reference/search) 与 [Parallel](https://docs.parallel.ai/search/search-quickstart) 的搜索、抓取 API**
-  - 是什么：两家给 agent 用的网页搜索服务，都返回按查询截好的摘录，另有整页抓取（Exa `/contents`、Parallel `/v1/extract`）。
-  - 取了什么：首页对话的 `web_search` / `web_fetch` 从 Anthropic 服务端工具换成 Worker 执行的客户端工具，两家按回复随机 A/B；结果用 Claude API 的 [search_result 块](https://platform.claude.com/docs/en/build-with-claude/search-results) 回给模型，保住原生引用。调研与实测记在 PR 描述里。
+- **[Exa](https://exa.ai/docs/reference/search) 的搜索、抓取 API**
+  - 是什么：给 agent 用的网页搜索服务，返回按查询截好的摘录，`category` 可限定新闻、论文；`/contents` 抓整页。
+  - 取了什么：首页对话的 `web_search` / `web_fetch` 从 Anthropic 服务端工具换成 Worker 执行的客户端工具，只用 `fast` 档；结果用 Claude API 的 [search_result 块](https://platform.claude.com/docs/en/build-with-claude/search-results) 回给模型，保住原生引用。和 Parallel、Exa `auto` 档、原生搜索的对照实测记在 PR 描述里。
   - 状态：采用。落在 `workers/ai/src/chat/web-search.ts` 与 `workers/ai/src/chat/handler.ts`。
-- **[Context7](https://context7.com) 与 [Cloudflare 文档 MCP](https://docs.mcp.cloudflare.com/mcp)**
-  - 是什么：两个公开的只读文档检索 MCP 服务器，免 key。
-  - 取了什么：经 Claude API 的 [MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) 接进首页对话，问库、框架或 Cloudflare 产品用法时查当前文档，不靠模型记忆。
+- **[Bangumi API](https://bangumi.github.io/api/) 与 Steam 商店的 `storesearch` / `appdetails` 接口**
+  - 是什么：免 key 的动画条目搜索（评分、排名、标签）与 Steam 商店搜索、详情（价格、发售日、Metacritic）。
+  - 取了什么：首页对话的 `anime_search`、`game_search`，结果同样回成 `search_result` 块。
+  - 状态：采用。落在 `workers/ai/src/chat/domain-search.ts`。
+- **[Context7](https://context7.com)、[Cloudflare 文档 MCP](https://docs.mcp.cloudflare.com/mcp)、[grep.app MCP](https://mcp.grep.app)、[DeepWiki MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp)**
+  - 是什么：公开的只读检索 MCP 服务器，免 key：库与框架文档、Cloudflare 文档、GitHub 公开代码搜索、按仓库问答。
+  - 取了什么：经 Claude API 的 [MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) 接进首页对话，每个服务器只放行固定的一两个工具。
   - 状态：采用。落在 `workers/ai/src/chat/doc-search.ts`。
+- **Claude API 的 [tool search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)**
+  - 是什么：工具定义设 `defer_loading` 后不进初始上下文，模型用 BM25 搜到才加载。
+  - 取了什么：首页对话常驻站点工具与 `web_search` / `web_fetch`，领域工具和全部 MCP 工具按需加载，系统提示列出按需工具的类别。
+  - 状态：采用。落在 `workers/ai/src/chat/doc-search.ts#TOOL_SEARCH_TOOL` 与 `workers/ai/src/chat/domain-search.ts`。
 
 ## 密钥管理
 

