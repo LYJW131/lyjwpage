@@ -28,7 +28,7 @@ import {
 } from "@/lib/image-proxy";
 import { LYRICS_PATH } from "@shared/apple-music-paths";
 import type { LyricsResult } from "@shared/lyrics-ttml";
-import { archivedAssetKey } from "@/lib/asset-archive";
+import { STALE_NEXT_SCRIPT, archivedAssetKeys, isStaleNextScript } from "@/lib/asset-archive";
 import { isSiteOrigin, relayClientError } from "@/lib/error-relay";
 import {
   HOME_CACHE_TAG,
@@ -363,15 +363,25 @@ function backendRedirect(env: Env, url: URL): Response {
 
 // 分支 Preview 去掉了 R2 绑定（scripts/site-preview.mjs#sitePreviewConfig），没有绑定就按缺档处理。
 async function serveArchivedAsset(request: Request, env: Env): Promise<Response> {
-  const key = archivedAssetKey(new URL(request.url).pathname);
+  const { pathname } = new URL(request.url);
   const archive = env.ASSET_ARCHIVE as R2Bucket | undefined;
-  if (!key || !archive) return errorResponse(404);
-  if (request.method === "HEAD") {
-    const head = await archive.head(key);
-    return head ? new Response(null, { headers: archivedAssetHeaders(head) }) : errorResponse(404);
+  if (archive) {
+    for (const key of archivedAssetKeys(pathname)) {
+      if (request.method === "HEAD") {
+        const head = await archive.head(key);
+        if (head) return new Response(null, { headers: archivedAssetHeaders(head) });
+        continue;
+      }
+      const object = await archive.get(key);
+      if (object) return new Response(object.body, { headers: archivedAssetHeaders(object) });
+    }
   }
-  const object = await archive.get(key);
-  return object ? new Response(object.body, { headers: archivedAssetHeaders(object) }) : errorResponse(404);
+  if (isStaleNextScript(pathname)) {
+    return new Response(request.method === "HEAD" ? null : STALE_NEXT_SCRIPT, {
+      headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": NO_STORE },
+    });
+  }
+  return errorResponse(404);
 }
 
 async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
