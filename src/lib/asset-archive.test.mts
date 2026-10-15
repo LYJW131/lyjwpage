@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import vm from "node:vm";
 
 import {
   ASSET_ARCHIVE_PREFIX,
   LEGACY_ASSET_PREFIX,
+  STALE_NEXT_COOLDOWN_MS,
+  STALE_NEXT_FETCH_TIMEOUT_MS,
+  STALE_NEXT_SCRIPT,
   archivedAssetContentType,
   archivedAssetKey,
   archivedAssetKeys,
@@ -71,4 +75,62 @@ test("只有 /_next/static/ 下的脚本缺档时换成刷新脚本", () => {
   assert.equal(isStaleNextScript("/_next/static/chunks/webpack-c7cea1f7fad5b6c7.js"), true);
   assert.equal(isStaleNextScript("/_next/static/immutable/chunks/3ps_id-l_dy58.css"), false);
   assert.equal(isStaleNextScript("/assets/entry.client-DEFjIM2L.js"), false);
+});
+
+function runStaleNextScript({ storage, fetchHangs = false, now = 1_000_000 }: { storage: Map<string, string> | null; fetchHangs?: boolean; now?: number }) {
+  const timers: Array<() => void> = [];
+  let reloads = 0;
+  let fetches = 0;
+  const sessionStorage = {
+    getItem(key: string) {
+      if (!storage) throw new Error("blocked");
+      return storage.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      if (!storage) throw new Error("blocked");
+      storage.set(key, value);
+    },
+  };
+  const context = {
+    navigator: { onLine: true },
+    Date: { now: () => now },
+    sessionStorage,
+    location: { href: "https://lyjw.me/", reload: () => reloads++ },
+    setTimeout: (fn: () => void) => timers.push(fn),
+    clearTimeout: () => {},
+    fetch: () => {
+      fetches++;
+      return fetchHangs ? new Promise(() => {}) : Promise.resolve({ text: () => Promise.resolve("") });
+    },
+  };
+  vm.runInNewContext(STALE_NEXT_SCRIPT, context);
+  return { timers, fetches: () => fetches, reloads: () => reloads };
+}
+
+test("缺档刷新脚本：重取完刷新一次，冷却期内再执行不刷", async () => {
+  const storage = new Map<string, string>();
+  const first = runStaleNextScript({ storage });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(first.fetches(), 1);
+  assert.equal(first.reloads(), 1);
+  first.timers.forEach((fn) => fn());
+  assert.equal(first.reloads(), 1);
+  const again = runStaleNextScript({ storage, now: 1_000_000 + STALE_NEXT_COOLDOWN_MS - 1 });
+  assert.equal(again.fetches(), 0);
+  const later = runStaleNextScript({ storage, now: 1_000_000 + STALE_NEXT_COOLDOWN_MS });
+  assert.equal(later.fetches(), 1);
+});
+
+test("缺档刷新脚本：会话存储不可用时不刷新", () => {
+  const run = runStaleNextScript({ storage: null });
+  assert.equal(run.fetches(), 0);
+  assert.equal(run.timers.length, 0);
+});
+
+test(`缺档刷新脚本：重取挂住时 ${STALE_NEXT_FETCH_TIMEOUT_MS}ms 定时器到点照样刷新`, async () => {
+  const run = runStaleNextScript({ storage: new Map(), fetchHangs: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(run.reloads(), 0);
+  run.timers.forEach((fn) => fn());
+  assert.equal(run.reloads(), 1);
 });
