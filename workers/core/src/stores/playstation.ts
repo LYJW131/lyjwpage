@@ -5,7 +5,7 @@ import type {
   PlaystationPresencePayload
 } from "@shared/types";
 import { fanout, type PendingEvent } from "@core/fanout";
-import { historyArchiveEnabled, requestStore } from "@core/runtime";
+import { historyArchive, requestStore } from "@core/runtime";
 import { recordStateObservation } from "@core/stores/pulse";
 import { archiveTrophies } from "@core/stores/trophy-history";
 import { gamingFacts, questGamingFacts } from "@shared/pulse-timeline";
@@ -80,8 +80,8 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
 
   await fanout({ writes, events, tags });
   const scope = requestStore.getStore();
-  const history = scope?.env.HISTORY;
-  if (trophiesFresh && incomingTrophies && history && scope && historyArchiveEnabled(scope.env)) {
+  const history = scope && historyArchive(scope.env);
+  if (trophiesFresh && incomingTrophies && history && scope) {
     scope.ctx.waitUntil(archiveTrophies(history, incomingTrophies));
   }
   return { changed: presenceChanged || playedGamesChanged || trophiesChanged };

@@ -109,6 +109,16 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    files: ["workers/*/src/**/*.ts"],
+    ignores: ["workers/*/src/**/*.test.ts"],
+    rules: {
+      "no-restricted-syntax": ["error", {
+        selector: "TSNonNullExpression > MemberExpression:matches([object.name='env'], [object.property.name='env'])",
+        message: "可选绑定不用 env.X! 硬取：写返回绑定或 null 的访问器（如 workers/core/src/runtime.ts#historyArchive），或在同一函数里先判空让类型收窄。",
+      }],
+    },
+  },
+  {
     // 上报校验不能进入状态核心运行依赖，否则会绕过 Workers Builds 的监视路径隔离。
     files: ["workers/core/src/**/*.ts"],
     ignores: ["workers/core/src/**/*.test.ts", "workers/core/src/preview-entry.ts"],

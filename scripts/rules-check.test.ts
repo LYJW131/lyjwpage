@@ -167,3 +167,23 @@ test("JSDoc 块注释被拦，行注释、普通块注释与字符串里的 /** 
   assert.deepEqual(rules("src/lib/x.ts", "const x = 1;\n/** 文件末尾 */"), ["jsdoc-internal@2"]);
   assert.deepEqual(rules("src/lib/x.ts", "/** 声明前 */\nexport function f() { return 1; }"), ["jsdoc-internal@1"]);
 });
+
+test("SHA-256 十六进制在 shared/sha256.ts 以外复制一份被拦，scripts/ 与实现本身放行", () => {
+  const copy = 'const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");';
+  assert.deepEqual(rules("workers/collector/src/jobs/avatar-watch.ts", `const a = 1;\n${copy}`), ["sha256-hex@2"]);
+  assert.deepEqual(rules("workers/core/src/pulse-score.ts", "const hash=Array.from(d,(b)=>b.toString(16).padStart(2,'0')).join('');"), ["sha256-hex@1"]);
+  assert.equal(rules("shared/sha256.ts", copy).length, 0);
+  assert.equal(rules("scripts/x.ts", copy).length, 0);
+});
+
+test("一两句只判普通对象的单参数函数被拦，用 shared/json 的和做更多校验的放行", () => {
+  const nullable = 'function record(value: unknown) {\n  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;\n}';
+  assert.deepEqual(rules("workers/core/src/pulse-score.ts", nullable), ["json-object-guard@1"]);
+  const throwing = 'function record(value: unknown): Record<string, unknown> {\n  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("bad");\n  return value as Record<string, unknown>;\n}';
+  assert.deepEqual(rules("shared/site-analytics.ts", throwing), ["json-object-guard@1"]);
+  assert.deepEqual(rules("workers/ai/src/mcp.ts", 'const isObject = (value: unknown): value is Record<string, unknown> =>\n  typeof value === "object" && value !== null && !Array.isArray(value);'), ["json-object-guard@1"]);
+  assert.equal(rules("shared/json.ts", nullable).length, 0);
+  assert.equal(rules("shared/x.ts", 'function record(value: unknown) {\n  const row = object(value);\n  if (!row) throw new Error("bad");\n  return row;\n}').length, 0);
+  const validator = 'export function isEnvelope(value: unknown) {\n  if (!value || typeof value !== "object" || Array.isArray(value)) return false;\n  const row = value as Record<string, unknown>;\n  if (typeof row.ok !== "boolean") return false;\n  return true;\n}';
+  assert.equal(rules("src/lib/site-policy.ts", validator).length, 0);
+});

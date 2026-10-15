@@ -1,4 +1,4 @@
-import { historyArchiveEnabled, pulseScoringEnabled, type Env } from "./runtime";
+import { historyArchive, pulseScoringAi, type Env } from "./runtime";
 import { PulseArchive } from "./pulse-archive";
 import { PulseScorer, clefDecide } from "./pulse-score";
 import { freshnessCheckDue, watchFreshness, type FreshnessEvent } from "./freshness-watch";
@@ -6,9 +6,9 @@ import type { PulseTick } from "./state-hub";
 
 // 只有 StateHub 整个调不通才让这一轮记成失败心跳；子步骤失败只记一条错误日志，站点的 Core 在线行不跟着闪。
 export async function runCronRound(env: Env, scheduledTime: number): Promise<void> {
-  const archiving = historyArchiveEnabled(env);
-  const scoring = pulseScoringEnabled(env);
-  if (!archiving && !scoring) return;
+  const db = historyArchive(env);
+  const ai = pulseScoringAi(env);
+  if (!db && !ai) return;
   const hub = env.STATE.get(env.STATE.idFromName("global"));
   const [ticked] = await Promise.allSettled([
     hub.pulseTick(),
@@ -23,9 +23,9 @@ export async function runCronRound(env: Env, scheduledTime: number): Promise<voi
   const tick = ticked.value;
   console.info("[cron-shape]", JSON.stringify(tickShape(tick)));
   await Promise.all([
-    archiving && new PulseArchive({ coordinator: hub, db: env.HISTORY! }).run(tick.archive)
+    db && new PulseArchive({ coordinator: hub, db }).run(tick.archive)
       .catch((error: unknown) => stepFailed("pulse-archive", error)),
-    scoring && new PulseScorer({ coordinator: hub, decide: clefDecide(env.AI!) }).run(tick.score)
+    ai && new PulseScorer({ coordinator: hub, decide: clefDecide(ai) }).run(tick.score)
       .catch((error: unknown) => stepFailed("pulse-score", error)),
   ]);
 }
