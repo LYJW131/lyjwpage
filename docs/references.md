@@ -64,6 +64,10 @@
   - 是什么：模型按 28×28 px 一块计视觉 token，每档模型有长边和 token 上限，超了先缩小再看。
   - 取了什么：给 Haiku 逐帧看的验收图按标准档上限拼，每张 2 帧时每格仍是原尺寸、哪档模型看都不会被缩；拼得更多格子就被缩小，细节开始漏，所以默认每张 2 帧。
   - 状态：采用。落在 [sheets.py](./explainer/v2/tools/sheets.py) 和 [lyjwpage-explainer](../.claude/skills/lyjwpage-explainer/SKILL.md)，实测见 [逐帧验收拼图实测](./explainer/frame-qa-calibration.md)。
+- **[Opus 5.5 Motion Lab: Make Claude Animate Like a Studio](https://x.com/flxrnc/status/2105311836190978392)**（Florence，X Article）
+  - 是什么：用代码出动效的做法，其中的「渲染契约」要求每帧是 t 的纯函数，并按帧号截静帧自查。
+  - 取了什么：按这条契约逐章审 /explainer，同一时刻正序、乱序 seek 比截图。章代码都守约，乱序差异来自 Chrome GPU 画布画线段端点的抗锯齿，于是工具里的 2D 图层改走 CPU 光栅。
+  - 状态：采用。落在 [browser.mjs](./explainer/v2/tools/browser.mjs)#openFilm。
 
 ## 设计系统与 UI
 
@@ -174,3 +178,11 @@
   - 是什么：短、笃定、具体的中文标语写法。
   - 取了什么：摘要卡标题写成 3 到 5 个汉字的标语口吻。试过的书法字体被 lyjw 否掉，没有保留。
   - 状态：采用。落在 [compose.ts](../workers/ai/src/digest/compose.ts) 的提示词。
+- **[ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/)**（ASD，航空维修手册的受控语言标准）
+  - 是什么：一句一事、句子短、主动语态、一个词只表示一件事的写作规范。
+  - 取了什么：给 lyjw 的报告出一版 STE100 式短句（A 版）。只取写法要点，不照搬词表。
+  - 状态：采用。落在 [HUMAN.md](../HUMAN.md)「7. Claude 怎么向你汇报」。
+- **[Smart Brevity](https://www.axios.com/smart-brevity)**（Axios）
+  - 是什么：每段用固定小标题引出、读者只扫加粗字就能决定要不要往下读的写法。
+  - 取了什么：报告的 D 版用「一句话 / 为什么 / 要你定 / 往深看」四个固定小标题，和 A 版并排给 lyjw 看。
+  - 状态：采用。落在 [HUMAN.md](../HUMAN.md)「7. Claude 怎么向你汇报」。
