@@ -15,7 +15,7 @@ export const MAX_WEB_FETCHES = 4;
 
 export const WEB_SEARCH_TOOL: Anthropic.Beta.BetaTool = {
   name: "web_search",
-  description: "Search the web for anything outside this site. Returns the top pages with relevant excerpts; cite what you use. Write the query as a short, specific search in the language the sources are most likely written in.",
+  description: "Search the web for anything outside this site. Returns the top pages with relevant excerpts; cite what you use. Write the query as a short, specific search in English only, whatever language the visitor writes in; use the English or romanized name for titles and people.",
   input_schema: {
     type: "object",
     properties: {
