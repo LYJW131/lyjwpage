@@ -219,6 +219,7 @@ const parseTime = (value: unknown): GodChatTimeInput | undefined => {
   if (!raw) return null as never;
   const { iso, zone } = raw;
   if (typeof iso !== "string" || !iso || iso.length > 64) return null as never;
+  if (Number.isNaN(new Date(iso).getTime())) return null as never;
   if (zone !== undefined && (typeof zone !== "string" || zone.length > 64)) return null as never;
   return { iso, ...(typeof zone === "string" && zone ? { zone } : {}) };
 };
