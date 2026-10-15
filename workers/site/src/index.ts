@@ -17,6 +17,7 @@ import {
   IMAGE_UPSTREAM_TIMEOUT_MS,
   ImagePolicyError,
   ImageUpstreamError,
+  imageUpstreamFailureStatus,
   fetchImageUpstream,
   imageSourceFromInternalPath,
   parseImageSource,
@@ -192,7 +193,7 @@ export class ImageVariants extends WorkerEntrypoint<Env> {
       return new Response(response.body, { status: 200, headers });
     } catch (error) {
       if (error instanceof ImagePolicyError) return errorResponse(404);
-      if (error instanceof ImageUpstreamError) return errorResponse(error.status === 413 ? 413 : 502, "Image upstream failed");
+      if (error instanceof ImageUpstreamError) return errorResponse(imageUpstreamFailureStatus(error), "Image upstream failed");
       console.error("[image]", error instanceof Error ? error.message : error);
       return errorResponse(502, "Image transform failed");
     }

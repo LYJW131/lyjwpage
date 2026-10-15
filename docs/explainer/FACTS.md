@@ -357,7 +357,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 汇总读 D1 走绑定、不带令牌；向 Cloudflare 取数带的是 `CLOUDFLARE_METRICS_TOKEN`（`shared/health-cloudflare.ts#cloudflareApi`），它的权限是否覆盖 Workers Observability 在 `docs/ops-facts.md` 里标的是未核对。片中不画令牌：采集 Worker 去 D1 那一趟只标 `SELECT`。
 
-线上报错不经过这张卡：五个 Worker 都开了 Workers Observability 和 Workers Issues（各自 wrangler 配置的 `observability.issues`），未捕获异常、5xx 和 `console.error` 按服务归组；浏览器里的报错由 `src/lib/error-report.ts#reportError` 经同源 `/relay` 交给 site Worker，校验后记成 `console.error("[browser-error]", …)`，落在服务 `site` 名下（`src/lib/error-relay.ts#ERROR_RELAY_PATH`、`parseClientErrorReport`）；采集任务失败记成一行 `event` 为 `collector-job` 的 JSON（`workers/collector/src/registry.ts#runJob`）。第 06 章收尾 Clawd 那句「我先去 Workers Issues 查证据」出自这里（根 `AGENTS.md`「排查线上错误」）。
+线上报错不经过这张卡：五个 Worker 都开了 Workers Observability 和 Workers Issues（各自 wrangler 配置的 `observability.issues`），未捕获异常、5xx 和 `console.error` 按服务归组；浏览器里的报错由 `src/lib/error-report.ts#reportError` 经同源 `/relay` 交给 site Worker，校验后记成 `console.error("[browser-error]", …)`，落在服务 `site` 名下（`src/lib/error-relay.ts#ERROR_RELAY_PATH`、`parseClientErrorReport`）；断网类 fetch 拒绝和 ResizeObserver 循环提示只记 `console.warn`，不进 Issues（`src/lib/error-relay.ts#isBrowserNoise`）；采集任务失败记成一行 `event` 为 `collector-job` 的 JSON（`workers/collector/src/registry.ts#runJob`）。第 06 章收尾 Clawd 那句「我先去 Workers Issues 查证据」出自这里（根 `AGENTS.md`「排查线上错误」）。
 
 ## 9 对话与构建（workers/ai）
 

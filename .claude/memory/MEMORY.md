@@ -4,6 +4,8 @@
 ## How lyjw wants us to work (put the relevant ones in every brief)
 - **Call lyjw "lyjw"** in every third-person reference (docs, skills, memory, PRs, reports, briefs); never 站主/owner/用户/他/they/real name. Direct chat address stays "你". (2026-10-14, #313)
 - **Times in SGT** (UTC+8, e.g. "18:07 (SGT)") in everything shown to lyjw.
+- **Reports for lyjw are Artifacts, never .md** (lyjw 2026-10-15 20:19 SGT: "给我看的报告我不想读md 要artifacts"). Any research write-up, comparison or report meant for lyjw to read is published with the Artifact tool and linked; .md files may stay as working data for other threads but are never the deliverable.
+- **Technical reports: ship two Artifact versions, A and D, side by side** (lyjw 2026-10-15 20:50 SGT: "我选ad 接下来的技术报告都用ad做ab版本artifacts对照给我看"). A = ASD-STE100-style short controlled sentences; D = Axios Smart Brevity. Keep text low, don't grab attention. lyjw will say which they prefer each time. Reference: [报告写法四选一](<private claude.ai link>), thread "报告怎么写得更省注意力".
 - **Latest stack, no legacy compat** (lyjw 2026-10-15 00:42 SGT): prefer newest versions/APIs; when upgrading or migrating, drop old shims/fallbacks/dual paths. Exception: iOS reporter endpoints must keep working.
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
@@ -27,6 +29,7 @@
 - **SWE-2Max (Devin CLI, Mac only):** dispatch via Mac Remote Control threads, one worktree per task, `cd <path> && devin -p --model swe-2-max --respect-workspace-trust false --permission-mode dangerous --prompt-file task.md --export log.md`, in parallel; Claude reviews the diff and opens the PR. Forbid `git stash`. If blocked, start a fresh Mac session. lyjw wants it kept busy.
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
+- Cloud egress proxy also injects keys for TypeSafe System One (Jev), api.exa.ai and api.parallel.ai (lyjw added 2026-10-15). Jev is also on Workers AI as `typesafe/jev` via the AI binding + AI Gateway `default` with BYOK (working 2026-10-15); version can't be pinned there, it follows `jev-latest` (log the version per answer).
 - **Site previews:** `<branch>.preview.lyjw.dev` only (no login, noindex, #318). lyjw shut down `*-site.lyjw.workers.dev` entirely 2026-10-15; never use those URLs: [[preview-access-removed]].
 - Collector manual run: GitHub Actions "Run Collector Jobs".
 - Repo memory mirror at `.claude/memory/` via `pnpm memory:mirror`, daily 03:15 routine: [[repo-memory-mirror]].
@@ -37,6 +40,7 @@
 - 08:41 Anthropic updates digest → read by 09:00 morning report: [[anthropic-updates-routine]].
 - 4x daily collector superfan (Workers Observability, no Sentry): [[collector-superfan-routine]].
 - 09:00 SGT morning report in project chat, hourly in-place updates until lyjw writes.
+- 2026-10-15 17:01 SGT manual fire of all routines failed: routine sessions lacked /mnt/project-files, memory dir, hearthbot thread tools and GitHub tools. Fix the routine environment before relying on them again.
 - Agent automation practices: [[agent-automation-practices]].
 
 ## Decisions and state
@@ -45,9 +49,13 @@
 - README trimmed to essentials (#331, lyjw found it 又臭又长); long design write-ups live in docs/design-notes.md. Keep README short.
 - Sentry fully removed (#198): [[sentry-exit-done]]. api→core rename done: [[api-rename-to-core]]; collector drives the cron round: [[core-cron-internal-error]]. Same-origin API notes: [[same-origin-api-traps]].
 - ISR replaced by Workers Caching entrypoints + Cache-Tag purge; first-screen regressions fixed in #274 (Geist Mono restored). Now-playing decisions: [[now-playing-first-screen-decisions]]. ESA home is purged only on deploy: [[esa-home-no-layout-purge]].
+- Old hashed static assets backfilled to R2 prefix `site-assets-legacy/` (no expiry, #354); missing Vercel-era chunks get a reload stub.
 - Digest card: Chinese tagline pool (772 lines, lyjw-pruned), 10-line `headlines` pool rotating every 60 s (#261).
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Pulse Tokens lane now includes Devin via reporter buckets (#322) plus a backfill for 2026-10-14.
+- Not adopting: OTel export of site AI usage, Max-plan API credit (already claimed) (lyjw 2026-10-15).
+- Parked idea (lyjw 2026-10-15, 先不做): Jev prefetches a short context summary into the first chat call: [[idea-jev-context-prefetch]].
+- Chat web search: PR #355 (Exa/Parallel + doc MCPs) held as draft by lyjw until lyjw reviews results. Clef stays for routing; Jev batch "one scoring run" idea researched (clock card shadow mode proposed).
 - **.mjs→TS migration done (2026-10-15 SGT, #327 #328 #330 #332 #333 #334 #335):** CI gate, verify, merge-message, deploy-check and build-actions scripts are now .ts (deploy-site-preview and other low-frequency scripts are still .mjs); `pnpm rules:check` rejects new `scripts/*.mjs` outside `scripts/mjs-baseline.json` (shrink-only; low-frequency scripts migrate when next touched). guard-forbidden-commands hook stays .mjs. `docs/architecture.json` still names build-actions.mjs because it is pinned to revision b3694ae; change it only together with a revision bump and regeneration.
 - **Baselines shrink-only (lyjw 2026-10-15 SGT, #337):** `pnpm baselines:check` fails a PR whose mjs / design-scale / ui-copy baseline has more entries than main. Real exceptions: explain in the PR and wait; only lyjw adds the `baseline-exception` label, agents never do.
