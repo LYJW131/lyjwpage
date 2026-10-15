@@ -167,3 +167,11 @@
   - 是什么：短、笃定、具体的中文标语写法。
   - 取了什么：摘要卡标题写成 3 到 5 个汉字的标语口吻。试过的书法字体被 lyjw 否掉，没有保留。
   - 状态：采用。落在 [compose.ts](../workers/ai/src/digest/compose.ts) 的提示词。
+- **[ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/)**（ASD，航空维修手册的受控语言标准）
+  - 是什么：一句一事、句子短、主动语态、一个词只表示一件事的写作规范。
+  - 取了什么：给 lyjw 的报告出一版 STE100 式短句（A 版）。只取写法要点，不照搬词表。
+  - 状态：采用。落在 [HUMAN.md](../HUMAN.md)「7. Claude 怎么向你汇报」。
+- **[Smart Brevity](https://www.axios.com/smart-brevity)**（Axios）
+  - 是什么：每段用固定小标题引出、读者只扫加粗字就能决定要不要往下读的写法。
+  - 取了什么：报告的 D 版用「一句话 / 为什么 / 要你定 / 往深看」四个固定小标题，和 A 版并排给 lyjw 看。
+  - 状态：采用。落在 [HUMAN.md](../HUMAN.md)「7. Claude 怎么向你汇报」。
