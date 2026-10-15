@@ -9,7 +9,7 @@
       harm: [
         "Dm9", "Bbmaj7", "G6", [["Fmaj7", 0], ["C69", 2]],
         "Dm9", "Bbmaj7", "Gm9", [["A7sus4", 0], ["A7", 2]],
-        "Dm9", [["Gm9", 0], ["A7sus4", 2]], [["Dm9", 0], ["Dmadd9", 2]], "Dmadd9", "Dmadd9", "Dmadd9",
+        "Dm9", [["Gm9", 0], ["A7sus4", 2]], [["Dm9", 0], ["Dmadd9", 2]], "Dmadd9", "Dmadd9", "Dmadd9", "Dmadd9", "Dmadd9",
       ],
       sections: [
         { from: 0, to: 0, id: "recap-plate", name: "平线往后拉出长图版、心电图的尖峰长出来：主题全体唱一遍", energy: 0.65,
@@ -34,11 +34,13 @@
           kick: "X.......X.x.....", duck: 0.5, snare: "....x.......x...", snareKind: "rim",
           hat: ["X.X.X...X.o.X...", "o.X.X...o.o.o..."], hatKind: "type",
           bass: "groove", arp: { p: "332", lo: 69, inst: "pluck", v: 0.36 }, pad: 0.75, lp: 2600, padVerb: 0.28 },
-        { from: 10, to: 10, id: "recap-flip", name: "10:0 卡片翻面；10:2 切回终端，终和弦", energy: 0.55,
+        { from: 10, to: 10, id: "recap-flip", name: "10:0 卡片翻面，10:2 起和弦落到总览", energy: 0.55,
           kick: "X...............", duck: 0.5, bass: "hold", pad: 1, lp: 2200, padVerb: 0.45 },
-        { from: 11, to: 12, id: "recap-end", name: "片尾字卡：四位带道具的 Clawd 按拍冒出来谢幕，12:0 一起庆祝，12:2 起按十六分缩回；终和弦慢慢放", energy: 0.3,
+        { from: 11, to: 11, id: "recap-map", name: "总览图停住：整座邮局，鼓停只留 pad", energy: 0.22,
+          ghost: [2, 0.08, 0.3], bass: "hold", bassVol: 0.55, pad: 1, lp: 900, padVerb: 0.55 },
+        { from: 12, to: 13, id: "recap-end", name: "12:0 切回终端，终和弦和一声低的；片尾字卡，四位 Clawd 谢幕", energy: 0.3,
           ghost: [2, 0.1, 0.35], bass: "hold", bassVol: 0.7, pad: 0.8, lp: 1500, padVerb: 0.5 },
-        { from: 13, to: 13, id: "recap-tail", name: "拉回终端、清屏，尾音淡出；第 00 章从同一个和弦接着起", energy: 0.1,
+        { from: 14, to: 15, id: "recap-tail", name: "拉回终端、清屏，lyjw.me 停一下，再落回第 00 章第一帧", energy: 0.1,
           pad: 0.45, lp: 900, padVerb: 0.55 },
       ],
       melody: [
@@ -48,7 +50,7 @@
         ...phrase(4, THEME, "bell", 0.85, true),
         ...phrase(8, TAP, "pluckMute", 1.3, true),
         ...phrase(10, withNotes(["A4", "D5", "F5", "E5"]).slice(0, 3), "pluck", 1.2, true), ...phrase(10, withNotes(["A5", "D6", "F6", "E6"]).slice(0, 3), "bell", 0.4),
-        [10, 2, 8, "E5", "pluck", 1.1, true], [10, 2, 8, "D5", "bell", 0.8, false], [10, 2, 8, "A5", "bell2", 0.5, false], [10, 2, 8, "E6", "bell2", 0.32, false],
+        [12, 0, 8, "E5", "pluck", 1.1, true], [12, 0, 8, "D5", "bell", 0.8, false], [12, 0, 8, "A5", "bell2", 0.5, false], [12, 0, 8, "E6", "bell2", 0.32, false],
       ],
       story: [
         { bar: 0, beat: 0, kind: "accent", what: "arrive" },
@@ -80,13 +82,13 @@
         { bar: 9, beat: 2.5 + hops[0], kind: "hop", m: midi("E6"), pan: 0.25 },
         { bar: 9, beat: 3, kind: "swell" },
         { bar: 10, beat: 0, kind: "accent", what: "flip" },
-        { bar: 10, beat: 2, kind: "boom" },
-        ...[[10, 3, "A5"], [10, 3, "D6"], [12, 0, "E6"], [12, 0, "A6"]].map(([bar, beat, n], i) => ({ bar, beat: beat + hops[i % 2], kind: "hop", m: midi(n), pan: i % 2 ? 0.15 : -0.15 })),
+        { bar: 12, beat: 0, kind: "boom" },
+        ...[[12, 1, "A5"], [12, 1, "D6"], [13, 2, "E6"], [13, 2, "A6"]].map(([bar, beat, n], i) => ({ bar, beat: beat + hops[i % 2], kind: "hop", m: midi(n), pan: i % 2 ? 0.15 : -0.15 })),
         ...[["A5", -0.3], ["D6", -0.1], ["E6", 0.12], ["F6", 0.45]].flatMap(([n, pan], i) => [
-          { bar: 11, beat: i, kind: "hop", m: midi(n), v: 0.8, pan },
-          { bar: 12, beat: 2 + i * 0.25, kind: "key", v: 0.5, pan },
+          { bar: 12 + (i < 2 ? 0 : 1), beat: i < 2 ? 2 + i : i - 2, kind: "hop", m: midi(n), v: 0.8, pan },
+          { bar: 14, beat: i * 0.25, kind: "key", v: 0.5, pan },
         ]),
-        { bar: 13, beat: 0, kind: "clear" },
+        { bar: 14, beat: 2, kind: "clear" },
       ],
     };
   },

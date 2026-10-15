@@ -53,6 +53,8 @@
       "ch08.n7a": ["夜里也有 Claude 值班：", "Claudes work the night shift:"],
       "ch08.n7b": ["审代码、提炼做法、写晨报。", "review code, distill skills, report."],
       "ch08.sign": ["等 lyjw 验收", "Waiting on lyjw"],
+      "ch08.failSub": ["退回", "sent back"],
+      "ch08.four": ["四点还在看 diff", "04:00, still on the diff"],
     });
     const tr = (k) => I18N.tr(k);
     const TAU = Math.PI * 2;
@@ -70,7 +72,7 @@
       haiku: [7.5, 7.75], tests: [8.0, 8.25, 8.5, 8.75], receipt: 9.0, level: 9.25, rung: 9.5, check: [9.75, 10.0], exact: 10.25, bye: 10.5,
       g1: 11.25, fail: 11.75, c4: 12.0, pass: 12.5, g2: 12.75, nod: 13.25, g3: 13.5,
       m1: 14.0, m2: 14.25, m3: 14.5, mcard: 14.75, coauth: 15.25, home: 15.5, avatar: 15.75,
-      night: [16.125, 16.375, 16.625, 16.75, 16.875, 17.375, 17.5],
+      night: [16.05, 16.22, 16.38, 16.52, 17.45, 17.65, 17.82],
       sign: 18.5, exit: [19.25, 19.6],
     };
 
@@ -585,7 +587,7 @@
       const fk = prog(b, AT.fail, AT.fail + 0.14) * (1 - prog(b, AT.pass - 0.12, AT.pass - 0.02));
       // 印章落在小牌正上方、上一条分支的东西下面，和闸灯、小牌都隔开一截：两条分支之间只有这么高。
       const PS = [GX - 150, PR.y - 135], OS = [GX - 150, UI.y - 145];
-      stamp(s, "FAIL", PS[0], PS[1], { k: fk, px: S.s(40), rot: -0.14, color: ash, alpha: a });
+      stamp(tp, "FAIL", PS[0], PS[1], { k: fk, px: S.s(44), rot: -0.14, color: css("bone"), sub: tr("ch08.failSub"), subPx: S.s(28), alpha: a });
       stamp(s, "PASS", PS[0], PS[1], { k: prog(b, AT.pass, AT.pass + 0.14), px: S.s(40), rot: -0.1, color: css("signalD"), alpha: a * (1 - prog(b, AT.g2 + 0.05, AT.g2 + 0.15)) });
       stamp(s, "OK", OS[0], OS[1], { k: prog(b, AT.nod, AT.nod + 0.14), px: S.s(32), rot: -0.12, color: css("signalD"), sub: tr("ch08.nod"), subPx: S.s(20), alpha: a * (1 - prog(b, AT.g3 + 0.05, AT.g3 + 0.15)) });
       glow(e, PS[0], PS[1], 140, 0.5 * a * impact(b, AT.pass, 0.3));
@@ -665,7 +667,10 @@
       const tw = text(x, tr("ch08.night"), S0, NIGHT_Y - S.s(270), { font: FONT.cjk(S.s(36), 600), color: bone, alpha: a * prog(b, 16.0, 16.15) });
       text(x, "UTC+8", S0 + tw + S.s(20), NIGHT_Y - S.s(270), { font: FONT.mono(S.s(28), 500), color: ash, alpha: a * prog(b, 16.0, 16.15) });
       const marks = [[AT.night[0], 0], ...ROUTINES.map((r, i) => [AT.night[i + 1], r.h])];
-      const cur = keys(b, marks.map(([t, h], i) => (i ? [t, S0 + h * HOUR, E.lin] : [t, S0 + h * HOUR])));
+      let cur = keys(b, marks.map(([t, h], i) => (i ? [t, S0 + h * HOUR, E.lin] : [t, S0 + h * HOUR])));
+      const four = ROUTINES.findIndex((r) => r.label === "04:00");
+      const dwell = four >= 0 ? prog(b, AT.night[four + 1], AT.night[four + 1] + 0.08) * (1 - prog(b, AT.night[four + 2] - 0.55, AT.night[four + 2] - 0.08)) : 0;
+      if (dwell > 0) cur = lerp(cur, S0 + 4 * HOUR, dwell);
       const ca = a * prog(b, AT.night[0], AT.night[0] + 0.05) * (1 - prog(b, AT.night[6] + 0.1, AT.night[6] + 0.3));
       if (ca > 0) {
         line(x, cur, NIGHT_Y - 46, cur, NIGHT_Y + 46, 4, css("signalD"), ca);
@@ -674,16 +679,18 @@
       ROUTINES.forEach((r, i) => {
         const t = AT.night[i + 1], k = prog(b, t, t + 0.06, E.outBack);
         if (k <= 0) return;
-        const mx = S0 + r.h * HOUR, rx = mx + (r.dx || 0), q = 6;
+        const held = r.label === "04:00" && dwell > 0.4;
+        const mx = S0 + r.h * HOUR, rx = mx + (r.dx || 0), q = held ? 9 : 6;
         dot(x, mx, NIGHT_Y, 8, css("signalD"), null, 0, a);
-        glow(e, mx, NIGHT_Y, 60, 0.5 * a * impact(b, t, 0.25));
-        const fr = K.clawdSeq("jump", b, t, BARs) || { pose: "default", offset: 0 };
+        glow(e, mx, NIGHT_Y, held ? 110 : 60, 0.5 * a * (held ? 0.8 : impact(b, t, 0.25)));
+        const fr = K.clawdSeq("jump", b, t, BARs) || { pose: held ? "look-right" : "default", offset: 0 };
         const bottom = NIGHT_Y - 6 + 2 * q + (1 - k) * 30;
         K.clawdFrame(tp, fr, rx, bottom, q, { alpha: a * clamp(k * 2) });
         if (r.prop) K.clawdProp(tp, r.prop, rx, bottom, q, { color: bone, crouch: fr.offset || 0, alpha: a * clamp(k * 2) });
         const ty = r.up ? NIGHT_Y - 12 * q - S.s(56) : NIGHT_Y + S.s(108);
         text(x, r.label, rx, ty, { font: FONT.mono(S.s(28), 600), color: css("signalD"), align: "center", alpha: a * k });
         text(x, tr(r.key), rx, ty + (r.up ? -S.s(38) : S.s(40)), { font: FONT.cjk(S.s(30), 600), color: bone, align: "center", alpha: a * k, maxW: S.s(300) });
+        if (held) text(x, tr("ch08.four"), rx, ty + (r.up ? -S.s(78) : S.s(80)), { font: FONT.cjk(S.s(32), 600), color: css("signalD"), align: "center", alpha: a * dwell, maxW: S.s(360) });
       });
     }
 

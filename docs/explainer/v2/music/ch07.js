@@ -9,8 +9,9 @@
       "Gm9", "Fmaj7", "C69", [["Bbmaj7", 0], ["A7sus4", 2]],
     ],
     sections: [
-      { from: 0, to: 0, id: "chat-open", name: "硬切纸面：心电图横线收成输入框，打字机敲出第一句", energy: 0.25,
-        hat: "..........xxxxx.", hatKind: "type", hatVol: 0.8, ghost: [2, 0.12, 0.3], pad: 0.85, lp: 1600, padVerb: 0.36 },
+      { from: 0, to: 0, id: "chat-open", name: "第二幕进来：马林巴垫着，横线收成输入框，打字机敲出第一句", energy: 0.25,
+        hat: "..........xxxxx.", hatKind: "type", hatVol: 0.7, ghost: [2, 0.12, 0.3],
+        arp: { p: "sparse", lo: 57, inst: "marimba", v: 0.45 }, pad: 0.95, lp: 1100, padVerb: 0.5 },
       { from: 1, to: 2, id: "chat-consent", name: "隐私说明一行一行亮，2:0 点接受，2:2 消息出门", energy: 0.4,
         kick: "X.......x.......", kickKind: "light", duck: 0.4, hat: "......x.......x.", hatKind: "flip", hatVol: 0.7,
         bass: "light", arp: { p: "sparse", lo: 69, inst: "bell2", v: 0.26 }, pad: 0.85, lp: 2000, padVerb: 0.34 },
@@ -36,6 +37,7 @@
         kick: "X...............", duck: 0.4, bass: "hold", pad: 0.9, lp: 2000, padVerb: 0.45 },
     ],
     melody: [
+      [0, 0, 3, "D4", "marimba", 0.7, false], [0, 2, 2, "A3", "marimba", 0.45, false],
       ...phrase(11, THEME, "bell", 1.1, true),
       ...phrase(11, THEME.map(([b, d, n]) => [b, d, n.replace(/\d/, (o) => String(+o - 1))]), "pluck", 0.4),
     ],
