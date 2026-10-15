@@ -4,7 +4,7 @@ import { IMAGE_PATH_PREFIX } from "@shared/asset-url";
 import { LIVE_SOCKET_PATH } from "@shared/live-heartbeat";
 import { lagViewKeyByPath, STATUS_VIEWS, type LagViewKey } from "@shared/status-views";
 import { APP_VERSION_PATH } from "@/lib/app-version";
-import { archivedAssetKey } from "@/lib/asset-archive";
+import { archivedAssetKeys } from "@/lib/asset-archive";
 import { ERROR_RELAY_PATH } from "@/lib/error-relay";
 import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
@@ -164,7 +164,7 @@ export function classifyGatewayRequest(method: string, pathname: string): Gatewa
     return { kind: imageObjectKeyFromPath(pathname) ? "image-object" : "invalid" };
   }
   if (SITE_ASSET_ROUTES.has(pathname)) return { kind: "site-asset" };
-  if (archivedAssetKey(pathname)) return { kind: "archived-asset" };
+  if (archivedAssetKeys(pathname).length) return { kind: "archived-asset" };
   return { kind: "render" };
 }
 
