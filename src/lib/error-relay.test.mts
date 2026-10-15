@@ -39,7 +39,7 @@ test("URLs inside the message and stack lose credentials, query strings and frag
 
 test("the relay logs a valid report as an Error with the browser stack and rejects the rest", async () => {
   const logged: unknown[][] = [];
-  const log = (...args: unknown[]) => { logged.push(args); };
+  const log = { error: (...args: unknown[]) => { logged.push(args); }, warn: () => assert.fail("warn") };
   assert.equal(await relayClientError(post(JSON.stringify(report)), log), 204);
   const [label, error, detail] = logged[0];
   assert.equal(label, "[browser-error]");
@@ -52,6 +52,23 @@ test("the relay logs a valid report as an Error with the browser stack and rejec
   assert.equal(await relayClientError(post(JSON.stringify({ source: "window" })), log), 400);
   assert.equal(await relayClientError(post("x".repeat(ERROR_RELAY_MAX_BYTES + 1)), log), 413);
   assert.equal(logged.length, 1);
+});
+
+test("network and ResizeObserver noise from browsers is logged as a warning, not an error", async () => {
+  const levels: string[] = [];
+  const log = { error: () => { levels.push("error"); }, warn: () => { levels.push("warn"); } };
+  for (const message of [
+    "TypeError: Load failed",
+    "Failed to fetch",
+    "NetworkError when attempting to fetch resource.",
+    "ResizeObserver loop limit exceeded",
+    "ResizeObserver loop completed with undelivered notifications.",
+    "Load failed: chunk",
+  ]) {
+    assert.equal(await relayClientError(post(JSON.stringify({ ...report, source: "rejection", stack: null, message })), log), 204);
+  }
+  assert.equal(await relayClientError(post(JSON.stringify({ ...report, message: "Failed to fetch", stack: "TypeError: Failed to fetch\n    at load (https://lyjw.me/assets/a.js:1:2)" })), log), 204);
+  assert.deepEqual(levels, ["warn", "warn", "warn", "warn", "warn", "error", "warn"]);
 });
 
 test("the relay only accepts reports from the site's own origins", () => {
