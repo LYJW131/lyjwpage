@@ -69,6 +69,25 @@ jobs:
           ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
         run: node scripts/run-esa-purge.ts
 
+  # 只测源站：ESA 那条链路的首页缓存由 purge 预热，测它会混进回源时机。
+  lcp-budget:
+    needs: deployment
+    if: needs.deployment.outputs.live == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Check mobile LCP budget
+        env:
+          PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
+        run: node scripts/lcp-budget.ts https://lyjw.me/
+
   # 必须先刷 ESA 再通知页面，并等待域名切换到新版本，否则刷新仍会拿到旧 HTML。
   notify:
     needs: [deployment, purge]

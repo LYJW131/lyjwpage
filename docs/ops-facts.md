@@ -25,6 +25,7 @@
 | 转换规则「响应加 Vary Accept-Encoding」（修改响应头，ESA 到客户端，主机名等于 `lyjw131.com`，添加 `Vary: Accept-Encoding`）：源站与 ESA 回 br / zstd 时都不带 Vary，WebKit 曾因此报「Invalid character」；这条补上响应头，但边缘仍只存一份 br，只发 gzip 的客户端也会拿到 br | 核对于 2026-10-14，方式：新增规则后 `curl -sI -H 'Accept-Encoding: br' https://lyjw131.com/` 读回 `vary: Accept-Encoding`；`Accept-Encoding: gzip` 仍回 `content-encoding: br` <!-- allow: 核对戳 --> |
 | 图片路径 `/img/*` 由 ESA 按静态后缀缓存，回源 `lyjw.me`（由 `site` Worker 经 R2 绑定直出）；对象带一年不可变缓存，地址即内容指纹，所以不需要主动刷新 | 核对于 未记录，方式：迁自根 `README.md` 的「图片」一节 |
 | 新版本上线时 `.github/workflows/purge-esa.yml` 调 `PurgeCaches` 刷新首页 cachekey 并预热；站点 ID 与刷新 URL 见 `.github/workflows/purge-esa.yml#ESA_SITE_ID`，凭据是仓库 secret `ALIYUN_ACCESS_KEY_ID` / `ALIYUN_ACCESS_KEY_SECRET`；日常上报不触发刷新 | 核对于 未记录，方式：迁自 `workers/core/README.md` |
+| 新版本上线后 `.github/workflows/purge-esa.yml` 的 `lcp-budget` 任务用仓库 secret `PAGESPEED_API_KEY` 测源站手机 LCP，预算见 `scripts/lcp-budget.ts#LCP_BUDGET_MS` | 核对于 2026-10-15，方式：lyjw 在线程里确认已在 GitHub 加好该 secret |
 
 ## Cloudflare 账号里的资源
 
