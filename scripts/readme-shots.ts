@@ -17,7 +17,14 @@ const USAGE = `用法：pnpm readme:shots [--scene <场景>] [--only <名[,名]>
 场景留在本地 Worker 里供对照，收尾 pnpm dev:scene --reset。会动的卡片见 scripts/card-gifs.py。`;
 
 type Box = { x: number; y: number; width: number; height: number };
+type Locator = {
+  first(): Locator;
+  count(): Promise<number>;
+  evaluate<R>(fn: (element: HTMLElement, arg: unknown) => R, arg?: unknown): Promise<R>;
+  filter(options: { has?: Locator; hasText?: RegExp }): Locator;
+};
 type Page = {
+  locator(selector: string): Locator;
   goto(url: string, options: { waitUntil: "load"; timeout: number }): Promise<unknown>;
   waitForTimeout(ms: number): Promise<void>;
   evaluate(expression: string): Promise<unknown>;
@@ -29,7 +36,7 @@ type Browser = { newContext(options: Record<string, unknown>): Promise<{ newPage
 
 export type Shot = {
   name: string;
-  find: string;
+  find: (page: Page) => Locator;
   prepare?: (page: Page, box: Box) => Promise<Box[]>;
 };
 
@@ -40,18 +47,19 @@ const SETTLE_MS = 4_000;
 const IMAGE_WAIT_MS = 15_000;
 const WEBP_QUALITY = 88;
 
-const byId = (id: string) => `document.getElementById(${JSON.stringify(id)})`;
-const byLabel = (label: string) =>
-  `[...document.querySelectorAll(".paper-card")].find((card) => card.querySelector(".label-mono")?.textContent.trim() === ${JSON.stringify(label)})`;
+const exactText = (text: string) => new RegExp(`^\\s*${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`);
+const byId = (id: string) => (page: Page) => page.locator(`[id="${id}"]`).first();
+const byLabel = (label: string) => (page: Page) =>
+  page.locator(".paper-card").filter({ has: page.locator(".label-mono").filter({ hasText: exactText(label) }) }).first();
 
-async function boxOf(page: Page, find: string, scroll = true): Promise<Box | null> {
-  return (await page.evaluate(`(() => {
-    const el = ${find};
-    if (!el) return null;
-    if (${scroll}) el.scrollIntoView({ block: "center", behavior: "instant" });
+async function boxOf(page: Page, find: Shot["find"], scroll = true): Promise<Box | null> {
+  const target = find(page);
+  if ((await target.count()) === 0) return null;
+  return target.evaluate((el, scrollFirst) => {
+    if (scrollFirst) el.scrollIntoView({ block: "center", behavior: "instant" });
     const r = el.getBoundingClientRect();
     return r.width && r.height ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
-  })()`)) as Box | null;
+  }, scroll);
 }
 
 // 浮层画在卡片之外，要和卡片的框取并集；它挂在 body 上，不在卡片的兄弟里。
@@ -68,7 +76,8 @@ export const SHOTS: Shot[] = [
     name: "playstation-trophies",
     find: byId("playing"),
     prepare: async (page) => {
-      await page.evaluate(`${byId("playing")}?.querySelector("button[aria-expanded]")?.click()`);
+      const toggle = page.locator('[id="playing"] button[aria-expanded]').first();
+      if (await toggle.count()) await toggle.evaluate((el) => el.click());
       await page.waitForTimeout(1_500);
       return [];
     },
@@ -96,15 +105,14 @@ export function unionBox(boxes: Box[], pad = PAD): Box {
 }
 
 // 边距里会露出邻居卡片的边：沿祖先链把目标之外的兄弟都藏掉，浮层（body 的直接子节点）不动。
-async function isolate(page: Page, find: string): Promise<void> {
-  await page.evaluate(`(() => {
-    const target = ${find};
-    for (let node = target; node && node.parentElement && node.parentElement !== document.body; node = node.parentElement) {
+async function isolate(page: Page, find: Shot["find"]): Promise<void> {
+  await find(page).evaluate((target) => {
+    for (let node: HTMLElement = target; node.parentElement && node.parentElement !== document.body; node = node.parentElement) {
       for (const sibling of node.parentElement.children) {
-        if (sibling !== node) sibling.style.visibility = "hidden";
+        if (sibling !== node && sibling instanceof HTMLElement) sibling.style.visibility = "hidden";
       }
     }
-  })()`);
+  });
 }
 
 async function captureTheme(browser: Browser, url: string, theme: "light" | "dark", shots: Shot[], overview: boolean, out: string): Promise<string[]> {
