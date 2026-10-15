@@ -11,7 +11,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # main 上每个提交都要有完整结论，main 红了才查得到是哪个提交引入的；PR 上的旧运行照常被新推送取消。
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check:

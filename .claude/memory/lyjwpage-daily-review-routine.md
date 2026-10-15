@@ -15,4 +15,6 @@ Created 2026-10-12 at lyjw's request. Routine `trig_01C9Jj2Ax3WUm4XxxEke67SY` ("
 
 **Gardener (step 6b, added 2026-10-14 from the poteto list, lyjw OK'd):** each run looks for bad patterns being copied (2+ places repo-wide) and spot-checks up to 2 merged logic PRs; findings go as comments into buffer issue #280 and are only logged Tuesday to Sunday. On Mondays (Shanghai) it batch-processes #280: add an eslint / rules-check guard proven against a real old occurrence, add a row to AGENTS.md「规则 → 由什么强制」, clean up occurrences, reply「已处理：#PR」. Run record gets a「园丁」line.
 
+**返工账 (added to step 6b 2026-10-16 SGT from magpie's LESSONS.md, lyjw picked it):** each run also lists fix/revert commits in range that repair something another PR merged within the previous 2 days, logs each to #280 with first line `返工：<类别>`; a class seen on 3 different dates is promoted on Monday like other gardener findings. First run looks only at its normal range.
+
 **How to apply:** to change the routine, use update_trigger on that id; to see history, read issue #185. Practices it follows: [[agent-automation-practices]].

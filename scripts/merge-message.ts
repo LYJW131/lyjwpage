@@ -67,7 +67,8 @@ function main(argv: string[]) {
     console.error(`${range} 里没有提交，先确认在 PR 分支上并已 git fetch origin main`);
     process.exit(1);
   }
-  console.log(JSON.stringify(result, null, 2));
+  // 合并接口按它比对 PR 当前 head：验证后又有人推了提交，合并就失败，不会把没验过的代码合进去。
+  console.log(JSON.stringify({ ...result, expectedHeadSha: git("rev-parse", "HEAD").trim() }, null, 2));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main(process.argv.slice(2));
