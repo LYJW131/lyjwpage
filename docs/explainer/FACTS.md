@@ -408,7 +408,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 检查：CI 与 CodeQL（只检查、不发布）
 
 - CI：推 main 或 dev、开 PR 都跑，一个 job 依次跑 lint、全部工作区的 typecheck、站点单测、core / ai / ingress / collector 的单测、上报器单测、`scripts` 的测试、`pnpm docs:check`、`pnpm design:scale`、`pnpm rules:check`、`pnpm ui:copy`、`pnpm baselines:check`（`.github/workflows/ci.yml#check`）。
-- CI 不跑站点构建：门禁只有 lint、typecheck、单测、脚本测试、docs:check、design:scale、rules:check、ui:copy、baselines:check 九项（`scripts/ci-checks.sh` 的 `gates`），站点构建交给 Workers Builds 的 `site`（下一节）。同一分支连推几次，只留最后一次（同文件的 `concurrency`，`cancel-in-progress`）。
+- CI 不跑站点构建：门禁只有 lint、typecheck、单测、脚本测试、docs:check、design:scale、rules:check、ui:copy、baselines:check 九项（`scripts/ci-checks.sh` 的 `gates`），站点构建交给 Workers Builds 的 `site`（下一节）。PR 分支连推几次只留最后一次；main 按提交分组，每个提交都跑完（同文件的 `concurrency`）。
 - CodeQL：推 main 或 dev，外加每天两次定时；PR 只扫访客构建的那些，扫 `javascript-typescript` 和 `actions` 两类（`.github/workflows/codeql.yml#analyze`）。
 - 片中 CI 和 CodeQL 各画成一条亮灯的线，不展开各项。
 
@@ -499,7 +499,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   2. 大改代码逻辑的：另要处理完机器评审，并有判定员的 PASS 盖住当前 head。
   3. 有 UI / UX 变化的：先给 lyjw 看效果（桌面与 375px 截图），lyjw 点头才合；lyjw 明确要求的小改动除外（根 `DESIGN.md`「交付与合并」）。
 - 大方向、大改动也等 lyjw 点头（`HUMAN.md`「3. 什么 Claude 自己定，什么来问你」）。片中三道闸各过一个 PR：文档、界面两个是示意，第二档过的是 #308。
-- 用 merge commit，不 rebase。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
+- 用 merge commit，不 rebase。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出的 `commit_title`、`commit_message` 与 `expectedHeadSha`（本地验过的 HEAD，PR 上多出没验过的提交时合并失败）原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
 - 站点状态卡的 Commits 一栏靠这些尾注显示参与者：collector 从 GitHub 取最近提交（`shared/github-repo.ts#fetchRecentCommits`），卡上列最近几条（`src/components/live/repo-contributions.tsx#COMMIT_LIMIT`），把 main 同步进分支的合并不显示（`src/lib/recent-commits.ts#recentCommitsFrom`）。每条先写提交的人（线程的提交是「LYJW131 committed <相对时间>」），下一行写 agent「with claude (<尾注里的模型名>)」：名字是 agent 的 GitHub 账号，前面一排 16px 头像，按尾注邮箱从 `shared/commit-authors.ts#AGENTS` 认（`src/components/live/repo-contributions.tsx#CommitByline`）。片中首页提交卡省掉了模型名与头像，只画「LYJW131 committed」「with claude」和短 SHA。
 
 ### 合并之后：怎么算已部署
