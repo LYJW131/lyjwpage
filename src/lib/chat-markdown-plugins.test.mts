@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
 
-import { CHAT_REMARK_PLUGINS } from "@/lib/chat-markdown-plugins";
+import { CHAT_REMARK_PLUGINS, CHAT_STREAM_REHYPE_PLUGINS } from "@/lib/chat-markdown-plugins";
 
 const render = (text: string) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: CHAT_REMARK_PLUGINS }, text));
 
@@ -26,4 +26,10 @@ test("中文旁的单星号斜体与删除线同样生效", () => {
 test("英文与 GFM 行为不变", () => {
   assert.equal(render("a **b** c, 2*3*4"), "<p>a <strong>b</strong> c, 2<em>3</em>4</p>");
   assert.equal(render("| a |\n| - |\n| 1 |"), "<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table>");
+});
+
+test("流式期间中文逐字、英文按词拆成淡入 span，代码块不拆", () => {
+  const html = renderToStaticMarkup(createElement(Markdown, { remarkPlugins: CHAT_REMARK_PLUGINS, rehypePlugins: CHAT_STREAM_REHYPE_PLUGINS }, "你好 world **粗体**\n\n```js\nconst a = 1;\n```"));
+  assert.match(html, /<span class="stream-token">你<\/span><span class="stream-token">好<\/span> <span class="stream-token">world <\/span><strong><span class="stream-token">粗<\/span>/);
+  assert.match(html, /<pre><code class="language-js">const a = 1;\n<\/code><\/pre>/);
 });

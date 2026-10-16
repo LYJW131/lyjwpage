@@ -1306,7 +1306,7 @@ function ReplyBody({
     from = at;
   }
   const rest = content.slice(from);
-  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} visuals>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
+  if (rest.trim() && (showDesignContent || designAt === undefined || from < designAt)) parts.push(<ChatMarkdown key={`text-${from}`} visuals streaming={live}>{live ? stableMarkdown(rest) : rest}</ChatMarkdown>);
   if (awaiting && !rest.trim() && (showDesignContent || designAt === undefined)) parts.push(<div key="thinking" role="status" className="thinking-shimmer label-mono w-fit">Thinking</div>);
   return <div className="space-y-2">{parts}</div>;
 }
