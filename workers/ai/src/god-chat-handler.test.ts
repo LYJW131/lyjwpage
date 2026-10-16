@@ -105,12 +105,12 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
         assert.equal(body.model, GOD_CHAT_TIER_INFO[tier].model);
         assert.ok(body.tools?.every((tool) => !("name" in tool) || !["draft_github_issue", "start_design", "propose_build"].includes(tool.name)));
         assert.equal(body.output_config, undefined);
-        assert.deepEqual(body.mcp_servers?.map((server) => server.name), ["context7", "cloudflare-docs", "grep-app", "deepwiki"]);
+        assert.equal(body.mcp_servers, undefined);
         assert.ok(body.tools?.some((tool) => tool.type === "tool_search_tool_bm25_20251119"));
         assert.ok(body.tools?.filter((tool) => "name" in tool && ["anime_search", "game_search"].includes(tool.name)).every((tool) => "defer_loading" in tool && tool.defer_loading));
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_search" && !("type" in tool)));
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_fetch"));
-        assert.ok(headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
+        assert.ok(!headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
         assert.deepEqual(body.thinking, { type: "adaptive" });
         assert.ok(headers.get("anthropic-beta")?.includes("mid-conversation-output-config-2026-07-01"));
         assert.equal(headers.get("anthropic-beta")?.includes("server-side-fallback-2026-07-01"), tier !== "haiku");
@@ -833,6 +833,5 @@ test("示例问题跳过 Clef 按预设定档，预取的工具结果写成一�
 
   const later = await run("LYJW 今天运动了吗？", [{ role: "user", content: "hi" }, { role: "assistant", content: "Done.", seal: await sealExchange("test-seal", "hi", "Done.", undefined) }]);
   assert.equal(later.clef, 1);
-  assert.ok(later.requests[0].mcp_servers?.length);
   assert.ok(later.requests[0].messages.every((message) => !Array.isArray(message.content) || message.content.every((block) => block.type !== "tool_use")));
 });
