@@ -12,7 +12,7 @@ import type { AnthropicEgress } from "./chat/egress.ts";
 import type { BuildCoordinator } from "./build/coordinator.ts";
 import { signBuildToken } from "./build/token.ts";
 import { readPlan } from "./build/plan.ts";
-import { sealedHistory } from "./chat/seal.ts";
+import { sealExchange, sealedHistory } from "./chat/seal.ts";
 import { DESIGN_BUDGET_CENTS, PLANNER_PROMPT } from "./chat/design.ts";
 
 // Node 不提供 cloudflare:workers；这里只替换基类，SDK 与流式序列化使用真实实现。
@@ -660,7 +660,7 @@ test("汉字假名提问时点名不许改英文，有假名才说日文，英�
   const original = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  for (const [content, expected] of [["LYJW 现在在忙什么？", "Chinese or Japanese"], ["今何時", "Chinese or Japanese"], ["今日の天気", "Japanese"], ["LYJWは今なにをしていますか？", "Japanese"], ["What is LYJW up to?", undefined]] as const) {
+  for (const [content, expected] of [["LYJW 现在在干什么？", "Chinese or Japanese"], ["今何時", "Chinese or Japanese"], ["今日の天気", "Japanese"], ["LYJWは今なにをしていますか？", "Japanese"], ["What is LYJW up to?", undefined]] as const) {
     const { env, requests } = designEnv();
     await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content }]), env, toolIO));
     const notes = requests[0].messages.filter((m) => m.role === "system" && typeof m.content === "string" && m.content.startsWith("The visitor's latest message is in"));
@@ -774,4 +774,61 @@ test("同一轮的多个搜索调用一起发出，结果按调用顺序回", as
   const results = requests[1].messages.at(-1)?.content;
   assert.ok(Array.isArray(results));
   assert.deepEqual(results.map((block) => block.type === "tool_result" && block.tool_use_id), ["tool_a", "tool_b"]);
+});
+
+test("示例问题跳过 Clef 按预设定档，预取的工具结果写成一轮已调过的工具、随第一次请求发出", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (input) => String(input).includes("api.exa.ai")
+    ? Response.json({ results: [{ url: "https://e.dev/news", title: "News", highlights: ["model launch"] }] })
+    : Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  t.after(() => { globalThis.fetch = original; });
+  const run = async (content: string, history: GodChatMessage[] = []) => {
+    const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
+    const wanted: string[] = [];
+    let clef = 0;
+    const env: Env = {
+      PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+      ANTHROPIC_API_KEY: "test-key",
+      EXA_API_KEY: "test-exa",
+      TURNSTILE_SECRET_KEY: "test-key",
+      CHAT_HISTORY_SECRET: "test-seal",
+      ALLOWED_ORIGINS: "https://lyjw.me",
+      AI: Object.assign({} as Ai, { run: async () => { clef++; return { answers: { route: { choice: "haiku-low" } } }; } }),
+      CHAT_QUOTA: binding<ChatQuota>({
+        admitVisitor: async () => "ok" as const,
+        admitTier: async (_ip, tier) => { wanted.push(tier); return tier; },
+      }),
+      ANTHROPIC_EGRESS: binding<AnthropicEgress>({
+        colo: async () => "KIX",
+        fetch: async (request: Request) => {
+          const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+          requests.push(body);
+          return modelStream(body.model, false);
+        },
+      }),
+    };
+    const events = await parseEvents(await handleChat(chatRequest(undefined, [...history, { role: "user", content }]), env, toolIO));
+    return { events, requests, wanted, clef };
+  };
+
+  const news = await run("这周 AI 圈有什么大新闻？");
+  assert.equal(news.clef, 0);
+  assert.deepEqual(news.wanted, ["sonnet"]);
+  assert.equal(news.requests.length, 1);
+  const [call, result] = news.requests[0].messages.slice(-2);
+  assert.equal(call.role, "assistant");
+  assert.ok(Array.isArray(call.content) && call.content[0].type === "tool_use" && call.content[0].name === "web_search");
+  assert.ok(Array.isArray(result.content) && result.content[0].type === "tool_result" && Array.isArray(result.content[0].content) && result.content[0].content[0].type === "search_result");
+  assert.ok(news.events.some((event) => event.type === "search"));
+
+  const status = await run("LYJW 今天运动了吗？");
+  assert.equal(status.clef, 0);
+  assert.deepEqual(status.wanted, ["haiku"]);
+  const statusCall = status.requests[0].messages.at(-2)?.content;
+  assert.ok(Array.isArray(statusCall) && statusCall[0].type === "tool_use" && statusCall[0].name === "get_site_status");
+  assert.ok(status.events.some((event) => event.type === "tool" && event.views.includes("activity")));
+
+  const later = await run("LYJW 今天运动了吗？", [{ role: "user", content: "hi" }, { role: "assistant", content: "Done.", seal: await sealExchange("test-seal", "hi", "Done.", undefined) }]);
+  assert.equal(later.clef, 1);
+  assert.ok(later.requests[0].messages.every((message) => !Array.isArray(message.content) || message.content.every((block) => block.type !== "tool_use")));
 });

@@ -18,6 +18,7 @@ import { workerUrl } from "@/lib/worker-url";
 import {
   GOD_CHAT_LIMITS,
   GOD_CHAT_PATH,
+  GOD_CHAT_PRESETS,
   GOD_CHAT_TURNSTILE_ACTION,
   GOD_CHAT_USAGE_PATH,
   type GodChatEvent,
@@ -128,24 +129,7 @@ const commandNames = (c: Command): readonly string[] => [c.name, ...c.aliases];
 const USAGE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH);
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
-// lyjw 要求示例用中文，是「界面文案英文」的例外。首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
-// 每条须在 14 个汉字宽以内：桌面两列等宽格放得下，换题时按钮尺寸不变。
-const SUGGESTIONS = [
-  "LYJW 现在在忙什么？",
-  "这个网站是怎么搭起来的？",
-  "这周 AI 圈有什么大新闻？",
-  "我想给这个网站提个改进",
-  "LYJW 最近在听什么歌？",
-  "首页的实时数据从哪来？",
-  "今天科技圈有什么新鲜事？",
-  "LYJW 最近在玩什么游戏？",
-  "这个网站用了哪些技术？",
-  "比较一下最新的几款大模型",
-  "LYJW 最近在追什么番？",
-  "网站最近的提交改了什么？",
-  "LYJW 今天运动了吗？",
-  "LYJW 用 AI 写了多少代码？",
-];
+const SUGGESTIONS = GOD_CHAT_PRESETS.map((preset) => preset.text);
 const SUGGESTION_SLOTS = 4;
 // 每隔这么久只换一格，四格轮流；淡出时长与 globals.css 的 headline-in 一起凑成一次换题。
 const SUGGESTION_ROTATE_MS = 3_000;

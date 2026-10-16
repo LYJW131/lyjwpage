@@ -44,6 +44,38 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
   return GOD_CHAT_CARDS.includes(value as GodChatCard);
 }
 
+// 首页的示例问题。对话第一条与某条原文一字不差时（点选或照打都算），Worker 跳过 Clef，按 choice 定档，
+// 并在第一次请求前替模型跑好 prefetch 里的工具调用，模型拿着结果直接作答。lyjw 要求示例用中文，是「界面文案英文」的例外；
+// 每条须在 14 个汉字宽以内：桌面两列等宽格放得下，换题时按钮尺寸不变。
+// choice 是 workers/ai/src/chat/router.ts#CLEF_CHOICES 的键，prefetch 须是对应工具的合法输入，两者由 workers/ai 的测试核对。
+export type GodChatPresetCall =
+  | { name: "get_site_status"; input: { views: StatusViewKey[] } }
+  | { name: "read_project_doc"; input: { doc: string } }
+  | { name: "web_search"; input: { query: string; category: "web" | "news" | "papers" } };
+export type GodChatPreset = { text: string; choice: string; prefetch?: GodChatPresetCall[] };
+
+const status = (...views: StatusViewKey[]): GodChatPresetCall[] => [{ name: "get_site_status", input: { views } }];
+const doc = (key: string): GodChatPresetCall[] => [{ name: "read_project_doc", input: { doc: key } }];
+const search = (query: string, category: "web" | "news"): GodChatPresetCall[] => [{ name: "web_search", input: { query, category } }];
+
+// 首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
+export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
+  { text: "LYJW 现在在忙什么？", choice: "haiku-low", prefetch: status("desktop", "codingNow", "nowListening", "playingNow") },
+  { text: "这个网站是怎么搭起来的？", choice: "haiku-medium", prefetch: doc("overview") },
+  { text: "这周 AI 圈有什么大新闻？", choice: "sonnet", prefetch: search("biggest AI news this week", "news") },
+  { text: "我想给这个网站提个改进", choice: "design" },
+  { text: "LYJW 最近在听什么歌？", choice: "haiku-low", prefetch: status("nowListening", "listening") },
+  { text: "首页的实时数据从哪来？", choice: "haiku-medium", prefetch: doc("liveStatus") },
+  { text: "今天科技圈有什么新鲜事？", choice: "sonnet", prefetch: search("tech news today", "news") },
+  { text: "LYJW 最近在玩什么游戏？", choice: "haiku-low", prefetch: status("playingNow", "playing", "questNow") },
+  { text: "这个网站用了哪些技术？", choice: "haiku-medium", prefetch: doc("overview") },
+  { text: "比较一下最新的几款大模型", choice: "sonnet", prefetch: search("latest frontier AI model releases compared", "news") },
+  { text: "LYJW 最近在追什么番？", choice: "haiku-low", prefetch: status("nowWatching", "watching") },
+  { text: "网站最近的提交改了什么？", choice: "haiku-low", prefetch: status("githubRepo") },
+  { text: "LYJW 今天运动了吗？", choice: "haiku-low", prefetch: status("activity", "workouts") },
+  { text: "LYJW 用 AI 写了多少代码？", choice: "haiku-medium", prefetch: status("coding", "codingNow") },
+];
+
 // 回复里的原生图示：模型在正文里写一个以图示名为语言标记的代码块，内容是 JSON，浏览器按 src/lib/chat-visuals.ts 校验后用站点组件画。
 // 提示词直接印这些例子，测试保证每个例子都能过校验，两边不会各说各的。
 export const GOD_CHAT_VISUAL_EXAMPLES = {
