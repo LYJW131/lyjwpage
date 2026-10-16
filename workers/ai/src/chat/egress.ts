@@ -43,21 +43,21 @@ export class AnthropicEgress extends DurableObject<Env> {
 }
 
 type EgressNamespace = DurableObjectNamespace<AnthropicEgress>;
-type EgressStub = DurableObjectStub<AnthropicEgress>;
 
-const chosen = new WeakMap<EgressNamespace, Promise<EgressStub>>();
+// 只缓存选中的名字：stub 属于创建它的那个请求，跨请求复用会在后续请求里报 Connection error。
+const chosen = new WeakMap<EgressNamespace, Promise<string>>();
 
-async function pickEgress(namespace: EgressNamespace): Promise<EgressStub> {
+async function pickEgress(namespace: EgressNamespace): Promise<string> {
   for (let i = 0; i < JAPAN_CANDIDATES; i++) {
-    const stub = namespace.get(namespace.idFromName(`anthropic-jp-${i}`), { locationHint: "apac" });
+    const name = `anthropic-jp-${i}`;
     try {
-      if (JAPAN_COLOS.has(await stub.colo())) return stub;
+      if (JAPAN_COLOS.has(await namespace.get(namespace.idFromName(name), { locationHint: "apac" }).colo())) return name;
     } catch {
       continue;
     }
   }
   console.warn("[anthropic-egress] no Japan candidate, falling back to wnam");
-  return namespace.get(namespace.idFromName(FALLBACK_NAME), { locationHint: "wnam" });
+  return FALLBACK_NAME;
 }
 
 export function anthropicFetch(env: Env): typeof fetch | undefined {
@@ -68,6 +68,9 @@ export function anthropicFetch(env: Env): typeof fetch | undefined {
     pick = pickEgress(namespace);
     chosen.set(namespace, pick);
   }
-  const egress = pick;
-  return async (input, init) => (await egress).fetch(new Request(input, init));
+  const name = pick;
+  return async (input, init) => {
+    const stub = namespace.get(namespace.idFromName(await name), { locationHint: (await name) === FALLBACK_NAME ? "wnam" : "apac" });
+    return stub.fetch(new Request(input, init));
+  };
 }
