@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { GodChatMessage } from "@shared/god-chat";
+import { GOD_CHAT_PRESETS, type GodChatMessage } from "@shared/god-chat";
+import { STATUS_VIEWS } from "@shared/status-views";
 
-import { routeWithClef } from "./chat/router.ts";
+import { CLEF_CHOICES, isClefChoice, presetRoute, routeWithClef } from "./chat/router.ts";
+import { isProjectDocKey } from "./tools/project-docs.ts";
+import { WEB_CATEGORIES } from "./chat/web-search.ts";
 
 const user = (content: string): GodChatMessage => ({ role: "user", content });
 
@@ -60,4 +63,22 @@ test("发给 Clef 的是 clef 模型与最新一条访客消息", async () => {
   await routeWithClef(clef({ answers: { route: { choice: "sonnet" } } }, seen), [user("早"), user("在听什么")]);
   assert.equal(seen.input?.model, "@cf/cloudflare/clef");
   assert.equal(seen.input?.state?.latestMessage, "在听什么");
+});
+
+test("示例问题的档位都是 Clef 的选项，预取都是对应工具的合法输入", () => {
+  for (const preset of GOD_CHAT_PRESETS) {
+    assert.ok(isClefChoice(preset.choice), preset.text);
+    for (const call of preset.prefetch ?? []) {
+      if (call.name === "get_site_status") assert.ok(call.input.views.length > 0 && call.input.views.length <= 4 && call.input.views.every((view) => Object.hasOwn(STATUS_VIEWS, view)), preset.text);
+      else if (call.name === "read_project_doc") assert.ok(isProjectDocKey(call.input.doc), preset.text);
+      else assert.ok(call.input.query && WEB_CATEGORIES.includes(call.input.category), preset.text);
+    }
+  }
+});
+
+test("只有对话第一条与示例原文一致才跳过 Clef", () => {
+  const preset = GOD_CHAT_PRESETS.find((entry) => entry.prefetch?.length)!;
+  assert.deepEqual(presetRoute([user(` ${preset.text} `)]), { decision: { ...CLEF_CHOICES[preset.choice as keyof typeof CLEF_CHOICES], source: "preset" }, prefetch: preset.prefetch });
+  assert.equal(presetRoute([user(`${preset.text}顺便讲个笑话`)]), undefined);
+  assert.equal(presetRoute([user("hi"), { role: "assistant", content: "hello" }, user(preset.text)]), undefined);
 });

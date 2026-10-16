@@ -11,6 +11,7 @@ import {
   type GodChatCard,
   type GodChatEvent,
   type GodChatMessage,
+  type GodChatPresetCall,
   type GodChatSource,
   type GodChatTrace,
   normalizeTrace,
@@ -30,7 +31,7 @@ import { issuePass, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { admitDesign, claimDesignOpen, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
 import { designApi, designTurn, turnMatches, type DesignApi, type DesignTurnInput, type SessionEvent } from "./designer";
-import { CLEF_CHOICES, isClefChoice, routeWithClef, type RouteDecision } from "./router";
+import { CLEF_CHOICES, isClefChoice, presetRoute, routeWithClef, type RouteDecision } from "./router";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { DOC_SEARCH_BETA, DOC_SEARCH_SERVERS, DOC_SEARCH_TOOLSETS, TOOL_SEARCH_TOOL, docSearchQuery } from "./doc-search";
 import { ANIME_SEARCH_TOOL, DOMAIN_SEARCH_TOOLS, GAME_SEARCH_TOOL, STORE_LANGUAGES, animeSearch, gameSearch } from "./domain-search";
@@ -169,11 +170,12 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
   const forced = devSwitch(env, "CHAT_FORCE_TIER");
+  const preset = design ? undefined : presetRoute(history);
   const decision: RouteDecision = design ? { route: "sonnet", source: "design" } : isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
     : isGodChatTier(forced)
       ? { route: forced, source: "forced" }
-      : await routeWithClef(env.AI, history);
+      : preset?.decision ?? await routeWithClef(env.AI, history);
 
   const encoder = new TextEncoder();
   const line = (event: GodChatEvent) => encoder.encode(`${JSON.stringify(event)}\n`);
@@ -229,7 +231,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
           const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
-          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, io, emit, signal: abort.signal });
+          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset?.prefetch, io, emit, signal: abort.signal });
         }
         const { complete, trace, planToken, lead } = outcome;
         if (complete && lead) emit({ type: "text", text: lead });
@@ -269,6 +271,8 @@ async function planTurn({ views, ...turn }: Parameters<typeof designTurn>[0] & {
   return { complete, trace, ...(planToken && { planToken }), ...(lead && { lead }) };
 }
 
+type ToolCall = { id: string; name: string; input: unknown };
+
 async function converse({
   client,
   env,
@@ -278,6 +282,7 @@ async function converse({
   note,
   upgrade,
   messages: history,
+  prefetch = [],
   io,
   emit,
   signal,
@@ -290,6 +295,7 @@ async function converse({
   note?: string;
   upgrade?: () => Promise<boolean>;
   messages: GodChatMessage[];
+  prefetch?: GodChatPresetCall[];
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
@@ -337,6 +343,123 @@ async function converse({
   let finalRoundText = false;
   let cardAfterAnswer = false;
 
+  const roundTools = (): Anthropic.Beta.BetaToolUnion[] => [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
+    ...(openDesign ? [START_DESIGN_TOOL] : []),
+    ...(exaKey && searches < GOD_CHAT_LIMITS.maxWebSearches ? [WEB_SEARCH_TOOL] : []),
+    ...(exaKey && fetches < MAX_WEB_FETCHES ? [WEB_FETCH_TOOL] : []),
+    ...(upgradeOpen ? [UPGRADE_TOOL] : []),
+    ...DOMAIN_SEARCH_TOOLS,
+    ...DOC_SEARCH_TOOLSETS,
+    TOOL_SEARCH_TOOL];
+  const run = async (call: ToolCall, tools: Anthropic.Beta.BetaToolUnion[]): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
+    signal.throwIfAborted();
+    const result = (content: string, isError: boolean) => ({
+      type: "tool_result" as const,
+      tool_use_id: call.id,
+      content,
+      is_error: isError,
+    });
+    if (call.name === UPGRADE_TOOL.name) return result("The Prophet is unavailable right now; answer as well as you can yourself.", true);
+    if (!tools.some((tool) => "name" in tool && tool.name === call.name)) return result("This tool is unavailable in this conversation.", true);
+    if (call.name === START_DESIGN_TOOL.name) {
+      if (openedSessionId) return result("A design session is already active.", true);
+      const started = await openDesign!();
+      if ("error" in started) return result(started.error, true);
+      openedSessionId = started.sessionId;
+      // 访客要先看到普通对话这边的一句交接，再看到规划者接手；模型没写就补一句固定的。
+      if (!wroteText) {
+        emit({ type: "text", text: PLAN_LABELS[textLanguage(history.at(-1)?.content ?? "")].handoff });
+        wroteText = true;
+      }
+      emit({ type: "design", ...started.session });
+      return result("The design session is open; the planner takes over this reply.", false);
+    }
+    if (call.name === WEB_SEARCH_TOOL.name || call.name === ANIME_SEARCH_TOOL.name || call.name === GAME_SEARCH_TOOL.name) {
+      const input = call.input as { query?: unknown; category?: unknown; language?: unknown };
+      const query = typeof input.query === "string" ? input.query.trim().slice(0, 400) : "";
+      if (!query) return result("Give a non-empty query.", true);
+      if (searches >= GOD_CHAT_LIMITS.maxWebSearches) return result("No searches remain for this reply.", true);
+      searches++;
+      showSearch(call.id, query);
+      const started = Date.now();
+      const category = WEB_CATEGORIES.find((value) => value === input.category) ?? "web";
+      const log = (fields: Record<string, unknown>) => console.info("[god-chat] web", JSON.stringify({ kind: call.name, ...(call.name === WEB_SEARCH_TOOL.name && { category }), ms: Date.now() - started, ...fields }));
+      try {
+        let pages: WebPage[];
+        if (call.name === ANIME_SEARCH_TOOL.name) pages = await animeSearch(query, signal);
+        else if (call.name === GAME_SEARCH_TOOL.name) pages = await gameSearch(query, STORE_LANGUAGES.find((value) => value === input.language) ?? "en", signal);
+        else {
+          pages = await webSearch(exaKey!, query, category, signal);
+          for (const item of pages) {
+            const key = urlKey(item.url);
+            if (key) fetchable.add(key);
+          }
+        }
+        log({ results: pages.length });
+        return pages.length ? { type: "tool_result" as const, tool_use_id: call.id, content: searchResultBlocks(pages), is_error: false } : result("No results.", false);
+      } catch (error) {
+        signal.throwIfAborted();
+        log({ error: String(error).slice(0, 200) });
+        return result("Search failed; try once more or answer without it.", true);
+      }
+    }
+    if (call.name === WEB_FETCH_TOOL.name) {
+      const input = call.input as { url?: unknown };
+      const key = typeof input.url === "string" ? urlKey(input.url) : undefined;
+      if (!key || !fetchable.has(key)) return result("Only http(s) URLs the visitor wrote or that web_search returned in this reply can be read.", true);
+      if (fetches >= MAX_WEB_FETCHES) return result("No page reads remain for this reply.", true);
+      fetches++;
+      const started = Date.now();
+      const log = (fields: Record<string, unknown>) => console.info("[god-chat] web", JSON.stringify({ kind: call.name, ms: Date.now() - started, ...fields }));
+      try {
+        const page = await webFetch(exaKey!, key, signal);
+        log({ results: page ? 1 : 0 });
+        if (!page) return result("The page could not be read.", true);
+        emit({ type: "doc", doc: "web", path: key, url: key });
+        return { type: "tool_result" as const, tool_use_id: call.id, content: searchResultBlocks([page]), is_error: false };
+      } catch (error) {
+        signal.throwIfAborted();
+        log({ error: String(error).slice(0, 200) });
+        return result("The page could not be read.", true);
+      }
+    }
+    if (call.name === SHOW_CARD_TOOL.name) {
+      const card = parseShowCardInput(call.input);
+      if (!card) return result("Unknown card; the valid cards are listed in the tool description.", true);
+      if (cards.has(card)) return result(`The ${card} card is already in this reply.`, true);
+      cards.add(card);
+      emit({ type: "card", card });
+      return result(await runShowCard(card, io, ledger), false);
+    }
+    const tool = SITE_TOOLS.find((candidate) => candidate.name === call.name);
+    if (!tool) return result("Unknown tool.", true);
+    const { text, isError, views, doc } = await tool.run(call.input, io, ledger);
+    if (views) emit({ type: "tool", views });
+    if (doc) {
+      docKeys.add(doc.key);
+      emit({
+        type: "doc",
+        doc: doc.key,
+        path: projectDocPath(doc.key),
+        url: projectDocUrl(doc.key, "blob"),
+        ...(doc.heading && { section: doc.heading }),
+      });
+    }
+    return result(text, isError);
+  };
+  // 示例问题的工具调用由 Worker 先跑：写成模型自己调过的一轮，第一次请求就带着结果，省掉一轮往返。
+  if (prefetch.length) {
+    const tools = roundTools();
+    const calls: ToolCall[] = prefetch
+      .filter((call) => tools.some((tool) => "name" in tool && tool.name === call.name))
+      .map((call, index) => ({ id: `toolu_preset_${index}`, name: call.name, input: call.input }));
+    if (calls.length) {
+      const results = await Promise.all(calls.map((call) => run(call, tools)));
+      console.info("[god-chat] preset", JSON.stringify({ tier, calls: calls.map((call, index) => ({ name: call.name, error: results[index].is_error })) }));
+      messages.push({ role: "assistant", content: calls.map((call) => ({ type: "tool_use" as const, ...call })) }, { role: "user", content: results });
+    }
+  }
+
   for (let round = 0; ; round++) {
     signal.throwIfAborted();
     const { model, serverFallback: fallback } = GOD_CHAT_TIER_INFO[tier];
@@ -347,14 +470,7 @@ async function converse({
     const lastRound = round >= GOD_CHAT_LIMITS.maxToolRounds;
     if (lastRound) messages.push({ role: "system", content: FINAL_ROUND_NOTE });
     // 收尾轮照带全部工具、用 tool_choice none 禁掉调用：历史里 tool search 留下的 tool_reference 指向的工具不在列表里，API 整轮 400。
-    const tools: Anthropic.Beta.BetaToolUnion[] = [...SITE_TOOL_DEFS, SHOW_CARD_TOOL,
-        ...(openDesign ? [START_DESIGN_TOOL] : []),
-        ...(exaKey && searches < GOD_CHAT_LIMITS.maxWebSearches ? [WEB_SEARCH_TOOL] : []),
-        ...(exaKey && fetches < MAX_WEB_FETCHES ? [WEB_FETCH_TOOL] : []),
-        ...(upgradeOpen ? [UPGRADE_TOOL] : []),
-        ...DOMAIN_SEARCH_TOOLS,
-        ...DOC_SEARCH_TOOLSETS,
-        TOOL_SEARCH_TOOL];
+    const tools = roundTools();
     const betas = betasFor(tier);
     const stream = client.beta.messages.stream(
       {
@@ -479,107 +595,11 @@ async function converse({
     cardAfterAnswer = wroteText && calls.every((call) => call.name === SHOW_CARD_TOOL.name);
     messages.push({ role: "assistant", content: final.content });
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-    const run = async (call: (typeof calls)[number]) => {
-      signal.throwIfAborted();
-      const result = (content: string, isError: boolean) => ({
-        type: "tool_result" as const,
-        tool_use_id: call.id,
-        content,
-        is_error: isError,
-      });
-      if (call.name === UPGRADE_TOOL.name) return result("The Prophet is unavailable right now; answer as well as you can yourself.", true);
-      if (!tools.some((tool) => "name" in tool && tool.name === call.name)) return result("This tool is unavailable in this conversation.", true);
-      if (call.name === START_DESIGN_TOOL.name) {
-        if (openedSessionId) return result("A design session is already active.", true);
-        const started = await openDesign!();
-        if ("error" in started) return result(started.error, true);
-        openedSessionId = started.sessionId;
-        // 访客要先看到普通对话这边的一句交接，再看到规划者接手；模型没写就补一句固定的。
-        if (!wroteText) {
-          emit({ type: "text", text: PLAN_LABELS[textLanguage(history.at(-1)?.content ?? "")].handoff });
-          wroteText = true;
-        }
-        emit({ type: "design", ...started.session });
-        return result("The design session is open; the planner takes over this reply.", false);
-      }
-      if (call.name === WEB_SEARCH_TOOL.name || call.name === ANIME_SEARCH_TOOL.name || call.name === GAME_SEARCH_TOOL.name) {
-        const input = call.input as { query?: unknown; category?: unknown; language?: unknown };
-        const query = typeof input.query === "string" ? input.query.trim().slice(0, 400) : "";
-        if (!query) return result("Give a non-empty query.", true);
-        if (searches >= GOD_CHAT_LIMITS.maxWebSearches) return result("No searches remain for this reply.", true);
-        searches++;
-        showSearch(call.id, query);
-        const started = Date.now();
-        const category = WEB_CATEGORIES.find((value) => value === input.category) ?? "web";
-        const log = (fields: Record<string, unknown>) => console.info("[god-chat] web", JSON.stringify({ kind: call.name, ...(call.name === WEB_SEARCH_TOOL.name && { category }), ms: Date.now() - started, ...fields }));
-        try {
-          let pages: WebPage[];
-          if (call.name === ANIME_SEARCH_TOOL.name) pages = await animeSearch(query, signal);
-          else if (call.name === GAME_SEARCH_TOOL.name) pages = await gameSearch(query, STORE_LANGUAGES.find((value) => value === input.language) ?? "en", signal);
-          else {
-            pages = await webSearch(exaKey!, query, category, signal);
-            for (const item of pages) {
-              const key = urlKey(item.url);
-              if (key) fetchable.add(key);
-            }
-          }
-          log({ results: pages.length });
-          return pages.length ? { type: "tool_result" as const, tool_use_id: call.id, content: searchResultBlocks(pages), is_error: false } : result("No results.", false);
-        } catch (error) {
-          signal.throwIfAborted();
-          log({ error: String(error).slice(0, 200) });
-          return result("Search failed; try once more or answer without it.", true);
-        }
-      }
-      if (call.name === WEB_FETCH_TOOL.name) {
-        const input = call.input as { url?: unknown };
-        const key = typeof input.url === "string" ? urlKey(input.url) : undefined;
-        if (!key || !fetchable.has(key)) return result("Only http(s) URLs the visitor wrote or that web_search returned in this reply can be read.", true);
-        if (fetches >= MAX_WEB_FETCHES) return result("No page reads remain for this reply.", true);
-        fetches++;
-        const started = Date.now();
-        const log = (fields: Record<string, unknown>) => console.info("[god-chat] web", JSON.stringify({ kind: call.name, ms: Date.now() - started, ...fields }));
-        try {
-          const page = await webFetch(exaKey!, key, signal);
-          log({ results: page ? 1 : 0 });
-          if (!page) return result("The page could not be read.", true);
-          emit({ type: "doc", doc: "web", path: key, url: key });
-          return { type: "tool_result" as const, tool_use_id: call.id, content: searchResultBlocks([page]), is_error: false };
-        } catch (error) {
-          signal.throwIfAborted();
-          log({ error: String(error).slice(0, 200) });
-          return result("The page could not be read.", true);
-        }
-      }
-      if (call.name === SHOW_CARD_TOOL.name) {
-        const card = parseShowCardInput(call.input);
-        if (!card) return result("Unknown card; the valid cards are listed in the tool description.", true);
-        if (cards.has(card)) return result(`The ${card} card is already in this reply.`, true);
-        cards.add(card);
-        emit({ type: "card", card });
-        return result(await runShowCard(card, io, ledger), false);
-      }
-      const tool = SITE_TOOLS.find((candidate) => candidate.name === call.name);
-      if (!tool) return result("Unknown tool.", true);
-      const { text, isError, views, doc } = await tool.run(call.input, io, ledger);
-      if (views) emit({ type: "tool", views });
-      if (doc) {
-        docKeys.add(doc.key);
-        emit({
-          type: "doc",
-          doc: doc.key,
-          path: projectDocPath(doc.key),
-          url: projectDocUrl(doc.key, "blob"),
-          ...(doc.heading && { section: doc.heading }),
-        });
-      }
-      return result(text, isError);
-    };
     // 搜索与读页互不依赖，先一起发出、结果按原顺序回：次数在各自第一个 await 之前同步占用。其余工具仍按顺序逐个跑。
-    const early = new Map(calls.filter((call) => PARALLEL_TOOLS.has(call.name)).map((call) => [call.id, run(call)]));
+    const early = new Map(calls.filter((call) => PARALLEL_TOOLS.has(call.name)).map((call) => [call.id, run(call, tools)]));
     for (const pending of early.values()) pending.catch(() => {});
     for (const call of calls) {
-      const outcome = await (early.get(call.id) ?? run(call));
+      const outcome = await (early.get(call.id) ?? run(call, tools));
       console.info("[god-chat] tool", JSON.stringify({ tier, round, name: call.name, error: outcome.is_error, ...(outcome.is_error && { reason: String(outcome.content).slice(0, 200) }) }));
       results.push(outcome);
     }
