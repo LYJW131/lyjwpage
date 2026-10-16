@@ -4,11 +4,12 @@ import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import { ChatHtmlPreview } from "@/components/chat-html-preview";
 import { ChatVisualView, VisualPlaceholder } from "@/components/chat-visual";
 import { CHAT_REMARK_PLUGINS, CHAT_STREAM_REHYPE_PLUGINS } from "@/lib/chat-markdown-plugins";
-import { isVisualKind, parseVisual } from "@/lib/chat-visuals";
+import { isVisualKind, parsePartialVisual, parseVisual } from "@/lib/chat-visuals";
 
 const LINK_CLASS = "underline underline-offset-2 hover:opacity-80";
 
 const InsideLink = createContext(false);
+const Streaming = createContext(false);
 
 function ImageLink({ src, alt }: { src?: unknown; alt?: string }) {
   const insideLink = useContext(InsideLink);
@@ -30,14 +31,17 @@ function fencedBlock(node: ExtraProps["node"]): { language: string; source: stri
   return { language: language.slice("language-".length), source: code.children.map((child) => (child.type === "text" ? child.value : "")).join("") };
 }
 
-// 图示代码块流式时先是空块（见 stableMarkdown），画占位；收尾后校验不过就照原样显示代码。
+// 流式期间图示代码块带着写到一半的源码（见 stableMarkdown）：JSON 图示画已写完的条目，一条都没有时画占位；
+// 回复结束后按整块校验，不过就照原样显示代码。
 function ReplyBlock({ node, children }: { node: ExtraProps["node"]; children: ReactNode }) {
+  const streaming = useContext(Streaming);
   const block = fencedBlock(node);
-  if (block?.language === "html") return <ChatHtmlPreview source={block.source} />;
+  if (block?.language === "html") return <ChatHtmlPreview source={block.source} streaming={streaming} />;
   if (!block || !isVisualKind(block.language)) return <CodeBlock>{children}</CodeBlock>;
   if (!block.source.trim()) return <VisualPlaceholder kind={block.language} />;
-  const visual = parseVisual(block.language, block.source);
-  return visual ? <ChatVisualView visual={visual} /> : <CodeBlock>{children}</CodeBlock>;
+  const visual = streaming ? parsePartialVisual(block.language, block.source) : parseVisual(block.language, block.source);
+  if (visual) return <ChatVisualView visual={visual} />;
+  return streaming ? <VisualPlaceholder kind={block.language} /> : <CodeBlock>{children}</CodeBlock>;
 }
 
 function CodeBlock({ children }: { children: ReactNode }) {
@@ -84,9 +88,11 @@ export const ChatMarkdown = memo(function ChatMarkdown({ children, visuals = fal
         "[&_th]:border [&_th]:border-line [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-line [&_td]:px-2 [&_td]:py-1",
       ].join(" ")}
     >
-      <Markdown remarkPlugins={CHAT_REMARK_PLUGINS} rehypePlugins={streaming ? CHAT_STREAM_REHYPE_PLUGINS : undefined} components={visuals ? REPLY_COMPONENTS : COMPONENTS}>
-        {children}
-      </Markdown>
+      <Streaming.Provider value={streaming}>
+        <Markdown remarkPlugins={CHAT_REMARK_PLUGINS} rehypePlugins={streaming ? CHAT_STREAM_REHYPE_PLUGINS : undefined} components={visuals ? REPLY_COMPONENTS : COMPONENTS}>
+          {children}
+        </Markdown>
+      </Streaming.Provider>
     </div>
   );
 });

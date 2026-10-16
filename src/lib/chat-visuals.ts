@@ -188,3 +188,35 @@ export function formatVisualNumber(value: number, unit?: string, compact = false
   if (!unit) return number;
   return /^[%°]/.test(unit) ? `${number}${unit}` : `${number} ${unit}`;
 }
+
+// 流式时图示的 JSON 还没写完：从后往前在每个闭合的 } 或 ] 处截断、补齐还开着的括号再校验，取第一个过得去的。
+// 时间线、数字卡片、媒体列表因此按写完的条目逐条长出来；图表要标签和数据都齐了才过得了校验。
+const PARTIAL_TRIES = 40;
+
+export function parsePartialVisual(kind: GodChatVisualKind, source: string): ChatVisual | null {
+  const whole = parseVisual(kind, source);
+  if (whole) return whole;
+  const open: string[] = [];
+  const cuts: { end: number; closers: string }[] = [];
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === "{") open.push("}");
+    else if (char === "[") open.push("]");
+    else if (char === "}" || char === "]") {
+      open.pop();
+      cuts.push({ end: i + 1, closers: [...open].reverse().join("") });
+    }
+  }
+  for (const { end, closers } of cuts.slice(-PARTIAL_TRIES).reverse()) {
+    const visual = parseVisual(kind, source.slice(0, end) + closers);
+    if (visual) return visual;
+  }
+  return null;
+}

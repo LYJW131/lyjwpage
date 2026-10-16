@@ -53,9 +53,11 @@ test("最后一行只有块级起始标记时整行先压着", () => {
   assert.equal(stableMarkdown("- one\n- "), "- one");
 });
 
-test("没收尾的图示代码块换成同语言的空代码块，图示先占位", () => {
-  assert.equal(stableMarkdown("Demo:\n\n```html\n<p>hi</p>\n<di"), "Demo:\n\n```html\n```");
-  assert.equal(stableMarkdown('Demo:\n\n```chart\n{"type":"ba'), "Demo:\n\n```chart\n```");
+test("没收尾的图示代码块带着已写出的部分补上收尾，还没正文时是空块", () => {
+  assert.equal(stableMarkdown("Demo:\n\n```html\n<p>hi</p>\n<di"), "Demo:\n\n```html\n<p>hi</p>\n<di\n```");
+  assert.equal(stableMarkdown("Demo:\n\n```timeline\n"), "Demo:\n\n```timeline\n```");
+  assert.equal(stableMarkdown("Demo:\n\n```stats\n{\"items\":[]}\n``"), "Demo:\n\n```stats\n{\"items\":[]}\n```");
+  assert.equal(stableMarkdown('Demo:\n\n```chart\n{"type":"ba'), 'Demo:\n\n```chart\n{"type":"ba\n```');
   assert.equal(stableMarkdown("Demo:\n\n```ht"), "Demo:");
   assert.equal(stableMarkdown("Demo:\n\n```json\n{"), "Demo:");
 });
