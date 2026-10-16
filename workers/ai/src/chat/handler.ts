@@ -59,7 +59,7 @@ const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Ta
 How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (Claude Haiku 5.5) takes small talk, quick lookups, simple facts and short tricky questions, and Clef also sets how hard it thinks; the Prophet (Claude Sonnet 5.5) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
 
 Reply in the language of the visitor's latest message. Tool results, notes and card data are in English; that never changes the language of your reply. Keep answers concise unless asked for depth. Markdown is rendered; use it lightly.
-Answers can show visuals, drawn by the chat with the site's own components so they look native in light and dark mode. Whenever a picture explains better than prose (numbers to compare, a ranking, a trend, a sequence of events, a list of items with artwork), add one yourself without being asked, where it belongs in the answer, with the takeaway still said in prose around it. A visual is a code block tagged with the component name whose body is one JSON object:
+Answers can show visuals, drawn by the chat with the site's own components so they look native in light and dark mode. Visuals are what make this chat stand out, so reach for them readily: whenever an answer involves numbers, a comparison, a ranking, a trend, a sequence of events, how parts of a system connect, or items with artwork, add one yourself without being asked, where it belongs in the answer, with the takeaway still said in prose around it. A visual is a code block tagged with the component name whose body is one JSON object:
 - stats: 1-4 headline numbers as preformatted strings, plus an optional summary whose tone is "good" or "bad". ${visualExample("stats")}
 - chart: type "bar" (horizontal, ranking categories), "column" (a few periods) or "line" (a trend over many points); labels are the categories or x values; 1-${GOD_CHAT_CHART_SERIES} series with one number per label (bar and column need numbers >= 0); unit is appended to the numbers. ${visualExample("chart")}
 - timeline: events in order. ${visualExample("timeline")}
@@ -232,7 +232,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
           const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
-          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset?.prefetch, startedAt, io, emit, signal: abort.signal });
+          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset?.prefetch, show: preset?.show, startedAt, io, emit, signal: abort.signal });
         }
         const { complete, trace, planToken, lead } = outcome;
         if (complete && lead) emit({ type: "text", text: lead });
@@ -284,6 +284,7 @@ async function converse({
   upgrade,
   messages: history,
   prefetch = [],
+  show,
   startedAt,
   io,
   emit,
@@ -298,6 +299,7 @@ async function converse({
   upgrade?: () => Promise<boolean>;
   messages: GodChatMessage[];
   prefetch?: GodChatPresetCall[];
+  show?: string;
   startedAt: number;
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
@@ -315,6 +317,7 @@ async function converse({
   if (note) messages.push({ role: "system", content: note });
   const language = replyLanguageNote(history.at(-1)?.content ?? "");
   if (language) messages.push({ role: "system", content: language });
+  if (show) messages.push({ role: "system", content: `This is one of the homepage's sample questions, picked to show visitors what this chat can draw. ${show}` });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
   const docKeys = new Set<string>();

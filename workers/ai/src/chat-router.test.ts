@@ -78,7 +78,7 @@ test("示例问题的档位都是 Clef 的选项，预取都是对应工具的�
 
 test("只有对话第一条与示例原文一致才跳过 Clef", () => {
   const preset = GOD_CHAT_PRESETS.find((entry) => entry.prefetch?.length)!;
-  assert.deepEqual(presetRoute([user(` ${preset.text} `)]), { decision: { ...CLEF_CHOICES[preset.choice as keyof typeof CLEF_CHOICES], source: "preset" }, prefetch: preset.prefetch });
+  assert.deepEqual(presetRoute([user(` ${preset.text} `)]), { decision: { ...CLEF_CHOICES[preset.choice as keyof typeof CLEF_CHOICES], source: "preset" }, prefetch: preset.prefetch, ...(preset.show && { show: preset.show }) });
   assert.equal(presetRoute([user(`${preset.text}顺便讲个笑话`)]), undefined);
   assert.equal(presetRoute([user("hi"), { role: "assistant", content: "hello" }, user(preset.text)]), undefined);
 });

@@ -48,11 +48,12 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
 // 并在第一次请求前替模型跑好 prefetch 里的工具调用，模型拿着结果直接作答。lyjw 要求示例用中文，是「界面文案英文」的例外；
 // 每条须在 14 个汉字宽以内：桌面两列等宽格放得下，换题时按钮尺寸不变。
 // choice 是 workers/ai/src/chat/router.ts#CLEF_CHOICES 的键，prefetch 须是对应工具的合法输入，两者由 workers/ai 的测试核对。
+// show 是给模型的英文提示，点名这一题用哪种图示或卡片：示例是访客第一眼看到的能力展示，要让富渲染稳定出现。
 export type GodChatPresetCall =
   | { name: "get_site_status"; input: { views: StatusViewKey[] } }
   | { name: "read_project_doc"; input: { doc: string } }
   | { name: "web_search"; input: { query: string; category: "web" | "news" | "papers" } };
-export type GodChatPreset = { text: string; choice: string; prefetch?: GodChatPresetCall[] };
+export type GodChatPreset = { text: string; choice: string; prefetch?: GodChatPresetCall[]; show?: string };
 
 const status = (...views: StatusViewKey[]): GodChatPresetCall[] => [{ name: "get_site_status", input: { views } }];
 const doc = (key: string): GodChatPresetCall[] => [{ name: "read_project_doc", input: { doc: key } }];
@@ -60,20 +61,20 @@ const search = (query: string, category: "web" | "news"): GodChatPresetCall[] =>
 
 // 首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
 export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
-  { text: "LYJW 现在在忙什么？", choice: "haiku-low", prefetch: status("desktop", "codingNow", "nowListening", "playingNow") },
-  { text: "这个网站是怎么搭起来的？", choice: "haiku-medium", prefetch: doc("overview") },
-  { text: "这周 AI 圈有什么大新闻？", choice: "sonnet", prefetch: search("biggest AI news this week", "news") },
+  { text: "LYJW 现在在忙什么？", choice: "haiku-low", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
+  { text: "这个网站是怎么搭起来的？", choice: "haiku-medium", prefetch: doc("overview"), show: "Draw the architecture as a small html diagram: boxes for the browser, the Workers and the reporters, with arrows for how data flows." },
+  { text: "这周 AI 圈有什么大新闻？", choice: "sonnet", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
   { text: "我想给这个网站提个改进", choice: "design" },
-  { text: "LYJW 最近在听什么歌？", choice: "haiku-low", prefetch: status("nowListening", "listening") },
-  { text: "首页的实时数据从哪来？", choice: "haiku-medium", prefetch: doc("liveStatus") },
-  { text: "今天科技圈有什么新鲜事？", choice: "sonnet", prefetch: search("tech news today", "news") },
-  { text: "LYJW 最近在玩什么游戏？", choice: "haiku-low", prefetch: status("playingNow", "playing", "questNow") },
-  { text: "这个网站用了哪些技术？", choice: "haiku-medium", prefetch: doc("overview") },
-  { text: "比较一下最新的几款大模型", choice: "sonnet", prefetch: search("latest frontier AI model releases compared", "news") },
-  { text: "LYJW 最近在追什么番？", choice: "haiku-low", prefetch: status("nowWatching", "watching") },
-  { text: "网站最近的提交改了什么？", choice: "haiku-low", prefetch: status("githubRepo") },
-  { text: "LYJW 今天运动了吗？", choice: "haiku-low", prefetch: status("activity", "workouts") },
-  { text: "LYJW 用 AI 写了多少代码？", choice: "haiku-medium", prefetch: status("coding", "codingNow") },
+  { text: "LYJW 最近在听什么歌？", choice: "haiku-low", prefetch: status("nowListening", "listening"), show: "Show the recent listening card with show_card." },
+  { text: "首页的实时数据从哪来？", choice: "haiku-medium", prefetch: doc("liveStatus"), show: "Draw the path from devices to the page as a small html diagram with arrows." },
+  { text: "今天科技圈有什么新鲜事？", choice: "sonnet", prefetch: search("tech news today", "news"), show: "Lay out the stories as a timeline visual." },
+  { text: "LYJW 最近在玩什么游戏？", choice: "haiku-low", prefetch: status("playingNow", "playing", "questNow"), show: "Show the recent games card with show_card." },
+  { text: "这个网站用了哪些技术？", choice: "haiku-medium", prefetch: doc("overview"), show: "Draw the stack as a small html diagram grouped into layers (front end, Workers, storage, reporters)." },
+  { text: "比较一下最新的几款大模型", choice: "sonnet", prefetch: search("latest frontier AI model releases compared", "news"), show: "Compare the models in a chart visual (for example price per million output tokens) and give the verdict in prose." },
+  { text: "LYJW 最近在追什么番？", choice: "haiku-low", prefetch: status("nowWatching", "watching"), show: "Show the recent watching card with show_card." },
+  { text: "网站最近的提交改了什么？", choice: "haiku-low", prefetch: status("githubRepo"), show: "Lay out the latest commits as a timeline visual." },
+  { text: "LYJW 今天运动了吗？", choice: "haiku-low", prefetch: status("activity", "workouts"), show: "Show the activity card with show_card." },
+  { text: "LYJW 用 AI 写了多少代码？", choice: "haiku-medium", prefetch: status("coding", "codingNow"), show: "Put the headline totals in a stats visual and the daily token trend in a chart visual." },
 ];
 
 // 回复里的原生图示：模型在正文里写一个以图示名为语言标记的代码块，内容是 JSON，浏览器按 src/lib/chat-visuals.ts 校验后用站点组件画。
