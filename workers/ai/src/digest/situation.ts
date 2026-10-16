@@ -4,7 +4,7 @@ import type { DigestSignals } from "./facts";
 
 // 每种情境一句中文说明：生成文案库的脚本把它交给模型，Clef 挑选时也随事实一起看到。改说明或增删情境后重跑 digest:taglines。
 export const DIGEST_SITUATIONS = {
-  agentsAllDay: "AI 编程代理几乎昼夜不停地在跑，写代码占满了整整一天",
+  agentsAllDay: "AI 编程代理几乎昼夜不停地在跑，人不一定在电脑前",
   codingAllDay: "一整天大部分时间都在写代码，人一直坐在编辑器前",
   shipping: "给这个个人主页提交了很多次代码、上线了好几版",
   agentsLead: "主要是 AI 编程代理在干活，人在旁边指挥、审阅",
@@ -39,8 +39,8 @@ const FAMILY_TOPICS: Record<Family, DigestTopic[]> = {
 };
 
 const PICK_ORDER: Partial<Record<DigestSituation, DigestTopic[]>> = {
-  agentsAllDay: ["coding", "agents", "tokens", "site"],
-  agentsLead: ["coding", "agents", "tokens", "site"],
+  agentsAllDay: ["agents", "coding", "tokens", "site"],
+  agentsLead: ["agents", "coding", "tokens", "site"],
   shipping: ["site", "coding", "agents", "tokens"],
   codingAllDay: ["coding", "site", "tokens", "agents"],
   handsOn: ["coding", "site", "tokens", "agents"],
@@ -62,7 +62,7 @@ export type DigestScene =
 
 const hours = (option: DigestHighlight | undefined) => (!option ? 0 : option.unit === "hours" ? option.value : option.unit === "minutes" ? option.value / 60 : 0);
 
-// 阈值是有意取的：音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。
+// 阈值是有意取的：coding 只算 LYJW 亲手写的时间，agent 自己跑的时间像背景声，按半价计入 build；音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。
 // 安静的门槛对齐模型判 quiet 时的真实表现：15 分钟音乐加步数算安静，1.5 小时代码或 2.5 小时音乐不算。
 export const QUIET_SCORE = 1;
 // 提交和部署各只列最近几条（提交见 shared/github-repo.ts#RECENT_COMMIT_LIMIT，部署见 shared/site-deployments.ts#fetchSiteDeployments），活跃的日子几乎都满额，「频繁上线」分不出日子，只在代码少到不够判「代理主力」「亲手写」时做主线，其余做附带。
@@ -81,7 +81,7 @@ function familyScores(options: DigestHighlight[], signals: DigestSignals): Recor
   const find = (topic: DigestTopic) => options.find((option) => option.topic === topic);
   const count = (topic: DigestTopic) => (find(topic)?.unit === "count" ? find(topic)!.value : 0);
   return {
-    build: hours(find("coding")),
+    build: Math.max(hours(find("coding")), hours(find("agents")) * 0.5),
     music: hours(find("music")) * 0.5,
     watching: hours(find("watching")) * 1.5,
     gaming: hours(find("gaming")) * 1.5 + count("trophies") * 0.2,
@@ -91,16 +91,16 @@ function familyScores(options: DigestHighlight[], signals: DigestSignals): Recor
 
 function primarySituation(family: Family, options: DigestHighlight[], scores: Record<Family, number>, signals: DigestSignals): DigestSituation {
   const find = (topic: DigestTopic) => options.find((option) => option.topic === topic);
-  const coding = hours(find("coding"));
+  const handsOn = hours(find("coding"));
   const agents = hours(find("agents"));
   const counterpart = family === "build" ? Math.max(scores.watching, scores.gaming) : family === "watching" || family === "gaming" ? scores.build : 0;
   if (counterpart >= 2 && counterpart >= scores[family] * 0.6) return "workAndPlay";
   switch (family) {
     case "build":
-      if (coding >= 16 && agents >= 12) return "agentsAllDay";
-      if (coding >= 12 && agents < coding * 0.6) return "codingAllDay";
-      if (coding >= 3 && agents >= coding * 0.6) return "agentsLead";
-      if (coding >= 3) return "handsOn";
+      if (agents >= 16) return "agentsAllDay";
+      if (handsOn >= 12 && agents < handsOn * 0.6) return "codingAllDay";
+      if (Math.max(handsOn, agents) >= 3 && agents >= handsOn * 0.6) return "agentsLead";
+      if (handsOn >= 3) return "handsOn";
       if (shippingDay(options, signals)) return "shipping";
       return "codingLight";
     case "music":
@@ -129,8 +129,10 @@ function accentSituations(primary: DigestSituation, family: Family, options: Dig
 function pickHighlights(primary: DigestSituation, family: Family, options: DigestHighlight[], scores: Record<Family, number>): DigestHighlight[] {
   const byScore = (Object.keys(scores) as Family[]).filter((other) => other !== family).sort((a, b) => scores[b] - scores[a]);
   const counterpart = family === "build" ? (scores.gaming > scores.watching ? "gaming" : "watching") : "build";
+  const agentsDrive = hours(options.find((option) => option.topic === "agents")) * 0.5 > hours(options.find((option) => option.topic === "coding"));
+  const topics = (name: Family) => (name === "build" && agentsDrive ? ["agents", "coding", "tokens", "site"] as DigestTopic[] : FAMILY_TOPICS[name]);
   const order: DigestTopic[] = primary === "workAndPlay"
-    ? [FAMILY_TOPICS[family][0], FAMILY_TOPICS[counterpart][0], ...FAMILY_TOPICS[family].slice(1), ...FAMILY_TOPICS[counterpart].slice(1)]
+    ? [topics(family)[0], topics(counterpart)[0], ...topics(family).slice(1), ...topics(counterpart).slice(1)]
     : PICK_ORDER[primary] ?? [];
   const available = (topics: DigestTopic[]) => topics.flatMap((topic) => options.filter((option) => option.topic === topic));
   const picked = [...new Set(available(order))].slice(0, primary === "codingLight" ? 2 : 3);
