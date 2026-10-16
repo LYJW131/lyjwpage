@@ -48,7 +48,7 @@
   const THEME = [[0, 0.75, "A4"], [0.75, 0.75, "D5"], [1.5, 0.5, "F5"], [2, 2, "E5"]];
   const withNotes = (names) => THEME.map(([b, d], i) => [b, d, names[i]]);
   const phrase = (bar, notes, inst, v, theme = false) => notes.map(([b, d, n]) => [bar, b, d, n, inst, v, theme]);
-  const KEY_PRE = 0.06;
+  const KEY_PRE = 0.016;
   const WHOOSH_LEN = { tube: 0.95, fork: 1.25, down: 2 * BEAT, whip: 0.62 };
   const HELP = { THEME, withNotes, phrase, midi, CHORD, BASS, ARP, BAR, BEAT };
 
@@ -153,6 +153,9 @@
     }
     for (const c of chapters) for (const s of c.d.story || []) N.push({ ...s, bar: c.bar0 + s.bar, t: at(c.bar0 + s.bar, s.beat) });
     N.sort((a, b) => a.t - b.t);
+    // 反复出现的动作从几种取法里轮换，不连着用同一个采样
+    const TAKES = { key: 4, hop: 3, accent: 3 }, taken = {};
+    for (const n of N) if (TAKES[n.kind] && (n.kind !== "accent" || n.what === "slip")) n.take = (taken[n.kind] = (taken[n.kind] ?? -1) + 1) % TAKES[n.kind];
     const SWEEPS = [];
     for (const c of chapters) for (const s of c.d.sweeps || []) SWEEPS.push({ t0: at(c.bar0 + s.at[0], s.at[1] || 0), t1: at(c.bar0 + s.down[0], s.down[1] || 0), t2: at(c.bar0 + s.up[0], s.up[1] || 0), f: s.f });
 
@@ -274,16 +277,6 @@
       for (let i = 0; i < d.length; i++) { const x = d[i], y = (b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0; x2 = x1; x1 = x; y2 = y1; y1 = y; d[i] = y; }
       return d;
     }
-    function sweepBp(d, fOf, q) {
-      const k = 1 / q; let s1 = 0, s2 = 0;
-      for (let i = 0; i < d.length; i++) {
-        const g = Math.tan(Math.PI * clamp(fOf(i / sr), 20, sr * 0.45) / sr), a1 = 1 / (1 + g * (g + k)), a2 = g * a1, a3 = g * a2;
-        const v3 = d[i] - s2, v1 = a1 * s1 + a2 * v3, v2 = s2 + a2 * s1 + a3 * v3;
-        s1 = 2 * v1 - s1; s2 = 2 * v2 - s2;
-        d[i] = v1 * k;
-      }
-      return norm(d);
-    }
     function nz(n, seed, type, f, q) { const r = mulberry32(seed), d = new Float32Array(n); for (let i = 0; i < n; i++) d[i] = r() * 2 - 1; if (type) biquad(d, type, f, q); return norm(d); }
     function partial(d, f, amp, tau, ph) {
       if (f >= sr * 0.45) return;
@@ -307,7 +300,6 @@
       light: { f0: 140, f1: 50, pt: 0.028, dec: 0.15, att: 0.001, click: 0.2, len: 0.4 },
       lub: { f0: 100, f1: 44, pt: 0.05, dec: 0.2, att: 0.004, click: 0, len: 0.55 },
       dub: { f0: 118, f1: 50, pt: 0.04, dec: 0.13, att: 0.003, click: 0, len: 0.4 },
-      boom: { f0: 78, f1: 37, pt: 0.16, dec: 0.85, att: 0.006, click: 0, len: 2.8 },
     };
     const kick = (kind) => get("k:" + kind, () => {
       const c = KICK[kind], d = arr(c.len), cl = nz(d.length, 11, "hp", 2500);
@@ -339,15 +331,6 @@
       }
       return finish(d, 0.0003);
     });
-    const type = (v) => get("ty:" + v, () => {
-      const d = arr(0.09), n = d.length, a = nz(n, 31 + v, "bp", 3300 + 350 * v, 1.4), air = nz(n, 35 + v, "hp", 6500);
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        d[i] = 0.9 * a[i] * Math.exp(-t / 0.0045) + 0.22 * air[i] * Math.exp(-t / 0.018) + 0.3 * Math.sin(TAU * (2750 + 170 * v) * t) * Math.exp(-t / 0.011)
-          + 0.16 * Math.sin(TAU * (4400 + 90 * v) * t) * Math.exp(-t / 0.007) + 0.35 * Math.sin(TAU * 160 * t) * Math.exp(-t / 0.012);
-      }
-      return finish(d, 0.0002);
-    });
     const flip = (v) => get("fl:" + v, () => {
       const d = arr(0.16), n = d.length, a = nz(n, 41 + v, "bp", 1700 + 250 * v, 0.6);
       const bursts = [[0, 1], [0.016 + 0.002 * v, 0.7], [0.031, 0.5], [0.047, 0.3]];
@@ -367,58 +350,6 @@
         d[i] = 0.6 * Math.sin(TAU * f * t) * Math.exp(-t / 0.005) + 0.4 * Math.sin(TAU * 0.37 * f * t) * Math.exp(-t / 0.009) + 0.4 * a[i] * Math.exp(-t / 0.0015);
       }
       return finish(d, 0.0002);
-    });
-    const stamp = (size) => get("st:" + size, () => {
-      const big = size === "big", d = arr(big ? 1.1 : 0.7), n = d.length, r = mulberry32(big ? 61 : 62);
-      const slap = nz(n, 63, "bp", 1300, 0.9), crk = nz(n, 64, "hp", 5000), rat = nz(n, 65, "bp", 3200, 1.5);
-      const f0 = big ? 105 : 115, f1 = big ? 36 : 44, pt = big ? 0.07 : 0.05, dec = big ? 0.3 : 0.14;
-      const rattle = big ? [0, 1, 2, 3, 4].map(() => 0.05 + r() * 0.2) : [];
-      let ph = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        ph += TAU * (f1 + (f0 - f1) * Math.exp(-t / pt)) / sr;
-        let y = Math.sin(ph) * Math.exp(-t / dec)
-          + 0.35 * (Math.sin(TAU * (big ? 185 : 230) * t) + 0.6 * Math.sin(TAU * (big ? 300 : 370) * t)) * Math.exp(-t / (big ? 0.05 : 0.035))
-          + 0.8 * slap[i] * Math.exp(-t / (big ? 0.08 : 0.05))
-          + (t > 0.012 ? 0.3 * crk[i] * Math.exp(-(t - 0.012) / 0.012) : 0);
-        for (const tb of rattle) if (t >= tb) y += 0.16 * rat[i] * Math.exp(-(t - tb) / 0.012);
-        d[i] = Math.tanh(1.3 * y);
-      }
-      return finish(d, 0.0005);
-    });
-    const ding = (m) => get("dg:" + m, () => {
-      const f = hz(m), d = arr(1.1), n = d.length, a = nz(n, 71, "bp", 3400, 1.4);
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        d[i] = 0.55 * a[i] * Math.exp(-t / 0.0045) + 0.25 * Math.sin(TAU * 160 * t) * Math.exp(-t / 0.012)
-          + 0.7 * (Math.sin(TAU * f * t) * Math.exp(-t / 0.45) + 0.22 * Math.sin(TAU * 2 * f * t) * Math.exp(-t / 0.22)
-            + 0.1 * Math.sin(TAU * 3.01 * f * t) * Math.exp(-t / 0.1) + 0.04 * Math.sin(TAU * 5.4 * f * t) * Math.exp(-t / 0.05));
-      }
-      return finish(d, 0.0003);
-    });
-    const key = () => get("key", () => {
-      const P = KEY_PRE, d = arr(0.45), n = d.length;
-      const a = nz(n, 81, "bp", 5200, 2), b = nz(n, 82, "hp", 3000), c = nz(n, 83, "bp", 900, 1), e = nz(n, 84, "bp", 4200, 2);
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        let y = 0.4 * a[i] * Math.exp(-t / 0.012);
-        if (t >= 0.028) y += 0.25 * e[i] * Math.exp(-(t - 0.028) / 0.006);
-        if (t >= P) { const u = t - P; y += 0.5 * (Math.sin(TAU * 1900 * u) + 0.7 * Math.sin(TAU * 3100 * u)) * Math.exp(-u / 0.007) + 0.6 * b[i] * Math.exp(-u / 0.0025); }
-        if (t >= P + 0.085) { const u = t - P - 0.085; y += 0.55 * Math.sin(TAU * 210 * u) * Math.exp(-u / 0.03) + 0.3 * c[i] * Math.exp(-u / 0.02); }
-        d[i] = y;
-      }
-      return finish(d, 0.001);
-    });
-    const lamp = (m, late) => get("lp:" + m + ":" + (late ? 1 : 0), () => {
-      const f = hz(m), d = arr(1.8), n = d.length, a = nz(n, 91, "hp", 6000);
-      const I0 = late ? 1.1 : 2.4, dec = late ? 0.7 : 0.5;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr, I = I0 * Math.exp(-t / 0.018) + 0.3;
-        d[i] = Math.sin(TAU * f * t + I * Math.sin(TAU * 3.99 * f * t)) * Math.exp(-t / dec) + 0.15 * Math.sin(TAU * 2.76 * f * t) * Math.exp(-t / 0.15)
-          + (late ? 0 : 0.2 * a[i] * Math.exp(-t / 0.001));
-      }
-      if (late) biquad(d, "lp", 3500);
-      return finish(d, 0.0005);
     });
     const PLUCK = {
       pluck: { pos: 0.18, t0: 0.55, ex: 1.3, fmax: 11000, len: 1.6, nz: 0.22, nf: 3000 },
@@ -449,77 +380,6 @@
       return finish(d, 0.0015);
     }
     const bell = (m, tone) => get("bl:" + tone + ":" + m, () => bellArr(m, tone));
-    function tubeArr({ fc, L, dec, popF, popA, thunk, seed }) {
-      const d = arr(L), n = d.length, air = sweepBp(nz(n, seed), (t) => fc * (0.5 + 1.1 * Math.exp(-t / 0.3)), 1.3), pop = nz(n, seed + 4, "bp", 700, 1);
-      let ph = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        ph += TAU * (popF + 110 * Math.exp(-t / 0.02)) / sr;
-        const e = t < 0.07 ? t / 0.07 : Math.exp(-(t - 0.07) / dec);
-        let y = air[i] * e + popA * Math.sin(ph) * Math.exp(-t / 0.035) + 0.35 * pop[i] * Math.exp(-t / 0.01);
-        if (t >= thunk) { const u = t - thunk; y += 0.22 * Math.sin(TAU * 140 * u) * Math.exp(-u / 0.03); }
-        d[i] = y;
-      }
-      return finish(d, 0.001);
-    }
-    const TUBE_F = [2300, 1700, 1250, 2900];
-    const whoosh = (k) => get("wh:" + k, () => tubeArr({ fc: TUBE_F[k], L: WHOOSH_LEN.tube, dec: 0.26, popF: 80, popA: 0.45, thunk: 0.72, seed: 111 + k }));
-    const fork = (j) => get("fk:" + j, () => tubeArr({ fc: j ? 1500 : 950, L: WHOOSH_LEN.fork, dec: 0.4, popF: 60, popA: 0.7, thunk: 1.0, seed: 131 + j }));
-    const down = () => get("down", () => {
-      const L = WHOOSH_LEN.down, d = arr(L + 0.01), n = d.length, air = sweepBp(nz(n, 121), (t) => 5200 * Math.pow(220 / 5200, Math.min(1, t / L)), 1.6);
-      let ph = 0, ph2 = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr, x = Math.min(1, t / L);
-        ph += TAU * 880 * Math.pow(1 / 8, x) / sr;
-        ph2 += TAU * 55 / sr;
-        let y = air[i] * Math.pow(x, 2.2) + 0.3 * Math.sin(ph) * Math.pow(x, 1.5) + 0.35 * Math.sin(ph2) * Math.pow(x, 3);
-        if (t > L - 0.012) y *= Math.max(0, (L - t) / 0.012);
-        d[i] = y;
-      }
-      return finish(d, 0.001);
-    });
-    const swell = () => get("swell", () => {
-      const L = BEAT, d = arr(L), n = d.length, air = sweepBp(nz(n, 141), (t) => 500 * Math.pow(8, Math.min(1, t / L)), 1.2);
-      for (let i = 0; i < n; i++) { const t = i / sr, x = t / L; d[i] = air[i] * x * x * (t > L - 0.01 ? (L - t) / 0.01 : 1); }
-      return finish(d, 0.001);
-    });
-    const slip = () => get("slip", () => {
-      const d = arr(0.5), n = d.length, a = sweepBp(nz(n, 151), (t) => 1100 + 1300 * Math.min(1, t / 0.32), 0.9), tap = nz(n, 152, "bp", 1500, 1);
-      const r = mulberry32(153), fl = new Float32Array(n);
-      let s = 0;
-      for (let i = 0; i < n; i++) { s += 0.004 * ((r() * 2 - 1) - s); fl[i] = s; }
-      norm(fl);
-      for (let i = 0; i < n; i++) {
-        const t = i / sr, e = t < 0.03 ? t / 0.03 : t < 0.26 ? 1 : Math.max(0, 1 - (t - 0.26) / 0.06);
-        let y = a[i] * e * (0.75 + 0.25 * fl[i]);
-        if (t >= 0.33) { const u = t - 0.33; y += 0.6 * tap[i] * Math.exp(-u / 0.01) + 0.3 * Math.sin(TAU * 300 * u) * Math.exp(-u / 0.02); }
-        d[i] = y;
-      }
-      return finish(d, 0.001);
-    });
-    const broadcast = () => get("bc", () => {
-      const L = 2.2, d = arr(L), n = d.length;
-      for (const [nm, g] of [["A5", 1], ["D6", 0.8], ["F6", 0.7], ["E6", 0.6]]) { const b = bellArr(midi(nm), "bright"); for (let i = 0; i < n && i < b.length; i++) d[i] += g * b[i]; }
-      const w = sweepBp(nz(n, 161), (t) => 1800 * Math.pow(3, Math.min(1, t / 1.2)), 7);
-      for (let i = 0; i < n; i++) {
-        const t = i / sr, trem = 0.7 + 0.3 * Math.cos(TAU * 6.5 * t), depth = Math.min(1, t / 0.3);
-        const sw = t < 0.3 ? t / 0.3 : Math.exp(-(t - 0.3) / 0.6);
-        d[i] = d[i] * (1 - 0.25 * depth * (1 - trem)) + 0.35 * w[i] * sw * trem;
-      }
-      return finish(d, 0.0015);
-    });
-    const flipHit = () => get("fh", () => {
-      const L = 1.4, d = arr(L), n = d.length, a = nz(n, 171, "hp", 6000);
-      for (const [nm, g] of [["G6", 1], ["D7", 0.7]]) { const b = bellArr(midi(nm), "bright"); for (let i = 0; i < n && i < b.length; i++) d[i] += g * b[i]; }
-      let ph = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        ph += TAU * (1200 + 1400 * Math.min(1, t / 0.04)) / sr;
-        d[i] += 0.5 * a[i] * Math.exp(-t / 0.0015) + 0.25 * Math.sin(ph) * Math.exp(-t / 0.03);
-      }
-      return finish(d, 0.0003);
-    });
-
     const glass = (m) => get("gl:" + m, () => {
       const f = hz(m), len = clamp(2.2 * Math.pow(523 / f, 0.3), 1.2, 3), d = arr(len), n = d.length, a = nz(n, 1000 + m, "hp", 6500);
       for (let i = 0; i < n; i++) {
@@ -544,44 +404,6 @@
       for (let i = 0; i < pn; i++) d[i] += 0.18 * th[i] * Math.exp(-i / sr / 0.002);
       return finish(d, 0.0015);
     });
-    const morse = (m, len) => get("ms:" + m + ":" + len, () => {
-      const f = hz(m), d = arr(len + 0.06), n = d.length, c = nz(n, 301, "bp", 2600, 1.2);
-      for (let i = 0; i < n; i++) {
-        const t = i / sr, g = Math.min(1, t / 0.004) * (t < len ? 1 : Math.max(0, 1 - (t - len) / 0.012));
-        d[i] = g * (Math.sin(TAU * f * t) + 0.12 * Math.sin(TAU * 2 * f * t) + 0.04 * Math.sin(TAU * 3 * f * t))
-          + 0.3 * c[i] * Math.exp(-t / 0.002) + (t >= len ? 0.15 * c[i] * Math.exp(-(t - len) / 0.002) : 0);
-      }
-      return finish(d, 0.0005);
-    });
-    const gate = () => get("gate", () => {
-      const d = arr(0.7), n = d.length, r = mulberry32(311), click = nz(n, 312, "bp", 3200, 1.1);
-      const air = sweepBp(nz(n, 313), (t) => 2600 * Math.pow(700 / 2600, Math.min(1, t / 0.4)), 1.4);
-      for (const [k, amp, tk] of [[1, 0.8, 0.12], [2.76, 0.45, 0.07], [5.4, 0.25, 0.04], [8.93, 0.12, 0.025]]) partial(d, 560 * k, amp, tk, r() * TAU);
-      let ph = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        ph += TAU * (70 + 50 * Math.exp(-t / 0.025)) / sr;
-        d[i] = Math.tanh(1.5 * (d[i] + 1.3 * Math.sin(ph) * Math.exp(-t / 0.13) + 0.35 * click[i] * Math.exp(-t / 0.003)
-          + (t > 0.04 ? 0.6 * air[i] * Math.sin(Math.PI * Math.min(1, (t - 0.04) / 0.5)) : 0)));
-      }
-      return finish(d, 0.0003);
-    });
-    const off = (m) => get("off:" + m, () => {
-      const f0 = hz(m), d = arr(1), n = d.length, a = nz(n, 321, "hp", 5000);
-      let ph = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        ph += TAU * f0 * Math.pow(0.5, Math.min(1, t / 0.45)) / sr;
-        d[i] = Math.sin(ph + (1.4 * Math.exp(-t / 0.05) + 0.25) * Math.sin(3.99 * ph)) * Math.exp(-t / 0.3) + 0.15 * a[i] * Math.exp(-t / 0.0012);
-      }
-      return finish(d, 0.0005);
-    });
-    const whip = () => get("whip", () => {
-      const L = WHOOSH_LEN.whip, d = arr(L), n = d.length, low = nz(n, 332, "lp", 380);
-      const air = sweepBp(nz(n, 331), (t) => 450 + 3200 * Math.pow(Math.sin(Math.PI * Math.min(1, t / L)), 1.5), 1.1);
-      for (let i = 0; i < n; i++) d[i] = (air[i] + 0.35 * low[i]) * Math.pow(Math.sin(Math.PI * Math.min(1, i / sr / L)), 2);
-      return finish(d, 0.001);
-    });
     const knock = (far) => get("kn:" + (far ? 1 : 0), () => {
       const d = arr(0.2), n = d.length, r = mulberry32(341), tap = nz(n, 342, "bp", 1900, 1.2);
       for (const [f, amp, tk] of [[185, 1, 0.045], [410, 0.55, 0.026], [760, 0.3, 0.014], [1240, 0.15, 0.008]]) partial(d, f, amp, tk, r() * TAU);
@@ -589,40 +411,9 @@
       if (far) biquad(d, "lp", 650);
       return finish(d, 0.0003);
     });
-    const ping = (m, late) => get("pg:" + m + ":" + (late ? 1 : 0), () => {
-      const f = hz(m), d = arr(1.2), n = d.length;
-      let ph = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        ph += TAU * f * Math.pow(2, (-3 / 12) * Math.exp(-t / 0.035)) / sr;
-        d[i] = (Math.sin(ph + (0.8 * Math.exp(-t / 0.08) + 0.1) * Math.sin(ph)) + 0.35 * Math.sin(2 * ph) * Math.exp(-t / 0.25))
-          * Math.exp(-t / (late ? 0.35 : 0.45)) * Math.min(1, t / 0.003);
-      }
-      if (late) biquad(d, "lp", 900);
-      return finish(d, 0.0005);
-    });
-    const clear = () => get("clr", () => {
-      const d = arr(0.95), n = d.length, r = mulberry32(361), tick = nz(n, 363, "hp", 3000);
-      const air = sweepBp(nz(n, 362), (t) => 350 * Math.pow(12, Math.min(1, t / 0.85)), 1.3);
-      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = 0.7 * air[i] * Math.min(1, t / 0.04) * (t < 0.7 ? 1 : Math.max(0, 1 - (t - 0.7) / 0.25)); }
-      for (let k = 0; k < 16; k++) {
-        const i0 = Math.round((0.02 + k * 0.05) * sr), f = 1800 + 160 * k, amp = 0.25 + 0.2 * r();
-        for (let i = i0; i < n && i < i0 + Math.round(0.02 * sr); i++) { const u = (i - i0) / sr; d[i] += amp * Math.sin(TAU * f * u) * Math.exp(-u / 0.004) + 0.1 * tick[i] * Math.exp(-u / 0.001); }
-      }
-      return finish(d, 0.001);
-    });
-    const hop = (m) => get("hop:" + m, () => {
-      const f = hz(m), d = arr(0.35), n = d.length, dust = nz(n, 371, "lp", 1400);
-      let ph = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / sr;
-        ph += TAU * f * Math.pow(2, (-5 / 12) * Math.max(0, 1 - t / 0.045)) / sr;
-        d[i] = (Math.sin(ph) + 0.18 * Math.sin(2 * ph) + 0.08 * Math.sin(3 * ph)) * Math.exp(-t / 0.1) * Math.min(1, t / 0.003) + 0.12 * dust[i] * Math.exp(-t / 0.02);
-      }
-      return finish(d, 0.0005);
-    });
-
-    const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit, glass, marimba, kalimba, morse, gate, off, whip, knock, ping, clear, hop };
+    if (!window.ScoreFx) throw new Error("剧情音没有载入：sfx.js 要在 score.js 之前");
+    const fx = window.ScoreFx({ sr, get, hz, midi, mulberry32, biquad, keyPre: KEY_PRE, len: { ...WHOOSH_LEN, swell: BEAT } });
+    const bank = { kick, snare, flip, clock, pluck, bell, glass, marimba, kalimba, knock, ...fx };
     SAMPLE_BANKS.set(sr, bank);
     return bank;
   }
@@ -816,11 +607,12 @@
       for (const x of [o, o2]) { x.start(n.t); x.stop(stopped); }
       retire(stopped, [o, o2, a, h]);
     }
-    const KICK_G = { tight: 0.9, light: 0.65, lub: 0.85, dub: 0.85, boom: 0.6 };
+    const KICK_G = { tight: 0.9, light: 0.65, lub: 0.85, dub: 0.85 };
     const LAMP_PAN = [-0.4, 0, 0.4];
     // 这几件的电平按隔离渲染的 LUFS-M（400 ms 窗）对到同一位置上别的剧情音；拇指琴对到马林巴弹同一段主题；knock 频谱偏低，同样响度下比 tick 听着轻，所以高约 3 dB。改音色要重新对
-    const GLASS_G = 0.62, MARIMBA_G = 0.42, KALIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 0.75, MORSE_G = 0.21, GATE_G = 0.49, OFF_G = 0.19, PING_G = [0.84, 0.25], CLEAR_G = 0.13, HOP_G = 0.24;
-    const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7];
+    // sfx.js 的剧情音每件都按 LUFS-M 对到它替换掉的旧音色；大印章和 arrive / boom 的大鼓另压了 1–2 dB：整片母带按峰值归一，峰值就落在它们身上，再响整片都跟着变小
+    const GLASS_G = 0.62, MARIMBA_G = 0.42, KALIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 1.18, MORSE_G = 0.21, GATE_G = 1.17, OFF_G = 0.269, PING_G = [0.588, 0.175], CLEAR_G = 0.268, HOP_G = 0.609;
+    const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7], TUBE_G = [1.11, 0.99, 0.795, 1.22];
 
     let next = 0, controlAt = 0;
     return (until = Infinity) => {
@@ -867,30 +659,30 @@
               play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
             break;
           }
-          case "key": play(S.key(), t, { g: 0.85 * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.15, pre: KEY_PRE }); break;
-          case "stamp": play(S.stamp(n.size), t, { g: n.size === "big" ? 1.35 : 0.72, verbAmt: n.size === "big" ? 0.3 : 0.2 }); break;
-          case "tick": play(S.ding(n.m), t, { g: 0.62, pan: -0.35 + 0.14 * n.i, verbAmt: 0.2, delayAmt: 0.12 }); break;
-          case "lamp": play(S.lamp(n.m, n.late), t, { g: n.late ? 0.17 : 0.65, pan: n.late ? 0.55 : LAMP_PAN[n.i], verbAmt: n.late ? 0.6 : 0.35, delayAmt: 0.2 }); break;
+          case "key": play(S.key(n.take), t, { g: 1.27 * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.05, pre: KEY_PRE }); break;
+          case "stamp": play(S.stamp(n.size), t, { g: n.size === "big" ? 1.25 : 1.04, verbAmt: n.size === "big" ? 0.18 : 0.1 }); break;
+          case "tick": play(S.ding(n.m), t, { g: 0.444, pan: -0.35 + 0.14 * n.i, verbAmt: 0.2, delayAmt: 0.06 }); break;
+          case "lamp": play(S.lamp(n.m, n.late), t, { g: n.late ? 0.17 : 0.65, pan: n.late ? 0.55 : LAMP_PAN[n.i], verbAmt: n.late ? 0.45 : 0.28, delayAmt: 0.12 }); break;
           case "whoosh":
-            if (n.tube === "fork") { play(S.fork(0), t, { g: 0.6, panTo: -0.8, panDur: 0.6, verbAmt: 0.25 }); play(S.fork(1), t, { g: 0.6, panTo: 0.8, panDur: 0.6, verbAmt: 0.25 }); }
-            else if (n.tube === "down") play(S.down(), t, { g: 0.7, to: bus.fxPost, verbAmt: 0.2 });
-            else if (n.tube === "whip") play(S.whip(), t, { g: WHIP_G * (n.v ?? 1), pan: n.pan ?? 0.5, panTo: n.panTo ?? -0.5, panDur: WHOOSH_LEN.whip, verbAmt: 0.2 });
-            else play(S.whoosh(n.tube), t, { g: 0.75, panTo: TUBE_PAN[n.tube], panDur: 0.6, verbAmt: 0.25 });
+            if (n.tube === "fork") { play(S.fork(0), t, { g: 0.838, panTo: -0.8, panDur: 0.6, verbAmt: 0.15 }); play(S.fork(1), t, { g: 0.838, panTo: 0.8, panDur: 0.6, verbAmt: 0.15 }); }
+            else if (n.tube === "down") play(S.down(), t, { g: 0.923, to: bus.fxPost, verbAmt: 0.2 });
+            else if (n.tube === "whip") play(S.whip(), t, { g: WHIP_G * (n.v ?? 1), pan: n.pan ?? 0.5, panTo: n.panTo ?? -0.5, panDur: WHOOSH_LEN.whip, verbAmt: 0.12 });
+            else play(S.whoosh(n.tube), t, { g: TUBE_G[n.tube], panTo: TUBE_PAN[n.tube], panDur: 0.6, verbAmt: 0.15 });
             break;
           case "accent":
-            if (n.what === "arrive") play(S.kick("boom"), t, { g: 0.45, to: bus.fxPost });
-            else if (n.what === "slip") play(S.slip(), t, { g: 0.7, pan: 0.2, verbAmt: 0.15 });
-            else if (n.what === "broadcast") play(S.broadcast(), t, { g: 0.36, verbAmt: 0.45, delayAmt: 0.3 });
-            else if (n.what === "flip") play(S.flipHit(), t, { g: 0.8, verbAmt: 0.4, delayAmt: 0.25 });
+            if (n.what === "arrive") play(S.boom(), t, { g: 0.85, to: bus.fxPost });
+            else if (n.what === "slip") play(S.slip(n.take), t, { g: 0.977, pan: 0.2, verbAmt: 0.06 });
+            else if (n.what === "broadcast") play(S.broadcast(), t, { g: 0.235, verbAmt: 0.4, delayAmt: 0.2 });
+            else if (n.what === "flip") play(S.flipHit(), t, { g: 0.586, verbAmt: 0.3, delayAmt: 0.15 });
             break;
-          case "swell": play(S.swell(), t, { g: 0.2, verbAmt: 0.3 }); break;
-          case "boom": play(S.kick("boom"), t, { g: 0.45 }); break;
-          case "morse": play(S.morse(n.m, Math.round((n.len ?? 0.35) * BEAT * 1000) / 1000), t, { g: MORSE_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.12, delayAmt: 0.1 }); break;
-          case "gate": play(S.gate(), t, { g: GATE_G, pan: n.pan ?? 0.1, verbAmt: 0.22 }); break;
-          case "off": play(S.off(n.m), t, { g: OFF_G, pan: n.pan ?? 0.3, verbAmt: 0.5, delayAmt: 0.2 }); break;
-          case "ping": play(S.ping(n.m, n.late), t, { g: n.late ? PING_G[1] : PING_G[0], pan: n.pan ?? 0, verbAmt: n.late ? 0.5 : 0.25, delayAmt: 0.12 }); break;
-          case "clear": play(S.clear(), t, { g: CLEAR_G, verbAmt: 0.3 }); break;
-          case "hop": play(S.hop(n.m), t, { g: HOP_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.25, delayAmt: 0.15 }); break;
+          case "swell": play(S.swell(), t, { g: 0.214, verbAmt: 0.3 }); break;
+          case "boom": play(S.boom(), t, { g: 0.85 }); break;
+          case "morse": play(S.morse(n.m, Math.round((n.len ?? 0.35) * BEAT * 1000) / 1000), t, { g: MORSE_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.08 }); break;
+          case "gate": play(S.gate(), t, { g: GATE_G, pan: n.pan ?? 0.1, verbAmt: 0.12 }); break;
+          case "off": play(S.off(n.m), t, { g: OFF_G, pan: n.pan ?? 0.3, verbAmt: 0.3, delayAmt: 0.1 }); break;
+          case "ping": play(S.ping(n.m, n.late), t, { g: n.late ? PING_G[1] : PING_G[0], pan: n.pan ?? 0, verbAmt: n.late ? 0.4 : 0.2, delayAmt: 0.06 }); break;
+          case "clear": play(S.clear(), t, { g: CLEAR_G, verbAmt: 0.08 }); break;
+          case "hop": play(S.hop(n.m, n.take), t, { g: HOP_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.08 }); break;
         }
       }
     };

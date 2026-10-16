@@ -207,3 +207,10 @@
   - 是什么：每段用固定小标题引出、读者只扫加粗字就能决定要不要往下读的写法。
   - 取了什么：试过用「一句话 / 为什么 / 要你定 / 往深看」四个固定小标题写报告，与 STE100 版并排对照，lyjw 选定只留 STE100 版。
   - 状态：不再使用。
+
+## 讲解动画音效
+
+- **[earshot](https://github.com/Leonxlnx/earshot)**（Leon Lin，MIT）
+  - 是什么：给 coding agent 的「耳朵」：CLAP 与 AudioSet 模型加一套测量，能说出一个音像什么、对描述的贴合度、是真录音还是代码合成、整片的响度与对画面的同步，并按 7 部专业发布片打分；另带 `forge`，用物理建模在代码里做音效、再按听到的结果改。
+  - 取了什么：`forge` 配方的物理做法（接触力脉冲激励模态、密集模态云、按速度包络移动的气流噪声带、小房间、话筒底噪），按它重写了全部剧情音；仓库里 launch-video-sound 与 real-sound 两份音效笔记的规矩：一套材质、小件干而居中、反复的动作换取法不换音高、带音高的件在调内、低频件落在主音上；验收用它的 `describe` / `match` / `realness` 听单发、`critique` 给整片打分，同一套读法写进 skill。
+  - 状态：部分采用。落在 [sfx.js](./explainer/v2/sfx.js)、[score.js](./explainer/v2/score.js) 的 `schedule`、[fx-stems.mjs](./explainer/v2/tools/fx-stems.mjs)、[TREATMENT](./explainer/TREATMENT.md)「配乐（一种）」和 [lyjwpage-explainer](../.claude/skills/lyjwpage-explainer/SKILL.md)「改剧情音」。不借：`real-sound` 的授权真录音流程（配乐和音效都在浏览器里按乐谱确定地合成，R2 上的对象键按乐谱输入算，仓库不放音频）；`forge` 的进化搜索（要成套的真录音当参照，且它优化的是 earshot 自己的模型，作者也写明会被讨好）；把 earshot 装进 CI（模型约 1.8 GB，读数只当验收线索）。

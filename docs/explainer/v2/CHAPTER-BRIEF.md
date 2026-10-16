@@ -69,7 +69,7 @@ for (const [k,v] of Object.entries(S.events)) if (v.length) console.log(k.padEnd
 
 ## 不能碰
 
-- 别的章的文件；共用文件：`engine.js`、`kit.js`、`film.js`、`plan.js`、`i18n.js`、`index.html`、`score.js`、`tools/`。
+- 别的章的文件；共用文件：`engine.js`、`kit.js`、`film.js`、`plan.js`、`i18n.js`、`index.html`、`score.js`、`sfx.js`、`tools/`。
 - 不 push，不合 main，不 `git add -A`，不提交 `score.mp3`、截图和联系表。
 - 不运行 mexicat/pdoom-video 的代码；不改上一版讲解片（`docs/explainer/*.js`、`scenes-*.js`）和 `scripts/build-explainer.mjs`。
 - 不上画面的东西见 CONVENTIONS「事实」：隐私判断的判据、站点自检的账号 ID 和数字、密钥、歌词原文、没重测的延迟、厂商 logo；编码用量不点存储键和模块名。

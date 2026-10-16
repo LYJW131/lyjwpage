@@ -93,6 +93,15 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 - 改了 `scripts/explainer-score.mjs#scoreInputs` 里的文件，核对 `.github/workflows/explainer-score.yml` 在 main 上这次运行成功（对象已在就跳过上传）。
 - 生产核对照 lyjwpage-verify「合并后部署与生产核对」：`deploy-check.ts --expect site`，两个域名的 `/explainer` 都测。
 
+## 改剧情音
+
+音色在 `docs/explainer/v2/sfx.js`（材质与做法见 `docs/explainer/TREATMENT.md`「配乐（一种）」），电平和混响、延迟送量在 `docs/explainer/v2/score.js` 的 `schedule`。自己听不见，用 [earshot](https://github.com/Leonxlnx/earshot) 当耳朵：装在 scratchpad 的 venv 里（CPU、首次下约 1.8 GB 模型），多次调用写成一个 Python 脚本，`from earshot import api` 只载一次模型。
+
+1. `node docs/explainer/v2/tools/fx-stems.mjs <目录>` 导出每种剧情音的单发和整片三份 WAV。
+2. 单发：`api.describe`、`api.match(文件, "物体 + 材料 + 动作", alts=[容易混的])`、`api.realness`；整片：`api.critique(full.wav)`，`api.timeline(full.wav, cues=<目录>/cues.json)`。读数含义照 earshot 仓库里自带的 earshot skill。
+3. 换了音色先对电平：新旧单发的 LUFS-M（400 ms 窗）最大值对齐，再按评分调。母带按整片峰值归一，fx-stems 打印的增益比改前小，说明某件剧情音的尖峰把整片压小了。
+4. 别把 realness 当目标：模态加房间加底噪就能读成「真录音」；配乐本身是合成的，整片 realness 卡在配乐上；celesta、颤音琴这类带音高的件读成合成是常态。判音色看 `match` 的 z 和它最像什么，判混音看 critique 的响度、峰值、频段。
+
 ## 坑
 
 - 帧只在同一台机器、同一个浏览器上能逐字节比：复查轮的新旧两份要在同一处渲，Mac 和云端渲的不混比。改动造成的差异可能只有几个色阶，所以 `--changed-vs` 按字节比、不设像素阈值；同机重渲个别帧偶尔也差几个色阶，代价只是多挑出零星几帧。
