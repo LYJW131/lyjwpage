@@ -951,12 +951,14 @@ export function ListeningCard({
                             : undefined
                         }
                         className={cn(
-                          "relative mt-1 max-w-full self-start truncate font-medium leading-snug",
+                          "relative mt-1 max-w-full self-start font-medium leading-snug",
                           (canOpenHero || (!hero.track && hero.link)) &&
                             "after:absolute after:-inset-y-1 after:inset-x-0 hover:underline",
                         )}
                       >
-                        <span title={hero.title}>{hero.title}</span>
+                        <span className="block truncate" title={hero.title}>
+                          {hero.title}
+                        </span>
                       </HeroAction>
                       {hero.track ? (
                         <HeroProgress
