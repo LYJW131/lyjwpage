@@ -85,6 +85,7 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
           },
         }),
         ANTHROPIC_EGRESS: binding<AnthropicEgress>({
+          colo: async () => "KIX",
           fetch: async (request: Request) => {
             const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
             requests.push({ body, headers: request.headers });
@@ -231,6 +232,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
       claimDesignOpen: async (sessionId) => !opened.has(sessionId) && Boolean(opened.add(sessionId)),
     }),
     ANTHROPIC_EGRESS: binding<AnthropicEgress>({
+      colo: async () => "KIX",
       fetch: async (request: Request) => {
         const { pathname } = new URL(request.url);
         if (pathname === "/v1/messages") {
@@ -685,6 +687,7 @@ function upgradeEnv(sonnetFree: boolean) {
       },
     }),
     ANTHROPIC_EGRESS: binding<AnthropicEgress>({
+      colo: async () => "KIX",
       fetch: async (request) => {
         const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
         requests.push(body);
