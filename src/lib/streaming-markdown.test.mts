@@ -59,6 +59,7 @@ test("没收尾的图示代码块带着已写出的部分补上收尾，还没�
   assert.equal(stableMarkdown("Demo:\n\n```stats\n{\"items\":[]}\n``"), "Demo:\n\n```stats\n{\"items\":[]}\n```");
   assert.equal(stableMarkdown('Demo:\n\n```chart\n{"type":"ba'), 'Demo:\n\n```chart\n{"type":"ba\n```');
   assert.equal(stableMarkdown("Demo:\n\n```ht"), "Demo:");
+  assert.equal(stableMarkdown("Demo:\n\n```HTML\n<p>hi"), "Demo:\n\n```HTML\n<p>hi\n```");
   assert.equal(stableMarkdown("Demo:\n\n```json\n{"), "Demo:");
 });
 

@@ -28,7 +28,7 @@ function fencedBlock(node: ExtraProps["node"]): { language: string; source: stri
   const classes = code.properties.className;
   const language = Array.isArray(classes) ? classes.find((name) => typeof name === "string" && name.startsWith("language-")) : undefined;
   if (typeof language !== "string") return null;
-  return { language: language.slice("language-".length), source: code.children.map((child) => (child.type === "text" ? child.value : "")).join("") };
+  return { language: language.slice("language-".length).toLowerCase(), source: code.children.map((child) => (child.type === "text" ? child.value : "")).join("") };
 }
 
 // 流式期间图示代码块带着写到一半的源码（见 stableMarkdown）：JSON 图示画已写完的条目，一条都没有时画占位；

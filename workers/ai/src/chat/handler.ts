@@ -236,6 +236,9 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
         }
         const { complete, trace, planToken, lead } = outcome;
         if (complete && lead) emit({ type: "text", text: lead });
+        // 只记代码块的语言标记、不记内容：图示没画出来时（标记写错、没写）靠它判断模型写了什么。
+        const fences = [...reply.matchAll(/^\s{0,3}(?:`{3,}|~{3,})[ \t]*([\w+-]*)/gm)].filter((_, index) => index % 2 === 0).map((match) => match[1].slice(0, 20));
+        if (fences.length) console.info("[god-chat] fences", JSON.stringify({ tier, fences }));
         const stored = storedReply(reply);
         if (complete && stored && !abort.signal.aborted) {
           emit({ type: "seal", seal: await sealExchange(sealSecret, latest, stored, trace, planToken), ...(trace && { trace }), ...(planToken && { planToken }) });

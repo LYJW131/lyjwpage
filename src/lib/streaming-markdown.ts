@@ -32,7 +32,7 @@ function inlineCut(block: string): number {
   return cut;
 }
 
-const VISUAL_FENCE = new RegExp(`^\\s{0,3}(\`{3,}|~{3,})\\s*(html|${GOD_CHAT_VISUAL_KINDS.join("|")})\\s*$`);
+const VISUAL_FENCE = new RegExp(`^\\s{0,3}(\`{3,}|~{3,})\\s*(html|${GOD_CHAT_VISUAL_KINDS.join("|")})\\s*$`, "i");
 
 // 流式输出时只交出已经闭合的 Markdown：没收尾的代码块、正在长的表格、没配对的行内标记先压着，闭合后整块出现。
 // 例外是图示代码块（html 与原生图示）：换成同语言的空代码块，图示先占位，收尾后整块画出来。
