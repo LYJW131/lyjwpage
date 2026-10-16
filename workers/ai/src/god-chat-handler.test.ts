@@ -821,6 +821,8 @@ test("示例问题跳过 Clef 按预设定档，预取的工具结果写成一�
   assert.ok(Array.isArray(result.content) && result.content[0].type === "tool_result" && Array.isArray(result.content[0].content) && result.content[0].content[0].type === "search_result");
   assert.ok(news.events.some((event) => event.type === "search"));
   assert.ok(news.requests[0].messages.some((message) => message.role === "system" && typeof message.content === "string" && message.content.includes("timeline visual")));
+  assert.equal(news.requests[0].mcp_servers, undefined);
+  assert.ok(news.requests[0].tools?.every((tool) => tool.type !== "mcp_toolset"));
 
   const status = await run("LYJW 今天运动了吗？");
   assert.equal(status.clef, 0);
@@ -831,5 +833,6 @@ test("示例问题跳过 Clef 按预设定档，预取的工具结果写成一�
 
   const later = await run("LYJW 今天运动了吗？", [{ role: "user", content: "hi" }, { role: "assistant", content: "Done.", seal: await sealExchange("test-seal", "hi", "Done.", undefined) }]);
   assert.equal(later.clef, 1);
+  assert.ok(later.requests[0].mcp_servers?.length);
   assert.ok(later.requests[0].messages.every((message) => !Array.isArray(message.content) || message.content.every((block) => block.type !== "tool_use")));
 });
