@@ -76,9 +76,9 @@ export async function routeWithClef(ai: Ai | undefined, messages: GodChatMessage
 }
 
 // 只认对话第一条：示例只在空对话里出现，后面的同一句话要结合上文，仍交给 Clef。
-export function presetRoute(messages: GodChatMessage[]): { decision: RouteDecision; prefetch: GodChatPresetCall[] } | undefined {
+export function presetRoute(messages: GodChatMessage[]): { decision: RouteDecision; prefetch: GodChatPresetCall[]; show?: string } | undefined {
   if (messages.length !== 1) return undefined;
   const preset = GOD_CHAT_PRESETS.find((entry) => entry.text === messages[0].content.trim());
   if (!preset || !isClefChoice(preset.choice)) return undefined;
-  return { decision: { ...CLEF_CHOICES[preset.choice], source: "preset" }, prefetch: preset.prefetch ?? [] };
+  return { decision: { ...CLEF_CHOICES[preset.choice], source: "preset" }, prefetch: preset.prefetch ?? [], ...(preset.show && { show: preset.show }) };
 }

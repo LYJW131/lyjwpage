@@ -820,6 +820,7 @@ test("示例问题跳过 Clef 按预设定档，预取的工具结果写成一�
   assert.ok(Array.isArray(call.content) && call.content[0].type === "tool_use" && call.content[0].name === "web_search");
   assert.ok(Array.isArray(result.content) && result.content[0].type === "tool_result" && Array.isArray(result.content[0].content) && result.content[0].content[0].type === "search_result");
   assert.ok(news.events.some((event) => event.type === "search"));
+  assert.ok(news.requests[0].messages.some((message) => message.role === "system" && typeof message.content === "string" && message.content.includes("timeline visual")));
 
   const status = await run("LYJW 今天运动了吗？");
   assert.equal(status.clef, 0);
