@@ -485,8 +485,8 @@ async function converse({
         system: [
           { type: "text", text: `${BASE_PROMPT}\n${PERSONA[tier]}`, cache_control: { type: "ephemeral" } },
         ],
-        // 三档默认不返回思考内容，模型想的时候卡片只能空等；summarized 只多给一份摘要文字，计费不变。
-        thinking: { type: "adaptive", display: "summarized" },
+        // 不开 display: "summarized"：实测开了以后思考摘要和正文都攒到这一轮结束才一起到，首字晚好几秒、正文也不再流式。
+        thinking: { type: "adaptive" },
         cache_control: { type: "ephemeral" },
         betas,
         ...(fallback ? { fallbacks: "default" as const } : {}),
