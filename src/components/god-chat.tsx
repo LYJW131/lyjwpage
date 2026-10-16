@@ -147,6 +147,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [sourcesFresh, setSourcesFresh] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [usage, setUsage] = useState<FetchedUsage | "loading" | null>(null);
@@ -276,6 +277,7 @@ function Conversation({ className, archive, session: conversation }: { className
   }, []);
 
   async function send(text: string, usedToken?: string, resumed?: Resumed) {
+    setSourcesFresh(false);
     const content = resumed?.user.content ?? text.trim();
     if (!content) return;
     // 界面上的气泡保留档位与查询记录；发给 Worker 的历史另行裁剪，只原样带回 Worker 下发的 trace 与章，不能回写界面。
@@ -455,6 +457,7 @@ function Conversation({ className, archive, session: conversation }: { className
         }
       }
       setStreaming(false);
+      setSourcesFresh(true);
       abortRef.current = null;
     }
   }
@@ -757,8 +760,9 @@ function Conversation({ className, archive, session: conversation }: { className
                     ) : (
                       message.content
                     )}
-                    {message.sources?.length ? (
-                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-2xs">
+                    {/* 参考链接等正文放完才出现：搜索结果在流末尾就到了，放字还没放完时先弹出来会盖过正文。 */}
+                    {message.sources?.length && !live ? (
+                      <div className={cn("mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2 text-2xs", sourcesFresh && index === messages.length - 1 && "animate-headline-in")}>
                         {message.sources.map((source) => (
                           <a
                             key={source.url}
