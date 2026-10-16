@@ -38,3 +38,9 @@ test("引用块与列表里的图示也切得出来，引用块去掉 > 再校�
   assert.equal(fences[0].source, "{broken");
   assert.deepEqual(invalidVisuals(fences), [{ kind: "diagram", error: "json" }]);
 });
+
+test("顶层缩进四格起是缩进代码块，不算图示；列表里的深缩进照样算", () => {
+  assert.deepEqual(replyFences(["    ```stats", "    {}", "    ```"].join("\n")), []);
+  const nested = ["- 外层", "  - 内层", "      ```chart", "      {}", "      ```"].join("\n");
+  assert.deepEqual(replyFences(nested).map((fence) => fence.language), ["chart"]);
+});
