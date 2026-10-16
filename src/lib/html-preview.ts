@@ -3,6 +3,7 @@ import type { GOD_CHAT_HTML_THEME_VARS } from "@shared/god-chat";
 
 export const HTML_VISUAL_HEIGHT_KEY = "lyjwHtmlVisualHeight";
 export const HTML_VISUAL_OPEN_KEY = "lyjwHtmlVisualOpen";
+export const HTML_VISUAL_SOURCE_KEY = "lyjwHtmlVisualSource";
 export const HTML_VISUAL_MIN_HEIGHT = 24;
 export const HTML_VISUAL_MAX_HEIGHT = 800;
 
@@ -50,9 +51,9 @@ const escapeAttribute = (value: string) => value.replace(/&/g, "&amp;").replace(
 
 // 被拦的导航会把图示换成浏览器的拦截页，所以里层吞掉所有链接点击：http(s) 链接交给站点在点击当下开新标签页，
 // #锚点改为脚本滚动（srcdoc 的基准 URL 是站点页面，#锚点也会解析成站点地址；不用 scrollIntoView，它会连站点页面一起滚）。
-const INNER_SCRIPT = `(()=>{const d=document.documentElement;let l;const p=()=>{const h=Math.ceil(Math.max(d.getBoundingClientRect().height,document.body?document.body.scrollHeight:0));if(h!==l){l=h;parent.postMessage({"${HTML_VISUAL_HEIGHT_KEY}":h},"*")}};addEventListener("load",p);new ResizeObserver(p).observe(d);new MutationObserver(p).observe(d,{childList:true,subtree:true,attributes:true,characterData:true});addEventListener("click",e=>{const a=e.target instanceof Element&&e.target.closest("a[href]");if(!a)return;e.preventDefault();const h=a.getAttribute("href");if(h.startsWith("#")){const t=document.getElementById(decodeURIComponent(h.slice(1)));if(t)scrollTo({top:t.getBoundingClientRect().top+scrollY});return}parent.postMessage({"${HTML_VISUAL_OPEN_KEY}":new URL(h,document.baseURI).href},"*")},true)})()`;
+const INNER_SCRIPT = `(()=>{const d=document.documentElement;let l;const p=()=>{const h=Math.ceil(Math.max(d.getBoundingClientRect().height,document.body?document.body.scrollHeight:0));if(h!==l){l=h;parent.postMessage({"${HTML_VISUAL_HEIGHT_KEY}":h},"*")}};addEventListener("load",p);new ResizeObserver(p).observe(d);new MutationObserver(p).observe(d,{childList:true,subtree:true,attributes:true,characterData:true});addEventListener("click",e=>{const a=e.target instanceof Element&&e.target.closest("a[href]");if(!a)return;e.preventDefault();const h=a.getAttribute("href");if(h.startsWith("#")){const t=document.getElementById(decodeURIComponent(h.slice(1)));if(t)scrollTo({top:t.getBoundingClientRect().top+scrollY});return}parent.postMessage({"${HTML_VISUAL_OPEN_KEY}":new URL(h,document.baseURI).href},"*")},true);addEventListener("message",e=>{const s=e.source===parent&&e.data&&e.data["${HTML_VISUAL_SOURCE_KEY}"];if(typeof s==="string")document.body.innerHTML=s})})()`;
 
-const RELAY_SCRIPT = `(()=>{const f=document.querySelector("iframe");addEventListener("message",e=>{if(e.source===f.contentWindow)parent.postMessage(e.data,"*")})})()`;
+const RELAY_SCRIPT = `(()=>{const f=document.querySelector("iframe");addEventListener("message",e=>{if(e.source===f.contentWindow)parent.postMessage(e.data,"*");else if(e.source===parent)f.contentWindow.postMessage(e.data,"*")})})()`;
 
 // 里层页面去掉自带的 doctype，排在 CSP meta、主题样式与注入脚本之后：模型写的 <html>、<head> 由解析器并进已开的元素，CSP 只能被它收紧。
 // color-scheme 必须与站点一致，iframe 才保持透明，图示直接落在对话的底色上。

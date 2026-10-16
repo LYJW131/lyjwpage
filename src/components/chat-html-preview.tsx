@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import {
   HTML_VISUAL_HEIGHT_KEY,
   HTML_VISUAL_OPEN_KEY,
+  HTML_VISUAL_SOURCE_KEY,
   HTML_VISUAL_THEME_VARS,
   htmlVisualDocument,
   visualHeight,
@@ -12,6 +13,8 @@ import {
 } from "@/lib/html-preview";
 
 const PLACEHOLDER_HEIGHT = 128;
+// 流式期间推源码的最短间隔：每次推送都整体替换 iframe 里的 DOM，按放字的帧率推太密。
+const STREAM_PUSH_MS = 100;
 
 function subscribeTheme(onChange: () => void) {
   const observer = new MutationObserver(onChange);
@@ -40,11 +43,26 @@ function readTheme(scheme: "light" | "dark"): HtmlVisualTheme {
 }
 
 // 回复里的 html 代码块直接画在正文里：没有边框和切换，透明底、站点字体与配色，高度随内容。
-// 流式期间代码块还没收尾时 source 为空，先占一块骨架，收尾后整块出现。
-export function ChatHtmlPreview({ source }: { source: string }) {
+// 源码经 postMessage 推进 iframe、替换 body，流式期间边写边画，iframe 不重载；innerHTML 不执行脚本，
+// 所以带 <script> 的图示在回复结束后改成把源码写进 srcdoc 整页加载一次，脚本才会跑。
+export function ChatHtmlPreview({ source, streaming = false }: { source: string; streaming?: boolean }) {
   const scheme = useSyncExternalStore(subscribeTheme, themeScheme, () => null);
   const [height, setHeight] = useState<number | null>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const sourceRef = useRef(source);
+  const lastPush = useRef(0);
+  const pushed = streaming || !/<script/i.test(source);
+  const push = () => {
+    lastPush.current = Date.now();
+    frameRef.current?.contentWindow?.postMessage({ [HTML_VISUAL_SOURCE_KEY]: sourceRef.current.replace(/^\s*<!doctype[^>]*>/i, "") }, "*");
+  };
+
+  useEffect(() => {
+    sourceRef.current = source;
+    if (!pushed) return;
+    const timer = setTimeout(push, Math.max(0, lastPush.current + STREAM_PUSH_MS - Date.now()));
+    return () => clearTimeout(timer);
+  }, [source, pushed]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -61,7 +79,7 @@ export function ChatHtmlPreview({ source }: { source: string }) {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  const doc = scheme !== null && source.trim() !== "" ? htmlVisualDocument(source, readTheme(scheme), window.location.origin) : null;
+  const doc = scheme !== null && source.trim() !== "" ? htmlVisualDocument(pushed ? "" : source, readTheme(scheme), window.location.origin) : null;
   return (
     <div className={cn("my-3", height === null && "animate-pulse rounded-md bg-surface")} style={height === null ? { minHeight: PLACEHOLDER_HEIGHT } : undefined}>
       {doc !== null && (
@@ -70,6 +88,7 @@ export function ChatHtmlPreview({ source }: { source: string }) {
           title="Visual"
           sandbox="allow-scripts"
           srcDoc={doc}
+          onLoad={pushed ? push : undefined}
           className="block w-full bg-transparent"
           style={{ height: height ?? PLACEHOLDER_HEIGHT, colorScheme: scheme ?? undefined }}
         />

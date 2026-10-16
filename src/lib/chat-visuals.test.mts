@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { GOD_CHAT_VISUAL_EXAMPLES, GOD_CHAT_VISUAL_KINDS } from "@shared/god-chat";
-import { formatVisualNumber, niceTicks, parseVisual } from "@/lib/chat-visuals";
+import { formatVisualNumber, niceTicks, parsePartialVisual, parseVisual } from "@/lib/chat-visuals";
 
 test("提示词里印的每个例子都能过校验", () => {
   for (const kind of GOD_CHAT_VISUAL_KINDS) {
@@ -53,4 +53,15 @@ test("数字按 en-US 分组，单位跟在后面", () => {
   assert.equal(formatVisualNumber(42, "%"), "42%");
   assert.equal(formatVisualNumber(1_234_567, undefined, true), "1.2M");
   assert.equal(formatVisualNumber(1234), "1,234");
+});
+
+test("写到一半的图示 JSON 按写完的条目先画，图表要数据齐了才画", () => {
+  const timeline = '{"title":"Week","items":[{"time":"Mon","title":"A"},{"time":"Tue","title":"B"},{"time":"We';
+  const partial = parsePartialVisual("timeline", timeline);
+  assert.ok(partial?.kind === "timeline");
+  assert.deepEqual(partial.items.map((item) => item.title), ["A", "B"]);
+  assert.equal(parsePartialVisual("timeline", '{"title":"Week","items":[{"time":"Mon","ti'), null);
+  assert.equal(parsePartialVisual("stats", '{"items":[{"label":"a \\"q\\" }","value":"1"},{"lab')?.kind, "stats");
+  assert.equal(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1'), null);
+  assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
 });

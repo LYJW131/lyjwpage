@@ -40,9 +40,15 @@ export function stableMarkdown(text: string): string {
   const lines = text.split("\n");
   const fences = lines.flatMap((line, i) => (FENCE.test(line) ? [i] : []));
   if (fences.length % 2 === 1) {
-    const open = lines[fences[fences.length - 1]].match(VISUAL_FENCE);
-    const head = lines.slice(0, fences[fences.length - 1]).join("\n").trimEnd();
-    return open ? `${head}\n\n${open[1]}${open[2]}\n${open[1]}` : head;
+    const at = fences[fences.length - 1];
+    const open = lines[at].match(VISUAL_FENCE);
+    const head = lines.slice(0, at).join("\n").trimEnd();
+    if (!open) return head;
+    // 没收尾的图示代码块带着已写出的部分补上收尾：JSON 图示按写完的条目先画，html 增量推进 iframe。末行可能是写到一半的收尾符，先压着。
+    const body = lines.slice(at + 1);
+    if (body.length && /^\s*[`~]+\s*$/.test(body[body.length - 1])) body.pop();
+    const written = body.join("\n");
+    return `${head}\n\n${open[1]}${open[2]}\n${written.trim() ? `${written}\n` : ""}${open[1]}`;
   }
 
   const lastFenceEnd = fences.length ? lines.slice(0, fences[fences.length - 1] + 1).join("\n").length : 0;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { HTML_VISUAL_MAX_HEIGHT, HTML_VISUAL_MIN_HEIGHT, htmlVisualDocument, visualHeight, visualLink, type HtmlVisualTheme } from "@/lib/html-preview";
+import { HTML_VISUAL_MAX_HEIGHT, HTML_VISUAL_MIN_HEIGHT, HTML_VISUAL_SOURCE_KEY, htmlVisualDocument, visualHeight, visualLink, type HtmlVisualTheme } from "@/lib/html-preview";
 
 const THEME: HtmlVisualTheme = { scheme: "dark", vars: { "--fg": "oklch(0.9 0 0)" }, font: "monospace", fontSize: "0.875rem", fontFaces: "" };
 const ORIGIN = "https://lyjw.me";
@@ -33,6 +33,12 @@ test("color-scheme 与站点一致，主题变量和模型自带的 doctype 前�
   const inner = doc.slice(doc.indexOf("srcdoc="));
   assert.equal(inner.match(/doctype/gi)?.length, 1);
   assert.ok(inner.indexOf("--fg:oklch(0.9 0 0)") < inner.indexOf("&lt;title&gt;"));
+});
+
+test("里层只收站点经外壳转来的源码推送，外壳只把父页面的消息转进去", () => {
+  const doc = htmlVisualDocument("", THEME, ORIGIN);
+  assert.ok(doc.includes(`e.source===parent&amp;&amp;e.data&amp;&amp;e.data[&quot;${HTML_VISUAL_SOURCE_KEY}&quot;]`));
+  assert.ok(doc.includes("else if(e.source===parent)f.contentWindow.postMessage(e.data,\"*\")"));
 });
 
 test("上报高度夹在上下限之间，链接只认 http(s)", () => {
