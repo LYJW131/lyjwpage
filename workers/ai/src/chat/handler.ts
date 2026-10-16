@@ -232,7 +232,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
           const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
-          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset?.prefetch, show: preset?.show, startedAt, io, emit, signal: abort.signal });
+          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, preset, startedAt, io, emit, signal: abort.signal });
         }
         const { complete, trace, planToken, lead } = outcome;
         if (complete && lead) emit({ type: "text", text: lead });
@@ -283,8 +283,7 @@ async function converse({
   note,
   upgrade,
   messages: history,
-  prefetch = [],
-  show,
+  preset,
   startedAt,
   io,
   emit,
@@ -298,8 +297,7 @@ async function converse({
   note?: string;
   upgrade?: () => Promise<boolean>;
   messages: GodChatMessage[];
-  prefetch?: GodChatPresetCall[];
-  show?: string;
+  preset?: { prefetch: GodChatPresetCall[]; show?: string };
   startedAt: number;
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
@@ -309,14 +307,18 @@ async function converse({
   let effort = startEffort;
   let upgradeOpen = upgrade !== undefined;
   const betasFor = (served: GodChatServedTier): Anthropic.Beta.AnthropicBeta[] => [
-    DOC_SEARCH_BETA,
+    ...(docSearch ? [DOC_SEARCH_BETA] : []),
     "mid-conversation-output-config-2026-07-01",
     ...(GOD_CHAT_TIER_INFO[served].serverFallback ? (["server-side-fallback-2026-07-01"] as const) : []),
   ];
+  // 挂上文档检索的 MCP 服务器，实测每轮响应头要多等约 2 秒；示例问题用不到它，不挂。
+  const docSearch = !preset;
   const messages = toModelMessages(await plannerHistory(history, env), effort);
   if (note) messages.push({ role: "system", content: note });
   const language = replyLanguageNote(history.at(-1)?.content ?? "");
   if (language) messages.push({ role: "system", content: language });
+  const prefetch = preset?.prefetch ?? [];
+  const show = preset?.show;
   if (show) messages.push({ role: "system", content: `This is one of the homepage's sample questions, picked to show visitors what this chat can draw. ${show}` });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
@@ -355,7 +357,7 @@ async function converse({
     ...(exaKey && fetches < MAX_WEB_FETCHES ? [WEB_FETCH_TOOL] : []),
     ...(upgradeOpen ? [UPGRADE_TOOL] : []),
     ...DOMAIN_SEARCH_TOOLS,
-    ...DOC_SEARCH_TOOLSETS,
+    ...(docSearch ? DOC_SEARCH_TOOLSETS : []),
     TOOL_SEARCH_TOOL];
   const run = async (call: ToolCall, tools: Anthropic.Beta.BetaToolUnion[]): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
     signal.throwIfAborted();
@@ -493,7 +495,7 @@ async function converse({
         cache_control: { type: "ephemeral" },
         betas,
         ...(fallback ? { fallbacks: "default" as const } : {}),
-        mcp_servers: DOC_SEARCH_SERVERS,
+        ...(docSearch && { mcp_servers: DOC_SEARCH_SERVERS }),
         tools,
         ...(lastRound && { tool_choice: { type: "none" as const } }),
         messages,
