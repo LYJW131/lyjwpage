@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { stableMarkdown } from "@/lib/streaming-markdown";
+import { STREAM_DRAIN_MS, STREAM_FLUSH_MS, revealedLength, revealedText, stableMarkdown } from "@/lib/streaming-markdown";
 
 test("闭合的 Markdown 原样交出", () => {
   const text = "Hello **world**, see `code` and [link](https://a.b).\n\n- one\n- two";
@@ -58,4 +58,27 @@ test("没收尾的图示代码块换成同语言的空代码块，图示先占�
   assert.equal(stableMarkdown('Demo:\n\n```chart\n{"type":"ba'), "Demo:\n\n```chart\n```");
   assert.equal(stableMarkdown("Demo:\n\n```ht"), "Demo:");
   assert.equal(stableMarkdown("Demo:\n\n```json\n{"), "Demo:");
+});
+
+test("成块到达的文字约在 STREAM_DRAIN_MS 内匀速放完，流结束后更快收尾", () => {
+  const text = "字".repeat(300);
+  const steps = (finished: boolean) => {
+    let shown = 0;
+    let ms = 0;
+    while (shown < text.length) {
+      shown = revealedLength(text, shown, 16, finished);
+      ms += 16;
+    }
+    return ms;
+  };
+  const streaming = steps(false);
+  const flushing = steps(true);
+  assert.ok(revealedLength(text, 0, 16, false) < 20, "第一帧只放一小段");
+  assert.ok(streaming > STREAM_DRAIN_MS / 2 && streaming < STREAM_DRAIN_MS * 4, `${streaming}ms`);
+  assert.ok(flushing < streaming && flushing < STREAM_FLUSH_MS * 4, `${flushing}ms`);
+});
+
+test("放字不切在代理对中间", () => {
+  assert.equal(revealedText("a😀b", 2), "a😀");
+  assert.equal(revealedText("a😀b", 1), "a");
 });
