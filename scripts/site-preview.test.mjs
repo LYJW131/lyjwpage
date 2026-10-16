@@ -111,6 +111,7 @@ test("deploy writes a whitelisted preview config, spawns the site preview name a
   const config = sitePreviewConfig(builtConfig(), sitePreviewManifest({ branch, commit, backendUrl: coreOrigin }));
   assert.equal(config.main, "index.js");
   assert.equal(config.workers_dev, false);
+  assert.equal(config.preview_urls, false);
   assert.deepEqual(config.vars, {
     SITE_ENV: "preview",
     PUBLIC_BACKEND_URL: coreOrigin,
@@ -136,7 +137,8 @@ test("deploy writes a whitelisted preview config, spawns the site preview name a
   assert.deepEqual(config.previews.observability, { enabled: true, traces: { enabled: true, head_sampling_rate: 0.01 }, issues: { enabled: false } });
 });
 
-test("production config keeps preview_urls on, since every production deploy rewrites the Worker-wide Preview URL switch", () => {
+test("production config keeps preview_urls off and serves previews only on preview.lyjw.dev", () => {
   const production = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
-  assert.match(production, /"preview_urls":\s*true/);
+  assert.match(production, /"preview_urls":\s*false/);
+  assert.match(production, /"pattern":\s*"preview\.lyjw\.dev"[^}]*"previews_enabled":\s*true/);
 });
