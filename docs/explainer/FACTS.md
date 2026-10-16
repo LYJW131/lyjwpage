@@ -319,7 +319,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 大陆访问
 
 - lyjw131.com 经阿里云 ESA 回源 lyjw.me。
-- 首页的 `Cache-Control: public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400`：5 分钟内直接命中；过期后先给旧页，后台回源。
+- 首页的 `Cache-Control: public, max-age=1800, stale-while-revalidate=86400, stale-if-error=86400`：30 分钟内直接命中；过期后先给旧页，后台回源。
 - 首屏新鲜度不靠 ESA 这一层：ESA 给的可能是一份旧 HTML，浏览器挂载后经 SWR / WebSocket 直接向 Worker 取最新状态（根 `README.md`「首屏快照与实时更新分开处理」；缓存头数值在 `src/lib/site-policy.ts#HOME_CACHE_CONTROL`；浏览器直连 Worker 见 `src/lib/backend-url.ts#backendUrl`）。
 
 ### 发版

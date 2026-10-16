@@ -10,7 +10,7 @@ import { IMAGE_PROXY_PATH } from "@/lib/image-proxy";
 import { SITE_ASSETS_PREFIX } from "@/lib/site-assets";
 
 export const HOME_CACHE_CONTROL =
-  "public, max-age=300, stale-while-revalidate=86400, stale-if-error=86400";
+  "public, max-age=1800, stale-while-revalidate=86400, stale-if-error=86400";
 export const HOME_CACHE_TAG = "home";
 
 // 不带 stale-while-revalidate：首页在自己的 SWR 里后台重建时若再拿到过期快照，重建出的还是旧版面，要再等一整轮。
