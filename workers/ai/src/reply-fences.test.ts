@@ -29,3 +29,12 @@ test("图示用浏览器同一份校验，过不了的按 JSON、结构、没收
     { kind: "media", error: "unclosed" },
   ]);
 });
+
+test("引用块与列表里的图示也切得出来，引用块去掉 > 再校验，CRLF 换行同样处理", () => {
+  const quoted = ["> ```diagram", "> {broken", "> ```"].join("\r\n");
+  const listed = ["1. 看图：", "   ```stats", `   ${JSON.stringify(GOD_CHAT_VISUAL_EXAMPLES.stats)}`, "   ```"].join("\n");
+  const fences = replyFences(`${quoted}\r\n\r\n${listed}`);
+  assert.deepEqual(fences.map((fence) => [fence.language, fence.closed]), [["diagram", true], ["stats", true]]);
+  assert.equal(fences[0].source, "{broken");
+  assert.deepEqual(invalidVisuals(fences), [{ kind: "diagram", error: "json" }]);
+});

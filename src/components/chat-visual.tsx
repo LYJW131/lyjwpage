@@ -343,6 +343,13 @@ const ARROW_PX = 4;
 // 一层只有一两个节点时方框不撑满整栏，宽屏上整张图收在中间。
 const DIAGRAM_NODE_MAX = "14rem";
 
+// 连线标签单行截断在 max-w-28 以内；中点贴近图边时按标签实际宽度夹回图里，窄屏上不撑出聊天区。
+function placeLabel(element: HTMLElement | null, x: number, frame: HTMLElement | null) {
+  if (!element || !frame) return;
+  const half = element.offsetWidth / 2;
+  element.style.left = `${Math.min(Math.max(x, half), frame.clientWidth - half)}px`;
+}
+
 type Wire = { path: string; head: string; label?: string; x: number; y: number };
 
 function wires(visual: DiagramVisual, frame: HTMLElement, boxes: Map<string, HTMLElement>): Wire[] {
@@ -425,7 +432,14 @@ function Diagram({ visual }: { visual: DiagramVisual }) {
         {lines.map(
           (line, i) =>
             line.label && (
-              <span key={i} aria-hidden className="absolute -translate-1/2 bg-surface px-1 text-2xs whitespace-nowrap text-muted-foreground" style={{ left: line.x, top: line.y }}>
+              <span
+                key={i}
+                aria-hidden
+                ref={(element) => placeLabel(element, line.x, frame.current)}
+                title={line.label}
+                className="absolute max-w-28 -translate-1/2 truncate bg-surface px-1 text-2xs text-muted-foreground"
+                style={{ left: line.x, top: line.y }}
+              >
                 {line.label}
               </span>
             ),
