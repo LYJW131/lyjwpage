@@ -76,11 +76,11 @@ test("the relay only accepts reports from the site's own origins", () => {
     isSiteOrigin(new Request(url, { method: "POST", headers: origin === undefined ? {} : { Origin: origin } }));
   assert.equal(from("https://lyjw.me/relay", "https://lyjw.me"), true);
   assert.equal(from("https://lyjw.me/relay", "https://lyjw131.com"), true);
-  assert.equal(from("https://abc-site.lyjw.workers.dev/relay", "https://abc-site.lyjw.workers.dev"), true);
+  assert.equal(from("https://abc.preview.lyjw.dev/relay", "https://abc.preview.lyjw.dev"), true);
   assert.equal(from("http://localhost:3211/relay", "http://localhost:3211"), true);
   assert.equal(from("https://lyjw.me/relay"), true);
   assert.equal(from("https://lyjw.me/relay", "https://evil.example"), false);
   assert.equal(from("https://lyjw.me/relay", "http://lyjw131.com"), false);
-  assert.equal(from("https://lyjw.me/relay", "https://abc-site.lyjw.workers.dev"), false);
+  assert.equal(from("https://lyjw.me/relay", "https://abc.preview.lyjw.dev"), false);
   assert.equal(from("https://lyjw.me/relay", "null"), false);
 });
