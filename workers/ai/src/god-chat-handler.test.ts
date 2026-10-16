@@ -111,7 +111,7 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_search" && !("type" in tool)));
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_fetch"));
         assert.ok(headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
-        assert.deepEqual(body.thinking, { type: "adaptive", display: "summarized" });
+        assert.deepEqual(body.thinking, { type: "adaptive" });
         assert.ok(headers.get("anthropic-beta")?.includes("mid-conversation-output-config-2026-07-01"));
         assert.equal(headers.get("anthropic-beta")?.includes("server-side-fallback-2026-07-01"), tier !== "haiku");
         assert.deepEqual(body.messages.filter((m) => m.role === "system"), [{ role: "system", content: [], output_config: { effort } }]);
