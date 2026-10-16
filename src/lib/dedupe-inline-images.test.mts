@@ -10,7 +10,10 @@ const enqueue = (payload: string) =>
   `<script>window.__reactRouterContext.streamController.enqueue(${JSON.stringify(payload)});</script>`;
 
 function run(html: string, imgs: string[]) {
-  const script = /<script>(.*)<\/script>/s.exec(html.slice(html.lastIndexOf("<script>")))?.[1] ?? "";
+  const from = html.lastIndexOf("<script>");
+  const tail = from < 0 ? "" : html.slice(from + "<script>".length);
+  const end = tail.lastIndexOf("</script>");
+  const script = end < 0 ? "" : tail.slice(0, end);
   const chunks: string[] = [];
   vm.runInNewContext(script, {
     window: { __reactRouterContext: { streamController: { enqueue: (chunk: string) => chunks.push(chunk) } } },
