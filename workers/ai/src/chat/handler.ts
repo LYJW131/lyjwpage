@@ -126,6 +126,7 @@ function fail(status: number, error: string, headers?: HeadersInit, code?: strin
 }
 
 export async function handleChat(request: Request, env: Env, io: ToolIO): Promise<Response> {
+  const startedAt = Date.now();
   if (request.method !== "POST") return fail(405, "Method not allowed.");
   const sealSecret = env.CHAT_HISTORY_SECRET;
   if (!env.ANTHROPIC_API_KEY || !env.TURNSTILE_SECRET_KEY || !sealSecret) return fail(503, "The oracle is offline.");
@@ -231,7 +232,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
           const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
-          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset?.prefetch, io, emit, signal: abort.signal });
+          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset?.prefetch, startedAt, io, emit, signal: abort.signal });
         }
         const { complete, trace, planToken, lead } = outcome;
         if (complete && lead) emit({ type: "text", text: lead });
@@ -283,6 +284,7 @@ async function converse({
   upgrade,
   messages: history,
   prefetch = [],
+  startedAt,
   io,
   emit,
   signal,
@@ -296,6 +298,7 @@ async function converse({
   upgrade?: () => Promise<boolean>;
   messages: GodChatMessage[];
   prefetch?: GodChatPresetCall[];
+  startedAt: number;
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
   signal: AbortSignal;
@@ -472,6 +475,9 @@ async function converse({
     // 收尾轮照带全部工具、用 tool_choice none 禁掉调用：历史里 tool search 留下的 tool_reference 指向的工具不在列表里，API 整轮 400。
     const tools = roundTools();
     const betas = betasFor(tier);
+    const sentAt = Date.now();
+    const timing = { firstTokenMs: -1, firstTextMs: -1, textDeltas: 0, maxTextGapMs: 0 };
+    let lastTextAt = 0;
     const stream = client.beta.messages.stream(
       {
         model,
@@ -508,7 +514,13 @@ async function converse({
           searchInputs.set(event.index, { id: block.id, server: block.server_name, tool: block.name, json: "" });
         }
       } else if (event.type === "content_block_delta") {
+        const at = Date.now();
+        if (timing.firstTokenMs < 0) timing.firstTokenMs = at - sentAt;
         if (event.delta.type === "text_delta") {
+          if (timing.firstTextMs < 0) timing.firstTextMs = at - sentAt;
+          else timing.maxTextGapMs = Math.max(timing.maxTextGapMs, at - lastTextAt);
+          lastTextAt = at;
+          timing.textDeltas++;
           if (!roundText && wroteText) emit({ type: "text", text: "\n\n" });
           roundText = wroteText = finalRoundText = true;
           emit({ type: "text", text: event.delta.text });
@@ -528,6 +540,7 @@ async function converse({
       }
     }
     const final = await stream.finalMessage();
+    console.info("[god-chat] timing", JSON.stringify({ tier, round, sinceRequestMs: sentAt - startedAt, ...timing, roundMs: Date.now() - sentAt }));
     servedBy = final.stop_reason !== "refusal" ? fallbackModel : undefined;
     const billed = billedOutputTokens(final.usage);
     outputLeft -= billed;
