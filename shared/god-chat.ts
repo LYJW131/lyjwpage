@@ -176,7 +176,7 @@ export type DiagramVisual = {
 export type ChatVisual = StatsVisual | ChartVisual | TimelineVisual | MediaVisual | DiagramVisual;
 
 // 图片与链接只丢不拒：不合格的只去掉那一项，条目照留，所以整块过不过校验与它们无关。
-// 默认全丢，渲染方传入自己的放行规则（站点见 src/lib/chat-visuals.ts）。
+// 默认全丢：只判断过不过校验时用不着它们，要画图的一方传入自己的放行规则。
 export type VisualSanitizers = { image: (value: unknown) => string | undefined; link: (value: unknown) => string | undefined };
 const DROP_ALL: VisualSanitizers = { image: () => undefined, link: () => undefined };
 
