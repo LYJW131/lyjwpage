@@ -109,8 +109,8 @@
 - **[Workers Builds 的 GitHub 集成](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/)** 与 **[Preview 的 Service Binding](https://developers.cloudflare.com/workers/previews/resources/#service-bindings)**（Cloudflare 文档）
   - 是什么：Worker 原生 Git 部署，以及分支预览里的绑定行为。
   - 取了什么：Worker 只走 Workers Builds，不在 Actions 里发布；预览的 Service Binding 指向目标 Worker 的生产部署，所以分支上试新后端要走 Worker 分支预览。
-  - 另取：Workers Builds 的新版 Previews 才会在 PR 上贴预览地址，而 `preview_urls` 不写默认关，所以站点显式打开。
-  - 状态：采用。落在 [workers-builds.md](./workers-builds.md) 与 [wrangler.jsonc](../wrangler.jsonc) 的 `preview_urls`。
+  - 另取：Workers Builds 的新版 Previews 才会在 PR 上贴预览地址；`core` 显式开 `preview_urls`，`site` 走 `preview.lyjw.dev` 自定义域名预览并关掉 `preview_urls`。
+  - 状态：采用。落在 [workers-builds.md](./workers-builds.md)、[workers/core/wrangler.toml](../workers/core/wrangler.toml) 的 `preview_urls` 与 [wrangler.jsonc](../wrangler.jsonc) 的 `routes`。
 - **[Workers best practices：Worker 之间用 Service Binding](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/#use-service-bindings-for-worker-to-worker-communication)**（Cloudflare 文档）
   - 是什么：Worker 互调的推荐方式。
   - 取了什么：站点域名上的 `/api/*` 按数据归属分流，后端一律经 Service Binding 原样转交，不跨域 `fetch`，因为跨域会改写 `CF-Connecting-IP`、让按 IP 的限流失效；浏览器因此只连站点一个域名。

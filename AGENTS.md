@@ -49,7 +49,7 @@
 # 排查线上错误
 
 - 线上报错、页面异常、Worker 或 cron 失败，先用 Cloudflare Code Mode MCP 查 Workers Observability 的证据，再读代码：Workers Issues（`/accounts/{id}/workers/observability/issues`）看已归组的异常、5xx 与 `console.error`，遥测查询（`.../workers/observability/telemetry/query`）按 `$metadata.service`、`$metadata.level` 找日志和调用栈，拿到 `$workers.scriptVersion.id` 再对源码定位，复现、定位与修复按 `.claude/skills/lyjwpage-diagnose/SKILL.md`。不凭猜测改代码，也不借浏览器登录态调接口；MCP 不可用时告诉 lyjw，而不是绕开。
-- 服务名就是 Worker 名：`site`（含浏览器经 `/relay` 转来的 `[browser-error]`，`release` 是提交 SHA；浏览器调用栈是压缩后的代码）、`core`（含 Durable Object 与采集 Worker 驱动的定时一轮，周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`）、`ai`、`ingress`、`collector`（任务失败是 `source.event = "collector-job"` 的结构化日志）。分支预览与生产同名，按有没有 `$workers.preview.slug` 区分（预览的请求、RPC、Durable Object 事件都带；站点预览也走 `*.preview.lyjw.dev`，只看主机含不含 `workers.dev` 会漏）；保留期与采样见 `docs/ops-facts.md`，在线探测与 core 心跳的口径见 `shared/health.ts`。
+- 服务名就是 Worker 名：`site`（含浏览器经 `/relay` 转来的 `[browser-error]`，`release` 是提交 SHA；浏览器调用栈是压缩后的代码）、`core`（含 Durable Object 与采集 Worker 驱动的定时一轮，周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`）、`ai`、`ingress`、`collector`（任务失败是 `source.event = "collector-job"` 的结构化日志）。分支预览与生产同名，按有没有 `$workers.preview.slug` 区分（预览的请求、RPC、Durable Object 事件都带；站点预览走 `*.preview.lyjw.dev`，只看主机含不含 `workers.dev` 会漏）；保留期与采样见 `docs/ops-facts.md`，在线探测与 core 心跳的口径见 `shared/health.ts`。
 - `reporters/` 下的上报器不进 Workers Observability，查所在机器的容器日志。
 - Workers Issues 里只读不写是默认。把 issue 标为 resolved / ignored 这类写操作，在修复部署并从生产验证后再做，并在汇报里说明；改 Issues 自动化、告警或可观测性设置，先问 lyjw。
 

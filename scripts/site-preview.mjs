@@ -46,7 +46,7 @@ export function sitePreviewConfig(built, manifest) {
   }
   const vars = sitePreviewVars(manifest);
   const empty = { services: [], r2_buckets: [], kv_namespaces: [], d1_databases: [], durable_objects: { bindings: [] }, images: { binding: "IMAGES" } };
-  Object.assign(config, empty, { workers_dev: false, vars });
+  Object.assign(config, empty, { workers_dev: false, preview_urls: false, vars });
   config.previews = { vars, ...empty, ...(config.ratelimits ? { ratelimits: config.ratelimits } : {}) };
   // Preview 与生产同服务名，Issues 摘要只能按服务数，分不出 Preview；Preview 只留日志与 traces，不进 Issues。
   if (built.observability) config.previews.observability = { ...built.observability, issues: { enabled: false } };
