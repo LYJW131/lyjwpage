@@ -9,7 +9,7 @@ import { FableDescent, type Descent } from "@/components/fable-descent";
 import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
-import { stableMarkdown } from "@/lib/streaming-markdown";
+import { STREAM_FLUSH_MS, revealedLength, revealedText, stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent } from "@/lib/chat-consent";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
@@ -291,10 +291,24 @@ function Conversation({ className, archive, session: conversation }: { className
         ),
     );
     let reply = "";
+    let revealed = 0;
+    let finished = false;
+    let frame = 0;
+    let lastFrame = 0;
+    let drained: (() => void) | undefined;
     // 交接回复没盖章就被补发整条替掉，Sonnet 的开场白拿不回来，分隔线画在规划者回复的最前面。
     let meta: Reply = resumed?.handoff ? { designAt: 0 } : {};
     const session = sessionRef.current;
-    const bubble = (): ChatBubble => ({ role: "assistant", content: reply, ...meta, ...(meta.designAt !== undefined && designConsent.getSnapshot() ? { designRevealed: true } : {}) });
+    const bubble = (): ChatBubble => {
+      const content = revealedText(reply, revealed);
+      return {
+        role: "assistant",
+        content,
+        ...meta,
+        ...(meta.cards && { cards: meta.cards.filter((card) => card.at <= content.length) }),
+        ...(meta.designAt !== undefined && designConsent.getSnapshot() ? { designRevealed: true } : {}),
+      };
+    };
     const replyMessages = (next?: ChatBubble) => chatReplyMessages(
       conversation ? chatArchive.session(conversation.id)?.messages ?? messages : messages,
       user,
@@ -303,6 +317,20 @@ function Conversation({ className, archive, session: conversation }: { className
     );
     const show = () => {
       if (sessionRef.current === session) setMessages(replyMessages(bubble()), false);
+    };
+    const tick = (now: number) => {
+      frame = 0;
+      revealed = revealedLength(reply, revealed, lastFrame ? Math.min(now - lastFrame, 100) : 16, finished);
+      lastFrame = now;
+      show();
+      if (revealed < reply.length) frame = requestAnimationFrame(tick);
+      else {
+        lastFrame = 0;
+        drained?.();
+      }
+    };
+    const pace = () => {
+      if (!frame && revealed < reply.length) frame = requestAnimationFrame(tick);
     };
     stickRef.current = true;
     if (!messages.length) reveal();
@@ -380,6 +408,7 @@ function Conversation({ className, archive, session: conversation }: { className
             chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) });
             if (!designToken && meta.designAt === undefined) {
               meta = { ...meta, designAt: reply.length };
+              revealed = reply.length;
               if (sessionRef.current === session) {
                 setDesignHalo(true);
                 setTimeout(() => setDesignHalo(false), DESIGN_HALO_MS);
@@ -392,6 +421,16 @@ function Conversation({ className, archive, session: conversation }: { className
           }
         }
         show();
+        pace();
+      }
+      finished = true;
+      // 后台标签页不跑 requestAnimationFrame，直接整段交出；兜底超时防止放字卡住收尾。
+      if (revealed < reply.length && !document.hidden) {
+        await new Promise<void>((resolve) => {
+          drained = resolve;
+          pace();
+          setTimeout(resolve, STREAM_FLUSH_MS * 3);
+        });
       }
     } catch (err) {
       // 设计会话里请求已到 Worker 后断线，规划者那一回合照样跑完、轮数也扣了：留住访客这条，稍后补发错过的回复。
@@ -400,6 +439,8 @@ function Conversation({ className, archive, session: conversation }: { className
         else setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
       }
     } finally {
+      if (frame) cancelAnimationFrame(frame);
+      revealed = reply.length;
       if (sessionRef.current === session) {
         const kept = reply || meta.cards?.length || meta.proposals?.length || meta.asks?.length;
         if (dropped) {

@@ -58,3 +58,23 @@ export function stableMarkdown(text: string): string {
   const tail = block.slice(0, inlineCut(block)).replace(/(^|\n)[ \t]*(#{1,6}|>|[-*+]|\d+[.)]|\||`{1,2}|~{1,2})[ \t]*$/, "$1");
   return (head + tail).trimEnd();
 }
+
+// 模型的文字成块到达（一次几十字），原样画出来像整段蹦出。前端按积压量匀速放字：积压越多放得越快，
+// 约 STREAM_DRAIN_MS 放完；流结束后按 STREAM_FLUSH_MS 收尾，不让回复在服务端早已答完后还拖很久。
+export const STREAM_DRAIN_MS = 1_000;
+export const STREAM_FLUSH_MS = 400;
+const STREAM_MIN_CHARS_PER_SECOND = 30;
+
+export function revealedLength(text: string, shown: number, elapsedMs: number, finished: boolean): number {
+  const backlog = text.length - shown;
+  if (backlog <= 0) return text.length;
+  const perSecond = Math.max(STREAM_MIN_CHARS_PER_SECOND, (backlog * 1000) / (finished ? STREAM_FLUSH_MS : STREAM_DRAIN_MS));
+  return Math.min(text.length, shown + Math.max(1, (perSecond * elapsedMs) / 1000));
+}
+
+// 不切在代理对中间，免得半个 emoji 闪一下。
+export function revealedText(text: string, shown: number): string {
+  let end = Math.floor(shown);
+  if (end > 0 && end < text.length && /[\uDC00-\uDFFF]/.test(text[end])) end++;
+  return text.slice(0, end);
+}
