@@ -100,6 +100,11 @@
   - 取了什么：品牌和产品图标先查它，按深路径导入 `@lobehub/icons`；它的模型→厂商关键字表 `modelMappings`（包内 features 目录的 modelConfig）在构建时读成数据，给模型排行榜配厂商图标，不导入它会连带 `@lobehub/ui` 的 `ModelIcon` 组件。
   - 状态：采用。落在 [DESIGN.md](../DESIGN.md)「Components」的图标条目；模型表落在 `scripts/model-icons.ts`（`virtual:model-icons`）与 `src/lib/model-icon.ts`，各厂商单色图标由 `scripts/build-site-assets.tsx` 渲染成静态 SVG。
 
+- **[Streamdown 的流式动画](https://streamdown.ai/docs/animation)**（Vercel）
+  - 是什么：流式 Markdown 渲染里，rehype 插件把文字节点拆成一个个 span，只有新挂载的 span 播淡入。
+  - 取了什么：拆 span 的思路、跳过 `pre` / `svg` / `math`、回复结束后摘掉插件回到纯文本。没装这个库；中日韩文字改为逐字切，淡入时长按 DESIGN.md 的动效区间取。
+  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/globals.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开。
+
 ## Cloudflare 平台
 
 - **[Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/)**（Cloudflare 文档）

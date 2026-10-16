@@ -3,7 +3,7 @@ import Markdown, { type Components, type ExtraProps } from "react-markdown";
 
 import { ChatHtmlPreview } from "@/components/chat-html-preview";
 import { ChatVisualView, VisualPlaceholder } from "@/components/chat-visual";
-import { CHAT_REMARK_PLUGINS } from "@/lib/chat-markdown-plugins";
+import { CHAT_REMARK_PLUGINS, CHAT_STREAM_REHYPE_PLUGINS } from "@/lib/chat-markdown-plugins";
 import { isVisualKind, parseVisual } from "@/lib/chat-visuals";
 
 const LINK_CLASS = "underline underline-offset-2 hover:opacity-80";
@@ -71,7 +71,7 @@ const REPLY_COMPONENTS: Components = {
   pre: ({ node, children }) => <ReplyBlock node={node}>{children}</ReplyBlock>,
 };
 
-export const ChatMarkdown = memo(function ChatMarkdown({ children, visuals = false }: { children: string; visuals?: boolean }) {
+export const ChatMarkdown = memo(function ChatMarkdown({ children, visuals = false, streaming = false }: { children: string; visuals?: boolean; streaming?: boolean }) {
   return (
     <div
       className={[
@@ -84,7 +84,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({ children, visuals = fal
         "[&_th]:border [&_th]:border-line [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border [&_td]:border-line [&_td]:px-2 [&_td]:py-1",
       ].join(" ")}
     >
-      <Markdown remarkPlugins={CHAT_REMARK_PLUGINS} components={visuals ? REPLY_COMPONENTS : COMPONENTS}>
+      <Markdown remarkPlugins={CHAT_REMARK_PLUGINS} rehypePlugins={streaming ? CHAT_STREAM_REHYPE_PLUGINS : undefined} components={visuals ? REPLY_COMPONENTS : COMPONENTS}>
         {children}
       </Markdown>
     </div>

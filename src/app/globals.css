@@ -660,6 +660,17 @@ html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"] {
   }
 }
 
+/* 流式回复里新出现的字：淡入叠在匀速放字上，最新的几个字是半透明的，像墨迹渐显。 */
+.stream-token {
+  animation: stream-token-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes stream-token-in {
+  from {
+    opacity: 0;
+  }
+}
+
 @keyframes headline-in {
   from {
     opacity: 0;
