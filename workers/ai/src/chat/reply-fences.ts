@@ -3,16 +3,20 @@ import { checkGodChatVisual, isGodChatVisualKind, type GodChatVisualKind } from 
 export type ReplyFence = { language: string; source: string; closed: boolean };
 export type InvalidVisual = { kind: GodChatVisualKind; error: "json" | "shape" | "unclosed" };
 
-const CONTAINER = /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*/;
+const CONTAINER = /^ {0,3}(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*/;
+const LIST_ITEM = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
 const QUOTE = /^[ \t]*(?:>[ \t]?)+/;
 
 // 浏览器按 Markdown 解析，围栏可以在引用块和列表项里；这里只认这两种容器前缀，不做完整解析。
+// 顶层缩进四格起是缩进代码块，浏览器当普通代码显示；只有在列表里，更深的缩进才是列表项的续行。
 // 引用块里的内容行去掉 `>` 才是原文；列表的缩进是 JSON 允许的空白，不用去。
 export function replyFences(reply: string): ReplyFence[] {
   const fences: ReplyFence[] = [];
   let open: { marker: string; language: string; quoted: boolean; lines: string[] } | null = null;
+  let inList = false;
   for (const line of reply.split(/\r?\n/)) {
-    const prefix = CONTAINER.exec(line)?.[0] ?? "";
+    if (!open && line.trim()) inList = LIST_ITEM.test(line) || (inList && /^[ \t]/.test(line));
+    const prefix = inList ? (/^[ \t]*/.exec(line)?.[0] ?? "") + (CONTAINER.exec(line.trimStart())?.[0] ?? "") : (CONTAINER.exec(line)?.[0] ?? "");
     const rest = line.slice(prefix.length);
     if (!open) {
       const start = /^(`{3,}|~{3,})[ \t]*([^\s`]*)/.exec(rest);
