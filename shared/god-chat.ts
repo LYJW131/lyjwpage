@@ -62,14 +62,14 @@ const search = (query: string, category: "web" | "news"): GodChatPresetCall[] =>
 // 首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
 export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
   { text: "LYJW 现在在忙什么？", choice: "haiku-low", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
-  { text: "这个网站是怎么搭起来的？", choice: "haiku-medium", prefetch: doc("overview"), show: "Draw the architecture as a small html diagram: boxes for the browser, the Workers and the reporters, with arrows for how data flows." },
+  { text: "这个网站是怎么搭起来的？", choice: "haiku-medium", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
   { text: "这周 AI 圈有什么大新闻？", choice: "sonnet", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
   { text: "我想给这个网站提个改进", choice: "design" },
   { text: "LYJW 最近在听什么歌？", choice: "haiku-low", prefetch: status("nowListening", "listening"), show: "Show the recent listening card with show_card." },
-  { text: "首页的实时数据从哪来？", choice: "haiku-medium", prefetch: doc("liveStatus"), show: "Draw the path from devices to the page as a small html diagram with arrows." },
+  { text: "首页的实时数据从哪来？", choice: "haiku-medium", prefetch: doc("liveStatus"), show: "Draw the path from devices to the page as a diagram visual, one layer per hop." },
   { text: "今天科技圈有什么新鲜事？", choice: "sonnet", prefetch: search("tech news today", "news"), show: "Lay out the stories as a timeline visual." },
   { text: "LYJW 最近在玩什么游戏？", choice: "haiku-low", prefetch: status("playingNow", "playing", "questNow"), show: "Show the recent games card with show_card." },
-  { text: "这个网站用了哪些技术？", choice: "haiku-medium", prefetch: doc("overview"), show: "Draw the stack as a small html diagram grouped into layers (front end, Workers, storage, reporters)." },
+  { text: "这个网站用了哪些技术？", choice: "haiku-medium", prefetch: doc("overview"), show: "Draw the stack as a diagram visual with one layer each for the front end, the Workers, storage and the reporters." },
   { text: "比较一下最新的几款大模型", choice: "sonnet", prefetch: search("latest frontier AI model releases compared", "news"), show: "Compare the models in a chart visual (for example price per million output tokens) and give the verdict in prose." },
   { text: "LYJW 最近在追什么番？", choice: "haiku-low", prefetch: status("nowWatching", "watching"), show: "Show the recent watching card with show_card." },
   { text: "网站最近的提交改了什么？", choice: "haiku-low", prefetch: status("githubRepo"), show: "Lay out the latest commits as a timeline visual." },
@@ -106,11 +106,228 @@ export const GOD_CHAT_VISUAL_EXAMPLES = {
     shape: "square",
     items: [{ title: "Song or album", subtitle: "Artist", meta: "2h ago", image: "https://is1-ssl.mzstatic.com/image/thumb/a/b/{w}x{h}bb.jpg", url: "https://music.apple.com/" }],
   },
+  diagram: {
+    title: "Request path",
+    layers: [
+      { label: "Client", nodes: [{ id: "web", label: "Browser" }, { id: "app", label: "Mobile app" }] },
+      { label: "Edge", nodes: [{ id: "api", label: "API", note: "auth and rate limits" }] },
+      { label: "Storage", nodes: [{ id: "db", label: "Database" }, { id: "cache", label: "Cache" }] },
+    ],
+    edges: [
+      { from: "web", to: "api", label: "HTTPS" },
+      { from: "app", to: "api" },
+      { from: "api", to: "db" },
+      { from: "api", to: "cache" },
+    ],
+  },
 } as const;
 
 export type GodChatVisualKind = keyof typeof GOD_CHAT_VISUAL_EXAMPLES;
 export const GOD_CHAT_VISUAL_KINDS = Object.keys(GOD_CHAT_VISUAL_EXAMPLES) as GodChatVisualKind[];
 export const GOD_CHAT_CHART_SERIES = 4;
+// 校验与提示词共用这组上限：超出任何一项整块图示不画，访客看到的是原始 JSON，所以提示词要把它们原样告诉模型。
+export const GOD_CHAT_VISUAL_LIMITS = {
+  stats: 4,
+  barLabels: 16,
+  columnLabels: 24,
+  linePoints: 60,
+  timeline: 12,
+  media: 12,
+  short: 40,
+  label: 80,
+  title: 120,
+  text: 400,
+  unit: 12,
+  diagramLayers: 6,
+  diagramNodes: 4,
+  diagramEdges: 16,
+} as const;
+
+export function isGodChatVisualKind(value: string): value is GodChatVisualKind {
+  return (GOD_CHAT_VISUAL_KINDS as string[]).includes(value);
+}
+
+export type StatItem = { label: string; value: string; note?: string };
+export type StatsVisual = { kind: "stats"; items: StatItem[]; summary?: StatItem & { tone?: "good" | "bad" } };
+export type ChartVisual = {
+  kind: "chart";
+  type: "bar" | "column" | "line";
+  title?: string;
+  subtitle?: string;
+  unit?: string;
+  labels: string[];
+  series: { name: string; values: number[] }[];
+};
+export type TimelineVisual = { kind: "timeline"; title?: string; items: { time: string; title: string; text?: string }[] };
+export type MediaShape = "square" | "poster" | "wide";
+export type MediaVisual = {
+  kind: "media";
+  title?: string;
+  shape: MediaShape;
+  items: { title: string; subtitle?: string; meta?: string; image?: string; url?: string }[];
+};
+export type DiagramNode = { id: string; label: string; note?: string };
+export type DiagramVisual = {
+  kind: "diagram";
+  title?: string;
+  layers: { label?: string; nodes: DiagramNode[] }[];
+  edges: { from: string; to: string; label?: string }[];
+};
+export type ChatVisual = StatsVisual | ChartVisual | TimelineVisual | MediaVisual | DiagramVisual;
+
+// 图片与链接只丢不拒：不合格的只去掉那一项，条目照留，所以整块过不过校验与它们无关。
+// 默认全丢，渲染方传入自己的放行规则（站点见 src/lib/chat-visuals.ts）。
+export type VisualSanitizers = { image: (value: unknown) => string | undefined; link: (value: unknown) => string | undefined };
+const DROP_ALL: VisualSanitizers = { image: () => undefined, link: () => undefined };
+
+export type VisualCheck = { visual: ChatVisual; error?: undefined } | { visual: null; error: "json" | "shape" };
+
+type Raw = Record<string, unknown>;
+const LIMITS = GOD_CHAT_VISUAL_LIMITS;
+const SHAPES: readonly MediaShape[] = ["square", "poster", "wide"];
+
+function text(value: unknown, max: number): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) value = String(value);
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= max ? trimmed : undefined;
+}
+
+function list<T>(value: unknown, min: number, max: number, item: (entry: unknown) => T | null): T[] | null {
+  if (!Array.isArray(value) || value.length < min || value.length > max) return null;
+  const out: T[] = [];
+  for (const entry of value) {
+    const parsed = item(entry);
+    if (parsed === null) return null;
+    out.push(parsed);
+  }
+  return out;
+}
+
+const optional = <K extends string, V>(key: K, value: V | undefined) => (value === undefined ? {} : ({ [key]: value } as { [P in K]: V }));
+
+function statItem(value: unknown): StatItem | null {
+  const raw = object(value);
+  const label = text(raw?.label, LIMITS.label);
+  const shown = text(raw?.value, LIMITS.short);
+  if (!raw || !label || !shown) return null;
+  return { label, value: shown, ...optional("note", text(raw.note, LIMITS.title)) };
+}
+
+function stats(raw: Raw): StatsVisual | null {
+  const items = list(raw.items, 1, LIMITS.stats, statItem);
+  if (!items) return null;
+  const summary = raw.summary === undefined ? undefined : statItem(raw.summary);
+  if (summary === null) return null;
+  const tone = object(raw.summary)?.tone;
+  return {
+    kind: "stats",
+    items,
+    ...optional("summary", summary && { ...summary, ...optional("tone", tone === "good" || tone === "bad" ? tone : undefined) }),
+  };
+}
+
+function chart(raw: Raw): ChartVisual | null {
+  const type = raw.type;
+  if (type !== "bar" && type !== "column" && type !== "line") return null;
+  const maxLabels = type === "bar" ? LIMITS.barLabels : type === "column" ? LIMITS.columnLabels : LIMITS.linePoints;
+  const labels = list(raw.labels, type === "line" ? 2 : 1, maxLabels, (entry) => text(entry, LIMITS.label) ?? null);
+  if (!labels) return null;
+  const series = list(raw.series, 1, GOD_CHAT_CHART_SERIES, (entry) => {
+    const item = object(entry);
+    const name = text(item?.name, LIMITS.label);
+    const values = list(item?.values, labels.length, labels.length, (v) =>
+      typeof v === "number" && Number.isFinite(v) && (type === "line" || v >= 0) ? v : null,
+    );
+    return name && values ? { name, values } : null;
+  });
+  if (!series) return null;
+  return {
+    kind: "chart",
+    type,
+    labels,
+    series,
+    ...optional("title", text(raw.title, LIMITS.title)),
+    ...optional("subtitle", text(raw.subtitle, LIMITS.title)),
+    ...optional("unit", text(raw.unit, LIMITS.unit)),
+  };
+}
+
+function timeline(raw: Raw): TimelineVisual | null {
+  const items = list(raw.items, 1, LIMITS.timeline, (entry) => {
+    const item = object(entry);
+    const time = text(item?.time, LIMITS.short);
+    const title = text(item?.title, LIMITS.title);
+    return item && time && title ? { time, title, ...optional("text", text(item.text, LIMITS.text)) } : null;
+  });
+  return items ? { kind: "timeline", items, ...optional("title", text(raw.title, LIMITS.title)) } : null;
+}
+
+function media(raw: Raw, sanitize: VisualSanitizers): MediaVisual | null {
+  const items = list(raw.items, 1, LIMITS.media, (entry) => {
+    const item = object(entry);
+    const title = text(item?.title, LIMITS.title);
+    if (!item || !title) return null;
+    return {
+      title,
+      ...optional("subtitle", text(item.subtitle, LIMITS.title)),
+      ...optional("meta", text(item.meta, LIMITS.short)),
+      ...optional("image", sanitize.image(item.image)),
+      ...optional("url", sanitize.link(item.url)),
+    };
+  });
+  if (!items) return null;
+  const shape = SHAPES.includes(raw.shape as MediaShape) ? (raw.shape as MediaShape) : "square";
+  return { kind: "media", shape, items, ...optional("title", text(raw.title, LIMITS.title)) };
+}
+
+// 连线只接相邻两层：跨层的线会穿过中间那层的方框，渲染不画绕行。
+function diagram(raw: Raw): DiagramVisual | null {
+  const depth = new Map<string, number>();
+  let index = -1;
+  const layers = list(raw.layers, 1, LIMITS.diagramLayers, (entry) => {
+    const layer = object(entry);
+    index += 1;
+    const nodes = list(layer?.nodes, 1, LIMITS.diagramNodes, (value) => {
+      const node = object(value);
+      const id = text(node?.id, LIMITS.short);
+      const label = text(node?.label, LIMITS.short);
+      if (!node || !id || !label || depth.has(id)) return null;
+      depth.set(id, index);
+      return { id, label, ...optional("note", text(node.note, LIMITS.label)) };
+    });
+    return layer && nodes ? { nodes, ...optional("label", text(layer.label, LIMITS.short)) } : null;
+  });
+  if (!layers) return null;
+  const edges = list(raw.edges ?? [], 0, LIMITS.diagramEdges, (entry) => {
+    const edge = object(entry);
+    const from = text(edge?.from, LIMITS.short);
+    const to = text(edge?.to, LIMITS.short);
+    const gap = from !== undefined && to !== undefined ? Math.abs((depth.get(from) ?? NaN) - (depth.get(to) ?? NaN)) : NaN;
+    if (!edge || !from || !to || gap !== 1) return null;
+    return { from, to, ...optional("label", text(edge.label, LIMITS.short)) };
+  });
+  return edges ? { kind: "diagram", layers, edges, ...optional("title", text(raw.title, LIMITS.title)) } : null;
+}
+
+const PARSERS: Record<GodChatVisualKind, (raw: Raw, sanitize: VisualSanitizers) => ChatVisual | null> = {
+  stats,
+  chart,
+  timeline,
+  media,
+  diagram,
+};
+
+export function checkGodChatVisual(kind: GodChatVisualKind, source: string, sanitize: VisualSanitizers = DROP_ALL): VisualCheck {
+  let raw: Raw | null;
+  try {
+    raw = object(JSON.parse(source));
+  } catch {
+    return { visual: null, error: "json" };
+  }
+  const visual = raw && PARSERS[kind](raw, sanitize);
+  return visual ? { visual } : { visual: null, error: "shape" };
+}
 export const GOD_CHAT_HTML_THEME_VARS = ["--fg", "--muted", "--line", "--surface", "--accent", "--red", "--orange", "--yellow", "--green", "--blue", "--violet"] as const;
 
 export function readGodChatRoute(tier: unknown, downgradedFrom?: unknown): { tier: GodChatServedTier | null; downgradedFrom?: GodChatServedTier } | undefined {
