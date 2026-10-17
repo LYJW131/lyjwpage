@@ -241,7 +241,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           const upgrade = tier === "haiku" ? async () => (await quota.admitTier(ip, "sonnet", enforce, false)) === "sonnet" : undefined;
           const openDesign = decision.design === true && tier === "sonnet" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
-          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, preset, startedAt, io, emit, signal: abort.signal });
+          outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset ? { calls: preset.decision.prefetch ?? [], source: "preset" } : { calls: decision.prefetch ?? [], source: decision.source }, show: preset?.show, startedAt, io, emit, signal: abort.signal });
         }
         const { complete, trace, planToken, lead } = outcome;
         if (complete && lead) emit({ type: "text", text: lead });
@@ -300,7 +300,8 @@ async function converse({
   note,
   upgrade,
   messages: history,
-  preset,
+  prefetch,
+  show,
   startedAt,
   io,
   emit,
@@ -314,7 +315,8 @@ async function converse({
   note?: string;
   upgrade?: () => Promise<boolean>;
   messages: GodChatMessage[];
-  preset?: { prefetch: GodChatPresetCall[]; show?: string };
+  prefetch: { calls: GodChatPresetCall[]; source: RouteDecision["source"] };
+  show?: string;
   startedAt: number;
   io: ToolIO;
   emit: (event: GodChatEvent) => void;
@@ -331,8 +333,6 @@ async function converse({
   if (note) messages.push({ role: "system", content: note });
   const language = replyLanguageNote(history.at(-1)?.content ?? "");
   if (language) messages.push({ role: "system", content: language });
-  const prefetch = preset?.prefetch ?? [];
-  const show = preset?.show;
   if (show) messages.push({ role: "system", content: `This is one of the homepage's sample questions, picked to show visitors what this chat can draw. ${show}` });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
@@ -468,15 +468,15 @@ async function converse({
     }
     return result(text, isError);
   };
-  // 示例问题的工具调用由 Worker 先跑：写成模型自己调过的一轮，第一次请求就带着结果，省掉一轮往返。
-  if (prefetch.length) {
+  // 示例问题写定的、或 Clef 判出要读的工具调用由 Worker 先跑：写成模型自己调过的一轮，第一次请求就带着结果，省掉一轮往返。
+  if (prefetch.calls.length) {
     const tools = roundTools();
-    const calls: ToolCall[] = prefetch
+    const calls: ToolCall[] = prefetch.calls
       .filter((call) => tools.some((tool) => "name" in tool && tool.name === call.name))
-      .map((call, index) => ({ id: `toolu_preset_${index}`, name: call.name, input: call.input }));
+      .map((call, index) => ({ id: `toolu_prefetch_${index}`, name: call.name, input: call.input }));
     if (calls.length) {
       const results = await Promise.all(calls.map((call) => run(call, tools)));
-      console.info("[god-chat] preset", JSON.stringify({ tier, calls: calls.map((call, index) => ({ name: call.name, error: results[index].is_error })) }));
+      console.info("[god-chat] prefetch", JSON.stringify({ tier, source: prefetch.source, calls: calls.map((call, index) => ({ name: call.name, error: results[index].is_error })) }));
       messages.push({ role: "assistant", content: calls.map((call) => ({ type: "tool_use" as const, ...call })) }, { role: "user", content: results });
     }
   }

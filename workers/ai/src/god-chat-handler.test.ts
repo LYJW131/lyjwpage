@@ -776,13 +776,13 @@ test("同一轮的多个搜索调用一起发出，结果按调用顺序回", as
   assert.deepEqual(results.map((block) => block.type === "tool_result" && block.tool_use_id), ["tool_a", "tool_b"]);
 });
 
-test("示例问题跳过 Clef 按预设定档，预取的工具结果写成一轮已调过的工具、随第一次请求发出", async (t) => {
+test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取写成一轮已调过的工具、随第一次请求发出", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async (input) => String(input).includes("api.exa.ai")
     ? Response.json({ results: [{ url: "https://e.dev/news", title: "News", highlights: ["model launch"] }] })
     : Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const run = async (content: string, history: GodChatMessage[] = []) => {
+  const run = async (content: string, history: GodChatMessage[] = [], answers: Record<string, unknown> = { route: { choice: "haiku-low" } }) => {
     const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
     const wanted: string[] = [];
     let clef = 0;
@@ -793,7 +793,7 @@ test("示例问题跳过 Clef 按预设定档，预取的工具结果写成一�
       TURNSTILE_SECRET_KEY: "test-key",
       CHAT_HISTORY_SECRET: "test-seal",
       ALLOWED_ORIGINS: "https://lyjw.me",
-      AI: Object.assign({} as Ai, { run: async () => { clef++; return { answers: { route: { choice: "haiku-low" } } }; } }),
+      AI: Object.assign({} as Ai, { run: async () => { clef++; return { answers }; } }),
       CHAT_QUOTA: binding<ChatQuota>({
         admitVisitor: async () => "ok" as const,
         admitTier: async (_ip, tier) => { wanted.push(tier); return tier; },
@@ -834,4 +834,15 @@ test("示例问题跳过 Clef 按预设定档，预取的工具结果写成一�
   const later = await run("LYJW 今天运动了吗？", [{ role: "user", content: "hi" }, { role: "assistant", content: "Done.", seal: await sealExchange("test-seal", "hi", "Done.", undefined) }]);
   assert.equal(later.clef, 1);
   assert.ok(later.requests[0].messages.every((message) => !Array.isArray(message.content) || message.content.every((block) => block.type !== "tool_use")));
+
+  const routed = await run("他最近在听谁的歌", [], {
+    route: { choice: "haiku-low" },
+    status: { choice: "listening", probabilities: { listening: 0.9 } },
+    doc: { choice: "none", probabilities: { none: 0.95 } },
+  });
+  assert.equal(routed.clef, 1);
+  const routedCall = routed.requests[0].messages.at(-2)?.content;
+  assert.ok(Array.isArray(routedCall) && routedCall.length === 1 && routedCall[0].type === "tool_use" && routedCall[0].name === "get_site_status");
+  assert.ok(routed.events.some((event) => event.type === "tool" && event.views.includes("listening")));
+  assert.ok(routed.requests[0].messages.every((message) => message.role !== "system" || typeof message.content !== "string" || !message.content.includes("sample questions")));
 });
