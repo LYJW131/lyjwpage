@@ -419,7 +419,7 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
 实时状态存在 StateHub，展示快照存在 `LAG`，凭据存在 `CREDENTIALS`（上报入口写、采集 Worker 读，本 Worker 不绑），site Worker 只读 `LAG` KV 回可滞后视图，不连 StateHub、D1 或凭据 KV（首屏失效走 `SITE_CACHE` Service Binding，没有 HTTP secret）。本 Worker 的代码不读任何 Secret。
 
-AI 模型、对话签名与 issue 提交凭据见 [AI Worker](../ai/README.md#配置与部署)，不配在本 Worker 的生产配置中。
+AI 模型、验人、对话签名与 issue 提交凭据见 [AI Worker](../ai/README.md#配置与部署)，不配在本 Worker 的生产配置中。
 
 外部数据的令牌（GitHub、Cloudflare、PageSpeed）在采集 Worker 上，见 [采集 Worker README](../collector/README.md)。PSN 登录在 `reporters/playstation-reporter` 的数据卷里。
 
@@ -450,7 +450,7 @@ core 这一轮本地要做的 D1 归档、Clef 打分被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
 `AI` 绑定只能连远程 Workers AI：`scripts/dev-worker.mjs` 在没有 `CLOUDFLARE_API_TOKEN` 也没有 `wrangler login` 时，把 core 与 ai 的测试配置去掉 `[ai]` 段另存为 `wrangler.test.offline.toml` 再起，否则整个会话起不来；去掉后对话路由走兜底档位。`DEV_WORKER_AI=remote` / `off` 强制选择。
-云端会话启动时 `.claude/hooks/session-start.sh` 跑 `scripts/cloud-dev-vars.mjs`，补上缺的 `workers/core/.dev.vars`（照抄 example）、`workers/ai/.dev.vars`（key 取环境变量 `LYJWPAGE_ANTHROPIC_API_KEY` 与 `LYJWPAGE_DEEPSEEK_API_KEY`，签章密钥随机生成），已有的文件不动。
+云端会话启动时 `.claude/hooks/session-start.sh` 跑 `scripts/cloud-dev-vars.mjs`，补上缺的 `workers/core/.dev.vars`（照抄 example）、`workers/ai/.dev.vars`（key 取环境变量 `LYJWPAGE_ANTHROPIC_API_KEY` 与 `LYJWPAGE_DEEPSEEK_API_KEY`，Turnstile 用 Cloudflare 测试密钥，签章密钥随机生成）与根 `.env.local`（Turnstile 测试 site key），已有的文件不动。
 状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，新目录直接以空状态起。
 
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 按端点整份兜底（`src/public-api.ts#overlayResponse`）：生产回 `ok:true` 的端点整份用生产的，

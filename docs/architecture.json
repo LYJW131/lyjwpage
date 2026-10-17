@@ -744,7 +744,7 @@
       "dot": "amber",
       "title": "对话与访客构建",
       "items": [
-        "首条消息前先接受隐私说明，Turnstile 验人后发 30 分钟通行证；Clef 选 Haiku、Sonnet 或 Fable，额度满了逐档降级。",
+        "首条消息前先接受隐私说明，Turnstile 验人后发 7 天通行证（不绑 IP，用掉一半续期）；Clef 选 Haiku、Sonnet 或 Fable，额度满了逐档降级。",
         "改站请求由 Sonnet 开设计会话，交给 Managed Agents 里的 Opus 出计划；访客授权 GitHub 后，Actions 先审计划再改代码、凭 OIDC 回传，ai 校验再以 App 开 PR，截图存 R2 并评论进 PR。",
         "ai 没有公开域名：浏览器、MCP 客户端、构建工作流与 GitHub webhook 都打到站点域名，经 Service Binding 原样转发；ai 只经 PublicStatus 读公开状态。"
       ]

@@ -11,6 +11,7 @@ import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { STREAM_FLUSH_MS, revealedLength, revealedText, stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent } from "@/lib/chat-consent";
+import { useHumanCheck } from "@/hooks/use-human-check";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const answersRef = useRef<{ text: string; answers: ChatAnswer[] } | null>(null);
   const sessionRef = useRef(0);
   const resumeRef = useRef<() => void>(() => {});
+  const human = useHumanCheck();
   const conversationId = conversation?.id;
   const design = conversation?.design;
 
@@ -213,14 +215,25 @@ function Conversation({ className, archive, session: conversation }: { className
       // 设计同意要读此刻的真值：接受后立刻补发时，闭包里的 designConsented 还是旧的。
       designToken = designConsent.getSnapshot() ? activeChatDesign(conversation?.design)?.token : undefined;
       if (conversation?.design && !designToken && designConsent.getSnapshot()) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
-      const res = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
-        signal: controller.signal,
-      });
+      const post = async () => {
+        const proof = await human.proof(controller.signal);
+        const res = await fetch(CHAT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history, ...proof, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
+          signal: controller.signal,
+        });
+        const data = res.ok && res.body ? null : (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+        return { res, data, usedPass: "humanPass" in proof };
+      };
+      let attempt = await post();
+      // 通行证被拒（签名密钥换了、本地时钟偏了）就丢掉它，当场验一次人重发同一条，不让访客自己再点一遍。
+      if (attempt.data?.code === "human_pass_expired" && attempt.usedPass) {
+        human.clearPass();
+        attempt = await post();
+      }
+      const { res, data } = attempt;
       if (!res.ok || !res.body) {
-        const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
         if (conversation && designSessionEnded(data?.code)) {
           chatArchive.endDesign(conversation.id, data?.code === "design_session_exhausted" ? "exhausted" : "expired", { persist: false });
           throw new Error("The design session has ended. Send your message again to continue in ordinary chat.");
@@ -257,6 +270,7 @@ function Conversation({ className, archive, session: conversation }: { className
           else if (event.type === "step") meta = { ...meta, steps: [...(meta.steps ?? []), event.text] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
           else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace, planToken: event.planToken };
+          else if (event.type === "pass") human.storePass({ pass: event.pass, expiresAt: event.expiresAt });
           else if (event.type === "card") {
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
           } else if (event.type === "design" && conversation) {
@@ -318,8 +332,8 @@ function Conversation({ className, archive, session: conversation }: { className
 
   // 设计会话里最后一条访客消息还没拿到盖了章的回复：从会话里取回它错过的那一回合。
   function resume() {
-    // 对话代码变了还没重新同意时留着那两条，等访客自己再发。
-    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !chatConsent.getSnapshot()) return;
+    // 补发不跑 Turnstile：没有有效通行证或对话代码变了还没重新同意时留着那两条，等访客自己再发。
+    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !human.hasPass() || !chatConsent.getSnapshot()) return;
     const current = chatArchive.session(conversation.id);
     // 没同意设计时扣着令牌，resume: true 不带 designToken 会被 Worker 拒绝：补发等同意之后再走。
     if (!current || !activeChatDesign(current.design) || !designConsent.getSnapshot()) return;
@@ -417,12 +431,13 @@ function Conversation({ className, archive, session: conversation }: { className
   function ask(text: string) {
     if (!text.trim() || streaming) return;
     setUsage(null);
-    // 同意前消息只留在本地、不发给 Worker。
+    // 同意前消息只留在本地、不发给 Worker；lyjw 要求说明一出现就在后台跑 Turnstile，访客读完点接受时多半已验完，可以直接发。
     if (!chatConsent.getSnapshot()) {
       if (!messages.length && consentPending === null) reveal();
       setConsentPending(text.trim());
       setDraft("");
       setError(null);
+      human.prepare();
       return;
     }
     void send(text);
@@ -610,6 +625,7 @@ function Conversation({ className, archive, session: conversation }: { className
         {error && <p className="mb-2 text-xs text-signal-red">{error}</p>}
         {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
         {conversation?.design && designConsented && <DesignStatus design={conversation.design} />}
+        <div ref={human.slotRef} className={cn(human.state === "interactive" && "pb-2")} />
         <form
           className="relative flex items-end gap-2"
           onSubmit={(event) => {
@@ -688,7 +704,7 @@ function Conversation({ className, archive, session: conversation }: { className
             }}
             maxLength={GOD_CHAT_LIMITS.maxMessageChars}
             rows={1}
-            placeholder="Speak, mortal… (type /)"
+            placeholder={human.state === "interactive" ? "Tick the box above to continue…" : human.state === "checking" ? "Verifying you are human…" : "Speak, mortal… (type /)"}
             aria-label="Message"
             className="scrollbar-none max-h-32 min-h-10 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus:border-foreground/40 sm:text-sm [&::-webkit-scrollbar]:hidden"
           />
@@ -806,7 +822,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 // lyjw 要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
-// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按 workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；DeepSeek 只写服务器在中国大陆、按其开放平台条款处理，账号的保留与训练设置未核实前不写具体承诺；联网搜索的去向跟着 workers/ai/src/chat/web-search.ts#webSearchProvider 能选的后端写。
+// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，lyjw 定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按 workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；DeepSeek 只写服务器在中国大陆、按其开放平台条款处理，账号的保留与训练设置未核实前不写具体承诺；联网搜索的去向跟着 workers/ai/src/chat/web-search.ts#webSearchProvider 能选的后端写。
 type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
 const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   en: {

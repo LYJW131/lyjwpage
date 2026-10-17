@@ -3,7 +3,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 
 import type Anthropic from "@anthropic-ai/sdk";
-import { GOD_CHAT_LIMITS, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
+import { GOD_CHAT_LIMITS, GOD_CHAT_PASS_TTL_MS, GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 import { BUILD_DESIGN_LIMITS, PLAN_LABELS, type BuildPlan } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
@@ -24,6 +24,8 @@ registerHooks({
   },
 });
 const { handleChat } = await import("./chat/handler.ts");
+const { issuePass } = await import("./chat/pass.ts");
+const PASS = (await issuePass("test-seal")).pass;
 
 const unexpected = () => new Response("unexpected fetch", { status: 500 });
 
@@ -91,6 +93,7 @@ test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度�
         CHAT_FORCE_TIER: tier,
         ANTHROPIC_API_KEY: "test-key",
         DEEPSEEK_API_KEY: "test-deepseek",
+        TURNSTILE_SECRET_KEY: "test-turnstile",
         EXA_API_KEY: "test-exa",
         CHAT_HISTORY_SECRET: "test-seal",
         ALLOWED_ORIGINS: "https://lyjw.me",
@@ -102,7 +105,7 @@ test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度�
         CHAT_LOG: binding<ChatLog>({ record: async (entry) => { transcripts.push(entry); } }),
       };
       const response = await handleChat(new Request("https://api.test/api/chat", {
-        method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: "What's the timezone?" }] }),
+        method: "POST", body: JSON.stringify({ humanPass: PASS, messages: [{ role: "user", content: "What's the timezone?" }] }),
       }), env, {
         readStatus: async () => Response.json({ ok: true, data: { timezone: "Asia/Singapore" } }),
         readDoc: async () => new Response("unused"),
@@ -160,12 +163,13 @@ test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效"
     const enforced: boolean[] = [];
     const tiers: string[] = [];
     const response = await handleChat(new Request("https://ai.test/api/chat", {
-      method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
+      method: "POST", body: JSON.stringify({ humanPass: PASS, messages: [{ role: "user", content: "hello" }] }),
     }), {
       ...flags,
       PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
       ANTHROPIC_API_KEY: "test-key",
       DEEPSEEK_API_KEY: "test-deepseek",
+      TURNSTILE_SECRET_KEY: "test-turnstile",
       CHAT_HISTORY_SECRET: "test-seal",
       ALLOWED_ORIGINS: "https://lyjw.me",
       CHAT_RATE_LIMIT: "off",
@@ -183,6 +187,62 @@ test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效"
     assert.deepEqual(enforced, [!dev]);
     assert.deepEqual(tiers, dev ? ["fable"] : ["flash"]);
   }
+});
+
+test("没有有效通行证就要 Turnstile：验过后下发通行证，通行证用掉一半才换新，过期或伪造回 403", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  const verified: string[] = [];
+  globalThis.fetch = deepseekFetch(
+    async (request) => modelStream((await request.json() as { model: string }).model, false),
+    async (_input, init) => {
+      const token = new URLSearchParams(String(init?.body)).get("response") ?? "";
+      verified.push(token);
+      return Response.json({ success: token === "good", hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+    },
+  );
+  const env: Env = {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    ANTHROPIC_API_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "flash",
+    CHAT_QUOTA: binding<ChatQuota>({ admitVisitor: async () => "ok" as const, admitTier: async () => "flash" as const }),
+  };
+  const io = { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") };
+  const ask = async (proof: Record<string, string>) => {
+    const response = await handleChat(new Request("https://ai.test/api/chat", {
+      method: "POST", body: JSON.stringify({ ...proof, messages: [{ role: "user", content: "hello" }] }),
+    }), env, io);
+    const text = await response.text();
+    return { status: response.status, events: response.ok ? text.trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent) : [], body: response.ok ? undefined : JSON.parse(text) as { code?: string } };
+  };
+  const passOf = (events: GodChatEvent[]) => events.find((event) => event.type === "pass");
+
+  const fresh = await ask({ turnstileToken: "good" });
+  assert.equal(fresh.status, 200);
+  const issued = passOf(fresh.events);
+  assert.ok(issued?.type === "pass");
+  assert.equal(fresh.events[0].type, "pass");
+
+  assert.equal((await ask({ turnstileToken: "bad" })).status, 403);
+  verified.length = 0;
+  const reused = await ask({ humanPass: issued.pass });
+  assert.equal(reused.status, 200);
+  assert.equal(passOf(reused.events), undefined);
+  assert.deepEqual(verified, []);
+
+  const halfUsed = (await issuePass("test-seal", Date.now() - GOD_CHAT_PASS_TTL_MS / 2 - 1000)).pass;
+  assert.ok(passOf((await ask({ humanPass: halfUsed })).events));
+
+  const expired = (await issuePass("test-seal", Date.now() - GOD_CHAT_PASS_TTL_MS - 1000)).pass;
+  const stale = await ask({ humanPass: expired });
+  assert.equal(stale.status, 403);
+  assert.equal(stale.body?.code, "human_pass_expired");
+  assert.equal((await ask({ humanPass: (await issuePass("other-secret")).pass })).status, 403);
 });
 
 const plan: BuildPlan = {
@@ -230,6 +290,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     ANTHROPIC_API_KEY: "test-key",
     DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
     CHAT_HISTORY_SECRET: "test-seal",
     BUILD_SESSION_SECRET: "test-build",
     DESIGN_AGENT_ID: "agent_test",
@@ -293,7 +354,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
 }
 
 function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role: "user", content: "Please improve the music card." }], resume = false) {
-  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ messages, ...(designToken && { designToken }), ...(resume && { resume }) }) });
+  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ humanPass: PASS, messages, ...(designToken && { designToken }), ...(resume && { resume }) }) });
 }
 const toolIO = { readStatus: async () => Response.json({ ok: true, data: { timezone: "Asia/Singapore" } }), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
@@ -719,6 +780,7 @@ function upgradeEnv(thinkFree: boolean) {
     CHAT_FORCE_TIER: "flash",
     ANTHROPIC_API_KEY: "test-key",
     DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
     CHAT_HISTORY_SECRET: "test-seal",
     ALLOWED_ORIGINS: "https://lyjw.me",
     CHAT_QUOTA: binding<ChatQuota>({
@@ -838,6 +900,7 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
       ANTHROPIC_API_KEY: "test-key",
       EXA_API_KEY: "test-exa",
       DEEPSEEK_API_KEY: "test-deepseek",
+      TURNSTILE_SECRET_KEY: "test-turnstile",
       CHAT_HISTORY_SECRET: "test-seal",
       ALLOWED_ORIGINS: "https://lyjw.me",
       AI: Object.assign({} as Ai, { run: async () => { clef++; return { answers }; } }),
@@ -901,6 +964,7 @@ test("开思考的 DeepSeek 档给没有思考块的工具调用补占位思考�
       PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
       ANTHROPIC_API_KEY: "test-key",
       DEEPSEEK_API_KEY: "test-deepseek",
+      TURNSTILE_SECRET_KEY: "test-turnstile",
       CHAT_HISTORY_SECRET: "test-seal",
       AI: Object.assign({} as Ai, { run: async () => ({ answers: { route: { choice: tier }, status: { choice: "listening", probabilities: { listening: 0.9 } } } }) }),
       CHAT_QUOTA: binding<ChatQuota>({ admitVisitor: async () => "ok" as const, admitTier: async () => tier }),

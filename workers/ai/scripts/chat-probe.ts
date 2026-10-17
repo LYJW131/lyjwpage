@@ -12,9 +12,10 @@ registerHooks({
   },
 });
 const { handleChat } = await import("../src/chat/handler.ts");
+const { issuePass } = await import("../src/chat/pass.ts");
 
 const USAGE = `用法：pnpm --dir workers/ai chat:probe [--tier flash] [--runs 5] [--fixture listening-now-elsewhere-estimated] "问题"
-用真实模型跑首页对话（跳过 Clef），状态视图读 workers/core/dev-fixtures/ 里同名端点的夹具，没有夹具的视图回 404。
+用真实模型跑首页对话（跳过 Clef 与验人），状态视图读 workers/core/dev-fixtures/ 里同名端点的夹具，没有夹具的视图回 404。
 --tier 取 Clef 的选项或档位名（flash、think、fable、design）。
 ANTHROPIC_API_KEY、DEEPSEEK_API_KEY、EXA_API_KEY、WEB_SEARCH_PROVIDER 取环境变量或 workers/ai/.dev.vars。`;
 
@@ -71,6 +72,7 @@ const env = {
   CHAT_RATE_LIMIT: "off",
   ANTHROPIC_API_KEY: apiKey,
   DEEPSEEK_API_KEY: deepseekKey,
+  TURNSTILE_SECRET_KEY: "probe",
   EXA_API_KEY: secret("EXA_API_KEY"),
   WEB_SEARCH_PROVIDER: secret("WEB_SEARCH_PROVIDER"),
   CHAT_HISTORY_SECRET: "probe",
@@ -79,11 +81,12 @@ const env = {
   CHAT_QUOTA: { idFromName: () => ({}), get: () => quota, getByName: () => quota },
 } as unknown as Env;
 
+const { pass } = await issuePass("probe");
 for (let run = 1; run <= runs; run++) {
   const response = await handleChat(new Request("https://probe.local/api/chat", {
     method: "POST",
     headers: { "CF-Connecting-IP": "127.0.0.1" },
-    body: JSON.stringify({ messages: [{ role: "user", content: question }] }),
+    body: JSON.stringify({ humanPass: pass, messages: [{ role: "user", content: question }] }),
   }), env, {
     readStatus: async (path) => fixtureByPath.has(path) ? Response.json(stamp(fixtureByPath.get(path), Date.now())) : Response.json({ ok: false, error: "no fixture" }, { status: 404 }),
     readDoc: async () => new Response("no doc", { status: 404 }),
