@@ -282,6 +282,7 @@ function media(raw: Raw, sanitize: VisualSanitizers): MediaVisual | null {
 }
 
 // 连线只接相邻两层：跨层的线会穿过中间那层的方框，渲染不画绕行。
+// 画不了的连线（同层、跨层、指向不存在的节点）只丢那一条，不拒整张图：模型偶尔连一条同层线，整张退回成 JSON 代码块代价太大。
 function diagram(raw: Raw): DiagramVisual | null {
   const depth = new Map<string, number>();
   let index = -1;
@@ -304,9 +305,9 @@ function diagram(raw: Raw): DiagramVisual | null {
     const from = text(edge?.from, LIMITS.short);
     const to = text(edge?.to, LIMITS.short);
     const gap = from !== undefined && to !== undefined ? Math.abs((depth.get(from) ?? NaN) - (depth.get(to) ?? NaN)) : NaN;
-    if (!edge || !from || !to || gap !== 1) return null;
+    if (!edge || !from || !to || gap !== 1) return undefined;
     return { from, to, ...optional("label", text(edge.label, LIMITS.short)) };
-  });
+  })?.filter((edge) => edge !== undefined);
   return edges ? { kind: "diagram", layers, edges, ...optional("title", text(raw.title, LIMITS.title)) } : null;
 }
 

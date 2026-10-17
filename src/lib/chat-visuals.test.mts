@@ -66,7 +66,7 @@ test("写到一半的图示 JSON 按写完的条目先画，图表要数据齐�
   assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
 });
 
-test("结构图的连线只接相邻两层、id 不重复，写到一半时先画已写完的层", () => {
+test("结构图画不了的连线只丢那一条、id 不重复，写到一半时先画已写完的层", () => {
   const layers = [
     { nodes: [{ id: "a", label: "A" }] },
     { nodes: [{ id: "b", label: "B" }] },
@@ -75,10 +75,20 @@ test("结构图的连线只接相邻两层、id 不重复，写到一半时先�
   const diagram = (edges: unknown, nodes = layers) => parseVisual("diagram", JSON.stringify({ layers: nodes, edges }));
   assert.ok(diagram([{ from: "a", to: "b" }, { from: "c", to: "b", label: "back" }]));
   assert.ok(diagram(undefined));
-  assert.equal(diagram([{ from: "a", to: "c" }]), null);
-  assert.equal(diagram([{ from: "a", to: "a" }]), null);
-  assert.equal(diagram([{ from: "a", to: "x" }]), null);
+  const edgesOf = (edges: unknown) => {
+    const visual = diagram(edges);
+    return visual?.kind === "diagram" ? visual.edges.map((edge) => `${edge.from}-${edge.to}`) : null;
+  };
+  assert.deepEqual(edgesOf([{ from: "a", to: "c" }, { from: "a", to: "b" }]), ["a-b"]);
+  assert.deepEqual(edgesOf([{ from: "a", to: "a" }]), []);
+  assert.deepEqual(edgesOf([{ from: "a", to: "x" }, "oops"]), []);
   assert.equal(diagram([], [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ id: "a", label: "B" }] }]), null);
+  const sameLayer = diagram(
+    [{ from: "a", to: "b" }, { from: "b", to: "b2" }],
+    [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ id: "b", label: "B" }, { id: "b2", label: "B2" }] }],
+  );
+  assert.ok(sameLayer?.kind === "diagram");
+  assert.deepEqual(sameLayer.edges, [{ from: "a", to: "b" }]);
   const partial = parsePartialVisual("diagram", '{"layers":[{"nodes":[{"id":"a","label":"A"}]},{"nodes":[{"id":"b","lab');
   assert.ok(partial?.kind === "diagram");
   assert.deepEqual(partial.layers.map((layer) => layer.nodes.map((node) => node.id)), [["a"]]);
