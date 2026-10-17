@@ -60,7 +60,9 @@ export const PREFETCH_STATUS = {
 type PrefetchStatus = keyof typeof PREFETCH_STATUS;
 
 // 猜错了就是白塞一份输入 token、还可能把模型带偏，所以只在 Clef 给选中项的概率够高时才预取，其余照旧由模型自己调工具。
-export const PREFETCH_MIN_PROBABILITY = 0.6;
+// 文档题有二十多个选项，概率摊得薄：用 route:probe 在线上 Clef 跑代表性问题，选对的文档多在 0.45–0.77，状态题选对的在 0.9 以上，
+// 所以两题阈值分开定。
+export const PREFETCH_MIN_PROBABILITY = { status: 0.6, doc: 0.45 } as const;
 
 const PREFETCH_DOC_CRITERIA: Record<ProjectDocKey | "none", string> = {
   ...(Object.fromEntries(Object.entries(PROJECT_DOCS).map(([key, doc]) => [key, doc.note])) as Record<ProjectDocKey, string>),
@@ -104,12 +106,12 @@ export function parseRouterAnswer(body: unknown): ClefChoice | null {
   return isClefChoice(choice) ? choice : null;
 }
 
-function confidentChoice<K extends string>(body: unknown, question: string, options: Record<K, unknown>): K | undefined {
+function confidentChoice<K extends string>(body: unknown, question: keyof typeof PREFETCH_MIN_PROBABILITY, options: Record<K, unknown>): K | undefined {
   const answer = object(object(object(body)?.answers)?.[question]);
   const choice = answer?.choice;
   if (typeof choice !== "string" || !Object.hasOwn(options, choice)) return undefined;
   const probability = object(answer?.probabilities)?.[choice];
-  return typeof probability === "number" && probability >= PREFETCH_MIN_PROBABILITY ? (choice as K) : undefined;
+  return typeof probability === "number" && probability >= PREFETCH_MIN_PROBABILITY[question] ? (choice as K) : undefined;
 }
 
 export function parsePrefetch(body: unknown): GodChatPresetCall[] {
