@@ -7,7 +7,7 @@ export type ReadDoc = (url: string) => Promise<Response>;
 const HUB_REPO = "https://github.com/LYJW131/MacTelemetryHub";
 
 // 白名单只收讲设计的现状文档和各 Worker 的成对修改规则（构建规划要据此列全路径）；文档在运行时从公开仓库的 main 读，改文档不用重发 Worker，新增条目才要改这里。
-const PROJECT_DOCS = {
+export const PROJECT_DOCS = {
   overview: { path: "README.en.md", note: "Project overview (English): every card, architecture, key design choices, tech stack, where to start reading the source" },
   conventions: { path: "AGENTS.md", note: "Engineering rules: API naming and cross-client contracts, deploy flow, docs and comment conventions" },
   liveStatus: { path: "docs/telemetry-subsystems.md", note: "Each live-status module: how its data is reported, data flow, protocol decisions" },
