@@ -342,7 +342,7 @@ test("repo rounds land fresh commits while stats are pending, without hiding sta
   assert.ok(budgets[1] < budgets[0], "部署后的重拉统计预算更短");
 });
 
-test("a slower repo round never rolls the commit list back", async () => {
+test("a repo round preserves commits published while it fetched stats", async () => {
   const lag = new MemoryKv();
   const core = { revalidate: async () => {} };
   await writeLag(lag, LAG_KEYS.githubRepo, { ...repo(400, 3, 1), recentCommits: [commit("aaaaaaa", 1)] }, 1);
@@ -358,4 +358,57 @@ test("a slower repo round never rolls the commit list back", async () => {
   const written = (await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo))?.data;
   assert.equal(written?.recentCommits?.[0]?.sha, "ccccccc");
   assert.equal(written?.totals.commits, 402);
+});
+
+test("repo commits follow a force-pushed rollback even when the head date moves backward", async () => {
+  const lag = new MemoryKv();
+  const revalidated: string[][] = [];
+  const core = { revalidate: async (tags: string[]) => { revalidated.push(tags); } };
+  await writeLag(lag, LAG_KEYS.githubRepo, { ...repo(401, 3, 2), recentCommits: [commit("bbbbbbb", 2)] });
+  const fetchers = {
+    commits: async () => [commit("aaaaaaa", 1)],
+    stats: async () => repo(400, 3, 3),
+  };
+
+  assert.deepEqual(await refreshGithubRepo({ lag, core, fetchers }, true), { status: "ok" });
+  const written = (await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo))?.data;
+  assert.equal(written?.recentCommits?.[0]?.sha, "aaaaaaa");
+  assert.deepEqual(revalidated, [["github-repo"]]);
+});
+
+test("a slower repo round preserves a rollback published while it fetched stats", async () => {
+  const lag = new MemoryKv();
+  const core = { revalidate: async () => {} };
+  await writeLag(lag, LAG_KEYS.githubRepo, { ...repo(401, 3, 2), recentCommits: [commit("bbbbbbb", 2)] });
+  const fetchers = {
+    commits: async () => [commit("bbbbbbb", 2)],
+    stats: async () => {
+      await writeLag(lag, LAG_KEYS.githubRepo, { ...repo(400, 3, 3), recentCommits: [commit("aaaaaaa", 1)] });
+      return repo(401, 3, 4);
+    },
+  };
+
+  await refreshGithubRepo({ lag, core, fetchers }, true);
+  const written = (await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo))?.data;
+  assert.equal(written?.recentCommits?.[0]?.sha, "aaaaaaa");
+});
+
+test("a repo round aligns with GitHub after deferring to a concurrent publication", async () => {
+  const lag = new MemoryKv();
+  const core = { revalidate: async () => {} };
+  await writeLag(lag, LAG_KEYS.githubRepo, { ...repo(400, 3, 1), recentCommits: [commit("aaaaaaa", 1)] });
+  const fetchers = {
+    commits: async () => [commit("ccccccc", 3)],
+    stats: async () => {
+      await writeLag(lag, LAG_KEYS.githubRepo, { ...repo(401, 3, 2), recentCommits: [commit("bbbbbbb", 2)] });
+      return repo(402, 3, 3);
+    },
+  };
+
+  await refreshGithubRepo({ lag, core, fetchers }, true);
+  assert.equal((await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo))?.data.recentCommits?.[0]?.sha, "bbbbbbb");
+
+  fetchers.stats = async () => repo(402, 3, 4);
+  await refreshGithubRepo({ lag, core, fetchers }, true);
+  assert.equal((await readLag<GithubRepoPayload>(lag, LAG_KEYS.githubRepo))?.data.recentCommits?.[0]?.sha, "ccccccc");
 });
