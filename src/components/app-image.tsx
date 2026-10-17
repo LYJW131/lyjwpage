@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 import {
   IMAGE_WIDTHS,
@@ -10,7 +10,6 @@ import {
   optimizerSrcSet,
   parseImageSource,
 } from "@/lib/image-proxy";
-import { isRestReady, resolveImageLoading, subscribeRestReady } from "@/lib/rest-ready";
 
 export type ImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> & {
   src: string;
@@ -21,14 +20,6 @@ export type ImageProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> 
   unoptimized?: boolean;
   quality?: number;
 };
-
-function subscribeNothing(): () => void {
-  return () => {};
-}
-
-function notReady(): boolean {
-  return false;
-}
 
 const FILL_STYLE: CSSProperties = {
   position: "absolute",
@@ -51,18 +42,11 @@ export default function AppImage({
   width,
   decoding,
   fetchPriority,
+  srcSet,
   ...rest
 }: ImageProps) {
   // WebKit 对 lazy 图（data URI 也一样）先挂可见性观察，回调在首帧绘制之后，内联图首帧必空。
   const inline = src.startsWith("data:");
-  const fixed = Boolean(priority) || inline || loading === "eager";
-  const restReady = useSyncExternalStore(
-    fixed ? subscribeNothing : subscribeRestReady,
-    fixed ? notReady : isRestReady,
-    notReady,
-  );
-  const resolved = resolveImageLoading(restReady, loading, priority);
-
   const q = quality ?? 75;
   const optimizable = !unoptimized && parseImageSource(src) !== null;
   const numericWidth = typeof width === "number" && Number.isFinite(width) ? width : undefined;
@@ -79,10 +63,10 @@ export default function AppImage({
     <img
       {...rest}
       src={optimizedSrc}
-      srcSet={optimizable && displayWidth !== undefined ? optimizerSrcSet(src, q, displayWidth) : undefined}
+      srcSet={optimizable && displayWidth !== undefined ? optimizerSrcSet(src, q, displayWidth) : srcSet}
       alt={alt ?? ""}
       width={width}
-      loading={priority || inline ? undefined : (resolved.loading ?? "lazy")}
+      loading={priority || inline ? undefined : (loading ?? "lazy")}
       decoding={decoding ?? "async"}
       fetchPriority={fetchPriority ?? (priority ? "high" : noPreload ? "low" : undefined)}
       style={fill ? { ...FILL_STYLE, ...style } : style}

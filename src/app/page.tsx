@@ -1,26 +1,31 @@
+import { lazy } from "react";
+
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { WebPlayerProvider } from "@/components/web-player/web-player-provider";
 import { AppVersionCard } from "@/components/app-version-card";
 import { CardBoundary } from "@/components/card-boundary";
+import { DeferredCard } from "@/components/deferred-card";
 import { StaleTabReload } from "@/components/stale-tab-reload";
 import { ContactCard } from "@/components/contact-card";
 import { DevFakeDataToggle } from "@/components/dev-fake-data-toggle";
 import { DevToggleDock } from "@/components/dev-toggles";
 import { GodChat } from "@/components/god-chat";
-import { WorkoutsStrip } from "@/components/live/workouts-strip";
-import { ActivityCard } from "@/components/live/activity-card";
 import { DigestCard } from "@/components/live/digest-card";
-import { SiteStatusCard } from "@/components/live/site-status-card";
 import { LiveMediaPair } from "@/components/live/media-pair";
-import { ServerCard } from "@/components/live/server-card";
-import { PlaystationBlock } from "@/components/live/playstation-block";
-import { PulseCard } from "@/components/live/pulse-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { QuestNowCard } from "@/components/live/quest-now-card";
-import { AgentStatusCard } from "@/components/live/agent-status-card";
-import { VibeCodingCard } from "@/components/live/vibecoding-card";
-import { WatchingRow } from "@/components/live/watching-card";
+
+// 屏外卡片不进首屏路由块：滚到时才拉它们自己的 chunk。
+const ActivityCard = lazy(() => import("@/components/live/activity-card").then((m) => ({ default: m.ActivityCard })));
+const WorkoutsStrip = lazy(() => import("@/components/live/workouts-strip").then((m) => ({ default: m.WorkoutsStrip })));
+const SiteStatusCard = lazy(() => import("@/components/live/site-status-card").then((m) => ({ default: m.SiteStatusCard })));
+const ServerCard = lazy(() => import("@/components/live/server-card").then((m) => ({ default: m.ServerCard })));
+const PlaystationBlock = lazy(() => import("@/components/live/playstation-block").then((m) => ({ default: m.PlaystationBlock })));
+const PulseCard = lazy(() => import("@/components/live/pulse-card").then((m) => ({ default: m.PulseCard })));
+const AgentStatusCard = lazy(() => import("@/components/live/agent-status-card").then((m) => ({ default: m.AgentStatusCard })));
+const VibeCodingCard = lazy(() => import("@/components/live/vibecoding-card").then((m) => ({ default: m.VibeCodingCard })));
+const WatchingRow = lazy(() => import("@/components/live/watching-card").then((m) => ({ default: m.WatchingRow })));
 import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
@@ -280,47 +285,61 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   <GodChat className={SLOT.godChat} />
                 </CardBoundary>
                 <CardBoundary label="Activity" className={SLOT.activity} paths={READS.activity}>
-                  <ActivityCard fallback={loaderData.activity} className={SLOT.activity}>
-                    <WorkoutsStrip fallback={loaderData.workouts} />
-                  </ActivityCard>
+                  <DeferredCard height={350} className={SLOT.activity}>
+                    <ActivityCard fallback={loaderData.activity} className={SLOT.activity}>
+                      <WorkoutsStrip fallback={loaderData.workouts} />
+                    </ActivityCard>
+                  </DeferredCard>
                 </CardBoundary>
                 <CardBoundary label="Exit Node" className={SLOT.server} paths={READS.server}>
-                  <ServerCard fallback={loaderData.server} className={SLOT.server} />
+                  <DeferredCard height={281} className={SLOT.server}>
+                    <ServerCard fallback={loaderData.server} className={SLOT.server} />
+                  </DeferredCard>
                 </CardBoundary>
                 <CardBoundary label="Provider Status" className={SLOT.agentStatus} paths={READS.agentStatus}>
-                  <AgentStatusCard fallback={loaderData.agentStatus} className={SLOT.agentStatus} />
+                  <DeferredCard height={172} className={SLOT.agentStatus}>
+                    <AgentStatusCard fallback={loaderData.agentStatus} className={SLOT.agentStatus} />
+                  </DeferredCard>
                 </CardBoundary>
                 <CardBoundary label="Vibe Coding" className={SLOT.vibeCoding} paths={READS.vibeCoding}>
-                  <VibeCodingCard
-                    fallback={loaderData.coding}
-                    nowFallback={loaderData.codingNow}
-                    limitsFallback={loaderData.limits}
-                    className={SLOT.vibeCoding}
-                  />
+                  <DeferredCard height={1372} className={SLOT.vibeCoding}>
+                    <VibeCodingCard
+                      fallback={loaderData.coding}
+                      nowFallback={loaderData.codingNow}
+                      limitsFallback={loaderData.limits}
+                      className={SLOT.vibeCoding}
+                    />
+                  </DeferredCard>
                 </CardBoundary>
                 <CardBoundary label="PlayStation" className={SLOT.playstation} paths={READS.playstation}>
-                  <PlaystationBlock
-                    trophies={trophies}
-                    playing={loaderData.playing}
-                    playingNow={loaderData.playingNow}
-                    className={SLOT.playstation}
-                  />
+                  <DeferredCard height={655} className={SLOT.playstation}>
+                    <PlaystationBlock
+                      trophies={trophies}
+                      playing={loaderData.playing}
+                      playingNow={loaderData.playingNow}
+                      className={SLOT.playstation}
+                    />
+                  </DeferredCard>
                 </CardBoundary>
                 <CardBoundary label="Pulse" className={SLOT.pulse} paths={READS.pulse}>
-                  <PulseCard fallback={loaderData.pulse} className={SLOT.pulse} />
+                  <DeferredCard height={559} className={SLOT.pulse}>
+                    <PulseCard fallback={loaderData.pulse} className={SLOT.pulse} />
+                  </DeferredCard>
                 </CardBoundary>
               </div>
 
               <CardBoundary label="LYJWPAGE" className={SLOT.siteStatus} paths={READS.siteStatus}>
-                <SiteStatusCard
-                  githubFallback={loaderData.githubRepo}
-                  siteFallback={loaderData.siteDeployments}
-                  cloudflareFallback={loaderData.cloudflareWorkers}
-                  healthFallback={loaderData.health}
-                  serverFallback={loaderData.server}
-                  reportersFallback={loaderData.reporters}
-                  className={SLOT.siteStatus}
-                />
+                <DeferredCard height={1711} className={SLOT.siteStatus}>
+                  <SiteStatusCard
+                    githubFallback={loaderData.githubRepo}
+                    siteFallback={loaderData.siteDeployments}
+                    cloudflareFallback={loaderData.cloudflareWorkers}
+                    healthFallback={loaderData.health}
+                    serverFallback={loaderData.server}
+                    reportersFallback={loaderData.reporters}
+                    className={SLOT.siteStatus}
+                  />
+                </DeferredCard>
               </CardBoundary>
 
               <div
@@ -332,7 +351,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   <span className="label-mono text-muted-foreground">Emby</span>
                 </div>
                 <CardBoundary label="Emby" paths={READS.emby}>
-                  <WatchingRow fallback={loaderData.watching} nowFallback={loaderData.nowWatching} />
+                  <DeferredCard height={270}>
+                    <WatchingRow fallback={loaderData.watching} nowFallback={loaderData.nowWatching} />
+                  </DeferredCard>
                 </CardBoundary>
               </div>
             </Section>

@@ -6,6 +6,7 @@ import {
   playstationAvatar,
   playstationAvatarNeedsOptimizing,
   playstationImage,
+  playstationImageSrcSet,
 } from "./playstation-image.ts";
 
 const TROPHY =
@@ -60,4 +61,11 @@ test("认不出档位的 psn-rsc 头像仍走优化器，其它主机不走", ()
   assert.equal(playstationAvatarNeedsOptimizing(opaque, 120), true);
   assert.equal(playstationAvatarNeedsOptimizing(TROPHY, 84), false);
   assert.equal(playstationAvatarNeedsOptimizing("not a url", 120), false);
+});
+
+test("瓷砖 srcset 按 1x、2x、3x 出三档", () => {
+  assert.deepEqual(
+    playstationImageSrcSet(COVER, 112).split(", "),
+    [1, 2, 3].map((density) => `${COVER}?w=${112 * density}&h=${112 * density} ${density}x`),
+  );
 });

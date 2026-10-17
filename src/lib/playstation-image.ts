@@ -78,3 +78,10 @@ export function playstationAvatarNeedsOptimizing(
 }
 
 export const PLAYSTATION_IMAGE_SCALE = 3;
+
+// 按设备像素比出 1x/2x/3x 三档，PSN 现缩每一档都是现成的 JPEG；2 倍屏不必下 3 倍图。
+export function playstationImageSrcSet(url: string, px: number): string {
+  return [1, 2, PLAYSTATION_IMAGE_SCALE]
+    .map((density) => `${playstationImage(url, px * density) ?? url} ${density}x`)
+    .join(", ");
+}

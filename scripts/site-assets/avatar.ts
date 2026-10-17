@@ -40,7 +40,10 @@ export async function githubAvatarPng(
 ): Promise<Uint8Array> {
   if (source) {
     try {
-      const png = await sharp(source).resize(px, px, { fit: "cover" }).png().toBuffer();
+      const png = await sharp(source)
+        .resize(px, px, { fit: "cover" })
+        .png({ compressionLevel: 9, effort: 10, adaptiveFiltering: true })
+        .toBuffer();
       return new Uint8Array(png);
     } catch (error) {
       console.error(
