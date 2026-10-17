@@ -49,6 +49,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 
 几条取数口径：
 
+- **最近提交跟随默认分支**：允许强推后提交日期回退。`src/jobs/github-repo.ts#publish` 在采集期间观察到别的轮次改写提交列表时保留已发布列表，下一轮再与 GitHub 对齐；KV 的读写不是原子比较交换，不保证并发强一致。
 - **缺令牌就干净地跳过**：每个 isolate 每个任务只 `console.warn` 一次
   （`{"event":"collector-skip",…}`），不记错误 —— 没配是配置状态，不是故障。
 - **部分成功**：GitHub 仓库统计的名单和总数、健康汇总的四块（`uptime`、`heartbeat` 读 D1，`errors` 读遥测查询与 Issues 汇总，`vitals` 读 Web Analytics）
