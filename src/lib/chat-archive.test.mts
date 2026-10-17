@@ -236,7 +236,7 @@ test("cards no longer registered are dropped without losing the conversation", (
 test("tiers no longer registered lose only their rank label, the conversation stays", () => {
   const raw = JSON.stringify({ version: 1, activeId: "s", sessions: [{ id: "s", title: "Old ranks", createdAt: 1, updatedAt: 2, messages: [
     { role: "user", content: "hi" },
-    { role: "assistant", content: "Yo.", tier: "haiku", downgradedFrom: "sonnet", seal: "s1" },
+    { role: "assistant", content: "Yo.", tier: "oracle", downgradedFrom: "seer", seal: "s1" },
     { role: "user", content: "deep one" },
     { role: "assistant", content: "Hm.", tier: "fable" },
   ] }] });

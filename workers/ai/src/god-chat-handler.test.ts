@@ -189,6 +189,58 @@ test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效"
   }
 });
 
+test("选 Claude 阵容时 Clef 判的杂鱼档由 Haiku 出场，额度按 claude 阵容扣", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => unexpected();
+  t.after(() => { globalThis.fetch = original; });
+  const seen: { visitor?: string; tier?: [string, string | undefined] } = {};
+  const response = await handleChat(new Request("https://ai.test/api/chat", {
+    method: "POST", body: JSON.stringify({ humanPass: PASS, lineup: "claude", messages: [{ role: "user", content: "hello" }] }),
+  }), {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    ANTHROPIC_API_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "flash",
+    CHAT_QUOTA: binding<ChatQuota>({
+      admitVisitor: async (_ip, _enforce, lineup) => { seen.visitor = lineup; return "ok" as const; },
+      admitTier: async (_ip, wanted, _enforce, _allow, lineup) => { seen.tier = [wanted, lineup]; return null; },
+    }),
+  }, { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") });
+  assert.equal(response.status, 429);
+  await response.text();
+  assert.equal(seen.visitor, "claude");
+  assert.deepEqual(seen.tier, ["haiku", "claude"]);
+});
+
+test("开发环境强制 haiku 时额度预检按 claude 阵容算，不被请求里的 DeepSeek 阵容挡住", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => unexpected();
+  t.after(() => { globalThis.fetch = original; });
+  const seen: (string | undefined)[] = [];
+  const response = await handleChat(new Request("https://ai.test/api/chat", {
+    method: "POST", body: JSON.stringify({ humanPass: PASS, lineup: "deepseek", messages: [{ role: "user", content: "hello" }] }),
+  }), {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    ANTHROPIC_API_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "haiku",
+    CHAT_QUOTA: binding<ChatQuota>({
+      admitVisitor: async (_ip, _enforce, lineup) => { seen.push(lineup); return "ok" as const; },
+      admitTier: async (_ip, _wanted, _enforce, _allow, lineup) => { seen.push(lineup); return null; },
+    }),
+  }, { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") });
+  await response.text();
+  assert.deepEqual(seen, ["claude", "claude"]);
+});
+
 test("没有有效通行证就要 Turnstile：验过后下发通行证，通行证用掉一半才换新，过期或伪造回 403", async (t) => {
   const original = globalThis.fetch;
   t.after(() => { globalThis.fetch = original; });
@@ -819,6 +871,40 @@ test("Small Fry 调 request_upgrade 后整轮对话交给 Prophet：扣 think �
   assert.ok(routes.every((event) => event.downgradedFrom === undefined));
   const seal = events.find((event) => event.type === "seal");
   assert.equal(seal?.trace?.tier, "think");
+});
+
+test("Claude 阵容里 Haiku 升档交给 Sonnet：扣 sonnet 名额，追加 Sonnet 的强度", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async () => unexpected();
+  const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
+  const admitted: string[] = [];
+  const respond = async (request: Request) => {
+    const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+    requests.push(body);
+    return requests.length === 1 ? modelStream(body.model, { name: "request_upgrade", input: {} }) : modelStream(body.model, false);
+  };
+  const env: Env = {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "haiku",
+    ANTHROPIC_API_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    CHAT_QUOTA: binding<ChatQuota>({
+      admitVisitor: async () => "ok" as const,
+      admitTier: async (_ip, wanted) => { admitted.push(wanted); return wanted; },
+    }),
+    ANTHROPIC_EGRESS: binding<AnthropicEgress>({ colo: async () => "KIX", fetch: respond }),
+  };
+  const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "Prove that sqrt(2) is irrational." }]), env, toolIO));
+  assert.deepEqual(admitted, ["haiku", "sonnet"]);
+  assert.equal(requests[1].model, GOD_CHAT_TIER_INFO.sonnet.model);
+  const efforts = requests[1].messages.filter((message) => message.role === "system" && "output_config" in message).map((message) => (message as { output_config: { effort: string } }).output_config.effort);
+  assert.deepEqual(efforts, [GOD_CHAT_TIER_INFO.haiku.effort, GOD_CHAT_TIER_INFO.sonnet.effort]);
+  assert.equal(events.find((event) => event.type === "seal")?.trace?.effort, GOD_CHAT_TIER_INFO.sonnet.effort);
 });
 
 test("Prophet 没有空位时 request_upgrade 回错误，Small Fry 自己答完", async (t) => {

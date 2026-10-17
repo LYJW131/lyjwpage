@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import type Anthropic from "@anthropic-ai/sdk";
-import { GOD_CHAT_QUOTA, GOD_CHAT_ROUTE_LIMIT, GOD_CHAT_TIERS, type GodChatTier } from "@shared/god-chat-tiers";
+import { GOD_CHAT_QUOTA, GOD_CHAT_ROUTE_LIMIT, GOD_CHAT_TIERS, tierPlacement, type GodChatTier } from "@shared/god-chat-tiers";
 
 import { billedOutputTokens } from "./chat/billing.ts";
 import type { Env } from "./runtime.ts";
@@ -83,7 +83,7 @@ function quota() {
 }
 
 function fillTierEveryone(chat: InstanceType<typeof ChatQuota>, tier: GodChatTier) {
-  for (let i = 0; i < GOD_CHAT_QUOTA.tiers[tier].everyone; i++) assert.equal(chat.admitTier(`filler-${tier}-${i}`, tier), tier);
+  for (let i = 0; i < GOD_CHAT_QUOTA.tiers[tier].everyone; i++) assert.equal(chat.admitTier(`filler-${tier}-${i}`, tier, true, true, tierPlacement(tier).lineup), tier);
 }
 
 test("访客总量用完回 visitor，被拒的不记账", () => {
@@ -127,9 +127,20 @@ test("只要还有一档两道都有空就放行", () => {
 test("访客自己各档名额都满回 visitor，即便访客总量还有余", () => {
   const { chat } = quota();
   for (const tier of GOD_CHAT_TIERS) {
-    for (let i = 0; i < GOD_CHAT_QUOTA.tiers[tier].visitor; i++) assert.equal(chat.admitTier("4.4.4.4", tier), tier);
+    for (let i = 0; i < GOD_CHAT_QUOTA.tiers[tier].visitor; i++) assert.equal(chat.admitTier("4.4.4.4", tier, true, true, tierPlacement(tier).lineup), tier);
   }
   assert.equal(chat.admitVisitor("4.4.4.4"), "visitor");
+  assert.equal(chat.admitVisitor("4.4.4.4", true, "claude"), "visitor");
+});
+
+test("空位只看访客所选阵容：DeepSeek 两档满了，选 Claude 的访客照样放行，反之亦然", () => {
+  const { chat } = quota();
+  fillTierEveryone(chat, "flash");
+  fillTierEveryone(chat, "think");
+  fillTierEveryone(chat, "fable");
+  assert.equal(chat.admitVisitor("7.7.7.7"), "site");
+  assert.equal(chat.admitVisitor("7.7.7.7", true, "claude"), "ok");
+  assert.equal(chat.admitTier("7.7.7.7", "sonnet", true, true, "claude"), "sonnet");
 });
 
 test("访客空着的档全站已满、其余档自己用满时回 site", () => {
