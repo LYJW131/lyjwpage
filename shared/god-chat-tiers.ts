@@ -1,6 +1,9 @@
 // Clef 在三档里选：两档 DeepSeek Flash（关思考、开思考）与 Fable；额度用完时往下降。设计请求交给 think 判断要不要开设计会话。
 export const GOD_CHAT_TIERS = ["flash", "think", "fable"] as const;
 export type GodChatTier = (typeof GOD_CHAT_TIERS)[number];
+// 改名前的档位：那时签的章里 trace.tier 是这些值，验章要按签名时的原值算，所以 trace 照收；它们不再路由、不进额度、不画档位标签。
+export const GOD_CHAT_RETIRED_TIERS = ["haiku", "sonnet"] as const;
+export type GodChatRetiredTier = (typeof GOD_CHAT_RETIRED_TIERS)[number];
 export const GOD_CHAT_DESIGN_TIER = "opus";
 export type GodChatServedTier = GodChatTier | typeof GOD_CHAT_DESIGN_TIER;
 export type GodChatRoute = GodChatServedTier | "refuse";
