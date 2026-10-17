@@ -13,7 +13,7 @@ export const ROUTER_FALLBACK: GodChatTier = "flash";
 export const CLEF_CHOICES = {
   flash: { route: "flash" },
   think: { route: "think" },
-  design: { route: "sonnet", design: true },
+  design: { route: "think", design: true },
   fable: { route: "fable" },
   refuse: { route: "refuse" },
 } as const satisfies Record<string, { route: GodChatTier | "refuse"; design?: true }>;
@@ -126,7 +126,7 @@ export async function routeWithClef(ai: Ai | undefined, messages: GodChatMessage
     const choice = parseRouterAnswer(answer);
     if (!choice) return fallback;
     const decision: RouteDecision = { ...CLEF_CHOICES[choice], source: "clef" };
-    // 拒答不调模型；设计请求由 Sonnet 判断要不要开设计会话，用不上预读的数据。
+    // 拒答不调模型；设计请求由 think 判断要不要开设计会话，用不上预读的数据。
     const prefetch = choice === "refuse" || choice === "design" ? [] : parsePrefetch(answer);
     return prefetch.length ? { ...decision, prefetch } : decision;
   } catch (error) {

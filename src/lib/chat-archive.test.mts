@@ -208,7 +208,7 @@ test("streaming keeps one current turn and fresh build status after a concurrent
 
 test("consent resume keeps the sealed handoff and appends the planner reply; finished planner replies are not resumed again", () => {
   const user: ChatBubble & { id: string } = { id: "ask", role: "user", content: "Improve the music card." };
-  const handoff: ChatBubble = { role: "assistant", content: "Handing over to the planner.", designAt: 28, seal: "s1", trace: { tier: "sonnet" } };
+  const handoff: ChatBubble = { role: "assistant", content: "Handing over to the planner.", designAt: 28, seal: "s1", trace: { tier: "think" } };
   const point = chatResumePoint([user, handoff]);
   assert.deepEqual(point, { at: 0, keep: [handoff], handoff: false });
   const planner: ChatBubble = { role: "assistant", content: "Here is my plan." };

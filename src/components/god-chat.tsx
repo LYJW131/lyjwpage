@@ -26,13 +26,11 @@ import {
   readGodChatRoute,
 } from "@shared/god-chat";
 import {
-  GOD_CHAT_DESIGN_JUDGE,
-  GOD_CHAT_RANKS,
+  GOD_CHAT_TIERS,
   GOD_CHAT_TIER_INFO,
   modelLabel,
   type GodChatCount,
   type GodChatServedTier,
-  type GodChatTier,
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
 
@@ -162,7 +160,7 @@ function Conversation({ className, archive, session: conversation }: { className
     let frame = 0;
     let lastFrame = 0;
     let drained: (() => void) | undefined;
-    // 交接回复没盖章就被补发整条替掉，Sonnet 的开场白拿不回来，分隔线画在规划者回复的最前面。
+    // 交接回复没盖章就被补发整条替掉，先知的开场白拿不回来，分隔线画在规划者回复的最前面。
     let meta: Reply = resumed?.handoff ? { designAt: 0 } : {};
     const session = sessionRef.current;
     const bubble = (): ChatBubble => {
@@ -1136,7 +1134,6 @@ function ReplyBody({
 const RANK_TONE: Record<GodChatServedTier, string> = {
   fable: "god-aura bg-clip-text text-transparent font-bold",
   think: "text-foreground",
-  sonnet: "text-foreground",
   opus: "text-foreground",
   flash: "text-muted-foreground opacity-70",
 };
@@ -1148,7 +1145,7 @@ function RankLabel({ reply }: { reply: Reply }) {
   if (!reply.tier) return null;
   const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
   const from = reply.downgradedFrom && GOD_CHAT_TIER_INFO[reply.downgradedFrom];
-  const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.sonnet : undefined;
+  const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.think : undefined;
   return (
     <div className="mb-1.5">
       <div className={cn("label-mono", RANK_TONE[reply.tier])}>
@@ -1267,7 +1264,7 @@ function UsagePanel({
           <span>All messages</span>
           <UsageBar count={usage.visitor} />
           <span>—</span>
-          {[...[...GOD_CHAT_RANKS].reverse(), GOD_CHAT_DESIGN_JUDGE].map((tier: GodChatTier) => (
+          {[...GOD_CHAT_TIERS].reverse().map((tier) => (
             <Fragment key={tier}>
               <span className={cn("truncate", RANK_TONE[tier])}>
                 {GOD_CHAT_TIER_INFO[tier].persona} · {GOD_CHAT_TIER_INFO[tier].label}

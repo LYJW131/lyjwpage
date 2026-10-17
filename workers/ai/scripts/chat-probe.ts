@@ -15,7 +15,7 @@ const { handleChat } = await import("../src/chat/handler.ts");
 
 const USAGE = `用法：pnpm --dir workers/ai chat:probe [--tier flash] [--runs 5] [--fixture listening-now-elsewhere-estimated] "问题"
 用真实模型跑首页对话（跳过 Clef），状态视图读 workers/core/dev-fixtures/ 里同名端点的夹具，没有夹具的视图回 404。
---tier 取 Clef 的选项或档位名（flash、think、fable、sonnet）。
+--tier 取 Clef 的选项或档位名（flash、think、fable、design）。
 ANTHROPIC_API_KEY、DEEPSEEK_API_KEY、EXA_API_KEY、WEB_SEARCH_PROVIDER 取环境变量或 workers/ai/.dev.vars。`;
 
 const args = process.argv.slice(2);

@@ -85,3 +85,8 @@ test("放字不切在代理对中间", () => {
   assert.equal(revealedText("a😀b", 2), "a😀");
   assert.equal(revealedText("a😀b", 1), "a");
 });
+
+test("没收尾的 $$ 公式先压着，收尾后整条出现", () => {
+  assert.equal(stableMarkdown("面积是 $$\\pi r"), "面积是");
+  assert.equal(stableMarkdown("面积是 $$\\pi r^2$$ 平方米"), "面积是 $$\\pi r^2$$ 平方米");
+});

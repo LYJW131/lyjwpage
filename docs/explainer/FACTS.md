@@ -376,8 +376,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### Clef 选档
 
-- Clef 是 Workers AI 上的路由模型（`workers/ai/src/chat/router.ts`，`CLEF_CHOICES`）：flash（DeepSeek Flash 关思考）、think（开思考）、设计（交给 Sonnet 判断）、Fable、refuse；Clef 不可用时落到 `ROUTER_FALLBACK`（flash）。
-- 三档与人设：DeepSeek Flash · Small Fry、DeepSeek Flash Thinking · Prophet、Fable · God；设计请求的判断档 Sonnet 是 Herald，设计会话里的 Opus 是 Architect（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`）。选中的档满了只往下逐档降，绝不往上升（`shared/god-chat-tiers.ts#downgradeChain`）。refuse 不调模型，直接回一句关门话。
+- Clef 是 Workers AI 上的路由模型（`workers/ai/src/chat/router.ts`，`CLEF_CHOICES`）：flash（DeepSeek Flash 关思考）、think（开思考）、设计（交给 think 判断）、Fable、refuse；Clef 不可用时落到 `ROUTER_FALLBACK`（flash）。
+- 三档与人设：DeepSeek Flash · Small Fry、DeepSeek Flash Thinking · Prophet、Fable · God；设计请求由 Prophet 判断，设计会话里的 Opus 是 Architect（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`）。选中的档满了只往下逐档降，绝不往上升（`shared/god-chat-tiers.ts#downgradeChain`）。refuse 不调模型，直接回一句关门话。
 - Small Fry 判断问题超出自己时调 `request_upgrade`，扣到 think 名额就由开思考的 Prophet 重答（`workers/ai/src/chat/handler.ts#UPGRADE_TOOL`）。
 
 ### 工具与盖章
@@ -388,7 +388,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 设计会话
 
-- 站点改动请求由 Clef 交给 Sonnet；Sonnet 觉得值得做才调 `start_design`，在 Claude Managed Agents 上开一个会话，同一条回复交给其中的 Opus 规划者（`workers/ai/src/chat/designer.ts`、`docs/build-routine.md`「设计与确认」）。
+- 站点改动请求由 Clef 交给开思考的 Prophet（DeepSeek Flash Thinking）；它觉得值得做才调 `start_design`，在 Claude Managed Agents 上开一个会话，同一条回复交给其中的 Opus 规划者（`workers/ai/src/chat/designer.ts`、`docs/build-routine.md`「设计与确认」）。
 - 计划卡两个出口：Open issue（浏览器直接跳 GitHub 的 `improvement.yml` 表单，各字段已按计划预填，访客用自己的账号提交、不消费计划、不需授权，见 `shared/build-routine.ts#buildIssueUrl`）、Start build（点之前展开 GitHub 授权说明，接受才弹授权窗口，同意不保存，用完立即撤销，见 `src/components/github-consent.tsx#GithubConsent`）。
 
 ### 构建
