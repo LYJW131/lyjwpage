@@ -4,7 +4,7 @@ import { BUILD_TOKEN_MAX_CHARS, type BuildProposal } from "./build-routine";
 import type { GodChatTimeInput } from "./chat-time";
 import { object } from "./json";
 
-import { GOD_CHAT_RETIRED_TIERS, isGodChatServedTier, type GodChatEffort, type GodChatRetiredTier, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";
+import { isGodChatLineup, isGodChatServedTier, type GodChatEffort, type GodChatLineup, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";
 
 // 卡片渲染 Turnstile 时带上，Worker 校验 siteverify 回来的 action 与之相同。
 export const GOD_CHAT_TURNSTILE_ACTION = "god-chat";
@@ -347,7 +347,7 @@ export function readGodChatRoute(tier: unknown, downgradedFrom?: unknown): { tie
 // trace 由 Worker 在回复结束时随 seal 事件下发，浏览器原样带回；只收枚举与计数，不收任何自由文本（搜索词、文档章节名不回传）。
 // docs 是 read_project_doc 的文档键，design / plan 标记规划工具，cards 是那条回复给访客画过的卡片。
 export type GodChatTrace = {
-  tier?: GodChatServedTier | GodChatRetiredTier;
+  tier?: GodChatServedTier;
   // 每轮原样重放消息级 effort，切换强度不能重写已缓存的历史前缀。
   effort?: GodChatEffort;
   views?: string[];
@@ -420,7 +420,8 @@ export type GodChatEvent =
   | { type: "pass"; pass: string; expiresAt: number };
 
 // resume：设计会话里重新取回访客断线时错过的那条回复，messages 截到访客那条为止；不扣设计轮数。
-export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true; time?: GodChatTimeInput };
+// lineup 缺省按 GOD_CHAT_DEFAULT_LINEUP。
+export type GodChatRequest = { messages: GodChatMessage[]; lineup?: GodChatLineup; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true; time?: GodChatTimeInput };
 
 // 访客自己的话超长就拒；模型的旧回复只截断，超出总量从最早的消息丢起，长回答不能让后续对话发不出去。
 // 浏览器发送前先过一遍，Worker 收到后再过一遍。
@@ -455,7 +456,7 @@ export function normalizeTrace(value: unknown): GodChatTrace | undefined {
   const searches = Number.isInteger(raw.searches) ? Math.min(raw.searches as number, GOD_CHAT_LIMITS.maxWebSearches) : 0;
   const cards = Array.isArray(raw.cards) ? [...new Set(raw.cards.filter(isGodChatCard))] : [];
   const trace: GodChatTrace = {
-    ...((isGodChatServedTier(raw.tier) || GOD_CHAT_RETIRED_TIERS.includes(raw.tier as GodChatRetiredTier)) && { tier: raw.tier as GodChatServedTier | GodChatRetiredTier }),
+    ...(isGodChatServedTier(raw.tier) && { tier: raw.tier }),
     ...(effort && { effort }),
     ...(views.length && { views }),
     ...(docs.length && { docs }),
@@ -481,9 +482,10 @@ const parseTime = (value: unknown): GodChatTimeInput | undefined => {
 
 export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!body || typeof body !== "object") return null;
-  const { messages, turnstileToken, humanPass, designToken, resume, time } = body as Record<string, unknown>;
+  const { messages, lineup, turnstileToken, humanPass, designToken, resume, time } = body as Record<string, unknown>;
   const cleanTime = parseTime(time);
   if (time !== undefined && !cleanTime) return null;
+  if (lineup !== undefined && !isGodChatLineup(lineup)) return null;
   if (turnstileToken !== undefined && (typeof turnstileToken !== "string" || !turnstileToken || turnstileToken.length > 2048)) return null;
   if (humanPass !== undefined && (typeof humanPass !== "string" || !GOD_CHAT_PASS_PATTERN.test(humanPass))) return null;
   if (turnstileToken === undefined && humanPass === undefined) return null;
@@ -511,5 +513,5 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
   // 顶层 time 兜底最新一条：旧会话的访客气泡可能没存 time；逐条保留的那部分在循环里已带上，这里不覆盖它。
   if (cleanTime) fitted[fitted.length - 1] = { ...fitted[fitted.length - 1], time: fitted[fitted.length - 1].time ?? cleanTime };
-  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanTime && { time: cleanTime }) };
+  return { messages: fitted, ...(isGodChatLineup(lineup) && { lineup }), ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanTime && { time: cleanTime }) };
 }

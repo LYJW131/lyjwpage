@@ -189,6 +189,33 @@ test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效"
   }
 });
 
+test("选 Claude 阵容时 Clef 判的杂鱼档由 Haiku 出场，额度按 claude 阵容扣", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => unexpected();
+  t.after(() => { globalThis.fetch = original; });
+  const seen: { visitor?: string; tier?: [string, string | undefined] } = {};
+  const response = await handleChat(new Request("https://ai.test/api/chat", {
+    method: "POST", body: JSON.stringify({ humanPass: PASS, lineup: "claude", messages: [{ role: "user", content: "hello" }] }),
+  }), {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    ANTHROPIC_API_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "flash",
+    CHAT_QUOTA: binding<ChatQuota>({
+      admitVisitor: async (_ip, _enforce, lineup) => { seen.visitor = lineup; return "ok" as const; },
+      admitTier: async (_ip, wanted, _enforce, _allow, lineup) => { seen.tier = [wanted, lineup]; return null; },
+    }),
+  }, { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") });
+  assert.equal(response.status, 429);
+  await response.text();
+  assert.equal(seen.visitor, "claude");
+  assert.deepEqual(seen.tier, ["haiku", "claude"]);
+});
+
 test("没有有效通行证就要 Turnstile：验过后下发通行证，通行证用掉一半才换新，过期或伪造回 403", async (t) => {
   const original = globalThis.fetch;
   t.after(() => { globalThis.fetch = original; });

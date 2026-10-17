@@ -12,6 +12,7 @@ export const CHAT_CODE_PATHS = [
   "src/components/github-consent.tsx",
   "src/lib/chat-archive.ts",
   "src/lib/chat-consent.ts",
+  "src/lib/chat-lineup.ts",
   "src/hooks/use-human-check.ts",
   "shared/god-chat.ts",
   "shared/god-chat-tiers.ts",

@@ -8,7 +8,7 @@ test("an unknown chat tier is dropped from the route event before it reaches the
   assert.equal(readGodChatRoute("toString"), undefined);
   assert.deepEqual(readGodChatRoute(null, "oracle"), { tier: null });
   assert.deepEqual(readGodChatRoute("flash", "oracle"), { tier: "flash" });
-  assert.deepEqual(readGodChatRoute("haiku"), undefined);
+  assert.deepEqual(readGodChatRoute("haiku", "sonnet"), { tier: "haiku", downgradedFrom: "sonnet" });
   assert.deepEqual(readGodChatRoute("think", "fable"), { tier: "think", downgradedFrom: "fable" });
   assert.deepEqual(readGodChatRoute("opus"), { tier: "opus" });
 });

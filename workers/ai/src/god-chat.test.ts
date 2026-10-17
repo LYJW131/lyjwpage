@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { GOD_CHAT_CARD_VIEWS, GOD_CHAT_CARDS, GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, fitHistory, parseGodChatRequest, type GodChatMessage } from "@shared/god-chat";
-import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, downgradeChain, modelLabel } from "@shared/god-chat-tiers";
+import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, downgradeChain, modelLabel, tierPlacement } from "@shared/god-chat-tiers";
 import { readJsonBody, turnstilePassed } from "./chat/guard.ts";
 import { toModelMessages } from "./chat/history.ts";
 import { parseRouterAnswer, routerInput } from "./chat/router.ts";
@@ -102,10 +102,27 @@ test("Clef 看得到长消息的结尾", () => {
   assert.equal(routerInput([user(long)]).state.latestMessage, long);
 });
 
-test("额度用完只往下降级，不往上升", () => {
-  assert.deepEqual(downgradeChain("fable"), ["fable", "think", "flash"]);
-  assert.deepEqual(downgradeChain("think"), ["think", "flash"]);
-  assert.deepEqual(downgradeChain("flash"), ["flash"]);
+test("额度用完只在同一阵容里往下降级，不往上升", () => {
+  assert.deepEqual(downgradeChain("fable", "deepseek"), ["fable", "think", "flash"]);
+  assert.deepEqual(downgradeChain("think", "deepseek"), ["think", "flash"]);
+  assert.deepEqual(downgradeChain("flash", "deepseek"), ["flash"]);
+  assert.deepEqual(downgradeChain("fable", "claude"), ["fable", "sonnet", "haiku"]);
+  assert.deepEqual(downgradeChain("sonnet", "claude"), ["sonnet", "haiku"]);
+});
+
+test("档位反查阵容与档次：Claude 两档落在 claude 阵容，共用的 Fable 算默认阵容", () => {
+  assert.deepEqual(tierPlacement("haiku"), { lineup: "claude", rank: "flash" });
+  assert.deepEqual(tierPlacement("sonnet"), { lineup: "claude", rank: "think" });
+  assert.deepEqual(tierPlacement("think"), { lineup: "deepseek", rank: "think" });
+  assert.deepEqual(tierPlacement("fable"), { lineup: "deepseek", rank: "fable" });
+});
+
+test("请求的阵容只收登记过的值，缺省不带", () => {
+  const messages = [user("hi")];
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", messages })?.lineup, undefined);
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", lineup: "claude", messages })?.lineup, "claude");
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", lineup: "gpt", messages }), null);
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", lineup: "toString", messages }), null);
 });
 
 test("回复的工具痕迹只留合法值，附在前一条访客消息里，下一轮模型知道当时查过", () => {
@@ -359,13 +376,13 @@ test("历史验章：只留盖过章且内容、trace、所答问题都没动过
   assert.deepEqual((await sealedHistory(history, "another-secret")).map((m) => m.content), ["现在呢"]);
 });
 
-test("改名前签的章（trace 里是 sonnet）过完请求解析仍验得过，模型只看到「更早的一档」", async () => {
+test("trace 里是 sonnet 的旧章过完请求解析仍验得过，模型知道那条是 Sonnet 作答", async () => {
   const secret = "test-secret";
   const seal = await sealExchange(secret, "在听什么", "GHOST", { tier: "sonnet" as never, views: ["nowListening"] });
   const parsed = parseGodChatRequest({ turnstileToken: "t", messages: [user("在听什么"), { role: "assistant", content: "GHOST", trace: { tier: "sonnet", views: ["nowListening"] }, seal }, user("现在呢")] });
   const kept = await sealedHistory(parsed!.messages, secret);
   assert.deepEqual(kept.map((m) => m.content), ["在听什么", "GHOST", "现在呢"]);
-  assert.match(JSON.stringify(toModelMessages(kept, "low")), /written by an earlier rank after it called get_site_status for nowListening/);
+  assert.match(JSON.stringify(toModelMessages(kept, "low")), /written by the Prophet \(Sonnet 5\.5\) after it called get_site_status for nowListening/);
 });
 
 test("超长回复经浏览器与 Worker 两道裁剪后，章仍按同一形态对得上", async () => {
