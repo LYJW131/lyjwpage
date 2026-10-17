@@ -533,6 +533,23 @@ test("规划者到预算上限时说明并结束；会话被终止时不盖章",
   assert.ok(!terminated.some((event) => event.type === "seal"));
 });
 
+test("服务器没配设计会话时，设计请求照常交给 think，提示词改说暂时做不了，不承诺再发一条能开", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => unexpected();
+  t.after(() => { globalThis.fetch = original; });
+  const on = designEnv();
+  await parseEvents(await handleChat(chatRequest(), on.env, toolIO));
+  assert.ok(!JSON.stringify(on.requests[0]).includes("Design sessions are switched off"));
+  assert.ok(on.requests[0].tools?.some((tool) => "name" in tool && tool.name === "start_design"));
+  const off = designEnv();
+  delete off.env.BUILD_SESSION_SECRET;
+  const events = await parseEvents(await handleChat(chatRequest(), off.env, toolIO));
+  assert.ok(JSON.stringify(off.requests[0]).includes("Design sessions are switched off"));
+  assert.ok(!off.requests[0].tools?.some((tool) => "name" in tool && tool.name === "start_design"));
+  assert.equal(off.counters.created, 0);
+  assert.ok(events.some((event) => event.type === "seal"));
+});
+
 test("think 可以不开设计会话；模型未获授工具不能偷开会话或提计划；建会话失败时 think 自己答完", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => unexpected();
