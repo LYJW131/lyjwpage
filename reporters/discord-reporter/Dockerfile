@@ -11,5 +11,7 @@ ENV NODE_ENV=production
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./
+ARG GIT_SHA=""
+ENV REPORTER_COMMIT=$GIT_SHA
 USER node
 CMD ["node", "dist/index.js"]

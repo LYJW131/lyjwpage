@@ -1,0 +1,102 @@
+{
+  "productionBranch": "main",
+  "workers": {
+    "ai": {
+      "includes": [
+        "workers/ai/*",
+        "shared/ai-paths.ts",
+        "shared/god-chat.ts",
+        "shared/god-chat-tiers.ts",
+        "shared/github-issue.ts",
+        "shared/mcp.ts",
+        "shared/http-origins.ts",
+        "shared/public-status.ts",
+        "tsconfig.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "scripts/preview-*",
+        "shared/build-routine.ts",
+        "shared/status-views.ts",
+        "shared/site.ts",
+        "shared/asset-url.ts",
+        "shared/json.ts",
+        "shared/sha256.ts",
+        "shared/chat-time.ts"
+      ],
+      "excludes": []
+    },
+    "collector": {
+      "includes": [
+        "workers/collector/*",
+        "shared/*",
+        "tsconfig.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml"
+      ],
+      "excludes": [
+        "shared/god-chat.ts",
+        "shared/god-chat-tiers.ts",
+        "shared/github-issue.ts",
+        "shared/mcp.ts",
+        "shared/build-routine.ts"
+      ]
+    },
+    "core": {
+      "includes": [
+        "workers/core/*",
+        "shared/*",
+        "tsconfig.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "scripts/preview-*"
+      ],
+      "excludes": [
+        "shared/ingest/*",
+        "shared/god-chat.ts",
+        "shared/god-chat-tiers.ts",
+        "shared/github-issue.ts",
+        "shared/mcp.ts",
+        "shared/build-routine.ts"
+      ]
+    },
+    "ingress": {
+      "includes": [
+        "workers/ingress/*",
+        "shared/*",
+        "tsconfig.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml"
+      ],
+      "excludes": [
+        "shared/god-chat.ts",
+        "shared/god-chat-tiers.ts",
+        "shared/github-issue.ts",
+        "shared/mcp.ts",
+        "shared/build-routine.ts"
+      ]
+    },
+    "site": {
+      "includes": [
+        "src/*",
+        "shared/*",
+        "workers/site/*",
+        "scripts/*",
+        "public/*",
+        "docs/explainer/v2/*",
+        ".github/github-avatar.sha256",
+        "wrangler.jsonc",
+        "vite.config.ts",
+        "react-router.config.ts",
+        "tsconfig.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml"
+      ],
+      "excludes": []
+    }
+  }
+}

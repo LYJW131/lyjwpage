@@ -167,6 +167,4 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           grep -q '^status=running restarts=0 ' deploy.log || { echo "::error::$SERVICE is not running cleanly"; exit 1; }
-          if [ "$SERVICE" = server-reporter ]; then
-            grep -qx "REPORTER_COMMIT=$SHA" deploy.log || { echo "::error::$SERVICE is not running $SHA"; exit 1; }
-          fi
+          grep -Fqx "REPORTER_COMMIT=$SHA" deploy.log || { echo "::error::$SERVICE is not running $SHA"; exit 1; }

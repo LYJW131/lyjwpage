@@ -72,13 +72,22 @@ PR 关闭时 `.github/workflows/preview-core-worker.yml` 检出默认分支，�
 
 路径相对于仓库根目录，Cloudflare 的目录末尾 `*` 包含子目录。监视路径跟随生产运行依赖；分支 Preview 的触发路径见「分支预览」。
 
-| Worker | 包含路径 | 排除路径 |
-| --- | --- | --- |
-| `core` | `workers/core/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | `shared/ingest/*`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
-| `ai` | `workers/ai/*`、`shared/ai-paths.ts`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/chat-time.ts`、`shared/mcp.ts`、`shared/http-origins.ts`、`shared/public-status.ts`、`shared/status-views.ts`、`shared/site.ts`、`shared/asset-url.ts`、`shared/json.ts`、`shared/sha256.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | 无 |
-| `site` | `src/*`、`shared/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、`.github/github-avatar.sha256`、`wrangler.jsonc`、`vite.config.ts`、`react-router.config.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml` | 无 |
-| `ingress` | `workers/ingress/*`、`shared/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
-| `collector` | `workers/collector/*`、`shared/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
+生产监视路径以 [`scripts/workers-build-paths.json`](../scripts/workers-build-paths.json) 为唯一配置源。`scripts/deploy-check.ts` 按目标提交相对第一父提交的 Git 差异推导必需构建；同一次 push 含多个 main 提交时传 `--before <push 前的完整 SHA>`。重命名同时检查旧、新路径，删除文件也参与匹配。`--expect` 只追加必需构建，不能缩小自动推导的范围；缺少构建、Git 历史不完整或配置读失败都不通过。仅预览使用的监视范围不参与生产推导。
+
+```bash
+node scripts/deploy-check.ts --sha <完整 SHA> --plan
+node scripts/deploy-check.ts --sha <完整 SHA>
+```
+
+路径配置使用运行脚本所在工作树的版本；运行前同步对应版本并 `git fetch origin main`。匹配遵循 Cloudflare 的 `*` 跨目录、排除优先规则；空变更、文件数或提交数达到 Cloudflare 强制构建阈值时要求全部 Worker 构建，阈值在 `scripts/workers-build-paths.ts#expectedWorkers`。
+
+修改监视路径时，经 Cloudflare Code Mode MCP 读取 `https://api.cloudflare.com/client/v4/accounts/{account_id}/workers/scripts` 的 Worker tag，再读取 `builds/workers/{script_tag}` 的生产配置，导出 JSON 数组。每项仅保留 `worker`、`branch`（`git_repository.branch`）、`includes`（`production_settings.path_includes`）、`excludes`（`production_settings.path_excludes`），不导出环境变量。然后执行：
+
+```bash
+node scripts/workers-build-paths.ts --snapshot <导出的 JSON 文件>
+```
+
+比对拒绝缺项、重复项、分支或路径漂移；路径顺序不影响结果。普通部署核对使用本地配置，不自动查询 Cloudflare；该命令只核对快照，不修改远端，远端配置变更仍按 `HUMAN.md` 审批。
 
 AI 的提示词、SDK 使用和工具编排留在 `workers/ai`，仅面向浏览器的对话契约保留在所排除的共享文件。采集 Worker 调 ai 近况摘要入口的契约 `shared/digest.ts` 只被 ai type-import，不进 ai 的包含路径。公开路径单独定义在 `shared/ai-paths.ts`，路径变化仍触发 core；其他文件只重导出这些路径。eslint 阻止 core 的生产实现导入 AI 业务契约或运行时，防止排除路径后悄悄漏发。
 
