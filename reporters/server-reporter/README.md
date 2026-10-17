@@ -120,6 +120,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter &&
 ```
 
 合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
+自动部署的容器状态与提交校验见同一工作流的 `Verify` 步骤。
 
 生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/server`，不经站点。
 
