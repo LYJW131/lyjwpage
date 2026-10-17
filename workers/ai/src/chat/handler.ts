@@ -117,7 +117,7 @@ const SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map((tool) => ({
 }));
 
 type OpenDesign = Extract<DesignAdmission, { sessionId: string }>;
-type TurnOutcome = { complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string };
+type TurnOutcome = { complete: boolean; refused?: true; trace?: GodChatTrace; planToken?: string; lead?: string };
 
 function devSwitch(env: Env, name: "CHAT_RATE_LIMIT" | "CHAT_FORCE_TIER"): string | undefined {
   return aiDevEnabled(env) ? env[name]?.trim() || undefined : undefined;
@@ -246,8 +246,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
           outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, preset, startedAt, io, emit, signal: abort.signal });
         }
-        const { complete, trace, planToken, lead } = outcome;
-        saved = { outcome: complete ? "complete" : "incomplete", trace };
+        const { complete, refused, trace, planToken, lead } = outcome;
+        saved = { outcome: refused ? "refused" : complete ? "complete" : "incomplete", trace };
         if (complete && lead) emit({ type: "text", text: lead });
         // 只记代码块的语言标记与校验结论、不记内容：图示没画出来时（标记写错、没写、结构不对）靠它判断模型写了什么。
         const fences = replyFences(reply);
@@ -656,5 +656,5 @@ async function converse({
     fallback: Boolean(servedBy),
     cards: [...cards],
   });
-  return { complete: !refused, trace };
+  return { complete: !refused, ...(refused && { refused: true as const }), trace };
 }
