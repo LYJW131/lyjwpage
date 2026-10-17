@@ -76,7 +76,7 @@ struct CodingDetailView: View {
                         }
                         if !usage.topModels.isEmpty {
                             Card(title: "Top Models", systemImage: "cpu") {
-                                ForEach(usage.topModels, id: \.model) { model in
+                                ForEach(usage.topModels.prefix(3), id: \.model) { model in
                                     HStack {
                                         Text(model.model).font(.subheadline).lineLimit(1)
                                         Spacer()
