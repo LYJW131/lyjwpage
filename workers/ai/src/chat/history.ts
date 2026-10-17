@@ -2,14 +2,14 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 import { GOD_CHAT_CARD_VIEWS, isGodChatCard, type GodChatMessage, type GodChatTrace } from "@shared/god-chat";
 import { godChatTimeNote } from "@shared/chat-time";
-import { GOD_CHAT_TIER_INFO, type GodChatEffort } from "@shared/god-chat-tiers";
+import { GOD_CHAT_TIER_INFO, isGodChatServedTier, type GodChatEffort } from "@shared/god-chat-tiers";
 
 import { isProjectDocKey, projectDocPath } from "../tools/project-docs";
 import { isStatusViewKey } from "../tools/site-status";
 
 // trace 随整对历史验过章（src/chat/seal.ts），仍只用枚举（档位、登记过的视图键与文档键）和计数拼，不放任何自由文本。
 function traceNote({ tier, views, docs, searches, fallback, design, plan, cards }: GodChatTrace): string {
-  const rank = tier ? `the ${GOD_CHAT_TIER_INFO[tier].persona} (${GOD_CHAT_TIER_INFO[tier].label})` : "an earlier rank";
+  const rank = isGodChatServedTier(tier) ? `the ${GOD_CHAT_TIER_INFO[tier].persona} (${GOD_CHAT_TIER_INFO[tier].label})` : "an earlier rank";
   const who = fallback ? `another Claude model standing in for ${rank}, which declined it` : rank;
   const shown = cards?.filter(isGodChatCard) ?? [];
   const behindCards = new Set<string>(shown.flatMap((card) => GOD_CHAT_CARD_VIEWS[card]));

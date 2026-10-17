@@ -16,9 +16,9 @@ const VIEW_NOTES = {
   powerBank: "Anker power bank: battery %, charging, ports",
   listening: "Recently played Apple Music tracks",
   nowListening: "Song playing right now: reported by the Mac or HomePod (music), or inferred on another device from Apple Music play history (elsewhere); idle only covers the Mac and HomePod",
-  coding: "AI coding token usage and API-equivalent cost over recent days",
+  coding: "AI coding token totals and API-equivalent cost since tracking began, top models and per-agent totals; no per-day numbers (those are in codingYear)",
   codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently",
-  codingYear: "Daily coding token totals over the past year (heatmap data, large)",
+  codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums (large)",
   limits: "Coding agent account plans and rate-limit windows",
   agentStatus: "Status pages of AI providers (operational / incidents)",
   watching: "Recently watched movies and episodes on Emby",
@@ -27,7 +27,7 @@ const VIEW_NOTES = {
   playingNow: "PlayStation online status and current game",
   questNow: "Meta Quest current status",
   trophies: "PlayStation trophy profile and recent trophy progress",
-  githubChart: "GitHub contribution chart",
+  githubChart: "Daily GitHub contribution counts over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums",
   githubRepo: "This site's GitHub repo: totals, contributors and the latest commit titles (refreshed periodically, may lag by up to half an hour)",
   cloudflareWorkers: "Cloudflare Workers request and error stats for this site",
   siteDeployments: "Site Worker production deployment, recent builds, pageviews and PageSpeed samples",
@@ -159,8 +159,18 @@ function contains(value: unknown, needle: string): boolean {
   return false;
 }
 
-// 热力图类视图是 origin 起逐日的数值数组，模型按下标数日期既费步数又容易数错，所以附上按月合计，键为 `<数组名>ByMonth`。
+// 热力图类视图是 origin 起逐日的数值数组，模型按下标数日期既费步数又容易数错（实测关思考的 Flash 画「最近 7 天」错位一天），
+// 所以附上按月合计 `<数组名>ByMonth`、最近 RECENT_DAYS 天的逐日值 `<数组名>LastDays`（键是日期）与现成的合计
+// `<数组名>Sums`：关思考的 Flash 心算一长串数字会算错（实测「最近 7 天」少算 6 亿），给好的合计就不必它加。
+// 「最近」从数据源的今天 `todayAtSource` 往回数：编码热力图补满 53 周，今天之后的格子是 0，不能按数组末尾算。
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const RECENT_DAYS = 14;
+
+function lastDays(origin: string, values: number[]): Record<string, number> {
+  const start = Date.parse(`${origin}T00:00:00Z`);
+  const from = Math.max(0, values.length - RECENT_DAYS);
+  return Object.fromEntries(values.slice(from).map((value, index) => [new Date(start + (from + index) * 86_400_000).toISOString().slice(0, 10), value]));
+}
 
 function monthlyTotals(origin: string, values: number[]): Record<string, number> {
   const start = Date.parse(`${origin}T00:00:00Z`);
@@ -172,6 +182,11 @@ function monthlyTotals(origin: string, values: number[]): Record<string, number>
   return totals;
 }
 
+function sums(values: number[]) {
+  const total = (from: number) => values.slice(from).reduce((sum, value) => sum + value, 0);
+  return { last7Days: total(-7), last30Days: total(-30), all: total(0) };
+}
+
 export function withMonthlyTotals(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(withMonthlyTotals);
   if (!value || typeof value !== "object") return value;
@@ -179,8 +194,16 @@ export function withMonthlyTotals(value: unknown): unknown {
   const start = typeof record.from === "string" && DAY.test(record.from) ? record.from : record.origin;
   const out = Object.fromEntries(Object.entries(record).map(([key, child]) => [key, withMonthlyTotals(child)]));
   if (typeof start !== "string" || !DAY.test(start)) return out;
+  const today = typeof record.todayAtSource === "string" && DAY.test(record.todayAtSource)
+    ? Math.round((Date.parse(`${record.todayAtSource}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000)
+    : undefined;
   for (const [key, child] of Object.entries(record)) {
-    if (Array.isArray(child) && child.length && child.every((item) => typeof item === "number")) out[`${key}ByMonth`] = monthlyTotals(start, child);
+    if (Array.isArray(child) && child.length && child.every((item) => typeof item === "number")) {
+      const past = today === undefined || today < 0 ? child : child.slice(0, today + 1);
+      out[`${key}ByMonth`] = monthlyTotals(start, child);
+      out[`${key}LastDays`] = lastDays(start, past);
+      out[`${key}Sums`] = sums(past);
+    }
   }
   return out;
 }

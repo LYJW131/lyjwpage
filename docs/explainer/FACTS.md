@@ -367,18 +367,18 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 发第一句之前
 
-- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Turnstile、Workers AI 的 Clef、Anthropic、搜索与文档服务、GitHub、这个浏览器等）；点 Accept 之前不加载 Turnstile、不发任何请求（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
+- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Workers AI 的 Clef、DeepSeek、Anthropic、搜索与文档服务、GitHub、这个浏览器等）；点 Accept 之前不发任何对话请求，只在后台先跑 Turnstile（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
 
 ### 过闸（花钱之前）
 
-- 浏览器经 core 转发到 ai Worker（`shared/ai-paths.ts#AI_HTTP_PATHS`）。先验人：通行证（验过人后按 IP 签发、有效期 `shared/god-chat.ts#GOD_CHAT_PASS_TTL_MS`）或 Turnstile（`workers/ai/src/chat/pass.ts`、`turnstilePassed`）。
+- 浏览器经 core 转发到 ai Worker（`shared/ai-paths.ts#AI_HTTP_PATHS`）。先验人：通行证（验过人后签发、不绑 IP，有效期 `shared/god-chat.ts#GOD_CHAT_PASS_TTL_MS`，用掉一半随回复换新）或 Turnstile（`workers/ai/src/chat/pass.ts`、`turnstilePassed`）。
 - 再过 `ChatQuota.admitVisitor` 三道：访客总量、全站路由次数（`shared/god-chat-tiers.ts#GOD_CHAT_ROUTE_LIMIT`）、这位访客此刻至少有一档访客与全站都有空位；挡下回 429，到此为止，不再付费调 Clef（`workers/ai/README.md`「首页对话」）。数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，片中不出数。
 
 ### Clef 选档
 
-- Clef 是 Workers AI 上的路由模型（`workers/ai/src/chat/router.ts`，`CLEF_CHOICES`）：Haiku（两种思考强度）、Sonnet、设计、Fable、refuse；Clef 不可用时落到 `ROUTER_FALLBACK`（Haiku）。
-- 三档与人设：Haiku · Small Fry、Sonnet · Prophet、Fable · God；设计会话里的 Opus 是 Architect（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`）。选中的档满了只往下逐档降，绝不往上升（`shared/god-chat-tiers.ts#downgradeChain`）。refuse 不调模型，直接回一句关门话。
-- Haiku 判断问题超出自己时调 `request_upgrade`，扣到 Sonnet 名额就由 Sonnet 重答（`workers/ai/src/chat/handler.ts#UPGRADE_TOOL`）。
+- Clef 是 Workers AI 上的路由模型（`workers/ai/src/chat/router.ts`，`CLEF_CHOICES`）：flash（DeepSeek Flash 关思考）、think（开思考）、设计（交给 think 判断）、Fable、refuse；Clef 不可用时落到 `ROUTER_FALLBACK`（flash）。
+- 三档与人设：DeepSeek Flash · Small Fry、DeepSeek Flash Thinking · Prophet、Fable · God；设计请求由 Prophet 判断，设计会话里的 Opus 是 Architect（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`）。选中的档满了只往下逐档降，绝不往上升（`shared/god-chat-tiers.ts#downgradeChain`）。refuse 不调模型，直接回一句关门话。
+- Small Fry 判断问题超出自己时调 `request_upgrade`，扣到 think 名额就由开思考的 Prophet 重答（`workers/ai/src/chat/handler.ts#UPGRADE_TOOL`）。
 
 ### 工具与盖章
 
@@ -388,7 +388,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 设计会话
 
-- 站点改动请求由 Clef 交给 Sonnet；Sonnet 觉得值得做才调 `start_design`，在 Claude Managed Agents 上开一个会话，同一条回复交给其中的 Opus 规划者（`workers/ai/src/chat/designer.ts`、`docs/build-routine.md`「设计与确认」）。
+- 站点改动请求由 Clef 交给开思考的 Prophet（DeepSeek Flash Thinking）；它觉得值得做才调 `start_design`，在 Claude Managed Agents 上开一个会话，同一条回复交给其中的 Opus 规划者（`workers/ai/src/chat/designer.ts`、`docs/build-routine.md`「设计与确认」）。
 - 计划卡两个出口：Open issue（浏览器直接跳 GitHub 的 `improvement.yml` 表单，各字段已按计划预填，访客用自己的账号提交、不消费计划、不需授权，见 `shared/build-routine.ts#buildIssueUrl`）、Start build（点之前展开 GitHub 授权说明，接受才弹授权窗口，同意不保存，用完立即撤销，见 `src/components/github-consent.tsx#GithubConsent`）。
 
 ### 构建

@@ -1,22 +1,26 @@
-export const GOD_CHAT_TIERS = ["haiku", "sonnet", "fable"] as const;
+// Clef 在三档里选：两档 DeepSeek Flash（关思考、开思考）与 Fable；额度用完时往下降。设计请求交给 think 判断要不要开设计会话。
+export const GOD_CHAT_TIERS = ["flash", "think", "fable"] as const;
 export type GodChatTier = (typeof GOD_CHAT_TIERS)[number];
+// 改名前的档位：那时签的章里 trace.tier 是这些值，验章要按签名时的原值算，所以 trace 照收；它们不再路由、不进额度、不画档位标签。
+export const GOD_CHAT_RETIRED_TIERS = ["haiku", "sonnet"] as const;
+export type GodChatRetiredTier = (typeof GOD_CHAT_RETIRED_TIERS)[number];
 export const GOD_CHAT_DESIGN_TIER = "opus";
 export type GodChatServedTier = GodChatTier | typeof GOD_CHAT_DESIGN_TIER;
 export type GodChatRoute = GodChatServedTier | "refuse";
 
 export type GodChatEffort = "low" | "medium" | "high";
+export type GodChatProvider = "anthropic" | "deepseek";
 
-// 有意的取舍：回复上限随档位放大，思考强度不跟档位走，Sonnet、Fable 用 low 控成本和等待（Sonnet low 与 medium 的回答质量相当，
-// 只在难题上多花约两成时间）。Opus 不在路由与额度里，只在已开启的设计会话里作答，强度 medium。effort 是默认值：
-// Clef 选 Haiku 时连强度一起选（workers/ai/src/chat/router.ts#CLEF_CHOICES），降级、强制档位或 Clef 不可用时才用这里的。
-// serverFallback：该型号支持服务端拒答兜底（beta 头与 fallbacks 参数）。
-export type GodChatTierInfo = { model: string; label: string; persona: string; effort: GodChatEffort; maxTokens: number; serverFallback: boolean };
+// 有意的取舍：回复上限随档位放大。Fable 用 low 控成本和等待；DeepSeek 的 effort 只有 low / high 两档（medium 映射到 high）。
+// Opus 不在路由与额度里，只在已开启的设计会话里作答，强度 medium。thinking 为 false 的档整条回复关掉思考，effort 不生效。
+// serverFallback：该型号支持服务端拒答兜底（beta 头与 fallbacks 参数），只有 Anthropic 的型号有。
+export type GodChatTierInfo = { model: string; label: string; persona: string; provider: GodChatProvider; thinking: boolean; effort: GodChatEffort; maxTokens: number; serverFallback: boolean };
 
 export const GOD_CHAT_TIER_INFO: Record<GodChatServedTier, GodChatTierInfo> = {
-  haiku: { model: "claude-haiku-5-5", label: "Haiku 5.5", persona: "Small Fry", effort: "medium", maxTokens: 2048, serverFallback: false },
-  sonnet: { model: "claude-sonnet-5-5", label: "Sonnet 5.5", persona: "Prophet", effort: "low", maxTokens: 4096, serverFallback: true },
-  fable: { model: "claude-fable-5-1", label: "Fable 5.1", persona: "God", effort: "low", maxTokens: 8192, serverFallback: true },
-  opus: { model: "claude-opus-5-5", label: "Opus 5.5", persona: "Architect", effort: "medium", maxTokens: 4096, serverFallback: true },
+  flash: { model: "deepseek-flash", label: "DeepSeek Flash", persona: "Small Fry", provider: "deepseek", thinking: false, effort: "low", maxTokens: 4096, serverFallback: false },
+  think: { model: "deepseek-flash", label: "DeepSeek Flash Thinking", persona: "Prophet", provider: "deepseek", thinking: true, effort: "low", maxTokens: 8192, serverFallback: false },
+  fable: { model: "claude-fable-5-1", label: "Fable 5.1", persona: "God", provider: "anthropic", thinking: true, effort: "low", maxTokens: 8192, serverFallback: true },
+  opus: { model: "claude-opus-5-5", label: "Opus 5.5", persona: "Architect", provider: "anthropic", thinking: true, effort: "medium", maxTokens: 4096, serverFallback: true },
 };
 
 export function isGodChatTier(value: unknown): value is GodChatTier {
@@ -29,7 +33,7 @@ export function isGodChatServedTier(value: unknown): value is GodChatServedTier 
 
 // 拒答兜底换上的模型不在上面几档里，展示名从 id 推：claude-opus-4-8 → Opus 4.8，日期后缀不显示。
 export function modelLabel(model: string): string {
-  const own = Object.values(GOD_CHAT_TIER_INFO).find((info) => info.model === model);
+  const own = Object.values(GOD_CHAT_TIER_INFO).find((info) => info.model === model && info.provider === "anthropic");
   if (own) return own.label;
   const [family, ...version] = model.replace(/^claude-/, "").replace(/-\d{8}$/, "").split("-");
   if (!family) return model;
@@ -47,8 +51,8 @@ export const GOD_CHAT_QUOTA = {
   windowMs: 60_000,
   visitor: 10,
   tiers: {
-    haiku: { visitor: 6, everyone: 60 },
-    sonnet: { visitor: 3, everyone: 24 },
+    flash: { visitor: 8, everyone: 80 },
+    think: { visitor: 5, everyone: 40 },
     fable: { visitor: 1, everyone: 6 },
   },
 } as const satisfies { windowMs: number; visitor: number; tiers: Record<GodChatTier, { visitor: number; everyone: number }> };

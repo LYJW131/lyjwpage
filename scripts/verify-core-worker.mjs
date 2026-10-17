@@ -245,7 +245,7 @@ export default { fetch(request, env) {
   assert.equal(streamResponse.headers.get('x-observed-mcp-protocol'), streamHeaders['MCP-Protocol-Version']);
   const reader = streamResponse.body.getReader();
   const first = await reader.read();
-  assert.equal(new TextDecoder().decode(first.value), '{"type":"route","route":"haiku","tier":"haiku"}\n', 'the first NDJSON event must arrive before the delayed text');
+  assert.equal(new TextDecoder().decode(first.value), '{"type":"route","route":"flash","tier":"flash"}\n', 'the first NDJSON event must arrive before the delayed text');
   let rest = '';
   for (;;) {
     const next = await reader.read();

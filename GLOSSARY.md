@@ -21,7 +21,7 @@ lyjw 和 Claude 在线程、PR、文档里共用的词。每条一句话说是�
 
 | 词 | 是什么 | 出处 |
 | --- | --- | --- |
-| 杂鱼 / 先知 / 神 | 对话的三档人设（Small Fry / Prophet / God），各对应一个模型 | `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` |
+| 杂鱼 / 先知 / 神 | 对话的三档人设（Small Fry / Prophet / God）：杂鱼与先知是同一个 DeepSeek Flash，关与开思考；神是 Fable | `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` |
 | Clef | 先给访客消息分档、拦掉垃圾的小模型 | `workers/ai/src/chat/router.ts` |
 | 升档 | 杂鱼答不了时调 `request_upgrade`，同一条回复交给先知 | `workers/ai/src/chat/handler.ts` |
 | 设计会话 | 访客想改站点时开的 Managed Agents 会话 | `workers/ai/README.md` |
