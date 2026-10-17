@@ -64,7 +64,7 @@ test("默认精简第一页，沿 nextCursor 读到最后一页没有 nextCursor
   assert.deepEqual([...ledger.views], ["playing"]);
 });
 
-test("逐日数值数组整份返回不分页，并附按月合计，一次读取就能答出本月总数", async () => {
+test("逐日数值数组整份返回不分页，并附按月合计与最近几天带日期的值，一次读取就能答出本月总数与某一天", async () => {
   const counts = Array.from({ length: 371 }, (_, i) => i % 3);
   const io = fakeIO(() => ({ ok: true, data: { origin: "2025-10-05", counts } }));
   const { summary, json } = section((await run({ views: ["githubChart"] }, io)).text, "githubChart");
@@ -74,6 +74,23 @@ test("逐日数值数组整份返回不分页，并附按月合计，一次读�
   assert.equal(parsed.data.countsByMonth["2025-10"], counts.slice(0, 27).reduce((a, b) => a + b, 0));
   assert.equal(parsed.data.countsByMonth["2026-10"], counts.slice(361).reduce((a, b) => a + b, 0));
   assert.equal(Object.keys(parsed.data.countsByMonth).length, 13);
+  const recent = Object.entries(parsed.data.countsLastDays);
+  assert.equal(recent.length, 14);
+  assert.deepEqual(recent.at(-1), ["2026-10-10", counts[370]]);
+  assert.deepEqual(recent[0], ["2026-09-27", counts[357]]);
+  const add = (list: number[]) => list.reduce((a, b) => a + b, 0);
+  assert.deepEqual(parsed.data.countsSums, { last7Days: add(counts.slice(-7)), last30Days: add(counts.slice(-30)), all: add(counts) });
+});
+
+test("带 todayAtSource 的热力图从数据源的今天往回算最近几天，今天之后补的空格子不算", async () => {
+  const days = [...Array.from({ length: 30 }, (_, i) => i + 1), 0, 0, 0];
+  const io = fakeIO(() => ({ ok: true, data: { origin: "2026-09-01", todayAtSource: "2026-09-30", days } }));
+  const { json } = section((await run({ views: ["codingYear"] }, io)).text, "codingYear");
+  const parsed = JSON.parse(json);
+  const recent = Object.entries(parsed.data.daysLastDays);
+  assert.equal(recent.length, 14);
+  assert.deepEqual(recent.at(-1), ["2026-09-30", 30]);
+  assert.deepEqual(parsed.data.daysSums, { last7Days: 24 + 25 + 26 + 27 + 28 + 29 + 30, last30Days: 465, all: 465 });
 });
 
 test("detail=full 保留图片字段，短列表保持原样", async () => {

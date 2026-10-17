@@ -122,7 +122,7 @@ function validBubble(value: unknown): value is ChatBubble {
   if (["lookups", "searches", "steps"].some((key) => value[key] !== undefined && !strings(value[key]))) return false;
   if (value.docs !== undefined && (!Array.isArray(value.docs) || !value.docs.every((doc) => object(doc) && typeof doc.path === "string" && typeof doc.url === "string" && optionalString(doc.section)))) return false;
   if (value.sources !== undefined && (!Array.isArray(value.sources) || !value.sources.every((source) => object(source) && typeof source.url === "string" && typeof source.title === "string"))) return false;
-  return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || isGodChatServedTier(value.tier)) && (value.downgradedFrom === undefined || isGodChatServedTier(value.downgradedFrom));
+  return ["id", "thinking", "seal", "planToken", "servedBy"].every((key) => optionalString(value[key])) && (value.tier === undefined || value.tier === null || typeof value.tier === "string") && optionalString(value.downgradedFrom);
 }
 
 // 卡片清单会变：存档里已不登记的卡片只是不再画，整段对话照留。
@@ -132,6 +132,17 @@ function dropRetiredCards(session: ChatSession): ChatSession {
     const kept = cards?.filter(({ card }) => isGodChatCard(card));
     return kept?.length ? { ...message, cards: kept } : message;
   }) };
+}
+
+// 档位会改名（haiku / sonnet 换成 flash / think）：存档里已不登记的档位只去掉那条回复的档位标签，整段对话照留。
+function dropRetiredTiers(session: ChatSession): ChatSession {
+  const retired = (tier: unknown) => typeof tier === "string" && !isGodChatServedTier(tier);
+  if (!session.messages.some((message) => retired(message.tier) || retired(message.downgradedFrom))) return session;
+  return { ...session, messages: session.messages.map(({ tier, downgradedFrom, ...message }) => ({
+    ...message,
+    ...(!retired(tier) && tier !== undefined && { tier }),
+    ...(!retired(downgradedFrom) && downgradedFrom !== undefined && { downgradedFrom }),
+  })) };
 }
 
 export function readChatArchive(raw: string | null): ChatArchive {
@@ -146,7 +157,7 @@ export function readChatArchive(raw: string | null): ChatArchive {
       ids.add(session.id);
       return true;
     });
-    return boundChatArchive({ version: 1, activeId: typeof value.activeId === "string" ? value.activeId : "", sessions: sessions.map(dropRetiredCards) });
+    return boundChatArchive({ version: 1, activeId: typeof value.activeId === "string" ? value.activeId : "", sessions: sessions.map((session) => dropRetiredTiers(dropRetiredCards(session))) });
   } catch {
     return EMPTY_CHAT_ARCHIVE;
   }

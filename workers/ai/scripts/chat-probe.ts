@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 
-import { GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent } from "@shared/god-chat";
+import type { GodChatEvent } from "@shared/god-chat";
 import { STATUS_VIEWS } from "@shared/status-views";
 import type { Env } from "../src/runtime.ts";
 
@@ -12,17 +12,19 @@ registerHooks({
   },
 });
 const { handleChat } = await import("../src/chat/handler.ts");
+const { issuePass } = await import("../src/chat/pass.ts");
 
-const USAGE = `用法：pnpm --dir workers/ai chat:probe [--tier haiku-medium] [--runs 5] [--fixture listening-now-elsewhere-estimated] "问题"
+const USAGE = `用法：pnpm --dir workers/ai chat:probe [--tier flash] [--runs 5] [--fixture listening-now-elsewhere-estimated] "问题"
 用真实模型跑首页对话（跳过 Clef 与验人），状态视图读 workers/core/dev-fixtures/ 里同名端点的夹具，没有夹具的视图回 404。
-ANTHROPIC_API_KEY、EXA_API_KEY 取环境变量或 workers/ai/.dev.vars。`;
+--tier 取 Clef 的选项或档位名（flash、think、fable、design）。
+ANTHROPIC_API_KEY、DEEPSEEK_API_KEY、EXA_API_KEY、WEB_SEARCH_PROVIDER 取环境变量或 workers/ai/.dev.vars。`;
 
 const args = process.argv.slice(2);
 const flag = (name: string, fallback: string) => {
   const index = args.indexOf(`--${name}`);
   return index >= 0 ? args.splice(index, 2)[1] ?? fallback : fallback;
 };
-const tier = flag("tier", "haiku-medium");
+const tier = flag("tier", "flash");
 const runs = Number(flag("runs", "1"));
 const fixtures = flag("fixture", "listening-now-elsewhere-estimated").split(",");
 const question = args.join(" ").trim();
@@ -34,8 +36,9 @@ if (!question || !Number.isSafeInteger(runs) || runs < 1) {
 const devVars = (() => { try { return readFileSync(new URL("../.dev.vars", import.meta.url), "utf8"); } catch { return ""; } })();
 const secret = (name: string) => process.env[name] || devVars.match(new RegExp(`^${name}=(.+)$`, "m"))?.[1]?.trim() || undefined;
 const apiKey = secret("ANTHROPIC_API_KEY");
-if (!apiKey) {
-  console.error("缺 ANTHROPIC_API_KEY（环境变量或 workers/ai/.dev.vars）");
+const deepseekKey = secret("DEEPSEEK_API_KEY");
+if (!apiKey || !deepseekKey) {
+  console.error("缺 ANTHROPIC_API_KEY 或 DEEPSEEK_API_KEY（环境变量或 workers/ai/.dev.vars）");
   process.exit(1);
 }
 
@@ -58,12 +61,6 @@ const fixtureByPath = new Map(fixtures.map((name) => {
 
 // 和生产一样直连 api.anthropic.com：SDK 会读 ANTHROPIC_BASE_URL，本机若设了它就会绕到别处。
 delete process.env.ANTHROPIC_BASE_URL;
-const realFetch = globalThis.fetch;
-globalThis.fetch = async (input, init) => {
-  const url = input instanceof Request ? input.url : String(input);
-  if (url.startsWith("https://challenges.cloudflare.com/")) return Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
-  return realFetch(input, init);
-};
 
 const quota = {
   admitVisitor: async () => "ok",
@@ -74,19 +71,22 @@ const env = {
   CHAT_FORCE_TIER: tier,
   CHAT_RATE_LIMIT: "off",
   ANTHROPIC_API_KEY: apiKey,
-  EXA_API_KEY: secret("EXA_API_KEY"),
+  DEEPSEEK_API_KEY: deepseekKey,
   TURNSTILE_SECRET_KEY: "probe",
+  EXA_API_KEY: secret("EXA_API_KEY"),
+  WEB_SEARCH_PROVIDER: secret("WEB_SEARCH_PROVIDER"),
   CHAT_HISTORY_SECRET: "probe",
   ALLOWED_ORIGINS: "https://lyjw.me",
   PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
   CHAT_QUOTA: { idFromName: () => ({}), get: () => quota, getByName: () => quota },
 } as unknown as Env;
 
+const { pass } = await issuePass("probe");
 for (let run = 1; run <= runs; run++) {
   const response = await handleChat(new Request("https://probe.local/api/chat", {
     method: "POST",
     headers: { "CF-Connecting-IP": "127.0.0.1" },
-    body: JSON.stringify({ turnstileToken: "probe", messages: [{ role: "user", content: question }] }),
+    body: JSON.stringify({ humanPass: pass, messages: [{ role: "user", content: question }] }),
   }), env, {
     readStatus: async (path) => fixtureByPath.has(path) ? Response.json(stamp(fixtureByPath.get(path), Date.now())) : Response.json({ ok: false, error: "no fixture" }, { status: 404 }),
     readDoc: async () => new Response("no doc", { status: 404 }),

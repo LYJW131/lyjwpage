@@ -11,8 +11,10 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
   CF_VERSION_METADATA?: WorkerVersionMetadata;
   ANTHROPIC_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;
   EXA_API_KEY?: string;
+  WEB_SEARCH_PROVIDER?: string;
   CHAT_HISTORY_SECRET?: string;
   CHAT_QUOTA?: DurableObjectNamespace<ChatQuota>;
   CHAT_LOG?: DurableObjectNamespace<ChatLog>;

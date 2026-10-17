@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
 
-import { CHAT_REMARK_PLUGINS, CHAT_STREAM_REHYPE_PLUGINS } from "@/lib/chat-markdown-plugins";
+import { CHAT_REHYPE_PLUGINS, CHAT_REMARK_PLUGINS, CHAT_STREAM_REHYPE_PLUGINS } from "@/lib/chat-markdown-plugins";
 
 const render = (text: string) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: CHAT_REMARK_PLUGINS }, text));
 
@@ -32,4 +32,14 @@ test("流式期间中文逐字、英文按词拆成淡入 span，代码块不拆
   const html = renderToStaticMarkup(createElement(Markdown, { remarkPlugins: CHAT_REMARK_PLUGINS, rehypePlugins: CHAT_STREAM_REHYPE_PLUGINS }, "你好 world **粗体**\n\n```js\nconst a = 1;\n```"));
   assert.match(html, /<span class="stream-token">你<\/span><span class="stream-token">好<\/span> <span class="stream-token">world <\/span><strong><span class="stream-token">粗<\/span>/);
   assert.match(html, /<pre><code class="language-js">const a = 1;\n<\/code><\/pre>/);
+});
+
+test("$$…$$ 渲染成 KaTeX，行内与独占一行都行；单个 $ 是价格不当公式", () => {
+  const html = (text: string, rehypePlugins = CHAT_REHYPE_PLUGINS) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: CHAT_REMARK_PLUGINS, rehypePlugins }, text));
+  assert.match(html("面积是 $$\\pi r^2$$ 平方米"), /<span class="katex">/);
+  assert.match(html("$$\n\\frac{a}{b}\n$$"), /katex-display/);
+  assert.equal(html("输入 $10 / 输出 $50 每百万"), "<p>输入 $10 / 输出 $50 每百万</p>");
+  const streamed = html("先看 $$x^2$$ 再说", CHAT_STREAM_REHYPE_PLUGINS);
+  assert.match(streamed, /<span class="katex">/);
+  assert.doesNotMatch(streamed, /class="katex">[^]*stream-token[^]*<\/math>/);
 });

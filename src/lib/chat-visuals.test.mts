@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GOD_CHAT_VISUAL_EXAMPLES, GOD_CHAT_VISUAL_KINDS } from "@shared/god-chat";
+import { GOD_CHAT_VISUAL_EXAMPLES, GOD_CHAT_VISUAL_KINDS, GOD_CHAT_VISUAL_LIMITS } from "@shared/god-chat";
 import { formatVisualNumber, niceTicks, parsePartialVisual, parseVisual } from "@/lib/chat-visuals";
 
 test("提示词里印的每个例子都能过校验", () => {
@@ -17,6 +17,38 @@ test("结构不对整块不画，交回代码块", () => {
   assert.equal(parseVisual("chart", JSON.stringify({ type: "column", labels: ["a"], series: [{ name: "x", values: [-1] }] })), null);
   assert.equal(parseVisual("stats", JSON.stringify({ items: [] })), null);
   assert.equal(parseVisual("timeline", JSON.stringify([{ time: "1", title: "a" }])), null);
+  assert.equal(parseVisual("chart", JSON.stringify({ type: "bar", labels: ["a", "", "c"], series: [{ name: "x", values: [1, 2, 3] }] })), null);
+});
+
+test("局部不合格只丢那一部分：长文字截断、多出的条目截尾、坏条目与坏序列丢掉，其余照画", () => {
+  const long = "很".repeat(GOD_CHAT_VISUAL_LIMITS.label + 5);
+  const stats = parseVisual("stats", JSON.stringify({
+    items: [{ label: long, value: "1" }, { label: "bad" }, ...Array.from({ length: 6 }, (_, i) => ({ label: `s${i}`, value: String(i) }))],
+    summary: { label: "no value" },
+  }));
+  assert.ok(stats?.kind === "stats");
+  assert.equal(stats.items.length, GOD_CHAT_VISUAL_LIMITS.stats);
+  assert.equal([...stats.items[0].label].length, GOD_CHAT_VISUAL_LIMITS.label);
+  assert.ok(stats.items[0].label.endsWith("…"));
+  assert.deepEqual(stats.items.slice(1).map((item) => item.label), ["s0", "s1", "s2"]);
+  assert.equal(stats.summary, undefined);
+
+  const chart = parseVisual("chart", JSON.stringify({
+    type: "column",
+    labels: Array.from({ length: GOD_CHAT_VISUAL_LIMITS.columnLabels + 2 }, (_, i) => `d${i}`),
+    series: [
+      { name: "ok", values: Array.from({ length: GOD_CHAT_VISUAL_LIMITS.columnLabels + 2 }, (_, i) => i) },
+      { name: "short", values: [1, 2] },
+      { name: "negative", values: Array.from({ length: GOD_CHAT_VISUAL_LIMITS.columnLabels + 2 }, () => -1) },
+    ],
+  }));
+  assert.ok(chart?.kind === "chart");
+  assert.equal(chart.labels.length, GOD_CHAT_VISUAL_LIMITS.columnLabels);
+  assert.deepEqual(chart.series.map((series) => [series.name, series.values.length]), [["ok", GOD_CHAT_VISUAL_LIMITS.columnLabels]]);
+
+  const timeline = parseVisual("timeline", JSON.stringify({ items: [{ time: "1", title: "a" }, { title: "no time" }, { time: "2", title: "b" }] }));
+  assert.ok(timeline?.kind === "timeline");
+  assert.deepEqual(timeline.items.map((item) => item.title), ["a", "b"]);
 });
 
 test("封面只认站点 /img/ 与图片代理放行的主机，不合格只丢图不丢条目", () => {
@@ -66,13 +98,13 @@ test("写到一半的图示 JSON 按写完的条目先画，图表要数据齐�
   assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
 });
 
-test("结构图画不了的连线只丢那一条、id 不重复，写到一半时先画已写完的层", () => {
+test("结构图画不了的连线只丢那一条、重复 id 的节点只丢后一个，写到一半时先画已写完的层", () => {
   const layers = [
     { nodes: [{ id: "a", label: "A" }] },
     { nodes: [{ id: "b", label: "B" }] },
     { nodes: [{ id: "c", label: "C" }] },
   ];
-  const diagram = (edges: unknown, nodes = layers) => parseVisual("diagram", JSON.stringify({ layers: nodes, edges }));
+  const diagram = (edges: unknown, nodes: unknown = layers) => parseVisual("diagram", JSON.stringify({ layers: nodes, edges }));
   assert.ok(diagram([{ from: "a", to: "b" }, { from: "c", to: "b", label: "back" }]));
   assert.ok(diagram(undefined));
   const edgesOf = (edges: unknown) => {
@@ -82,13 +114,22 @@ test("结构图画不了的连线只丢那一条、id 不重复，写到一半�
   assert.deepEqual(edgesOf([{ from: "a", to: "c" }, { from: "a", to: "b" }]), ["a-b"]);
   assert.deepEqual(edgesOf([{ from: "a", to: "a" }]), []);
   assert.deepEqual(edgesOf([{ from: "a", to: "x" }, "oops"]), []);
-  assert.equal(diagram([], [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ id: "a", label: "B" }] }]), null);
+  const duplicate = diagram([], [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ id: "a", label: "B" }, { id: "b", label: "B" }] }]);
+  assert.ok(duplicate?.kind === "diagram");
+  assert.deepEqual(duplicate.layers.map((layer) => layer.nodes.map((node) => node.label)), [["A"], ["B"]]);
   const sameLayer = diagram(
     [{ from: "a", to: "b" }, { from: "b", to: "b2" }],
     [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ id: "b", label: "B" }, { id: "b2", label: "B2" }] }],
   );
   assert.ok(sameLayer?.kind === "diagram");
   assert.deepEqual(sameLayer.edges, [{ from: "a", to: "b" }]);
+  const crowded = diagram([...Array.from({ length: GOD_CHAT_VISUAL_LIMITS.diagramEdges }, () => ({ from: "a", to: "a" })), { from: "a", to: "b" }]);
+  assert.ok(crowded?.kind === "diagram");
+  assert.deepEqual(crowded.edges, [{ from: "a", to: "b" }]);
+  const gapped = diagram([{ from: "a", to: "c" }], [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ label: "no id" }] }, { nodes: [{ id: "c", label: "C" }] }]);
+  assert.ok(gapped?.kind === "diagram");
+  assert.equal(gapped.layers.length, 2);
+  assert.deepEqual(gapped.edges, [{ from: "a", to: "c" }]);
   const partial = parsePartialVisual("diagram", '{"layers":[{"nodes":[{"id":"a","label":"A"}]},{"nodes":[{"id":"b","lab');
   assert.ok(partial?.kind === "diagram");
   assert.deepEqual(partial.layers.map((layer) => layer.nodes.map((node) => node.id)), [["a"]]);

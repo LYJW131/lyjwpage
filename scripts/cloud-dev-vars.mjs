@@ -15,6 +15,7 @@ export function cloudDevFiles(env, makeSecret = secret) {
   const apiExample = fs.readFileSync(path.join(ROOT, "workers/core/.dev.vars.example"), "utf8");
   const ai = [
     `ANTHROPIC_API_KEY=${env.LYJWPAGE_ANTHROPIC_API_KEY ?? ""}`,
+    `DEEPSEEK_API_KEY=${env.LYJWPAGE_DEEPSEEK_API_KEY ?? ""}`,
     `TURNSTILE_SECRET_KEY=${TURNSTILE_TEST_SECRET}`,
     `CHAT_HISTORY_SECRET=${makeSecret()}`,
     `BUILD_SESSION_SECRET=${makeSecret()}`,

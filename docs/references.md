@@ -193,7 +193,7 @@
   - 状态：采用。落在 [chat-visual.tsx](../src/components/chat-visual.tsx) 与 [chat-html-preview.tsx](../src/components/chat-html-preview.tsx)。
 - **[OpenUI](https://github.com/thesysdev/openui)**（Thesys）
   - 是什么：生成式 UI 框架。从组件库定义生成系统提示词，模型写紧凑的 OpenUI Lang，渲染器边流式边容错地画，出错时把结构化错误回给模型。
-  - 取了什么：图示的上限与例子只写一处（`shared/god-chat.ts` 的 `GOD_CHAT_VISUAL_LIMITS`、`GOD_CHAT_VISUAL_EXAMPLES`），提示词按它生成每种组件的说明，校验 `checkGodChatVisual` 站点与 Worker 共用；Worker 在回复结束后用同一份校验记下画不出来的图示；结构图从 HTML 兜底改成原生 `diagram` 组件（分层方框加相邻层连线）。
+  - 取了什么：图示的上限与例子只写一处（`shared/god-chat.ts` 的 `GOD_CHAT_VISUAL_LIMITS`、`GOD_CHAT_VISUAL_EXAMPLES`），提示词按它生成每种组件的说明，校验 `checkGodChatVisual` 站点与 Worker 共用；Worker 在回复结束后用同一份校验记下画不出来的图示；结构图从 HTML 兜底改成原生 `diagram` 组件（分层方框加相邻层连线）。规范里「解析器丢掉不合格的部分、其余照画」也采用了：图示里过长的文字截断加省略号、多出的条目截尾、坏条目、坏序列与重复 id 的节点只丢那一项，剩下的撑不起一张图才退回代码（`shared/god-chat.ts` 的 `text`、`list`、`chart`）。
   - 状态：部分采用。落在 [god-chat.ts](../shared/god-chat.ts)、[handler.ts](../workers/ai/src/chat/handler.ts)、[reply-fences.ts](../workers/ai/src/chat/reply-fences.ts) 与 [chat-visual.tsx](../src/components/chat-visual.tsx)。不装它的包：要为几种图示多教模型一门语言，省 token 的数据是用 GPT 分词器在大界面上测的；`lang-core` 安装时默认上报遥测。不借客户端 `Query` / `Mutation`（与根 [AGENTS.md](../AGENTS.md)「禁区」的站点侧不写后端相冲）、编辑模式与现成聊天界面（视觉方向与 [DESIGN.md](../DESIGN.md) 不同）。
 - **Claude 界面的 thinking 提示**（lyjw 点名参照，没有文章）
   - 是什么：一道高光从左往右扫过的「思考中」标签。

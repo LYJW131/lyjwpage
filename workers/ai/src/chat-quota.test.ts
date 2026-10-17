@@ -111,7 +111,7 @@ test("全站路由次数满了，面板倒计时也指向它最早一次过期",
   assert.ok(chat.usage("10.0.1.1").resetInMs > 0);
 });
 
-test("三档全站都满时新访客回 site", () => {
+test("各档全站都满时新访客回 site", () => {
   const { chat } = quota();
   for (const tier of GOD_CHAT_TIERS) fillTierEveryone(chat, tier);
   assert.equal(chat.admitVisitor("3.3.3.3"), "site");
@@ -120,11 +120,11 @@ test("三档全站都满时新访客回 site", () => {
 test("只要还有一档两道都有空就放行", () => {
   const { chat } = quota();
   fillTierEveryone(chat, "fable");
-  fillTierEveryone(chat, "sonnet");
+  fillTierEveryone(chat, "think");
   assert.equal(chat.admitVisitor("3.3.3.3"), "ok");
 });
 
-test("访客自己三档名额都满回 visitor，即便访客总量还有余", () => {
+test("访客自己各档名额都满回 visitor，即便访客总量还有余", () => {
   const { chat } = quota();
   for (const tier of GOD_CHAT_TIERS) {
     for (let i = 0; i < GOD_CHAT_QUOTA.tiers[tier].visitor; i++) assert.equal(chat.admitTier("4.4.4.4", tier), tier);
@@ -134,8 +134,8 @@ test("访客自己三档名额都满回 visitor，即便访客总量还有余", 
 
 test("访客空着的档全站已满、其余档自己用满时回 site", () => {
   const { chat } = quota();
-  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.haiku.visitor; i++) assert.equal(chat.admitTier("5.5.5.5", "haiku"), "haiku");
-  fillTierEveryone(chat, "sonnet");
+  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.flash.visitor; i++) assert.equal(chat.admitTier("5.5.5.5", "flash"), "flash");
+  fillTierEveryone(chat, "think");
   fillTierEveryone(chat, "fable");
   assert.equal(chat.admitVisitor("5.5.5.5"), "site");
 });
@@ -149,12 +149,11 @@ test("enforce 为 false 时满了也放行，照样记账", () => {
   assert.equal(hits("v:6.6.6.6"), 1);
 });
 
-test("设计候选请求需要 Sonnet：该档用满不占用较低档的额度", () => {
+test("设计候选请求需要开思考的 think：该档用满不降级，也不占用 flash 的额度", () => {
   const { chat, hits } = quota();
-  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.sonnet.visitor; i++) assert.equal(chat.admitTier("designer", "sonnet"), "sonnet");
+  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.think.visitor; i++) assert.equal(chat.admitTier("designer", "think"), "think");
   const before = hits();
-  assert.equal(chat.admitTier("designer", "sonnet", true, false), null);
+  assert.equal(chat.admitTier("designer", "think", true, false), null);
   assert.equal(hits(), before);
-  assert.equal(hits("t:haiku:designer"), 0);
-  assert.equal(chat.admitTier("designer", "sonnet"), "haiku");
+  assert.equal(hits("t:flash:designer"), 0);
 });

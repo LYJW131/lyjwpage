@@ -208,7 +208,7 @@ test("streaming keeps one current turn and fresh build status after a concurrent
 
 test("consent resume keeps the sealed handoff and appends the planner reply; finished planner replies are not resumed again", () => {
   const user: ChatBubble & { id: string } = { id: "ask", role: "user", content: "Improve the music card." };
-  const handoff: ChatBubble = { role: "assistant", content: "Handing over to the planner.", designAt: 28, seal: "s1", trace: { tier: "sonnet" } };
+  const handoff: ChatBubble = { role: "assistant", content: "Handing over to the planner.", designAt: 28, seal: "s1", trace: { tier: "think" } };
   const point = chatResumePoint([user, handoff]);
   assert.deepEqual(point, { at: 0, keep: [handoff], handoff: false });
   const planner: ChatBubble = { role: "assistant", content: "Here is my plan." };
@@ -231,6 +231,19 @@ test("cards no longer registered are dropped without losing the conversation", (
   ] }] });
   const [session] = readChatArchive(raw).sessions;
   assert.deepEqual(session.messages.map((message) => message.cards), [undefined, [{ card: "nowListening", at: 0 }], undefined, undefined]);
+});
+
+test("tiers no longer registered lose only their rank label, the conversation stays", () => {
+  const raw = JSON.stringify({ version: 1, activeId: "s", sessions: [{ id: "s", title: "Old ranks", createdAt: 1, updatedAt: 2, messages: [
+    { role: "user", content: "hi" },
+    { role: "assistant", content: "Yo.", tier: "haiku", downgradedFrom: "sonnet", seal: "s1" },
+    { role: "user", content: "deep one" },
+    { role: "assistant", content: "Hm.", tier: "fable" },
+  ] }] });
+  const [session] = readChatArchive(raw).sessions;
+  assert.equal(session.messages.length, 4);
+  assert.deepEqual(session.messages[1], { role: "assistant", content: "Yo.", seal: "s1" });
+  assert.equal(session.messages[3].tier, "fable");
 });
 
 test("opening the GitHub issue form keeps Start build available until a build starts or the plan expires", () => {

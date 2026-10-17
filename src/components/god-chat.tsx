@@ -11,6 +11,7 @@ import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { STREAM_FLUSH_MS, revealedLength, revealedText, stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent } from "@/lib/chat-consent";
+import { useHumanCheck } from "@/hooks/use-human-check";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
@@ -19,7 +20,6 @@ import {
   GOD_CHAT_LIMITS,
   GOD_CHAT_PATH,
   GOD_CHAT_PRESETS,
-  GOD_CHAT_TURNSTILE_ACTION,
   GOD_CHAT_USAGE_PATH,
   type GodChatEvent,
   type GodChatMessage,
@@ -35,54 +35,6 @@ import {
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
 
-type Turnstile = {
-  render: (el: HTMLElement, options: Record<string, unknown>) => string;
-  reset: (widgetId: string) => void;
-  remove: (widgetId: string) => void;
-};
-
-declare global {
-  interface Window {
-    turnstile?: Turnstile;
-  }
-}
-
-const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-
-function TurnstileScript({ onReady, onError }: { onReady: () => void; onError: () => void }) {
-  const readyRef = useRef(onReady);
-  const errorRef = useRef(onError);
-  useEffect(() => {
-    readyRef.current = onReady;
-    errorRef.current = onError;
-  });
-  useEffect(() => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SCRIPT_SRC}"]`);
-    if (window.turnstile || existing?.dataset.loaded === "1") {
-      readyRef.current();
-      return;
-    }
-    const script = existing ?? document.createElement("script");
-    const ready = () => {
-      script.dataset.loaded = "1";
-      readyRef.current();
-    };
-    const failed = () => errorRef.current();
-    script.addEventListener("load", ready, { once: true });
-    script.addEventListener("error", failed, { once: true });
-    if (!existing) {
-      script.src = TURNSTILE_SCRIPT_SRC;
-      script.async = true;
-      document.head.appendChild(script);
-    }
-    return () => {
-      script.removeEventListener("load", ready);
-      script.removeEventListener("error", failed);
-    };
-  }, []);
-  return null;
-}
-
 type Reply = Omit<ChatBubble, "role" | "content">;
 type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; keep: ChatBubble[]; handoff: boolean };
 const RESUME_DELAY_MS = 2000;
@@ -92,31 +44,6 @@ const DESIGN_HALO_MS = 2_400;
 
 const CHAT_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
 const OFFLINE = "The oracle is offline.";
-
-const SITE_KEY = process.env.PUBLIC_TURNSTILE_SITE_KEY ?? "";
-// 排着队的消息等组件渲染出来的最长时间；组件出来之后（可能在等访客点验证）交给 Turnstile 自己的超时回调。
-const VERIFY_LOAD_TIMEOUT_MS = 15_000;
-const VERIFY_UNAVAILABLE = "Human verification couldn't load. Check your connection or ad blocker, then reload the page.";
-const PASS_KEY = "lyjw.chat.pass";
-const PASS_MARGIN_MS = 30_000;
-type HumanPass = { pass: string; expiresAt: number };
-
-function readPass(): HumanPass | null {
-  try {
-    const value: unknown = JSON.parse(window.sessionStorage.getItem(PASS_KEY) ?? "null");
-    if (value && typeof value === "object" && typeof (value as HumanPass).pass === "string" && typeof (value as HumanPass).expiresAt === "number" && (value as HumanPass).expiresAt - PASS_MARGIN_MS > Date.now()) return value as HumanPass;
-  } catch {
-  }
-  return null;
-}
-
-function writePass(pass: HumanPass | null) {
-  try {
-    if (pass) window.sessionStorage.setItem(PASS_KEY, JSON.stringify(pass));
-    else window.sessionStorage.removeItem(PASS_KEY);
-  } catch {
-  }
-}
 
 const COMMANDS = [
   { name: "/clear", aliases: ["/new"], description: "Start a new conversation with empty context" },
@@ -151,32 +78,20 @@ function Conversation({ className, archive, session: conversation }: { className
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [usage, setUsage] = useState<FetchedUsage | "loading" | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [armed, setArmed] = useState(false);
-  const [warm, setWarm] = useState(false);
   const [descent, setDescent] = useState<Descent | null>(null);
-  const consented = useSyncExternalStore(chatConsent.subscribe, chatConsent.getSnapshot, chatConsent.getServerSnapshot);
   const designConsented = useSyncExternalStore(designConsent.subscribe, designConsent.getSnapshot, designConsent.getServerSnapshot);
   const [consentPending, setConsentPending] = useState<string | null>(null);
-  const [queued, setQueued] = useState<string | null>(null);
   const [designHalo, setDesignHalo] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
-  const [scriptReady, setScriptReady] = useState(false);
-  const widgetRef = useRef<HTMLDivElement>(null);
-  const widgetId = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
-  const pendingRef = useRef<string | null>(null);
-  // 选项卡的回答以文本发给模型，界面上按这份结构画成卡片；Turnstile 延后发送时按文本对上。
+  // 选项卡的回答以文本发给模型，界面上按这份结构画成卡片；发送时按文本对上。
   const answersRef = useRef<{ text: string; answers: ChatAnswer[] } | null>(null);
-  const verifyStateRef = useRef<"ok" | "failed" | "unavailable">("ok");
-  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const expiredRef = useRef(false);
   const sessionRef = useRef(0);
-  const sendRef = useRef<(text: string, token?: string) => void>(() => {});
   const resumeRef = useRef<() => void>(() => {});
+  const human = useHumanCheck();
   const conversationId = conversation?.id;
   const design = conversation?.design;
 
@@ -191,62 +106,12 @@ function Conversation({ className, archive, session: conversation }: { className
     return () => clearTimeout(timer);
   }, [conversationId, design]);
 
-  useEffect(() => {
-    const el = widgetRef.current;
-    if (!scriptReady || !SITE_KEY || !el || !window.turnstile || widgetId.current) return;
-    widgetId.current = window.turnstile.render(el, {
-      sitekey: SITE_KEY,
-      action: GOD_CHAT_TURNSTILE_ACTION,
-      appearance: "interaction-only",
-      theme: "auto",
-      language: "en",
-      callback: (value: string) => {
-        const pending = pendingRef.current;
-        if (pending) {
-          pendingRef.current = null;
-          setQueued(null);
-          sendRef.current(pending, value);
-        } else {
-          setToken(value);
-        }
-      },
-      // token 约 5 分钟过期；默认自动续会让开着页面的访客隔几分钟就在后台重跑一次挑战，改为下次发送时才重新验。
-      "refresh-expired": "manual",
-      "expired-callback": () => {
-        expiredRef.current = true;
-        setToken(null);
-      },
-      "error-callback": () => {
-        setToken(null);
-        verificationFailed("Human verification failed. Send again to retry.", "failed");
-      },
-      "timeout-callback": () => verificationFailed("Human verification timed out. Send again to retry.", "failed"),
-    });
-    return () => {
-      if (widgetId.current) window.turnstile?.remove(widgetId.current);
-      widgetId.current = null;
-    };
-  }, [scriptReady]);
-
   useEffect(
     () => () => {
-      if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
       abortRef.current?.abort();
     },
     [],
   );
-
-  // 验人起不来（脚本被拦或加载失败、组件出错、超时）时，排队的消息退回输入框并报错，不能一直卡在「验证中」。
-  function verificationFailed(message: string, state: "failed" | "unavailable") {
-    verifyStateRef.current = state;
-    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
-    loadTimerRef.current = null;
-    const pending = pendingRef.current;
-    pendingRef.current = null;
-    setQueued(null);
-    if (pending) setDraft((current) => current || pending);
-    setError(message);
-  }
 
   const markdownReady = useChatMarkdownReady();
   useEffect(() => {
@@ -260,7 +125,6 @@ function Conversation({ className, archive, session: conversation }: { className
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
         preloadChatMarkdown();
-        if (!readPass() && chatConsent.getSnapshot()) setWarm(true);
         observer.disconnect();
       }
     });
@@ -276,7 +140,7 @@ function Conversation({ className, archive, session: conversation }: { className
     return () => observer.disconnect();
   }, []);
 
-  async function send(text: string, usedToken?: string, resumed?: Resumed) {
+  async function send(text: string, resumed?: Resumed) {
     setSourcesFresh(false);
     const content = resumed?.user.content ?? text.trim();
     if (!content) return;
@@ -298,7 +162,7 @@ function Conversation({ className, archive, session: conversation }: { className
     let frame = 0;
     let lastFrame = 0;
     let drained: (() => void) | undefined;
-    // 交接回复没盖章就被补发整条替掉，Sonnet 的开场白拿不回来，分隔线画在规划者回复的最前面。
+    // 交接回复没盖章就被补发整条替掉，先知的开场白拿不回来，分隔线画在规划者回复的最前面。
     let meta: Reply = resumed?.handoff ? { designAt: 0 } : {};
     const session = sessionRef.current;
     const bubble = (): ChatBubble => {
@@ -337,14 +201,9 @@ function Conversation({ className, archive, session: conversation }: { className
     stickRef.current = true;
     if (!messages.length) reveal();
     show();
-    // 等验证期间输入框还能改，回调发的是排队时那条；框里已经不是它就别清，免得吞掉访客新改的草稿。
     if (!resumed) setDraft((current) => (current === text ? "" : current));
     setError(null);
     setStreaming(true);
-    if (usedToken) {
-      setToken(null);
-      if (widgetId.current) window.turnstile?.reset(widgetId.current);
-    }
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -353,19 +212,28 @@ function Conversation({ className, archive, session: conversation }: { className
     let dropped = false;
     try {
       if (!CHAT_URL) throw new Error(OFFLINE);
-      const humanPass = usedToken ? null : readPass();
       // 设计同意要读此刻的真值：接受后立刻补发时，闭包里的 designConsented 还是旧的。
       designToken = designConsent.getSnapshot() ? activeChatDesign(conversation?.design)?.token : undefined;
       if (conversation?.design && !designToken && designConsent.getSnapshot()) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
-      const res = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, ...(usedToken ? { turnstileToken: usedToken } : { humanPass: humanPass?.pass }), ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
-        signal: controller.signal,
-      });
+      const post = async () => {
+        const proof = await human.proof(controller.signal);
+        const res = await fetch(CHAT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history, ...proof, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
+          signal: controller.signal,
+        });
+        const data = res.ok && res.body ? null : (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+        return { res, data, usedPass: "humanPass" in proof };
+      };
+      let attempt = await post();
+      // 通行证被拒（签名密钥换了、本地时钟偏了）就丢掉它，当场验一次人重发同一条，不让访客自己再点一遍。
+      if (attempt.data?.code === "human_pass_expired" && attempt.usedPass) {
+        human.clearPass();
+        attempt = await post();
+      }
+      const { res, data } = attempt;
       if (!res.ok || !res.body) {
-        const data = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
-        if (data?.code === "human_pass_expired") writePass(null);
         if (conversation && designSessionEnded(data?.code)) {
           chatArchive.endDesign(conversation.id, data?.code === "design_session_exhausted" ? "exhausted" : "expired", { persist: false });
           throw new Error("The design session has ended. Send your message again to continue in ordinary chat.");
@@ -401,8 +269,8 @@ function Conversation({ className, archive, session: conversation }: { className
           } else if (event.type === "search") meta = { ...meta, searches: [...(meta.searches ?? []), event.query] };
           else if (event.type === "step") meta = { ...meta, steps: [...(meta.steps ?? []), event.text] };
           else if (event.type === "sources") meta = { ...meta, sources: event.sources };
-          else if (event.type === "pass") writePass({ pass: event.pass, expiresAt: event.expiresAt });
           else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace, planToken: event.planToken };
+          else if (event.type === "pass") human.storePass({ pass: event.pass, expiresAt: event.expiresAt });
           else if (event.type === "card") {
             meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
           } else if (event.type === "design" && conversation) {
@@ -464,8 +332,8 @@ function Conversation({ className, archive, session: conversation }: { className
 
   // 设计会话里最后一条访客消息还没拿到盖了章的回复：从会话里取回它错过的那一回合。
   function resume() {
-    // 补发不走 Turnstile：没有有效通行证或对话代码变了还没重新同意时留着那两条，等访客自己再发。
-    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !readPass() || !chatConsent.getSnapshot()) return;
+    // 补发不跑 Turnstile：没有有效通行证或对话代码变了还没重新同意时留着那两条，等访客自己再发。
+    if ((abortRef.current && !abortRef.current.signal.aborted) || !conversation || !human.hasPass() || !chatConsent.getSnapshot()) return;
     const current = chatArchive.session(conversation.id);
     // 没同意设计时扣着令牌，resume: true 不带 designToken 会被 Worker 拒绝：补发等同意之后再走。
     if (!current || !activeChatDesign(current.design) || !designConsent.getSnapshot()) return;
@@ -475,11 +343,10 @@ function Conversation({ className, archive, session: conversation }: { className
     const { at, keep, handoff } = point;
     const user = { ...list[at], id: list[at].id ?? crypto.randomUUID() };
     if (!list[at].id) setMessages([...list.slice(0, at), user, ...list.slice(at + 1)], false);
-    void send(user.content, undefined, { user, before: list.slice(0, at), keep, handoff });
+    void send(user.content, { user, before: list.slice(0, at), keep, handoff });
   }
 
   useEffect(() => {
-    sendRef.current = (text, value) => void send(text, value);
     resumeRef.current = resume;
   });
 
@@ -514,8 +381,6 @@ function Conversation({ className, archive, session: conversation }: { className
     if (name === "/clear") {
       sessionRef.current += 1;
       abortRef.current?.abort();
-      pendingRef.current = null;
-      setQueued(null);
       setError(null);
       chatArchive.start();
     }
@@ -572,33 +437,10 @@ function Conversation({ className, archive, session: conversation }: { className
       setConsentPending(text.trim());
       setDraft("");
       setError(null);
-      if (SITE_KEY && !readPass()) setArmed(true);
+      human.prepare();
       return;
     }
-    if (!SITE_KEY || verifyStateRef.current === "unavailable") {
-      setError(SITE_KEY ? VERIFY_UNAVAILABLE : OFFLINE);
-      return;
-    }
-    if (readPass()) {
-      void send(text);
-      return;
-    }
-    if (token) {
-      void send(text, token);
-      return;
-    }
-    if ((verifyStateRef.current === "failed" || expiredRef.current) && widgetId.current) window.turnstile?.reset(widgetId.current);
-    expiredRef.current = false;
-    verifyStateRef.current = "ok";
-    setError(null);
-    pendingRef.current = text;
-    setQueued(text);
-    setDraft("");
-    setArmed(true);
-    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
-    loadTimerRef.current = setTimeout(() => {
-      if (pendingRef.current && !widgetId.current) verificationFailed(VERIFY_UNAVAILABLE, "unavailable");
-    }, VERIFY_LOAD_TIMEOUT_MS);
+    void send(text);
   }
 
   function acceptConsent() {
@@ -632,9 +474,8 @@ function Conversation({ className, archive, session: conversation }: { className
     setTimeout(() => setDescent((current) => (current?.key === key ? null : current)), 4_800);
   }
 
-  const waiting = armed && !token && !streaming && !error;
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
-  const expanded = messages.length > 0 || consentPending !== null || queued !== null;
+  const expanded = messages.length > 0 || consentPending !== null;
   const savedCount = savedSessions(archive).length;
   const lastDesignAtIndex = messages.findLastIndex((message) => message.designAt !== undefined);
 
@@ -658,12 +499,6 @@ function Conversation({ className, archive, session: conversation }: { className
         <button type="button" onClick={() => runCommand("/clear")} className="-my-1 flex shrink-0 items-center gap-1 py-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
       </div>
       {historyOpen && <SessionList archive={archive} />}
-      {(armed || warm) && (
-        <TurnstileScript
-          onReady={() => setScriptReady(true)}
-          onError={() => verificationFailed(VERIFY_UNAVAILABLE, "unavailable")}
-        />
-      )}
       <div
         ref={scrollRef}
         onScroll={(event) => {
@@ -784,14 +619,13 @@ function Conversation({ className, archive, session: conversation }: { className
           })
         )}
         {consentPending !== null && <ConsentPrompt text={consentPending} onAccept={acceptConsent} onDecline={declineConsent} />}
-        {queued !== null && <UserBubble text={queued} />}
       </div>
 
       <div className="border-t border-line px-4 py-3 lg:px-5">
         {error && <p className="mb-2 text-xs text-signal-red">{error}</p>}
         {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
         {conversation?.design && designConsented && <DesignStatus design={conversation.design} />}
-        <div ref={widgetRef} />
+        <div ref={human.slotRef} className={cn(human.state === "interactive" && "pb-2")} />
         <form
           className="relative flex items-end gap-2"
           onSubmit={(event) => {
@@ -839,7 +673,6 @@ function Conversation({ className, archive, session: conversation }: { className
               setDraft(event.target.value);
               setSelected(0);
             }}
-            onFocus={() => { if (consented) setArmed(true); }}
             onKeyDown={(event) => {
               if (paletteOpen && matches.length) {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -871,7 +704,7 @@ function Conversation({ className, archive, session: conversation }: { className
             }}
             maxLength={GOD_CHAT_LIMITS.maxMessageChars}
             rows={1}
-            placeholder={waiting ? "Verifying you are human…" : "Speak, mortal… (type /)"}
+            placeholder={human.state === "interactive" ? "Tick the box above to continue…" : human.state === "checking" ? "Verifying you are human…" : "Speak, mortal… (type /)"}
             aria-label="Message"
             className="scrollbar-none max-h-32 min-h-10 flex-1 resize-none rounded-md border border-line-strong bg-surface px-3 py-2 text-base outline-none [field-sizing:content] placeholder:text-muted-foreground focus:border-foreground/40 sm:text-sm [&::-webkit-scrollbar]:hidden"
           />
@@ -989,7 +822,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 // lyjw 要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
-// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，lyjw 定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按 workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步。
+// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，lyjw 定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按 workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；DeepSeek 只写服务器在中国大陆、按其开放平台条款处理，账号的保留与训练设置未核实前不写具体承诺；联网搜索的去向跟着 workers/ai/src/chat/web-search.ts#webSearchProvider 能选的后端写。
 type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
 const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   en: {
@@ -997,9 +830,10 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "Privacy notice",
     intro: "Before the oracle responds, please review and accept where this chat sends your data:",
     destinations: [
-      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and conversation history, and temporarily keeps your IP address within the rate-limit window. When Claude looks something up, it sends only that search query or page URL to Exa (web search and page reads), Bangumi or the Steam store, never your full conversation. Transcripts are kept for 30 days for debugging, then deleted automatically; server logs only contain request metadata, usage counts, and errors—never message text." },
-      { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message and brief excerpts from recent context to select the appropriate Claude model. Cloudflare does not store this content or use it for training." },
-      { name: "Anthropic (Claude API)", detail: "receives the full conversation to generate replies, and passes only the lookup query Claude writes to the documentation and code search services Context7, Cloudflare Docs, grep.app and DeepWiki. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
+      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and conversation history, and temporarily keeps your IP address within the rate-limit window. When a model looks something up, it sends only that search query or page URL to the web search service (Exa, or DeepSeek's search when the site is set to use it, for searches and page reads), Bangumi or the Steam store, never your full conversation. Transcripts are kept for 30 days for debugging, then deleted automatically; server logs only contain request metadata, usage counts, and errors—never message text." },
+      { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message and brief excerpts from recent context to select the appropriate model. Cloudflare does not store this content or use it for training." },
+      { name: "DeepSeek (DeepSeek API)", detail: "receives the full conversation to generate replies from the Small Fry and Prophet ranks. DeepSeek's servers are in mainland China, and this data is processed under DeepSeek's open platform terms." },
+      { name: "Anthropic (Claude API)", detail: "receives the full conversation when God or the design flow answers, and passes only the lookup query Claude writes to the documentation and code search services Context7, Cloudflare Docs, grep.app and DeepWiki. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
       { name: "This browser", detail: "stores your conversations and this consent locally." },
     ],
     accept: "Accept",
@@ -1012,9 +846,10 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "隐私说明",
     intro: "在神谕作答前，请确认本次对话的数据去向：",
     destinations: [
-      { name: "Cloudflare Workers（本站后端）", detail: "负责转发消息与本次对话历史，并在限流窗口内临时保留 IP 地址。Claude 检索时，只把查询词或网页地址发给 Exa（联网搜索与读取网页）、Bangumi 或 Steam 商店，不发送完整对话。对话记录保留 30 天用于调试，到期自动删除；日志仅包含请求元数据、用量计数与错误信息，不记录任何消息原文。" },
-      { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取最新消息及上下文的简短摘录，用于路由选择合适的 Claude 模型。Cloudflare 不存储这些内容，亦不用于模型训练。" },
-      { name: "Anthropic（Claude API）", detail: "接收完整对话以生成回复，并只把 Claude 写出的检索词转给文档与代码检索服务 Context7、Cloudflare 文档、grep.app 与 DeepWiki。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
+      { name: "Cloudflare Workers（本站后端）", detail: "负责转发消息与本次对话历史，并在限流窗口内临时保留 IP 地址。模型检索时，只把查询词或网页地址发给联网搜索服务（Exa；站点切换时为 DeepSeek 搜索，用于联网搜索与读取网页）、Bangumi 或 Steam 商店，不发送完整对话。对话记录保留 30 天用于调试，到期自动删除；日志仅包含请求元数据、用量计数与错误信息，不记录任何消息原文。" },
+      { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取最新消息及上下文的简短摘录，用于路由选择合适的模型。Cloudflare 不存储这些内容，亦不用于模型训练。" },
+      { name: "DeepSeek（DeepSeek API）", detail: "接收完整对话，为「杂鱼」与「先知」两档生成回复。DeepSeek 的服务器位于中国大陆，数据按 DeepSeek 开放平台条款处理。" },
+      { name: "Anthropic（Claude API）", detail: "由「神」或设计流程作答时接收完整对话，并只把 Claude 写出的检索词转给文档与代码检索服务 Context7、Cloudflare 文档、grep.app 与 DeepWiki。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
       { name: "当前浏览器", detail: "在本地保存你的对话记录与本次同意状态。" },
     ],
     accept: "接受",
@@ -1027,9 +862,10 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "プライバシーに関するお知らせ",
     intro: "神託が回答する前に、本チャットにおけるデータの送信先をご確認のうえ同意してください：",
     destinations: [
-      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージおよび会話履歴を中継し、レート制限期間中のみ IP アドレスを一時保持します。Claude が調べものをする際は、検索クエリまたはページ URL のみを Exa（Web 検索とページ取得）、Bangumi、Steam ストアに送信し、会話全体は送信しません。会話の記録はデバッグ目的で 30 日間保存され、期限後に自動で削除されます。ログにはリクエストのメタデータ、利用回数、エラー情報のみが記録され、メッセージ本文は一切含まれません。" },
-      { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージおよび直前の短い会話抜粋を読み取り、最適な Claude モデルを選択します。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
-      { name: "Anthropic（Claude API）", detail: "回答生成のために会話全体を受信し、Claude が作成した検索クエリのみをドキュメント・コード検索サービス（Context7、Cloudflare Docs、grep.app、DeepWiki）に渡します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
+      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージおよび会話履歴を中継し、レート制限期間中のみ IP アドレスを一時保持します。モデルが調べものをする際は、検索クエリまたはページ URL のみを Web 検索サービス（Exa。サイトの設定によっては DeepSeek の検索。Web 検索とページ取得に使用）、Bangumi、Steam ストアに送信し、会話全体は送信しません。会話の記録はデバッグ目的で 30 日間保存され、期限後に自動で削除されます。ログにはリクエストのメタデータ、利用回数、エラー情報のみが記録され、メッセージ本文は一切含まれません。" },
+      { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージおよび直前の短い会話抜粋を読み取り、最適なモデルを選択します。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
+      { name: "DeepSeek（DeepSeek API）", detail: "「雑魚」と「預言者」の回答生成のために会話全体を受信します。DeepSeek のサーバーは中国本土にあり、データは DeepSeek オープンプラットフォームの規約に基づいて処理されます。" },
+      { name: "Anthropic（Claude API）", detail: "「神」または設計フローが回答する際に会話全体を受信し、Claude が作成した検索クエリのみをドキュメント・コード検索サービス（Context7、Cloudflare Docs、grep.app、DeepWiki）に渡します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
       { name: "このブラウザ", detail: "会話履歴と今回の同意状況をローカルに保存します。" },
     ],
     accept: "同意する",
@@ -1313,9 +1149,9 @@ function ReplyBody({
 
 const RANK_TONE: Record<GodChatServedTier, string> = {
   fable: "god-aura bg-clip-text text-transparent font-bold",
-  sonnet: "text-foreground",
+  think: "text-foreground",
   opus: "text-foreground",
-  haiku: "text-muted-foreground opacity-70",
+  flash: "text-muted-foreground opacity-70",
 };
 
 function RankLabel({ reply }: { reply: Reply }) {
@@ -1325,7 +1161,7 @@ function RankLabel({ reply }: { reply: Reply }) {
   if (!reply.tier) return null;
   const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
   const from = reply.downgradedFrom && GOD_CHAT_TIER_INFO[reply.downgradedFrom];
-  const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.sonnet : undefined;
+  const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.think : undefined;
   return (
     <div className="mb-1.5">
       <div className={cn("label-mono", RANK_TONE[reply.tier])}>

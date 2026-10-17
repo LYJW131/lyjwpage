@@ -19,6 +19,8 @@ function inlineCut(block: string): number {
   if (strong.length % 2 === 1) cut = Math.min(cut, strong[strong.length - 1]);
   const strike = positions(masked, "~~");
   if (strike.length % 2 === 1) cut = Math.min(cut, strike[strike.length - 1]);
+  const math = positions(masked, "$$");
+  if (math.length % 2 === 1) cut = Math.min(cut, math[math.length - 1]);
 
   const single = [...masked.replace(/\*\*/g, "  ").matchAll(/\*/g)]
     .map((m) => m.index!)
