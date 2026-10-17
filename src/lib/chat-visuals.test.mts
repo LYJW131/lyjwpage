@@ -104,7 +104,7 @@ test("结构图画不了的连线只丢那一条、重复 id 的节点只丢后�
     { nodes: [{ id: "b", label: "B" }] },
     { nodes: [{ id: "c", label: "C" }] },
   ];
-  const diagram = (edges: unknown, nodes = layers) => parseVisual("diagram", JSON.stringify({ layers: nodes, edges }));
+  const diagram = (edges: unknown, nodes: unknown = layers) => parseVisual("diagram", JSON.stringify({ layers: nodes, edges }));
   assert.ok(diagram([{ from: "a", to: "b" }, { from: "c", to: "b", label: "back" }]));
   assert.ok(diagram(undefined));
   const edgesOf = (edges: unknown) => {
@@ -123,6 +123,13 @@ test("结构图画不了的连线只丢那一条、重复 id 的节点只丢后�
   );
   assert.ok(sameLayer?.kind === "diagram");
   assert.deepEqual(sameLayer.edges, [{ from: "a", to: "b" }]);
+  const crowded = diagram([...Array.from({ length: GOD_CHAT_VISUAL_LIMITS.diagramEdges }, () => ({ from: "a", to: "a" })), { from: "a", to: "b" }]);
+  assert.ok(crowded?.kind === "diagram");
+  assert.deepEqual(crowded.edges, [{ from: "a", to: "b" }]);
+  const gapped = diagram([{ from: "a", to: "c" }], [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ label: "no id" }] }, { nodes: [{ id: "c", label: "C" }] }]);
+  assert.ok(gapped?.kind === "diagram");
+  assert.equal(gapped.layers.length, 2);
+  assert.deepEqual(gapped.edges, [{ from: "a", to: "c" }]);
   const partial = parsePartialVisual("diagram", '{"layers":[{"nodes":[{"id":"a","label":"A"}]},{"nodes":[{"id":"b","lab');
   assert.ok(partial?.kind === "diagram");
   assert.deepEqual(partial.layers.map((layer) => layer.nodes.map((node) => node.id)), [["a"]]);
