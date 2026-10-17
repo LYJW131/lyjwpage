@@ -233,6 +233,19 @@ test("cards no longer registered are dropped without losing the conversation", (
   assert.deepEqual(session.messages.map((message) => message.cards), [undefined, [{ card: "nowListening", at: 0 }], undefined, undefined]);
 });
 
+test("tiers no longer registered lose only their rank label, the conversation stays", () => {
+  const raw = JSON.stringify({ version: 1, activeId: "s", sessions: [{ id: "s", title: "Old ranks", createdAt: 1, updatedAt: 2, messages: [
+    { role: "user", content: "hi" },
+    { role: "assistant", content: "Yo.", tier: "haiku", downgradedFrom: "sonnet", seal: "s1" },
+    { role: "user", content: "deep one" },
+    { role: "assistant", content: "Hm.", tier: "fable" },
+  ] }] });
+  const [session] = readChatArchive(raw).sessions;
+  assert.equal(session.messages.length, 4);
+  assert.deepEqual(session.messages[1], { role: "assistant", content: "Yo.", seal: "s1" });
+  assert.equal(session.messages[3].tier, "fable");
+});
+
 test("opening the GitHub issue form keeps Start build available until a build starts or the plan expires", () => {
   const proposal = messages[1].proposals![0];
   const plan = { plan: proposal.plan, token: proposal.token, expiresAt: proposal.expiresAt };
