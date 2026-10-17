@@ -40,6 +40,13 @@ test("paused music and human-only coding stay out of the music and agents strips
   assert.equal(topicStrip("coding", coding)?.[0], 1);
 });
 
+test("the coding strip counts only hands-on time, so agents running alone leave it empty", () => {
+  const coding = pulse({ coding: { kind: "coding", segments: { startSec: [0, HOUR], endSec: [HOUR, 2 * HOUR], value: [2, 3], agentSources: [1, 1] } } });
+  const strip = topicStrip("coding", coding)!;
+  const agents = topicStrip("agents", coding)!;
+  assert.equal(strip.reduce((sum, value) => sum + value, 0) * 2, agents.reduce((sum, value) => sum + value, 0));
+});
+
 test("token bars are scaled to the day's busiest bin, and topics without a lane get no strip", () => {
   const strip = topicStrip("tokens", pulse({
     tokens: { kind: "tokens", buckets: { startSec: [0, 60, 10 * HOUR], endSec: [60, 120, 10 * HOUR + 60], total: [100, 100, 400], output: [], cacheRead: [] } },

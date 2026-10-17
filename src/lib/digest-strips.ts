@@ -36,7 +36,7 @@ export function topicStrip(topic: DigestTopic, pulse: PulsePayload): number[] | 
   const seconds = windowSeconds(pulse);
   const strip = (() => {
     switch (topic) {
-      case "coding": return coverage(lanes.coding.segments, (index) => lanes.coding.segments.value[index] > 0, seconds);
+      case "coding": return coverage(lanes.coding.segments, (index) => lanes.coding.segments.value[index] % 2 === 1, seconds);
       case "agents": return coverage(lanes.coding.segments, (index) => lanes.coding.segments.value[index] >= 2, seconds);
       case "tokens": return amounts(lanes.tokens.buckets, lanes.tokens.buckets.total, seconds);
       case "music": {

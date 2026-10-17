@@ -103,7 +103,7 @@ function reader(views: DigestViews) {
 test("facts keep the day's highlights, in the owner's time zone, and leave empty lanes out", () => {
   const facts = digestFacts(baseViews(), NOW);
   assert.match(facts, /^Now: Tuesday afternoon in LYJW's time zone \(Asia\/Singapore\)/);
-  assert.match(facts, /Coding: active 9 h of the 24 h; a coding app in front on LYJW's Mac 6 h, AI agents working 7 h/);
+  assert.match(facts, /Coding: LYJW hands-on \(a coding app in front on the Mac\) 6 h; AI agents working 7 h/);
   assert.match(facts, /Coding agents used: Claude Code \(Opus 5\.5\)\n/, "agents idle for the whole window are left out");
   assert.match(facts, /Tokens through the agents: 42M/);
   assert.match(facts, /Music: 3\.5 h, 14 tracks; top artists Hoshimachi Suisei \(3 h\), Houshou Marine & Hoshimachi Suisei \(25 min\); most played tracks GUM&DROP \(30 min\)/);
@@ -193,14 +193,14 @@ const LOCAL_DATE = "2026-10-13";
 
 test("highlight options carry the card's numbers and labels, rounded like the facts, for non-empty topics only", () => {
   assert.deepEqual(digestHighlightOptions(baseViews()), [
-    { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" },
+    { topic: "coding", value: 6, unit: "hours", atLeast: false, caption: "hands-on" },
     { topic: "agents", value: 7, unit: "hours", atLeast: false, caption: "agent time" },
     { topic: "tokens", value: 42_000_000, unit: "count", atLeast: false, caption: "tokens" },
     { topic: "music", value: 3.5, unit: "hours", atLeast: false, caption: "music" },
     { topic: "watching", value: 50, unit: "minutes", atLeast: false, caption: "watching" },
     { topic: "fitness", value: 3_300, unit: "count", atLeast: false, caption: "steps" },
   ]);
-  assert.match(digestMessage(baseViews(), NOW).content, /\n\nHighlight options: coding: 9 h coding; agents: 7 h agent time; tokens: 42M tokens; music: 3\.5 h music; watching: 50 min watching; fitness: 3\.3K steps$/);
+  assert.match(digestMessage(baseViews(), NOW).content, /\n\nHighlight options: coding: 6 h hands-on; agents: 7 h agent time; tokens: 42M tokens; music: 3\.5 h music; watching: 50 min watching; fitness: 3\.3K steps$/);
 });
 
 test("compose reads the situation by rule, lets Clef pick one stored tagline, and skips the round while the facts stand still", async () => {
@@ -216,8 +216,8 @@ test("compose reads the situation by rule, lets Clef pick one stored tagline, an
   assert.equal(first.digest.headlines?.length, HEADLINE_POOL);
   assert.ok(first.digest.headlines?.every((line) => DIGEST_TAGLINES.agentsLead.includes(line)));
   assert.equal(first.digest.model, "@cf/cloudflare/clef");
-  assert.deepEqual(first.digest.highlights.map((item) => item.topic), ["coding", "agents", "tokens"]);
-  assert.deepEqual(first.digest.highlights[0], { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" });
+  assert.deepEqual(first.digest.highlights.map((item) => item.topic), ["agents", "coding", "tokens"]);
+  assert.deepEqual(first.digest.highlights[1], { topic: "coding", value: 6, unit: "hours", atLeast: false, caption: "hands-on" });
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].questions, {
     tagline: { type: "choice", instructions: TAGLINE_INSTRUCTIONS, criteria: Object.fromEntries(candidates.map((line, index) => [`t${index}`, `${line}｜主线：${DIGEST_SITUATIONS.agentsLead}`])) },
@@ -320,12 +320,14 @@ test("situations, accents and picks follow the day's lead", () => {
   const commits = (value: number) => countOption("site", value, "commits");
   const cases: [DigestHighlight[], typeof NO_SIGNALS, string][] = [
     [[hoursOption("coding", 23), hoursOption("agents", 17.5, "agent time"), tokens(3e9), commits(10), hoursOption("music", 12.5), countOption("fitness", 2_300, "steps")], NO_SIGNALS,
-      "agentsAllDay [soundtrack,shipping,tokenFlood] coding,agents,tokens"],
+      "agentsAllDay [soundtrack,shipping,tokenFlood] agents,coding,tokens"],
+    [[minutesOption("coding", 10), hoursOption("agents", 19, "agent time"), tokens(1.2e9)], NO_SIGNALS, "agentsAllDay [tokenFlood] agents,coding,tokens"],
+    [[minutesOption("coding", 10), hoursOption("agents", 10, "agent time"), hoursOption("watching", 3)], NO_SIGNALS, "workAndPlay [] agents,watching,coding"],
     [[hoursOption("coding", 13), hoursOption("agents", 2, "agent time"), tokens(5e6)], NO_SIGNALS, "codingAllDay [] coding,tokens,agents"],
     [[hoursOption("coding", 2.5), hoursOption("agents", 1, "agent time"), commits(12)], { ...NO_SIGNALS, weekend: true }, "shipping [weekend] site,coding,agents"],
     [[hoursOption("coding", 2.5), hoursOption("agents", 1, "agent time"), commits(3)], { ...NO_SIGNALS, deploys: 4 }, "shipping [] site,coding,agents"],
     [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time"), commits(10)], { ...NO_SIGNALS, deploys: 5 }, "handsOn [shipping] coding,site,agents"],
-    [[hoursOption("coding", 6), hoursOption("agents", 5, "agent time"), tokens(8e7)], NO_SIGNALS, "agentsLead [] coding,agents,tokens"],
+    [[hoursOption("coding", 6), hoursOption("agents", 5, "agent time"), tokens(8e7)], NO_SIGNALS, "agentsLead [] agents,coding,tokens"],
     [[hoursOption("coding", 5), hoursOption("agents", 1, "agent time")], { ...NO_SIGNALS, workoutMinutes: 45 }, "handsOn [workoutToo] coding,agents"],
     [[hoursOption("coding", 2), tokens(1e6), hoursOption("music", 1)], NO_SIGNALS, "codingLight [] coding,tokens"],
     [[hoursOption("coding", 2), hoursOption("music", 8)], NO_SIGNALS, "musicLong [] music,coding"],
@@ -333,7 +335,7 @@ test("situations, accents and picks follow the day's lead", () => {
     [[hoursOption("gaming", 2), countOption("trophies", 4, "trophies"), hoursOption("coding", 1)], NO_SIGNALS, "trophyHunt [] trophies,gaming"],
     [[hoursOption("coding", 6), hoursOption("agents", 1, "agent time"), hoursOption("gaming", 3)], NO_SIGNALS, "workAndPlay [] coding,gaming,agents"],
     [[countOption("fitness", 9_000, "steps"), hoursOption("music", 1)], { ...NO_SIGNALS, workoutMinutes: 60 }, "workout [] fitness,music"],
-    [[hoursOption("coding", 4), hoursOption("agents", 2.5, "agent time"), countOption("fitness", 14_000, "steps")], { ...NO_SIGNALS, workoutMinutes: 90 }, "agentsLead [workoutToo] coding,agents"],
+    [[hoursOption("coding", 4), hoursOption("agents", 2.5, "agent time"), countOption("fitness", 14_000, "steps")], { ...NO_SIGNALS, workoutMinutes: 90 }, "agentsLead [workoutToo] agents,coding"],
     [[hoursOption("coding", 2), hoursOption("music", 10), countOption("fitness", 24_000, "steps")], { ...NO_SIGNALS, workoutMinutes: 90 }, "musicLong [workoutToo] music,fitness"],
     [[countOption("fitness", 16_000, "steps"), minutesOption("coding", 30)], NO_SIGNALS, "walking [] fitness,coding"],
   ];

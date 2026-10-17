@@ -160,13 +160,19 @@ function gamingLine(lane: PulseStateLane): string | null {
   return `Gaming: ${duration(lane.summary.activeSeconds)}; ${games.join(", ")}`;
 }
 
+// 人在场只认编码 app 在前台的时段（含与 agent 重叠的部分）；agent 自己跑的时间不算 LYJW 在写代码，事实清单、情境规则和卡片的 coding 格都用这一口径。
+function codingSeconds(pulse: NonNullable<DigestViews["pulse"]>): { handsOn: number; agents: number } {
+  const { humanSeconds, agentSeconds, bothSeconds } = pulse.lanes.coding.summary;
+  return { handsOn: humanSeconds + bothSeconds, agents: agentSeconds + bothSeconds };
+}
+
 function codingLines(views: DigestViews, windowFrom: number, today: string): string[] {
   const lines: string[] = [];
   const pulse = views.pulse!;
-  const { humanSeconds, agentSeconds, bothSeconds } = pulse.lanes.coding.summary;
-  const any = humanSeconds + agentSeconds + bothSeconds;
-  if (any >= MIN_ACTIVE_SECONDS) {
-    lines.push(`Coding: active ${duration(any)} of the 24 h; a coding app in front on LYJW's Mac ${duration(humanSeconds + bothSeconds)}, AI agents working ${duration(agentSeconds + bothSeconds)}`);
+  const { handsOn, agents: agentTime } = codingSeconds(pulse);
+  if (Math.max(handsOn, agentTime) >= MIN_ACTIVE_SECONDS) {
+    const part = (seconds: number) => (seconds >= MIN_ACTIVE_SECONDS ? duration(seconds) : "none");
+    lines.push(`Coding: LYJW hands-on (a coding app in front on the Mac) ${part(handsOn)}; AI agents working ${part(agentTime)}`);
   }
   const agents = (views.codingNow?.agents ?? []).flatMap((agent) => {
     const recent = agent.activity.filter((entry) => entry.lastActivityAt >= windowFrom).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
@@ -305,9 +311,9 @@ export function digestHighlightOptions(views: DigestViews): DigestHighlight[] {
   };
   const time = (seconds: number) => (seconds >= MIN_ACTIVE_SECONDS ? timeFigure(seconds) : null);
   const count = (value: number): Figure | null => (value > 0 ? { value, unit: "count", atLeast: false } : null);
-  const { humanSeconds, agentSeconds, bothSeconds } = pulse.lanes.coding.summary;
-  add("coding", time(humanSeconds + agentSeconds + bothSeconds), "coding");
-  add("agents", time(agentSeconds + bothSeconds), "agent time");
+  const coding = codingSeconds(pulse);
+  add("coding", time(coding.handsOn), "hands-on");
+  add("agents", time(coding.agents), "agent time");
   add("tokens", count(roundCount(pulse.lanes.tokens.summary.totalTokens)), "tokens");
   const site = siteTallies(views, windowFrom);
   if (site.commits?.value) add("site", site.commits, "commits");
