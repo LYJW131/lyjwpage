@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs src/*.test.ts",
     "chat:probe": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/chat-probe.ts",
+    "route:probe": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/route-probe.ts",
     "digest:probe": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/digest-probe.ts",
     "digest:taglines": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/digest-taglines.ts",
     "designer:setup": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/setup-designer.ts"
