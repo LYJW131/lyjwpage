@@ -191,6 +191,10 @@
   - 是什么：它不在回答里塞 HTML，而是让模型挑组件、用自家设计系统内联画出数字卡、图表、时间线，只有要跑逻辑的部分进隐藏沙箱。
   - 取了什么：首页对话的图示改成站点原生组件，HTML 沙箱只作兜底；预览卡固定尺寸、可重来、可全屏，切换视图不卸载。
   - 状态：采用。落在 [chat-visual.tsx](../src/components/chat-visual.tsx) 与 [chat-html-preview.tsx](../src/components/chat-html-preview.tsx)。
+- **[OpenUI](https://github.com/thesysdev/openui)**（Thesys）
+  - 是什么：生成式 UI 框架。从组件库定义生成系统提示词，模型写紧凑的 OpenUI Lang，渲染器边流式边容错地画，出错时把结构化错误回给模型。
+  - 取了什么：图示的上限与例子只写一处（`shared/god-chat.ts` 的 `GOD_CHAT_VISUAL_LIMITS`、`GOD_CHAT_VISUAL_EXAMPLES`），提示词按它生成每种组件的说明，校验 `checkGodChatVisual` 站点与 Worker 共用；Worker 在回复结束后用同一份校验记下画不出来的图示；结构图从 HTML 兜底改成原生 `diagram` 组件（分层方框加相邻层连线）。
+  - 状态：部分采用。落在 [god-chat.ts](../shared/god-chat.ts)、[handler.ts](../workers/ai/src/chat/handler.ts)、[reply-fences.ts](../workers/ai/src/chat/reply-fences.ts) 与 [chat-visual.tsx](../src/components/chat-visual.tsx)。不装它的包：要为几种图示多教模型一门语言，省 token 的数据是用 GPT 分词器在大界面上测的；`lang-core` 安装时默认上报遥测。不借客户端 `Query` / `Mutation`（与根 [AGENTS.md](../AGENTS.md)「禁区」的站点侧不写后端相冲）、编辑模式与现成聊天界面（视觉方向与 [DESIGN.md](../DESIGN.md) 不同）。
 - **Claude 界面的 thinking 提示**（lyjw 点名参照，没有文章）
   - 是什么：一道高光从左往右扫过的「思考中」标签。
   - 取了什么：对话等待时显示 `THINKING` 扫光，模型流出思考时可展开。

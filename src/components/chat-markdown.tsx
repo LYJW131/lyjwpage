@@ -4,7 +4,8 @@ import Markdown, { type Components, type ExtraProps } from "react-markdown";
 import { ChatHtmlPreview } from "@/components/chat-html-preview";
 import { ChatVisualView, VisualPlaceholder } from "@/components/chat-visual";
 import { CHAT_REMARK_PLUGINS, CHAT_STREAM_REHYPE_PLUGINS } from "@/lib/chat-markdown-plugins";
-import { isVisualKind, parsePartialVisual, parseVisual } from "@/lib/chat-visuals";
+import { parsePartialVisual, parseVisual } from "@/lib/chat-visuals";
+import { isGodChatVisualKind } from "@shared/god-chat";
 
 const LINK_CLASS = "underline underline-offset-2 hover:opacity-80";
 
@@ -37,7 +38,7 @@ function ReplyBlock({ node, children }: { node: ExtraProps["node"]; children: Re
   const streaming = useContext(Streaming);
   const block = fencedBlock(node);
   if (block?.language === "html") return <ChatHtmlPreview source={block.source} streaming={streaming} />;
-  if (!block || !isVisualKind(block.language)) return <CodeBlock>{children}</CodeBlock>;
+  if (!block || !isGodChatVisualKind(block.language)) return <CodeBlock>{children}</CodeBlock>;
   if (!block.source.trim()) return <VisualPlaceholder kind={block.language} />;
   const visual = streaming ? parsePartialVisual(block.language, block.source) : parseVisual(block.language, block.source);
   if (visual) return <ChatVisualView visual={visual} />;
