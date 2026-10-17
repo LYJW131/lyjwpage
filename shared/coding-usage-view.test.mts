@@ -87,7 +87,7 @@ test("有账号级来源就只算它：Mac 报来的 cursor 标 superseded，哪
   assert.equal(year.days["2026-09-29"]?.tokens, 21);
 });
 
-test("前五模型在完整数据上精确累加，不在每个来源截断过的前五上相加", () => {
+test("前十模型在完整数据上精确累加，不在每个来源截断过的前十上相加", () => {
   const { view } = build({
     mac: { claude: ledger("claude", [day("2026-09-28", 100, [["a", 40], ["b", 30], ["c", 20], ["d", 10]])]) },
     "agents-otlp": { claude: ledger("claude", [day("2026-09-28", 100, [["e", 40], ["f", 30], ["g", 20], ["d", 10]])]) },
@@ -99,7 +99,16 @@ test("前五模型在完整数据上精确累加，不在每个来源截断过�
     { model: "e", tokens: 40 },
     { model: "b", tokens: 30 },
     { model: "f", tokens: 30 },
+    { model: "c", tokens: 20 },
+    { model: "g", tokens: 20 },
+    { model: "h", tokens: 20 },
   ]);
+});
+
+test("模型超过十个时只取前十", () => {
+  const models = Array.from({ length: 12 }, (_, i): [string, number] => [`m${String(i).padStart(2, "0")}`, 100 - i]);
+  const { view } = build({ mac: { claude: ledger("claude", [day("2026-09-28", 1200, models)]) } });
+  assert.deepEqual(view.topModels.map((row) => row.model), models.slice(0, 10).map(([model]) => model));
 });
 
 test("活跃天数是全部历史、全部 agent 的站点日并集；全 0 的行是确认没用，不算", () => {
