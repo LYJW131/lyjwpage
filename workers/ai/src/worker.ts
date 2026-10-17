@@ -93,7 +93,7 @@ const worker = {
       response = await handleMcp(request, mcpCodeModeEnabled(env) && env.LOADER ? { ...tools, runCode: sandboxRunner(env.LOADER) } : tools, env.CF_VERSION_METADATA?.id ?? "dev");
     } else {
       if (!isAllowedOrigin(request, env)) return jsonResponse({ error: "Forbidden" }, { status: 403, headers: cors });
-      response = await handleChat(request, env, tools);
+      response = await handleChat(request, env, tools, ctx);
     }
     return withCors(response, cors);
   },
