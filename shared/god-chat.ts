@@ -4,7 +4,7 @@ import { BUILD_TOKEN_MAX_CHARS, type BuildProposal } from "./build-routine";
 import type { GodChatTimeInput } from "./chat-time";
 import { object } from "./json";
 
-import { isGodChatServedTier, type GodChatEffort, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";
+import { GOD_CHAT_RETIRED_TIERS, isGodChatServedTier, type GodChatEffort, type GodChatRetiredTier, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";
 
 // 公开端点直接花 API 额度：这几项上限共同限定单次请求的最大花费，放宽前先算账。
 export const GOD_CHAT_LIMITS = {
@@ -341,7 +341,7 @@ export function readGodChatRoute(tier: unknown, downgradedFrom?: unknown): { tie
 // trace 由 Worker 在回复结束时随 seal 事件下发，浏览器原样带回；只收枚举与计数，不收任何自由文本（搜索词、文档章节名不回传）。
 // docs 是 read_project_doc 的文档键，design / plan 标记规划工具，cards 是那条回复给访客画过的卡片。
 export type GodChatTrace = {
-  tier?: GodChatServedTier;
+  tier?: GodChatServedTier | GodChatRetiredTier;
   // 每轮原样重放消息级 effort，切换强度不能重写已缓存的历史前缀。
   effort?: GodChatEffort;
   views?: string[];
@@ -448,7 +448,7 @@ export function normalizeTrace(value: unknown): GodChatTrace | undefined {
   const searches = Number.isInteger(raw.searches) ? Math.min(raw.searches as number, GOD_CHAT_LIMITS.maxWebSearches) : 0;
   const cards = Array.isArray(raw.cards) ? [...new Set(raw.cards.filter(isGodChatCard))] : [];
   const trace: GodChatTrace = {
-    ...(isGodChatServedTier(raw.tier) && { tier: raw.tier }),
+    ...((isGodChatServedTier(raw.tier) || GOD_CHAT_RETIRED_TIERS.includes(raw.tier as GodChatRetiredTier)) && { tier: raw.tier as GodChatServedTier | GodChatRetiredTier }),
     ...(effort && { effort }),
     ...(views.length && { views }),
     ...(docs.length && { docs }),

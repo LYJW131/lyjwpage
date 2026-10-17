@@ -341,6 +341,15 @@ test("历史验章：只留盖过章且内容、trace、所答问题都没动过
   assert.deepEqual((await sealedHistory(history, "another-secret")).map((m) => m.content), ["现在呢"]);
 });
 
+test("改名前签的章（trace 里是 sonnet）过完请求解析仍验得过，模型只看到「更早的一档」", async () => {
+  const secret = "test-secret";
+  const seal = await sealExchange(secret, "在听什么", "GHOST", { tier: "sonnet" as never, views: ["nowListening"] });
+  const parsed = parseGodChatRequest({ messages: [user("在听什么"), { role: "assistant", content: "GHOST", trace: { tier: "sonnet", views: ["nowListening"] }, seal }, user("现在呢")] });
+  const kept = await sealedHistory(parsed!.messages, secret);
+  assert.deepEqual(kept.map((m) => m.content), ["在听什么", "GHOST", "现在呢"]);
+  assert.match(JSON.stringify(toModelMessages(kept, "low")), /written by an earlier rank after it called get_site_status for nowListening/);
+});
+
 test("超长回复经浏览器与 Worker 两道裁剪后，章仍按同一形态对得上", async () => {
   const raw = `${"z".repeat(GOD_CHAT_LIMITS.maxReplyChars - 2)}  \n tail`;
   const seal = await sealExchange("s", "q", storedReply(raw), undefined);
