@@ -38,7 +38,7 @@ import { CLEF_CHOICES, isClefChoice, presetRoute, routeWithClef, type RouteDecis
 import { invalidVisuals, replyFences } from "./reply-fences";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { TOOL_SEARCH_TOOL, docSearchQuery } from "./doc-search";
-import { saveTranscript, type TranscriptOutcome } from "./transcripts";
+import { saveTranscript, type Transcript, type TranscriptOutcome } from "./transcripts";
 import { ANIME_SEARCH_TOOL, DOMAIN_SEARCH_TOOLS, GAME_SEARCH_TOOL, STORE_LANGUAGES, animeSearch, gameSearch } from "./domain-search";
 import { MAX_WEB_FETCHES, WEB_CATEGORIES, WEB_FETCH_TOOL, WEB_SEARCH_TOOL, searchResultBlocks, urlKey, urlsIn, webFetch, webSearch, type WebPage } from "./web-search";
 
@@ -135,8 +135,10 @@ function fail(status: number, error: string, headers?: HeadersInit, code?: strin
   return Response.json({ error, ...(code && { code }) }, { status, headers: { "Cache-Control": "no-store", ...headers } });
 }
 
-export async function handleChat(request: Request, env: Env, io: ToolIO): Promise<Response> {
+export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: Pick<ExecutionContext, "waitUntil">): Promise<Response> {
   const startedAt = Date.now();
+  // 记录是尽力而为的调试数据：有 ctx 时放到响应之后写，存储变慢也不拖住流的收尾。
+  const record = async (entry: Transcript) => { const saving = saveTranscript(env, entry); if (ctx) ctx.waitUntil(saving); else await saving; };
   if (request.method !== "POST") return fail(405, "Method not allowed.");
   const sealSecret = env.CHAT_HISTORY_SECRET;
   if (!env.ANTHROPIC_API_KEY || !env.TURNSTILE_SECRET_KEY || !sealSecret) return fail(503, "The oracle is offline.");
@@ -196,7 +198,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   };
 
   if (decision.route === "refuse") {
-    await saveTranscript(env, { route: "refuse", tier: null, source: decision.source, messages: history, reply: REFUSAL, outcome: "refused" });
+    await record({ route: "refuse", tier: null, source: decision.source, messages: history, reply: REFUSAL, outcome: "refused" });
     return new Response(
       new Blob([line({ type: "route", route: "refuse", tier: null }), line({ type: "text", text: REFUSAL })]).stream(),
       { headers },
@@ -267,7 +269,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {
-        await saveTranscript(env, { route: wanted, tier: saved.trace?.tier ?? tier, source: decision.source, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
+        await record({ route: wanted, tier: saved.trace?.tier ?? tier, source: decision.source, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
         // 访客中断时这条流已被取消，再 close 会抛错。
         if (!abort.signal.aborted) controller.close();
       }
