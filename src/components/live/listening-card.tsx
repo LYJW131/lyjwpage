@@ -481,44 +481,45 @@ function UpNext({ next, inline = false }: { next: NowListeningNext; inline?: boo
   );
 }
 
-function HeroWrapper({
+function HeroAction({
   link,
-  wideLyrics = false,
   onOpen,
+  ariaLabel,
+  className,
   children,
 }: {
   link: string | null;
-  wideLyrics?: boolean;
   onOpen?: () => void;
+  ariaLabel?: string;
+  className?: string;
   children: ReactNode;
 }) {
-  const className = cn(
-    "group h-full rounded-md",
-    wideLyrics ? "flex gap-3 md:grid md:grid-cols-2 md:gap-0" : "flex gap-3",
-  );
   if (onOpen) {
     return (
       <button
         type="button"
         onClick={onOpen}
-        className={cn(className, "w-full text-left")}
+        aria-label={ariaLabel}
+        className={cn("cursor-pointer text-left", className)}
       >
         {children}
       </button>
     );
   }
-  return link ? (
-    <a
-      href={link}
-      target="_blank"
-      rel="noreferrer noopener"
-      className={className}
-    >
-      {children}
-    </a>
-  ) : (
-    <div className={className}>{children}</div>
-  );
+  if (link) {
+    return (
+      <a
+        href={link}
+        target="_blank"
+        rel="noreferrer noopener"
+        aria-label={ariaLabel}
+        className={className}
+      >
+        {children}
+      </a>
+    );
+  }
+  return <div className={className}>{children}</div>;
 }
 
 type Hero = {
@@ -850,7 +851,7 @@ export function ListeningCard({
       <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3 lg:px-5 lg:pb-5">
         <div className="relative h-20 shrink-0">
           {!hero ? (
-            <HeroWrapper link={null}>
+            <div className="flex h-full gap-3 rounded-md">
               <div className="relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border border-line bg-muted" />
               <div className="flex min-w-0 flex-1 flex-col justify-center">
                 <div className="text-sm text-muted-foreground">
@@ -861,7 +862,7 @@ export function ListeningCard({
                       : "Nothing played recently"}
                 </div>
               </div>
-            </HeroWrapper>
+            </div>
           ) : (
             <AnimatePresence initial={false}>
               <motion.div
@@ -874,25 +875,35 @@ export function ListeningCard({
                 // 统一 transition 会覆盖 variant 中的非对称时长。
                 transition={reduced ? STATIC_TRANSITION : undefined}
               >
-                <HeroWrapper
-                  link={hero.track ? null : hero.link}
-                  wideLyrics={showSideLyrics || showSideNext}
-                  onOpen={
-                    canOpenHero && heroItem
-                      ? () => openInPlayer(heroItem)
-                      : undefined
-                  }
+                <div
+                  className={cn(
+                    "h-full rounded-md",
+                    showSideLyrics || showSideNext
+                      ? "flex gap-3 md:grid md:grid-cols-2 md:gap-0"
+                      : "flex gap-3",
+                  )}
                 >
                   <div className={cn("flex min-w-0 flex-1 gap-3", (showSideLyrics || showSideNext) && "md:pr-5")}>
-                    <HeroMotionArtwork
-                      artwork={hero.artwork}
-                      placeholder={
-                        hero.artwork ? artworkPlaceholders.hero[hero.artwork] : undefined
+                    <HeroAction
+                      link={hero.track ? null : hero.link}
+                      onOpen={
+                        canOpenHero && heroItem
+                          ? () => openInPlayer(heroItem)
+                          : undefined
                       }
-                      title={hero.title}
-                      videoUrl={motionData?.videoUrl ?? null}
-                      reduced={Boolean(reduced)}
-                    />
+                      ariaLabel={hero.title}
+                      className="group shrink-0 rounded-md"
+                    >
+                      <HeroMotionArtwork
+                        artwork={hero.artwork}
+                        placeholder={
+                          hero.artwork ? artworkPlaceholders.hero[hero.artwork] : undefined
+                        }
+                        title={hero.title}
+                        videoUrl={motionData?.videoUrl ?? null}
+                        reduced={Boolean(reduced)}
+                      />
+                    </HeroAction>
 
                     <div className="flex min-w-0 flex-1 flex-col justify-center overflow-hidden">
                       <div className="flex min-h-5 min-w-0 items-center gap-1.5">
@@ -932,15 +943,23 @@ export function ListeningCard({
                           </span>
                         )}
                       </div>
-                      <div
+                      <HeroAction
+                        link={hero.track ? null : hero.link}
+                        onOpen={
+                          canOpenHero && heroItem
+                            ? () => openInPlayer(heroItem)
+                            : undefined
+                        }
                         className={cn(
-                          "mt-1 truncate font-medium leading-snug",
-                          (canOpenHero || (!hero.track && hero.link)) && "group-hover:underline",
+                          "relative mt-1 max-w-full self-start font-medium leading-snug",
+                          (canOpenHero || (!hero.track && hero.link)) &&
+                            "after:absolute after:-inset-y-1 after:inset-x-0 hover:underline",
                         )}
-                        title={hero.title}
                       >
-                        {hero.title}
-                      </div>
+                        <span className="block truncate" title={hero.title}>
+                          {hero.title}
+                        </span>
+                      </HeroAction>
                       {hero.track ? (
                         <HeroProgress
                           track={hero.track}
@@ -993,7 +1012,7 @@ export function ListeningCard({
                       )}
                     </div>
                   )}
-                </HeroWrapper>
+                </div>
               </motion.div>
             </AnimatePresence>
           )}
