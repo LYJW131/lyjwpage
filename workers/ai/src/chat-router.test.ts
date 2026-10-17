@@ -92,7 +92,7 @@ const answered = (route: string, status?: [string, number], doc?: [string, numbe
 });
 
 test("Clef 有把握时把状态与文档的预取带进决定", async () => {
-  assert.deepEqual(await routeWithClef(clef(answered("haiku-low", ["listening", 0.9], ["overview", 0.8])), [user("在听什么")]), {
+  assert.deepEqual(await routeWithClef(clef(answered("haiku-low", ["listening", 0.9], ["overview", PREFETCH_MIN_PROBABILITY.doc])), [user("在听什么")]), {
     route: "haiku", effort: "low", source: "clef",
     prefetch: [
       { name: "get_site_status", input: { views: [...PREFETCH_STATUS.listening.views] } },
@@ -102,9 +102,8 @@ test("Clef 有把握时把状态与文档的预取带进决定", async () => {
 });
 
 test("概率不够、选了 none、选项没登记或缺答时不预取", async () => {
-  const low = PREFETCH_MIN_PROBABILITY - 0.01;
   for (const answer of [
-    answered("sonnet", ["listening", low], ["overview", low]),
+    answered("sonnet", ["listening", PREFETCH_MIN_PROBABILITY.status - 0.01], ["overview", PREFETCH_MIN_PROBABILITY.doc - 0.01]),
     answered("sonnet", ["none", 0.99], ["none", 0.99]),
     answered("sonnet", ["weather", 0.99], ["secrets", 0.99]),
     answered("sonnet"),
