@@ -11,6 +11,7 @@ import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { STREAM_FLUSH_MS, revealedLength, revealedText, stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent } from "@/lib/chat-consent";
+import { chatLineup } from "@/lib/chat-lineup";
 import { useHumanCheck } from "@/hooks/use-human-check";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
@@ -27,10 +28,11 @@ import {
   readGodChatRoute,
 } from "@shared/god-chat";
 import {
-  GOD_CHAT_TIERS,
   GOD_CHAT_TIER_INFO,
+  lineupTiers,
   modelLabel,
   type GodChatCount,
+  type GodChatLineup,
   type GodChatServedTier,
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
@@ -92,6 +94,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const sessionRef = useRef(0);
   const resumeRef = useRef<() => void>(() => {});
   const human = useHumanCheck();
+  const lineup = useSyncExternalStore(chatLineup.subscribe, chatLineup.getSnapshot, chatLineup.getServerSnapshot);
   const conversationId = conversation?.id;
   const design = conversation?.design;
 
@@ -215,12 +218,14 @@ function Conversation({ className, archive, session: conversation }: { className
       // 设计同意要读此刻的真值：接受后立刻补发时，闭包里的 designConsented 还是旧的。
       designToken = designConsent.getSnapshot() ? activeChatDesign(conversation?.design)?.token : undefined;
       if (conversation?.design && !designToken && designConsent.getSnapshot()) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
+      // 阵容按点发送那一刻取：等人机验证期间再切换，不能把已发出的这条改派给另一个阵容。
+      const sentLineup = chatLineup.getSnapshot();
       const post = async () => {
         const proof = await human.proof(controller.signal);
         const res = await fetch(CHAT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history, ...proof, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
+          body: JSON.stringify({ messages: history, lineup: sentLineup, ...proof, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
           signal: controller.signal,
         });
         const data = res.ok && res.body ? null : (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
@@ -496,7 +501,10 @@ function Conversation({ className, archive, session: conversation }: { className
       <FableDescent descent={descent} />
       <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2 text-xs text-muted-foreground lg:px-5">
         <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="-my-1 flex min-w-0 items-center gap-1.5 py-1 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedCount > 0 ? ` (${savedCount})` : ""}</span></button>
-        <button type="button" onClick={() => runCommand("/clear")} className="-my-1 flex shrink-0 items-center gap-1 py-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
+        <div className="-my-1 flex shrink-0 items-center gap-4">
+          <LineupSwitch lineup={lineup} />
+          <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 py-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
+        </div>
       </div>
       {historyOpen && <SessionList archive={archive} />}
       <div
@@ -623,7 +631,7 @@ function Conversation({ className, archive, session: conversation }: { className
 
       <div className="border-t border-line px-4 py-3 lg:px-5">
         {error && <p className="mb-2 text-xs text-signal-red">{error}</p>}
-        {usage && <UsagePanel usage={usage} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
+        {usage && <UsagePanel usage={usage} lineup={lineup} onClose={() => setUsage(null)} onReset={() => void showUsage(true)} />}
         {conversation?.design && designConsented && <DesignStatus design={conversation.design} />}
         <div ref={human.slotRef} className={cn(human.state === "interactive" && "pb-2")} />
         <form
@@ -832,8 +840,8 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     destinations: [
       { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and conversation history, and temporarily keeps your IP address within the rate-limit window. When a model looks something up, it sends only that search query or page URL to the web search service (Exa, or DeepSeek's search when the site is set to use it, for searches and page reads), Bangumi or the Steam store, never your full conversation. Transcripts are kept for 30 days for debugging, then deleted automatically; server logs only contain request metadata, usage counts, and errors—never message text." },
       { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message and brief excerpts from recent context to select the appropriate model. Cloudflare does not store this content or use it for training." },
-      { name: "DeepSeek (DeepSeek API)", detail: "receives the full conversation to generate replies from the Small Fry and Prophet ranks. DeepSeek's servers are in mainland China, and this data is processed under DeepSeek's open platform terms." },
-      { name: "Anthropic (Claude API)", detail: "receives the full conversation when God or the design flow answers, and passes only the lookup query Claude writes to the documentation and code search services Context7, Cloudflare Docs, grep.app and DeepWiki. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
+      { name: "DeepSeek (DeepSeek API)", detail: "receives the full conversation when the Small Fry or Prophet answers with DeepSeek selected in the card (the default). DeepSeek's servers are in mainland China, and this data is processed under DeepSeek's open platform terms." },
+      { name: "Anthropic (Claude API)", detail: "receives the full conversation when God or the design flow answers, or the Small Fry or Prophet with Claude selected in the card, and passes only the lookup query Claude writes to the documentation and code search services Context7, Cloudflare Docs, grep.app and DeepWiki. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
       { name: "This browser", detail: "stores your conversations and this consent locally." },
     ],
     accept: "Accept",
@@ -848,8 +856,8 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     destinations: [
       { name: "Cloudflare Workers（本站后端）", detail: "负责转发消息与本次对话历史，并在限流窗口内临时保留 IP 地址。模型检索时，只把查询词或网页地址发给联网搜索服务（Exa；站点切换时为 DeepSeek 搜索，用于联网搜索与读取网页）、Bangumi 或 Steam 商店，不发送完整对话。对话记录保留 30 天用于调试，到期自动删除；日志仅包含请求元数据、用量计数与错误信息，不记录任何消息原文。" },
       { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取最新消息及上下文的简短摘录，用于路由选择合适的模型。Cloudflare 不存储这些内容，亦不用于模型训练。" },
-      { name: "DeepSeek（DeepSeek API）", detail: "接收完整对话，为「杂鱼」与「先知」两档生成回复。DeepSeek 的服务器位于中国大陆，数据按 DeepSeek 开放平台条款处理。" },
-      { name: "Anthropic（Claude API）", detail: "由「神」或设计流程作答时接收完整对话，并只把 Claude 写出的检索词转给文档与代码检索服务 Context7、Cloudflare 文档、grep.app 与 DeepWiki。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
+      { name: "DeepSeek（DeepSeek API）", detail: "卡片里选 DeepSeek（默认）时，「杂鱼」与「先知」作答会接收完整对话。DeepSeek 的服务器位于中国大陆，数据按 DeepSeek 开放平台条款处理。" },
+      { name: "Anthropic（Claude API）", detail: "由「神」、设计流程，或卡片里选 Claude 时的「杂鱼」与「先知」作答时接收完整对话，并只把 Claude 写出的检索词转给文档与代码检索服务 Context7、Cloudflare 文档、grep.app 与 DeepWiki。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
       { name: "当前浏览器", detail: "在本地保存你的对话记录与本次同意状态。" },
     ],
     accept: "接受",
@@ -864,8 +872,8 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     destinations: [
       { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージおよび会話履歴を中継し、レート制限期間中のみ IP アドレスを一時保持します。モデルが調べものをする際は、検索クエリまたはページ URL のみを Web 検索サービス（Exa。サイトの設定によっては DeepSeek の検索。Web 検索とページ取得に使用）、Bangumi、Steam ストアに送信し、会話全体は送信しません。会話の記録はデバッグ目的で 30 日間保存され、期限後に自動で削除されます。ログにはリクエストのメタデータ、利用回数、エラー情報のみが記録され、メッセージ本文は一切含まれません。" },
       { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージおよび直前の短い会話抜粋を読み取り、最適なモデルを選択します。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
-      { name: "DeepSeek（DeepSeek API）", detail: "「雑魚」と「預言者」の回答生成のために会話全体を受信します。DeepSeek のサーバーは中国本土にあり、データは DeepSeek オープンプラットフォームの規約に基づいて処理されます。" },
-      { name: "Anthropic（Claude API）", detail: "「神」または設計フローが回答する際に会話全体を受信し、Claude が作成した検索クエリのみをドキュメント・コード検索サービス（Context7、Cloudflare Docs、grep.app、DeepWiki）に渡します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
+      { name: "DeepSeek（DeepSeek API）", detail: "カードで DeepSeek（既定）を選んでいる場合、「雑魚」と「預言者」の回答生成のために会話全体を受信します。DeepSeek のサーバーは中国本土にあり、データは DeepSeek オープンプラットフォームの規約に基づいて処理されます。" },
+      { name: "Anthropic（Claude API）", detail: "「神」、設計フロー、またはカードで Claude を選んだ場合の「雑魚」と「預言者」が回答する際に会話全体を受信し、Claude が作成した検索クエリのみをドキュメント・コード検索サービス（Context7、Cloudflare Docs、grep.app、DeepWiki）に渡します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
       { name: "このブラウザ", detail: "会話履歴と今回の同意状況をローカルに保存します。" },
     ],
     accept: "同意する",
@@ -1150,9 +1158,42 @@ function ReplyBody({
 const RANK_TONE: Record<GodChatServedTier, string> = {
   fable: "god-aura bg-clip-text text-transparent font-bold",
   think: "text-foreground",
+  sonnet: "text-foreground",
   opus: "text-foreground",
   flash: "text-muted-foreground opacity-70",
+  haiku: "text-muted-foreground opacity-70",
 };
+
+const LINEUP_OPTIONS: { lineup: GodChatLineup; label: string }[] = [
+  { lineup: "deepseek", label: "DeepSeek" },
+  { lineup: "claude", label: "Claude" },
+];
+
+// 只换杂鱼与先知由谁出场，神始终是 Fable；选了只影响之后发的消息。
+function LineupSwitch({ lineup }: { lineup: GodChatLineup }) {
+  return (
+    <div role="radiogroup" aria-label="Models for the Small Fry and the Prophet" className="flex items-center gap-1.5">
+      {LINEUP_OPTIONS.map((option, index) => {
+        const [fry, prophet] = lineupTiers(option.lineup).map((tier) => GOD_CHAT_TIER_INFO[tier].label);
+        return (
+          <Fragment key={option.lineup}>
+            {index > 0 && <span aria-hidden>/</span>}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={lineup === option.lineup}
+              title={fry === prophet ? `Small Fry and Prophet: ${fry}` : `Small Fry: ${fry} · Prophet: ${prophet}`}
+              onClick={() => chatLineup.choose(option.lineup)}
+              className={cn("py-1", lineup === option.lineup ? "text-foreground" : "hover:text-foreground")}
+            >
+              {option.label}
+            </button>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
 
 function RankLabel({ reply }: { reply: Reply }) {
   if (reply.tier === null) {
@@ -1161,11 +1202,11 @@ function RankLabel({ reply }: { reply: Reply }) {
   if (!reply.tier) return null;
   const { persona, label } = GOD_CHAT_TIER_INFO[reply.tier];
   const from = reply.downgradedFrom && GOD_CHAT_TIER_INFO[reply.downgradedFrom];
-  const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.think : undefined;
+  const opener = reply.designAt !== undefined && reply.tier === "opus" ? GOD_CHAT_TIER_INFO.think.persona : undefined;
   return (
     <div className="mb-1.5">
       <div className={cn("label-mono", RANK_TONE[reply.tier])}>
-        {opener && `${opener.persona} · ${opener.label} → `}{persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
+        {opener && `${opener} → `}{persona} · {reply.servedBy ? modelLabel(reply.servedBy) : label}
       </div>
       {from && (
         <div className="label-mono text-muted-foreground">
@@ -1245,10 +1286,12 @@ function useCountdown(resetAt: number | null, onReset: () => void): number {
 
 function UsagePanel({
   usage,
+  lineup,
   onClose,
   onReset,
 }: {
   usage: FetchedUsage | "loading";
+  lineup: GodChatLineup;
   onClose: () => void;
   onReset: () => void;
 }) {
@@ -1280,7 +1323,7 @@ function UsagePanel({
           <span>All messages</span>
           <UsageBar count={usage.visitor} />
           <span>—</span>
-          {[...GOD_CHAT_TIERS].reverse().map((tier) => (
+          {lineupTiers(lineup).reverse().map((tier) => (
             <Fragment key={tier}>
               <span className={cn("truncate", RANK_TONE[tier])}>
                 {GOD_CHAT_TIER_INFO[tier].persona} · {GOD_CHAT_TIER_INFO[tier].label}
