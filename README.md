@@ -194,7 +194,7 @@ flowchart LR
 | 客户端数据 | SWR · WebSocket |
 | 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
 | 活跃度评分 | Workers AI（Clef） |
-| 首页对话 | Anthropic Claude（Clef 选档）、Cloudflare Turnstile |
+| 首页对话 | DeepSeek Flash 与 Anthropic Claude（Clef 选档）、Exa 联网搜索 |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Cloudflare Workers · 阿里云 ESA |
 | 报错与性能监控 | Cloudflare Workers Observability · Web Analytics |

@@ -3,8 +3,8 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 
 import type Anthropic from "@anthropic-ai/sdk";
-import { GOD_CHAT_LIMITS, GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
-import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO, type GodChatEffort } from "@shared/god-chat-tiers";
+import { GOD_CHAT_LIMITS, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
+import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 import { BUILD_DESIGN_LIMITS, PLAN_LABELS, type BuildPlan } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
 import type { ChatQuota } from "./chat/quota.ts";
@@ -24,6 +24,16 @@ registerHooks({
   },
 });
 const { handleChat } = await import("./chat/handler.ts");
+
+const unexpected = () => new Response("unexpected fetch", { status: 500 });
+
+// DeepSeek 两档不经 Anthropic 出口，直接走全局 fetch；测试把发往 DeepSeek 的请求交给 handle，其余照旧。
+function deepseekFetch(handle: (request: Request) => Promise<Response>, rest: typeof fetch = async () => unexpected()): typeof fetch {
+  return async (input, init) => {
+    const request = new Request(input, init);
+    return new URL(request.url).hostname === "api.deepseek.com" ? handle(request) : rest(input, init);
+  };
+}
 
 type TestStub<T> = Partial<{ [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => R | Promise<Awaited<R>> : T[K] }>;
 
@@ -58,85 +68,91 @@ function modelStream(model: string, tool: boolean | { name: string; input: unkno
   });
 }
 
-test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承强度并在签名 trace 中记录", async (t) => {
+test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度并在签名 trace 中记录；DeepSeek 两档去掉它不支持的字段", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => {
     globalThis.fetch = original;
   });
   for (const tier of GOD_CHAT_TIERS) {
     await t.test(tier, async () => {
-      const requests: { body: Anthropic.Beta.MessageCreateParamsStreaming; headers: Headers }[] = [];
-      const effort: GodChatEffort = tier === "haiku" ? "medium" : GOD_CHAT_TIER_INFO[tier].effort;
+      const info = GOD_CHAT_TIER_INFO[tier];
+      const deepseek = info.provider === "deepseek";
+      const requests: { body: Anthropic.Beta.MessageCreateParamsStreaming; headers: Headers; url: string }[] = [];
+      const respond = async (request: Request) => {
+        const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+        requests.push({ body, headers: request.headers, url: request.url });
+        return modelStream(body.model, requests.length === 1);
+      };
+      globalThis.fetch = deepseekFetch(respond);
       const transcripts: Transcript[] = [];
       const env: Env = {
         PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
         AI_DEV: "true",
-        CHAT_FORCE_TIER: tier === "haiku" ? "haiku-medium" : tier,
+        CHAT_FORCE_TIER: tier,
         ANTHROPIC_API_KEY: "test-key",
+        DEEPSEEK_API_KEY: "test-deepseek",
         EXA_API_KEY: "test-exa",
-        TURNSTILE_SECRET_KEY: "test-key",
         CHAT_HISTORY_SECRET: "test-seal",
         ALLOWED_ORIGINS: "https://lyjw.me",
         CHAT_QUOTA: binding<ChatQuota>({
           admitVisitor: async () => "ok" as const,
-          admitTier: () => {
-            if (tier === "haiku") return Promise.resolve("haiku" as const);
-            if (tier === "sonnet") return Promise.resolve("sonnet" as const);
-            return Promise.resolve("fable" as const);
-          },
+          admitTier: async () => tier,
         }),
-        ANTHROPIC_EGRESS: binding<AnthropicEgress>({
-          colo: async () => "KIX",
-          fetch: async (request: Request) => {
-            const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
-            requests.push({ body, headers: request.headers });
-            return modelStream(body.model, requests.length === 1);
-          },
-        }),
+        ANTHROPIC_EGRESS: binding<AnthropicEgress>({ colo: async () => "KIX", fetch: respond }),
         CHAT_LOG: binding<ChatLog>({ record: async (entry) => { transcripts.push(entry); } }),
       };
       const response = await handleChat(new Request("https://api.test/api/chat", {
-        method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages: [{ role: "user", content: "What's the timezone?" }] }),
+        method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: "What's the timezone?" }] }),
       }), env, {
         readStatus: async () => Response.json({ ok: true, data: { timezone: "Asia/Singapore" } }),
         readDoc: async () => new Response("unused"),
       });
       const events = (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
       assert.equal(requests.length, 2);
-      for (const { body, headers } of requests) {
-        assert.equal(body.model, GOD_CHAT_TIER_INFO[tier].model);
+      for (const { body, headers, url } of requests) {
+        assert.equal(body.model, info.model);
+        assert.equal(new URL(url).hostname, deepseek ? "api.deepseek.com" : "api.anthropic.com");
         assert.ok(body.tools?.every((tool) => !("name" in tool) || !["draft_github_issue", "start_design", "propose_build"].includes(tool.name)));
         assert.equal(body.output_config, undefined);
         assert.equal(body.mcp_servers, undefined);
-        assert.ok(body.tools?.some((tool) => tool.type === "tool_search_tool_bm25_20251119"));
-        assert.ok(body.tools?.filter((tool) => "name" in tool && ["anime_search", "game_search"].includes(tool.name)).every((tool) => "defer_loading" in tool && tool.defer_loading));
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_search" && !("type" in tool)));
         assert.ok(body.tools?.some((tool) => "name" in tool && tool.name === "web_fetch"));
         assert.ok(!headers.get("anthropic-beta")?.includes("mcp-client-2025-11-20"));
-        assert.deepEqual(body.thinking, { type: "adaptive" });
-        assert.ok(headers.get("anthropic-beta")?.includes("mid-conversation-output-config-2026-07-01"));
-        assert.equal(headers.get("anthropic-beta")?.includes("server-side-fallback-2026-07-01"), tier !== "haiku");
-        assert.deepEqual(body.messages.filter((m) => m.role === "system"), [{ role: "system", content: [], output_config: { effort } }]);
+        assert.deepEqual(body.thinking, info.thinking ? { type: "adaptive" } : { type: "disabled" });
+        assert.deepEqual(body.messages.filter((m) => m.role === "system"), [{ role: "system", content: [], output_config: { effort: info.effort } }]);
+        const domain = body.tools?.filter((tool) => "name" in tool && ["anime_search", "game_search"].includes(tool.name)) ?? [];
+        assert.equal(domain.length, 2);
+        if (deepseek) {
+          assert.ok(body.tools?.every((tool) => tool.type !== "tool_search_tool_bm25_20251119"));
+          assert.ok(domain.every((tool) => "defer_loading" in tool && tool.defer_loading === false));
+          assert.equal(headers.get("anthropic-beta"), null);
+          assert.equal("fallbacks" in body, false);
+        } else {
+          assert.ok(body.tools?.some((tool) => tool.type === "tool_search_tool_bm25_20251119"));
+          assert.ok(domain.every((tool) => "defer_loading" in tool && tool.defer_loading));
+          assert.ok(headers.get("anthropic-beta")?.includes("mid-conversation-output-config-2026-07-01"));
+          assert.equal(headers.get("anthropic-beta")?.includes("server-side-fallback-2026-07-01"), info.serverFallback);
+        }
       }
-      assert.deepEqual(requests[1].body.messages.slice(0, requests[0].body.messages.length), requests[0].body.messages);
+      const replayed = requests[1].body.messages.slice(0, requests[0].body.messages.length);
+      assert.deepEqual(replayed, requests[0].body.messages);
       assert.ok(events.some((e) => e.type === "text" && e.text === "Done."));
       const seal = events.find((e) => e.type === "seal");
       assert.ok(seal?.type === "seal");
-      assert.equal(seal.trace?.effort, effort);
+      assert.equal(seal.trace?.effort, info.effort);
       assert.equal(transcripts.length, 1);
       assert.deepEqual(transcripts[0].messages.map((m) => m.content), ["What's the timezone?"]);
       assert.equal(transcripts[0].outcome, "complete");
       assert.equal(transcripts[0].tier, tier);
       assert.ok(transcripts[0].reply.includes("Done."));
-      assert.equal(transcripts[0].trace?.effort, effort);
+      assert.equal(transcripts[0].trace?.effort, info.effort);
     });
   }
 });
 
 test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
 
   for (const flags of [{}, { AI_DEV: "false", PREVIEW_WORKER: "false" }, { AI_DEV: "true" }, { PREVIEW_WORKER: "true" }]) {
@@ -144,12 +160,12 @@ test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效"
     const enforced: boolean[] = [];
     const tiers: string[] = [];
     const response = await handleChat(new Request("https://ai.test/api/chat", {
-      method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages: [{ role: "user", content: "hello" }] }),
+      method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: "hello" }] }),
     }), {
       ...flags,
       PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
       ANTHROPIC_API_KEY: "test-key",
-      TURNSTILE_SECRET_KEY: "test-key",
+      DEEPSEEK_API_KEY: "test-deepseek",
       CHAT_HISTORY_SECRET: "test-seal",
       ALLOWED_ORIGINS: "https://lyjw.me",
       CHAT_RATE_LIMIT: "off",
@@ -165,7 +181,7 @@ test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效"
     assert.equal(response.status, 429);
     await response.text();
     assert.deepEqual(enforced, [!dev]);
-    assert.deepEqual(tiers, dev ? ["fable"] : ["haiku"]);
+    assert.deepEqual(tiers, dev ? ["fable"] : ["flash"]);
   }
 });
 
@@ -207,7 +223,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
   const env: Env = {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     ANTHROPIC_API_KEY: "test-key",
-    TURNSTILE_SECRET_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
     CHAT_HISTORY_SECRET: "test-seal",
     BUILD_SESSION_SECRET: "test-build",
     DESIGN_AGENT_ID: "agent_test",
@@ -276,7 +292,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
 }
 
 function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role: "user", content: "Please improve the music card." }], resume = false) {
-  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages, ...(designToken && { designToken }), ...(resume && { resume }) }) });
+  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ messages, ...(designToken && { designToken }), ...(resume && { resume }) }) });
 }
 const toolIO = { readStatus: async () => Response.json({ ok: true, data: { timezone: "Asia/Singapore" } }), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);
@@ -289,7 +305,7 @@ const designToken = async (env: Env, sessions: Map<string, number>, payload: Rec
 
 test("改站请求由 Sonnet 判断，start_design 只建会话发令牌、不上传访客内容；同意后补发带出开场回合，计划挂起等访客，进历史签章", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const { env, requests, created, sent, counters } = designEnv({
     reply: (body, index) => modelStream(body.model, index === 0 ? { name: "start_design", input: {} } : false),
@@ -368,7 +384,7 @@ test("改站请求由 Sonnet 判断，start_design 只建会话发令牌、不�
 
 test("同意后两个标签页同时补发：开场只发一次，抢不到开场的那页等开场落进会话后跟着看同一回合", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const turn = [agent.running, ...agent.say("sevt_m1", "Here is my plan."), agent.custom("ctu_plan", "propose_build", plan), agent.waiting("ctu_plan")];
   const { env, sent, sessions } = designEnv({ turns: [turn, turn] });
@@ -385,7 +401,7 @@ test("同意后两个标签页同时补发：开场只发一次，抢不到开�
 
 test("会话没有挂起的工具调用时，访客的话按普通消息发给规划者", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const { env, sent, sessions } = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "Sure."), agent.idle({ type: "end_turn" })]] });
   await parseEvents(await handleChat(chatRequest(await designToken(env, sessions)), env, toolIO));
@@ -394,7 +410,7 @@ test("会话没有挂起的工具调用时，访客的话按普通消息发给�
 
 test("规划者没写字就出计划时，开场白跟访客看得到的中文标题走，不跟英文规格；写了字就不再补", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const zhPlan = { ...plan, title: "回答完问题后自动折叠问题框" };
   const silent = designEnv({ turns: [[agent.running, agent.custom("ctu_plan", "propose_build", zhPlan), agent.waiting("ctu_plan")]] });
@@ -407,7 +423,7 @@ test("规划者没写字就出计划时，开场白跟访客看得到的中文�
 
 test("规划者的自定义工具：站点状态当场回结果，不合规的题目与禁区计划报错让它重试，合规的题目挂起等访客；要确认的内置工具一律拒绝", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const questions = [{ header: "内容", question: "卡片显示多少内容？", multiSelect: false, options: [{ label: "只显示概况", description: "最简单" }, { label: "概况加展柜", description: "要维护对照表" }] }];
   const bad = [{ ...questions[0], options: [questions[0].options[0]] }];
@@ -441,7 +457,7 @@ test("规划者的自定义工具：站点状态当场回结果，不合规的�
 
 test("断线补发：会话已停在等访客时，从访客那条回答起重推错过的文字、读过的文件和题目并盖章，不发事件给会话也不扣轮数", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const questions = [{ header: "Scope", question: "How much should the card show?", multiSelect: false, options: [{ label: "Summary", description: "Simplest" }, { label: "Showcase", description: "More work" }] }];
   const { env, sent, sessions, counters } = designEnv({ history: [
@@ -472,7 +488,7 @@ test("断线补发：会话已停在等访客时，从访客那条回答起重�
 
 test("断线补发：回合还在跑时先重推已有的，再跟着事件流到停下，重复的事件只推一次；挂起的计划重新签发", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const first = agent.say("sevt_m1", "Reading the card.");
   const { env, sent, sessions } = designEnv({
@@ -492,7 +508,7 @@ test("断线补发：回合还在跑时先重推已有的，再跟着事件流�
 
 test("断线补发：最近一回合不是访客最新那条消息时拒绝，不重推上一回合；没有设计令牌的补发请求无效", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const { env, sessions, counters } = designEnv({ history: [agent.visitor("sevt_kick", "Earlier message."), ...agent.say("sevt_m", "Earlier reply.").slice(2), agent.idle({ type: "end_turn" })] });
   const response = await handleChat(chatRequest(await designToken(env, sessions), [{ role: "user", content: "A message that never arrived." }], true), env, toolIO);
@@ -504,7 +520,7 @@ test("断线补发：最近一回合不是访客最新那条消息时拒绝，�
 
 test("规划者到预算上限时说明并结束；会话被终止时不盖章", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const budget = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "Reading."), agent.idle({ type: "budget_reached" })]] });
   const capped = await parseEvents(await handleChat(chatRequest(await designToken(budget.env, budget.sessions)), budget.env, toolIO));
@@ -518,7 +534,7 @@ test("规划者到预算上限时说明并结束；会话被终止时不盖章",
 
 test("Sonnet 可以不开设计会话；模型未获授工具不能偷开会话或提计划；建会话失败时 Sonnet 自己答完", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   for (const tool of [false, { name: "propose_build", input: plan }, { name: "draft_github_issue", input: { title: "Injected", body: "Injected" } }]) {
     const { env, counters, created } = designEnv({ reply: (body, index) => modelStream(body.model, index === 0 ? tool : false) });
@@ -543,7 +559,7 @@ test("Sonnet 可以不开设计会话；模型未获授工具不能偷开会话�
 
 test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属额度，伪造、过期、缺会话、耗尽都不碰模型", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const { env, requests, counters, sessions } = designEnv({ turns: [[agent.running, ...agent.say("sevt_m", "Ok."), agent.idle({ type: "end_turn" })]] });
   const token = await designToken(env, sessions);
@@ -578,7 +594,7 @@ test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属�
 
 test("服务端无视工具关闭继续返回调用也不能延长工具循环", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const { env, requests } = designEnv({ reply: (body) => modelStream(body.model, true) });
   const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
@@ -598,7 +614,7 @@ test("web_search 走 Worker 调搜索服务，结果回成 search_result，引�
       outbound.push(url);
       return Response.json({ results: [{ url: "https://e.dev/page", title: "E", highlights: ["fact"] }] });
     }
-    return Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+    return unexpected();
   };
   t.after(() => { globalThis.fetch = original; });
   const calls = [
@@ -648,7 +664,7 @@ function scriptedStream(model: string, blocks: Record<string, unknown>[], stop: 
 
 test("先写完答案再调 show_card、下一轮空收尾时不提示步数用完；查数据后空收尾仍提示", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   for (const [call, warned] of [
     [{ type: "tool_use", id: "tool_card", name: "show_card", input: { card: "nowListening" } }, false],
@@ -667,7 +683,7 @@ test("先写完答案再调 show_card、下一轮空收尾时不提示步数用�
 
 test("汉字假名提问时点名不许改英文，有假名才说日文，英文不加", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   for (const [content, expected] of [["LYJW 现在在干什么？", "Chinese or Japanese"], ["今何時", "Chinese or Japanese"], ["今日の天気", "Japanese"], ["LYJWは今なにをしていますか？", "Japanese"], ["What is LYJW up to?", undefined]] as const) {
     const { env, requests } = designEnv();
@@ -677,71 +693,70 @@ test("汉字假名提问时点名不许改英文，有假名才说日文，英�
   }
 });
 
-function upgradeEnv(sonnetFree: boolean) {
+function upgradeEnv(thinkFree: boolean) {
   const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
   const admitted: { tier: string; allowDowngrade?: boolean }[] = [];
   const env: Env = {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     AI_DEV: "true",
-    CHAT_FORCE_TIER: "haiku-low",
+    CHAT_FORCE_TIER: "flash",
     ANTHROPIC_API_KEY: "test-key",
-    TURNSTILE_SECRET_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
     CHAT_HISTORY_SECRET: "test-seal",
     ALLOWED_ORIGINS: "https://lyjw.me",
     CHAT_QUOTA: binding<ChatQuota>({
       admitVisitor: async () => "ok" as const,
       admitTier: async (_ip, wanted, _enforce, allowDowngrade) => {
         admitted.push({ tier: wanted, allowDowngrade });
-        return wanted === "sonnet" && !sonnetFree ? null : wanted;
-      },
-    }),
-    ANTHROPIC_EGRESS: binding<AnthropicEgress>({
-      colo: async () => "KIX",
-      fetch: async (request) => {
-        const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
-        requests.push(body);
-        return requests.length === 1 ? modelStream(body.model, { name: "request_upgrade", input: {} }) : modelStream(body.model, false);
+        return wanted === "think" && !thinkFree ? null : wanted;
       },
     }),
   };
-  return { env, requests, admitted };
+  const fetch = deepseekFetch(async (request) => {
+    const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+    requests.push(body);
+    return requests.length === 1 ? modelStream(body.model, { name: "request_upgrade", input: {} }) : modelStream(body.model, false);
+  });
+  return { env, requests, admitted, fetch };
 }
 
-test("Haiku 调 request_upgrade 后整轮对话交给 Sonnet：扣 Sonnet 名额、不带 Haiku 的草稿、路由事件改成 Prophet", async (t) => {
+test("Small Fry 调 request_upgrade 后整轮对话交给 Prophet：扣 think 名额、开思考、不带 Small Fry 的草稿、路由事件改成 Prophet", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const { env, requests, admitted } = upgradeEnv(true);
+  const { env, requests, admitted, fetch } = upgradeEnv(true);
+  globalThis.fetch = fetch;
   const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "Prove that sqrt(2) is irrational." }]), env, toolIO));
-  assert.deepEqual(admitted.map((entry) => entry.tier), ["haiku", "sonnet"]);
+  assert.deepEqual(admitted.map((entry) => entry.tier), ["flash", "think"]);
   assert.equal(admitted[1].allowDowngrade, false);
   assert.equal(requests.length, 2);
   assert.ok(requests[0].tools?.some((tool) => "name" in tool && tool.name === "request_upgrade"));
-  assert.equal(requests[1].model, GOD_CHAT_TIER_INFO.sonnet.model);
+  assert.deepEqual(requests[0].thinking, { type: "disabled" });
+  assert.equal(requests[1].model, GOD_CHAT_TIER_INFO.think.model);
+  assert.deepEqual(requests[1].thinking, { type: "adaptive" });
   assert.ok(requests[1].tools?.every((tool) => !("name" in tool) || tool.name !== "request_upgrade"));
   assert.ok(requests[1].messages.every((message) => message.role !== "assistant"));
   const routes = events.filter((event) => event.type === "route");
-  assert.deepEqual(routes.map((event) => event.tier), ["haiku", "sonnet"]);
+  assert.deepEqual(routes.map((event) => event.tier), ["flash", "think"]);
   assert.ok(routes.every((event) => event.downgradedFrom === undefined));
   const seal = events.find((event) => event.type === "seal");
-  assert.equal(seal?.trace?.tier, "sonnet");
+  assert.equal(seal?.trace?.tier, "think");
 });
 
-test("Sonnet 没有空位时 request_upgrade 回错误，Haiku 自己答完", async (t) => {
+test("Prophet 没有空位时 request_upgrade 回错误，Small Fry 自己答完", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
   t.after(() => { globalThis.fetch = original; });
-  const { env, requests } = upgradeEnv(false);
+  const { env, requests, fetch } = upgradeEnv(false);
+  globalThis.fetch = fetch;
   const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "Prove that sqrt(2) is irrational." }]), env, toolIO));
   assert.equal(requests.length, 2);
-  assert.equal(requests[1].model, GOD_CHAT_TIER_INFO.haiku.model);
+  assert.deepEqual(requests[1].thinking, { type: "disabled" });
   assert.ok(requests[1].tools?.every((tool) => !("name" in tool) || tool.name !== "request_upgrade"));
-  assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.tier), ["haiku"]);
+  assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.tier), ["flash"]);
 });
 
 test("只用了检索 MCP 的回复也在签名 trace 里记搜索次数，流式块与最终块不重复计", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async () => Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+  globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
   const { env } = designEnv({
     reply: (body) => scriptedStream(body.model, [
@@ -761,7 +776,7 @@ test("同一轮的多个搜索调用一起发出，结果按调用顺序回", as
   let peak = 0;
   globalThis.fetch = async (input) => {
     const url = String(input);
-    if (!url.includes("api.exa.ai")) return Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+    if (!url.includes("api.exa.ai")) return unexpected();
     inFlight++;
     peak = Math.max(peak, inFlight);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -787,19 +802,25 @@ test("同一轮的多个搜索调用一起发出，结果按调用顺序回", as
 
 test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取写成一轮已调过的工具、随第一次请求发出", async (t) => {
   const original = globalThis.fetch;
-  globalThis.fetch = async (input) => String(input).includes("api.exa.ai")
+  const exa: typeof fetch = async (input) => String(input).includes("api.exa.ai")
     ? Response.json({ results: [{ url: "https://e.dev/news", title: "News", highlights: ["model launch"] }] })
-    : Response.json({ success: true, hostname: "lyjw.me", action: GOD_CHAT_TURNSTILE_ACTION });
+    : unexpected();
   t.after(() => { globalThis.fetch = original; });
-  const run = async (content: string, history: GodChatMessage[] = [], answers: Record<string, unknown> = { route: { choice: "haiku-low" } }) => {
+  const run = async (content: string, history: GodChatMessage[] = [], answers: Record<string, unknown> = { route: { choice: "flash" } }) => {
     const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
     const wanted: string[] = [];
     let clef = 0;
+    const respond = async (request: Request) => {
+      const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+      requests.push(body);
+      return modelStream(body.model, false);
+    };
+    globalThis.fetch = deepseekFetch(respond, exa);
     const env: Env = {
       PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
       ANTHROPIC_API_KEY: "test-key",
       EXA_API_KEY: "test-exa",
-      TURNSTILE_SECRET_KEY: "test-key",
+      DEEPSEEK_API_KEY: "test-deepseek",
       CHAT_HISTORY_SECRET: "test-seal",
       ALLOWED_ORIGINS: "https://lyjw.me",
       AI: Object.assign({} as Ai, { run: async () => { clef++; return { answers }; } }),
@@ -807,14 +828,7 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
         admitVisitor: async () => "ok" as const,
         admitTier: async (_ip, tier) => { wanted.push(tier); return tier; },
       }),
-      ANTHROPIC_EGRESS: binding<AnthropicEgress>({
-        colo: async () => "KIX",
-        fetch: async (request: Request) => {
-          const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
-          requests.push(body);
-          return modelStream(body.model, false);
-        },
-      }),
+      ANTHROPIC_EGRESS: binding<AnthropicEgress>({ colo: async () => "KIX", fetch: respond }),
     };
     const events = await parseEvents(await handleChat(chatRequest(undefined, [...history, { role: "user", content }]), env, toolIO));
     return { events, requests, wanted, clef };
@@ -822,12 +836,12 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
 
   const news = await run("这周 AI 圈有什么大新闻？");
   assert.equal(news.clef, 0);
-  assert.deepEqual(news.wanted, ["sonnet"]);
+  assert.deepEqual(news.wanted, ["think"]);
   assert.equal(news.requests.length, 1);
   const [call, result] = news.requests[0].messages.slice(-2);
   assert.equal(call.role, "assistant");
-  assert.ok(Array.isArray(call.content) && call.content[0].type === "tool_use" && call.content[0].name === "web_search");
-  assert.ok(Array.isArray(result.content) && result.content[0].type === "tool_result" && Array.isArray(result.content[0].content) && result.content[0].content[0].type === "search_result");
+  assert.ok(Array.isArray(call.content) && call.content[0].type === "thinking" && call.content[1].type === "tool_use" && call.content[1].name === "web_search");
+  assert.ok(Array.isArray(result.content) && result.content[0].type === "tool_result" && typeof result.content[0].content === "string" && result.content[0].content.includes("URL: https://e.dev/news"));
   assert.ok(news.events.some((event) => event.type === "search"));
   assert.ok(news.requests[0].messages.some((message) => message.role === "system" && typeof message.content === "string" && message.content.includes("timeline visual")));
   assert.equal(news.requests[0].mcp_servers, undefined);
@@ -835,7 +849,7 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
 
   const status = await run("LYJW 今天运动了吗？");
   assert.equal(status.clef, 0);
-  assert.deepEqual(status.wanted, ["haiku"]);
+  assert.deepEqual(status.wanted, ["flash"]);
   const statusCall = status.requests[0].messages.at(-2)?.content;
   assert.ok(Array.isArray(statusCall) && statusCall[0].type === "tool_use" && statusCall[0].name === "get_site_status");
   assert.ok(status.events.some((event) => event.type === "tool" && event.views.includes("activity")));
@@ -845,7 +859,7 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
   assert.ok(later.requests[0].messages.every((message) => !Array.isArray(message.content) || message.content.every((block) => block.type !== "tool_use")));
 
   const routed = await run("他最近在听谁的歌", [], {
-    route: { choice: "haiku-low" },
+    route: { choice: "flash" },
     status: { choice: "listening", probabilities: { listening: 0.9 } },
     doc: { choice: "none", probabilities: { none: 0.95 } },
   });
@@ -854,4 +868,29 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
   assert.ok(Array.isArray(routedCall) && routedCall.length === 1 && routedCall[0].type === "tool_use" && routedCall[0].name === "get_site_status");
   assert.ok(routed.events.some((event) => event.type === "tool" && event.views.includes("listening")));
   assert.ok(routed.requests[0].messages.every((message) => message.role !== "system" || typeof message.content !== "string" || !message.content.includes("sample questions")));
+});
+
+test("开思考的 DeepSeek 档给没有思考块的工具调用补占位思考，关思考的档原样发", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  for (const tier of ["think", "flash"] as const) {
+    const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
+    globalThis.fetch = deepseekFetch(async (request) => {
+      const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+      requests.push(body);
+      return modelStream(body.model, false);
+    });
+    const env: Env = {
+      PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+      ANTHROPIC_API_KEY: "test-key",
+      DEEPSEEK_API_KEY: "test-deepseek",
+      CHAT_HISTORY_SECRET: "test-seal",
+      AI: Object.assign({} as Ai, { run: async () => ({ answers: { route: { choice: tier }, status: { choice: "listening", probabilities: { listening: 0.9 } } } }) }),
+      CHAT_QUOTA: binding<ChatQuota>({ admitVisitor: async () => "ok" as const, admitTier: async () => tier }),
+    };
+    await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "他最近在听谁的歌" }]), env, toolIO));
+    const call = requests[0].messages.find((message) => message.role === "assistant");
+    assert.ok(call && Array.isArray(call.content));
+    assert.deepEqual(call.content.map((block) => block.type), tier === "think" ? ["thinking", "tool_use"] : ["tool_use"]);
+  }
 });
