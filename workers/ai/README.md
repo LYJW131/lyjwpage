@@ -26,7 +26,7 @@
 ## 代码职责
 
 - `src/index.ts`：HTTP 入口，导出 `ChatQuota`、`AnthropicEgress`、`BuildCoordinator`、`ChatLog` 与具名入口 `Digest`。
-- `src/chat/`：模型分流、工具循环、流式事件、历史验签、配额与 Anthropic 出口。
+- `src/chat/`：Turnstile 与通行证、模型分流、工具循环、流式事件、历史验签、配额与 Anthropic 出口。
 - `src/tools/registry.ts#SITE_TOOLS`：首页对话与 MCP 共用的只读站点工具；读取由 `ToolIO` 注入。
 - `src/mcp.ts`：MCP 协议处理，不调用模型。
 - `src/digest/`：首页近况摘要，见「近况摘要」。
@@ -37,9 +37,9 @@
 
 ## 首页对话
 
-`POST /api/chat`（`src/chat/handler.ts`）收浏览器的对话历史，不做人机验证，契约在 `shared/god-chat.ts`：请求体、NDJSON 事件、上下文与输出上限都在那一份，站点卡片 `src/components/god-chat.tsx` 读同一份。
+`POST /api/chat`（`src/chat/handler.ts`）收浏览器的对话历史与 Turnstile token 或通行证，契约在 `shared/god-chat.ts`：请求体、NDJSON 事件、上下文与输出上限都在那一份，站点卡片 `src/components/god-chat.tsx` 读同一份。
 
-- 普通消息的路径：请求体按读到的字节数截停（`src/chat/guard.ts#readJsonBody`）→ `ChatQuota.admitVisitor` 在路由前过三道：访客总量、全站路由次数（`shared/god-chat-tiers.ts#GOD_CHAT_ROUTE_LIMIT`，各档全站名额之和）、这位访客此刻至少有一档访客与全站都有空位；访客自己超额回「Too many prayers」，全站忙回「All the heavens are busy」，都是 429，到此为止、不再触发付费的路由 → Clef 选档（`src/chat/router.ts`，经 `AI` 绑定调 `@cf/cloudflare/clef`，选项在 `CLEF_CHOICES`；Clef 不可用时落到 `ROUTER_FALLBACK`）；对话第一条与首页示例问题（`shared/god-chat.ts#GOD_CHAT_PRESETS`）原文一致时不调 Clef，按示例写定的档位走（`src/chat/router.ts#presetRoute`），示例写了 `prefetch` 的，Worker 在第一次模型请求前跑好这些工具调用，写成一轮模型已调过的工具随请求发出（`src/chat/handler.ts#converse`），模型不必再自己调一轮；其余消息在选档的同一次 Clef 调用里另答两题：要先读哪组站点状态（`src/chat/router.ts#PREFETCH_STATUS`）、要先读哪篇项目文档，选中项的概率不低于该题在 `PREFETCH_MIN_PROBABILITY` 里的阈值才照同样方式预取（拒答与设计请求不预取），预取记一行 `[god-chat] prefetch` 日志（档位、来源是示例还是 Clef、调了哪些工具）；改这几题的判据先用 `pnpm --dir workers/ai route:probe` 在线上 Clef 跑代表性问题（用法见 `scripts/route-probe.ts` 的 `USAGE`）→ `ChatQuota.admitTier` 扣档位额度，该档满了就往下逐档降级（`shared/god-chat-tiers.ts#downgradeChain`，只在 `GOD_CHAT_RANKS` 三档里降）→ 按档位的 `provider` 调 DeepSeek（`DEEPSEEK_API_KEY`）或 Anthropic（`ANTHROPIC_API_KEY`）。refuse 不调模型，只占访客总量与一次全站路由，直接回一句关门话。
+- 普通消息的路径：请求体按读到的字节数截停（`src/chat/guard.ts#readJsonBody`）→ 通行证或 Turnstile 校验（通行证是验过人后下发的 `pass` 事件，不绑 IP，有效期见 `shared/god-chat.ts#GOD_CHAT_PASS_TTL_MS`，用掉一半后随回复换新的，期内免新 token；过期或验签失败回 403 `human_pass_expired`，卡片丢掉它、当场验人重发；签发与核验在 `src/chat/pass.ts`；Turnstile 用 `TURNSTILE_SECRET_KEY`，除了 success，还核对 action 是 `shared/god-chat.ts#GOD_CHAT_TURNSTILE_ACTION`、hostname 落在 `ALLOWED_ORIGINS` 里，见 `turnstilePassed`）→ `ChatQuota.admitVisitor` 在路由前过三道：访客总量、全站路由次数（`shared/god-chat-tiers.ts#GOD_CHAT_ROUTE_LIMIT`，各档全站名额之和）、这位访客此刻至少有一档访客与全站都有空位；访客自己超额回「Too many prayers」，全站忙回「All the heavens are busy」，都是 429，到此为止、不再触发付费的路由 → Clef 选档（`src/chat/router.ts`，经 `AI` 绑定调 `@cf/cloudflare/clef`，选项在 `CLEF_CHOICES`；Clef 不可用时落到 `ROUTER_FALLBACK`）；对话第一条与首页示例问题（`shared/god-chat.ts#GOD_CHAT_PRESETS`）原文一致时不调 Clef，按示例写定的档位走（`src/chat/router.ts#presetRoute`），示例写了 `prefetch` 的，Worker 在第一次模型请求前跑好这些工具调用，写成一轮模型已调过的工具随请求发出（`src/chat/handler.ts#converse`），模型不必再自己调一轮；其余消息在选档的同一次 Clef 调用里另答两题：要先读哪组站点状态（`src/chat/router.ts#PREFETCH_STATUS`）、要先读哪篇项目文档，选中项的概率不低于该题在 `PREFETCH_MIN_PROBABILITY` 里的阈值才照同样方式预取（拒答与设计请求不预取），预取记一行 `[god-chat] prefetch` 日志（档位、来源是示例还是 Clef、调了哪些工具）；改这几题的判据先用 `pnpm --dir workers/ai route:probe` 在线上 Clef 跑代表性问题（用法见 `scripts/route-probe.ts` 的 `USAGE`）→ `ChatQuota.admitTier` 扣档位额度，该档满了就往下逐档降级（`shared/god-chat-tiers.ts#downgradeChain`，只在 `GOD_CHAT_RANKS` 三档里降）→ 按档位的 `provider` 调 DeepSeek（`DEEPSEEK_API_KEY`）或 Anthropic（`ANTHROPIC_API_KEY`）。refuse 不调模型，只占访客总量与一次全站路由，直接回一句关门话。
 - 模型档位与人设的型号、展示名、供应商与开不开思考在 `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`：Small Fry 与 Prophet 都是 DeepSeek Flash，区别只在 `thinking`；God 是 Fable。DeepSeek 两档走它的 Anthropic 兼容接口（`src/chat/handler.ts#DEEPSEEK_BASE_URL`），用同一个 Anthropic SDK 发请求，差异在 `converse` 里处理：不带 beta 头、`fallbacks` 与 tool search，领域工具常驻（`defer_loading: false`），搜索结果回成纯文本（接口不收 `search_result` 块与引用，`DEEPSEEK_NOTE` 让模型在正文里写链接，来源列表取正文里出现过的搜索结果 URL）；开思考又带工具时接口要求每条带 `tool_use` 的助手消息回传思考块，Worker 预取与升档前的调用没有思考，请求时补占位块（`withThinking`）。提示词在 `src/chat/handler.ts`：`BASE_PROMPT` 讲清 Clef 怎么选档、额度用完怎么降级，`PERSONA` 告诉每档自己是哪个模型、什么身份；被降级时另在末尾加一条 system 消息说明替谁作答（`downgradeNote`），不动缓存前缀。
 - 额度数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`（窗口、访客总量、每档访客与全站），计数在 Durable Object `ChatQuota`（`src/chat/quota.ts`，全站共用实例，对象名由 `src/chat/handler.ts#quotaStub` 决定，SQLite 存窗口内的命中，每次调用先删窗口外的再数再记）。`/api/chat/usage` 读同一份；它每次都要进这个全站共用的对象跑一个事务，所以先过 Rate Limiting 绑定 `CHAT_USAGE_LIMIT` 按 IP 限流；这类绑定只作为尽力而为的入口保护，核验记录见 `docs/ops-facts.md`。`resetInMs` 倒数到这位访客看到的数下一次会变的时刻（自己最早的命中过期，或某档全站、全站路由次数已满时它最早的命中过期）；路由次数不单列在用量里。没有 `CHAT_QUOTA` 绑定时对话端点回 503，不放行。Anthropic 账户侧的花费上限与凭据配置只以 `docs/ops-facts.md` 的核验记录为准。
 - 对话记录存在 Durable Object `ChatLog`（`src/chat/transcripts.ts`，全站一个实例，对象名 `global`）：每个请求一行，含发给模型的整段历史（只留 `role`、`content`、`time`）、这次回复全文、路由、档位、工具调用摘要（`trace`）与结果（完成、未完成、失败、中断、拒答），不存 IP 与令牌；保留 `TRANSCRIPT_RETENTION_MS`，写入和 alarm 时删除到期的行。首页隐私说明按这个期限写。分支预览不绑 `CHAT_LOG`，不记。
@@ -60,7 +60,7 @@
 
 浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化。设计会话到期、轮数耗尽或访客输入 `/exit`（只在设计会话里列出）时清除设计令牌并退回普通对话。localStorage 不可用时只保留内存状态。
 
-访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`，按这条消息用中文、日文或英文，判断见 `shared/build-routine.ts#textLanguage`），接受之前不向 Worker 发任何请求；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.ts#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。说明逐条列出对话数据的出站去向（`CONSENT_COPY` 的 `destinations`），新增模型供应商、第三方工具或日志出口时同步改它。
+访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`，按这条消息用中文、日文或英文，判断见 `shared/build-routine.ts#textLanguage`），接受之前不向 Worker 发任何请求，但说明一出现就在后台跑 Turnstile，接受时多半已拿到 token；Turnstile 与通行证的浏览器侧在 `src/hooks/use-human-check.ts`，通行证存 localStorage，跨标签页与重开浏览器都有效，交互挑战超时不算失败、重新出复选框；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.ts#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。说明逐条列出对话数据的出站去向（`CONSENT_COPY` 的 `destinations`；Turnstile 不收对话内容，不列），新增模型供应商、第三方工具或日志出口时同步改它。
 
 ## 近况摘要
 
@@ -88,7 +88,7 @@
 
 ## 配置与部署
 
-绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型使用 `AI`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`，联网搜索使用 `EXA_API_KEY` 与可选的 `WEB_SEARCH_PROVIDER`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、构建工作流与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
+绑定与变量的代码契约在 `src/runtime.ts#Env`，生产绑定在 `wrangler.toml`。模型与验人使用 `AI`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`、`TURNSTILE_SECRET_KEY`，联网搜索使用 `EXA_API_KEY` 与可选的 `WEB_SEARCH_PROVIDER`，历史签名使用 `CHAT_HISTORY_SECRET`，连接构建账号使用 `GITHUB_APP_CLIENT_SECRET`。构建的 Secret、构建工作流与 webhook 配置见 [访客协作构建](../../docs/build-routine.md)，没有配置时入口关闭。`CHAT_QUOTA`、`ANTHROPIC_EGRESS` 与 `BUILD_COORDINATOR` 指向各自的 Durable Object；`CHAT_USAGE_LIMIT`、`MCP_LIMIT` 与 `BUILD_REQUEST_LIMIT` 保护对应入口。配额阈值取根目录 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，入口限流配置取 Wrangler 文件，不另抄数值。
 
 生产迁移配置 `wrangler.toml` 的 `v1-transfer-from-api` 使用 `transferred_classes` 接管旧 `api` Worker 的 `ChatQuota`、`AnthropicEgress` 命名空间，保留对象 ID 和配额计数；不能另建空命名空间替代。发布顺序、Secret 配置和回滚按 [AI Worker 迁移 runbook](../../docs/ai-worker-migration.md) 执行，不凭提交或配置文件推断迁移已生效。
 
@@ -106,14 +106,14 @@ pnpm dev:local
 
 `pnpm dev:worker` 同时启动 dev-router、core、ai、ingress、collector；请求从本地 core 经 Service Binding 到 ai，工具再经 `PUBLIC_STATUS` 读本地 core。端口、状态持久化与假数据注入见 [core 本地开发](../core/README.md#本地开发)。`workers/core/.dev.vars` 的 `UPSTREAM_API_URL` 只控制 core 的公开状态兜底，不启用 AI 调试权限。
 
-聊天凭据放 `workers/ai/.dev.vars`：`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`、`CHAT_HISTORY_SECRET` 必须齐全，否则聊天回 503；设计与签名计划另需 `BUILD_SESSION_SECRET`、`BUILD_COORDINATOR` 绑定，以及与该 key 同一工作区的 `DESIGN_AGENT_ID`、`DESIGN_ENVIRONMENT_ID`（`wrangler.toml` 与 `wrangler.test.toml` 的 `[vars]` 已填；换工作区时用新 key 跑 `pnpm --dir workers/ai designer:setup`，按名字找或建并打印两个 ID），缺任何一项时 `think` 档拿不到 `start_design`；issue 提交还需 `GITHUB_APP_CLIENT_SECRET`。本地 `wrangler.test.toml` 设置 `AI_DEV=true`；`src/runtime.ts#aiDevEnabled` 只在 `AI_DEV=true` 或 `PREVIEW_WORKER=true` 时启用以下调试变量：
+聊天凭据放 `workers/ai/.dev.vars`：`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`、`TURNSTILE_SECRET_KEY`、`CHAT_HISTORY_SECRET` 必须齐全，否则聊天回 503；设计与签名计划另需 `BUILD_SESSION_SECRET`、`BUILD_COORDINATOR` 绑定，以及与该 key 同一工作区的 `DESIGN_AGENT_ID`、`DESIGN_ENVIRONMENT_ID`（`wrangler.toml` 与 `wrangler.test.toml` 的 `[vars]` 已填；换工作区时用新 key 跑 `pnpm --dir workers/ai designer:setup`，按名字找或建并打印两个 ID），缺任何一项时 `think` 档拿不到 `start_design`；issue 提交还需 `GITHUB_APP_CLIENT_SECRET`。本地 `wrangler.test.toml` 设置 `AI_DEV=true`；`src/runtime.ts#aiDevEnabled` 只在 `AI_DEV=true` 或 `PREVIEW_WORKER=true` 时启用以下调试变量：
 
 - `CHAT_RATE_LIMIT=off`：普通聊天配额仍记账、`/usage` 仍显示用量，但不拦截；设计轮数与会话上限仍执行。
 - `CHAT_FORCE_TIER=<档位或 CLEF_CHOICES 的键>`：无设计会话时跳过 Clef；合法值见根目录 `shared/god-chat-tiers.ts#GOD_CHAT_TIERS` 与 `src/chat/router.ts#CLEF_CHOICES`。有效设计会话始终由规划者回答。
 
-生产缺省不开调试权限，不能靠 `UPSTREAM_API_URL` 或只设置调试变量绕过配额。调试对话应使用上面的本地 Worker 栈。本地 `AI` 绑定调用远程 Workers AI，需要 Wrangler 具备访问权限，没有时 `pnpm dev:worker` 去掉这个绑定、路由走兜底档位（见 [core 本地开发](../core/README.md#本地开发)）；强制档位只跳过 Clef，仍会调用所选档位的真实模型。`.dev.vars` 改了要重启 `pnpm dev:worker` 才生效。
+生产缺省不开调试权限，不能靠 `UPSTREAM_API_URL` 或只设置调试变量绕过验人及配额。使用 `pnpm dev` 让本地页面连接生产 core 时，localhost 的 Turnstile 结果不会被当成本地测试放行；调试对话应使用上面的本地 Worker 栈。本地 `AI` 绑定调用远程 Workers AI，需要 Wrangler 具备访问权限，没有时 `pnpm dev:worker` 去掉这个绑定、路由走兜底档位（见 [core 本地开发](../core/README.md#本地开发)）；强制档位只跳过 Clef，仍会调用所选档位的真实模型。`.dev.vars` 改了要重启 `pnpm dev:worker` 才生效。
 
-改提示词、工具说明或工具结果的措辞后，用 `pnpm --dir workers/ai chat:probe` 对真实模型连问几次再看回答（语言、说法）：它在 Node 里直接调 `src/chat/handler.ts#handleChat`，跳过 Clef，状态视图读 `workers/core/dev-fixtures/` 的夹具，用法见 `scripts/chat-probe.ts` 的 `USAGE`。
+改提示词、工具说明或工具结果的措辞后，用 `pnpm --dir workers/ai chat:probe` 对真实模型连问几次再看回答（语言、说法）：它在 Node 里直接调 `src/chat/handler.ts#handleChat`，跳过 Clef 与验人，状态视图读 `workers/core/dev-fixtures/` 的夹具，用法见 `scripts/chat-probe.ts` 的 `USAGE`。
 
 ## 验证
 

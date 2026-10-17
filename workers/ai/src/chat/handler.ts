@@ -5,6 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   GOD_CHAT_LIMITS,
   GOD_CHAT_CHART_SERIES,
+  GOD_CHAT_PASS_TTL_MS,
   GOD_CHAT_HTML_THEME_VARS,
   GOD_CHAT_VISUAL_EXAMPLES,
   GOD_CHAT_VISUAL_KINDS,
@@ -22,13 +23,15 @@ import {
 import { PLAN_LABELS, textLanguage } from "@shared/build-routine";
 import { GOD_CHAT_DESIGN_TIER, GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatServedTier, type GodChatTier } from "@shared/god-chat-tiers";
 
+import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
 import { SITE_TOOLS, newLedger, replyToolDescription, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { billedOutputTokens, usageHops } from "./billing";
 import { anthropicFetch } from "./egress";
-import { readJsonBody } from "./guard";
+import { readJsonBody, turnstilePassed, verifyTurnstile } from "./guard";
 import { toModelMessages } from "./history";
+import { issuePass, passExpiresAt, passValid } from "./pass";
 import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { admitDesign, claimDesignOpen, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
 import { designApi, designTurn, turnMatches, type DesignApi, type DesignTurnInput, type SessionEvent } from "./designer";
@@ -162,12 +165,12 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   const record = async (entry: Transcript) => { const saving = saveTranscript(env, entry); if (ctx) ctx.waitUntil(saving); else await saving; };
   if (request.method !== "POST") return fail(405, "Method not allowed.");
   const sealSecret = env.CHAT_HISTORY_SECRET;
-  if (!env.ANTHROPIC_API_KEY || !env.DEEPSEEK_API_KEY || !sealSecret) return fail(503, "The oracle is offline.");
+  if (!env.ANTHROPIC_API_KEY || !env.DEEPSEEK_API_KEY || !env.TURNSTILE_SECRET_KEY || !sealSecret) return fail(503, "The oracle is offline.");
 
   const parsed = parseGodChatRequest(await readJsonBody(request, MAX_BODY_BYTES));
   if (!parsed) return fail(400, "Invalid message.");
 
-  // 请求被取消时（要 enable_request_signal）停下来：在路由之前就挂上，这一步期间断开的也能接住；之后每进一步付费调用前
+  // 请求被取消时（要 enable_request_signal）停下来：在验人与路由之前就挂上，这两步期间断开的也能接住；之后每进一步付费调用前
   // 先看一眼。工具循环与上游请求经 SDK 的 fetch 信号一并掐断。线上流式途中收不到访客断开（docs/ops-facts.md），
   // 这条只在运行时真的报了取消时起作用。
   const abort = new AbortController();
@@ -179,8 +182,16 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   // 额度缺绑定按超额处理：计数失效时宁可拒绝也不放行。
   const quota = quotaStub(env);
   if (!quota) return fail(503, "The oracle is offline.");
+  const passed = parsed.humanPass !== undefined && await passValid(sealSecret, parsed.humanPass);
+  if (!passed) {
+    if (!parsed.turnstileToken) return fail(403, "Human verification expired. Please try again.", undefined, "human_pass_expired");
+    const verdict = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, parsed.turnstileToken, ip);
+    if (!turnstilePassed(verdict, getAllowedOrigins(env), aiDevEnabled(env))) {
+      return fail(403, "Human verification failed. Please try again.");
+    }
+  }
   if (abort.signal.aborted) return gone();
-  // 计数在 Clef 之前：访客自己超额、全站路由满或哪一档都排不上时，不再触发付费的路由调用。
+  // 验过人才计数，计数在 Clef 之前：访客自己超额、全站路由满或哪一档都排不上时，不再触发付费的路由调用。
   const enforce = devSwitch(env, "CHAT_RATE_LIMIT") !== "off";
   let design: OpenDesign | undefined;
   if (parsed.designToken) {
@@ -243,6 +254,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
         if (event.type === "text") reply += event.text;
         controller.enqueue(line(event));
       };
+      // 通行证用掉一半就换新的：常来的访客一直不用重验，隔久了才再过一次 Turnstile。
+      if (!passed || passExpiresAt(parsed.humanPass) - Date.now() < GOD_CHAT_PASS_TTL_MS / 2) emit({ type: "pass", ...await issuePass(sealSecret) });
       emit({ type: "route", route: wanted, tier, ...(tier !== wanted && !design && { downgradedFrom: wanted }) });
       if (design) emit({ type: "design", ...design.session });
       const plan = (sessionId: string, input: DesignTurnInput, views: string[] = []) => planTurn({ api, env, io, sessionId, input, views, emit, signal: abort.signal });

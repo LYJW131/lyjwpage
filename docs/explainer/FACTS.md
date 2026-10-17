@@ -367,12 +367,12 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 发第一句之前
 
-- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Workers AI 的 Clef、DeepSeek、Anthropic、搜索与文档服务、GitHub、这个浏览器等）；点 Accept 之前不发任何请求（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
+- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Workers AI 的 Clef、DeepSeek、Anthropic、搜索与文档服务、GitHub、这个浏览器等）；点 Accept 之前不发任何对话请求，只在后台先跑 Turnstile（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
 
 ### 过闸（花钱之前）
 
-- 浏览器经 core 转发到 ai Worker（`shared/ai-paths.ts#AI_HTTP_PATHS`），不做人机验证。
-- 先过 `ChatQuota.admitVisitor` 三道：访客总量、全站路由次数（`shared/god-chat-tiers.ts#GOD_CHAT_ROUTE_LIMIT`）、这位访客此刻至少有一档访客与全站都有空位；挡下回 429，到此为止，不再付费调 Clef（`workers/ai/README.md`「首页对话」）。数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，片中不出数。
+- 浏览器经 core 转发到 ai Worker（`shared/ai-paths.ts#AI_HTTP_PATHS`）。先验人：通行证（验过人后签发、不绑 IP，有效期 `shared/god-chat.ts#GOD_CHAT_PASS_TTL_MS`，用掉一半随回复换新）或 Turnstile（`workers/ai/src/chat/pass.ts`、`turnstilePassed`）。
+- 再过 `ChatQuota.admitVisitor` 三道：访客总量、全站路由次数（`shared/god-chat-tiers.ts#GOD_CHAT_ROUTE_LIMIT`）、这位访客此刻至少有一档访客与全站都有空位；挡下回 429，到此为止，不再付费调 Clef（`workers/ai/README.md`「首页对话」）。数值在 `shared/god-chat-tiers.ts#GOD_CHAT_QUOTA`，片中不出数。
 
 ### Clef 选档
 

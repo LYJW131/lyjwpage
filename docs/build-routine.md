@@ -85,7 +85,7 @@ CI 与 Preview 由 `workers/ai/src/build/github.ts#reconcileBuild` 统一分类�
 
 这些操作由有授权的维护者完成；文档不表示已配置。
 
-1. 在 AI Worker 与实际用于验收的分支 Preview 配置 `BUILD_SESSION_SECRET`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_WEBHOOK_SECRET`；现有 `GITHUB_APP_CLIENT_SECRET` 供 PKCE 授权使用；付费设计对话仍需要现有模型（`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`）与历史签名（`CHAT_HISTORY_SECRET`）配置。不要把生产凭据复制进 Preview。
+1. 在 AI Worker 与实际用于验收的分支 Preview 配置 `BUILD_SESSION_SECRET`、`GITHUB_APP_PRIVATE_KEY`、`GITHUB_WEBHOOK_SECRET`；现有 `GITHUB_APP_CLIENT_SECRET` 供 PKCE 授权使用；付费设计对话仍需要现有模型（`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY`）、历史签名（`CHAT_HISTORY_SECRET`）和 Turnstile（`TURNSTILE_SECRET_KEY`）配置。不要把生产凭据复制进 Preview。
 2. GitHub App 配置 webhook 指向对应环境的构建 webhook 路径，并订阅上文事件；确认 Contents、Pull requests、Issues 写权限（派发 `repository_dispatch` 用的也是 Contents 写权限），以及 Checks 和 Commit statuses 读取权限及目标仓库安装。安装 token 的缩减权限由 `workers/ai/src/build/github.ts#installationApi` 指定。JWT issuer 使用公开 `GITHUB_APP_CLIENT_ID`，安装 ID 由 GitHub 查询，不另存凭据。回调页仍是 `GITHUB_CALLBACK_PATH`，验收地址须登记在 App 中。
 3. 仓库侧：`.github/workflows/build.yml` 与 `.github/build/` 合进 main 后，生产和 Preview 才派发得出构建（`repository_dispatch` 只跑默认分支的工作流，OIDC 也只认 main 上的 build.yml）。仓库级 Actions Secret `CLAUDE_CODE_OAUTH_TOKEN` 要存在且不限定 environment；仓库的 Actions 策略要允许工作流用到的官方 action 与 `pnpm/action-setup`。OIDC 不需要在 GitHub 侧另配信任关系，校验全在 Worker 代码里。
 4. 分支 Preview 实测时，Preview 的 core 地址就是回调源，main 上的工作流直接回调它，OIDC 受众随之变成该 Preview 的源加 runId，不用改工作流或沙盒网络（与 Worker 通信的只有 gate 与 publish，Claude 不访问 Worker）；不能用生产回调源验证 Preview run。核对 Worker Preview 只持有专供测试的凭据，无 `GITHUB_TOKEN`。核对 Workers Builds 监视路径包含共享构建契约，清单见 [Workers 构建](./workers-builds.md)。

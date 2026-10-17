@@ -64,6 +64,7 @@ export default defineConfig(({ command, mode }) => {
     environments: { ssr: { build: { sourcemap: true } } },
     define: {
       "process.env.PUBLIC_BACKEND_URL": JSON.stringify(backendUrl),
+      "process.env.PUBLIC_TURNSTILE_SITE_KEY": defineEnv("PUBLIC_TURNSTILE_SITE_KEY"),
       "process.env.PUBLIC_SIGNED_IMAGE_OPTIMIZATION": defineEnv("PUBLIC_SIGNED_IMAGE_OPTIMIZATION"),
       "process.env.PUBLIC_ERROR_REPORT_DEV": defineEnv("PUBLIC_ERROR_REPORT_DEV"),
       "process.env.PUBLIC_CF_WEB_ANALYTICS_TOKENS": defineEnv("PUBLIC_CF_WEB_ANALYTICS_TOKENS"),
