@@ -58,6 +58,7 @@ function busiestLimit(limits: VibeCodingLimit[], now: number) {
 }
 
 const REFRESH_MS = 2 * 60_000;
+const TOP_MODELS_SHOWN = 3;
 
 type FirstFrameClocks = {
   usage?: number;
@@ -382,7 +383,7 @@ function TotalUsage({
       {topModels.length > 0 && (
         <div className="mt-3 border-t border-line md:py-3">
           <div className="grid divide-y divide-line md:grid-cols-3 md:divide-x md:divide-y-0">
-            {topModels.map((item, index) => (
+            {topModels.slice(0, TOP_MODELS_SHOWN).map((item, index) => (
               <div
                 key={item.model}
                 className="flex min-w-0 items-center gap-3 py-3 md:px-4 md:py-0 md:first:pl-0 md:last:pr-0"
