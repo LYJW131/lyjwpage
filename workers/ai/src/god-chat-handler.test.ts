@@ -873,6 +873,40 @@ test("Small Fry 调 request_upgrade 后整轮对话交给 Prophet：扣 think �
   assert.equal(seal?.trace?.tier, "think");
 });
 
+test("Claude 阵容里 Haiku 升档交给 Sonnet：扣 sonnet 名额，追加 Sonnet 的强度", async (t) => {
+  const original = globalThis.fetch;
+  t.after(() => { globalThis.fetch = original; });
+  globalThis.fetch = async () => unexpected();
+  const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
+  const admitted: string[] = [];
+  const respond = async (request: Request) => {
+    const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+    requests.push(body);
+    return requests.length === 1 ? modelStream(body.model, { name: "request_upgrade", input: {} }) : modelStream(body.model, false);
+  };
+  const env: Env = {
+    PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+    AI_DEV: "true",
+    CHAT_FORCE_TIER: "haiku",
+    ANTHROPIC_API_KEY: "test-key",
+    DEEPSEEK_API_KEY: "test-deepseek",
+    TURNSTILE_SECRET_KEY: "test-turnstile",
+    CHAT_HISTORY_SECRET: "test-seal",
+    ALLOWED_ORIGINS: "https://lyjw.me",
+    CHAT_QUOTA: binding<ChatQuota>({
+      admitVisitor: async () => "ok" as const,
+      admitTier: async (_ip, wanted) => { admitted.push(wanted); return wanted; },
+    }),
+    ANTHROPIC_EGRESS: binding<AnthropicEgress>({ colo: async () => "KIX", fetch: respond }),
+  };
+  const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "Prove that sqrt(2) is irrational." }]), env, toolIO));
+  assert.deepEqual(admitted, ["haiku", "sonnet"]);
+  assert.equal(requests[1].model, GOD_CHAT_TIER_INFO.sonnet.model);
+  const efforts = requests[1].messages.filter((message) => message.role === "system" && "output_config" in message).map((message) => (message as { output_config: { effort: string } }).output_config.effort);
+  assert.deepEqual(efforts, [GOD_CHAT_TIER_INFO.haiku.effort, GOD_CHAT_TIER_INFO.sonnet.effort]);
+  assert.equal(events.find((event) => event.type === "seal")?.trace?.effort, GOD_CHAT_TIER_INFO.sonnet.effort);
+});
+
 test("Prophet 没有空位时 request_upgrade 回错误，Small Fry 自己答完", async (t) => {
   const original = globalThis.fetch;
   t.after(() => { globalThis.fetch = original; });
