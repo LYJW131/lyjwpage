@@ -4,8 +4,9 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const REPO = "LYJW131/lyjwpage";
-// 回执和判定都由主线程用 lyjw 的账号发；别人发的同格式评论不算。
-const TRUSTED_AUTHOR = "LYJW131";
+// 回执和判定由主线程用 lyjw 的两个账号之一发（LYJW131、云端会话用的 An0nCh1hayaa）；别人发的同格式评论不算。
+// 按数字 id 认而不按 login：login 改名后可被别人注册。
+const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const LEVELS = ["live-ui-verified", "unit-test-verified", "type-check-only", "verifier-blocked", "verifier-failed"];
@@ -30,7 +31,7 @@ const HELP = `用法：NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check
 相同就沿用（coverage=carried，常见于只把 main 合进分支），不同就作废（coverage=stale）。
 比补丁要用本地 git：先 git fetch origin main。`;
 
-type Comment = { user?: { login?: string } | null; body?: string | null; html_url?: string | null };
+type Comment = { user?: { id?: number } | null; body?: string | null; html_url?: string | null };
 type Receipt = { sha: string; level: string; url?: string | null };
 type Judge = { sha: string; verdict: string; url?: string | null };
 type Coverage = "exact" | "carried" | "stale";
@@ -48,7 +49,7 @@ export function parseComments(comments: Comment[]) {
   let receipt: Receipt | null = null;
   let judge: Judge | null = null;
   for (const comment of comments) {
-    if (comment.user?.login !== TRUSTED_AUTHOR) continue;
+    if (!TRUSTED_AUTHOR_IDS.has(comment.user?.id ?? 0)) continue;
     const first = (comment.body ?? "").split("\n", 1)[0].trim();
     const r = RECEIPT_LINE.exec(first);
     if (r) receipt = { sha: r[1], level: r[2], url: comment.html_url ?? null };
