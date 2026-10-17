@@ -10,7 +10,7 @@ import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
 import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { STREAM_FLUSH_MS, revealedLength, revealedText, stableMarkdown } from "@/lib/streaming-markdown";
-import { chatConsent, designConsent } from "@/lib/chat-consent";
+import { chatConsent, designConsent, vendorConsent } from "@/lib/chat-consent";
 import { chatLineup } from "@/lib/chat-lineup";
 import { useHumanCheck } from "@/hooks/use-human-check";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
@@ -26,6 +26,7 @@ import {
   type GodChatMessage,
   fitHistory,
   readGodChatRoute,
+  GOD_CHAT_ANTHROPIC_CONSENT,
 } from "@shared/god-chat";
 import {
   GOD_CHAT_TIER_INFO,
@@ -35,6 +36,7 @@ import {
   type GodChatLineup,
   type GodChatServedTier,
   type GodChatUsage,
+  type GodChatWebSearch,
 } from "@shared/god-chat-tiers";
 
 type Reply = Omit<ChatBubble, "role" | "content">;
@@ -83,6 +85,7 @@ function Conversation({ className, archive, session: conversation }: { className
   const [descent, setDescent] = useState<Descent | null>(null);
   const designConsented = useSyncExternalStore(designConsent.subscribe, designConsent.getSnapshot, designConsent.getServerSnapshot);
   const [consentPending, setConsentPending] = useState<string | null>(null);
+  const [vendorPending, setVendorPending] = useState<VendorPending | null>(null);
   const [designHalo, setDesignHalo] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const anchorRef = useRef<HTMLDivElement>(null);
@@ -143,7 +146,8 @@ function Conversation({ className, archive, session: conversation }: { className
     return () => observer.disconnect();
   }, []);
 
-  async function send(text: string, resumed?: Resumed) {
+  // anthropic 只给这一条用：访客在单独弹出的 Anthropic 说明里点了拒绝，这条就带 deny 重发，不记下来。
+  async function send(text: string, resumed?: Resumed, anthropic?: "deny") {
     setSourcesFresh(false);
     const content = resumed?.user.content ?? text.trim();
     if (!content) return;
@@ -213,6 +217,7 @@ function Conversation({ className, archive, session: conversation }: { className
     let designToken: string | undefined;
     let answered = false;
     let dropped = false;
+    let needsAnthropic = false;
     try {
       if (!CHAT_URL) throw new Error(OFFLINE);
       // 设计同意要读此刻的真值：接受后立刻补发时，闭包里的 designConsented 还是旧的。
@@ -220,12 +225,13 @@ function Conversation({ className, archive, session: conversation }: { className
       if (conversation?.design && !designToken && designConsent.getSnapshot()) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
       // 阵容按点发送那一刻取：等人机验证期间再切换，不能把已发出的这条改派给另一个阵容。
       const sentLineup = chatLineup.getSnapshot();
+      const anthropicConsent = anthropic ?? (vendorConsent.claude.getSnapshot() ? "allow" : undefined);
       const post = async () => {
         const proof = await human.proof(controller.signal);
         const res = await fetch(CHAT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history, lineup: sentLineup, ...proof, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
+          body: JSON.stringify({ messages: history, lineup: sentLineup, ...(anthropicConsent && { anthropic: anthropicConsent }), ...proof, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
           signal: controller.signal,
         });
         const data = res.ok && res.body ? null : (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
@@ -243,6 +249,7 @@ function Conversation({ className, archive, session: conversation }: { className
           chatArchive.endDesign(conversation.id, data?.code === "design_session_exhausted" ? "exhausted" : "expired", { persist: false });
           throw new Error("The design session has ended. Send your message again to continue in ordinary chat.");
         }
+        if (data?.code === GOD_CHAT_ANTHROPIC_CONSENT) needsAnthropic = true;
         throw new Error(data?.error ?? OFFLINE);
       }
       answered = true;
@@ -311,14 +318,18 @@ function Conversation({ className, archive, session: conversation }: { className
       // 设计会话里请求已到 Worker 后断线，规划者那一回合照样跑完、轮数也扣了：留住访客这条，稍后补发错过的回复。
       if (!controller.signal.aborted) {
         if ((designToken && err instanceof TypeError) || (answered && (designToken || meta.designAt !== undefined))) dropped = true;
-        else setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
+        else if (!needsAnthropic) setError(err instanceof Error && err.message !== "Failed to fetch" ? err.message : OFFLINE);
       }
     } finally {
       if (frame) cancelAnimationFrame(frame);
       revealed = reply.length;
       if (sessionRef.current === session) {
         const kept = reply || meta.cards?.length || meta.proposals?.length || meta.asks?.length;
-        if (dropped) {
+        if (needsAnthropic) {
+          // 这条先撤下，和 Anthropic 那一条说明一起画；访客表态后按原文重发。
+          setMessages(replyMessages().filter((message) => message.id !== user.id));
+          setVendorPending({ lineup: "claude", text: content, from: "god" });
+        } else if (dropped) {
           setMessages([...replyMessages(), user, ...(resumed?.keep ?? []), ...(kept ? [bubble()] : [])]);
           if (resumed) setError("The connection dropped. Reload the page to get the rest of the reply.");
           else setTimeout(() => resumeRef.current(), RESUME_DELAY_MS);
@@ -433,7 +444,7 @@ function Conversation({ className, archive, session: conversation }: { className
     ask(text);
   }
 
-  function ask(text: string) {
+  function ask(text: string, anthropic?: "deny") {
     if (!text.trim() || streaming) return;
     setUsage(null);
     // 同意前消息只留在本地、不发给 Worker；lyjw 要求说明一出现就在后台跑 Turnstile，访客读完点接受时多半已验完，可以直接发。
@@ -445,15 +456,37 @@ function Conversation({ className, archive, session: conversation }: { className
       human.prepare();
       return;
     }
-    void send(text);
+    void send(text, undefined, anthropic);
   }
 
   function acceptConsent(chosen: GodChatLineup) {
     const text = consentPending;
     setConsentPending(null);
     chatLineup.choose(chosen);
+    vendorConsent[chosen].accept();
     chatConsent.accept();
     if (text) ask(text);
+  }
+
+  function acceptVendor() {
+    const pending = vendorPending;
+    if (!pending) return;
+    setVendorPending(null);
+    vendorConsent[pending.lineup].accept();
+    if (pending.from === "switch") chatLineup.choose(pending.lineup);
+    if (pending.text) ask(pending.text);
+  }
+
+  function declineVendor() {
+    const pending = vendorPending;
+    setVendorPending(null);
+    if (pending?.text) ask(pending.text, "deny");
+  }
+
+  // 首次访客还没看过隐私说明，切了再在那份说明里确认；已同意过基础说明的，切到没同意过的厂商先弹那一家。
+  function chooseLineup(next: GodChatLineup) {
+    if (!chatConsent.getSnapshot() || vendorConsent[next].getSnapshot()) chatLineup.choose(next);
+    else setVendorPending({ lineup: next, text: null, from: "switch" });
   }
 
   function declineConsent() {
@@ -481,7 +514,7 @@ function Conversation({ className, archive, session: conversation }: { className
   }
 
   const godSpeaking = streaming && messages[messages.length - 1]?.tier === "fable";
-  const expanded = messages.length > 0 || consentPending !== null;
+  const expanded = messages.length > 0 || consentPending !== null || vendorPending !== null;
   const savedCount = savedSessions(archive).length;
   const lastDesignAtIndex = messages.findLastIndex((message) => message.designAt !== undefined);
 
@@ -503,7 +536,7 @@ function Conversation({ className, archive, session: conversation }: { className
       <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2 text-xs text-muted-foreground lg:px-5">
         <button type="button" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen} className="-my-1 flex min-w-0 items-center gap-1.5 py-1 hover:text-foreground"><History className="size-3.5 shrink-0" /><span className="truncate">Conversations{savedCount > 0 ? ` (${savedCount})` : ""}</span></button>
         <div className="-my-1 flex shrink-0 items-center gap-4">
-          <LineupSwitch lineup={lineup} />
+          <LineupSwitch lineup={lineup} onChoose={chooseLineup} />
           <button type="button" onClick={() => runCommand("/clear")} className="flex shrink-0 items-center gap-1 py-1 hover:text-foreground"><Plus className="size-3.5" />New</button>
         </div>
       </div>
@@ -628,6 +661,7 @@ function Conversation({ className, archive, session: conversation }: { className
           })
         )}
         {consentPending !== null && <ConsentPrompt text={consentPending} lineup={lineup} onAccept={acceptConsent} onDecline={declineConsent} />}
+        {vendorPending !== null && <VendorConsentPrompt pending={vendorPending} onAccept={acceptVendor} onDecline={declineVendor} />}
       </div>
 
       <div className="border-t border-line px-4 py-3 lg:px-5">
@@ -831,20 +865,45 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 // lyjw 要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
-// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，lyjw 定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按 workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；DeepSeek 只写服务器在中国大陆、按其开放平台条款处理，账号的保留与训练设置未核实前不写具体承诺；联网搜索的去向跟着 workers/ai/src/chat/web-search.ts#webSearchProvider 能选的后端写。
-type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
+// 隐私说明列出普通对话数据的每个出站去向：两种阵容都用的 workers、clef、browser，加所选阵容那家模型厂商（deepseek 或 anthropicAll）；
+// DeepSeek 阵容里 Clef 选了神时另弹 anthropicGod。GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的
+// DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，lyjw 定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按
+// workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；
+// DeepSeek 只写服务器在中国大陆、按其开放平台条款处理，账号的保留与训练设置未核实前不写具体承诺；联网搜索的去向按 /api/chat/usage 回的 webSearch
+// （workers/ai/src/chat/web-search.ts#webSearchServices）写，拿不到时用 searchFallback。
+type ConsentDestination = { name: string; detail: string };
+type ConsentCopy = {
+  lang: string;
+  label: string;
+  intro: string;
+  workers: (lookups: string) => ConsentDestination;
+  lookupJoin: (services: string[]) => string;
+  searchRoles: { both: string; search: string; read: string };
+  searchFallback: string;
+  clef: ConsentDestination;
+  deepseek: ConsentDestination;
+  anthropicAll: ConsentDestination;
+  anthropicGod: ConsentDestination;
+  browser: ConsentDestination;
+  accept: string;
+  decline: string;
+  remember: string;
+  declined: string;
+};
 const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   en: {
     lang: "en",
     label: "Privacy notice",
     intro: "Before the oracle responds, please review and accept where this chat sends your data:",
-    destinations: [
-      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and conversation history, and temporarily keeps your IP address within the rate-limit window. When a model looks something up, it sends only that search query or page URL to the web search service (Exa, or DeepSeek's search when the site is set to use it, for searches and page reads), Bangumi or the Steam store, never your full conversation. Transcripts are kept for 30 days for debugging, then deleted automatically; server logs only contain request metadata, usage counts, and errors—never message text." },
-      { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message and brief excerpts from recent context to select the appropriate model. Cloudflare does not store this content or use it for training." },
-      { name: "DeepSeek (DeepSeek API)", detail: "receives the full conversation when the Small Fry or Prophet answers with DeepSeek selected in the card (the default). DeepSeek's servers are in mainland China, and this data is processed under DeepSeek's open platform terms." },
-      { name: "Anthropic (Claude API)", detail: "receives the full conversation when God or the design flow answers, or the Small Fry or Prophet with Claude selected in the card. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
-      { name: "This browser", detail: "stores your conversations and this consent locally." },
-    ],
+    workers: (lookups) => ({ name: "Cloudflare Workers (this site's backend)", detail: `relays your messages and conversation history, and temporarily keeps your IP address within the rate-limit window. When a model looks something up, it sends only that search query or page URL to ${lookups}, never your full conversation. Transcripts are kept for 30 days for debugging, then deleted automatically; server logs only contain request metadata, usage counts, and errors—never message text.` }),
+    lookupJoin: (services) => `${services.slice(0, -1).join(", ")} or ${services[services.length - 1]}`,
+    searchRoles: { both: "web search and page reads", search: "web search", read: "page reads" },
+    searchFallback: "the web search service",
+    clef: { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message and brief excerpts from recent context to select the appropriate model. Cloudflare does not store this content or use it for training." },
+    deepseek: { name: "DeepSeek (DeepSeek API)", detail: "receives the full conversation to generate the Small Fry's and the Prophet's replies. DeepSeek's servers are in mainland China, and this data is processed under DeepSeek's open platform terms." },
+    anthropicAll: { name: "Anthropic (Claude API)", detail: "receives the full conversation to generate the Small Fry's, the Prophet's and God's replies. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
+    anthropicGod: { name: "Anthropic (Claude API)", detail: "receives the full conversation when God answers. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training. If you decline, the Prophet answers this message instead." },
+    browser: { name: "This browser", detail: "stores your conversations and this consent locally." },
     accept: "Accept",
     decline: "Decline",
     remember: "Your consent is remembered in this browser and will be requested again if chat-related code changes.",
@@ -854,13 +913,15 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     lang: "zh-CN",
     label: "隐私说明",
     intro: "在神谕作答前，请确认本次对话的数据去向：",
-    destinations: [
-      { name: "Cloudflare Workers（本站后端）", detail: "负责转发消息与本次对话历史，并在限流窗口内临时保留 IP 地址。模型检索时，只把查询词或网页地址发给联网搜索服务（Exa；站点切换时为 DeepSeek 搜索，用于联网搜索与读取网页）、Bangumi 或 Steam 商店，不发送完整对话。对话记录保留 30 天用于调试，到期自动删除；日志仅包含请求元数据、用量计数与错误信息，不记录任何消息原文。" },
-      { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取最新消息及上下文的简短摘录，用于路由选择合适的模型。Cloudflare 不存储这些内容，亦不用于模型训练。" },
-      { name: "DeepSeek（DeepSeek API）", detail: "卡片里选 DeepSeek（默认）时，「杂鱼」与「先知」作答会接收完整对话。DeepSeek 的服务器位于中国大陆，数据按 DeepSeek 开放平台条款处理。" },
-      { name: "Anthropic（Claude API）", detail: "由「神」、设计流程，或卡片里选 Claude 时的「杂鱼」与「先知」作答时接收完整对话。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
-      { name: "当前浏览器", detail: "在本地保存你的对话记录与本次同意状态。" },
-    ],
+    workers: (lookups) => ({ name: "Cloudflare Workers（本站后端）", detail: `负责转发消息与本次对话历史，并在限流窗口内临时保留 IP 地址。模型检索时，只把查询词或网页地址发给${latinGap(lookups)}${lookups}，不发送完整对话。对话记录保留 30 天用于调试，到期自动删除；日志仅包含请求元数据、用量计数与错误信息，不记录任何消息原文。` }),
+    lookupJoin: (services) => `${services.slice(0, -1).join("、")} 或 ${services[services.length - 1]}`,
+    searchRoles: { both: "联网搜索与读取网页", search: "联网搜索", read: "读取网页" },
+    searchFallback: "联网搜索服务",
+    clef: { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取最新消息及上下文的简短摘录，用于路由选择合适的模型。Cloudflare 不存储这些内容，亦不用于模型训练。" },
+    deepseek: { name: "DeepSeek（DeepSeek API）", detail: "接收完整对话，为「杂鱼」与「先知」生成回复。DeepSeek 的服务器位于中国大陆，数据按 DeepSeek 开放平台条款处理。" },
+    anthropicAll: { name: "Anthropic（Claude API）", detail: "接收完整对话，为「杂鱼」「先知」与「神」生成回复。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
+    anthropicGod: { name: "Anthropic（Claude API）", detail: "由「神」作答时接收完整对话。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。拒绝则这条改由「先知」回答。" },
+    browser: { name: "当前浏览器", detail: "在本地保存你的对话记录与本次同意状态。" },
     accept: "接受",
     decline: "拒绝",
     remember: "你的同意将保存在当前浏览器中；当对话相关代码发生改动时需要重新确认。",
@@ -870,19 +931,38 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     lang: "ja",
     label: "プライバシーに関するお知らせ",
     intro: "神託が回答する前に、本チャットにおけるデータの送信先をご確認のうえ同意してください：",
-    destinations: [
-      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージおよび会話履歴を中継し、レート制限期間中のみ IP アドレスを一時保持します。モデルが調べものをする際は、検索クエリまたはページ URL のみを Web 検索サービス（Exa。サイトの設定によっては DeepSeek の検索。Web 検索とページ取得に使用）、Bangumi、Steam ストアに送信し、会話全体は送信しません。会話の記録はデバッグ目的で 30 日間保存され、期限後に自動で削除されます。ログにはリクエストのメタデータ、利用回数、エラー情報のみが記録され、メッセージ本文は一切含まれません。" },
-      { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージおよび直前の短い会話抜粋を読み取り、最適なモデルを選択します。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
-      { name: "DeepSeek（DeepSeek API）", detail: "カードで DeepSeek（既定）を選んでいる場合、「雑魚」と「預言者」の回答生成のために会話全体を受信します。DeepSeek のサーバーは中国本土にあり、データは DeepSeek オープンプラットフォームの規約に基づいて処理されます。" },
-      { name: "Anthropic（Claude API）", detail: "「神」、設計フロー、またはカードで Claude を選んだ場合の「雑魚」と「預言者」が回答する際に会話全体を受信します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
-      { name: "このブラウザ", detail: "会話履歴と今回の同意状況をローカルに保存します。" },
-    ],
+    workers: (lookups) => ({ name: "Cloudflare Workers（本サイトのバックエンド）", detail: `メッセージおよび会話履歴を中継し、レート制限期間中のみ IP アドレスを一時保持します。モデルが調べものをする際は、検索クエリまたはページ URL のみを${latinGap(lookups)}${lookups}に送信し、会話全体は送信しません。会話の記録はデバッグ目的で 30 日間保存され、期限後に自動で削除されます。ログにはリクエストのメタデータ、利用回数、エラー情報のみが記録され、メッセージ本文は一切含まれません。` }),
+    lookupJoin: (services) => services.join("、"),
+    searchRoles: { both: "Web 検索とページ取得", search: "Web 検索", read: "ページ取得" },
+    searchFallback: "Web 検索サービス",
+    clef: { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージおよび直前の短い会話抜粋を読み取り、最適なモデルを選択します。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
+    deepseek: { name: "DeepSeek（DeepSeek API）", detail: "「雑魚」と「預言者」の回答生成のために会話全体を受信します。DeepSeek のサーバーは中国本土にあり、データは DeepSeek オープンプラットフォームの規約に基づいて処理されます。" },
+    anthropicAll: { name: "Anthropic（Claude API）", detail: "「雑魚」「預言者」「神」の回答生成のために会話全体を受信します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
+    anthropicGod: { name: "Anthropic（Claude API）", detail: "「神」が回答する際に会話全体を受信します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。同意しない場合、このメッセージには「預言者」が回答します。" },
+    browser: { name: "このブラウザ", detail: "会話履歴と今回の同意状況をローカルに保存します。" },
     accept: "同意する",
     decline: "同意しない",
     remember: "同意内容はブラウザに保存され、チャット関連のコードが更新された際に改めて確認されます。",
     declined: "メッセージは送信されていません。チャットを開始するにはプライバシーに関するお知らせにご同意ください。",
   },
 };
+
+const SEARCH_NAMES: Record<"exa" | "deepseek", string> = { exa: "Exa", deepseek: "DeepSeek" };
+// 中日文正文里拉丁字母开头的服务名前空一格，和其余文案的排版一致。
+const latinGap = (text: string) => (/^[A-Za-z]/.test(text) ? " " : "");
+
+// 搜索与读页同一家就写一次；各是一家就分开写；都没配就只剩 Bangumi 与 Steam。webSearch 为 undefined 是还没问到（或旧版 Worker）。
+function lookupServices(copy: ConsentCopy, webSearch: GodChatWebSearch | null | undefined): string {
+  const role = (name: string, what: string) => (copy.lang === "en" ? `${name} (${what})` : `${name}（${what}）`);
+  const search = webSearch === undefined || webSearch === null ? [copy.searchFallback]
+    : webSearch.search && webSearch.search === webSearch.fetch ? [role(SEARCH_NAMES[webSearch.search], copy.searchRoles.both)]
+      : [
+        ...(webSearch.search ? [role(SEARCH_NAMES[webSearch.search], copy.searchRoles.search)] : []),
+        ...(webSearch.fetch ? [role(SEARCH_NAMES[webSearch.fetch], copy.searchRoles.read)] : []),
+      ];
+  const stores = copy.lang === "en" ? ["Bangumi", "the Steam store"] : copy.lang === "ja" ? ["Bangumi", "Steam ストア"] : ["Bangumi", "Steam 商店"];
+  return copy.lookupJoin([...search, ...stores]);
+}
 
 type DesignConsentCopy = {
   lang: string;
@@ -1034,17 +1114,29 @@ function UserBubble({ text }: { text: string }) {
   );
 }
 
-// 第一次同意时顺带选阵容：每个阵容一个接受按钮，当前选中的那个画成主按钮。
-function ConsentPrompt({ text, lineup, onAccept, onDecline }: { text: string; lineup: GodChatLineup; onAccept: (lineup: GodChatLineup) => void; onDecline: () => void }) {
-  const copy = CONSENT_COPY[textLanguage(text)];
+function useWebSearch(): GodChatWebSearch | undefined {
+  const [webSearch, setWebSearch] = useState<GodChatWebSearch | undefined>();
+  useEffect(() => {
+    if (!USAGE_URL) return;
+    const controller = new AbortController();
+    fetch(USAGE_URL, { signal: controller.signal })
+      .then((res) => (res.ok ? (res.json() as Promise<GodChatUsage>) : null))
+      .then((data) => { if (data?.webSearch) setWebSearch(data.webSearch); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+  return webSearch;
+}
+
+function ConsentFrame({ copy, text, destinations, children }: { copy: ConsentCopy; text: string | null; destinations: ConsentDestination[]; children: ReactNode }) {
   return (
     <>
-      <UserBubble text={text} />
+      {text !== null && <UserBubble text={text} />}
       <div role="group" aria-label={copy.label} lang={copy.lang} className="w-full text-sm leading-relaxed text-foreground">
         <div className="label-mono mb-1.5 text-muted-foreground">{copy.label}</div>
         <p>{copy.intro}</p>
         <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-          {copy.destinations.map(({ name, detail }) => (
+          {destinations.map(({ name, detail }) => (
             <li key={name}>
               <span className="font-medium text-foreground">{name}</span>
               {copy.lang === "en" ? ": " : "："}
@@ -1052,26 +1144,60 @@ function ConsentPrompt({ text, lineup, onAccept, onDecline }: { text: string; li
             </li>
           ))}
         </ul>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {LINEUP_OPTIONS.map((option) => (
-            <button
-              key={option.lineup}
-              type="button"
-              title={lineupTitle(option.lineup)}
-              onClick={() => onAccept(option.lineup)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-xs",
-                option.lineup === lineup ? "bg-foreground text-background" : "border border-line-strong transition-colors hover:bg-surface-hover",
-              )}
-            >
-              {copy.accept} · {option.label}
-            </button>
-          ))}
-          <button type="button" onClick={onDecline} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover">{copy.decline}</button>
-        </div>
+        <div className="mt-3 flex flex-col items-start gap-2">{children}</div>
         <p className="mt-2 text-2xs text-muted-foreground">{copy.remember}</p>
       </div>
     </>
+  );
+}
+
+function ConsentChoice({ copy, onAccept, onDecline }: { copy: ConsentCopy; onAccept: () => void; onDecline: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={onAccept} className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background">{copy.accept}</button>
+      <button type="button" onClick={onDecline} className="rounded-md border border-line-strong px-3 py-1.5 text-xs transition-colors hover:bg-surface-hover">{copy.decline}</button>
+    </div>
+  );
+}
+
+// 第一行选杂鱼与先知用哪家，去向列表只列那一家；第二行接受或拒绝。
+function ConsentPrompt({ text, lineup, onAccept, onDecline }: { text: string; lineup: GodChatLineup; onAccept: (lineup: GodChatLineup) => void; onDecline: () => void }) {
+  const copy = CONSENT_COPY[textLanguage(text)];
+  const [choice, setChoice] = useState(lineup);
+  const webSearch = useWebSearch();
+  const destinations = [copy.workers(lookupServices(copy, webSearch)), copy.clef, choice === "claude" ? copy.anthropicAll : copy.deepseek, copy.browser];
+  return (
+    <ConsentFrame copy={copy} text={text} destinations={destinations}>
+      <div role="radiogroup" aria-label="Models for the Small Fry and the Prophet" className="flex flex-wrap items-center gap-2">
+        {LINEUP_OPTIONS.map((option) => (
+          <button
+            key={option.lineup}
+            type="button"
+            role="radio"
+            aria-checked={choice === option.lineup}
+            title={lineupTitle(option.lineup)}
+            onClick={() => setChoice(option.lineup)}
+            className={cn("rounded-md border px-3 py-1.5 text-xs transition-colors", choice === option.lineup ? "border-foreground text-foreground" : "border-line-strong text-muted-foreground hover:text-foreground")}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <ConsentChoice copy={copy} onAccept={() => onAccept(choice)} onDecline={onDecline} />
+    </ConsentFrame>
+  );
+}
+
+type VendorPending = { lineup: GodChatLineup; text: string | null; from: "god" | "switch" };
+
+// 只列一家厂商：神档要用 Anthropic（from god，带着那条消息），或切到还没同意过的阵容（from switch）。
+function VendorConsentPrompt({ pending, onAccept, onDecline }: { pending: VendorPending; onAccept: () => void; onDecline: () => void }) {
+  const copy = CONSENT_COPY[textLanguage(pending.text ?? "")];
+  const destination = pending.lineup === "deepseek" ? copy.deepseek : pending.from === "god" ? copy.anthropicGod : copy.anthropicAll;
+  return (
+    <ConsentFrame copy={copy} text={pending.text} destinations={[destination]}>
+      <ConsentChoice copy={copy} onAccept={onAccept} onDecline={onDecline} />
+    </ConsentFrame>
   );
 }
 
@@ -1190,7 +1316,7 @@ function lineupTitle(lineup: GodChatLineup): string {
 }
 
 // 只换杂鱼与先知由谁出场，神始终是 Fable；选了只影响之后发的消息。
-function LineupSwitch({ lineup }: { lineup: GodChatLineup }) {
+function LineupSwitch({ lineup, onChoose }: { lineup: GodChatLineup; onChoose: (lineup: GodChatLineup) => void }) {
   return (
     <div role="radiogroup" aria-label="Models for the Small Fry and the Prophet" className="flex items-center gap-1.5">
       {LINEUP_OPTIONS.map((option, index) => {
@@ -1202,7 +1328,7 @@ function LineupSwitch({ lineup }: { lineup: GodChatLineup }) {
               role="radio"
               aria-checked={lineup === option.lineup}
               title={lineupTitle(option.lineup)}
-              onClick={() => chatLineup.choose(option.lineup)}
+              onClick={() => onChoose(option.lineup)}
               className={cn("py-1", lineup === option.lineup ? "text-foreground" : "hover:text-foreground")}
             >
               {option.label}

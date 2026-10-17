@@ -117,6 +117,13 @@ test("档位反查阵容与档次：Claude 两档落在 claude 阵容，共用�
   assert.deepEqual(tierPlacement("fable"), { lineup: "deepseek", rank: "fable" });
 });
 
+test("请求里对 Anthropic 的表态只收 allow 与 deny", () => {
+  const messages = [user("hi")];
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", messages })?.anthropic, undefined);
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", anthropic: "deny", messages })?.anthropic, "deny");
+  assert.equal(parseGodChatRequest({ turnstileToken: "t", anthropic: true, messages }), null);
+});
+
 test("请求的阵容只收登记过的值，缺省不带", () => {
   const messages = [user("hi")];
   assert.equal(parseGodChatRequest({ turnstileToken: "t", messages })?.lineup, undefined);

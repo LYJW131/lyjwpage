@@ -3,6 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import Anthropic from "@anthropic-ai/sdk";
 
 import {
+  GOD_CHAT_ANTHROPIC_CONSENT,
   GOD_CHAT_LIMITS,
   GOD_CHAT_CHART_SERIES,
   GOD_CHAT_PASS_TTL_MS,
@@ -243,7 +244,12 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   }
 
   if (abort.signal.aborted) return gone();
-  const wanted = lineupTier(lineup, decision.route);
+  // 对话发给 Anthropic 要访客点过头：DeepSeek 阵容里 Clef 选了神，卡片得先单独问；这一条拒绝了就改由先知答。
+  const rank = !design && parsed.anthropic === "deny" && decision.route === "fable" ? "think" : decision.route;
+  if (!design && parsed.anthropic !== "allow" && GOD_CHAT_TIER_INFO[lineupTier(lineup, rank)].provider === "anthropic") {
+    return fail(409, "This reply needs your consent to send the conversation to Anthropic.", undefined, GOD_CHAT_ANTHROPIC_CONSENT);
+  }
+  const wanted = lineupTier(lineup, rank);
   const tier: GodChatServedTier | null = design ? GOD_CHAT_DESIGN_TIER : await quota.admitTier(ip, wanted, enforce, !decision.design, lineup);
   if (!tier) return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 

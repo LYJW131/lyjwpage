@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
+import type { GodChatWebSearch } from "@shared/god-chat-tiers";
 import { object } from "@shared/json";
 
 import type { Env } from "../runtime";
@@ -89,6 +90,12 @@ export function webSearchProvider(env: Pick<Env, "EXA_API_KEY" | "DEEPSEEK_API_K
   if (env.WEB_SEARCH_PROVIDER?.trim() === "deepseek" && keys.deepseekKey) return { provider: "deepseek", ...keys };
   if (keys.exaKey) return { provider: "exa", ...keys };
   return undefined;
+}
+
+// 与 webFetch 的分支同步：有 Exa key 就由 Exa 读页。
+export function webSearchServices(env: Pick<Env, "EXA_API_KEY" | "DEEPSEEK_API_KEY" | "WEB_SEARCH_PROVIDER">): GodChatWebSearch {
+  const backend = webSearchProvider(env);
+  return { search: backend?.provider ?? null, fetch: backend ? (backend.exaKey ? "exa" : "deepseek") : null };
 }
 
 function page(raw: Record<string, unknown> | null, text: string | undefined, limit: number): WebPage | undefined {

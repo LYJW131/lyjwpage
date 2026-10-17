@@ -1,5 +1,9 @@
+import type { GodChatLineup } from "@shared/god-chat-tiers";
+
 export const CHAT_CONSENT_KEY = "lyjw.chat.consent";
 export const DESIGN_CONSENT_KEY = "lyjw.chat.design-consent";
+export const DEEPSEEK_CONSENT_KEY = "lyjw.chat.deepseek-consent";
+export const ANTHROPIC_CONSENT_KEY = "lyjw.chat.anthropic-consent";
 // 构建期由 vite.config.ts 按对话相关代码的内容哈希注入，代码一变旧的同意就失效。
 const CHAT_CONSENT_VERSION = process.env.CHAT_CODE_VERSION ?? "";
 
@@ -52,3 +56,9 @@ export function createChatConsentStore(
 export const chatConsent = createChatConsentStore(() => typeof window === "undefined" ? null : window.localStorage, CHAT_CONSENT_VERSION, CHAT_CONSENT_KEY);
 export const designConsent = createChatConsentStore(() => typeof window === "undefined" ? null : window.localStorage, CHAT_CONSENT_VERSION, DESIGN_CONSENT_KEY);
 
+// 按阵容的厂商分开记：chatConsent 管两种阵容都要用的去向，这里管把对话发给哪家模型厂商。
+const browserStorage = () => typeof window === "undefined" ? null : window.localStorage;
+export const vendorConsent: Record<GodChatLineup, ReturnType<typeof createChatConsentStore>> = {
+  deepseek: createChatConsentStore(browserStorage, CHAT_CONSENT_VERSION, DEEPSEEK_CONSENT_KEY),
+  claude: createChatConsentStore(browserStorage, CHAT_CONSENT_VERSION, ANTHROPIC_CONSENT_KEY),
+};

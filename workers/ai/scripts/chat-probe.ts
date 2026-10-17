@@ -86,7 +86,7 @@ for (let run = 1; run <= runs; run++) {
   const response = await handleChat(new Request("https://probe.local/api/chat", {
     method: "POST",
     headers: { "CF-Connecting-IP": "127.0.0.1" },
-    body: JSON.stringify({ humanPass: pass, messages: [{ role: "user", content: question }] }),
+    body: JSON.stringify({ humanPass: pass, anthropic: "allow", messages: [{ role: "user", content: question }] }),
   }), env, {
     readStatus: async (path) => fixtureByPath.has(path) ? Response.json(stamp(fixtureByPath.get(path), Date.now())) : Response.json({ ok: false, error: "no fixture" }, { status: 404 }),
     readDoc: async () => new Response("no doc", { status: 404 }),
