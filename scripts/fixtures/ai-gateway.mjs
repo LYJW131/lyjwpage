@@ -46,7 +46,7 @@ const fixture = {
     let timer;
     const stream = new ReadableStream({
       start(controller) {
-        controller.enqueue(line({ type: 'route', route: 'haiku', tier: 'haiku' }));
+        controller.enqueue(line({ type: 'route', route: 'flash', tier: 'flash' }));
         timer = setInterval(() => {
           controller.enqueue(line({ type: 'text', text: body || 'fixture text' }));
           if (!hold) {
