@@ -267,7 +267,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {
-        await saveTranscript(env, { route: wanted, tier, source: decision.source, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
+        await saveTranscript(env, { route: wanted, tier: saved.trace?.tier ?? tier, source: decision.source, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
         // 访客中断时这条流已被取消，再 close 会抛错。
         if (!abort.signal.aborted) controller.close();
       }
