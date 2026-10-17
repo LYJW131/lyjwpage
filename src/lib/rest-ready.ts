@@ -22,15 +22,3 @@ export function resetRestReadyForTests(): void {
   restReady = false;
   listeners.clear();
 }
-
-export type ImageLoading = "eager" | "lazy";
-
-export function resolveImageLoading(
-  restReadyNow: boolean,
-  loading: ImageLoading | undefined,
-  priority: boolean | undefined,
-): { loading?: ImageLoading } {
-  if (priority) return {};
-  if (!restReadyNow) return loading ? { loading } : {};
-  return { loading: "eager" };
-}

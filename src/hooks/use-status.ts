@@ -26,6 +26,9 @@ export function usePageActive() {
 export const statusFetcher = fetchStatus;
 const fetcher = statusFetcher;
 
+// 首屏画完再校验：这段窗口里回源的结果会把视口里的读数换掉，Lighthouse 的视觉进度会一直往后拖。
+const FIRST_REVALIDATE_DELAY_MS = 8_000;
+
 const refetchLedger = createRefetchLedger();
 const mountRefetchGate = createMountRefetchGate();
 
@@ -147,7 +150,9 @@ export function useStatus<T>(
     onDiscarded,
     onSuccess,
     fallbackData,
-    revalidateOnMount: fallback.ok && (revalidateOnMount === false || lag) ? false : undefined,
+    // 首屏读数已由服务端渲染好；挂载即回源会让视口里的数字在 1–2 秒后跳一次，把首屏视觉进度拖长。
+    // 有 fallback 时改由下面的定时器在首屏稳定后再校验。
+    revalidateOnMount: fallback.ok ? false : undefined,
     refreshInterval: interval,
     // SWR 内置可见性判断可能与应用内浏览器不一致，统一由 usePageActive 决定暂停。
     refreshWhenHidden: true,
@@ -177,6 +182,14 @@ export function useStatus<T>(
     }
     if (mountRefetchGate.claim(path, now)) void mutate();
   }, [lag, cadenceMs, revalidateOnMount, mutate, path]);
+
+  useEffect(() => {
+    if (!fallback.ok || !active) return;
+    const timer = setTimeout(() => {
+      if (mountRefetchGate.claim(path, Date.now())) void mutate();
+    }, FIRST_REVALIDATE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [fallback.ok, active, mutate, path]);
 
   return {
     data: data?.ok ? data.data : undefined,

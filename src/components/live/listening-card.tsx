@@ -71,6 +71,8 @@ const PROGRESS_LEAP_MS = 2_500;
 
 // 须与 globals.css 的 recent-tracks-track 行数上限对齐；实际行数按视口高度由容器查询决定。
 const VISIBLE_ROWS = 4;
+// 首屏看得见的几行封面直接取，别等 lazy 观察：它们要参与 LCP，晚到会把视觉进度拖长。
+const PRIORITY_ROWS = 4;
 
 function formatDuration(milliseconds: number) {
   const total = Math.max(0, Math.round(milliseconds / 1000));
@@ -307,10 +309,12 @@ function TrackRow({
   track,
   placeholder,
   onOpen,
+  priority,
 }: {
   track: ListeningItem;
   placeholder: ArtworkDataUri | undefined;
   onOpen?: () => void;
+  priority?: boolean;
 }) {
   const content = (
     <>
@@ -332,6 +336,7 @@ function TrackRow({
             alt=""
             fill
             sizes="44px"
+            priority={priority}
             className="object-cover"
             unoptimized={!needsOptimizing(track.artwork)}
           />
@@ -869,7 +874,7 @@ export function ListeningCard({
                 key={hero.key}
                 className="absolute inset-0"
                 variants={reduced ? STATIC_VARIANTS : HERO_VARIANTS}
-                initial="initial"
+                initial={mountedAt ? "initial" : false}
                 animate="animate"
                 exit="exit"
                 // 统一 transition 会覆盖 variant 中的非对称时长。
@@ -1096,7 +1101,7 @@ export function ListeningCard({
                         key={restKeys[index]}
                         layout={!reduced}
                         variants={reduced ? STATIC_VARIANTS : LIST_ITEM_VARIANTS}
-                        initial="initial"
+                        initial={mountedAt ? "initial" : false}
                         animate="animate"
                         exit="exit"
                         transition={reduced ? STATIC_TRANSITION : LIST_TRANSITION}
@@ -1104,6 +1109,7 @@ export function ListeningCard({
                       >
                         <TrackRow
                           track={item}
+                          priority={index < PRIORITY_ROWS}
                           placeholder={
                             item.artwork
                               ? artworkPlaceholders.rows[item.artwork]

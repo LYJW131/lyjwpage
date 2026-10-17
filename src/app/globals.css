@@ -5,8 +5,8 @@
 @font-face {
   font-family: "Geist Mono";
   /* tech() 只收关键字；写成带引号的字符串整条 src 不合法，整个 @font-face 被丢掉。woff2 本身就能装可变字体，不写 tech。
-     走 Vite 资源拿到带哈希的 /assets 地址（长期缓存）；须与 root.tsx 的预加载指向同一个文件。 */
-  src: url("../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+     这份是 geist 的 GeistMono-Variable.ttf 按拉丁子集裁出来的（72 KB → 34 KB），缺的字形按字体栈回落到系统等宽。 */
+  src: url("./fonts/geist-mono-latin.woff2") format("woff2");
   font-weight: 100 900;
   font-display: swap;
 }
@@ -535,13 +535,6 @@ button.paper-card {
 
 @utility defer-offscreen-always {
   content-visibility: auto;
-}
-
-html.offscreen-revealed .defer-offscreen,
-html.offscreen-revealed .defer-offscreen-always,
-.defer-offscreen[data-offscreen-revealed],
-.defer-offscreen-always[data-offscreen-revealed] {
-  content-visibility: visible;
 }
 
 @keyframes god-shimmer {

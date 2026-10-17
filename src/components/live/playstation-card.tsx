@@ -24,6 +24,7 @@ import { foldService } from "@shared/playstation-entitlements";
 import {
   PLAYSTATION_IMAGE_SCALE,
   playstationImage,
+  playstationImageSrcSet,
 } from "@/lib/playstation-image";
 import {
   addTrophyCounts,
@@ -216,6 +217,7 @@ function GameTile({
         {tile.imageUrl ? (
           <Image
             src={playstationImage(tile.imageUrl, COVER_PX * PLAYSTATION_IMAGE_SCALE)!}
+            srcSet={playstationImageSrcSet(tile.imageUrl, COVER_PX)}
             alt={tile.name}
             width={COVER_PX}
             height={COVER_PX}

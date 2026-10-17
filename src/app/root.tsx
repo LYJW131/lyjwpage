@@ -34,9 +34,9 @@ import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { ogImage, site } from "@shared/site";
 import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript } from "@/lib/theme";
 
-// 须与 globals.css 的 Geist Mono @font-face 指向同一个文件，预加载才会被字体规则复用。
-import geistMonoUrl from "../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2?url";
-import "./globals.css";
+import geistMonoUrl from "./fonts/geist-mono-latin.woff2?url";
+// 内联进文档：首屏少一个阻塞往返，HTML 本来就有 30 分钟缓存。
+import cssText from "./globals.css?inline";
 
 function bootScript(): string {
   return (
@@ -81,6 +81,7 @@ export function links(): LinkDescriptor[] {
   return [
     { rel: "canonical", href: site.url },
     { rel: "manifest", href: "/manifest.webmanifest" },
+    // 须与 globals.css 的 @font-face 指向同一个文件：字体晚发现要多一个往返，预载能省掉。
     { rel: "preload", href: geistMonoUrl, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
     { rel: "icon", href: "/icon", type: "image/png", sizes: "32x32" },
     { rel: "apple-touch-icon", href: "/apple-icon" },
@@ -112,6 +113,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
         <Meta />
+        <style dangerouslySetInnerHTML={{ __html: cssText }} />
         <script dangerouslySetInnerHTML={{ __html: assetRecoveryScript() }} />
         <Links />
         <script dangerouslySetInnerHTML={{ __html: bootScript() }} />

@@ -1,0 +1,50 @@
+name: psi-check
+
+on:
+  push:
+    branches: [perf/lazy-images]
+    paths: [.github/workflows/psi-check.yml]
+
+jobs:
+  psi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Paired PageSpeed with detail
+        env:
+          PAGESPEED_API_KEY: ${{ secrets.PAGESPEED_API_KEY }}
+        run: |
+          node --input-type=module -e '
+          const key = process.env.PAGESPEED_API_KEY;
+          const targets = ["https://lyjw.me/", "https://perf-lazy-images.preview.lyjw.dev/"];
+          async function measure(url) {
+            const qs = new URLSearchParams({ url, strategy: "mobile", category: "performance" });
+            if (key) qs.set("key", key);
+            const res = await fetch("https://www.googleapis.com/pagespeedonline/v5/runPagespeed?" + qs);
+            const j = await res.json();
+            if (!res.ok) return null;
+            const a = j.lighthouseResult.audits;
+            const m = a.metrics?.details?.items?.[0] ?? {};
+            return {
+              score: Math.round(j.lighthouseResult.categories.performance.score * 100),
+              fcp: Math.round(a["first-contentful-paint"].numericValue),
+              lcp: Math.round(a["largest-contentful-paint"].numericValue),
+              si: Math.round(a["speed-index"].numericValue),
+              tbt: Math.round(a["total-blocking-time"].numericValue),
+              ttfb: Math.round(a["server-response-time"].numericValue),
+              obsFcp: m.observedFirstContentfulPaint,
+              obsLcp: m.observedLargestContentfulPaint,
+              obsTtfb: m.timeToFirstByte,
+              bytes: a["total-byte-weight"].numericValue,
+              requests: a["network-requests"]?.details?.items?.length ?? 0,
+            };
+          }
+          for (let i = 0; i < 4; i += 1) {
+            const p = await measure(targets[0]);
+            const v = await measure(targets[1]);
+            console.log("pair", i, JSON.stringify({ prod: p, preview: v }));
+          }
+          '
+# run 1792270339
+# run 1792270826
+# run 1792271218
