@@ -10,6 +10,7 @@ import type { Env } from "./runtime.ts";
 import type { ChatQuota } from "./chat/quota.ts";
 import type { AnthropicEgress } from "./chat/egress.ts";
 import type { BuildCoordinator } from "./build/coordinator.ts";
+import type { ChatLog, Transcript } from "./chat/transcripts.ts";
 import { signBuildToken } from "./build/token.ts";
 import { readPlan } from "./build/plan.ts";
 import { sealExchange, sealedHistory } from "./chat/seal.ts";
@@ -67,6 +68,7 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
     await t.test(tier, async () => {
       const requests: { body: Anthropic.Beta.MessageCreateParamsStreaming; headers: Headers }[] = [];
       const effort: GodChatEffort = tier === "haiku" ? "medium" : GOD_CHAT_TIER_INFO[tier].effort;
+      const transcripts: Transcript[] = [];
       const env: Env = {
         PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
         AI_DEV: "true",
@@ -92,6 +94,7 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
             return modelStream(body.model, requests.length === 1);
           },
         }),
+        CHAT_LOG: binding<ChatLog>({ record: async (entry) => { transcripts.push(entry); } }),
       };
       const response = await handleChat(new Request("https://api.test/api/chat", {
         method: "POST", body: JSON.stringify({ turnstileToken: "test-token", messages: [{ role: "user", content: "What's the timezone?" }] }),
@@ -121,6 +124,12 @@ test("三个模型的 SDK 请求都启用消息级 effort，工具续跑继承�
       const seal = events.find((e) => e.type === "seal");
       assert.ok(seal?.type === "seal");
       assert.equal(seal.trace?.effort, effort);
+      assert.equal(transcripts.length, 1);
+      assert.deepEqual(transcripts[0].messages.map((m) => m.content), ["What's the timezone?"]);
+      assert.equal(transcripts[0].outcome, "complete");
+      assert.equal(transcripts[0].tier, tier);
+      assert.ok(transcripts[0].reply.includes("Done."));
+      assert.equal(transcripts[0].trace?.effort, effort);
     });
   }
 });
