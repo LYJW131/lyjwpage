@@ -489,7 +489,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.ts#LEVELS`、`scripts/verify-receipt.ts#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。
 - SHA 不手抄：用 `git rev-parse` 的输出原样粘贴；脚本按 SHA 认回执，错一位整张作废（同文件「回执」）。
-- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 LYJW131 账号发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#TRUSTED_AUTHOR`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
+- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 lyjw 两个账号（LYJW131、An0nCh1hayaa，按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#TRUSTED_AUTHOR_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
 - 大改代码逻辑的 PR 合并前再派判定员：一个没写这段代码的 agent，只拿 lyjw 的原话、PR 号与 head 的完整 SHA、验证员的证据表，自己读 diff，判做没做到、有没有回归。主线程把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，FAIL 不合（同文件「3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有」、`scripts/verify-receipt.ts#JUDGE_LINE`）。
 
 ### 合并

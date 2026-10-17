@@ -5,16 +5,17 @@ import { check, coverage, evaluate, parseComments, patchDigest } from "./verify-
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
 const patchIds = (map: Record<string, string>) => (sha: string) => map[sha] ?? null;
-const owner = { login: "LYJW131" };
+const owner = { id: 153256373 };
+const cloud = { id: 300701323 };
 
-test("parseComments 每类只认 lyjw 账号发的最新一条，第一行不对格式的不算", () => {
+test("parseComments 每类只认 lyjw 两个账号发的最新一条，第一行不对格式的不算", () => {
   const { receipt, judge } = parseComments([
     { user: owner, body: `验证回执 ${OLD}：type-check-only` },
     { user: owner, body: `顺便说一句\n验证回执 ${HEAD}：live-ui-verified` },
     { user: owner, body: `验证回执 ${HEAD}：unit-test-verified\n证据：…` },
     { user: owner, body: `判定 ${HEAD}：FAIL` },
-    { user: owner, body: `判定 ${HEAD}: PASS` },
-    { user: { login: "someone" }, body: `判定 ${OLD}：FAIL` },
+    { user: cloud, body: `判定 ${HEAD}: PASS` },
+    { user: { id: 1 }, body: `判定 ${OLD}：FAIL` },
     { body: `验证回执 ${OLD}：live-ui-verified` },
   ]);
   assert.deepEqual([receipt?.sha, receipt?.level], [HEAD, "unit-test-verified"]);
