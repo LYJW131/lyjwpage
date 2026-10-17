@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { ArrowUp, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
+import { ArrowUp, Check, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
 import { ChatCard } from "@/components/chat-card";
 import { ChatMarkdown, preloadChatMarkdown, useChatMarkdownReady } from "@/components/lazy-chat-markdown";
@@ -660,7 +660,7 @@ function Conversation({ className, archive, session: conversation }: { className
             );
           })
         )}
-        {consentPending !== null && <ConsentPrompt text={consentPending} lineup={lineup} onAccept={acceptConsent} onDecline={declineConsent} />}
+        {consentPending !== null && <ConsentPrompt text={consentPending} lineup={lineup} onChoose={chooseLineup} onAccept={acceptConsent} onDecline={declineConsent} />}
         {vendorPending !== null && <VendorConsentPrompt pending={vendorPending} onAccept={acceptVendor} onDecline={declineVendor} />}
       </div>
 
@@ -1160,10 +1160,9 @@ function ConsentChoice({ copy, onAccept, onDecline }: { copy: ConsentCopy; onAcc
   );
 }
 
-// 第一行选杂鱼与先知用哪家，去向列表只列那一家；第二行接受或拒绝。
-function ConsentPrompt({ text, lineup, onAccept, onDecline }: { text: string; lineup: GodChatLineup; onAccept: (lineup: GodChatLineup) => void; onDecline: () => void }) {
+// 第一行选杂鱼与先知用哪家，和头部开关是同一个选择；去向列表只列那一家。第二行接受或拒绝。
+function ConsentPrompt({ text, lineup: choice, onChoose, onAccept, onDecline }: { text: string; lineup: GodChatLineup; onChoose: (lineup: GodChatLineup) => void; onAccept: (lineup: GodChatLineup) => void; onDecline: () => void }) {
   const copy = CONSENT_COPY[textLanguage(text)];
-  const [choice, setChoice] = useState(lineup);
   const webSearch = useWebSearch();
   const destinations = [copy.workers(lookupServices(copy, webSearch)), copy.clef, choice === "claude" ? copy.anthropicAll : copy.deepseek, copy.browser];
   return (
@@ -1176,9 +1175,13 @@ function ConsentPrompt({ text, lineup, onAccept, onDecline }: { text: string; li
             role="radio"
             aria-checked={choice === option.lineup}
             title={lineupTitle(option.lineup)}
-            onClick={() => setChoice(option.lineup)}
-            className={cn("rounded-md border px-3 py-1.5 text-xs transition-colors", choice === option.lineup ? "border-foreground text-foreground" : "border-line-strong text-muted-foreground hover:text-foreground")}
+            onClick={() => onChoose(option.lineup)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors",
+              choice === option.lineup ? "border-foreground bg-foreground/8 font-medium text-foreground" : "border-line text-muted-foreground hover:border-line-strong hover:text-foreground",
+            )}
           >
+            {choice === option.lineup && <Check className="size-3.5" aria-hidden />}
             {option.label}
           </button>
         ))}
