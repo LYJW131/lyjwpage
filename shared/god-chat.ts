@@ -282,30 +282,30 @@ function media(raw: Raw, sanitize: VisualSanitizers): MediaVisual | null {
 // 连线只接相邻两层：跨层的线会穿过中间那层的方框，渲染不画绕行。
 // 画不了的连线（同层、跨层、指向不存在的节点）只丢那一条，不拒整张图：模型偶尔连一条同层线，整张退回成 JSON 代码块代价太大。
 function diagram(raw: Raw): DiagramVisual | null {
-  const depth = new Map<string, number>();
-  let index = -1;
+  const seen = new Set<string>();
   const layers = list(raw.layers, 1, LIMITS.diagramLayers, (entry) => {
     const layer = object(entry);
-    index += 1;
     const nodes = list(layer?.nodes, 1, LIMITS.diagramNodes, (value) => {
       const node = object(value);
       const id = text(node?.id, LIMITS.short);
       const label = text(node?.label, LIMITS.short);
-      if (!node || !id || !label || depth.has(id)) return null;
-      depth.set(id, index);
+      if (!node || !id || !label || seen.has(id)) return null;
+      seen.add(id);
       return { id, label, ...optional("note", text(node.note, LIMITS.label)) };
     });
     return layer && nodes ? { nodes, ...optional("label", text(layer.label, LIMITS.short)) } : null;
   });
   if (!layers) return null;
+  // 层深按丢掉坏层之后的顺序算：画出来相邻的两层，连线就该留着。
+  const depth = new Map(layers.flatMap((layer, index) => layer.nodes.map((node) => [node.id, index] as const)));
   const edges = list(raw.edges ?? [], 0, LIMITS.diagramEdges, (entry) => {
     const edge = object(entry);
     const from = text(edge?.from, LIMITS.short);
     const to = text(edge?.to, LIMITS.short);
     const gap = from !== undefined && to !== undefined ? Math.abs((depth.get(from) ?? NaN) - (depth.get(to) ?? NaN)) : NaN;
-    if (!edge || !from || !to || gap !== 1) return undefined;
+    if (!edge || !from || !to || gap !== 1) return null;
     return { from, to, ...optional("label", text(edge.label, LIMITS.short)) };
-  })?.filter((edge) => edge !== undefined);
+  });
   return edges ? { kind: "diagram", layers, edges, ...optional("title", text(raw.title, LIMITS.title)) } : null;
 }
 

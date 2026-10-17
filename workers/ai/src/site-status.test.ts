@@ -82,6 +82,17 @@ test("逐日数值数组整份返回不分页，并附按月合计与最近几�
   assert.deepEqual(parsed.data.countsSums, { last7Days: add(counts.slice(-7)), last30Days: add(counts.slice(-30)), all: add(counts) });
 });
 
+test("带 todayAtSource 的热力图从数据源的今天往回算最近几天，今天之后补的空格子不算", async () => {
+  const days = [...Array.from({ length: 30 }, (_, i) => i + 1), 0, 0, 0];
+  const io = fakeIO(() => ({ ok: true, data: { origin: "2026-09-01", todayAtSource: "2026-09-30", days } }));
+  const { json } = section((await run({ views: ["codingYear"] }, io)).text, "codingYear");
+  const parsed = JSON.parse(json);
+  const recent = Object.entries(parsed.data.daysLastDays);
+  assert.equal(recent.length, 14);
+  assert.deepEqual(recent.at(-1), ["2026-09-30", 30]);
+  assert.deepEqual(parsed.data.daysSums, { last7Days: 24 + 25 + 26 + 27 + 28 + 29 + 30, last30Days: 465, all: 465 });
+});
+
 test("detail=full 保留图片字段，短列表保持原样", async () => {
   const io = fakeIO(() => ({ games: games(3), iconUrl: "https://cdn.example/a.webp" }));
   const full = JSON.parse(section((await run({ views: ["playing"], detail: "full" }, io)).text, "playing").json);
