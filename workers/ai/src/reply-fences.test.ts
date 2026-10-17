@@ -19,7 +19,7 @@ test("图示用浏览器同一份校验，过不了的按 JSON、结构、没收
   const reply = [
     "```timeline", good, "```",
     "```chart", "{nope", "```",
-    "```diagram", JSON.stringify({ layers: [{ nodes: [{ id: "a", label: "A" }, { id: "a", label: "B" }] }] }), "```",
+    "```diagram", JSON.stringify({ layers: [{ nodes: [] }] }), "```",
     "```python", "print(1)", "```",
     "```media", '{"items":[',
   ].join("\n");

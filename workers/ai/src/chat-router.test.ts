@@ -19,33 +19,31 @@ const clef = (answer: unknown, seen?: { input?: { model?: unknown; state?: { lat
     },
   }) as unknown as Ai;
 
-test("没有 AI 绑定或 Clef 出错时兜底到 Haiku，不拦访客", async (t) => {
-  assert.deepEqual(await routeWithClef(undefined, [user("hi")]), { route: "haiku", source: "fallback" });
+test("没有 AI 绑定或 Clef 出错时兜底到 Small Fry，不拦访客", async (t) => {
+  assert.deepEqual(await routeWithClef(undefined, [user("hi")]), { route: "flash", source: "fallback" });
   const warn = t.mock.method(console, "warn", () => {});
-  assert.deepEqual(await routeWithClef(clef(new Error("clef down")), [user("hi")]), { route: "haiku", source: "fallback" });
+  assert.deepEqual(await routeWithClef(clef(new Error("clef down")), [user("hi")]), { route: "flash", source: "fallback" });
   assert.equal(warn.mock.callCount(), 1);
 });
 
 test("Clef 回的不是登记过的档位时同样兜底", async () => {
   for (const answer of [
     { answers: { route: { choice: "gpt-5" } } },
-    { answers: { route: { choice: "haiku" } } },
+    { answers: { route: { choice: "haiku-low" } } },
+    { answers: { route: { choice: "sonnet" } } },
     { answers: {} },
     null,
   ]) {
-    assert.deepEqual(await routeWithClef(clef(answer), [user("hi")]), { route: "haiku", source: "fallback" });
+    assert.deepEqual(await routeWithClef(clef(answer), [user("hi")]), { route: "flash", source: "fallback" });
   }
 });
 
-test("登记过的选项映射出档位、强度与设计标记，来源记 clef", async () => {
-  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "haiku-low" } } }), [user("hi")]), {
-    route: "haiku", effort: "low", source: "clef",
+test("登记过的选项映射出档位与设计标记，来源记 clef", async () => {
+  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "flash" } } }), [user("hi")]), {
+    route: "flash", source: "clef",
   });
-  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "haiku-medium" } } }), [user("hi")]), {
-    route: "haiku", effort: "medium", source: "clef",
-  });
-  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "sonnet" } } }), [user("hi")]), {
-    route: "sonnet", source: "clef",
+  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "think" } } }), [user("hi")]), {
+    route: "think", source: "clef",
   });
   assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "design" } } }), [user("hi")]), {
     route: "sonnet", design: true, source: "clef",
@@ -60,7 +58,7 @@ test("登记过的选项映射出档位、强度与设计标记，来源记 clef
 
 test("发给 Clef 的是 clef 模型与最新一条访客消息", async () => {
   const seen: { input?: { model?: unknown; state?: { latestMessage?: string } } } = {};
-  await routeWithClef(clef({ answers: { route: { choice: "sonnet" } } }, seen), [user("早"), user("在听什么")]);
+  await routeWithClef(clef({ answers: { route: { choice: "think" } } }, seen), [user("早"), user("在听什么")]);
   assert.equal(seen.input?.model, "@cf/cloudflare/clef");
   assert.equal(seen.input?.state?.latestMessage, "在听什么");
 });
@@ -92,8 +90,8 @@ const answered = (route: string, status?: [string, number], doc?: [string, numbe
 });
 
 test("Clef 有把握时把状态与文档的预取带进决定", async () => {
-  assert.deepEqual(await routeWithClef(clef(answered("haiku-low", ["listening", 0.9], ["overview", PREFETCH_MIN_PROBABILITY.doc])), [user("在听什么")]), {
-    route: "haiku", effort: "low", source: "clef",
+  assert.deepEqual(await routeWithClef(clef(answered("flash", ["listening", 0.9], ["overview", PREFETCH_MIN_PROBABILITY.doc])), [user("在听什么")]), {
+    route: "flash", source: "clef",
     prefetch: [
       { name: "get_site_status", input: { views: [...PREFETCH_STATUS.listening.views] } },
       { name: "read_project_doc", input: { doc: "overview" } },
@@ -103,12 +101,12 @@ test("Clef 有把握时把状态与文档的预取带进决定", async () => {
 
 test("概率不够、选了 none、选项没登记或缺答时不预取", async () => {
   for (const answer of [
-    answered("sonnet", ["listening", PREFETCH_MIN_PROBABILITY.status - 0.01], ["overview", PREFETCH_MIN_PROBABILITY.doc - 0.01]),
-    answered("sonnet", ["none", 0.99], ["none", 0.99]),
-    answered("sonnet", ["weather", 0.99], ["secrets", 0.99]),
-    answered("sonnet"),
+    answered("think", ["listening", PREFETCH_MIN_PROBABILITY.status - 0.01], ["overview", PREFETCH_MIN_PROBABILITY.doc - 0.01]),
+    answered("think", ["none", 0.99], ["none", 0.99]),
+    answered("think", ["weather", 0.99], ["secrets", 0.99]),
+    answered("think"),
   ]) {
-    assert.deepEqual(await routeWithClef(clef(answer), [user("hi")]), { route: "sonnet", source: "clef" });
+    assert.deepEqual(await routeWithClef(clef(answer), [user("hi")]), { route: "think", source: "clef" });
   }
 });
 

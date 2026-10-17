@@ -5,17 +5,13 @@ import { pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
-// Cloudflare 文档公开的 Turnstile 测试密钥，不是凭据。
-const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
-const TURNSTILE_TEST_SECRET = "1x0000000000000000000000000000000AA";
-
 const secret = () => randomBytes(32).toString("base64url");
 
 export function cloudDevFiles(env, makeSecret = secret) {
   const apiExample = fs.readFileSync(path.join(ROOT, "workers/core/.dev.vars.example"), "utf8");
   const ai = [
     `ANTHROPIC_API_KEY=${env.LYJWPAGE_ANTHROPIC_API_KEY ?? ""}`,
-    `TURNSTILE_SECRET_KEY=${TURNSTILE_TEST_SECRET}`,
+    `DEEPSEEK_API_KEY=${env.LYJWPAGE_DEEPSEEK_API_KEY ?? ""}`,
     `CHAT_HISTORY_SECRET=${makeSecret()}`,
     `BUILD_SESSION_SECRET=${makeSecret()}`,
     "ALLOWED_ORIGINS=http://localhost:3211",
@@ -23,7 +19,6 @@ export function cloudDevFiles(env, makeSecret = secret) {
   return {
     "workers/core/.dev.vars": apiExample,
     "workers/ai/.dev.vars": `${ai.join("\n")}\n`,
-    ".env.local": `PUBLIC_TURNSTILE_SITE_KEY=${TURNSTILE_TEST_SITE_KEY}\n`,
   };
 }
 

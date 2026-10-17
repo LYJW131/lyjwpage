@@ -2,6 +2,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 import { object } from "@shared/json";
 
+import type { Env } from "../runtime";
+
 export type WebPage = { url: string; title: string; published?: string; text: string };
 
 const SEARCH_RESULTS = 5;
@@ -74,6 +76,21 @@ export async function fetchJson(url: string, init: RequestInit, signal: AbortSig
 const exa = (path: string, key: string, body: unknown, signal: AbortSignal) =>
   fetchJson(`https://api.exa.ai${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body) }, signal);
 
+const deepseek = (path: string, key: string, body: unknown, signal: AbortSignal) =>
+  fetchJson(`https://api.deepseek.com${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body) }, signal);
+
+export const WEB_SEARCH_PROVIDERS = ["exa", "deepseek"] as const;
+export type WebSearchBackend = { provider: (typeof WEB_SEARCH_PROVIDERS)[number]; exaKey?: string; deepseekKey?: string };
+
+// 搜索默认 Exa：同一批代表性查询里 DeepSeek Search 更快更新、中文更好，但英文技术文档的命中更散。读页一律优先 Exa：
+// DeepSeek Fetch 实测要 4–12 秒、偶尔超时，正文的 Markdown 还被转义成 \#、\,。
+export function webSearchProvider(env: Pick<Env, "EXA_API_KEY" | "DEEPSEEK_API_KEY" | "WEB_SEARCH_PROVIDER">): WebSearchBackend | undefined {
+  const keys = { ...(env.EXA_API_KEY && { exaKey: env.EXA_API_KEY }), ...(env.DEEPSEEK_API_KEY && { deepseekKey: env.DEEPSEEK_API_KEY }) };
+  if (env.WEB_SEARCH_PROVIDER?.trim() === "deepseek" && keys.deepseekKey) return { provider: "deepseek", ...keys };
+  if (keys.exaKey) return { provider: "exa", ...keys };
+  return undefined;
+}
+
 function page(raw: Record<string, unknown> | null, text: string | undefined, limit: number): WebPage | undefined {
   if (!raw || typeof raw.url !== "string" || !text?.trim()) return undefined;
   const published = typeof raw.publishedDate === "string" ? raw.publishedDate : undefined;
@@ -88,9 +105,26 @@ function page(raw: Record<string, unknown> | null, text: string | undefined, lim
 const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
 const results = (data: Record<string, unknown>) => (Array.isArray(data.results) ? data.results.map(object) : []);
 
-export async function webSearch(key: string, query: string, category: WebCategory, signal: AbortSignal): Promise<WebPage[]> {
+// DeepSeek 把同一页的不同片段当成不同结果，URL 末尾带 #1、#2；去掉后按页去重。
+const pageUrl = (url: string) => url.replace(/#\d+$/, "");
+
+async function deepseekSearch(key: string, query: string, signal: AbortSignal): Promise<WebPage[]> {
+  const data = await deepseek("/v1/tools/search", key, { query: query.slice(0, 128), count: SEARCH_RESULTS }, signal);
+  const seen = new Set<string>();
+  return results(data).flatMap((raw) => {
+    if (!raw || typeof raw.url !== "string") return [];
+    const url = pageUrl(raw.url);
+    if (seen.has(url)) return [];
+    seen.add(url);
+    const summary = typeof raw.summary === "string" && raw.summary.trim() ? raw.summary : typeof raw.snippet === "string" ? raw.snippet : undefined;
+    return page({ ...raw, url, publishedDate: raw.date }, summary, SEARCH_CHARS_PER_RESULT) ?? [];
+  });
+}
+
+export async function webSearch(backend: WebSearchBackend, query: string, category: WebCategory, signal: AbortSignal): Promise<WebPage[]> {
+  if (backend.provider === "deepseek") return deepseekSearch(backend.deepseekKey!, query, signal);
   const exaCategory = EXA_CATEGORY[category];
-  const data = await exa("/search", key, {
+  const data = await exa("/search", backend.exaKey!, {
     query,
     type: "fast",
     numResults: SEARCH_RESULTS,
@@ -100,8 +134,12 @@ export async function webSearch(key: string, query: string, category: WebCategor
   return results(data).flatMap((raw) => page(raw, raw ? strings(raw.highlights).join("\n…\n") : undefined, SEARCH_CHARS_PER_RESULT) ?? []);
 }
 
-export async function webFetch(key: string, url: string, signal: AbortSignal): Promise<WebPage | undefined> {
-  const data = await exa("/contents", key, { urls: [url], text: { maxCharacters: FETCH_CHARS } }, signal);
+export async function webFetch(backend: WebSearchBackend, url: string, signal: AbortSignal): Promise<WebPage | undefined> {
+  if (!backend.exaKey) {
+    const data = await deepseek("/v1/tools/fetch", backend.deepseekKey!, { url }, signal);
+    return page({ url, title: data.title }, typeof data.content === "string" ? data.content : undefined, FETCH_CHARS);
+  }
+  const data = await exa("/contents", backend.exaKey, { urls: [url], text: { maxCharacters: FETCH_CHARS } }, signal);
   const raw = results(data)[0] ?? null;
   return page(raw, typeof raw?.text === "string" ? raw.text : undefined, FETCH_CHARS);
 }
@@ -114,4 +152,8 @@ export function searchResultBlocks(pages: WebPage[]): Anthropic.Beta.BetaSearchR
     content: [{ type: "text", text: item.text }],
     citations: { enabled: true },
   }));
+}
+
+export function searchResultText(pages: WebPage[]): string {
+  return pages.map((item, index) => `[${index + 1}] ${item.title}${item.published ? ` (${item.published})` : ""}\nURL: ${item.url}\n${item.text}`).join("\n\n");
 }

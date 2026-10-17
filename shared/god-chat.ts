@@ -6,12 +6,6 @@ import { object } from "./json";
 
 import { isGodChatServedTier, type GodChatEffort, type GodChatRoute, type GodChatServedTier, type GodChatTier } from "./god-chat-tiers";
 
-// 卡片渲染 Turnstile 时带上，Worker 校验 siteverify 回来的 action 与之相同。
-export const GOD_CHAT_TURNSTILE_ACTION = "god-chat";
-// 验过人后 Worker 发的通行证有效期；通行证绑 IP，期内不再要新的 Turnstile token。
-export const GOD_CHAT_PASS_TTL_MS = 30 * 60_000;
-export const GOD_CHAT_PASS_PATTERN = /^\d{13}\.[\w-]{20,100}$/;
-
 // 公开端点直接花 API 额度：这几项上限共同限定单次请求的最大花费，放宽前先算账。
 export const GOD_CHAT_LIMITS = {
   maxMessages: 20,
@@ -61,20 +55,20 @@ const search = (query: string, category: "web" | "news"): GodChatPresetCall[] =>
 
 // 首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
 export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
-  { text: "LYJW 现在在忙什么？", choice: "haiku-low", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
-  { text: "这个网站是怎么搭起来的？", choice: "haiku-medium", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
-  { text: "这周 AI 圈有什么大新闻？", choice: "sonnet", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
+  { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
+  { text: "这个网站是怎么搭起来的？", choice: "flash", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
+  { text: "这周 AI 圈有什么大新闻？", choice: "think", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
   { text: "我想给这个网站提个改进", choice: "design" },
-  { text: "LYJW 最近在听什么歌？", choice: "haiku-low", prefetch: status("nowListening", "listening"), show: "Show the recent listening card with show_card." },
-  { text: "首页的实时数据从哪来？", choice: "haiku-medium", prefetch: doc("liveStatus"), show: "Draw the path from devices to the page as a diagram visual, one layer per hop." },
-  { text: "今天科技圈有什么新鲜事？", choice: "sonnet", prefetch: search("tech news today", "news"), show: "Lay out the stories as a timeline visual." },
-  { text: "LYJW 最近在玩什么游戏？", choice: "haiku-low", prefetch: status("playingNow", "playing", "questNow"), show: "Show the recent games card with show_card." },
-  { text: "这个网站用了哪些技术？", choice: "haiku-medium", prefetch: doc("overview"), show: "Draw the stack as a diagram visual with one layer each for the front end, the Workers, storage and the reporters." },
-  { text: "比较一下最新的几款大模型", choice: "sonnet", prefetch: search("latest frontier AI model releases compared", "news"), show: "Compare the models in a chart visual (for example price per million output tokens) and give the verdict in prose." },
-  { text: "LYJW 最近在追什么番？", choice: "haiku-low", prefetch: status("nowWatching", "watching"), show: "Show the recent watching card with show_card." },
-  { text: "网站最近的提交改了什么？", choice: "haiku-low", prefetch: status("githubRepo"), show: "Lay out the latest commits as a timeline visual." },
-  { text: "LYJW 今天运动了吗？", choice: "haiku-low", prefetch: status("activity", "workouts"), show: "Show the activity card with show_card." },
-  { text: "LYJW 用 AI 写了多少代码？", choice: "haiku-medium", prefetch: status("coding", "codingNow"), show: "Put the headline totals in a stats visual and the daily token trend in a chart visual." },
+  { text: "LYJW 最近在听什么歌？", choice: "flash", prefetch: status("nowListening", "listening"), show: "Show the recent listening card with show_card." },
+  { text: "首页的实时数据从哪来？", choice: "flash", prefetch: doc("liveStatus"), show: "Draw the path from devices to the page as a diagram visual, one layer per hop." },
+  { text: "今天科技圈有什么新鲜事？", choice: "think", prefetch: search("tech news today", "news"), show: "Lay out the stories as a timeline visual." },
+  { text: "LYJW 最近在玩什么游戏？", choice: "flash", prefetch: status("playingNow", "playing", "questNow"), show: "Show the recent games card with show_card." },
+  { text: "这个网站用了哪些技术？", choice: "flash", prefetch: doc("overview"), show: "Draw the stack as a diagram visual with one layer each for the front end, the Workers, storage and the reporters." },
+  { text: "比较一下最新的几款大模型", choice: "think", prefetch: search("latest frontier AI model releases compared", "news"), show: "Compare the models in a chart visual (for example price per million output tokens) and give the verdict in prose." },
+  { text: "LYJW 最近在追什么番？", choice: "flash", prefetch: status("nowWatching", "watching"), show: "Show the recent watching card with show_card." },
+  { text: "网站最近的提交改了什么？", choice: "flash", prefetch: status("githubRepo"), show: "Lay out the latest commits as a timeline visual." },
+  { text: "LYJW 今天运动了吗？", choice: "flash", prefetch: status("activity", "workouts"), show: "Show the activity card with show_card." },
+  { text: "LYJW 用 AI 写了多少代码？", choice: "flash", prefetch: status("coding", "codingNow"), show: "Put the headline totals in a stats visual and the daily token trend in a chart visual." },
 ];
 
 // 回复里的原生图示：模型在正文里写一个以图示名为语言标记的代码块，内容是 JSON，浏览器按 src/lib/chat-visuals.ts 校验后用站点组件画。
@@ -125,7 +119,9 @@ export const GOD_CHAT_VISUAL_EXAMPLES = {
 export type GodChatVisualKind = keyof typeof GOD_CHAT_VISUAL_EXAMPLES;
 export const GOD_CHAT_VISUAL_KINDS = Object.keys(GOD_CHAT_VISUAL_EXAMPLES) as GodChatVisualKind[];
 export const GOD_CHAT_CHART_SERIES = 4;
-// 校验与提示词共用这组上限：超出任何一项整块图示不画，访客看到的是原始 JSON，所以提示词要把它们原样告诉模型。
+// 校验与提示词共用这组上限。超出的部分按 OpenUI 的做法丢掉或截断、其余照画（docs/references.md「OpenUI」）：过长的文字截断加省略号，
+// 过多的条目只留前面的，不合格的条目、序列、节点只丢那一项；只有剩下的撑不起一张图（结构不对、条目不够）时才整块退回成代码。
+// 提示词仍把上限原样告诉模型，截掉的内容访客看不到。
 export const GOD_CHAT_VISUAL_LIMITS = {
   stats: 4,
   barLabels: 16,
@@ -190,18 +186,20 @@ function text(value: unknown, max: number): string | undefined {
   if (typeof value === "number" && Number.isFinite(value)) value = String(value);
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
-  return trimmed && trimmed.length <= max ? trimmed : undefined;
+  if (!trimmed) return undefined;
+  const chars = [...trimmed];
+  return chars.length <= max ? trimmed : `${chars.slice(0, max - 1).join("").trimEnd()}…`;
 }
 
 function list<T>(value: unknown, min: number, max: number, item: (entry: unknown) => T | null): T[] | null {
-  if (!Array.isArray(value) || value.length < min || value.length > max) return null;
+  if (!Array.isArray(value)) return null;
   const out: T[] = [];
   for (const entry of value) {
+    if (out.length === max) break;
     const parsed = item(entry);
-    if (parsed === null) return null;
-    out.push(parsed);
+    if (parsed !== null) out.push(parsed);
   }
-  return out;
+  return out.length >= min ? out : null;
 }
 
 const optional = <K extends string, V>(key: K, value: V | undefined) => (value === undefined ? {} : ({ [key]: value } as { [P in K]: V }));
@@ -217,8 +215,7 @@ function statItem(value: unknown): StatItem | null {
 function stats(raw: Raw): StatsVisual | null {
   const items = list(raw.items, 1, LIMITS.stats, statItem);
   if (!items) return null;
-  const summary = raw.summary === undefined ? undefined : statItem(raw.summary);
-  if (summary === null) return null;
+  const summary = raw.summary === undefined ? undefined : statItem(raw.summary) ?? undefined;
   const tone = object(raw.summary)?.tone;
   return {
     kind: "stats",
@@ -231,21 +228,22 @@ function chart(raw: Raw): ChartVisual | null {
   const type = raw.type;
   if (type !== "bar" && type !== "column" && type !== "line") return null;
   const maxLabels = type === "bar" ? LIMITS.barLabels : type === "column" ? LIMITS.columnLabels : LIMITS.linePoints;
-  const labels = list(raw.labels, type === "line" ? 2 : 1, maxLabels, (entry) => text(entry, LIMITS.label) ?? null);
-  if (!labels) return null;
+  // 标签与每个序列按下标对齐：丢掉一个标签会把后面的数全挪一格，所以标签有一个不合格就整张不画，多出的只截尾。
+  if (!Array.isArray(raw.labels)) return null;
+  const labels = raw.labels.slice(0, maxLabels).map((entry) => text(entry, LIMITS.label));
+  if (labels.length < (type === "line" ? 2 : 1) || labels.some((label) => label === undefined)) return null;
   const series = list(raw.series, 1, GOD_CHAT_CHART_SERIES, (entry) => {
     const item = object(entry);
     const name = text(item?.name, LIMITS.label);
-    const values = list(item?.values, labels.length, labels.length, (v) =>
-      typeof v === "number" && Number.isFinite(v) && (type === "line" || v >= 0) ? v : null,
-    );
-    return name && values ? { name, values } : null;
+    if (!name || !Array.isArray(item?.values) || item.values.length < labels.length) return null;
+    const values = item.values.slice(0, labels.length);
+    return values.every((v) => typeof v === "number" && Number.isFinite(v) && (type === "line" || v >= 0)) ? { name, values: values as number[] } : null;
   });
   if (!series) return null;
   return {
     kind: "chart",
     type,
-    labels,
+    labels: labels as string[],
     series,
     ...optional("title", text(raw.title, LIMITS.title)),
     ...optional("subtitle", text(raw.subtitle, LIMITS.title)),
@@ -412,11 +410,10 @@ export type GodChatEvent =
   | { type: "search"; query: string }
   | { type: "step"; text: string }
   | { type: "sources"; sources: GodChatSource[] }
-  | { type: "seal"; seal: string; trace?: GodChatTrace; planToken?: string }
-  | { type: "pass"; pass: string; expiresAt: number };
+  | { type: "seal"; seal: string; trace?: GodChatTrace; planToken?: string };
 
 // resume：设计会话里重新取回访客断线时错过的那条回复，messages 截到访客那条为止；不扣设计轮数。
-export type GodChatRequest = { messages: GodChatMessage[]; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true; time?: GodChatTimeInput };
+export type GodChatRequest = { messages: GodChatMessage[]; designToken?: string; resume?: true; time?: GodChatTimeInput };
 
 // 访客自己的话超长就拒；模型的旧回复只截断，超出总量从最早的消息丢起，长回答不能让后续对话发不出去。
 // 浏览器发送前先过一遍，Worker 收到后再过一遍。
@@ -477,12 +474,9 @@ const parseTime = (value: unknown): GodChatTimeInput | undefined => {
 
 export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!body || typeof body !== "object") return null;
-  const { messages, turnstileToken, humanPass, designToken, resume, time } = body as Record<string, unknown>;
+  const { messages, designToken, resume, time } = body as Record<string, unknown>;
   const cleanTime = parseTime(time);
   if (time !== undefined && !cleanTime) return null;
-  if (turnstileToken !== undefined && (typeof turnstileToken !== "string" || !turnstileToken || turnstileToken.length > 2048)) return null;
-  if (humanPass !== undefined && (typeof humanPass !== "string" || !GOD_CHAT_PASS_PATTERN.test(humanPass))) return null;
-  if (turnstileToken === undefined && humanPass === undefined) return null;
   if (designToken !== undefined && (typeof designToken !== "string" || !/^[\w-]+\.[\w-]+$/.test(designToken) || designToken.length > 2048)) return null;
   if (resume !== undefined && (resume !== true || designToken === undefined)) return null;
   if (!Array.isArray(messages) || messages.length === 0) return null;
@@ -507,5 +501,5 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
   // 顶层 time 兜底最新一条：旧会话的访客气泡可能没存 time；逐条保留的那部分在循环里已带上，这里不覆盖它。
   if (cleanTime) fitted[fitted.length - 1] = { ...fitted[fitted.length - 1], time: fitted[fitted.length - 1].time ?? cleanTime };
-  return { messages: fitted, ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanTime && { time: cleanTime }) };
+  return { messages: fitted, ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanTime && { time: cleanTime }) };
 }

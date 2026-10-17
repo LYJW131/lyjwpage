@@ -194,7 +194,7 @@ The full picture (in Chinese): [Development workflow](./docs/workflow.md).
 | Client data | SWR · WebSocket |
 | State and asset storage | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
 | Activity scoring | Workers AI (Clef) |
-| Homepage chat | Anthropic Claude (routed by Clef), Cloudflare Turnstile |
+| Homepage chat | DeepSeek Flash and Anthropic Claude (routed by Clef), Exa web search |
 | Native device integration | Swift / SwiftUI · HealthKit · BLE |
 | Hosting and delivery | Cloudflare Workers · Alibaba Cloud ESA |
 | Error and performance monitoring | Cloudflare Workers Observability · Web Analytics |
