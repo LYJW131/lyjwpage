@@ -38,6 +38,7 @@ import { CLEF_CHOICES, isClefChoice, presetRoute, routeWithClef, type RouteDecis
 import { invalidVisuals, replyFences } from "./reply-fences";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { TOOL_SEARCH_TOOL, docSearchQuery } from "./doc-search";
+import { saveTranscript, type Transcript, type TranscriptOutcome } from "./transcripts";
 import { ANIME_SEARCH_TOOL, DOMAIN_SEARCH_TOOLS, GAME_SEARCH_TOOL, STORE_LANGUAGES, animeSearch, gameSearch } from "./domain-search";
 import { MAX_WEB_FETCHES, WEB_CATEGORIES, WEB_FETCH_TOOL, WEB_SEARCH_TOOL, searchResultBlocks, urlKey, urlsIn, webFetch, webSearch, type WebPage } from "./web-search";
 
@@ -116,7 +117,7 @@ const SITE_TOOL_DEFS: Anthropic.Beta.BetaTool[] = SITE_TOOLS.map((tool) => ({
 }));
 
 type OpenDesign = Extract<DesignAdmission, { sessionId: string }>;
-type TurnOutcome = { complete: boolean; trace?: GodChatTrace; planToken?: string; lead?: string };
+type TurnOutcome = { complete: boolean; refused?: true; trace?: GodChatTrace; planToken?: string; lead?: string };
 
 function devSwitch(env: Env, name: "CHAT_RATE_LIMIT" | "CHAT_FORCE_TIER"): string | undefined {
   return aiDevEnabled(env) ? env[name]?.trim() || undefined : undefined;
@@ -134,8 +135,10 @@ function fail(status: number, error: string, headers?: HeadersInit, code?: strin
   return Response.json({ error, ...(code && { code }) }, { status, headers: { "Cache-Control": "no-store", ...headers } });
 }
 
-export async function handleChat(request: Request, env: Env, io: ToolIO): Promise<Response> {
+export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: Pick<ExecutionContext, "waitUntil">): Promise<Response> {
   const startedAt = Date.now();
+  // 记录是尽力而为的调试数据：有 ctx 时放到响应之后写，存储变慢也不拖住流的收尾。
+  const record = async (entry: Transcript) => { const saving = saveTranscript(env, entry); if (ctx) ctx.waitUntil(saving); else await saving; };
   if (request.method !== "POST") return fail(405, "Method not allowed.");
   const sealSecret = env.CHAT_HISTORY_SECRET;
   if (!env.ANTHROPIC_API_KEY || !env.TURNSTILE_SECRET_KEY || !sealSecret) return fail(503, "The oracle is offline.");
@@ -195,6 +198,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   };
 
   if (decision.route === "refuse") {
+    await record({ route: "refuse", tier: null, source: decision.source, messages: history, reply: REFUSAL, outcome: "refused" });
     return new Response(
       new Blob([line({ type: "route", route: "refuse", tier: null }), line({ type: "text", text: REFUSAL })]).stream(),
       { headers },
@@ -221,6 +225,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       let reply = "";
+      let saved: { outcome: TranscriptOutcome; trace?: GodChatTrace } = { outcome: "failed" };
       const emit = (event: GodChatEvent) => {
         if (event.type === "text") reply += event.text;
         controller.enqueue(line(event));
@@ -243,7 +248,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
           outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset ? { calls: preset.decision.prefetch ?? [], source: "preset" } : { calls: decision.prefetch ?? [], source: decision.source }, show: preset?.show, startedAt, io, emit, signal: abort.signal });
         }
-        const { complete, trace, planToken, lead } = outcome;
+        const { complete, refused, trace, planToken, lead } = outcome;
+        saved = { outcome: refused ? "refused" : complete ? "complete" : "incomplete", trace };
         if (complete && lead) emit({ type: "text", text: lead });
         // 只记代码块的语言标记与校验结论、不记内容：图示没画出来时（标记写错、没写、结构不对）靠它判断模型写了什么。
         const fences = replyFences(reply);
@@ -263,6 +269,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {
+        await record({ route: wanted, tier: saved.trace?.tier ?? tier, source: decision.source, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
         // 访客中断时这条流已被取消，再 close 会抛错。
         if (!abort.signal.aborted) controller.close();
       }
@@ -651,5 +658,5 @@ async function converse({
     fallback: Boolean(servedBy),
     cards: [...cards],
   });
-  return { complete: !refused, trace };
+  return { complete: !refused, ...(refused && { refused: true as const }), trace };
 }

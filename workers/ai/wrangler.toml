@@ -47,6 +47,11 @@ class_name = "AnthropicEgress"
 name = "BUILD_COORDINATOR"
 class_name = "BuildCoordinator"
 
+# 首页对话记录，保留期见 src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS；分支预览不绑，不记。
+[[durable_objects.bindings]]
+name = "CHAT_LOG"
+class_name = "ChatLog"
+
 [[migrations]]
 tag = "v1-transfer-from-api"
 
@@ -63,6 +68,10 @@ to = "AnthropicEgress"
 [[migrations]]
 tag = "v2-build-coordinator"
 new_sqlite_classes = ["BuildCoordinator"]
+
+[[migrations]]
+tag = "v3-chat-log"
+new_sqlite_classes = ["ChatLog"]
 
 [[ratelimits]]
 name = "CHAT_USAGE_LIMIT"
