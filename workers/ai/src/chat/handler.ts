@@ -38,6 +38,7 @@ import { CLEF_CHOICES, isClefChoice, presetRoute, routeWithClef, type RouteDecis
 import { invalidVisuals, replyFences } from "./reply-fences";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { TOOL_SEARCH_TOOL, docSearchQuery } from "./doc-search";
+import { saveTranscript, type TranscriptOutcome } from "./transcripts";
 import { ANIME_SEARCH_TOOL, DOMAIN_SEARCH_TOOLS, GAME_SEARCH_TOOL, STORE_LANGUAGES, animeSearch, gameSearch } from "./domain-search";
 import { MAX_WEB_FETCHES, WEB_CATEGORIES, WEB_FETCH_TOOL, WEB_SEARCH_TOOL, searchResultBlocks, urlKey, urlsIn, webFetch, webSearch, type WebPage } from "./web-search";
 
@@ -195,6 +196,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   };
 
   if (decision.route === "refuse") {
+    await saveTranscript(env, { route: "refuse", tier: null, source: decision.source, messages: history, reply: REFUSAL, outcome: "refused" });
     return new Response(
       new Blob([line({ type: "route", route: "refuse", tier: null }), line({ type: "text", text: REFUSAL })]).stream(),
       { headers },
@@ -221,6 +223,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       let reply = "";
+      let saved: { outcome: TranscriptOutcome; trace?: GodChatTrace } = { outcome: "failed" };
       const emit = (event: GodChatEvent) => {
         if (event.type === "text") reply += event.text;
         controller.enqueue(line(event));
@@ -244,6 +247,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           outcome = await converse({ client, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, preset, startedAt, io, emit, signal: abort.signal });
         }
         const { complete, trace, planToken, lead } = outcome;
+        saved = { outcome: complete ? "complete" : "incomplete", trace };
         if (complete && lead) emit({ type: "text", text: lead });
         // 只记代码块的语言标记与校验结论、不记内容：图示没画出来时（标记写错、没写、结构不对）靠它判断模型写了什么。
         const fences = replyFences(reply);
@@ -263,6 +267,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO): Promis
           emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {
+        await saveTranscript(env, { route: wanted, tier, source: decision.source, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
         // 访客中断时这条流已被取消，再 close 会抛错。
         if (!abort.signal.aborted) controller.close();
       }
