@@ -33,7 +33,7 @@ export type CodingUsageYearView = {
 
 export type CodingUsageViews = { view: CodingUsagePayload; year: CodingUsageYearView };
 
-export const CODING_TOP_MODELS = 3;
+export const CODING_TOP_MODELS = 5;
 export const CODING_AGENT_MODELS = 20;
 export const CODING_YEAR_KEEP_DAYS = 380;
 export const CODING_YEAR_TOP_MODELS = 5;
