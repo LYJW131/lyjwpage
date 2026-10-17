@@ -34,7 +34,6 @@ export function mergeRepoStats(
 }
 
 const commitKeys = (commits: GithubRepoCommit[] | undefined) => (commits ?? []).map((commit) => commit.oid ?? commit.sha).join();
-const headTime = (commits: GithubRepoCommit[] | undefined) => Date.parse(commits?.[0]?.committedAt ?? "") || 0;
 
 type RepoFetchers = {
   commits: (budgetMs: number) => Promise<GithubRepoCommit[]>;
@@ -52,9 +51,9 @@ function liveFetchers(token: string): RepoFetchers {
 type RepoDeps = { lag: LagStore; core: Pick<StateCoreRpc, "revalidate">; fetchers: RepoFetchers };
 
 async function publish(deps: RepoDeps, previous: GithubRepoPayload | null, next: GithubRepoPayload, updatedAt?: number) {
-  // 定时任务和部署后的重拉会并发，慢的一轮不能拿更旧的提交盖掉快的一轮已经写下的。
+  // 提交日期可因强推回退；采集期间若已观察到另一轮改写列表，保留它，下一轮再与 GitHub 对齐。
   const latest = (await readLag<GithubRepoPayload>(deps.lag, LAG_KEYS.githubRepo))?.data;
-  if (latest && headTime(latest.recentCommits) > headTime(next.recentCommits)) next = { ...next, recentCommits: latest.recentCommits };
+  if (latest && commitKeys(latest.recentCommits) !== commitKeys(previous?.recentCommits)) next = { ...next, recentCommits: latest.recentCommits };
   await writeLag(deps.lag, LAG_KEYS.githubRepo, next, updatedAt);
   if (commitKeys(previous?.recentCommits) === commitKeys(next.recentCommits)) return;
   try {
