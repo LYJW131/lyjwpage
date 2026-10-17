@@ -12,9 +12,10 @@
 | `music/ch<NN>.js` | 章节作者 | 这一章的配乐乐谱 |
 | `plan.js` | 主创 | 章节顺序和小节数，抄 SCRIPT 的章节表 |
 | `score.js` | 主创 | 合成器、共享词汇、按章拼装 |
+| `sfx.js` | 主创 | 剧情音的合成（物理建模，见 TREATMENT「配乐（一种）」） |
 | `engine.js`、`kit.js`、`film.js`、`i18n.js`、`index.html`、`tools/` | 主创 | 引擎、共用件、时间轴与播放器、播放器文字、加载顺序、自检工具 |
 
-`index.html` 已按顺序列好十一章（00–10）的两个文件，还没写的加载失败会被忽略、由占位画面和占位配乐（每拍一声滴答）顶上，整片始终能从头播到尾。并行期每位作者只碰自己那两个文件（旁白要改时连带 SCRIPT 里自己那一章）。需要新的共用件，先在本章文件里写局部函数；需要新音色、新剧情音，先用现有的顶上；这两样都在交付说明里写清，收尾由主创加进 `kit.js` / `score.js`。
+`index.html` 已按顺序列好十一章（00–10）的两个文件，还没写的加载失败会被忽略、由占位画面和占位配乐（每拍一声滴答）顶上，整片始终能从头播到尾。并行期每位作者只碰自己那两个文件（旁白要改时连带 SCRIPT 里自己那一章）。需要新的共用件，先在本章文件里写局部函数；需要新音色、新剧情音，先用现有的顶上；这两样都在交付说明里写清，收尾由主创加进 `kit.js` / `score.js` / `sfx.js`。
 
 ## 章节接口
 
@@ -126,7 +127,7 @@
 - `harm` 的长度等于这一章的小节数；`sections` 要盖满每一小节（漏掉的会报错并补一段安静的）。
 - 词汇都在 `score.js` 顶部：和弦 `CHORD`，鼓型是 16 格字符串（`X` 重、`x` 中、`o` 轻、`.` 空；数组逐小节轮换，`null` 不打），`kickKind`（tight / light / heart）、`snareKind`（thud / rim）、`hatKind`（type 打字机 / flip 翻纸），贝斯型 `BASS`（另有 `"hold"`），琶音型 `ARP`，段落里的 `clock`（钟摆，16 格，tick / tock 交替）和 `ghost: [隔几拍, 深度, 时间常数]`（不出声的幽灵底鼓，只让 pad 呼吸），旋律乐器 pluck / pluckDark / pluckMute / bell / bell2 / marimba（低音马林巴）/ kalimba（拇指琴，第 08 章唱主题）/ glass（玻璃读数灯，第 01 章唱主题），剧情音 `story.kind`：key、stamp、tick、lamp、whoosh（`tube` 取 0–3 气动管、`"fork"` 分叉、`"down"` 下坠、`"whip"` 甩镜头的一口风，中点最响）、accent（`what`：arrive / slip / broadcast / flip）、swell、boom、morse（电键的「嘟」，`m` 音高、`len` 拍）、gate（闸门弹开）、off（熄灯，往下滑一个八度）、ping（报到的低音，`late` 是远处）、clear（清屏）、hop（Clawd 跳一下）；段落里写 `clockKind: "knock"`（或隔着地层的 `"knockFar"`）把钟摆换成敲门。
 - `f.hit` / `f.env` 能取的事件：kick、snare、hat、clock（含敲门）、tick、stamp、whoosh、lamp、key、bell（只算主题音，不管哪件乐器唱）、accent；另有包络 duck、pad、bass、riser、energy、beat、bar。morse、gate、off、ping、clear、hop 只出声、不进事件表，画面按本章的 AT 落拍。
-- **不改 `score.js`**：新和弦写在本章乐谱的 `chords` 里；新鼓型直接在 `sections` 里写 16 格字符串；新音色、新剧情音交给主创（改已有条目或合成器会改到别的章）。
+- **不改 `score.js`、`sfx.js`**：新和弦写在本章乐谱的 `chords` 里；新鼓型直接在 `sections` 里写 16 格字符串；新音色、新剧情音交给主创（改已有条目或合成器会改到别的章）。
 - 信封主题 `THEME`（A4 D5 F5 E5）：信封出场时唱，每章换一件乐器。调性以 D 多利亚 / D 小调为主，全片不转调。
 - 试听：`score-test.html?only=ch05` 看这一章的时间轴、事件和包络；`index.html?only=ch04,ch05,ch06` 连着前后章边看边听（只排几章时和整片 `score.mp3` 长度对不上，一定在浏览器里现合成）。不带 `?only=` 的整片预览放的是本地渲过的 `score.mp3`（不入库），乐谱改了而时长没变时听到的还是旧配乐；没有它就现合成。站点版的配乐推送后由 CI 渲染传到 R2，见 [README「站点版」](../README.md#站点版)。
 

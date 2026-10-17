@@ -14,7 +14,7 @@ function scoreSource(t) {
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, "music"));
   fs.mkdirSync(path.join(root, "tools"));
-  for (const rel of ["../clawd.js", "plan.js", "score.js", "music/ch00.js", "music/ch01.js", "tools/score-mp3.mjs", "ch00.js"]) fs.writeFileSync(path.join(root, rel), `// ${rel}`);
+  for (const rel of ["../clawd.js", "plan.js", "sfx.js", "score.js", "music/ch00.js", "music/ch01.js", "tools/score-mp3.mjs", "ch00.js"]) fs.writeFileSync(path.join(root, rel), `// ${rel}`);
   return root;
 }
 
@@ -29,7 +29,7 @@ test("score key changes with any score input", (t) => {
   const root = scoreSource(t);
   const before = scoreObjectKey(root);
   assert.match(before, /^[a-f0-9]{64}\.mp3$/);
-  for (const rel of ["../clawd.js", "plan.js", "score.js", "music/ch01.js", "tools/score-mp3.mjs"]) {
+  for (const rel of ["../clawd.js", "plan.js", "sfx.js", "score.js", "music/ch01.js", "tools/score-mp3.mjs"]) {
     const was = scoreObjectKey(root);
     fs.appendFileSync(path.join(root, rel), "\n");
     assert.notEqual(scoreObjectKey(root), was, rel);

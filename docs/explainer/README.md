@@ -22,7 +22,7 @@
 
 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`workers/site/src/index.ts` 把 `/explainer` 落到构建期生成的 explainer 静态资产；页面载入的脚本（`v2/index.html` 的 `LOAD` 表）和内联样式引用的字体按内容哈希改名放进 `a/`，缓存一年；配乐不进仓库，见下一段。页面和 `v2/film.js` 经注入的 `window.__assets` 查哈希名；本地预览和写章工具没有这张表，用原名。`LOAD` 表里还没写的章不发布，站点上是占位画面。
 
-站点版的整片配乐放在 R2，不进仓库。对象键是乐谱输入（`scripts/explainer-score.mjs#scoreInputs`：Clawd 动作时序、章节表、合成器、各章乐谱和渲染脚本）的 sha256，页面经 `/img/<键>.mp3` 取它（同图片一样由 `site` Worker 经 R2 绑定直出、`lyjw131.com` 经 ESA 回源）。改了这些文件的提交进了 main，`.github/workflows/explainer-score.yml` 渲染并上传（分支不自动渲染，预览上现合成；可对内部开发分支手动运行）；同一个键已经在 R2 就跳过，对象传上后不覆盖，main 连续推送时只留最后一次在渲。上传用仓库 secret `R2_SCORE_ACCESS_KEY_ID` / `R2_SCORE_SECRET_ACCESS_KEY`，渲染那一步不带凭据。
+站点版的整片配乐放在 R2，不进仓库。对象键是乐谱输入（`scripts/explainer-score.mjs#scoreInputs`：Clawd 动作时序、章节表、剧情音与合成器、各章乐谱和渲染脚本）的 sha256，页面经 `/img/<键>.mp3` 取它（同图片一样由 `site` Worker 经 R2 绑定直出、`lyjw131.com` 经 ESA 回源）。改了这些文件的提交进了 main，`.github/workflows/explainer-score.yml` 渲染并上传（分支不自动渲染，预览上现合成；可对内部开发分支手动运行）；同一个键已经在 R2 就跳过，对象传上后不覆盖，main 连续推送时只留最后一次在渲。上传用仓库 secret `R2_SCORE_ACCESS_KEY_ID` / `R2_SCORE_SECRET_ACCESS_KEY`，渲染那一步不带凭据。
 
 Chrome 默认版本由工作流的 `SCORE_CHROME_VERSION` 固定，手动运行时可用 `chrome-version` 覆盖。`v2/tools/score-mp3.mjs` 按可用 CPU 自动选择并行数（可用 `SCORE_WORKERS` 指定），输出浏览器准备、合成、PCM 转换、传输与 MP3 编码耗时，工作流另用 ffprobe 核对音频时长、采样率和声道。
 
