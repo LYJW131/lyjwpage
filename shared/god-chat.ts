@@ -8,6 +8,7 @@ import { isGodChatLineup, isGodChatServedTier, type GodChatEffort, type GodChatL
 
 // 卡片渲染 Turnstile 时带上，Worker 校验 siteverify 回来的 action 与之相同。
 export const GOD_CHAT_TURNSTILE_ACTION = "god-chat";
+export const GOD_CHAT_ANTHROPIC_CONSENT = "anthropic_consent_required";
 // 验过人后 Worker 发的通行证有效期，期内不再要新的 Turnstile token。有意取天级：人机验证只为挡脚本，频繁重验伤体验。
 export const GOD_CHAT_PASS_TTL_MS = 7 * 24 * 60 * 60_000;
 export const GOD_CHAT_PASS_PATTERN = /^\d{13}\.[\w-]{20,100}$/;
@@ -420,8 +421,9 @@ export type GodChatEvent =
   | { type: "pass"; pass: string; expiresAt: number };
 
 // resume：设计会话里重新取回访客断线时错过的那条回复，messages 截到访客那条为止；不扣设计轮数。
-// lineup 缺省按 GOD_CHAT_DEFAULT_LINEUP。
-export type GodChatRequest = { messages: GodChatMessage[]; lineup?: GodChatLineup; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true; time?: GodChatTimeInput };
+// lineup 缺省按 GOD_CHAT_DEFAULT_LINEUP。anthropic：访客同意过把对话发给 Anthropic 是 allow；这一条拒绝了是 deny（神档改由先知答）；
+// 没表态时出场档位若是 Anthropic 的，Worker 回 409 GOD_CHAT_ANTHROPIC_CONSENT，等卡片问过再重发。
+export type GodChatRequest = { messages: GodChatMessage[]; lineup?: GodChatLineup; anthropic?: "allow" | "deny"; turnstileToken?: string; humanPass?: string; designToken?: string; resume?: true; time?: GodChatTimeInput };
 
 // 访客自己的话超长就拒；模型的旧回复只截断，超出总量从最早的消息丢起，长回答不能让后续对话发不出去。
 // 浏览器发送前先过一遍，Worker 收到后再过一遍。
@@ -482,10 +484,11 @@ const parseTime = (value: unknown): GodChatTimeInput | undefined => {
 
 export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!body || typeof body !== "object") return null;
-  const { messages, lineup, turnstileToken, humanPass, designToken, resume, time } = body as Record<string, unknown>;
+  const { messages, lineup, anthropic, turnstileToken, humanPass, designToken, resume, time } = body as Record<string, unknown>;
   const cleanTime = parseTime(time);
   if (time !== undefined && !cleanTime) return null;
   if (lineup !== undefined && !isGodChatLineup(lineup)) return null;
+  if (anthropic !== undefined && anthropic !== "allow" && anthropic !== "deny") return null;
   if (turnstileToken !== undefined && (typeof turnstileToken !== "string" || !turnstileToken || turnstileToken.length > 2048)) return null;
   if (humanPass !== undefined && (typeof humanPass !== "string" || !GOD_CHAT_PASS_PATTERN.test(humanPass))) return null;
   if (turnstileToken === undefined && humanPass === undefined) return null;
@@ -513,5 +516,5 @@ export function parseGodChatRequest(body: unknown): GodChatRequest | null {
   if (!fitted.length || fitted[fitted.length - 1].role !== "user") return null;
   // 顶层 time 兜底最新一条：旧会话的访客气泡可能没存 time；逐条保留的那部分在循环里已带上，这里不覆盖它。
   if (cleanTime) fitted[fitted.length - 1] = { ...fitted[fitted.length - 1], time: fitted[fitted.length - 1].time ?? cleanTime };
-  return { messages: fitted, ...(isGodChatLineup(lineup) && { lineup }), ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanTime && { time: cleanTime }) };
+  return { messages: fitted, ...(isGodChatLineup(lineup) && { lineup }), ...((anthropic === "allow" || anthropic === "deny") && { anthropic }), ...(typeof turnstileToken === "string" && { turnstileToken }), ...(typeof humanPass === "string" && { humanPass }), ...(typeof designToken === "string" && { designToken }), ...(resume === true && { resume: true as const }), ...(cleanTime && { time: cleanTime }) };
 }

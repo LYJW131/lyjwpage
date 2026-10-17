@@ -3,7 +3,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 
 import type Anthropic from "@anthropic-ai/sdk";
-import { GOD_CHAT_LIMITS, GOD_CHAT_PASS_TTL_MS, GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
+import { GOD_CHAT_ANTHROPIC_CONSENT, GOD_CHAT_LIMITS, GOD_CHAT_PASS_TTL_MS, GOD_CHAT_TURNSTILE_ACTION, type GodChatEvent, type GodChatMessage } from "@shared/god-chat";
 import { GOD_CHAT_TIERS, GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 import { BUILD_DESIGN_LIMITS, PLAN_LABELS, type BuildPlan } from "@shared/build-routine";
 import type { Env } from "./runtime.ts";
@@ -105,7 +105,7 @@ test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度�
         CHAT_LOG: binding<ChatLog>({ record: async (entry) => { transcripts.push(entry); } }),
       };
       const response = await handleChat(new Request("https://api.test/api/chat", {
-        method: "POST", body: JSON.stringify({ humanPass: PASS, messages: [{ role: "user", content: "What's the timezone?" }] }),
+        method: "POST", body: JSON.stringify({ humanPass: PASS, anthropic: "allow", messages: [{ role: "user", content: "What's the timezone?" }] }),
       }), env, {
         readStatus: async () => Response.json({ ok: true, data: { timezone: "Asia/Singapore" } }),
         readDoc: async () => new Response("unused"),
@@ -163,7 +163,7 @@ test("关闭限流和强制模型只有显式 AI 开发或预览开关才生效"
     const enforced: boolean[] = [];
     const tiers: string[] = [];
     const response = await handleChat(new Request("https://ai.test/api/chat", {
-      method: "POST", body: JSON.stringify({ humanPass: PASS, messages: [{ role: "user", content: "hello" }] }),
+      method: "POST", body: JSON.stringify({ humanPass: PASS, anthropic: "allow", messages: [{ role: "user", content: "hello" }] }),
     }), {
       ...flags,
       PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
@@ -195,7 +195,7 @@ test("选 Claude 阵容时 Clef 判的杂鱼档由 Haiku 出场，额度按 clau
   t.after(() => { globalThis.fetch = original; });
   const seen: { visitor?: string; tier?: [string, string | undefined] } = {};
   const response = await handleChat(new Request("https://ai.test/api/chat", {
-    method: "POST", body: JSON.stringify({ humanPass: PASS, lineup: "claude", messages: [{ role: "user", content: "hello" }] }),
+    method: "POST", body: JSON.stringify({ humanPass: PASS, anthropic: "allow", lineup: "claude", messages: [{ role: "user", content: "hello" }] }),
   }), {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     ANTHROPIC_API_KEY: "test-key",
@@ -222,7 +222,7 @@ test("开发环境强制 haiku 时额度预检按 claude 阵容算，不被请�
   t.after(() => { globalThis.fetch = original; });
   const seen: (string | undefined)[] = [];
   const response = await handleChat(new Request("https://ai.test/api/chat", {
-    method: "POST", body: JSON.stringify({ humanPass: PASS, lineup: "deepseek", messages: [{ role: "user", content: "hello" }] }),
+    method: "POST", body: JSON.stringify({ humanPass: PASS, anthropic: "allow", lineup: "deepseek", messages: [{ role: "user", content: "hello" }] }),
   }), {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     ANTHROPIC_API_KEY: "test-key",
@@ -239,6 +239,33 @@ test("开发环境强制 haiku 时额度预检按 claude 阵容算，不被请�
   }, { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") });
   await response.text();
   assert.deepEqual(seen, ["claude", "claude"]);
+});
+
+test("DeepSeek 阵容里 Clef 选了神：没表态回 409 不扣神档名额，这一条拒绝就改由先知答，同意了照常给神", async (t) => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => unexpected();
+  t.after(() => { globalThis.fetch = original; });
+  const ask = async (anthropic?: string) => {
+    const wanted: string[] = [];
+    const response = await handleChat(new Request("https://ai.test/api/chat", {
+      method: "POST", body: JSON.stringify({ humanPass: PASS, ...(anthropic && { anthropic }), messages: [{ role: "user", content: "What is consciousness?" }] }),
+    }), {
+      PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
+      ANTHROPIC_API_KEY: "test-key",
+      DEEPSEEK_API_KEY: "test-deepseek",
+      TURNSTILE_SECRET_KEY: "test-turnstile",
+      CHAT_HISTORY_SECRET: "test-seal",
+      ALLOWED_ORIGINS: "https://lyjw.me",
+      AI_DEV: "true",
+      CHAT_FORCE_TIER: "fable",
+      CHAT_QUOTA: binding<ChatQuota>({ admitVisitor: async () => "ok" as const, admitTier: async (_ip, tier) => { wanted.push(tier); return null; } }),
+    }, { readStatus: async () => new Response("unused"), readDoc: async () => new Response("unused") });
+    const body = await response.json() as { code?: string };
+    return { status: response.status, code: body.code, wanted };
+  };
+  assert.deepEqual(await ask(), { status: 409, code: GOD_CHAT_ANTHROPIC_CONSENT, wanted: [] });
+  assert.deepEqual((await ask("deny")).wanted, ["think"]);
+  assert.deepEqual((await ask("allow")).wanted, ["fable"]);
 });
 
 test("没有有效通行证就要 Turnstile：验过后下发通行证，通行证用掉一半才换新，过期或伪造回 403", async (t) => {
@@ -406,7 +433,7 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
 }
 
 function chatRequest(designToken?: string, messages: GodChatMessage[] = [{ role: "user", content: "Please improve the music card." }], resume = false) {
-  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ humanPass: PASS, messages, ...(designToken && { designToken }), ...(resume && { resume }) }) });
+  return new Request("https://api.test/api/chat", { method: "POST", body: JSON.stringify({ humanPass: PASS, anthropic: "allow", messages, ...(designToken && { designToken }), ...(resume && { resume }) }) });
 }
 const toolIO = { readStatus: async () => Response.json({ ok: true, data: { timezone: "Asia/Singapore" } }), readDoc: async () => new Response("unused") };
 const parseEvents = async (response: Response) => (await response.text()).trim().split("\n").map((line) => JSON.parse(line) as GodChatEvent);

@@ -17,6 +17,7 @@ import { MCP_PATH } from "@shared/mcp";
 import { deleteExpiredDesignSessions } from "./chat/design-cleanup";
 import { anthropicFetch } from "./chat/egress";
 import { clientIp, handleChat, quotaStub } from "./chat/handler";
+import { webSearchServices } from "./chat/web-search";
 import { handleBuild, handleBuildIssue, handleBuildStatus, handleBuildUpload, handleBuildProgress, handleBuildScreenshot, handleGithubWebhook } from "./build/handlers";
 import { handleMcp } from "./mcp";
 import { mcpCodeModeEnabled, type Env } from "./runtime";
@@ -77,7 +78,7 @@ const worker = {
       if (env.CHAT_USAGE_LIMIT && !(await env.CHAT_USAGE_LIMIT.limit({ key: ip })).success) {
         return tooMany("Too many usage checks.", cors, "10");
       }
-      return jsonResponse(await quota.usage(ip), { headers: cors });
+      return jsonResponse({ ...await quota.usage(ip), webSearch: webSearchServices(env) }, { headers: cors });
     }
 
     const tools: ToolIO = {

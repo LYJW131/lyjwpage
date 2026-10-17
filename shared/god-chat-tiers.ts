@@ -93,7 +93,10 @@ export const GOD_CHAT_QUOTA = {
 export const GOD_CHAT_ROUTE_LIMIT = GOD_CHAT_TIERS.reduce((sum, tier) => sum + GOD_CHAT_QUOTA.tiers[tier].everyone, 0);
 
 export type GodChatCount = { used: number; limit: number };
+// 隐私说明按它写联网搜索的去向；旧版 Worker 不带这个字段。
+export type GodChatWebSearch = { search: "exa" | "deepseek" | null; fetch: "exa" | "deepseek" | null };
 export type GodChatUsage = {
+  webSearch?: GodChatWebSearch;
   windowMs: number;
   resetInMs: number;
   visitor: GodChatCount;

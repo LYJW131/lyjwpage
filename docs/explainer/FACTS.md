@@ -367,7 +367,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 发第一句之前
 
-- 访客发第一条消息时，卡片先在本地回一段隐私说明，逐条列出对话数据的去向（Cloudflare Workers、Workers AI 的 Clef、DeepSeek、Anthropic、搜索与文档服务、GitHub、这个浏览器等）；点 Accept 之前不发任何对话请求，只在后台先跑 Turnstile（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
+- 访客发第一条消息时，卡片先在本地回一段隐私说明，先选杂鱼与先知用 DeepSeek 还是 Claude，去向只列 Cloudflare Workers、Workers AI 的 Clef、所选那家厂商与这个浏览器，联网搜索按实际生效的服务写；DeepSeek 阵容里 Clef 选了神时再单独问 Anthropic 那一条，拒绝就由先知答（`workers/ai/README.md`「首页对话」）；点 Accept 之前不发任何对话请求，只在后台先跑 Turnstile（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
 
 ### 过闸（花钱之前）
 

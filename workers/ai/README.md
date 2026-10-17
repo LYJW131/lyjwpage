@@ -60,7 +60,7 @@
 
 浏览器以 `src/lib/chat-archive.ts` 保存有限量的多个本地会话，保留历史签章、设计/计划 token 与构建 runId；`/clear` 新开会话，列表可恢复、单条删除或确认后全部清空。流式分片只更新内存，回复结束或中断时再持久化。设计会话到期、轮数耗尽或访客输入 `/exit`（只在设计会话里列出）时清除设计令牌并退回普通对话。localStorage 不可用时只保留内存状态。
 
-访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`，按这条消息用中文、日文或英文，判断见 `shared/build-routine.ts#textLanguage`），接受之前不向 Worker 发任何请求，但说明一出现就在后台跑 Turnstile，接受时多半已拿到 token；Turnstile 与通行证的浏览器侧在 `src/hooks/use-human-check.ts`，通行证存 localStorage，跨标签页与重开浏览器都有效，交互挑战超时不算失败、重新出复选框；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.ts#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。说明逐条列出对话数据的出站去向（`CONSENT_COPY` 的 `destinations`；Turnstile 不收对话内容，不列），新增模型供应商、第三方工具或日志出口时同步改它。
+访客发出第一条消息前，卡片先在本地回一段隐私说明（`src/components/god-chat.tsx#ConsentPrompt`，按这条消息用中文、日文或英文，判断见 `shared/build-routine.ts#textLanguage`），接受之前不向 Worker 发任何请求，但说明一出现就在后台跑 Turnstile，接受时多半已拿到 token；Turnstile 与通行证的浏览器侧在 `src/hooks/use-human-check.ts`，通行证存 localStorage，跨标签页与重开浏览器都有效，交互挑战超时不算失败、重新出复选框；同意记录存在浏览器（`src/lib/chat-consent.ts`），按 `scripts/chat-code-version.ts#CHAT_CODE_PATHS` 列出的对话代码（含本 Worker 的 `src/`）的内容哈希记版本，这些文件一改就要重新同意，增删对话相关文件时同步这份清单。说明分两行：先选杂鱼与先知用 DeepSeek 还是 Claude，再接受或拒绝；去向只列两种阵容都用的服务加所选那家厂商（`CONSENT_COPY`；Turnstile 不收对话内容，不列），联网搜索那句按 `/api/chat/usage` 回的 `webSearch`（`src/chat/web-search.ts#webSearchServices`）写实际生效的服务。同意按厂商分开记（`src/lib/chat-consent.ts#vendorConsent`）：请求体的 `anthropic` 是 `allow` 才能把对话发给 Anthropic，DeepSeek 阵容里 Clef 选了神而访客没同意过时 Worker 回 409 `shared/god-chat.ts#GOD_CHAT_ANTHROPIC_CONSENT`（此时访客总量与路由次数已扣、神档名额没扣），卡片单独弹 Anthropic 那一条，接受后带 `allow` 重发，拒绝则这一条带 `deny` 重发、改由先知作答；头部开关切到没同意过的厂商也先弹那一条。新增模型供应商、第三方工具或日志出口时同步改它。
 
 ## 近况摘要
 
