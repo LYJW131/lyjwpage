@@ -806,7 +806,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 }
 
 // lyjw 要求隐私说明跟随访客消息的语言（中日英，判断与设计模式的计划同一套），是「界面文案英文」的例外。
-// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按 workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；DeepSeek 只写服务器在中国大陆、按其开放平台条款处理，账号的保留与训练设置未核实前不写具体承诺。
+// destinations 须列全普通对话数据的每个出站去向；GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的 DESIGN_CONSENT_COPY 单独说明；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按 workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；DeepSeek 只写服务器在中国大陆、按其开放平台条款处理，账号的保留与训练设置未核实前不写具体承诺；联网搜索的去向跟着 workers/ai/src/chat/web-search.ts#webSearchProvider 能选的后端写。
 type ConsentCopy = { lang: string; label: string; intro: string; destinations: { name: string; detail: string }[]; accept: string; decline: string; remember: string; declined: string };
 const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
   en: {
@@ -814,7 +814,7 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "Privacy notice",
     intro: "Before the oracle responds, please review and accept where this chat sends your data:",
     destinations: [
-      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and conversation history, and temporarily keeps your IP address within the rate-limit window. When a model looks something up, it sends only that search query or page URL to Exa (web search and page reads), Bangumi or the Steam store, never your full conversation. Transcripts are kept for 30 days for debugging, then deleted automatically; server logs only contain request metadata, usage counts, and errors—never message text." },
+      { name: "Cloudflare Workers (this site's backend)", detail: "relays your messages and conversation history, and temporarily keeps your IP address within the rate-limit window. When a model looks something up, it sends only that search query or page URL to the web search service (Exa, or DeepSeek's search when the site is set to use it, for searches and page reads), Bangumi or the Steam store, never your full conversation. Transcripts are kept for 30 days for debugging, then deleted automatically; server logs only contain request metadata, usage counts, and errors—never message text." },
       { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message and brief excerpts from recent context to select the appropriate model. Cloudflare does not store this content or use it for training." },
       { name: "DeepSeek (DeepSeek API)", detail: "receives the full conversation to generate replies from the Small Fry and Prophet ranks. DeepSeek's servers are in mainland China, and this data is processed under DeepSeek's open platform terms." },
       { name: "Anthropic (Claude API)", detail: "receives the full conversation when God or the design flow answers, and passes only the lookup query Claude writes to the documentation and code search services Context7, Cloudflare Docs, grep.app and DeepWiki. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
@@ -830,7 +830,7 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "隐私说明",
     intro: "在神谕作答前，请确认本次对话的数据去向：",
     destinations: [
-      { name: "Cloudflare Workers（本站后端）", detail: "负责转发消息与本次对话历史，并在限流窗口内临时保留 IP 地址。模型检索时，只把查询词或网页地址发给 Exa（联网搜索与读取网页）、Bangumi 或 Steam 商店，不发送完整对话。对话记录保留 30 天用于调试，到期自动删除；日志仅包含请求元数据、用量计数与错误信息，不记录任何消息原文。" },
+      { name: "Cloudflare Workers（本站后端）", detail: "负责转发消息与本次对话历史，并在限流窗口内临时保留 IP 地址。模型检索时，只把查询词或网页地址发给联网搜索服务（Exa；站点切换时为 DeepSeek 搜索，用于联网搜索与读取网页）、Bangumi 或 Steam 商店，不发送完整对话。对话记录保留 30 天用于调试，到期自动删除；日志仅包含请求元数据、用量计数与错误信息，不记录任何消息原文。" },
       { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取最新消息及上下文的简短摘录，用于路由选择合适的模型。Cloudflare 不存储这些内容，亦不用于模型训练。" },
       { name: "DeepSeek（DeepSeek API）", detail: "接收完整对话，为「杂鱼」与「先知」两档生成回复。DeepSeek 的服务器位于中国大陆，数据按 DeepSeek 开放平台条款处理。" },
       { name: "Anthropic（Claude API）", detail: "由「神」或设计流程作答时接收完整对话，并只把 Claude 写出的检索词转给文档与代码检索服务 Context7、Cloudflare 文档、grep.app 与 DeepWiki。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
@@ -846,7 +846,7 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     label: "プライバシーに関するお知らせ",
     intro: "神託が回答する前に、本チャットにおけるデータの送信先をご確認のうえ同意してください：",
     destinations: [
-      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージおよび会話履歴を中継し、レート制限期間中のみ IP アドレスを一時保持します。モデルが調べものをする際は、検索クエリまたはページ URL のみを Exa（Web 検索とページ取得）、Bangumi、Steam ストアに送信し、会話全体は送信しません。会話の記録はデバッグ目的で 30 日間保存され、期限後に自動で削除されます。ログにはリクエストのメタデータ、利用回数、エラー情報のみが記録され、メッセージ本文は一切含まれません。" },
+      { name: "Cloudflare Workers（本サイトのバックエンド）", detail: "メッセージおよび会話履歴を中継し、レート制限期間中のみ IP アドレスを一時保持します。モデルが調べものをする際は、検索クエリまたはページ URL のみを Web 検索サービス（Exa。サイトの設定によっては DeepSeek の検索。Web 検索とページ取得に使用）、Bangumi、Steam ストアに送信し、会話全体は送信しません。会話の記録はデバッグ目的で 30 日間保存され、期限後に自動で削除されます。ログにはリクエストのメタデータ、利用回数、エラー情報のみが記録され、メッセージ本文は一切含まれません。" },
       { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージおよび直前の短い会話抜粋を読み取り、最適なモデルを選択します。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
       { name: "DeepSeek（DeepSeek API）", detail: "「雑魚」と「預言者」の回答生成のために会話全体を受信します。DeepSeek のサーバーは中国本土にあり、データは DeepSeek オープンプラットフォームの規約に基づいて処理されます。" },
       { name: "Anthropic（Claude API）", detail: "「神」または設計フローが回答する際に会話全体を受信し、Claude が作成した検索クエリのみをドキュメント・コード検索サービス（Context7、Cloudflare Docs、grep.app、DeepWiki）に渡します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
