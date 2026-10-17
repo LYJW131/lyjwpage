@@ -673,11 +673,14 @@ async function converse({
       signal.throwIfAborted();
       if (await upgrade!()) {
         tier = lineupTier(lineup, "think");
-        effort = GOD_CHAT_TIER_INFO[tier].effort;
+        const upgradedEffort = GOD_CHAT_TIER_INFO[tier].effort;
         upgradeOpen = false;
         outputLeft = GOD_CHAT_TIER_INFO[tier].maxTokens;
         console.info("[god-chat] upgrade", JSON.stringify({ round }));
         emit({ type: "route", route: tier, tier });
+        // 历史里已插着杂鱼的强度（Haiku 是 medium）；先知强度不同就追加一条，否则 Sonnet 照旧按杂鱼的强度跑。
+        if (upgradedEffort !== effort) messages.push({ role: "system", content: [], output_config: { effort: upgradedEffort } });
+        effort = upgradedEffort;
         messages.push({ role: "system", content: UPGRADE_NOTE });
         continue;
       }
