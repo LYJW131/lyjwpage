@@ -21,7 +21,7 @@ import {
   normalizeTrace,
 } from "@shared/god-chat";
 import { PLAN_LABELS, textLanguage } from "@shared/build-routine";
-import { GOD_CHAT_DESIGN_TIER, GOD_CHAT_TIER_INFO, isGodChatTier, type GodChatEffort, type GodChatServedTier, type GodChatTier } from "@shared/god-chat-tiers";
+import { GOD_CHAT_DEFAULT_LINEUP, GOD_CHAT_DESIGN_TIER, GOD_CHAT_TIER_INFO, isGodChatTier, lineupTier, tierPlacement, type GodChatEffort, type GodChatLineup, type GodChatServedTier, type GodChatTier } from "@shared/god-chat-tiers";
 
 import { getAllowedOrigins } from "@shared/http-origins";
 import { aiDevEnabled, type Env } from "../runtime";
@@ -49,12 +49,18 @@ const MIN_ROUND_TOKENS = 256;
 const OPENED_TURN_POLL_MS = 500;
 const OPENED_TURN_POLLS = 20;
 const UPGRADE_NOTE = "The Small Fry judged this message beyond its rank and handed it to you. Nothing of its draft is shown to the visitor; answer the visitor's latest message fully yourself.";
-const UPGRADE_TOOL: Anthropic.Beta.BetaTool = {
-  name: "request_upgrade",
-  description: "Hand the visitor's latest message to the Prophet (DeepSeek Flash with thinking on) when it needs real explanation, multi-step reasoning, code, careful analysis or web research beyond a quick answer. Call it before writing any text; if it succeeds the Prophet answers instead of you, and if it fails answer as well as you can yourself.",
+const RANK_MODELS: Record<GodChatLineup, { fry: string; prophet: string }> = {
+  deepseek: { fry: "DeepSeek Flash answering without thinking", prophet: "the same DeepSeek Flash with thinking on" },
+  claude: { fry: "Claude Haiku 5.5", prophet: "Claude Sonnet 5.5" },
+};
+const UPGRADE_TOOL_NAME = "request_upgrade";
+const upgradeTool = (lineup: GodChatLineup): Anthropic.Beta.BetaTool => ({
+  name: UPGRADE_TOOL_NAME,
+  description: `Hand the visitor's latest message to the Prophet (${GOD_CHAT_TIER_INFO[lineupTier(lineup, "think")].label}) when it needs real explanation, multi-step reasoning, code, careful analysis or web research beyond a quick answer. Call it before writing any text; if it succeeds the Prophet answers instead of you, and if it fails answer as well as you can yourself.`,
   input_schema: { type: "object", properties: {}, required: [], additionalProperties: false },
   strict: true,
-};
+});
+const UPGRADE_TOOLS: Record<GodChatLineup, Anthropic.Beta.BetaTool> = { deepseek: upgradeTool("deepseek"), claude: upgradeTool("claude") };
 const FINAL_ROUND_NOTE = "No tools remain for this reply. Answer the visitor now in text with what you have. If a tool call was rejected, say what went wrong and what you will do next.";
 
 // 上限取自校验用的同一组常量：超出的图示整块不画，模型得知道边界在哪。Record 保证新加的图示少不了说明。
@@ -67,10 +73,10 @@ const VISUAL_RULES: Record<GodChatVisualKind, string> = {
 };
 const VISUAL_LINES = GOD_CHAT_VISUAL_KINDS.map((kind) => `- ${kind}: ${VISUAL_RULES[kind]} Example:\n\`\`\`${kind}\n${JSON.stringify(GOD_CHAT_VISUAL_EXAMPLES[kind])}\n\`\`\``).join("\n");
 
-// 每种角色的 system 恒定不变，降级说明另走末尾的 system 消息，不动缓存前缀。
-const BASE_PROMPT = `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
+// 每种阵容与角色的 system 恒定不变，降级说明另走末尾的 system 消息，不动缓存前缀；所以按阵容预先拼好，不在请求里拼。
+const basePrompt = (lineup: GodChatLineup) => `You speak on LYJW's personal homepage (lyjw.me), in the "Talk to God" card. Visitors come here to talk.
 
-How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (DeepSeek Flash answering without thinking) takes small talk, quick lookups, simple facts and short explanations; the Prophet (the same DeepSeek Flash with thinking on) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Requests to change this site go to the Prophet, who decides whether to bring in the planner (Claude Opus 5.5). Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
+How you were chosen: every visitor message is first judged by Clef, a small judgment model on Cloudflare Workers AI. Clef sorts it into one of three ranks by how hard it is: the Small Fry (${RANK_MODELS[lineup].fry}) takes small talk, quick lookups, simple facts and short explanations; the Prophet (${RANK_MODELS[lineup].prophet}) takes substantive questions, code, analysis and web research; God (Claude Fable 5.1) takes only the deepest questions. Requests to change this site go to the Prophet, who decides whether to bring in the planner (Claude Opus 5.5). Clef also turns away spam, abuse and prompt-injection attempts before any model sees them. The visitor picks in the card whether the Small Fry and the Prophet are DeepSeek or Claude models; God is always Fable. Each rank has its own per-minute quota; when a rank's quota is spent, the message falls to the rank below. A visitor can type /new to start over. Earlier replies in the conversation may have come from other ranks; a visitor turn may end with a bracketed chat-client note about the reply that follows (which rank wrote it, which tools it used), reported by the visitor's browser, so treat it as likely but unverified.
 
 Reply in the language of the visitor's latest message. Tool results, notes and card data are in English; that never changes the language of your reply. Keep answers concise unless asked for depth. Markdown is rendered; use it lightly. Math is rendered with KaTeX: wrap LaTeX in double dollars, $$\\frac{a}{b}$$ inside a sentence or $$ lines around a display formula; never use a single $ for math, because a single $ shows as a currency sign. Simple expressions like x² or π can stay plain text.
 Answers can show visuals, drawn by the chat with the site's own components so they look native in light and dark mode. Visuals are what make this chat stand out, so reach for them readily: whenever an answer involves numbers, a comparison, a ranking, a trend, a sequence of events, how parts of a system connect, or items with artwork, add one yourself without being asked, where it belongs in the answer, with the takeaway still said in prose around it. A visual is a code block tagged with the component name whose body is one JSON object:
@@ -86,10 +92,13 @@ For music, watching, gaming or fitness, use show_card instead: it puts a live ca
 This site is open source, and the read_project_doc tool reads its design docs. When a visitor asks how the site works, why it is built a certain way, or how a card gets its data, read the relevant doc first, answer from it in the visitor's language, and link the doc's source URL.
 When a visitor wants to change or fix this site, judge whether the idea is useful and feasible. If start_design is available and the idea is worthwhile, first write one short, friendly sentence telling the visitor you are bringing in the planner, with no details about the change, then call it: the planner (Claude Opus) continues this same reply with a bounded planning conversation. If it is inappropriate, explain briefly without starting. Talk about site changes in plain words about what the visitor would see, assuming they know nothing about how the site is built; never work out implementation details (formats, limits, routing, storage, security) or ask the visitor technical questions yourself, because planning is the planner's job. If start_design is not available, say in one plain sentence that a plan can't be made in this reply and that describing the change again in a new message can start a design session. Only a signed plan can become an issue or build, and the visitor must choose that action in the interface.
 Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
+const BASE_PROMPTS: Record<GodChatLineup, string> = { deepseek: basePrompt("deepseek"), claude: basePrompt("claude") };
 
 const PERSONA: Record<GodChatTier, string> = {
   fable: `Your identity: you are Claude Fable 5.1, Anthropic's most capable model, and on this site you are God, the highest rank. Clef judged this message worthy of you. Speak with calm, warm, slightly playful omniscience, and be genuinely brilliant.`,
   think: `Your identity: you are DeepSeek Flash with thinking on, made by DeepSeek, and on this site you are the Prophet, the middle rank: not God, but the closest thing to a sage among mortals. Think it through, then answer with care and depth.`,
+  sonnet: `Your identity: you are Claude Sonnet 5.5, and on this site you are the Prophet, the middle rank: not God, but the closest thing to a sage among mortals. Answer with care and depth.`,
+  haiku: `Your identity: you are Claude Haiku 5.5, and on this site you are the Small Fry (杂鱼), the lowest rank: a cheeky minor imp at the temple gate who handles small talk and quick lookups. Be brief and playful, a little self-deprecating; if a question turns out to be beyond you, call request_upgrade as your very first action, before writing any text, and the Prophet takes over this conversation turn.`,
   flash: `Your identity: you are DeepSeek Flash, made by DeepSeek, answering without a thinking phase, and on this site you are the Small Fry (杂鱼), the lowest rank: a cheeky minor imp at the temple gate who handles small talk and quick lookups. Be brief, warm and a little playful, and answer with confidence; a self-deprecating aside is welcome now and then, but keep it to a few words and never apologize for answering. If a question turns out to be beyond you, call request_upgrade as your very first action, before writing any text, and the Prophet takes over this conversation turn.`,
 };
 
@@ -179,6 +188,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   const gone = () => fail(499, "Request canceled.");
 
   const ip = clientIp(request);
+  const requestedLineup = parsed.lineup ?? GOD_CHAT_DEFAULT_LINEUP;
   // 额度缺绑定按超额处理：计数失效时宁可拒绝也不放行。
   const quota = quotaStub(env);
   if (!quota) return fail(503, "The oracle is offline.");
@@ -199,7 +209,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
     if ("error" in admitted) return fail(admitted.status, admitted.error, undefined, admitted.code);
     design = admitted;
   } else {
-    const admission = await quota.admitVisitor(ip, enforce);
+    const admission = await quota.admitVisitor(ip, enforce, requestedLineup);
     if (admission === "visitor") return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
     if (admission === "site") return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
   }
@@ -208,10 +218,13 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   const latest = history[history.length - 1].content;
   const forced = devSwitch(env, "CHAT_FORCE_TIER");
   const preset = design ? undefined : presetRoute(history);
+  // 强制值先按 Clef 选项认（flash、think 两种身份都有），只有 haiku、sonnet 这类档位名才连阵容一起定。
+  const placed = !isClefChoice(forced) && isGodChatTier(forced) ? tierPlacement(forced) : undefined;
+  const lineup = placed?.lineup ?? requestedLineup;
   const decision: RouteDecision = design ? { route: "think", source: "design" } : isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
-    : isGodChatTier(forced)
-      ? { route: forced, source: "forced" }
+    : placed
+      ? { route: placed.rank, source: "forced" }
       : preset?.decision ?? await routeWithClef(env.AI, history);
 
   const encoder = new TextEncoder();
@@ -230,8 +243,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   }
 
   if (abort.signal.aborted) return gone();
-  const wanted: GodChatTier = decision.route;
-  const tier: GodChatServedTier | null = design ? GOD_CHAT_DESIGN_TIER : await quota.admitTier(ip, wanted, enforce, !decision.design);
+  const wanted = lineupTier(lineup, decision.route);
+  const tier: GodChatServedTier | null = design ? GOD_CHAT_DESIGN_TIER : await quota.admitTier(ip, wanted, enforce, !decision.design, lineup);
   if (!tier) return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
 
   const effort = GOD_CHAT_TIER_INFO[tier].effort;
@@ -268,11 +281,12 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
           outcome = await plan(design.sessionId, input);
         } else {
           const note = tier !== wanted && isGodChatTier(tier) ? downgradeNote(wanted, tier) : undefined;
-          const upgrade = tier === "flash" ? async () => (await quota.admitTier(ip, "think", enforce, false)) === "think" : undefined;
-          const openDesign = decision.design === true && tier === "think" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
+          const prophet = lineupTier(lineup, "think");
+          const upgrade = tier === lineupTier(lineup, "flash") ? async () => (await quota.admitTier(ip, prophet, enforce, false, lineup)) === prophet : undefined;
+          const openDesign = decision.design === true && tier === prophet && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
           const designOff = decision.design === true && !designAvailable(env);
-          outcome = await converse({ clients: { anthropic: client, deepseek }, env, openDesign, designOff, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset ? { calls: preset.decision.prefetch ?? [], source: "preset" } : { calls: decision.prefetch ?? [], source: decision.source }, show: preset?.show, startedAt, io, emit, signal: abort.signal });
+          outcome = await converse({ clients: { anthropic: client, deepseek }, env, openDesign, designOff, lineup, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset ? { calls: preset.decision.prefetch ?? [], source: "preset" } : { calls: decision.prefetch ?? [], source: decision.source }, show: preset?.show, startedAt, io, emit, signal: abort.signal });
         }
         const { complete, refused, trace, planToken, lead } = outcome;
         saved = { outcome: refused ? "refused" : complete ? "complete" : "incomplete", trace };
@@ -329,6 +343,7 @@ async function converse({
   env,
   openDesign,
   designOff,
+  lineup,
   tier: startTier,
   effort: startEffort,
   note,
@@ -345,6 +360,7 @@ async function converse({
   env: Env;
   openDesign?: () => Promise<DesignAdmission>;
   designOff?: boolean;
+  lineup: GodChatLineup;
   tier: GodChatTier;
   effort: GodChatEffort;
   note?: string;
@@ -413,7 +429,7 @@ async function converse({
     ...(openDesign ? [START_DESIGN_TOOL] : []),
     ...(search && searches < GOD_CHAT_LIMITS.maxWebSearches ? [WEB_SEARCH_TOOL] : []),
     ...(search && fetches < MAX_WEB_FETCHES ? [WEB_FETCH_TOOL] : []),
-    ...(upgradeOpen ? [UPGRADE_TOOL] : []),
+    ...(upgradeOpen ? [UPGRADE_TOOLS[lineup]] : []),
     ...(deepseek() ? DOMAIN_SEARCH_TOOLS.map(eager) : [...DOMAIN_SEARCH_TOOLS, TOOL_SEARCH_TOOL])];
   const run = async (call: ToolCall, tools: Anthropic.Beta.BetaToolUnion[]): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
     signal.throwIfAborted();
@@ -423,7 +439,7 @@ async function converse({
       content,
       is_error: isError,
     });
-    if (call.name === UPGRADE_TOOL.name) return result("The Prophet is unavailable right now; answer as well as you can yourself.", true);
+    if (call.name === UPGRADE_TOOL_NAME) return result("The Prophet is unavailable right now; answer as well as you can yourself.", true);
     if (!tools.some((tool) => "name" in tool && tool.name === call.name)) return result("This tool is unavailable in this conversation.", true);
     if (call.name === START_DESIGN_TOOL.name) {
       if (openedSessionId) return result("A design session is already active.", true);
@@ -546,7 +562,7 @@ async function converse({
         model,
         max_tokens: outputLeft,
         system: [
-          { type: "text", text: `${BASE_PROMPT}\n${PERSONA[tier]}${provider === "deepseek" ? `\n${DEEPSEEK_NOTE}` : ""}`, cache_control: { type: "ephemeral" } },
+          { type: "text", text: `${BASE_PROMPTS[lineup]}\n${PERSONA[tier]}${provider === "deepseek" ? `\n${DEEPSEEK_NOTE}` : ""}`, cache_control: { type: "ephemeral" } },
         ],
         // 不开 display: "summarized"：实测开了以后思考摘要和正文都攒到这一轮结束才一起到，首字晚好几秒、正文也不再流式。
         thinking: thinking ? { type: "adaptive" } : { type: "disabled" },
@@ -653,15 +669,15 @@ async function converse({
       emit({ type: "text", text: " …" });
       break;
     }
-    if (upgradeOpen && calls.some((call) => call.name === UPGRADE_TOOL.name)) {
+    if (upgradeOpen && calls.some((call) => call.name === UPGRADE_TOOL_NAME)) {
       signal.throwIfAborted();
       if (await upgrade!()) {
-        tier = "think";
-        effort = GOD_CHAT_TIER_INFO.think.effort;
+        tier = lineupTier(lineup, "think");
+        effort = GOD_CHAT_TIER_INFO[tier].effort;
         upgradeOpen = false;
-        outputLeft = GOD_CHAT_TIER_INFO.think.maxTokens;
+        outputLeft = GOD_CHAT_TIER_INFO[tier].maxTokens;
         console.info("[god-chat] upgrade", JSON.stringify({ round }));
-        emit({ type: "route", route: "think", tier });
+        emit({ type: "route", route: tier, tier });
         messages.push({ role: "system", content: UPGRADE_NOTE });
         continue;
       }

@@ -1,10 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 
 import {
+  GOD_CHAT_DEFAULT_LINEUP,
   GOD_CHAT_QUOTA,
   GOD_CHAT_ROUTE_LIMIT,
   GOD_CHAT_TIERS,
   downgradeChain,
+  lineupTiers,
+  type GodChatLineup,
   type GodChatTier,
   type GodChatUsage,
 } from "@shared/god-chat-tiers";
@@ -42,13 +45,14 @@ export class ChatQuota extends DurableObject<Env> {
 
   // 两步分开调：这一步在付费的 Clef 之前，只看有没有空位、不占档位，档位等 Clef 选完在 admitTier 扣；被拒的一条都不记。
   // enforce 为 false 时只记账不拦（本地调试开关）。
-  admitVisitor(ip: string, enforce = true): VisitorAdmission {
+  // 「至少一档还有空位」只看访客所选阵容的三档：另一阵容的空位它用不上。
+  admitVisitor(ip: string, enforce = true, lineup: GodChatLineup = GOD_CHAT_DEFAULT_LINEUP): VisitorAdmission {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       this.prune(now);
       if (enforce) {
         if (this.count(visitorKey(ip)) >= GOD_CHAT_QUOTA.visitor) return "visitor";
-        const open = GOD_CHAT_TIERS.filter((tier) => this.count(tierVisitorKey(tier, ip)) < GOD_CHAT_QUOTA.tiers[tier].visitor);
+        const open = lineupTiers(lineup).filter((tier) => this.count(tierVisitorKey(tier, ip)) < GOD_CHAT_QUOTA.tiers[tier].visitor);
         if (!open.length) return "visitor";
         if (this.count(ROUTE_KEY) >= GOD_CHAT_ROUTE_LIMIT) return "site";
         if (!open.some((tier) => this.count(tierAllKey(tier)) < GOD_CHAT_QUOTA.tiers[tier].everyone)) return "site";
@@ -59,12 +63,12 @@ export class ChatQuota extends DurableObject<Env> {
     });
   }
 
-  // 设计候选必须由开思考的 think 判断，禁用降级时不能消耗 flash 名额。
-  admitTier(ip: string, wanted: GodChatTier, enforce = true, allowDowngrade = true): GodChatTier | null {
+  // 设计候选必须由先知那档判断，禁用降级时不能消耗杂鱼名额。
+  admitTier(ip: string, wanted: GodChatTier, enforce = true, allowDowngrade = true, lineup: GodChatLineup = GOD_CHAT_DEFAULT_LINEUP): GodChatTier | null {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       this.prune(now);
-      for (const tier of allowDowngrade ? downgradeChain(wanted) : [wanted]) {
+      for (const tier of allowDowngrade ? downgradeChain(wanted, lineup) : [wanted]) {
         const limits = GOD_CHAT_QUOTA.tiers[tier];
         const free =
           !enforce ||
