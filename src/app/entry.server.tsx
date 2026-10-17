@@ -2,7 +2,7 @@ import { renderToReadableStream } from "react-dom/server";
 import { ServerRouter, type EntryContext } from "react-router";
 
 import { dedupeInlineImages } from "@/lib/dedupe-inline-images";
-import { stripModulePreloads } from "@/lib/strip-module-preloads";
+import { deferRouteBoot, stripModulePreloads } from "@/lib/strip-module-preloads";
 import { NO_STORE } from "@/lib/site-policy";
 
 export default async function handleRequest(
@@ -26,7 +26,7 @@ export default async function handleRequest(
   shellReady = true;
   await body.allReady;
   responseHeaders.set("Content-Type", "text/html");
-  const html = dedupeInlineImages(stripModulePreloads(await new Response(body).text()));
+  const html = deferRouteBoot(dedupeInlineImages(stripModulePreloads(await new Response(body).text())));
   return new Response(html, {
     headers: responseHeaders,
     status: responseStatusCode,
