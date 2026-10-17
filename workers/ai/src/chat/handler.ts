@@ -188,7 +188,11 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   const gone = () => fail(499, "Request canceled.");
 
   const ip = clientIp(request);
-  const requestedLineup = parsed.lineup ?? GOD_CHAT_DEFAULT_LINEUP;
+  const forced = devSwitch(env, "CHAT_FORCE_TIER");
+  // 强制值先按 Clef 选项认（flash、think 两种身份都有），只有 haiku、sonnet 这类档位名才连阵容一起定；
+  // 要在额度预检之前定下阵容，预检按的空位才是实际出场那个阵容的。
+  const placed = !isClefChoice(forced) && isGodChatTier(forced) ? tierPlacement(forced) : undefined;
+  const lineup = placed?.lineup ?? parsed.lineup ?? GOD_CHAT_DEFAULT_LINEUP;
   // 额度缺绑定按超额处理：计数失效时宁可拒绝也不放行。
   const quota = quotaStub(env);
   if (!quota) return fail(503, "The oracle is offline.");
@@ -209,18 +213,14 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
     if ("error" in admitted) return fail(admitted.status, admitted.error, undefined, admitted.code);
     design = admitted;
   } else {
-    const admission = await quota.admitVisitor(ip, enforce, requestedLineup);
+    const admission = await quota.admitVisitor(ip, enforce, lineup);
     if (admission === "visitor") return fail(429, "Too many prayers. Please wait a moment.", { "Retry-After": "60" });
     if (admission === "site") return fail(429, "All the heavens are busy. Try again in a minute.", { "Retry-After": "60" });
   }
 
   const history = await sealedHistory(parsed.messages, sealSecret);
   const latest = history[history.length - 1].content;
-  const forced = devSwitch(env, "CHAT_FORCE_TIER");
   const preset = design ? undefined : presetRoute(history);
-  // 强制值先按 Clef 选项认（flash、think 两种身份都有），只有 haiku、sonnet 这类档位名才连阵容一起定。
-  const placed = !isClefChoice(forced) && isGodChatTier(forced) ? tierPlacement(forced) : undefined;
-  const lineup = placed?.lineup ?? requestedLineup;
   const decision: RouteDecision = design ? { route: "think", source: "design" } : isClefChoice(forced)
     ? { ...CLEF_CHOICES[forced], source: "forced" }
     : placed

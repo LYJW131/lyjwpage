@@ -218,12 +218,14 @@ function Conversation({ className, archive, session: conversation }: { className
       // 设计同意要读此刻的真值：接受后立刻补发时，闭包里的 designConsented 还是旧的。
       designToken = designConsent.getSnapshot() ? activeChatDesign(conversation?.design)?.token : undefined;
       if (conversation?.design && !designToken && designConsent.getSnapshot()) chatArchive.endDesign(conversation.id, designEndReason(conversation.design), { persist: false });
+      // 阵容按点发送那一刻取：等人机验证期间再切换，不能把已发出的这条改派给另一个阵容。
+      const sentLineup = chatLineup.getSnapshot();
       const post = async () => {
         const proof = await human.proof(controller.signal);
         const res = await fetch(CHAT_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history, lineup: chatLineup.getSnapshot(), ...proof, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
+          body: JSON.stringify({ messages: history, lineup: sentLineup, ...proof, ...(designToken && { designToken }), ...(resumed && { resume: true }), time: { iso: new Date().toISOString(), zone: Intl.DateTimeFormat().resolvedOptions().timeZone } }),
           signal: controller.signal,
         });
         const data = res.ok && res.body ? null : (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
