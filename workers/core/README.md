@@ -63,7 +63,7 @@
   只换状态、日子沿用上一份（Cursor 历史里一条坏事件让一整轮失败时也是这样，不清空）。Mac、agents 报来的是整份快照，
   采集时刻比存着的旧（重发、乱序晚到）的那一格不收；error 那一轮的采集时刻停在上次成功，所以同一时刻上 error 比 ok 新。
   云端 OTLP 的账本是状态核心按提交顺序做差攒出来的，不走这道淘汰（见下面云端那节）。日子或会话数变了才在
-  同一次提交里重算视图 `coding:usage:view`（`CodingUsagePayload`：合计、全历史前五模型、各 agent 最近一个有行的日子、
+  同一次提交里重算视图 `coding:usage:view`（`CodingUsagePayload`：合计、全历史前十模型、各 agent 最近一个有行的日子、
   各来源状态）与年度视图 `coding:usage:year`（最近 380 天每天的合计与精确前五模型），算法是纯函数
   `buildCodingUsageView`；只有状态变了（采集时刻前进、出错 / 恢复）就在存着的视图上换掉那几格状态
   （`applyCodingUsageStatus`），不重扫日行、年度不写。日子变了的那次提交把账本修订号 `coding:usage:revision` 加一、
