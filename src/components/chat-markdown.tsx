@@ -3,7 +3,9 @@ import Markdown, { type Components, type ExtraProps } from "react-markdown";
 
 import { ChatHtmlPreview } from "@/components/chat-html-preview";
 import { ChatVisualView, VisualPlaceholder } from "@/components/chat-visual";
-import { CHAT_REMARK_PLUGINS, CHAT_STREAM_REHYPE_PLUGINS } from "@/lib/chat-markdown-plugins";
+import "katex/dist/katex.min.css";
+
+import { CHAT_REHYPE_PLUGINS, CHAT_REMARK_PLUGINS, CHAT_STREAM_REHYPE_PLUGINS } from "@/lib/chat-markdown-plugins";
 import { parsePartialVisual, parseVisual } from "@/lib/chat-visuals";
 import { isGodChatVisualKind } from "@shared/god-chat";
 
@@ -90,7 +92,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({ children, visuals = fal
       ].join(" ")}
     >
       <Streaming.Provider value={streaming}>
-        <Markdown remarkPlugins={CHAT_REMARK_PLUGINS} rehypePlugins={streaming ? CHAT_STREAM_REHYPE_PLUGINS : undefined} components={visuals ? REPLY_COMPONENTS : COMPONENTS}>
+        <Markdown remarkPlugins={CHAT_REMARK_PLUGINS} rehypePlugins={streaming ? CHAT_STREAM_REHYPE_PLUGINS : CHAT_REHYPE_PLUGINS} components={visuals ? REPLY_COMPONENTS : COMPONENTS}>
           {children}
         </Markdown>
       </Streaming.Provider>

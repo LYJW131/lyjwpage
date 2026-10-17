@@ -120,7 +120,7 @@ test("各档全站都满时新访客回 site", () => {
 test("只要还有一档两道都有空就放行", () => {
   const { chat } = quota();
   fillTierEveryone(chat, "fable");
-  fillTierEveryone(chat, "sonnet");
+  fillTierEveryone(chat, "think");
   assert.equal(chat.admitVisitor("3.3.3.3"), "ok");
 });
 
@@ -136,7 +136,6 @@ test("访客空着的档全站已满、其余档自己用满时回 site", () => 
   const { chat } = quota();
   for (let i = 0; i < GOD_CHAT_QUOTA.tiers.flash.visitor; i++) assert.equal(chat.admitTier("5.5.5.5", "flash"), "flash");
   fillTierEveryone(chat, "think");
-  fillTierEveryone(chat, "sonnet");
   fillTierEveryone(chat, "fable");
   assert.equal(chat.admitVisitor("5.5.5.5"), "site");
 });
@@ -150,13 +149,11 @@ test("enforce 为 false 时满了也放行，照样记账", () => {
   assert.equal(hits("v:6.6.6.6"), 1);
 });
 
-test("设计候选请求需要 Sonnet：该档用满不降级，也不占用 DeepSeek 两档的额度", () => {
+test("设计候选请求需要开思考的 think：该档用满不降级，也不占用 flash 的额度", () => {
   const { chat, hits } = quota();
-  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.sonnet.visitor; i++) assert.equal(chat.admitTier("designer", "sonnet"), "sonnet");
+  for (let i = 0; i < GOD_CHAT_QUOTA.tiers.think.visitor; i++) assert.equal(chat.admitTier("designer", "think"), "think");
   const before = hits();
-  assert.equal(chat.admitTier("designer", "sonnet", true, false), null);
+  assert.equal(chat.admitTier("designer", "think", true, false), null);
   assert.equal(hits(), before);
-  assert.equal(chat.admitTier("designer", "sonnet"), null);
   assert.equal(hits("t:flash:designer"), 0);
-  assert.equal(hits("t:think:designer"), 0);
 });

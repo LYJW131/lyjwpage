@@ -211,7 +211,8 @@ const agent = {
 
 const sse = (events: Scripted[]) => new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } });
 
-// 假的 Anthropic 出站：/v1/messages 给 Sonnet，/v1/sessions* 扮演 Managed Agents；每开一次事件流按顺序吐下一段脚本。
+// 假的出站：DeepSeek 的 /v1/messages 给判断改站请求的 think 档，Anthropic 出口的 /v1/sessions* 扮演 Managed Agents；
+// 每开一次事件流按顺序吐下一段脚本。调用方先存好原来的 globalThis.fetch 并在测试结束时还原。
 type DesignSetup = { reply?: (body: Anthropic.Beta.MessageCreateParamsStreaming, index: number) => Response; turns?: Scripted[][]; pending?: string[]; history?: Scripted[]; createFails?: boolean };
 function designEnv({ reply = (body) => modelStream(body.model, false), turns = [], pending = [], history = [], createFails = false }: DesignSetup = {}) {
   const requests: Anthropic.Beta.MessageCreateParamsStreaming[] = [];
@@ -220,6 +221,11 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
   const counters = { visitor: 0, tier: 0, clef: 0, created: 0, admitted: 0, streams: 0, peeked: 0 };
   const sessions = new Map<string, number>();
   const opened = new Set<string>();
+  globalThis.fetch = deepseekFetch(async (request) => {
+    const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
+    requests.push(body);
+    return reply(body, requests.length - 1);
+  }, globalThis.fetch);
   const env: Env = {
     PUBLIC_STATUS: { readStatus: async () => new Response("unused") },
     ANTHROPIC_API_KEY: "test-key",
@@ -233,9 +239,9 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
       admitVisitor: async () => { counters.visitor++; return "ok" as const; },
       admitTier: async (_ip, wanted, _enforce, allowDowngrade) => {
         counters.tier++;
-        assert.equal(wanted, "sonnet");
+        assert.equal(wanted, "think");
         assert.equal(allowDowngrade, false);
-        return "sonnet" as const;
+        return "think" as const;
       },
     }),
     AI: Object.assign({} as Ai, { run: async () => { counters.clef++; return { answers: { route: { choice: "design" } } }; } }),
@@ -260,11 +266,6 @@ function designEnv({ reply = (body) => modelStream(body.model, false), turns = [
       colo: async () => "KIX",
       fetch: async (request: Request) => {
         const { pathname } = new URL(request.url);
-        if (pathname === "/v1/messages") {
-          const body = await request.json() as Anthropic.Beta.MessageCreateParamsStreaming;
-          requests.push(body);
-          return reply(body, requests.length - 1);
-        }
         if (pathname === "/v1/sessions" && request.method === "POST") {
           if (createFails) return Response.json({ type: "error", error: { type: "api_error", message: "down" } }, { status: 500 });
           created.push(await request.json() as Record<string, unknown>);
@@ -303,7 +304,7 @@ const designToken = async (env: Env, sessions: Map<string, number>, payload: Rec
   return signBuildToken({ kind: "design", id, expiresAt: Date.now() + BUILD_DESIGN_LIMITS.ttlMs, sessionId: "sesn_test", ...payload }, env.BUILD_SESSION_SECRET!);
 };
 
-test("改站请求由 Sonnet 判断，start_design 只建会话发令牌、不上传访客内容；同意后补发带出开场回合，计划挂起等访客，进历史签章", async (t) => {
+test("改站请求由 think 判断，start_design 只建会话发令牌、不上传访客内容；同意后补发带出开场回合，计划挂起等访客，进历史签章", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
@@ -320,7 +321,7 @@ test("改站请求由 Sonnet 判断，start_design 只建会话发令牌、不�
     ]],
   });
   const events = await parseEvents(await handleChat(chatRequest(), env, toolIO));
-  assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.sonnet.model]);
+  assert.deepEqual(requests.map((body) => body.model), [GOD_CHAT_TIER_INFO.think.model]);
   assert.equal(created.length, 1);
   const session = created[0] as { agent: { type: string; id: string; system: string; model: { id: string }; tools: { type: string; name?: string; configs?: { name: string; enabled?: boolean }[] }[] }; environment_id: string; budget: { max_list_cost: { amount: string } } };
   assert.equal(session.agent.type, "agent_with_overrides");
@@ -333,7 +334,7 @@ test("改站请求由 Sonnet 判断，start_design 只建会话发令牌、不�
   assert.equal(session.budget.max_list_cost.amount, String(DESIGN_BUDGET_CENTS));
   // 同意前：建了会话但一条访客内容都没发给 Managed Agents。
   assert.equal(sent.length, 0);
-  assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.type === "route" && event.tier), ["sonnet"]);
+  assert.deepEqual(events.filter((event) => event.type === "route").map((event) => event.type === "route" && event.tier), ["think"]);
   const design = events.find((event) => event.type === "design");
   assert.ok(design?.type === "design");
   assert.equal(design.remaining, BUILD_DESIGN_LIMITS.maxTurns - 1);
@@ -341,7 +342,7 @@ test("改站请求由 Sonnet 判断，start_design 只建会话发令牌、不�
   assert.ok(events.findIndex((event) => event.type === "text") < events.findIndex((event) => event.type === "design"), "the ordinary chat says one line before the planner takes over");
   assert.ok(!events.some((event) => event.type === "plan" || event.type === "doc" || event.type === "step" || event.type === "ask"));
   const firstSeal = events.find((event) => event.type === "seal");
-  assert.ok(firstSeal?.type === "seal" && !firstSeal.planToken && firstSeal.trace?.tier === "sonnet" && !firstSeal.trace?.design);
+  assert.ok(firstSeal?.type === "seal" && !firstSeal.planToken && firstSeal.trace?.tier === "think" && !firstSeal.trace?.design);
   assert.deepEqual(counters, { visitor: 1, tier: 1, clef: 1, created: 1, admitted: 1, streams: 0, peeked: 0 });
 
   // 同意后的补发：空会话补开场回合，整段历史此刻才进 Managed Agents。
@@ -532,7 +533,7 @@ test("规划者到预算上限时说明并结束；会话被终止时不盖章",
   assert.ok(!terminated.some((event) => event.type === "seal"));
 });
 
-test("Sonnet 可以不开设计会话；模型未获授工具不能偷开会话或提计划；建会话失败时 Sonnet 自己答完", async (t) => {
+test("think 可以不开设计会话；模型未获授工具不能偷开会话或提计划；建会话失败时 think 自己答完", async (t) => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => unexpected();
   t.after(() => { globalThis.fetch = original; });
@@ -554,7 +555,7 @@ test("Sonnet 可以不开设计会话；模型未获授工具不能偷开会话�
   const results = requests[1].messages.at(-1)?.content;
   assert.ok(Array.isArray(results) && results.some((block) => block.type === "tool_result" && block.is_error));
   assert.ok(!events.some((event) => event.type === "design"));
-  assert.equal(events.find((event) => event.type === "seal")?.type === "seal" && (events.find((event) => event.type === "seal") as { trace?: { tier?: string } }).trace?.tier, "sonnet");
+  assert.equal(events.find((event) => event.type === "seal")?.type === "seal" && (events.find((event) => event.type === "seal") as { trace?: { tier?: string } }).trace?.tier, "think");
 });
 
 test("有效设计会话跳过 Clef 与普通档位额度，每轮先扣专属额度，伪造、过期、缺会话、耗尽都不碰模型", async (t) => {
@@ -605,7 +606,7 @@ test("服务端无视工具关闭继续返回调用也不能延长工具循环",
   assert.ok(events.some((event) => event.type === "text" && event.text.includes("ran out of steps")));
 });
 
-test("web_search 走 Worker 调搜索服务，结果回成 search_result，引用进来源；web_fetch 不读没出现过的 URL", async (t) => {
+test("web_search 走 Worker 调搜索服务，DeepSeek 档拿纯文本结果、正文链到的页进来源；web_fetch 不读没出现过的 URL", async (t) => {
   const original = globalThis.fetch;
   const outbound: string[] = [];
   globalThis.fetch = async (input) => {
@@ -628,8 +629,7 @@ test("web_search 走 Worker 调搜索服务，结果回成 search_result，引�
       const events = [
         { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
         { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: [] } },
-        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Cheap." } },
-        { type: "content_block_delta", index: 0, delta: { type: "citations_delta", citation: { type: "search_result_location", source: "https://e.dev/page", title: "E", cited_text: "fact", search_result_index: 0, start_block_index: 0, end_block_index: 1 } } },
+        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Cheap, per [E](https://e.dev/page)." } },
         { type: "content_block_stop", index: 0 },
         { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 10 } },
         { type: "message_stop" },
@@ -641,7 +641,7 @@ test("web_search 走 Worker 调搜索服务，结果回成 search_result，引�
   const events = await parseEvents(await handleChat(chatRequest(undefined, [{ role: "user", content: "How much is DeepSeek?" }]), env, toolIO));
   assert.equal(outbound.length, 1);
   const searchResult = requests[1].messages.at(-1)?.content;
-  assert.ok(Array.isArray(searchResult) && searchResult[0].type === "tool_result" && Array.isArray(searchResult[0].content) && searchResult[0].content[0].type === "search_result");
+  assert.ok(Array.isArray(searchResult) && searchResult[0].type === "tool_result" && typeof searchResult[0].content === "string" && searchResult[0].content.includes("URL: https://e.dev/page"));
   const fetchResult = requests[2].messages.at(-1)?.content;
   assert.ok(Array.isArray(fetchResult) && fetchResult[0].type === "tool_result" && fetchResult[0].is_error === true);
   assert.ok(events.some((event) => event.type === "search" && event.query === "deepseek pricing"));

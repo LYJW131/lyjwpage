@@ -35,8 +35,8 @@ function chatLog() {
 }
 
 const entry = {
-  route: "sonnet",
-  tier: "sonnet",
+  route: "think",
+  tier: "think",
   source: "clef",
   messages: [
     { role: "user" as const, content: "hi" },

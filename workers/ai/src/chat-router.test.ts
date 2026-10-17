@@ -46,7 +46,7 @@ test("登记过的选项映射出档位与设计标记，来源记 clef", async 
     route: "think", source: "clef",
   });
   assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "design" } } }), [user("hi")]), {
-    route: "sonnet", design: true, source: "clef",
+    route: "think", design: true, source: "clef",
   });
   assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "fable" } } }), [user("hi")]), {
     route: "fable", source: "clef",
@@ -112,7 +112,7 @@ test("概率不够、选了 none、选项没登记或缺答时不预取", async 
 
 test("拒答与设计请求不预取", async () => {
   assert.deepEqual(await routeWithClef(clef(answered("refuse", ["now", 0.99])), [user("hi")]), { route: "refuse", source: "clef" });
-  assert.deepEqual(await routeWithClef(clef(answered("design", ["commits", 0.99], ["overview", 0.99])), [user("hi")]), { route: "sonnet", design: true, source: "clef" });
+  assert.deepEqual(await routeWithClef(clef(answered("design", ["commits", 0.99], ["overview", 0.99])), [user("hi")]), { route: "think", design: true, source: "clef" });
 });
 
 test("预取分组都是合法的状态视图，一组不超过一次能读的数量；文档选项都是登记过的文档", () => {
