@@ -108,6 +108,8 @@ function downgradeNote(wanted: GodChatTier, tier: GodChatTier): string {
 }
 
 const REFUSAL = "The temple gates stay closed for this one. Ask something else.";
+// 提示词默认说「再发一条就能开设计会话」；这台服务器没配设计会话时那句话是空头承诺，改说暂时做不了。
+const DESIGN_OFF_NOTE = "Design sessions are switched off on this server, so start_design is not available and a new message will not start one either. If the visitor wants to change the site, say plainly that planning site changes is not available right now and suggest opening an issue on the site's GitHub repository instead.";
 
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com/anthropic";
 // 开着思考又带工具时，DeepSeek 要求每条带 tool_use 的助手消息都回传 thinking 块，缺了整轮 400。Worker 代跑的预取、
@@ -256,7 +258,8 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
           const upgrade = tier === "flash" ? async () => (await quota.admitTier(ip, "think", enforce, false)) === "think" : undefined;
           const openDesign = decision.design === true && tier === "think" && designAvailable(env) ? () => startDesign(env, (id) => api.create(id)) : undefined;
           // start_design 只建会话发令牌，开场回合等访客同意后经 resume 补发：同意前访客数据不进 Managed Agents。
-          outcome = await converse({ clients: { anthropic: client, deepseek }, env, openDesign, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset ? { calls: preset.decision.prefetch ?? [], source: "preset" } : { calls: decision.prefetch ?? [], source: decision.source }, show: preset?.show, startedAt, io, emit, signal: abort.signal });
+          const designOff = decision.design === true && !designAvailable(env);
+          outcome = await converse({ clients: { anthropic: client, deepseek }, env, openDesign, designOff, tier: tier as GodChatTier, effort, note, upgrade, messages: history, prefetch: preset ? { calls: preset.decision.prefetch ?? [], source: "preset" } : { calls: decision.prefetch ?? [], source: decision.source }, show: preset?.show, startedAt, io, emit, signal: abort.signal });
         }
         const { complete, refused, trace, planToken, lead } = outcome;
         saved = { outcome: refused ? "refused" : complete ? "complete" : "incomplete", trace };
@@ -312,6 +315,7 @@ async function converse({
   clients,
   env,
   openDesign,
+  designOff,
   tier: startTier,
   effort: startEffort,
   note,
@@ -327,6 +331,7 @@ async function converse({
   clients: Record<"anthropic" | "deepseek", Anthropic>;
   env: Env;
   openDesign?: () => Promise<DesignAdmission>;
+  designOff?: boolean;
   tier: GodChatTier;
   effort: GodChatEffort;
   note?: string;
@@ -355,6 +360,7 @@ async function converse({
   if (note) messages.push({ role: "system", content: note });
   const language = replyLanguageNote(history.at(-1)?.content ?? "");
   if (language) messages.push({ role: "system", content: language });
+  if (designOff) messages.push({ role: "system", content: DESIGN_OFF_NOTE });
   if (show) messages.push({ role: "system", content: `This is one of the homepage's sample questions, picked to show visitors what this chat can draw. ${show}` });
   const sources = new Map<string, GodChatSource>();
   const ledger = newLedger();
