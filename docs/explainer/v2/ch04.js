@@ -10,6 +10,8 @@
     "ch04.rt": ["实时", "Realtime"],
     "ch04.lag": ["可滞后", "Lag-tolerant"],
     "ch04.foot": ["Cache-Tag · max-age 600 / stale-if-error 604200", "Cache-Tag · max-age 600 / stale-if-error 604200"],
+    "ch04.tagPlain": ["按标签作废", "expire by tag"],
+    "ch04.pull": ["重印这一块。", "Recast this block."],
     "ch04.flip": ["在线 → 离线：这几块的标签失效", "Online → offline: tags expire"],
     "ch04.old": ["旧页照发", "The old page still ships"],
     "ch04.new": ["新页 · 后台印", "New page · printing"],
@@ -261,7 +263,8 @@
     text(x, tr("ch04.title"), -1100, 560, { font: FONT.cjk(145, 600), reveal: prog(b, 0.4, 0.95), alpha: a, maxW: 980 });
     line(x, -1100, 620, lerp(-1100, -140, prog(b, 0.45, 1.0, E.outExpo)), 620, 3.5, css("pink"), a);
     text(x, "React Router · SSR", -1096, 720, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.55, 1.05), alpha: a });
-    text(x, "site Worker · Cache-Tag", -1096, 812, { font: FONT.mono(72), color: css("graphite"), reveal: prog(b, 0.62, 1.1), alpha: a });
+    text(x, tr("ch04.tagPlain"), -1096, 800, { font: FONT.cjk(76, 600), color: css("pink"), reveal: prog(b, 0.58, 0.95), alpha: a, maxW: 980 });
+    text(x, "Cache-Tag", -1096, 892, { font: FONT.mono(76), color: css("graphite"), reveal: prog(b, 0.85, 1.15), alpha: a });
   }
 
   function galleyFrame(x, b) {
@@ -398,6 +401,8 @@
       x.fillStyle = pink; x.beginPath(); x.arc(px, py, 4, 0, Math.PI * 2); x.fill(); x.restore();
     }
     if (st) K.clawdFrame(tp, st.fr, PR.x, st.bottom, PR.q, { poofColor: css("graphite") });
+    const bk = prog(b, 5.82, 6.02) * (1 - prog(b, 6.32, 6.48));
+    if (st && bk > 0) K.bubble(tp, tr("ch04.pull"), PR.x - 16, st.bottom - 86, { px: 32, k: bk, reveal: prog(b, 5.88, 6.12) });
   }
 
   const TAG_FLY = 5.25, CHIP_X = 1270;

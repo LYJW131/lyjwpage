@@ -15,6 +15,7 @@
         "Fmaj7", "C69",
         "Dm11", "Bbmaj9", "Gm9", [["Em7b5", 0], ["A7", 2]],
         "Dm9", [["Bbmaj7", 0], ["A7sus4", 2]],
+        "Bbmaj7", "A7sus4",
       ],
       sections: [
         { from: 0, to: 3, id: "ecg-line", name: "心电图：心跳每拍一下，敲门在后半拍，报到每 5 拍一声低音", energy: 0.55,
@@ -32,9 +33,11 @@
         { from: 10, to: 10, id: "strata-clawd", name: "Clawd 冒出来说收尾那句", energy: 0.42,
           kick: "Xx......Xx......", kickKind: "heart", duck: 0.35, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.75,
           bass: "light", pad: 0.85, lp: 1800, padVerb: 0.38 },
-        { from: 11, to: 11, id: "strata-rise", name: "升回地面：心跳回到每拍，收在 A7sus4 交给第 07 章（对话）", energy: 0.5,
+        { from: 11, to: 11, id: "strata-rise", name: "升回地面：心跳回到每拍", energy: 0.5,
           kick: "Xx..Xx..Xx..Xx..", kickKind: "heart", duck: 0.4, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.9,
           bass: "light", pad: 0.8, lp: 2200, padVerb: 0.34 },
+        { from: 12, to: 13, id: "act-two", name: "第二幕：鼓停，只留 pad，问这座邮局是谁建的", energy: 0.18,
+          ghost: [2, 0.16, 0.4], bass: "hold", bassVol: 0.45, pad: 1, lp: 720, padVerb: 0.58 },
       ],
       melody: [
         ...phrase(7, withNotes(["A3", "D4", "F4", "E4"]), "marimba", 1, true),
@@ -47,7 +50,7 @@
         { bar: 5, beat: 2, kind: "lamp", m: midi("A5"), i: 2 },
         ...["G5", "A5", "Bb5", "D6", "E6", "G6"].map((n, i) => ({ bar: 8 + Math.floor((2 + i * 0.5) / 4), beat: (2 + i * 0.5) % 4, kind: "tick", m: midi(n), i: i % 3 })),
         { bar: 10, beat: 1, kind: "accent", what: "flip" },
-        { bar: 11, beat: 3, kind: "swell" },
+        { bar: 13, beat: 2, kind: "swell" },
       ],
     };
   },

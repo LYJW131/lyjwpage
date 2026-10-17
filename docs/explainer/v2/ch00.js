@@ -40,7 +40,7 @@
     say: 0.75, cut: 2.0,
     push: 3.0, dot: 3.55, flip: 4.0, q: 4.25, shrink: 6.0,
     cIn: [3.62, 3.71, 3.8], cLook: 4.75, cOut: [5.5, 5.58, 5.66],
-    pull: 7.5, pulled: 8.3, pops: [8.5, 8.75, 9.0], rush: 9.5,
+    pull: 7.5, pulled: 8.3, pops: [9.0, 9.5, 10.0], rush: 10.5,
   };
 
   const TW = { x: 250, y: 120, w: 1420, h: 840, bar: 60 };
@@ -402,11 +402,11 @@
       return anchored(E.io(prog(b, AT.pull, AT.pulled)), CARD_C, toScreen(CARD_C, c0), toScreen(CARD_C, OVER), c0[2], OVER[2]);
     }
     if (b < AT.rush) return keys(b, [[AT.pulled, OVER], [AT.rush, RUSH0, E.lin]]);
-    return anchored(E.inExpo(prog(b, AT.rush, 10)), MAC, toScreen(MAC, RUSH0), [960, 540], RUSH0[2], 7);
+    return anchored(E.inExpo(prog(b, AT.rush, 11)), MAC, toScreen(MAC, RUSH0), [960, 540], RUSH0[2], 7);
   }
 
   function hud(x, b) {
-    const qa = prog(b, AT.q, AT.q + 0.06) * (1 - prog(b, 9.35, 9.5));
+    const qa = prog(b, AT.q, AT.q + 0.06) * (1 - prog(b, 10.35, 10.5));
     if (qa <= 0) return;
     x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0);
     const sk = prog(b, AT.shrink, AT.shrink + 0.3, E.io);
@@ -424,9 +424,9 @@
     }
     K.narration(x, tr("ch00.n1a"), 110, 944, { reveal: prog(b, 6.1, 6.45), alpha: win(b, 6.05, 6.15, 7.35, 7.5), maxW: 1040 });
     K.narration(x, tr("ch00.n1b"), 110, 1024, { reveal: prog(b, 6.45, 6.95), alpha: win(b, 6.05, 6.15, 7.35, 7.5), maxW: 1040 });
-    K.narration(x, tr("ch00.n2a"), 110, 944, { reveal: prog(b, 8.1, 8.4), alpha: win(b, 8.05, 8.15, 9.35, 9.5), maxW: 1040 });
-    K.narration(x, tr("ch00.n2b"), 110, 1024, { reveal: prog(b, 8.4, 8.95), alpha: win(b, 8.05, 8.15, 9.35, 9.5), maxW: 1040 });
-    const pa = win(b, 8.3, 8.5, 9.35, 9.5);
+    K.narration(x, tr("ch00.n2a"), 110, 944, { reveal: prog(b, 8.1, 8.4), alpha: win(b, 8.05, 8.15, 10.35, 10.5), maxW: 1040 });
+    K.narration(x, tr("ch00.n2b"), 110, 1024, { reveal: prog(b, 8.4, 8.95), alpha: win(b, 8.05, 8.15, 10.35, 10.5), maxW: 1040 });
+    const pa = win(b, 8.3, 8.5, 10.35, 10.5);
     if (pa > 0) text(x, "PLATE 00 · OVERVIEW", G.W - 60, 1024, { font: FONT.mono(30, 600), align: "right", alpha: pa });
     x.restore();
   }
@@ -454,7 +454,9 @@
   const SEED_PAPER = 7.1;
   function paperFrame(f, b, o = {}) {
     const { x: X, e: Em, d: D, s: S, tp: T } = lay();
-    const c = camPaper(b), c0 = camPaper(Math.max(o.b0 ?? AT.cut, b - 1 / 60 / BARS));
+    const base = camPaper(b), prev = camPaper(Math.max(o.b0 ?? AT.cut, b - 1 / 60 / BARS));
+    const c = o.zoom == null ? base : [base[0], base[1], o.zoom, base[3]];
+    const c0 = o.zoom == null ? prev : c;
     const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.02 * impact(b, AT.flip, 0.12)), rot: 0 };
     G.setCam(cam);
     G.fill(G.pass(K.PLATE.paper), { uGridA: prog(b, AT.cut + 0.05, AT.cut + 0.6), uPlate: [-600, 200, 4400, 2300] });
@@ -494,7 +496,7 @@
   }
 
   window.CHAPTERS.push({
-    id: "ch00", title: "ch.00", bars: 10,
+    id: "ch00", title: "ch.00", bars: 11,
     init() { G.pass(K.PLATE.ink); G.pass(K.PLATE.paper); lay(); },
     render,
     share: { termFrame, termState, terminal, paperFrame, AT, TW, L2, BOX },

@@ -23,9 +23,11 @@
       "ch07.k.sub": ["Workers AI 上的路由模型", "a router on Workers AI"],
       "ch07.k.full": ["满了", "Full"],
       "ch07.k.down": ["往下降一档", "Step down"],
+      "ch07.k.why": ["额度满了，换更省的", "quota full, cheaper tier"],
+      "ch07.bounce": ["弹回来了。", "Bounced."],
       "ch07.k.refuse": ["refuse：不调模型，回一句关门话", "refuse: no model, just a closing line"],
       "ch07.n3a": ["Clef 看问题挑一档模型；", "Clef picks a model tier;"],
-      "ch07.n3b": ["那一档满了，就往下降一档。", "if it's full, it steps down one."],
+      "ch07.n3b": ["满了就降档，省着额度。", "Full means step down: cheaper."],
       "ch07.t.note": ["只读公开模型", "Read-only, public model"],
       "ch07.t.same": ["和浏览器看到的同一份", "The same data the browser gets"],
       "ch07.t.client": ["外部 AI 客户端", "External AI client"],
@@ -303,7 +305,7 @@
     }
 
     function gates(Ly, b, a) {
-      const { x, d, e, s } = Ly, gr = css("graphite");
+      const { x, d, e, s, tp } = Ly, gr = css("graphite");
       if (a <= 0) return;
       line(x, C.x + C.w, LANE, 3900, LANE, 4, css("pink"), a);
       d.save(); d.globalAlpha = a; d.fillStyle = css("paper"); d.fillRect(1976, LANE - 24, 48, 48); d.restore();
@@ -323,6 +325,13 @@
       });
       text(d, tr("ch07.q.foot"), Q.x + 60, Q.y + Q.h - 60, { font: FONT.cjk(44, 600), color: gr, alpha: a * prog(b, AT.block - 0.1, AT.block), maxW: Q.w - 400 });
       stamp(s, "429", Q.x + Q.w - 200, Q.y + 330, { k: prog(b, AT.block, AT.block + 0.14), px: 96, rot: -0.12, sub: "Too many prayers", subPx: 40, alpha: a });
+      const hop = win(b, AT.block - 0.02, AT.block + 0.04, AT.pass - 0.18, AT.pass - 0.04);
+      if (hop > 0) {
+        const cx = Q.x + Q.w + 90, bottom = Q.y + 500;
+        const fr = K.clawdSeq("jump", b, AT.block, BARs) || { pose: "look-left", offset: 0 };
+        K.clawdFrame(tp, fr, cx, bottom, 6, { poofColor: css("graphite"), alpha: a * hop });
+        K.bubble(tp, tr("ch07.bounce"), cx - 20, bottom - 96, { px: 32, k: prog(b, AT.block + 0.06, AT.block + 0.14) * hop, reveal: prog(b, AT.block + 0.08, AT.block + 0.24) });
+      }
       const ga = a * prog(b, AT.pass, AT.pass + 0.05);
       if (ga > 0) glow(e, Q.x + Q.w, LANE, 90, 0.5 * ga * impact(b, AT.pass, 0.3));
     }
@@ -360,7 +369,8 @@
         const head = polyline(x, [[5620, -560], [5620, -380]], downK, 4, sig, a);
         if (downK >= 1) arrowHead(x, head[0], head[1], Math.PI / 2, sig, a);
         // 离箭头只留 24：再往右，这一段镜头下英文「Step down」就贴到画面右边了。
-        text(x, tr("ch07.k.down"), 5644, -455, { font: FONT.cjk(44, 600), color: sig, alpha: a * downK });
+        text(x, tr("ch07.k.down"), 5644, -470, { font: FONT.cjk(44, 600), color: sig, alpha: a * downK });
+        text(x, tr("ch07.k.why"), 5644, -400, { font: FONT.cjk(40, 600), color: gr, alpha: a * downK, maxW: 560 });
       }
       text(x, tr("ch07.k.refuse"), 4750, -110, { font: FONT.cjk(42, 600), color: gr, alpha: a * prog(b, 6.9, 7.1), maxW: 900 });
     }

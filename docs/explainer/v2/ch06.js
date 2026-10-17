@@ -30,6 +30,8 @@
     "ch06.n4a": ["窗关上两分钟后才交给 Clef，", "Two minutes after a window closes,"],
     "ch06.n4b": ["输入是前台应用、agent 与 token。", "Clef weighs apps, agents and tokens."],
     "ch06.clawd": ["线上出错时，\n我先去 Workers Issues 查证据。", "When something breaks,\nI check Workers Issues first."],
+    "ch06.actA": ["信送到了。", "The letter has arrived."],
+    "ch06.actB": ["那这座邮局是谁建的？", "Who built this post office?"],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
@@ -464,7 +466,7 @@
     const hitS = Math.max(impact(b, AT.lit, 0.12), impact(b, 0, 0.1) * 0.6);
     cam.zoom *= 1 + 0.012 * hitS;
     G.setCam(cam);
-    G.fill(plate, { uGridA: prog(b, 0.1, 0.8), uPlate: PLATE_RECT });
+    G.fill(plate, { uGridA: prog(b, 0.1, 0.8) * (1 - prog(b, 12.3, 12.8)), uPlate: PLATE_RECT });
 
     const x = ink.begin(); ink.cam(cam);
     const e = emit.begin(); emit.cam(cam);
@@ -512,6 +514,8 @@
       tp.restore();
       bubble(tp, tr("ch06.clawd"), cx - 70, base - 110, { px: 34, k: prog(b, AT.clawd + 0.1, AT.clawd + 0.25) * (1 - prog(b, 11.35, 11.45)), reveal: prog(b, AT.clawd + 0.15, 10.9), tail: "right" });
     }
+    nar(x, "ch06.actA", 160, 760, prog(b, 12.15, 12.55), win(b, 12.1, 12.2, 13.05, 13.2));
+    nar(x, "ch06.actB", 160, 840, prog(b, 13.15, 13.7), win(b, 13.05, 13.2, 13.9, 14));
 
     G.composite(ink.upload(), { mode: G.MODE.ink, seed: 6.7 });
     G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.5 });
@@ -527,7 +531,7 @@
   }
 
   window.CHAPTERS.push({
-    id: "ch06", title: "ch.06", bars: 12,
+    id: "ch06", title: "ch.06", bars: 14,
     init() { plate = G.pass(K.PLATE.ink); ink = G.layer("ink"); emit = G.layer("emit", 0.5); paper = G.layer("paper"); top = G.layer("top"); },
     render,
   });

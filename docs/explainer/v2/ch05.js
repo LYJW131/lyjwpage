@@ -23,6 +23,7 @@
     "ch05.n4b": ["不是到达顺序：旧的盖不掉新的。", "not arrival order, so stale loses."],
     "ch05.quiet": ["线上没有消息", "nothing on the wire"],
     "ch05.browserClock": ["浏览器的钟", "browser clock"],
+    "ch05.fillGap": ["补上这段", "fill the gap"],
     "ch05.macClock": ["Mac 的钟", "Mac clock"],
     "ch05.onlyPlaying": ["只在播放时往前走", "advances only while playing"],
     "ch05.lyrics": ["歌词（占位）", "lyrics (placeholder)"],
@@ -388,8 +389,9 @@
     if (cardA > 0) {
       const { x: px, y: py, w, h } = SWR;
       sheet(d, px, py, w, h, { alpha: cardA });
-      text(d, "SWR", px + 32, py + 58, { font: FONT.mono(36, 600), alpha: cardA });
-      text(d, tr("ch05.swr"), px + 32 + K.measure(d, "SWR", FONT.mono(36, 600)) + 16, py + 56, { font: FONT.cjk(30, 600), color: css("graphite"), alpha: cardA });
+      const swrPlain = tr("ch05.swr");
+      text(d, swrPlain, px + 32, py + 56, { font: FONT.cjk(32, 600), alpha: cardA });
+      text(d, "SWR", px + 32 + K.measure(d, swrPlain, FONT.cjk(32, 600)) + 16, py + 58, { font: FONT.mono(30, 600), color: css("graphite"), alpha: cardA });
       text(d, "receivedAt", px + w - 32, py + 56, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: cardA });
       line(d, px + 28, py + 80, px + w - 28, py + 80, 1.4, css("pink"), cardA);
       const wk = prog(b, 5.12, 5.3);
@@ -505,19 +507,23 @@
     x.save(); x.globalAlpha = a; x.fillStyle = css("ember"); x.beginPath(); x.arc(hx, by, 9, 0, TAU); x.fill(); x.restore();
     glow(e, hx, by, 40, 0.6 * a);
     text(x, `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`, bx0, by + 36, { font: FONT.mono(28, 500), color: bone, alpha: a });
-    const fx = 5830, fk = (i) => prog(b, 8.6 + i * 0.15, 8.8 + i * 0.15) * cA;
+    const fx = 5900, appear = prog(b, 8.65, 8.9) * cA;
     const tickP = f.hit("clock", 0.08);
-    text(x, "positionMs", fx, 560, { font: FONT.mono(40, 600), color: css("signalD"), alpha: fk(0) });
-    text(x, "+ ( now", fx, 624, { font: FONT.mono(40, 600), color: css("signalD"), alpha: fk(1) });
-    text(x, "− observedAt )", fx, 688, { font: FONT.mono(40, 600), color: css("signalD"), alpha: fk(2) });
-    const nowW = K.measure(x, "+ ( now", FONT.mono(40, 600)), obsW = K.measure(x, "− observedAt )", FONT.mono(40, 600));
-    miniClock(x, fx + nowW + 40, 610, 16, b, fk(1));
-    text(x, tr("ch05.browserClock"), fx + nowW + 66, 622, { font: FONT.cjk(28, 600), color: bone, alpha: fk(1) });
-    if (fk(1) > 0 && tickP > 0.02) glow(e, fx + nowW + 40, 610, 40, 0.5 * tickP * fk(1));
-    miniClock(x, fx + obsW + 30, 674, 16, 9, fk(2));
-    text(x, tr("ch05.macClock"), fx + obsW + 56, 686, { font: FONT.cjk(28, 600), color: ash, alpha: fk(2) });
-    text(x, tr("ch05.onlyPlaying"), fx, 752, { font: FONT.cjk(28, 600), color: ash, alpha: prog(b, 9.3, 9.5) * cA });
-    text(x, 'state === "playing"', fx, 792, { font: FONT.mono(28), color: ash, alpha: prog(b, 9.35, 9.55) * cA });
+    const macX = fx + 70, brX = fx + 310, cy = 640, r = 72;
+    clockFace(x, macX, cy, r, 18, appear, { hand: bone });
+    text(x, tr("ch05.macClock"), macX, cy + r + 40, { font: FONT.cjk(28, 600), color: ash, align: "center", alpha: appear });
+    const gap = prog(b, 9.05, 9.35);
+    if (gap > 0) {
+      line(x, macX + r + 8, cy, lerp(macX + r + 8, brX - r - 8, gap), cy, 3, css("signalD"), appear);
+      if (gap > 0.85) arrowHead(x, brX - r - 8, cy, 0, css("signalD"), appear);
+    }
+    text(x, tr("ch05.fillGap"), (macX + brX) / 2, cy - r - 16, { font: FONT.cjk(32, 600), color: css("signalD"), align: "center", alpha: appear * gap });
+    const minute = 18 + clamp(b - 9.05, 0, 1.2) * 8;
+    clockFace(x, brX, cy, r, minute, appear * prog(b, 9.0, 9.2), { hand: css("signalD") });
+    text(x, tr("ch05.browserClock"), brX, cy + r + 40, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: appear * prog(b, 9.0, 9.2) });
+    if (tickP > 0.02) glow(e, brX, cy, 50, 0.45 * tickP * appear);
+    text(x, "positionMs + now − observedAt", fx, cy + r + 92, { font: FONT.mono(22), color: ash, alpha: 0.55 * appear * prog(b, 9.4, 9.6), texture: true });
+    text(x, tr("ch05.onlyPlaying"), fx, cy + r + 128, { font: FONT.cjk(28, 600), color: ash, alpha: prog(b, 9.45, 9.65) * cA });
     nar(x, "ch05.n5a", 4710, 944, prog(b, 8.55, 9.0), win(b, 8.5, 8.6, 10.3, 10.45) * cA);
     nar(x, "ch05.n5b", 4710, 1024, prog(b, 9.0, 9.6), win(b, 8.5, 8.6, 10.3, 10.45) * cA);
   }

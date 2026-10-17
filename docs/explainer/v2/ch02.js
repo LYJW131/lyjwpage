@@ -50,7 +50,9 @@
     "ch02.lamp.lag": ["LAG 已写", "LAG written"],
     "ch02.lamp.cred": ["凭据已写", "Credentials written"],
     "ch02.lamp.d1": ["D1 归档", "D1 archive"],
-    "ch02.lamp.d1s": ["waitUntil · 不等", "waitUntil · not awaited"],
+    "ch02.lamp.d1s": ["后台再办 · waitUntil", "finish later · waitUntil"],
+    "ch02.bindPlain": ["内部专线", "internal line"],
+    "ch02.hubPlain": ["唯一账房", "the one room"],
     "ch02.onFail": ["失败时", "On failure"],
     "ch02.f503": ["暂时故障：稍后重发", "transient failure: retry later"],
     "ch02.f400": ["上报器整封重发", "the reporter resends it all"],
@@ -460,7 +462,8 @@
     text(x, tr("ch02.coreSide"), WALL_X + 40, 1482, { font: FONT.cjk(28, 600), color: graphite, alpha: dk });
     fillRect(x, WALL_X - 20, PIPE_Y - 34, 40, 68, css("paper"), dk);
     rect(x, WALL_X - 20, PIPE_Y - 34, 40, 68, 2.2, pink, dk);
-    text(x, "Service Binding · CORE", WALL_X, PIPE_Y - 48, { font: FONT.mono(28, 600), color: css("signal"), align: "center", alpha: prog(b, 12.1, 12.3) });
+    text(x, tr("ch02.bindPlain"), WALL_X, PIPE_Y - 88, { font: FONT.cjk(32, 600), color: css("signal"), align: "center", alpha: prog(b, 12.05, 12.25) });
+    text(x, "Service Binding · CORE", WALL_X, PIPE_Y - 48, { font: FONT.mono(28, 600), color: css("signal"), align: "center", alpha: prog(b, 12.2, 12.4) });
     const cb = CORE_BOX, coreHot = b >= AT.core - 0.02 && b < AT.reply[0] + 0.1;
     x.save(); x.globalAlpha = dk; x.fillStyle = css("paper"); x.strokeStyle = coreHot ? css("signal") : pink; x.lineWidth = 2.6;
     roundRect(x, cb.x, cb.y, cb.w, cb.h, 12); x.fill(); x.stroke(); x.restore();
@@ -475,6 +478,7 @@
     if (lit > 0) { x.globalAlpha = hk * lit; x.fillStyle = css("signal"); x.beginPath(); x.arc(HUB[0], HUB[1] + 14, 9, 0, TAU); x.fill(); }
     x.restore();
     if (lit > 0) glow(e, HUB[0], HUB[1] + 14, 90, 0.55 * impact(b, AT.commit, 0.25) + 0.2);
+    text(x, tr("ch02.hubPlain"), HUB[0], 1788, { font: FONT.cjk(32, 600), color: pink, align: "center", alpha: hk });
     text(x, "StateHub", HUB[0], 1830, { font: FONT.mono(34, 600), color: pink, align: "center", alpha: hk });
     text(x, "Durable Object", HUB[0], 1870, { font: FONT.mono(28), color: graphite, align: "center", alpha: hk });
     text(x, "await CORE.commitIngest(cmd)", WALL_X - 60, 1792, { font: FONT.mono(28), color: pink, align: "right", alpha: prog(b, 12.2, 12.4) });

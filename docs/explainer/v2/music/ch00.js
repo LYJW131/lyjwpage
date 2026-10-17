@@ -4,7 +4,7 @@
   score: ({ THEME, withNotes, phrase, midi }) => ({
     harm: [
       "Dmadd9", "Dmadd9", "Dm9", "Bbmaj7", "Fmaj7",
-      "C69", "Dm9", [["Bbmaj7", 0], ["C69", 2]], "Gm9", "A7sus4",
+      "C69", "Dm9", [["Bbmaj7", 0], ["C69", 2]], "Gm9", "Bbmaj7", "A7sus4",
     ],
     sections: [
       { from: 0, to: 1, id: "open-term", name: "暗底终端：只有 pad 和打字声（六个字加一下回车）", energy: 0.15,
@@ -20,11 +20,11 @@
         kick: ["X.......X.......", "X.......X...x.x."], kickKind: "light", duck: 0.45, snare: [null, "............x..."], snareKind: "thud",
         hat: ["..x...x...x...x.", "o.x.o.x.o.x.oox."], hatKind: "type", hatVol: 0.8,
         bass: "light", arp: { p: "332", lo: 69, inst: "pluck", v: 0.36 }, pad: 0.8, lp: 2600, padVerb: 0.3 },
-      { from: 8, to: 8, id: "open-overview", name: "总览图：律动全开，三栏各亮一下", energy: 0.8,
+      { from: 8, to: 9, id: "open-overview", name: "总览图：律动全开，三栏各亮一下，多停一小节", energy: 0.8,
         kick: "X.......X.x.....", duck: 0.5, snare: "....x.......x...", snareKind: "thud",
         hat: "o.x.oox.o.x.oox.", hatKind: "type",
         bass: "groove", arp: { p: "332", lo: 69, inst: "pluck", v: 0.42 }, pad: 0.75, lp: 3000, padVerb: 0.26 },
-      { from: 9, to: 9, id: "open-rush", name: "冲进采集端：前两拍接着走，后两拍收住，只剩下坠", energy: 0.5,
+      { from: 10, to: 10, id: "open-rush", name: "冲进采集端：前两拍接着走，后两拍收住，只剩下坠", energy: 0.5,
         kick: "X...............", duck: 0.5, snare: "....x...........", snareKind: "thud",
         hat: "o.x.oox.........", hatKind: "type", bass: "half", pad: 0.8, lp: 2600, padVerb: 0.3 },
     ],
@@ -41,9 +41,9 @@
       { bar: 4, beat: 0, kind: "accent", what: "flip" },
       { bar: 4, beat: 0.22, kind: "hop", m: midi("A5"), pan: -0.5 }, { bar: 4, beat: 0.86, kind: "hop", m: midi("E6"), pan: -0.5 },
       { bar: 7, beat: 2, kind: "whoosh", tube: 1 },
-      { bar: 8, beat: 2, kind: "lamp", m: midi("A5"), i: 0 }, { bar: 8, beat: 3, kind: "lamp", m: midi("D6"), i: 1 }, { bar: 9, beat: 0, kind: "lamp", m: midi("F6"), i: 2 },
-      { bar: 9, beat: 2, kind: "whoosh", tube: "down" },
+      { bar: 9, beat: 0, kind: "lamp", m: midi("A5"), i: 0 }, { bar: 9, beat: 2, kind: "lamp", m: midi("D6"), i: 1 }, { bar: 10, beat: 0, kind: "lamp", m: midi("F6"), i: 2 },
+      { bar: 10, beat: 2, kind: "whoosh", tube: "down" },
     ],
-    sweeps: [{ at: [9, 2], down: [10, 0], up: [10, 1], f: 380 }],
+    sweeps: [{ at: [10, 2], down: [11, 0], up: [11, 1], f: 380 }],
   }),
 });

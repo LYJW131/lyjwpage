@@ -22,7 +22,7 @@
   });
   let bar0 = 0;
   for (const c of chapters) { c.bar0 = bar0; c.t0 = bar0 * BAR; c.t1 = (bar0 + c.bars) * BAR; bar0 += c.bars; }
-  const totalBars = bar0, DURATION = totalBars * BAR;
+  const totalBars = bar0, DURATION = totalBars * BAR, TAIL = Sc ? Sc.tail : 2, PLAY_END = DURATION + TAIL;
   if (Sc && Sc.build) Sc.build(PLAN);
 
   function placeholder(p) {
@@ -88,10 +88,12 @@
 
   let T = 0, dirty = true;
   function render(t) {
-    G.t = t;
-    G.frame = Math.floor(t * 60 + 1e-6);
+    const picture = Math.min(t, DURATION - 1e-3);
+    G.t = picture;
+    G.frame = Math.floor(picture * 60 + 1e-6);
     G.setCam({ x: G.W / 2, y: G.H / 2, zoom: 1, rot: 0 });
-    const f = frameFor(t);
+    const f = frameFor(picture);
+    f.tail = Math.max(0, t - (DURATION - 1e-3));
     if (window.__CHECK) window.__CHECK.ch = f.ch.id;
     f.ch.render(f);
     G.post(f.post);
@@ -102,7 +104,7 @@
   function clock() { return playing && ac ? ac.currentTime - ctxT0 - outLat() : T; }
   function play() {
     if (playing) return;
-    if (T >= DURATION - 0.05) T = 0;
+    if (T >= PLAY_END - 0.05) T = 0;
     playing = true;
     if (buffer) {
       ac = ac || new AudioContext({ sampleRate: buffer.sampleRate });
@@ -132,7 +134,7 @@
   function seek(t) {
     const was = playing;
     if (was) pause();
-    T = Math.max(0, Math.min(DURATION - 1e-3, t));
+    T = Math.max(0, Math.min(PLAY_END - 1e-3, t));
     dirty = true;
     if (was) play();
     ui();
@@ -165,7 +167,14 @@
   $("lang").onclick = () => { I18N.set(I18N.lang === "zh" ? "en" : "zh"); dirty = true; ui(); fitLabels(); };
   let dragging = false;
   const scrubTo = (e) => { const r = scrub.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * DURATION); };
-  scrub.addEventListener("pointerdown", (e) => { dragging = true; scrub.setPointerCapture(e.pointerId); scrubTo(e); });
+  scrub.addEventListener("pointerdown", (e) => {
+    const lab = e.target.closest(".lab");
+    if (lab) {
+      const ch = chapters.find((c) => c.title === lab.parentElement.dataset.key);
+      if (ch) { seek(ch.t0); return; }
+    }
+    dragging = true; scrub.setPointerCapture(e.pointerId); scrubTo(e);
+  });
   scrub.addEventListener("pointermove", (e) => dragging && scrubTo(e));
   scrub.addEventListener("pointerup", () => (dragging = false));
   window.addEventListener("keydown", (e) => {
@@ -183,12 +192,13 @@
   let lastDrawn = -1;
   function loop() {
     const t = now();
-    if (playing && t >= DURATION) { pause(); T = DURATION - 1e-3; }
+    if (playing && t >= PLAY_END) { pause(); T = PLAY_END - 1e-3; }
     if (dirty || t !== lastDrawn) {
-      render(Math.min(t, DURATION - 1e-3));
+      const shown = Math.min(t, DURATION);
+      render(Math.min(t, PLAY_END));
       lastDrawn = t; dirty = false;
-      fill.style.width = `${(t / DURATION) * 100}%`;
-      $("time").textContent = `${fmt(t)} / ${fmt(DURATION)}`;
+      fill.style.width = `${(shown / DURATION) * 100}%`;
+      $("time").textContent = `${fmt(shown)} / ${fmt(DURATION)}`;
     }
     requestAnimationFrame(loop);
   }
@@ -200,7 +210,7 @@
     await document.fonts.load('600 20px "PingFang SC"', "中文");
     fit();
     for (const c of chapters) if (c.init) await c.init();
-    if (params.has("t")) T = Math.max(0, Math.min(DURATION - 1e-3, +params.get("t")));
+    if (params.has("t")) T = Math.max(0, Math.min(PLAY_END - 1e-3, +params.get("t")));
     ui();
     fitLabels();
     if (!EXPORT) {

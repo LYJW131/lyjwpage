@@ -36,6 +36,8 @@
     "ch10.noRecast1": ["换歌不重印：", "No recast:"],
     "ch10.noRecast2": ["交给推送", "push does it"],
     "ch10.swr": ["浏览器缓存", "browser cache"],
+    "ch10.mapA": ["这是整座邮局：", "The whole post office:"],
+    "ch10.mapB": ["采集端、中枢、再印到屏幕上。", "reporters, the core, the screen."],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
@@ -52,8 +54,8 @@
     commits: [4.0, 4.25, 4.5], slipWrite: 5.0, handout: [5.5, 6.0], split: 6.0,
     receipt: [6.0, 6.5], lamps: [6.5, 6.75, 7.0], s202: 7.25, plate4: 7.0,
     push: [6.05, 8.0], pulse: 8.0, swr: 8.5, toPage: [8.75, 9.72], cheer: 9.625,
-    cutHome: 9.75, flip: 10.0, cutTerm: 10.5, endcard: 10.6, celebrate: [10.75, 12.0],
-    pullTerm: [12.5, 13.25], clear: [13.0, 13.4], still: 13.5,
+    cutHome: 9.75, flip: 10.0, map: [10.5, 12.0], cutTerm: 12.0, endcard: 12.15, celebrate: [12.3, 13.55],
+    pullTerm: [14.05, 14.75], clear: [14.5, 14.85], cta: [14.85, 15.6], still: 15.6,
   };
 
   // 06 格必须留在 X 0：本章首帧（镜头 960, 540, 1）只拍到它，要和第 09 章末帧对上。
@@ -832,7 +834,7 @@
     { dx: 390, q: 7, prop: "headset", top: 12 }, { dx: 575, q: 8, prop: "hardhat", top: 14 },
     { dx: 760, q: 6, prop: "magnifier", top: 11 }, { dx: 1050, q: 6, prop: "sign", top: 20 },
   ];
-  const BOW = { in: 11.0, step: 0.25, rise: 0.12, out: 12.5, outStep: 0.0625, sink: 0.08 };
+  const BOW = { in: 12.55, step: 0.25, rise: 0.12, out: 14.05, outStep: 0.0625, sink: 0.08 };
   function curtain(Lt, b, S) {
     const { tp } = Lt, { BOX: box, TW } = S;
     tp.save(); tp.beginPath(); tp.rect(TW.x, TW.y + TW.bar, TW.w, box.y - TW.y - TW.bar); tp.clip();
@@ -852,6 +854,35 @@
     tp.restore();
   }
 
+  function mapBeat(f, b, S) {
+    const hold = S.AT.pulled + 0.15;
+    S.paperFrame(f, hold, {
+      hud: false, b0: hold, zoom: 0.535,
+      extra: (Lr) => {
+        Lr.x.save(); Lr.x.setTransform(G.S, 0, 0, G.S, 0, 0);
+        K.narration(Lr.x, tr("ch10.mapA"), 110, 944, { reveal: prog(b, 10.65, 11.05), alpha: win(b, 10.55, 10.7, 11.7, 11.95), maxW: 1040 });
+        K.narration(Lr.x, tr("ch10.mapB"), 110, 1024, { reveal: prog(b, 11.05, 11.55), alpha: win(b, 10.95, 11.1, 11.85, 12.0), maxW: 1040 });
+        Lr.x.restore();
+      },
+    });
+  }
+
+  function ctaFrame(f, b) {
+    const { x: X } = lay();
+    const cam = { x: 960, y: 540, zoom: 1, rot: 0 };
+    G.setCam(cam);
+    G.fill(G.pass(K.PLATE.ink), { uGridA: 0.28, uPlate: [-400, -300, 2320, 1380] });
+    const x = X.begin(); X.cam(cam);
+    const a = prog(b, AT.cta[0], AT.cta[0] + 0.18);
+    const label = "lyjw.me", font = FONT.sans(128, 600);
+    text(x, label, 960, 560, { font, color: css("bone"), align: "center", alpha: a });
+    if (a > 0.35 && Math.floor((b - AT.cta[0]) * BARS * 2) % 2 === 0) {
+      fillRect(x, 960 + measure(x, label, font) / 2 + 18, 448, 16, 112, css("signalD"), a);
+    }
+    G.composite(X.upload(), { mode: G.MODE.ink, seed: 2.3 });
+    f.post = { bloom: 0.7, threshold: 0.9, halation: 0.28, grain: 0.05, vignette: 0.42, ca: 0.4, shake: [0, 0], flash: 0, fade: 0, blur: [0, 0], zoomBlur: 0 };
+  }
+
   function endState(b, S) {
     const st = S.termState(2);
     const C = window.Clawd, fr = C.FRAME_MS / 1000 / BARS;
@@ -868,6 +899,8 @@
   function render(f) {
     const b = f.bar, S = ch00();
     if (b < AT.cutHome || !S) { plateFrame(f, Math.min(b, AT.cutHome - 1e-6)); return; }
+    if (b >= AT.map[0] && b < AT.map[1]) { mapBeat(f, b, S); return; }
+    if (b >= AT.cta[0] && b < AT.still) { ctaFrame(f, b); return; }
     if (b < AT.cutTerm) {
       const b00 = S.AT.flip + (b - AT.flip);
       S.paperFrame(f, b00, {
@@ -883,7 +916,12 @@
       });
       return;
     }
-    if (b >= AT.still) { S.termFrame(f, S.termState(0)); return; }
+    if (b >= AT.still) {
+      const st = S.termState(0);
+      if (f.tail > 0) st.cursor.on = Math.floor(f.tail * 2) % 2 === 0;
+      S.termFrame(f, st);
+      return;
+    }
     const zk = E.io(prog(b, AT.pullTerm[0], AT.pullTerm[1]));
     const cam = { x: 960, y: lerp(600, 540, zk), zoom: lerp(1.12, 1, zk), rot: 0 };
     S.termFrame(f, endState(b, S), cam, (Lt) => curtain(Lt, b, S));
@@ -893,7 +931,7 @@
   }
 
   window.CHAPTERS.push({
-    id: "ch10", title: "ch.10", bars: 14,
+    id: "ch10", title: "ch.10", bars: 16,
     init() { G.pass(K.PLATE.ink); G.pass(K.PLATE.paper); lay(); },
     render,
   });

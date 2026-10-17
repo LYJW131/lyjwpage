@@ -108,6 +108,27 @@
     "ch01.n14a": ["新歌开播几秒，就排到列表最前；", "A song tops the list seconds in;"],
     "ch01.n14b": ["按时长接成一串，推出起止和误差。", "lengths chain them: start ± margin."],
     "ch01.clawd": ["我跟着这一封走。", "I'll ride along with this one."],
+    "ch01.m.head": ["其余来源", "Other sources"],
+    "ch01.m.ip": ["iPhone", "iPhone"],
+    "ch01.m.ipF": ["HealthKit 唤醒", "woken by HealthKit"],
+    "ch01.m.hp": ["HomePod", "HomePod"],
+    "ch01.m.hpF": ["钥匙只开 /homepod", "/homepod only"],
+    "ch01.m.ps": ["PlayStation", "PlayStation"],
+    "ch01.m.psF": ["先探醒，再问 Sony", "probe, then ask Sony"],
+    "ch01.m.nas": ["NAS", "NAS"],
+    "ch01.m.nasF": ["海报先于信封", "poster before the report"],
+    "ch01.m.tyo": ["东京", "Tokyo"],
+    "ch01.m.tyoF": ["同机各用各的钥匙", "one host, separate keys"],
+    "ch01.m.cc": ["云端", "Cloud"],
+    "ch01.m.ccF": ["自己发，核心算差", "it emits; the core diffs"],
+    "ch01.m.use": ["用量", "Usage"],
+    "ch01.m.useF": ["三处相加 · 5 分钟均", "three feeds · 5-min avg"],
+    "ch01.m.col": ["采集", "Collector"],
+    "ch01.m.colF": ["每分钟，并推断播放", "each minute; infers plays"],
+    "ch01.nMa": ["其余来源一晃而过：", "The other sources flash by:"],
+    "ch01.nMb": ["各报各的，钥匙不混用。", "each source keeps its own key."],
+    "ch01.nMc": ["用量三处相加，站点合并；", "Usage is summed on the site;"],
+    "ch01.nMd": ["没人报的歌，靠最近播放推。", "unreported songs use recents."],
   });
   const tr = (k) => I18N.tr(k);
   const TAU = Math.PI * 2;
@@ -127,12 +148,11 @@
     server: 19.25, agents: 19.75, quest: 20.25,
     otlp: [22.5, 22.75],
     raw: [24.5, 24.625, 24.75], merge: 25.0, tokens: 25.1,
-    dial: 27.0, back: 34.0, launch: 34.25,
+    dial: 27.0, back: 15.2, launch: 15.45,
   };
 
-  const FX = { S0: 960, M1: 2880, M2: 4800, F2: 6720, F3: 8640, F4: 10560, F5: 12480, F6: 14400, CU: 16320, F7: 18240, F7A: 20160 };
-  const STOPS = [["S0", 0, 1.75], ["M1", 2, 6.75], ["M2", 7, 10.75], ["F2", 11, 12.75], ["F3", 13, 16.75], ["F4", 17, 18.75],
-    ["F5", 19, 21.75], ["F6", 22, 23.75], ["CU", 24, 26.75], ["F7", 27, 29.7], ["F7A", 30, 33.7], ["M1", 34, 35]];
+  const FX = { S0: 960, M1: 2880, M2: 4800, MONT: 6720, F2: 8640, F3: 10560, F4: 12480, F5: 14400, F6: 16320, CU: 18240, F7: 20160, F7A: 22080 };
+  const STOPS = [["S0", 0, 1.75], ["M1", 2, 6.75], ["M2", 7, 10.75], ["MONT", 11, 14.6], ["M1", 15.2, 17]];
   const CAM = [[0, [FX.S0 - 24, 548, 1.03, 0]]];
   STOPS.forEach(([k, t0, t1], i) => {
     if (i > 0) CAM.push([t0, [FX[k], 540, 1, 0], E.io]);
@@ -574,669 +594,30 @@
     narPair(x, "ch01.n4a", "ch01.n4b", 3910, [9.05, 9.5], [9.5, 10.0], [9.0, 9.1, 10.62, 10.74], b);
   }
 
-  const PH = { x: 6100, y: 222, w: 300, h: 610 };
-  const OUT2 = [[6700, 348], [6700, 540], [6700, 728]];
-  function stationF2(x, e, b) {
-    const bone = css("bone");
-    const a = prog(b, 10.85, 11.05);
-    if (a <= 0) return;
-    figHead(x, 5830, 2, "iPhone", tr("ch01.f2"), a, { mono: true });
-    const k = prog(b, 10.9, 11.35, E.io);
-    x.save(); x.globalAlpha = a;
-    x.strokeStyle = bone; x.lineWidth = 2.6; roundRect(x, PH.x, PH.y, PH.w, PH.h, 46); x.save(); x.fillStyle = css("ink2"); x.globalAlpha = a * k; x.fill(); x.restore(); x.stroke();
-    x.restore();
-    const wake = prog(b, AT.wake, AT.wake + 0.1);
-    box(x, PH.x + 16, PH.y + 16, PH.w - 32, PH.h - 32, a * k, { r: 34, lw: 1.4, fill: "ink" });
-    if (wake > 0) { x.save(); roundRect(x, PH.x + 16, PH.y + 16, PH.w - 32, PH.h - 32, 34); x.globalAlpha = a * 0.08 * wake; x.fillStyle = css("bone"); x.fill(); x.restore(); }
-    box(x, PH.x + PH.w / 2 - 44, PH.y + 34, 88, 24, a * k, { r: 12, lw: 1.4, fill: "ink" });
-    for (const [bx, by, bh] of [[PH.x - 6, PH.y + 130, 44], [PH.x - 6, PH.y + 196, 70], [PH.x + PH.w, PH.y + 170, 96]]) box(x, bx, by, 6, bh, a * k, { lw: 1.4 });
-    if (wake > 0) {
-      text(x, "HealthKit", PH.x + PH.w / 2, PH.y + PH.h / 2 + 10, { font: FONT.mono(30, 600), color: css("signalD"), align: "center", alpha: a * wake });
-      const rk = prog(b, AT.wake, AT.wake + 0.5, E.out);
-      if (rk < 1) { x.save(); x.globalAlpha = a * (1 - rk) * 0.8; x.strokeStyle = css("signalD"); x.lineWidth = 2; roundRect(x, PH.x - 30 * rk, PH.y - 30 * rk, PH.w + 60 * rk, PH.h + 60 * rk, 46 + 30 * rk); x.stroke(); x.restore(); }
-      glow(e, PH.x + PH.w / 2, PH.y + PH.h / 2, 220, 0.5 * impact(b, AT.wake, 0.2));
-    }
-    const labels = ["ch01.rings", "ch01.workouts", "ch01.steps"];
-    OUT2.forEach(([ox, oy], i) => {
-      const t = AT.outs[i], ok = prog(b, t - 0.1, t + 0.08, E.out);
-      if (ok <= 0) return;
-      arrowPath(x, [[PH.x + PH.w + 10, oy], [ox - 78, oy]], ok, bone, a * 0.8, 1.6);
-      const ia = a * prog(b, t, t + 0.1);
-      if (i === 0) {
-        [[58, 0.82, css("signalD")], [44, 0.66, bone], [30, 0.9, bone]].forEach(([r, p, c], j) => {
-          x.save(); x.globalAlpha = ia * (j === 2 ? 0.55 : 1); x.strokeStyle = c; x.lineWidth = 9; x.lineCap = "round";
-          x.beginPath(); x.arc(ox, oy, r, -Math.PI / 2, -Math.PI / 2 + TAU * p * prog(b, t, t + 0.25, E.out)); x.stroke();
-          x.globalAlpha = ia * 0.15; x.beginPath(); x.arc(ox, oy, r, 0, TAU); x.stroke(); x.restore();
-        });
-      } else if (i === 1) {
-        x.save(); x.globalAlpha = ia; x.strokeStyle = bone; x.lineWidth = 2.4;
-        x.beginPath(); x.arc(ox, oy + 6, 44, 0, TAU); x.stroke();
-        x.fillStyle = bone; x.fillRect(ox - 10, oy - 52, 20, 10);
-        const ang = -Math.PI / 2 + prog(b, t, t + 0.4) * TAU * 0.7;
-        x.strokeStyle = css("signalD"); x.lineWidth = 3; x.beginPath(); x.moveTo(ox, oy + 6); x.lineTo(ox + Math.cos(ang) * 34, oy + 6 + Math.sin(ang) * 34); x.stroke();
-        x.restore();
-      } else {
-        const r = mulberry32(23);
-        for (let j = 0; j < 12; j++) {
-          const hgt = 12 + r() * 60, bk = prog(b, t + j * 0.012, t + j * 0.012 + 0.1);
-          fillRect(x, ox - 66 + j * 11, oy + 36 - hgt * bk, 8, hgt * bk, j === 11 ? css("signalD") : bone, ia * 0.85);
-        }
-        line(x, ox - 72, oy + 38, ox + 70, oy + 38, 1.2, bone, ia * 0.6);
-      }
-      text(x, tr(labels[i]), ox + 110, oy + 12, { font: FONT.cjk(34, 600), color: bone, alpha: ia });
-    });
-    text(x, "POST /api/ingest/iphone", OUT2[2][0] - 70, 812, { font: FONT.mono(28, 500), color: css("ash"), alpha: a * prog(b, AT.outs[2], AT.outs[2] + 0.15) });
-    narPair(x, "ch01.n5a", "ch01.n5b", 5830, [11.05, 11.5], [11.5, 12.1], [11.0, 11.1, 12.62, 12.74], b);
-  }
-
-  // 三样凭据分开画，不能混：Home Assistant 的钥匙只开 /homepod；容器自己的钥匙只开 /playstation；
-  // PSN 登录态不是钥匙，留在 n100 上，只拿来问 Sony，不进站点。容器的两条路也分开：往上问 Sony，往下寄到上报入口。
-  // PS5 和 Home Assistant 之间没有线：站点不显示 PS 电源，醒没醒只由容器用 UDP 探测、只定它自己的节奏（FACTS §1）
-  const HP = { x: 7750, y: 336, w: 210, h: 276 };
-  const PS = { x: 8700, y: 286, w: 132, h: 370 };
-  const HA = { x: 8150, y: 440, w: 250, h: 104 };
-  const KEYC = [8275, 664];
-  const HA_DOOR = [8494, 664, "/homepod"];
-  const CT3 = { x: 9215, y: 380, w: 300, h: 66 };
-  const N100 = { x: 9205, y: 462, w: 320, h: 120 };
-  const PROBE_Y = 522, TIER_Y = PROBE_Y + 52;
-  const PROBE = [[N100.x - 10, PROBE_Y], [PS.x + PS.w + 18, PROBE_Y]];
-  const PSNB = { x: 9275, y: 214, w: 230, h: 60 };
-  const PSN_X = PSNB.x + PSNB.w / 2, PSN_LINK = [[PSN_X, 336], [PSN_X, PSNB.y + PSNB.h + 6]];
-  const KEYP = [9228, 720], PS_DOOR = [9340, 720, "/playstation"];
-  function stationF3(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 12.85, 13.05);
-    if (a <= 0) return;
-    figHead(x, 7750, 3, tr("ch01.f3"), tr("ch01.f3sub"), a, { rule: 920 });
-    const dk = prog(b, 12.9, 13.3, E.io);
-    box(x, HP.x, HP.y, HP.w, HP.h, a * dk, { r: 84, lw: 2.6 });
-    x.save(); roundRect(x, HP.x, HP.y, HP.w, HP.h, 84); x.clip(); x.globalAlpha = a * dk * 0.28; x.strokeStyle = bone; x.lineWidth = 1;
-    x.beginPath(); for (let y = HP.y + 20; y < HP.y + HP.h - 10; y += 13) { x.moveTo(HP.x, y); x.lineTo(HP.x + HP.w, y); } x.stroke(); x.restore();
-    const play = b >= AT.homepod;
-    x.save(); x.globalAlpha = a * dk; x.strokeStyle = play ? css("signalD") : bone; x.lineWidth = 2; x.beginPath(); x.ellipse(HP.x + HP.w / 2, HP.y + 26, 54, 9, 0, 0, TAU); x.stroke(); x.restore();
-    if (play) {
-      const beat = ((b - AT.homepod) * 4) % 1;
-      for (let j = 1; j <= 3; j++) {
-        x.save(); x.globalAlpha = a * (0.7 - j * 0.15) * (0.6 + 0.4 * Math.exp(-beat * 3)); x.strokeStyle = bone; x.lineWidth = 2;
-        x.beginPath(); x.arc(HP.x + HP.w / 2, HP.y + HP.h / 2, HP.w / 2 + 14 + j * 18, -0.5, 0.5); x.stroke(); x.restore();
-      }
-      glow(e, HP.x + HP.w / 2, HP.y + 26, 70, 0.4 * impact(b, AT.homepod, 0.2) + 0.12);
-    }
-    text(x, "HomePod", HP.x, HP.y + HP.h + 56, { font: FONT.mono(30, 600), color: bone, alpha: a });
-    text(x, tr("ch01.playing"), HP.x, HP.y + HP.h + 96, { font: FONT.cjk(28, 600), color: ash, alpha: a });
-    const pk = prog(b, 12.95, 13.35, E.io);
-    const on = prog(b, AT.power, AT.power + 0.06);
-    x.save(); x.globalAlpha = a * pk; x.lineWidth = 2.4; x.strokeStyle = bone; x.fillStyle = css("ink2");
-    const cx0 = PS.x + 38, cx1 = PS.x + PS.w - 38;
-    x.beginPath(); x.rect(cx0, PS.y + 20, cx1 - cx0, PS.h - 40); x.fill(); x.stroke();
-    for (const s of [-1, 1]) {
-      const ex = s < 0 ? cx0 : cx1, ox = s < 0 ? PS.x : PS.x + PS.w;
-      x.beginPath(); x.moveTo(ex, PS.y); x.quadraticCurveTo(ox, PS.y + 10, ox + s * 4, PS.y + 90); x.lineTo(ox, PS.y + PS.h - 30); x.quadraticCurveTo(ox, PS.y + PS.h, ex, PS.y + PS.h - 6); x.stroke();
-    }
-    x.restore();
-    if (on > 0) { line(x, cx0 + 3, PS.y + 30, cx0 + 3, PS.y + PS.h - 30, 3, css("signalD"), a * on); line(x, cx1 - 3, PS.y + 30, cx1 - 3, PS.y + PS.h - 30, 3, css("signalD"), a * on); glow(e, (cx0 + cx1) / 2, PS.y + PS.h / 2, 160, 0.45 * impact(b, AT.power, 0.2)); }
-    text(x, "PS5", PS.x, PS.y + PS.h + 50, { font: FONT.mono(30, 600), color: bone, alpha: a });
-    const hk = prog(b, 13.1, 13.4);
-    box(x, HA.x, HA.y, HA.w, HA.h, a * hk, { r: 12, lw: 2.2 });
-    text(x, "Home Assistant", HA.x + HA.w / 2, HA.y + HA.h / 2 + 10, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * hk });
-    dashPath(x, [[HP.x + HP.w + 70, HP.y + HP.h / 2], [HA.x, HA.y + HA.h / 2]], hk, 1.6, bone, a * 0.7);
-    const kk = prog(b, AT.haDoor - 0.25, AT.haDoor - 0.05, E.out);
-    if (kk > 0) {
-      line(x, KEYC[0], HA.y + HA.h, KEYC[0], KEYC[1] - 31, 1.6, bone, a * kk);
-      keycard(x, KEYC[0], KEYC[1], a * kk, b >= AT.haDoor - 0.05 && b < AT.haDoor + 0.6);
-      door(x, e, b, KEYC, HA_DOOR, AT.haDoor, a);
-      text(x, tr("ch01.haKey"), KEYC[0] - 75, KEYC[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * kk });
-    }
-    const nk = prog(b, 13.1, 13.45, E.io);
-    if (nk > 0) {
-      const hot = b >= AT.probeLine - 0.02 ? 1 : 0;
-      box(x, N100.x, N100.y, N100.w, N100.h, a * nk, { lw: 2.6 });
-      hatch(x, N100.x + 16, N100.y + N100.h - 36, N100.w - 32, 22, a * nk * 0.5, 9);
-      text(x, "n100", N100.x + 24, N100.y + 58, { font: FONT.mono(30, 600), color: bone, alpha: a * nk });
-      x.save(); x.globalAlpha = a * nk; x.fillStyle = hot ? css("signalD") : css("ash"); x.beginPath(); x.arc(N100.x + N100.w - 28, N100.y + 28, 5, 0, TAU); x.fill(); x.restore();
-      container(x, CT3.x, CT3.y, CT3.w, CT3.h, a * nk, hot);
-      text(x, "playstation-reporter", CT3.x + CT3.w / 2, CT3.y - 16, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * nk });
-      const uk = prog(b, AT.probeLine - 0.15, AT.probeLine + 0.05, E.out);
-      const mid = (PROBE[0][0] + PROBE[1][0]) / 2;
-      if (uk > 0) {
-        arrowPath(x, PROBE, uk, bone, a * 0.8, 1.6, true);
-        text(x, "UDP", mid, PROBE_Y - 22, { font: FONT.mono(28, 500), color: ash, align: "center", alpha: a * uk });
-        const tk = prog(b, AT.awake - 0.05, AT.awake + 0.05), up = tk >= 0.5;
-        withSquash(x, TIER_Y - 10, squash(tk), () => {
-          text(x, tr(up ? "ch01.tierAwake" : "ch01.tierRest"), mid, TIER_Y, { font: FONT.cjk(28, 600), color: up ? css("signalD") : ash, align: "center", alpha: a * uk });
-        });
-        if (up) glow(e, mid, TIER_Y - 10, 80, 0.5 * impact(b, AT.awake, 0.2));
-      }
-      if (b >= AT.probeLine) {
-        const n = Math.floor((b - AT.probeLine) * 4), sent = AT.probeLine + n / 4, p = (b - sent) * 4;
-        const answered = sent >= AT.probe - 1e-6;
-        const go = clamp(p / 0.5), px = lerp(PROBE[0][0], PROBE[1][0], E.out(go)), fade = answered ? 1 - prog(go, 0.9, 1) : 1 - prog(go, 0.6, 1);
-        if (fade > 0) {
-          x.save(); x.globalAlpha = a * fade; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, PROBE_Y, 7, 0, TAU); x.fill(); x.restore();
-          glow(e, px, PROBE_Y, 38, 0.5 * fade);
-        }
-        if (answered && p > 0.5) {
-          const bk = clamp((p - 0.5) / 0.45), rx = lerp(PROBE[1][0], PROBE[0][0], E.io(bk)), rf = 1 - prog(bk, 0.85, 1);
-          x.save(); x.globalAlpha = a * rf * 0.9; x.strokeStyle = css("signalD"); x.lineWidth = 2; x.beginPath(); x.arc(rx, PROBE_Y, 7, 0, TAU); x.stroke(); x.restore();
-          glow(e, rx, PROBE_Y, 30, 0.35 * rf);
-        }
-      }
-      const pa = a * prog(b, AT.probeLine, AT.probeLine + 0.1);
-      text(x, tr("ch01.probe1"), mid, TIER_Y + 50, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: pa });
-      text(x, tr("ch01.probe2"), mid, TIER_Y + 88, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: pa });
-      const asking = b >= AT.psn[0] && b < AT.psn[1];
-      box(x, PSNB.x, PSNB.y, PSNB.w, PSNB.h, a * nk, { r: 8, lw: 2.2, color: asking ? css("signalD") : bone });
-      text(x, "PSN · Sony", PSN_X, PSNB.y + 40, { font: FONT.mono(28, 600), color: asking ? css("signalD") : bone, align: "center", alpha: a * nk });
-      text(x, tr("ch01.psnLogin"), PSNB.x - 18, PSNB.y + 40, { font: FONT.cjk(28, 600), color: ash, align: "right", alpha: a * nk });
-      dashPath(x, PSN_LINK, nk, 1.6, bone, a * 0.7);
-      if (asking) {
-        const q = prog(b, AT.psn[0], AT.psn[1]), k = q < 0.5 ? E.out(q * 2) : 1 - E.out(q * 2 - 1);
-        const py = lerp(PSN_LINK[0][1], PSN_LINK[1][1], k);
-        x.save(); x.globalAlpha = a; x.fillStyle = css("signalD"); x.beginPath(); x.arc(PSN_X, py, 7, 0, TAU); x.fill(); x.restore();
-        glow(e, PSN_X, py, 38, 0.5);
-      }
-      const pk2 = prog(b, AT.psDoor - 0.25, AT.psDoor - 0.05, E.out);
-      if (pk2 > 0) {
-        line(x, KEYP[0], N100.y + N100.h, KEYP[0], KEYP[1] - 31, 1.6, bone, a * pk2);
-        keycard(x, KEYP[0], KEYP[1], a * pk2, b >= AT.psDoor - 0.05 && b < AT.psDoor + 0.6);
-        door(x, e, b, KEYP, PS_DOOR, AT.psDoor, a);
-        text(x, tr("ch01.psKey"), KEYP[0] - 75, KEYP[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * pk2 });
-      }
-    }
-    narPair(x, "ch01.n6a", "ch01.n6b", 7750, [13.05, 13.45], [13.45, 13.95], [13.0, 13.1, 14.38, 14.48], b);
-    narPair(x, "ch01.n7a", "ch01.n7b", 7750, [14.55, 15.0], [15.0, 15.7], [14.48, 14.58, 16.62, 16.74], b);
-  }
-  function door(x, e, b, key, [dx, dy, label], t, a) {
-    const dk = prog(b, t - 0.12, t, E.out), lit = b >= t, col = lit ? css("signalD") : css("bone");
-    arrowPath(x, [[key[0] + 75, key[1]], [dx - 44, key[1]], [dx - 44, dy], [dx - 8, dy]], dk, col, a, 1.8);
-    text(x, label, dx + 4, dy + 10, { font: FONT.mono(28, 500), color: col, alpha: a * dk });
-    if (lit) glow(e, dx + 60, dy, 70, 0.5 * impact(b, t, 0.18));
-  }
-
-  const NS = { x: 9900, y: 356, w: 390, h: 420 };
-  const CT4 = { x: 9920, y: 262, w: 350, h: 72 };
-  const R2M = { x: 10680, y: 214, w: 180, h: 132 };
-  function stationF4(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 16.85, 17.05);
-    if (a <= 0) return;
-    figHead(x, 9670, 4, "NAS", tr("ch01.f4sub"), a, { mono: true });
-    const k = prog(b, 16.9, 17.25, E.io);
-    box(x, NS.x, NS.y, NS.w, NS.h, a * k, { lw: 2.6 });
-    for (let i = 0; i < 4; i++) {
-      const bx = NS.x + 22 + i * 88, by = NS.y + 36;
-      box(x, bx, by, 72, 300, a * k, { lw: 1.6, fill: "ink" });
-      line(x, bx + 14, by + 250, bx + 58, by + 250, 3, bone, a * k * 0.7);
-      const led = (Math.floor(b * 8 + i * 3) % 5) === 0;
-      x.save(); x.globalAlpha = a * k; x.fillStyle = led ? css("signalD") : css("ash"); x.beginPath(); x.arc(bx + 36, by + 22, 5, 0, TAU); x.fill(); x.restore();
-    }
-    hatch(x, NS.x + 20, NS.y + NS.h - 50, NS.w - 40, 30, a * k * 0.5, 9);
-    container(x, CT4.x, CT4.y, CT4.w, CT4.h, a * k, b >= AT.poster - 0.1 && b < 18.7 ? 1 : 0);
-    text(x, "emby-reporter", CT4.x + CT4.w / 2, CT4.y - 16, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * k });
-    cabinet(x, R2M.x, R2M.y, R2M.w, R2M.h, 2, 2, a * k);
-    text(x, "R2", R2M.x + R2M.w + 20, R2M.y + 46, { font: FONT.mono(36, 600), color: bone, alpha: a * k });
-    const pk = prog(b, AT.poster - 0.22, AT.poster, E.io);
-    if (pk > 0 && pk < 1) {
-      const px = lerp(CT4.x + CT4.w + 10, R2M.x + R2M.w / 2, pk), py = lerp(CT4.y + 30, R2M.y + R2M.h / 2, pk) - Math.sin(pk * Math.PI) * 90;
-      const s = lerp(1, 0.5, pk);
-      x.save(); x.translate(px, py); x.scale(s, s); box(x, -45, -68, 90, 136, a, { lw: 2, color: css("signalD") }); text(x, "webp", 0, 10, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: a, texture: true }); x.restore();
-    }
-    if (b >= AT.poster) glow(e, R2M.x + R2M.w / 2, R2M.y + R2M.h / 2, 90, 0.6 * impact(b, AT.poster, 0.18));
-    text(x, tr("ch01.poster"), R2M.x, R2M.y + R2M.h + 50, { font: FONT.cjk(30, 600), color: bone, alpha: a * prog(b, AT.poster, AT.poster + 0.08) });
-    const ek = prog(b, AT.emby - 0.02, AT.emby + 0.3, E.out);
-    if (ek > 0) {
-      const ex = lerp(NS.x + NS.w + 20, R2M.x + 60, ek);
-      arrowPath(x, [[NS.x + NS.w + 8, 600], [R2M.x + 20, 600]], ek, bone, a * 0.7, 1.6);
-      envelope(x, ex, 600, 70, css("signalD"), { lw: 2.2, fill: css("ink2"), alpha: a });
-      text(x, tr("ch01.watching"), R2M.x, 686, { font: FONT.cjk(30, 600), color: bone, alpha: a * prog(b, AT.emby, AT.emby + 0.08) });
-      text(x, "POST /api/ingest/emby", R2M.x, 728, { font: FONT.mono(28, 500), color: ash, alpha: a * prog(b, AT.emby, AT.emby + 0.08) });
-    }
-    narPair(x, "ch01.n8a", "ch01.n8b", 9670, [17.05, 17.5], [17.5, 18.1], [17.0, 17.1, 18.62, 18.74], b);
-  }
-
-  const RK = { x: 11820, y: 212, w: 440, h: 640 };
-  const SRVB = { x: 11850, y: 380, w: 380, h: 236 };
-  const C5 = [0, 1, 2].map((i) => ({ x: 11872, y: 398 + i * 70, w: 300, h: 56 }));
-  const TX5 = RK.x + RK.w + 130;
-  const L5 = [
-    { t: AT.server, ty: 262, name: "server-reporter", lines: ["ch01.srv"], ep: "POST /api/ingest/server" },
-    { t: AT.agents, ty: 496, name: "agents-reporter", lines: ["ch01.lim", "ch01.cur"], ep: "POST /api/ingest/agents" },
-    { t: AT.quest, ty: 716, name: "discord-reporter", lines: ["ch01.quest"], ep: "POST /api/ingest/quest" },
+  const MONT_CARDS = [
+    ["ch01.m.ip", "ch01.m.ipF", 11.15], ["ch01.m.hp", "ch01.m.hpF", 11.55],
+    ["ch01.m.ps", "ch01.m.psF", 11.95], ["ch01.m.nas", "ch01.m.nasF", 12.35],
+    ["ch01.m.tyo", "ch01.m.tyoF", 12.75], ["ch01.m.cc", "ch01.m.ccF", 13.15],
+    ["ch01.m.use", "ch01.m.useF", 13.55], ["ch01.m.col", "ch01.m.colF", 13.95],
   ];
-  function stationF5(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 18.85, 19.05);
-    if (a <= 0) return;
-    figHead(x, 11590, 5, tr("ch01.f5"), "misaka-jp", a, { subMono: true });
-    const k = prog(b, 18.9, 19.25, E.io);
-    box(x, RK.x, RK.y, RK.w, RK.h, a * k, { lw: 2.6, fill: "ink" });
-    for (const rx of [RK.x + 16, RK.x + RK.w - 16]) {
-      line(x, rx, RK.y + 10, rx, RK.y + RK.h - 10, 1.6, bone, a * k);
-      for (let y = RK.y + 26; y < RK.y + RK.h - 20; y += 22) { x.save(); x.globalAlpha = a * k * 0.4; x.strokeStyle = bone; x.lineWidth = 1; x.strokeRect(rx - 4, y - 4, 8, 8); x.restore(); }
-    }
-    for (const [y0, hh] of [[RK.y + 30, 56], [RK.y + 100, 56], [RK.y + 424, 56], [RK.y + 494, 56], [RK.y + 564, 60]]) {
-      box(x, RK.x + 30, y0, RK.w - 60, hh, a * k * 0.8, { lw: 1.4 });
-      hatch(x, RK.x + 30, y0, RK.w - 60, hh, a * k * 0.3, 12);
-    }
-    box(x, SRVB.x, SRVB.y, SRVB.w, SRVB.h, a * k, { lw: 2.2 });
-    L5.forEach((l, i) => {
-      const c = C5[i], hot = impact(b, l.t, 0.25);
-      container(x, c.x, c.y, c.w, c.h, a * k, b >= l.t - 0.02 ? Math.max(0.35, hot) : 0);
-      if (b >= l.t) glow(e, c.x + c.w / 2, c.y + c.h / 2, 110, 0.6 * hot);
-      const lk = prog(b, l.t - 0.12, l.t + 0.05, E.out);
-      if (lk <= 0) return;
-      const ay = c.y + c.h / 2, ax = c.x + c.w, vx = RK.x + RK.w + 50;
-      polyline(x, [[ax, ay], [vx, ay], [vx, l.ty], [TX5 - 20, l.ty]], lk, 1.4, bone, a * 0.85);
-      x.save(); x.globalAlpha = a * lk; x.fillStyle = bone; x.beginPath(); x.arc(ax, ay, 5, 0, TAU); x.fill(); x.restore();
-      const ta = a * prog(b, l.t, l.t + 0.08);
-      text(x, l.name, TX5, l.ty + 10, { font: FONT.mono(32, 600), color: bone, alpha: ta });
-      l.lines.forEach((key, j) => text(x, tr(key), TX5, l.ty + 54 + j * 40, { font: FONT.cjk(28, 600), color: bone, alpha: ta }));
-      text(x, l.ep, TX5, l.ty + 54 + l.lines.length * 40, { font: FONT.mono(28, 500), color: ash, alpha: ta });
-    });
-    narPair(x, "ch01.n9a", "ch01.n9b", 11590, [19.05, 19.5], [19.5, 20.1], [19.0, 19.1, 21.62, 21.74], b);
-  }
-
-  const CE = { x: 13590, y: 250, w: 560, h: 470 };
-  const WIRE6 = [[CE.x + CE.w, 486], [14660, 486]];
-  function stationF6(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 21.85, 22.05);
-    if (a <= 0) return;
-    figHead(x, 13510, 6, tr("ch01.f6"), "Claude Code · OTLP", a, { subMono: true });
-    const k = prog(b, 21.9, 22.25, E.io);
-    x.save(); x.globalAlpha = a * k; x.strokeStyle = bone; x.lineWidth = 2; x.setLineDash([12, 9]); x.strokeRect(CE.x, CE.y, CE.w, CE.h); x.restore();
-    text(x, tr("ch01.cc"), CE.x + 28, CE.y + 52, { font: FONT.cjk(30, 600), color: bone, alpha: a * k });
-    for (let i = 0; i < 3; i++) {
-      const sy = CE.y + 90 + i * 118;
-      box(x, CE.x + 28, sy, CE.w - 56, 92, a * k, { lw: 1.4, fill: "ink" });
-      text(x, "$ claude", CE.x + 50, sy + 40, { font: FONT.pixel(28), color: bone, alpha: a * k });
-      const r = mulberry32(40 + i);
-      for (let j = 0; j < 2; j++) {
-        const w = 80 + r() * 160, show = prog(b, 22.0 + i * 0.1 + j * 0.12, 22.12 + i * 0.1 + j * 0.12);
-        fillRect(x, CE.x + 50 + j * 250, sy + 66, w * show, 8, bone, a * k * 0.35);
-      }
-      if (Math.floor(b * 4) % 2 === 0) fillRect(x, CE.x + 200, sy + 20, 14, 26, bone, a * k * 0.8);
-    }
-    const wk = prog(b, 22.05, 22.3, E.out);
-    polyline(x, WIRE6, wk, 2, bone, a * 0.8);
-    AT.otlp.forEach((t) => {
-      const pk = prog(b, t - 0.2, t + 0.3, E.io);
-      if (pk <= 0 || pk >= 1) return;
-      const [px, py] = pathAt(WIRE6, pk * (pathLen(WIRE6) - 60)), pa = a * (1 - prog(pk, 0.75, 1));
-      box(x, px - 50, py - 24, 100, 48, pa, { r: 8, lw: 2, color: css("signalD") });
-      text(x, "OTLP", px, py + 10, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: pa });
-      glow(e, px, py, 70, 0.45 * pa);
-    });
-    const ea = a * prog(b, 22.3, 22.45);
-    arrowHead(x, WIRE6[1][0], WIRE6[1][1], 0, bone, ea);
-    text(x, "POST /api/ingest/agents/otlp", 14680, 496, { font: FONT.mono(28, 600), color: bone, alpha: ea });
-    text(x, tr("ch01.extra"), 14680, 440, { font: FONT.cjk(34, 600), color: css("signalD"), alpha: a * prog(b, 22.55, 22.65) });
-    text(x, tr("ch01.self"), CE.x + CE.w + 40, CE.y + CE.h - 10, { font: FONT.cjk(30, 600), color: ash, alpha: a * prog(b, 22.45, 22.6) });
-    narPair(x, "ch01.n10a", "ch01.n10b", 13510, [22.05, 22.5], [22.5, 23.1], [22.0, 22.1, 23.62, 23.74], b);
-  }
-
-  // Tokens 道画的是三处 5 分钟桶相加后的 token 处理量（输入 + 输出 + 缓存读 + 缓存写入，按桶平均到每分钟），不是生成速度（FACTS §1）
-  const SRC_Y = [330, 470, 610];
-  const MERGE = [15960, 470];
-  const PC = { x: 16300, y: 214, w: 860, h: 540 };
-  const LANES = [["ch01.pulse.coding", 0], ["ch01.pulse.tokens", 1], ["ch01.pulse.listening", 0], ["ch01.pulse.watching", 0]];
-  const srcPath = (i) => [[15430, SRC_Y[i]], [15790, SRC_Y[i]], MERGE];
-  function slipIcon(x, cx, cy, a, hot) {
-    box(x, cx - 22, cy - 15, 44, 30, a, { lw: 1.6, color: hot ? css("signalD") : css("bone") });
-    for (let j = 0; j < 3; j++) line(x, cx - 14, cy - 7 + j * 7, cx + 12 - j * 6, cy - 7 + j * 7, 1.2, hot ? css("signalD") : css("bone"), a * 0.8);
-  }
-  function stationCU(x, e, d, b) {
-    const bone = css("bone");
-    const a = prog(b, 23.85, 24.05);
-    if (a <= 0) return;
-    figHead(x, 15430, null, tr("ch01.cu"), null, a, { rule: 1720 });
-    const srcKeys = ["ch01.srcMac", "ch01.cc", "ch01.srcCursor"];
-    SRC_Y.forEach((y, i) => {
-      const t = AT.raw[i];
-      text(x, tr(srcKeys[i]), 15430, y - 22, { font: FONT.cjk(30, 600), color: bone, alpha: a });
-      const pts = srcPath(i);
-      polyline(x, pts, prog(b, 23.85, 24.1, E.out), 1.6, bone, a * 0.6);
-      const pk = prog(b, t, t + 0.25, E.io);
-      if (pk > 0 && pk < 1) { const [px, py] = pathAt(pts, pk * pathLen(pts)); slipIcon(x, px, py, a, true); glow(e, px, py, 60, 0.4); }
-      if (b >= t) glow(e, 15430 + 20, y, 50, 0.5 * impact(b, t, 0.2));
-      if (b >= t + 0.25) polyline(x, pts, 1, 2.2, css("signalD"), a * 0.85);
-    });
-    const mk = prog(b, AT.merge, AT.merge + 0.06);
-    x.save(); x.globalAlpha = a; x.fillStyle = mk > 0.5 ? css("signalD") : css("ink2"); x.strokeStyle = mk > 0.5 ? css("signalD") : bone; x.lineWidth = 2.4;
-    x.beginPath(); x.arc(MERGE[0], MERGE[1], 30, 0, TAU); x.fill(); x.stroke(); x.restore();
-    if (mk > 0) glow(e, MERGE[0], MERGE[1], 140, 0.9 * impact(b, AT.merge, 0.25) + 0.15);
-    text(x, tr("ch01.merge"), MERGE[0] - 30, MERGE[1] + 86, { font: FONT.cjk(30, 600), color: bone, alpha: a * prog(b, AT.merge, AT.merge + 0.1) });
-    narPair(x, "ch01.n11a", "ch01.n11b", 15430, [24.05, 24.5], [25.0, 25.5], [24.0, 24.1, 26.62, 26.74], b);
-    const pa = prog(b, AT.merge + 0.02, AT.merge + 0.2, E.out);
-    arrowPath(x, [[MERGE[0] + 34, MERGE[1]], [PC.x - 6, MERGE[1]]], pa, css("signalD"), a, 2.2);
-    if (pa <= 0) return;
-    const sa = a * prog(b, AT.merge + 0.02, AT.merge + 0.08);
-    sheet(d, PC.x, PC.y, PC.w, PC.h, { alpha: sa });
-    text(d, "Pulse", PC.x + 36, PC.y + 64, { font: FONT.sans(40, 600), alpha: sa });
-    text(d, tr("ch01.pulse.window"), PC.x + PC.w - 36, PC.y + 62, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: sa });
-    line(d, PC.x + 30, PC.y + 90, PC.x + PC.w - 30, PC.y + 90, 1.4, css("pink"), sa);
-    const tx0 = PC.x + 230, tx1 = PC.x + PC.w - 36;
-    LANES.forEach(([key, hot], i) => {
-      const y = PC.y + 160 + i * 100;
-      const col = hot ? css("signal") : css("pink");
-      text(d, tr(key), PC.x + 36, y + 10, { font: FONT.sans(30, 600), color: col, alpha: sa });
-      line(d, tx0, y + 20, tx1, y + 20, 1.2, css("pink"), 0.25 * sa);
-      const r = mulberry32(60 + i);
-      if (hot) {
-        const tk = prog(b, AT.tokens, AT.tokens + 0.3);
-        const n = 44, cw = (tx1 - tx0) / n;
-        for (let j = 0; j < n; j++) {
-          const v = r(), busy = (j > 8 && j < 20) || (j > 29 && j < 41);
-          const hgt = busy ? 10 + v * 34 : v < 0.2 ? 4 + v * 20 : 0;
-          const shown = clamp(tk * n - j);
-          if (hgt > 0 && shown > 0) fillRect(d, tx0 + j * cw + 1, y + 20 - hgt * shown, cw - 3, hgt * shown, css("signal"), sa * 0.9);
-        }
-        text(d, tr("ch01.tokRate"), tx0, y + 58, { font: FONT.cjk(28, 600), color: css("graphite"), alpha: sa * prog(b, AT.tokens + 0.1, AT.tokens + 0.25) });
-        text(d, tr("ch01.sum"), tx1, y - 34, { font: FONT.cjk(28, 600), color: css("signal"), align: "right", alpha: sa * prog(b, AT.tokens + 0.1, AT.tokens + 0.25) });
-      } else {
-        let u = tx0 + r() * 60;
-        while (u < tx1 - 40) { const w = 20 + r() * 110; fillRect(d, u, y + 8, Math.min(w, tx1 - u), 12, css("pink"), 0.35 * sa); u += w + 30 + r() * 90; }
-      }
-    });
-  }
-
-  // 调度表须与 workers/collector/src/registry.ts#JOBS 一致。apple-recent 每分钟登记，任务里再按
-  // apple-recent.ts#appleRecentDue 分闲 / 活跃两档；这里让它在 APPLE_CHANGED 那一分钟看到列表变了。
-  const JOBS = [
-    ["apple-recent", 1, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
-    ["github-chart", 10, 1], ["github-repo", 30, 2], ["site-deployments", 1, 0], ["site-analytics", 15, 3],
-    ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["uptime-probe", 1, 0], ["site-health", 5, 4],
-    ["digest", 15, 5], ["avatar-watch", 5, 1],
-  ];
-  const MINUTES = 12;
-  const APPLE_IDLE = 5, APPLE_HOLD = 10, APPLE_CHANGED = 5;
-  const due = (j, m) => (JOBS[j][0] === "apple-recent"
-    ? m % APPLE_IDLE === 0 || (m > APPLE_CHANGED && m - APPLE_CHANGED < APPLE_HOLD)
-    : m % JOBS[j][1] === JOBS[j][2]);
-  const DC = [17870, 500], DR = 262;
-  const TC = { x: 18236, y: 174, w: 880, h: 664 };
-  const minuteAt = (b) => Math.floor((b - AT.dial) * 4 + 1e-9);
-  function handSteps(j, b) {
-    if (b < AT.dial) return 0;
-    const bt = Math.min((b - AT.dial) * 4, MINUTES - 1e-6), m = Math.floor(bt);
-    let n = 0;
-    for (let i = 0; i < m; i++) if (due(j, i)) n++;
-    if (due(j, m)) n += E.spring(clamp((bt - m) / 0.55));
-    return n;
-  }
-  function stationF7(x, e, d, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 26.85, 27.05);
-    if (a <= 0) return;
-    figHead(x, 17350, 7, tr("ch01.f7"), tr("ch01.f7sub"), a, { rule: 720 });
-    text(x, tr("ch01.noGate"), 17350, 214, { font: FONT.cjk(28, 600), color: ash, alpha: a * prog(b, 27.5, 27.7), maxW: 840 });
-    const beatF = Math.max(0, (b - AT.dial) * 4);
-    const m = b < AT.dial ? -1 : Math.min(MINUTES - 1, minuteAt(b));
-    const tickP = b < AT.dial ? 0 : Math.exp(-((beatF % 1) * 60 / 108) / 0.12);
-    const [cx, cy] = DC;
-    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.beginPath(); x.arc(cx, cy, DR, 0, TAU); x.fill(); x.strokeStyle = bone; x.lineWidth = 2.8; x.stroke();
-    x.lineWidth = 1.2; x.globalAlpha = a * 0.5; x.beginPath(); x.arc(cx, cy, DR - 12, 0, TAU); x.stroke(); x.restore();
-    for (let i = 0; i < 60; i++) {
-      const ang = (i / 60) * TAU - Math.PI / 2, big = i % 5 === 0, r0 = DR - (big ? 30 : 20);
-      line(x, cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0, cx + Math.cos(ang) * (DR - 12), cy + Math.sin(ang) * (DR - 12), big ? 2.4 : 1, bone, (big ? 0.85 : 0.35) * a);
-    }
-    if (m >= 0) {
-      text(x, "cron", cx + 56, cy + DR + 34, { font: FONT.mono(28, 500), color: ash, alpha: a });
-      text(x, `:${String(m).padStart(2, "0")}`, cx + 56, cy + DR + 80, { font: FONT.mono(40, 600), color: bone, alpha: a });
-    }
-    JOBS.forEach((job, j) => {
-      const len = DR * (0.4 + (0.46 * j) / (JOBS.length - 1)), ang = -Math.PI / 2 + (j / JOBS.length) * TAU + handSteps(j, b) * (TAU / 12);
-      const ran = m >= 0 && due(j, m) ? Math.exp(-((beatF - m) * 60 / 108) / 0.2) : 0;
-      const tx = cx + Math.cos(ang) * len, ty = cy + Math.sin(ang) * len;
-      line(x, cx, cy, tx, ty, 2, ran > 0.3 ? css("signalD") : bone, a * 0.9);
-      x.save(); x.globalAlpha = a; x.fillStyle = ran > 0.3 ? css("signalD") : css("ink2"); x.strokeStyle = ran > 0.3 ? css("signalD") : bone; x.lineWidth = 1.8;
-      x.beginPath(); x.arc(tx, ty, 8, 0, TAU); x.fill(); x.stroke(); x.restore();
-      if (ran > 0.05) glow(e, tx, ty, 46, 0.7 * ran);
-    });
-    x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(cx, cy, 13, 0, TAU); x.fill(); x.restore();
-    if (tickP > 0.05) glow(e, cx, cy, 90, 0.55 * tickP);
-    const pv = [cx, cy + DR + 10];
-    const pang = b < AT.dial ? 0 : 0.26 * Math.cos(Math.PI * beatF);
-    const bob = [pv[0] + Math.sin(pang) * 70, pv[1] + Math.cos(pang) * 70];
-    line(x, pv[0], pv[1], bob[0], bob[1], 2.4, bone, a);
-    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.strokeStyle = bone; x.lineWidth = 2.2; x.beginPath(); x.arc(bob[0], bob[1], 16, 0, TAU); x.fill(); x.stroke(); x.restore();
-    narPair(x, "ch01.n12a", "ch01.n12b", 17350, [27.3, 27.9], [27.9, 28.6], [27.25, 27.35, 29.62, 29.74], b);
-    const ca = a * prog(b, 27.05, 27.13, E.out);
-    if (ca <= 0) return;
-    sheet(d, TC.x, TC.y, TC.w, TC.h, { alpha: ca });
-    text(d, tr("ch01.chart"), TC.x + 34, TC.y + 60, { font: FONT.cjk(36, 600), alpha: ca });
-    text(d, tr("ch01.perMin"), TC.x + TC.w - 34, TC.y + 58, { font: FONT.cjk(28, 600), color: css("graphite"), align: "right", alpha: ca });
-    line(d, TC.x + 28, TC.y + 86, TC.x + TC.w - 28, TC.y + 86, 1.4, css("pink"), ca);
-    const gx = TC.x + 438, pitch = 34, y0 = TC.y + 148, ROW = 40;
-    [0, 5, 10].forEach((mm) => text(d, `:${String(mm).padStart(2, "0")}`, gx + mm * pitch + 13, TC.y + 122, { font: FONT.mono(28, 500), color: css("graphite"), align: "center", alpha: ca }));
-    if (m >= 0) fillRect(d, gx + m * pitch - 3, y0 - 26, pitch, JOBS.length * ROW + 4, css("pink"), 0.07 * ca);
-    JOBS.forEach(([name], j) => {
-      const y = y0 + j * ROW;
-      const ranNow = m >= 0 && due(j, m) ? Math.exp(-((beatF - m) * 60 / 108) / 0.2) : 0;
-      text(d, name, TC.x + 34, y + 10, { font: FONT.mono(28, 500), color: ranNow > 0.3 ? css("signal") : css("pink"), alpha: ca });
-      for (let mm = 0; mm < MINUTES; mm++) {
-        const cxl = gx + mm * pitch, filled = m >= mm && due(j, mm);
-        d.save(); d.globalAlpha = ca * (filled ? 1 : 0.35); d.strokeStyle = filled ? css("signal") : css("graphite"); d.lineWidth = 1.4; d.strokeRect(cxl, y - 14, 26, 26); d.restore();
-        if (filled) fillRect(d, cxl + 3, y - 11, 20, 20, css("signal"), ca * (mm === m ? 0.6 + 0.4 * ranNow : 0.85));
-      }
-    });
-  }
-
-  // 一拍一分钟，接着表盘走；列表变过之后每拍里每 POLL_EVERY 分钟拉一次。推断照 shared/pulse-listening.ts#inferredPlays：
-  // 窗口先减去上榜滞后 LAG，后一首的窗口再减去前一首的时长，和前一首的窗口求交，交集中点是开播、半宽是理想误差。
-  // PLAYS 的 start 是真正开播的分钟，seen 是第一次看到它的那次拉取；start + LAG 要落在 seen 前一格里，
-  // 两次看到新歌才踩在 30:1、31:2 两拍上（配乐的纸滑），所以第一首的时长要在 4.75–5.25 分钟之间。
-  const IX = FX.F7A - 960;
-  const minuteBar = (m) => AT.dial + m / 4;
-  const PH7 = { x: IX + 110, y: 290, w: 210, h: 400 };
-  const AL = { x: IX + 420, y: 262, w: 540, h: 380 };
-  const IS = { x: IX + 1010, y: 262, w: 850, h: 380 };
-  const PG = { x: IX + 1010, y: 664, w: 850, h: 174 };
-  const POLL_Y = 236;
-  const POLL = [[IX - 140, POLL_Y], [AL.x + AL.w / 2, POLL_Y], [AL.x + AL.w / 2, AL.y - 6]];
-  const POLL_EVERY = 0.25, LAG = 5.5 / 60;
-  const ARTIST7 = "Aimer";
-  const RECENT0 = ["カタオモイ", "蝶々結び", "Brave Shine", "春はゆく"];
-  const PLAYS = [{ title: "Ref:rain", len: 4.836, start: 12.86, seen: 13 }, { title: "残響散歌", len: 3.082, start: 17.696, seen: 18 }];
-  const W1 = [PLAYS[0].seen - POLL_EVERY - LAG, PLAYS[0].seen - LAG];
-  const W2 = [PLAYS[1].seen - POLL_EVERY - LAG, PLAYS[1].seen - LAG];
-  const W2B = [W2[0] - PLAYS[0].len, W2[1] - PLAYS[0].len];
-  const CROSS = [Math.max(W1[0], W2B[0]), Math.min(W1[1], W2B[1])];
-  const EST = (CROSS[0] + CROSS[1]) / 2;
-  const MARGIN_S = Math.ceil(((CROSS[1] - CROSS[0]) / 2) * 60);
-  const T7 = { seen1: minuteBar(PLAYS[0].seen), seen2: minuteBar(PLAYS[1].seen), shift: 31.75, cross: 32.0, chain: 32.1, page: 32.5, out: 33.7 };
-  const FREEZE = 19.5;
-  const minuteAt7 = (b) => Math.min((b - AT.dial) * 4, FREEZE);
-  const AX0 = IS.x + 160, AX1 = IS.x + IS.w - 36, M0 = 11, M1 = 22;
-  const mx = (m) => lerp(AX0, AX1, (m - M0) / (M1 - M0));
-  const ROW = [IS.y + 170, IS.y + 262], AXIS_Y = IS.y + 322;
-
-  function phone7(x, b, a) {
+  function montage(x, b) {
+    const a = prog(b, 10.88, 11.06);
     if (a <= 0) return;
     const bone = css("bone"), ash = css("ash");
-    const k = prog(b, 29.9, 30.25, E.io);
-    x.save(); x.globalAlpha = a; x.strokeStyle = bone; x.lineWidth = 2.6; roundRect(x, PH7.x, PH7.y, PH7.w, PH7.h, 40);
-    x.save(); x.fillStyle = css("ink2"); x.globalAlpha = a * k; x.fill(); x.restore(); x.stroke(); x.restore();
-    box(x, PH7.x + 14, PH7.y + 14, PH7.w - 28, PH7.h - 28, a * k, { r: 30, lw: 1.4, fill: "ink" });
-    box(x, PH7.x + PH7.w / 2 - 38, PH7.y + 30, 76, 22, a * k, { r: 11, lw: 1.4, fill: "ink" });
-    const mb = minuteAt7(b);
-    const idx = PLAYS.reduce((n, p, i) => (mb >= p.start ? i : n), -1);
-    const cx = PH7.x + PH7.w / 2;
-    if (idx >= 0) {
-      const p = PLAYS[idx];
-      const fk = prog(b, minuteBar(p.start) - 0.04, minuteBar(p.start) + 0.04);
-      withSquash(x, PH7.y + 200, squash(fk), () => {
-        cover(x, cx - 60, PH7.y + 86, 120, a * k);
-        text(x, p.title, cx, PH7.y + 266, { font: FONT.cjk(40, 600), color: css("signalD"), align: "center", alpha: a });
-        text(x, ARTIST7, cx, PH7.y + 306, { font: FONT.sans(28, 500), color: ash, align: "center", alpha: a });
-      });
-      const px0 = PH7.x + 40, px1 = PH7.x + PH7.w - 40, py = PH7.y + 344;
-      line(x, px0, py, px1, py, 4, bone, 0.22 * a);
-      line(x, px0, py, lerp(px0, px1, clamp((mb - p.start) / p.len)), py, 4, css("signalD"), a);
-    }
-    text(x, "iPhone", PH7.x, PH7.y + PH7.h + 50, { font: FONT.mono(30, 600), color: bone, alpha: a });
-    text(x, tr("ch01.noRep"), PH7.x, PH7.y + PH7.h + 90, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 300 });
-  }
-
-  function polls7(x, e, b, a) {
-    if (a <= 0) return;
-    const bone = css("bone"), ash = css("ash");
-    const k = prog(b, 29.95, 30.15, E.out);
-    dashPath(x, POLL, k, 1.6, bone, 0.6 * a);
-    arrowHead(x, POLL[2][0], POLL[2][1], Math.PI / 2, bone, a * k * 0.8);
-    text(x, tr("ch01.col"), IX + 70, POLL_Y - 14, { font: FONT.cjk(28, 600), color: bone, alpha: a * k });
-    text(x, tr("ch01.active"), POLL[1][0] + 20, POLL_Y - 14, { font: FONT.cjk(28, 600), color: ash, alpha: a * k, maxW: 520 });
-    for (let q = 12 / POLL_EVERY; q <= FREEZE / POLL_EVERY; q++) {
-      const m = q * POLL_EVERY, tick = Number.isInteger(m);
-      const t = minuteBar(m), pk = prog(b, t - 0.14, t);
-      if (pk > 0 && pk < 1) {
-        const [px, py] = pathAt(POLL, pk * pathLen(POLL));
-        x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(px, py, tick ? 6 : 4, 0, TAU); x.fill(); x.restore();
-      }
-      if (tick && b >= t) glow(e, POLL[2][0], POLL[2][1], 40, 0.35 * impact(b, t, 0.08) * a);
-    }
-    arrowPath(x, [[PH7.x + PH7.w + 12, PH7.y + 200], [AL.x - 10, PH7.y + 200]], k, bone, a * 0.7, 1.6, true);
-  }
-
-  function appleList(d, e, b, a) {
-    if (a <= 0) return;
-    sheet(d, AL.x, AL.y, AL.w, AL.h, { alpha: a });
-    text(d, tr("ch01.apple"), AL.x + 30, AL.y + 56, { font: FONT.cjk(34, 600), alpha: a, maxW: AL.w - 60 });
-    text(d, "/v1/me/recent/played/tracks", AL.x + 30, AL.y + 96, { font: FONT.mono(28, 500), color: css("graphite"), alpha: a, maxW: AL.w - 60 });
-    line(d, AL.x + 26, AL.y + 116, AL.x + AL.w - 26, AL.y + 116, 1.4, css("pink"), a);
-    const v = b >= T7.seen2 ? 2 : b >= T7.seen1 ? 1 : 0;
-    const tSeen = v === 2 ? T7.seen2 : T7.seen1;
-    const list = [...PLAYS.slice(0, v).map((p) => p.title).reverse(), ...RECENT0];
-    const sk = v ? prog(b, tSeen, tSeen + 0.12, E.out) : 1;
-    const hk = v ? 1 - prog(b, tSeen + 0.2, tSeen + 1.1) : 0;
-    const RH = 56, top = AL.y + 162;
-    d.save(); d.beginPath(); d.rect(AL.x + 6, AL.y + 122, AL.w - 12, 3 * RH); d.clip();
-    list.slice(0, 4).forEach((title, i) => {
-      const y = top + (i - (1 - sk)) * RH;
-      const hot = v > 0 && i === 0;
-      if (hot && hk > 0) fillRect(d, AL.x + 16, y - 38, AL.w - 32, RH - 6, css("signal"), 0.14 * hk * a);
-      text(d, String(i + 1), AL.x + 34, y, { font: FONT.mono(28, 500), color: css("graphite"), alpha: a });
-      text(d, title, AL.x + 80, y, { font: FONT.cjk(32, 600), color: hot && hk > 0.3 ? css("signal") : css("pink"), alpha: a });
-      text(d, ARTIST7, AL.x + AL.w - 30, y, { font: FONT.sans(28, 500), color: css("graphite"), align: "right", alpha: a });
+    const x0 = FX.MONT - 900, y0 = 150;
+    text(x, tr("ch01.m.head"), x0, y0 + 36, { font: FONT.cjk(36, 600), color: ash, alpha: a });
+    MONT_CARDS.forEach(([title, fact, t], i) => {
+      const col = i % 4, row = (i / 4) | 0;
+      const rx = x0 + col * 450, ry = y0 + 70 + row * 300;
+      const hot = win(b, t, t + 0.06, t + 0.38, t + 0.5);
+      const dim = 0.22 + 0.78 * hot;
+      x.save(); x.globalAlpha = a * dim; x.fillStyle = css("ink2"); x.strokeStyle = hot > 0.45 ? css("signalD") : bone; x.lineWidth = hot > 0.45 ? 2.6 : 1.4;
+      roundRect(x, rx, ry, 420, 240, 10); x.fill(); x.stroke(); x.restore();
+      text(x, tr(title), rx + 28, ry + 78, { font: FONT.cjk(40, 600), color: hot > 0.45 ? css("signalD") : bone, alpha: a * dim, texture: hot < 0.35 });
+      text(x, tr(fact), rx + 28, ry + 140, { font: FONT.cjk(32, 600), color: hot > 0.45 ? bone : ash, alpha: a * dim, maxW: 364, texture: hot < 0.35 });
     });
-    d.restore();
-    if (v > 0) glow(e, AL.x + 140, top - 12, 110, 0.45 * impact(b, tSeen, 0.25) * a);
-    text(d, tr("ch01.newTop"), AL.x + 30, AL.y + AL.h - 20, { font: FONT.cjk(28, 600), color: css("graphite"), alpha: a * prog(b, T7.seen1 + 0.1, T7.seen1 + 0.25), maxW: AL.w - 60 });
-  }
-
-  function bracket7(d, m0, m1, y, a, hot, dashed = false) {
-    if (a <= 0) return;
-    const x0 = mx(m0), x1 = mx(m1), h = 36, serif = Math.min(9, (x1 - x0) / 3);
-    fillRect(d, x0, y - h / 2, x1 - x0, h, css("signal"), (hot ? 0.2 : 0.07) * a);
-    const col = hot ? css("signal") : css("graphite");
-    d.save(); if (dashed) d.setLineDash([5, 4]);
-    polyline(d, [[x0 + serif, y - h / 2], [x0, y - h / 2], [x0, y + h / 2], [x0 + serif, y + h / 2]], 1, 2.4, col, a);
-    polyline(d, [[x1 - serif, y - h / 2], [x1, y - h / 2], [x1, y + h / 2], [x1 - serif, y + h / 2]], 1, 2.4, col, a);
-    d.restore();
-  }
-  // 游标竖线会扫过这两行注：垫一块纸色底，线从字后面过去而不是穿字。底色按面板的透明度画、不跟字一起淡入，
-  // 否则淡入那几帧线会透出来穿字。先画注再画括号，底色不盖括号。
-  function note7(d, str, lx, ly, color, a, k) {
-    if (a <= 0 || k <= 0) return;
-    fillRect(d, lx - 8, ly - 30, measure(d, str, FONT.cjk(28, 600)) + 16, 38, css("paper"), a);
-    text(d, str, lx, ly, { font: FONT.cjk(28, 600), color, alpha: a * k });
-  }
-
-  function inferSheet(d, e, b, a) {
-    if (a <= 0) return;
-    const gr = css("graphite");
-    sheet(d, IS.x, IS.y, IS.w, IS.h, { alpha: a });
-    text(d, tr("ch01.infer"), IS.x + 30, IS.y + 56, { font: FONT.cjk(34, 600), alpha: a });
-    text(d, "inferredPlays", IS.x + IS.w - 30, IS.y + 54, { font: FONT.mono(28, 500), color: gr, align: "right", alpha: a });
-    line(d, IS.x + 26, IS.y + 78, IS.x + IS.w - 26, IS.y + 78, 1.4, css("pink"), a);
-    const mb = minuteAt7(b);
-    line(d, AX0, AXIS_Y, AX1, AXIS_Y, 1.4, css("pink"), 0.6 * a);
-    for (let m = M0; m <= M1; m++) {
-      line(d, mx(m), AXIS_Y - 6, mx(m), AXIS_Y + 6, 1.2, css("pink"), 0.5 * a);
-      if (m % 3 === 0) text(d, `:${m}`, mx(m), AXIS_Y + 38, { font: FONT.mono(28, 500), color: gr, align: "center", alpha: a });
-    }
-    for (let q = 12 / POLL_EVERY; q * POLL_EVERY <= mb; q++) {
-      const m = q * POLL_EVERY;
-      d.save(); d.globalAlpha = a; d.fillStyle = css("signal"); d.beginPath(); d.arc(mx(m), AXIS_Y, Number.isInteger(m) ? 5 : 3, 0, TAU); d.fill(); d.restore();
-    }
-    if (mb >= M0 && b < T7.out) line(d, mx(mb), IS.y + 104, mx(mb), AXIS_Y, 1.2, gr, 0.45 * a);
-    PLAYS.forEach((p, i) => text(d, p.title, IS.x + 30, ROW[i] + 11, { font: FONT.cjk(32, 600), alpha: a * prog(b, minuteBar(p.seen), minuteBar(p.seen) + 0.1) }));
-    const crossK = prog(b, T7.cross, T7.cross + 0.08);
-    const winA = win(b, T7.seen1 + 0.05, T7.seen1 + 0.2, T7.shift - 0.1, T7.shift);
-    note7(d, tr("ch01.win"), mx(W1[0]) - 6, ROW[0] - 32, css("signal"), a, winA);
-    const sk = prog(b, T7.shift, T7.cross, E.io);
-    const m0 = lerp(W2[0], W2B[0], sk), m1 = lerp(W2[1], W2B[1], sk), y = lerp(ROW[1], ROW[0], sk);
-    if (b >= T7.shift) {
-      const str = tr("ch01.shift"), sw = measure(d, str, FONT.cjk(28, 600));
-      // 英文那行比中文长一倍：跟着括号右端走会冲出面板右边，所以不越过面板右内沿。
-      note7(d, str, Math.min(mx(m1) + 14, IS.x + IS.w - 30 - sw), y - 26, gr, a, win(b, T7.shift, T7.shift + 0.08, T7.cross - 0.06, T7.cross));
-    }
-    bracket7(d, W1[0], W1[1], ROW[0], a * prog(b, T7.seen1, T7.seen1 + 0.08, E.out), crossK < 0.5);
-    bracket7(d, W2[0], W2[1], ROW[1], a * prog(b, T7.seen2, T7.seen2 + 0.08, E.out), b < T7.shift);
-    if (b >= T7.shift) bracket7(d, m0, m1, y, a, crossK < 0.5, true);
-    if (crossK > 0) {
-      const x0 = mx(CROSS[0]), x1 = mx(CROSS[1]);
-      fillRect(d, x0, ROW[0] - 24, Math.max(4, x1 - x0), 48, css("signal"), 0.9 * a * crossK);
-      glow(e, (x0 + x1) / 2, ROW[0], 80, 0.6 * impact(b, T7.cross, 0.3) * a);
-      text(d, tr("ch01.cross"), mx(W1[1]) + 70, ROW[0] - 32, { font: FONT.cjk(28, 600), color: css("signal"), alpha: a * prog(b, T7.cross + 0.05, T7.cross + 0.2) });
-    }
-    const ck = prog(b, T7.chain, T7.chain + 0.3, E.out);
-    if (ck > 0) {
-      const s0 = EST, e0 = EST + PLAYS[0].len, e1 = e0 + PLAYS[1].len;
-      const g = s0 + (e1 - s0) * ck;
-      fillRect(d, mx(s0), ROW[0] - 7, mx(Math.min(g, e0)) - mx(s0), 14, css("signal"), 0.85 * a);
-      if (g > e0) {
-        d.save(); d.setLineDash([4, 4]); line(d, mx(e0), ROW[0] + 8, mx(e0), ROW[1] - 8, 1.6, css("signal"), a); d.restore();
-        fillRect(d, mx(e0), ROW[1] - 7, mx(g) - mx(e0), 14, css("signal"), 0.85 * a);
-      }
-      text(d, tr("ch01.chain"), mx(W2[0]) - 22, ROW[1] + 11, { font: FONT.cjk(28, 600), color: gr, align: "right", alpha: a * prog(b, T7.chain + 0.2, T7.chain + 0.35) });
-    }
-  }
-
-  function pageSheet(d, e, b, a) {
-    if (a <= 0) return;
-    const gr = css("graphite");
-    sheet(d, PG.x, PG.y, PG.w, PG.h, { alpha: a });
-    text(d, tr("ch01.page"), PG.x + 30, PG.y + 42, { font: FONT.cjk(28, 600), color: gr, alpha: a });
-    const cx0 = PG.x + 30, cy0 = PG.y + 64;
-    d.save(); d.globalAlpha = a; d.strokeStyle = css("pink"); d.lineWidth = 1.6; d.strokeRect(cx0, cy0, 84, 84);
-    for (let j = 1; j <= 3; j++) { d.globalAlpha = a * (0.6 - j * 0.12); d.beginPath(); d.arc(cx0 + 42, cy0 + 44, 10 * j, 0, TAU); d.stroke(); }
-    d.restore();
-    text(d, tr("ch01.likely"), cx0 + 104, cy0 + 28, { font: FONT.mono(28, 600), color: css("signal"), alpha: a });
-    text(d, PLAYS[1].title, cx0 + 104, cy0 + 78, { font: FONT.cjk(34, 600), alpha: a });
-    d.save(); d.globalAlpha = a; d.strokeStyle = gr; d.lineWidth = 1.6; d.setLineDash([6, 4]); roundRect(d, cx0 + 254, cy0 + 48, 84, 40, 6); d.stroke(); d.restore();
-    text(d, `±${MARGIN_S}s`, cx0 + 296, cy0 + 77, { font: FONT.mono(28, 500), color: gr, align: "center", alpha: a });
-    glow(e, cx0 + 200, cy0 + 20, 120, 0.4 * impact(b, T7.page, 0.3) * a);
-    const lx = PG.x + 400, lw = 420, ly = PG.y + 104;
-    text(d, tr("ch01.pulse.listening"), lx, PG.y + 92, { font: FONT.sans(28, 600), alpha: a });
-    fillRect(d, lx, ly, lw, 22, css("pink"), 0.06 * a);
-    fillRect(d, lx + lw * 0.04, ly, lw * 0.2, 22, css("pink"), 0.4 * a);
-    const hatchSeg = (u0, u1, k) => {
-      if (k <= 0) return;
-      const x0 = lx + lw * u0, w = lw * (u1 - u0) * k;
-      d.save(); d.beginPath(); d.rect(x0, ly, w, 22); d.clip(); d.globalAlpha = a; d.strokeStyle = css("signal"); d.lineWidth = 2;
-      d.beginPath(); for (let s = x0 - 22; s < x0 + w; s += 9) { d.moveTo(s, ly + 22); d.lineTo(s + 22, ly); } d.stroke(); d.restore();
-      line(d, x0 + 1, ly, x0 + 1, ly + 22, 1.6, css("signal"), a);
-    };
-    hatchSeg(0.5, 0.74, prog(b, T7.page + 0.05, T7.page + 0.2));
-    hatchSeg(0.745, 0.94, prog(b, T7.page + 0.15, T7.page + 0.3));
-    d.save(); d.beginPath(); d.rect(lx, PG.y + 138, 28, 16); d.clip(); d.globalAlpha = a; d.strokeStyle = css("signal"); d.lineWidth = 2;
-    d.beginPath(); for (let s = lx - 16; s < lx + 28; s += 8) { d.moveTo(s, PG.y + 154); d.lineTo(s + 16, PG.y + 138); } d.stroke(); d.restore();
-    text(d, tr("ch01.elsewhere"), lx + 40, PG.y + 156, { font: FONT.sans(28, 500), color: gr, alpha: a, maxW: lw - 40 });
-  }
-
-  function stationF7A(x, e, d, b) {
-    const a = prog(b, 29.85, 30.05);
-    if (a <= 0) return;
-    figHead(x, IX + 70, "7A", tr("ch01.f7a"), tr("ch01.f7asub"), a, { rule: 1780, subW: 1100 });
-    phone7(x, b, a);
-    polls7(x, e, b, a * (1 - prog(b, T7.out, T7.out + 0.1)));
-    appleList(d, e, b, a * prog(b, 29.95, 30.08, E.out));
-    inferSheet(d, e, b, a * prog(b, 30.15, 30.28, E.out));
-    pageSheet(d, e, b, a * prog(b, T7.page, T7.page + 0.08, E.out));
-    narPair(x, "ch01.n13a", "ch01.n13b", IX + 70, [30.05, 30.5], [30.55, 31.05], [29.95, 30.05, 31.88, 32.0], b);
-    narPair(x, "ch01.n14a", "ch01.n14b", IX + 70, [32.05, 32.5], [32.55, 33.05], [32.0, 32.1, 33.62, 33.74], b);
+    narPair(x, "ch01.nMa", "ch01.nMb", x0, [11.2, 11.55], [11.6, 12.05], [11.05, 11.15, 12.85, 13.0], b);
+    narPair(x, "ch01.nMc", "ch01.nMd", x0, [13.1, 13.45], [13.5, 13.95], [13.0, 13.1, 14.45, 14.6], b);
   }
 
   const OUT = [PARK, [4700, 540]];
@@ -1267,7 +648,7 @@
     guide(x, b);
     const dd = rideD(b);
     const head = pathAt(OUT, dd);
-    const trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, 34.8)), 18);
+    const trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, 16.8)), 18);
     spark(e, x, head, trail, { t: G.t, size: 1.1, lw: 2.4, color: css("signalD") });
     // 起跑这一帧接停靠时的大小和光晕，不然信封一帧缩一圈、光晕一帧没了。
     const shrink = prog(b, AT.launch, AT.launch + 0.12, E.out);
@@ -1275,11 +656,11 @@
     glow(e, head[0], head[1], 150, 0.6 * impact(b, AT.back, 0.25));
   }
   // 末端 1100 让 Clawd 在最后两帧前整只出右缘，屏幕上只剩拖尾贴着右边。
-  const rideD = (b) => keys(b, [[AT.launch, 0], [34.98, 1100, E.inExpo]]);
+  const rideD = (b) => keys(b, [[AT.launch, 0], [16.98, 1100, E.inExpo]]);
 
   // 交给第 02 章：骑行时 Clawd 蹲着（pose default、crouch 1、不翻转），屏幕上 18 格宽 126 px，
   // 中心对着火花亮核，底边比亮核高 7 px；亮核在屏幕 y 540。第 02 章 0:0 照这个从左缘接（ch02.js 的 CL.qRide）。
-  const CL = { drop: [34.0, 34.08], say: [34.09, 34.68], leap: [34.66, 34.77], stand: [3070, 539.3], qs: 7, lift: 7 };
+  const CL = { drop: [15.2, 15.28], say: [15.29, 15.88], leap: [15.86, 15.97], stand: [3070, 539.3], qs: 7, lift: 7 };
   function clawdRide(tp, b, z, BAR) {
     if (b < CL.drop[0]) return;
     const q = CL.qs / z, [sx, sy] = CL.stand;
@@ -1326,14 +707,7 @@
     if (seen("S0")) stationS0(x, b);
     if (seen("M1")) stationM1(x, e, d, b);
     if (seen("M2")) { stationM2Jev(x, e, b); stationM2Img(x, e, d, b); }
-    if (seen("F2")) stationF2(x, e, b);
-    if (seen("F3")) stationF3(x, e, b);
-    if (seen("F4")) stationF4(x, e, b);
-    if (seen("F5")) stationF5(x, e, b);
-    if (seen("F6")) stationF6(x, e, b);
-    if (seen("CU")) stationCU(x, e, d, b);
-    if (seen("F7")) stationF7(x, e, d, b);
-    if (seen("F7A")) stationF7A(x, e, d, b);
+    if (seen("MONT")) montage(x, b);
     hero(x, e, b);
     clawdRide(tp, b, cam.zoom, f.BAR);
 
@@ -1352,7 +726,7 @@
   }
 
   window.CHAPTERS.push({
-    id: "ch01", title: "ch.01", bars: 35,
+    id: "ch01", title: "ch.01", bars: 17,
     init() { plate = G.pass(K.PLATE.ink); ink = G.layer("ink"); emit = G.layer("emit", 0.5); paper = G.layer("paper"); top = G.layer("top"); },
     render,
   });
