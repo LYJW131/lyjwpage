@@ -45,7 +45,7 @@ test("卡片与 Voronoi 卡同宽，柱子铺满 x=28..752", () => {
   assert.equal(rects[1][0] - rects[0][0] - rects[0][1], 18);
   assert.equal(rects[7][0] + rects[7][1], 752);
   assert.match(svg, /7D TOKENS/);
-  assert.match(svg, />今天</);
+  assert.match(svg, />TODAY</);
   assert.match(svg, /▲ 1\.0×/);
   assert.match(svg, /▼ 80%/);
 });
