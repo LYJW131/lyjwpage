@@ -98,7 +98,7 @@ test("写到一半的图示 JSON 按写完的条目先画，图表要数据齐�
   assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
 });
 
-test("条目写到字符串中间时文字逐字长；图表与媒体不补半截字符串，停在数字半截也不补成错数", () => {
+test("条目写到字符串中间时文字逐字长；图表与媒体不画半截字符串，停在数字半截也不补成错数", () => {
   const growing = parsePartialVisual("timeline", '{"items":[{"time":"Mon","title":"A"},{"time":"Tue","title":"Launch","text":"Shipped the fir');
   assert.ok(growing?.kind === "timeline");
   assert.deepEqual(growing.items.map((item) => [item.title, item.text ?? null]), [["A", null], ["Launch", "Shipped the fir"]]);
@@ -108,8 +108,26 @@ test("条目写到字符串中间时文字逐字长；图表与媒体不补半�
   assert.equal(parsePartialVisual("timeline", '{"items":[{"time":"Mon","title":"a\\'), null);
   const media = parsePartialVisual("media", '{"items":[{"title":"A"},{"title":"B","image":"https://is1-ssl.mzstatic.com/ima');
   assert.ok(media?.kind === "media");
-  assert.deepEqual(media.items.map((item) => item.title), ["A"]);
+  assert.deepEqual(media.items.map((item) => [item.title, item.image ?? null]), [["A", null], ["B", null]]);
   assert.equal(parsePartialVisual("chart", '{"type":"bar","labels":["a"],"series":[{"name":"n","values":[12'), null);
+});
+
+test("流式解析随输出只增不减：写到键名、冒号、数字半截时正在写的条目不消失", () => {
+  const source = '{"items":[{"label":"Mac","value":"Chrome","note":"Homepage"},{"label":"PS5","value":"离线","note":"约 1.5 小时前"},{"label":"Steps","value":1234},{"label":"End","value":"x"}],"summary":{"label":"结论","value":"深夜","tone":"good"}}';
+  let shown = 0;
+  let summary = false;
+  for (let end = 1; end <= source.length; end++) {
+    const visual = parsePartialVisual("stats", `${source.slice(0, end)}\n`);
+    const count = visual?.kind === "stats" ? visual.items.length : 0;
+    assert.ok(count >= shown, `第 ${end} 个字符处条目从 ${shown} 掉到 ${count}`);
+    shown = count;
+    const hasSummary = visual?.kind === "stats" && visual.summary !== undefined;
+    assert.ok(hasSummary || !summary, `第 ${end} 个字符处结论消失`);
+    summary = hasSummary;
+  }
+  assert.equal(shown, 4);
+  const steps = parsePartialVisual("stats", '{"items":[{"label":"Steps","value":12');
+  assert.equal(steps, null);
 });
 
 test("回复结束后漏写末尾括号的图示照画，中间括号对不上、停在字符串里的仍退回代码", () => {

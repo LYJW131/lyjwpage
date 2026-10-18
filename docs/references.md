@@ -103,7 +103,7 @@
 - **[Streamdown 的流式动画](https://streamdown.ai/docs/animation)**（Vercel）
   - 是什么：流式 Markdown 渲染里，rehype 插件把文字节点拆成一个个 span，只有新挂载的 span 播淡入。
   - 取了什么：拆 span 的思路、跳过 `pre` / `svg` / `math`、回复结束后摘掉插件回到纯文本。没装这个库；中日韩文字改为逐字切，淡入时长按 DESIGN.md 的动效区间取。
-  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/globals.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开。
+  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/globals.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual.tsx` 的 `Ink`）。
 
 ## Cloudflare 平台
 
