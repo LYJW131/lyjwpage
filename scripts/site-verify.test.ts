@@ -268,13 +268,13 @@ test("reload 抓到首帧后才改的时间文字，退出码 1", async (t) => {
 });
 
 test("staleAssetHtml 把 JS / CSS 指纹换成不存在的，字体与别的路径不动", () => {
-  const html = '<link rel="stylesheet" href="/assets/root-C_I5jH7t.css"/><link rel="modulepreload" href="/assets/entry.client-DEFjIM2L.js"/>'
-    + '<link rel="modulepreload" href="/assets/local-charging-arm-Ab_c-123.js"/><link rel="preload" href="/assets/GeistMono-Variable-Dispecij.woff2"/>'
+  const html = '<link rel="stylesheet" href="/assets/root-C_I5jH7t.css"/><link rel="modulepreload" href="/assets/entry.client-DEFjIM2L.js" fetchpriority="low"/>'
+    + '<link rel="modulepreload" href="/assets/local-charging-arm-Ab_c-123.js" fetchpriority="low"/><link rel="preload" href="/assets/GeistMono-Variable-Dispecij.woff2"/>'
     + '<script type="module">import "/assets/page-DVkeLdAJ.js";</script><img src="/img/abc.png"/>';
   assert.equal(
     staleAssetHtml(html),
-    '<link rel="stylesheet" href="/assets/root-SKEW0000.css"/><link rel="modulepreload" href="/assets/entry.client-SKEW0000.js"/>'
-      + '<link rel="modulepreload" href="/assets/local-charging-arm-SKEW0000.js"/><link rel="preload" href="/assets/GeistMono-Variable-Dispecij.woff2"/>'
+    '<link rel="stylesheet" href="/assets/root-SKEW0000.css"/><link rel="modulepreload" href="/assets/entry.client-SKEW0000.js" fetchpriority="low"/>'
+      + '<link rel="modulepreload" href="/assets/local-charging-arm-SKEW0000.js" fetchpriority="low"/><link rel="preload" href="/assets/GeistMono-Variable-Dispecij.woff2"/>'
       + '<script type="module">import "/assets/page-SKEW0000.js";</script><img src="/img/abc.png"/>',
   );
 });
