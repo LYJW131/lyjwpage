@@ -36,8 +36,10 @@ function inlineCut(block: string): number {
 
 const VISUAL_FENCE = new RegExp(`^\\s{0,3}(\`{3,}|~{3,})\\s*(html|${GOD_CHAT_VISUAL_KINDS.join("|")})\\s*$`, "i");
 
-// 流式输出时只交出已经闭合的 Markdown：没收尾的代码块、正在长的表格、没配对的行内标记先压着，闭合后整块出现。
+// 流式输出时只交出已经闭合的 Markdown：没收尾的代码块、没配对的行内标记先压着，闭合后整块出现。
 // 例外是图示代码块（html 与原生图示）：换成同语言的空代码块，图示先占位，收尾后整块画出来。
+// 表格等表头和分隔行都写完（分隔行后面有换行）才出现，之后写完的行直接放出，正在写的那一行逐格逐字出；
+// 分隔行写到一半时列数可能对不上表头，GFM 不认成表格，整块会先闪成一段竖线文字。
 export function stableMarkdown(text: string): string {
   const lines = text.split("\n");
   const fences = lines.flatMap((line, i) => (FENCE.test(line) ? [i] : []));
@@ -60,11 +62,21 @@ export function stableMarkdown(text: string): string {
   const block = text.slice(blockStart);
 
   const blockLines = block.split("\n").filter((line) => line.trim());
-  if (blockLines.length && blockLines.every((line) => line.trimStart().startsWith("|"))) return head.trimEnd();
+  if (blockLines.length && blockLines.every((line) => line.trimStart().startsWith("|"))) return (head + streamingTable(block)).trimEnd();
 
   // 已经配对的标记原样保留（末尾的反引号、星号可能正是收尾符）；最后一行只有块级起始标记、还没正文时整行先压着。
   const tail = block.slice(0, inlineCut(block)).replace(/(^|\n)[ \t]*(#{1,6}|>|[-*+]|\d+[.)]|\||`{1,2}|~{1,2})[ \t]*$/, "$1");
   return (head + tail).trimEnd();
+}
+
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+function streamingTable(block: string): string {
+  const lines = block.split("\n");
+  const writing = lines.pop() ?? "";
+  if (lines.length < 2 || !TABLE_DELIMITER.test(lines[1])) return "";
+  const row = writing.slice(0, inlineCut(writing));
+  return row.replace(/[|\s]/g, "") ? `${lines.join("\n")}\n${row}` : lines.join("\n");
 }
 
 // 模型的文字成块到达（一次几十字），原样画出来像整段蹦出。前端按积压量匀速放字：积压越多放得越快，

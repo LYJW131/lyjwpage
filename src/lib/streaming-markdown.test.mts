@@ -14,8 +14,15 @@ test("没收尾的代码块整块压着，收尾后再出现", () => {
   assert.equal(stableMarkdown(closed), closed);
 });
 
-test("正在长的表格压着，表格后面有空行才放出", () => {
-  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n| 1 |"), "Look:");
+test("表格等表头与分隔行写完才出，之后写完的行直接放出，正在写的行逐格出", () => {
+  assert.equal(stableMarkdown("Look:\n\n| a | b"), "Look:");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | -"), "Look:");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n"), "Look:\n\n| a | b |\n| - | - |");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n|"), "Look:\n\n| a | b |\n| - | - |");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n| 1 | tw"), "Look:\n\n| a | b |\n| - | - |\n| 1 | tw");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n| 1 | **bo"), "Look:\n\n| a | b |\n| - | - |\n| 1 |");
+  assert.equal(stableMarkdown("| a | b |\n| :-- | --: |\n| 1 | 2 |\n| 3"), "| a | b |\n| :-- | --: |\n| 1 | 2 |\n| 3");
+  assert.equal(stableMarkdown("| not | a table |\n| really"), "");
   const done = "Look:\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAfter";
   assert.equal(stableMarkdown(done), done);
 });
