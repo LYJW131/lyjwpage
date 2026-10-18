@@ -50,6 +50,14 @@ test("卡片与 Voronoi 卡同宽，柱子铺满 x=28..752", () => {
   assert.match(svg, /▼ 80%/);
 });
 
+test("前 7 天或全历史没有活动时对比行画「—」，不画 ▲ 0%", () => {
+  const quiet: CodingYearPayload = { ...year, days: [...Array(17).fill(0), 800] };
+  const svg = renderWeekCard(weekCardStats(quiet, null, chart));
+  assert.match(svg, />— avg</);
+  assert.match(svg, />— vs 7d</);
+  assert.doesNotMatch(svg, /▲ 0%/);
+});
+
 test("曲线是单调插值，平段不出现过冲", () => {
   const d = monotonePath([0, 10, 20, 30], [5, 5, 0, 0]);
   const ys = [...d.matchAll(/,(-?[\d.]+)/g)].map((m) => Number(m[1]));
