@@ -421,6 +421,8 @@ export type CodingUsageTotals = {
   apiEquivalentCostUSD: number;
   costComplete: boolean;
   activeDays: number;
+  // 全历史去重后的可见模型数（名字按 codingModelName 归一，用量 > 0）；topModels 只是其中前几名。
+  modelCount: number;
   sessionCount: number | null;
 };
 
