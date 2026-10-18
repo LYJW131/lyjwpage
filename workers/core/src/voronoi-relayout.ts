@@ -7,7 +7,6 @@ import {
   softDegraded,
   solveSeed,
   type Fitted,
-  type HardIssue,
   type Point,
   type ShareCell,
   type VoronoiLayout,
@@ -40,7 +39,7 @@ export type VoronoiState = {
 export type RoundEvent =
   | { kind: "steady" }
   | { kind: "adapted" }
-  | { kind: "due"; hard: HardIssue[]; soft: boolean; waitingUntil: number }
+  | { kind: "due"; hard: string[]; soft: boolean; waitingUntil: number }
   | { kind: "searching"; next: number }
   | { kind: "relayout"; seed: number; from: number; to: number }
   | { kind: "kept"; best: number | null; current: number };
@@ -111,8 +110,8 @@ export function relayoutRound(state: VoronoiState, latest: readonly ShareCell[],
   const hard = newHardIssues(fit.assessment, fit.layout);
   const soft = softDegraded(fit.assessment.score, fit.layout.chosenScore);
   // 认可只管当下还在的那一处：消失过的问题再出现就算新出现，要逼重排。
-  const accepted = fit.layout.accepted.filter((issue) => fit.assessment.hard.includes(issue));
-  let next = accepted.length === state.layout.accepted.length ? state : { ...state, layout: { ...state.layout, accepted } };
+  const accepted = fit.layout.accepted.filter((key) => fit.assessment.occurrences.includes(key));
+  let next = accepted.length === fit.layout.accepted.length ? state : { ...state, layout: { ...state.layout, accepted } };
   if (fit.structureChanged) {
     const passed = hard.length === 0 && !soft;
     const layout = passed

@@ -16,5 +16,5 @@ export const INITIAL_VORONOI_LAYOUT: VoronoiLayout = {
   chosenScore: 196.09320600113998,
   chosenAt: 1792280947000,
   seed: 2290,
-  accepted: ["wedge"],
+  accepted: ["wedge:claude-fable-5:t"],
 };

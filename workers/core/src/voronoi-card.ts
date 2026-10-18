@@ -14,7 +14,6 @@ import {
   fitLayout,
   shareCells,
   type Fitted,
-  type HardIssue,
   type LayoutCell,
   type ShareCell,
 } from "./voronoi-layout";
@@ -33,7 +32,6 @@ export const INITIAL_VORONOI_STATE: VoronoiState = {
   search: null,
 };
 
-const HARD_ISSUES: readonly HardIssue[] = ["area", "vanished", "short-edge", "span", "wedge", "label"];
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const point = (value: unknown) => Array.isArray(value) && value.length === 2 && value.every(finite);
 
@@ -48,7 +46,7 @@ export function parseVoronoiState(raw: unknown): VoronoiState | null {
   if (!state || !layout) return null;
   if (!Array.isArray(layout.cells) || !layout.cells.length || !layout.cells.every(layoutCell)) return null;
   if (!finite(layout.chosenScore) || !finite(layout.chosenAt) || !Array.isArray(layout.accepted)) return null;
-  if (!layout.accepted.every((issue) => HARD_ISSUES.includes(issue as HardIssue))) return null;
+  if (!layout.accepted.every((key) => typeof key === "string")) return null;
   const colors = layout.colors === undefined ? {} : object(layout.colors);
   if (!colors || !Object.values(colors).every((color) => typeof color === "string")) return null;
   if (!finite(state.lastRelayoutAt) || (state.lastFailedSearchAt !== null && !finite(state.lastFailedSearchAt))) return null;
