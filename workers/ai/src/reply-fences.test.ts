@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { GOD_CHAT_VISUAL_EXAMPLES } from "@shared/god-chat";
 
-import { invalidVisuals, replyFences } from "./chat/reply-fences";
+import { checkVisuals, replyFences } from "./chat/reply-fences";
 
 test("围栏按浏览器的规则切：收尾同字符且不短于开头，语言标记不分大小写", () => {
   const reply = ["text", "````Chart", "```", "{}", "````", "~~~html", "<b>x</b>", "~~~", "  ```stats", "{"].join("\n");
@@ -23,7 +23,7 @@ test("图示用浏览器同一份校验，过不了的按 JSON、结构、没收
     "```python", "print(1)", "```",
     "```media", '{"items":[',
   ].join("\n");
-  assert.deepEqual(invalidVisuals(replyFences(reply)), [
+  assert.deepEqual(checkVisuals(replyFences(reply)).invalid, [
     { kind: "chart", error: "json" },
     { kind: "diagram", error: "shape" },
     { kind: "media", error: "unclosed" },
@@ -36,11 +36,16 @@ test("引用块与列表里的图示也切得出来，引用块去掉 > 再校�
   const fences = replyFences(`${quoted}\r\n\r\n${listed}`);
   assert.deepEqual(fences.map((fence) => [fence.language, fence.closed]), [["diagram", true], ["stats", true]]);
   assert.equal(fences[0].source, "{broken");
-  assert.deepEqual(invalidVisuals(fences), [{ kind: "diagram", error: "json" }]);
+  assert.deepEqual(checkVisuals(fences).invalid, [{ kind: "diagram", error: "json" }]);
 });
 
 test("顶层缩进四格起是缩进代码块，不算图示；列表里的深缩进照样算", () => {
   assert.deepEqual(replyFences(["    ```stats", "    {}", "    ```"].join("\n")), []);
   const nested = ["- 外层", "  - 内层", "      ```chart", "      {}", "      ```"].join("\n");
   assert.deepEqual(replyFences(nested).map((fence) => fence.language), ["chart"]);
+});
+
+test("漏写末尾括号、补齐后画得出的图示单独记成 repaired", () => {
+  const reply = ["```stats", '{"items":[{"label":"a","value":"b"}]', "", "```", "```timeline", JSON.stringify(GOD_CHAT_VISUAL_EXAMPLES.timeline), "```"].join("\n");
+  assert.deepEqual(checkVisuals(replyFences(reply)), { invalid: [], repaired: ["stats"] });
 });

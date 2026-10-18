@@ -37,7 +37,7 @@ import { sealExchange, sealedHistory, storedReply } from "./seal";
 import { admitDesign, claimDesignOpen, designAvailable, plannerHistory, startDesign, START_DESIGN_TOOL, type DesignAdmission } from "./design";
 import { designApi, designTurn, turnMatches, type DesignApi, type DesignTurnInput, type SessionEvent } from "./designer";
 import { CLEF_CHOICES, isClefChoice, presetRoute, routeWithClef, type RouteDecision } from "./router";
-import { invalidVisuals, replyFences } from "./reply-fences";
+import { checkVisuals, replyFences } from "./reply-fences";
 import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { TOOL_SEARCH_TOOL, docSearchQuery } from "./doc-search";
 import { saveTranscript, type Transcript, type TranscriptOutcome } from "./transcripts";
@@ -300,9 +300,9 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
         // 只记代码块的语言标记与校验结论、不记内容：图示没画出来时（标记写错、没写、结构不对）靠它判断模型写了什么。
         const fences = replyFences(reply);
         if (fences.length) {
-          const invalid = invalidVisuals(fences);
-          const line = JSON.stringify({ tier, fences: fences.map((fence) => fence.language.slice(0, 20)), ...(invalid.length > 0 && { invalid }) });
-          if (invalid.length) console.warn("[god-chat] fences", line);
+          const { invalid, repaired } = checkVisuals(fences);
+          const line = JSON.stringify({ tier, fences: fences.map((fence) => fence.language.slice(0, 20)), ...(invalid.length > 0 && { invalid }), ...(repaired.length > 0 && { repaired }) });
+          if (invalid.length || repaired.length) console.warn("[god-chat] fences", line);
           else console.info("[god-chat] fences", line);
         }
         const stored = storedReply(reply);
