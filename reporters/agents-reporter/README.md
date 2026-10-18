@@ -1,6 +1,6 @@
 # agents-reporter
 
-把各 coding agent 的**账号限额**和 **Cursor 的云端用量**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
+把各 coding agent（Claude、Codex、Grok、Cursor、Antigravity、Devin CLI）的**账号限额**和 **Cursor 的云端用量**推给 lyjwpage 的小代理，跑在日本的 misaka-jp 上。
 
 限额（套餐 + 用量窗口）是厂商账号侧的事实，跟哪台 Mac 无关，所以由这个容器 24 小时跑，
 Mac 合盖 / 睡眠 / 离线不影响它。
@@ -54,7 +54,7 @@ Cursor 用量与 Devin 用量不按家分档：有哪家到期才有这一轮，
 | `CURSOR_NOW_FAST_INTERVAL_MS` | | Cursor 在用时查最近用量事件的间隔，要小于活动窗口 `src/cursor-now.ts#ACTIVE_WINDOW_MS`。默认见 `src/config.ts#config.cursorNow` |
 | `CURSOR_NOW_MAX_INTERVAL_MS` | | 没新事件时间隔翻倍拉长的上限。默认见 `src/config.ts#config.cursorNow` |
 | `PUSH_TIMEOUT_MS` | | 上报超时。默认见 `src/config.ts#config` |
-| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | 宿主机出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。**跑在 misaka-jp 上不用填**，那台本身就在日本。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，五个 CLI 各自也认。在墙内本地 build 时另外用 `--build-arg HTTPS_PROXY=…` |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` | | 宿主机出海要走代理时填（如 `http://user:pass@192.168.3.2:7893`）。**跑在 misaka-jp 上不用填**，那台本身就在日本。上报器自己的 fetch 靠镜像里的 `NODE_USE_ENV_PROXY=1` 认它，各家 CLI 各自也认。在墙内本地 build 时另外用 `--build-arg HTTPS_PROXY=…` |
 | `CLAUDE_OAUTH_TOKEN_URL` | | 可选覆盖。默认从镜像里的 Claude Code 自动读取生产 OAuth 配置；覆盖时必须和 client ID 一起填 |
 | `CLAUDE_OAUTH_CLIENT_ID` | | 同上。无需手抄；客户端常量不写进仓库 |
 | `CLAUDE_BIN` | `claude` | 用来读取 OAuth 配置的 Claude Code 安装程序，可设绝对路径 |
@@ -68,6 +68,7 @@ Cursor 用量与 Devin 用量不按家分档：有哪家到期才有这一轮，
 | `ANTIGRAVITY_OAUTH_CLIENT_ID` | | 可选。不填时上报器启动会从镜像里的 `agy` 二进制扫出候选、刷新时逐对试，登录完就够。填了就直接用。**不写进仓库** |
 | `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | | 同上 |
 | `AGY_BIN` | | 扫 OAuth 常量用的 `agy` 路径，默认 `agy`（镜像里在 `/usr/local/bin`） |
+| `DEVIN_BIN` | | 读 Devin CLI 版本号用的 `devin` 路径，默认 `devin`（镜像里在 `/usr/local/bin`）；读不到就带 `0.0.0` |
 | `DRY_RUN` | | `1` 时不 POST，把请求体 JSON 打到 stdout 然后退出 |
 | `LIMITS_FIXTURE` | | `{ "<id>": <该家原始 HTTP 响应体> }`。仅替换限额取数并跳过 Cursor 用量 |
 
@@ -82,7 +83,7 @@ Cursor 用量与 Devin 用量不按家分档：有哪家到期才有这一轮，
 mkdir -p agents-reporter/data && sudo chown 1000:1000 agents-reporter/data
 ```
 
-登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.grok`、`/data/.gemini`、`/data/.config/cursor`）。
+登录一次，凭据就在 `./data` 卷里（`/data/.claude`、`/data/.codex`、`/data/.grok`、`/data/.gemini`、`/data/.config/cursor`、`/data/.local/share/devin`）。
 
 ```bash
 docker compose run --rm agents-reporter claude
@@ -90,12 +91,15 @@ docker compose run --rm agents-reporter codex login --device-auth
 docker compose run --rm agents-reporter grok login --device-auth
 docker compose run --rm agents-reporter agy
 docker compose run --rm agents-reporter agent login   # cursor-agent，见下面
+docker compose run --rm agents-reporter devin auth login --force-manual-token-flow
 ```
+
+Devin 在无浏览器的环境用 `--force-manual-token-flow`：打开它给的链接登录，把网页上的 token 贴回终端。
 
 Grok 的包是 `@xai-official/grok`，命令是 `grok`，无浏览器的环境用 `--device-auth`（`--device-code` 是别名）。
 
 `codex login` 一启动就把旧的 `/data/.codex/auth.json` 删掉，中途取消或设备码过期等于把 codex 这份登录态弄没了，只能重登；
-其余四家不受影响。设备码 15 分钟有效。
+其余几家不受影响。设备码 15 分钟有效。
 
 Claude 在 Linux 上把 OAuth 写到 `/data/.claude/.credentials.json`。登录后，上报器在到期前 `src/claude-oauth.ts#SKEW_MS` 内的采集轮次（或 usage 接口回 401 时）自动续期并原子写回。默认从镜像中 Claude Code 的生产配置对象读取 token 端点和 client ID，不需要手抄环境变量；扫描规则按 Claude Code 2.1.261 的原生安装包验证，只接受唯一的生产配置，无法识别会明确报错。
 
@@ -105,9 +109,9 @@ CLI 升级改变配置结构时，可更新扫描规则，或成对填写 `CLAUD
 
 Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的 `/data/.codex/auth.json`、`/data/.grok/auth.json`。
 
-## cursor / antigravity
+## cursor / devin / antigravity
 
-五个 CLI 装进镜像：用于登录，Claude 与 `agy` 安装包还提供 OAuth 配置。限额运行时直打接口。
+各家 CLI 装进镜像：用于登录，Claude 与 `agy` 安装包还提供 OAuth 配置，`devin` 提供版本号。限额运行时直打接口。
 CLI 各占一层、排在源码之前，按 `Dockerfile#CLI_EPOCH` 刷新：CI 默认给 ISO 周，所以只改源码时复用缓存，CLI 最多旧一周；
 要立刻装最新版，手动运行 `build-reporters.yml` 并填 `cli_epoch`。
 
@@ -164,7 +168,15 @@ Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺�
 这个容器依赖站点入口认识 `codingUsage` / `codingActivity` / `codingTokenBuckets`：入口不认识它们时，快循环那封只带
 活动与桶的小信封会被当成没有可收的数据拒收，所以发布时入口先于容器。
 
-**devin。** 不登录、不用凭据：每轮限额那一轮并行 GET 公开的 `https://tokens.ci/api/users/<TOKENS_CI_USER>`，
+**devin 限额。** 凭据是 `devin auth login` 写进 `/data/.local/share/devin/credentials.toml` 的 `windsurf_api_key`（长期有效，上报器不刷新、不写回）。
+上报器拿它 POST `api_server_url`（默认 `https://server.codeium.com`）的 `exa.seat_management_pb.SeatManagementService/GetUserStatus`（Connect JSON，
+就是 CLI 里 `/usage` 读的那份），`metadata` 要带 `apiKey`、`ideName`、`ideVersion`、`extensionVersion`，缺版本号回 400。
+`userStatus.planStatus` 的 `dailyQuotaRemainingPercent` / `weeklyQuotaRemainingPercent` 翻成已用，收成 `devin.primary`（日）和
+`devin.secondary`（周）两扇，重置时刻取 `…ResetAtUnix`；套餐名取 `planStatus.planInfo.planName`。proto3 JSON 省略零值，额度用尽时
+剩余百分比整个字段不出现，只要重置时刻还在就记 100% 已用（`src/providers/devin.ts#rowFromDevinStatus`）。401 / 403 时这一行带
+`Devin session expired — run \`devin auth login --force-manual-token-flow\` to re-authenticate.`。没登录就不发这一行。
+
+**devin 用量。** 不登录、不用凭据：每轮限额那一轮并行 GET 公开的 `https://tokens.ci/api/users/<TOKENS_CI_USER>`，
 只取 `contributions[].clients` 里 `client` 为 `devin-cli` 的那一份（同一页的 Claude、Codex 等由别的来源报，这里不碰），
 翻成 `codingUsage` 里 `id: "devin"` 的一行，`days` 整份替换站点那份（`src/devin-usage.ts#devinUsageDays`）。日期照
 tokens.ci 给的原样用，不换算时区。tokens.ci 的 `reasoning` 与 `output` 分列相加，站点契约里
@@ -204,7 +216,7 @@ DRY_RUN=1 LIMITS_FIXTURE=./fixture.json HOME=/tmp/empty \
 ```
 
 `LIMITS_FIXTURE` 的形状是 `{ "<id>": <该家原始 HTTP 响应体> }`：claude 是 `/api/oauth/usage`，
-codex 是 `wham/usage`，grok 是 `/v1/billing`，antigravity 是 `retrieveUserQuotaSummary`，
+codex 是 `wham/usage`，grok 是 `/v1/billing`，antigravity 是 `retrieveUserQuotaSummary`，devin 是 `GetUserStatus`，
 cursor 是 `{ period, plan, hardLimit, sand }`：三份 DashboardService 响应加 Grok Bot 那份（可省）。Claude 到期检查仍会读取凭据并可能刷新（`src/claude-oauth.ts#refreshClaudeIfDue`）。
 这种模式下跳过 Cursor 用量，不带 coding 数据。没有凭据时看 `src/*.test.mts` 里喂录制页的用例：
 `coding-contract.test.mts` 把上报器各条路径产出的载荷，交给站点真正的校验（`shared/coding-usage.ts` 与 `shared/ingest/agents.ts`）
@@ -240,7 +252,7 @@ ssh -J dsm misaka-jp 'mkdir -p /opt/lyjwpage/agents-reporter && cat > /opt/lyjwp
 ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/agents-reporter/.env && chmod 600 /opt/lyjwpage/agents-reporter/.env' < 本机那份.env
 ```
 
-先登录五家（见上），再起：
+先登录各家（见上），再起：
 
 ```bash
 ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter && docker compose up -d --no-deps agents-reporter'
@@ -251,7 +263,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 两个上报器一起换（第一次部署、或者两边都改了）：`cd /opt/lyjwpage && docker compose pull && docker compose up -d`。
 要回退就把 `compose.yaml` 里的 `latest` 临时换成 Actions 推过的 `sha-<短哈希>`。
 
-**换机器不用重登五家**：先停掉旧机器上的容器，再把旧机器的 `data/` 卷整个打包过来、
+**换机器不用重登各家**：先停掉旧机器上的容器，再把旧机器的 `data/` 卷整个打包过来、
 `chown -R 1000:1000 data`，登录态照用。两边同时跑会各自轮换同一份 refresh token、互相作废，
 所以顺序是「旧的停 → 拷卷 → 新的起」，旧目录等新机器验过再删。
 
