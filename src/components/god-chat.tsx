@@ -546,7 +546,7 @@ function Conversation({ className, archive, session: conversation }: { className
         className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-5 [&::-webkit-scrollbar]:hidden"
       >
         {!expanded ? (
-          // 手机上卡片高度放不下提示句加六道单列示例，提示句只在 sm 以上显示。
+          // 手机上卡片高度放不下提示句加单列示例，提示句只在 sm 以上显示。
           <div className="m-auto flex w-full max-w-md flex-col items-center gap-3 text-center sm:py-2">
             <p className="hidden text-sm leading-relaxed text-muted-foreground sm:block">
               Ask about LYJW, this site, or anything on the web.
