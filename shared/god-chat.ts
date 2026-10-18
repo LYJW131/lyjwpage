@@ -61,13 +61,14 @@ const doc = (key: string): GodChatPresetCall[] => [{ name: "read_project_doc", i
 const search = (query: string, category: "web" | "news"): GodChatPresetCall[] => [{ name: "web_search", input: { query, category } }];
 
 // 首页固定摆这六条，每条对应一种能力：实时状态、读设计文档画结构图、网页搜索排时间线、站点卡片、数字卡片加图表、设计会话。
+// 提改进那条还没说具体要改什么，由最低档问清需求；访客说出需求的下一条照常经 Clef 判成 design，再由先知开设计会话。
 export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
   { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
   { text: "这个网站是怎么搭起来的？", choice: "flash", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
   { text: "这周 AI 圈有什么大新闻？", choice: "think", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
   { text: "LYJW 最近在听什么歌？", choice: "flash", prefetch: status("nowListening", "listening"), show: "Show the recent listening card with show_card." },
   { text: "LYJW 用 AI 写了多少代码？", choice: "flash", prefetch: status("coding", "codingNow"), show: "Put the headline totals in a stats visual and the daily token trend in a chart visual." },
-  { text: "我想给这个网站提个改进", choice: "design" },
+  { text: "我想给这个网站提个改进", choice: "flash", show: "No concrete change yet, so do not plan anything: ask in a sentence or two what they would like to change or add. Once they describe it, a planner takes over." },
 ];
 
 // 回复里的原生图示：模型在正文里写一个以图示名为语言标记的代码块，内容是 JSON，浏览器按 src/lib/chat-visuals.ts 校验后用站点组件画。
@@ -151,6 +152,7 @@ export type ChartVisual = {
   subtitle?: string;
   unit?: string;
   labels: string[];
+  // 回复写完后每个序列与 labels 等长；流式画到一半时序列可以还没有、values 可以比 labels 短，渲染按 values 有几个画几个。
   series: { name: string; values: number[] }[];
 };
 export type TimelineVisual = { kind: "timeline"; title?: string; items: { time: string; title: string; text?: string }[] };
@@ -223,7 +225,7 @@ function stats(raw: Raw): StatsVisual | null {
   };
 }
 
-function chart(raw: Raw): ChartVisual | null {
+function chart(raw: Raw, _sanitize: VisualSanitizers, partial: boolean): ChartVisual | null {
   const type = raw.type;
   if (type !== "bar" && type !== "column" && type !== "line") return null;
   const maxLabels = type === "bar" ? LIMITS.barLabels : type === "column" ? LIMITS.columnLabels : LIMITS.linePoints;
@@ -231,11 +233,12 @@ function chart(raw: Raw): ChartVisual | null {
   if (!Array.isArray(raw.labels)) return null;
   const labels = raw.labels.slice(0, maxLabels).map((entry) => text(entry, LIMITS.label));
   if (labels.length < (type === "line" ? 2 : 1) || labels.some((label) => label === undefined)) return null;
-  const series = list(raw.series, 1, GOD_CHAT_CHART_SERIES, (entry) => {
+  const series = list(partial ? raw.series ?? [] : raw.series, partial ? 0 : 1, GOD_CHAT_CHART_SERIES, (entry) => {
     const item = object(entry);
     const name = text(item?.name, LIMITS.label);
-    if (!name || !Array.isArray(item?.values) || item.values.length < labels.length) return null;
-    const values = item.values.slice(0, labels.length);
+    const raw = partial ? item?.values ?? [] : item?.values;
+    if (!name || !Array.isArray(raw) || (!partial && raw.length < labels.length)) return null;
+    const values = raw.slice(0, labels.length);
     return values.every((v) => typeof v === "number" && Number.isFinite(v) && (type === "line" || v >= 0)) ? { name, values: values as number[] } : null;
   });
   if (!series) return null;
@@ -308,7 +311,7 @@ function diagram(raw: Raw): DiagramVisual | null {
   return edges ? { kind: "diagram", layers, edges, ...optional("title", text(raw.title, LIMITS.title)) } : null;
 }
 
-const PARSERS: Record<GodChatVisualKind, (raw: Raw, sanitize: VisualSanitizers) => ChatVisual | null> = {
+const PARSERS: Record<GodChatVisualKind, (raw: Raw, sanitize: VisualSanitizers, partial: boolean) => ChatVisual | null> = {
   stats,
   chart,
   timeline,
@@ -346,7 +349,8 @@ function parseRaw(source: string): Raw | null | undefined {
   }
 }
 
-export function checkGodChatVisual(kind: GodChatVisualKind, source: string, sanitize: VisualSanitizers = DROP_ALL): VisualCheck {
+// partial 只给浏览器流式画到一半的图示用：放宽「写完才算数」的那几条（目前只有图表的序列长度），Worker 与回复结束后的校验都不传。
+export function checkGodChatVisual(kind: GodChatVisualKind, source: string, sanitize: VisualSanitizers = DROP_ALL, partial = false): VisualCheck {
   let raw = parseRaw(source);
   let repaired = false;
   if (raw === undefined) {
@@ -355,7 +359,7 @@ export function checkGodChatVisual(kind: GodChatVisualKind, source: string, sani
     if (raw === undefined) return { visual: null, error: "json" };
     repaired = true;
   }
-  const visual = raw && PARSERS[kind](raw, sanitize);
+  const visual = raw && PARSERS[kind](raw, sanitize, partial);
   return visual ? { visual, ...(repaired && { repaired: true as const }) } : { visual: null, error: "shape" };
 }
 export const GOD_CHAT_HTML_THEME_VARS = ["--fg", "--muted", "--line", "--surface", "--accent", "--red", "--orange", "--yellow", "--green", "--blue", "--violet"] as const;
