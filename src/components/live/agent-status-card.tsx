@@ -298,7 +298,7 @@ export function AgentStatusCard({
     <Card
       id="agent-status"
       label="PROVIDER STATUS"
-      className={cn("md:col-span-2", className)}
+      className={cn("md:col-span-2 scroll-mt-28", className)}
       action={checked ? <span title={`${checked} UTC+8`}>{checked}</span> : undefined}
     >
       {data ? (
