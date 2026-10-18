@@ -37,6 +37,7 @@
     "katex": "~0.16.47",
     "lucide-react": "^1.55.0",
     "motion": "^14.1.0",
+    "pele": "1.6.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "^10.1.0",

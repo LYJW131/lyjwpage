@@ -34,10 +34,10 @@ function inlineCut(block: string): number {
   return cut;
 }
 
-const VISUAL_FENCE = new RegExp(`^\\s{0,3}(\`{3,}|~{3,})\\s*(html|${GOD_CHAT_VISUAL_KINDS.join("|")})\\s*$`, "i");
+const VISUAL_FENCE = new RegExp(`^\\s{0,3}(\`{3,}|~{3,})\\s*(html|mermaid|${GOD_CHAT_VISUAL_KINDS.join("|")})\\s*$`, "i");
 
 // 流式输出时只交出已经闭合的 Markdown：没收尾的代码块、正在长的表格、没配对的行内标记先压着，闭合后整块出现。
-// 例外是图示代码块（html 与原生图示）：换成同语言的空代码块，图示先占位，收尾后整块画出来。
+// 例外是图示代码块（html、mermaid 与原生图示）：换成同语言的空代码块，图示先占位，收尾后整块画出来。
 export function stableMarkdown(text: string): string {
   const lines = text.split("\n");
   const fences = lines.flatMap((line, i) => (FENCE.test(line) ? [i] : []));
@@ -46,7 +46,7 @@ export function stableMarkdown(text: string): string {
     const open = lines[at].match(VISUAL_FENCE);
     const head = lines.slice(0, at).join("\n").trimEnd();
     if (!open) return head;
-    // 没收尾的图示代码块带着已写出的部分补上收尾：JSON 图示按写完的条目先画，html 增量推进 iframe。末行可能是写到一半的收尾符，先压着。
+    // 没收尾的图示代码块带着已写出的部分补上收尾：JSON 图示按写完的条目先画，html 增量推进 iframe，mermaid 按写完的行重画。末行可能是写到一半的收尾符，先压着。
     const body = lines.slice(at + 1);
     if (body.length && /^\s*[`~]+\s*$/.test(body[body.length - 1])) body.pop();
     const written = body.join("\n");

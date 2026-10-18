@@ -2,6 +2,7 @@ import { createContext, memo, useContext, type ReactNode } from "react";
 import Markdown, { type Components, type ExtraProps } from "react-markdown";
 
 import { ChatHtmlPreview } from "@/components/chat-html-preview";
+import { ChatMermaid } from "@/components/chat-mermaid";
 import { ChatVisualView, VisualPlaceholder } from "@/components/chat-visual";
 import "katex/dist/katex.min.css";
 
@@ -40,6 +41,7 @@ function ReplyBlock({ node, children }: { node: ExtraProps["node"]; children: Re
   const streaming = useContext(Streaming);
   const block = fencedBlock(node);
   if (block?.language === "html") return <ChatHtmlPreview source={block.source} streaming={streaming} />;
+  if (block?.language === "mermaid") return <ChatMermaid source={block.source} streaming={streaming} fallback={<CodeBlock>{children}</CodeBlock>} />;
   if (!block || !isGodChatVisualKind(block.language)) return <CodeBlock>{children}</CodeBlock>;
   if (!block.source.trim()) return <VisualPlaceholder kind={block.language} />;
   const visual = streaming ? parsePartialVisual(block.language, block.source) : parseVisual(block.language, block.source);
