@@ -13,6 +13,7 @@ import {
   DEV_OVERRIDE_TTL_MS,
 } from "./dev-overrides";
 import { currentContext } from "./runtime";
+import { VORONOI_CARD_PATH, voronoiCardResponse } from "./voronoi-card";
 import { WEEK_CARD_PATH, weekCardResponse } from "./week-card";
 
 // 本地空库也可能返回 ok:true 空态，必须上游优先，否则空态会遮住生产数据。
@@ -58,7 +59,7 @@ async function overlayResponse(local: Response, load: () => Promise<unknown>): P
 export const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
 
 export function isPublicApiPath(path: string): boolean {
-  if (viewKeyByPath(path) || path === WEEK_CARD_PATH) return true;
+  if (viewKeyByPath(path) || path === WEEK_CARD_PATH || path === VORONOI_CARD_PATH) return true;
   return devOverridesEnabled() && (path === DEV_OVERRIDES_LIST_PATH || path.startsWith(`${DEV_OVERRIDE_PREFIX}/`));
 }
 
@@ -165,6 +166,7 @@ export async function publicResponse(request: Request): Promise<Response> {
   }
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
   if (url.pathname === WEEK_CARD_PATH) return weekCardResponse();
+  if (url.pathname === VORONOI_CARD_PATH) return voronoiCardResponse();
   const upstream = upstreamBase();
 
   if (overrides && (await overridesSwitchedOn())) {

@@ -43,7 +43,7 @@ test("只有一个来源：合计、最近一天、模型名单都是它的", ()
   assert.equal(view.updatedAt, NOW);
   assert.deepEqual(view.totals, {
     inputTokens: 150, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, totalTokens: 150,
-    apiEquivalentCostUSD: 0.15, costComplete: true, activeDays: 2, sessionCount: 4,
+    apiEquivalentCostUSD: 0.15, costComplete: true, activeDays: 2, modelCount: 2, sessionCount: 4,
   });
   assert.deepEqual(view.topModels, [{ model: "gpt-6", tokens: 90 }, { model: "gpt-5.5", tokens: 60 }]);
   const [codex] = view.agents;

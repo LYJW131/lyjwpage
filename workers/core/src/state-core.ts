@@ -1,4 +1,5 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { AwaitingReport } from "@shared/awaiting-report";
 import { HEARTBEAT_SERIES, recordCheck } from "@shared/health";
 import { withRequestState } from "@shared/request-state";
 import type { CoreCommand } from "@shared/ingest/prepare";
@@ -17,6 +18,7 @@ import { expireStatusTags, liveRoom } from "./live-platform";
 import { lagStatusTags } from "./lag-repurge";
 import { previewWorkerEnabled } from "./preview";
 import { historyArchive, requestStore, type Env } from "./runtime";
+import { voronoiCardRound } from "./voronoi-card";
 
 function transientFailure(error: unknown): boolean {
   const flags = error as { retryable?: unknown; overloaded?: unknown } | null;
@@ -104,6 +106,10 @@ export class StateCore extends WorkerEntrypoint<Env> implements StateCoreRpc {
           .catch((error: unknown) => console.error("[cron-heartbeat]", error));
       }
     }
+    await this.scoped(() => voronoiCardRound()).catch((error: unknown) => {
+      if (error instanceof AwaitingReport) console.warn("[voronoi-card]", error.message);
+      else console.error("[voronoi-card]", error);
+    });
     return { ran: true };
   }
 

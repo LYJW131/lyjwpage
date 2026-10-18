@@ -193,6 +193,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
 ### 数据契约与分桶规范
 - **日期分桶**：日行按 `Asia/Shanghai` 站点日划分；时刻一律 epoch 毫秒。
 - **`activeDays` 判定**：全部历史、全部 agent 里当天合计大于 0 的站点日**并集**，而非各来源天数相加。
+- **`modelCount` 判定**：全部历史、全部 agent 里用量大于 0 的模型名去重计数（名字归一与占位名规则同下一条「模型名」）；`coding/year` 的 `models` 只并了一年内每天的前几名，不能当全量。
 - **费用估算**：来源侧按公开 API 定价折算（云端用 Claude Code 自报的费用），站点只相加；`costComplete` 按天判，来源采集失败只体现在来源状态里。仅作为 token 量级参考，不代表实际账单。
 - **模型名**：按来源给的字符串原样分组，不做跨来源别名合并，只去掉末尾的上下文档位标记（如 `[1m]`，`shared/coding-models.ts#codingModelName`）；占位名（`shared/coding-models.ts#HIDDEN_CODING_MODELS`）不进排名、不当模型名展示。
 
