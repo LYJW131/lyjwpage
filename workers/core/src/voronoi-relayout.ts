@@ -110,14 +110,15 @@ export function relayoutRound(state: VoronoiState, latest: readonly ShareCell[],
 
   const hard = newHardIssues(fit.assessment, fit.layout);
   const soft = softDegraded(fit.assessment.score, fit.layout.chosenScore);
-  let next = state;
+  // 认可只管当下还在的那一处：消失过的问题再出现就算新出现，要逼重排。
+  const accepted = fit.layout.accepted.filter((issue) => fit.assessment.hard.includes(issue));
+  let next = accepted.length === state.layout.accepted.length ? state : { ...state, layout: { ...state.layout, accepted } };
   if (fit.structureChanged) {
-    const accepted = fit.layout.accepted.filter((issue) => fit.assessment.hard.includes(issue));
     const passed = hard.length === 0 && !soft;
     const layout = passed
       ? { ...fit.layout, accepted, chosenScore: fit.assessment.score, chosenAt: now }
       : { ...fit.layout, accepted };
-    next = { ...state, layout, lastFailedSearchAt: null };
+    next = { ...next, layout, lastFailedSearchAt: null };
     if (passed) return { state: next, changed: true, event: { kind: "adapted" } };
   }
   if (hard.length === 0 && !soft) return { state: next, changed: next !== state, event: { kind: "steady" } };

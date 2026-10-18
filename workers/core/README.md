@@ -37,7 +37,7 @@
 | POST | `/mcp` | 经 `AI_SERVICE` 转发公开 MCP，见 [AI Worker](../ai/README.md#mcp) |
 | GET | `/api/chat/usage` | 经 `AI_SERVICE` 转发对话配额查询 |
 | GET | `/api/cards/week.svg` | 近 7 天卡片（每日 commit 柱 + 每日 token 曲线）的 SVG，给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding/year`、`coding` 的 totals 与 `github-chart`，缓存头见 `src/week-card.ts#WEEK_CARD_CACHE_CONTROL` |
-| GET | `/api/cards/voronoi.svg` | 模型 token 占比的 Voronoi 卡片 SVG（每个模型一块领地，面积 = 份额），给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding` 的 totals 与 `topModels` 前 7 名，布局见下文「README 卡片的 Voronoi 布局」，缓存头与 week.svg 相同 |
+| GET | `/api/cards/voronoi.svg` | 模型 token 占比的 Voronoi 卡片 SVG（每个模型一块领地，面积 = 份额），给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding` 的 totals（含 `activeDays`、`modelCount`）与 `topModels` 前 7 名，布局见下文「README 卡片的 Voronoi 布局」，缓存头与 week.svg 相同 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
@@ -562,8 +562,8 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 
 - 状态存在 StateHub 的 `cards:voronoi` 键（`src/voronoi-card.ts#stateKey`）：各格的模型、颜色、站点、权重，选定时的评分和当时就有、被认可的硬性问题（`accepted`）。键为空时用 `src/voronoi-initial.ts` 里 lyjw 选定的 seed 2290 布局。
 - 请求端从存好的布局出发，站点不动，只迭代权重贴合最新份额（几毫秒），从不做多种子搜索。
-- 颜色按模型固定。名次互换不改结构；有模型进出前 7 时，新模型先原地接过掉出去那个模型的站点，没有可接的才插在 other 格中心附近，掉出去的份额并回 other。
-- 定时一轮（`StateCore.cronRound` 每轮末尾调 `voronoiCardRound`）做同样的求解，再按 `src/voronoi-relayout.ts#relayoutRound` 判断：结构变化通过质量检查就沿用；选定后新出现硬性问题（面积误差、格子消失、过短的边、贯穿、三角格或撞边尖角、≥5% 的格写不下名字）必须重排，可不等冷却期；软性变差（`softDegraded`）在上次重排一天后才重排。重排是 `SEARCH_SEEDS` 个种子的搜索，每轮只跑 `SEARCH_CHUNK` 个，候选只取没有硬性问题的；新布局要比当前好 `RELAYOUT_GAIN` 以上才替换，没换成的一天内不再搜。结果写回同一个键，日志前缀 `[voronoi-card]`。
+- 颜色按模型固定，跌出前 7 再回来时原色没被占着就还给它（`colors` 记着用过的颜色）。名次互换不改结构；有模型进出前 7 时，新模型先原地接过掉出去那个模型的站点，没有可接的才插在 other 格中心附近，掉出去的份额并回 other。
+- 定时一轮（`StateCore.cronRound` 每轮末尾调 `voronoiCardRound`）做同样的求解，再按 `src/voronoi-relayout.ts#relayoutRound` 判断：结构变化通过质量检查就沿用；选定后新出现硬性问题（认可过的问题一旦消失就从 `accepted` 去掉，再出现算新出现；面积误差、格子消失、过短的边、贯穿、三角格或撞边尖角、≥5% 的格写不下名字）必须重排，可不等冷却期；软性变差（`softDegraded`）在上次重排一天后才重排。重排是 `SEARCH_SEEDS` 个种子的搜索，每轮只跑 `SEARCH_CHUNK` 个，候选只取没有硬性问题的；新布局要比当前好 `RELAYOUT_GAIN` 以上才替换，没换成的一天内不再搜。结果写回同一个键，日志前缀 `[voronoi-card]`。
 
 ## 常驻上报器账本
 

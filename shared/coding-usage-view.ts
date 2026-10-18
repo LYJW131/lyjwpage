@@ -203,6 +203,7 @@ function codingTotals(totals: DayTotals, byDate: Map<string, DayTotals>, session
     apiEquivalentCostUSD: dollars(totals.apiEquivalentCostUSD),
     costComplete: totals.costComplete,
     activeDays: [...byDate.values()].filter((day) => day.totalTokens > 0).length,
+    modelCount: [...totals.models.values()].filter((tokens) => tokens > 0).length,
     sessionCount: sessionCounts.length ? sessionCounts.reduce((sum, value) => sum + value, 0) : null,
   };
 }

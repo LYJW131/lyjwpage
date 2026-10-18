@@ -2014,6 +2014,7 @@
           "apiEquivalentCostUSD": 31536.125668,
           "costComplete": false,
           "activeDays": 277,
+          "modelCount": 52,
           "sessionCount": 1832
         },
         "topModels": [
