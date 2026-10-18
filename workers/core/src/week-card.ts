@@ -127,7 +127,9 @@ const STYLE =
   "<style>:root{--bg:#ffffff;--fg:#1f2328;--mute:#656d76;--line:#1f2328;--bar:#d0d7de;--up:#cf222e;--down:#1a7f37}" +
   "@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--mute:#8b949e;--line:#e6edf3;--bar:#3d444d;--up:#ff7b72;--down:#3fb950}}</style>";
 
-function delta(change: number, value: string, tail: string) {
+// 基数为 0（前 7 天或全历史没有活动）时没有可比的值，画「—」，不假装持平。
+function delta(change: number | null, value: string, tail: string) {
+  if (change === null) return `<tspan font-weight="400" fill="var(--mute)">— ${tail}</tspan>`;
   const up = change >= 0;
   return `<tspan fill="var(--${up ? "up" : "down"})">${up ? "▲" : "▼"} ${value}</tspan> <tspan font-weight="400" fill="var(--mute)">${tail}</tspan>`;
 }
@@ -149,10 +151,14 @@ export function renderWeekCard(stats: WeekCardStats, copy: WeekCardCopy = WEEK_C
   const todayCommits = commits[7];
   const tokenAvg = weekTokens / 7;
   const commitAvg = weekCommits / 7;
-  const tokenMultiple = stats.tokenAvgAllTime > 0 ? tokenAvg / stats.tokenAvgAllTime : 0;
-  const commitMultiple = stats.commitAvgAllTime > 0 ? commitAvg / stats.commitAvgAllTime : 0;
-  const tokenPct = tokenAvg > 0 ? Math.round((todayTokens / tokenAvg - 1) * 100) : 0;
-  const commitPct = commitAvg > 0 ? Math.round((todayCommits / commitAvg - 1) * 100) : 0;
+  const ratio = (value: number, base: number) => (base > 0 ? value / base : null);
+  const tokenMultiple = ratio(tokenAvg, stats.tokenAvgAllTime);
+  const commitMultiple = ratio(commitAvg, stats.commitAvgAllTime);
+  const pct = (r: number | null) => (r === null ? null : Math.round((r - 1) * 100));
+  const tokenPct = pct(ratio(todayTokens, tokenAvg));
+  const commitPct = pct(ratio(todayCommits, commitAvg));
+  const multiple = (r: number | null) => delta(r === null ? null : r - 1, `${(r ?? 0).toFixed(1)}×`, copy.vsAllTime);
+  const percent = (p: number | null) => delta(p, `${Math.abs(p ?? 0)}%`, copy.vsWeek);
 
   const cx = (i: number) => X0 + i * (BAR_W + BAR_GAP) + BAR_W / 2;
   const tokenMax = Math.max(...tokens, 1);
@@ -186,10 +192,10 @@ export function renderWeekCard(stats: WeekCardStats, copy: WeekCardCopy = WEEK_C
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="${X0} 0 ${WIDTH} ${HEIGHT}" font-family="${FONT}" role="img" aria-label="${aria}">` +
     STYLE +
-    stat(0, copy.weekTokens, formatTokens(weekTokens), delta(tokenMultiple - 1, `${tokenMultiple.toFixed(1)}×`, copy.vsAllTime)) +
-    stat(1, copy.todayTokens, formatTokens(todayTokens), delta(tokenPct, `${Math.abs(tokenPct)}%`, copy.vsWeek)) +
-    stat(2, copy.weekCommits, weekCommits.toLocaleString("en-US"), delta(commitMultiple - 1, `${commitMultiple.toFixed(1)}×`, copy.vsAllTime)) +
-    stat(3, copy.todayCommits, todayCommits.toLocaleString("en-US"), delta(commitPct, `${Math.abs(commitPct)}%`, copy.vsWeek)) +
+    stat(0, copy.weekTokens, formatTokens(weekTokens), multiple(tokenMultiple)) +
+    stat(1, copy.todayTokens, formatTokens(todayTokens), percent(tokenPct)) +
+    stat(2, copy.weekCommits, weekCommits.toLocaleString("en-US"), multiple(commitMultiple)) +
+    stat(3, copy.todayCommits, todayCommits.toLocaleString("en-US"), percent(commitPct)) +
     bars +
     barLabel +
     `<path d="${monotonePath(xs, ys)}" fill="none" stroke="var(--line)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>` +
