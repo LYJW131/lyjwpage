@@ -47,7 +47,7 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
 
 // 首页的示例问题。对话第一条与某条原文一字不差时（点选或照打都算），Worker 跳过 Clef，按 choice 定档，
 // 并在第一次请求前替模型跑好 prefetch 里的工具调用，模型拿着结果直接作答。lyjw 要求示例用中文，是「界面文案英文」的例外；
-// 每条须在 14 个汉字宽以内：桌面两列等宽格放得下，换题时按钮尺寸不变。
+// 每条须在 14 个汉字宽以内：桌面两列等宽格放得下。
 // choice 是 workers/ai/src/chat/router.ts#CLEF_CHOICES 的键，prefetch 须是对应工具的合法输入，两者由 workers/ai 的测试核对。
 // show 是给模型的英文提示，点名这一题用哪种图示或卡片：示例是访客第一眼看到的能力展示，要让富渲染稳定出现。
 export type GodChatPresetCall =
@@ -60,22 +60,14 @@ const status = (...views: StatusViewKey[]): GodChatPresetCall[] => [{ name: "get
 const doc = (key: string): GodChatPresetCall[] => [{ name: "read_project_doc", input: { doc: key } }];
 const search = (query: string, category: "web" | "news"): GodChatPresetCall[] => [{ name: "web_search", input: { query, category } }];
 
-// 首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
+// 首页固定摆这六条，每条对应一种能力：实时状态、读设计文档画结构图、网页搜索排时间线、站点卡片、数字卡片加图表、设计会话。
 export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
   { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
   { text: "这个网站是怎么搭起来的？", choice: "flash", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
   { text: "这周 AI 圈有什么大新闻？", choice: "think", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
-  { text: "我想给这个网站提个改进", choice: "design" },
   { text: "LYJW 最近在听什么歌？", choice: "flash", prefetch: status("nowListening", "listening"), show: "Show the recent listening card with show_card." },
-  { text: "首页的实时数据从哪来？", choice: "flash", prefetch: doc("liveStatus"), show: "Draw the path from devices to the page as a diagram visual, one layer per hop." },
-  { text: "今天科技圈有什么新鲜事？", choice: "think", prefetch: search("tech news today", "news"), show: "Lay out the stories as a timeline visual." },
-  { text: "LYJW 最近在玩什么游戏？", choice: "flash", prefetch: status("playingNow", "playing", "questNow"), show: "Show the recent games card with show_card." },
-  { text: "这个网站用了哪些技术？", choice: "flash", prefetch: doc("overview"), show: "Draw the stack as a diagram visual with one layer each for the front end, the Workers, storage and the reporters." },
-  { text: "比较一下最新的几款大模型", choice: "think", prefetch: search("latest frontier AI model releases compared", "news"), show: "Compare the models in a chart visual (for example price per million output tokens) and give the verdict in prose." },
-  { text: "LYJW 最近在追什么番？", choice: "flash", prefetch: status("nowWatching", "watching"), show: "Show the recent watching card with show_card." },
-  { text: "网站最近的提交改了什么？", choice: "flash", prefetch: status("githubRepo"), show: "Lay out the latest commits as a timeline visual." },
-  { text: "LYJW 今天运动了吗？", choice: "flash", prefetch: status("activity", "workouts"), show: "Show the activity card with show_card." },
   { text: "LYJW 用 AI 写了多少代码？", choice: "flash", prefetch: status("coding", "codingNow"), show: "Put the headline totals in a stats visual and the daily token trend in a chart visual." },
+  { text: "我想给这个网站提个改进", choice: "design" },
 ];
 
 // 回复里的原生图示：模型在正文里写一个以图示名为语言标记的代码块，内容是 JSON，浏览器按 src/lib/chat-visuals.ts 校验后用站点组件画。
@@ -183,7 +175,7 @@ export type ChatVisual = StatsVisual | ChartVisual | TimelineVisual | MediaVisua
 export type VisualSanitizers = { image: (value: unknown) => string | undefined; link: (value: unknown) => string | undefined };
 const DROP_ALL: VisualSanitizers = { image: () => undefined, link: () => undefined };
 
-export type VisualCheck = { visual: ChatVisual; error?: undefined } | { visual: null; error: "json" | "shape" };
+export type VisualCheck = { visual: ChatVisual; error?: undefined; repaired?: true } | { visual: null; error: "json" | "shape" };
 
 type Raw = Record<string, unknown>;
 const LIMITS = GOD_CHAT_VISUAL_LIMITS;
@@ -324,15 +316,47 @@ const PARSERS: Record<GodChatVisualKind, (raw: Raw, sanitize: VisualSanitizers) 
   diagram,
 };
 
-export function checkGodChatVisual(kind: GodChatVisualKind, source: string, sanitize: VisualSanitizers = DROP_ALL): VisualCheck {
-  let raw: Raw | null;
+// 模型偶尔漏写末尾的 } 或 ]（DeepSeek 见过 `{"items":[…]` 少最外层的 }）。只补结尾缺的收尾括号：
+// 中间括号对不上、停在字符串里、末尾不是 } ] " 的不猜，照旧算 JSON 错。末尾那条限制让流式中途停在数字半截时不被补成一个错的数。
+export function closeVisualBrackets(source: string): string | null {
+  const trimmed = source.trimEnd();
+  if (!/[}\]"]$/.test(trimmed)) return null;
+  const open: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const char of trimmed) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === "{") open.push("}");
+    else if (char === "[") open.push("]");
+    else if ((char === "}" || char === "]") && open.pop() !== char) return null;
+  }
+  if (inString || !open.length) return null;
+  return trimmed + open.reverse().join("");
+}
+
+function parseRaw(source: string): Raw | null | undefined {
   try {
-    raw = object(JSON.parse(source));
+    return object(JSON.parse(source));
   } catch {
-    return { visual: null, error: "json" };
+    return undefined;
+  }
+}
+
+export function checkGodChatVisual(kind: GodChatVisualKind, source: string, sanitize: VisualSanitizers = DROP_ALL): VisualCheck {
+  let raw = parseRaw(source);
+  let repaired = false;
+  if (raw === undefined) {
+    const closed = closeVisualBrackets(source);
+    raw = closed === null ? undefined : parseRaw(closed);
+    if (raw === undefined) return { visual: null, error: "json" };
+    repaired = true;
   }
   const visual = raw && PARSERS[kind](raw, sanitize);
-  return visual ? { visual } : { visual: null, error: "shape" };
+  return visual ? { visual, ...(repaired && { repaired: true as const }) } : { visual: null, error: "shape" };
 }
 export const GOD_CHAT_HTML_THEME_VARS = ["--fg", "--muted", "--line", "--surface", "--accent", "--red", "--orange", "--yellow", "--green", "--blue", "--violet"] as const;
 

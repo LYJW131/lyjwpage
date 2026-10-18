@@ -37,7 +37,9 @@ export function formatVisualNumber(value: number, unit?: string, compact = false
 
 // 流式时图示的 JSON 还没写完：从后往前在每个闭合的 } 或 ] 处截断、补齐还开着的括号再校验，取第一个过得去的。
 // 时间线、数字卡片、媒体列表因此按写完的条目逐条长出来；图表要标签和数据都齐了才过得了校验。
+// 正写到字符串中间时，先补上引号收尾再试，条目里的文字跟着输出逐字长（流式的代码块末尾带一个换行，引号要补在它前面）；图表的标签与媒体的图片、链接写到一半没有意义，不这么补。
 const PARTIAL_TRIES = 40;
+const STREAM_TEXT_KINDS: ReadonlySet<GodChatVisualKind> = new Set(["stats", "timeline", "diagram"]);
 
 export function parsePartialVisual(kind: GodChatVisualKind, source: string): ChatVisual | null {
   const whole = parseVisual(kind, source);
@@ -59,6 +61,10 @@ export function parsePartialVisual(kind: GodChatVisualKind, source: string): Cha
       open.pop();
       cuts.push({ end: i + 1, closers: [...open].reverse().join("") });
     }
+  }
+  if (inString && !escaped && STREAM_TEXT_KINDS.has(kind)) {
+    const visual = parseVisual(kind, `${source.trimEnd()}"`);
+    if (visual) return visual;
   }
   for (const { end, closers } of cuts.slice(-PARTIAL_TRIES).reverse()) {
     const visual = parseVisual(kind, source.slice(0, end) + closers);

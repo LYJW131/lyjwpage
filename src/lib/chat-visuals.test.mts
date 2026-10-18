@@ -98,6 +98,31 @@ test("写到一半的图示 JSON 按写完的条目先画，图表要数据齐�
   assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
 });
 
+test("条目写到字符串中间时文字逐字长；图表与媒体不补半截字符串，停在数字半截也不补成错数", () => {
+  const growing = parsePartialVisual("timeline", '{"items":[{"time":"Mon","title":"A"},{"time":"Tue","title":"Launch","text":"Shipped the fir');
+  assert.ok(growing?.kind === "timeline");
+  assert.deepEqual(growing.items.map((item) => [item.title, item.text ?? null]), [["A", null], ["Launch", "Shipped the fir"]]);
+  const titling = parsePartialVisual("timeline", '{"items":[{"time":"Mon","title":"Lau\n');
+  assert.ok(titling?.kind === "timeline");
+  assert.equal(titling.items[0].title, "Lau");
+  assert.equal(parsePartialVisual("timeline", '{"items":[{"time":"Mon","title":"a\\'), null);
+  const media = parsePartialVisual("media", '{"items":[{"title":"A"},{"title":"B","image":"https://is1-ssl.mzstatic.com/ima');
+  assert.ok(media?.kind === "media");
+  assert.deepEqual(media.items.map((item) => item.title), ["A"]);
+  assert.equal(parsePartialVisual("chart", '{"type":"bar","labels":["a"],"series":[{"name":"n","values":[12'), null);
+});
+
+test("回复结束后漏写末尾括号的图示照画，中间括号对不上、停在字符串里的仍退回代码", () => {
+  const missingOuter = '{"items":[{"label":"Mac 前台窗口","value":"Chrome","note":"LYJW\'s Homepage"},{"label":"PlayStation","value":"离线"}]\n\n';
+  const stats = parseVisual("stats", missingOuter);
+  assert.ok(stats?.kind === "stats");
+  assert.equal(stats.items.length, 2);
+  assert.ok(parseVisual("timeline", '{"items":[{"time":"1","title":"a"}'));
+  assert.equal(parseVisual("stats", '{"items":[{"label":"a","value":"b"}}'), null);
+  assert.equal(parseVisual("stats", '{"items":[{"label":"a","value":"b'), null);
+  assert.equal(parseVisual("chart", '{"type":"bar","labels":["a"],"series":[{"name":"n","values":[1'), null);
+});
+
 test("结构图画不了的连线只丢那一条、重复 id 的节点只丢后一个，写到一半时先画已写完的层", () => {
   const layers = [
     { nodes: [{ id: "a", label: "A" }] },

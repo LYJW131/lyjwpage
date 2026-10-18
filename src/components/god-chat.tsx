@@ -61,12 +61,6 @@ const USAGE_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_USAGE_PATH)
 const USAGE_RETRY_MS = 5_000;
 const EDGE_GAP_PX = 12;
 const SUGGESTIONS = GOD_CHAT_PRESETS.map((preset) => preset.text);
-const SUGGESTION_SLOTS = 4;
-// 每隔这么久只换一格，四格轮流；淡出时长与 globals.css 的 headline-in 一起凑成一次换题。
-const SUGGESTION_ROTATE_MS = 3_000;
-const SUGGESTION_FADE_MS = 150;
-// 访客看到题到点下去有反应延迟：从开始淡出算起这么久内点到的，按换题前那道算。
-const SUGGESTION_CLICK_GRACE_MS = 500;
 
 export function GodChat({ className }: { className?: string }) {
   const archive = useSyncExternalStore(subscribeChatArchive, chatArchive.getSnapshot, chatArchive.getServerSnapshot);
@@ -552,8 +546,9 @@ function Conversation({ className, archive, session: conversation }: { className
         className="scrollbar-none flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-5 [&::-webkit-scrollbar]:hidden"
       >
         {!expanded ? (
-          <div className="m-auto flex max-w-md flex-col items-center gap-3 py-2 text-center">
-            <p className="text-sm leading-relaxed text-muted-foreground">
+          // 手机上卡片高度放不下提示句加六道单列示例，提示句只在 sm 以上显示。
+          <div className="m-auto flex w-full max-w-md flex-col items-center gap-3 text-center sm:py-2">
+            <p className="hidden text-sm leading-relaxed text-muted-foreground sm:block">
               Ask about LYJW, this site, or anything on the web.
             </p>
             <Suggestions disabled={streaming} onPick={submit} />
@@ -1016,62 +1011,17 @@ const DESIGN_CONSENT_COPY: Record<PlanLanguage, DesignConsentCopy> = {
 };
 
 function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
-  const [slots, setSlots] = useState<{ text: string; rotated: boolean; previous?: string; fadedAt?: number }[]>(() =>
-    SUGGESTIONS.slice(0, SUGGESTION_SLOTS).map((text) => ({ text, rotated: false })),
-  );
-  const [leaving, setLeaving] = useState<number | null>(null);
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const paused = hovered || focused;
-  const turn = useRef({ slot: 0, next: SUGGESTION_SLOTS });
-  useEffect(() => {
-    if (paused) return;
-    let swap: ReturnType<typeof setTimeout> | undefined;
-    const timer = setInterval(() => {
-      const { slot, next } = turn.current;
-      turn.current = { slot: (slot + 1) % SUGGESTION_SLOTS, next: (next + 1) % SUGGESTIONS.length };
-      const fadedAt = performance.now();
-      setLeaving(slot);
-      swap = setTimeout(() => {
-        setSlots((current) =>
-          current.map((entry, index) =>
-            index === slot ? { text: SUGGESTIONS[next], rotated: true, previous: entry.text, fadedAt } : entry,
-          ),
-        );
-        setLeaving(null);
-      }, SUGGESTION_FADE_MS);
-    }, SUGGESTION_ROTATE_MS);
-    return () => {
-      clearInterval(timer);
-      clearTimeout(swap);
-      setLeaving(null);
-    };
-  }, [paused]);
   return (
-    // 悬停或聚焦时停住轮播，免得点下去的那一刻换了题。
-    <div
-      className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2"
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      onFocus={() => setFocused(true)}
-      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
-    >
-      {slots.map(({ text, rotated, previous, fadedAt }, index) => (
+    <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+      {SUGGESTIONS.map((text) => (
         <button
-          key={index}
+          key={text}
           type="button"
           disabled={disabled}
-          onClick={() =>
-            onPick(previous !== undefined && performance.now() - (fadedAt ?? 0) < SUGGESTION_CLICK_GRACE_MS ? previous : text)
-          }
+          onClick={() => onPick(text)}
           className="paper-card overflow-hidden rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs whitespace-nowrap text-foreground transition-colors hover:bg-surface-hover disabled:opacity-50"
         >
-          {/* 淡出与淡入分在两层：入场动画的填充会盖住同一层上的 opacity 过渡。 */}
-          <span className={cn("inline-block transition-opacity duration-150", leaving === index && "opacity-0")}>
-            <span key={text} className={cn("inline-block", rotated && "animate-headline-in")}>
-              {text}
-            </span>
-          </span>
+          {text}
         </button>
       ))}
     </div>
