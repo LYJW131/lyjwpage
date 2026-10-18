@@ -232,6 +232,9 @@ test("前 7 之外合成 other，份额为 0 的不画", () => {
   assert.deepEqual(cells.map((c) => c.model), ["m0", "m1", "m2", "m3", "m4", "m5", "m6", "other"]);
   assert.equal(cells[7].tokens, 2 * B);
   assert.equal(shareCells(28 * B, top.slice(0, 7)).length, 7);
+  const named = shareCells(30 * B, [{ model: "other", tokens: 9 * B }, ...top.slice(0, 7)]);
+  assert.deepEqual(named.map((c) => c.model), ["m0", "m1", "m2", "m3", "m4", "m5", "m6", "other"]);
+  assert.equal(named[7].tokens, 2 * B);
 });
 
 test("GET /api/cards/voronoi.svg 回 SVG 和十分钟缓存头", async (t) => {

@@ -42,7 +42,8 @@ const RECT: Polygon = [[MX, MY], [MX + MW, MY], [MX + MW, MY + MH], [MX, MY + MH
 const RECT_S: Polygon = RECT.map(([x, y]) => [x, y * STRETCH]);
 
 export function shareCells(totalTokens: number, topModels: readonly ShareCell[]): ShareCell[] {
-  const top = topModels.slice(0, TOP_MODELS).filter((m) => m.tokens > 0);
+  // 真有模型叫 other 时并进汇总格：模型名是格子的唯一键，两个 other 会互相覆盖。
+  const top = topModels.filter((m) => m.model !== OTHER_MODEL).slice(0, TOP_MODELS).filter((m) => m.tokens > 0);
   const other = totalTokens - top.reduce((sum, m) => sum + m.tokens, 0);
   return other > 0 ? [...top, { model: OTHER_MODEL, tokens: other }] : top;
 }
