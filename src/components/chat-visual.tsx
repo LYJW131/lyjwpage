@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 
 import Image from "@/components/app-image";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { ChartVisual, ChatVisual, DiagramVisual, GodChatVisualKind, MediaShape, MediaVisual, StatsVisual, TimelineVisual } from "@shared/god-chat";
 
 // 顺序经 dataviz 校验器在亮暗两种底色上验过（相邻两色在色弱下仍可分、对底色对比度 ≥3:1）；重排或换色要重新跑校验。
-const SERIES_COLORS = ["var(--signal-blue)", "var(--signal-orange)", "var(--signal-violet)", "var(--signal-green)"];
+export const SERIES_COLORS = ["var(--signal-blue)", "var(--signal-orange)", "var(--signal-violet)", "var(--signal-green)"];
 
 const PLACEHOLDER_HEIGHT: Record<GodChatVisualKind, number> = { stats: 72, chart: 220, timeline: 120, media: 120, diagram: 200 };
 
@@ -15,8 +15,16 @@ export function VisualPlaceholder({ kind }: { kind: GodChatVisualKind }) {
   return <div className="my-3 animate-pulse bg-surface" style={{ height: PLACEHOLDER_HEIGHT[kind] }} />;
 }
 
+export function VisualFrame({ children, className, style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
+  return (
+    <div className={cn("my-3", className)} style={style}>
+      {children}
+    </div>
+  );
+}
+
 export function ChatVisualView({ visual }: { visual: ChatVisual }) {
-  return <div className="my-3">{visualBody(visual)}</div>;
+  return <VisualFrame>{visualBody(visual)}</VisualFrame>;
 }
 
 function visualBody(visual: ChatVisual) {
