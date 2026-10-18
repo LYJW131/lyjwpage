@@ -29,6 +29,14 @@ RUN (M=$(curl -fsSL "https://antigravity-cli-auto-updater-974169037036.us-centra
       && curl -fsSL "$U" -o /tmp/agy.tgz && echo "$H  /tmp/agy.tgz" | sha512sum -c - \
       && tar xzf /tmp/agy.tgz -C /tmp && mv /tmp/antigravity /usr/local/bin/agy && chmod 755 /usr/local/bin/agy && rm -f /tmp/agy.tgz \
       || echo "agy 装不上，跳过")
+# 官方安装脚本把程序装进 $HOME/.local/share/devin，与凭据同目录，会被 /data 卷遮住；按清单自己下载、校验 sha256。
+RUN (M=$(curl -fsSL https://static.devin.ai/cli/current/manifest.json) \
+      && T="$(uname -m)-unknown-linux" \
+      && U=$(echo "$M" | jq -r --arg t "$T" '.platforms[$t].url') && H=$(echo "$M" | jq -r --arg t "$T" '.platforms[$t].sha256') \
+      && curl -fsSL "$U" -o /tmp/devin.tgz && echo "$H  /tmp/devin.tgz" | sha256sum -c - \
+      && mkdir -p /opt/devin && tar xzf /tmp/devin.tgz -C /opt/devin && chmod -R a+rX /opt/devin \
+      && ln -sf /opt/devin/bin/devin /usr/local/bin/devin && rm -f /tmp/devin.tgz \
+      || echo "devin 装不上，跳过")
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./
