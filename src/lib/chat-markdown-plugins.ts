@@ -27,10 +27,14 @@ function fadeTokens(node: HastNode) {
       fadeTokens(child);
       return [child];
     }
-    return (child.value.match(STREAM_TOKEN) ?? []).map((token) => /^\s+$/.test(token)
+    return streamTokens(child.value).map((token) => /^\s+$/.test(token)
       ? { type: "text", value: token }
       : { type: "element", tagName: "span", properties: { className: ["stream-token"] }, children: [{ type: "text", value: token }] });
   });
+}
+
+export function streamTokens(text: string): string[] {
+  return text.match(STREAM_TOKEN) ?? [];
 }
 
 // 参考 Streamdown 的做法：流式期间把文字拆成一个个 span，React 只给新挂载的 span 播淡入，已经在的不重播；回复结束后不挂这个插件。

@@ -43,7 +43,7 @@ function ReplyBlock({ node, children }: { node: ExtraProps["node"]; children: Re
   if (!block || !isGodChatVisualKind(block.language)) return <CodeBlock>{children}</CodeBlock>;
   if (!block.source.trim()) return <VisualPlaceholder kind={block.language} />;
   const visual = streaming ? parsePartialVisual(block.language, block.source) : parseVisual(block.language, block.source);
-  if (visual) return <ChatVisualView visual={visual} />;
+  if (visual) return <ChatVisualView visual={visual} streaming={streaming} />;
   return streaming ? <VisualPlaceholder kind={block.language} /> : <CodeBlock>{children}</CodeBlock>;
 }
 

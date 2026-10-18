@@ -87,15 +87,70 @@ test("数字按 en-US 分组，单位跟在后面", () => {
   assert.equal(formatVisualNumber(1234), "1,234");
 });
 
-test("写到一半的图示 JSON 按写完的条目先画，图表要数据齐了才画", () => {
+test("写到一半的图示 JSON 按写完的条目先画", () => {
   const timeline = '{"title":"Week","items":[{"time":"Mon","title":"A"},{"time":"Tue","title":"B"},{"time":"We';
   const partial = parsePartialVisual("timeline", timeline);
   assert.ok(partial?.kind === "timeline");
   assert.deepEqual(partial.items.map((item) => item.title), ["A", "B"]);
   assert.equal(parsePartialVisual("timeline", '{"title":"Week","items":[{"time":"Mon","ti'), null);
   assert.equal(parsePartialVisual("stats", '{"items":[{"label":"a \\"q\\" }","value":"1"},{"lab')?.kind, "stats");
-  assert.equal(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1'), null);
   assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
+});
+
+test("图表等标签写完先出坐标框，数据按写完的数逐个补上，写到半截的数不画", () => {
+  assert.equal(parsePartialVisual("chart", '{"type":"line","title":"Tokens","labels":["10-06","10-07"'), null);
+  const frame = parsePartialVisual("chart", '{"type":"line","title":"Tokens","labels":["10-06","10-07","10-08"]');
+  assert.ok(frame?.kind === "chart");
+  assert.deepEqual([frame.labels.length, frame.series], [3, []]);
+  const growing = parsePartialVisual("chart", '{"type":"line","labels":["10-06","10-07","10-08"],"series":[{"name":"Tokens","values":[2.5,4.1,4');
+  assert.ok(growing?.kind === "chart");
+  assert.deepEqual(growing.series, [{ name: "Tokens", values: [2.5, 4.1] }]);
+  assert.equal(parseVisual("chart", '{"type":"line","labels":["a","b"],"series":[{"name":"n","values":[1]}]}'), null);
+});
+
+test("条目写到字符串中间时文字逐字长；图表与媒体不画半截字符串，停在数字半截也不补成错数", () => {
+  const growing = parsePartialVisual("timeline", '{"items":[{"time":"Mon","title":"A"},{"time":"Tue","title":"Launch","text":"Shipped the fir');
+  assert.ok(growing?.kind === "timeline");
+  assert.deepEqual(growing.items.map((item) => [item.title, item.text ?? null]), [["A", null], ["Launch", "Shipped the fir"]]);
+  const titling = parsePartialVisual("timeline", '{"items":[{"time":"Mon","title":"Lau\n');
+  assert.ok(titling?.kind === "timeline");
+  assert.equal(titling.items[0].title, "Lau");
+  assert.equal(parsePartialVisual("timeline", '{"items":[{"time":"Mon","title":"a\\'), null);
+  const media = parsePartialVisual("media", '{"items":[{"title":"A"},{"title":"B","image":"https://is1-ssl.mzstatic.com/ima');
+  assert.ok(media?.kind === "media");
+  assert.deepEqual(media.items.map((item) => [item.title, item.image ?? null]), [["A", null], ["B", null]]);
+  const chart = parsePartialVisual("chart", '{"type":"bar","labels":["a"],"series":[{"name":"n","values":[12');
+  assert.ok(chart?.kind === "chart");
+  assert.deepEqual(chart.series, [{ name: "n", values: [] }]);
+});
+
+test("流式解析随输出只增不减：写到键名、冒号、数字半截时正在写的条目不消失", () => {
+  const source = '{"items":[{"label":"Mac","value":"Chrome","note":"Homepage"},{"label":"PS5","value":"离线","note":"约 1.5 小时前"},{"label":"Steps","value":1234},{"label":"End","value":"x"}],"summary":{"label":"结论","value":"深夜","tone":"good"}}';
+  let shown = 0;
+  let summary = false;
+  for (let end = 1; end <= source.length; end++) {
+    const visual = parsePartialVisual("stats", `${source.slice(0, end)}\n`);
+    const count = visual?.kind === "stats" ? visual.items.length : 0;
+    assert.ok(count >= shown, `第 ${end} 个字符处条目从 ${shown} 掉到 ${count}`);
+    shown = count;
+    const hasSummary = visual?.kind === "stats" && visual.summary !== undefined;
+    assert.ok(hasSummary || !summary, `第 ${end} 个字符处结论消失`);
+    summary = hasSummary;
+  }
+  assert.equal(shown, 4);
+  const steps = parsePartialVisual("stats", '{"items":[{"label":"Steps","value":12');
+  assert.equal(steps, null);
+});
+
+test("回复结束后漏写末尾括号的图示照画，中间括号对不上、停在字符串里的仍退回代码", () => {
+  const missingOuter = '{"items":[{"label":"Mac 前台窗口","value":"Chrome","note":"LYJW\'s Homepage"},{"label":"PlayStation","value":"离线"}]\n\n';
+  const stats = parseVisual("stats", missingOuter);
+  assert.ok(stats?.kind === "stats");
+  assert.equal(stats.items.length, 2);
+  assert.ok(parseVisual("timeline", '{"items":[{"time":"1","title":"a"}'));
+  assert.equal(parseVisual("stats", '{"items":[{"label":"a","value":"b"}}'), null);
+  assert.equal(parseVisual("stats", '{"items":[{"label":"a","value":"b'), null);
+  assert.equal(parseVisual("chart", '{"type":"bar","labels":["a"],"series":[{"name":"n","values":[1'), null);
 });
 
 test("结构图画不了的连线只丢那一条、重复 id 的节点只丢后一个，写到一半时先画已写完的层", () => {

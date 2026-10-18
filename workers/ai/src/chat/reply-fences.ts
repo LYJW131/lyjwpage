@@ -35,12 +35,15 @@ export function replyFences(reply: string): ReplyFence[] {
 
 // 回复结束后浏览器按整块校验，过不了就把 JSON 原样当代码显示；Worker 用同一份校验记下来，否则只有访客看得到。
 // 没收尾的块多半是回复被字数上限截断，浏览器同样按整块校验，单独标出来。
-export function invalidVisuals(fences: ReplyFence[]): InvalidVisual[] {
+// repaired 是漏写末尾括号、补齐后画出来的块：访客看得到图，但记下来才知道模型多常这样写。
+export function checkVisuals(fences: ReplyFence[]): { invalid: InvalidVisual[]; repaired: GodChatVisualKind[] } {
   const invalid: InvalidVisual[] = [];
+  const repaired: GodChatVisualKind[] = [];
   for (const { language, source, closed } of fences) {
     if (!isGodChatVisualKind(language)) continue;
-    const { error } = checkGodChatVisual(language, source);
-    if (error) invalid.push({ kind: language, error: closed ? error : "unclosed" });
+    const check = checkGodChatVisual(language, source);
+    if (check.error) invalid.push({ kind: language, error: closed ? check.error : "unclosed" });
+    else if (check.repaired) repaired.push(language);
   }
-  return invalid;
+  return { invalid, repaired };
 }

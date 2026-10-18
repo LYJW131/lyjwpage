@@ -9,35 +9,56 @@ function positions(text: string, token: string): number[] {
 }
 
 // 行内标记只在最后一段里检查：段落之间隔着空行，前面的段落已经闭合。
-function inlineCut(block: string): number {
+// 没配对的粗体、斜体、删除线和行内代码先临时补上收尾符，里面的字跟着输出逐字出；补之前去掉末尾空白，
+// 收尾符紧贴空白就不算收尾，会把星号原样露出来。开头符后面还没有字、或紧跟空白（不算开头符）的照旧截住。
+// 链接和公式写到一半没有意义，仍从开头处截住。
+function closeInline(written: string): string {
+  // 末尾刚写出的 * 或 ~ 还看不出是收尾符、新开头还是它们的一半，先压着：不然会当成字露出来，或和补上的收尾符连成一串。
+  // 写完的收尾符压掉后会被原样补回，画面不变。
+  const block = written.replace(/[*~]+$/, "");
   let cut = block.length;
   const ticks = positions(block, "`");
-  if (ticks.length % 2 === 1) cut = Math.min(cut, ticks[ticks.length - 1]);
-  const masked = block.replace(/`[^`]*`/g, (span) => " ".repeat(span.length));
+  const openTick = ticks.length % 2 === 1 ? ticks[ticks.length - 1] : -1;
+  const masked = block.replace(/`[^`]*`/g, (span) => " ".repeat(span.length)).slice(0, openTick === -1 ? undefined : openTick);
 
-  const strong = positions(masked, "**");
-  if (strong.length % 2 === 1) cut = Math.min(cut, strong[strong.length - 1]);
-  const strike = positions(masked, "~~");
-  if (strike.length % 2 === 1) cut = Math.min(cut, strike[strike.length - 1]);
   const math = positions(masked, "$$");
   if (math.length % 2 === 1) cut = Math.min(cut, math[math.length - 1]);
-
-  const single = [...masked.replace(/\*\*/g, "  ").matchAll(/\*/g)]
-    .map((m) => m.index!)
-    .filter((i) => !/^[ \t]*$/.test(masked.slice(masked.lastIndexOf("\n", i - 1) + 1, i)) || masked[i + 1] !== " ");
-  if (single.length % 2 === 1) cut = Math.min(cut, single[single.length - 1]);
-
   const open = masked.lastIndexOf("[");
   if (open > masked.lastIndexOf("]")) cut = Math.min(cut, open);
   const target = masked.lastIndexOf("](");
   if (target !== -1 && masked.indexOf(")", target) === -1) cut = Math.min(cut, masked.lastIndexOf("[", target));
-  return cut;
+
+  const openers: { at: number; marker: string }[] = [];
+  if (openTick !== -1) openers.push({ at: openTick, marker: "`" });
+  const strong = positions(masked, "**");
+  if (strong.length % 2 === 1) openers.push({ at: strong[strong.length - 1], marker: "**" });
+  const strike = positions(masked, "~~");
+  if (strike.length % 2 === 1) openers.push({ at: strike[strike.length - 1], marker: "~~" });
+  const single = [...masked.replace(/\*\*/g, "  ").matchAll(/\*/g)]
+    .map((m) => m.index!)
+    .filter((i) => !/^[ \t]*$/.test(masked.slice(masked.lastIndexOf("\n", i - 1) + 1, i)) || masked[i + 1] !== " ");
+  if (single.length % 2 === 1) openers.push({ at: single[single.length - 1], marker: "*" });
+
+  let text = block.slice(0, cut);
+  const closers: string[] = [];
+  for (const { at, marker } of openers.filter((opener) => opener.at < cut).sort((a, b) => b.at - a.at)) {
+    const inside = text.slice(at + marker.length);
+    if (!inside.trim() || (marker !== "`" && /^\s/.test(inside))) {
+      text = text.slice(0, at);
+      closers.length = 0;
+      continue;
+    }
+    closers.push(marker);
+  }
+  return closers.length ? text.trimEnd() + closers.join("") : text;
 }
 
 const VISUAL_FENCE = new RegExp(`^\\s{0,3}(\`{3,}|~{3,})\\s*(html|${GOD_CHAT_VISUAL_KINDS.join("|")})\\s*$`, "i");
 
-// 流式输出时只交出已经闭合的 Markdown：没收尾的代码块、正在长的表格、没配对的行内标记先压着，闭合后整块出现。
+// 流式输出时只交出已经闭合的 Markdown：没收尾的代码块先压着，闭合后整块出现；没配对的行内标记见 closeInline。
 // 例外是图示代码块（html 与原生图示）：换成同语言的空代码块，图示先占位，收尾后整块画出来。
+// 表格等表头和分隔行都写完（分隔行后面有换行）才出现，之后写完的行直接放出，正在写的那一行逐格逐字出；
+// 分隔行写到一半时列数可能对不上表头，GFM 不认成表格，整块会先闪成一段竖线文字。
 export function stableMarkdown(text: string): string {
   const lines = text.split("\n");
   const fences = lines.flatMap((line, i) => (FENCE.test(line) ? [i] : []));
@@ -60,11 +81,21 @@ export function stableMarkdown(text: string): string {
   const block = text.slice(blockStart);
 
   const blockLines = block.split("\n").filter((line) => line.trim());
-  if (blockLines.length && blockLines.every((line) => line.trimStart().startsWith("|"))) return head.trimEnd();
+  if (blockLines.length && blockLines.every((line) => line.trimStart().startsWith("|"))) return (head + streamingTable(block)).trimEnd();
 
   // 已经配对的标记原样保留（末尾的反引号、星号可能正是收尾符）；最后一行只有块级起始标记、还没正文时整行先压着。
-  const tail = block.slice(0, inlineCut(block)).replace(/(^|\n)[ \t]*(#{1,6}|>|[-*+]|\d+[.)]|\||`{1,2}|~{1,2})[ \t]*$/, "$1");
+  const tail = closeInline(block).replace(/(^|\n)[ \t]*(#{1,6}|>|[-*+]|\d+[.)]|\||`{1,2}|~{1,2})[ \t]*$/, "$1");
   return (head + tail).trimEnd();
+}
+
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+function streamingTable(block: string): string {
+  const lines = block.split("\n");
+  const writing = lines.pop() ?? "";
+  if (lines.length < 2 || !TABLE_DELIMITER.test(lines[1])) return "";
+  const row = closeInline(writing);
+  return row.replace(/[|\s]/g, "") ? `${lines.join("\n")}\n${row}` : lines.join("\n");
 }
 
 // 模型的文字成块到达（一次几十字），原样画出来像整段蹦出。前端按积压量匀速放字：积压越多放得越快，

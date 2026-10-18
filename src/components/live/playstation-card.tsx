@@ -107,18 +107,22 @@ const TILE_TRACK = cn(
   "lg:auto-cols-[calc((100%-1.5rem)/3)]",
 );
 
-const COVER_PX = 112;
+export const COVER_PX = 112;
 
 export function mediaApp(category: string | null | undefined): boolean {
   return category?.endsWith("_media_app") === true;
 }
 
+export function playedFor(milliseconds: number): string {
+  const hours = milliseconds / 3_600_000;
+  if (hours >= 10) return `${Math.round(hours)} hrs`;
+  if (hours >= 1) return `${hours.toFixed(1).replace(/\.0$/, "")} hrs`;
+  return `${Math.max(1, Math.round(milliseconds / 60_000))} min`;
+}
+
 export function playTime(milliseconds: number | null, playCount: number): string {
   if (milliseconds == null) return `${playCount} ${playCount === 1 ? "play" : "plays"}`;
-  const hours = milliseconds / 3_600_000;
-  if (hours >= 10) return `${Math.round(hours)} hrs played`;
-  if (hours >= 1) return `${hours.toFixed(1).replace(/\.0$/, "")} hrs played`;
-  return `${Math.max(1, Math.round(milliseconds / 60_000))} min played`;
+  return `${playedFor(milliseconds)} played`;
 }
 
 type Tile = {

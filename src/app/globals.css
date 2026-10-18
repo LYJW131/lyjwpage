@@ -34,6 +34,9 @@
   --signal-orange: #d66b35;
   --signal-yellow: #d0a22c;
   --signal-green: oklch(0.52 0.1 151);
+  /* 白金奖杯的金属描边：两档银灰交替成斜向高光。 */
+  --platinum-hi: oklch(0.96 0.008 250);
+  --platinum-lo: oklch(0.64 0.012 250);
   --signal-blue: #3e70c9;
   --signal-violet: #8255c7;
 
@@ -90,6 +93,8 @@
 
   --signal-red: oklch(0.66 0.19 27);
   --signal-green: oklch(0.7 0.15 151);
+  --platinum-hi: oklch(0.97 0.008 250);
+  --platinum-lo: oklch(0.58 0.012 250);
   --signal-blue: oklch(0.66 0.16 261);
   --signal-violet: oklch(0.66 0.18 299);
 
@@ -659,6 +664,14 @@ html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"] {
     opacity: 0;
     transform: scale(2.6);
   }
+}
+
+/* 拿到白金的游戏封面：银白金属感的 2px 描边，斜向高光，静态不循环。 */
+.platinum-frame {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--muted), var(--muted)) padding-box,
+    linear-gradient(135deg, var(--platinum-lo), var(--platinum-hi) 30%, var(--platinum-lo) 55%, var(--platinum-hi) 80%, var(--platinum-lo)) border-box;
 }
 
 /* 流式回复里新出现的字：淡入叠在匀速放字上，最新的几个字是半透明的，像墨迹渐显。 */

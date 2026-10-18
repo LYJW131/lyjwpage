@@ -14,19 +14,41 @@ test("没收尾的代码块整块压着，收尾后再出现", () => {
   assert.equal(stableMarkdown(closed), closed);
 });
 
-test("正在长的表格压着，表格后面有空行才放出", () => {
-  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n| 1 |"), "Look:");
+test("表格等表头与分隔行写完才出，之后写完的行直接放出，正在写的行逐格出", () => {
+  assert.equal(stableMarkdown("Look:\n\n| a | b"), "Look:");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | -"), "Look:");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n"), "Look:\n\n| a | b |\n| - | - |");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n|"), "Look:\n\n| a | b |\n| - | - |");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n| 1 | tw"), "Look:\n\n| a | b |\n| - | - |\n| 1 | tw");
+  assert.equal(stableMarkdown("Look:\n\n| a | b |\n| - | - |\n| 1 | **bo"), "Look:\n\n| a | b |\n| - | - |\n| 1 | **bo**");
+  assert.equal(stableMarkdown("| a | b |\n| :-- | --: |\n| 1 | 2 |\n| 3"), "| a | b |\n| :-- | --: |\n| 1 | 2 |\n| 3");
+  assert.equal(stableMarkdown("| not | a table |\n| really"), "");
   const done = "Look:\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAfter";
   assert.equal(stableMarkdown(done), done);
 });
 
-test("没配对的行内标记从开头处截住", () => {
-  assert.equal(stableMarkdown("This is **very imp"), "This is");
-  assert.equal(stableMarkdown("Run `npm ins"), "Run");
-  assert.equal(stableMarkdown("An *italic wo"), "An");
+test("没配对的粗体、斜体、删除线、行内代码临时补上收尾符，里面的字逐字出", () => {
+  assert.equal(stableMarkdown("This is **very imp"), "This is **very imp**");
+  assert.equal(stableMarkdown("This is **very "), "This is **very**");
+  assert.equal(stableMarkdown("简单说：**各个采集端把数据上报给"), "简单说：**各个采集端把数据上报给**");
+  assert.equal(stableMarkdown("Run `npm ins"), "Run `npm ins`");
+  assert.equal(stableMarkdown("An *italic wo"), "An *italic wo*");
+  assert.equal(stableMarkdown("~~gone"), "~~gone~~");
+  assert.equal(stableMarkdown("~~gone~"), "~~gone~~");
+  assert.equal(stableMarkdown("then ~"), "then");
+  assert.equal(stableMarkdown("*it with *"), "*it with*");
+  assert.equal(stableMarkdown("**done*"), "**done**");
+  assert.equal(stableMarkdown("**bold *and it"), "**bold *and it***");
+  assert.equal(stableMarkdown("Code `a ** b"), "Code `a ** b`");
+  assert.equal(stableMarkdown("Price ** "), "Price");
+  assert.equal(stableMarkdown("a ** b"), "a");
+});
+
+test("链接和公式写到一半从开头处截住", () => {
   assert.equal(stableMarkdown("Read [the docs](https://exa"), "Read");
   assert.equal(stableMarkdown("Read [the do"), "Read");
-  assert.equal(stableMarkdown("~~gone"), "");
+  assert.equal(stableMarkdown("**See [the do"), "**See**");
+  assert.equal(stableMarkdown("So $$x^"), "So");
 });
 
 test("列表的星号不算未闭合的强调，尾巴上的半个标记不露出来", () => {
@@ -36,7 +58,7 @@ test("列表的星号不算未闭合的强调，尾巴上的半个标记不露�
 });
 
 test("前面段落里配好的标记不受最后一段影响", () => {
-  assert.equal(stableMarkdown("**Bold** para.\n\nNow `half"), "**Bold** para.\n\nNow");
+  assert.equal(stableMarkdown("**Bold** para.\n\nNow `half"), "**Bold** para.\n\nNow `half`");
 });
 
 test("已经闭合的行内标记在末尾也原样保留", () => {

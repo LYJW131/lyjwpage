@@ -11,8 +11,10 @@ export function visualImage(value: unknown): string | undefined {
   return parseImageSource(value) ? value : undefined;
 }
 
-export function parseVisual(kind: GodChatVisualKind, source: string): ChatVisual | null {
-  return checkGodChatVisual(kind, source, { image: visualImage, link: (value) => visualLink(value) ?? undefined }).visual;
+const SANITIZERS = { image: visualImage, link: (value: unknown) => visualLink(value) ?? undefined };
+
+export function parseVisual(kind: GodChatVisualKind, source: string, partial = false): ChatVisual | null {
+  return checkGodChatVisual(kind, source, SANITIZERS, partial).visual;
 }
 
 export function niceTicks(min: number, max: number, target = 4): number[] {
@@ -35,33 +37,76 @@ export function formatVisualNumber(value: number, unit?: string, compact = false
   return /^[%°]/.test(unit) ? `${number}${unit}` : `${number} ${unit}`;
 }
 
-// 流式时图示的 JSON 还没写完：从后往前在每个闭合的 } 或 ] 处截断、补齐还开着的括号再校验，取第一个过得去的。
-// 时间线、数字卡片、媒体列表因此按写完的条目逐条长出来；图表要标签和数据都齐了才过得了校验。
+// 流式时图示的 JSON 还没写完：先把末尾写到一半的部分去掉、补齐还开着的括号再校验，画出已写完的字段；
+// 不行再从后往前在每个闭合的 } 或 ] 处截断补齐，取第一个过得去的。
+// 写到一半的部分指没写完的数字或字面量、只有键名或冒号的字段、多出的逗号。只去掉这半截、不退回上一个闭合点，
+// 解析结果随输出只增不减：退回会让正在写的条目消失、写到值时再出现，来回闪。
+// 正写到字符串值中间时补上引号收尾，条目里的文字跟着输出逐字长（流式的代码块末尾带一个换行，引号要补在它前面）；
+// 图表的标签与媒体的图片、链接写到一半没有意义，这两种只画写完的字符串。
+// 图表等标签数组写完先出坐标框，数据按写完的数逐个补上；标签没写完就出框，横轴会随每个新标签重排。
 const PARTIAL_TRIES = 40;
+const STREAM_TEXT_KINDS: ReadonlySet<GodChatVisualKind> = new Set(["stats", "timeline", "diagram"]);
+const DANGLING_KEY = /"(?:[^"\\]|\\.)*"\s*:\s*$/;
+const BARE_TOKEN = /[-\w.+]+$/;
+const LONE_KEY = /[{,]\s*"(?:[^"\\]|\\.)*"$/;
+const CHART_LABELS_DONE = /"labels"\s*:\s*\[(?:\s*"(?:[^"\\]|\\.)*"\s*,?)*\s*\]/;
 
-export function parsePartialVisual(kind: GodChatVisualKind, source: string): ChatVisual | null {
-  const whole = parseVisual(kind, source);
-  if (whole) return whole;
+type Scan = { closers: string; inString: boolean; escaped: boolean; stringStart: number; cuts: { end: number; closers: string }[] };
+
+function scan(source: string): Scan {
   const open: string[] = [];
-  const cuts: { end: number; closers: string }[] = [];
+  const cuts: Scan["cuts"] = [];
   let inString = false;
   let escaped = false;
+  let stringStart = -1;
   for (let i = 0; i < source.length; i++) {
     const char = source[i];
     if (inString) {
       if (escaped) escaped = false;
       else if (char === "\\") escaped = true;
       else if (char === '"') inString = false;
-    } else if (char === '"') inString = true;
-    else if (char === "{") open.push("}");
+    } else if (char === '"') {
+      inString = true;
+      stringStart = i;
+    } else if (char === "{") open.push("}");
     else if (char === "[") open.push("]");
     else if (char === "}" || char === "]") {
       open.pop();
       cuts.push({ end: i + 1, closers: [...open].reverse().join("") });
     }
   }
-  for (const { end, closers } of cuts.slice(-PARTIAL_TRIES).reverse()) {
-    const visual = parseVisual(kind, source.slice(0, end) + closers);
+  return { closers: [...open].reverse().join(""), inString, escaped, stringStart, cuts };
+}
+
+// 对象里紧跟 { 或 , 的完整字符串只可能是还没写冒号的键名；数组里的同样写法是写完的值，留着。
+function settledPrefix(source: string, { inString, stringStart }: Scan): string {
+  let rest = inString ? source.slice(0, stringStart).trimEnd() : source.trimEnd().replace(BARE_TOKEN, "").trimEnd();
+  for (;;) {
+    let next = rest.replace(DANGLING_KEY, "").trimEnd().replace(/,$/, "").trimEnd();
+    const key = LONE_KEY.exec(next);
+    if (key && scan(next.slice(0, key.index + 1)).closers.startsWith("}")) next = next.slice(0, key.index + 1).trimEnd();
+    if (next === rest) return rest;
+    rest = next;
+  }
+}
+
+export function parsePartialVisual(kind: GodChatVisualKind, source: string): ChatVisual | null {
+  const whole = parseVisual(kind, source);
+  if (whole) return whole;
+  if (kind === "chart" && !CHART_LABELS_DONE.test(source)) return null;
+  const state = scan(source);
+  if (state.inString && !state.escaped && STREAM_TEXT_KINDS.has(kind)) {
+    const visual = parseVisual(kind, `${source.trimEnd()}"`, true);
+    if (visual) return visual;
+  }
+  const settled = settledPrefix(source, state);
+  const tail = scan(settled);
+  if (!tail.inString) {
+    const visual = parseVisual(kind, settled + tail.closers, true);
+    if (visual) return visual;
+  }
+  for (const { end, closers } of state.cuts.slice(-PARTIAL_TRIES).reverse()) {
+    const visual = parseVisual(kind, source.slice(0, end) + closers, true);
     if (visual) return visual;
   }
   return null;
