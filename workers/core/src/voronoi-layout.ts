@@ -6,13 +6,14 @@ export type ShareCell = { model: string; tokens: number };
 // 站点坐标与权重都在纵向拉伸后的求解空间里，原样存、原样拿来重建，才能复现选定那一刻的格子。
 export type LayoutCell = { model: string; color: string; site: Point; weight: number };
 
-// accepted 是选定时就有、被认可了的硬性问题（lyjw 选的 seed 2290 有一处撞边约 54°）；只有选定后新出现的硬性问题才逼重排。
+// accepted 是选定时就有、被认可了的硬性问题，按出现处记（问题:模型:边，见 assess 的 occurrences）；lyjw 选的 seed 2290 有一处撞边约 54°。
+// 只有不在里面的出现处才逼重排：同类问题换了地方或多出一处都算新出现。
 export type VoronoiLayout = {
   cells: LayoutCell[];
   chosenScore: number;
   chosenAt: number;
   seed: number | null;
-  accepted: HardIssue[];
+  accepted: string[];
   // 进过前 7 的模型各自用过的颜色；跌出去再回来时，原色没被别的模型占着就还给它。
   colors?: Record<string, string>;
 };
@@ -180,7 +181,9 @@ export type ScoreParts = {
   span: number;
 };
 
-export type Scored = { score: number; parts: ScoreParts; errMaxPct: number; minEdge: number; minAngle: number };
+export type WedgeAt = { cell: number; at: "t" | "b" | "l" | "r" | "triangle" };
+
+export type Scored = { score: number; parts: ScoreParts; errMaxPct: number; minEdge: number; minAngle: number; wedges: WedgeAt[]; spans: number[] };
 
 // 越低越好；系数与 LYJW131 生成脚本的 scoreOf 一致，是 lyjw 反复调过的定稿，改了会选出另一类布局。
 export function scoreLayout({ polys, areas, targets }: Pick<Solved, "polys" | "areas" | "targets">): Scored {
@@ -229,16 +232,25 @@ export function scoreLayout({ polys, areas, targets }: Pick<Solved, "polys" | "a
     const c = P > 0 ? (4 * Math.PI * areas[i]) / (P * P) : 0;
     if (c < 0.65) p.sliver += (0.65 - c) * 600;
   });
-  for (const poly of polys) {
+  const wedges: WedgeAt[] = [];
+  polys.forEach((poly, cell) => {
     const vs = poly.filter((v, k) => Math.hypot(v[0] - poly[(k + 1) % poly.length][0], v[1] - poly[(k + 1) % poly.length][1]) > 0.5);
-    if (vs.length <= 3) p.wedge += 150;
+    if (vs.length <= 3) {
+      p.wedge += 150;
+      wedges.push({ cell, at: "triangle" });
+    }
     for (let k = 0; k < vs.length; k++) {
       const b = vs[k];
       if (!onFrame(b) || RECT.some((q) => Math.hypot(q[0] - b[0], q[1] - b[1]) < 0.5)) continue;
       const ang = angleAt(vs[(k + vs.length - 1) % vs.length], b, vs[(k + 1) % vs.length]);
-      if (ang < 55) p.wedge += (55 - ang) ** 2 / 3;
+      if (ang < 55) {
+        p.wedge += (55 - ang) ** 2 / 3;
+        const at = Math.abs(b[1] - MY) < 0.5 ? "t" : Math.abs(b[1] - MY - MH) < 0.5 ? "b" : Math.abs(b[0] - MX) < 0.5 ? "l" : "r";
+        wedges.push({ cell, at });
+      }
     }
-  }
+  });
+  const spans: number[] = [];
   polys.forEach((poly, i) => {
     const side = { t: false, b: false, l: false, r: false };
     poly.forEach((a, k) => {
@@ -249,10 +261,13 @@ export function scoreLayout({ polys, areas, targets }: Pick<Solved, "polys" | "a
       else if (Math.abs(a[0] - MX) < 0.5) side.l = true;
       else side.r = true;
     });
-    if ((side.t && side.b) || (side.l && side.r)) p.span += 120 + (targets[i] / MAP_AREA) * 100 * 8;
+    if ((side.t && side.b) || (side.l && side.r)) {
+      p.span += 120 + (targets[i] / MAP_AREA) * 100 * 8;
+      spans.push(i);
+    }
   });
   const score = Object.values(p).reduce((s, v) => s + v, 0) + (errMaxPct > AREA_TOLERANCE_PCT ? 1e4 : 0);
-  return { score, parts: p, errMaxPct, minEdge, minAngle };
+  return { score, parts: p, errMaxPct, minEdge, minAngle, wedges, spans };
 }
 
 function spanAt(p: Polygon, y: number): [number, number] {
@@ -317,7 +332,7 @@ export function labelFor(poly: Polygon, name: string, sharePct: number): CellLab
 
 export type HardIssue = "area" | "vanished" | "short-edge" | "span" | "wedge" | "label";
 
-export type Assessment = Scored & { hard: HardIssue[]; labels: CellLabel[] };
+export type Assessment = Scored & { hard: HardIssue[]; occurrences: string[]; labels: CellLabel[] };
 
 export function assess(solved: Solved, cells: readonly ShareCell[]): Assessment {
   const scored = scoreLayout(solved);
@@ -325,18 +340,39 @@ export function assess(solved: Solved, cells: readonly ShareCell[]): Assessment 
   const labels = solved.polys.map((poly, i) => (poly.length >= 3
     ? labelFor(poly, cells[i].model, (cells[i].tokens / total) * 100)
     : { at: [0, 0] as Point, nameSize: null, show: false }));
-  const hard: HardIssue[] = [];
-  if (scored.errMaxPct > AREA_TOLERANCE_PCT) hard.push("area");
-  if (solved.polys.some((poly) => poly.length < 3 || polygonArea(poly) < 1)) hard.push("vanished");
-  if (scored.minEdge < HARD_MIN_EDGE) hard.push("short-edge");
-  if (scored.parts.span > 0) hard.push("span");
-  if (scored.parts.wedge > 0) hard.push("wedge");
-  if (labels.some((label) => label.show && label.nameSize === null)) hard.push("label");
-  return { ...scored, hard, labels };
+  const model = (i: number) => cells[i].model;
+  const occurrences: string[] = [];
+  if (scored.errMaxPct > AREA_TOLERANCE_PCT) occurrences.push("area");
+  solved.polys.forEach((poly, i) => {
+    if (poly.length < 3 || polygonArea(poly) < 1) occurrences.push(`vanished:${model(i)}`);
+  });
+  if (scored.minEdge < HARD_MIN_EDGE) occurrences.push("short-edge");
+  for (const i of scored.spans) occurrences.push(`span:${model(i)}`);
+  const seen = new Map<string, number>();
+  for (const { cell, at } of scored.wedges) {
+    const base = `wedge:${model(cell)}:${at}`;
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    occurrences.push(n === 1 ? base : `${base}#${n}`);
+  }
+  labels.forEach((label, i) => {
+    if (label.show && label.nameSize === null) occurrences.push(`label:${model(i)}`);
+  });
+  const hard = [...new Set(occurrences.map((key) => key.split(":")[0] as HardIssue))];
+  return { ...scored, hard, occurrences, labels };
 }
 
-export function newHardIssues(assessment: Pick<Assessment, "hard">, layout: Pick<VoronoiLayout, "accepted">): HardIssue[] {
-  return assessment.hard.filter((issue) => !layout.accepted.includes(issue));
+export function newHardIssues(assessment: Pick<Assessment, "occurrences">, layout: Pick<VoronoiLayout, "accepted">): string[] {
+  return assessment.occurrences.filter((key) => !layout.accepted.includes(key));
+}
+
+// 换人时被认可的出现处跟着站点走：接过站点的新模型继承掉出去那个模型的认可。
+function renameAccepted(accepted: readonly string[], renamed: ReadonlyMap<string, string>): string[] {
+  return accepted.map((key) => {
+    const [kind, model, ...rest] = key.split(":");
+    const heir = model === undefined ? undefined : renamed.get(model);
+    return heir ? [kind, heir, ...rest].join(":") : key;
+  });
 }
 
 // 软性变差：比选定时差到 1.5 倍，或多出 100 分以上，就记为该重排。
@@ -413,7 +449,13 @@ export function fitLayout(layout: VoronoiLayout, latest: readonly ShareCell[]): 
   const movable = new Set(next.flatMap((l, i) => (insertedModels.size && (insertedModels.has(l.model) || l.model === OTHER_MODEL) ? [i] : [])));
   const solved = refit(next.map((l) => l.site), next.map((l) => l.weight), cells, movable);
   const adaptedCells = next.map((l, i) => ({ ...l, site: solved.sites[i], weight: solved.weights[i] }));
-  const adapted: VoronoiLayout = { ...layout, cells: adaptedCells, colors: colorMemory(layout, adaptedCells) };
+  const renamed = new Map(heirs.map((heir, k) => [departed[k].model, heir.model]));
+  const adapted: VoronoiLayout = {
+    ...layout,
+    cells: adaptedCells,
+    colors: colorMemory(layout, adaptedCells),
+    accepted: renameAccepted(layout.accepted, renamed),
+  };
   return { layout: adapted, cells, solved, assessment: assess(solved, cells), structureChanged: true };
 }
 

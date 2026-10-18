@@ -102,12 +102,12 @@ test("跌出前 7 的模型回榜时，原色空着就还给它", () => {
 });
 
 test("认可过的问题消失后从认可里去掉，再出现就算新出现", () => {
-  const layout = { ...INITIAL_VORONOI_LAYOUT, accepted: ["wedge", "span"] as VoronoiLayout["accepted"] };
+  const layout = { ...INITIAL_VORONOI_LAYOUT, accepted: ["wedge:claude-fable-5:t", "span:other"] };
   const result = relayoutRound(steadyState(layout), REFERENCE, NOW, 0);
   assert.equal(result.event.kind, "steady");
   assert.equal(result.changed, true);
-  assert.deepEqual(result.state.layout.accepted, ["wedge"]);
-  const pruned = relayoutRound(steadyState({ ...INITIAL_VORONOI_LAYOUT, accepted: ["span"] }, NOW - DAY / 2), REFERENCE, NOW, 1);
+  assert.deepEqual(result.state.layout.accepted, ["wedge:claude-fable-5:t"]);
+  const pruned = relayoutRound(steadyState({ ...INITIAL_VORONOI_LAYOUT, accepted: ["span:other"] }, NOW - DAY / 2), REFERENCE, NOW, 1);
   assert.equal(pruned.state.search?.hard, true);
   assert.deepEqual(pruned.state.layout.accepted, []);
 });
@@ -123,7 +123,7 @@ test("结构变化后通过质量检查就沿用，选定分换成新结构下�
   assert.deepEqual(result.event, { kind: "adapted" });
   assert.equal(result.changed, true);
   assert.equal(result.state.layout.chosenScore, fitLayout(INITIAL_VORONOI_LAYOUT, fableSwapped).assessment.score);
-  assert.deepEqual(result.state.layout.accepted, ["wedge"]);
+  assert.deepEqual(result.state.layout.accepted, ["wedge:claude-fable-5-1:t"]);
   assert.equal(relayoutRound(result.state, fableSwapped, NOW + 300_000, 0).event.kind, "steady");
 });
 
@@ -161,6 +161,13 @@ test("硬性问题不等冷却期，选定时已认可的问题不算", () => {
   assert.deepEqual(result.event, { kind: "searching", next: 2 });
   assert.equal(result.state.search?.hard, true);
   assert.equal(relayoutRound(steadyState(INITIAL_VORONOI_LAYOUT, NOW - DAY / 2), REFERENCE, NOW, 1).event.kind, "steady");
+});
+
+test("同类问题换了地方也算新出现：认可的是那一处，不是那一类", () => {
+  const elsewhere = { ...INITIAL_VORONOI_LAYOUT, accepted: ["wedge:claude-opus-5:b"] };
+  const result = relayoutRound(steadyState(elsewhere, NOW - DAY / 2), REFERENCE, NOW, 1);
+  assert.equal(result.state.search?.hard, true);
+  assert.deepEqual(result.state.layout.accepted, []);
 });
 
 test("搜索出的布局不比当前好 30% 就不换，失败后一天内不再搜", () => {
