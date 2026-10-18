@@ -36,6 +36,7 @@
 | POST | `/api/chat` | 经 `AI_SERVICE` 转发首页对话，见 [AI Worker](../ai/README.md#首页对话) |
 | POST | `/mcp` | 经 `AI_SERVICE` 转发公开 MCP，见 [AI Worker](../ai/README.md#mcp) |
 | GET | `/api/chat/usage` | 经 `AI_SERVICE` 转发对话配额查询 |
+| GET | `/api/cards/week.svg` | 近 7 天卡片（每日 commit 柱 + 每日 token 曲线）的 SVG，给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding/year`、`coding` 的 totals 与 `github-chart`，缓存头见 `src/week-card.ts#WEEK_CARD_CACHE_CONTROL` |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在
@@ -161,7 +162,7 @@ ESA 首页不走数据上报通知：`lyjw131.com` 以 `lyjw.me` 为源站，边
 
 「正在听」的补全由采集 Worker 做，core 不请求 Apple：上报入口在提交前请采集 Worker 查好（`Collector.enrichTrack`），命令带着 `enrichment`（含 `null`）交给 `StateCore.commitIngest`，这里原样提交；Mac 存成遥测字段 `musicEnrichment`，HomePod 存成快照的 `enrichment`。回执后的歌词预热与没查出结果的重查也归采集 Worker（见它的 [README](../collector/README.md#apple-music)），重查多查到东西就经 `StateCore.commitEnrichmentPatch` 交来，由 `StateHub.commitEnrichmentPatch` 补写（`src/enrichment-patch.ts`）：与上报同一条串行队列，当前曲目的 `trackKey` 对不上（已换歌）就丢弃；否则按块合并（`mergeEnrichment`）：目录块、动态封面、队列歌曲 ID 各自只在比已存的好时才换，队列部分还要补丁所查的队列（`upcomingKeyOf`）与已存的 `upcomingTracks` 一致，同一首歌期间队列变了就不动队列；没有一块变好就丢弃。写回只改补全字段、不动接收时间，并推一次 `listening-now`。同一曲目的新上报目录没查到时沿用已存的目录与动态封面（`keepEnrichment`），队列歌曲 ID 跟本次上报的队列走。补全结果带 `trackKey`，读取时对不上当前曲目就按未补全处理。`listening/now` 读取与 `listening-now` 推送都只用存好的补全（`candidateFrom`）。最近播放首项的动态封面由采集 Worker 查好放进该项的 `motion`；没查出结果（`undefined`）时沿用同一项已存的那份（`src/stores/apple-music-store.ts`）。
 
-公开 API 为 `/api/status/*`，没有聚合端点；`/api/lyrics`、`/api/motion-artwork`、`/api/musickit/token` 由采集 Worker 回答。site Worker 渲染首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
+公开 API 为 `/api/status/*`，没有聚合端点（`/api/cards/*` 是给站外 `<img>` 引用的 SVG 卡片，不是状态视图，不进 `STATUS_VIEWS`）；`/api/lyrics`、`/api/motion-artwork`、`/api/musickit/token` 由采集 Worker 回答。site Worker 渲染首页时按卡读各条端点（`src/lib/first-screen.ts`），浏览器挂载后实时卡各自回源一次、之后各端点按各自周期轮询。服务端凭据不进入任何公开响应，没有通用 HTTP 数据库端点。跨域活动脉搏（pulse）的出口是 `GET /api/status/pulse`，见下面一节。
 
 ## 跨域活动脉搏（Pulse）
 
