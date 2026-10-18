@@ -12,6 +12,7 @@ import {
 } from "./providers/claude.js";
 import { fetchCodex, rowFromCodexUsage } from "./providers/codex.js";
 import { fetchCursor, rowFromCursorResponses } from "./providers/cursor.js";
+import { fetchDevin, rowFromDevinStatus } from "./providers/devin.js";
 import { fetchGrok, rowFromGrokBilling } from "./providers/grok.js";
 import type { AgentRow } from "./site.js";
 import { object } from "./windows.js";
@@ -43,6 +44,8 @@ function rowFromFixture(id: AgentId, body: unknown): AgentRow | null {
       return rowFromAntigravityQuota(body);
     case "cursor":
       return rowFromCursorResponses(body);
+    case "devin":
+      return rowFromDevinStatus(body);
   }
 }
 
@@ -77,6 +80,8 @@ async function collectLive(id: AgentId): Promise<AgentRow | null> {
       return fetchAntigravity();
     case "cursor":
       return fetchCursor();
+    case "devin":
+      return fetchDevin();
   }
 }
 
