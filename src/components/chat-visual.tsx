@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 
-import Image from "@/components/app-image";
+import { FadeInImage } from "@/components/fade-in-image";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
+import { streamTokens } from "@/lib/chat-markdown-plugins";
 import { formatVisualNumber, niceTicks } from "@/lib/chat-visuals";
 import { cn } from "@/lib/utils";
 import type { ChartVisual, ChatVisual, DiagramVisual, GodChatVisualKind, MediaShape, MediaVisual, StatsVisual, TimelineVisual } from "@shared/god-chat";
@@ -15,8 +16,21 @@ export function VisualPlaceholder({ kind }: { kind: GodChatVisualKind }) {
   return <div className="my-3 animate-pulse bg-surface" style={{ height: PLACEHOLDER_HEIGHT[kind] }} />;
 }
 
-export function ChatVisualView({ visual }: { visual: ChatVisual }) {
-  return <div className="my-3">{visualBody(visual)}</div>;
+const Streaming = createContext(false);
+
+// 流式时图示里的文字和正文一样拆成 stream-token 逐个淡入；按位置对齐，已经在的字不重播，回复结束后换回纯文本。
+function Ink({ children }: { children: string }) {
+  const streaming = useContext(Streaming);
+  if (!streaming) return children;
+  return streamTokens(children).map((token, i) => (/^\s+$/.test(token) ? token : <span key={i} className="stream-token">{token}</span>));
+}
+
+export function ChatVisualView({ visual, streaming = false }: { visual: ChatVisual; streaming?: boolean }) {
+  return (
+    <Streaming.Provider value={streaming}>
+      <div className="my-3">{visualBody(visual)}</div>
+    </Streaming.Provider>
+  );
 }
 
 function visualBody(visual: ChatVisual) {
@@ -38,8 +52,8 @@ function Heading({ title, subtitle }: { title?: string; subtitle?: string }) {
   if (!title && !subtitle) return null;
   return (
     <div className="mb-2">
-      {title && <div className="font-semibold">{title}</div>}
-      {subtitle && <div className="text-xs text-muted-foreground">{subtitle}</div>}
+      {title && <div className="font-semibold"><Ink>{title}</Ink></div>}
+      {subtitle && <div className="text-xs text-muted-foreground"><Ink>{subtitle}</Ink></div>}
     </div>
   );
 }
@@ -51,15 +65,15 @@ function Stats({ visual }: { visual: StatsVisual }) {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-x-4 gap-y-3">
         {visual.items.map((item, i) => (
           <div key={i} className="min-w-0">
-            <div className="text-xs text-muted-foreground">{item.label}</div>
-            <div className="text-xl leading-tight font-semibold">{item.value}</div>
-            {item.note && <div className="text-xs text-muted-foreground">{item.note}</div>}
+            <div className="text-xs text-muted-foreground"><Ink>{item.label}</Ink></div>
+            <div className="text-xl leading-tight font-semibold"><Ink>{item.value}</Ink></div>
+            {item.note && <div className="text-xs text-muted-foreground"><Ink>{item.note}</Ink></div>}
           </div>
         ))}
       </div>
       {summary && (
         <div className="border border-line px-3 py-2">
-          <div className="text-xs text-muted-foreground">{summary.label}</div>
+          <div className="text-xs text-muted-foreground"><Ink>{summary.label}</Ink></div>
           <div
             className={cn(
               "text-lg leading-tight font-semibold",
@@ -67,9 +81,9 @@ function Stats({ visual }: { visual: StatsVisual }) {
               summary.tone === "bad" && "text-signal-red",
             )}
           >
-            {summary.value}
+            <Ink>{summary.value}</Ink>
           </div>
-          {summary.note && <div className="text-xs text-muted-foreground">{summary.note}</div>}
+          {summary.note && <div className="text-xs text-muted-foreground"><Ink>{summary.note}</Ink></div>}
         </div>
       )}
     </div>
@@ -107,7 +121,7 @@ function DataTable({ visual }: { visual: ChartVisual }) {
           <tr key={i}>
             <th scope="row">{label}</th>
             {visual.series.map((series, j) => (
-              <td key={j}>{formatVisualNumber(series.values[i], visual.unit)}</td>
+              <td key={j}>{series.values[i] === undefined ? "—" : formatVisualNumber(series.values[i], visual.unit)}</td>
             ))}
           </tr>
         ))}
@@ -128,7 +142,7 @@ function Chart({ visual }: { visual: ChartVisual }) {
 }
 
 function Bars({ visual }: { visual: ChartVisual }) {
-  const max = Math.max(...visual.series.flatMap((series) => series.values)) || 1;
+  const max = Math.max(0, ...visual.series.flatMap((series) => series.values)) || 1;
   const thick = visual.series.length === 1 ? "h-3" : "h-2";
   return (
     <div aria-hidden className="grid grid-cols-[minmax(0,max-content)_1fr] items-center gap-x-3 gap-y-2 text-xs">
@@ -136,7 +150,7 @@ function Bars({ visual }: { visual: ChartVisual }) {
         <Fragment key={i}>
           <div className="max-w-[12rem] truncate" title={label}>{label}</div>
           <div className="space-y-0.5">
-            {visual.series.map((series, j) => (
+            {visual.series.map((series, j) => series.values[i] !== undefined && (
               <div key={j} className="flex items-center gap-2">
                 <div className={cn("shrink-0", thick)} style={{ width: `max(2px, calc((100% - 4.5rem) * ${series.values[i] / max}))`, background: SERIES_COLORS[j] }} />
                 <span className="shrink-0 text-muted-foreground tabular-nums">{formatVisualNumber(series.values[i], visual.unit, true)}</span>
@@ -178,7 +192,7 @@ function Plot({ visual }: { visual: ChartVisual }) {
   const [active, setActive] = useState<number | null>(null);
   const { labels, series, unit } = visual;
   const values = series.flatMap((s) => s.values);
-  const ticks = niceTicks(Math.min(...values), Math.max(...values));
+  const ticks = values.length ? niceTicks(Math.min(...values), Math.max(...values)) : niceTicks(0, 0);
   const low = ticks[0];
   const high = ticks[ticks.length - 1];
   const tickText = ticks.map((tick) => formatVisualNumber(tick, unit, true));
@@ -237,7 +251,7 @@ function Plot({ visual }: { visual: ChartVisual }) {
             series.map((s, j) => (
               <g key={j}>
                 <polyline points={s.values.map((v, i) => `${x(i)},${y(v)}`).join(" ")} fill="none" stroke={SERIES_COLORS[j]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                {(active === null ? [s.values.length - 1] : [active]).map((i) => (
+                {(active === null ? [s.values.length - 1] : [active]).filter((i) => s.values[i] !== undefined).map((i) => (
                   <circle key={i} cx={x(i)} cy={y(s.values[i])} r={4} fill={SERIES_COLORS[j]} stroke="var(--background)" strokeWidth={2} />
                 ))}
               </g>
@@ -263,7 +277,7 @@ function Plot({ visual }: { visual: ChartVisual }) {
             <div key={j} className="flex items-center gap-2">
               <span className="h-0.5 w-3 shrink-0" style={{ background: SERIES_COLORS[j] }} />
               <span className="min-w-0 flex-1 truncate text-muted-foreground">{s.name}</span>
-              <span className="pl-2 font-semibold tabular-nums">{formatVisualNumber(s.values[active], unit)}</span>
+              <span className="pl-2 font-semibold tabular-nums">{s.values[active] === undefined ? "—" : formatVisualNumber(s.values[active], unit)}</span>
             </div>
           ))}
         </div>
@@ -280,9 +294,9 @@ function Timeline({ visual }: { visual: TimelineVisual }) {
         {visual.items.map((item, i) => (
           <div key={i} className="relative pb-3 pl-4 last:pb-0">
             <span aria-hidden className="absolute top-[0.4rem] -left-[3.5px] size-1.5 bg-foreground" />
-            <div className="font-mono text-2xs text-muted-foreground">{item.time}</div>
-            <div className="font-medium">{item.title}</div>
-            {item.text && <div className="text-muted-foreground">{item.text}</div>}
+            <div className="font-mono text-2xs text-muted-foreground"><Ink>{item.time}</Ink></div>
+            <div className="font-medium"><Ink>{item.title}</Ink></div>
+            {item.text && <div className="text-muted-foreground"><Ink>{item.text}</Ink></div>}
           </div>
         ))}
       </div>
@@ -301,7 +315,7 @@ function Thumb({ src, shape }: { src?: string; shape: MediaShape }) {
   const sized = src?.includes("{w}") ? appleArtwork(src, px * ARTWORK_SCALE) : src;
   return (
     <div className={cn("relative shrink-0 overflow-hidden border border-line bg-muted", className)}>
-      {sized && <Image src={sized} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!needsOptimizing(sized)} />}
+      {sized && <FadeInImage src={sized} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!needsOptimizing(sized)} />}
     </div>
   );
 }
@@ -317,8 +331,8 @@ function Media({ visual }: { visual: MediaVisual }) {
             <>
               {showThumbs && <Thumb src={item.image} shape={visual.shape} />}
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{item.title}</div>
-                {item.subtitle && <div className="truncate text-xs text-muted-foreground">{item.subtitle}</div>}
+                <div className="truncate font-medium"><Ink>{item.title}</Ink></div>
+                {item.subtitle && <div className="truncate text-xs text-muted-foreground"><Ink>{item.subtitle}</Ink></div>}
               </div>
               {item.meta && <div className="shrink-0 text-xs text-muted-foreground tabular-nums">{item.meta}</div>}
             </>
@@ -422,8 +436,8 @@ function Diagram({ visual }: { visual: DiagramVisual }) {
                   }}
                   className="min-w-0 border border-line bg-surface px-2 py-1.5 text-center break-words"
                 >
-                  <div className="text-xs font-medium">{node.label}</div>
-                  {node.note && <div className="text-2xs text-muted-foreground">{node.note}</div>}
+                  <div className="text-xs font-medium"><Ink>{node.label}</Ink></div>
+                  {node.note && <div className="text-2xs text-muted-foreground"><Ink>{node.note}</Ink></div>}
                 </div>
               ))}
             </div>

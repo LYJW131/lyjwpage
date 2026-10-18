@@ -12,6 +12,8 @@ export function appleArtwork(url: string | null | undefined, size: number): stri
 }
 
 export const ARTWORK_SCALE = 3;
+// 首页听歌卡片每条的封面宽度；对话卡片拿同尺寸的图当模糊预览，首页加载过就直接命中缓存。
+export const TRACK_ROW_ART_PX = 44;
 
 // 预签名链接不能改查询串；构建期环境变量必须使用完整字面量才能替换。
 const SIGNED_IMAGE_OPTIMIZATION_ENABLED =
