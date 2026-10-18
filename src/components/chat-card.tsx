@@ -1,7 +1,7 @@
 "use client";
 
 import { FadeInImage } from "@/components/fade-in-image";
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import useSWR from "swr";
 
 import { Rings, ringValues } from "@/components/live/activity-card";
@@ -34,6 +34,10 @@ const TILE_PX = 80;
 const HERO_PX = 96;
 const HERO_WIDE_PX = 128;
 const RECENT_LIMIT = 8;
+// 流式中新到的卡片里，条目按这个间隔依次淡入；八项约半秒排完。
+const TILE_STAGGER_MS = 60;
+
+const Entering = createContext(false);
 
 const readStatus = async <T,>(path: string) => guardPolled(path, await fetchStatus<T>(path));
 
@@ -63,7 +67,17 @@ function useNow(intervalMs: number | null) {
   return now;
 }
 
-export function ChatCard({ card }: { card: GodChatCard }) {
+// entering 只看挂载那一刻：流式中新到的卡片淡入、条目依次跟上；回复随后结束也不摘动画，免得还没轮到的条目一下子跳出来。
+export function ChatCard({ card, entering = false }: { card: GodChatCard; entering?: boolean }) {
+  const [animate] = useState(entering);
+  return (
+    <div className={cn(animate && "animate-headline-in")}>
+      <Entering.Provider value={animate}>{cardBody(card)}</Entering.Provider>
+    </div>
+  );
+}
+
+function cardBody(card: GodChatCard) {
   switch (card) {
     case "nowListening":
       return <NowListeningCard />;
@@ -191,7 +205,8 @@ function Strip({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Tile({ href, image, title, subtitle, progress }: { href?: string | null; image: ReactNode; title: string; subtitle?: string | null; progress?: number | null }) {
+function Tile({ index, href, image, title, subtitle, progress }: { index: number; href?: string | null; image: ReactNode; title: string; subtitle?: string | null; progress?: number | null }) {
+  const entering = useContext(Entering);
   const body = (
     <>
       {image}
@@ -201,7 +216,7 @@ function Tile({ href, image, title, subtitle, progress }: { href?: string | null
     </>
   );
   return (
-    <li className="w-20 shrink-0 snap-start">
+    <li className={cn("w-20 shrink-0 snap-start", entering && "animate-headline-in")} style={entering ? { animationDelay: `${index * TILE_STAGGER_MS}ms` } : undefined}>
       {href ? (
         <a href={href} target="_blank" rel="noreferrer noopener" title={title} className="block hover:opacity-80">
           {body}
@@ -278,8 +293,8 @@ function ListeningCard() {
     <Frame title="Music" aside="Apple Music">
       {items?.length ? (
         <Strip label="Recently played">
-          {items.map((item) => (
-            <Tile key={item.id} href={item.link} image={<Thumb {...artwork(item.artwork)} />} title={item.title} subtitle={item.artist} />
+          {items.map((item, index) => (
+            <Tile key={item.id} index={index} href={item.link} image={<Thumb {...artwork(item.artwork)} />} title={item.title} subtitle={item.artist} />
           ))}
         </Strip>
       ) : (
@@ -323,8 +338,8 @@ function WatchingCard() {
     <Frame title="Watching" aside="Emby">
       {items?.length ? (
         <Strip label="Recently watched">
-          {items.map((item) => (
-            <Tile key={item.id} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} />
+          {items.map((item, index) => (
+            <Tile key={item.id} index={index} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} />
           ))}
         </Strip>
       ) : (
@@ -379,9 +394,10 @@ function PlayingCard() {
     <Frame title="Gaming" aside="PlayStation">
       {games?.length ? (
         <Strip label="Recently played">
-          {games.map((game) => (
+          {games.map((game, index) => (
             <Tile
               key={game.titleId}
+              index={index}
               image={<Thumb src={playstationImage(game.imageUrl, TILE_PX * PLAYSTATION_IMAGE_SCALE)} />}
               title={game.name}
               subtitle={playTime(game.playDurationMs, game.playCount)}

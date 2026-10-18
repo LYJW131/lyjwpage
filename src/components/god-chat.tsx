@@ -800,11 +800,26 @@ function PlannerActivity({ message, live }: { message: ChatBubble; live: boolean
     <div>
       {message.docs?.length ? <DocReads docs={message.docs} /> : null}
       {message.steps?.length ? <PlannerSteps steps={message.steps} live={live} /> : null}
-      {message.searches?.map((query, i) => (
-        <div key={i} className="label-mono mb-1.5 text-muted-foreground">
-          Searched “{query}”
-        </div>
-      ))}
+      {message.searches?.length ? <Searches searches={message.searches} live={live} /> : null}
+    </div>
+  );
+}
+
+// 搜了不止一次就收起来，和读文档、沙盒步骤一样一行带过；流式中摘要行跟着最新那次搜索走。
+function Searches({ searches, live }: { searches: string[]; live: boolean }) {
+  const line = (query: string) => `Searched “${query}”`;
+  return (
+    <div className="label-mono mb-1.5 text-muted-foreground">
+      {searches.length === 1 ? line(searches[0]) : (
+        <details className="space-y-1">
+          <summary className="cursor-pointer truncate">
+            {live ? line(searches[searches.length - 1]) : `Ran ${searches.length.toLocaleString("en-US")} searches`}
+          </summary>
+          <ol className="space-y-0.5 pl-3">
+            {searches.map((query, i) => <li key={i} className="leading-snug [overflow-wrap:anywhere]">{line(query)}</li>)}
+          </ol>
+        </details>
+      )}
     </div>
   );
 }
@@ -1245,8 +1260,7 @@ function ReplyBody({
         ),
       };
   const marks = [
-    // 流式中新到的卡片淡入上浮；回复结束后去掉动画类不会重播，翻历史时卡片直接在位。
-    ...cards.map(({ card, at }) => ({ at, design: true, node: <div key={card} className={cn(live && "animate-headline-in")}><ChatCard card={card} /></div> })),
+    ...cards.map(({ card, at }) => ({ at, design: true, node: <ChatCard key={card} card={card} entering={live} /> })),
     ...(dividerMark ? [dividerMark] : []),
   ].sort((a, b) => a.at - b.at);
   for (const { at, node, design } of marks) {
