@@ -163,6 +163,8 @@ function BrandMark({
       return <AntigravityColor size={20} className={className} />;
     case "grok":
       return <GrokIcon size={20} className={className} />;
+    case "devin":
+      return <DevinIcon size={20} className={className} />;
     case "openai":
     case "codex":
       return <CodexMark className={className} />;
