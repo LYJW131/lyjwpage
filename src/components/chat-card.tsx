@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "@/components/app-image";
+import { FadeInImage } from "@/components/fade-in-image";
 import { useEffect, useState, type ReactNode } from "react";
 import useSWR from "swr";
 
@@ -122,7 +122,7 @@ function Thumb({ src, optimize = false, wide = false, poster = false, px = wide 
         poster ? "aspect-[2/3] w-full" : wide ? "aspect-video w-32" : "aspect-square w-full",
       )}
     >
-      {src && <Image src={src} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!optimize} />}
+      {src && <FadeInImage src={src} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!optimize} />}
     </div>
   );
 }

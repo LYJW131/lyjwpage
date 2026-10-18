@@ -1,6 +1,6 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 
-import Image from "@/components/app-image";
+import { FadeInImage } from "@/components/fade-in-image";
 import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
 import { streamTokens } from "@/lib/chat-markdown-plugins";
 import { formatVisualNumber, niceTicks } from "@/lib/chat-visuals";
@@ -315,7 +315,7 @@ function Thumb({ src, shape }: { src?: string; shape: MediaShape }) {
   const sized = src?.includes("{w}") ? appleArtwork(src, px * ARTWORK_SCALE) : src;
   return (
     <div className={cn("relative shrink-0 overflow-hidden border border-line bg-muted", className)}>
-      {sized && <Image src={sized} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!needsOptimizing(sized)} />}
+      {sized && <FadeInImage src={sized} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!needsOptimizing(sized)} />}
     </div>
   );
 }
