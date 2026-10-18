@@ -40,7 +40,7 @@ export function AppVersionCard() {
         : null;
 
   // 先滚到顶再展开，避免滚动锚定抵消或取消平滑滚动。
-  // 不写死 behavior: smooth，以保留 CSS 的 prefers-reduced-motion 设置。
+  // 平滑由这里显式给出：html 只在页面有焦点时才平滑，只滚过滚轮的访客也要平滑回顶；减弱动态时瞬时。
   const wasVisible = useRef(false);
   const [atTop, setAtTop] = useState(false);
   useEffect(() => {
@@ -72,7 +72,8 @@ export function AppVersionCard() {
       frame = requestAnimationFrame(watch);
     };
     timer = window.setTimeout(() => settle(true), SCROLL_TO_TOP_TIMEOUT_MS);
-    window.scrollTo({ top: 0 });
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: still ? "auto" : "smooth" });
     frame = requestAnimationFrame(watch);
     return stop;
   }, [visible]);
