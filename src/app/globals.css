@@ -180,7 +180,8 @@
     max-height: 100% !important;
   }
 
-  html {
+  /* 只在页面内有焦点时平滑滚动，加载时跳到 #锚点 保持瞬时：平滑动画靠渲染帧推进，加载中会被首屏数据撑开的布局带偏，不出帧的内嵌浏览器里停在顶部。 */
+  html:focus-within {
     scroll-behavior: smooth;
   }
 
