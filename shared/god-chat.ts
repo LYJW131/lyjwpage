@@ -66,7 +66,7 @@ export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
   { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
   { text: "这个网站是怎么搭起来的？", choice: "flash", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
   { text: "这周 AI 圈有什么大新闻？", choice: "think", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
-  { text: "LYJW 最近在听什么歌？", choice: "flash", prefetch: status("nowListening", "listening"), show: "Show the recent listening card with show_card." },
+  { text: "LYJW 闲下来都做些什么？", choice: "flash", prefetch: status("listening", "watching", "playing"), show: "Show the recent listening, watching and playing cards with show_card, one after another, then sum up each in a line or two." },
   { text: "LYJW 用 AI 写了多少代码？", choice: "flash", prefetch: status("coding", "codingNow"), show: "Put the headline totals in a stats visual and the daily token trend in a chart visual." },
   { text: "我想给这个网站提个改进", choice: "flash", show: "No concrete change yet, so do not plan anything: ask in a sentence or two what they would like to change or add. Once they describe it, a planner takes over." },
 ];

@@ -56,7 +56,7 @@ import type {
   StatusResponse,
   TrackMotion,
 } from "@shared/types";
-import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
+import { appleArtwork, ARTWORK_SCALE, needsOptimizing, TRACK_ROW_ART_PX } from "@/lib/apple-artwork";
 import type { ArtworkDataUri, ArtworkPlaceholders } from "@/lib/artwork-placeholder";
 import { liveTrack } from "@shared/home-layout";
 import { fetchCatalogSongAlbum, queueOptionsFor } from "@/lib/web-player";
@@ -328,7 +328,7 @@ function TrackRow({
         )}
         {track.artwork && (
           <Image
-            src={appleArtwork(track.artwork, 44 * ARTWORK_SCALE)!}
+            src={appleArtwork(track.artwork, TRACK_ROW_ART_PX * ARTWORK_SCALE)!}
             alt=""
             fill
             sizes="44px"

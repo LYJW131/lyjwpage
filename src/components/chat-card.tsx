@@ -5,10 +5,11 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import useSWR from "swr";
 
 import { Rings, ringValues } from "@/components/live/activity-card";
-import { mediaApp, mergeVariants, playTime } from "@/components/live/playstation-card";
+import { COVER_PX as PLAYSTATION_COVER_PX, mediaApp, mergeVariants, playedFor, playTime } from "@/components/live/playstation-card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveNowListening, useStale } from "@/hooks/use-stale";
-import { appleArtwork, ARTWORK_SCALE, needsOptimizing } from "@/lib/apple-artwork";
+import { appleArtwork, ARTWORK_SCALE, needsOptimizing, TRACK_ROW_ART_PX } from "@/lib/apple-artwork";
+import { imageSourceFromInternalPath, optimizerImagePath } from "@/lib/image-proxy";
 import { ACTIVITY_STALE_MS } from "@shared/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@shared/limits";
 import { PLAYSTATION_IMAGE_SCALE, playstationImage } from "@/lib/playstation-image";
@@ -18,6 +19,7 @@ import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import { trackPositionMs } from "@/lib/track-position";
 import type {
   ActivityPayload,
+  TrophiesSummaryPayload,
   ListeningPayload,
   NowListeningPayload,
   PlaystationPlayingPayload,
@@ -99,13 +101,16 @@ function cardBody(card: GodChatCard) {
 }
 
 // 卡片按内容收缩，不铺满对话宽度；此刻卡的歌名专辑名可以很长，另设上限，超出就截断。
-function Frame({ title, aside, compact = false, children }: { title: string; aside?: ReactNode; compact?: boolean; children: ReactNode }) {
+// 只有一排「最近」条目的卡片不带标题栏：条目排自己的小标题已经说明是什么。
+function Frame({ title, aside, compact = false, children }: { title?: string; aside?: ReactNode; compact?: boolean; children: ReactNode }) {
   return (
     <section className={cn("w-fit min-w-[min(100%,20rem)] overflow-hidden border border-line bg-surface", compact ? "max-w-[min(100%,32rem)]" : "max-w-full")}>
-      <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-        <span className="label-mono text-muted-foreground">{title}</span>
-        {aside && <span className="label-mono min-w-0 truncate text-muted-foreground">{aside}</span>}
-      </header>
+      {title && (
+        <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+          <span className="label-mono text-muted-foreground">{title}</span>
+          {aside && <span className="label-mono min-w-0 truncate text-muted-foreground">{aside}</span>}
+        </header>
+      )}
       {children}
     </section>
   );
@@ -128,15 +133,30 @@ function Idle({ children }: { children: ReactNode }) {
   );
 }
 
-function Thumb({ src, optimize = false, wide = false, poster = false, px = wide ? HERO_WIDE_PX : TILE_PX }: { src: string | null; optimize?: boolean; wide?: boolean; poster?: boolean; px?: number }) {
+// 封面先垫一张模糊的低清图（首页同尺寸的图或几十像素的小图，多半已在缓存或很快到），高清图加载完再淡入盖上。
+// progress 把封面外框从左上角起顺时针逐段换成绿色，换了多长就是看了多少；不另占一行，有进度和没进度的条目文字对得齐。
+function Thumb({ src, preview, progress, platinum = false, optimize = false, wide = false, poster = false, px = wide ? HERO_WIDE_PX : TILE_PX }: { src: string | null; preview?: string | null; progress?: number | null; platinum?: boolean; optimize?: boolean; wide?: boolean; poster?: boolean; px?: number }) {
   return (
     <div
+      title={platinum ? "Platinum earned" : undefined}
       className={cn(
-        "relative shrink-0 overflow-hidden border border-line bg-muted",
+        "relative shrink-0 bg-muted",
+        platinum ? "platinum-frame" : "border border-line",
         poster ? "aspect-[2/3] w-full" : wide ? "aspect-video w-32" : "aspect-square w-full",
       )}
     >
-      {src && <FadeInImage src={src} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!optimize} />}
+      <div className="absolute inset-0 overflow-hidden">
+        {preview && preview !== src && <FadeInImage src={preview} alt="" aria-hidden fill sizes={`${px}px`} className="scale-110 object-cover blur-md" unoptimized />}
+        {src && <FadeInImage src={src} alt="" fill sizes={`${px}px`} className="object-cover" unoptimized={!optimize} />}
+      </div>
+      {/* 描边层铺满外框所在的盒子，2px 描边以盒子边缘为中线、外侧一半被 svg 自身裁掉，只剩正好压住 1px 外框的那一半：外框本身逐段变色，宽度不变。 */}
+      {progress != null && progress > 0 && (
+        <div aria-hidden className="pointer-events-none absolute -inset-px">
+          <svg className="size-full text-signal-green">
+            <rect width="100%" height="100%" pathLength={100} fill="none" stroke="currentColor" strokeWidth={2} strokeDasharray={`${Math.min(100, progress)} 100`} />
+          </svg>
+        </div>
+      )}
     </div>
   );
 }
@@ -196,7 +216,7 @@ function ProgressBar({ percent, className }: { percent?: number | null; classNam
 
 function Strip({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="border-t border-line pt-2 [header+&]:border-t-0">
+    <div className="border-t border-line pt-2 first:border-t-0 [header+&]:border-t-0">
       <div className="label-mono px-3 text-muted-foreground">{label}</div>
       <ul className="scrollbar-none flex snap-x snap-mandatory scroll-px-3 gap-3 overflow-x-auto px-3 pb-3 pt-2 [&::-webkit-scrollbar]:hidden">
         {children}
@@ -205,12 +225,11 @@ function Strip({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Tile({ index, href, image, title, subtitle, progress }: { index: number; href?: string | null; image: ReactNode; title: string; subtitle?: string | null; progress?: number | null }) {
+function Tile({ index, href, image, title, subtitle }: { index: number; href?: string | null; image: ReactNode; title: string; subtitle?: string | null }) {
   const entering = useContext(Entering);
   const body = (
     <>
       {image}
-      <ProgressBar percent={progress} className="mt-1 h-0.5" />
       <div className="mt-1.5 truncate text-2xs leading-tight">{title}</div>
       {subtitle && <div className="truncate text-2xs leading-tight text-muted-foreground">{subtitle}</div>}
     </>
@@ -234,7 +253,23 @@ function clock(ms: number) {
 }
 
 function artwork(url: string | null | undefined, px = TILE_PX) {
-  return url ? { src: appleArtwork(url, px * ARTWORK_SCALE), px, optimize: needsOptimizing(url) } : { src: null };
+  if (!url) return { src: null };
+  const optimize = needsOptimizing(url);
+  return { src: appleArtwork(url, px * ARTWORK_SCALE), preview: optimize ? null : appleArtwork(url, TRACK_ROW_ART_PX * ARTWORK_SCALE), px, optimize };
+}
+
+// R2 里的海报经图片变体出小图，不拉原图；变体按内容哈希永久缓存。
+const POSTER_WIDTH = 240;
+const PREVIEW_WIDTH = 32;
+
+function posterImage(url: string | null | undefined) {
+  if (!url || !imageSourceFromInternalPath(url)) return { src: url ?? null };
+  return { src: optimizerImagePath(url, POSTER_WIDTH, 75), preview: optimizerImagePath(url, PREVIEW_WIDTH, 50) };
+}
+
+// 首页游戏卡同尺寸的封面多半已在缓存；比对话里的格子大，直接当正式图用。
+function gameCover(url: string | null | undefined) {
+  return { src: playstationImage(url, PLAYSTATION_COVER_PX * PLAYSTATION_IMAGE_SCALE), preview: playstationImage(url, PREVIEW_WIDTH) };
 }
 
 function NowListeningCard() {
@@ -290,7 +325,7 @@ function ListeningCard() {
   const recent = useCardView<ListeningPayload>("listening");
   const items = recent.data?.items.slice(0, RECENT_LIMIT);
   return (
-    <Frame title="Music" aside="Apple Music">
+    <Frame>
       {items?.length ? (
         <Strip label="Recently played">
           {items.map((item, index) => (
@@ -335,11 +370,11 @@ function WatchingCard() {
   const recent = useCardView<WatchingPayload>("watching");
   const items = recent.data?.items.slice(0, RECENT_LIMIT);
   return (
-    <Frame title="Watching" aside="Emby">
+    <Frame>
       {items?.length ? (
         <Strip label="Recently watched">
           {items.map((item, index) => (
-            <Tile key={item.id} index={index} href={item.link} image={<Thumb src={item.poster} poster />} title={item.title} subtitle={item.subtitle} progress={item.progress || null} />
+            <Tile key={item.id} index={index} href={item.link} image={<Thumb {...posterImage(item.poster)} poster progress={item.progress || null} />} title={item.title} subtitle={item.subtitle} />
           ))}
         </Strip>
       ) : (
@@ -389,18 +424,21 @@ function PlayingNowCard() {
 
 function PlayingCard() {
   const recent = useCardView<PlaystationPlayingPayload>("playing");
+  // 奖杯摘要只用来给白金游戏换边框，没取到就都按普通边框画。
+  const trophies = useCardView<TrophiesSummaryPayload>("trophies");
+  const platinum = new Set((trophies.data?.titles ?? []).filter((title) => title.earned.platinum > 0).flatMap((title) => title.titleIds));
   const games = recent.data ? recentGames(recent.data).slice(0, RECENT_LIMIT) : undefined;
   return (
-    <Frame title="Gaming" aside="PlayStation">
+    <Frame>
       {games?.length ? (
         <Strip label="Recently played">
           {games.map((game, index) => (
             <Tile
               key={game.titleId}
               index={index}
-              image={<Thumb src={playstationImage(game.imageUrl, TILE_PX * PLAYSTATION_IMAGE_SCALE)} />}
+              image={<Thumb {...gameCover(game.imageUrl)} platinum={game.titleIds.some((id) => platinum.has(id))} />}
               title={game.name}
-              subtitle={playTime(game.playDurationMs, game.playCount)}
+              subtitle={game.playDurationMs == null ? null : playedFor(game.playDurationMs)}
             />
           ))}
         </Strip>
