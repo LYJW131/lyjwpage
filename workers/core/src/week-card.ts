@@ -37,7 +37,7 @@ export const WEEK_CARD_COPY: WeekCardCopy = {
   todayCommits: "TODAY",
   vsAllTime: "avg",
   vsWeek: "vs 7d",
-  today: "今天",
+  today: "TODAY",
 };
 
 const dayOf = (date: string) => Date.parse(`${date}T00:00:00Z`);
