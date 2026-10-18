@@ -87,15 +87,25 @@ test("数字按 en-US 分组，单位跟在后面", () => {
   assert.equal(formatVisualNumber(1234), "1,234");
 });
 
-test("写到一半的图示 JSON 按写完的条目先画，图表要数据齐了才画", () => {
+test("写到一半的图示 JSON 按写完的条目先画", () => {
   const timeline = '{"title":"Week","items":[{"time":"Mon","title":"A"},{"time":"Tue","title":"B"},{"time":"We';
   const partial = parsePartialVisual("timeline", timeline);
   assert.ok(partial?.kind === "timeline");
   assert.deepEqual(partial.items.map((item) => item.title), ["A", "B"]);
   assert.equal(parsePartialVisual("timeline", '{"title":"Week","items":[{"time":"Mon","ti'), null);
   assert.equal(parsePartialVisual("stats", '{"items":[{"label":"a \\"q\\" }","value":"1"},{"lab')?.kind, "stats");
-  assert.equal(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1'), null);
   assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
+});
+
+test("图表等标签写完先出坐标框，数据按写完的数逐个补上，写到半截的数不画", () => {
+  assert.equal(parsePartialVisual("chart", '{"type":"line","title":"Tokens","labels":["10-06","10-07"'), null);
+  const frame = parsePartialVisual("chart", '{"type":"line","title":"Tokens","labels":["10-06","10-07","10-08"]');
+  assert.ok(frame?.kind === "chart");
+  assert.deepEqual([frame.labels.length, frame.series], [3, []]);
+  const growing = parsePartialVisual("chart", '{"type":"line","labels":["10-06","10-07","10-08"],"series":[{"name":"Tokens","values":[2.5,4.1,4');
+  assert.ok(growing?.kind === "chart");
+  assert.deepEqual(growing.series, [{ name: "Tokens", values: [2.5, 4.1] }]);
+  assert.equal(parseVisual("chart", '{"type":"line","labels":["a","b"],"series":[{"name":"n","values":[1]}]}'), null);
 });
 
 test("条目写到字符串中间时文字逐字长；图表与媒体不画半截字符串，停在数字半截也不补成错数", () => {
@@ -109,7 +119,9 @@ test("条目写到字符串中间时文字逐字长；图表与媒体不画半�
   const media = parsePartialVisual("media", '{"items":[{"title":"A"},{"title":"B","image":"https://is1-ssl.mzstatic.com/ima');
   assert.ok(media?.kind === "media");
   assert.deepEqual(media.items.map((item) => [item.title, item.image ?? null]), [["A", null], ["B", null]]);
-  assert.equal(parsePartialVisual("chart", '{"type":"bar","labels":["a"],"series":[{"name":"n","values":[12'), null);
+  const chart = parsePartialVisual("chart", '{"type":"bar","labels":["a"],"series":[{"name":"n","values":[12');
+  assert.ok(chart?.kind === "chart");
+  assert.deepEqual(chart.series, [{ name: "n", values: [] }]);
 });
 
 test("流式解析随输出只增不减：写到键名、冒号、数字半截时正在写的条目不消失", () => {

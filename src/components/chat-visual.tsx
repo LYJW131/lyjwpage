@@ -121,7 +121,7 @@ function DataTable({ visual }: { visual: ChartVisual }) {
           <tr key={i}>
             <th scope="row">{label}</th>
             {visual.series.map((series, j) => (
-              <td key={j}>{formatVisualNumber(series.values[i], visual.unit)}</td>
+              <td key={j}>{series.values[i] === undefined ? "—" : formatVisualNumber(series.values[i], visual.unit)}</td>
             ))}
           </tr>
         ))}
@@ -142,7 +142,7 @@ function Chart({ visual }: { visual: ChartVisual }) {
 }
 
 function Bars({ visual }: { visual: ChartVisual }) {
-  const max = Math.max(...visual.series.flatMap((series) => series.values)) || 1;
+  const max = Math.max(0, ...visual.series.flatMap((series) => series.values)) || 1;
   const thick = visual.series.length === 1 ? "h-3" : "h-2";
   return (
     <div aria-hidden className="grid grid-cols-[minmax(0,max-content)_1fr] items-center gap-x-3 gap-y-2 text-xs">
@@ -150,7 +150,7 @@ function Bars({ visual }: { visual: ChartVisual }) {
         <Fragment key={i}>
           <div className="max-w-[12rem] truncate" title={label}>{label}</div>
           <div className="space-y-0.5">
-            {visual.series.map((series, j) => (
+            {visual.series.map((series, j) => series.values[i] !== undefined && (
               <div key={j} className="flex items-center gap-2">
                 <div className={cn("shrink-0", thick)} style={{ width: `max(2px, calc((100% - 4.5rem) * ${series.values[i] / max}))`, background: SERIES_COLORS[j] }} />
                 <span className="shrink-0 text-muted-foreground tabular-nums">{formatVisualNumber(series.values[i], visual.unit, true)}</span>
@@ -192,7 +192,7 @@ function Plot({ visual }: { visual: ChartVisual }) {
   const [active, setActive] = useState<number | null>(null);
   const { labels, series, unit } = visual;
   const values = series.flatMap((s) => s.values);
-  const ticks = niceTicks(Math.min(...values), Math.max(...values));
+  const ticks = values.length ? niceTicks(Math.min(...values), Math.max(...values)) : niceTicks(0, 0);
   const low = ticks[0];
   const high = ticks[ticks.length - 1];
   const tickText = ticks.map((tick) => formatVisualNumber(tick, unit, true));
@@ -251,7 +251,7 @@ function Plot({ visual }: { visual: ChartVisual }) {
             series.map((s, j) => (
               <g key={j}>
                 <polyline points={s.values.map((v, i) => `${x(i)},${y(v)}`).join(" ")} fill="none" stroke={SERIES_COLORS[j]} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                {(active === null ? [s.values.length - 1] : [active]).map((i) => (
+                {(active === null ? [s.values.length - 1] : [active]).filter((i) => s.values[i] !== undefined).map((i) => (
                   <circle key={i} cx={x(i)} cy={y(s.values[i])} r={4} fill={SERIES_COLORS[j]} stroke="var(--background)" strokeWidth={2} />
                 ))}
               </g>
@@ -277,7 +277,7 @@ function Plot({ visual }: { visual: ChartVisual }) {
             <div key={j} className="flex items-center gap-2">
               <span className="h-0.5 w-3 shrink-0" style={{ background: SERIES_COLORS[j] }} />
               <span className="min-w-0 flex-1 truncate text-muted-foreground">{s.name}</span>
-              <span className="pl-2 font-semibold tabular-nums">{formatVisualNumber(s.values[active], unit)}</span>
+              <span className="pl-2 font-semibold tabular-nums">{s.values[active] === undefined ? "—" : formatVisualNumber(s.values[active], unit)}</span>
             </div>
           ))}
         </div>
