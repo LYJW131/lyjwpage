@@ -37,7 +37,7 @@ export const WEEK_CARD_COPY: WeekCardCopy = {
   todayCommits: "TODAY",
   vsAllTime: "avg",
   vsWeek: "vs 7d",
-  today: "Today",
+  today: "今天",
 };
 
 const dayOf = (date: string) => Date.parse(`${date}T00:00:00Z`);
@@ -114,11 +114,12 @@ export function monotonePath(xs: number[], ys: number[]): string {
 const X0 = 28;
 const WIDTH = 724;
 const HEIGHT = 262;
-const BAR_W = 73;
-const BAR_GAP = 20;
+const BAR_GAP = 18;
+const BAR_W = (WIDTH - 7 * BAR_GAP) / 8;
 const BAR_TOP = 160;
 const BAR_H = 72;
-const STAT_PITCH = 2 * (BAR_W + BAR_GAP);
+// 四列间距 190：前两列与 Voronoi 卡的 TOKEN（28）、COST（218）竖向对齐。
+const STAT_PITCH = 190;
 
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 const MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
@@ -162,7 +163,7 @@ export function renderWeekCard(stats: WeekCardStats, copy: WeekCardCopy = WEEK_C
   const bars = commits
     .map((v, i) => {
       const h = Math.max(2, (v / commitMax) * BAR_H);
-      return `<rect x="${X0 + i * (BAR_W + BAR_GAP)}" y="${(BAR_TOP + BAR_H - h).toFixed(1)}" width="${BAR_W}" height="${h.toFixed(1)}" fill="var(--bar)"/>`;
+      return `<rect x="${(X0 + i * (BAR_W + BAR_GAP)).toFixed(2)}" y="${(BAR_TOP + BAR_H - h).toFixed(1)}" width="${BAR_W.toFixed(2)}" height="${h.toFixed(1)}" fill="var(--bar)" opacity=".7"/>`;
     })
     .join("");
   const peakBar = commits.indexOf(Math.max(...commits));
