@@ -1040,14 +1040,14 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
   assert.equal(news.requests[0].mcp_servers, undefined);
   assert.ok(news.requests[0].tools?.every((tool) => tool.type !== "mcp_toolset"));
 
-  const status = await run("LYJW 最近在听什么歌？");
+  const status = await run("LYJW 闲下来都做些什么？");
   assert.equal(status.clef, 0);
   assert.deepEqual(status.wanted, ["flash"]);
   const statusCall = status.requests[0].messages.at(-2)?.content;
   assert.ok(Array.isArray(statusCall) && statusCall[0].type === "tool_use" && statusCall[0].name === "get_site_status");
   assert.ok(status.events.some((event) => event.type === "tool" && event.views.includes("listening")));
 
-  const later = await run("LYJW 最近在听什么歌？", [{ role: "user", content: "hi" }, { role: "assistant", content: "Done.", seal: await sealExchange("test-seal", "hi", "Done.", undefined) }]);
+  const later = await run("LYJW 闲下来都做些什么？", [{ role: "user", content: "hi" }, { role: "assistant", content: "Done.", seal: await sealExchange("test-seal", "hi", "Done.", undefined) }]);
   assert.equal(later.clef, 1);
   assert.ok(later.requests[0].messages.every((message) => !Array.isArray(message.content) || message.content.every((block) => block.type !== "tool_use")));
 
