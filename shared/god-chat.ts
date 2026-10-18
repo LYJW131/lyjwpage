@@ -63,14 +63,14 @@ const search = (query: string, category: "web" | "news"): GodChatPresetCall[] =>
 // 首屏四条各对应一类能力：实时状态、读设计文档、网页搜索、设计会话。
 export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
   { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
-  { text: "这个网站是怎么搭起来的？", choice: "flash", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
+  { text: "这个网站是怎么搭起来的？", choice: "flash", prefetch: doc("overview"), show: "Draw the architecture as a Mermaid flowchart: a subgraph each for the reporters, the Workers and the browser, with arrows for how data flows." },
   { text: "这周 AI 圈有什么大新闻？", choice: "think", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
   { text: "我想给这个网站提个改进", choice: "design" },
   { text: "LYJW 最近在听什么歌？", choice: "flash", prefetch: status("nowListening", "listening"), show: "Show the recent listening card with show_card." },
-  { text: "首页的实时数据从哪来？", choice: "flash", prefetch: doc("liveStatus"), show: "Draw the path from devices to the page as a diagram visual, one layer per hop." },
+  { text: "首页的实时数据从哪来？", choice: "flash", prefetch: doc("liveStatus"), show: "Draw the path from devices to the page as a Mermaid flowchart, one node per hop." },
   { text: "今天科技圈有什么新鲜事？", choice: "think", prefetch: search("tech news today", "news"), show: "Lay out the stories as a timeline visual." },
   { text: "LYJW 最近在玩什么游戏？", choice: "flash", prefetch: status("playingNow", "playing", "questNow"), show: "Show the recent games card with show_card." },
-  { text: "这个网站用了哪些技术？", choice: "flash", prefetch: doc("overview"), show: "Draw the stack as a diagram visual with one layer each for the front end, the Workers, storage and the reporters." },
+  { text: "这个网站用了哪些技术？", choice: "flash", prefetch: doc("overview"), show: "Draw the stack as a Mermaid flowchart with a subgraph each for the front end, the Workers, storage and the reporters." },
   { text: "比较一下最新的几款大模型", choice: "think", prefetch: search("latest frontier AI model releases compared", "news"), show: "Compare the models in a chart visual (for example price per million output tokens) and give the verdict in prose." },
   { text: "LYJW 最近在追什么番？", choice: "flash", prefetch: status("nowWatching", "watching"), show: "Show the recent watching card with show_card." },
   { text: "网站最近的提交改了什么？", choice: "flash", prefetch: status("githubRepo"), show: "Lay out the latest commits as a timeline visual." },
@@ -107,20 +107,6 @@ export const GOD_CHAT_VISUAL_EXAMPLES = {
     shape: "square",
     items: [{ title: "Song or album", subtitle: "Artist", meta: "2h ago", image: "https://is1-ssl.mzstatic.com/image/thumb/a/b/{w}x{h}bb.jpg", url: "https://music.apple.com/" }],
   },
-  diagram: {
-    title: "Request path",
-    layers: [
-      { label: "Client", nodes: [{ id: "web", label: "Browser" }, { id: "app", label: "Mobile app" }] },
-      { label: "Edge", nodes: [{ id: "api", label: "API", note: "auth and rate limits" }] },
-      { label: "Storage", nodes: [{ id: "db", label: "Database" }, { id: "cache", label: "Cache" }] },
-    ],
-    edges: [
-      { from: "web", to: "api", label: "HTTPS" },
-      { from: "app", to: "api" },
-      { from: "api", to: "db" },
-      { from: "api", to: "cache" },
-    ],
-  },
 } as const;
 
 export type GodChatVisualKind = keyof typeof GOD_CHAT_VISUAL_EXAMPLES;
@@ -141,9 +127,6 @@ export const GOD_CHAT_VISUAL_LIMITS = {
   title: 120,
   text: 400,
   unit: 12,
-  diagramLayers: 6,
-  diagramNodes: 4,
-  diagramEdges: 16,
 } as const;
 
 export function isGodChatVisualKind(value: string): value is GodChatVisualKind {
@@ -169,14 +152,7 @@ export type MediaVisual = {
   shape: MediaShape;
   items: { title: string; subtitle?: string; meta?: string; image?: string; url?: string }[];
 };
-export type DiagramNode = { id: string; label: string; note?: string };
-export type DiagramVisual = {
-  kind: "diagram";
-  title?: string;
-  layers: { label?: string; nodes: DiagramNode[] }[];
-  edges: { from: string; to: string; label?: string }[];
-};
-export type ChatVisual = StatsVisual | ChartVisual | TimelineVisual | MediaVisual | DiagramVisual;
+export type ChatVisual = StatsVisual | ChartVisual | TimelineVisual | MediaVisual;
 
 // 图片与链接只丢不拒：不合格的只去掉那一项，条目照留，所以整块过不过校验与它们无关。
 // 默认全丢：只判断过不过校验时用不着它们，要画图的一方传入自己的放行规则。
@@ -286,42 +262,11 @@ function media(raw: Raw, sanitize: VisualSanitizers): MediaVisual | null {
   return { kind: "media", shape, items, ...optional("title", text(raw.title, LIMITS.title)) };
 }
 
-// 连线只接相邻两层：跨层的线会穿过中间那层的方框，渲染不画绕行。
-// 画不了的连线（同层、跨层、指向不存在的节点）只丢那一条，不拒整张图：模型偶尔连一条同层线，整张退回成 JSON 代码块代价太大。
-function diagram(raw: Raw): DiagramVisual | null {
-  const seen = new Set<string>();
-  const layers = list(raw.layers, 1, LIMITS.diagramLayers, (entry) => {
-    const layer = object(entry);
-    const nodes = list(layer?.nodes, 1, LIMITS.diagramNodes, (value) => {
-      const node = object(value);
-      const id = text(node?.id, LIMITS.short);
-      const label = text(node?.label, LIMITS.short);
-      if (!node || !id || !label || seen.has(id)) return null;
-      seen.add(id);
-      return { id, label, ...optional("note", text(node.note, LIMITS.label)) };
-    });
-    return layer && nodes ? { nodes, ...optional("label", text(layer.label, LIMITS.short)) } : null;
-  });
-  if (!layers) return null;
-  // 层深按丢掉坏层之后的顺序算：画出来相邻的两层，连线就该留着。
-  const depth = new Map(layers.flatMap((layer, index) => layer.nodes.map((node) => [node.id, index] as const)));
-  const edges = list(raw.edges ?? [], 0, LIMITS.diagramEdges, (entry) => {
-    const edge = object(entry);
-    const from = text(edge?.from, LIMITS.short);
-    const to = text(edge?.to, LIMITS.short);
-    const gap = from !== undefined && to !== undefined ? Math.abs((depth.get(from) ?? NaN) - (depth.get(to) ?? NaN)) : NaN;
-    if (!edge || !from || !to || gap !== 1) return null;
-    return { from, to, ...optional("label", text(edge.label, LIMITS.short)) };
-  });
-  return edges ? { kind: "diagram", layers, edges, ...optional("title", text(raw.title, LIMITS.title)) } : null;
-}
-
 const PARSERS: Record<GodChatVisualKind, (raw: Raw, sanitize: VisualSanitizers) => ChatVisual | null> = {
   stats,
   chart,
   timeline,
   media,
-  diagram,
 };
 
 export function checkGodChatVisual(kind: GodChatVisualKind, source: string, sanitize: VisualSanitizers = DROP_ALL): VisualCheck {

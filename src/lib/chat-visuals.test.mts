@@ -98,39 +98,3 @@ test("写到一半的图示 JSON 按写完的条目先画，图表要数据齐�
   assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
 });
 
-test("结构图画不了的连线只丢那一条、重复 id 的节点只丢后一个，写到一半时先画已写完的层", () => {
-  const layers = [
-    { nodes: [{ id: "a", label: "A" }] },
-    { nodes: [{ id: "b", label: "B" }] },
-    { nodes: [{ id: "c", label: "C" }] },
-  ];
-  const diagram = (edges: unknown, nodes: unknown = layers) => parseVisual("diagram", JSON.stringify({ layers: nodes, edges }));
-  assert.ok(diagram([{ from: "a", to: "b" }, { from: "c", to: "b", label: "back" }]));
-  assert.ok(diagram(undefined));
-  const edgesOf = (edges: unknown) => {
-    const visual = diagram(edges);
-    return visual?.kind === "diagram" ? visual.edges.map((edge) => `${edge.from}-${edge.to}`) : null;
-  };
-  assert.deepEqual(edgesOf([{ from: "a", to: "c" }, { from: "a", to: "b" }]), ["a-b"]);
-  assert.deepEqual(edgesOf([{ from: "a", to: "a" }]), []);
-  assert.deepEqual(edgesOf([{ from: "a", to: "x" }, "oops"]), []);
-  const duplicate = diagram([], [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ id: "a", label: "B" }, { id: "b", label: "B" }] }]);
-  assert.ok(duplicate?.kind === "diagram");
-  assert.deepEqual(duplicate.layers.map((layer) => layer.nodes.map((node) => node.label)), [["A"], ["B"]]);
-  const sameLayer = diagram(
-    [{ from: "a", to: "b" }, { from: "b", to: "b2" }],
-    [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ id: "b", label: "B" }, { id: "b2", label: "B2" }] }],
-  );
-  assert.ok(sameLayer?.kind === "diagram");
-  assert.deepEqual(sameLayer.edges, [{ from: "a", to: "b" }]);
-  const crowded = diagram([...Array.from({ length: GOD_CHAT_VISUAL_LIMITS.diagramEdges }, () => ({ from: "a", to: "a" })), { from: "a", to: "b" }]);
-  assert.ok(crowded?.kind === "diagram");
-  assert.deepEqual(crowded.edges, [{ from: "a", to: "b" }]);
-  const gapped = diagram([{ from: "a", to: "c" }], [{ nodes: [{ id: "a", label: "A" }] }, { nodes: [{ label: "no id" }] }, { nodes: [{ id: "c", label: "C" }] }]);
-  assert.ok(gapped?.kind === "diagram");
-  assert.equal(gapped.layers.length, 2);
-  assert.deepEqual(gapped.edges, [{ from: "a", to: "c" }]);
-  const partial = parsePartialVisual("diagram", '{"layers":[{"nodes":[{"id":"a","label":"A"}]},{"nodes":[{"id":"b","lab');
-  assert.ok(partial?.kind === "diagram");
-  assert.deepEqual(partial.layers.map((layer) => layer.nodes.map((node) => node.id)), [["a"]]);
-});

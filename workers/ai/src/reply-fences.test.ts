@@ -19,24 +19,24 @@ test("图示用浏览器同一份校验，过不了的按 JSON、结构、没收
   const reply = [
     "```timeline", good, "```",
     "```chart", "{nope", "```",
-    "```diagram", JSON.stringify({ layers: [{ nodes: [] }] }), "```",
+    "```stats", JSON.stringify({ items: [] }), "```",
     "```python", "print(1)", "```",
     "```media", '{"items":[',
   ].join("\n");
   assert.deepEqual(invalidVisuals(replyFences(reply)), [
     { kind: "chart", error: "json" },
-    { kind: "diagram", error: "shape" },
+    { kind: "stats", error: "shape" },
     { kind: "media", error: "unclosed" },
   ]);
 });
 
 test("引用块与列表里的图示也切得出来，引用块去掉 > 再校验，CRLF 换行同样处理", () => {
-  const quoted = ["> ```diagram", "> {broken", "> ```"].join("\r\n");
+  const quoted = ["> ```timeline", "> {broken", "> ```"].join("\r\n");
   const listed = ["1. 看图：", "   ```stats", `   ${JSON.stringify(GOD_CHAT_VISUAL_EXAMPLES.stats)}`, "   ```"].join("\n");
   const fences = replyFences(`${quoted}\r\n\r\n${listed}`);
-  assert.deepEqual(fences.map((fence) => [fence.language, fence.closed]), [["diagram", true], ["stats", true]]);
+  assert.deepEqual(fences.map((fence) => [fence.language, fence.closed]), [["timeline", true], ["stats", true]]);
   assert.equal(fences[0].source, "{broken");
-  assert.deepEqual(invalidVisuals(fences), [{ kind: "diagram", error: "json" }]);
+  assert.deepEqual(invalidVisuals(fences), [{ kind: "timeline", error: "json" }]);
 });
 
 test("顶层缩进四格起是缩进代码块，不算图示；列表里的深缩进照样算", () => {
