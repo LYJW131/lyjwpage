@@ -23,6 +23,7 @@ import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
 import { Section } from "@/components/ui/section";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
+import { inlineChargerIcon } from "@/lib/charger-icon-inline";
 import { desktopIconDataUri } from "@/lib/desktop-icon-inline";
 import { githubAvatarDataUri } from "@/lib/github-avatar-inline";
 import { APP_VERSION_PATH } from "@/lib/app-version";
@@ -174,9 +175,10 @@ export async function loader({ context }: Route.LoaderArgs) {
   const heroArtwork = liveHeroArtwork ?? listeningArtworks[0];
   const rowArtworks = liveHeroArtwork ? listeningArtworks : listeningArtworks.slice(1);
 
-  const [avatarDataUri, desktopIcon, artwork, lyrics] = await Promise.all([
+  const [avatarDataUri, desktopIcon, chargerWithIcon, artwork, lyrics] = await Promise.all([
     avatar,
     desktopIconDataUri(site, desktop.ok ? (desktop.data.desktop?.iconUrl ?? null) : null),
+    inlineChargerIcon(site, charger),
     artworkPlaceholders(site, rowArtworks, heroArtwork),
     nowSongId ? site.lyrics(nowSongId) : Promise.resolve(null),
   ]);
@@ -187,7 +189,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     workouts,
     activity,
     server,
-    charger,
+    charger: chargerWithIcon,
     powerBank,
     listening,
     nowListening,
