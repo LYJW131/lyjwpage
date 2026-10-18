@@ -134,6 +134,8 @@ const SUGGESTION_SLOTS = 4;
 // 每隔这么久只换一格，四格轮流；淡出时长与 globals.css 的 headline-in 一起凑成一次换题。
 const SUGGESTION_ROTATE_MS = 3_000;
 const SUGGESTION_FADE_MS = 150;
+// 访客看到题到点下去有反应延迟：从开始淡出算起这么久内点到的，按换题前那道算。
+const SUGGESTION_CLICK_GRACE_MS = 500;
 
 export function GodChat({ className }: { className?: string }) {
   const archive = useSyncExternalStore(subscribeChatArchive, chatArchive.getSnapshot, chatArchive.getServerSnapshot);
@@ -1089,7 +1091,9 @@ const DESIGN_CONSENT_COPY: Record<PlanLanguage, DesignConsentCopy> = {
 };
 
 function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: string) => void }) {
-  const [slots, setSlots] = useState(() => SUGGESTIONS.slice(0, SUGGESTION_SLOTS).map((text) => ({ text, rotated: false })));
+  const [slots, setSlots] = useState<{ text: string; rotated: boolean; previous?: string; fadedAt?: number }[]>(() =>
+    SUGGESTIONS.slice(0, SUGGESTION_SLOTS).map((text) => ({ text, rotated: false })),
+  );
   const [leaving, setLeaving] = useState<number | null>(null);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -1101,9 +1105,14 @@ function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: s
     const timer = setInterval(() => {
       const { slot, next } = turn.current;
       turn.current = { slot: (slot + 1) % SUGGESTION_SLOTS, next: (next + 1) % SUGGESTIONS.length };
+      const fadedAt = performance.now();
       setLeaving(slot);
       swap = setTimeout(() => {
-        setSlots((current) => current.map((entry, index) => (index === slot ? { text: SUGGESTIONS[next], rotated: true } : entry)));
+        setSlots((current) =>
+          current.map((entry, index) =>
+            index === slot ? { text: SUGGESTIONS[next], rotated: true, previous: entry.text, fadedAt } : entry,
+          ),
+        );
         setLeaving(null);
       }, SUGGESTION_FADE_MS);
     }, SUGGESTION_ROTATE_MS);
@@ -1122,12 +1131,14 @@ function Suggestions({ disabled, onPick }: { disabled: boolean; onPick: (text: s
       onFocus={() => setFocused(true)}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
     >
-      {slots.map(({ text, rotated }, index) => (
+      {slots.map(({ text, rotated, previous, fadedAt }, index) => (
         <button
           key={index}
           type="button"
           disabled={disabled}
-          onClick={() => onPick(text)}
+          onClick={() =>
+            onPick(previous !== undefined && performance.now() - (fadedAt ?? 0) < SUGGESTION_CLICK_GRACE_MS ? previous : text)
+          }
           className="paper-card overflow-hidden rounded-md border border-line-strong bg-surface px-3 py-1.5 text-xs whitespace-nowrap text-foreground transition-colors hover:bg-surface-hover disabled:opacity-50"
         >
           {/* 淡出与淡入分在两层：入场动画的填充会盖住同一层上的 opacity 过渡。 */}
