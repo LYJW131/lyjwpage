@@ -117,7 +117,7 @@ export function ChargerCard({
               width={16}
               height={16}
               unoptimized
-              decoding="sync"
+              decoding={data.cover.iconUrl.startsWith("data:") ? "sync" : "async"}
               className="size-4 rounded-sm object-contain"
             />
           ) : null}
