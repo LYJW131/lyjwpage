@@ -168,7 +168,7 @@ enum CodingAgentNames {
     }
 
     // 与站点一致：标为 hidden 的 agent 不单列。
-    static func isHidden(_ id: String) -> Bool { id == "opencode" || id == "pi" }
+    static func isHidden(_ id: String) -> Bool { id == "opencode" || id == "pi" || id == "devin" }
 }
 
 enum LimitWindow {
