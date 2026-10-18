@@ -49,6 +49,8 @@ export function parseVoronoiState(raw: unknown): VoronoiState | null {
   if (!Array.isArray(layout.cells) || !layout.cells.length || !layout.cells.every(layoutCell)) return null;
   if (!finite(layout.chosenScore) || !finite(layout.chosenAt) || !Array.isArray(layout.accepted)) return null;
   if (!layout.accepted.every((issue) => HARD_ISSUES.includes(issue as HardIssue))) return null;
+  const colors = layout.colors === undefined ? {} : object(layout.colors);
+  if (!colors || !Object.values(colors).every((color) => typeof color === "string")) return null;
   if (!finite(state.lastRelayoutAt) || (state.lastFailedSearchAt !== null && !finite(state.lastFailedSearchAt))) return null;
   const search = object(state.search);
   if (state.search !== null && (!search || !Array.isArray(search.cells) || !finite(search.next))) return null;
@@ -85,7 +87,20 @@ function textColor(hex: string): string {
   return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#0b0f16" : "#ffffff";
 }
 
-export function renderVoronoiCard(fit: Fitted, totals: { totalTokens: number; apiEquivalentCostUSD: number }): string {
+export type VoronoiCardTotals = Pick<NonNullable<CodingUsagePayload["totals"]>, "totalTokens" | "apiEquivalentCostUSD" | "activeDays"> & {
+  modelCount?: number;
+};
+
+// 四列与 /api/cards/week.svg 的四列同一套网格（x = 28、218、408、598），两张卡上下对齐。
+const STAT_PITCH = 190;
+
+function stat(column: number, label: string, value: string): string {
+  const x = MX + column * STAT_PITCH;
+  return `<text x="${x}" y="34" font-size="13" font-weight="600" letter-spacing="1.5" fill="var(--mute)">${label}</text>` +
+    `<text x="${x}" y="76" font-size="34" font-weight="700" fill="var(--fg)">${value}</text>`;
+}
+
+export function renderVoronoiCard(fit: Fitted, totals: VoronoiCardTotals): string {
   const total = fit.cells.reduce((sum, c) => sum + c.tokens, 0);
   let cells = "";
   fit.layout.cells.forEach((layoutCell, i) => {
@@ -124,10 +139,11 @@ export function renderVoronoiCard(fit: Fitted, totals: { totalTokens: number; ap
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${MX} 0 ${width} ${height}" width="${width}" height="${height}" font-family="${FONT}" role="img" aria-label="Token usage ${fmt(totals.totalTokens)}, cost ${usd(totals.apiEquivalentCostUSD)}; area of each cell equals the model's share of tokens">` +
     "<style>:root{--bg:#ffffff;--fg:#1f2328;--mute:#656d76}@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--mute:#8b949e}}</style>" +
-    `<text x="28" y="34" font-size="13" font-weight="600" letter-spacing="1.5" fill="var(--mute)">TOKEN</text>` +
-    `<text x="28" y="76" font-size="34" font-weight="700" fill="var(--fg)">${fmt(totals.totalTokens)}</text>` +
-    `<text x="218" y="34" font-size="13" font-weight="600" letter-spacing="1.5" fill="var(--mute)">COST</text>` +
-    `<text x="218" y="76" font-size="34" font-weight="700" fill="var(--fg)">${usd(totals.apiEquivalentCostUSD)}</text>` +
+    stat(0, "TOKEN", fmt(totals.totalTokens)) +
+    stat(1, "COST", usd(totals.apiEquivalentCostUSD)) +
+    // 存好的 coding 视图在下一次重建前还没有 modelCount，先画「—」，不拿前几名的个数顶替。
+    stat(2, "MODELS", typeof totals.modelCount === "number" ? totals.modelCount.toLocaleString("en-US") : "—") +
+    stat(3, "ACTIVE DAYS", totals.activeDays.toLocaleString("en-US")) +
     `<text x="${MX}" y="108" font-family="${MONO}" font-size="10" letter-spacing="3" fill="var(--mute)">AREA = SHARE OF TOKENS</text>` +
     `<clipPath id="map"><rect x="${MX}" y="${MY}" width="${MW}" height="${MH}"/></clipPath>` +
     `<g clip-path="url(#map)">${cells}</g>` +

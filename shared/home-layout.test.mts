@@ -50,7 +50,7 @@ test("codingLayoutKey：空载荷是 unavailable；agent 顺序不影响布局�
   const totals = {
     inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0,
     reasoningTokens: 0, totalTokens: 2, apiEquivalentCostUSD: 0, costComplete: true,
-    activeDays: 1, sessionCount: null,
+    activeDays: 1, modelCount: 0, sessionCount: null,
   };
   const withTotals = { agents: [], totals, topModels: [] };
   assert.notEqual(codingLayoutKey(withTotals), codingLayoutKey(empty));
