@@ -1245,7 +1245,8 @@ function ReplyBody({
         ),
       };
   const marks = [
-    ...cards.map(({ card, at }) => ({ at, design: true, node: <ChatCard key={card} card={card} /> })),
+    // 流式中新到的卡片淡入上浮；回复结束后去掉动画类不会重播，翻历史时卡片直接在位。
+    ...cards.map(({ card, at }) => ({ at, design: true, node: <div key={card} className={cn(live && "animate-headline-in")}><ChatCard card={card} /></div> })),
     ...(dividerMark ? [dividerMark] : []),
   ].sort((a, b) => a.at - b.at);
   for (const { at, node, design } of marks) {
