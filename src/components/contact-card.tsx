@@ -31,7 +31,7 @@ export function ContactCard({
   const mode = useSyncExternalStore(subscribeHeatmap, readHeatmapMode, () => "tokens");
 
   return (
-    <Card id="contact" className="h-full">
+    <Card id="contact" className="h-full scroll-mt-28">
       <div className="flex h-full flex-col justify-between gap-4 p-4 lg:p-5">
         <div className="flex items-center justify-between gap-3 sm:gap-4">
           <div className="flex min-w-0 items-center gap-3 lg:gap-4">

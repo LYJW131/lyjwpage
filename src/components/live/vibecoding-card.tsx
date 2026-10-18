@@ -1122,7 +1122,7 @@ export function VibeCodingCard({
       id="vibe-coding"
       label="Vibe Coding"
       action="All sources"
-      className={cn("md:col-span-2", className)}
+      className={cn("md:col-span-2 scroll-mt-28", className)}
     >
       {rows ? (
         <>
