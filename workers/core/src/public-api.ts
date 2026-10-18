@@ -13,6 +13,7 @@ import {
   DEV_OVERRIDE_TTL_MS,
 } from "./dev-overrides";
 import { currentContext } from "./runtime";
+import { LIVE_CARD_PATH, liveCardResponse } from "./live-card";
 import { VORONOI_CARD_PATH, voronoiCardResponse } from "./voronoi-card";
 import { WEEK_CARD_PATH, weekCardResponse } from "./week-card";
 
@@ -59,7 +60,7 @@ async function overlayResponse(local: Response, load: () => Promise<unknown>): P
 export const devOverridesEnabled = (): boolean => process.env.DEV_OVERRIDES?.trim() === "true";
 
 export function isPublicApiPath(path: string): boolean {
-  if (viewKeyByPath(path) || path === WEEK_CARD_PATH || path === VORONOI_CARD_PATH) return true;
+  if (viewKeyByPath(path) || path === WEEK_CARD_PATH || path === VORONOI_CARD_PATH || path === LIVE_CARD_PATH) return true;
   return devOverridesEnabled() && (path === DEV_OVERRIDES_LIST_PATH || path.startsWith(`${DEV_OVERRIDE_PREFIX}/`));
 }
 
@@ -167,6 +168,7 @@ export async function publicResponse(request: Request): Promise<Response> {
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
   if (url.pathname === WEEK_CARD_PATH) return weekCardResponse();
   if (url.pathname === VORONOI_CARD_PATH) return voronoiCardResponse();
+  if (url.pathname === LIVE_CARD_PATH) return liveCardResponse();
   const upstream = upstreamBase();
 
   if (overrides && (await overridesSwitchedOn())) {

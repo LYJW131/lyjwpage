@@ -14,6 +14,9 @@ export interface Env {
   AI?: Ai;
   LAG?: KVNamespace;
   SITE_CACHE?: SiteCacheRpc;
+  // 此刻活动卡的封面：R2 读对象键，IMAGES 裁 160px；本地 test 配置没有这两个绑定就纯文字出卡。
+  IMAGE_OBJECTS?: R2Bucket;
+  IMAGES?: ImagesBinding;
   STORAGE_PREFIX?: string;
   ALLOWED_ORIGINS?: string;
   AI_SERVICE?: Pick<Fetcher, "fetch">;

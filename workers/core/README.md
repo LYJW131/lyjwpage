@@ -38,6 +38,7 @@
 | GET | `/api/chat/usage` | 经 `AI_SERVICE` 转发对话配额查询 |
 | GET | `/api/cards/week.svg` | 近 7 天卡片（每日 commit 柱 + 每日 token 曲线）的 SVG，给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding/year`、`coding` 的 totals 与 `github-chart`，缓存头见 `src/week-card.ts#WEEK_CARD_CACHE_CONTROL` |
 | GET | `/api/cards/voronoi.svg` | 模型 token 占比的 Voronoi 卡片 SVG（每个模型一块领地，面积 = 份额），给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding` 的 totals（含 `activeDays`、`modelCount`）与 `topModels` 前 7 名，布局见下文「README 卡片的 Voronoi 布局」，缓存头与 week.svg 相同 |
+| GET | `/api/cards/now.svg` | 「此刻在做什么」卡片 SVG，给 GitHub 主页 README 用 `<img>` 引用；现取 `listening/now`、`watching/now`、`playing/now`、`quest/now`、`coding/now` 五份当前 payload 经 `src/live-activity.ts#pickLiveActivity` 挑一项主要活动（看剧 > 游戏 > 写代码 > 听歌），封面用 `IMAGE_OBJECTS` 读 R2 键或按白名单抓 Apple/PSN/Discord 的远端图后经 `IMAGES` 裁 160px 内联，取数或封面失败退化成文字卡甚至 idle，缓存头见 `src/live-card.ts#LIVE_CARD_CACHE_CONTROL` |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
 上报端点（`/api/ingest/<来源>`、`/api/ingest/agents/otlp`、`/api/internal/site-deployed`）、鉴权和回执契约都在

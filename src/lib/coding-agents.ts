@@ -1,4 +1,5 @@
 
+import { codingAgentLabel } from "@shared/coding-agent-labels";
 import { CODING_USAGE_SOURCES } from "@shared/coding-usage-sources";
 
 import type {
@@ -17,21 +18,23 @@ export type CodingAgentBrand = {
   row: CodingAgentRowKind;
 };
 
+// 显示名统一在 shared/coding-agent-labels.ts#CODING_AGENT_LABELS，这里只登记站点专属的图标与行型。
 export const CODING_AGENTS = {
-  claude: { label: "Claude Code", icon: "anthropic", row: "featured" },
-  cursor: { label: "Cursor", icon: "cursor", row: "featured" },
-  codex: { label: "Codex", icon: "openai", row: "compact" },
-  grok: { label: "Grok Build", icon: "grok", row: "compact" },
-  antigravity: { label: "Antigravity", icon: "antigravity", row: "compact" },
-  opencode: { label: "OpenCode", icon: "opencode", row: "hidden" },
-  pi: { label: "Pi", icon: "pi", row: "hidden" },
-  devin: { label: "Devin CLI", icon: "devin", row: "compact" },
-} as const satisfies Record<string, CodingAgentBrand>;
+  claude: { icon: "anthropic", row: "featured" },
+  cursor: { icon: "cursor", row: "featured" },
+  codex: { icon: "openai", row: "compact" },
+  grok: { icon: "grok", row: "compact" },
+  antigravity: { icon: "antigravity", row: "compact" },
+  opencode: { icon: "opencode", row: "hidden" },
+  pi: { icon: "pi", row: "hidden" },
+  devin: { icon: "devin", row: "compact" },
+} as const satisfies Record<string, Omit<CodingAgentBrand, "label">>;
 
 const REGISTERED = Object.keys(CODING_AGENTS);
 
 export function codingAgentBrand(id: string): CodingAgentBrand {
-  return Object.hasOwn(CODING_AGENTS, id) ? CODING_AGENTS[id as keyof typeof CODING_AGENTS] : { label: id, icon: id, row: "compact" };
+  const registered = Object.hasOwn(CODING_AGENTS, id) ? CODING_AGENTS[id as keyof typeof CODING_AGENTS] : null;
+  return { label: codingAgentLabel(id), icon: registered?.icon ?? id, row: registered?.row ?? "compact" };
 }
 
 export const CODING_SOURCE_LABELS: Record<CodingUsageSource, string> = {

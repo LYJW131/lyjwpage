@@ -1,4 +1,5 @@
 import { objectKeyFromAssetUrl } from "@shared/asset-url";
+import { codingAgentLabel } from "@shared/coding-agent-labels";
 import type { NowWatchingPayload } from "@shared/emby";
 import { isStale, liveNowListening, PLAYSTATION_STALE_MS } from "@shared/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@shared/limits";
@@ -15,7 +16,9 @@ export type LiveActivity = {
   kind: LiveActivityKind;
   title: string | null;
   subtitle: string | null;
+  // 本站 R2 图片键与远端封面 URL 二选一：R2 走绑定读，远端由卡片层按白名单决定要不要抓。
   artworkKey: string | null;
+  artworkUrl: string | null;
   alsoListening: { title: string; artist: string | null } | null;
   lastActiveAt: number | null;
 };
@@ -31,31 +34,22 @@ export type LiveActivityInput = {
 // README 卡按分钟级缓存出图、粒度只到「在写代码」：取 15 分钟盖住 agent 回合之间的安静段，比站点卡的 5 分钟判活有意放宽。
 export const CODING_ACTIVE_WINDOW_MS = 15 * 60_000;
 
-// 显示名抄自 src/lib/coding-agents.ts#CODING_AGENTS（站点侧，Worker 不可 import）；没登记的 id 原样显示。
-const CODING_AGENT_LABELS: Record<string, string> = {
-  claude: "Claude Code",
-  cursor: "Cursor",
-  codex: "Codex",
-  grok: "Grok Build",
-  antigravity: "Antigravity",
-  opencode: "OpenCode",
-  pi: "Pi",
-  devin: "Devin CLI",
-};
-
 type Picked = {
   title: string | null;
   subtitle: string | null;
   artworkKey: string | null;
+  artworkUrl: string | null;
   lastActiveAt: number | null;
 };
 
-type ListeningTrack = { title: string; artist: string | null; artworkKey: string | null; at: number };
+type ListeningTrack = { title: string; artist: string | null; artworkKey: string | null; artworkUrl: string | null; at: number };
 
 type CodingActivityEntry = CodingNowPayload["agents"][number]["activity"][number];
 
-function assetKey(url: string | null | undefined): string | null {
-  return url ? objectKeyFromAssetUrl(url) : null;
+// R2 图给键，其余 URL 原样留给卡片层按白名单裁决。
+function artworkOf(url: string | null | undefined): Pick<Picked, "artworkKey" | "artworkUrl"> {
+  const artworkKey = url ? objectKeyFromAssetUrl(url) : null;
+  return { artworkKey, artworkUrl: artworkKey === null ? url ?? null : null };
 }
 
 function playedAtMs(item: { playedAt: string | null } | null | undefined): number | null {
@@ -74,11 +68,11 @@ function listeningTrack(payload: NowListeningPayload | null, now: number): Liste
   const live = liveNowListening(payload, macOffline);
   const music = live.music?.state === "playing" ? live.music : null;
   if (music?.title) {
-    return { title: music.title, artist: music.artist, artworkKey: assetKey(music.artworkUrl), at: music.observedAt };
+    return { title: music.title, artist: music.artist, ...artworkOf(music.artworkUrl), at: music.observedAt };
   }
   const elsewhere = live.elsewhere;
   if (elsewhere && now < elsewhere.startedAt + elsewhere.durationMs + LISTENING_ELSEWHERE_HOLD_MS) {
-    return { title: elsewhere.title, artist: elsewhere.artist, artworkKey: assetKey(elsewhere.artworkUrl), at: elsewhere.startedAt };
+    return { title: elsewhere.title, artist: elsewhere.artist, ...artworkOf(elsewhere.artworkUrl), at: elsewhere.startedAt };
   }
   return null;
 }
@@ -87,10 +81,13 @@ function watchingActivity(payload: NowWatchingPayload | null): Picked | null {
   const live = payload?.nowPlaying;
   if (!live || live.paused) return null;
   const item = payload.current;
+  const poster = artworkOf(item?.poster);
+  const backdrop = artworkOf(item?.backdrop);
   return {
     title: item?.title ?? null,
     subtitle: item?.subtitle || null,
-    artworkKey: assetKey(item?.poster) ?? assetKey(item?.backdrop),
+    artworkKey: poster.artworkKey ?? backdrop.artworkKey,
+    artworkUrl: poster.artworkUrl ?? backdrop.artworkUrl,
     lastActiveAt: playedAtMs(item),
   };
 }
@@ -105,7 +102,7 @@ function gamingActivity(
     return {
       title: quest.playing.name,
       subtitle: "Meta Quest",
-      artworkKey: assetKey(quest.playing.largeImageUrl),
+      ...artworkOf(quest.playing.largeImageUrl),
       lastActiveAt: quest.playing.startedAt ?? quest.observedAt,
     };
   }
@@ -113,7 +110,7 @@ function gamingActivity(
     return {
       title: playstation.playing.title,
       subtitle: playstation.platform ?? playstation.playing.launchPlatform,
-      artworkKey: assetKey(playstation.playing.iconUrl),
+      ...artworkOf(playstation.playing.iconUrl),
       lastActiveAt: playstation.observedAt,
     };
   }
@@ -136,9 +133,10 @@ function codingActivity(payload: CodingNowPayload | null, now: number): Picked |
   if (!winner) return null;
   const extra = active.length - 1;
   return {
-    title: CODING_AGENT_LABELS[winner.id] ?? winner.id,
+    title: codingAgentLabel(winner.id),
     subtitle: [winner.entry.model, extra ? `+${extra}` : null].filter(Boolean).join(" · ") || null,
     artworkKey: null,
+    artworkUrl: null,
     lastActiveAt: winner.entry.lastActivityAt,
   };
 }
@@ -178,6 +176,7 @@ export function pickLiveActivity(input: LiveActivityInput, now: number): LiveAct
       title: track.title,
       subtitle: track.artist,
       artworkKey: track.artworkKey,
+      artworkUrl: track.artworkUrl,
       alsoListening: null,
       lastActiveAt: track.at,
     };
@@ -187,6 +186,7 @@ export function pickLiveActivity(input: LiveActivityInput, now: number): LiveAct
     title: null,
     subtitle: null,
     artworkKey: null,
+    artworkUrl: null,
     alsoListening: null,
     lastActiveAt: lastActiveAt(input, now),
   };

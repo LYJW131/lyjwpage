@@ -184,7 +184,7 @@ coding agent 的 token 用量有三个来源。来源只报自己观测到的原
   - `/api/status/coding/year`：按站点今天切出 53 周（`shared/coding-year.ts#encodeCodingYear`），任一来源有日行就出图；不推送、没有首屏失效，年度图自己长间隔轮询、切回标签页时再取；首屏那份放得比轮询间隔还久时挂载补取一次（`src/lib/poll-schedule.ts#fallbackOutlived`）。
 
 ### 卡片怎么判
-- 展示名、品牌图标、占哪种行（全量面板、紧凑行、只进合计与年度不单独占行）只在站点登记表 `src/lib/coding-agents.ts#CODING_AGENTS`；来源只报 agent id，登记表里没有的 id 用 id 当名字、占一行紧凑行。
+- 展示名统一登记在 `shared/coding-agent-labels.ts#CODING_AGENT_LABELS`（站点、core、ai 三处都引用它）；品牌图标与占哪种行（全量面板、紧凑行、只进合计与年度不单独占行）只在站点登记表 `src/lib/coding-agents.ts#CODING_AGENTS`；来源只报 agent id，登记表里没有的 id 用 id 当名字、占一行紧凑行。
 - 「今天」：视图给的是各 agent 最近一个有行的站点日，浏览器按自己的站点日判是不是今天，不是今天就写明是哪一天。来源在当天有采集就有行（没用是一行 0），所以最近一天停在昨天表示今天还没报到。
 - 活动灯：任一来源的最近事件在 `src/lib/coding-agents.ts#CODING_ACTIVE_WINDOW_MS` 内就亮；Mac 亲口离线时只作废来自 `mac` 的时刻（`liveCodingActivity`），账号与云端的灯不受 Mac 存活影响。
 - 来源状态：参与合计的来源这一轮采集失败（`error`）时，读数旁标 Partial（有读数）或 Unavailable（没有读数），悬停写出每个来源的状况（含被账号级来源覆盖的 `superseded`）；没有行的地方一律画「—」，不当成 0。

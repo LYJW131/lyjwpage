@@ -88,7 +88,7 @@ function codingAgent(id: string, entries: Array<[source: "mac" | "agents" | "age
 
 test("全部来源为空时是 idle，lastActiveAt 为 null", () => {
   assert.deepEqual(pickLiveActivity(input(), NOW), {
-    kind: "idle", title: null, subtitle: null, artworkKey: null, alsoListening: null, lastActiveAt: null,
+    kind: "idle", title: null, subtitle: null, artworkKey: null, artworkUrl: null, alsoListening: null, lastActiveAt: null,
   });
 });
 
@@ -99,6 +99,16 @@ test("在放歌且没有更高优先级时是 listening", () => {
   assert.equal(picked.subtitle, "Artist");
   assert.equal(picked.alsoListening, null);
   assert.equal(picked.lastActiveAt, NOW);
+});
+
+test("听歌封面：Apple 模板 URL 进 artworkUrl，/img/ 资产进 artworkKey", () => {
+  const template = "https://is1-ssl.mzstatic.com/image/thumb/a/b/{w}x{h}bb.jpg";
+  const remote = pickLiveActivity(input({ nowListening: listening({ music: music({ artworkUrl: template }) }) }), NOW);
+  assert.equal(remote.artworkUrl, template);
+  assert.equal(remote.artworkKey, null);
+  const r2 = pickLiveActivity(input({ nowListening: listening({ music: music({ artworkUrl: `/img/${POSTER_KEY}` }) }) }), NOW);
+  assert.equal(r2.artworkKey, POSTER_KEY);
+  assert.equal(r2.artworkUrl, null);
 });
 
 test("在播的剧是 watching，标题取条目、副标题取集数、封面取回 R2 objectKey", () => {
@@ -121,12 +131,13 @@ test("暂停的剧不算在进行：暂停 + 在放歌落到 listening", () => {
   assert.equal(picked.title, "Song");
 });
 
-test("PS 在玩是 gaming，副标题是平台，图标是 PSN 远端图不进 artworkKey", () => {
+test("PS 在玩是 gaming，副标题是平台，PSN 远端图进 artworkUrl 不进 artworkKey", () => {
   const picked = pickLiveActivity(input({ playingNow: playingNow({ playing: psPlaying() }) }), NOW);
   assert.equal(picked.kind, "gaming");
   assert.equal(picked.title, "PRAGMATA");
   assert.equal(picked.subtitle, "PS5");
   assert.equal(picked.artworkKey, null);
+  assert.equal(picked.artworkUrl, "https://image.api.playstation.com/vulcan/ap/rnd/icon.png");
 });
 
 test("PS presence 超过 PLAYSTATION_STALE_MS 不算在玩", () => {
@@ -145,6 +156,15 @@ test("Quest 在玩是 gaming，且盖住同时在玩的 PS（同游戏道约定�
   assert.equal(picked.title, "Asgard's Wrath 2");
   assert.equal(picked.subtitle, "Meta Quest");
   assert.equal(picked.lastActiveAt, NOW - 600_000);
+});
+
+test("Quest 的大图是 Discord CDN 时进 artworkUrl", () => {
+  const url = "https://cdn.discordapp.com/app-assets/123/456.png";
+  const picked = pickLiveActivity(input({
+    questNow: questNow({ playing: { ...questPlaying(), largeImageUrl: url } }),
+  }), NOW);
+  assert.equal(picked.artworkUrl, url);
+  assert.equal(picked.artworkKey, null);
 });
 
 test("Quest 快照超过 QUEST_STALE_MS 不算在玩，即使 available 为真", () => {
