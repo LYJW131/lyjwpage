@@ -99,6 +99,12 @@ class MenuScope(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn('single-line', why)
 
+    def test_wrapped_allow_dir(self):
+        lines = screen('Writing', f'{self.cwd}/sub/../../etc/evil.txt'[:len(self.cwd) + 4], self.cwd)
+        i = next(i for i, l in enumerate(lines) if 'allow edits in' in l)
+        lines.insert(i + 1, '     /sub/../../etc')
+        self.assertFalse(dv.menu_verdict(lines, self.cwd, self.common)[0])
+
     def test_unreadable_menus(self):
         no_header = [l for l in screen('Writing', 'b.txt', self.cwd) if 'Writing' not in l]
         self.assertFalse(dv.menu_verdict(no_header, self.cwd, self.common)[0])

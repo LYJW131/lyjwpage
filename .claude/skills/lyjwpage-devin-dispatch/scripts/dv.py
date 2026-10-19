@@ -43,6 +43,7 @@ APPROVAL = 'Approve once'
 WRITE_TOOL = re.compile(r'^\s*(?:⏺\s*)?(?:Writing|Editing)\s+(\S.*?)\s*$')
 ALLOW_DIR = re.compile(r'allow edits in\s+(\S.*?)\s*$')
 NO_OPTION = re.compile(r'^\W*(\d+)[.)]?\s+No\b')
+OPTION = re.compile(r'^\W*\d+[.)]?\s')
 
 
 def sh(*args, check=True, **kw):
@@ -176,10 +177,11 @@ def state(meta):
 
 
 def wrapped_path(lines, i):
-    # A long path wraps onto an indented line; only the first part would match WRITE_TOOL.
+    # A long path wraps onto an indented line; only the first part would match the regex.
     nxt = lines[i + 1] if i + 1 < len(lines) else ''
     s = nxt.strip()
-    return bool(s) and nxt[:1].isspace() and not ('\u2500' <= s[0] <= '\u257f' or s[0] in '❭⎿')
+    return bool(s) and nxt[:1].isspace() and not (
+        '\u2500' <= s[0] <= '\u257f' or s[0] in '❭⎿' or OPTION.match(nxt))
 
 
 def menu_paths(lines):
@@ -190,8 +192,11 @@ def menu_paths(lines):
                 if (m := WRITE_TOOL.match(lines[i]))), None)
     if hit is None or wrapped_path(lines, hit[0]):
         return None
-    allow = next((m.group(1) for l in lines[idx:] if (m := ALLOW_DIR.search(l))), None)
-    return hit[1], allow
+    allow = next(((j, m.group(1)) for j in range(idx, len(lines))
+                  if (m := ALLOW_DIR.search(lines[j]))), None)
+    if allow and wrapped_path(lines, allow[0]):
+        return None
+    return hit[1], allow and allow[1]
 
 
 def resolve(path, cwd):
