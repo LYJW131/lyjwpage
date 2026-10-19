@@ -347,9 +347,10 @@ function svgDocument(body: string, card: ReadmeCard, theme: Theme, cornerNote: s
   const offset = card.pair === "right" ? width - card.width - SHADOW_PAD : 0;
   const fullHeight = height + SHADOW_PAD;
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${label}">` +
+    // 暗色类挂在 <svg> 上：它是图片里的 :root，`--color-*: var(--*)` 这类别名在 :root 上求值，挂在内层就仍取亮色。
+    `<svg xmlns="http://www.w3.org/2000/svg"${theme === "dark" ? ' class="dark"' : ""} width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${label}">` +
     `<foreignObject x="0" y="0" width="${width}" height="${fullHeight}">` +
-    `<div xmlns="http://www.w3.org/1999/xhtml" class="${theme === "dark" ? "dark " : ""}font-mono text-foreground antialiased" style="position:relative;left:${offset}px;width:${card.width}px;height:${height}px;display:flex;flex-direction:column">` +
+    `<div xmlns="http://www.w3.org/1999/xhtml" class="font-mono text-foreground antialiased" style="position:relative;left:${offset}px;width:${card.width}px;height:${height}px;display:flex;flex-direction:column">` +
     `<style><![CDATA[${CSS}]]></style>` +
     `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${cornerNote ? `<div class="label-mono text-muted-foreground" style="position:absolute;right:1.25rem;top:1rem;text-align:right">${cornerNote}</div>` : ""}</div>` +
     `</div></foreignObject></svg>`
