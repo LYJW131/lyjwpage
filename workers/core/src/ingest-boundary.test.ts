@@ -575,6 +575,17 @@ test("the first Devin OTLP batch takes over the tokens.ci day ledger from the ac
     assert.deepEqual(row.sources, ["agents-otlp"]);
     assert.deepEqual(row.status.map((status) => [status.source, status.state]), [["agents-otlp", "ok"]]);
     assert.equal(view.totals?.totalTokens, 5_740);
+
+    // 旧镜像的 agents-reporter 还在跑：它的 devin 行又回来时，下一封 OTLP 照样把它删掉，日子不再接一遍。
+    await commit(env, await account(NOW + 60_000, [
+      { id: "devin", state: "ok", collectedAt: NOW + 60_000, sessionCount: null, days: [history, usageDay("2026-09-29", 9_999, "swe-2-max")] },
+    ]));
+    assert.deepEqual(parseStoredView(await storage.get(codingViewKey()))!.agents.find((agent) => agent.id === "devin")!.sources, ["agents"]);
+    await commit(env, await inRequest(env, () => prepareIngest("agents-otlp", devinTokens(NOW + 61_000, NOW + 62_000, { input: 2 }), NOW + 62_000)));
+    assert.deepEqual(Object.keys(parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents")))), ["cursor"]);
+    const after = parseStoredView(await storage.get(codingViewKey()))!;
+    assert.deepEqual(after.agents.find((agent) => agent.id === "devin")!.sources, ["agents-otlp"]);
+    assert.equal(after.totals?.totalTokens, 5_742);
   } finally { installTestStorage(null); }
 });
 

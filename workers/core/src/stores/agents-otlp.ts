@@ -26,7 +26,8 @@ const DAY_MS = 86_400_000;
 // 云端进程暂停后可能沿用累计计数器，过早删除基线会把全部历史重复计入。
 const SERIES_TTL_MS = 30 * DAY_MS;
 const MAX_SERIES = 5_000;
-// Devin CLI 的用量以前由 agents-reporter 从 tokens.ci 拉进账号级来源；第一次收到它的 OTLP 时把那本日行账本接过来。
+// Devin CLI 的用量以前由 agents-reporter 从 tokens.ci 拉进账号级来源：第一次收到它的 OTLP 时把那本日行账本接过来；
+// 之后账号级那边再冒出这一行（旧镜像还在跑）也照样删掉，否则它会压住 OTLP。
 const MOVED_FROM_AGENTS: readonly OtlpAgentId[] = ["devin"];
 
 function newest<T>(entries: Array<[string, T]>, seenAt: (value: T) => number, cutoff: number, limit: number) {
@@ -85,8 +86,9 @@ export async function recordPreparedAgentsOtlpUsage(prepared: PreparedAgentsOtlp
     let entry = books.get(id);
     if (!entry) {
       const own = ledgers[id];
-      const inherited = !own && MOVED_FROM_AGENTS.includes(id) ? accountLedgers[id] : undefined;
-      if (inherited) moved.push(id);
+      const account = MOVED_FROM_AGENTS.includes(id) ? accountLedgers[id] : undefined;
+      if (account) moved.push(id);
+      const inherited = own ? undefined : account;
       entry = { days: copyDays((own ?? inherited)?.days), previous: own, changed: Boolean(inherited), latestAt: null, latestModel: null };
       books.set(id, entry);
     }
@@ -176,7 +178,7 @@ export async function recordPreparedAgentsOtlpUsage(prepared: PreparedAgentsOtlp
         .sort((left, right) => left.date.localeCompare(right.date)),
     });
   }
-  if (agents.length) {
+  if (agents.length || moved.length) {
     const usage = await prepareCodingUsage("agents-otlp", { agents }, receivedAt, {
       derived: true,
       ...(moved.length ? { moveFrom: { source: "agents" as const, ids: moved } } : {}),

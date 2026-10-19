@@ -95,13 +95,13 @@ export async function prepareCodingUsage(
     }
     fields[agent.id] = JSON.stringify(own[agent.id]);
   }
-  const changed = Object.keys(fields).length > 0;
-  if (!changed) return NOTHING;
-
   const from = moveFrom && moveFrom.source !== source ? moveFrom.source : null;
   const left = from ? { ...stored[from] } : {};
-  const moved = from ? moveFrom!.ids.filter((id) => fields[id] && left[id]) : [];
+  const moved = from ? moveFrom!.ids.filter((id) => left[id]) : [];
   for (const id of moved) delete left[id];
+
+  const changed = Object.keys(fields).length > 0;
+  if (!changed && !moved.length) return NOTHING;
 
   const patched = !usageChanged && !moved.length && previousView ? applyCodingUsageStatus(previousView, source, statusOnly) : null;
   if (patched) {
@@ -124,5 +124,5 @@ export async function prepareCodingUsage(
     if (changed) batch.patch(codingUsageKey(source), fields);
     if (usageChanged) batch.set(codingUsageRevisionKey(), String(revision));
     batch.set(codingViewKey(), JSON.stringify(view)).set(codingYearKey(), JSON.stringify(year));
-  }, tags, changed);
+  }, tags, changed || moved.length > 0);
 }

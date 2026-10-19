@@ -124,7 +124,8 @@ Devin CLI 只会发 delta（不认 temporality 偏好），每次导出只带上
 
 Devin 的日行以前由 agents-reporter 从 tokens.ci 拉进 `agents` 来源。第一封带 Devin 的 OTLP 进来、`agents-otlp` 里还没有
 `devin` 时，把 `agents` 里那本 `devin` 账本的日子整份接过来，在同一个事务里从 `agents` 删掉它（账号级来源会压住
-`agents-otlp`，留着新数就看不见）；`prepareCodingUsage` 的 `moveFrom`。D1 里 `source = 'agents'` 的旧行原样留着，
+`agents-otlp`，留着新数就看不见）；`prepareCodingUsage` 的 `moveFrom`。之后 `agents` 里再出现 `devin`（旧镜像的上报器还没换下）
+也是下一封 Devin 的 OTLP 就删掉，日子不再接一遍。D1 里 `source = 'agents'` 的旧行原样留着，
 接过来的日子在 `agents-otlp` 下再归档一份；D1 目前没有跨来源相加的读者。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
