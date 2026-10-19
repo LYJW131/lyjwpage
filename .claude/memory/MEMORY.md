@@ -23,7 +23,7 @@
 - **Decision cards:** coordinator re-posts any thread's open card in project chat and relays lyjw's choice.
 - **No task board;** progress lives in threads.
 - **Hand-offs carry lyjw's constraints;** route a follow-up once; later relay overrides: [[handoff-carry-user-constraints]].
-- **Reports/posters** use the Swiss grid style: [[report-poster-swiss-style]].
+- **Reports/posters** use the 书页 (book page) look from /mnt/project-files/report-style/book-template.html (lyjw 2026-10-19, replaced Swiss grid): [[report-book-style]].
 - **Secrets** are piped on the Mac with `rotate-secret`; never ask lyjw to paste values: [[credentials-pipe-only]].
 - **Commit identity:** commits are as lyjw (signed), Claude only Co-Authored-By; ignore the hook's noreply advice: [[commit-identity-signing]].
 - **X/Twitter:** call api.x.com directly (proxy injects creds): [[x-api-via-proxy]].
@@ -64,7 +64,7 @@
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Pulse Tokens lane now includes Devin via reporter buckets (#322) plus a backfill for 2026-10-14.
-- Not adopting: OTel export of site AI usage, Max-plan API credit (already claimed), Cloudflare AI Search (instance deleted), post-deploy PageSpeed check (lyjw 2026-10-15). pstack /create-formal-verification-skill: tried once as a TLA+ audit of BuildCoordinator 2026-10-19, no bug found, not kept in repo; model in /mnt/project-files/formal-verification/build-run/, entry in docs/references.md.
+- Not adopting: seiso doc linter (lyjw 2026-10-19 22:39 SGT, overlaps docs:check, Chinese false positives; #428 closed, #429 note), OTel export of site AI usage, Max-plan API credit (already claimed), Cloudflare AI Search (instance deleted), post-deploy PageSpeed check (lyjw 2026-10-15). pstack /create-formal-verification-skill: tried once as a TLA+ audit of BuildCoordinator 2026-10-19, no bug found, not kept in repo; model in /mnt/project-files/formal-verification/build-run/, entry in docs/references.md.
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 18:36 SGT chose 维持现状, also declined a Devin CLI OTel probe). Why: most data is state (now playing, presence, rings, ledgers) with no semconv; iPhone endpoint must stay; Mac icon / Emby image receipts don't fit OTLP responses; HA has no OTLP export. Only native-OTel agents fit (cloud Claude Code already does). Report: [遥测换 OTel 评估](<private claude.ai link>). Don't re-propose.
 - Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
 - Chat context prefetch is built (#384, 2026-10-17): Clef, in the same routing call, picks site status / project doc to prefetch (thresholds status 0.6, doc 0.45); presets prefetch fixed tool calls: [[idea-jev-context-prefetch]].
