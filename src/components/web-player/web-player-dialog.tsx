@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ExternalLink, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 
 import { SyncPlaybackButton } from "@/components/web-player/sync-playback-button";
-import { Modal } from "@/components/ui/modal";
+import { MODAL_ACTION_CLASS, Modal } from "@/components/ui/modal";
 import { PlayerCover } from "@/components/web-player/player-cover";
 import { PlayerLyrics } from "@/components/web-player/player-lyrics";
 import type { WebPlayer } from "@/hooks/use-web-player";
@@ -29,7 +29,7 @@ function DialogButton({ children, onClick, disabled }: {
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="label-mono min-w-0 flex-1 py-2.5 text-center text-foreground transition-colors hover:bg-surface-hover disabled:cursor-default disabled:opacity-60"
+      className={cn(MODAL_ACTION_CLASS, "disabled:cursor-default disabled:opacity-60")}
     >
       {children}
     </button>
@@ -460,7 +460,7 @@ export function WebPlayerDialog({ player }: { player: WebPlayer }) {
               href={item.link}
               target="_blank"
               rel="noreferrer noopener"
-              className="label-mono inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 py-2.5 text-center text-foreground transition-colors hover:bg-surface-hover"
+              className={MODAL_ACTION_CLASS}
             >
               <span>Apple Music</span>
               <ExternalLink className="size-3 shrink-0" aria-hidden />

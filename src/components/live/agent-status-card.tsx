@@ -12,7 +12,7 @@ import { ExternalLink, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { Card } from "@/components/ui/card";
-import { Modal } from "@/components/ui/modal";
+import { MODAL_ACTION_CLASS, Modal } from "@/components/ui/modal";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
@@ -217,10 +217,10 @@ function Detail({ agent, onClose }: { agent: AgentStatusRow; onClose: () => void
         href={agent.statusUrl}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center justify-center gap-1.5 border-t border-line py-2.5 text-sm hover:bg-surface-hover"
+        className={cn(MODAL_ACTION_CLASS, "w-full border-t border-line")}
       >
         Open status page
-        <ExternalLink className="size-3.5" aria-hidden />
+        <ExternalLink className="size-3 shrink-0" aria-hidden />
       </a>
     </Modal>
   );
