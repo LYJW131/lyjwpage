@@ -6,8 +6,6 @@
     // SLOW 须与 ch08.js 的同名表一致。
     const SLOW = [[3.0, 4.5], [5.0, 7.0], [7.75, 10.25], [11.0, 13.0]];
     const played = (o) => { let n = 0, p = 0; for (const [a, b] of SLOW) { if (o <= a) return n + o - p; n += a - p; if (o <= b) return n + (o - a) * 1.5; n += (b - a) * 1.5; p = b; } return n + o - p; };
-    // 渐强类音效（和插头、碰杯这种最响一下在后面的）提前起，让最响的那一下落在卡点上；秒数是 earshot 量的各文件峰值时刻，换音效文件要重量
-    const LEAD = { whoosh: 0.068, plug: 0.278, tube: 0.478, glass: 0.315, valve: 0.826, zip: 0.128 };
     const SFX = [
       ...[0, 1, 2, 3, 4, 5, 6].map((i) => [0.125 + i * 0.0625, "pop", 0.55, -0.6 + i * 0.16, 0.85 + i * 0.09]),
       [0.5, "land", 0.56, 0.45], [1.0, "whoosh", 1.07, 0.2], [1.5, "land", 0.48, 0.3], [1.6, "paper", 0.7, -0.2],
@@ -82,7 +80,7 @@
         { bar: 0, beat: 0, kind: "boom" },
         { bar: 23, beat: 3, kind: "swell" },
       ],
-      sfx: SFX.map(([o, name, v = 1, pan = 0, rate = 1]) => { const n = played(o); return { bar: Math.floor(n + 1e-9), beat: (n - Math.floor(n + 1e-9)) * 4, name, v, pan, rate, lead: (LEAD[name] || 0) / rate }; }),
+      sfx: SFX.map(([o, name, v = 1, pan = 0, rate = 1]) => { const n = played(o); return { bar: Math.floor(n + 1e-9), beat: (n - Math.floor(n + 1e-9)) * 4, name, v, pan, rate }; }),
     };
   },
 });
