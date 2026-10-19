@@ -147,12 +147,12 @@ export function TrophyTeaser({
 
       {recent ? (
         <div className="min-w-0 border-t border-line pt-3 md:basis-full lg:ml-auto lg:max-w-64 lg:basis-auto lg:border-t-0 lg:pt-0 lg:text-right">
-          <div className="-mx-2">
+          <div className="-m-2">
             <button
               type="button"
               onClick={() => onRecentClick(recent)}
               aria-label={`Open ${recent.titleName} trophies at “${recent.trophyName}”`}
-              className="block w-full cursor-pointer rounded-md px-2 py-1 text-left transition-colors hover:bg-surface-hover lg:text-right"
+              className="block w-full cursor-pointer rounded-md p-2 text-left transition-colors hover:bg-surface-hover lg:text-right"
             >
               <div className="label-mono text-muted-foreground">
                 Latest · {formatUnlock(recent.earnedAt)}
