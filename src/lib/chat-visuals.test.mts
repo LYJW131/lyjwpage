@@ -97,6 +97,23 @@ test("写到一半的图示 JSON 按写完的条目先画", () => {
   assert.ok(parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],"series":[{"name":"n","values":[1,2]}'));
 });
 
+test("标签之间的逗号写在重复段开头：空字符串夹着制表符再长也不卡住", () => {
+  const spaced = parsePartialVisual("chart", '{"type":"line","labels":[ "10-06" , "10-07" , "10-08" ]');
+  assert.ok(spaced?.kind === "chart");
+  assert.deepEqual(spaced.labels, ["10-06", "10-07", "10-08"]);
+  const escaped = parsePartialVisual("chart", '{"type":"bar","labels":["a\\"b","c\\\\d"]');
+  assert.ok(escaped?.kind === "chart");
+  assert.deepEqual(escaped.labels, ['a"b', "c\\d"]);
+  const trailed = parsePartialVisual("chart", '{"type":"bar","labels":["a","b"],');
+  assert.ok(trailed?.kind === "chart");
+  assert.deepEqual(trailed.labels, ["a", "b"]);
+  const attack = `{"type":"bar","labels":[""${"\t\"\"".repeat(28)}`;
+  const started = performance.now();
+  assert.equal(parsePartialVisual("chart", attack), null);
+  const elapsed = performance.now() - started;
+  assert.ok(elapsed < 100, `闭合判断用了 ${elapsed.toFixed(0)}ms`);
+});
+
 test("图表等标签写完先出坐标框，数据按写完的数逐个补上，写到半截的数不画", () => {
   assert.equal(parsePartialVisual("chart", '{"type":"line","title":"Tokens","labels":["10-06","10-07"'), null);
   const frame = parsePartialVisual("chart", '{"type":"line","title":"Tokens","labels":["10-06","10-07","10-08"]');
