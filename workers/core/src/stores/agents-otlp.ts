@@ -10,7 +10,7 @@ import type { OtlpAgentId, OtlpTokenType, PreparedAgentsOtlpUsage } from "@share
 import type { StorageBatch } from "@shared/storage-client";
 
 import { prepareCodingActivity, readCodingActivities } from "./coding-activity";
-import { prepareOtlpBuckets } from "./coding-buckets";
+import { prepareBucketsWithout, prepareOtlpBuckets } from "./coding-buckets";
 import { prepareCodingUsage } from "./coding-usage";
 
 // 计数器与差值账本必须同事务落库；计数器先成功会让失败的差值永远补不回来。
@@ -27,7 +27,7 @@ const DAY_MS = 86_400_000;
 const SERIES_TTL_MS = 30 * DAY_MS;
 const MAX_SERIES = 5_000;
 // Devin CLI 的用量以前由 agents-reporter 从 tokens.ci 拉进账号级来源：第一次收到它的 OTLP 时把那本日行账本接过来；
-// 之后账号级那边再冒出这一行（旧镜像还在跑）也照样删掉，否则它会压住 OTLP。
+// 之后账号级那边再冒出这一行（旧镜像还在跑）也照样删掉，否则它会压住 OTLP；账号级桶里它的行同理。
 const MOVED_FROM_AGENTS: readonly OtlpAgentId[] = ["devin"];
 
 function newest<T>(entries: Array<[string, T]>, seenAt: (value: T) => number, cutoff: number, limit: number) {
@@ -207,6 +207,8 @@ export async function recordPreparedAgentsOtlpUsage(prepared: PreparedAgentsOtlp
 
   const buckets = await prepareOtlpBuckets(deltas, receivedAt);
   staged.push(buckets.stage);
+  const movedAgents = [...books.keys()].filter((id) => MOVED_FROM_AGENTS.includes(id));
+  if (movedAgents.length) staged.push((await prepareBucketsWithout("agents", movedAgents)).stage);
 
   const batch = getStorage().batch().set(codingOtlpKey(), JSON.stringify(nextCounters));
   for (const stage of staged) stage(batch);

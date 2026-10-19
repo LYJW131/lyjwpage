@@ -127,7 +127,8 @@ export function parseOtlpUsage(input: unknown, now = Date.now()): OtlpUsagePoint
             metric: known.metric,
             type,
             model: model && model.length <= 200 ? model : null,
-            session: digest(sessionId),
+            // Claude 的摘要沿用不带前缀的旧写法，已存的会话表才认得出；其他 agent 加前缀，同名会话不互相顶掉。
+            session: digest(known.agent === "claude" ? sessionId : `${known.agent}\u001f${sessionId}`),
             series: digest((cumulative ? [name, start, ...identity] : [name, "delta", ...identity]).join("\u001f")),
             startMs: Number(BigInt(start) / BigInt(1_000_000)),
             timeMs,
