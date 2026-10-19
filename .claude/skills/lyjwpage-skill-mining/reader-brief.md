@@ -12,7 +12,7 @@
 我们要找「值得写成 skill 的可复用流程」、已有 skill 的实际使用情况，以及 lyjw 提的需求从第一次说出口到最后交付之间走了哪些弯路。
 已有 skill：<名字: 一句话描述；每个一行>
 
-请读这些线程（fetch_thread，order oldest_first，翻完所有页；有书签的从书签之后读）。thread_id 很长，从下面原样复制，不要手打；读到的根消息和标题对不上就是 id 错了，报 FAILED：
+请读这些线程（fetch_thread，order oldest_first，翻完所有页；有书签的从书签之后读：书签是一条消息 id，不是 cursor，不要传进 cursor 参数，照常从头翻页，跳过书签和它之前的消息）。thread_id 很长，从下面原样复制，不要手打；读到的根消息和标题对不上就是 id 错了，报 FAILED：
 <线程标题 | thread_id | 书签消息 id 或「从头」>
 
 消息 id 一律从工具结果里整串原样复制（以 cmsg_ 开头），不缩写、不拼前缀；引的原话必须就是那个 id 那条消息里的文字，作者也要对（lyjw 的话引 lyjw 那条，不引 Claude 复述它的那条）。主线程会按 id 抽查原文，对不上整份作废。
@@ -21,7 +21,7 @@
 1. lastMessageId：你读到的最后一条消息 id；没读完或读失败写 FAILED 和原因。
 2. 候选流程：线程里 Claude 做成的一段多步做法，换个线程还会再用（例：「验证交给 Haiku 验证员」「合并前汇总机器评审」）。每条写：一句话概括、步骤要点、证据（消息 id + 不超过一行的原话）。
 3. lyjw 的纠正：lyjw 说「不对」「以后…」「别…」「你没懂」之类的地方。每条写：纠正了什么、证据（消息 id + 原话）、Claude 之后照做了没有。
-4. skill 使用：提到或照着已有 skill 做的地方（如「Haiku 验证员」「lyjwpage-verify」）；照做顺不顺、lyjw 有没有又纠正同一件事。需要确认时可以用 list_events（session_id 用 "session_" 加线程会话 id 去掉 "cse_" 前缀后的部分，kinds ["assistant"]，limit 100，最多读 3 页）找 Skill 工具调用或 Agent 调用里的 model；读不到就写「未核实」。
+4. skill 使用：提到或照着已有 skill 做的地方（如「Haiku 验证员」「lyjwpage-verify」）；照做顺不顺、lyjw 有没有又纠正同一件事。线程里有界面改动、验证或合并，或 lyjw 纠正了某个 skill 管的事时，必须用 list_events 核一次有没有对应的 Skill 调用；其余线程需要确认时再用。list_events（session_id 用 "session_" 加线程会话 id 去掉 "cse_" 前缀后的部分，kinds ["assistant"]，limit 100，最多读 3 页）找 Skill 工具调用或 Agent 调用里的 model；读不到就写「未核实」。
 
 5. 需求偏差：线程里每件有了结局的事（交付、合并、lyjw 说算了；还在做的不算）各写一条。先找 lyjw 最早提这件事的那条消息（多半是根消息；这件事开始于书签之前时，从根消息起把这条线程整段重读，不只补根消息，否则看不到书签前的返工），再对照最终交付了什么，列出中间的偏差：
    - 类型：理解偏了范围 / 方案被否 / 返工 / 该问没问 / 不该问却问了 / 派错线程或塞进别的 PR / 没验证就报完成 / 其他。
