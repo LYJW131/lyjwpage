@@ -42,7 +42,7 @@ README 里落地节点、AI Coding、Pulse、站点自身四张不是截图，�
 - site Worker 用首页同一个卡片组件 SSR，配上只扫卡片相关目录生成的 Tailwind 样式（[`src/app/cards/readme-cards.css`](../src/app/cards/readme-cards.css)），放进 `<foreignObject>`。
 - GitHub 经 camo 把它当 `<img>` 显示，图片里不跑脚本、不取外部资源：卡内图片内嵌成 data URI；camo 的 CSP 拦字体，卡片用系统等宽字体，不内嵌 Geist Mono，NumberFlow 只留纯文本读数；按 `useMountedAt` 算的内容（限额配速线、重置倒计时）经 `RenderClock` 取出图时刻烧进图里，绝对时刻按站点时区写，图片缓存期内不再走。
 - 卡宽固定为首页桌面内容宽；图片里的媒体查询按显示宽度算，路由把宽度断点按卡宽定死，缩小显示也保持桌面布局。卡高写在路由的 `CARDS` 里，按首页 1280 宽实测；卡片行数变了要重量，否则底部被裁或留白。
-- 实时数据为空时用 `workers/core/dev-fixtures/` 的夹具补，卡头标 Sample data。缓存头与 core 的 `/api/cards/*.svg` 同档。
+- 实时数据为空时用 `workers/core/dev-fixtures/` 的夹具补，卡头标题后标 Sample data；用实时数据的标抓取时间（站点时区）。缓存头与 core 的 `/api/cards/*.svg` 同档。
 - 本地看效果要用生产构建：`pnpm build && pnpm start` 后开 `http://localhost:3211/cards/pulse.svg?theme=dark`。`pnpm dev` 里 NumberFlow 输出空壳，读数是空的。
 
 ## 交互式架构图

@@ -39,7 +39,7 @@
 
 ## 页面效果
 
-正在看、正在听、充电、游戏这类状态卡片只在对应的事情发生时出现。下面的图在本地用示例数据把这些状态同时点亮，明暗跟随系统；落地节点、AI Coding、Pulse、站点自身四张由站点实时渲染成 SVG，没有数据时补示例数据并标 Sample data。录制方法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
+正在看、正在听、充电、游戏这类状态卡片只在对应的事情发生时出现。下面的图在本地用示例数据把这些状态同时点亮，明暗跟随系统；落地节点、AI Coding、Pulse、站点自身四张由站点实时渲染成 SVG，卡头标出抓取时间，没有数据时补示例数据并标 Sample data。录制方法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
 
 **页头前台应用**：Claude Code、Ghostty、Cursor、Antigravity 换成品牌动画，窗口标题过了隐私判断才显示。
 
