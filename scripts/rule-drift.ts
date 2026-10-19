@@ -1,5 +1,5 @@
 // 软规则写在这些文件里，CI 拦不住；分支开工后 main 上改了它们，合并前要拿 PR 的改动对一遍新规则。
-const RULE_PATHS = [/(^|\/)AGENTS\.md$/, /^DESIGN\.md$/, /^HUMAN\.md$/, /^\.claude\/skills\/.*\.md$/];
+const RULE_PATHS = [/(^|\/)AGENTS\.md$/, /^DESIGN\.md$/, /^HUMAN\.md$/, /^REVIEW\.md$/, /^\.claude\/skills\/.*\.md$/];
 const COMPARE_FILE_LIMIT = 300;
 
 type Get = { get<T>(path: string): Promise<T> };
