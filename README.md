@@ -14,26 +14,22 @@
 
 听什么、看什么、玩什么，正在用哪些应用，设备状态如何：这个主页把 Mac、iPhone、NAS 和云端服务里分散的状态汇到同一页，也是一套持续演进的个人遥测系统。
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
-  <img src="docs/screenshots/overview-light.webp" alt="首页总览：每日摘要、正在看、充电头与充电宝、正在听、与神对话、活动圆环与最近训练、落地节点同时点亮" width="100%">
-</picture>
-
 ## 页面里有什么
 
 | 模块 | 内容 |
 | --- | --- |
 | **每日摘要** | 一句标语加几项读数概括最近 24 小时，配 24 小时表盘 |
 | **本机与充电** | Mac 前台应用与窗口标题，Anker 充电头、充电宝的端口与功率 |
+| **勿扰** | iPhone 专注模式与已持续时长 |
 | **影视 / 音乐** | Emby 正在播放；Apple Music 与 HomePod 在听、逐字歌词，访客可用网页播放器「一起听」 |
 | **运动** | Apple Watch 三环与最近训练 |
 | **服务器** | 落地节点的速率、流量、CPU、内存、磁盘 |
 | **AI Coding** | 各编码工具的 Token 用量、成本估算、在用的 agent、年度热力图与限额 |
-| **游戏** | PlayStation 在线状态与奖杯 |
-| **Pulse** | 编码、听、看、玩、充电、运动的 24 小时时间线 |
+| **游戏** | Meta Quest 正在玩；PlayStation 在线状态与奖杯 |
+| **Pulse** | 编码、Token、听、看、玩、充电、运动的 24 小时时间线 |
 | **服务状态** | Claude、ChatGPT、Cursor、GitHub、Cloudflare 等官方状态页汇总 |
 | **站点自身** | 仓库与提交、30 天在线状态、性能分、各 Worker 与上报器指标 |
-| **与神对话** | 按问题难度派给不同档位的 Claude，可读各卡实时数据、联网搜索、规划站点改动 |
+| **与神对话** | 访客选 DeepSeek 或 Claude 阵容，按问题难度派档，可读各卡实时数据、联网搜索、在回答里画卡片、规划站点改动 |
 
 同一套数据也开放给 AI：`https://lyjw.me/mcp` 是公开 MCP 端点（Streamable HTTP，无需鉴权）。
 
@@ -72,8 +68,8 @@
 **Meta Quest 正在玩**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=2">
-  <img src="https://lyjw.me/cards/quest.svg?v=2" alt="Meta Quest 正在玩卡片：游戏、模式与已玩时长" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/quest.svg?v=3" alt="Meta Quest 正在玩卡片：游戏、模式与已玩时长" width="100%">
 </picture>
 
 **充电头与充电宝**
