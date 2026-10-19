@@ -265,3 +265,9 @@ test("时间点字段给成 LYJW 时区的本地时间，时长和普通数字�
   assert.match(json, /"since":"2025-06-12 12:40"/);
   assert.match(json, /"playDurationMs":194726000,"playCount":75/);
 });
+
+test("Unix 秒的 resetsAt、ISO 字符串的 playedAt 与 pulse 的 window 也给成本地时间", async () => {
+  const io = fakeIO(() => ({ ok: true, data: { resetsAt: 1_760_160_382, playedAt: "2025-10-11T05:26:00.000Z", window: { from: 1_760_160_382_580, to: 1_760_160_382_580 }, id: "2025-10-11" } }));
+  const { json } = section((await run({ views: ["limits"] }, io)).text, "limits");
+  assert.equal(json, '{"ok":true,"data":{"resetsAt":"2025-10-11 13:26","playedAt":"2025-10-11 13:26","window":{"from":"2025-10-11 13:26","to":"2025-10-11 13:26"},"id":"2025-10-11"}}');
+});
