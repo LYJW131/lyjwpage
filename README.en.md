@@ -51,82 +51,82 @@ The cards below are rendered live by the site as SVG, follow the system light or
 **Daily digest**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark">
-  <img src="https://lyjw.me/cards/digest.svg" alt="Daily digest card: a tagline, coding and agent hours and tokens, with a 24-hour dial" width="530">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/digest.svg?v=2" alt="Daily digest card: a tagline, coding and agent hours and tokens, with a 24-hour dial" width="530">
 </picture>
 
 **Now watching on Emby**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-watching.svg?theme=dark">
-  <img src="https://lyjw.me/cards/now-watching.svg" alt="Emby now watching card" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-watching.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/now-watching.svg?v=2" alt="Emby now watching card" width="100%">
 </picture>
 
 **Charger and power bank**
 
-<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/charger.svg?theme=dark"><img src="https://lyjw.me/cards/charger.svg" alt="Anker charger card: total power, the power curve and each port" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/powerbank.svg?theme=dark"><img src="https://lyjw.me/cards/powerbank.svg" alt="Anker power bank card: charge level, dock input, output and ports" width="50%"></picture></p>
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/charger.svg?theme=dark&amp;v=2"><img src="https://lyjw.me/cards/charger.svg?v=2" alt="Anker charger card: total power, the power curve and each port" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/powerbank.svg?theme=dark&amp;v=2"><img src="https://lyjw.me/cards/powerbank.svg?v=2" alt="Anker power bank card: charge level, dock input, output and ports" width="50%"></picture></p>
 
 **Now playing on Apple Music**: word-by-word synced lyrics, with recently played below.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-listening.svg?theme=dark">
-  <img src="https://lyjw.me/cards/now-listening.svg" alt="Apple Music now playing: the current song and its lyrics, recently played below" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-listening.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/now-listening.svg?v=2" alt="Apple Music now playing: the current song and its lyrics, recently played below" width="100%">
 </picture>
 
 **Talk to God**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/chat.svg?theme=dark">
-  <img src="https://lyjw.me/cards/chat.svg" alt="Talk to God card: sample questions and the input box" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/chat.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/chat.svg?v=2" alt="Talk to God card: sample questions and the input box" width="100%">
 </picture>
 
 **Activity and workouts**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/activity.svg?theme=dark">
-  <img src="https://lyjw.me/cards/activity.svg" alt="Activity card: rings and readings, recent workouts on the right" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/activity.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/activity.svg?v=2" alt="Activity card: rings and readings, recent workouts on the right" width="100%">
 </picture>
 
 **Exit node**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark">
-  <img src="https://lyjw.me/cards/server.svg" alt="Exit node card: rates, traffic, CPU, memory and disk" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/server.svg?v=2" alt="Exit node card: rates, traffic, CPU, memory and disk" width="100%">
 </picture>
 
 **AI Coding**: merged from the Mac's local logs, Cursor account history and Claude Code cloud telemetry.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark">
-  <img src="https://lyjw.me/cards/vibe-coding.svg" alt="AI Coding card: usage across sources, active tools and account limits" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/vibe-coding.svg?v=2" alt="AI Coding card: usage across sources, active tools and account limits" width="100%">
 </picture>
 
 **PlayStation**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/playstation.svg?theme=dark">
-  <img src="https://lyjw.me/cards/playstation.svg" alt="PlayStation card: trophy counts and recently played games" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/playstation.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/playstation.svg?v=2" alt="PlayStation card: trophy counts and recently played games" width="100%">
 </picture>
 
 **Pulse**: on the page, hover any segment to see the state and title at that time.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark">
-  <img src="https://lyjw.me/cards/pulse.svg" alt="Pulse card: 24-hour timelines for coding, tokens, listening, watching, playing, charging and activity with a daily summary" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/pulse.svg?v=2" alt="Pulse card: 24-hour timelines for coding, tokens, listening, watching, playing, charging and activity with a daily summary" width="100%">
 </picture>
 
 **Provider status**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/provider-status.svg?theme=dark">
-  <img src="https://lyjw.me/cards/provider-status.svg" alt="Provider status card: the operational state of each service" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/provider-status.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/provider-status.svg?v=2" alt="Provider status card: the operational state of each service" width="100%">
 </picture>
 
 **The site itself**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark">
-  <img src="https://lyjw.me/cards/site-status.svg" alt="LYJWPAGE card: repository stats and commits, 30-day uptime, performance scores and service metrics" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/site-status.svg?v=2" alt="LYJWPAGE card: repository stats and commits, 30-day uptime, performance scores and service metrics" width="100%">
 </picture>
 
 ## Architecture
