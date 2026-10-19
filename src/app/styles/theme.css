@@ -1,0 +1,247 @@
+@font-face {
+  font-family: "Geist Mono";
+  /* tech() 只收关键字；写成带引号的字符串整条 src 不合法，整个 @font-face 被丢掉。woff2 本身就能装可变字体，不写 tech。
+     走 Vite 资源拿到带哈希的 /assets 地址（长期缓存）；须与 root.tsx 的预加载指向同一个文件。
+     Tailwind 内联 @import 时不改写 url()，Vite 按入口 src/app/site.css 解析，所以路径相对 src/app 写，不相对本文件。 */
+  src: url("../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@custom-variant retina (@media (min-resolution: 2x));
+
+:root {
+  --radius: 0rem;
+
+  --background: oklch(0.94 0.007 92);
+  --foreground: oklch(0.19 0.006 80);
+  --muted: oklch(0.965 0.008 92);
+  --muted-foreground: oklch(0.48 0.008 80);
+  --lyric-unsung: oklch(0.19 0.006 80 / 28%);
+
+  --surface: oklch(0.995 0.006 92);
+  --surface-hover: oklch(0.945 0.012 90);
+  --line: oklch(0.19 0.006 80 / 24%);
+  --line-strong: oklch(0.19 0.006 80 / 88%);
+  --paper-shadow: oklch(0.19 0.006 80 / 18%);
+
+  --signal-red: oklch(0.55 0.16 30);
+  --signal-orange: #d66b35;
+  --signal-yellow: #d0a22c;
+  --signal-green: oklch(0.52 0.1 151);
+  /* 白金奖杯的金属描边：两档银灰交替成斜向高光。 */
+  --platinum-hi: oklch(0.96 0.008 250);
+  --platinum-lo: oklch(0.64 0.012 250);
+  --signal-blue: #3e70c9;
+  --signal-violet: #8255c7;
+
+  --live: oklch(0.65 0.17 145);
+  --live-idle: oklch(0.7 0.15 75);
+  --live-off: oklch(0.62 0 0);
+  /* live / live-idle 在浅色底上不到 4.5:1，只给圆点和色条；彩色字用 ink。 */
+  --live-ink: oklch(0.54 0.16 150);
+  --live-idle-ink: oklch(0.56 0.15 55);
+
+  --pulse-human: oklch(0.64 0.13 248);
+  --pulse-agent: var(--live);
+  --pulse-both: oklch(0.42 0.17 300);
+
+  --claude: oklch(0.672 0.131 38.8);
+  /* 贡献者色条取头像主色，对 muted 轨道 ≥ 3:1；两张黑白头像用明暗区分。 */
+  --avatar-lyjw131: oklch(0.58 0.15 235);
+  --avatar-claude: oklch(0.64 0.19 40);
+  --avatar-codex: oklch(0.56 0.24 280);
+  --avatar-cursor: oklch(0.3 0.005 80);
+  --avatar-chihaya: oklch(0.64 0.23 355);
+  --avatar-grok: oklch(0.6 0.005 80);
+  --avatar-dsh: oklch(0.32 0.01 80);
+
+  --activity-move: #f31e59;
+  --activity-move-lit: #fd3183;
+  --activity-exercise: #72ec00;
+  --activity-exercise-lit: #b0fc00;
+  --activity-stand: #00ccdc;
+  --activity-stand-lit: #00f8d0;
+  /* 环带在两套主题下都很亮，字形不能跟随浅色主题的白色 surface。 */
+  --activity-ink: #16171c;
+  --activity-shadow: 0.5;
+}
+
+.dark {
+  --background: oklch(0.15 0.008 85);
+  --foreground: oklch(0.93 0.012 90);
+  --muted: oklch(0.205 0.008 85);
+  --muted-foreground: oklch(0.66 0.012 90);
+  --lyric-unsung: oklch(0.93 0.012 90 / 28%);
+
+  --surface: oklch(0.185 0.008 85);
+  --surface-hover: oklch(0.235 0.01 85);
+  --line: oklch(0.93 0.012 90 / 20%);
+  --line-strong: oklch(0.93 0.012 90 / 76%);
+  --paper-shadow: oklch(0 0 0 / 52%);
+
+  --live: oklch(0.76 0.16 148);
+  --live-idle: oklch(0.8 0.13 78);
+  --live-off: oklch(0.5 0 0);
+  --live-ink: var(--live);
+  --live-idle-ink: oklch(0.67 0.17 58);
+
+  --signal-red: oklch(0.66 0.19 27);
+  --signal-green: oklch(0.7 0.15 151);
+  --platinum-hi: oklch(0.97 0.008 250);
+  --platinum-lo: oklch(0.58 0.012 250);
+  --signal-blue: oklch(0.66 0.16 261);
+  --signal-violet: oklch(0.66 0.18 299);
+
+  --pulse-human: oklch(0.84 0.09 240);
+  --pulse-both: oklch(0.6 0.17 300);
+
+  --claude: oklch(0.74 0.115 39);
+  --avatar-lyjw131: oklch(0.72 0.14 235);
+  --avatar-claude: oklch(0.74 0.17 42);
+  --avatar-codex: oklch(0.68 0.2 280);
+  --avatar-cursor: oklch(0.9 0.005 80);
+  --avatar-chihaya: oklch(0.74 0.19 355);
+  --avatar-grok: oklch(0.55 0.005 80);
+  --avatar-dsh: oklch(0.88 0.005 80);
+
+  --activity-shadow: 1;
+
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-lyric-unsung: var(--lyric-unsung);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-live: var(--live);
+  --color-live-idle: var(--live-idle);
+  --color-live-off: var(--live-off);
+  --color-live-ink: var(--live-ink);
+  --color-live-idle-ink: var(--live-idle-ink);
+  --color-claude: var(--claude);
+  --color-signal-red: var(--signal-red);
+  --color-signal-orange: var(--signal-orange);
+  --color-signal-yellow: var(--signal-yellow);
+  --color-signal-green: var(--signal-green);
+  --color-signal-blue: var(--signal-blue);
+  --color-signal-violet: var(--signal-violet);
+
+  --radius-xs: var(--radius);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
+
+  /* 只给 font-size、不给行高：行高沿用父级或 leading-*，套在 leading-4 这类行里不改行高。 */
+  --text-2xs: 0.6875rem;
+
+  --font-geist-mono: "Geist Mono";
+  --font-sans:
+    system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC",
+    "Microsoft YaHei", sans-serif;
+  --font-mono:
+    var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-trophy-focus: trophy-focus 1s ease-in-out 1;
+  --animate-headline-in: headline-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--line);
+  }
+
+  .lobe-flex {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    flex-wrap: nowrap !important;
+    white-space: nowrap !important;
+  }
+
+  .lobe-flex > svg {
+    display: inline-block !important;
+    vertical-align: middle !important;
+    flex-shrink: 0 !important;
+    width: auto !important;
+    max-height: 100% !important;
+  }
+
+  /* 只在页面内有焦点时平滑滚动，加载时跳到 #锚点 保持瞬时：平滑动画靠渲染帧推进，加载中会被首屏数据撑开的布局带偏，不出帧的内嵌浏览器里停在顶部。 */
+  html:focus-within {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    /* hidden 会把 body 变成滚动容器并破坏 sticky；这里只裁掉横向溢出。 */
+    overflow-x: clip;
+    background-color: var(--background);
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--foreground) 3%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 3%, transparent) 1px, transparent 1px);
+    background-size: 24px 24px;
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-variant-numeric: tabular-nums slashed-zero;
+  }
+
+  ::selection {
+    background: var(--signal-yellow);
+    color: oklch(0.16 0.01 80);
+  }
+}
+
+/* 不给全页 color/background 加 transition，逐元素插值会拖慢主题切换。 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 280ms;
+  animation-timing-function: ease;
+}
+
+::view-transition-new(.source-hint) {
+  animation: source-hint-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+::view-transition-old(.source-hint) {
+  animation: source-hint-out 120ms ease-in both;
+}
+
+@keyframes source-hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes source-hint-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+/* 全局 reduced-motion 规则的 *、*::before 匹配不到 view transition 伪元素。 */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}

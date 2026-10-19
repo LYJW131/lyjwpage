@@ -1,0 +1,66 @@
+@utility screen-line-top {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100vw;
+    width: 200vw;
+    height: 1px;
+    background: var(--line);
+    pointer-events: none;
+  }
+}
+
+@utility screen-line-bottom {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: -100vw;
+    width: 200vw;
+    height: 1px;
+    background: var(--line);
+    pointer-events: none;
+  }
+}
+
+@utility stripe-divider {
+  background-image: repeating-linear-gradient(
+    315deg,
+    var(--line) 0,
+    var(--line) 1px,
+    transparent 0,
+    transparent 50%
+  );
+  background-size: 6px 6px;
+}
+
+@utility label-mono {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* 双列网格项退出尺寸计算会改变整行高度，因此只在单列启用。 */
+@utility defer-offscreen {
+  @media (width < 48rem) {
+    content-visibility: auto;
+  }
+}
+
+@utility defer-offscreen-always {
+  content-visibility: auto;
+}
+
+html.offscreen-revealed .defer-offscreen,
+html.offscreen-revealed .defer-offscreen-always,
+.defer-offscreen[data-offscreen-revealed],
+.defer-offscreen-always[data-offscreen-revealed] {
+  content-visibility: visible;
+}

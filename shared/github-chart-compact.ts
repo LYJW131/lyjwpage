@@ -5,7 +5,7 @@ export const CELL = 10;
 export const STEP = 12;
 export const LEFT = 27;
 export const TOP = 20;
-// 须与 globals.css 里 .github-chart 的 data-score 档位数同步。
+// 须与 src/app/styles/heatmap.css 里 .github-chart 的 data-score 档位数同步。
 export const HEATMAP_LEVELS = 8;
 export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 export const DAY_LABEL_Y = [28, 40, 52, 64, 77, 89, 101] as const;
