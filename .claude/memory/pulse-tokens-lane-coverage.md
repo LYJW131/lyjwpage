@@ -1,20 +1,26 @@
 ---
 name: pulse-tokens-lane-coverage
-description: Pulse Tokens lane counts cache reads (PR #217); covers Claude Code, Codex, Cursor, cloud OTLP and Devin (#322, timing approximate), not Grok/Antigravity/opencode/pi
+description: Where coding-agent token usage comes from (Mac scanner, Cursor via agents, OTLP for cloud Claude Code and Mac Devin CLI); Pulse Tokens lane coverage and gaps
 metadata:
   type: project
 ---
 
-Since PR #217 (merged 2026-10-13, f0c5260), every token figure on the site counts input + output + cache read + cache write (`shared/coding-usage.ts#codingRowTokens`). The Pulse Tokens lane fields are now `buckets.total` and `summary.totalTokens`. Before that they were `fresh` and `freshTokens`.
+Every token figure counts input + output + cache read + cache write (`shared/coding-usage.ts#codingRowTokens`, #217). Pulse Tokens lane fields are `buckets.total` and `summary.totalTokens`.
 
-The lane still covers fewer agents than the daily total. These sources send 5-minute buckets:
-- the Mac's Claude Code + Codex JSONL scanner (MacTelemetryHub `CodingTokenScanner.swift`)
-- Cursor (agents-reporter)
-- Claude Code cloud OTLP
-- Devin CLI (agents-reporter, PR #322, merged 2026-10-14). tokens.ci only gives daily cumulatives, so the reporter spreads each growth evenly between two tokens.ci `updatedAt` submissions (`reporters/agents-reporter/src/devin-buckets.ts`). Totals are real and timing is approximate, because tokens.ci submits only every tens of minutes. Core merges bucket reports per agent (`shared/coding-buckets.ts#mergeBucketReport`), so Cursor and Devin, both on source `agents`, don't wipe each other.
+Sources sending 5-minute buckets (all in the lane):
+- `mac`: MacTelemetryHub's Claude Code + Codex JSONL scanner.
+- `agents`: Cursor only (agents-reporter, account-level history).
+- `agents-otlp` (`/api/ingest/agents/otlp`): cloud Claude Code (`claude_code.*` metrics → agent `claude`) and, since #436 (merged 2026-10-20 01:46 SGT from lyjw's Mac), Devin CLI on the Mac pushing its own OTel (`devin.token.usage` → agent `devin`). Map: `shared/ingest/agents-otlp.ts#METRICS`.
 
-Backfill: on 2026-10-14 a Mac Haiku session extracted exact per-message Devin tokens from `~/.local/share/devin/cli/sessions.db` and pushed 3.05B of buckets once, for the range before the reporter ledger's `since`. lyjw approved it; Mac auto mode blocked it until then. Afterwards the lane went from 3.43B to 6.47B and the digest card showed 6.5B after a manual "Run Collector Jobs" with `digest`. The precise long-term route, still pending lyjw's answer, is for MacTelemetryHub to read sessions.db directly.
+Devin CLI details (#436, #441):
+- tokens.ci route is gone: agents-reporter's `devin-usage.ts` / `devin-buckets.ts` and `TOKENS_CI_USER` removed. agents-reporter still reports Devin's quota/limits row, not usage.
+- Mac config: `~/.config/devin/config.json` `otel` block (metrics_endpoint used as-is, logs off because they carry prompt text) plus `OTEL_EXPORTER_OTLP_PROTOCOL=http/json` in `~/.zshenv` (protobuf gets 400). Auth reuses the `lyjwpage-mac` service token, now granted `["ingest:mac", "ingest:agents-otlp"]` in `workers/ingress/wrangler.toml#ACCESS_CLIENTS`. Setup text: `workers/ingress/README.md`「Devin CLI（Mac）」.
+- Devin only sends delta; core dedupes by per-series window (`coding:otlp` `windows`): resent or late old windows are skipped (undercount, never double). No cost metric, so `costComplete` is false on Devin days.
+- Migration: first Devin OTLP moved the old `agents` devin day ledger into `agents-otlp` and deletes any later `agents` devin rows and buckets (`prepareCodingUsage` `moveFrom`). D1 keeps the old `source='agents'` rows.
+- #441: site labels Devin's `agents-otlp` source as "Mac", not "Cloud", and its activity light goes off when the Mac declares itself offline (`src/lib/coding-agents.ts#codingSourceOnMac`).
 
-Only daily ledgers, no buckets: Grok Build, Antigravity, opencode and pi (through ccusage on the Mac). On 2026-10-13 Grok was about 6M tokens a day, a negligible gap.
+History: from #322 (2026-10-14) to #436, Devin came from tokens.ci daily cumulatives spread into approximate buckets, plus a one-off 3.05B backfill from `~/.local/share/devin/cli/sessions.db` on 2026-10-14. Those days carried over in the migration.
 
-**How to apply:** if lyjw wants the remaining agents in the lane, that is per-event parsing in MacTelemetryHub, Grok first. The iOS app was not updated for the rename (display side paused, [[ios-paused]]).
+Still daily ledgers only, no buckets: Grok Build, Antigravity, opencode, pi (ccusage on the Mac); Grok was ~6M tokens/day on 2026-10-13, a negligible gap.
+
+**How to apply:** Devin usage problems → check the Mac's Devin otel config and the `lyjwpage-mac` token, not agents-reporter. Adding another agent to the lane: native OTel into `agents-otlp` if the agent supports it, else per-event parsing in MacTelemetryHub. iOS app not updated (paused).
