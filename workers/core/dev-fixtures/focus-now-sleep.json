@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "data": {
+    "mode": "sleep",
+    "since": "$now-4980000",
+    "observedAt": "$now-4980000"
+  }
+}
