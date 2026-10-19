@@ -8,8 +8,10 @@ import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { RenderClock } from "@/hooks/use-mounted-at";
 import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
 import { NO_STORE } from "@/lib/site-policy";
+import { timezoneAbbreviation } from "@/lib/timezone-display";
 import { siteContext, type SiteServices } from "@/server/site-context";
 import { stampNow } from "@shared/fixture-time";
+import { site as siteConfig } from "@shared/site";
 import type { StatusViewKey } from "@shared/status-views";
 
 import serverFixture from "../../../workers/core/dev-fixtures/server-traffic.json";
@@ -115,18 +117,31 @@ async function inlineImages(html: string, site: SiteServices): Promise<string> {
   return out;
 }
 
-function svgDocument(body: string, height: number, theme: Theme, label: string, sample: boolean): string {
+function capturedAt(now: number): string {
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeZone: siteConfig.timezone,
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(now);
+  return `Captured ${time} ${timezoneAbbreviation(now, siteConfig.timezone) ?? ""}`.trimEnd();
+}
+
+// 卡片里第一个 label-mono 就是卡头标题。
+const annotateTitle = (html: string, note: string) =>
+  html.replace(/(<span class="label-mono[^"]*">[^<]*)(<\/span>)/, `$1 · ${note}$2`);
+
+function svgDocument(body: string, height: number, theme: Theme, label: string): string {
   const width = CARD_WIDTH + SHADOW_PAD;
   const fullHeight = height + SHADOW_PAD;
-  const badge = sample
-    ? `<div class="label-mono text-muted-foreground" style="position:absolute;top:0;left:50%;transform:translateX(-50%);height:2.25rem;display:flex;align-items:center">Sample data</div>`
-    : "";
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${label}">` +
     `<foreignObject x="0" y="0" width="${width}" height="${fullHeight}">` +
     `<div xmlns="http://www.w3.org/1999/xhtml" class="${theme === "dark" ? "dark " : ""}font-mono text-foreground antialiased" style="position:relative;width:${CARD_WIDTH}px;height:${height}px;display:flex;flex-direction:column">` +
     `<style><![CDATA[${CSS}]]></style>` +
-    `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${badge}</div>` +
+    `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}</div>` +
     `</div></foreignObject></svg>`
   );
 }
@@ -141,9 +156,11 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     site.status(key).catch((): FirstScreen<typeof key> => ({ ok: false, error: FIRST_SCREEN_UNAVAILABLE }));
   try {
     const { element, height, sample } = await card.render(status);
-    const html = renderToString(<RenderClock value={Date.now()}>{element}</RenderClock>);
-    const body = await inlineImages(svgNamespaces(flattenNumberFlow(html)), site);
-    return new Response(svgDocument(body, height, theme, card.label, sample), {
+    const now = Date.now();
+    const html = renderToString(<RenderClock value={now}>{element}</RenderClock>);
+    const titled = annotateTitle(html, sample ? "Sample data" : capturedAt(now));
+    const body = await inlineImages(svgNamespaces(flattenNumberFlow(titled)), site);
+    return new Response(svgDocument(body, height, theme, card.label), {
       headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": CARD_CACHE_CONTROL },
     });
   } catch (error) {
