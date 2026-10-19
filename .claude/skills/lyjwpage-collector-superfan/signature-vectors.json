@@ -1,0 +1,136 @@
+[
+  {
+    "name": "plain message unchanged",
+    "service": "core",
+    "message": "Network connection lost.",
+    "signature": "core: Network connection lost.",
+    "hash": "2633da4d913f"
+  },
+  {
+    "name": "query string replaced, status appended",
+    "service": "site",
+    "message": "GET https://lyjw.me/image?url=https%3A%2F%2Fstore-035.blobstore.apple.com%2Fx%3FX-Amz-Date%3D20261018T034131Z&w=88&q=75",
+    "status": 502,
+    "signature": "site: GET https://lyjw.me/image?<q> 502",
+    "hash": "226b54632771"
+  },
+  {
+    "name": "stack positions and asset hash, cut at 120",
+    "service": "site",
+    "message": "[status] RangeError: Invalid time value\n    at Date.toISOString (<anonymous>)\n    at addDays (assets/site-context-ButdZ2P1.js:3232:15)\n    at heatmapSliceFrom (assets/site-context-ButdZ2P1.js:3417:9)\n    at sliceGithubChart (index.js:1081:9)",
+    "signature": "site: [status] RangeError: Invalid time value at Date.toISOString (<anonymous>) at addDays (assets/site-context-<hash>.js:<n>:",
+    "hash": "343bffc8fe59"
+  },
+  {
+    "name": "base36 reference id",
+    "service": "core",
+    "message": "[status] Error: internal error; reference = 09ot6sm8eou80rll3n689o7v\n    at async retryRead (preview-entry.js:29926:12)",
+    "signature": "core: [status] Error: internal error; reference = <id> at async retryRead (preview-entry.js:<n>:<n>)",
+    "hash": "0ae0c4b0c09a"
+  },
+  {
+    "name": "uuid",
+    "service": "ai",
+    "message": "Durable Object 5f0e0c6e-1b2c-4d3e-8f9a-0123456789ab reset",
+    "signature": "ai: Durable Object <uuid> reset",
+    "hash": "e66ea1b38cab"
+  },
+  {
+    "name": "iso timestamps",
+    "service": "ai",
+    "message": "token expired at 2026-10-19T03:41:31.123Z (now 2026-10-19 03:45)",
+    "signature": "ai: token expired at <time> (now <time>)",
+    "hash": "a7b4530ef6b0"
+  },
+  {
+    "name": "hex request id and epoch ms",
+    "service": "ingress",
+    "message": "request 93da7ae4876b6b9aa71d98b036e6fc21 failed after 1792422050165",
+    "signature": "ingress: request <id> failed after <n>",
+    "hash": "a8a0ed734bdc"
+  },
+  {
+    "name": "status and small numbers kept",
+    "service": "ai",
+    "message": "Upstream returned 503 Service Unavailable after 3 retries",
+    "signature": "ai: Upstream returned 503 Service Unavailable after 3 retries",
+    "hash": "b278049650a9"
+  },
+  {
+    "name": "browser error json: url query and release sha",
+    "service": "site",
+    "message": "[browser-error] SyntaxError: Invalid regular expression flags {\"source\":\"window\",\"url\":\"https://lyjw.me/?tab=2\",\"release\":\"266ce799002e9c266f32a0f6df5901269531770d\",\"tags\":{}}",
+    "signature": "site: [browser-error] SyntaxError: Invalid regular expression flags {\"source\":\"window\",\"url\":\"https://lyjw.me/?<q>\",\"release\":",
+    "hash": "a723e8b5cd2b"
+  },
+  {
+    "name": "long word with one digit kept",
+    "service": "site",
+    "message": "Uint8ArrayConstructor is not a constructor",
+    "signature": "site: Uint8ArrayConstructor is not a constructor",
+    "hash": "276ef3ccdaff"
+  },
+  {
+    "name": "ascii whitespace collapsed, nbsp kept, trimmed",
+    "service": "site",
+    "message": "  封面 加载失败\t\t😀  \n",
+    "signature": "site: 封面 加载失败 😀",
+    "hash": "984f389898aa"
+  },
+  {
+    "name": "cut counts code points, not utf-16 units",
+    "service": "core",
+    "message": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀😀abc",
+    "signature": "core: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀😀",
+    "hash": "bc80d5713e30"
+  },
+  {
+    "name": "question mark in prose kept",
+    "service": "core",
+    "message": "Is the upstream down? retrying",
+    "signature": "core: Is the upstream down? retrying",
+    "hash": "0961cf5bc6a4"
+  },
+  {
+    "name": "json numbers under ten digits kept",
+    "service": "core",
+    "message": "Feed stale: quest {\"source\":\"quest\",\"lastSeenAt\":\"2026-10-18T16:44:44.800Z\",\"ageMinutes\":18}",
+    "signature": "core: Feed stale: quest {\"source\":\"quest\",\"lastSeenAt\":\"<time>\",\"ageMinutes\":18}",
+    "hash": "22c2372564e4"
+  },
+  {
+    "name": "mjs stack position",
+    "service": "ingress",
+    "message": "TypeError: x is undefined\n at run (worker.mjs:12:5)",
+    "signature": "ingress: TypeError: x is undefined at run (worker.mjs:<n>:<n>)",
+    "hash": "f950daf2948a"
+  },
+  {
+    "name": "digit runs: ten replaced, nine kept",
+    "service": "core",
+    "message": "retry after 1792422050 s, quota 123456789",
+    "signature": "core: retry after <n> s, quota 123456789",
+    "hash": "8d4f0cd13f04"
+  },
+  {
+    "name": "id tokens: sixteen chars with four digits replaced, three digits or fifteen chars kept",
+    "service": "core",
+    "message": "keys abcdefghijkl1234 abcdefghijklm123 a1b2c3d4e5f6g7h",
+    "signature": "core: keys <id> abcdefghijklm123 a1b2c3d4e5f6g7h",
+    "hash": "457a1a4e63e9"
+  },
+  {
+    "name": "asset hash needs eight chars",
+    "service": "site",
+    "message": "at f (assets/chunk-abc1234.js) at g (assets/chunk-abc12345.js)",
+    "signature": "site: at f (assets/chunk-abc1234.js) at g (assets/chunk-<hash>.js)",
+    "hash": "7c0ed57617e7"
+  },
+  {
+    "name": "vertical tab and form feed collapse too",
+    "service": "ai",
+    "message": "a\u000b\fb",
+    "signature": "ai: a b",
+    "hash": "458ccba71e0c"
+  }
+]
