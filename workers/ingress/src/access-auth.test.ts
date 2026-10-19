@@ -53,7 +53,9 @@ setJwksFetcherForTests(async (issuer) => {
 test("a valid Access JWT authorizes only the permissions listed for its client id", async () => {
   const token = await sign(claims());
   assert.deepEqual(await authorize(request({ "Cf-Access-Jwt-Assertion": token }), env, "ingest:mac"),
-    { ok: true, clientId: MAC });
+    { ok: true, clientId: MAC, permission: "ingest:mac" });
+  assert.deepEqual(await authorize(request({ "Cf-Access-Jwt-Assertion": token }), env, ["ingest:emby", "ingest:mac"]),
+    { ok: true, clientId: MAC, permission: "ingest:mac" }, "the first permission the client holds wins");
   const other = await authorize(request({ "Cf-Access-Jwt-Assertion": token }), env, "ingest:emby");
   assert.equal(other.ok, false);
   assert.equal(!other.ok && other.status, 403);

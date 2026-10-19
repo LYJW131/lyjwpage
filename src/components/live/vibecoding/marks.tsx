@@ -17,8 +17,8 @@ import { codingSourceLabel, codingSourceOnMac, type CodingActivityEntry, type Co
 import { modelIconResolver, modelIconUrl, type BundledModelIcon } from "@/lib/model-icon";
 import { cn } from "@/lib/utils";
 
-export function ActiveBadge({ id, sources }: { id: string; sources: CodingActivityEntry["source"][] }) {
-  const labels = sources.map((source) => codingSourceLabel(id, source));
+export function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) {
+  const labels = sources.map((source) => codingSourceLabel(source));
   return (
     <span
       className="flex shrink-0 items-center gap-1 text-live-ink"
@@ -26,7 +26,7 @@ export function ActiveBadge({ id, sources }: { id: string; sources: CodingActivi
     >
       <span className="label-mono">Active</span>
       {sources.map((source, index) =>
-        codingSourceOnMac(id, source) ? (
+        codingSourceOnMac(source) ? (
           <MacBookProIcon key={source} className="size-3.5" aria-label={labels[index]} />
         ) : (
           <Cloud key={source} className="size-3.5" aria-label={labels[index]} />

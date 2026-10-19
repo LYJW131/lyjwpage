@@ -18,7 +18,7 @@ function useSlotLive(entry: CodingActivityEntry | null, clockKnown: boolean, clo
 }
 
 export function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean, clocks: FirstFrameClocks) {
-  const slots = codingActivitySlots(row.id, row.activity, macDeclaredOffline);
+  const slots = codingActivitySlots(row.activity, macDeclaredOffline);
   const mountedAt = useMountedAt();
   const clockKnown = mountedAt > 0 || clocks.now != null;
   const mac = useSlotLive(slots.mac, clockKnown, clocks);

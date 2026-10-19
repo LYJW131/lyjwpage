@@ -101,7 +101,7 @@ test("首次领取给出租约、代号和输入快照", async () => {
     assessments: [],
     codingObservations: ["obs-1"],
     cursorObservations: ["cur-1"],
-    tokenBuckets: { mac: "mac-buckets", agents: null, "agents-otlp": null },
+    tokenBuckets: { mac: "mac-buckets", agents: null, "agents-otlp": null, "mac-otlp": null },
   });
 });
 

@@ -55,7 +55,8 @@
 | --- | --- | --- |
 | `mac`（`modules.codingUsage` / `codingActivity` / `codingTokenBuckets`） | 设备：这台 Mac 本地日志里的会话 | 各 agent 的日行账本、最近事件、5 分钟桶 |
 | `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史 | `cursor` 的日行账本、最近事件、5 分钟桶 |
-| `agents-otlp`（OTLP 遥测） | 环境：Claude Code 云端线程；Mac 上的 Devin CLI | 状态核心按指标名分到 `claude` / `devin`，整理成同形的三种事实 |
+| `agents-otlp`（OTLP 遥测） | 环境：云端环境里的 Claude Code 与 Devin CLI | 状态核心按指标名分到 `claude` / `devin`，整理成同形的三种事实 |
+| `mac-otlp`（同一个 OTLP 入口） | 设备：Mac 上的 Devin CLI | 同上；上报入口按凭据持有的权限分来源，见 [ingress README](../ingress/README.md#otlp按凭据分来源) |
 
 同一 agent 有账号级来源时只算它，别的来源的同 agent 行标 `superseded`、不相加（Mac 就算又报 `cursor` 也不会双算）；
 否则全部相加（claude 的本机与云端，假设彼此不重叠：云端遥测变量只配在云端）。
@@ -77,7 +78,7 @@
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
   推 `coding-now`：和上一次推出去的那份（`coding:now:pushed`）比，多出一个 (agent, 来源)、换了模型、时刻往前走了
   `src/stores/coding-activity.ts#PUSH_STEP_MS` 以上才推，保活不推。灯由浏览器按
-  「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废跑在 Mac 上的那条：`mac`，以及 Devin 的 `agents-otlp`（`src/lib/coding-agents.ts#codingSourceOnMac`）。
+  「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废跑在 Mac 上的那几条：`mac` 与 `mac-otlp`（`src/lib/coding-agents.ts#codingSourceOnMac`）。
 - **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Coding 评估与归档，不推送。Mac / agents 按报告
   范围替换，只替换报告 `agents` 里声明的 agent（`[from, to)` 内这几家以新报告为准，缺席的桶是 0，范围外和没声明的 agent
   不动，报告范围并进覆盖；同一来源下 Cursor 与 Devin 各报各的范围，靠这条互不冲掉）；跨着报告起点的那一桶只数了
@@ -120,13 +121,18 @@ Claude 的一律不收、记一行 `[otlp] delta temporality points skipped` 的
 Devin CLI 只会发 delta（不认 temporality 偏好），每次导出只带上次导出以来的增量，没用量的那几次不发。它的序列不含起点
 （起点每个窗口都在走），`coding:otlp` 的 `windows` 记每条序列已经计到的时刻：窗口起点早于它的是重发，整点跳过；
 晚到的旧窗口也一起跳过（少算，不多算）。Devin 不发费用指标，有 token 的日子 `costComplete` 为假。会话数按 agent 分开记
-（`sessionCounts`；Claude 以外的会话摘要带 agent 前缀，同名会话不互相顶掉）。`cloudAgentActivity` 只看 `claude` 的桶，Devin 跑在 Mac 上，不算云端线程。
+（`sessionCounts`；Claude 以外的会话摘要带 agent 前缀，同名会话不互相顶掉）。`cloudAgentActivity` 只看 `agents-otlp` 里 `claude` 的桶。
+`mac-otlp` 走同一套做法，计数器另存在 `coding:otlp:mac-otlp`（`shared/coding-store.ts#codingOtlpKey`），两边的会话数、窗口互不相干。
 
 Devin 的日行以前由 agents-reporter 从 tokens.ci 拉进 `agents` 来源。第一封带 Devin 的 OTLP 进来、`agents-otlp` 里还没有
 `devin` 时，把 `agents` 里那本 `devin` 账本的日子整份接过来，在同一个事务里从 `agents` 删掉它（账号级来源会压住
 `agents-otlp`，留着新数就看不见）；`prepareCodingUsage` 的 `moveFrom`。之后 `agents` 里再出现 `devin`（旧镜像的上报器还没换下）
 也是下一封 Devin 的 OTLP 就删掉，日子不再接一遍；`pulse:token-buckets:agents` 里 Devin 的桶同一批删掉，Tokens 道不会两边相加。D1 里 `source = 'agents'` 的旧行原样留着，
 接过来的日子在 `agents-otlp` 下再归档一份；D1 目前没有跨来源相加的读者。
+
+Mac 上 Devin CLI 的 OTLP 以前也记在 `agents-otlp`。第一封 `mac-otlp` 的 Devin 进来、`mac-otlp` 里还没有 `devin` 时，把 `agents-otlp`
+里它的日行、会话数、活动和 5 分钟桶整份接过来，在同一个事务里从 `agents-otlp` 删掉；只接这一次，之后 `agents-otlp` 里的 `devin`
+是云端环境里跑的（`src/stores/agents-otlp.ts#MOVES`）。会话摘要不分 agent、搬不走，搬家前见过的会话在 `mac-otlp` 会再记一次。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、

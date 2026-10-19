@@ -22,7 +22,7 @@
 | 方法 | 路径 | Access 权限 | 用途 |
 | --- | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
-| POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` | Claude Code 云端线程与 Mac 上 Devin CLI 的内置遥测（OTLP/HTTP JSON 指标，可 gzip） |
+| POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` 或 `ingest:mac-otlp` | Claude Code 与 Devin CLI 的内置遥测（OTLP/HTTP JSON 指标，可 gzip），按权限分来源 |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | POST | `/api/internal/collector-refresh` | `internal:collector-refresh` | 立刻跑一遍采集任务，见下文「手动跑采集」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
@@ -115,11 +115,17 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 （没法去重，重发会重复计数），只记一行 `[otlp] delta temporality points skipped` 的 warn。
 端点要用 `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`（原样使用）；通用的 `OTEL_EXPORTER_OTLP_ENDPOINT` 会被自动拼上 `/v1/metrics`。
 只认 JSON（可 gzip），不认 protobuf；只在这条路由解压，按解压后的字节数限制大小。
-鉴权要求专属 `ingest:agents-otlp` 权限，`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。
+鉴权要求专属 OTLP 权限，`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。
 生产使用独立 service token `lyjwpage-claude-cloud`，已加入 `lyjwpage ingest` 应用的 Service Auth 策略，client id 登记在
 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`；Client Secret 只放云端环境，不用配置 Worker secret。
 请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
 收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#otlp-用量claude-code-云端线程与-devin-cli)。
+
+#### OTLP：按凭据分来源
+
+同一个入口收云端和 Mac 两边的遥测。验过 JWT 之后按这把凭据在 `[vars.ACCESS_CLIENTS]` 里持有的权限定来源：`ingest:agents-otlp`
+记进 `agents-otlp`（云端环境），`ingest:mac-otlp` 记进 `mac-otlp`（Mac），两个都有时取前者（`src/worker.ts#OTLP_SOURCES`）。
+payload 里的 `os.type`、`service.name` 和资源属性是客户端自报的，不用来分来源。
 
 #### Devin CLI（Mac）
 

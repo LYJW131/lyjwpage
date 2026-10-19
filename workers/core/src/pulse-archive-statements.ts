@@ -8,7 +8,7 @@ import {
   type PulseArchiveStreamSnapshot,
 } from "./pulse-archive-snapshot";
 import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from "@shared/coding-buckets";
-import { isCodingUsageSource } from "@shared/coding-usage-sources";
+import { isCodingUsageSource, isOtlpCodingSource } from "@shared/coding-usage-sources";
 import type { StoredCodingUsageAgent } from "@shared/coding-usage-view";
 import type { HistoryStatement } from "@shared/history-ingest";
 import { parseCodingObservation, CODING_OBSERVATION_HOLD_MS, type CodingObservation } from "@shared/pulse-coding";
@@ -196,7 +196,7 @@ function bucketStatements(db: PulseArchiveDb, coding: PulseArchiveStreamSnapshot
       const revision = revisionOf(stored);
       revisions.push(revision);
       for (const window of stored.windows) {
-        if (source !== "agents-otlp" && !coveringPart(stored.coverage, window.from)) continue;
+        if (!isOtlpCodingSource(source) && !coveringPart(stored.coverage, window.from)) continue;
         for (const agent of window.agents) {
           rows.push([window.from, source, agent.id, agent.model ?? "", agent.inputTokens, agent.outputTokens, agent.cacheReadTokens,
             agent.cacheCreationTokens, agent.reasoningTokens, agent.eventCount, revision]);

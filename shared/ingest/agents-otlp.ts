@@ -1,7 +1,8 @@
+import type { OtlpCodingSource } from "@shared/coding-usage-sources";
 import { object, text } from "@shared/json";
 
 export type PreparedAgentsOtlpUsage = {
-  source: "agents-otlp";
+  source: OtlpCodingSource;
   receivedAt: number;
   points: OtlpUsagePoint[];
 };
@@ -36,8 +37,8 @@ export type OtlpUsagePoint = {
   acceptsDelta: boolean;
 };
 
-export function prepareAgentsOtlpUsage(raw: unknown, receivedAt = Date.now()): PreparedAgentsOtlpUsage {
-  return { source: "agents-otlp", receivedAt, points: parseOtlpUsage(raw, receivedAt) };
+export function prepareAgentsOtlpUsage(raw: unknown, receivedAt = Date.now(), source: OtlpCodingSource = "agents-otlp"): PreparedAgentsOtlpUsage {
+  return { source, receivedAt, points: parseOtlpUsage(raw, receivedAt) };
 }
 
 function attributes(value: unknown): Map<string, string> {
