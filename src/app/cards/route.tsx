@@ -58,7 +58,7 @@ const MEDIA_SLOT_PX = 396;
 
 type Theme = "light" | "dark";
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
-// still：内容不随时间变（聊天卡），不标抓取时间，README 引用的是 docs/screenshots/ 里存下的一份。
+// still：内容不随时间变（聊天卡），不标抓取时间。
 type Rendered = { element: ReactElement; sample: boolean; still?: boolean };
 type ReadmeCard = {
   label: string;
