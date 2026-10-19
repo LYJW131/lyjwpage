@@ -194,8 +194,9 @@ test("第一个 PR 就读失败或列不出 PR 时书签不动；评论超过一
 });
 
 
-test("plain 删到切口拼不回注释和标签，没闭合的注释吞到结尾", () => {
+test("plain 删到切口拼不回注释和标签，没闭合的注释只删起手，空尖括号留着", () => {
   assert.equal(plain("<!<!--x-->-->正文"), "正文");
   assert.equal(plain("<scrip<script>t>正文</script>"), "正文");
-  assert.equal(plain("正文<!-- 没闭合\n后面"), "正文");
+  assert.equal(plain("已修 `<!--`（e2495e5）"), "已修 ``（e2495e5）");
+  assert.equal(plain("Map<> 留着"), "Map<> 留着");
 });
