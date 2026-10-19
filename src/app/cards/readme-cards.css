@@ -1,4 +1,5 @@
 @import "tailwindcss" source(none);
+@import "@clock-ui/react/base.css";
 @import "../globals.css";
 
 @source "../../components";
