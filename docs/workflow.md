@@ -4,25 +4,16 @@
 
 这个仓库的代码大多由 Claude 写，lyjw 负责定方向、拍板和验收。本文讲这套协作怎么运转、靠什么守住质量。给 lyjw 的协作约定在 [`HUMAN.md`](../HUMAN.md)，给 agent 的硬规则在 [`AGENTS.md`](../AGENTS.md)；本文只讲全貌并指过去，不重复条款。
 
-```mermaid
-flowchart LR
-  L["lyjw<br/>一句话需求"] --> P["项目聊天<br/>协调 Claude"]
-  P --> T["线程 Claude<br/>一件事一个线程"]
-  T -->|并行实现| D["Devin CLI<br/>（lyjw 的 Mac）"]
-  T -->|验证| H["Haiku 验证员<br/>分级回执"]
-  T --> PR["PR"]
-  PR --> G{"合并门槛<br/>CI · 检查脚本<br/>机器评审 · lyjw 点头"}
-  G --> M["main"] --> W["Workers Builds<br/>自动部署"]
-  R["定时任务"] -.->|审查 · 提炼 · 盯防| PR
-  R -.-> MEM[("项目记忆<br/>仓库镜像")]
-  T -.-> MEM
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./diagrams/workflow-zh-dark.svg">
+  <img src="./diagrams/workflow-zh-light.svg" alt="开发工作流图：lyjw 的需求、定时任务与访客构建三路经 Claude 变成 PR，过分支预览、CI、按需的机器评审与 lyjw 点头后合进 main，由 Workers Builds 部署" width="100%">
+</picture>
 
 ## 谁在干活
 
 - **项目聊天里的协调 Claude**：接 lyjw 的每句话，新需求开线程，跟进转给对应线程，答项目层面的问题。
 - **线程 Claude**：一件事一个线程、一个分支 `claude/project-thread-<id>`，从调研做到合并和上线核对。只在有结果、卡住或要 lyjw 决定时回复，平时只刷状态行。分叉用决策卡问，按推荐项先往下做。
-- **lyjw Mac 上的会话**（Remote Control）：凭据、ssh 到自家机器、lyjw 的 `gh` 与浏览器登录态都在这里做，派法见 [`lyjwpage-mac-session`](../.claude/skills/lyjwpage-mac-session/SKILL.md)。能拆开的实现活经它派给 Devin CLI，一件事一个 worktree 并行跑，云端 Claude 审 diff、开 PR。
+- **lyjw Mac 上的会话**（Remote Control）：凭据、ssh 到自家机器、lyjw 的 `gh` 与浏览器登录态都在这里做，派法见 [`lyjwpage-mac-session`](../.claude/skills/lyjwpage-mac-session/SKILL.md)。
 - **子代理**：翻文档、读长历史派 Sonnet / Haiku；验证一律派 Haiku 验证员（见下文「验证」）。
 
 所有 Claude 共享一份项目记忆：lyjw 定的规矩、做过的决定写进去一次，之后每个线程都遵守。仓库里有去掉凭据和私有链接的镜像 [`.claude/memory/`](../.claude/memory/MEMORY.md)，由 `pnpm memory:mirror` 同步。

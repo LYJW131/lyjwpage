@@ -1,8 +1,8 @@
-# 页面效果图、GIF 与架构图产物
+# 页面效果图、GIF 与 README 图示
 
 > 类型：runbook
 
-根 README 里的效果图和架构图怎么录、怎么重出。改了对应的界面、夹具或 `docs/architecture.json` 后照本文重跑。
+根 README 里的效果图和图示怎么录、怎么重出。改了对应的界面、夹具、架构或流程后照本文重跑。
 
 ## 页面效果图
 
@@ -44,25 +44,18 @@ README 里总览之后的卡都不是截图，是站点路由 `/cards/<卡>.svg`
 - 聊天卡不随时间变，`render` 返回 `still`、不标时间。外层套的 data URI 图被 `raw.githubusercontent.com` 的 CSP 拦下，所以聊天卡也走站点路由，不存仓库副本。
 - 本地看效果要用生产构建：`pnpm build && pnpm start` 后开 `http://localhost:3211/cards/pulse.svg?theme=dark`。`pnpm dev` 里 NumberFlow 输出空壳，读数是空的。
 
-## 交互式架构图
+## README 图示
 
-- 网页在线交互版：[https://lyjw131.github.io/lyjwpage/](https://lyjw131.github.io/lyjwpage/)
-- 原始架构定义：[`architecture.json`](./architecture.json) 与 [`architecture.receipt.json`](./architecture.receipt.json)
-- 离线渲染快照：[`architecture-dark.png`](./architecture-dark.png) / [`architecture-light.png`](./architecture-light.png)
-
-改图只改 `architecture.json`，其余产物由 [`scripts/architecture-diagram.mjs`](../scripts/architecture-diagram.mjs) 生成。工具版本与官方提交锁定在 [`scripts/archify.lock.json`](../scripts/archify.lock.json)，不依赖或升级全局技能：
+根 README 的系统架构图和开发工作流图是 [`scripts/readme-diagrams.ts`](../scripts/readme-diagrams.ts) 按坐标画的 SVG，中英文各一套、明暗各一张，写进 [`diagrams/`](./diagrams/)：
 
 ```sh
-pnpm docs:architecture -- --setup       # 安装到仓库内忽略的 .archify/toolchain
-pnpm docs:architecture                  # 完整生成与检查
-pnpm docs:architecture -- --validate    # 仅作布局失败的定向诊断
-pnpm docs:architecture -- --skip-visual # 省略额外截图，仍运行 browser-check 和明暗 PNG 导出
+pnpm docs:diagrams
 ```
 
-也可用 `ARCHIFY_DIR` 指向已有安装的 `archify/` 包目录；脚本强制核对锁文件中的版本，完整源码提交与干净工作树核对只适用于隔离安装。需要本机 Chrome / Chromium，可用 `ARCHIFY_CHROME` 指定可执行文件。浏览器默认保留沙箱；只有 root 或显式 `ARCHIFY_CHROME_NO_SANDBOX=1` 才禁用，后者仅用于可信、隔离且无法提供浏览器沙箱的执行环境。
+- 改图只改脚本里的 `architecture` / `workflow` 两个函数：卡片、连线、注记按 24px 方格摆，坐标写死，不做自动布局。架构或流程变了（新 Worker、绑定、上报来源、定时任务、合并门槛）就同步改图；图只画主干，细节留在各自的 README。
+- 颜色每次从 [`src/app/globals.css`](../src/app/globals.css) 的 `:root` 与 `.dark` 读，与首页同一套 token；字体照首页写等宽字体栈，图片里不加载网络字体，没装 Geist Mono 的机器落到系统等宽字体。
+- 脚本按等宽字宽（拉丁字符 0.6em、中日韩字符 1em）估算每段文字，放不下就报错退出，中英两套都要放得下。
+- 不用 `foreignObject`（WebKit 缩小显示时会裁掉），README 用 `<picture>` 按 `prefers-color-scheme` 选明暗。
+- 图没有底色：卡片自带填色，连线和注记直接落在 GitHub 的页面底色上；注记压线的地方用 `mask` 给线留缺口，不画遮挡色块。
+- CI 的 docs 门禁跑 `pnpm docs:diagrams --check`：改了脚本或颜色 token 却没重出图，提交的图与脚本输出对不上就报红。
 
-完整生成先运行 `finalize`，依次完成 showcase 校验、交付、严格溯源检查和真实浏览器检查，任一退出非零就停止。再由查看器自带 PNG 导出生成明暗快照，用渲染后的 SVG `viewBox` 确定 2x 尺寸，不要求候选 JSON 固定画布。默认额外运行严格溯源的 `visual-check` 并保留截图；每次的原始检查回执与截图使用独立 `.archify/evidence/` 目录，不删除旧证据。HTML 旁的 `architecture.delivery.json` 是严格溯源所需交付元数据。
-
-`architecture.receipt.json` 记录当前规格、HTML、PNG 的哈希及完整浏览器检查回执。`--skip-visual` 只把额外截图标为未请求，不复用上一份视口或人工审阅结论。自动检查通过不等于视觉审阅通过：打开当前 HTML 和明暗 PNG，检查节点、线路、标签与导出边界后，再按实际结果更新 `visual_review`、`static_diagram_review` 和 `correction_rounds`；若改了候选，完整重跑。仅在确实检查后填写 `passed`。
-
-架构输入、生成脚本或锁文件变更的 PR 会触发 [Architecture diagram 检查](../.github/workflows/architecture-diagram.yml)：在 CI 安装隔离工具链、完整生成并上传 HTML、明暗 PNG 与原始证据。任务失败也上传已有文件和日志，必须结合任务退出状态、当前规格与产物哈希判断，不把旧产物当作新生成结果。工作流只读仓库，不提交或部署。
