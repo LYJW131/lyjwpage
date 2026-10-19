@@ -65,6 +65,7 @@
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Pulse Tokens lane now includes Devin via reporter buckets (#322) plus a backfill for 2026-10-14.
 - Not adopting: OTel export of site AI usage, Max-plan API credit (already claimed), Cloudflare AI Search (instance deleted), post-deploy PageSpeed check (lyjw 2026-10-15). pstack /create-formal-verification-skill: tried once as a TLA+ audit of BuildCoordinator 2026-10-19, no bug found, not kept in repo; model in /mnt/project-files/formal-verification/build-run/, entry in docs/references.md.
+- **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 18:36 SGT chose 维持现状, also declined a Devin CLI OTel probe). Why: most data is state (now playing, presence, rings, ledgers) with no semconv; iPhone endpoint must stay; Mac icon / Emby image receipts don't fit OTLP responses; HA has no OTLP export. Only native-OTel agents fit (cloud Claude Code already does). Report: [遥测换 OTel 评估](<private claude.ai link>). Don't re-propose.
 - Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
 - Chat context prefetch is built (#384, 2026-10-17): Clef, in the same routing call, picks site status / project doc to prefetch (thresholds status 0.6, doc 0.45); presets prefetch fixed tool calls: [[idea-jev-context-prefetch]].
 - Chat web search (#355): Exa `fast` only, Bangumi/Steam tools, doc MCP servers off since 2026-10-17: [[chat-web-search]].
