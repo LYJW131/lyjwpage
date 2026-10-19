@@ -10,8 +10,8 @@ Every token figure counts input + output + cache read + cache write (`shared/cod
 Sources sending 5-minute buckets (all in the lane):
 - `mac`: MacTelemetryHub's Claude Code + Codex JSONL scanner.
 - `agents`: Cursor only (agents-reporter, account-level history).
-- `agents-otlp` (`/api/ingest/agents/otlp`, `lyjwpage-claude-cloud` token): cloud Claude Code (`claude_code.*` → agent `claude`) and cloud Devin CLI (env <cloud env>; `devin.token.usage` → `devin`; auth headers added by a <cloud env> Network secret, since Claude Code strips `OTEL_*` from child processes). Map: `shared/ingest/agents-otlp.ts#METRICS`.
-- `mac-otlp` (same path, chosen by ingress from the verified credential's permission `ingest:mac-otlp`, #453 merged 2026-10-20 03:20 SGT): Devin CLI on the Mac. The first mac-otlp batch moves the Mac's Devin ledger, buckets, activity and dedupe windows out of `agents-otlp` once (lyjw confirmed it held Mac history only).
+- `agents-otlp` (`/api/ingest/agents/otlp`, `lyjwpage-claude-cloud` token): cloud Claude Code (`claude_code.*` → agent `claude`) and cloud Devin CLI (env <cloud env>; `devin.token.usage` → `devin`; setup in `docs/ops-facts.md`「Claude Code 云端 routine」). Map: `shared/ingest/agents-otlp.ts#METRICS`.
+- `mac-otlp` (same path, chosen by ingress from the verified credential's permission `ingest:mac-otlp`; mechanism #453, Mac token flip #456): Devin CLI on the Mac. The first mac-otlp batch moves the Mac's Devin ledger, buckets, activity and dedupe windows out of `agents-otlp` once (lyjw confirmed it held Mac history only; true only if cloud Devin does no real work before that first Mac batch).
 
 Devin CLI details (#436, #441):
 - tokens.ci route is gone: agents-reporter's `devin-usage.ts` / `devin-buckets.ts` and `TOKENS_CI_USER` removed. agents-reporter still reports Devin's quota/limits row, not usage.
