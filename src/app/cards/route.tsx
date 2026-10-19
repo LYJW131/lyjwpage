@@ -12,7 +12,6 @@ import { stampNow } from "@shared/fixture-time";
 import type { StatusViewKey } from "@shared/status-views";
 
 import serverFixture from "../../../workers/core/dev-fixtures/server-traffic.json";
-import geistMono from "../../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2?inline";
 import cardsCss from "./readme-cards.css?inline";
 
 import type { Route } from "./+types/route";
@@ -85,9 +84,8 @@ const CARDS: Record<string, { label: string; render: (status: Status) => Promise
   },
 };
 
-// 外部字体在 <img> 里的 SVG 不会加载，换成内嵌的 data URI。
+// 不内嵌字体：camo 回图带 CSP `default-src 'none'`，data: 字体照样被拦，经 GitHub 看到的总是系统等宽字体。
 const CSS = cardsCss.replace(/@font-face\s*{[^}]*}/g, "");
-const FONT_FACE = `@font-face{font-family:"Geist Mono";src:url(${geistMono}) format("woff2");font-weight:100 900}`;
 
 const unescapeAttribute = (value: string) =>
   value.replaceAll("&quot;", '"').replaceAll("&#x27;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
@@ -119,7 +117,7 @@ function svgDocument(body: string, height: number, theme: Theme, label: string, 
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${label}">` +
     `<foreignObject x="0" y="0" width="${width}" height="${fullHeight}">` +
     `<div xmlns="http://www.w3.org/1999/xhtml" class="${theme === "dark" ? "dark " : ""}font-mono text-foreground antialiased" style="position:relative;width:${CARD_WIDTH}px;height:${height}px;display:flex;flex-direction:column">` +
-    `<style><![CDATA[${FONT_FACE}${CSS}]]></style>` +
+    `<style><![CDATA[${CSS}]]></style>` +
     `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${badge}</div>` +
     `</div></foreignObject></svg>`
   );
