@@ -44,33 +44,33 @@ The cards below are rendered live by the site as SVG, follow the system light or
 **Front app in the header**: Claude Code, Ghostty, Cursor and Antigravity get animated brand marks; a window title shows only after it passes a privacy check.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/readme/desktop-marks-dark.svg">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/readme/desktop-marks-light.svg" alt="Brand marks for the header's front app, and the window title appearing, changing and disappearing" width="798">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/readme/desktop-marks-dark.svg">
+  <img src="https://lyjw.me/readme/desktop-marks-light.svg" alt="Brand marks for the header's front app, and the window title appearing, changing and disappearing" width="798">
 </picture>
 
 **Daily digest**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/digest.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/digest.svg" alt="Daily digest card: a tagline, coding and agent hours and tokens, with a 24-hour dial" width="530">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark">
+  <img src="https://lyjw.me/cards/digest.svg" alt="Daily digest card: a tagline, coding and agent hours and tokens, with a 24-hour dial" width="530">
 </picture>
 
 **Now watching on Emby**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-watching.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-watching.svg" alt="Emby now watching card" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-watching.svg?theme=dark">
+  <img src="https://lyjw.me/cards/now-watching.svg" alt="Emby now watching card" width="100%">
 </picture>
 
 **Charger and power bank**
 
-<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg?theme=dark"><img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg" alt="Anker charger card: total power, the power curve and each port" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg?theme=dark"><img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg" alt="Anker power bank card: charge level, dock input, output and ports" width="50%"></picture></p>
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/charger.svg?theme=dark"><img src="https://lyjw.me/cards/charger.svg" alt="Anker charger card: total power, the power curve and each port" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/powerbank.svg?theme=dark"><img src="https://lyjw.me/cards/powerbank.svg" alt="Anker power bank card: charge level, dock input, output and ports" width="50%"></picture></p>
 
 **Now playing on Apple Music**: word-by-word synced lyrics, with recently played below.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-listening.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-listening.svg" alt="Apple Music now playing: the current song and its lyrics, recently played below" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-listening.svg?theme=dark">
+  <img src="https://lyjw.me/cards/now-listening.svg" alt="Apple Music now playing: the current song and its lyrics, recently played below" width="100%">
 </picture>
 
 **Talk to God**
@@ -83,50 +83,50 @@ The cards below are rendered live by the site as SVG, follow the system light or
 **Activity and workouts**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/activity.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/activity.svg" alt="Activity card: rings and readings, recent workouts on the right" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/activity.svg?theme=dark">
+  <img src="https://lyjw.me/cards/activity.svg" alt="Activity card: rings and readings, recent workouts on the right" width="100%">
 </picture>
 
 **Exit node**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/server.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/server.svg" alt="Exit node card: rates, traffic, CPU, memory and disk" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark">
+  <img src="https://lyjw.me/cards/server.svg" alt="Exit node card: rates, traffic, CPU, memory and disk" width="100%">
 </picture>
 
 **AI Coding**: merged from the Mac's local logs, Cursor account history and Claude Code cloud telemetry.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/vibe-coding.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/vibe-coding.svg" alt="AI Coding card: usage across sources, active tools and account limits" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark">
+  <img src="https://lyjw.me/cards/vibe-coding.svg" alt="AI Coding card: usage across sources, active tools and account limits" width="100%">
 </picture>
 
 **PlayStation**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/playstation.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/playstation.svg" alt="PlayStation card: trophy counts and recently played games" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/playstation.svg?theme=dark">
+  <img src="https://lyjw.me/cards/playstation.svg" alt="PlayStation card: trophy counts and recently played games" width="100%">
 </picture>
 
 **Pulse**: on the page, hover any segment to see the state and title at that time.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/pulse.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/pulse.svg" alt="Pulse card: 24-hour timelines for coding, tokens, listening, watching, playing, charging and activity with a daily summary" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark">
+  <img src="https://lyjw.me/cards/pulse.svg" alt="Pulse card: 24-hour timelines for coding, tokens, listening, watching, playing, charging and activity with a daily summary" width="100%">
 </picture>
 
 **Provider status**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/provider-status.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/provider-status.svg" alt="Provider status card: the operational state of each service" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/provider-status.svg?theme=dark">
+  <img src="https://lyjw.me/cards/provider-status.svg" alt="Provider status card: the operational state of each service" width="100%">
 </picture>
 
 **The site itself**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/site-status.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/site-status.svg" alt="LYJWPAGE card: repository stats and commits, 30-day uptime, performance scores and service metrics" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark">
+  <img src="https://lyjw.me/cards/site-status.svg" alt="LYJWPAGE card: repository stats and commits, 30-day uptime, performance scores and service metrics" width="100%">
 </picture>
 
 ## Architecture
