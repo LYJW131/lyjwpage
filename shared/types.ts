@@ -150,7 +150,7 @@ export type VibeCodingLimit = {
   resetsAt: number | null;
 };
 
-export type CodingUsageSource = "mac" | "agents" | "agents-otlp";
+export type CodingUsageSource = "mac" | "agents" | "agents-otlp" | "mac-otlp";
 
 export type CodingUsageTotals = {
   inputTokens: number;

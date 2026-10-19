@@ -43,7 +43,7 @@ async function storeBuckets(b: Harness, source: "mac" | "agents", report: Coding
 }
 
 async function storeOtlpBuckets(b: Harness, deltas: CodingBucketDelta[], at: number) {
-  await b.write(async () => (await prepareOtlpBuckets(deltas, at)).commit());
+  await b.write(async () => (await prepareOtlpBuckets("agents-otlp", deltas, at)).commit());
 }
 
 test("pulse archive: coding observations and active seconds go to their own table; nothing rolls up into the old ones", async () => {

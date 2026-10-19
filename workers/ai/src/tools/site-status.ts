@@ -20,7 +20,7 @@ const VIEW_NOTES = {
   listening: "Recently played Apple Music tracks",
   nowListening: "Song playing right now: reported by the Mac or HomePod (music), or inferred on another device from Apple Music play history (elsewhere); idle only covers the Mac and HomePod",
   coding: "AI coding token totals and API-equivalent cost since tracking began, top models and per-agent totals; no per-day numbers (those are in codingYear)",
-  codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; agents-otlp = built-in telemetry: for claude it is Claude Code in the cloud, for devin it is Devin CLI on LYJW's Mac; agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac, or devin's agents-otlp) with an unlocked desktop suggests LYJW is at the computer",
+  codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; mac-otlp = an agent's built-in telemetry on LYJW's Mac (Devin CLI); agents-otlp = built-in telemetry from cloud sessions (Claude Code, Devin CLI); agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac or mac-otlp) with an unlocked desktop suggests LYJW is at the computer",
   codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums (large)",
   limits: "Coding agent account plans and rate-limit windows",
   agentStatus: "Status pages of AI providers (operational / incidents)",

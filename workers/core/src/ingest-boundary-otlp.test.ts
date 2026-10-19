@@ -198,7 +198,7 @@ test("Devin's delta windows are counted once each: a resent window is dropped, C
     const rows = buckets.windows.flatMap((window) => window.agents);
     assert.equal(rows.filter((row) => row.id === "devin").reduce((sum, row) => sum + row.inputTokens, 0), 11_787);
     assert.deepEqual(cloudAgentActivity({ ...buckets, windows: buckets.windows.map((window) => ({ ...window, agents: window.agents.filter((row) => row.id === "devin") })) }), [],
-      "Devin on the Mac is not a Claude cloud thread");
+      "cloudActiveSeconds counts Claude's cloud threads only");
 
     const activity = parseStoredActivity(await storage.get(codingActivityKey("agents-otlp")))!;
     assert.deepEqual(activity.agents.map((agent) => [agent.id, agent.lastActivityAt]), [["claude", NOW + 6_000], ["devin", NOW + 5_000]]);
@@ -265,5 +265,46 @@ test("the first Devin OTLP batch takes over the tokens.ci day ledger from the ac
     const after = parseStoredView(await storage.get(codingViewKey()))!;
     assert.deepEqual(after.agents.find((agent) => agent.id === "devin")!.sources, ["agents-otlp"]);
     assert.equal(after.totals?.totalTokens, 5_742);
+  } finally { installTestStorage(null); }
+});
+
+test("the Mac's Devin OTLP moves to mac-otlp once with its days, sessions, activity and buckets; later agents-otlp Devin is the cloud's", async () => {
+  const storage = new FakeStorage();
+  installTestStorage(storage);
+  const env = testEnv();
+  const send = async (source: "agents-otlp" | "mac-otlp", body: unknown, at: number) => commit(env, await inRequest(env, () => prepareIngest(source, body, at)));
+  const ledger = async (source: "agents-otlp" | "mac-otlp") => parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey(source))).devin;
+  const devinRows = async (source: "agents-otlp" | "mac-otlp") => (parseStoredCodingBuckets(await storage.get(codingBucketsKey(source)))?.windows ?? [])
+    .flatMap((window) => window.agents.filter((row) => row.id === "devin").map((row) => row.inputTokens));
+  try {
+    assert.equal((await send("agents-otlp", devinTokens(NOW - 1_000, NOW, { input: 500 }, "mac-1"), NOW)).ok, true);
+    assert.equal((await send("agents-otlp", devinTokens(NOW + 1_000, NOW + 2_000, { input: 70 }), NOW + 2_000)).ok, true);
+    assert.equal((await send("agents-otlp", otlpTokens(NOW + 2_000, 300), NOW + 2_000)).ok, true);
+
+    assert.equal((await send("mac-otlp", devinTokens(NOW + 3_000, NOW + 4_000, { input: 5 }, "mac-1"), NOW + 4_000)).ok, true);
+    assert.equal((await send("mac-otlp", devinTokens(NOW - 1_000, NOW, { input: 500 }, "mac-1"), NOW + 4_500)).ok, true,
+      "the exporter resends a window the old source already counted");
+    const mac = (await ledger("mac-otlp"))!;
+    assert.equal(mac.days.reduce((sum, day) => sum + day.totalTokens, 0), 575);
+    // 会话摘要不分 agent、搬不走：搬家前见过的会话在新来源再记一次，只多这一回。
+    assert.equal(mac.sessionCount, 3, "the moved session count is kept");
+    assert.equal(await ledger("agents-otlp"), undefined);
+    assert.deepEqual(await devinRows("agents-otlp"), []);
+    assert.equal((await devinRows("mac-otlp")).reduce((sum, value) => sum + value, 0), 575);
+    const cloudActivity = parseStoredActivity(await storage.get(codingActivityKey("agents-otlp")))!;
+    assert.deepEqual(cloudActivity.agents.map((agent) => agent.id), ["claude"]);
+    const macActivity = parseStoredActivity(await storage.get(codingActivityKey("mac-otlp")))!;
+    assert.deepEqual(macActivity.agents.map((agent) => [agent.id, agent.lastActivityAt]), [["devin", NOW + 4_000]]);
+
+    assert.equal((await send("agents-otlp", devinTokens(NOW + 5_000, NOW + 6_000, { input: 9 }, "cloud-1"), NOW + 6_000)).ok, true);
+    const cloud = (await ledger("agents-otlp"))!;
+    assert.equal(cloud.days.reduce((sum, day) => sum + day.totalTokens, 0), 9, "the cloud starts its own ledger");
+    assert.equal(cloud.sessionCount, 1, "the Mac's sessions went with its ledger");
+    assert.equal((await ledger("mac-otlp"))!.days.reduce((sum, day) => sum + day.totalTokens, 0), 575, "moved only once");
+
+    const view = parseStoredView(await storage.get(codingViewKey()))!;
+    const row = view.agents.find((agent) => agent.id === "devin")!;
+    assert.deepEqual(row.sources, ["agents-otlp", "mac-otlp"]);
+    assert.equal(view.agents.find((agent) => agent.id === "claude")!.sources.join(), "agents-otlp");
   } finally { installTestStorage(null); }
 });

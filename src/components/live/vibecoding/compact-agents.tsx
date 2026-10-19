@@ -77,7 +77,7 @@ function CompactAgentRow({
             )}
           </span>
           <span className="truncate text-sm font-medium">{row.label}</span>
-          {active && <ActiveBadge id={row.id} sources={sources} />}
+          {active && <ActiveBadge sources={sources} />}
         </span>
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {row.plan && (

@@ -248,7 +248,7 @@ test("桶：计数规则与日行一致，agent 状态只认三种、id 不重�
 });
 
 test("来源：有账号级来源就只算它，别的同 agent 来源靠边站；否则全部相加；结果按登记顺序", () => {
-  assert.deepEqual(CODING_USAGE_SOURCE_NAMES, ["mac", "agents", "agents-otlp"]);
+  assert.deepEqual(CODING_USAGE_SOURCE_NAMES, ["mac", "agents", "agents-otlp", "mac-otlp"]);
   assert.deepEqual(resolveCodingUsageSources(["mac"]), { contributing: ["mac"], superseded: [], conflict: [] });
   assert.deepEqual(resolveCodingUsageSources(["agents-otlp", "mac"]), { contributing: ["mac", "agents-otlp"], superseded: [], conflict: [] });
   assert.deepEqual(resolveCodingUsageSources(["mac", "agents", "agents-otlp"]), {
