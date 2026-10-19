@@ -51,7 +51,7 @@
 
 验证以外的机械活（成批读讨论串与评审、全仓搜、照规格的改动、只等 CI 或部署结束、不做核对的纯等待）同样不留在主线程：按 [`lyjwpage-delegate`](../.claude/skills/lyjwpage-delegate/SKILL.md) 派给 Sonnet / Haiku 子代理或后台命令。
 
-截图与效果图用同一份场景数据：`pnpm dev:scene` 把整页状态注入本地开发栈，`pnpm readme:shots` 出 README 的首页总览图，见 [screenshots.md](./screenshots.md)。
+截图与效果图用同一份场景数据：`pnpm dev:scene` 把整页状态注入本地开发栈；README 的卡片由站点实时渲染，见 [screenshots.md](./screenshots.md)。
 
 ## 定时任务
 
