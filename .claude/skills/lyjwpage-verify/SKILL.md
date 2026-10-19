@@ -97,7 +97,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - 什么时候必须跑 `reload`：改到首页首屏、字体或 `@font-face`、缓存头、SSR 或水合、任何按时间算出来的文字（时钟、相对时间、进度）。跑在**生产构建**上（`pnpm build` 后 `DEV_SITE_PORT=<端口> pnpm start`）或 Workers 预览 / 生产地址；`pnpm dev` 的字体、模块加载和缓存头都和线上不同，开发服务器上没跳不算数。要比修复前后，就把修复前的构建也起在另一个端口一起跑。
 - `reload` 的每一条 `textJumps` / `frameJumps` 都要在报告里归类，不能只报 ok 与否：时间类文字（时钟、几分钟前、进度）在水合时跳到此刻是缺陷；轮询或推送带来的新数值（计数、费用）是数据刷新；正在播放卡的进度和歌词在水合时从快照跳到此刻是 lyjw 接受过的行为（项目记忆 now-playing-first-screen-decisions）。`liveText` / `liveRegions` 是反复变化的地方，只列不判。`fontsAfterPaint` 只在 Chromium 上可靠：它按 `--latency` 给走网络的请求加往返延迟，每次都要重新验证的字体会晚到，WebKit 没有这个开关。
 - 云端没有真 Safari，用 Playwright 的 WebKit 代替：`shot --engine webkit` 截图，`reload --engine webkit` 查文字与字体、不录屏。WebKit 没装时这几个子命令的 `next` 写安装命令（`playwright install --with-deps webkit`，云端约 30 秒）。只有真机才有的行为（地址栏、触控、系统字体），写进「没验到」，请 lyjw 实机看。
-- README 实时卡片（`/cards/*.svg`）：和首页原卡并排对照的要求见根 `AGENTS.md`「界面设计」。出图里不跑脚本、不取外部资源（`docs/screenshots.md`「实时卡片」），所以对照前先列出这张卡里靠浏览器脚本、页面级样式或图标定义、展开交互才有的内容，对照时逐项看出图里有没有。
+- README 实时卡片（`/cards/*.svg`）：和首页原卡并排对照的要求见根 `AGENTS.md`「界面设计」。出图里不跑脚本、不取外部资源（`docs/screenshots.md`「实时卡片」），所以对照前先列出这张卡里靠浏览器脚本、页面级样式或图标定义、展开交互才有的内容，对照时逐项看出图里有没有。出图在生产构建上看（`pnpm dev` 里 NumberFlow 读数是空的）；README 里的最终显示另在 375 宽用 WebKit 看一次（WebKit 缩小 SVG 时会裁切）。
 - 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` / `dev:scene` 注入由主线程起、主线程管（`pnpm dev:scene --reset` 一次清完），保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
 
 ### 3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）
