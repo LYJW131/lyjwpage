@@ -2,7 +2,7 @@ import { key } from "@shared/storage";
 import type { CodingNowPayload, CodingUsagePayload } from "@shared/types";
 
 import type { CodingActivityReport } from "./coding-usage";
-import type { CodingUsageSource } from "./coding-usage-sources";
+import type { CodingUsageSource, OtlpCodingSource } from "./coding-usage-sources";
 import type { CodingUsageYearView, StoredCodingUsageAgent } from "./coding-usage-view";
 
 
@@ -11,7 +11,8 @@ export const codingViewKey = () => key("coding", "usage", "view");
 export const codingYearKey = () => key("coding", "usage", "year");
 export const codingActivityKey = (source: CodingUsageSource) => key("coding", "activity", source);
 export const codingPushedNowKey = () => key("coding", "now", "pushed");
-export const codingOtlpKey = () => key("coding", "otlp");
+// agents-otlp 沿用不带来源的旧键。
+export const codingOtlpKey = (source: OtlpCodingSource = "agents-otlp") => source === "agents-otlp" ? key("coding", "otlp") : key("coding", "otlp", source);
 export const codingBucketsKey = (source: CodingUsageSource) => key("pulse", "token-buckets", source);
 // 时刻可能在乱序提交后不变；归档增量水位必须用与账本同事务递增的修订号。
 export const codingUsageRevisionKey = () => key("coding", "usage", "revision");

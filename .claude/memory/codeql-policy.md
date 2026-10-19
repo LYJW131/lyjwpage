@@ -14,7 +14,7 @@ Set by lyjw on 2026-10-13 and merged in PR #222 (bfde655). The path there:
 Current state:
 - **On PRs:** `.github/workflows/codeql.yml` runs only on `claude/build-*` branches, the visitor Build flow. Other PRs get a skipped placeholder check.
 - **Other runs:** pushes to main/dev scan the changed languages, and a scheduled scan runs twice a day.
-- **Visitor-build gate:** the ai Worker's `markBuildReady` keeps the build PR as a draft until every check in `workers/ai/src/build/github.ts#BUILD_READY_CHECKS` has passed: `check` plus both `Analyze` jobs. The gate lives there, not in branch protection.
+- **Visitor-build gate:** the ai Worker's `markBuildReady` keeps the build PR as a draft until every check in `workers/ai/src/build/checks.ts#BUILD_READY_CHECKS` has passed: `check` plus both `Analyze` jobs. The gate lives there, not in branch protection.
 - **main protection:** only "require conversation resolution", with no required status checks, so lyjw can push directly. Branch-protection writes go through Remote Control on the Mac, and the Mac's auto mode blocks them until lyjw OKs it in the thread.
 - **Merge gate:** don't wait for CodeQL on ordinary PRs. The bot-review gate ([[merge-requires-bot-review-pass]]) still covers Devin, Codex, Claude review and Bugbot.
 

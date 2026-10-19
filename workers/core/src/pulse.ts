@@ -22,7 +22,7 @@ import type {
 import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from "@shared/coding-buckets";
 import { codingBucketsKey } from "@shared/coding-store";
 import { CODING_BUCKET_MS, codingRowTokens } from "@shared/coding-usage";
-import { CODING_USAGE_SOURCE_NAMES, type CodingUsageSource } from "@shared/coding-usage-sources";
+import { CODING_USAGE_SOURCE_NAMES, isOtlpCodingSource, type CodingUsageSource } from "@shared/coding-usage-sources";
 import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { cloudAgentActivity, codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 import type { Coverage } from "@shared/pulse-features";
@@ -178,7 +178,7 @@ const TOKEN_CURRENT_MS = 10 * 60_000;
 export type TokenBucketSources = Partial<Record<CodingUsageSource, StoredCodingBuckets | null>>;
 
 function coverageEnd(source: CodingUsageSource, store: StoredCodingBuckets, at: number): number | null {
-  if (source === "agents-otlp") return store.receivedAt;
+  if (isOtlpCodingSource(source)) return store.receivedAt;
   return coveringPart(store.coverage, at)?.to ?? null;
 }
 
@@ -217,7 +217,7 @@ export function tokensLaneView(stores: TokenBucketSources, window: PulseWindow):
   const seen = CODING_USAGE_SOURCE_NAMES.some((source) => {
     const store = stores[source];
     if (!store) return false;
-    const end = source === "agents-otlp" ? store.receivedAt : Math.max(0, ...store.coverage.map((part) => part.to));
+    const end = isOtlpCodingSource(source) ? store.receivedAt : Math.max(0, ...store.coverage.map((part) => part.to));
     return end >= window.to - TOKEN_CURRENT_MS;
   });
   return {
@@ -309,6 +309,7 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     .get(codingBucketsKey("mac"))
     .get(codingBucketsKey("agents"))
     .get(codingBucketsKey("agents-otlp"))
+    .get(codingBucketsKey("mac-otlp"))
     .execute();
   const text = (index: number) => (typeof rows[index] === "string" ? rows[index] as string : null);
   const lane = <L extends StateLane>(name: L, index: number): StateLaneInput<L> => ({
@@ -320,6 +321,7 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     mac: parseStoredCodingBuckets(rows[13]),
     agents: parseStoredCodingBuckets(rows[14]),
     "agents-otlp": parseStoredCodingBuckets(rows[15]),
+    "mac-otlp": parseStoredCodingBuckets(rows[16]),
   };
   return {
     generatedAt: now,
