@@ -8,6 +8,7 @@
 - **Reports for lyjw:** one Artifact, never .md (lyjw 2026-10-15 "要artifacts"); A style only, ASD-STE100 short sentences, low-key (lyjw 2026-10-16 "以后都选a"); 书页 look from /mnt/project-files/report-style/book-template.html: [[report-book-style]].
 - **New concepts: make lyjw think** (lyjw 2026-10-20 02:03 SGT "让我多思考来理解"): anchor to lyjwpage, contrast, at most one check question with the answer below, invite explain-back and fix the one gap; never block work: [[teach-new-concepts]].
 - **Latest stack, no legacy compat** (lyjw 2026-10-15 00:42 SGT): prefer newest versions/APIs; when upgrading or migrating, drop old shims/fallbacks/dual paths. Exception: iOS reporter endpoints must keep working.
+- **Exploring directions is allowed** (lyjw 2026-10-20 04:25 SGT): raise direction doubts early in the thread, not as a block on a finished PR; closing a PR is not sunk cost: [[explore-directions]].
 - **Don't over-engineer** (lyjw 2026-10-15: "你过度设计了 提示词改一下就行了"; also dropped the post-deploy PageSpeed check as unnecessary). Pick the smallest change that does the job. Small code additions are not a cost worth weighing (lyjw 2026-10-20 00:06 SGT).
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
