@@ -62,6 +62,20 @@ The cards below are rendered live by the site as SVG, follow the system light or
   <img src="https://lyjw.me/cards/now-watching.svg?v=2" alt="Emby now watching card" width="100%">
 </picture>
 
+**Do Not Disturb**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/focus.svg?v=2" alt="Do Not Disturb card: the iPhone Focus mode and how long it has been on" width="100%">
+</picture>
+
+**Now playing on Meta Quest**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/quest.svg?v=2" alt="Meta Quest now playing card: the game, its mode and play time" width="100%">
+</picture>
+
 **Charger and power bank**
 
 <p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/charger.svg?theme=dark&amp;v=2"><img src="https://lyjw.me/cards/charger.svg?v=2" alt="Anker charger card: total power, the power curve and each port" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/powerbank.svg?theme=dark&amp;v=2"><img src="https://lyjw.me/cards/powerbank.svg?v=2" alt="Anker power bank card: charge level, dock input, output and ports" width="50%"></picture></p>
