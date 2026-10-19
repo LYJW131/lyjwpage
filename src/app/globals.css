@@ -662,6 +662,131 @@ html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"] {
   }
 }
 
+/* iOS 专注模式打开时的图标动画，逐帧量自 60fps 录屏：正念花转 180° 并鼓到 1.155 倍再回落；睡眠床上色后飘出三个 Z。
+   只播一次，比 DESIGN.md 的常规动效长，是有意照搬原版节奏。上色靠第二层同形图案淡入。 */
+.focus-icon {
+  display: inline-block;
+  line-height: 0;
+}
+.focus-icon svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.focus-icon .ink {
+  color: var(--foreground);
+}
+.focus-icon .tint {
+  opacity: 0;
+}
+.focus-mindfulness .tint {
+  color: var(--signal-green);
+}
+.focus-sleep .tint {
+  color: var(--signal-violet);
+}
+.focus-icon[data-on] .tint {
+  opacity: 1;
+}
+.focus-mindfulness .spin {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.focus-mindfulness[data-on] .spin {
+  animation:
+    focus-spin 650ms cubic-bezier(0.45, 0.05, 0.6, 0.95) 33ms both,
+    focus-swell 650ms 33ms both;
+}
+.focus-mindfulness[data-on] .tint {
+  animation: focus-tint-in 350ms cubic-bezier(0.3, 0.1, 0.25, 0.9) both;
+}
+.focus-sleep[data-on] .tint {
+  animation: focus-tint-in 450ms cubic-bezier(0.2, 0.05, 0.1, 0.9) both;
+}
+.focus-sleep .z {
+  fill: var(--signal-blue);
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+.focus-sleep[data-on] .z {
+  animation: focus-z 1800ms linear both;
+}
+.focus-sleep[data-on] .z1 {
+  animation-delay: 67ms;
+}
+.focus-sleep[data-on] .z2 {
+  animation-delay: 450ms;
+}
+.focus-sleep[data-on] .z3 {
+  animation-delay: 833ms;
+}
+
+@keyframes focus-spin {
+  from {
+    rotate: 0deg;
+  }
+  to {
+    rotate: 180deg;
+  }
+}
+
+@keyframes focus-swell {
+  0% {
+    scale: 1;
+    animation-timing-function: cubic-bezier(0.55, 0.1, 0.95, 0.95);
+  }
+  51.3% {
+    scale: 1.155;
+    animation-timing-function: cubic-bezier(0.05, 0, 0.45, 0.9);
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+@keyframes focus-tint-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Z 的中心按床的坐标（76 × 50，原点左上）每 4 帧取一个点。 */
+@keyframes focus-z {
+  0%     { transform: translate(47px, -6px) scale(0.1); opacity: 0; }
+  2.8%   { transform: translate(46px, -7px) scale(0.3); opacity: 0.5; }
+  6.4%   { transform: translate(44px, -9px) scale(0.46); opacity: 0.65; }
+  10.2%  { transform: translate(42px, -9px) scale(0.77); opacity: 0.8; }
+  13.9%  { transform: translate(40px, -9px) scale(0.92); opacity: 0.9; }
+  17.6%  { transform: translate(39px, -10px) scale(1); opacity: 1; }
+  21.3%  { transform: translate(38px, -12px) scale(1); }
+  25%    { transform: translate(39.5px, -12.5px) scale(1); }
+  28.7%  { transform: translate(41px, -13px) scale(1); }
+  32.4%  { transform: translate(43px, -15px) scale(1); }
+  36.1%  { transform: translate(47px, -17px) scale(1); }
+  39.8%  { transform: translate(51px, -19px) scale(1); }
+  43.6%  { transform: translate(55px, -22px) scale(1); }
+  47.2%  { transform: translate(58.5px, -25px) scale(1); }
+  50.9%  { transform: translate(60px, -27px) scale(1); }
+  54.6%  { transform: translate(60px, -29px) scale(1); }
+  58.3%  { transform: translate(58.5px, -32px) scale(1); }
+  62.1%  { transform: translate(55px, -34.5px) scale(1); }
+  65.8%  { transform: translate(51px, -36px) scale(1); }
+  70.4%  { transform: translate(46px, -39px) scale(1); }
+  75%    { transform: translate(41px, -41px) scale(1); opacity: 1; }
+  78.7%  { transform: translate(39px, -43px) scale(0.92); opacity: 0.95; }
+  82.4%  { transform: translate(39px, -45px) scale(0.77); opacity: 0.85; }
+  86.1%  { transform: translate(41px, -47px) scale(0.7); opacity: 0.8; }
+  89.8%  { transform: translate(43px, -49px) scale(0.54); opacity: 0.7; }
+  93.6%  { transform: translate(46px, -49.5px) scale(0.46); opacity: 0.55; }
+  97.2%  { transform: translate(50px, -51px) scale(0.25); opacity: 0.4; }
+  100%   { transform: translate(53px, -51px) scale(0.1); opacity: 0; }
+}
+
 /* 拿到白金的游戏封面：银白金属感的 2px 描边，斜向高光，静态不循环。 */
 .platinum-frame {
   border: 2px solid transparent;
