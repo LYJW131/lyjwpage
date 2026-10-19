@@ -111,10 +111,13 @@ const both = (clefAnswer: unknown, clairic: unknown) =>
   }) as unknown as Ai;
 const extracted = (value: string | null, pNull = 0.001, confidence = 0.98) => ({ answers: { item: { type: "text", value, guess: value ?? "x", p_null: pNull, confidence } } });
 
-test("Clairic 抽到具体条目时，能搜的状态分组带上 query", async () => {
+test("Clairic 抽到具体条目时，能搜的状态分组在整组之外再带 query 读一次", async () => {
   assert.deepEqual(await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("《艾尔登法环》")), [user("他最近玩艾尔登法环了吗")]), {
     route: "flash", source: "clef",
-    prefetch: [{ name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.views], query: "艾尔登法环" } }],
+    prefetch: [
+      { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.views] } },
+      { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.views], query: "艾尔登法环" } },
+    ],
   });
   assert.deepEqual(await routeWithClef(both(answered("flash", ["limits", 0.95]), extracted("Claude")), [user("Claude 额度还剩多少")]), {
     route: "flash", source: "clef",
@@ -130,6 +133,11 @@ test("Clairic 没把握、抽空或出错时照旧预取整组", async (t) => {
   const warn = t.mock.method(console, "warn", () => {});
   assert.deepEqual(await routeWithClef(both(answered("flash", ["listening", 0.95]), new Error("clairic down")), [user("在听什么")]), plain);
   assert.equal(warn.mock.callCount(), 1);
+});
+
+test("Clef 没选可搜的状态分组时不等 Clairic", async () => {
+  const hanging = { run: async (model: string) => model === "@cf/cloudflare/clairic" ? new Promise(() => {}) : answered("flash", ["none", 0.99]) } as unknown as Ai;
+  assert.deepEqual(await routeWithClef(hanging, [user("你好")]), { route: "flash", source: "clef" });
 });
 
 test("parseItem 去掉书名号与引号", () => {
