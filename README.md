@@ -44,8 +44,8 @@
 **页头前台应用**：Claude Code、Ghostty、Cursor、Antigravity 换成品牌动画，窗口标题过了隐私判断才显示。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
-  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识与窗口标题的出现、变化与消失" width="788">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/readme/desktop-marks-dark.svg">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/readme/desktop-marks-light.svg" alt="页头前台应用的四种品牌标识与窗口标题的出现、变化与消失" width="798">
 </picture>
 
 **每日摘要**

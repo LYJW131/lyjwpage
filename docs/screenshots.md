@@ -19,11 +19,15 @@ pnpm readme:shots --theme dark    # 只出暗色；--out 改输出目录，--sce
 
 歌词不入库：本地 Worker 没有 Apple Music 凭据，场景里 `/api/lyrics?song=<songId>` 写成 `{ "fetch": "https://lyjw.me/api/lyrics?song=<songId>" }`，注入时现取生产站的响应（`songId` 取 `listening-now-*.json` 里的）。
 
-页头品牌标识那条是 GIF（`desktop-marks-{light,dark}.gif`），由 [`scripts/desktop-marks-gif.py`](../scripts/desktop-marks-gif.py) 生成：四段标识（Claude Code、Ghostty、Cursor、Antigravity）都从本地站点页头真实截下再拼成一条，四段都会动。Claude Code 和 Ghostty 两段装上 Playwright 的假时钟逐帧推进，帧时长取 `src/lib/mascot-fetch.json` 与 `src/lib/ghostty-frames.json` 的节拍；Cursor 和 Antigravity 两段演示窗口标题的出现、变化和消失，按脚本里 `TITLE_SCRIPTS` 的剧本从夹具派生只改 `windowTitle` 的临时变体逐个注入，用真实时钟截（标题的淡入淡出交给 motion 的 Web Animations API，假时钟拨不动它）。GIF 一轮等于 Ghostty 一轮，标题剧本首尾都没有标题，循环回到起点才接得上。各段时间线怎么拼、节拍怎么取，见脚本开头的说明。需要 Python 3、`playwright`、`pillow`（`pip install playwright pillow && playwright install chromium`；装了 Google Chrome 可设 `PLAYWRIGHT_CHANNEL=chrome` 免下载），本地 Worker 与 `pnpm dev:local` 在跑（不在默认端口时用 `SITE_URL` / `DEV_WORKER_URL` 指过去）：
+页头品牌标识那条是 SVG 动画（[`public/readme/desktop-marks-{light,dark}.svg`](../public/readme/)），由 [`scripts/desktop-marks-svg.py`](../scripts/desktop-marks-svg.py) 生成：四段标识（Claude Code、Ghostty、Cursor、Antigravity）都从本地站点页头真实截下再拼成一条，四段都会动。Claude Code 和 Ghostty 两段装上 Playwright 的假时钟逐帧推进，帧时长取 `src/lib/mascot-fetch.json` 与 `src/lib/ghostty-frames.json` 的节拍；Cursor 和 Antigravity 两段演示窗口标题的出现、变化和消失，按脚本里 `TITLE_SCRIPTS` 的剧本从夹具派生只改 `windowTitle` 的临时变体逐个注入，用真实时钟截（标题的淡入淡出交给 motion 的 Web Animations API，假时钟拨不动它）。一轮等于 Ghostty 一轮，标题剧本首尾都没有标题，循环回到起点才接得上。SVG 里四段各走各的时间线：每段去重后的帧内联成 WebP / PNG 的 `data:` 图（垫底一张常驻，其余只留与它不同的那块），CSS `@keyframes` 以 `step-end` 切换不透明度，没有脚本、不引外部资源，`<img>` 里照常播放；宽高取 CSS 像素，内联的是 2 倍截图，高分屏不糊。各段时间线怎么拼、节拍怎么取，见脚本开头的说明。
+
+它放在 `public/` 而不是 `docs/screenshots/`，README 里用 `https://lyjw.me/readme/…` 的绝对地址引用：仓库相对路径的图由 `raw.githubusercontent.com` 出，响应头的 CSP 是 `default-src 'none'; style-src 'unsafe-inline'; sandbox`，不放行 SVG 里内联的 `data:` 图；绝对地址走 GitHub 的图片代理 camo，它的 CSP 带 `img-src data:`。`public/` 随站点部署，`/readme/*` 的缓存头在 `public/_headers`。
+
+重出需要 Python 3、`playwright`、`pillow`（`pip install playwright pillow && playwright install chromium`；装了 Google Chrome 可设 `PLAYWRIGHT_CHANNEL=chrome` 免下载），本地 Worker 与 `pnpm dev:local` 在跑（不在默认端口时用 `SITE_URL` / `DEV_WORKER_URL` 指过去）：
 
 ```sh
-python3 scripts/desktop-marks-gif.py            # 明暗各一张
-python3 scripts/desktop-marks-gif.py --theme dark
+python3 scripts/desktop-marks-svg.py            # 明暗各一张
+python3 scripts/desktop-marks-svg.py --theme dark
 ```
 
 标识改了外观、`mascot-fetch.json` 或 `ghostty-frames.json` 换了帧或节拍、标题那行改了样式或过渡时重跑一次即可；脚本自己开关假数据总开关、注入 `desktop-*` 夹具并在结束后清掉注入（细节见脚本开头）。

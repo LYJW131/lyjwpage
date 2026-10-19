@@ -44,8 +44,8 @@ The cards below are rendered live by the site as SVG, follow the system light or
 **Front app in the header**: Claude Code, Ghostty, Cursor and Antigravity get animated brand marks; a window title shows only after it passes a privacy check.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
-  <img src="docs/screenshots/desktop-marks-light.gif" alt="Brand marks for the header's front app, and the window title appearing, changing and disappearing" width="788">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/readme/desktop-marks-dark.svg">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/readme/desktop-marks-light.svg" alt="Brand marks for the header's front app, and the window title appearing, changing and disappearing" width="798">
 </picture>
 
 **Daily digest**
