@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { stripHtmlTags } from "./strip-html.ts";
 
 const posix = path.posix;
 
@@ -169,13 +170,7 @@ export function splitInlineCode(line: string) {
 }
 
 export function githubSlug(heading: string): string {
-  let plain = heading.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1");
-  let previous;
-  do {
-    previous = plain;
-    plain = plain.replace(/<[^<>]*>/g, "");
-  } while (plain !== previous);
-  return plain
+  return stripHtmlTags(heading.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1"))
     .replace(/[`*~]/g, "")
     .trim()
     .toLowerCase()
