@@ -58,7 +58,7 @@
 | 任务 | 做什么 |
 | --- | --- |
 | 每日代码审查 | 从上次游标起对 main 跑 `/code-review` 与 `/simplify`，值得改的开 PR；顺带找正在被复制的坏写法，升级成 lint 或检查 |
-| 提炼 skill 与偏差复盘 | 读各线程，把反复出现的流程写成 skill；对照需求第一次怎么说、最后交付了什么，改 agent 的默认做法；被采纳的机器评审意见同类出现两次以上就做成检查（[`lyjwpage-skill-mining`](../.claude/skills/lyjwpage-skill-mining/SKILL.md)） |
+| 提炼 skill 与偏差复盘 | 读各线程，把反复出现的流程写成 skill；对照需求第一次怎么说、最后交付了什么，改 agent 的默认做法；被采纳的机器评审意见（[`scripts/review-sieve.ts`](../scripts/review-sieve.ts) 先按回复里的修复提交分堆）同类出现两次以上就做成检查（[`lyjwpage-skill-mining`](../.claude/skills/lyjwpage-skill-mining/SKILL.md)） |
 | Anthropic 官方动态 | 拉官方博客、文档、更新日志和前沿作者的新内容，逐条判断能否吸收进本站（[`lyjwpage-anthropic-updates`](../.claude/skills/lyjwpage-anthropic-updates/SKILL.md)） |
 | collector 盯防 | 盯采集 Worker 的公开状态与 Workers Observability 日志，找告警漏掉的细微异常，复现了的错误直接开修复草稿 PR（[`lyjwpage-collector-superfan`](../.claude/skills/lyjwpage-collector-superfan/SKILL.md)） |
 | 记忆镜像同步 | 把项目记忆同步进 `.claude/memory/` |
