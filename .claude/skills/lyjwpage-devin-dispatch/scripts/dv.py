@@ -232,10 +232,10 @@ def menu_verdict(lines, cwd, common):
     target, allow = paths
     if not in_scope(target, cwd, common):
         return False, f'outside the worktree: {target}'
-    # The real menu offers the target's own directory; a wrapped or cut target fails this.
+    # The Mac menu offers the target's own directory, the cloud sandbox the worktree root; a wrapped or cut target fails this.
     t, a = resolve(target, cwd), allow and resolve(allow, cwd)
-    if not a or a != os.path.dirname(t):
-        return False, f'"allow edits in" {allow!r} is not the directory of {target}'
+    if not a or a not in (os.path.dirname(t), os.path.realpath(cwd)):
+        return False, f'"allow edits in" {allow!r} is neither the directory of {target} nor the worktree'
     return True, target
 
 
