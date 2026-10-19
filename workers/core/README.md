@@ -328,7 +328,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 写入方是状态核心：cron 每轮调一次 StateHub 的 `pulseTick`，同时拿到评分任务和归档快照；StateHub 按各路水位（metadata `pulse-archive:v2:<路>`）给出一份有界快照，
 普通 Worker 按自然键拼成 upsert（活动桶另有受版本保护的范围删除）写 D1，全部成功后才确认水位；一路读坏、写坏不挡别的路。
 奖杯目录是另一张表 `trophies`，在收下奖杯信封后写（`src/stores/trophy-history.ts#archiveTrophies`），不走这张水位。
-代码在 `src/pulse-archive.ts`，表在迁移 `0007_history_pulse.sql` 与 `0008_coding_usage.sql`：
+代码在 `src/pulse-archive.ts`（StateHub 一侧读快照、确认水位在 `src/pulse-archive-state.ts`，拼 D1 语句在 `src/pulse-archive-statements.ts`），表在迁移 `0007_history_pulse.sql` 与 `0008_coding_usage.sql`：
 
 | 表 | 内容 | 自然键 |
 | --- | --- | --- |
@@ -569,7 +569,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 
 ## README 卡片的 Voronoi 布局
 
-`/api/cards/voronoi.svg` 的几何、配色、评分与标签规则与 LYJW131 仓库里 lyjw 调定的 Voronoi 生成脚本一致（power diagram，纵向拉伸 `STRETCH` 后求解再压回），在 `src/voronoi-layout.ts`。布局固定、面积跟着份额微调：
+`/api/cards/voronoi.svg` 的几何、配色、评分与标签规则与 LYJW131 仓库里 lyjw 调定的 Voronoi 生成脚本一致（power diagram，纵向拉伸 `STRETCH` 后求解再压回），入口在 `src/voronoi-layout.ts`（求解在 `src/voronoi-solve.ts`，评分与标签在 `src/voronoi-assess.ts`）。布局固定、面积跟着份额微调：
 
 - 状态存在 StateHub 的 `cards:voronoi` 键（`src/voronoi-card.ts#stateKey`）：各格的模型、颜色、站点、权重，选定时的评分和当时就有、被认可的硬性问题（`accepted`，按出现处记：问题、模型、撞到的边，换人时随站点交给接手的模型）。键为空时用 `src/voronoi-initial.ts` 里 lyjw 选定的 seed 2290 布局。
 - 请求端从存好的布局出发，站点不动，只迭代权重贴合最新份额（几毫秒），从不做多种子搜索。

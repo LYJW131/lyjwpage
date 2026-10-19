@@ -43,7 +43,7 @@ type Reply = Omit<ChatBubble, "role" | "content">;
 type Resumed = { user: ChatBubble & { id: string }; before: ChatBubble[]; keep: ChatBubble[]; handoff: boolean };
 const RESUME_DELAY_MS = 2000;
 const EMPTY_MESSAGES: ChatBubble[] = [];
-// 须与 globals.css 里 .design-halo 的动画总时长一致。
+// 须与 src/app/styles/chat-effects.css 里 .design-halo 的动画总时长一致。
 const DESIGN_HALO_MS = 2_400;
 
 const CHAT_URL = workerUrl(process.env.PUBLIC_BACKEND_URL, GOD_CHAT_PATH);
