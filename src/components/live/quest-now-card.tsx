@@ -1,13 +1,14 @@
 "use client";
 
 import MetaMono from "@lobehub/icons/es/Meta/components/Mono";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 
 import Image from "@/components/app-image";
 import { NowReveal } from "@/components/live/now-reveal";
 import { Card } from "@/components/ui/card";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
+import { RenderClock } from "@/hooks/use-mounted-at";
 import { useStatus } from "@/hooks/use-status";
 import { STATUS_VIEWS } from "@shared/status-views";
 import type { StatusResponse } from "@shared/types";
@@ -24,7 +25,8 @@ function playingFor(ms: number): string {
 }
 
 function useNow(enabled: boolean): number | null {
-  const [now, setNow] = useState<number | null>(null);
+  const renderClock = useContext(RenderClock);
+  const [now, setNow] = useState<number | null>(renderClock || null);
   useEffect(() => {
     if (!enabled) return;
     const tick = () => setNow(Date.now());
