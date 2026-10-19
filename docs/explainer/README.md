@@ -22,6 +22,8 @@
 
 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`workers/site/src/index.ts` 把 `/explainer` 落到构建期生成的 explainer 静态资产；页面载入的脚本（`v2/index.html` 的 `LOAD` 表）和内联样式引用的字体按内容哈希改名放进 `a/`，缓存一年；配乐不进仓库，见下一段。页面和 `v2/film.js` 经注入的 `window.__assets` 查哈希名；本地预览和写章工具没有这张表，用原名。`LOAD` 表里还没写的章不发布，站点上是占位画面。
 
+第 08 章的故事音效是 `v2/sfx/` 里的录音（freesound 上的 CC0 / CC BY 录音，经 [Openverse](https://api.openverse.org) 检索，署名在 `v2/sfx/CREDITS.txt`）。时刻写在 `v2/music/ch08.js` 的 `SFX`，配乐合成或取到之后由 `v2/film.js#withSfx` 叠上去，所以 R2 上的配乐里没有它们；构建脚本把 `v2/sfx/*.mp3` 一起按内容哈希发布。
+
 第 08 章的手写字体是霞鹜漫黑（`fonts/LXGWMarkerGothic-ch08.woff2`，许可 `fonts/LXGWMarkerGothic-OFL.txt`），只切了这一章用到的字。`v2/ch08.js` 里加了新字要重切，不然新字退回系统字体；源文件取 [lxgw/LxgwMarkerGothic](https://github.com/lxgw/LxgwMarkerGothic) 的 `fonts/ttf/LXGWMarkerGothic-Regular.ttf`，字表是 `v2/ch08.js` 里全部非 ASCII 字符加上可打印 ASCII：
 
 ```bash
