@@ -23,6 +23,10 @@ test("since 在窗口里才切尾，含当天", () => {
   assert.equal(sliceHeatmapWindow(ORIGIN, 371, addDays(ORIGIN, -1)).partial, false);
   assert.equal(sliceHeatmapWindow(ORIGIN, 371, addDays(ORIGIN, 371)).partial, false);
   assert.equal(sliceHeatmapWindow(ORIGIN, 371, "nope").partial, false);
+  assert.equal(sliceHeatmapWindow(ORIGIN, 371, "2026-13-45").partial, false);
+  assert.equal(sliceHeatmapWindow(ORIGIN, 371, "2026-02-29").partial, false);
+  assert.equal(sliceHeatmapWindow(ORIGIN, 371, "2026-02-30").partial, false);
+  assert.equal(sliceHeatmapWindow(ORIGIN, 371, "2026-04-31").partial, false);
 });
 
 test("原点前滚时丢掉出窗前缀，尾巴接到 from", () => {
