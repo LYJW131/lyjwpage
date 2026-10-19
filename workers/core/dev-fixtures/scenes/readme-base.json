@@ -3778,6 +3778,14 @@
         "playing": null
       }
     },
+    "/api/status/focus/now": {
+      "ok": true,
+      "data": {
+        "mode": null,
+        "since": null,
+        "observedAt": "$now-3600000"
+      }
+    },
     "/api/status/trophies": {
       "ok": true,
       "data": {

@@ -36,6 +36,7 @@ const FORWARDS: ReadonlyArray<{
   { event: "watching" },
   { event: "playing-now" },
   { event: "quest-now" },
+  { event: "focus-now" },
   { event: "playing" },
   {
     event: "trophies",
