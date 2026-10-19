@@ -20,6 +20,14 @@ test("拆开的标签去掉内层后还会拼回去，要删到不再出现", ()
   assert.equal(plain("<sub><sub>标题</sub></sub>"), "标题");
 });
 
+test("属性里的 < 仍算在标签里，不把标签前半截留在正文里", () => {
+  const body = `<Badge title="不改 < x">已修（e2495e5）。</Badge>`;
+  assert.equal(plain(body), "已修（e2495e5）。");
+  assert.equal(plain("<a title='不改 < y'>正文</a>"), "正文");
+  assert.equal(plain('<span title="a > b">可见</span>'), "可见");
+  assert.equal(classify(at, [reply(body)], [], commits).verdict, "adopted");
+});
+
 test("回复里的 SHA 是本 PR 的提交就算已采纳，短 SHA 按前缀认", () => {
   const result = classify(at, [reply("已修（e2495e5）：最近 14 天改按 todayAtSource 截止。")], [], commits);
   assert.equal(result.verdict, "adopted");

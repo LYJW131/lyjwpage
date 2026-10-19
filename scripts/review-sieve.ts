@@ -104,7 +104,7 @@ const SUMMARY = [
 const BOOKKEEPING = /^(?:验证回执|判定) [0-9a-f]{40}|^@codex\b/;
 const SHA_TOKEN = /(?<![0-9a-z])[0-9a-f]{7,40}(?![0-9a-z])/gi;
 
-// <scrip<script>t> 去掉不含 < 的内层后又是 <script>，所以删到不再缩短。
+// 引号里的 < 仍属这个标签；引号外的 <scrip<script>t> 去掉内层后又是 <script>，所以删到不再缩短。
 export function plain(body: string) {
   let text = body
     .replace(/<!--[\s\S]*?-->/g, "")
@@ -113,7 +113,7 @@ export function plain(body: string) {
   let previous;
   do {
     previous = text;
-    text = text.replace(/<[^<>]+>/g, "");
+    text = text.replace(/<(?:[^<>"']+|"[^"]*"|'[^']*')+>/g, "");
   } while (text !== previous);
   return text
     .replace(/^\s*---\s*$[\s\S]*/m, "")
