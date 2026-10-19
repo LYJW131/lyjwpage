@@ -6,8 +6,28 @@ import { BOTS } from "./reviewers.ts";
 export type Level = "blocking" | "security" | "normal" | "optional" | "pre-existing" | "info" | "unmarked";
 export type Resolution = { source: "graphql" | "ccr" | "rest"; byRoot: Map<number, { resolved: boolean; outdated: boolean }> | null };
 
+function stripHtmlComments(body: string) {
+  // <<!-- -->!--> 去掉内层后又是 <!--；<!--> 与 <!---> 是空注释。删到没有 <!--。没闭合的只去掉起手，后面的字留着。
+  const open = "<!--";
+  const close = "-->";
+  let text = body;
+  for (;;) {
+    const start = text.indexOf(open);
+    if (start < 0) return text;
+    const rest = text.slice(start + open.length);
+    let remove = open.length;
+    if (rest.startsWith(">")) remove += ">".length;
+    else if (rest.startsWith("->") && !rest.startsWith(close)) remove += "->".length;
+    else {
+      const end = rest.indexOf(close);
+      if (end >= 0) remove += end + close.length;
+    }
+    text = text.slice(0, start) + text.slice(start + remove);
+  }
+}
+
 function firstLine(body: string) {
-  return body.replace(/<!--[\s\S]*?-->/g, "").trim().split("\n", 1)[0] ?? "";
+  return stripHtmlComments(body).trim().split("\n", 1)[0] ?? "";
 }
 
 // 各家标记：Codex 是 P0–P3 徽章；Claude review 是 🔴 / 🟡 nit / 🟣 既有问题；Devin 是 🔴 / 🟡 bug、🟥 / 🟨 security、🔍 / 📝 说明，

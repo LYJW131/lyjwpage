@@ -64,6 +64,13 @@ test("严重度：Codex 徽章、Claude 圆圈、Devin 种类与圆圈、其他�
   assert.deepEqual(severityOf("这里少了一个分支", null), { mark: null, level: "unmarked" });
 });
 
+test("叠在一起的 HTML 注释去掉内层后还会拼回去，要删到首行标记露出来", () => {
+  assert.deepEqual(severityOf("<!<!---->-->\n🔴 会丢数据", null), { mark: "🔴", level: "blocking" });
+  assert.deepEqual(severityOf("<<!-- x -->!-->\nnit: 空格", null), { mark: "nit", level: "optional" });
+  assert.deepEqual(severityOf("<!--->\n🔴 会丢数据", null), { mark: "🔴", level: "blocking" });
+  assert.deepEqual(severityOf("这里的 <!-- 没闭合，是 blocker", null), { mark: "blocker", level: "blocking" });
+});
+
 test("评审线程按根评论归并：发起人、标记、最后一条是不是 lyjw 的账号回的，只列没解决的", () => {
   const comments = [
     { id: 1, user: codex, body: codexBody("P1"), html_url: "u1", path: "a.ts", line: 3, created_at: "2026-10-19T01:00:00Z" },
