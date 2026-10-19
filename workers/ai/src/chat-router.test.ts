@@ -144,8 +144,12 @@ test("选档日志只记选项、概率与有没有抽到条目，不记访客�
   const info = t.mock.method(console, "info", () => {});
   await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("月姬")), [user("他玩过月姬吗")]);
   const line = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
-  assert.ok(line?.includes('"status":"playing 0.95"') && line.includes('"item":true') && line.includes('"prefetch":2'));
+  assert.ok(line?.includes('"status":"playing 0.950"') && line.includes('"item":true') && line.includes('"prefetch":2'));
   assert.ok(!line?.includes("月姬"));
+  info.mock.resetCalls();
+  await routeWithClef(clef({ answers: { route: { choice: "他玩过月姬吗" }, status: { choice: "他玩过月姬吗", probabilities: { "他玩过月姬吗": 1 } } } }), [user("他玩过月姬吗")]);
+  const odd = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
+  assert.ok(odd?.includes('"route":"unlisted"') && odd.includes('"status":"unlisted"') && !odd.includes("月姬"));
 });
 
 test("parseItem 去掉书名号与引号", () => {

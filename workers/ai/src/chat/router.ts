@@ -152,13 +152,14 @@ export function parsePrefetch(body: unknown, item?: string): GodChatPresetCall[]
   return calls;
 }
 
-// 只记选项名与概率，不记访客原文与抽到的条目：Observability 收下所有 console 输出。
-function topChoice(body: unknown, question: string): string | undefined {
+// 只记登记过的选项名与概率，不记访客原文与抽到的条目：Observability 收下所有 console 输出。
+function topChoice(body: unknown, question: "status" | "doc"): string | undefined {
   const answer = object(object(object(body)?.answers)?.[question]);
   const choice = answer?.choice;
   if (typeof choice !== "string") return undefined;
+  if (!Object.hasOwn(question === "status" ? PREFETCH_STATUS : PREFETCH_DOC_CRITERIA, choice)) return "unlisted";
   const probability = object(answer?.probabilities)?.[choice];
-  return typeof probability === "number" ? `${choice} ${probability.toFixed(2)}` : choice;
+  return typeof probability === "number" ? `${choice} ${probability.toFixed(3)}` : choice;
 }
 
 export function wantsItem(body: unknown): boolean {
@@ -180,12 +181,13 @@ export async function routeWithClef(ai: Ai | undefined, messages: GodChatMessage
       signal: AbortSignal.timeout(CLEF_TIMEOUT_MS),
     } as never);
     const choice = parseRouterAnswer(answer);
+    // 拒答不调模型；设计请求由 think 判断要不要开设计会话，用不上预读的数据。
+    const usable = choice !== null && choice !== "refuse" && choice !== "design";
+    const found = usable && wantsItem(answer) ? await item : undefined;
+    const prefetch = usable ? parsePrefetch(answer, found) : [];
+    console.info("[god-chat] route", JSON.stringify({ route: choice ?? "unlisted", status: topChoice(answer, "status"), doc: topChoice(answer, "doc"), item: found !== undefined, prefetch: prefetch.length }));
     if (!choice) return fallback;
     const decision: RouteDecision = { ...CLEF_CHOICES[choice], source: "clef" };
-    // 拒答不调模型；设计请求由 think 判断要不要开设计会话，用不上预读的数据。
-    const found = choice === "refuse" || choice === "design" || !wantsItem(answer) ? undefined : await item;
-    const prefetch = choice === "refuse" || choice === "design" ? [] : parsePrefetch(answer, found);
-    console.info("[god-chat] route", JSON.stringify({ route: choice, status: topChoice(answer, "status"), doc: topChoice(answer, "doc"), item: found !== undefined, prefetch: prefetch.length }));
     return prefetch.length ? { ...decision, prefetch } : decision;
   } catch (error) {
     console.warn("[god-chat] clef router failed", error);
