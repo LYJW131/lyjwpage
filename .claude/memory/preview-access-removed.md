@@ -1,6 +1,6 @@
 ---
 name: preview-access-removed
-description: Site branch previews (*-site.lyjw.workers.dev) have no Access login since 2026-10-14 by lyjw's choice; previews send noindex instead
+description: Site branch previews (<name>.preview.lyjw.dev; site's workers.dev preview URLs are off) have no Access login since 2026-10-14 by lyjw's choice; previews send noindex instead
 metadata:
   type: project
 ---
