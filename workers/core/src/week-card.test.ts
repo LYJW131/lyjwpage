@@ -6,7 +6,8 @@ import type { CodingYearPayload, GithubChartPayload } from "@shared/types";
 
 import { executePublicRequest } from "./public-execution";
 import type { Env } from "./runtime";
-import { WEEK_CARD_PATH, formatTokens, monotonePath, renderWeekCard, weekCardStats } from "./week-card";
+import { formatTokens } from "./card-svg";
+import { WEEK_CARD_PATH, monotonePath, renderWeekCard, weekCardStats } from "./week-card";
 
 const year: CodingYearPayload = {
   origin: "2026-10-01",
@@ -48,6 +49,13 @@ test("卡片与 Voronoi 卡同宽，柱子铺满 x=28..752", () => {
   assert.match(svg, />TODAY</);
   assert.match(svg, /▲ 1\.0×/);
   assert.match(svg, /▼ 80%/);
+});
+
+test("前 7 天与全历史一样只按有活动的天平均，空着的日子不拉低倍数", () => {
+  const sparse: CodingYearPayload = { ...year, days: [...Array(16).fill(0), 7_000, 3_500, 0, 0, 0] };
+  const svg = renderWeekCard(weekCardStats(sparse, { totalTokens: 70_000, activeDays: 10 }, chart));
+  assert.match(svg, /▲ 1\.0×/);
+  assert.match(svg, /▼ 50%/);
 });
 
 test("前 7 天或全历史没有活动时对比行画「—」，不画 ▲ 0%", () => {
