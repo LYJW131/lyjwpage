@@ -22,7 +22,7 @@
 | 方法 | 路径 | Access 权限 | 用途 |
 | --- | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
-| POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` | Claude Code 云端线程的内置遥测（OTLP/HTTP JSON 指标，可 gzip） |
+| POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` | Claude Code 云端线程与 Mac 上 Devin CLI 的内置遥测（OTLP/HTTP JSON 指标，可 gzip） |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | POST | `/api/internal/collector-refresh` | `internal:collector-refresh` | 立刻跑一遍采集任务，见下文「手动跑采集」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
@@ -89,7 +89,12 @@ prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIng
 
 入口不问状态核心 `ready()`：请求体不是 JSON、校验不过都直接回 400，好报文直接提交。
 
-### Claude Code 云端线程用量
+### OTLP 用量：Claude Code 云端线程与 Devin CLI
+
+这条路由按指标名认 agent：`claude_code.token.usage` / `claude_code.cost.usage` 记到 `claude`，
+`devin.token.usage` 记到 `devin`（`shared/ingest/agents-otlp.ts#METRICS`），其余指标不读。
+
+#### Claude Code 云端线程
 
 Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境打开 Claude Code 内置遥测，
 每分钟把指标推到 `/api/ingest/agents/otlp`。这组变量**只配在云端环境设置里**，不进仓库里 Claude Code 的
@@ -114,7 +119,29 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 生产使用独立 service token `lyjwpage-claude-cloud`，已加入 `lyjwpage ingest` 应用的 Service Auth 策略，client id 登记在
 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`；Client Secret 只放云端环境，不用配置 Worker secret。
 请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
-收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#claude-code-云端线程用量)。
+收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#otlp-用量claude-code-云端线程与-devin-cli)。
+
+#### Devin CLI（Mac）
+
+Devin CLI 的用量以前由 agents-reporter 拉 tokens.ci 的公开主页，现在由 Mac 上的 Devin CLI 自己推。Mac 的 ccusage
+不统计 Devin，所以配在本机不会重复计数。Devin 只发 delta 指标，没有改成累计的开关，状态核心按窗口去重
+（见 core README）。它的 `otel` 配置里没有协议项，JSON 要靠环境变量 `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`
+（不设就发 protobuf，这里回 400），放进 `~/.zshenv` 这类启动 Devin 的 shell 都会读的地方。
+
+`~/.config/devin/config.json` 里加：
+
+```json
+"otel": {
+  "enabled": true,
+  "metrics_endpoint": "https://ingest.homepage.lyjw.llc/api/ingest/agents/otlp",
+  "headers": { "CF-Access-Client-Id": "<ACCESS_CLIENT_ID>", "CF-Access-Client-Secret": "<ACCESS_CLIENT_SECRET>" },
+  "metric_export_interval_ms": 60000
+}
+```
+
+`metrics_endpoint` 原样使用，不拼 `/v1/metrics`。`endpoint` 与 `logs_endpoint` 都不写：日志事件带提示词和回复原文，
+不配就不发。凭据用 Mac 那把 `lyjwpage-mac`（同一上报方共用一把，`[vars.ACCESS_CLIENTS]` 里它有
+`["ingest:mac", "ingest:agents-otlp"]`），值从 Hub 设置里的钥匙串取，配置文件权限保持 600。
 
 ## 部署通知
 
