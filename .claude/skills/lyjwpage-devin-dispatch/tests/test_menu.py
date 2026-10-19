@@ -87,8 +87,11 @@ class MenuScope(unittest.TestCase):
         self.assertFalse(self.verdict('Editing', '~/.bashrc', os.path.expanduser('~'))[0])
         self.assertFalse(self.verdict('Writing', f'{self.repo}/a.txt', str(self.repo))[0])
 
-    def test_allow_dir_must_be_target_dir(self):
-        self.assertFalse(self.verdict('Writing', 'src/a.ts', self.cwd)[0])
+    def test_allow_dir_must_be_target_dir_or_worktree(self):
+        self.assertTrue(self.verdict('Writing', 'src/a.ts', self.cwd)[0])
+        self.assertTrue(self.verdict('Editing', 'src/deep/a.ts', f'{self.cwd}/src/deep')[0])
+        self.assertFalse(self.verdict('Writing', 'src/deep/a.ts', f'{self.cwd}/src')[0])
+        self.assertFalse(self.verdict('Writing', 'src/a.ts', f'{self.cwd}/other')[0])
         no_allow = [l for l in screen('Writing', 'b.txt', self.cwd) if 'allow edits in' not in l]
         self.assertFalse(dv.menu_verdict(no_allow, self.cwd, self.common)[0])
 

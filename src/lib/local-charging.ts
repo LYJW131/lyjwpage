@@ -38,7 +38,6 @@ let snapshot: LocalCharging = EMPTY;
 const listeners = new Set<() => void>();
 
 let chargerHistory: ChargerSample[] = [];
-let started = false;
 let chargerSource: LocalSource | null = null;
 let powerBankSource: LocalSource | null = null;
 
@@ -166,9 +165,8 @@ function onStorage(event: StorageEvent) {
 }
 
 function start() {
-  if (started || typeof EventSource === "undefined" || !armed()) return;
-  started = true;
-  chargerSource = connect(
+  if (typeof EventSource === "undefined" || !armed()) return;
+  chargerSource ??= connect(
     "/sse/charger",
     (event) => emit({ ...snapshot, charger: chargerFromEvent(event) }),
     () => {
@@ -176,7 +174,7 @@ function start() {
       if (snapshot.charger) emit({ ...snapshot, charger: null });
     },
   );
-  powerBankSource = connect(
+  powerBankSource ??= connect(
     "/sse/powerbank",
     (event) => emit({ ...snapshot, powerBank: powerBankFromEvent(event) }),
     () => {
@@ -191,7 +189,6 @@ function stop() {
   powerBankSource?.close();
   chargerSource = null;
   powerBankSource = null;
-  started = false;
   chargerHistory = [];
   emit(EMPTY);
 }

@@ -5,8 +5,6 @@
   "scripts/build-explainer.mjs",
   "scripts/build-explainer.test.mjs",
   "scripts/build.mjs",
-  "scripts/cloud-dev-vars.mjs",
-  "scripts/cloud-dev-vars.test.mjs",
   "scripts/codeql-autofix.mjs",
   "scripts/codeql-autofix.test.mjs",
   "scripts/cursor-cloud.mjs",

@@ -15,7 +15,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 
 另开一个具名 entrypoint `Collector`（契约见 `shared/collector.ts`）：同账号的 Worker 调
 `refresh(jobs)` 就能点名立刻跑几个任务，比如上报入口（`workers/ingress`）收到站点部署通知后请它重拉
-`site-deployments` 与 `cloudflare-deployments`；`enrichTrack`、`followUpTrack` 见「Apple Music」。
+部署相关任务（`workers/ingress/src/worker.ts#DEPLOYMENT_JOBS`）；`enrichTrack`、`followUpTrack` 见「Apple Music」。
 生产上要手动跑一遍全部任务（含 `digest`），走上报入口的 `POST /api/internal/collector-refresh`，或在 GitHub Actions
 手动运行 `.github/workflows/collector-refresh.yml`，见[上报入口 README](../ingress/README.md#手动跑采集)。
 没有路由、没有域名，只能经 Service Binding 调到；默认 `fetch` 只答 Apple Music 的三条路径（`shared/apple-music-paths.ts#APPLE_MUSIC_HTTP_PATHS`），
@@ -33,15 +33,15 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 | `pagespeed` | `LAG pagespeed:v1`（滚动中位数） | `PAGESPEED_API_KEY` |
 | `github-chart` | `LAG github-chart:v1` | `GITHUB_TOKEN` |
 | `github-repo` | `LAG github-repo:v1`（含首页「最近提交」读的 `recentCommits`；站点部署通知也会点名重拉）；提交列表变了才 `CORE.revalidate(["github-repo"])` | `GITHUB_TOKEN` |
-| `site-deployments` | `LAG site-deployments:v1`；每次部署另归档 D1 `site_deploys` | `CLOUDFLARE_METRICS_TOKEN`；`SITE_WORKER_TAG` |
-| `site-analytics` | `LAG site-analytics:v1`（Cloudflare Web Analytics 两站 pageviews，截至采集时刻的滚动 7×24 小时窗） | `CLOUDFLARE_METRICS_TOKEN`；`SITE_ANALYTICS_SITES` |
+| `site-deployments` | `LAG site-deployments:v1`；每次部署另归档 D1 `site_deploys` | `CLOUDFLARE_METRICS_TOKEN`；`CLOUDFLARE_ACCOUNT_ID`；`SITE_WORKER_TAG` |
+| `site-analytics` | `LAG site-analytics:v1`（Cloudflare Web Analytics 两站 pageviews，截至采集时刻的滚动 7×24 小时窗） | `CLOUDFLARE_METRICS_TOKEN`；`CLOUDFLARE_ACCOUNT_ID`；`SITE_ANALYTICS_SITES` |
 | `vercel-deployments` | 已退役：名字留在契约里，点名时回 `skipped`，不进定时轮次（`shared/collector.ts#RETIRED_COLLECTOR_JOBS`） | 无 |
 | `vercel-metrics` | 已退役：同上 | 无 |
-| `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN` |
-| `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN` |
+| `cloudflare-deployments` | `LAG cloudflare-deployments:v1`（按 Worker 名存） | `CLOUDFLARE_METRICS_TOKEN`；`CLOUDFLARE_ACCOUNT_ID` |
+| `cloudflare-metrics` | `LAG cloudflare-metrics:v1` | `CLOUDFLARE_METRICS_TOKEN`；`CLOUDFLARE_ACCOUNT_ID` |
 | `sentry-status` | 已退役：同上 | 无 |
 | `uptime-probe` | 每分钟 GET `shared/health.ts#SITE_UPTIME_URL`，成败累进 D1 `health_buckets`（只有定时轮次记，手动点名不记） | D1 `HISTORY` |
-| `site-health` | `LAG health:v1`：D1 里的在线探测与 core 心跳汇成 30 天每天一格，加上 Workers Observability 报错数与 Web Analytics 真实访客 Web Vitals（没取到的块沿用上一份）；顺带清掉超出 `HEALTH_RETENTION_MS` 的格子 | D1 `HISTORY`；`CLOUDFLARE_METRICS_TOKEN`、`SITE_ANALYTICS_SITES`（缺了只空出报错与 Web Vitals，在线条照常） |
+| `site-health` | `LAG health:v1`：D1 里的在线探测与 core 心跳汇成 30 天每天一格，加上 Workers Observability 报错数与 Web Analytics 真实访客 Web Vitals（没取到的块沿用上一份）；顺带清掉超出 `HEALTH_RETENTION_MS` 的格子（每个序列保留期外总留最新一格） | D1 `HISTORY`；`CLOUDFLARE_METRICS_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`SITE_ANALYTICS_SITES`（缺了只空出报错与 Web Vitals，在线条照常） |
 | `digest` | `DIGEST.compose`（ai 的 `Digest`，带上一份的输入哈希与标题）写成的近况摘要进 `LAG digest:v1`；输入没变时 ai 回 `unchanged`，这里照样重写一次刷新 `updatedAt`；第一次写出、或摘要与 `quiet`（时钟卡）互换时才 `CORE.revalidate(["digest"])` | 无（ai 回 `unconfigured` 时这里跳过） |
 | `avatar-watch` | 不写状态：GitHub 头像的 sha256 与 main 上 `.github/github-avatar.sha256` 不一致时触发 `.github/workflows/avatar-sync.yml`，由它提交新哈希、触发站点重建；同一哈希在 `REDISPATCH_AFTER_MS` 内只触发一次 | `GITHUB_DISPATCH_TOKEN` |
 
@@ -53,7 +53,8 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 - **缺令牌就干净地跳过**：每个 isolate 每个任务只 `console.warn` 一次
   （`{"event":"collector-skip",…}`），不记错误 —— 没配是配置状态，不是故障。
 - **部分成功**：GitHub 仓库统计的名单和总数、健康汇总的四块（`uptime`、`heartbeat` 读 D1，`errors` 读遥测查询与 Issues 汇总，`vitals` 读 Web Analytics）
-  都是各拉各的，这一轮没取到的那一部分沿用可滞后层里上一份的（带着它原来的采集时刻）；全都没取到才算失败、不写。
+  都是各拉各的，这一轮没取到的那一部分沿用可滞后层里上一份的（带着它原来的采集时刻）。仓库统计整块取不到时，
+  新拉到的最近提交照样并进上一份（`updatedAt` 留旧值，卡片照显统计过时），定时轮次仍记失败；健康四块全丢才算失败、不写。
   健康各块取到的时刻记在 `blockAt`，卡片按它判过期（`HEALTH_STALE_MS`）；沿用最多 `HEALTH_BLOCK_CARRY_MS`，再旧那一块才回到「没有」。
   报错数是遥测查询按 `$metadata.service` 分组的 error 级事件数，按采样率放大的估计值，并排除 `*.workers.dev` 上的分支预览（`shared/health-cloudflare.ts`）。
   Cloudflare 部署逐个 Worker 查，单个查不到只空那一格（某个 Worker 还没部署时就是这样），
@@ -66,7 +67,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 - **PageSpeed** 桌面、移动并行测，单端常要一分钟上下，长尾更久，所以单端等到 `PAGESPEED_TIMEOUT_MS`
   才放弃，合成一个样本并进滚动窗口（窗口与样本上限见 `src/pagespeed.ts` 的 `WINDOW_MS`、`MAX_SAMPLES`），样本窗口存在 `COLLECTOR_KV`。
   密钥只进查询参数，日志里只有状态码。两端各算各的：一端失败，这一轮样本里那端为空，另一端照常进窗口并写可滞后层，
-  另记一条 `status: "partial"` 的 warn；两端都失败才算任务失败、不写。窗口里某端一轮都没有时样本照存、可滞后层不写。
+  另记一条 `status: "partial"` 的 warn；两端都失败才算任务失败、不写。窗口里某端一条样本都没有时也算任务失败：样本照存、可滞后层不写。
   轮次上限截不掉某端在窗口里仅剩的那条。结果的 `fetchedAt` 与可滞后层的写入时刻都取两端最近一次实测里较旧的那个，
   一端一直测不出时卡片和 freshness-watch 照样按它判过期。
 - **最近在听**：user token 只能来自 Mac 上报器，凭据 KV 里还没有就跳过；developer token 由本 Worker 自签
@@ -97,7 +98,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
   所以缓存里的响应不带 CORS 头。
 - **`/api/musickit/token`**：给网页播放器按来源签 MusicKit token（`shared/musickit-token.ts#issueMusicKitToken`），
   由默认 `fetch` 直接回、不进缓存，规则见下文「MusicKit 令牌」。
-- **写入时补全**：`Collector.enrichTrack(music, upcomingTracks)` 查当前曲目的目录、队列里接下来几首（`shared/playing-queue.ts#PRELOAD_AHEAD`）的目录和动态封面，每段各自限时
+- **写入时补全**：`Collector.enrichTrack(music, upcomingTracks)` 查当前曲目与队列里接下来几首（`shared/playing-queue.ts#PRELOAD_AHEAD`）的目录、当前曲目的动态封面，每段各自限时
   （`shared/track-enrichment.ts` 的 `WRITE_BUDGET`），目录与队列并行、动态封面排在目录之后；某段失败或超时只丢那一段、
   打一条带阶段与曲目的 `[enrichment]` warn，记为未知，不抛错。`Collector.followUpTrack(followUp)` 立即返回，
   在 `waitUntil` 里预热歌词，写入时有段没查出的在新的请求状态里按 `RETRY_BUDGET` 整份重查一次（`shared/track-enrichment.ts#followUpEnrichment`），
@@ -138,7 +139,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 
 | 键 | 内容 |
 | --- | --- |
-| `lyjwpage:cache:*` | `shared/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v2:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*`、已触发过的头像哈希 `avatar-watch:dispatched:v1` |
+| `lyjwpage:cache:*` | `shared/cache` 的键：Apple 封面 `apple-music:library-art:v1:*`、容器曲目与时长 `apple-music:container-tracks:v2:*`、GitHub 增删行的锚 `github-repo:churn`、PageSpeed 样本窗口 `pagespeed:history:v1:*`、已触发过的头像哈希 `avatar-watch:dispatched:v1`、apple-recent 活跃档的最近变化时刻 `apple-recent:last-change`、失败短负缓存 `neg:*` |
 
 `shared/cache` 在这里背后是 KV（`src/storage-driver.ts`，由 `src/ports.ts` 装上）：TTL 最短 60 秒（5 秒的负缓存会活满一分钟），KV 的读还有最长 60 秒的边缘缓存 ——
 两分钟以内要读回的东西不走它。列表、哈希操作直接抛错。
@@ -174,8 +175,8 @@ Apple Music 的 user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推
 
 ## 本地开发
 
-根目录 `pnpm dev:worker` 以多配置方式起四个 Worker（配置清单见根 `package.json` 的 `dev:worker`）：`workers/dev-router`（拿端口，按路径分发）、
-core、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档、在线探测与健康汇总跳过），
+根目录 `pnpm dev:worker` 以多配置方式起整套 Worker（配置清单见 `scripts/dev-worker.mjs`）：`workers/dev-router`（拿端口，按路径分发）、
+core、ai、上报入口，和这里的 `wrangler.test.toml`。本地没有 cron、没有 D1（归档、在线探测与健康汇总跳过），
 KV 都是本地的（`LAG`、`CREDENTIALS` 和上报入口共用同一个本地 id，`LAG` 还和 core 共用）。
 令牌照需要放 `workers/collector/.dev.vars`（照 `.dev.vars.example`），不放的任务直接跳过。本地不开 Workers Caching。
 
