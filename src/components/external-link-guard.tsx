@@ -3,7 +3,8 @@
 import { ExternalLink, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 
-import { Modal } from "@/components/ui/modal";
+import { MODAL_ACTION_CLASS, Modal } from "@/components/ui/modal";
+import { describeExternalLink } from "@/lib/external-link";
 
 type Pending = { url: URL; newTab: boolean };
 
@@ -84,14 +85,14 @@ function ConfirmDialog({ pending, onClose }: { pending: Pending; onClose: () => 
         </button>
       </header>
       <div className="grid gap-1 px-4 pt-3 pb-4">
-        <p className="text-sm">{url.host}</p>
+        <p className="text-sm">{describeExternalLink(url)}</p>
         <p className="line-clamp-3 text-xs break-words text-muted-foreground">{url.href}</p>
       </div>
       <div className="flex border-t border-line">
         <button
           type="button"
           onClick={onClose}
-          className="label-mono inline-flex min-w-0 flex-1 min-h-11 items-center justify-center text-center text-foreground transition-colors hover:bg-surface-hover"
+          className={MODAL_ACTION_CLASS}
         >
           Cancel
         </button>
@@ -99,7 +100,7 @@ function ConfirmDialog({ pending, onClose }: { pending: Pending; onClose: () => 
         <button
           type="button"
           onClick={open}
-          className="label-mono inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 py-3 text-center text-foreground transition-colors hover:bg-surface-hover"
+          className={MODAL_ACTION_CLASS}
         >
           <span>Open</span>
           <ExternalLink className="size-3 shrink-0" aria-hidden />
