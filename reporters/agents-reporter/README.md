@@ -259,6 +259,7 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 ```
 
 合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
+自动部署的容器状态与提交校验见同一工作流的 `Verify` 步骤。
 
 两个上报器一起换（第一次部署、或者两边都改了）：`cd /opt/lyjwpage && docker compose pull && docker compose up -d`。
 要回退就把 `compose.yaml` 里的 `latest` 临时换成 Actions 推过的 `sha-<短哈希>`。

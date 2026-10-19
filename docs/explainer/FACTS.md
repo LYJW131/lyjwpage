@@ -429,7 +429,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 上报器：GHCR 与 GitHub Release
 
-- 容器上报器：`.github/workflows/build-reporters.yml#changes` 用 paths-filter 挑出改了的目录；`.github/workflows/build-reporters.yml#build` 只出 `linux/amd64`，合进 main 时打 `latest` 和 `sha-<短哈希>` 推到 GHCR，PR 只 build 不推；`.github/workflows/build-reporters.yml#deploy` 只管 misaka-jp 上的服务：用一把只能执行部署脚本的密钥 ssh 过去，点名 pull、只重建那一个，新容器跑稳后删掉旧镜像（`reporters/misaka-deploy.sh`），再验 `status=running restarts=0`，server-reporter 另验镜像里烧进的提交就是这一版。
+- 容器上报器：`.github/workflows/build-reporters.yml#changes` 用 paths-filter 挑出改了的目录；`.github/workflows/build-reporters.yml#build` 只出 `linux/amd64`，合进 main 时打 `latest` 和 `sha-<短哈希>` 推到 GHCR，PR 只 build 不推；`.github/workflows/build-reporters.yml#deploy` 只管 misaka-jp 上的服务：用一把只能执行部署脚本的密钥 ssh 过去，点名 pull、只重建那一个，新容器跑稳后删掉旧镜像（`reporters/misaka-deploy.sh`），再验 `status=running restarts=0`，三个服务都核对镜像提交与该次构建一致。
 - dsm（emby-reporter）和 n100（playstation-reporter）在内网，Actions 够不着，按各自 README 手动更新（根 `AGENTS.md`「部署流程」）。dsm 那台现在还是现场 build（`docs/ops-facts.md`「机器与部署位置」），所以片中不说「机器只拉镜像」。
 - Mac Telemetry Hub：`reporters/mac-telemetry-hub` 是子模块，main 上的指针一动，macOS runner 就用 Developer ID 签名、`notarytool` 公证、`stapler` 钉上票据，发成本仓库的 Release `hub-build-<运行号>`（`.github/workflows/release-mac-telemetry-hub.yml#release`）；PR 上只走到公证、不发布；没配签名 secret 时整个 job 跳过。
 - 这两个工作流按 `paths` 决定跑不跑（`.github/workflows/build-reporters.yml`、`.github/workflows/release-mac-telemetry-hub.yml` 的 `on.push.paths`）。#308 没改到它们的路径，两个都没跑；片中各画成一条在闸门处划掉、写「没改到」的线。
@@ -504,7 +504,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 合并之后：怎么算已部署
 
-- 推送成功不等于部署完成。跑 `node scripts/deploy-check.ts --sha <合并提交完整 SHA> --expect <这次碰到监视路径的 Worker>`：等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 只认最新那条），`--expect` 列的每个都要成功；site 重建了，再等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 回的 `commit` 跟上这个提交，被更新的提交覆盖也算过（`superseded`）；等待有上限（`--timeout`），输出 JSON，`pass` 为假时 `next` 写下一步（`scripts/deploy-check.ts#run`、`scripts/deploy-check.ts#classifyVersion`、根 `AGENTS.md`「部署流程」）。
+- 推送成功不等于部署完成。跑 `node scripts/deploy-check.ts --sha <合并提交完整 SHA>`：按 Git 差异与 `scripts/workers-build-paths.json` 推导必需构建，`--expect` 只能追加要求；同一次 push 含多个 main 提交时传 `--before` 指定 push 前的 SHA。等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 只认最新那条），必需构建每个都要成功；site 重建了，再等 `lyjw.me`、`lyjw131.com` 的 `/api/version` 回的 `commit` 跟上这个提交，被更新的提交覆盖也算过（`superseded`）；等待有上限（`--timeout`），输出 JSON，`pass` 为假时 `next` 写下一步（`scripts/deploy-check.ts#run`、`scripts/deploy-check.ts#classifyVersion`、根 `AGENTS.md`「部署流程」）。
 - 「已部署」以 `/api/version` 回的 commit 为准，不以构建检查绿了为准（`HUMAN.md`「6. 部署与「已部署」」）；之后在生产域名上复测受影响的行为，看完关掉页面（`.claude/skills/lyjwpage-verify/SKILL.md`「4. 合并后部署与生产核对」）。刷新 ESA、广播 `version` 见 §10。第 09 章落地那段，拿放大镜的小 Clawd 客串的就是这一步：两个域名的 `/api/version` 先后答出 `cf92f7c`，它各跳一下（`scripts/deploy-check.ts#run`）。
 
 ### 片中的例子：PR #308（按 GitHub 读回）

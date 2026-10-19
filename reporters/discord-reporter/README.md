@@ -64,5 +64,6 @@ Docker 是独立 npm 部署单元，使用本目录 `package-lock.json` 和 `npm
 [compose.yaml](compose.yaml) 从 GHCR 拉取镜像，保持独立 Compose project。
 [Dockerfile](Dockerfile) 用于 CI 构建。镜像构建与部署入口由根目录
 `.github/workflows/build-reporters.yml` 和 `reporters/misaka-deploy.sh` 管理。
+镜像用 `GIT_SHA` 写入 `REPORTER_COMMIT`；部署成功须通过构建工作流 `Verify` 步骤的容器状态与提交校验。
 远端部署位置和凭据路径以 [docs/ops-facts.md](../../docs/ops-facts.md) 为准。
 接收端契约及 Access 权限先生效，再切换上报器正式发送；`DRY_RUN=true` 可验证 Gateway 快照。

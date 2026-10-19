@@ -75,7 +75,7 @@
 
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`。PR 开出来时给你一次链接，CI 绿、评审处理完后再说一次；中间的合 main、修 CI、回评审不打扰你。
 - 合并前的门槛，缺一不可：
-  1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）；CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
+  1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）；CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，未命中监视路径的文档改动不触发构建）。
   2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。
@@ -89,7 +89,7 @@
 ## 6. 部署与「已部署」
 
 - 站点和各 Worker 都走 Workers Builds：合进 main 就自动构建部署，Claude 不手跑 `wrangler deploy`，唯一例外和顺序见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。
-- 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。
+- 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；未命中监视路径的文档合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。
 - 上报器哪些合进 main 后自动换镜像、哪些手动，见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」；手动的那几个 Claude 会派你电脑上的会话去做。
 - 每次汇报都分清四层：本地改了 / 测试过了 / 已部署 / 在生产上验证过了。
 - 跑检查、开浏览器截图、等部署和核对生产这些验证活，Claude 交给更便宜的 Haiku 验证员做，自己只定验什么、看结果。验证员最后签一张分级回执（按提交 SHA 记验到了哪一档：真页面、单测、只过类型），Claude 把它原样贴成 PR 评论，合并前用 `scripts/verify-receipt.ts` 核对它还盖得住当前提交；Claude 不重跑回执里验过的，只抽查一条证据（看一张截图或核一个数）再汇报（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
