@@ -7,7 +7,7 @@
 - 在项目聊天里说一句要什么，Claude 开一个线程去做。进度看线程卡片上的状态行，结果看线程里的回复。
 - 你要做的只有四种事：拍板、点头让 Claude 办凭据或给控制台权限、批准生产上的动作、说一句「合」。其余 Claude 自己推进。
 - 分叉用决策卡问你，推荐项已标出。你不点，Claude 按推荐项继续；没法撤销的那一步会等你。
-- PR 合并要 CI 全绿；大改代码逻辑的还要处理完机器评审。小改动、文档、skill 和你明确让推进的事 CI 绿就合；大方向、大改动，以及有 UI / UX 变化的改动（你明确要求的小改动除外）等你点头。
+- PR 合并按档：文档、skill、参考文献和记忆镜像，本地跑过 `pnpm docs:check` 就合；明确的修复和小改动，本地跑过改动涉及的检查（相关测试、typecheck、eslint）就合，都不等 GitHub CI 排队，CI 之后红了当场修；大改代码逻辑的要 CI 全绿，还要处理完机器评审。大方向、大改动，以及有 UI / UX 变化的改动（你明确要求的小改动除外）等你点头。
 - 碰到 Worker 监视路径的改动合进 main 就自动构建部署；「已部署」以 `/api/version` 返回的提交为准，不以构建检查绿了为准。
 
 ## 1. 场面上有谁
@@ -78,8 +78,8 @@
 
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`。PR 开出来时给你一次链接，CI 绿、评审处理完后再说一次；中间的合 main、修 CI、回评审不打扰你。
 - 合并前的门槛，缺一不可：
-  1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）；CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
-  2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
+  1. CI：大改代码逻辑的要 CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）。文档、skill 与小改动不等 CI，改动涉及的那几项本地跑过就算，合进 main 后 CI 红了当场修；Workers Builds 不看 CI，合进 main 照常部署，挡住坏代码靠的就是这一遍本地检查。CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
+  2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动过了第 1 条就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。任何一家机器评审到第三轮还在这次改动里报新的阻塞问题，Claude 不再逐条打补丁，先重看方法，用一句话告诉你换不换。修评审发现时同类一次修完。评审代理报什么、不报什么写在 [REVIEW.md](./REVIEW.md)。
   5. 要等机器评审的那类 PR，合并前再派一个没写这段代码的 agent 判做没做完，结论按 head SHA 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
@@ -120,10 +120,10 @@
 ## 8. 定时任务与自动化
 
 - 每天一次的代码审查定时任务：从上次游标起对 main 的改动跑 /code-review 和 /simplify，有值得改的就开 `chore(review):` PR，检查和机器评审都处理完后自动合并。时间、游标位置和它的边界见 ops-facts 的「[Claude Code 云端 routine](./docs/ops-facts.md#claude-code-云端-routine)」。
-- 每天一次的提炼 skill 与偏差复盘定时任务：从上次书签起读各线程，把反复出现的流程和你反复纠正的做法写成或改进 `.claude/skills/` 下的 skill；再对照每件做完的事你第一次怎么说、最后交付了什么，找出弯路，改 Claude 的默认做法（`AGENTS.md`「工作方式」、`HUMAN.md`、项目记忆）或让它在该问的地方早点问；还读新合并 PR 里被采纳的 Codex / Devin 建议，同类在两个以上 PR 出现的做成 lint、`rules:check` 或钩子（另开 `chore(checks):` PR），判定不了的写进 skill。开 `docs(skills):` 小 PR，CI 绿就合；动禁区、合并门槛或放松审批的改动只提议、等你一句话。磨合期里它每跑一次都在自己的线程汇报并问你反应，回「有用 / 没用 / 写偏了」或只回编号都行，它据此改 skill 和它自己；说「磨合结束」就不再每次汇报。流程见 `.claude/skills/lyjwpage-skill-mining/SKILL.md`。
+- 每天一次的提炼 skill 与偏差复盘定时任务：从上次书签起读各线程，把反复出现的流程和你反复纠正的做法写成或改进 `.claude/skills/` 下的 skill；再对照每件做完的事你第一次怎么说、最后交付了什么，找出弯路，改 Claude 的默认做法（`AGENTS.md`「工作方式」、`HUMAN.md`、项目记忆）或让它在该问的地方早点问；还读新合并 PR 里被采纳的 Codex / Devin 建议，同类在两个以上 PR 出现的做成 lint、`rules:check` 或钩子（另开 `chore(checks):` PR），判定不了的写进 skill。开 `docs(skills):` 小 PR，本地 `pnpm docs:check` 过了就合；动禁区、合并门槛或放松审批的改动只提议、等你一句话。磨合期里它每跑一次都在自己的线程汇报并问你反应，回「有用 / 没用 / 写偏了」或只回编号都行，它据此改 skill 和它自己；说「磨合结束」就不再每次汇报。流程见 `.claude/skills/lyjwpage-skill-mining/SKILL.md`。
 - 每天 08:41（新加坡时间）的 Anthropic 官方动态定时任务：按书签拉 Anthropic 官方博客、文档、release notes、Claude Code 与 SDK 更新日志，几个官方账号、Anthropic 工程师和前沿作者（如 poteto、Matt Pocock）的 X，以及 Simon Willison、Latent Space、Cloudflare changelog、Hacker News 热帖的新内容，逐条判断能否吸收进本站，写进共享目录 `anthropic-updates/<日期>.md`，9:00 晨报读它转告你。它自己不发言、不开 PR；想吸收哪条，晨报后说一句，另开线程按上面的合并门槛做。流程见 `.claude/skills/lyjwpage-anthropic-updates/SKILL.md`。
 - 每天 4 次（新加坡时间 01:53、07:53、13:53、19:53）的 collector 盯防定时任务：一个只盯采集 Worker 的 Claude，读站点公开状态端点和 collector 的 Cloudflare 日志，找时间戳在走、内容却不对的细微异常（部分成功沿用旧值、数据冻住、任务悄悄跳过），顺带把其他 Worker 新出现的错误分诊、两次复现后归成批，写进共享目录 `superfan-collector/<日期>.md` 供晨报读取；复现了的批次它直接开修复草稿 PR（每次最多一个；碰 UI、契约或生产数据的仍由你在晨报后决定要不要开线程修），你关掉 PR 就是否决，说合才按第 5 节门槛合；新出现的要紧异常才在「Anthropic 官方动态日更 + collector 盯防」线程里说一声。流程见 `.claude/skills/lyjwpage-collector-superfan/SKILL.md`。
-- 每天 03:15（新加坡时间）的记忆镜像同步定时任务：把项目记忆目录传给 `pnpm memory:mirror`，同步进仓库的 `.claude/memory/`（用法见 [`.claude/memory/README.md`](./.claude/memory/README.md)），有变化就开 `docs(memory):` PR，CI 绿就合，没变化不出声。配置见 ops-facts 的「[Claude Code 云端 routine](./docs/ops-facts.md#claude-code-云端-routine)」。
+- 每天 03:15（新加坡时间）的记忆镜像同步定时任务：把项目记忆目录传给 `pnpm memory:mirror`，同步进仓库的 `.claude/memory/`（用法见 [`.claude/memory/README.md`](./.claude/memory/README.md)），有变化就开 `docs(memory):` PR，本地 `pnpm docs:check` 过了就合，没变化不出声。配置见 ops-facts 的「[Claude Code 云端 routine](./docs/ops-facts.md#claude-code-云端-routine)」。
 - 每天 9:00（新加坡时间）项目聊天的 Claude 发晨报，读上面 Anthropic 动态和 collector 盯防写的报告，把要你决定的列出来；之后每小时原地更新那一条，直到你开口。
 - 所有自动化都遵守：按游标不按时间窗；读不到就报失败，不当作没事；动手前再核一次线上状态；写操作确认成功才记账；最小权限和花费上限。
 - 想加、改、停一个定时任务，在项目聊天说一句就行。
@@ -133,7 +133,7 @@
 - 进记忆的：你定的工作方式、做过的决定、仓库外事实的指针。
 - 不进记忆的：仓库里已经写着的东西、单次对话的细节、任何凭据。
 - 记忆写错了，说一声就改或删。
-- 仓库里有一份镜像 [`.claude/memory/`](./.claude/memory/MEMORY.md)，内容同项目记忆、去掉了凭据和私有链接，方便你直接翻看或在 GitHub 上看改动历史。Claude 改了项目记忆，会在同一轮开个小 PR 把镜像改齐，CI 绿就合。
+- 仓库里有一份镜像 [`.claude/memory/`](./.claude/memory/MEMORY.md)，内容同项目记忆、去掉了凭据和私有链接，方便你直接翻看或在 GitHub 上看改动历史。Claude 改了项目记忆，会在同一轮开个小 PR 把镜像改齐，本地 `pnpm docs:check` 过了就合。
 
 ## 10. 你会在什么时候被打断
 
