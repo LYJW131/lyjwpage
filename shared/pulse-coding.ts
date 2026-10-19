@@ -1,9 +1,9 @@
 import { object } from './json';
+import { CODING_WINDOW_MS } from './pulse-coding-features';
 
-export { CODING_OBSERVATION_HOLD_MS, cloudAgentActivity, codingWindowFeatures, CODING_AGENT_MAC, CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, codingBand } from './pulse-coding-features';
+export { CODING_WINDOW_MS, CODING_OBSERVATION_HOLD_MS, cloudAgentActivity, codingWindowFeatures, CODING_AGENT_MAC, CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, codingBand } from './pulse-coding-features';
 export type { CodingBandValue, CodingBandSegment } from './pulse-coding-features';
 
-export const CODING_WINDOW_MS = 5 * 60_000;
 export const PULSE_SCORE_WINDOW_MS = 3 * CODING_WINDOW_MS;
 export const CODING_MODES = ["idle", "brief", "interactive", "agent", "mixed"] as const;
 export type CodingMode = (typeof CODING_MODES)[number];
