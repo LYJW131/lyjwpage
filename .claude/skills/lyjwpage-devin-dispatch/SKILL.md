@@ -11,7 +11,7 @@ Claude 定方案、写任务书、验收，Devin 动手。Devin 是外部进程�
 
 `devin` 由云端环境 `lyjwMain` 的启动脚本装好。PATH 上的 `devin` 是带 `DEVIN_WRAPPER` 标记的 wrapper，真正的程序是 `devin-real`。wrapper 负责这些：
 
-- bwrap 可用时加 `--sandbox`：Devin 只能写工作区和 git common dir（钩子与 `config` 除外），往别处写拿到 EROFS，沙箱里不能联网；bwrap 不可用时退回只靠 `permissions.deny` 的 dangerous 模式，并在 stderr 说明。
+- bwrap 可用时加 `--sandbox`：Devin 的 shell 命令只能写工作区和 git common dir（钩子与 `config` 除外），往别处写拿到 EROFS，沙箱里不能联网。**编辑 / 写文件工具不在沙箱里**：它们跑在 CLI 进程内，能写任何没被 deny 的路径，只靠写前的批准菜单拦（见下文 dv.py）。bwrap 不可用时退回只靠 `permissions.deny` 的 dangerous 模式，并在 stderr 说明。
 - `permissions.deny` 禁止 `git push`、`sudo`、`gh`，禁读 Devin 凭据、`~/.ssh`、`~/.gnupg` 和 lyjw 的签名钥，禁写 Devin 配置、`~/.local/bin`、`~/.claude`。这是策略层的拦截，不是隔离；隔离靠沙箱。
 - 用 `GIT_CONFIG_*` 让 Devin 的提交不签名。进 PR 前由 Claude 重新签（见「验收与合并」）。
 - export `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`：Devin 的用量经 Network secret 鉴权推到 `agents-otlp`，站点标 Cloud（配置见 `docs/ops-facts.md`「Claude Code 云端 routine」）。
@@ -25,7 +25,8 @@ DV="python3 -I .claude/skills/lyjwpage-devin-dispatch/scripts/dv.py"
 $DV start <name> --cwd <worktree> --brief <brief.md> [--nice 10] [--model swe-2-max]
 $DV send  <name> -f <followup.md>      # 或 $DV send <name> '一句话'；或从 stdin 读
 $DV wait  <name> --timeout 3600        # 放进 Bash run_in_background；空闲/退出/需要处理时返回
-$DV approve <name>                     # 沙箱批准菜单批准一次
+$DV approve <name>                     # 批准一次写入菜单；路径不在工作区时拒绝执行
+$DV deny <name> ['给 Devin 的话']       # 菜单选 No，再告诉它只能写工作区（不给文字时用默认说明）
 $DV status <name>                      # 状态 + 屏幕尾部 + 导出里最后一条 agent 消息
 $DV report <name> [-n N | --all]       # 从 --export JSON 读它说的话
 $DV key <name> Enter                   # 原样按键（回答它的提问 / 选项）
@@ -36,7 +37,8 @@ $DV list
 ```
 
 - 在 wrapper 下 `start` 不传 `--mode`，模式由 wrapper 定；要别的模式用 `DV_MODE` 覆盖。
-- 沙箱里即使是 dangerous，Devin 写某些文件前仍会停在批准菜单（`1 Yes (Approve once)` … `8 No`）。在 wrapper 下启动的任务默认 `--auto-approve`：`wait` 遇到菜单就按 Enter 批准一次，同一屏不重复按，计数记在运行目录的 meta。写入边界由沙箱保证，不靠菜单。**不选 always allow，不切 bypass**：那是改 Devin 的持久配置。
+- 沙箱里即使是 dangerous，Devin 用编辑 / 写文件工具前仍会停在批准菜单（`1 Yes (Approve once)` / `2 Yes, allow edits in <目录>` / … / `No`）。这些工具不受沙箱约束，菜单就是边界。在 wrapper 下启动的任务默认 `--auto-approve`：`wait` 取菜单上方最近的 `⏺ Writing <path>` / `Editing <path>` 和第 2 项的目录，相对路径按 worktree 解析、`realpath` 去掉 `..` 和符号链接后，只有都落在 worktree 或该仓库的 git common dir（`hooks/`、`config` 除外）里才按 Enter 批准一次；同一屏不重复按，计数记在 meta。路径不在范围内或认不出（没有写入标题、被截断）时不批，`wait` 立即返回 4 并写明原因。
+- 返回 4 且原因是 `outside the worktree` 或认不出路径时，默认 `$DV deny <name>`：选 No，再告诉它只能写工作区。确需写工作区外的文件，由 Claude 自己写，不替 Devin 批。**不选 always allow，不切 bypass**：那是改 Devin 的持久配置。
 - 菜单开着时 `send` 会拒绝（粘贴的文字会落进菜单），先 `approve`。
 - 运行状态在 `$DV_RUNS`（默认 `~/.claude/devin-dispatch/runs`）下按任务名分目录：meta、`--export` 的 JSON（Devin 每轮重写）、退出码。tmux 会话名是 `dv-<name>`。
 - `wait` 的返回码：`0` 空闲（打印最后一轮回复），`3` 已退出，`4` 停在提问、菜单、断线重试或认不出的屏幕超过 `--attention` 秒，`124` 超时。返回 4 时用 `status` 看屏幕并处理，不能放着：没人回答的提问会让它一直等。
@@ -86,4 +88,4 @@ $DV list
 
 ## 测试
 
-`bash .claude/skills/lyjwpage-devin-dispatch/tests/smoke.sh [workdir]`：在临时仓库上真跑一遍 start → 批准沙箱菜单 → 忙时追加多行 → wait → report → interrupt → stop → resume，约 3 分钟，结尾打印批准次数。Devin CLI 或 wrapper 变了先跑它：屏幕标记跟版本走。
+`bash .claude/skills/lyjwpage-devin-dispatch/tests/smoke.sh [workdir]`：在临时仓库上真跑一遍 start → 批准工作区内的写入菜单 → 忙时追加多行 → wait → report → 让它往工作区外写（期望 `wait` 返回 4、文件没生成，再 `deny`）→ interrupt → stop → resume，约 4 分钟，结尾打印批准次数。菜单解析和范围判断的单测：`python3 -I .claude/skills/lyjwpage-devin-dispatch/tests/test_menu.py`，改 `dv.py` 的菜单逻辑后跑。Devin CLI 或 wrapper 变了先跑它：屏幕标记跟版本走。

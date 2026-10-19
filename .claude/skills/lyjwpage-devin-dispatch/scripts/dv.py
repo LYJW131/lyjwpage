@@ -9,7 +9,8 @@ Subcommands (run `dv.py <cmd> -h` for flags):
   wait NAME [--timeout S]            block until idle / exited / needs attention
   report NAME [-n N | --all]         agent messages from the --export JSON
   key NAME KEY...                    raw tmux keys (answer an approval menu: `key NAME 1`)
-  approve NAME                       approve the pending approval menu once (Enter on "Approve once")
+  approve NAME                       approve the pending write menu once, only for an in-scope path
+  deny NAME [TEXT]                   answer the pending menu "No", then tell Devin TEXT
   interrupt NAME                     Esc Esc: stop the current turn, keep the session
   resume NAME [TEXT | -f FILE]       headless follow-up (devin -r ID -p) when tmux is gone
   stop NAME                          /exit, then kill the tmux session if still there
@@ -17,16 +18,19 @@ Subcommands (run `dv.py <cmd> -h` for flags):
 
 Permission mode: --mode, else $DV_MODE, else accept-edits — except when `devin` is the
 cloud wrapper (marked DEVIN_WRAPPER), which then chooses the mode (dangerous) itself.
-Under the wrapper's --sandbox Devin still shows an approval menu before some writes;
-runs started under the wrapper record auto_approve, and `wait` then approves each such
-menu once (never "always"): the sandbox, not the menu, is what bounds the writes.
+Under the wrapper's --sandbox Devin still shows an approval menu before its edit/write
+tools run. Those tools run in the CLI process, outside the sandbox, so the menu is the only
+boundary for them. Runs started under the wrapper record auto_approve, and `wait` then
+approves a menu once (never "always") only when the path it names resolves inside the
+worktree or the repo's git common dir (minus hooks/ and config); any other menu, including
+one whose path cannot be read, makes `wait` return 4 for the orchestrator to `deny`.
 
 Run state lives in $DV_RUNS (default ~/.claude/devin-dispatch/runs)/NAME/:
 meta.json, export.json (Devin's --export, rewritten after every turn), exit.code.
 Screen markers were taken from Devin CLI v3000.11.92; `status` prints the raw
 screen whenever it cannot classify it, so read that rather than trusting a guess.
 """
-import argparse, json, os, shlex, shutil, subprocess, sys, time
+import argparse, json, os, re, shlex, shutil, subprocess, sys, time
 from pathlib import Path
 
 RUNS = Path(os.environ.get('DV_RUNS', Path.home() / '.claude/devin-dispatch/runs'))
@@ -35,6 +39,9 @@ IDLE = 'Ask Devin to build features'
 STARTING = 'Starting session'
 NETERR = ('Connection failed', 'Connection error')  # retries in place; input waits until it recovers
 APPROVAL = 'Approve once'
+WRITE_TOOL = re.compile(r'^\s*(?:⏺\s*)?(?:Writing|Editing)\s+(\S.*?)\s*$')
+ALLOW_DIR = re.compile(r'allow edits in\s+(\S.*?)\s*$')
+NO_OPTION = re.compile(r'^\W*(\d+)[.)]?\s+No\b')
 
 
 def sh(*args, check=True, **kw):
@@ -167,6 +174,65 @@ def state(meta):
     return 'attention', lines  # a question, approval prompt, menu or error
 
 
+def menu_paths(lines):
+    """Paths the open approval menu is about: the last Writing/Editing header above it and
+    the directory in its "allow edits in" option. None when no write header is found."""
+    idx = max((i for i, l in enumerate(lines) if APPROVAL in l), default=None)
+    if idx is None:
+        return None
+    target = next((m.group(1) for l in reversed(lines[:idx])
+                   if (m := WRITE_TOOL.match(l))), None)
+    if target is None:
+        return None
+    dirs = [m.group(1) for l in lines[idx:] if (m := ALLOW_DIR.search(l))]
+    return [target, *dirs]
+
+
+def resolve(path, cwd):
+    if '…' in path or path.endswith('...'):
+        return None  # truncated by the TUI: unknown, so out of scope
+    p = Path(os.path.expanduser(path.strip('`\'"')))
+    return os.path.realpath(p if p.is_absolute() else Path(cwd) / p)
+
+
+def under(path, root):
+    return path == root or path.startswith(root.rstrip('/') + '/')
+
+
+def in_scope(path, cwd, common):
+    r = resolve(path, cwd)
+    if r is None:
+        return False
+    if under(r, os.path.realpath(cwd)):
+        return True
+    if not common:
+        return False
+    common = os.path.realpath(common)
+    if under(r, os.path.join(common, 'hooks')) or r == os.path.join(common, 'config'):
+        return False
+    return under(r, common)
+
+
+def menu_verdict(lines, cwd, common):
+    """(ok, reason) for auto-approving the open menu."""
+    paths = menu_paths(lines)
+    if not paths:
+        return False, 'no Writing/Editing path above the menu'
+    bad = [p for p in paths if not in_scope(p, cwd, common)]
+    if bad:
+        return False, f'outside the worktree: {bad[0]}'
+    return True, paths[0]
+
+
+def git_common_dir(cwd):
+    r = sh('git', '-C', str(cwd), 'rev-parse', '--path-format=absolute', '--git-common-dir', check=False)
+    return os.path.realpath(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
+
+
+def verdict(meta, lines):
+    return menu_verdict(lines, meta['cwd'], meta.get('git_common'))
+
+
 def tail(lines, n=25):
     return [l for l in lines if l.strip()][-n:]
 
@@ -194,7 +260,8 @@ def cmd_start(a):
     sh('tmux', 'set-option', '-t', pane(sess), 'history-limit', '50000', check=False)
     meta = dict(name=a.name, tmux=sess, cwd=str(cwd), brief=str(brief), model=a.model,
                 mode=a.mode, export=str(export), started=time.time(), last_send=time.time(),
-                session_id=None, auto_approve=a.auto_approve, approvals=0)
+                session_id=None, auto_approve=a.auto_approve, approvals=0,
+                git_common=git_common_dir(cwd))
     save(meta)
     for _ in range(30):  # the session id shows up once Devin has written its first state
         time.sleep(2)
@@ -281,8 +348,37 @@ def cmd_approve(a):
     if st != 'approval':
         print(f'state: {st}; nothing to approve')
         return
+    ok, why = verdict(meta, lines)
+    if not ok:
+        die(f'not approving: {why}; answer with `deny`', 4)
     approve_once(meta)
-    print(f'approved once ({meta["approvals"]} so far); state: {state(meta)[0]}')
+    print(f'approved once ({meta["approvals"]} so far): {why}; state: {state(meta)[0]}')
+
+
+def cmd_deny(a):
+    meta = load(a.name)
+    st, lines = state(meta)
+    if st != 'approval':
+        die(f'state: {st}; no menu to deny', 4)
+    idx = max(i for i, l in enumerate(lines) if APPROVAL in l)
+    no = next((m.group(1) for l in lines[idx:] if (m := NO_OPTION.match(l))), None)
+    if not no:
+        die('no "No" option found on the menu; inspect with `status`', 4)
+    sess = meta['tmux']
+    sh('tmux', 'send-keys', '-t', pane(sess), no)
+    time.sleep(1.5)
+    # Enter only when the very same menu is still up (the digit just moved the cursor);
+    # on any other screen it could confirm a new menu's default, "Approve once".
+    if state(meta) == ('approval', lines):
+        sh('tmux', 'send-keys', '-t', pane(sess), 'Enter')
+        time.sleep(2)
+    st = state(meta)[0]
+    print(f'denied (option {no}); state: {st}')
+    text = (read_text(a).strip() if a.file or a.text else '') or (f'That write was refused: you may only write inside your worktree '
+                                f'{meta["cwd"]}. Put the file there instead, or stop and report.')
+    if st != 'approval':
+        a.text, a.file = [text], None
+        cmd_send(a)
 
 
 def cmd_wait(a):
@@ -301,6 +397,11 @@ def cmd_wait(a):
         if st != 'approval':
             approved_hash = None
         elif meta.get('auto_approve') and h != approved_hash:
+            ok, why = verdict(meta, lines)
+            if not ok:
+                print(f'wait: needs attention (approval: {why})')
+                print('\n'.join(tail(lines, 30)))
+                sys.exit(4)
             approve_once(meta)
             approved_hash = h
             continue
@@ -419,10 +520,11 @@ def main():
                    choices=['auto', 'accept-edits', 'smart', 'dangerous'])
     s.add_argument('--nice', type=int, default=0)
     s.add_argument('--auto-approve', action=argparse.BooleanOptionalAction, default=wrapped(),
-                   help='let `wait` approve sandbox approval menus once (default: on under the cloud wrapper)')
+                   help='let `wait` approve write menus for paths inside the worktree once '
+                        '(default: on under the cloud wrapper)')
     s.set_defaults(fn=cmd_start)
 
-    for name, fn in (('send', cmd_send), ('resume', cmd_resume)):
+    for name, fn in (('send', cmd_send), ('resume', cmd_resume), ('deny', cmd_deny)):
         s = sub.add_parser(name)
         s.add_argument('name')
         s.add_argument('text', nargs='*')
