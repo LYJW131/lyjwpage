@@ -39,7 +39,7 @@
 
 ## 页面效果
 
-正在看、正在听、充电、游戏这类状态卡片只在对应的事情发生时出现。下面的图在本地用示例数据把这些状态同时点亮，明暗跟随系统；落地节点、AI Coding、Pulse、站点自身四张由站点实时渲染成 SVG，卡头标出抓取时间，没有数据时补示例数据并标 Sample data。录制方法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
+下面的卡片由站点实时渲染成 SVG，明暗跟随系统，卡头标出抓取时间。正在看、正在听、充电这类状态卡片只在对应的事情发生时出现，此刻没发生的用示例数据补上并标 Sample data。做法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
 
 **页头前台应用**：Claude Code、Ghostty、Cursor、Antigravity 换成品牌动画，窗口标题过了隐私判断才显示。
 
@@ -51,15 +51,15 @@
 **每日摘要**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/digest-dark.webp">
-  <img src="docs/screenshots/digest-light.webp" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/digest.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/digest.svg" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
 </picture>
 
 **Emby 正在播放**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-watching-dark.webp">
-  <img src="docs/screenshots/now-watching-light.webp" alt="Emby 正在播放卡片" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-watching.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-watching.svg" alt="Emby 正在播放卡片" width="100%">
 </picture>
 
 **充电头与充电宝**
@@ -68,14 +68,14 @@
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/charger-dark.gif">
-        <img src="docs/screenshots/charger-light.gif" alt="Anker 充电头卡片：总功率换档时读数滚动、曲线末尾接上新点">
+        <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg?theme=dark">
+        <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg" alt="Anker 充电头卡片：总功率、功率曲线与各端口">
       </picture>
     </td>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/powerbank-dark.webp">
-        <img src="docs/screenshots/powerbank-light.webp" alt="Anker 充电宝卡片：电量、底座输入、输出与端口">
+        <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg?theme=dark">
+        <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg" alt="Anker 充电宝卡片：电量、底座输入、输出与端口">
       </picture>
     </td>
   </tr>
@@ -84,22 +84,22 @@
 **Apple Music 正在播放**：逐字高亮的同步歌词，下方是最近收听。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.gif">
-  <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music 正在播放：逐字歌词扫过，下方是最近收听" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-listening.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-listening.svg" alt="Apple Music 正在播放：正在播的歌与歌词，下方是最近收听" width="100%">
 </picture>
 
 **与神对话**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.webp">
-  <img src="docs/screenshots/chat-light.webp" alt="与神对话卡片：示例问题与输入框" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/chat.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/chat.svg" alt="与神对话卡片：示例问题与输入框" width="100%">
 </picture>
 
 **活动与训练**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.gif">
-  <img src="docs/screenshots/activity-light.gif" alt="活动卡片：三环与读数变化，右侧是最近训练" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/activity.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/activity.svg" alt="活动卡片：三环与读数，右侧是最近训练" width="100%">
 </picture>
 
 **落地节点**
@@ -119,8 +119,8 @@
 **PlayStation**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/playstation-trophies-dark.webp">
-  <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/playstation.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/playstation.svg" alt="PlayStation 卡片：奖杯统计与最近游玩" width="100%">
 </picture>
 
 **Pulse**：页面上悬停任一时段看当时的状态与标题。
@@ -133,8 +133,8 @@
 **服务状态**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/provider-status-dark.webp">
-  <img src="docs/screenshots/provider-status-light.webp" alt="服务状态卡片：各服务的运行状态" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/provider-status.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/provider-status.svg" alt="服务状态卡片：各服务的运行状态" width="100%">
 </picture>
 
 **站点自身**
