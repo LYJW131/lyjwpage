@@ -1,10 +1,10 @@
 "use client";
 
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { useLeap } from "@/hooks/use-leap";
-import { useMountedAt } from "@/hooks/use-mounted-at";
+import { RenderClock, useMountedAt } from "@/hooks/use-mounted-at";
 import { cueAt } from "@/lib/lyrics-cue";
 import type { LyricLine, LyricWord } from "@shared/lyrics-ttml";
 import { trackPositionMs } from "@/lib/track-position";
@@ -18,8 +18,21 @@ export const LYRIC_LINE_VARIANTS = {
   exit: { opacity: 0, y: -4, transition: { duration: 0.14, ease: "easeIn" } },
 };
 
+function sungRatio(word: LyricWord, at: number): number {
+  const lengthMs = word.endMs - word.startMs;
+  if (lengthMs <= 0) return at >= word.startMs ? 1 : 0;
+  return Math.max(0, Math.min(1, (at - word.startMs) / lengthMs));
+}
+
+function sungState(ratio: number): "pending" | "active" | "done" {
+  return ratio <= 0 ? "pending" : ratio >= 1 ? "done" : "active";
+}
+
 export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalNowPlaying }) {
   const ref = useRef<HTMLSpanElement>(null);
+  // 逐字填色只在 effect 里画；不水合的出图（README 卡片）没有 effect，按出图时刻直接写进标记。
+  const renderClock = useContext(RenderClock);
+  const stillAt = renderClock ? trackPositionMs(track, renderClock) : null;
   const maxAtRef = useRef<number>(0);
   const { state, observedAt, positionMs, durationMs, repeatOne, trackId } = track;
 
@@ -51,13 +64,7 @@ export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalN
       words.forEach((word, i) => {
         const span = node.children[i] as HTMLElement | undefined;
         if (!span) return;
-        const lengthMs = word.endMs - word.startMs;
-        const ratio =
-          lengthMs <= 0
-            ? currentAt >= word.startMs
-              ? 1
-              : 0
-            : Math.max(0, Math.min(1, (currentAt - word.startMs) / lengthMs));
+        const ratio = sungRatio(word, currentAt);
 
         if (ratio <= 0) {
           if (span.dataset.sung !== "pending") {
@@ -89,11 +96,20 @@ export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalN
 
   return (
     <span ref={ref}>
-      {words.map((word, i) => (
-        <span key={i} className="lyric-word" data-sung="pending">
-          {word.text}
-        </span>
-      ))}
+      {words.map((word, i) => {
+        const ratio = stillAt == null ? 0 : sungRatio(word, stillAt);
+        const sung = sungState(ratio);
+        return (
+          <span
+            key={i}
+            className="lyric-word"
+            data-sung={sung}
+            style={sung === "active" ? ({ "--sung": `${(ratio * 100).toFixed(1)}%` } as CSSProperties) : undefined}
+          >
+            {word.text}
+          </span>
+        );
+      })}
     </span>
   );
 }
