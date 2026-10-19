@@ -76,12 +76,11 @@ export async function recordPreparedAgentsOtlpUsage(prepared: PreparedAgentsOtlp
   if (points.length === 0) return { accepted: 0 };
   const move = MOVES[source];
   const fromOtlp = isOtlpCodingSource(move.from) ? move.from : null;
-  const stored = await getStorage().batch()
+  const reads = getStorage().batch()
     .get(codingOtlpKey(source))
     .fields(codingUsageKey(source))
-    .fields(codingUsageKey(move.from))
-    .get(codingOtlpKey(fromOtlp ?? source))
-    .execute();
+    .fields(codingUsageKey(move.from));
+  const stored = await (fromOtlp ? reads.get(codingOtlpKey(fromOtlp)) : reads).execute();
   const counters = parseOtlpCounters(stored[0]);
   const ledgers = parseStoredUsageLedgers(stored[1]);
   const fromLedgers = parseStoredUsageLedgers(stored[2]);
