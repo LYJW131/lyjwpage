@@ -60,7 +60,7 @@ const SHADOW_PAD = 4;
 // 须与 src/components/live/media-pair.tsx#SLOT_PX 同步：充电头、充电宝与正在听那一排的槽高。
 const MEDIA_SLOT_PX = 396;
 const FOCUS_HEIGHT = 46;
-const QUEST_HEIGHT = 142;
+const QUEST_HEIGHT = 98;
 
 type Theme = "light" | "dark";
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
@@ -125,6 +125,7 @@ const CARDS: Record<string, ReadmeCard> = {
     label: "Now Playing",
     width: FULL_WIDTH,
     height: QUEST_HEIGHT,
+    annotate: (html, note) => html.replace(/(· Meta Quest)(<\/span>)/, `$1 · ${note}$2`),
     async render(status, _site, now) {
       const { value, sample } = orSample(await status("questNow"), (data) => data.playing != null, questFixture, now);
       return { element: <div style={{ marginTop: -12 }}><QuestNowCard nowFallback={value} /></div>, sample };
