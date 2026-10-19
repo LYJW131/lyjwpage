@@ -207,17 +207,19 @@
       if (!smp) continue;
       const a = smp.getChannelData(0), b = smp.numberOfChannels > 1 ? smp.getChannelData(1) : a, rate = c.rate || 1;
       const th = ((c.pan || 0) + 1) * Math.PI / 4, gl = c.v * Math.cos(th) * Math.SQRT2, gr = c.v * Math.sin(th) * Math.SQRT2;
-      const i0 = Math.round(c.t * sr), n = Math.min(Math.floor((a.length - 1) / rate), L.length - i0);
-      for (let i = 0; i < n; i++) {
+      const i0 = Math.round((c.t - (c.lead || 0)) * sr), n = Math.min(Math.floor((a.length - 1) / rate), L.length - i0);
+      for (let i = Math.max(0, -i0); i < n; i++) {
         const p = i * rate, k = p | 0, f = p - k;
         L[i0 + i] += gl * (a[k] + (a[k + 1] - a[k]) * f);
         R[i0 + i] += gr * (b[k] + (b[k + 1] - b[k]) * f);
       }
     }
-    let pk = 0;
-    for (const d of [L, R]) for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > pk) pk = v; }
-    const ceil = Math.pow(10, -1 / 20);
-    if (pk > ceil) for (const d of [L, R]) for (let i = 0; i < d.length; i++) d[i] *= ceil / pk;
+    // 只在叠出 -2 dBFS 的那几下压峰（5 ms 线性压下、80 ms 回升），不按最高峰把整条混音缩小；-2 是给插值后的真峰留 1 dB
+    const ceil = Math.pow(10, -2 / 20), g = new Float32Array(L.length).fill(1);
+    for (let i = 0; i < g.length; i++) { const v = Math.max(Math.abs(L[i]), Math.abs(R[i])); if (v > ceil) g[i] = ceil / v; }
+    for (let i = 1; i < g.length; i++) g[i] = Math.min(g[i], g[i - 1] + 1 / (0.08 * sr));
+    for (let i = g.length - 2; i >= 0; i--) g[i] = Math.min(g[i], g[i + 1] + 1 / (0.005 * sr));
+    for (let i = 0; i < g.length; i++) { L[i] *= g[i]; R[i] *= g[i]; }
     return buf;
   }
 
