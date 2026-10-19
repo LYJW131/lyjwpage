@@ -19,7 +19,7 @@ import type { Route } from "./+types/route";
 // GitHub 经 camo 代取 README 图片并按这个头缓存；与 workers/core/src/week-card.ts#WEEK_CARD_CACHE_CONTROL 同档。
 const CARD_CACHE_CONTROL = "public, max-age=600, stale-while-revalidate=3600";
 
-// 卡宽取首页在 1280 视口下的内容宽（max-w-5xl）：SVG 里的媒体查询按图片自身宽度算，要落在 lg 断点上才是桌面布局。
+// 卡宽取首页在 1280 视口下的内容宽（max-w-5xl），宽度断点按它定死成桌面布局。
 const CARD_WIDTH = 1024;
 // 硬阴影向右下偏移，画布留出这一圈。
 const SHADOW_PAD = 4;
@@ -84,8 +84,15 @@ const CARDS: Record<string, { label: string; render: (status: Status) => Promise
   },
 };
 
+// 图片里的媒体查询按图片显示宽度算，README 把卡缩到正文宽就会掉进窄屏布局、超出写死的高度；按 CARD_WIDTH 定死断点。
+const freezeWidthQueries = (css: string) =>
+  css.replace(/@media\s*(not all and\s*)?\(width\s*>=\s*([\d.]+)(px|rem)\)\s*{/g, (_, not, size, unit) => {
+    const matches = Number(size) * (unit === "rem" ? 16 : 1) <= CARD_WIDTH;
+    return `@media ${matches === !not ? "all" : "not all"}{`;
+  });
+
 // 不内嵌字体：camo 回图带 CSP `default-src 'none'`，data: 字体照样被拦，经 GitHub 看到的总是系统等宽字体。
-const CSS = cardsCss.replace(/@font-face\s*{[^}]*}/g, "");
+const CSS = freezeWidthQueries(cardsCss.replace(/@font-face\s*{[^}]*}/g, ""));
 
 const unescapeAttribute = (value: string) =>
   value.replaceAll("&quot;", '"').replaceAll("&#x27;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
