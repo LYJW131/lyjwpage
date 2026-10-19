@@ -280,7 +280,7 @@ function Conversation({ className, archive, session: conversation }: { className
           else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace, planToken: event.planToken };
           else if (event.type === "pass") human.storePass({ pass: event.pass, expiresAt: event.expiresAt });
           else if (event.type === "card") {
-            meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
+            meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length, ...(event.game && { game: event.game }) }] };
           } else if (event.type === "design" && conversation) {
             // 连同访客这条一起存下：刷新或断线后要靠它补发规划者的回复。
             chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) });
@@ -1260,7 +1260,7 @@ function ReplyBody({
         ),
       };
   const marks = [
-    ...cards.map(({ card, at }) => ({ at, design: true, node: <ChatCard key={card} card={card} entering={live} /> })),
+    ...cards.map(({ card, at, game }) => ({ at, design: true, node: <ChatCard key={game ? `${card}:${game}` : card} card={card} game={game} entering={live} /> })),
     ...(dividerMark ? [dividerMark] : []),
   ].sort((a, b) => a.at - b.at);
   for (const { at, node, design } of marks) {

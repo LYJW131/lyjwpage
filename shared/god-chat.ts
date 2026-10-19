@@ -36,6 +36,7 @@ export const GOD_CHAT_CARD_VIEWS = {
   playing: ["playing"],
   activity: ["activity"],
   workouts: ["workouts"],
+  game: ["playing", "trophies"],
 } as const satisfies Record<string, readonly StatusViewKey[]>;
 
 export type GodChatCard = keyof typeof GOD_CHAT_CARD_VIEWS;
@@ -428,6 +429,7 @@ export function parseQuestions(value: unknown): GodChatQuestion[] | null {
 // doc 是 read_project_doc 的一次读取：doc 为文档键，path 为仓库内路径（别的仓库带 owner/repo 前缀），url 为 GitHub 页面，section 为实际读到的章节标题（没读章节或没匹配上时缺省）。
 // design 和 plan 的 token 各自签名；计划 token 同时进该轮历史签章，不能移到另一条回复里。
 // card 是 show_card 要画的卡片，画在回复里收到这一行时正文已到的位置；同一条回复里同一张卡片只发一次。
+// game 卡另带 game：游玩列表里那款游戏的 titleId，由 Worker 按模型给的游戏名查出；同一款游戏一条回复里只发一次。
 // thinking 是模型思考的摘要（不是原文），只给界面在等正文时显示，不进对话历史；分几轮想时轮与轮之间补一个空行。
 // step 是设计会话里规划者在沙盒中的一步（搜代码、跑命令）的一行英文说明，只给界面显示进度，不进对话历史。
 // served 只在给出最终答案的那一轮由 Anthropic 的拒答兜底模型答成（没被拒）时出现，回复末尾一次，model 是那个模型的 id。
@@ -439,7 +441,7 @@ export type GodChatEvent =
   | ({ type: "design" } & GodChatDesign)
   | ({ type: "plan" } & BuildProposal)
   | { type: "ask"; questions: GodChatQuestion[] }
-  | { type: "card"; card: GodChatCard }
+  | { type: "card"; card: GodChatCard; game?: string }
   | { type: "tool"; views: string[] }
   | { type: "doc"; doc: string; path: string; url: string; section?: string }
   | { type: "search"; query: string }
