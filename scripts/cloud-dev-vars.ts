@@ -11,7 +11,7 @@ const TURNSTILE_TEST_SECRET = "1x0000000000000000000000000000000AA";
 
 const secret = () => randomBytes(32).toString("base64url");
 
-export function cloudDevFiles(env: NodeJS.ProcessEnv, makeSecret: () => string = secret) {
+export function cloudDevFiles(env: Record<string, string | undefined>, makeSecret: () => string = secret) {
   const apiExample = fs.readFileSync(path.join(ROOT, "workers/core/.dev.vars.example"), "utf8");
   const ai = [
     `ANTHROPIC_API_KEY=${env.LYJWPAGE_ANTHROPIC_API_KEY ?? ""}`,
