@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { siteDay, stampNow, tokenize } from "./dev-fixtures.ts";
+import { siteDay, stampNow } from "../shared/fixture-time.ts";
+import { tokenize } from "./dev-fixtures.ts";
 import { buildScene, formatScene, loadScene, parseDuration, setPath, trophyTitleIds, type Envelope } from "./dev-scene.ts";
 
 const NOW = Date.parse("2026-10-14T10:00:00Z");

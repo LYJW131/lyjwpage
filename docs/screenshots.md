@@ -35,6 +35,16 @@ python3 scripts/desktop-marks-gif.py --theme dark
 
 标识改了外观、`mascot-fetch.json` 或 `ghostty-frames.json` 换了帧或节拍、标题那行改了样式或过渡时重跑一次即可；脚本自己开关假数据总开关、注入 `desktop-*` 夹具并在结束后清掉注入（细节见脚本开头）。
 
+## 实时卡片
+
+README 里落地节点、AI Coding、Pulse、站点自身四张不是截图，是站点路由 `/cards/<卡>.svg`（[`src/app/cards/route.tsx`](../src/app/cards/route.tsx)）现渲染的 SVG，`?theme=dark` 出暗色，README 用 `<picture>` 按系统明暗二选一。`pnpm readme:shots` 与 `scripts/card-gifs.py` 仍会产出这四张的静态图，README 不再引用。
+
+- site Worker 用首页同一个卡片组件 SSR，配上只扫卡片相关目录生成的 Tailwind 样式（[`src/app/cards/readme-cards.css`](../src/app/cards/readme-cards.css)），放进 `<foreignObject>`。
+- GitHub 经 camo 把它当 `<img>` 显示，图片里不跑脚本、不取外部资源：Geist Mono 与卡内图片内嵌成 data URI，NumberFlow 只留纯文本读数；相对时间、重置倒计时这类挂载后才算的内容不显示。
+- 卡宽固定为首页桌面内容宽，卡高写在路由的 `CARDS` 里，按首页 1280 宽实测；卡片行数变了要重量，否则底部被裁或留白。
+- 实时数据为空时用 `workers/core/dev-fixtures/` 的夹具补，卡头标 Sample data。缓存头与 core 的 `/api/cards/*.svg` 同档。
+- 本地看效果要用生产构建：`pnpm build && pnpm start` 后开 `http://localhost:3211/cards/pulse.svg?theme=dark`。`pnpm dev` 里 NumberFlow 输出空壳，读数是空的。
+
 ## 交互式架构图
 
 - 网页在线交互版：[https://lyjw131.github.io/lyjwpage/](https://lyjw131.github.io/lyjwpage/)

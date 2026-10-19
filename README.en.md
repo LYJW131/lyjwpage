@@ -39,7 +39,7 @@ The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoi
 
 ## Screenshots
 
-Status cards such as now watching, now listening, charging and games only appear while that thing is happening. The images below light up all of them at once with sample data on a local build, following the system light or dark theme. How they are recorded: [docs/screenshots.md](./docs/screenshots.md); card details: [page details and key design choices](./docs/design-notes.md) (Chinese).
+Status cards such as now watching, now listening, charging and games only appear while that thing is happening. The images below light up all of them at once with sample data on a local build, following the system light or dark theme. The exit node, AI Coding, Pulse and site cards are rendered live by the site as SVG, filled with sample data and marked Sample data when there is nothing to show. How they are recorded: [docs/screenshots.md](./docs/screenshots.md); card details: [page details and key design choices](./docs/design-notes.md) (Chinese).
 
 **Front app in the header**: Claude Code, Ghostty, Cursor and Antigravity get animated brand marks; a window title shows only after it passes a privacy check.
 
@@ -105,15 +105,15 @@ Status cards such as now watching, now listening, charging and games only appear
 **Exit node**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
-  <img src="docs/screenshots/server-light.gif" alt="Exit node card: rates, traffic, CPU, memory and disk" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark">
+  <img src="https://lyjw.me/cards/server.svg" alt="Exit node card: rates, traffic, CPU, memory and disk" width="100%">
 </picture>
 
 **AI Coding**: merged from the Mac's local logs, Cursor account history and Claude Code cloud telemetry.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.gif">
-  <img src="docs/screenshots/vibecoding-light.gif" alt="AI Coding card: usage across sources, active tools and account limits" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark">
+  <img src="https://lyjw.me/cards/vibe-coding.svg" alt="AI Coding card: usage across sources, active tools and account limits" width="100%">
 </picture>
 
 **PlayStation**
@@ -123,11 +123,11 @@ Status cards such as now watching, now listening, charging and games only appear
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation card: online, now playing and expanded trophy details" width="100%">
 </picture>
 
-**Pulse**: hover any segment to see the state and title at that time.
+**Pulse**: on the page, hover any segment to see the state and title at that time.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-detail-dark.webp">
-  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse card: factual timelines with a daily summary; hovering shows a segment's details" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark">
+  <img src="https://lyjw.me/cards/pulse.svg" alt="Pulse card: 24-hour timelines for coding, tokens, listening, watching, playing, charging and activity with a daily summary" width="100%">
 </picture>
 
 **Provider status**
@@ -140,8 +140,8 @@ Status cards such as now watching, now listening, charging and games only appear
 **The site itself**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
-  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE card: repository stats and commits, 30-day uptime, performance scores and service metrics" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark">
+  <img src="https://lyjw.me/cards/site-status.svg" alt="LYJWPAGE card: repository stats and commits, 30-day uptime, performance scores and service metrics" width="100%">
 </picture>
 
 ## Architecture

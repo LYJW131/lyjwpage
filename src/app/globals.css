@@ -1,7 +1,3 @@
-@import "tailwindcss";
-/* 合并时钟样式，避免首屏多出一条渲染阻塞 CSS 请求。 */
-@import "@clock-ui/react/base.css";
-
 @font-face {
   font-family: "Geist Mono";
   /* tech() 只收关键字；写成带引号的字符串整条 src 不合法，整个 @font-face 被丢掉。woff2 本身就能装可变字体，不写 tech。

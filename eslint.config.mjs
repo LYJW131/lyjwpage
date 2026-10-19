@@ -48,7 +48,8 @@ const eslintConfig = defineConfig([
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
-          group: ["@core/*", "**/workers/core/**"],
+          // 夹具是纯数据：README 卡片在空数据时拿它补位（src/app/cards/route.tsx）。
+          regex: "^@core/|(^|/)workers/core/(?!dev-fixtures/[^/]+\\.json$)",
           message: "上报写入和实时发布只属于 Worker；共享类型、键和计算放在 shared。",
         }, {
           group: ["**/workers/collector/**"],

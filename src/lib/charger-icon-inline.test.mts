@@ -35,6 +35,7 @@ function site(result: string | null, calls: string[][]): SiteServices {
       calls.push([url, String(px), fit]);
       return Promise.resolve(result);
     },
+    asset: () => Promise.reject(new Error("unused")),
   };
 }
 
