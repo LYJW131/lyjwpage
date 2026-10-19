@@ -21,7 +21,14 @@ function Mindfulness() {
   );
 }
 
+const SLEEP_Z_REPLAY_MS = 30_000;
+
 function Sleep() {
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setRound((n) => n + 1), SLEEP_Z_REPLAY_MS);
+    return () => clearInterval(timer);
+  }, []);
   return (
     <svg viewBox="0 0 76 50" aria-hidden>
       {(["ink", "tint"] as const).map((layer) => (
@@ -29,7 +36,9 @@ function Sleep() {
           {BED.map((d) => <path key={d} d={d} />)}
         </g>
       ))}
-      {[1, 2, 3].map((n) => <path key={n} className={`z z${n}`} d={Z} />)}
+      <g key={round}>
+        {[1, 2, 3].map((n) => <path key={n} className={`z z${n}`} d={Z} />)}
+      </g>
     </svg>
   );
 }
