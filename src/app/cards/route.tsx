@@ -103,7 +103,8 @@ const CARDS: Record<string, ReadmeCard> = {
   "now-watching": {
     label: "Now Watching",
     width: FULL_WIDTH,
-    height: 179,
+    height: 151,
+    annotate: (html, note) => html.replace(/(· Emby(?:<span[^>]*>[\s\S]*?<\/span>)?)(<\/span>)/, `$1 · ${note}$2`),
     async render(status, _site, now) {
       const { value, sample } = orSample(await status("nowWatching"), (data) => data.nowPlaying != null, watchingFixture, now);
       // 卡片展开时自带的 marginTop 是给首页上一张卡留的缝，单独出图要抵掉。
