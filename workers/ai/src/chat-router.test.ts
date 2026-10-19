@@ -116,7 +116,7 @@ test("Clairic 抽到具体条目时，能搜的状态分组在整组之外再带
     route: "flash", source: "clef",
     prefetch: [
       { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.views] } },
-      { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.views], query: "艾尔登法环" } },
+      { name: "get_site_status", input: { views: ["playing", "trophies"], query: "艾尔登法环" } },
     ],
   });
   assert.deepEqual(await routeWithClef(both(answered("flash", ["limits", 0.95]), extracted("Claude")), [user("Claude 额度还剩多少")]), {
@@ -138,6 +138,18 @@ test("Clairic 没把握、抽空或出错时照旧预取整组", async (t) => {
 test("Clef 没选可搜的状态分组时不等 Clairic", async () => {
   const hanging = { run: async (model: string) => model === "@cf/cloudflare/clairic" ? new Promise(() => {}) : answered("flash", ["none", 0.99]) } as unknown as Ai;
   assert.deepEqual(await routeWithClef(hanging, [user("你好")]), { route: "flash", source: "clef" });
+});
+
+test("选档日志只记选项、概率与有没有抽到条目，不记访客原文", async (t) => {
+  const info = t.mock.method(console, "info", () => {});
+  await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("月姬")), [user("他玩过月姬吗")]);
+  const line = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
+  assert.ok(line?.includes('"status":"playing 0.950"') && line.includes('"item":true') && line.includes('"prefetch":2'));
+  assert.ok(!line?.includes("月姬"));
+  info.mock.resetCalls();
+  await routeWithClef(clef({ answers: { route: { choice: "他玩过月姬吗" }, status: { choice: "他玩过月姬吗", probabilities: { "他玩过月姬吗": 1 } } } }), [user("他玩过月姬吗")]);
+  const odd = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
+  assert.ok(odd?.includes('"route":"unlisted"') && odd.includes('"status":"unlisted"') && !odd.includes("月姬"));
 });
 
 test("parseItem 去掉书名号与引号", () => {
