@@ -7,11 +7,13 @@ import { ActivityCard } from "@/components/live/activity-card";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
 import { ChargerCard } from "@/components/live/charger-card";
 import { DigestCard } from "@/components/live/digest-card";
+import { FocusNowCard } from "@/components/live/focus-now-card";
 import { ListeningCard } from "@/components/live/listening-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PowerBankCard } from "@/components/live/powerbank-card";
 import { PulseCard } from "@/components/live/pulse-card";
+import { QuestNowCard } from "@/components/live/quest-now-card";
 import { ServerCard } from "@/components/live/server-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
@@ -37,6 +39,8 @@ import type { StatusViewKey } from "@shared/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
 
 import chargerFixture from "../../../workers/core/dev-fixtures/charger-macbook-iphone.json";
+import focusFixture from "../../../workers/core/dev-fixtures/focus-now-sleep.json";
+import questFixture from "../../../workers/core/dev-fixtures/quest-now-playing.json";
 import listeningFixture from "../../../workers/core/dev-fixtures/listening-now-yoasobi.json";
 import powerBankFixture from "../../../workers/core/dev-fixtures/powerbank-charging.json";
 import serverFixture from "../../../workers/core/dev-fixtures/server-traffic.json";
@@ -55,6 +59,8 @@ const HALF_WIDTH = (FULL_WIDTH - 12) / 2;
 const SHADOW_PAD = 4;
 // 须与 src/components/live/media-pair.tsx#SLOT_PX 同步：充电头、充电宝与正在听那一排的槽高。
 const MEDIA_SLOT_PX = 396;
+const FOCUS_HEIGHT = 46;
+const QUEST_HEIGHT = 142;
 
 type Theme = "light" | "dark";
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
@@ -66,6 +72,7 @@ type ReadmeCard = {
   height: number;
   // 并排的半卡：README 里两张图各占一半、中间不留空，左卡右侧补卡间距，右卡左侧补，右缘与整卡对齐。
   pair?: "left" | "right";
+  annotate?: (html: string, note: string) => string;
   render: (status: Status, site: SiteServices, now: number) => Promise<Rendered>;
 };
 
@@ -101,6 +108,26 @@ const CARDS: Record<string, ReadmeCard> = {
       const { value, sample } = orSample(await status("nowWatching"), (data) => data.nowPlaying != null, watchingFixture, now);
       // 卡片展开时自带的 marginTop 是给首页上一张卡留的缝，单独出图要抵掉。
       return { element: <div style={{ marginTop: -12 }}><NowWatchingCard nowFallback={value} /></div>, sample };
+    },
+  },
+  focus: {
+    label: "Focus",
+    width: FULL_WIDTH,
+    height: FOCUS_HEIGHT,
+    // 勿扰卡没有卡头，说明接在模式名后面。
+    annotate: (html, note) => html.replace(/(Do Not Disturb<\/span><span[^>]*>[\s\S]*?)(<\/span>)/, `$1 · ${note}$2`),
+    async render(status, _site, now) {
+      const { value, sample } = orSample(await status("focusNow"), (data) => data.mode != null, focusFixture, now);
+      return { element: <div style={{ marginTop: -12 }}><FocusNowCard nowFallback={value} /></div>, sample };
+    },
+  },
+  quest: {
+    label: "Now Playing",
+    width: FULL_WIDTH,
+    height: QUEST_HEIGHT,
+    async render(status, _site, now) {
+      const { value, sample } = orSample(await status("questNow"), (data) => data.playing != null, questFixture, now);
+      return { element: <div style={{ marginTop: -12 }}><QuestNowCard nowFallback={value} /></div>, sample };
     },
   },
   charger: {
@@ -282,7 +309,9 @@ const freezeWidthQueries = (css: string) =>
 // 不内嵌字体：camo 回图带 CSP `default-src 'none'`，data: 字体照样被拦，经 GitHub 看到的总是系统等宽字体。
 const CSS = freezeWidthQueries(cardsCss.replace(/@font-face\s*{[^}]*}/g, "")) +
   // 奖杯展开面板的高度在浏览器里量出来再动画过去，SSR 时是 0。
-  "#playstation-trophies{height:auto!important}";
+  "#playstation-trophies{height:auto!important}" +
+  // 勿扰图标在浏览器里挂载后才上色，静态图直接画上色后的样子。
+  ".focus-icon .tint{opacity:1}";
 
 const unescapeAttribute = (value: string) =>
   value.replaceAll("&quot;", '"').replaceAll("&#x27;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
@@ -389,7 +418,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     const { element, sample, still } = await card.render(status, site, now);
     const html = renderToString(<RenderClock value={now}>{element}</RenderClock>);
     const note = sample ? "Sample data" : capturedAt(now);
-    const titled = still ? html : annotateTitle(html, note);
+    const titled = still ? html : (card.annotate ?? annotateTitle)(html, note);
     const body = await inlineImages(svgNamespaces(flattenNumberFlow(titled)), site);
     return new Response(scalableSvg(svgDocument(body, card, theme, titled === html && sample ? note : null), card), {
       headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": CARD_CACHE_CONTROL },
