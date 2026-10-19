@@ -5,6 +5,10 @@ export function fail(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
+export const noStore = { "Cache-Control": "no-store" };
+
+export const validRunId = (id: string | null): id is string => !!id && /^[a-f0-9]{32}$/.test(id);
+
 export function bearerToken(request: Request): string | undefined {
   return /^Bearer ([A-Za-z0-9_.-]+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
 }
