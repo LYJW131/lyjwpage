@@ -134,7 +134,7 @@ export async function webSearch(backend: WebSearchBackend, query: string, catego
   const exaCategory = EXA_CATEGORY[category];
   const data = await exa("/search", backend.search.key, {
     query,
-    type: "fast",
+    type: "lite",
     numResults: SEARCH_RESULTS,
     ...(exaCategory && { category: exaCategory }),
     contents: { highlights: { maxCharacters: SEARCH_CHARS_PER_RESULT } },

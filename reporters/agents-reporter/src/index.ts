@@ -1,10 +1,8 @@
-import type { CodingUsageAgent } from "./coding-usage.js";
 import { config, type AgentId } from "./config.js";
 import { Schedule, waitForNextRound } from "./cadence.js";
 import { refreshClaudeIfDue } from "./claude-oauth.js";
 import { observeCursorActivity, runCursorNowLoop } from "./cursor-now.js";
 import { collectCursorUsage, cursorUsageFailure } from "./cursor-usage.js";
-import { collectDevinUsage, devinBucketReportNow, devinUsageFailure } from "./devin-usage.js";
 import { collectAgents } from "./limits.js";
 import { failure, info, recovered } from "./log.js";
 import { runRounds } from "./round-loop.js";
@@ -39,19 +37,8 @@ async function collectCursor(): Promise<CursorFacts> {
   }
 }
 
-async function collectDevin(): Promise<CodingUsageAgent | null> {
-  try {
-    const usage = await collectDevinUsage();
-    if (usage) recovered("devin-usage");
-    return usage;
-  } catch (error) {
-    failure("devin-usage", error);
-    return await devinUsageFailure(error);
-  }
-}
-
 async function collectPayload(ids: readonly AgentId[] = config.agentIds): Promise<PushPayload> {
-  const [agents, cursor, devin] = await Promise.all([
+  const [agents, cursor] = await Promise.all([
     (async () => {
       try {
         await refreshClaudeIfDue();
@@ -61,15 +48,8 @@ async function collectPayload(ids: readonly AgentId[] = config.agentIds): Promis
       return collectAgents(ids);
     })(),
     collectCursor(),
-    collectDevin(),
   ]);
-  const usage = [...(cursor.codingUsage?.agents ?? []), ...(devin ? [devin] : [])];
-  return {
-    collectedAt: new Date().toISOString(),
-    agents,
-    ...cursor,
-    ...(usage.length ? { codingUsage: { agents: usage } } : {}),
-  };
+  return { collectedAt: new Date().toISOString(), agents, ...cursor };
 }
 
 type Round = { payload: PushPayload; agentIds: AgentId[]; at: number };
@@ -102,19 +82,6 @@ async function pushRound({ payload, agentIds, at }: Round): Promise<void> {
   await push(payload);
   schedule.collected(agentIds, at);
   recovered("push");
-  await pushDevinBuckets();
-}
-
-// Devin 的桶单独一封：和 Cursor 的桶范围不同，同一份报告里装不下两个范围。失败不重发整轮，下一轮整份账本再发一次。
-async function pushDevinBuckets(): Promise<void> {
-  try {
-    const report = await devinBucketReportNow();
-    if (!report) return;
-    await push({ collectedAt: new Date(report.collectedAt).toISOString(), codingTokenBuckets: report });
-    recovered("devin-buckets");
-  } catch (error) {
-    failure("devin-buckets", error);
-  }
 }
 
 async function main() {
@@ -125,8 +92,6 @@ async function main() {
   );
   if (config.dryRun) {
     process.stdout.write(`${JSON.stringify(await collectPayload(), null, 2)}\n`);
-    const devin = await devinBucketReportNow();
-    if (devin) process.stdout.write(`${JSON.stringify({ codingTokenBuckets: devin }, null, 2)}\n`);
     return;
   }
   if (!config.limitsFixture && config.site.ingestUrl) void runCursorNowLoop();

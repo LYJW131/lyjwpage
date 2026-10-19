@@ -42,3 +42,10 @@ export async function commit(env: Env, command: CoreCommand): Promise<CollectedI
 export async function fieldsOf(storage: FakeStorage, name: string): Promise<Record<string, string>> {
   return (await storage.batch().fields(name).execute())[0] as Record<string, string>;
 }
+
+export function usageDay(date: string, totalTokens: number, model = "claude-opus-5") {
+  return {
+    date, inputTokens: totalTokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0,
+    totalTokens, apiEquivalentCostUSD: totalTokens / 1_000, costComplete: true, models: [{ model, tokens: totalTokens }],
+  };
+}
