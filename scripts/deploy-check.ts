@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
+import { BUILD_WATCH_PATHS, WORKERS, workersFor } from "./build-watch-paths.ts";
 
 const REPO = "LYJW131/lyjwpage";
 const HOSTS = ["lyjw.me", "lyjw131.com"];
@@ -18,14 +20,15 @@ const HELP = `用法：node scripts/deploy-check.ts --sha <合并提交完整 sh
   --interval <秒>      轮询间隔，默认 20
   --build-grace <秒>   多久内没出现 site 的构建检查就当这次没碰到 site，默认 180
   --site auto|yes|no   是否等 /api/version；auto 按有没有 site 的构建检查判断，默认 auto
-  --expect <a,b>       这次合并碰到了哪些 Worker 的监视路径（如 site,core）；列出的每个都要构建成功才算通过
+  --expect <a,b|auto>  这次合并碰到了哪些 Worker 的监视路径（如 site,core）；列出的每个都要构建成功才算通过。
+                       auto 按被核对提交与它第一个父提交的差异（合并提交即这次合进来的全部改动），
+                       套 scripts/build-watch-paths.ts 的 BUILD_WATCH_PATHS 算出来，输出里的 expected 是算出的结果。
+                       算的是下限：一次推送超过 20 个提交时 Cloudflare 不看路径、全部重建，多出的构建不影响通过
   --help               显示本说明
 
 GitHub 有 GITHUB_TOKEN / GH_TOKEN 时带上，没有就匿名读（公开仓库）。
 云端容器的出站要走代理：NODE_USE_ENV_PROXY=1 node scripts/deploy-check.ts …，否则请求不经代理会 401 或连不上。
 判断「被更新的部署覆盖」用 GitHub 的提交比较接口，不依赖本地 git 有没有那个提交。`;
-
-type Flags = Record<string, string | true>;
 
 export type CheckRun = { name: string; status: string; conclusion: string | null; started_at?: string | null; id?: number };
 export type Build = { worker: string; status: string; conclusion: string | null };
@@ -40,7 +43,7 @@ export type RunOptions = {
   intervalMs: number;
   graceMs: number;
   site: string;
-  expect?: string[];
+  expect?: string[] | "auto";
 };
 
 export type RunDeps = {
@@ -58,20 +61,8 @@ export type RunResult = {
   next: string | null;
   siteChecked?: boolean;
   note?: string;
+  expected?: string[];
 };
-
-export function parseArgs(argv: string[]) {
-  const flags: Flags = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (!arg.startsWith("--")) continue;
-    const eq = arg.indexOf("=");
-    if (eq !== -1) flags[arg.slice(2, eq)] = arg.slice(eq + 1);
-    else if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) flags[arg.slice(2)] = argv[++i];
-    else flags[arg.slice(2)] = true;
-  }
-  return flags;
-}
 
 // 同一提交重跑构建后，旧的失败检查和新的检查同名并存，每个 Worker 只认最新那条。
 function newestPerWorker(checkRuns: CheckRun[]): Build[] {
@@ -127,6 +118,22 @@ function githubIsAncestor(fetchImpl: FetchLike, signal: () => AbortSignal): IsAn
   };
 }
 
+async function githubJson(path: string, fetchImpl: FetchLike, signal: AbortSignal): Promise<unknown> {
+  const response = await fetchImpl(`https://api.github.com/repos/${REPO}/${path}`, { headers: githubHeaders(), signal });
+  if (!response.ok) throw new Error(`${path.split("?")[0]} HTTP ${response.status}`);
+  return response.json();
+}
+
+export async function changedFiles(sha: string, fetchImpl: FetchLike, signal: () => AbortSignal) {
+  const commit = (await githubJson(`commits/${sha}`, fetchImpl, signal())) as { parents?: { sha: string }[] };
+  const parent = commit.parents?.[0]?.sha;
+  if (!parent) throw new Error(`${sha.slice(0, 7)} 没有父提交`);
+  const compare = (await githubJson(`compare/${parent}...${sha}`, fetchImpl, signal())) as {
+    files?: { filename: string; previous_filename?: string }[];
+  };
+  return (compare.files ?? []).flatMap((file) => (file.previous_filename ? [file.filename, file.previous_filename] : [file.filename]));
+}
+
 async function fetchCheckRuns(sha: string, fetchImpl: FetchLike, signal: AbortSignal): Promise<CheckRun[]> {
   const response = await fetchImpl(`https://api.github.com/repos/${REPO}/commits/${sha}/check-runs?per_page=100`, {
     headers: githubHeaders(),
@@ -150,11 +157,23 @@ export async function run(options: RunOptions, deps: RunDeps = {}): Promise<RunR
   const fetchImpl: FetchLike = deps.fetch ?? fetch;
   const wait = deps.sleep ?? sleep;
   const now = deps.now ?? Date.now;
-  const { sha, timeoutMs, intervalMs, graceMs, site, expect = [] } = options;
+  const { sha, timeoutMs, intervalMs, graceMs, site } = options;
   const startedAt = now();
   const elapsed = () => now() - startedAt;
   const requestSignal = () => AbortSignal.timeout(Math.max(1000, Math.min(REQUEST_TIMEOUT_MS, timeoutMs - elapsed())));
   const isAncestor = deps.isAncestor ?? githubIsAncestor(fetchImpl, requestSignal);
+
+  let expect: string[] = [];
+  if (options.expect === "auto") {
+    try {
+      expect = workersFor(await changedFiles(sha, fetchImpl, requestSignal), BUILD_WATCH_PATHS);
+    } catch (error) {
+      const reason = String((error as { message?: unknown } | null)?.message ?? error);
+      return { sha, builds: [], versions: [], pass: false, next: `读不到这个提交改了哪些文件（${reason}），算不出 --expect auto；确认 sha 后重跑，或手写 --expect` };
+    }
+  } else if (options.expect) {
+    expect = options.expect;
+  }
 
   let summary: ReturnType<typeof summarizeBuilds> = { builds: [], pending: [], failed: [], siteBuilt: false };
   let buildError: string | null;
@@ -175,6 +194,7 @@ export async function run(options: RunOptions, deps: RunDeps = {}): Promise<RunR
   }
 
   const result: RunResult = { sha, builds: summary.builds, versions: [], pass: false, next: null };
+  if (options.expect === "auto") result.expected = expect;
   if (buildError) {
     result.next = `读不到合并提交的检查（${buildError}）；确认 sha 是 main 上的合并提交，或设 GITHUB_TOKEN 后重跑`;
     return result;
@@ -222,26 +242,53 @@ export async function run(options: RunOptions, deps: RunDeps = {}): Promise<RunR
   return result;
 }
 
+const USAGE = "需要 --sha <40 位小写 sha>；--site 只能是 auto|yes|no；--expect 是 auto 或逗号分隔的 Worker 名；见 --help";
+
+export function parseExpect(value: string | undefined): string[] | "auto" | null {
+  if (value === undefined) return [];
+  if (value.trim() === "auto") return "auto";
+  const workers = value.split(",").map((w) => w.trim()).filter(Boolean);
+  return workers.every((w) => (WORKERS as readonly string[]).includes(w)) ? workers : null;
+}
+
 async function main() {
-  const flags = parseArgs(process.argv.slice(2));
-  if (flags.help) {
+  let values;
+  try {
+    ({ values } = parseArgs({
+      args: process.argv.slice(2),
+      strict: true,
+      options: {
+        sha: { type: "string" },
+        timeout: { type: "string" },
+        interval: { type: "string" },
+        "build-grace": { type: "string" },
+        site: { type: "string", default: "auto" },
+        expect: { type: "string" },
+        help: { type: "boolean", default: false },
+      },
+    }));
+  } catch {
+    console.log(JSON.stringify({ pass: false, next: USAGE }));
+    return 2;
+  }
+  if (values.help) {
     console.log(HELP);
     return 0;
   }
-  const sha = typeof flags.sha === "string" ? flags.sha : "";
-  const site = flags.site ?? "auto";
-  if (!/^[0-9a-f]{40}$/.test(sha) || typeof site !== "string" || !["auto", "yes", "no"].includes(site)) {
-    console.log(JSON.stringify({ pass: false, next: "需要 --sha <40 位小写 sha>，--site 只能是 auto|yes|no；见 --help" }));
+  const sha = values.sha ?? "";
+  const expect = parseExpect(values.expect);
+  if (!/^[0-9a-f]{40}$/.test(sha) || !["auto", "yes", "no"].includes(values.site) || expect === null) {
+    console.log(JSON.stringify({ pass: false, next: USAGE }));
     return 2;
   }
-  const seconds = (value: string | true | undefined, fallback: number) => (Number(value) > 0 ? Number(value) : fallback) * 1000;
+  const seconds = (value: string | undefined, fallback: number) => (Number(value) > 0 ? Number(value) : fallback) * 1000;
   const result = await run({
     sha,
-    site,
-    timeoutMs: seconds(flags.timeout, 600),
-    intervalMs: seconds(flags.interval, 20),
-    graceMs: seconds(flags["build-grace"], 180),
-    expect: typeof flags.expect === "string" ? flags.expect.split(",").map((w) => w.trim()).filter(Boolean) : [],
+    site: values.site,
+    timeoutMs: seconds(values.timeout, 600),
+    intervalMs: seconds(values.interval, 20),
+    graceMs: seconds(values["build-grace"], 180),
+    expect,
   });
   console.log(JSON.stringify(result, null, 2));
   return result.pass ? 0 : 1;
