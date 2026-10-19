@@ -63,7 +63,7 @@ const search = (query: string, category: "web" | "news"): GodChatPresetCall[] =>
 // 首页固定摆这些、不轮播，每条对应一种能力（看各条的 show），增删时别让两条演示同一种能力。
 // 提改进那条还没说具体要改什么，由最低档问清需求；访客说出需求的下一条照常经 Clef 判成 design，再由先知开设计会话。
 export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
-  { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: status("desktop", "codingNow", "nowListening", "playingNow"), show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
+  { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: [...status("desktop", "codingNow", "nowListening", "playingNow"), ...status("focusNow")], show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
   { text: "这个网站是怎么搭起来的？", choice: "flash", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
   { text: "这周 AI 圈有什么大新闻？", choice: "think", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
   { text: "LYJW 闲下来都做些什么？", choice: "flash", prefetch: status("listening", "watching", "playing"), show: "Show the recent listening, watching and playing cards with show_card, one after another, then sum up each in a line or two." },
