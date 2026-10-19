@@ -44,7 +44,7 @@
 - **[magpie](https://github.com/yetone/magpie)**（yetone）
   - 是什么：由 agent 写、评、合、发的桌面应用仓库，工作流写在它的 AGENTS.md、LESSONS.md、docs/code-standards.md 与 test 工作流里。
   - 取了什么：合并钉住验过的 head（它用 `gh pr merge --match-head-commit`）；修复要证明「撤掉就红」；每晚审当天提交、找返工的记成教训，同类见满 3 天升成规则；main 上的 CI 不被下一次推送取消。
-  - 状态：部分采用。钉 head 落在 [merge-message.ts](../scripts/merge-message.ts) 输出的 `expectedHeadSha` 与根 `AGENTS.md`「部署流程」；撤回证明落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「1. 本地门禁」；返工账落在 04:00 每日审查提示词的园丁一步（`docs/ops-facts.md` 里那条 routine，提示词只能从它自己的线程改），记进缓冲 issue #280；CI 落在 [ci.yml](../.github/workflows/ci.yml) 的 `concurrency`。不采用：PR 上自动录屏截图的 UI 预览（要在 CI 跑 PR 代码并持模型 key，已有 `pnpm dev:scene` 与验证员截图）、每次必读的大教训文件（教训直接落成检查、skill 或记忆）、社区 PR 防害与拉黑（无外部贡献者）、子系统设计页（已有 `docs/` 与 `pnpm docs:check`）、提交正文记验证（回执已绑 SHA 发在 PR 评论）。
+  - 状态：部分采用。钉 head 落在 [merge-message.ts](../scripts/merge-message.ts) 输出的 `expectedHeadSha` 与根 `AGENTS.md`「部署流程」；撤回证明落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「1. 本地门禁」，由 [revert-proof.ts](../scripts/revert-proof.ts) 在临时 worktree 里执行；返工账落在 04:00 每日审查提示词的园丁一步（`docs/ops-facts.md` 里那条 routine，提示词只能从它自己的线程改），记进缓冲 issue #280，候选由 [rework-candidates.ts](../scripts/rework-candidates.ts) 列出，模型只定类别；CI 落在 [ci.yml](../.github/workflows/ci.yml) 的 `concurrency`。不采用：PR 上自动录屏截图的 UI 预览（要在 CI 跑 PR 代码并持模型 key，已有 `pnpm dev:scene` 与验证员截图）、每次必读的大教训文件（教训直接落成检查、skill 或记忆）、社区 PR 防害与拉黑（无外部贡献者）、子系统设计页（已有 `docs/` 与 `pnpm docs:check`）、提交正文记验证（回执已绑 SHA 发在 PR 评论）。
 
 ## 写 skill 与写给 agent 的文档
 
@@ -75,7 +75,7 @@
 - **[What a task costs on Opus 5.5](https://claude.dev/blog/what-a-task-costs-on-opus-5-5/)**（claude.dev）、**[Using Claude Code: Spending your effort](https://claude.dev/blog/spending-your-effort/)**（claude.dev）、**[Subagents](https://code.claude.com/docs/en/sub-agents)**（Claude Code 文档）
   - 是什么：各类任务的成本、effort 档位怎么选、子代理的 `model` / `effort` 字段。
   - 取了什么：搜索、读日志、读长历史这类出错容易发现的活放 Sonnet 或 Haiku，判断和改代码留在主模型；要验证、有边界情况的用 high；子代理看不到对话，关键规则要在简报里重说。
-  - 状态：采用。落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)（验证交给 Haiku 验证员）和 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「派读者读线程」（Sonnet 读者）。
+  - 状态：采用。落在 [lyjwpage-delegate](../.claude/skills/lyjwpage-delegate/SKILL.md)（各线程把机械活派给 Sonnet / Haiku 或后台命令）、[lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)（验证交给 Haiku 验证员）和 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「派读者读线程」（Sonnet 读者）。
 - **[Vision · Resolution and token cost](https://platform.claude.com/docs/en/build-with-claude/vision#evaluate-image-size)**（Claude 文档）
   - 是什么：模型按 28×28 px 一块计视觉 token，每档模型有长边和 token 上限，超了先缩小再看。
   - 取了什么：给 Haiku 逐帧看的验收图按标准档上限拼，每张 2 帧时每格仍是原尺寸、哪档模型看都不会被缩；拼得更多格子就被缩小，细节开始漏，所以默认每张 2 帧。

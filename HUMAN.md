@@ -28,7 +28,7 @@
 | 「派一个去做 X，开出 pr 来」 | 实现并开 PR，等你看 |
 | 「草稿就行」 | 开草稿 PR 就停 |
 | 「派我电脑上的人去…」「用我的浏览器去…」 | 走 Remote Control，在你 Mac 上做 |
-| 「起一个 opus 5.5 max 的线程」「派一个 fable max」 | 指定线程的模型和力度；翻文档、翻代码、读长历史这类重活，线程自己派 sonnet / haiku 子代理去干 |
+| 「起一个 opus 5.5 max 的线程」「派一个 fable max」 | 指定线程的模型和力度；翻文档、翻代码、读长历史这类重活，线程自己派 sonnet / haiku 子代理去干（派法见 `.claude/skills/lyjwpage-delegate/SKILL.md`） |
 | 「用动态工作流」「ultracode」 | 多 agent 并行编排 |
 | 「处理一下」 | Claude 自己判断该做什么：整理旧线程、决定修还是关 |
 | 「现在有哪些等着处理的」 | 一条回复，先列等你的，再列可选的和不用你管的 |
@@ -83,6 +83,7 @@
   5. 要等机器评审的那类 PR，合并前再派一个没写这段代码的 agent 判做没做完，结论按 head SHA 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
   6. 三份存量基线（`scripts/mjs-baseline.json`、`scripts/design-scale-baseline.json`、`scripts/ui-copy-baseline.json`）只许比 main 少，PR 里多出一条 CI 就红（`pnpm baselines:check`）。确属合规例外的，Claude 在 PR 里写明理由、停下等你；你同意就给 PR 打上 `baseline-exception` 标签，CI 自动重跑放行；放行只对打标签那一次有效，之后再推送要摘了重打，免得批准后又塞进别的条目。这个标签只由你打，Claude 不打。
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
+- 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。
 - 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式是 merge commit；分支落后时把 main 合进来，不 rebase。
 - 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。提交以你的身份、用你的钥签名，Claude 只出现在 Co-Authored-By 里；会话自带的钩子把这种提交报成 Unverified、让改成 Claude 的邮箱，是误报，不照做（见 AGENTS.md「[禁区](./AGENTS.md#禁区)」）。
 - 做完上线的线程不标成已解决：它留在你的「等你」列表里等你验收，你回一句或说「关」才收起。
@@ -108,7 +109,7 @@
 - 说错了改口用删除线加 [Edit: …]，不悄悄覆盖。
 - 站点的视觉与交互规范在 [DESIGN.md](./DESIGN.md)：间距、字号、颜色、卡片结构都按它来；觉得哪里不舒服，指出来，Claude 改规范或改卡片。
 - 细微的 UI 改动（间距、对齐、大小、颜色）给前后叠在一起的对比图，或带量尺参考线和 px 标注的并排图；整块重做的不用。
-- UI 改动第一次交付附桌面和 375px 两张图；云端线程里你看不到开发服务器，每一轮都附图；你在看开发服务器时，改完自测但不再截图（见 AGENTS.md「[项目入口与验证](./AGENTS.md#项目入口与验证)」）。
+- UI 改动第一次交付附桌面和 375px 两张图，375px 另附一张 WebKit（iPhone 的引擎）截的；云端线程里你看不到开发服务器，每一轮都附图；你在看开发服务器时，改完自测但不再截图（见 AGENTS.md「[项目入口与验证](./AGENTS.md#项目入口与验证)」）。
 - 每条结论都带证据：链接、文件与符号、命令输出，或者明说是推断。
 - 你的要求有不止一种读法时，第一条回复先用一两句复述 Claude 理解的目标，同时接着做；读偏了回一句就能纠正。
 

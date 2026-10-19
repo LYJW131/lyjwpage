@@ -518,13 +518,14 @@ test("Devin's delta windows are counted once each: a resent window is dropped, C
     // 中间没用量的窗口不发，下一个窗口的起点晚于上一个的终点。
     assert.equal((await send(devinTokens(NOW + 4_000, NOW + 5_000, { input: 1_000, output: 8 }), NOW + 5_000)).ok, true);
     await send(otlpTokens(NOW + 6_000, 300), NOW + 6_000);
+    await send(devinTokens(NOW + 6_000, NOW + 7_000, { output: 0 }, "session-a"), NOW + 7_000);
 
     const ledger = await devin();
     assert.equal(ledger.days.reduce((sum, day) => sum + day.totalTokens, 0), 10_787 + 32 + 10_176 + 1_008);
     assert.equal(ledger.days.at(-1)?.inputTokens, 11_787);
     assert.equal(ledger.days.at(-1)?.costComplete, false, "Devin sends no cost metric");
     assert.deepEqual(ledger.days.at(-1)?.models, [{ model: "swe-2-max", tokens: 22_003 }]);
-    assert.equal(ledger.sessionCount, 1);
+    assert.equal(ledger.sessionCount, 2, "Devin's session-a is not Claude's session-a");
     const claude = parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).claude!;
     assert.equal(claude.days.reduce((sum, day) => sum + day.totalTokens, 0), 300);
     assert.equal(claude.sessionCount, 1, "sessions are counted per agent");
@@ -546,13 +547,23 @@ test("the first Devin OTLP batch takes over the tokens.ci day ledger from the ac
   const env = testEnv();
   const history = { ...usageDay("2026-09-28", 5_000, "swe-2-max"), apiEquivalentCostUSD: 0, costComplete: false };
   try {
-    const account = (at: number, agents: unknown[]) => inRequest(env, () => prepareIngest("agents", {
-      collectedAt: new Date(at).toISOString(), codingUsage: { agents },
+    const account = (at: number, agents: unknown[], extra: Record<string, unknown> = {}) => inRequest(env, () => prepareIngest("agents", {
+      collectedAt: new Date(at).toISOString(), codingUsage: { agents }, ...extra,
     }, at));
+    const bucketFrom = Math.floor((NOW - 600_000) / 300_000) * 300_000;
+    const bucketRow = (id: string, inputTokens: number) => ({
+      id, model: "m", inputTokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, eventCount: null,
+    });
+    const codingTokenBuckets = {
+      from: bucketFrom, to: bucketFrom + 300_000, collectedAt: NOW - 120_000,
+      agents: [{ id: "cursor", state: "ok" }, { id: "devin", state: "partial" }],
+      windows: [{ from: bucketFrom, agents: [bucketRow("cursor", 70), bucketRow("devin", 900)] }],
+    };
     assert.equal((await commit(env, await account(NOW - 120_000, [
       { id: "cursor", state: "ok", collectedAt: NOW - 120_000, sessionCount: null, days: [usageDay("2026-09-28", 700, "composer-2")] },
       { id: "devin", state: "ok", collectedAt: NOW - 120_000, sessionCount: null, days: [history] },
-    ]))).ok, true);
+    ], { codingTokenBuckets }))).ok, true);
+    assert.equal(parseStoredCodingBuckets(await storage.get(codingBucketsKey("agents")))?.windows[0]?.agents.length, 2);
     assert.equal((await commit(env, await account(NOW - 60_000, [
       { id: "devin", state: "error", collectedAt: NOW - 120_000, sessionCount: null, error: "tokens.ci responded 503" },
     ]))).ok, true);
@@ -564,6 +575,10 @@ test("the first Devin OTLP batch takes over the tokens.ci day ledger from the ac
     const left = parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents")));
     assert.deepEqual(Object.keys(left), ["cursor"], "the account row would otherwise supersede the OTLP one");
     assert.equal(left.cursor?.days[0]?.totalTokens, 700);
+    const accountBuckets = parseStoredCodingBuckets(await storage.get(codingBucketsKey("agents")))!;
+    assert.deepEqual(accountBuckets.windows.flatMap((window) => window.agents.map((row) => [row.id, row.inputTokens])), [["cursor", 70]],
+      "the old spread-out Devin buckets would add to the OTLP ones in the Tokens lane");
+    assert.deepEqual(accountBuckets.agents.map((agent) => agent.id), ["cursor"]);
     const moved = parseStoredUsageLedgers(await fieldsOf(storage, codingUsageKey("agents-otlp"))).devin!;
     assert.equal(moved.state, "ok");
     assert.equal(moved.error, null);

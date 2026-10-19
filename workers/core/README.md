@@ -120,12 +120,12 @@ Claude 的一律不收、记一行 `[otlp] delta temporality points skipped` 的
 Devin CLI 只会发 delta（不认 temporality 偏好），每次导出只带上次导出以来的增量，没用量的那几次不发。它的序列不含起点
 （起点每个窗口都在走），`coding:otlp` 的 `windows` 记每条序列已经计到的时刻：窗口起点早于它的是重发，整点跳过；
 晚到的旧窗口也一起跳过（少算，不多算）。Devin 不发费用指标，有 token 的日子 `costComplete` 为假。会话数按 agent 分开记
-（`sessionCounts`）。`cloudAgentActivity` 只看 `claude` 的桶，Devin 跑在 Mac 上，不算云端线程。
+（`sessionCounts`；Claude 以外的会话摘要带 agent 前缀，同名会话不互相顶掉）。`cloudAgentActivity` 只看 `claude` 的桶，Devin 跑在 Mac 上，不算云端线程。
 
 Devin 的日行以前由 agents-reporter 从 tokens.ci 拉进 `agents` 来源。第一封带 Devin 的 OTLP 进来、`agents-otlp` 里还没有
 `devin` 时，把 `agents` 里那本 `devin` 账本的日子整份接过来，在同一个事务里从 `agents` 删掉它（账号级来源会压住
 `agents-otlp`，留着新数就看不见）；`prepareCodingUsage` 的 `moveFrom`。之后 `agents` 里再出现 `devin`（旧镜像的上报器还没换下）
-也是下一封 Devin 的 OTLP 就删掉，日子不再接一遍。D1 里 `source = 'agents'` 的旧行原样留着，
+也是下一封 Devin 的 OTLP 就删掉，日子不再接一遍；`pulse:token-buckets:agents` 里 Devin 的桶同一批删掉，Tokens 道不会两边相加。D1 里 `source = 'agents'` 的旧行原样留着，
 接过来的日子在 `agents-otlp` 下再归档一份；D1 目前没有跨来源相加的读者。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、

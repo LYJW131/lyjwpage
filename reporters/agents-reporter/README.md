@@ -24,7 +24,7 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
 4. POST 到站点：这一轮没取的几家不带，站点按 id 留着各自上一次的值和时间
 
-Cursor 用量与 Devin 用量不按家分档：有哪家到期才有这一轮，每轮都顺带拉一次。
+Cursor 用量不按家分档：有哪家到期才有这一轮，每轮都顺带拉一次。
 
 等下一轮时读站点公开的 `SITE_URL/api/status/coding/now`：本容器取限额的那几家（`AGENT_IDS`）里，哪一家在任何来源
 （Mac 日志、Claude Code 云端、Cursor 账号）的 `lastActivityAt` 落在 `src/cadence.ts#ACTIVE_WINDOW_MS` 内，那一家就走快档，

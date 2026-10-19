@@ -40,14 +40,16 @@
 1. **读法**：需求有多种读法时，第一条回复先复述目标，同时按这个读法开做。
 2. **实现**：可逆的事自己定，有影响的假设说一句。站点 UI 先读 [`DESIGN.md`](../DESIGN.md)，按 [`lyjwpage-ui-design`](../.claude/skills/lyjwpage-ui-design/SKILL.md) 自查；bug 先复现再修，按 [`lyjwpage-diagnose`](../.claude/skills/lyjwpage-diagnose/SKILL.md)。
 3. **验证**：见下一节。
-4. **合并**：门槛分档，见 [`HUMAN.md`「5. PR 与合并」](../HUMAN.md#5-pr-与合并)。大改逻辑的 PR 处理完 Claude、Codex、Devin 的机器评审，并由一个没写这段代码的 agent 判做没做完；UI 变化等 lyjw 看图点头；文档、skill 和小改动 CI 绿就合。合并提交由 `pnpm merge-message` 生成，正文汇总各提交的 `Co-Authored-By`，站点「最近提交」靠它显示参与的 agent 与模型。
-5. **上线**：各 Worker 改动碰到自己的监视路径时，合进 main 由 Workers Builds 自动构建部署，看该 Worker 的构建检查；生产行为只在缓存、首屏 SSR、字体或依赖生产 Secret 与绑定的改动上复测，其余以预览验证为准；站点以 `/api/version` 返回的提交为准。只改文档的合并不触发构建。上报器按各自 README 发布（镜像工作流或手动）。细则见 [`AGENTS.md`「部署流程」](../AGENTS.md#部署流程)。
+4. **合并**：门槛分档，见 [`HUMAN.md`「5. PR 与合并」](../HUMAN.md#5-pr-与合并)。大改逻辑的 PR 处理完 Claude、Codex、Devin 的机器评审，并由一个没写这段代码的 agent 判做没做完；UI 变化等 lyjw 看图点头；文档、skill 和小改动 CI 绿就合。门槛里机器核得了的部分由 [`scripts/pr-gate.ts`](../scripts/pr-gate.ts) 一条命令读全，输出一份 JSON 给主线程判断。合并提交由 `pnpm merge-message` 生成，正文汇总各提交的 `Co-Authored-By`，站点「最近提交」靠它显示参与的 agent 与模型。
+5. **上线**：各 Worker 改动碰到自己的监视路径时，合进 main 由 Workers Builds 自动构建部署，看该 Worker 的构建检查（要等哪几个由 `scripts/deploy-check.ts --expect auto` 按监视路径算）；生产行为只在缓存、首屏 SSR、字体或依赖生产 Secret 与绑定的改动上复测，其余以预览验证为准；站点以 `/api/version` 返回的提交为准。只改文档的合并不触发构建。上报器按各自 README 发布（镜像工作流或手动）。细则见 [`AGENTS.md`「部署流程」](../AGENTS.md#部署流程)。
 
 所有等待（CI、机器评审、部署）都带上限，到点记失败、接着做不依赖它的事。
 
 ## 验证
 
 主线程只定验什么、判结果；跑命令、开浏览器截图、轮询部署这些长输出的活交给 Haiku 验证员，做法见 [`lyjwpage-verify`](../.claude/skills/lyjwpage-verify/SKILL.md)。验证员最后签一张分级回执，按提交 SHA 记每项验到了哪一档（真页面、单测、只过类型），贴成 PR 评论；合并前 [`scripts/verify-receipt.ts`](../scripts/verify-receipt.ts) 核对回执还盖得住当前提交。
+
+验证以外的机械活（成批读讨论串与评审、全仓搜、照规格的改动、只等 CI 或部署结束、不做核对的纯等待）同样不留在主线程：按 [`lyjwpage-delegate`](../.claude/skills/lyjwpage-delegate/SKILL.md) 派给 Sonnet / Haiku 子代理或后台命令。
 
 截图与效果图用同一份场景数据：`pnpm dev:scene` 把整页状态注入本地开发栈，`pnpm readme:shots` 出 README 的首页总览图，见 [screenshots.md](./screenshots.md)。
 
@@ -58,7 +60,7 @@
 | 任务 | 做什么 |
 | --- | --- |
 | 每日代码审查 | 从上次游标起对 main 跑 `/code-review` 与 `/simplify`，值得改的开 PR；顺带找正在被复制的坏写法，升级成 lint 或检查 |
-| 提炼 skill 与偏差复盘 | 读各线程，把反复出现的流程写成 skill；对照需求第一次怎么说、最后交付了什么，改 agent 的默认做法；被采纳的机器评审意见同类出现两次以上就做成检查（[`lyjwpage-skill-mining`](../.claude/skills/lyjwpage-skill-mining/SKILL.md)） |
+| 提炼 skill 与偏差复盘 | 读各线程，把反复出现的流程写成 skill；对照需求第一次怎么说、最后交付了什么，改 agent 的默认做法；被采纳的机器评审意见（[`scripts/review-sieve.ts`](../scripts/review-sieve.ts) 先按回复里的修复提交分堆）同类出现两次以上就做成检查（[`lyjwpage-skill-mining`](../.claude/skills/lyjwpage-skill-mining/SKILL.md)） |
 | Anthropic 官方动态 | 拉官方博客、文档、更新日志和前沿作者的新内容，逐条判断能否吸收进本站（[`lyjwpage-anthropic-updates`](../.claude/skills/lyjwpage-anthropic-updates/SKILL.md)） |
 | collector 盯防 | 盯采集 Worker 的公开状态与 Workers Observability 日志，找告警漏掉的细微异常，复现了的错误直接开修复草稿 PR（[`lyjwpage-collector-superfan`](../.claude/skills/lyjwpage-collector-superfan/SKILL.md)） |
 | 记忆镜像同步 | 把项目记忆同步进 `.claude/memory/` |
