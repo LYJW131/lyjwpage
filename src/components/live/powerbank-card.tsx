@@ -256,7 +256,7 @@ export function PowerBankCard({
                         </span>
                       )}
                     </div>
-                    <div className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground">
+                    <div className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">
                       {full?.active && full.voltage != null && full.current != null ? (
                         `${full.voltage.toFixed(1)}V · ${full.current.toFixed(2)}A`
                       ) : full?.direction === "in" ? (
@@ -298,7 +298,7 @@ export function PowerBankCard({
                 </div>
                 <span className="label-mono shrink-0 text-muted-foreground">100%</span>
               </div>
-              <div className="mt-2 flex items-center gap-2 truncate font-mono text-[0.6875rem] leading-none text-muted-foreground">
+              <div className="mt-2 flex items-center gap-2 truncate font-mono text-2xs leading-none text-muted-foreground">
                 {displayPorts.map((port, i) => {
                   const full =
                     connected && "active" in port ? (port as PowerBankPort) : null;
