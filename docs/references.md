@@ -66,6 +66,10 @@
   - 取了什么：根目录放一份术语表，每条一句定义加出处，根 `AGENTS.md` 指过去。
   - 状态：采用。落在 [GLOSSARY.md](../GLOSSARY.md)。
 
+- **[seiso](https://github.com/scarletkc/seiso)**（scarletkc，含 [Seiso 规范](https://seiso.fog.moe/latest/convention)）
+  - 是什么：给 AI 写、人和 agent 读的项目文档定的 Markdown 规范，配一个 Rust 写的 linter：每篇声明一种类型、一个事实一个出处、长期文档不写易变值、指针写到文件或符号、例外写理由。
+  - 不采用：规范与根 `AGENTS.md`「文档与注释」基本重合；稳定规则只查类型声明与本地链接，`pnpm docs:check` 已覆盖且更多；实验规则在中文文档上误报多。试过整仓接入（PR #428，未合），文档本身没变好，只多一个二进制依赖和一套类型词表。
+
 ## 模型选择与子代理
 
 - **[What a task costs on Opus 5.5](https://claude.dev/blog/what-a-task-costs-on-opus-5-5/)**（claude.dev）、**[Using Claude Code: Spending your effort](https://claude.dev/blog/spending-your-effort/)**（claude.dev）、**[Subagents](https://code.claude.com/docs/en/sub-agents)**（Claude Code 文档）
