@@ -73,6 +73,16 @@ class MenuScope(unittest.TestCase):
         self.assertFalse(self.verdict('Writing', f'{self.common}/hooks/pre-commit', f'{self.common}/hooks')[0])
         self.assertFalse(self.verdict('Editing', f'{self.common}/config', self.common)[0])
 
+    def test_plain_checkout_git_dir(self):
+        cwd, common = str(self.repo), dv.git_common_dir(self.repo)
+        check = lambda p: dv.menu_verdict(screen('Writing', p, cwd), cwd, common)[0]
+        self.assertTrue(check('src/a.ts'))
+        self.assertTrue(check('.git/refs/heads/x'))
+        self.assertFalse(check('.git/hooks/pre-commit'))
+        self.assertFalse(check('.git/config'))
+        self.assertFalse(check(f'{self.wt}/.git'))
+        self.assertFalse(dv.menu_verdict(screen('Writing', '.git', self.cwd), self.cwd, self.common)[0])
+
     def test_home_and_main_checkout(self):
         self.assertFalse(self.verdict('Editing', '~/.bashrc', os.path.expanduser('~'))[0])
         self.assertFalse(self.verdict('Writing', f'{self.repo}/a.txt', str(self.repo))[0])

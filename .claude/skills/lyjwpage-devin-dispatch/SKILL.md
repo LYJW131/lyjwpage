@@ -39,7 +39,7 @@ $DV list
 - 在 wrapper 下 `start` 不传 `--mode`，模式由 wrapper 定；要别的模式用 `DV_MODE` 覆盖。
 - 沙箱里即使是 dangerous，Devin 用编辑 / 写文件工具前仍会停在批准菜单（`1 Yes (Approve once)` / `2 Yes, allow edits in <目录>` / … / `No`）。这些工具不受沙箱约束，菜单就是边界。在 wrapper 下启动的任务默认 `--auto-approve`：`wait` 取菜单上方最近的 `⏺ Writing <path>` / `Editing <path>` 和第 2 项的目录，相对路径按 worktree 解析、`realpath` 去掉 `..` 和符号链接后，只有都落在 worktree 或该仓库的 git common dir（`hooks/`、`config` 除外）里才按 Enter 批准一次；同一屏不重复按，计数记在 meta。路径不在范围内或认不出（没有写入标题、被截断）时不批，`wait` 立即返回 4 并写明原因。
 - 返回 4 且原因是 `outside the worktree` 或认不出路径时，默认 `$DV deny <name>`：选 No，再告诉它只能写工作区。确需写工作区外的文件，由 Claude 自己写，不替 Devin 批。**不选 always allow，不切 bypass**：那是改 Devin 的持久配置。
-- 菜单开着时 `send` 会拒绝（粘贴的文字会落进菜单），先 `approve`。
+- 菜单开着时 `send` 会拒绝（粘贴的文字会落进菜单），先 `approve` 或 `deny`。
 - 运行状态在 `$DV_RUNS`（默认 `~/.claude/devin-dispatch/runs`）下按任务名分目录：meta、`--export` 的 JSON（Devin 每轮重写）、退出码。tmux 会话名是 `dv-<name>`。
 - `wait` 的返回码：`0` 空闲（打印最后一轮回复），`3` 已退出，`4` 停在提问、菜单、断线重试或认不出的屏幕超过 `--attention` 秒，`124` 超时。返回 4 时用 `status` 看屏幕并处理，不能放着：没人回答的提问会让它一直等。
 
