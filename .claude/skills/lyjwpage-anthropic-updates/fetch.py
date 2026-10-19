@@ -110,7 +110,7 @@ def feed(url, what, keep=lambda item: True):
 
 
 def anthropic_posts():
-    return from_sitemap("https://www.anthropic.com/sitemap.xml", r"anthropic\.com/(news|engineering)/[^/]+$", " news/engineering 链接")
+    return from_sitemap("https://www.anthropic.com/sitemap.xml", r"anthropic\.com/(news|engineering|research)/[^/]+$", " news/engineering/research 链接")
 
 
 def claude_dev_blog():

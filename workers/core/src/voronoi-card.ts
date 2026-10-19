@@ -3,6 +3,7 @@ import { object } from "@shared/json";
 import { mirrorKey } from "@shared/storage";
 import type { CodingUsagePayload } from "@shared/types";
 
+import { CARD_FONT, CARD_MONO, cardResponse, cardStat, cardStyle, formatTokens } from "./card-svg";
 import { getCodingUsage } from "./coding-usage";
 import { INITIAL_VORONOI_LAYOUT } from "./voronoi-initial";
 import {
@@ -15,13 +16,12 @@ import {
   shareCells,
   type Fitted,
   type LayoutCell,
+  type Point,
   type ShareCell,
 } from "./voronoi-layout";
-import { relayoutRound, type VoronoiState } from "./voronoi-relayout";
-import { WEEK_CARD_CACHE_CONTROL } from "./week-card";
+import { relayoutRound, type SearchBest, type SearchProgress, type VoronoiState } from "./voronoi-relayout";
 
 export const VORONOI_CARD_PATH = "/api/cards/voronoi.svg";
-const VORONOI_CARD_FAILED_CACHE_CONTROL = "public, max-age=60";
 
 const stateKey = mirrorKey<unknown>(["cards", "voronoi"]);
 
@@ -33,11 +33,36 @@ export const INITIAL_VORONOI_STATE: VoronoiState = {
 };
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const point = (value: unknown) => Array.isArray(value) && value.length === 2 && value.every(finite);
+const point = (value: unknown): value is Point => Array.isArray(value) && value.length === 2 && value.every(finite);
+const finites = (value: unknown): value is number[] => Array.isArray(value) && value.every(finite);
+const strings = (value: Record<string, unknown>): value is Record<string, string> => Object.values(value).every((v) => typeof v === "string");
+const points = (value: unknown): value is Point[] => Array.isArray(value) && value.every(point);
 
 function layoutCell(value: unknown): value is LayoutCell {
   const cell = object(value);
   return !!cell && typeof cell.model === "string" && typeof cell.color === "string" && point(cell.site) && finite(cell.weight);
+}
+
+function shareCell(value: unknown): value is ShareCell {
+  const cell = object(value);
+  return !!cell && typeof cell.model === "string" && finite(cell.tokens);
+}
+
+function searchBest(value: unknown, size: number): SearchBest | null | undefined {
+  if (value === null) return null;
+  const best = object(value);
+  if (!best || !finite(best.seed) || !finite(best.score) || !points(best.sites) || !finites(best.weights)) return undefined;
+  if (best.sites.length !== size || best.weights.length !== size) return undefined;
+  return { seed: best.seed, score: best.score, sites: best.sites, weights: best.weights };
+}
+
+// 搜索进度读不全就当没在搜：下一轮按需重新开始，好过每轮带着坏进度抛错。
+function searchProgress(value: unknown): SearchProgress | null {
+  const search = object(value);
+  if (!search || !Array.isArray(search.cells) || !search.cells.every(shareCell) || !finite(search.next)) return null;
+  if (!finite(search.startedAt) || typeof search.hard !== "boolean") return null;
+  const best = searchBest(search.best, search.cells.length);
+  return best === undefined ? null : { cells: search.cells, next: search.next, best, startedAt: search.startedAt, hard: search.hard };
 }
 
 export function parseVoronoiState(raw: unknown): VoronoiState | null {
@@ -48,11 +73,23 @@ export function parseVoronoiState(raw: unknown): VoronoiState | null {
   if (!finite(layout.chosenScore) || !finite(layout.chosenAt) || !Array.isArray(layout.accepted)) return null;
   if (!layout.accepted.every((key) => typeof key === "string")) return null;
   const colors = layout.colors === undefined ? {} : object(layout.colors);
-  if (!colors || !Object.values(colors).every((color) => typeof color === "string")) return null;
+  if (!colors || !strings(colors)) return null;
+  const seed = layout.seed ?? null;
+  if (seed !== null && !finite(seed)) return null;
   if (!finite(state.lastRelayoutAt) || (state.lastFailedSearchAt !== null && !finite(state.lastFailedSearchAt))) return null;
-  const search = object(state.search);
-  if (state.search !== null && (!search || !Array.isArray(search.cells) || !finite(search.next))) return null;
-  return state as unknown as VoronoiState;
+  return {
+    layout: {
+      cells: layout.cells,
+      chosenScore: layout.chosenScore,
+      chosenAt: layout.chosenAt,
+      seed,
+      accepted: layout.accepted,
+      ...(layout.colors !== undefined && { colors }),
+    },
+    lastRelayoutAt: state.lastRelayoutAt,
+    lastFailedSearchAt: state.lastFailedSearchAt,
+    search: searchProgress(state.search),
+  };
 }
 
 async function loadState(): Promise<VoronoiState> {
@@ -63,20 +100,18 @@ async function loadState(): Promise<VoronoiState> {
   return state ?? INITIAL_VORONOI_STATE;
 }
 
-function latestCells(usage: CodingUsagePayload): ShareCell[] {
-  if (!usage.totals) throw new AwaitingReport("尚未收到 coding 用量");
-  const cells = shareCells(usage.totals.totalTokens, usage.topModels);
+function latestCells(usage: CodingUsagePayload): { cells: ShareCell[]; totals: NonNullable<CodingUsagePayload["totals"]> } {
+  const totals = usage.totals;
+  if (!totals) throw new AwaitingReport("尚未收到 coding 用量");
+  const cells = shareCells(totals.totalTokens, usage.topModels);
   if (!cells.length) throw new AwaitingReport("coding 用量里还没有模型");
-  return cells;
+  return { cells, totals };
 }
 
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
-const MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
 const LEGEND_X = 540;
 const LEGEND_RIGHT = 752;
 const SWATCH = 14;
 
-const fmt = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : `${(n / 1e6).toFixed(1)}M`);
 const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -88,15 +123,6 @@ function textColor(hex: string): string {
 export type VoronoiCardTotals = Pick<NonNullable<CodingUsagePayload["totals"]>, "totalTokens" | "apiEquivalentCostUSD" | "activeDays"> & {
   modelCount?: number;
 };
-
-// 四列与 /api/cards/week.svg 的四列同一套网格（x = 28、218、408、598），两张卡上下对齐。
-const STAT_PITCH = 190;
-
-function stat(column: number, label: string, value: string): string {
-  const x = MX + column * STAT_PITCH;
-  return `<text x="${x}" y="34" font-size="13" font-weight="600" letter-spacing="1.5" fill="var(--mute)">${label}</text>` +
-    `<text x="${x}" y="76" font-size="34" font-weight="700" fill="var(--fg)">${value}</text>`;
-}
 
 export function renderVoronoiCard(fit: Fitted, totals: VoronoiCardTotals): string {
   const total = fit.cells.reduce((sum, c) => sum + c.tokens, 0);
@@ -114,10 +140,10 @@ export function renderVoronoiCard(fit: Fitted, totals: VoronoiCardTotals): strin
     if (!label.show) return;
     const [px, py] = label.at;
     if (label.nameSize) {
-      cells += `<text x="${px.toFixed(1)}" y="${(py - 2).toFixed(1)}" text-anchor="middle" font-family="${MONO}" font-size="${label.nameSize}" font-weight="700" fill="${tc}">${name}</text>` +
-        `<text x="${px.toFixed(1)}" y="${(py + 15).toFixed(1)}" text-anchor="middle" font-family="${MONO}" font-size="12" fill="${tc}" opacity=".75">${share.toFixed(1)}%</text>`;
+      cells += `<text x="${px.toFixed(1)}" y="${(py - 2).toFixed(1)}" text-anchor="middle" font-family="${CARD_MONO}" font-size="${label.nameSize}" font-weight="700" fill="${tc}">${name}</text>` +
+        `<text x="${px.toFixed(1)}" y="${(py + 15).toFixed(1)}" text-anchor="middle" font-family="${CARD_MONO}" font-size="12" fill="${tc}" opacity=".75">${share.toFixed(1)}%</text>`;
     } else {
-      cells += `<text x="${px.toFixed(1)}" y="${(py + 4).toFixed(1)}" text-anchor="middle" font-family="${MONO}" font-size="12" font-weight="700" fill="${tc}">${share.toFixed(1)}%</text>`;
+      cells += `<text x="${px.toFixed(1)}" y="${(py + 4).toFixed(1)}" text-anchor="middle" font-family="${CARD_MONO}" font-size="12" font-weight="700" fill="${tc}">${share.toFixed(1)}%</text>`;
     }
   });
 
@@ -129,20 +155,20 @@ export function renderVoronoiCard(fit: Fitted, totals: VoronoiCardTotals): strin
     const ty = MY + i * pitch, ly = ty + SWATCH - 2;
     return `<rect x="${LEGEND_X}" y="${ty.toFixed(1)}" width="${SWATCH}" height="${SWATCH}" rx="3" fill="${cell.color}" fill-opacity=".9"/>` +
       `<text x="${LEGEND_X + 22}" y="${ly.toFixed(1)}" font-size="14" fill="var(--fg)">${xml(cell.model)}</text>` +
-      `<text x="${LEGEND_RIGHT}" y="${ly.toFixed(1)}" text-anchor="end" font-family="${MONO}" font-size="13" fill="var(--mute)">${fmt(tokens)}</text>`;
+      `<text x="${LEGEND_RIGHT}" y="${ly.toFixed(1)}" text-anchor="end" font-family="${CARD_MONO}" font-size="13" fill="var(--mute)">${formatTokens(tokens)}</text>`;
   }).join("");
 
   // 没有外框，左缘裁到 MX，内容和 README 正文左对齐；宽度与 /api/cards/week.svg 一致。
   const width = LEGEND_RIGHT - MX, height = MY + MH + 28;
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${MX} 0 ${width} ${height}" width="${width}" height="${height}" font-family="${FONT}" role="img" aria-label="Token usage ${fmt(totals.totalTokens)}, cost ${usd(totals.apiEquivalentCostUSD)}; area of each cell equals the model's share of tokens">` +
-    "<style>:root{--bg:#ffffff;--fg:#1f2328;--mute:#656d76}@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--mute:#8b949e}}</style>" +
-    stat(0, "TOKEN", fmt(totals.totalTokens)) +
-    stat(1, "COST", usd(totals.apiEquivalentCostUSD)) +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${MX} 0 ${width} ${height}" width="${width}" height="${height}" font-family="${CARD_FONT}" role="img" aria-label="Token usage ${formatTokens(totals.totalTokens)}, cost ${usd(totals.apiEquivalentCostUSD)}; area of each cell equals the model's share of tokens">` +
+    cardStyle() +
+    cardStat(0, "TOKEN", formatTokens(totals.totalTokens)) +
+    cardStat(1, "COST", usd(totals.apiEquivalentCostUSD)) +
     // 存好的 coding 视图在下一次重建前还没有 modelCount，先画「—」，不拿前几名的个数顶替。
-    stat(2, "MODELS", typeof totals.modelCount === "number" ? totals.modelCount.toLocaleString("en-US") : "—") +
-    stat(3, "ACTIVE DAYS", totals.activeDays.toLocaleString("en-US")) +
-    `<text x="${MX}" y="108" font-family="${MONO}" font-size="10" letter-spacing="3" fill="var(--mute)">AREA = SHARE OF TOKENS</text>` +
+    cardStat(2, "MODELS", typeof totals.modelCount === "number" ? totals.modelCount.toLocaleString("en-US") : "—") +
+    cardStat(3, "ACTIVE DAYS", totals.activeDays.toLocaleString("en-US")) +
+    `<text x="${MX}" y="108" font-family="${CARD_MONO}" font-size="10" letter-spacing="3" fill="var(--mute)">AREA = SHARE OF TOKENS</text>` +
     `<clipPath id="map"><rect x="${MX}" y="${MY}" width="${MW}" height="${MH}"/></clipPath>` +
     `<g clip-path="url(#map)">${cells}</g>` +
     legend +
@@ -151,28 +177,17 @@ export function renderVoronoiCard(fit: Fitted, totals: VoronoiCardTotals): strin
 }
 
 // 请求端只从存好的布局出发做一次权重迭代（约几毫秒），从不做多种子搜索；要不要重排归定时任务。
-export async function voronoiCardResponse(): Promise<Response> {
-  try {
+export function voronoiCardResponse(): Promise<Response> {
+  return cardResponse("voronoi-card", async () => {
     const [state, usage] = await Promise.all([loadState(), getCodingUsage()]);
-    const cells = latestCells(usage);
-    const totals = usage.totals as NonNullable<CodingUsagePayload["totals"]>;
-    const svg = renderVoronoiCard(fitLayout(state.layout, cells), totals);
-    return new Response(svg, {
-      headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": WEEK_CARD_CACHE_CONTROL },
-    });
-  } catch (error) {
-    if (error instanceof AwaitingReport) console.warn("[voronoi-card]", error.message);
-    else console.error("[voronoi-card]", error instanceof Error ? (error.stack ?? error.message) : String(error));
-    return new Response("Voronoi card unavailable", {
-      status: 503,
-      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": VORONOI_CARD_FAILED_CACHE_CONTROL },
-    });
-  }
+    const { cells, totals } = latestCells(usage);
+    return renderVoronoiCard(fitLayout(state.layout, cells), totals);
+  });
 }
 
 export async function voronoiCardRound(now = Date.now()): Promise<void> {
   const [state, usage] = await Promise.all([loadState(), getCodingUsage()]);
-  const { state: next, changed, event } = relayoutRound(state, latestCells(usage), now);
+  const { state: next, changed, event } = relayoutRound(state, latestCells(usage).cells, now);
   if (changed) await stateKey.put(next);
   if (event.kind === "relayout" || event.kind === "kept" || event.kind === "adapted") console.info("[voronoi-card]", JSON.stringify(event));
 }
