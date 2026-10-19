@@ -75,7 +75,7 @@ python3 -I "$SCRATCH/check.py" "$(git rev-parse --show-toplevel)" > "$SCRATCH/ch
 
 然后对本次新出现、`repro: confirmed`、还没有 `pr` 的批次，按 `.claude/skills/lyjwpage-diagnose/SKILL.md` 修：
 
-1. 把复现命令变成一条先失败的回归测试，再改代码，测试转绿；跑改动波及处的本地门禁（根 `AGENTS.md`「项目入口与验证」）。
+1. 把复现命令变成一条先失败的回归测试，再改代码，测试转绿；提交后跑 `node scripts/revert-proof.ts --test <测试文件>`，`verdict` 须为 `proved`；跑改动波及处的本地门禁（根 `AGENTS.md`「项目入口与验证」）。
 2. 从 `origin/main` 开分支 `claude/superfan-<批次 id>`，开**草稿** PR，标题 `fix(<worker>): <一句话>`，正文写签名与次数、复现命令和输出原文、根因（证据或推断）、回归测试名。`ledger` 记 `pr`（PR 号）。订阅它的动态，CI 红按常规修到绿。
 3. 草稿不转正、不合并：lyjw 关掉 PR 就是否决；lyjw 说合，按 `HUMAN.md`「5. PR 与合并」的门槛走（改逻辑的等机器评审）。
 
