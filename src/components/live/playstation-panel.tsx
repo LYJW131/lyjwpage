@@ -28,14 +28,16 @@ export function PlaystationPanel({
   trophies,
   playing,
   playingNow,
+  initialJump = null,
 }: {
   anchorId: string;
   trophies: StatusResponse<TrophiesSummaryPayload>;
   playing: StatusResponse<PlaystationPlayingPayload>;
   playingNow: StatusResponse<PlaystationPresencePayload>;
+  initialJump?: TrophyJump | null;
 }) {
   const reduced = useReducedMotion();
-  const [jump, setJump] = useState<TrophyJump | null>(null);
+  const [jump, setJump] = useState<TrophyJump | null>(initialJump);
   const clearJump = useCallback(() => setJump(null), []);
   const presence = useStatus<PlaystationPresencePayload>(NOW_PLAYING_PATH, NOW_REFRESH_MS, {
     fallback: playingNow,

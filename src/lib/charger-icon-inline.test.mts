@@ -31,6 +31,7 @@ function site(result: string | null, calls: string[][]): SiteServices {
   return {
     status: () => Promise.reject(new Error("unused")),
     lyrics: () => Promise.resolve(null),
+    trophies: () => Promise.resolve(null),
     image: (url, px, fit) => {
       calls.push([url, String(px), fit]);
       return Promise.resolve(result);

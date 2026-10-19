@@ -58,6 +58,8 @@ import {
   type StatusViewKey,
 } from "@shared/status-views";
 import { siteContext, type SiteServices } from "@/server/site-context";
+import { trophiesTilePath } from "@/lib/paths";
+import type { StatusResponse, TrophiesPayload } from "@shared/types";
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
@@ -347,6 +349,19 @@ export class RenderedSite extends WorkerEntrypoint<Env> implements SiteCacheRpc 
             new Request(target, { headers: { Accept: "image/webp" } }),
           );
           return await dataUri(response, "image/webp");
+        } catch {
+          return null;
+        }
+      },
+      trophies: async (titleIds) => {
+        const path = trophiesTilePath(titleIds);
+        const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
+        try {
+          const response = isProduction(env)
+            ? await env.CORE_SERVICE.fetch(new Request(`https://site.internal${path}`, init))
+            : await fetch(`${backendOrigin(env)}${path}`, init);
+          if (!response.ok) return null;
+          return (await response.json()) as StatusResponse<TrophiesPayload>;
         } catch {
           return null;
         }

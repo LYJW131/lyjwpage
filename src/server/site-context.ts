@@ -8,6 +8,7 @@ export interface SiteServices {
   lyrics(songId: string): Promise<import("@shared/lyrics-ttml").LyricsResult | null>;
   image(url: string, px: number, fit: import("@/lib/image-proxy").ImageFit, quality?: number): Promise<string | null>;
   asset(src: string): Promise<string | null>;
+  trophies(titleIds: readonly string[]): Promise<import("@shared/types").StatusResponse<import("@shared/types").TrophiesPayload> | null>;
 }
 
 export const siteContext = createContext<SiteServices>();
