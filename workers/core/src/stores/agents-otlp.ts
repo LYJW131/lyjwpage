@@ -100,7 +100,11 @@ export async function recordPreparedAgentsOtlpUsage(prepared: PreparedAgentsOtlp
       const old = move.ids.includes(id) && (move.always || !own) ? fromLedgers[id] : undefined;
       if (old) moved.push(id);
       const inherited = own ? undefined : old;
-      if (inherited && move.carry) sessionCounts[id] = Math.max(sessionCounts[id] ?? 0, inherited.sessionCount ?? 0);
+      if (inherited && move.carry) {
+        sessionCounts[id] = Math.max(sessionCounts[id] ?? 0, inherited.sessionCount ?? 0);
+        // 旧来源已计到的 delta 水位一起接过来：切换那一刻 exporter 重发的旧窗口不能在新来源再记一次。
+        for (const [key, value] of Object.entries(fromCounters?.windows ?? {})) windows[key] ??= value;
+      }
       entry = { days: copyDays((own ?? inherited)?.days), previous: own, changed: Boolean(inherited), latestAt: null, latestModel: null };
       books.set(id, entry);
     }

@@ -282,6 +282,8 @@ test("the Mac's Devin OTLP moves to mac-otlp once with its days, sessions, activ
     assert.equal((await send("agents-otlp", otlpTokens(NOW + 2_000, 300), NOW + 2_000)).ok, true);
 
     assert.equal((await send("mac-otlp", devinTokens(NOW + 3_000, NOW + 4_000, { input: 5 }, "mac-1"), NOW + 4_000)).ok, true);
+    assert.equal((await send("mac-otlp", devinTokens(NOW - 1_000, NOW, { input: 500 }, "mac-1"), NOW + 4_500)).ok, true,
+      "the exporter resends a window the old source already counted");
     const mac = (await ledger("mac-otlp"))!;
     assert.equal(mac.days.reduce((sum, day) => sum + day.totalTokens, 0), 575);
     // 会话摘要不分 agent、搬不走：搬家前见过的会话在新来源再记一次，只多这一回。

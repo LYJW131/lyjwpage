@@ -132,7 +132,7 @@ Devin 的日行以前由 agents-reporter 从 tokens.ci 拉进 `agents` 来源。
 
 Mac 上 Devin CLI 的 OTLP 以前也记在 `agents-otlp`。第一封 `mac-otlp` 的 Devin 进来、`mac-otlp` 里还没有 `devin` 时，把 `agents-otlp`
 里它的日行、会话数、活动和 5 分钟桶整份接过来，在同一个事务里从 `agents-otlp` 删掉；只接这一次，之后 `agents-otlp` 里的 `devin`
-是云端环境里跑的（`src/stores/agents-otlp.ts#MOVES`）。会话摘要不分 agent、搬不走，搬家前见过的会话在 `mac-otlp` 会再记一次。
+是云端环境里跑的（`src/stores/agents-otlp.ts#MOVES`）。delta 水位 `windows` 一起接过来，切换时重发的旧窗口不再记一次；会话摘要不分 agent、搬不走，搬家前见过的会话在 `mac-otlp` 会再记一次。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
