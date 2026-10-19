@@ -483,6 +483,34 @@ export default { fetch(request, env) {
   const [codingExit] = await once(coding, 'exit');
   assert.equal(codingExit, 0, logs.join(''));
   console.log('PASS: coding usage, limits, history and invalid-envelope regression');
+
+  // Devin CLI 的导出形状（2026-10-20 本机抓包）：只发 delta，每个窗口只带这段的增量。
+  const nanos = at => `${BigInt(at) * 1_000_000n}`;
+  const devinWindow = (from, to, values) => JSON.stringify({ resourceMetrics: [{
+    resource: { attributes: [{ key: 'service.name', value: { stringValue: 'devin-local' } }] },
+    scopeMetrics: [{ scope: { name: 'ai.devin.local' }, metrics: [{ name: 'devin.token.usage', unit: 'tokens', sum: {
+      aggregationTemporality: 1, isMonotonic: true, dataPoints: Object.entries(values).map(([type, value]) => ({
+        attributes: [['session.id', 'verify-devin'], ['terminal.type', 'devin-cli'], ['type', type], ['model', 'swe-2-max']]
+          .map(([key, entry]) => ({ key, value: { stringValue: entry } })),
+        startTimeUnixNano: nanos(from), timeUnixNano: nanos(to), asInt: value,
+      })),
+    } }] }],
+  }] });
+  const devinAt = Date.now();
+  const firstWindow = devinWindow(devinAt - 2_000, devinAt - 1_000, { input: 10_787, output: 32, cacheRead: 10_176 });
+  for (const body of [firstWindow, firstWindow, devinWindow(devinAt - 500, devinAt, { input: 1_000, output: 8 })]) {
+    assert.equal((await otlp(body)).status, 200);
+  }
+  const devinUsage = await eventually(async () => {
+    const usage = (await (await fetch(`${worker}/api/status/coding`)).json()).data;
+    const row = usage.agents.find(agent => agent.id === 'devin');
+    assert.ok(row, 'Devin row appears');
+    return row;
+  });
+  assert.deepEqual(devinUsage.sources, ['agents-otlp']);
+  assert.equal(devinUsage.lastDay.totalTokens, 10_787 + 32 + 10_176 + 1_008, 'the resent window is counted once');
+  assert.equal(devinUsage.lastDay.costComplete, false);
+  console.log('PASS: Devin CLI delta windows land once in the coding view under agents-otlp');
   const concurrent = Array.from({ length: 8 }, (_, i) => post(worker, '/api/ingest/mac', {
     version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'],
     modules: i % 2 ? {} : { timezone: { identifier: 'Asia/Singapore', secondsFromGMT: 28800 } },
