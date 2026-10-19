@@ -51,7 +51,7 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
 // choice 是 workers/ai/src/chat/router.ts#CLEF_CHOICES 的键，prefetch 须是对应工具的合法输入，两者由 workers/ai 的测试核对。
 // show 是给模型的英文提示，点名这一题用哪种图示或卡片：示例是访客第一眼看到的能力展示，要让富渲染稳定出现。
 export type GodChatPresetCall =
-  | { name: "get_site_status"; input: { views: StatusViewKey[] } }
+  | { name: "get_site_status"; input: { views: StatusViewKey[]; query?: string } }
   | { name: "read_project_doc"; input: { doc: string } }
   | { name: "web_search"; input: { query: string; category: "web" | "news" | "papers" } };
 export type GodChatPreset = { text: string; choice: string; prefetch?: GodChatPresetCall[]; show?: string };
