@@ -61,6 +61,13 @@ Agent(
 
 修 bug 并补了回归测试的改动，验证员另做一次「撤回证明」：用 `git diff --name-only origin/main...HEAD` 列出改动，先确认 `git status` 干净，把 main 上已有的非测试文件临时换回 main（`git restore --source=origin/main --worktree -- <这些文件>`），跑新测试，它必须以断言失败报红，失败信息说的是那个 bug 的行为；编译或导入出错、被跳过都不算。再 `git restore --source=HEAD --staged --worktree :/ && git clean -f -- <这些文件>` 还原（逐个文件 restore 遇到修复删掉的文件会整条报错、一个都不还原，`clean` 删掉换回来的那些），跑同一测试须绿，`git status` 干净。这是「不改仓库文件」的唯一例外，只动工作区、不提交。红与绿两次的命令和输出末几行都写进证据；证明不了的（比如测试离不开新增的文件）写进「没验到」并说明原因，由主线程判断。
 
+提交前的两项自查，跟本地门禁一起跑（派验证员的写进简报，主线程自己跑的照样跑），只报命中、不判（Codex、Devin 最常抓的就是这两类，规则在根 `AGENTS.md`「文档与注释」）：
+
+- 同步自查：主线程列出这次改动里的规则关键词、符号、常量名，改说法的连旧说法一起列。在仓库根跑 `rg -n --hidden --glob '*.md' --glob '!.git' -e '<词 1>' -e '<词 2>' .`（整库的 md，`apps/`、子目录 README 都在内），列出仍写着旧说法、或该跟着改却没提的位置。动了仓库外配置（控制台、定时任务提示词、Access 策略）的，另查 `docs/ops-facts.md` 有没有对应条目和核对戳。
+- 新增注释：`git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.ts' '*.tsx' '*.mjs' | rg '^\+.*(//|/\*|^\+\s*\*)'`（比到工作区，已提交和没提交的都在；没跟踪的新文件先 `git add -N <文件>`），逐条列出，标出含数字、数量词或调用方名字的。
+
+主线程逐条判，过期的同一提交改掉。
+
 CI 的完整门禁是 `scripts/ci-checks.sh` 里的 `gates`。本地跑它要先设 `RUNNER_TEMP`（指到 scratchpad 里的目录），否则报 `RUNNER_TEMP: unbound variable`、一项门禁都没跑。
 
 ### 2. UI 浏览器端到端
