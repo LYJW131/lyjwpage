@@ -149,6 +149,12 @@ Devin CLI 的用量以前由 agents-reporter 拉 tokens.ci 的公开主页，现
 不配就不发。凭据用 Mac 那把 `lyjwpage-mac`（同一上报方共用一把，`[vars.ACCESS_CLIENTS]` 里它有
 `["ingest:mac", "ingest:mac-otlp"]`，用量记进 `mac-otlp`），值从 Hub 设置里的钥匙串取，配置文件权限保持 600。
 
+#### Devin CLI（云端）
+
+云端线程里由 Claude 调度的 Devin CLI 推到同一个入口，用云端那把 `lyjwpage-claude-cloud`，记进 `agents-otlp`，站点标 Cloud。
+`~/.config/devin/config.json` 只写端点、不写 headers；鉴权头由云端环境的 Network secret 在出口代理上加（配置见 [ops-facts](../../docs/ops-facts.md#claude-code-云端-routine)）。
+Claude Code 不把 `OTEL_*` 传给它运行的命令，`OTEL_EXPORTER_OTLP_PROTOCOL=http/json` 要由启动 Devin 的 wrapper 自己设。
+
 ## 部署通知
 
 `.github/workflows/purge-esa.yml` 在 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 都答出这次部署的 sha 之后，
