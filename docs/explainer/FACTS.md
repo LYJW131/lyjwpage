@@ -447,10 +447,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 不在这条发布链上（核过，片中不画）
 
-- `.github/workflows/deploy-pages.yml`：`docs/` 有改动时把它发到 GitHub Pages（架构图页），和站点无关。
+- `.github/workflows/deploy-pages.yml`：只在它自己改动或手动触发时，把 GitHub Pages 发成跳到 README 架构图的转址页，和站点无关。
 - `.github/workflows/preview-core-worker.yml`：PR 关闭时删掉那个分支的 core Worker Preview。
 - `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。
-- `.github/workflows/architecture-diagram.yml`：只在 PR 改到架构图时校验，和发布无关。
 
 ## 11 工作流：站是怎么被造出来的（第 08 章「一句话之后」）
 
