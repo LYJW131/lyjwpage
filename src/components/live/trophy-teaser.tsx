@@ -147,32 +147,34 @@ export function TrophyTeaser({
 
       {recent ? (
         <div className="min-w-0 border-t border-line pt-3 md:basis-full lg:ml-auto lg:max-w-64 lg:basis-auto lg:border-t-0 lg:pt-0 lg:text-right">
-          <button
-            type="button"
-            onClick={() => onRecentClick(recent)}
-            aria-label={`Open ${recent.titleName} trophies at “${recent.trophyName}”`}
-            className="-mx-2 block cursor-pointer rounded-md px-2 py-1 text-left transition-colors hover:bg-surface-hover lg:text-right"
-          >
-            <div className="label-mono text-muted-foreground">
-              Latest · {formatUnlock(recent.earnedAt)}
-            </div>
-            <div className="mt-1.5 flex items-center gap-2 lg:justify-end">
-              {recent.iconUrl ? (
-                <Image
-                  src={playstationImage(recent.iconUrl, RECENT_PX * PLAYSTATION_IMAGE_SCALE) ?? recent.iconUrl}
-                  alt=""
-                  width={RECENT_PX}
-                  height={RECENT_PX}
-                  unoptimized
-                  className="h-7 w-7 shrink-0 object-cover"
-                />
-              ) : null}
-              <div className="min-w-0 truncate text-sm">
-                {recent.trophyName}
-                <span className="text-muted-foreground"> · {recent.titleName}</span>
+          <div className="-mx-2">
+            <button
+              type="button"
+              onClick={() => onRecentClick(recent)}
+              aria-label={`Open ${recent.titleName} trophies at “${recent.trophyName}”`}
+              className="block w-full cursor-pointer rounded-md p-2 text-left transition-colors hover:bg-surface-hover lg:text-right"
+            >
+              <div className="label-mono text-muted-foreground">
+                Latest · {formatUnlock(recent.earnedAt)}
               </div>
-            </div>
-          </button>
+              <div className="mt-1.5 flex items-center gap-2 lg:justify-end">
+                {recent.iconUrl ? (
+                  <Image
+                    src={playstationImage(recent.iconUrl, RECENT_PX * PLAYSTATION_IMAGE_SCALE) ?? recent.iconUrl}
+                    alt=""
+                    width={RECENT_PX}
+                    height={RECENT_PX}
+                    unoptimized
+                    className="h-7 w-7 shrink-0 object-cover"
+                  />
+                ) : null}
+                <div className="min-w-0 truncate text-sm">
+                  {recent.trophyName}
+                  <span className="text-muted-foreground"> · {recent.titleName}</span>
+                </div>
+              </div>
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
