@@ -65,6 +65,11 @@
   - 是什么：给 agent 一份项目术语表，让它用你的词说话。
   - 取了什么：根目录放一份术语表，每条一句定义加出处，根 `AGENTS.md` 指过去。
   - 状态：采用。落在 [GLOSSARY.md](../GLOSSARY.md)。
+- **[Matt Pocock：单文件不超过 5,000 token](https://x.com/mattpocockuk/status/2111708560715292675)**（X 帖子）
+  - 是什么：提交前钩子拒绝超过 5,000 token（字节 / 4）的文件，只查 agent 写的文件，报错里写清怎么拆；回复里补充「模块不等于文件」，要保持深模块。
+  - 取了什么：按职责拆大文件、原路径留作入口；只在改动碰到时拆，切不出自然边界就不拆。
+  - 不借：硬门禁。整仓试拆一遍，约四分之一的拆分只为过线，可读性变差。
+  - 状态：部分采用。软规则落在根 [AGENTS.md](../AGENTS.md)「工作方式」。
 
 - **[seiso](https://github.com/scarletkc/seiso)**（scarletkc，含 [Seiso 规范](https://seiso.fog.moe/latest/convention)）
   - 是什么：给 AI 写、人和 agent 读的项目文档定的 Markdown 规范，配一个 Rust 写的 linter：每篇声明一种类型、一个事实一个出处、长期文档不写易变值、指针写到文件或符号、例外写理由。
@@ -111,7 +116,7 @@
 - **[Streamdown 的流式动画](https://streamdown.ai/docs/animation)**（Vercel）
   - 是什么：流式 Markdown 渲染里，rehype 插件把文字节点拆成一个个 span，只有新挂载的 span 播淡入。
   - 取了什么：拆 span 的思路、跳过 `pre` / `svg` / `math`、回复结束后摘掉插件回到纯文本。没装这个库；中日韩文字改为逐字切，淡入时长按 DESIGN.md 的动效区间取。
-  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/globals.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual.tsx` 的 `Ink`）。
+  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
 
 ## Cloudflare 平台
 
@@ -154,7 +159,7 @@
 - **[Exa](https://exa.ai/docs/reference/search) 的搜索、抓取 API**
   - 是什么：给 agent 用的网页搜索服务，返回按查询截好的摘录，`category` 可限定新闻、论文；`/contents` 抓整页。
   - 取了什么：首页对话的 `web_search` / `web_fetch` 从 Anthropic 服务端工具换成 Worker 执行的客户端工具，只用 `lite` 档（Exa 3.0 起与原 `fast` 同一套搜索、更便宜，`fast` 列为 legacy，见 [changelog](https://exa.ai/docs/changelog)）；结果用 Claude API 的 [search_result 块](https://platform.claude.com/docs/en/build-with-claude/search-results) 回给模型，保住原生引用。和 Parallel、Exa `auto` 档、原生搜索的对照实测记在 PR 描述里。
-  - 状态：采用。落在 `workers/ai/src/chat/web-search.ts` 与 `workers/ai/src/chat/handler.ts`。
+  - 状态：采用。落在 `workers/ai/src/chat/web-search.ts` 与 `workers/ai/src/chat/reply-tools.ts`。
 - **[Bangumi API](https://bangumi.github.io/api/) 与 Steam 商店的 `storesearch` / `appdetails` 接口**
   - 是什么：免 key 的动画条目搜索（评分、排名、标签）与 Steam 商店搜索、详情（价格、发售日、Metacritic）。
   - 取了什么：首页对话的 `anime_search`、`game_search`，结果同样回成 `search_result` 块。
@@ -195,7 +200,7 @@
 - **[Fixing Smooth Scrolling with Find-on-Page](https://css-tricks.com/fixing-smooth-scrolling-with-find-on-page/)**（Chris Coyier，CSS-Tricks）
   - 是什么：把 `scroll-behavior: smooth` 挂在 `html:focus-within` 上，只有页面内有焦点时才平滑，页内查找与加载时的锚点跳转保持瞬时。
   - 取了什么：README 卡片链到 `lyjw.me/#vibe-coding`，加载时的锚点跳转若是平滑动画，要靠渲染帧推进，会被首屏数据撑开的布局带偏，不出帧的内嵌浏览器里停在顶部；这个写法让加载即落准，点过按钮后的程序化滚动仍平滑。
-  - 状态：采用。落在 [globals.css](../src/app/globals.css) 的 `html:focus-within`。
+  - 状态：采用。落在 [theme.css](../src/app/styles/theme.css) 的 `html:focus-within`。
 
 ## 交互与文案参照
 
@@ -206,7 +211,7 @@
 - **[OpenUI](https://github.com/thesysdev/openui)**（Thesys）
   - 是什么：生成式 UI 框架。从组件库定义生成系统提示词，模型写紧凑的 OpenUI Lang，渲染器边流式边容错地画，出错时把结构化错误回给模型。
   - 取了什么：图示的上限与例子只写一处（`shared/god-chat.ts` 的 `GOD_CHAT_VISUAL_LIMITS`、`GOD_CHAT_VISUAL_EXAMPLES`），提示词按它生成每种组件的说明，校验 `checkGodChatVisual` 站点与 Worker 共用；Worker 在回复结束后用同一份校验记下画不出来的图示；结构图从 HTML 兜底改成原生 `diagram` 组件（分层方框加相邻层连线）。规范里「解析器丢掉不合格的部分、其余照画」也采用了：图示里过长的文字截断加省略号、多出的条目截尾、坏条目、坏序列与重复 id 的节点只丢那一项，剩下的撑不起一张图才退回代码（`shared/god-chat.ts` 的 `text`、`list`、`chart`）。
-  - 状态：部分采用。落在 [god-chat.ts](../shared/god-chat.ts)、[handler.ts](../workers/ai/src/chat/handler.ts)、[reply-fences.ts](../workers/ai/src/chat/reply-fences.ts) 与 [chat-visual.tsx](../src/components/chat-visual.tsx)。不装它的包：要为几种图示多教模型一门语言，省 token 的数据是用 GPT 分词器在大界面上测的；`lang-core` 安装时默认上报遥测。不借客户端 `Query` / `Mutation`（与根 [AGENTS.md](../AGENTS.md)「禁区」的站点侧不写后端相冲）、编辑模式与现成聊天界面（视觉方向与 [DESIGN.md](../DESIGN.md) 不同）。
+  - 状态：部分采用。落在 [god-chat.ts](../shared/god-chat.ts)、[prompts.ts](../workers/ai/src/chat/prompts.ts)、[reply-fences.ts](../workers/ai/src/chat/reply-fences.ts) 与 [chat-visual.tsx](../src/components/chat-visual.tsx)。不装它的包：要为几种图示多教模型一门语言，省 token 的数据是用 GPT 分词器在大界面上测的；`lang-core` 安装时默认上报遥测。不借客户端 `Query` / `Mutation`（与根 [AGENTS.md](../AGENTS.md)「禁区」的站点侧不写后端相冲）、编辑模式与现成聊天界面（视觉方向与 [DESIGN.md](../DESIGN.md) 不同）。
 - **Claude 界面的 thinking 提示**（lyjw 点名参照，没有文章）
   - 是什么：一道高光从左往右扫过的「思考中」标签。
   - 取了什么：对话等待时显示 `THINKING` 扫光，模型流出思考时可展开。
