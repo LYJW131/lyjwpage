@@ -106,6 +106,8 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - 分档：脚本按改动路径给 `tier`，只改文档与 skill（`docs`）、碰到界面（`ui`）、改逻辑（`logic`），默认的 `--need` 与 `--judge` 跟着档走。只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（lyjw 定的规矩），主线程判为小改动的逻辑 PR 加 `--no-judge`。有 UI / UX 变化的 PR 另要 lyjw 看过效果、点头才合（lyjw 明确要求的小改动除外，见根 `DESIGN.md`「交付与合并」）；`ready` 不含这一项，脚本只在 `notes` 里提示。
 - `todo` 每条写了缺什么、去哪做；照着办完再跑一次。评审线程的 `level`：红圈（🔴）与 P0 / P1 是 `blocking`，永不算可选；安全类（`security`）等 lyjw 拍板；`optional`、`pre-existing`、`info` 可以只回复理由。哪条要修、哪条回复说明不修，由主线程判断；`lastByLyjw` 为真且确实改了的，直接点解决。
 - Codex 每次推送自动审一轮，上限 3 轮；到上限或最近一轮没审成（`status: "failed"`，多半是额度用完）就不再等它。Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，它们的 `lastReviewed` 不是 head 不算缺；要判定的 PR 里两家一次都没审过时进 `todo`，等待带上限，超时在汇报里记没跑成。Cursor Bugbot 额度用完时当它不存在，不等它也不提（lyjw 定的规矩）；它真跑出来的意见照常处理。
+- 修一条评审发现前，先给它起个类别名，用 `rg` 在 PR 改到的文件里搜同类，一次修完、放进同一次推送；回复那条线程时写上类别名和其他实例改在哪。Codex 每次推送算一轮，漏修的同类会再花一轮。
+- 评审收敛：任何一家机器评审到第三轮，还在这次改动的代码里报新的阻塞问题，就停止逐条打补丁，重看实现方法，在线程里用一句话告诉 lyjw 方法换不换、为什么。方向不对就关掉或改做（见 `HUMAN.md`「探索与换方向」）。
 
 ### 3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有
 
@@ -162,3 +164,4 @@ Agent(
 - 有 FAIL：自己分析根因、修，再派一次验证员复测。
 - 全 PASS：按项目规矩汇报。UI 截图：云端会话里 lyjw 看不到开发服务器，每一轮都把截图发到讨论串（`attached_outputs` 附 `/mnt/project-files/...`，lyjw 定的规矩）；lyjw 在看开发服务器时按 AGENTS.md，只在首次交付附图。合并后汇报写明线上 `/api/version` 的 sha 和生产实测结果。
 - 汇报只写实际验到的，「没验到」那一栏原样告诉 lyjw。
+- 要 lyjw 点头的汇报（UI 效果、大方向、基线例外）附一行「这些检查测不到什么」，例如只测了暗色、没测 WebKit 的滚动、没测真实推送。说不出来就是还没验够，先补验再找 lyjw。
