@@ -4,6 +4,8 @@
 // scripts/ui-copy-baseline.json 逐条比，出现基线外的文本（或同文本
 // 出现次数变多）就失败——同文件删一条加一条不能互相抵消。
 // 注释、import 路径、正则字面量不进 AST 的字符串节点，天然不算。
+// 按语言分的文案表（同一个对象字面量里有 `en`，又有 `zh` 或 `ja`）是跟随访客语言的
+// 例外：`en` 那份照查，`zh` / `ja` 那份整棵跳过。
 // 例外（仅开发可见的调试提示、按约定写中文的展示内容、数据源原文）跑
 // `pnpm ui:copy --update` 记进基线，并在 PR 里说明。
 import { execFileSync } from "node:child_process";
@@ -27,6 +29,8 @@ export type CopyBaseline = Record<string, string[]>;
 type Grew = { file: string; extras: { text: string; extra: number; lines: number[] }[] };
 type Shrank = { file: string; missing: { text: string; extra: number }[] };
 
+const LOCALE_KEYS = new Set(["zh", "ja"]);
+
 const loadTs = (root: string) => createRequire(path.join(root, "package.json"))("typescript") as typeof TS;
 
 export function scanText(ts: typeof TS, file: string, text: string): CopyHit[] {
@@ -37,7 +41,18 @@ export function scanText(ts: typeof TS, file: string, text: string): CopyHit[] {
     const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
     hits.push({ line: line + 1, text: raw.replace(/\s+/g, " ").trim() });
   };
+  const propertyKey = (prop: TS.ObjectLiteralElementLike) =>
+    ts.isPropertyAssignment(prop) && (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)) ? prop.name.text : undefined;
   const visit = (node: TS.Node): void => {
+    if (ts.isObjectLiteralExpression(node)) {
+      const keys = node.properties.map(propertyKey);
+      if (keys.includes("en") && keys.some((key) => key !== undefined && LOCALE_KEYS.has(key))) {
+        node.properties.forEach((prop, index) => {
+          if (!LOCALE_KEYS.has(keys[index] ?? "")) visit(prop);
+        });
+        return;
+      }
+    }
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) add(node, node.text);
     else if (ts.isTemplateExpression(node)) {
       add(node.head, node.head.text);
