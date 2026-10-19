@@ -62,9 +62,9 @@ function Stat({ label, value, title, prefix }: { label: string; value?: number |
   );
 }
 
-const vitalRows: { label: string; key: Exclude<keyof LighthouseVitals, "score">; unit: "s" | "ms" | ""; title: string }[] = [
+const vitalRows: { label: string; key: Exclude<keyof LighthouseVitals, "score">; unit: "s" | "ms" | ""; title: string; labTitle?: string; fieldTitle?: string }[] = [
   { label: "LCP", key: "lcpMs", unit: "s", title: "Largest Contentful Paint" },
-  { label: "TBT/INP", key: "tbtMs", unit: "ms", title: "Total Blocking Time for lab runs; Interaction to Next Paint for real users" },
+  { label: "RESP", key: "tbtMs", unit: "ms", title: "Responsiveness: Total Blocking Time in lab runs, Interaction to Next Paint for real users", labTitle: "Total Blocking Time · Lighthouse lab run", fieldTitle: "Interaction to Next Paint · p75 of real visitors" },
   { label: "CLS", key: "cls", unit: "", title: "Cumulative Layout Shift" },
   { label: "FCP", key: "fcpMs", unit: "s", title: "First Contentful Paint" },
   { label: "TTFB", key: "ttfbMs", unit: "ms", title: "Time to First Byte: server response of the root document" },
@@ -191,14 +191,14 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
         <div className="px-4 pt-3 pb-2 lg:px-5">
           <div className="grid grid-cols-[48px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-2xs text-muted-foreground lg:grid-cols-[88px_repeat(6,minmax(0,1fr))]">
             <span />
-            <span title={`Lighthouse performance score, lab run on a simulated device${pagespeed ? `\nPageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "\nUnavailable" : ""}`}>PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label.replaceAll("/", "/\u200b")}</span>)}
+            <span title={`Lighthouse performance score, lab run on a simulated device${pagespeed ? `\nPageSpeed Insights on ${pagespeed.url}\nMedian of ${pagespeed.samples} runs · ${time.format(pagespeed.start)} — ${time.format(pagespeed.fetchedAt)} · UTC+8` : pagespeedStale ? "\nUnavailable" : ""}`}>PERF</span>{vitalRows.map(row => <span key={row.key} title={row.title}>{row.label}</span>)}
           </div>
           {(["desktop", "mobile"] as const).map(device => {
             const score = pagespeed?.[device].score;
             return <div key={device} className="grid h-11 grid-cols-[48px_repeat(6,minmax(0,1fr))] items-center gap-1 text-right text-2xs tabular-nums lg:grid-cols-[88px_repeat(6,minmax(0,1fr))] lg:text-xs">
               <span className="text-left text-2xs text-muted-foreground">{device === "desktop" ? "Desktop" : "Mobile"}</span>
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}>{score ?? "—"}</span>
-              {vitalRows.map(row => <span key={row.key}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
+              {vitalRows.map(row => <span key={row.key} title={row.labTitle}>{vital(pagespeed?.[device][row.key], row.unit)}</span>)}
             </div>;
           })}
           {health?.vitals && (() => {
@@ -209,7 +209,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
               <span className="text-left text-2xs text-muted-foreground">Users</span>
               <span className={cn("text-xl font-medium lg:text-2xl", scoreTone(score))}
                 title="Web Vitals score of real visitors: LCP 30%, INP 30%, CLS 15%, FCP 15%, TTFB 10%, from 7-day p75">{score ?? "—"}</span>
-              {vitalRows.map(row => <span key={row.key}>{vital(field[row.key], row.unit)}</span>)}
+              {vitalRows.map(row => <span key={row.key} title={row.fieldTitle}>{vital(field[row.key], row.unit)}</span>)}
             </div>;
           })()}
         </div>
