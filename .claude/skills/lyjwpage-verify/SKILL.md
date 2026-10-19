@@ -11,8 +11,8 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 
 ## 什么时候派验证员，什么时候自己跑
 
-- 派：多步检查（typecheck + 测试 + eslint + build）、任何浏览器端到端或截图、等部署并核对生产、合并前汇总所有机器评审。
-- 自己跑：只有一条命令且输出很短（一次 `curl /api/version`、一个单测文件）。写简报比自己跑还贵。
+- 派：多步检查（typecheck + 测试 + eslint + build）、任何浏览器端到端或截图、等部署并核对生产。
+- 自己跑：只有一条命令且输出很短（一次 `curl /api/version`、一个单测文件），以及合并门槛汇总（`scripts/pr-gate.ts`，见第 3 节）。写简报比自己跑还贵。
 - 验证员不做判断类工作：不判断机器评审意见值不值得改，不分析失败根因，不决定合并或重跑构建。
 
 ## 等待要有上限
@@ -80,31 +80,31 @@ CI 的完整门禁是 `scripts/ci-checks.sh` 里的 `gates`。本地跑它要先
 node scripts/site-verify.ts doctor --url http://localhost:3211        # 先体检：站点可达、playwright、Chrome、夹具开关
 node scripts/site-verify.ts cards --url http://localhost:3211         # 逐卡检查存在与可见 + 控制台错误
 node scripts/site-verify.ts shot --url http://localhost:3211 --widths 1280,375 --out /tmp/shots  # 两宽度整页截图
+node scripts/site-verify.ts shot --url http://localhost:3211 --widths 375 --engine webkit --out /tmp/shots  # iPhone 引擎再截一张
 node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --theme both --out /tmp/shots  # 单卡明暗 clip
 ```
 
 - 起服务：`pnpm dev`（3211，连生产 Worker）。要注入此刻没发生的状态：`pnpm dev:worker` + `pnpm dev:local`，再 `node scripts/site-verify.ts override --endpoint <端点> --fixture <夹具> --dry-run`，确认命令后去掉 `--dry-run` 执行（夹具名从 feature-map.json 的 `endpoints` 里挑；收尾 `--clear` / `--off`）。云端会话由 SessionStart 钩子生成 `.dev.vars`，无 Cloudflare 凭据也能起本地 Worker 栈。
 - 首屏（SSR）要渲染指定数据：`pnpm dev:local` 的 SSR 与浏览器读同一个本地 Worker，注入同时管两边，不用再起 node 代理。截图、前后对比、要多张卡互相对得上（摘要数字与 Pulse 表盘、明暗两张）时用场景一次注入整份快照：`pnpm dev:scene <场景>`（写法与 `--capture`、`--age` 见 `workers/core/README.md`「本地开发」）。前后对比先 `--capture` 一次，修复前后的本地构建各注入同一场景，不拿漂着的生产数据当基线。只改浏览器请求用 Playwright `context.route`；只看 SSR 长什么样用 `shot --ssr`，看文字用 `curl -sS <url>`。
-- 宽度：至少 1280 桌面与 375 手机；改到布局行数或网格时加 iPad（`--widths 1280,820,1024,375`）；有深色样式的改动加 `--theme dark`（或 `both`）。
+- 宽度：至少 1280 桌面与 375 手机，375 另用 `--engine webkit` 截一张（iPhone 的引擎；只在 WebKit 上出的显示问题 Chromium 截不到）；改到布局行数或网格时加 iPad（`--widths 1280,820,1024,375`）；有深色样式的改动加 `--theme dark`（或 `both`）。
 - 控制台里 `WebSocket connection to 'wss://…/ws…' failed … 426` 是容器代理造成的环境噪声，脚本单列为 `envNoise`，不算站点错误。页面常开 WebSocket、在轮询，没有 networkidle：脚本按 `--settle` 毫秒等待（默认 4000），别自己写 networkidle。
 - 脚本量不到的量化预期才自己补 `page.evaluate`：改到同一排里的卡片或替换卡片里的部件时，量改动前后同排各卡的高度、改动处与相邻同类文字的 `font-size` / `font-weight`，在报告里给出前后数值；lyjw 一眼就能看出差几像素。量间距、字号、点击区还有 `node .claude/skills/lyjwpage-ui-design/ui-audit.mjs`。
 - 首屏跳动用 `reload`：先加载一次暖缓存再刷新，报三样东西——首帧时还没加载完的字体（`fontsAfterPaint`）、首帧后只变了一两次的文字（`textJumps`，带 before → after）、录屏里只变了一两次的画面（`frameJumps`，带前后帧文件）。浏览器时钟默认拨快 2 分钟（`--skew`），模拟 lyjw 刷到的是缓存过几分钟的首屏 HTML；只开一次页面、不刷新、时钟和服务端一致时，这类跳动根本不出现。
   ```bash
   node scripts/site-verify.ts reload --url http://localhost:3300 --out /tmp/reload                  # Chromium：录屏 + 文字 + 字体
-  PLAYWRIGHT_BROWSERS_PATH=<装了 WebKit 的目录> node scripts/site-verify.ts reload --engine webkit --url http://localhost:3300 --out /tmp/reload-wk
+  node scripts/site-verify.ts reload --engine webkit --url http://localhost:3300 --out /tmp/reload-wk
   ```
 - 什么时候必须跑 `reload`：改到首页首屏、字体或 `@font-face`、缓存头、SSR 或水合、任何按时间算出来的文字（时钟、相对时间、进度）。跑在**生产构建**上（`pnpm build` 后 `DEV_SITE_PORT=<端口> pnpm start`）或 Workers 预览 / 生产地址；`pnpm dev` 的字体、模块加载和缓存头都和线上不同，开发服务器上没跳不算数。要比修复前后，就把修复前的构建也起在另一个端口一起跑。
 - `reload` 的每一条 `textJumps` / `frameJumps` 都要在报告里归类，不能只报 ok 与否：时间类文字（时钟、几分钟前、进度）在水合时跳到此刻是缺陷；轮询或推送带来的新数值（计数、费用）是数据刷新；正在播放卡的进度和歌词在水合时从快照跳到此刻是 lyjw 接受过的行为（项目记忆 now-playing-first-screen-decisions）。`liveText` / `liveRegions` 是反复变化的地方，只列不判。`fontsAfterPaint` 只在 Chromium 上可靠：它按 `--latency` 给走网络的请求加往返延迟，每次都要重新验证的字体会晚到，WebKit 没有这个开关。
-- 云端没有真 Safari：Playwright 的 WebKit 能装在 scratchpad 里（`PLAYWRIGHT_BROWSERS_PATH=<目录> npx playwright install webkit`，版本跟 `doctor` 报的 playwright 一致），`reload --engine webkit` 查文字与字体、不录屏。只有真机才有的行为（地址栏、触控、系统字体），写进「没验到」，请 lyjw 实机看。
+- 云端没有真 Safari，用 Playwright 的 WebKit 代替：`shot --engine webkit` 截图，`reload --engine webkit` 查文字与字体、不录屏。WebKit 没装时这几个子命令的 `next` 写安装命令（`playwright install --with-deps webkit`，云端约 30 秒）。只有真机才有的行为（地址栏、触控、系统字体），写进「没验到」，请 lyjw 实机看。
 - 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` / `dev:scene` 注入由主线程起、主线程管（`pnpm dev:scene --reset` 一次清完），保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
 
-### 3. PR 合并门槛（验证员汇总，主线程判断）
+### 3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）
 
-- 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（lyjw 定的规矩）。有 UI / UX 变化的 PR 另要 lyjw 看过效果、点头才合（lyjw 明确要求的小改动除外，见根 `DESIGN.md`「交付与合并」）。下面的汇总只用于要等评审的 PR。
-- 当前 head 提交上的所有 check run 结论（含 `Workers Builds: site` 等），以及哪些还在跑。
-- 读全 `get_reviews`、`get_review_comments`、`get_comments`（GitHub MCP 工具，没加载就用 ToolSearch 加载；仓库 `LYJW131/lyjwpage`）。逐条列出每个机器评审（Claude review、Devin、Codex、Cursor Bugbot、CodeQL）的意见：所在文件行、严重度标记、讨论是否已解决、最后一条是不是我们的回复、它评审的是哪个提交。
-- Codex 已跑了几轮（每次推送自动算一轮，上限 3 轮）。Cursor Bugbot 额度用完时当它不存在，不等它也不提（lyjw 定的规矩）；它真跑出来的意见照常列。
-- 验证员只列清单；哪条要修、哪条回复说明不修，由主线程决定。
+- 合并前、每次被 PR 事件叫醒，主线程先 `git fetch origin main`，再跑 `NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr <号>`，不派验证员汇总、不分页翻评论。它只读，输出一份 JSON，`ready` 为真时退出 0，字段与选项见 `--help`。读的是：冲突与草稿；head 上每项检查与 commit status（同名只认最新），哪些还在跑；CI 的 `check` 出没出现；按 PR 改动与分支 Preview 的监视路径算出该有的 `Workers Builds:` 检查（结论要是 success）；没解决的行内评审线程（发起人、严重度、最后一条是不是 lyjw 的账号回的、链接）；各机器评审最后审的提交与 Codex 已用轮数；`verify-receipt.ts check` 的回执与判定；有没有 `baseline-exception` 标签。读不到 GitHub 时退出 1，`error` 写原因。
+- 分档：脚本按改动路径给 `tier`，只改文档与 skill（`docs`）、碰到界面（`ui`）、改逻辑（`logic`），默认的 `--need` 与 `--judge` 跟着档走。只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（lyjw 定的规矩），主线程判为小改动的逻辑 PR 加 `--no-judge`。有 UI / UX 变化的 PR 另要 lyjw 看过效果、点头才合（lyjw 明确要求的小改动除外，见根 `DESIGN.md`「交付与合并」）；`ready` 不含这一项，脚本只在 `notes` 里提示。
+- `todo` 每条写了缺什么、去哪做；照着办完再跑一次。评审线程的 `level`：红圈（🔴）与 P0 / P1 是 `blocking`，永不算可选；安全类（`security`）等 lyjw 拍板；`optional`、`pre-existing`、`info` 可以只回复理由。哪条要修、哪条回复说明不修，由主线程判断；`lastByLyjw` 为真且确实改了的，直接点解决。
+- Codex 每次推送自动审一轮，上限 3 轮；到上限或最近一轮没审成（`status: "failed"`，多半是额度用完）就不再等它。Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，它们的 `lastReviewed` 不是 head 不算缺；要判定的 PR 里两家一次都没审过时进 `todo`，等待带上限，超时在汇报里记没跑成。Cursor Bugbot 额度用完时当它不存在，不等它也不提（lyjw 定的规矩）；它真跑出来的意见照常处理。
 
 ### 3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有
 
@@ -129,7 +129,7 @@ Agent(
 ### 4. 合并后部署与生产核对
 
 - 合并没碰到 site 的监视路径时（`docs/workers-builds.md`「构建监视路径」），`/api/version` 本来就不会变；下面的脚本没看到 site 的构建检查就不等版本，只核对碰到的那几个 Worker 的构建。
-- 构建与版本等待交给共用脚本，不手写轮询：跑 `NODE_USE_ENV_PROXY=1 node scripts/deploy-check.ts --sha <合并提交完整 sha> --expect <这次碰到监视路径的 Worker，如 site,core>`（`--help` 看选项）。`--expect` 由主线程按生产的监视路径表定好写进简报（不照 PR 上出现过的构建检查：core 的分支预览路径更宽，PR 上有 core 构建不代表合进 main 会重建 core），列出的 Worker 没有成功构建就不通过。它等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 重跑过只认最新那条）；有 site 的构建就再等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 跟上这个提交，被之后的提交覆盖也算通过（`superseded`）。输出 JSON，`pass` 为假时 `next` 写下一步。
+- 构建与版本等待交给共用脚本，不手写轮询：跑 `NODE_USE_ENV_PROXY=1 node scripts/deploy-check.ts --sha <合并提交完整 sha> --expect auto`（`--help` 看选项）。`auto` 按合并提交与第一个父提交的差异套生产的监视路径（`scripts/build-watch-paths.ts#BUILD_WATCH_PATHS`）算出要等的 Worker，输出的 `expected` 就是算出的结果；不照 PR 上出现过的构建检查定（core 的分支预览路径更宽，PR 上有 core 构建不代表合进 main 会重建 core）。手写 `--expect site,core` 仍可用。列出或算出的 Worker 没有成功构建就不通过。它等合并提交上的 `Workers Builds: *` 检查跑完（同一 Worker 重跑过只认最新那条）；有 site 的构建就再等 `lyjw.me` 与 `lyjw131.com` 的 `/api/version` 跟上这个提交，被之后的提交覆盖也算通过（`superseded`）。输出 JSON，`pass` 为假时 `next` 写下一步。
   - 构建失败或超时、版本停在更旧的提交：FAIL，原样报告 `next`。是否重跑 main 的构建由主线程按下一条决定（从不手跑 `wrangler deploy`）。
 - main 上的构建失败时，主线程先读构建日志（Cloudflare Builds API 的 `/builds/builds/<build_uuid>/logs`）。是平台临时错误（部署步 Cloudflare 内部错误、代码与 typecheck 都过了）就直接用 Builds API 对同一 trigger 带 `commit_hash` 重跑，不用问 lyjw，跑完核对结论并在汇报里提一句；main 头已有更新的同 Worker 提交时重跑 main 头，免得回滚。代码或配置导致的失败照常先修。
 - 碰到 site 的合并，合并前先存一份生产首页：`curl -s https://lyjw.me/ > <scratchpad>/old-home.html`；部署核对通过后跑 `node scripts/site-verify.ts skew --url https://lyjw.me --old-html <scratchpad>/old-home.html`，WebKit 再加 `--engine webkit` 跑一遍。它模拟 Safari 恢复后台标签时按缓存取回的旧 HTML：旧 HTML 引用的 `/assets/*` 要全部从 R2 存档取到、只加载 1 次、有样式、已水合。`ok` 为假时照 `next` 报 FAIL；文件取不到先看这次 site 构建日志里的 `[asset-archive]` 行。

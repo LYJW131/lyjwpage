@@ -19,6 +19,8 @@ Rule for every PR in scope:
 - Bot findings are claims to judge, not orders (lyjw: "它说的不一定是完全必要的 你得自己判断"). Trace a real path to the failure and weigh the fix's cost. Fix only what is worth it, and reply with the reason on the rest.
 - Codex budget is tight (lyjw: "最多跑三轮 再多就不管了"). Allow at most 3 Codex rounds per PR. Codex also reviews automatically on every new push (trigger "New commits"; seen on PR #211, 2026-10-13), so each push spends a round. Batch fixes into one push, and don't add "@codex review" on top. After round 3, stop waiting for it and ignore later automatic runs, and note the last commit Codex reviewed.
 
+**One command (#437):** `NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr N [--no-judge]` reads every machine-checkable gate as JSON (required `check` present, failing/pending checks, expected Workers Builds = success, unresolved threads, Codex rounds, Claude review + Devin reviewed once when judging, receipt). Run it on every PR wake instead of paging comments; `ready` excludes lyjw's UI OK.
+
 **Why:** lyjw wants bot review feedback treated as a merge gate, not just CI checks.
 
 **How to apply:** the daily routine's step 9 encodes this ([[lyjwpage-daily-review-routine]]). Apply the same gate in any other thread that drives a PR to merge.

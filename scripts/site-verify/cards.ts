@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { launchBrowser, locate, locateHandle, openPage, PLAYWRIGHT_NEXT, resolvePlaywright, scrollSweep, HIDE_DEV_UI, type CardSpec, type PwBrowser } from "./browser.ts";
+import { launchBrowser, launchEngine, locate, locateHandle, openPage, PLAYWRIGHT_NEXT, WEBKIT_NEXT, resolvePlaywright, scrollSweep, HIDE_DEV_UI, type CardSpec, type PwBrowser } from "./browser.ts";
 import { errorText, fail, parseWidths, print, ROOT, stringFlag, WORKER_URL, type Box, type Flags, type Viewport } from "./cli.ts";
 import { consoleClean, consoleProblems, newSink, type Sink } from "./console-sink.ts";
 
@@ -142,13 +142,18 @@ export async function cmdShot(flags: Flags) {
   fs.mkdirSync(out, { recursive: true });
 
   const pw = await resolvePlaywright() ?? fail("解不到 playwright / playwright-core", PLAYWRIGHT_NEXT);
+  const engine = flags.engine === "webkit" ? "webkit" : "chromium";
+  if (engine === "webkit") {
+    const probe = await launchEngine(pw.api, flags).catch((error: unknown) => fail(`起不来 webkit：${errorText(error).slice(0, 200)}`, WEBKIT_NEXT));
+    await probe.browser.close();
+  }
   const shots: ({ file: string | null; card: string | null; theme: string; error?: string; console: Sink } & Viewport)[] = [];
   let failed = false;
   for (const theme of themes) {
     for (const viewport of viewports) {
       const sink = newSink();
       const runFlags: Flags = { ...flags, theme };
-      const name = `${card ?? "page"}-${viewport.width}x${viewport.height}-${theme}${runFlags.ssr ? "-ssr" : ""}.png`;
+      const name = `${card ?? "page"}-${viewport.width}x${viewport.height}-${theme}${engine === "webkit" ? "-webkit" : ""}${runFlags.ssr ? "-ssr" : ""}.png`;
       const file = path.join(out, name);
       // 先删同名旧图：这次失败时目录里不留上一轮产物冒充本轮证据。
       fs.rmSync(file, { force: true });
@@ -197,6 +202,6 @@ export async function cmdShot(flags: Flags) {
         .filter((s) => !s.file || !consoleClean(s.console))
         .map((s) => `${s.card ?? "page"}-${s.width}x${s.height}-${s.theme}：${s.error ?? `控制台不干净（${consoleProblems(s.console)}）`}`)
         .join("；");
-  print({ ok, ...(next ? { next } : {}), out: path.resolve(out), shots }, flags);
+  print({ ok, ...(next ? { next } : {}), engine, out: path.resolve(out), shots }, flags);
   if (!ok) process.exitCode = 1;
 }
