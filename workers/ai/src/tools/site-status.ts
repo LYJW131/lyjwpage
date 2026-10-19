@@ -7,7 +7,7 @@ import type { SiteTool, ToolLedger } from "./registry";
 export type ReadStatus = (path: string) => Promise<Response>;
 
 const VIEW_NOTES = {
-  desktop: "Foreground app on LYJW's Mac right now (app name, window title if public)",
+  desktop: "Foreground app on LYJW's Mac right now (app name, window title if public); loginwindow means the Mac is locked, so LYJW is away from it",
   timezone: "LYJW's current timezone (where LYJW physically is)",
   activity: "Apple Watch activity rings today (move, exercise, stand)",
   workouts: "Recent workouts: type, start time, duration, distance, active energy",
@@ -17,7 +17,7 @@ const VIEW_NOTES = {
   listening: "Recently played Apple Music tracks",
   nowListening: "Song playing right now: reported by the Mac or HomePod (music), or inferred on another device from Apple Music play history (elsewhere); idle only covers the Mac and HomePod",
   coding: "AI coding token totals and API-equivalent cost since tracking began, top models and per-agent totals; no per-day numbers (those are in codingYear)",
-  codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently",
+  codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; agents-otlp = Claude Code in the cloud; agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only mac activity with an unlocked desktop suggests LYJW is at the computer",
   codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums (large)",
   limits: "Coding agent account plans and rate-limit windows",
   agentStatus: "Status pages of AI providers (operational / incidents)",
