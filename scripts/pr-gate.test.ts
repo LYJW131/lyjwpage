@@ -288,12 +288,17 @@ test("规则漂移：分支起点以来 main 改了规则文件时进 notes 不�
   const routes = pullRoutes({
     "pulls/7": { number: 7, title: "t", state: "open", draft: false, mergeable: true, head: { sha: HEAD }, base: { ref: "main" }, labels: [] },
     "pulls/7/commits": [{ sha: HEAD, parents: [{ sha: START }] }],
-    [`compare/${START}...main`]: { files: FILES(["AGENTS.md", "src/lib/x.ts", ".claude/skills/lyjwpage-verify/SKILL.md", "workers/ai/AGENTS.md"]) },
+    [`compare/${START}...main`]: {
+      files: [...FILES(["AGENTS.md", "src/lib/x.ts", ".claude/skills/lyjwpage-verify/SKILL.md"]), { filename: "docs/x.md", previous_filename: "workers/ai/AGENTS.md" }],
+    },
   });
   const drifted = await gate({ pr: 7 }, { fetch: fakeFetch(routes), patchId: () => null });
   assert.deepEqual(drifted.ruleDrift.files, ["AGENTS.md", ".claude/skills/lyjwpage-verify/SKILL.md", "workers/ai/AGENTS.md"]);
   assert.equal(drifted.ready, true);
   assert.match(drifted.notes.join("\n"), /main 上改了规则文件/);
+
+  const many = pullRoutes({ ...routes, [`compare/${START}...main`]: { files: FILES(Array.from({ length: 300 }, (_, i) => `src/${i}.ts`)) } });
+  assert.match((await gate({ pr: 7 }, { fetch: fakeFetch(many), patchId: () => null })).ruleDrift.error ?? "", /列表可能不全/);
 
   const unknown = await gate({ pr: 7 }, { fetch: fakeFetch(pullRoutes()), patchId: () => null });
   assert.deepEqual([unknown.ruleDrift.files, unknown.ruleDrift.error, unknown.ready], [[], "读不到分支起点", true]);
