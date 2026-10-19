@@ -22,8 +22,9 @@ Under the wrapper's --sandbox Devin still shows an approval menu before its edit
 tools run. Those tools run in the CLI process, outside the sandbox, so the menu is the only
 boundary for them. Runs started under the wrapper record auto_approve, and `wait` then
 approves a menu once (never "always") only when the path it names resolves inside the
-worktree or the repo's git common dir (minus hooks/ and config); any other menu, including
-one whose path cannot be read, makes `wait` return 4 for the orchestrator to `deny`.
+worktree or the repo's git common dir (minus hooks/ and config) and the menu's "allow edits
+in" directory is that file's directory; any other menu, including one whose path cannot be
+read or wraps onto a second line, makes `wait` return 4 for the orchestrator to `deny`.
 
 Run state lives in $DV_RUNS (default ~/.claude/devin-dispatch/runs)/NAME/:
 meta.json, export.json (Devin's --export, rewritten after every turn), exit.code.
@@ -174,16 +175,23 @@ def state(meta):
     return 'attention', lines  # a question, approval prompt, menu or error
 
 
+def wrapped_path(lines, i):
+    # A long path wraps onto an indented line; only the first part would match WRITE_TOOL.
+    nxt = lines[i + 1] if i + 1 < len(lines) else ''
+    s = nxt.strip()
+    return bool(s) and nxt[:1].isspace() and not ('\u2500' <= s[0] <= '\u257f' or s[0] in '❭⎿')
+
+
 def menu_paths(lines):
     idx = max((i for i, l in enumerate(lines) if APPROVAL in l), default=None)
     if idx is None:
         return None
-    target = next((m.group(1) for l in reversed(lines[:idx])
-                   if (m := WRITE_TOOL.match(l))), None)
-    if target is None:
+    hit = next(((i, m.group(1)) for i in range(idx - 1, -1, -1)
+                if (m := WRITE_TOOL.match(lines[i]))), None)
+    if hit is None or wrapped_path(lines, hit[0]):
         return None
-    dirs = [m.group(1) for l in lines[idx:] if (m := ALLOW_DIR.search(l))]
-    return [target, *dirs]
+    allow = next((m.group(1) for l in lines[idx:] if (m := ALLOW_DIR.search(l))), None)
+    return hit[1], allow
 
 
 def resolve(path, cwd):
@@ -215,11 +223,15 @@ def in_scope(path, cwd, common):
 def menu_verdict(lines, cwd, common):
     paths = menu_paths(lines)
     if not paths:
-        return False, 'no Writing/Editing path above the menu'
-    bad = [p for p in paths if not in_scope(p, cwd, common)]
-    if bad:
-        return False, f'outside the worktree: {bad[0]}'
-    return True, paths[0]
+        return False, 'no single-line Writing/Editing path above the menu'
+    target, allow = paths
+    if not in_scope(target, cwd, common):
+        return False, f'outside the worktree: {target}'
+    # The real menu offers the target's own directory; a wrapped or cut target fails this.
+    t, a = resolve(target, cwd), allow and resolve(allow, cwd)
+    if not a or a != os.path.dirname(t):
+        return False, f'"allow edits in" {allow!r} is not the directory of {target}'
+    return True, target
 
 
 def git_common_dir(cwd):
@@ -253,7 +265,7 @@ def cmd_start(a):
     if a.nice:
         devin = ['nice', '-n', str(a.nice)] + devin
     cmd = f'{shlex.join(devin)}; echo $? > {shlex.quote(str(d / "exit.code"))}'
-    sh('tmux', 'new-session', '-d', '-s', sess, '-x', '220', '-y', '50', '-c', str(cwd), cmd)
+    sh('tmux', 'new-session', '-d', '-s', sess, '-x', '500', '-y', '50', '-c', str(cwd), cmd)
     sh('tmux', 'set-option', '-t', pane(sess), 'remain-on-exit', 'on', check=False)
     sh('tmux', 'set-option', '-t', pane(sess), 'history-limit', '50000', check=False)
     meta = dict(name=a.name, tmux=sess, cwd=str(cwd), brief=str(brief), model=a.model,
