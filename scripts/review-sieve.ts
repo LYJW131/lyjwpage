@@ -175,9 +175,14 @@ export function classify(suggestionAt: string, replies: Reply[], general: Reply[
   if (all.hits.length) {
     const holder = texts.findLast((t) => shaHits(t.text, commits).hits.length)!;
     const refusal = texts.map((t) => firstMatch(NOT_ADOPTED, t.text)).find(Boolean);
-    return refusal
-      ? { verdict: "uncertain" as const, evidence: `${all.hits.join(" ")} 在本 PR 提交里，但回复也说「${refusal}」`, reply: holder }
-      : { verdict: "adopted" as const, evidence: all.hits.join(" "), reply: holder };
+    if (refusal) return { verdict: "uncertain" as const, evidence: `${all.hits.join(" ")} 在本 PR 提交里，但回复也说「${refusal}」`, reply: holder };
+    const fresh = all.hits.filter((token) => {
+      const commit = commits.find((c) => c.sha.toLowerCase().startsWith(token));
+      return commit !== undefined && later(commit.at, suggestionAt);
+    });
+    return fresh.length
+      ? { verdict: "adopted" as const, evidence: fresh.join(" "), reply: holder }
+      : { verdict: "uncertain" as const, evidence: `${all.hits.join(" ")} 在本 PR 提交里，但都早于这条建议`, reply: holder, candidate: candidateCommit(holder, commits) };
   }
   const unmatched = all.misses.length ? `；${all.misses.join(" ")} 不在本 PR 提交里` : "";
   for (const t of [...texts].reverse()) {

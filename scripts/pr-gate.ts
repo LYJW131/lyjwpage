@@ -9,6 +9,8 @@ const API = "https://api.github.com";
 const REQUEST_TIMEOUT_MS = 30_000;
 const BUILD_PREFIX = "Workers Builds: ";
 export const CODEX_MAX_ROUNDS = 3;
+export const REQUIRED_CHECKS = ["check"];
+const ONCE_PER_PR_REVIEWERS = ["claude", "devin"];
 const BOTS: Record<string, string> = {
   "chatgpt-codex-connector[bot]": "codex",
   "devin-ai-integration[bot]": "devin",
@@ -16,7 +18,7 @@ const BOTS: Record<string, string> = {
   "cursor[bot]": "cursor",
 };
 const UI_PATHS = [/^src\/components\//, /^src\/app\/(?!api\/)/, /\.css$/, /^public\//, /^docs\/explainer\/v2\//];
-const DOC_PATHS = [/\.md$/i, /^\.claude\//, /^docs\//];
+const DOC_PATHS = [/\.md$/i, /^\.claude\/(?!.*\.(?:[cm]?[jt]sx?|py|sh)$)/, /^docs\//];
 
 const HELP = `用法：NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr <号> [--need <等级|none>] [--judge | --no-judge]
 
@@ -25,15 +27,17 @@ ready 只管机器核得了的门槛；分档提示写着要 lyjw 看图点头�
 
 JSON 里有：
   head、draft、mergeable、labels / baselineException
-  tier          按改动路径分档：docs（只改 md 与 .claude/）、ui（界面）、logic（逻辑）、ui+logic；
+  tier          按改动路径分档：docs（只改 md 与 .claude/ 下的非脚本文件）、ui（界面）、logic（逻辑）、ui+logic；
                 决定默认的 --need 与 --judge，hint 写这一档的合并门槛
-  checks        head 上每项检查（check run 与 commit status，同名只认最新），pending 与 failing 单列
-  workersBuilds expected 是按 PR 改动与分支 Preview 的监视路径（scripts/build-watch-paths.ts）算出该有的构建；
+  checks        head 上每项检查（check run 与 commit status，同名只认最新），pending 与 failing 单列；
+                REQUIRED_CHECKS 里的检查 head 上还没出现时不算 ready
+  workersBuilds expected 是按 PR 改动与分支 Preview 的监视路径（scripts/build-watch-paths.ts）算出该有的构建，结论要是 success；
                 head 上没有、但更早的提交上构建成功且之后的改动没碰到它的路径，记 carried；afterMerge 是合进 main 后会重建的 Worker
   threads       没解决的行内评审线程：发起人、严重度标记与归类、最后一条是不是 lyjw 的账号回的、链接；
                 解决状态依次试 GraphQL、Claude Code 会话的 review_threads 路由，都不通时 resolvedKnown 为 false
   reviewers     每个评审机器人最后审的提交；Codex 另给已用轮数与上限（每次推送自动审一轮）。
-                Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，没盖住 head 不算缺
+                Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，没盖住 head 不算缺；
+                要判定时两家都得审过一次
   receipt       scripts/verify-receipt.ts check 的结果（--need、--judge 见下）
   ready / todo  todo 每条一句：缺什么、去哪做
 
@@ -222,6 +226,7 @@ function newestByName(runs: CheckRun[]) {
 }
 
 const passed = (run: CheckRun) => run.status === "completed" && ["success", "neutral", "skipped"].includes(run.conclusion ?? "");
+const built = (run: CheckRun) => run.status === "completed" && run.conclusion === "success";
 
 function summarizeChecks(runs: CheckRun[], statuses: Status[]) {
   const items = [
@@ -269,7 +274,7 @@ export async function buildCoverage({
   const absent = expected.filter((worker) => !onHead.has(BUILD_PREFIX + worker));
   for (const worker of expected) {
     const run = onHead.get(BUILD_PREFIX + worker);
-    if (run && !passed(run)) missing.push({ worker, reason: run.status === "completed" ? `head 上的构建结论是 ${run.conclusion}` : "head 上的构建还在跑" });
+    if (run && !built(run)) missing.push({ worker, reason: run.status === "completed" ? `head 上的构建结论是 ${run.conclusion}` : "head 上的构建还在跑" });
   }
   if (absent.length === 0) return { expected, missing, carried };
 
@@ -284,7 +289,7 @@ export async function buildCoverage({
       continue;
     }
     const short = found.sha.slice(0, 7);
-    if (!passed(run)) {
+    if (!built(run)) {
       missing.push({ worker, reason: `head 上没有它的构建，最近一次在 ${short}，结论是 ${run.conclusion ?? run.status}` });
       continue;
     }
@@ -376,6 +381,9 @@ function decide({
   if (pull.draft) todo.push("PR 还是草稿：确认要合时在 PR 页面转为待审（Ready for review）");
   if (pull.mergeable === false || pull.mergeable_state === "dirty") todo.push("和 main 有冲突：把 main 合进分支解决冲突（merge，不 rebase）");
   else if (pull.mergeable === null && pull.state === "open") todo.push("GitHub 还没算出能不能合并：过一会儿重跑本命令");
+  for (const name of REQUIRED_CHECKS) {
+    if (!checks.items.some((item) => item.name === name)) todo.push(`head 上还没有「${name}」检查：CI 可能还在排队，等它出现并跑完（带上限）再重跑本命令`);
+  }
   if (checks.pending.length > 0) todo.push(`head 上还有检查在跑：${checks.pending.join("、")}；等它们跑完（带上限）再重跑本命令`);
   for (const failing of checks.failing) todo.push(`检查「${failing.name}」结论是 ${failing.result}：看 ${failing.url ?? "PR 的 Checks 页"} 找原因，修好再推`);
   for (const gap of builds.missing) todo.push(`该有的 Workers Builds: ${gap.worker} 没过：${gap.reason}；去 Cloudflare 看 ${gap.worker} 的分支构建`);
@@ -393,6 +401,9 @@ function decide({
     if (codex && (codex.rounds ?? 0) >= CODEX_MAX_ROUNDS) notes.push(`Codex 已审 ${codex.rounds} 轮，到上限了，不再等它`);
     else if (codex?.status === "failed") notes.push("Codex 最近一轮没审成（多半是额度用完）：不等它，额度恢复后可在 PR 评论 @codex review");
     else if (!codex?.coversHead) todo.push(`Codex 还没审到 head（已用 ${codex?.rounds ?? 0}/${CODEX_MAX_ROUNDS} 轮，每次推送自动审一轮）：等它审完处理新意见，等待上限照 lyjwpage-verify「等待要有上限」`);
+    for (const bot of ONCE_PER_PR_REVIEWERS) {
+      if (!reviewers.some((reviewer) => reviewer.bot === bot)) todo.push(`${bot} 还没评审这个 PR（每个 PR 只审一次）：等它，等待上限照 lyjwpage-verify「等待要有上限」；超时在汇报里记它没跑成，不算通过`);
+    }
   }
   if (receipt && !receipt.pass) todo.push(receipt.next ?? "回执或判定没通过：见 receipt");
   if (tier.ui.length > 0) notes.push("碰到界面：合并前还要 lyjw 看图点头，脚本不判断这一项");

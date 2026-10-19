@@ -20,6 +20,13 @@ test("回复里的 SHA 是本 PR 的提交就算已采纳，短 SHA 按前缀认
   assert.equal(classify(at, [reply(`Fixed in ${FIX}.`)], [], commits).verdict, "adopted");
 });
 
+test("回复只引用早于建议的提交时是可能采纳，不算已采纳", () => {
+  const result = classify(at, [reply("原实现见 6de3704，按设计如此。")], [], commits);
+  assert.equal(result.verdict, "uncertain");
+  assert.match(result.evidence, /6de3704 在本 PR 提交里，但都早于这条建议/);
+  assert.equal(classify(at, [reply("6de3704 引入，e2495e5 修了。")], [], commits).evidence, "e2495e5");
+});
+
 test("SHA 不在本 PR 的提交里不算采纳，粘在别的字母数字里的串不当 SHA", () => {
   const notInPr = classify(at, [reply(`已修（${MAIN_ONLY.slice(0, 8)}）。`)], [], commits);
   assert.equal(notInPr.verdict, "uncertain");
