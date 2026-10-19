@@ -396,7 +396,15 @@ const colorMemory = (layout: VoronoiLayout, cells: readonly LayoutCell[]): Recor
 });
 
 const sameMembers = (layout: VoronoiLayout, cells: readonly ShareCell[]) =>
-  layout.cells.length === cells.length && cells.every((c) => layout.cells.some((l) => l.model === c.model));
+  layout.cells.length === cells.length
+  && cells.every((c) => layout.cells.some((l) => l.model === c.model))
+  && layout.cells.every((l) => cells.some((c) => c.model === l.model));
+
+function shareOf(latest: readonly ShareCell[], model: string): ShareCell {
+  const cell = latest.find((c) => c.model === model);
+  if (!cell) throw new Error(`voronoi: ${model} 不在最新份额里`);
+  return cell;
+}
 
 function freeColor(used: Set<string>, preferred?: string): string {
   const color = preferred && !used.has(preferred)
@@ -410,7 +418,7 @@ function freeColor(used: Set<string>, preferred?: string): string {
 // 没有空出来的站点可接时才在 other 格中心附近插一个点。掉出去的份额并回 other。
 export function fitLayout(layout: VoronoiLayout, latest: readonly ShareCell[]): Fitted {
   if (sameMembers(layout, latest)) {
-    const cells = layout.cells.map((l) => latest.find((c) => c.model === l.model) as ShareCell);
+    const cells = layout.cells.map((l) => shareOf(latest, l.model));
     const solved = refit(layout.cells.map((l) => l.site), layout.cells.map((l) => l.weight), cells);
     return { layout, cells, solved, assessment: assess(solved, cells), structureChanged: false };
   }
@@ -445,7 +453,7 @@ export function fitLayout(layout: VoronoiLayout, latest: readonly ShareCell[]): 
       });
     });
   }
-  const cells = next.map((l) => latest.find((c) => c.model === l.model) as ShareCell);
+  const cells = next.map((l) => shareOf(latest, l.model));
   const insertedModels = new Set(inserted.map((c) => c.model));
   const movable = new Set(next.flatMap((l, i) => (insertedModels.size && (insertedModels.has(l.model) || l.model === OTHER_MODEL) ? [i] : [])));
   const solved = refit(next.map((l) => l.site), next.map((l) => l.weight), cells, movable);

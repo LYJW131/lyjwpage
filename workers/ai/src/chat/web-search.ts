@@ -81,21 +81,22 @@ const deepseek = post("https://api.deepseek.com");
 
 export const WEB_SEARCH_PROVIDERS = ["exa", "deepseek"] as const;
 type WebSearchService = (typeof WEB_SEARCH_PROVIDERS)[number];
-export type WebSearchBackend = { provider: WebSearchService; fetch: WebSearchService; exaKey?: string; deepseekKey?: string };
+type WebSearchEndpoint = { service: WebSearchService; key: string };
+export type WebSearchBackend = { search: WebSearchEndpoint; fetch: WebSearchEndpoint };
 
 // 搜索默认 Exa：同一批代表性查询里 DeepSeek Search 更快更新、中文更好，但英文技术文档的命中更散。读页一律优先 Exa：
 // DeepSeek Fetch 实测要 4–12 秒、偶尔超时，正文的 Markdown 还被转义成 \#、\,。
 export function webSearchProvider(env: Pick<Env, "EXA_API_KEY" | "DEEPSEEK_API_KEY" | "WEB_SEARCH_PROVIDER">): WebSearchBackend | undefined {
-  const keys = { ...(env.EXA_API_KEY && { exaKey: env.EXA_API_KEY }), ...(env.DEEPSEEK_API_KEY && { deepseekKey: env.DEEPSEEK_API_KEY }) };
-  const reader = keys.exaKey ? "exa" : "deepseek";
-  if (env.WEB_SEARCH_PROVIDER?.trim() === "deepseek" && keys.deepseekKey) return { provider: "deepseek", fetch: reader, ...keys };
-  if (keys.exaKey) return { provider: "exa", fetch: reader, ...keys };
-  return undefined;
+  const exaKey = env.EXA_API_KEY ? { service: "exa" as const, key: env.EXA_API_KEY } : undefined;
+  const deepseekKey = env.DEEPSEEK_API_KEY ? { service: "deepseek" as const, key: env.DEEPSEEK_API_KEY } : undefined;
+  const search = env.WEB_SEARCH_PROVIDER?.trim() === "deepseek" ? (deepseekKey ?? exaKey) : exaKey;
+  const fetch = exaKey ?? deepseekKey;
+  return search && fetch ? { search, fetch } : undefined;
 }
 
 export function webSearchServices(env: Pick<Env, "EXA_API_KEY" | "DEEPSEEK_API_KEY" | "WEB_SEARCH_PROVIDER">): GodChatWebSearch {
   const backend = webSearchProvider(env);
-  return { search: backend?.provider ?? null, fetch: backend?.fetch ?? null };
+  return { search: backend?.search.service ?? null, fetch: backend?.fetch.service ?? null };
 }
 
 function page(raw: Record<string, unknown> | null, text: string | undefined, limit: number): WebPage | undefined {
@@ -129,9 +130,9 @@ async function deepseekSearch(key: string, query: string, signal: AbortSignal): 
 }
 
 export async function webSearch(backend: WebSearchBackend, query: string, category: WebCategory, signal: AbortSignal): Promise<WebPage[]> {
-  if (backend.provider === "deepseek") return deepseekSearch(backend.deepseekKey!, query, signal);
+  if (backend.search.service === "deepseek") return deepseekSearch(backend.search.key, query, signal);
   const exaCategory = EXA_CATEGORY[category];
-  const data = await exa("/search", backend.exaKey!, {
+  const data = await exa("/search", backend.search.key, {
     query,
     type: "fast",
     numResults: SEARCH_RESULTS,
@@ -142,11 +143,11 @@ export async function webSearch(backend: WebSearchBackend, query: string, catego
 }
 
 export async function webFetch(backend: WebSearchBackend, url: string, signal: AbortSignal): Promise<WebPage | undefined> {
-  if (backend.fetch === "deepseek") {
-    const data = await deepseek("/v1/tools/fetch", backend.deepseekKey!, { url }, signal);
+  if (backend.fetch.service === "deepseek") {
+    const data = await deepseek("/v1/tools/fetch", backend.fetch.key, { url }, signal);
     return page({ url, title: data.title }, typeof data.content === "string" ? data.content : undefined, FETCH_CHARS);
   }
-  const data = await exa("/contents", backend.exaKey!, { urls: [url], text: { maxCharacters: FETCH_CHARS } }, signal);
+  const data = await exa("/contents", backend.fetch.key, { urls: [url], text: { maxCharacters: FETCH_CHARS } }, signal);
   const raw = results(data)[0] ?? null;
   return page(raw, typeof raw?.text === "string" ? raw.text : undefined, FETCH_CHARS);
 }

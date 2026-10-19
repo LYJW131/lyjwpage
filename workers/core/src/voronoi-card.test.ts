@@ -10,6 +10,7 @@ import { executePublicRequest } from "./public-execution";
 import type { Env } from "./runtime";
 import { INITIAL_VORONOI_STATE, VORONOI_CARD_PATH, parseVoronoiState, renderVoronoiCard } from "./voronoi-card";
 import { INITIAL_VORONOI_LAYOUT } from "./voronoi-initial";
+import { renderWeekCard, weekCardStats } from "./week-card";
 import {
   MH,
   MW,
@@ -67,6 +68,16 @@ test("名次互换不改结构，颜色跟着模型走，图例按最新份额�
   assert.ok(svg.indexOf(">gpt-6.1-sol<") < svg.indexOf(">gpt-5.6-sol<"));
   assert.match(svg, /fill="#00add8" fill-opacity=".9"\/><text x="562" y="211.4"[^>]*>gpt-6.1-sol</);
   assert.ok(fit.assessment.errMaxPct <= 0.05);
+});
+
+test("统计列与周卡同一网格，图例的小用量按 K 显示，与周卡同一格式", () => {
+  const small = REFERENCE.map((c) => (c.model === "claude-fable-5" ? { ...c, tokens: 30_000 } : c));
+  const svg = renderVoronoiCard(fitLayout(INITIAL_VORONOI_LAYOUT, small), { totalTokens: 57.4 * B, apiEquivalentCostUSD: 32_000, activeDays: 280 });
+  const week = renderWeekCard(weekCardStats({ origin: "2026-10-01", days: [1], models: [], mix: [], updatedAt: 0, todayAtSource: "2026-10-01" }, null, { origin: "2026-10-01", counts: [1] }));
+  const columns = (card: string) => [...card.matchAll(/<text x="(\d+)" y="34"/g)].map((m) => Number(m[1]));
+  assert.deepEqual(columns(svg), columns(week));
+  assert.match(svg, />30\.0K</);
+  assert.doesNotMatch(svg, />0\.0M</);
 });
 
 const fableSwapped = REFERENCE.map((c) => (c.model === "claude-fable-5" ? { model: "claude-fable-5-1", tokens: c.tokens } : c));
@@ -224,6 +235,18 @@ test("搜索途中前 7 名单变了就按新名单从头搜", () => {
 test("存储里的状态读不出来就回到初始布局", () => {
   assert.equal(parseVoronoiState({ layout: { cells: [] } }), null);
   assert.deepEqual(parseVoronoiState(JSON.parse(JSON.stringify(INITIAL_VORONOI_STATE))), INITIAL_VORONOI_STATE);
+});
+
+test("搜索进度里有坏格子时只丢掉进度，布局照常读出", () => {
+  const stored = JSON.parse(JSON.stringify(INITIAL_VORONOI_STATE));
+  stored.search = { cells: [null], next: 3, best: null, startedAt: NOW, hard: false };
+  assert.deepEqual(parseVoronoiState(stored), INITIAL_VORONOI_STATE);
+  stored.search = { cells: REFERENCE, next: 3, best: { seed: 1, score: 2, sites: [[1, "x"]], weights: [0] }, startedAt: NOW, hard: false };
+  assert.equal(parseVoronoiState(stored)?.search, null);
+  stored.search = { cells: REFERENCE, next: 3, best: { seed: 1, score: 2, sites: [], weights: REFERENCE.map(() => 1) }, startedAt: NOW, hard: false };
+  assert.equal(parseVoronoiState(stored)?.search, null);
+  stored.search = { cells: REFERENCE, next: 3, best: null, startedAt: NOW, hard: true };
+  assert.deepEqual(parseVoronoiState(stored)?.search, stored.search);
 });
 
 test("前 7 之外合成 other，份额为 0 的不画", () => {
