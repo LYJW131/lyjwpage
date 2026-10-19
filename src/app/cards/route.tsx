@@ -337,11 +337,12 @@ function originalSource(src: string, width: number): [string, number] {
   return [params.get("url") ?? src, width || Number(params.get("w") ?? 0)];
 }
 
-// Discord 的外链代理把原图地址写在路径里（/external/<签名>/https/<原地址>）；代理拒绝 Worker 时退回原地址。
-const discordExternalOrigin = (url: string) =>
-  /^https:\/\/media\.discordapp\.net\/external\/[^/]+\/(https?)\/(.+)$/.exec(url)?.slice(1).join("://") ?? null;
+// Discord 的外链代理把原图地址写在路径里（/external/<签名>/https/<原地址>）；代理拒绝 Worker 时退回原地址，只认 Meta 自家的 Quest 封面。
+const discordExternalOrigin = (url: string) => {
+  const path = /^https:\/\/media\.discordapp\.net\/external\/[^/]+\/https\/(www\.oculus\.com\/.+)$/.exec(url)?.[1];
+  return path ? `https://${path}` : null;
+};
 
-// 封面都取不到时交给卡片自己的 Meta 图标兜底，不留一个只剩替代文字的空 <img>。
 async function inlineQuestCover(site: SiteServices, quest: StatusResponse<QuestNow>): Promise<StatusResponse<QuestNow>> {
   const playing = quest.ok ? quest.data.playing : null;
   if (!quest.ok || !playing?.largeImageUrl) return quest;
