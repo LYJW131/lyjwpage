@@ -14,8 +14,8 @@
   - 状态：采用。落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「状态与偏好」、[lyjwpage-anthropic-updates](../.claude/skills/lyjwpage-anthropic-updates/SKILL.md)「状态与偏好」和每日代码审查定时任务，书签只在成功后推进一条写进根 `AGENTS.md`「工作方式」，要点存于项目记忆 [agent-automation-practices](../.claude/memory/agent-automation-practices.md)。
 - **[How the Claude Code team does code review](https://claude.dev/blog/solving-code-review-at-anthropic/)**（claude.dev）
   - 是什么：Claude Code 团队的分层评审、评审收敛规则和人留在哪些环节。
-  - 取了什么：「When we change direction」一节，即方向分歧早在讨论里提、做完的 PR 关掉不算损失。
-  - 状态：部分采用。落在 [HUMAN.md](../HUMAN.md)「3. 什么 Claude 自己定，什么来问你」的「探索与换方向」，要点存于项目记忆 [explore-directions](../.claude/memory/explore-directions.md)。
+  - 取了什么：「When we change direction」一节，即方向分歧早在讨论里提、做完的 PR 关掉不算损失；评审收敛规则里的三轮后重看方法、按缺陷类别一次修完、不重复已发的发现；「Reading the evidence」里说不出检查漏了什么就别批准；短 REVIEW.md 的写法（什么算出错、不报什么、要行号证据、总结先写条数）。
+  - 状态：部分采用。方向落在 [HUMAN.md](../HUMAN.md)「3. 什么 Claude 自己定，什么来问你」的「探索与换方向」，要点存于项目记忆 [explore-directions](../.claude/memory/explore-directions.md)；收敛与证据落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md) 「3. PR 合并门槛」与「主线程收到报告后」、HUMAN.md「5. PR 与合并」；评审指引在根 [REVIEW.md](../REVIEW.md)，由根 `AGENTS.md`「Code Review Rules」指过去。高风险路径另等人审没有采用（lyjw 选维持现状）。
 - **[Creating in-house source control](https://www.anthropic.com/engineering/redesigning-source-control)**（Anthropic Engineering）
   - 是什么：Anthropic 自研版本控制 Scion 的设计与迁移，附带 agent 规模下的工程体会。
   - 取了什么：「superfan」，即一个 Claude 专盯一个组件的遥测和日志，抓传统告警漏掉的细微异常；评审区分只改注释和改逻辑、别为假想风险过度设计，本项目已有同类规则。

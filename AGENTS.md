@@ -131,6 +131,10 @@
 | 界面文案用英文 | `pnpm ui:copy`（基线 `scripts/ui-copy-baseline.json`） |
 | 三份存量基线只减不增（例外由 lyjw 打 `baseline-exception` 标签放行，agent 不打） | `pnpm baselines:check` |
 
+## Code Review Rules
+
+- 评审 PR 的代理先读根 `REVIEW.md`，照它报什么、不报什么、怎么报。
+
 ## Reasoning Strategy
 
 **Prefer retrieval-led reasoning over pre-training-led reasoning.**
