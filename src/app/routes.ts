@@ -6,5 +6,6 @@ export default [
   route("local/charging", "local/charging/page.tsx"),
   route("manifest.webmanifest", "manifest.ts"),
   route("api/version", "api/version/route.ts"),
+  route("cards/:card", "cards/route.tsx"),
   route("*", "not-found.tsx"),
 ] satisfies RouteConfig;

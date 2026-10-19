@@ -39,109 +39,94 @@
 
 ## 页面效果
 
-正在看、正在听、充电、游戏这类状态卡片只在对应的事情发生时出现。下面的图在本地用示例数据把这些状态同时点亮，明暗跟随系统；录制方法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
+下面的卡片由站点实时渲染成 SVG，明暗跟随系统，卡头标出抓取时间。正在看、正在听、充电这类状态卡片只在对应的事情发生时出现，此刻没发生的用示例数据补上并标 Sample data。做法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
 
 **页头前台应用**：Claude Code、Ghostty、Cursor、Antigravity 换成品牌动画，窗口标题过了隐私判断才显示。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/desktop-marks-dark.gif">
-  <img src="docs/screenshots/desktop-marks-light.gif" alt="页头前台应用的四种品牌标识与窗口标题的出现、变化与消失" width="788">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/readme/desktop-marks-dark.svg">
+  <img src="https://lyjw.me/readme/desktop-marks-light.svg" alt="页头前台应用的四种品牌标识与窗口标题的出现、变化与消失" width="798">
 </picture>
 
 **每日摘要**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/digest-dark.webp">
-  <img src="docs/screenshots/digest-light.webp" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark">
+  <img src="https://lyjw.me/cards/digest.svg" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
 </picture>
 
 **Emby 正在播放**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-watching-dark.webp">
-  <img src="docs/screenshots/now-watching-light.webp" alt="Emby 正在播放卡片" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-watching.svg?theme=dark">
+  <img src="https://lyjw.me/cards/now-watching.svg" alt="Emby 正在播放卡片" width="100%">
 </picture>
 
 **充电头与充电宝**
 
-<table>
-  <tr>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/charger-dark.gif">
-        <img src="docs/screenshots/charger-light.gif" alt="Anker 充电头卡片：总功率换档时读数滚动、曲线末尾接上新点">
-      </picture>
-    </td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/powerbank-dark.webp">
-        <img src="docs/screenshots/powerbank-light.webp" alt="Anker 充电宝卡片：电量、底座输入、输出与端口">
-      </picture>
-    </td>
-  </tr>
-</table>
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/charger.svg?theme=dark"><img src="https://lyjw.me/cards/charger.svg" alt="Anker 充电头卡片：总功率、功率曲线与各端口" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/powerbank.svg?theme=dark"><img src="https://lyjw.me/cards/powerbank.svg" alt="Anker 充电宝卡片：电量、底座输入、输出与端口" width="50%"></picture></p>
 
 **Apple Music 正在播放**：逐字高亮的同步歌词，下方是最近收听。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.gif">
-  <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music 正在播放：逐字歌词扫过，下方是最近收听" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-listening.svg?theme=dark">
+  <img src="https://lyjw.me/cards/now-listening.svg" alt="Apple Music 正在播放：正在播的歌与歌词，下方是最近收听" width="100%">
 </picture>
 
 **与神对话**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.webp">
-  <img src="docs/screenshots/chat-light.webp" alt="与神对话卡片：示例问题与输入框" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.svg">
+  <img src="docs/screenshots/chat-light.svg" alt="与神对话卡片：示例问题与输入框" width="100%">
 </picture>
 
 **活动与训练**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.gif">
-  <img src="docs/screenshots/activity-light.gif" alt="活动卡片：三环与读数变化，右侧是最近训练" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/activity.svg?theme=dark">
+  <img src="https://lyjw.me/cards/activity.svg" alt="活动卡片：三环与读数，右侧是最近训练" width="100%">
 </picture>
 
 **落地节点**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
-  <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark">
+  <img src="https://lyjw.me/cards/server.svg" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
 </picture>
 
 **AI Coding**：Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并计算。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.gif">
-  <img src="docs/screenshots/vibecoding-light.gif" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark">
+  <img src="https://lyjw.me/cards/vibe-coding.svg" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
 </picture>
 
 **PlayStation**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/playstation-trophies-dark.webp">
-  <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/playstation.svg?theme=dark">
+  <img src="https://lyjw.me/cards/playstation.svg" alt="PlayStation 卡片：奖杯统计与最近游玩" width="100%">
 </picture>
 
-**Pulse**：悬停任一时段看当时的状态与标题。
+**Pulse**：页面上悬停任一时段看当时的状态与标题。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-detail-dark.webp">
-  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：事实时间线与右侧摘要，悬停显示一段的详情" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark">
+  <img src="https://lyjw.me/cards/pulse.svg" alt="Pulse 卡片：编码、Token、听、看、玩、充电、运动的 24 小时时间线与右侧摘要" width="100%">
 </picture>
 
 **服务状态**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/provider-status-dark.webp">
-  <img src="docs/screenshots/provider-status-light.webp" alt="服务状态卡片：各服务的运行状态" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/provider-status.svg?theme=dark">
+  <img src="https://lyjw.me/cards/provider-status.svg" alt="服务状态卡片：各服务的运行状态" width="100%">
 </picture>
 
 **站点自身**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
-  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark">
+  <img src="https://lyjw.me/cards/site-status.svg" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
 </picture>
 
 ## 系统架构

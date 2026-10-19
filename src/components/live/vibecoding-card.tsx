@@ -8,7 +8,7 @@ import GrokIcon from "@lobehub/icons/es/Grok/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { Cloud } from "lucide-react";
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { MODEL_ICON_MAPPINGS, MODEL_ICONS_VERSION } from "virtual:model-icons";
 
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
@@ -17,7 +17,7 @@ import { Card } from "@/components/ui/card";
 import { MacBookProIcon } from "@/components/ui/device-icons";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { useLiveEvents } from "@/hooks/use-live-events";
-import { useMountedAt } from "@/hooks/use-mounted-at";
+import { RenderClock, useMountedAt } from "@/hooks/use-mounted-at";
 import { useSiteDay } from "@/hooks/use-site-day";
 import { useConfirmedClockStale, useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
@@ -513,7 +513,8 @@ type ResetDisplay =
   | { kind: "relative"; hours: number; minutes: number }
   | { kind: "absolute"; text: string };
 
-function formatReset(resetsAt: number | null, referenceTime: number): ResetDisplay | null {
+// timeZone 缺省按看的人本地时区；出图时没有看的人，按站点时区。
+function formatReset(resetsAt: number | null, referenceTime: number, timeZone?: string): ResetDisplay | null {
   if (resetsAt == null) return null;
   const remain = resetsAt * 1000 - referenceTime;
   if (remain <= 0) return null;
@@ -522,11 +523,11 @@ function formatReset(resetsAt: number | null, referenceTime: number): ResetDispl
     if (remain >= WEEK_MS) {
       return {
         kind: "absolute",
-        text: `Resets ${at.toLocaleString("en-US", { month: "short", day: "numeric" })}`,
+        text: `Resets ${at.toLocaleString("en-US", { month: "short", day: "numeric", timeZone })}`,
       };
     }
-    const weekday = at.toLocaleString("en-US", { weekday: "short" });
-    const clock = at.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+    const weekday = at.toLocaleString("en-US", { weekday: "short", timeZone });
+    const clock = at.toLocaleString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
     return { kind: "absolute", text: `Resets ${weekday} ${clock}` };
   }
   const totalMinutes = Math.floor(remain / 60_000);
@@ -691,7 +692,8 @@ function LimitMeter({
   const pace = limitPace(limit, now);
   const overPace = pace != null && usedPercent / 100 > pace;
   const color = limitColor(usedPercent);
-  const reset = now ? formatReset(limit.resetsAt, now) : null;
+  const baked = useContext(RenderClock) > 0;
+  const reset = now ? formatReset(limit.resetsAt, now, baked ? site.timezone : undefined) : null;
 
   return (
     <div>
