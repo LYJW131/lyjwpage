@@ -147,7 +147,7 @@ export function TrophyTeaser({
 
       {recent ? (
         <div className="min-w-0 border-t border-line pt-3 md:basis-full lg:ml-auto lg:max-w-64 lg:basis-auto lg:border-t-0 lg:pt-0 lg:text-right">
-          <div className="-m-2">
+          <div className="-mx-2">
             <button
               type="button"
               onClick={() => onRecentClick(recent)}
