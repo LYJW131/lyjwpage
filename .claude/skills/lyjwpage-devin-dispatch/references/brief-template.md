@@ -30,6 +30,8 @@ Never `pgrep -n`, `pkill -f`, `killall`.
 Never read credential files. If you need a credential, stop and ask.
 
 **Commits:** small, `type(scope): 描述` in the style of `git log`. Never rewrite history.
+Stage with `git add <explicit paths>` only. Never `git add -A` or `git add .`: the sandbox mounts
+placeholder files (`.bashrc`, `.gitconfig`, `.mcp.json`, …) into your worktree.
 
 ## Acceptance (every task)
 1. The checks listed in your brief pass; paste exact commands, exit codes and counts.
