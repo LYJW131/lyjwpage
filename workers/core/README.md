@@ -77,7 +77,7 @@
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
   推 `coding-now`：和上一次推出去的那份（`coding:now:pushed`）比，多出一个 (agent, 来源)、换了模型、时刻往前走了
   `src/stores/coding-activity.ts#PUSH_STEP_MS` 以上才推，保活不推。灯由浏览器按
-  「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废 `mac` 那条（`src/lib/coding-agents.ts`）。
+  「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废跑在 Mac 上的那条：`mac`，以及 Devin 的 `agents-otlp`（`src/lib/coding-agents.ts#codingSourceOnMac`）。
 - **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Coding 评估与归档，不推送。Mac / agents 按报告
   范围替换，只替换报告 `agents` 里声明的 agent（`[from, to)` 内这几家以新报告为准，缺席的桶是 0，范围外和没声明的 agent
   不动，报告范围并进覆盖；同一来源下 Cursor 与 Devin 各报各的范围，靠这条互不冲掉）；跨着报告起点的那一桶只数了
