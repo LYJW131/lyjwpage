@@ -483,6 +483,49 @@ export default { fetch(request, env) {
   const [codingExit] = await once(coding, 'exit');
   assert.equal(codingExit, 0, logs.join(''));
   console.log('PASS: coding usage, limits, history and invalid-envelope regression');
+
+  // Devin CLI 的导出形状（2026-10-20 本机抓包）：只发 delta，每个窗口只带这段的增量。
+  const nanos = at => `${BigInt(at) * 1_000_000n}`;
+  const devinWindow = (from, to, values) => JSON.stringify({ resourceMetrics: [{
+    resource: { attributes: [{ key: 'service.name', value: { stringValue: 'devin-local' } }] },
+    scopeMetrics: [{ scope: { name: 'ai.devin.local' }, metrics: [{ name: 'devin.token.usage', unit: 'tokens', sum: {
+      aggregationTemporality: 1, isMonotonic: true, dataPoints: Object.entries(values).map(([type, value]) => ({
+        attributes: [['session.id', 'verify-devin'], ['terminal.type', 'devin-cli'], ['type', type], ['model', 'swe-2-max']]
+          .map(([key, entry]) => ({ key, value: { stringValue: entry } })),
+        startTimeUnixNano: nanos(from), timeUnixNano: nanos(to), asInt: value,
+      })),
+    } }] }],
+  }] });
+  const devinAt = Date.now();
+  // tokens.ci 时代留在账号级来源里的那本 Devin 日行，第一封 OTLP 要把它整份接过去、从 agents 删掉。
+  const tokensCiDay = { date: '2026-09-28', inputTokens: 5_000, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0,
+    totalTokens: 5_000, apiEquivalentCostUSD: 0, costComplete: false, models: [{ model: 'swe-2-max', tokens: 5_000 }] };
+  const codingNow = async () => (await (await fetch(`${worker}/api/status/coding`)).json()).data;
+  const codingBefore = await codingNow();
+  const cursorBefore = codingBefore.agents.find(agent => agent.id === 'cursor');
+  assert.ok(cursorBefore, 'the coding-usage step left a Cursor account ledger');
+  assert.equal((await post(worker, '/api/ingest/agents', { collectedAt: new Date(devinAt - 60_000).toISOString(), codingUsage: { agents: [
+    { id: 'devin', state: 'ok', collectedAt: devinAt - 60_000, error: null, warning: null, sessionCount: null, days: [tokensCiDay] },
+  ] } })).status, 202);
+  await eventually(async () => assert.deepEqual((await codingNow()).agents.find(agent => agent.id === 'devin')?.sources, ['agents']));
+  const firstWindow = devinWindow(devinAt - 2_000, devinAt - 1_000, { input: 10_787, output: 32, cacheRead: 10_176 });
+  for (const body of [firstWindow, firstWindow, devinWindow(devinAt - 500, devinAt, { input: 1_000, output: 8 })]) {
+    assert.equal((await otlp(body)).status, 200);
+  }
+  const devinUsage = await eventually(async () => {
+    const usage = (await (await fetch(`${worker}/api/status/coding`)).json()).data;
+    const row = usage.agents.find(agent => agent.id === 'devin');
+    assert.ok(row, 'Devin row appears');
+    return row;
+  });
+  assert.deepEqual(devinUsage.sources, ['agents-otlp']);
+  assert.deepEqual(devinUsage.status.map(row => row.source), ['agents-otlp'], 'the account row is gone, not superseding');
+  assert.equal(devinUsage.lastDay.totalTokens, 10_787 + 32 + 10_176 + 1_008, 'the resent window is counted once');
+  assert.equal(devinUsage.lastDay.costComplete, false);
+  const codingAfter = await codingNow();
+  assert.equal(codingAfter.totals.totalTokens, codingBefore.totals.totalTokens + 5_000 + 22_003, 'the tokens.ci day is still in the totals, the new windows added once');
+  assert.deepEqual(codingAfter.agents.find(agent => agent.id === 'cursor'), cursorBefore, 'Cursor in the same account hash is untouched');
+  console.log('PASS: Devin CLI delta windows land once under agents-otlp and take over the tokens.ci ledger from agents');
   const concurrent = Array.from({ length: 8 }, (_, i) => post(worker, '/api/ingest/mac', {
     version: 4, heartbeatAt: Date.now(), presence: 'online', activeModules: ['timezone'],
     modules: i % 2 ? {} : { timezone: { identifier: 'Asia/Singapore', secondsFromGMT: 28800 } },
