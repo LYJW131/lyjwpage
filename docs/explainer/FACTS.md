@@ -378,7 +378,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - Clef 是 Workers AI 上的路由模型（`workers/ai/src/chat/router.ts`，`CLEF_CHOICES`）：flash（杂鱼）、think（先知）、设计（交给先知判断）、Fable、refuse，判的是档次，由谁出场看阵容；Clef 不可用时落到 `ROUTER_FALLBACK`（flash）。
 - 三档与人设：Clef 只判档次，杂鱼与先知由访客在卡片里选阵容（`shared/god-chat-tiers.ts#GOD_CHAT_LINEUPS`）：DeepSeek 阵容是 DeepSeek Flash · Small Fry、DeepSeek Flash Thinking · Prophet（默认），Claude 阵容是 Haiku 5.5 · Small Fry、Sonnet 5.5 · Prophet；Fable · God 两边一样；设计请求由 Prophet 判断，设计会话里的 Opus 是 Architect（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`）。选中的档满了只在同一阵容里往下逐档降，绝不往上升（`shared/god-chat-tiers.ts#downgradeChain`）。refuse 不调模型，直接回一句关门话。
-- Small Fry 判断问题超出自己时调 `request_upgrade`，扣到先知那档的名额就由 Prophet 重答（`workers/ai/src/chat/handler.ts#UPGRADE_TOOLS`）。
+- Small Fry 判断问题超出自己时调 `request_upgrade`，扣到先知那档的名额就由 Prophet 重答（`workers/ai/src/chat/prompts.ts#UPGRADE_TOOLS`）。
 
 ### 工具与盖章
 
