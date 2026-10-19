@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classify, severity, sieve, sievePr, type PrCommit, type PrData } from "./review-sieve.ts";
+import { classify, plain, severity, sieve, sievePr, type PrCommit, type PrData } from "./review-sieve.ts";
 
 const FIX = "e2495e54b6a1c0ffee0000000000000000000001";
 const NEXT = "780d6320e8a1c0ffee0000000000000000000002";
@@ -193,3 +193,9 @@ test("第一个 PR 就读失败或列不出 PR 时书签不动；评论超过一
   assert.ok(calls.includes("pulls/404/comments?page=2"));
 });
 
+
+test("plain 删到切口拼不回注释和标签，没闭合的注释吞到结尾", () => {
+  assert.equal(plain("<!<!--x-->-->正文"), "正文");
+  assert.equal(plain("<scrip<script>t>正文</script>"), "正文");
+  assert.equal(plain("正文<!-- 没闭合\n后面"), "正文");
+});

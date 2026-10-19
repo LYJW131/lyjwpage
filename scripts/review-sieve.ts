@@ -2,6 +2,7 @@
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
+import { stripHtmlComments, stripHtmlTags } from "./strip-html.ts";
 import { TRUSTED_AUTHOR_IDS } from "./verify-receipt.ts";
 
 const REPO = "LYJW131/lyjwpage";
@@ -105,11 +106,11 @@ const BOOKKEEPING = /^(?:验证回执|判定) [0-9a-f]{40}|^@codex\b/;
 const SHA_TOKEN = /(?<![0-9a-z])[0-9a-f]{7,40}(?![0-9a-z])/gi;
 
 export function plain(body: string) {
-  return body
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<details>[\s\S]*?<\/details>/g, "")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/<[^>]+>/g, "")
+  return stripHtmlTags(
+    stripHtmlComments(body)
+      .replace(/<details>[\s\S]*?<\/details>/g, "")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, ""),
+  )
     .replace(/^\s*---\s*$[\s\S]*/m, "")
     .replace(/^_.*(?:Generated|Addressed) by .*_\s*$/gm, "")
     .trim();

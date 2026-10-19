@@ -1,3 +1,4 @@
+import { stripHtmlComments, stripHtmlTags } from "../strip-html.ts";
 import { TRUSTED_AUTHOR_IDS } from "../verify-receipt.ts";
 import type { Client, ReviewComment } from "./github.ts";
 import { REPO } from "./github.ts";
@@ -7,7 +8,7 @@ export type Level = "blocking" | "security" | "normal" | "optional" | "pre-exist
 export type Resolution = { source: "graphql" | "ccr" | "rest"; byRoot: Map<number, { resolved: boolean; outdated: boolean }> | null };
 
 function firstLine(body: string) {
-  return body.replace(/<!--[\s\S]*?-->/g, "").trim().split("\n", 1)[0] ?? "";
+  return stripHtmlComments(body).trim().split("\n", 1)[0] ?? "";
 }
 
 // 各家标记：Codex 是 P0–P3 徽章；Claude review 是 🔴 / 🟡 nit / 🟣 既有问题；Devin 是 🔴 / 🟡 bug、🟥 / 🟨 security、🔍 / 📝 说明，
@@ -30,9 +31,7 @@ export function severityOf(body: string, bot: string | null): { mark: string | n
 }
 
 function shortTitle(body: string) {
-  const text = firstLine(body)
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/<[^>]+>/g, "")
+  const text = stripHtmlTags(firstLine(body).replace(/!\[[^\]]*\]\([^)]*\)/g, ""))
     .replace(/\*\*/g, "")
     .trim();
   return text.length > 80 ? `${text.slice(0, 79)}…` : text;
