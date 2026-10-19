@@ -58,6 +58,8 @@ import {
   type StatusViewKey,
 } from "@shared/status-views";
 import { siteContext, type SiteServices } from "@/server/site-context";
+import { trophiesTilePath } from "@/lib/paths";
+import type { StatusResponse, TrophiesPayload } from "@shared/types";
 
 const requestHandler = createRequestHandler(
   () => import("virtual:react-router/server-build"),
@@ -346,16 +348,47 @@ export class RenderedSite extends WorkerEntrypoint<Env> implements SiteCacheRpc 
           const response = await ctx.exports.ImageVariants.fetch(
             new Request(target, { headers: { Accept: "image/webp" } }),
           );
+          return await dataUri(response, "image/webp");
+        } catch {
+          return null;
+        }
+      },
+      trophies: async (titleIds) => {
+        const path = trophiesTilePath(titleIds);
+        const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
+        try {
+          const response = isProduction(env)
+            ? await env.CORE_SERVICE.fetch(new Request(`https://site.internal${path}`, init))
+            : await fetch(`${backendOrigin(env)}${path}`, init);
           if (!response.ok) return null;
-          const base64 = Buffer.from(await response.arrayBuffer()).toString("base64");
-          const type = response.headers.get("Content-Type") ?? "image/webp";
-          return `data:${type};base64,${base64}`;
+          return (await response.json()) as StatusResponse<TrophiesPayload>;
+        } catch {
+          return null;
+        }
+      },
+      asset: async (src) => {
+        try {
+          const target = new URL(src, "https://site.internal");
+          const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
+          const response =
+            target.origin !== "https://site.internal"
+              ? await fetch(target, init)
+              : imageObjectKeyFromPath(target.pathname)
+                ? await ctx.exports.ImageVariants.fetch(imageObjectRequest(new Request(target, init)))
+                : await env.ASSETS.fetch(new Request(target, init));
+          return await dataUri(response, "application/octet-stream");
         } catch {
           return null;
         }
       },
     };
   }
+}
+
+async function dataUri(response: Response, fallbackType: string): Promise<string | null> {
+  if (!response.ok) return null;
+  const base64 = Buffer.from(await response.arrayBuffer()).toString("base64");
+  return `data:${response.headers.get("Content-Type") ?? fallbackType};base64,${base64}`;
 }
 
 function backendRedirect(env: Env, url: URL): Response {

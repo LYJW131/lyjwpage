@@ -6,34 +6,43 @@
 
 ## 页面效果图
 
-[`screenshots/`](./screenshots/) 是根 README 里的效果图，明暗各一份；静态的是 WebP，会动的是 GIF。数据来自场景 [`readme`](../workers/core/dev-fixtures/scenes/readme.json)：在生产快照 `readme-base` 上用夹具点亮平时不显示的卡片，`pnpm dev:scene readme` 一次注入全部端点，摘要的三格按同一份 Pulse 重算、标题池收成一句，SSR 与浏览器、明暗两轮读到的是同一份数据。场景的写法与 `--capture` 重新抓生产快照见 [`workers/core/README.md`](../workers/core/README.md#本地开发)。
+[`screenshots/`](./screenshots/) 是根 README 里的首页总览图与聊天卡，明暗各一份；页头品牌标识动画在 `public/readme/`（见下文），其余卡片不截图，见下文「实时卡片」。总览图的数据来自场景 [`readme`](../workers/core/dev-fixtures/scenes/readme.json)：在生产快照 `readme-base` 上用夹具点亮平时不显示的卡片，`pnpm dev:scene readme` 一次注入全部端点，摘要的三格按同一份 Pulse 重算、标题池收成一句，SSR 与浏览器、明暗两轮读到的是同一份数据。场景的写法与 `--capture` 重新抓生产快照见 [`workers/core/README.md`](../workers/core/README.md#本地开发)。
 
-静态图（总览、正在看、充电宝、PlayStation 奖杯展开、Pulse 悬停详情、LYJWPAGE）由 [`scripts/readme-shots.ts`](../scripts/readme-shots.ts) 一条命令截出：先注入场景，再用无头 Chromium 开 1280 宽、2 倍像素密度，`colorScheme` 切明暗；裁卡片按元素框外扩 12px，并把目标之外的兄弟节点 `visibility: hidden`，边距里才不会露出邻居卡片的边；Pulse 悬停在听歌道上，把浮层和卡片的框取并集再裁（上一张卡同样藏起，浮层画在卡片上方，缝里会露出它的下边和硬阴影）；PNG 用项目自带的 sharp 转 WebP（q 88），写进 `docs/screenshots/`。截完场景留在本地 Worker 里供对照，看完 `pnpm dev:scene --reset`：
+总览图由 [`scripts/readme-shots.ts`](../scripts/readme-shots.ts) 一条命令截出：先注入场景，再用无头 Chromium 开 1280 宽、2 倍像素密度截整页，`colorScheme` 切明暗；PNG 用项目自带的 sharp 转 WebP（q 88），写进 `docs/screenshots/`。截完场景留在本地 Worker 里供对照，看完 `pnpm dev:scene --reset`：
 
 ```sh
-pnpm readme:shots                                   # 全部静态图，明暗各一张
-pnpm readme:shots --only pulse-detail --theme dark  # 单张；--out 改输出目录，--scene 换场景
+pnpm readme:shots                 # 明暗各一张
+pnpm readme:shots --theme dark    # 只出暗色；--out 改输出目录，--scene 换场景
 ```
 
 3211 / 8788 被别的实例占着时，用 `.claude/launch.json` 里的 `api-worker-alt`（8790）和 `lyjwpage-local-alt`（3213）另起一套：`dev:worker` / `dev:local` / `dev` / `start` 认 `DEV_WORKER_PORT` / `DEV_SITE_PORT`（如 `DEV_SITE_PORT=3213 pnpm dev`），`pnpm dev:override`、`pnpm dev:scene` 和截图脚本分别用 `DEV_WORKER_URL` / `SITE_URL` 指过去。
 
 歌词不入库：本地 Worker 没有 Apple Music 凭据，场景里 `/api/lyrics?song=<songId>` 写成 `{ "fetch": "https://lyjw.me/api/lyrics?song=<songId>" }`，注入时现取生产站的响应（`songId` 取 `listening-now-*.json` 里的）。
 
-五张会动的卡片（正在听、充电头、活动、落地节点、AI Coding）由 [`scripts/card-gifs.py`](../scripts/card-gifs.py) 录制：把卡片滚到视口、藏起邻居，在真实时间里连续截图，画面一变留一帧，帧时长按真实经过的毫秒记（motion 把不少动画交给 Web Animations API，假时钟拨不动，所以不用假时钟）。正在听录的是歌词从一句收尾到「二人だけの空が広がる夜に」整句扫完，靠注入 `positionMs` 改过的变体把播放位置拨到句前，录前清掉充电头和充电宝——它们在场时这张卡只占右边一列；其余四张靠换夹具驱动——从夹具派生只改几个读数的临时变体逐份注入，借 SWR 的 `revalidateOnFocus` 让卡片回源（对 focus 节流 5 秒），换夹具的等待不进时间线。充电头的历史点在派生变体时冻成绝对时间（`$now-…` 每次注入都按新的当下重算，曲线会整条平移），录的时候先清掉充电宝——它在场时充电头是紧凑布局、没有曲线。AI Coding 的基线直接取本地 Worker 此刻的 `/api/status/coding`（生产数据经上游补缺；也可以先注入 `coding-multi-source.json`），再派生读数涨一档的变体。总览、Emby 正在播放、充电宝、PlayStation、Pulse 仍是静态图：总览本来就是全貌，其余几张要么几秒内没什么在动，要么静态一张已经说清。跑之前先 `pnpm dev:scene readme` 注入基线，跑法和下面的 GIF 脚本一样：
+页头品牌标识那条是 SVG 动画（[`public/readme/desktop-marks-{light,dark}.svg`](../public/readme/)），由 [`scripts/desktop-marks-svg.py`](../scripts/desktop-marks-svg.py) 生成：四段标识（Claude Code、Ghostty、Cursor、Antigravity）都从本地站点页头真实截下再拼成一条，四段都会动。Claude Code 和 Ghostty 两段装上 Playwright 的假时钟逐帧推进，帧时长取 `src/lib/mascot-fetch.json` 与 `src/lib/ghostty-frames.json` 的节拍；Cursor 和 Antigravity 两段演示窗口标题的出现、变化和消失，按脚本里 `TITLE_SCRIPTS` 的剧本从夹具派生只改 `windowTitle` 的临时变体逐个注入，用真实时钟截（标题的淡入淡出交给 motion 的 Web Animations API，假时钟拨不动它）。一轮等于 Ghostty 一轮，标题剧本首尾都没有标题，循环回到起点才接得上。SVG 里四段各走各的时间线：每段去重后的帧内联成 WebP / PNG 的 `data:` 图（垫底一张常驻，其余只留与它不同的那块），CSS `@keyframes` 以 `step-end` 切换不透明度，没有脚本、不引外部资源，`<img>` 里照常播放；宽高取 CSS 像素，内联的是 2 倍截图，高分屏不糊。各段时间线怎么拼、节拍怎么取，见脚本开头的说明。
+
+它放在 `public/` 而不是 `docs/screenshots/`，README 里用 `https://lyjw.me/readme/…` 的绝对地址引用：仓库相对路径的图由 `raw.githubusercontent.com` 出，响应头的 CSP 是 `default-src 'none'; style-src 'unsafe-inline'; sandbox`，不放行 SVG 里内联的 `data:` 图；绝对地址走 GitHub 的图片代理 camo，它的 CSP 带 `img-src data:`。`public/` 随站点部署，`/readme/*` 的缓存头在 `public/_headers`。
+
+重出需要 Python 3、`playwright`、`pillow`（`pip install playwright pillow && playwright install chromium`；装了 Google Chrome 可设 `PLAYWRIGHT_CHANNEL=chrome` 免下载），本地 Worker 与 `pnpm dev:local` 在跑（不在默认端口时用 `SITE_URL` / `DEV_WORKER_URL` 指过去）：
 
 ```sh
-python3 scripts/card-gifs.py                      # 全部场景，明暗各一张
-python3 scripts/card-gifs.py --scene charger --theme dark
-```
-
-页头品牌标识那条是 GIF（`desktop-marks-{light,dark}.gif`），由 [`scripts/desktop-marks-gif.py`](../scripts/desktop-marks-gif.py) 生成：四段标识（Claude Code、Ghostty、Cursor、Antigravity）都从本地站点页头真实截下再拼成一条，四段都会动。Claude Code 和 Ghostty 两段装上 Playwright 的假时钟逐帧推进，帧时长取 `src/lib/mascot-fetch.json` 与 `src/lib/ghostty-frames.json` 的节拍；Cursor 和 Antigravity 两段演示窗口标题的出现、变化和消失，按脚本里 `TITLE_SCRIPTS` 的剧本从夹具派生只改 `windowTitle` 的临时变体逐个注入，用真实时钟截（标题的淡入淡出交给 motion 的 Web Animations API，假时钟拨不动它）。GIF 一轮等于 Ghostty 一轮，标题剧本首尾都没有标题，循环回到起点才接得上。各段时间线怎么拼、节拍怎么取，见脚本开头的说明。需要 Python 3、`playwright`、`pillow`（`pip install playwright pillow && playwright install chromium`；装了 Google Chrome 可设 `PLAYWRIGHT_CHANNEL=chrome` 免下载），本地 Worker 与 `pnpm dev:local` 在跑（不在默认端口时用 `SITE_URL` / `DEV_WORKER_URL` 指过去）：
-
-```sh
-python3 scripts/desktop-marks-gif.py            # 明暗各一张
-python3 scripts/desktop-marks-gif.py --theme dark
+python3 scripts/desktop-marks-svg.py            # 明暗各一张
+python3 scripts/desktop-marks-svg.py --theme dark
 ```
 
 标识改了外观、`mascot-fetch.json` 或 `ghostty-frames.json` 换了帧或节拍、标题那行改了样式或过渡时重跑一次即可；脚本自己开关假数据总开关、注入 `desktop-*` 夹具并在结束后清掉注入（细节见脚本开头）。
+
+## 实时卡片
+
+README 里总览之后的卡（聊天卡除外）都不是截图，是站点路由 `/cards/<卡>.svg`（[`src/app/cards/route.tsx`](../src/app/cards/route.tsx) 的 `CARDS`）现渲染的 SVG，`?theme=dark` 出暗色，README 用 `<picture>` 按系统明暗二选一。
+
+- site Worker 用首页同一个卡片组件 SSR，配上只扫卡片相关目录生成的 Tailwind 样式（[`src/app/cards/readme-cards.css`](../src/app/cards/readme-cards.css)），放进 `<foreignObject>`。
+- GitHub 经 camo 把它当 `<img>` 显示，图片里不跑脚本、不取外部资源：卡内图片按显示宽度取 2 倍后内嵌成 data URI；camo 的 CSP 拦字体，卡片用系统等宽字体，不内嵌 Geist Mono，NumberFlow 只留纯文本读数，歌词逐字扫过、读数滚动这类靠脚本的动效不动；按 `useMountedAt` 算的内容（限额配速线、重置倒计时）经 `RenderClock` 取出图时刻烧进图里，绝对时刻按站点时区写，图片缓存期内不再走。
+- 卡宽按首页 1280 宽下的整卡或半卡定死；充电头与充电宝在 README 里并排（`pair`），各占一半、中间不留空格，图宽取整卡一半，卡间距补在左卡右侧和右卡左侧，右缘与整卡对齐；图片里的媒体查询按显示宽度算，路由把宽度断点按首页内容宽定死，缩小显示也保持桌面布局。卡高写在路由的 `CARDS` 里，按首页 1280 宽实测；卡片行数变了要重量，否则底部被裁或留白。
+- 状态卡此刻没在发生（正在看、充电头、充电宝、正在听）或数据取不到（落地节点）时用 `workers/core/dev-fixtures/` 的夹具补，卡头标题后标 Sample data（没有卡头的每日摘要标在右上角）；用实时数据的标抓取时间（站点时区），每日摘要的表盘本身就是时间，不另标。缓存头与 core 的 `/api/cards/*.svg` 同档。
+- PlayStation 卡展开最近一个奖杯所在的游戏（同首页点「Latest」）：路由先渲一遍找出展开的那格，取它的奖杯目录作 SWR 兜底再渲，展开面板的高度在样式里放开。
+- 聊天卡不随时间变，`render` 返回 `still`、不标时间，README 引用存在 `docs/screenshots/chat-{light,dark}.svg` 的一份，卡片样式变了从本地生产构建的 `/cards/chat.svg`（`?theme=dark`）重新存下。卡内没有图片，仓库相对路径（`raw.githubusercontent.com` 的 CSP）也能显示。
+- 本地看效果要用生产构建：`pnpm build && pnpm start` 后开 `http://localhost:3211/cards/pulse.svg?theme=dark`。`pnpm dev` 里 NumberFlow 输出空壳，读数是空的。
 
 ## 交互式架构图
 

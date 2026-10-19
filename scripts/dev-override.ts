@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { callWorker, clearOverride, fixturePath, putOverride, readJson, stampNow, switchOverrides, WorkerError } from "./dev-fixtures.ts";
+import { stampNow } from "../shared/fixture-time.ts";
+import { callWorker, clearOverride, fixturePath, putOverride, readJson, switchOverrides, WorkerError } from "./dev-fixtures.ts";
 
 const USAGE = [
   "用法：",
