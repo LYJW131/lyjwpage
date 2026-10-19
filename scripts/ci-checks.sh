@@ -19,6 +19,7 @@ script_tests() {
 
 docs() {
   pnpm docs:check
+  pnpm docs:diagrams --check
 }
 
 design() {

@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 696" width="864" height="696" role="img" aria-labelledby="title desc">
+<title id="title">lyjwpage development workflow</title><desc id="desc">lyjw asks in the project chat, a coordinator Claude opens a thread, and the thread's Claude builds the change and has a Haiku verifier sign a receipt. Routines and visitor builds open PRs as well. Every change reaches main as a PR: branch preview, CI gates, bot review when needed and lyjw's OK, then Workers Builds deploys it.</desc>
+<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.card{fill:#fffdf9;stroke:#151411e0}.shadow{fill:#1514112e}.head{fill:#f5f3ee}.rule{stroke:#1514113d}.chip{fill:#f5f3ee;stroke:#1514113d}.region{fill:none;stroke:#605d59;stroke-dasharray:4 4}.edge{fill:none;stroke:#605d59;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#605d59}.label{font-size:11px;letter-spacing:0.88px;fill:#605d59}.title{font-size:14px;font-weight:500;fill:#151411}.body{font-size:13px;fill:#151411}.cap{font-size:12px;fill:#605d59}.small{font-size:11px;fill:#605d59}.m-worker{fill:#3e70c9}.m-do{fill:#3ba946}.m-store{fill:#8255c7}.m-lyjw{fill:#0085c5}.m-claude{fill:#d97757}.m-flow{fill:#151411}.m-outside{fill:none;stroke:#151411e0}</style>
+<defs><mask id="gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="864" height="696"><rect width="864" height="696" fill="#fff"/><rect x="20" y="136" width="74.88" height="16"/><rect x="152" y="280" width="100.4" height="16"/><rect x="728" y="280" width="113.6" height="16"/><rect x="492.8" y="496" width="166.4" height="16"/><rect x="489.5" y="136" width="173" height="16"/></mask></defs>
+<g mask="url(#gaps)">
+<rect class="region" x="12.5" y="144.5" width="839" height="335"/>
+</g>
+<rect class="shadow" x="27" y="27" width="240" height="96"/>
+<rect class="card" x="24.5" y="24.5" width="239" height="95"/>
+<rect class="head" x="25" y="25" width="238" height="31"/>
+<path class="rule" d="M25 56.5H263"/>
+<rect class="m-lyjw" x="40" y="36" width="8" height="8"/>
+<text class="label" x="56" y="44">LYJW</text>
+<text class="label" x="248" y="44" text-anchor="end">DIRECTION</text>
+<text class="title" x="40" y="83">One-line asks</text>
+<text class="cap" x="40" y="103">decides · reviews · merges</text>
+<rect class="shadow" x="315" y="27" width="240" height="96"/>
+<rect class="card" x="312.5" y="24.5" width="239" height="95"/>
+<rect class="head" x="313" y="25" width="238" height="31"/>
+<path class="rule" d="M313 56.5H551"/>
+<rect class="m-outside" x="328.5" y="36.5" width="7" height="7"/>
+<text class="label" x="344" y="44">SCHEDULES</text>
+<text class="label" x="536" y="44" text-anchor="end">CRON</text>
+<text class="title" x="328" y="83">Cloud routines</text>
+<text class="cap" x="328" y="103">resume from a bookmark</text>
+<rect class="shadow" x="603" y="27" width="240" height="96"/>
+<rect class="card" x="600.5" y="24.5" width="239" height="95"/>
+<rect class="head" x="601" y="25" width="238" height="31"/>
+<path class="rule" d="M601 56.5H839"/>
+<rect class="m-outside" x="616.5" y="36.5" width="7" height="7"/>
+<text class="label" x="632" y="44">VISITORS</text>
+<text class="label" x="824" y="44" text-anchor="end">LYJW.ME</text>
+<text class="title" x="616" y="83">Ask in homepage chat</text>
+<text class="cap" x="616" y="103">authorize GitHub to build</text>
+<rect class="shadow" x="27" y="171" width="240" height="96"/>
+<rect class="card" x="24.5" y="168.5" width="239" height="95"/>
+<rect class="head" x="25" y="169" width="238" height="31"/>
+<path class="rule" d="M25 200.5H263"/>
+<rect class="m-claude" x="40" y="180" width="8" height="8"/>
+<text class="label" x="56" y="188">PROJECT CHAT</text>
+<text class="label" x="248" y="188" text-anchor="end">COORDINATOR</text>
+<text class="title" x="40" y="227">Takes every message</text>
+<text class="cap" x="40" y="247">brief · decision cards</text>
+<rect class="shadow" x="27" y="315" width="240" height="144"/>
+<rect class="card" x="24.5" y="312.5" width="239" height="143"/>
+<rect class="head" x="25" y="313" width="238" height="31"/>
+<path class="rule" d="M25 344.5H263"/>
+<rect class="m-claude" x="40" y="324" width="8" height="8"/>
+<text class="label" x="56" y="332">THREAD</text>
+<text class="label" x="248" y="332" text-anchor="end">CLAUDE</text>
+<text class="title" x="40" y="371">One thread per task</text>
+<text class="cap" x="40" y="391">own branch, through deploy</text>
+<rect class="chip" x="40.5" y="408.5" width="207" height="39"/>
+<rect class="m-claude" x="50" y="417" width="8" height="8"/>
+<text class="body" x="66" y="425">Haiku verifier</text>
+<text class="small" x="50" y="439">graded receipt per commit</text>
+<rect class="shadow" x="315" y="171" width="240" height="168"/>
+<rect class="card" x="312.5" y="168.5" width="239" height="167"/>
+<rect class="head" x="313" y="169" width="238" height="31"/>
+<path class="rule" d="M313 200.5H551"/>
+<rect class="m-claude" x="328" y="180" width="8" height="8"/>
+<text class="label" x="344" y="188">ROUTINES</text>
+<text class="body" x="328" y="224.5">Code review</text>
+<text class="small" x="536" y="224.5" text-anchor="end">PR</text>
+<path class="rule" d="M328 232.5H536"/>
+<text class="body" x="328" y="248.5">Skill mining</text>
+<text class="small" x="536" y="248.5" text-anchor="end">PR</text>
+<path class="rule" d="M328 256.5H536"/>
+<text class="body" x="328" y="272.5">Memory mirror</text>
+<text class="small" x="536" y="272.5" text-anchor="end">PR</text>
+<path class="rule" d="M328 280.5H536"/>
+<text class="body" x="328" y="296.5">Collector watch</text>
+<text class="small" x="536" y="296.5" text-anchor="end">fix draft</text>
+<path class="rule" d="M328 304.5H536"/>
+<text class="body" x="328" y="320.5">Anthropic digest</text>
+<text class="small" x="536" y="320.5" text-anchor="end">report</text>
+<rect class="shadow" x="603" y="171" width="240" height="96"/>
+<rect class="card" x="600.5" y="168.5" width="239" height="95"/>
+<rect class="head" x="601" y="169" width="238" height="31"/>
+<path class="rule" d="M601 200.5H839"/>
+<rect class="m-claude" x="616" y="180" width="8" height="8"/>
+<text class="label" x="632" y="188">DESIGN SESSION</text>
+<text class="label" x="824" y="188" text-anchor="end">OPUS</text>
+<text class="title" x="616" y="227">Plans in a read-only box</text>
+<text class="cap" x="616" y="247">Managed Agents</text>
+<rect class="shadow" x="603" y="315" width="240" height="96"/>
+<rect class="card" x="600.5" y="312.5" width="239" height="95"/>
+<rect class="head" x="601" y="313" width="238" height="31"/>
+<path class="rule" d="M601 344.5H839"/>
+<rect class="m-claude" x="616" y="324" width="8" height="8"/>
+<text class="label" x="632" y="332">VISITOR BUILD</text>
+<text class="label" x="824" y="332" text-anchor="end">ACTIONS</text>
+<text class="title" x="616" y="371">Review plan, then build</text>
+<text class="cap" x="616" y="391">build.yml · no write token</text>
+<rect class="shadow" x="27" y="531" width="240" height="120"/>
+<rect class="card" x="24.5" y="528.5" width="239" height="119"/>
+<rect class="head" x="25" y="529" width="238" height="31"/>
+<path class="rule" d="M25 560.5H263"/>
+<rect class="m-flow" x="40" y="540" width="8" height="8"/>
+<text class="label" x="56" y="548">PR</text>
+<text class="title" x="40" y="590">Branch preview</text>
+<text class="cap" x="40" y="610">*.preview.lyjw.dev</text>
+<text class="cap" x="40" y="628">UI checked here</text>
+<rect class="shadow" x="315" y="531" width="240" height="120"/>
+<rect class="card" x="312.5" y="528.5" width="239" height="119"/>
+<rect class="head" x="313" y="529" width="238" height="31"/>
+<path class="rule" d="M313 560.5H551"/>
+<rect class="m-flow" x="328" y="540" width="8" height="8"/>
+<text class="label" x="344" y="548">MERGE GATE</text>
+<text class="body" x="328" y="584.5">CI</text>
+<text class="small" x="536" y="584.5" text-anchor="end">lint · tests · rules</text>
+<path class="rule" d="M328 592.5H536"/>
+<text class="body" x="328" y="608.5">Bot review</text>
+<text class="small" x="536" y="608.5" text-anchor="end">logic changes</text>
+<path class="rule" d="M328 616.5H536"/>
+<text class="body" x="328" y="632.5">lyjw's OK</text>
+<text class="small" x="536" y="632.5" text-anchor="end">UI changes</text>
+<rect class="shadow" x="603" y="531" width="240" height="120"/>
+<rect class="card" x="600.5" y="528.5" width="239" height="119"/>
+<rect class="head" x="601" y="529" width="238" height="31"/>
+<path class="rule" d="M601 560.5H839"/>
+<rect class="m-flow" x="616" y="540" width="8" height="8"/>
+<text class="label" x="632" y="548">MAIN</text>
+<text class="label" x="824" y="548" text-anchor="end">WORKERS BUILDS</text>
+<text class="title" x="616" y="590">Merged, auto-deployed</text>
+<text class="cap" x="616" y="610">ESA home refreshed</text>
+<text class="cap" x="616" y="628">check /api/version</text>
+<g mask="url(#gaps)">
+<path class="tip" d="M144 168L139.5 160L148.5 160Z"/>
+<path class="tip" d="M144 120L148.5 128L139.5 128Z"/>
+<path class="edge" d="M144 126L144 162"/>
+<path class="tip" d="M432 168L427.5 160L436.5 160Z"/>
+<path class="edge" d="M432 120L432 162"/>
+<path class="tip" d="M720 168L715.5 160L724.5 160Z"/>
+<path class="edge" d="M720 120L720 162"/>
+<path class="tip" d="M264 216L272 211.5L272 220.5Z"/>
+<path class="edge" d="M312 216L270 216"/>
+<path class="tip" d="M144 312L139.5 304L148.5 304Z"/>
+<path class="edge" d="M144 264L144 306"/>
+<path class="tip" d="M720 312L715.5 304L724.5 304Z"/>
+<path class="edge" d="M720 264L720 306"/>
+<path class="tip" d="M144 528L139.5 520L148.5 520Z"/>
+<path class="edge" d="M144 456L144 522"/>
+<path class="edge" d="M432 336L432 504L144 504"/>
+<path class="edge" d="M720 408L720 504L432 504"/>
+<circle class="tip" cx="144" cy="504" r="3.5"/>
+<circle class="tip" cx="432" cy="504" r="3.5"/>
+<path class="tip" d="M312 588L304 592.5L304 583.5Z"/>
+<path class="edge" d="M264 588L306 588"/>
+<path class="tip" d="M600 588L592 592.5L592 583.5Z"/>
+<path class="edge" d="M552 588L594 588"/>
+</g>
+<rect class="m-claude" x="26" y="140" width="8" height="8"/>
+<text class="label" x="40" y="148">CLAUDE</text>
+<text class="small" x="156" y="292">opens a thread</text>
+<text class="small" x="732" y="292">visitor confirms</text>
+<text class="small" x="576" y="508" text-anchor="middle">everything lands as a PR</text>
+<text class="small" x="576" y="148" text-anchor="middle">one shared project memory</text>
+<rect class="m-lyjw" x="24" y="672" width="8" height="8"/>
+<text class="cap" x="40" y="680">lyjw</text>
+<rect class="m-claude" x="100.8" y="672" width="8" height="8"/>
+<text class="cap" x="116.8" y="680">Claude</text>
+<rect class="m-flow" x="192" y="672" width="8" height="8"/>
+<text class="cap" x="208" y="680">GitHub · Cloudflare</text>
+<rect class="m-outside" x="377.3" y="672.5" width="7" height="7"/>
+<text class="cap" x="392.8" y="680">Outside triggers</text>
+</svg>
