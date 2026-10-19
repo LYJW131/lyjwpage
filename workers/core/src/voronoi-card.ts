@@ -16,9 +16,10 @@ import {
   shareCells,
   type Fitted,
   type LayoutCell,
+  type Point,
   type ShareCell,
 } from "./voronoi-layout";
-import { relayoutRound, type VoronoiState } from "./voronoi-relayout";
+import { relayoutRound, type SearchBest, type SearchProgress, type VoronoiState } from "./voronoi-relayout";
 
 export const VORONOI_CARD_PATH = "/api/cards/voronoi.svg";
 
@@ -32,11 +33,35 @@ export const INITIAL_VORONOI_STATE: VoronoiState = {
 };
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const point = (value: unknown) => Array.isArray(value) && value.length === 2 && value.every(finite);
+const point = (value: unknown): value is Point => Array.isArray(value) && value.length === 2 && value.every(finite);
+const finites = (value: unknown): value is number[] => Array.isArray(value) && value.every(finite);
+const strings = (value: Record<string, unknown>): value is Record<string, string> => Object.values(value).every((v) => typeof v === "string");
+const points = (value: unknown): value is Point[] => Array.isArray(value) && value.every(point);
 
 function layoutCell(value: unknown): value is LayoutCell {
   const cell = object(value);
   return !!cell && typeof cell.model === "string" && typeof cell.color === "string" && point(cell.site) && finite(cell.weight);
+}
+
+function shareCell(value: unknown): value is ShareCell {
+  const cell = object(value);
+  return !!cell && typeof cell.model === "string" && finite(cell.tokens);
+}
+
+function searchBest(value: unknown): SearchBest | null | undefined {
+  if (value === null) return null;
+  const best = object(value);
+  if (!best || !finite(best.seed) || !finite(best.score) || !points(best.sites) || !finites(best.weights)) return undefined;
+  return { seed: best.seed, score: best.score, sites: best.sites, weights: best.weights };
+}
+
+// 搜索进度读不全就当没在搜：下一轮按需重新开始，好过每轮带着坏进度抛错。
+function searchProgress(value: unknown): SearchProgress | null {
+  const search = object(value);
+  if (!search || !Array.isArray(search.cells) || !search.cells.every(shareCell) || !finite(search.next)) return null;
+  if (!finite(search.startedAt) || typeof search.hard !== "boolean") return null;
+  const best = searchBest(search.best);
+  return best === undefined ? null : { cells: search.cells, next: search.next, best, startedAt: search.startedAt, hard: search.hard };
 }
 
 export function parseVoronoiState(raw: unknown): VoronoiState | null {
@@ -47,11 +72,23 @@ export function parseVoronoiState(raw: unknown): VoronoiState | null {
   if (!finite(layout.chosenScore) || !finite(layout.chosenAt) || !Array.isArray(layout.accepted)) return null;
   if (!layout.accepted.every((key) => typeof key === "string")) return null;
   const colors = layout.colors === undefined ? {} : object(layout.colors);
-  if (!colors || !Object.values(colors).every((color) => typeof color === "string")) return null;
+  if (!colors || !strings(colors)) return null;
+  const seed = layout.seed ?? null;
+  if (seed !== null && !finite(seed)) return null;
   if (!finite(state.lastRelayoutAt) || (state.lastFailedSearchAt !== null && !finite(state.lastFailedSearchAt))) return null;
-  const search = object(state.search);
-  if (state.search !== null && (!search || !Array.isArray(search.cells) || !finite(search.next))) return null;
-  return state as unknown as VoronoiState;
+  return {
+    layout: {
+      cells: layout.cells,
+      chosenScore: layout.chosenScore,
+      chosenAt: layout.chosenAt,
+      seed,
+      accepted: layout.accepted,
+      ...(layout.colors !== undefined && { colors }),
+    },
+    lastRelayoutAt: state.lastRelayoutAt,
+    lastFailedSearchAt: state.lastFailedSearchAt,
+    search: searchProgress(state.search),
+  };
 }
 
 async function loadState(): Promise<VoronoiState> {
@@ -62,11 +99,12 @@ async function loadState(): Promise<VoronoiState> {
   return state ?? INITIAL_VORONOI_STATE;
 }
 
-function latestCells(usage: CodingUsagePayload): ShareCell[] {
-  if (!usage.totals) throw new AwaitingReport("尚未收到 coding 用量");
-  const cells = shareCells(usage.totals.totalTokens, usage.topModels);
+function latestCells(usage: CodingUsagePayload): { cells: ShareCell[]; totals: NonNullable<CodingUsagePayload["totals"]> } {
+  const totals = usage.totals;
+  if (!totals) throw new AwaitingReport("尚未收到 coding 用量");
+  const cells = shareCells(totals.totalTokens, usage.topModels);
   if (!cells.length) throw new AwaitingReport("coding 用量里还没有模型");
-  return cells;
+  return { cells, totals };
 }
 
 const LEGEND_X = 540;
@@ -141,15 +179,14 @@ export function renderVoronoiCard(fit: Fitted, totals: VoronoiCardTotals): strin
 export function voronoiCardResponse(): Promise<Response> {
   return cardResponse("voronoi-card", async () => {
     const [state, usage] = await Promise.all([loadState(), getCodingUsage()]);
-    const cells = latestCells(usage);
-    const totals = usage.totals as NonNullable<CodingUsagePayload["totals"]>;
+    const { cells, totals } = latestCells(usage);
     return renderVoronoiCard(fitLayout(state.layout, cells), totals);
   });
 }
 
 export async function voronoiCardRound(now = Date.now()): Promise<void> {
   const [state, usage] = await Promise.all([loadState(), getCodingUsage()]);
-  const { state: next, changed, event } = relayoutRound(state, latestCells(usage), now);
+  const { state: next, changed, event } = relayoutRound(state, latestCells(usage).cells, now);
   if (changed) await stateKey.put(next);
   if (event.kind === "relayout" || event.kind === "kept" || event.kind === "adapted") console.info("[voronoi-card]", JSON.stringify(event));
 }

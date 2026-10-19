@@ -12,7 +12,7 @@ import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./chat/show-car
 import { newLedger, type ToolIO } from "./tools/registry.ts";
 import { claimViews, isStatusViewKey, parseSiteStatusInput } from "./tools/site-status.ts";
 import { animeSearch, gameSearch } from "./chat/domain-search.ts";
-import { searchResultBlocks, urlKey, urlsIn, webSearch } from "./chat/web-search.ts";
+import { searchResultBlocks, urlKey, urlsIn, webSearch, webSearchProvider } from "./chat/web-search.ts";
 
 const user = (content: string) => ({ role: "user" as const, content });
 const assistant = (content: string) => ({ role: "assistant" as const, content });
@@ -238,6 +238,15 @@ test("搜索结果转成带引用的 search_result 块，日期并进标题", ()
   ]);
 });
 
+test("搜索与读页各自带上自己那家的密钥，缺 DeepSeek 密钥时搜索退回 Exa", () => {
+  const exa = { service: "exa", key: "e" };
+  const deepseek = { service: "deepseek", key: "d" };
+  assert.deepEqual(webSearchProvider({ EXA_API_KEY: "e", DEEPSEEK_API_KEY: "d", WEB_SEARCH_PROVIDER: "deepseek" }), { search: deepseek, fetch: exa });
+  assert.deepEqual(webSearchProvider({ EXA_API_KEY: "e", WEB_SEARCH_PROVIDER: "deepseek" }), { search: exa, fetch: exa });
+  assert.deepEqual(webSearchProvider({ DEEPSEEK_API_KEY: "d", WEB_SEARCH_PROVIDER: "deepseek" }), { search: deepseek, fetch: deepseek });
+  assert.equal(webSearchProvider({ DEEPSEEK_API_KEY: "d" }), undefined);
+});
+
 test("Exa 搜索走 fast 档、按分类传 category，响应归一成网页列表，没有正文的结果丢掉", async (t) => {
   const original = globalThis.fetch;
   const bodies: Record<string, unknown>[] = [];
@@ -247,8 +256,8 @@ test("Exa 搜索走 fast 档、按分类传 category，响应归一成网页列�
   };
   t.after(() => { globalThis.fetch = original; });
   const signal = new AbortController().signal;
-  assert.deepEqual(await webSearch({ provider: "exa", fetch: "exa", exaKey: "e" }, "q", "web", signal), [{ url: "https://e.dev", title: "E", published: "2026-09-22", text: "h1\n…\nh2" }]);
-  await webSearch({ provider: "exa", fetch: "exa", exaKey: "e" }, "q", "papers", signal);
+  assert.deepEqual(await webSearch({ search: { service: "exa", key: "e" }, fetch: { service: "exa", key: "e" } }, "q", "web", signal), [{ url: "https://e.dev", title: "E", published: "2026-09-22", text: "h1\n…\nh2" }]);
+  await webSearch({ search: { service: "exa", key: "e" }, fetch: { service: "exa", key: "e" } }, "q", "papers", signal);
   assert.equal(bodies[0].type, "fast");
   assert.equal(bodies[0].category, undefined);
   assert.equal(bodies[1].category, "research paper");
