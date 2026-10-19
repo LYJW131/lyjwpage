@@ -247,8 +247,8 @@ test("Exa 搜索走 fast 档、按分类传 category，响应归一成网页列�
   };
   t.after(() => { globalThis.fetch = original; });
   const signal = new AbortController().signal;
-  assert.deepEqual(await webSearch({ provider: "exa", exaKey: "e" }, "q", "web", signal), [{ url: "https://e.dev", title: "E", published: "2026-09-22", text: "h1\n…\nh2" }]);
-  await webSearch({ provider: "exa", exaKey: "e" }, "q", "papers", signal);
+  assert.deepEqual(await webSearch({ provider: "exa", fetch: "exa", exaKey: "e" }, "q", "web", signal), [{ url: "https://e.dev", title: "E", published: "2026-09-22", text: "h1\n…\nh2" }]);
+  await webSearch({ provider: "exa", fetch: "exa", exaKey: "e" }, "q", "papers", signal);
   assert.equal(bodies[0].type, "fast");
   assert.equal(bodies[0].category, undefined);
   assert.equal(bodies[1].category, "research paper");

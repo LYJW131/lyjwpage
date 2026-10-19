@@ -16,7 +16,7 @@ export const RELAYOUT_COOLDOWN_MS = 86_400_000;
 export const FAILED_SEARCH_RETRY_MS = 86_400_000;
 // 新布局要比当前好 30% 以上才换，免得两个差不多的解来回跳。
 export const RELAYOUT_GAIN = 0.3;
-// 一个种子约 7ms CPU；一轮定时任务只跑一段，4000 个种子分十轮跑完，不让单次调用逼近 Worker 的 CPU 上限。
+// 一个种子约 7ms CPU；一轮定时任务只跑一段，SEARCH_SEEDS 个种子分几轮跑完，不让单次调用逼近 Worker 的 CPU 上限。
 export const SEARCH_CHUNK = 400;
 
 export type SearchBest = { seed: number; score: number; sites: Point[]; weights: number[] };

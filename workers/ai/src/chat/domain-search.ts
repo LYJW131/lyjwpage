@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
-import { object } from "@shared/json";
+import { object, text } from "@shared/json";
 
 import { fetchJson, type WebPage } from "./web-search";
 
@@ -45,9 +45,8 @@ export const GAME_SEARCH_TOOL: Anthropic.Beta.BetaTool = {
 
 export const DOMAIN_SEARCH_TOOLS = [ANIME_SEARCH_TOOL, GAME_SEARCH_TOOL];
 
-const text = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : undefined);
 const list = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? value.flatMap((item) => { const entry = object(item); return entry ? [entry] : []; }) : []);
-const lines = (...items: (string | false | undefined)[]) => items.filter(Boolean).join("\n");
+const lines = (...items: (string | false | null | undefined)[]) => items.filter(Boolean).join("\n");
 
 export async function animeSearch(query: string, signal: AbortSignal): Promise<WebPage[]> {
   const data = await fetchJson(`https://api.bgm.tv/v0/search/subjects?limit=${RESULTS}`, {
