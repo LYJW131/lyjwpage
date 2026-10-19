@@ -105,15 +105,15 @@ Status cards such as now watching, now listening, charging and games only appear
 **Exit node**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark">
-  <img src="https://lyjw.me/cards/server.svg" alt="Exit node card: rates, traffic, CPU, memory and disk" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/server.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/server.svg" alt="Exit node card: rates, traffic, CPU, memory and disk" width="100%">
 </picture>
 
 **AI Coding**: merged from the Mac's local logs, Cursor account history and Claude Code cloud telemetry.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark">
-  <img src="https://lyjw.me/cards/vibe-coding.svg" alt="AI Coding card: usage across sources, active tools and account limits" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/vibe-coding.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/vibe-coding.svg" alt="AI Coding card: usage across sources, active tools and account limits" width="100%">
 </picture>
 
 **PlayStation**
@@ -126,8 +126,8 @@ Status cards such as now watching, now listening, charging and games only appear
 **Pulse**: on the page, hover any segment to see the state and title at that time.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark">
-  <img src="https://lyjw.me/cards/pulse.svg" alt="Pulse card: 24-hour timelines for coding, tokens, listening, watching, playing, charging and activity with a daily summary" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/pulse.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/pulse.svg" alt="Pulse card: 24-hour timelines for coding, tokens, listening, watching, playing, charging and activity with a daily summary" width="100%">
 </picture>
 
 **Provider status**
@@ -140,8 +140,8 @@ Status cards such as now watching, now listening, charging and games only appear
 **The site itself**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark">
-  <img src="https://lyjw.me/cards/site-status.svg" alt="LYJWPAGE card: repository stats and commits, 30-day uptime, performance scores and service metrics" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/site-status.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/site-status.svg" alt="LYJWPAGE card: repository stats and commits, 30-day uptime, performance scores and service metrics" width="100%">
 </picture>
 
 ## Architecture

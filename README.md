@@ -105,15 +105,15 @@
 **落地节点**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark">
-  <img src="https://lyjw.me/cards/server.svg" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/server.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/server.svg" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
 </picture>
 
 **AI Coding**：Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并计算。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark">
-  <img src="https://lyjw.me/cards/vibe-coding.svg" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/vibe-coding.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/vibe-coding.svg" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
 </picture>
 
 **PlayStation**
@@ -126,8 +126,8 @@
 **Pulse**：页面上悬停任一时段看当时的状态与标题。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark">
-  <img src="https://lyjw.me/cards/pulse.svg" alt="Pulse 卡片：编码、Token、听、看、玩、充电、运动的 24 小时时间线与右侧摘要" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/pulse.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/pulse.svg" alt="Pulse 卡片：编码、Token、听、看、玩、充电、运动的 24 小时时间线与右侧摘要" width="100%">
 </picture>
 
 **服务状态**
@@ -140,8 +140,8 @@
 **站点自身**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark">
-  <img src="https://lyjw.me/cards/site-status.svg" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/site-status.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/site-status.svg" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
 </picture>
 
 ## 系统架构
