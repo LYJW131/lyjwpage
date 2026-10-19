@@ -37,6 +37,7 @@ import { chargerActive, liveTrack, powerBankActive } from "@shared/home-layout";
 import { site as siteConfig } from "@shared/site";
 import type { StatusViewKey } from "@shared/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
+import type { QuestNow } from "@shared/quest";
 
 import chargerFixture from "../../../workers/core/dev-fixtures/charger-macbook-iphone.json";
 import focusFixture from "../../../workers/core/dev-fixtures/focus-now-sleep.json";
@@ -131,9 +132,9 @@ const CARDS: Record<string, ReadmeCard> = {
     width: FULL_WIDTH,
     height: QUEST_HEIGHT,
     annotate: (html, note) => html.replace(/(· Meta Quest)(<\/span>)/, `$1 · ${note}$2`),
-    async render(status, _site, now) {
+    async render(status, site, now) {
       const { value, sample } = orSample(await status("questNow"), (data) => data.playing != null, questFixture, now);
-      return { element: <div style={{ marginTop: -12 }}><QuestNowCard nowFallback={value} /></div>, sample };
+      return { element: <div style={{ marginTop: -12 }}><QuestNowCard nowFallback={await inlineQuestCover(site, value)} /></div>, sample };
     },
   },
   charger: {
@@ -334,6 +335,20 @@ function originalSource(src: string, width: number): [string, number] {
   if (!src.startsWith(`${IMAGE_PROXY_PATH}?`)) return [src, width];
   const params = new URLSearchParams(src.slice(IMAGE_PROXY_PATH.length + 1));
   return [params.get("url") ?? src, width || Number(params.get("w") ?? 0)];
+}
+
+// Discord 的外链代理把原图地址写在路径里（/external/<签名>/https/<原地址>）；代理拒绝 Worker 时退回原地址，只认 Meta 自家的 Quest 封面。
+const discordExternalOrigin = (url: string) => {
+  const path = /^https:\/\/media\.discordapp\.net\/external\/[^/]+\/https\/(www\.oculus\.com\/.+)$/.exec(url)?.[1];
+  return path ? `https://${path}` : null;
+};
+
+async function inlineQuestCover(site: SiteServices, quest: StatusResponse<QuestNow>): Promise<StatusResponse<QuestNow>> {
+  const playing = quest.ok ? quest.data.playing : null;
+  if (!quest.ok || !playing?.largeImageUrl) return quest;
+  const origin = discordExternalOrigin(playing.largeImageUrl);
+  const cover = (await site.asset(playing.largeImageUrl)) ?? (origin ? await site.asset(origin) : null);
+  return { ...quest, data: { ...quest.data, playing: { ...playing, largeImageUrl: cover } } };
 }
 
 async function inlineImages(html: string, site: SiteServices): Promise<string> {
