@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "docs", "diagrams");
@@ -466,7 +467,30 @@ export function renderAll(): Map<string, string> {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  mkdirSync(OUT, { recursive: true });
-  for (const [name, svg] of renderAll()) writeFileSync(path.join(OUT, name), svg);
-  console.log(`写出 ${path.relative(ROOT, OUT)}/ 下的 ${renderAll().size} 张图`);
+  let check = false;
+  try {
+    check = parseArgs({ options: { check: { type: "boolean", default: false } }, strict: true }).values.check;
+  } catch (error) {
+    console.error(`${error instanceof Error ? error.message : error}\n用法：node scripts/readme-diagrams.ts [--check]`);
+    process.exit(2);
+  }
+  const files = renderAll();
+  const out = path.relative(ROOT, OUT);
+  if (check) {
+    const stale = [...files]
+      .filter(([name, svg]) => {
+        const file = path.join(OUT, name);
+        return !existsSync(file) || readFileSync(file, "utf8") !== svg;
+      })
+      .map(([name]) => name);
+    if (stale.length > 0) {
+      console.error(`${out}/ 与脚本输出不一致：${stale.join("、")}\n跑 pnpm docs:diagrams 重出图后一起提交。`);
+      process.exit(1);
+    }
+    console.log(`${out}/ 下 ${files.size} 张图与脚本输出一致`);
+  } else {
+    mkdirSync(OUT, { recursive: true });
+    for (const [name, svg] of files) writeFileSync(path.join(OUT, name), svg);
+    console.log(`写出 ${out}/ 下的 ${files.size} 张图`);
+  }
 }
