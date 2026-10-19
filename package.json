@@ -11,7 +11,7 @@
     "dev:override": "node scripts/dev-override.ts",
     "dev:scene": "node --import ./src/lib/testing/register-alias.mjs scripts/dev-scene.ts",
     "readme:shots": "node --import ./src/lib/testing/register-alias.mjs scripts/readme-shots.ts",
-    "docs:architecture": "node scripts/architecture-diagram.mjs",
+    "docs:diagrams": "node scripts/readme-diagrams.ts",
     "design:scale": "node scripts/design-scale-check.ts",
     "docs:check": "node scripts/docs-check.ts",
     "docs:comment-only": "node scripts/comment-only-check.ts",
