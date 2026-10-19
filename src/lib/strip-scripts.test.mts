@@ -16,6 +16,11 @@ test("拆开的 script 去掉内层后还会拼回去，要删到不再出现", 
   assert.equal(stripScripts("<div><scr<script>a</script>ipt>b</script></div>"), "<div></div>");
 });
 
+test("大写与带空白、属性的结束标签也算", () => {
+  assert.equal(stripScripts("<SCRIPT>a</SCRIPT><b>ok</b>"), "<b>ok</b>");
+  assert.equal(stripScripts('<script>a</script >x<script>b</script foo="bar">'), "x");
+});
+
 test("没有 script 时原文不动", () => {
   const html = `<img alt="a < b" src="x">`;
   assert.equal(stripScripts(html), html);
