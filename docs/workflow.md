@@ -49,6 +49,8 @@
 
 主线程只定验什么、判结果；跑命令、开浏览器截图、轮询部署这些长输出的活交给 Haiku 验证员，做法见 [`lyjwpage-verify`](../.claude/skills/lyjwpage-verify/SKILL.md)。验证员最后签一张分级回执，按提交 SHA 记每项验到了哪一档（真页面、单测、只过类型），贴成 PR 评论；合并前 [`scripts/verify-receipt.ts`](../scripts/verify-receipt.ts) 核对回执还盖得住当前提交。
 
+验证以外的机械活（成批读讨论串与评审、全仓搜、照规格的改动、等 CI 与部署）同样不留在主线程：按 [`lyjwpage-delegate`](../.claude/skills/lyjwpage-delegate/SKILL.md) 派给 Sonnet / Haiku 子代理或后台命令。
+
 截图与效果图用同一份场景数据：`pnpm dev:scene` 把整页状态注入本地开发栈，`pnpm readme:shots` 出 README 的首页总览图，见 [screenshots.md](./screenshots.md)。
 
 ## 定时任务

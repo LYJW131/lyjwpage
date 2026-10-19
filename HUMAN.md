@@ -28,7 +28,7 @@
 | 「派一个去做 X，开出 pr 来」 | 实现并开 PR，等你看 |
 | 「草稿就行」 | 开草稿 PR 就停 |
 | 「派我电脑上的人去…」「用我的浏览器去…」 | 走 Remote Control，在你 Mac 上做 |
-| 「起一个 opus 5.5 max 的线程」「派一个 fable max」 | 指定线程的模型和力度；翻文档、翻代码、读长历史这类重活，线程自己派 sonnet / haiku 子代理去干 |
+| 「起一个 opus 5.5 max 的线程」「派一个 fable max」 | 指定线程的模型和力度；翻文档、翻代码、读长历史这类重活，线程自己派 sonnet / haiku 子代理去干（派法见 `.claude/skills/lyjwpage-delegate/SKILL.md`） |
 | 「用动态工作流」「ultracode」 | 多 agent 并行编排 |
 | 「处理一下」 | Claude 自己判断该做什么：整理旧线程、决定修还是关 |
 | 「现在有哪些等着处理的」 | 一条回复，先列等你的，再列可选的和不用你管的 |
