@@ -4,6 +4,7 @@ import { getCodingNow, getCodingUsage, getCodingYear } from "./coding-usage";
 import { getNowWatching, getWatching } from "./emby";
 import { getPlaying, getPlayingNow, getTrophies } from "./playstation";
 import { getQuestNow } from "./quest";
+import { getFocusNow } from "./stores/focus";
 import { getPowerBankSnapshot } from "./powerbank";
 import { getPulseStatus } from "./pulse";
 import { LAG_VIEW_LOADERS } from "@shared/lag-views";
@@ -46,6 +47,7 @@ export const statusLoaders = {
   playing: { endpoint: unparam(getPlaying) },
   playingNow: { endpoint: unparam(getPlayingNow) },
   questNow: { endpoint: unparam(getQuestNow) },
+  focusNow: { endpoint: unparam(getFocusNow) },
   trophies: {
     endpoint: async ({ titleIds }: StatusLoaderParams) => {
       const data = await getTrophies();

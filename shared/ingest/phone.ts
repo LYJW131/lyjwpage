@@ -1,13 +1,14 @@
 import { object } from "@shared/json";
 import type { ReportedWorkouts } from "@shared/types";
 import type { ActivityReport } from "@shared/activity";
+import { focusModeOf, type FocusMode } from "@shared/focus";
 
 import { normalizeActivity } from "./activity";
 import { normalizeWorkouts } from "./workouts";
 
 // iPhone App 由 HealthKit 唤醒，不常驻；不能照搬 Mac 心跳来推断手机在线状态。
 
-const KNOWN_MODULES = new Set(["activity", "workouts"]);
+const KNOWN_MODULES = new Set(["activity", "workouts", "focus"]);
 
 type PhoneEnvelope = {
   version?: unknown;
@@ -20,7 +21,8 @@ export type PreparedPhoneEnvelope = {
   ignored: string[];
   workouts?: ReportedWorkouts;
   activity?: ActivityReport;
-  failure?: { stage: "beforeWorkouts" | "beforeActivity"; message: string };
+  focus?: { mode: FocusMode | null; observedAt: number };
+  failure?: { stage: "beforeWorkouts" | "beforeActivity" | "beforeFocus"; message: string };
 };
 
 export function preparePhoneEnvelope(input: unknown, receivedAt = Date.now()): PreparedPhoneEnvelope {
@@ -54,7 +56,26 @@ export function preparePhoneEnvelope(input: unknown, receivedAt = Date.now()): P
         stage: "beforeActivity",
         message: error instanceof Error ? error.message : String(error),
       };
+      return prepared;
+    }
+  }
+  if ("focus" in modules) {
+    try { prepared.focus = normalizeFocus(modules.focus, receivedAt); }
+    catch (error) {
+      prepared.failure = {
+        stage: "beforeFocus",
+        message: error instanceof Error ? error.message : String(error),
+      };
     }
   }
   return prepared;
+}
+
+// 快捷指令「获取当前专注模式」在关闭时给空串，切到别的模式时给那个模式的名字，两种都记成不在专注里。
+function normalizeFocus(input: unknown, receivedAt: number): { mode: FocusMode | null; observedAt: number } {
+  const focus = object(input);
+  if (!focus) throw new Error("专注模式上报的 focus 必须是对象");
+  const mode = focus.mode ?? "";
+  if (typeof mode !== "string") throw new Error("专注模式上报的 mode 必须是字符串");
+  return { mode: focusModeOf(mode), observedAt: receivedAt };
 }

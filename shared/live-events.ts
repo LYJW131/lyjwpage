@@ -1,4 +1,5 @@
 import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";
+import type { FocusNow } from "@shared/focus";
 import type { QuestNow } from "@shared/quest";
 import type {
   ChargerPayload,
@@ -15,6 +16,7 @@ import type {
 
 export type LiveEvent =
   | { type: "quest-now"; payload: QuestNow }
+  | { type: "focus-now"; payload: FocusNow }
   | { type: "desktop"; payload: DesktopPayload }
   | { type: "listening-now"; payload: NowListeningPayload }
   | { type: "listening"; payload: ListeningPayload }
@@ -39,6 +41,7 @@ export {
   CODING_TAG,
   CODING_YEAR_TAG,
   DESKTOP_TAG,
+  FOCUS_NOW_TAG,
   LIMITS_TAG,
   LISTENING_TAG,
   NOW_LISTENING_TAG,

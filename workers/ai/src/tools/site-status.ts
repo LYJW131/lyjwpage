@@ -26,6 +26,7 @@ const VIEW_NOTES = {
   playing: "Recently played PlayStation games",
   playingNow: "PlayStation online status and current game",
   questNow: "Meta Quest current status",
+  focusNow: "Whether LYJW's iPhone is in Sleep or Mindfulness focus right now (LYJW is not to be disturbed), and since when",
   trophies: "PlayStation trophy profile and recent trophy progress",
   githubChart: "Daily GitHub contribution counts over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums",
   githubRepo: "This site's GitHub repo: totals, contributors and the latest commit titles (refreshed periodically, may lag by up to half an hour)",
