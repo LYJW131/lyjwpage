@@ -201,43 +201,40 @@ export async function check(
 
 const USAGE = "用法：check --pr <号> [--need 等级] [--judge]，或 sign --sha <提交> (--level 等级 | --verdict PASS|FAIL)；见 --help";
 
-async function main() {
-  let parsed;
+const SIGN_OPTIONS = { sha: { type: "string" }, level: { type: "string" }, verdict: { type: "string" } } as const;
+const CHECK_OPTIONS = {
+  pr: { type: "string" },
+  need: { type: "string", default: "unit-test-verified" },
+  judge: { type: "boolean", default: false },
+} as const;
+
+function sign(args: string[]) {
   try {
-    parsed = parseArgs({
-      args: process.argv.slice(2),
-      allowPositionals: true,
-      strict: true,
-      options: {
-        pr: { type: "string" },
-        need: { type: "string", default: "unit-test-verified" },
-        judge: { type: "boolean", default: false },
-        sha: { type: "string" },
-        level: { type: "string" },
-        verdict: { type: "string" },
-        help: { type: "boolean", default: false },
-      },
-    });
-  } catch {
-    console.log(JSON.stringify({ pass: false, next: USAGE }));
+    const { values } = parseArgs({ args, strict: true, options: SIGN_OPTIONS });
+    if (values.sha === undefined) throw new Error("缺 --sha");
+    console.log(signLine({ ref: values.sha, level: values.level, verdict: values.verdict }));
+    return 0;
+  } catch (error) {
+    console.error(`${(error as Error).message}\n${USAGE}`);
     return 2;
   }
-  const { values, positionals } = parsed;
-  if (values.help) {
+}
+
+async function main(argv: string[]) {
+  if (argv.includes("--help")) {
     console.log(HELP);
     return 0;
   }
-  if (positionals.length === 1 && positionals[0] === "sign" && values.sha !== undefined) {
-    try {
-      console.log(signLine({ ref: values.sha, level: values.level, verdict: values.verdict }));
-      return 0;
-    } catch (error) {
-      console.error((error as Error).message);
-      return 2;
-    }
+  const [command, ...args] = argv;
+  if (command === "sign") return sign(args);
+  let values;
+  try {
+    ({ values } = parseArgs({ args, strict: true, options: CHECK_OPTIONS }));
+  } catch {
+    values = null;
   }
-  const pr = Number(values.pr);
-  if (positionals.length !== 1 || positionals[0] !== "check" || !Number.isInteger(pr) || pr <= 0 || !Object.hasOwn(PASSING_RANK, values.need)) {
+  const pr = Number(values?.pr);
+  if (command !== "check" || !values || !Number.isInteger(pr) || pr <= 0 || !Object.hasOwn(PASSING_RANK, values.need)) {
     console.log(JSON.stringify({ pass: false, next: USAGE }));
     return 2;
   }
@@ -252,5 +249,5 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  process.exitCode = await main();
+  process.exitCode = await main(process.argv.slice(2));
 }
