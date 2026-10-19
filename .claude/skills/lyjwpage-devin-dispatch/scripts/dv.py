@@ -153,8 +153,6 @@ def state(meta):
     above = [l for l in lines[:rules[-2]] if l.strip()][-2:] if len(rules) >= 2 else []
     if any(e in l for e in NETERR for l in above):
         return 'neterror', lines
-    if APPROVAL in joined:
-        return 'approval', lines
     if any(b in joined for b in BUSY):
         return 'busy', lines
     if IDLE in joined and STARTING not in joined:
@@ -162,14 +160,16 @@ def state(meta):
         return ('idle' if box.startswith(IDLE) or not box else 'typed'), lines
     if STARTING in joined:
         return 'starting', lines
+    # Checked only after the busy/idle markers: an open menu replaces the composer, while an
+    # answered one can linger in the scrollback above a live composer.
+    if APPROVAL in joined:
+        return 'approval', lines
     return 'attention', lines  # a question, approval prompt, menu or error
 
 
 def tail(lines, n=25):
     return [l for l in lines if l.strip()][-n:]
 
-
-# ---------------------------------------------------------------- commands
 
 def cmd_start(a):
     d = run_dir(a.name)
@@ -298,7 +298,9 @@ def cmd_wait(a):
         h = hash(tuple(l for l in lines if 'esc twice to interrupt' not in l))
         # The same menu still on screen after an approval is a stale render or a menu
         # that ignored Enter: fall through to the attention timer instead of pressing again.
-        if st == 'approval' and meta.get('auto_approve') and h != approved_hash:
+        if st != 'approval':
+            approved_hash = None
+        elif meta.get('auto_approve') and h != approved_hash:
             approve_once(meta)
             approved_hash = h
             continue
