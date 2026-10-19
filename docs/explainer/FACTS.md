@@ -532,6 +532,19 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - main 上几乎每个提交都带 `Co-Authored-By: Claude …` 尾注：按 b7bf96e 数，最近 200 个非合并提交里 199 个带，没带的那个是头像同步工作流的机器人提交（`git log main --no-merges -200`，要在完整克隆上数）。第 08 章开场让历史上的提交一个个冒出 Clawd，说的是这件事；片中不出数。
 
+### 墙上的彩蛋
+
+- 第 08 章每个机位的墙上和地上有几件摆设，上面的字都照这个项目的规矩和旧事：
+  - 「AGENTS.md ≤ 150 行」：根 `AGENTS.md`「文档与注释」，`pnpm docs:check` 查行数。
+  - 「家 = localhost:3211」：`pnpm dev` 的地址（根 `AGENTS.md`「项目入口与验证」）。
+  - 「禁止手跑 wrangler deploy」：根 `AGENTS.md`「禁区」，由钩子 `scripts/guard-forbidden-commands.mjs` 拦。
+  - 「基线只减不增」：`pnpm baselines:check`（根 `AGENTS.md`「规则 → 由什么强制」）。
+  - 纸箱 `site-assets-legacy/`「Vercel 时代」：R2 里回填的旧静态资源前缀（`src/lib/asset-archive.ts#LEGACY_ASSET_PREFIX`、`docs/ops-facts.md`）。
+  - 墓碑「RIP Sentry」：Sentry 已不再使用（`docs/ops-facts.md`）。
+  - 挂钟写 SGT、窗台上指着 04:00 的闹钟、「晨报 09:00」报纸、明信片「明早 09:00 晨报见」：本节的夜班表。
+  - 门垫「过了门禁再进门」对应本地门禁；「本月最佳验证员」挂像里是拿放大镜的 Haiku 验证员；窗下挂钩上挂着协调 Claude 的耳机和 Haiku 的放大镜。
+- 只是陪衬、不对应事实的：日历上圈的日子、LGTM 十字绣、tokens 罐子、`effort: high` 杯子（推理强度档位的名字）、仙人掌、吊灯、小旗、星座与流星、合并时的纸屑、build 那一项旁边睡着的小 Clawd。
+
 ## 片中不用或待定
 
 - **实测延迟**：上一版的「320–490 ms（8 月实测）」作废，因为中间多了一跳 Service Binding。上画面前要重测；没重测就不出数字。
