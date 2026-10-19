@@ -63,7 +63,7 @@ export function AgentPanel({
         <div className="flex items-center gap-2">
           <FeaturedMark row={row} active={active} />
           <span className="text-sm font-medium">{row.label}</span>
-          {active && <ActiveBadge sources={sources} />}
+          {active && <ActiveBadge id={row.id} sources={sources} />}
         </div>
         <span
           className={cn(

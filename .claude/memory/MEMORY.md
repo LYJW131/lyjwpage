@@ -42,9 +42,10 @@
 ## Routines
 - 04:00 daily code review (cursor in issue #185): [[lyjwpage-daily-review-routine]].
 - 04:53 skill-mining + drift review; also turns adopted Codex/Devin Review suggestions into lint/hook/skill constraints (#319): [[skill-mining-routine]].
-- 08:41 Anthropic updates digest → read by 09:00 morning report: [[anthropic-updates-routine]].
+- 08:41 Anthropic updates digest → read by the 10:56 morning report: [[anthropic-updates-routine]].
 - 4x daily collector superfan (Workers Observability, no Sentry): [[collector-superfan-routine]]. lyjw OK'd 2026-10-15: after reproducing an error it may open a fix draft PR.
-- 09:00 SGT morning report in project chat, hourly in-place updates until lyjw writes.
+- Morning report: daily 10:56 SGT routine in thread「晨报 · 定时任务」(lyjw 2026-10-20 01:51 SGT; the old 09:00 one was a one-shot that stopped after 10-14): [[morning-report-routine]].
+- Routine prompts can be changed only from the routine's own session: send it the new text (file in /mnt/project-files/routine-prompts/) and have it update_trigger + read back.
 - Project paused 2026-10-15 17:01 → resumed 2026-10-19 14:54 SGT; each routine caught up once by bookmark. Cloudflare Code Mode sign-in had expired on resume.
 - Agent automation practices: [[agent-automation-practices]].
 
