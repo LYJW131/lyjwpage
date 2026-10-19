@@ -22,7 +22,7 @@
 
 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`workers/site/src/index.ts` 把 `/explainer` 落到构建期生成的 explainer 静态资产；页面载入的脚本（`v2/index.html` 的 `LOAD` 表）和内联样式引用的字体按内容哈希改名放进 `a/`，缓存一年；配乐不进仓库，见下一段。页面和 `v2/film.js` 经注入的 `window.__assets` 查哈希名；本地预览和写章工具没有这张表，用原名。`LOAD` 表里还没写的章不发布，站点上是占位画面。
 
-第 04、08 章的故事音效是 `v2/sfx/` 里的录音（freesound 上的 CC0 / CC BY 录音，经 [Openverse](https://api.openverse.org) 检索，用 [earshot](https://github.com/Leonxlnx/earshot) 按听感排名挑选，署名在 `v2/sfx/CREDITS.txt`）。时刻写在 `v2/music/ch04.js`、`v2/music/ch08.js` 的 `SFX`，配乐合成或取到之后由 `v2/film.js#withSfx` 叠上去，所以 R2 上的配乐里没有它们；渐强类音效按 `v2/score.js` 的 `SFX_LEAD` 提前起，让最响的一下落在卡点上，叠完只在超过 -2 dBFS 的地方压峰；构建脚本把 `v2/sfx/*.mp3` 一起按内容哈希发布。
+第 04、06、08 章的故事音效是 `v2/sfx/` 里的录音（freesound 上的 CC0 / CC BY 录音，经 [Openverse](https://api.openverse.org) 检索，用 [earshot](https://github.com/Leonxlnx/earshot) 按听感排名挑选，署名在 `v2/sfx/CREDITS.txt`）。时刻写在 `v2/music/ch04.js`、`v2/music/ch06.js`、`v2/music/ch08.js` 的 `SFX`，配乐合成或取到之后由 `v2/film.js#withSfx` 叠上去，所以 R2 上的配乐里没有它们；渐强类音效按 `v2/score.js` 的 `SFX_LEAD` 提前起，让最响的一下落在卡点上，叠完只在超过 -2 dBFS 的地方压峰；构建脚本把 `v2/sfx/*.mp3` 一起按内容哈希发布。
 
 第 08 章的手写字体是霞鹜漫黑（`fonts/LXGWMarkerGothic-ch08.woff2`，许可 `fonts/LXGWMarkerGothic-OFL.txt`），只切了这一章用到的字。`v2/ch08.js` 里加了新字要重切，不然新字退回系统字体；源文件取 [lxgw/LxgwMarkerGothic](https://github.com/lxgw/LxgwMarkerGothic) 的 `fonts/ttf/LXGWMarkerGothic-Regular.ttf`，字表是 `v2/ch08.js` 里全部非 ASCII 字符加上可打印 ASCII：
 
@@ -31,7 +31,7 @@ python3 -m pip install fonttools brotli
 pyftsubset LXGWMarkerGothic-Regular.ttf --text-file=<字表> --flavor=woff2 --layout-features='*' --output-file=docs/explainer/fonts/LXGWMarkerGothic-ch08.woff2
 ```
 
-第 04 章报纸版的标题字是思源宋体 600 与 900 两档（`fonts/NotoSerifSC-600-ch04.woff2`、`fonts/NotoSerifSC-900-ch04.woff2`，许可 `fonts/NotoSerifSC-OFL.txt`），同样只含这一章的字：字表是 `v2/ch04.js` 字符串里的全部非 ASCII 字符加上可打印 ASCII，交给 Google Fonts 的 `css2?family=Noto+Serif+SC:wght@<字重>&text=<字表>` 取回切好的 woff2。
+第 04 章报纸版的标题字和第 06 章水墨版的标签字是思源宋体 600 与 900 两档（`fonts/NotoSerifSC-600-ch04-06.woff2`、`fonts/NotoSerifSC-900-ch04-06.woff2`，许可 `fonts/NotoSerifSC-OFL.txt`），只含这两章的字：字表是 `v2/ch04.js`、`v2/ch06.js` 去掉整行注释后的全部非 ASCII 字符加上可打印 ASCII，交给 Google Fonts 的 `css2?family=Noto+Serif+SC:wght@<字重>&text=<字表>` 取回切好的 woff2。第 06 章的毛笔楷是马善政（`fonts/MaShanZheng-ch06.woff2`，许可 `fonts/MaShanZheng-OFL.txt`），字表只取 `v2/ch06.js`，同法用 `family=Ma+Shan+Zheng` 取回；`v2/index.html` 给它限了汉字的 `unicode-range`，旁白里的拉丁字母落到思源宋体。
 
 站点版的整片配乐放在 R2，不进仓库。对象键是乐谱输入（`scripts/explainer-score.mjs#scoreInputs`：Clawd 动作时序、章节表、合成器、各章乐谱和渲染脚本）的 sha256，页面经 `/img/<键>.mp3` 取它（同图片一样由 `site` Worker 经 R2 绑定直出、`lyjw131.com` 经 ESA 回源）。改了这些文件的提交进了 main，`.github/workflows/explainer-score.yml` 渲染并上传（分支不自动渲染，预览上现合成；可对内部开发分支手动运行）；同一个键已经在 R2 就跳过，对象传上后不覆盖，main 连续推送时只留最后一次在渲。上传用仓库 secret `R2_SCORE_ACCESS_KEY_ID` / `R2_SCORE_SECRET_ACCESS_KEY`，渲染那一步不带凭据。
 

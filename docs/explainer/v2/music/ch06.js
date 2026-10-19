@@ -9,6 +9,13 @@
     const checks = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45].map((phi) => ({
       bar: Math.floor(phi / 4), beat: phi % 4, kind: "ping", m: midi("D3"), late: phi >= 24 && phi < 40,
     }));
+    // 时刻（小节）与 ch06.js 的 title、card、coding、slip 同步：盖「06」印、卷轴展开、打分的窗逐个盖小印、便笺落下。
+    const SFX = [
+      [0.45, "stamp", 0.8, -0.4], [0.55, "paper", 0.45, -0.3, 0.9],
+      [3.9, "paper", 0.6, 0.4, 0.8], [3.92, "whoosh", 0.3, 0.4, 0.8], [4.1, "stamp", 0.5, 0.6, 1.25],
+      ...[0, 1, 2, 3, 4].map((i) => [8.58 + i * 0.125, "stamp", 0.32, -0.2 + i * 0.12, 1.3 + i * 0.04]),
+      [10.35, "paper", 0.5, -0.2, 1.1],
+    ];
     return {
       harm: [
         "Dm9", "Bbmaj7", "Gm9", [["A7sus4", 0], ["A7", 2]],
@@ -49,6 +56,7 @@
         { bar: 10, beat: 1, kind: "accent", what: "flip" },
         { bar: 11, beat: 3, kind: "swell" },
       ],
+      sfx: SFX.map(([o, name, v = 1, pan = 0, rate = 1]) => ({ bar: Math.floor(o + 1e-9), beat: (o - Math.floor(o + 1e-9)) * 4, name, v, pan, rate })),
     };
   },
 });
