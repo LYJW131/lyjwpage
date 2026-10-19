@@ -44,7 +44,7 @@ description: lyjwpage 里排查并修 bug：lyjw 说「X 不对」、线上报�
 5. 对照：同一请求打生产 `https://lyjw.me` 与本地，`diff` 两边输出。
 6. 二分：lyjw 说「以前是好的」时，`git bisect run <上面那条命令>`。
 
-偶发问题：循环跑上百次、并发、固定时间与随机种子，把复现率拉高。Safari / WebKit 才有的行为和 lyjw 设备上的现象云端复现不了：写明试过什么，请 lyjw 给带时间点的录屏或截图，拿到前不进第 4 步。
+偶发问题：循环跑上百次、并发、固定时间与随机种子，把复现率拉高。这样仍复现不了、又像几方交错写状态的，按 `.claude/skills/lyjwpage-formal-model/SKILL.md` 给那一块建 TLA+ 模型找反例，再照反例的顺序造回路。Safari / WebKit 才有的行为和 lyjw 设备上的现象云端复现不了：写明试过什么，请 lyjw 给带时间点的录屏或截图，拿到前不进第 4 步。
 
 ## 3. 缩到最小复现
 

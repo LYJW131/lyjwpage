@@ -5,8 +5,8 @@
 - **Call lyjw "lyjw"** in every third-person reference (docs, skills, memory, PRs, reports, briefs); never 站主/owner/用户/他/they/real name. Direct chat address stays "你". (2026-10-14, #313)
 - **Times in SGT** (UTC+8, e.g. "18:07 (SGT)") in everything shown to lyjw.
 - **Bare link = just tell lyjw what it says** (lyjw 2026-10-15 23:20 SGT: "我只是想看这篇文章讲什么"). When lyjw drops a link with no ask, brief the thread to summarize the content only; no adoption evaluation or numbered proposals unless lyjw asks (看能不能用/调研/借鉴).
-- **Reports for lyjw are Artifacts, never .md** (lyjw 2026-10-15 20:19 SGT: "给我看的报告我不想读md 要artifacts"). Any research write-up, comparison or report meant for lyjw to read is published with the Artifact tool and linked; .md files may stay as working data for other threads but are never the deliverable.
-- **Technical reports: one Artifact, A style only** (lyjw 2026-10-16 00:00 SGT: "以后都选a"; ends the A/D side-by-side trial). A = ASD-STE100-style short controlled sentences. Keep text low, don't grab attention. No D version anymore. Reference: [报告写法四选一](<private claude.ai link>).
+- **Reports for lyjw:** one Artifact, never .md (lyjw 2026-10-15 "要artifacts"); A style only, ASD-STE100 short sentences, low-key (lyjw 2026-10-16 "以后都选a"); 书页 look from /mnt/project-files/report-style/book-template.html: [[report-book-style]].
+- **New concepts: make lyjw think** (lyjw 2026-10-20 02:03 SGT "让我多思考来理解"): anchor to lyjwpage, contrast, at most one check question with the answer below, invite explain-back and fix the one gap; never block work: [[teach-new-concepts]].
 - **Latest stack, no legacy compat** (lyjw 2026-10-15 00:42 SGT): prefer newest versions/APIs; when upgrading or migrating, drop old shims/fallbacks/dual paths. Exception: iOS reporter endpoints must keep working.
 - **Don't over-engineer** (lyjw 2026-10-15: "你过度设计了 提示词改一下就行了"; also dropped the post-deploy PageSpeed check as unnecessary). Pick the smallest change that does the job. Small code additions are not a cost worth weighing (lyjw 2026-10-20 00:06 SGT).
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
@@ -23,7 +23,6 @@
 - **Decision cards:** coordinator re-posts any thread's open card in project chat and relays lyjw's choice.
 - **No task board;** progress lives in threads.
 - **Hand-offs carry lyjw's constraints;** route a follow-up once; later relay overrides: [[handoff-carry-user-constraints]].
-- **Reports/posters** use the 书页 (book page) look from /mnt/project-files/report-style/book-template.html (lyjw 2026-10-19, replaced Swiss grid): [[report-book-style]].
 - **Secrets** are piped on the Mac with `rotate-secret`; never ask lyjw to paste values: [[credentials-pipe-only]].
 - **Commit identity:** commits are as lyjw (signed), Claude only Co-Authored-By; ignore the hook's noreply advice: [[commit-identity-signing]].
 - **X/Twitter:** call api.x.com directly (proxy injects creds): [[x-api-via-proxy]].
@@ -50,24 +49,24 @@
 - Agent automation practices: [[agent-automation-practices]].
 
 ## Decisions and state
-- Chat tiers (2026-10-18 SGT, #387 #391): visitor picks a lineup, DeepSeek (Small Fry/Prophet = DeepSeek Flash, thinking off/on) or Claude (Haiku/Sonnet); God is Fable; Anthropic consent asked per vendor. Turnstile human pass lasts 7 days. Chat logs kept 30 days in ChatLog (#385), no IP or tokens stored. Source of truth: shared/god-chat-tiers.ts, workers/ai/README.md.
+- Chat tiers: visitor picks a DeepSeek or Claude lineup, God is Fable, consent per vendor, logs kept 30 days; source of truth shared/god-chat-tiers.ts: [[chat-tiers]].
 - Architecture diagram validation drops only the bad edge, not the whole diagram (#386).
 - README live SVG cards: all cards live since #416; mobile crop fixed by wrapping each card in an outer SVG (#431), URLs carry `v=2` to bust camo (#432). Bump `v=` when the card format changes. Empty data → fixture marked SAMPLE DATA (expected).
 - iOS app paused: only keep its reporting endpoints working.
 - Repo has no LICENSE by lyjw's choice (2026-10-15); don't re-propose.
-- **File-size rule (soft, no gate):** lyjw declined a 5,000-token gate 2026-10-19 17:13 SGT, then had a whole-repo split tried (#435): ~3/4 of splits were natural, ~1/4 only to pass the line. lyjw 2026-10-20 00:46 SGT: merge only the natural splits, and only when no other thread is editing those files. Constraint is a soft line in root AGENTS.md (touching a source file over ~20 KB → split one piece by responsibility; skip if no natural boundary). Don't re-propose a hard gate; a non-blocking hint hook needs lyjw's OK.
+- **File-size rule (soft, no gate):** touching a source file over ~20 KB → split one piece by responsibility if natural. No hard gate, no hook without lyjw's OK: [[file-size-rule]].
 - **Type assertions:** fix only real risks (unchecked stored/external data), no lint rule banning `as unknown as`; generic narrowing casts stay (#417, lyjw let Claude decide 2026-10-19).
 - README trimmed to essentials (#331, lyjw found it 又臭又长); long design write-ups live in docs/design-notes.md. Keep README short.
-- README diagrams: Archify dropped (lyjw 2026-10-19 23:23 SGT "去掉这个外部项目依赖"). Architecture and workflow are SVGs (lyjw chose SVG over PNG, transparent background, no grid) drawn by `scripts/readme-diagrams.ts` (`pnpm docs:diagrams`, zh/en × light/dark, site tokens); the old Pages URL only redirects to the README. Redraw when Workers, bindings, sources, routines or merge gates change.
+- README diagrams are SVGs from `pnpm docs:diagrams` (Archify dropped); redraw when Workers, bindings, sources, routines or merge gates change: [[readme-diagrams]].
 - Sentry fully removed (#198): [[sentry-exit-done]]. api→core rename done: [[api-rename-to-core]]; collector drives the cron round: [[core-cron-internal-error]]. Same-origin API notes: [[same-origin-api-traps]].
-- ISR replaced by Workers Caching entrypoints + Cache-Tag purge; first-screen regressions fixed in #274 (Geist Mono restored). Now-playing decisions: [[now-playing-first-screen-decisions]]. ESA home is purged only on deploy: [[esa-home-no-layout-purge]]. First-screen LCP fix #364 (mobile 6.4→4.9 s); post-deploy PageSpeed check rejected (#366 closed). HTML slimming done (#370); homepage modulepreload lowered (#400), charger icons inlined (#402).
+- First screen: Workers Caching + Cache-Tag purge replaced ISR; LCP, HTML-slimming and inlining work done; ESA home purged only on deploy ([[esa-home-no-layout-purge]], [[now-playing-first-screen-decisions]]): [[first-screen-perf]].
 - Old hashed static assets backfilled to R2 prefix `site-assets-legacy/` (no expiry, #354); missing Vercel-era chunks get a reload stub.
 - Digest card: Chinese tagline pool (772 lines, lyjw-pruned), 10-line `headlines` pool rotating every 60 s (#261). Jev for digest dropped (lyjw 2026-10-15); rules tuned instead (#361).
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
-- Pulse Tokens lane includes Devin via reporter buckets (#322) plus a backfill for 2026-10-14; stays (usage telemetry, not dispatch).
-- Not adopting: seiso doc linter (lyjw 2026-10-19 22:39 SGT, overlaps docs:check, Chinese false positives; #428 closed, #429 note), OTel export of site AI usage, Max-plan API credit (already claimed), Cloudflare AI Search (instance deleted), post-deploy PageSpeed check (lyjw 2026-10-15). pstack /create-formal-verification-skill: tried once as a TLA+ audit of BuildCoordinator 2026-10-19, no bug found, not kept in repo; model in /mnt/project-files/formal-verification/build-run/, entry in docs/references.md.
-- **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 18:36 SGT chose 维持现状, also declined a Devin CLI OTel probe). Why: most data is state (now playing, presence, rings, ledgers) with no semconv; iPhone endpoint must stay; Mac icon / Emby image receipts don't fit OTLP responses; HA has no OTLP export. Only native-OTel agents fit (cloud Claude Code already does). Report: [遥测换 OTel 评估](<private claude.ai link>). Don't re-propose.
+- Devin CLI token usage now comes from the Devin CLI on lyjw's Mac pushing OTel to `/api/ingest/agents/otlp` (#436, #441, merged 2026-10-20 01:50 SGT); tokens.ci route removed, site labels it Mac. Lane coverage and setup: [[pulse-tokens-lane-coverage]].
+- Not adopting (don't re-propose): seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed. Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
+- **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 chose 维持现状); only native-OTel agents use OTLP. Don't re-propose: [[reporter-otel-decision]].
 - Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
 - Chat context prefetch is built (#384, 2026-10-17): Clef, in the same routing call, picks site status / project doc to prefetch (thresholds status 0.6, doc 0.45); presets prefetch fixed tool calls: [[idea-jev-context-prefetch]].
 - Chat web search (#355): Exa `fast` only, Bangumi/Steam tools, doc MCP servers off since 2026-10-17: [[chat-web-search]].
