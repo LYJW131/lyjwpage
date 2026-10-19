@@ -5,6 +5,9 @@ import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 
+export const MODAL_ACTION_CLASS =
+  "label-mono inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 py-2.5 text-center text-foreground transition-colors hover:bg-surface-hover";
+
 export function Modal({
   titleId,
   onClose,

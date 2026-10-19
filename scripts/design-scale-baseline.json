@@ -19,7 +19,7 @@
   "margin:mb-5": 1,
   "margin:mb-6": 1,
   "margin:mt-0.5": 6,
-  "margin:mt-1": 32,
+  "margin:mt-1": 31,
   "margin:mt-1.5": 12,
   "margin:mt-2": 26,
   "margin:mt-2.5": 1,
@@ -81,6 +81,6 @@
   "spacing:px-2.5": 5,
   "spacing:py-10": 1,
   "spacing:py-12": 2,
-  "spacing:py-2.5": 8,
+  "spacing:py-2.5": 6,
   "spacing:py-[0.25em]": 1
 }

@@ -113,6 +113,8 @@
 - 分区：`src/components/ui/section.tsx` 的 `Section`；小分区标题是 `text-sm font-medium` 加右侧 `label-mono` 来源。
 - 数值块：上 `label-mono` 标签、下数值；同一网格里所有块同一套字号字重，单位用 `text-xs text-muted-foreground` 贴在数值后。
 - 分段切换（如 Contact 卡的 Tokens / Commit）：外框 `border-line`，选中项 `bg-muted text-foreground`，未选 `text-muted-foreground`。
+- 弹层底部的操作按钮（播放器、服务状态详情、离站确认）一律用 `src/components/ui/modal.tsx` 的 `MODAL_ACTION_CLASS`，各弹层按钮同高同字。
+- 离站确认：页面上一次点击就离开本站的 http(s) 链接由 `src/components/external-link-guard.tsx` 先弹确认框，说明文字来自 `src/lib/external-link.ts#describeExternalLink`；弹层里的链接不再确认。
 - 状态点：`src/components/ui/status-dot.tsx` 的 `StatusDot`，不手画圆点。
 - 图片：静态图标走 `AppImage` 并设 `unoptimized`；图片交付与压缩规则见 `AGENTS.md`「图片交付」。
 - 图标：
