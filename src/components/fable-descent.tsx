@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { GOD_CHAT_TIER_INFO } from "@shared/god-chat-tiers";
 
 export type Descent = { key: number; x: number; y: number; top: number };
 
@@ -166,7 +167,7 @@ export function FableDescent({ descent }: { descent: Descent | null }) {
               animate={{ opacity: [0, 1, 1, 0], y: 0 }}
               transition={{ duration: 3.4, times: [0, 0.12, 0.85, 1], delay: 0.7 }}
             >
-              ✦ Fable 5.1 · Summoned by Clef ✦
+              ✦ {GOD_CHAT_TIER_INFO.fable.label} · Summoned by Clef ✦
             </motion.div>
             <motion.div
               className="god-aura bg-clip-text text-5xl font-black uppercase leading-none text-transparent sm:text-8xl"
