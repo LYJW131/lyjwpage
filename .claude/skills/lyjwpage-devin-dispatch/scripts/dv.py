@@ -9,6 +9,7 @@ Subcommands (run `dv.py <cmd> -h` for flags):
   wait NAME [--timeout S]            block until idle / exited / needs attention
   report NAME [-n N | --all]         agent messages from the --export JSON
   key NAME KEY...                    raw tmux keys (answer an approval menu: `key NAME 1`)
+  approve NAME                       approve the pending approval menu once (Enter on "Approve once")
   interrupt NAME                     Esc Esc: stop the current turn, keep the session
   resume NAME [TEXT | -f FILE]       headless follow-up (devin -r ID -p) when tmux is gone
   stop NAME                          /exit, then kill the tmux session if still there
@@ -16,6 +17,9 @@ Subcommands (run `dv.py <cmd> -h` for flags):
 
 Permission mode: --mode, else $DV_MODE, else accept-edits — except when `devin` is the
 cloud wrapper (marked DEVIN_WRAPPER), which then chooses the mode (dangerous) itself.
+Under the wrapper's --sandbox Devin still shows an approval menu before some writes;
+runs started under the wrapper record auto_approve, and `wait` then approves each such
+menu once (never "always"): the sandbox, not the menu, is what bounds the writes.
 
 Run state lives in $DV_RUNS (default ~/.claude/devin-dispatch/runs)/NAME/:
 meta.json, export.json (Devin's --export, rewritten after every turn), exit.code.
@@ -30,6 +34,7 @@ BUSY = ('Guide Devin while it works', 'esc twice to interrupt')
 IDLE = 'Ask Devin to build features'
 STARTING = 'Starting session'
 NETERR = ('Connection failed', 'Connection error')  # retries in place; input waits until it recovers
+APPROVAL = 'Approve once'
 
 
 def sh(*args, check=True, **kw):
@@ -148,6 +153,8 @@ def state(meta):
     above = [l for l in lines[:rules[-2]] if l.strip()][-2:] if len(rules) >= 2 else []
     if any(e in l for e in NETERR for l in above):
         return 'neterror', lines
+    if APPROVAL in joined:
+        return 'approval', lines
     if any(b in joined for b in BUSY):
         return 'busy', lines
     if IDLE in joined and STARTING not in joined:
@@ -187,7 +194,7 @@ def cmd_start(a):
     sh('tmux', 'set-option', '-t', pane(sess), 'history-limit', '50000', check=False)
     meta = dict(name=a.name, tmux=sess, cwd=str(cwd), brief=str(brief), model=a.model,
                 mode=a.mode, export=str(export), started=time.time(), last_send=time.time(),
-                session_id=None)
+                session_id=None, auto_approve=a.auto_approve, approvals=0)
     save(meta)
     for _ in range(30):  # the session id shows up once Devin has written its first state
         time.sleep(2)
@@ -215,6 +222,8 @@ def cmd_send(a):
     st, _ = state(meta)
     if st in ('exited', 'gone'):
         die(f'{a.name} is {st}; use `resume` for a headless follow-up', 3)
+    if st == 'approval':
+        die(f'{a.name} is on an approval menu; `approve` it first (pasted text would land in the menu)', 4)
     text = read_text(a).strip('\n')
     if not text:
         die('empty message')
@@ -258,16 +267,41 @@ def cmd_status(a):
     return st
 
 
+def approve_once(meta):
+    sh('tmux', 'send-keys', '-t', pane(meta['tmux']), 'Enter')  # cursor starts on 1, "Approve once"
+    meta['approvals'] = meta.get('approvals', 0) + 1
+    meta['last_send'] = time.time()
+    save(meta)
+    time.sleep(2)
+
+
+def cmd_approve(a):
+    meta = load(a.name)
+    st, lines = state(meta)
+    if st != 'approval':
+        print(f'state: {st}; nothing to approve')
+        return
+    approve_once(meta)
+    print(f'approved once ({meta["approvals"]} so far); state: {state(meta)[0]}')
+
+
 def cmd_wait(a):
     meta = load(a.name)
     t0 = time.time()
-    idle_seen = attn_since = last_hash = None
+    idle_seen = attn_since = last_hash = approved_hash = None
     while True:
         st, lines = state(meta)
         now = time.time()
         if st in ('exited', 'gone'):
             print(f'wait: {st}')
             sys.exit(3)
+        h = hash(tuple(l for l in lines if 'esc twice to interrupt' not in l))
+        # The same menu still on screen after an approval is a stale render or a menu
+        # that ignored Enter: fall through to the attention timer instead of pressing again.
+        if st == 'approval' and meta.get('auto_approve') and h != approved_hash:
+            approve_once(meta)
+            approved_hash = h
+            continue
         if st == 'idle':
             fresh = Path(meta['export']).exists() and \
                 Path(meta['export']).stat().st_mtime >= meta.get('last_send', 0)
@@ -280,8 +314,7 @@ def cmd_wait(a):
             idle_seen = None
         # A stale error line or unmatched text can sit on screen while Devin keeps
         # working, so only a screen that has also stopped changing counts.
-        h = hash(tuple(l for l in lines if 'esc twice to interrupt' not in l))
-        if st in ('attention', 'typed', 'neterror') and h == last_hash:
+        if st in ('attention', 'approval', 'typed', 'neterror') and h == last_hash:
             attn_since = attn_since or now
             if now - attn_since >= a.attention:
                 print(f'wait: needs attention ({st})')
@@ -383,6 +416,8 @@ def main():
     s.add_argument('--mode', default=default_mode(),
                    choices=['auto', 'accept-edits', 'smart', 'dangerous'])
     s.add_argument('--nice', type=int, default=0)
+    s.add_argument('--auto-approve', action=argparse.BooleanOptionalAction, default=wrapped(),
+                   help='let `wait` approve sandbox approval menus once (default: on under the cloud wrapper)')
     s.set_defaults(fn=cmd_start)
 
     for name, fn in (('send', cmd_send), ('resume', cmd_resume)):
@@ -412,7 +447,7 @@ def main():
     s.add_argument('--all', action='store_true')
     s.set_defaults(fn=cmd_report)
 
-    for name, fn in (('interrupt', cmd_interrupt), ('stop', cmd_stop)):
+    for name, fn in (('interrupt', cmd_interrupt), ('stop', cmd_stop), ('approve', cmd_approve)):
         s = sub.add_parser(name)
         s.add_argument('name')
         s.set_defaults(fn=fn)
