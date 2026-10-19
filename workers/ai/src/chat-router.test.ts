@@ -112,11 +112,12 @@ const both = (clefAnswer: unknown, clairic: unknown) =>
   }) as unknown as Ai;
 const extracted = (value: string | null, pNull = 0.001, confidence = 0.98) => ({ answers: { item: { type: "text", value, guess: value ?? "x", p_null: pNull, confidence } } });
 
-test("Clairic 抽到具体条目时，能搜的分组在整组之外带 query 再读一次，游戏组直接画那款游戏的卡", async () => {
+test("Clairic 抽到具体条目时，能搜的分组在整组之外带 query 再读一次，游戏组另外直接画那款游戏的卡", async () => {
   assert.deepEqual(await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("《艾尔登法环》")), [user("他最近玩艾尔登法环了吗")]), {
     route: "flash", source: "clef",
     prefetch: [
       { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.views] } },
+      { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.query], query: "艾尔登法环" } },
       { name: "show_card", input: { card: "game", game: "艾尔登法环" } },
     ],
   });
@@ -152,7 +153,7 @@ test("选档日志只记选项、概率与有没有抽到条目，不记访客�
   const info = t.mock.method(console, "info", () => {});
   await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("月姬")), [user("他玩过月姬吗")]);
   const line = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
-  assert.ok(line?.includes('"status":"playing 0.950"') && line.includes('"item":true') && line.includes('"prefetch":2'));
+  assert.ok(line?.includes('"status":"playing 0.950"') && line.includes('"item":true') && line.includes('"prefetch":3'));
   assert.ok(!line?.includes("月姬"));
   info.mock.resetCalls();
   await routeWithClef(clef({ answers: { route: { choice: "他玩过月姬吗" }, status: { choice: "他玩过月姬吗", probabilities: { "他玩过月姬吗": 1 } } } }), [user("他玩过月姬吗")]);
