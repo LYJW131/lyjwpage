@@ -113,12 +113,12 @@ function prData(): PrData {
 }
 
 test("叠在一起的 HTML 注释删一次会重新拼出 <!--，plain 要删到没有为止", () => {
+  assert.equal(plain("<!<!-- hidden -->-- foo > bar --> keep"), "keep");
   assert.equal(plain("<!<!-- 不改 -->-- 已修"), "已修");
-  assert.equal(plain("<!<!-- inner -->-- outer --> tail"), "tail");
   assert.equal(plain("<!<!--- comment --->>"), "");
   assert.equal(plain("<!-->"), "");
   assert.equal(plain("提到<!--没闭合"), "提到没闭合");
-  assert.equal(plain("<!-<x>-"), "-");
+  assert.equal(plain("<!-- a > b --> text"), "text");
   assert.equal(plain('<!-- devin-review-comment {"kind": "bug"} -->\n\n正文'), "正文");
 });
 
