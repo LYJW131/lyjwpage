@@ -61,7 +61,7 @@ function FocusStrip({ mode, since }: { mode: FocusMode; since: number }) {
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
         · {MODE_NAMES[mode]}
       </span>
-      <span className="label-mono shrink-0 text-muted-foreground" suppressHydrationWarning>
+      <span className="label-mono shrink-0" suppressHydrationWarning>
         {elapsed(Math.max(0, now - since))}
       </span>
     </div>
