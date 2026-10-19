@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { check, coverage, evaluate, parseComments, patchDigest } from "./verify-receipt.ts";
+import { check, coverage, evaluate, parseComments, patchDigest, signLine } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
@@ -86,4 +86,22 @@ test("patchDigest 只忽略行号，空白和二进制内容变了都算补丁�
   const bin = (blob: string) => `diff --git a/i.png b/i.png\nindex 0000000..${blob}\nGIT binary patch\nliteral 4\n`;
   assert.notEqual(patchDigest(bin("aaaaaaa")), patchDigest(bin("bbbbbbb")));
   assert.equal(patchDigest(""), null);
+});
+
+test("signLine 用 rev-parse 展开的完整 SHA 写第一行，parseComments 认得出来", () => {
+  const revParse = (ref: string) => (ref === "abc1234" ? HEAD : assert.fail(ref));
+  const receipt = signLine({ ref: "abc1234", level: "unit-test-verified" }, revParse);
+  const judge = signLine({ ref: "abc1234", verdict: "PASS" }, revParse);
+  assert.equal(receipt, `验证回执 ${HEAD}：unit-test-verified`);
+  const parsed = parseComments([{ user: owner, body: `${receipt}\n证据：…` }, { user: owner, body: judge }]);
+  assert.deepEqual([parsed.receipt?.sha, parsed.receipt?.level, parsed.judge?.verdict], [HEAD, "unit-test-verified", "PASS"]);
+});
+
+test("signLine 拒收自拟等级、等级与判定同给或都不给、展开不成完整 SHA", () => {
+  const revParse = () => HEAD;
+  assert.throws(() => signLine({ ref: "x", level: "local-ui-verified" }, revParse), /等级只收/);
+  assert.throws(() => signLine({ ref: "x", level: "type-check-only", verdict: "PASS" }, revParse), /二选一/);
+  assert.throws(() => signLine({ ref: "x" }, revParse), /二选一/);
+  assert.throws(() => signLine({ ref: "x", verdict: "pass" }, revParse), /PASS、FAIL/);
+  assert.throws(() => signLine({ ref: "x", level: "type-check-only" }, () => "abc"), /完整 SHA/);
 });
