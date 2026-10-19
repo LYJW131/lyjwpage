@@ -133,7 +133,7 @@
 
 ## Code Review Rules
 
-- 评审 PR 的代理先读根 `REVIEW.md`，照它报什么、不报什么、怎么报。
+@REVIEW.md
 
 ## Reasoning Strategy
 
