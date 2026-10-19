@@ -49,7 +49,8 @@ const STREAM_TEXT_KINDS: ReadonlySet<GodChatVisualKind> = new Set(["stats", "tim
 const DANGLING_KEY = /"(?:[^"\\]|\\.)*"\s*:\s*$/;
 const BARE_TOKEN = /[-\w.+]+$/;
 const LONE_KEY = /[{,]\s*"(?:[^"\\]|\\.)*"$/;
-const CHART_LABELS_DONE = /"labels"\s*:\s*\[(?:\s*"(?:[^"\\]|\\.)*"\s*,?)*\s*\]/;
+// 逗号放在重复段开头，不能改成可有可无：`"labels":[""` 后面反复出现 `\t""` 会指数回溯。
+const CHART_LABELS_DONE = /"labels"\s*:\s*\[\s*(?:"(?:[^"\\]|\\.)*"\s*(?:,\s*"(?:[^"\\]|\\.)*"\s*)*(?:,\s*)?)?\]/;
 
 type Scan = { closers: string; inString: boolean; escaped: boolean; stringStart: number; cuts: { end: number; closers: string }[] };
 
