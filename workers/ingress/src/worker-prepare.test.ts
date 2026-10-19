@@ -5,7 +5,7 @@ import { gzipSync } from "node:zlib";
 import { prepareIngest } from "@shared/ingest/prepare";
 import { resetStoredImageCacheForTests } from "@shared/ingest/r2-assets";
 
-import { codingUsage, json, mac, post, server, workout, world } from "./testing/world";
+import { codingUsage, json, MAC_OTLP, mac, post, server, workout, world } from "./testing/world";
 
 test("prepare runs here: Emby confirms images against R2 before the command leaves", async () => {
   resetStoredImageCacheForTests();
@@ -72,6 +72,9 @@ test("OTLP: gzip or plain JSON answers the exporter's empty 200; other encodings
     assert.equal(response.headers.get("cache-control"), "no-store");
   }
   assert.ok(w.calls.commits.every((command) => command.source === "agents-otlp"));
+  const fromMac = await w.send("/api/ingest/agents/otlp", { body: metrics, client: MAC_OTLP });
+  assert.equal(fromMac.status, 200);
+  assert.equal(w.calls.commits.at(-1)?.source, "mac-otlp", "the verified token decides the source, not the payload");
   const br = await w.send("/api/ingest/agents/otlp", { body: metrics, headers: { "content-encoding": "br" } });
   assert.equal(br.status, 415);
   assert.deepEqual(await json(br), { ok: false, error: "不支持的压缩：br" });
