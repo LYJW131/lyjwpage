@@ -101,6 +101,7 @@ async function main() {
     waitForNextRound: () => waitForNextRound(schedule),
     sleep,
     onPushFailure: (error) => failure("push", error),
+    onCollectFailure: (error) => failure("collect", error),
     now: () => Date.now(),
     reuseMs: config.cadence.activeIntervalMs,
     retryMs: RETRY_MS,
