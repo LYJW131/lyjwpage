@@ -157,6 +157,10 @@
 - **[Workers KV Instant](https://blog.cloudflare.com/workers-kv-instant/)**（Cloudflare 博客）
   - 是什么：KV 的即时一致模式。
   - 状态：不采用，实时层仍留在 DO。评估时的限制、价格和重新评估的条件只记在项目记忆 [kv-instant-evaluation](../.claude/memory/kv-instant-evaluation.md)，平台调整后按那里的条件重评。
+- **[Introducing Clairic](https://blog.cloudflare.com/clairic-extraction-model/)**（Cloudflare 博客）
+  - 是什么：Workers AI 上的 System One 抽取模型 `@cf/cloudflare/clairic`，一次前向传播按带类型的字段回值，带 `p_null` 与置信度。
+  - 取了什么：首页对话选档时和 Clef 并行问一次 Clairic，抽出访客点名的游戏、歌、番名，作为状态预取的 `query`；门槛按线上实测定。
+  - 状态：采用。落在 [router.ts](../workers/ai/src/chat/router.ts) 的 `itemInput`、`parseItem` 与 `PREFETCH_STATUS` 的 `query`。
 
 ## 联网搜索与文档检索
 

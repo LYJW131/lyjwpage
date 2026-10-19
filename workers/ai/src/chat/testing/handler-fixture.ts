@@ -124,7 +124,7 @@ export function designEnv({ reply = (body) => modelStream(body.model, false), tu
         return "think" as const;
       },
     }),
-    AI: Object.assign({} as Ai, { run: async () => { counters.clef++; return { answers: { route: { choice: "design" } } }; } }),
+    AI: Object.assign({} as Ai, { run: async (model: string) => { if (model === "@cf/cloudflare/clef") counters.clef++; return { answers: { route: { choice: "design" } } }; } }),
     BUILD_COORDINATOR: binding<BuildCoordinator>({
       createDesign: async (id) => { counters.created++; sessions.set(id, 0); return true; },
       admitDesign: async (id) => {

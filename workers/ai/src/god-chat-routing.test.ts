@@ -130,7 +130,7 @@ test("示例问题跳过 Clef 按预设定档，示例或 Clef 判出的预取�
       TURNSTILE_SECRET_KEY: "test-turnstile",
       CHAT_HISTORY_SECRET: "test-seal",
       ALLOWED_ORIGINS: "https://lyjw.me",
-      AI: Object.assign({} as Ai, { run: async () => { clef++; return { answers }; } }),
+      AI: Object.assign({} as Ai, { run: async (model: string) => { if (model === "@cf/cloudflare/clef") clef++; return { answers }; } }),
       CHAT_QUOTA: binding<ChatQuota>({
         admitVisitor: async () => "ok" as const,
         admitTier: async (_ip, tier) => { wanted.push(tier); return tier; },
