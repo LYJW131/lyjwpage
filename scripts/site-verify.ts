@@ -241,8 +241,10 @@ shot:
   --theme dark|light|both（默认 light）  --dpr <n> 像素密度（默认 1）
   --out <目录>        截图输出目录（必填）  --settle <ms>（默认 4000）
   --ssr               禁用 JavaScript，看 SSR HTML 长什么样
+  --engine chromium|webkit  浏览器（默认 chromium；webkit 是 iPhone 的引擎，手机宽度要另截一张，文件名带 -webkit）
   截图藏起开发环境的调试按钮坞与 Vite 报错浮层（报错照样进控制台记录）；多张卡的数据要对得上时先 pnpm dev:scene
   例子  node scripts/site-verify.ts shot --url http://localhost:3291 --widths 1280,375 --out /tmp/shots
+        node scripts/site-verify.ts shot --url http://localhost:3291 --widths 375 --engine webkit --out /tmp/shots
 
 reload（热缓存刷新：先加载一次暖缓存，再刷新，查首次绘制之后又变过的文字、画面和字体）：
   --engine chromium|webkit  浏览器（默认 chromium；webkit 要装 Playwright 的 WebKit，只查文字与字体，不录屏）
@@ -304,6 +306,7 @@ export async function resolvePlaywright(): Promise<{ api: PwApi; source: string 
 export const HIDE_DEV_UI = "#dev-toggles, vite-error-overlay { display: none !important; }";
 
 const PLAYWRIGHT_NEXT = "仓库自带 playwright-core 在 docs/explainer/render，先跑 `pnpm --dir docs/explainer/render install --ignore-workspace`；云端容器通常已全局安装。";
+const WEBKIT_NEXT = "装 Playwright 的 WebKit：playwright install --with-deps webkit（版本要和 doctor 解到的 playwright 一致；装进 PLAYWRIGHT_BROWSERS_PATH 指的目录）";
 
 export async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
   const explicit = stringFlag(flags.chrome) || process.env.SITE_VERIFY_CHROME;
@@ -319,6 +322,11 @@ export async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Prom
     }
   }
   throw lastError;
+}
+
+async function launchEngine(pw: PwApi, flags: Partial<Flags>): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
+  if (flags.engine !== "webkit") return launchBrowser(pw, flags);
+  return { browser: await pw.webkit.launch({ headless: true }), via: { engine: "webkit" } };
 }
 
 function watchConsole(page: PwPage, sink: Sink, current: { origin: string | null }) {
@@ -364,7 +372,7 @@ function watchConsole(page: PwPage, sink: Sink, current: { origin: string | null
 }
 
 async function openPage(pwApi: PwApi, flags: Flags, { width, height }: Viewport, sink: Sink) {
-  const { browser, via } = await launchBrowser(pwApi, flags);
+  const { browser, via } = await launchEngine(pwApi, flags);
   try {
     const context = await browser.newContext({
       viewport: { width, height },
@@ -542,13 +550,18 @@ async function cmdShot(flags: Flags) {
   fs.mkdirSync(out, { recursive: true });
 
   const pw = await resolvePlaywright() ?? fail("解不到 playwright / playwright-core", PLAYWRIGHT_NEXT);
+  const engine = flags.engine === "webkit" ? "webkit" : "chromium";
+  if (engine === "webkit") {
+    const probe = await launchEngine(pw.api, flags).catch((error: unknown) => fail(`起不来 webkit：${errorText(error).slice(0, 200)}`, WEBKIT_NEXT));
+    await probe.browser.close();
+  }
   const shots: ({ file: string | null; card: string | null; theme: string; error?: string; console: Sink } & Viewport)[] = [];
   let failed = false;
   for (const theme of themes) {
     for (const viewport of viewports) {
       const sink = newSink();
       const runFlags: Flags = { ...flags, theme };
-      const name = `${card ?? "page"}-${viewport.width}x${viewport.height}-${theme}${runFlags.ssr ? "-ssr" : ""}.png`;
+      const name = `${card ?? "page"}-${viewport.width}x${viewport.height}-${theme}${engine === "webkit" ? "-webkit" : ""}${runFlags.ssr ? "-ssr" : ""}.png`;
       const file = path.join(out, name);
       // 先删同名旧图：这次失败时目录里不留上一轮产物冒充本轮证据。
       fs.rmSync(file, { force: true });
@@ -597,7 +610,7 @@ async function cmdShot(flags: Flags) {
         .filter((s) => !s.file || !consoleClean(s.console))
         .map((s) => `${s.card ?? "page"}-${s.width}x${s.height}-${s.theme}：${s.error ?? `控制台不干净（${consoleProblems(s.console)}）`}`)
         .join("；");
-  print({ ok, ...(next ? { next } : {}), out: path.resolve(out), shots }, flags);
+  print({ ok, ...(next ? { next } : {}), engine, out: path.resolve(out), shots }, flags);
   if (!ok) process.exitCode = 1;
 }
 
@@ -849,9 +862,9 @@ async function cmdSkew(flags: Flags) {
   const sink = newSink();
   let browser: PwBrowser;
   try {
-    browser = engine === "webkit" ? await pw.api.webkit.launch({ headless: true }) : (await launchBrowser(pw.api, flags)).browser;
+    browser = (await launchEngine(pw.api, flags)).browser;
   } catch (error) {
-    fail(`起不来 ${engine}：${errorText(error).slice(0, 200)}`, engine === "webkit" ? "WebKit 要 Playwright 自带的构建：npx playwright install webkit，或 PLAYWRIGHT_BROWSERS_PATH 指向已装的目录" : "同 doctor 的 chrome 项");
+    fail(`起不来 ${engine}：${errorText(error).slice(0, 200)}`, engine === "webkit" ? WEBKIT_NEXT : "同 doctor 的 chrome 项");
   }
   try {
     const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
@@ -928,9 +941,9 @@ async function cmdReload(flags: Flags) {
   const sink = newSink();
   let browser: PwBrowser;
   try {
-    browser = engine === "webkit" ? await pw.api.webkit.launch({ headless: true }) : (await launchBrowser(pw.api, flags)).browser;
+    browser = (await launchEngine(pw.api, flags)).browser;
   } catch (error) {
-    fail(`起不来 ${engine}：${errorText(error).slice(0, 200)}`, engine === "webkit" ? "WebKit 要 Playwright 自带的构建：npx playwright install webkit，或 PLAYWRIGHT_BROWSERS_PATH 指向已装的目录" : "同 doctor 的 chrome 项");
+    fail(`起不来 ${engine}：${errorText(error).slice(0, 200)}`, engine === "webkit" ? WEBKIT_NEXT : "同 doctor 的 chrome 项");
   }
   try {
     const context = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: flags.theme === "light" ? "light" : "dark" });
