@@ -24,11 +24,13 @@ export function parseRevision(raw: unknown): number {
 
 export type StoredCodingActivity = CodingActivityReport & { receivedAt: number };
 
-// 会话摘要会过期，累计 sessionCount 不能随摘要删除而减少。
+// 会话摘要会过期，按 agent 累计的 sessionCounts 不能随摘要删除而减少。
+// series 是累计序列上次的值；windows 是 delta 序列已经计到的时刻，起点早于它的窗口是重发。
 export type StoredOtlpCounters = {
   series: Record<string, { value: number; seenAt: number }>;
+  windows: Record<string, { until: number; seenAt: number }>;
   sessions: Record<string, number>;
-  sessionCount: number;
+  sessionCounts: Record<string, number>;
 };
 
 function json(raw: unknown): Record<string, unknown> | null {
@@ -83,9 +85,15 @@ export function parseStoredYear(raw: unknown): CodingUsageYearView | null {
 export function parseOtlpCounters(raw: unknown): StoredOtlpCounters | null {
   const row = json(raw);
   if (!row || !row.series || typeof row.series !== "object" || !row.sessions || typeof row.sessions !== "object") return null;
+  const windows = row.windows && typeof row.windows === "object" ? row.windows as StoredOtlpCounters["windows"] : {};
+  // 只有 Claude 时存的是单个 sessionCount，那份全是 Claude 的。
+  const sessionCounts = row.sessionCounts && typeof row.sessionCounts === "object"
+    ? row.sessionCounts as StoredOtlpCounters["sessionCounts"]
+    : { claude: typeof row.sessionCount === "number" ? row.sessionCount : Object.keys(row.sessions).length };
   return {
     series: row.series as StoredOtlpCounters["series"],
+    windows,
     sessions: row.sessions as StoredOtlpCounters["sessions"],
-    sessionCount: typeof row.sessionCount === "number" ? row.sessionCount : Object.keys(row.sessions).length,
+    sessionCounts,
   };
 }

@@ -1,13 +1,19 @@
 import { object, text } from "@shared/json";
 
-export type PreparedClaudeCloudUsage = {
+export type PreparedAgentsOtlpUsage = {
   source: "agents-otlp";
   receivedAt: number;
   points: OtlpUsagePoint[];
 };
 
-const TOKEN_METRIC = "claude_code.token.usage";
-const COST_METRIC = "claude_code.cost.usage";
+export type OtlpAgentId = "claude" | "devin";
+
+// Claude Code 可设成累计，只收累计；Devin CLI 只会发 delta（不认 temporality 偏好），按窗口水位去重后收。
+const METRICS: Record<string, { agent: OtlpAgentId; metric: "tokens" | "cost"; acceptsDelta: boolean }> = {
+  "claude_code.token.usage": { agent: "claude", metric: "tokens", acceptsDelta: false },
+  "claude_code.cost.usage": { agent: "claude", metric: "cost", acceptsDelta: false },
+  "devin.token.usage": { agent: "devin", metric: "tokens", acceptsDelta: true },
+};
 export const OTLP_TOKEN_TYPES = ["input", "output", "cacheRead", "cacheCreation"] as const;
 export type OtlpTokenType = (typeof OTLP_TOKEN_TYPES)[number];
 
@@ -16,17 +22,21 @@ const MAX_POINTS = 5_000;
 const OLDEST_POINT_DAYS = 400;
 
 export type OtlpUsagePoint = {
+  agent: OtlpAgentId;
   metric: "tokens" | "cost";
   type: OtlpTokenType | null;
   model: string | null;
   session: string;
+  // 累计点的序列含起点（同一进程的计数器）；delta 点的不含，起点每个窗口都在走。
   series: string;
+  startMs: number;
   timeMs: number;
   value: number;
   cumulative: boolean;
+  acceptsDelta: boolean;
 };
 
-export function prepareClaudeCloudUsage(raw: unknown, receivedAt = Date.now()): PreparedClaudeCloudUsage {
+export function prepareAgentsOtlpUsage(raw: unknown, receivedAt = Date.now()): PreparedAgentsOtlpUsage {
   return { source: "agents-otlp", receivedAt, points: parseOtlpUsage(raw, receivedAt) };
 }
 
@@ -88,7 +98,8 @@ export function parseOtlpUsage(input: unknown, now = Date.now()): OtlpUsagePoint
       for (const entry of metrics) {
         const metric = object(entry);
         const name = metric ? text(metric.name) : null;
-        if (name !== TOKEN_METRIC && name !== COST_METRIC) continue;
+        const known = name ? METRICS[name] : undefined;
+        if (!name || !known) continue;
         const sum = object(metric?.sum);
         const cumulative = sum ? isCumulative(sum.aggregationTemporality) : null;
         if (!sum || cumulative == null || !Array.isArray(sum.dataPoints)) continue;
@@ -105,21 +116,24 @@ export function parseOtlpUsage(input: unknown, now = Date.now()): OtlpUsagePoint
           if (timeMs > now + DAY_MS || timeMs < now - OLDEST_POINT_DAYS * DAY_MS) continue;
           const model = attrs.get("model") ?? null;
           let type: OtlpTokenType | null = null;
-          if (name === TOKEN_METRIC) {
+          if (known.metric === "tokens") {
             const rawType = attrs.get("type");
             if (!rawType || !(OTLP_TOKEN_TYPES as readonly string[]).includes(rawType)) continue;
             type = rawType as OtlpTokenType;
           }
           const identity = [...attrs].sort(([left], [right]) => (left < right ? -1 : 1)).map(([key, entry]) => `${key}=${entry}`);
           points.push({
-            metric: name === TOKEN_METRIC ? "tokens" : "cost",
+            agent: known.agent,
+            metric: known.metric,
             type,
             model: model && model.length <= 200 ? model : null,
             session: digest(sessionId),
-            series: digest([name, start, ...identity].join("\u001f")),
+            series: digest((cumulative ? [name, start, ...identity] : [name, "delta", ...identity]).join("\u001f")),
+            startMs: Number(BigInt(start) / BigInt(1_000_000)),
             timeMs,
             value,
             cumulative,
+            acceptsDelta: known.acceptsDelta,
           });
           if (points.length > MAX_POINTS) throw new Error("OTLP 指标数据点太多");
         }

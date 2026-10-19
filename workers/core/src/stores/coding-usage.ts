@@ -59,11 +59,12 @@ function sameStatus(left: StoredCodingUsageAgent, right: StoredCodingUsageAgent)
 }
 
 // derived 账本按提交顺序做差，不得按接收时刻淘汰，否则乱序提交会丢失有效增量。
+// moveFrom：这几个 id 的账本是从那个来源搬过来的，同一批里删掉那边的行，否则账号级的旧行会一直压住新来源。
 export async function prepareCodingUsage(
   source: CodingUsageSource,
   report: CodingUsageReport,
   receivedAt: number,
-  { derived = false }: { derived?: boolean } = {},
+  { derived = false, moveFrom }: { derived?: boolean; moveFrom?: { source: CodingUsageSource; ids: readonly string[] } } = {},
 ): Promise<CodingUsageLanding> {
   const read = getStorage().batch();
   for (const name of CODING_USAGE_SOURCE_NAMES) read.fields(codingUsageKey(name));
@@ -97,7 +98,12 @@ export async function prepareCodingUsage(
   const changed = Object.keys(fields).length > 0;
   if (!changed) return NOTHING;
 
-  const patched = !usageChanged && previousView ? applyCodingUsageStatus(previousView, source, statusOnly) : null;
+  const from = moveFrom && moveFrom.source !== source ? moveFrom.source : null;
+  const left = from ? { ...stored[from] } : {};
+  const moved = from ? moveFrom!.ids.filter((id) => fields[id] && left[id]) : [];
+  for (const id of moved) delete left[id];
+
+  const patched = !usageChanged && !moved.length && previousView ? applyCodingUsageStatus(previousView, source, statusOnly) : null;
   if (patched) {
     return landing((batch) => {
       batch.patch(codingUsageKey(source), fields).set(codingViewKey(), JSON.stringify(patched));
@@ -105,9 +111,16 @@ export async function prepareCodingUsage(
   }
 
   stored[source] = own;
+  if (moved.length) stored[from!] = left;
   const { view, year } = buildCodingUsageView(stored, Math.max(receivedAt, previousView?.updatedAt ?? 0));
   const tags = codingLayoutKey(previousView) !== codingLayoutKey(view) ? [CODING_TAG] : [];
   return landing((batch) => {
+    // 存储没有删单个字段的命令：整键删掉，把剩下的行原样写回。
+    if (moved.length) {
+      batch.remove(codingUsageKey(from!));
+      const rest = Object.fromEntries(Object.entries(left).map(([id, ledger]) => [id, JSON.stringify(ledger)]));
+      if (Object.keys(rest).length) batch.patch(codingUsageKey(from!), rest);
+    }
     if (changed) batch.patch(codingUsageKey(source), fields);
     if (usageChanged) batch.set(codingUsageRevisionKey(), String(revision));
     batch.set(codingViewKey(), JSON.stringify(view)).set(codingYearKey(), JSON.stringify(year));

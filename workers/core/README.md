@@ -54,8 +54,8 @@
 | 来源（= 上报入口） | 范围 | 带来什么 |
 | --- | --- | --- |
 | `mac`（`modules.codingUsage` / `codingActivity` / `codingTokenBuckets`） | 设备：这台 Mac 本地日志里的会话 | 各 agent 的日行账本、最近事件、5 分钟桶 |
-| `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史；Devin CLI 取自 tokens.ci | `cursor` 同上；`devin` 是日行账本，加按 tokens.ci 提交增量摊出的 5 分钟桶，没有活动 |
-| `agents-otlp`（Claude Code 云端遥测） | 环境：那个托管环境里的会话 | 状态核心做差后整理成同形的三种事实，agent 恒为 `claude` |
+| `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史 | `cursor` 的日行账本、最近事件、5 分钟桶 |
+| `agents-otlp`（OTLP 遥测） | 环境：Claude Code 云端线程；Mac 上的 Devin CLI | 状态核心按指标名分到 `claude` / `devin`，整理成同形的三种事实 |
 
 同一 agent 有账号级来源时只算它，别的来源的同 agent 行标 `superseded`、不相加（Mac 就算又报 `cursor` 也不会双算）；
 否则全部相加（claude 的本机与云端，假设彼此不重叠：云端遥测变量只配在云端）。
@@ -98,16 +98,16 @@
 
 入口对坏的 coding 模块只丢它自己、回执写 `rejected`（见[上报入口](../ingress/README.md)），不连累存活和别的模块。
 
-### Claude Code 云端线程用量
+### OTLP 用量：Claude Code 云端线程与 Devin CLI
 
 Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境打开 Claude Code 内置遥测，
-每分钟把指标推到上报入口的 `/api/ingest/agents/otlp`；云端环境变量、专属 Access 权限和本地调试见
-[上报入口 README](../ingress/README.md#claude-code-云端线程用量)。
+每分钟把指标推到上报入口的 `/api/ingest/agents/otlp`；Mac 上的 Devin CLI 也推到这里。两边的配置、Access 权限和本地调试见
+[上报入口 README](../ingress/README.md#otlp-用量claude-code-云端线程与-devin-cli)。
 
-只收 `claude_code.token.usage` 与 `claude_code.cost.usage`，其余指标收下后忽略（返回 200 `{}`，
+只收 `claude_code.token.usage`、`claude_code.cost.usage`（agent `claude`）与 `devin.token.usage`（agent `devin`），其余指标收下后忽略（返回 200 `{}`，
 整封拒掉 exporter 不重试，这一轮的数就丢了）。数据点上的邮箱、账号 ID、组织 ID 在解析时丢掉，
 只存 session、model、token 类型、值和时刻。只收 cumulative 时序：delta 时序的点没法去重（提交成功而回执丢了时导出端重发就会重复计数），
-一律不收、记一行 `[otlp] delta temporality points skipped` 的 warn —— 云端环境要配 `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`
+Claude 的一律不收、记一行 `[otlp] delta temporality points skipped` 的 warn —— 云端环境要配 `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`
 （Claude Code 的默认是 delta），见到这行 warn 就是那组变量掉了。每条序列（指标、进程起点、全部属性，主会话和子代理的 `query_source` 不同就是两条）
 记上次的累计值（`coding:otlp`，键和会话都只存摘要），只加差值：丢一轮下一轮补齐，重发、乱序不多算；线程恢复成新进程时起点变了，按新计数器计。
 进程计数器 30 天没见就清掉。每个正差值同时落成三种事实（`agents-otlp` / `claude`）：按数据点时刻的站点日加进日行
@@ -116,6 +116,16 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 最新时刻与模型作为活动。闲着的进程每分钟一封也不重算视图。计数器与它做出来的账本（连同视图、年度）、活动、桶
 在同一个事务里落：中途哪一步失败就一条都不落，下一封从同一个前值再做差，差值不丢。入口的收到时刻和提交顺序可以
 相反，差值按提交顺序做，账本不按采集时刻淘汰，账本、活动、桶上的时刻都取和存着的较大者、不往回走。
+
+Devin CLI 只会发 delta（不认 temporality 偏好），每次导出只带上次导出以来的增量，没用量的那几次不发。它的序列不含起点
+（起点每个窗口都在走），`coding:otlp` 的 `windows` 记每条序列已经计到的时刻：窗口起点早于它的是重发，整点跳过；
+晚到的旧窗口也一起跳过（少算，不多算）。Devin 不发费用指标，有 token 的日子 `costComplete` 为假。会话数按 agent 分开记
+（`sessionCounts`）。`cloudAgentActivity` 只看 `claude` 的桶，Devin 跑在 Mac 上，不算云端线程。
+
+Devin 的日行以前由 agents-reporter 从 tokens.ci 拉进 `agents` 来源。第一封带 Devin 的 OTLP 进来、`agents-otlp` 里还没有
+`devin` 时，把 `agents` 里那本 `devin` 账本的日子整份接过来，在同一个事务里从 `agents` 删掉它（账号级来源会压住
+`agents-otlp`，留着新数就看不见）；`prepareCodingUsage` 的 `moveFrom`。D1 里 `source = 'agents'` 的旧行原样留着，
+接过来的日子在 `agents-otlp` 下再归档一份；D1 目前没有跨来源相加的读者。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
