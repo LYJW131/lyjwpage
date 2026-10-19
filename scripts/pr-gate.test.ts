@@ -64,6 +64,24 @@ test("严重度：Codex 徽章、Claude 圆圈、Devin 种类与圆圈、其他�
   assert.deepEqual(severityOf("这里少了一个分支", null), { mark: null, level: "unmarked" });
 });
 
+test("拆开的 HTML 注释拼回 <!-- 时，仍按删干净后的第一行认标记和标题", () => {
+  const body = `<!<!--x-->-->\n${codexBody("P1").split("\n")[0]}`;
+  assert.deepEqual(severityOf(body, "codex"), { mark: "P1", level: "blocking" });
+  const threads = buildThreads(
+    [{ id: 1, user: codex, body, html_url: "u", path: "a.ts", line: 1, created_at: "2026-10-19T01:00:00Z" }],
+    { source: "ccr", byRoot: new Map([[1, { resolved: false, outdated: false }]]) },
+  );
+  assert.equal(threads.unresolved[0].title, "Preserve legacy traces");
+  assert.deepEqual(severityOf("<!-->\n🔴 **Important** 叠在一起", "claude"), { mark: "🔴", level: "blocking" });
+  assert.deepEqual(severityOf("<!<!<!--x-->-->-->\n🟡 **Nit** (optional) 两层", "claude"), { mark: "🟡", level: "optional" });
+  const open = buildThreads(
+    [{ id: 2, user: claude, body: "<!-- 没闭合\n🔴 仍在注释里", html_url: "u2", path: "b.ts", line: 2, created_at: "2026-10-19T01:00:00Z" }],
+    { source: "ccr", byRoot: new Map([[2, { resolved: false, outdated: false }]]) },
+  );
+  assert.equal(open.unresolved[0].title, "<!-- 没闭合");
+  assert.equal(open.unresolved[0].level, "unmarked");
+});
+
 test("评审线程按根评论归并：发起人、标记、最后一条是不是 lyjw 的账号回的，只列没解决的", () => {
   const comments = [
     { id: 1, user: codex, body: codexBody("P1"), html_url: "u1", path: "a.ts", line: 3, created_at: "2026-10-19T01:00:00Z" },

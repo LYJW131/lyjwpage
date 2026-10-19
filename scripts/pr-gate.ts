@@ -130,8 +130,35 @@ export function tierOf(files: string[]) {
   };
 }
 
+// <!<!--x-->--> 去掉内层后剩下 <!-->，开标签和结束标签叠在一起，所以按位置删到不再缩短。
+function stripHtmlComments(body: string) {
+  let current = body;
+  let previous: string;
+  do {
+    previous = current;
+    let next = "";
+    let i = 0;
+    while (i < current.length) {
+      const start = current.indexOf("<!--", i);
+      if (start < 0) {
+        next += current.slice(i);
+        break;
+      }
+      const end = current.indexOf("-->", start + 2);
+      if (end < 0) {
+        next += current.slice(i);
+        break;
+      }
+      next += current.slice(i, start);
+      i = end + 3;
+    }
+    current = next;
+  } while (current !== previous);
+  return current;
+}
+
 function firstLine(body: string) {
-  return body.replace(/<!--[\s\S]*?-->/g, "").trim().split("\n", 1)[0] ?? "";
+  return stripHtmlComments(body).trim().split("\n", 1)[0] ?? "";
 }
 
 // 各家标记：Codex 是 P0–P3 徽章；Claude review 是 🔴 / 🟡 nit / 🟣 既有问题；Devin 是 🔴 / 🟡 bug、🟥 / 🟨 security、🔍 / 📝 说明，
