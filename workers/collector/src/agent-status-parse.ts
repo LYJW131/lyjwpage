@@ -1,4 +1,4 @@
-import { object } from "@shared/json";
+import { object, text } from "@shared/json";
 
 import type {
   AgentIncident,
@@ -150,10 +150,6 @@ function decodeEntities(value: string): string {
 
 function plain(html: string): string {
   return decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-}
-
-function text(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function list(value: unknown): unknown[] {

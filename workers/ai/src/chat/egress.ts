@@ -44,33 +44,39 @@ export class AnthropicEgress extends DurableObject<Env> {
 
 type EgressNamespace = DurableObjectNamespace<AnthropicEgress>;
 
-// 只缓存选中的名字：stub 属于创建它的那个请求，跨请求复用会在后续请求里报 Connection error。
-const chosen = new WeakMap<EgressNamespace, Promise<string>>();
+// 只缓存选中的名字字符串：stub 和未决的 promise 都属于发起它的那个请求，跨请求复用会在后续请求里报 Connection error，
+// 发起的请求先结束时还会一直挂着。有候选探测失败时退回北美只用于本次请求，下个请求再试日本。
+const chosen = new WeakMap<EgressNamespace, string>();
 
-async function pickEgress(namespace: EgressNamespace): Promise<string> {
+async function pickEgress(namespace: EgressNamespace): Promise<{ name: string; settled: boolean }> {
+  let settled = true;
   for (let i = 0; i < JAPAN_CANDIDATES; i++) {
     const name = `anthropic-jp-${i}`;
     try {
-      if (JAPAN_COLOS.has(await namespace.get(namespace.idFromName(name), { locationHint: "apac" }).colo())) return name;
+      if (JAPAN_COLOS.has(await namespace.get(namespace.idFromName(name), { locationHint: "apac" }).colo())) return { name, settled: true };
     } catch {
-      continue;
+      settled = false;
     }
   }
   console.warn("[anthropic-egress] no Japan candidate, falling back to wnam");
-  return FALLBACK_NAME;
+  return { name: FALLBACK_NAME, settled };
+}
+
+async function egressName(namespace: EgressNamespace): Promise<string> {
+  const cached = chosen.get(namespace);
+  if (cached) return cached;
+  const { name, settled } = await pickEgress(namespace);
+  if (settled) chosen.set(namespace, name);
+  return name;
 }
 
 export function anthropicFetch(env: Env): typeof fetch | undefined {
   const namespace = env.ANTHROPIC_EGRESS;
   if (!namespace) return undefined;
-  let pick = chosen.get(namespace);
-  if (!pick) {
-    pick = pickEgress(namespace);
-    chosen.set(namespace, pick);
-  }
-  const name = pick;
+  let name: Promise<string> | undefined;
   return async (input, init) => {
-    const stub = namespace.get(namespace.idFromName(await name), { locationHint: (await name) === FALLBACK_NAME ? "wnam" : "apac" });
+    const picked = await (name ??= egressName(namespace));
+    const stub = namespace.get(namespace.idFromName(picked), { locationHint: picked === FALLBACK_NAME ? "wnam" : "apac" });
     return stub.fetch(new Request(input, init));
   };
 }
