@@ -276,7 +276,7 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
   `pulse:token-buckets:agents-otlp` 现算，切片规则同 Coding 评估特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
-  或云端 Claude Code 在这个 5 分钟桶里有用量（`shared/pulse-coding.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
+  或云端 Claude Code 在这个 5 分钟桶里有用量（`shared/pulse-coding-features.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
   Cursor 那一路的覆盖也算「看得见」：Mac 离线而 Cursor 覆盖着且没有活动时画 0（观测到没有 agent 活动），
   这时前台其实是未知，和 Coding 评估特征的口径一致。不读档位时代的 `pulse:coding`（它让 agent 压过前台，画不出「两者同时」）。
 - **充电瓦数** `pulse:v2:charging` `{t, watts, device?}`，上限 `CHARGING_SAMPLE_CAP`。闸门见 `planChargingSample`：
@@ -307,7 +307,7 @@ cron 落在窗口结束后 `PULSE_SCORE_SETTLE_MS`（`src/pulse-score.ts`，等�
 没有 `AI` 绑定、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用（`src/runtime.ts#isolatedFromSharedWrites`），按 example 配的本地 Worker 不评分。
 
 决策模型不会数数、不会算时长、不比时间戳，所以发给它的 state 是代码算好的命名秒数和次数
-（`shared/pulse-coding.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
+（`shared/pulse-coding-features.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
 `concurrentAgentSeconds`、`codingAppAndAgentSeconds`、切换次数、最长连续时长、观测覆盖和前几个应用 / agent，
 没有原始区间或时间戳；判据写在 `instructions` / `criteria` 里。
 

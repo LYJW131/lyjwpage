@@ -231,7 +231,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### Pulse 事实时间线
 
 - 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间，听那条另有从 Apple 最近播放推出的别处播放（§1「没人上报的播放」）；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
-- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding.ts#codingBand`）；Clef 的打分只出现在悬停提示里。
+- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding-features.ts#codingBand`）；Clef 的打分只出现在悬停提示里。
 - Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存读 + 缓存写入）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`workers/core/src/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 06 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`shared/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
