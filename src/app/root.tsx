@@ -13,6 +13,7 @@ import {
   type MetaDescriptor,
 } from "react-router";
 
+import { ExternalLinkGuard } from "@/components/external-link-guard";
 import { Footer } from "@/components/footer";
 import { HomeLink } from "@/components/home-link";
 import NotFound from "@/app/not-found";
@@ -123,6 +124,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <BootAttributes />
         <PsPlusSprite />
         <ThemeProvider>{children}</ThemeProvider>
+        <ExternalLinkGuard />
         <PwaRegistration />
         <RestReady />
         <SiteAnalytics />
