@@ -100,7 +100,6 @@ export function monotonePath(xs: number[], ys: number[]): string {
 }
 
 // 宽度与 LYJW131 README 里的 Voronoi 卡一致：width 724、viewBox 左缘 28，内容占满 x=28..752。
-const X0 = CARD_X0;
 const WIDTH = 724;
 const HEIGHT = 262;
 const BAR_GAP = 18;
@@ -117,7 +116,7 @@ function delta(change: number | null, value: string, tail: string) {
 }
 
 function stat(column: number, label: string, value: string, compare: string) {
-  return cardStat(column, label, value) + `<text x="${X0 + column * CARD_STAT_PITCH}" y="98" font-size="13" font-weight="600">${compare}</text>`;
+  return cardStat(column, label, value) + `<text x="${CARD_X0 + column * CARD_STAT_PITCH}" y="98" font-size="13" font-weight="600">${compare}</text>`;
 }
 
 // 与全历史基线（总量 ÷ 有活动的天数）同一口径：前 7 天也只按有活动的天平均，倍数才可比。
@@ -143,7 +142,7 @@ export function renderWeekCard(stats: WeekCardStats, copy: WeekCardCopy = WEEK_C
   const multiple = (r: number | null) => delta(r === null ? null : r - 1, `${(r ?? 0).toFixed(1)}×`, copy.vsAllTime);
   const percent = (p: number | null) => delta(p, `${Math.abs(p ?? 0)}%`, copy.vsWeek);
 
-  const cx = (i: number) => X0 + i * (BAR_W + BAR_GAP) + BAR_W / 2;
+  const cx = (i: number) => CARD_X0 + i * (BAR_W + BAR_GAP) + BAR_W / 2;
   const tokenMax = Math.max(...tokens, 1);
   const commitMax = Math.max(...commits, 1);
   const xs = tokens.map((_, i) => cx(i));
@@ -152,7 +151,7 @@ export function renderWeekCard(stats: WeekCardStats, copy: WeekCardCopy = WEEK_C
   const bars = commits
     .map((v, i) => {
       const h = Math.max(2, (v / commitMax) * BAR_H);
-      return `<rect x="${(X0 + i * (BAR_W + BAR_GAP)).toFixed(2)}" y="${(BAR_TOP + BAR_H - h).toFixed(1)}" width="${BAR_W.toFixed(2)}" height="${h.toFixed(1)}" fill="var(--bar)" opacity=".7"/>`;
+      return `<rect x="${(CARD_X0 + i * (BAR_W + BAR_GAP)).toFixed(2)}" y="${(BAR_TOP + BAR_H - h).toFixed(1)}" width="${BAR_W.toFixed(2)}" height="${h.toFixed(1)}" fill="var(--bar)" opacity=".7"/>`;
     })
     .join("");
   const peakBar = commits.indexOf(Math.max(...commits));
@@ -173,7 +172,7 @@ export function renderWeekCard(stats: WeekCardStats, copy: WeekCardCopy = WEEK_C
 
   const aria = `Last 7 days: ${formatTokens(weekTokens)} tokens, ${weekCommits.toLocaleString("en-US")} commits`;
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="${X0} 0 ${WIDTH} ${HEIGHT}" font-family="${CARD_FONT}" role="img" aria-label="${aria}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="${CARD_X0} 0 ${WIDTH} ${HEIGHT}" font-family="${CARD_FONT}" role="img" aria-label="${aria}">` +
     STYLE +
     stat(0, copy.weekTokens, formatTokens(weekTokens), multiple(tokenMultiple)) +
     stat(1, copy.todayTokens, formatTokens(todayTokens), percent(tokenPct)) +
