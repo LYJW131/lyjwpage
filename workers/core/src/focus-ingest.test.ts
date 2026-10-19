@@ -10,7 +10,7 @@ import { collectIngestEffects } from "./ingest-effects";
 const NOW = 1_800_000_000_000;
 const report = (mode: unknown) => ({ version: 1, modules: { focus: { mode } } });
 
-test("focus keeps sleep and mindfulness only, keeps since across repeats, tags only on change", async () => {
+test("focus keeps sleep and mindfulness only, keeps since across repeats, tags only when the card shows or hides", async () => {
   installTestStorage(new FakeStorage());
   try {
     const commit = (mode: unknown, at: number) => withRequestState(async () => {
@@ -22,7 +22,7 @@ test("focus keeps sleep and mindfulness only, keeps since across repeats, tags o
     assert.deepEqual(tagsOf(await commit("睡眠", NOW)), ["focus-now"]);
     assert.deepEqual(tagsOf(await commit("睡眠", NOW + 60_000)), []);
     assert.equal((await focusMirror.get())?.since, NOW);
-    assert.deepEqual(tagsOf(await commit("正念", NOW + 120_000)), ["focus-now"]);
+    assert.deepEqual(tagsOf(await commit("正念", NOW + 120_000)), [], "换模式不改首页布局，交给推送");
     assert.deepEqual(focusNow(await focusMirror.get(), NOW + 120_000), { mode: "mindfulness", since: NOW + 120_000, observedAt: NOW + 120_000 });
     assert.deepEqual(tagsOf(await commit("工作", NOW + 180_000)), ["focus-now"], "别的专注模式不公开");
     assert.equal((await focusMirror.get())?.mode, null);
