@@ -15,6 +15,7 @@
 - 改了中文文字，同一章 `I18N.add` 里的英文要跟上：`v2/tools/check.mjs` 报缺文字键，`v2/tools/en-cjk.mjs` 列出英文模式下还画出来的中文，应只剩歌名、PR 标题这类数据。
 - 上一版（根上的 `scenes-*.js`）：`music.js` 的 `PLAN` ⇄ 各章的 `chapter()`；改中文后用 `render/harvest.mjs` 查英文对照表漏掉的片段（应为 0）；只改画面时先用 `render/cuesjson.mjs` 比对音效时间表，没变就不重渲音效。
 - 站点版由 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成到 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`workers/site/src/index.ts` 把 `/explainer` 落到构建期生成的 explainer 静态资产；脚本只认 `v2/index.html` 的 `LOAD` 表（保持 JSON 写法），连同内联样式里的相对 `url()` 按内容哈希改名。新增别的资源要让脚本拷得到：页面上新的相对 `src` / `href` 它会报错，脚本里取的文件要像 `v2/film.js` 取配乐那样经 `window.__assets` 查名字。根上的 `clawd.js`、`fonts/` 也被 v2 引用。
+- `v2/ch08.js` 里的字 ⇄ `fonts/LXGWMarkerGothic-ch08.woff2`：字体只切了这一章用到的字，加了新字要重切（`README.md`「站点版」），不然新字退回系统字体。
 - 配乐不入库：`scripts/explainer-score.mjs#scoreInputs` 列的文件决定 R2 上的对象键，合进 main 后由 `.github/workflows/explainer-score.yml` 渲染上传（`README.md`「站点版」）。合成配乐时新读了别的文件，要加进 `scoreInputs` 和工作流的 `paths`，否则改了它键不变、线上放旧配乐。
 
 ## 环境
