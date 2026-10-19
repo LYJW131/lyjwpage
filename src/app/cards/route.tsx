@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
+import { SWRConfig } from "swr";
 
 import { GodChat } from "@/components/god-chat";
 import { ActivityCard } from "@/components/live/activity-card";
@@ -15,10 +16,12 @@ import { ServerCard } from "@/components/live/server-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
+import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { RenderClock } from "@/hooks/use-mounted-at";
+import { trophiesTilePath } from "@/lib/paths";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { inlineChargerIcon } from "@/lib/charger-icon-inline";
-import { displayWidthFromSizes, IMAGE_PROXY_PATH, imageWidthBucket } from "@/lib/image-proxy";
+import { IMAGE_PROXY_PATH, imageWidthBucket } from "@/lib/image-proxy";
 import { playstationImage } from "@/lib/playstation-image";
 import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
 import { NO_STORE } from "@/lib/site-policy";
@@ -200,17 +203,21 @@ const CARDS: Record<string, ReadmeCard> = {
   playstation: {
     label: "PlayStation",
     width: FULL_WIDTH,
-    height: 530,
-    async render(status) {
-      const [trophies, playing, playingNow] = await Promise.all([status("trophies"), status("playing"), status("playingNow")]);
+    height: 835,
+    // 展开最近一个奖杯所在的游戏，和首页点「Latest」一样：先渲一遍找出展开的那格，取它的奖杯目录作 SWR 兜底再渲。
+    async render(status, site, now) {
+      const [summary, playing, playingNow] = await Promise.all([status("trophies"), status("playing"), status("playingNow")]);
+      const trophies = summary as StatusResponse<TrophiesSummaryPayload>;
+      const recent = trophies.ok ? trophies.data.recent[0] : undefined;
+      const initialJump = recent
+        ? { npCommunicationId: recent.npCommunicationId, trophyKey: trophyRowKey(recent.npCommunicationId, recent.groupId, recent.id) }
+        : null;
+      const block = <PlaystationBlock trophies={trophies} playing={playing} playingNow={playingNow} initialJump={initialJump} />;
+      const draft = renderToString(<RenderClock value={now}>{block}</RenderClock>);
+      const ids = /data-warm-title-ids="([^"]+)"(?:(?!data-warm-title-ids)[\s\S])*?aria-expanded="true"/.exec(draft)?.[1];
+      const catalog = ids ? await site.trophies(ids.split(",")) : null;
       return {
-        element: (
-          <PlaystationBlock
-            trophies={trophies as StatusResponse<TrophiesSummaryPayload>}
-            playing={playing}
-            playingNow={playingNow}
-          />
-        ),
+        element: catalog ? <SWRConfig value={{ fallback: { [trophiesTilePath(ids!.split(","))]: catalog } }}>{block}</SWRConfig> : block,
         sample: false,
       };
     },
@@ -261,7 +268,9 @@ const freezeWidthQueries = (css: string) =>
   });
 
 // 不内嵌字体：camo 回图带 CSP `default-src 'none'`，data: 字体照样被拦，经 GitHub 看到的总是系统等宽字体。
-const CSS = freezeWidthQueries(cardsCss.replace(/@font-face\s*{[^}]*}/g, ""));
+const CSS = freezeWidthQueries(cardsCss.replace(/@font-face\s*{[^}]*}/g, "")) +
+  // 奖杯展开面板的高度在浏览器里量出来再动画过去，SSR 时是 0。
+  "#playstation-trophies{height:auto!important}";
 
 const unescapeAttribute = (value: string) =>
   value.replaceAll("&quot;", '"').replaceAll("&#x27;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
@@ -273,10 +282,11 @@ const flattenNumberFlow = (html: string) => html.replace(/<template\b[^>]*\sshad
 const svgNamespaces = (html: string) => html.replace(/<svg\b(?![^>]*\sxmlns=)/g, '<svg xmlns="http://www.w3.org/2000/svg"');
 
 // <img> 里的 SVG 不跑脚本、不取外部资源，内联脚本删掉，图片换成 data URI。
-// 页面上走图片优化器的图（如 Apple Music 预签名封面）src 是同源的 `/image?url=…`，出图时取回原图地址自己缩放。
-function originalSource(src: string): string {
-  if (!src.startsWith(`${IMAGE_PROXY_PATH}?`)) return src;
-  return new URLSearchParams(src.slice(IMAGE_PROXY_PATH.length + 1)).get("url") ?? src;
+// 页面上走图片优化器的图（如 Apple Music 预签名封面）src 是同源的 `/image?url=…&w=<显示宽>`，出图时取回原图地址和宽度自己缩放。
+function originalSource(src: string, width: number): [string, number] {
+  if (!src.startsWith(`${IMAGE_PROXY_PATH}?`)) return [src, width];
+  const params = new URLSearchParams(src.slice(IMAGE_PROXY_PATH.length + 1));
+  return [params.get("url") ?? src, width || Number(params.get("w") ?? 0)];
 }
 
 async function inlineImages(html: string, site: SiteServices): Promise<string> {
@@ -284,13 +294,12 @@ async function inlineImages(html: string, site: SiteServices): Promise<string> {
   for (const [tag] of html.matchAll(/<img\b[^>]*>/g)) {
     const src = /\ssrc="([^"]+)"/.exec(tag)?.[1];
     if (!src || src.startsWith("data:")) continue;
-    const width = Number(/\swidth="(\d+)"/.exec(tag)?.[1] ?? 0) || (displayWidthFromSizes(/\ssizes="([^"]*)"/.exec(tag)?.[1]) ?? 0);
-    widths.set(src, Math.max(widths.get(src) ?? 0, width));
+    widths.set(src, Math.max(widths.get(src) ?? 0, Number(/\swidth="(\d+)"/.exec(tag)?.[1] ?? 0)));
   }
   // 封面原图常比显示尺寸大几倍：光栅图按显示宽度取 2 倍，PlayStation 图床自带缩放参数，其余走图片变体，取不到（不在白名单）再原样内嵌。
   const inlined = await Promise.all(
-    [...widths].map(async ([src, width]) => {
-      const url = originalSource(unescapeAttribute(src));
+    [...widths].map(async ([src, shown]) => {
+      const [url, width] = originalSource(unescapeAttribute(src), shown);
       const sized = width > 0 ? playstationImage(url, width * 2) : url;
       const resized =
         width > 0 && sized === url && !/\.svg(\?|$)/.test(url)
@@ -299,7 +308,7 @@ async function inlineImages(html: string, site: SiteServices): Promise<string> {
       return [src, resized ?? (await site.asset(sized ?? url))] as const;
     }),
   );
-  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/\s(?:srcSet|sizes)="[^"]*"/g, "");
+  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/\ssrcSet="[^"]*"/g, "");
   for (const [src, data] of inlined) out = out.replaceAll(`"${src}"`, `"${data ?? ""}"`);
   return out;
 }

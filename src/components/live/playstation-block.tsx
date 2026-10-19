@@ -1,3 +1,4 @@
+import type { TrophyJump } from "@/components/live/playstation-card";
 import { PlaystationPanel } from "@/components/live/playstation-panel";
 import { Card } from "@/components/ui/card";
 import type {
@@ -14,11 +15,13 @@ export function PlaystationBlock({
   trophies,
   playing,
   playingNow,
+  initialJump,
   className,
 }: {
   trophies: StatusResponse<TrophiesSummaryPayload>;
   playing: StatusResponse<PlaystationPlayingPayload>;
   playingNow: StatusResponse<PlaystationPresencePayload>;
+  initialJump?: TrophyJump | null;
   className?: string;
 }) {
   return (
@@ -33,6 +36,7 @@ export function PlaystationBlock({
         trophies={trophies}
         playing={playing}
         playingNow={playingNow}
+        initialJump={initialJump}
       />
     </Card>
   );
