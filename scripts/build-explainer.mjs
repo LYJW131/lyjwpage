@@ -28,7 +28,9 @@ fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT, ASSETS), { recursive: true });
 
 const assets = {};
-for (const rel of new Set([...scripts, ...styled])) {
+// film.js 按 sfx/<名字>.mp3 经 window.__assets 取音效
+const sfx = (fs.existsSync(path.join(SRC, "sfx")) ? fs.readdirSync(path.join(SRC, "sfx")) : []).filter((f) => f.endsWith(".mp3")).map((f) => `sfx/${f}`);
+for (const rel of new Set([...scripts, ...styled, ...sfx])) {
   if (!isFile(rel)) throw new Error(`index.html 引用了不存在的 ${rel}`);
   const bytes = fs.readFileSync(path.join(SRC, rel));
   const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);

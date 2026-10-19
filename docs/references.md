@@ -116,6 +116,10 @@
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。
   - 取了什么：彩铅的做法，一个主斜向的短排线、浅深两色叠层、形体边缘颜色加厚、暗部换方向交叉排线、断续出头的深色轮廓、灯旁的暖黄光晕；配色按原片关键帧取色。没装 skill，也没拷代码：排线改成按种子生成的图块，每帧拿它填形状。手写字用 [霞鹜漫黑](https://github.com/lxgw/LxgwMarkerGothic)（OFL），只取第 08 章用到的字。还取了原片把项目里的梗画成屋里摆设的做法，第 08 章每个机位的彩蛋照这个放。
   - 状态：试用，只用在讲解动画第 08 章。落在 `docs/explainer/v2/pencil.js`、`docs/explainer/v2/ch08.js`、`docs/explainer/fonts/LXGWMarkerGothic-ch08.woff2`。
+- **[Voxyz 的配音效提示词](https://x.com/Voxyz_ai/status/2109358372873183564)** 与 **[Openverse 音效检索](https://x.com/Voxyz_ai/status/2111140116572049485)**（[api.openverse.org](https://api.openverse.org)）
+  - 是什么：给 Claude 做的视频配声音的一段提示词：每个动作配一个现成的音效文件，不在代码里合成音效；按节拍放大动作；音效压在配乐上面；导出后量响度，逐个音效抽前后帧、画波形核对，再挑几个时刻让人戴耳机听。缺音效时到 Openverse 免登录检索，只取 CC0 / CC BY / PDM、来自 freesound 的结果，署名照抄。
+  - 取了什么：第 08 章的故事音效改成从 Openverse 取的 freesound 录音，按画面动作排时刻；配乐仍在浏览器里合成。导出后用 ffmpeg 的 ebur128 量响度，抽了几个音效前后各一帧对照波形。没有照搬它的 -16 LUFS 目标：整片配乐沿用峰值归一。
+  - 状态：试用，只用在讲解动画第 08 章。落在 `docs/explainer/v2/sfx/`（署名在 `CREDITS.txt`）、`docs/explainer/v2/music/ch08.js` 的 `SFX`、`docs/explainer/v2/film.js#withSfx`、`scripts/build-explainer.mjs`。
 
 ## Cloudflare 平台
 
