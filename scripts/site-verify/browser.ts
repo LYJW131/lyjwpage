@@ -98,6 +98,7 @@ export async function resolvePlaywright(): Promise<{ api: PwApi; source: string 
 export const HIDE_DEV_UI = "#dev-toggles, vite-error-overlay { display: none !important; }";
 
 export const PLAYWRIGHT_NEXT = "仓库自带 playwright-core 在 docs/explainer/render，先跑 `pnpm --dir docs/explainer/render install --ignore-workspace`；云端容器通常已全局安装。";
+export const WEBKIT_NEXT = "装 Playwright 的 WebKit：playwright install --with-deps webkit（版本要和 doctor 解到的 playwright 一致；装进 PLAYWRIGHT_BROWSERS_PATH 指的目录）";
 
 export async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
   const explicit = stringFlag(flags.chrome) || process.env.SITE_VERIFY_CHROME;
@@ -113,6 +114,11 @@ export async function launchBrowser(pw: PwApi, flags: Partial<Flags> = {}): Prom
     }
   }
   throw lastError;
+}
+
+export async function launchEngine(pw: PwApi, flags: Partial<Flags>): Promise<{ browser: PwBrowser; via: Record<string, string> }> {
+  if (flags.engine !== "webkit") return launchBrowser(pw, flags);
+  return { browser: await pw.webkit.launch({ headless: true }), via: { engine: "webkit" } };
 }
 
 export function watchConsole(page: PwPage, sink: Sink, current: { origin: string | null }) {
@@ -158,7 +164,7 @@ export function watchConsole(page: PwPage, sink: Sink, current: { origin: string
 }
 
 export async function openPage(pwApi: PwApi, flags: Flags, { width, height }: Viewport, sink: Sink) {
-  const { browser, via } = await launchBrowser(pwApi, flags);
+  const { browser, via } = await launchEngine(pwApi, flags);
   try {
     const context = await browser.newContext({
       viewport: { width, height },

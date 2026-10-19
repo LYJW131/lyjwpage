@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { launchBrowser, PLAYWRIGHT_NEXT, resolvePlaywright, watchConsole, type PwBrowser, type PwPage } from "./browser.ts";
+import { launchEngine, PLAYWRIGHT_NEXT, WEBKIT_NEXT, resolvePlaywright, watchConsole, type PwBrowser, type PwPage } from "./browser.ts";
 import { errorText, fail, print, stringFlag, type Box, type Flags } from "./cli.ts";
 import { consoleClean, consoleProblems, navOrigin, newSink } from "./console-sink.ts";
 
@@ -224,9 +224,9 @@ export async function cmdReload(flags: Flags) {
   const sink = newSink();
   let browser: PwBrowser;
   try {
-    browser = engine === "webkit" ? await pw.api.webkit.launch({ headless: true }) : (await launchBrowser(pw.api, flags)).browser;
+    browser = (await launchEngine(pw.api, flags)).browser;
   } catch (error) {
-    fail(`起不来 ${engine}：${errorText(error).slice(0, 200)}`, engine === "webkit" ? "WebKit 要 Playwright 自带的构建：npx playwright install webkit，或 PLAYWRIGHT_BROWSERS_PATH 指向已装的目录" : "同 doctor 的 chrome 项");
+    fail(`起不来 ${engine}：${errorText(error).slice(0, 200)}`, engine === "webkit" ? WEBKIT_NEXT : "同 doctor 的 chrome 项");
   }
   try {
     const context = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: flags.theme === "light" ? "light" : "dark" });

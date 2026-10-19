@@ -51,8 +51,10 @@ shot:
   --theme dark|light|both（默认 light）  --dpr <n> 像素密度（默认 1）
   --out <目录>        截图输出目录（必填）  --settle <ms>（默认 4000）
   --ssr               禁用 JavaScript，看 SSR HTML 长什么样
+  --engine chromium|webkit  浏览器（默认 chromium；webkit 是 iPhone 的引擎，手机宽度要另截一张，文件名带 -webkit）
   截图藏起开发环境的调试按钮坞与 Vite 报错浮层（报错照样进控制台记录）；多张卡的数据要对得上时先 pnpm dev:scene
   例子  node scripts/site-verify.ts shot --url http://localhost:3291 --widths 1280,375 --out /tmp/shots
+        node scripts/site-verify.ts shot --url http://localhost:3291 --widths 375 --engine webkit --out /tmp/shots
 
 reload（热缓存刷新：先加载一次暖缓存，再刷新，查首次绘制之后又变过的文字、画面和字体）：
   --engine chromium|webkit  浏览器（默认 chromium；webkit 要装 Playwright 的 WebKit，只查文字与字体，不录屏）

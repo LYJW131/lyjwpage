@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyVersion, run, summarizeBuilds, type CheckRun } from "./deploy-check.ts";
+import { classifyVersion, parseExpect, run, summarizeBuilds, type CheckRun } from "./deploy-check.ts";
 
 const SHA = "a".repeat(40);
 const NEWER = "b".repeat(40);
@@ -167,4 +167,48 @@ test("请求挂住时按总时限中止，不会一直卡住", async () => {
   }).finally(() => clearInterval(keepAlive));
   assert.equal(result.pass, false);
   assert.match(result.next ?? "", /读不到合并提交的检查/);
+});
+
+const PARENT = "d".repeat(40);
+
+function autoFetch(files: string[], checkRuns: CheckRun[]) {
+  const calls: string[] = [];
+  const fetch = async (url: string) => {
+    calls.push(url);
+    if (url.endsWith(`/commits/${SHA}`)) return { ok: true, json: async () => ({ parents: [{ sha: PARENT }, { sha: OLDER }] }) };
+    if (url.includes(`/compare/${PARENT}...${SHA}`)) return { ok: true, json: async () => ({ files: files.map((filename) => ({ filename })) }) };
+    if (url.includes("/check-runs")) return { ok: true, json: async () => ({ check_runs: checkRuns }) };
+    return { ok: true, json: async () => ({ commit: SHA }) };
+  };
+  return { fetch, calls };
+}
+
+test("--expect auto 按合并提交与第一个父提交的差异算出要等的 Worker", async () => {
+  const { fetch, calls } = autoFetch(["workers/ai/src/x.ts", "docs/a.md"], [build("ai", "completed", "success")]);
+  const result = await run({ ...options, expect: "auto" }, { ...fakeClock(), isAncestor: async () => false, fetch });
+  assert.equal(result.pass, true);
+  assert.deepEqual(result.expected, ["ai"]);
+  assert.ok(calls.some((url) => url.includes(`/compare/${PARENT}...${SHA}`)));
+});
+
+test("--expect auto 算出的 Worker 没有成功构建时不通过", async () => {
+  const { fetch } = autoFetch(["shared/json.ts"], [build("core", "completed", "success"), build("site", "completed", "success")]);
+  const result = await run({ ...options, expect: "auto" }, { ...fakeClock(), isAncestor: async () => false, fetch });
+  assert.equal(result.pass, false);
+  assert.deepEqual(result.expected, ["core", "ai", "site", "ingress", "collector"]);
+  assert.match(result.next ?? "", /ai、ingress、collector/);
+});
+
+test("--expect auto 读不到改动文件时直接不通过，不当成没碰到 Worker", async () => {
+  const fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
+  const result = await run({ ...options, expect: "auto" }, { ...fakeClock(), isAncestor: async () => false, fetch });
+  assert.equal(result.pass, false);
+  assert.match(result.next ?? "", /算不出 --expect auto/);
+});
+
+test("parseExpect：auto、逗号列表，写错的 Worker 名当用法错误", () => {
+  assert.equal(parseExpect("auto"), "auto");
+  assert.deepEqual(parseExpect("site, core"), ["site", "core"]);
+  assert.deepEqual(parseExpect(undefined), []);
+  assert.equal(parseExpect("stie"), null);
 });
