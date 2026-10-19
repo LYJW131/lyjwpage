@@ -51,82 +51,82 @@
 **每日摘要**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark">
-  <img src="https://lyjw.me/cards/digest.svg" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/digest.svg?v=2" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
 </picture>
 
 **Emby 正在播放**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-watching.svg?theme=dark">
-  <img src="https://lyjw.me/cards/now-watching.svg" alt="Emby 正在播放卡片" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-watching.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/now-watching.svg?v=2" alt="Emby 正在播放卡片" width="100%">
 </picture>
 
 **充电头与充电宝**
 
-<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/charger.svg?theme=dark"><img src="https://lyjw.me/cards/charger.svg" alt="Anker 充电头卡片：总功率、功率曲线与各端口" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/powerbank.svg?theme=dark"><img src="https://lyjw.me/cards/powerbank.svg" alt="Anker 充电宝卡片：电量、底座输入、输出与端口" width="50%"></picture></p>
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/charger.svg?theme=dark&amp;v=2"><img src="https://lyjw.me/cards/charger.svg?v=2" alt="Anker 充电头卡片：总功率、功率曲线与各端口" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/powerbank.svg?theme=dark&amp;v=2"><img src="https://lyjw.me/cards/powerbank.svg?v=2" alt="Anker 充电宝卡片：电量、底座输入、输出与端口" width="50%"></picture></p>
 
 **Apple Music 正在播放**：逐字高亮的同步歌词，下方是最近收听。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-listening.svg?theme=dark">
-  <img src="https://lyjw.me/cards/now-listening.svg" alt="Apple Music 正在播放：正在播的歌与歌词，下方是最近收听" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-listening.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/now-listening.svg?v=2" alt="Apple Music 正在播放：正在播的歌与歌词，下方是最近收听" width="100%">
 </picture>
 
 **与神对话**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/chat.svg?theme=dark">
-  <img src="https://lyjw.me/cards/chat.svg" alt="与神对话卡片：示例问题与输入框" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/chat.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/chat.svg?v=2" alt="与神对话卡片：示例问题与输入框" width="100%">
 </picture>
 
 **活动与训练**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/activity.svg?theme=dark">
-  <img src="https://lyjw.me/cards/activity.svg" alt="活动卡片：三环与读数，右侧是最近训练" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/activity.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/activity.svg?v=2" alt="活动卡片：三环与读数，右侧是最近训练" width="100%">
 </picture>
 
 **落地节点**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark">
-  <img src="https://lyjw.me/cards/server.svg" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/server.svg?v=2" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
 </picture>
 
 **AI Coding**：Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并计算。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark">
-  <img src="https://lyjw.me/cards/vibe-coding.svg" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/vibe-coding.svg?v=2" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
 </picture>
 
 **PlayStation**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/playstation.svg?theme=dark">
-  <img src="https://lyjw.me/cards/playstation.svg" alt="PlayStation 卡片：奖杯统计与最近游玩" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/playstation.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/playstation.svg?v=2" alt="PlayStation 卡片：奖杯统计与最近游玩" width="100%">
 </picture>
 
 **Pulse**：页面上悬停任一时段看当时的状态与标题。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark">
-  <img src="https://lyjw.me/cards/pulse.svg" alt="Pulse 卡片：编码、Token、听、看、玩、充电、运动的 24 小时时间线与右侧摘要" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/pulse.svg?v=2" alt="Pulse 卡片：编码、Token、听、看、玩、充电、运动的 24 小时时间线与右侧摘要" width="100%">
 </picture>
 
 **服务状态**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/provider-status.svg?theme=dark">
-  <img src="https://lyjw.me/cards/provider-status.svg" alt="服务状态卡片：各服务的运行状态" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/provider-status.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/provider-status.svg?v=2" alt="服务状态卡片：各服务的运行状态" width="100%">
 </picture>
 
 **站点自身**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark">
-  <img src="https://lyjw.me/cards/site-status.svg" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/site-status.svg?v=2" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
 </picture>
 
 ## 系统架构
