@@ -31,7 +31,7 @@ export function proposalBuildOpen(proposal: ChatProposal, now = Date.now()): boo
   return proposalChoiceOpen(proposal, now) && !(proposal.issueOpened && !proposal.issueRef);
 }
 // at 是收到卡片时这条回复已有的正文长度，卡片画在那个位置。
-export type ChatShownCard = { card: GodChatCard; at: number };
+export type ChatShownCard = { card: GodChatCard; at: number; game?: string };
 export type ChatAnswer = { header: string; question: string; answer: string };
 export type ChatBubble = GodChatMessage & {
   id?: string;
@@ -102,7 +102,7 @@ function validRun(value: unknown): boolean {
 
 function validBubble(value: unknown): value is ChatBubble {
   if (!object(value) || !["user", "assistant"].includes(String(value.role)) || typeof value.content !== "string") return false;
-  if (value.cards !== undefined && (!Array.isArray(value.cards) || !value.cards.every((card) => object(card) && typeof card.card === "string" && typeof card.at === "number"))) return false;
+  if (value.cards !== undefined && (!Array.isArray(value.cards) || !value.cards.every((card) => object(card) && typeof card.card === "string" && typeof card.at === "number" && optionalString(card.game)))) return false;
   if (value.proposals !== undefined && (!Array.isArray(value.proposals) || !value.proposals.every((proposal) => {
     if (!object(proposal) || typeof proposal.token !== "string" || typeof proposal.expiresAt !== "number" || !object(proposal.plan)) return false;
     const plan = proposal.plan;

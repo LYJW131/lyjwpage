@@ -7,7 +7,7 @@ import type { Env } from "../runtime";
 import { SITE_TOOLS, newLedger, type ToolIO } from "../tools/registry";
 import { projectDocPath, projectDocUrl } from "../tools/project-docs";
 import { START_DESIGN_TOOL, type DesignAdmission } from "./design";
-import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
+import { findGame, parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./show-card";
 import { ANIME_SEARCH_TOOL, GAME_SEARCH_TOOL, STORE_LANGUAGES, animeSearch, gameSearch } from "./domain-search";
 import { MAX_WEB_FETCHES, WEB_CATEGORIES, WEB_FETCH_TOOL, WEB_SEARCH_TOOL, searchResultBlocks, searchResultText, urlKey, urlsIn, webFetch, webSearch, webSearchProvider, type WebPage } from "./web-search";
 import { UPGRADE_TOOL_NAME } from "./prompts";
@@ -38,6 +38,7 @@ export function replyTools({
   const ledger = newLedger();
   const docKeys = new Set<string>();
   const cards = new Set<GodChatCard>();
+  const shownCards = new Set<string>();
   const shownSearches = new Set<string>();
   const showSearch = (id: string, query: string | undefined) => {
     if (shownSearches.has(id) || !query) return;
@@ -121,12 +122,17 @@ export function replyTools({
       }
     }
     if (call.name === SHOW_CARD_TOOL.name) {
-      const card = parseShowCardInput(call.input);
-      if (!card) return result("Unknown card; the valid cards are listed in the tool description.", true);
-      if (cards.has(card)) return result(`The ${card} card is already in this reply.`, true);
+      const input = parseShowCardInput(call.input);
+      if (!input) return result("Unknown card, or the game card without a game name; the valid cards are listed in the tool description.", true);
+      const { card } = input;
+      const game = input.game ? await findGame(io, input.game) : undefined;
+      if (input.game && !game) return result(`No game matching "${input.game}" in LYJW's PlayStation play history. Try another name for it, or answer without the card.`, true);
+      const key = game ? `${card}:${game.titleId}` : card;
+      if (shownCards.has(key)) return result(`The ${game ? `${card} card for ${game.name}` : `${card} card`} is already in this reply.`, true);
+      shownCards.add(key);
       cards.add(card);
-      emit({ type: "card", card });
-      return result(await runShowCard(card, io, ledger), false);
+      emit({ type: "card", card, ...(game && { game: game.titleId }) });
+      return result(await runShowCard(card, io, ledger, game?.name), false);
     }
     const tool = SITE_TOOLS.find((candidate) => candidate.name === call.name);
     if (!tool) return result("Unknown tool.", true);
