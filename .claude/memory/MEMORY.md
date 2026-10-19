@@ -64,7 +64,7 @@
 - Digest card: Chinese tagline pool (772 lines, lyjw-pruned), 10-line `headlines` pool rotating every 60 s (#261). Jev for digest dropped (lyjw 2026-10-15); rules tuned instead (#361).
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
-- Devin CLI token usage now comes from the Devin CLI on lyjw's Mac pushing OTel to `/api/ingest/agents/otlp` (#436, #441, merged 2026-10-20 01:50 SGT); tokens.ci route removed, site labels it Mac. Lane coverage and setup: [[pulse-tokens-lane-coverage]].
+- Devin CLI token usage comes from Devin's own OTel: the Mac into `mac-otlp` (labelled Mac), cloud threads into `agents-otlp` (labelled Cloud), split by ingress from the verified Access credential (#453 + #456). Lane coverage and setup: [[pulse-tokens-lane-coverage]].
 - Not adopting (don't re-propose): seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed. Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 chose 维持现状); only native-OTel agents use OTLP. Don't re-propose: [[reporter-otel-decision]].
 - Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
