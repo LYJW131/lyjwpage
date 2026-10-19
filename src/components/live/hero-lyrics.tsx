@@ -30,7 +30,7 @@ function sungState(ratio: number): "pending" | "active" | "done" {
 
 export function LyricWords({ words, track }: { words: LyricWord[]; track: LocalNowPlaying }) {
   const ref = useRef<HTMLSpanElement>(null);
-  // 逐字填色只在 effect 里画；不水合的出图（README 卡片）没有 effect，按出图时刻直接写进标记。
+  // 逐字填色只在 effect 里画；不水合的渲染不跑 effect，按 RenderClock 时刻直接写进标记。
   const renderClock = useContext(RenderClock);
   const stillAt = renderClock ? trackPositionMs(track, renderClock) : null;
   const maxAtRef = useRef<number>(0);
