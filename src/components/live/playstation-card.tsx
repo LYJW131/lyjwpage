@@ -14,7 +14,7 @@ import {
 import { TrophyMetal } from "@/components/trophies/trophy-metal";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
-import { useMountedAt } from "@/hooks/use-mounted-at";
+import { useMounted } from "@/hooks/use-mounted-at";
 import { useConfirmedClockStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
 import { PLAYSTATION_STALE_MS } from "@shared/freshness";
@@ -449,8 +449,8 @@ export function PlaystationRow({
 
   // 末列不满也保留：按行数裁掉余数会把列表末尾的游戏藏起来。
   const tiles = buildTiles(list.data, livePresence, titles ?? []);
-  const mountedAt = useMountedAt();
-  const renderedTiles = mountedAt ? tiles : tiles.slice(0, INITIAL_TILE_COUNT);
+  const mounted = useMounted();
+  const renderedTiles = mounted ? tiles : tiles.slice(0, INITIAL_TILE_COUNT);
   const reduced = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;

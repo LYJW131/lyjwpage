@@ -19,3 +19,8 @@ export function useMountedAt(): number {
 
   return useSyncExternalStore(subscribe, read, () => renderClock);
 }
+
+// 只问「是否已在浏览器挂载」，不受 RenderClock 影响：出图那次仍按服务端首帧裁剪。
+export function useMounted(): boolean {
+  return useSyncExternalStore(subscribe, () => true, () => false);
+}

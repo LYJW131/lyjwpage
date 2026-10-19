@@ -39,7 +39,7 @@ The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoi
 
 ## Screenshots
 
-Status cards such as now watching, now listening, charging and games only appear while that thing is happening. The images below light up all of them at once with sample data on a local build, following the system light or dark theme. The exit node, AI Coding, Pulse and site cards are rendered live by the site as SVG with the capture time in the card header, filled with sample data and marked Sample data when there is nothing to show. How they are recorded: [docs/screenshots.md](./docs/screenshots.md); card details: [page details and key design choices](./docs/design-notes.md) (Chinese).
+The cards below are rendered live by the site as SVG, follow the system light or dark theme and show the capture time in the card header. Status cards such as now watching, now listening and charging only appear while that thing is happening; when it is not, they are filled with sample data and marked Sample data. How it works: [docs/screenshots.md](./docs/screenshots.md); card details: [page details and key design choices](./docs/design-notes.md) (Chinese).
 
 **Front app in the header**: Claude Code, Ghostty, Cursor and Antigravity get animated brand marks; a window title shows only after it passes a privacy check.
 
@@ -51,15 +51,15 @@ Status cards such as now watching, now listening, charging and games only appear
 **Daily digest**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/digest-dark.webp">
-  <img src="docs/screenshots/digest-light.webp" alt="Daily digest card: a tagline, coding and agent hours and tokens, with a 24-hour dial" width="530">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/digest.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/digest.svg" alt="Daily digest card: a tagline, coding and agent hours and tokens, with a 24-hour dial" width="530">
 </picture>
 
 **Now watching on Emby**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-watching-dark.webp">
-  <img src="docs/screenshots/now-watching-light.webp" alt="Emby now watching card" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-watching.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-watching.svg" alt="Emby now watching card" width="100%">
 </picture>
 
 **Charger and power bank**
@@ -68,14 +68,14 @@ Status cards such as now watching, now listening, charging and games only appear
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/charger-dark.gif">
-        <img src="docs/screenshots/charger-light.gif" alt="Anker charger card: the reading rolls when total power changes and a new point joins the end of the curve">
+        <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg?theme=dark">
+        <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg" alt="Anker charger card: total power, the power curve and each port">
       </picture>
     </td>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/powerbank-dark.webp">
-        <img src="docs/screenshots/powerbank-light.webp" alt="Anker power bank card: charge level, dock input, output and ports">
+        <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg?theme=dark">
+        <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg" alt="Anker power bank card: charge level, dock input, output and ports">
       </picture>
     </td>
   </tr>
@@ -84,22 +84,22 @@ Status cards such as now watching, now listening, charging and games only appear
 **Now playing on Apple Music**: word-by-word synced lyrics, with recently played below.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/now-listening-dark.gif">
-  <img src="docs/screenshots/now-listening-light.gif" alt="Apple Music now playing: lyrics sweep word by word, recently played below" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-listening.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/now-listening.svg" alt="Apple Music now playing: the current song and its lyrics, recently played below" width="100%">
 </picture>
 
 **Talk to God**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.webp">
-  <img src="docs/screenshots/chat-light.webp" alt="Talk to God card: sample questions and the input box" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/chat.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/chat.svg" alt="Talk to God card: sample questions and the input box" width="100%">
 </picture>
 
 **Activity and workouts**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/activity-dark.gif">
-  <img src="docs/screenshots/activity-light.gif" alt="Activity card: rings and readings change, recent workouts on the right" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/activity.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/activity.svg" alt="Activity card: rings and readings, recent workouts on the right" width="100%">
 </picture>
 
 **Exit node**
@@ -119,8 +119,8 @@ Status cards such as now watching, now listening, charging and games only appear
 **PlayStation**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/playstation-trophies-dark.webp">
-  <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation card: online, now playing and expanded trophy details" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/playstation.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/playstation.svg" alt="PlayStation card: trophy counts and recently played games" width="100%">
 </picture>
 
 **Pulse**: on the page, hover any segment to see the state and title at that time.
@@ -133,8 +133,8 @@ Status cards such as now watching, now listening, charging and games only appear
 **Provider status**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/provider-status-dark.webp">
-  <img src="docs/screenshots/provider-status-light.webp" alt="Provider status card: the operational state of each service" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/provider-status.svg?theme=dark">
+  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/provider-status.svg" alt="Provider status card: the operational state of each service" width="100%">
 </picture>
 
 **The site itself**
