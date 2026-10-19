@@ -30,7 +30,7 @@
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
 
 ## Tools and environment
-- **No Devin CLI** (lyjw 2026-10-20 00:02/00:06 SGT): don't dispatch Devin CLI (SWE-2Max) as a worker; remove Devin CLI bits from repo, diagrams, docs and skills (thread "README 架构图和流程图改 SVG", after #433). **Devin Review GitHub App stays in normal use.**
+- **No Devin CLI subagents** (lyjw 2026-10-20 00:06 SGT): threads do the implementation themselves; Devin Review on PRs stays in the bot-review gate.
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
 - Cloud egress proxy injects keys for TypeSafe System One (Jev), Exa and Parallel. Jev also on Workers AI as `typesafe/jev` (AI Gateway `default`, BYOK; follows `jev-latest`, log the version per answer).
@@ -64,9 +64,9 @@
 - Digest card: Chinese tagline pool (772 lines, lyjw-pruned), 10-line `headlines` pool rotating every 60 s (#261). Jev for digest dropped (lyjw 2026-10-15); rules tuned instead (#361).
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
-- Pulse Tokens lane includes Devin via reporter buckets (#322) plus a backfill for 2026-10-14; may go with the Devin CLI cleanup (see that thread).
+- Pulse Tokens lane includes Devin via reporter buckets (#322) plus a backfill for 2026-10-14; stays (usage telemetry, not dispatch).
 - Not adopting: seiso doc linter (lyjw 2026-10-19 22:39 SGT, overlaps docs:check, Chinese false positives; #428 closed, #429 note), OTel export of site AI usage, Max-plan API credit (already claimed), Cloudflare AI Search (instance deleted), post-deploy PageSpeed check (lyjw 2026-10-15). pstack /create-formal-verification-skill: tried once as a TLA+ audit of BuildCoordinator 2026-10-19, no bug found, not kept in repo; model in /mnt/project-files/formal-verification/build-run/, entry in docs/references.md.
-- **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 18:36 SGT chose 维持现状). Why: most data is state (now playing, presence, rings, ledgers) with no semconv; iPhone endpoint must stay; Mac icon / Emby image receipts don't fit OTLP responses; HA has no OTLP export. Only native-OTel agents fit (cloud Claude Code already does). Report: [遥测换 OTel 评估](<private claude.ai link>). Don't re-propose.
+- **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 18:36 SGT chose 维持现状, also declined a Devin CLI OTel probe). Why: most data is state (now playing, presence, rings, ledgers) with no semconv; iPhone endpoint must stay; Mac icon / Emby image receipts don't fit OTLP responses; HA has no OTLP export. Only native-OTel agents fit (cloud Claude Code already does). Report: [遥测换 OTel 评估](<private claude.ai link>). Don't re-propose.
 - Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
 - Chat context prefetch is built (#384, 2026-10-17): Clef, in the same routing call, picks site status / project doc to prefetch (thresholds status 0.6, doc 0.45); presets prefetch fixed tool calls: [[idea-jev-context-prefetch]].
 - Chat web search (#355): Exa `fast` only, Bangumi/Steam tools, doc MCP servers off since 2026-10-17: [[chat-web-search]].
