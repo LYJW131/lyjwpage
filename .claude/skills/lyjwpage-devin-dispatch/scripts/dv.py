@@ -175,8 +175,6 @@ def state(meta):
 
 
 def menu_paths(lines):
-    """Paths the open approval menu is about: the last Writing/Editing header above it and
-    the directory in its "allow edits in" option. None when no write header is found."""
     idx = max((i for i, l in enumerate(lines) if APPROVAL in l), default=None)
     if idx is None:
         return None
@@ -203,18 +201,18 @@ def in_scope(path, cwd, common):
     r = resolve(path, cwd)
     if r is None:
         return False
-    if under(r, os.path.realpath(cwd)):
-        return True
-    if not common:
+    cwd = os.path.realpath(cwd)
+    # Checked before the worktree prefix: in a plain checkout the common dir sits inside cwd.
+    if r == os.path.join(cwd, '.git'):
         return False
-    common = os.path.realpath(common)
-    if under(r, os.path.join(common, 'hooks')) or r == os.path.join(common, 'config'):
-        return False
-    return under(r, common)
+    if common:
+        common = os.path.realpath(common)
+        if under(r, os.path.join(common, 'hooks')) or r == os.path.join(common, 'config'):
+            return False
+    return under(r, cwd) or bool(common) and under(r, common)
 
 
 def menu_verdict(lines, cwd, common):
-    """(ok, reason) for auto-approving the open menu."""
     paths = menu_paths(lines)
     if not paths:
         return False, 'no Writing/Editing path above the menu'
@@ -230,7 +228,7 @@ def git_common_dir(cwd):
 
 
 def verdict(meta, lines):
-    return menu_verdict(lines, meta['cwd'], meta.get('git_common'))
+    return menu_verdict(lines, meta['cwd'], meta.get('git_common') or git_common_dir(meta['cwd']))
 
 
 def tail(lines, n=25):
@@ -290,7 +288,7 @@ def cmd_send(a):
     if st in ('exited', 'gone'):
         die(f'{a.name} is {st}; use `resume` for a headless follow-up', 3)
     if st == 'approval':
-        die(f'{a.name} is on an approval menu; `approve` it first (pasted text would land in the menu)', 4)
+        die(f'{a.name} is on an approval menu; `approve` or `deny` it first (pasted text would land in the menu)', 4)
     text = read_text(a).strip('\n')
     if not text:
         die('empty message')
