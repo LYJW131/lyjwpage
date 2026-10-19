@@ -36,6 +36,14 @@ binding = "HISTORY"
 database_name = "lyjwpage-history"
 database_id = "bf3a227f-d12e-428a-8f4e-0f56b97464df"
 
+# 此刻活动卡（/api/cards/now.svg）的封面：与 site 同一个图片桶与 transform 绑定。
+[[r2_buckets]]
+binding = "IMAGE_OBJECTS"
+bucket_name = "lyjw-homepage"
+
+[images]
+binding = "IMAGES"
+
 [observability]
 enabled = true
 
@@ -97,6 +105,13 @@ class_name = "BuildCoordinator"
 
 [previews.ai]
 binding = "AI"
+
+[[previews.r2_buckets]]
+binding = "IMAGE_OBJECTS"
+bucket_name = "lyjw-homepage"
+
+[previews.images]
+binding = "IMAGES"
 
 # Preview 与生产同服务名，Issues 摘要只能按服务数，分不出 Preview；Preview 只留日志与 traces，不进 Issues。
 [previews.observability]

@@ -1,3 +1,4 @@
+import { codingAgentLabel } from "@shared/coding-agent-labels";
 import type { DigestHighlight, DigestTopic } from "@shared/digest";
 import { modelLabel } from "@shared/god-chat-tiers";
 import { site } from "@shared/site";
@@ -31,17 +32,6 @@ export async function readDigestViews(readStatus: (path: string) => Promise<Resp
   }));
   return Object.fromEntries(entries) as DigestViews;
 }
-
-const AGENT_LABELS: Record<string, string> = {
-  claude: "Claude Code",
-  cursor: "Cursor",
-  codex: "Codex",
-  grok: "Grok Build",
-  antigravity: "Antigravity",
-  opencode: "OpenCode",
-  pi: "Pi",
-  devin: "Devin CLI",
-};
 
 type Figure = Pick<DigestHighlight, "value" | "unit" | "atLeast">;
 
@@ -172,7 +162,7 @@ function codingLines(views: DigestViews, windowFrom: number, today: string): str
     const recent = agent.activity.filter((entry) => entry.lastActivityAt >= windowFrom).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
     if (!recent.length) return [];
     const models = [...new Set(recent.flatMap((entry) => (entry.model ? [entry.model.startsWith("claude-") ? modelLabel(entry.model) : entry.model] : [])))];
-    return [{ at: recent[0].lastActivityAt, text: `${AGENT_LABELS[agent.id] ?? agent.id}${models.length ? ` (${models.join(", ")})` : ""}` }];
+    return [{ at: recent[0].lastActivityAt, text: `${codingAgentLabel(agent.id)}${models.length ? ` (${models.join(", ")})` : ""}` }];
   }).sort((a, b) => b.at - a.at);
   if (agents.length) lines.push(`Coding agents used: ${agents.map((agent) => agent.text).join(", ")}`);
   const tokens = pulse.lanes.tokens.summary.totalTokens;
