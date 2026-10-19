@@ -5,7 +5,7 @@ import { addDays } from "./github-chart-compact.ts";
 export const HEATMAP_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function isHeatmapDate(value: string): boolean {
-  return HEATMAP_DATE.test(value);
+  return HEATMAP_DATE.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }
 
 export function diffDays(from: string, to: string): number {
