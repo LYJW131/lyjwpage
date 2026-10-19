@@ -11,7 +11,7 @@ const TOKENS = path.join(ROOT, "src", "app", "globals.css");
 type Lang = "zh" | "en";
 type Theme = "light" | "dark";
 type Copy = string | readonly [zh: string, en: string];
-type Mark = "worker" | "do" | "store" | "outside" | "lyjw" | "claude" | "devin" | "flow";
+type Mark = "worker" | "do" | "store" | "outside" | "lyjw" | "claude" | "flow";
 type Point = readonly [number, number];
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -100,7 +100,6 @@ function palette(theme: Theme) {
     store: color("signal-violet"),
     lyjw: color("avatar-lyjw131"),
     claude: color("claude"),
-    devin: color("signal-green"),
   };
 }
 
@@ -116,7 +115,7 @@ function style(theme: Theme): string {
     `.title{font-size:14px;font-weight:500;fill:${p.fg}}.body{font-size:13px;fill:${p.fg}}`,
     `.cap{font-size:12px;fill:${p.mutedFg}}.small{font-size:11px;fill:${p.mutedFg}}`,
     `.m-worker{fill:${p.worker}}.m-do{fill:${p.do}}.m-store{fill:${p.store}}.m-lyjw{fill:${p.lyjw}}`,
-    `.m-claude{fill:${p.claude}}.m-devin{fill:${p.devin}}.m-flow{fill:${p.fg}}.m-outside{fill:none;stroke:${p.lineStrong}}`,
+    `.m-claude{fill:${p.claude}}.m-flow{fill:${p.fg}}.m-outside{fill:none;stroke:${p.lineStrong}}`,
   ].join("");
 }
 
@@ -359,7 +358,7 @@ function architecture(lang: Lang): Canvas {
 }
 
 function workflow(lang: Lang): Canvas {
-  const c = new Canvas(864, 744, lang);
+  const c = new Canvas(864, 696, lang);
 
   const lyjw = c.card({ x: C1, y: 24, w: COL, h: 96 }, "lyjw", ["定方向", "Direction"], "lyjw");
   c.lines(lyjw, [[["一句话需求", "One-line asks"], "title"], [["拍板 · 看图 · 说「合」", "decides · reviews · merges"], "cap"]]);
@@ -368,14 +367,13 @@ function workflow(lang: Lang): Canvas {
   const visitors = c.card({ x: C3, y: 24, w: COL, h: 96 }, ["访客", "Visitors"], "lyjw.me", "outside");
   c.lines(visitors, [[["在首页对话里提改动", "Ask in homepage chat"], "title"], [["授权 GitHub 后开构建", "authorize GitHub to build"], "cap"]]);
 
-  c.region({ x: 12, y: 144, w: 840, h: 384 }, "Claude", "claude");
+  c.region({ x: 12, y: 144, w: 840, h: 336 }, "Claude", "claude");
 
   const chat = c.card({ x: C1, y: 168, w: COL, h: 96 }, ["项目聊天", "Project chat"], ["协调", "Coordinator"], "claude");
   c.lines(chat, [[["接每句话，分派线程", "Takes every message"], "title"], [["晨报 · 转贴决策卡", "brief · decision cards"], "cap"]]);
-  const thread = c.card({ x: C1, y: 312, w: COL, h: 192 }, ["线程", "Thread"], "Claude", "claude");
+  const thread = c.card({ x: C1, y: 312, w: COL, h: 144 }, ["线程", "Thread"], "Claude", "claude");
   c.lines(thread, [[["一件事一个线程", "One thread per task"], "title"], [["一个分支，做到上线", "own branch, through deploy"], "cap"]], 64);
-  c.chip({ x: thread.x, y: thread.y + 64, w: thread.w, h: 40 }, "Devin CLI", "Mac", ["并行实现 · 一件事一个 worktree", "parallel work · worktrees"], "devin");
-  c.chip({ x: thread.x, y: thread.y + 112, w: thread.w, h: 40 }, ["Haiku 验证员", "Haiku verifier"], null, ["按提交签分级回执", "graded receipt per commit"], "claude");
+  c.chip({ x: thread.x, y: thread.y + 64, w: thread.w, h: 40 }, ["Haiku 验证员", "Haiku verifier"], null, ["按提交签分级回执", "graded receipt per commit"], "claude");
 
   const routines = c.card({ x: C2, y: 168, w: COL, h: 168 }, ["定时任务", "Routines"], null, "claude");
   c.rows(routines, [
@@ -391,15 +389,15 @@ function workflow(lang: Lang): Canvas {
   const build = c.card({ x: C3, y: 312, w: COL, h: 96 }, ["访客构建", "Visitor build"], "Actions", "claude");
   c.lines(build, [[["先审计划，再实现", "Review plan, then build"], "title"], [["build.yml · 无写凭据", "build.yml · no write token"], "cap"]]);
 
-  const pr = c.card({ x: C1, y: 576, w: COL, h: 120 }, "PR", null, "flow");
+  const pr = c.card({ x: C1, y: 528, w: COL, h: 120 }, "PR", null, "flow");
   c.lines(pr, [[["分支预览", "Branch preview"], "title"], ["*.preview.lyjw.dev", "cap"], [["UI 在预览上验", "UI checked here"], "cap"]]);
-  const gate = c.card({ x: C2, y: 576, w: COL, h: 120 }, ["合并门槛", "Merge gate"], null, "flow");
+  const gate = c.card({ x: C2, y: 528, w: COL, h: 120 }, ["合并门槛", "Merge gate"], null, "flow");
   c.rows(gate, [
     [["CI 门禁", "CI"], ["lint · 测试 · 检查", "lint · tests · rules"]],
     [["机器评审", "Bot review"], ["大改逻辑才等", "logic changes"]],
     [["lyjw 点头", "lyjw's OK"], ["UI 变化看图", "UI changes"]],
   ], 8);
-  const main = c.card({ x: C3, y: 576, w: COL, h: 120 }, "main", "Workers Builds", "flow");
+  const main = c.card({ x: C3, y: 528, w: COL, h: 120 }, "main", "Workers Builds", "flow");
   c.lines(main, [[["合并提交，自动部署", "Merged, auto-deployed"], "title"], [["ESA 首页随之刷新", "ESA home refreshed"], "cap"], [["核对 /api/version", "check /api/version"], "cap"]]);
 
   c.edge([[144, 120], [144, 168]], { start: true });
@@ -411,20 +409,19 @@ function workflow(lang: Lang): Canvas {
   c.edge([[720, 264], [720, 312]]);
   c.note(732, 288, ["访客确认计划", "visitor confirms"]);
 
-  c.edge([[144, 504], [144, 576]]);
-  c.edge([[432, 336], [432, 552], [144, 552]], { end: false });
-  c.edge([[720, 408], [720, 552], [432, 552]], { end: false });
-  for (const x of [144, 432]) c.dot(x, 552);
-  c.note(576, 552, ["都以 PR 进 main", "everything lands as a PR"], "middle");
+  c.edge([[144, 456], [144, 528]]);
+  c.edge([[432, 336], [432, 504], [144, 504]], { end: false });
+  c.edge([[720, 408], [720, 504], [432, 504]], { end: false });
+  for (const x of [144, 432]) c.dot(x, 504);
+  c.note(576, 504, ["都以 PR 进 main", "everything lands as a PR"], "middle");
 
-  c.edge([[264, 636], [312, 636]]);
-  c.edge([[552, 636], [600, 636]]);
+  c.edge([[264, 588], [312, 588]]);
+  c.edge([[552, 588], [600, 588]]);
   c.note(576, 144, ["共享一份项目记忆", "one shared project memory"], "middle");
 
-  c.legend(C1, 728, [
+  c.legend(C1, 680, [
     ["lyjw", "lyjw"],
     ["claude", "Claude"],
-    ["devin", "Devin"],
     ["flow", ["GitHub · Cloudflare", "GitHub · Cloudflare"]],
     ["outside", ["外部触发", "Outside triggers"]],
   ], false);
@@ -444,8 +441,8 @@ const DIAGRAMS = {
     draw: workflow,
     title: ["lyjwpage 开发工作流", "lyjwpage development workflow"],
     description: [
-      "lyjw 在项目聊天里说一句需求，协调 Claude 开线程，线程 Claude 借 Mac 上的 Devin CLI 并行实现、交 Haiku 验证员签回执；定时任务与访客构建也各自产出 PR。所有改动以 PR 进 main：分支预览、CI 门禁、按需的机器评审与 lyjw 点头之后合并，Workers Builds 自动部署。",
-      "lyjw asks in the project chat, a coordinator Claude opens a thread, and the thread's Claude works with Devin CLI on lyjw's Mac and a Haiku verifier that signs receipts. Routines and visitor builds open PRs as well. Every change reaches main as a PR: branch preview, CI gates, bot review when needed and lyjw's OK, then Workers Builds deploys it.",
+      "lyjw 在项目聊天里说一句需求，协调 Claude 开线程，线程 Claude 实现后交 Haiku 验证员签回执；定时任务与访客构建也各自产出 PR。所有改动以 PR 进 main：分支预览、CI 门禁、按需的机器评审与 lyjw 点头之后合并，Workers Builds 自动部署。",
+      "lyjw asks in the project chat, a coordinator Claude opens a thread, and the thread's Claude builds the change and has a Haiku verifier sign a receipt. Routines and visitor builds open PRs as well. Every change reaches main as a PR: branch preview, CI gates, bot review when needed and lyjw's OK, then Workers Builds deploys it.",
     ],
   },
 } as const;
