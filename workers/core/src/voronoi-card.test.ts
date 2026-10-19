@@ -243,6 +243,8 @@ test("搜索进度里有坏格子时只丢掉进度，布局照常读出", () =>
   assert.deepEqual(parseVoronoiState(stored), INITIAL_VORONOI_STATE);
   stored.search = { cells: REFERENCE, next: 3, best: { seed: 1, score: 2, sites: [[1, "x"]], weights: [0] }, startedAt: NOW, hard: false };
   assert.equal(parseVoronoiState(stored)?.search, null);
+  stored.search = { cells: REFERENCE, next: 3, best: { seed: 1, score: 2, sites: [], weights: REFERENCE.map(() => 1) }, startedAt: NOW, hard: false };
+  assert.equal(parseVoronoiState(stored)?.search, null);
   stored.search = { cells: REFERENCE, next: 3, best: null, startedAt: NOW, hard: true };
   assert.deepEqual(parseVoronoiState(stored)?.search, stored.search);
 });

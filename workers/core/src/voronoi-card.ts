@@ -48,10 +48,11 @@ function shareCell(value: unknown): value is ShareCell {
   return !!cell && typeof cell.model === "string" && finite(cell.tokens);
 }
 
-function searchBest(value: unknown): SearchBest | null | undefined {
+function searchBest(value: unknown, size: number): SearchBest | null | undefined {
   if (value === null) return null;
   const best = object(value);
   if (!best || !finite(best.seed) || !finite(best.score) || !points(best.sites) || !finites(best.weights)) return undefined;
+  if (best.sites.length !== size || best.weights.length !== size) return undefined;
   return { seed: best.seed, score: best.score, sites: best.sites, weights: best.weights };
 }
 
@@ -60,7 +61,7 @@ function searchProgress(value: unknown): SearchProgress | null {
   const search = object(value);
   if (!search || !Array.isArray(search.cells) || !search.cells.every(shareCell) || !finite(search.next)) return null;
   if (!finite(search.startedAt) || typeof search.hard !== "boolean") return null;
-  const best = searchBest(search.best);
+  const best = searchBest(search.best, search.cells.length);
   return best === undefined ? null : { cells: search.cells, next: search.next, best, startedAt: search.startedAt, hard: search.hard };
 }
 
