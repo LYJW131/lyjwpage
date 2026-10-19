@@ -493,7 +493,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 合并
 
-- 每个 PR 都要 CI 全绿；碰到 Worker 监视路径的，Workers Builds 也要绿；行内评审线程全部解决（`HUMAN.md`「5. PR 与合并」）。在此之上分三档（根 `AGENTS.md`「工作方式」、`HUMAN.md`「5. PR 与合并」）：
+- 大改代码逻辑的 PR 要 CI 全绿；文档、skill 与小改动本地跑过改动涉及的检查就合，不等 CI。碰到 Worker 监视路径的，Workers Builds 也要绿；行内评审线程全部解决（`HUMAN.md`「5. PR 与合并」）。在此之上分三档（根 `AGENTS.md`「工作方式」、`HUMAN.md`「5. PR 与合并」）：
   1. 小改动、文档、skill，以及 lyjw 说过「推进到合并」或明确让推进的事：门槛过了 Claude 自己合，不等机器评审，不再问「合」。
   2. 大改代码逻辑的：另要处理完机器评审，并有判定员的 PASS 盖住当前 head。
   3. 有 UI / UX 变化的：先给 lyjw 看效果（桌面与 375px 截图），lyjw 点头才合；lyjw 明确要求的小改动除外（根 `DESIGN.md`「交付与合并」）。
@@ -519,9 +519,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | 时间 | 名称 | 做什么 |
 |---|---|---|
 | 01:53、07:53、13:53、19:53 | collector 盯防 | 线上只读：看站点公开状态端点与 collector 的 Workers Observability 日志，找告警漏掉的细微异常，顺带分诊别的 Worker 的新错误，两次复现了的开修复草稿 PR（每次最多一个，lyjw 关掉即否决）；写进项目的共享目录 |
-| 03:15 | 记忆镜像同步 | 跑 `pnpm memory:mirror`，有差异开 `docs(memory):` PR，CI 绿就合，没变化不出声 |
+| 03:15 | 记忆镜像同步 | 跑 `pnpm memory:mirror`，有差异开 `docs(memory):` PR，本地 `pnpm docs:check` 过了就合，没变化不出声 |
 | 04:00 | 每日代码审查 | 从上次游标起审 main 的改动，开 `chore(review):` PR，检查与机器评审处理完自己合 |
-| 04:53 | 提炼 skill 与偏差复盘 | 读各线程，把反复出现的做法写成或改进 skill，对照 lyjw 第一次怎么说和最后交付了什么找弯路；开 `docs(skills):` 小 PR，CI 绿就合 |
+| 04:53 | 提炼 skill 与偏差复盘 | 读各线程，把反复出现的做法写成或改进 skill，对照 lyjw 第一次怎么说和最后交付了什么找弯路；开 `docs(skills):` 小 PR，本地 `pnpm docs:check` 过了就合 |
 | 08:41 | Anthropic 官方动态 | 拉 Anthropic 官方博客、文档、更新日志等新内容，逐条判断能否吸收，写进项目的共享目录；不发言、不开 PR |
 | 09:00 | 晨报（不是定时任务） | 项目聊天的 Claude 读上面两份报告，列出要 lyjw 决定的事，之后每小时原地更新，直到 lyjw 开口 |
 

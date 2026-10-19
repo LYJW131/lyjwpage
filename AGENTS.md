@@ -14,7 +14,7 @@
 - lyjw 与 Claude 的协作约定（分工、什么要等 lyjw 点头、怎么汇报、合并门槛）见 `HUMAN.md`。
 - 第三人称提到站点主人（文档、注释、skill、记忆、PR、提交说明、报告与汇报文档、给 agent 的简报）一律写 lyjw，不写站主、owner、用户、他或真名；当面对话仍称「你」。站点界面文案与代码标识符不在此列。
 - 合并按 `HUMAN.md`「5. PR 与合并」分档，不一刀切：只有大改代码逻辑的 PR 等机器评审；lyjw 说过「推进到合并」或明确让推进的事、小改动、文档与 skill，门槛过了直接合，不再问「合」；有 UI / UX 变化的等 lyjw 看图点头。
-- 项目记忆在仓库里有镜像 `.claude/memory/`（`MEMORY.md` 为索引，每主题一个文件）。改了 Claude Projects 的项目记忆，同一轮把改动同步进镜像并开小 docs PR，CI 绿就合；同步与脱敏规则见 `.claude/memory/README.md`。
+- 项目记忆在仓库里有镜像 `.claude/memory/`（`MEMORY.md` 为索引，每主题一个文件）。改了 Claude Projects 的项目记忆，同一轮把改动同步进镜像并开小 docs PR，本地 `pnpm docs:check` 过了就合；同步与脱敏规则见 `.claude/memory/README.md`。
 
 # 禁区
 
@@ -84,7 +84,7 @@
 
 - 改站点 UI 前先读根 `DESIGN.md`：颜色、字号、间距、卡片结构、图标、滚动、动效、界面文案语言都以它为准，自查清单与量尺脚本在 `.claude/skills/lyjwpage-ui-design/SKILL.md`。
 - 照已有部件复刻或移植（如 README 卡片照首页卡片做）时，交付前和原件并排截图逐处对照，明暗两种主题、带真实数据；显示在别处的（GitHub 上的 README）看最终显示处的渲染。
-- 有 UI / UX 变化的改动进 main 前，先给 lyjw 看效果、等 lyjw 点头再合；lyjw 明确要求的小改动除外。这条优先于「小改动 CI 绿就合」。
+- 有 UI / UX 变化的改动进 main 前，先给 lyjw 看效果、等 lyjw 点头再合；lyjw 明确要求的小改动除外。这条优先于「小改动本地检查过了就合」。
 
 # 图片交付
 
