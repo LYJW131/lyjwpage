@@ -17,11 +17,10 @@ import type { QuestNow, QuestPlaying } from "@shared/quest";
 const NOW_REFRESH_MS = 60_000;
 
 
-function playingFor(ms: number): string {
+function elapsed(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return "Just started";
   const hours = Math.floor(minutes / 60);
-  return hours ? `Playing for ${hours}h ${minutes % 60}m` : `Playing for ${minutes}m`;
+  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }
 
 function useNow(enabled: boolean): number | null {
@@ -37,29 +36,25 @@ function useNow(enabled: boolean): number | null {
   return now;
 }
 
-function QuestHero({ playing }: { playing: QuestPlaying }) {
+function QuestRow({ playing }: { playing: QuestPlaying }) {
   const now = useNow(playing.startedAt != null);
   const detail = [playing.details, playing.state].filter(Boolean).join(" · ");
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 px-4 py-3 sm:gap-x-4 lg:px-5">
-      <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-muted text-muted-foreground sm:size-20">
+    <div className="flex items-center gap-3 p-4 sm:gap-4 lg:px-5">
+      <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-muted text-muted-foreground sm:size-16">
         {playing.largeImageUrl ? (
-          <Image src={playing.largeImageUrl} alt={playing.name} fill sizes="80px" loading="eager" className="object-cover" unoptimized />
+          <Image src={playing.largeImageUrl} alt={playing.name} fill sizes="64px" loading="eager" className="object-cover" unoptimized />
         ) : (
-          <MetaMono size={28} aria-hidden />
+          <MetaMono size={24} aria-hidden />
         )}
       </div>
-      <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <StatusDot tone="live" />
           <span className="label-mono shrink-0 text-live-ink">In Game</span>
-          {now != null && playing.startedAt != null && (
-            <span className="label-mono min-w-0 truncate normal-case text-muted-foreground">
-              · {playingFor(Math.max(0, now - playing.startedAt))}
-            </span>
-          )}
+          <span className="label-mono min-w-0 truncate text-muted-foreground">· Meta Quest</span>
         </div>
-        <div className="truncate text-base font-medium leading-tight sm:text-lg" title={playing.name}>
+        <div className="truncate text-lg font-semibold leading-tight" title={playing.name}>
           {playing.name}
         </div>
         {detail && (
@@ -68,6 +63,11 @@ function QuestHero({ playing }: { playing: QuestPlaying }) {
           </div>
         )}
       </div>
+      {now != null && playing.startedAt != null && (
+        <div className="shrink-0 text-2xl font-medium leading-none sm:text-3xl">
+          {elapsed(Math.max(0, now - playing.startedAt))}
+        </div>
+      )}
     </div>
   );
 }
@@ -80,8 +80,8 @@ export function QuestNowCard({ nowFallback }: { nowFallback: StatusResponse<Ques
   return (
     <NowReveal revealKey="quest-now">
       {playing ? (
-        <Card id="now-gaming" label="Now Playing" action="Meta Quest" className="scroll-mt-28">
-          <QuestHero playing={playing} />
+        <Card id="now-gaming" className="scroll-mt-28">
+          <QuestRow playing={playing} />
         </Card>
       ) : null}
     </NowReveal>
