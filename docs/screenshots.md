@@ -56,4 +56,5 @@ pnpm docs:diagrams
 - 颜色每次从 [`src/app/globals.css`](../src/app/globals.css) 的 `:root` 与 `.dark` 读，与首页同一套 token；字体照首页写等宽字体栈，图片里不加载网络字体，没装 Geist Mono 的机器落到系统等宽字体。
 - 脚本按等宽字宽（拉丁字符 0.6em、中日韩字符 1em）估算每段文字，放不下就报错退出，中英两套都要放得下。
 - 不用 `foreignObject`（WebKit 缩小显示时会裁掉），README 用 `<picture>` 按 `prefers-color-scheme` 选明暗。
+- CI 的 docs 门禁跑 `pnpm docs:diagrams --check`：改了脚本或颜色 token 却没重出图，提交的图与脚本输出对不上就报红。
 
