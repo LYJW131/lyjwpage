@@ -488,7 +488,7 @@ function main() {
     return;
   }
   console.error(formatIssues(issues));
-  console.error(`\ndocs:check 发现 ${issues.length} 个问题（${checked} 篇 md）。规范见 AGENTS.md「文档与注释」。`);
+  console.error(`\ndocs:check 发现 ${issues.length} 个问题（${checked} 篇 md）。规范见 AGENTS.md「文档与注释」与 .claude/rules/docs-writing.md。`);
   process.exitCode = 1;
 }
 

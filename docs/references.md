@@ -11,7 +11,7 @@
 - **[Building effective agent automations](https://claude.dev/blog/building-effective-agent-automations/)**（claude.dev）
   - 是什么：Anthropic 写的定时 agent 自动化实践。
   - 取了什么：按书签读、不按时间窗；读不到算失败、不当成没动静；写入明确成功才记账；每次运行重读偏好；最小权限和花费上限。
-  - 状态：采用。落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「状态与偏好」、[lyjwpage-anthropic-updates](../.claude/skills/lyjwpage-anthropic-updates/SKILL.md)「状态与偏好」和每日代码审查定时任务，书签只在成功后推进一条写进根 `AGENTS.md`「工作方式」，要点存于项目记忆 [agent-automation-practices](../.claude/memory/agent-automation-practices.md)。
+  - 状态：采用。落在 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)「状态与偏好」、[lyjwpage-anthropic-updates](../.claude/skills/lyjwpage-anthropic-updates/SKILL.md)「状态与偏好」和每日代码审查定时任务，书签只在成功后推进一条写进根 `AGENTS.md`「工作方式」，细则在 [`.claude/rules/routines.md`](../.claude/rules/routines.md)，要点存于项目记忆 [agent-automation-practices](../.claude/memory/agent-automation-practices.md)。
 - **[How the Claude Code team does code review](https://claude.dev/blog/solving-code-review-at-anthropic/)**（claude.dev）
   - 是什么：Claude Code 团队的分层评审、评审收敛规则和人留在哪些环节。
   - 取了什么：「When we change direction」一节，即方向分歧早在讨论里提、做完的 PR 关掉不算损失；评审收敛规则里的三轮后重看方法、按缺陷类别一次修完、不重复已发的发现；「Reading the evidence」里说不出检查漏了什么就别批准；短 REVIEW.md 的写法（什么算出错、不报什么、要行号证据、总结先写条数）。

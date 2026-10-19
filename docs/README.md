@@ -2,7 +2,7 @@
 
 > 类型：reference
 
-本目录放跨子项目的文档；各子项目自己的说明在它目录里的 `README.md`，给 agent 的约束在同目录的 `AGENTS.md`。写法规范见根 [`AGENTS.md`](../AGENTS.md)「文档与注释」，`pnpm docs:check` 校验。
+本目录放跨子项目的文档；各子项目自己的说明在它目录里的 `README.md`，给 agent 的约束在同目录的 `AGENTS.md`。写法规范见根 [`AGENTS.md`](../AGENTS.md)「文档与注释」与 [`.claude/rules/docs-writing.md`](../.claude/rules/docs-writing.md)，`pnpm docs:check` 校验。
 
 每篇文首一行标类型：`reference` 是现状事实，与代码冲突以代码为准；`runbook` 是操作步骤；`decision` 是已定的取舍，写完不改；`record` 是某个时点的审计、核验、基准，标明 `按 <sha> <日期> 核对`，快照不维护，不当现状引用。新增文档在下表登记。
 
