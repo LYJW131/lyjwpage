@@ -32,6 +32,8 @@ export function describeExternalLink(url: URL): string {
     }
     return "GitHub";
   }
+  const worker = host === "dash.cloudflare.com" && url.pathname.match(/\/workers\/services\/view\/([^/]+)/);
+  if (worker) return `The ${worker[1]} Worker in the Cloudflare dashboard (sign-in required)`;
   const known = HOSTS[host];
   if (typeof known === "function") return known(url);
   if (known) return known;
