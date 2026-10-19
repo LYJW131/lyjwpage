@@ -65,6 +65,11 @@
   - 是什么：给 agent 一份项目术语表，让它用你的词说话。
   - 取了什么：根目录放一份术语表，每条一句定义加出处，根 `AGENTS.md` 指过去。
   - 状态：采用。落在 [GLOSSARY.md](../GLOSSARY.md)。
+- **[Matt Pocock：单文件不超过 5,000 token](https://x.com/mattpocockuk/status/2111708560715292675)**（X 帖子）
+  - 是什么：提交前钩子拒绝超过 5,000 token（字节 / 4）的文件，只查 agent 写的文件，报错里写清怎么拆；回复里补充「模块不等于文件」，要保持深模块。
+  - 取了什么：按职责拆大文件、原路径留作入口；只在改动碰到时拆，切不出自然边界就不拆。
+  - 不借：硬门禁。整仓试拆一遍，约四分之一的拆分只为过线，可读性变差。
+  - 状态：部分采用。软规则落在根 [AGENTS.md](../AGENTS.md)「工作方式」。
 
 - **[seiso](https://github.com/scarletkc/seiso)**（scarletkc，含 [Seiso 规范](https://seiso.fog.moe/latest/convention)）
   - 是什么：给 AI 写、人和 agent 读的项目文档定的 Markdown 规范，配一个 Rust 写的 linter：每篇声明一种类型、一个事实一个出处、长期文档不写易变值、指针写到文件或符号、例外写理由。
@@ -111,7 +116,7 @@
 - **[Streamdown 的流式动画](https://streamdown.ai/docs/animation)**（Vercel）
   - 是什么：流式 Markdown 渲染里，rehype 插件把文字节点拆成一个个 span，只有新挂载的 span 播淡入。
   - 取了什么：拆 span 的思路、跳过 `pre` / `svg` / `math`、回复结束后摘掉插件回到纯文本。没装这个库；中日韩文字改为逐字切，淡入时长按 DESIGN.md 的动效区间取。
-  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat/reply.tsx#ReplyBody` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
+  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
 
 ## Cloudflare 平台
 
@@ -210,7 +215,7 @@
 - **Claude 界面的 thinking 提示**（lyjw 点名参照，没有文章）
   - 是什么：一道高光从左往右扫过的「思考中」标签。
   - 取了什么：对话等待时显示 `THINKING` 扫光，模型流出思考时可展开。
-  - 状态：采用。落在 [god-chat/reply.tsx](../src/components/god-chat/reply.tsx)。
+  - 状态：采用。落在 [god-chat.tsx](../src/components/god-chat.tsx)。
 - **Apple 中国官网的产品标语**（lyjw 给的截图，没有链接）
   - 是什么：短、笃定、具体的中文标语写法。
   - 取了什么：摘要卡标题写成 3 到 5 个汉字的标语口吻。试过的书法字体被 lyjw 否掉，没有保留。
