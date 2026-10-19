@@ -14,6 +14,7 @@ import { handleRequest } from "../worker";
 const AUD = "local-dev";
 export const ALL = "all.access";
 export const MAC_ONLY = "mac-only.access";
+export const MAC_OTLP = "mac-otlp-client.access";
 export const DEPLOYER = "github-actions.access";
 const SOURCES = ["mac", "iphone", "homepod", "emby", "playstation", "server", "agents"];
 
@@ -107,6 +108,7 @@ export function world(setup: Setup = {}) {
     ACCESS_CLIENTS: {
       [ALL]: [...SOURCES.map((source) => `ingest:${source}`), "ingest:agents-otlp"],
       [MAC_ONLY]: ["ingest:mac"],
+      [MAC_OTLP]: ["ingest:mac", "ingest:mac-otlp"],
       [DEPLOYER]: ["internal:site-deployed", "internal:collector-refresh"],
     },
   } satisfies Env;

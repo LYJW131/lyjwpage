@@ -17,7 +17,8 @@ export async function commitPreparedIngest(command: CoreCommand): Promise<unknow
     case "playstation": return commitPreparedPlaystationReport(command);
     case "quest": return commitPreparedQuestReport(command);
     case "agents": return commitPreparedAgentsReport(command);
-    case "agents-otlp": return recordPreparedAgentsOtlpUsage(command);
+    case "agents-otlp":
+    case "mac-otlp": return recordPreparedAgentsOtlpUsage(command);
     default: throw new Error(`状态核心不收这个来源：${(command as { source?: unknown }).source}`);
   }
 }

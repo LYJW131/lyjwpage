@@ -5,12 +5,21 @@ export type { CodingUsageSource };
 export type CodingUsageScope = "device" | "environment" | "account";
 
 export const CODING_USAGE_SOURCES = {
-  mac: { scope: "device", ingest: "/api/ingest/mac" },
-  agents: { scope: "account", ingest: "/api/ingest/agents" },
-  "agents-otlp": { scope: "environment", ingest: "/api/ingest/agents/otlp" },
-} as const satisfies Record<CodingUsageSource, { scope: CodingUsageScope; ingest: string }>;
+  mac: { scope: "device", ingest: "/api/ingest/mac", otlp: false },
+  agents: { scope: "account", ingest: "/api/ingest/agents", otlp: false },
+  "agents-otlp": { scope: "environment", ingest: "/api/ingest/agents/otlp", otlp: true },
+  // 同一个 OTLP 入口，由 ingress 按验过的 Access 凭据（lyjwpage-mac）分到这里：Mac 上 agent 自带遥测推来的用量。
+  "mac-otlp": { scope: "device", ingest: "/api/ingest/agents/otlp", otlp: true },
+} as const satisfies Record<CodingUsageSource, { scope: CodingUsageScope; ingest: string; otlp: boolean }>;
+
+export type OtlpCodingSource = { [K in CodingUsageSource]: (typeof CODING_USAGE_SOURCES)[K]["otlp"] extends true ? K : never }[CodingUsageSource];
 
 export const CODING_USAGE_SOURCE_NAMES = Object.keys(CODING_USAGE_SOURCES) as CodingUsageSource[];
+
+// OTLP 来源没有扫描覆盖区间，只有收到的时刻。
+export function isOtlpCodingSource(source: CodingUsageSource): source is OtlpCodingSource {
+  return CODING_USAGE_SOURCES[source].otlp;
+}
 
 export function isCodingUsageSource(value: unknown): value is CodingUsageSource {
   return typeof value === "string" && Object.hasOwn(CODING_USAGE_SOURCES, value);
