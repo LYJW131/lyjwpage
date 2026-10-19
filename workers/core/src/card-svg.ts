@@ -1,12 +1,12 @@
 import { AwaitingReport } from "@shared/awaiting-report";
 
-// GitHub README 的图片经 camo 代理，camo 按这个头缓存；数字按天变，十分钟足够新，又不让每次浏览都唤醒 StateHub。
+// GitHub README 的图片经 camo 代理，camo 按这个头缓存；数字按天变，期限取到够新又不让每次浏览都唤醒 StateHub。
 export const CARD_CACHE_CONTROL = "public, max-age=600, stale-while-revalidate=3600";
 const CARD_FAILED_CACHE_CONTROL = "public, max-age=60";
 
 export const CARD_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 export const CARD_MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
-// 周卡与 Voronoi 卡的统计列共用一套网格（x = 28、218、408、598），两张卡在 README 里上下对齐。
+// 周卡与 Voronoi 卡的统计列共用这套网格，两张卡在 README 里上下对齐（voronoi-card.test.ts 核对两边列坐标相同）。
 export const CARD_X0 = 28;
 export const CARD_STAT_PITCH = 190;
 
