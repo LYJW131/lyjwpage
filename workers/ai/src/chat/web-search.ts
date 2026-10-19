@@ -74,28 +74,28 @@ export async function fetchJson(url: string, init: RequestInit, signal: AbortSig
   return data;
 }
 
-const exa = (path: string, key: string, body: unknown, signal: AbortSignal) =>
-  fetchJson(`https://api.exa.ai${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body) }, signal);
-
-const deepseek = (path: string, key: string, body: unknown, signal: AbortSignal) =>
-  fetchJson(`https://api.deepseek.com${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body) }, signal);
+const post = (origin: string) => (path: string, key: string, body: unknown, signal: AbortSignal) =>
+  fetchJson(`${origin}${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify(body) }, signal);
+const exa = post("https://api.exa.ai");
+const deepseek = post("https://api.deepseek.com");
 
 export const WEB_SEARCH_PROVIDERS = ["exa", "deepseek"] as const;
-export type WebSearchBackend = { provider: (typeof WEB_SEARCH_PROVIDERS)[number]; exaKey?: string; deepseekKey?: string };
+type WebSearchService = (typeof WEB_SEARCH_PROVIDERS)[number];
+export type WebSearchBackend = { provider: WebSearchService; fetch: WebSearchService; exaKey?: string; deepseekKey?: string };
 
 // 搜索默认 Exa：同一批代表性查询里 DeepSeek Search 更快更新、中文更好，但英文技术文档的命中更散。读页一律优先 Exa：
 // DeepSeek Fetch 实测要 4–12 秒、偶尔超时，正文的 Markdown 还被转义成 \#、\,。
 export function webSearchProvider(env: Pick<Env, "EXA_API_KEY" | "DEEPSEEK_API_KEY" | "WEB_SEARCH_PROVIDER">): WebSearchBackend | undefined {
   const keys = { ...(env.EXA_API_KEY && { exaKey: env.EXA_API_KEY }), ...(env.DEEPSEEK_API_KEY && { deepseekKey: env.DEEPSEEK_API_KEY }) };
-  if (env.WEB_SEARCH_PROVIDER?.trim() === "deepseek" && keys.deepseekKey) return { provider: "deepseek", ...keys };
-  if (keys.exaKey) return { provider: "exa", ...keys };
+  const reader = keys.exaKey ? "exa" : "deepseek";
+  if (env.WEB_SEARCH_PROVIDER?.trim() === "deepseek" && keys.deepseekKey) return { provider: "deepseek", fetch: reader, ...keys };
+  if (keys.exaKey) return { provider: "exa", fetch: reader, ...keys };
   return undefined;
 }
 
-// 与 webFetch 的分支同步：有 Exa key 就由 Exa 读页。
 export function webSearchServices(env: Pick<Env, "EXA_API_KEY" | "DEEPSEEK_API_KEY" | "WEB_SEARCH_PROVIDER">): GodChatWebSearch {
   const backend = webSearchProvider(env);
-  return { search: backend?.provider ?? null, fetch: backend ? (backend.exaKey ? "exa" : "deepseek") : null };
+  return { search: backend?.provider ?? null, fetch: backend?.fetch ?? null };
 }
 
 function page(raw: Record<string, unknown> | null, text: string | undefined, limit: number): WebPage | undefined {
@@ -142,11 +142,11 @@ export async function webSearch(backend: WebSearchBackend, query: string, catego
 }
 
 export async function webFetch(backend: WebSearchBackend, url: string, signal: AbortSignal): Promise<WebPage | undefined> {
-  if (!backend.exaKey) {
+  if (backend.fetch === "deepseek") {
     const data = await deepseek("/v1/tools/fetch", backend.deepseekKey!, { url }, signal);
     return page({ url, title: data.title }, typeof data.content === "string" ? data.content : undefined, FETCH_CHARS);
   }
-  const data = await exa("/contents", backend.exaKey, { urls: [url], text: { maxCharacters: FETCH_CHARS } }, signal);
+  const data = await exa("/contents", backend.exaKey!, { urls: [url], text: { maxCharacters: FETCH_CHARS } }, signal);
   const raw = results(data)[0] ?? null;
   return page(raw, typeof raw?.text === "string" ? raw.text : undefined, FETCH_CHARS);
 }

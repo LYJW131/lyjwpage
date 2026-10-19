@@ -154,7 +154,7 @@
 - **[Context7](https://context7.com)、[Cloudflare 文档 MCP](https://docs.mcp.cloudflare.com/mcp)、[grep.app MCP](https://mcp.grep.app)、[DeepWiki MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp)**
   - 是什么：公开的只读检索 MCP 服务器，免 key：库与框架文档、Cloudflare 文档、GitHub 公开代码搜索、按仓库问答。
   - 取了什么：经 Claude API 的 [MCP connector](https://platform.claude.com/docs/en/agents-and-tools/mcp-connector) 接进首页对话，每个服务器只放行固定的一两个工具。
-  - 状态：采用。落在 `workers/ai/src/chat/doc-search.ts`。
+  - 状态：停用。代码留在 `workers/ai/src/chat/doc-search.ts`，请求不带 `mcp_servers`：挂上它们实测每轮响应头要多等约 2 秒；恢复步骤见 [ai Worker 说明](../workers/ai/README.md)「首页对话」。
 - **Claude API 的 [tool search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)**
   - 是什么：工具定义设 `defer_loading` 后不进初始上下文，模型用 BM25 搜到才加载。
   - 取了什么：首页对话常驻站点工具与 `web_search` / `web_fetch`，领域工具和全部 MCP 工具按需加载，系统提示列出按需工具的类别。
