@@ -2,15 +2,13 @@
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { BUILD_WATCH_PATHS, PREVIEW_WATCH_PATHS, watches, workersFor, type Worker } from "./build-watch-paths.ts";
-import { check as checkReceipt } from "./verify-receipt.ts";
+import { check as checkReceipt, PASSING_RANK, TRUSTED_AUTHOR_IDS } from "./verify-receipt.ts";
 
 const REPO = "LYJW131/lyjwpage";
 const API = "https://api.github.com";
 const REQUEST_TIMEOUT_MS = 30_000;
 const BUILD_PREFIX = "Workers Builds: ";
 export const CODEX_MAX_ROUNDS = 3;
-export const LYJW_ACCOUNT_IDS = new Set([153256373, 300701323]);
-export const PASSING_LEVELS = ["live-ui-verified", "unit-test-verified", "type-check-only"];
 const BOTS: Record<string, string> = {
   "chatgpt-codex-connector[bot]": "codex",
   "devin-ai-integration[bot]": "devin",
@@ -180,7 +178,7 @@ export function buildThreads(comments: ReviewComment[], resolution: Resolution) 
       ...severityOf(first.body ?? "", BOTS[first.user?.login ?? ""] ?? null),
       title: shortTitle(first.body ?? ""),
       lastBy: last.user?.login ?? null,
-      lastByLyjw: LYJW_ACCOUNT_IDS.has(last.user?.id ?? 0),
+      lastByLyjw: TRUSTED_AUTHOR_IDS.has(last.user?.id ?? 0),
       outdated: state?.outdated ?? null,
       path: first.path ?? null,
       line: first.line ?? first.original_line ?? null,
@@ -477,7 +475,7 @@ async function main() {
     return 0;
   }
   const pr = Number(values.pr);
-  if (!Number.isInteger(pr) || pr <= 0 || (values.need !== undefined && values.need !== "none" && !PASSING_LEVELS.includes(values.need))) {
+  if (!Number.isInteger(pr) || pr <= 0 || (values.need !== undefined && values.need !== "none" && !Object.hasOwn(PASSING_RANK, values.need))) {
     console.log(JSON.stringify({ ready: false, todo: [USAGE] }));
     return 2;
   }

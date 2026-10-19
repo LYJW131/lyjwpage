@@ -2,14 +2,11 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { LEVELS } from "./verify-receipt.ts";
 import {
   buildCoverage,
   buildThreads,
   CODEX_MAX_ROUNDS,
   gate,
-  LYJW_ACCOUNT_IDS,
-  PASSING_LEVELS,
   reviewerSummary,
   severityOf,
   tierOf,
@@ -130,12 +127,6 @@ test("Codex 轮数上限与 HUMAN.md「5. PR 与合并」写的一致", () => {
   assert.equal(CODEX_MAX_ROUNDS, limit);
 });
 
-test("lyjw 的账号与能收的回执等级和 verify-receipt.ts 一致", () => {
-  const source = readFileSync(new URL("./verify-receipt.ts", import.meta.url), "utf8");
-  const ids = /TRUSTED_AUTHOR_IDS = new Set\(\[([\d,\s]+)\]\)/.exec(source)?.[1].split(",").map((id) => Number(id.trim()));
-  assert.deepEqual(ids?.sort(), [...LYJW_ACCOUNT_IDS].sort());
-  assert.deepEqual(PASSING_LEVELS, LEVELS.filter((level) => !level.startsWith("verifier-")));
-});
 
 function fakeGh(routes: Record<string, unknown>) {
   return {

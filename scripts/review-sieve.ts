@@ -2,6 +2,8 @@
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
+import { TRUSTED_AUTHOR_IDS } from "./verify-receipt.ts";
+
 const REPO = "LYJW131/lyjwpage";
 const REQUEST_TIMEOUT_MS = 30_000;
 const CONCURRENCY = 6;
@@ -10,8 +12,6 @@ const DEFAULT_LIMIT = 70;
 const SUGGESTION_CHARS = 60;
 const REPLY_CHARS = 80;
 
-// PR 一方的回复由 lyjw 的两个账号发，按数字 id 认；须与 scripts/verify-receipt.ts#TRUSTED_AUTHOR_IDS 一致，由测试核对。
-export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
 // 登录名去掉 [bot] 后缀再比：不同接口返回的写法不一样。
 export const BOTS: Record<string, string> = { "chatgpt-codex-connector": "codex", "devin-ai-integration": "devin" };
 
