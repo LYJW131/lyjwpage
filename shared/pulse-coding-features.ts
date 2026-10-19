@@ -2,8 +2,9 @@ import type { StoredCodingBuckets } from './coding-buckets';
 import { CODING_BUCKET_MS, codingRowTokens } from './coding-usage';
 import { cursorWindowFeatures, type CursorObservation } from './pulse-cursor';
 import { mergeCoverage, type Coverage } from './pulse-features';
-import { CODING_WINDOW_MS, type CodingObservation, type CodingWindowFeatures } from './pulse-coding';
+import type { CodingObservation, CodingWindowFeatures } from './pulse-coding';
 
+export const CODING_WINDOW_MS = 5 * 60_000;
 export const CODING_OBSERVATION_HOLD_MS = 3 * 60_000;
 
 // 云端没有在线心跳，只有用量桶这一正证据：有用量的桶算 agent 在跑，没有桶是未知而非空闲。
