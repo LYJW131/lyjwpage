@@ -115,7 +115,8 @@
 - **[Clawd's Halloween](https://x.com/alexgreensh/status/2110404428691808308)**（Alex Greenshpun）与 **[anidoodle](https://github.com/alexgreensh/anidoodle)** 的 colouredPencil 画法（Apache-2.0）
   - 是什么：Opus 5.5 用 anidoodle skill 纯代码画的彩铅动画短片；skill 里每种画风写明媒介、笔触、边缘和落笔顺序。
   - 取了什么：彩铅的做法，一个主斜向的短排线、浅深两色叠层、形体边缘颜色加厚、暗部换方向交叉排线、断续出头的深色轮廓、灯旁的暖黄光晕；配色按原片关键帧取色。没装 skill，也没拷代码：排线改成按种子生成的图块，每帧拿它填形状。手写字用 [霞鹜漫黑](https://github.com/lxgw/LxgwMarkerGothic)（OFL），只取第 08 章用到的字。还取了原片把项目里的梗画成屋里摆设的做法，第 08 章每个机位的彩蛋照这个放。
-  - 状态：试用，只用在讲解动画第 08 章。落在 `docs/explainer/v2/pencil.js`、`docs/explainer/v2/ch08.js`、`docs/explainer/fonts/LXGWMarkerGothic-ch08.woff2`。
+  - 状态：试用，用在讲解动画第 08 章（彩铅）和第 04 章（报纸）。落在 `docs/explainer/v2/pencil.js`、`docs/explainer/v2/ch08.js`、`docs/explainer/fonts/LXGWMarkerGothic-ch08.woff2`。
+  - 第 04 章取原片「THE DAILY PROMPT」报纸头版那一段的路子：同一部片里一章换一种画风，整章做成一张头版，镜头逐篇读；网点套色、新闻纸和逐字压墨的标题是自己画的，标题字用 [思源宋体](https://fonts.google.com/noto/specimen/Noto+Serif+SC)（OFL），只取这一章的字。落在 `docs/explainer/v2/ch04.js`、`docs/explainer/fonts/NotoSerifSC-600-ch04.woff2`、`docs/explainer/fonts/NotoSerifSC-900-ch04.woff2`。
 - **[Voxyz 的配音效提示词](https://x.com/Voxyz_ai/status/2109358372873183564)** 与 **[Openverse 音效检索](https://x.com/Voxyz_ai/status/2111140116572049485)**（[api.openverse.org](https://api.openverse.org)）
   - 是什么：给 Claude 做的视频配声音的一段提示词：每个动作配一个现成的音效文件，不在代码里合成音效；按节拍放大动作；音效压在配乐上面；导出后量响度，逐个音效抽前后帧、画波形核对，再挑几个时刻让人戴耳机听。缺音效时到 Openverse 免登录检索，只取 CC0 / CC BY / PDM、来自 freesound 的结果，署名照抄。
   - 取了什么：第 08 章的故事音效用 Openverse 检索 freesound 录音当候选，按画面动作排时刻；配乐仍在浏览器里合成。没有照搬它的 -16 LUFS / -4 dBFS 目标，响度与卡点改由 earshot 核对（见下一条）。
@@ -123,7 +124,7 @@
 - **[earshot](https://github.com/Leonxlnx/earshot)**（MIT）
   - 是什么：让模型「听」声音的命令行与 Python 库：用 CLAP / AST 模型给音频打标签、按文字描述给候选排名（`rank`）、在长录音里找最像的一段（`find`）、做强制选择（`match --alts`）；对整条混音出带卡点的听感记录（`timeline --cues`）、谱面图（`sheet`）和对照发布片的评分表（`critique`）；另带 201 个代码合成的音效库。
   - 取了什么：第 08 章 18 类音效每类 6 个 freesound 候选加库里同类音效，按画面要的声音写一句描述，用 `find` 截出最像的一段、`rank` 排名、`match` 排除易混的声音后挑定；混音后用 `timeline --cues` 查每个卡点有没有落上、有没有被盖住，按它报的偏差给渐强类音效加提前量、按各类响度重配音量，再用 `sheet` 和 `critique` 复核。音效库只当候选，最后选中的都是录音。
-  - 状态：试用，只用在讲解动画第 08 章；工具本身不进仓库，听的结果体现在 `docs/explainer/v2/sfx/`、`docs/explainer/v2/music/ch08.js` 的 `LEAD` 与 `SFX` 音量、`docs/explainer/v2/film.js#withSfx` 的压峰。
+  - 状态：试用，用在讲解动画第 04、08 章；工具本身不进仓库，听的结果体现在 `docs/explainer/v2/sfx/`、`docs/explainer/v2/score.js` 的 `SFX_LEAD`、`docs/explainer/v2/music/ch04.js` 与 `docs/explainer/v2/music/ch08.js` 的 `SFX` 音量、`docs/explainer/v2/film.js#withSfx` 的压峰。
 
 ## Cloudflare 平台
 

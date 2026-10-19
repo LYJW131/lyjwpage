@@ -50,6 +50,8 @@
   const phrase = (bar, notes, inst, v, theme = false) => notes.map(([b, d, n]) => [bar, b, d, n, inst, v, theme]);
   const KEY_PRE = 0.06;
   const WHOOSH_LEN = { tube: 0.95, fork: 1.25, down: 2 * BEAT, whip: 0.62 };
+  // 渐强类音效（和插头、碰杯这种最响一下在后面的）提前起，让最响的那一下落在卡点上；秒数是 earshot 量的 sfx/ 各文件峰值时刻，换音效文件要重量
+  const SFX_LEAD = { whoosh: 0.068, plug: 0.278, tube: 0.478, glass: 0.315, valve: 0.826, zip: 0.128 };
   const HELP = { THEME, withNotes, phrase, midi, CHORD, BASS, ARP, BAR, BEAT };
 
   function placeholderPart(p) {
@@ -153,7 +155,7 @@
     }
     for (const c of chapters) for (const s of c.d.story || []) N.push({ ...s, bar: c.bar0 + s.bar, t: at(c.bar0 + s.bar, s.beat) });
     const SFX = [];
-    for (const c of chapters) for (const s of c.d.sfx || []) SFX.push({ ...s, t: at(c.bar0 + s.bar, s.beat) });
+    for (const c of chapters) for (const s of c.d.sfx || []) SFX.push({ ...s, lead: (SFX_LEAD[s.name] || 0) / (s.rate || 1), t: at(c.bar0 + s.bar, s.beat) });
     N.sort((a, b) => a.t - b.t);
     const SWEEPS = [];
     for (const c of chapters) for (const s of c.d.sweeps || []) SWEEPS.push({ t0: at(c.bar0 + s.at[0], s.at[1] || 0), t1: at(c.bar0 + s.down[0], s.down[1] || 0), t2: at(c.bar0 + s.up[0], s.up[1] || 0), f: s.f });
