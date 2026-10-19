@@ -5,6 +5,7 @@ import { PulseCard } from "@/components/live/pulse-card";
 import { ServerCard } from "@/components/live/server-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
+import { RenderClock } from "@/hooks/use-mounted-at";
 import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
 import { NO_STORE } from "@/lib/site-policy";
 import { siteContext, type SiteServices } from "@/server/site-context";
@@ -140,7 +141,8 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     site.status(key).catch((): FirstScreen<typeof key> => ({ ok: false, error: FIRST_SCREEN_UNAVAILABLE }));
   try {
     const { element, height, sample } = await card.render(status);
-    const body = await inlineImages(svgNamespaces(flattenNumberFlow(renderToString(element))), site);
+    const html = renderToString(<RenderClock value={Date.now()}>{element}</RenderClock>);
+    const body = await inlineImages(svgNamespaces(flattenNumberFlow(html)), site);
     return new Response(svgDocument(body, height, theme, card.label, sample), {
       headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": CARD_CACHE_CONTROL },
     });
