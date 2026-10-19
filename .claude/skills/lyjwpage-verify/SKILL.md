@@ -123,7 +123,7 @@ Agent(
 
 - 简报只给：lyjw 的原话（线程根消息和后来补的要求，原文照贴）、PR 号与当前 head 的完整 SHA、这轮验证员的证据表。不给 PR 描述和线程里的推理，让它自己读 `git diff origin/main...<sha>` 和调用方。
 - 它回答三件事：diff 是否做到了 lyjw 要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）；证据表里有没有没验到却算通过的项。结论写 `PASS` 或 `FAIL`，FAIL 列出要修的项。
-- 判定员只读：不改文件、不提交、不在 GitHub 上评论。主线程把结论原样发成一条 PR 评论，第一行写 `判定 <head 完整 SHA>：PASS` 或 `FAIL`。
+- 判定员只读：不改文件、不提交、不在 GitHub 上评论。主线程把结论原样发成一条 PR 评论，第一行用 `node scripts/verify-receipt.ts sign --sha <head> --verdict PASS`（或 `FAIL`）的输出，即 `判定 <head 完整 SHA>：PASS`。
 - 结论只对那个 SHA 的补丁有效：之后再推提交，合并前跑 `scripts/verify-receipt.ts check --pr <号> --judge`；只把 main 合进了分支、补丁没变的照旧算数，补丁变了就按新 head 重派一次。FAIL 的项修完再判，不和判定员争；确实判错了（比如误读了 lyjw 原话），在 PR 评论里写明依据，交 lyjw 定。
 
 ### 4. 合并后部署与生产核对
@@ -147,7 +147,7 @@ Agent(
 验证员：<模型 ID>，没写这段代码
 ```
 
-- SHA 不手抄：用 `git rev-parse <简报给的 SHA>` 的输出原样粘贴，并核对它与简报里的一致。手抄过 40 位 SHA 会错字，脚本按 SHA 认回执，错一位整张作废。
+- 第一行不手写：用 `node scripts/verify-receipt.ts sign --sha <简报给的 SHA> --level <等级>` 的输出原样粘贴。它用 `git rev-parse` 展开完整 SHA、只收下面五档等级，提交不存在或等级写错就退出 2。手抄过 40 位 SHA 会错字，脚本按 SHA 认回执，错一位整张作废。
 - 等级只能写下面五档之一，原样照抄，不自拟新名字（如 `local-ui-verified`）：本地开发服务器或本地生产构建上的真页面检查属于 `live-ui-verified`，没上生产写进「没验到」。
 - 等级从高到低：`live-ui-verified`（在真页面上按 lyjw 会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，改动涉及的单测与门禁也要跑过并列进证据，同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
 - 改了行为的不收 `type-check-only`。UI 改动要 `live-ui-verified`；后端与脚本至少 `unit-test-verified`。
