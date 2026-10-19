@@ -76,8 +76,8 @@
 **与神对话**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.svg">
-  <img src="docs/screenshots/chat-light.svg" alt="与神对话卡片：示例问题与输入框" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/chat.svg?theme=dark">
+  <img src="https://lyjw.me/cards/chat.svg" alt="与神对话卡片：示例问题与输入框" width="100%">
 </picture>
 
 **活动与训练**
