@@ -52,10 +52,14 @@
 - **[magpie](https://github.com/yetone/magpie)**（yetone）
   - 是什么：由 agent 写、评、合、发的桌面应用仓库，工作流写在它的 AGENTS.md、LESSONS.md、docs/code-standards.md 与 test 工作流里。
   - 取了什么：合并钉住验过的 head（它用 `gh pr merge --match-head-commit`）；修复要证明「撤掉就红」；每晚审当天提交、找返工的记成教训，同类见满 3 天升成规则；main 上的 CI 不被下一次推送取消。
-  - 状态：部分采用。钉 head 落在 [merge-message.ts](../scripts/merge-message.ts) 输出的 `expectedHeadSha` 与根 `AGENTS.md`「部署流程」；撤回证明落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「1. 本地门禁」，由 [revert-proof.ts](../scripts/revert-proof.ts) 在临时 worktree 里执行；返工账落在 04:00 每日审查提示词的园丁一步（`docs/ops-facts.md` 里那条 routine，提示词只能从它自己的线程改），记进缓冲 issue #280，候选由 [rework-candidates.ts](../scripts/rework-candidates.ts) 列出，模型只定类别；CI 落在 [ci.yml](../.github/workflows/ci.yml) 的 `concurrency`。不采用：PR 上自动录屏截图的 UI 预览（要在 CI 跑 PR 代码并持模型 key，已有 `pnpm dev:scene` 与验证员截图）、每次必读的大教训文件（教训直接落成检查、skill 或记忆）、社区 PR 防害与拉黑（无外部贡献者）、子系统设计页（已有 `docs/` 与 `pnpm docs:check`）、提交正文记验证（回执已绑 SHA 发在 PR 评论）。
+  - 状态：部分采用。钉 head 落在 [merge-message.ts](../scripts/merge-message.ts) 输出的 `expectedHeadSha` 与 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「3. PR 合并门槛」；撤回证明落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「1. 本地门禁」，由 [revert-proof.ts](../scripts/revert-proof.ts) 在临时 worktree 里执行；返工账落在 04:00 每日审查提示词的园丁一步（`docs/ops-facts.md` 里那条 routine，提示词只能从它自己的线程改），记进缓冲 issue #280，候选由 [rework-candidates.ts](../scripts/rework-candidates.ts) 列出，模型只定类别；CI 落在 [ci.yml](../.github/workflows/ci.yml) 的 `concurrency`。不采用：PR 上自动录屏截图的 UI 预览（要在 CI 跑 PR 代码并持模型 key，已有 `pnpm dev:scene` 与验证员截图）、每次必读的大教训文件（教训直接落成检查、skill 或记忆）、社区 PR 防害与拉黑（无外部贡献者）、子系统设计页（已有 `docs/` 与 `pnpm docs:check`）、提交正文记验证（回执已绑 SHA 发在 PR 评论）。
 
 ## 写 skill 与写给 agent 的文档
 
+- **[How Claude remembers your project](https://code.claude.com/docs/en/memory)** 与 **[Best practices for Claude Code](https://code.claude.com/docs/en/best-practices)**（Claude Code 文档）
+  - 是什么：CLAUDE.md / AGENTS.md 的写法、加载方式与体量建议。
+  - 取了什么：每个文件控制体量（@import 不省 token，开场照样全量加载）；只跟部分代码有关的规则改成带 `paths` 的 `.claude/rules/`，碰到匹配文件才载入；只在部分时候用的流程放进 skill；对每行问「删了会不会出错」。
+  - 状态：采用。根 `AGENTS.md` 的流程细节搬进 lyjwpage-verify、lyjwpage-diagnose，按目录的规则落在 `.claude/rules/`，跨端命名表落在 `docs/api-contracts.md`；大小上限按字节由 [docs-check.ts](../scripts/docs-check.ts) 的 `ROOT_AGENTS_MAX_BYTES` 与 `NESTED_AGENTS_MAX_BYTES` 检查。
 - **[Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)**（Claude 文档）、**[Claude Code skills](https://code.claude.com/docs/en/skills)**（Claude Code 文档）、**[Equipping agents for the real world with Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)**（Anthropic Engineering）
   - 是什么：官方的 skill 写法与 frontmatter 规范。
   - 取了什么：描述写清做什么和何时用、触发词靠前；正文简洁，细节拆到一级引用文件；渐进披露；Claude A 写、Claude B 测。
@@ -196,7 +200,7 @@
 - **[TypeScript 7.0 RC 公告](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc/)**（Microsoft）与 **[Nx 的 TypeScript 7 指南](https://nx.dev/docs/kb/typescript-7)**
   - 是什么：Go 实现的原生 TypeScript 编译器，以及迁移办法。
   - 取了什么：`tsc` 换成 TypeScript 7；typescript-eslint 还要旧的 JS API，所以按指南两版并装；Worker 的 tsconfig 去掉 7 不再支持的 `baseUrl`。
-  - 状态：采用。落在根 [AGENTS.md](../AGENTS.md)「项目入口与验证」的 `typescript` 别名说明与根 `package.json`。
+  - 状态：采用。落在 [`.claude/rules/typescript.md`](../.claude/rules/typescript.md) 的 `typescript` 别名说明与根 `package.json`。
 - **[React Compiler](https://react.dev/learn/react-compiler)**（React 文档）
   - 是什么：编译期自动记忆化。
   - 取了什么：站点构建经 `@vitejs/plugin-react` 的 `reactCompilerPreset` 接入。

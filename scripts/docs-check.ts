@@ -8,8 +8,9 @@ import { stripHtmlTags } from "./strip-html.ts";
 const posix = path.posix;
 
 export const DOC_TYPES = ["reference", "runbook", "decision", "record"];
-export const ROOT_AGENTS_MAX_LINES = 150;
-export const NESTED_AGENTS_MAX_LINES = 60;
+// 按字节量不按行数：一行可以是一整段，开场加载的 token 跟着字节走。
+export const ROOT_AGENTS_MAX_BYTES = 18_000;
+export const NESTED_AGENTS_MAX_BYTES = 7_500;
 
 const PATH_EXTENSIONS = new Set([
   "ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "json", "jsonc", "md", "mdx",
@@ -402,9 +403,9 @@ export function checkStructure(ctx: DocsContext, mdFiles: string[]): Issue[] {
     if (posix.basename(file) === "AGENTS.md") {
       const text = ctx.text(file) ?? "";
       const isRoot = file === "AGENTS.md";
-      const limit = isRoot ? ROOT_AGENTS_MAX_LINES : NESTED_AGENTS_MAX_LINES;
-      const count = text.replace(/\n$/, "").split("\n").length;
-      if (count > limit) add(file, 1, "size", `${count} 行，超过 ${limit} 行上限：细节挪到 README / docs，这里只留规则和指针`);
+      const limit = isRoot ? ROOT_AGENTS_MAX_BYTES : NESTED_AGENTS_MAX_BYTES;
+      const bytes = Buffer.byteLength(text, "utf8");
+      if (bytes > limit) add(file, 1, "size", `${bytes} 字节，超过 ${limit} 字节上限：流程挪进 skill，按目录的规则挪进 .claude/rules/，人读的说明挪到 README / docs，这里只留规则和指针`);
       const companion = posix.join(posix.dirname(file), "CLAUDE.md");
       const claude = ctx.text(companion);
       if (claude === null) add(file, 1, "pair", `同目录缺 ${companion}（内容一行 @AGENTS.md，Claude Code 只按需载入 CLAUDE.md）`);
