@@ -1,20 +1,20 @@
-音效取自 Openverse 检索到的 freesound 录音，按各自许可使用（CC0 / CC BY）。
+音效取自 Openverse 检索到的 freesound 录音，按各自许可使用（CC0 / CC BY）；每类从候选里按 earshot 的听感排名挑选、截取。
 
-pop.mp3: "Pop, High, A (H1).wav" by InspectorJ is licensed under CC BY 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/. https://freesound.org/people/InspectorJ/sounds/411642
-land.mp3: "LowHit_01.wav" by Faulkin is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/Faulkin/sounds/336495
-whoosh.mp3: "Swosh swoosh whoosh air sound, free, high quality" by qubodup is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/qubodup/sounds/60026
+pop.mp3: "Pop (made by DuffyBro)" by DuffyBro is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/DuffyBro/sounds/319107
+land.mp3: "68 Golpe Ardilla.wav" by checholio is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/checholio/sounds/443848
+whoosh.mp3: "Cartoony whooshes" by BranRainey is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/BranRainey/sounds/142348
 tube.mp3: "moretube.wav" by NoiseCollector is licensed under CC BY 3.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/3.0/. https://freesound.org/people/NoiseCollector/sounds/65325
-plug.mp3: "LightClunk1.wav" by BMacZero is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/BMacZero/sounds/94129
-type.mp3: "type writing" by mlekoman is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/mlekoman/sounds/320571
-tbell.mp3: "Typewriter Bell.wav" by ramsamba is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/ramsamba/sounds/318687
+plug.mp3: "Finding the Plug.aif" by Housed1J is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/Housed1J/sounds/175412
+type.mp3: "Brother_Center.WAV" by fastson is licensed under CC BY 3.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/3.0/. https://freesound.org/people/fastson/sounds/99693
+tbell.mp3: "Typewriter BELL.wav" by mincedbeats is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/mincedbeats/sounds/433596
 click.mp3: "Light Switch Turn Off Sound" by ChrisTutorials is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/ChrisTutorials/sounds/440499
-ding.mp3: "Bell Ding" by Natty23 is licensed under CC BY 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/. https://freesound.org/people/Natty23/sounds/411749
-stamp.mp3: "es-stamp.wav" by eddies2000 is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/eddies2000/sounds/448474
-printer.mp3: "Epson receipt printer 2" by azumarill is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/azumarill/sounds/316962
-keys.mp3: "Keyboard Typing" by fennelliott is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/fennelliott/sounds/379418
-valve.mp3: "Rusty Valve Turn (Open)" by scriotxstudios is licensed under CC BY 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/. https://freesound.org/people/scriotxstudios/sounds/349111
-alarm.mp3: "alarm clock short.wav" by ZyryTSounds is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/ZyryTSounds/sounds/219244
-zip.mp3: "ROPEMvmt_Rope Zip Fast_MP_15.wav" by MPierluissi is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/MPierluissi/sounds/527396
-glass.mp3: "glass; clink; cheers .wav" by viwright2112 is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/viwright2112/sounds/630377
+ding.mp3: "Reception bell" by cdrk is licensed under CC BY 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/. https://freesound.org/people/cdrk/sounds/264594
+stamp.mp3: "Thump.mp3" by mpuffenbarger is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/mpuffenbarger/sounds/683031
+printer.mp3: "epson receipt printer6" by azumarill is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/azumarill/sounds/345053
+keys.mp3: "keyboard typing" by seth-m is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/seth-m/sounds/269713
+valve.mp3: "Rusty Valve Turn (Close).wav" by scriotxstudios is licensed under CC BY 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/. https://freesound.org/people/scriotxstudios/sounds/349112
+alarm.mp3: "alarm clock.wav" by jackjames_tomknevitt is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/jackjames_tomknevitt/sounds/209536
+zip.mp3: "Jacket Zipper 3" by brandondelehoy is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/brandondelehoy/sounds/494799
+glass.mp3: "Glass Clinking 2.mp3" by antwash is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/antwash/sounds/118563
 knock.mp3: "wood_knock.wav" by 110110010 is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/110110010/sounds/66397
-paper.mp3: "Paper slide" by Kingofgamers_cz is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/Kingofgamers_cz/sounds/352914
+paper.mp3: "Sliding Envelope.wav" by MTJohnson is marked with CC0 1.0. To view the terms, visit https://creativecommons.org/publicdomain/zero/1.0/. https://freesound.org/people/MTJohnson/sounds/444431

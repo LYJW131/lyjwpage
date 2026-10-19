@@ -118,8 +118,12 @@
   - 状态：试用，只用在讲解动画第 08 章。落在 `docs/explainer/v2/pencil.js`、`docs/explainer/v2/ch08.js`、`docs/explainer/fonts/LXGWMarkerGothic-ch08.woff2`。
 - **[Voxyz 的配音效提示词](https://x.com/Voxyz_ai/status/2109358372873183564)** 与 **[Openverse 音效检索](https://x.com/Voxyz_ai/status/2111140116572049485)**（[api.openverse.org](https://api.openverse.org)）
   - 是什么：给 Claude 做的视频配声音的一段提示词：每个动作配一个现成的音效文件，不在代码里合成音效；按节拍放大动作；音效压在配乐上面；导出后量响度，逐个音效抽前后帧、画波形核对，再挑几个时刻让人戴耳机听。缺音效时到 Openverse 免登录检索，只取 CC0 / CC BY / PDM、来自 freesound 的结果，署名照抄。
-  - 取了什么：第 08 章的故事音效改成从 Openverse 取的 freesound 录音，按画面动作排时刻；配乐仍在浏览器里合成。导出后用 ffmpeg 的 ebur128 量响度，抽了几个音效前后各一帧对照波形。没有照搬它的 -16 LUFS 目标：整片配乐沿用峰值归一。
+  - 取了什么：第 08 章的故事音效用 Openverse 检索 freesound 录音当候选，按画面动作排时刻；配乐仍在浏览器里合成。没有照搬它的 -16 LUFS / -4 dBFS 目标，响度与卡点改由 earshot 核对（见下一条）。
   - 状态：试用，只用在讲解动画第 08 章。落在 `docs/explainer/v2/sfx/`（署名在 `CREDITS.txt`）、`docs/explainer/v2/music/ch08.js` 的 `SFX`、`docs/explainer/v2/film.js#withSfx`、`scripts/build-explainer.mjs`。
+- **[earshot](https://github.com/Leonxlnx/earshot)**（MIT）
+  - 是什么：让模型「听」声音的命令行与 Python 库：用 CLAP / AST 模型给音频打标签、按文字描述给候选排名（`rank`）、在长录音里找最像的一段（`find`）、做强制选择（`match --alts`）；对整条混音出带卡点的听感记录（`timeline --cues`）、谱面图（`sheet`）和对照发布片的评分表（`critique`）；另带 201 个代码合成的音效库。
+  - 取了什么：第 08 章 18 类音效每类 6 个 freesound 候选加库里同类音效，按画面要的声音写一句描述，用 `find` 截出最像的一段、`rank` 排名、`match` 排除易混的声音后挑定；混音后用 `timeline --cues` 查每个卡点有没有落上、有没有被盖住，按它报的偏差给渐强类音效加提前量、按各类响度重配音量，再用 `sheet` 和 `critique` 复核。音效库只当候选，最后选中的都是录音。
+  - 状态：试用，只用在讲解动画第 08 章；工具本身不进仓库，听的结果体现在 `docs/explainer/v2/sfx/`、`docs/explainer/v2/music/ch08.js` 的 `LEAD` 与 `SFX` 音量、`docs/explainer/v2/film.js#withSfx` 的压峰。
 
 ## Cloudflare 平台
 
