@@ -45,7 +45,7 @@ export const RULES: Record<string, Rule> = {
     label: "任意值圆角",
     re: new RegExp(String.raw`${BOUNDARY}-?rounded(?:-[a-z]{1,3})?-(?:${ARBITRARY})${END}`, "g"),
     offScale: () => true,
-    hint: "圆角一律 0：globals.css 已把所有 rounded-* 映射成 0，不写 rounded-[…] 绕开它；真正的圆（状态点、圆环、品牌圆标）才用 rounded-full。",
+    hint: "圆角一律 0：src/app/styles/theme.css 已把所有 rounded-* 映射成 0，不写 rounded-[…] 绕开它；真正的圆（状态点、圆环、品牌圆标）才用 rounded-full。",
   },
   margin: {
     label: "子级外边距",
@@ -67,7 +67,7 @@ export const RULES: Record<string, Rule> = {
       if (/^#[0-9a-fA-F]{3,4}$/.test(token) && !/[a-fA-F]/.test(token)) return COLOR_PROP_CTX.test(before);
       return !FRAGMENT_CTX.test(before);
     },
-    hint: "组件里不写裸 hex / oklch：颜色只用 globals.css 的语义 token 与 signal 系（DESIGN.md「Colors」）。品牌图标、PWA manifest 这类确需原色的，跑 --update 并在 PR 里说明。",
+    hint: "组件里不写裸 hex / oklch：颜色只用 src/app/styles/theme.css 的语义 token 与 signal 系（DESIGN.md「Colors」）。品牌图标、PWA manifest 这类确需原色的，跑 --update 并在 PR 里说明。",
   },
 };
 

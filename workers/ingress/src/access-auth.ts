@@ -5,7 +5,7 @@ import type { Env } from "./env";
 export type Permission = `ingest:${string}` | "internal:site-deployed" | "internal:collector-refresh";
 
 export type AuthResult =
-  | { ok: true; clientId: string }
+  | { ok: true; clientId: string; permission: Permission }
   | { ok: false; status: 401 | 403 | 503; error: string };
 
 export type AccessEnv = Pick<Env, "ACCESS_TEAM_DOMAIN" | "ACCESS_AUD" | "ACCESS_CLIENTS" | "ACCESS_DEV_JWKS">;
@@ -24,7 +24,8 @@ function allowedFor(env: AccessEnv, clientId: string): readonly string[] {
   return Array.isArray(entry) ? entry.filter((item): item is string => typeof item === "string") : [];
 }
 
-export async function authorize(request: Request, env: AccessEnv, permission: Permission): Promise<AuthResult> {
+// 给了几个权限时按顺序取这把凭据持有的第一个，调用方据此分流。
+export async function authorize(request: Request, env: AccessEnv, wanted: Permission | readonly Permission[]): Promise<AuthResult> {
   const assertion = request.headers.get("Cf-Access-Jwt-Assertion");
   if (assertion) {
     let clientId: string | null;
@@ -36,11 +37,13 @@ export async function authorize(request: Request, env: AccessEnv, permission: Pe
       return { ok: false, status: 503, error: "暂时无法校验 Access 凭据" };
     }
     if (!clientId) return { ok: false, status: 401, error: "未授权" };
-    if (!allowedFor(env, clientId).includes(permission)) {
-      console.warn("[auth] 越权", clientId, permission);
+    const allowed = allowedFor(env, clientId);
+    const permission = (typeof wanted === "string" ? [wanted] : wanted).find((entry) => allowed.includes(entry));
+    if (!permission) {
+      console.warn("[auth] 越权", clientId, wanted);
       return { ok: false, status: 403, error: "这把凭据不能做这件事" };
     }
-    return { ok: true, clientId };
+    return { ok: true, clientId, permission };
   }
   return { ok: false, status: 401, error: "未授权" };
 }

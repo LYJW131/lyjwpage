@@ -32,7 +32,11 @@
 - **[create-formal-verification-skill](https://github.com/cursor/plugins/tree/main/pstack/skills/create-formal-verification-skill)** 与 [maintain-formal-verification-skill](https://github.com/cursor/plugins/tree/main/pstack/skills/maintain-formal-verification-skill)（pstack，[发布推文](https://x.com/poteto/status/2111926622278521253)）
   - 是什么：元 skill，从代码里挑出错代价最高、测试最难覆盖的一块，按问题选工具（顺序类问题默认 TLA+，逐输入的性质用 kani 这类跑在代码上的验证器），生成项目内的形式化验证 skill；配套的 maintain 在代码变了以后把模型重新对齐，分清模型过期和代码 bug。
   - 取了什么：按它的做法对访客构建 `workers/ai/src/build/coordinator.ts#BuildCoordinator` 试跑过一次 TLA+ 审计（按 f0927832 的代码建模）：准备租约、派发、上传发布、草稿清扫、超时与维护者关 PR 交错，四条安全性质（最多派发一次、实现提交先记后推、清扫不关已推实现的 PR、已发布的不被清扫）全部成立，五个改坏变体抓到四个，另一个因 `closableDraft` 与 `closeFailedDraft` 双重检查仍安全。附带结论：`closeFailedDraft` 在 GitHub 侧只核对会滞后的 PR head，误关靠 DO 侧 `setImplementationHead` 要求 `validated` 挡住。
-  - 状态：不采用。没找到 bug；其余 Durable Object 已把读、判、写放进同步事务，可验的少；模型要随代码维护，常驻不划算。模型只留在 Claude 项目共享目录的 formal-verification 文件夹，不进仓库；访客构建协议大改时可拿它重跑。
+  - 状态：不采用常驻。没找到 bug；其余 Durable Object 已把读、判、写放进同步事务，可验的少；模型要随代码维护，常驻不划算。模型只留在 Claude 项目共享目录的 formal-verification 文件夹，不进仓库；访客构建协议大改时可拿它重跑。查 bug 时按需建模的做法见下一条。
+- **[I used Opus 5.5 to formally verify the Claude Agent SDK using Lean](https://x.com/bcherny/status/2102543349102338309)** 与[补充说明](https://x.com/bcherny/status/2102898067133595992)（Boris Cherny，Anthropic，X）
+  - 是什么：让 Claude 给代码里最易出竞态的状态机建 Lean / TLA+ 模型，几句提示词产出 16 个修 bug 的 PR。补充里说明做法分四步（建模、在模型里找反例、复现、修代码），且不是整个代码库都被验证。
+  - 取了什么：四步流程，只在查竞态、顺序、重试类 bug 时用，只用 TLA+；用故意改坏的变体证明检查会失败。另取 Lucas Cordeiro 演讲 [Formal Verification of LLM-Generated Code](https://ssvlab.github.io/lucasccordeiro/talks/fattw2026_slides.pdf) 的一条：模型能补验证里的细节，规则本身要人确认。
+  - 状态：采用，按需。落在 [lyjwpage-formal-model](../.claude/skills/lyjwpage-formal-model/SKILL.md)，由 [lyjwpage-diagnose](../.claude/skills/lyjwpage-diagnose/SKILL.md) 第 2 步指过去。不用 Lean：本项目难点在并发与状态。
 - **[How to be more ambitious: A tutorial for humans with models](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/)**（Felix Rieseberg，Anthropic）
   - 是什么：把「用 AI 要更有野心」拆成高度（给目标不给任务）、深度（专家的工具、离谱的目标、外部裁判）、广度（名词换动词、按领域组队）。
   - 取了什么：「深一层」四问提示，lyjw 派活时贴。外部裁判本项目已有（验证回执脚本、CI 门禁、机器评审）。
@@ -65,6 +69,11 @@
   - 是什么：给 agent 一份项目术语表，让它用你的词说话。
   - 取了什么：根目录放一份术语表，每条一句定义加出处，根 `AGENTS.md` 指过去。
   - 状态：采用。落在 [GLOSSARY.md](../GLOSSARY.md)。
+- **[Matt Pocock：单文件不超过 5,000 token](https://x.com/mattpocockuk/status/2111708560715292675)**（X 帖子）
+  - 是什么：提交前钩子拒绝超过 5,000 token（字节 / 4）的文件，只查 agent 写的文件，报错里写清怎么拆；回复里补充「模块不等于文件」，要保持深模块。
+  - 取了什么：按职责拆大文件、原路径留作入口；只在改动碰到时拆，切不出自然边界就不拆。
+  - 不借：硬门禁。整仓试拆一遍，约四分之一的拆分只为过线，可读性变差。
+  - 状态：部分采用。软规则落在根 [AGENTS.md](../AGENTS.md)「工作方式」。
 
 - **[seiso](https://github.com/scarletkc/seiso)**（scarletkc，含 [Seiso 规范](https://seiso.fog.moe/latest/convention)）
   - 是什么：给 AI 写、人和 agent 读的项目文档定的 Markdown 规范，配一个 Rust 写的 linter：每篇声明一种类型、一个事实一个出处、长期文档不写易变值、指针写到文件或符号、例外写理由。
@@ -111,7 +120,7 @@
 - **[Streamdown 的流式动画](https://streamdown.ai/docs/animation)**（Vercel）
   - 是什么：流式 Markdown 渲染里，rehype 插件把文字节点拆成一个个 span，只有新挂载的 span 播淡入。
   - 取了什么：拆 span 的思路、跳过 `pre` / `svg` / `math`、回复结束后摘掉插件回到纯文本。没装这个库；中日韩文字改为逐字切，淡入时长按 DESIGN.md 的动效区间取。
-  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/globals.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual.tsx` 的 `Ink`）。
+  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
 
 ## Cloudflare 平台
 
@@ -148,13 +157,17 @@
 - **[Workers KV Instant](https://blog.cloudflare.com/workers-kv-instant/)**（Cloudflare 博客）
   - 是什么：KV 的即时一致模式。
   - 状态：不采用，实时层仍留在 DO。评估时的限制、价格和重新评估的条件只记在项目记忆 [kv-instant-evaluation](../.claude/memory/kv-instant-evaluation.md)，平台调整后按那里的条件重评。
+- **[Introducing Clairic](https://blog.cloudflare.com/clairic-extraction-model/)**（Cloudflare 博客）
+  - 是什么：Workers AI 上的 System One 抽取模型 `@cf/cloudflare/clairic`，一次前向传播按带类型的字段回值，带 `p_null` 与置信度。
+  - 取了什么：首页对话选档时和 Clef 并行问一次 Clairic，抽出访客点名的游戏、歌、番名，作为状态预取的 `query`；门槛按线上实测定。
+  - 状态：采用。落在 [router.ts](../workers/ai/src/chat/router.ts) 的 `itemInput`、`parseItem` 与 `PREFETCH_STATUS` 的 `query`。
 
 ## 联网搜索与文档检索
 
 - **[Exa](https://exa.ai/docs/reference/search) 的搜索、抓取 API**
   - 是什么：给 agent 用的网页搜索服务，返回按查询截好的摘录，`category` 可限定新闻、论文；`/contents` 抓整页。
   - 取了什么：首页对话的 `web_search` / `web_fetch` 从 Anthropic 服务端工具换成 Worker 执行的客户端工具，只用 `lite` 档（Exa 3.0 起与原 `fast` 同一套搜索、更便宜，`fast` 列为 legacy，见 [changelog](https://exa.ai/docs/changelog)）；结果用 Claude API 的 [search_result 块](https://platform.claude.com/docs/en/build-with-claude/search-results) 回给模型，保住原生引用。和 Parallel、Exa `auto` 档、原生搜索的对照实测记在 PR 描述里。
-  - 状态：采用。落在 `workers/ai/src/chat/web-search.ts` 与 `workers/ai/src/chat/handler.ts`。
+  - 状态：采用。落在 `workers/ai/src/chat/web-search.ts` 与 `workers/ai/src/chat/reply-tools.ts`。
 - **[Bangumi API](https://bangumi.github.io/api/) 与 Steam 商店的 `storesearch` / `appdetails` 接口**
   - 是什么：免 key 的动画条目搜索（评分、排名、标签）与 Steam 商店搜索、详情（价格、发售日、Metacritic）。
   - 取了什么：首页对话的 `anime_search`、`game_search`，结果同样回成 `search_result` 块。
@@ -195,7 +208,7 @@
 - **[Fixing Smooth Scrolling with Find-on-Page](https://css-tricks.com/fixing-smooth-scrolling-with-find-on-page/)**（Chris Coyier，CSS-Tricks）
   - 是什么：把 `scroll-behavior: smooth` 挂在 `html:focus-within` 上，只有页面内有焦点时才平滑，页内查找与加载时的锚点跳转保持瞬时。
   - 取了什么：README 卡片链到 `lyjw.me/#vibe-coding`，加载时的锚点跳转若是平滑动画，要靠渲染帧推进，会被首屏数据撑开的布局带偏，不出帧的内嵌浏览器里停在顶部；这个写法让加载即落准，点过按钮后的程序化滚动仍平滑。
-  - 状态：采用。落在 [globals.css](../src/app/globals.css) 的 `html:focus-within`。
+  - 状态：采用。落在 [theme.css](../src/app/styles/theme.css) 的 `html:focus-within`。
 
 ## 交互与文案参照
 
@@ -206,7 +219,7 @@
 - **[OpenUI](https://github.com/thesysdev/openui)**（Thesys）
   - 是什么：生成式 UI 框架。从组件库定义生成系统提示词，模型写紧凑的 OpenUI Lang，渲染器边流式边容错地画，出错时把结构化错误回给模型。
   - 取了什么：图示的上限与例子只写一处（`shared/god-chat.ts` 的 `GOD_CHAT_VISUAL_LIMITS`、`GOD_CHAT_VISUAL_EXAMPLES`），提示词按它生成每种组件的说明，校验 `checkGodChatVisual` 站点与 Worker 共用；Worker 在回复结束后用同一份校验记下画不出来的图示；结构图从 HTML 兜底改成原生 `diagram` 组件（分层方框加相邻层连线）。规范里「解析器丢掉不合格的部分、其余照画」也采用了：图示里过长的文字截断加省略号、多出的条目截尾、坏条目、坏序列与重复 id 的节点只丢那一项，剩下的撑不起一张图才退回代码（`shared/god-chat.ts` 的 `text`、`list`、`chart`）。
-  - 状态：部分采用。落在 [god-chat.ts](../shared/god-chat.ts)、[handler.ts](../workers/ai/src/chat/handler.ts)、[reply-fences.ts](../workers/ai/src/chat/reply-fences.ts) 与 [chat-visual.tsx](../src/components/chat-visual.tsx)。不装它的包：要为几种图示多教模型一门语言，省 token 的数据是用 GPT 分词器在大界面上测的；`lang-core` 安装时默认上报遥测。不借客户端 `Query` / `Mutation`（与根 [AGENTS.md](../AGENTS.md)「禁区」的站点侧不写后端相冲）、编辑模式与现成聊天界面（视觉方向与 [DESIGN.md](../DESIGN.md) 不同）。
+  - 状态：部分采用。落在 [god-chat.ts](../shared/god-chat.ts)、[prompts.ts](../workers/ai/src/chat/prompts.ts)、[reply-fences.ts](../workers/ai/src/chat/reply-fences.ts) 与 [chat-visual.tsx](../src/components/chat-visual.tsx)。不装它的包：要为几种图示多教模型一门语言，省 token 的数据是用 GPT 分词器在大界面上测的；`lang-core` 安装时默认上报遥测。不借客户端 `Query` / `Mutation`（与根 [AGENTS.md](../AGENTS.md)「禁区」的站点侧不写后端相冲）、编辑模式与现成聊天界面（视觉方向与 [DESIGN.md](../DESIGN.md) 不同）。
 - **Claude 界面的 thinking 提示**（lyjw 点名参照，没有文章）
   - 是什么：一道高光从左往右扫过的「思考中」标签。
   - 取了什么：对话等待时显示 `THINKING` 扫光，模型流出思考时可展开。
@@ -223,3 +236,7 @@
   - 是什么：每段用固定小标题引出、读者只扫加粗字就能决定要不要往下读的写法。
   - 取了什么：试过用「一句话 / 为什么 / 要你定 / 往深看」四个固定小标题写报告，与 STE100 版并排对照，lyjw 选定只留 STE100 版。
   - 状态：不再使用。
+- **[How AI assistance impacts the formation of coding skills](https://www.anthropic.com/research/AI-assistance-coding-skills)**（Anthropic Research）、[Retrieval-based learning](https://learninglab.psych.purdue.edu/downloads/2025/2025_Karpicke_Retrieval_Based_Learning_Review.pdf)（Karpicke 综述）、[Eight Ways to Promote Generative Learning](https://link.springer.com/article/10.1007/s10648-015-9348-9)（Fiorella、Mayer）
+  - 是什么：Anthropic 的随机对照实验：学新库时把活整个交给 AI 的人掌握得差，边做边问概念、要解释的人掌握得好。两篇学习科学综述讲提取练习和生成式学习（自我解释、讲给别人听、画关系图）最有效。
+  - 取了什么：讲 lyjw 不熟的新概念时，接到项目已有的东西上、和相邻概念对比、至多一个先想再看的问题、请 lyjw 用一句话复述再纠正。不扣答案，不为等回答停下工作；不加定期测验。
+  - 状态：采用。落在 [HUMAN.md](../HUMAN.md)「7. Claude 怎么向你汇报」与项目记忆 teach-new-concepts。
