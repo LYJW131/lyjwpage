@@ -320,7 +320,10 @@ async function inlineImages(html: string, site: SiteServices): Promise<string> {
       return [src, resized ?? (await site.asset(sized ?? url))] as const;
     }),
   );
-  let out = stripScripts(html).replace(/\ssrcSet="[^"]*"/g, "");
+  // 卡片作为 <image> 套在外层里，WebKit 对异步解码或懒加载的图解完不重画，大图就一直空着；统一同步解码、不懒加载。
+  let out = stripScripts(html)
+    .replace(/\s(?:srcSet|loading|decoding)="[^"]*"/g, "")
+    .replace(/<img\b/g, '<img decoding="sync"');
   for (const [src, data] of inlined) out = out.replaceAll(`"${src}"`, `"${data ?? ""}"`);
   return out;
 }
@@ -341,12 +344,16 @@ function capturedAt(now: number): string {
 const annotateTitle = (html: string, note: string) =>
   html.replace(/(<span class="label-mono[^"]*">[^<]*)(<\/span>)/, `$1 · ${note}$2`);
 
+const canvasSize = (card: ReadmeCard) => ({
+  width: card.pair ? (FULL_WIDTH + SHADOW_PAD) / 2 : card.width + SHADOW_PAD,
+  fullHeight: card.height + SHADOW_PAD,
+});
+
 // 没有卡头的卡（每日摘要）把说明放在右上角，分两行避开表盘。
 function svgDocument(body: string, card: ReadmeCard, theme: Theme, cornerNote: string | null): string {
   const { label, height } = card;
-  const width = card.pair ? (FULL_WIDTH + SHADOW_PAD) / 2 : card.width + SHADOW_PAD;
+  const { width, fullHeight } = canvasSize(card);
   const offset = card.pair === "right" ? width - card.width - SHADOW_PAD : 0;
-  const fullHeight = height + SHADOW_PAD;
   return (
     // 暗色类挂在 <svg> 上：它是图片里的 :root，`--color-*: var(--*)` 这类别名在 :root 上求值，挂在内层就仍取亮色。
     `<svg xmlns="http://www.w3.org/2000/svg"${theme === "dark" ? ' class="dark"' : ""} width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${label}">` +
@@ -355,6 +362,17 @@ function svgDocument(body: string, card: ReadmeCard, theme: Theme, cornerNote: s
     `<style><![CDATA[${CSS}]]></style>` +
     `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${cornerNote ? `<div class="label-mono text-muted-foreground" style="position:absolute;right:1.25rem;top:1rem;text-align:right">${cornerNote}</div>` : ""}</div>` +
     `</div></foreignObject></svg>`
+  );
+}
+
+// WebKit（iOS 的 GitHub App 与 Safari）缩小显示含 foreignObject 的 SVG 时，HTML 仍按原尺寸画、超出部分裁掉；
+// 整张卡作为 <image> 套一层，内层按原尺寸渲染，缩放只落在外层图片上。
+function scalableSvg(inner: string, card: ReadmeCard): string {
+  const { width, fullHeight } = canvasSize(card);
+  const href = `data:image/svg+xml;base64,${Buffer.from(inner).toString("base64")}`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${card.label}">` +
+    `<image width="${width}" height="${fullHeight}" href="${href}"/></svg>`
   );
 }
 
@@ -373,7 +391,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     const note = sample ? "Sample data" : capturedAt(now);
     const titled = still ? html : annotateTitle(html, note);
     const body = await inlineImages(svgNamespaces(flattenNumberFlow(titled)), site);
-    return new Response(svgDocument(body, card, theme, titled === html && sample ? note : null), {
+    return new Response(scalableSvg(svgDocument(body, card, theme, titled === html && sample ? note : null), card), {
       headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": CARD_CACHE_CONTROL },
     });
   } catch (error) {
