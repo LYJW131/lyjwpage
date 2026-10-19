@@ -1,4 +1,4 @@
-import { GOD_CHAT_PRESETS, type GodChatMessage, type GodChatPresetCall } from "@shared/god-chat";
+import { GOD_CHAT_PRESETS, type GodChatCard, type GodChatMessage, type GodChatPresetCall } from "@shared/god-chat";
 import type { GodChatRank } from "@shared/god-chat-tiers";
 import { object } from "@shared/json";
 import type { StatusViewKey } from "@shared/status-views";
@@ -44,8 +44,8 @@ const ROUTE_INSTRUCTIONS =
 export const PREFETCH_STATUS = {
   now: { views: ["desktop", "codingNow", "nowListening", "playingNow"], criterion: "What LYJW is doing or busy with right now in general, or whether LYJW is online or at the computer." },
   listening: { query: ["listening"], views: ["nowListening", "listening"], criterion: "What music LYJW listens to now or lately, or whether LYJW has listened to a specific song, artist or album." },
-  playing: { query: ["playing", "trophies"], views: ["playingNow", "playing", "questNow"], criterion: "What games LYJW plays now or lately on PlayStation, Steam or Quest, or whether LYJW has played a specific game." },
-  trophies: { query: ["trophies", "playing"], views: ["trophies", "playing"], criterion: "LYJW's PlayStation trophies or game achievements." },
+  playing: { card: "game", query: ["playing", "trophies"], views: ["playingNow", "playing", "questNow"], criterion: "What games LYJW plays now or lately on PlayStation, Steam or Quest, or whether LYJW has played a specific game." },
+  trophies: { card: "game", query: ["trophies", "playing"], views: ["trophies", "playing"], criterion: "LYJW's PlayStation trophies or game achievements." },
   watching: { query: ["watching"], views: ["nowWatching", "watching"], criterion: "What anime, shows or movies LYJW watches now or lately, or whether LYJW has watched a specific one." },
   activity: { views: ["activity", "workouts"], criterion: "LYJW's exercise, workouts, steps or activity rings." },
   coding: { views: ["coding", "codingNow", "codingYear"], criterion: "How much or how LYJW codes with AI agents: token usage, coding activity, which agents." },
@@ -54,7 +54,7 @@ export const PREFETCH_STATUS = {
   focus: { views: ["focusNow"], criterion: "Whether LYJW is asleep, meditating or on do-not-disturb right now, or can be messaged." },
   devices: { views: ["desktop", "charger", "powerBank", "server"], criterion: "LYJW's devices: the Mac, chargers, power bank battery, or the server." },
   none: { views: [], criterion: "Anything that does not need live data about LYJW: greetings, general knowledge, coding help, news, or questions about how the site is built." },
-} as const satisfies Record<string, { views: readonly StatusViewKey[]; criterion: string; query?: readonly StatusViewKey[] }>;
+} as const satisfies Record<string, { views: readonly StatusViewKey[]; criterion: string; query?: readonly StatusViewKey[]; card?: GodChatCard }>;
 type PrefetchStatus = keyof typeof PREFETCH_STATUS;
 
 // 猜错了就是白塞一份输入 token、还可能把模型带偏，所以只在 Clef 给选中项的概率够高时才预取，其余照旧由模型自己调工具。
@@ -138,14 +138,16 @@ function confidentChoice<K extends string>(body: unknown, question: keyof typeof
 }
 
 // 带 query 的那次是加读、不替换整组：访客用的译名与记录里的原名对不上时（艾尔登法环与 ELDEN RING），过滤结果为空，整组第一页仍在。
-// 它读的是 query 列的那几个有列表的视图：游戏同时搜奖杯，点名一款游戏时连带白金与进度。
+// 它读的是 query 列的那几个有列表的视图。标了 card 的组（游戏）改为直接画那款游戏的卡：模型拿着预取的数据往往就不再调 show_card，
+// 而卡片的工具结果本身就带着这款游戏的游玩与奖杯数据，不必再加读一次。
 export function parsePrefetch(body: unknown, item?: string): GodChatPresetCall[] {
   const calls: GodChatPresetCall[] = [];
   const status = confidentChoice<PrefetchStatus>(body, "status", PREFETCH_STATUS);
   if (status && status !== "none") {
-    const entry: { views: readonly StatusViewKey[]; query?: readonly StatusViewKey[] } = PREFETCH_STATUS[status];
+    const entry: { views: readonly StatusViewKey[]; query?: readonly StatusViewKey[]; card?: GodChatCard } = PREFETCH_STATUS[status];
     calls.push({ name: "get_site_status", input: { views: [...entry.views] } });
-    if (item && entry.query) calls.push({ name: "get_site_status", input: { views: [...entry.query], query: item } });
+    if (item && entry.card) calls.push({ name: "show_card", input: { card: entry.card, game: item } });
+    else if (item && entry.query) calls.push({ name: "get_site_status", input: { views: [...entry.query], query: item } });
   }
   const doc = confidentChoice<ProjectDocKey | "none">(body, "doc", PREFETCH_DOC_CRITERIA);
   if (doc && doc !== "none") calls.push({ name: "read_project_doc", input: { doc } });
