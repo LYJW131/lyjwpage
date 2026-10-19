@@ -16,6 +16,7 @@ test("GitHub links name the page kind and repository", () => {
 test("known hosts get a site name, unknown hosts fall back to the host", () => {
   assert.equal(describe("https://music.apple.com/cn/album/x/1490256978?i=1490256995"), "This song on Apple Music");
   assert.equal(describe("https://music.apple.com/cn/album/x/1490256978"), "This album on Apple Music");
+  assert.equal(describe("https://dash.cloudflare.com/209f2c881b1c494fec50851c067b3266/workers/services/view/ai/production"), "The ai Worker in the Cloudflare dashboard (sign-in required)");
   assert.equal(describe("https://status.claude.com/"), "Service status page on status.claude.com");
   assert.equal(describe("https://example.org/a"), "A page on example.org");
 });

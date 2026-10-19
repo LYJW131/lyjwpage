@@ -28,7 +28,7 @@ import { useStatus } from "@/hooks/use-status";
 import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@shared/cloudflare-workers-types";
 import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, HEALTH_PATH, SERVER_PATH, SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
 import type { ErrorSeries, HealthBlock, HealthPayload } from "@shared/health-types";
-import { site } from "@shared/site";
+import { CLOUDFLARE_DASH_URL, site } from "@shared/site";
 import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@shared/types";
 import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@shared/site-deployments-types";
 import { cn } from "@/lib/utils";
@@ -218,7 +218,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5 lg:px-5" title={siteDeployments?.activeVersions.length ? `Serving ${siteDeployments.activeVersions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : undefined}>
             <div className="flex items-center gap-1.5 text-2xs leading-4">
-              <span className="flex items-center gap-1.5"><CloudflareColor size={11} />Site</span>
+              <a href={`${CLOUDFLARE_DASH_URL}/workers/services/view/site/production`} target="_blank" rel="noreferrer" className="relative flex items-center gap-1.5 before:absolute before:inset-x-0 before:-inset-y-1 hover:underline"><CloudflareColor size={11} />Site</a>
               <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + worker)" />
               <CommitSha commit={production?.commit} />
             </div>
@@ -234,7 +234,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
             return <li key={name} className="bg-surface px-4 py-2.5 lg:px-5" title={deployment ? `Deployed ${time.format(deployment.deployedAt)} · ${deployment.versions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : name}>
               <div className="flex min-w-0 items-center gap-1.5 text-2xs leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
-                <span className="min-w-0 truncate">{name}</span>
+                <a href={`${CLOUDFLARE_DASH_URL}/workers/services/view/${name}/production`} target="_blank" rel="noreferrer" className="relative shrink-0 before:absolute before:inset-x-0 before:-inset-y-1 hover:underline">{name}</a>
                 {name === "core" && <ErrorCount series={coreErrors} title="Backend Worker errors in the last 12h (core, ai, ingress, collector)" />}
                 <CommitSha commit={deployment?.commit} />
               </div>
