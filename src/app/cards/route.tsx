@@ -18,7 +18,7 @@ import { WorkoutsStrip } from "@/components/live/workouts-strip";
 import { RenderClock } from "@/hooks/use-mounted-at";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { inlineChargerIcon } from "@/lib/charger-icon-inline";
-import { imageWidthBucket } from "@/lib/image-proxy";
+import { displayWidthFromSizes, IMAGE_PROXY_PATH, imageWidthBucket } from "@/lib/image-proxy";
 import { playstationImage } from "@/lib/playstation-image";
 import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
 import { NO_STORE } from "@/lib/site-policy";
@@ -53,7 +53,8 @@ const MEDIA_SLOT_PX = 396;
 
 type Theme = "light" | "dark";
 type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
-type Rendered = { element: ReactElement; sample: boolean };
+// still：内容不随时间变（聊天卡），不标抓取时间，README 引用的是 docs/screenshots/ 里存下的一份。
+type Rendered = { element: ReactElement; sample: boolean; still?: boolean };
 type ReadmeCard = {
   label: string;
   width: number;
@@ -148,7 +149,7 @@ const CARDS: Record<string, ReadmeCard> = {
     width: FULL_WIDTH,
     height: 352,
     async render() {
-      return { element: <GodChat />, sample: false };
+      return { element: <GodChat />, sample: false, still: true };
     },
   },
   activity: {
@@ -272,17 +273,24 @@ const flattenNumberFlow = (html: string) => html.replace(/<template\b[^>]*\sshad
 const svgNamespaces = (html: string) => html.replace(/<svg\b(?![^>]*\sxmlns=)/g, '<svg xmlns="http://www.w3.org/2000/svg"');
 
 // <img> 里的 SVG 不跑脚本、不取外部资源，内联脚本删掉，图片换成 data URI。
+// 页面上走图片优化器的图（如 Apple Music 预签名封面）src 是同源的 `/image?url=…`，出图时取回原图地址自己缩放。
+function originalSource(src: string): string {
+  if (!src.startsWith(`${IMAGE_PROXY_PATH}?`)) return src;
+  return new URLSearchParams(src.slice(IMAGE_PROXY_PATH.length + 1)).get("url") ?? src;
+}
+
 async function inlineImages(html: string, site: SiteServices): Promise<string> {
   const widths = new Map<string, number>();
   for (const [tag] of html.matchAll(/<img\b[^>]*>/g)) {
     const src = /\ssrc="([^"]+)"/.exec(tag)?.[1];
     if (!src || src.startsWith("data:")) continue;
-    widths.set(src, Math.max(widths.get(src) ?? 0, Number(/\swidth="(\d+)"/.exec(tag)?.[1] ?? 0)));
+    const width = Number(/\swidth="(\d+)"/.exec(tag)?.[1] ?? 0) || (displayWidthFromSizes(/\ssizes="([^"]*)"/.exec(tag)?.[1]) ?? 0);
+    widths.set(src, Math.max(widths.get(src) ?? 0, width));
   }
   // 封面原图常比显示尺寸大几倍：光栅图按显示宽度取 2 倍，PlayStation 图床自带缩放参数，其余走图片变体，取不到（不在白名单）再原样内嵌。
   const inlined = await Promise.all(
     [...widths].map(async ([src, width]) => {
-      const url = unescapeAttribute(src);
+      const url = originalSource(unescapeAttribute(src));
       const sized = width > 0 ? playstationImage(url, width * 2) : url;
       const resized =
         width > 0 && sized === url && !/\.svg(\?|$)/.test(url)
@@ -291,7 +299,7 @@ async function inlineImages(html: string, site: SiteServices): Promise<string> {
       return [src, resized ?? (await site.asset(sized ?? url))] as const;
     }),
   );
-  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/\ssrcSet="[^"]*"/g, "");
+  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/\s(?:srcSet|sizes)="[^"]*"/g, "");
   for (const [src, data] of inlined) out = out.replaceAll(`"${src}"`, `"${data ?? ""}"`);
   return out;
 }
@@ -322,7 +330,7 @@ function svgDocument(body: string, card: ReadmeCard, theme: Theme, cornerNote: s
     `<foreignObject x="0" y="0" width="${width}" height="${fullHeight}">` +
     `<div xmlns="http://www.w3.org/1999/xhtml" class="${theme === "dark" ? "dark " : ""}font-mono text-foreground antialiased" style="position:relative;width:${card.width}px;height:${height}px;display:flex;flex-direction:column">` +
     `<style><![CDATA[${CSS}]]></style>` +
-    `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${cornerNote ? `<div class="label-mono text-muted-foreground" style="position:absolute;right:1.25rem;top:1rem;text-align:right">${cornerNote.replace(/^(Captured) /, "$1<br/>")}</div>` : ""}</div>` +
+    `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${cornerNote ? `<div class="label-mono text-muted-foreground" style="position:absolute;right:1.25rem;top:1rem;text-align:right">${cornerNote}</div>` : ""}</div>` +
     `</div></foreignObject></svg>`
   );
 }
@@ -337,12 +345,12 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     site.status(key).catch((): FirstScreen<typeof key> => ({ ok: false, error: FIRST_SCREEN_UNAVAILABLE }));
   try {
     const now = Date.now();
-    const { element, sample } = await card.render(status, site, now);
+    const { element, sample, still } = await card.render(status, site, now);
     const html = renderToString(<RenderClock value={now}>{element}</RenderClock>);
     const note = sample ? "Sample data" : capturedAt(now);
-    const titled = annotateTitle(html, note);
+    const titled = still ? html : annotateTitle(html, note);
     const body = await inlineImages(svgNamespaces(flattenNumberFlow(titled)), site);
-    return new Response(svgDocument(body, card, theme, titled === html ? note : null), {
+    return new Response(svgDocument(body, card, theme, titled === html && sample ? note : null), {
       headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": CARD_CACHE_CONTROL },
     });
   } catch (error) {
