@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const posix = path.posix;
 
-export const DOC_TYPES = ["reference", "runbook", "decision", "record"];
+export const DOC_TYPES = ["reference", "runbook", "adr", "changelog"];
 export const ROOT_AGENTS_MAX_LINES = 150;
 export const NESTED_AGENTS_MAX_LINES = 60;
 
@@ -224,14 +224,12 @@ export function findTimeline(rest: string): string[] {
 }
 
 export function parseDocType(text: string) {
-  const lines = text.split(/\r?\n/).slice(0, 6);
-  const at = lines.findIndex((line) => /^>\s*类型：/.test(line));
-  if (at === -1) return null;
-  const quote: string[] = [];
-  for (let i = at; i < lines.length && /^>/.test(lines[i] ?? "") && quote.length < 3; i++) quote.push((lines[i] ?? "").replace(/^>\s*/, ""));
-  const joined = quote.join(" ");
-  const type = /类型：\s*([A-Za-z]+)/.exec(joined)?.[1] ?? "";
-  const stamp = /按\s+([0-9a-f]{7,40})\s+(20\d{2}-\d{2}-\d{2})\s+核对，快照不维护，不当现状引用/.exec(joined);
+  const front = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text);
+  if (!front) return null;
+  const type = /^kind:\s*([A-Za-z]+)\s*$/m.exec(front[1] ?? "")?.[1];
+  if (!type) return null;
+  const head = text.slice(front[0].length).split(/\r?\n/).slice(0, 6).filter((line) => /^>/.test(line)).join(" ");
+  const stamp = /按\s+([0-9a-f]{7,40})\s+(20\d{2}-\d{2}-\d{2})\s+核对，快照不维护，不当现状引用/.exec(head);
   return { type, stamp: stamp ? { sha: stamp[1], date: stamp[2] } : null };
 }
 
@@ -387,7 +385,7 @@ export function checkMarkdown(ctx: DocsContext, file: string, text: string, { do
       if (target !== null && !symbolPresent(target, parsed.symbol)) add(line.n, "symbol", `${resolved} 里已经没有符号 ${parsed.symbol}`);
     }
 
-    if (docType !== "record") {
+    if (docType !== "changelog") {
       for (const hit of findTimeline(rest)) add(line.n, "timeline", `现状文档里的时间线写法「${hit}」：历史在 git log；确需保留就在行尾加 <!-- allow: 理由 -->`);
     }
   }
@@ -435,14 +433,14 @@ export function checkStructure(ctx: DocsContext, mdFiles: string[]): Issue[] {
     const text = ctx.text(file) ?? "";
     const info = parseDocType(text);
     if (!info) {
-      add(file, 1, "type", "文首缺类型标注：H1 之后第一行写 `> 类型：reference|runbook|decision|record`");
+      add(file, 1, "type", "文首缺类型标注：写 YAML frontmatter `kind: reference|runbook|adr|changelog`");
     } else if (!DOC_TYPES.includes(info.type)) {
       add(file, 1, "type", `类型「${info.type}」不在 ${DOC_TYPES.join(" / ")} 里`);
-    } else if (info.type === "record") {
+    } else if (info.type === "changelog") {
       if (!info.stamp) {
-        add(file, 1, "type", "record 需要「按 <sha> <日期> 核对，快照不维护，不当现状引用」（紧跟在类型行后，同一段引用里）");
+        add(file, 1, "type", "changelog 需要「按 <sha> <日期> 核对，快照不维护，不当现状引用」（H1 后的引用块里）");
       } else if (!ctx.shallow && !ctx.commitExists(info.stamp.sha)) {
-        add(file, 1, "type", `record 里的提交 ${info.stamp.sha} 不在仓库历史里`);
+        add(file, 1, "type", `changelog 里的提交 ${info.stamp.sha} 不在仓库历史里`);
       }
     }
     if (file === "docs/README.md") continue;

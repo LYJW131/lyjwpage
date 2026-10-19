@@ -1,6 +1,8 @@
-# 仓库外事实
+---
+kind: reference
+---
 
-> 类型：reference
+# 仓库外事实
 
 只记不在仓库里的事实：Cloudflare、阿里云 ESA、GitHub 的控制台配置，Access 策略，机器与路径。仓库里查得到的事（代码、`wrangler.toml`、工作流）不在这里重复，只指到出处；与代码冲突以代码为准。
 

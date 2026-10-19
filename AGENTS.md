@@ -106,7 +106,7 @@
 - 采用了外部文章、演讲、仓库或官方文档里的做法，同一提交在 `docs/references.md` 对应主题下追加一条：链接、是什么、取了什么、落在哪些文件；落地处变了同步改。评估外部做法从读到落地的流程见 `.claude/skills/lyjwpage-borrow/SKILL.md`。
 - 一个事实一个出处，其他地方放指针；非抄不可时标 `源：path#symbol`（`pnpm docs:check` 会核对符号还在）。
 - 仓库外的事实（控制台配置、Access 策略、机器路径）只写在 `docs/ops-facts.md`，逐条带「核对于 <日期>，方式：…」；正文里远端路径写成 `主机:/绝对路径`。
-- `docs/` 每篇文首一行标类型：`reference`（现状事实）、`runbook`（操作步骤）、`decision`（已定取舍，写完不改）、`record`（某时点的审计、核验、基准，另写「按 <sha> <日期> 核对，快照不维护，不当现状引用」）。新增文档在 `docs/README.md` 登记。
+- `docs/` 每篇在 frontmatter 写 `kind:`：`reference`（现状事实）、`runbook`（操作步骤）、`adr`（已定取舍，写完不改）、`changelog`（某时点的审计、核验、基准，H1 后另写「按 <sha> <日期> 核对，快照不维护，不当现状引用」）。新增文档在 `docs/README.md` 登记。全仓 Markdown 的类型映射与检查见根 `seiso.toml`，`pnpm docs:seiso` 跑。
 - 根 `AGENTS.md` ≤ 150 行，只写硬规则与禁区、完成条件、权威事实源的指针，不写目录或文件清单、来源枚举、数量版本日期、部署拓扑、迁移步骤。子目录 `AGENTS.md` ≤ 60 行，同目录放一行 `@AGENTS.md` 的 `CLAUDE.md`，只写不变量、坑、本地验证命令、须成对修改的文件；人读的说明留在 `README.md`。
 - 改代码、规则或流程的同一提交里更新受影响的文档与注释：提交前 `rg` 改动的符号、常量名和规则关键词，范围含 `HUMAN.md`、`.claude/memory/`、`.claude/skills/`、`docs/`（含记着代码事实的 `docs/explainer/FACTS.md`）与各级 `README.md`。发现文档与代码冲突，以代码为准，当轮改掉，或在汇报里点名。
 - 清扫注释（只改注释、不动行为）的改动，用 `pnpm docs:comment-only` 证明只改了注释：输出里没有「除注释外有改动」「指令性注释有改动」才算数，用法见 `scripts/comment-only-check.ts` 文件头。

@@ -1,6 +1,8 @@
-# lyjw.me 运行原理 · 讲解动画
+---
+kind: runbook
+---
 
-> 类型：runbook
+# lyjw.me 运行原理 · 讲解动画
 
 线上地址 `https://lyjw.me/explainer`，发布的是 `v2/` 这一版：分镜与旁白见 [SCRIPT.md](SCRIPT.md)，写章约定、预览和自检见 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)，改片子与整片逐帧验收的流程见 [lyjwpage-explainer](../../.claude/skills/lyjwpage-explainer/SKILL.md)，怎么发布见下文「站点版」。
 

@@ -1,6 +1,8 @@
-# Worker 数据后端与首屏缓存
+---
+kind: reference
+---
 
-> 类型：reference
+# Worker 数据后端与首屏缓存
 
 Worker 是唯一数据后端。上报、状态 API、WebSocket、在线人数均在 Cloudflare：上报先到无状态的上报入口 Worker（`workers/ingress`），状态核心（`workers/core`，持有 Durable Object）只收它 prepare 好的命令；外部数据（Apple、GitHub、Cloudflare 等）由采集 Worker（`workers/collector`）定时拉取。site Worker（React Router SSR）渲染首页时按卡读各条状态视图：可滞后层直接读 `LAG` KV，实时层经 `PUBLIC_STATUS` 读 core。站点域名上的 `/api/*` 也由 site 回答，可滞后视图读 `LAG` KV，其余经 Service Binding 原样交给 core / ai / collector；浏览器挂载后请求 `PUBLIC_BACKEND_URL` 指向的源。没有聚合端点。`lyjw131.com` 经 ESA 回源 `lyjw.me`（回源 Host 同为 `lyjw.me`），ESA 缓存首页 HTML 与静态 JS。
 

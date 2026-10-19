@@ -1,6 +1,8 @@
-# CodeQL 告警自动修复
+---
+kind: runbook
+---
 
-> 类型：runbook
+# CodeQL 告警自动修复
 
 `.github/workflows/codeql-autofix.yml` 在 main 上的 CodeQL 扫描成功后运行：列出未关闭的 CodeQL 告警，每条告警从默认分支开一条 `codeql-fix/alert-<编号>` 分支，在上面起一个 Cursor 云端 agent 修复，完成后由 Cursor 开 PR。一条告警一个 PR。实现在 `scripts/codeql-autofix.mjs`，Cursor 接口在 `scripts/cursor-cloud.mjs`，入口 `scripts/run-codeql-autofix.mjs`。
 

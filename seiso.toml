@@ -1,0 +1,52 @@
+include = ["**/*.md", "**/*.markdown"]
+# 项目记忆镜像是写入时点的笔记，不按现状文档管；子模块归上游仓库
+exclude = [
+  ".github/ISSUE_TEMPLATE/**",
+  "node_modules/**",
+  ".claude/memory/**",
+  "reporters/mac-telemetry-hub/**",
+]
+preview = false
+
+[[kinds]]
+path = "**/README.md"
+kind = "readme"
+
+[[kinds]]
+path = "README.en.md"
+kind = "readme"
+
+[[kinds]]
+path = "**/AGENTS.md"
+kind = "agents"
+
+[[kinds]]
+path = "**/CLAUDE.md"
+kind = "agents"
+
+[[kinds]]
+path = ".claude/skills/**"
+kind = "agents"
+
+[[kinds]]
+path = ".github/build/**"
+kind = "agents"
+
+[[kinds]]
+path = "builds/**"
+kind = "plan"
+
+[[kinds]]
+path = "DESIGN.md"
+kind = "reference"
+
+[[kinds]]
+path = "GLOSSARY.md"
+kind = "reference"
+
+[[kinds]]
+path = "HUMAN.md"
+kind = "reference"
+
+[lint.ptr]
+catalog-dirs = [".claude/skills/", "src/components/live/", "reporters/", "docs/screenshots/", "public/readme/"]

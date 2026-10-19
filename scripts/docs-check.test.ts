@@ -37,7 +37,7 @@ function ctxOf(files: Record<string, string>, { submodules = [], ignored = [], s
 }
 
 const tags = (issues: Issue[]) => issues.map((issue) => `${issue.rule}@${issue.line}`);
-const typeLine = (type: string) => `# 标题\n\n> 类型：${type}\n\n正文\n`;
+const typeLine = (type: string) => `---\nkind: ${type}\n---\n\n# 标题\n\n正文\n`;
 
 test("标题锚点按 GitHub 规则：中文保留、全角标点去掉、空格变连字符", () => {
   assert.equal(githubSlug("跨域活动脉搏（Pulse）"), "跨域活动脉搏pulse");
@@ -80,13 +80,11 @@ test("时间线：日期与「MM-DD 起」「N 月 N 日」报出，核对戳、
   assert.deepEqual(findTimeline("间隔 10-15 分钟，cron 1-59/10，端口 8788，版本 0.35.3"), []);
 });
 
-test("文首类型：只认前 6 行的 `> 类型：`，record 的核对句要在同一段引用里", () => {
-  assert.deepEqual(parseDocType("# T\n\n> 类型：reference\n"), { type: "reference", stamp: null });
-  const record = parseDocType("# T\n\n> 类型：record。按 04edf60 2026-09-22 核对，快照不维护，不当现状引用。\n");
-  assert.deepEqual(record, { type: "record", stamp: { sha: "04edf60", date: "2026-09-22" } });
-  const split = parseDocType("# T\n\n> 类型：record\n> 按 04edf60 2026-09-22 核对，快照不维护，不当现状引用\n");
-  assert.deepEqual(split?.stamp, { sha: "04edf60", date: "2026-09-22" });
-  assert.equal(parseDocType("# T\n\n\n\n\n\n> 类型：reference\n"), null);
+test("文首类型：只认 frontmatter 的 `kind:`，changelog 的核对句在 H1 后的引用块里", () => {
+  assert.deepEqual(parseDocType("---\nkind: reference\n---\n\n# T\n"), { type: "reference", stamp: null });
+  const record = parseDocType("---\nkind: changelog\n---\n\n# T\n\n> 按 04edf60 2026-09-22 核对，快照不维护，不当现状引用。\n");
+  assert.deepEqual(record, { type: "changelog", stamp: { sha: "04edf60", date: "2026-09-22" } });
+  assert.equal(parseDocType("# T\n\n> 类型：reference\n"), null);
   assert.equal(parseDocType("# T\n\n没有标注\n"), null);
 });
 
@@ -186,10 +184,10 @@ test("allow 注释放行同一行，但必须写理由", () => {
   assert.deepEqual(tags(checkMarkdown(ctx, "docs/x.md", text)), ["allow@2", "path@3", "path@4"]);
 });
 
-test("record 不查时间线，但引用照查；围栏与行内代码里的日期不算", () => {
+test("changelog 不查时间线，但引用照查；围栏与行内代码里的日期不算", () => {
   const ctx = ctxOf({ "docs/x.md": "" });
   const text = ["2026-09-29 之后改了 `src/gone.ts`", "`2025-02-14` 是字面值", "```", "2026-09-29", "```"].join("\n");
-  assert.deepEqual(tags(checkMarkdown(ctx, "docs/x.md", text, { docType: "record" })), ["path@1"]);
+  assert.deepEqual(tags(checkMarkdown(ctx, "docs/x.md", text, { docType: "changelog" })), ["path@1"]);
   assert.deepEqual(tags(checkMarkdown(ctx, "docs/x.md", text, { docType: "reference" })), ["path@1", "timeline@1"]);
 });
 
@@ -210,9 +208,9 @@ test("结构：体积上限与 CLAUDE.md 配对", () => {
   ]);
 });
 
-test("结构：docs 每篇要有类型，record 要有核对句，索引要登记且类型一致", () => {
+test("结构：docs 每篇要有类型，changelog 要有核对句，索引要登记且类型一致", () => {
   const index = [
-    "# 索引", "", "> 类型：reference", "",
+    "---", "kind: reference", "---", "", "# 索引", "",
     "| [参考](./ref.md) | reference | x |",
     "| [记录](./rec.md) | reference | x |",
     "| [手册](./sub/run.md) | runbook | x |",
@@ -220,11 +218,11 @@ test("结构：docs 每篇要有类型，record 要有核对句，索引要登�
   const ctx = ctxOf({
     "docs/README.md": index,
     "docs/ref.md": typeLine("reference"),
-    "docs/rec.md": "# 记录\n\n> 类型：record。按 abc1234 2026-09-22 核对，快照不维护，不当现状引用。\n",
+    "docs/rec.md": "---\nkind: changelog\n---\n\n# 记录\n\n> 按 abc1234 2026-09-22 核对，快照不维护，不当现状引用。\n",
     "docs/sub/run.md": typeLine("runbook"),
     "docs/none.md": "# 没标注\n",
     "docs/bad.md": typeLine("guide"),
-    "docs/norecord.md": "# 缺核对句\n\n> 类型：record\n",
+    "docs/norecord.md": "---\nkind: changelog\n---\n\n# 缺核对句\n",
     "docs/AGENTS.md": "# 不用标类型\n",
     "docs/CLAUDE.md": "@AGENTS.md\n",
   }, { commits: ["abc1234"] });
@@ -240,10 +238,10 @@ test("结构：docs 每篇要有类型，record 要有核对句，索引要登�
   ]);
 });
 
-test("record 的 sha：非浅克隆时核实存在，浅克隆里跳过", () => {
+test("changelog 的 sha：非浅克隆时核实存在，浅克隆里跳过", () => {
   const files = {
-    "docs/README.md": "# 索引\n\n> 类型：reference\n\n| [记录](./rec.md) | record | x |\n",
-    "docs/rec.md": "# 记录\n\n> 类型：record。按 deadbee 2026-09-22 核对，快照不维护，不当现状引用。\n",
+    "docs/README.md": "---\nkind: reference\n---\n\n# 索引\n\n| [记录](./rec.md) | changelog | x |\n",
+    "docs/rec.md": "---\nkind: changelog\n---\n\n# 记录\n\n> 按 deadbee 2026-09-22 核对，快照不维护，不当现状引用。\n",
   };
   const list = (ctx: DocsContext) => checkStructure(ctx, [...ctx.files].sort()).map((issue) => issue.rule);
   assert.deepEqual(list(ctxOf(files, { commits: ["abc1234"] })), ["type"]);

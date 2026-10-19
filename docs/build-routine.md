@@ -1,6 +1,8 @@
-# 访客协作构建
+---
+kind: runbook
+---
 
-> 类型：runbook
+# 访客协作构建
 
 首页对话是设计、提交 issue 和发起构建的入口。任何 GitHub 账号都能参与；代码不检查账号是否为仓库所有者或协作者。共享协议与上限统一见 `shared/build-routine.ts`，后端在 `workers/ai/src/build/`，HTTP 入口由 `shared/ai-paths.ts#AI_HTTP_PATHS` 登记，经 site 或 core 的 Service Binding 转发。写代码的是 GitHub Actions 工作流 `.github/workflows/build.yml`：提示词与 Claude Code 设置在 `.github/build/`，各 job 调用的脚本是 `scripts/build-actions.ts`。部署与分支 Preview 使用 [Workers 构建](./workers-builds.md) 的既有流程。
 

@@ -1,6 +1,8 @@
-# lyjw.me 运行原理 · 分镜与旁白（v2）
+---
+kind: reference
+---
 
-> 类型：reference
+# lyjw.me 运行原理 · 分镜与旁白（v2）
 
 新版 `/explainer`（`v2/`，全篇 2D）的分镜。三样东西以这里为唯一出处：**章节表**（每章小节数，`v2/plan.js` 抄这里）、**每一段的画面要点**、**中英旁白原文**（各章文件顶部的 `I18N.add` 抄这里）。事实出处在 [FACTS.md](FACTS.md)，画法、母题与调色板在 [TREATMENT.md](TREATMENT.md)，写章的契约在 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)。
 

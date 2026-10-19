@@ -1,6 +1,8 @@
-# lyjw.me 运行原理 · 画面升级本子（v2：全片 2D）
+---
+kind: reference
+---
 
-> 类型：reference
+# lyjw.me 运行原理 · 画面升级本子（v2：全片 2D）
 
 这份本子定下一版讲解动画的概念、风格、分镜结构和技术路线，先审本子再写代码。事实一律出自 [FACTS.md](FACTS.md)，本子里提到的机制都能在那里找到出处。章节表、逐段画面和逐句旁白在 [SCRIPT.md](SCRIPT.md)，写章的契约在 [v2/CONVENTIONS.md](v2/CONVENTIONS.md)。
 

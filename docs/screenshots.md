@@ -1,6 +1,8 @@
-# 页面效果图、GIF 与架构图产物
+---
+kind: runbook
+---
 
-> 类型：runbook
+# 页面效果图、GIF 与架构图产物
 
 根 README 里的效果图和架构图怎么录、怎么重出。改了对应的界面、夹具或 `docs/architecture.json` 后照本文重跑。
 

@@ -1,6 +1,8 @@
-# Workers 原生 Git 部署
+---
+kind: reference
+---
 
-> 类型：reference
+# Workers 原生 Git 部署
 
 Worker 的运行时配置在各目录的 `wrangler.toml`，Workers Builds 的连接、命令和监视路径需在 Cloudflare 控制台设置。下表是与仓库代码配套的配置；已核对的远端状态见 [仓库外事实](./ops-facts.md)。接入 `ai` 及聊天命名空间切换按 [AI Worker 首次迁移](./ai-worker-migration.md) 执行，提交代码不会自动配置连接、Secret 或监视路径。
 

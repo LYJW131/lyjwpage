@@ -1,6 +1,8 @@
-# 讲解动画 v2 · 章节作者约定
+---
+kind: reference
+---
 
-> 类型：reference
+# 讲解动画 v2 · 章节作者约定
 
 写 `/explainer` v2 某一章的契约：章节怎么接进时间轴、怎么画、字多大、文字键、配乐、交接、自检、提交。分镜和旁白在 [SCRIPT.md](../SCRIPT.md)，事实出处在 [FACTS.md](../FACTS.md)，画法总则、母题和调色板的来历在 [TREATMENT.md](../TREATMENT.md)。照着抄的样板：第 02 章（纸面）`ch02.js` + `music/ch02.js`，第 03 章（暗底 + 白卡）`ch03.js` + `music/ch03.js`。
 

@@ -1,6 +1,8 @@
-# 页面细节与关键设计
+---
+kind: reference
+---
 
-> 类型：reference
+# 页面细节与关键设计
 
 根 README 只留一页能读完的概览；各卡片的细节和几条贯穿全站的设计取舍放在这里。各数据源的接入与协议见 [遥测与实时状态子系统](./telemetry-subsystems.md)，存储分层与首屏缓存见 [Worker 数据后端与首屏缓存](./state-storage.md)。
 

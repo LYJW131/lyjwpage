@@ -3,7 +3,7 @@
 把日本落地节点的 CPU、内存、磁盘、网速、周期流量推给 lyjwpage 的小进程，跑在节点自己上面。
 
 站点在公网上，够不着这台机器的 `/proc`，所以该给的东西由这边送过去。
-TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（`config` / `log` /
+TypeScript / Node，和 [agents-reporter](../agents-reporter/README.md) 同一套结构（`config` / `log` /
 `site` / `push-ledger` 各一份；它按 agent 使用情况调频的那份这里不用，见下面「节奏」）。没有运行时依赖，跑在容器里，机器上不用装 Node。
 
 ## 它做什么
@@ -119,7 +119,7 @@ ssh -J dsm misaka-jp 'cat > /opt/lyjwpage/server-reporter/.env && chmod 600 /opt
 ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull server-reporter && docker compose up -d --no-deps server-reporter'
 ```
 
-合进 main 之后不用再手动换：`build-reporters.yml` 推完镜像会用部署密钥 ssh 过去自动 pull 并重建这一个服务（见 `reporters/misaka-deploy.sh`）。手动换还是上面那一句。
+合进 main 之后会自动换镜像，机制见 [仓库外事实](../../docs/ops-facts.md) 的 misaka-jp 一行。手动换还是上面那一句。
 
 生产的 `SITE_INGEST_URL` 填 `https://ingest.homepage.lyjw.llc/api/ingest/server`，不经站点。
 

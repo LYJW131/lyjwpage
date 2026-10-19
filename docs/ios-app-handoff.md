@@ -1,6 +1,8 @@
-# iOS App 上机验证
+---
+kind: runbook
+---
 
-> 类型：runbook
+# iOS App 上机验证
 
 给在 Mac 上接手 [`apps/ios`](../apps/ios/README.md) 的 agent：把这个 App 第一次编过、测过、装上手机，并把验证结果写回仓库。App 是什么、怎么分层见它的 README；硬约束见 [`apps/ios/AGENTS.md`](../apps/ios/AGENTS.md)。做完一项就从本文删掉对应条目，全部做完后删掉本文并从 [docs/README.md](./README.md) 撤下登记。
 

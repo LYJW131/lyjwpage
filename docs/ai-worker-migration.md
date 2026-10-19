@@ -1,6 +1,8 @@
-# AI Worker 首次迁移
+---
+kind: runbook
+---
 
-> 类型：runbook
+# AI Worker 首次迁移
 
 本流程把聊天专用 Durable Object 从 api 转移到 ai，同时保留公开 URL、额度计数、历史签名和状态权威。生产切换需要独立的发布授权；准备 PR、分支 Preview 和本地验证不执行这些步骤。运行时职责见 [AI Worker](../workers/ai/README.md)，构建配置见 [Workers 原生 Git 部署](./workers-builds.md)。
 

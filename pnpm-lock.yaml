@@ -90,6 +90,9 @@ importers:
       '@rolldown/plugin-babel':
         specifier: 0.2.4
         version: 0.2.4(@babel/core@7.29.7)(@babel/runtime@8.0.7)(rolldown@1.2.13)(vite@8.3.4(@types/node@20.19.43)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15))
+      '@scarletkc/seiso':
+        specifier: 0.4.0
+        version: 0.4.0
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.3
@@ -1949,6 +1952,53 @@ packages:
   '@sapphire/snowflake@3.5.5':
     resolution: {integrity: sha512-xzvBr1Q1c4lCe7i6sRnrofxeO1QTP/LKQ6A6qy0iB4x5yfiSfARMEQEghojzTNALDTcv8En04qYNIco9/K9eZQ==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
+
+  '@scarletkc/seiso-darwin-arm64@0.4.0':
+    resolution: {integrity: sha512-CMu+BePrWgOE8N+PQjnTcBHW32HxNdLAi380RPHIoIcBVfg/EppwapehFcBdYTBd2rRz0+rzwVfYAU3iso9lzQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@scarletkc/seiso-darwin-x64@0.4.0':
+    resolution: {integrity: sha512-q2KwWBmMfYSywBJM4ez9SGMHr8g8AF7aKjaEtSz0Yuc7MH/pMDRnn9359b5Yg5cHOjuBVJcsvpbtHpF0kgRS8g==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@scarletkc/seiso-linux-arm64-musl@0.4.0':
+    resolution: {integrity: sha512-clNRqUF3vbE8MITY2sOlbujWMI6H6Ph1yz8hVBvcG57cV4mCIlCdbi+hD5BYn4scL1Zawm3i2wT1CYZ/jwCVIg==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@scarletkc/seiso-linux-arm64@0.4.0':
+    resolution: {integrity: sha512-+3rGVHbsNsj5hdPmHBAVXVdt3aJ9jo8yc03DymaSuCh0DDeC8LNQDjczUAhFd1D7BMOPviJvnyPma+l5agj8Og==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@scarletkc/seiso-linux-x64-musl@0.4.0':
+    resolution: {integrity: sha512-CRYcbpvrLqkPYOM06Qh+ygqp1igPmYbUrXcISVF+puBwzeTX7rQWIBKatb26iqCtm5PYmxz3wiGMDAPv7q+i2w==}
+    cpu: [x64]
+    os: [linux]
+
+  '@scarletkc/seiso-linux-x64@0.4.0':
+    resolution: {integrity: sha512-UZ6Catd6z+ul0do2FpLxleyM7a8n8ydKiz+PZN6Z6eJVyEDLJLMao63xmSkAzxXVZPkmzYiABITam6VCgVTgWQ==}
+    cpu: [x64]
+    os: [linux]
+
+  '@scarletkc/seiso-win32-arm64@0.4.0':
+    resolution: {integrity: sha512-BefHEDYHIYfz7HtIDaUZHZBaI9qRw7Nroyyanl3Rn9A7C2ZEnoWFE1pxc+WzkgbBdXtME3NIZQRJ+vni5EnAFg==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@scarletkc/seiso-win32-x64@0.4.0':
+    resolution: {integrity: sha512-s/3VxeMdISoHvWwgFO7gzXa494UWtcjsnYZNVpMcnMUfcDUtqq/ZONKqvpeMV7qyQKXWN9+7+5JEFzgrsvY4AQ==}
+    cpu: [x64]
+    os: [win32]
+
+  '@scarletkc/seiso@0.4.0':
+    resolution: {integrity: sha512-zpe9zAYAJkE2Dzgi17zB0z9QC1jDRIEpCU6O+9L5JMni3qYzBk++jePHwq2YJqXtcpUuBrk9dOocoMxYPw+uJw==}
+    engines: {node: '>=18'}
+    cpu: [arm64, x64]
+    os: [darwin, linux, win32]
+    hasBin: true
 
   '@shikijs/core@4.5.0':
     resolution: {integrity: sha512-6CIgwq+bt2JZ3OSjb/nBkkwEf/CfpHcbam+Mg5Pllco7HAGRQ2/EFhZrrJtbyNTgKwknfVS+llsXGygiDGwJWw==}
@@ -6708,6 +6758,41 @@ snapshots:
       lodash: 4.18.1
 
   '@sapphire/snowflake@3.5.5': {}
+
+  '@scarletkc/seiso-darwin-arm64@0.4.0':
+    optional: true
+
+  '@scarletkc/seiso-darwin-x64@0.4.0':
+    optional: true
+
+  '@scarletkc/seiso-linux-arm64-musl@0.4.0':
+    optional: true
+
+  '@scarletkc/seiso-linux-arm64@0.4.0':
+    optional: true
+
+  '@scarletkc/seiso-linux-x64-musl@0.4.0':
+    optional: true
+
+  '@scarletkc/seiso-linux-x64@0.4.0':
+    optional: true
+
+  '@scarletkc/seiso-win32-arm64@0.4.0':
+    optional: true
+
+  '@scarletkc/seiso-win32-x64@0.4.0':
+    optional: true
+
+  '@scarletkc/seiso@0.4.0':
+    optionalDependencies:
+      '@scarletkc/seiso-darwin-arm64': 0.4.0
+      '@scarletkc/seiso-darwin-x64': 0.4.0
+      '@scarletkc/seiso-linux-arm64': 0.4.0
+      '@scarletkc/seiso-linux-arm64-musl': 0.4.0
+      '@scarletkc/seiso-linux-x64': 0.4.0
+      '@scarletkc/seiso-linux-x64-musl': 0.4.0
+      '@scarletkc/seiso-win32-arm64': 0.4.0
+      '@scarletkc/seiso-win32-x64': 0.4.0
 
   '@shikijs/core@4.5.0':
     dependencies:

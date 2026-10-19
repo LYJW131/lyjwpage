@@ -1,6 +1,8 @@
-# 参考文献
+---
+kind: reference
+---
 
-> 类型：reference
+# 参考文献
 
 塑造本项目做法的外部来源：文章、演讲、仓库、官方文档。每条写它是什么、我们从中取了什么、落在哪些文件。采用了新的外部做法就在对应主题下追加一条；落地处变了（文件改名、规则删掉、评估结论翻转）同一提交里改这里。只引用、没取任何做法的链接不进来，留在引用它的文档里。
 
@@ -65,6 +67,11 @@
   - 是什么：给 agent 一份项目术语表，让它用你的词说话。
   - 取了什么：根目录放一份术语表，每条一句定义加出处，根 `AGENTS.md` 指过去。
   - 状态：采用。落在 [GLOSSARY.md](../GLOSSARY.md)。
+
+- **[seiso](https://github.com/scarletkc/seiso)**（scarletkc，含 [Seiso 规范](https://seiso.fog.moe/latest/convention)）
+  - 是什么：给 AI 写、人和 agent 读的项目文档定的 Markdown 规范，配一个 Rust 写的 linter：每篇声明一种类型、一个事实一个出处、长期文档不写易变值、指针写到文件或符号、例外写理由。
+  - 取了什么：文档类型改用它的 frontmatter `kind:` 与词表（`decision` → `adr`，`record` → `changelog`）；全仓 Markdown 按 `seiso.toml` 映射类型，`pnpm docs:seiso` 跑稳定规则；目录链接改指到具体 README。
+  - 状态：部分采用（实验分支）。落在 [seiso.toml](../seiso.toml)、[docs-check.ts](../scripts/docs-check.ts) 的 `parseDocType`、[docs/README.md](./README.md)；实验规则（`--preview`）只本地看，不进 CI。
 
 ## 模型选择与子代理
 

@@ -193,11 +193,11 @@ The full picture (in Chinese): [Development workflow](./docs/workflow.md).
 | How status views are registered on both sides | [`shared/status-views.ts`](./shared/status-views.ts) · [`workers/core/src/status-loaders.ts`](./workers/core/src/status-loaders.ts) |
 | How push and polling update the same client state | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | How the web player and lyrics work | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
-| How reports are authenticated, validated and split by data layer | [`workers/ingress/`](./workers/ingress/) |
-| How state storage, live push and the public API are organized | [`workers/core/`](./workers/core/) |
-| How homepage chat, MCP and model tools run | [`workers/ai/`](./workers/ai/) |
-| How each device and service is connected | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
-| How the native iOS app reads the site and reports | [`apps/ios/`](./apps/ios/) |
+| How reports are authenticated, validated and split by data layer | [`workers/ingress/`](./workers/ingress/README.md) |
+| How state storage, live push and the public API are organized | [`workers/core/`](./workers/core/README.md) |
+| How homepage chat, MCP and model tools run | [`workers/ai/`](./workers/ai/README.md) |
+| How each device and service is connected | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/README.md) |
+| How the native iOS app reads the site and reports | [`apps/ios/`](./apps/ios/README.md) |
 | How online visitors are counted | [`workers/core/src/live-census.ts`](./workers/core/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
 
 The Mac collector [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) is a submodule at `reporters/mac-telemetry-hub/`. For local development, see "本地开发" in [`workers/core/README.md`](./workers/core/README.md).

@@ -193,11 +193,11 @@ flowchart LR
 | 状态视图在两侧如何登记 | [`shared/status-views.ts`](./shared/status-views.ts) · [`workers/core/src/status-loaders.ts`](./workers/core/src/status-loaders.ts) |
 | 推送与轮询如何更新同一份客户端状态 | [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) · [`src/hooks/use-status.ts`](./src/hooks/use-status.ts) · [`src/lib/status-reads.ts`](./src/lib/status-reads.ts) |
 | 网页播放器与歌词如何工作 | [`src/hooks/use-web-player.ts`](./src/hooks/use-web-player.ts) · [`src/hooks/use-lyrics.ts`](./src/hooks/use-lyrics.ts) |
-| 上报如何鉴权、校验与按数据层拆分 | [`workers/ingress/`](./workers/ingress/) |
-| 状态存储、实时推送与公开 API 如何组织 | [`workers/core/`](./workers/core/) |
-| 首页对话、MCP 与模型工具如何运行 | [`workers/ai/`](./workers/ai/) |
-| 各类设备与服务如何接入 | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/) |
-| 原生 iOS App 如何读站点、如何上报 | [`apps/ios/`](./apps/ios/) |
+| 上报如何鉴权、校验与按数据层拆分 | [`workers/ingress/`](./workers/ingress/README.md) |
+| 状态存储、实时推送与公开 API 如何组织 | [`workers/core/`](./workers/core/README.md) |
+| 首页对话、MCP 与模型工具如何运行 | [`workers/ai/`](./workers/ai/README.md) |
+| 各类设备与服务如何接入 | [`reporters/`](./reporters/) · [`workers/collector/`](./workers/collector/README.md) |
+| 原生 iOS App 如何读站点、如何上报 | [`apps/ios/`](./apps/ios/README.md) |
 | 在线访客如何统计 | [`workers/core/src/live-census.ts`](./workers/core/src/live-census.ts) · [`src/hooks/use-live-events.ts`](./src/hooks/use-live-events.ts) |
 
 Mac 端采集器 [MacTelemetryHub](https://github.com/LYJW131/MacTelemetryHub) 以 submodule 接入 `reporters/mac-telemetry-hub/`。本地开发见 [`workers/core/README.md`](./workers/core/README.md)「本地开发」。

@@ -1,6 +1,9 @@
+---
+kind: changelog
+---
+
 # iOS App 验证记录
 
-> 类型：record
 > 按 77ae2a8448dd20dea25f38be7338f63f2696e211 2026-09-30 核对，快照不维护，不当现状引用。 <!-- allow: 验证快照的代码基线与日期 -->
 
 验证包含 `claude/gracious-knuth-7y1rom` 上的本地工作树修改。

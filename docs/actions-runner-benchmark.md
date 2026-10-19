@@ -1,6 +1,9 @@
+---
+kind: changelog
+---
+
 # 自建 Actions runner 实测
 
-> 类型：record
 > 按 c33d1fbd05998f3e045eb7d440111010a073095e 2026-10-11 核对，快照不维护，不当现状引用。
 
 ## 方法与边界

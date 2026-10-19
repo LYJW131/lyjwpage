@@ -52,7 +52,7 @@ Listen Along 用 `SystemMusic.swift#SystemMusic.listenAlong` 调用系统音乐 
 | Foundation Models | Pulse 的「Day in Review」，设备端生成 |
 | 可调尺寸的 iPhone App | 不再锁竖屏；宽窗口（iPhone Duo 展开、在 iPad 上运行）卡片排两列 |
 
-液态玻璃本身（`glassProminent`、`backgroundExtensionEffect`、系统栏）是 iOS 26 引入的，iOS 27 沿用。iPhone Duo 的 `ArrangementView`、铰链、保留区域 API 目前是 27.1 beta，没用。
+液态玻璃本身（`glassProminent`、`backgroundExtensionEffect`、系统栏）是 iOS 26 引入的，iOS 27 沿用。iPhone Duo 的 `ArrangementView`、铰链、保留区域 API 只在 beta 系统里，没用。
 
 ## 小组件与快捷指令
 

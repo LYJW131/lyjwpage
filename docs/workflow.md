@@ -1,6 +1,8 @@
-# 人与 agent 的开发工作流
+---
+kind: reference
+---
 
-> 类型：reference
+# 人与 agent 的开发工作流
 
 这个仓库的代码大多由 Claude 写，lyjw 负责定方向、拍板和验收。本文讲这套协作怎么运转、靠什么守住质量。给 lyjw 的协作约定在 [`HUMAN.md`](../HUMAN.md)，给 agent 的硬规则在 [`AGENTS.md`](../AGENTS.md)；本文只讲全貌并指过去，不重复条款。
 
