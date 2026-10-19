@@ -13,7 +13,7 @@ description: lyjwpage 线程里一段活要连着调 5 次以上工具、而结�
 
 | 活 | 交给 | 例 |
 | --- | --- | --- |
-| 纯等待：CI、Workers Builds、`/api/version` | 后台命令，不用模型：`Bash(run_in_background: true)` 包 `timeout`，或 `scripts/deploy-check.ts --timeout` | 等部署后接着核对 |
+| 纯等待：CI、Workers Builds、`/api/version` 跟上 | 后台命令，不用模型：`Bash(run_in_background: true)` 包 `timeout`，或 `scripts/deploy-check.ts --timeout` | 等 CI 结束再决定下一步；要核对生产行为、签回执的上线核对照 lyjwpage-verify |
 | 等完还要看一眼：CI 红了读日志摘出报错 | Haiku high | 「等 #N 的检查结束，红了贴失败步骤末 40 行」 |
 | 照固定清单跑命令、截图、拆帧、拼图、抓多页数据存成文件 | Haiku high | ffmpeg 抽帧加帧差；Observability 翻 6 页存 TSV |
 | 成批读再归纳：讨论串、会话记录、PR 评审、Gmail、长文档、外部文章 | Sonnet medium | 读 30 条评审列出未回复的；读 10 个线程找反复出现的做法 |
@@ -38,7 +38,7 @@ Agent(
 
 简报五项，子代理看不到对话，每项都写：
 
-1. 禁区：不调用任何 `mcp__hearthbot__` 工具；不推送、不合并、不在 GitHub 上评论、不改 Cloudflare 与生产。只读的活写明「只读」。
+1. 禁区：不调用 `mcp__hearthbot__` 的写工具（`reply`、`update_status`、`react`、`set_thread_resolved` 等）；读讨论串的活写明可用 `fetch_thread`、`fetch_messages`、`list_thread_sessions`；不推送、不合并、不在 GitHub 上评论、不改 Cloudflare 与生产。只读的活写明「只读」。
 2. 要什么：目标一句话，加上做完的判据（「列出全部未回复线程」，不是「看看评审」）。
 3. 材料：仓库、分支、PR 号、文件路径、会话或线程 id、要用的脚本，写全，不让它自己去猜。
 4. 产物：长结果写进 `/mnt/project-files/<主题>/` 或会话 scratchpad 的文件；回报不超过 10 行，写文件路径、结论、没做到的及原因。
