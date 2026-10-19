@@ -34,7 +34,7 @@ function Sleep() {
   );
 }
 
-// 服务端先画未上色的图标，挂载后加 data-on 播一次；换模式时调用方按模式换 key，重新播放。
+// 服务端先画未上色的图标，挂载后加 data-on 才开始动画：每次挂载播一次开场。
 export function FocusIcon({ mode, className }: { mode: FocusMode; className?: string }) {
   const [on, setOn] = useState(false);
   useEffect(() => {

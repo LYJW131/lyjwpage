@@ -711,7 +711,7 @@ html[data-heatmap="commit"] .heatmap-tab[data-heatmap-tab="commit"] {
   transform-origin: 0 0;
 }
 .focus-sleep[data-on] .z {
-  animation: focus-z 1800ms linear both;
+  animation: focus-z 1800ms linear infinite both;
 }
 .focus-sleep[data-on] .z1 {
   animation-delay: 67ms;
