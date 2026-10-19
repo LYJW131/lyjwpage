@@ -51,6 +51,7 @@ export const PREFETCH_STATUS = {
   coding: { views: ["coding", "codingNow", "codingYear"], criterion: "How much or how LYJW codes with AI agents: token usage, coding activity, which agents." },
   limits: { views: ["limits", "agentStatus"], criterion: "LYJW's coding agent plans, rate limits or remaining quota." },
   commits: { views: ["githubRepo", "githubChart"], criterion: "Recent commits or changes to this site's repository, or LYJW's GitHub activity." },
+  focus: { views: ["focusNow"], criterion: "Whether LYJW is asleep, meditating or on do-not-disturb right now, or can be messaged." },
   devices: { views: ["desktop", "charger", "powerBank", "server"], criterion: "LYJW's devices: the Mac, chargers, power bank battery, or the server." },
   none: { views: [], criterion: "Anything that does not need live data about LYJW: greetings, general knowledge, coding help, news, or questions about how the site is built." },
 } as const satisfies Record<string, { views: readonly StatusViewKey[]; criterion: string; query?: true }>;
