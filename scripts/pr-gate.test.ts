@@ -92,6 +92,16 @@ test("评审线程按根评论归并：发起人、标记、最后一条是不�
   assert.equal(unknown.unresolved.length, 3);
 });
 
+test("线程标题反复去掉标签，嵌套拼回的 script 不留在标题里", () => {
+  const titleOf = (body: string) =>
+    buildThreads([{ id: 9, user: claude, body, html_url: "u", path: "a.ts", line: 1, created_at: "2026-10-19T01:03:00Z" }], {
+      source: "ccr",
+      byRoot: new Map([[9, { resolved: false, outdated: false }]]),
+    }).unresolved[0].title;
+  assert.equal(titleOf("<b>Visible</b> heading"), "Visible heading");
+  assert.equal(titleOf("<scrip<script>is removed</script>t>alert(123)</script>"), "alert(123)");
+});
+
 test("Codex 轮数：有意见的评审各算一轮，没意见那轮从汇总评论的状态里补，额度用完的不算", () => {
   const state = (sha: string, status: string) => ({
     user: codex,

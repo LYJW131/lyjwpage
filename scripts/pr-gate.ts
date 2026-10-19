@@ -154,11 +154,14 @@ export function severityOf(body: string, bot: string | null): { mark: string | n
 }
 
 function shortTitle(body: string) {
-  const text = firstLine(body)
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/\*\*/g, "")
-    .trim();
+  let text = firstLine(body).replace(/!\[[^\]]*\]\([^)]*\)/g, "");
+  // <scrip<script>…</script>t> 去掉内层后又是 <script>，所以用不能跨过尖括号的匹配删到不再缩短。
+  let previous: string;
+  do {
+    previous = text;
+    text = text.replace(/<[^<>]*>/g, "");
+  } while (text !== previous);
+  text = text.replace(/\*\*/g, "").trim();
   return text.length > 80 ? `${text.slice(0, 79)}…` : text;
 }
 
