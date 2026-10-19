@@ -52,16 +52,14 @@ function useNow(): number {
   return now;
 }
 
-const VARIANT: string = "a";
-
 function FocusRow({ mode, since }: { mode: FocusMode; since: number }) {
   const now = useNow();
   const { name, Icon, tint } = MODES[mode];
   return (
-    <div className="flex items-center gap-3 p-4 sm:gap-4 lg:p-5">
+    <div className="flex items-center gap-3 p-4 sm:gap-4 md:hidden">
       <Icon className={`size-7 shrink-0 ${tint}`} strokeWidth={1.75} aria-hidden />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="truncate text-lg font-semibold leading-tight lg:text-xl">Do Not Disturb</div>
+        <div className="truncate text-lg font-semibold leading-tight">Do Not Disturb</div>
         <div className="truncate text-sm text-muted-foreground">
           {name} since {clock.format(since)}
         </div>
@@ -77,7 +75,7 @@ function FocusStrip({ mode, since }: { mode: FocusMode; since: number }) {
   const now = useNow();
   const { name, Icon, tint } = MODES[mode];
   return (
-    <div className="flex min-h-11 items-center gap-2 px-4 py-2 lg:px-5">
+    <div className="hidden min-h-11 items-center gap-2 px-4 py-2 md:flex lg:px-5">
       <Icon className={`size-4 shrink-0 ${tint}`} strokeWidth={2} aria-hidden />
       <span className="shrink-0 text-sm font-medium">Do Not Disturb</span>
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
@@ -100,7 +98,8 @@ export function FocusNowCard({ nowFallback }: { nowFallback: StatusResponse<Focu
     <NowReveal revealKey="focus-now">
       {mode && since != null ? (
         <Card id="now-focus" className="scroll-mt-28">
-          {VARIANT === "b" ? <FocusStrip mode={mode} since={since} /> : <FocusRow mode={mode} since={since} />}
+          <FocusRow mode={mode} since={since} />
+          <FocusStrip mode={mode} since={since} />
         </Card>
       ) : null}
     </NowReveal>
