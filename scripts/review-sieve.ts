@@ -104,15 +104,36 @@ const SUMMARY = [
 const BOOKKEEPING = /^(?:验证回执|判定) [0-9a-f]{40}|^@codex\b/;
 const SHA_TOKEN = /(?<![0-9a-z])[0-9a-f]{7,40}(?![0-9a-z])/gi;
 
+// 切口两侧可能再拼出 <!--，整段注释要删到稳定；没配上 --> 的起手等标签替换之后再删，<!--> 仍由标签替换整段吃掉。
+function stripClosedHtmlComments(text: string) {
+  let current = text;
+  let previous;
+  do {
+    previous = current;
+    current = current.replace(/<!--[\s\S]*?-->/g, "");
+  } while (current !== previous);
+  return current;
+}
+
+function stripCommentOpeners(text: string) {
+  let current = text;
+  let open = current.indexOf("<!--");
+  while (open >= 0) {
+    current = current.slice(0, open) + current.slice(open + 4);
+    open = current.indexOf("<!--");
+  }
+  return current;
+}
+
 export function plain(body: string) {
-  return body
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<details>[\s\S]*?<\/details>/g, "")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/^\s*---\s*$[\s\S]*/m, "")
-    .replace(/^_.*(?:Generated|Addressed) by .*_\s*$/gm, "")
-    .trim();
+  return stripCommentOpeners(
+    stripClosedHtmlComments(body)
+      .replace(/<details>[\s\S]*?<\/details>/g, "")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/^\s*---\s*$[\s\S]*/m, "")
+      .replace(/^_.*(?:Generated|Addressed) by .*_\s*$/gm, ""),
+  ).trim();
 }
 
 function clip(text: string, max: number) {

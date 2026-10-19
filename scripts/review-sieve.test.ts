@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classify, severity, sieve, sievePr, type PrCommit, type PrData } from "./review-sieve.ts";
+import { classify, plain, severity, sieve, sievePr, type PrCommit, type PrData } from "./review-sieve.ts";
 
 const FIX = "e2495e54b6a1c0ffee0000000000000000000001";
 const NEXT = "780d6320e8a1c0ffee0000000000000000000002";
@@ -111,6 +111,16 @@ function prData(): PrData {
     commits: rawCommits(commits),
   };
 }
+
+test("叠在一起的 HTML 注释删一次会重新拼出 <!--，plain 要删到没有为止", () => {
+  assert.equal(plain("<!<!-- 不改 -->-- 已修"), "已修");
+  assert.equal(plain("<!<!-- inner -->-- outer --> tail"), "tail");
+  assert.equal(plain("<!<!--- comment --->>"), "");
+  assert.equal(plain("<!-->"), "");
+  assert.equal(plain("提到<!--没闭合"), "提到没闭合");
+  assert.equal(plain("<!-<x>-"), "-");
+  assert.equal(plain('<!-- devin-review-comment {"kind": "bug"} -->\n\n正文'), "正文");
+});
 
 test("sievePr 只收 Codex、Devin 的根评论，只认 lyjw 两个账号的回复，带上严重度与标题", () => {
   const items = sievePr(387, prData());
