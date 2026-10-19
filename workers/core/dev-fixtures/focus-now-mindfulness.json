@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "data": {
+    "mode": "mindfulness",
+    "since": "$now-720000",
+    "observedAt": "$now-720000"
+  }
+}

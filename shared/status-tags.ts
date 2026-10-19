@@ -18,5 +18,6 @@ export const PLAYING_TAG = STATUS_VIEWS.playing.tag;
 export const NOW_PLAYING_TAG = STATUS_VIEWS.playingNow.tag;
 export const TROPHIES_TAG = STATUS_VIEWS.trophies.tag;
 export const QUEST_NOW_TAG = STATUS_VIEWS.questNow.tag;
+export const FOCUS_NOW_TAG = STATUS_VIEWS.focusNow.tag;
 
 export { STATUS_TAGS } from "@shared/status-views";

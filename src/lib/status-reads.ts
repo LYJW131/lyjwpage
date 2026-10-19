@@ -1,5 +1,6 @@
 import { backendUrl } from "@/lib/backend-url";
 import { STATUS_VIEWS } from "@shared/status-views";
+import type { FocusNow } from "@shared/focus";
 import type { QuestNow } from "@shared/quest";
 import type {
   DesktopPayload,
@@ -15,6 +16,7 @@ import type {
 
 const STAMPS: Record<string, (data: never) => number | null> = {
   [STATUS_VIEWS.questNow.path]: (data: QuestNow) => data.observedAt,
+  [STATUS_VIEWS.focusNow.path]: (data: FocusNow) => data.observedAt,
   [STATUS_VIEWS.desktop.path]: (data: DesktopPayload) => data.receivedAt,
   [STATUS_VIEWS.listening.path]: (data: ListeningPayload) => data.fetchedAt,
   [STATUS_VIEWS.nowListening.path]: (data: NowListeningPayload) => data.receivedAt,

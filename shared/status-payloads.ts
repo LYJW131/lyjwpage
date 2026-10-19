@@ -27,6 +27,7 @@ import type {
 } from "@shared/types";
 import type { AgentLimitsPayload } from "@shared/vibecoding-limits";
 import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";
+import type { FocusNow } from "@shared/focus";
 import type { QuestNow } from "@shared/quest";
 
 export type StatusPayloads = {
@@ -49,6 +50,7 @@ export type StatusPayloads = {
   playing: PlaystationPlayingPayload;
   playingNow: PlaystationPresencePayload;
   questNow: QuestNow;
+  focusNow: FocusNow;
   trophies: TrophiesSummaryPayload | TrophiesPayload;
   githubChart: GithubChartPayload;
   githubRepo: GithubRepoPayload;

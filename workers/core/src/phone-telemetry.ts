@@ -1,6 +1,7 @@
 import { writeWorkouts } from "@core/stores/workouts";
 import { fanout } from "@core/fanout";
 import { writeActivity } from "@core/stores/activity";
+import { writeFocus } from "@core/stores/focus";
 import type { PreparedPhoneEnvelope } from "@shared/ingest/phone";
 
 export async function commitPreparedPhoneEnvelope(prepared: PreparedPhoneEnvelope) {
@@ -19,6 +20,11 @@ export async function commitPreparedPhoneEnvelope(prepared: PreparedPhoneEnvelop
     if (prepared.failure?.stage === "beforeActivity") throw new Error(prepared.failure.message);
     if (prepared.activity) {
       writes.push(writeActivity(prepared.activity));
+      accepted += 1;
+    }
+    if (prepared.failure?.stage === "beforeFocus") throw new Error(prepared.failure.message);
+    if (prepared.focus) {
+      writes.push(writeFocus(prepared.focus));
       accepted += 1;
     }
   } finally {

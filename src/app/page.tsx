@@ -18,6 +18,7 @@ import { PlaystationBlock } from "@/components/live/playstation-block";
 import { PulseCard } from "@/components/live/pulse-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { QuestNowCard } from "@/components/live/quest-now-card";
+import { FocusNowCard } from "@/components/live/focus-now-card";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
@@ -81,6 +82,7 @@ const READS = {
   digest: [DIGEST_PATH, PULSE_PATH, TIMEZONE_PATH],
   nowWatching: [NOW_WATCHING_PATH],
   questNow: [STATUS_VIEWS.questNow.path],
+  focusNow: [STATUS_VIEWS.focusNow.path],
   media: [CHARGER_PATH, POWERBANK_PATH, LISTENING_PATH, NOW_LISTENING_PATH],
   activity: [ACTIVITY_PATH, STATUS_VIEWS.workouts.path],
   server: [SERVER_PATH],
@@ -122,6 +124,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     playing,
     playingNow,
     questNow,
+    focusNow,
     trophiesEnvelope,
     githubChart,
     githubRepo,
@@ -151,6 +154,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     status("playing"),
     status("playingNow"),
     status("questNow"),
+    status("focusNow"),
     status("trophies"),
     status("githubChart"),
     status("githubRepo"),
@@ -203,6 +207,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     playing,
     playingNow,
     questNow,
+    focusNow,
     trophiesEnvelope,
     githubChart,
     githubRepo,
@@ -262,6 +267,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               {/* 网格 gap 要等卸载才消失，会在收起动画末尾跳动，因此此卡放在网格外。 */}
               <CardBoundary label="Now Watching" silent paths={READS.nowWatching}>
                 <NowWatchingCard nowFallback={loaderData.nowWatching} />
+              </CardBoundary>
+              <CardBoundary label="Focus" silent paths={READS.focusNow}>
+                <FocusNowCard nowFallback={loaderData.focusNow} />
               </CardBoundary>
               <CardBoundary label="Now Playing" silent paths={READS.questNow}>
                 <QuestNowCard nowFallback={loaderData.questNow} />

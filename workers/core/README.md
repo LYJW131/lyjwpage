@@ -586,6 +586,10 @@ misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个
 
 网页卡片按页横向吸附滚动（每页条数与页数由 `src/components/live/workouts-strip.tsx` 定），隐藏独立标题栏，通过触控板、触摸或键盘横向浏览；上报和存储仍保留最近 `WORKOUT_LIMIT` 条。训练记录合并在 Activity 卡片右侧（窄屏放底部），圆环区域保持原高度；出口节点卡全宽排列在其下。
 
+## 专注模式
+
+`POST /api/ingest/iphone` 的 `modules.focus: { mode }` 来自 iPhone 快捷指令：睡眠或正念专注模式打开、关闭时，「获取当前专注模式」的名字原样上报（关闭时是空串）。`shared/focus.ts#focusModeOf` 只认睡眠与正念（中英文名），其余模式和空值都记成不在专注里，别的模式名不落库。`since` 是进入当前模式的时刻，同一模式重复上报不改它；快捷指令只在开关时发、没有心跳，超过 `shared/focus.ts#FOCUS_MAX_MS` 仍未关闭的按已关闭读。`/api/status/focus/now` 回 `{ mode, since, observedAt }`，模式变化推 `focus-now`；首页的勿扰卡在出现、消失时失效首屏标签 `focus-now`，睡眠与正念互切只走推送。凭据是单独的 `lyjwpage-iphone-focus`，见 [仓库外事实](../../docs/ops-facts.md)。
+
 ## Quest 实时游戏状态
 
 `/api/status/quest/now` 从 StateHub SQLite 读取最新 Quest 快照。`available` 区分可信空闲与断流，陈旧窗口由 `shared/quest.ts#QUEST_STALE_MS` 定义；过期保留观测时刻，`playing` 返回空值。上报带的 `discordStatus`（Discord 账号的在线状态）只存不出：公开快照与推送都不带，它单独变化也不推送。内容变化或断流后的恢复发送 `quest-now`，普通心跳仅更新存储；按 `observedAt` 拒绝旧值与重复报告。首页的 Now Playing 卡读这个视图，「在玩」有无切换时失效首屏标签 `quest-now`。游戏道（Pulse 的 `gaming`）由 PlayStation 与 Quest 合并写入（`src/stores/quest.ts`、`src/stores/playstation.ts`）：Quest 在玩时记 Quest 的游戏（`shared/pulse-timeline.ts#questGamingFacts`，`titleId` 带 `quest:` 前缀），这期间 PS 的上报不改写游戏道；Quest 从在玩变为不在玩时交还 PS 的状态，PS 也已过期就记离线；其余时候游戏道只由 PS 写。上报入口与信封见 [Ingress](../ingress/README.md#quest-实时游戏状态)。
