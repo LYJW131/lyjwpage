@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-lyjw (2026-10-13 13:06): "这几次做的东西 间距看起来都不太舒服 … 在本项目固定一个设计规范吧 就是 DESIGN.md". Root `DESIGN.md` is the site's visual/interaction spec (tokens stay in `src/app/globals.css`); the old AGENTS.md sections 「界面与交互」 and the icon half of 「图标与图片」 moved into it. Self-check skill with a measuring script: `.claude/skills/lyjwpage-ui-design/` (`ui-audit.mjs`).
+lyjw (2026-10-13 13:06): "这几次做的东西 间距看起来都不太舒服 … 在本项目固定一个设计规范吧 就是 DESIGN.md". Root `DESIGN.md` is the site's visual/interaction spec (tokens stay in `src/app/styles/theme.css`); the old AGENTS.md sections 「界面与交互」 and the icon half of 「图标与图片」 moved into it. Self-check skill with a measuring script: `.claude/skills/lyjwpage-ui-design/` (`ui-audit.mjs`).
 
 lyjw (2026-10-13 13:13): "有ui/ux变化的改动进main,只要不是明确要求的小改动,合并前都要问我".
 
