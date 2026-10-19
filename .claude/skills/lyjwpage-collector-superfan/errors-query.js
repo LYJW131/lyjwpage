@@ -66,6 +66,10 @@ async () => {
     for (let page = 0; page < MAX_PAGES; page++) {
       queries++;
       const response = await query(t0, t1, offset);
+      // 空窗口也回 events.events: []；缺了就是没查成，当成零条会让水位越过这段。
+      if (!response.success || !Array.isArray(response.result?.events?.events)) {
+        throw new Error(`遥测查询 ${new Date(t0).toISOString()}–${new Date(t1).toISOString()} 没查成：${JSON.stringify(response.errors ?? null)}`);
+      }
       if ((response.result?.statistics?.abr_level ?? 1) > 1) {
         if (t1 - t0 > MIN_CHUNK_MS) return { split: true };
         sampled = true;

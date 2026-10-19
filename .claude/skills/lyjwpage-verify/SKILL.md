@@ -100,10 +100,10 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 
 ### 3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）
 
-- 合并前、每次被 PR 事件叫醒，主线程先 `git fetch origin main`，再跑 `NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr <号>`，不派验证员汇总、不分页翻评论。它只读，输出一份 JSON，`ready` 为真时退出 0，字段与选项见 `--help`。读的是：冲突与草稿；head 上每项检查与 commit status（同名只认最新），哪些还在跑；按 PR 改动与分支 Preview 的监视路径算出该有的 `Workers Builds:` 检查；没解决的行内评审线程（发起人、严重度、最后一条是不是 lyjw 的账号回的、链接）；各机器评审最后审的提交与 Codex 已用轮数；`verify-receipt.ts check` 的回执与判定；有没有 `baseline-exception` 标签。读不到 GitHub 时退出 1，`error` 写原因。
+- 合并前、每次被 PR 事件叫醒，主线程先 `git fetch origin main`，再跑 `NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr <号>`，不派验证员汇总、不分页翻评论。它只读，输出一份 JSON，`ready` 为真时退出 0，字段与选项见 `--help`。读的是：冲突与草稿；head 上每项检查与 commit status（同名只认最新），哪些还在跑；CI 的 `check` 出没出现；按 PR 改动与分支 Preview 的监视路径算出该有的 `Workers Builds:` 检查（结论要是 success）；没解决的行内评审线程（发起人、严重度、最后一条是不是 lyjw 的账号回的、链接）；各机器评审最后审的提交与 Codex 已用轮数；`verify-receipt.ts check` 的回执与判定；有没有 `baseline-exception` 标签。读不到 GitHub 时退出 1，`error` 写原因。
 - 分档：脚本按改动路径给 `tier`，只改文档与 skill（`docs`）、碰到界面（`ui`）、改逻辑（`logic`），默认的 `--need` 与 `--judge` 跟着档走。只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（lyjw 定的规矩），主线程判为小改动的逻辑 PR 加 `--no-judge`。有 UI / UX 变化的 PR 另要 lyjw 看过效果、点头才合（lyjw 明确要求的小改动除外，见根 `DESIGN.md`「交付与合并」）；`ready` 不含这一项，脚本只在 `notes` 里提示。
 - `todo` 每条写了缺什么、去哪做；照着办完再跑一次。评审线程的 `level`：红圈（🔴）与 P0 / P1 是 `blocking`，永不算可选；安全类（`security`）等 lyjw 拍板；`optional`、`pre-existing`、`info` 可以只回复理由。哪条要修、哪条回复说明不修，由主线程判断；`lastByLyjw` 为真且确实改了的，直接点解决。
-- Codex 每次推送自动审一轮，上限 3 轮；到上限或最近一轮没审成（`status: "failed"`，多半是额度用完）就不再等它。Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，它们的 `lastReviewed` 不是 head 不算缺。Cursor Bugbot 额度用完时当它不存在，不等它也不提（lyjw 定的规矩）；它真跑出来的意见照常处理。
+- Codex 每次推送自动审一轮，上限 3 轮；到上限或最近一轮没审成（`status: "failed"`，多半是额度用完）就不再等它。Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，它们的 `lastReviewed` 不是 head 不算缺；要判定的 PR 里两家一次都没审过时进 `todo`，等待带上限，超时在汇报里记没跑成。Cursor Bugbot 额度用完时当它不存在，不等它也不提（lyjw 定的规矩）；它真跑出来的意见照常处理。
 
 ### 3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有
 

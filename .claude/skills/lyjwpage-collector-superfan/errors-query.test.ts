@@ -13,11 +13,12 @@ const vectors = JSON.parse(readFileSync(new URL("./signature-vectors.json", impo
 const HOUR = 3_600_000;
 const TO = 1_800_000_000_000;
 
-function run(window: { from: number; to: number }, respond: (request: Request) => { events: Event[]; abr?: number }): Promise<Result> {
+function run(window: { from: number; to: number }, respond: (request: Request) => { events: Event[]; abr?: number; fail?: boolean }): Promise<Result> {
   const rendered = source.replace("const WINDOW = { from: null, to: null };", `const WINDOW = { from: ${window.from}, to: ${window.to} };`);
   assert.notEqual(rendered, source);
   const request = async (options: Request) => {
-    const { events, abr = 1 } = respond(options);
+    const { events, abr = 1, fail = false } = respond(options);
+    if (fail) return { success: false, errors: [{ code: 10000, message: "boom" }], result: null };
     return { success: true, result: { events: { events }, statistics: { abr_level: abr } } };
   };
   const query = new Function("cloudflare", "accountId", `return (${rendered})();`) as (cloudflare: unknown, accountId: string) => Promise<Result>;
@@ -100,4 +101,11 @@ test("窗口按 3 小时切段", async () => {
     return { events: [] };
   });
   assert.deepEqual(seen, [[TO - 7 * HOUR, TO - 4 * HOUR], [TO - 4 * HOUR, TO - HOUR], [TO - HOUR, TO]]);
+});
+
+test("有一段没查成就整次失败，不把它当成零条", async () => {
+  await assert.rejects(
+    run({ from: TO - 6 * HOUR, to: TO }, (request) => ({ events: [], fail: request.body.timeframe.from === TO - 3 * HOUR })),
+    /没查成/,
+  );
 });

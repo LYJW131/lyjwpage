@@ -7,6 +7,7 @@ import {
   buildThreads,
   CODEX_MAX_ROUNDS,
   gate,
+  REQUIRED_CHECKS,
   reviewerSummary,
   severityOf,
   tierOf,
@@ -38,6 +39,8 @@ test("分档：只改 md 与 .claude 是 docs，界面与逻辑按路径分，�
   assert.deepEqual([ui.name, ui.need, ui.judge, ui.logic], ["ui", "live-ui-verified", false, []]);
   const logic = tierOf(["src/lib/x.ts", "src/app/api/version/route.ts", "workers/core/src/a.ts", "scripts/pr-gate.ts"]);
   assert.deepEqual([logic.name, logic.need, logic.judge, logic.ui], ["logic", "unit-test-verified", true, []]);
+  const skillScripts = tierOf([".claude/skills/x/check.py", ".claude/skills/x/errors-query.js", ".claude/skills/x/SKILL.md"]);
+  assert.deepEqual(skillScripts.logic, [".claude/skills/x/check.py", ".claude/skills/x/errors-query.js"]);
   const both = tierOf(["src/components/card.tsx", "shared/json.ts"]);
   assert.deepEqual([both.name, both.need, both.judge], ["ui+logic", "live-ui-verified", true]);
   assert.match(both.hint, /lyjw 看图点头/);
@@ -167,6 +170,9 @@ test("构建覆盖：head 上有就看结论；head 上没有时往前找，之�
       ["core", "PR 的提交上都没有它的构建检查"],
     ],
   );
+
+  const skipped = await buildCoverage({ gh: fakeGh(routes), files, head: HEAD, headRuns: [build("site", "skipped"), build("core", "neutral")], commits: [HEAD] });
+  assert.deepEqual(skipped.missing.map((m) => m.reason), ["head 上的构建结论是 neutral", "head 上的构建结论是 skipped"]);
 });
 
 const FILES = (names: string[]) => names.map((filename) => ({ filename }));
@@ -232,6 +238,30 @@ test("逻辑档：检查在跑、线程没解决、Codex 没审到 head、没回
   for (const want of [/草稿/, /冲突/, /还有检查在跑：check/, /Devin Review」结论是 failure/, /1 条评审线程没解决（1 条红圈/, /Codex 还没审到 head（已用 1\/3 轮/, /没有验证回执/, /没有判定/]) {
     assert.match(todo, want);
   }
+});
+
+test("head 上还没有 CI 的 check 时不 ready", async () => {
+  const result = await gate({ pr: 7 }, { fetch: fakeFetch(pullRoutes({ [`commits/${HEAD}/check-runs`]: { check_runs: [] } })), patchId: () => null });
+  assert.equal(result.ready, false);
+  assert.match(result.todo.join("\n"), /还没有「check」检查/);
+});
+
+test("REQUIRED_CHECKS 都是 CI 工作流里的 job", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  for (const name of REQUIRED_CHECKS) assert.match(workflow, new RegExp(`^  ${name}:$`, "m"));
+});
+
+test("要判定时 Claude review 与 Devin 都得审过一次，盖没盖住 head 不管", async () => {
+  const routes = pullRoutes({
+    "pulls/7/files": FILES(["workers/collector/src/a.ts"]),
+    "pulls/7/reviews": [{ user: devin, commit_id: OLD }],
+  });
+  const missing = (await gate({ pr: 7, need: null }, { fetch: fakeFetch(routes), patchId: () => null })).todo.join("\n");
+  assert.match(missing, /claude 还没评审这个 PR/);
+  assert.doesNotMatch(missing, /devin 还没评审/);
+  const both = pullRoutes({ ...routes, "issues/7/comments": [{ user: claude, body: "## Code review\n\nNo issues found." }] });
+  const todo = (await gate({ pr: 7, need: null }, { fetch: fakeFetch(both), patchId: () => null })).todo.join("\n");
+  assert.doesNotMatch(todo, /还没评审这个 PR/);
 });
 
 test("--no-judge 与 --need 覆盖分档；线程解决状态读不到时进 todo", async () => {
