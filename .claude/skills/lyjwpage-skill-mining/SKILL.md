@@ -117,7 +117,7 @@ description: lyjwpage 的「提炼 skill」定时任务按它跑：从书签起�
 
 - **磨合期**（`feedback.phase` 为 `active`）：每次运行都在本线程 `reply`，即使什么都没提。内容：读了几个线程、新提议与已合并的 PR、需求偏差（每条：哪件事、偏在哪、改了什么或提议什么，带一个具体例子：线程标题加原话，或 PR 号加问题；只报类名 lyjw 看不懂）、评审建议前置（见 [review-mining.md](review-mining.md)「交付」）、`watching` 里快要成形的、本次根据反馈改了什么；最后问一句 lyjw 对这几条的反应（有用 / 没用 / 写偏了），可以只回编号。记下这条回复的消息 id 到 `feedback.lastReportMessageId`，`reportsSent` 加一。
 - 磨合期结束：`reportsSent` 到 `reportsLimit`，或 lyjw 说结束。结束前最后一次报告写一段「磨合期学到了什么」，把这些教训改进本文件后同 PR 合并，再把 `phase` 改 `ended`。之后只在合并了 PR 或有要 lyjw 决定的事时 `reply`，否则只更新状态行、`no_reply_needed`。
-- lyjw 连续两次报告都没回：照常推进，不追问；报告压短，但每条仍带一个具体例子。超过 15 行时细节写进 `/mnt/project-files/skill-mining/reports/`，回复里每条留一个例子并附上文件。
+- lyjw 连续两次报告都没回：照常推进，不追问；报告压短，但每条仍带一个具体例子。超过 15 行时细节做成一份 Artifact（给 lyjw 看的报告不交 .md，写法照 `HUMAN.md`「7. Claude 怎么向你汇报」），回复里每条留一个例子并附上链接；Artifact 的源文件放 `/mnt/project-files/skill-mining/reports/`。
 
 ## 改进本流程
 
