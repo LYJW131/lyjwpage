@@ -35,6 +35,9 @@ importers:
       motion:
         specifier: ^14.1.0
         version: 14.1.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      parse5:
+        specifier: ^7.3.0
+        version: 7.3.0
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -126,9 +129,6 @@ importers:
       globals:
         specifier: 17.13.0
         version: 17.13.0
-      parse5:
-        specifier: ^7.3.0
-        version: 7.3.0
       satori:
         specifier: 0.35.0
         version: 0.35.0

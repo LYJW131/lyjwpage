@@ -24,6 +24,7 @@ import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { inlineChargerIcon } from "@/lib/charger-icon-inline";
 import { IMAGE_PROXY_PATH, imageWidthBucket } from "@/lib/image-proxy";
 import { playstationImage } from "@/lib/playstation-image";
+import { stripHtmlScripts } from "@/lib/strip-html-scripts";
 import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
 import { NO_STORE } from "@/lib/site-policy";
 import { timezoneAbbreviation } from "@/lib/timezone-display";
@@ -301,8 +302,9 @@ function originalSource(src: string, width: number): [string, number] {
 }
 
 async function inlineImages(html: string, site: SiteServices): Promise<string> {
+  const markup = stripHtmlScripts(html);
   const widths = new Map<string, number>();
-  for (const [tag] of html.matchAll(/<img\b[^>]*>/g)) {
+  for (const [tag] of markup.matchAll(/<img\b[^>]*>/g)) {
     const src = /\ssrc="([^"]+)"/.exec(tag)?.[1];
     if (!src || src.startsWith("data:")) continue;
     widths.set(src, Math.max(widths.get(src) ?? 0, Number(/\swidth="(\d+)"/.exec(tag)?.[1] ?? 0)));
@@ -319,7 +321,7 @@ async function inlineImages(html: string, site: SiteServices): Promise<string> {
       return [src, resized ?? (await site.asset(sized ?? url))] as const;
     }),
   );
-  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/\ssrcSet="[^"]*"/g, "");
+  let out = markup.replace(/\ssrcSet="[^"]*"/g, "");
   for (const [src, data] of inlined) out = out.replaceAll(`"${src}"`, `"${data ?? ""}"`);
   return out;
 }

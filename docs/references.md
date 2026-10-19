@@ -192,6 +192,10 @@
   - 是什么：把 `scroll-behavior: smooth` 挂在 `html:focus-within` 上，只有页面内有焦点时才平滑，页内查找与加载时的锚点跳转保持瞬时。
   - 取了什么：README 卡片链到 `lyjw.me/#vibe-coding`，加载时的锚点跳转若是平滑动画，要靠渲染帧推进，会被首屏数据撑开的布局带偏，不出帧的内嵌浏览器里停在顶部；这个写法让加载即落准，点过按钮后的程序化滚动仍平滑。
   - 状态：采用。落在 [globals.css](../src/app/globals.css) 的 `html:focus-within`。
+- **[parse5](https://github.com/inikulin/parse5)** 与 **[HTML 标准：script data end tag name state](https://html.spec.whatwg.org/multipage/parsing.html#script-data-end-tag-name-state)**
+  - 是什么：按 WHATWG HTML 解析规则建树的解析器。script 的结束标签在标签名之后可以是空白或属性，再到 `>`。
+  - 取了什么：README 卡片出图时按解析树删掉嵌进 SVG 的 SSR 片段里的 script 元素（含 SVG 与 MathML 里的）。
+  - 状态：采用。落在 [strip-html-scripts.ts](../src/lib/strip-html-scripts.ts)，由 [cards/route.tsx](../src/app/cards/route.tsx) 出图时调用。
 
 ## 交互与文案参照
 
