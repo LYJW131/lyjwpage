@@ -34,11 +34,22 @@ export function codingAgentBrand(id: string): CodingAgentBrand {
   return Object.hasOwn(CODING_AGENTS, id) ? CODING_AGENTS[id as keyof typeof CODING_AGENTS] : { label: id, icon: id, row: "compact" };
 }
 
-export const CODING_SOURCE_LABELS: Record<CodingUsageSource, string> = {
+const CODING_SOURCE_LABELS: Record<CodingUsageSource, string> = {
   mac: "Mac",
   agents: "Account",
   "agents-otlp": "Cloud",
 };
+
+// agents-otlp 里 Claude Code 是云端线程，Devin CLI 跑在 Mac 上：来源在哪台机器随 agent 定。
+const OTLP_ON_MAC: ReadonlySet<string> = new Set(["devin"]);
+
+export function codingSourceOnMac(id: string, source: CodingUsageSource): boolean {
+  return source === "mac" || (source === "agents-otlp" && OTLP_ON_MAC.has(id));
+}
+
+export function codingSourceLabel(id: string, source: CodingUsageSource): string {
+  return codingSourceOnMac(id, source) ? CODING_SOURCE_LABELS.mac : (CODING_SOURCE_LABELS[source] ?? source);
+}
 
 export type CodingActivityEntry = CodingNowPayload["agents"][number]["activity"][number];
 
@@ -74,10 +85,10 @@ export function codingAgentRows(
 
 export type CodingActivitySlots = { mac: CodingActivityEntry | null; remote: CodingActivityEntry | null };
 
-export function codingActivitySlots(activity: readonly CodingActivityEntry[], macDeclaredOffline: boolean): CodingActivitySlots {
+export function codingActivitySlots(id: string, activity: readonly CodingActivityEntry[], macDeclaredOffline: boolean): CodingActivitySlots {
   return {
-    mac: macDeclaredOffline ? null : (activity.find((entry) => entry.source === "mac") ?? null),
-    remote: activity.find((entry) => entry.source !== "mac") ?? null,
+    mac: macDeclaredOffline ? null : (activity.find((entry) => codingSourceOnMac(id, entry.source)) ?? null),
+    remote: activity.find((entry) => !codingSourceOnMac(id, entry.source)) ?? null,
   };
 }
 
@@ -90,9 +101,10 @@ export function codingDisplayModel(row: Pick<CodingAgentRow, "activity" | "usage
 export type CodingSourceNote = { source: CodingUsageSource; label: string; state: CodingUsageAgentView["status"][number]["state"]; error: string | null; warning: string | null };
 
 export function codingSourceHealth(usage: CodingUsageAgentView | null): { failing: CodingSourceNote[]; notes: CodingSourceNote[] } {
-  const notes = (usage?.status ?? []).map((status) => ({
+  if (!usage) return { failing: [], notes: [] };
+  const notes = usage.status.map((status) => ({
     source: status.source,
-    label: CODING_SOURCE_LABELS[status.source] ?? status.source,
+    label: codingSourceLabel(usage.id, status.source),
     state: status.state,
     error: status.error,
     warning: status.warning,
