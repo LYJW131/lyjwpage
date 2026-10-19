@@ -36,7 +36,7 @@
 | POST | `/api/chat` | 经 `AI_SERVICE` 转发首页对话，见 [AI Worker](../ai/README.md#首页对话) |
 | POST | `/mcp` | 经 `AI_SERVICE` 转发公开 MCP，见 [AI Worker](../ai/README.md#mcp) |
 | GET | `/api/chat/usage` | 经 `AI_SERVICE` 转发对话配额查询 |
-| GET | `/api/cards/week.svg` | 近 7 天卡片（每日 commit 柱 + 每日 token 曲线）的 SVG，给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding/year`、`coding` 的 totals 与 `github-chart`，缓存头见 `src/week-card.ts#WEEK_CARD_CACHE_CONTROL` |
+| GET | `/api/cards/week.svg` | 近 7 天卡片（每日 commit 柱 + 每日 token 曲线）的 SVG，给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding/year`、`coding` 的 totals 与 `github-chart`，缓存头见 `src/card-svg.ts#CARD_CACHE_CONTROL`；倍数「N.N× avg」两边都按有活动的天平均（`src/week-card.ts#activeDayAverage`） |
 | GET | `/api/cards/voronoi.svg` | 模型 token 占比的 Voronoi 卡片 SVG（每个模型一块领地，面积 = 份额），给 GitHub 主页 README 用 `<img>` 引用；数据取 `coding` 的 totals（含 `activeDays`、`modelCount`）与 `topModels` 前 7 名，布局见下文「README 卡片的 Voronoi 布局」，缓存头与 week.svg 相同 |
 | GET | `/` | 一行存活；不碰 Durable Object，根路径被探针不停打 |
 
