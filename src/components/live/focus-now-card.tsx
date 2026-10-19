@@ -1,8 +1,8 @@
 "use client";
 
-import { Moon, type LucideProps } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { FocusIcon } from "@/components/live/focus-icon";
 import { NowReveal } from "@/components/live/now-reveal";
 import { Card } from "@/components/ui/card";
 import { useLiveEvents } from "@/hooks/use-live-events";
@@ -14,24 +14,9 @@ import type { StatusResponse } from "@shared/types";
 
 const NOW_REFRESH_MS = 60_000;
 
-const PETALS = [0, 60, 120, 180, 240, 300].map((deg) => {
-  const rad = (deg * Math.PI) / 180;
-  return { cx: 12 + 5 * Math.cos(rad), cy: 12 + 5 * Math.sin(rad) };
-});
-
-function MindfulnessIcon({ className, strokeWidth = 1.5 }: LucideProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} className={className} aria-hidden>
-      {PETALS.map(({ cx, cy }) => (
-        <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={4} />
-      ))}
-    </svg>
-  );
-}
-
-const MODES: Record<FocusMode, { name: string; Icon: typeof Moon | typeof MindfulnessIcon; tint: string }> = {
-  sleep: { name: "Sleep", Icon: Moon, tint: "text-signal-violet" },
-  mindfulness: { name: "Mindfulness", Icon: MindfulnessIcon, tint: "text-signal-green" },
+const MODE_NAMES: Record<FocusMode, string> = {
+  sleep: "Sleep",
+  mindfulness: "Mindfulness",
 };
 
 const clock = new Intl.DateTimeFormat("en-GB", { timeZone: site.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -54,10 +39,10 @@ function useNow(): number {
 
 function FocusRow({ mode, since }: { mode: FocusMode; since: number }) {
   const now = useNow();
-  const { name, Icon, tint } = MODES[mode];
+  const name = MODE_NAMES[mode];
   return (
     <div className="flex items-center gap-3 p-4 sm:gap-4 md:hidden">
-      <Icon className={`size-7 shrink-0 ${tint}`} strokeWidth={1.75} aria-hidden />
+      <FocusIcon key={mode} mode={mode} className="w-7 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="truncate text-lg font-semibold leading-tight">Do Not Disturb</div>
         <div className="truncate text-sm text-muted-foreground">
@@ -73,10 +58,10 @@ function FocusRow({ mode, since }: { mode: FocusMode; since: number }) {
 
 function FocusStrip({ mode, since }: { mode: FocusMode; since: number }) {
   const now = useNow();
-  const { name, Icon, tint } = MODES[mode];
+  const name = MODE_NAMES[mode];
   return (
     <div className="hidden min-h-11 items-center gap-2 px-4 py-2 md:flex lg:px-5">
-      <Icon className={`size-4 shrink-0 ${tint}`} strokeWidth={2} aria-hidden />
+      <FocusIcon key={mode} mode={mode} className="w-5 shrink-0" />
       <span className="shrink-0 text-sm font-medium">Do Not Disturb</span>
       <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
         · {name} since {clock.format(since)}
