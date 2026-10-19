@@ -75,7 +75,7 @@ class MenuScope(unittest.TestCase):
 
     def test_plain_checkout_git_dir(self):
         cwd, common = str(self.repo), dv.git_common_dir(self.repo)
-        check = lambda p: dv.menu_verdict(screen('Writing', p, cwd), cwd, common)[0]
+        check = lambda p: dv.menu_verdict(screen('Writing', p, os.path.dirname(f'{cwd}/{p}')), cwd, common)[0]
         self.assertTrue(check('src/a.ts'))
         self.assertTrue(check('.git/refs/heads/x'))
         self.assertFalse(check('.git/hooks/pre-commit'))
@@ -86,6 +86,24 @@ class MenuScope(unittest.TestCase):
     def test_home_and_main_checkout(self):
         self.assertFalse(self.verdict('Editing', '~/.bashrc', os.path.expanduser('~'))[0])
         self.assertFalse(self.verdict('Writing', f'{self.repo}/a.txt', str(self.repo))[0])
+
+    def test_allow_dir_must_be_target_dir(self):
+        self.assertFalse(self.verdict('Writing', 'src/a.ts', self.cwd)[0])
+        no_allow = [l for l in screen('Writing', 'b.txt', self.cwd) if 'allow edits in' not in l]
+        self.assertFalse(dv.menu_verdict(no_allow, self.cwd, self.common)[0])
+
+    def test_wrapped_header(self):
+        lines = screen('Writing', f'{self.cwd}/', f'{self.cwd}/')
+        lines.insert(1, '  ../../etc/evil.txt')
+        ok, why = dv.menu_verdict(lines, self.cwd, self.common)
+        self.assertFalse(ok)
+        self.assertIn('single-line', why)
+
+    def test_wrapped_allow_dir(self):
+        lines = screen('Writing', f'{self.cwd}/sub/../../etc/evil.txt'[:len(self.cwd) + 4], self.cwd)
+        i = next(i for i, l in enumerate(lines) if 'allow edits in' in l)
+        lines.insert(i + 1, '     /sub/../../etc')
+        self.assertFalse(dv.menu_verdict(lines, self.cwd, self.common)[0])
 
     def test_unreadable_menus(self):
         no_header = [l for l in screen('Writing', 'b.txt', self.cwd) if 'Writing' not in l]
