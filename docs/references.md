@@ -158,7 +158,7 @@
 
 - **[Exa](https://exa.ai/docs/reference/search) 的搜索、抓取 API**
   - 是什么：给 agent 用的网页搜索服务，返回按查询截好的摘录，`category` 可限定新闻、论文；`/contents` 抓整页。
-  - 取了什么：首页对话的 `web_search` / `web_fetch` 从 Anthropic 服务端工具换成 Worker 执行的客户端工具，只用 `fast` 档；结果用 Claude API 的 [search_result 块](https://platform.claude.com/docs/en/build-with-claude/search-results) 回给模型，保住原生引用。和 Parallel、Exa `auto` 档、原生搜索的对照实测记在 PR 描述里。
+  - 取了什么：首页对话的 `web_search` / `web_fetch` 从 Anthropic 服务端工具换成 Worker 执行的客户端工具，只用 `lite` 档（Exa 3.0 起与原 `fast` 同一套搜索、更便宜，`fast` 列为 legacy，见 [changelog](https://exa.ai/docs/changelog)）；结果用 Claude API 的 [search_result 块](https://platform.claude.com/docs/en/build-with-claude/search-results) 回给模型，保住原生引用。和 Parallel、Exa `auto` 档、原生搜索的对照实测记在 PR 描述里。
   - 状态：采用。落在 `workers/ai/src/chat/web-search.ts` 与 `workers/ai/src/chat/reply-tools.ts`。
 - **[Bangumi API](https://bangumi.github.io/api/) 与 Steam 商店的 `storesearch` / `appdetails` 接口**
   - 是什么：免 key 的动画条目搜索（评分、排名、标签）与 Steam 商店搜索、详情（价格、发售日、Metacritic）。

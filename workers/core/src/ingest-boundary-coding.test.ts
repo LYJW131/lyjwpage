@@ -18,17 +18,10 @@ import { type CollectedIngest } from "./ingest-effects";
 import { prepareIngest as prepareShared, type CoreCommand } from "@shared/ingest/prepare";
 import { type ImageBucket } from "@shared/ingest/r2-assets";
 import type { PreparedTelemetryEnvelope } from "@shared/ingest/telemetry";
-import { NOW, commit, envelope, fieldsOf, inRequest, testEnv } from "./testing/ingest-harness";
+import { NOW, commit, envelope, fieldsOf, inRequest, testEnv, usageDay } from "./testing/ingest-harness";
 
 function prepareIngest(source: string, body: unknown, at: number, images: ImageBucket = { head: async () => ({}) }): Promise<CoreCommand> {
   return prepareShared(source, body, at, images) as Promise<CoreCommand>;
-}
-
-function usageDay(date: string, totalTokens: number, model = "claude-opus-5") {
-  return {
-    date, inputTokens: totalTokens, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0,
-    totalTokens, apiEquivalentCostUSD: totalTokens / 1_000, costComplete: true, models: [{ model, tokens: totalTokens }],
-  };
 }
 
 test("a broken coding module is dropped at the ingress; desktop, liveness and the other coding modules still commit", async () => {

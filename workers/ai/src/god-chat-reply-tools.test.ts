@@ -60,7 +60,7 @@ test("搜索与读页各自带上自己那家的密钥，缺 DeepSeek 密钥时�
   assert.equal(webSearchProvider({ DEEPSEEK_API_KEY: "d" }), undefined);
 });
 
-test("Exa 搜索走 fast 档、按分类传 category，响应归一成网页列表，没有正文的结果丢掉", async (t) => {
+test("Exa 搜索走 lite 档、按分类传 category，响应归一成网页列表，没有正文的结果丢掉", async (t) => {
   const original = globalThis.fetch;
   const bodies: Record<string, unknown>[] = [];
   globalThis.fetch = async (_input, init) => {
@@ -71,7 +71,7 @@ test("Exa 搜索走 fast 档、按分类传 category，响应归一成网页列�
   const signal = new AbortController().signal;
   assert.deepEqual(await webSearch({ search: { service: "exa", key: "e" }, fetch: { service: "exa", key: "e" } }, "q", "web", signal), [{ url: "https://e.dev", title: "E", published: "2026-09-22", text: "h1\n…\nh2" }]);
   await webSearch({ search: { service: "exa", key: "e" }, fetch: { service: "exa", key: "e" } }, "q", "papers", signal);
-  assert.equal(bodies[0].type, "fast");
+  assert.equal(bodies[0].type, "lite");
   assert.equal(bodies[0].category, undefined);
   assert.equal(bodies[1].category, "research paper");
 });
