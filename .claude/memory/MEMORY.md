@@ -42,7 +42,7 @@
 - 08:41 Anthropic updates digest → read by 09:00 morning report: [[anthropic-updates-routine]].
 - 4x daily collector superfan (Workers Observability, no Sentry): [[collector-superfan-routine]]. lyjw OK'd 2026-10-15: after reproducing an error it may open a fix draft PR.
 - 09:00 SGT morning report in project chat, hourly in-place updates until lyjw writes.
-- 2026-10-15 17:01 SGT manual fire of all routines failed: routine sessions lacked /mnt/project-files, memory dir, hearthbot thread tools and GitHub tools. Fix the routine environment before relying on them again.
+- lyjw paused the project 2026-10-15 17:01 SGT and resumed it 2026-10-19 14:54 SGT; routines did not run in between. On resume each routine fired once on its own and caught up by bookmark (review #409, skill-mining #407, Anthropic digest, collector, mirror), so the routine environment works again. Cloudflare Code Mode connector sign-in had expired on resume (collector could not read Observability).
 - Agent automation practices: [[agent-automation-practices]].
 
 ## Decisions and state
