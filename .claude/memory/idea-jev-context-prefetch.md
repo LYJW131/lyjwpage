@@ -1,12 +1,12 @@
 ---
 name: idea-jev-context-prefetch
-description: Chat routing also picks data to prefetch into the first model call (issue #372 item 2, lyjw approved 2026-10-17); origin was the parked Jev context-prefetch idea
+description: Chat context prefetch: lyjw's parked 2026-10-15 idea (prefetch site intro/README/status into the first model call) was built in #384 with Clef instead of Jev
 metadata:
   type: project
 ---
 
-lyjw 2026-10-15 22:09 SGT, said "先记录一下，然后先不做": Jev already classifies a chat message before it is sent. Extend it so that when Jev judges the question needs known context (site intro, README, the search/tool list, or "what's the current state of X on the site"), it attaches a short summary of that context to the first API call, chosen per message, so the model does not have to come back and search/call a tool for it.
+lyjw 2026-10-15 22:09 SGT parked the idea: before the first chat model call, pick and prefetch the context a question needs (site status, project docs) so the model does not have to call a tool for it.
 
-**Status:** lyjw asked to build it as issue #372 item 2 on 2026-10-17. Built with Clef (the router), not Jev: the routing call asks two extra choice questions (status view group, project doc) and prefetches only above a probability bar; web search is not prefetched because Clef cannot write a query. It injects the raw tool results, not a summary. Code facts live in `workers/ai/README.md` (首页对话).
+**Status:** built in #384 (merged 2026-10-17 SGT). Clef answers two extra questions in the same routing call (which status group, which project doc); a pick at or above `PREFETCH_MIN_PROBABILITY` is prefetched as a tool round. Home-page presets carry fixed `prefetch` lists. Jev is not used for it. Details: workers/ai/README.md (Clef 选档 paragraph), `src/chat/router.ts`.
 
-**How to apply:** if prefetch hit rate or wrong picks come up, read the `[god-chat] prefetch` logs and rerun `pnpm --dir workers/ai route:probe` before changing criteria.
+**How to apply:** for chat latency or prefetch tuning, start from `pnpm --dir workers/ai route:probe`; don't re-propose the idea as new.
