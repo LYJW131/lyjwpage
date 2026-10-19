@@ -16,6 +16,7 @@ import { ServerCard } from "@/components/live/server-card";
 import { SiteStatusCard } from "@/components/live/site-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WorkoutsStrip } from "@/components/live/workouts-strip";
+import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { RenderClock } from "@/hooks/use-mounted-at";
 import { trophiesTilePath } from "@/lib/paths";
@@ -216,7 +217,13 @@ const CARDS: Record<string, ReadmeCard> = {
       const initialJump = recent
         ? { npCommunicationId: recent.npCommunicationId, trophyKey: trophyRowKey(recent.npCommunicationId, recent.groupId, recent.id) }
         : null;
-      const block = <PlaystationBlock trophies={trophies} playing={playing} playingNow={playingNow} initialJump={initialJump} />;
+      // PS Plus 标志用 <use> 引首页 root 里的符号，卡片自带一份。
+      const block = (
+        <>
+          <PsPlusSprite />
+          <PlaystationBlock trophies={trophies} playing={playing} playingNow={playingNow} initialJump={initialJump} />
+        </>
+      );
       const draft = renderToString(<RenderClock value={now}>{block}</RenderClock>);
       const ids = /data-warm-title-ids="([^"]+)"(?:(?!data-warm-title-ids)[\s\S])*?aria-expanded="true"/.exec(draft)?.[1];
       const catalog = ids ? await site.trophies(ids.split(",")) : null;
