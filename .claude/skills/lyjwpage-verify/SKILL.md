@@ -64,7 +64,7 @@ Agent(
 提交前的两项自查，跟本地门禁一起跑（派验证员的写进简报，主线程自己跑的照样跑），只报命中、不判（Codex、Devin 最常抓的就是这两类，规则在根 `AGENTS.md`「文档与注释」）：
 
 - 同步自查：主线程列出这次改动里的规则关键词、符号、常量名，改说法的连旧说法一起列。在仓库根跑 `rg -n --hidden --glob '*.md' --glob '!.git' -e '<词 1>' -e '<词 2>' .`（整库的 md，`apps/`、子目录 README 都在内），列出仍写着旧说法、或该跟着改却没提的位置。动了仓库外配置（控制台、定时任务提示词、Access 策略）的，另查 `docs/ops-facts.md` 有没有对应条目和核对戳。
-- 新增注释：`git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.ts' '*.tsx' '*.mjs' | rg '^\+.*(//|/\*|^\+\s*\*)'`（比到工作区，已提交和没提交的都在；没跟踪的新文件先 `git add -N <文件>`），逐条列出，标出含数字、数量词或调用方名字的。
+- 新增注释：`git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.ts' '*.tsx' '*.mjs' '*.js' | rg '^\+.*(//|/\*)|^\+\s*\*'`，Python 与 shell 另跑 `git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.py' '*.sh' | rg -e '^\+.*#' -e '^\+.*"""' -e "^\+.*'''"`（行尾的 `#` 和文档字符串都算，字符串里的 `#` 会误报，由主线程判；skill 目录里的脚本也在内）（比到工作区，已提交和没提交的都在；没跟踪的新文件先 `git add -N <文件>`），逐条列出，标出含数字、数量词或调用方名字的。
 
 主线程逐条判，过期的同一提交改掉。
 
@@ -97,6 +97,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - 什么时候必须跑 `reload`：改到首页首屏、字体或 `@font-face`、缓存头、SSR 或水合、任何按时间算出来的文字（时钟、相对时间、进度）。跑在**生产构建**上（`pnpm build` 后 `DEV_SITE_PORT=<端口> pnpm start`）或 Workers 预览 / 生产地址；`pnpm dev` 的字体、模块加载和缓存头都和线上不同，开发服务器上没跳不算数。要比修复前后，就把修复前的构建也起在另一个端口一起跑。
 - `reload` 的每一条 `textJumps` / `frameJumps` 都要在报告里归类，不能只报 ok 与否：时间类文字（时钟、几分钟前、进度）在水合时跳到此刻是缺陷；轮询或推送带来的新数值（计数、费用）是数据刷新；正在播放卡的进度和歌词在水合时从快照跳到此刻是 lyjw 接受过的行为（项目记忆 now-playing-first-screen-decisions）。`liveText` / `liveRegions` 是反复变化的地方，只列不判。`fontsAfterPaint` 只在 Chromium 上可靠：它按 `--latency` 给走网络的请求加往返延迟，每次都要重新验证的字体会晚到，WebKit 没有这个开关。
 - 云端没有真 Safari，用 Playwright 的 WebKit 代替：`shot --engine webkit` 截图，`reload --engine webkit` 查文字与字体、不录屏。WebKit 没装时这几个子命令的 `next` 写安装命令（`playwright install --with-deps webkit`，云端约 30 秒）。只有真机才有的行为（地址栏、触控、系统字体），写进「没验到」，请 lyjw 实机看。
+- README 实时卡片（`/cards/*.svg`）：和首页原卡并排对照的要求见根 `AGENTS.md`「界面设计」。出图里不跑脚本、不取外部资源（`docs/screenshots.md`「实时卡片」），所以对照前先列出这张卡里靠浏览器脚本、页面级样式或图标定义、展开交互才有的内容，对照时逐项看出图里有没有。出图在生产构建上看（`pnpm dev` 里 NumberFlow 读数是空的）；README 里的最终显示另在 375 宽用 WebKit 看一次（WebKit 缩小 SVG 时会裁切）。
 - 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` / `dev:scene` 注入由主线程起、主线程管（`pnpm dev:scene --reset` 一次清完），保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
 
 ### 3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）
