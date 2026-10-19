@@ -116,7 +116,7 @@
 - 弹层底部的操作按钮（播放器、服务状态详情、离站确认）一律用 `src/components/ui/modal.tsx` 的 `MODAL_ACTION_CLASS`，各弹层按钮同高同字。
 - 离站确认：页面上一次点击就离开本站的 http(s) 链接由 `src/components/external-link-guard.tsx` 先弹确认框，说明文字来自 `src/lib/external-link.ts#describeExternalLink`；弹层里的链接不再确认。
 - 状态点：`src/components/ui/status-dot.tsx` 的 `StatusDot`，不手画圆点。
-- 图片：静态图标走 `AppImage` 并设 `unoptimized`；图片交付与压缩规则见 `AGENTS.md`「图片交付」。
+- 图片：静态图标走 `AppImage` 并设 `unoptimized`；图片交付与压缩规则见 `.claude/rules/images.md`。
 - 图标：
   - 品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)。项目已装 `@lobehub/icons`，按深路径导入：单色 `@lobehub/icons/es/<名字>/components/Mono`（继承文字色）、彩色 `.../Color`、带字 `.../Text`；示例见 `src/components/live/vibecoding/marks.tsx`。
   - 模型名旁的厂商图标不逐个手配：`src/lib/model-icon.ts` 按 LobeHub 的模型表自动选，上游没收录的模型家族在同文件 `SITE_MODEL_ICONS` 补一行；认不出的显示同尺寸的字母方块，名称列照样对齐。
@@ -175,7 +175,7 @@
 
 ## 交付与合并
 
-- UI 改动交付桌面（1280）与手机（375）截图，至少一张深色；什么时候附图见 `AGENTS.md`「项目入口与验证」与 `HUMAN.md`。改到同一行的卡片或替换部件时，报前后各卡高度与相邻同类文字的字号字重（验证怎么做见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
+- UI 改动交付桌面（1280）与手机（375）截图，至少一张深色；什么时候附图见 `.claude/skills/lyjwpage-verify/SKILL.md`「2. UI 浏览器端到端」与 `HUMAN.md`。改到同一行的卡片或替换部件时，报前后各卡高度与相邻同类文字的字号字重（验证怎么做见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
 - CI 跑 `pnpm design:scale`（`scripts/design-scale-check.ts`）：按类名数 `src/` 里阶梯外的间距、任意值字号与位移、任意值圆角、元素间 `mt` / `mb` / `my` / `m` 外边距、未走 token 的裸 hex / oklch / rgb 色值，任何一个类名的出现次数比基线 `scripts/design-scale-baseline.json` 多就失败（把 `text-[10px]` 换成 `text-[9px]` 也算多）；变少只提示，跑 `pnpm design:scale --update` 收紧基线。图形内的 10px 刻度、图表 / SVG / 品牌色、带注释的光学微调这类合规例外也用 `--update` 记进基线，并在 PR 里说明；基线比 main 多出的条目会被 `pnpm baselines:check` 拦下，要 lyjw 给 PR 打 `baseline-exception` 标签才放行。
 - 自查用 `.claude/skills/lyjwpage-ui-design/SKILL.md`：它有对照本文件的检查清单和一个量间距、字号、点击区的浏览器脚本。
 - 有 UI / UX 变化的改动进 main 前，先给 lyjw 看效果、等 lyjw 点头再合；lyjw 明确要求的小改动除外。

@@ -87,14 +87,14 @@
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
 - 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。
 - 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式是 merge commit；分支落后时把 main 合进来，不 rebase。
-- 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。提交以你的身份、用你的钥签名，Claude 只出现在 Co-Authored-By 里；会话自带的钩子把这种提交报成 Unverified、让改成 Claude 的邮箱，是误报，不照做（见 AGENTS.md「[禁区](./AGENTS.md#禁区)」）。
+- 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 lyjwpage-verify「[3. PR 合并门槛](./.claude/skills/lyjwpage-verify/SKILL.md#3-pr-合并门槛主线程跑-pr-gatets自己判断)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。提交以你的身份、用你的钥签名，Claude 只出现在 Co-Authored-By 里；会话自带的钩子把这种提交报成 Unverified、让改成 Claude 的邮箱，是误报，不照做（见 AGENTS.md「[禁区](./AGENTS.md#禁区)」）。
 - 做完上线的线程不标成已解决：它留在你的「等你」列表里等你验收，你回一句或说「关」才收起。
 
 ## 6. 部署与「已部署」
 
 - 站点和各 Worker 都走 Workers Builds：合进 main 就自动构建部署，Claude 不手跑 `wrangler deploy`，唯一例外和顺序见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。
 - 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。
-- 上报器哪些合进 main 后自动换镜像、哪些手动，见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」；手动的那几个 Claude 会派你电脑上的会话去做。
+- 上报器哪些合进 main 后自动换镜像、哪些手动，见 [`.claude/rules/reporters.md`](./.claude/rules/reporters.md)；手动的那几个 Claude 会派你电脑上的会话去做。
 - 每次汇报都分清四层：本地改了 / 测试过了 / 已部署 / 在生产上验证过了。合并后每次都核对 `/api/version`；生产行为只在预览测不准的改动上复测（缓存与 Cache-Tag 清除、首屏 SSR、字体、依赖生产 Secret 或绑定的功能），其余以预览验证为准。
 - 跑检查、开浏览器截图、等部署和核对生产这些验证活，Claude 交给更便宜的 Haiku 验证员做，自己只定验什么、看结果。验证员最后签一张分级回执（按提交 SHA 记验到了哪一档：真页面、单测、只过类型），Claude 把它原样贴成 PR 评论，合并前用 `scripts/verify-receipt.ts` 核对它还盖得住当前提交；Claude 不重跑回执里验过的，只抽查一条证据（看一张截图或核一个数）再汇报（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
 - 所有等待（CI、机器评审、部署、后台循环）都有上限，到点记失败、附上最后看到的状态，接着做不依赖它的事，不会无声卡住（见 `lyjwpage-verify`「等待要有上限」）。
@@ -111,7 +111,7 @@
 - 说错了改口用删除线加 [Edit: …]，不悄悄覆盖。
 - 站点的视觉与交互规范在 [DESIGN.md](./DESIGN.md)：间距、字号、颜色、卡片结构都按它来；觉得哪里不舒服，指出来，Claude 改规范或改卡片。
 - 细微的 UI 改动（间距、对齐、大小、颜色）给前后叠在一起的对比图，或带量尺参考线和 px 标注的并排图；整块重做的不用。
-- UI 改动第一次交付附桌面和 375px 两张图，375px 另附一张 WebKit（iPhone 的引擎）截的；云端线程里你看不到开发服务器，每一轮都附图；你在看开发服务器时，改完自测但不再截图（见 AGENTS.md「[项目入口与验证](./AGENTS.md#项目入口与验证)」）。
+- UI 改动第一次交付附桌面和 375px 两张图，375px 另附一张 WebKit（iPhone 的引擎）截的；云端线程里你看不到开发服务器，每一轮都附图；你在看开发服务器时，改完自测但不再截图（见 lyjwpage-verify「[2. UI 浏览器端到端](./.claude/skills/lyjwpage-verify/SKILL.md#2-ui-浏览器端到端)」）。
 - 每条结论都带证据：链接、文件与符号、命令输出，或者明说是推断。
 - 要你点头的汇报附一行「这些检查测不到什么」；Claude 说不出来，就先补验再找你。
 - 讲你不熟的新概念时，Claude 会让你多想一步：接到项目里你见过的东西上讲，和相邻概念对比，至多在关键点前问一个问题（答案就在下面），最后请你用一句话复述，它只纠正差的那一处。答案不扣着，活也不停下来等你回答。

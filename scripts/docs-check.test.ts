@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  NESTED_AGENTS_MAX_LINES,
-  ROOT_AGENTS_MAX_LINES,
+  NESTED_AGENTS_MAX_BYTES,
+  ROOT_AGENTS_MAX_BYTES,
   checkMarkdown,
   checkStructure,
   collectAnchors,
@@ -194,15 +194,15 @@ test("record 不查时间线，但引用照查；围栏与行内代码里的日�
 });
 
 test("结构：体积上限与 CLAUDE.md 配对", () => {
-  const lines = (n: number) => `${Array.from({ length: n }, (_, i) => `行 ${i}`).join("\n")}\n`;
+  const bytes = (n: number) => "a".repeat(n);
   const ctx = ctxOf({
-    "AGENTS.md": lines(ROOT_AGENTS_MAX_LINES + 1),
+    "AGENTS.md": `${"字".repeat(Math.ceil(ROOT_AGENTS_MAX_BYTES / 3))}x`,
     "CLAUDE.md": "@AGENTS.md\n",
-    "workers/a/AGENTS.md": lines(NESTED_AGENTS_MAX_LINES),
+    "workers/a/AGENTS.md": bytes(NESTED_AGENTS_MAX_BYTES),
     "workers/a/CLAUDE.md": "@AGENTS.md",
-    "workers/b/AGENTS.md": lines(NESTED_AGENTS_MAX_LINES + 1),
+    "workers/b/AGENTS.md": bytes(NESTED_AGENTS_MAX_BYTES + 1),
     "workers/b/CLAUDE.md": "别的内容\n",
-    "workers/c/AGENTS.md": lines(3),
+    "workers/c/AGENTS.md": bytes(3),
   });
   const issues = checkStructure(ctx, [...ctx.files].filter((file) => file.endsWith(".md")).sort());
   assert.deepEqual(issues.map((issue) => `${issue.file}:${issue.rule}`), [
