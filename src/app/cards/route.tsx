@@ -26,6 +26,7 @@ import { IMAGE_PROXY_PATH, imageWidthBucket } from "@/lib/image-proxy";
 import { playstationImage } from "@/lib/playstation-image";
 import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
 import { NO_STORE } from "@/lib/site-policy";
+import { stripScripts } from "@/lib/strip-scripts";
 import { timezoneAbbreviation } from "@/lib/timezone-display";
 import { siteContext, type SiteServices } from "@/server/site-context";
 import { stampNow } from "@shared/fixture-time";
@@ -319,7 +320,7 @@ async function inlineImages(html: string, site: SiteServices): Promise<string> {
       return [src, resized ?? (await site.asset(sized ?? url))] as const;
     }),
   );
-  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/\ssrcSet="[^"]*"/g, "");
+  let out = stripScripts(html).replace(/\ssrcSet="[^"]*"/g, "");
   for (const [src, data] of inlined) out = out.replaceAll(`"${src}"`, `"${data ?? ""}"`);
   return out;
 }
