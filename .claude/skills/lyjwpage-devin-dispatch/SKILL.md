@@ -56,7 +56,7 @@ dv list
 
 ## 派活流程
 
-1. **建工作区**（每任务一个，放在会话 scratchpad 下）：`git worktree add <scratchpad>/wt/<task> -b devin/<task> <base-sha>`。沙箱里不能联网：依赖要在派活前由 Claude 在 worktree 里 `pnpm install` 好（沙箱外有网），任务书写明不许装新依赖。沙箱会在 worktree 里挂出 .bashrc、.gitconfig、.mcp.json、.idea 这类只在沙箱内可见的占位文件：任务书写明只 `git add <路径>`，不许 `git add -A` / `git add .`；`pnpm rules:check` 在沙箱里读到它们会 EACCES，验收时由 Claude 在沙箱外重跑；`wrangler types` 在沙箱里写不了 `~/.config`，要把 `XDG_CONFIG_HOME` / `XDG_CACHE_HOME` 指进 worktree。
+1. **建工作区**（每任务一个，放在会话 scratchpad 下）：`git worktree add <scratchpad>/wt/<task> -b devin/<task> <base-sha>`。沙箱里不能联网：依赖要在派活前由 Claude 在 worktree 里 `pnpm install` 好（沙箱外有网），任务书写明不许装新依赖。再在 worktree 里跑一次 `pnpm typecheck`：它会生成 wrangler 与路由类型，Devin 在沙箱里跑 `tsc` 才看得到真实的类型错误，否则它会把真错误当成「缺生成类型的既有问题」。沙箱会在 worktree 里挂出 .bashrc、.gitconfig、.mcp.json、.idea 这类只在沙箱内可见的占位文件：任务书写明只 `git add <路径>`，不许 `git add -A` / `git add .`；`pnpm rules:check` 在沙箱里读到它们会 EACCES，验收时由 Claude 在沙箱外重跑；`wrangler types` 在沙箱里写不了 `~/.config`，要把 `XDG_CONFIG_HOME` / `XDG_CACHE_HOME` 指进 worktree。
 2. **写任务书**：结构见 `references/brief-template.md`。共享规则一份，任务书一份；每条规则写成「不许 X，改做 Y」。
 3. **启动**：`dv start <task> --cwd <worktree> --brief <brief.md> --nice 10`。
 4. **挂唤醒器**：每个任务一个 `dv wait <task> --timeout 3600`，交给 Bash `run_in_background`；返回后看码处理，再挂下一个。不用前台 sleep 轮询，不把命令再套进 `( … ) &`（外层立刻结束，通知不来）。
@@ -69,7 +69,7 @@ dv list
 - **自己重跑**改动波及的门禁（根 `AGENTS.md`「项目入口与验证」、`.claude/skills/lyjwpage-verify/SKILL.md`）。Devin 报告里的数字只当线索。
 - 查越界：`git stash list`、主检出的 `git status`、`df -h`、它留下的进程（按 PID）、未清的大文件。
 - **重新签名进 PR**：Devin 的提交不签名。在 PR 分支上 `git cherry-pick <base>..devin/<task>`，新提交由会话环境以 lyjw 身份签名；不改提交身份、不关签名（根 `AGENTS.md`「禁区」）。尾注统一成 Claude 的 `Co-Authored-By` 加 `Co-Authored-By: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>`，去掉 Devin 自带的「Generated with」。之后照常开 PR、走合并门槛。
-- 提交和 PR 里不许出现 key：推之前 `git diff <base>.. | grep -E 'eyJ|devin-session-token$'` 必须为空。
+- 提交和 PR 里不许出现 key：推之前 `git diff <base>.. | grep -E '^\+' | grep -E 'eyJ[A-Za-z0-9_-]{20,}|devin-session-token$'` 必须为空（只看新增行；JWT 至少 20 字符，本行说明不会自己命中）。
 - 收尾：先 `dv stop` 并确认 `dv list` 里它已退出，再看 worktree 的 `git status`：有没提交的改动就先问清要不要（要的让它续一轮提交，或自己提交），干净了才 `git worktree remove <worktree>`，不加 `--force`；只删该任务目录下的大文件；确定不再续跑的会话 `devin rm --force <id>`（id 在 meta 里；非交互环境不加 `--force` 会报错）。
 
 ## 出事怎么办
