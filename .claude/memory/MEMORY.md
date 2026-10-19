@@ -29,7 +29,7 @@
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
 
 ## Tools and environment
-- **No Devin CLI subagents** (lyjw 2026-10-20 00:06 SGT): threads do the implementation themselves; Devin Review on PRs stays in the bot-review gate.
+- **Devin CLI can take work** (lyjw 2026-10-20 03:58 SGT, replacing the 00:06 no-Devin rule): cloud threads may dispatch implementation to Devin per skill `lyjwpage-devin-dispatch`; Claude keeps design, acceptance and re-signing; Devin Review on PRs stays in the bot-review gate.
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
 - Cloud egress proxy injects keys for TypeSafe System One (Jev), Exa and Parallel. Jev also on Workers AI as `typesafe/jev` (AI Gateway `default`, BYOK; follows `jev-latest`, log the version per answer).
