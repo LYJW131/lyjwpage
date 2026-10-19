@@ -467,19 +467,42 @@ test("一侧更新不动另一侧的快照引用", (t) => {
   assert.equal(after.charger, before.charger);
 });
 
-test(
-  "源被看门狗或失败关掉后，回到前台应能重连",
-  { todo: "start() 被 started 短路挡住：onClosed 不复位 started，focus/visibilitychange/storage 的重连路径全是死代码，卡片停在空态直到重新挂载；修实现后启用" },
-  (t) => {
-    const env = installEnv(t);
-    env.subscribe();
-    const charger = env.sources[0]!;
-    charger.onopen?.();
-    charger.send(chargerFrame(40));
-    env.advance(STALE_MS);
-    env.fireTimers();
-    assert.equal(getLocalCharging().charger, null);
-    env.dispatchWindow("focus");
-    assert.ok(env.sources.length > 2, "回到前台应重新建立本机流");
-  },
-);
+test("源被看门狗收掉后，回到前台重新连上", (t) => {
+  const env = installEnv(t);
+  env.subscribe();
+  const charger = env.sources[0]!;
+  charger.onopen?.();
+  charger.send(chargerFrame(40));
+  env.advance(STALE_MS);
+  env.fireTimers();
+  assert.equal(getLocalCharging().charger, null);
+
+  env.dispatchWindow("focus");
+  assert.ok(env.sources.length > 2, "回到前台应重新建立本机流");
+  const fresh = env.sources.at(-1)!;
+  fresh.onopen?.();
+  fresh.send(chargerFrame(55));
+  assert.equal(getLocalCharging().charger?.totalPower, 55);
+  assert.equal(getLocalCharging().charger?.history.at(-1)?.w, 55);
+});
+
+test("只死一条流时回到前台只重连那条，活着的流不换", (t) => {
+  const env = installEnv(t);
+  env.subscribe();
+  const [charger, powerBank] = env.sources as [FakeEventSource, FakeEventSource];
+  charger.onopen?.();
+  charger.send(chargerFrame(40));
+  env.advance(5_000);
+  powerBank.onopen?.();
+  powerBank.send({ connected: true, device: { connected: true, battery: { percent: 50 } } });
+  env.advance(STALE_MS - 5_000);
+  env.fireTimers();
+  assert.equal(charger.closed, true);
+  assert.equal(powerBank.closed, false);
+
+  env.dispatchWindow("focus");
+  assert.equal(env.sources.length, 3);
+  assert.equal(env.sources[2]!.url, `${ORIGIN}/sse/charger`);
+  assert.equal(env.sources[1], powerBank);
+  assert.equal(getLocalCharging().powerBank?.battery, 50);
+});
