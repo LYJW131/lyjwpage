@@ -43,10 +43,10 @@ const ROUTE_INSTRUCTIONS =
 
 export const PREFETCH_STATUS = {
   now: { views: ["desktop", "codingNow", "nowListening", "playingNow"], criterion: "What LYJW is doing or busy with right now in general, or whether LYJW is online or at the computer." },
-  listening: { query: ["listening"], views: ["nowListening", "listening"], criterion: "What music LYJW is listening to now or lately." },
-  playing: { query: ["playing", "trophies"], views: ["playingNow", "playing", "questNow"], criterion: "What games LYJW is playing now or lately, on PlayStation, Steam or Quest." },
+  listening: { query: ["listening"], views: ["nowListening", "listening"], criterion: "What music LYJW listens to now or lately, or whether LYJW has listened to a specific song, artist or album." },
+  playing: { query: ["playing", "trophies"], views: ["playingNow", "playing", "questNow"], criterion: "What games LYJW plays now or lately on PlayStation, Steam or Quest, or whether LYJW has played a specific game." },
   trophies: { query: ["trophies", "playing"], views: ["trophies", "playing"], criterion: "LYJW's PlayStation trophies or game achievements." },
-  watching: { query: ["watching"], views: ["nowWatching", "watching"], criterion: "What anime, shows or movies LYJW is watching now or lately." },
+  watching: { query: ["watching"], views: ["nowWatching", "watching"], criterion: "What anime, shows or movies LYJW watches now or lately, or whether LYJW has watched a specific one." },
   activity: { views: ["activity", "workouts"], criterion: "LYJW's exercise, workouts, steps or activity rings." },
   coding: { views: ["coding", "codingNow", "codingYear"], criterion: "How much or how LYJW codes with AI agents: token usage, coding activity, which agents." },
   limits: { views: ["limits", "agentStatus"], criterion: "LYJW's coding agent plans, rate limits or remaining quota." },

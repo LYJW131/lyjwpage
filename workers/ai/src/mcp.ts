@@ -29,7 +29,7 @@ const UNSUPPORTED_VERSION = -32022;
 
 const INSTRUCTIONS = [
   `Live, public data from LYJW's personal homepage (${site.url}): what LYJW is listening to, watching, playing and coding with right now and recently, their devices and server, and the site's own health.`,
-  "Use get_site_status to look things up instead of guessing; timestamps are epoch milliseconds and every result carries the current time.",
+  "Use get_site_status to look things up instead of guessing; its timestamps are local times and every result carries the current time.",
   `Image paths that start with /img/ are relative to ${site.url}.`,
   `Use read_project_doc for how the site works; its source is open at ${site.repo}.`,
   "Requests are rate-limited per IP, so read only the views you need.",
