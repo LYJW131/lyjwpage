@@ -3,7 +3,6 @@ import test from "node:test";
 
 import { STATUS_VIEWS } from "@shared/status-views";
 
-
 import { composeDigest, digestInputHash, HEADLINE_POOL, taglineCandidates, TAGLINE_INSTRUCTIONS } from "./digest/compose";
 import { digestMessage } from "./digest/facts";
 import { DIGEST_SITUATIONS } from "./digest/situation";

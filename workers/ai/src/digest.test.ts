@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-
-
 import { digestInputHash } from "./digest/compose";
 import { digestFacts, digestHighlightOptions, digestMessage, type DigestViews } from "./digest/facts";
 import { baseViews, FROM, HOUR, NOW } from "./digest/testing/views-fixture";

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-
 import type { DigestHighlight, DigestTopic } from "@shared/digest";
 
 import { HEADLINE_POOL, headlinePool, isTagline, keepsHeadline, PRIMARY_CANDIDATES, taglineCandidates, taglineCriteria } from "./digest/compose";
