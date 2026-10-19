@@ -13,12 +13,12 @@ import { MODEL_ICON_MAPPINGS, MODEL_ICONS_VERSION } from "virtual:model-icons";
 import { ClaudeSpinner } from "@/components/live/claude-spinner";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
 import { MacBookProIcon } from "@/components/ui/device-icons";
-import { CODING_SOURCE_LABELS, type CodingActivityEntry, type CodingAgentRow } from "@/lib/coding-agents";
+import { codingSourceLabel, codingSourceOnMac, type CodingActivityEntry, type CodingAgentRow } from "@/lib/coding-agents";
 import { modelIconResolver, modelIconUrl, type BundledModelIcon } from "@/lib/model-icon";
 import { cn } from "@/lib/utils";
 
-export function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) {
-  const labels = sources.map((source) => CODING_SOURCE_LABELS[source] ?? source);
+export function ActiveBadge({ id, sources }: { id: string; sources: CodingActivityEntry["source"][] }) {
+  const labels = sources.map((source) => codingSourceLabel(id, source));
   return (
     <span
       className="flex shrink-0 items-center gap-1 text-live-ink"
@@ -26,7 +26,7 @@ export function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"
     >
       <span className="label-mono">Active</span>
       {sources.map((source, index) =>
-        source === "mac" ? (
+        codingSourceOnMac(id, source) ? (
           <MacBookProIcon key={source} className="size-3.5" aria-label={labels[index]} />
         ) : (
           <Cloud key={source} className="size-3.5" aria-label={labels[index]} />
