@@ -123,9 +123,11 @@ function NowWatchingHero({
           <span className={cn("label-mono shrink-0", paused ? "text-muted-foreground" : "text-live-ink")}>
             {paused ? "Paused" : "Watching"}
           </span>
-          <span className="label-mono min-w-0 truncate text-muted-foreground" title={device ?? undefined}>
-            · Emby{device && <span className="normal-case"> · {device}</span>}
-          </span>
+          {device && (
+            <span className="label-mono min-w-0 truncate normal-case text-muted-foreground" title={device}>
+              · {device}
+            </span>
+          )}
         </div>
         <div className="truncate text-lg font-semibold leading-tight" title={item?.title}>
           {item?.title ?? <span className="font-normal text-muted-foreground">Loading details…</span>}
