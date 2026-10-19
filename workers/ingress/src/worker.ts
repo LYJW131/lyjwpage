@@ -169,9 +169,9 @@ function receiptData(command: PreparedIngest, data: unknown): unknown {
     : { ...base, rejected: command.rejected };
 }
 
-// 部分接受时仍须归档并公开已收下的训练，避免实时事实与展示列表分歧。
+// 部分接受时仍须归档并公开已收下的训练与圆环，避免实时事实与展示列表分歧。
 export function partiallyAccepted(command: PreparedIngest): boolean {
-  return command.source === "iphone" && command.failure?.stage === "beforeActivity";
+  return command.source === "iphone" && (command.failure?.stage === "beforeActivity" || command.failure?.stage === "beforeFocus");
 }
 
 async function readBoundedBody(stream: ReadableStream<Uint8Array> | null): Promise<string> {

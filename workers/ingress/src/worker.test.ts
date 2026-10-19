@@ -293,6 +293,14 @@ test("split: an iPhone report with accepted workouts and rejected rings writes t
   assert.equal(await readLag(w.lag, LAG_KEYS.activity), null);
   assert.equal(w.calls.archived.length, 1, "the accepted workouts are archived too");
 
+  const focus = world({ reply: (command) => {
+    assert.equal(command.source === "iphone" && command.failure?.stage, "beforeFocus");
+    return { ready: true, ok: false, error: "专注模式上报的 mode 必须是字符串" };
+  } });
+  assert.equal((await focus.send("/api/ingest/iphone", post({ version: 1, modules: { workouts: { items: [workout()] }, focus: { mode: 3 } } }))).status, 400);
+  assert.equal((await readLag<{ items: { id: string }[] }>(focus.lag, LAG_KEYS.workouts))?.data.items[0]?.id, workout().id, "a bad focus module keeps the accepted workouts");
+  assert.equal(focus.calls.archived.length, 1);
+
   const early = world({ reply: () => ({ ready: true, ok: false, error: "Invalid workout identity or activityType" }) });
   assert.equal((await early.send("/api/ingest/iphone", post({ version: 1, modules: { workouts: { items: [workout({ id: "bad" })] } } }))).status, 400);
   assert.equal(early.lag.writes, 0);
