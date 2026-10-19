@@ -4,7 +4,7 @@ import test from "node:test";
 import { GOD_CHAT_CARD_VIEWS, GOD_CHAT_CARDS, parseGodChatRequest } from "@shared/god-chat";
 import { toModelMessages } from "./chat/history.ts";
 import { claimDoc, parseProjectDocInput, readProjectDoc, sliceDoc } from "./tools/project-docs.ts";
-import { parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./chat/show-card.ts";
+import { findGame, parseShowCardInput, runShowCard, SHOW_CARD_TOOL } from "./chat/show-card.ts";
 import { newLedger, type ToolIO } from "./tools/registry.ts";
 import { claimViews, isStatusViewKey, parseSiteStatusInput } from "./tools/site-status.ts";
 import { animeSearch, gameSearch } from "./chat/domain-search.ts";
@@ -188,8 +188,10 @@ test("回复读过的项目文档随 trace 带回，只认白名单键", () => {
 test("卡片工具只认登记过的卡片名，每张卡片背后都是登记过的状态视图", () => {
   assert.deepEqual((SHOW_CARD_TOOL.input_schema.properties as { card: { enum: string[] } }).card.enum, GOD_CHAT_CARDS);
   assert.ok(Object.values(GOD_CHAT_CARD_VIEWS).flat().every(isStatusViewKey));
-  assert.ok(Object.values(GOD_CHAT_CARD_VIEWS).every((views) => views.length === 1));
-  assert.equal(parseShowCardInput({ card: "nowListening" }), "nowListening");
+  assert.ok(Object.entries(GOD_CHAT_CARD_VIEWS).every(([card, views]) => card === "game" || views.length === 1));
+  assert.deepEqual(parseShowCardInput({ card: "nowListening", game: "" }), { card: "nowListening" });
+  assert.deepEqual(parseShowCardInput({ card: "game", game: " 月姬 " }), { card: "game", game: "月姬" });
+  assert.equal(parseShowCardInput({ card: "game", game: "" }), null);
   assert.equal(parseShowCardInput({ card: "music" }), null);
   assert.equal(parseShowCardInput({ card: "<img src=x>" }), null);
   assert.equal(parseShowCardInput({}), null);
@@ -229,4 +231,19 @@ test("画过卡片的回复随 trace 带回，只认登记过的卡片名；卡�
   const note = (toModelMessages(parsed.messages, "medium")[0].content as { text: string }[])[1].text;
   assert.match(note, /called get_site_status for coding and showed the visitor live nowListening card with show_card\.\]$/);
   assert.doesNotMatch(note, /ignore/i);
+});
+
+test("游戏卡按名字查出 titleId 发给浏览器，同一款游戏只画一次，查不到就不画", async () => {
+  const items = [
+    { titleId: "CUSA47999_00", name: "月姬 -A piece of blue glass moon-" },
+    { titleId: "PPSA01", name: "MELTY BLOOD: TYPE LUMINA" },
+  ];
+  const io = { readStatus: async () => Response.json({ ok: true, data: { observedAt: 0, items } }) } as unknown as ToolIO;
+  assert.deepEqual(await findGame(io, "月姬"), { titleId: "CUSA47999_00", name: "月姬 -A piece of blue glass moon-" });
+  assert.deepEqual(await findGame(io, "melty blood：type lumina"), { titleId: "PPSA01", name: "MELTY BLOOD: TYPE LUMINA" });
+  assert.equal(await findGame(io, "艾尔登法环"), null);
+  const broken = { readStatus: async () => { throw new Error("down"); } } as unknown as ToolIO;
+  assert.equal(await findGame(broken, "月姬"), null);
+  const text = await runShowCard("game", io, newLedger(), "月姬 -A piece of blue glass moon-");
+  assert.match(text, /^The game card for 月姬 -A piece of blue glass moon- is now in your reply/);
 });

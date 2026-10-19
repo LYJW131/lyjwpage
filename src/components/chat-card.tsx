@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Entering, Frame, HERO_PX, Hero, Idle, Placeholder, Strip, Thumb, Tile, artwork, clock, gameCover, posterImage } from "@/components/chat-card/layout";
 import { Rings, ringValues } from "@/components/live/activity-card";
 import { mediaApp, mergeVariants, playedFor, playTime } from "@/components/live/playstation-card";
+import { TrophyMetal, trophyTypeLabel } from "@/components/trophies/trophy-metal";
 import { useLiveNowListening, useStale } from "@/hooks/use-stale";
 import { ACTIVITY_STALE_MS } from "@shared/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@shared/limits";
@@ -26,6 +27,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { workoutMetrics } from "@/lib/workout-display";
 import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";
+import { TROPHY_TYPES } from "@shared/playstation-types";
 import type { GodChatCard } from "@shared/god-chat";
 const RECENT_LIMIT = 8;
 
@@ -58,16 +60,16 @@ function useNow(intervalMs: number | null) {
 }
 
 // entering 只看挂载那一刻：流式中新到的卡片淡入、条目依次跟上；回复随后结束也不摘动画，免得还没轮到的条目一下子跳出来。
-export function ChatCard({ card, entering = false }: { card: GodChatCard; entering?: boolean }) {
+export function ChatCard({ card, game, entering = false }: { card: GodChatCard; game?: string; entering?: boolean }) {
   const [animate] = useState(entering);
   return (
     <div className={cn(animate && "animate-headline-in")}>
-      <Entering.Provider value={animate}>{cardBody(card)}</Entering.Provider>
+      <Entering.Provider value={animate}>{cardBody(card, game)}</Entering.Provider>
     </div>
   );
 }
 
-function cardBody(card: GodChatCard) {
+function cardBody(card: GodChatCard, game?: string) {
   switch (card) {
     case "nowListening":
       return <NowListeningCard />;
@@ -85,6 +87,8 @@ function cardBody(card: GodChatCard) {
       return <ActivityCard />;
     case "workouts":
       return <WorkoutsCard />;
+    case "game":
+      return <GameCard titleId={game} />;
   }
 }
 function NowListeningCard() {
@@ -259,6 +263,47 @@ function PlayingCard() {
         </Strip>
       ) : (
         <Placeholder failed={recent.failed}>{games ? "No games played recently." : undefined}</Placeholder>
+      )}
+    </Frame>
+  );
+}
+
+function GameCard({ titleId }: { titleId?: string }) {
+  const recent = useCardView<PlaystationPlayingPayload>("playing");
+  const trophies = useCardView<TrophiesSummaryPayload>("trophies");
+  const game = titleId ? recentGames(recent.data).find((candidate) => candidate.titleIds.includes(titleId)) : undefined;
+  const tick = useNow(60_000);
+  const title = game && trophies.data?.titles.find((candidate) => candidate.titleIds.some((id) => game.titleIds.includes(id)));
+
+  return (
+    <Frame compact title="Gaming" aside="PlayStation">
+      {game ? (
+        <>
+          <Hero
+            image={<div className="w-20 sm:w-24"><Thumb {...gameCover(game.imageUrl)} px={HERO_PX} platinum={Boolean(title?.earned.platinum)} /></div>}
+            tone="off"
+            status={game.lastPlayedAt ? `Played ${formatRelativeTime(game.lastPlayedAt, tick).replace(/^on /, "")}` : "Played"}
+            title={game.name}
+            subtitle={[playTime(game.playDurationMs, game.playCount), game.playDurationMs != null && `${game.playCount} ${game.playCount === 1 ? "session" : "sessions"}`].filter(Boolean).join(" · ")}
+            progress={title ? title.progress : null}
+            meta={title ? `${title.progress}% trophies` : null}
+          />
+          {title && (
+            <ul className="flex justify-between gap-2 border-t border-line px-3 py-2">
+              {TROPHY_TYPES.filter((type) => title.defined[type] > 0).map((type) => (
+                <li key={type} className="flex items-center gap-1.5 whitespace-nowrap" title={trophyTypeLabel(type)}>
+                  <TrophyMetal kind={type} size="sm" />
+                  <span className="font-mono text-xs tabular-nums">
+                    {title.earned[type]}
+                    <span className="text-muted-foreground">{`/${title.defined[type]}`}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <Placeholder failed={recent.failed}>{recent.data ? "This game isn't in the play history." : undefined}</Placeholder>
       )}
     </Frame>
   );
