@@ -37,7 +37,7 @@ JSON 里有：
                 Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，没盖住 head 不算缺；
                 要判定时两家都得审过一次
   receipt       scripts/verify-receipt.ts check 的结果（--need、--judge 见下）
-  ruleDrift     分支起点（PR 第一个提交的父提交）以来 main 上改过的规则文件（AGENTS.md、DESIGN.md、HUMAN.md、.claude/skills/ 下的 md）；
+  ruleDrift     分支起点（PR 第一个提交的父提交）以来 main 上改过的规则文件（AGENTS.md、DESIGN.md、HUMAN.md、REVIEW.md、.claude/skills/ 下的 md）；
                 不为空时 notes 提示对一遍新规则，不影响 ready
   ready / todo  todo 每条一句：缺什么、去哪做
 

@@ -64,7 +64,7 @@ Agent(
 提交前的两项自查，跟本地门禁一起跑（派验证员的写进简报，主线程自己跑的照样跑），只报命中、不判（Codex、Devin 最常抓的就是这两类，规则在根 `AGENTS.md`「文档与注释」）：
 
 - 同步自查：主线程列出这次改动里的规则关键词、符号、常量名，改说法的连旧说法一起列。在仓库根跑 `rg -n --hidden --glob '*.md' --glob '!.git' -e '<词 1>' -e '<词 2>' .`（整库的 md，`apps/`、子目录 README 都在内），列出仍写着旧说法、或该跟着改却没提的位置。动了仓库外配置（控制台、定时任务提示词、Access 策略）的，另查 `docs/ops-facts.md` 有没有对应条目和核对戳。
-- 新增注释：`git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.ts' '*.tsx' '*.mjs' | rg '^\+.*(//|/\*|^\+\s*\*)'`（比到工作区，已提交和没提交的都在；没跟踪的新文件先 `git add -N <文件>`），逐条列出，标出含数字、数量词或调用方名字的。
+- 新增注释：`git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.ts' '*.tsx' '*.mjs' '*.js' | rg '^\+.*(//|/\*)|^\+\s*\*'`，Python 与 shell 另跑 `git diff -U0 "$(git merge-base origin/main HEAD)" -- '*.py' '*.sh' | rg -e '^\+.*#' -e '^\+.*"""' -e "^\+.*'''"`（行尾的 `#` 和文档字符串都算，字符串里的 `#` 会误报，由主线程判；skill 目录里的脚本也在内）（比到工作区，已提交和没提交的都在；没跟踪的新文件先 `git add -N <文件>`），逐条列出，标出含数字、数量词或调用方名字的。
 
 主线程逐条判，过期的同一提交改掉。
 
@@ -97,15 +97,18 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - 什么时候必须跑 `reload`：改到首页首屏、字体或 `@font-face`、缓存头、SSR 或水合、任何按时间算出来的文字（时钟、相对时间、进度）。跑在**生产构建**上（`pnpm build` 后 `DEV_SITE_PORT=<端口> pnpm start`）或 Workers 预览 / 生产地址；`pnpm dev` 的字体、模块加载和缓存头都和线上不同，开发服务器上没跳不算数。要比修复前后，就把修复前的构建也起在另一个端口一起跑。
 - `reload` 的每一条 `textJumps` / `frameJumps` 都要在报告里归类，不能只报 ok 与否：时间类文字（时钟、几分钟前、进度）在水合时跳到此刻是缺陷；轮询或推送带来的新数值（计数、费用）是数据刷新；正在播放卡的进度和歌词在水合时从快照跳到此刻是 lyjw 接受过的行为（项目记忆 now-playing-first-screen-decisions）。`liveText` / `liveRegions` 是反复变化的地方，只列不判。`fontsAfterPaint` 只在 Chromium 上可靠：它按 `--latency` 给走网络的请求加往返延迟，每次都要重新验证的字体会晚到，WebKit 没有这个开关。
 - 云端没有真 Safari，用 Playwright 的 WebKit 代替：`shot --engine webkit` 截图，`reload --engine webkit` 查文字与字体、不录屏。WebKit 没装时这几个子命令的 `next` 写安装命令（`playwright install --with-deps webkit`，云端约 30 秒）。只有真机才有的行为（地址栏、触控、系统字体），写进「没验到」，请 lyjw 实机看。
+- README 实时卡片（`/cards/*.svg`）：和首页原卡并排对照的要求见根 `AGENTS.md`「界面设计」。出图里不跑脚本、不取外部资源（`docs/screenshots.md`「实时卡片」），所以对照前先列出这张卡里靠浏览器脚本、页面级样式或图标定义、展开交互才有的内容，对照时逐项看出图里有没有。出图在生产构建上看（`pnpm dev` 里 NumberFlow 读数是空的）；README 里的最终显示另在 375 宽用 WebKit 看一次（WebKit 缩小 SVG 时会裁切）。
 - 收尾：验证员只关自己开的浏览器。开发服务器和 `dev:override` / `dev:scene` 注入由主线程起、主线程管（`pnpm dev:scene --reset` 一次清完），保留到这轮改动提交推送并确认部署后再清（AGENTS.md「项目入口与验证」）。
 
 ### 3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）
 
 - 合并前、每次被 PR 事件叫醒，主线程先 `git fetch origin main`，再跑 `NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr <号>`，不派验证员汇总、不分页翻评论。它只读，输出一份 JSON，`ready` 为真时退出 0，字段与选项见 `--help`。读的是：冲突与草稿；head 上每项检查与 commit status（同名只认最新），哪些还在跑；CI 的 `check` 出没出现；按 PR 改动与分支 Preview 的监视路径算出该有的 `Workers Builds:` 检查（结论要是 success）；没解决的行内评审线程（发起人、严重度、最后一条是不是 lyjw 的账号回的、链接）；各机器评审最后审的提交与 Codex 已用轮数；`verify-receipt.ts check` 的回执与判定；有没有 `baseline-exception` 标签。读不到 GitHub 时退出 1，`error` 写原因。
-- 规则漂移：`ruleDrift.files` 不为空，说明分支开工后 main 上改了规则文件（`AGENTS.md`、`DESIGN.md`、`HUMAN.md`、`.claude/skills/` 下的 md），开工时读的规则可能已经过时。合并前用 `git diff <ruleDrift.since> origin/main -- <这些文件>` 读改动，拿 PR 的改动逐条对一遍新规则，不符合的当轮改掉或在汇报里点名。它不影响 `ready`。CI 已经强制的规则不用对，并入 main 后 CI 会自己拦。
+- 规则漂移：`ruleDrift.files` 不为空，说明分支开工后 main 上改了规则文件（`AGENTS.md`、`DESIGN.md`、`HUMAN.md`、`REVIEW.md`、`.claude/skills/` 下的 md），开工时读的规则可能已经过时。合并前用 `git diff <ruleDrift.since> origin/main -- <这些文件>` 读改动，拿 PR 的改动逐条对一遍新规则，不符合的当轮改掉或在汇报里点名。它不影响 `ready`。CI 已经强制的规则不用对，并入 main 后 CI 会自己拦。
 - 分档：脚本按改动路径给 `tier`，只改文档与 skill（`docs`）、碰到界面（`ui`）、改逻辑（`logic`），默认的 `--need` 与 `--judge` 跟着档走。只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合，不等评审（lyjw 定的规矩），主线程判为小改动的逻辑 PR 加 `--no-judge`。有 UI / UX 变化的 PR 另要 lyjw 看过效果、点头才合（lyjw 明确要求的小改动除外，见根 `DESIGN.md`「交付与合并」）；`ready` 不含这一项，脚本只在 `notes` 里提示。
 - `todo` 每条写了缺什么、去哪做；照着办完再跑一次。评审线程的 `level`：红圈（🔴）与 P0 / P1 是 `blocking`，永不算可选；安全类（`security`）等 lyjw 拍板；`optional`、`pre-existing`、`info` 可以只回复理由。哪条要修、哪条回复说明不修，由主线程判断；`lastByLyjw` 为真且确实改了的，直接点解决。
 - Codex 每次推送自动审一轮，上限 3 轮；到上限或最近一轮没审成（`status: "failed"`，多半是额度用完）就不再等它。Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，它们的 `lastReviewed` 不是 head 不算缺；要判定的 PR 里两家一次都没审过时进 `todo`，等待带上限，超时在汇报里记没跑成。Cursor Bugbot 额度用完时当它不存在，不等它也不提（lyjw 定的规矩）；它真跑出来的意见照常处理。
+- 修一条评审发现前，先给它起个类别名，用 `rg` 在 PR 改到的文件里搜同类，一次修完、放进同一次推送；回复那条线程时写上类别名和其他实例改在哪。Codex 每次推送算一轮，漏修的同类会再花一轮。
+- 评审收敛：任何一家机器评审到第三轮，还在这次改动的代码里报新的阻塞问题，就停止逐条打补丁，重看实现方法，在线程里用一句话告诉 lyjw 方法换不换、为什么。方向不对就关掉或改做（见 `HUMAN.md`「探索与换方向」）。
 
 ### 3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有
 
@@ -162,3 +165,4 @@ Agent(
 - 有 FAIL：自己分析根因、修，再派一次验证员复测。
 - 全 PASS：按项目规矩汇报。UI 截图：云端会话里 lyjw 看不到开发服务器，每一轮都把截图发到讨论串（`attached_outputs` 附 `/mnt/project-files/...`，lyjw 定的规矩）；lyjw 在看开发服务器时按 AGENTS.md，只在首次交付附图。合并后汇报写明线上 `/api/version` 的 sha 和生产实测结果。
 - 汇报只写实际验到的，「没验到」那一栏原样告诉 lyjw。
+- 要 lyjw 点头的汇报（UI 效果、大方向、基线例外）附一行「这些检查测不到什么」，例如只测了暗色、没测 WebKit 的滚动、没测真实推送。说不出来就是还没验够，先补验再找 lyjw。

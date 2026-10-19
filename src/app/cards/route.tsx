@@ -103,7 +103,12 @@ const CARDS: Record<string, ReadmeCard> = {
   "now-watching": {
     label: "Now Watching",
     width: FULL_WIDTH,
-    height: 179,
+    height: 151,
+    // 没有卡头，说明接在设备名后面；没有设备时退回状态字后面。
+    annotate: (html, note) => {
+      const out = html.replace(/(<span class="label-mono min-w-0 truncate normal-case[^"]*"[^>]*>[\s\S]*?)(<\/span>)/, `$1 · ${note}$2`);
+      return out === html ? annotateTitle(html, note) : out;
+    },
     async render(status, _site, now) {
       const { value, sample } = orSample(await status("nowWatching"), (data) => data.nowPlaying != null, watchingFixture, now);
       // 卡片展开时自带的 marginTop 是给首页上一张卡留的缝，单独出图要抵掉。

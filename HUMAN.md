@@ -81,7 +81,7 @@
   1. CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）；CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
   2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动 CI 绿了就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
-  4. Codex 每个 PR 最多三轮，之后不再请它看。
+  4. Codex 每个 PR 最多三轮，之后不再请它看。任何一家机器评审到第三轮还在这次改动里报新的阻塞问题，Claude 不再逐条打补丁，先重看方法，用一句话告诉你换不换。修评审发现时同类一次修完。评审代理报什么、不报什么写在 [REVIEW.md](./REVIEW.md)。
   5. 要等机器评审的那类 PR，合并前再派一个没写这段代码的 agent 判做没做完，结论按 head SHA 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
   6. 三份存量基线（`scripts/mjs-baseline.json`、`scripts/design-scale-baseline.json`、`scripts/ui-copy-baseline.json`）只许比 main 少，PR 里多出一条 CI 就红（`pnpm baselines:check`）。确属合规例外的，Claude 在 PR 里写明理由、停下等你；你同意就给 PR 打上 `baseline-exception` 标签，CI 自动重跑放行；放行只对打标签那一次有效，之后再推送要摘了重打，免得批准后又塞进别的条目。这个标签只由你打，Claude 不打。
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
@@ -113,6 +113,7 @@
 - 细微的 UI 改动（间距、对齐、大小、颜色）给前后叠在一起的对比图，或带量尺参考线和 px 标注的并排图；整块重做的不用。
 - UI 改动第一次交付附桌面和 375px 两张图，375px 另附一张 WebKit（iPhone 的引擎）截的；云端线程里你看不到开发服务器，每一轮都附图；你在看开发服务器时，改完自测但不再截图（见 AGENTS.md「[项目入口与验证](./AGENTS.md#项目入口与验证)」）。
 - 每条结论都带证据：链接、文件与符号、命令输出，或者明说是推断。
+- 要你点头的汇报附一行「这些检查测不到什么」；Claude 说不出来，就先补验再找你。
 - 讲你不熟的新概念时，Claude 会让你多想一步：接到项目里你见过的东西上讲，和相邻概念对比，至多在关键点前问一个问题（答案就在下面），最后请你用一句话复述，它只纠正差的那一处。答案不扣着，活也不停下来等你回答。
 - 你的要求有不止一种读法时，第一条回复先用一两句复述 Claude 理解的目标，同时接着做；读偏了回一句就能纠正。
 
