@@ -193,6 +193,34 @@
     requestAnimationFrame(loop);
   }
 
+  // 音效是现成的录音（sfx/<名字>.mp3），按 Score.sfx 的时刻叠在配乐上；配乐峰值归一到 -1 dBFS，叠完超过就整体压回去。
+  async function withSfx(buf) {
+    const cues = (Sc && Sc.sfx) || [];
+    if (!buf || !cues.length) return buf;
+    const A = window.__assets || {}, sr = buf.sampleRate, ctx = new OfflineAudioContext(2, 1, sr), dec = {};
+    await Promise.all([...new Set(cues.map((c) => c.name))].map(async (n) => {
+      try { dec[n] = await ctx.decodeAudioData(await (await fetch(A[`sfx/${n}.mp3`] || `sfx/${n}.mp3`)).arrayBuffer()); } catch (e) { console.error(`音效 ${n} 载入失败`, e); }
+    }));
+    const L = buf.getChannelData(0), R = buf.getChannelData(1);
+    for (const c of cues) {
+      const smp = dec[c.name];
+      if (!smp) continue;
+      const a = smp.getChannelData(0), b = smp.numberOfChannels > 1 ? smp.getChannelData(1) : a, rate = c.rate || 1;
+      const th = ((c.pan || 0) + 1) * Math.PI / 4, gl = c.v * Math.cos(th) * Math.SQRT2, gr = c.v * Math.sin(th) * Math.SQRT2;
+      const i0 = Math.round(c.t * sr), n = Math.min(Math.floor((a.length - 1) / rate), L.length - i0);
+      for (let i = 0; i < n; i++) {
+        const p = i * rate, k = p | 0, f = p - k;
+        L[i0 + i] += gl * (a[k] + (a[k + 1] - a[k]) * f);
+        R[i0 + i] += gr * (b[k] + (b[k + 1] - b[k]) * f);
+      }
+    }
+    let pk = 0;
+    for (const d of [L, R]) for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (v > pk) pk = v; }
+    const ceil = Math.pow(10, -1 / 20);
+    if (pk > ceil) for (const d of [L, R]) for (let i = 0; i < d.length; i++) d[i] *= ceil / pk;
+    return buf;
+  }
+
   const FONTS = ['500 20px Geist', '600 20px Geist', '700 20px Geist', '400 20px "Geist Mono"', '500 20px "Geist Mono"', '600 20px "Geist Mono"', '700 20px "Geist Mono"', '20px "Geist Pixel"'];
   window.__ready = (async () => {
     I18N.set(params.get("lang") === "en" ? "en" : "zh");
@@ -215,6 +243,7 @@
         }
       } catch {}
       if (!got && Sc && Sc.render) { try { got = await Sc.render(); } catch (e) { console.error("配乐合成失败", e); } }
+      got = await withSfx(got);
       document.getElementById("load").style.display = "none";
       const wasPlaying = playing, t = now();
       if (wasPlaying) pause();
@@ -228,4 +257,5 @@
   window.__duration = DURATION;
   window.__chapters = chapters.map((c) => ({ id: c.id, t0: c.t0, t1: c.t1, bars: c.bars, placeholder: !!c.placeholder }));
   window.__BAR = BAR;
+  window.__audio = () => buffer;
 })();

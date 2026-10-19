@@ -74,6 +74,21 @@
     const TL = (x, str, px, py, lh, o = {}) => { const ls = str.split("\n"); ls.forEach((l, i) => T(x, l, px, py + (i - (ls.length - 1) / 2) * lh, o)); };
 
     // 拍位和 music/ch08.js 是同一张表。
+    // 四段最密的房间戏放慢到 2/3 速，其余照原速：画面按原来的 20 小节写，整章播 24 小节。
+    // 每段从拍点起、长半小节的整数倍，原来落在拍上的动作放慢后仍落在八分音符上，后面的动作仍在拍上。
+    // SLOW 须与 music/ch08.js 的同名表一致，配乐和音效按它换算到播放的小节。
+    const SLOW = [[3.0, 4.5], [5.0, 7.0], [7.75, 10.25], [11.0, 13.0]];
+    function story(n) {
+      let o = 0;
+      for (const [a, b] of SLOW) {
+        if (n <= a - o) return o + n;
+        n -= a - o;
+        if (n <= (b - a) * 1.5) return a + n / 1.5;
+        n -= (b - a) * 1.5; o = b;
+      }
+      return o + n;
+    }
+
     const AT = {
       pop: 0.125, popStep: 0.0625, hopIn: [0.25, 0.5], hi: 0.5, leap: 1.0,
       fall: [1.3, 1.5], slip: [1.5, 1.75], look: 1.8, plug: [2.0, 2.25], cable: [2.25, 2.75],
@@ -184,7 +199,7 @@
         const an = (i / 12) * TAU, r0 = i % 3 === 0 ? r * 0.76 : r * 0.86;
         P.seg(x, cx + Math.sin(an) * r0, cy - Math.cos(an) * r0, cx + Math.sin(an) * r * 0.94, cy - Math.cos(an) * r * 0.94, Math.max(1.4, r * (i % 3 === 0 ? 0.045 : 0.028)), PAL.ink, 0.85, seed + 2 + i);
       }
-      if (label) M(x, label, cx, cy + r * 0.52, { size: r * 0.32, weight: 700, color: PAL.red, align: "center" });
+      if (label) M(x, label, cx, cy + r * 0.52, { size: r * 0.32, weight: 700, color: PAL.red, align: "center", texture: true });
       const hA = (h / 12) * TAU, mA = h * TAU;
       P.seg(x, cx, cy, cx + Math.sin(hA) * r * 0.48, cy - Math.cos(hA) * r * 0.48, Math.max(2, r * 0.07), PAL.ink, 1, seed + 20);
       P.seg(x, cx, cy, cx + Math.sin(mA) * r * 0.78, cy - Math.cos(mA) * r * 0.78, Math.max(1.6, r * 0.045), PAL.ink, 1, seed + 21);
@@ -961,7 +976,7 @@
       if (hk > 0) {
         const L = (sy) => S.y(sy), fl = a * hk * (0.85 + 0.15 * Math.sin(b * BARs * 40));
         M(d, "Commits", S.x(1340), L(700), { size: S.s(28), weight: 600, color: PAL.soft, alpha: fl });
-        T(d, "fix(collector): PageSpeed 两端各算各的…", S.x(1340), L(748), { size: S.s(32), alpha: fl, maxW: S.s(500) });
+        T(d, "fix(collector): PageSpeed…", S.x(1340), L(748), { size: S.s(32), alpha: fl, maxW: S.s(500) });
         M(d, "LYJW131 committed", S.x(1340), L(790), { size: S.s(28), color: PAL.soft, alpha: fl });
         M(d, "with claude", S.x(1404), L(840), { size: S.s(30), weight: 600, alpha: fl });
         M(d, "cf92f7c", S.x(1340), L(884), { size: S.s(28), color: PAL.soft, alpha: fl });
@@ -1105,8 +1120,8 @@
 
     function render(f) {
       BARs = f.BAR;
-      const b = f.bar;
-      const c = camAt(b), c0 = camAt(b - 1 / 60 / f.BAR);
+      const b = story(f.bar);
+      const c = camAt(b), c0 = camAt(story(f.bar - 1 / 60 / f.BAR));
       const hitS = Math.max(impact(b, AT.hopIn[1], 0.1) * 0.5, impact(b, AT.plug[1], 0.1) * 0.6, impact(b, AT.fork[0] + 0.1, 0.1) * 0.5, impact(b, AT.fail, 0.1) * 0.7, impact(b, AT.pass, 0.1), impact(b, AT.nod, 0.1), impact(b, AT.m3, 0.14));
       const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.012 * hitS), rot: 0 };
       G.setCam(cam);
@@ -1156,7 +1171,7 @@
 
   let impl = null;
   window.CHAPTERS.push({
-    id: "ch08", title: "ch.08", bars: 20,
+    id: "ch08", title: "ch.08", bars: 24,
     async init() { impl = impl || make(); await impl.init(); },
     render(f) { impl.render(f); },
   });

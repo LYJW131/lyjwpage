@@ -152,6 +152,8 @@
       N.push({ kind: "mel", t, dur: d * BEAT, m: midi(n), inst, v, theme, bar: c.bar0 + bar, tone: c.tone.bell, pan: inst === "pluck" ? c.tone.pluckPan : 0, post: inPost(c, t) });
     }
     for (const c of chapters) for (const s of c.d.story || []) N.push({ ...s, bar: c.bar0 + s.bar, t: at(c.bar0 + s.bar, s.beat) });
+    const SFX = [];
+    for (const c of chapters) for (const s of c.d.sfx || []) SFX.push({ ...s, t: at(c.bar0 + s.bar, s.beat) });
     N.sort((a, b) => a.t - b.t);
     const SWEEPS = [];
     for (const c of chapters) for (const s of c.d.sweeps || []) SWEEPS.push({ t0: at(c.bar0 + s.at[0], s.at[1] || 0), t1: at(c.bar0 + s.down[0], s.down[1] || 0), t2: at(c.bar0 + s.up[0], s.up[1] || 0), f: s.f });
@@ -187,7 +189,7 @@
       RISERS: N.filter((n) => (n.kind === "whoosh" && n.tube === "down") || n.kind === "swell").map((n) => ({ t: n.t, len: n.kind === "swell" ? BEAT : WHOOSH_LEN.down })),
     };
     Object.assign(window.Score, {
-      bars: BARS, duration: DURATION, events, notes: N,
+      bars: BARS, duration: DURATION, events, notes: N, sfx: SFX,
       sections: SECTIONS.map((s) => ({ id: s.id, name: s.name, chapter: chapters.find((c) => s.from >= c.bar0 && s.from < c.bar0 + c.bars).id, from: s.from, to: s.to, t0: at(s.from), t1: at(s.to + 1), energy: s.energy })),
       chords: SEGMENTS.map((s) => ({ t: s.t, end: s.end, name: s.chord })),
       chapters: chapters.map((c) => ({ id: c.id, bar0: c.bar0, bars: c.bars, t0: at(c.bar0), placeholder: c.placeholder })),
