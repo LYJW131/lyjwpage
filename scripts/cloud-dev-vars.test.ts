@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { cloudDevFiles } from "./cloud-dev-vars.mjs";
+import { cloudDevFiles } from "./cloud-dev-vars.ts";
 
 test("ai 的 .dev.vars 从 LYJWPAGE_ANTHROPIC_API_KEY 与 LYJWPAGE_DEEPSEEK_API_KEY 取 key，聊天必需的四项都有值", () => {
   const files = cloudDevFiles({ LYJWPAGE_ANTHROPIC_API_KEY: "sk-test", LYJWPAGE_DEEPSEEK_API_KEY: "sk-ds" }, () => "s");
