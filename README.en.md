@@ -91,8 +91,8 @@ The cards below are rendered live by the site as SVG, follow the system light or
 **Talk to God**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/chat.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/chat.svg" alt="Talk to God card: sample questions and the input box" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/chat-dark.svg">
+  <img src="docs/screenshots/chat-light.svg" alt="Talk to God card: sample questions and the input box" width="100%">
 </picture>
 
 **Activity and workouts**

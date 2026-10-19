@@ -6,7 +6,7 @@
 
 ## 页面效果图
 
-[`screenshots/`](./screenshots/) 是根 README 里的首页总览图与页头品牌标识动画，明暗各一份；各卡片不截图，见下文「实时卡片」。总览图的数据来自场景 [`readme`](../workers/core/dev-fixtures/scenes/readme.json)：在生产快照 `readme-base` 上用夹具点亮平时不显示的卡片，`pnpm dev:scene readme` 一次注入全部端点，摘要的三格按同一份 Pulse 重算、标题池收成一句，SSR 与浏览器、明暗两轮读到的是同一份数据。场景的写法与 `--capture` 重新抓生产快照见 [`workers/core/README.md`](../workers/core/README.md#本地开发)。
+[`screenshots/`](./screenshots/) 是根 README 里的首页总览图与聊天卡，明暗各一份；页头品牌标识动画在 `public/readme/`（见下文），其余卡片不截图，见下文「实时卡片」。总览图的数据来自场景 [`readme`](../workers/core/dev-fixtures/scenes/readme.json)：在生产快照 `readme-base` 上用夹具点亮平时不显示的卡片，`pnpm dev:scene readme` 一次注入全部端点，摘要的三格按同一份 Pulse 重算、标题池收成一句，SSR 与浏览器、明暗两轮读到的是同一份数据。场景的写法与 `--capture` 重新抓生产快照见 [`workers/core/README.md`](../workers/core/README.md#本地开发)。
 
 总览图由 [`scripts/readme-shots.ts`](../scripts/readme-shots.ts) 一条命令截出：先注入场景，再用无头 Chromium 开 1280 宽、2 倍像素密度截整页，`colorScheme` 切明暗；PNG 用项目自带的 sharp 转 WebP（q 88），写进 `docs/screenshots/`。截完场景留在本地 Worker 里供对照，看完 `pnpm dev:scene --reset`：
 
@@ -34,12 +34,13 @@ python3 scripts/desktop-marks-svg.py --theme dark
 
 ## 实时卡片
 
-README 里总览之后的每张卡都不是截图，是站点路由 `/cards/<卡>.svg`（[`src/app/cards/route.tsx`](../src/app/cards/route.tsx) 的 `CARDS`）现渲染的 SVG，`?theme=dark` 出暗色，README 用 `<picture>` 按系统明暗二选一。
+README 里总览之后的卡（聊天卡除外）都不是截图，是站点路由 `/cards/<卡>.svg`（[`src/app/cards/route.tsx`](../src/app/cards/route.tsx) 的 `CARDS`）现渲染的 SVG，`?theme=dark` 出暗色，README 用 `<picture>` 按系统明暗二选一。
 
 - site Worker 用首页同一个卡片组件 SSR，配上只扫卡片相关目录生成的 Tailwind 样式（[`src/app/cards/readme-cards.css`](../src/app/cards/readme-cards.css)），放进 `<foreignObject>`。
 - GitHub 经 camo 把它当 `<img>` 显示，图片里不跑脚本、不取外部资源：卡内图片按显示宽度取 2 倍后内嵌成 data URI；camo 的 CSP 拦字体，卡片用系统等宽字体，不内嵌 Geist Mono，NumberFlow 只留纯文本读数，歌词逐字扫过、读数滚动这类靠脚本的动效不动；按 `useMountedAt` 算的内容（限额配速线、重置倒计时）经 `RenderClock` 取出图时刻烧进图里，绝对时刻按站点时区写，图片缓存期内不再走。
 - 卡宽按首页 1280 宽下的整卡或半卡定死；图片里的媒体查询按显示宽度算，路由把宽度断点按首页内容宽定死，缩小显示也保持桌面布局。卡高写在路由的 `CARDS` 里，按首页 1280 宽实测；卡片行数变了要重量，否则底部被裁或留白。
-- 状态卡此刻没在发生（正在看、充电头、充电宝、正在听）或数据取不到（落地节点）时用 `workers/core/dev-fixtures/` 的夹具补，卡头标题后标 Sample data；用实时数据的标抓取时间（站点时区）。没有卡头的每日摘要标在右上角。缓存头与 core 的 `/api/cards/*.svg` 同档。
+- 状态卡此刻没在发生（正在看、充电头、充电宝、正在听）或数据取不到（落地节点）时用 `workers/core/dev-fixtures/` 的夹具补，卡头标题后标 Sample data（没有卡头的每日摘要标在右上角）；用实时数据的标抓取时间（站点时区），每日摘要的表盘本身就是时间，不另标。缓存头与 core 的 `/api/cards/*.svg` 同档。
+- 聊天卡不随时间变，`render` 返回 `still`、不标时间，README 引用存在 `docs/screenshots/chat-{light,dark}.svg` 的一份，卡片样式变了从本地生产构建的 `/cards/chat.svg`（`?theme=dark`）重新存下。卡内没有图片，仓库相对路径（`raw.githubusercontent.com` 的 CSP）也能显示。
 - 本地看效果要用生产构建：`pnpm build && pnpm start` 后开 `http://localhost:3211/cards/pulse.svg?theme=dark`。`pnpm dev` 里 NumberFlow 输出空壳，读数是空的。
 
 ## 交互式架构图
