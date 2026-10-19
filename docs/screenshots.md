@@ -52,8 +52,8 @@ README 里总览之后的卡都不是截图，是站点路由 `/cards/<卡>.svg`
 pnpm docs:diagrams
 ```
 
-- 改图只改脚本里的 `architecture` / `workflow` 两个函数：卡片、连线、注记按 24px 方格摆，坐标写死，不做自动布局。架构或流程变了（新 Worker、绑定、上报来源、定时任务、合并门槛）就同步改图；图只画主干，细节留在各自的 README。
-- 颜色每次从 [`src/app/globals.css`](../src/app/globals.css) 的 `:root` 与 `.dark` 读，与首页同一套 token；字体照首页写等宽字体栈，图片里不加载网络字体，没装 Geist Mono 的机器落到系统等宽字体。
+- 改图只改 `scripts/readme-diagrams/architecture.ts#architecture` 与 `scripts/readme-diagrams/workflow.ts#workflow` 两个函数：卡片、连线、注记按 24px 方格摆，坐标写死，不做自动布局。架构或流程变了（新 Worker、绑定、上报来源、定时任务、合并门槛）就同步改图；图只画主干，细节留在各自的 README。
+- 颜色每次从 [`src/app/styles/theme.css`](../src/app/styles/theme.css) 的 `:root` 与 `.dark` 读，与首页同一套 token；字体照首页写等宽字体栈，图片里不加载网络字体，没装 Geist Mono 的机器落到系统等宽字体。
 - 脚本按等宽字宽（拉丁字符 0.6em、中日韩字符 1em）估算每段文字，放不下就报错退出，中英两套都要放得下。
 - 不用 `foreignObject`（WebKit 缩小显示时会裁掉），README 用 `<picture>` 按 `prefers-color-scheme` 选明暗。
 - 图没有底色：卡片自带填色，连线和注记直接落在 GitHub 的页面底色上；注记压线的地方用 `mask` 给线留缺口，不画遮挡色块。
