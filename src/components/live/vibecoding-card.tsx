@@ -24,11 +24,12 @@ import { useStatus } from "@/hooks/use-status";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import {
   CODING_ACTIVE_WINDOW_MS,
-  CODING_SOURCE_LABELS,
   codingActivitySlots,
   codingAgentRows,
   codingDisplayModel,
   codingSourceHealth,
+  codingSourceLabel,
+  codingSourceOnMac,
   describeCodingSources,
   type CodingActivityEntry,
   type CodingAgentRow,
@@ -76,7 +77,7 @@ function useSlotLive(entry: CodingActivityEntry | null, clockKnown: boolean, clo
 }
 
 function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean, clocks: FirstFrameClocks) {
-  const slots = codingActivitySlots(row.activity, macDeclaredOffline);
+  const slots = codingActivitySlots(row.id, row.activity, macDeclaredOffline);
   const mountedAt = useMountedAt();
   const clockKnown = mountedAt > 0 || clocks.now != null;
   const mac = useSlotLive(slots.mac, clockKnown, clocks);
@@ -90,8 +91,8 @@ function useAgentActive(row: CodingAgentRow, macDeclaredOffline: boolean, clocks
   return { active, sources: sources.map((entry) => entry.source), model: codingDisplayModel(row, live, active) };
 }
 
-function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) {
-  const labels = sources.map((source) => CODING_SOURCE_LABELS[source] ?? source);
+function ActiveBadge({ id, sources }: { id: string; sources: CodingActivityEntry["source"][] }) {
+  const labels = sources.map((source) => codingSourceLabel(id, source));
   return (
     <span
       className="flex shrink-0 items-center gap-1 text-live-ink"
@@ -99,7 +100,7 @@ function ActiveBadge({ sources }: { sources: CodingActivityEntry["source"][] }) 
     >
       <span className="label-mono">Active</span>
       {sources.map((source, index) =>
-        source === "mac" ? (
+        codingSourceOnMac(id, source) ? (
           <MacBookProIcon key={source} className="size-3.5" aria-label={labels[index]} />
         ) : (
           <Cloud key={source} className="size-3.5" aria-label={labels[index]} />
@@ -818,7 +819,7 @@ function AgentPanel({
         <div className="flex items-center gap-2">
           <FeaturedMark row={row} active={active} />
           <span className="text-sm font-medium">{row.label}</span>
-          {active && <ActiveBadge sources={sources} />}
+          {active && <ActiveBadge id={row.id} sources={sources} />}
         </div>
         <span
           className={cn(
@@ -962,7 +963,7 @@ function CompactAgentRow({
             )}
           </span>
           <span className="truncate text-sm font-medium">{row.label}</span>
-          {active && <ActiveBadge sources={sources} />}
+          {active && <ActiveBadge id={row.id} sources={sources} />}
         </span>
         <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
           {row.plan && (

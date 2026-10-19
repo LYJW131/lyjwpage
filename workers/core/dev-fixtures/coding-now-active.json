@@ -48,6 +48,16 @@
         ]
       },
       {
+        "id": "devin",
+        "activity": [
+          {
+            "source": "agents-otlp",
+            "lastActivityAt": "$now-60000",
+            "model": "swe-2-max"
+          }
+        ]
+      },
+      {
         "id": "grok",
         "activity": [
           {
