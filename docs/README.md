@@ -19,7 +19,7 @@
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
 | [自建 Actions runner 实测](./actions-runner-benchmark.md) | record | 同一提交的托管机与自建机 CI、CodeQL 耗时及配置验证 |
 | [页面细节与关键设计](./design-notes.md) | reference | 首页各卡的细节，以及首屏缓存、推送分工、旧页面降级、窗口标题隐私判断、图片寻址、可观测性等贯穿全站的设计 |
-| [页面效果图、GIF 与架构图产物](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图重生成 |
+| [页面效果图、GIF 与 README 图示](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图与工作流图的重画 |
 | [iOS App 上机验证](./ios-app-handoff.md) | runbook | `apps/ios` 的系统音乐、健康上报、小组件、快捷指令及后台设备验收 |
 | [iOS App 验证记录](./ios-app-verification.md) | record | SDK 构建、模拟器端到端验证与签名装机的核验快照 |
 | [讲解动画](./explainer/README.md) | runbook | `/explainer` 页面源、预览、渲染配乐与发布 |
@@ -34,6 +34,6 @@
 | [DO 优化线上效果核验](./do-performance-audit.md) | record | 执行边界调整上线前后的线上指标与本地存储基准 |
 | [别处播放推断精度实测](./listening-inference-accuracy.md) | record | iPhone 连续播放时 Apple「最近播放的歌」何时上榜，各拉取间隔下推断的标对率与开播误差 |
 
-## 架构图
+## 架构图与工作流图
 
-网页版：[lyjw131.github.io/lyjwpage](https://lyjw131.github.io/lyjwpage/)。源是 [`architecture.json`](./architecture.json)，改图只改它，其余产物的重生成步骤见 [screenshots.md](./screenshots.md#交互式架构图)。
+根 README 的两张图在 [`diagrams/`](./diagrams/)，由 [`scripts/readme-diagrams.ts`](../scripts/readme-diagrams.ts) 画出，改法见 [screenshots.md](./screenshots.md#readme-图示)。

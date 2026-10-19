@@ -6,7 +6,7 @@
 
 **A personal homepage driven by real devices and everyday activity.**
 
-[Visit](https://lyjw.me) · [Mirror for mainland China](https://lyjw131.com) · [Interactive architecture diagram](https://lyjw131.github.io/lyjwpage/)
+[Visit](https://lyjw.me) · [Mirror for mainland China](https://lyjw131.com)
 
 How-it-works explainer: [中文](https://lyjw131.com/explainer/?lang=zh) · [English](https://lyjw.me/explainer/?lang=en)
 
@@ -134,33 +134,24 @@ The cards below are rendered live by the site as SVG, follow the system light or
 **Collectors adapt each source, Cloudflare Workers hold the state, and the site Worker (React Router SSR) renders the page.**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.png">
-  <img src="docs/architecture-light.png" alt="Architecture: multi-device collectors, the Cloudflare state hub, the AI Worker for chat and visitor builds, and the site Worker frontend" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-en-dark.svg">
+  <img src="docs/diagrams/architecture-en-light.svg" alt="Architecture: reporters post through Cloudflare Access to the ingress Worker and the collector Worker polls outside services; both write the core Worker's Durable Objects, KV and D1, with images in R2. The site Worker reads KV directly and core over Service Bindings to render lyjw.me, fronted by Alibaba ESA in mainland China; the AI Worker handles chat, MCP and visitor builds" width="100%">
 </picture>
 
 - **Collectors** run where the data is produced: the Mac, iPhone, NAS, Linux reporters, Home Assistant and Claude Code cloud telemetry. External services (Apple Music, GitHub, Cloudflare, PageSpeed) are polled by the collector Worker.
 - **State hub**: the ingress Worker checks identity behind Cloudflare Access and validates each report; realtime data goes to the core Worker's Durable Objects, lag-tolerant data to KV, archives to D1 and images to R2.
 - **Frontend**: the site Worker renders the home page card by card, then WebSocket pushes and polling keep it current; visitors in mainland China go through Alibaba Cloud ESA.
 
-[Interactive architecture diagram](https://lyjw131.github.io/lyjwpage/) · [Page details and key design choices](./docs/design-notes.md) (Chinese: first-screen caching, push vs. polling, stale-tab degradation, window-title privacy check, image addressing, observability)
+[Page details and key design choices](./docs/design-notes.md) (Chinese: first-screen caching, push vs. polling, stale-tab degradation, window-title privacy check, image addressing, observability)
 
 ## Development workflow
 
 Most of the code in this repo is written by Claude; lyjw sets direction, makes the calls and signs off. A one-line request goes into the project chat, a coordinator Claude opens a thread, and that thread's Claude carries the work through merge and deploy. Scheduled agents keep reviewing code, distilling lessons and watching production when nobody is talking.
 
-```mermaid
-flowchart LR
-  L["lyjw<br/>one-line request"] --> P["Project chat<br/>coordinator Claude"]
-  P --> T["Thread Claude<br/>one thread per task"]
-  T -->|parallel work| D["Devin CLI<br/>(lyjw's Mac)"]
-  T -->|verification| H["Haiku verifier<br/>graded receipt"]
-  T --> PR["PR"]
-  PR --> G{"Merge gate<br/>CI · check scripts<br/>bot review · lyjw's OK"}
-  G --> M["main"] --> W["Workers Builds<br/>auto deploy"]
-  R["Scheduled agents"] -.->|review · distill · watch| PR
-  R -.-> MEM[("Project memory<br/>repo mirror")]
-  T -.-> MEM
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/workflow-en-dark.svg">
+  <img src="docs/diagrams/workflow-en-light.svg" alt="Development workflow: requests from lyjw, scheduled routines and visitor builds become PRs through Claude, pass the branch preview, CI, bot review when needed and lyjw's OK, then merge to main and deploy through Workers Builds" width="100%">
+</picture>
 
 - **Layered rules, enforced where possible**: [`HUMAN.md`](./HUMAN.md) is the collaboration contract for lyjw, [`AGENTS.md`](./AGENTS.md) holds the hard rules for agents, [`.claude/skills/`](./.claude/skills/) holds reusable procedures. Hooks, lint and the CI checks `docs:check`, `rules:check` and `design:scale` block violations, and the baselines of existing violations can only shrink.
 - **Verification leaves a receipt**: checks run on a Haiku verifier that signs a graded receipt per commit SHA; before merge a script confirms the receipt still covers the current head.

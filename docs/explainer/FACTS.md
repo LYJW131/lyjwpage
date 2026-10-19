@@ -447,10 +447,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 不在这条发布链上（核过，片中不画）
 
-- `.github/workflows/deploy-pages.yml`：`docs/` 有改动时把它发到 GitHub Pages（架构图页），和站点无关。
+- `.github/workflows/deploy-pages.yml`：只在它自己改动或手动触发时，把 GitHub Pages 发成跳到 README 架构图的转址页，和站点无关。
 - `.github/workflows/preview-core-worker.yml`：PR 关闭时删掉那个分支的 core Worker Preview。
 - `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。
-- `.github/workflows/architecture-diagram.yml`：只在 PR 改到架构图时校验，和发布无关。
 
 ## 11 工作流：站是怎么被造出来的（第 08 章「一句话之后」）
 
@@ -460,7 +459,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - lyjw 在项目聊天里说一句要什么。项目聊天里只有一个 Claude 接话，它把每句话派到线程；一件事一个线程，线程里的 Claude 从头跟到尾，只在有结果、卡住或要 lyjw 决定时回复，平时只刷状态行（`HUMAN.md`「一眼看完」「1. 场面上有谁」）。
 - lyjw 要做的只有四种事：拍板、点头让 Claude 办凭据或给控制台权限、批准生产上的动作、说一句「合」。分叉用决策卡问，推荐项已标出；不点就按推荐项走，只有没法撤销的那一步停下来等（`HUMAN.md`「一眼看完」「3. 什么 Claude 自己定，什么来问你」）。
-- 要用 lyjw 的 Mac 的事（凭据、ssh、`gh`）走 Mac 上的 Remote Control 会话；能拆开并行的实现活可以派给 Mac 上的 Devin CLI，一件事一个 git worktree，跑完由云端 Claude 审 diff、重跑检查、开 PR，Devin 不合任何东西（`HUMAN.md`「1. 场面上有谁」）。片中不画这一路；副标题里的 Devin 指的是 PR 上的 Devin Review。
+- 要用 lyjw 的 Mac 的事（凭据、ssh、`gh`）走 Mac 上的 Remote Control 会话（`HUMAN.md`「1. 场面上有谁」）。片中不画这一路；副标题里的 Devin 指的是 PR 上的 Devin Review。
 - 项目记忆：lyjw 用「以后…」定的规矩和做过的决定记进去一次，所有线程都遵守（`HUMAN.md`「2. 怎么说一句话最快」「9. 项目记忆」）。仓库里有镜像 `.claude/memory/`，`MEMORY.md` 是索引、每主题一个文件；项目记忆是源，镜像只用 `pnpm memory:mirror` 同步，脚本自动脱敏，遇到像凭据的内容一个文件都不写（`.claude/memory/README.md`、`scripts/memory-mirror.ts#sanitize`、`scripts/memory-mirror.ts#findSecrets`）。片中记忆卡上的三条（第三人称写 lyjw、等待都有上限、改界面等 lyjw 点头）都在根 `AGENTS.md`「工作方式」与「界面设计」里。
 
 ### 线程怎么干活

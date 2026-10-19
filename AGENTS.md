@@ -119,6 +119,7 @@
 | 不手跑 `wrangler deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子 `scripts/guard-forbidden-commands.mjs` |
 | 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 行数、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
 | 「只改注释」的清扫证明 | `pnpm docs:comment-only` |
+| README 架构图与工作流图跟 `scripts/readme-diagrams.ts` 的输出一致 | `pnpm docs:diagrams --check`（CI docs 门禁） |
 | Worker / shared / `src/` 之间的 import 边界 | `eslint.config.mjs` 的 `no-restricted-imports` |
 | `src/` 组件不手写 `<img>`，用 `AppImage`；不调 `toSorted` / `toReversed` / `toSpliced`（客户端无 polyfill） | `eslint.config.mjs` 的 `no-restricted-syntax`（`app-image.tsx` 除外） |
 | Worker 生产代码不用 `env.X!` 硬取可选绑定 | `eslint.config.mjs` 的 `no-restricted-syntax`（测试除外） |
