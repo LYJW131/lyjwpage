@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 864" width="864" height="864" role="img" aria-labelledby="title desc">
+<title id="title">lyjwpage 系统架构</title><desc id="desc">采集端经 Cloudflare Access 上报到 ingress Worker，collector Worker 每分钟拉取外部服务；两者写入 core Worker 的 Durable Object 实时层、KV 可滞后快照与 D1 归档，图片进 R2。site Worker 直读 KV、经 Service Binding 读 core 的实时状态与推送，渲染 lyjw.me，中国大陆经阿里云 ESA；对话、MCP 与访客构建交给 AI Worker，它调用模型与 GitHub。</desc>
+<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.bg{fill:#edebe6}.grid{fill:none;stroke:#1514110d}.card{fill:#fffdf9;stroke:#151411e0}.shadow{fill:#1514112e}.head{fill:#f5f3ee}.rule{stroke:#1514113d}.chip{fill:#f5f3ee;stroke:#1514113d}.region{fill:none;stroke:#605d59;stroke-dasharray:4 4}.edge{fill:none;stroke:#605d59;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#605d59}.knock{fill:#edebe6}.label{font-size:11px;letter-spacing:0.88px;fill:#605d59}.title{font-size:14px;font-weight:500;fill:#151411}.body{font-size:13px;fill:#151411}.cap{font-size:12px;fill:#605d59}.small{font-size:11px;fill:#605d59}.m-worker{fill:#3e70c9}.m-do{fill:#3ba946}.m-store{fill:#8255c7}.m-lyjw{fill:#0085c5}.m-claude{fill:#d97757}.m-devin{fill:#37794a}.m-flow{fill:#151411}.m-outside{fill:none;stroke:#151411e0}</style>
+<defs><pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse"><path class="grid" d="M24 0.5H0.5V24"/></pattern></defs>
+<rect class="bg" width="864" height="864"/><rect width="864" height="864" fill="url(#paper)"/>
+<rect class="region" x="12.5" y="192.5" width="839" height="503"/>
+<rect class="shadow" x="27" y="27" width="528" height="120"/>
+<rect class="card" x="24.5" y="24.5" width="527" height="119"/>
+<rect class="head" x="25" y="25" width="526" height="31"/>
+<path class="rule" d="M25 56.5H551"/>
+<rect class="m-outside" x="40.5" y="36.5" width="7" height="7"/>
+<text class="label" x="56" y="44">采集端</text>
+<text class="label" x="536" y="44" text-anchor="end">设备与上报器</text>
+<rect class="chip" x="40.5" y="68.5" width="117" height="25"/>
+<text class="body" x="99" y="85.5" text-anchor="middle">Mac</text>
+<rect class="chip" x="166.5" y="68.5" width="117" height="25"/>
+<text class="body" x="225" y="85.5" text-anchor="middle">iPhone</text>
+<rect class="chip" x="292.5" y="68.5" width="117" height="25"/>
+<text class="body" x="351" y="85.5" text-anchor="middle">HomePod</text>
+<rect class="chip" x="418.5" y="68.5" width="117" height="25"/>
+<text class="body" x="477" y="85.5" text-anchor="middle">Emby</text>
+<rect class="chip" x="40.5" y="102.5" width="117" height="25"/>
+<text class="body" x="99" y="119.5" text-anchor="middle">PlayStation</text>
+<rect class="chip" x="166.5" y="102.5" width="117" height="25"/>
+<text class="body" x="225" y="119.5" text-anchor="middle">Quest</text>
+<rect class="chip" x="292.5" y="102.5" width="117" height="25"/>
+<text class="body" x="351" y="119.5" text-anchor="middle">Linux 节点</text>
+<rect class="chip" x="418.5" y="102.5" width="117" height="25"/>
+<text class="body" x="477" y="119.5" text-anchor="middle">Coding agent</text>
+<rect class="shadow" x="603" y="27" width="240" height="120"/>
+<rect class="card" x="600.5" y="24.5" width="239" height="119"/>
+<rect class="head" x="601" y="25" width="238" height="31"/>
+<path class="rule" d="M601 56.5H839"/>
+<rect class="m-outside" x="616.5" y="36.5" width="7" height="7"/>
+<text class="label" x="632" y="44">访客</text>
+<text class="body" x="616" y="76.5">lyjw.me</text>
+<text class="small" x="824" y="76.5" text-anchor="end">直连</text>
+<path class="rule" d="M616 84.5H824"/>
+<text class="body" x="616" y="100.5">lyjw131.com</text>
+<text class="small" x="824" y="100.5" text-anchor="end">经阿里云 ESA</text>
+<path class="rule" d="M616 108.5H824"/>
+<text class="body" x="616" y="124.5">/mcp</text>
+<text class="small" x="824" y="124.5" text-anchor="end">MCP 客户端</text>
+<rect class="shadow" x="27" y="219" width="240" height="96"/>
+<rect class="card" x="24.5" y="216.5" width="239" height="95"/>
+<rect class="head" x="25" y="217" width="238" height="31"/>
+<path class="rule" d="M25 248.5H263"/>
+<rect class="m-worker" x="40" y="228" width="8" height="8"/>
+<text class="label" x="56" y="236">INGRESS</text>
+<text class="label" x="248" y="236" text-anchor="end">WORKER</text>
+<text class="title" x="40" y="275">验身份 · 校验 · 拆分</text>
+<text class="cap" x="40" y="295">Access 之后，按来源限权</text>
+<rect class="shadow" x="27" y="459" width="240" height="96"/>
+<rect class="card" x="24.5" y="456.5" width="239" height="95"/>
+<rect class="head" x="25" y="457" width="238" height="31"/>
+<path class="rule" d="M25 488.5H263"/>
+<rect class="m-worker" x="40" y="468" width="8" height="8"/>
+<text class="label" x="56" y="476">COLLECTOR</text>
+<text class="label" x="248" y="476" text-anchor="end">WORKER</text>
+<text class="title" x="40" y="515">定时拉取外部服务</text>
+<text class="cap" x="40" y="535">Apple Music 查询与补全</text>
+<rect class="shadow" x="315" y="219" width="240" height="168"/>
+<rect class="card" x="312.5" y="216.5" width="239" height="167"/>
+<rect class="head" x="313" y="217" width="238" height="31"/>
+<path class="rule" d="M313 248.5H551"/>
+<rect class="m-worker" x="328" y="228" width="8" height="8"/>
+<text class="label" x="344" y="236">CORE</text>
+<text class="label" x="536" y="236" text-anchor="end">WORKER</text>
+<text class="title" x="328" y="274">实时状态的唯一权威</text>
+<rect class="chip" x="328.5" y="288.5" width="207" height="39"/>
+<rect class="m-do" x="338" y="297" width="8" height="8"/>
+<text class="body" x="354" y="305">StateHub</text>
+<text class="label" x="526" y="305" text-anchor="end">DO</text>
+<text class="small" x="338" y="319">快照 · Pulse · 用量账本</text>
+<rect class="chip" x="328.5" y="336.5" width="207" height="39"/>
+<rect class="m-do" x="338" y="345" width="8" height="8"/>
+<text class="body" x="354" y="353">LivePushRoom</text>
+<text class="label" x="526" y="353" text-anchor="end">DO</text>
+<text class="small" x="338" y="367">WebSocket 推送 · 在线人数</text>
+<rect class="shadow" x="315" y="411" width="240" height="72"/>
+<rect class="card" x="312.5" y="408.5" width="239" height="71"/>
+<rect class="head" x="313" y="409" width="238" height="31"/>
+<path class="rule" d="M313 440.5H551"/>
+<rect class="m-store" x="328" y="420" width="8" height="8"/>
+<text class="label" x="344" y="428">KV</text>
+<text class="label" x="536" y="428" text-anchor="end">LAG</text>
+<text class="title" x="328" y="464">可滞后快照</text>
+<rect class="shadow" x="315" y="507" width="240" height="72"/>
+<rect class="card" x="312.5" y="504.5" width="239" height="71"/>
+<rect class="head" x="313" y="505" width="238" height="31"/>
+<path class="rule" d="M313 536.5H551"/>
+<rect class="m-store" x="328" y="516" width="8" height="8"/>
+<text class="label" x="344" y="524">D1</text>
+<text class="label" x="536" y="524" text-anchor="end">HISTORY</text>
+<text class="title" x="328" y="560">长期归档 · 不对外读</text>
+<rect class="shadow" x="315" y="603" width="240" height="72"/>
+<rect class="card" x="312.5" y="600.5" width="239" height="71"/>
+<rect class="head" x="313" y="601" width="238" height="31"/>
+<path class="rule" d="M313 632.5H551"/>
+<rect class="m-store" x="328" y="612" width="8" height="8"/>
+<text class="label" x="344" y="620">R2</text>
+<text class="label" x="536" y="620" text-anchor="end">IMAGES</text>
+<text class="title" x="328" y="656">图片 · 上报端直传</text>
+<rect class="shadow" x="603" y="219" width="240" height="120"/>
+<rect class="card" x="600.5" y="216.5" width="239" height="119"/>
+<rect class="head" x="601" y="217" width="238" height="31"/>
+<path class="rule" d="M601 248.5H839"/>
+<rect class="m-worker" x="616" y="228" width="8" height="8"/>
+<text class="label" x="632" y="236">SITE</text>
+<text class="label" x="824" y="236" text-anchor="end">WORKER</text>
+<text class="title" x="616" y="278">React Router SSR</text>
+<text class="cap" x="616" y="298">首屏按卡读状态</text>
+<text class="cap" x="616" y="316">Workers 缓存 · /img/*</text>
+<rect class="shadow" x="603" y="435" width="240" height="96"/>
+<rect class="card" x="600.5" y="432.5" width="239" height="95"/>
+<rect class="head" x="601" y="433" width="238" height="31"/>
+<path class="rule" d="M601 464.5H839"/>
+<rect class="m-worker" x="616" y="444" width="8" height="8"/>
+<text class="label" x="632" y="452">AI</text>
+<text class="label" x="824" y="452" text-anchor="end">WORKER</text>
+<text class="title" x="616" y="491">对话 · MCP · 访客构建</text>
+<text class="cap" x="616" y="511">Clef 选档 · 经 core 读状态</text>
+<rect class="shadow" x="27" y="723" width="240" height="120"/>
+<rect class="card" x="24.5" y="720.5" width="239" height="119"/>
+<rect class="head" x="25" y="721" width="238" height="31"/>
+<path class="rule" d="M25 752.5H263"/>
+<rect class="m-outside" x="40.5" y="732.5" width="7" height="7"/>
+<text class="label" x="56" y="740">外部服务</text>
+<text class="body" x="40" y="772.5">Apple Music</text>
+<path class="rule" d="M40 780.5H248"/>
+<text class="body" x="40" y="796.5">GitHub · Cloudflare</text>
+<path class="rule" d="M40 804.5H248"/>
+<text class="body" x="40" y="820.5">PageSpeed · 状态页</text>
+<rect class="shadow" x="603" y="723" width="240" height="120"/>
+<rect class="card" x="600.5" y="720.5" width="239" height="119"/>
+<rect class="head" x="601" y="721" width="238" height="31"/>
+<path class="rule" d="M601 752.5H839"/>
+<rect class="m-outside" x="616.5" y="732.5" width="7" height="7"/>
+<text class="label" x="632" y="740">模型与 GITHUB</text>
+<text class="body" x="616" y="772.5">Anthropic · DeepSeek</text>
+<path class="rule" d="M616 780.5H824"/>
+<text class="body" x="616" y="796.5">Exa · Managed Agents</text>
+<path class="rule" d="M616 804.5H824"/>
+<text class="body" x="616" y="820.5">GitHub App · Actions</text>
+<path class="tip" d="M144 216L139.5 208L148.5 208Z"/>
+<path class="edge" d="M144 144L144 210"/>
+<path class="tip" d="M660 216L655.5 208L664.5 208Z"/>
+<path class="tip" d="M660 144L664.5 152L655.5 152Z"/>
+<path class="edge" d="M660 150L660 210"/>
+<path class="tip" d="M144 456L139.5 448L148.5 448Z"/>
+<path class="edge dash" d="M144 312L144 450"/>
+<path class="tip" d="M144 552L148.5 560L139.5 560Z"/>
+<path class="edge" d="M144 720L144 558"/>
+<path class="tip" d="M312 264L304 268.5L304 259.5Z"/>
+<path class="edge" d="M264 264L306 264"/>
+<path class="tip" d="M312 540L304 544.5L304 535.5Z"/>
+<path class="edge" d="M288 264L288 540L306 540"/>
+<path class="tip" d="M312 444L304 448.5L304 439.5Z"/>
+<path class="edge" d="M288 444L306 444"/>
+<path class="edge" d="M264 504L288 504"/>
+<circle class="tip" cx="288" cy="264" r="3.5"/>
+<circle class="tip" cx="288" cy="444" r="3.5"/>
+<circle class="tip" cx="288" cy="504" r="3.5"/>
+<path class="tip" d="M600 264L592 268.5L592 259.5Z"/>
+<path class="edge" d="M552 264L594 264"/>
+<path class="edge" d="M552 636L576 636L576 264"/>
+<path class="edge" d="M552 444L576 444"/>
+<path class="tip" d="M600 480L592 484.5L592 475.5Z"/>
+<path class="edge" d="M576 480L594 480"/>
+<circle class="tip" cx="576" cy="264" r="3.5"/>
+<circle class="tip" cx="576" cy="444" r="3.5"/>
+<circle class="tip" cx="576" cy="480" r="3.5"/>
+<path class="tip" d="M660 432L655.5 424L664.5 424Z"/>
+<path class="edge" d="M660 336L660 426"/>
+<path class="tip" d="M660 720L655.5 712L664.5 712Z"/>
+<path class="tip" d="M660 528L664.5 536L655.5 536Z"/>
+<path class="edge" d="M660 534L660 714"/>
+<rect class="knock" x="20" y="184" width="104.8" height="16"/>
+<rect class="m-worker" x="26" y="188" width="8" height="8"/>
+<text class="label" x="40" y="196">CLOUDFLARE</text>
+<rect class="knock" x="152" y="160" width="192.8" height="16"/>
+<text class="small" x="156" y="172">Access token · /api/ingest/*</text>
+<rect class="knock" x="668" y="160" width="120.2" height="16"/>
+<text class="small" x="672" y="172">HTML · /api · /ws</text>
+<rect class="knock" x="152" y="376" width="63" height="16"/>
+<text class="small" x="156" y="388">补全正在听</text>
+<rect class="knock" x="152" y="628" width="63" height="16"/>
+<text class="small" x="156" y="640">每分钟拉取</text>
+<rect class="knock" x="668" y="376" width="118" height="16"/>
+<text class="small" x="672" y="388">对话 · /mcp · 构建</text>
+<rect class="knock" x="668" y="616" width="104.8" height="16"/>
+<text class="small" x="672" y="628">模型 · 搜索 · PR</text>
+<rect class="knock" x="335.6" y="688" width="192.8" height="16"/>
+<text class="small" x="432" y="700" text-anchor="middle">Worker 之间走 Service Binding</text>
+<rect class="m-worker" x="324" y="748" width="8" height="8"/>
+<text class="cap" x="340" y="756">Worker</text>
+<rect class="m-do" x="324" y="772" width="8" height="8"/>
+<text class="cap" x="340" y="780">Durable Object</text>
+<rect class="m-store" x="324" y="796" width="8" height="8"/>
+<text class="cap" x="340" y="804">存储</text>
+<rect class="m-outside" x="324.5" y="820.5" width="7" height="7"/>
+<text class="cap" x="340" y="828">Cloudflare 之外</text>
+</svg>

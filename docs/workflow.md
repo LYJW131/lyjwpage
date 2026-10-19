@@ -4,19 +4,10 @@
 
 这个仓库的代码大多由 Claude 写，lyjw 负责定方向、拍板和验收。本文讲这套协作怎么运转、靠什么守住质量。给 lyjw 的协作约定在 [`HUMAN.md`](../HUMAN.md)，给 agent 的硬规则在 [`AGENTS.md`](../AGENTS.md)；本文只讲全貌并指过去，不重复条款。
 
-```mermaid
-flowchart LR
-  L["lyjw<br/>一句话需求"] --> P["项目聊天<br/>协调 Claude"]
-  P --> T["线程 Claude<br/>一件事一个线程"]
-  T -->|并行实现| D["Devin CLI<br/>（lyjw 的 Mac）"]
-  T -->|验证| H["Haiku 验证员<br/>分级回执"]
-  T --> PR["PR"]
-  PR --> G{"合并门槛<br/>CI · 检查脚本<br/>机器评审 · lyjw 点头"}
-  G --> M["main"] --> W["Workers Builds<br/>自动部署"]
-  R["定时任务"] -.->|审查 · 提炼 · 盯防| PR
-  R -.-> MEM[("项目记忆<br/>仓库镜像")]
-  T -.-> MEM
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./diagrams/workflow-zh-dark.svg">
+  <img src="./diagrams/workflow-zh-light.svg" alt="开发工作流图：lyjw 的需求、定时任务与访客构建三路经 Claude 变成 PR，过分支预览、CI、按需的机器评审与 lyjw 点头后合进 main，由 Workers Builds 部署" width="100%">
+</picture>
 
 ## 谁在干活
 

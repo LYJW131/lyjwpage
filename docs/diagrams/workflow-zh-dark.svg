@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 744" width="864" height="744" role="img" aria-labelledby="title desc">
+<title id="title">lyjwpage 开发工作流</title><desc id="desc">lyjw 在项目聊天里说一句需求，协调 Claude 开线程，线程 Claude 借 Mac 上的 Devin CLI 并行实现、交 Haiku 验证员签回执；定时任务与访客构建也各自产出 PR。所有改动以 PR 进 main：分支预览、CI 门禁、按需的机器评审与 lyjw 点头之后合并，Workers Builds 自动部署。</desc>
+<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.bg{fill:#0d0b08}.grid{fill:none;stroke:#ebe8df0d}.card{fill:#14120f;stroke:#ebe8dfc2}.shadow{fill:#00000085}.head{fill:#191713}.rule{stroke:#ebe8df33}.chip{fill:#191713;stroke:#ebe8df33}.region{fill:none;stroke:#95928a;stroke-dasharray:4 4}.edge{fill:none;stroke:#95928a;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#95928a}.knock{fill:#0d0b08}.label{font-size:11px;letter-spacing:0.88px;fill:#95928a}.title{font-size:14px;font-weight:500;fill:#ebe8df}.body{font-size:13px;fill:#ebe8df}.cap{font-size:12px;fill:#95928a}.small{font-size:11px;fill:#95928a}.m-worker{fill:#578ff3}.m-do{fill:#5fcc74}.m-store{fill:#a374ef}.m-lyjw{fill:#2eb1ef}.m-claude{fill:#e99174}.m-devin{fill:#49b86c}.m-flow{fill:#ebe8df}.m-outside{fill:none;stroke:#ebe8dfc2}</style>
+<defs><pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse"><path class="grid" d="M24 0.5H0.5V24"/></pattern></defs>
+<rect class="bg" width="864" height="744"/><rect width="864" height="744" fill="url(#paper)"/>
+<rect class="region" x="12.5" y="144.5" width="839" height="383"/>
+<rect class="shadow" x="27" y="27" width="240" height="96"/>
+<rect class="card" x="24.5" y="24.5" width="239" height="95"/>
+<rect class="head" x="25" y="25" width="238" height="31"/>
+<path class="rule" d="M25 56.5H263"/>
+<rect class="m-lyjw" x="40" y="36" width="8" height="8"/>
+<text class="label" x="56" y="44">LYJW</text>
+<text class="label" x="248" y="44" text-anchor="end">定方向</text>
+<text class="title" x="40" y="83">一句话需求</text>
+<text class="cap" x="40" y="103">拍板 · 看图 · 说「合」</text>
+<rect class="shadow" x="315" y="27" width="240" height="96"/>
+<rect class="card" x="312.5" y="24.5" width="239" height="95"/>
+<rect class="head" x="313" y="25" width="238" height="31"/>
+<path class="rule" d="M313 56.5H551"/>
+<rect class="m-outside" x="328.5" y="36.5" width="7" height="7"/>
+<text class="label" x="344" y="44">定时触发</text>
+<text class="label" x="536" y="44" text-anchor="end">CRON</text>
+<text class="title" x="328" y="83">云端 routine</text>
+<text class="cap" x="328" y="103">从上次的书签接着跑</text>
+<rect class="shadow" x="603" y="27" width="240" height="96"/>
+<rect class="card" x="600.5" y="24.5" width="239" height="95"/>
+<rect class="head" x="601" y="25" width="238" height="31"/>
+<path class="rule" d="M601 56.5H839"/>
+<rect class="m-outside" x="616.5" y="36.5" width="7" height="7"/>
+<text class="label" x="632" y="44">访客</text>
+<text class="label" x="824" y="44" text-anchor="end">LYJW.ME</text>
+<text class="title" x="616" y="83">在首页对话里提改动</text>
+<text class="cap" x="616" y="103">授权 GitHub 后开构建</text>
+<rect class="shadow" x="27" y="171" width="240" height="96"/>
+<rect class="card" x="24.5" y="168.5" width="239" height="95"/>
+<rect class="head" x="25" y="169" width="238" height="31"/>
+<path class="rule" d="M25 200.5H263"/>
+<rect class="m-claude" x="40" y="180" width="8" height="8"/>
+<text class="label" x="56" y="188">项目聊天</text>
+<text class="label" x="248" y="188" text-anchor="end">协调</text>
+<text class="title" x="40" y="227">接每句话，分派线程</text>
+<text class="cap" x="40" y="247">晨报 · 转贴决策卡</text>
+<rect class="shadow" x="27" y="315" width="240" height="192"/>
+<rect class="card" x="24.5" y="312.5" width="239" height="191"/>
+<rect class="head" x="25" y="313" width="238" height="31"/>
+<path class="rule" d="M25 344.5H263"/>
+<rect class="m-claude" x="40" y="324" width="8" height="8"/>
+<text class="label" x="56" y="332">线程</text>
+<text class="label" x="248" y="332" text-anchor="end">CLAUDE</text>
+<text class="title" x="40" y="371">一件事一个线程</text>
+<text class="cap" x="40" y="391">一个分支，做到上线</text>
+<rect class="chip" x="40.5" y="408.5" width="207" height="39"/>
+<rect class="m-devin" x="50" y="417" width="8" height="8"/>
+<text class="body" x="66" y="425">Devin CLI</text>
+<text class="label" x="238" y="425" text-anchor="end">MAC</text>
+<text class="small" x="50" y="439">并行实现 · 一件事一个 worktree</text>
+<rect class="chip" x="40.5" y="456.5" width="207" height="39"/>
+<rect class="m-claude" x="50" y="465" width="8" height="8"/>
+<text class="body" x="66" y="473">Haiku 验证员</text>
+<text class="small" x="50" y="487">按提交签分级回执</text>
+<rect class="shadow" x="315" y="171" width="240" height="168"/>
+<rect class="card" x="312.5" y="168.5" width="239" height="167"/>
+<rect class="head" x="313" y="169" width="238" height="31"/>
+<path class="rule" d="M313 200.5H551"/>
+<rect class="m-claude" x="328" y="180" width="8" height="8"/>
+<text class="label" x="344" y="188">定时任务</text>
+<text class="body" x="328" y="224.5">代码审查</text>
+<text class="small" x="536" y="224.5" text-anchor="end">PR</text>
+<path class="rule" d="M328 232.5H536"/>
+<text class="body" x="328" y="248.5">提炼 skill</text>
+<text class="small" x="536" y="248.5" text-anchor="end">PR</text>
+<path class="rule" d="M328 256.5H536"/>
+<text class="body" x="328" y="272.5">记忆镜像</text>
+<text class="small" x="536" y="272.5" text-anchor="end">PR</text>
+<path class="rule" d="M328 280.5H536"/>
+<text class="body" x="328" y="296.5">collector 盯防</text>
+<text class="small" x="536" y="296.5" text-anchor="end">修复草稿</text>
+<path class="rule" d="M328 304.5H536"/>
+<text class="body" x="328" y="320.5">Anthropic 动态</text>
+<text class="small" x="536" y="320.5" text-anchor="end">报告</text>
+<rect class="shadow" x="603" y="171" width="240" height="96"/>
+<rect class="card" x="600.5" y="168.5" width="239" height="95"/>
+<rect class="head" x="601" y="169" width="238" height="31"/>
+<path class="rule" d="M601 200.5H839"/>
+<rect class="m-claude" x="616" y="180" width="8" height="8"/>
+<text class="label" x="632" y="188">设计会话</text>
+<text class="label" x="824" y="188" text-anchor="end">OPUS</text>
+<text class="title" x="616" y="227">只读沙盒里出计划</text>
+<text class="cap" x="616" y="247">Managed Agents</text>
+<rect class="shadow" x="603" y="315" width="240" height="96"/>
+<rect class="card" x="600.5" y="312.5" width="239" height="95"/>
+<rect class="head" x="601" y="313" width="238" height="31"/>
+<path class="rule" d="M601 344.5H839"/>
+<rect class="m-claude" x="616" y="324" width="8" height="8"/>
+<text class="label" x="632" y="332">访客构建</text>
+<text class="label" x="824" y="332" text-anchor="end">ACTIONS</text>
+<text class="title" x="616" y="371">先审计划，再实现</text>
+<text class="cap" x="616" y="391">build.yml · 无写凭据</text>
+<rect class="shadow" x="27" y="579" width="240" height="120"/>
+<rect class="card" x="24.5" y="576.5" width="239" height="119"/>
+<rect class="head" x="25" y="577" width="238" height="31"/>
+<path class="rule" d="M25 608.5H263"/>
+<rect class="m-flow" x="40" y="588" width="8" height="8"/>
+<text class="label" x="56" y="596">PR</text>
+<text class="title" x="40" y="638">分支预览</text>
+<text class="cap" x="40" y="658">*.preview.lyjw.dev</text>
+<text class="cap" x="40" y="676">UI 在预览上验</text>
+<rect class="shadow" x="315" y="579" width="240" height="120"/>
+<rect class="card" x="312.5" y="576.5" width="239" height="119"/>
+<rect class="head" x="313" y="577" width="238" height="31"/>
+<path class="rule" d="M313 608.5H551"/>
+<rect class="m-flow" x="328" y="588" width="8" height="8"/>
+<text class="label" x="344" y="596">合并门槛</text>
+<text class="body" x="328" y="632.5">CI 门禁</text>
+<text class="small" x="536" y="632.5" text-anchor="end">lint · 测试 · 检查</text>
+<path class="rule" d="M328 640.5H536"/>
+<text class="body" x="328" y="656.5">机器评审</text>
+<text class="small" x="536" y="656.5" text-anchor="end">大改逻辑才等</text>
+<path class="rule" d="M328 664.5H536"/>
+<text class="body" x="328" y="680.5">lyjw 点头</text>
+<text class="small" x="536" y="680.5" text-anchor="end">UI 变化看图</text>
+<rect class="shadow" x="603" y="579" width="240" height="120"/>
+<rect class="card" x="600.5" y="576.5" width="239" height="119"/>
+<rect class="head" x="601" y="577" width="238" height="31"/>
+<path class="rule" d="M601 608.5H839"/>
+<rect class="m-flow" x="616" y="588" width="8" height="8"/>
+<text class="label" x="632" y="596">MAIN</text>
+<text class="label" x="824" y="596" text-anchor="end">WORKERS BUILDS</text>
+<text class="title" x="616" y="638">合并提交，自动部署</text>
+<text class="cap" x="616" y="658">ESA 首页随之刷新</text>
+<text class="cap" x="616" y="676">核对 /api/version</text>
+<path class="tip" d="M144 168L139.5 160L148.5 160Z"/>
+<path class="tip" d="M144 120L148.5 128L139.5 128Z"/>
+<path class="edge" d="M144 126L144 162"/>
+<path class="tip" d="M432 168L427.5 160L436.5 160Z"/>
+<path class="edge" d="M432 120L432 162"/>
+<path class="tip" d="M720 168L715.5 160L724.5 160Z"/>
+<path class="edge" d="M720 120L720 162"/>
+<path class="tip" d="M264 216L272 211.5L272 220.5Z"/>
+<path class="edge" d="M312 216L270 216"/>
+<path class="tip" d="M144 312L139.5 304L148.5 304Z"/>
+<path class="edge" d="M144 264L144 306"/>
+<path class="tip" d="M720 312L715.5 304L724.5 304Z"/>
+<path class="edge" d="M720 264L720 306"/>
+<path class="tip" d="M144 576L139.5 568L148.5 568Z"/>
+<path class="edge" d="M144 504L144 570"/>
+<path class="edge" d="M432 336L432 552L144 552"/>
+<path class="edge" d="M720 408L720 552L432 552"/>
+<circle class="tip" cx="144" cy="552" r="3.5"/>
+<circle class="tip" cx="432" cy="552" r="3.5"/>
+<path class="tip" d="M312 636L304 640.5L304 631.5Z"/>
+<path class="edge" d="M264 636L306 636"/>
+<path class="tip" d="M600 636L592 640.5L592 631.5Z"/>
+<path class="edge" d="M552 636L594 636"/>
+<rect class="knock" x="20" y="136" width="74.88" height="16"/>
+<rect class="m-claude" x="26" y="140" width="8" height="8"/>
+<text class="label" x="40" y="148">CLAUDE</text>
+<rect class="knock" x="152" y="280" width="41" height="16"/>
+<text class="small" x="156" y="292">开线程</text>
+<rect class="knock" x="728" y="280" width="74" height="16"/>
+<text class="small" x="732" y="292">访客确认计划</text>
+<rect class="knock" x="525.8" y="544" width="100.4" height="16"/>
+<text class="small" x="576" y="556" text-anchor="middle">都以 PR 进 main</text>
+<rect class="knock" x="528" y="136" width="96" height="16"/>
+<text class="small" x="576" y="148" text-anchor="middle">共享一份项目记忆</text>
+<rect class="m-lyjw" x="24" y="720" width="8" height="8"/>
+<text class="cap" x="40" y="728">lyjw</text>
+<rect class="m-claude" x="100.8" y="720" width="8" height="8"/>
+<text class="cap" x="116.8" y="728">Claude</text>
+<rect class="m-devin" x="192" y="720" width="8" height="8"/>
+<text class="cap" x="208" y="728">Devin</text>
+<rect class="m-flow" x="276" y="720" width="8" height="8"/>
+<text class="cap" x="292" y="728">GitHub · Cloudflare</text>
+<rect class="m-outside" x="461.3" y="720.5" width="7" height="7"/>
+<text class="cap" x="476.8" y="728">外部触发</text>
+</svg>
