@@ -33,7 +33,7 @@ FIG. 2 的 App 名、400 ms 的出处按 main a2c6e1c 回代码复核过；apple
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
 | Mac | Mac Telemetry Hub，菜单栏 App | `/api/ingest/mac` · `lyjwpage-mac` | 前台应用、窗口标题、Apple Music、充电设备、编码用量（本机的日行、最近一次用量事件、5 分钟 token 桶）、时区、Apple Music user token |
-| iPhone | lyjwpage iOS App，HealthKit 唤醒：圆环按小时（`.hourly`；README 说这一条传 `.immediate` 也会被系统钳到 `.hourly`），训练申请 `.immediate`（`apps/ios/App/Hub/Modules/ActivityModule.swift#observe`、`apps/ios/App/Hub/Modules/WorkoutsModule.swift#startObserving`、`apps/ios/README.md` 的「什么时候会上报」） | `/api/ingest/iphone` · `lyjwpage-iphone` | 活动圆环、训练、五分钟步数桶 |
+| iPhone | lyjwpage iOS App，HealthKit 唤醒：圆环按小时（`.hourly`；README 说这一条传 `.immediate` 也会被系统钳到 `.hourly`），训练申请 `.immediate`（`apps/ios/App/Hub/Modules/ActivityModule.swift#observe`、`apps/ios/App/Hub/Modules/WorkoutsModule.swift#startObserving`、`apps/ios/README.md` 的「什么时候会上报」） | `/api/ingest/iphone` · `lyjwpage-iphone`；专注模式由快捷指令另用 `lyjwpage-iphone-focus` 报 | 活动圆环、训练、五分钟步数桶；睡眠 / 正念专注模式（`modules.focus`，首页勿扰卡 `src/components/live/focus-now-card.tsx`） |
 | Home Assistant | 家里 | `/api/ingest/homepod` · `lyjwpage-home-assistant` | HomePod 正在播放。不报 PS5 电源 |
 | PlayStation | playstation-reporter，n100 上的容器 | `/api/ingest/playstation` · `lyjwpage-playstation` | presence、游玩列表、奖杯：拿本机的 PSN 登录态问 Sony 取来，用自己的 Access token 寄到站点。不发 `power` |
 | Emby | emby-reporter，NAS 上的容器 | `/api/ingest/emby` · `lyjwpage-emby` | 在看什么；海报先传 R2 |

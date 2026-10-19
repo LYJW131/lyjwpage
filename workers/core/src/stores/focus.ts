@@ -13,11 +13,10 @@ export function writeFocus({ mode, observedAt }: { mode: FocusMode | null; obser
     const before = focusNow(previous, observedAt);
     const since = mode === null ? null : before.mode === mode ? before.since : observedAt;
     const after = focusNow({ mode, since, observedAt }, observedAt);
-    const changed = before.mode !== after.mode;
     await fanout({
       writes: [focusMirror.put(after)],
-      events: changed ? [{ type: "focus-now", payload: after }] : [],
-      tags: changed ? [FOCUS_NOW_TAG] : [],
+      events: before.mode !== after.mode ? [{ type: "focus-now", payload: after }] : [],
+      tags: Boolean(before.mode) !== Boolean(after.mode) ? [FOCUS_NOW_TAG] : [],
     });
   })();
 }
