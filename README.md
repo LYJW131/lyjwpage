@@ -68,8 +68,8 @@
 **Meta Quest 正在玩**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=2">
-  <img src="https://lyjw.me/cards/quest.svg?v=2" alt="Meta Quest 正在玩卡片：游戏、模式与已玩时长" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/quest.svg?v=3" alt="Meta Quest 正在玩卡片：游戏、模式与已玩时长" width="100%">
 </picture>
 
 **充电头与充电宝**
