@@ -108,7 +108,7 @@ Claude 第一条回复已按 `AGENTS.md`「工作方式」复述了读法、lyjw
 - 新建 skill 时，在根 `AGENTS.md` 或 `HUMAN.md` 已经点名同类 skill 的地方加一行指针；没有合适位置就不加。
 - 分支用本会话指定的开发分支，每次从最新 main 重开（上一个 PR 已合并时）。提交与 PR 标题 `docs(skills): <一句话>`（只改了 `AGENTS.md` / `HUMAN.md` 时用 `docs(agents): <一句话>`），PR 正文先写 Before / After，再逐项列证据线程标题（不贴讨论串链接和内部 id）。
 - 验证：`pnpm docs:check` 由主线程直接跑（单条命令）；不止一条检查时按 `lyjwpage-verify` 派验证员。
-- 合并：skill、偏差修正与文档 PR 按项目规矩 CI 绿就合，合并提交用 `pnpm merge-message`（AGENTS.md「部署流程」）。合并接口明确返回成功才把 ledger 记成 `merged`；结果不明记 `pr-open`，下次先查。
+- 合并：skill、偏差修正与文档 PR 按项目规矩本地 `pnpm docs:check` 过了就合、不等 CI，合并提交用 `pnpm merge-message`（AGENTS.md「部署流程」）。合并接口明确返回成功才把 ledger 记成 `merged`；结果不明记 `pr-open`，下次先查。
 
 ### 7. 记账、报告
 

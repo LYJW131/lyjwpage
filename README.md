@@ -165,7 +165,7 @@
 
 - **规则分层，能拦就拦**：[`HUMAN.md`](./HUMAN.md) 是给 lyjw 的协作约定，[`AGENTS.md`](./AGENTS.md) 是给 agent 的硬规则，[`.claude/skills/`](./.claude/skills/) 是可复用流程；违反时由钩子、lint 和 CI 里的 `docs:check`、`rules:check`、`design:scale` 拦下，存量违规的基线只减不增。
 - **验证有回执**：检查交给 Haiku 验证员，它按提交 SHA 签分级回执，合并前脚本核对回执还盖得住当前提交。
-- **合并分档**：文档和小改动 CI 绿就合，大改逻辑的处理完机器评审，UI 变化等 lyjw 看图点头。
+- **合并分档**：文档和小改动本地检查过了就合、不等 CI，大改逻辑的处理完机器评审，UI 变化等 lyjw 看图点头。
 - **自我改进**：定时任务把反复出现的流程写成 skill、把被采纳的评审意见做成检查，项目记忆镜像在 [`.claude/memory/`](./.claude/memory/MEMORY.md)。
 - **访客也能改站点**：在首页对话里描述改动，Claude 规划、审查、实现，产出 PR 交 lyjw 合并。
 
