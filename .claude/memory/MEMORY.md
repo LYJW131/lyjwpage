@@ -8,7 +8,7 @@
 - **Reports for lyjw are Artifacts, never .md** (lyjw 2026-10-15 20:19 SGT: "给我看的报告我不想读md 要artifacts"). Any research write-up, comparison or report meant for lyjw to read is published with the Artifact tool and linked; .md files may stay as working data for other threads but are never the deliverable.
 - **Technical reports: one Artifact, A style only** (lyjw 2026-10-16 00:00 SGT: "以后都选a"; ends the A/D side-by-side trial). A = ASD-STE100-style short controlled sentences. Keep text low, don't grab attention. No D version anymore. Reference: [报告写法四选一](<private claude.ai link>).
 - **Latest stack, no legacy compat** (lyjw 2026-10-15 00:42 SGT): prefer newest versions/APIs; when upgrading or migrating, drop old shims/fallbacks/dual paths. Exception: iOS reporter endpoints must keep working.
-- **Don't over-engineer** (lyjw 2026-10-15: "你过度设计了 提示词改一下就行了"; also dropped the post-deploy PageSpeed check as unnecessary). Pick the smallest change that does the job.
+- **Don't over-engineer** (lyjw 2026-10-15: "你过度设计了 提示词改一下就行了"; also dropped the post-deploy PageSpeed check as unnecessary). Pick the smallest change that does the job. But a little added code is not a cost by itself (lyjw 2026-10-20 00:06 SGT: "增加代码的 增加不多的话感觉不需要作为代价"): don't list line counts as a downside; weigh what a change adds to run, wait on or maintain.
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
 - **Links as markdown** `[text](url)`, never bare URLs next to Chinese: [[links-as-markdown]].
@@ -57,6 +57,7 @@
 - **No file-size gate** (lyjw 2026-10-19 17:13 SGT "ok不加"): no 5,000-token check in CI or rules; split a big file only when a change already touches it. Don't re-propose the gate.
 - **Type assertions:** fix only real risks (unchecked stored/external data), no lint rule banning `as unknown as`; generic narrowing casts stay (#417, lyjw let Claude decide 2026-10-19).
 - README trimmed to essentials (#331, lyjw found it 又臭又长); long design write-ups live in docs/design-notes.md. Keep README short.
+- README diagrams: Archify dropped (lyjw 2026-10-19 23:23 SGT "去掉这个外部项目依赖"). Architecture and workflow are SVGs drawn by `scripts/readme-diagrams.ts` (`pnpm docs:diagrams`, zh/en × light/dark, site tokens); the old Pages URL only redirects to the README. Redraw when Workers, bindings, sources, routines or merge gates change.
 - Sentry fully removed (#198): [[sentry-exit-done]]. api→core rename done: [[api-rename-to-core]]; collector drives the cron round: [[core-cron-internal-error]]. Same-origin API notes: [[same-origin-api-traps]].
 - ISR replaced by Workers Caching entrypoints + Cache-Tag purge; first-screen regressions fixed in #274 (Geist Mono restored). Now-playing decisions: [[now-playing-first-screen-decisions]]. ESA home is purged only on deploy: [[esa-home-no-layout-purge]]. First-screen LCP fix #364 (mobile 6.4→4.9 s); post-deploy PageSpeed check rejected (#366 closed). HTML slimming done (#370); homepage modulepreload lowered (#400), charger icons inlined (#402).
 - Old hashed static assets backfilled to R2 prefix `site-assets-legacy/` (no expiry, #354); missing Vercel-era chunks get a reload stub.
