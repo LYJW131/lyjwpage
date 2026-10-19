@@ -67,7 +67,7 @@ $DV list
 - 查越界：`git stash list`、主检出的 `git status`、`df -h`、它留下的进程（按 PID）、未清的大文件。
 - **重新签名进 PR**：Devin 的提交不签名。在 PR 分支上 `git cherry-pick <base>..devin/<task>`，新提交由会话环境以 lyjw 身份签名；不改提交身份、不关签名（根 `AGENTS.md`「禁区」）。尾注统一成 Claude 的 `Co-Authored-By` 加 `Co-Authored-By: Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>`，去掉 Devin 自带的「Generated with」。之后照常开 PR、走合并门槛。
 - 提交和 PR 里不许出现 key：推之前 `git diff <base>.. | grep -E 'eyJ|devin-session-token$'` 必须为空。
-- 收尾：`git worktree remove --force <worktree>`，只删该任务目录下的大文件，`$DV stop`；确定不再续跑的会话 `devin rm --force <id>`（id 在 meta 里；非交互环境不加 `--force` 会报错）。
+- 收尾：先 `$DV stop` 并确认 `$DV list` 里它已退出，再看 worktree 的 `git status`：有没提交的改动就先问清要不要（要的让它续一轮提交，或自己提交），干净了才 `git worktree remove <worktree>`，不加 `--force`；只删该任务目录下的大文件；确定不再续跑的会话 `devin rm --force <id>`（id 在 meta 里；非交互环境不加 `--force` 会报错）。
 
 ## 出事怎么办
 
