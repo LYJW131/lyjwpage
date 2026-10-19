@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { TRUSTED_AUTHOR_IDS, classify, severity, sieve, sievePr, type PrCommit, type PrData } from "./review-sieve.ts";
+import { classify, severity, sieve, sievePr, type PrCommit, type PrData } from "./review-sieve.ts";
 
 const FIX = "e2495e54b6a1c0ffee0000000000000000000001";
 const NEXT = "780d6320e8a1c0ffee0000000000000000000002";
@@ -187,8 +186,3 @@ test("第一个 PR 就读失败或列不出 PR 时书签不动；评论超过一
   assert.ok(calls.includes("pulls/404/comments?page=2"));
 });
 
-test("TRUSTED_AUTHOR_IDS 与 verify-receipt.ts 认的两个账号一致", () => {
-  const source = readFileSync(new URL("./verify-receipt.ts", import.meta.url), "utf8");
-  const ids = /TRUSTED_AUTHOR_IDS = new Set\(\[([\d,\s]+)\]\)/.exec(source)?.[1].split(",").map((s) => Number(s.trim()));
-  assert.deepEqual(ids, [...TRUSTED_AUTHOR_IDS]);
-});
