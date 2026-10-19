@@ -21,7 +21,10 @@ function externalUrl(raw: string): URL | null {
 
 export function confirmExternalOpen(raw: string) {
   const url = externalUrl(raw);
-  if (!url) return;
+  if (!url) {
+    window.open(raw, "_blank", "noopener,noreferrer");
+    return;
+  }
   for (const listener of listeners) listener({ url, newTab: true });
 }
 
@@ -31,13 +34,14 @@ export function ExternalLinkGuard() {
 
   useEffect(() => {
     listeners.add(setPending);
+    // 只拦页面上一次点击就离站的链接：弹层里的链接是点开弹层后的第二次点击，本身已是确认，不再拦。
     // 冒泡阶段挂在 window 上：组件自己 preventDefault 接管的点击（如打开站内弹层）先处理，这里跳过。
     const onClick = (event: MouseEvent) => {
       if (event.defaultPrevented) return;
       if (event.type === "click" ? event.button !== 0 : event.button !== 1) return;
       const anchor = (event.target as Element | null)?.closest?.("a[href]");
       const href = anchor?.getAttribute("href");
-      if (!anchor || !href || anchor.hasAttribute("download")) return;
+      if (!anchor || !href || anchor.hasAttribute("download") || anchor.closest('[role="dialog"]')) return;
       const url = externalUrl(href);
       if (!url) return;
       event.preventDefault();
@@ -74,7 +78,7 @@ function ConfirmDialog({ pending, onClose }: { pending: Pending; onClose: () => 
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+          className="flex size-6 items-center justify-center text-muted-foreground hover:text-foreground"
         >
           <X className="size-3.5" aria-hidden />
         </button>
@@ -87,7 +91,7 @@ function ConfirmDialog({ pending, onClose }: { pending: Pending; onClose: () => 
         <button
           type="button"
           onClick={onClose}
-          className="label-mono min-w-0 flex-1 py-3 text-center text-foreground transition-colors hover:bg-surface-hover"
+          className="label-mono inline-flex min-w-0 flex-1 min-h-11 items-center justify-center text-center text-foreground transition-colors hover:bg-surface-hover"
         >
           Cancel
         </button>
