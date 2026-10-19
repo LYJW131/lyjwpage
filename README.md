@@ -62,6 +62,20 @@
   <img src="https://lyjw.me/cards/now-watching.svg?v=2" alt="Emby 正在播放卡片" width="100%">
 </picture>
 
+**勿扰**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/focus.svg?v=2" alt="勿扰卡片：iPhone 专注模式与已持续时长" width="100%">
+</picture>
+
+**Meta Quest 正在玩**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=2">
+  <img src="https://lyjw.me/cards/quest.svg?v=2" alt="Meta Quest 正在玩卡片：游戏、模式与已玩时长" width="100%">
+</picture>
+
 **充电头与充电宝**
 
 <p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/charger.svg?theme=dark&amp;v=2"><img src="https://lyjw.me/cards/charger.svg?v=2" alt="Anker 充电头卡片：总功率、功率曲线与各端口" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/powerbank.svg?theme=dark&amp;v=2"><img src="https://lyjw.me/cards/powerbank.svg?v=2" alt="Anker 充电宝卡片：电量、底座输入、输出与端口" width="50%"></picture></p>
