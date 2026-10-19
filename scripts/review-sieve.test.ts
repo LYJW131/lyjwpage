@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classify, severity, sieve, sievePr, type PrCommit, type PrData } from "./review-sieve.ts";
+import { classify, plain, severity, sieve, sievePr, type PrCommit, type PrData } from "./review-sieve.ts";
 
 const FIX = "e2495e54b6a1c0ffee0000000000000000000001";
 const NEXT = "780d6320e8a1c0ffee0000000000000000000002";
@@ -12,6 +12,13 @@ const commits: PrCommit[] = [
 ];
 const at = "2026-10-17T08:18:00Z";
 const reply = (body: string, when = "2026-10-17T08:20:33Z") => ({ body, at: when, url: "https://example.test/r" });
+
+test("拆开的标签去掉内层后还会拼回去，要删到不再出现", () => {
+  assert.equal(plain("<scrip<script>t>alert(123)</script>"), "alert(123)");
+  assert.equal(plain("<scr<scr<script>ipt>ipt>正文</script>"), "正文");
+  assert.equal(plain("<scr<!-- hide -->ipt>正文</script>"), "正文");
+  assert.equal(plain("<sub><sub>标题</sub></sub>"), "标题");
+});
 
 test("回复里的 SHA 是本 PR 的提交就算已采纳，短 SHA 按前缀认", () => {
   const result = classify(at, [reply("已修（e2495e5）：最近 14 天改按 todayAtSource 截止。")], [], commits);
