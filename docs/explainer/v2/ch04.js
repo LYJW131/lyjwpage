@@ -204,6 +204,13 @@
       return K.text(x, str, px, py, { ...o, font: o.font || (mono ? MONO(size, o.w || 500) : SERIF(size, w)), color });
     }
     // 标题按栏宽折行：中文逐字量，英文按词。
+    function chipT(x, str, px, py, o = {}) {
+      const size = o.size || 40, f = o.mono ? MONO(size, o.w || 500) : SERIF(size, o.w || 600);
+      x.save(); x.font = f; const tw = x.measureText(str).width; x.restore();
+      const x0 = o.align === "center" ? px - tw / 2 : o.align === "right" ? px - tw : px;
+      x.save(); x.globalAlpha *= o.alpha ?? 1; x.fillStyle = rgba(NEWS); x.fillRect(x0 - 12, py - size * 0.95, tw + 24, size * 1.3); x.restore();
+      T(x, str, px, py, o);
+    }
     function wrap(x, str, font, maxW) {
       x.save(); x.font = font;
       const units = str.match(/[　-鿿＀-￯]|[^\s　-鿿＀-￯]+|\s+/g) || [], out = [];
@@ -312,11 +319,12 @@
       if (alpha <= 0) return;
       x.save(); x.globalAlpha *= alpha; x.translate(0, -lift);
       const d = Math.min(depth, h * 0.18);
-      shape(x, rectP(sx + d, sy + d, w, h), 0.85, INK(), { lw: 1.6 });
+      x.save(); x.fillStyle = inkP(); x.fillRect(sx + d, sy + d, w, h); x.restore();
       x.save(); x.fillStyle = rgba(NEWS); x.fillRect(sx, sy, w, h); x.restore();
-      shape(x, rectP(sx, sy, w, h), level, rgb, { lw: 2.2 });
-      if (fresh > 0) { x.save(); x.globalAlpha *= fresh; x.fillStyle = tone(0.75, ORANGE()); x.fillRect(sx, sy, w, h); x.restore(); }
-      if (label) T(x, label, sx + 14, sy + h / 2 + size * 0.36, { mono: true, size, maxW: w - 24, color: rgba(INK()), texture });
+      if (fresh > 0) { x.save(); x.fillStyle = rgba(mixC(NEWS, ORANGE(), 0.55), fresh); x.fillRect(sx, sy, w, h); x.restore(); }
+      x.save(); x.fillStyle = tone(level * 2, rgb); x.fillRect(sx, sy, Math.min(w * 0.06, 18), h); x.restore();
+      shape(x, rectP(sx, sy, w, h), 0, rgb, { lw: 2.2 });
+      if (label) { const pad = Math.min(w * 0.06, 18) + 10; T(x, label, sx + pad, sy + h / 2 + size * 0.36, { mono: true, size, maxW: w - pad - 12, color: rgba(INK()), texture }); }
       x.restore();
     }
     // 吊牌：一张带孔的小纸牌，一根线拴在块的角上，跟着拍轻轻晃。
@@ -336,7 +344,7 @@
       p.moveTo(-h / 2, 0); p.lineTo(w - h / 2, 0); p.lineTo(w - h / 2, h); p.lineTo(-h / 2, h); p.lineTo(-h / 2 - h * 0.4, h / 2); p.closePath();
       x.translate(0, -h / 2);
       x.save(); x.fillStyle = rgba(NEWS); x.fill(p); x.restore();
-      shape(x, p, 0.5, rgb, { lw: 1.8 });
+      x.save(); x.fillStyle = rgba(mixC(NEWS, rgb, 0.4)); x.fill(p); x.strokeStyle = rgba(INK(), 0.85); x.lineWidth = 1.8; x.stroke(p); x.restore();
       x.fillStyle = rgba(NEWS); x.beginPath(); x.arc(-h / 2 + h * 0.05, h / 2, h * 0.16, 0, TAU); x.fill();
       if (label) T(x, label, -h / 2 + h * 0.4, h / 2 + size * 0.36, { mono: true, size, color: rgba(INK()), maxW: tw + 2 });
       x.restore();
@@ -418,7 +426,7 @@
     function press(x, b) {
       const P0 = PHOTO_A, gy = P0.y + P0.h - 40;
       x.save(); x.beginPath(); x.rect(P0.x, P0.y, P0.w, P0.h); x.clip();
-      x.fillStyle = tone(0.12, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
+      x.fillStyle = tone(0.08, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
       x.fillStyle = tone(0.3, INK()); x.fillRect(P0.x, gy, P0.w, 60);
       const run = prog(b, 1.25, 3.9), ang = b * TAU * 0.9 * (b > 1.2 ? 1 : 0);
       const fx = P0.x + 60, fy = P0.y + 120;
@@ -443,7 +451,7 @@
         const sx = lerp(fx + 470, SX, k), sy = lerp(fy + 230, SY - 16 - out * 9, E.in(k)), rot = lerp(-0.3, 0, k);
         x.save(); x.translate(sx, sy); x.rotate(rot); shape(x, rectP(0, -8, 180, 14), 0.05, INK(), { lw: 1.4 }); x.restore();
       }
-      T(x, tr("ch04.pages"), SX + 90, SY - 36 - stackN * 9, { size: 34, align: "center", w: 600, alpha: clamp(run * 3) });
+      chipT(x, tr("ch04.pages"), SX + 90, SY - 36 - stackN * 9, { size: 34, align: "center", w: 600, alpha: clamp(run * 3) });
       // 报童 Clawd 戴鸭舌帽，抽一张递给访客。
       const hand = AT.a.hand, pick = AT.a.pick, cxA = P0.x + 960;
       const fr0 = b >= pick && b < pick + 0.25 ? K.clawdSeq("land", b, pick, BARs) : b >= hand && b < hand + 0.6 ? K.clawdSeq("jump", b, hand, BARs) : null;
@@ -457,7 +465,7 @@
       }
       x.restore();
       frame(x, P0);
-      T(x, tr("ch04.visitor"), vx, P0.y + 70, { size: 34, align: "center", w: 600 });
+      chipT(x, tr("ch04.visitor"), vx, P0.y + 70, { size: 34, align: "center", w: 600 });
     }
 
     // ---- C 栏：三块撤版 ----
@@ -466,7 +474,7 @@
     function purge(x, b) {
       const P0 = PHOTO_C, gy = P0.y + P0.h - 30;
       x.save(); x.beginPath(); x.rect(P0.x, P0.y, P0.w, P0.h); x.clip();
-      x.fillStyle = tone(0.1, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
+      x.fillStyle = tone(0.06, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
       RECAST.forEach(([id, t], i) => {
         const sx = P0.x + 50, sy = P0.y + 110 + i * 150, w = 400, h = 100;
         const lift = 90 * win(b, t + 0.05, t + 0.2, t + 0.3, t + 0.45);
@@ -488,9 +496,9 @@
       x.restore();
       frame(x, P0);
       const ko = win(b, AT.c.snip[0] + 0.3, AT.c.snip[0] + 0.5, AT.c.reprint - 0.1, AT.c.reprint + 0.1);
-      if (ko > 0) T(x, tr("ch04.old"), P0.x + 250, P0.y + 64, { size: 40, align: "center", color: spotP(), alpha: ko });
+      if (ko > 0) chipT(x, tr("ch04.old"), P0.x + 250, P0.y + 64, { size: 40, align: "center", color: spotP(), alpha: ko });
       const kn = prog(b, AT.c.reprint, AT.c.reprint + 0.3);
-      if (kn > 0) T(x, tr("ch04.new"), P0.x + 330, P0.y + 64, { size: 40, align: "center", alpha: kn, maxW: 620 });
+      if (kn > 0) chipT(x, tr("ch04.new"), P0.x + 330, P0.y + 64, { size: 40, align: "center", alpha: kn, maxW: 620 });
     }
 
     // ---- D 栏：钟和六块没挂牌的版 ----
@@ -499,7 +507,7 @@
     function clockPhoto(x, b) {
       const P0 = PHOTO_D;
       x.save(); x.beginPath(); x.rect(P0.x, P0.y, P0.w, P0.h); x.clip();
-      x.fillStyle = tone(0.1, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
+      x.fillStyle = tone(0.06, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
       const cx = P0.x + 230, cy = P0.y + 245, R = 190;
       shape(x, circP(cx, cy, R + 16), 0.75, INK());
       shape(x, circP(cx, cy, R), 0.04, INK());
@@ -515,8 +523,8 @@
         const col = i % 2, row = Math.floor(i / 2), sx = P0.x + 500 + col * 370, sy = P0.y + 50 + row * 145, w = 340, h = 100;
         const t = AT.d.ring + i * AT.d.ringStep, kk = prog(b, 9.2, t), done = impact(b, t, 0.12);
         slug(x, sx, sy, w, h, { label: id, size: 28, fresh: b >= t ? 1 - prog(b, t, t + 0.7) : 0 });
-        const rx = sx + w - 34, ry = sy + h / 2;
-        x.save(); x.strokeStyle = rgba(INK(), 0.4); x.lineWidth = 6; x.beginPath(); x.arc(rx, ry, 18, 0, TAU); x.stroke();
+        const rx = sx + w - 2, ry = sy + 2;
+        x.save(); x.fillStyle = rgba(NEWS); x.beginPath(); x.arc(rx, ry, 24, 0, TAU); x.fill(); x.strokeStyle = rgba(INK(), 0.4); x.lineWidth = 6; x.beginPath(); x.arc(rx, ry, 18, 0, TAU); x.stroke();
         x.strokeStyle = spotP(); x.beginPath(); x.arc(rx, ry, 18, -Math.PI / 2, -Math.PI / 2 + kk * TAU); x.stroke();
         if (done > 0.02) { x.globalAlpha = done; x.lineWidth = 3; x.beginPath(); x.arc(rx, ry, 18 + (1 - done) * 30, 0, TAU); x.stroke(); }
         x.restore();
@@ -530,12 +538,12 @@
     function errPhoto(x, b) {
       const P0 = PHOTO_E;
       x.save(); x.beginPath(); x.rect(P0.x, P0.y, P0.w, P0.h); x.clip();
-      x.fillStyle = tone(0.1, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
+      x.fillStyle = tone(0.06, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
       slug(x, P0.x + 40, P0.y + 50, 300, 96, { label: "pulse", size: 32 });
       const k = prog(b, AT.e.wire - 0.3, AT.e.wire, E.out), back = prog(b, AT.e.wire + 0.05, AT.e.wire + 0.35, E.in);
       const tx = lerp(P0.x + P0.w + 40, P0.x + 380, k) + back * 520;
       x.save(); x.translate(tx, P0.y + 40); x.rotate(-0.05 + back * 0.3);
-      shape(x, rectP(0, 0, 230, 120), 0.08, INK(), { lw: 2 });
+      shape(x, rectP(0, 0, 230, 120), 0, INK(), { lw: 2, base: true });
       T(x, "503", 115, 82, { mono: true, size: 56, w: 700, align: "center", color: spotP() });
       x.restore();
       x.restore();
