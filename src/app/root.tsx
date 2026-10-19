@@ -37,7 +37,7 @@ import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript }
 
 // 须与 globals.css 的 Geist Mono @font-face 指向同一个文件，预加载才会被字体规则复用。
 import geistMonoUrl from "../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2?url";
-import "./globals.css";
+import "./site.css";
 
 function bootScript(): string {
   return (

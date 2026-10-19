@@ -7,6 +7,7 @@ import type { DigestPayload } from "../shared/digest.ts";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 import { TROPHY_CATALOG_OVERRIDE_SEARCH } from "../shared/trophy-slice.ts";
 import type { PlaystationGame } from "../shared/types.ts";
+import { stampNow } from "../shared/fixture-time.ts";
 import { trophiesTilePath } from "../src/lib/paths.ts";
 import {
   clearOverride,
@@ -15,7 +16,6 @@ import {
   putOverride,
   readJson,
   SCENES_DIR,
-  stampNow,
   switchOverrides,
   tokenize,
   WorkerError,

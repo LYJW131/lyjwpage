@@ -1,0 +1,146 @@
+import type { ReactElement } from "react";
+import { renderToString } from "react-dom/server";
+
+import { PulseCard } from "@/components/live/pulse-card";
+import { ServerCard } from "@/components/live/server-card";
+import { SiteStatusCard } from "@/components/live/site-status-card";
+import { VibeCodingCard } from "@/components/live/vibecoding-card";
+import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
+import { NO_STORE } from "@/lib/site-policy";
+import { siteContext, type SiteServices } from "@/server/site-context";
+import { stampNow } from "@shared/fixture-time";
+import type { StatusViewKey } from "@shared/status-views";
+
+import serverFixture from "../../../workers/core/dev-fixtures/server-traffic.json";
+import geistMono from "../../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2?inline";
+import cardsCss from "./readme-cards.css?inline";
+
+import type { Route } from "./+types/route";
+
+// GitHub 经 camo 代取 README 图片并按这个头缓存；与 workers/core/src/week-card.ts#WEEK_CARD_CACHE_CONTROL 同档。
+const CARD_CACHE_CONTROL = "public, max-age=600, stale-while-revalidate=3600";
+
+// 卡宽取首页在 1280 视口下的内容宽（max-w-5xl）：SVG 里的媒体查询按图片自身宽度算，要落在 lg 断点上才是桌面布局。
+const CARD_WIDTH = 1024;
+// 硬阴影向右下偏移，画布留出这一圈。
+const SHADOW_PAD = 4;
+
+type Theme = "light" | "dark";
+type Status = <K extends StatusViewKey>(key: K) => Promise<FirstScreen<K>>;
+type Rendered = { element: ReactElement; height: number; sample: boolean };
+
+const CARDS: Record<string, { label: string; render: (status: Status) => Promise<Rendered> }> = {
+  "vibe-coding": {
+    label: "Vibe Coding",
+    async render(status) {
+      const [coding, codingNow, limits] = await Promise.all([status("coding"), status("codingNow"), status("limits")]);
+      return {
+        element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={limits} />,
+        height: 834,
+        sample: false,
+      };
+    },
+  },
+  server: {
+    label: "Exit Node",
+    async render(status) {
+      const live = await status("server");
+      const sample = !live.ok;
+      const server = sample ? (stampNow(serverFixture, Date.now()) as FirstScreen<"server">) : live;
+      return { element: <ServerCard fallback={server} className="md:col-span-2" />, height: 292, sample };
+    },
+  },
+  pulse: {
+    label: "Pulse",
+    async render(status) {
+      return { element: <PulseCard fallback={await status("pulse")} />, height: 363, sample: false };
+    },
+  },
+  "site-status": {
+    label: "LYJWPAGE",
+    async render(status) {
+      const [githubRepo, siteDeployments, cloudflareWorkers, health, server, reporters] = await Promise.all([
+        status("githubRepo"),
+        status("siteDeployments"),
+        status("cloudflareWorkers"),
+        status("health"),
+        status("server"),
+        status("reporters"),
+      ]);
+      return {
+        element: (
+          <SiteStatusCard
+            githubFallback={githubRepo}
+            siteFallback={siteDeployments}
+            cloudflareFallback={cloudflareWorkers}
+            healthFallback={health}
+            serverFallback={server}
+            reportersFallback={reporters}
+          />
+        ),
+        height: 938,
+        sample: false,
+      };
+    },
+  },
+};
+
+// 外部字体在 <img> 里的 SVG 不会加载，换成内嵌的 data URI。
+const CSS = cardsCss.replace(/@font-face\s*{[^}]*}/g, "");
+const FONT_FACE = `@font-face{font-family:"Geist Mono";src:url(${geistMono}) format("woff2");font-weight:100 900}`;
+
+const unescapeAttribute = (value: string) =>
+  value.replaceAll("&quot;", '"').replaceAll("&#x27;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+
+// NumberFlow 的数字在声明式 Shadow DOM 里，XML 文档不解析 <template shadowrootmode>；去掉模板，留下它给的纯文本读数与配套样式。
+const flattenNumberFlow = (html: string) => html.replace(/<template\b[^>]*\sshadowrootmode="open"[^>]*>[\s\S]*?<\/template\s*>/g, "");
+
+// HTML 解析器自己认 <svg>，XML 里不写 xmlns 的 <svg> 落进 XHTML 命名空间，图标与图表就整个不画。
+const svgNamespaces = (html: string) => html.replace(/<svg\b(?![^>]*\sxmlns=)/g, '<svg xmlns="http://www.w3.org/2000/svg"');
+
+// <img> 里的 SVG 不跑脚本、不取外部资源，内联脚本删掉，图片换成 data URI。
+async function inlineImages(html: string, site: SiteServices): Promise<string> {
+  const sources = [...new Set([...html.matchAll(/<img\b[^>]*?\ssrc="([^"]+)"/g)].map((match) => match[1]))].filter(
+    (src) => !src.startsWith("data:"),
+  );
+  const inlined = await Promise.all(sources.map(async (src) => [src, await site.asset(unescapeAttribute(src))] as const));
+  let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/\ssrcSet="[^"]*"/g, "");
+  for (const [src, data] of inlined) out = out.replaceAll(`"${src}"`, `"${data ?? ""}"`);
+  return out;
+}
+
+function svgDocument(body: string, height: number, theme: Theme, label: string, sample: boolean): string {
+  const width = CARD_WIDTH + SHADOW_PAD;
+  const fullHeight = height + SHADOW_PAD;
+  const badge = sample
+    ? `<div class="label-mono text-muted-foreground" style="position:absolute;top:0;left:50%;transform:translateX(-50%);height:2.25rem;display:flex;align-items:center">Sample data</div>`
+    : "";
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${label}">` +
+    `<foreignObject x="0" y="0" width="${width}" height="${fullHeight}">` +
+    `<div xmlns="http://www.w3.org/1999/xhtml" class="${theme === "dark" ? "dark " : ""}font-mono text-foreground antialiased" style="position:relative;width:${CARD_WIDTH}px;height:${height}px;display:flex;flex-direction:column">` +
+    `<style><![CDATA[${FONT_FACE}${CSS}]]></style>` +
+    `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${badge}</div>` +
+    `</div></foreignObject></svg>`
+  );
+}
+
+export async function loader({ params, request, context }: Route.LoaderArgs) {
+  const match = /^([a-z-]+)\.svg$/.exec(params.card ?? "");
+  const card = match ? CARDS[match[1]] : undefined;
+  if (!card) return new Response("Unknown card", { status: 404, headers: { "Cache-Control": NO_STORE } });
+  const theme: Theme = new URL(request.url).searchParams.get("theme") === "dark" ? "dark" : "light";
+  const site = context.get(siteContext);
+  const status: Status = (key) =>
+    site.status(key).catch((): FirstScreen<typeof key> => ({ ok: false, error: FIRST_SCREEN_UNAVAILABLE }));
+  try {
+    const { element, height, sample } = await card.render(status);
+    const body = await inlineImages(svgNamespaces(flattenNumberFlow(renderToString(element))), site);
+    return new Response(svgDocument(body, height, theme, card.label, sample), {
+      headers: { "Content-Type": "image/svg+xml; charset=utf-8", "Cache-Control": CARD_CACHE_CONTROL },
+    });
+  } catch (error) {
+    console.error("[readme-card]", match?.[1], error instanceof Error ? (error.stack ?? error.message) : String(error));
+    return new Response("Card unavailable", { status: 503, headers: { "Cache-Control": NO_STORE } });
+  }
+}

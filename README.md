@@ -39,7 +39,7 @@
 
 ## 页面效果
 
-正在看、正在听、充电、游戏这类状态卡片只在对应的事情发生时出现。下面的图在本地用示例数据把这些状态同时点亮，明暗跟随系统；录制方法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
+正在看、正在听、充电、游戏这类状态卡片只在对应的事情发生时出现。下面的图在本地用示例数据把这些状态同时点亮，明暗跟随系统；落地节点、AI Coding、Pulse、站点自身四张由站点实时渲染成 SVG，没有数据时补示例数据并标 Sample data。录制方法见 [docs/screenshots.md](./docs/screenshots.md)，各卡细节见 [页面细节与关键设计](./docs/design-notes.md)。
 
 **页头前台应用**：Claude Code、Ghostty、Cursor、Antigravity 换成品牌动画，窗口标题过了隐私判断才显示。
 
@@ -105,15 +105,15 @@
 **落地节点**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-dark.gif">
-  <img src="docs/screenshots/server-light.gif" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/server.svg?theme=dark">
+  <img src="https://lyjw.me/cards/server.svg" alt="落地节点卡片：速率、流量、CPU、内存与磁盘" width="100%">
 </picture>
 
 **AI Coding**：Mac 本机日志、Cursor 账号历史与 Claude Code 云端遥测合并计算。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/vibecoding-dark.gif">
-  <img src="docs/screenshots/vibecoding-light.gif" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/vibe-coding.svg?theme=dark">
+  <img src="https://lyjw.me/cards/vibe-coding.svg" alt="AI Coding 卡片：多来源用量、活跃工具与账号限额" width="100%">
 </picture>
 
 **PlayStation**
@@ -123,11 +123,11 @@
   <img src="docs/screenshots/playstation-trophies-light.webp" alt="PlayStation 卡片：在线、正在游玩与展开的奖杯明细" width="100%">
 </picture>
 
-**Pulse**：悬停任一时段看当时的状态与标题。
+**Pulse**：页面上悬停任一时段看当时的状态与标题。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pulse-detail-dark.webp">
-  <img src="docs/screenshots/pulse-detail-light.webp" alt="Pulse 卡片：事实时间线与右侧摘要，悬停显示一段的详情" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/pulse.svg?theme=dark">
+  <img src="https://lyjw.me/cards/pulse.svg" alt="Pulse 卡片：编码、Token、听、看、玩、充电、运动的 24 小时时间线与右侧摘要" width="100%">
 </picture>
 
 **服务状态**
@@ -140,8 +140,8 @@
 **站点自身**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/site-status-dark.webp">
-  <img src="docs/screenshots/site-status-light.webp" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/site-status.svg?theme=dark">
+  <img src="https://lyjw.me/cards/site-status.svg" alt="LYJWPAGE 卡片：仓库统计与提交、30 天在线状态、性能分与各服务指标" width="100%">
 </picture>
 
 ## 系统架构

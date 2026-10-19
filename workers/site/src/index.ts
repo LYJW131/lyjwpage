@@ -346,16 +346,34 @@ export class RenderedSite extends WorkerEntrypoint<Env> implements SiteCacheRpc 
           const response = await ctx.exports.ImageVariants.fetch(
             new Request(target, { headers: { Accept: "image/webp" } }),
           );
-          if (!response.ok) return null;
-          const base64 = Buffer.from(await response.arrayBuffer()).toString("base64");
-          const type = response.headers.get("Content-Type") ?? "image/webp";
-          return `data:${type};base64,${base64}`;
+          return await dataUri(response, "image/webp");
+        } catch {
+          return null;
+        }
+      },
+      asset: async (src) => {
+        try {
+          const target = new URL(src, "https://site.internal");
+          const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
+          const response =
+            target.origin !== "https://site.internal"
+              ? await fetch(target, init)
+              : imageObjectKeyFromPath(target.pathname)
+                ? await ctx.exports.ImageVariants.fetch(imageObjectRequest(new Request(target, init)))
+                : await env.ASSETS.fetch(new Request(target, init));
+          return await dataUri(response, "application/octet-stream");
         } catch {
           return null;
         }
       },
     };
   }
+}
+
+async function dataUri(response: Response, fallbackType: string): Promise<string | null> {
+  if (!response.ok) return null;
+  const base64 = Buffer.from(await response.arrayBuffer()).toString("base64");
+  return `data:${response.headers.get("Content-Type") ?? fallbackType};base64,${base64}`;
 }
 
 function backendRedirect(env: Env, url: URL): Response {
