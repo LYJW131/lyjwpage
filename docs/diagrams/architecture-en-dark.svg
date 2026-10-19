@@ -1,9 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 864" width="864" height="864" role="img" aria-labelledby="title desc">
 <title id="title">lyjwpage architecture</title><desc id="desc">Reporters post through Cloudflare Access to the ingress Worker, and the collector Worker polls outside services every minute. Both write the core Worker's Durable Objects for live state, KV for lag-tolerant snapshots and D1 for the archive; images go to R2. The site Worker reads KV directly and reads live state and pushes from core over Service Bindings to render lyjw.me, fronted by Alibaba ESA in mainland China. Chat, MCP and visitor builds go to the AI Worker, which calls the models and GitHub.</desc>
-<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.bg{fill:#0d0b08}.grid{fill:none;stroke:#ebe8df0d}.card{fill:#14120f;stroke:#ebe8dfc2}.shadow{fill:#00000085}.head{fill:#191713}.rule{stroke:#ebe8df33}.chip{fill:#191713;stroke:#ebe8df33}.region{fill:none;stroke:#95928a;stroke-dasharray:4 4}.edge{fill:none;stroke:#95928a;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#95928a}.knock{fill:#0d0b08}.label{font-size:11px;letter-spacing:0.88px;fill:#95928a}.title{font-size:14px;font-weight:500;fill:#ebe8df}.body{font-size:13px;fill:#ebe8df}.cap{font-size:12px;fill:#95928a}.small{font-size:11px;fill:#95928a}.m-worker{fill:#578ff3}.m-do{fill:#5fcc74}.m-store{fill:#a374ef}.m-lyjw{fill:#2eb1ef}.m-claude{fill:#e99174}.m-devin{fill:#49b86c}.m-flow{fill:#ebe8df}.m-outside{fill:none;stroke:#ebe8dfc2}</style>
-<defs><pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse"><path class="grid" d="M24 0.5H0.5V24"/></pattern></defs>
-<rect class="bg" width="864" height="864"/><rect width="864" height="864" fill="url(#paper)"/>
+<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.card{fill:#14120f;stroke:#ebe8dfc2}.shadow{fill:#00000085}.head{fill:#191713}.rule{stroke:#ebe8df33}.chip{fill:#191713;stroke:#ebe8df33}.region{fill:none;stroke:#95928a;stroke-dasharray:4 4}.edge{fill:none;stroke:#95928a;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#95928a}.label{font-size:11px;letter-spacing:0.88px;fill:#95928a}.title{font-size:14px;font-weight:500;fill:#ebe8df}.body{font-size:13px;fill:#ebe8df}.cap{font-size:12px;fill:#95928a}.small{font-size:11px;fill:#95928a}.m-worker{fill:#578ff3}.m-do{fill:#5fcc74}.m-store{fill:#a374ef}.m-lyjw{fill:#2eb1ef}.m-claude{fill:#e99174}.m-devin{fill:#49b86c}.m-flow{fill:#ebe8df}.m-outside{fill:none;stroke:#ebe8dfc2}</style>
+<defs><mask id="gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="864" height="864"><rect width="864" height="864" fill="#fff"/><rect x="20" y="184" width="104.8" height="16"/><rect x="152" y="160" width="192.8" height="16"/><rect x="668" y="160" width="120.2" height="16"/><rect x="152" y="376" width="126.8" height="16"/><rect x="152" y="628" width="133.4" height="16"/><rect x="668" y="376" width="140" height="16"/><rect x="668" y="616" width="146.6" height="16"/><rect x="315.8" y="688" width="232.4" height="16"/></mask></defs>
+<g mask="url(#gaps)">
 <rect class="region" x="12.5" y="192.5" width="839" height="503"/>
+</g>
 <rect class="shadow" x="27" y="27" width="528" height="120"/>
 <rect class="card" x="24.5" y="24.5" width="527" height="119"/>
 <rect class="head" x="25" y="25" width="526" height="31"/>
@@ -142,6 +143,7 @@
 <text class="body" x="616" y="796.5">Exa · Managed Agents</text>
 <path class="rule" d="M616 804.5H824"/>
 <text class="body" x="616" y="820.5">GitHub App · Actions</text>
+<g mask="url(#gaps)">
 <path class="tip" d="M144 216L139.5 208L148.5 208Z"/>
 <path class="edge" d="M144 144L144 210"/>
 <path class="tip" d="M660 216L655.5 208L664.5 208Z"/>
@@ -175,22 +177,15 @@
 <path class="tip" d="M660 720L655.5 712L664.5 712Z"/>
 <path class="tip" d="M660 528L664.5 536L655.5 536Z"/>
 <path class="edge" d="M660 534L660 714"/>
-<rect class="knock" x="20" y="184" width="104.8" height="16"/>
+</g>
 <rect class="m-worker" x="26" y="188" width="8" height="8"/>
 <text class="label" x="40" y="196">CLOUDFLARE</text>
-<rect class="knock" x="152" y="160" width="192.8" height="16"/>
 <text class="small" x="156" y="172">Access token · /api/ingest/*</text>
-<rect class="knock" x="668" y="160" width="120.2" height="16"/>
 <text class="small" x="672" y="172">HTML · /api · /ws</text>
-<rect class="knock" x="152" y="376" width="126.8" height="16"/>
 <text class="small" x="156" y="388">enrich now playing</text>
-<rect class="knock" x="152" y="628" width="133.4" height="16"/>
 <text class="small" x="156" y="640">polled every minute</text>
-<rect class="knock" x="668" y="376" width="140" height="16"/>
 <text class="small" x="672" y="388">chat · /mcp · builds</text>
-<rect class="knock" x="668" y="616" width="146.6" height="16"/>
 <text class="small" x="672" y="628">models · search · PRs</text>
-<rect class="knock" x="315.8" y="688" width="232.4" height="16"/>
 <text class="small" x="432" y="700" text-anchor="middle">Workers talk over Service Bindings</text>
 <rect class="m-worker" x="324" y="748" width="8" height="8"/>
 <text class="cap" x="340" y="756">Worker</text>

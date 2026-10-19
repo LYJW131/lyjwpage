@@ -1,9 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 864" width="864" height="864" role="img" aria-labelledby="title desc">
 <title id="title">lyjwpage 系统架构</title><desc id="desc">采集端经 Cloudflare Access 上报到 ingress Worker，collector Worker 每分钟拉取外部服务；两者写入 core Worker 的 Durable Object 实时层、KV 可滞后快照与 D1 归档，图片进 R2。site Worker 直读 KV、经 Service Binding 读 core 的实时状态与推送，渲染 lyjw.me，中国大陆经阿里云 ESA；对话、MCP 与访客构建交给 AI Worker，它调用模型与 GitHub。</desc>
-<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.bg{fill:#edebe6}.grid{fill:none;stroke:#1514110d}.card{fill:#fffdf9;stroke:#151411e0}.shadow{fill:#1514112e}.head{fill:#f5f3ee}.rule{stroke:#1514113d}.chip{fill:#f5f3ee;stroke:#1514113d}.region{fill:none;stroke:#605d59;stroke-dasharray:4 4}.edge{fill:none;stroke:#605d59;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#605d59}.knock{fill:#edebe6}.label{font-size:11px;letter-spacing:0.88px;fill:#605d59}.title{font-size:14px;font-weight:500;fill:#151411}.body{font-size:13px;fill:#151411}.cap{font-size:12px;fill:#605d59}.small{font-size:11px;fill:#605d59}.m-worker{fill:#3e70c9}.m-do{fill:#3ba946}.m-store{fill:#8255c7}.m-lyjw{fill:#0085c5}.m-claude{fill:#d97757}.m-devin{fill:#37794a}.m-flow{fill:#151411}.m-outside{fill:none;stroke:#151411e0}</style>
-<defs><pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse"><path class="grid" d="M24 0.5H0.5V24"/></pattern></defs>
-<rect class="bg" width="864" height="864"/><rect width="864" height="864" fill="url(#paper)"/>
+<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.card{fill:#fffdf9;stroke:#151411e0}.shadow{fill:#1514112e}.head{fill:#f5f3ee}.rule{stroke:#1514113d}.chip{fill:#f5f3ee;stroke:#1514113d}.region{fill:none;stroke:#605d59;stroke-dasharray:4 4}.edge{fill:none;stroke:#605d59;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#605d59}.label{font-size:11px;letter-spacing:0.88px;fill:#605d59}.title{font-size:14px;font-weight:500;fill:#151411}.body{font-size:13px;fill:#151411}.cap{font-size:12px;fill:#605d59}.small{font-size:11px;fill:#605d59}.m-worker{fill:#3e70c9}.m-do{fill:#3ba946}.m-store{fill:#8255c7}.m-lyjw{fill:#0085c5}.m-claude{fill:#d97757}.m-devin{fill:#37794a}.m-flow{fill:#151411}.m-outside{fill:none;stroke:#151411e0}</style>
+<defs><mask id="gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="864" height="864"><rect width="864" height="864" fill="#fff"/><rect x="20" y="184" width="104.8" height="16"/><rect x="152" y="160" width="192.8" height="16"/><rect x="668" y="160" width="120.2" height="16"/><rect x="152" y="376" width="63" height="16"/><rect x="152" y="628" width="63" height="16"/><rect x="668" y="376" width="118" height="16"/><rect x="668" y="616" width="104.8" height="16"/><rect x="335.6" y="688" width="192.8" height="16"/></mask></defs>
+<g mask="url(#gaps)">
 <rect class="region" x="12.5" y="192.5" width="839" height="503"/>
+</g>
 <rect class="shadow" x="27" y="27" width="528" height="120"/>
 <rect class="card" x="24.5" y="24.5" width="527" height="119"/>
 <rect class="head" x="25" y="25" width="526" height="31"/>
@@ -142,6 +143,7 @@
 <text class="body" x="616" y="796.5">Exa · Managed Agents</text>
 <path class="rule" d="M616 804.5H824"/>
 <text class="body" x="616" y="820.5">GitHub App · Actions</text>
+<g mask="url(#gaps)">
 <path class="tip" d="M144 216L139.5 208L148.5 208Z"/>
 <path class="edge" d="M144 144L144 210"/>
 <path class="tip" d="M660 216L655.5 208L664.5 208Z"/>
@@ -175,22 +177,15 @@
 <path class="tip" d="M660 720L655.5 712L664.5 712Z"/>
 <path class="tip" d="M660 528L664.5 536L655.5 536Z"/>
 <path class="edge" d="M660 534L660 714"/>
-<rect class="knock" x="20" y="184" width="104.8" height="16"/>
+</g>
 <rect class="m-worker" x="26" y="188" width="8" height="8"/>
 <text class="label" x="40" y="196">CLOUDFLARE</text>
-<rect class="knock" x="152" y="160" width="192.8" height="16"/>
 <text class="small" x="156" y="172">Access token · /api/ingest/*</text>
-<rect class="knock" x="668" y="160" width="120.2" height="16"/>
 <text class="small" x="672" y="172">HTML · /api · /ws</text>
-<rect class="knock" x="152" y="376" width="63" height="16"/>
 <text class="small" x="156" y="388">补全正在听</text>
-<rect class="knock" x="152" y="628" width="63" height="16"/>
 <text class="small" x="156" y="640">每分钟拉取</text>
-<rect class="knock" x="668" y="376" width="118" height="16"/>
 <text class="small" x="672" y="388">对话 · /mcp · 构建</text>
-<rect class="knock" x="668" y="616" width="104.8" height="16"/>
 <text class="small" x="672" y="628">模型 · 搜索 · PR</text>
-<rect class="knock" x="335.6" y="688" width="192.8" height="16"/>
 <text class="small" x="432" y="700" text-anchor="middle">Worker 之间走 Service Binding</text>
 <rect class="m-worker" x="324" y="748" width="8" height="8"/>
 <text class="cap" x="340" y="756">Worker</text>

@@ -87,10 +87,7 @@ function palette(theme: Theme) {
   const vars = tokenBlock(css, ":root");
   if (theme === "dark") for (const [k, v] of tokenBlock(css, ".dark")) vars.set(k, v);
   const color = (name: string) => hex(parseColor(vars.get(name) ?? "", vars));
-  const [r, g, b] = parseColor(vars.get("foreground") ?? "", vars);
   return {
-    bg: color("background"),
-    grid: hex([r, g, b, 0.05]),
     surface: color("surface"),
     muted: color("muted"),
     fg: color("foreground"),
@@ -111,12 +108,10 @@ function style(theme: Theme): string {
   const p = palette(theme);
   return [
     `text{font-family:${FONT};font-variant-numeric:tabular-nums slashed-zero}`,
-    `.bg{fill:${p.bg}}.grid{fill:none;stroke:${p.grid}}`,
     `.card{fill:${p.surface};stroke:${p.lineStrong}}.shadow{fill:${p.shadow}}`,
     `.head{fill:${p.muted}}.rule{stroke:${p.line}}.chip{fill:${p.muted};stroke:${p.line}}`,
     `.region{fill:none;stroke:${p.mutedFg};stroke-dasharray:4 4}`,
     `.edge{fill:none;stroke:${p.mutedFg};stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:${p.mutedFg}}`,
-    `.knock{fill:${p.bg}}`,
     `.label{font-size:${LABEL}px;letter-spacing:${TRACK}px;fill:${p.mutedFg}}`,
     `.title{font-size:14px;font-weight:500;fill:${p.fg}}.body{font-size:13px;fill:${p.fg}}`,
     `.cap{font-size:12px;fill:${p.mutedFg}}.small{font-size:11px;fill:${p.mutedFg}}`,
@@ -127,6 +122,7 @@ function style(theme: Theme): string {
 
 class Canvas {
   private readonly layers = { back: [] as string[], cards: [] as string[], edges: [] as string[], top: [] as string[] };
+  private readonly gaps: string[] = [];
   readonly w: number;
   readonly h: number;
   private readonly lang: Lang;
@@ -240,18 +236,16 @@ class Canvas {
   note(x: number, y: number, copy: Copy, anchor: "start" | "middle" | "end" = "start", max = 260): void {
     const width = textWidth(this.t(copy), 11);
     const left = anchor === "start" ? x : anchor === "middle" ? x - width / 2 : x - width;
-    this.layers.top.push(
-      `<rect class="knock" x="${round(left - 4)}" y="${y - 8}" width="${round(width + 8)}" height="16"/>`,
-      this.text(x, y + 4, copy, "small", max, anchor),
-    );
+    this.gaps.push(`<rect x="${round(left - 4)}" y="${y - 8}" width="${round(width + 8)}" height="16"/>`);
+    this.layers.top.push(this.text(x, y + 4, copy, "small", max, anchor));
   }
 
   region(box: Box, label: Copy, mark: Mark): void {
     const { x, y, w, h } = box;
     this.layers.back.push(`<rect class="region" x="${x + 0.5}" y="${y + 0.5}" width="${w - 1}" height="${h - 1}"/>`);
     const width = textWidth(this.t(label).toUpperCase(), LABEL, TRACK);
+    this.gaps.push(`<rect x="${x + 8}" y="${y - 8}" width="${round(width + 30)}" height="16"/>`);
     this.layers.top.push(
-      `<rect class="knock" x="${x + 8}" y="${y - 8}" width="${round(width + 30)}" height="16"/>`,
       this.mark(x + 14, y - 4, mark),
       this.text(x + 28, y + 4, label, "label", width),
     );
@@ -274,11 +268,14 @@ class Canvas {
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-labelledby="title desc">`,
       `<title id="title">${escape(this.t(title))}</title><desc id="desc">${escape(this.t(description))}</desc>`,
       `<style>${style(theme)}</style>`,
-      `<defs><pattern id="paper" width="${GRID}" height="${GRID}" patternUnits="userSpaceOnUse"><path class="grid" d="M${GRID} 0.5H0.5V${GRID}"/></pattern></defs>`,
-      `<rect class="bg" width="${w}" height="${h}"/><rect width="${w}" height="${h}" fill="url(#paper)"/>`,
+      `<defs><mask id="gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#fff"/>${this.gaps.join("")}</mask></defs>`,
+      `<g mask="url(#gaps)">`,
       ...this.layers.back,
+      `</g>`,
       ...this.layers.cards,
+      `<g mask="url(#gaps)">`,
       ...this.layers.edges,
+      `</g>`,
       ...this.layers.top,
       `</svg>`,
       "",

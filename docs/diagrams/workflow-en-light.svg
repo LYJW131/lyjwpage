@@ -1,9 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 744" width="864" height="744" role="img" aria-labelledby="title desc">
 <title id="title">lyjwpage development workflow</title><desc id="desc">lyjw asks in the project chat, a coordinator Claude opens a thread, and the thread's Claude works with Devin CLI on lyjw's Mac and a Haiku verifier that signs receipts. Routines and visitor builds open PRs as well. Every change reaches main as a PR: branch preview, CI gates, bot review when needed and lyjw's OK, then Workers Builds deploys it.</desc>
-<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.bg{fill:#edebe6}.grid{fill:none;stroke:#1514110d}.card{fill:#fffdf9;stroke:#151411e0}.shadow{fill:#1514112e}.head{fill:#f5f3ee}.rule{stroke:#1514113d}.chip{fill:#f5f3ee;stroke:#1514113d}.region{fill:none;stroke:#605d59;stroke-dasharray:4 4}.edge{fill:none;stroke:#605d59;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#605d59}.knock{fill:#edebe6}.label{font-size:11px;letter-spacing:0.88px;fill:#605d59}.title{font-size:14px;font-weight:500;fill:#151411}.body{font-size:13px;fill:#151411}.cap{font-size:12px;fill:#605d59}.small{font-size:11px;fill:#605d59}.m-worker{fill:#3e70c9}.m-do{fill:#3ba946}.m-store{fill:#8255c7}.m-lyjw{fill:#0085c5}.m-claude{fill:#d97757}.m-devin{fill:#37794a}.m-flow{fill:#151411}.m-outside{fill:none;stroke:#151411e0}</style>
-<defs><pattern id="paper" width="24" height="24" patternUnits="userSpaceOnUse"><path class="grid" d="M24 0.5H0.5V24"/></pattern></defs>
-<rect class="bg" width="864" height="744"/><rect width="864" height="744" fill="url(#paper)"/>
+<style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.card{fill:#fffdf9;stroke:#151411e0}.shadow{fill:#1514112e}.head{fill:#f5f3ee}.rule{stroke:#1514113d}.chip{fill:#f5f3ee;stroke:#1514113d}.region{fill:none;stroke:#605d59;stroke-dasharray:4 4}.edge{fill:none;stroke:#605d59;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#605d59}.label{font-size:11px;letter-spacing:0.88px;fill:#605d59}.title{font-size:14px;font-weight:500;fill:#151411}.body{font-size:13px;fill:#151411}.cap{font-size:12px;fill:#605d59}.small{font-size:11px;fill:#605d59}.m-worker{fill:#3e70c9}.m-do{fill:#3ba946}.m-store{fill:#8255c7}.m-lyjw{fill:#0085c5}.m-claude{fill:#d97757}.m-devin{fill:#37794a}.m-flow{fill:#151411}.m-outside{fill:none;stroke:#151411e0}</style>
+<defs><mask id="gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="864" height="744"><rect width="864" height="744" fill="#fff"/><rect x="20" y="136" width="74.88" height="16"/><rect x="152" y="280" width="100.4" height="16"/><rect x="728" y="280" width="113.6" height="16"/><rect x="492.8" y="544" width="166.4" height="16"/><rect x="489.5" y="136" width="173" height="16"/></mask></defs>
+<g mask="url(#gaps)">
 <rect class="region" x="12.5" y="144.5" width="839" height="383"/>
+</g>
 <rect class="shadow" x="27" y="27" width="240" height="96"/>
 <rect class="card" x="24.5" y="24.5" width="239" height="95"/>
 <rect class="head" x="25" y="25" width="238" height="31"/>
@@ -129,6 +130,7 @@
 <text class="title" x="616" y="638">Merged, auto-deployed</text>
 <text class="cap" x="616" y="658">ESA home refreshed</text>
 <text class="cap" x="616" y="676">check /api/version</text>
+<g mask="url(#gaps)">
 <path class="tip" d="M144 168L139.5 160L148.5 160Z"/>
 <path class="tip" d="M144 120L148.5 128L139.5 128Z"/>
 <path class="edge" d="M144 126L144 162"/>
@@ -152,16 +154,12 @@
 <path class="edge" d="M264 636L306 636"/>
 <path class="tip" d="M600 636L592 640.5L592 631.5Z"/>
 <path class="edge" d="M552 636L594 636"/>
-<rect class="knock" x="20" y="136" width="74.88" height="16"/>
+</g>
 <rect class="m-claude" x="26" y="140" width="8" height="8"/>
 <text class="label" x="40" y="148">CLAUDE</text>
-<rect class="knock" x="152" y="280" width="100.4" height="16"/>
 <text class="small" x="156" y="292">opens a thread</text>
-<rect class="knock" x="728" y="280" width="113.6" height="16"/>
 <text class="small" x="732" y="292">visitor confirms</text>
-<rect class="knock" x="492.8" y="544" width="166.4" height="16"/>
 <text class="small" x="576" y="556" text-anchor="middle">everything lands as a PR</text>
-<rect class="knock" x="489.5" y="136" width="173" height="16"/>
 <text class="small" x="576" y="148" text-anchor="middle">one shared project memory</text>
 <rect class="m-lyjw" x="24" y="720" width="8" height="8"/>
 <text class="cap" x="40" y="728">lyjw</text>
