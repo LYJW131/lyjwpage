@@ -64,16 +64,7 @@ The cards below are rendered live by the site as SVG, follow the system light or
 
 **Charger and power bank**
 
-<p>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg" alt="Anker charger card: total power, the power curve and each port" width="49%">
-</picture>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg" alt="Anker power bank card: charge level, dock input, output and ports" width="49%">
-</picture>
-</p>
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg?theme=dark"><img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg" alt="Anker charger card: total power, the power curve and each port" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg?theme=dark"><img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg" alt="Anker power bank card: charge level, dock input, output and ports" width="50%"></picture></p>
 
 **Now playing on Apple Music**: word-by-word synced lyrics, with recently played below.
 

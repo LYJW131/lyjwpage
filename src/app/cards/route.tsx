@@ -62,6 +62,8 @@ type ReadmeCard = {
   label: string;
   width: number;
   height: number;
+  // 并排的半卡：README 里两张图各占一半、中间不留空，左卡右侧补卡间距，右卡左侧补，右缘与整卡对齐。
+  pair?: "left" | "right";
   render: (status: Status, site: SiteServices, now: number) => Promise<Rendered>;
 };
 
@@ -103,6 +105,7 @@ const CARDS: Record<string, ReadmeCard> = {
     label: "Charger",
     width: HALF_WIDTH,
     height: MEDIA_SLOT_PX,
+    pair: "left",
     async render(status, site, now) {
       const { value, sample } = orSample(await status("charger"), (data) => chargerActive(chargingLive(data, now)), chargerFixture, now);
       return { element: <ChargerCard fallback={await inlineChargerIcon(site, value)} className="h-full" />, sample };
@@ -112,6 +115,7 @@ const CARDS: Record<string, ReadmeCard> = {
     label: "Power Bank",
     width: HALF_WIDTH,
     height: MEDIA_SLOT_PX,
+    pair: "right",
     async render(status, _site, now) {
       const { value, sample } = orSample(await status("powerBank"), (data) => powerBankActive(chargingLive(data, now)), powerBankFixture, now);
       return { element: <PowerBankCard fallback={value} className="h-full" />, sample };
@@ -332,12 +336,13 @@ const annotateTitle = (html: string, note: string) =>
 // 没有卡头的卡（每日摘要）把说明放在右上角，分两行避开表盘。
 function svgDocument(body: string, card: ReadmeCard, theme: Theme, cornerNote: string | null): string {
   const { label, height } = card;
-  const width = card.width + SHADOW_PAD;
+  const width = card.pair ? (FULL_WIDTH + SHADOW_PAD) / 2 : card.width + SHADOW_PAD;
+  const offset = card.pair === "right" ? width - card.width - SHADOW_PAD : 0;
   const fullHeight = height + SHADOW_PAD;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${label}">` +
     `<foreignObject x="0" y="0" width="${width}" height="${fullHeight}">` +
-    `<div xmlns="http://www.w3.org/1999/xhtml" class="${theme === "dark" ? "dark " : ""}font-mono text-foreground antialiased" style="position:relative;width:${card.width}px;height:${height}px;display:flex;flex-direction:column">` +
+    `<div xmlns="http://www.w3.org/1999/xhtml" class="${theme === "dark" ? "dark " : ""}font-mono text-foreground antialiased" style="position:relative;left:${offset}px;width:${card.width}px;height:${height}px;display:flex;flex-direction:column">` +
     `<style><![CDATA[${CSS}]]></style>` +
     `<div style="position:relative;flex:1;display:flex;flex-direction:column">${body}${cornerNote ? `<div class="label-mono text-muted-foreground" style="position:absolute;right:1.25rem;top:1rem;text-align:right">${cornerNote}</div>` : ""}</div>` +
     `</div></foreignObject></svg>`
