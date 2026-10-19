@@ -3,7 +3,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import useSWR from "swr";
 
 import { Entering, Frame, HERO_PX, Hero, Idle, Placeholder, Strip, Thumb, Tile, artwork, clock, gameCover, posterImage } from "@/components/chat-card/layout";
-import { Rings, ringValues } from "@/components/live/activity-card";import { mediaApp, mergeVariants, playedFor, playTime } from "@/components/live/playstation-card";
+import { Rings, ringValues } from "@/components/live/activity-card";
+import { mediaApp, mergeVariants, playedFor, playTime } from "@/components/live/playstation-card";
 import { useLiveNowListening, useStale } from "@/hooks/use-stale";
 import { ACTIVITY_STALE_MS } from "@shared/freshness";
 import { LISTENING_ELSEWHERE_HOLD_MS } from "@shared/limits";

@@ -8,6 +8,7 @@ import { changedPaths, client, type CheckRun, type FetchLike, type PatchId, type
 import { reviewerSummary } from "./pr-gate/reviewers.ts";
 import { buildThreads, threadResolution } from "./pr-gate/threads.ts";
 import { tierOf } from "./pr-gate/tier.ts";
+import { ruleDrift } from "./rule-drift.ts";
 import { check as checkReceipt, PASSING_RANK } from "./verify-receipt.ts";
 
 export { buildCoverage } from "./pr-gate/checks.ts";
@@ -36,6 +37,8 @@ JSON 里有：
                 Claude review 只在开 PR 或转为待审时审一次，Devin 每个 PR 也只审一次，没盖住 head 不算缺；
                 要判定时两家都得审过一次
   receipt       scripts/verify-receipt.ts check 的结果（--need、--judge 见下）
+  ruleDrift     分支起点（PR 第一个提交的父提交）以来 main 上改过的规则文件（AGENTS.md、DESIGN.md、HUMAN.md、.claude/skills/ 下的 md）；
+                不为空时 notes 提示对一遍新规则，不影响 ready
   ready / todo  todo 每条一句：缺什么、去哪做
 
 选项：
@@ -57,7 +60,7 @@ export async function gate(
   const head = pull.head.sha;
   const [files, commits, reviews, reviewComments, issueComments, runs, status, resolution] = await Promise.all([
     gh.all<PrFile>(`pulls/${pr}/files`),
-    gh.all<{ sha: string }>(`pulls/${pr}/commits`),
+    gh.all<{ sha: string; parents?: { sha: string }[] }>(`pulls/${pr}/commits`),
     gh.all<Review>(`pulls/${pr}/reviews`),
     gh.all<ReviewComment>(`pulls/${pr}/comments`),
     gh.all<IssueComment>(`issues/${pr}/comments`),
@@ -69,7 +72,7 @@ export async function gate(
   const tier = tierOf(paths);
   const wantNeed = need === undefined ? tier.need : need;
   const wantJudge = judge ?? tier.judge;
-  const [builds, receipt] = await Promise.all([
+  const [builds, receipt, rules] = await Promise.all([
     buildCoverage({ gh, files: paths, head, headRuns: runs.check_runs ?? [], commits: commits.map((commit) => commit.sha) }),
     wantNeed === null
       ? Promise.resolve(null)
@@ -77,12 +80,14 @@ export async function gate(
           (result) => ({ need: wantNeed, wantJudge, pass: result.pass, next: result.next, latest: result.receipt, judge: result.judge }),
           (error: Error) => ({ need: wantNeed, wantJudge, pass: false, next: `读不到回执（${error.message}）；云端要加 NODE_USE_ENV_PROXY=1`, latest: null, judge: null }),
         ),
+    ruleDrift(gh, commits, pull.base?.ref ?? "main"),
   ]);
   const checks = summarizeChecks(runs.check_runs ?? [], status.statuses ?? []);
   const threads = buildThreads(reviewComments, resolution);
   const reviewers = reviewerSummary(reviews, issueComments, head);
   const labels = (pull.labels ?? []).map((label) => label.name);
   const verdict = decide({ pull, tier, checks, builds, threads, reviewers, receipt, judge: wantJudge });
+  if (rules.files.length > 0) verdict.notes.push(`分支开工后 main 上改了规则文件（${rules.files.join("、")}）：重读改动的部分，拿 PR 的改动对一遍新规则`);
   return {
     pr,
     title: pull.title,
@@ -99,6 +104,7 @@ export async function gate(
     threads,
     reviewers,
     receipt,
+    ruleDrift: rules,
     ...verdict,
   };
 }

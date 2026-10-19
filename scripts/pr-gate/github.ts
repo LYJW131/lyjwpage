@@ -16,6 +16,7 @@ export type Pull = {
   mergeable: boolean | null;
   mergeable_state?: string;
   head: { sha: string };
+  base?: { ref: string };
   labels?: { name: string }[];
 };
 export type PrFile = { filename: string; previous_filename?: string };
