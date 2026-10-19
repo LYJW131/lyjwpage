@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { confirmExternalOpen } from "@/components/external-link-guard";
 import { cn } from "@/lib/utils";
 import {
   HTML_VISUAL_HEIGHT_KEY,
@@ -73,7 +74,7 @@ export function ChatHtmlPreview({ source, streaming = false }: { source: string;
       const link = visualLink(data?.[HTML_VISUAL_OPEN_KEY]);
       // 和正文里的 Markdown 链接一样只在访客点击时打开：图示里的脚本自己发消息，没有点击就开不了标签页。
       // 用户激活对整页有效，所以还要求焦点在这块图示上，访客点站点别处时图示脚本借不到这次激活。
-      if (link && navigator.userActivation?.isActive && document.activeElement === frameRef.current) window.open(link, "_blank", "noopener,noreferrer");
+      if (link && navigator.userActivation?.isActive && document.activeElement === frameRef.current) confirmExternalOpen(link);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
