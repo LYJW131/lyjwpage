@@ -7,11 +7,11 @@ import { parseArgs } from "node:util";
 const REPO = "LYJW131/lyjwpage";
 // 回执和判定由主线程用 lyjw 的两个账号之一发（LYJW131、云端会话用的 An0nCh1hayaa）；别人发的同格式评论不算。
 // 按数字 id 认而不按 login：login 改名后可被别人注册。
-const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
+export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const LEVELS = ["live-ui-verified", "unit-test-verified", "type-check-only", "verifier-blocked", "verifier-failed"];
-const PASSING_RANK: Record<string, number> = { "live-ui-verified": 3, "unit-test-verified": 2, "type-check-only": 1 };
+export const PASSING_RANK: Record<string, number> = { "live-ui-verified": 3, "unit-test-verified": 2, "type-check-only": 1 };
 
 const RECEIPT_LINE = new RegExp(`^验证回执 ([0-9a-f]{40})[：:]\\s*(${LEVELS.join("|")})\\s*$`);
 const JUDGE_LINE = /^判定 ([0-9a-f]{40})[：:]\s*(PASS|FAIL)\s*$/;
