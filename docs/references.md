@@ -111,7 +111,7 @@
 - **[Streamdown 的流式动画](https://streamdown.ai/docs/animation)**（Vercel）
   - 是什么：流式 Markdown 渲染里，rehype 插件把文字节点拆成一个个 span，只有新挂载的 span 播淡入。
   - 取了什么：拆 span 的思路、跳过 `pre` / `svg` / `math`、回复结束后摘掉插件回到纯文本。没装这个库；中日韩文字改为逐字切，淡入时长按 DESIGN.md 的动效区间取。
-  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/globals.css` 的 `.stream-token`，由 `src/components/god-chat.tsx` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual.tsx` 的 `Ink`）。
+  - 状态：采用。落在 `src/lib/chat-markdown-plugins.ts#rehypeStreamFade`、`src/app/styles/animations.css` 的 `.stream-token`，由 `src/components/god-chat/reply.tsx#ReplyBody` 在回复流式期间打开；回复里的原生图示同样按 `streamTokens` 拆字淡入（`src/components/chat-visual/ink.tsx#Ink`）。
 
 ## Cloudflare 平台
 
@@ -195,7 +195,7 @@
 - **[Fixing Smooth Scrolling with Find-on-Page](https://css-tricks.com/fixing-smooth-scrolling-with-find-on-page/)**（Chris Coyier，CSS-Tricks）
   - 是什么：把 `scroll-behavior: smooth` 挂在 `html:focus-within` 上，只有页面内有焦点时才平滑，页内查找与加载时的锚点跳转保持瞬时。
   - 取了什么：README 卡片链到 `lyjw.me/#vibe-coding`，加载时的锚点跳转若是平滑动画，要靠渲染帧推进，会被首屏数据撑开的布局带偏，不出帧的内嵌浏览器里停在顶部；这个写法让加载即落准，点过按钮后的程序化滚动仍平滑。
-  - 状态：采用。落在 [globals.css](../src/app/globals.css) 的 `html:focus-within`。
+  - 状态：采用。落在 [theme.css](../src/app/styles/theme.css) 的 `html:focus-within`。
 
 ## 交互与文案参照
 
@@ -210,7 +210,7 @@
 - **Claude 界面的 thinking 提示**（lyjw 点名参照，没有文章）
   - 是什么：一道高光从左往右扫过的「思考中」标签。
   - 取了什么：对话等待时显示 `THINKING` 扫光，模型流出思考时可展开。
-  - 状态：采用。落在 [god-chat.tsx](../src/components/god-chat.tsx)。
+  - 状态：采用。落在 [god-chat/reply.tsx](../src/components/god-chat/reply.tsx)。
 - **Apple 中国官网的产品标语**（lyjw 给的截图，没有链接）
   - 是什么：短、笃定、具体的中文标语写法。
   - 取了什么：摘要卡标题写成 3 到 5 个汉字的标语口吻。试过的书法字体被 lyjw 否掉，没有保留。

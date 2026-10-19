@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "docs", "diagrams");
-const TOKENS = path.join(ROOT, "src", "app", "globals.css");
+const TOKENS = path.join(ROOT, "src", "app", "styles", "theme.css");
 
 type Lang = "zh" | "en";
 type Theme = "light" | "dark";
@@ -62,7 +62,7 @@ function oklchToRgb(l: number, c: number, h: number): [number, number, number] {
 
 function tokenBlock(css: string, selector: string): Map<string, string> {
   const start = css.indexOf(`\n${selector} {`);
-  if (start < 0) throw new Error(`globals.css 里找不到 ${selector}`);
+  if (start < 0) throw new Error(`theme.css 里找不到 ${selector}`);
   const body = css.slice(start, css.indexOf("\n}", start));
   return new Map([...body.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
 }

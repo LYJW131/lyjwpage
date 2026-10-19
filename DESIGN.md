@@ -2,7 +2,7 @@
 
 站点（`lyjw.me` 首页与各卡片）的视觉与交互规范。改任何站点 UI 前先读这份；新卡片、新部件、换样式都按这里的刻度来，不自拟数值。
 
-- 颜色、阴影、字体族这些 token 的取值只在 `src/app/globals.css`（`:root`、`.dark`、`@theme inline`），这里只说用哪个、怎么用。
+- 颜色、阴影、字体族这些 token 的取值只在 `src/app/styles/theme.css`（`:root`、`.dark`、`@theme inline`），这里只说用哪个、怎么用。
 - 规范与代码冲突时：代码是现状，这份是目标。不符合这份的现有写法不是先例，新代码不照抄；修它们走单独的 PR（合并前要 lyjw 看过，见末节）。
 - 章节顺序参照 Google Labs 的 [DESIGN.md 格式](https://github.com/google-labs-code/design.md)（Overview → Colors → Typography → Layout → Elevation → Shapes → Components → Do's and Don'ts），外加文案、动效与交付三节。
 - 讲解动画 `/explainer` 是视频画面，有自己的字号与镜头约定，见 [`docs/explainer/v2/CONVENTIONS.md`](./docs/explainer/v2/CONVENTIONS.md)，不受本文件约束。
@@ -39,7 +39,7 @@
 - 颜色不单独承载意思：状态有文字（`Operational`、`Now Playing`），图表系列直接标注，标不下才用图例。
 - 颜色只表达状态或分类；数值「好」或「重要」不是上色的理由（省了多少、排第一都不染绿）。
 - 新 token 同时定义 `:root` 与 `.dark` 两个值；深色值是降饱和、提亮度的同色相，不是反色。
-- 图表配色：对话里的图示用 `src/components/chat-visual.tsx` 里经 dataviz 校验过的顺序；卡片里的系列色从 signal 系取，不另起一套。
+- 图表配色：对话里的图示用 `src/components/chat-visual/chart.tsx` 里经 dataviz 校验过的顺序；卡片里的系列色从 signal 系取，不另起一套。
 
 ## Typography
 
@@ -118,7 +118,7 @@
 - 状态点：`src/components/ui/status-dot.tsx` 的 `StatusDot`，不手画圆点。
 - 图片：静态图标走 `AppImage` 并设 `unoptimized`；图片交付与压缩规则见 `AGENTS.md`「图片交付」。
 - 图标：
-  - 品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)。项目已装 `@lobehub/icons`，按深路径导入：单色 `@lobehub/icons/es/<名字>/components/Mono`（继承文字色）、彩色 `.../Color`、带字 `.../Text`；示例见 `src/components/live/vibecoding-card.tsx`。
+  - 品牌 / 产品图标先查 [LobeHub 图标集](https://lobehub.com/icons)。项目已装 `@lobehub/icons`，按深路径导入：单色 `@lobehub/icons/es/<名字>/components/Mono`（继承文字色）、彩色 `.../Color`、带字 `.../Text`；示例见 `src/components/live/vibecoding/marks.tsx`。
   - 模型名旁的厂商图标不逐个手配：`src/lib/model-icon.ts` 按 LobeHub 的模型表自动选，上游没收录的模型家族在同文件 `SITE_MODEL_ICONS` 补一行；认不出的显示同尺寸的字母方块，名称列照样对齐。
   - LobeHub 没有的品牌再找官方 SVG：含 `fill="currentColor"` 的要内联为组件，通过 `<img>` 或 `AppImage` 加载时无法继承页面文字色；示例见 `src/components/live/agent-status-card.tsx` 的 `TypesafeIcon`。只有位图时，先压到展示所需尺寸再入库。
   - 界面图标用 `lucide-react`，与文字同色，尺寸跟随相邻文字（14px 文字配 `size-3.5`）。不用 emoji 当图标（数据里自带的 emoji 照原样）。
@@ -141,10 +141,10 @@
 
 ## Motion
 
-- 只动 `transform` 与 `opacity`；时长 120–300ms，进入用减速曲线、离开更短；主题切换的 view transition 例外，见 `globals.css`。
+- 只动 `transform` 与 `opacity`；时长 120–300ms，进入用减速曲线、离开更短；主题切换的 view transition 例外，见 `src/app/styles/theme.css`。
 - 首屏到稳定只允许一次变化：水合对时、换锚点、换数据这类大跨度变化直接落位，不做补间；正常走时、换句才用动画。
 - 已知没有的内容（如无歌词）首帧就画对应布局，不先画占位再收起。
-- `prefers-reduced-motion` 由 `globals.css` 全局处理；新加的 view transition 伪元素要单独写进 reduced-motion 规则。
+- `prefers-reduced-motion` 由 `src/app/styles/reduced-motion.css` 全局处理；新加的 view transition 伪元素要单独写进 reduced-motion 规则。
 - 一屏里同时在动的东西不超过一两处；每个动画都对应一个真实变化。
 - 循环动画只给正在发生的事：`live` 状态点的脉冲、播放中的均衡器、加载中的占位与转圈；不加装饰性的循环动画。
 
