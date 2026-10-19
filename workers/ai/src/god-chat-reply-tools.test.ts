@@ -237,13 +237,15 @@ test("游戏卡按名字查出 titleId 发给浏览器，同一款游戏只画�
   const items = [
     { titleId: "CUSA47999_00", name: "月姬 -A piece of blue glass moon-" },
     { titleId: "PPSA01", name: "MELTY BLOOD: TYPE LUMINA" },
+    { titleId: "PPSA02", name: "Netflix", category: "ps5_media_app" },
   ];
   const io = { readStatus: async () => Response.json({ ok: true, data: { observedAt: 0, items } }) } as unknown as ToolIO;
   assert.deepEqual(await findGame(io, "月姬"), { titleId: "CUSA47999_00", name: "月姬 -A piece of blue glass moon-" });
   assert.deepEqual(await findGame(io, "melty blood：type lumina"), { titleId: "PPSA01", name: "MELTY BLOOD: TYPE LUMINA" });
   assert.equal(await findGame(io, "艾尔登法环"), null);
+  assert.equal(await findGame(io, "Netflix"), null);
   const broken = { readStatus: async () => { throw new Error("down"); } } as unknown as ToolIO;
   assert.equal(await findGame(broken, "月姬"), null);
-  const text = await runShowCard("game", io, newLedger(), "月姬 -A piece of blue glass moon-");
+  const text = await runShowCard("game", io, newLedger(), { titleId: "CUSA47999_00", name: "月姬 -A piece of blue glass moon-" });
   assert.match(text, /^The game card for 月姬 -A piece of blue glass moon- is now in your reply/);
 });

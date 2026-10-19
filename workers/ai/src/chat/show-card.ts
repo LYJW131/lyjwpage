@@ -68,14 +68,15 @@ export async function findGame(io: ToolIO, name: string): Promise<{ titleId: str
   }
   const needle = gameKey(name);
   if (!needle) return null;
-  const items = body.data?.items ?? [];
+  const items = (body.data?.items ?? []).filter((game) => !game.category?.endsWith("_media_app"));
   const match = items.find((game) => gameKey(game.name) === needle) ?? items.find((game) => gameKey(game.name).includes(needle));
   return match ? { titleId: match.titleId, name: match.name } : null;
 }
 
 // 卡片背后的视图照样记进这条回复的读取账本（claimViews 的额度与去重），读过的不再读。
-export async function runShowCard(card: GodChatCard, io: ToolIO, ledger: ToolLedger, game?: string): Promise<string> {
-  const { text } = await SITE_STATUS_TOOL.run({ views: GOD_CHAT_CARD_VIEWS[card], ...(game && { query: game }) }, io, ledger);
-  const shown = game ? `The ${card} card for ${game}` : `The ${card} card`;
+// 游戏卡按 titleId 筛两个视图：游玩记录与奖杯表的游戏名各自命名、可能对不上，titleId 两边都有，模型拿到的就是卡片画的那份。
+export async function runShowCard(card: GodChatCard, io: ToolIO, ledger: ToolLedger, game?: { titleId: string; name: string }): Promise<string> {
+  const { text } = await SITE_STATUS_TOOL.run({ views: GOD_CHAT_CARD_VIEWS[card], ...(game && { query: game.titleId }) }, io, ledger);
+  const shown = game ? `The ${card} card for ${game.name}` : `The ${card} card`;
   return `${shown} is now in your reply, showing this data live. Don't restate it as a list or mention where the card is.\n\n${text}`;
 }

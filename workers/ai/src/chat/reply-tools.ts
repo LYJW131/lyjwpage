@@ -132,7 +132,7 @@ export function replyTools({
       shownCards.add(key);
       cards.add(card);
       emit({ type: "card", card, ...(game && { game: game.titleId }) });
-      return result(await runShowCard(card, io, ledger, game?.name), false);
+      return result(await runShowCard(card, io, ledger, game ?? undefined), false);
     }
     const tool = SITE_TOOLS.find((candidate) => candidate.name === call.name);
     if (!tool) return result("Unknown tool.", true);

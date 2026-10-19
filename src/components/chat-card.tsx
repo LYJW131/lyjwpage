@@ -273,6 +273,7 @@ function GameCard({ titleId }: { titleId?: string }) {
   const trophies = useCardView<TrophiesSummaryPayload>("trophies");
   const game = titleId ? recentGames(recent.data).find((candidate) => candidate.titleIds.includes(titleId)) : undefined;
   const tick = useNow(60_000);
+  const notStarted = game ? game.preOrder && game.playCount === 0 && game.playDurationMs == null : false;
   const title = game && trophies.data?.titles.find((candidate) => candidate.titleIds.some((id) => game.titleIds.includes(id)));
 
   return (
@@ -282,9 +283,9 @@ function GameCard({ titleId }: { titleId?: string }) {
           <Hero
             image={<div className="w-20 sm:w-24"><Thumb {...gameCover(game.imageUrl)} px={HERO_PX} platinum={Boolean(title?.earned.platinum)} /></div>}
             tone="off"
-            status={game.lastPlayedAt ? `Played ${formatRelativeTime(game.lastPlayedAt, tick).replace(/^on /, "")}` : "Played"}
+            status={notStarted ? "Pre-ordered" : game.lastPlayedAt ? `Played ${formatRelativeTime(game.lastPlayedAt, tick).replace(/^on /, "")}` : "Played"}
             title={game.name}
-            subtitle={[playTime(game.playDurationMs, game.playCount), game.playDurationMs != null && `${game.playCount} ${game.playCount === 1 ? "session" : "sessions"}`].filter(Boolean).join(" · ")}
+            subtitle={notStarted ? "Not started" : [playTime(game.playDurationMs, game.playCount), game.playDurationMs != null && `${game.playCount} ${game.playCount === 1 ? "session" : "sessions"}`].filter(Boolean).join(" · ")}
             progress={title ? title.progress : null}
             meta={title ? `${title.progress}% trophies` : null}
           />
