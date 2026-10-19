@@ -2141,7 +2141,7 @@
           },
           {
             "id": "devin",
-            "sources": ["agents"],
+            "sources": ["agents-otlp"],
             "models": ["swe-2-max", "swe-2-high", "gpt-6-astra-xhigh", "compactor", "summarizer"],
             "latestModel": "swe-2-max",
             "lastDay": {
@@ -2156,7 +2156,7 @@
             },
             "status": [
               {
-                "source": "agents",
+                "source": "agents-otlp",
                 "state": "ok",
                 "collectedAt": "$now-255506",
                 "error": null,
