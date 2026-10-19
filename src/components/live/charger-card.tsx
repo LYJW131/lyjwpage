@@ -184,7 +184,7 @@ export function ChargerCard({
                       )}
                     </div>
                     <div
-                      className="mt-0.5 truncate font-mono text-[0.6875rem] text-muted-foreground"
+                      className="mt-0.5 truncate font-mono text-2xs text-muted-foreground"
                       title={
                         full
                           ? [full.device, full.protocol, electrical, full.cable].filter(Boolean).join(" · ") ||
@@ -221,7 +221,7 @@ export function ChargerCard({
                   {data?.maxPower ?? 160}W
                 </span>
               </div>
-              <div className="mt-2 flex items-center gap-2 truncate font-mono text-[0.6875rem] leading-none text-muted-foreground">
+              <div className="mt-2 flex items-center gap-2 truncate font-mono text-2xs leading-none text-muted-foreground">
                 {(data?.ports ?? [{ id: "C1" }, { id: "C2" }, { id: "C3" }]).map((port, i) => {
                   const full = connected && "active" in port ? (port as ChargerPort) : null;
                   return (
