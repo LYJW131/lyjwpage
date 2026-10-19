@@ -138,16 +138,16 @@ function confidentChoice<K extends string>(body: unknown, question: keyof typeof
 }
 
 // 带 query 的那次是加读、不替换整组：访客用的译名与记录里的原名对不上时（艾尔登法环与 ELDEN RING），过滤结果为空，整组第一页仍在。
-// 它读的是 query 列的那几个有列表的视图。标了 card 的组（游戏）改为直接画那款游戏的卡：模型拿着预取的数据往往就不再调 show_card，
-// 而卡片的工具结果本身就带着这款游戏的游玩与奖杯数据，不必再加读一次。
+// 它读的是 query 列的那几个有列表的视图。标了 card 的组（游戏）同时直接画那款游戏的卡：模型拿着预取的数据往往就不再调 show_card。
+// 过滤读取仍保留：抽到的可能是奖杯名或译名，findGame 对不上时卡片调用报错，数据还靠这次加读。
 export function parsePrefetch(body: unknown, item?: string): GodChatPresetCall[] {
   const calls: GodChatPresetCall[] = [];
   const status = confidentChoice<PrefetchStatus>(body, "status", PREFETCH_STATUS);
   if (status && status !== "none") {
     const entry: { views: readonly StatusViewKey[]; query?: readonly StatusViewKey[]; card?: GodChatCard } = PREFETCH_STATUS[status];
     calls.push({ name: "get_site_status", input: { views: [...entry.views] } });
+    if (item && entry.query) calls.push({ name: "get_site_status", input: { views: [...entry.query], query: item } });
     if (item && entry.card) calls.push({ name: "show_card", input: { card: entry.card, game: item } });
-    else if (item && entry.query) calls.push({ name: "get_site_status", input: { views: [...entry.query], query: item } });
   }
   const doc = confidentChoice<ProjectDocKey | "none">(body, "doc", PREFETCH_DOC_CRITERIA);
   if (doc && doc !== "none") calls.push({ name: "read_project_doc", input: { doc } });
