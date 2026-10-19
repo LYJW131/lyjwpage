@@ -60,7 +60,15 @@ async function collectRound(): Promise<Round | null> {
   const at = performance.now();
   const agentIds = schedule.due(at);
   if (agentIds.length === 0) return null;
-  const { agents, ...payload } = await collectPayload(agentIds);
+  let collected: PushPayload;
+  try {
+    collected = await collectPayload(agentIds);
+  } catch (error) {
+    // 采集抛错也把这几家记作这一轮取过，否则它们一直到期，等下一轮会立刻返回、空转重采。
+    schedule.collected(agentIds, at);
+    throw error;
+  }
+  const { agents, ...payload } = collected;
   if (agents?.length) recovered("collect");
   else if (agentIds.length === config.agentIds.length) failure("collect", new Error("一家都没登录，没有可发的限额行"));
   const round: PushPayload = agents?.length ? { ...payload, agents } : payload;
@@ -101,6 +109,7 @@ async function main() {
     waitForNextRound: () => waitForNextRound(schedule),
     sleep,
     onPushFailure: (error) => failure("push", error),
+    onCollectFailure: (error) => failure("collect", error),
     now: () => Date.now(),
     reuseMs: config.cadence.activeIntervalMs,
     retryMs: RETRY_MS,
