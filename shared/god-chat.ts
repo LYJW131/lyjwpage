@@ -54,7 +54,8 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
 export type GodChatPresetCall =
   | { name: "get_site_status"; input: { views: StatusViewKey[]; query?: string } }
   | { name: "read_project_doc"; input: { doc: string } }
-  | { name: "web_search"; input: { query: string; category: "web" | "news" | "papers" } };
+  | { name: "web_search"; input: { query: string; category: "web" | "news" | "papers" } }
+  | { name: "show_card"; input: { card: GodChatCard; game: string } };
 export type GodChatPreset = { text: string; choice: string; prefetch?: GodChatPresetCall[]; show?: string };
 
 const status = (...views: StatusViewKey[]): GodChatPresetCall[] => [{ name: "get_site_status", input: { views } }];
