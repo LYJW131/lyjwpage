@@ -469,13 +469,14 @@ async function converse({
       showSearch(call.id, query);
       const started = Date.now();
       const category = WEB_CATEGORIES.find((value) => value === input.category) ?? "web";
-      const log = (fields: Record<string, unknown>) => console.info("[god-chat] web", JSON.stringify({ kind: call.name, ...(call.name === WEB_SEARCH_TOOL.name && { category, provider: search?.provider }), ms: Date.now() - started, ...fields }));
+      const log = (fields: Record<string, unknown>) => console.info("[god-chat] web", JSON.stringify({ kind: call.name, ...(call.name === WEB_SEARCH_TOOL.name && { category, provider: search?.search.service }), ms: Date.now() - started, ...fields }));
       try {
         let pages: WebPage[];
         if (call.name === ANIME_SEARCH_TOOL.name) pages = await animeSearch(query, signal);
         else if (call.name === GAME_SEARCH_TOOL.name) pages = await gameSearch(query, STORE_LANGUAGES.find((value) => value === input.language) ?? "en", signal);
+        else if (!search) return result("Web search is not available.", true);
         else {
-          pages = await webSearch(search!, query, category, signal);
+          pages = await webSearch(search, query, category, signal);
           for (const item of pages) {
             const key = urlKey(item.url);
             if (key) fetchable.add(key);
@@ -494,12 +495,13 @@ async function converse({
       const input = call.input as { url?: unknown };
       const key = typeof input.url === "string" ? urlKey(input.url) : undefined;
       if (!key || !fetchable.has(key)) return result("Only http(s) URLs the visitor wrote or that web_search returned in this reply can be read.", true);
+      if (!search) return result("Reading pages is not available.", true);
       if (fetches >= MAX_WEB_FETCHES) return result("No page reads remain for this reply.", true);
       fetches++;
       const started = Date.now();
       const log = (fields: Record<string, unknown>) => console.info("[god-chat] web", JSON.stringify({ kind: call.name, ms: Date.now() - started, ...fields }));
       try {
-        const page = await webFetch(search!, key, signal);
+        const page = await webFetch(search, key, signal);
         log({ results: page ? 1 : 0 });
         if (!page) return result("The page could not be read.", true);
         searched.set(page.url, { url: page.url, title: page.title });
