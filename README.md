@@ -64,16 +64,7 @@
 
 **充电头与充电宝**
 
-<p>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg" alt="Anker 充电头卡片：总功率、功率曲线与各端口" width="49%">
-</picture>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg?theme=dark">
-  <img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg" alt="Anker 充电宝卡片：电量、底座输入、输出与端口" width="49%">
-</picture>
-</p>
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg?theme=dark"><img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/charger.svg" alt="Anker 充电头卡片：总功率、功率曲线与各端口" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg?theme=dark"><img src="https://claude-project-thread-j5x3s3.preview.lyjw.dev/cards/powerbank.svg" alt="Anker 充电宝卡片：电量、底座输入、输出与端口" width="50%"></picture></p>
 
 **Apple Music 正在播放**：逐字高亮的同步歌词，下方是最近收听。
 
