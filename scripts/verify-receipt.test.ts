@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { check, coverage, evaluate, parseComments, patchDigest, signLine } from "./verify-receipt.ts";
 
@@ -104,4 +105,12 @@ test("signLine 拒收自拟等级、等级与判定同给或都不给、展开�
   assert.throws(() => signLine({ ref: "x" }, revParse), /二选一/);
   assert.throws(() => signLine({ ref: "x", verdict: "pass" }, revParse), /PASS、FAIL/);
   assert.throws(() => signLine({ ref: "x", level: "type-check-only" }, () => "abc"), /完整 SHA/);
+});
+
+test("命令行：别的子命令的选项按用法错退出 2，不悄悄用默认值", () => {
+  const run = (...args: string[]) => spawnSync(process.execPath, ["scripts/verify-receipt.ts", ...args], { encoding: "utf8" }).status;
+  assert.equal(run("check", "--pr", "7", "--level", "live-ui-verified"), 2);
+  assert.equal(run("sign", "--sha", "HEAD", "--need", "live-ui-verified"), 2);
+  assert.equal(run("sign", "--level", "unit-test-verified"), 2);
+  assert.equal(run("sign", "--sha", "HEAD", "--level", "unit-test-verified"), 0);
 });
