@@ -31,14 +31,14 @@ const FEATURED_LIMITS: Record<
   ReadonlyArray<{ slot: FeaturedLimitSlot; title: string }>
 > = {
   claude: [
-    { slot: "session", title: "5-hour limit" },
-    { slot: "weekly", title: "Weekly · all models" },
-    { slot: "fable", title: "Weekly · Fable only" },
+    { slot: "session", title: "5-hour" },
+    { slot: "weekly", title: "Weekly" },
+    { slot: "fable", title: "Weekly Fable" },
   ],
   cursor: [
-    { slot: "cursor.secondary", title: "Monthly · Cursor models" },
-    { slot: "cursor.tertiary", title: "Monthly · other models" },
-    { slot: "cursor.quaternary", title: "Weekly · Grok Bot" },
+    { slot: "cursor.secondary", title: "Cursor models" },
+    { slot: "cursor.tertiary", title: "Other models" },
+    { slot: "cursor.quaternary", title: "Grok Bot" },
   ],
 };
 

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 
 import { AgentPanel } from "@/components/live/vibecoding/agent-panel";
 import { CompactAgents } from "@/components/live/vibecoding/compact-agents";
-import { DailyUse, LimitForecastPanel, useWeeklyForecast } from "@/components/live/vibecoding/limit-forecast-panel";
+import { useWeeklyForecast } from "@/components/live/vibecoding/limit-forecast-panel";
 import { weeklyLimit } from "@/components/live/vibecoding/limits";
 import { TotalUsage } from "@/components/live/vibecoding/total-usage";
 import type { FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
@@ -89,28 +89,22 @@ export function VibeCodingCard({
               Waiting for usage reports
             </div>
           )}
-          <div className="grid grid-cols-1 divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
-            {rows.filter((row) => row.row === "featured").map((row) => (
-              <AgentPanel
-                key={row.id}
-                row={row}
-                macDeclaredOffline={macDeclaredOffline}
-                clocks={clocks}
-                today={today}
-              >
-                {row.id === "claude" && weekly.forecast && weekly.forecast.days.length > 0 && (
-                  <div className="border-t border-line pt-4">
-                    <DailyUse forecast={weekly.forecast} timeZone={weekly.timeZone} />
-                  </div>
-                )}
-              </AgentPanel>
-            ))}
-            <LimitForecastPanel forecast={weekly.forecast} timeZone={weekly.timeZone} />
-          </div>
+          {rows.filter((row) => row.row === "featured").map((row) => (
+            <AgentPanel
+              key={row.id}
+              row={row}
+              macDeclaredOffline={macDeclaredOffline}
+              clocks={clocks}
+              today={today}
+              forecast={row.id === "claude" ? weekly.forecast : null}
+              timeZone={weekly.timeZone}
+            />
+          ))}
           <CompactAgents
             rows={rows.filter((row) => row.row === "compact")}
             macDeclaredOffline={macDeclaredOffline}
             clocks={clocks}
+            today={today}
           />
         </>
       ) : (

@@ -71,7 +71,7 @@ const SLOT = {
   activity: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_350px] md:[contain-intrinsic-size:auto_253px]",
   server: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_281px]",
   agentStatus: "defer-offscreen-always [contain-intrinsic-size:auto_172px]",
-  vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1744px] md:[contain-intrinsic-size:auto_1039px]",
+  vibeCoding: "defer-offscreen [contain-intrinsic-size:auto_1704px] md:[contain-intrinsic-size:auto_1032px]",
   playstation: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_655px] md:[contain-intrinsic-size:auto_595px] lg:[contain-intrinsic-size:auto_525px]",
   godChat: "md:col-span-2",
   pulse: "defer-offscreen-always md:col-span-2 [contain-intrinsic-size:auto_559px] sm:[contain-intrinsic-size:auto_355px] lg:[contain-intrinsic-size:auto_363px]",
