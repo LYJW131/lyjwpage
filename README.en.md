@@ -14,26 +14,22 @@ How-it-works explainer: [中文](https://lyjw131.com/explainer/?lang=zh) · [Eng
 
 What I'm listening to, watching and playing, which apps are in use, how my devices are doing: this homepage gathers state scattered across a Mac, an iPhone, a NAS and cloud services onto one page. It is also a personal telemetry system that keeps evolving.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
-  <img src="docs/screenshots/overview-light.webp" alt="Homepage overview: the daily digest, now watching, charger and power bank, now listening, Talk to God, activity rings with recent workouts, and the exit node lit up at once" width="100%">
-</picture>
-
 ## What's on the page
 
 | Module | What it shows |
 | --- | --- |
 | **Daily digest** | A tagline and a few readings sum up the last 24 hours, with a 24-hour dial |
 | **This Mac and chargers** | The Mac's front app and window title; ports and power of Anker chargers and power banks |
+| **Do Not Disturb** | The iPhone Focus mode and how long it has been on |
 | **Watching / Music** | Now playing on Emby; Apple Music and HomePod with word-by-word lyrics, plus a web player visitors can listen along with |
 | **Activity** | Apple Watch rings and recent workouts |
 | **Server** | Exit node rates, traffic, CPU, memory and disk |
 | **AI Coding** | Token usage per coding tool, cost estimates, the agent in use, a yearly heatmap and limits |
-| **Games** | PlayStation online status and trophies |
-| **Pulse** | A 24-hour timeline of coding, listening, watching, playing, charging and activity |
+| **Games** | Now playing on Meta Quest; PlayStation online status and trophies |
+| **Pulse** | A 24-hour timeline of coding, tokens, listening, watching, playing, charging and activity |
 | **Provider status** | Official status pages of Claude, ChatGPT, Cursor, GitHub, Cloudflare and more |
 | **The site itself** | Repository and commits, 30-day uptime, performance scores, Worker and reporter metrics |
-| **Talk to God** | Routes each question to a Claude tier by difficulty; it can read every card's live data, search the web and plan site changes |
+| **Talk to God** | Visitors pick a DeepSeek or Claude lineup and each question goes to a tier by difficulty; it can read every card's live data, search the web, draw cards in its answers and plan site changes |
 
 The same data is open to AI agents: `https://lyjw.me/mcp` is a public MCP endpoint (Streamable HTTP, no auth).
 
@@ -60,6 +56,20 @@ The cards below are rendered live by the site as SVG, follow the system light or
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-watching.svg?theme=dark&amp;v=2">
   <img src="https://lyjw.me/cards/now-watching.svg?v=2" alt="Emby now watching card" width="100%">
+</picture>
+
+**Do Not Disturb**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/focus.svg?v=3" alt="Do Not Disturb card: the iPhone Focus mode and how long it has been on" width="100%">
+</picture>
+
+**Now playing on Meta Quest**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/quest.svg?v=3" alt="Meta Quest now playing card: the game, its mode and play time" width="100%">
 </picture>
 
 **Charger and power bank**
@@ -150,12 +160,12 @@ Most of the code in this repo is written by Claude; lyjw sets direction, makes t
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/workflow-en-dark.svg">
-  <img src="docs/diagrams/workflow-en-light.svg" alt="Development workflow: requests from lyjw, scheduled routines and visitor builds become PRs through Claude, pass the branch preview, CI, bot review when needed and lyjw's OK, then merge to main and deploy through Workers Builds" width="100%">
+  <img src="docs/diagrams/workflow-en-light.svg" alt="Development workflow: changes from lyjw's requests, scheduled routines and visitor builds become PRs through Claude, pass the branch preview, CI, bot review when needed and lyjw's OK, then merge to main and deploy through Workers Builds" width="100%">
 </picture>
 
 - **Layered rules, enforced where possible**: [`HUMAN.md`](./HUMAN.md) is the collaboration contract for lyjw, [`AGENTS.md`](./AGENTS.md) holds the hard rules for agents, [`.claude/skills/`](./.claude/skills/) holds reusable procedures. Hooks, lint and the CI checks `docs:check`, `rules:check` and `design:scale` block violations, and the baselines of existing violations can only shrink.
 - **Verification leaves a receipt**: checks run on a Haiku verifier that signs a graded receipt per commit SHA; before merge a script confirms the receipt still covers the current head.
-- **Tiered merge gate**: docs and small changes merge on green CI, large logic changes clear bot reviews first, UI changes wait for lyjw to approve screenshots.
+- **Tiered merge gate**: docs and small changes merge once local checks pass without waiting for CI, large logic changes need green CI and clear bot reviews first, UI changes wait for lyjw to approve screenshots.
 - **Self-improving**: scheduled agents turn recurring procedures into skills and adopted review findings into checks; project memory is mirrored in [`.claude/memory/`](./.claude/memory/MEMORY.md).
 - **Visitors can change the site too**: describe a change in the homepage chat, and Claude plans, reviews and implements it as a PR for lyjw to merge.
 

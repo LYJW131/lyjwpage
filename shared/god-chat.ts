@@ -36,6 +36,7 @@ export const GOD_CHAT_CARD_VIEWS = {
   playing: ["playing"],
   activity: ["activity"],
   workouts: ["workouts"],
+  game: ["playing", "trophies"],
 } as const satisfies Record<string, readonly StatusViewKey[]>;
 
 export type GodChatCard = keyof typeof GOD_CHAT_CARD_VIEWS;
@@ -53,7 +54,8 @@ export function isGodChatCard(value: unknown): value is GodChatCard {
 export type GodChatPresetCall =
   | { name: "get_site_status"; input: { views: StatusViewKey[]; query?: string } }
   | { name: "read_project_doc"; input: { doc: string } }
-  | { name: "web_search"; input: { query: string; category: "web" | "news" | "papers" } };
+  | { name: "web_search"; input: { query: string; category: "web" | "news" | "papers" } }
+  | { name: "show_card"; input: { card: GodChatCard; game: string } };
 export type GodChatPreset = { text: string; choice: string; prefetch?: GodChatPresetCall[]; show?: string };
 
 const status = (...views: StatusViewKey[]): GodChatPresetCall[] => [{ name: "get_site_status", input: { views } }];
@@ -63,7 +65,7 @@ const search = (query: string, category: "web" | "news"): GodChatPresetCall[] =>
 // 首页固定摆这些、不轮播，每条对应一种能力（看各条的 show），增删时别让两条演示同一种能力。
 // 提改进那条还没说具体要改什么，由最低档问清需求；访客说出需求的下一条照常经 Clef 判成 design，再由先知开设计会话。
 export const GOD_CHAT_PRESETS: readonly GodChatPreset[] = [
-  { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: [...status("desktop", "codingNow", "nowListening", "playingNow"), ...status("focusNow")], show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
+  { text: "LYJW 现在在忙什么？", choice: "flash", prefetch: [...status("desktop", "codingNow", "nowListening", "playingNow"), ...status("focusNow", "questNow")], show: "If something is playing, put its live card in with show_card; otherwise sum up the moment in a stats visual." },
   { text: "这个网站是怎么搭起来的？", choice: "flash", prefetch: doc("overview"), show: "Draw the architecture as a diagram visual: layers for the reporters, the Workers and the browser, with edges for how data flows." },
   { text: "这周 AI 圈有什么大新闻？", choice: "think", prefetch: search("biggest AI news this week", "news"), show: "Lay out the main stories as a timeline visual, newest last, then add a line on what matters most." },
   { text: "LYJW 闲下来都做些什么？", choice: "flash", prefetch: status("listening", "watching", "playing"), show: "Show the recent listening, watching and playing cards with show_card, one after another, then sum up each in a line or two." },
@@ -428,6 +430,7 @@ export function parseQuestions(value: unknown): GodChatQuestion[] | null {
 // doc 是 read_project_doc 的一次读取：doc 为文档键，path 为仓库内路径（别的仓库带 owner/repo 前缀），url 为 GitHub 页面，section 为实际读到的章节标题（没读章节或没匹配上时缺省）。
 // design 和 plan 的 token 各自签名；计划 token 同时进该轮历史签章，不能移到另一条回复里。
 // card 是 show_card 要画的卡片，画在回复里收到这一行时正文已到的位置；同一条回复里同一张卡片只发一次。
+// game 卡另带 game：游玩列表里那款游戏的 titleId，由 Worker 按模型给的游戏名查出；同一款游戏一条回复里只发一次。
 // thinking 是模型思考的摘要（不是原文），只给界面在等正文时显示，不进对话历史；分几轮想时轮与轮之间补一个空行。
 // step 是设计会话里规划者在沙盒中的一步（搜代码、跑命令）的一行英文说明，只给界面显示进度，不进对话历史。
 // served 只在给出最终答案的那一轮由 Anthropic 的拒答兜底模型答成（没被拒）时出现，回复末尾一次，model 是那个模型的 id。
@@ -439,7 +442,7 @@ export type GodChatEvent =
   | ({ type: "design" } & GodChatDesign)
   | ({ type: "plan" } & BuildProposal)
   | { type: "ask"; questions: GodChatQuestion[] }
-  | { type: "card"; card: GodChatCard }
+  | { type: "card"; card: GodChatCard; game?: string }
   | { type: "tool"; views: string[] }
   | { type: "doc"; doc: string; path: string; url: string; section?: string }
   | { type: "search"; query: string }

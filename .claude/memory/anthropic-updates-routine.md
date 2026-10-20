@@ -1,6 +1,6 @@
 ---
 name: anthropic-updates-routine
-description: Daily 08:41 Asia/Shanghai routine that pulls new Anthropic official posts/docs/changelog/X by bookmark and writes anthropic-updates/<date>.md for the 9:00 morning report
+description: Daily 08:41 Asia/Shanghai routine that pulls new Anthropic official posts/docs/changelog/X by bookmark and writes anthropic-updates/<date>.md for the 10:56 morning report
 metadata:
   type: project
 ---
@@ -16,7 +16,7 @@ X cursors are kept per account (`cursors.x` = {username: since_id}). A new sourc
 
 **State:** `/mnt/project-files/anthropic-updates/` — `state.json` (cursors for claude-code version and x since_id, `ledger` of open "可吸收" items), `seen/<source>.txt` seen-key sets, `runs/` records, `<Shanghai date>.md` summary (appends when the file exists). `fetch.py scan` writes `pending.json`; `commit <sources>` advances only after the summary is read back.
 
-**Contract with the coordinator:** the routine never posts in the project chat and never opens PRs; the coordinator's 9:00 morning report reads the dated file and relays "要你决定的". Absorbing an item is a separate thread under normal merge gates.
+**Contract with the morning report:** the routine never posts in the project chat and never opens PRs; the 10:56 morning-report routine ([[morning-report-routine]]) reads the dated file and relays only the absorbable items. Absorbing an item is a separate thread under normal merge gates.
 
 **Settled, don't re-propose (lyjw 2026-10-15):** sending the ai Worker's Claude Platform usage/traces (OTel) into Pulse or ingress — "这又不是我的用量" (visitors spend it, not lyjw); Max-plan API credits — already claimed, the ai Worker runs on them.
 

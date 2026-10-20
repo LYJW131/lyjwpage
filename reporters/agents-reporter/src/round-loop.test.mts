@@ -51,3 +51,46 @@ test("待发信封超过 reuseMs 才重新采集", async () => {
   assert.deepEqual(stats().collected, 3);
   assert.deepEqual(stats().pushed, [1, 1, 2, 3]);
 });
+
+test("采集失败记为采集失败并等下一轮，不走上报退避、不立刻重采", async () => {
+  let clock = 0;
+  let collected = 0;
+  const events: string[] = [];
+  const pushFailures: unknown[] = [];
+  const collectFailures: unknown[] = [];
+  const loop = runRounds<number>({
+    collect: async () => {
+      collected += 1;
+      events.push(`collect${collected}`);
+      if (collected === 1) throw new Error("限额接口 429");
+      return collected;
+    },
+    push: async () => {
+      events.push("push");
+    },
+    waitForNextRound: async () => {
+      events.push("wait");
+      if (events.filter((event) => event === "wait").length === 2) throw new Stop();
+    },
+    sleep: async (ms) => {
+      events.push(`sleep${ms}`);
+      clock += ms;
+    },
+    onPushFailure: (error) => {
+      if (error instanceof Stop) throw error;
+      pushFailures.push(error);
+    },
+    onCollectFailure: (error) => {
+      collectFailures.push(error);
+    },
+    now: () => clock,
+    reuseMs: 300_000,
+    retryMs: 2_000,
+    maxRetryMs: 300_000,
+  });
+  await assert.rejects(loop, Stop);
+  assert.equal(collectFailures.length, 1);
+  assert.match(String(collectFailures[0]), /429/);
+  assert.deepEqual(pushFailures, []);
+  assert.deepEqual(events, ["collect1", "wait", "collect2", "push", "wait"]);
+});

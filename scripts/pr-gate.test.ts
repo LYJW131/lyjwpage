@@ -64,6 +64,15 @@ test("严重度：Codex 徽章、Claude 圆圈、Devin 种类与圆圈、其他�
   assert.deepEqual(severityOf("这里少了一个分支", null), { mark: null, level: "unmarked" });
 });
 
+test("首行认标记前把注释删到切口拼不回，标题里的嵌套标签也删干净", () => {
+  assert.deepEqual(severityOf("<!<!--x-->-->\n🔴 会丢数据", "claude"), { mark: "🔴", level: "blocking" });
+  const threads = buildThreads(
+    [{ id: 9, user: claude, body: "<scrip<script>t>标题</script>", html_url: "u", path: "a.ts", line: 1, created_at: "2026-10-19T01:00:00Z" }],
+    { source: "ccr", byRoot: new Map([[9, { resolved: false, outdated: false }]]) },
+  );
+  assert.equal(threads.unresolved[0].title, "标题");
+});
+
 test("评审线程按根评论归并：发起人、标记、最后一条是不是 lyjw 的账号回的，只列没解决的", () => {
   const comments = [
     { id: 1, user: codex, body: codexBody("P1"), html_url: "u1", path: "a.ts", line: 3, created_at: "2026-10-19T01:00:00Z" },
@@ -289,11 +298,11 @@ test("规则漂移：分支起点以来 main 改了规则文件时进 notes 不�
     "pulls/7": { number: 7, title: "t", state: "open", draft: false, mergeable: true, head: { sha: HEAD }, base: { ref: "main" }, labels: [] },
     "pulls/7/commits": [{ sha: HEAD, parents: [{ sha: START }] }],
     [`compare/${START}...main`]: {
-      files: [...FILES(["AGENTS.md", "src/lib/x.ts", ".claude/skills/lyjwpage-verify/SKILL.md"]), { filename: "docs/x.md", previous_filename: "workers/ai/AGENTS.md" }],
+      files: [...FILES(["AGENTS.md", "src/lib/x.ts", ".claude/skills/lyjwpage-verify/SKILL.md", ".claude/rules/images.md"]), { filename: "docs/x.md", previous_filename: "workers/ai/AGENTS.md" }],
     },
   });
   const drifted = await gate({ pr: 7 }, { fetch: fakeFetch(routes), patchId: () => null });
-  assert.deepEqual(drifted.ruleDrift.files, ["AGENTS.md", ".claude/skills/lyjwpage-verify/SKILL.md", "workers/ai/AGENTS.md"]);
+  assert.deepEqual(drifted.ruleDrift.files, ["AGENTS.md", ".claude/skills/lyjwpage-verify/SKILL.md", ".claude/rules/images.md", "workers/ai/AGENTS.md"]);
   assert.equal(drifted.ready, true);
   assert.match(drifted.notes.join("\n"), /main 上改了规则文件/);
 

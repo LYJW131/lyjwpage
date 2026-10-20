@@ -1,3 +1,11 @@
+function decoded(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 const GITHUB_PAGES: [RegExp, (match: RegExpMatchArray) => string][] = [
   [/^\/[^/]+\/([^/]+)\/commit\/([0-9a-f]{7})/, (m) => `Commit ${m[2]} in the ${m[1]} repository on GitHub`],
   [/^\/[^/]+\/([^/]+)\/(?:tree|blob)\/[^/]+\/(?:.+\/)?([^/]+)\/?$/, (m) => `Source of ${m[2]} in the ${m[1]} repository on GitHub`],
@@ -5,7 +13,7 @@ const GITHUB_PAGES: [RegExp, (match: RegExpMatchArray) => string][] = [
   [/^\/[^/]+\/([^/]+)\/pull\/(\d+)/, (m) => `Pull request #${m[2]} in the ${m[1]} repository on GitHub`],
   [/^\/settings\b/, () => "Your GitHub settings"],
   [/^\/([^/]+)\/([^/]+)\/?$/, (m) => `The ${m[2]} repository on GitHub`],
-  [/^\/([^/]+)\/?$/, (m) => `${decodeURIComponent(m[1])}'s profile on GitHub`],
+  [/^\/([^/]+)\/?$/, (m) => `${decoded(m[1])}'s profile on GitHub`],
 ];
 
 const HOSTS: Record<string, string | ((url: URL) => string)> = {

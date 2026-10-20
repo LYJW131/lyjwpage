@@ -14,26 +14,22 @@
 
 听什么、看什么、玩什么，正在用哪些应用，设备状态如何：这个主页把 Mac、iPhone、NAS 和云端服务里分散的状态汇到同一页，也是一套持续演进的个人遥测系统。
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
-  <img src="docs/screenshots/overview-light.webp" alt="首页总览：每日摘要、正在看、充电头与充电宝、正在听、与神对话、活动圆环与最近训练、落地节点同时点亮" width="100%">
-</picture>
-
 ## 页面里有什么
 
 | 模块 | 内容 |
 | --- | --- |
 | **每日摘要** | 一句标语加几项读数概括最近 24 小时，配 24 小时表盘 |
 | **本机与充电** | Mac 前台应用与窗口标题，Anker 充电头、充电宝的端口与功率 |
+| **勿扰** | iPhone 专注模式与已持续时长 |
 | **影视 / 音乐** | Emby 正在播放；Apple Music 与 HomePod 在听、逐字歌词，访客可用网页播放器「一起听」 |
 | **运动** | Apple Watch 三环与最近训练 |
 | **服务器** | 落地节点的速率、流量、CPU、内存、磁盘 |
 | **AI Coding** | 各编码工具的 Token 用量、成本估算、在用的 agent、年度热力图与限额 |
-| **游戏** | PlayStation 在线状态与奖杯 |
-| **Pulse** | 编码、听、看、玩、充电、运动的 24 小时时间线 |
+| **游戏** | Meta Quest 正在玩；PlayStation 在线状态与奖杯 |
+| **Pulse** | 编码、Token、听、看、玩、充电、运动的 24 小时时间线 |
 | **服务状态** | Claude、ChatGPT、Cursor、GitHub、Cloudflare 等官方状态页汇总 |
 | **站点自身** | 仓库与提交、30 天在线状态、性能分、各 Worker 与上报器指标 |
-| **与神对话** | 按问题难度派给不同档位的 Claude，可读各卡实时数据、联网搜索、规划站点改动 |
+| **与神对话** | 访客选 DeepSeek 或 Claude 阵容，按问题难度派档，可读各卡实时数据、联网搜索、在回答里画卡片、规划站点改动 |
 
 同一套数据也开放给 AI：`https://lyjw.me/mcp` 是公开 MCP 端点（Streamable HTTP，无需鉴权）。
 
@@ -60,6 +56,20 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/now-watching.svg?theme=dark&amp;v=2">
   <img src="https://lyjw.me/cards/now-watching.svg?v=2" alt="Emby 正在播放卡片" width="100%">
+</picture>
+
+**勿扰**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/focus.svg?v=3" alt="勿扰卡片：iPhone 专注模式与已持续时长" width="100%">
+</picture>
+
+**Meta Quest 正在玩**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/quest.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/quest.svg?v=3" alt="Meta Quest 正在玩卡片：游戏、模式与已玩时长" width="100%">
 </picture>
 
 **充电头与充电宝**
@@ -150,12 +160,12 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/workflow-zh-dark.svg">
-  <img src="docs/diagrams/workflow-zh-light.svg" alt="开发工作流图：lyjw 的需求、定时任务与访客构建三路经 Claude 变成 PR，过分支预览、CI、按需的机器评审与 lyjw 点头后合进 main，由 Workers Builds 部署" width="100%">
+  <img src="docs/diagrams/workflow-zh-light.svg" alt="开发工作流图：lyjw 的需求、定时任务与访客构建三路的改动经 Claude 变成 PR，过分支预览、CI、按需的机器评审与 lyjw 点头后合进 main，由 Workers Builds 部署" width="100%">
 </picture>
 
 - **规则分层，能拦就拦**：[`HUMAN.md`](./HUMAN.md) 是给 lyjw 的协作约定，[`AGENTS.md`](./AGENTS.md) 是给 agent 的硬规则，[`.claude/skills/`](./.claude/skills/) 是可复用流程；违反时由钩子、lint 和 CI 里的 `docs:check`、`rules:check`、`design:scale` 拦下，存量违规的基线只减不增。
 - **验证有回执**：检查交给 Haiku 验证员，它按提交 SHA 签分级回执，合并前脚本核对回执还盖得住当前提交。
-- **合并分档**：文档和小改动 CI 绿就合，大改逻辑的处理完机器评审，UI 变化等 lyjw 看图点头。
+- **合并分档**：文档和小改动本地检查过了就合、不等 CI，大改逻辑的处理完机器评审，UI 变化等 lyjw 看图点头。
 - **自我改进**：定时任务把反复出现的流程写成 skill、把被采纳的评审意见做成检查，项目记忆镜像在 [`.claude/memory/`](./.claude/memory/MEMORY.md)。
 - **访客也能改站点**：在首页对话里描述改动，Claude 规划、审查、实现，产出 PR 交 lyjw 合并。
 
@@ -170,7 +180,7 @@
 | 客户端数据 | SWR · WebSocket |
 | 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
 | 活跃度评分 | Workers AI（Clef） |
-| 首页对话 | DeepSeek Flash 与 Anthropic Claude（Clef 选档）、Exa 联网搜索、Cloudflare Turnstile |
+| 首页对话 | DeepSeek Flash 与 Anthropic Claude（Clef 选档、Clairic 抽取）、Exa 联网搜索、Cloudflare Turnstile |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Cloudflare Workers · 阿里云 ESA |
 | 报错与性能监控 | Cloudflare Workers Observability · Web Analytics |

@@ -1,6 +1,6 @@
 ---
 name: lyjwpage-anthropic-updates
-description: lyjwpage 的「Anthropic 官方动态」定时任务按它跑：按书签拉 Anthropic 官方博客、文档、release notes、Claude Code 与 SDK 更新日志、官方与前沿博主的 X、Simon Willison、Latent Space、Cloudflare changelog、Hacker News 热帖，写当天摘要并逐条判断能否吸收进 lyjwpage，供 9:00 晨报读取；lyjw 转来一篇 Anthropic 文章或帖子让看能否吸收时也用。
+description: lyjwpage 的「Anthropic 官方动态」定时任务按它跑：按书签拉 Anthropic 官方博客、文档、release notes、Claude Code 与 SDK 更新日志、官方与前沿博主的 X、Simon Willison、Latent Space、Cloudflare changelog、Hacker News 热帖，写当天摘要并逐条判断能否吸收进 lyjwpage，供晨报读取；lyjw 转来一篇 Anthropic 文章或帖子让看能否吸收时也用。
 ---
 
 # Anthropic 官方动态日报

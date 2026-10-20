@@ -7,12 +7,12 @@
     "playing": {
       "name": "Beat Saber",
       "platform": "meta_quest",
-      "details": "Solo · Expert+",
-      "state": "Camellia - GHOST",
+      "details": null,
+      "state": null,
       "startedAt": "$now-1380000",
       "applicationId": null,
       "parentApplicationId": null,
-      "largeImageUrl": null
+      "largeImageUrl": "https://media.discordapp.net/external/e382M5EH1HwBIFeeHZQVMmdJjY3BTaF_VbIc8wMmwHE/https/www.oculus.com/rich_presence/image/2448060205267927/"
     }
   }
 }

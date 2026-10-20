@@ -376,8 +376,10 @@ export class RenderedSite extends WorkerEntrypoint<Env> implements SiteCacheRpc 
               : imageObjectKeyFromPath(target.pathname)
                 ? await ctx.exports.ImageVariants.fetch(imageObjectRequest(new Request(target, init)))
                 : await env.ASSETS.fetch(new Request(target, init));
+          if (!response.ok) console.warn("[site-asset] inline failed", { host: target.host, status: response.status });
           return await dataUri(response, "application/octet-stream");
-        } catch {
+        } catch (error) {
+          console.warn("[site-asset] inline failed", { host: new URL(src, "https://site.internal").host, error: String(error) });
           return null;
         }
       },

@@ -106,13 +106,23 @@ button.paper-card {
 
 .live-media-pair {
   gap: 0.75rem;
-  transition: gap 480ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .live-media-pair > .charger-shell {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 收起动画只给手机：md 起两种状态的行轨与间距相同，若全宽生效，跨断点时会从 0fr 补间到 1fr，
+   卡片被 min-height 撑出槽外、列表区跌破 4 行门槛，最近在听 4→3→4 跳一下。 */
+@media (width < 48rem) {
+  .live-media-pair {
+    transition: gap 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .live-media-pair > .charger-shell {
+    transition: grid-template-rows 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 .live-media-pair.is-disconnected {
