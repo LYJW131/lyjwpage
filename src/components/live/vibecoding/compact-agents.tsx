@@ -4,10 +4,8 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useState } from "react";
 
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
-import { kiloMega } from "@/components/live/vibecoding/agent-panel";
-import { PaceMarker } from "@/components/live/vibecoding/limit-meter";
-import { LimitTable } from "@/components/live/vibecoding/limit-table";
-import { LIMITS_SILENT, compactLimit, featuredLimitRows, hasFeaturedLimits, formatCompactReset, limitColor, limitPace, nextCompactTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
+import { LimitMeter, PaceMarker, UsageMeter } from "@/components/live/vibecoding/limit-meter";
+import { LIMITS_SILENT, compactLimit, formatCompactReset, limitColor, limitPace, nextCompactTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, BrandMark } from "@/components/live/vibecoding/marks";
 import { useAgentActive, type FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -15,18 +13,15 @@ import { useStale } from "@/hooks/use-stale";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import type { CodingAgentRow } from "@/lib/coding-agents";
 import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
-import { cn } from "@/lib/utils";
 
 function CompactAgentRow({
   row,
   macDeclaredOffline,
   clocks,
-  today,
 }: {
   row: CodingAgentRow;
   macDeclaredOffline: boolean;
   clocks: FirstFrameClocks;
-  today: string | null;
 }) {
   const limitsStale = useStale(row.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
   const mountedAt = useMountedAt();
@@ -64,125 +59,113 @@ function CompactAgentRow({
   const { active, sources } = useAgentActive(row, macDeclaredOffline, clocks);
   const usageUrl = agentUsageUrl(row.id);
   const [expanded, setExpanded] = useState(false);
-  const featured = hasFeaturedLimits(row.id);
-  const expandable = !limitsStale && (featured ? row.limits.length > 0 : !usageUrl && row.limits.length > 1);
+  const expandable = !usageUrl && !limitsStale && row.limits.length > 1;
   const open = expandable && expanded;
 
-  const lastDay = row.usage?.lastDay ?? null;
-  const todayTokens = row.usage == null || today == null ? null : lastDay?.date === today ? lastDay.totalTokens : 0;
-  const fill = (
-    <>
-      {usedPercent != null && (
-        <span
-          className="block h-full transition-[width] duration-700"
-          style={{ width: `${usedPercent}%`, backgroundColor: color }}
-        />
-      )}
-      {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
-    </>
-  );
-  const bar = <span className="relative block h-1.5 w-full overflow-hidden bg-muted">{fill}</span>;
-  const trackClass = "flex h-6 min-w-0 items-center focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-live";
-
   return (
-    <div className="grid min-w-0 gap-2 py-3" title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 md:grid-cols-[12rem_minmax(0,1fr)_8rem_5rem]">
-        <span className="grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2 gap-y-0.5">
-          <span className="flex size-5 items-center justify-center" aria-hidden>
+    <div
+      className="min-w-0 py-3"
+      title={limitsStale ? LIMITS_SILENT : (row.limitsError ?? undefined)}
+    >
+      <span className="flex flex-col gap-1 md:h-5 md:flex-row md:items-center md:justify-between md:gap-2">
+        <span className="flex h-5 min-w-0 items-center gap-2">
+          <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
             {row.id === "codex" ? (
               <CodexActivityIndicator active={active} />
             ) : (
               <BrandMark icon={row.icon} label={row.label} className="size-5" />
             )}
           </span>
-          <span className="flex h-5 min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium">{row.label}</span>
-            {active && <ActiveBadge sources={sources} />}
-          </span>
-          <span className="col-start-2 truncate text-xs text-muted-foreground" title={row.plan ? `Plan ${row.plan.tier}` : undefined}>
-            {row.plan?.label ?? "No plan reported"}
-          </span>
+          <span className="truncate text-sm font-medium">{row.label}</span>
+          {active && <ActiveBadge sources={sources} />}
         </span>
-        <span className="grid justify-items-end gap-0.5 md:order-last">
-          <span className="font-mono text-sm tabular-nums">
-            {todayTokens == null ? (
-              <span className="text-muted-foreground">—</span>
-            ) : (
-              <NumberFlow {...kiloMega(todayTokens)} locales="en-US" format={{ maximumFractionDigits: 1, useGrouping: false }} />
-            )}
-          </span>
-          <span className="text-xs text-muted-foreground">today</span>
-        </span>
-        {expandable ? (
-          <button
-            type="button"
-            aria-label={`${row.label} limits`}
-            aria-expanded={open}
-            onClick={() => setExpanded((value) => !value)}
-            className={cn(trackClass, "cursor-pointer")}
-          >
-            {bar}
-          </button>
-        ) : usageUrl ? (
-          <a href={usageUrl} target="_blank" rel="noreferrer noopener" aria-label={agentUsageLabel(row.label)} className={trackClass}>
-            {bar}
-          </a>
-        ) : (
-          <span className={trackClass}>{bar}</span>
-        )}
-        <span className="flex flex-row-reverse items-baseline gap-2 md:grid md:justify-items-end md:gap-0.5">
+        <span className="flex h-5 min-w-0 items-baseline gap-2 text-xs text-muted-foreground md:shrink-0">
+          {row.plan && (
+            <span className="truncate" title={`Plan ${row.plan.tier}`}>
+              {row.plan.label}
+            </span>
+          )}
+          {row.plan && reset && (
+            <span aria-hidden className="mx-1.5">
+              /
+            </span>
+          )}
+          {reset?.kind === "days" && (
+            <NumberFlowGroup>
+              <span className="shrink-0 whitespace-nowrap tabular-nums">
+                Resets in{" "}
+                <NumberFlow value={reset.days} locales="en-US" />{" "}
+                {reset.days === 1 ? "day" : "days"}
+                {reset.hours > 0 && (
+                  <>
+                    {" "}
+                    <NumberFlow value={reset.hours} locales="en-US" /> hr
+                  </>
+                )}
+              </span>
+            </NumberFlowGroup>
+          )}
+          {reset?.kind === "relative" && (
+            <NumberFlowGroup>
+              <span className="shrink-0 whitespace-nowrap tabular-nums">
+                Resets in{" "}
+                {reset.hours > 0 && (
+                  <>
+                    <NumberFlow value={reset.hours} locales="en-US" /> hr{" "}
+                  </>
+                )}
+                {(reset.minutes > 0 || reset.hours === 0) && (
+                  <>
+                    <NumberFlow value={reset.minutes} locales="en-US" /> min
+                  </>
+                )}
+              </span>
+            </NumberFlowGroup>
+          )}
           {usedPercent == null ? (
-            <span className="font-mono text-sm text-muted-foreground" title="Unavailable">—</span>
+            <span
+              className="label-mono ml-auto shrink-0 text-muted-foreground md:ml-0"
+              title="Unavailable"
+            >
+              —
+            </span>
           ) : (
-            <span className="font-mono text-sm tabular-nums" style={{ color }}>
+            <span
+              className="ml-auto shrink-0 font-mono tabular-nums md:ml-0"
+              style={{ color }}
+            >
               <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
             </span>
           )}
-          <span className="text-xs whitespace-nowrap text-muted-foreground">
-            {reset == null && "No reset time"}
-            {reset?.kind === "days" && (
-              <NumberFlowGroup>
-                <span className="tabular-nums">
-                  Resets in <NumberFlow value={reset.days} locales="en-US" />
-                  {reset.days === 1 ? " day" : " days"}
-                </span>
-              </NumberFlowGroup>
-            )}
-            {reset?.kind === "relative" && (
-              <NumberFlowGroup>
-                <span className="tabular-nums">
-                  Resets in{" "}
-                  {reset.hours > 0 ? (
-                    <>
-                      <NumberFlow value={reset.hours} locales="en-US" /> hr
-                    </>
-                  ) : (
-                    <>
-                      <NumberFlow value={reset.minutes} locales="en-US" /> min
-                    </>
-                  )}
-                </span>
-              </NumberFlowGroup>
-            )}
-          </span>
         </span>
-        {open && (
-          <LimitTable
-            className="col-span-full border-l border-line py-1 pl-3 md:order-last md:col-span-3 md:col-start-2"
-            items={
-              featured
-                ? featuredLimitRows(row).map((item) =>
-                    item.kind === "limit"
-                      ? { key: item.key, title: item.title, limit: item.limit }
-                      : { key: item.key, title: item.title, limit: null, reason: item.reason },
-                  )
-                : row.limits.map((item) => ({ key: item.key, title: item.label ?? item.key, limit: item }))
-            }
-            href={featured ? usageUrl : null}
-            agentLabel={row.label}
+      </span>
+      <UsageMeter
+        href={usageUrl}
+        label={agentUsageLabel(row.label)}
+        expanded={open}
+        onToggle={expandable ? () => setExpanded((value) => !value) : undefined}
+      >
+        {usedPercent != null && (
+          <span
+            className="block h-full transition-[width] duration-700"
+            style={{ width: `${usedPercent}%`, backgroundColor: color }}
           />
         )}
-      </div>
+        {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
+      </UsageMeter>
+      {open && (
+        <div className="mt-3 grid gap-3 border-l border-line pl-3">
+          {row.limits.map((item) => (
+            <LimitMeter
+              key={item.key}
+              limit={item}
+              title={item.label ?? item.key}
+              href={null}
+              label={agentUsageLabel(row.label, item.label ?? item.key)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -191,12 +174,10 @@ export function CompactAgents({
   rows,
   macDeclaredOffline,
   clocks,
-  today,
 }: {
   rows: CodingAgentRow[];
   macDeclaredOffline: boolean;
   clocks: FirstFrameClocks;
-  today: string | null;
 }) {
   if (rows.length === 0) return null;
   const sortedRows = [...rows].sort((left, right) => {
@@ -213,7 +194,6 @@ export function CompactAgents({
             row={row}
             macDeclaredOffline={macDeclaredOffline}
             clocks={clocks}
-            today={today}
           />
         ))}
       </div>

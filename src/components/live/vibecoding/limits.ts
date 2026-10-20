@@ -33,7 +33,7 @@ const FEATURED_LIMITS: Record<
   claude: [
     { slot: "session", title: "5-hour" },
     { slot: "weekly", title: "Weekly" },
-    { slot: "fable", title: "Weekly Fable" },
+    { slot: "fable", title: "Fable" },
   ],
   cursor: [
     { slot: "cursor.secondary", title: "Cursor models" },

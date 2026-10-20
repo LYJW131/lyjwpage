@@ -7,7 +7,6 @@ import { forecastLimit, recentRate, usageIntervals } from "./limit-forecast.ts";
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const WEEK_MIN = 7 * 24 * 60;
-const day = (at: number) => new Date(at).toISOString().slice(0, 10);
 
 // 窗口周一 0 点开始，每天 23:00 一次读数（UTC，测试里站点日按 UTC 切）。
 const start = Date.UTC(2026, 9, 12);
@@ -23,36 +22,36 @@ test("a reading that drops means a reset happened, and only the part after it co
 });
 
 test("days that start out of quota do not drag the recent pace down", () => {
-  const points: LimitHistoryPoint[] = [[0, 40, 9e9], [DAY, 98, 9e9], [2 * DAY, 98, 9e9], [3 * DAY, 99, 9e9]];
+  const points: LimitHistoryPoint[] = [[0, 40, 9e9], [DAY, 100, 9e9], [2 * DAY, 100, 9e9], [3 * DAY, 100, 9e9]];
   assert.equal(recentRate(usageIntervals(points, 7 * DAY), 3 * DAY), null);
-  const open: LimitHistoryPoint[] = [[0, 10, 9e9], [DAY, 30, 9e9], [2 * DAY, 98, 9e9]];
+  const open: LimitHistoryPoint[] = [[0, 10, 9e9], [DAY, 30, 9e9], [2 * DAY, 100, 9e9]];
   assert.equal(recentRate(usageIntervals(open, 7 * DAY), 2 * DAY), 20 / DAY);
 });
 
 test("steady use at twice the even pace runs out halfway and locks the rest of the window", () => {
   const now = start + 2 * DAY;
-  const forecast = forecastLimit(weekly(4 * 100 / 7), readings([200 / 7]), now, day)!;
+  const forecast = forecastLimit(weekly(4 * 100 / 7), readings([200 / 7]), now)!;
   assert.ok(forecast.runOutAt != null);
-  assert.ok(Math.abs(forecast.runOutAt - (start + 3.43 * DAY)) < 0.05 * DAY);
-  assert.ok(Math.abs(forecast.lockedMs! - 3.57 * DAY) < 0.05 * DAY);
+  assert.ok(Math.abs(forecast.runOutAt - (start + 3.5 * DAY)) < 0.05 * DAY);
+  assert.ok(Math.abs(forecast.lockedMs! - 3.5 * DAY) < 0.05 * DAY);
 });
 
 test("early in a window the previous week's pace stands in until the window has its own", () => {
   const previous = readings([10, 20, 30, 40], reset - 7 * 86_400, start - 7 * DAY);
   const now = start + 2 * HOUR;
-  const forecast = forecastLimit(weekly(8), previous, now, day)!;
+  const forecast = forecastLimit(weekly(8), previous, now)!;
   assert.ok(forecast.rate! < 8 / (2 * HOUR) / 3);
-  assert.equal(forecastLimit(weekly(8), [], now, day)!.rate, null);
+  assert.equal(forecastLimit(weekly(8), [], now)!.rate, null);
 });
 
 test("a window that already ran out reports when it hit the line", () => {
-  const forecast = forecastLimit(weekly(100), readings([40, 98]), start + 3 * DAY, day)!;
+  const forecast = forecastLimit(weekly(100), readings([40, 100]), start + 3 * DAY)!;
   assert.equal(forecast.ranOut, true);
   assert.equal(forecast.runOutAt, start + DAY + 23 * HOUR);
 });
 
 test("light use ends the window below the limit", () => {
-  const forecast = forecastLimit(weekly(10), readings([5]), start + 2 * DAY, day)!;
+  const forecast = forecastLimit(weekly(10), readings([5]), start + 2 * DAY)!;
   assert.equal(forecast.runOutAt, null);
   assert.ok(forecast.percentAtReset! > 30 && forecast.percentAtReset! < 40);
 });
@@ -60,7 +59,8 @@ test("light use ends the window below the limit", () => {
 test("an archived reading newer than the live one is ignored, not read as a reset", () => {
   const readAt = start + 2 * DAY;
   const history: LimitHistoryPoint[] = [...readings([20]), [readAt + 5 * 60_000, 48, reset]];
-  const forecast = forecastLimit(weekly(46), history, readAt, day)!;
-  assert.equal(forecast.days.at(-1)!.used, 26);
+  const forecast = forecastLimit(weekly(46), history, readAt)!;
+  assert.deepEqual(forecast.window.at(-1), [readAt, 46]);
+  assert.ok(forecast.rate! > 0);
   assert.equal(forecast.ranOut, false);
 });
