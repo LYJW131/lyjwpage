@@ -38,7 +38,7 @@ lyjw 已定、不要再讨论的：全篇 2D，没有透视和 3D；第 02 章�
 - `docs/explainer/v2/music/ch{{NN}}.js`：配乐。锚点对齐 SCRIPT 的配乐栏和画面里「落在拍上」的动作；信封主题换一件本章的乐器唱。
 - 可选：SCRIPT 里你那一章的修订（旁白改字、段落时点微调；小节数不能改）；FACTS 对应那一节补的出处。
 - 提交（只在 Mac 上）：只 `git add` 上面这些路径，中文提交信息（如 `docs(explainer): 第 {{NN}} 章{{章名}}`），签名提交。1Password 锁着时签名会挂住或报 `failed to fill whole buffer`：别加 `--no-gpgsign`，把改动留在暂存区，在汇报里说。云端不提交，汇报里列出改了的文件。
-- 汇报（不超过 300 字）：提交 SHA（云端写改了的文件）；`check.mjs` 结果；中、英联系表的路径；前后两章的交接怎么做的、有没有偏离 SCRIPT；要主创做的事（该提进 `kit.js` 的局部函数、要加的音色或剧情音、FACTS 待核的事实、要相邻章配合的地方）。
+- 汇报（不超过 300 字）：提交 SHA（云端写改了的文件）；`check.mjs` 结果；中、英联系表的路径（主创派 Haiku 看，你不用自己看）；前后两章的交接怎么做的、有没有偏离 SCRIPT；要主创做的事（该提进 `kit.js` 的局部函数、要加的音色或剧情音、FACTS 待核的事实、要相邻章配合的地方）。
 
 ## 怎么自检
 
@@ -46,6 +46,7 @@ lyjw 已定、不要再讨论的：全篇 2D，没有透视和 3D；第 02 章�
 
 ```bash
 node docs/explainer/v2/tools/check.mjs {{NN}}                        # 中英都查：字太小、缺文字键、报错；必须通过
+node docs/explainer/v2/tools/en-cjk.mjs <目录>/cjk.json {{NN}}        # 英文模式下还画出来的中文
 node docs/explainer/v2/tools/stills.mjs <目录> c{{NN}}:0 c{{NN}}:1.5 …  # 每个机位、每句旁白、每个配乐锚点各一帧
 node docs/explainer/v2/tools/stills.mjs <目录> --lang en c{{NN}}:0 …
 node docs/explainer/v2/tools/stills.mjs <目录> c{{前一章}}:{{前一章最后}} c{{NN}}:0 c{{NN}}:{{本章最后}} c{{后一章}}:0   # 交界四帧，中英都抽
@@ -63,7 +64,9 @@ const S=ctx.Score.build(ctx.PLAN.filter(p=>p.id==="ch{{NN}}"));
 for (const [k,v] of Object.entries(S.events)) if (v.length) console.log(k.padEnd(7), v.map(t=>(t/S.BAR).toFixed(2)).join(" "));'
 ```
 
-- 联系表逐张看：字够大、没有压字和出界、英文不溢出、交接连得上、颜色只用调色板。
+- 只查本章：`check.mjs`、`en-cjk.mjs` 都带章号，不带章号会扫整片、一次几分钟，留给主创合拢时跑一次。交界只抽那四帧，不查邻章全章。
+- 长耗时的命令（整章抽帧、配乐渲染、earshot）改完一批再跑一次，不要每改一处就重跑；只改了画面就不重渲配乐，只改了配乐就不重抽画面。
+- 图不用自己看：不用 Read 打开截图和联系表。字号、缺键、报错看 `check.mjs`，漏翻看 `en-cjk.mjs`。联系表交给主创，主创派 Haiku 按 SKILL 看「字够大、没有压字和出界、英文不溢出、交接连得上、颜色只用调色板」，把问题清单转给你。只凭清单的文字改不了时，才打开那一张。
 - 相邻章还没写时，交界那几帧里对方是占位画面：只核你这一侧（首帧怎么起、尾帧怎么落，和 SCRIPT 章节表一致），接不接得上由主创合并后再核，汇报里说明。
 - 不要用浏览器面板截图（面板隐藏时是空帧）。要开预览：`node docs/explainer/render/serve.mjs docs/explainer 4827`，看 `http://localhost:4827/v2/?only=ch{{前一章}},ch{{NN}},ch{{后一章}}`，用完关掉。
 
