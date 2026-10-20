@@ -4,7 +4,7 @@
 
 按这份仓库里的代码核对，文档和代码不一致时以代码为准。动画里出现的每一个端点、数字、谁做什么，都要能在这里找到出处；架构改动时先改这份，再改分镜。
 
-第 3 节里第 03 章用到的部分、第 2 节的 202 时机按 main 34eb555 逐条回代码复核过；其余各节的核对基线写在各节开头。 <!-- allow: 核对基线戳 -->
+第 2 节的 202 时机按 main 34eb555 逐条回代码复核过；其余各节的核对基线写在各节开头。 <!-- allow: 核对基线戳 -->
 
 各节里随站点迁到 site Worker（React Router、Workers Builds）改写的条目，按 448a95e1 回代码复核过。 <!-- allow: 核对基线戳 -->
 
@@ -160,38 +160,40 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ## 3 状态核心（workers/core）
 
+第 03 章用到的部分（下面的「StateCore 与 StateHub」「效果清单」「心跳不是什么都不做」「推送房间」「闹钟」）按 5ff9c3d 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+
 ### StateCore 与 StateHub
 
-- `StateCore` 是 WorkerEntrypoint，ingress 和 collector 经 Service Binding `CORE` 调它。这条路不鉴权，因为边界鉴权只在 ingress 做一次（state-core.ts:15-37）。
-- `StateHub` 是 DO（binding `STATE`，`idFromName("global")`），**唯一的状态 DO，全站只有一个实例**（state-core.ts:72-74）。推送房间 `LivePushRoom` 是另一个单例 DO（房间名 `global-apac`，首次创建时带 `locationHint: "apac"`，`workers/core/src/live-platform.ts#liveRoom`；binding 在 workers/core/wrangler.toml:52-55）。它的命名空间是从旧 ingest Worker 整体迁来的 SQLite 类（wrangler.toml:91-111），但代码不读写 SQL：每条连接的可见性记在各自的 attachment 上（origin-worker.ts:161-172）。
-- 提交走 `ingestTail`，**排成一条队列逐个提交**（state-hub.ts:91-110）。进这条队的上报都经上报入口的 `CORE.commitIngest`（ingress worker.ts:134），PlayStation 那几封也走这条 HTTP 路。
-- 四张表：`entries` / `fields` / `samples` / `metadata`（shared/sqlite-store.ts:17-23；state-hub.ts:29）。
-- pulse 事实时间线也写在同一个库里，TTL 7 天（`PULSE_TTL_MS`，shared/limits.ts:32）。
+- `StateCore` 是 WorkerEntrypoint，ingress 和 collector 经 Service Binding `CORE` 调它。这条路不鉴权，因为边界鉴权只在 ingress 做一次（`workers/core/src/state-core.ts#StateCore`）。
+- `StateHub` 是 DO（binding `STATE`，`idFromName("global")`），**唯一的状态 DO，全站只有一个实例**（`workers/core/src/state-core.ts#StateCore` 的 `hub()`）。推送房间 `LivePushRoom` 是另一个单例 DO（房间名 `global-apac`，首次创建时带 `locationHint: "apac"`，`workers/core/src/live-platform.ts#liveRoom`；binding 是 `workers/core/wrangler.toml#LIVE_PUSH`）。它和 StateHub 都是从旧 `api` Worker 整体转移来的 SQLite 命名空间，ID 与数据不变（`workers/core/wrangler.toml#v1-transfer-from-api`），但 LivePushRoom 的代码不读写 SQL：每条连接的可见性记在各自的 attachment 上（`workers/core/src/origin-worker.ts#LivePushRoom`）。
+- 提交走 `ingestTail`，**排成一条队列逐个提交**（`workers/core/src/state-hub.ts#StateHub` 的 `commitIngest`）。进这条队的上报都经上报入口的 `CORE.commitIngest`（`workers/ingress/src/worker.ts#commitIngest`），PlayStation 那几封也走这条 HTTP 路。采集 Worker 的补写（`StateCore.commitEnrichmentPatch` → `StateHub.commitEnrichmentPatch`）也排进同一条队，排在它所补的那封上报之后；采集 Worker 别的写入经 `stateStorage()` 直接调 `StateHub.execute`，不排这条队（`workers/core/src/storage-driver.ts#stateStorage`）。
+- 四张表：`entries` / `fields` / `samples` / `metadata`（`shared/sqlite-store.ts#SqliteStore`；`metadata` 在 `StateHub` 的构造函数里建）。
+- pulse 事实时间线也写在同一个库里，TTL 7 天（`shared/limits.ts#PULSE_TTL_MS`）。
 
 ### 效果清单
 
-- **DO 不发网络请求，只交回「要做的事」**：`event` / `listening` / `tags` 三种（ingest-effects.ts:25-28）。
-- StateCore 用自己的 `ctx.waitUntil` 执行这份清单，然后把结果回给 ingress（state-core.ts:30-37；live-platform.ts:12-17）：
+- **DO 不发网络请求，只交回「要做的事」**：`event` / `listening` / `tags` 三种（`workers/core/src/ingest-effects.ts#IngestEffect`）。
+- StateCore 用自己的 `ctx.waitUntil` 执行这份清单，然后把结果回给 ingress（`workers/core/src/state-core.ts#StateCore` 的 `commitIngest`；`workers/core/src/live-platform.ts#afterResponse`）：
   1. 先并行向 `LivePushRoom` 广播。
   2. 再把布局标签一次性经 Service Binding `SITE_CACHE` 交给 site Worker 的 `invalidate`，5 秒超时（`workers/core/src/live-platform.ts#expireStatusTags`、`REVALIDATE_TIMEOUT_MS`）。
 - 所以**广播和 202 是并行的**，不是 202 之后才广播。
 - 效果在 StateHub 之外派发：`StateCore.commitIngest` 拿到 StateHub 交回的效果，交给 `dispatchIngestEffects`，后者经 `afterResponse` 放进 `ctx.waitUntil`；网络请求不占 StateHub 的执行时间，串行的提交队列不被推送和失效拖住（`workers/core/src/ingest-effects.ts#dispatchIngestEffects`、`workers/core/src/live-platform.ts#afterResponse`）。第 03 章旁白「网络请求不占 StateHub 的时间」出自这里。
 - 换歌那封上报在交给状态核心之前，由上报入口请采集 Worker 查 Apple 目录补封面、链接、songId、有没有歌词和动态封面，结果随命令交给 StateHub 落库；采集 Worker 调不通时命令不带补全照样提交，状态核心不查 Apple。推送和读取只用存好的这份（`shared/command-enrichment.ts#enrichCommand`、`shared/track-enrichment.ts#candidateFrom`）。
-- 各模块交回什么（workers/core/src/stores/telemetry.ts）：
-  - **切应用**只交回一条 `desktop` 事件，不失效首屏：页头那一格定宽，换应用只换内容（354-355）。所以片中「切应用」不配「通知 site Worker」。
-  - **换歌**交回 `listening`：StateCore 用提交时存好的补全拼出 `listening-now` 再广播（`workers/core/src/ingest-effects.ts#dispatchIngestEffect`）。只有开始或停止放歌才另失效在听那张卡的标签 `NOW_LISTENING_TAG`（telemetry.ts:392-393），换一首不失效。
-  - iPhone 那一半只进 Pulse（五分钟桶和训练区间），不推送、不失效（phone-telemetry.ts:7-9、42-44）。
-  - 清单里的通知（`event`、`listening`）先并行发完，再把所有标签合成一次失效（ingest-effects.ts:106-120）。
+- 各模块交回什么（`workers/core/src/stores/telemetry.ts#commitPreparedTelemetryEnvelope`）：
+  - **切应用**只交回一条 `desktop` 事件，不失效首屏：页头那一格定宽，换应用只换内容（同函数的 `desktop` 分支）。所以片中「切应用」不配「通知 site Worker」。
+  - **换歌**交回 `listening`：StateCore 用提交时存好的补全拼出 `listening-now` 再广播（`workers/core/src/ingest-effects.ts#dispatchIngestEffect`）。只有开始或停止放歌才另失效在听那张卡的标签 `NOW_LISTENING_TAG`（同函数 `appleMusic` 分支里比 `wasLive`），换一首不失效。
+  - iPhone 那一半的活动桶和训练只进 Pulse（五分钟桶和训练区间），不推送、不失效；专注模式另算：模式变了推 `focus-now`，开、关翻转时失效 `FOCUS_NOW_TAG`（`workers/core/src/phone-telemetry.ts#commitPreparedPhoneEnvelope`、`workers/core/src/stores/focus.ts#writeFocus`）。
+  - 清单里的通知（`event`、`listening`）先并行发完，再把所有标签合成一次失效（`workers/core/src/ingest-effects.ts#dispatchIngestEffects`）。
 
 ### 心跳不是什么都不做
 
-纯心跳也会写：存活时间（workers/core/src/stores/telemetry.ts:186）、在听和 coding 各一笔 pulse 观测（450-451），外加遥测状态里的 `telemetryReceivedAt` 和 `activeModules`（456，字段见 46-73）；充电头模块开着时，还续一次充电头心跳和一笔充电采样（318-326）。片中只说「存活 + pulse 观测」，不说「三样」。它**不推送、也不失效首屏**。唯一的例外是在线 / 离线翻转：这时推 `presence`，并失效 4 个标签：页头、在听、充电头、充电宝四张卡的 `DESKTOP_TAG` / `NOW_LISTENING_TAG` / `CHARGER_TAG` / `POWERBANK_TAG`（同文件 `commitPreparedTelemetryEnvelope` 的 `presenceFlipped` 分支）；片中只画前三张。
+纯心跳也会写：存活时间（`writeLiveness`）、在听和 coding 各一笔 pulse 观测（`recordListeningPulse`、`recordCodingPulse`），外加遥测状态里的 `telemetryReceivedAt` 和 `activeModules`（`persistTelemetryState`）；充电头模块开着时，还续一次充电头心跳和一笔充电采样（`prepareHeartbeat`、`recordChargingPulse`）；都在 `workers/core/src/stores/telemetry.ts#commitPreparedTelemetryEnvelope`。片中只说「存活 + pulse 观测」，不说「三样」。它**不推送、也不失效首屏**。例外是在线 / 离线翻转：这时推 `presence`，并失效 4 个标签：页头、在听、充电头、充电宝四张卡的 `DESKTOP_TAG` / `NOW_LISTENING_TAG` / `CHARGER_TAG` / `POWERBANK_TAG`（同函数的 `presenceFlipped` 分支）；片中只画前三张。另有一种不翻转的情形：心跳断档超过存活窗口后恢复（这封不是离线），不推 `presence`，只失效同样 4 个标签，让首屏按时钟藏起的卡回来（同一处的 `offlineByLiveness` 判断）；片中不画。
 
 ### 推送房间 `LivePushRoom`
 
-- 地址 `/ws`（binding `LIVE_PUSH`，房间 `global-apac`；origin-worker.ts:463）。
+- 地址 `/ws`（`shared/live-heartbeat.ts#LIVE_SOCKET_PATH`；binding `LIVE_PUSH`，房间 `global-apac`）。
 - 事件的种类和载荷见 `shared/live-events.ts#LiveEvent`（片中不说几种）：`presence`、`version` 不带数据，`online` 带 `{online}`，其余都带数据。
-- 用 Hibernation API：ping/pong 由运行时自动应答，不唤醒 DO（origin-worker.ts:185）。只有接入、断开、切换可见性、清扫闹钟这几件事会唤醒它。
+- 用 Hibernation API：ping/pong 由运行时自动应答，不唤醒 DO（`workers/core/src/origin-worker.ts#LivePushRoom` 的 `setWebSocketAutoResponse`）。只有接入、断开、切换可见性、清扫闹钟这几件事会唤醒它。
 
 ### 在线人数（f6cda45 起并回推送房间，online-counter Worker 已退役）
 
@@ -225,7 +227,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 闹钟
 
-- StateHub 每小时清一次过期键；一轮删满 1000 条就 1 秒后接着删（state-hub.ts:153-160）。
+- StateHub 每小时清一次过期键；一轮删满 1000 条就 1 秒后接着删（`workers/core/src/state-hub.ts#StateHub` 的 `alarm`）。
 - LivePushRoom 在有人可见时每 30 秒清扫一次。
 
 ### Pulse 事实时间线
@@ -400,31 +402,33 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ## 10 发布（推到 main 之后）
 
-第 09 章「发布」用的部分，按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 09 章「发布」用的部分，按 main 5ff9c3d 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 一次合进 main 同时触发几条流水线：GitHub Actions 的几个工作流、Cloudflare Workers Builds 的原生 Git 集成（站点和各 Worker 都走它，`docs/workers-builds.md` 开头）。它们各自决定跑不跑、各自构建，互不等待。
 
 片中讲的是 PR #308 的真实合并（§11「片中的例子：PR #308（按 GitHub 读回）」）：main 从 `a451a72` 到 `cf92f7c`，改到 `shared/site-deployments-types.ts`、`workers/collector/` 下的文件和 `workers/core/README.md`（`git diff --stat a451a72 cf92f7c`）。各条跑没跑照 `cf92f7c` 上的检查；散开那一镜五盏灯从下往上亮（collector、ingress、core、CI、CodeQL），就是这几项检查完成的先后。只有 site 那盏灯放在落地那一拍，先后不对应真实：它其实在 CodeQL 之前就完成了。
 
+开场那条主线上的七站是 main 的第一父链（按 GitHub 读回），从 HEAD 往前是 `a451a72`（#309）、`a6323be`（#307）、`325b131`（#306）、`7d35661`（#198）、`f3abe2b`（#305）、`fcab866`（#304）、`cc48db2`（#302）。发车牌上的 `18:52` 是 #308 的合并时刻（新加坡时间，§11），第二行照 main 这次 push 的前后两个提交写成 `a451a72..cf92f7c  main -> main`。
+
 ### 检查：CI 与 CodeQL（只检查、不发布）
 
 - CI：推 main 或 dev、开 PR 都跑，一个 job 依次跑 lint、全部工作区的 typecheck、站点单测、core / ai / ingress / collector 的单测、上报器单测、`scripts` 的测试、`pnpm docs:check` 与 `pnpm docs:diagrams --check`（同一道 docs 门）、`pnpm design:scale`、`pnpm rules:check`、`pnpm ui:copy`、`pnpm baselines:check`（`.github/workflows/ci.yml#check`）。
 - CI 不跑站点构建：门禁只有 lint、typecheck、单测、脚本测试、docs:check、design:scale、rules:check、ui:copy、baselines:check 九项（`scripts/ci-checks.sh` 的 `gates`），站点构建交给 Workers Builds 的 `site`（下一节）。PR 分支连推几次只留最后一次；main 按提交分组，每个提交都跑完（同文件的 `concurrency`）。
-- CodeQL：推 main 或 dev，外加每天两次定时；PR 只扫访客构建的那些，扫 `javascript-typescript` 和 `actions` 两类（`.github/workflows/codeql.yml#analyze`）。
-- 片中 CI 和 CodeQL 各画成一条亮灯的线，不展开各项。
+- CodeQL：推 main 或 dev，外加每天两次定时；PR 只扫访客构建的那些，扫 `javascript-typescript` 和 `actions` 两类（`.github/workflows/codeql.yml#analyze`）。推 main / dev 时按改动挑：改到 JS/TS 一类文件才扫 `javascript-typescript`，改到工作流才扫 `actions`；没改到的那一类只跳过步骤，检查照样出现（`.github/workflows/codeql.yml#changes`）。#308 改到 `.ts`，JS/TS 那一项真扫了。
+- 片中 CI 和 CodeQL 各画成一条亮灯的线，不展开各项：闸口上 CI 写「每次推到 main」（`.github/workflows/ci.yml` 推 main 不按路径过滤），CodeQL 写「改到 JS/TS」；线上那一站写 job 名 `check`、`analyze`。
 
 ### 站点：Workers Builds 的 site
 
 - 站点是 site Worker（根 `wrangler.jsonc`），由 Workers Builds 构建和部署，检查名 `Workers Builds: site`；构建命令 `pnpm build`，部署命令 `wrangler deploy`（`docs/workers-builds.md`「构建配置」）。`pnpm build` 跑 `scripts/build.mjs`：先生成讲解片的静态页和站点资产，再 `react-router build`。
-- 它也按监视路径决定构建不构建，`src/*`、`shared/*` 都在内（`docs/workers-builds.md`「构建监视路径」）；片中那次合并改到 `shared/site-deployments-types.ts`，所以这次要构建。
-- UPDATE 卡上的旧版本 `7d35661` 是之前最后一次 site 部署的提交：它之后 main 上的三个合并只改了 `.claude/memory/`、`docs/ops-facts.md` 和 `HUMAN.md`，都不在 site 的监视路径里，site 没有重建，开着的页面里焊进的仍是 `7d35661`（`git diff --stat 7d35661 a451a72`）。
+- 它也按监视路径决定构建不构建，`src/*`、`shared/*` 都在内（`scripts/build-watch-paths.ts#BUILD_WATCH_PATHS` 的 `site`）；片中那次合并改到 `shared/site-deployments-types.ts`，所以这次要构建。讲解片的源 `docs/explainer/v2/*` 也在 site 的监视路径里（同文件的 `SITE_PATHS`），片尾图例「本片也坐 1 号线」说的是这个。
+- UPDATE 卡上的旧版本 `7d35661` 是之前最后一次 site 部署的提交：它之后 main 上的三个合并只改了 `.claude/memory/`、`docs/ops-facts.md` 和 `HUMAN.md`，都不在 site 的监视路径里，site 没有重建，开着的页面里焊进的仍是 `7d35661`（`git diff --stat 7d35661 a451a72`）。片中主线上这一站标「上次 site 停靠」。
 - `lyjw131.com` 经阿里云 ESA 回源 `lyjw.me`（§6「大陆访问」）。
 - 构建不过就没有新部署，域名上仍是上一版：`/api/version` 由此刻接管生产域名的那次部署自己回答（`src/app/api/version/route.ts#loader`）。
 
 ### Worker：Cloudflare Workers Builds
 
 - core、ai、ingress、collector 各连一个 Workers Builds 项目，生产分支 main：构建命令是各自的 typecheck，部署命令是 `wrangler deploy`（`docs/workers-builds.md`「构建配置」）。
-- 各按自己的监视路径决定这次构建不构建（`docs/workers-builds.md`「构建监视路径」）：四个都盯根目录的依赖与配置文件，另各盯自己的 `workers/<名字>/*`；core、ingress、collector 还盯 `shared/*`（各自排除对话与构建那几份 `shared/` 文件），ai 只盯它点名的几份 `shared/` 文件；core 另排除 `shared/ingest/*`，所以改上报校验不会重新发布带 Durable Object 的 core，页面的 WebSocket 也不断。片中那次合并改到 `shared/`（core、ingress、collector 都盯）、`workers/collector/` 和 `workers/core/`，这三个都构建成功；`shared/site-deployments-types.ts` 不在 ai 点名的那几份 `shared/` 文件里，ai 这次不构建，线上仍是上一版。
+- 各按自己的监视路径决定这次构建不构建（`scripts/build-watch-paths.ts#BUILD_WATCH_PATHS`，控制台配置的仓库内副本，见 `docs/workers-builds.md`「构建监视路径」）：四个都盯根目录的依赖与配置文件，另各盯自己的 `workers/<名字>/*`；core、ingress、collector 还盯 `shared/*`（各自排除对话与构建那几份 `shared/` 文件），ai 只盯它点名的几份 `shared/` 文件；core 另排除 `shared/ingest/*`，所以改上报校验不会重新发布带 Durable Object 的 core，页面的 WebSocket 也不断。片中那次合并改到 `shared/`（core、ingress、collector 都盯）、`workers/collector/` 和 `workers/core/`，这三个都构建成功；`shared/site-deployments-types.ts` 不在 ai 点名的那几份 `shared/` 文件里，ai 这次不构建，线上仍是上一版。片中闸口上写这次命中的一条监视路径：site、core、ingress 写 `shared/*`，collector 写 `workers/collector/*`；各线的站名照上面的构建、部署命令写 `pnpm build`、`typecheck`、`wrangler deploy`。
 - Workers Builds 并行构建、不保证先后，Worker 之间的 RPC 契约只加不改，被调用方先上线（根 `AGENTS.md`「部署流程」；契约定义在 `shared/state-core.ts#StateCoreRpc` 与 `shared/collector.ts#COLLECTOR_JOBS`）。跨 Worker 的契约切换靠手动按序部署，片中不画。
 - 片中不画：core 的分支 Preview、ingress 与 collector 关掉预览构建的原因、D1 迁移要先手动 apply（都在 `docs/workers-builds.md`）。
 
@@ -433,7 +437,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - 容器上报器：`.github/workflows/build-reporters.yml#changes` 用 paths-filter 挑出改了的目录；`.github/workflows/build-reporters.yml#build` 只出 `linux/amd64`，合进 main 时打 `latest` 和 `sha-<短哈希>` 推到 GHCR，PR 只 build 不推；`.github/workflows/build-reporters.yml#deploy` 只管 misaka-jp 上的服务：用一把只能执行部署脚本的密钥 ssh 过去，点名 pull、只重建那一个，新容器跑稳后删掉旧镜像（`reporters/misaka-deploy.sh`），再验 `status=running restarts=0`，server-reporter 另验镜像里烧进的提交就是这一版。
 - dsm（emby-reporter）和 n100（playstation-reporter）在内网，Actions 够不着，按各自 README 手动更新（`.claude/rules/reporters.md`）。dsm 那台现在还是现场 build（`docs/ops-facts.md`「机器与部署位置」），所以片中不说「机器只拉镜像」。
 - Mac Telemetry Hub：`reporters/mac-telemetry-hub` 是子模块，main 上的指针一动，macOS runner 就用 Developer ID 签名、`notarytool` 公证、`stapler` 钉上票据，发成本仓库的 Release `hub-build-<运行号>`（`.github/workflows/release-mac-telemetry-hub.yml#release`）；PR 上只走到公证、不发布；没配签名 secret 时整个 job 跳过。
-- 这两个工作流按 `paths` 决定跑不跑（`.github/workflows/build-reporters.yml`、`.github/workflows/release-mac-telemetry-hub.yml` 的 `on.push.paths`）。#308 没改到它们的路径，两个都没跑；片中各画成一条在闸门处划掉、写「没改到」的线。
+- 这两个工作流按 `paths` 决定跑不跑（`.github/workflows/build-reporters.yml`、`.github/workflows/release-mac-telemetry-hub.yml` 的 `on.push.paths`）。#308 没改到它们的路径，两个都没跑；片中各画成一条灰掉的虚线，闸口写「没改到」，往后写「本次不停站」，这次不构建的 ai 也这样画。
 
 ### 部署成功之后：刷新 ESA、通知页面
 
