@@ -36,7 +36,7 @@ function dayTicks(from: number, to: number, timeZone: string | undefined) {
   return ticks;
 }
 
-function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast; timeZone: string | undefined }) {
+export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast; timeZone: string | undefined }) {
   const span = forecast.resetAt - forecast.startAt;
   const x = (at: number) => ((at - forecast.startAt) / span) * 100;
   const y = (percent: number) => 100 - Math.min(100, Math.max(0, percent));
@@ -136,13 +136,13 @@ export function DailyUse({ forecast, timeZone }: { forecast: LimitForecast; time
   const weekday = formatter({ weekday: "short" }, timeZone);
   const columns = "grid grid-cols-7 gap-2";
   return (
-    <div className="grid gap-2">
+    <div className="flex flex-1 flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
         <span className="label-mono text-muted-foreground">Weekly use per day</span>
         <span className="text-xs text-muted-foreground">Allowed {allowed.toFixed(1)} pp</span>
       </div>
-      <div className="grid gap-1">
-        <div className={cn(columns, "relative h-18 pt-4")}>
+      <div className="flex flex-1 flex-col gap-1">
+        <div className={cn(columns, "relative min-h-18 flex-1 pt-4")}>
           <span
             aria-hidden
             className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-muted-foreground"
@@ -187,15 +187,6 @@ export function DailyUse({ forecast, timeZone }: { forecast: LimitForecast; time
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid min-w-0 gap-1">
-      <div className="label-mono text-muted-foreground">{label}</div>
-      <div className="truncate font-mono text-sm">{value}</div>
-    </div>
-  );
-}
-
 export function useWeeklyForecast({
   limit,
   limitAt,
@@ -223,7 +214,25 @@ export function useWeeklyForecast({
   return { forecast, timeZone };
 }
 
-export function LimitForecastPanel({ forecast, timeZone }: { forecast: LimitForecast | null; timeZone: string | undefined }) {
+export function forecastStats(forecast: LimitForecast | null) {
+  const pace = forecast?.rate != null ? forecast.rate / forecast.evenRate : null;
+  return [
+    { label: "Pace", value: pace != null ? `${pace.toFixed(1)}x` : "—", title: "Compared with an even pace" },
+    { label: "Per day", value: forecast?.rate != null ? `${(forecast.rate * DAY_MS).toFixed(1)} pp` : "—", title: undefined },
+    {
+      label: forecast?.runOutAt != null ? "Locked" : "At reset",
+      title: undefined,
+      value:
+        forecast == null || forecast.rate == null
+          ? "—"
+          : forecast.lockedMs != null
+            ? formatDuration(forecast.lockedMs)
+            : `~${Math.round(forecast.percentAtReset ?? 0)}%`,
+    },
+  ];
+}
+
+export function ForecastBlock({ forecast, timeZone }: { forecast: LimitForecast | null; timeZone: string | undefined }) {
   const clock = formatter({ weekday: "short", hour: "numeric", minute: "2-digit" }, timeZone);
   let headline = "No forecast yet";
   let detail = "Waiting for a weekly reading";
@@ -243,11 +252,10 @@ export function LimitForecastPanel({ forecast, timeZone }: { forecast: LimitFore
       detail = window;
     }
   }
-  const pace = forecast?.rate != null ? forecast.rate / forecast.evenRate : null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 p-4 lg:p-5">
-      <div className="flex h-5 items-center justify-between gap-3">
+    <div className="flex min-w-0 flex-1 flex-col gap-4">
+      <div className="flex items-baseline justify-between gap-3">
         <span className="label-mono text-muted-foreground">Weekly forecast</span>
         <span className="truncate text-xs text-muted-foreground">
           {forecast ? `Resets ${clock.format(forecast.resetAt)}` : null}
@@ -260,23 +268,6 @@ export function LimitForecastPanel({ forecast, timeZone }: { forecast: LimitFore
         <div className="text-xs text-muted-foreground">{detail}</div>
       </div>
       {forecast ? <ForecastChart forecast={forecast} timeZone={timeZone} /> : <div className="min-h-40 flex-1 border-b border-line" />}
-      <div className="grid grid-cols-3 gap-4 border-t border-line pt-4">
-        <Stat label="Pace" value={pace != null ? `${pace.toFixed(1)}x even` : "—"} />
-        <Stat
-          label="Per day"
-          value={forecast?.rate != null ? `${(forecast.rate * DAY_MS).toFixed(1)} pp` : "—"}
-        />
-        <Stat
-          label={forecast?.runOutAt != null ? "Locked" : "At reset"}
-          value={
-            forecast == null || forecast.rate == null
-              ? "—"
-              : forecast.lockedMs != null
-                ? formatDuration(forecast.lockedMs)
-                : `~${Math.round(forecast.percentAtReset ?? 0)}%`
-          }
-        />
-      </div>
     </div>
   );
 }
