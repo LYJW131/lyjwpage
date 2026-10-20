@@ -261,6 +261,8 @@
     }
     return 0;
   }
+  // 第 05 章剪刀样本里两刃合拢的时刻；播放时按它提前起，合拢落在拍上。不能大于 KEY_PRE：分批排程只往前看那么远。
+  const jazzSnipAt = 0.05;
   const SAMPLE_BANKS = new Map();
   function samplesFor(sr) {
     if (SAMPLE_BANKS.has(sr)) return SAMPLE_BANKS.get(sr);
@@ -626,7 +628,186 @@
       return finish(d, 0.0005);
     });
 
+    // 第 07 章的红白机音色（chip 开头的只给 music/ch07.js 用）：两路方波按占空比 1/8、1/4、1/2，32 级阶梯三角波，15 位移位寄存器噪声。
+    // 方波读限带的单周期波表（谐波只叠到 16 kHz，高音不混叠）；音量按红白机的 16 级量化，再用 1 ms 平滑掉台阶的咔哒声。
+    const CHIP_TAB = 2048, chipTabs = new Map();
+    const CHIP_COS = Float32Array.from({ length: CHIP_TAB }, (_, i) => Math.cos(TAU * i / CHIP_TAB));
+    const CHIP_TRI = Float32Array.from({ length: 32 }, (_, i) => (i < 16 ? 15 - i : i - 16) / 7.5 - 1);
+    const chipTab = (duty, f) => {
+      const top = Math.max(1, Math.floor(16000 / f)), k = duty + ":" + top;
+      if (!chipTabs.has(k)) {
+        const tb = new Float32Array(CHIP_TAB + 1);
+        for (let h = 1; h <= top; h++) { const a = Math.sin(Math.PI * h * duty) / h; if (Math.abs(a) > 1e-6) for (let i = 0; i <= CHIP_TAB; i++) tb[i] += a * CHIP_COS[(h * i) % CHIP_TAB]; }
+        chipTabs.set(k, norm(tb));
+      }
+      return chipTabs.get(k);
+    };
+    const chipLook = (tb) => (ph) => { const x = ph * CHIP_TAB, i = x | 0; return tb[i] + (tb[i + 1] - tb[i]) * (x - i); };
+    const chipTriWave = (ph) => CHIP_TRI[(ph * 32) | 0];
+    const CHIP_SM = 1 - Math.exp(-1 / (0.001 * sr)), chipLevel = (v) => Math.round(clamp(v, 0, 1) * 15) / 15;
+    function chipRun(n, fOf, wave, envOf) {
+      const d = new Float32Array(n);
+      let ph = 0, e = 0;
+      for (let i = 0; i < n; i++) { const t = i / sr; e += CHIP_SM * (chipLevel(envOf(t)) - e); d[i] = wave(ph) * e; ph += fOf(t) / sr; ph -= Math.floor(ph); }
+      return d;
+    }
+    function chipNoise(n, rateOf, metal, envOf) {
+      const d = new Float32Array(n);
+      let reg = 1, acc = 0, out = 1, e = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        acc += rateOf(t) / sr;
+        while (acc >= 1) { acc -= 1; const bit = (reg ^ (reg >> (metal ? 6 : 1))) & 1; reg = (reg >> 1) | (bit << 14); out = reg & 1 ? -1 : 1; }
+        e += CHIP_SM * (chipLevel(envOf(t)) - e);
+        d[i] = out * e;
+      }
+      return d;
+    }
+    const CHIP_DUTY = { chipLead: 0.5, chipPulse: 0.25, chipArp: 0.125, p2: 0.5, p4: 0.25, p8: 0.125 };
+    const chipNote = (inst, m, len) => get(`chip:${inst}:${m}:${len}`, () => {
+      const f0 = hz(m), tri = inst === "chipTri", wave = tri ? chipTriWave : chipLook(chipTab(CHIP_DUTY[inst], f0 * 1.012));
+      const fOf = inst === "chipLead" && len > 0.4 ? (t) => f0 * Math.pow(2, (0.2 / 12) * Math.sin(TAU * 5.5 * t) * clamp((t - 0.25) / 0.2, 0, 1)) : () => f0;
+      const envOf = tri ? (t) => (t < len ? 1 : 0) : inst === "chipArp" ? (t) => (t < len ? Math.exp(-t / (0.45 * len + 0.03)) : 0) : (t) => (t < len ? 0.6 + 0.4 * Math.exp(-t / 0.1) : 0);
+      return finish(chipRun(Math.round((len + 0.01) * sr), fOf, wave, envOf), tri ? 0.002 : 0.0006);
+    });
+    const CHIP_DRUM = { kick: [0.24, 46, 190, 0.1], tom: [0.3, 90, 260, 0.13], snare: [0.22, 11000, 0.07], hat: [0.06, 90000, 0.014], open: [0.24, 90000, 0.08], crash: [1, 30000, 0.32] };
+    const chipDrum = (kind) => get("chip:d:" + kind, () => {
+      const c = CHIP_DRUM[kind], n = Math.round(c[0] * sr);
+      if (c.length === 4) {
+        const d = chipRun(n, (t) => c[1] + (c[2] - c[1]) * Math.exp(-t / 0.03), chipTriWave, (t) => Math.exp(-t / c[3])), z = chipNoise(n, () => 6000, false, () => 1);
+        for (let i = 0; i < n; i++) d[i] += 0.45 * z[i] * Math.exp(-i / sr / 0.005);
+        return finish(d, 0.0002);
+      }
+      const d = chipNoise(n, () => c[1], false, (t) => Math.exp(-t / c[2]));
+      if (kind === "snare") { const body = chipRun(n, (t) => 180 + 120 * Math.exp(-t / 0.02), chipLook(chipTab(0.5, 300)), (t) => Math.exp(-t / 0.03)); for (let i = 0; i < n; i++) d[i] = 0.75 * d[i] + 0.5 * body[i]; }
+      if (kind === "hat" || kind === "open") biquad(d, "hp", 5000);
+      return finish(d, 0.0002);
+    });
+    // 一段一段接起来的音效，写法「波形,秒,起,止,包络;…」：波形 p8 p4 p2 是三种占空比的方波、t 三角波（起止是 MIDI 音高，可带小数，滑音），
+    // n / m 是长 / 短周期噪声（起止是移位寄存器的时钟 Hz），r 休止；包络 f 平、d 衰减、u 渐强。每段末尾 2 ms 收掉，免得接缝咔哒。
+    const chipFx = (spec) => get("chip:fx:" + spec, () => {
+      const segs = spec.split(";").map((s) => s.split(","));
+      const d = new Float32Array(Math.round((segs.reduce((a, s) => a + +s[1], 0) + 0.01) * sr)), tail = Math.round(0.002 * sr);
+      let at0 = 0;
+      for (const [w, sec, a, b = a, env = "f"] of segs) {
+        const len = +sec, n = Math.round(len * sr), i0 = Math.round(at0 * sr), from = +a, to = +b;
+        at0 += len;
+        if (w === "r") continue;
+        const envOf = env === "d" ? (t) => Math.exp(-t / (0.4 * len + 0.01)) : env === "u" ? (t) => Math.min(1, t / len) : () => 1;
+        const seg = w === "n" || w === "m" ? chipNoise(n, (t) => from * Math.pow(to / from, t / len), w === "m", envOf)
+          : chipRun(n, (t) => hz(from + (to - from) * (t / len)), w === "t" ? chipTriWave : chipLook(chipTab(CHIP_DUTY[w], hz(Math.max(from, to)) * 1.01)), envOf);
+        for (let i = 0; i < n && i0 + i < d.length; i++) d[i0 + i] += seg[i] * Math.min(1, (n - i) / tail);
+      }
+      return finish(d, 0.0005);
+    });
+    // 第 05 章的冷爵士（jazz 开头的只给 music/ch05.js 用）：拨弦低音提琴、颤音琴、Harmon 弱音小号、铜管短和弦，刷子鼓、叮叮镲、响指、邦戈、剪刀。
+    // 颤音琴的泛音按真琴键 1 : 4 : 9.9 调，颤音 5.5 Hz；弱音小号是加法合成的铜管谐波再过一道 1.65 kHz 的窄鼻音带通。
+    const jazzBass = (m, len) => get(`jazz:b:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.15), n = d.length, r = mulberry32(2000 + m), r0 = Math.round(len * sr);
+      for (const [k, amp, tau] of [[1, 1, 0.8], [2, 0.55, 0.3], [3, 0.3, 0.16], [4, 0.14, 0.09], [5, 0.07, 0.06]]) partial(d, f * k * (1 + 0.0007 * (k - 1)), amp, tau, r() * TAU);
+      const th = nz(n, 2100 + m, "lp", 900), tn = Math.min(n, Math.round(0.03 * sr));
+      for (let i = 0; i < tn; i++) d[i] += 0.45 * th[i] * Math.exp(-i / sr / 0.008);
+      for (let i = r0; i < n; i++) d[i] *= Math.exp(-(i - r0) / sr / 0.035);
+      return finish(d, 0.0015);
+    });
+    const jazzVibes = (m, len) => get(`jazz:v:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 1), n = d.length, r = mulberry32(2200 + m), d0 = Math.round(len * sr);
+      for (const [k, amp, tau] of [[1, 1, 1.8], [4, 0.2, 0.3], [9.9, 0.05, 0.06]]) partial(d, f * k, amp, tau, r() * TAU);
+      const ml = nz(n, 2300 + m, "bp", 1500, 0.8), mn = Math.min(n, Math.round(0.012 * sr));
+      for (let i = 0; i < mn; i++) d[i] += 0.12 * ml[i] * (1 - i / mn);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, trem = 1 - 0.3 * (0.5 - 0.5 * Math.cos(TAU * 5.5 * t)) * Math.min(1, t / 0.2);
+        d[i] *= trem * (i < d0 ? 1 : Math.exp(-(i - d0) / sr / 0.22));
+      }
+      return finish(d, 0.0008);
+    });
+    const jazzHarmon = (m, len) => get(`jazz:h:${m}:${len}`, () => {
+      const f0 = hz(m), d = arr(len + 0.12), n = d.length, br = nz(n, 2400 + m, "bp", 2600, 1);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, vib = t > 0.16 ? 0.005 * Math.sin(TAU * 5.3 * (t - 0.16)) * Math.min(1, (t - 0.16) / 0.2) : 0;
+        ph += TAU * f0 * (1 - 0.025 * Math.exp(-t / 0.035) + vib) / sr;
+        let y = 0.2 * br[i];
+        for (let k = 1; k <= 9; k++) y += Math.sin(k * ph) / Math.pow(k, 0.8);
+        d[i] = y * Math.min(1, t / 0.03) * (t < len ? 1 : Math.exp(-(t - len) / 0.035));
+      }
+      biquad(d, "hp", 650); biquad(d, "bp", 1650, 1.2); biquad(d, "lp", 4500);
+      return finish(d, 0.002);
+    });
+    const jazzStab = (m, len) => get(`jazz:s:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.1), n = d.length, r = mulberry32(2500 + m);
+      for (const det of [-0.005, 0.004, 0]) for (let k = 1; k * f < 5000; k++) partial(d, f * (1 + det) * k, 1 / k, 10, r() * TAU);
+      const blat = sweepBp(Float32Array.from(d), (t) => 900 + 3200 * Math.exp(-t / 0.07), 0.9);
+      norm(biquad(d, "lp", 1600));
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        d[i] = (0.65 * d[i] + 0.45 * blat[i]) * Math.min(1, t / 0.01) * (0.7 + 0.3 * Math.exp(-t / 0.05)) * (t < len ? 1 : Math.exp(-(t - len) / 0.05));
+      }
+      return finish(d, 0.001);
+    });
+    const jazzRide = (v) => get("jazz:ride:" + v, () => {
+      const d = arr(1.6), n = d.length, r = mulberry32(2600 + v);
+      for (let k = 0; k < 40; k++) { const f = 420 * Math.pow(2, r() * 4.3); partial(d, f, (0.4 + r()) * Math.sqrt(420 / f), 0.35 + 0.9 * r(), r() * TAU); }
+      norm(d);
+      const ping = nz(n, 2610 + v, "bp", 5400, 1.2), hiss = nz(n, 2620 + v, "hp", 6500);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] += 0.7 * ping[i] * Math.exp(-t / 0.01) + 0.22 * hiss[i] * Math.exp(-t / 0.5); }
+      biquad(d, "hp", 2000);
+      return finish(d, 0.0003);
+    });
+    const jazzBrush = (kind) => get("jazz:brush:" + kind, () => {
+      if (kind === "sweep") {
+        const L = BEAT * 1.05, d = sweepBp(nz(Math.round(L * sr), 2700), (t) => 2000 + 2400 * Math.sin(Math.PI * t / L), 0.6), n = d.length;
+        for (let i = 0; i < n; i++) { const x = i / n; d[i] *= Math.pow(Math.sin(Math.PI * x), 1.4) * (0.55 + 0.45 * x); }
+        return finish(d, 0.002);
+      }
+      const d = arr(0.25), n = d.length, a = nz(n, 2710, "bp", 3000, 0.6), b = nz(n, 2711, "bp", 850, 1);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = a[i] * Math.exp(-t / 0.055) + 0.3 * b[i] * Math.exp(-t / 0.03); }
+      return finish(d, 0.0005);
+    });
+    const jazzKick = () => get("jazz:kick", () => {
+      const d = arr(0.5), n = d.length;
+      let ph = 0;
+      for (let i = 0; i < n; i++) { const t = i / sr; ph += TAU * (50 + 28 * Math.exp(-t / 0.025)) / sr; d[i] = Math.sin(ph) * Math.exp(-t / 0.16) * Math.min(1, t / 0.003); }
+      return finish(d, 0.0005);
+    });
+    const jazzChick = () => get("jazz:chick", () => {
+      const d = arr(0.12), n = d.length, a = nz(n, 2800, "hp", 6000), b = nz(n, 2801, "bp", 8500, 1.5);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = (0.6 * a[i] + 0.5 * b[i]) * Math.exp(-t / 0.02) * Math.min(1, t / 0.002); }
+      return finish(d, 0.0005);
+    });
+    const jazzSnap = () => get("jazz:snap", () => {
+      const d = arr(0.15), n = d.length, a = nz(n, 2900, "bp", 2300, 1.6), b = nz(n, 2901, "hp", 5000);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = a[i] * Math.exp(-t / 0.013) + 0.45 * b[i] * Math.exp(-t / 0.0025) + 0.35 * Math.sin(TAU * 1800 * t) * Math.exp(-t / 0.009); }
+      return finish(d, 0.0002);
+    });
+    const jazzBongo = (hi) => get("jazz:bongo:" + (hi ? 1 : 0), () => {
+      const f0 = hi ? 430 : 290, f1 = hi ? 370 : 240, tau = hi ? 0.085 : 0.12, d = arr(0.4), n = d.length, slap = nz(n, hi ? 3001 : 3000, "bp", 1800, 1);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += TAU * (f1 + (f0 - f1) * Math.exp(-t / 0.02)) / sr;
+        d[i] = (Math.sin(ph) + 0.25 * Math.sin(2.3 * ph)) * Math.exp(-t / tau) * Math.min(1, t / 0.002) + 0.35 * slap[i] * Math.exp(-t / 0.006);
+      }
+      return finish(d, 0.0003);
+    });
+    const jazzRim = () => get("jazz:rim", () => {
+      const d = arr(0.15), n = d.length, a = nz(n, 3100, "bp", 1800, 1.4);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = 0.6 * Math.sin(TAU * 1650 * t) * Math.exp(-t / 0.012) + 0.45 * Math.sin(TAU * 430 * t) * Math.exp(-t / 0.02) + 0.5 * a[i] * Math.exp(-t / 0.004); }
+      return finish(d, 0.0002);
+    });
+    const jazzSnip = () => get("jazz:snip", () => {
+      const P = jazzSnipAt, d = arr(0.3), n = d.length, sc = nz(n, 3200, "hp", 4500), ck = nz(n, 3201, "bp", 6500, 1.5);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        let y = t < P ? 0.35 * sc[i] * Math.pow(t / P, 2) : 0;
+        if (t >= P) { const u = t - P; y += ck[i] * Math.exp(-u / 0.004) + 0.4 * Math.sin(TAU * 3800 * u) * Math.exp(-u / 0.03) + 0.25 * Math.sin(TAU * 5900 * u) * Math.exp(-u / 0.02); }
+        d[i] = y;
+      }
+      return finish(d, 0.001);
+    });
     const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit, glass, marimba, kalimba, morse, gate, off, whip, knock, ping, clear, hop };
+    Object.assign(bank, { chipNote, chipDrum, chipFx });
+    Object.assign(bank, { jazzBass, jazzVibes, jazzHarmon, jazzStab, jazzRide, jazzBrush, jazzKick, jazzChick, jazzSnap, jazzBongo, jazzRim, jazzSnip });
     SAMPLE_BANKS.set(sr, bank);
     return bank;
   }
@@ -825,6 +1006,25 @@
     // 这几件的电平按隔离渲染的 LUFS-M（400 ms 窗）对到同一位置上别的剧情音；拇指琴对到马林巴弹同一段主题；knock 频谱偏低，同样响度下比 tick 听着轻，所以高约 3 dB。改音色要重新对
     const GLASS_G = 0.62, MARIMBA_G = 0.42, KALIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 0.75, MORSE_G = 0.21, GATE_G = 0.49, OFF_G = 0.19, PING_G = [0.84, 0.25], CLEAR_G = 0.13, HOP_G = 0.24;
     const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7];
+    // 第 07 章红白机音色：[电平, 声像, 混响, 延迟]；方波的有效值比正弦高得多，电平按整章响度对到前后两章。
+    const CHIP_INST = { chipLead: [0.34, 0.12, 0.1, 0.16], chipPulse: [0.23, -0.4, 0.06, 0.12], chipArp: [0.21, 0.42, 0.05, 0.2], chipTri: [0.63, 0, 0, 0] };
+    const CHIP_DRUM_G = { kick: 1.05, tom: 0.84, snare: 0.63, hat: 0.27, open: 0.25, crash: 0.34 }, CHIP_FX_G = 0.63;
+    // 第 05 章冷爵士：乐器 [电平, 声像, 混响, 延迟]、鼓件 [电平, 声像, 混响]，电平按整章响度对到前后两章。
+    // 低音提琴走 mel 总线、不走 bus.bass：那条只在串行渲染里跟着 duck 自动化，并行渲染不跟，两种渲染会对不上。
+    const jazzVoice = { jazzBass: [1.12, -0.05, 0.06, 0], jazzVibes: [0.47, 0.22, 0.3, 0.06], jazzHarmon: [0.7, -0.18, 0.3, 0.12], jazzStab: [0.22, 0.08, 0.22, 0] };
+    const jazzKit = { ride: [0.46, 0.3, 0.12], sweep: [0.26, -0.1, 0.08], tap: [0.34, -0.1, 0.08], kick: [0.62, 0, 0.05], chick: [0.34, -0.3, 0.05], snap: [0.43, 0, 0.25], bongo: [0.34, 0.25, 0.15], rim: [0.34, 0.05, 0.1], snip: [0.47, 0, 0.15] };
+    function jazzMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = jazzVoice[n.inst];
+      play(S[n.inst](n.m, Math.round(n.dur * 1000) / 1000), t, { g: g * n.v, pan, to, verbAmt, delayAmt: n.theme ? 0.22 : delayAmt });
+    }
+    function jazzHit(n, t) {
+      const [g, pan, verbAmt] = jazzKit[n.what], o = { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: bus.drums, verbAmt };
+      if (n.what === "ride") play(S.jazzRide(n.i ?? 0), t, o);
+      else if (n.what === "sweep" || n.what === "tap") play(S.jazzBrush(n.what), t, o);
+      else if (n.what === "bongo") play(S.jazzBongo(!!n.hi), t, o);
+      else if (n.what === "snip") play(S.jazzSnip(), t, { ...o, to: bus.fx, pre: jazzSnipAt });
+      else play(S[{ kick: "jazzKick", chick: "jazzChick", snap: "jazzSnap", rim: "jazzRim" }[n.what]](), t, o);
+    }
 
     let next = 0, controlAt = 0;
     return (until = Infinity) => {
@@ -867,6 +1067,8 @@
             else if (n.inst === "glass") play(S.glass(n.m), t, { g: GLASS_G * n.v, pan: 0, to, verbAmt: 0.35, delayAmt: 0.22 });
             else if (n.inst === "marimba") play(S.marimba(n.m), t, { g: MARIMBA_G * n.v, pan: -0.1, to, verbAmt: 0.3, delayAmt: 0.12 });
             else if (n.inst === "kalimba") play(S.kalimba(n.m), t, { g: KALIMBA_G * n.v, pan: n.arp ? n.pan : 0.1, to, verbAmt: 0.3, delayAmt: 0.18 });
+            else if (CHIP_INST[n.inst]) { const [cg, cp, cv, cd] = CHIP_INST[n.inst]; play(S.chipNote(n.inst, n.m, Math.round(n.dur * 1000) / 1000), t, { g: cg * n.v, pan: cp, to, verbAmt: cv, delayAmt: cd }); }
+            else if (jazzVoice[n.inst]) jazzMel(n, t, to);
             else
               play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
             break;
@@ -895,6 +1097,9 @@
           case "ping": play(S.ping(n.m, n.late), t, { g: n.late ? PING_G[1] : PING_G[0], pan: n.pan ?? 0, verbAmt: n.late ? 0.5 : 0.25, delayAmt: 0.12 }); break;
           case "clear": play(S.clear(), t, { g: CLEAR_G, verbAmt: 0.3 }); break;
           case "hop": play(S.hop(n.m), t, { g: HOP_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.25, delayAmt: 0.15 }); break;
+          case "chipDrum": play(S.chipDrum(n.drum), t, { g: CHIP_DRUM_G[n.drum] * (n.v ?? 1), pan: n.pan ?? 0, to: bus.drums, verbAmt: 0.03 }); break;
+          case "chipFx": play(S.chipFx(n.fx), t, { g: CHIP_FX_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.1, delayAmt: n.echo ?? 0 }); break;
+          case "jazz": jazzHit(n, t); break;
         }
       }
     };
