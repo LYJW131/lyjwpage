@@ -2,8 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { digestInputHash } from "./digest/compose";
-import { digestFacts, digestHighlightOptions, digestMessage, type DigestViews } from "./digest/facts";
+import { codingAgentSeconds, codingDriverSeconds } from "@shared/pulse-types";
+
+import { agentSeconds, digestFacts, digestHighlightOptions, digestMessage, driverSeconds, type DigestViews } from "./digest/facts";
 import { baseViews, FROM, HOUR, NOW } from "./digest/testing/views-fixture";
+
+test("driver and agent time follow the site's definition", () => {
+  for (const summary of [{ humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 }, { humanSeconds: 120, agentSeconds: 5_000, bothSeconds: 900 }, { humanSeconds: 7_200, agentSeconds: 0, bothSeconds: 0 }]) {
+    assert.equal(driverSeconds(summary), codingDriverSeconds(summary));
+    assert.equal(agentSeconds(summary), codingAgentSeconds(summary));
+  }
+});
 
 test("facts keep the day's highlights, in the owner's time zone, and leave empty lanes out", () => {
   const facts = digestFacts(baseViews(), NOW);
