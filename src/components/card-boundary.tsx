@@ -6,6 +6,7 @@ import { useSWRConfig } from "swr";
 
 import { Card } from "@/components/ui/card";
 import { useVersionStatus } from "@/hooks/use-app-version";
+import { ClockGateContext, createClockGate } from "@/hooks/use-mounted-at";
 import { createFaultLedger, describeFault, primeCardCache, type FaultRecord } from "@/lib/card-recovery";
 import { reportError } from "@/lib/error-report";
 import { fetchStatus, guardPolled, writeGeneration } from "@/lib/status-reads";
@@ -146,6 +147,8 @@ export class CardBoundary extends Component<CardErrorBoundaryProps, CardErrorBou
 
   private readonly reset = () => this.setState({ error: null, failed: false });
 
+  private readonly clockGate = createClockGate();
+
   override render() {
     const { error, failed } = this.state;
     if (failed) {
@@ -153,6 +156,10 @@ export class CardBoundary extends Component<CardErrorBoundaryProps, CardErrorBou
       void children;
       return <CardFault {...props} error={error} reset={this.reset} />;
     }
-    return <Activity mode="visible">{this.props.children}</Activity>;
+    return (
+      <ClockGateContext.Provider value={this.clockGate}>
+        <Activity mode="visible">{this.props.children}</Activity>
+      </ClockGateContext.Provider>
+    );
   }
 }
