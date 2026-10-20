@@ -14,7 +14,6 @@ import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import type { CodingAgentRow } from "@/lib/coding-agents";
 import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
 
-// 这几家的限额条点开先看分项窗口，官方用量页挪到分项条上。
 const EXPAND_BEFORE_LINK = new Set(["cursor"]);
 
 function CompactAgentRow({
