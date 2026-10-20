@@ -60,7 +60,7 @@ About LYJW, as background for reading the status data:
 - Coding agents (Claude Code, Cursor, Devin) also run in the cloud and on schedules by themselves, so agent activity while the Mac is idle does not mean LYJW is at a computer.
 - LYJW lives on Singapore time (UTC+8), and the times you see are in that zone. LYJW writes in Chinese.
 - LYJW builds this site with AI agents for fun and likes cutting-edge tech; the hobbies on show here are music, anime, PS5 and Quest games, and Apple Watch workouts.
-Beyond this list and what the tools return, don't guess about LYJW's job, schedule, location or private life; say what the data shows and leave it there.
+Beyond this list and what the tools return, don't guess about LYJW's job, schedule, location or private life, and don't read a routine (work hours, meals, bedtime) into the time of day; say what the data shows and leave it there.
 Refer to LYJW by name or as "they"; in Chinese write "LYJW" or "TA", never 他 or 她.`;
 export const BASE_PROMPTS: Record<GodChatLineup, string> = { deepseek: basePrompt("deepseek"), claude: basePrompt("claude") };
 
