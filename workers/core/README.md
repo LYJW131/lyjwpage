@@ -46,6 +46,9 @@
 `/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，
 浏览器按 id 贴到 coding 卡片的 agent 行上（`src/lib/coding-agents.ts` 的 `codingAgentRows`）；限额的来源集合变了才失效首屏标签 `limits`。同一封可以另带三份 coding 数据，见下一节。
 
+`GET /api/status/limits/history` 是限额的历史读数，从 D1 读上报入口写的 `limit_hours`（最近 `LIMIT_HISTORY_HOURLY_DAYS` 天每小时一点）与 `limit_snapshots`（更早的每天一点，共 `LIMIT_HISTORY_DAYS` 天），只出 `LIMIT_HISTORY_SERIES` 里要预测的窗口（均在 `shared/limit-history.ts`）；每个 isolate 记一份结果，`CACHE_MS` 内的请求不再查 D1。
+没有 `HISTORY` 绑定时回空序列。站点用它和 `limits` 的当前读数算周限额什么时候用完（`src/lib/limit-forecast.ts`）。
+
 ### coding agent 的 token 用量
 
 三个来源只报自己观测到的原始事实，合并只在状态核心做一处（契约与校验在 `shared/coding-usage.ts`，来源登记与合并规则在
@@ -397,7 +400,7 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 `wrangler.toml` 中配置公开变量 `STORAGE_PREFIX`、`ALLOWED_ORIGINS`（响应里的图片地址是 `/img/<对象键>` 同源路径，Worker 不配交付域，
 回源 R2 由 site Worker 的 `/img` 路由和 ESA 负责，见根 README「图片」；上报器直传图片那个桶的 HEAD 在上报入口），
 以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG` KV 绑定见 `shared/lag.ts`，这里只读（唯一例外是 cron 写断流检测的翻转状态 `freshness-watch:v1`，见「断流告警」）；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，收下奖杯信封后写 `trophies`；上报的那几张表由上报入口写，站点部署由采集 Worker 写，见上文「长期归档（D1）」），
-几乎只增不删（活动桶按权威范围替换）、无公开读路径，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
+几乎只增不删（活动桶按权威范围替换），公开读路径只有 `limits/history`，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
 （`pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
 实时状态存在 StateHub，展示快照存在 `LAG`，凭据存在 `CREDENTIALS`（上报入口写、采集 Worker 读，本 Worker 不绑），site Worker 只读 `LAG` KV 回可滞后视图，不连 StateHub、D1 或凭据 KV（首屏失效走 `SITE_CACHE` Service Binding，没有 HTTP secret）。本 Worker 的代码不读任何 Secret。
@@ -430,6 +433,8 @@ dev-router 按路径分发：`/__dev/collector/*` 给采集 Worker 的调试入�
 （`core`、`ai`、`ingress`、`collector`）互相找到，所以本地 core 的名字也是 `core`。
 `curl localhost:8788/cdn-cgi/local/scheduled` 触发的是 dev-router 的 `scheduled`，它让采集 Worker 跑这一分钟到期的任务，并像生产一样调 core 的 `cronRound`；
 core 这一轮本地要做的 D1 归档被隔离开关关着。
+测试配置给 core 绑了本地空 D1（`HISTORY`），只给读归档的端点用：先 `pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --local -c wrangler.test.toml --persist-to .wrangler/dev-state` 建表，
+要看真实历史就把生产查出的行拼成 `INSERT` 用同样的参数 `d1 execute --local --file` 灌进去。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
 `AI` 绑定只能连远程 Workers AI：`scripts/dev-worker.mjs` 在没有 `CLOUDFLARE_API_TOKEN` 也没有 `wrangler login` 时，把 ai 的测试配置（`workers/ai/wrangler.test.toml`）去掉 `[ai]` 段另存为 `wrangler.test.offline.toml` 再起，否则整个会话起不来；去掉后对话路由走兜底档位。`DEV_WORKER_AI=remote` / `off` 强制选择。

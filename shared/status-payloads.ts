@@ -26,6 +26,7 @@ import type {
   WorkoutsPayload,
 } from "@shared/types";
 import type { AgentLimitsPayload } from "@shared/vibecoding-limits";
+import type { LimitHistoryPayload } from "@shared/limit-history";
 import type { NowWatchingPayload, WatchingPayload } from "@shared/emby";
 import type { FocusNow } from "@shared/focus";
 import type { QuestNow } from "@shared/quest";
@@ -43,6 +44,7 @@ export type StatusPayloads = {
   coding: CodingUsagePayload;
   codingNow: CodingNowPayload;
   limits: AgentLimitsPayload;
+  limitsHistory: LimitHistoryPayload;
   agentStatus: AgentStatusPayload;
   codingYear: CodingYearPayload;
   watching: WatchingPayload;
