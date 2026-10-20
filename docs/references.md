@@ -226,6 +226,10 @@
   - 是什么：按 Unicode 字符与布局特性裁剪字体，同时保留所需的变体字形。
   - 取了什么：从同一 Geist Mono 可变字体生成 Latin 与界面符号分片，预加载分片，剩余字符通过互补的 `unicode-range` 使用完整字体。
   - 状态：采用。资产来源、生成命令与验证方法见 [字体分片](../src/assets/fonts/README.md)；字体规则落在 [theme.css](../src/app/styles/theme.css)，预加载落在 [root.tsx](../src/app/root.tsx)。
+- **[Disabling CSS injection into the page](https://vite.dev/guide/features#disabling-css-injection-into-the-page)**（Vite 文档）
+  - 是什么：通过 `?inline` 导入处理后的 CSS 字符串，关闭自动样式注入。
+  - 取了什么：根布局将站点 CSS 写入 HTML 的 `style`，让首屏样式不依赖独立样式表请求。
+  - 状态：采用。落在 [root.tsx](../src/app/root.tsx)；CSS 字符串也进入客户端模块，增加传输量，以消除首屏样式表请求的等待。
 - **[markdown-cjk-friendly](https://github.com/tats-u/markdown-cjk-friendly)**（`remark-cjk-friendly`）
   - 是什么：修正 CommonMark 在中日韩标点旁不认 `**` 收尾的 remark 插件。
   - 取了什么：对话里「？」后紧跟中文的加粗会原样显示星号，接上它和配套的删除线插件。
