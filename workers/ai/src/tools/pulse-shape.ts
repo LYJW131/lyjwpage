@@ -7,6 +7,8 @@ type Row = Record<string, unknown> & { from: number; to: number };
 // 所以给模型前改成带绝对时间的行，只留有内容的时段，同一首歌、同一部片中间的短暂停合成一段。
 // 状态码是 shared/pulse-timeline.ts 里 LISTENING_STATES、WATCHING_STATES、GAMING_STATES 的下标。
 const MERGE_GAP_SEC = 600;
+// 须与 shared/pulse-types.ts#isCodingDriverValue 同口径（site-status.test.ts 对照）：只有 agent 在跑的时段不算 LYJW 在写代码。
+export const isDriverValue = (value: number) => value === 1 || value === 3;
 
 function rows(columns: unknown, from: number, keys: string[]): Row[] {
   const source = object(columns) as Columns | undefined;
@@ -33,7 +35,7 @@ function merge(list: Row[], same: (a: Row, b: Row) => boolean, gapSec = MERGE_GA
   return out.map(({ covered, ...row }) => ({ ...row, minutes: Math.round(covered / 60_000) }));
 }
 
-// 没有标题的时段（Emby 在放但条目没对上、PlayStation 在线没开游戏）各自保留，不和别的无标题时段合并。
+// 没有标题的在放时段（Emby 在放但条目没对上）各自保留，不和别的无标题时段合并。
 const sameTitle = (a: Row, b: Row) => a.title !== null && a.title === b.title && a.subtitle === b.subtitle;
 
 function stateLane(lane: Record<string, unknown>, from: number, keep: (state: number) => boolean, subtitle: string) {
@@ -65,10 +67,10 @@ export function pulseForModel(body: unknown): unknown {
       lanes: {
         listening: stateLane(lane("listening"), from, (state) => state === 2, "artist"),
         watching: stateLane(lane("watching"), from, (state) => state === 2, "episode"),
-        gaming: stateLane(lane("gaming"), from, (state) => state > 0, "detail"),
+        gaming: stateLane(lane("gaming"), from, (state) => state === 2, "detail"),
         coding: {
           summary: coding.summary,
-          activeSpans: merge(rows(coding.segments, from, ["value"]).filter((row) => Number(row.value) > 0).map(({ from, to }) => ({ from, to })), () => true),
+          driverSpans: merge(rows(coding.segments, from, ["value"]).filter((row) => isDriverValue(Number(row.value))).map(({ from, to }) => ({ from, to })), () => true),
         },
         tokens: { summary: lane("tokens").summary },
         charging: { currentPowerW: lane("charging").currentPowerW, summary: lane("charging").summary },
