@@ -61,8 +61,8 @@
 **勿扰**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=2">
-  <img src="https://lyjw.me/cards/focus.svg?v=2" alt="勿扰卡片：iPhone 专注模式与已持续时长" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/focus.svg?v=3" alt="勿扰卡片：iPhone 专注模式与已持续时长" width="100%">
 </picture>
 
 **Meta Quest 正在玩**
