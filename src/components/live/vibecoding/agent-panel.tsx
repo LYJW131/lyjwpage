@@ -1,6 +1,7 @@
 "use client";
 
 import NumberFlow from "@number-flow/react";
+import type { ReactNode } from "react";
 
 import { LimitMeter, LimitUnavailable } from "@/components/live/vibecoding/limit-meter";
 import { LIMITS_SILENT, featuredLimitRows } from "@/components/live/vibecoding/limits";
@@ -37,11 +38,13 @@ export function AgentPanel({
   macDeclaredOffline,
   clocks,
   today,
+  children,
 }: {
   row: CodingAgentRow;
   macDeclaredOffline: boolean;
   clocks: FirstFrameClocks;
   today: string | null;
+  children?: ReactNode;
 }) {
   const limitsStale = useStale(row.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
   const lastDay = row.usage?.lastDay ?? null;
@@ -59,7 +62,7 @@ export function AgentPanel({
   const rows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
   const usageUrl = agentUsageUrl(row.id);
   return (
-    <div className="flex min-w-0 flex-col p-4 lg:p-5">
+    <div className="flex min-w-0 flex-col gap-5 p-4 lg:p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <FeaturedMark row={row} active={active} />
@@ -77,7 +80,7 @@ export function AgentPanel({
         </span>
       </div>
 
-      <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-5">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-5">
         <div className="min-w-0">
           <div className="label-mono text-muted-foreground" title={describeCodingSources(notes) || undefined}>
             {lastDay && !isToday ? `Tokens · ${formatSiteDay(lastDay.date)}` : "Today Tokens"}
@@ -109,7 +112,7 @@ export function AgentPanel({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 border-t border-line pt-4">
+      <div className="grid gap-3 border-t border-line pt-4">
         <div className="label-mono text-muted-foreground">
           Limits
           {row.plan && (
@@ -141,6 +144,7 @@ export function AgentPanel({
           ),
         )}
       </div>
+      {children}
     </div>
   );
 }

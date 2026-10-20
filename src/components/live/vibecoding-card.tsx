@@ -4,7 +4,7 @@ import { useMemo } from "react";
 
 import { AgentPanel } from "@/components/live/vibecoding/agent-panel";
 import { CompactAgents } from "@/components/live/vibecoding/compact-agents";
-import { LimitForecastPanel } from "@/components/live/vibecoding/limit-forecast-panel";
+import { DailyUse, LimitForecastPanel, useWeeklyForecast } from "@/components/live/vibecoding/limit-forecast-panel";
 import { weeklyLimit } from "@/components/live/vibecoding/limits";
 import { TotalUsage } from "@/components/live/vibecoding/total-usage";
 import type { FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
@@ -63,6 +63,12 @@ export function VibeCodingCard({
   const rows = usage || now || limits ? codingAgentRows(usage ?? null, now ?? null, limits ?? null) : null;
   const claude = rows?.find((row) => row.id === "claude") ?? null;
   const claudeLimitsStale = useStale(claude?.limitsAt ?? null, AGENT_LIMITS_STALE_MS, limitsServedAt);
+  const weekly = useWeeklyForecast({
+    limit: claude && !claudeLimitsStale ? weeklyLimit(claude) : null,
+    limitAt: claude?.limitsAt ?? null,
+    history: history ?? null,
+    servedAt: limitsServedAt ?? null,
+  });
   const totalFailing = (rows ?? []).flatMap((row) =>
     codingSourceHealth(row.usage).failing.map((note) => ({ ...note, label: `${row.label} · ${note.label}` })),
   );
@@ -91,14 +97,15 @@ export function VibeCodingCard({
                 macDeclaredOffline={macDeclaredOffline}
                 clocks={clocks}
                 today={today}
-              />
+              >
+                {row.id === "claude" && weekly.forecast && weekly.forecast.days.length > 0 && (
+                  <div className="border-t border-line pt-4">
+                    <DailyUse forecast={weekly.forecast} timeZone={weekly.timeZone} />
+                  </div>
+                )}
+              </AgentPanel>
             ))}
-            <LimitForecastPanel
-              limit={claude && !claudeLimitsStale ? weeklyLimit(claude) : null}
-              limitAt={claude?.limitsAt ?? null}
-              history={history ?? null}
-              servedAt={limitsServedAt ?? null}
-            />
+            <LimitForecastPanel forecast={weekly.forecast} timeZone={weekly.timeZone} />
           </div>
           <CompactAgents
             rows={rows.filter((row) => row.row === "compact")}
