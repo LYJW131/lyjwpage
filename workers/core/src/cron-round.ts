@@ -1,14 +1,12 @@
-import { historyArchive, pulseScoringAi, type Env } from "./runtime";
+import { historyArchive, type Env } from "./runtime";
 import { PulseArchive } from "./pulse-archive";
-import { PulseScorer, clefDecide } from "./pulse-score";
 import { freshnessCheckDue, watchFreshness, type FreshnessEvent } from "./freshness-watch";
 import type { PulseTick } from "./state-hub";
 
 // 只有 StateHub 整个调不通才让这一轮记成失败心跳；子步骤失败只记一条错误日志，站点的 Core 在线行不跟着闪。
 export async function runCronRound(env: Env, scheduledTime: number): Promise<void> {
   const db = historyArchive(env);
-  const ai = pulseScoringAi(env);
-  if (!db && !ai) return;
+  if (!db) return;
   const hub = env.STATE.get(env.STATE.idFromName("global"));
   const [ticked] = await Promise.allSettled([
     hub.pulseTick(),
@@ -22,16 +20,12 @@ export async function runCronRound(env: Env, scheduledTime: number): Promise<voi
   if (ticked.status === "rejected") throw ticked.reason;
   const tick = ticked.value;
   console.info("[cron-shape]", JSON.stringify(tickShape(tick)));
-  await Promise.all([
-    db && new PulseArchive({ coordinator: hub, db }).run(tick.archive)
-      .catch((error: unknown) => stepFailed("pulse-archive", error)),
-    ai && new PulseScorer({ coordinator: hub, decide: clefDecide(ai) }).run(tick.score)
-      .catch((error: unknown) => stepFailed("pulse-score", error)),
-  ]);
+  await new PulseArchive({ coordinator: hub, db }).run(tick.archive)
+    .catch((error: unknown) => stepFailed("pulse-archive", error));
 }
 
 // Worker 时钟在同步计算中不走，测不出分步 CPU；只记每轮输入的条数与字节，cron CPU 再异常时用来区分输入变大和运行时本身。
-function tickShape({ archive, score }: PulseTick) {
+function tickShape({ archive }: PulseTick) {
   const sized = (rows: readonly (string | null)[] = []) => [rows.length, rows.reduce((sum, row) => sum + (row?.length ?? 0), 0)];
   return {
     archive: Object.fromEntries(archive.streams.map((stream) => [stream.stream, {
@@ -40,12 +34,6 @@ function tickShape({ archive, score }: PulseTick) {
       ...(stream.coding && { coding: sized(Object.values(stream.coding).flat()) }),
       ...(stream.error && { error: true }),
     }])),
-    score: score && {
-      assessments: sized(score.inputs.assessments),
-      codingObservations: sized(score.inputs.codingObservations),
-      cursorObservations: sized(score.inputs.cursorObservations),
-      tokenBuckets: sized(Object.values(score.inputs.tokenBuckets)),
-    },
   };
 }
 

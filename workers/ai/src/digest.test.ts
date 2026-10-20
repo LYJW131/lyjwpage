@@ -2,13 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { digestInputHash } from "./digest/compose";
-import { digestFacts, digestHighlightOptions, digestMessage, type DigestViews } from "./digest/facts";
+import { codingAgentSeconds, codingDriverSeconds } from "@shared/pulse-types";
+
+import { agentSeconds, digestFacts, digestHighlightOptions, digestMessage, driverSeconds, type DigestViews } from "./digest/facts";
 import { baseViews, FROM, HOUR, NOW } from "./digest/testing/views-fixture";
+
+test("driver and agent time follow the site's definition", () => {
+  for (const summary of [{ humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 }, { humanSeconds: 120, agentSeconds: 5_000, bothSeconds: 900 }, { humanSeconds: 7_200, agentSeconds: 0, bothSeconds: 0 }]) {
+    assert.equal(driverSeconds(summary), codingDriverSeconds(summary));
+    assert.equal(agentSeconds(summary), codingAgentSeconds(summary));
+  }
+});
 
 test("facts keep the day's highlights, in the owner's time zone, and leave empty lanes out", () => {
   const facts = digestFacts(baseViews(), NOW);
   assert.match(facts, /^Now: Tuesday afternoon in LYJW's time zone \(Asia\/Singapore\)/);
-  assert.match(facts, /Coding: active 9 h of the 24 h; a coding app in front on LYJW's Mac 6 h, AI agents working 7 h/);
+  assert.match(facts, /Coding: LYJW driving \(a coding app in front on the Mac\) 6 h; AI agents working 7 h, of which 3 h on their own while LYJW was not driving/);
   assert.match(facts, /Coding agents used: Claude Code \(Opus 5\.5\)\n/, "agents idle for the whole window are left out");
   assert.match(facts, /Tokens through the agents: 42M/);
   assert.match(facts, /Music: 3\.5 h, 14 tracks; top artists Hoshimachi Suisei \(3 h\), Houshou Marine & Hoshimachi Suisei \(25 min\); most played tracks GUM&DROP \(30 min\)/);
@@ -86,12 +95,12 @@ test("an unknown time zone falls back to the site's", () => {
 
 test("highlight options carry the card's numbers and labels, rounded like the facts, for non-empty topics only", () => {
   assert.deepEqual(digestHighlightOptions(baseViews()), [
-    { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" },
+    { topic: "coding", value: 6, unit: "hours", atLeast: false, caption: "driver time" },
     { topic: "agents", value: 7, unit: "hours", atLeast: false, caption: "agent time" },
     { topic: "tokens", value: 42_000_000, unit: "count", atLeast: false, caption: "tokens" },
     { topic: "music", value: 3.5, unit: "hours", atLeast: false, caption: "music" },
     { topic: "watching", value: 50, unit: "minutes", atLeast: false, caption: "watching" },
     { topic: "fitness", value: 3_300, unit: "count", atLeast: false, caption: "steps" },
   ]);
-  assert.match(digestMessage(baseViews(), NOW).content, /\n\nHighlight options: coding: 9 h coding; agents: 7 h agent time; tokens: 42M tokens; music: 3\.5 h music; watching: 50 min watching; fitness: 3\.3K steps$/);
+  assert.match(digestMessage(baseViews(), NOW).content, /\n\nHighlight options: coding: 6 h driver time; agents: 7 h agent time; tokens: 42M tokens; music: 3\.5 h music; watching: 50 min watching; fitness: 3\.3K steps$/);
 });

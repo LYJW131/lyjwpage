@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergeMessage } from "./merge-message.ts";
+import { mergeMessage, mergeMethodFor } from "./merge-message.ts";
 
 test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓库主人，只收认得出的身份", () => {
   const result = mergeMessage({
@@ -40,4 +40,10 @@ test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓�
 test("标题已带号不重复加；没有协作者时正文只有提交主题", () => {
   const result = mergeMessage({ number: "9", title: "fix: x (#9) ", subjects: ["fix: x"], authors: [], coAuthors: [], owner: null });
   assert.deepEqual(result, { commit_title: "fix: x (#9)", commit_message: "- fix: x" });
+});
+
+test("少于 3 个非合并提交压缩合并，3 个及以上留合并提交", () => {
+  assert.equal(mergeMethodFor(1), "squash");
+  assert.equal(mergeMethodFor(2), "squash");
+  assert.equal(mergeMethodFor(3), "merge");
 });

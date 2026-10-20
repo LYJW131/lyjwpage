@@ -6,14 +6,12 @@ import { MacBookProIcon } from "@/components/ui/device-icons";
 import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC } from "@shared/pulse-coding";
 import { gamingSummaryDetail } from "@/lib/gaming-lane-detail";
 import { columnRows } from "@shared/pulse-columns";
+import { codingAgentSeconds, codingDriverSeconds } from "@shared/pulse-types";
 import type { PulseCodingLane, PulseStateLane } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 const CODING_WORDS = ["No coding", "Coding app", "Agent", "Coding app + agent"] as const;
 const CODING_FILLS = ["", "var(--pulse-human)", "var(--pulse-agent)", "var(--pulse-both)"] as const;
-const MODE_LABELS: Record<string, string> = {
-  idle: "Idle", brief: "Brief bursts", interactive: "In coding apps", agent: "Agent work", mixed: "Apps + agents",
-};
 
 const AGENT_SOURCES = [
   { bit: CODING_AGENT_MAC, label: "Mac", icon: <MacBookProIcon className="size-3.5" aria-hidden /> },
@@ -34,27 +32,18 @@ function AgentSources({ mask }: { mask: number }) {
 
 export function codingModel(lane: PulseCodingLane, range: Range): LaneModel | null {
   const segments = columnRows(lane.segments, ["value"]);
-  const assessments = columnRows(lane.assessments, ["intensity", "confidence", "mode"]);
-  if (!segments || !assessments || !lane.summary) return null;
-  const scored = assessments.map((row) => ({ ...row, ...absolute(range, row) }));
+  if (!segments || !lane.summary) return null;
   const items = segments.map((row, index): LaneItem => {
     const { from, to } = absolute(range, row);
-    const middle = (from + to) / 2;
-    const assessment = scored.find((score) => score.from <= middle && middle < score.to)
-      ?? scored.find((score) => score.from < to && score.to > from);
     return {
       from, to, rank: row.value ? 0 : 1,
       content: (
         <Tooltip key={index} from={from} to={to} head={CODING_WORDS[row.value] ?? "Coding"} lines={[
           <AgentSources key="a" mask={lane.segments.agentSources?.[index] ?? 0} />,
-          assessment && <span key="i">Jev intensity {Math.round(assessment.intensity / 4 * 100)}/100</span>,
-          assessment?.mode && <span key="m" className="text-muted-foreground">{MODE_LABELS[assessment.mode] ?? assessment.mode}</span>,
         ]} />
       ),
     };
   });
-  const { humanSeconds, agentSeconds, bothSeconds } = lane.summary;
-  const total = humanSeconds + agentSeconds + bothSeconds;
   return {
     items,
     svg: (() => {
@@ -67,7 +56,7 @@ export function codingModel(lane: PulseCodingLane, range: Range): LaneModel | nu
           : <path key={value} d={barPath(rows, LANE_HEIGHT - IDLE_HEIGHT)} fill="currentColor" fillOpacity={0.42} />;
       });
     })(),
-    summary: segments.length ? { value: pulseDuration(total), detail: `agent ${pulseDuration(agentSeconds + bothSeconds)}` } : null,
+    summary: segments.length ? { value: `driver ${pulseDuration(codingDriverSeconds(lane.summary))}`, detail: `agent ${pulseDuration(codingAgentSeconds(lane.summary))}` } : null,
     aria: "coding timeline: coding app in front, agent running, or both",
   };
 }

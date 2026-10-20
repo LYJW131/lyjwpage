@@ -1,6 +1,7 @@
 import { useMountedAt } from "@/hooks/use-mounted-at";
 import { useConfirmedClockStale } from "@/hooks/use-stale";
-import { CODING_ACTIVE_WINDOW_MS, codingActivitySlots, codingDisplayModel, type CodingActivityEntry, type CodingAgentRow } from "@/lib/coding-agents";
+import { CODING_ACTIVE_WINDOW_MS } from "@shared/coding-usage-view";
+import { codingActivitySlots, codingDisplayModel, type CodingActivityEntry, type CodingAgentRow } from "@/lib/coding-agents";
 
 export type FirstFrameClocks = {
   usage?: number;

@@ -7,7 +7,7 @@
 - 在项目聊天里说一句要什么，Claude 开一个线程去做。进度看线程卡片上的状态行，结果看线程里的回复。
 - 你要做的只有四种事：拍板、点头让 Claude 办凭据或给控制台权限、批准生产上的动作、说一句「合」。其余 Claude 自己推进。
 - 分叉用决策卡问你，推荐项已标出。你不点，Claude 按推荐项继续；没法撤销的那一步会等你。
-- PR 合并按档：文档、skill、参考文献和记忆镜像，本地跑过 `pnpm docs:check` 就合；明确的修复和小改动，本地跑过改动涉及的检查（相关测试、typecheck、eslint）就合，都不等 GitHub CI 排队，CI 之后红了当场修；大改代码逻辑的要 CI 全绿，还要处理完机器评审。大方向、大改动，以及有 UI / UX 变化的改动（你明确要求的小改动除外）等你点头。
+- PR 合并按档：文档、skill、参考文献和记忆镜像，本地跑过 `pnpm docs:check` 就合；明确的修复和小改动，本地跑过改动涉及的检查（相关测试、typecheck、eslint）就合，都不等 GitHub CI 排队，CI 之后红了当场修；大改代码逻辑的要 CI 全绿，还要处理完机器评审。大方向、大改动，以及有 UI / UX 变化的改动（你明确要求的小改动除外）等你点头。「明确的修复」只指行为坏了（报错、数据错、崩溃）；显示上和别处不一致不算，Claude 先 `git log -S` 查是不是你有意定的，看不出来就问。
 - 碰到 Worker 监视路径的改动合进 main 就自动构建部署；「已部署」以 `/api/version` 返回的提交为准，不以构建检查绿了为准。
 
 ## 1. 场面上有谁
@@ -79,15 +79,15 @@
 - 一个线程一个分支，名字是 `claude/project-thread-<id>`。PR 开出来时给你一次链接，CI 绿、评审处理完后再说一次；中间的合 main、修 CI、回评审不打扰你。
 - 合并前的门槛，缺一不可：
   1. CI：大改代码逻辑的要 CI 全绿（lint、typecheck、测试、`pnpm docs:check`，清单见 `scripts/ci-checks.sh#gates`）。文档、skill 与小改动不等 CI，改动涉及的那几项本地跑过就算，合进 main 后 CI 红了当场修；Workers Builds 不看 CI，合进 main 照常部署，挡住坏代码靠的就是这一遍本地检查。CodeQL 只扫访客构建（站点 Build 开）的 PR，两项 `Analyze` 不绿它就停在草稿、合不了；其他 PR 不扫，靠合进 main 后与每天定时扫描兜底，告警由 CodeQL Autofix 各开修复 PR（见 [codeql-autofix](./docs/codeql-autofix.md)）；改动碰到了 Worker 的监视路径时，Workers Builds 也要绿（路径见 workers-builds 的「[构建监视路径](./docs/workers-builds.md#构建监视路径)」，只改文档不触发构建）。
-  2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动过了第 1 条就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
+  2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动过了第 1 条就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Codex 审过之后再推的，只改文档或注释就不等它复审；改了代码的等它最多 15 分钟，没来就照常合，汇报里说一句。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。任何一家机器评审到第三轮还在这次改动里报新的阻塞问题，Claude 不再逐条打补丁，先重看方法，用一句话告诉你换不换。修评审发现时同类一次修完。评审代理报什么、不报什么写在 [REVIEW.md](./REVIEW.md)。
   5. 要等机器评审的那类 PR，合并前再派一个没写这段代码的 agent 判做没做完，结论按 head SHA 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
   6. 三份存量基线（`scripts/mjs-baseline.json`、`scripts/design-scale-baseline.json`、`scripts/ui-copy-baseline.json`）只许比 main 少，PR 里多出一条 CI 就红（`pnpm baselines:check`）。确属合规例外的，Claude 在 PR 里写明理由、停下等你；你同意就给 PR 打上 `baseline-exception` 标签，CI 自动重跑放行；放行只对打标签那一次有效，之后再推送要摘了重打，免得批准后又塞进别的条目。这个标签只由你打，Claude 不打。
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
 - 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。
-- 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式是 merge commit；分支落后时把 main 合进来，不 rebase。
-- 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 lyjwpage-verify「[3. PR 合并门槛](./.claude/skills/lyjwpage-verify/SKILL.md#3-pr-合并门槛主线程跑-pr-gatets自己判断)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。提交以你的身份、用你的钥签名，Claude 只出现在 Co-Authored-By 里；会话自带的钩子把这种提交报成 Unverified、让改成 Claude 的邮箱，是误报，不照做（见 AGENTS.md「[禁区](./AGENTS.md#禁区)」）。
+- 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式按 PR 里的非合并提交数：少于 3 个压缩合并，3 个及以上用 merge commit（钩子 `scripts/guard-merge-method.ts` 拦不合的调用）；main 有分支保护，不直推。分支落后时把 main 合进来，不 rebase。
+- 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并（或压缩）提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 lyjwpage-verify「[3. PR 合并门槛](./.claude/skills/lyjwpage-verify/SKILL.md#3-pr-合并门槛主线程跑-pr-gatets自己判断)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。提交以你的身份、用你的钥签名，Claude 只出现在 Co-Authored-By 里；会话自带的钩子把这种提交报成 Unverified、让改成 Claude 的邮箱，是误报，不照做（见 AGENTS.md「[禁区](./AGENTS.md#禁区)」）。
 - 做完上线的线程不标成已解决：它留在你的「等你」列表里等你验收，你回一句或说「关」才收起。
 
 ## 6. 部署与「已部署」
