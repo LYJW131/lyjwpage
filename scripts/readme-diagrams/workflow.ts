@@ -13,18 +13,19 @@ export function workflow(lang: Lang): Canvas {
   c.region({ x: 12, y: 144, w: 840, h: 336 }, "Claude", "claude");
 
   const chat = c.card({ x: C1, y: 168, w: COL, h: 96 }, ["项目聊天", "Project chat"], ["协调", "Coordinator"], "claude");
-  c.lines(chat, [[["接每句话，分派线程", "Takes every message"], "title"], [["晨报 · 转贴决策卡", "brief · decision cards"], "cap"]]);
+  c.lines(chat, [[["接每句话，分派线程", "Takes every message"], "title"], [["转贴各线程的决策卡", "re-posts decision cards"], "cap"]]);
   const thread = c.card({ x: C1, y: 312, w: COL, h: 144 }, ["线程", "Thread"], "Claude", "claude");
   c.lines(thread, [[["一件事一个线程", "One thread per task"], "title"], [["一个分支，做到上线", "own branch, through deploy"], "cap"]], 64);
   c.chip({ x: thread.x, y: thread.y + 64, w: thread.w, h: 40 }, ["Haiku 验证员", "Haiku verifier"], null, ["按提交签分级回执", "graded receipt per commit"], "claude");
 
-  const routines = c.card({ x: C2, y: 168, w: COL, h: 168 }, ["定时任务", "Routines"], null, "claude");
+  const routines = c.card({ x: C2, y: 168, w: COL, h: 192 }, ["定时任务", "Routines"], null, "claude");
   c.rows(routines, [
     [["代码审查", "Code review"], "PR"],
     [["提炼 skill", "Skill mining"], "PR"],
     [["记忆镜像", "Memory mirror"], "PR"],
     [["collector 盯防", "Collector watch"], ["修复草稿", "fix draft"]],
     [["Anthropic 动态", "Anthropic digest"], ["报告", "report"]],
+    [["晨报", "Morning brief"], ["汇报", "summary"]],
   ], 8);
 
   const planner = c.card({ x: C3, y: 168, w: COL, h: 96 }, ["设计会话", "Design session"], "Opus", "claude");
@@ -53,7 +54,7 @@ export function workflow(lang: Lang): Canvas {
   c.note(732, 288, ["访客确认计划", "visitor confirms"]);
 
   c.edge([[144, 456], [144, 528]]);
-  c.edge([[432, 336], [432, 504], [144, 504]], { end: false });
+  c.edge([[432, 360], [432, 504], [144, 504]], { end: false });
   c.edge([[720, 408], [720, 504], [432, 504]], { end: false });
   for (const x of [144, 432]) c.dot(x, 504);
   c.note(576, 504, ["都以 PR 进 main", "everything lands as a PR"], "middle");
