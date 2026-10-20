@@ -76,7 +76,6 @@ export function mergeBucketReport(
   const reporting = new Set(kept.windows.flatMap((window) => window.agents.map((row) => row.id)));
   const fresh = new Map(report.agents.map((agent) => [agent.id, { ...agent, collectedAt: report.collectedAt }]));
   const known = new Set((previous?.agents ?? []).map((agent) => agent.id));
-  // agents 的顺序进了评分输入哈希（pulse-score.ts#windowTokenUsage），按已存顺序原地替换，Cursor 与 Devin 轮流到也不抖。
   const agents = [
     ...(previous?.agents ?? []).flatMap((agent) => {
       const replaced = fresh.get(agent.id);

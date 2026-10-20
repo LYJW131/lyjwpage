@@ -56,16 +56,14 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 
 - Pulse 事实表由状态核心写：cron 每 5 分钟从 StateHub 取一份有界快照（各路水位之后的新行，外加推导会话所需的一点上下文），普通 Worker 按自然键拼成 upsert（`INSERT OR IGNORE` 或 `DO UPDATE … WHERE` 值变了才写；活动桶另有受版本保护的范围删除）写 D1，全部成功后再向 StateHub 确认水位；上报不等待归档。水位存在 metadata 的 `pulse-archive:v2:<路>`（coding 用量与桶两路是修订号，其余是时刻），确认按 max 单调前进；失败留待下一轮重放，一路失败不阻塞其他路。表与各来源的缺口见 [长期归档](../workers/core/README.md#长期归档d1)，迁移 `0007_history_pulse.sql` 与 coding 用量的 `0008_coding_usage.sql`（`0006` 留给采集 Worker）。
 - 旧表 `pulse_samples(domain, t, level, hint, until_at, power_w)` 原样冻结。StateHub 仍是实时层的唯一权威，只留 `PULSE_TTL_MS` 那么久，归档保留全部历史。
-- 本地和夹具环境不写归档：`historyArchive` 和 Clef 打分（`pulseScoringAi`）用同一套闸门，配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
+- 本地和夹具环境不写归档：`historyArchive` 配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
 - 公开 HTTP 读归档的只有 `GET /api/status/limits/history`：core 按 `shared/limit-history.ts#LIMIT_HISTORY_SERIES` 读 `limit_hours` 与 `limit_snapshots`，给编码卡的周限额预测用，每个 isolate 记一份，`workers/core/src/limit-history.ts#CACHE_MS` 内的请求共用，响应本身是 `no-store`。其余表只作备份；Pulse 的公开那份走 `GET /api/status/pulse`，从 StateHub 的序列里裁最近 24 小时，不读 D1。
 - 建表只在迁移里做，Worker 不会自己建：`pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
 - 回滚就是从 `wrangler.toml` 删掉 `[[d1_databases]]`，归档随即停用，StateHub 与站点行为不变；库和已归档的数据留着，重新加回绑定后从水位线继续。
 
-## Coding 评估（pulse:assessments）
+## Coding 观测
 
-- Clef 只给 Coding 打分，其余道画的是事实本身。一个十五分钟评分调度器和 `pulse:assessments` 列表，保留 `PULSE_TTL_MS`；输入哈希相同不重复调用，晚到的 token 可修订相应窗口。输入哈希含 `PULSE_ASSESSMENT_VERSION`（源：`shared/pulse-assessment.ts#PULSE_ASSESSMENT_VERSION`）。StateHub metadata 持久化 claim token、generation、lease（`workers/core/src/pulse-score-state.ts` 的 `PULSE_SCORE_LEASE_MS`）与最近尝试；普通 Worker 从固定快照提取特征和调用模型，提交时 StateHub 校验资格并与最新结果合并。
-- 列表追加写：每轮只追加新评出来的几行，同一窗口以最后一行为准（读者一律走 `latestPulseAssessments`）。被覆盖的旧行和过期行多过有效行的 `COMPACT_GARBAGE_RATIO`、或总行数超过 `COMPACT_MAX_ROWS`（均在 `workers/core/src/pulse-score-state.ts`）时才整表压缩重写：整表重写的写入行数随窗口数成倍放大，DO 的写入行数按套餐计量。非 Coding 的旧评估读时丢掉，下次压缩时清出。
-- 评估只出现在 Coding 悬停里（强度、置信度、模式）。Coding 内部观测在 `pulse:coding-observations`，token 证据是三个来源的 `pulse:token-buckets:<来源>`（「确定为零」只认 Mac 本机扫描的覆盖，账号与云端的桶只作正证据）；公开 API 不返回原始用量、应用名或模型名。契约与闸门见 [Coding 的 Clef 评估](../workers/core/README.md#coding-的-clef-评估)。
+- Coding 道画的是事实本身，没有模型分。内部观测在 `pulse:coding-observations`，token 证据是三个来源的 `pulse:token-buckets:<来源>`（账号与云端的桶只作正证据）；公开 API 不返回原始用量、应用名或模型名。三色带的切片规则见 [存储：事实时间线](../workers/core/README.md#存储事实时间线)。
 
 ## 首屏与浏览器
 
