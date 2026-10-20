@@ -4,8 +4,8 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useState } from "react";
 
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
-import { LimitMeter, PaceMarker, UsageMeter } from "@/components/live/vibecoding/limit-meter";
-import { LIMITS_SILENT, compactLimit, formatCompactReset, limitColor, limitPace, nextCompactTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
+import { LimitMeter, LimitUnavailable, PaceMarker, UsageMeter } from "@/components/live/vibecoding/limit-meter";
+import { LIMITS_SILENT, compactLimit, featuredLimitRows, hasFeaturedLimits, formatCompactReset, limitColor, limitPace, nextCompactTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, BrandMark } from "@/components/live/vibecoding/marks";
 import { useAgentActive, type FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -13,6 +13,8 @@ import { useStale } from "@/hooks/use-stale";
 import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import type { CodingAgentRow } from "@/lib/coding-agents";
 import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
+
+const EXPAND_BEFORE_LINK = new Set(["cursor"]);
 
 function CompactAgentRow({
   row,
@@ -59,8 +61,12 @@ function CompactAgentRow({
   const { active, sources } = useAgentActive(row, macDeclaredOffline, clocks);
   const usageUrl = agentUsageUrl(row.id);
   const [expanded, setExpanded] = useState(false);
-  const expandable = !usageUrl && !limitsStale && row.limits.length > 1;
+  const expandable =
+    (!usageUrl || EXPAND_BEFORE_LINK.has(row.id)) && !limitsStale && row.limits.length > 1;
   const open = expandable && expanded;
+  const detailRows = hasFeaturedLimits(row.id)
+    ? featuredLimitRows(row)
+    : row.limits.map((item) => ({ kind: "limit" as const, key: item.key, title: item.label ?? item.key, limit: item }));
 
   return (
     <div
@@ -155,15 +161,25 @@ function CompactAgentRow({
       </UsageMeter>
       {open && (
         <div className="mt-3 grid gap-3 border-l border-line pl-3">
-          {row.limits.map((item) => (
-            <LimitMeter
-              key={item.key}
-              limit={item}
-              title={item.label ?? item.key}
-              href={null}
-              label={agentUsageLabel(row.label, item.label ?? item.key)}
-            />
-          ))}
+          {detailRows.map((item) =>
+            item.kind === "limit" ? (
+              <LimitMeter
+                key={item.key}
+                limit={item.limit}
+                title={item.title}
+                href={usageUrl}
+                label={agentUsageLabel(row.label, item.title)}
+              />
+            ) : (
+              <LimitUnavailable
+                key={item.key}
+                title={item.title}
+                reason={item.reason}
+                href={usageUrl}
+                label={agentUsageLabel(row.label, item.title)}
+              />
+            ),
+          )}
         </div>
       )}
     </div>
