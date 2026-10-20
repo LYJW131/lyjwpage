@@ -16,12 +16,12 @@ function formatter(options: Intl.DateTimeFormatOptions, timeZone: string | undef
   return new Intl.DateTimeFormat("en-US", { ...options, timeZone });
 }
 
-function formatDuration(ms: number) {
+export function formatDuration(ms: number) {
   const hours = Math.round(ms / 3_600_000);
-  if (hours < 24) return `${hours}\u00a0h`;
+  if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   const rest = hours % 24;
-  return rest ? `${days}\u00a0d\u00a0${rest}\u00a0h` : `${days}\u00a0d`;
+  return rest ? `${days}d\u00a0${rest}h` : `${days}d`;
 }
 
 function dayTicks(from: number, to: number, timeZone: string | undefined) {
@@ -55,7 +55,36 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
 
   return (
     <div className="flex min-h-40 flex-1 flex-col gap-1">
-      <div className="relative min-h-28 flex-1 border-b border-line">
+      <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-1" aria-hidden>
+        <span />
+        <div className="relative h-4">
+          {ticks.map((tick) => (
+            <span
+              key={tick.at}
+              className="absolute top-0 -translate-x-1/2 text-2xs leading-none text-muted-foreground"
+              style={{ left: `${x(tick.at + DAY_MS / 2)}%` }}
+            >
+              {x(tick.at + DAY_MS / 2) < 100 ? tick.label : null}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="grid min-h-28 flex-1 grid-cols-[2rem_minmax(0,1fr)] gap-x-1">
+        <div className="relative" aria-hidden>
+          {[0, 50, 100].map((percent) => (
+            <span
+              key={percent}
+              className="absolute right-1 -translate-y-1/2 text-2xs leading-none text-muted-foreground"
+              style={{ top: `${y(percent)}%` }}
+            >
+              {percent}%
+            </span>
+          ))}
+        </div>
+        <div className="relative border-b border-l border-line">
+        {ticks.map((tick) => (
+          <span key={tick.at} aria-hidden className="absolute inset-y-0 border-l border-line" style={{ left: `${x(tick.at)}%` }} />
+        ))}
         {[50, 100].map((percent) => (
           <span
             key={percent}
@@ -77,6 +106,13 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
             className="text-muted-foreground" stroke="currentColor" strokeWidth="1" strokeDasharray="1 3"
             vectorEffect="non-scaling-stroke"
           />
+          {forecast.usedPercent < 100 && (
+            <line
+              x1={nowX} y1={y(forecast.usedPercent)} x2="100" y2="0"
+              className="text-signal-green" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
           <polygon points={`${used} ${nowX},100 0,100`} className="fill-foreground" fillOpacity="0.08" />
           <polyline
             points={used}
@@ -96,6 +132,9 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
           className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground"
           style={{ left: `${nowX}%`, top: `${y(forecast.usedPercent)}%` }}
         />
+        {forecast.usedPercent < 100 && (
+          <span aria-hidden className="absolute top-0 right-0 size-2 translate-x-1/2 -translate-y-1/2 rounded-full bg-signal-green" />
+        )}
         {lockedFrom != null && (
           <span
             aria-hidden
@@ -103,84 +142,6 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
             style={{ left: `${x(lockedFrom)}%`, top: "0%" }}
           />
         )}
-        <span className="absolute top-1 left-1 text-2xs leading-none text-muted-foreground">100%</span>
-        <span className="absolute top-1/2 left-1 translate-y-1 text-2xs leading-none text-muted-foreground">50%</span>
-      </div>
-      <div className="relative h-4" aria-hidden>
-        {ticks.map((tick) => (
-          <span
-            key={tick.at}
-            className="absolute top-0 -translate-x-1/2 text-2xs leading-none text-muted-foreground"
-            style={{ left: `${x(tick.at + DAY_MS / 2)}%` }}
-          >
-            {x(tick.at + DAY_MS / 2) < 100 ? tick.label : null}
-          </span>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground" aria-hidden>
-        <span className="flex items-center gap-1"><span className="h-0.5 w-3 bg-foreground" />Used</span>
-        <span className="flex items-center gap-1">
-          <span className={cn("w-3 border-t-2 border-dashed", runsOut ? "border-signal-red" : "border-muted-foreground")} />
-          Pace
-        </span>
-        <span className="flex items-center gap-1"><span className="w-3 border-t-2 border-dotted border-muted-foreground" />Even</span>
-        {runsOut && <span className="flex items-center gap-1"><span className="limit-locked-hatched size-3" />Locked</span>}
-      </div>
-    </div>
-  );
-}
-
-export function DailyUse({ forecast, timeZone }: { forecast: LimitForecast; timeZone: string | undefined }) {
-  const allowed = forecast.evenRate * DAY_MS;
-  const scale = Math.max(allowed * 1.5, ...forecast.days.map((day) => day.used));
-  const weekday = formatter({ weekday: "short" }, timeZone);
-  const columns = "grid grid-cols-7 gap-2";
-  return (
-    <div className="flex flex-1 flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="label-mono text-muted-foreground">Weekly use per day</span>
-        <span className="text-xs text-muted-foreground">Allowed {allowed.toFixed(1)} pp</span>
-      </div>
-      <div className="flex flex-1 flex-col gap-1">
-        <div className={cn(columns, "relative min-h-18 flex-1 pt-4")}>
-          <span
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-muted-foreground"
-            style={{ bottom: `calc((100% - 1rem) * ${allowed / scale})` }}
-          />
-          {forecast.days.map((day) => {
-            const over = day.used > allowed;
-            const height = (day.used / scale) * 100;
-            return (
-              <div
-                key={day.date}
-                className="relative flex min-w-0 flex-col justify-end"
-                title={`${day.date} · ${Math.round(day.used)} pp${day.locked ? " · out of quota" : ""}`}
-              >
-                <span
-                  className={cn("absolute inset-x-0 text-center text-2xs leading-none tabular-nums", over ? "text-foreground" : "text-muted-foreground")}
-                  style={{ bottom: `calc(${day.locked && day.used < allowed ? 100 : height}% + 0.25rem)` }}
-                >
-                  {Math.round(day.used)}
-                </span>
-                {day.locked && day.used < allowed ? (
-                  <span className="limit-locked-hatched block h-full w-full" />
-                ) : (
-                  <span
-                    className={cn("block w-full", over ? "bg-signal-yellow" : "bg-muted-foreground/40")}
-                    style={{ height: `${height}%` }}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className={columns}>
-          {forecast.days.map((day) => (
-            <span key={day.date} className="text-center text-2xs leading-none text-muted-foreground">
-              {day.partial ? "Today" : weekday.format(new Date(`${day.date}T12:00:00Z`))}
-            </span>
-          ))}
         </div>
       </div>
     </div>
@@ -218,7 +179,7 @@ export function forecastStats(forecast: LimitForecast | null) {
   const pace = forecast?.rate != null ? forecast.rate / forecast.evenRate : null;
   return [
     { label: "Pace", value: pace != null ? `${pace.toFixed(1)}x` : "—", title: "Compared with an even pace" },
-    { label: "Per day", value: forecast?.rate != null ? `${(forecast.rate * DAY_MS).toFixed(1)} pp` : "—", title: undefined },
+    { label: "Per day", value: forecast?.rate != null ? `${(forecast.rate * DAY_MS).toFixed(1)}%` : "—", title: undefined },
     {
       label: forecast?.runOutAt != null ? "Locked" : "At reset",
       title: undefined,
@@ -227,47 +188,43 @@ export function forecastStats(forecast: LimitForecast | null) {
           ? "—"
           : forecast.lockedMs != null
             ? formatDuration(forecast.lockedMs)
-            : `~${Math.round(forecast.percentAtReset ?? 0)}%`,
+            : `${Math.round(forecast.percentAtReset ?? 0)}%`,
     },
   ];
 }
 
-export function ForecastBlock({ forecast, timeZone }: { forecast: LimitForecast | null; timeZone: string | undefined }) {
+function forecastSummary(forecast: LimitForecast | null, timeZone: string | undefined) {
   const clock = formatter({ weekday: "short", hour: "numeric", minute: "2-digit" }, timeZone);
-  let headline = "No forecast yet";
-  let detail = "Waiting for a weekly reading";
-  if (forecast) {
-    const window = `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
-    if (forecast.ranOut && forecast.runOutAt != null) {
-      headline = `Ran out ${clock.format(forecast.runOutAt)}`;
-      detail = `Locked until ${clock.format(forecast.resetAt)}`;
-    } else if (forecast.rate == null) {
-      headline = "New week, no forecast";
-      detail = window;
-    } else if (forecast.runOutAt != null) {
-      headline = `Runs out ${clock.format(forecast.runOutAt)}`;
-      detail = `${window}, then locked ${formatDuration(forecast.lockedMs ?? 0)}`;
-    } else {
-      headline = `~${Math.round(forecast.percentAtReset ?? 0)}% at reset`;
-      detail = window;
-    }
+  if (!forecast) return { headline: "No forecast yet", detail: "Waiting for a weekly reading" };
+  const window = `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
+  if (forecast.ranOut && forecast.runOutAt != null) {
+    return { headline: `Ran out ${clock.format(forecast.runOutAt)}`, detail: `Locked until ${clock.format(forecast.resetAt)}` };
   }
+  if (forecast.rate == null) return { headline: "New week, no forecast", detail: window };
+  if (forecast.runOutAt != null) {
+    return { headline: `Runs out ${clock.format(forecast.runOutAt)}`, detail: `${window}, then locked ${formatDuration(forecast.lockedMs ?? 0)}` };
+  }
+  return { headline: `${Math.round(forecast.percentAtReset ?? 0)}% at reset`, detail: window };
+}
 
+export function ForecastSummary({ forecast, timeZone }: { forecast: LimitForecast | null; timeZone: string | undefined }) {
+  const { headline, detail } = forecastSummary(forecast, timeZone);
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="label-mono text-muted-foreground">Weekly forecast</span>
-        <span className="truncate text-xs text-muted-foreground">
-          {forecast ? `Resets ${clock.format(forecast.resetAt)}` : null}
-        </span>
+    <div className="grid gap-1.5">
+      <div className={cn("text-lg leading-none font-semibold tracking-tight lg:text-xl", forecast?.runOutAt != null && "text-signal-red")}>
+        {headline}
       </div>
-      <div className="grid gap-1">
-        <div className={cn("text-lg font-semibold tracking-tight lg:text-xl", forecast?.runOutAt != null && "text-signal-red")}>
-          {headline}
-        </div>
-        <div className="text-xs text-muted-foreground">{detail}</div>
-      </div>
-      {forecast ? <ForecastChart forecast={forecast} timeZone={timeZone} /> : <div className="min-h-40 flex-1 border-b border-line" />}
+      <div className="text-xs text-muted-foreground">{detail}</div>
+    </div>
+  );
+}
+
+export function ForecastBlock({ forecast, timeZone }: { forecast: LimitForecast | null; timeZone: string | undefined }) {
+  return (
+    <div className="flex min-w-0 flex-1 flex-col pb-1.5">
+      {forecast ? <ForecastChart forecast={forecast} timeZone={timeZone} /> : <div className="grid min-h-40 flex-1 place-items-center border border-dashed border-line px-4 text-center text-xs text-muted-foreground">
+          Forecast appears once the weekly limit is available
+        </div>}
     </div>
   );
 }

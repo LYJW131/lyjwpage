@@ -56,15 +56,17 @@ const poses: SpriteRun[][] = mascotFetchData.poses.map((rows) =>
 export function ClaudeCodeMascot({
   className,
   size = 24,
+  animated = true,
 }: {
   className?: string;
   size?: number;
+  animated?: boolean;
 }) {
   const reducedMotion = useReducedMotion();
   const [stepIndex, setStepIndex] = useState(0);
 
   useEffect(() => {
-    if (reducedMotion) return;
+    if (reducedMotion || !animated) return;
 
     let cancelled = false;
     let currentStep = 0;
@@ -92,9 +94,9 @@ export function ClaudeCodeMascot({
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [reducedMotion]);
+  }, [reducedMotion, animated]);
 
-  const poseIndex = reducedMotion ? FIRST_POSE : mascotFetchData.sequence[stepIndex].pose;
+  const poseIndex = reducedMotion || !animated ? FIRST_POSE : mascotFetchData.sequence[stepIndex].pose;
 
   return (
     <svg

@@ -1,4 +1,3 @@
-import { siteDay } from "@shared/history-ingest";
 import type { LimitHistoryPoint } from "@shared/limit-history";
 import type { VibeCodingLimit } from "@shared/types";
 
@@ -13,8 +12,8 @@ const RECENT_DAYS = 7;
 const RECENT_HALF_LIFE_MS = 3 * DAY_MS;
 // 没有历史时，窗口开头这么久内不出预测。
 const MIN_ELAPSED_MS = 6 * HOUR_MS;
-// 到这条线就算用完：实测用完后读数会停在 98 好几天，不一定走到 100。
-const RUN_OUT_PERCENT = 98;
+// 读数到 100 才算用完；停在 98 左右的日子是没怎么用，不是被锁。
+const RUN_OUT_PERCENT = 100;
 const SAME_RESET_SLACK_S = 3_600;
 
 export type UsageInterval = {
@@ -41,7 +40,6 @@ export type LimitForecast = {
   lockedMs: number | null;
   percentAtReset: number | null;
   window: Array<[at: number, usedPercent: number]>;
-  days: Array<{ date: string; used: number; locked: boolean; partial: boolean }>;
 };
 
 function sameWindow(left: number | null, right: number | null) {
@@ -89,28 +87,11 @@ export function recentRate(intervals: UsageInterval[], now: number): number | nu
   return span >= 12 * HOUR_MS ? used / span : null;
 }
 
-function dailyUsage(intervals: UsageInterval[], now: number, timeZoneDay: (at: number) => string) {
-  const days = new Map<string, { used: number; locked: boolean }>();
-  for (const interval of intervals) {
-    const date = timeZoneDay(interval.to - 1);
-    const day = days.get(date) ?? { used: 0, locked: false };
-    day.used += interval.used;
-    day.locked ||= interval.locked || interval.capped;
-    days.set(date, day);
-  }
-  const today = timeZoneDay(now);
-  return [...days.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .slice(-RECENT_DAYS)
-    .map(([date, day]) => ({ date, used: day.used, locked: day.locked, partial: date === today }));
-}
-
 // readAt 是 limit 这份读数的时刻：KV 里的当前读数可能比 D1 归档晚一拍，比它新的归档点不能拿来比。
 export function forecastLimit(
   limit: VibeCodingLimit,
   history: LimitHistoryPoint[],
   readAt: number,
-  timeZoneDay: (at: number) => string = siteDay,
 ): LimitForecast | null {
   const now = readAt;
   if (limit.windowMinutes == null || limit.resetsAt == null) return null;
@@ -136,7 +117,6 @@ export function forecastLimit(
     elapsedFraction: elapsed / windowMs,
     evenRate,
     window,
-    days: dailyUsage(intervals, now, timeZoneDay),
   };
   if (ranOutPoint) {
     return {

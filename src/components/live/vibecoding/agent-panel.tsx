@@ -1,9 +1,10 @@
 "use client";
 
+import ClaudeCodeText from "@lobehub/icons/es/ClaudeCode/components/Text";
 import NumberFlow from "@number-flow/react";
 import type { ReactNode } from "react";
 
-import { DailyUse, ForecastBlock, forecastStats } from "@/components/live/vibecoding/limit-forecast-panel";
+import { ForecastBlock, ForecastSummary, forecastStats, formatDuration } from "@/components/live/vibecoding/limit-forecast-panel";
 import { LimitTable } from "@/components/live/vibecoding/limit-table";
 import { LIMITS_SILENT, featuredLimitRows } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, FeaturedMark } from "@/components/live/vibecoding/marks";
@@ -39,7 +40,7 @@ function Stat({ label, title, children }: { label: ReactNode; title?: string; ch
   return (
     <div className="grid min-w-0 gap-1" title={title}>
       <div className="label-mono truncate text-muted-foreground">{label}</div>
-      <div className="truncate text-xl font-medium tracking-tight tabular-nums md:text-2xl">{children}</div>
+      <div className="truncate text-3xl font-medium tracking-tight tabular-nums md:text-4xl">{children}</div>
     </div>
   );
 }
@@ -78,26 +79,24 @@ export function AgentPanel({
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <FeaturedMark row={row} active={active} />
-          <span className="shrink-0 text-sm font-medium whitespace-nowrap">{row.label}</span>
-          {active && <ActiveBadge sources={sources} />}
+          {row.id === "claude" ? (
+            <ClaudeCodeText size={20} className="h-5 w-auto shrink-0" aria-label={row.label} />
+          ) : (
+            <span className="shrink-0 text-sm font-medium whitespace-nowrap">{row.label}</span>
+          )}
         </div>
-        <span className="flex min-w-0 items-baseline gap-1.5">
+        <span className="flex min-w-0 flex-col items-end gap-1">
+          {active ? <ActiveBadge sources={sources} /> : <span className="label-mono text-muted-foreground">Inactive</span>}
           <span
             className={cn("label-mono truncate", active ? "text-live-ink" : "text-muted-foreground")}
             title={row.usage?.models.join(" · ") || undefined}
           >
             {displayModel}
           </span>
-          {row.plan && (
-            <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline" title={`Plan ${row.plan.tier}`}>
-              <span aria-hidden className="mr-1.5">·</span>
-              {row.plan.label}
-            </span>
-          )}
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-x-3 gap-y-4 md:grid-cols-6 md:gap-x-4">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-4 md:grid-cols-4 md:gap-x-4">
         <Stat
           label={
             <span title={describeCodingSources(notes) || undefined}>
@@ -120,26 +119,29 @@ export function AgentPanel({
             : "—"}
         </Stat>
         <Stat label="Cache hit">{lastDay ? `${cacheHitRate.toFixed(1)}%` : "—"}</Stat>
+        <Stat label="Plan" title={row.plan ? `Plan ${row.plan.tier}` : undefined}>{row.plan?.label ?? "—"}</Stat>
         {forecastStats(forecast).map((stat) => (
           <Stat key={stat.label} label={stat.label} title={stat.title}>{stat.value}</Stat>
         ))}
+        <Stat label="Resets in">
+          {forecast ? formatDuration(Math.max(0, forecast.resetAt - forecast.now)) : "—"}
+        </Stat>
       </div>
 
       <div className="grid gap-6 border-t border-line pt-4 md:grid-cols-2 md:gap-8 lg:pt-5">
-        <div className="flex min-w-0 flex-col gap-5">
-          <div className="grid gap-2">
-            <div className="label-mono text-muted-foreground">Limits</div>
-            <LimitTable
-              items={limitRows.map((item) =>
-                item.kind === "limit"
-                  ? { key: item.key, title: item.title, limit: item.limit }
-                  : { key: item.key, title: item.title, limit: null, reason: item.reason },
-              )}
-              href={agentUsageUrl(row.id)}
-              agentLabel={row.label}
-            />
-          </div>
-          {forecast && forecast.days.length > 0 && <DailyUse forecast={forecast} timeZone={timeZone} />}
+        <div className="flex min-w-0 flex-col gap-3">
+          <ForecastSummary forecast={forecast} timeZone={timeZone} />
+          <LimitTable
+            tall
+            className="flex-1 content-between"
+            items={limitRows.map((item) =>
+              item.kind === "limit"
+                ? { key: item.key, title: item.title, limit: item.limit }
+                : { key: item.key, title: item.title, limit: null, reason: item.reason },
+            )}
+            href={agentUsageUrl(row.id)}
+            agentLabel={row.label}
+          />
         </div>
         <ForecastBlock forecast={forecast} timeZone={timeZone} />
       </div>

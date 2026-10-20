@@ -46,7 +46,7 @@
 `/api/ingest/agents` 的主体仍是各家限额行，按 id 合并后写进可滞后层 KV（`limits:v1`），由 `GET /api/status/limits` 读出，
 浏览器按 id 贴到 coding 卡片的 agent 行上（`src/lib/coding-agents.ts` 的 `codingAgentRows`）；限额的来源集合变了才失效首屏标签 `limits`。同一封可以另带三份 coding 数据，见下一节。
 
-`GET /api/status/limits/history` 是限额的历史读数，从 D1 读上报入口写的 `limit_hours`（最近 `LIMIT_HISTORY_HOURLY_DAYS` 天每小时一点）与 `limit_snapshots`（更早的每天一点，共 `LIMIT_HISTORY_DAYS` 天），只出 `LIMIT_HISTORY_SERIES` 里要预测的窗口（均在 `shared/limit-history.ts`）。
+`GET /api/status/limits/history` 是限额的历史读数，从 D1 读上报入口写的 `limit_hours`（最近 `LIMIT_HISTORY_HOURLY_DAYS` 天每小时一点）与 `limit_snapshots`（更早的每天一点，共 `LIMIT_HISTORY_DAYS` 天），只出 `LIMIT_HISTORY_SERIES` 里要预测的窗口（均在 `shared/limit-history.ts`）；每个 isolate 记一份结果，`CACHE_MS` 内的请求不再查 D1。
 没有 `HISTORY` 绑定时回空序列。站点用它和 `limits` 的当前读数算周限额什么时候用完（`src/lib/limit-forecast.ts`）。
 
 ### coding agent 的 token 用量

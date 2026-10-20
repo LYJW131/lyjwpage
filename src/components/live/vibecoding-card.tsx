@@ -104,7 +104,6 @@ export function VibeCodingCard({
             rows={rows.filter((row) => row.row === "compact")}
             macDeclaredOffline={macDeclaredOffline}
             clocks={clocks}
-            today={today}
           />
         </>
       ) : (

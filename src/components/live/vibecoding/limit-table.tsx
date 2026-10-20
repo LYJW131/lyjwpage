@@ -46,8 +46,8 @@ function useLimitReading(limit: VibeCodingLimit) {
   };
 }
 
-function Track({ href, label, children }: { href: string | null; label: string; children?: ReactNode }) {
-  const bar = <span className="relative block h-1.5 w-full overflow-hidden bg-muted">{children}</span>;
+function Track({ href, label, tall, children }: { href: string | null; label: string; tall?: boolean; children?: ReactNode }) {
+  const bar = <span className={cn("relative block w-full overflow-hidden bg-muted", tall ? "h-3" : "h-1.5")}>{children}</span>;
   if (!href) return <span className="flex h-6 min-w-0 items-center">{bar}</span>;
   return (
     <a
@@ -87,54 +87,68 @@ function ResetText({ reset }: { reset: ReturnType<typeof formatReset> }) {
   );
 }
 
-function LimitCells({ limit, title, href, label }: { limit: VibeCodingLimit; title: string; href: string | null; label: string }) {
+const ITEM = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:contents";
+const NAME = "col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 sm:col-auto sm:row-auto";
+const TRACK = "col-span-2 row-start-2 sm:col-auto sm:row-auto";
+const PERCENT = "col-start-2 row-start-1 text-right font-mono text-xs tabular-nums sm:col-auto sm:row-auto";
+
+function LimitCells({ limit, title, href, label, tall }: { limit: VibeCodingLimit; title: string; href: string | null; label: string; tall?: boolean }) {
   const { usedPercent, color, pace, overPace, reset } = useLimitReading(limit);
   return (
-    <>
-      <span className="grid min-w-0" title={title}>
+    <div className={ITEM}>
+      <span className={NAME} title={title}>
         <span className="truncate text-xs">{title}</span>
         <span className="text-2xs whitespace-nowrap text-muted-foreground sm:hidden">
           <ResetText reset={reset} />
         </span>
       </span>
-      <Track href={href} label={label}>
-        <span className="block h-full transition-[width] duration-700" style={{ width: `${usedPercent}%`, backgroundColor: color }} />
-        {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
-      </Track>
-      <span className="text-right font-mono text-xs tabular-nums" style={{ color }}>
+      <span className={cn("grid min-w-0 sm:contents", TRACK)}>
+        <Track href={href} label={label} tall={tall}>
+          <span className="block h-full transition-[width] duration-700" style={{ width: `${usedPercent}%`, backgroundColor: color }} />
+          {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
+        </Track>
+      </span>
+      <span className={PERCENT} style={{ color }}>
         <NumberFlow value={Math.round(usedPercent)} locales="en-US" />%
       </span>
       <span className="hidden text-right text-xs whitespace-nowrap text-muted-foreground sm:block">
         <ResetText reset={reset} />
       </span>
-    </>
+    </div>
   );
 }
 
-// 每条限额的四格直接挂在同一个 grid 上，名称、轨道、读数、重置时间各自成列，轨道起止对齐。
+// 宽屏每条限额的四格直接挂在同一个 grid 上，名称、轨道、读数、重置时间各自成列，轨道起止对齐；手机拆成两行：名称与读数，轨道独占一行。
 export function LimitTable({
   items,
   href,
   agentLabel,
+  tall,
   className,
 }: {
   items: LimitTableItem[];
   href: string | null;
   agentLabel: string;
+  tall?: boolean;
   className?: string;
 }) {
   return (
-    <div className={cn("grid grid-cols-[auto_minmax(3rem,1fr)_auto] items-center gap-x-3 sm:grid-cols-[auto_minmax(3rem,1fr)_auto_auto]", className)}>
+    <div className={cn("grid grid-cols-1 gap-y-3 sm:grid-cols-[auto_minmax(3rem,1fr)_auto_auto] sm:items-center sm:gap-x-3 sm:gap-y-0", className)}>
       {items.map((item) =>
         item.limit ? (
-          <LimitCells key={item.key} limit={item.limit} title={item.title} href={href} label={`${agentLabel} usage, ${item.title}`} />
+          <LimitCells key={item.key} limit={item.limit} title={item.title} href={href} label={`${agentLabel} usage, ${item.title}`} tall={tall} />
         ) : (
-          <span key={item.key} className="contents">
-            <span className="truncate text-xs" title={item.reason}>{item.title}</span>
-            <Track href={href} label={`${agentLabel} usage, ${item.title}`} />
-            <span className="text-right font-mono text-xs text-muted-foreground">—</span>
+          <div key={item.key} className={ITEM}>
+            <span className={NAME} title={item.reason}>
+              <span className="truncate text-xs">{item.title}</span>
+              <span className="text-2xs whitespace-nowrap text-muted-foreground sm:hidden">Unavailable</span>
+            </span>
+            <span className={cn("grid min-w-0 sm:contents", TRACK)}>
+              <Track href={href} label={`${agentLabel} usage, ${item.title}`} tall={tall} />
+            </span>
+            <span className={cn(PERCENT, "text-muted-foreground")}>—</span>
             <span className="hidden text-right text-xs text-muted-foreground sm:block">Unavailable</span>
-          </span>
+          </div>
         ),
       )}
     </div>
