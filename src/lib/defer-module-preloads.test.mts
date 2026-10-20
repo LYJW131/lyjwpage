@@ -65,9 +65,10 @@ function markup(elements: Element[]) {
 
 function startup({
   hidden = false,
+  paintSupport = false,
   module = '<script type="module" async="">import "/assets/entry.client-A.js";</script>',
   preloads = preloadA + preloadB,
-}: { hidden?: boolean; module?: string; preloads?: string } = {}) {
+}: { hidden?: boolean; paintSupport?: boolean; module?: string; preloads?: string } = {}) {
   const html = deferModulePreloads(`<html><head>${preloads}</head><body><main>SSR</main>${module}</body></html>`);
   const body = html.slice(html.indexOf("<body>") + 6, html.lastIndexOf("</body>"));
   const nodes = parsedElements(body);
@@ -111,6 +112,14 @@ function startup({
   };
   vm.runInNewContext(bootstrap.textContent, {
     document,
+    performance: { getEntriesByName: () => [] },
+    ...(paintSupport ? {
+      PerformanceObserver: class {
+        static supportedEntryTypes = ["paint"];
+        observe() {}
+        disconnect() {}
+      },
+    } : {}),
     requestAnimationFrame(callback: () => void) {
       const id = ++nextFrame;
       frames.set(id, callback);
@@ -154,6 +163,18 @@ test("两次动画帧回调后成批激活预加载并原位启动模块，回�
   secondFrame();
   run.hide();
   assert.deepEqual(run.events, ["preloads", "module"]);
+});
+
+test("Paint API 可用但不发通知时，入口仍严格在第二次动画帧回调启动", () => {
+  const run = startup({ paintSupport: true });
+  assert.deepEqual(run.events, []);
+  assert.equal(run.frames.size, 1);
+  run.frame();
+  assert.deepEqual(run.events, []);
+  assert.equal(run.frames.size, 1);
+  run.frame();
+  assert.deepEqual(run.events, ["preloads", "module"]);
+  assert.equal(run.frames.size, 0);
 });
 
 test("初始后台无需等动画帧，预加载和模块只启动一次", () => {

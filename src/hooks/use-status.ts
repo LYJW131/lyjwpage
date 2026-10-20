@@ -78,10 +78,10 @@ export function useStatus<T>(
     revalidateOnFocus,
   } = (typeof intervalOrOptions === "object" ? intervalOrOptions : maybeOptions) as StatusOptions<T>;
   const active = usePageActive();
-  const socketConnected = useLiveSocketConnected();
   const lag = layerOfPath(path) === "lag";
   const cadenceMs = lag ? cadenceOfPath(path) : undefined;
   const pushCovers = pushCoversPath(path);
+  const socketConnected = useLiveSocketConnected(!lag && pushCovers);
   if (process.env.NODE_ENV !== "production" && lag === (refreshInterval !== undefined)) {
     throw new Error(`useStatus("${path}"): lag views take their cadence from lib/status-views; realtime views need an interval`);
   }
@@ -143,7 +143,7 @@ export function useStatus<T>(
   // 被推送丢弃的回源需要补取，但须等同键全部请求结束，避免多个消费者互相丢弃并无限重试。
   const onDiscarded = useCallback((key: string) => refetchLedger.discarded(key), []);
   const onSuccess = useCallback((_data: unknown, key: string) => refetchLedger.accepted(key), []);
-  const { data, error, isLoading, isValidating, mutate } = useSWR<StatusResponse<T>>(path, guarded, {
+  const swr = useSWR<StatusResponse<T>>(path, guarded, {
     onDiscarded,
     onSuccess,
     fallbackData,
@@ -156,6 +156,7 @@ export function useStatus<T>(
     keepPreviousData: true,
     shouldRetryOnError: false,
   });
+  const { data, mutate } = swr;
 
   const currentUpdatedAt = lag && data?.ok ? data.updatedAt : undefined;
   if (lag && currentUpdatedAt !== undefined && currentUpdatedAt !== lagAnchor) setLagAnchor(currentUpdatedAt);
@@ -181,9 +182,17 @@ export function useStatus<T>(
   return {
     data: data?.ok ? data.data : undefined,
     updatedAt: data?.ok ? data.updatedAt : undefined,
-    error: data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined,
-    isLoading,
-    isValidating,
+    // SWR 按读取过的字段订阅；提前解构会让只用 data 的卡片也随验证状态重渲染。
+    get error() {
+      const error = swr.error;
+      return data && !data.ok ? data.error : error ? String(error.message ?? error) : undefined;
+    },
+    get isLoading() {
+      return swr.isLoading;
+    },
+    get isValidating() {
+      return swr.isValidating;
+    },
     servedAt: fallback.ok ? fallback.servedAt : undefined,
   };
 }
