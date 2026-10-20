@@ -3,7 +3,7 @@ import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import type { NowListeningPayload } from "@shared/types";
 
 import { base64url, decodeBase64url } from "../crypto";
-import { pulseForModel } from "./pulse-shape";
+import { MERGE_GAP_SEC, pulseForModel } from "./pulse-shape";
 import type { SiteTool, ToolLedger } from "./registry";
 import { collectLists, normalize, PAGE_SIZE, strip, withMonthlyTotals, type PagedList } from "./status-shape";
 
@@ -40,7 +40,7 @@ const VIEW_NOTES = {
   siteDeployments: "Site Worker production deployment, recent builds, pageviews and PageSpeed samples",
   health: "Uptime, API cron heartbeat, error counts and real-visitor Web Vitals for this site",
   reporters: "Health of the reporters that push data to this site",
-  pulse: "LYJW's past 24 hours as time spans per lane: songs played on the Mac or HomePod (listening.spans) and songs inferred from Apple Music history on another device (listening.inferredElsewhere), shows watched, games played, stretches with a coding app in front on LYJW's Mac (coding.driverSpans; agents running alone are left out), plus totals for tokens, charging and steps. Coding summary: humanSeconds + bothSeconds is LYJW's driver time (a coding app in front on LYJW's Mac; keyboard activity is not tracked, so LYJW may have stepped away); agentSeconds is agents running without a coding app in front. Report driver time as LYJW's coding time, never the sum of all three",
+  pulse: `LYJW's past 24 hours as time spans per lane: songs played on the Mac or HomePod (listening.spans) and songs inferred from Apple Music history on another device (listening.inferredElsewhere), shows watched, games played, stretches with a coding app in front on LYJW's Mac (coding.driverSpans; agents running alone are left out). In every lane, a span's from/to bridges breaks under ${MERGE_GAP_SEC / 60} minutes and its minutes counts only the time actually active, plus totals for tokens, charging and steps. Coding summary: humanSeconds + bothSeconds is LYJW's driver time (a coding app in front on LYJW's Mac; keyboard activity is not tracked, so LYJW may have stepped away); agentSeconds is agents running without a coding app in front. Report driver time as LYJW's coding time, never the sum of all three`,
   digest: "Hourly AI-written summary of LYJW's past 24 hours, derived from the other views (read those for exact numbers)",
 } as const satisfies Record<StatusViewKey, string>;
 
