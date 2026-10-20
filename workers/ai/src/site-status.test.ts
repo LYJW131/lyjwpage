@@ -4,6 +4,8 @@ import test from "node:test";
 import { STATUS_VIEWS } from "@shared/status-views";
 import { runShowCard } from "./chat/show-card.ts";
 import { newLedger, type ToolIO, type ToolLedger } from "./tools/registry.ts";
+import { isCodingDriverValue } from "@shared/pulse-types";
+import { isDriverValue } from "./tools/pulse-shape.ts";
 import { isImageField, nowListeningHint, runSiteStatusTool, SITE_STATUS_TOOL } from "./tools/site-status.ts";
 
 const games = (count: number) =>
@@ -280,10 +282,10 @@ test("时间点后面附上按本地日历日算的相对日，凌晨归当天",
   assert.equal(json, '{"ok":true,"data":{"lastOnlineAt":"2026-10-19 02:28 (yesterday)","startedAt":"2026-10-20 00:10 (today)","endedAt":"2026-10-19 23:50 (yesterday)","resetsAt":"2026-10-21 01:00 (tomorrow)","playedAt":"2026-10-17 13:00 (3 days ago)"}}');
 });
 
-test("pulse 改成带本地时间的行：编码道再长听歌道也在，空闲与暂停去掉，同一首歌的短暂停合成一段但不计入时长，没标题的在放时段保留", async () => {
+test("pulse 改成带本地时间的行：编码道再长听歌道也在，空闲与暂停去掉，同一首歌的短暂停合成一段但不计入时长，没标题的在放时段保留，编码道只留驾驶员时段", async () => {
   const from = Date.parse("2026-10-20T00:00:00+08:00");
   const n = 2_000;
-  const coding = { startSec: Array.from({ length: n }, (_, i) => i * 10), endSec: Array.from({ length: n }, (_, i) => i * 10 + 10), value: Array.from({ length: n }, (_, i) => (i % 2) + 2), agentSources: Array(n).fill(1) };
+  const coding = { startSec: Array.from({ length: n }, (_, i) => i * 10), endSec: Array.from({ length: n }, (_, i) => i * 10 + 10), value: Array.from({ length: n }, (_, i) => (i < n / 2 ? (i % 2) * 2 + 1 : 2)), agentSources: Array(n).fill(1) };
   const listening = {
     startSec: [0, 3600, 3900, 3960, 4200, 50_000],
     endSec: [3600, 3900, 3960, 4200, 4500, 50_200],
@@ -301,6 +303,7 @@ test("pulse 改成带本地时间的行：编码道再长听歌道也在，空�
     { from: "2026-10-20 13:53", to: "2026-10-20 13:56", title: "水光接天", minutes: 3, artist: "NOMELON NOLEMON" },
   ]);
   assert.deepEqual(lanes.watching.spans.map((span: { minutes: number; title: null }) => [span.title, span.minutes]), [[null, 5], [null, 5]]);
-  assert.equal(lanes.coding.activeSpans.length, 1);
-  assert.equal(lanes.coding.activeSpans[0].minutes, Math.round((n * 10) / 60));
+  assert.equal(lanes.coding.driverSpans.length, 1);
+  assert.equal(lanes.coding.driverSpans[0].minutes, Math.round((n / 2) * 10 / 60));
+  assert.deepEqual([0, 1, 2, 3].map(isDriverValue), [0, 1, 2, 3].map(isCodingDriverValue));
 });
