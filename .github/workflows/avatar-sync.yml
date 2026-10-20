@@ -54,30 +54,40 @@ jobs:
           client-id: Iv23liSmKTDKh0bxIfzB
           private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
           permission-contents: write
+          permission-pull-requests: write
 
+      # main 有分支保护、只经 PR 合入，个人仓库的保护规则不能给 App 开直推例外，所以开 PR 再压缩合并。
       # 只有经 API 生成的提交才由 GitHub 签名为 lyjw131[bot]；在 runner 上 git push 的提交没有签名。
-      - name: Commit new hash to main
+      - name: Commit new hash via pull request
         if: steps.avatar.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           HASH: ${{ steps.avatar.outputs.hash }}
         run: |
-          contents=$(printf '%s\n' "$HASH" | base64 -w0)
-          for attempt in 1 2 3; do
-            head=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
-            jq -n --arg repo "$GITHUB_REPOSITORY" --arg head "$head" --arg path "$MARKER" \
-              --arg contents "$contents" --arg hash "$HASH" '{
-              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
-              variables: { input: {
-                branch: { repositoryNameWithOwner: $repo, branchName: "main" },
-                expectedHeadOid: $head,
-                message: { headline: "chore(site): GitHub 头像已更新，触发重建", body: ("头像 sha256：" + $hash
-                  + "\n\nCo-authored-by: LYJW131 <153256373+LYJW131@users.noreply.github.com>"
-                  + "\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>") },
-                fileChanges: { additions: [{ path: $path, contents: $contents }] }
-              } }
-            }' > "$RUNNER_TEMP/commit.json"
-            if gh api graphql --input "$RUNNER_TEMP/commit.json" --jq .data.createCommitOnBranch.commit.url; then
+          repo="repos/$GITHUB_REPOSITORY"
+          branch="avatar-sync/${HASH:0:12}"
+          title="chore(site): GitHub 头像已更新，触发重建"
+          body=$(printf '头像 sha256：%s\n\nCo-authored-by: LYJW131 <153256373+LYJW131@users.noreply.github.com>\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' "$HASH")
+          head=$(gh api "$repo/commits/main" --jq .sha)
+          gh api -X DELETE "$repo/git/refs/heads/$branch" >/dev/null 2>&1 || true
+          gh api -X POST "$repo/git/refs" -f ref="refs/heads/$branch" -f sha="$head" >/dev/null
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg branch "$branch" --arg head "$head" --arg path "$MARKER" \
+            --arg contents "$(printf '%s\n' "$HASH" | base64 -w0)" --arg title "$title" --arg body "$body" '{
+            query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+            variables: { input: {
+              branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+              expectedHeadOid: $head,
+              message: { headline: $title, body: $body },
+              fileChanges: { additions: [{ path: $path, contents: $contents }] }
+            } }
+          }' > "$RUNNER_TEMP/commit.json"
+          oid=$(gh api graphql --input "$RUNNER_TEMP/commit.json" --jq .data.createCommitOnBranch.commit.oid)
+          number=$(gh api -X POST "$repo/pulls" -f title="$title" -f head="$branch" -f base=main -f body="$body" --jq .number)
+          # 刚开的 PR 要等 GitHub 算完可合并状态，合并接口可能先失败，所以重试；sha 钉住刚建的提交。
+          for attempt in 1 2 3 4 5; do
+            if gh api -X PUT "$repo/pulls/$number/merge" -f merge_method=squash -f sha="$oid" \
+              -f commit_title="$title (#$number)" -f commit_message="$body" --jq .sha; then
+              gh api -X DELETE "$repo/git/refs/heads/$branch" >/dev/null || true
               exit 0
             fi
             sleep $((attempt * 5))
