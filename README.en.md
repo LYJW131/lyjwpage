@@ -179,7 +179,6 @@ The full picture (in Chinese): [Development workflow](./docs/workflow.md).
 | Styling and interaction | Tailwind CSS 4 · Motion · Number Flow · Geist |
 | Client data | SWR · WebSocket |
 | State and asset storage | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
-| Activity scoring | Workers AI (Clef) |
 | Homepage chat | DeepSeek Flash and Anthropic Claude (routed by Clef), Exa web search, Cloudflare Turnstile |
 | Native device integration | Swift / SwiftUI · HealthKit · BLE |
 | Hosting and delivery | Cloudflare Workers · Alibaba Cloud ESA |
