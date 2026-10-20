@@ -38,7 +38,7 @@
 # 部署流程
 
 - 站点生产部署默认走 Git：完成必要验证后提交改动，执行 `git push origin main`，由 Workers Builds 自动部署 `site` Worker（域名切换步骤见 `docs/workers-builds.md`）。lyjw 要求部署站点时，包含完成这次提交与推送，无需再逐步确认。
-- 合并 PR 用合并提交，标题与正文只用 `pnpm merge-message` 的输出，并带上它给的 `expectedHeadSha`，做法见 `.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」。PR 标题照提交规范写成 `type(scope): 描述`；把 main 同步进分支照常 merge、不改写已推送历史。
+- main 有分支保护，只经 PR 合入，不直推。合并方式按 PR 里的非合并提交数：少于 3 个压缩合并，3 个及以上用合并提交；方式、标题与正文只用 `pnpm merge-message` 的输出（`merge_method`、`commit_title`、`commit_message`），并带上它给的 `expectedHeadSha`，做法见 `.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛」。PR 标题照提交规范写成 `type(scope): 描述`；把 main 同步进分支照常 merge、不改写已推送历史。
 - 域名与缓存链路见 `docs/ops-facts.md`；部署后的 ESA 首页刷新与 `version` 事件通知由 `.github/workflows/purge-esa.yml` 负责，契约见 `workers/ingress/README.md`。
 - 自动部署失败时先检查并修复现有流程，不改用手工发布。
 - `workers/core`、`workers/ai`、`workers/ingress`、`workers/collector` 走 Cloudflare Workers Builds 原生 Git 集成，配置与监视路径见 `docs/workers-builds.md`。不在 GitHub Actions 里加 Worker 发布任务；修改共享依赖或移动文件时同步核对监视路径。Worker 之间的契约（`shared/state-core.ts`、`shared/public-status.ts`、`shared/collector.ts`、`shared/digest.ts`）只加不改，被调用方先发布（Workers Builds 并行构建，保证顺序靠「禁区」里的手动部署例外）。
@@ -89,6 +89,8 @@
 | 规则 | 由什么强制 |
 | --- | --- |
 | 不手跑 `wrangler deploy`、不强制提交 `.env*` / `.dev.vars`、不改提交身份或关签名 | PreToolUse 钩子 `scripts/guard-forbidden-commands.mjs` |
+| 合并 PR 带 `expectedHeadSha`、合并方式按提交数（压缩或合并提交） | PreToolUse 钩子 `scripts/guard-merge-method.ts` |
+| 不直推 main | GitHub 分支保护 |
 | 文档链接 / 路径 / 锚点存在、md 不写时间线、AGENTS 大小、docs 类型与索引、`@AGENTS.md` 配对 | `pnpm docs:check` |
 | 「只改注释」的清扫证明 | `pnpm docs:comment-only` |
 | README 架构图与工作流图跟 `scripts/readme-diagrams.ts` 的输出一致 | `pnpm docs:diagrams --check`（CI docs 门禁） |
