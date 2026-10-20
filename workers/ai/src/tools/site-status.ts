@@ -24,6 +24,7 @@ const VIEW_NOTES = {
   codingNow: `Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; mac-otlp = an agent's built-in telemetry on LYJW's Mac (Devin CLI); agents-otlp = built-in telemetry from cloud sessions (Claude Code, Devin CLI); agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac or mac-otlp) with an unlocked desktop suggests LYJW is at the computer. lastActivityAt is the latest report from a session that keeps reporting while it works: the site shows an agent as in use right now when that is within the last ${CODING_ACTIVE_WINDOW_MS / 60_000} minutes (ignoring mac and mac-otlp while the Mac has declared itself offline), so describe such an agent as working now, not as last active some minutes ago`,
   codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums (large)",
   limits: "Coding agent account plans and rate-limit windows",
+  limitsHistory: "Past readings of Claude Code's weekly all-models limit: hourly for the last 8 days, daily before that over three weeks (usedPercent and reset time)",
   agentStatus: "Status pages of AI providers (operational / incidents)",
   watching: "Recently watched movies and episodes on Emby",
   nowWatching: "What is playing on Emby right now",

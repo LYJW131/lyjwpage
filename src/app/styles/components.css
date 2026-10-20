@@ -241,3 +241,11 @@ button.paper-card {
     grid-auto-columns: auto;
   }
 }
+
+.limit-locked-hatched {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in oklab, var(--signal-red) 70%, transparent) 0 1.5px,
+    transparent 1.5px 4px
+  );
+}
