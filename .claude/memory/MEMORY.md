@@ -33,6 +33,7 @@
 - **Devin CLI can take work** (lyjw 2026-10-20 03:58 SGT, replacing the 00:06 no-Devin rule): cloud threads may dispatch implementation to Devin per skill `lyjwpage-devin-dispatch`; Claude keeps design, acceptance and re-signing; Devin Review on PRs stays in the bot-review gate.
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
+- OpenRouter keyless via egress injection (capped key, Inception models only; anthropic/openai 403): [[openrouter-egress]].
 - Cloud egress proxy injects keys for TypeSafe System One (Jev), Exa and Parallel. Jev also on Workers AI as `typesafe/jev` (AI Gateway `default`, BYOK; follows `jev-latest`, log the version per answer).
 - **Site previews:** `<branch>.preview.lyjw.dev` only (no login, noindex, #318). lyjw shut down `*-site.lyjw.workers.dev` entirely 2026-10-15; never use those URLs: [[preview-access-removed]].
 - Collector manual run: GitHub Actions "Run Collector Jobs".
@@ -66,7 +67,7 @@
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Devin CLI token usage comes from Devin's own OTel: the Mac into `mac-otlp` (labelled Mac), cloud threads into `agents-otlp` (labelled Cloud), split by ingress from the verified Access credential (#453 + #456). Lane coverage and setup: [[pulse-tokens-lane-coverage]].
-- Not adopting (don't re-propose): seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed. Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
+- Not adopting (don't re-propose): Mercury 3 for chat (tested 2026-10-20), seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed. Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 chose 维持现状); only native-OTel agents use OTLP. Don't re-propose: [[reporter-otel-decision]].
 - Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
 - Chat context prefetch is built (#384, 2026-10-17): Clef, in the same routing call, picks site status / project doc to prefetch (thresholds status 0.6, doc 0.45); presets prefetch fixed tool calls: [[idea-jev-context-prefetch]].
