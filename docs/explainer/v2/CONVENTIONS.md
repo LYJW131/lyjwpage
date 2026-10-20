@@ -73,7 +73,7 @@
 
 | 类 | 件 | 用法 |
 |---|---|---|
-| 时间 | `E.*`、`prog(t, a, b, 缓动)`、`keys(t, [[t, 值, 缓动], …])` | 缓动；`t` 在 `[a, b]` 里的进度；关键帧插值（值可以是数组） |
+| 时间 | `E.*`、`prog(t, a, b, 缓动)`、`keys(t, [[t, 值, 缓动], …])`、`track(t, [[t, 目标], …])` | 缓动；`t` 在 `[a, b]` 里的进度；关键帧插值，每个键都停住（值可以是数组）；叠加弹簧，连续经过几个点时用，换目标不减速 |
 | 随机 | `mulberry32(种子)`、`hash(n)` | 带种子的随机，逐帧闪烁用 `hash(f.frame)` |
 | 字 | `text`、`narration`、`measure`、`FONT` | `text(x, 字, px, py, { font, color, align, reveal, dim, alpha, maxW, texture })` |
 | 线 | `line`、`polyline`、`rect`、`fillRect`、`dashed`、`roundRect` | `polyline(x, 点, k)` 按进度 k 把折线画出来，返回笔尖位置 |
