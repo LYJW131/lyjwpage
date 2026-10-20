@@ -1,5 +1,6 @@
 import { enrichCommand, type EnrichedCommand } from "@shared/command-enrichment";
 import { writeAppleMusicCredentials } from "@shared/credentials";
+import type { OtlpCodingSource } from "@shared/coding-usage-sources";
 import { ACTIVE_COLLECTOR_JOBS, type CollectorJobOutcome } from "@shared/collector";
 import { jsonResponse } from "@shared/http-origins";
 import { describeRejections } from "@shared/ingest/coding";
@@ -14,6 +15,9 @@ import { commitLagIngest } from "./lag-ingest";
 
 const INGEST_PREFIX = "/api/ingest/";
 const OTLP_INGEST_PATH = "/api/ingest/agents/otlp";
+// 一个 OTLP 入口，按凭据持有的权限分来源：云端环境的 token 记 agents-otlp，Mac 的 token 记 mac-otlp。
+// 不看 payload 里的 os.type 或资源属性，那是客户端自报的。
+const OTLP_SOURCES = ["agents-otlp", "mac-otlp"] as const satisfies readonly OtlpCodingSource[];
 const SITE_DEPLOYED_PATH = "/api/internal/site-deployed";
 const COLLECTOR_REFRESH_PATH = "/api/internal/collector-refresh";
 const COLLECT_LAST: ReadonlySet<string> = new Set(["digest"]);
@@ -34,7 +38,7 @@ export async function handleRequest(request: Request, env: Env, ctx: ExecutionCo
   }
 
   if (url.pathname === OTLP_INGEST_PATH) {
-    return handleIngest(request, env, ctx, "agents-otlp", true);
+    return handleIngest(request, env, ctx, OTLP_SOURCES, true);
   }
 
   if (url.pathname.startsWith(INGEST_PREFIX)) {
@@ -64,7 +68,7 @@ async function handleIngest(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
-  source: string,
+  sources: string | readonly OtlpCodingSource[],
   otlp = false,
 ): Promise<Response> {
   if (previewWorkerEnabled()) {
@@ -72,9 +76,12 @@ async function handleIngest(
   }
   if (request.method !== "POST") return jsonResponse({ ok: false, error: "只接受 POST" }, { status: 405 });
 
-  if (!otlp && !INGEST_SOURCES.has(source)) return jsonResponse({ ok: false, error: `没有这个上报来源：${source}` }, { status: 404 });
-  const auth = await authorize(request, env, `ingest:${source}`);
+  if (typeof sources === "string" && !INGEST_SOURCES.has(sources)) {
+    return jsonResponse({ ok: false, error: `没有这个上报来源：${sources}` }, { status: 404 });
+  }
+  const auth = await authorize(request, env, typeof sources === "string" ? `ingest:${sources}` : sources.map((entry) => `ingest:${entry}` as const));
   if (!auth.ok) return jsonResponse({ ok: false, error: auth.error }, { status: auth.status });
+  const source = auth.permission.slice("ingest:".length);
 
   let raw: string;
   try {

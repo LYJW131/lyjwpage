@@ -54,7 +54,7 @@ core 与 site 的 Preview 和生产同服务名，Workers Issues 的摘要只能
 
 `scripts/build.mjs` 在预览构建里等待本分支 core Preview，`scripts/preview-backend.mjs#isMatchingPreview` 只接受 revision 与 `WORKERS_CI_COMMIT_SHA` 一致且状态读取就绪的地址。等待上限见 `WAIT_MS`；等不到匹配时构建直接失败，预览构建永不回退生产后端。选中的地址既是构建期的 `PREVIEW_BACKEND_URL`，也是运行时的预览后端，构建成功后冻结在 `build/site-preview.json`；`scripts/deploy-site-preview.mjs`（`pnpm preview:deploy`）只按这份冻结记录发布 `site` 的 Preview，不重查后端。预览构建强制清空 `PUBLIC_CF_WEB_ANALYTICS_TOKENS`，不带生产凭据。
 
-为了让只改前端或只改 AI 的分支也有同提交后端可用，core 的非生产分支构建（Builds 配置里的 `previews_base_config`）另配包含路径：同时覆盖前端、状态与 AI 依赖（`src/*`、`shared/*`、`workers/core/*`、`workers/ai/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、根配置清单），只排除 ingress 独有的 `shared/ingest/*`；生产配置的监视路径不变。
+为了让只改前端或只改 AI 的分支也有同提交后端可用，core 的非生产分支构建（Builds 配置里的 `previews_base_config`）另配包含路径：同时覆盖前端、状态与 AI 依赖，只排除 ingress 独有的 `shared/ingest/*`（源：`scripts/build-watch-paths.ts#PREVIEW_WATCH_PATHS`）；生产配置的监视路径不变。
 
 站点 Preview 对外地址是 `<预览名>.preview.lyjw.dev`（`scripts/preview-worker-name.ts#SITE_PREVIEW_DOMAIN`），来自 `wrangler.jsonc` 里只开 `previews_enabled`、`enabled: false` 的自定义域名，生产部署时生效，Cloudflare 自动建通配 DNS 与证书；`wrangler.jsonc` 的 `preview_urls` 设为 `false`，关闭 `*-site.lyjw.workers.dev`。不设登录，谁拿到地址都能打开：仓库公开，同分支的 core Preview 本来也公开，登录挡不住什么。自定义域名预览 Cloudflare 不自动加 `X-Robots-Tag: noindex`，所以自己加：Worker 渲染的响应由 `workers/site/src/index.ts#withoutIndexing` 加，不经 Worker 的静态资源（如 `/explainer/`、`/offline.html`）由 `public/_headers` 按 `preview.lyjw.dev` 主机加。core Preview 的 `ALLOWED_ORIGINS` 放行 `https://*.preview.lyjw.dev`。PR 上带地址的「Deploying Preview」评论只有走 Builds Previews（`previews_enabled` 与 `previews_base_config`）的 Worker 才会发，旧版「非生产分支触发」只给构建状态表；core 与 site 都要走 Previews。不要开账号级的 Workers Access 保护，它会挡住 core 预览的构建就绪检查。
 
@@ -70,15 +70,9 @@ PR 关闭时 `.github/workflows/preview-core-worker.yml` 检出默认分支，�
 
 ## 构建监视路径
 
-路径相对于仓库根目录，Cloudflare 的目录末尾 `*` 包含子目录。监视路径跟随生产运行依赖；分支 Preview 的触发路径见「分支预览」。
+生产触发（`main`）的包含与排除路径见 `scripts/build-watch-paths.ts#BUILD_WATCH_PATHS`，core、site 分支 Preview 的见同文件的 `PREVIEW_WATCH_PATHS`；ai、ingress、collector 没有分支构建，PR 上不会出现它们的检查。这两份常量是控制台配置的仓库内副本，Cloudflare 不读它们：改了要经 Builds API 同步控制台并读回核对（方式见 [仓库外事实](./ops-facts.md)），控制台先改的也要回写常量。监视路径跟随生产运行依赖。
 
-| Worker | 包含路径 | 排除路径 |
-| --- | --- | --- |
-| `core` | `workers/core/*`、`shared/*`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | `shared/ingest/*`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
-| `ai` | `workers/ai/*`、`shared/ai-paths.ts`、`shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/chat-time.ts`、`shared/mcp.ts`、`shared/http-origins.ts`、`shared/public-status.ts`、`shared/status-views.ts`、`shared/site.ts`、`shared/asset-url.ts`、`shared/json.ts`、`shared/sha256.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`scripts/preview-*` | 无 |
-| `site` | `src/*`、`shared/*`、`workers/site/*`、`scripts/*`、`public/*`、`docs/explainer/v2/*`、`.github/github-avatar.sha256`、`wrangler.jsonc`、`vite.config.ts`、`react-router.config.ts`、`tsconfig.json`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml` | 无 |
-| `ingress` | `workers/ingress/*`、`shared/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
-| `collector` | `workers/collector/*`、`shared/*`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json` | `shared/god-chat.ts`、`shared/god-chat-tiers.ts`、`shared/github-issue.ts`、`shared/build-routine.ts`、`shared/mcp.ts` |
+路径相对于仓库根目录；Cloudflare 先剔除命中排除路径的文件，剩下的再看包含路径，`*` 匹配任意字符，目录末尾的 `*` 包含子目录。规则按每次推送改到的文件判断：一个 PR 的最后一次推送只改了文档时，head 上没有构建检查是正常的。合并后要等哪些构建由 `scripts/deploy-check.ts --expect auto` 按同一份常量算，PR 上该有哪些由 `scripts/pr-gate.ts` 算。
 
 AI 的提示词、SDK 使用和工具编排留在 `workers/ai`，仅面向浏览器的对话契约保留在所排除的共享文件。采集 Worker 调 ai 近况摘要入口的契约 `shared/digest.ts` 只被 ai type-import，不进 ai 的包含路径。公开路径单独定义在 `shared/ai-paths.ts`，路径变化仍触发 core；其他文件只重导出这些路径。eslint 阻止 core 的生产实现导入 AI 业务契约或运行时，防止排除路径后悄悄漏发。
 

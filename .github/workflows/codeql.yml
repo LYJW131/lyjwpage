@@ -4,7 +4,7 @@ name: CodeQL
 on:
   push:
     branches: [main, dev]
-  # 有意只扫访客构建的 PR（分支前缀见 shared/build-routine.ts#branchForRun）：两项 Analyze 是它转待审的门槛（workers/ai/src/build/github.ts#BUILD_READY_CHECKS）；其他 PR 不扫，免得拖慢迭代
+  # 有意只扫访客构建的 PR（分支前缀见 shared/build-routine.ts#branchForRun）：两项 Analyze 是它转待审的门槛（workers/ai/src/build/checks.ts#BUILD_READY_CHECKS）；其他 PR 不扫，免得拖慢迭代
   pull_request:
   workflow_dispatch:
   schedule:

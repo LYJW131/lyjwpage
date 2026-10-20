@@ -81,3 +81,21 @@ test("同一文本按出现次数计：基线两次、现状三次算新增", ()
   assert.deepEqual(grew[0].extras[0].lines, [1, 2, 9]);
   assert.equal(compareCopy(baseline, { "src/a.tsx": hits["src/a.tsx"].slice(0, 2) }).grew.length, 0);
 });
+
+test("按语言分的文案表只查 en：同一对象里有 en 又有 zh 或 ja 时，zh / ja 整棵跳过", () => {
+  const hits = scan("src/components/x.tsx", `const COPY: Record<PlanLanguage, Copy> = {
+  en: { label: "Privacy notice", detail: (x) => \`relays \${x}\` },
+  zh: { label: "隐私说明", detail: (x) => \`转发\${x}\`, control: <>你可随时撤销</> },
+  ja: { label: "お知らせ", nested: { deep: "さらに" } },
+};`);
+  assert.equal(hits.length, 0);
+});
+
+test("文案表的 en 里混进中文照样拦；只有 zh 没有 en 的对象不算文案表", () => {
+  const enLeak = scan("src/lib/x.ts", `const COPY = { en: { label: "确定" }, zh: { label: "确定" } };`);
+  assert.deepEqual(enLeak.map((h) => h.text), ["确定"]);
+  const noEn = scan("src/lib/x.ts", `const names = { zh: "中文", ja: "日本語" };`);
+  assert.equal(noEn.length, 2);
+  const otherKeys = scan("src/lib/x.ts", `const COPY = { en: "Hi", zh: "你好", fr: "雅" };`);
+  assert.deepEqual(otherKeys.map((h) => h.text), ["雅"]);
+});

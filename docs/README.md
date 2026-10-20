@@ -2,7 +2,7 @@
 
 > 类型：reference
 
-本目录放跨子项目的文档；各子项目自己的说明在它目录里的 `README.md`，给 agent 的约束在同目录的 `AGENTS.md`。写法规范见根 [`AGENTS.md`](../AGENTS.md)「文档与注释」，`pnpm docs:check` 校验。
+本目录放跨子项目的文档；各子项目自己的说明在它目录里的 `README.md`，给 agent 的约束在同目录的 `AGENTS.md`。写法规范见根 [`AGENTS.md`](../AGENTS.md)「文档与注释」与 [`.claude/rules/docs-writing.md`](../.claude/rules/docs-writing.md)，`pnpm docs:check` 校验。
 
 每篇文首一行标类型：`reference` 是现状事实，与代码冲突以代码为准；`runbook` 是操作步骤；`decision` 是已定的取舍，写完不改；`record` 是某个时点的审计、核验、基准，标明 `按 <sha> <日期> 核对`，快照不维护，不当现状引用。新增文档在下表登记。
 
@@ -15,11 +15,12 @@
 | [CodeQL 告警自动修复](./codeql-autofix.md) | runbook | CodeQL 扫描后每条未关闭告警派一个 Cursor 云端 agent 修复并各开一个 PR |
 | [AI Worker 首次迁移](./ai-worker-migration.md) | runbook | 公开状态 RPC、聊天 DO 转移、密钥与构建配置的有序切换 |
 | [人与 agent 的开发工作流](./workflow.md) | reference | lyjw 与多个 Claude 怎么分工，规则分层与强制、验证回执、合并门槛、定时任务与访客构建的全貌 |
+| [API 命名与跨端契约](./api-contracts.md) | reference | 上报入口、状态端点、推送事件与跨来源字段的命名表和设计契约 |
 | [参考文献](./references.md) | reference | 塑造本项目做法的外部文章、演讲、仓库与官方文档，各取了什么、落在哪 |
 | [仓库外事实](./ops-facts.md) | reference | 控制台、Access、ESA、机器路径等不在仓库里的配置，逐条带核对时间与方式 |
 | [自建 Actions runner 实测](./actions-runner-benchmark.md) | record | 同一提交的托管机与自建机 CI、CodeQL 耗时及配置验证 |
 | [页面细节与关键设计](./design-notes.md) | reference | 首页各卡的细节，以及首屏缓存、推送分工、旧页面降级、窗口标题隐私判断、图片寻址、可观测性等贯穿全站的设计 |
-| [页面效果图、GIF 与架构图产物](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图重生成 |
+| [页面效果图、GIF 与 README 图示](./screenshots.md) | runbook | 根 README 效果图与 GIF 的录制流程，架构图与工作流图的重画 |
 | [iOS App 上机验证](./ios-app-handoff.md) | runbook | `apps/ios` 的系统音乐、健康上报、小组件、快捷指令及后台设备验收 |
 | [iOS App 验证记录](./ios-app-verification.md) | record | SDK 构建、模拟器端到端验证与签名装机的核验快照 |
 | [讲解动画](./explainer/README.md) | runbook | `/explainer` 页面源、预览、渲染配乐与发布 |
@@ -34,6 +35,6 @@
 | [DO 优化线上效果核验](./do-performance-audit.md) | record | 执行边界调整上线前后的线上指标与本地存储基准 |
 | [别处播放推断精度实测](./listening-inference-accuracy.md) | record | iPhone 连续播放时 Apple「最近播放的歌」何时上榜，各拉取间隔下推断的标对率与开播误差 |
 
-## 架构图
+## 架构图与工作流图
 
-网页版：[lyjw131.github.io/lyjwpage](https://lyjw131.github.io/lyjwpage/)。源是 [`architecture.json`](./architecture.json)，改图只改它，其余产物的重生成步骤见 [screenshots.md](./screenshots.md#交互式架构图)。
+根 README 的两张图在 [`diagrams/`](./diagrams/)，由 [`scripts/readme-diagrams.ts`](../scripts/readme-diagrams.ts) 画出，改法见 [screenshots.md](./screenshots.md#readme-图示)。

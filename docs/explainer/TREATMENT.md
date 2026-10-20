@@ -71,7 +71,7 @@ lyjw 看过第 02、03 章样章后拍板**全篇统一 2D**：第 02 章的纸�
 
 ## 调色板
 
-取自站点 `globals.css` 的 token，实现时按 oklch 换算成线性色：
+取自站点 `src/app/styles/theme.css` 的 token，实现时按 oklch 换算成线性色：
 
 | 名 | 来源 token | 用途 |
 |---|---|---|

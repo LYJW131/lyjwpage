@@ -54,8 +54,9 @@
 | 来源（= 上报入口） | 范围 | 带来什么 |
 | --- | --- | --- |
 | `mac`（`modules.codingUsage` / `codingActivity` / `codingTokenBuckets`） | 设备：这台 Mac 本地日志里的会话 | 各 agent 的日行账本、最近事件、5 分钟桶 |
-| `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史；Devin CLI 取自 tokens.ci | `cursor` 同上；`devin` 是日行账本，加按 tokens.ci 提交增量摊出的 5 分钟桶，没有活动 |
-| `agents-otlp`（Claude Code 云端遥测） | 环境：那个托管环境里的会话 | 状态核心做差后整理成同形的三种事实，agent 恒为 `claude` |
+| `agents`（顶层同名三键） | 账号：Cursor 账号侧的完整历史 | `cursor` 的日行账本、最近事件、5 分钟桶 |
+| `agents-otlp`（OTLP 遥测） | 环境：云端环境里的 Claude Code 与 Devin CLI | 状态核心按指标名分到 `claude` / `devin`，整理成同形的三种事实 |
+| `mac-otlp`（同一个 OTLP 入口） | 设备：Mac 上的 Devin CLI | 同上；上报入口按凭据持有的权限分来源，见 [ingress README](../ingress/README.md#otlp按凭据分来源) |
 
 同一 agent 有账号级来源时只算它，别的来源的同 agent 行标 `superseded`、不相加（Mac 就算又报 `cursor` 也不会双算）；
 否则全部相加（claude 的本机与云端，假设彼此不重叠：云端遥测变量只配在云端）。
@@ -77,7 +78,7 @@
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
   推 `coding-now`：和上一次推出去的那份（`coding:now:pushed`）比，多出一个 (agent, 来源)、换了模型、时刻往前走了
   `src/stores/coding-activity.ts#PUSH_STEP_MS` 以上才推，保活不推。灯由浏览器按
-  「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废 `mac` 那条（`src/lib/coding-agents.ts`）。
+  「任一来源最近事件在 `CODING_ACTIVE_WINDOW_MS` 内」现算；Mac 亲口离线时只作废跑在 Mac 上的那几条：`mac` 与 `mac-otlp`（`src/lib/coding-agents.ts#codingSourceOnMac`）。
 - **5 分钟桶**：`pulse:token-buckets:<来源>`，TTL 2 天，只给 Pulse 的 Tokens 道、Coding 评估与归档，不推送。Mac / agents 按报告
   范围替换，只替换报告 `agents` 里声明的 agent（`[from, to)` 内这几家以新报告为准，缺席的桶是 0，范围外和没声明的 agent
   不动，报告范围并进覆盖；同一来源下 Cursor 与 Devin 各报各的范围，靠这条互不冲掉）；跨着报告起点的那一桶只数了
@@ -98,16 +99,16 @@
 
 入口对坏的 coding 模块只丢它自己、回执写 `rejected`（见[上报入口](../ingress/README.md)），不连累存活和别的模块。
 
-### Claude Code 云端线程用量
+### OTLP 用量：Claude Code 云端线程与 Devin CLI
 
 Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境打开 Claude Code 内置遥测，
-每分钟把指标推到上报入口的 `/api/ingest/agents/otlp`；云端环境变量、专属 Access 权限和本地调试见
-[上报入口 README](../ingress/README.md#claude-code-云端线程用量)。
+每分钟把指标推到上报入口的 `/api/ingest/agents/otlp`；Mac 上的 Devin CLI 也推到这里。两边的配置、Access 权限和本地调试见
+[上报入口 README](../ingress/README.md#otlp-用量claude-code-云端线程与-devin-cli)。
 
-只收 `claude_code.token.usage` 与 `claude_code.cost.usage`，其余指标收下后忽略（返回 200 `{}`，
+只收 `claude_code.token.usage`、`claude_code.cost.usage`（agent `claude`）与 `devin.token.usage`（agent `devin`），其余指标收下后忽略（返回 200 `{}`，
 整封拒掉 exporter 不重试，这一轮的数就丢了）。数据点上的邮箱、账号 ID、组织 ID 在解析时丢掉，
 只存 session、model、token 类型、值和时刻。只收 cumulative 时序：delta 时序的点没法去重（提交成功而回执丢了时导出端重发就会重复计数），
-一律不收、记一行 `[otlp] delta temporality points skipped` 的 warn —— 云端环境要配 `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`
+Claude 的一律不收、记一行 `[otlp] delta temporality points skipped` 的 warn —— 云端环境要配 `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative`
 （Claude Code 的默认是 delta），见到这行 warn 就是那组变量掉了。每条序列（指标、进程起点、全部属性，主会话和子代理的 `query_source` 不同就是两条）
 记上次的累计值（`coding:otlp`，键和会话都只存摘要），只加差值：丢一轮下一轮补齐，重发、乱序不多算；线程恢复成新进程时起点变了，按新计数器计。
 进程计数器 30 天没见就清掉。每个正差值同时落成三种事实（`agents-otlp` / `claude`）：按数据点时刻的站点日加进日行
@@ -116,6 +117,22 @@ Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境�
 最新时刻与模型作为活动。闲着的进程每分钟一封也不重算视图。计数器与它做出来的账本（连同视图、年度）、活动、桶
 在同一个事务里落：中途哪一步失败就一条都不落，下一封从同一个前值再做差，差值不丢。入口的收到时刻和提交顺序可以
 相反，差值按提交顺序做，账本不按采集时刻淘汰，账本、活动、桶上的时刻都取和存着的较大者、不往回走。
+
+Devin CLI 只会发 delta（不认 temporality 偏好），每次导出只带上次导出以来的增量，没用量的那几次不发。它的序列不含起点
+（起点每个窗口都在走），`coding:otlp` 的 `windows` 记每条序列已经计到的时刻：窗口起点早于它的是重发，整点跳过；
+晚到的旧窗口也一起跳过（少算，不多算）。Devin 不发费用指标，有 token 的日子 `costComplete` 为假。会话数按 agent 分开记
+（`sessionCounts`；Claude 以外的会话摘要带 agent 前缀，同名会话不互相顶掉）。`cloudAgentActivity` 只看 `agents-otlp` 里 `claude` 的桶。
+`mac-otlp` 走同一套做法，计数器另存在 `coding:otlp:mac-otlp`（`shared/coding-store.ts#codingOtlpKey`），两边的会话数、窗口互不相干。
+
+Devin 的日行以前由 agents-reporter 从 tokens.ci 拉进 `agents` 来源。第一封带 Devin 的 OTLP 进来、`agents-otlp` 里还没有
+`devin` 时，把 `agents` 里那本 `devin` 账本的日子整份接过来，在同一个事务里从 `agents` 删掉它（账号级来源会压住
+`agents-otlp`，留着新数就看不见）；`prepareCodingUsage` 的 `moveFrom`。之后 `agents` 里再出现 `devin`（旧镜像的上报器还没换下）
+也是下一封 Devin 的 OTLP 就删掉，日子不再接一遍；`pulse:token-buckets:agents` 里 Devin 的桶同一批删掉，Tokens 道不会两边相加。D1 里 `source = 'agents'` 的旧行原样留着，
+接过来的日子在 `agents-otlp` 下再归档一份；D1 目前没有跨来源相加的读者。
+
+Mac 上 Devin CLI 的 OTLP 以前也记在 `agents-otlp`。第一封 `mac-otlp` 的 Devin 进来、`mac-otlp` 里还没有 `devin` 时，把 `agents-otlp`
+里它的日行、会话数、活动和 5 分钟桶整份接过来，在同一个事务里从 `agents-otlp` 删掉；只接这一次，之后 `agents-otlp` 里的 `devin`
+是云端环境里跑的（`src/stores/agents-otlp.ts#MOVES`）。delta 水位 `windows` 一起接过来，切换时重发的旧窗口不再记一次；会话摘要不分 agent、搬不走，搬家前见过的会话在 `mac-otlp` 会再记一次。
 
 `/api/ingest/mac` 的 `modules.desktop` 描述此刻的前台应用：`applicationName`（必填）、
 `bundleIdentifier`、`windowTitle`、`iconHash` 与 `iconObjectKey`（内容地址，见下文图标那段）、
@@ -259,7 +276,7 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
   `pulse:token-buckets:agents-otlp` 现算，切片规则同 Coding 评估特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
-  或云端 Claude Code 在这个 5 分钟桶里有用量（`shared/pulse-coding.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
+  或云端 Claude Code 在这个 5 分钟桶里有用量（`shared/pulse-coding-features.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
   Cursor 那一路的覆盖也算「看得见」：Mac 离线而 Cursor 覆盖着且没有活动时画 0（观测到没有 agent 活动），
   这时前台其实是未知，和 Coding 评估特征的口径一致。不读档位时代的 `pulse:coding`（它让 agent 压过前台，画不出「两者同时」）。
 - **充电瓦数** `pulse:v2:charging` `{t, watts, device?}`，上限 `CHARGING_SAMPLE_CAP`。闸门见 `planChargingSample`：
@@ -290,7 +307,7 @@ cron 落在窗口结束后 `PULSE_SCORE_SETTLE_MS`（`src/pulse-score.ts`，等�
 没有 `AI` 绑定、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用（`src/runtime.ts#isolatedFromSharedWrites`），按 example 配的本地 Worker 不评分。
 
 决策模型不会数数、不会算时长、不比时间戳，所以发给它的 state 是代码算好的命名秒数和次数
-（`shared/pulse-coding.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
+（`shared/pulse-coding-features.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
 `concurrentAgentSeconds`、`codingAppAndAgentSeconds`、切换次数、最长连续时长、观测覆盖和前几个应用 / agent，
 没有原始区间或时间戳；判据写在 `instructions` / `criteria` 里。
 
@@ -317,7 +334,7 @@ Cursor 使用独立的 `pulse:cursor-observations`：agents 来源的 cursor 活
 写入方是状态核心：cron 每轮调一次 StateHub 的 `pulseTick`，同时拿到评分任务和归档快照；StateHub 按各路水位（metadata `pulse-archive:v2:<路>`）给出一份有界快照，
 普通 Worker 按自然键拼成 upsert（活动桶另有受版本保护的范围删除）写 D1，全部成功后才确认水位；一路读坏、写坏不挡别的路。
 奖杯目录是另一张表 `trophies`，在收下奖杯信封后写（`src/stores/trophy-history.ts#archiveTrophies`），不走这张水位。
-代码在 `src/pulse-archive.ts`，表在迁移 `0007_history_pulse.sql` 与 `0008_coding_usage.sql`：
+代码在 `src/pulse-archive.ts`（StateHub 一侧读快照、确认水位在 `src/pulse-archive-state.ts`，拼 D1 语句在 `src/pulse-archive-statements.ts`），表在迁移 `0007_history_pulse.sql` 与 `0008_coding_usage.sql`：
 
 | 表 | 内容 | 自然键 |
 | --- | --- | --- |
@@ -452,7 +469,7 @@ core 这一轮本地要做的 D1 归档、Clef 打分被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
 `AI` 绑定只能连远程 Workers AI：`scripts/dev-worker.mjs` 在没有 `CLOUDFLARE_API_TOKEN` 也没有 `wrangler login` 时，把 core 与 ai 的测试配置去掉 `[ai]` 段另存为 `wrangler.test.offline.toml` 再起，否则整个会话起不来；去掉后对话路由走兜底档位。`DEV_WORKER_AI=remote` / `off` 强制选择。
-云端会话启动时 `.claude/hooks/session-start.sh` 跑 `scripts/cloud-dev-vars.mjs`，补上缺的 `workers/core/.dev.vars`（照抄 example）、`workers/ai/.dev.vars`（key 取环境变量 `LYJWPAGE_ANTHROPIC_API_KEY` 与 `LYJWPAGE_DEEPSEEK_API_KEY`，Turnstile 用 Cloudflare 测试密钥，签章密钥随机生成）与根 `.env.local`（Turnstile 测试 site key），已有的文件不动。
+云端会话启动时 `.claude/hooks/session-start.sh` 跑 `scripts/cloud-dev-vars.ts`，补上缺的 `workers/core/.dev.vars`（照抄 example）、`workers/ai/.dev.vars`（key 取环境变量 `LYJWPAGE_ANTHROPIC_API_KEY` 与 `LYJWPAGE_DEEPSEEK_API_KEY`，Turnstile 用 Cloudflare 测试密钥，签章密钥随机生成）与根 `.env.local`（Turnstile 测试 site key），已有的文件不动。
 状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，新目录直接以空状态起。
 
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 按端点整份兜底（`src/public-api.ts#overlayResponse`）：生产回 `ok:true` 的端点整份用生产的，
@@ -484,7 +501,7 @@ pnpm dev:scene --reset                                  # 收尾
 `--age 20m` 把整份快照往回拨，造「首屏快照是旧的」「快照里那首歌已放完」这类态，不用拨浏览器时钟。
 `--capture` 抓下的时刻、ISO 时刻、站点日期都改写成相对令牌（`scripts/dev-fixtures.ts#tokenize`），哪天注入都像刚抓的；字段名以 `Bytes` / `Count` 结尾的大数不算时刻。抓取同时带上整份奖杯目录，注入在 `?titleids=*` 下（`shared/trophy-slice.ts#TROPHY_CATALOG_OVERRIDE_SEARCH`），瓷砖展开与批量预取的 `?titleids=` 请求都由 core 从它现切。Apple 歌单封面是带时效签名的直链，注入时快到期的会按去掉签名的地址从线上同一视图换成新链，换不到的视图列在 `expiredSignedUrls` 里，重抓场景即可。
 注入前摘要的三格按场景里的其他视图重算（调 `workers/ai/src/digest/` 与生成时同一份规则），标题池收成一句：首屏内联脚本和客户端轮换都从池里随机取，一句就没得随机，SSR、浏览器、明暗两次截图看到的是同一份。
-场景缺的状态视图（以及正在听那首的歌词、奖杯目录）会列在输出的 `unpinned` 里，它们仍走生产兜底。根 README 的首页总览图用 `pnpm readme:shots` 按 `readme` 场景截，见 [效果图](../../docs/screenshots.md)。
+场景缺的状态视图（以及正在听那首的歌词、奖杯目录）会列在输出的 `unpinned` 里，它们仍走生产兜底。整页对照截图用 `readme` 场景，见 [效果图](../../docs/screenshots.md)。
 
 ## 验证
 
@@ -558,7 +575,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 
 ## README 卡片的 Voronoi 布局
 
-`/api/cards/voronoi.svg` 的几何、配色、评分与标签规则与 LYJW131 仓库里 lyjw 调定的 Voronoi 生成脚本一致（power diagram，纵向拉伸 `STRETCH` 后求解再压回），在 `src/voronoi-layout.ts`。布局固定、面积跟着份额微调：
+`/api/cards/voronoi.svg` 的几何、配色、评分与标签规则与 LYJW131 仓库里 lyjw 调定的 Voronoi 生成脚本一致（power diagram，纵向拉伸 `STRETCH` 后求解再压回），入口在 `src/voronoi-layout.ts`（求解在 `src/voronoi-solve.ts`，评分与标签在 `src/voronoi-assess.ts`）。布局固定、面积跟着份额微调：
 
 - 状态存在 StateHub 的 `cards:voronoi` 键（`src/voronoi-card.ts#stateKey`）：各格的模型、颜色、站点、权重，选定时的评分和当时就有、被认可的硬性问题（`accepted`，按出现处记：问题、模型、撞到的边，换人时随站点交给接手的模型）。键为空时用 `src/voronoi-initial.ts` 里 lyjw 选定的 seed 2290 布局。
 - 请求端从存好的布局出发，站点不动，只迭代权重贴合最新份额（几毫秒），从不做多种子搜索。

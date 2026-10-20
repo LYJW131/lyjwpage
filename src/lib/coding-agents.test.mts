@@ -7,6 +7,7 @@ import {
   codingAgentRows,
   codingDisplayModel,
   codingSourceHealth,
+  codingSourceLabel,
   describeCodingSources,
   type CodingActivityEntry,
 } from "./coding-agents.ts";
@@ -77,6 +78,26 @@ test("活动灯：本机与远端各占一格、可同时亮；Mac 亲口离线�
   assert.deepEqual(codingActivitySlots(activity, true), { mac: null, remote: activity[0] });
   assert.deepEqual(codingActivitySlots([activity[1]!], true), { mac: null, remote: null });
   assert.deepEqual(codingActivitySlots([], false), { mac: null, remote: null });
+});
+
+test("OTLP 在哪按来源定：mac-otlp 是 Mac 上的 Devin CLI、随 Mac 离线作废，agents-otlp 是云端、照样亮", () => {
+  const devin: CodingActivityEntry[] = [
+    { source: "mac-otlp", lastActivityAt: 9_000, model: "swe-2-max" },
+    { source: "agents-otlp", lastActivityAt: 8_000, model: "swe-2-max" },
+  ];
+  assert.deepEqual(codingActivitySlots(devin, false), { mac: devin[0], remote: devin[1] });
+  assert.deepEqual(codingActivitySlots(devin, true), { mac: null, remote: devin[1] });
+  assert.equal(codingSourceLabel("mac-otlp"), "Mac");
+  assert.equal(codingSourceLabel("agents-otlp"), "Cloud");
+  assert.equal(codingSourceLabel("agents"), "Account");
+  const notes = codingSourceHealth(usageAgent("devin", {
+    sources: ["agents-otlp", "mac-otlp"],
+    status: [
+      { source: "agents-otlp", state: "ok", collectedAt: 1_000, error: null, warning: null },
+      { source: "mac-otlp", state: "ok", collectedAt: 1_000, error: null, warning: null },
+    ],
+  })).notes;
+  assert.equal(describeCodingSources(notes), "Cloud: counted\nMac: counted");
 });
 
 test("模型名：亮着就是亮着那条的；灭了取最近一条带模型的事件；都没有用视图里的最近主力模型", () => {

@@ -2,25 +2,33 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
 
 const REPO = "LYJW131/lyjwpage";
 // 回执和判定由主线程用 lyjw 的两个账号之一发（LYJW131、云端会话用的 An0nCh1hayaa）；别人发的同格式评论不算。
 // 按数字 id 认而不按 login：login 改名后可被别人注册。
-const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
+export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const LEVELS = ["live-ui-verified", "unit-test-verified", "type-check-only", "verifier-blocked", "verifier-failed"];
-const PASSING_RANK: Record<string, number> = { "live-ui-verified": 3, "unit-test-verified": 2, "type-check-only": 1 };
+export const PASSING_RANK: Record<string, number> = { "live-ui-verified": 3, "unit-test-verified": 2, "type-check-only": 1 };
 
 const RECEIPT_LINE = new RegExp(`^验证回执 ([0-9a-f]{40})[：:]\\s*(${LEVELS.join("|")})\\s*$`);
 const JUDGE_LINE = /^判定 ([0-9a-f]{40})[：:]\s*(PASS|FAIL)\s*$/;
 
-const HELP = `用法：NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check --pr <号> [选项]
+const VERDICTS = ["PASS", "FAIL"];
 
-查 PR 评论里最新的「验证回执」与「判定」还盖不盖得住当前 head，主线程据此决定要不要再验。
+const HELP = `用法：
+  NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check --pr <号> [选项]
+  node scripts/verify-receipt.ts sign --sha <提交> (--level <等级> | --verdict PASS|FAIL)
+
+sign 打印回执或判定的第一行：SHA 由 git rev-parse 展开成完整 40 位，等级只收五档之一。
+验证员与判定员把这一行原样贴进报告，不手抄 SHA。退出码 0 成功、2 参数错或提交不存在。
+
+check 查 PR 评论里最新的「验证回执」与「判定」还盖不盖得住当前 head，主线程据此决定要不要再验。
 输出 JSON，pass 为假时 next 写下一步；退出码 0 通过、1 不通过、2 参数错。
 
-选项：
+check 的选项：
   --pr <号>        PR 号（必填）
   --need <等级>    回执至少要到的等级，默认 unit-test-verified；改了行为的不收 type-check-only
                    等级从高到低：live-ui-verified、unit-test-verified、type-check-only
@@ -44,6 +52,26 @@ export type Evaluation = {
   pass: boolean;
   next: string | null;
 };
+
+export function signLine(
+  { ref, level, verdict }: { ref: string; level?: string; verdict?: string },
+  revParse: (ref: string) => string = gitRevParse,
+) {
+  if ((level === undefined) === (verdict === undefined)) throw new Error("--level 与 --verdict 二选一");
+  if (level !== undefined && !LEVELS.includes(level)) throw new Error(`等级只收 ${LEVELS.join("、")}`);
+  if (verdict !== undefined && !VERDICTS.includes(verdict)) throw new Error("判定只收 PASS、FAIL");
+  const sha = revParse(ref);
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`${ref} 展开不成完整 SHA`);
+  return level !== undefined ? `验证回执 ${sha}：${level}` : `判定 ${sha}：${verdict}`;
+}
+
+function gitRevParse(ref: string) {
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], { encoding: "utf8" }).trim();
+  } catch {
+    throw new Error(`本地找不到提交 ${ref}：先 git fetch`);
+  }
+}
 
 export function parseComments(comments: Comment[]) {
   let receipt: Receipt | null = null;
@@ -171,39 +199,47 @@ export async function check(
   return { pr, ...evaluate({ head, ...parseComments(comments), need, wantJudge, patchId }) };
 }
 
-function parseArgs(argv: string[]) {
-  const flags: { _: string[]; [key: string]: string | true | string[] } = { _: [] };
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (!arg.startsWith("--")) flags._.push(arg);
-    else if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) flags[arg.slice(2)] = argv[++i];
-    else flags[arg.slice(2)] = true;
+const USAGE = "用法：check --pr <号> [--need 等级] [--judge]，或 sign --sha <提交> (--level 等级 | --verdict PASS|FAIL)；见 --help";
+
+const SIGN_OPTIONS = { sha: { type: "string" }, level: { type: "string" }, verdict: { type: "string" } } as const;
+const CHECK_OPTIONS = {
+  pr: { type: "string" },
+  need: { type: "string", default: "unit-test-verified" },
+  judge: { type: "boolean", default: false },
+} as const;
+
+function sign(args: string[]) {
+  try {
+    const { values } = parseArgs({ args, strict: true, options: SIGN_OPTIONS });
+    if (values.sha === undefined) throw new Error("缺 --sha");
+    console.log(signLine({ ref: values.sha, level: values.level, verdict: values.verdict }));
+    return 0;
+  } catch (error) {
+    console.error(`${(error as Error).message}\n${USAGE}`);
+    return 2;
   }
-  return flags;
 }
 
-async function main() {
-  const flags = parseArgs(process.argv.slice(2));
-  if (flags.help) {
+async function main(argv: string[]) {
+  if (argv.includes("--help")) {
     console.log(HELP);
     return 0;
   }
-  const pr = Number(flags.pr);
-  const need = flags.need ?? "unit-test-verified";
-  const judge = flags.judge ?? false;
-  if (
-    flags._[0] !== "check" ||
-    !Number.isInteger(pr) ||
-    pr <= 0 ||
-    typeof need !== "string" ||
-    !Object.hasOwn(PASSING_RANK, need) ||
-    ![true, false, "true", "false"].includes(judge as boolean | string)
-  ) {
-    console.log(JSON.stringify({ pass: false, next: "用法：check --pr <号> [--need 等级] [--judge]；见 --help" }));
+  const [command, ...args] = argv;
+  if (command === "sign") return sign(args);
+  let values;
+  try {
+    ({ values } = parseArgs({ args, strict: true, options: CHECK_OPTIONS }));
+  } catch {
+    values = null;
+  }
+  const pr = Number(values?.pr);
+  if (command !== "check" || !values || !Number.isInteger(pr) || pr <= 0 || !Object.hasOwn(PASSING_RANK, values.need)) {
+    console.log(JSON.stringify({ pass: false, next: USAGE }));
     return 2;
   }
   try {
-    const result = await check({ pr, need, wantJudge: judge === true || judge === "true" });
+    const result = await check({ pr, need: values.need, wantJudge: values.judge });
     console.log(JSON.stringify(result, null, 2));
     return result.pass ? 0 : 1;
   } catch (error) {
@@ -213,5 +249,5 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  process.exitCode = await main();
+  process.exitCode = await main(process.argv.slice(2));
 }

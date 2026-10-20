@@ -1,7 +1,7 @@
 import { reporterBlockOf, type ReporterBlock } from "@shared/reporter-ledger";
 
 import { prepareAgentLimits, type PreparedAgentLimits } from "./agents";
-import { prepareClaudeCloudUsage, type PreparedClaudeCloudUsage } from "./claude-cloud";
+import { prepareAgentsOtlpUsage, type PreparedAgentsOtlpUsage } from "./agents-otlp";
 import { prepareEmbyReport, type PreparedEmbyReport } from "./emby";
 import { prepareHomePodEvent, type PreparedHomePodEvent } from "./homepod";
 import { preparePhoneEnvelope, type PreparedPhoneEnvelope } from "./phone";
@@ -22,7 +22,7 @@ export type PreparedIngest = WithReporter<
   | PreparedPlaystationReport
   | PreparedServerReport
   | PreparedAgentLimits
-  | PreparedClaudeCloudUsage
+  | PreparedAgentsOtlpUsage
   | PreparedQuestReport
 >;
 
@@ -49,7 +49,8 @@ export async function prepareIngest(
     case "quest": return prepareQuestReport(raw, receivedAt);
     case "server": return { ...prepareServerReport(raw, receivedAt), reporter: reporterBlockOf(raw) };
     case "agents": return { ...prepareAgentLimits(raw, receivedAt), reporter: reporterBlockOf(raw) };
-    case "agents-otlp": return prepareClaudeCloudUsage(raw, receivedAt);
+    case "agents-otlp":
+    case "mac-otlp": return prepareAgentsOtlpUsage(raw, receivedAt, source);
     default: throw new Error("Unknown ingest source");
   }
 }

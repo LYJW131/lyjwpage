@@ -72,8 +72,6 @@ export const config = {
 
   cursorAuthToken: process.env.CURSOR_AUTH_TOKEN?.trim() ?? "",
 
-  tokensCiUser: process.env.TOKENS_CI_USER === undefined ? "LYJW131" : process.env.TOKENS_CI_USER.trim(),
-
   antigravityPlanLabel: process.env.ANTIGRAVITY_PLAN_LABEL?.trim() ?? "",
 
   antigravityQuotaUrl:
