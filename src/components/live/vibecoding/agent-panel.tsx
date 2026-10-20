@@ -25,12 +25,6 @@ function formatSiteDay(date: string) {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
-function kiloMega(value: number) {
-  if (value >= 1e6) return { value: value / 1e6, suffix: "M" };
-  if (value >= 1e3) return { value: value / 1e3, suffix: "K" };
-  return { value };
-}
-
 export function AgentPanel({
   row,
   macDeclaredOffline,
@@ -85,9 +79,9 @@ export function AgentPanel({
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
             {lastDay ? (
               <NumberFlow
-                {...kiloMega(lastDay.totalTokens)}
+                value={lastDay.totalTokens}
                 locales="en-US"
-                format={{ maximumFractionDigits: 1, useGrouping: false }}
+                format={{ notation: "compact", maximumFractionDigits: 1 }}
               />
             ) : <FlowDash />}
           </div>
