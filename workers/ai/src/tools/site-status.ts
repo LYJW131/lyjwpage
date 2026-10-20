@@ -1,3 +1,4 @@
+import { CODING_ACTIVE_WINDOW_MS } from "@shared/coding-usage-view";
 import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import type { NowListeningPayload } from "@shared/types";
 
@@ -20,7 +21,7 @@ const VIEW_NOTES = {
   listening: "Recently played Apple Music tracks",
   nowListening: "Song playing right now: reported by the Mac or HomePod (music), or inferred on another device from Apple Music play history (elsewhere); idle only covers the Mac and HomePod",
   coding: "AI coding token totals and API-equivalent cost since tracking began, top models and per-agent totals; no per-day numbers (those are in codingYear)",
-  codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; mac-otlp = an agent's built-in telemetry on LYJW's Mac (Devin CLI); agents-otlp = built-in telemetry from cloud sessions (Claude Code, Devin CLI); agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac or mac-otlp) with an unlocked desktop suggests LYJW is at the computer",
+  codingNow: `Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; mac-otlp = an agent's built-in telemetry on LYJW's Mac (Devin CLI); agents-otlp = built-in telemetry from cloud sessions (Claude Code, Devin CLI); agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac or mac-otlp) with an unlocked desktop suggests LYJW is at the computer. lastActivityAt is the latest report from a session that keeps reporting while it works: the site shows an agent as in use right now when that is within the last ${CODING_ACTIVE_WINDOW_MS / 60_000} minutes (ignoring mac and mac-otlp while the Mac has declared itself offline), so describe such an agent as working now, not as last active some minutes ago`,
   codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums (large)",
   limits: "Coding agent account plans and rate-limit windows",
   agentStatus: "Status pages of AI providers (operational / incidents)",
