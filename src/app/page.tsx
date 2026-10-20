@@ -42,6 +42,7 @@ import {
   GITHUB_REPO_PATH,
   HEALTH_PATH,
   LIMITS_PATH,
+  LIMITS_HISTORY_PATH,
   LISTENING_PATH,
   NOW_LISTENING_PATH,
   NOW_PLAYING_PATH,
@@ -87,7 +88,7 @@ const READS = {
   activity: [ACTIVITY_PATH, STATUS_VIEWS.workouts.path],
   server: [SERVER_PATH],
   agentStatus: [AGENT_STATUS_PATH],
-  vibeCoding: [CODING_PATH, CODING_NOW_PATH, LIMITS_PATH],
+  vibeCoding: [CODING_PATH, CODING_NOW_PATH, LIMITS_PATH, LIMITS_HISTORY_PATH],
   playstation: [NOW_PLAYING_PATH, PLAYING_PATH, TROPHIES_PATH],
   pulse: [PULSE_PATH],
   siteStatus: [GITHUB_REPO_PATH, SITE_DEPLOYMENTS_PATH, CLOUDFLARE_WORKERS_PATH, HEALTH_PATH, SERVER_PATH, REPORTERS_PATH],
@@ -117,6 +118,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     coding,
     codingNow,
     limits,
+    limitsHistory,
     agentStatus,
     codingYear,
     watching,
@@ -147,6 +149,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     status("coding"),
     status("codingNow"),
     status("limits"),
+    status("limitsHistory"),
     status("agentStatus"),
     status("codingYear"),
     status("watching"),
@@ -200,6 +203,7 @@ export async function loader({ context }: Route.LoaderArgs) {
     coding,
     codingNow,
     limits,
+    limitsHistory,
     agentStatus,
     codingYear,
     watching,
@@ -305,6 +309,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     fallback={loaderData.coding}
                     nowFallback={loaderData.codingNow}
                     limitsFallback={loaderData.limits}
+                    historyFallback={loaderData.limitsHistory}
                     className={SLOT.vibeCoding}
                   />
                 </CardBoundary>

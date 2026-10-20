@@ -113,6 +113,14 @@ export function featuredLimitRows(row: Pick<CodingAgentRow, "id" | "limits" | "l
   });
 }
 
+export function hasFeaturedLimits(id: string) {
+  return Object.hasOwn(FEATURED_LIMITS, id);
+}
+
+export function weeklyLimit(row: Pick<CodingAgentRow, "limits">) {
+  return pickSlotLimit(row.limits, "weekly");
+}
+
 const WEEK_MS = 7 * 86_400_000;
 // setTimeout 超过 2^31-1 会立即触发，且调用处还要加等待余量。
 const MAX_TIMEOUT_MS = 24 * 86_400_000;
