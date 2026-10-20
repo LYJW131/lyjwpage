@@ -54,6 +54,11 @@
   - 取了什么：合并钉住验过的 head（它用 `gh pr merge --match-head-commit`）；修复要证明「撤掉就红」；每晚审当天提交、找返工的记成教训，同类见满 3 天升成规则；main 上的 CI 不被下一次推送取消。
   - 状态：部分采用。钉 head 落在 [merge-message.ts](../scripts/merge-message.ts) 输出的 `expectedHeadSha` 与 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「3. PR 合并门槛」；撤回证明落在 [lyjwpage-verify](../.claude/skills/lyjwpage-verify/SKILL.md)「1. 本地门禁」，由 [revert-proof.ts](../scripts/revert-proof.ts) 在临时 worktree 里执行；返工账落在 04:00 每日审查提示词的园丁一步（`docs/ops-facts.md` 里那条 routine，提示词只能从它自己的线程改），记进缓冲 issue #280，候选由 [rework-candidates.ts](../scripts/rework-candidates.ts) 列出，模型只定类别；CI 落在 [ci.yml](../.github/workflows/ci.yml) 的 `concurrency`。不采用：PR 上自动录屏截图的 UI 预览（要在 CI 跑 PR 代码并持模型 key，已有 `pnpm dev:scene` 与验证员截图）、每次必读的大教训文件（教训直接落成检查、skill 或记忆）、社区 PR 防害与拉黑（无外部贡献者）、子系统设计页（已有 `docs/` 与 `pnpm docs:check`）、提交正文记验证（回执已绑 SHA 发在 PR 评论）。
 
+- **[tester-army/e2e](https://github.com/tester-army/e2e)**（TesterArmy）
+  - 是什么：开源的 AI 端到端测试框架，测试里混写 `agent.act` 自然语言目标与定位器断言，验证过的 agent 动作录下来下次免模型回放；另有 `e2e explore`（给目标让 agent 自己逛应用报问题）与 `e2e mcp`（给编码 agent 操作运行中的应用）。
+  - 取了什么：没取做法。在 lyjw.me 上试跑一次 `e2e explore`（6 步、2.7M token），9 条发现里没有真 bug：报的单位不一致是 lyjw 有意定的，其余是设计取舍或文案意见。教训落在 `HUMAN.md`「1」：外部 agent 报的显示不一致不算明确修复，先查历史。
+  - 状态：不采用（lyjw 定的）。测试写法要在 CI 配模型，站点流程少不值得；`e2e mcp` 与 [site-verify.ts](../scripts/site-verify.ts) 重复且没有 WebKit 与首屏跳动检查；explore 一次的成本换不来有效发现。
+
 ## 写 skill 与写给 agent 的文档
 
 - **[How Claude remembers your project](https://code.claude.com/docs/en/memory)** 与 **[Best practices for Claude Code](https://code.claude.com/docs/en/best-practices)**（Claude Code 文档）
