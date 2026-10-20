@@ -86,6 +86,7 @@
   ];
 
   // ---- 纸、墨、朱砂 ----
+  // PAPER 须与 ch05.js 的 PAPER06 同步：第 05 章收尾把纸色挪到这里，切过来底色不跳。
   const INK = [30, 26, 22], PAPER = [238, 230, 211], VERM = [184, 54, 38], SILK = [196, 203, 194], WOOD = [74, 52, 38], MALACHITE = [74, 128, 100];
   const rgba = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   const ink = (a = 1) => rgba(INK, a), verm = (a = 1) => rgba(VERM, a);
