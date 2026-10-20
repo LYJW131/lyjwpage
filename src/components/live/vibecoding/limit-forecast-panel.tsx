@@ -2,6 +2,7 @@
 
 import { useContext, useEffect, useState } from "react";
 
+import { ForecastHover } from "@/components/live/vibecoding/forecast-hover";
 import { RenderClock, useMountedAt } from "@/hooks/use-mounted-at";
 import { forecastLimit, type LimitForecast } from "@/lib/limit-forecast";
 import type { LimitHistoryPayload } from "@shared/limit-history";
@@ -142,6 +143,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
             style={{ left: `${x(lockedFrom)}%`, top: "0%" }}
           />
         )}
+        <ForecastHover forecast={forecast} timeZone={timeZone} x={x} y={y} />
         </div>
       </div>
     </div>
