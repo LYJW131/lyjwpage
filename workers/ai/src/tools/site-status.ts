@@ -1,4 +1,5 @@
 import { CODING_ACTIVE_WINDOW_MS } from "@shared/coding-usage-view";
+import { site } from "@shared/site";
 import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import type { NowListeningPayload } from "@shared/types";
 
@@ -25,7 +26,7 @@ const VIEW_NOTES = {
   codingNow: `Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; mac-otlp = an agent's built-in telemetry on LYJW's Mac (Devin CLI); agents-otlp = built-in telemetry from cloud sessions (Claude Code, Devin CLI); agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac or mac-otlp) with an unlocked desktop suggests LYJW is at the computer. lastActivityAt is the latest report from a session that keeps reporting while it works: the site shows an agent as in use right now when that is within the last ${CODING_ACTIVE_WINDOW_MS / 60_000} minutes (ignoring mac and mac-otlp while the Mac has declared itself offline), so describe such an agent as working now, not as last active some minutes ago`,
   codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums (large)",
   limits: "Coding agent account plans and rate-limit windows",
-  limitsHistory: "Past readings of Claude Code's weekly all-models limit: hourly for the last 8 days, daily before that over three weeks (usedPercent and reset time)",
+  limitsHistory: "Past readings of Claude Code's weekly all-models limit: hourly for the last 8 days, daily before that over three weeks. Each point is [at, usedPercent, resetsAt]; these tuple times are not converted: at is epoch milliseconds and resetsAt is Unix seconds",
   agentStatus: "Status pages of AI providers (operational / incidents)",
   watching: "Recently watched movies and episodes on Emby",
   nowWatching: "What is playing on Emby right now",
@@ -230,8 +231,9 @@ async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, 
   }
 }
 
-const STATUS_TIME_ZONE = "Asia/Shanghai";
-const localTime = (ms: number) => new Date(ms).toLocaleString("sv-SE", { timeZone: STATUS_TIME_ZONE, hour12: false }).slice(0, 16);
+const STATUS_TIME_ZONE = site.timezone;
+const LOCAL_TIME = new Intl.DateTimeFormat("sv-SE", { timeZone: STATUS_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const localTime = (ms: number) => LOCAL_TIME.format(ms);
 
 // 模型自己换算 epoch 毫秒常把日期、甚至年份算错，所以时间点字段直接给本地时间；时长字段（…Ms）照旧是毫秒。
 // 「昨天」「今天」也由这里按本地日历日算好附在后面：模型自己比日期会把昨天 02:28 说成「昨晚」甚至「今天凌晨」。
