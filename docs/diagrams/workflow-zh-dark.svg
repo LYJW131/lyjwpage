@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 696" width="864" height="696" role="img" aria-labelledby="title desc">
-<title id="title">lyjwpage 开发工作流</title><desc id="desc">lyjw 在项目聊天里说一句需求，协调 Claude 开线程，线程 Claude 实现后交 Haiku 验证员签回执；改代码的定时任务与访客构建也各自产出 PR，晨报与 Anthropic 动态只出报告。所有改动以 PR 进 main：分支预览、CI 门禁、按需的机器评审与 lyjw 点头之后合并，Workers Builds 自动部署。</desc>
+<title id="title">lyjwpage 开发工作流</title><desc id="desc">lyjw 在项目聊天里说一句需求，协调 Claude 开线程，线程 Claude 实现后交 Haiku 验证员签回执；定时任务与访客构建也各自产出 PR（晨报与 Anthropic 动态只出报告）。所有改动以 PR 进 main：分支预览、CI 门禁、按需的机器评审与 lyjw 点头之后合并，Workers Builds 自动部署。</desc>
 <style>text{font-family:'Geist Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace, 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;font-variant-numeric:tabular-nums slashed-zero}.card{fill:#14120f;stroke:#ebe8dfc2}.shadow{fill:#00000085}.head{fill:#191713}.rule{stroke:#ebe8df33}.chip{fill:#191713;stroke:#ebe8df33}.region{fill:none;stroke:#95928a;stroke-dasharray:4 4}.edge{fill:none;stroke:#95928a;stroke-width:1.5}.edge.dash{stroke-dasharray:5 4}.tip{fill:#95928a}.label{font-size:11px;letter-spacing:0.88px;fill:#95928a}.title{font-size:14px;font-weight:500;fill:#ebe8df}.body{font-size:13px;fill:#ebe8df}.cap{font-size:12px;fill:#95928a}.small{font-size:11px;fill:#95928a}.m-worker{fill:#578ff3}.m-do{fill:#5fcc74}.m-store{fill:#a374ef}.m-lyjw{fill:#2eb1ef}.m-claude{fill:#e99174}.m-flow{fill:#ebe8df}.m-outside{fill:none;stroke:#ebe8dfc2}</style>
 <defs><mask id="gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="864" height="696"><rect width="864" height="696" fill="#fff"/><rect x="20" y="136" width="74.88" height="16"/><rect x="152" y="280" width="41" height="16"/><rect x="728" y="280" width="74" height="16"/><rect x="514.8" y="496" width="122.4" height="16"/><rect x="528" y="136" width="96" height="16"/></mask></defs>
 <g mask="url(#gaps)">
@@ -22,7 +22,7 @@
 <text class="label" x="344" y="44">定时触发</text>
 <text class="label" x="536" y="44" text-anchor="end">CRON</text>
 <text class="title" x="328" y="83">云端 routine</text>
-<text class="cap" x="328" y="103">从上次的书签接着跑</text>
+<text class="cap" x="328" y="103">多数从上次的书签接着跑</text>
 <rect class="shadow" x="603" y="27" width="240" height="96"/>
 <rect class="card" x="600.5" y="24.5" width="239" height="95"/>
 <rect class="head" x="601" y="25" width="238" height="31"/>

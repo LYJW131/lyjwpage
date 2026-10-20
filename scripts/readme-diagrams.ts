@@ -22,8 +22,8 @@ const DIAGRAMS = {
     draw: workflow,
     title: ["lyjwpage 开发工作流", "lyjwpage development workflow"],
     description: [
-      "lyjw 在项目聊天里说一句需求，协调 Claude 开线程，线程 Claude 实现后交 Haiku 验证员签回执；改代码的定时任务与访客构建也各自产出 PR，晨报与 Anthropic 动态只出报告。所有改动以 PR 进 main：分支预览、CI 门禁、按需的机器评审与 lyjw 点头之后合并，Workers Builds 自动部署。",
-      "lyjw asks in the project chat, a coordinator Claude opens a thread, and the thread's Claude builds the change and has a Haiku verifier sign a receipt. Code-changing routines and visitor builds open PRs as well; the morning brief and the Anthropic digest only report. Every change reaches main as a PR: branch preview, CI gates, bot review when needed and lyjw's OK, then Workers Builds deploys it.",
+      "lyjw 在项目聊天里说一句需求，协调 Claude 开线程，线程 Claude 实现后交 Haiku 验证员签回执；定时任务与访客构建也各自产出 PR（晨报与 Anthropic 动态只出报告）。所有改动以 PR 进 main：分支预览、CI 门禁、按需的机器评审与 lyjw 点头之后合并，Workers Builds 自动部署。",
+      "lyjw asks in the project chat, a coordinator Claude opens a thread, and the thread's Claude builds the change and has a Haiku verifier sign a receipt. Routines and visitor builds open PRs as well (the morning brief and the Anthropic digest only report). Every change reaches main as a PR: branch preview, CI gates, bot review when needed and lyjw's OK, then Workers Builds deploys it.",
     ],
   },
 } as const;

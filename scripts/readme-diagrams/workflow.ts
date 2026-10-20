@@ -6,7 +6,7 @@ export function workflow(lang: Lang): Canvas {
   const lyjw = c.card({ x: C1, y: 24, w: COL, h: 96 }, "lyjw", ["定方向", "Direction"], "lyjw");
   c.lines(lyjw, [[["一句话需求", "One-line asks"], "title"], [["拍板 · 看图 · 说「合」", "decides · reviews · merges"], "cap"]]);
   const cron = c.card({ x: C2, y: 24, w: COL, h: 96 }, ["定时触发", "Schedules"], "Cron", "outside");
-  c.lines(cron, [[["云端 routine", "Cloud routines"], "title"], [["从上次的书签接着跑", "resume from a bookmark"], "cap"]]);
+  c.lines(cron, [[["云端 routine", "Cloud routines"], "title"], [["多数从上次的书签接着跑", "most resume from a bookmark"], "cap"]]);
   const visitors = c.card({ x: C3, y: 24, w: COL, h: 96 }, ["访客", "Visitors"], "lyjw.me", "outside");
   c.lines(visitors, [[["在首页对话里提改动", "Ask in homepage chat"], "title"], [["授权 GitHub 后开构建", "authorize GitHub to build"], "cap"]]);
 
