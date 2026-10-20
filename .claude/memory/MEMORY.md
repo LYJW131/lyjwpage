@@ -20,7 +20,7 @@
 - **Bot review only for real logic changes** (backend, data flow, auth, migrations): read every Devin Review/Codex/Claude review, fix or reply; Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]]. Merge commits via `pnpm merge-message` ([[merge-commit-format]]); check /api/version after merge ([[workers-builds-parallel-race]]).
 - **Post-merge prod checks** (lyjw 2026-10-19 15:46 SGT "同意"): every merge checks /api/version only. Real behavior test on production only for cache/Cache-Tag purge, first-screen SSR, fonts, or features needing prod secrets/bindings; everything else relies on preview verification.
 - **Verification → Haiku 5.5 high worker** per skill `lyjwpage-verify`; lead trusts the graded receipt (`scripts/verify-receipt.ts`) and spot-checks one item: [[verification-haiku-worker]]. First-screen/font/cache/SSR changes also run `site-verify reload` on a prod build, Chromium + WebKit: [[first-screen-reload-check]].
-- **Chat testing never asks lyjw to send homepage test chats;** use direct API calls, the Turnstile test key, or read ChatLog (decided in lyjw's old-account project; not yet written in repo docs).
+- **Chat testing never asks lyjw to send homepage test chats;** use direct API calls, the Turnstile test key, or read ChatLog via Cloudflare Code Mode MCP's DO query API (how-to in workers/ai/README.md; lyjw 2026-10-20: the 30-day log exists so agents can debug, so read it before reproducing).
 - **Decision cards:** coordinator re-posts any thread's open card in project chat and relays lyjw's choice.
 - **No task board;** progress lives in threads.
 - **Hand-offs carry lyjw's constraints;** route a follow-up once; later relay overrides: [[handoff-carry-user-constraints]].
