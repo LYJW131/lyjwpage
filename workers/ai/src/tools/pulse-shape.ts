@@ -5,7 +5,7 @@ type Row = Record<string, unknown> & { from: number; to: number };
 
 // 原样的 pulse 是按列存的相对秒数组，编码道就上万字，整份视图在 MAX_CHARS_PER_VIEW 截断时听歌道根本到不了模型，
 // 所以给模型前改成带绝对时间的行，只留有内容的时段，同一首歌、同一部片中间的短暂停合成一段。
-// 编码道放最后：忙的日子它最长，被截断时只截它的尾巴，其他道的合计还在。
+// 各道合计放在最前的 totals、编码道时段放最后：截断只截 JSON 尾巴，忙的日子丢的也只是编码时段的末尾。
 // 状态码是 shared/pulse-timeline.ts 里 LISTENING_STATES、WATCHING_STATES、GAMING_STATES 的下标。
 export const MERGE_GAP_SEC = 600;
 // 须与 shared/pulse-types.ts#isCodingDriverValue 同口径（site-status.test.ts 对照）：只有 agent 在跑的时段不算 lyjw 在写代码。
@@ -45,7 +45,6 @@ function stateLane(lane: Record<string, unknown>, from: number, keep: (state: nu
     .map(({ from, to, title, subtitle }) => ({ from, to, title: title ?? null, subtitle: subtitle ?? null }));
   const rename = ({ subtitle: sub, ...row }: Row) => ({ ...row, [subtitle]: sub });
   return {
-    summary: lane.summary,
     spans: merge(played, sameTitle).map(rename),
     ...(lane.uncertain !== undefined && { inferredElsewhere: merge(rows(lane.uncertain, from, ["title", "subtitle", "marginSec"]), sameTitle).map(rename) }),
   };
@@ -58,23 +57,27 @@ export function pulseForModel(body: unknown): unknown {
   if (!data || !lanes || typeof window?.from !== "number") return body;
   const from = window.from;
   const lane = (key: string) => object(lanes[key]) ?? {};
-  const coding = lane("coding");
-  const activity = lane("activity");
   return {
     ...(body as object),
     data: {
       generatedAt: data.generatedAt,
       window,
+      totals: {
+        listening: lane("listening").summary,
+        watching: lane("watching").summary,
+        gaming: lane("gaming").summary,
+        coding: lane("coding").summary,
+        tokens: lane("tokens").summary,
+        charging: { currentPowerW: lane("charging").currentPowerW, ...object(lane("charging").summary) },
+        activity: lane("activity").summary,
+      },
       lanes: {
         listening: stateLane(lane("listening"), from, (state) => state === 2, "artist"),
         watching: stateLane(lane("watching"), from, (state) => state === 2, "episode"),
         gaming: stateLane(lane("gaming"), from, (state) => state === 2, "detail"),
-        tokens: { summary: lane("tokens").summary },
-        charging: { currentPowerW: lane("charging").currentPowerW, summary: lane("charging").summary },
-        activity: { summary: activity.summary, workouts: rows(activity.workouts, from, ["activityType"]) },
+        activity: { workouts: rows(lane("activity").workouts, from, ["activityType"]) },
         coding: {
-          summary: coding.summary,
-          driverSpans: merge(rows(coding.segments, from, ["value"]).filter((row) => isDriverValue(Number(row.value))).map(({ from, to }) => ({ from, to })), () => true),
+          driverSpans: merge(rows(lane("coding").segments, from, ["value"]).filter((row) => isDriverValue(Number(row.value))).map(({ from, to }) => ({ from, to })), () => true),
         },
       },
     },
