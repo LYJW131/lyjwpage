@@ -1,18 +1,50 @@
+import { scriptJson } from "@/lib/inline-script";
+
 const MODULE_PRELOAD = /<link rel="modulepreload"[^>]*>/g;
+const SCRIPT = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>/g;
+const ATTRIBUTE = /([^\s=/>]+)(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 
 function lowPriority(link: string): string {
   return /\sfetchpriority=/i.test(link) ? link : link.replace(/\s*(\/?>)$/, ' fetchpriority="low"$1');
 }
 
-// React 把 <Scripts /> 渲染的 modulepreload 提升进 <head>，几百 KB 的 JS 就和 HTML、样式表以 High 优先级同时下载，慢网下首帧要等它们。挪到 </body> 前：解析器读完正文才发现它们，HTML 和样式表先占带宽，仍是一批并行请求，不退化成按 import 逐层发现的瀑布。
-// 再降成 Low：High 的 modulepreload 即使排在正文后，仍和首屏图片、字体抢带宽，Lighthouse 的移动端模拟也把首帧前下完的 High 脚本算进 FCP / LCP；水合本就排在首帧之后，Low 不拖慢它。
+function deferredScript(module: string, attributes: string, preloads: string): string | null {
+  const attrs = [...attributes.matchAll(ATTRIBUTE)];
+  const type = attrs.find((attr) => attr[1].toLowerCase() === "type");
+  const value = type?.[3] ?? type?.[4] ?? type?.[5];
+  if (value?.toLowerCase() !== "module" || !attrs.some((attr) => attr[1].toLowerCase() === "async") ||
+      attrs.some((attr) => attr[1].toLowerCase() === "src") || !type) return null;
+  const bootstrapAttributes = attributes.slice(0, type.index) + attributes.slice(type.index + type[0].length);
+  return `<script${bootstrapAttributes}>(function(){` +
+    `var b=document.currentScript,done=false,frame=0,observer=null;` +
+    `function start(){if(done)return;done=true;cancelAnimationFrame(frame);if(observer)observer.disconnect();document.removeEventListener("visibilitychange",visible);` +
+    `var t=document.createElement("template");t.innerHTML=${scriptJson(preloads)};document.body.appendChild(t.content);` +
+    `t.innerHTML=${scriptJson(module)};var original=t.content.firstElementChild,s=document.createElement("script");` +
+    `for(var a of original.attributes)s.setAttribute(a.name,a.value);s.textContent=original.textContent;b.replaceWith(s)}` +
+    `function visible(){if(document.visibilityState==="hidden")start()}` +
+    `document.addEventListener("visibilitychange",visible);` +
+    `if(document.visibilityState==="hidden"||(typeof performance!=="undefined"&&performance.getEntriesByName("first-contentful-paint").length))start();` +
+    `else if(typeof PerformanceObserver==="function"&&PerformanceObserver.supportedEntryTypes&&PerformanceObserver.supportedEntryTypes.indexOf("paint")>=0){` +
+    `observer=new PerformanceObserver(function(list){if(list.getEntries().some(function(entry){return entry.name==="first-contentful-paint"}))start()});observer.observe({type:"paint",buffered:true})}` +
+    `else frame=requestAnimationFrame(function(){if(!done)frame=requestAnimationFrame(start)})` +
+    `})();</script>`;
+}
+
+// 双 requestAnimationFrame 仍可能早于实际绘制，支持 Paint Timing 时须等 FCP；只推迟 hydrateRoot，下载与模块求值仍会挤占首帧。
+// 启动时一起恢复预加载，再原位替换入口脚本，既不形成 import 瀑布，也不留下水合时多余的节点。
 export function deferModulePreloads(html: string): string {
   const head = html.indexOf("</head>");
   const bodyEnd = html.lastIndexOf("</body>");
   if (head < 0 || bodyEnd < head) return html;
-  const preloads = html.slice(0, head).match(MODULE_PRELOAD);
-  if (!preloads) return html;
+  const preloads = (html.slice(0, head).match(MODULE_PRELOAD) ?? []).map(lowPriority).join("");
   const before = html.slice(0, head).replace(MODULE_PRELOAD, "");
-  const between = html.slice(head, bodyEnd);
-  return before + between + preloads.map(lowPriority).join("") + html.slice(bodyEnd);
+  let deferred = false;
+  const between = html.slice(head, bodyEnd).replace(SCRIPT, (module, attributes: string) => {
+    if (deferred) return module;
+    const bootstrap = deferredScript(module, attributes, preloads);
+    if (!bootstrap) return module;
+    deferred = true;
+    return bootstrap;
+  });
+  return before + between + (deferred ? "" : preloads) + html.slice(bodyEnd);
 }

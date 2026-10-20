@@ -3,14 +3,13 @@
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { ArrowUp, Check, History, PencilRuler, Plus, Square, Trash2 } from "lucide-react";
 
-import { ChatCard } from "@/components/chat-card";
+import { AnswerCard, AskCard, BuildPlanCard, ChatCard } from "@/components/lazy-chat-cards";
 import { ChatMarkdown, preloadChatMarkdown, useChatMarkdownReady } from "@/components/lazy-chat-markdown";
 import { FableDescent, type Descent } from "@/components/fable-descent";
-import { AnswerCard, AskCard, askAnswerText } from "@/components/ask-card";
-import { BuildPlanCard } from "@/components/build-plan-card";
 import { Card } from "@/components/ui/card";
 import { STREAM_FLUSH_MS, revealedLength, revealedText, stableMarkdown } from "@/lib/streaming-markdown";
 import { chatConsent, designConsent, vendorConsent } from "@/lib/chat-consent";
+import { askAnswerText } from "@/lib/ask-answer-text";
 import { chatLineup } from "@/lib/chat-lineup";
 import { useHumanCheck } from "@/hooks/use-human-check";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";

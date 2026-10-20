@@ -19,11 +19,6 @@ export function askAnswers(questions: GodChatQuestion[], picks: string[][], othe
   return note.trim() ? [...answers, { header: NOTE_HEADER, question: "", answer: note.trim() }] : answers;
 }
 
-// 空 question 是不属于任何问题的补充说明。
-export function askAnswerText(answers: ChatAnswer[]): string {
-  return answers.map(({ question, answer }) => (question ? `${question} ${answer}` : `Additional note: ${answer}`)).join("\n");
-}
-
 export function AnswerCard({ answers }: { answers: ChatAnswer[] }) {
   return (
     <dl aria-label="Answers" className="space-y-2 rounded-lg border border-line-strong bg-surface px-3 py-2.5 text-foreground">
