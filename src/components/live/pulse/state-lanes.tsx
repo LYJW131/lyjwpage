@@ -66,13 +66,10 @@ export function codingModel(lane: PulseCodingLane, range: Range): LaneModel | nu
           : <path key={value} d={barPath(rows, LANE_HEIGHT - IDLE_HEIGHT)} fill="currentColor" fillOpacity={0.42} />;
       });
     })(),
-    summary: segments.length ? { value: pulseDuration(codingDriverSeconds(lane.summary)), detail: `driver · agent ${roughHours(codingAgentSeconds(lane.summary))}` } : null,
+    summary: segments.length ? { value: `driver ${pulseDuration(codingDriverSeconds(lane.summary))}`, detail: `agent ${pulseDuration(codingAgentSeconds(lane.summary))}` } : null,
     aria: "coding timeline: coding app in front, agent running, or both",
   };
 }
-
-// 桌面端摘要列放不下「driver · agent 20h 51m」，agent 一小时以上只写整小时。
-const roughHours = (seconds: number) => (seconds >= 3_600 ? `${Math.round(seconds / 3_600)}h` : pulseDuration(seconds));
 
 const STATE_WORDS: Record<"listening" | "watching" | "gaming", readonly string[]> = {
   listening: ["Idle", "Paused", "Playing"],
