@@ -6,8 +6,13 @@ const SAMPLES = [
   "你好",
   "LYJW 在干嘛",
   "他最近在听谁的歌",
+  "他现在睡了吗",
   "最近在玩什么",
   "奖杯拿了多少",
+  "他最近玩艾尔登法环了吗",
+  "玩过月姬吗",
+  "听过YOASOBI吗",
+  "《葬送的芙莉莲》他看到第几集了",
   "今天走了多少步",
   "他的 Claude 额度还剩多少",
   "这个网站的数据存在哪",
@@ -20,8 +25,8 @@ const SAMPLES = [
 ];
 
 const USAGE = `用法：pnpm --dir workers/ai route:probe ["问题" ...]
-用线上 Clef 跑一遍选档与预取判断（src/chat/router.ts#routeWithClef），打印档位、预取和 Clef 给的概率；不带问题时跑内置的代表性问题。
-Clef 走 Workers AI REST：CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN 取环境变量或根目录 .env.local。`;
+用线上 Clef 与 Clairic 跑一遍选档与预取判断（src/chat/router.ts#routeWithClef），打印档位、预取和 Clef 给的概率；不带问题时跑内置的代表性问题。
+Clef 与 Clairic 走 Workers AI REST：CLOUDFLARE_ACCOUNT_ID 与 CLOUDFLARE_API_TOKEN 取环境变量或根目录 .env.local。`;
 
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
@@ -51,7 +56,7 @@ const ai = {
     });
     if (!response.ok) throw new Error(`HTTP ${response.status} ${(await response.text()).slice(0, 200)}`);
     const { result } = (await response.json()) as { result: { answers: Record<string, Answer> } };
-    last = result.answers;
+    if (model.endsWith("/clef")) last = result.answers;
     return result;
   },
 } as unknown as Ai;
@@ -62,6 +67,6 @@ for (const question of questions) {
   last = undefined;
   const started = Date.now();
   const decision = await routeWithClef(ai, [{ role: "user", content: question }]);
-  const prefetch = (decision.prefetch ?? []).map((call) => call.name === "get_site_status" ? `status(${call.input.views.join(",")})` : call.name === "read_project_doc" ? `doc(${call.input.doc})` : call.name).join(" ") || "-";
+  const prefetch = (decision.prefetch ?? []).map((call) => call.name === "get_site_status" ? `status(${call.input.views.join(",")}${call.input.query ? ` query=${call.input.query}` : ""})` : call.name === "read_project_doc" ? `doc(${call.input.doc})` : call.name).join(" ") || "-";
   console.log(`${question}\n  ${decision.source} ${decision.route}${decision.effort ? `/${decision.effort}` : ""}${decision.design ? " design" : ""} · ${Date.now() - started}ms\n  status ${top(last?.status)} · doc ${top(last?.doc)} → 预取 ${prefetch}`);
 }

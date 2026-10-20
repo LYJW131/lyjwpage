@@ -22,7 +22,7 @@
 | 方法 | 路径 | Access 权限 | 用途 |
 | --- | --- | --- | --- |
 | POST | `/api/ingest/<来源>` | `ingest:<来源>` | 来源清单是 `shared/ingest/prepare.ts#INGEST_SOURCES` |
-| POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` | Claude Code 云端线程的内置遥测（OTLP/HTTP JSON 指标，可 gzip） |
+| POST | `/api/ingest/agents/otlp` | `ingest:agents-otlp` 或 `ingest:mac-otlp` | Claude Code 与 Devin CLI 的内置遥测（OTLP/HTTP JSON 指标，可 gzip），按权限分来源 |
 | POST | `/api/internal/site-deployed` | `internal:site-deployed` | 站点新部署接管了生产域名，见下文「部署通知」 |
 | POST | `/api/internal/collector-refresh` | `internal:collector-refresh` | 立刻跑一遍采集任务，见下文「手动跑采集」 |
 | GET | `/` | 无（Access 在前面挡着） | `{ ok, service: "ingest" }`，只报存活 |
@@ -89,7 +89,12 @@ prepare 之后，一封上报按数据层拆开（`src/worker.ts` 的 `commitIng
 
 入口不问状态核心 `ready()`：请求体不是 JSON、校验不过都直接回 400，好报文直接提交。
 
-### Claude Code 云端线程用量
+### OTLP 用量：Claude Code 云端线程与 Devin CLI
+
+这条路由按指标名认 agent：`claude_code.token.usage` / `claude_code.cost.usage` 记到 `claude`，
+`devin.token.usage` 记到 `devin`（`shared/ingest/agents-otlp.ts#METRICS`），其余指标不读。
+
+#### Claude Code 云端线程
 
 Mac 的 ccusage 只扫本机会话记录，看不到云端线程。云端环境打开 Claude Code 内置遥测，
 每分钟把指标推到 `/api/ingest/agents/otlp`。这组变量**只配在云端环境设置里**，不进仓库里 Claude Code 的
@@ -110,11 +115,45 @@ OTEL_METRIC_EXPORT_INTERVAL=60000
 （没法去重，重发会重复计数），只记一行 `[otlp] delta temporality points skipped` 的 warn。
 端点要用 `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`（原样使用）；通用的 `OTEL_EXPORTER_OTLP_ENDPOINT` 会被自动拼上 `/v1/metrics`。
 只认 JSON（可 gzip），不认 protobuf；只在这条路由解压，按解压后的字节数限制大小。
-鉴权要求专属 `ingest:agents-otlp` 权限，`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。
+鉴权要求专属 OTLP 权限，`ingest:agents` 不能写此端点，云端凭据也不能写限额或设备上报。
 生产使用独立 service token `lyjwpage-claude-cloud`，已加入 `lyjwpage ingest` 应用的 Service Auth 策略，client id 登记在
 `[vars.ACCESS_CLIENTS]`，仅授予 `["ingest:agents-otlp"]`；Client Secret 只放云端环境，不用配置 Worker secret。
 请求头格式见 [Cloudflare service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)。
-收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#claude-code-云端线程用量)。
+收下之后怎么记账、怎么点亮 Claude 那盏灯，见 [core README](../core/README.md#otlp-用量claude-code-云端线程与-devin-cli)。
+
+#### OTLP：按凭据分来源
+
+同一个入口收云端和 Mac 两边的遥测。验过 JWT 之后按这把凭据在 `[vars.ACCESS_CLIENTS]` 里持有的权限定来源：`ingest:agents-otlp`
+记进 `agents-otlp`（云端环境），`ingest:mac-otlp` 记进 `mac-otlp`（Mac），两个都有时取前者（`src/worker.ts#OTLP_SOURCES`）。
+payload 里的 `os.type`、`service.name` 和资源属性是客户端自报的，不用来分来源。
+
+#### Devin CLI（Mac）
+
+Devin CLI 的用量以前由 agents-reporter 拉 tokens.ci 的公开主页，现在由 Mac 上的 Devin CLI 自己推。Mac 的 ccusage
+不统计 Devin，所以配在本机不会重复计数。Devin 只发 delta 指标，没有改成累计的开关，状态核心按窗口去重
+（见 core README）。它的 `otel` 配置里没有协议项，JSON 要靠环境变量 `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`
+（不设就发 protobuf，这里回 400），放进 `~/.zshenv` 这类启动 Devin 的 shell 都会读的地方。
+
+`~/.config/devin/config.json` 里加：
+
+```json
+"otel": {
+  "enabled": true,
+  "metrics_endpoint": "https://ingest.homepage.lyjw.llc/api/ingest/agents/otlp",
+  "headers": { "CF-Access-Client-Id": "<ACCESS_CLIENT_ID>", "CF-Access-Client-Secret": "<ACCESS_CLIENT_SECRET>" },
+  "metric_export_interval_ms": 60000
+}
+```
+
+`metrics_endpoint` 原样使用，不拼 `/v1/metrics`。`endpoint` 与 `logs_endpoint` 都不写：日志事件带提示词和回复原文，
+不配就不发。凭据用 Mac 那把 `lyjwpage-mac`（同一上报方共用一把，`[vars.ACCESS_CLIENTS]` 里它有
+`["ingest:mac", "ingest:mac-otlp"]`，用量记进 `mac-otlp`），值从 Hub 设置里的钥匙串取，配置文件权限保持 600。
+
+#### Devin CLI（云端）
+
+云端线程里由 Claude 调度的 Devin CLI 推到同一个入口，用云端那把 `lyjwpage-claude-cloud`，记进 `agents-otlp`，站点标 Cloud。
+`~/.config/devin/config.json` 只写端点、不写 headers；鉴权头由云端环境的 Network secret 在出口代理上加（配置见 [ops-facts](../../docs/ops-facts.md#claude-code-云端-routine)）。
+Claude Code 不把 `OTEL_*` 传给它运行的命令，`OTEL_EXPORTER_OTLP_PROTOCOL=http/json` 要由启动 Devin 的 wrapper 自己设。
 
 ## 部署通知
 

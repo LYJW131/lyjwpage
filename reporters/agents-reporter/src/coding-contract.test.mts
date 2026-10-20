@@ -8,8 +8,6 @@ const ingest = await import("../../../shared/ingest/agents.ts");
 
 const { bucketStart, MAX_DAY_MODELS, MAX_WINDOW_ROWS, OVERFLOW_MODEL } = await import("../dist/coding-usage.js");
 const { recentPayload, recentReports } = await import("../dist/cursor-now.js");
-const { devinSnapshotOf, devinUsageDays } = await import("../dist/devin-usage.js");
-const { advanceDevinLedger, devinBucketReport } = await import("../dist/devin-buckets.js");
 const {
   aggregateEvents,
   applyIncrementalLedger,
@@ -261,50 +259,4 @@ test("上限确实是站点卡着的：MAX_DAY_MODELS 与 MAX_WINDOW_ROWS 和站
 
 test("并出来的占位行名是站点隐藏名单里的名字：视图不当模型名展示、不进排名", () => {
   assert.equal(codingModels.isVisibleCodingModel(OVERFLOW_MODEL), false);
-});
-
-test("Devin CLI 的 tokens.ci 日行过站点校验，超出模型上限时并成占位行", () => {
-  const astra = { input: 993, output: 378_706, cacheRead: 86_309_848, cacheWrite: 7_097_676, reasoning: 120, cost: 193.97 };
-  const many = Object.fromEntries(
-    Array.from({ length: MAX_DAY_MODELS + 5 }, (_, index) => [`model-${index}`, { input: index + 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0, cost: 0 }]),
-  );
-  const days = devinUsageDays({
-    contributions: [
-      { date: "2026-09-28", clients: [{ client: "devin-cli", models: { "gpt-6-astra-xhigh": astra } }] },
-      { date: "2026-09-29", clients: [{ client: "devin-cli", models: many }] },
-    ],
-  });
-  const sent = wire({ agents: [{ id: "devin", state: "ok", collectedAt: NOW, error: null, warning: null, sessionCount: null, days }] });
-  const normalized = contract.normalizeCodingUsageReport(sent, NOW);
-  const crowded = normalized.agents[0]!.days![1]!;
-  assert.equal(crowded.models.length, MAX_DAY_MODELS);
-  assert.equal(crowded.models.reduce((sum: number, row: { tokens: number }) => sum + row.tokens, 0), crowded.totalTokens);
-  assert.ok(crowded.models.some((row: { model: string }) => row.model === OVERFLOW_MODEL));
-});
-
-test("Devin 的桶：tokens.ci 两次提交的增量摊成的整份账本，单独一封，站点全收、没有拒收", () => {
-  const page = (updatedAt: number, swe: number, many: number) => ({
-    updatedAt: new Date(updatedAt).toISOString(),
-    contributions: [{
-      date: "2026-09-29",
-      clients: [{
-        client: "devin-cli",
-        models: {
-          "swe-2-max": { input: swe, output: 7, cacheRead: swe * 30, cacheWrite: 0, reasoning: 2, cost: 0 },
-          ...Object.fromEntries(Array.from({ length: MAX_WINDOW_ROWS + 3 }, (_, index) => [`m-${index}`, { input: many + index, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, cost: 0 }])),
-        },
-      }],
-    }],
-  });
-  const first = advanceDevinLedger(null, devinSnapshotOf(page(NOW - 40 * 60_000, 10, 0), NOW - 39 * 60_000), "devin", NOW - 39 * 60_000);
-  const ledger = advanceDevinLedger(first, devinSnapshotOf(page(NOW - 60_000, 90_000, 5), NOW), "devin", NOW);
-  const report = devinBucketReport(ledger, "devin", NOW);
-  assert.ok(report.windows.length >= 8);
-  assert.ok(report.windows.every((window: { agents: unknown[] }) => window.agents.length <= MAX_WINDOW_ROWS));
-  const envelope = wire({ collectedAt: new Date(NOW).toISOString(), codingTokenBuckets: report, reporter: { commit: null, pushes: 3, rttMs: 90, start: NOW - 60_000, end: NOW } });
-  const prepared = ingest.prepareAgentLimits(envelope, NOW);
-  assert.deepEqual(prepared.rejected, []);
-  assert.deepEqual(prepared.codingTokenBuckets, report);
-  const input = report.windows.reduce((sum: number, window: { agents: Array<{ model: string; inputTokens: number }> }) => sum + window.agents.reduce((inner, row) => inner + row.inputTokens, 0), 0);
-  assert.equal(input, 90_000 - 10 + (MAX_WINDOW_ROWS + 3) * 5);
 });

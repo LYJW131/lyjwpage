@@ -3,6 +3,9 @@ import type { NowListeningPayload } from "@shared/types";
 
 import { base64url, decodeBase64url } from "../crypto";
 import type { SiteTool, ToolLedger } from "./registry";
+import { collectLists, normalize, PAGE_SIZE, strip, withMonthlyTotals, type PagedList } from "./status-shape";
+
+export { isImageField, withMonthlyTotals } from "./status-shape";
 
 export type ReadStatus = (path: string) => Promise<Response>;
 
@@ -17,7 +20,7 @@ const VIEW_NOTES = {
   listening: "Recently played Apple Music tracks",
   nowListening: "Song playing right now: reported by the Mac or HomePod (music), or inferred on another device from Apple Music play history (elsewhere); idle only covers the Mac and HomePod",
   coding: "AI coding token totals and API-equivalent cost since tracking began, top models and per-agent totals; no per-day numbers (those are in codingYear)",
-  codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; agents-otlp = Claude Code in the cloud; agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only mac activity with an unlocked desktop suggests LYJW is at the computer",
+  codingNow: "Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; mac-otlp = an agent's built-in telemetry on LYJW's Mac (Devin CLI); agents-otlp = built-in telemetry from cloud sessions (Claude Code, Devin CLI); agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac or mac-otlp) with an unlocked desktop suggests LYJW is at the computer",
   codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date and ready-made 7-day / 30-day / all sums (large)",
   limits: "Coding agent account plans and rate-limit windows",
   agentStatus: "Status pages of AI providers (operational / incidents)",
@@ -45,7 +48,6 @@ const VIEW_KEYS = Object.keys(VIEW_NOTES) as StatusViewKey[];
 const MAX_VIEWS_PER_CALL = 4;
 const MAX_VIEWS_PER_REPLY = 8;
 const MAX_CHARS_PER_VIEW = 8_000;
-const PAGE_SIZE = 20;
 const MAX_QUERY_CHARS = 200;
 
 const DETAILS = ["summary", "full"] as const;
@@ -58,19 +60,9 @@ type Cursor = StatusPage & { view: StatusViewKey; totals: number[] };
 
 export type SiteStatusInput = { views: StatusViewKey[]; notes: string[]; page: StatusPage; cursor?: Cursor; badCursor?: true };
 
-const IMAGE_KEY_WORDS = new Set(["cover", "covers", "artwork", "artworks", "image", "images", "icon", "icons", "thumbnail", "thumbnails", "thumb", "avatar", "avatars", "poster", "posters", "backdrop", "backdrops", "logo", "banner"]);
-const IMAGE_URL = /^(?:data:image\/|\/img\/|(?:https?:\/\/|\/)[^\s?#]+\.(?:png|jpe?g|gif|webp|avif|svg|ico|heic)(?:[?#]|$))/i;
-
-export function isImageField(key: string, value: unknown): boolean {
-  const words = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[\s_-]+/);
-  return words.some((word) => IMAGE_KEY_WORDS.has(word)) || (typeof value === "string" && IMAGE_URL.test(value));
-}
-
 export function isStatusViewKey(value: unknown): value is StatusViewKey {
   return VIEW_KEYS.includes(value as StatusViewKey);
 }
-
-const normalize = (text: string) => text.normalize("NFKC").toLowerCase();
 
 function encodeCursor(cursor: Cursor): string {
   const bytes = new TextEncoder().encode(JSON.stringify([cursor.view, cursor.offset, cursor.query, cursor.detail, cursor.totals]));
@@ -142,91 +134,6 @@ export function claimViews(requested: StatusViewKey[], ledger: ToolLedger, page:
   return { views, notes };
 }
 
-function strip(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(strip);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key, child]) => !isImageField(key, child))
-      .map(([key, child]) => [key, strip(child)]),
-  );
-}
-
-function contains(value: unknown, needle: string): boolean {
-  if (typeof value === "string") return normalize(value).includes(needle);
-  if (typeof value === "number" || typeof value === "boolean") return String(value).includes(needle);
-  if (Array.isArray(value)) return value.some((child) => contains(child, needle));
-  if (value && typeof value === "object") return Object.values(value).some((child) => contains(child, needle));
-  return false;
-}
-
-// 热力图类视图是 origin 起逐日的数值数组，模型按下标数日期既费步数又容易数错（实测关思考的 Flash 画「最近 7 天」错位一天），
-// 所以附上按月合计 `<数组名>ByMonth`、最近 RECENT_DAYS 天的逐日值 `<数组名>LastDays`（键是日期）与现成的合计
-// `<数组名>Sums`：关思考的 Flash 心算一长串数字会算错（实测「最近 7 天」少算 6 亿），给好的合计就不必它加。
-// 「最近」从数据源的今天 `todayAtSource` 往回数：编码热力图补满 53 周，今天之后的格子是 0，不能按数组末尾算。
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const RECENT_DAYS = 14;
-
-function lastDays(origin: string, values: number[]): Record<string, number> {
-  const start = Date.parse(`${origin}T00:00:00Z`);
-  const from = Math.max(0, values.length - RECENT_DAYS);
-  return Object.fromEntries(values.slice(from).map((value, index) => [new Date(start + (from + index) * 86_400_000).toISOString().slice(0, 10), value]));
-}
-
-function monthlyTotals(origin: string, values: number[]): Record<string, number> {
-  const start = Date.parse(`${origin}T00:00:00Z`);
-  const totals: Record<string, number> = {};
-  values.forEach((value, index) => {
-    const month = new Date(start + index * 86_400_000).toISOString().slice(0, 7);
-    totals[month] = (totals[month] ?? 0) + value;
-  });
-  return totals;
-}
-
-function sums(values: number[]) {
-  const total = (from: number) => values.slice(from).reduce((sum, value) => sum + value, 0);
-  return { last7Days: total(-7), last30Days: total(-30), all: total(0) };
-}
-
-export function withMonthlyTotals(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withMonthlyTotals);
-  if (!value || typeof value !== "object") return value;
-  const record = value as Record<string, unknown>;
-  const start = typeof record.from === "string" && DAY.test(record.from) ? record.from : record.origin;
-  const out = Object.fromEntries(Object.entries(record).map(([key, child]) => [key, withMonthlyTotals(child)]));
-  if (typeof start !== "string" || !DAY.test(start)) return out;
-  const today = typeof record.todayAtSource === "string" && DAY.test(record.todayAtSource)
-    ? Math.round((Date.parse(`${record.todayAtSource}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000)
-    : undefined;
-  for (const [key, child] of Object.entries(record)) {
-    if (Array.isArray(child) && child.length && child.every((item) => typeof item === "number")) {
-      const past = today === undefined || today < 0 ? child : child.slice(0, today + 1);
-      out[`${key}ByMonth`] = monthlyTotals(start, child);
-      out[`${key}LastDays`] = lastDays(start, past);
-      out[`${key}Sums`] = sums(past);
-    }
-  }
-  return out;
-}
-
-const isScalarList = (value: unknown[]) => value.length > 0 && value.every((item) => item === null || typeof item !== "object");
-
-type PagedList = { path: string; total: number; before: number };
-
-// 只处理最外层的数组（不在别的数组项里的）：搜到的条目整项保留，项里的子列表不再按 query 过滤或分页，
-// 否则「游戏名匹配」会把这个游戏的奖杯列表筛空，嵌套列表也没法和外层共用同一个位置。
-// 纯数值、字符串数组（逐日序列）整份保留：按下标对应日期，分页或筛选都会打乱对应关系，体积靠 MAX_CHARS_PER_VIEW 兜底。
-function collectLists(value: unknown, path: string, needle: string, lists: PagedList[]): unknown {
-  if (Array.isArray(value) && isScalarList(value)) return value;
-  if (Array.isArray(value)) {
-    const items = needle ? value.filter((item) => contains(item, needle)) : value;
-    if (needle || value.length > PAGE_SIZE) lists.push({ path: path || "(root)", total: items.length, before: value.length });
-    return items;
-  }
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, collectLists(child, path ? `${path}.${key}` : key, needle, lists)]));
-}
-
 type ViewResult = { section: string; outOfRange?: true };
 
 const clock = (ms: number) => {
@@ -280,7 +187,7 @@ function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: 
     if (!value || typeof value !== "object") return value;
     return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, replace(child, path ? `${path}.${key}` : key)]));
   };
-  const json = JSON.stringify(replace(filtered, ""));
+  const json = JSON.stringify(replace(filtered, ""), localTimes);
   const listNotes = lists.map((list) => {
     const shown = list.total > page.offset ? `items ${page.offset + 1}-${Math.min(list.total, page.offset + PAGE_SIZE)}` : "no items on this page";
     const count = needle ? `${list.total} of ${list.before} match` : `${list.total} total`;
@@ -315,7 +222,27 @@ async function readView(read: ReadStatus, key: StatusViewKey, page: StatusPage, 
   }
 }
 
-const clockLine = (now: number) => `now: ${now} (${new Date(now).toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour12: false })} Asia/Shanghai)`;
+const STATUS_TIME_ZONE = "Asia/Shanghai";
+const localTime = (ms: number) => new Date(ms).toLocaleString("sv-SE", { timeZone: STATUS_TIME_ZONE, hour12: false }).slice(0, 16);
+
+// 模型自己换算 epoch 毫秒常把日期、甚至年份算错，所以时间点字段直接给本地时间；时长字段（…Ms）照旧是毫秒。
+// resetsAt 是 Unix 秒，Emby 的 playedAt 是 ISO 字符串，pulse 的 window.from / to 与 PageSpeed 的 start 不带 At 后缀。
+const TIME_KEY = /(At|^since|^from|^to|^start)$/;
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+function localTimes(key: string, value: unknown): unknown {
+  if (!TIME_KEY.test(key)) return value;
+  if (typeof value === "number") {
+    if (value > 1e12 && value < 1e14) return localTime(value);
+    if (key.endsWith("At") && value > 1e9 && value < 1e11) return localTime(value * 1000);
+  }
+  if (typeof value === "string" && ISO_TIME.test(value)) {
+    const ms = Date.parse(value);
+    if (Number.isFinite(ms)) return localTime(ms);
+  }
+  return value;
+}
+
+const clockLine = (now: number) => `now: ${now} (${localTime(now)} ${STATUS_TIME_ZONE})`;
 
 export async function runSiteStatusTool(read: ReadStatus, views: StatusViewKey[], now = Date.now(), page: StatusPage = FIRST_PAGE): Promise<string> {
   const results = await Promise.all(views.map(async (key) => `## ${key}\n${(await readView(read, key, page, now)).section}`));
@@ -329,7 +256,7 @@ export const SITE_STATUS_TOOL: SiteTool = {
   title: "Read LYJW's live status",
   description: [
     "Read live data from LYJW's homepage (the same JSON the site's cards show).",
-    "Timestamps are epoch milliseconds; the result includes the current time for comparison.",
+    `Points in time (fields ending in At, since, window from / to, start) are already converted to ${STATUS_TIME_ZONE} local time as YYYY-MM-DD HH:mm; quote them as given instead of recomputing. Durations ending in Ms stay milliseconds. The result starts with the current time for comparison.`,
     `By default image fields (covers, artwork, icons, avatars, image URLs) are removed; pass detail="full" only when you need image links.`,
     "Long lists are paged: each view starts with a summary line naming the paged lists, their totals and the nextCursor. Pass nextCursor back unchanged as cursor to read the next page; no nextCursor means the last page. The page size is chosen by the server.",
     "To look for a specific item (a game, song, show or trophy), use query first: it keeps the list items that contain the text, ignoring case and full/half width. Game names may be in Chinese, English or Japanese, so try another name when nothing matches.",

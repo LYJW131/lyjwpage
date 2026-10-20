@@ -9,7 +9,7 @@ import {
 } from "@shared/coding-buckets";
 import { codingBucketsKey, codingBucketsRevisionKey, parseRevision } from "@shared/coding-store";
 import type { CodingTokenBucketReport } from "@shared/coding-usage";
-import type { CodingUsageSource } from "@shared/coding-usage-sources";
+import type { CodingUsageSource, OtlpCodingSource } from "@shared/coding-usage-sources";
 import type { StorageBatch } from "@shared/storage-client";
 
 export type CodingBucketsLanding = {
@@ -52,8 +52,28 @@ export async function prepareCodingBuckets(
   return next ? write(source, next, revision) : IGNORED;
 }
 
-export async function prepareOtlpBuckets(deltas: readonly CodingBucketDelta[], receivedAt: number): Promise<CodingBucketsLanding> {
+export async function prepareOtlpBuckets(source: OtlpCodingSource, deltas: readonly CodingBucketDelta[], receivedAt: number): Promise<CodingBucketsLanding> {
   if (!deltas.length) return IGNORED;
-  const { stored, revision } = await readBuckets("agents-otlp");
-  return write("agents-otlp", addBucketDeltas(stored, deltas, receivedAt), revision);
+  const { stored, revision } = await readBuckets(source);
+  return write(source, addBucketDeltas(stored, deltas, receivedAt), revision);
+}
+
+// agent 换了来源时，旧来源里它的桶一起删掉，否则 Tokens 道会把两边相加；removed 是删掉的行，要接过去的就交给新来源。
+export async function prepareBucketsWithout(source: CodingUsageSource, ids: readonly string[]): Promise<CodingBucketsLanding & { removed: CodingBucketDelta[] }> {
+  const { stored, revision } = await readBuckets(source);
+  const drop = new Set(ids);
+  if (!stored || !stored.windows.some((window) => window.agents.some((row) => drop.has(row.id)))
+    && !stored.agents.some((agent) => drop.has(agent.id))) return { ...IGNORED, removed: [] };
+  const removed = stored.windows.flatMap((window) => window.agents.filter((row) => drop.has(row.id)).map((row) => ({
+    at: window.from, id: row.id, model: row.model,
+    inputTokens: row.inputTokens, outputTokens: row.outputTokens, cacheReadTokens: row.cacheReadTokens, cacheCreationTokens: row.cacheCreationTokens,
+  })));
+  const landing = write(source, {
+    ...stored,
+    agents: stored.agents.filter((agent) => !drop.has(agent.id)),
+    windows: stored.windows
+      .map((window) => ({ ...window, agents: window.agents.filter((row) => !drop.has(row.id)) }))
+      .filter((window) => window.agents.length > 0),
+  }, revision);
+  return { ...landing, removed };
 }

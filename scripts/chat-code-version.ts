@@ -6,6 +6,7 @@ import { join, relative, sep } from "node:path";
 export const CHAT_CODE_PATHS = [
   "src/components/god-chat.tsx",
   "src/components/chat-card.tsx",
+  "src/components/chat-card",
   "src/components/chat-markdown.tsx",
   "src/components/ask-card.tsx",
   "src/components/build-plan-card.tsx",

@@ -20,7 +20,9 @@ description: lyjwpage 里排查并修 bug：lyjw 说「X 不对」、线上报�
 
 ## 1. 取证
 
-- 线上问题按根 `AGENTS.md`「排查线上错误」用 Cloudflare Code Mode MCP 查 Workers Issues 与遥测日志，拿调用栈和 `$workers.scriptVersion.id`；浏览器报错看 `[browser-error]` 日志里的 `release`（提交 SHA）和 `tags`，对回提交再读源码。浏览器调用栈是压缩后的代码，要反解就在 scratchpad 里检出那个 release，构建时给客户端加 `build.sourcemap: "hidden"`（只多出 map 文件，不改产物），再按 map 查行列。
+- 线上问题用 Cloudflare Code Mode MCP 查：Workers Issues（`/accounts/{id}/workers/observability/issues`）看已归组的异常、5xx 与 `console.error`，遥测查询（`.../workers/observability/telemetry/query`）按 `$metadata.service`、`$metadata.level` 找日志和调用栈，拿到 `$workers.scriptVersion.id` 再对源码定位。
+- 服务名就是 Worker 名：`site`（含浏览器经 `/relay` 转来的 `[browser-error]`，`release` 是提交 SHA；浏览器调用栈是压缩后的代码）、`core`（含 Durable Object 与采集 Worker 驱动的定时一轮，周期见 `workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`）、`ai`、`ingress`、`collector`（任务失败是 `source.event = "collector-job"` 的结构化日志）。分支预览与生产同名，按有没有 `$workers.preview.slug` 区分（预览的请求、RPC、Durable Object 事件都带；站点预览走 `*.preview.lyjw.dev`，只看主机含不含 `workers.dev` 会漏）；保留期与采样见 `docs/ops-facts.md`，在线探测与 core 心跳的口径见 `shared/health.ts`。`reporters/` 下的上报器不进 Workers Observability，查所在机器的容器日志。
+- 浏览器报错看 `[browser-error]` 日志里的 `release`（提交 SHA）和 `tags`，对回提交再读源码。浏览器调用栈是压缩后的代码，要反解就在 scratchpad 里检出那个 release，构建时给客户端加 `build.sourcemap: "hidden"`（只多出 map 文件，不改产物），再按 map 查行列。
 - 记下 lyjw 的原话：哪个页面或卡片、什么宽度、看到了什么、原来怎样。后面每一步都对这个症状，不对附近另一个看着像的错误。
 - 要回放的请求先去掉 `Authorization`、`Cookie`、`CF-Access-*` 头和 token 再存到 scratchpad。
 
@@ -44,7 +46,7 @@ description: lyjwpage 里排查并修 bug：lyjw 说「X 不对」、线上报�
 5. 对照：同一请求打生产 `https://lyjw.me` 与本地，`diff` 两边输出。
 6. 二分：lyjw 说「以前是好的」时，`git bisect run <上面那条命令>`。
 
-偶发问题：循环跑上百次、并发、固定时间与随机种子，把复现率拉高。Safari / WebKit 才有的行为和 lyjw 设备上的现象云端复现不了：写明试过什么，请 lyjw 给带时间点的录屏或截图，拿到前不进第 4 步。
+偶发问题：循环跑上百次、并发、固定时间与随机种子，把复现率拉高。这样仍复现不了、又像几方交错写状态的，按 `.claude/skills/lyjwpage-formal-model/SKILL.md` 给那一块建 TLA+ 模型找反例，再照反例的顺序造回路。Safari / WebKit 才有的行为和 lyjw 设备上的现象云端复现不了：写明试过什么，请 lyjw 给带时间点的录屏或截图，拿到前不进第 4 步。
 
 ## 3. 缩到最小复现
 
@@ -59,7 +61,7 @@ description: lyjwpage 里排查并修 bug：lyjw 说「X 不对」、线上报�
 
 ## 5. 修、补回归测试
 
-- 回归测试写在**正确的接缝**上：公开接口，按真实调用方的方式调用。先看它红，再修，再看它绿。
+- 回归测试写在**正确的接缝**上：公开接口，按真实调用方的方式调用。先看它红，再修，再看它绿。提交后用 `node scripts/revert-proof.ts --test <测试文件>` 证明一次：撤掉修复它断言失败，带上修复它通过（`verdict: proved`）。
 - 期望值来自独立的事实（已知正确的字面量、lyjw 给的例子、规格），不按代码的算法再算一遍。
 - 找不到正确接缝（能测到的那层比出错链条浅）就不写这条测试，在 PR 里写明缺这个接缝。站点 UI 问题以浏览器端到端为准，按 `AGENTS.md` 可以不写单测。
 - 修完重跑第 2 步那条**没缩小的**原始命令。

@@ -23,7 +23,7 @@ lyjw 和 Claude 在线程、PR、文档里共用的词。每条一句话说是�
 | --- | --- | --- |
 | 杂鱼 / 先知 / 神 | 对话的三档人设（Small Fry / Prophet / God）：杂鱼与先知由访客在卡片里选：DeepSeek（同一个 DeepSeek Flash，关与开思考，默认）或 Claude（Haiku、Sonnet）；神是 Fable | `shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO` |
 | Clef | 先给访客消息分档、拦掉垃圾的小模型 | `workers/ai/src/chat/router.ts` |
-| 升档 | 杂鱼答不了时调 `request_upgrade`，同一条回复交给先知 | `workers/ai/src/chat/handler.ts` |
+| 升档 | 杂鱼答不了时调 `request_upgrade`，同一条回复交给先知 | `workers/ai/src/chat/converse.ts` |
 | 设计会话 | 访客想改站点时开的 Managed Agents 会话 | `workers/ai/README.md` |
 | 规划者 | 设计会话里只读仓库、出计划的那个 agent | `workers/ai/src/chat/design.ts#PLANNER_PROMPT` |
 | 构建 | 访客确认计划后由 GitHub Actions 跑的改站流程 | `docs/build-routine.md` |

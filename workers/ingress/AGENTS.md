@@ -11,7 +11,7 @@
 - 鉴权两层：Access 在边缘核对 service token，`src/access-auth.ts` 再验 JWT 的签名、受众、签发方与时效；只许写 `workers/ingress/wrangler.toml#ACCESS_CLIENTS` 里登记的来源，越权 403。不接受 Bearer 密钥。本地测试钥匙只在签发方是 `src/access-auth.ts#DEV_ACCESS_ISSUER` 时才被认。
 - 预览与非生产分支构建关闭：`CORE` 指向生产 `core`，预览版收下的上报会直接写进生产状态；`[previews.vars]` 里的 `PREVIEW_WORKER` 是最后一道闸，预览版本只会拒收。
 - 自定义域名 `ingest.homepage.lyjw.llc` 只写在本目录的 `wrangler.toml`（一个域名只写在一份配置）：Workers Builds 里 `wrangler deploy` 会直接接管挂在别的 Worker 上的自定义域名。
-- OTLP 路由（`/api/ingest/agents/otlp`）只认 JSON（可 gzip），要专属权限 `ingest:agents-otlp`，`ingest:agents` 不能写它。云端遥测的环境变量只配在云端环境设置里，不进仓库、不配在本机。
+- OTLP 路由（`/api/ingest/agents/otlp`）只认 JSON（可 gzip），要专属权限 `ingest:agents-otlp` 或 `ingest:mac-otlp`，按凭据持有的那个分来源（`src/worker.ts#OTLP_SOURCES`），不看 payload 自报的属性；`ingest:agents` 不能写它。Claude Code 遥测的环境变量只配在云端环境设置里，不进仓库、不配在本机（本机由 ccusage 统计）；Mac 上的 Devin CLI 用 Mac 那把 token 直接推（`README.md#devin-climac`）。
 
 ## 新增来源要一起做
 

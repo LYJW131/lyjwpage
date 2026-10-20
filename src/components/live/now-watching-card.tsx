@@ -101,7 +101,7 @@ function NowWatchingHero({
   return (
     <HeroWrapper
       link={item?.link ?? null}
-      className="group grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 px-4 py-3 sm:items-center lg:px-5 sm:gap-x-4"
+      className="group grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-x-4 lg:px-5"
     >
       <div className="relative aspect-video w-32 shrink-0 self-start overflow-hidden rounded-md border border-line bg-muted sm:row-span-2 sm:w-52">
         {image ? (
@@ -117,30 +117,36 @@ function NowWatchingHero({
         ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-col justify-center gap-1.5 self-center sm:self-end">
+      <div className="flex min-w-0 flex-col justify-center gap-1 self-center sm:self-end">
         <div className="flex min-w-0 items-center gap-1.5">
           <StatusDot tone={paused ? "idle" : "live"} />
           <span className={cn("label-mono shrink-0", paused ? "text-muted-foreground" : "text-live-ink")}>
-            {paused ? "Paused" : "Now Playing"}
+            {paused ? "Paused" : "Watching"}
           </span>
           {device && (
-            <span
-              className="label-mono min-w-0 max-w-[140px] truncate normal-case text-muted-foreground sm:max-w-none"
-              title={device}
-            >
+            <span className="label-mono min-w-0 truncate normal-case text-muted-foreground" title={device}>
               · {device}
             </span>
           )}
         </div>
-        <div className="truncate text-base font-medium leading-tight sm:text-lg" title={item?.title}>
-          {item?.title ?? <span className="text-muted-foreground">Loading details…</span>}
+        <div className="truncate text-lg font-semibold leading-tight" title={item?.title}>
+          {item?.title ?? <span className="font-normal text-muted-foreground">Loading details…</span>}
         </div>
         <div className="truncate text-sm text-muted-foreground" title={item?.subtitle}>
           {item ? item.subtitle || "—" : "\u00a0"}
         </div>
       </div>
 
-      <div className="col-span-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:self-start">
+      {position != null && duration ? (
+        <div className="hidden shrink-0 flex-col items-end gap-1 self-end tabular-nums sm:flex">
+          <span className={cn("text-2xl font-medium leading-none sm:text-3xl", paused && "text-muted-foreground")}>
+            {formatClock(position)}
+          </span>
+          <span className="label-mono text-muted-foreground">/ {formatClock(duration)}</span>
+        </div>
+      ) : null}
+
+      <div className="col-span-2 min-w-0 sm:col-start-2">
         <div className="flex flex-wrap items-center justify-between gap-1.5">
           {chips.length > 0 && (
             <ul className="flex flex-wrap items-center gap-1.5" aria-label="Playback specs">
@@ -158,7 +164,7 @@ function NowWatchingHero({
             </ul>
           )}
           {position != null && duration ? (
-            <span className="label-mono ml-auto shrink-0 pl-1.5 normal-case tabular-nums text-muted-foreground">
+            <span className="label-mono ml-auto shrink-0 pl-1.5 normal-case tabular-nums text-muted-foreground sm:hidden">
               {formatClock(position)} / {formatClock(duration)}
             </span>
           ) : null}
@@ -201,12 +207,7 @@ export function NowWatchingCard({
           className="-mr-[3px] overflow-hidden"
         >
           <div className="pb-[3px] pr-[3px]">
-            <Card
-              id="now-watching"
-              label="Now Watching"
-              action="Emby"
-              className="scroll-mt-28"
-            >
+            <Card id="now-watching" className="scroll-mt-28">
               <NowWatchingHero nowPlaying={nowPlaying} item={live?.current ?? null} />
             </Card>
           </div>

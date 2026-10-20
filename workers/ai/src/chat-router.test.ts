@@ -4,7 +4,7 @@ import test from "node:test";
 import { GOD_CHAT_PRESETS, type GodChatMessage } from "@shared/god-chat";
 import { STATUS_VIEWS } from "@shared/status-views";
 
-import { CLEF_CHOICES, PREFETCH_MIN_PROBABILITY, PREFETCH_STATUS, isClefChoice, presetRoute, routeWithClef, routerInput } from "./chat/router.ts";
+import { CLEF_CHOICES, ITEM_MAX_P_NULL, ITEM_MIN_CONFIDENCE, PREFETCH_MIN_PROBABILITY, PREFETCH_STATUS, isClefChoice, parseItem, presetRoute, routeWithClef, routerInput } from "./chat/router.ts";
 import { isProjectDocKey } from "./tools/project-docs.ts";
 import { WEB_CATEGORIES } from "./chat/web-search.ts";
 
@@ -23,7 +23,7 @@ test("没有 AI 绑定或 Clef 出错时兜底到 Small Fry，不拦访客", asy
   assert.deepEqual(await routeWithClef(undefined, [user("hi")]), { route: "flash", source: "fallback" });
   const warn = t.mock.method(console, "warn", () => {});
   assert.deepEqual(await routeWithClef(clef(new Error("clef down")), [user("hi")]), { route: "flash", source: "fallback" });
-  assert.equal(warn.mock.callCount(), 1);
+  assert.equal(warn.mock.callCount(), 2);
 });
 
 test("Clef 回的不是登记过的档位时同样兜底", async () => {
@@ -69,7 +69,8 @@ test("示例问题的档位都是 Clef 的选项，预取都是对应工具的�
     for (const call of preset.prefetch ?? []) {
       if (call.name === "get_site_status") assert.ok(call.input.views.length > 0 && call.input.views.length <= 4 && call.input.views.every((view) => Object.hasOwn(STATUS_VIEWS, view)), preset.text);
       else if (call.name === "read_project_doc") assert.ok(isProjectDocKey(call.input.doc), preset.text);
-      else assert.ok(call.input.query && WEB_CATEGORIES.includes(call.input.category), preset.text);
+      else if (call.name === "web_search") assert.ok(call.input.query && WEB_CATEGORIES.includes(call.input.category), preset.text);
+      else assert.fail(`${preset.text}: presets don't draw cards`);
     }
   }
 });
@@ -97,6 +98,73 @@ test("Clef 有把握时把状态与文档的预取带进决定", async () => {
       { name: "read_project_doc", input: { doc: "overview" } },
     ],
   });
+});
+
+const both = (clefAnswer: unknown, clairic: unknown) =>
+  ({
+    run: async (model: string) => {
+      if (model === "@cf/cloudflare/clairic") {
+        if (clairic instanceof Error) throw clairic;
+        return clairic;
+      }
+      return clefAnswer;
+    },
+  }) as unknown as Ai;
+const extracted = (value: string | null, pNull = 0.001, confidence = 0.98) => ({ answers: { item: { type: "text", value, guess: value ?? "x", p_null: pNull, confidence } } });
+
+test("Clairic 抽到具体条目时，能搜的分组在整组之外带 query 再读一次，游戏组另外直接画那款游戏的卡", async () => {
+  assert.deepEqual(await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("《艾尔登法环》")), [user("他最近玩艾尔登法环了吗")]), {
+    route: "flash", source: "clef",
+    prefetch: [
+      { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.views] } },
+      { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.query], query: "艾尔登法环" } },
+      { name: "show_card", input: { card: "game", game: "艾尔登法环" } },
+    ],
+  });
+  assert.deepEqual(await routeWithClef(both(answered("flash", ["watching", 0.95]), extracted("葬送的芙莉莲")), [user("他看葬送的芙莉莲了吗")]), {
+    route: "flash", source: "clef",
+    prefetch: [
+      { name: "get_site_status", input: { views: [...PREFETCH_STATUS.watching.views] } },
+      { name: "get_site_status", input: { views: ["watching"], query: "葬送的芙莉莲" } },
+    ],
+  });
+  assert.deepEqual(await routeWithClef(both(answered("flash", ["limits", 0.95]), extracted("Claude")), [user("Claude 额度还剩多少")]), {
+    route: "flash", source: "clef",
+    prefetch: [{ name: "get_site_status", input: { views: [...PREFETCH_STATUS.limits.views] } }],
+  });
+});
+
+test("Clairic 没把握、抽空或出错时照旧预取整组", async (t) => {
+  const plain = { route: "flash", source: "clef", prefetch: [{ name: "get_site_status", input: { views: [...PREFETCH_STATUS.listening.views] } }] };
+  for (const clairic of [extracted(null, 0.9), extracted("歌", ITEM_MAX_P_NULL + 0.01), extracted("歌", 0, ITEM_MIN_CONFIDENCE - 0.01), { answers: {} }]) {
+    assert.deepEqual(await routeWithClef(both(answered("flash", ["listening", 0.95]), clairic), [user("在听什么")]), plain);
+  }
+  const warn = t.mock.method(console, "warn", () => {});
+  assert.deepEqual(await routeWithClef(both(answered("flash", ["listening", 0.95]), new Error("clairic down")), [user("在听什么")]), plain);
+  assert.equal(warn.mock.callCount(), 1);
+});
+
+test("Clef 没选可搜的状态分组时不等 Clairic", async () => {
+  const hanging = { run: async (model: string) => model === "@cf/cloudflare/clairic" ? new Promise(() => {}) : answered("flash", ["none", 0.99]) } as unknown as Ai;
+  assert.deepEqual(await routeWithClef(hanging, [user("你好")]), { route: "flash", source: "clef" });
+});
+
+test("选档日志只记选项、概率与有没有抽到条目，不记访客原文", async (t) => {
+  const info = t.mock.method(console, "info", () => {});
+  await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("月姬")), [user("他玩过月姬吗")]);
+  const line = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
+  assert.ok(line?.includes('"status":"playing 0.950"') && line.includes('"item":true') && line.includes('"prefetch":3'));
+  assert.ok(!line?.includes("月姬"));
+  info.mock.resetCalls();
+  await routeWithClef(clef({ answers: { route: { choice: "他玩过月姬吗" }, status: { choice: "他玩过月姬吗", probabilities: { "他玩过月姬吗": 1 } } } }), [user("他玩过月姬吗")]);
+  const odd = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
+  assert.ok(odd?.includes('"route":"unlisted"') && odd.includes('"status":"unlisted"') && !odd.includes("月姬"));
+});
+
+test("parseItem 去掉书名号与引号", () => {
+  assert.equal(parseItem(extracted("「葬送的芙莉莲」")), "葬送的芙莉莲");
+  assert.equal(parseItem(extracted("\"Astro Bot\"")), "Astro Bot");
+  assert.equal(parseItem(extracted("《》")), undefined);
 });
 
 test("概率不够、选了 none、选项没登记或缺答时不预取", async () => {

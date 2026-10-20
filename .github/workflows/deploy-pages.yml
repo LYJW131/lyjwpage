@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -24,16 +23,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Prepare static files
+      # Pages 只留一个转址页，让已经发出去的 lyjw131.github.io/lyjwpage 链接落到 README 的架构图。
+      - name: Prepare redirect page
+        env:
+          TARGET: https://github.com/LYJW131/lyjwpage#%E7%B3%BB%E7%BB%9F%E6%9E%B6%E6%9E%84
         run: |
           mkdir -p _site
-          cp -r docs/* _site/
-          cp docs/architecture.html _site/index.html
+          printf '<!doctype html><meta charset="utf-8"><title>lyjwpage</title><meta http-equiv="refresh" content="0; url=%s"><link rel="canonical" href="%s"><a href="%s">lyjwpage</a>\n' "$TARGET" "$TARGET" "$TARGET" > _site/index.html
           touch _site/.nojekyll
 
       - name: Upload artifact

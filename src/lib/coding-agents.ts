@@ -34,11 +34,22 @@ export function codingAgentBrand(id: string): CodingAgentBrand {
   return Object.hasOwn(CODING_AGENTS, id) ? CODING_AGENTS[id as keyof typeof CODING_AGENTS] : { label: id, icon: id, row: "compact" };
 }
 
-export const CODING_SOURCE_LABELS: Record<CodingUsageSource, string> = {
+const CODING_SOURCE_LABELS: Record<CodingUsageSource, string> = {
   mac: "Mac",
   agents: "Account",
   "agents-otlp": "Cloud",
+  "mac-otlp": "Mac",
 };
+
+const ON_MAC: ReadonlySet<CodingUsageSource> = new Set(["mac", "mac-otlp"]);
+
+export function codingSourceOnMac(source: CodingUsageSource): boolean {
+  return ON_MAC.has(source);
+}
+
+export function codingSourceLabel(source: CodingUsageSource): string {
+  return CODING_SOURCE_LABELS[source] ?? source;
+}
 
 export type CodingActivityEntry = CodingNowPayload["agents"][number]["activity"][number];
 
@@ -76,8 +87,8 @@ export type CodingActivitySlots = { mac: CodingActivityEntry | null; remote: Cod
 
 export function codingActivitySlots(activity: readonly CodingActivityEntry[], macDeclaredOffline: boolean): CodingActivitySlots {
   return {
-    mac: macDeclaredOffline ? null : (activity.find((entry) => entry.source === "mac") ?? null),
-    remote: activity.find((entry) => entry.source !== "mac") ?? null,
+    mac: macDeclaredOffline ? null : (activity.find((entry) => codingSourceOnMac(entry.source)) ?? null),
+    remote: activity.find((entry) => !codingSourceOnMac(entry.source)) ?? null,
   };
 }
 
@@ -90,9 +101,10 @@ export function codingDisplayModel(row: Pick<CodingAgentRow, "activity" | "usage
 export type CodingSourceNote = { source: CodingUsageSource; label: string; state: CodingUsageAgentView["status"][number]["state"]; error: string | null; warning: string | null };
 
 export function codingSourceHealth(usage: CodingUsageAgentView | null): { failing: CodingSourceNote[]; notes: CodingSourceNote[] } {
-  const notes = (usage?.status ?? []).map((status) => ({
+  if (!usage) return { failing: [], notes: [] };
+  const notes = usage.status.map((status) => ({
     source: status.source,
-    label: CODING_SOURCE_LABELS[status.source] ?? status.source,
+    label: codingSourceLabel(status.source),
     state: status.state,
     error: status.error,
     warning: status.warning,

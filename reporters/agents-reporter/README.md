@@ -7,7 +7,7 @@ Mac 合盖 / 睡眠 / 离线不影响它。
 
 Claude、Codex、Grok、Antigravity 的 token 用量由 Mac 从本机日志上报（`/api/ingest/mac` 的 `codingUsage`）。
 Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这份历史跟限额一起由这个容器拉，用的是同一份
-`accessToken`，作为账号级来源 `agents` 上报。Devin CLI 的用量取自 tokens.ci 的公开主页（见下面 devin 一节），同样作为 `agents` 上报。
+`accessToken`，作为账号级来源 `agents` 上报。Devin CLI 的用量不经这里，由 Mac 上的 Devin CLI 自己推 OTLP（`workers/ingress/README.md`「Devin CLI（Mac）」）；这里只报它的限额。
 
 站点入口是 `POST /api/ingest/agents`（按数据是谁产生的命名，不是上报程序的名字）。信封顶层是
 `{ collectedAt, agents?, codingUsage?, codingActivity?, codingTokenBuckets?, reporter }`：`agents` 是各家限额行，
@@ -24,7 +24,7 @@ Cursor 的用量历史在云端，Mac 合盖时云端线程还在跑，所以这
 3. 按 MacTelemetryHub `AgentLimitsCollector` 的规则翻译成站点请求体
 4. POST 到站点：这一轮没取的几家不带，站点按 id 留着各自上一次的值和时间
 
-Cursor 用量与 Devin 用量不按家分档：有哪家到期才有这一轮，每轮都顺带拉一次。
+Cursor 用量不按家分档：有哪家到期才有这一轮，每轮都顺带拉一次。
 
 等下一轮时读站点公开的 `SITE_URL/api/status/coding/now`：本容器取限额的那几家（`AGENT_IDS`）里，哪一家在任何来源
 （Mac 日志、Claude Code 云端、Cursor 账号）的 `lastActivityAt` 落在 `src/cadence.ts#ACTIVE_WINDOW_MS` 内，那一家就走快档，
@@ -61,7 +61,6 @@ Cursor 用量与 Devin 用量不按家分档：有哪家到期才有这一轮，
 | `AGENT_IDS` | | 逗号分隔，默认集合见 `src/config.ts#agentIds` |
 | `GROK_HOME` | | Grok 凭据目录，默认 `$HOME/.grok` |
 | `CODEX_HOME` | | Codex 凭据目录，默认 `$HOME/.codex` |
-| `TOKENS_CI_USER` | | 拉 Devin CLI 用量的 tokens.ci 用户名，默认见 `src/config.ts#config.tokensCiUser`；设成空串就不拉 |
 | `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
 | `ANTIGRAVITY_PLAN_LABEL` | | Antigravity 的订阅名，如 `Google AI Pro`。配额接口不带订阅（IDE 里那句来自 Windsurf 那套 language server 问 aicode.googleapis.com 的 gRPC，CLI 从不显示；`loadCodeAssist` 回的 free-tier 是 Code Assist 档位不是订阅），只能人工指定；空 = 不渲染套餐 |
 | `ANTIGRAVITY_QUOTA_URL` | | 可选覆盖。默认 `https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` |
@@ -176,20 +175,6 @@ Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺�
 剩余百分比整个字段不出现，只要重置时刻还在就记 100% 已用（`src/providers/devin.ts#rowFromDevinStatus`）。401 / 403 时这一行带
 `Devin session expired — run \`devin auth login --force-manual-token-flow\` to re-authenticate.`。没登录就不发这一行。
 
-**devin 用量。** 不登录、不用凭据：每轮限额那一轮并行 GET 公开的 `https://tokens.ci/api/users/<TOKENS_CI_USER>`，
-只取 `contributions[].clients` 里 `client` 为 `devin-cli` 的那一份（同一页的 Claude、Codex 等由别的来源报，这里不碰），
-翻成 `codingUsage` 里 `id: "devin"` 的一行，`days` 整份替换站点那份（`src/devin-usage.ts#devinUsageDays`）。日期照
-tokens.ci 给的原样用，不换算时区。tokens.ci 的 `reasoning` 与 `output` 分列相加，站点契约里
-reasoning 是 output 的子集，所以并进 `outputTokens`；费用用 tokens.ci 的估价，Devin 自家模型记 0，那天 `costComplete` 为
-false。第一次出现 Devin CLI 之后，tokens.ci 有记录而没有它的日子发一行全 0。不带活动。拉失败只发 `state: "error"`，
-`collectedAt` 是上一次成功的时刻（落在数据卷的 `/data/devin-usage.json`，跨重启保留）。`LIMITS_FIXTURE` 模式下不拉。
-
-tokens.ci 只给日累计，Pulse 的 Tokens 道只认 5 分钟桶，所以另记一本桶账（同一个状态文件）：每次拉到的各日各模型累计
-和上一次比，涨的部分按两次提交时刻（tokens.ci 的 `updatedAt`）之间的时长均摊进桶（`src/devin-buckets.ts#advanceDevinLedger`）。
-总量是实的，桶里的时间分布是推出来的，精度取决于 Mac 上 tokens.ci 客户端多久提交一次。第一次只立基线；两次提交隔了
-`DEVIN_BUCKET_SPAN_MS` 以上就重立基线、那段不补。每轮主信封发完后，单独一封只带 `codingTokenBuckets`，范围是账本起点与
-往前推 `DEVIN_BUCKET_SPAN_MS` 取晚的那个到最后一次提交，整份重发（丢一封下一轮自己补）；站点按 agent 替换桶，所以和 Cursor 的桶互不冲掉。
-
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
 `daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向
 `oauth2.googleapis.com/token` 刷新并原子写回。刷新要的 client_id / client_secret 是 `agy` 二进制里的常量，
@@ -279,9 +264,9 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 
 ## 容错
 
-- 单家失败发错误行；整轮采集或上报失败才退避，进程不退。
+- 单家失败发错误行；整轮采集失败等下一轮，上报失败才退避重发，进程不退。
 - 同一个环节连续报错只在第一次和恢复时各写一句日志，中间每满 10 次再报一次。
-- 整轮采集 / 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查活动。上报失败只重发同一份采集结果，超过在用档间隔才重新采集，重发成功后立即重采一次（`src/round-loop.ts#runRounds`）。单家失败仍照发错误行，成功上报后各家按自己的档等下一轮。
+- 上报失败时，从 `src/index.ts#RETRY_MS` 翻倍至 `src/index.ts#MAX_RETRY_MS`，成功复位；退避期间不查活动。上报失败只重发同一份采集结果，超过在用档间隔才重新采集，重发成功后立即重采一次；整轮采集失败记入日志后照常等下一轮（`src/round-loop.ts#runRounds`）。单家失败仍照发错误行，成功上报后各家按自己的档等下一轮。
 - 某个 agent「没配」（`configured: false`）这一行不发，站点按 id 留着上一次的值。
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
 
