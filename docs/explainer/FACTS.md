@@ -217,15 +217,10 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 这一节和下面的「Pulse 事实时间线」是第 06 章用的，按 3585847 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
-- 每 5 分钟一轮，落在 UTC 每小时第 2、7、…、57 分（`workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`），先调一次 StateHub 的 `pulseTick` 同时拿到归档快照和评分任务，然后两件事并行：
-  1. 把 pulse 归档到 D1：StateHub 给出一份有界快照（各路水位之后的新行）→ 按自然键 upsert 写事实表 → 成功后回头确认水位。各路独立，一路读坏、写坏不挡别的路（`workers/core/src/pulse-archive-snapshot.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
-  2. PulseScorer 经 Workers AI 绑定调 Clef（`@cf/cloudflare/clef`，`workers/core/src/pulse-score.ts#clefDecide`），**只给 Coding 打分**，一窗是 `shared/pulse-coding.ts#PULSE_SCORE_WINDOW_MS`（三个 5 分钟桶，15 分钟），窗结束两分钟后才打（`workers/core/src/pulse-score.ts#PulseScorer`）：
-     - 交给 Clef 的是这一窗的特征：Mac 的前台应用与 agent 观测、容器里 Cursor 账号的活动、Claude Code 云端线程的活动（从 `agents-otlp` 里 Claude 有用量的桶推出，`shared/pulse-coding-features.ts#cloudAgentActivity`），外加各来源（`shared/coding-usage-sources.ts#CODING_USAGE_SOURCES` 的四个：Mac 本机扫描、Cursor 账号历史、云端 OTLP、Mac 上的 OTLP）的 5 分钟 token 桶，按来源、agent、模型相加（同文件 `windowTokenUsage`）。Mac 扫描范围里缺的桶是测到的 0；别的来源只作正证据，没有行不等于 0。
-     - 全零的窗不问 Clef，直接记最低档：整窗都看得见、Mac 本机扫描盖满三个桶、没有任何活动和 token（同文件 `definiteZero`）。Mac 不在、只有 Cursor 看得见且没有活动时也不问，按半置信记最低档（`quietIndependentSource`）。一点观测都没有的窗不打分。
-     - 每轮最多 36 个窗，从新到旧，每批并发 3，超时 10 秒。
-     - 打分写回 StateHub 的评估列表，和 pulse 时间线一样只留 `shared/limits.ts#PULSE_TTL_MS`（`workers/core/src/pulse-score-state.ts#finishPulseScore`）；归档的各路（`ARCHIVE_STREAMS`）里没有它，**不进 D1**。第 06 章在 Clef 那一格上方注「打分只在屋里放 7 天，不进 D1」。
+- 每 5 分钟一轮，落在 UTC 每小时第 2、7、…、57 分（`workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`），先调一次 StateHub 的 `pulseTick` 拿归档快照，再把 pulse 归档到 D1：StateHub 给出一份有界快照（各路水位之后的新行）→ 按自然键 upsert 写事实表 → 成功后回头确认水位。各路独立，一路读坏、写坏不挡别的路（`workers/core/src/pulse-archive-snapshot.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
+- core 不调 Clef 给 Coding 打分，生产没有 Workers AI 绑定；`workers/core/wrangler.toml` 的 `[previews.ai]` 只给分支预览组合入口里的 ai 用。第 06 章的 Coding 那一层只画原始观测，三色带在推近时现场刷出、镜头一走就消失，不画打分。
 - 每一轮跑完，不论成败，都按排定时刻往 D1 的 `health_buckets` 记一笔心跳，这一笔就是第 06 章的「报到」；只在开着历史归档时记（`workers/core/src/state-core.ts#StateCore`、`shared/health.ts#HEARTBEAT_SERIES`、`shared/health.ts#CRON_HEARTBEAT_EVERY_MINUTES`、`workers/core/src/runtime.ts#historyArchive`）。
-- StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档、打分和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/cron-round.ts#runCronRound`）。
+- StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/cron-round.ts#runCronRound`）。
 - 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是它的轮次（`workers/collector/src/core-round.ts#driveCoreRound`）。
 
 ### 闹钟
@@ -236,7 +231,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### Pulse 事实时间线
 
 - 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间，听那条另有从 Apple 最近播放推出的别处播放（§1「没人上报的播放」）；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
-- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测、Cursor 账号的观测和 Claude Code 云端线程的用量桶现算（`shared/pulse-coding-features.ts#codingBand`、同文件 `cloudAgentActivity`）；Clef 的打分只出现在悬停提示里，提示上写作「Jev intensity」（`src/components/live/pulse/state-lanes.tsx`）。
+- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测、Cursor 账号的观测和 Claude Code 云端线程的用量桶现算（`shared/pulse-coding-features.ts#codingBand`、同文件 `cloudAgentActivity`）。卡片右边的汇总是 driver（lyjw 在 Mac 前台开着编码应用的时长，`shared/pulse-types.ts#codingDriverSeconds`）和 agent 两个时长（`src/components/live/pulse/state-lanes.tsx`）；第 06 章标的两个时长是示意值。
 - Tokens 道：各来源（Mac 本机扫描、Cursor 账号、云端 OTLP、Mac 上的 OTLP）的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存读 + 缓存写入）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`workers/core/src/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 06 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`shared/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
@@ -507,7 +502,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   2. 大改代码逻辑的：另要处理完机器评审，并有判定员的 PASS 盖住当前 head。
   3. 有 UI / UX 变化的：先给 lyjw 看效果（桌面与 375px 截图），lyjw 点头才合；lyjw 明确要求的小改动除外（根 `DESIGN.md`「交付与合并」）。
 - 大方向、大改动也等 lyjw 点头（`HUMAN.md`「3. 什么 Claude 自己定，什么来问你」）。片中三道闸各过一个 PR：文档、界面两个是示意，第二档过的是 #308。第一档的闸牌要写成「本地检查过就合」一类，不能写「CI 绿就合」：这一档不等 CI。
-- 用 merge commit，不 rebase。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出的 `commit_title`、`commit_message` 与 `expectedHeadSha`（本地验过的 HEAD，PR 上多出没验过的提交时合并失败）原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」、`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛（主线程跑 `pr-gate.ts`，自己判断）」）。
+- 不 rebase：PR 里少于 3 个非合并提交压缩合并，3 个及以上用 merge commit（`scripts/merge-message.ts#mergeMethodFor`，钩子 `scripts/guard-merge-method.ts` 拦不合的合并）。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出的 `merge_method`、`commit_title`、`commit_message` 与 `expectedHeadSha`（本地验过的 HEAD，PR 上多出没验过的提交时合并失败）原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
 - 站点状态卡的 Commits 一栏靠这些尾注显示参与者：collector 从 GitHub 取最近提交（`shared/github-repo.ts#fetchRecentCommits`），卡上列最近几条（`src/components/live/repo-contributions.tsx#COMMIT_LIMIT`），把 main 同步进分支的合并不显示（`src/lib/recent-commits.ts#recentCommitsFrom`）。每条先写提交的人（线程的提交是「LYJW131 committed <相对时间>」），下一行写 agent「with claude (<尾注里的模型名>)」：名字是 agent 的 GitHub 账号，前面一排 16px 头像，按尾注邮箱从 `shared/commit-authors.ts#AGENTS` 认（`src/components/live/repo-contributions.tsx#CommitByline`）。片中首页提交卡省掉了模型名与头像，只画「LYJW131 committed」「with claude」和短 SHA。
 
 ### 合并之后：怎么算已部署

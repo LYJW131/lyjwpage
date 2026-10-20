@@ -62,6 +62,7 @@ export type DigestScene =
 
 const hours = (option: DigestHighlight | undefined) => (!option ? 0 : option.unit === "hours" ? option.value : option.unit === "minutes" ? option.value / 60 : 0);
 
+// coding 格是驾驶员时间（shared/pulse-types.ts#codingDriverSeconds），agents 格含两者同时的时段；代码一类按两者较大的计分，agent 自己跑的日子也算写代码的一天。
 // 阈值是有意取的：音乐常当背景声放一整天，按半价计；看番、打游戏要人在场，按 1.5 倍计；锻炼一小时抵三小时。
 // 安静的门槛对齐模型判 quiet 时的真实表现：15 分钟音乐加步数算安静，1.5 小时代码或 2.5 小时音乐不算。
 export const QUIET_SCORE = 1;
@@ -81,7 +82,7 @@ function familyScores(options: DigestHighlight[], signals: DigestSignals): Recor
   const find = (topic: DigestTopic) => options.find((option) => option.topic === topic);
   const count = (topic: DigestTopic) => (find(topic)?.unit === "count" ? find(topic)!.value : 0);
   return {
-    build: hours(find("coding")),
+    build: Math.max(hours(find("coding")), hours(find("agents"))),
     music: hours(find("music")) * 0.5,
     watching: hours(find("watching")) * 1.5,
     gaming: hours(find("gaming")) * 1.5 + count("trophies") * 0.2,
@@ -91,16 +92,16 @@ function familyScores(options: DigestHighlight[], signals: DigestSignals): Recor
 
 function primarySituation(family: Family, options: DigestHighlight[], scores: Record<Family, number>, signals: DigestSignals): DigestSituation {
   const find = (topic: DigestTopic) => options.find((option) => option.topic === topic);
-  const coding = hours(find("coding"));
+  const driver = hours(find("coding"));
   const agents = hours(find("agents"));
   const counterpart = family === "build" ? Math.max(scores.watching, scores.gaming) : family === "watching" || family === "gaming" ? scores.build : 0;
   if (counterpart >= 2 && counterpart >= scores[family] * 0.6) return "workAndPlay";
   switch (family) {
     case "build":
-      if (coding >= 16 && agents >= 12) return "agentsAllDay";
-      if (coding >= 12 && agents < coding * 0.6) return "codingAllDay";
-      if (coding >= 3 && agents >= coding * 0.6) return "agentsLead";
-      if (coding >= 3) return "handsOn";
+      if (agents >= 16) return "agentsAllDay";
+      if (driver >= 12 && agents < driver) return "codingAllDay";
+      if (agents >= 3 && agents >= driver) return "agentsLead";
+      if (driver >= 3) return "handsOn";
       if (shippingDay(options, signals)) return "shipping";
       return "codingLight";
     case "music":

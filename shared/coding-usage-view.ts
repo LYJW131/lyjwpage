@@ -37,6 +37,7 @@ export const CODING_TOP_MODELS = 10;
 export const CODING_AGENT_MODELS = 20;
 export const CODING_YEAR_KEEP_DAYS = 380;
 export const CODING_YEAR_TOP_MODELS = 5;
+export const CODING_ACTIVE_WINDOW_MS = 5 * 60_000;
 
 const DAY_MS = 86_400_000;
 

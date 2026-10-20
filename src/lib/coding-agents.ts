@@ -92,8 +92,6 @@ export function codingActivitySlots(activity: readonly CodingActivityEntry[], ma
   };
 }
 
-export const CODING_ACTIVE_WINDOW_MS = 5 * 60_000;
-
 export function codingDisplayModel(row: Pick<CodingAgentRow, "activity" | "usage">, live: CodingActivityEntry | null, active: boolean): string | null {
   return (active ? live?.model : null) ?? row.activity.find((entry) => entry.model)?.model ?? row.usage?.latestModel ?? null;
 }

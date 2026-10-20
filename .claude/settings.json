@@ -19,6 +19,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/scripts/guard-forbidden-commands.mjs\""
           }
         ]
+      },
+      {
+        "matcher": "mcp__github__merge_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/guard-merge-method.ts\""
+          }
+        ]
       }
     ]
   }

@@ -1,6 +1,6 @@
 ---
 name: codeql-policy
-description: CodeQL in lyjwpage only scans visitor-build PRs (claude/build-*) as their draft→ready gate; other PRs aren't scanned; main has no required checks so lyjw can push directly
+description: CodeQL in lyjwpage only scans visitor-build PRs (claude/build-*) as their draft→ready gate; other PRs aren't scanned; main has no required checks; PR required since 2026-10-20
 metadata:
   type: project
 ---
@@ -15,7 +15,7 @@ Current state:
 - **On PRs:** `.github/workflows/codeql.yml` runs only on `claude/build-*` branches, the visitor Build flow. Other PRs get a skipped placeholder check.
 - **Other runs:** pushes to main/dev scan the changed languages, and a scheduled scan runs twice a day.
 - **Visitor-build gate:** the ai Worker's `markBuildReady` keeps the build PR as a draft until every check in `workers/ai/src/build/checks.ts#BUILD_READY_CHECKS` has passed: `check` plus both `Analyze` jobs. The gate lives there, not in branch protection.
-- **main protection:** only "require conversation resolution", with no required status checks, so lyjw can push directly. Branch-protection writes go through Remote Control on the Mac, and the Mac's auto mode blocks them until lyjw OKs it in the thread.
+- **main protection:** lyjw 2026-10-20 19:54 SGT reversed "允许我直推": main now requires a PR (0 approvals, no force push) plus conversation resolution; still no required status checks. Personal-repo protection has no bypass list, so `avatar-sync.yml` opens a PR and squash-merges it instead of committing to main.
 - **Merge gate:** don't wait for CodeQL on ordinary PRs. The bot-review gate ([[merge-requires-bot-review-pass]]) still covers Devin, Codex, Claude review and Bugbot.
 
 Related: [[lyjwpage-daily-review-routine]], whose prompt still lists CodeQL among the checks to wait for. That entry is stale but harmless.

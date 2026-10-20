@@ -61,8 +61,8 @@
 **勿扰**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=2">
-  <img src="https://lyjw.me/cards/focus.svg?v=2" alt="勿扰卡片：iPhone 专注模式与已持续时长" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/focus.svg?v=3" alt="勿扰卡片：iPhone 专注模式与已持续时长" width="100%">
 </picture>
 
 **Meta Quest 正在玩**
@@ -179,7 +179,6 @@
 | 样式与交互 | Tailwind CSS 4 · Motion · Number Flow · Geist |
 | 客户端数据 | SWR · WebSocket |
 | 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
-| 活跃度评分 | Workers AI（Clef） |
 | 首页对话 | DeepSeek Flash 与 Anthropic Claude（Clef 选档、Clairic 抽取）、Exa 联网搜索、Cloudflare Turnstile |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Cloudflare Workers · 阿里云 ESA |

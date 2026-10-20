@@ -4,6 +4,11 @@ import { pathToFileURL } from "node:url";
 
 import { authorFromTrailer } from "../shared/commit-authors.ts";
 
+// lyjw 定的：少于这么多个非合并提交的 PR 压缩合并，够数的才留合并提交。
+export const MERGE_COMMIT_MIN_COMMITS = 3;
+
+export const mergeMethodFor = (commits: number) => (commits >= MERGE_COMMIT_MIN_COMMITS ? "merge" : "squash");
+
 // 只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。
 export function mergeMessage({
   number,
@@ -55,10 +60,11 @@ function main(argv: string[]) {
   }
   const range = `${base}..HEAD`;
   const remote = git("remote", "get-url", "origin").trim();
+  const subjects = lines(git("log", "--reverse", "--no-merges", "--format=%s", range));
   const result = mergeMessage({
     number,
     title,
-    subjects: lines(git("log", "--reverse", "--no-merges", "--format=%s", range)),
+    subjects,
     authors: lines(git("log", "--reverse", "--no-merges", "--format=%an <%ae>", range)),
     coAuthors: lines(git("log", "--reverse", "--format=%(trailers:key=Co-authored-by,valueonly,unfold)", range)),
     owner: /github\.com[/:]([^/]+)\//.exec(remote)?.[1] ?? null,
@@ -68,7 +74,7 @@ function main(argv: string[]) {
     process.exit(1);
   }
   // 合并接口按它比对 PR 当前 head：验证后又有人推了提交，合并就失败，不会把没验过的代码合进去。
-  console.log(JSON.stringify({ ...result, expectedHeadSha: git("rev-parse", "HEAD").trim() }, null, 2));
+  console.log(JSON.stringify({ ...result, merge_method: mergeMethodFor(subjects.length), expectedHeadSha: git("rev-parse", "HEAD").trim() }, null, 2));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main(process.argv.slice(2));

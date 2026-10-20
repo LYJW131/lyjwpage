@@ -10,7 +10,7 @@ enum Freshness {
     static let playstationStaleMs: Double = 95 * 60 * 1000
     // 源：shared/freshness.ts#AGENT_LIMITS_STALE_MS
     static let agentLimitsStaleMs: Double = 185 * 60 * 1000
-    // 源：src/lib/coding-agents.ts#CODING_ACTIVE_WINDOW_MS
+    // 源：shared/coding-usage-view.ts#CODING_ACTIVE_WINDOW_MS
     static let codingActiveWindowMs: Double = 5 * 60 * 1000
 
     // 源：shared/freshness.ts#isStale

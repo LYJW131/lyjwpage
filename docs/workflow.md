@@ -41,7 +41,7 @@
 1. **读法**：需求有多种读法时，第一条回复先复述目标，同时按这个读法开做。
 2. **实现**：可逆的事自己定，有影响的假设说一句。站点 UI 先读 [`DESIGN.md`](../DESIGN.md)，按 [`lyjwpage-ui-design`](../.claude/skills/lyjwpage-ui-design/SKILL.md) 自查；bug 先复现再修，按 [`lyjwpage-diagnose`](../.claude/skills/lyjwpage-diagnose/SKILL.md)。
 3. **验证**：见下一节。
-4. **合并**：门槛分档，见 [`HUMAN.md`「5. PR 与合并」](../HUMAN.md#5-pr-与合并)。大改逻辑的 PR 处理完 Claude、Codex、Devin 的机器评审，并由一个没写这段代码的 agent 判做没做完；UI 变化等 lyjw 看图点头；文档、skill 和小改动本地检查过了就合，不等 CI。门槛里机器核得了的部分由 [`scripts/pr-gate.ts`](../scripts/pr-gate.ts) 一条命令读全，输出一份 JSON 给主线程判断。合并提交由 `pnpm merge-message` 生成，正文汇总各提交的 `Co-Authored-By`，站点「最近提交」靠它显示参与的 agent 与模型。
+4. **合并**：门槛分档，见 [`HUMAN.md`「5. PR 与合并」](../HUMAN.md#5-pr-与合并)。大改逻辑的 PR 处理完 Claude、Codex、Devin 的机器评审，并由一个没写这段代码的 agent 判做没做完；UI 变化等 lyjw 看图点头；文档、skill 和小改动本地检查过了就合，不等 CI。门槛里机器核得了的部分由 [`scripts/pr-gate.ts`](../scripts/pr-gate.ts) 一条命令读全，输出一份 JSON 给主线程判断。合并方式（少于 3 个提交压缩合并，否则合并提交）与提交信息由 `pnpm merge-message` 生成，正文汇总各提交的 `Co-Authored-By`，站点「最近提交」靠它显示参与的 agent 与模型。
 5. **上线**：各 Worker 改动碰到自己的监视路径时，合进 main 由 Workers Builds 自动构建部署，看该 Worker 的构建检查（要等哪几个由 `scripts/deploy-check.ts --expect auto` 按监视路径算）；生产行为只在缓存、首屏 SSR、字体或依赖生产 Secret 与绑定的改动上复测，其余以预览验证为准；站点以 `/api/version` 返回的提交为准。只改文档的合并不触发构建。上报器按各自 README 发布（镜像工作流或手动）。细则见 [`AGENTS.md`「部署流程」](../AGENTS.md#部署流程)。
 
 所有等待（CI、机器评审、部署）都带上限，到点记失败、接着做不依赖它的事。

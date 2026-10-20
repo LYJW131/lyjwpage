@@ -53,13 +53,13 @@ test("注入时摘要三格按场景里的 Pulse 重算，标题池收成一句"
   const { views, missing, derived } = await buildScene(scene, NOW);
   assert.equal(derived, true);
   assert.deepEqual(missing, []);
-  const pulse = views.get("/api/status/pulse")!.data as { lanes: { coding: { summary: { humanSeconds: number; agentSeconds: number; bothSeconds: number } } } };
-  const { humanSeconds, agentSeconds, bothSeconds } = pulse.lanes.coding.summary;
+  const pulse = views.get("/api/status/pulse")!.data as { lanes: { coding: { summary: { humanSeconds: number; bothSeconds: number } } } };
+  const { humanSeconds, bothSeconds } = pulse.lanes.coding.summary;
   const digest = (views.get("/api/status/digest") as Envelope).data as { headline: string; headlines: string[]; highlights: { topic: string; value: number }[] };
   assert.equal(digest.headline, "代码不停歇");
   assert.deepEqual(digest.headlines, ["代码不停歇"]);
   const coding = digest.highlights.find((highlight) => highlight.topic === "coding");
-  assert.equal(coding?.value, Math.round((humanSeconds + agentSeconds + bothSeconds) / 1_800) / 2);
+  assert.equal(coding?.value, Math.round((humanSeconds + bothSeconds) / 1_800) / 2);
 });
 
 test("set 按点路径改一份副本，不动原夹具", () => {

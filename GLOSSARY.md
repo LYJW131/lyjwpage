@@ -15,6 +15,7 @@ lyjw 和 Claude 在线程、PR、文档里共用的词。每条一句话说是�
 | 上报器 | 跑在 lyjw 自家机器上、往 `/api/ingest/<来源>` 推数据的程序 | `reporters/` |
 | 来源 | 上报入口按数据归属命名的那一段，不按上报程序命名 | `shared/ingest/prepare.ts#INGEST_SOURCES` |
 | 别处播放 | 不在 Mac / HomePod 上、由 Apple「最近播放」推断出来的在听 | `shared/pulse-listening.ts#playingElsewhere` |
+| 驾驶员时间 | lyjw 在 Mac 前台开着编码应用的时长（driver time），只有 agent 自己在跑的时段不算；近况卡、Pulse 编码泳道和对话都按它讲 lyjw 写了多久代码 | `shared/pulse-types.ts#codingDriverSeconds` |
 | 近况卡标语 | 近况卡标题，只从固定的中文标语池里挑 | `workers/ai/src/digest/taglines.ts#DIGEST_TAGLINES` |
 
 ## 首页对话
