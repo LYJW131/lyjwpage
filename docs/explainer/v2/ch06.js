@@ -40,10 +40,10 @@
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
   const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
 
-  const AT = { fetch: 5.0, back: 5.25, lit: 5.5, sink: 6.0, hero: 7.0, coding: 8.0, zero: 8.25, sweep0: 8.5, sweepStep: 0.125, clawd: 10.25, rise: 11.0 };
+  const AT = { fetch: 5.0, back: 5.25, lit: 5.5, sink: 6.0, hero: 7.0, edge: 9.0, coding: 11.0, zero: 11.25, sweep0: 11.5, sweepStep: 0.125, clawd: 13.25, rise: 15.0 };
   const CHECKS = [], KNOCKS = [];
-  for (let k = 0; k <= 50; k += 5) CHECKS.push(k);
-  for (let k = 0; k <= 50; k++) KNOCKS.push(k + 0.5);
+  for (let k = 0; k <= 65; k += 5) CHECKS.push(k);
+  for (let k = 0; k <= 65; k++) KNOCKS.push(k + 0.5);
 
   // ch07 收尾、ch08 与 ch09 的提交落点和 ch10 的回顾几何须与此处一致，章节接缝才能对齐。
   const Y0 = 540;
@@ -52,7 +52,7 @@
   const UP = [[-98, 0], [0, -220], [34, 46], [62, 0]];
   const DOWN = [[-16, 0], [0, 104], [14, -22], [30, 0]];
   const LEDGER = { x: 1210, y: 120, w: 280, h: 170 };
-  const SITE = { x: 1110, y: 700, w: 200, h: 124 };
+  const SITE = { x: 1095, y: 700, w: 230, h: 124 };
   const API = { x: 1400, y: 700, w: 270, h: 124 };
   const KNOCK_PATH = [[NOW_X, LEDGER.y + LEDGER.h], [NOW_X, Y0], [SITE.x + SITE.w / 2, SITE.y]];
   const CHECK_PATH = [[API.x + 60, API.y], [NOW_X, Y0], [NOW_X, LEDGER.y + LEDGER.h]];
@@ -69,7 +69,7 @@
   // 首帧接 ch05 末帧那条屏幕 y 540 的直线：它就是心电图的基线，报到尖峰在屏幕 x 1100 处立起来。
   const Z0 = 1.5;
   const FIRST = [NOW_X + (960 - 1100) / Z0, Y0, Z0, 0];
-  const A = [960, 540, 1, 0], B = [1960, 480, 1, 0], C = [700, 1180, 0.85, 0], D = [900, 1000, 1.45, 0], CL = [880, 790, 1.1, 0];
+  const A = [960, 540, 1, 0], B = [1960, 480, 1, 0], C = [700, 1180, 0.85, 0], C2 = [1108, 1250, 1.2, 0], D = [900, 1000, 1.45, 0], CL = [880, 790, 1.1, 0];
   const CAM = [
     [0, FIRST],
     [0.95, A, E.io],
@@ -77,12 +77,14 @@
     [4.0, B, E.io],
     [5.76, [1968, 482, 1.012, 0], E.lin],
     [6.34, C, E.io],
-    [7.76, [706, 1184, 0.862, 0], E.lin],
-    [8.0, D, E.io],
-    [9.76, [906, 1000, 1.47, 0], E.lin],
-    [10.0, CL, E.io],
-    [AT.rise, [886, 786, 1.115, 0], E.lin],
-    [12.0, A, E.io],
+    [8.76, [708, 1184, 0.866, 0], E.lin],
+    [AT.edge, C2, E.io],
+    [10.76, [1113, 1252, 1.218, 0], E.lin],
+    [AT.coding, D, E.io],
+    [12.76, [906, 1000, 1.47, 0], E.lin],
+    [13.0, CL, E.io],
+    [AT.rise, [887, 785, 1.12, 0], E.lin],
+    [16.0, A, E.io],
   ];
 
   // ---- 纸、墨、朱砂 ----
@@ -362,9 +364,10 @@
     T(x, "GET /api/version", NOW_X + 24, 414, { mono: true, size: 28, alpha: a });
     T(x, tr("ch06.knockSub"), NOW_X + 24, 454, { size: 28, sub: true, alpha: a, maxW: 1900 - NOW_X - 24 });
     T(x, tr("ch06.knockOnly"), NOW_X + 24, 494, { size: 28, sub: true, alpha: a, maxW: 1900 - NOW_X - 24 });
-    T(x, "↑ " + tr("ch06.checkin") + (footA > 0.02 ? " *" : ""), API.x + API.w + 18, API.y + 40, { size: 36, w: 700, alpha: a });
-    T(x, tr("ch06.checkinSub"), API.x + API.w + 18, API.y + 80, { size: 28, sub: true, alpha: a, maxW: 1900 - API.x - API.w - 18 });
-    if (footA > 0) T(x, "* " + tr("ch06.foot"), SITE.x, 880, { size: 36, color: verm(0.95), alpha: footA, maxW: 760 });
+    T(x, "↑ " + tr("ch06.checkin") + (footA > 0.02 ? " *" : ""), API.x + API.w + 18, API.y + 40, { size: 36, w: 700, alpha: a, maxW: 1880 - API.x - API.w - 18 });
+    T(x, tr("ch06.checkinSub"), API.x + API.w + 18, API.y + 80, { size: 28, sub: true, alpha: a, maxW: 1880 - API.x - API.w - 18 });
+    // 右对齐、左端留在 n1 旁白垫底（最宽 1040 加羽化）的右边：英文旁白和脚注都长，左对齐会叠。
+    if (footA > 0) T(x, "* " + tr("ch06.foot"), 1880, 880, { size: 36, color: verm(0.95), align: "right", alpha: footA, maxW: 620 });
   }
   function signalPaths(x, phi, a) {
     if (a <= 0) return;
@@ -455,12 +458,12 @@
   const LISTEN = [];
   for (let t = -240; t < -130;) { const len = 3 + R() * 1.5; LISTEN.push([t, t + len, false]); t += len + 0.3; }
   for (let t = -6; t < 22;) { const len = 3 + R() * 1.4; LISTEN.push([t, t + len, false]); t += len + 0.3; }
-  LISTEN.push([22, 60, true]);
+  LISTEN.push([22, 72, true]);
   const WATCH = [[-128, -84]];
   const GAME = [[-78, -40, 1], [-40, -32, 0.5]];
   const WORKOUT = [-62, -44];
   const STEPS = [];
-  for (let t = -300; t < 60; t += 5) STEPS.push([t, t >= WORKOUT[0] && t < WORKOUT[1] ? 0.7 + 0.3 * R() : R() < 0.55 ? R() * 0.35 : 0]);
+  for (let t = -300; t < 70; t += 5) STEPS.push([t, t >= WORKOUT[0] && t < WORKOUT[1] ? 0.7 + 0.3 * R() : R() < 0.55 ? R() * 0.35 : 0]);
   const tx = (phi, t) => NOW_X - (phi - t) * SC;
   const ORDER = CODING.filter((w) => !w.zero && w.from + 15 + 2 <= AT.sweep0 * 4 && tx(AT.sweep0 * 4, w.from + 15) > 250);
 
@@ -473,11 +476,16 @@
     p.lineTo(NOW_X, y + LANE_H); p.closePath();
     return p;
   });
-  function strata(x, b, a, focus) {
+  function strata(x, b, a, focus, seamA) {
     if (a <= 0) return;
     const phi = b * 4;
     LANES.forEach((_, i) => wash(x, LANE_PATHS[i], a, { fill: LANE_TONE[i], edge: 0.22, lw: 2 }));
     const clipL = ST_X0, clipR = NOW_X;
+    for (let n = Math.floor(phi / 5); seamA > 0; n--) {
+      const u = tx(phi, n * 5), al = seamA * a * (1 - (phi - n * 5) / 90);
+      if (u < clipL || al <= 0) break;
+      brush(x, seg2(u, ST_TOP + 4, u + 1, ST_BOT - 4, 6), 2.2, { alpha: al * 0.45, even: true, dry: false, seed: n, tin: 0.1, tout: 0.1 });
+    }
     const dab = (i, t0, t1, h, alpha, rgb = INK) => {
       const x0 = Math.max(clipL, tx(phi, t0)), x1 = Math.min(clipR, tx(phi, t1));
       if (x1 <= x0 || alpha <= 0) return;
@@ -544,14 +552,16 @@
       T(x, name, wx(40), laneY(i) + LANE_H / 2 + 11 / z, { mono: true, size: 32 / z, sub: !(i <= 1 && focus > 0.5), alpha: ta * hot });
     });
   }
-  function strataNotes(x, b, a) {
+  function strataNotes(x, b, a, cam) {
     if (a <= 0) return;
     glyph(x, "d1", NOW_X + 170, 1060, ink(0.85), 1, a);
     T(x, "D1", NOW_X + 90, 1150, { mono: true, size: 38, w: 600, alpha: a });
     T(x, "lyjwpage-history", NOW_X + 90, 1196, { mono: true, size: 34, sub: true, alpha: a });
     T(x, tr("ch06.keep"), NOW_X + 90, 1252, { size: 40, w: 700, color: verm(0.95), alpha: a });
     T(x, tr("ch06.archive"), NOW_X - 50, ST_TOP - 32, { size: 34, align: "right", alpha: a, maxW: 640 });
-    T(x, "← " + tr("ch06.older"), 20, ST_BOT + 66, { size: 36, sub: true, alpha: a, maxW: 1000 });
+    // 推近右沿（C2）时这行会出左缘：钉在屏幕左边 40 px 以内、道底下。
+    const z = cam.zoom, ox = Math.max(20, cam.x + (40 - 960) / z), oy = Math.min(ST_BOT + 66, cam.y + (800 - 540) / z);
+    T(x, "← " + tr("ch06.older"), ox, oy, { size: 36, sub: true, alpha: a, maxW: 1000 });
   }
 
   function coding(x, b, a, cam) {
@@ -560,7 +570,7 @@
     const y0 = laneY(0);
     const done = CODING.filter((w) => w.from + 15 + 2 <= phi && tx(phi, w.from + 15) > 250);
     // Clef 框和 lyjw.me 卡片在世界坐标里叠在一起，镜头拉远、卡片淡入之前就得收掉。
-    const sa = a * (1 - prog(b, 9.75, 9.9));
+    const sa = a * (1 - prog(b, 12.75, 12.9));
     frame(x, SCORER.x, SCORER.y, SCORER.w, SCORER.h, sa, 41, { lw: 3.6, fill: 0.12 });
     T(x, "Clef", SCORER.x + 16, SCORER.y + 38, { mono: true, size: 28, w: 600, alpha: sa });
     T(x, tr("ch06.jevNote"), SCORER.x + 90, SCORER.y + 36, { size: 21, sub: true, alpha: sa, maxW: SCORER.w - 100 });
@@ -576,7 +586,9 @@
       let k = 0, t0 = 0;
       if (w.zero) k = prog(b, AT.zero, AT.zero + 0.1);
       else {
-        t0 = AT.sweep0 + ORDER.indexOf(w) * AT.sweepStep;
+        // 扫完之后才满两分钟的窗：满两分钟那一拍框线变实，下一拍单独交给 Clef。
+        const i = ORDER.indexOf(w);
+        t0 = i >= 0 ? AT.sweep0 + i * AT.sweepStep : (w.from + 15 + 2 + 1) / 4;
         k = prog(b, t0 + 0.06, t0 + 0.12, E.out);
         const ask = win(b, t0 - 0.02, t0, t0 + 0.1, t0 + 0.16);
         if (ask > 0) dashPath(x, [[SCORER.x + SCORER.w / 2, SCORER.y + SCORER.h], [(x0 + x1) / 2, y0 - 4]], 0.9 * ask, verm(0.9), [6, 6], 2.4);
@@ -599,9 +611,12 @@
     }
     const lx = cam.x + (310 - 960) / cam.zoom;
     T(x, tr("ch06.sources"), lx, laneY(2) + 30, { size: 21, w: 700, alpha: a });
-    const wn = tr("ch06.window"), wf = SERIF(21, 600);
-    x.save(); x.globalAlpha = a; x.fillStyle = rgba(PAPER); x.fillRect(lx - 8, ST_TOP - 42, K.measure(x, wn, wf) + 16, 34); x.restore();
-    T(x, wn, lx, ST_TOP - 16, { font: wf, sub: true, alpha: a });
+    const wn = tr("ch06.window"), wf = SERIF(21, 600), ww = K.measure(x, wn, wf);
+    // 全零那一窗往左卷，引线也跟着左移；这一幕结束时引线够得着这行字（英文更宽）就把它挪到引线上方一排。
+    const zEnd = 12.9 * 4, zx = zw ? (tx(zEnd, zw.from) + tx(zEnd, zw.from + 15)) / 2 - 30 : Infinity;
+    const wy = lx + ww + 8 > zx - 10 ? ST_TOP - 100 : ST_TOP - 16;
+    x.save(); x.globalAlpha = a; x.fillStyle = rgba(PAPER); x.fillRect(lx - 8, wy - 26, ww + 16, 34); x.restore();
+    T(x, wn, lx, wy, { font: wf, sub: true, alpha: a });
   }
 
   // 题签：朱文方印「06」，旁边一行毛笔字的章名。
@@ -656,11 +671,12 @@
     const tp = top.begin(); top.cam(cam);
     x.save(); x.fillStyle = rgba(PAPER); x.fillRect(-3200, -1200, 7200, 4200); x.fillStyle = paperTile(); x.fillRect(-3200, -1200, 7200, 4200); x.restore();
 
-    const outA = 1 - prog(b, 11.35, 11.85);
-    const labA = prog(b, 0.55, 0.95) * outA * (1 - win(b, 7.85, 8.05, 9.9, 10.1));
+    const outA = 1 - prog(b, 15.35, 15.85);
+    // 推近右沿（C2）时这几个方框只剩下半截露在画顶，跟着 C2 一起收掉，一直收到 Coding 那一幕结束。
+    const labA = prog(b, 0.55, 0.95) * outA * (1 - win(b, 8.76, 8.95, 12.9, 13.1));
     hills(x, prog(b, 0.4, 1.2) * (1 - prog(b, 3.7, 4.0)));
     title(x, b);
-    ecg(x, b, cam, labA * (1 - prog(b, 3.9, 4.0)), 1 - 0.65 * win(b, 6.0, 6.4, 10.6, 11.3));
+    ecg(x, b, cam, labA * (1 - prog(b, 3.9, 4.0)), 1 - 0.65 * win(b, 6.0, 6.4, 14.6, 15.3));
     ledgerBox(x, phi, labA);
     siteBoxes(x, phi, labA);
     signalPaths(x, phi, labA);
@@ -669,35 +685,36 @@
     const bA = win(b, 3.88, 4.1, 5.95, 6.2);
     collector(x, b, bA);
     card(x, b, bA);
-    const sA = prog(b, 5.9, 6.2) * (1 - prog(b, 11.2, 11.7));
-    const focus = win(b, 7.9, 8.1, 9.9, 10.1);
-    strata(x, b, sA, focus);
-    strataNotes(x, b, win(b, 6.1, 6.4, 7.85, 8.0));
+    const sA = prog(b, 5.9, 6.2) * (1 - prog(b, 15.2, 15.7));
+    const focus = win(b, 10.9, 11.1, 12.9, 13.1);
+    strata(x, b, sA, focus, win(b, 6.2, 6.6, 10.75, 10.95));
+    strataNotes(x, b, win(b, 6.1, 6.4, 10.85, 11.0), cam);
     // 等上一幕的 lyjw.me、core 方框淡完再进：Clef 框和它们在世界坐标里叠在一起。
-    coding(x, b, win(b, 8.05, 8.2, 9.9, 10.05), cam);
+    coding(x, b, win(b, 11.05, 11.2, 12.9, 13.05), cam);
     // 字要先于垫底淡出：垫底一变透明，下面的条就露出来，字还在就压在条上。
-    laneLabels(x, cam, sA * (1 - prog(b, 9.95, 10.15)), sA * (1 - prog(b, 9.82, 9.94)), focus);
+    laneLabels(x, cam, sA * (1 - prog(b, 12.95, 13.15)), sA * (1 - prog(b, 12.82, 12.94)), focus);
     nar(x, "ch06.n1a", 110, 944, prog(b, 1.0, 1.6), win(b, 1.0, 1.1, 3.8, 3.95));
     nar(x, "ch06.n1b", 110, 1024, prog(b, 1.6, 2.4), win(b, 1.0, 1.1, 3.8, 3.95));
     const at = (sx, sy, c) => [c[0] + (sx - 960) / c[2], c[1] + (sy - 540) / c[2]];
     { const [nx, ny] = at(110, 944, B), [, ny2] = at(110, 1024, B);
       nar(x, "ch06.n2a", nx, ny, prog(b, 4.1, 4.6), win(b, 4.05, 4.15, 5.85, 5.98));
       nar(x, "ch06.n2b", nx, ny2, prog(b, 4.6, 5.3), win(b, 4.05, 4.15, 5.85, 5.98)); }
-    { const s = 1 / C[2], [nx, ny] = at(110, 944, C), [, ny2] = at(110, 1024, C);
-      nar(x, "ch06.n3a", nx, ny, prog(b, 6.35, 6.9), win(b, 6.3, 6.4, 7.85, 7.98), 60 * s, 1040 * s);
-      nar(x, "ch06.n3b", nx, ny2, prog(b, 6.9, 7.5), win(b, 6.3, 6.4, 7.85, 7.98), 60 * s, 1040 * s); }
+    // n3 跨两个机位（全景 C、推近右沿 C2），钉在屏幕上，镜头推近时不跟着放大。
+    { const cs = [cam.x, cam.y, cam.zoom], s = 1 / cs[2], [nx, ny] = at(110, 944, cs), [, ny2] = at(110, 1024, cs);
+      nar(x, "ch06.n3a", nx, ny, prog(b, 6.4, 7.1), win(b, 6.3, 6.4, 10.65, 10.8), 60 * s, 1040 * s);
+      nar(x, "ch06.n3b", nx, ny2, prog(b, 7.1, 7.9), win(b, 6.3, 6.4, 10.65, 10.8), 60 * s, 1040 * s); }
     { const s = 1 / D[2], [nx, ny] = at(110, 944, D), [, ny2] = at(110, 1024, D);
-      nar(x, "ch06.n4a", nx, ny, prog(b, 8.1, 8.6), win(b, 8.05, 8.15, 9.85, 9.98), 60 * s, 1040 * s);
-      nar(x, "ch06.n4b", nx, ny2, prog(b, 8.6, 9.2), win(b, 8.05, 8.15, 9.85, 9.98), 60 * s, 1040 * s); }
-    const cIn = prog(b, AT.clawd - 0.2, AT.clawd), cOut = prog(b, 11.45, 11.7);
+      nar(x, "ch06.n4a", nx, ny, prog(b, 11.1, 11.6), win(b, 11.05, 11.15, 12.85, 12.98), 60 * s, 1040 * s);
+      nar(x, "ch06.n4b", nx, ny2, prog(b, 11.6, 12.2), win(b, 11.05, 11.15, 12.85, 12.98), 60 * s, 1040 * s); }
+    const cIn = prog(b, AT.clawd - 0.2, AT.clawd), cOut = prog(b, 15.45, 15.7);
     if (cIn > 0 && cOut < 1) {
       const rise = E.outBack(cIn) * (1 - E.in(cOut));
       const cx = 760, base = ST_TOP + 4;
       tp.save(); tp.beginPath(); tp.rect(cx - 200, base - 260, 400, 260); tp.clip();
       clawdInk(tp, cx, base + (1 - rise) * 90, 6, cIn < 1 ? "arms-up" : "default");
       tp.restore();
-      const sk = prog(b, AT.clawd + 0.1, AT.clawd + 0.25) * (1 - prog(b, 11.35, 11.45));
-      slip(tp, tr("ch06.clawd"), cx - 70, base - 110, sk, prog(b, AT.clawd + 0.15, 10.9), cx - 30, base - 60);
+      const sk = prog(b, AT.clawd + 0.1, AT.clawd + 0.25) * (1 - prog(b, 15.35, 15.45));
+      slip(tp, tr("ch06.clawd"), cx - 70, base - 110, sk, prog(b, AT.clawd + 0.15, 14.1), cx - 30, base - 60);
     }
 
     G.composite(page.upload(), { mode: G.MODE.normal });
@@ -712,7 +729,7 @@
   }
 
   window.CHAPTERS.push({
-    id: "ch06", title: "ch.06", bars: 12,
+    id: "ch06", title: "ch.06", bars: 16,
     async init() {
       page = G.layer("bg"); top = G.layer("top");
       await Promise.all([document.fonts.load(BRUSH(60), "心电图"), document.fonts.load(SERIF(30, 600), "报到"), document.fonts.load(SERIF(30, 900), "墨")]);
