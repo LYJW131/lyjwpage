@@ -65,32 +65,21 @@ function markup(elements: Element[]) {
 
 function startup({
   hidden = false,
-  paintSupport = false,
-  existingPaint = false,
   module = '<script type="module" async="">import "/assets/entry.client-A.js";</script>',
   preloads = preloadA + preloadB,
-}: { hidden?: boolean; paintSupport?: boolean | "absent"; existingPaint?: boolean; module?: string; preloads?: string } = {}) {
+}: { hidden?: boolean; module?: string; preloads?: string } = {}) {
   const html = deferModulePreloads(`<html><head>${preloads}</head><body><main>SSR</main>${module}</body></html>`);
   const body = html.slice(html.indexOf("<body>") + 6, html.lastIndexOf("</body>"));
   const nodes = parsedElements(body);
   const bootstrap = nodes.find((node) => node.tagName === "script");
   assert.ok(bootstrap);
-  assert.ok(!bootstrap.attributes.some(({ name, value }) => name === "type" && value === "module"), "入口模块应由首绘后的经典脚本启动");
+  assert.ok(!bootstrap.attributes.some(({ name, value }) => name === "type" && value === "module"), "入口模块应由经典脚本调度启动");
   const frames = new Map<number, () => void>();
   const listeners = new Map<string, () => void>();
   const inserted: Element[] = [];
   const events: string[] = [];
   let replacement: Element | null = null;
   let nextFrame = 0;
-  let onPaint: ((list: { getEntries: () => { name: string }[] }) => void) | undefined;
-  let observing: { type: string; buffered: boolean } | null = null;
-  let disconnected = false;
-  class PerformanceObserver {
-    static supportedEntryTypes = paintSupport === true ? ["paint"] : [];
-    constructor(callback: NonNullable<typeof onPaint>) { onPaint = callback; }
-    observe(options: NonNullable<typeof observing>) { observing = options; }
-    disconnect() { disconnected = true; observing = null; }
-  }
   const document = {
     currentScript: {
       replaceWith(script: Element) {
@@ -122,8 +111,6 @@ function startup({
   };
   vm.runInNewContext(bootstrap.textContent, {
     document,
-    performance: { getEntriesByName: () => existingPaint ? [{ name: "first-contentful-paint" }] : [] },
-    ...(paintSupport === "absent" ? {} : { PerformanceObserver }),
     requestAnimationFrame(callback: () => void) {
       const id = ++nextFrame;
       frames.set(id, callback);
@@ -133,9 +120,6 @@ function startup({
   });
   return {
     html, bootstrap, frames, listeners, inserted, events,
-    observing() { return observing; },
-    disconnected() { return disconnected; },
-    paint(name: string) { onPaint?.({ getEntries: () => [{ name }] }); },
     replacement() { return replacement; },
     frame() {
       const [id, callback] = frames.entries().next().value ?? [];
@@ -151,7 +135,7 @@ function startup({
   };
 }
 
-test("首帧后成批激活预加载，再原位启动模块，启动前没有有效 modulepreload 或 module", () => {
+test("两次动画帧回调后成批激活预加载并原位启动模块，回调重复到达也只启动一次", () => {
   const run = startup();
   assert.equal(run.html.match(/<link/g), null);
   assert.ok(!run.bootstrap.attributes.some(({ name }) => name === "type"));
@@ -159,12 +143,15 @@ test("首帧后成批激活预加载，再原位启动模块，启动前没有�
   assert.deepEqual(run.inserted, []);
   run.frame();
   assert.equal(run.replacement(), null);
+  const secondFrame = [...run.frames.values()][0];
+  assert.ok(secondFrame);
   run.frame();
   assert.deepEqual(run.events, ["preloads", "module"]);
   assert.deepEqual(markup(run.inserted), markup(parsedElements(lowA + lowB)));
   assert.equal(run.replacement()?.textContent, 'import "/assets/entry.client-A.js";');
   assert.equal(run.listeners.size, 0);
   assert.equal(run.frames.size, 0);
+  secondFrame();
   run.hide();
   assert.deepEqual(run.events, ["preloads", "module"]);
 });
@@ -206,7 +193,7 @@ test("保留 nonce、crossorigin、显式 fetchpriority 与入口脚本文本，
   assert.deepEqual(markup(run.inserted), markup(parsedElements(preloads)));
 });
 
-test("没有 head 预加载时入口仍等首帧，普通脚本和外部模块脚本保持原样", () => {
+test("没有 head 预加载时入口仍等两次动画帧回调，普通脚本和外部模块脚本保持原样", () => {
   const run = startup({ preloads: "" });
   assert.equal(run.replacement(), null);
   run.frame();
@@ -219,59 +206,5 @@ test("没有 head 预加载时入口仍等首帧，普通脚本和外部模块�
   ]) {
     const html = `<html><head>${preloadA}</head><body>${script}</body></html>`;
     assert.equal(deferModulePreloads(html), `<html><head></head><body>${script}${lowA}</body></html>`);
-  }
-});
-
-test("支持 Paint Timing 时只在 FCP 后启动，first-paint 不提前解锁模块", () => {
-  const run = startup({ paintSupport: true });
-  assert.equal(run.frames.size, 0);
-  assert.equal(run.observing()?.type, "paint");
-  assert.equal(run.observing()?.buffered, true);
-  assert.equal(run.replacement(), null);
-  run.paint("first-paint");
-  assert.equal(run.replacement(), null);
-  run.paint("first-contentful-paint");
-  assert.deepEqual(run.events, ["preloads", "module"]);
-  assert.equal(run.observing(), null);
-  assert.equal(run.disconnected(), true);
-  assert.equal(run.listeners.size, 0);
-  run.paint("first-contentful-paint");
-  assert.deepEqual(run.events, ["preloads", "module"]);
-});
-
-test("已有 FCP 时立即启动，不建立 observer 或动画帧", () => {
-  const run = startup({ paintSupport: true, existingPaint: true });
-  assert.deepEqual(run.events, ["preloads", "module"]);
-  assert.equal(run.observing(), null);
-  assert.equal(run.frames.size, 0);
-  assert.equal(run.listeners.size, 0);
-});
-
-test("等待 FCP 时转入后台立即启动并断开 observer，后续通知不重复启动", () => {
-  const run = startup({ paintSupport: true });
-  run.hide();
-  assert.deepEqual(run.events, ["preloads", "module"]);
-  assert.equal(run.disconnected(), true);
-  assert.equal(run.observing(), null);
-  assert.equal(run.listeners.size, 0);
-  run.paint("first-contentful-paint");
-  assert.deepEqual(run.events, ["preloads", "module"]);
-});
-
-test("支持 Paint Timing 的初始后台标签不等待 observer", () => {
-  const run = startup({ paintSupport: true, hidden: true });
-  assert.deepEqual(run.events, ["preloads", "module"]);
-  assert.equal(run.observing(), null);
-  assert.equal(run.frames.size, 0);
-});
-
-test("缺少 PerformanceObserver 或不支持 paint 时才退回双动画帧", () => {
-  for (const paintSupport of [false, "absent"] as const) {
-    const run = startup({ paintSupport });
-    assert.equal(run.observing(), null);
-    run.frame();
-    assert.equal(run.replacement(), null);
-    run.frame();
-    assert.deepEqual(run.events, ["preloads", "module"]);
   }
 });

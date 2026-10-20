@@ -44,7 +44,7 @@
 - **[How to be more ambitious: A tutorial for humans with models](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/)**（Felix Rieseberg，Anthropic）
   - 是什么：把「用 AI 要更有野心」拆成高度（给目标不给任务）、深度（专家的工具、离谱的目标、外部裁判）、广度（名词换动词、按领域组队）。
   - 取了什么：「深一层」四问提示，lyjw 派活时贴。外部裁判本项目已有（验证回执脚本、CI 门禁、机器评审）。
-  - 状态：部分采用。四问落在 `HUMAN.md`「2. 怎么说一句话最快」；高度落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3c 步，复现了的错误批次直接开修复草稿 PR，lyjw 在 PR 上否决。深度落在首屏：按 PageSpeed 拆出的 LCP 瓶颈首帧之后成批启动低优先级 modulepreload 与模块入口、再水合、屏外图懒加载（`src/lib/defer-module-preloads.ts`、`src/app/entry.server.tsx`、`src/app/entry.client.tsx`、`src/components/live/watching-card.tsx`、`src/components/live/playstation-card.tsx`）。不采用部署后的 LCP 预算检查：站点自己的 PageSpeed 卡片（collector 的 `pagespeed` 任务）每天都看得到，lyjw 认为不必再加。不采用：名词换动词与组队，属写提示的习惯，没有可落地的文件。
+  - 状态：部分采用。四问落在 `HUMAN.md`「2. 怎么说一句话最快」；高度落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3c 步，复现了的错误批次直接开修复草稿 PR，lyjw 在 PR 上否决。深度落在首屏：双动画帧给浏览器绘制机会后成批启动低优先级 modulepreload 与模块入口、再水合、屏外图懒加载（`src/lib/defer-module-preloads.ts`、`src/app/entry.server.tsx`、`src/app/entry.client.tsx`、`src/components/live/watching-card.tsx`、`src/components/live/playstation-card.tsx`）。不采用部署后的 LCP 预算检查：站点自己的 PageSpeed 卡片（collector 的 `pagespeed` 任务）每天都看得到，lyjw 认为不必再加。不采用：名词换动词与组队，属写提示的习惯，没有可落地的文件。
 - **[Automating eval design and hillclimbing with Claude](https://claude.dev/blog/automating-eval-design-and-hillclimbing/)**（claude.dev）
   - 是什么：用 Claude 设计评测、按证据迭代提示词。
   - 取了什么：一次只改一处、改动可归因到根因，不把失败样例原文贴进提示词。
@@ -218,18 +218,14 @@
   - 是什么：组件首次渲染时才加载模块，加载期间由局部 Suspense 边界承接。
   - 取了什么：播放器弹层与聊天内部卡片按显示条件加载，首页与聊天输入框仍直接渲染。
   - 状态：采用。落在 [web-player-provider.tsx](../src/components/web-player/web-player-provider.tsx) 与 [lazy-chat-cards.tsx](../src/components/lazy-chat-cards.tsx)。
-- **[Optimize Largest Contentful Paint](https://web.dev/articles/optimize-lcp)**（web.dev）与 **[PerformancePaintTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformancePaintTiming)**（MDN）
+- **[Optimize Largest Contentful Paint](https://web.dev/articles/optimize-lcp)**（web.dev）与 **[requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)**（MDN）
   - 是什么：按资源发现、下载与元素绘制拆解 LCP，区分资源大小和主线程延迟。
-  - 取了什么：用 Paint Timing 确认服务端 HTML 的首次内容绘制，再成批加载模块并水合，减少脚本与首屏资源争抢带宽。
-  - 状态：采用。落在 [defer-module-preloads.ts](../src/lib/defer-module-preloads.ts) 与 [entry.client.tsx](../src/app/entry.client.tsx)；不支持 Paint Timing 时退回双动画帧，后台页面直接启动。
+  - 取了什么：入口加载统一经双动画帧给浏览器绘制机会，再成批加载低优先级模块并以 `startTransition` 水合；客户端入口不重复等待动画帧。
+  - 状态：采用。落在 [defer-module-preloads.ts](../src/lib/defer-module-preloads.ts) 与 [entry.client.tsx](../src/app/entry.client.tsx)；双动画帧不保证实际呈现，不依赖 FCP 观测事件，后台页面直接启动。
 - **[Generate subsets of fonts](https://fonttools.readthedocs.io/en/latest/subset/index.html)**（fontTools 文档）
   - 是什么：按 Unicode 字符与布局特性裁剪字体，同时保留所需的变体字形。
   - 取了什么：从同一 Geist Mono 可变字体生成 Latin 与界面符号分片，预加载分片，剩余字符通过互补的 `unicode-range` 使用完整字体。
   - 状态：采用。资产来源、生成命令与验证方法见 [字体分片](../src/assets/fonts/README.md)；字体规则落在 [theme.css](../src/app/styles/theme.css)，预加载落在 [root.tsx](../src/app/root.tsx)。
-- **[Disabling CSS injection into the page](https://vite.dev/guide/features#disabling-css-injection-into-the-page)**（Vite 文档）
-  - 是什么：通过 `?inline` 导入处理后的 CSS 字符串，关闭自动样式注入。
-  - 取了什么：根布局将站点 CSS 写入 HTML 的 `style`，让首屏样式不依赖独立样式表请求。
-  - 状态：采用。落在 [root.tsx](../src/app/root.tsx)；CSS 字符串也进入客户端模块，增加传输量，以消除首屏样式表请求的等待。
 - **[markdown-cjk-friendly](https://github.com/tats-u/markdown-cjk-friendly)**（`remark-cjk-friendly`）
   - 是什么：修正 CommonMark 在中日韩标点旁不认 `**` 收尾的 remark 插件。
   - 取了什么：对话里「？」后紧跟中文的加粗会原样显示星号，接上它和配套的删除线插件。

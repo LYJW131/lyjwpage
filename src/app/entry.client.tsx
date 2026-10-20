@@ -37,9 +37,5 @@ function hydrate() {
   });
 }
 
-// 先让浏览器画出服务端 HTML，再分片水合：同步水合是一整个长任务，慢机上会把首帧压到它跑完之后。后台标签页不跑 requestAnimationFrame，排队后切到后台也会卡住，所以转入后台就立刻水合。
-if (document.visibilityState === "hidden") hydrate();
-else {
-  requestAnimationFrame(() => setTimeout(hydrate, 0));
-  document.addEventListener("visibilitychange", hydrate, { once: true });
-}
+// 入口加载由 deferModulePreloads 统一让出绘制机会；这里再等动画帧会重复延后可交互时间。
+hydrate();
