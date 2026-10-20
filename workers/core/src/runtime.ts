@@ -11,7 +11,6 @@ export interface Env {
   STATE: DurableObjectNamespace<StateHub>;
   DEV_OVERRIDE_READER?: Service<DevOverrideReader>;
   HISTORY?: D1Database;
-  AI?: Ai;
   LAG?: KVNamespace;
   SITE_CACHE?: SiteCacheRpc;
   STORAGE_PREFIX?: string;
@@ -19,7 +18,7 @@ export interface Env {
   AI_SERVICE?: Pick<Fetcher, "fetch">;
 }
 
-// 本地夹具与上游覆盖值不能进入共享归档或覆盖生产评分。
+// 本地夹具与上游覆盖值不能进入共享归档。
 function isolatedFromSharedWrites(): boolean {
   return process.env.DEV_OVERRIDES?.trim() === "true" ||
     !!process.env.UPSTREAM_API_URL?.trim() ||
@@ -28,10 +27,6 @@ function isolatedFromSharedWrites(): boolean {
 
 export function historyArchive(env: Env): D1Database | null {
   return env.HISTORY && !isolatedFromSharedWrites() ? env.HISTORY : null;
-}
-
-export function pulseScoringAi(env: Env): Ai | null {
-  return env.AI && !isolatedFromSharedWrites() ? env.AI : null;
 }
 
 export type RequestContext = {

@@ -318,8 +318,7 @@ payload: >-
   （`pulse:v2:listening-traces`）；出口按时长把连续播放的一串对齐，推出每首的起止，用斜线画出来，
   算法见 [core Worker](../workers/core/README.md#存储事实时间线)。
 - Coding 的三色带（前台 coding 应用 / agent / 两者同时）读时从原始观测
-  （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code 的 token 桶）现算。Clef 只给 Coding 打十五分钟强度与模式，
-  只在悬停里出现；别的道不再有模型分。
+  （`pulse:coding-observations`、Cursor 账号观测与云端 Claude Code 的 token 桶）现算，各道都没有模型分。
 - Tokens 道画三个来源的 5 分钟 token 桶相加后的速率（含 cache read，口径见 `shared/coding-usage.ts#codingRowTokens`），不带模型名和来源；
   取桶规则见 `workers/core/src/pulse.ts#tokensLaneView`。
 - 充电存实测瓦数，身体活动存 HealthKit 五分钟桶的原始计数与已完成训练的区间。
