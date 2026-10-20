@@ -6,6 +6,7 @@ import { MacBookProIcon } from "@/components/ui/device-icons";
 import { CODING_AGENT_CLOUD, CODING_AGENT_CURSOR, CODING_AGENT_MAC } from "@shared/pulse-coding";
 import { gamingSummaryDetail } from "@/lib/gaming-lane-detail";
 import { columnRows } from "@shared/pulse-columns";
+import { codingAgentSeconds, codingDriverSeconds } from "@shared/pulse-types";
 import type { PulseCodingLane, PulseStateLane } from "@shared/types";
 import { cn } from "@/lib/utils";
 
@@ -53,8 +54,6 @@ export function codingModel(lane: PulseCodingLane, range: Range): LaneModel | nu
       ),
     };
   });
-  const { humanSeconds, agentSeconds, bothSeconds } = lane.summary;
-  const total = humanSeconds + agentSeconds + bothSeconds;
   return {
     items,
     svg: (() => {
@@ -67,7 +66,7 @@ export function codingModel(lane: PulseCodingLane, range: Range): LaneModel | nu
           : <path key={value} d={barPath(rows, LANE_HEIGHT - IDLE_HEIGHT)} fill="currentColor" fillOpacity={0.42} />;
       });
     })(),
-    summary: segments.length ? { value: pulseDuration(total), detail: `agent ${pulseDuration(agentSeconds + bothSeconds)}` } : null,
+    summary: segments.length ? { value: `driver ${pulseDuration(codingDriverSeconds(lane.summary))}`, detail: `agent ${pulseDuration(codingAgentSeconds(lane.summary))}` } : null,
     aria: "coding timeline: coding app in front, agent running, or both",
   };
 }

@@ -17,6 +17,13 @@ export type PulseCodingLane = {
   summary: { humanSeconds: number; agentSeconds: number; bothSeconds: number };
 };
 
+// 编码带的值：1 只有前台编码应用，2 只有 agent 在跑，3 两者同时。驾驶员时间是 lyjw 在 Mac 前台开着编码应用的时段（1 和 3），
+// 只有 agent 自己在跑的时段不算；摘要卡、Pulse 泳道、近况规则与对话说明都按这一处算。ai 不在这个文件的构建监视路径里，
+// 另存一份同口径的 workers/ai/src/digest/facts.ts#driverSeconds，由 digest.test.ts 对照。
+export const isCodingDriverValue = (value: number) => value === 1 || value === 3;
+export const codingDriverSeconds = ({ humanSeconds, bothSeconds }: PulseCodingLane["summary"]) => humanSeconds + bothSeconds;
+export const codingAgentSeconds = ({ agentSeconds, bothSeconds }: PulseCodingLane["summary"]) => agentSeconds + bothSeconds;
+
 export type PulseStateLane = {
   kind: "state";
   segments: PulseSpanColumns & { state: number[]; title: (string | null)[]; subtitle: (string | null)[] };

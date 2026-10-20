@@ -12,7 +12,7 @@ export type DigestHighlight = {
   unit: DigestUnit;
   // 来源列表到了条数上限、窗口里可能还有没列出的：实际至少是 value。
   atLeast: boolean;
-  // 接在数字后面的英文小写图例，如 "coding"、"music"、"agent time"。
+  // 接在数字后面的英文小写图例，如 "driver time"、"music"、"agent time"。
   caption: string;
 };
 

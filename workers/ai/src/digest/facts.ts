@@ -3,7 +3,7 @@ import { modelLabel } from "@shared/god-chat-tiers";
 import { site } from "@shared/site";
 import type { StatusPayloads } from "@shared/status-payloads";
 import { STATUS_VIEWS } from "@shared/status-views";
-import type { PulseStateLane, StatusResponse, TrophiesSummaryPayload } from "@shared/types";
+import type { PulseCodingLane, PulseStateLane, StatusResponse, TrophiesSummaryPayload } from "@shared/types";
 
 export const DIGEST_VIEWS = [
   "pulse",
@@ -46,6 +46,10 @@ const AGENT_LABELS: Record<string, string> = {
 type Figure = Pick<DigestHighlight, "value" | "unit" | "atLeast">;
 
 const MIN_ACTIVE_SECONDS = 300;
+
+// 须与 shared/pulse-types.ts#codingDriverSeconds、#codingAgentSeconds 同口径（digest.test.ts 对照）：那个文件不在 ai 的构建监视路径里，运行时引用它，改口径时 ai 不会重新发布。
+export const driverSeconds = ({ humanSeconds, bothSeconds }: PulseCodingLane["summary"]) => humanSeconds + bothSeconds;
+export const agentSeconds = ({ agentSeconds: alone, bothSeconds }: PulseCodingLane["summary"]) => alone + bothSeconds;
 
 // 事实清单的数字有意取粗：小时级以下的抖动不改变清单，输入哈希不变，这一轮就不调模型。卡片上的数取自同一套取粗。
 function timeFigure(seconds: number): Figure {
@@ -163,18 +167,19 @@ function gamingLine(lane: PulseStateLane): string | null {
 function codingLines(views: DigestViews, windowFrom: number, today: string): string[] {
   const lines: string[] = [];
   const pulse = views.pulse!;
-  const { humanSeconds, agentSeconds, bothSeconds } = pulse.lanes.coding.summary;
-  const any = humanSeconds + agentSeconds + bothSeconds;
-  if (any >= MIN_ACTIVE_SECONDS) {
-    lines.push(`Coding: active ${duration(any)} of the 24 h; a coding app in front on LYJW's Mac ${duration(humanSeconds + bothSeconds)}, AI agents working ${duration(agentSeconds + bothSeconds)}`);
+  const { summary } = pulse.lanes.coding;
+  const driver = driverSeconds(summary);
+  const span = (seconds: number) => (seconds >= MIN_ACTIVE_SECONDS ? duration(seconds) : "none");
+  if (driver + summary.agentSeconds >= MIN_ACTIVE_SECONDS) {
+    lines.push(`Coding: LYJW driving (a coding app in front on the Mac) ${span(driver)}; AI agents working ${span(agentSeconds(summary))}, of which ${span(summary.agentSeconds)} on their own while LYJW was not driving`);
   }
-  const agents = (views.codingNow?.agents ?? []).flatMap((agent) => {
+  const used = (views.codingNow?.agents ?? []).flatMap((agent) => {
     const recent = agent.activity.filter((entry) => entry.lastActivityAt >= windowFrom).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
     if (!recent.length) return [];
     const models = [...new Set(recent.flatMap((entry) => (entry.model ? [entry.model.startsWith("claude-") ? modelLabel(entry.model) : entry.model] : [])))];
     return [{ at: recent[0].lastActivityAt, text: `${AGENT_LABELS[agent.id] ?? agent.id}${models.length ? ` (${models.join(", ")})` : ""}` }];
   }).sort((a, b) => b.at - a.at);
-  if (agents.length) lines.push(`Coding agents used: ${agents.map((agent) => agent.text).join(", ")}`);
+  if (used.length) lines.push(`Coding agents used: ${used.map((agent) => agent.text).join(", ")}`);
   const tokens = pulse.lanes.tokens.summary.totalTokens;
   if (tokens > 0) lines.push(`Tokens through the agents: ${compactCount(tokens)}`);
   const cost = (views.coding?.agents ?? [])
@@ -305,9 +310,8 @@ export function digestHighlightOptions(views: DigestViews): DigestHighlight[] {
   };
   const time = (seconds: number) => (seconds >= MIN_ACTIVE_SECONDS ? timeFigure(seconds) : null);
   const count = (value: number): Figure | null => (value > 0 ? { value, unit: "count", atLeast: false } : null);
-  const { humanSeconds, agentSeconds, bothSeconds } = pulse.lanes.coding.summary;
-  add("coding", time(humanSeconds + agentSeconds + bothSeconds), "coding");
-  add("agents", time(agentSeconds + bothSeconds), "agent time");
+  add("coding", time(driverSeconds(pulse.lanes.coding.summary)), "driver time");
+  add("agents", time(agentSeconds(pulse.lanes.coding.summary)), "agent time");
   add("tokens", count(roundCount(pulse.lanes.tokens.summary.totalTokens)), "tokens");
   const site = siteTallies(views, windowFrom);
   if (site.commits?.value) add("site", site.commits, "commits");
