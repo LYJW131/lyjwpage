@@ -71,7 +71,7 @@
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Devin CLI token usage comes from Devin's own OTel: the Mac into `mac-otlp` (labelled Mac), cloud threads into `agents-otlp` (labelled Cloud), split by ingress from the verified Access credential (#453 + #456). Lane coverage and setup: [[pulse-tokens-lane-coverage]].
-- Not adopting (don't re-propose): Mercury 3 for chat (tested 2026-10-20), tester-army/e2e (tried 2026-10-20), seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed. Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
+- Not adopting (don't re-propose): Mercury 3 for chat (tested 2026-10-20), tester-army/e2e (tried 2026-10-20), seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed, Jev 1.14 as explainer image checker (tested 2026-10-21, equal catches but noisy; keep Haiku: [[jev-vision-qa-result]]). Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 chose 维持现状); only native-OTel agents use OTLP. Don't re-propose: [[reporter-otel-decision]].
 - Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
 - Chat context prefetch is built (#384, 2026-10-17): Clef, in the same routing call, picks site status / project doc to prefetch (thresholds status 0.6, doc 0.45); presets prefetch fixed tool calls: [[idea-jev-context-prefetch]].
