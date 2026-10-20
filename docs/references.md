@@ -210,6 +210,10 @@
   - 是什么：编译期自动记忆化。
   - 取了什么：站点构建经 `@vitejs/plugin-react` 的 `reactCompilerPreset` 接入。
   - 状态：采用。落在 [vite.config.ts](../vite.config.ts)。
+- **[Dependency Collection](https://swr.vercel.app/docs/advanced/performance#dependency-collection)**（SWR 文档）
+  - 是什么：只订阅组件实际读取的返回字段，避免无关状态变化触发渲染。
+  - 取了什么：状态 Hook 通过 getter 传递错误与验证状态，使用数据的卡片不提前订阅这些字段。
+  - 状态：采用。落在 [use-status.ts](../src/hooks/use-status.ts)。
 - **[Activity：Speeding up interactions during page load](https://react.dev/reference/react/Activity#speeding-up-interactions-during-page-load)**（React 文档）
   - 是什么：始终可见的 Activity 边界也能参与选择性水合，让页面各部分独立完成水合。
   - 取了什么：卡片正常渲染路径包在 `mode="visible"` 的 Activity 中，保留服务端正文，让 React 按卡片调度水合。
