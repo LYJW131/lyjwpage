@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow from "@number-flow/react";
+import NumberFlow from "@/components/ui/number-flow";
 
 import { ModelProviderIcon, RankMark } from "@/components/live/vibecoding/marks";
 import { FlowDash } from "@/components/ui/flow-dash";

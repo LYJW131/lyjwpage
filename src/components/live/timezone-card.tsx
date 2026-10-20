@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import NumberFlow, { NumberFlowGroup } from "@/components/ui/number-flow";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 

@@ -222,6 +222,10 @@
   - 是什么：用显式依赖限制布局动画的测量，仅在依赖变化时重新测量。
   - 取了什么：PlayStation 列表按完整输入记忆化卡片排列，以排列结果和动态效果偏好组成稳定的布局依赖，避免无关重渲染触发布局测量。
   - 状态：采用。落在 [playstation-card.tsx](../src/components/live/playstation-card.tsx)。
+- **[useInView](https://motion.dev/docs/react-use-in-view)**（Motion 文档）与 **[NumberFlow](https://number-flow.barvian.me/)**（官方文档）
+  - 是什么：元素可见性 Hook 与数字动画组件的 `animated` 开关。
+  - 取了什么：数字首次进入视口后启用动画，入屏前仍即时更新数值；保留显式关闭动画、服务端数值与分组语义。
+  - 状态：采用。落在 [number-flow.tsx](../src/components/ui/number-flow.tsx)，`once: true` 在首次入屏后保持动画启用。
 - **[lazy](https://react.dev/reference/react/lazy)**（React 文档）
   - 是什么：组件首次渲染时才加载模块，加载期间由局部 Suspense 边界承接。
   - 取了什么：播放器弹层与聊天内部卡片按显示条件加载，首页与聊天输入框仍直接渲染。

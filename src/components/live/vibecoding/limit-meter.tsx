@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import NumberFlow, { NumberFlowGroup } from "@/components/ui/number-flow";
 import { useContext, useEffect, useState, type ReactNode } from "react";
 
 import { LIMIT_ON_PACE_COLOR, LIMIT_OVER_PACE_COLOR, formatReset, limitColor, limitPace, nextTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
