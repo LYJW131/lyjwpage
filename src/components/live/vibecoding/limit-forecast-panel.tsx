@@ -2,6 +2,7 @@
 
 import { useContext, useEffect, useState } from "react";
 
+import { ForecastHover } from "@/components/live/vibecoding/forecast-hover";
 import { RenderClock, useMountedAt } from "@/hooks/use-mounted-at";
 import { forecastLimit, type LimitForecast } from "@/lib/limit-forecast";
 import type { LimitHistoryPayload } from "@shared/limit-history";
@@ -127,6 +128,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
             />
           )}
         </svg>
+        <span aria-hidden className="absolute bottom-0 left-0 size-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-foreground" />
         <span
           aria-hidden
           className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground"
@@ -142,6 +144,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
             style={{ left: `${x(lockedFrom)}%`, top: "0%" }}
           />
         )}
+        <ForecastHover forecast={forecast} timeZone={timeZone} x={x} y={y} />
         </div>
       </div>
     </div>
