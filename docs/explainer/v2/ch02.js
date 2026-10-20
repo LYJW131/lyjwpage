@@ -1,5 +1,5 @@
 (() => {
-  const { E, prog, keys, clamp, lerp, hash, pathAt, pathLen, trailOn } = K;
+  const { E, prog, keys, track, clamp, lerp, hash, pathAt, pathLen, trailOn } = K;
   I18N.add({
     "ch02.title": ["门禁与分拣", "The gate and the sorting desk"],
     "ch02.posterA": ["门禁", "The gate &"],
@@ -643,6 +643,8 @@
   // ---- 机位 5：灯塔与 202 ----
   const L5 = (s) => toLocal(F5, BUS(s));
   const LAMP_T = [AT.lamp1, AT.lamp2, AT.lamp3], LAMP_K = ["do", "lag", "cred"];
+  // 目标点是解出来的：亮条在 AT.lamp2、AT.lamp3 前后约 0.05 小节扫过 S_LAMP[1]、S_LAMP[2]，中途不减速；改了灯的位置或时刻要重解。
+  const LAMP_TRACK = [[AT.lamp1, S_LAMP[0]], [AT.lamp1, S_LAMP[0] + 250], [AT.lamp2, S_LAMP[2] + 50], [AT.lamp3 - 0.0625, S_LAMP[2] + 170]];
   const D1L = [640, L5(S_LAMP[0] + 100)[1]];
   const STAMP = [970, 900], CL5 = [540, 1000];
   function lamp(x, cx, cy, on, pulse, o = {}) {
@@ -658,7 +660,7 @@
       const p0 = L5(S_LAMP[0]), p1 = L5(S_LAMP[2] + 170);
       bar(x, p0[0], p0[1], p1[0], p1[1], 8, INK);
       if (b >= AT.lamp1) {
-        const q = L5(keys(b, [[AT.lamp1, S_LAMP[0]], [AT.lamp2, S_LAMP[1], E.out], [AT.lamp3, S_LAMP[2], E.out], [AT.s202 - 0.04, S_LAMP[2] + 170, E.io]]));
+        const q = L5(track(b, LAMP_TRACK));
         bar(x, p0[0], p0[1], q[0], q[1], 4, SIG());
       }
       const dk = prog(b, AT.d1Start, AT.d1Start + 0.2, E.out), bp = L5(S_LAMP[0] + 100);
