@@ -324,6 +324,7 @@
     }
 
     // 0 · 标题：第 06 章的横线成了显像管开机那一道亮线，笔尖那一点跳起来变成 Clawd。
+    // AT.crt 之前那一帧（白线、橙点的位置与颜色）须与 ch06.js 的 inkNight 收尾末帧同步。
     function sTitle(b) {
       R(0, 0, GW, GH, C.k);
       if (b < AT.crt[0]) { R(0, 107, GW, 2, C.w); R(268, 106, 4, 4, C.o); return; }

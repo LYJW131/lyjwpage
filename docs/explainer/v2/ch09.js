@@ -84,7 +84,7 @@
   const NAR = { n1: 3.0, n2: 5.65, n3: 8.15, n4: 11.35 };
   const NAR_OUT = { n1: 5.55, n2: 7.55, n3: 10.7, n4: 14.2 };
 
-  // ch08.js 的末帧照抄这里的 Y0、HEAD、COMMITS，两章接缝才能对齐。
+  // ch08.js 的末帧照抄这里的 Y0、HEAD、COMMITS，以及 C.bg / C.ink / C.white、LW 和 commitStations 里站圈的半径（它的 C9、LW9、R9），两章接缝才能对齐。
   const Y0 = 540;
   const HEAD = [1350, Y0];
   const COMMITS = [1250, 1050, 850, 650, 450, 250, 50];

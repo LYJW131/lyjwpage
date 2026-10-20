@@ -40,8 +40,8 @@
         { from: 13, to: 14, id: "strata-clawd", name: "Clawd 冒出来说收尾那句", energy: 0.42,
           kick: "Xx......Xx......", kickKind: "heart", duck: 0.35, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.75,
           bass: "light", pad: 0.85, lp: 1800, padVerb: 0.38 },
-        { from: 15, to: 15, id: "strata-rise", name: "升回地面：心跳回到每拍，收在 A7sus4 交给第 07 章（对话）", energy: 0.5,
-          kick: "Xx..Xx..Xx..Xx..", kickKind: "heart", duck: 0.4, clock: "..x...x...x...x.", clockKind: "knock", clockVol: 0.9,
+        { from: 15, to: 15, id: "strata-rise", name: "升回地面：心跳跳两下就停，15:2 起拉平成一声长「嘀」（D5），收在 A7sus4，16:0 交给第 07 章同音的方波", energy: 0.5,
+          kick: "Xx..xo..........", kickKind: "heart", duck: 0.4, clock: "..x...x.........", clockKind: "knock", clockVol: 0.9,
           bass: "light", pad: 0.8, lp: 2200, padVerb: 0.34 },
       ],
       melody: [
@@ -57,6 +57,8 @@
         { bar: 12, beat: 1, kind: "lamp", m: midi("D6"), i: 1 },
         { bar: 12, beat: 1.5, kind: "lamp", m: midi("A6"), i: 2 },
         { bar: 13, beat: 1, kind: "accent", what: "flip" },
+        // 心电图拉平那一声长「嘀」，长度以拍计，正好收在第 07 章 0:0（music/ch07.js 开头同音的方波接住）；音高 D5 须与那边同步。
+        { bar: 15, beat: 2, kind: "jCflat", m: midi("D5"), len: 2 },
         { bar: 15, beat: 3, kind: "swell" },
       ],
       sfx: SFX.map(([o, name, v = 1, pan = 0, rate = 1]) => ({ bar: Math.floor(o + 1e-9), beat: (o - Math.floor(o + 1e-9)) * 4, name, v, pan, rate })),

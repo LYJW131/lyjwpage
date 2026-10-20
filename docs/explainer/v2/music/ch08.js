@@ -27,6 +27,9 @@
       ...[16.125, 16.375, 16.625, 16.75, 16.875, 17.375, 17.5].map((o, i) => [o, "click", 0.87, -0.6 + i * 0.2, 0.9 + i * 0.05]),
       [16.75, "alarm", 0.25, 0.4],
       [18.5, "knock", 0.91, 0.4], [19.25, "whoosh", 0.8, 0.4, 1.1],
+      // 交接：橡皮来回擦五道，一道一声；墨线描过去一声拉链。时刻照 ch08.js 的 HAND。
+      ...[0, 1, 2, 3, 4].map((i) => [19.375 + i * 0.075, "paper", 0.42, i % 2 ? 0.35 : -0.35, 1.15 + i * 0.06]),
+      [19.74, "zip", 0.3, -0.1, 1.2],
     ];
     return {
       harm: [
@@ -68,13 +71,20 @@
         { from: 20, to: 21, id: "after-night", name: "夜班：游标走过时间轴，定时任务的 Clawd 一只只跳起来", energy: 0.5,
           kick: "X.......x.......", kickKind: "light", duck: 0.4, hat: "......x.......x.", hatKind: "flip", hatVol: 0.7,
           bass: "light", arp: { p: "sparse", lo: 69, inst: "kalimba", v: 0.5 }, pad: 0.85, lp: 2200, padVerb: 0.38 },
-        { from: 22, to: 23, id: "after-end", name: "落回 main 线，举牌等 lyjw 验收，跳出画面；吸一口气，交给第 09 章的 boom", energy: 0.38,
+        { from: 22, to: 22, id: "after-end", name: "落回 main 线，举牌等 lyjw 验收", energy: 0.38,
           kick: "X...............", duck: 0.4, bass: "hold", pad: 0.9, lp: 2000, padVerb: 0.45 },
+        { from: 23, to: 23, id: "after-handoff", name: "跳出画面，橡皮擦成暖白纸、灯笼描成车站；拇指琴往上爬、边击滚上去，落到第 09 章 0:0 的底鼓和贝斯", energy: 0.5,
+          kick: "X...............", duck: 0.4, snare: "........o.o.oxxX", snareKind: "rim", bass: "hold", pad: 0.9, lp: 2400, padVerb: 0.45 },
       ],
       melody: [
         ...phrase(18, THEME, "kalimba", 1, true),
         ...phrase(18, THEME.map(([b, d, n]) => [b, d, n.replace(/\d/, (o) => String(+o - 1))]), "pluck", 0.36),
         ...phrase(19, withNotes(["F5", "E5", "D5", "C5"]), "kalimba", 0.7),
+        // 过门：Bbmaj7 两个八分，A7sus4 十六分一路往上爬到 A6，落点是第 09 章 0:0 的 D。
+        [23, 1, 0.5, "Bb4", "kalimba", 0.4], [23, 1.5, 0.5, "D5", "kalimba", 0.44],
+        ...["E5", "G5", "A5", "D6", "E6", "G6"].map((n, i) => [23, 2 + i * 0.25, 0.25, n, "kalimba", 0.46 + i * 0.05]),
+        [23, 3.5, 0.5, "A6", "kalimba", 0.78],
+        ...["E4", "G4", "A4", "D5", "E5", "G5", "A5"].map((n, i) => [23, 2 + i * 0.25, 0.25, n, "pluck", 0.22 + i * 0.03]),
       ],
       story: [
         { bar: 0, beat: 0, kind: "boom" },

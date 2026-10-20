@@ -85,13 +85,13 @@
 
     // 一整版报纸，每个机位读一篇。拍位和 music/ch04.js 是同一张表。
     const AT = {
-      print: 0.5,
+      print: 0,
       a: { head: [1.15, 1.65], deck: [1.65, 2.2], sheets: [1.5, 2.0, 2.5, 3.0, 3.5], pick: 2.75, hand: 3.0 },
       b: { head: [4.15, 4.6], deck: [4.6, 5.1], tags: 4.25, rails: [4.6, 5.4] },
       c: { extra: 6.0, head: [6.1, 6.6], deck: [6.6, 7.2], snip: [7.0, 7.5, 8.0], home: 8.25, visitor: 8.5, reprint: 8.625 },
       d: { head: [9.15, 9.6], deck: [9.6, 10.1], ring: 10.0, ringStep: 0.125 },
       e: { head: [11.1, 11.5], deck: [11.5, 11.85], wire: 11.25, stamp: 11.5 },
-      f: { brief: [12.1, 12.6], note: 12.5, spark: 12.75, back: [13.0, 13.3], dive: [13.45, 13.97] },
+      f: { brief: [12.1, 12.6], note: 12.5, spark: 12.75, back: [13.0, 13.3], hold: 13.45 },
     };
 
     const PW = 4200, PH = 2600;
@@ -99,16 +99,10 @@
     const C = { x: 80, y: 1640, w: 1760, h: 860 }, D = { x: 1920, y: 1640, w: 1280, h: 860 };
     const Ebox = { x: 3280, y: 1640, w: 840, h: 540 }, F = { x: 3280, y: 2220, w: 840, h: 280 };
     const FCLAWD = { cx: 3990, bottom: 2460, q: 11 };
-    // 收尾冲进 F 栏那只 Clawd 的左眼：眼睛整块是实心墨，冲到底满屏是墨，硬切第 05 章的暗底。
-    const EYE = (() => {
-      const { eyes } = window.Clawd.cells("default", 0), q = FCLAWD.q;
-      const col = Math.min(...eyes.map(([a]) => a)), g = eyes.filter(([a]) => a === col);
-      const ys = g.map(([, b]) => b);
-      return [FCLAWD.cx - 9 * q + (col + 0.5) * q, FCLAWD.bottom - 12 * q + (Math.min(...ys) + Math.max(...ys) + 1) * q];
-    })();
 
-    // 镜头按 log(缩放) 插值，冲进眼睛那一段从 0.4 推到 260 也走得匀。
-    // 首帧和第 03 章末帧一样：满屏是纸，缩放 12，停在 A、B 两栏之间的空白里。
+    // 镜头按 log(缩放) 插值，开场从 12 拉到 0.44 也走得匀。
+    // 首帧和第 03 章末帧一样：满屏是纸，缩放 12，停在 A、B 两栏之间的空白里；拉远从第一帧就起步。
+    // 收尾停在整版上慢推，第 05 章的剪纸从右边滑进来盖住（第 05 章的 share.wipe）。
     const CAM = [
       [0, [2220, 1070, Math.log(12)]],
       [0.9, [2100, 1250, Math.log(0.44)], E.outExpo],
@@ -126,8 +120,8 @@
       [12.1, [3560, 2220, Math.log(1.25)], E.io],
       [AT.f.back[0], [3565, 2220, Math.log(1.28)], E.lin],
       [AT.f.back[1], [2100, 1300, Math.log(0.4)], E.io],
-      [AT.f.dive[0], [2100, 1300, Math.log(0.405)], E.lin],
-      [AT.f.dive[1], [EYE[0], EYE[1], Math.log(260)], E.inExpo],
+      [AT.f.hold, [2100, 1300, Math.log(0.405)], E.lin],
+      [14, [2100, 1300, Math.log(0.415)], E.lin],
     ];
     const camAt = (b) => { const c = keys(b, CAM); return [c[0], c[1], Math.exp(c[2])]; };
 
@@ -581,7 +575,8 @@
     function paint(L, b) {
       const { pg, sp, st, tp } = L;
       sheetPaper(pg, b);
-      const pr = clamp(prog(b, AT.print - 0.04, AT.print + 0.06));
+      // 版面从第一帧就在：首帧镜头里只有空白新闻纸，拉远的头几帧墨色跟着淡进来。
+      const pr = clamp(prog(b, AT.print, AT.print + 0.08));
       if (pr <= 0) return;
       pg.save(); pg.globalAlpha = pr;
       masthead(pg);
@@ -670,9 +665,8 @@
       // 回源出错那一下：一枚大章斜着盖在 E 栏上。
       const stk = prog(b, AT.e.stamp - 0.05, AT.e.stamp + 0.1);
       if (stk > 0) K.stamp(st, tr("ch04.keep"), PHOTO_E.x + 520, PHOTO_E.y + 110, { k: stk, px: 72, rot: -0.12, color: css("signal") });
-      // 开场整版压下去那一下：版面先重后轻。
-      const thump = impact(b, AT.print, 0.08);
-      if (thump > 0.01) { tp.save(); tp.globalAlpha = thump * 0.35; tp.fillStyle = rgba(INK()); tp.fillRect(-4000, -4000, PW + 8000, PH + 8000); tp.restore(); }
+      const wipe = (window.CHAPTERS.find((c) => c.id === "ch05") || {}).share?.wipe;
+      if (wipe && b > 13) { tp.save(); tp.setTransform(G.S, 0, 0, G.S, 0, 0); wipe(tp, b - 14); tp.restore(); }
     }
 
     function render(f) {

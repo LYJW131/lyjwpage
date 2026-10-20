@@ -123,7 +123,9 @@
       for (let b = Math.ceil(from); b < 4; b++) hit(bar, b, "kick", 0.25 * v);
       if (drop != null) hit(bar, drop, "tap", 0.55 * v);
     };
+    // 0:0 接住第 04 章最后一小节往上那串拨弦：叮叮镲一记、底鼓、一下刷子点。
     brush(0, { v: 0.6 });
+    hit(0, 0, "ride", 1, { i: 1 }); hit(0, 0, "kick", 0.85); hit(0, 0, "tap", 0.7);
     for (let bar = 1; bar <= 4; bar++) brush(bar, { v: 0.9 });
     for (const b of [1, 3]) hit(1, b, "snap", 0.9, { pan: b === 1 ? -0.25 : 0.25 });
     for (let bar = 5; bar <= 11; bar++) ride(bar, { drop: bar % 2 ? 3 + SW : null });
@@ -148,6 +150,10 @@
     [1, 1.5, 2, 2.5].forEach((b, i) => hit(26, b, "bongo", 0.85, { hi: i % 2 === 0 }));
     [[26, 3], [27, 0], [27, 1], [27, 2]].forEach(([bar, b], i) => hit(bar, b, "snip", 0.9, { pan: -0.2 + 0.15 * i }));
     for (const b of [0, 1, 2]) hit(27, b, "sweep", 0.5, { pan: b % 2 ? 0.1 : -0.2 });
+    // 27:3 过门：刷子点两下、底鼓带一下，颤音琴按 A7sus4 往上一串，落到第 06 章 0:0。
+    for (const [b, v] of [[3, 0.55], [3 + SW, 0.75]]) hit(27, b, "tap", v);
+    hit(27, 3 + SW, "kick", 0.6);
+    ["E4", "G4", "A4", "D5", "E5", "G5"].forEach((n, i) => melody.push([27, 3 + i / 6, 0.3, n, "jazzVibes", 0.45 + i * 0.04, false]));
     story.push(
       ...[[3, 0], [3, 2], [4, 0]].map(([bar, beat], i) => ({ bar, beat, kind: "morse", m: midi("E5"), v: 0.7, pan: -0.3 + 0.3 * i })),
       { bar: 12, beat: 0, kind: "gate" },
@@ -170,7 +176,7 @@
     return {
       harm,
       sections: [
-        { from: 0, to: 1, id: "wire-title", name: "片头：从 Clawd 的眼睛里退出来，剪纸色块一片片滑进来，标题落下，响指", energy: 0.4 },
+        { from: 0, to: 1, id: "wire-title", name: "片头：剪纸海报从右边滑进来盖住第 04 章的报纸，色块一片片滑进来，标题落下，响指", energy: 0.4 },
         { from: 2, to: 4, id: "wire-early", name: "head 里的脚本先连上线，电报一封封进托盘：刷子、walking bass", energy: 0.5 },
         { from: 5, to: 6, id: "wire-adopt", name: "hydrate 接管同一根线，三封按到达顺序重放：叮叮镲进来，颤音琴三声", energy: 0.6 },
         { from: 7, to: 9, id: "wire-hero", name: "主角到站：Harmon 弱音小号唱信封主题，卡片翻面", energy: 0.8 },

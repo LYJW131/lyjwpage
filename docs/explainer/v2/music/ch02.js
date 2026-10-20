@@ -93,9 +93,9 @@
     }
     const roll = (o0, o1, v, cres = true) => { const [bar, beat] = at(o0); H(bar, beat, "roll", { len: Math.round((o1 - o0) * 4 * 1000) / 1000, cres, v }); };
 
-    // 0 硬切进来：小号在军鼓滚奏上唱信封主题，第 3 拍 Clawd 起跳、全队落在 A 上；闸杆从第 3 拍起每个八分落一根，一根比一根高
+    // 0 从第 01 章的甩镜头里刹进来，军鼓一记重音接住：小号在军鼓滚奏上唱信封主题，第 3 拍 Clawd 起跳、全队落在 A 上；闸杆从第 3 拍起每个八分落一根，一根比一根高
     mel.push(...phrase(0, THEME, "marchTpt", 1, true));
-    H(0, 0, "drum", { v: 0.85 }); V[Dm].pno.forEach((n) => N(0, 0, 2, n, "marchPiano", 0.75));
+    H(0, 0, "drum", { v: 0.85 }); H(0, 0, "flam", { v: 1 }); V[Dm].pno.forEach((n) => N(0, 0, 2, n, "marchPiano", 0.75));
     roll(0, 0.5, 0.6);
     tutti(AT.leap, A, 1.8, 0.62, { tp: false });
     So(AT.leap, "hop", { m: midi("A5"), v: 0.7, pan: -0.35 });
@@ -201,9 +201,11 @@
     march(28, { v: 0.95, snare: "drive", snareV: 0.75 });
     [[0, 0.75, "D5"], [0.75, 0.25, "D5"], [1, 1, "A5"], [2, 0.5, "Bb5"], [2.5, 0.5, "A5"], [3, 0.5, "G5"], [3.5, 0.5, "E5"]].forEach(([b, d, n]) => N(28, b, d, n, "marchTpt", 0.75));
     tutti(29, "A7sus4", 1.8, 0.9);
-    ["G3", "C#4", "E4"].forEach((n) => N(29, 2, 1.6, n, "marchHorn", 0.45)); N(29, 2, 1.6, "A1", "marchTbn", 0.5);
-    roll(29.5, 30.0, 0.45);
-    story.push({ bar: 29, beat: 2, kind: "whoosh", tube: "down" });
+    // 淡出黑时不掐断：滚奏推到 29:3.75 的一记对镲上，镲和低音的 A 拖过 30:0 自己衰减，接第 03 章从黑里淡入
+    ["G3", "C#4", "E4"].forEach((n) => N(29, 2, 1.6, n, "marchHorn", 0.45)); N(29, 2, 3, "A1", "marchTbn", 0.5);
+    roll(29.5, 29.9375, 0.45);
+    H(29, 3.75, "cymbal", { v: 0.8 });
+    story.push({ bar: 29, beat: 1.75, kind: "whoosh", tube: "down" });
 
     MOVES.forEach(([a, b, dir]) => So((a + b) / 2 - WHIP_BARS / 2, "whoosh", { tube: "whip", v: 0.6, pan: -0.5 * dir, panTo: 0.5 * dir }));
 
@@ -226,13 +228,13 @@
     return {
       harm,
       sections: [
-        { from: 0, to: 1, id: "march-gate", name: "硬切进来：小号在军鼓滚奏上唱信封主题，闸杆每个八分落一根、一根比一根高", energy: 0.5 },
+        { from: 0, to: 1, id: "march-gate", name: "甩进来、军鼓一记重音：小号在军鼓滚奏上唱信封主题，闸杆每个八分落一根、一根比一根高", energy: 0.5 },
         { from: 2, to: 5, id: "march-keys", name: "钥匙与门：低音铜管踩附点的进行曲，emby 的钥匙拧不动，403 全队落在降 E 上", energy: 0.6 },
         { from: 6, to: 10, id: "march-checks", name: "检查单：每过一道闸一声铁砧、一声比一声高，第六道是压机；<html> 快过四道，第五道全队 400", energy: 0.75 },
         { from: 11, to: 16, id: "march-sort", name: "分拣机：齿轮咬住命令，令牌滑进四根管子，服务器那封绕开状态核心，阀门一开火花进管", energy: 0.85 },
         { from: 17, to: 21, id: "march-wall", name: "穿墙：一拍一下的停奏（法兰、StateCore、StateHub、提交），回执原路回来；之后只剩大鼓、低音和震音弦乐", energy: 0.55 },
         { from: 22, to: 27, id: "march-lamps", name: "三盏灯一盏一个和弦，Clawd 举喇叭，202 全队落在 D 大调；失败时回到小调，进行曲接着走", energy: 0.8 },
-        { from: 28, to: 29, id: "march-poster", name: "拉远看整张海报：全队一小节，A7sus4 上冲进状态核心那盏灯，被吸进第 03 章", energy: 0.7 },
+        { from: 28, to: 29, id: "march-poster", name: "拉远看整张海报：全队一小节，A7sus4 上冲进状态核心那盏灯，滚奏推到一记对镲，镲和低音拖进第 03 章", energy: 0.7 },
       ].map((s) => ({ pad: 0, lp: 1200, padVerb: 0, ...s })),
       melody: mel,
       story,

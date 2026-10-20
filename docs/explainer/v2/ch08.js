@@ -305,12 +305,12 @@
       return out;
     }
     function lantern(x, g, cx, o) {
-      const { head = false, lit = 1, k = 1, clawd = 0, col = null, seed = 1 } = o;
+      const { head = false, lit = 1, k = 1, clawd = 0, col = null, seed = 1, wa = 1, glow = 1 } = o;
       const r = head ? 26 : 20, cy = Y0;
-      P.seg(x, cx, wireY(cx), cx, cy - r * 1.15 * k, 2.4, PAL.line, 0.9, seed);
+      if (wa > 0) P.seg(x, cx, wireY(cx), cx, cy - r * 1.15 * k, 2.4, PAL.line, 0.9 * wa, seed);
       if (k <= 0) return;
       x.save(); x.translate(cx, cy); x.scale(k, k); x.translate(-cx, -cy);
-      if (lit > 0) P.halo(g, cx, cy, (head ? 120 : 70) * lit, (head ? 0.7 : 0.45) * lit);
+      if (lit > 0) P.halo(g, cx, cy, (head ? 120 : 70) * lit, (head ? 0.7 : 0.45) * lit * glow);
       P.fill(x, P.rect(cx - r * 0.55, cy - r * 1.18, r * 1.1, r * 0.3), PAL.woodD, { edge: 2, lw: 2, seed: seed + 1 });
       if (clawd < 1) {
         const body = head ? PAL.clawd : lit > 0.5 ? PAL.gold : PAL.cream;
@@ -322,20 +322,24 @@
       if (col) { P.seg(x, cx, cy + r * 1.3, cx, cy + r * 2.1, 5, col, 1, seed + 5); P.fill(x, P.ellipse(cx, cy + r * 2.2, 6), col, { edge: 1, lw: 1.6, seed: seed + 6 }); }
       x.restore();
     }
-    function mainLine(Ly, b, v) {
-      const { x, g } = Ly;
+    // morph(x)：0 → 1 是那盏灯缩进第 09 章车站圈的进度，到 1 就不画了（交接用，见 handoff）。
+    function mainLine(Ly, b, v, o = {}) {
+      const { x, g } = Ly, { wa = 1, morph = null } = o;
       if (!sees(v, { x0: BX0, x1: BX1, y0: WIRE_Y - 60, y1: Y0 + 80 })) return;
       const x0 = Math.max(ROOMS.lobby.x0, v.x0 - 40), x1 = Math.min(ROOMS.lobby.x1, v.x1 + 40), pts = [];
-      for (let px = x0; px <= x1; px += 25) pts.push([px, wireY(px)]);
-      P.line(x, pts, 1, 3, PAL.line, 0.85, 7);
-      for (let nx = Math.ceil((x0 - BX0) / NAIL) * NAIL + BX0; nx <= x1; nx += NAIL) P.fill(x, P.ellipse(nx, WIRE_Y, 7), PAL.woodD, { edge: 2, lw: 2, seed: nx, flat: true });
+      if (wa > 0) {
+        for (let px = x0; px <= x1; px += 25) pts.push([px, wireY(px)]);
+        P.line(x, pts, 1, 3, PAL.line, 0.85 * wa, 7);
+        for (let nx = Math.ceil((x0 - BX0) / NAIL) * NAIL + BX0; nx <= x1; nx += NAIL) P.fill(x, P.ellipse(nx, WIRE_Y, 7), PAL.woodD, { alpha: wa, edge: 2, lw: 2, seed: nx, flat: true });
+      }
       const cs = commitsAt(b), head = cs[cs.length - 1];
       cs.forEach((c, i) => {
-        const isHead = c === head;
-        const k = c.t < 0 ? 1 : prog(b, c.t, c.t + 0.06, E.outBack) * (1 + 0.3 * (isHead ? impact(b, c.t, 0.12) : 0));
+        const isHead = c === head, m = morph ? morph(c.x) : 0;
+        if (m >= 1) return;
+        const k = (c.t < 0 ? 1 : prog(b, c.t, c.t + 0.06, E.outBack) * (1 + 0.3 * (isHead ? impact(b, c.t, 0.12) : 0))) * lerp(1, 0.4, E.in(m));
         let clawd = 0;
         if (c.old) { const t = AT.pop + (OLD.length - 1 - OLD.indexOf(c.x)) * AT.popStep; clawd = prog(b, t, t + 0.05); }
-        lantern(x, g, c.x, { head: isHead, k, clawd, lit: c.old ? clawd : 1, col: c.col, seed: 600 + i * 11 });
+        lantern(x, g, c.x, { head: isHead, k, clawd, lit: c.old ? clawd : 1, col: c.col, seed: 600 + i * 11, wa, glow: 1 - m });
         if (c.col && isHead) P.halo(g, c.x, Y0, 200, 0.6 * impact(b, c.t, 0.3));
       });
       const la = prog(b, 0.45, 0.6) * (1 - prog(b, 1.05, 1.3));
@@ -1090,6 +1094,81 @@
       });
     }
 
+    // 交给第 09 章：最后一小节一块橡皮来回把大厅擦成第 09 章的暖白纸，只留 main 上的灯笼；
+    // 灯线和挂绳淡掉，一道铅笔线描成 16 px 墨线，墨线走过哪盏灯，那盏灯就缩进黑圈白点的车站里。
+    // 擦完、描完停在 ch09.js 首帧上：C9、LW9、R9 须与 ch09.js 的 C.bg / C.ink / C.white、LW、dot 的半径一致。
+    const HAND = { erase: [19.375, 19.75], sketch: [19.6, 19.75], wire: [19.7, 19.85], ink: [19.74, 19.9] };
+    const C9 = { bg: "#F5F3EE", ink: "#121212", white: "#FFFFFF" }, LW9 = 16, R9 = 15;
+    const BANDS = 5, BAND_H = 1080 / BANDS, sE = scr(FIN);
+    const handA = (b) => prog(b, HAND.erase[0], HAND.erase[1]);
+    // 一道橡皮擦过的带子（屏幕坐标）：都按顺时针排点，几条叠在一起裁剪时取并集；走在前头的那一端是圆的。
+    function band(i, p) {
+      const dir = i % 2 ? -1 : 1, yc = BAND_H * (i + 0.5), y0 = yc - BAND_H / 2 - 30, y1 = yc + BAND_H / 2 + 30;
+      const lead = dir > 0 ? lerp(-160, 2080, p) : lerp(2080, -160, p), cap = 80;
+      const xa = dir > 0 ? -100 : lead, xb = dir > 0 ? lead : 2020;
+      const jag = (j, s0) => 9 * (K.hash(i * 41 + j * 1.7 + s0) - 0.5);
+      const pts = [];
+      for (let j = 0, px = xa; px < xb; j++, px += 60) pts.push([px, y0 + jag(j, 0)]);
+      for (let j = 0; j <= 8; j++) { const an = -Math.PI / 2 + (j / 8) * Math.PI; pts.push([xb + (dir > 0 ? cap * Math.cos(an) : 0), yc + Math.sin(an) * (y1 - y0) / 2]); }
+      for (let j = 0, px = xb; px > xa; j++, px -= 60) pts.push([px, y1 + jag(j, 7)]);
+      for (let j = 0; j <= 8; j++) { const an = Math.PI / 2 + (j / 8) * Math.PI; pts.push([xa + (dir < 0 ? cap * Math.cos(an) : 0), yc + Math.sin(an) * (y1 - y0) / 2]); }
+      const path = new Path2D(); pts.forEach(([px, py], j) => (j ? path.lineTo(px, py) : path.moveTo(px, py))); path.closePath();
+      return { path, dir, yc, lead, xa, xb };
+    }
+    function eraser(x, bd, p) {
+      const wob = Math.sin(p * Math.PI * 7), ex = bd.lead - bd.dir * 40, ey = bd.yc + BAND_H * 0.32 * wob;
+      screen(x, () => {
+        x.translate(ex, ey); x.rotate(bd.dir * -0.32 + 0.08 * wob);
+        P.fill(x, P.rrect(-90, -40, 180, 80, 14), "#eaa3aa", { edge: 5, lw: 3, seed: 1401, shadow: [8, 12, 0.3], shade: [0, -12, 0.5] });
+        P.fill(x, P.rect(bd.dir > 0 ? -96 : 6, -46, 90, 92), PAL.teal, { edge: 4, lw: 3, seed: 1402, tile: { lite: 0.3, dark: 0.12 } });
+      });
+    }
+    function handoff(Ly, b, v) {
+      const { tp } = Ly;
+      if (b < HAND.erase[0]) return;
+      const t0 = HAND.erase[0], dt = (HAND.erase[1] - t0) / BANDS, bands = [];
+      let live = null;
+      for (let i = 0; i < BANDS; i++) {
+        const p = E.io(prog(b, t0 + i * dt, t0 + (i + 1) * dt));
+        if (p <= 0) continue;
+        const bd = band(i, p);
+        bands.push(bd);
+        if (p < 1) live = [bd, p];
+      }
+      const hx = lerp(sE.x(-20), sE.x(1470), E.io(prog(b, HAND.ink[0], HAND.ink[1])));
+      const morph = (cx) => clamp((hx - (cx - 30)) / 120);
+      const world = tp.getTransform();
+      tp.save();
+      tp.setTransform(G.S, 0, 0, G.S, 0, 0);
+      const clip = new Path2D();
+      for (const bd of bands) clip.addPath(bd.path);
+      tp.clip(clip);
+      tp.fillStyle = C9.bg; tp.fillRect(-20, -20, 1960, 1120);
+      const ca = 1 - prog(b, HAND.erase[1], HAND.erase[1] + 0.1);
+      if (ca > 0) {
+        tp.fillStyle = "#d8a2a6";
+        for (const bd of bands) for (let j = 0; j < 14; j++) {
+          const h1 = K.hash(bd.yc + j * 3.7), h2 = K.hash(bd.yc * 1.3 + j * 5.1), px = lerp(bd.xa, bd.xb, h1), py = bd.yc + (h2 - 0.5) * BAND_H;
+          tp.globalAlpha = 0.7 * ca; tp.beginPath(); tp.ellipse(px, py, 4 + 4 * h2, 2.5 + 2 * h1, h1 * 3, 0, Math.PI * 2); tp.fill();
+        }
+        tp.globalAlpha = 1;
+      }
+      tp.setTransform(world);
+      const sk = prog(b, HAND.sketch[0], HAND.sketch[1], E.io);
+      if (sk > 0) P.line(tp, [[sE.x(-20), Y0], [sE.x(1350), Y0]], sk, 3, PAL.line, 0.85, 1403);
+      if (hx > sE.x(-20)) { tp.fillStyle = C9.ink; tp.fillRect(sE.x(-20), Y0 - LW9 / 2, Math.min(hx, sE.x(1350)) - sE.x(-20), LW9); }
+      mainLine({ x: tp, g: tp }, b, v, { wa: 1 - prog(b, HAND.wire[0], HAND.wire[1]), morph });
+      tp.restore();
+      if (live) eraser(tp, live[0], live[1]);
+      for (const c of commitsAt(b)) {
+        const m = morph(c.x);
+        if (m <= 0) continue;
+        const r = R9 * E.outBack(m);
+        tp.fillStyle = C9.ink; tp.beginPath(); tp.arc(c.x, Y0, r, 0, Math.PI * 2); tp.fill();
+        tp.fillStyle = C9.white; tp.beginPath(); tp.arc(c.x, Y0, r * 0.6, 0, Math.PI * 2); tp.fill();
+      }
+    }
+
     function paint(Ly, b, c) {
       const { w, g, tp } = Ly;
       const v = view(c);
@@ -1117,6 +1196,7 @@
       narPair(tp, "ch08.n5a", "ch08.n5b", prog(b, 11.05, 11.6), prog(b, 12.9, 13.5), win(b, 11.0, 11.1, 13.7, 13.8));
       narPair(tp, "ch08.n6a", "ch08.n6b", prog(b, 14.1, 14.6), prog(b, 15.2, 15.7), win(b, 14.05, 14.15, 15.8, 15.9));
       narPair(tp, "ch08.n7a", "ch08.n7b", prog(b, 16.15, 16.6), prog(b, 16.6, 17.3), win(b, 16.1, 16.2, 17.85, 17.95));
+      handoff(Ly, b, v);
     }
 
     function render(f) {
@@ -1143,9 +1223,9 @@
       G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 2.9 });
       G.composite(top.upload(), { mode: G.MODE.normal });
 
-      const sh = hitS * 6;
+      const sh = hitS * 6, ha = handA(b);
       f.post = {
-        bloom: 0, threshold: 1.2, halation: 0, grain: 0.03, vignette: 0.16, ca: 0,
+        bloom: 0, threshold: 1.2, halation: 0, grain: lerp(0.03, 0, ha), vignette: lerp(0.16, 0, ha), ca: 0,
         shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
         blur: [(c0[0] - c[0]) * c[2], (c0[1] - c[1]) * c[2]], zoomBlur: clamp(Math.log(c[2] / c0[2]), -0.2, 0.2),
       };
