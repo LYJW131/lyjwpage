@@ -3,7 +3,6 @@ import test from "node:test";
 
 import { codingObservationsKey, cursorObservationsKey } from "./coding-pulse";
 import { getPulseStatus } from "./pulse";
-import { pulseAssessmentsKey } from "./pulse-assessments";
 import { columnRows } from "@shared/pulse-columns";
 import {
   pulseActivityKey,
@@ -17,7 +16,6 @@ import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { addBucketDeltas, mergeBucketReport } from "@shared/coding-buckets";
 import { codingBucketsKey } from "@shared/coding-store";
 import type { CodingTokenBucketReport, CodingTokenBucketRow } from "@shared/coding-usage";
-import type { PulseAssessment } from "@shared/pulse-assessment";
 import { LISTENING_TRACE_LAG_MS } from "@shared/pulse-listening";
 
 const NOW = 1_800_000_000_000;
@@ -123,12 +121,6 @@ test("coding band shows human, agent and both from raw observations; app and mod
       obs(NOW - 60 * M, true, false), obs(NOW - 58 * M, true, true), obs(NOW - 56 * M, false, true),
       JSON.stringify({ t: NOW - 54 * M, available: false, desktop: null, agents: null }));
     await storage.append(cursorObservationsKey(), JSON.stringify({ t: NOW - 30 * M, available: true, lastActivityAt: NOW - 30 * M }));
-    const scored: PulseAssessment = { domain: "coding", from: NOW - 60 * M, to: NOW - 45 * M, coverage: [{ from: NOW - 60 * M, to: NOW - 54 * M }],
-      intensity: { value: 3, confidence: 0.876, probabilities: { 0: 0, 1: 0, 2: 0, 3: 1, 4: 0 } },
-      continuity: { value: 2, confidence: 1, probabilities: { 0: 0, 1: 0, 2: 1, 3: 0 } },
-      mode: { value: "mixed", confidence: 1, probabilities: { idle: 0, brief: 0, interactive: 0, agent: 0, mixed: 1 } },
-      model: "jev-1.13.0", scoredAt: NOW, inputHash: "h" };
-    await storage.append(pulseAssessmentsKey(), JSON.stringify(scored), JSON.stringify({ ...scored, domain: "listening" }));
     const { coding } = (await getPulseStatus(NOW)).lanes;
     assert.deepEqual(columnRows(coding.segments, ["value"]), [
       { startSec: sec(NOW - 60 * M), endSec: sec(NOW - 58 * M), value: 1 },
@@ -138,7 +130,6 @@ test("coding band shows human, agent and both from raw observations; app and mod
       { startSec: sec(NOW - 25 * M), endSec: sec(NOW), value: 0 },
     ]);
     assert.deepEqual(coding.summary, { humanSeconds: 120, agentSeconds: 420, bothSeconds: 120 });
-    assert.deepEqual(coding.assessments, { startSec: [sec(NOW - 60 * M)], endSec: [sec(NOW - 45 * M)], intensity: [3], confidence: [0.88], mode: ["mixed"] });
     const wire = JSON.stringify(coding);
     assert.equal(wire.includes("SecretEditor") || wire.includes("secret-model") || wire.includes("claude"), false);
   });

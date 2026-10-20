@@ -40,8 +40,6 @@ class_name = "StateHub"
 tag = "v1"
 new_sqlite_classes = ["LivePushRoom", "StateHub"]
 
-[ai]
-binding = "AI"
 
 [observability]
 enabled = true

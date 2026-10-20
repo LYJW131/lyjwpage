@@ -46,7 +46,6 @@ export function baseViews(): DigestViews {
         coding: {
           kind: "coding",
           segments: { startSec: [], endSec: [], value: [], agentSources: [] },
-          assessments: { startSec: [], endSec: [], intensity: [], confidence: [], mode: [] },
           summary: { humanSeconds: 2 * 3_600, agentSeconds: 3 * 3_600, bothSeconds: 4 * 3_600 },
         },
         tokens: {
