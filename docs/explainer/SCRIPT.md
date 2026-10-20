@@ -63,7 +63,7 @@
 | 3–4.5 | 3:0 歌名压扁再弹开（夜に駆ける → アイドル）；3:2 四格里只有 appleMusic 那格亮（橙），注「没变的模块不寄」；3:3 信封从菜单栏的 Hub 图标出来，4:0 停在笔记本旁边。旁白 `n2a` | 3:0 读数灯（本章专用的玻璃 FM，旋律乐器 glass）唱主题，低八度闷拨弦垫一层；4:0 往下答一句 |
 | 4.5–5 | 没变化时：4:2 一个空信封呼吸一次（圆环缩放），标「90 s」「空信封 = 心跳」。旁白 `n2b` | 4:1 吸一口气，4:2 远处一声 |
 | 5–7 | 切应用：菜单栏的前台应用 5:0 换一次、5:1 又换一次，平面刻度尺的指针回零重新量，5:3 量满 400 ms 落定，注「切应用默认先等 400 ms 落定」（Hub 设置里能调）「落定前又切：重新计时」。旁白 `n2c` | 5:3「叮」 |
-| 7–9 | FIG. 1A 窗口标题（画成几块遮住的字）过 Jev：7:1 起几道问题的横条同时走，8:0 同一刻一起给出概率条（示意值，不标数，不和出路对应）；两条出路，8:1 这一次的标题走放行那条进信封，8:2 拿不准那条弹给 lyjw。旁白 `n3` | 十六分的钟摆（问题在走），8:0 翻转一记，8:1 纸滑进信封，8:2「叮」 |
+| 7–9 | FIG. 1A 窗口标题 → 隐私判断：窗口标题（画成几块遮住的字）先过「应用名单」虚线框（两枚标签「从不读」「不用问」，不写名单内容），再进 Jev 框（标 TypeSafe System One）：7:1 起几道问题的横条同时走，8:0 同一刻一起给出概率条（示意值，不标数，不和出路对应）；三条出路，8:1 这一次的标题走放行那条进信封，8:1.5 中间那条落一把锁（「私密 → 锁定」），8:2 拿不准那条弹给 lyjw（「拿不准 → 问 lyjw」）。旁白 `n3` | 十六分的钟摆（问题在走），8:0 翻转一记，8:1 纸滑进信封，8:2「叮」 |
 | 9–11 | FIG. 1B 图片：9:0 起应用图标的像素压成一串哈希 `sha256….png`，9:2 落进 R2 的抽屉、同一刻信封卡上写出 `iconObjectKey`，9:3 抽屉关上；注「同一内容，同一个键」。旁白 `n4` | 打字机敲哈希，9:3 抽屉锁舌 |
 | 11–13 | FIG. 2 手机（lyjwpage iOS App）：11:1 HealthKit 把它唤醒，11:2 起依次报活动圆环、训练、五分钟步数桶。旁白 `n5` | 每到一个图号一声「叮」（11:0、13:0、17:0、19:0、22:0、27:0，A C D E G A 往上爬）；11:1 远处一声 |
 | 13–14.5 | FIG. 3 家里：HomePod 在放什么经 Home Assistant，13:3 它的钥匙落下，14:0 只开 /homepod（注「Home Assistant 的钥匙」）。PS5 和 Home Assistant 之间没有线。旁白 `n6` | 14:0 钥匙 |
@@ -81,7 +81,7 @@
 | `ch01.n1a` / `n1b` | 0.3–1.8 | 上报器在数据源头主动推送；／第三方接口由采集 Worker 定时拉取。 | Reporters push from the source; / a cron Worker polls external APIs. |
 | `ch01.n2a` / `n2b` | 3.05–4.97 | Mac 只寄这一次变了的模块；／没变化时，每 90 秒寄一封空信封。 | The Mac sends only changed modules; / idle: an empty envelope every 90 s. |
 | `ch01.n2c` / `n2d` | 5.05–6.74 | 前台应用的切换先防抖：／连切几次，只报最后停住的那个。 | App switches are debounced: / a burst reports only the final app. |
-| `ch01.n3a` / `n3b` | 7.05–8.97 | 窗口标题先经 Jev 做隐私判断；／拿不准的交给 lyjw，放行的才进信封。 | Jev screens window titles first; / unsure ones go to lyjw. |
+| `ch01.n3a` / `n3b` | 7.05–8.97 | 窗口标题先过名单，再由 Jev 判断；／私密的锁住，拿不准的问 lyjw。 | Titles clear app lists, then Jev; / private ones lock; unsure ask lyjw. |
 | `ch01.n4a` / `n4b` | 9.05–10.74 | 图片按内容哈希命名，直传 R2；／信封里只带对象键。 | Images go to R2, named by hash; / the envelope carries only the key. |
 | `ch01.n5a` / `n5b` | 11.05–12.74 | iPhone 由 HealthKit 后台唤醒：／圆环按小时报，训练一有新记录就报。 | HealthKit wakes the iPhone app: / rings hourly, workouts at once. |
 | `ch01.n6a` / `n6b` | 13.05–14.48 | HomePod 由 Home Assistant 代报，／它那把钥匙只开 /homepod。 | Home Assistant relays the HomePod; / its key opens /homepod only. |
@@ -95,7 +95,7 @@
 | `ch01.n14a` / `n14b` | 32.05–33.74 | 新歌开播几秒，就排到列表最前；／按时长接成一串，推出起止和误差。 | A song tops the list seconds in; / lengths chain them: start ± margin. |
 | `ch01.clawd`（气泡） | 34.09–34.68 | 我跟着这一封走。 | I'll ride along with this one. |
 
-英文 `n3` 少了「放行的才进信封」：画面上放行那条线进信封，标注「放行 → 进信封 / cleared → envelope」。
+`n3` 中英都没说「放行的进信封」：画面上放行那条线进信封，标注「放行 → 进信封 / cleared → envelope」。
 
 ## 02 门禁与分拣（20 小节）
 
