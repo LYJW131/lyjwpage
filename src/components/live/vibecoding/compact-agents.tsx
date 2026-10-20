@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
 import { LimitMeter, PaceMarker, UsageMeter } from "@/components/live/vibecoding/limit-meter";
-import { LIMITS_SILENT, compactLimit, formatCompactReset, limitColor, limitPace, nextCompactTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
+import { LIMITS_SILENT, compactLimit, isFableLimit, weeklyLimit, formatCompactReset, limitColor, limitPace, nextCompactTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, BrandMark } from "@/components/live/vibecoding/marks";
 import { useAgentActive, type FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -159,6 +159,7 @@ function CompactAgentRow({
             <LimitMeter
               key={item.key}
               limit={item}
+              cappedBy={isFableLimit(item) ? weeklyLimit(row) : null}
               title={item.label ?? item.key}
               href={null}
               label={agentUsageLabel(row.label, item.label ?? item.key)}
