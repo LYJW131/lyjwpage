@@ -5,7 +5,7 @@ type Row = Record<string, unknown> & { from: number; to: number };
 
 // 原样的 pulse 是按列存的相对秒数组，编码道就上万字，整份视图在 MAX_CHARS_PER_VIEW 截断时听歌道根本到不了模型，
 // 所以给模型前改成带绝对时间的行，只留有内容的时段，同一首歌、同一部片中间的短暂停合成一段。
-// 各道合计放在最前的 totals、编码道时段放最后：截断只截 JSON 尾巴，忙的日子丢的也只是编码时段的末尾。
+// 截断只截 JSON 尾巴：各道合计放在最前的 totals，哪道时段多到被截，合计都还在；最长的编码道时段放最后。
 // 状态码是 shared/pulse-timeline.ts 里 LISTENING_STATES、WATCHING_STATES、GAMING_STATES 的下标。
 export const MERGE_GAP_SEC = 600;
 // 须与 shared/pulse-types.ts#isCodingDriverValue 同口径（site-status.test.ts 对照）：只有 agent 在跑的时段不算 lyjw 在写代码。
