@@ -76,11 +76,14 @@ function startup({
   assert.ok(bootstrap);
   assert.ok(!bootstrap.attributes.some(({ name, value }) => name === "type" && value === "module"), "入口模块应由经典脚本调度启动");
   const frames = new Map<number, () => void>();
+  const timers = new Map<number, () => void>();
+  const timerDelays: number[] = [];
   const listeners = new Map<string, () => void>();
   const inserted: Element[] = [];
   const events: string[] = [];
   let replacement: Element | null = null;
   let nextFrame = 0;
+  let nextTimer = 0;
   const document = {
     currentScript: {
       replaceWith(script: Element) {
@@ -126,15 +129,30 @@ function startup({
       return id;
     },
     cancelAnimationFrame(id: number) { frames.delete(id); },
+    setTimeout(callback: () => void, delay: number) {
+      const id = ++nextTimer;
+      timers.set(id, callback);
+      timerDelays.push(delay);
+      return id;
+    },
+    clearTimeout(id: number) { timers.delete(id); },
   });
   return {
-    html, bootstrap, frames, listeners, inserted, events,
+    html, bootstrap, frames, timers, timerDelays, listeners, inserted, events,
+    frameCount() { return nextFrame; },
     replacement() { return replacement; },
     frame() {
       const [id, callback] = frames.entries().next().value ?? [];
       assert.ok(id);
       assert.ok(callback);
       frames.delete(id);
+      callback();
+    },
+    task() {
+      const [id, callback] = timers.entries().next().value ?? [];
+      assert.ok(id);
+      assert.ok(callback);
+      timers.delete(id);
       callback();
     },
     hide() {
@@ -144,59 +162,81 @@ function startup({
   };
 }
 
-test("两次动画帧回调后成批激活预加载并原位启动模块，回调重复到达也只启动一次", () => {
+test("首帧后只排一个零延时任务，成批激活预加载并原位启动模块，旧回调不重复启动", () => {
   const run = startup();
   assert.equal(run.html.match(/<link/g), null);
   assert.ok(!run.bootstrap.attributes.some(({ name }) => name === "type"));
   assert.equal(run.replacement(), null);
   assert.deepEqual(run.inserted, []);
+  const firstFrame = [...run.frames.values()][0];
+  assert.ok(firstFrame);
   run.frame();
   assert.equal(run.replacement(), null);
-  const secondFrame = [...run.frames.values()][0];
-  assert.ok(secondFrame);
-  run.frame();
+  assert.equal(run.frames.size, 0);
+  assert.equal(run.frameCount(), 1);
+  assert.deepEqual(run.timerDelays, [0]);
+  assert.equal(run.timers.size, 1);
+  firstFrame();
+  assert.deepEqual(run.timerDelays, [0]);
+  const queuedTask = [...run.timers.values()][0];
+  assert.ok(queuedTask);
+  run.task();
   assert.deepEqual(run.events, ["preloads", "module"]);
   assert.deepEqual(markup(run.inserted), markup(parsedElements(lowA + lowB)));
   assert.equal(run.replacement()?.textContent, 'import "/assets/entry.client-A.js";');
   assert.equal(run.listeners.size, 0);
   assert.equal(run.frames.size, 0);
-  secondFrame();
+  assert.equal(run.timers.size, 0);
+  firstFrame();
+  queuedTask();
   run.hide();
+  assert.deepEqual(run.timerDelays, [0]);
   assert.deepEqual(run.events, ["preloads", "module"]);
 });
 
-test("Paint API 可用但不发通知时，入口仍严格在第二次动画帧回调启动", () => {
+test("Paint API 可用但不发通知时，入口仍在首帧后的任务启动", () => {
   const run = startup({ paintSupport: true });
   assert.deepEqual(run.events, []);
   assert.equal(run.frames.size, 1);
   run.frame();
   assert.deepEqual(run.events, []);
-  assert.equal(run.frames.size, 1);
-  run.frame();
+  assert.equal(run.frames.size, 0);
+  assert.equal(run.frameCount(), 1);
+  assert.deepEqual(run.timerDelays, [0]);
+  run.task();
   assert.deepEqual(run.events, ["preloads", "module"]);
   assert.equal(run.frames.size, 0);
+  assert.equal(run.timers.size, 0);
 });
 
 test("初始后台无需等动画帧，预加载和模块只启动一次", () => {
   const run = startup({ hidden: true });
   assert.deepEqual(run.events, ["preloads", "module"]);
   assert.equal(run.frames.size, 0);
+  assert.equal(run.timers.size, 0);
+  assert.deepEqual(run.timerDelays, []);
   assert.equal(run.listeners.size, 0);
   run.hide();
   assert.deepEqual(run.events, ["preloads", "module"]);
 });
 
-test("在任意一帧前转入后台会立即启动并清理排队的帧", () => {
-  for (const beforeSecondFrame of [false, true]) {
+test("首帧前或首帧后任务前转入后台会立即启动，取消后的旧回调不重复启动", () => {
+  for (const afterFirstFrame of [false, true]) {
     const run = startup();
-    if (beforeSecondFrame) run.frame();
-    const queued = [...run.frames.values()];
+    const queuedFrame = [...run.frames.values()][0];
+    assert.ok(queuedFrame);
+    if (afterFirstFrame) run.frame();
+    const queued = [queuedFrame, ...run.timers.values()];
     run.hide();
     assert.deepEqual(run.events, ["preloads", "module"]);
     assert.equal(run.frames.size, 0);
+    assert.equal(run.timers.size, 0);
     assert.equal(run.listeners.size, 0);
     for (const callback of queued) callback();
     assert.equal(run.frames.size, 0);
+    assert.equal(run.timers.size, 0);
+    assert.equal(run.frameCount(), 1);
+    assert.deepEqual(run.timerDelays, afterFirstFrame ? [0] : []);
     assert.deepEqual(run.events, ["preloads", "module"]);
   }
 });
@@ -208,17 +248,17 @@ test("保留 nonce、crossorigin、显式 fetchpriority 与入口脚本文本，
   assert.equal(run.bootstrap.attributes.find(({ name }) => name === "nonce")?.value, "abc&123");
   assert.equal((run.html.match(/<\/script>/g) ?? []).length, 1);
   run.frame();
-  run.frame();
+  run.task();
   assert.deepEqual(run.replacement()?.attributes, parsedElements(module)[0].attributes);
   assert.equal(run.replacement()?.textContent, parsedElements(module)[0].textContent);
   assert.deepEqual(markup(run.inserted), markup(parsedElements(preloads)));
 });
 
-test("没有 head 预加载时入口仍等两次动画帧回调，普通脚本和外部模块脚本保持原样", () => {
+test("没有 head 预加载时入口仍等首帧后的任务，普通脚本和外部模块脚本保持原样", () => {
   const run = startup({ preloads: "" });
   assert.equal(run.replacement(), null);
   run.frame();
-  run.frame();
+  run.task();
   assert.ok(run.replacement());
   for (const script of [
     '<script async>window.started=true</script>',

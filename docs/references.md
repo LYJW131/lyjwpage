@@ -44,7 +44,7 @@
 - **[How to be more ambitious: A tutorial for humans with models](https://felixrieseberg.com/how-to-be-more-ambitious-a-tutorial-for-humans-with-models/)**（Felix Rieseberg，Anthropic）
   - 是什么：把「用 AI 要更有野心」拆成高度（给目标不给任务）、深度（专家的工具、离谱的目标、外部裁判）、广度（名词换动词、按领域组队）。
   - 取了什么：「深一层」四问提示，lyjw 派活时贴。外部裁判本项目已有（验证回执脚本、CI 门禁、机器评审）。
-  - 状态：部分采用。四问落在 `HUMAN.md`「2. 怎么说一句话最快」；高度落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3c 步，复现了的错误批次直接开修复草稿 PR，lyjw 在 PR 上否决。深度落在首屏：双动画帧给浏览器绘制机会后成批启动低优先级 modulepreload 与模块入口、再水合、屏外图懒加载（`src/lib/defer-module-preloads.ts`、`src/app/entry.server.tsx`、`src/app/entry.client.tsx`、`src/components/live/watching-card.tsx`、`src/components/live/playstation-card.tsx`）。不采用部署后的 LCP 预算检查：站点自己的 PageSpeed 卡片（collector 的 `pagespeed` 任务）每天都看得到，lyjw 认为不必再加。不采用：名词换动词与组队，属写提示的习惯，没有可落地的文件。
+  - 状态：部分采用。四问落在 `HUMAN.md`「2. 怎么说一句话最快」；高度落在 [lyjwpage-collector-superfan](../.claude/skills/lyjwpage-collector-superfan/SKILL.md) 第 3c 步，复现了的错误批次直接开修复草稿 PR，lyjw 在 PR 上否决。深度落在首屏：动画帧回调后通过零延时任务给浏览器绘制机会，再成批启动低优先级 modulepreload 与模块入口、水合、屏外图懒加载（`src/lib/defer-module-preloads.ts`、`src/app/entry.server.tsx`、`src/app/entry.client.tsx`、`src/components/live/watching-card.tsx`、`src/components/live/playstation-card.tsx`）。不采用部署后的 LCP 预算检查：站点自己的 PageSpeed 卡片（collector 的 `pagespeed` 任务）每天都看得到，lyjw 认为不必再加。不采用：名词换动词与组队，属写提示的习惯，没有可落地的文件。
 - **[Automating eval design and hillclimbing with Claude](https://claude.dev/blog/automating-eval-design-and-hillclimbing/)**（claude.dev）
   - 是什么：用 Claude 设计评测、按证据迭代提示词。
   - 取了什么：一次只改一处、改动可归因到根因，不把失败样例原文贴进提示词。
@@ -218,14 +218,18 @@
   - 是什么：始终可见的 Activity 边界也能参与选择性水合，让页面各部分独立完成水合。
   - 取了什么：卡片正常渲染路径包在 `mode="visible"` 的 Activity 中，保留服务端正文，让 React 按卡片调度水合。
   - 状态：采用。落在 [card-boundary.tsx](../src/components/card-boundary.tsx)；错误恢复界面保持在边界外。
+- **[layoutDependency](https://motion.dev/docs/react-motion-component#layoutdependency)**（Motion 文档）
+  - 是什么：用显式依赖限制布局动画的测量，仅在依赖变化时重新测量。
+  - 取了什么：PlayStation 列表按完整输入记忆化卡片排列，以排列结果和动态效果偏好组成稳定的布局依赖，避免无关重渲染触发布局测量。
+  - 状态：采用。落在 [playstation-card.tsx](../src/components/live/playstation-card.tsx)。
 - **[lazy](https://react.dev/reference/react/lazy)**（React 文档）
   - 是什么：组件首次渲染时才加载模块，加载期间由局部 Suspense 边界承接。
   - 取了什么：播放器弹层与聊天内部卡片按显示条件加载，首页与聊天输入框仍直接渲染。
   - 状态：采用。落在 [web-player-provider.tsx](../src/components/web-player/web-player-provider.tsx) 与 [lazy-chat-cards.tsx](../src/components/lazy-chat-cards.tsx)。
-- **[Optimize Largest Contentful Paint](https://web.dev/articles/optimize-lcp)**（web.dev）与 **[requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)**（MDN）
+- **[Optimize Largest Contentful Paint](https://web.dev/articles/optimize-lcp)** 与 **[requestPostAnimationFrame](https://web.dev/codelabs/understanding-inp#requestpostanimationframe)**（web.dev）、**[requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)**（MDN）
   - 是什么：按资源发现、下载与元素绘制拆解 LCP，区分资源大小和主线程延迟。
-  - 取了什么：入口加载统一经双动画帧给浏览器绘制机会，再成批加载低优先级模块并以 `startTransition` 水合；客户端入口不重复等待动画帧。
-  - 状态：采用。落在 [defer-module-preloads.ts](../src/lib/defer-module-preloads.ts) 与 [entry.client.tsx](../src/app/entry.client.tsx)；双动画帧不保证实际呈现，不依赖 FCP 观测事件，后台页面直接启动。
+  - 取了什么：在一次动画帧回调内通过 `setTimeout(start, 0)` 把入口启动排到后续任务，给浏览器绘制机会，再成批加载低优先级模块并以 `startTransition` 水合；客户端入口不重复等待动画帧。
+  - 状态：采用。落在 [defer-module-preloads.ts](../src/lib/defer-module-preloads.ts) 与 [entry.client.tsx](../src/app/entry.client.tsx)；该调度不保证实际呈现，不依赖 FCP 观测事件，后台页面直接启动并取消排队的动画帧和任务。
 - **[Generate subsets of fonts](https://fonttools.readthedocs.io/en/latest/subset/index.html)**（fontTools 文档）
   - 是什么：按 Unicode 字符与布局特性裁剪字体，同时保留所需的变体字形。
   - 取了什么：从同一 Geist Mono 可变字体生成 Latin 与界面符号分片，预加载分片，剩余字符通过互补的 `unicode-range` 使用完整字体。
