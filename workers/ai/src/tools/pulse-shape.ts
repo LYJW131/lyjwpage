@@ -19,22 +19,27 @@ function rows(columns: unknown, from: number, keys: string[]): Row[] {
   }));
 }
 
+// minutes 只算原始区间实际覆盖的时长，合并时跨过的暂停与空档不计入。
 function merge(list: Row[], same: (a: Row, b: Row) => boolean, gapSec = MERGE_GAP_SEC): Row[] {
-  const out: Row[] = [];
+  const out: (Row & { covered: number })[] = [];
   for (const row of list) {
     const last = out.at(-1);
-    if (last && same(last, row) && row.from - last.to <= gapSec * 1000) last.to = Math.max(last.to, row.to);
-    else out.push({ ...row });
+    const span = Math.max(0, row.to - Math.max(row.from, last?.to ?? -Infinity));
+    if (last && same(last, row) && row.from - last.to <= gapSec * 1000) {
+      last.covered += span;
+      last.to = Math.max(last.to, row.to);
+    } else out.push({ ...row, covered: row.to - row.from });
   }
-  return out.map((row) => ({ ...row, minutes: Math.round((row.to - row.from) / 60_000) }));
+  return out.map(({ covered, ...row }) => ({ ...row, minutes: Math.round(covered / 60_000) }));
 }
 
-const sameTitle = (a: Row, b: Row) => a.title === b.title && a.subtitle === b.subtitle;
+// 没有标题的时段（Emby 在放但条目没对上、PlayStation 在线没开游戏）各自保留，不和别的无标题时段合并。
+const sameTitle = (a: Row, b: Row) => a.title !== null && a.title === b.title && a.subtitle === b.subtitle;
 
 function stateLane(lane: Record<string, unknown>, from: number, keep: (state: number) => boolean, subtitle: string) {
   const played = rows(lane.segments, from, ["state", "title", "subtitle"])
-    .filter((row) => keep(Number(row.state)) && row.title)
-    .map(({ from, to, title, subtitle }) => ({ from, to, title, subtitle }));
+    .filter((row) => keep(Number(row.state)))
+    .map(({ from, to, title, subtitle }) => ({ from, to, title: title ?? null, subtitle: subtitle ?? null }));
   const rename = ({ subtitle: sub, ...row }: Row) => ({ ...row, [subtitle]: sub });
   return {
     summary: lane.summary,
