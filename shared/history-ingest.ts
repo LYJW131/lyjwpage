@@ -88,20 +88,38 @@ const UPSERT_LIMIT = `INSERT INTO limit_snapshots(date, agent, limit_key, label,
     plan = excluded.plan, received_at = excluded.received_at
   WHERE excluded.received_at >= limit_snapshots.received_at`;
 
+const UPSERT_LIMIT_HOUR = `INSERT INTO limit_hours(agent, limit_key, hour_at, window_minutes, used_percent, resets_at, received_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(agent, limit_key, hour_at) DO UPDATE SET window_minutes = excluded.window_minutes,
+    used_percent = excluded.used_percent, resets_at = excluded.resets_at, received_at = excluded.received_at
+  WHERE excluded.received_at >= limit_hours.received_at`;
+
 export function limitStatements(db: HistoryDb, limits: ParsedAgentLimits, receivedAt: number): HistoryStatement[] {
   const date = siteDay(receivedAt);
-  return limits.agents.flatMap((row) => row.limits.map((limit) => db.prepare(UPSERT_LIMIT).bind(
-    date,
-    row.id,
-    limit.key,
-    limit.label,
-    limit.group,
-    limit.windowMinutes,
-    limit.usedPercent,
-    limit.resetsAt,
-    row.plan?.tier ?? null,
-    receivedAt,
-  )));
+  const hourAt = Math.floor(receivedAt / HOUR_MS) * HOUR_MS;
+  return limits.agents.flatMap((row) => row.limits.flatMap((limit) => [
+    db.prepare(UPSERT_LIMIT).bind(
+      date,
+      row.id,
+      limit.key,
+      limit.label,
+      limit.group,
+      limit.windowMinutes,
+      limit.usedPercent,
+      limit.resetsAt,
+      row.plan?.tier ?? null,
+      receivedAt,
+    ),
+    db.prepare(UPSERT_LIMIT_HOUR).bind(
+      row.id,
+      limit.key,
+      hourAt,
+      limit.windowMinutes,
+      limit.usedPercent,
+      limit.resetsAt,
+      receivedAt,
+    ),
+  ]));
 }
 
 const UPSERT_SERVER_HOUR = `INSERT INTO server_hours(host, hour_at, samples, cpu_percent_sum, cpu_percent_max,
