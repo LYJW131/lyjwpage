@@ -263,6 +263,8 @@
   }
   // 第 05 章剪刀样本里两刃合拢的时刻；播放时按它提前起，合拢落在拍上。不能大于 KEY_PRE：分批排程只往前看那么远。
   const jazzSnipAt = 0.05;
+  // 第 02 章军鼓倚音（flam）比主击早的秒数；播放时按它提前起，主击落在拍上。同样不能大于 KEY_PRE。
+  const marchFlamAt = 0.028;
   const SAMPLE_BANKS = new Map();
   function samplesFor(sr) {
     if (SAMPLE_BANKS.has(sr)) return SAMPLE_BANKS.get(sr);
@@ -1042,11 +1044,293 @@
       });
       return finish(d, 0.0004);
     });
+    // 第 01 章的 lo-fi hip hop（lofi 开头的只给 music/ch01.js 用）：闷一点的底鼓、边击（side-stick）、沙沙的踩镲，
+    // Rhodes 电钢（两对 FM，起音带一点「叮」）、柔的三角波主奏（慢颤音加一点走带的抖）、暖的合成器贝斯，唱片底噪和风铃。
+    const lofiKick = () => get("lofi:kick", () => {
+      const d = arr(0.5), n = d.length, th = nz(n, 6000, "lp", 900);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * (47 + 68 * Math.exp(-t / 0.035))) / sr;
+        d[i] = Math.tanh(1.8 * Math.sin(ph) * Math.exp(-t / 0.24) * Math.min(1, t / 0.002)) + 0.22 * th[i] * Math.exp(-t / 0.012);
+      }
+      biquad(d, "lp", 2800);
+      return finish(d, 0.0008);
+    });
+    const lofiStick = () => get("lofi:stick", () => {
+      const d = arr(0.18), n = d.length, r = mulberry32(6010), z = nz(n, 6011, "bp", 2400, 1.3);
+      for (const [f, a, tau] of [[430, 1, 0.028], [1060, 0.55, 0.017], [1730, 0.38, 0.011], [2950, 0.18, 0.006]]) partial(d, f, a, tau, r() * TAU);
+      for (let i = 0; i < n; i++) d[i] += 0.55 * z[i] * Math.exp(-i / sr / 0.004);
+      biquad(d, "lp", 6000);
+      return finish(d, 0.0002);
+    });
+    const lofiHat = (open) => get("lofi:hat:" + (open ? 1 : 0), () => {
+      const d = arr(open ? 0.4 : 0.09), n = d.length, a = nz(n, 6020 + (open ? 1 : 0), "hp", 6500), r = mulberry32(6022), m = new Float32Array(n);
+      for (let k = 0; k < 6; k++) partial(m, 4200 + r() * 5000, 0.3 + 0.4 * r(), open ? 0.12 : 0.025, r() * TAU);
+      norm(m);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = (0.8 * a[i] + 0.35 * m[i]) * Math.exp(-t / (open ? 0.12 : 0.022)) * Math.min(1, t / 0.0006); }
+      biquad(d, "lp", 9000);
+      return finish(d, 0.0002);
+    });
+    const lofiRhodes = (m, len) => get(`lofi:rh:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.6), n = d.length, dec = clamp(2.2 * Math.pow(220 / f, 0.35), 0.8, 3), d0 = Math.round(len * sr);
+      let p1 = 0, p2 = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, I = 1.1 * Math.exp(-t / 0.09) + 0.28;
+        p1 += (TAU * f) / sr; p2 += (TAU * f * 1.0017) / sr;
+        const body = Math.sin(p1 + I * Math.sin(p1)) + 0.5 * Math.sin(p2 + 0.6 * I * Math.sin(p2));
+        const tine = 0.18 * Math.sin(4 * p1 + 0.8 * Math.exp(-t / 0.02) * Math.sin(p1)) * Math.exp(-t / 0.05);
+        d[i] = Math.tanh(1.2 * (body + tine)) * Math.exp(-t / dec) * (1 + 0.12 * Math.sin(TAU * 4.6 * t)) * Math.min(1, t / 0.004);
+      }
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.09);
+      biquad(d, "lp", 3800);
+      return finish(d, 0.0008);
+    });
+    const lofiLead = (m, len) => get(`lofi:lead:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.3), n = d.length, d0 = Math.round(len * sr);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, vib = 0.007 * Math.sin(TAU * 5.2 * t) * clamp((t - 0.22) / 0.25, 0, 1) + 0.0025 * Math.sin(TAU * 0.6 * t);
+        ph += (TAU * f * (1 + vib)) / sr;
+        let y = 0.18 * Math.sin(2 * ph);
+        for (let k = 1; k <= 9; k += 2) y += (Math.sin(k * ph) / (k * k)) * (k % 4 === 1 ? 1 : -1);
+        d[i] = y * Math.min(1, t / 0.035);
+      }
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.12);
+      biquad(d, "lp", 2600);
+      return finish(d, 0.002);
+    });
+    const lofiBass = (m, len) => get(`lofi:bass:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.15), n = d.length, d0 = Math.round(len * sr);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * f * (1 + 0.03 * Math.exp(-t / 0.02))) / sr;
+        d[i] = Math.tanh(1.6 * (Math.sin(ph) + 0.3 * Math.sin(2 * ph) + 0.1 * Math.sin(3 * ph))) * Math.min(1, t / 0.006) * (0.8 + 0.2 * Math.exp(-t / 0.15));
+      }
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.05);
+      biquad(d, "lp", 1100);
+      return finish(d, 0.001);
+    });
+    // 一小节长、比一小节多出 30 ms：每小节起一段，前后两段交叠着淡入淡出，接缝听不出来
+    const lofiCrackle = (k) => get("lofi:crackle:" + k, () => {
+      const d = arr(BAR + 0.03), n = d.length, r = mulberry32(6100 + k), hiss = nz(n, 6110 + k, "bp", 4200, 0.6), f = Math.round(0.03 * sr);
+      for (let i = 0; i < n; i++) d[i] = 0.06 * hiss[i];
+      const click = (a, tau) => { const i0 = Math.floor(r() * (n - 400)), s = r() < 0.5 ? -1 : 1, T = tau * sr; for (let q = 0; q < 300; q++) d[i0 + q] += s * a * Math.exp(-q / T); };
+      for (let j = Math.round(40 * BAR); j > 0; j--) click(0.05 + 0.15 * r(), 0.0001 + 0.0002 * r());
+      for (let j = r() < 0.4 ? 2 : 1; j > 0; j--) click(0.55 + 0.3 * r(), 0.0003 + 0.0005 * r());
+      biquad(d, "hp", 900); biquad(d, "lp", 7000);
+      for (let i = 0; i < f; i++) { d[i] *= i / f; d[n - 1 - i] *= i / f; }
+      return norm(d);
+    });
+    const LOFI_CHIME = ["D6", "F6", "G6", "A6", "C7", "D7", "F7"];
+    const lofiChime = (k) => get("lofi:chime:" + k, () => {
+      const d = arr(3.6), n = d.length, r = mulberry32(6200 + k);
+      let t0 = 0;
+      for (let j = 0; j < 7; j++) {
+        const f = hz(midi(LOFI_CHIME[Math.floor(r() * LOFI_CHIME.length)])), o = Math.round(t0 * sr), part = new Float32Array(n - o), a = 0.5 + 0.5 * r();
+        for (const [ratio, amp, tau] of [[1, 1, 1.4], [2.76, 0.4, 0.5], [5.4, 0.18, 0.18], [8.93, 0.08, 0.07]]) partial(part, f * ratio, amp, tau, r() * TAU);
+        for (let i = 0; i < part.length; i++) d[o + i] += a * part[i];
+        t0 += 0.08 + 0.28 * r();
+      }
+      return finish(d, 0.001);
+    });
+    // 第 00 章的 Steve Reich 式简约派（reich 开头的只给 music/ch00.js 用）：硬槌马林巴、两个人的拍手（Clapping Music 那种），
+    // 一口气里按八分音符一下一下送出的长音（Music for 18 Musicians 里单簧管和人声的渐强渐弱）、钢片琴。错相由乐谱排，这里只出单音。
+    const reichMarimba = (m) => get("reich:mb:" + m, () => {
+      const f = hz(m), tau = 0.42 * Math.pow(330 / f, 0.45), d = arr(Math.min(1.4, tau * 5)), n = d.length, r = mulberry32(7100 + m);
+      for (const [k, amp, tk] of [[1, 1, tau], [1.0035, 0.1, tau * 0.6], [3.99, 0.36, tau * 0.22], [10.1, 0.09, 0.02]]) partial(d, f * k, amp, tk, r() * TAU);
+      const th = nz(n, 7150 + m, "bp", 2200, 0.9), pn = Math.min(n, Math.round(0.012 * sr));
+      for (let i = 0; i < pn; i++) d[i] += 0.4 * th[i] * Math.exp(-i / sr / 0.0018);
+      return finish(d, 0.0006);
+    });
+    const reichClap = (k) => get("reich:clap:" + k, () => {
+      const d = arr(0.3), n = d.length, z = nz(n, 7200 + k, "bp", k ? 1450 : 1100, 0.9), air = nz(n, 7210 + k, "hp", 4200);
+      const taps = [0, 0.007, 0.0155, 0.024].map((t0, j) => [t0 + 0.0012 * j * k, 1 - 0.15 * j]), last = taps[taps.length - 1][0];
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        let e = 0;
+        for (const [t0, a] of taps) if (t >= t0) e += a * Math.exp(-(t - t0) / 0.0028);
+        if (t >= last) e += 0.55 * Math.exp(-(t - last) / 0.055);
+        d[i] = z[i] * e + 0.22 * air[i] * Math.min(1, e);
+      }
+      return finish(d, 0.0002);
+    });
+    // 每个八分音符送一次气：每一下鼓起的包络两头都回到底，一下接一下没有台阶，不出咔哒声。
+    const reichBreath = (m, len, depth) => get(`reich:br:${m}:${len}:${depth}`, () => {
+      const f = hz(m), n = Math.round((len + 0.02) * sr), d = new Float32Array(n), r = mulberry32(7300 + m), P = BEAT / 2;
+      const H = [[1, 1], [2, 0.06], [3, 0.42], [5, 0.2], [7, 0.09], [9, 0.04]].filter(([k]) => f * k < sr * 0.45);
+      const ph0 = H.map(() => r() * TAU), br = nz(n, 7310 + m, "bp", Math.min(6000, f * 4), 0.6);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, x = (t % P) / P, sw = Math.pow(Math.sin(Math.PI * Math.min(1, t / len)), 1.2);
+        const e = sw * (1 - depth + depth * Math.pow(x, 0.25) * Math.pow(1 - x, 1.5) / 0.488);
+        let s = 0;
+        for (let j = 0; j < H.length; j++) s += H[j][1] * Math.sin(H[j][0] * ph + ph0[j]);
+        d[i] = (s + 0.05 * br[i]) * e;
+        ph += TAU * f * (1 + 0.0025 * Math.sin(TAU * 4.6 * t)) / sr;
+      }
+      return finish(d, 0.004);
+    });
+    const reichCelesta = (m) => get("reich:cel:" + m, () => {
+      const f = hz(m), d = arr(1.8), n = d.length, r = mulberry32(7400 + m);
+      for (const [k, amp, tk] of [[1, 1, 0.85], [2, 0.28, 0.32], [3, 0.08, 0.14], [5.43, 0.06, 0.05], [8.9, 0.03, 0.02]]) partial(d, f * k, amp, tk, r() * TAU);
+      const th = nz(n, 7410 + m, "hp", 4500), pn = Math.min(n, Math.round(0.006 * sr));
+      for (let i = 0; i < pn; i++) d[i] += 0.14 * th[i] * Math.exp(-i / sr / 0.001);
+      return finish(d, 0.0012);
+    });
+    // 第 02 章的工业进行曲（march 开头的只给 music/ch02.js 用）：音乐会大鼓、带响弦的军鼓（flam 带一记倚音）与滚奏、对镲、
+    // 铁砧（自由梁的振动模式 1 : 2.756 : 5.404 : 8.933）、机器的哐当声，低音铜管断奏、圆号、开放音小号（颤音晚起）、低音区钢琴、震音弦乐。
+    // 铜管都是加法合成的谐波，起音那一下最亮、随后收暗，听着是吹出来的而不是按出来的。
+    const marchDrum = () => get("march:drum", () => {
+      const d = arr(1.6), n = d.length, r = mulberry32(7000), th = nz(n, 7001, "lp", 240);
+      for (const [k, a, tau] of [[1.59, 0.32, 0.3], [2.14, 0.2, 0.2], [2.3, 0.14, 0.16], [2.65, 0.1, 0.12], [3.16, 0.06, 0.08]]) partial(d, 54 * k, a, tau, r() * TAU);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * (52 + 26 * Math.exp(-t / 0.04))) / sr;
+        d[i] += Math.sin(ph) * Math.exp(-t / 0.5) * Math.min(1, t / 0.006) + 0.45 * th[i] * Math.exp(-t / 0.035);
+      }
+      return finish(d, 0.0008);
+    });
+    const marchSnare = (flam) => get("march:snare:" + (flam ? 1 : 0), () => {
+      const P = flam ? marchFlamAt : 0, d = arr(0.5 + P), n = d.length;
+      const wires = nz(n, 7010, "bp", 3400, 0.6), body = nz(n, 7011, "bp", 1100, 1.1), crack = nz(n, 7012, "hp", 5500);
+      const stroke = (t0, a) => {
+        for (let i = Math.round(t0 * sr); i < n; i++) {
+          const t = i / sr - t0;
+          d[i] += a * (0.5 * (Math.sin(TAU * 185 * t) + 0.45 * Math.sin(TAU * 297 * t)) * Math.exp(-t / 0.032) + 0.85 * wires[i] * Math.exp(-t / 0.13)
+            + 0.4 * body[i] * Math.exp(-t / 0.045) + 0.45 * crack[i] * Math.exp(-t / 0.0035));
+        }
+      };
+      if (flam) stroke(0, 0.38);
+      stroke(P, 1);
+      return finish(d, 0.0003);
+    });
+    const marchRoll = (len, cres) => get(`march:roll:${len}:${cres}`, () => {
+      const rate = 28, last = Math.floor(len * rate), d = arr(len + 0.25), n = d.length, r = mulberry32(7020);
+      const a = nz(n, 7021, "bp", 3200, 0.6), b = nz(n, 7022, "bp", 1000, 1), amp = Array.from({ length: last + 1 }, () => 0.72 + 0.28 * r());
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, k = Math.min(Math.floor(t * rate), last), x = Math.min(1, t / len);
+        const shape = cres ? 0.12 + 0.88 * x * x : 0.55 + 0.45 * Math.sin(Math.PI * x);
+        d[i] = (0.85 * a[i] + 0.3 * b[i]) * amp[k] * Math.exp(-(t - k / rate) / 0.022) * shape;
+      }
+      return finish(d, 0.002);
+    });
+    const marchCymbal = (short) => get("march:cym:" + (short ? 1 : 0), () => {
+      const d = arr(short ? 0.7 : 2.8), n = d.length, r = mulberry32(7030);
+      for (let k = 0; k < 64; k++) { const f = 320 * Math.pow(2, r() * 5.2); partial(d, f, (0.3 + r()) * Math.pow(320 / f, 0.35), 0.35 + 1.5 * r(), r() * TAU); }
+      norm(d);
+      const hiss = nz(n, 7031, "hp", 4200), bite = nz(n, 7032, "bp", 5500, 0.8);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        let y = (0.75 * d[i] + 0.4 * hiss[i] * Math.exp(-t / 0.8)) * Math.min(1, t / 0.01) + 0.55 * bite[i] * Math.exp(-t / 0.018);
+        if (t > 0.009) y += 0.35 * bite[i] * Math.exp(-(t - 0.009) / 0.014);
+        if (short && t > 0.28) y *= Math.exp(-(t - 0.28) / 0.04);
+        d[i] = y;
+      }
+      biquad(d, "hp", 450);
+      return finish(d, 0.0005);
+    });
+    const marchAnvil = (m) => get("march:anvil:" + m, () => {
+      const f = hz(m), d = arr(1.5), n = d.length, r = mulberry32(7040 + m), click = nz(n, 7039, "hp", 5000);
+      for (const [k, a, tau] of [[1, 1, 0.6], [1.0025, 0.35, 0.5], [2.756, 0.55, 0.28], [5.404, 0.3, 0.12], [8.933, 0.15, 0.06]]) partial(d, f * k, a, tau, r() * TAU);
+      for (let i = 0; i < n; i++) d[i] += 0.55 * click[i] * Math.exp(-i / sr / 0.0012);
+      return finish(d, 0.0002);
+    });
+    // k 每加 1 高一个全音，k = 4 是原音高。
+    const marchClank = (k) => get("march:clank:" + k, () => {
+      const s = Math.pow(2, (k - 4) / 6), d = arr(0.75), n = d.length, r = mulberry32(7140 + k), z = nz(n, 7160 + k, "bp", 1700 * s, 0.9);
+      for (const [f, a, tau] of [[300, 1, 0.13], [710, 0.7, 0.085], [1090, 0.55, 0.06], [1650, 0.4, 0.045], [2420, 0.25, 0.03]]) partial(d, f * s, a, tau, r() * TAU);
+      norm(d);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * (68 + 95 * Math.exp(-t / 0.018))) / sr;
+        d[i] = 0.55 * d[i] + 0.8 * Math.sin(ph) * Math.exp(-t / 0.08) * Math.min(1, t / 0.001) + 0.5 * z[i] * Math.exp(-t / 0.006);
+      }
+      return finish(d, 0.0002);
+    });
+    const marchTbn = (m, len) => get(`march:tbn:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.15), n = d.length, bz = nz(n, 7400 + m, "bp", 650, 1);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, br = 0.5 + 0.38 * Math.exp(-t / 0.05);
+        ph += (TAU * f * (1 - 0.022 * Math.exp(-t / 0.018))) / sr;
+        let y = 0, a = 1;
+        for (let k = 1; k <= 24 && k * f < 8000; k++) { y += (Math.sin(k * ph) * a) / Math.sqrt(k); a *= br; }
+        d[i] = (y + 0.1 * bz[i] * Math.exp(-t / 0.025)) * Math.min(1, t / 0.01) * (0.7 + 0.3 * Math.exp(-t / 0.07)) * (t < len ? 1 : Math.exp(-(t - len) / 0.035));
+      }
+      return finish(d, 0.0015);
+    });
+    const marchHorn = (m, len) => get(`march:horn:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.3), n = d.length;
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, br = 0.4 + 0.25 * Math.exp(-t / 0.08);
+        ph += (TAU * f * (1 - 0.012 * Math.exp(-t / 0.03))) / sr;
+        let y = 0, a = 1;
+        for (let k = 1; k <= 10 && k * f < 6000; k++) { y += Math.sin(k * ph) * a; a *= br; }
+        d[i] = y * Math.min(1, t / 0.025) * (t < len ? 1 : Math.exp(-(t - len) / 0.08));
+      }
+      biquad(d, "lp", 2600);
+      return finish(d, 0.002);
+    });
+    const marchTpt = (m, len) => get(`march:tpt:${m}:${len}`, () => {
+      const f0 = hz(m), d = arr(len + 0.15), n = d.length, br = nz(n, 7300 + m, "bp", 3000, 0.9);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, vk = clamp((t - 0.28) / 0.25, 0, 1), vs = Math.sin(TAU * 5.6 * t) * vk;
+        ph += (TAU * f0 * (1 - 0.03 * Math.exp(-t / 0.025) + 0.0055 * vs)) / sr;
+        const b = 0.55 + 0.25 * Math.exp(-t / 0.05) + 0.06 * vs;
+        let y = 0, a = 1;
+        for (let k = 1; k <= 12 && k * f0 < 12000; k++) { y += Math.sin(k * ph) * a; a *= b; }
+        d[i] = (y + 0.04 * br[i]) * Math.min(1, t / 0.018) * (t < len ? 1 : Math.exp(-(t - len) / 0.05));
+      }
+      biquad(d, "hp", 300); biquad(d, "lp", 7000);
+      return finish(d, 0.0015);
+    });
+    const marchPiano = (m, len) => get(`march:piano:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.4), n = d.length, r = mulberry32(7100 + m), d0 = Math.round(len * sr), dec = clamp(2.4 * Math.sqrt(110 / f), 0.6, 4);
+      for (const det of [-0.0012, 0.0012]) for (let k = 1; k <= 18 && k * f < 7000; k++) partial(d, f * k * Math.sqrt(1 + 0.0002 * k * k) * (1 + det), Math.pow(0.74, k - 1) * (k === 2 ? 1.25 : 1), dec / Math.pow(k, 0.7), r() * TAU);
+      const hm = nz(n, 7180 + m, "bp", Math.min(3000, 500 + 4 * f), 0.9), hn = Math.min(n, Math.round(0.03 * sr));
+      for (let i = 0; i < hn; i++) d[i] += 0.3 * hm[i] * Math.exp(-i / sr / 0.008);
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.12);
+      biquad(d, "lp", 3600);
+      return finish(d, 0.0008);
+    });
+    // 锯齿用 PolyBLEP 去混叠，起始相位按种子定，串行和并行渲染逐样本一致。
+    const marchSaw = (n, f, seed) => {
+      const d = new Float32Array(n), dt = f / sr;
+      let p = mulberry32(seed)();
+      for (let i = 0; i < n; i++) {
+        let y = 2 * p - 1;
+        if (p < dt) { const u = p / dt; y -= u + u - u * u - 1; }
+        else if (p > 1 - dt) { const u = (p - 1) / dt; y -= u * u + u + u + 1; }
+        d[i] = y; p += dt; p -= Math.floor(p);
+      }
+      return d;
+    };
+    // 震音按三十二分音符一弓，起音落在拍格上。
+    const marchStr = (m, len) => get(`march:str:${m}:${len}`, () => {
+      const f = hz(m), rel = 0.5, n = Math.round((len + rel) * sr), d = new Float32Array(n), r = mulberry32(7200 + m), rate = 8 / BEAT;
+      [-0.006, 0, 0.0055].forEach((det, j) => { const o = marchSaw(n, f * (1 + det), 7210 + 3 * m + j); for (let i = 0; i < n; i++) d[i] += o[i]; });
+      biquad(d, "lp", Math.min(3000, 700 + 4 * f), 0.6); biquad(d, "hp", 140);
+      const amp = Array.from({ length: Math.ceil((len + rel) * rate) + 1 }, () => 0.75 + 0.25 * r());
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, k = Math.floor(t * rate), x = t * rate - k;
+        d[i] *= (0.5 + 0.5 * amp[k] * Math.exp(-x / 0.4)) * Math.min(1, t / 0.08) * (t < len ? 1 : Math.exp(-(t - len) / (rel / 4)));
+      }
+      return finish(d, 0.002);
+    });
     const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit, glass, marimba, kalimba, morse, gate, off, whip, knock, ping, clear, hop };
     Object.assign(bank, { chipNote, chipDrum, chipFx });
     Object.assign(bank, { jazzBass, jazzVibes, jazzHarmon, jazzStab, jazzRide, jazzBrush, jazzKick, jazzChick, jazzSnap, jazzBongo, jazzRim, jazzSnip });
     Object.assign(bank, { metroKick, metroSnare, metroHat, metroClack, metroBass, metroSeq, metroStr, metroLead, metroChime, metroFlap, metroWhistle });
     Object.assign(bank, { toonTuba, toonPiano, toonBanjo, toonClar, toonWah, toonKick, toonSnare, toonRoll, toonChoke, toonBlock, toonWhistle, toonPans });
+    Object.assign(bank, { lofiKick, lofiStick, lofiHat, lofiRhodes, lofiLead, lofiBass, lofiCrackle, lofiChime });
+    Object.assign(bank, { reichMarimba, reichClap, reichBreath, reichCelesta });
+    Object.assign(bank, { marchDrum, marchSnare, marchRoll, marchCymbal, marchAnvil, marchClank, marchTbn, marchHorn, marchTpt, marchPiano, marchStr });
     SAMPLE_BANKS.set(sr, bank);
     return bank;
   }
@@ -1303,6 +1587,59 @@
       else if (n.what === "whistle") play(S.toonWhistle(n.from, n.to, len), t, o);
       else play(S[{ kick: "toonKick", snare: "toonSnare", choke: "toonChoke", pans: "toonPans" }[n.what]](), t, o);
     }
+    // 第 01 章 lo-fi：乐器 [电平, 声像, 混响, 延迟]（电钢按音高往两边摊开一点），鼓件与底噪、风铃 [电平, 声像, 混响]，
+    // 鼓件写在 story 里（kind: "lofi"）。电平按整章响度对到前后两章。贝斯同样走 mel 总线、不走 bus.bass，理由见上面低音提琴那条。
+    const lofiVoice = { lofiRhodes: [0.23, -0.08, 0.22, 0.08], lofiLead: [0.42, 0.1, 0.3, 0.22], lofiBass: [0.4, 0, 0.02, 0] };
+    const lofiKit = { kick: [0.7, 0, 0.03], stick: [0.68, 0.12, 0.12], hat: [0.33, 0.3, 0.04], open: [0.27, 0.3, 0.08], crackle: [0.42, 0, 0], chime: [0.22, -0.35, 0.5] };
+    function lofiMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = lofiVoice[n.inst];
+      play(S[n.inst](n.m, Math.round(n.dur * 1000) / 1000), t, { g: g * n.v, pan: n.inst === "lofiRhodes" ? pan + (n.m - 62) * 0.012 : pan, to, verbAmt, delayAmt: n.theme ? 0.24 : delayAmt });
+    }
+    function lofiHit(n, t) {
+      const [g, pan, verbAmt] = lofiKit[n.what], fx = n.what === "crackle" || n.what === "chime";
+      const o = { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: fx ? bus.fx : bus.drums, verbAmt, delayAmt: n.what === "chime" ? 0.2 : 0 };
+      if (n.what === "kick") play(S.lofiKick(), t, o);
+      else if (n.what === "stick") play(S.lofiStick(), t, o);
+      else if (n.what === "hat" || n.what === "open") play(S.lofiHat(n.what === "open"), t, o);
+      else if (n.what === "crackle") play(S.lofiCrackle(n.i ?? 0), t, o);
+      else if (n.what === "chime") play(S.lofiChime(n.i ?? 0), t, o);
+    }
+    // 第 00 章简约派：钢片琴唱主题走 melody（乐器 [电平, 声像, 混响, 延迟]）；其余写在 story 里（kind: "reich"，len 以拍计），
+    // 音色 [样本, 电平, 声像, 混响, 延迟]、拍手 [电平, 混响]（两个人一左一右）。电平按整章响度对到前后两章。
+    // 低音的长音同样走 mel 总线、不走 bus.bass，理由见上面低音提琴那条。
+    const reichVoice = { reichCelesta: [0.5, 0.15, 0.4, 0.22] };
+    const REICH_VOICE = { mb: ["reichMarimba", 0.34, -0.35, 0.18, 0.05], mb2: ["reichMarimba", 0.34, 0.35, 0.18, 0.05], cel: ["reichCelesta", 0.5, 0.15, 0.4, 0.22], breath: ["reichBreath", 0.16, 0, 0.35, 0], bass: ["reichBreath", 0.5, 0, 0.12, 0] };
+    const REICH_CLAP = [0.65, 0.12];
+    function reichMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = reichVoice[n.inst];
+      play(S[n.inst](n.m), t, { g: g * n.v, pan, to, verbAmt, delayAmt });
+    }
+    function reichHit(n, t) {
+      if (n.what === "clap") { play(S.reichClap(n.i ?? 0), t, { g: REICH_CLAP[0] * (n.v ?? 1), pan: n.pan ?? (n.i ? 0.45 : -0.45), to: bus.drums, verbAmt: REICH_CLAP[1] }); return; }
+      const [fn, g, pan, verbAmt, delayAmt] = REICH_VOICE[n.what];
+      const buf = fn === "reichBreath" ? S.reichBreath(n.m, Math.round((n.len ?? 4) * BEAT * 1000) / 1000, n.depth ?? 0.6) : S[fn](n.m);
+      play(buf, t, { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: bus.mel, verbAmt, delayAmt });
+    }
+
+    // 第 02 章工业进行曲：乐器 [电平, 声像, 混响, 延迟]，鼓件与金属声 [电平, 声像, 混响]，鼓件写在 story 里（kind: "march"，len 以拍计，
+    // cres 为真时滚奏一路渐强，post 为真时绕开母线扫频）。电平按整章响度对到前后两章。低音铜管同样走 mel 总线、不走 bus.bass，理由见上面低音提琴那条。
+    const marchVoice = { marchTbn: [0.84, -0.12, 0.12, 0], marchHorn: [0.43, 0.22, 0.26, 0], marchTpt: [0.62, 0.1, 0.26, 0.06], marchPiano: [0.95, -0.25, 0.16, 0], marchStr: [0.22, 0, 0.32, 0] };
+    const marchKit = { drum: [0.78, 0, 0.12], snare: [0.67, 0.08, 0.1], flam: [0.67, 0.08, 0.1], roll: [0.56, 0.08, 0.14], cymbal: [0.4, 0.2, 0.22], choke: [0.34, 0.2, 0.1], anvil: [0.47, -0.3, 0.22], clank: [0.67, 0.25, 0.1] };
+    function marchMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = marchVoice[n.inst];
+      play(S[n.inst](n.m, Math.round(n.dur * 1000) / 1000), t, { g: g * n.v, pan, to, verbAmt, delayAmt: n.theme ? 0.2 : delayAmt });
+    }
+    function marchHit(n, t) {
+      const [g, pan, verbAmt] = marchKit[n.what], fx = n.what === "anvil" || n.what === "clank";
+      const o = { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: n.post ? bus.fxPost : fx ? bus.fx : bus.drums, verbAmt };
+      if (n.what === "drum") play(S.marchDrum(), t, o);
+      else if (n.what === "snare") play(S.marchSnare(0), t, o);
+      else if (n.what === "flam") play(S.marchSnare(1), t, { ...o, pre: marchFlamAt });
+      else if (n.what === "roll") play(S.marchRoll(Math.round((n.len ?? 1) * BEAT * 1000) / 1000, n.cres ? 1 : 0), t, o);
+      else if (n.what === "cymbal" || n.what === "choke") play(S.marchCymbal(n.what === "choke"), t, o);
+      else if (n.what === "anvil") play(S.marchAnvil(n.m), t, { ...o, delayAmt: 0.1 });
+      else if (n.what === "clank") play(S.marchClank(n.i ?? 4), t, o);
+    }
 
     let next = 0, controlAt = 0;
     return (until = Infinity) => {
@@ -1348,6 +1685,9 @@
             else if (CHIP_INST[n.inst]) { const [cg, cp, cv, cd] = CHIP_INST[n.inst]; play(S.chipNote(n.inst, n.m, Math.round(n.dur * 1000) / 1000), t, { g: cg * n.v, pan: cp, to, verbAmt: cv, delayAmt: cd }); }
             else if (jazzVoice[n.inst]) jazzMel(n, t, to);
             else if (toonVoice[n.inst]) toonMel(n, t, to);
+            else if (lofiVoice[n.inst]) lofiMel(n, t, to);
+            else if (reichVoice[n.inst]) reichMel(n, t, to);
+            else if (marchVoice[n.inst]) marchMel(n, t, to);
             else
               play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
             break;
@@ -1381,6 +1721,9 @@
           case "jazz": jazzHit(n, t); break;
           case "metro": metroHit(n, t); break;
           case "toon": toonHit(n, t); break;
+          case "lofi": lofiHit(n, t); break;
+          case "reich": reichHit(n, t); break;
+          case "march": marchHit(n, t); break;
         }
       }
     };

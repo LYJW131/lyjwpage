@@ -885,6 +885,7 @@
     }
     if (b >= AT.still) { S.termFrame(f, S.termState(0)); return; }
     const zk = E.io(prog(b, AT.pullTerm[0], AT.pullTerm[1]));
+    // 推近时第 00 章图纸 A 的图框和右下角标题栏要整个留在画里（ch00.js 的 FRAME_A），改了倍数或中心两边一起核。
     const cam = { x: 960, y: lerp(600, 540, zk), zoom: lerp(1.12, 1, zk), rot: 0 };
     S.termFrame(f, endState(b, S), cam, (Lt) => curtain(Lt, b, S));
     const zk0 = E.io(prog(b - 1 / 60 / BARS, AT.pullTerm[0], AT.pullTerm[1]));

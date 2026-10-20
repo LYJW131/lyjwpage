@@ -1,5 +1,5 @@
 // 画面只从这里取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
-// 这一章画成宣纸上的水墨：心电图是一笔横贯的墨线，地层是墨分五色的淡墨层，Clef 打完的窗盖一枚朱印。
+// 这一章画成宣纸上的水墨：心电图是一笔横贯的墨线，地层是墨分五色的淡墨层，Coding 那条三色带读的时候现场刷出来。
 (() => {
   const { css } = G;
   const { E, prog, keys, clamp, lerp, text, FONT, glyph, pathAt, pathLen, mulberry32, hash } = K;
@@ -24,12 +24,13 @@
     "ch06.sources": ["Mac · 云端 · Cursor", "Mac · cloud · Cursor"],
     "ch06.n3a": ["cron 每 5 分钟按水位写进 D1，", "Rows past the watermark go to D1;"],
     "ch06.n3b": ["各路独立，一路坏了不挡别路。", "a failed stream blocks no other."],
-    "ch06.jevNote": ["打分（示意）", "scores (illustrative)"],
-    "ch06.jevKeep": ["打分只在屋里放 7 天，不进 D1", "scores stay 7 days in the room, not in D1"],
-    "ch06.window": ["一窗 = 三个 5 分钟桶", "one window = three 5-min buckets"],
-    "ch06.skip": ["不问 Clef，直接最低档", "no Clef: lowest level"],
-    "ch06.n4a": ["窗关上两分钟后才交给 Clef，", "Two minutes after a window closes,"],
-    "ch06.n4b": ["输入是前台应用、agent 与 token。", "Clef weighs apps, agents and tokens."],
+    "ch06.raw": ["存的只是原始观测（示意）", "raw observations (illustrative)"],
+    "ch06.bandHuman": ["前台是编码应用", "Coding app"],
+    "ch06.bandAgent": ["有 agent 在跑", "Agent"],
+    "ch06.bandBoth": ["两者同时", "Coding app + agent"],
+    "ch06.illus": ["（示意）", "(illustrative)"],
+    "ch06.n4a": ["Coding 那条带子不存，", "The Coding band isn't stored;"],
+    "ch06.n4b": ["读的时候从原始观测现算。", "reads compute it from the raw facts."],
     "ch06.clawd": ["线上出错时，\n我先去 Workers Issues 查证据。", "When something breaks,\nI check Workers Issues first."],
     "ch06.seal": ["墨", "ink"],
   });
@@ -40,7 +41,7 @@
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
   const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
 
-  const AT = { fetch: 5.0, back: 5.25, lit: 5.5, sink: 6.0, hero: 7.0, edge: 9.0, coding: 11.0, zero: 11.25, sweep0: 11.5, sweepStep: 0.125, clawd: 13.25, rise: 15.0 };
+  const AT = { fetch: 5.0, back: 5.25, lit: 5.5, sink: 6.0, hero: 7.0, edge: 9.0, coding: 11.0, raw: 11.25, band: 11.5, legend: 12.0, sum: 12.25, clawd: 13.25, rise: 15.0 };
   const CHECKS = [], KNOCKS = [];
   for (let k = 0; k <= 65; k += 5) CHECKS.push(k);
   for (let k = 0; k <= 65; k++) KNOCKS.push(k + 0.5);
@@ -64,7 +65,7 @@
   const ST_TOP = 900, LANE_H = 72, ST_X0 = -2200, SC = 10;
   const laneY = (i) => ST_TOP + i * LANE_H;
   const ST_BOT = laneY(LANES.length);
-  const SCORER = { x: 1000, y: 812, w: 300, h: 56 };
+  const LEG_X = 900, BAND_Y = 50, BAND_H = 14;
 
   // 首帧接 ch05 末帧那条屏幕 y 540 的直线：它就是心电图的基线，报到尖峰在屏幕 x 1100 处立起来。
   const Z0 = 1.5;
@@ -89,7 +90,7 @@
 
   // ---- 纸、墨、朱砂 ----
   // PAPER 须与 ch05.js 的 PAPER06 同步：第 05 章收尾把纸色挪到这里，切过来底色不跳。
-  const INK = [30, 26, 22], PAPER = [238, 230, 211], VERM = [184, 54, 38], SILK = [196, 203, 194], WOOD = [74, 52, 38], MALACHITE = [74, 128, 100];
+  const INK = [30, 26, 22], PAPER = [238, 230, 211], VERM = [184, 54, 38], MIX = [107, 40, 30], SILK = [196, 203, 194], WOOD = [74, 52, 38], MALACHITE = [74, 128, 100];
   const rgba = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   const ink = (a = 1) => rgba(INK, a), verm = (a = 1) => rgba(VERM, a);
   const BRUSH = (px) => (I18N.lang === "en" ? `600 ${px}px "Noto Serif SC", Georgia, serif` : `${px}px "Ma Shan Zheng", "Noto Serif SC", serif`);
@@ -448,10 +449,13 @@
   for (let k = -16; k <= 3; k++) {
     const from = 15 * k + WIN0;
     const zero = k === -5 || k === -1 || k === -9 || k === -12;
-    const level = zero ? 0 : 1 + Math.floor(R() * 4);
+    // 两处空取数让 TOKENS、LISTEN、STEPS 的示意数据和种子保持原样。
+    if (!zero) R();
+    // band 的值照 codingBand：0 没有，1 只有前台编码应用，2 只有 agent，3 两者同时。
     const band = [];
     if (!zero) for (let m = 0; m < 15;) { const len = 2 + Math.floor(R() * 5), v = R() < 0.25 ? 0 : 1 + Math.floor(R() * 3); band.push([from + m, from + Math.min(15, m + len), v]); m += len; }
-    CODING.push({ from, level, band, zero, prob: 0.35 + 0.55 * R() });
+    R();
+    CODING.push({ from, band, zero });
   }
   const TOKENS = [];
   for (const w of CODING) for (let j = 0; j < 3; j++) TOKENS.push([w.from + j * 5, w.zero ? [0, 0, 0] : [R() * 0.6, R() * 0.35, R() * 0.25]]);
@@ -465,7 +469,11 @@
   const STEPS = [];
   for (let t = -300; t < 70; t += 5) STEPS.push([t, t >= WORKOUT[0] && t < WORKOUT[1] ? 0.7 + 0.3 * R() : R() < 0.55 ? R() * 0.35 : 0]);
   const tx = (phi, t) => NOW_X - (phi - t) * SC;
-  const ORDER = CODING.filter((w) => !w.zero && w.from + 15 + 2 <= AT.sweep0 * 4 && tx(AT.sweep0 * 4, w.from + 15) > 250);
+  const BAND_RGB = [null, INK, VERM, MIX], BAND_A = [0, 0.42, 0.75, 0.9], BAND_KEYS = [null, "ch06.bandHuman", "ch06.bandAgent", "ch06.bandBoth"];
+  const minutes = (phi, test) => CODING.reduce((n, w) => n + w.band.reduce((m, [t0, t1, v]) => m + (test(v) ? clamp(Math.min(t1, phi) - t0, 0, t1 - t0) : 0), 0), 0);
+  const hm = (m) => (m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`);
+  // driver 与 agent 按 shared/pulse-types.ts 的 codingDriverSeconds、codingAgentSeconds 的口径，从画上的示意数据数出来。
+  const DRIVER = minutes(AT.sum * 4, (v) => v === 1 || v === 3), AGENT = minutes(AT.sum * 4, (v) => v === 2 || v === 3);
 
   // 墨分五色：七条道按焦、浓、重、淡、清轮着铺，每层上沿是一道湿边。
   const LANE_TONE = [0.17, 0.08, 0.13, 0.05, 0.11, 0.06, 0.09];
@@ -494,7 +502,14 @@
       x.fillStyle = rgba(rgb, 1); x.fillRect(x0, y, x1 - x0, Math.min(3, h)); x.restore();
     };
     const dimOf = (i) => a * (i <= 1 ? 1 : 1 - focus);
-    for (const w of CODING) for (const [t0, t1, v] of w.band) if (v && t1 <= phi) dab(0, t0, Math.min(t1, phi), 12, dimOf(0) * [0, 0.3, 0.55, 0.85][v]);
+    x.save(); x.globalAlpha = dimOf(0);
+    for (const w of CODING) for (const [t0, t1, v] of w.band) if (v) for (let m = t0; m < t1 && m + 1 <= phi; m++) {
+      const u = tx(phi, m);
+      if (u < clipL || u + SC > clipR) continue;
+      if (v & 1) { x.fillStyle = rgba(INK, 0.5); x.fillRect(u + 2, laneY(0) + 14, SC - 4, 10); }
+      if (v & 2) { x.fillStyle = rgba(VERM, 0.6); x.fillRect(u + 2, laneY(0) + 30, SC - 4, 10); }
+    }
+    x.restore();
     for (const [t0, [m, c, u]] of TOKENS) {
       if (t0 + 5 > phi) continue;
       const x0 = tx(phi, t0) + 3, x1 = tx(phi, t0 + 5) - 3;
@@ -566,57 +581,32 @@
 
   function coding(x, b, a, cam) {
     if (a <= 0) return;
-    const phi = b * 4;
-    const y0 = laneY(0);
-    const done = CODING.filter((w) => w.from + 15 + 2 <= phi && tx(phi, w.from + 15) > 250);
-    // Clef 框和 lyjw.me 卡片在世界坐标里叠在一起，镜头拉远、卡片淡入之前就得收掉。
+    const phi = b * 4, y0 = laneY(0);
+    // 图例和时长与 lyjw.me、core 方框在世界坐标里叠在一起，方框淡回来之前就得收掉。
     const sa = a * (1 - prog(b, 12.75, 12.9));
-    frame(x, SCORER.x, SCORER.y, SCORER.w, SCORER.h, sa, 41, { lw: 3.6, fill: 0.12 });
-    T(x, "Clef", SCORER.x + 16, SCORER.y + 38, { mono: true, size: 28, w: 600, alpha: sa });
-    T(x, tr("ch06.jevNote"), SCORER.x + 90, SCORER.y + 36, { size: 21, sub: true, alpha: sa, maxW: SCORER.w - 100 });
-    T(x, tr("ch06.jevKeep"), SCORER.x, SCORER.y - 16, { size: 21, sub: true, alpha: sa, maxW: 540 });
-    for (const w of CODING) {
-      const x0 = tx(phi, w.from), x1 = tx(phi, w.from + 15);
-      if (x1 < 200 || x0 > NOW_X) continue;
-      const closed = w.from + 15 + 2 <= phi;
-      x.save(); x.globalAlpha = a; x.strokeStyle = ink(closed ? 0.7 : 0.45); x.lineWidth = 2; if (!closed) x.setLineDash([7, 7]);
-      x.strokeRect(x0 + 2, y0 + 3, Math.min(x1, NOW_X) - x0 - 4, LANE_H - 6); x.restore();
-      for (let j = 1; j < 3; j++) { const u = tx(phi, w.from + j * 5); if (u < NOW_X) brush(x, seg2(u, y0 + LANE_H - 18, u, y0 + LANE_H - 4, 2), 2.4, { alpha: 0.7 * a, dry: false, even: true }); }
-      if (!closed) continue;
-      let k = 0, t0 = 0;
-      if (w.zero) k = prog(b, AT.zero, AT.zero + 0.1);
-      else {
-        // 扫完之后才满两分钟的窗：满两分钟那一拍框线变实，下一拍单独交给 Clef。
-        const i = ORDER.indexOf(w);
-        t0 = i >= 0 ? AT.sweep0 + i * AT.sweepStep : (w.from + 15 + 2 + 1) / 4;
-        k = prog(b, t0 + 0.06, t0 + 0.12, E.out);
-        const ask = win(b, t0 - 0.02, t0, t0 + 0.1, t0 + 0.16);
-        if (ask > 0) dashPath(x, [[SCORER.x + SCORER.w / 2, SCORER.y + SCORER.h], [(x0 + x1) / 2, y0 - 4]], 0.9 * ask, verm(0.9), [6, 6], 2.4);
-      }
-      if (k <= 0) continue;
-      const hh = w.zero ? 0 : 8 + w.level * 10;
-      const yb = y0 + LANE_H - 20, lx0 = x0 + 12, lw = x1 - x0 - 24;
-      const fresh = w.zero ? 0 : impact(b, t0 + 0.08, 0.25);
-      if (!w.zero) { x.save(); x.globalAlpha = 0.14 * a; x.fillStyle = ink(1); x.fillRect(lx0, yb - hh * k, lw, hh * k); x.restore(); }
-      brush(x, seg2(lx0, yb - hh * k, lx0 + lw, yb - hh * k, 4), 5, { alpha: a * (w.zero ? 0.7 : 0.92), color: fresh > 0.05 ? verm(0.95) : ink(0.92), seed: w.from, dry: false });
-      // 打完分的窗在右上角盖一枚小朱印，盖下去那一下稍大。
-      if (!w.zero) seal(x, x1 - 16, y0 + 18, 16 * (1 + 0.5 * fresh), null, a * k * 0.9);
-      if (w.zero) T(x, "0", (x0 + x1) / 2, y0 + 34, { mono: true, size: 24, w: 600, sub: true, align: "center", alpha: a * k });
+    const left = cam.x + (290 - 960) / cam.zoom, now = Math.floor(phi);
+    const front = lerp(left, NOW_X, prog(b, AT.band, AT.band + 0.4, E.io));
+    x.save(); x.globalAlpha = a;
+    for (const w of CODING) for (const [t0, t1, v] of w.band) {
+      const x0 = Math.max(left, tx(phi, t0)), x1 = Math.min(front, tx(phi, Math.min(t1, now)));
+      if (!v || x1 <= x0) continue;
+      x.fillStyle = rgba(BAND_RGB[v], BAND_A[v]); x.fillRect(x0, y0 + BAND_Y, x1 - x0, BAND_H);
     }
-    const zw = done.filter((w) => w.zero).pop();
-    if (zw) {
-      const za = prog(b, AT.zero, AT.zero + 0.15) * a;
-      const cx = (tx(phi, zw.from) + tx(phi, zw.from + 15)) / 2;
-      K.leader(x, cx, y0 + 4, tr("ch06.skip"), -30, -56, { font: SERIF(22, 600), color: ink(0.9), alpha: za, dot: 4 });
-    }
-    const lx = cam.x + (310 - 960) / cam.zoom;
+    x.restore();
+    inkDot(x, front, y0 + BAND_Y + BAND_H / 2, 6, a * win(b, AT.band, AT.band + 0.03, AT.band + 0.4, AT.band + 0.45));
+    const lx = cam.x + (310 - 960) / cam.zoom, rl = tr("ch06.raw"), rf = SERIF(21, 600), rw = LEG_X - 24 - lx;
+    const ra = sa * prog(b, AT.raw, AT.raw + 0.15);
+    x.save(); x.globalAlpha = ra; x.fillStyle = rgba(PAPER); x.fillRect(lx - 8, ST_TOP - 42, Math.min(K.measure(x, rl, rf), rw) + 16, 34); x.restore();
+    T(x, rl, lx, ST_TOP - 16, { font: rf, sub: true, alpha: ra, maxW: rw });
+    [1, 2, 3].forEach((v, i) => {
+      const t = AT.legend + i * 0.0625, la = sa * prog(b, t, t + 0.12), y = ST_TOP - 80 + i * 26;
+      x.save(); x.globalAlpha = la; x.fillStyle = rgba(BAND_RGB[v], BAND_A[v]); x.fillRect(LEG_X, y - 15, 28, 14); x.restore();
+      T(x, tr(BAND_KEYS[v]), LEG_X + 38, y, { size: 21, alpha: la, maxW: 1160 - LEG_X - 38 });
+    });
+    T(x, `driver ${hm(DRIVER)}`, NOW_X - 12, ST_TOP - 62, { mono: true, size: 22, w: 600, align: "right", alpha: sa * prog(b, AT.sum, AT.sum + 0.12) });
+    T(x, `agent ${hm(AGENT)}`, NOW_X - 12, ST_TOP - 36, { mono: true, size: 22, w: 600, align: "right", alpha: sa * prog(b, AT.sum + 0.125, AT.sum + 0.245) });
+    T(x, tr("ch06.illus"), NOW_X - 12, ST_TOP - 12, { size: 21, sub: true, align: "right", alpha: sa * prog(b, AT.sum + 0.125, AT.sum + 0.245) });
     T(x, tr("ch06.sources"), lx, laneY(2) + 30, { size: 21, w: 700, alpha: a });
-    const wn = tr("ch06.window"), wf = SERIF(21, 600), ww = K.measure(x, wn, wf);
-    // 全零那一窗往左卷，引线也跟着左移；这一幕结束时引线够得着这行字（英文更宽）就把它挪到引线上方一排。
-    const zEnd = 12.9 * 4, zx = zw ? (tx(zEnd, zw.from) + tx(zEnd, zw.from + 15)) / 2 - 30 : Infinity;
-    const wy = lx + ww + 8 > zx - 10 ? ST_TOP - 100 : ST_TOP - 16;
-    x.save(); x.globalAlpha = a; x.fillStyle = rgba(PAPER); x.fillRect(lx - 8, wy - 26, ww + 16, 34); x.restore();
-    T(x, wn, lx, wy, { font: wf, sub: true, alpha: a });
   }
 
   // 题签：朱文方印「06」，旁边一行毛笔字的章名。
@@ -689,7 +679,7 @@
     const focus = win(b, 10.9, 11.1, 12.9, 13.1);
     strata(x, b, sA, focus, win(b, 6.2, 6.6, 10.75, 10.95));
     strataNotes(x, b, win(b, 6.1, 6.4, 10.85, 11.0), cam);
-    // 等上一幕的 lyjw.me、core 方框淡完再进：Clef 框和它们在世界坐标里叠在一起。
+    // 等上一幕的 lyjw.me、core 方框淡完再进：图例和时长与它们在世界坐标里叠在一起。
     coding(x, b, win(b, 11.05, 11.2, 12.9, 13.05), cam);
     // 字要先于垫底淡出：垫底一变透明，下面的条就露出来，字还在就压在条上。
     laneLabels(x, cam, sA * (1 - prog(b, 12.95, 13.15)), sA * (1 - prog(b, 12.82, 12.94)), focus);

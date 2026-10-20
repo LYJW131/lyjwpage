@@ -25,10 +25,10 @@
 
 ### 来源
 
-下表里除 Claude Code 云端和 collector Worker 两行，每一行都是一个外部上报器；Claude Code 云端遥测（OTLP）不是我们写的上报器，另走一个入口。第 01 章开场的图纸索引按图号画七个小样：前五个图号是外部上报器所在的地方（第 3 号是家里的 Home Assistant 和 n100 上的 playstation-reporter，第 5 号是东京 misaka-jp 上的 server-reporter、agents-reporter、discord-reporter），第 6 号是云端遥测，第 7 号是采集 Worker。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 只开 homepod（`lyjwpage-home-assistant` 只有 `ingest:homepod`）。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`；`/playstation` 只认这一把。
+下表里除 Claude Code 云端和 collector Worker 两行，每一行都是一个外部上报器；Claude Code 云端遥测（OTLP）不是我们写的上报器，另走一个入口。第 01 章画成一座等距的漂浮小岛：开场是整座岛的鸟瞰，岛上各处的上报器往岛外推信封，钟楼（采集 Worker）往岛外拉；之后镜头依次停在 Mac、NAS、iPhone、家里（Home Assistant 和 n100 上的 playstation-reporter）、东京 misaka-jp 上的一台主机（server-reporter、agents-reporter、discord-reporter）、云端遥测那一小块和钟楼，最后一站是别的设备上没人上报的播放。上报器和采集任务有几个，只按代码画，旁白和标注里不说。其中 n100 上的 playstation-reporter，把 presence、游玩列表和奖杯 POST 到同一个 `/api/ingest/playstation`。入口来源是 `shared/ingest/prepare.ts#INGEST_SOURCES` 那一份（playstation 是其中之一）；OTLP 走 `/api/ingest/agents/otlp`，不在这份清单里。Home Assistant 的 token 只开 homepod（`lyjwpage-home-assistant` 只有 `ingest:homepod`）。容器自己的 Access service token 是 `lyjwpage-playstation`，登记在 `workers/ingress/wrangler.toml#ACCESS_CLIENTS`，权限只有 `ingest:playstation`；`/playstation` 只认这一把。
 
-第 01 章用到的部分（编码用量与 Tokens 道的口径、collector 的任务与节奏、PlayStation 与 Quest 上报器、Mac 信封的 90 秒和 400 ms）按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
-FIG. 2 的 App 名、400 ms 的出处按 main a2c6e1c 回代码复核过；apple-recent 的两档与活跃档的拉取、FIG. 7A「没人上报的播放」按 cddbb5a 复核过。 <!-- allow: 核对基线戳 -->
+第 01 章用到的部分（编码用量与 Tokens 道的口径、collector 的任务与节奏、PlayStation 与 Quest 上报器、Mac 信封的 90 秒）按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+iPhone 那一站的 App 名按 main a2c6e1c 回代码复核过；apple-recent 的两档与活跃档的拉取、「没人上报的播放」那一站按 cddbb5a 复核过。 <!-- allow: 核对基线戳 -->
 
 | 来源 | 程序 / 在哪跑 | 入口 · token | 报什么 |
 |---|---|---|---|
@@ -45,7 +45,7 @@ FIG. 2 的 App 名、400 ms 的出处按 main a2c6e1c 回代码复核过；apple
 
 PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-reporter` POST 原始信封。采集 Worker 不拉 PSN，也不持有 PSN 凭据（`docs/ops-facts.md` 里采集 Worker 那一条）。PS5 电源没有来源上报，站点也不显示：PlayStation 信封带 `power` 字段会被入口拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）。状态核心还留着一个没人调用、也没有新数据写入的只读接口 `playstationPower`（契约只加不改，`shared/state-core.ts#StateCoreRpc`），片中不画成活动的链路。
 
-第 01 章 FIG. 3 画它：容器跟 PS5 在同一个局域网里，用 UDP 发现包探测主机状态（`reporters/playstation-reporter/src/probe.ts#probeOnce`），按醒着、没醒两档调整打 PSN 的频率（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`，展开见 §7）。两档对调时立刻打一轮，所以开机后第一探读到醒着，紧跟着问一轮 PSN、寄一封。主机醒没醒只由容器自己探测，只用来定它自己的节奏，不进信封（信封只有 presence、游玩列表、奖杯：`reporters/playstation-reporter/src/site.ts#PlaystationEnvelope`），也不画成 Home Assistant 给的。片中不出间隔的数。
+容器跟 PS5 在同一个局域网里，用 UDP 发现包探测主机状态（`reporters/playstation-reporter/src/probe.ts#probeOnce`），按醒着、没醒两档调整打 PSN 的频率（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`，展开见 §7）。两档对调时立刻打一轮，所以开机后第一探读到醒着，紧跟着问一轮 PSN、寄一封。主机醒没醒只由容器自己探测，只用来定它自己的节奏，不进信封（信封只有 presence、游玩列表、奖杯：`reporters/playstation-reporter/src/site.ts#PlaystationEnvelope`），也不画成 Home Assistant 给的。片中不出间隔的数；第 01 章家里那一站不画探测，只画容器把 presence、游玩列表、奖杯寄到 `/api/ingest/playstation`，PSN 登录态留在本机、只拿来问 Sony。
 
 三样凭据各管各的，片中分开画，不能混：
 
@@ -78,29 +78,29 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### collector 的任务
 
-- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章表盘的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），表盘让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
+- 节奏：每个任务登记「每 N 分钟、第 offset 分钟」（各任务的 `everyMinutes` / `offset`），cron 每分钟一响时挑出到期的一起跑（`workers/collector/src/schedule.ts#isDue`）。第 01 章钟楼那一站的时序图按这张表从整点起画 12 分钟；apple-recent 每分钟登记、任务里再分两档（下一节），时序图让它在 :05 那一轮看到列表变了：:00、:05 各一次，之后每分钟。
 - 最近在听：apple-recent 任务，专辑 / 歌单粒度的列表交给 `CORE.commitRecentlyPlayed`。用的 user token 是 Mac 推进 `CREDENTIALS` 的那一份，形成一次凭据接力。
-- GitHub、站点部署与访问量、Cloudflare、站点健康、PageSpeed、厂商状态：直接写 `LAG`；站点部署列表那一轮（`site-deployments`，每分钟）另把部署记录写进 D1，访问量是 `site-analytics`，每 15 分钟第 3 分钟（`workers/collector/src/jobs/site-status.ts#siteDeploymentsJob`、`workers/collector/src/jobs/site-status.ts#siteAnalyticsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。在线探测 `uptime-probe` 每分钟只把成败记进 D1，站点健康 `site-health` 每 5 分钟第 4 分钟把它汇总进 `LAG`（§8）。第 01 章表盘的注只说「直接交给状态核心，或写 LAG」，不画 D1。
+- GitHub、站点部署与访问量、Cloudflare、站点健康、PageSpeed、厂商状态：直接写 `LAG`；站点部署列表那一轮（`site-deployments`，每分钟）另把部署记录写进 D1，访问量是 `site-analytics`，每 15 分钟第 3 分钟（`workers/collector/src/jobs/site-status.ts#siteDeploymentsJob`、`workers/collector/src/jobs/site-status.ts#siteAnalyticsJob`、`workers/collector/src/history.ts#archiveSiteDeploys`）。在线探测 `uptime-probe` 每分钟只把成败记进 D1，站点健康 `site-health` 每 5 分钟第 4 分钟把它汇总进 `LAG`（§8）。第 01 章钟楼那一站的注只说「直接交给状态核心，或写 LAG」，不画 D1。
 - GitHub 头像：avatar-watch 每 5 分钟第 1 分钟比对头像的 sha256 与 main 上的 `.github/github-avatar.sha256`，不一致才触发 `.github/workflows/avatar-sync.yml` 提交新哈希、让站点重建；不写状态（`workers/collector/src/jobs/avatar-watch.ts#avatarWatchJob`）。
 - 摘要：digest 每 15 分钟第 5 分钟（:05、:20、:35、:50）经 Service Binding `DIGEST` 请 ai 的 `Digest` 入口写一份摘要，写进 `LAG`；输入没变也重写一次，好让 `updatedAt` 跟上。只在卡片换形（第一份摘要、摘要与时钟互换）时请状态核心失效 `digest` 标签（`workers/collector/src/jobs/digest.ts#digestJob`、`workers/collector/wrangler.toml` 的 `DIGEST`）。首屏的 In Brief 卡读它（§4）。
 - PlayStation 不在这张表里。
 
-### 没人上报的播放（第 01 章 FIG. 7A）
+### 没人上报的播放（第 01 章）
 
 - iPhone、iPad、网页版等别的设备上放的 Apple Music 没有上报器：lyjwpage iOS App 只报活动与训练（`apps/ios/README.md`）。站点只能从 Apple Music 账号「最近播放的歌」的单曲列表推断（`workers/collector/src/jobs/apple-recent.ts#assembleRecentTracks`）。
 - 拉取：apple-recent 在任务表里每分钟登记，任务里再分两档：闲时每 `IDLE_EVERY_MINUTES`（5）分钟拉一次；专辑列表或单曲列表有变就进活跃档，每分钟这一响里接着每 `ACTIVE_POLL_MS`（15 秒）再拉一次单曲列表，`ACTIVE_HOLD_MS`（10 分钟）里没再变才回闲档（同文件 `appleRecentDue`、`followRecentTracks`、`appleRecentJob`）。单曲列表连同拿到它的时刻交给 `CORE.commitRecentTracks`；回执里的 `nextBy`（照推断接着放、下一首最晚上榜的时刻）早于下一次拉时，提前到那一刻拉（`shared/pulse-listening.ts#nextTraceBy`）。片中只画每 15 秒一拉，不画按曲终补拉。
 - 记痕迹：状态核心拿新列表和上一份比，新播的歌是新列表的前缀，一首记一行 `(since, t]`，带时长（`shared/pulse-listening.ts#playedBetween`、同文件 `listeningTraces`；`workers/core/src/stores/listening-pulse.ts#prepareRecentTracks`）。一首歌开播后 `LISTENING_TRACE_LAG_MS`（5.5 秒）排到列表最前，所以开播落在这两次拉取各减去这段滞后之间（上榜的抖动实测见 `docs/listening-inference-accuracy.md`，record；滞后按页面进度对照手机上的实际进度定）。片中说「开播几秒就排到最前」。
 - 推断：连续播放的一串按时长对齐，每首的窗口减去前面各首的时长后都约束同一个开播，放宽一点余量求交取中点；不放宽时交集的半宽是理想误差（`marginMs`）；交集为空就另起一串；一首画到时长用完或下一首开播（`shared/pulse-listening.ts#inferredPlays`）。片中「后一首的窗口减去前一首的时长，和前一首的窗口求交」是它两首时的情形。
 - 展示：Pulse 听歌道画成斜线段，悬停「Played elsewhere (estimated)」带开播误差，图例「Elsewhere (est.)」（`workers/core/src/pulse.ts#stateLaneView`、`src/components/live/pulse/state-lanes.tsx`、`src/components/live/pulse-card.tsx`）。最后一首还没按时长放完、或放完还不到 `LISTENING_ELSEWHERE_HOLD_MS` 时，`listening/now` 带 `elsewhere`；Mac / HomePod 都没在放时，卡片标 Likely Playing（label-mono，界面上是大写），旁边虚线框里是这一首的理想误差，如「±3s」（`shared/pulse-listening.ts#playingElsewhere`、`shared/now-listening.ts#pickNowListening`、`src/components/live/listening/now-playing.tsx#formatMargin`）。Mac / HomePod 在放同一首（歌名与艺人都对上）就不算别处播放（`shared/pulse-listening.ts#sameSong`）。
-- 片中不出实测精度的数；示意里的分钟和开播时刻是示意，歌名和时长是 Apple 目录里的（Aimer 的 Ref:rain、残響散歌），页面卡片上的「±3s」是片中示意窗口算出来的理想误差。第一首的时长要让两次看到新歌都落在整分钟那次拉取上（配乐在 30:1、31:2 两拍有纸滑）。时间在推断开始前定格（一拍一分钟走下去，那首歌在片中已经放完）。暂停、拖进度、单曲循环不在列表里留痕，片中不讲。
+- 片中不出实测精度的数；示意里的分钟和开播时刻是示意，歌名和时长是 Apple 目录里的（Aimer 的 Ref:rain、残響散歌），页面卡片上的「±3s」是片中示意窗口算出来的理想误差。第一首的时长要让两次看到新歌都落在整分钟那次拉取上（配乐在 24:1、25:2 两拍有纸滑）。时间在推断开始前定格（一拍一分钟走下去，那首歌在片中已经放完）。暂停、拖进度、单曲循环不在列表里留痕，片中不讲。
 
 ## 2 上报入口（workers/ingress，`ingest.homepage.lyjw.llc`）
 
-第 02 章用到的部分按 main 8534275 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+第 02 章用到的部分按 main a5d5b89 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 ### 鉴权
 
-- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发：Home Assistant 那一把只开 homepod；`/playstation` 只有 n100 上 playstation-reporter 容器自己的一把，报 presence、游玩列表和奖杯，带 `power` 字段的信封拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）；`/quest` 只认 misaka-jp 上 discord-reporter 的 `lyjwpage-quest`，权限只有 `ingest:quest`。第 02 章的门墙按 `shared/ingest/prepare.ts#INGEST_SOURCES` 一个来源一扇门，外加 `/agents/otlp`；权限表按 `ACCESS_CLIENTS` 一把钥匙一行，只写上报方名，不写 client id。验钥匙分三步：
+- 走 Cloudflare Access service token，**每个上报方一把钥匙，只开权限表上写着的门**（`workers/ingress/wrangler.toml#ACCESS_CLIENTS`）。钥匙按上报方发：Home Assistant 那一把只开 homepod；`/playstation` 只有 n100 上 playstation-reporter 容器自己的一把，报 presence、游玩列表和奖杯，带 `power` 字段的信封拒收（`shared/ingest/playstation.ts#preparePlaystationReport`）；`/quest` 只认 misaka-jp 上 discord-reporter 的 `lyjwpage-quest`，权限只有 `ingest:quest`。第 02 章的门墙按 `shared/ingest/prepare.ts#INGEST_SOURCES` 一个来源一扇门，外加 `/agents/otlp`；权限表按 `ACCESS_CLIENTS` 一把钥匙一行，只写上报方名，不写 client id，名字照 `docs/ops-facts.md`「Cloudflare Access（Zero Trust）」。`/agents/otlp` 这扇门认两种权限：Claude Code 云端那把的 `ingest:agents-otlp`，和 mac 那把另带的 `ingest:mac-otlp`（同一台 Mac 上的 Devin CLI 推用量；`workers/ingress/src/worker.ts#OTLP_SOURCES`）。iPhone 有两把（App 一把、专注模式快捷指令一把，都只开 `/iphone`）；github-actions 那把不开上报的门，只有 `internal:site-deployed`、`internal:collector-refresh` 两条内部路径（`workers/ingress/src/worker.ts#SITE_DEPLOYED_PATH`、`#COLLECTOR_REFRESH_PATH`）。验钥匙分三步：
   1. Access 在边缘先挡一道。
   2. Worker 再验 `Cf-Access-Jwt-Assertion`（RS256，校验 aud / iss / exp；`shared/access-jwt.ts#verifyAccessJwt`）。
   3. 用 `common_name` 查 `ACCESS_CLIENTS` 权限表。
@@ -116,13 +116,14 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | 3 | 来源未知 | 404 |
 | 4 | Access 鉴权不过 | 401 / 403 / 503 |
 | 5 | OTLP 压缩格式不对 | 415 |
-| 6 | 读不出请求体，或超过 **4 MiB**（按实际读到的字节数） | 400（storage-contract.ts:14） |
+| 6 | 读不出请求体，或超过 **4 MiB**（按实际读到的字节数，gzip 的按解压后算） | 400（`shared/storage-contract.ts#STORAGE_MAX_BYTES`、`workers/ingress/src/worker.ts#readBoundedBody`） |
 | 7 | 不是 JSON | 400 |
 | 8 | prepare 失败 | 400 |
-| 9 | `CORE.commitIngest` 回暂时故障（`retryable`：DO 重置或过载） | 503 |
+| 9 | `CORE.commitIngest` 回暂时故障（`retryable`：DO 重置或过载），或 RPC 抛出带 `retryable` 的错误 | 503 |
 | 9 | `CORE.commitIngest` 拒收 | 400 |
 
-- Emby 海报在 prepare 里 HEAD R2 确认存在，带 5 分钟正缓存（r2-assets.ts:17）。回执里的 `missingImages` 告诉上报器还要补传哪些图：状态核心按 prepare 确认过的键算出，随 202 的 `data` 回给上报器（`workers/core/src/stores/emby.ts`、`reporters/emby-reporter/src/site.ts`）。
+- 回执类型里还留着 `ready: false`（入口见到就回 503），但状态核心总是就绪、实际不会回它；契约只加不改才留着（`shared/state-core.ts#CommitReply`）。片中的回执画成 `{ ready: true, ok: true, data }`。
+- Emby 海报在 prepare 里 HEAD R2 确认存在，带 5 分钟正缓存（`shared/ingest/r2-assets.ts#CONFIRMED_TTL_MS`）。回执里的 `missingImages` 告诉上报器还要补传哪些图：状态核心按 prepare 确认过的键算出，随 202 的 `data` 回给上报器（`workers/core/src/stores/emby.ts`、`reporters/emby-reporter/src/site.ts`）。
 
 ### 分流：一封上报按数据层拆成四路
 
@@ -152,7 +153,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 可滞后层的写入方（ingress、collector）没有 `SITE_CACHE` 绑定，它只配在 `workers/core/wrangler.toml`。写入时发现布局变了，就调 `CORE.revalidate(tags)` 请状态核心代发（同一函数）。
 
-特例：iPhone 的训练收下了、圆环被拒时，已收下的那份照写，然后回 400。
+特例：iPhone 的训练收下了、圆环或专注模式那段被拒时（失败阶段 `beforeActivity` / `beforeFocus`），已收下的那份照写进可滞后层和归档，然后回 400（`workers/ingress/src/worker.ts#partiallyAccepted`）。
+
+拿到回执之后，换歌那封如果还要补后续曲目，入口把 `COLLECTOR.followUpTrack` 交给 waitUntil，不等（`workers/ingress/src/worker.ts#commitIngest`）。
 
 ### 好处
 
@@ -253,7 +256,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - 失效通知只带标签名、不带数据：数据已经落在 Worker 上，下一次读端点自己去拿。通知不再是站点 HTTP 路由：core Worker 经私有 `SITE_CACHE` Service Binding 调 `invalidate(tags)`（`workers/core/src/live-platform.ts#expireStatusTags`、`shared/site-cache.ts#SiteCacheRpc`），白名单过滤后按 `page:<tag>` 清除视图快照，再清除 `home` 首页文档。
 - 标签只为布局变化而发：首屏版面变了（例如在线 / 离线翻转、Mac 心跳断档后回来、充电头接上或拔下、开始或停止放歌）才通知失效；只变内容的交给 600 秒缓存过期自己重建（布局判据见 `shared/home-layout.ts`，写 KV 的一方在 `workers/ingress/src/lag-ingest.ts#commitLagIngest` 返回要失效的标签；快照有效期见 `src/lib/site-policy.ts#STATUS_CACHE_CONTROL`）。
 - 首页文档带两个值：max-age 是响应在边缘直接可用的时长；stale-while-revalidate 是过了这个时长后先给旧副本、后台再回源重建的窗口。视图快照不带后者，只多一个 stale-if-error：回源出错时继续用旧副本的窗口（`src/lib/site-policy.ts#STATUS_CACHE_CONTROL`）。
-- 第 00 章把首屏画成浏览器窗口里的线框：卡片框按 `src/app/page.tsx#Home` 的版面，尺寸取第 04 章 P 表（`docs/explainer/v2/ch04.js#P`）的比例；P 表注明是按 lyjw.me 桌面宽度实测的卡片框乘 0.6，那次实测未核。首排右格是 In Brief 卡：一行摘要标题，旁边一个照过去 24 小时画的表盘；它读 digest、pulse、timezone 三个视图（`src/app/page.tsx#READS` 的 `digest`），没有摘要或摘要是 quiet 时换回时钟卡（`src/components/live/digest-card.tsx#DigestCard`）；第 04 章的印版把这一格拆成 digest、timezone 两块，pulse 归它自己那张卡。Media 下面是整行的 Talk to God 对话卡（`src/app/page.tsx#SLOT` 的 `godChat`），线框画到它就被窗口下沿切掉；它不读状态视图，没有 `firstScreen` 缓存，所以第 04 章的印版里没有它。画的那一刻没在充电：充电那一格收起、「最近播放」占满一行（`src/components/live/media-pair.tsx#LiveMediaPair` 不在充电时加 is-disconnected，`src/app/styles/components.css` 在桌面宽度下把这时的最近播放左边贴到 0）。卡上的标注照站点原文（`src/components/live/listening-card.tsx` 的 Recently Played、Now Playing）；界面上是大写，因为 `src/components/ui/card.tsx#Card` 的标签用 label-mono，它在 `src/app/styles/utilities.css` 里是 text-transform: uppercase。
+- 第 00 章把首屏画成浏览器窗口里的线框：卡片框按 `src/app/page.tsx#Home` 的版面，尺寸取第 04 章 P 表（`docs/explainer/v2/ch04.js#P`）的比例；P 表注明是按 lyjw.me 桌面宽度实测的卡片框乘 0.6，那次实测未核。首排右格是 In Brief 卡：一行摘要标题，旁边一个照过去 24 小时画的表盘；它读 digest、pulse、timezone 三个视图（`src/app/page.tsx#READS` 的 `digest`），没有摘要或摘要是 quiet 时换回时钟卡（`src/components/live/digest-card.tsx#DigestCard`）；第 04 章的印版把这一格拆成 digest、timezone 两块，pulse 归它自己那张卡。Media 下面是整行的 Talk to God 对话卡（`src/app/page.tsx#SLOT` 的 `godChat`），线框画到它就被窗口下沿切掉；它不读状态视图，没有 `firstScreen` 缓存，所以第 04 章的印版里没有它。画的那一刻没在充电：充电那一格收起、「最近播放」占满一行（`src/components/live/media-pair.tsx#LiveMediaPair` 不在充电时加 is-disconnected，`src/app/styles/components.css` 在桌面宽度下把这时的最近播放左边贴到 0）。卡上的标注照站点原文（`src/components/live/listening-card.tsx` 的 Recently Played、Now Playing）；界面上是大写，因为 `src/components/ui/card.tsx#Card` 的标签用 label-mono，它在 `src/app/styles/utilities.css` 里是 text-transform: uppercase。线框旁的标注 `max-w-5xl`、`md:grid-cols-2`、`md:col-span-2` 照 `src/app/page.tsx#Home` 的类名：主栏宽度、首排两列（联系卡、In Brief）、Media 占满一行。页眉上的 `/api/status/listening/now` 是这张卡读的视图之一（`src/app/page.tsx#READS` 的 `media` 含 `src/lib/paths.ts#NOW_LISTENING_PATH`，登记在 `shared/status-views.ts#STATUS_VIEWS` 的 `nowListening`）。
 
 ### 来源出问题时
 
@@ -336,7 +339,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | agents（限额） | 有一家在用：5 分钟（只取在用的那家） | 都没在用：60 分钟 | `SITE_URL/api/status/coding/now`，不问人数 |
 | 服务器（对照） | 60 秒 | 60 秒 | 不问 |
 
-片中没有专讲这一节的章，第 01 章 FIG. 3 用到 PlayStation 那一行（§1）。按 main e10a75a 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
+片中没有专讲这一节的章。按 main e10a75a 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - PlayStation 大约每 `reporters/playstation-reporter/src/cadence.ts#PROBE_INTERVAL_MS` 发一次发现包，只在该打的时候打 PSN。`HTTP/1.1 200` 是醒着，`620` 是休息，超时或别的回复先记一笔，连续 `reporters/playstation-reporter/src/cadence.ts#OFF_STREAK_TO_REST` 次才离开醒着。醒着和没醒对调立刻打一轮，休息和关机来回切不额外打。退避（`reporters/playstation-reporter/src/state.ts#backoffMs`）没到时这些都不放行。
   - `AWAKE_TICK_INTERVAL_MS` 是醒着那一档的间隔，不是两轮之间的下限：对调那一轮不等它（`reporters/playstation-reporter/src/cadence.ts#shouldRunTick`）。门只在每次探测时判，醒着时要等到过线之后的那一探，实际约每分钟一轮。
