@@ -976,6 +976,14 @@
       x.save(); x.fillStyle = rgba(C.cream); x.globalAlpha = kc; x.translate(cx, cy); x.rotate(Math.PI / 4); x.fillRect(-9, -9, 18, 18); x.restore();
     }
   }
+  const SIDE_GAP = 40;
+  function sideRules(x, t, str, font, maxW, y, o) {
+    const half = Math.min(measure(t, str, font), maxW) / 2;
+    for (const sd of [-1, 1]) for (let i = 0; i < o.n; i++) {
+      const x0 = half + SIDE_GAP + i * (o.len + 6);
+      seg(x, 960 + sd * x0, y, 960 + sd * (x0 + o.len), y, o.lw, C.cream, o.a);
+    }
+  }
   function titleCard(x, g, t, b, wv) {
     x.save(); x.setTransform(G.S, 0, 0, G.S, G.S * wv[0], G.S * wv[1]);
     x.fillStyle = rgba(C.card); x.fillRect(-20, -20, 1960, 1120);
@@ -984,19 +992,21 @@
     const lit = prog(b, 0, 0.25) * (1 - 0.15 * hash(Math.floor(b * BARs * 24)));
     lampToon(x, g, 960, 250, 1, 404, { lit, wink: arcK(prog(b, 1.45, 1.6)), b, look: 0 });
     g.restore();
-    seg(x, 640, 438, 780, 438, 2, C.cream, prog(b, 0.5, 0.7)); seg(x, 1140, 438, 1280, 438, 2, C.cream, prog(b, 0.5, 0.7));
+    const chFont = EN() ? DECO(42) : SERIF(42);
+    sideRules(x, t, tr("ch03.chapter"), chFont, Infinity, 438, { n: 1, len: 140, lw: 2, a: prog(b, 0.5, 0.7) });
     x.restore();
-    text(t, tr("ch03.chapter"), 960, 452, { font: EN() ? DECO(42) : SERIF(42), color: rgba(C.cream), align: "center", alpha: prog(b, 0.5, 0.65) });
+    text(t, tr("ch03.chapter"), 960, 452, { font: chFont, color: rgba(C.cream), align: "center", alpha: prog(b, 0.5, 0.65) });
     text(t, tr("ch03.title"), 960, 626, { font: SHOW(136), color: rgba(C.cream), align: "center", reveal: prog(b, 0.6, 1.1), perChar: true, rise: 18, maxW: 1560 });
     text(t, "workers/core · StateCore → StateHub", 960, 736, { font: MONO(34), color: rgba(C.cream, 0.82), align: "center", alpha: prog(b, 1.0, 1.3) });
   }
   function meanwhileCard(x, t, b, wv) {
+    const str = tr("ch03.meanwhile"), font = SHOW(104);
     x.save(); x.setTransform(G.S, 0, 0, G.S, G.S * wv[0], G.S * wv[1]);
     x.fillStyle = rgba(C.card); x.fillRect(-20, -20, 1960, 1120);
     bigFrame(x, 1, b);
-    for (const sd of [-1, 1]) for (let i = 0; i < 3; i++) seg(x, 960 + sd * (430 + i * 26), 556, 960 + sd * (450 + i * 26), 556, 3, C.cream, 0.8);
+    sideRules(x, t, str, font, 1500, 556, { n: 3, len: 20, lw: 3, a: 0.8 });
     x.restore();
-    text(t, tr("ch03.meanwhile"), 960, 590, { font: SHOW(104), color: rgba(C.cream), align: "center", reveal: prog(b, 11.04, 11.35), perChar: true, maxW: 1500 });
+    text(t, str, 960, 590, { font, color: rgba(C.cream), align: "center", reveal: prog(b, 11.04, 11.35), perChar: true, maxW: 1500 });
   }
 
   // 颗粒、灰尘、毛发、划痕、闪烁和片门晃动按每秒 24 格换一次，和画面帧率无关。
@@ -1147,7 +1157,6 @@
         x.restore();
       }
     }
-    if (b >= AT.phone - 0.3 && b < 21.0) seg(x, 962, 664, 962, -900, 2.5, C.ink, prog(b, AT.phone - 0.3, AT.phone - 0.1));
   }
 
   let pic, glow, film, top;
