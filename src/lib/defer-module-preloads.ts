@@ -30,7 +30,7 @@ function deferredScript(module: string, attributes: string, preloads: string): s
     `})();</script>`;
 }
 
-// 双 requestAnimationFrame 仍可能早于实际绘制，支持 Paint Timing 时须等 FCP；只推迟 hydrateRoot，下载与模块求值仍会挤占首帧。
+// 双 requestAnimationFrame 仍可能早于实际绘制；支持 Paint Timing 时，预加载与入口模块须一起等 FCP，避免下载与求值挤占首帧。
 // 启动时一起恢复预加载，再原位替换入口脚本，既不形成 import 瀑布，也不留下水合时多余的节点。
 export function deferModulePreloads(html: string): string {
   const head = html.indexOf("</head>");
