@@ -16,21 +16,19 @@ function deferredScript(module: string, attributes: string, preloads: string): s
       attrs.some((attr) => attr[1].toLowerCase() === "src") || !type) return null;
   const bootstrapAttributes = attributes.slice(0, type.index) + attributes.slice(type.index + type[0].length);
   return `<script${bootstrapAttributes}>(function(){` +
-    `var b=document.currentScript,done=false,frame=0,observer=null;` +
-    `function start(){if(done)return;done=true;cancelAnimationFrame(frame);if(observer)observer.disconnect();document.removeEventListener("visibilitychange",visible);` +
+    `var b=document.currentScript,done=false,frame=0;` +
+    `function start(){if(done)return;done=true;cancelAnimationFrame(frame);document.removeEventListener("visibilitychange",visible);` +
     `var t=document.createElement("template");t.innerHTML=${scriptJson(preloads)};document.body.appendChild(t.content);` +
     `t.innerHTML=${scriptJson(module)};var original=t.content.firstElementChild,s=document.createElement("script");` +
     `for(var a of original.attributes)s.setAttribute(a.name,a.value);s.textContent=original.textContent;b.replaceWith(s)}` +
     `function visible(){if(document.visibilityState==="hidden")start()}` +
     `document.addEventListener("visibilitychange",visible);` +
-    `if(document.visibilityState==="hidden"||(typeof performance!=="undefined"&&performance.getEntriesByName("first-contentful-paint").length))start();` +
-    `else if(typeof PerformanceObserver==="function"&&PerformanceObserver.supportedEntryTypes&&PerformanceObserver.supportedEntryTypes.indexOf("paint")>=0){` +
-    `observer=new PerformanceObserver(function(list){if(list.getEntries().some(function(entry){return entry.name==="first-contentful-paint"}))start()});observer.observe({type:"paint",buffered:true})}` +
+    `if(document.visibilityState==="hidden")start();` +
     `else frame=requestAnimationFrame(function(){if(!done)frame=requestAnimationFrame(start)})` +
     `})();</script>`;
 }
 
-// 双 requestAnimationFrame 仍可能早于实际绘制；支持 Paint Timing 时，预加载与入口模块须一起等 FCP，避免下载与求值挤占首帧。
+// 双 requestAnimationFrame 只给浏览器绘制机会，不保证已呈现；应用初始化不能依赖 FCP 观测事件，后台不等帧回调。
 // 启动时一起恢复预加载，再原位替换入口脚本，既不形成 import 瀑布，也不留下水合时多余的节点。
 export function deferModulePreloads(html: string): string {
   const head = html.indexOf("</head>");
