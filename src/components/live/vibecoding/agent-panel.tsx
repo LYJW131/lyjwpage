@@ -25,6 +25,13 @@ function formatSiteDay(date: string) {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+// 今日用量有意只换算到 M（lyjw 定的），超过 10 亿也写 2195.6M，不改成 B。
+function kiloMega(value: number) {
+  if (value >= 1e6) return { value: value / 1e6, suffix: "M" };
+  if (value >= 1e3) return { value: value / 1e3, suffix: "K" };
+  return { value };
+}
+
 export function AgentPanel({
   row,
   macDeclaredOffline,
@@ -79,9 +86,9 @@ export function AgentPanel({
           <div className="mt-1 text-3xl font-medium tracking-tight tabular-nums md:text-5xl">
             {lastDay ? (
               <NumberFlow
-                value={lastDay.totalTokens}
+                {...kiloMega(lastDay.totalTokens)}
                 locales="en-US"
-                format={{ notation: "compact", maximumFractionDigits: 1 }}
+                format={{ maximumFractionDigits: 1, useGrouping: false }}
               />
             ) : <FlowDash />}
           </div>
