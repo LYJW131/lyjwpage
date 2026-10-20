@@ -307,3 +307,16 @@ test("pulse 改成带本地时间的行：编码道再长听歌道也在，空�
   assert.equal(lanes.coding.driverSpans[0].minutes, Math.round((n / 2) * 10 / 60));
   assert.deepEqual([0, 1, 2, 3].map(isDriverValue), [0, 1, 2, 3].map(isCodingDriverValue));
 });
+
+test("pulse 前面几道很长被截断时，各道合计仍在最前", async () => {
+  const from = Date.parse("2026-10-20T00:00:00+08:00");
+  const n = 40;
+  const long = (i: number) => `${"歌".repeat(190)}${i}`;
+  const listening = { startSec: Array.from({ length: n }, (_, i) => i * 1000), endSec: Array.from({ length: n }, (_, i) => i * 1000 + 300), state: Array(n).fill(2), title: Array.from({ length: n }, (_, i) => long(i)), subtitle: Array.from({ length: n }, (_, i) => long(i)) };
+  const pulse = { generatedAt: from, window: { from, to: from + 86_400_000 }, lanes: { listening: { kind: "state", segments: listening, summary: { activeSeconds: 12_000, titles: n } }, coding: { kind: "coding", segments: { startSec: [0], endSec: [60], value: [1], agentSources: [0] }, summary: { humanSeconds: 60, agentSeconds: 0, bothSeconds: 0 } } } };
+  const result = await run({ views: ["pulse"] }, fakeIO(() => ({ ok: true, data: pulse })));
+  const { json } = section(result.text, "pulse");
+  assert.match(json, /…\[truncated\]$/);
+  assert.ok(json.indexOf('"totals"') < json.indexOf('"lanes"'));
+  assert.match(json, /"coding":\{"humanSeconds":60,"agentSeconds":0,"bothSeconds":0\}/);
+});
