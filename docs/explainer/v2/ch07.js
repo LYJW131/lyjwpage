@@ -415,7 +415,7 @@
       }
       if (b >= AT.dest) {
         T(tr("ch07.c.dest"), 36, 106, { s: 10, col: C.y });
-        ["Cloudflare Workers", "Workers AI · Clef", "Anthropic · Claude API", tr("ch07.c.browser")].forEach((s, i) => {
+        ["Cloudflare Workers", "Workers AI · Clef · Clairic", "Anthropic · Claude API", tr("ch07.c.browser")].forEach((s, i) => {
           if (b < AT.rows[i]) return;
           const x = i % 2 ? 200 : 44, y = 120 + Math.floor(i / 2) * 14;
           R(x - 7, y - 6, 3, 3, C.c); T(s, x, y, { s: 10 });

@@ -378,7 +378,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - Clef 是 Workers AI 上的路由模型（`workers/ai/src/chat/router.ts`，`CLEF_CHOICES`）：flash（杂鱼）、think（先知）、设计（交给先知判断）、Fable、refuse，判的是档次，由谁出场看阵容；Clef 不可用时落到 `ROUTER_FALLBACK`（flash）。
 - 三档与人设：Clef 只判档次，杂鱼与先知由访客在卡片里选阵容（`shared/god-chat-tiers.ts#GOD_CHAT_LINEUPS`）：DeepSeek 阵容是 DeepSeek Flash · Small Fry、DeepSeek Flash Thinking · Prophet（默认），Claude 阵容是 Haiku 5.5 · Small Fry、Sonnet 5.5 · Prophet；Fable · God 两边一样；设计请求由 Prophet 判断，设计会话里的 Opus 是 Architect（`shared/god-chat-tiers.ts#GOD_CHAT_TIER_INFO`）。选中的档满了只在同一阵容里往下逐档降，绝不往上升（`shared/god-chat-tiers.ts#downgradeChain`）。refuse 不调模型，直接回一句关门话。
-- 预取：同一次 Clef 调用里另答两题，要先读哪组站点状态（`workers/ai/src/chat/router.ts#PREFETCH_STATUS`）、要先读哪篇项目文档，选中项把握够高才由 Worker 在第一次模型请求前先跑好这些工具调用；同时并行问一次 Workers AI 上的 System One 抽取模型 Clairic（`@cf/cloudflare/clairic`，同文件 `itemInput`），从最新一条里挑出访客点名的游戏、歌、番名，Clef 选中可搜的分组时再带这个名字多读一次，游戏与奖杯组另预取一张这款游戏的卡（`workers/ai/README.md`「首页对话」、同文件 `routeWithClef`）。Clairic 出错或超时只是少这一次读取。首页示例问题原文命中时不调 Clef，按示例写定的档位与预取走（同文件 `presetRoute`）。对话卡的隐私说明里列的是 Clef，没有单列 Clairic（`src/components/god-chat.tsx#CONSENT_COPY`）。
+- 预取：同一次 Clef 调用里另答两题，要先读哪组站点状态（`workers/ai/src/chat/router.ts#PREFETCH_STATUS`）、要先读哪篇项目文档，选中项把握够高才由 Worker 在第一次模型请求前先跑好这些工具调用；同时并行问一次 Workers AI 上的 System One 抽取模型 Clairic（`@cf/cloudflare/clairic`，同文件 `itemInput`），从最新一条里挑出访客点名的游戏、歌、番名，Clef 选中可搜的分组时再带这个名字多读一次，游戏与奖杯组另预取一张这款游戏的卡（`workers/ai/README.md`「首页对话」、同文件 `routeWithClef`）。Clairic 出错或超时只是少这一次读取。首页示例问题原文命中时不调 Clef，按示例写定的档位与预取走（同文件 `presetRoute`）。对话卡的隐私说明把 Clef 与 Clairic 都列在 Workers AI 下（`src/components/god-chat.tsx#CONSENT_COPY`）。
 - Small Fry 判断问题超出自己时调 `request_upgrade`，扣到先知那档的名额就由 Prophet 重答（`workers/ai/src/chat/prompts.ts#UPGRADE_TOOLS`）。
 
 ### 工具与盖章
