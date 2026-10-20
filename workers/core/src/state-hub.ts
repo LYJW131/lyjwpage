@@ -8,15 +8,13 @@ import { applyEnrichmentPatch } from "./enrichment-patch";
 import type { EnrichmentPatch } from "@shared/track-enrichment";
 import type { CoreCommand } from "@shared/ingest/prepare";
 import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
-import { historyArchive, pulseScoringAi, requestStore, type Env } from "./runtime";
+import { historyArchive, requestStore, type Env } from "./runtime";
 import { PulseArchiveState, type ArchiveStream, type PulseArchiveSnapshot } from "./pulse-archive";
-import { PulseScoreState, type PulseScoreClaim } from "./pulse-score-state";
-import type { PulseAssessment } from "@shared/pulse-assessment";
 import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
 import { LAG_REPURGE_DELAY_MS, lagStatusTags, queueRepurge, takeDueRepurge, type RepurgeQueue } from "./lag-repurge";
 import { expireStatusTags } from "./live-platform";
 
-export type PulseTick = { archive: PulseArchiveSnapshot; score: PulseScoreClaim | null };
+export type PulseTick = { archive: PulseArchiveSnapshot };
 
 const REPURGE_KEY = "lag-repurge";
 
@@ -28,16 +26,11 @@ export class StateHub extends DurableObject<Env> {
   private database: SqliteStore;
   private ingestTail: Promise<unknown> = Promise.resolve();
   private pulseArchiveState: PulseArchiveState;
-  private pulseScoreState: PulseScoreState;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.database = new SqliteStore(ctx.storage.sql, (work) => ctx.storage.transactionSync(work));
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
     this.pulseArchiveState = new PulseArchiveState({
-      sql: ctx.storage.sql,
-      execute: (commands) => this.database.execute(commands),
-    });
-    this.pulseScoreState = new PulseScoreState({
       sql: ctx.storage.sql,
       execute: (commands) => this.database.execute(commands),
     });
@@ -115,35 +108,19 @@ export class StateHub extends DurableObject<Env> {
     return result;
   }
 
-  // 归档与评分各自失败不连累对方，所以分开兜底，各回各的空值。
   async pulseTick(): Promise<PulseTick> {
-    const idle: PulseTick = { archive: { now: Date.now(), streams: [] }, score: null };
+    const idle = { now: Date.now(), streams: [] };
     await this.ingestTail;
     const archive = historyArchive(this.env)
-      ? await this.pulseArchiveState.readPulseArchive().catch((error: unknown) => (console.warn("[pulse-archive]", error), idle.archive))
-      : idle.archive;
-    const score = pulseScoringAi(this.env)
-      ? await this.pulseScoreState.claimPulseScore().catch((error: unknown) => (console.warn("[pulse-score]", error), null))
-      : null;
-    return { archive, score };
+      ? await this.pulseArchiveState.readPulseArchive().catch((error: unknown) => (console.warn("[pulse-archive]", error), idle))
+      : idle;
+    return { archive };
   }
 
   async confirmPulseArchive(stream: ArchiveStream, at: number, replaceToken?: string): Promise<number> {
     if (!historyArchive(this.env)) return 0;
     await this.ingestTail;
     return this.pulseArchiveState.confirmPulseArchive(stream, at, replaceToken);
-  }
-
-  async activatePulseScore(token: string, generation: number): Promise<boolean> {
-    if (!pulseScoringAi(this.env)) return false;
-    await this.ingestTail;
-    return this.pulseScoreState.activatePulseScore(token, generation);
-  }
-
-  async finishPulseScore(token: string, generation: number, records: PulseAssessment[]): Promise<boolean> {
-    if (!pulseScoringAi(this.env)) return false;
-    await this.ingestTail;
-    return this.pulseScoreState.finishPulseScore(token, generation, records);
   }
 
   async deferStatusRepurge(tags: string[]): Promise<void> {
