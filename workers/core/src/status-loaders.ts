@@ -5,6 +5,7 @@ import { getNowWatching, getWatching } from "./emby";
 import { getPlaying, getPlayingNow, getTrophies } from "./playstation";
 import { getQuestNow } from "./quest";
 import { getFocusNow } from "./stores/focus";
+import { getLimitHistory } from "./limit-history";
 import { getPowerBankSnapshot } from "./powerbank";
 import { getPulseStatus } from "./pulse";
 import { LAG_VIEW_LOADERS } from "@shared/lag-views";
@@ -40,6 +41,7 @@ export const statusLoaders = {
   coding: { endpoint: unparam(getCodingUsage) },
   codingNow: { endpoint: unparam(getCodingNow) },
   limits: { endpoint: LAG_VIEW_LOADERS.limits },
+  limitsHistory: { endpoint: unparam(() => getLimitHistory()) },
   agentStatus: { endpoint: LAG_VIEW_LOADERS.agentStatus },
   codingYear: { endpoint: unparam(getCodingYear) },
   watching: { endpoint: unparam(getWatching) },

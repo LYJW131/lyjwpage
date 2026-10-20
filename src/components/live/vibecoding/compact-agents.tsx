@@ -4,8 +4,8 @@ import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import { useEffect, useState } from "react";
 
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";
-import { LimitMeter, PaceMarker, UsageMeter } from "@/components/live/vibecoding/limit-meter";
-import { LIMITS_SILENT, compactLimit, formatCompactReset, limitColor, limitPace, nextCompactTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
+import { LimitMeter, LimitUnavailable, PaceMarker, UsageMeter } from "@/components/live/vibecoding/limit-meter";
+import { LIMITS_SILENT, compactLimit, featuredLimitRows, hasFeaturedLimits, formatCompactReset, limitColor, limitPace, nextCompactTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, BrandMark } from "@/components/live/vibecoding/marks";
 import { useAgentActive, type FirstFrameClocks } from "@/components/live/vibecoding/use-agent-active";
 import { useMountedAt } from "@/hooks/use-mounted-at";
@@ -59,7 +59,8 @@ function CompactAgentRow({
   const { active, sources } = useAgentActive(row, macDeclaredOffline, clocks);
   const usageUrl = agentUsageUrl(row.id);
   const [expanded, setExpanded] = useState(false);
-  const expandable = !usageUrl && !limitsStale && row.limits.length > 1;
+  const featured = hasFeaturedLimits(row.id);
+  const expandable = !limitsStale && (featured ? row.limits.length > 0 : !usageUrl && row.limits.length > 1);
   const open = expandable && expanded;
 
   return (
@@ -141,7 +142,7 @@ function CompactAgentRow({
       </span>
       <UsageMeter
         href={usageUrl}
-        label={agentUsageLabel(row.label)}
+        label={expandable ? `${row.label} limits` : agentUsageLabel(row.label)}
         expanded={open}
         onToggle={expandable ? () => setExpanded((value) => !value) : undefined}
       >
@@ -155,15 +156,35 @@ function CompactAgentRow({
       </UsageMeter>
       {open && (
         <div className="mt-3 grid gap-3 border-l border-line pl-3">
-          {row.limits.map((item) => (
-            <LimitMeter
-              key={item.key}
-              limit={item}
-              title={item.label ?? item.key}
-              href={null}
-              label={agentUsageLabel(row.label, item.label ?? item.key)}
-            />
-          ))}
+          {featured
+            ? featuredLimitRows(row).map((limitRow) =>
+                limitRow.kind === "limit" ? (
+                  <LimitMeter
+                    key={limitRow.key}
+                    limit={limitRow.limit}
+                    title={limitRow.title}
+                    href={usageUrl}
+                    label={agentUsageLabel(row.label, limitRow.title)}
+                  />
+                ) : (
+                  <LimitUnavailable
+                    key={limitRow.key}
+                    title={limitRow.title}
+                    reason={limitRow.reason}
+                    href={usageUrl}
+                    label={agentUsageLabel(row.label, limitRow.title)}
+                  />
+                ),
+              )
+            : row.limits.map((item) => (
+                <LimitMeter
+                  key={item.key}
+                  limit={item}
+                  title={item.label ?? item.key}
+                  href={null}
+                  label={agentUsageLabel(row.label, item.label ?? item.key)}
+                />
+              ))}
         </div>
       )}
     </div>
