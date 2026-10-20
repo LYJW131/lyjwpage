@@ -89,7 +89,7 @@
   const AT = {
     look: 0.3, leap: 0.5, land: 1.125, arms: 0.75, table: 0.9,
     e403: 3.5, two: 4.15, exit: 4.9, gone: 5.15,
-    checks: [6.5, 7.0, 7.5, 8.0, 8.5], press: 9.0, html: 9.25, htmlGates: [9.5, 9.625, 9.75, 9.875], s400: 10.0, trap: 10.25,
+    checks: [6.5, 7.0, 7.5, 8.0, 8.5], open: 8.75, press: 9.0, html: 9.25, htmlGates: [9.5, 9.625, 9.75, 9.875], s400: 10.0, trap: 10.25,
     gear: 11.5, server: 14.0, fork: 14.5, rtOut: 15.75,
     flange: 17.0, core: 17.25, hub: 17.5, commit: 17.75, reply: [18.0, 18.5], slide: [21.4, 22.5],
     lamp1: 22.5, d1Start: 22.75, lamp2: 23.0, lamp3: 23.5, horn: 23.75, s202: 24.0, d1Done: 24.25, fail: 25.05,
@@ -423,12 +423,25 @@
   function envAt(x, wx, wy, rot, o = {}) {
     const a = o.a ?? 1;
     if (a <= 0) return;
+    // 封舌翻过封口之后画在信封背后，露出里面那一面；信纸画在封舌和信封之间，下半截被信封挡住。
+    const tip = lerp(ENV_H * 0.06, -ENV_H * 1.1, E.io(o.open || 0)), back = tip < -ENV_H / 2;
+    const flap = [[-ENV_W / 2, -ENV_H / 2], [0, tip], [ENV_W / 2, -ENV_H / 2]];
     group(x, a, () => at(x, wx, wy, rot, () => {
       x.scale(o.s ?? 1, o.s ?? 1);
       rect(x, -ENV_W / 2 + 6, -ENV_H / 2 + 6, ENV_W, ENV_H, INK);
+      if (back) {
+        fillPoly(x, flap, PAPER);
+        x.save(); x.strokeStyle = rgba(INK); x.lineWidth = 4; x.lineJoin = "round"; x.beginPath(); flap.forEach(([px, py], i) => (i ? x.lineTo(px, py) : x.moveTo(px, py))); x.stroke(); x.restore();
+      }
+      if (o.letter > 0) {
+        const lt = -ENV_H / 2 + 8 - 38 * E.outBack(clamp(o.letter)), lx = -ENV_W * 0.36;
+        rect(x, lx, lt, ENV_W * 0.72, ENV_H * 0.7, PAPER);
+        x.save(); x.strokeStyle = rgba(INK); x.lineWidth = 3; x.strokeRect(lx, lt, ENV_W * 0.72, ENV_H * 0.7); x.restore();
+        for (const [dy, w] of [[12, 54], [22, 70]]) rect(x, lx + 12, lt + dy, w, 4, INK);
+      }
       rect(x, -ENV_W / 2, -ENV_H / 2, ENV_W, ENV_H, PAPER);
       x.save(); x.strokeStyle = rgba(INK); x.lineWidth = 4; x.strokeRect(-ENV_W / 2, -ENV_H / 2, ENV_W, ENV_H); x.restore();
-      fillPoly(x, [[-ENV_W / 2, -ENV_H / 2], [0, ENV_H * 0.06], [ENV_W / 2, -ENV_H / 2]], o.flap || SIG());
+      if (!back) fillPoly(x, flap, o.flap || SIG());
       if (o.label) T(x, o.label, 0, ENV_H / 2 - 11, { font: MONO(28, 600), align: "center" });
     }));
   }
@@ -486,6 +499,77 @@
     const k = prog(b, AT.trap + 0.02, AT.trap + 0.3, E.in), p0 = M(STOP(4), -21 - ENV_H / 2), p1 = [F2[0] + BIN[0], F2[1] + BIN[1] - 10];
     envAt(x, lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k), TH + 1.3 * k, { ...o, a: 1 - prog(k, 0.8, 1), s: lerp(1, 0.85, k) });
   }
+  // 挂签横着挂，字才好读；挂绳按签宽放长，签的右上角才不碰往右下斜的带子。<html> 进来之前收掉，免得看成是它拆出来的。
+  const PEEL = 0.12, PEEL_OFF = [9.3, 9.4], LPAD = 14, JWT_SEG = [26, 46, 26];
+  function layerSize(x, g) {
+    if (g === 0) return [K.measure(x, "POST", MONO(36, 600)) + 2 * LPAD + 8, 52];
+    if (g === 1) return [K.measure(x, "/api/ingest/mac", MONO(28, 600)) + 2 * LPAD, 46];
+    if (g === 2) return [K.measure(x, "JWT", MONO(28, 600)) + 12 + JWT_SEG.reduce((s, w) => s + w + 10, -10) + 2 * LPAD, 46];
+    return g === 3 ? [142, 98] : [172, 58];
+  }
+  function layerFace(x, g, W, H, landed) {
+    const f = MONO(28, 600);
+    if (g === 0) T(x, "POST", 0, 13, { font: MONO(36, 600), col: PAPER, align: "center" });
+    else if (g === 1) T(x, "/api/ingest/mac", 0, 10, { font: f, col: PAPER, align: "center" });
+    else if (g === 2) {
+      let px = -W / 2 + LPAD + T(x, "JWT", -W / 2 + LPAD, 10, { font: f, col: PAPER }) + 12;
+      JWT_SEG.forEach((sw, j) => {
+        const k = clamp(landed / 0.05 - j);
+        if (j) { if (k > 0) rect(x, px + 3, -2, 4, 4, PAPER); px += 10; }
+        rect(x, px, -7, sw * k, 14, j === 2 ? RED : PAPER);
+        px += sw;
+      });
+    } else if (g === 3) {
+      const cy = -6, R = 34, lim = 0.82, s = landed * BARs, nv = 0.5 * (1 - Math.exp(-s / 0.12) * Math.cos((TAU * s) / 0.32));
+      x.save(); x.lineWidth = 4; x.strokeStyle = rgba(PAPER); x.beginPath(); x.arc(0, cy, R, Math.PI, Math.PI * (1 + lim)); x.stroke();
+      x.lineWidth = 7; x.strokeStyle = rgba(RED); x.beginPath(); x.arc(0, cy, R, Math.PI * (1 + lim), TAU); x.stroke(); x.restore();
+      for (let i = 0; i <= 5; i++) { const an = Math.PI * (1 + i / 5); bar(x, Math.cos(an) * (R - 9), cy + Math.sin(an) * (R - 9), Math.cos(an) * (R - 2), cy + Math.sin(an) * (R - 2), 2.5, PAPER); }
+      const an = Math.PI * (1 + clamp(nv, 0, 1));
+      bar(x, 0, cy, Math.cos(an) * (R - 8), cy + Math.sin(an) * (R - 8), 4, PAPER);
+      disc(x, 0, cy, 5, PAPER);
+      T(x, "≤ 4 MiB", 0, H / 2 - 13, { font: f, col: PAPER, align: "center" });
+    } else {
+      const k = E.outBack(clamp(landed / 0.1)), sp = lerp(8, 50, k);
+      T(x, "{", -sp, 15, { font: MONO(44, 600), col: PAPER, align: "center" });
+      T(x, "}", sp, 15, { font: MONO(44, 600), col: PAPER, align: "center" });
+      T(x, "…", 0, 10, { font: MONO(30, 600), col: PAPER, align: "center", alpha: clamp(k) });
+    }
+  }
+  // flying 为真时只画还在翻的那一层，画在信封底下：它从信封右上角背后抽出来，信封的封舌和「mac」一直露着。
+  function layers(x, b, flying) {
+    const off = 1 - prog(b, PEEL_OFF[0], PEEL_OFF[1]);
+    if (off <= 0) return;
+    group(x, off, () => AT.checks.forEach((c, g) => {
+      if (b < c) return;
+      const [W, H] = layerSize(x, g), k = prog(b, c, c + PEEL), S = M(GATE_U[g], 21), L = (SL * W) / 2 + 14;
+      if (k < 1) {
+        if (k > 0.75 && !flying) bar(x, S[0], S[1], S[0], S[1] + L, 4, INK, prog(k, 0.75, 1));
+        if (!flying) return;
+        const e = M(STOP(g) + 14, -21 - ENV_H / 2 - 10), r = [S[0], S[1] + L + H / 2], q = E.io(k);
+        const ctl = [lerp(e[0], r[0], 0.7), Math.min(e[1], r[1]) - 120];
+        const px = lerp(lerp(e[0], ctl[0], q), lerp(ctl[0], r[0], q), q), py = lerp(lerp(e[1], ctl[1], q), lerp(ctl[1], r[1], q), q);
+        const fl = Math.cos(Math.PI * q), w = lerp(ENV_W * 0.9, W, q), h = lerp(ENV_H * 0.9, H, q);
+        // 翻到侧面那几帧只剩一条线，不画。
+        if (Math.abs(fl) > 0.1) at(x, px, py, lerp(TH, 0, E.out(k)), () => {
+          x.scale(1, Math.abs(fl));
+          if (fl > 0) {
+            rect(x, -w / 2, -h / 2, w, h, PAPER);
+            x.save(); x.strokeStyle = rgba(INK); x.lineWidth = 3; x.strokeRect(-w / 2, -h / 2, w, h); x.restore();
+          } else {
+            rect(x, -w / 2, -h / 2, w, h, INK);
+            group(x, prog(-fl, 0.4, 0.95), () => { x.scale(w / W, h / H); layerFace(x, g, W, H, 0); });
+          }
+        });
+        return;
+      }
+      if (flying) return;
+      const s = (b - c - PEEL) * BARs, swing = -0.06 * Math.exp(-s / 0.3) * Math.sin((TAU * s) / 0.6);
+      at(x, S[0], S[1], swing, () => {
+        bar(x, 0, 0, 0, L, 4, INK);
+        at(x, 0, L + H / 2, 0, () => { rect(x, -W / 2, -H / 2, W, H, INK); layerFace(x, g, W, H, b - c - PEEL); });
+      });
+    }));
+  }
   const ROWS = [["r1", "method", "405"], ["r2", "source", "404"], ["r3", "RS256 · aud · iss · exp", "401·403·503"], ["r4", null, "400"], ["r5", "JSON.parse", "400"], ["r6", "PreparedIngest", "400"]];
   function board(x, b) {
     local(x, F2, () => {
@@ -505,12 +589,18 @@
   }
   function frame2(x, b) {
     gatePosts(x);
-    if (b < AT.press + 0.02) envOn(x, envU(b), { label: "mac", s: 1 - 0.12 * prog(b, 8.98, AT.press) });
-    else cmdBlock(x, blockU(b), lerp(0.6, 1, E.outBack(prog(b, AT.press, AT.press + 0.12))) * (1 - prog(b, 11.47, 11.62)), 1);
+    layers(x, b, true);
+    if (b < AT.press + 0.02) {
+      const bump = Math.max(...AT.checks.map((c) => impact(b, c, 0.06)));
+      envOn(x, envU(b), { label: "mac", s: (1 - 0.12 * prog(b, 8.98, AT.press)) * (1 + 0.05 * bump), open: prog(b, AT.open, AT.open + 0.1), letter: prog(b, AT.open + 0.04, AT.open + 0.13) });
+    }
     trapAndBin(x, b);
     htmlEnv(x, b);
     booms(x, b);
     pressMachine(x, b);
+    // cmd 画在压机前面：它从两条腿之间滑出去，画在后面的话右腿会挡住「d」。
+    if (b >= AT.press + 0.02) cmdBlock(x, blockU(b), lerp(0.6, 1, E.outBack(prog(b, AT.press, AT.press + 0.12))) * (1 - prog(b, 11.47, 11.62)), 1);
+    layers(x, b, false);
     board(x, b);
     local(x, F2, () => slab(x, 1440, 956, 210, 168, -0.12, prog(b, AT.s400, AT.s400 + 0.12), "400", tr("ch02.notJson"), { px: 96 }));
   }

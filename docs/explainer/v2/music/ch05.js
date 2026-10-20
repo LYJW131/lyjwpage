@@ -110,9 +110,10 @@
 
     const story = [];
     const hit = (bar, beat, what, v = 1, extra = {}) => story.push({ bar, beat, kind: "jazz", what, v, ...extra });
+    // 不用刷子 sweep：连着几拍的摩擦声刺耳，拍上改成轻的叮叮镲。
     const brush = (bar, { from = 0, v = 1, taps = true } = {}) => {
       for (let b = from; b < 4; b++) {
-        hit(bar, b, "sweep", v * (b % 2 ? 0.8 : 1), { pan: b % 2 ? 0.1 : -0.2 });
+        if (b % 2 === 0) hit(bar, b, "ride", 0.55 * v, { i: (bar * 2 + b) % 3 });
         if (b % 2) { if (taps) hit(bar, b, "tap", v); hit(bar, b, "chick", 0.8 * v); }
         hit(bar, b, "kick", 0.3 * v);
       }
@@ -130,7 +131,6 @@
     for (const b of [1, 3]) hit(1, b, "snap", 0.9, { pan: b === 1 ? -0.25 : 0.25 });
     for (let bar = 5; bar <= 11; bar++) ride(bar, { drop: bar % 2 ? 3 + SW : null });
     hit(12, 0, "kick", 0.9); hit(12, 0, "tap", 0.8);
-    // 中段不用刷子 sweep：连着几小节的摩擦声刺耳，用轻的叮叮镲两拍代替。
     const lightRide = (bar, v, kick) => {
       for (const b of [0, 2]) { hit(bar, b, "ride", v, { i: (bar * 2 + b) % 3 }); if (kick) hit(bar, b, "kick", 0.3 * v); }
       for (const b of [1, 3]) hit(bar, b, "chick", 0.8 * v);
@@ -149,7 +149,7 @@
     hit(26, 0, "kick", 0.9); hit(26, 0, "ride", 1, { i: 1 });
     [1, 1.5, 2, 2.5].forEach((b, i) => hit(26, b, "bongo", 0.85, { hi: i % 2 === 0 }));
     [[26, 3], [27, 0], [27, 1], [27, 2]].forEach(([bar, b], i) => hit(bar, b, "snip", 0.9, { pan: -0.2 + 0.15 * i }));
-    for (const b of [0, 1, 2]) hit(27, b, "sweep", 0.5, { pan: b % 2 ? 0.1 : -0.2 });
+    for (const b of [0, 2]) hit(27, b, "ride", 0.4, { i: b % 3 });
     // 27:3 过门：刷子点两下、底鼓带一下，颤音琴按 A7sus4 往上一串，落到第 06 章 0:0。
     for (const [b, v] of [[3, 0.55], [3 + SW, 0.75]]) hit(27, b, "tap", v);
     hit(27, 3 + SW, "kick", 0.6);

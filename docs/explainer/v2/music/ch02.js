@@ -6,10 +6,10 @@
     marchBb: ["Bb2", "F3", "Bb3", "D4"], marchC: ["C3", "G3", "C4", "E4"], marchF: ["F2", "C3", "F3", "A3"], marchD: ["D3", "A3", "D4", "F#4"],
   },
   score: ({ THEME, phrase, midi }) => {
-    // 时刻（小节）与 ch02.js 的 AT 是同一张表：闸杆、钥匙、403、六道检查、<html> 掉进废料箱、齿轮、四根管子、穿墙、三盏灯、202、冲进灯里。
+    // 时刻（小节）与 ch02.js 的 AT 是同一张表：闸杆、钥匙、403、六道检查、信封撕开、<html> 掉进废料箱、齿轮、四根管子、穿墙、三盏灯、202、冲进灯里。
     const AT = {
       leap: 0.5, land: 1.125, arms: 0.75, keyMac: 1.95, doorMac: 2.0, shutMac: 3.0, keyEmby: 3.45, e403: 3.5, keyHa: 3.95, doorHa: 4.0, keyPs: 4.075, doorPs: 4.125, exit: 4.9,
-      checks: [6.5, 7.0, 7.5, 8.0, 8.5], press: 9.0, html: 9.25, htmlGates: [9.5, 9.625, 9.75, 9.875], s400: 10.0, trap: 10.25, bin: 10.55,
+      checks: [6.5, 7.0, 7.5, 8.0, 8.5], open: 8.75, press: 9.0, html: 9.25, htmlGates: [9.5, 9.625, 9.75, 9.875], s400: 10.0, trap: 10.25, bin: 10.55,
       gear: 11.5, tokens: [12.0, 12.125, 12.25, 12.5, 12.75], serverIn: 13.3, server: 14.0, fork: 14.5, rtOut: 15.75,
       flange: 17.0, core: 17.25, hub: 17.5, commit: 17.75, reply: 18.0, slide: 21.4,
       lamps: [22.5, 23.0, 23.5], drop: 22.65, d1Start: 22.75, horn: 23.75, s202: 24.0, d1Done: 24.25, fail: 25.05, dive: 29.2,
@@ -216,6 +216,9 @@
       [AT.doorMac, "zip", 0.25, -0.65, 0.7], [AT.shutMac, "land", 0.28, -0.65, 1.2],
       [AT.e403, "stamp", 0.85, -0.6], [AT.e403, "land", 0.35, -0.6],
       [AT.doorHa, "zip", 0.25, -0.3, 0.7], [AT.doorPs, "zip", 0.25, -0.1, 0.75],
+      // 拆层的纸响音量压在铁砧底下，不盖过那串音阶。
+      ...AT.checks.map((o, i) => [o, "paper", 0.16, -0.5 + 0.2 * i, 1.05 + 0.05 * i]),
+      [AT.open, "paper", 0.26, 0.5, 0.85],
       [AT.press, "stamp", 0.55, 0.2, 0.85],
       [AT.s400, "stamp", 0.95, 0.3], [AT.s400, "land", 0.4, 0.3],
       [AT.bin - 0.05, "paper", 0.35, 0.4], [AT.bin, "knock", 0.3, 0.4],
