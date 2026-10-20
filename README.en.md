@@ -61,8 +61,8 @@ The cards below are rendered live by the site as SVG, follow the system light or
 **Do Not Disturb**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=2">
-  <img src="https://lyjw.me/cards/focus.svg?v=2" alt="Do Not Disturb card: the iPhone Focus mode and how long it has been on" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/focus.svg?theme=dark&amp;v=3">
+  <img src="https://lyjw.me/cards/focus.svg?v=3" alt="Do Not Disturb card: the iPhone Focus mode and how long it has been on" width="100%">
 </picture>
 
 **Now playing on Meta Quest**
