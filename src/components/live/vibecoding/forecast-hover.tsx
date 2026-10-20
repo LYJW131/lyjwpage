@@ -53,6 +53,7 @@ export function ForecastHover({
   const close = useCallback(() => setAt(null), []);
   useHoverDismiss(buttonRef, at != null, close);
   const span = forecast.resetAt - forecast.startAt;
+  const inWindow = (value: number | null): value is number => value != null && value >= forecast.startAt && value <= forecast.resetAt;
   const clamp = (value: number) => Math.min(forecast.resetAt, Math.max(forecast.startAt, value));
 
   const selectAt = (clientX: number, target: HTMLButtonElement) => {
@@ -65,7 +66,7 @@ export function ForecastHover({
     setAt(snap ?? clamp(forecast.startAt + Math.round((raw - forecast.startAt) / STEP_MS) * STEP_MS));
   };
 
-  const sample = at == null || at < forecast.startAt || at > forecast.resetAt ? null : sampleForecast(forecast, at);
+  const sample = inWindow(at) ? sampleForecast(forecast, at) : null;
   const value = sample == null ? null : sample.phase === "locked" ? 100 : sample.percent ?? sample.target ?? sample.even;
   const clock = new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone });
 
@@ -78,12 +79,12 @@ export function ForecastHover({
         aria-label="Weekly limit forecast. Use arrow keys to inspect the week."
         onPointerMove={(event) => selectAt(event.clientX, event.currentTarget)}
         onPointerLeave={(event) => { if (event.pointerType === "mouse") setAt(null); }}
-        onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setAt((current) => current ?? forecast.now); }}
+        onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setAt((current) => (inWindow(current) ? current : forecast.now)); }}
         onBlur={() => setAt(null)}
         onClick={(event) => {
           if (event.detail === 0) {
             setBounds(cellAnchor(event.currentTarget));
-            setAt((current) => current ?? forecast.now);
+            setAt((current) => (inWindow(current) ? current : forecast.now));
           } else selectAt(event.clientX, event.currentTarget);
         }}
         onKeyDown={(event) => {
@@ -92,7 +93,7 @@ export function ForecastHover({
           if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
             event.preventDefault();
             const step = event.key === "ArrowLeft" ? -KEY_STEP_MS : KEY_STEP_MS;
-            setAt((current) => clamp((current ?? forecast.now) + step));
+            setAt((current) => clamp((inWindow(current) ? current : forecast.now) + step));
           }
         }}
       />
