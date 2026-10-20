@@ -3,6 +3,7 @@ import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import type { NowListeningPayload } from "@shared/types";
 
 import { base64url, decodeBase64url } from "../crypto";
+import { MERGE_GAP_SEC, pulseForModel } from "./pulse-shape";
 import type { SiteTool, ToolLedger } from "./registry";
 import { collectLists, normalize, PAGE_SIZE, strip, withMonthlyTotals, type PagedList } from "./status-shape";
 
@@ -18,7 +19,7 @@ const VIEW_NOTES = {
   server: "Exit-node server: uptime, CPU, memory, network, monthly traffic",
   charger: "Anker charger ports: devices charging, power, protocol",
   powerBank: "Anker power bank: battery %, charging, ports",
-  listening: "Recently played Apple Music tracks",
+  listening: "Recently played Apple Music songs, albums and playlists, newest first, without play times; for what LYJW listened to and when over the past 24 hours, read pulse",
   nowListening: "Song playing right now: reported by the Mac or HomePod (music), or inferred on another device from Apple Music play history (elsewhere); idle only covers the Mac and HomePod",
   coding: "AI coding token totals and API-equivalent cost since tracking began, top models and per-agent totals; no per-day numbers (those are in codingYear)",
   codingNow: `Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; mac-otlp = an agent's built-in telemetry on LYJW's Mac (Devin CLI); agents-otlp = built-in telemetry from cloud sessions (Claude Code, Devin CLI); agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac or mac-otlp) with an unlocked desktop suggests LYJW is at the computer. lastActivityAt is the latest report from a session that keeps reporting while it works: the site shows an agent as in use right now when that is within the last ${CODING_ACTIVE_WINDOW_MS / 60_000} minutes (ignoring mac and mac-otlp while the Mac has declared itself offline), so describe such an agent as working now, not as last active some minutes ago`,
@@ -39,7 +40,7 @@ const VIEW_NOTES = {
   siteDeployments: "Site Worker production deployment, recent builds, pageviews and PageSpeed samples",
   health: "Uptime, API cron heartbeat, error counts and real-visitor Web Vitals for this site",
   reporters: "Health of the reporters that push data to this site",
-  pulse: "24h timeline of coding, listening, watching, gaming, charging, activity (large). Coding summary: humanSeconds + bothSeconds is LYJW's driver time (a coding app in front on LYJW's Mac; keyboard activity is not tracked, so LYJW may have stepped away); agentSeconds is agents running without a coding app in front. Report driver time as LYJW's coding time, never the sum of all three",
+  pulse: `LYJW's past 24 hours as time spans per lane: songs played on the Mac or HomePod (listening.spans) and songs inferred from Apple Music history on another device (listening.inferredElsewhere), shows watched, games played, stretches with a coding app in front on LYJW's Mac (coding.driverSpans; agents running alone are left out), with every lane's totals (including tokens, charging and steps) first under totals. A span's from/to may bridge breaks of up to ${MERGE_GAP_SEC / 60} minutes and its minutes counts only the time actually active. In totals.coding, humanSeconds + bothSeconds is LYJW's driver time (a coding app in front on LYJW's Mac; keyboard activity is not tracked, so LYJW may have stepped away); agentSeconds is agents running without a coding app in front. Report driver time as LYJW's coding time, never the sum of all three`,
   digest: "Hourly AI-written summary of LYJW's past 24 hours, derived from the other views (read those for exact numbers)",
 } as const satisfies Record<StatusViewKey, string>;
 
@@ -159,13 +160,18 @@ export function nowListeningHint(data: unknown, now: number): string | null {
   return `${source}. ${song} has just run out and the next song${next} has not shown up in play history yet, so LYJW is most likely still listening, not idle.`;
 }
 
+const VIEW_SHAPES: Partial<Record<StatusViewKey, (data: unknown) => unknown>> = {
+  pulse: pulseForModel,
+};
+
 const VIEW_HINTS: Partial<Record<StatusViewKey, (data: unknown, now: number) => string | null>> = {
   nowListening: nowListeningHint,
 };
 
 const clip = (text: string) => (text.length > MAX_CHARS_PER_VIEW ? `${text.slice(0, MAX_CHARS_PER_VIEW)}…[truncated]` : text);
 
-function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: Cursor | undefined, now: number): ViewResult {
+function pageView(view: StatusViewKey, raw: unknown, page: StatusPage, cursor: Cursor | undefined, now: number): ViewResult {
+  const data = VIEW_SHAPES[view]?.(raw) ?? raw;
   const needle = normalize(page.query);
   const lists: PagedList[] = [];
   const filtered = collectLists(withMonthlyTotals(page.detail === "summary" ? strip(data) : data), "", needle, lists);
@@ -203,7 +209,7 @@ function pageView(view: StatusViewKey, data: unknown, page: StatusPage, cursor: 
     next ? `nextCursor: ${next}` : "last page",
     cursor && JSON.stringify(cursor.totals) !== JSON.stringify(totals) && "the lists changed while paging, items may repeat or be missing",
   ].filter(Boolean);
-  const hint = page.offset === 0 ? VIEW_HINTS[view]?.(data, now) : null;
+  const hint = page.offset === 0 ? VIEW_HINTS[view]?.(raw, now) : null;
   return { section: [summary.join(" | "), hint, clip(json)].filter(Boolean).join("\n") };
 }
 
