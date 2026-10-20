@@ -127,6 +127,6 @@ python3 $R/build-artifact.py docs/explainer/index.html docs/explainer/artifact.h
 
 - 事实以仓库代码为准，核对基线与出处见 [FACTS.md](FACTS.md)。站点架构有变动时，先重核它。
 - 延迟只说「8 月实测 0.32–0.49 s」。
-- 窗口标题的隐私判断只说到这一层：Jev 参与判断，拿不准的交给 lyjw，只有放行的标题才进信封。不写判据；Jev 面板上的概率条是示意值。
+- 窗口标题的隐私判断只说到这一层：先过两份应用名单（「从不读」「不用问」），其余由 TypeSafe System One 上的 Jev 判断；放行的进信封，私密的锁定，拿不准的问 lyjw。不写判据（题面、阈值、名单内容）；Jev 面板上的概率条是示意值。
 - 站点自检相关画面不出现 Cloudflare 账号 ID、真实报错和可用率数字。
 - 歌词一律用占位。

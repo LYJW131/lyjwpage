@@ -19,14 +19,17 @@
     "ch01.again": ["落定前又切：重新计时", "switched again: restart"],
     "ch01.n2c": ["前台应用的切换先防抖：", "App switches are debounced:"],
     "ch01.n2d": ["连切几次，只报最后停住的那个。", "a burst reports only the final app."],
-    "ch01.f1a": ["窗口标题 → Jev", "Window title → Jev"],
+    "ch01.f1a": ["窗口标题 → 隐私判断", "Window title → privacy check"],
     "ch01.wt": ["窗口标题（不上画面）", "window title (not shown)"],
-    "ch01.judge": ["隐私判断", "privacy check"],
+    "ch01.lists": ["应用名单", "App lists"],
+    "ch01.never": ["从不读", "never read"],
+    "ch01.trusted": ["不用问", "no need to ask"],
     "ch01.illus": ["概率条为示意", "bars are illustrative"],
     "ch01.pass": ["放行 → 进信封", "cleared → envelope"],
-    "ch01.owner": ["拿不准 → 交给 lyjw", "unsure → lyjw"],
-    "ch01.n3a": ["窗口标题先经 Jev 做隐私判断；", "Jev screens window titles first;"],
-    "ch01.n3b": ["拿不准的交给 lyjw，放行的才进信封。", "unsure ones go to lyjw."],
+    "ch01.lock": ["私密 → 锁定", "private → locked"],
+    "ch01.owner": ["拿不准 → 问 lyjw", "unsure → ask lyjw"],
+    "ch01.n3a": ["窗口标题先过名单，再由 Jev 判断；", "Titles clear app lists, then Jev;"],
+    "ch01.n3b": ["私密的锁住，拿不准的问 lyjw。", "private ones lock; unsure ask lyjw."],
     "ch01.f1b": ["应用图标 → R2", "App icon → R2"],
     "ch01.byContent": ["sha256(内容)", "sha256(content)"],
     "ch01.sameKey": ["同一内容，同一个键", "same bytes, same key"],
@@ -119,7 +122,7 @@
   const AT = {
     type: 2.1, flip: 3.0, lit: 3.5, post: 3.75, park: 4.0, breath: 4.5,
     sw1: 5.0, sw2: 5.25, settle: 5.75,
-    jev: 7.25, judged: 8.0, cleared: 8.25, owner: 8.5,
+    jev: 7.25, judged: 8.0, cleared: 8.25, lock: 8.375, owner: 8.5,
     pixels: 9.0, hash: 9.25, drop: 9.5, shut: 9.75, objKey: 9.5,
     wake: 11.25, outs: [11.5, 11.75, 12.0],
     homepod: 13.5, haDoor: 14.0, probeLine: 14.5, power: 15.0, probe: 15.25, awake: 15.4, psn: [15.5, 15.75], psDoor: 16.0,
@@ -443,10 +446,11 @@
   }
 
   const WT = { x: 3910, y: 238, w: 760, h: 62 };
-  const JV = { x: 3910, y: 336, w: 760, h: 316 };
-  const QROWS = [430, 482, 534, 586];
+  const GATE = { x: 3910, y: 328, w: 760, h: 56 };
+  const JV = { x: 3910, y: 412, w: 760, h: 262 };
+  const QROWS = [500, 542, 584, 626];
   const PROB = [0.34, 0.81, 0.22, 0.63];
-  const FORK = [4290, 712], PASS = [4056, 788], OWNER = [4524, 788];
+  const FORK = [4290, 712], PASS = [4016, 790], LOCK = [4290, 790], OWNER = [4564, 790];
   const REDACT = [140, 92, 210, 120];
   function redacted(x, rx, cy, a, s = 1) {
     let u = rx;
@@ -460,12 +464,23 @@
     text(x, tr("ch01.wt"), WT.x, WT.y - 12, { font: FONT.cjk(28, 600), color: ash, alpha: a });
     box(x, WT.x, WT.y, WT.w, WT.h, a, { lw: 1.8 });
     redacted(x, WT.x + 30, WT.y + WT.h / 2, a);
-    arrowPath(x, [[WT.x + WT.w / 2, WT.y + WT.h + 4], [WT.x + WT.w / 2, JV.y - 6]], prog(b, 7.0, 7.2), bone, a, 1.6);
+    const mid = WT.x + WT.w / 2;
+    arrowPath(x, [[mid, WT.y + WT.h + 4], [mid, GATE.y - 6]], prog(b, 7.0, 7.1), bone, a, 1.6);
+    box(x, GATE.x, GATE.y, GATE.w, GATE.h, a, { lw: 1.8, dash: [10, 6] });
+    text(x, tr("ch01.lists"), GATE.x + 24, GATE.y + 38, { font: FONT.cjk(28, 600), color: bone, alpha: a });
+    const chip = (key, cx) => {
+      const w = measure(x, tr(key), FONT.cjk(28, 600)) + 32;
+      box(x, cx - w / 2, GATE.y + 8, w, GATE.h - 16, a, { r: 8, lw: 1.6 });
+      text(x, tr(key), cx, GATE.y + 38, { font: FONT.cjk(28, 600), color: css("ash"), align: "center", alpha: a });
+    };
+    chip("ch01.never", GATE.x + 400);
+    chip("ch01.trusted", GATE.x + 620);
+    arrowPath(x, [[mid, GATE.y + GATE.h + 4], [mid, JV.y - 6]], prog(b, 7.1, 7.2), bone, a, 1.6);
     box(x, JV.x, JV.y, JV.w, JV.h, a, { lw: 2.2 });
-    text(x, "Jev", JV.x + 30, JV.y + 52, { font: FONT.mono(34, 600), color: bone, alpha: a });
-    text(x, tr("ch01.judge"), JV.x + 110, JV.y + 50, { font: FONT.cjk(28, 600), color: ash, alpha: a });
+    text(x, "Jev", JV.x + 30, JV.y + 50, { font: FONT.mono(34, 600), color: bone, alpha: a });
+    text(x, "TypeSafe System One", JV.x + 110, JV.y + 48, { font: FONT.mono(28, 500), color: css("ash"), alpha: a });
     const jd = prog(b, AT.judged, AT.judged + 0.08, E.outExpo);
-    text(x, tr("ch01.illus"), JV.x + JV.w - 30, JV.y + 50, { font: FONT.cjk(28, 600), color: ash, align: "right", alpha: a * jd });
+    text(x, tr("ch01.illus"), JV.x + JV.w - 30, JV.y + 48, { font: FONT.cjk(28, 600), color: ash, align: "right", alpha: a * jd });
     const tx0 = JV.x + 60, tx1 = JV.x + JV.w - 40;
     QROWS.forEach((y, i) => {
       text(x, `q${i + 1}`, JV.x + 24, y + 8, { font: FONT.mono(20, 500), color: ash, alpha: a, texture: true });
@@ -486,19 +501,30 @@
       polyline(x, [[JV.x + JV.w / 2, JV.y + JV.h], FORK], fk, 1.8, bone, a);
       x.save(); x.globalAlpha = a * fk; x.fillStyle = css("ink2"); x.strokeStyle = bone; x.lineWidth = 1.8;
       x.beginPath(); x.moveTo(FORK[0], FORK[1] - 12); x.lineTo(FORK[0] + 12, FORK[1]); x.lineTo(FORK[0], FORK[1] + 12); x.lineTo(FORK[0] - 12, FORK[1]); x.closePath(); x.fill(); x.stroke(); x.restore();
-      arrowPath(x, [FORK, [PASS[0] + 40, FORK[1]], [PASS[0] + 40, PASS[1] - 34]], prog(b, AT.judged + 0.08, AT.cleared, E.out), css("signalD"), a, 2.2);
-      arrowPath(x, [FORK, [OWNER[0] - 40, FORK[1]], [OWNER[0] - 40, OWNER[1] - 38]], prog(b, AT.judged + 0.08, AT.cleared, E.out), bone, a * 0.8, 1.8, true);
+      const fl = prog(b, AT.judged + 0.08, AT.cleared, E.out);
+      arrowPath(x, [FORK, [PASS[0], FORK[1]], [PASS[0], PASS[1] - 34]], fl, css("signalD"), a, 2.2);
+      arrowPath(x, [[LOCK[0], FORK[1] + 12], [LOCK[0], LOCK[1] - 46]], fl, bone, a * 0.8, 1.8, true);
+      arrowPath(x, [FORK, [OWNER[0], FORK[1]], [OWNER[0], OWNER[1] - 38]], fl, bone, a * 0.8, 1.8, true);
     }
     const inK = prog(b, AT.cleared, AT.cleared + 0.2, E.io);
     const pa = prog(b, AT.cleared - 0.1, AT.cleared);
     if (pa > 0) {
       envelope(x, PASS[0], PASS[1], 72, inK >= 1 ? css("signalD") : bone, { lw: 2.2, fill: css("ink2"), alpha: a * pa, open: 1 - inK });
-      text(x, tr("ch01.pass"), PASS[0] - 48, PASS[1] + 68, { font: FONT.cjk(28, 600), color: css("signalD"), alpha: a * pa });
+      text(x, tr("ch01.pass"), PASS[0], PASS[1] + 68, { font: FONT.cjk(28, 600), color: css("signalD"), align: "center", alpha: a * pa });
       if (inK > 0 && inK < 1) {
-        const p = pathAt([FORK, [PASS[0] + 40, FORK[1]], [PASS[0] + 40, PASS[1] - 30], [PASS[0], PASS[1] - 10]], inK * 330);
+        const p = pathAt([FORK, [PASS[0], FORK[1]], [PASS[0], PASS[1] - 10]], inK * 330);
         fillRect(x, p[0] - 28, p[1] - 6, 56, 12, css("signalD"), a);
       }
       if (inK >= 1) glow(e, PASS[0], PASS[1], 80, 0.6 * impact(b, AT.cleared + 0.2, 0.2) + 0.15);
+    }
+    const la = prog(b, AT.lock - 0.05, AT.lock + 0.08, E.outBack);
+    if (la > 0) {
+      x.save(); x.translate(LOCK[0], LOCK[1]); x.scale(la, la);
+      box(x, -34, -16, 68, 50, a, { r: 8, lw: 2 });
+      x.save(); x.globalAlpha = a; x.strokeStyle = bone; x.lineWidth = 3; x.beginPath(); x.arc(0, -16, 20, Math.PI, 0); x.stroke(); x.restore();
+      fillRect(x, -4, 0, 8, 16, bone, a);
+      x.restore();
+      text(x, tr("ch01.lock"), LOCK[0], LOCK[1] + 68, { font: FONT.cjk(28, 600), color: ash, align: "center", alpha: a * clamp(la) });
     }
     const oa = prog(b, AT.owner - 0.05, AT.owner + 0.08, E.outBack);
     if (oa > 0) {
@@ -506,7 +532,7 @@
       box(x, -54, -34, 108, 68, a, { r: 12, lw: 2 });
       text(x, "?", 0, 16, { font: FONT.mono(40, 600), color: bone, align: "center", alpha: a });
       x.restore();
-      text(x, tr("ch01.owner"), OWNER[0] - 60, OWNER[1] + 68, { font: FONT.cjk(28, 600), color: ash, alpha: a * clamp(oa) });
+      text(x, tr("ch01.owner"), OWNER[0], OWNER[1] + 68, { font: FONT.cjk(28, 600), color: ash, align: "center", alpha: a * clamp(oa) });
     }
     narPair(x, "ch01.n3a", "ch01.n3b", 3910, [7.05, 7.5], [7.5, 8.2], [7.0, 7.1, 8.85, 8.97], b);
   }
