@@ -160,7 +160,7 @@ Most of the code in this repo is written by Claude; lyjw sets direction, makes t
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/workflow-en-dark.svg">
-  <img src="docs/diagrams/workflow-en-light.svg" alt="Development workflow: requests from lyjw, scheduled routines and visitor builds become PRs through Claude, pass the branch preview, CI, bot review when needed and lyjw's OK, then merge to main and deploy through Workers Builds" width="100%">
+  <img src="docs/diagrams/workflow-en-light.svg" alt="Development workflow: changes from lyjw's requests, scheduled routines and visitor builds become PRs through Claude, pass the branch preview, CI, bot review when needed and lyjw's OK, then merge to main and deploy through Workers Builds" width="100%">
 </picture>
 
 - **Layered rules, enforced where possible**: [`HUMAN.md`](./HUMAN.md) is the collaboration contract for lyjw, [`AGENTS.md`](./AGENTS.md) holds the hard rules for agents, [`.claude/skills/`](./.claude/skills/) holds reusable procedures. Hooks, lint and the CI checks `docs:check`, `rules:check` and `design:scale` block violations, and the baselines of existing violations can only shrink.

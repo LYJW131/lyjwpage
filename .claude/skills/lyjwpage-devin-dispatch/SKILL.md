@@ -1,11 +1,16 @@
 ---
 name: lyjwpage-devin-dispatch
-description: lyjwpage 云端线程把实现、排查或测量的活派给容器里的 Devin CLI（默认 swe-2-max）时用：每任务一个 git worktree，tmux 交互式可中途追加指令，Claude 写任务书、监控、验收，再把 Devin 的提交重新签名进 PR。lyjw 说「派给 Devin」「让 Devin 去做」「给 Devin 追加指令」「续派」时用。
+description: lyjwpage 云端线程把实现、排查或测量的活派给容器里的 Devin CLI（默认 swe-2-max）时用：每任务一个 git worktree，tmux 交互式可中途追加指令，Claude 写任务书、监控、验收，再把 Devin 的提交重新签名进 PR。规格已定、要动多个代码文件或要反复跑命令试错的实现、复现、测量（lyjwpage-delegate 表里归 Devin 的那一档）时用；lyjw 说「派给 Devin」「让 Devin 去做」「给 Devin 追加指令」「续派」时也用。
 ---
 
 # 云端 Devin CLI 调度
 
 Claude 定方案、写任务书、验收，Devin 动手。Devin 是外部进程：它看不到这段对话，只看任务书；它的自述不是证据。
+
+## 派什么
+
+- 派：方案和验收判据已经写得出来，剩下的只是动手：按给定接口写模块加测试、照方案改一条调用链、造复现命令再修、跑测量出数字。改动跨多个文件或要多轮「跑、看报错、再改」时最划算。
+- 不派：还要弄清 lyjw 要什么、做设计取舍；一两个文件的小改（Sonnet 或自己做）；只读归纳（Sonnet）；要联网、要凭据、要碰生产的活（沙箱里做不了）；有 UI 变化的活可以派实现，截图与给 lyjw 看图仍由 Claude 做。
 
 ## 环境
 
