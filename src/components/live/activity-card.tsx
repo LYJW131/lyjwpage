@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow from "@number-flow/react";
+import NumberFlow from "@/components/ui/number-flow";
 import { useId, type ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";

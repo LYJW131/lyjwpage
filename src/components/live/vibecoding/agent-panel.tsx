@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow from "@number-flow/react";
+import NumberFlow from "@/components/ui/number-flow";
 
 import { LimitMeter, LimitUnavailable } from "@/components/live/vibecoding/limit-meter";
 import { LIMITS_SILENT, featuredLimitRows } from "@/components/live/vibecoding/limits";
