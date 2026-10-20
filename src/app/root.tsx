@@ -37,7 +37,7 @@ import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript }
 
 // 须与 src/app/styles/theme.css 的 Geist Mono 子集指向同一个文件，预加载才会被字体规则复用。
 import geistMonoUrl from "@/assets/fonts/GeistMono-LatinUi-Variable.woff2?url";
-import "./site.css";
+import siteStyles from "./site.css?inline";
 
 function bootScript(): string {
   return (
@@ -115,6 +115,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Meta />
         <script dangerouslySetInnerHTML={{ __html: assetRecoveryScript() }} />
         <Links />
+        <style dangerouslySetInnerHTML={{ __html: siteStyles }} />
         <script dangerouslySetInnerHTML={{ __html: bootScript() }} />
         {earlyLiveSocket ? (
           <script dangerouslySetInnerHTML={{ __html: earlyLiveSocketScript(earlyLiveSocket) }} />
