@@ -65,10 +65,10 @@ function markup(elements: Element[]) {
 
 function startup({
   hidden = false,
-  paintSupport = false,
+  entryTypes = null,
   module = '<script type="module" async="">import "/assets/entry.client-A.js";</script>',
   preloads = preloadA + preloadB,
-}: { hidden?: boolean; paintSupport?: boolean; module?: string; preloads?: string } = {}) {
+}: { hidden?: boolean; entryTypes?: string[] | null; module?: string; preloads?: string } = {}) {
   const html = deferModulePreloads(`<html><head>${preloads}</head><body><main>SSR</main>${module}</body></html>`);
   const body = html.slice(html.indexOf("<body>") + 6, html.lastIndexOf("</body>"));
   const nodes = parsedElements(body);
@@ -84,6 +84,7 @@ function startup({
   let replacement: Element | null = null;
   let nextFrame = 0;
   let nextTimer = 0;
+  let observerCallback: (() => void) | null = null;
   const document = {
     currentScript: {
       replaceWith(script: Element) {
@@ -116,9 +117,10 @@ function startup({
   vm.runInNewContext(bootstrap.textContent, {
     document,
     performance: { getEntriesByName: () => [] },
-    ...(paintSupport ? {
+    ...(entryTypes ? {
       PerformanceObserver: class {
-        static supportedEntryTypes = ["paint"];
+        static supportedEntryTypes = entryTypes;
+        constructor(callback: () => void) { observerCallback = callback; }
         observe() {}
         disconnect() {}
       },
@@ -141,6 +143,7 @@ function startup({
     html, bootstrap, frames, timers, timerDelays, listeners, inserted, events,
     frameCount() { return nextFrame; },
     replacement() { return replacement; },
+    lcpEntry() { observerCallback?.(); },
     frame() {
       const [id, callback] = frames.entries().next().value ?? [];
       assert.ok(id);
@@ -162,7 +165,7 @@ function startup({
   };
 }
 
-test("首帧后只排一个零延时任务，成批激活预加载并原位启动模块，旧回调不重复启动", () => {
+test("次帧后只排一个零延时任务，成批激活预加载并原位启动模块，旧回调不重复启动", () => {
   const run = startup();
   assert.equal(run.html.match(/<link/g), null);
   assert.ok(!run.bootstrap.attributes.some(({ name }) => name === "type"));
@@ -172,12 +175,18 @@ test("首帧后只排一个零延时任务，成批激活预加载并原位启�
   assert.ok(firstFrame);
   run.frame();
   assert.equal(run.replacement(), null);
+  assert.equal(run.frames.size, 1);
+  assert.equal(run.frameCount(), 2);
+  assert.deepEqual(run.timerDelays, []);
+  assert.equal(run.timers.size, 0);
+  firstFrame();
+  assert.equal(run.frames.size, 1);
+  const secondFrame = [...run.frames.values()][0];
+  assert.ok(secondFrame);
+  run.frame();
   assert.equal(run.frames.size, 0);
-  assert.equal(run.frameCount(), 1);
   assert.deepEqual(run.timerDelays, [0]);
   assert.equal(run.timers.size, 1);
-  firstFrame();
-  assert.deepEqual(run.timerDelays, [0]);
   const queuedTask = [...run.timers.values()][0];
   assert.ok(queuedTask);
   run.task();
@@ -188,25 +197,57 @@ test("首帧后只排一个零延时任务，成批激活预加载并原位启�
   assert.equal(run.frames.size, 0);
   assert.equal(run.timers.size, 0);
   firstFrame();
+  secondFrame();
   queuedTask();
   run.hide();
   assert.deepEqual(run.timerDelays, [0]);
   assert.deepEqual(run.events, ["preloads", "module"]);
 });
 
-test("Paint API 可用但不发通知时，入口仍在首帧后的任务启动", () => {
-  const run = startup({ paintSupport: true });
-  assert.deepEqual(run.events, []);
-  assert.equal(run.frames.size, 1);
-  run.frame();
+test("LCP 观察可用但不发条目时，入口由上限任务兜底启动", () => {
+  const run = startup({ entryTypes: ["largest-contentful-paint"] });
   assert.deepEqual(run.events, []);
   assert.equal(run.frames.size, 0);
-  assert.equal(run.frameCount(), 1);
-  assert.deepEqual(run.timerDelays, [0]);
+  assert.deepEqual(run.timerDelays, [3000]);
+  assert.equal(run.timers.size, 1);
   run.task();
   assert.deepEqual(run.events, ["preloads", "module"]);
   assert.equal(run.frames.size, 0);
   assert.equal(run.timers.size, 0);
+});
+
+test("支持其它条目类型但不支持 LCP 时走两帧路径，不排上限任务", () => {
+  const run = startup({ entryTypes: ["paint", "element"] });
+  assert.equal(run.frames.size, 1);
+  assert.deepEqual(run.timerDelays, []);
+  run.frame();
+  run.frame();
+  run.task();
+  assert.deepEqual(run.events, ["preloads", "module"]);
+  assert.equal(run.frames.size, 0);
+  assert.equal(run.timers.size, 0);
+});
+
+test("收到 LCP 条目后下一帧启动，重复条目与转入后台都不重复启动", () => {
+  const run = startup({ entryTypes: ["largest-contentful-paint"] });
+  assert.equal(run.frames.size, 0);
+  run.lcpEntry();
+  run.lcpEntry();
+  assert.deepEqual(run.events, []);
+  assert.equal(run.frames.size, 2);
+  run.frame();
+  run.frame();
+  assert.equal(run.timers.size, 3);
+  assert.deepEqual(run.timerDelays, [3000, 0, 0]);
+  const [cap, startTask, staleTask] = [...run.timers.values()];
+  startTask();
+  assert.deepEqual(run.events, ["preloads", "module"]);
+  assert.equal(run.frames.size, 0);
+  cap();
+  staleTask();
+  run.lcpEntry();
+  run.hide();
+  assert.deepEqual(run.events, ["preloads", "module"]);
 });
 
 test("初始后台无需等动画帧，预加载和模块只启动一次", () => {
@@ -226,7 +267,7 @@ test("首帧前或首帧后任务前转入后台会立即启动，取消后的�
     const queuedFrame = [...run.frames.values()][0];
     assert.ok(queuedFrame);
     if (afterFirstFrame) run.frame();
-    const queued = [queuedFrame, ...run.timers.values()];
+    const queued = [queuedFrame, ...run.frames.values(), ...run.timers.values()];
     run.hide();
     assert.deepEqual(run.events, ["preloads", "module"]);
     assert.equal(run.frames.size, 0);
@@ -235,8 +276,8 @@ test("首帧前或首帧后任务前转入后台会立即启动，取消后的�
     for (const callback of queued) callback();
     assert.equal(run.frames.size, 0);
     assert.equal(run.timers.size, 0);
-    assert.equal(run.frameCount(), 1);
-    assert.deepEqual(run.timerDelays, afterFirstFrame ? [0] : []);
+    assert.equal(run.frameCount(), afterFirstFrame ? 2 : 1);
+    assert.deepEqual(run.timerDelays, []);
     assert.deepEqual(run.events, ["preloads", "module"]);
   }
 });
@@ -248,6 +289,7 @@ test("保留 nonce、crossorigin、显式 fetchpriority 与入口脚本文本，
   assert.equal(run.bootstrap.attributes.find(({ name }) => name === "nonce")?.value, "abc&123");
   assert.equal((run.html.match(/<\/script>/g) ?? []).length, 1);
   run.frame();
+  run.frame();
   run.task();
   assert.deepEqual(run.replacement()?.attributes, parsedElements(module)[0].attributes);
   assert.equal(run.replacement()?.textContent, parsedElements(module)[0].textContent);
@@ -257,6 +299,7 @@ test("保留 nonce、crossorigin、显式 fetchpriority 与入口脚本文本，
 test("没有 head 预加载时入口仍等首帧后的任务，普通脚本和外部模块脚本保持原样", () => {
   const run = startup({ preloads: "" });
   assert.equal(run.replacement(), null);
+  run.frame();
   run.frame();
   run.task();
   assert.ok(run.replacement());

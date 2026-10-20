@@ -226,9 +226,9 @@
   - 是什么：组件首次渲染时才加载模块，加载期间由局部 Suspense 边界承接。
   - 取了什么：播放器弹层与聊天内部卡片按显示条件加载，首页与聊天输入框仍直接渲染。
   - 状态：采用。落在 [web-player-provider.tsx](../src/components/web-player/web-player-provider.tsx) 与 [lazy-chat-cards.tsx](../src/components/lazy-chat-cards.tsx)。
-- **[Optimize Largest Contentful Paint](https://web.dev/articles/optimize-lcp)** 与 **[requestPostAnimationFrame](https://web.dev/codelabs/understanding-inp#requestpostanimationframe)**（web.dev）、**[requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)**（MDN）
-  - 是什么：按资源发现、下载与元素绘制拆解 LCP，区分资源大小和主线程延迟。
-  - 取了什么：在一次动画帧回调内通过 `setTimeout(start, 0)` 把入口启动排到后续任务，给浏览器绘制机会，再成批加载低优先级模块并以 `startTransition` 水合；客户端入口不重复等待动画帧。
+- **[Optimize Largest Contentful Paint](https://web.dev/articles/optimize-lcp)** 与 **[requestPostAnimationFrame](https://web.dev/codelabs/understanding-inp#requestpostanimationframe)**（web.dev）、**[requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)**（MDN）、**[Lighthouse Lantern LCP 度量源码](https://github.com/GoogleChrome/lighthouse/blob/main/core/computed/metrics/lantern-largest-contentful-paint.js) 与 trace_engine 的 [LargestContentfulPaint](https://github.com/ChromeDevTools/devtools-frontend/blob/main/front_end/models/trace/lantern/metrics/LargestContentfulPaint.ts)**
+  - 是什么：按资源发现、下载与元素绘制拆解 LCP，区分资源大小和主线程延迟。Lantern 的模拟 LCP 以实测 LCP 时间戳为界，把此前结束的网络请求与开始的主线程任务都按渲染阻塞处理，估算取图中节点的最迟模拟完成时间，且排除低优先级图片——实测 LCP 之后才发起的入口模块与其触发的请求不进该图。
+  - 取了什么：在支持 `PerformanceObserver` 的浏览器里，等收到 LCP 条目后的下一帧再启动（带 3 秒上限）；其余浏览器在第二次动画帧回调内通过 `setTimeout(start, 0)` 把入口启动排到后续任务，给浏览器两次绘制机会，再成批加载低优先级模块并以 `startTransition` 水合；客户端入口不重复等待动画帧。
   - 状态：采用。落在 [defer-module-preloads.ts](../src/lib/defer-module-preloads.ts) 与 [entry.client.tsx](../src/app/entry.client.tsx)；该调度不保证实际呈现，不依赖 FCP 观测事件，后台页面直接启动并取消排队的动画帧和任务。
 - **[Generate subsets of fonts](https://fonttools.readthedocs.io/en/latest/subset/index.html)**（fontTools 文档）
   - 是什么：按 Unicode 字符与布局特性裁剪字体，同时保留所需的变体字形。
