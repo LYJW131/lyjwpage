@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { LimitHistoryPoint } from "@shared/limit-history";
-import { forecastLimit, recentRate, usageIntervals } from "./limit-forecast.ts";
+import { forecastLimit, recentRate, sampleForecast, usageIntervals } from "./limit-forecast.ts";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -78,4 +78,21 @@ test("steady use leaves the forecast at the window average", () => {
   const now = start + 4 * DAY;
   const forecast = forecastLimit(weekly(40), readings([10, 20, 30]), now)!;
   assert.ok(Math.abs(forecast.rate! * DAY - 10) < 0.5);
+});
+
+test("sampling the chart reads actual use before now, the projection after, and nothing once locked", () => {
+  const now = start + 2 * DAY;
+  const forecast = forecastLimit(weekly(4 * 100 / 7), readings([200 / 7]), now)!;
+  const past = sampleForecast(forecast, start + 11.5 * HOUR);
+  assert.equal(past.phase, "used");
+  assert.ok(Math.abs(past.percent! - 100 / 7) < 0.01);
+  const ahead = sampleForecast(forecast, now + DAY);
+  assert.equal(ahead.phase, "projected");
+  assert.ok(ahead.percent! > ahead.target!);
+  const light = forecastLimit(weekly(10), readings([5]), now)!;
+  assert.equal(sampleForecast(light, light.resetAt).target, 100);
+  assert.deepEqual(
+    { ...sampleForecast(forecast, forecast.runOutAt! + HOUR), even: 0 },
+    { at: forecast.runOutAt! + HOUR, phase: "locked", percent: null, target: null, even: 0 },
+  );
 });
