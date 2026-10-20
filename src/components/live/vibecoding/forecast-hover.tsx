@@ -53,6 +53,8 @@ export function ForecastHover({
   const [pinned, setPinned] = useState(false);
   const [bounds, setBounds] = useState<CellAnchor | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  // 触屏点按前手指的微小移动也会改写 at，「再点同一处取消固定」要跟按下前的固定点比。
+  const pinnedAtDown = useRef<number | null>(null);
   const close = useCallback(() => {
     setAt(null);
     setPinned(false);
@@ -101,6 +103,7 @@ export function ForecastHover({
           if (pinned && event.pointerType === "mouse") return;
           setAt(timeAt(event.clientX, event.currentTarget));
         }}
+        onPointerDown={() => { pinnedAtDown.current = pinned ? at : null; }}
         onPointerLeave={(event) => { if (event.pointerType === "mouse" && !pinned) setAt(null); }}
         onFocus={(event) => { setBounds(cellAnchor(event.currentTarget)); setAt((current) => (inWindow(current) ? current : forecast.now)); }}
         onBlur={close}
@@ -112,7 +115,7 @@ export function ForecastHover({
             return;
           }
           const next = timeAt(event.clientX, event.currentTarget);
-          setPinned(!(pinned && next === at));
+          setPinned(next !== pinnedAtDown.current);
           setAt(next);
         }}
         onKeyDown={(event) => {
