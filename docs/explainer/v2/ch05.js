@@ -251,14 +251,12 @@
   }
 
   // ---- 机位 0：片头 ----
-  const OPEN = { cx: 600, feet: 690, q: 20 }, EYE_IN = [16, 14, 11];
+  const OPEN = { cx: 600, feet: 690, q: 20 };
   function openFront(x, b) {
     paper(x, disc(600, 470, 300, 11), MUSTARD, { sh: 0.1 });
     paper(x, cutRect(330, OPEN.feet, 560, 14, 21, 1.2), INK);
     const wink = b < AT.open.wink ? 0 : 1 - Math.abs(prog(b, AT.open.wink, AT.open.wink + 0.14) * 2 - 1);
-    // 首帧整屏都是这只眼：先用第 04 章末帧那块墨的颜色，0.3 小节内换回本章的墨。
-    const eye = EYE_IN.map((v, i) => lerp(v, INK[i], prog(b, 0, 0.3)));
-    clawd(x, OPEN.cx, OPEN.feet, OPEN.q, { headset: true, wink, eye });
+    clawd(x, OPEN.cx, OPEN.feet, OPEN.q, { headset: true, wink });
     const kb = E.outExpo(prog(b, AT.open.bar, AT.open.bar + 0.14));
     if (kb > 0) paper(x, cutRect(905, -60 - (1 - kb) * 900, 46, 880, 31, 1.8), RED);
     const k1 = E.outExpo(prog(b, AT.open.golden[0], AT.open.golden[0] + 0.12)), k2 = E.outExpo(prog(b, AT.open.golden[1], AT.open.golden[1] + 0.12));
@@ -771,9 +769,26 @@
     clawd(x, sx - 34, Math.min(sy, 0) - WIRE_H / 2 - 4, 8, { headset: true, pose: snap ? "arms-up" : "default" });
   }
 
+  // ---- 开场：片头海报是一张剪纸，从右边滑进来盖住第 04 章的报纸 ----
+  // u 是相对本章 0:0 的小节，第 04 章末尾传负值（经 share.wipe）。朱红、芥末黄两条先走一步，米白纸面压在最上面；
+  // 纸面的左沿在 u = −0.2 前已出左缘，所以剪切点两边都是同一张纸、同一个位置，只是 outExpo 接着减速。
+  const WIPE = { u0: -0.5, u1: 0.5, off: 2400, margin: 400, lead: [0.07, 0.035], tilt: 0.15 };
+  const sheetOff = (u, lead = 0) => WIPE.off * (1 - E.outExpo(prog(u + lead, WIPE.u0, WIPE.u1)));
+  function sheetEdge(u, lead, seed) {
+    const e = sheetOff(u, lead) - WIPE.margin, d = 540 * WIPE.tilt;
+    return cutPath([[e - d, -60], [2200, -60], [2200, 1140], [e + d, 1140]], seed, 3, 60);
+  }
+  function wipe(x, u) {
+    if (u < WIPE.u0 - WIPE.lead[0] || u >= 0) return;
+    paper(x, sheetEdge(u, WIPE.lead[0], 71), RED, { sh: 0.22, dx: -10, dy: 6 });
+    paper(x, sheetEdge(u, WIPE.lead[1], 73), MUSTARD, { sh: 0.22, dx: -10, dy: 6 });
+    paper(x, sheetEdge(u, 0, 75), GROUND, { sh: 0.26, dx: -12, dy: 6 });
+    x.save(); x.clip(sheetEdge(u, 0, 75));
+    x.translate(sheetOff(u), 0); openFront(x, u);
+    x.restore();
+  }
+
   // ---- 镜头 ----
-  // 开场：第 04 章冲进 Clawd 的墨眼，这里从同一只眼（这一章大 Clawd 的左眼）里旋着往外退。
-  const EYE = [OPEN.cx - 3.5 * OPEN.q, OPEN.feet - 7 * OPEN.q - WY];
   const LZ = Math.log;
   const CAM = [
     [1.25, [960, 150, 0]],
@@ -800,11 +815,7 @@
     [27.92, [19600, 0, 0], E.io],
   ];
   function camAt(b) {
-    if (b < 1.25) {
-      const k = E.out(clamp(b / 1.25)), z = Math.exp(lerp(Math.log(130), 0, k)), rot = lerp(0.9, 0, k);
-      const c = Math.cos(rot), s = Math.sin(rot), dx = (lerp(960, 530, k) - 960) / z, dy = (lerp(540, 550, k) - 540) / z;
-      return [EYE[0] - (c * dx + s * dy), EYE[1] - (-s * dx + c * dy), z, rot];
-    }
+    if (b < 1.25) return [960 - sheetOff(b), 150, 1, 0];
     const c = keys(b, CAM);
     return [c[0], c[1], Math.exp(c[2]), 0];
   }
@@ -874,6 +885,7 @@
 
   window.CHAPTERS.push({
     id: "ch05", title: "ch.05", bars: 28,
+    share: { wipe },
     async init() {
       bg = G.layer("bg"); top = G.layer("top");
       await Promise.all([

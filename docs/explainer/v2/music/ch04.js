@@ -2,9 +2,10 @@
   id: "ch04",
   tone: { bell: "bright", pluckPan: -0.2, snareVerb: 0.1 },
   score: ({ THEME, withNotes, phrase, midi }) => {
-    // 时刻（小节）与 ch04.js 的 AT 是同一张表：整版压下、每篇标题排字、镜头换栏、剪标签、钟环、503、换歌。
+    // 时刻（小节）与 ch04.js 的 AT 是同一张表：整版压下、每篇标题排字、镜头换栏、剪标签、钟环、503、换歌、剪纸滑进来。
+    // 0:0 是第 03 章冲进照片框的那一撞：章、落地、印刷机和翻纸一起落在强拍上。
     const SFX = [
-      [0.5, "stamp", 1.12, 0], [0.5, "land", 0.7, 0],
+      [0, "stamp", 1.12, 0], [0, "land", 0.7, 0], [0.02, "printer", 0.5, 0.1], [0.06, "paper", 0.55, -0.2, 0.85],
       [1.15, "type", 0.6, -0.3], [1.65, "tbell", 0.25, -0.2],
       [1.25, "printer", 0.45, -0.4], [2.0, "printer", 0.4, -0.4], [2.75, "printer", 0.4, -0.4],
       ...[1.5, 2.0, 2.5, 3.0, 3.5].map((o, i) => [o, "paper", 0.5, -0.1 + (i % 2) * 0.15, 0.9 + (i % 3) * 0.08]),
@@ -18,7 +19,7 @@
       [8.85, "whoosh", 0.8, 0.1], [9.15, "type", 0.6, 0],
       [10.85, "whoosh", 0.8, 0.4], [11.1, "type", 0.5, 0.4], [11.25, "tube", 0.39, 0.5], [11.5, "stamp", 1.12, 0.4],
       [11.85, "whoosh", 0.6, 0.4, 1.1], [12.5, "pop", 0.55, 0.5, 1.3], [12.75, "zip", 0.45, 0.6],
-      [13.0, "whoosh", 0.8, 0], [13.6, "whoosh", 0.9, 0, 0.8],
+      [13.0, "whoosh", 0.8, 0], [13.44, "whoosh", 0.9, 0.4, 0.85], [13.47, "paper", 0.6, 0.35, 0.9], [13.5, "paper", 0.6, 0.2, 1.05],
     ];
     return {
       harm: [
@@ -26,7 +27,7 @@
         "Dm9", "Fmaj7", "Gm9", [["Dm9", 0], ["A7sus4", 2]], "Dm9", [["Dm9", 0], ["A7sus4", 3]],
       ],
       sections: [
-        { from: 0, to: 0, id: "press-in", name: "整版压下：镜头从纸上往后拉，一张报纸摊在桌上", energy: 0.45,
+        { from: 0, to: 0, id: "press-in", name: "整版压下：0:0 接住第 03 章那一撞，镜头从纸上往后拉，一张报纸摊在桌上", energy: 0.45,
           kick: "X.......X.......", duck: 0.5, hat: "......x.......x.", hatKind: "flip", hatVol: 0.8,
           clock: "o.o.o.o.o.o.o.o.", clockVol: 0.5, bass: "light", pad: 0.9, lp: 1600, padVerb: 0.35 },
         { from: 1, to: 3, id: "press-deliver", name: "头条：轮转机出纸，报童 Clawd 递给访客一张", energy: 0.55,
@@ -48,15 +49,17 @@
         { from: 11, to: 11, id: "press-503", name: "回源 503：电报飞来又弹走，大章「沿用上一份」", energy: 0.55,
           kick: "........X.x.....", duck: 0.5, snare: "............x...", snareKind: "thud",
           clock: "........x.o.x.o.", clockVol: 0.7, bass: "slam", pad: 0.8, lp: 2000, padVerb: 0.3 },
-        { from: 12, to: 13, id: "press-song", name: "简讯：换歌不重印，闷拨弦唱信封主题；退回整版，冲进 Clawd 的眼睛", energy: 0.45,
+        { from: 12, to: 13, id: "press-song", name: "简讯：换歌不重印，闷拨弦唱信封主题；退回整版，剪纸从右边滑进来盖住，拨弦往上一串接第 05 章", energy: 0.45,
           kick: ["X.......X.......", "X..............."], duck: 0.45, bass: "hold", pad: 0.9, lp: 1700, padVerb: 0.38 },
       ],
       melody: [
         ...phrase(1, withNotes(["D5", "C5", "A4", "F4"]), "pluck", 0.42),
         ...phrase(12, THEME, "pluckDark", 1.35, true),
         ...phrase(12, withNotes(["D4", "F4", "A4", "A4"]), "pluck", 0.35),
+        ...["A3", "D4", "E4", "G4", "A4", "D5", "E5", "G5"].map((n, i) => [13, 2 + i * 0.25, 0.3, n, "pluck", 0.32 + i * 0.03]),
       ],
       story: [
+        { bar: 0, beat: 0, kind: "toon", what: "choke", v: 1.1 }, { bar: 0, beat: 0, kind: "boom" },
         { bar: 6, beat: 0, kind: "accent", what: "flip" },
         ...["A5", "C6", "D6", "E6", "G6", "A6"].map((n, i) => ({ bar: 10, beat: i * 0.5, kind: "tick", m: midi(n), i })),
         { bar: 13, beat: 3, kind: "swell" },

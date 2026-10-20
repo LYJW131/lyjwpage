@@ -72,8 +72,10 @@
       }
     }
 
-    // 0–2 · 发车牌：硬切进来一声低「咚」，翻牌一格一声；1:0 HEAD 跳一下，1:2 几条线从 HEAD 长出来，2:0 列车员吹哨。
+    // 0–2 · 发车牌：0:0 一声低「咚」连着底鼓和贝斯，翻牌一格一声；1:0 HEAD 跳一下，1:2 几条线从 HEAD 长出来，2:0 列车员吹哨。
     ev(0, { kind: "boom" });
+    // 接住第 08 章最后一小节往上爬的过门：底鼓、贝斯的 D 和一记开镲跟 boom 同时落下。
+    M(0, "kick"); M(0, "bass", { m: rootAt(0), len: 3.75, v: 0.85 }); M(0, "open", { v: 0.9 });
     for (let j = 0; j < 10; j++) M(AT.board[0] + j / 16, "flap", { i: j % 3, v: 0.55 + 0.04 * (j % 2) });
     M(AT.diff, "flap", { i: 2, v: 0.45 });
     ev(AT.head, { kind: "hop", m: midi("D6"), pan: 0.3 });
@@ -137,7 +139,7 @@
     return {
       harm,
       sections: [
-        { from: 0, to: 1, id: "metro-board", name: "硬切线路图：翻牌敲出 PR #308 → main，弦乐机垫着；1:0 HEAD 跳一下", energy: 0.3, pad: 0, lp: 1800, padVerb: 0 },
+        { from: 0, to: 1, id: "metro-board", name: "接住第 08 章描出来的线：0:0 boom、底鼓、贝斯一起落；翻牌敲出 PR #308 → main，弦乐机垫着；1:0 HEAD 跳一下", energy: 0.3, pad: 0, lp: 1800, padVerb: 0 },
         { from: 2, to: 2, id: "metro-gates", name: "2:0 列车员吹哨，几条线散开，闸口一条一声", energy: 0.45, pad: 0, lp: 1800, padVerb: 0 },
         { from: 3, to: 7, id: "metro-motorik", name: "3:0 发车：四拍底鼓、方波贝斯、十六分音序器、轨缝声；终点站一站一声铃，7:2.5 甩去源站", energy: 0.75, pad: 0, lp: 1800, padVerb: 0 },
         { from: 8, to: 11, id: "metro-landing", name: "落地：换乘 check_run，两块显示屏翻到 cf92f7c，刷新 ESA；11:1 钥匙开上报入口", energy: 0.8, pad: 0, lp: 1800, padVerb: 0 },

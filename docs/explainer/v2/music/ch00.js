@@ -95,8 +95,12 @@
     ev(AT.pull - 0.25, { kind: "swell" });
     // 三栏各亮一下：钢片琴 A5、D6、F6。
     AT.pops.forEach((o, i) => R(o, "cel", { m: midi(["A5", "D6", "F6"][i]), v: 0.5 }));
-    // 11:2 冲进采集端：马林巴和拍手收住，只剩送气的长音和下坠；母线扫频压到 12:0 最闷，第 01 章 0:1 放开。
-    ev(AT.rush, { kind: "whoosh", tube: "down" });
+    // 11:2 推进 Mac 那一格：拍手收住，马林巴改弹 A7sus4 的上行琶音（两台左右交替、一个比一个响，后四个音钢片琴叠上），11:3 吸一口气，一起落到第 01 章 0:0。
+    [69, 74, 76, 79, 81, 86, 88, 91].forEach((m, i) => {
+      R(AT.rush + i / 16, i % 2 ? "mb2" : "mb", { m, v: 0.65 + 0.07 * i });
+      if (i >= 4) R(AT.rush + i / 16, "cel", { m, v: 0.25 + 0.08 * (i - 4) });
+    });
+    ev(AT.rush + 0.25, { kind: "swell" });
 
     const quiet = { pad: 0, lp: 1800, padVerb: 0 };
     return {
@@ -108,11 +112,11 @@
         { from: 3, to: 4, id: "reich-sheet", name: "主页线框：马林巴十二音一轮铺满，低音也送气；4:0 第二台齐奏进来，4:2 钢片琴唱主题，E5 落在 5:0 翻面", energy: 0.45, ...quiet },
         { from: 5, to: 7, id: "reich-phase", name: "翻面、问题、收进页眉：第二台马林巴一点点抢到前面（5:2、7:0 起各抢一格）", energy: 0.55, ...quiet },
         { from: 8, to: 10, id: "reich-clap", name: "拉远到总装图：两个人拍手，第二个人一次错开一拍；三栏各亮一下", energy: 0.8, ...quiet },
-        { from: 11, to: 11, id: "reich-rush", name: "冲进采集端：11:2 收住，只剩下坠；停在 A7sus4，交给第 01 章", energy: 0.5, ...quiet },
+        { from: 11, to: 11, id: "reich-rush", name: "推进 Mac 那一格：11:2 拍手收住，马林巴上行琶音、11:3 吸气；停在 A7sus4，落到第 01 章 0:0", energy: 0.5, ...quiet },
       ],
       melody: THEME.map(([b, d, n]) => [...at(4.5 + b / 4), d, n, "reichCelesta", 1, true]),
       story,
-      sweeps: [{ at: [11, 2], down: [12, 0], up: [12, 1], f: 380 }],
+      sweeps: [],
     };
   },
 });

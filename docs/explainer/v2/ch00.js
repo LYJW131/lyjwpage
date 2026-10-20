@@ -88,7 +88,7 @@ void main(){
   col = mix(col, toLinear(vec3(0.93, 0.955, 0.98)), g * uGridA * inside);
   fragColor = vec4(mix(cream, col, cov), 1.0);
 }`;
-  const plate = () => G.fill(G.pass(PLATE), { uGridA: 1, uBlue: BLUE.map((v) => v / 255), uSheetA: SHEET_A, uSheetB: SHEET_B, uFrameA: FRAME_A, uFrameB: FRAME_B });
+  const plate = (gridA = 1) => G.fill(G.pass(PLATE), { uGridA: gridA, uBlue: BLUE.map((v) => v / 255), uSheetA: SHEET_A, uSheetB: SHEET_B, uFrameA: FRAME_A, uFrameB: FRAME_B });
   const POST = { bloom: 0.4, threshold: 0.9, halation: 0.12, grain: 0, vignette: 0.3, ca: 0 };
 
   const disc = (x, cx, cy, r, color, a = 1) => { x.save(); x.globalAlpha = a; x.fillStyle = color; x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.fill(); x.restore(); };
@@ -189,7 +189,7 @@ void main(){
     skip: 0.5, jump: 0.875, look: 1.1875, celebrate: 1.5,
     say: 0.75, tag: 0.9, cut: 2.75, land: 3.0,
     push: 4.25, dot: 4.6, cIn: [4.72, 4.81, 4.9], flip: 5.0, q: 5.25, cLook: 5.75, cOut: [6.5, 6.58, 6.66],
-    shrink: 7.0, pull: 8.5, pulled: 9.3, pops: [9.5, 9.75, 10.0], rush: 11.5, end: 11.97,
+    shrink: 7.0, pull: 8.5, pulled: 9.3, pops: [9.5, 9.75, 10.0], rush: 11.5, end: 11.9,
   };
 
   const TW = { x: 250, y: 120, w: 1420, h: 840, bar: 60 };
@@ -592,7 +592,7 @@ void main(){
       if (pa <= 0) return;
       const mac = p.i === 0;
       pict(x, p.i, PIC_X, p.y, PIC_S * lerp(0.7, 1, E.outBack(pa)), pa, mac ? C.red : C.white);
-      label(x, p.key ? tr(p.key) : p.name, PIC_X + 110, p.y + 20, { font: p.key ? F(59) : M(59), color: mac ? C.red : C.white, alpha: pa });
+      label(x, p.key ? tr(p.key) : p.name, PIC_X + 110, p.y + 20, { font: p.key ? F(59) : M(59), color: mac ? C.red : C.white, alpha: pa * (mac ? 1 - prog(b, AT.rush, AT.rush + 0.25) : 1) });
       if (!mac) polyline(x, [[PIC_X + 340, p.y], FUNNEL], prog(k, 0.35 + j * 0.04, 0.6 + j * 0.04, E.io), 2, C.pale, 0.6);
     });
     const ba = (t) => prog(k, t, t + 0.2, E.out);
@@ -652,6 +652,10 @@ void main(){
   const OVER = [1920, (FRAME_B[1] + FRAME_B[3]) / 2, 0.467, 0], RUSH0 = [OVER[0], OVER[1], 0.477, 0];
   // 窗口偏右放：左边空出来写尺寸标注，右边不露出图框线。
   const CAM_A = [[AT.cut, [960, 540, 1.018, 0]], [AT.land, WINV, E.io], [AT.push, [WINV[0], WINV[1], 0.93, 0], E.lin], [AT.push + 0.5, CARDV, E.io], [AT.pull, [CARDV[0], CARDV[1], ZC * 1.01, 0], E.lin]];
+  // 交给第 01 章（ch01.js#camOpen、blueprint 读 share.cut，两边须同步）：11.5 起推到 Mac 那一格的笔记本，AT.end 到位后按 creep 慢推，
+  // 12:0 外推出的那一帧里笔记本中心（不是 MAC 原点）在屏幕正中，s 是小样每单位的屏幕 px；第 01 章首帧在同一处、同样大小画出它再上色。
+  const CUT = { at: [PIC_X, ML - 5 * PIC_S], z: 6, creep: 0.04 };
+  CUT.s = PIC_S * CUT.z * (1 + CUT.creep * (12 - AT.rush));
   const toScreen = (w, c) => [(w[0] - c[0]) * c[2] + 960, (w[1] - c[1]) * c[2] + 540];
   function anchored(k, W, p0, p1, z0, z1) {
     const z = Math.exp(lerp(Math.log(z0), Math.log(z1), k));
@@ -665,7 +669,8 @@ void main(){
       return anchored(E.io(prog(b, AT.pull, AT.pulled)), CARD_C, toScreen(CARD_C, c0), toScreen(CARD_C, OVER), c0[2], OVER[2]);
     }
     if (b < AT.rush) return keys(b, [[AT.pulled, OVER], [AT.rush, RUSH0, E.lin]]);
-    return anchored(E.inExpo(prog(b, AT.rush, AT.end)), MAC, toScreen(MAC, RUSH0), [960, 540], RUSH0[2], 7);
+    const cr = 1 + CUT.creep * (b - AT.rush);
+    return anchored(E.io(prog(b, AT.rush, AT.end)), CUT.at, toScreen(CUT.at, RUSH0), [960, 540], RUSH0[2] * cr, CUT.z * cr);
   }
 
   function notesBox(x, a, x0, y0, y1) {
@@ -746,7 +751,7 @@ void main(){
     const c = camPaper(b), c0 = camPaper(Math.max(o.b0 ?? AT.cut, b - 1 / 60 / BARS));
     const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.02 * impact(b, AT.flip, 0.12)), rot: 0 };
     G.setCam(cam);
-    plate();
+    plate(1 - prog(b, AT.rush, AT.end));
     const x = X.begin(); X.cam(cam);
     const e = Em.begin(); Em.cam(cam);
     const d = D.begin(); D.cam(cam);
@@ -799,6 +804,6 @@ void main(){
       await Promise.all([300, 500].flatMap((w) => [document.fonts.load(F(40, w), "图纸 Clawd 80"), document.fonts.load(`${w} 40px "Noto Sans SC ch00"`, "图纸")]));
     },
     render,
-    share: { termFrame, termState, terminal, paperFrame, AT, TW, L2, BOX },
+    share: { termFrame, termState, terminal, paperFrame, AT, TW, L2, BOX, cut: { s: CUT.s, rate: CUT.creep / (1 + CUT.creep * (12 - AT.rush)), lw: 3.4 / PIC_S, bg: C.blue, line: C.red, post: POST } },
   });
 })();

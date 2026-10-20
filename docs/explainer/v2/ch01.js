@@ -1,5 +1,5 @@
 // 第 01 章画成等距（30°）的漂浮小岛立体模型：平行投影、没有透视，几何按公式投到 2D 画布上；镜头只平移、缩放。
-// 开头整座岛在转台上转回标准角度（ROT），之后都是标准等距。画面只从 AT 取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
+// 开头从第 00 章晒图上的笔记本上色、拉出到整座岛，岛在转台上转回标准角度（ROT），之后都是标准等距。画面只从 AT 取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
 (() => {
   const { E, prog, keys, clamp, lerp, text, measure, pathAt, trailOn, mulberry32, hash } = K;
   const N = 29;
@@ -120,7 +120,7 @@
 
   // 时间：小节:拍写成小节数（3:2 写 3.5）；music/ch01.js 的时刻抄这张表和 STOP，改了两边一起改
   const AT = {
-    title: 0.08,
+    title: 0.7,
     flip: 3.0, card: 3.12, lit: 3.5, post: 3.55, park: 4.0, breath: 4.3,
     wt: 5.3, list: 5.62, jev: 5.85, judged: 6.5, cleared: 6.75, lock: 6.875, owner: 7.0,
     icon: 8.05, hash: 8.3, drop: 8.5, shut: 8.75, poster: 9.05, posterIn: 9.35, emby: 9.75,
@@ -321,10 +321,14 @@
     ["CLOCK", 21.0, 23.7, [470, 40, 1.15]],
     ["INFER", 24.0, 27.7, [-363, -800, 1]],
   ].forEach(([k, t0, t1, c]) => (STOP[k] = { k, t0, t1, c }));
+  // ---------- 开头：接第 00 章晒图上的笔记本（ch00.js#CUT 经 share.cut 给首帧的屏幕位置和大小，两边须同步） ----------
+  // 首帧转台偏 −45°：Mac 屋里笔记本的屏幕正对镜头，是一块方方正正的矩形，和晒图小样同处同大；
+  // paint 内蓝底从笔记本往外化开、红线变到等距笔记本的轮廓上再淡掉，pull 内拉出到 S0 全景，转台继续转回 0。
+  const BP = { paint: [0.03, 0.3], morph: [0.02, 0.24], pull: [0.18, 0.7], R0: -Math.PI / 4 };
   const CAM = [];
   Object.values(STOP).forEach((st, i) => {
     const [cx, cy, z] = st.c;
-    CAM.push(i ? [st.t0, [cx, cy, z, 0], E.io] : [st.t0, [cx, cy, z, 0]]);
+    CAM.push(i ? [st.t0, [cx, cy, z, 0], E.io] : [BP.pull[1], [cx, cy, z, 0]]);
     CAM.push([st.t1, [cx + 10 / z, cy, z * 1.015, 0], i ? E.lin : E.out]);
   });
   // 结尾机位：亮核正在屏幕 y 540（交给第 02 章的高度），镜头一小节里从停靠点左 10 推到右 4、缩放 1 → 1.014
@@ -406,6 +410,40 @@
   const posterFace = () => onX(ROOM.x0 + 14, ROOM.y0, 12);
   const LAP = { x: 238, y: 905, z: 70 };
   const HUB3 = [LAP.x + 96, LAP.y, LAP.z + 66];
+  const BP_LID = [[0, 0], [108, 0], [108, 72], [0, 72]].map(([u, v]) => [LAP.x + u, LAP.y + 1, LAP.z + 5 + v]);
+  const BP_KEY = [[LAP.x, LAP.y + 58, LAP.z], [LAP.x + 108, LAP.y + 58, LAP.z]];
+  const BP_C = [LAP.x + 54, LAP.y + 1, LAP.z + 41];
+  const cut00 = () => window.CHAPTERS.find((c) => c.id === "ch00")?.share?.cut;
+  const rotAt = (b) => (b < STOP.S0.t1 ? BP.R0 * (1 - E.out(prog(b, BP.pull[0], STOP.S0.t1))) : 0);
+  function camOpen(b) {
+    const cut = cut00(), save = ROT;
+    ROT = rotAt(b); const L = wp(...BP_C); ROT = save;
+    // 屏幕宽 108 × 2C30·cos45° 对上小样的 52 格；小样的框心在屏幕中心上方 2 格（ch00.js#CUT 的 at 比框心低 2 格）
+    const s = cut ? cut.s : 14, z1 = (52 * s) / (108 * Math.SQRT2 * C30), rate = cut ? cut.rate : 0;
+    const A = [L[0], L[1] + (2 * s) / z1], S = STOP.S0.c, k = E.io(prog(b, BP.pull[0], BP.pull[1]));
+    const z = Math.exp(lerp(Math.log(z1 * (1 + rate * b)), Math.log(S[2]), k));
+    const p = [lerp(960, (A[0] - S[0]) * S[2] + 960, k), lerp(540, (A[1] - S[1]) * S[2] + 540, k)];
+    return [A[0] - (p[0] - 960) / z, A[1] - (p[1] - 540) / z, z];
+  }
+  function blueprint(x, b, cam) {
+    const cut = cut00();
+    if (!cut || b >= BP.paint[1]) return;
+    const s = cut.s * (1 + cut.rate * b), P0 = (u, v) => [960 + u * s, 540 + (v + 5) * s];
+    const S = (w) => { const [u, v] = wp(...w); return [(u - cam.x) * cam.zoom + 960, (v - cam.y) * cam.zoom + 540]; };
+    const m = E.io(prog(b, BP.morph[0], BP.morph[1])), mix = (a, c) => a.map((p, i) => [lerp(p[0], c[i][0], m), lerp(p[1], c[i][1], m)]);
+    const lid = mix([P0(-26, 10), P0(26, 10), P0(26, -24), P0(-26, -24)], BP_LID.map(S));
+    const key = mix([P0(-34, 14), P0(34, 14)], BP_KEY.map(S));
+    const c = [(lid[0][0] + lid[2][0]) / 2, (lid[0][1] + lid[2][1]) / 2];
+    x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0); x.globalAlpha = 1;
+    const r1 = Math.max(0.5, 2600 * prog(b, BP.paint[0], BP.paint[1]) ** 2), g = x.createRadialGradient(c[0], c[1], Math.max(0, r1 - 300), c[0], c[1], r1);
+    const [br, bg, bb] = parse(cut.bg);
+    g.addColorStop(0, `rgba(${br},${bg},${bb},0)`); g.addColorStop(1, cut.bg);
+    x.fillStyle = g; x.fillRect(0, 0, 1920, 1080);
+    x.globalAlpha = 1 - prog(b, BP.paint[1] - 0.12, BP.paint[1]);
+    x.strokeStyle = cut.line; x.lineWidth = lerp(cut.lw * s, 4, m); x.lineCap = "butt"; x.lineJoin = "miter";
+    x.beginPath(); lid.forEach(([u, v], i) => (i ? x.lineTo(u, v) : x.moveTo(u, v))); x.closePath(); x.moveTo(...key[0]); x.lineTo(...key[1]); x.stroke();
+    x.restore();
+  }
   const OLD = "夜に駆ける", NEW = "アイドル", ARTIST = "YOASOBI";
   const MODS = ["desktop", "appleMusic", "chargingDevices", "…"];
   function macRoom(x, b) {
@@ -1193,7 +1231,7 @@
     if (a <= 0) return;
     SRC0.forEach((p, i) => {
       for (let j = 0; j < 2; j++) {
-        const t0 = 0.25 + i * 0.13 + j * 0.85, k = prog(b, t0, t0 + 0.7, E.io);
+        const t0 = 0.75 + i * 0.1 + j * 0.65, k = prog(b, t0, t0 + 0.7, E.io);
         if (k <= 0 || k >= 1) continue;
         const q = lerp3(p, EXIT0, k);
         q[2] += Math.sin(k * Math.PI) * 300;
@@ -1205,12 +1243,12 @@
     const [tx, ty] = wp(TOWER.x + TOWER.w / 2, TOWER.y + TOWER.d / 2, 50 + TOWER.h + 120);
     const c = st.c, SC = (u, v) => [c[0] + (u - 960) * s, c[1] + (v - 540) * s];
     for (let j = 0; j < 3; j++) {
-      const t0 = 0.4 + j * 0.55, k = prog(b, t0, t0 + 0.5);
+      const t0 = 0.85 + j * 0.42, k = prog(b, t0, t0 + 0.5);
       const far = SC(-40 + j * 70, 8 + j * 26);
-      dash(x, [[tx, ty], far], P.ink2, 3 * s, a * 0.6 * prog(b, 0.3, 0.5), [12 * s, 12 * s]);
+      dash(x, [[tx, ty], far], P.ink2, 3 * s, a * 0.6 * prog(b, 0.75, 0.95), [12 * s, 12 * s]);
       if (k > 0 && k < 1) { const u = k < 0.5 ? k * 2 : 2 - 2 * k; x.globalAlpha = a; x.fillStyle = P.ink; x.beginPath(); x.arc(lerp(tx, far[0], u), lerp(ty, far[1], u), 9 * s, 0, TAU); x.fill(); x.globalAlpha = 1; }
     }
-    const la = a * prog(b, 0.35, 0.5);
+    const la = a * prog(b, 0.75, 0.9);
     const [rx, ry] = wp(1500, 900, 300);
     tag(x, tr("ch01.push"), rx + 200 * s, ry - 120 * s, s, la, { px: 32 });
     tag(x, tr("ch01.pull"), tx + 70 * s, ty + 12 * s, s, la, { px: 32 });
@@ -1230,6 +1268,18 @@
   const OUT = [PARK, [PARK[0] + 1810, PARK[1]]];
   // 末端 1100 让 Clawd 在 N − 0.03 左右整只出右缘，之后屏幕上只剩拖尾贴着右边。
   const rideD = (b) => keys(b, [[AT.launch, 0], [N - 0.02, 1100, E.inExpo]]);
+  // 交给第 02 章的甩镜头：最后 0.25 小节镜头往右 E.inExpo 加速横甩，到 N 走完 dx；骑手、火花加上同一段位移，屏幕上的骑乘轨迹不变。
+  // 末两帧第 02 章的红斜块从右缘进画（ch02.js 的 share.whipBand），N:0（第 02 章 0:0）那一帧它的左下角在 slabX；ch02.js#WHIP 用同一出口速度接着刹停，两边须同步。
+  const WHIP = { t0: N - 0.25, dx: 2200, slabX: 900 };
+  const whipX = (b) => WHIP.dx * E.inExpo(prog(b, WHIP.t0, N));
+  const rideAt = (b) => { const [u, v] = pathAt(OUT, rideD(b)); return [u + whipX(b), v]; };
+  function whipSlab(x, b, cam) {
+    const band = window.CHAPTERS.find((c) => c.id === "ch02")?.share?.whipBand;
+    if (!band || b < WHIP.t0) return;
+    const sx = WHIP.slabX + (WHIP.dx - whipX(b)) * cam.zoom;
+    if (sx > 1920) return;
+    x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0); x.globalAlpha = 1; band(x, sx); x.restore();
+  }
   function guide(x, b) {
     const gA = prog(b, AT.back + 0.02, AT.back + 0.16, E.out);
     if (gA <= 0) return;
@@ -1245,7 +1295,7 @@
       glow(e, PARK[0], PARK[1], 150, 0.6 * impact(b, AT.back, 0.25) + 0.2 * lit);
       return;
     }
-    const dd = rideD(b), head = pathAt(OUT, dd), trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, N - 0.2)), 18);
+    const dd = rideD(b), wx = whipX(b), head = rideAt(b), trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, N - 0.2)), 18).map(([u, v]) => [u + wx, v]);
     K.spark(e, x, head, trail, { t: G.t, size: 1.1, lw: 2.4, color: SIGD });
     // 浅底上加性的亮核会发白：垫一颗实心的橙核
     x.globalAlpha = 1; x.fillStyle = SIG; x.beginPath(); x.arc(head[0], head[1], 7, 0, TAU); x.fill();
@@ -1255,7 +1305,7 @@
   // 骑行的信封在导轨上：起跑这一帧接停靠时的大小，信封随 Clawd 跳上去淡掉
   function heroEnvelope(b) {
     if (b < AT.launch || b > CL.leap[1] + 0.05) return;
-    const head = pathAt(OUT, rideD(b)), dX = (head[0] - PARK[0]) / (2 * C30);
+    const head = rideAt(b), dX = (head[0] - PARK[0]) / (2 * C30);
     const X = PARK3[0] + dX, Y = PARK3[1] - dX;
     put(X, Y, (xx) => envBox(xx, X, Y, PARK3[2] - 12, lerp(1.5, 1.1, prog(b, AT.launch, AT.launch + 0.12, E.out)), { a: 1 - prog(b, CL.leap[0], CL.leap[1] + 0.04) }), 2);
   }
@@ -1296,7 +1346,7 @@
     if (b < CL.drop[0]) return;
     const q = CL.qs / z, [sx, sy] = CL.stand;
     const frameAt = (t0) => Math.floor(((b - t0) * BAR * 1000) / window.Clawd.FRAME_MS + 1e-6);
-    const [hx, hy] = pathAt(OUT, rideD(b)), ride = hy - CL.lift / z;
+    const [hx, hy] = rideAt(b), ride = hy - CL.lift / z;
     let fr, cx = sx, cy = sy;
     if (b < CL.drop[1]) {
       fr = { pose: "arms-up", offset: 0 };
@@ -1346,8 +1396,15 @@
     BARs = f.BAR;
     const b = f.bar;
     SIG = G.css("signal"); SIGD = G.css("signalD");
-    ROT = b < STOP.S0.t1 ? lerp(0.36, 0, E.out(prog(b, 0, STOP.S0.t1))) : 0;
-    const { cam, blur, zoomBlur } = K.camera(CAM, b, f.BAR);
+    ROT = rotAt(b);
+    let { cam, blur, zoomBlur } = K.camera(CAM, b, f.BAR);
+    if (b < BP.pull[1]) {
+      const c = camOpen(b), c0 = camOpen(b - 1 / 60 / f.BAR);
+      cam = { x: c[0], y: c[1], zoom: c[2], rot: 0 };
+      blur = [(c0[0] - c[0]) * c[2], (c0[1] - c[1]) * c[2]]; zoomBlur = clamp(Math.log(c[2] / c0[2]), -0.2, 0.2);
+    }
+    const wx = whipX(b);
+    cam.x += wx; blur[0] += (whipX(b - 1 / 60 / f.BAR) - wx) * cam.zoom;
     const hitS = Math.max(impact(b, AT.judged, 0.1), impact(b, AT.merge, 0.12), impact(b, AT.back, 0.12));
     cam.zoom *= 1 + 0.01 * hitS;
     G.setCam(cam);
@@ -1362,6 +1419,7 @@
 
     island(x, ELSE); elsewherePhone(x, b);
     world(x, e, b);
+    blueprint(x, b, cam);
 
     openLabels(x, e, b, STOP.S0);
     macLabels(x, b, STOP.MAC);
@@ -1373,8 +1431,9 @@
     codeLabels(x, e, b, STOP.CODE);
     clockLabels(x, e, b, STOP.CLOCK);
     inferStation(x, e, b, STOP.INFER);
+    whipSlab(x, b, cam);
 
-    nar(x, "ch01.n1a", "ch01.n1b", STOP.S0, 0.35, 2.15, b, [110, 930]);
+    nar(x, "ch01.n1a", "ch01.n1b", b < BP.pull[1] ? { c: [cam.x, cam.y, cam.zoom] } : STOP.S0, 0.6, 2.15, b, [110, 930]);
     nar(x, "ch01.n2a", "ch01.n2b", STOP.MAC, 2.8, 4.9, b, [110, 930]);
     nar(x, "ch01.n3a", "ch01.n3b", STOP.GATE, 5.55, 7.65, b, [110, 930]);
     nar(x, "ch01.n4a", "ch01.n4b", STOP.IMG, 8.3, 10.4, b, [110, 930]);
@@ -1393,9 +1452,10 @@
     G.composite(emit.upload(), { mode: G.MODE.add, gain: 0.9 });
     G.composite(top.upload(), { mode: G.MODE.normal });
 
-    const sh = hitS * 4;
+    const sh = hitS * 4, p0 = cut00()?.post, pk = p0 ? E.io(prog(b, BP.paint[0], BP.pull[1])) : 1;
+    const pp = (k, v) => (p0 ? lerp(p0[k], v, pk) : v);
     f.post = {
-      bloom: 0.25, threshold: 1.0, halation: 0, grain: 0, vignette: 0.1, ca: 0,
+      bloom: pp("bloom", 0.25), threshold: pp("threshold", 1.0), halation: pp("halation", 0), grain: 0, vignette: pp("vignette", 0.1), ca: 0,
       shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
       blur, zoomBlur,
     };

@@ -282,7 +282,9 @@
     for (const t of KNOCKS) ev.push({ t, x: NOW_X - (phi - t) * V, s: DOWN, up: false });
     return ev.filter((v) => v.x + v.s[0][0] < NOW_X && v.x + v.s[v.s.length - 1][0] > -3000);
   }
-  const traceY = (ev, u) => ev.reduce((y, v) => y + shapeY(v.s, u - v.x), Y0);
+  // AMP 是起伏的幅度，只在收尾那一小节里收到 0（心电图拉平成第 07 章首帧那道横线）。
+  let AMP = 1;
+  const traceY = (ev, u) => (AMP === 1 ? ev.reduce((y, v) => y + shapeY(v.s, u - v.x), Y0) : Y0 + AMP * ev.reduce((y, v) => y + shapeY(v.s, u - v.x), 0));
   // 墨线要量粗细，平直段也要有点才能起伏：每 24 px 补一个点。
   function tracePts(phi, x0) {
     const ev = events(phi), xs = [x0, NOW_X];
@@ -319,7 +321,7 @@
     inkDot(x, NOW_X, py, 7, dimK);
     for (const v of ev) if (phi >= v.t && phi - v.t < 1.2) {
       const k = Math.exp(-(phi - v.t) * 3.2);
-      if (v.up) inkDot(x, v.x, Y0 - 220 * 0.98, 6, k * dimK * 0.9);
+      if (v.up) inkDot(x, v.x, Y0 - 220 * 0.98 * AMP, 6, k * dimK * 0.9);
     }
     for (const v of ev) if (v.up && v.t > 0 && v.t <= 15 && phi >= v.t) {
       // 标签右端离开 health_buckets 卡的左沿之后再亮，免得压在卡角上；英文比中文宽，按实测宽度算。
@@ -648,9 +650,52 @@
     x.restore();
   }
 
+  // 收尾接第 07 章首帧（ch07.js 的 sTitle 在 AT.crt 之前那一帧）：墨从四边往笔尖晕进来，把宣纸吞成纯黑；
+  // 黑里那段心电图是白的，笔尖外那段也在黑里长出来，到 15.95 只剩屏幕 y 535–545 一道整宽白线和 (1340–1360, 530–550) 的橙色方点。
+  // 白线、方点的位置、粗细和颜色（C_W、C_O 即 ch07.js 的 C.w、C.o）须与 ch07.js 的 sTitle 首帧同步。
+  const NIGHT = [15.45, 15.95], C_W = "#fcfcfc", C_O = [215, 119, 87];
+  // 墨晕：十几层淡墨一层比一层往里收、各自的边抖得不一样，最外一圈是纯黑。
+  const NIGHT_LAYERS = [...Array.from({ length: 14 }, (_, i) => { const t = i / 13; return [lerp(0.6, 0.985, t), ink(0.03 + 0.14 * t * t), i + 1]; }), [1, "#000", 0]];
+  function nightEdge(th, b, j) {
+    const u = ((th / TAU) * 24 + 24) % 24, i = Math.floor(u), fr = u - i, sm = fr * fr * (3 - 2 * fr);
+    const n = lerp(hash(i * 3.1 + 61 + j * 17), hash(((i + 1) % 24) * 3.1 + 61 + j * 17), sm);
+    return 1 + 0.06 * Math.sin(3 * th + 1.3 + b * 1.5) + 0.045 * Math.sin(5 * th + 0.4 - b * 2.3 + j * 0.9) + 0.03 * Math.sin(9 * th + 2.1 + j * 1.7) + 0.08 * (n - 0.5);
+  }
+  function inkNight(x, b, cam) {
+    const k = prog(b, NIGHT[0], NIGHT[1]);
+    if (k <= 0) return;
+    const z = cam.zoom, L = cam.x - 960 / z - 80, R = cam.x + 960 / z + 80, Tp = cam.y - 540 / z - 80, Bt = cam.y + 540 / z + 80;
+    const r = 1600 * Math.pow(1 - k, 1.4);
+    const night = (s, j = 0) => {
+      const p = new Path2D();
+      p.rect(L, Tp, R - L, Bt - Tp);
+      if (r * s < 2) return p;
+      for (let i = 0; i < 120; i++) {
+        const th = (i / 120) * TAU, rr = r * s * nightEdge(th, b, j), px = NOW_X + Math.cos(th) * rr * 1.3, py = Y0 + Math.sin(th) * rr * 0.8;
+        if (i) p.lineTo(px, py); else p.moveTo(px, py);
+      }
+      p.closePath();
+      return p;
+    };
+    x.save();
+    for (const [s, col, j] of NIGHT_LAYERS) { x.fillStyle = col; x.fill(night(s, j), "evenodd"); }
+    x.clip(night(1), "evenodd");
+    const { pts } = tracePts(b * 4, Math.min(NOW_X - 40, L));
+    x.globalAlpha = prog(b, NIGHT[0] + 0.05, NIGHT[0] + 0.25);
+    x.strokeStyle = C_W; x.lineWidth = 10 / z; x.lineJoin = "round";
+    x.beginPath(); pts.forEach(([u, v], i) => (i ? x.lineTo(u, v) : x.moveTo(u, v))); x.lineTo(R, Y0); x.stroke();
+    x.restore();
+    const q = prog(b, 15.78, 15.94, E.io);
+    if (q > 0) {
+      const h = lerp(7, 10, q) / z, py = traceY(events(b * 4), NOW_X), col = VERM.map((v, i) => Math.round(lerp(v, C_O[i], q)));
+      x.save(); x.fillStyle = rgba(col); x.beginPath(); x.roundRect(NOW_X - h, py - h, 2 * h, 2 * h, h * (1 - q)); x.fill(); x.restore();
+    }
+  }
+
   function render(f) {
     BARs = f.BAR;
     const b = f.bar, phi = b * 4;
+    AMP = 1 - prog(b, 15.1, 15.5, E.io);
     const { cam, blur, zoomBlur } = K.camera(CAM, b, f.BAR);
     const hitS = Math.max(impact(b, AT.lit, 0.12), impact(b, 0, 0.1) * 0.6);
     cam.zoom *= 1 + 0.012 * hitS;
@@ -707,12 +752,15 @@
       slip(tp, tr("ch06.clawd"), cx - 70, base - 110, sk, prog(b, AT.clawd + 0.15, 14.1), cx - 30, base - 60);
     }
 
+    inkNight(tp, b, cam);
+
     G.composite(page.upload(), { mode: G.MODE.normal });
     G.composite(top.upload(), { mode: G.MODE.normal });
 
-    const sh = hitS * 5;
+    const sh = hitS * 5, endK = prog(b, 15.5, 16);
+    // 暗角、颗粒在收尾这半小节里收到第 07 章首帧的值（ch07.js render 里 endK 为 0 时的 vignette、grain）。
     f.post = {
-      bloom: 0, threshold: 1.2, halation: 0, grain: 0.035, vignette: 0.24, ca: 0,
+      bloom: 0, threshold: 1.2, halation: 0, grain: lerp(0.035, 0, endK), vignette: lerp(0.24, 0.12, endK), ca: 0,
       shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
       blur, zoomBlur,
     };

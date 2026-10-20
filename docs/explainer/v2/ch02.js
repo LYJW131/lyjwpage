@@ -767,6 +767,23 @@
   const A_IN = 700 + CAM0[0] - (960 + 40) / CAM0[2], A_STOP = 810, A_BRAKE = 0.345;
   const sparkD = (b) => keys(b, [[0, A_IN], [A_BRAKE, A_STOP, E.outExpo], [1.9, A_LEN - 40, E.io], [2.35, A_LEN, E.in]]);
   const sparkA = (b) => pathAt(A_PATH, sparkD(b));
+  // 接第 01 章的甩镜头：0:0 镜头还落在左边 D 处、正往右甩，E.outExpo 在 T 内刹到 CAM0。起速接上第 01 章末的屏幕速度
+  // （ch01.js#WHIP 的 dx 2200、0.25 小节 E.inExpo、出口缩放 1.014，两边须同步）；火花和 Clawd 减去同一段位移，屏幕上的骑乘轨迹不变。
+  const WHIP = { T: 0.35, slabX: 900 };
+  WHIP.D = (2200 * 1.014 * WHIP.T) / (0.25 * CAM0[2]);
+  // 0:0 之前那一帧（算运动模糊用）按起速往回外推，首帧就带着第 01 章末的模糊
+  const whipOff = (b) => WHIP.D * (b < 0 ? 1 - (10 * Math.LN2 * b) / WHIP.T : 1 - E.outExpo(prog(b, 0, WHIP.T)));
+  const sparkS = (b) => { const [u, v] = sparkA(b); return [u - whipOff(b), v]; };
+  // 甩镜头带过剪切点的红斜块：sx 是红块左下角的屏幕 x，往右上斜；第 01 章最后两帧经 share 借它画。
+  function whipBand(x, sx) {
+    fillPoly(x, [[sx, 1180], [sx + 420, -100], [sx + 1420, -100], [sx + 1000, 1180]], RED);
+    fillPoly(x, [[sx + 1060, 1180], [sx + 1480, -100], [sx + 1600, -100], [sx + 1180, 1180]], INK);
+  }
+  function whipSlab(x, cam) {
+    const wx = CAM0[0] - WHIP.D + (WHIP.slabX - 960) / CAM0[2], sx = (wx - cam.x) * cam.zoom + 960;
+    if (sx + 1600 < 0) return;
+    x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0); x.globalAlpha = 1; whipBand(x, sx); x.restore();
+  }
   // 蹲着、不翻转，屏幕上 18 格 × 7 px = 126 px 宽，底边比亮核高 7 px（镜头 1.4 × 5）。
   // 从火花跳到门楣上，直线、弧线都会压过门名、域名条或标题：起跳后钻到门墙背后，从标题右边的门楣后面冒出来再落下。
   const CL = { leap: 0.5, duck: 0.62, pop: 0.86, land: 1.125, qRide: 5, q: 7, spot: [1690, 300], popFrom: [1250, 430] };
@@ -776,7 +793,7 @@
     if (b >= AT.gone) return;
     const [px, py] = CL.spot;
     if (b < CL.leap) {
-      const [hx, hy] = sparkA(b);
+      const [hx, hy] = sparkS(b);
       clawdCut(x, hx, hy - 5, CL.qRide, { crouch: 1, pose: b < AT.look ? "default" : "look-right" });
       return;
     }
@@ -846,7 +863,8 @@
   // 甩镜头时顺着对角线带一点转角，中途稍微拉远，看得见带子和墙的走向。
   const MOVES = [[5.45, 6.05, -0.06], [10.75, 11.35, 0.05], [16.35, 16.95, -0.05], [21.95, 22.5, 0.07], [27.5, 28.4, -0.04]];
   function camAt(b) {
-    const c = keys(b, CAM);
+    const c = keys(b, CAM).slice();
+    c[0] -= whipOff(b);
     let z = Math.exp(c[2]), r = c[3];
     for (const [a0, a1, rr] of MOVES) if (b > a0 && b < a1) { const s = Math.sin((Math.PI * (b - a0)) / (a1 - a0)) ** 2; r += rr * s; z *= 1 - 0.12 * s; }
     return [c[0], c[1], z, r];
@@ -883,10 +901,11 @@
     if (seesF(v, F4) || seesF(v, F5)) frame4(x, b);
     if (seesF(v, F5)) frame5(x, b);
     narration(x, b);
+    if (b < WHIP.T) whipSlab(x, cam);
     const tp = top.begin(); top.cam(cam);
     if (b < 2.5) {
-      const d = sparkD(b);
-      spark(tp, pathAt(A_PATH, d), trailOn(A_PATH, d, 320), lerp(1.1, 0.4, prog(b, 2.0, 2.4)), 1 - prog(b, 2.36, 2.5));
+      const d = sparkD(b), wo = whipOff(b);
+      spark(tp, sparkS(b), trailOn(A_PATH, d, 320).map(([u, v]) => [u - wo, v]), lerp(1.1, 0.4, prog(b, 2.0, 2.4)), 1 - prog(b, 2.36, 2.5));
     }
     if (b >= AT.rtOut && b < AT.commit) {
       const u = keys(b, [[AT.rtOut, U_G + 330], [AT.flange, U_F, E.io], [AT.core, U_F + 250, E.io], [AT.hub, U_F + 440, E.out]]);
@@ -924,5 +943,6 @@
       dots = makeDots(); dotTile = makeTile();
     },
     render,
+    share: { whipBand },
   });
 })();

@@ -702,6 +702,19 @@
       }
       return finish(d, 0.0005);
     });
+    // jC：第 06 章收尾心电图拉平那一声长「嘀」（只给 music/ch06.js 用，len 以秒计）：正弦一点点长出奇次谐波，到头已接近方波，
+    // 第 07 章 0:0 同音的方波（music/ch07.js 开头那一声）接着响，听着是同一个音换了音色。
+    const jCflat = (m, len) => get("jCflat:" + m + ":" + len, () => {
+      const f = hz(m), d = arr(len + 0.06), n = d.length;
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, q = Math.min(1, t / len) ** 2;
+        ph += TAU * f / sr;
+        const odd = Math.sin(3 * ph) / 3 + Math.sin(5 * ph) / 5 + Math.sin(7 * ph) / 7 + Math.sin(9 * ph) / 9;
+        d[i] = (Math.sin(ph) + q * odd) * Math.min(1, t / 0.02) * (t < len ? 1 : Math.exp(-(t - len) / 0.012));
+      }
+      return finish(d, 0.0005);
+    });
     // 第 05 章的冷爵士（jazz 开头的只给 music/ch05.js 用）：拨弦低音提琴、颤音琴、Harmon 弱音小号、铜管短和弦，刷子鼓、叮叮镲、响指、邦戈、剪刀。
     // 颤音琴的泛音按真琴键 1 : 4 : 9.9 调，颤音 5.5 Hz；弱音小号是加法合成的铜管谐波再过一道 1.65 kHz 的窄鼻音带通。
     const jazzBass = (m, len) => get(`jazz:b:${m}:${len}`, () => {
@@ -1325,6 +1338,7 @@
     });
     const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit, glass, marimba, kalimba, morse, gate, off, whip, knock, ping, clear, hop };
     Object.assign(bank, { chipNote, chipDrum, chipFx });
+    Object.assign(bank, { jCflat });
     Object.assign(bank, { jazzBass, jazzVibes, jazzHarmon, jazzStab, jazzRide, jazzBrush, jazzKick, jazzChick, jazzSnap, jazzBongo, jazzRim, jazzSnip });
     Object.assign(bank, { metroKick, metroSnare, metroHat, metroClack, metroBass, metroSeq, metroStr, metroLead, metroChime, metroFlap, metroWhistle });
     Object.assign(bank, { toonTuba, toonPiano, toonBanjo, toonClar, toonWah, toonKick, toonSnare, toonRoll, toonChoke, toonBlock, toonWhistle, toonPans });
@@ -1532,6 +1546,7 @@
     // 第 07 章红白机音色：[电平, 声像, 混响, 延迟]；方波的有效值比正弦高得多，电平按整章响度对到前后两章。
     const CHIP_INST = { chipLead: [0.34, 0.12, 0.1, 0.16], chipPulse: [0.23, -0.4, 0.06, 0.12], chipArp: [0.21, 0.42, 0.05, 0.2], chipTri: [0.63, 0, 0, 0] };
     const CHIP_DRUM_G = { kick: 1.05, tom: 0.84, snare: 0.63, hat: 0.27, open: 0.25, crash: 0.34 }, CHIP_FX_G = 0.63;
+    const JC_FLAT_G = 0.22;
     // 第 05 章冷爵士：乐器 [电平, 声像, 混响, 延迟]、鼓件 [电平, 声像, 混响]，电平按整章响度对到前后两章。
     // 低音提琴走 mel 总线、不走 bus.bass：那条只在串行渲染里跟着 duck 自动化，并行渲染不跟，两种渲染会对不上。
     const jazzVoice = { jazzBass: [1.12, -0.05, 0.06, 0], jazzVibes: [0.47, 0.22, 0.3, 0.06], jazzHarmon: [0.7, -0.18, 0.3, 0.12], jazzStab: [0.22, 0.08, 0.22, 0] };
@@ -1718,6 +1733,7 @@
           case "hop": play(S.hop(n.m), t, { g: HOP_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.25, delayAmt: 0.15 }); break;
           case "chipDrum": play(S.chipDrum(n.drum), t, { g: CHIP_DRUM_G[n.drum] * (n.v ?? 1), pan: n.pan ?? 0, to: bus.drums, verbAmt: 0.03 }); break;
           case "chipFx": play(S.chipFx(n.fx), t, { g: CHIP_FX_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.1, delayAmt: n.echo ?? 0 }); break;
+          case "jCflat": play(S.jCflat(n.m, Math.round(n.len * BEAT * 1000) / 1000), t, { g: JC_FLAT_G, verbAmt: 0.2 }); break;
           case "jazz": jazzHit(n, t); break;
           case "metro": metroHit(n, t); break;
           case "toon": toonHit(n, t); break;
