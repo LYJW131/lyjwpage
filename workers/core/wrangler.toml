@@ -11,8 +11,6 @@ preview_urls = true
 ALLOWED_ORIGINS = "https://lyjw131.com,https://lyjw.me,https://dev.lyjw.me"
 STORAGE_PREFIX = "lyjwpage"
 
-[ai]
-binding = "AI"
 
 [[services]]
 binding = "AI_SERVICE"

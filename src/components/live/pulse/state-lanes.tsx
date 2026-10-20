@@ -12,9 +12,6 @@ import { cn } from "@/lib/utils";
 
 const CODING_WORDS = ["No coding", "Coding app", "Agent", "Coding app + agent"] as const;
 const CODING_FILLS = ["", "var(--pulse-human)", "var(--pulse-agent)", "var(--pulse-both)"] as const;
-const MODE_LABELS: Record<string, string> = {
-  idle: "Idle", brief: "Brief bursts", interactive: "In coding apps", agent: "Agent work", mixed: "Apps + agents",
-};
 
 const AGENT_SOURCES = [
   { bit: CODING_AGENT_MAC, label: "Mac", icon: <MacBookProIcon className="size-3.5" aria-hidden /> },
@@ -35,21 +32,14 @@ function AgentSources({ mask }: { mask: number }) {
 
 export function codingModel(lane: PulseCodingLane, range: Range): LaneModel | null {
   const segments = columnRows(lane.segments, ["value"]);
-  const assessments = columnRows(lane.assessments, ["intensity", "confidence", "mode"]);
-  if (!segments || !assessments || !lane.summary) return null;
-  const scored = assessments.map((row) => ({ ...row, ...absolute(range, row) }));
+  if (!segments || !lane.summary) return null;
   const items = segments.map((row, index): LaneItem => {
     const { from, to } = absolute(range, row);
-    const middle = (from + to) / 2;
-    const assessment = scored.find((score) => score.from <= middle && middle < score.to)
-      ?? scored.find((score) => score.from < to && score.to > from);
     return {
       from, to, rank: row.value ? 0 : 1,
       content: (
         <Tooltip key={index} from={from} to={to} head={CODING_WORDS[row.value] ?? "Coding"} lines={[
           <AgentSources key="a" mask={lane.segments.agentSources?.[index] ?? 0} />,
-          assessment && <span key="i">Jev intensity {Math.round(assessment.intensity / 4 * 100)}/100</span>,
-          assessment?.mode && <span key="m" className="text-muted-foreground">{MODE_LABELS[assessment.mode] ?? assessment.mode}</span>,
         ]} />
       ),
     };
