@@ -75,6 +75,7 @@ function startup({
   const nodes = parsedElements(body);
   const bootstrap = nodes.find((node) => node.tagName === "script");
   assert.ok(bootstrap);
+  assert.ok(!bootstrap.attributes.some(({ name, value }) => name === "type" && value === "module"), "入口模块应由首绘后的经典脚本启动");
   const frames = new Map<number, () => void>();
   const listeners = new Map<string, () => void>();
   const inserted: Element[] = [];
