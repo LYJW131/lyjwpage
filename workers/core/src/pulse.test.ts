@@ -11,7 +11,6 @@ import {
 } from "./pulse";
 import type { StoredCodingBuckets } from "@shared/coding-buckets";
 import type { CodingTokenBucketRow } from "@shared/coding-usage";
-import type { PulseAssessment } from "@shared/pulse-assessment";
 import type { CodingObservation } from "@shared/pulse-coding";
 import type { Coverage } from "@shared/pulse-features";
 import type { ListeningTrace } from "@shared/pulse-listening";
@@ -160,7 +159,7 @@ test("coding 三色带：前台、agent、同时与覆盖到的空闲", () => {
     OBS(180_000, { desktop: { application: "Code", coding: true }, agents: [] }),
     OBS(360_000, { desktop: { application: "Safari", coding: false }, agents: [{ id: "cursor", model: null, active: true }] }),
     OBS(540_000),
-  ], [], [], W);
+  ], [], W);
   assert.deepEqual(lane.segments, {
     startSec: [0, 180, 360, 540],
     endSec: [180, 360, 540, 600],
@@ -171,20 +170,20 @@ test("coding 三色带：前台、agent、同时与覆盖到的空闲", () => {
 });
 
 test("available:false 不算观测，不画段", () => {
-  const lane = codingLaneView([OBS(0, { available: false })], [], [], W);
+  const lane = codingLaneView([OBS(0, { available: false })], [], W);
   assert.equal(lane.segments.startSec.length, 0);
   assert.deepEqual(lane.summary, { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 });
 });
 
 test("Cursor 只有覆盖没有活动时画 0 而不是留空", () => {
-  const lane = codingLaneView([], [{ t: 0, available: true, lastActivityAt: null }], [], W);
+  const lane = codingLaneView([], [{ t: 0, available: true, lastActivityAt: null }], W);
   assert.deepEqual(lane.segments.value, [0]);
   assert.deepEqual(lane.segments.endSec, [600]);
   assert.deepEqual(lane.summary, { humanSeconds: 0, agentSeconds: 0, bothSeconds: 0 });
 });
 
 test("Cursor 最近活动撑起 agent 段，来源位记 cursor", () => {
-  const lane = codingLaneView([], [{ t: 0, available: true, lastActivityAt: 0 }], [], W);
+  const lane = codingLaneView([], [{ t: 0, available: true, lastActivityAt: 0 }], W);
   assert.deepEqual(lane.segments, {
     startSec: [0, 300],
     endSec: [300, 600],
@@ -195,7 +194,7 @@ test("Cursor 最近活动撑起 agent 段，来源位记 cursor", () => {
 });
 
 test("云端 token 桶是 agent 活动的正证据", () => {
-  const lane = codingLaneView([], [], [], W, [{ from: 0, to: 300_000 }]);
+  const lane = codingLaneView([], [], W, [{ from: 0, to: 300_000 }]);
   assert.deepEqual(lane.segments.value, [2]);
   assert.deepEqual(lane.segments.agentSources, [2]);
 });
@@ -204,43 +203,9 @@ test("同值同来源的相邻观测并成一段", () => {
   const lane = codingLaneView([
     OBS(0, { desktop: { application: "Code", coding: true }, agents: [] }),
     OBS(120_000, { desktop: { application: "Code", coding: true }, agents: [] }),
-  ], [], [], W);
+  ], [], W);
   assert.deepEqual(lane.segments.startSec, [0]);
   assert.deepEqual(lane.segments.endSec, [300]);
-});
-
-function assessment(from: number, extra: Partial<PulseAssessment> = {}): PulseAssessment {
-  return {
-    domain: "coding",
-    from,
-    to: from + 300_000,
-    coverage: [{ from, to: from + 300_000 }],
-    intensity: { value: 3, confidence: 0.876, probabilities: { "0": 0, "1": 0, "2": 0, "3": 1, "4": 0 } },
-    continuity: { value: 2, confidence: 0.9, probabilities: { "0": 0, "1": 0, "2": 1, "3": 0 } },
-    mode: { value: "mixed", confidence: 0.9, probabilities: { idle: 0, brief: 0, interactive: 0, agent: 0, mixed: 1 } },
-    inputHash: "h",
-    model: "clef",
-    scoredAt: from + 300_000,
-    ...extra,
-  };
-}
-
-test("评估列按窗口裁剪，置信度留两位小数，缺 mode 给 null", () => {
-  const lane = codingLaneView([], [], [
-    assessment(-300_000),
-    assessment(-100_000, {
-      intensity: { value: 4, confidence: 0.876, probabilities: { "0": 0, "1": 0, "2": 0, "3": 0, "4": 1 } },
-    }),
-    assessment(550_000, { mode: null }),
-    assessment(700_000),
-  ], W);
-  assert.deepEqual(lane.assessments, {
-    startSec: [0, 550],
-    endSec: [200, 600],
-    intensity: [4, 3],
-    confidence: [0.88, 0.88],
-    mode: ["mixed", null],
-  });
 });
 
 function tokenRow(id: string, tokens: { input?: number; output?: number; cacheRead?: number; cacheCreation?: number } = {}): CodingTokenBucketRow {
