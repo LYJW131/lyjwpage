@@ -10,6 +10,10 @@ const PRIOR_MS = 24 * HOUR_MS;
 // 最近速度只看这几天，按天数衰减，越近权重越大。
 const RECENT_DAYS = 7;
 const RECENT_HALF_LIFE_MS = 3 * DAY_MS;
+// 窗口内的近期速度衰减更快：周中突然加速或减速，预测要在一两天内跟上。
+const MOMENTUM_HALF_LIFE_MS = DAY_MS;
+// 窗口过了这么久才引入窗口内的近期速度，开头几小时读数太少。
+const MOMENTUM_MIN_ELAPSED_MS = DAY_MS;
 // 没有历史时，窗口开头这么久内不出预测。
 const MIN_ELAPSED_MS = 6 * HOUR_MS;
 // 读数到 100 才算用完；停在 98 左右的日子是没怎么用，不是被锁。
@@ -73,14 +77,14 @@ export function usageIntervals(points: LimitHistoryPoint[], windowMs: number): U
 }
 
 // 被锁住或中途用完的区间只说明「至少这么多」，算速度时剔掉，否则用完那几天会把速度压低。
-export function recentRate(intervals: UsageInterval[], now: number): number | null {
+export function recentRate(intervals: UsageInterval[], now: number, halfLifeMs = RECENT_HALF_LIFE_MS): number | null {
   let used = 0;
   let span = 0;
   for (const interval of intervals) {
     if (interval.locked || interval.capped) continue;
     const age = now - interval.to;
     if (age < 0 || age > RECENT_DAYS * DAY_MS) continue;
-    const weight = 0.5 ** (age / RECENT_HALF_LIFE_MS);
+    const weight = 0.5 ** (age / halfLifeMs);
     used += weight * interval.used;
     span += weight * (interval.to - interval.from);
   }
@@ -133,6 +137,10 @@ export function forecastLimit(
   let rate: number | null;
   if (prior != null) rate = (usedPercent + prior * PRIOR_MS) / (elapsed + PRIOR_MS);
   else rate = elapsed >= MIN_ELAPSED_MS ? usedPercent / elapsed : null;
+  const momentum = elapsed >= MOMENTUM_MIN_ELAPSED_MS
+    ? recentRate(intervals.filter((interval) => interval.to > startAt), now, MOMENTUM_HALF_LIFE_MS)
+    : null;
+  if (rate != null && momentum != null) rate = (rate + momentum) / 2;
 
   if (rate == null) {
     return { ...base, rate: null, runOutAt: null, ranOut: false, lockedMs: null, percentAtReset: null };

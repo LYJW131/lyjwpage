@@ -64,3 +64,18 @@ test("an archived reading newer than the live one is ignored, not read as a rese
   assert.ok(forecast.rate! > 0);
   assert.equal(forecast.ranOut, false);
 });
+
+test("a mid-window speed-up or slow-down moves the forecast beyond the whole-window average", () => {
+  const now = start + 5 * DAY + 12 * HOUR;
+  const average = (used: number) => used / (now - start);
+  const faster = forecastLimit(weekly(70), [...readings([2, 4, 6, 8, 10]), [now - HOUR, 69, reset]], now)!;
+  assert.ok(faster.rate! > average(70) * 1.5);
+  const slower = forecastLimit(weekly(66), readings([20, 40, 60, 62, 64]), now)!;
+  assert.ok(slower.rate! < average(66) * 0.8);
+});
+
+test("steady use leaves the forecast at the window average", () => {
+  const now = start + 4 * DAY;
+  const forecast = forecastLimit(weekly(40), readings([10, 20, 30]), now)!;
+  assert.ok(Math.abs(forecast.rate! * DAY - 10) < 0.5);
+});
