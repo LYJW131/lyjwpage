@@ -160,7 +160,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/workflow-zh-dark.svg">
-  <img src="docs/diagrams/workflow-zh-light.svg" alt="开发工作流图：lyjw 的需求、定时任务与访客构建三路经 Claude 变成 PR，过分支预览、CI、按需的机器评审与 lyjw 点头后合进 main，由 Workers Builds 部署" width="100%">
+  <img src="docs/diagrams/workflow-zh-light.svg" alt="开发工作流图：lyjw 的需求、定时任务与访客构建三路的改动经 Claude 变成 PR，过分支预览、CI、按需的机器评审与 lyjw 点头后合进 main，由 Workers Builds 部署" width="100%">
 </picture>
 
 - **规则分层，能拦就拦**：[`HUMAN.md`](./HUMAN.md) 是给 lyjw 的协作约定，[`AGENTS.md`](./AGENTS.md) 是给 agent 的硬规则，[`.claude/skills/`](./.claude/skills/) 是可复用流程；违反时由钩子、lint 和 CI 里的 `docs:check`、`rules:check`、`design:scale` 拦下，存量违规的基线只减不增。
