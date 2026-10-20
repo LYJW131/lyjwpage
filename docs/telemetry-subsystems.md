@@ -187,7 +187,7 @@ coding agent 的 token 用量有四个来源。来源只报自己观测到的原
 ### 卡片怎么判
 - 展示名、品牌图标、占哪种行（全量面板、紧凑行、只进合计与年度不单独占行）只在站点登记表 `src/lib/coding-agents.ts#CODING_AGENTS`；来源只报 agent id，登记表里没有的 id 用 id 当名字、占一行紧凑行。
 - 「今天」：视图给的是各 agent 最近一个有行的站点日，浏览器按自己的站点日判是不是今天，不是今天就写明是哪一天。来源在当天有采集就有行（没用是一行 0），所以最近一天停在昨天表示今天还没报到。
-- 活动灯：任一来源的最近事件在 `src/lib/coding-agents.ts#CODING_ACTIVE_WINDOW_MS` 内就亮；Mac 亲口离线时只作废跑在 Mac 上的那些时刻：来源 `mac` 与 `mac-otlp`（`src/lib/coding-agents.ts#codingSourceOnMac`）；账号与云端的灯不受 Mac 存活影响。
+- 活动灯：任一来源的最近事件在 `shared/coding-usage-view.ts#CODING_ACTIVE_WINDOW_MS` 内就亮；Mac 亲口离线时只作废跑在 Mac 上的那些时刻：来源 `mac` 与 `mac-otlp`（`src/lib/coding-agents.ts#codingSourceOnMac`）；账号与云端的灯不受 Mac 存活影响。
 - 来源状态：参与合计的来源这一轮采集失败（`error`）时，读数旁标 Partial（有读数）或 Unavailable（没有读数），悬停写出每个来源的状况（含被账号级来源覆盖的 `superseded`）；没有行的地方一律画「—」，不当成 0。
 - 限额另走可滞后层（见下一节），按 id 贴到同一行上。
 
