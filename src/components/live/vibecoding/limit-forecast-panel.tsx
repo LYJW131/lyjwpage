@@ -54,8 +54,8 @@ function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast; timeZo
   const runsOut = lockedFrom != null;
 
   return (
-    <div className="grid gap-1">
-      <div className="relative h-28 border-b border-line">
+    <div className="flex min-h-40 flex-1 flex-col gap-1">
+      <div className="relative min-h-28 flex-1 border-b border-line">
         {[50, 100].map((percent) => (
           <span
             key={percent}
@@ -130,7 +130,7 @@ function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast; timeZo
   );
 }
 
-function DailyBars({ forecast, timeZone }: { forecast: LimitForecast; timeZone: string | undefined }) {
+export function DailyUse({ forecast, timeZone }: { forecast: LimitForecast; timeZone: string | undefined }) {
   const allowed = forecast.evenRate * DAY_MS;
   const scale = Math.max(allowed * 1.5, ...forecast.days.map((day) => day.used));
   const weekday = formatter({ weekday: "short" }, timeZone);
@@ -138,8 +138,8 @@ function DailyBars({ forecast, timeZone }: { forecast: LimitForecast; timeZone: 
   return (
     <div className="grid gap-2">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="label-mono text-muted-foreground">Daily use</span>
-        <span className="text-xs text-muted-foreground">Allowed {allowed.toFixed(1)} pp a day</span>
+        <span className="label-mono text-muted-foreground">Weekly use per day</span>
+        <span className="text-xs text-muted-foreground">Allowed {allowed.toFixed(1)} pp</span>
       </div>
       <div className="grid gap-1">
         <div className={cn(columns, "relative h-18 pt-4")}>
@@ -196,7 +196,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function LimitForecastPanel({
+export function useWeeklyForecast({
   limit,
   limitAt,
   history,
@@ -220,7 +220,10 @@ export function LimitForecastPanel({
   const timeZone = baked || !mountedAt ? site.timezone : undefined;
   const points = history?.series.find((series) => series.agent === "claude" && series.key === limit?.key)?.points ?? [];
   const forecast = limit && now ? forecastLimit(limit, points, Math.min(now, limitAt ?? now)) : null;
+  return { forecast, timeZone };
+}
 
+export function LimitForecastPanel({ forecast, timeZone }: { forecast: LimitForecast | null; timeZone: string | undefined }) {
   const clock = formatter({ weekday: "short", hour: "numeric", minute: "2-digit" }, timeZone);
   let headline = "No forecast yet";
   let detail = "Waiting for a weekly reading";
@@ -256,7 +259,7 @@ export function LimitForecastPanel({
         </div>
         <div className="text-xs text-muted-foreground">{detail}</div>
       </div>
-      {forecast ? <ForecastChart forecast={forecast} timeZone={timeZone} /> : <div className="h-32 border-b border-line" />}
+      {forecast ? <ForecastChart forecast={forecast} timeZone={timeZone} /> : <div className="min-h-40 flex-1 border-b border-line" />}
       <div className="grid grid-cols-3 gap-4 border-t border-line pt-4">
         <Stat label="Pace" value={pace != null ? `${pace.toFixed(1)}x even` : "—"} />
         <Stat
@@ -274,7 +277,6 @@ export function LimitForecastPanel({
           }
         />
       </div>
-      {forecast && forecast.days.length > 0 && <DailyBars forecast={forecast} timeZone={timeZone} />}
     </div>
   );
 }
