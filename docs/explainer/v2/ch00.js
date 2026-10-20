@@ -56,7 +56,6 @@
   const fpx = (f) => parseFloat(/([\d.]+)px/.exec(f)[1]);
 
   const DY = 1600;
-  // 图纸 A 左右各收进 140：第 10 章借终端谢幕时镜头推近（ch10.js#render 的 cam），图框和右下角的标题栏也要整个留在画里，改一边两边一起核。
   const FRAME_A = [140, 40, 1780, 1040], SHEET_A = [-320, -280, 2240, 1320];
   // 图纸 B 的图框上下比三栏宽出一截：上边留给页眉，下边左角放注释框、右角放标题栏，都不碰栏线（见 notesAt）。
   const FRAME_B = [40, 100 + DY, 3800, 2180 + DY], SHEET_B = [-300, DY - 100, 4420, DY + 2420];
@@ -213,7 +212,6 @@ void main(){
     }
     return b >= AT.skip ? { pose: "default", offset: 0, x: 0 } : null;
   }
-  // 第 10 章借 termState(2) 改几项当谢幕的状态；这里新加的字段（tag）都只在 welcome 亮着时画，清屏后和 termState(0) 一样。
   function termState(b) {
     const typed = b < AT.type0 ? 0 : Math.min(CMD.length, Math.floor((b - AT.type0) * 16 + 1e-6) + 1);
     const entered = b >= AT.enter;
@@ -222,7 +220,7 @@ void main(){
       typed, welcome: prog(b, AT.enter, AT.enter + 0.06), clawd: clawdFrame(b), tag: prog(b, AT.tag, AT.tag + 0.12),
       say: prog(b, AT.say, AT.say + 0.1) * (1 - prog(b, 2.55, 2.65)), sayReveal: prog(b, AT.say + 0.02, AT.say + 0.6),
       cursor: { line: entered ? 2 : 1, on },
-      endcard: null, clear: 0,
+      clear: 0,
     };
   }
   // 标题栏的右边和下边就是图框线；格宽按当前语种实测的字宽排，中英都不挤、不出框。
@@ -301,12 +299,7 @@ void main(){
         if (st.say > 0) note(x, st, cx);
       }
     }
-    const ec = st.endcard;
-    // 第 10 章的片尾字卡：字是那一章的，用全片的 cjk 字体，不靠本章只切了自己用字的子集。
-    if (ec && ec.a > 0 && keep(L2 + 160)) {
-      K.narration(x, ec.l1, TX, L2 + 50, { px: 110, color: C.white, reveal: ec.reveal, alpha: ec.a, maxW: TW.w - 104 });
-      text(x, ec.l2, TX + 4, L2 + 140, { font: FONT.cjk(46, 600), color: C.pale, alpha: ec.a * prog(ec.reveal, 0.5, 1), maxW: TW.w - 108 });
-    } else if (st.cursor.line === 2 && wa > 0 && keep(L2)) text(x, ">", TX, L2, { font: pf, color: C.pale });
+    if (st.cursor.line === 2 && wa > 0 && keep(L2)) text(x, ">", TX, L2, { font: pf, color: C.pale });
     if (st.cursor.on) {
       const onL2 = st.cursor.line === 2 && st.clear <= 0;
       const cx = onL2 ? TX + measure(x, "> ", pf) : TX + pw + measure(x, typed, pf) + 4;
