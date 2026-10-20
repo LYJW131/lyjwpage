@@ -162,24 +162,25 @@ export type ForecastSample = {
   phase: "used" | "projected" | "locked";
   // used：实际读数插值；projected：按预测速度外推；locked 与没出预测时为 null。
   percent: number | null;
-  // 从现在起每天匀速用到重置正好 100% 的那条线，只在现在之后有值。
+  // 从现在起匀速用到重置正好 100% 的那条线，只在现在及之后、还没用完时有值。
   target: number | null;
   even: number;
 };
 
 export function sampleForecast(forecast: LimitForecast, at: number): ForecastSample {
   const even = (100 * (at - forecast.startAt)) / (forecast.resetAt - forecast.startAt);
-  if (forecast.runOutAt != null && at >= forecast.runOutAt) return { at, phase: "locked", percent: null, target: null, even };
+  const target = at >= forecast.now && forecast.usedPercent < 100
+    ? forecast.usedPercent + ((100 - forecast.usedPercent) * (at - forecast.now)) / (forecast.resetAt - forecast.now)
+    : null;
+  if (forecast.runOutAt != null && at >= forecast.runOutAt) return { at, phase: "locked", percent: null, target, even };
   if (at <= forecast.now) {
     const window = forecast.window;
     const after = window.findIndex(([pointAt]) => pointAt >= at);
     const [toAt, toUsed] = window[Math.max(0, after)] ?? window.at(-1)!;
     const [fromAt, fromUsed] = window[Math.max(0, after - 1)]!;
     const percent = toAt > fromAt ? fromUsed + ((toUsed - fromUsed) * (at - fromAt)) / (toAt - fromAt) : toUsed;
-    return { at, phase: "used", percent, target: null, even };
+    return { at, phase: "used", percent, target, even };
   }
-  const left = forecast.resetAt - forecast.now;
-  const target = forecast.usedPercent + ((100 - forecast.usedPercent) * (at - forecast.now)) / left;
   const percent = forecast.rate == null ? null : Math.min(100, forecast.usedPercent + forecast.rate * (at - forecast.now));
   return { at, phase: "projected", percent, target, even };
 }
