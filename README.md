@@ -179,7 +179,6 @@
 | 样式与交互 | Tailwind CSS 4 · Motion · Number Flow · Geist |
 | 客户端数据 | SWR · WebSocket |
 | 状态与资源存储 | Cloudflare Workers · Durable Objects SQLite · KV · D1 · R2 |
-| 活跃度评分 | Workers AI（Clef） |
 | 首页对话 | DeepSeek Flash 与 Anthropic Claude（Clef 选档、Clairic 抽取）、Exa 联网搜索、Cloudflare Turnstile |
 | 原生设备接入 | Swift / SwiftUI · HealthKit · BLE |
 | 页面托管与分发 | Cloudflare Workers · 阿里云 ESA |
