@@ -145,7 +145,7 @@
     ev(11.875, { kind: "jazz", what: "rim" }); sfx(11.875, "pop", 0.5, 0.4);
     sfx(12.0625, "keys", 0.5, 0.3);
     ev(12.4375, { kind: "jazz", what: "bongo", hi: true });
-    ev(AT.ink, { kind: "swell" }); ev(AT.ink, { kind: "jazz", what: "sweep" });
+    ev(AT.ink, { kind: "swell" }); ev(AT.ink, { kind: "jazz", what: "ride", i: 1, v: 0.6 });
 
     // ---------- 12.75–14 · 00 蓝图主页：简约派的马林巴，钢片琴唱主题，E5 落在翻面那一拍 ----------
     const CELL = [0, 2, 4, 1, 3, 2, 0, 4, 3, 1, 2, 4];

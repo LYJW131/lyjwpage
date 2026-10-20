@@ -39,7 +39,7 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 
 ### 3. 写章
 
-- 一位作者一章（或相邻两章），简报照 CHAPTER-BRIEF 填。作者用主模型、effort 用 max：lyjw 要求做动画时这样。
+- 一位作者一章（或相邻两章），简报照 CHAPTER-BRIEF 填。作者用 Opus、effort 用 xhigh：lyjw 定的强度。
 - 互不依赖的章同时派（后台）。云端作者在同一个工作树里写，各只写自己那章的 `ch<NN>.js` 与 `music/ch<NN>.js`，不提交、不切分支、不用 `git stash`；要动共用文件（`kit.js`、`engine.js`、`i18n.js` 等）写进汇报，由主线程改。Mac 上各开工作树，见 CHAPTER-BRIEF「在哪做」。
 - 复用各章画法的回顾章放最后。
 - 看图交给 Haiku：作者不看图（CHAPTER-BRIEF「怎么自检」），交回联系表路径。主线程每份联系表派一个 Haiku（`model: "haiku"`、`effort: "high"`、后台），提示词：第一句禁止调用 `mcp__hearthbot__` 工具；读 [frame-qa.md](frame-qa.md) 的问题类型和报告格式；说明这是按文件名排的静帧，相邻两格不连续，不报 `glitch`；列出要看的图。主线程只读报告文字，把要改的条目用 SendMessage 转给作者，改完再派 Haiku 只看改过的那几张。
