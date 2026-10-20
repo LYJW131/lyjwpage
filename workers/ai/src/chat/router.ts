@@ -43,7 +43,7 @@ const ROUTE_INSTRUCTIONS =
 
 export const PREFETCH_STATUS = {
   now: { views: ["desktop", "codingNow", "nowListening", "playingNow"], criterion: "What LYJW is doing or busy with right now in general, or whether LYJW is online or at the computer." },
-  listening: { query: ["listening"], views: ["nowListening", "listening"], criterion: "What music LYJW listens to now or lately, or whether LYJW has listened to a specific song, artist or album." },
+  listening: { query: ["listening"], views: ["nowListening", "listening", "pulse"], criterion: "What music LYJW listens to now or lately, or whether LYJW has listened to a specific song, artist or album." },
   playing: { card: "game", query: ["playing", "trophies"], views: ["playingNow", "playing", "questNow"], criterion: "What games LYJW plays now or lately on PlayStation, Steam or Quest, or whether LYJW has played a specific game." },
   trophies: { card: "game", query: ["trophies", "playing"], views: ["trophies", "playing"], criterion: "LYJW's PlayStation trophies or game achievements." },
   watching: { query: ["watching"], views: ["nowWatching", "watching"], criterion: "What anime, shows or movies LYJW watches now or lately, or whether LYJW has watched a specific one." },
