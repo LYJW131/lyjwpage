@@ -14,6 +14,9 @@ import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import type { CodingAgentRow } from "@/lib/coding-agents";
 import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
 
+// 这几家的限额条点开先看分项窗口，官方用量页挪到分项条上。
+const EXPAND_BEFORE_LINK = new Set(["cursor"]);
+
 function CompactAgentRow({
   row,
   macDeclaredOffline,
@@ -59,7 +62,8 @@ function CompactAgentRow({
   const { active, sources } = useAgentActive(row, macDeclaredOffline, clocks);
   const usageUrl = agentUsageUrl(row.id);
   const [expanded, setExpanded] = useState(false);
-  const expandable = !usageUrl && !limitsStale && row.limits.length > 1;
+  const expandable =
+    (!usageUrl || EXPAND_BEFORE_LINK.has(row.id)) && !limitsStale && row.limits.length > 1;
   const open = expandable && expanded;
 
   return (
@@ -160,7 +164,7 @@ function CompactAgentRow({
               key={item.key}
               limit={item}
               title={item.label ?? item.key}
-              href={null}
+              href={usageUrl}
               label={agentUsageLabel(row.label, item.label ?? item.key)}
             />
           ))}
