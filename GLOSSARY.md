@@ -32,7 +32,7 @@ lyjw 和 Claude 在线程、PR、文档里共用的词。每条一句话说是�
 
 | 词 | 是什么 | 出处 |
 | --- | --- | --- |
-| 晨报 | 项目聊天每天早上的汇报，列出要 lyjw 决定的事 | `HUMAN.md`「8. 定时任务与自动化」 |
+| 晨报 | 每天上午在「晨报 · 定时任务」线程里发的汇报，列出要 lyjw 做的事 | `HUMAN.md`「8. 定时任务与自动化」 |
 | 盯防 | 专盯 collector Worker 的定时任务，也叫 superfan | `.claude/skills/lyjwpage-collector-superfan/SKILL.md` |
 | Anthropic 动态 | 每天拉官方与前沿作者更新、判断能否吸收的定时任务 | `.claude/skills/lyjwpage-anthropic-updates/SKILL.md` |
 | 每日审查 | 每天对 main 新改动跑 /code-review 与 /simplify 的定时任务 | `docs/ops-facts.md`「Claude Code 云端 routine」 |
