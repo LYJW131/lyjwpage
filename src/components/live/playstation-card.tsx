@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import Image from "@/components/app-image";
 import { GameFlags, PlatformMarks } from "@/components/trophies/game-flags";
@@ -230,10 +230,18 @@ export function PlaystationRow({
   const livePresence = presenceStale ? undefined : presence.data;
 
   // 末列不满也保留：按行数裁掉余数会把列表末尾的游戏藏起来。
-  const tiles = buildTiles(list.data, livePresence, titles ?? []);
+  const tiles = useMemo(
+    () => buildTiles(list.data, livePresence, titles ?? []),
+    [list.data, livePresence, titles],
+  );
   const mounted = useMounted();
-  const renderedTiles = mounted ? tiles : tiles.slice(0, INITIAL_TILE_COUNT);
+  const renderedTiles = useMemo(
+    () => mounted ? tiles : tiles.slice(0, INITIAL_TILE_COUNT),
+    [mounted, tiles],
+  );
   const reduced = useReducedMotion();
+  const layout = !reduced;
+  const layoutDependency = useMemo(() => [renderedTiles, layout], [renderedTiles, layout]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const liveTitleId = tiles[0]?.live ? tiles[0].titleId : null;
   const [openId, setOpenId] = useState<string | null>(null);
@@ -347,7 +355,8 @@ export function PlaystationRow({
                 ref={observeTile}
                 data-tile={tile.titleId}
                 {...warmTileAttributes(tile.titleIds)}
-                layout={!reduced}
+                layout={layout}
+                layoutDependency={layoutDependency}
                 variants={reduced ? STATIC_VARIANTS : ROW_ITEM_VARIANTS}
                 initial="initial"
                 animate="animate"
