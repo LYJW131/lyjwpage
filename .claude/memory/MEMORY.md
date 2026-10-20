@@ -20,7 +20,7 @@
 - **Bot review only for real logic changes** (backend, data flow, auth, migrations): read every Devin Review/Codex/Claude review, fix or reply; Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]]. Merge commits via `pnpm merge-message` ([[merge-commit-format]]); check /api/version after merge ([[workers-builds-parallel-race]]).
 - **Post-merge prod checks** (lyjw 2026-10-19 15:46 SGT "同意"): every merge checks /api/version only. Real behavior test on production only for cache/Cache-Tag purge, first-screen SSR, fonts, or features needing prod secrets/bindings; everything else relies on preview verification.
 - **Verification → Haiku 5.5 high worker** per skill `lyjwpage-verify`; lead trusts the graded receipt (`scripts/verify-receipt.ts`) and spot-checks one item: [[verification-haiku-worker]]. First-screen/font/cache/SSR changes also run `site-verify reload` on a prod build, Chromium + WebKit: [[first-screen-reload-check]].
-- **Chat testing never asks lyjw to send homepage test chats;** use direct API calls, the Turnstile test key, or read ChatLog (decided in lyjw's old-account project; not yet written in repo docs).
+- **Chat testing never asks lyjw to send homepage test chats;** use direct API calls, the Turnstile test key, or read ChatLog via Cloudflare Code Mode MCP's DO query API (how-to in workers/ai/README.md; lyjw 2026-10-20: the 30-day log exists so agents can debug, so read it before reproducing).
 - **Decision cards:** coordinator re-posts any thread's open card in project chat and relays lyjw's choice.
 - **No task board;** progress lives in threads.
 - **Hand-offs carry lyjw's constraints;** route a follow-up once; later relay overrides: [[handoff-carry-user-constraints]].
@@ -33,6 +33,7 @@
 - **Devin CLI can take work** (lyjw 2026-10-20 03:58 SGT, replacing the 00:06 no-Devin rule): cloud threads may dispatch implementation to Devin per skill `lyjwpage-devin-dispatch`; Claude keeps design, acceptance and re-signing; Devin Review on PRs stays in the bot-review gate.
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
+- OpenRouter keyless via egress injection (capped key, Inception models only; anthropic/openai 403): [[openrouter-egress]].
 - Cloud egress proxy injects keys for TypeSafe System One (Jev), Exa and Parallel. Jev also on Workers AI as `typesafe/jev` (AI Gateway `default`, BYOK; follows `jev-latest`, log the version per answer).
 - **Site previews:** `<branch>.preview.lyjw.dev` only (no login, noindex, #318). lyjw shut down `*-site.lyjw.workers.dev` entirely 2026-10-15; never use those URLs: [[preview-access-removed]].
 - Collector manual run: GitHub Actions "Run Collector Jobs".
@@ -66,7 +67,7 @@
 - Dial/heatmap small-text sizes stay as is (lyjw rejected #264).
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild restored: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Devin CLI token usage comes from Devin's own OTel: the Mac into `mac-otlp` (labelled Mac), cloud threads into `agents-otlp` (labelled Cloud), split by ingress from the verified Access credential (#453 + #456). Lane coverage and setup: [[pulse-tokens-lane-coverage]].
-- Not adopting (don't re-propose): seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed. Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
+- Not adopting (don't re-propose): Mercury 3 for chat (tested 2026-10-20), seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed. Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 chose 维持现状); only native-OTel agents use OTLP. Don't re-propose: [[reporter-otel-decision]].
 - Workers Issues email alerts: scanner-probe issues are marked ignored, threshold unchanged (lyjw 2026-10-15).
 - Chat context prefetch is built (#384, 2026-10-17): Clef, in the same routing call, picks site status / project doc to prefetch (thresholds status 0.6, doc 0.45); presets prefetch fixed tool calls: [[idea-jev-context-prefetch]].

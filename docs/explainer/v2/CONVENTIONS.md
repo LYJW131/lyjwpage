@@ -151,6 +151,7 @@
 ```bash
 ln -s <主仓>/docs/explainer/render/node_modules docs/explainer/render/node_modules   # 主仓也没装就：pnpm --dir docs/explainer/render install --ignore-workspace
 node docs/explainer/v2/tools/check.mjs 05                     # 中英各把这一章每 1/8 小节画一遍：字太小、缺文字键、报错；有问题退出码 1
+node docs/explainer/v2/tools/en-cjk.mjs <目录>/cjk.json 05      # 英文模式下还画出来的中文；章号不写就扫整片
 node docs/explainer/v2/tools/stills.mjs <目录> c05:0 c05:2.5 c05:17.9 c06:0      # 抽帧（写秒数也行），输出 zh_c05_2_5.png
 node docs/explainer/v2/tools/stills.mjs <目录> --lang en c05:0 c05:2.5           # 英文
 node docs/explainer/v2/tools/stills.mjs <目录> --scale 0.2 c05:5                 # 375px 宽手机的等效图
@@ -158,7 +159,7 @@ montage <目录>/zh_*.png -tile 4x -geometry 960x540+4+4 -background '#222' <联
 node docs/explainer/render/serve.mjs docs/explainer 4827      # 预览：http://localhost:4827/v2/?only=ch04,ch05,ch06（用完关掉）
 ```
 
-交付前：`check.mjs` 通过；中英各一张联系表，覆盖每个机位、每句旁白、每个配乐锚点，外加和前后章交界处各一帧（上一章最后一帧、本章第一帧、本章最后一帧、下一章第一帧；相邻章还没写时那边是占位画面，只核自己这一侧，接不接得上由主创合并后再核）；逐张看过：字够大、没有压字和出界、英文不溢出、交接连得上。
+交付前：`check.mjs` 通过；中英各一张联系表，覆盖每个机位、每句旁白、每个配乐锚点，外加和前后章交界处各一帧（上一章最后一帧、本章第一帧、本章最后一帧、下一章第一帧；相邻章还没写时那边是占位画面，只核自己这一侧，接不接得上由主创合并后再核）。联系表由主创派 Haiku 看（字够大、没有压字和出界、英文不溢出、交接连得上），作者不自己逐张看。
 
 整片的逐帧验收（渲帧、拼图、派 Haiku 看图、像素比对）由主创在合拢后做，见 `.claude/skills/lyjwpage-explainer/SKILL.md`。
 

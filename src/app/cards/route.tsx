@@ -417,11 +417,12 @@ function svgDocument(body: string, card: ReadmeCard, theme: Theme, cornerNote: s
 
 // WebKit（iOS 的 GitHub App 与 Safari）缩小显示含 foreignObject 的 SVG 时，HTML 仍按原尺寸画、超出部分裁掉；
 // 整张卡作为 <image> 套一层，内层按原尺寸渲染，缩放只落在外层图片上。
+// WebKit 把显示高度取整后按 meet 等比放进去，矮卡（勿扰）的取整误差占比大，左右就缩进一截；preserveAspectRatio="none" 让它铺满盒子。
 function scalableSvg(inner: string, card: ReadmeCard): string {
   const { width, fullHeight } = canvasSize(card);
   const href = `data:image/svg+xml;base64,${Buffer.from(inner).toString("base64")}`;
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" role="img" aria-label="${card.label}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${fullHeight}" viewBox="0 0 ${width} ${fullHeight}" preserveAspectRatio="none" role="img" aria-label="${card.label}">` +
     `<image width="${width}" height="${fullHeight}" href="${href}"/></svg>`
   );
 }

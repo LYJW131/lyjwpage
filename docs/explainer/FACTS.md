@@ -367,7 +367,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 发第一句之前
 
-- 访客发第一条消息时，卡片先在本地回一段隐私说明，先选杂鱼与先知用 DeepSeek 还是 Claude，去向只列 Cloudflare Workers、Workers AI 的 Clef、所选那家厂商与这个浏览器，联网搜索按实际生效的服务写；DeepSeek 阵容里 Clef 选了神时再单独问 Anthropic 那一条，拒绝就由先知答（`workers/ai/README.md`「首页对话」）；点 Accept 之前不发任何对话请求，只在后台先跑 Turnstile（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
+- 访客发第一条消息时，卡片先在本地回一段隐私说明，先选杂鱼与先知用 DeepSeek 还是 Claude，去向只列 Cloudflare Workers、Workers AI 的 Clef 与 Clairic、所选那家厂商与这个浏览器，联网搜索按实际生效的服务写；DeepSeek 阵容里 Clef 选了神时再单独问 Anthropic 那一条，拒绝就由先知答（`workers/ai/README.md`「首页对话」）；点 Accept 之前不发任何对话请求，只在后台先跑 Turnstile（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
 
 ### 过闸（花钱之前）
 
@@ -525,9 +525,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | 04:00 | 每日代码审查 | 从上次游标起审 main 的改动，开 `chore(review):` PR，检查与机器评审处理完自己合 |
 | 04:53 | 提炼 skill 与偏差复盘 | 读各线程，把反复出现的做法写成或改进 skill，对照 lyjw 第一次怎么说和最后交付了什么找弯路；开 `docs(skills):` 小 PR，本地 `pnpm docs:check` 过了就合 |
 | 08:41 | Anthropic 官方动态 | 拉 Anthropic 官方博客、文档、更新日志等新内容，逐条判断能否吸收，写进项目的共享目录；不发言、不开 PR |
-| 09:00 | 晨报（不是定时任务） | 项目聊天的 Claude 读上面两份报告，列出要 lyjw 决定的事，之后每小时原地更新，直到 lyjw 开口 |
+| 10:56 | 晨报 | 在「晨报 · 定时任务」线程里汇总上面几个任务的结果，列出要 lyjw 做的事，一天一条；只读 |
 
-出处：`docs/ops-facts.md`「Claude Code 云端 routine」、`HUMAN.md`「8. 定时任务与自动化」。片中夜班的时间轴从 01:53 那一次画起，只画一夜。
+出处：`docs/ops-facts.md`「Claude Code 云端 routine」、`HUMAN.md`「8. 定时任务与自动化」。片中夜班的时间轴从 01:53 那一次画起，只画一夜；片中把晨报画在 09:00，与上表不符。
 
 ### 提交里的 Claude
 

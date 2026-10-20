@@ -6,7 +6,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./diagrams/workflow-zh-dark.svg">
-  <img src="./diagrams/workflow-zh-light.svg" alt="开发工作流图：lyjw 的需求、定时任务与访客构建三路经 Claude 变成 PR，过分支预览、CI、按需的机器评审与 lyjw 点头后合进 main，由 Workers Builds 部署" width="100%">
+  <img src="./diagrams/workflow-zh-light.svg" alt="开发工作流图：lyjw 的需求、定时任务与访客构建三路的改动经 Claude 变成 PR，过分支预览、CI、按需的机器评审与 lyjw 点头后合进 main，由 Workers Builds 部署" width="100%">
 </picture>
 
 ## 谁在干活
@@ -66,9 +66,9 @@
 | collector 盯防 | 盯采集 Worker 的公开状态与 Workers Observability 日志，找告警漏掉的细微异常，复现了的错误直接开修复草稿 PR（[`lyjwpage-collector-superfan`](../.claude/skills/lyjwpage-collector-superfan/SKILL.md)） |
 | 记忆镜像同步 | 把项目记忆同步进 `.claude/memory/` |
 
-每天的晨报不是 routine，由项目聊天里的协调 Claude 发：读上面的报告，列出要 lyjw 决定的事。
-
 这些任务共守几条规矩：按游标不按时间窗，读失败就报失败、不推进书签，写操作确认成功才记账。依据见 [references.md「Agent 编排与定时自动化」](./references.md#agent-编排与定时自动化)。
+
+晨报也是 routine，但不记书签：每次重读上面几个任务最新的结果和当天的日期文件，在「晨报 · 定时任务」线程里列出要 lyjw 做的事，读不到的写「没读到」；只读，一天一条。
 
 ## 访客也能改站点
 
