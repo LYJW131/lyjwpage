@@ -66,7 +66,7 @@ function CompactAgentRow({
   const open = expandable && expanded;
   const detailRows = hasFeaturedLimits(row.id)
     ? featuredLimitRows(row)
-    : row.limits.map((item) => ({ kind: "limit" as const, key: item.key, title: item.label ?? item.key, limit: item }));
+    : row.limits.map((item) => ({ kind: "limit" as const, key: item.key, title: item.label ?? item.key, limit: item, cappedBy: null }));
 
   return (
     <div
@@ -166,6 +166,7 @@ function CompactAgentRow({
               <LimitMeter
                 key={item.key}
                 limit={item.limit}
+                cappedBy={item.cappedBy}
                 title={item.title}
                 href={usageUrl}
                 label={agentUsageLabel(row.label, item.title)}
