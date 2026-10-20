@@ -123,14 +123,19 @@
     // building、lobby、mainLine（同样的种子和排线参数，笔触才一样），那边改了这里一起改。
     const HEAD = [1350, 540], COMMITS = [1250, 1050, 850, 650, 450, 250, 50];
 
-    // 整章先画在 384×216 的游戏画面上，再按最近邻放大 5 倍：一个游戏像素是屏幕上 5×5 的方块。
+    // 整章按 384×216 的游戏坐标画，直接画在全分辨率图层上：一个游戏像素是对齐到设备像素的方块（1920 宽时 5×5），
+    // 字不跟着放大，按屏幕分辨率画。KS 是一个游戏像素占几个设备像素，QX 是震屏的横移（游戏像素）。
     const GW = 384, GH = 216;
+    let KS = 5, QX = 0;
     const C = { k: "#000000", w: "#fcfcfc", l: "#bcbcbc", g: "#7c7c7c", d: "#404040", D: "#000058", n: "#0000bc", b: "#0058f8", c: "#3cbcfc", p: "#a4e4fc",
       o: "#d77757", f: "#fca044", y: "#f8b800", u: "#ac7c00", e: "#503000", s: "#fce0a8", r: "#e40058", R: "#a81000", v: "#9878f8", m: "#6844fc", L: "#b8b8f8", G: "#00a800", H: "#58d854" };
     const PL = P.PAL, LEAF = "#7fa46a", POT = "#c46a45", HOLE = "#2a1d1a", RIB = "#ceb7a3", HRIB = "#b8664c";
-    // 像素字只用原生字号（24 是 12 的两倍），落在整数坐标上才不糊；中文最小用 10。
-    // 字是 Fusion Pixel 的子集，OFL 保留了这个名字，改过的字体不能再叫它，所以 index.html 里另起名 Ch07 Pixel。
-    const FONT = { 24: '24px "Ch07 Pixel 12"', 12: '12px "Ch07 Pixel 12"', 10: '10px "Ch07 Pixel 10"', 8: '8px "Ch07 Pixel 8"' };
+    // 要读的字用思源黑体子集（Noto Sans SC ch07）配 Geist，代码配 Geist Mono；放大的像素字只留给标题、PUSH START、429 这几处大字。
+    // 像素字是 Fusion Pixel 的子集，OFL 保留了这个名字，改过的字体不能再叫它，所以 index.html 里另起名 Ch07 Pixel；只用原生字号（24 是 12 的两倍）。
+    // 小字用 700，笔画约一个游戏像素粗，和像素画的线一样；等宽字同字号偏宽，缩到 0.85 倍，代码名牌才放得进画面给它们留的位置。
+    const face = (s, k) => (k === "pix" ? `${s}px "Ch07 Pixel ${s === 24 ? 12 : s}"`
+      : k === "mono" ? `${s >= 12 ? 500 : 700} ${s * 0.85}px "Geist Mono", "Noto Sans SC ch07", monospace`
+      : `${s >= 12 ? 500 : 700} ${s}px Geist, "Noto Sans SC ch07", sans-serif`);
 
     const on = (b, a, z) => b >= a && b < z;
     const opened = (b, t, d = 0.0625) => prog(b, t, t + d);
@@ -139,14 +144,21 @@
     const hopH = (b, t0, t1, h) => Math.round(K.hop(b, t0, t1, h));
     const blink = (b, n = 4) => Math.floor(b * n) % 2 === 0;
 
-    const R = (x, y, w, h, col) => { if (w <= 0 || h <= 0) return; c.fillStyle = col; c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
-    function T(str, x, y, o = {}) {
-      const { s = 12, col = C.w, reveal = 1, narr = false, tex = false } = o;
-      if (!str || reveal <= 0) return 0;
-      return K.text(c, str, Math.round(x), Math.round(y), { font: FONT[s], color: col, reveal, perChar: reveal < 1, fadeIn: false, dim: 0, narration: narr, texture: tex });
+    function px(x, y, w, h) {
+      const x0 = Math.round((x + QX) * KS), y0 = Math.round(y * KS);
+      c.fillRect(x0, y0, Math.round((x + w + QX) * KS) - x0, Math.round((y + h) * KS) - y0);
     }
-    const W = (str, s = 12) => Math.ceil(K.measure(c, str, FONT[s]));
-    const TC = (str, cx, y, o = {}) => T(str, cx - Math.floor(W(str, o.s ?? 12) / 2), y, o);
+    const R = (x, y, w, h, col) => { if (w <= 0 || h <= 0) return; c.fillStyle = col; px(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+    function T(str, x, y, o = {}) {
+      const { s = 12, col = C.w, reveal = 1, narr = false, tex = false, k } = o;
+      if (!str || reveal <= 0) return 0;
+      c.save(); c.setTransform(KS, 0, 0, KS, QX * KS, 0);
+      const w = K.text(c, str, Math.round(x), Math.round(y), { font: face(s, k), color: col, reveal, perChar: reveal < 1, fadeIn: false, dim: 0, narration: narr, texture: tex });
+      c.restore();
+      return w;
+    }
+    const W = (str, s = 12, k) => Math.ceil(K.measure(c, str, face(s, k)));
+    const TC = (str, cx, y, o = {}) => T(str, cx - Math.floor(W(str, o.s ?? 12, o.k) / 2), y, o);
 
     function box(x, y, w, h, k = 1, fill = C.n, edge = C.w) {
       if (k <= 0) return false;
@@ -158,10 +170,10 @@
       return k >= 1;
     }
     function plate(str, cx, by, o = {}) {
-      const { s = 10, fg = C.e, bg = C.s, edge = C.k } = o;
-      const w = W(str, s), x = Math.round(cx - w / 2);
+      const { s = 10, fg = C.e, bg = C.s, edge = C.k, k } = o;
+      const w = W(str, s, k), x = Math.round(cx - w / 2);
       R(x - 3, by - s, w + 6, s + 3, edge); R(x - 2, by - s + 1, w + 4, s + 1, bg);
-      T(str, x, by, { s, col: fg });
+      T(str, x, by, { s, col: fg, k });
     }
     function bubble(str, cx, by, s = 12) {
       const w = W(str, s) + 10, h = s + 7, x = Math.round(cx - w / 2), y = by - h - 3;
@@ -177,7 +189,7 @@
         const ch = rows[j][i];
         if (ch === " ") continue;
         c.fillStyle = (map && map[ch]) || C[ch];
-        c.fillRect(flip ? x + wd - 1 - i : x + i, y + j, 1, 1);
+        px(flip ? x + wd - 1 - i : x + i, y + j, 1, 1);
       }
     }
     function sprS(rows, x, y, k, map = null) {
@@ -192,7 +204,7 @@
       const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
       let err = dx + dy;
       for (;;) {
-        c.fillRect(x0, y0, 1, 1);
+        px(x0, y0, 1, 1);
         if (x0 === x1 && y0 === y1) break;
         const e2 = 2 * err;
         if (e2 >= dy) { err += dy; x0 += sx; }
@@ -201,12 +213,12 @@
     }
     function oval(cx, cy, rx, ry, col) {
       c.fillStyle = col;
-      for (let dy = -ry; dy <= ry; dy++) { const hw = Math.round(rx * Math.sqrt(Math.max(0, 1 - (dy / (ry + 0.5)) ** 2))); c.fillRect(Math.round(cx) - hw, Math.round(cy) + dy, 2 * hw + 1, 1); }
+      for (let dy = -ry; dy <= ry; dy++) { const hw = Math.round(rx * Math.sqrt(Math.max(0, 1 - (dy / (ry + 0.5)) ** 2))); px(Math.round(cx) - hw, Math.round(cy) + dy, 2 * hw + 1, 1); }
     }
     const disc = (cx, cy, r, col) => oval(cx, cy, r, r, col);
     function ring(cx, cy, r, col) {
       c.fillStyle = col;
-      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const d = Math.hypot(dx, dy); if (d <= r + 0.35 && d > r - 0.85) c.fillRect(Math.round(cx) + dx, Math.round(cy) + dy, 1, 1); }
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const d = Math.hypot(dx, dy); if (d <= r + 0.35 && d > r - 0.85) px(Math.round(cx) + dx, Math.round(cy) + dy, 1, 1); }
     }
     // 星星和地上的碎点都是纹理：落在字的方框里就不画（holes 是 [x0, y0, x1, y1]）。
     const inHole = (x, y, holes) => holes.some(([x0, y0, x1, y1]) => x >= x0 && x < x1 && y >= y0 && y < y1);
@@ -216,7 +228,7 @@
         if (t > 0.25 && !inHole(x, y, holes)) R(x, y, 1, 1, t > 0.85 ? C.w : C.g);
       }
     }
-    const textBox = (str, x, y, s = 12, pad = 2) => [x - pad, y - s - pad, x + W(str, s) + pad, y + pad + 2];
+    const textBox = (str, x, y, s = 12, pad = 2, k) => [x - pad, y - s - pad, x + W(str, s, k) + pad, y + pad + 2];
 
     const CUR = ["w   ", "ww  ", "www ", "wwww", "www ", "ww  ", "w   "];
     const DOWN = ["wwwww", " www ", "  w  "];
@@ -256,7 +268,7 @@
       const x0 = Math.round(cx - 9 * q), y0 = Math.round(bottom - 12 * q);
       const put = (list, col) => {
         c.fillStyle = col;
-        for (const [qx, qy] of list) { const x = x0 + (flip ? 17 - qx : qx) * q, w = Math.min(q, clipR - x); if (w > 0) c.fillRect(x, y0 + qy * 2 * q, w, 2 * q); }
+        for (const [qx, qy] of list) { const x = x0 + (flip ? 17 - qx : qx) * q, w = Math.min(q, clipR - x); if (w > 0) px(x, y0 + qy * 2 * q, w, 2 * q); }
       };
       put(B, body); put(EY, C.k);
       const hx = Math.round(cx), hy = y0 + crouch * 2 * q;
@@ -292,7 +304,7 @@
     function dashes(x0, x1, y, b, col, dir = -1) {
       const off = Math.floor(b * 64) % 6;
       c.fillStyle = col;
-      for (let x = x0 + (dir < 0 ? 6 - off : off); x < x1; x += 6) c.fillRect(x, y, 3, 1);
+      for (let x = x0 + (dir < 0 ? 6 - off : off); x < x1; x += 6) px(x, y, 3, 1);
     }
     function spinner(cx, cy, b) {
       const i0 = Math.floor(b * 16) % 8;
@@ -315,12 +327,12 @@
     function sTitle(b) {
       R(0, 0, GW, GH, C.k);
       if (b < AT.crt[0]) { R(0, 107, GW, 2, C.w); R(268, 106, 4, 4, C.o); return; }
-      const half = Math.max(1, Math.round(108 * prog(b, AT.crt[0], AT.crt[1], E.out)));
-      c.save(); c.beginPath(); c.rect(0, 108 - half, GW, 2 * half); c.clip();
+      const half = Math.max(1, Math.round(108 * prog(b, AT.crt[0], AT.crt[1], E.out))), cy0 = Math.round((108 - half) * KS);
+      c.save(); c.beginPath(); c.rect(0, cy0, c.canvas.width, Math.round((108 + half) * KS) - cy0); c.clip();
       const ly = -Math.round(36 * (1 - prog(b, AT.logo, AT.logo + 0.125, E.out))), t = tr("ch07.title"), sub = "Talk to God · ai Worker · Clef · Claude";
-      const pushX = 192 - Math.floor(W(tr("ch07.push"), 8) / 2), holes = [];
-      if (b >= AT.logo) holes.push(textBox(tr("ch07.chap"), 32, 46 + ly, 10), [28, 50 + ly, 38 + W(t, 24), 82 + ly], textBox(sub, 32, 94, 10));
-      if (on(b, ...AT.push)) holes.push(textBox(tr("ch07.push"), pushX, 146, 8));
+      const pushX = 192 - Math.floor(W(tr("ch07.push"), 8, "pix") / 2), holes = [];
+      if (b >= AT.logo) holes.push(textBox(tr("ch07.chap"), 32, 46 + ly, 10), [28, 50 + ly, 38 + W(t, 24, "pix"), 82 + ly], textBox(sub, 32, 94, 10, 2, "mono"));
+      if (on(b, ...AT.push)) holes.push(textBox(tr("ch07.push"), pushX, 146, 8, 2, "pix"));
       stars(b, 104, 3, holes);
       for (let i = 0; i < 26; i++) {
         const x = Math.floor(K.hash(i * 5.3 + 9) * GW), y = 112 + Math.floor(K.hash(i * 2.9 + 4) * 96);
@@ -329,8 +341,8 @@
       R(0, 107, GW, 2, C.w);
       if (b >= AT.logo) {
         T(tr("ch07.chap"), 32, 46 + ly, { s: 10, col: C.f });
-        T(t, 34, 78 + ly, { s: 24, col: C.n }); T(t, 32, 76 + ly, { s: 24 });
-        T(sub, 32, 94, { s: 10, col: C.l, reveal: prog(b, AT.logo + 0.125, AT.push[1]) });
+        T(t, 34, 78 + ly, { s: 24, col: C.n, k: "pix" }); T(t, 32, 76 + ly, { s: 24, k: "pix" });
+        T(sub, 32, 94, { s: 10, col: C.l, reveal: prog(b, AT.logo + 0.125, AT.push[1]), k: "mono" });
       }
       c.restore();
       if (half < 108) { R(0, 107 - half, GW, 1, C.l); R(0, 108 + half, GW, 1, C.l); }
@@ -341,7 +353,7 @@
         clawd(270, 107 - hopH(b, p0, p1, 22) - hopH(b, AT.pick, AT.pick + 0.125, 6), b < p0 + 0.04 ? 1 : 2, { pose });
         if (on(b, p1, p1 + 0.08)) { R(244, 104, 3, 2, C.g); R(294, 104, 3, 2, C.g); R(240, 101, 2, 2, C.d); R(299, 101, 2, 2, C.d); }
       }
-      if (on(b, ...AT.push) && blink(b, 8)) T(tr("ch07.push"), pushX, 146, { s: 8 });
+      if (on(b, ...AT.push) && blink(b, 8)) T(tr("ch07.push"), pushX, 146, { s: 8, k: "pix" });
       if (box(140, 122, 104, 40, opened(b, AT.menu))) {
         const sel = b >= AT.pick && blink(b, 16);
         T(tr("ch07.new"), 160, 138, { col: sel ? C.y : C.w });
@@ -462,9 +474,9 @@
         if (b >= AT.tick) spr(TICK, 8 + hw - 17, 13, { w: C.H });
       }
       const rows = ["ch07.q.r1", "ch07.q.r2", "ch07.q.r3"].map(tr), head = "ChatQuota.admitVisitor";
-      const qw = Math.max(W(head, 10), ...rows.map((s) => W(s, 10) + 14)) + 24, qx = 378 - qw;
+      const qw = Math.max(W(head, 10, "mono"), ...rows.map((s) => W(s, 10) + 14)) + 24, qx = 378 - qw;
       if (box(qx, 6, qw, 74, opened(b, AT.pass[1]))) {
-        T(head, qx + 12, 21, { s: 10, col: C.c });
+        T(head, qx + 12, 21, { s: 10, col: C.c, k: "mono" });
         rows.forEach((s, i) => {
           const ry = 38 + i * 15, done = b >= AT.quota[i];
           R(qx + 12, ry - 8, 9, 9, C.w); R(qx + 13, ry - 7, 7, 7, C.n);
@@ -476,7 +488,7 @@
       if (pk > 0) { c.globalAlpha = 0.5; R(0, 0, GW, GH, C.k); c.globalAlpha = 1; }
       if (box(84, 40, 216, 112, pk, C.k)) {
         T(tr("ch07.q.if"), 96, 58, { s: 10, col: C.l });
-        TC("429", 192, 90, { s: 24, col: C.r });
+        TC("429", 192, 90, { s: 24, col: C.r, k: "pix" });
         TC("Too many prayers.", 192, 106, { s: 10 });
         TC(tr("ch07.q.stop"), 192, 122, { s: 10, col: C.l });
         if (b >= AT.cont) {
@@ -510,10 +522,10 @@
       if (!put) spr(ENV, cx - 5, cy - 33);
       else if (b < AT.scroll + 0.125) spr(ENV, 116, 104);
       const m = tr("ch07.msg1"), mw = W(m) + 20, sx = 192 - Math.floor(mw / 2), i0 = m.indexOf(ITEM);
-      const ix = sx + 10 + W(m.slice(0, Math.max(0, i0))), iw = W(ITEM);
+      const ix = sx + 10 + Math.floor(K.measure(c, m.slice(0, Math.max(0, i0)), face(12))), iw = W(ITEM);
       if (box(sx, 28, mw, 22, opened(b, AT.scroll), C.s, C.e)) {
+        if (b >= AT.grab[0] && i0 >= 0) R(ix - 1, 32, iw + 1, 14, C.y);
         T(m, sx + 10, 43, { col: C.e });
-        if (b >= AT.grab[0] && i0 >= 0) { R(ix - 1, 32, iw + 2, 14, C.y); T(ITEM, ix, 43, { col: C.e }); }
         if (on(b, ...AT.mag)) {
           const lx = Math.round(lerp(sx + 12, sx + mw - 12, prog(b, ...AT.mag, E.io))), ly = 37;
           ring(lx, ly, 7, C.k); ring(lx, ly, 6, C.p); ln(lx + 5, ly + 5, lx + 9, ly + 9, C.e); ln(lx + 6, ly + 5, lx + 10, ly + 9, C.e);
@@ -594,7 +606,7 @@
       R(x0 - 6, 98, 108, 6, C.w); R(x0 - 6, 103, 108, 1, C.g);
       for (const wx of [X(244), X(304)]) { R(wx, 112, 22, 16, C.e); for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) R(wx + 2 + i * 7, 114 + j * 7, 5, 4, (i + j) % 2 ? C.s : C.l); }
       R(X(274), 128, 20, 24, C.e); R(X(276), 130, 16, 22, C.k);
-      plate("core · PublicStatus", X(284), 97, { fg: C.e, bg: C.s });
+      plate("core · PublicStatus", X(284), 97, { fg: C.e, bg: C.s, k: "mono" });
     }
     function sStreet(b) {
       const cam = Math.round(136 * prog(b, AT.mon, AT.mon + 0.25, E.io)), X = (wx) => Math.round(wx - cam);
@@ -608,7 +620,7 @@
       if (b >= AT.back[1]) { spr(SCROLL, X(32), 131); spr(SCROLL, X(41), 131); }
       clawd(X(88), 152, 2, {});
       archive(X);
-      R(X(175), 112, 2, 40, C.u); plate("PUBLIC_STATUS", X(176), 112, { s: 8 });
+      R(X(175), 112, 2, 40, C.u); plate("PUBLIC_STATUS", X(176), 112, { s: 8, k: "mono" });
       let px = 128, face = 1, inside = false;
       if (b >= AT.run[0]) px = walk(b, ...AT.run, 128, 284);
       if (b >= AT.run[1]) inside = b < AT.back[0];
@@ -624,17 +636,17 @@
         dashes(X(332), mx, 124, b, C.y, 1);
       }
       const t1 = tr("ch07.t.pre"), t2 = tr("ch07.t.first");
-      const rowsA = [["get_site_status · listening", AT.pre[0], C.w], [tr("ch07.t.again"), AT.pre[1], C.w], [tr("ch07.t.game"), AT.game, C.c], [tr("ch07.t.err"), AT.err, C.c]];
-      const aw = Math.max(W(t1) + 8 + W(t2, 10), ...rowsA.map((r) => W(r[0], 10))) + 24;
+      const rowsA = [["get_site_status · listening", AT.pre[0], C.w, "mono"], [tr("ch07.t.again"), AT.pre[1], C.w], [tr("ch07.t.game"), AT.game, C.c], [tr("ch07.t.err"), AT.err, C.c]];
+      const aw = Math.max(W(t1) + 8 + W(t2, 10), ...rowsA.map((r) => W(r[0], 10, r[3]))) + 24;
       if (box(8, 4, aw, 80, opened(b, AT.winA) * (1 - prog(b, AT.winAoff, AT.winAoff + 0.0625)))) {
         T(t1, 20, 19, { col: C.y }); T(t2, 28 + W(t1), 19, { s: 10, col: C.l });
-        rowsA.forEach(([s, t, col], i) => T(s, 20, 35 + i * 14, { s: 10, col, reveal: prog(b, t, t + 0.1) }));
+        rowsA.forEach(([s, t, col, k], i) => T(s, 20, 35 + i * 14, { s: 10, col, reveal: prog(b, t, t + 0.1), k }));
       }
       const same = tr("ch07.t.same"), sw = W(same) + 24;
       if (box(8, 4, sw, 21, opened(b, AT.same))) T(same, 20, 19);
-      const r1 = tr("ch07.t.set"), r2 = tr("ch07.t.no"), mw = Math.max(W("POST /mcp"), W(r1, 10), W(r2, 10)) + 24;
+      const r1 = tr("ch07.t.set"), r2 = tr("ch07.t.no"), mw = Math.max(W("POST /mcp", 12, "mono"), W(r1, 10), W(r2, 10)) + 24;
       if (box(378 - mw, 30, mw, 52, opened(b, AT.mcp))) {
-        T("POST /mcp", 390 - mw, 45, { col: C.y });
+        T("POST /mcp", 390 - mw, 45, { col: C.y, k: "mono" });
         T(r1, 390 - mw, 60, { s: 10, reveal: prog(b, AT.tools[0], AT.tools[0] + 0.1) });
         T(r2, 390 - mw, 73, { s: 10, col: C.l, reveal: prog(b, AT.tools[1], AT.tools[1] + 0.1) });
       }
@@ -691,7 +703,7 @@
           if (rx > 0 && ry > 0) oval(268, 128, rx, ry, [C.w, C.L, C.v, C.k][(i + ph) % 4]);
         }
         oval(268, 128, Math.round(4 * k), Math.round(8 * k), C.k);
-        if (k >= 1) plate("start_design", 268, 101, { fg: C.L, bg: C.k, edge: C.L });
+        if (k >= 1) plate("start_design", 268, 101, { fg: C.L, bg: C.k, edge: C.L, k: "mono" });
       }
       if (b >= AT.arch[0]) {
         const ax = walk(b, ...AT.arch, 268, 204);
@@ -772,9 +784,9 @@
         ln(X(ax), ay, X(lerp(ax, bx, k)), lerp(ay, by, k), PL.red); ln(X(ax), ay + 1, X(lerp(ax, bx, k)), lerp(ay, by, k) + 1, PL.red);
         left -= d;
       }
-      if (b >= AT.branch[1]) plate("claude/build-<runId>", X(424), 88, { s: 8, fg: PL.red, bg: PL.cream, edge: PL.line });
+      if (b >= AT.branch[1]) plate("claude/build-<runId>", X(424), 88, { s: 8, fg: PL.red, bg: PL.cream, edge: PL.line, k: "mono" });
       lamp(X(316), 95, prog(b, AT.c1, AT.c1 + 0.04));
-      if (b >= AT.c1) plate("builds/<runId>.md", X(316), 117, { s: 8, fg: PL.ink, bg: PL.cream, edge: PL.line });
+      if (b >= AT.c1) plate("builds/<runId>.md", X(316), 117, { s: 8, fg: PL.ink, bg: PL.cream, edge: PL.line, k: "mono" });
       if (b >= AT.pr) { const fx = X(480); R(fx, 70, 1, 22, PL.line); R(fx + 1, 70, 40, 11, PL.red); R(fx + 2, 71, 38, 9, PL.cream); T("draft PR", fx + 4, 78, { s: 8, col: PL.red }); }
       if (b >= AT.act) {
         R(X(388), 136, 44, 3, PL.woodD); R(X(390), 139, 2, 13, PL.woodD); R(X(428), 139, 2, 13, PL.woodD);
@@ -849,11 +861,12 @@
       else sLobby(b);
     }
     function game(b) {
-      c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.imageSmoothingEnabled = false;
+      c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1;
+      KS = c.canvas.width / GW; QX = 0;
       R(0, 0, GW, GH, C.k);
-      c.save(); c.translate(quake(b), 0);
+      c.save(); QX = quake(b);
       scene(b);
-      c.restore();
+      QX = 0; c.restore();
       const fa = fadeAt(b);
       if (fa > 0) { c.globalAlpha = fa; R(0, 0, GW, GH, C.k); c.globalAlpha = 1; }
       narBox(b);
@@ -930,7 +943,14 @@
         tp.save(); tp.imageSmoothingEnabled = false;
         if (step >= 0) { pencilInto(mos[step]); tp.drawImage(mos[step].cv, 0, 0, 1920, 1080); }
         const pix = step < 0 ? 1 : 1 - prog(b, m0, m0 + 0.07);
-        if (pix > 0) { game(b); tp.globalAlpha = pix; tp.drawImage(cv, 0, 0, 1920, 1080); }
+        if (pix >= 1) { c = tp; game(b); }
+        else if (pix > 0) {
+          // K.text 自己设 globalAlpha，淡出不能靠给图层设透明度：先画在同样大小的离屏画布上，再带透明度贴上去。
+          const tc = tp.canvas;
+          if (!cv || cv.width !== tc.width || cv.height !== tc.height) { cv = document.createElement("canvas"); cv.width = tc.width; cv.height = tc.height; }
+          c = cv.getContext("2d"); game(b);
+          tp.setTransform(1, 0, 0, 1, 0, 0); tp.globalAlpha = pix; tp.drawImage(cv, 0, 0);
+        }
         tp.restore();
         G.composite(top.upload(), { mode: G.MODE.normal });
       } else {
@@ -945,12 +965,10 @@
 
     async function init() {
       top = G.layer("top"); bgL = G.layer("bg"); glowL = G.layer("emit", 0.5); ink = G.layer("ink");
-      if (!cv) {
-        cv = document.createElement("canvas"); cv.width = GW; cv.height = GH; c = cv.getContext("2d");
-        for (const w of [384, 480, 640, 960]) { const m = document.createElement("canvas"); m.width = w; m.height = (w * 9) / 16; mos.push({ cv: m, c: m.getContext("2d"), w }); }
-      }
+      if (!mos.length) for (const w of [384, 480, 640, 960]) { const m = document.createElement("canvas"); m.width = w; m.height = (w * 9) / 16; mos.push({ cv: m, c: m.getContext("2d"), w }); }
       await Promise.all([
-        document.fonts.load(FONT[12], "对话 Ag"), document.fonts.load(FONT[10], "对话 Ag"), document.fonts.load(FONT[8], "Ag"),
+        document.fonts.load(face(24, "pix"), "对话 Chat 429"), document.fonts.load(face(8, "pix"), "PUSH START"),
+        ...[12, 10].flatMap((s) => [document.fonts.load(face(s), "对话 Ag"), document.fonts.load(face(s, "mono"), "Ag")]),
         document.fonts.load(P.FONT.hand(42), "过了门禁再进门 OCT 19 Pass"),
       ]);
       // 排线图块第一次用到才生成：空闲时先在小画布上把末帧画一遍，图块就进了 pencil.js 的缓存，变彩铅那几帧不卡。
