@@ -16,19 +16,26 @@ function deferredScript(module: string, attributes: string, preloads: string): s
       attrs.some((attr) => attr[1].toLowerCase() === "src") || !type) return null;
   const bootstrapAttributes = attributes.slice(0, type.index) + attributes.slice(type.index + type[0].length);
   return `<script${bootstrapAttributes}>(function(){` +
-    `var b=document.currentScript,done=false,frame=0,timer=0;` +
-    `function start(){if(done)return;done=true;cancelAnimationFrame(frame);clearTimeout(timer);document.removeEventListener("visibilitychange",visible);` +
+    `var b=document.currentScript,done=false,frame=0,timer=0,po=null,armed=false;` +
+    `function start(){if(done)return;done=true;cancelAnimationFrame(frame);clearTimeout(timer);if(po)po.disconnect();document.removeEventListener("visibilitychange",visible);` +
     `var t=document.createElement("template");t.innerHTML=${scriptJson(preloads)};document.body.appendChild(t.content);` +
     `t.innerHTML=${scriptJson(module)};var original=t.content.firstElementChild,s=document.createElement("script");` +
     `for(var a of original.attributes)s.setAttribute(a.name,a.value);s.textContent=original.textContent;b.replaceWith(s)}` +
     `function visible(){if(document.visibilityState==="hidden")start()}` +
     `document.addEventListener("visibilitychange",visible);` +
     `if(document.visibilityState==="hidden")start();` +
-    `else frame=requestAnimationFrame(function(){if(!done&&!timer)timer=setTimeout(start,0)})` +
+    `else{` +
+    `try{if(PerformanceObserver.supportedEntryTypes&&PerformanceObserver.supportedEntryTypes.indexOf("largest-contentful-paint")>=0){po=new PerformanceObserver(function(){if(done)return;frame=requestAnimationFrame(function(){timer=setTimeout(start,0)})});po.observe({type:"largest-contentful-paint",buffered:true})}}catch(e){po=null}` +
+    `if(po)timer=setTimeout(start,3000);` +
+    `else frame=requestAnimationFrame(function(){if(done||armed)return;armed=true;frame=requestAnimationFrame(function(){if(!done&&!timer)timer=setTimeout(start,0)})})` +
+    `}` +
     `})();</script>`;
 }
 
 // 动画帧回调后的任务只给浏览器绘制机会，不保证已呈现；应用初始化不能依赖 FCP 观测事件，后台不等帧回调。
+// LCP 上报在帧呈现时发生：等收到 LCP 条目再启动，入口脚本与其触发的请求才一定排在 LCP 之后；
+// observe() 对不支持的类型只警告不抛错，须先查 supportedEntryTypes，否则 WebKit 会一直等满上限；
+// 不支持 LCP 的浏览器按原两帧路径兜底，3 秒仍未上报也照常启动。
 // 启动时一起恢复预加载，再原位替换入口脚本，既不形成 import 瀑布，也不留下水合时多余的节点。
 export function deferModulePreloads(html: string): string {
   const head = html.indexOf("</head>");
