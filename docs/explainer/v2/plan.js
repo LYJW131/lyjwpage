@@ -1,7 +1,7 @@
 window.PLAN = [
-  { id: "ch00", bars: 10 },
-  { id: "ch01", bars: 35 },
-  { id: "ch02", bars: 20 },
+  { id: "ch00", bars: 12 },
+  { id: "ch01", bars: 29 },
+  { id: "ch02", bars: 30 },
   { id: "ch03", bars: 26 },
   { id: "ch04", bars: 14 },
   { id: "ch05", bars: 28 },

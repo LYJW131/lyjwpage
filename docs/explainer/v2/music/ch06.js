@@ -9,12 +9,11 @@
     const checks = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60].map((phi) => ({
       bar: Math.floor(phi / 4), beat: phi % 4, kind: "ping", m: midi("D3"), late: phi >= 24 && phi < 52,
     }));
-    // 时刻（小节）与 ch06.js 的 title、card、coding、slip 同步：盖「06」印、卷轴展开、打分的窗逐个盖小印、便笺落下。
+    // 时刻（小节）与 ch06.js 的 title、card、coding、slip 同步：盖「06」印、卷轴展开、Coding 带子刷出来、便笺落下。
     const SFX = [
       [0.45, "stamp", 0.8, -0.4], [0.55, "paper", 0.45, -0.3, 0.9],
       [3.9, "paper", 0.6, 0.4, 0.8], [3.92, "whoosh", 0.3, 0.4, 0.8], [4.1, "stamp", 0.5, 0.6, 1.25],
-      ...[0, 1, 2, 3, 4].map((i) => [11.58 + i * 0.125, "stamp", 0.32, -0.2 + i * 0.12, 1.3 + i * 0.04]),
-      [12.33, "stamp", 0.36, 0.5, 1.5],
+      [11.5, "paper", 0.5, -0.3, 1.3], [11.5, "whoosh", 0.22, 0.3, 1.25],
       [13.35, "paper", 0.5, -0.2, 1.1],
     ];
     return {
@@ -35,7 +34,7 @@
         { from: 6, to: 10, id: "strata-sink", name: "沉进地层：敲门变闷，报到那一拍压进一片；7:0 这首歌亮一下，低音马林巴唱主题；9:0 推近右沿", energy: 0.32,
           kick: "X.......X.......", kickKind: "heart", duck: 0.35, clock: "..o...o...o...o.", clockKind: "knockFar", clockVol: 0.5,
           hat: ["....x...........", "........x.......", "............x...", null, "x..............."], hatKind: "flip", hatVol: 0.5, bass: "hold", bassVol: 0.85, pad: 1, lp: 950, padVerb: 0.5 },
-        { from: 11, to: 12, id: "strata-coding", name: "Coding 一窗一窗交给 Clef：全零的一声闷拨弦，打分的一声小铃；12:1 刚满两分钟的那一窗补一声", energy: 0.4,
+        { from: 11, to: 12, id: "strata-coding", name: "Coding 那一层：11:1 原始观测亮一下，11:2 三色带现场刷出来，12:0 图例三声，12:1 起两个时长各一声高音", energy: 0.4,
           kick: "X.......X.......", kickKind: "heart", duck: 0.35, clock: "..o...o...o...o.", clockKind: "knockFar", clockVol: 0.5,
           hat: ["....x...........", "........x......."], hatKind: "flip", hatVol: 0.45, bass: "hold", bassVol: 0.8, pad: 0.9, lp: 1300, padVerb: 0.45 },
         { from: 13, to: 14, id: "strata-clawd", name: "Clawd 冒出来说收尾那句", energy: 0.42,
@@ -48,14 +47,15 @@
       melody: [
         ...phrase(7, withNotes(["A3", "D4", "F4", "E4"]), "marimba", 1, true),
         ...phrase(7, withNotes(["D3", "F3", "A3", "G3"]), "pluckDark", 0.35),
-        [11, 1, 1.5, "D3", "pluckMute", 0.5, false],
       ],
       story: [
         ...checks,
         { bar: 5, beat: 0, kind: "key", v: 0.7, pan: 0.3 },
         { bar: 5, beat: 2, kind: "lamp", m: midi("A5"), i: 2 },
-        ...["G5", "A5", "Bb5", "D6", "E6"].map((n, i) => ({ bar: 11 + Math.floor((2 + i * 0.5) / 4), beat: (2 + i * 0.5) % 4, kind: "tick", m: midi(n), i: i % 3 })),
-        { bar: 12, beat: 1, kind: "tick", m: midi("G6"), i: 2 },
+        { bar: 11, beat: 1, kind: "key", v: 0.4, pan: -0.3 },
+        ...["G5", "A5", "Bb5"].map((n, i) => ({ bar: 12, beat: i * 0.25, kind: "tick", m: midi(n), i })),
+        { bar: 12, beat: 1, kind: "lamp", m: midi("D6"), i: 1 },
+        { bar: 12, beat: 1.5, kind: "lamp", m: midi("A6"), i: 2 },
         { bar: 13, beat: 1, kind: "accent", what: "flip" },
         { bar: 15, beat: 3, kind: "swell" },
       ],

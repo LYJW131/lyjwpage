@@ -9,7 +9,7 @@
 
 为 lyjw.me 的站点讲解动画（`/explainer` 新版 v2，全篇 2D）写第 {{NN}} 章「{{章名}}」{{（和第 MM 章「…」）}}：画面、中英文字、这一章的配乐。全程中文沟通。
 
-lyjw 已定、不要再讨论的：全篇 2D，没有透视和 3D；第 02 章的纸面检查单是标杆风格；Clawd 每章都有戏（怎么出场见 SCRIPT 开头）；旁白排进图版里（不是字幕，也不是 Clawd 的气泡）；中英双语；配乐只有一首、浏览器里合成、节拍和画面对齐；每章小节数已锁定（SCRIPT 章节表）；不管性能。
+lyjw 已定、不要再讨论的：全篇 2D，没有透视和 3D；每章一种画风，各用自己的底和调色（TREATMENT「章节与图版」）；Clawd 每章都有戏（怎么出场见 SCRIPT 开头）；旁白排进图版里（不是字幕，也不是 Clawd 的气泡）；中英双语；配乐只有一首、浏览器里合成、节拍和画面对齐；每章小节数已锁定（SCRIPT 章节表）；不管性能。
 
 ## 在哪做
 
@@ -25,7 +25,7 @@ lyjw 已定、不要再讨论的：全篇 2D，没有透视和 3D；第 02 章�
 2. `docs/explainer/SCRIPT.md`：开头几条、章节表、你这一章的全部内容，以及前后两章在章节表里的「交给下一章」那一格。
 3. `docs/explainer/TREATMENT.md`：「调色板」「字体」「语气与禁区」「2D 画法总则」和你这一章那一节。
 4. `docs/explainer/FACTS.md`：SCRIPT 在你这一章开头写的那几节。画面和旁白里的每个端点、数字、谁做什么都要在这里找得到。
-5. 样板代码：纸面章读 `docs/explainer/v2/ch02.js` + `docs/explainer/v2/music/ch02.js`，暗底章读 `docs/explainer/v2/ch01.js` + `docs/explainer/v2/music/ch01.js`。`kit.js`、`engine.js`、`film.js`、`score.js` 需要时查，不改。
+5. 样板代码：纸面章读 `docs/explainer/v2/ch04.js` + `docs/explainer/v2/music/ch04.js`，暗底章读 `docs/explainer/v2/ch07.js` + `docs/explainer/v2/music/ch07.js`。`kit.js`、`engine.js`、`film.js`、`score.js` 需要时查，不改。
 6. 根目录 `AGENTS.md` 的「文档与注释」：注释只写为什么、约束、坑，不写历史，不复述代码。
 
 ## 本章要点
@@ -87,11 +87,11 @@ for (const [k,v] of Object.entries(S.events)) if (v.length) console.log(k.padEnd
 
 ## 各章要点（派单时挑对应的贴进「本章要点」）
 
-- **00 这张卡片从哪来**：开头终端那一帧要和第 10 章最后一帧完全相同（首尾循环）。主页线框按首屏真实布局的比例画（`shared/home-layout.ts`、`src/app/page.tsx`），卡片数按写章时的代码，不说数。总览图里「采集端」（上报器）和中枢里的「采集 Worker」是两样东西，别混。
-- **01 野外观测站**：最长、事实最多（FACTS §1）。编码用量那一段只讲「Mac、云端、容器里的 Cursor 各报原始事实，站点侧合并；Pulse 上有一条 token 处理量（5 分钟平均）」，不点存储键和模块名；编码用量的新契约进 main 之后，先按 main 重核 FACTS §1 再写这一段。Jev 那段只说参与、拿不准交 lyjw、放行才进信封，概率条是示意。表盘的指针数按写章时的采集任务表（`workers/collector/src/registry.ts` 的 `JOBS`）。结尾火花要从画面右边飞出去，第 02 章 0:0 从左边接。
+- **00 这张卡片从哪来**：开头终端那一帧要和第 10 章最后一帧完全相同（首尾循环）。主页线框按首屏真实布局的比例画（`shared/home-layout.ts`、`src/app/page.tsx`），卡片数按写章时的代码，不说数。总装图里「采集端」（上报器）和中枢里的「采集 Worker」是两样东西，别混。
+- **01 野外观测站**：事实最多（FACTS §1）。编码用量那一段只讲「Mac、云端、容器代报的 Cursor 账号各报原始事实，站点侧合并；Pulse 上有一条 token 处理量（5 分钟平均）」，不点存储键和模块名；编码用量的新契约进 main 之后，先按 main 重核 FACTS §1 再写这一段。Jev 那段只说参与、拿不准交 lyjw、放行才进信封，概率条是示意。钟楼时序图上的任务数按写章时的采集任务表（`workers/collector/src/registry.ts` 的 `JOBS`）。结尾火花要从画面右边飞出去，第 02 章 0:0 从左边接。
 - **04 活字印版**：开头接第 03 章的满屏纸（见 CONVENTIONS「交接」03 → 04：首帧满屏纸、`uGridA` 从 0 起、首帧后期参数和第 03 章最后一帧一样）。印版块数、带不带标签按写章时的代码现数（`shared/status-views.ts` 的 `STATUS_VIEWS`），旁白不说数。重印的例子是第 03 章那次在线 → 离线失效的 3 个标签；换歌不重印（换歌不失效首屏）。
 - **05 电报线**：时间轴只画先后，不标毫秒（代码注释里那几个数没重测）。live 绿第一次在这里出现，只给在线人数。主角那封 listening-now 在这一章到站、卡片翻面。回填节奏、5 分钟兜底的名单按 FACTS §5 和 `src/lib/poll-schedule.ts`，编码卡不举例。
-- **06 心电图与地层**：开头接第 05 章拉平的那条线（CONVENTIONS「交接」05 → 06）。站点自检不出 Cloudflare 账号 ID、真实报错标题、可用率数字；敲门和报到都记进 D1 的 `health_buckets`，采集 Worker 汇总时只标 `SELECT`，不画令牌、不声称权限范围。「报到只证明 cron 跑完了」。Coding 的打分窗口按 `shared/pulse-coding.ts`；编码用量新契约进 main 之后先重核 FACTS §3 再写 Coding 那一层。live 绿第二次、也是最后一次出现。
+- **06 心电图与地层**：开头接第 05 章拉平的那条线（CONVENTIONS「交接」05 → 06）。站点自检不出 Cloudflare 账号 ID、真实报错标题、可用率数字；敲门和报到都记进 D1 的 `health_buckets`，采集 Worker 汇总时只标 `SELECT`，不画令牌、不声称权限范围。「报到只证明 cron 跑完了」。Coding 那一层只存原始观测，三色带读的时候现算（`shared/pulse-coding-features.ts#codingBand`），汇总是 driver 与 agent 两个时长（`shared/pulse-types.ts#codingDriverSeconds`）。live 绿第二次、也是最后一次出现。
 - **08 一句话之后**：事实全在 FACTS §11，例子是 PR #308，提交哈希、PR 标题、合并卡照 GitHub 原文，英文模式下也不翻。一只 Clawd 就是一个 Claude，道具用 `K.clawdProp`。首帧和第 07 章末帧、末帧和第 09 章首帧是同一条 main 线（CONVENTIONS「交接」）。
 - **10 一首歌的旅程**：要复用各章的画法，等其余各章都交了再做；闪回用各章自己的底。不标延迟。最后一帧和第 00 章第一帧完全相同。
 - **分组与顺序**（每次最多两位作者并行）：相邻两章可以派给同一位作者；回顾章（第 10 章）复用各章的画法，放最后。
