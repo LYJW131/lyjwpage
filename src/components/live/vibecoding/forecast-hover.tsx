@@ -59,11 +59,13 @@ export function ForecastHover({
     const rect = cellAnchor(target);
     setBounds(rect);
     const raw = forecast.startAt + ((clientX - rect.left) / rect.width) * span;
-    const snap = [forecast.now, forecast.runOutAt].find((mark) => mark != null && Math.abs(mark - raw) < span * SNAP_FRACTION);
+    const snap = [forecast.now, forecast.runOutAt]
+      .filter((mark): mark is number => mark != null && Math.abs(mark - raw) < span * SNAP_FRACTION)
+      .sort((left, right) => Math.abs(left - raw) - Math.abs(right - raw))[0];
     setAt(snap ?? clamp(forecast.startAt + Math.round((raw - forecast.startAt) / STEP_MS) * STEP_MS));
   };
 
-  const sample = at == null ? null : sampleForecast(forecast, at);
+  const sample = at == null || at < forecast.startAt || at > forecast.resetAt ? null : sampleForecast(forecast, at);
   const value = sample == null ? null : sample.phase === "locked" ? 100 : sample.percent ?? sample.target ?? sample.even;
   const clock = new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone });
 
