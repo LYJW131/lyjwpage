@@ -35,8 +35,8 @@ import { earlyLiveSocketScript } from "@/lib/live-socket-boot";
 import { ogImage, site } from "@shared/site";
 import { readSystemDark, readThemeChoice, syncThemeToDocument, themeBootScript } from "@/lib/theme";
 
-// 须与 src/app/styles/theme.css 的 Geist Mono @font-face 指向同一个文件，预加载才会被字体规则复用。
-import geistMonoUrl from "../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2?url";
+// 须与 src/app/styles/theme.css 的 Geist Mono 子集指向同一个文件，预加载才会被字体规则复用。
+import geistMonoUrl from "@/assets/fonts/GeistMono-LatinUi-Variable.woff2?url";
 import "./site.css";
 
 function bootScript(): string {
