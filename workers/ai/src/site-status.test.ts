@@ -279,3 +279,27 @@ test("时间点后面附上按本地日历日算的相对日，凌晨归当天",
   const json = (await runSiteStatusTool(async () => Response.json(data), ["playingNow"], now)).split("\n").at(-1);
   assert.equal(json, '{"ok":true,"data":{"lastOnlineAt":"2026-10-19 02:28 (yesterday)","startedAt":"2026-10-20 00:10 (today)","endedAt":"2026-10-19 23:50 (yesterday)","resetsAt":"2026-10-21 01:00 (tomorrow)","playedAt":"2026-10-17 13:00 (3 days ago)"}}');
 });
+
+test("pulse 改成带本地时间的行：编码道再长听歌道也在，空闲与暂停去掉，同一首歌的短暂停合成一段", async () => {
+  const from = Date.parse("2026-10-20T00:00:00+08:00");
+  const n = 2_000;
+  const coding = { startSec: Array.from({ length: n }, (_, i) => i * 10), endSec: Array.from({ length: n }, (_, i) => i * 10 + 10), value: Array.from({ length: n }, (_, i) => (i % 2) + 2), agentSources: Array(n).fill(1) };
+  const listening = {
+    startSec: [0, 3600, 3900, 3960, 4200, 50_000],
+    endSec: [3600, 3900, 3960, 4200, 4500, 50_200],
+    state: [0, 2, 1, 2, 2, 2],
+    title: [null, "水光接天", "水光接天", "水光接天", "EYE", "水光接天"],
+    subtitle: [null, "NOMELON NOLEMON", "NOMELON NOLEMON", "NOMELON NOLEMON", "NOMELON NOLEMON", "NOMELON NOLEMON"],
+  };
+  const pulse = { generatedAt: from + 86_400_000, window: { from, to: from + 86_400_000 }, lanes: { coding: { kind: "coding", segments: coding, summary: { humanSeconds: 0, agentSeconds: 1, bothSeconds: 2 } }, listening: { kind: "state", segments: listening, summary: { activeSeconds: 900, titles: 2 } } } };
+  const result = await run({ views: ["pulse"] }, fakeIO(() => ({ ok: true, data: pulse })));
+  const lanes = JSON.parse(section(result.text, "pulse").json).data.lanes;
+  const day = (time: string) => time.replace(/ \(.*\)$/, "");
+  assert.deepEqual(lanes.listening.spans.map((span: { from: string; to: string }) => ({ ...span, from: day(span.from), to: day(span.to) })), [
+    { from: "2026-10-20 01:00", to: "2026-10-20 01:10", title: "水光接天", minutes: 10, artist: "NOMELON NOLEMON" },
+    { from: "2026-10-20 01:10", to: "2026-10-20 01:15", title: "EYE", minutes: 5, artist: "NOMELON NOLEMON" },
+    { from: "2026-10-20 13:53", to: "2026-10-20 13:56", title: "水光接天", minutes: 3, artist: "NOMELON NOLEMON" },
+  ]);
+  assert.equal(lanes.coding.activeSpans.length, 1);
+  assert.equal(lanes.coding.activeSpans[0].minutes, Math.round((n * 10) / 60));
+});
