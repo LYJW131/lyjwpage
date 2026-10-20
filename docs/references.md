@@ -210,6 +210,10 @@
   - 是什么：编译期自动记忆化。
   - 取了什么：站点构建经 `@vitejs/plugin-react` 的 `reactCompilerPreset` 接入。
   - 状态：采用。落在 [vite.config.ts](../vite.config.ts)。
+- **[Activity：Speeding up interactions during page load](https://react.dev/reference/react/Activity#speeding-up-interactions-during-page-load)**（React 文档）
+  - 是什么：始终可见的 Activity 边界也能参与选择性水合，让页面各部分独立完成水合。
+  - 取了什么：卡片正常渲染路径包在 `mode="visible"` 的 Activity 中，保留服务端正文，让 React 按卡片调度水合。
+  - 状态：采用。落在 [card-boundary.tsx](../src/components/card-boundary.tsx)；错误恢复界面保持在边界外。
 - **[lazy](https://react.dev/reference/react/lazy)**（React 文档）
   - 是什么：组件首次渲染时才加载模块，加载期间由局部 Suspense 边界承接。
   - 取了什么：播放器弹层与聊天内部卡片按显示条件加载，首页与聊天输入框仍直接渲染。
@@ -218,6 +222,10 @@
   - 是什么：按资源发现、下载与元素绘制拆解 LCP，区分资源大小和主线程延迟。
   - 取了什么：用 Paint Timing 确认服务端 HTML 的首次内容绘制，再成批加载模块并水合，减少脚本与首屏资源争抢带宽。
   - 状态：采用。落在 [defer-module-preloads.ts](../src/lib/defer-module-preloads.ts) 与 [entry.client.tsx](../src/app/entry.client.tsx)；不支持 Paint Timing 时退回双动画帧，后台页面直接启动。
+- **[Generate subsets of fonts](https://fonttools.readthedocs.io/en/latest/subset/index.html)**（fontTools 文档）
+  - 是什么：按 Unicode 字符与布局特性裁剪字体，同时保留所需的变体字形。
+  - 取了什么：从同一 Geist Mono 可变字体生成 Latin 与界面符号分片，预加载分片，剩余字符通过互补的 `unicode-range` 使用完整字体。
+  - 状态：采用。资产来源、生成命令与验证方法见 [字体分片](../src/assets/fonts/README.md)；字体规则落在 [theme.css](../src/app/styles/theme.css)，预加载落在 [root.tsx](../src/app/root.tsx)。
 - **[markdown-cjk-friendly](https://github.com/tats-u/markdown-cjk-friendly)**（`remark-cjk-friendly`）
   - 是什么：修正 CommonMark 在中日韩标点旁不认 `**` 收尾的 remark 插件。
   - 取了什么：对话里「？」后紧跟中文的加粗会原样显示星号，接上它和配套的删除线插件。

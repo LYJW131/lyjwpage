@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import { Activity, Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { RefreshCw, RotateCw } from "lucide-react";
 import { useSWRConfig } from "swr";
 
@@ -153,6 +153,6 @@ export class CardBoundary extends Component<CardErrorBoundaryProps, CardErrorBou
       void children;
       return <CardFault {...props} error={error} reset={this.reset} />;
     }
-    return this.props.children;
+    return <Activity mode="visible">{this.props.children}</Activity>;
   }
 }
