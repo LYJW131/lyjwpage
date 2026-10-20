@@ -213,7 +213,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 这一节和下面的「Pulse 事实时间线」是第 06 章用的，按 main 2489e10 逐条回代码复核过。 <!-- allow: 核对基线戳 -->
 
 - 每 5 分钟一轮，落在 UTC 每小时第 2、7、…、57 分（`workers/core/src/cron-heartbeat.ts#CRON_SCHEDULE`），先调一次 StateHub 的 `pulseTick` 拿归档快照，再把 pulse 归档到 D1：StateHub 给出一份有界快照（各路水位之后的新行）→ 按自然键 upsert 写事实表 → 成功后回头确认水位。各路独立，一路读坏、写坏不挡别的路（`workers/core/src/pulse-archive-snapshot.ts#ARCHIVE_STREAMS`：三条状态道、在听的曲目痕迹、充电、活动桶、Coding 观测，加上编码用量的账本和 5 分钟 token 桶）。
-- core 不调 Clef 给 Coding 打分，也没有 Workers AI 绑定（`workers/core/wrangler.toml`）。第 06 章 Coding 那一层还画着「Clef 打分」那一格（`v2/ch06.js` 的 `ch06.jevNote`、`ch06.jevKeep`、`ch06.skip`、`ch06.n4a`、`ch06.n4b`），与代码不符，改片时删掉。
+- core 不调 Clef 给 Coding 打分，生产没有 Workers AI 绑定；`workers/core/wrangler.toml` 的 `[previews.ai]` 只给分支预览组合入口里的 ai 用。第 06 章 Coding 那一层还画着「Clef 打分」那一格（`v2/ch06.js` 的 `ch06.jevNote`、`ch06.jevKeep`、`ch06.skip`、`ch06.n4a`、`ch06.n4b`），与代码不符，改片时删掉。
 - 每一轮跑完，不论成败，都按排定时刻往 D1 的 `health_buckets` 记一笔心跳，这一笔就是第 06 章的「报到」；只在开着历史归档时记（`workers/core/src/state-core.ts#StateCore`、`shared/health.ts#HEARTBEAT_SERIES`、`shared/health.ts#CRON_HEARTBEAT_EVERY_MINUTES`、`workers/core/src/runtime.ts#historyArchive`）。
 - StateHub 的 `pulseTick` 调用失败时，本轮按失败报到；归档和断流检查的子步骤各自 `.catch` 并记告警，不令本轮心跳失败，所以心跳不证明这些子步骤成功（`workers/core/src/cron-round.ts#runCronRound`）。
 - 触发这一轮的不是 core 自己的 Cloudflare cron（core 的 `crons = []`），而是采集 Worker 每分钟一次的 cron 经 Service Binding 调 `StateCore.cronRound`，core 按 `workers/core/src/cron-heartbeat.ts#cronRoundDue` 判断这一分钟是不是它的轮次（`workers/collector/src/core-round.ts#driveCoreRound`）。
