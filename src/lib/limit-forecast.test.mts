@@ -80,7 +80,7 @@ test("steady use leaves the forecast at the window average", () => {
   assert.ok(Math.abs(forecast.rate! * DAY - 10) < 0.5);
 });
 
-test("sampling the chart reads actual use before now, the projection after, and nothing once locked", () => {
+test("sampling the chart reads actual use before now, the projection after, and only the guide lines once locked", () => {
   const now = start + 2 * DAY;
   const forecast = forecastLimit(weekly(4 * 100 / 7), readings([200 / 7]), now)!;
   const past = sampleForecast(forecast, start + 11.5 * HOUR);
@@ -91,8 +91,8 @@ test("sampling the chart reads actual use before now, the projection after, and 
   assert.ok(ahead.percent! > ahead.target!);
   const light = forecastLimit(weekly(10), readings([5]), now)!;
   assert.equal(sampleForecast(light, light.resetAt).target, 100);
-  assert.deepEqual(
-    { ...sampleForecast(forecast, forecast.runOutAt! + HOUR), even: 0 },
-    { at: forecast.runOutAt! + HOUR, phase: "locked", percent: null, target: null, even: 0 },
-  );
+  const locked = sampleForecast(forecast, forecast.runOutAt! + HOUR);
+  assert.equal(locked.phase, "locked");
+  assert.equal(locked.percent, null);
+  assert.ok(locked.target! > 0 && locked.target! < 100);
 });

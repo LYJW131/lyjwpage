@@ -128,6 +128,7 @@ export function ForecastChart({ forecast, timeZone }: { forecast: LimitForecast;
             />
           )}
         </svg>
+        <span aria-hidden className="absolute bottom-0 left-0 size-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-foreground" />
         <span
           aria-hidden
           className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground"
