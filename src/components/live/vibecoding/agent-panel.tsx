@@ -52,6 +52,7 @@ export function AgentPanel({
   today,
   forecast,
   timeZone,
+  now,
 }: {
   row: CodingAgentRow;
   macDeclaredOffline: boolean;
@@ -59,6 +60,7 @@ export function AgentPanel({
   today: string | null;
   forecast: LimitForecast | null;
   timeZone: string | undefined;
+  now: number;
 }) {
   const limitsStale = useStale(row.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
   const lastDay = row.usage?.lastDay ?? null;
@@ -124,7 +126,7 @@ export function AgentPanel({
           <Stat key={stat.label} label={stat.label} title={stat.title}>{stat.value}</Stat>
         ))}
         <Stat label="Resets in">
-          {forecast ? formatDuration(Math.max(0, forecast.resetAt - forecast.now)) : "—"}
+          {forecast ? formatDuration(Math.max(0, forecast.resetAt - (now || forecast.now))) : "—"}
         </Stat>
       </div>
 

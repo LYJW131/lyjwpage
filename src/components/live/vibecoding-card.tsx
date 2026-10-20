@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 import type { AgentLimitsPayload } from "@shared/vibecoding-limits";
 
 const REFRESH_MS = 2 * 60_000;
-// 归档每天只记最后一次读数，半小时一问足够。
+// 历史按小时归档、每小时只多一个点，半小时一问足够；当前读数走 limits，不靠它。
 const HISTORY_REFRESH_MS = 30 * 60_000;
 
 export function VibeCodingCard({
@@ -98,6 +98,7 @@ export function VibeCodingCard({
               today={today}
               forecast={row.id === "claude" ? weekly.forecast : null}
               timeZone={weekly.timeZone}
+              now={weekly.now}
             />
           ))}
           <CompactAgents

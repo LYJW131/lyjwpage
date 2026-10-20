@@ -172,7 +172,7 @@ export function useWeeklyForecast({
   const timeZone = baked || !mountedAt ? site.timezone : undefined;
   const points = history?.series.find((series) => series.agent === "claude" && series.key === limit?.key)?.points ?? [];
   const forecast = limit && now ? forecastLimit(limit, points, Math.min(now, limitAt ?? now)) : null;
-  return { forecast, timeZone };
+  return { forecast, timeZone, now };
 }
 
 export function forecastStats(forecast: LimitForecast | null) {
