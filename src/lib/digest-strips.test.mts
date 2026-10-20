@@ -40,6 +40,13 @@ test("paused music and human-only coding stay out of the music and agents strips
   assert.equal(topicStrip("coding", coding)?.[0], 1);
 });
 
+test("the driver strip skips hours when only agents ran", () => {
+  const coding = pulse({ coding: { kind: "coding", segments: { startSec: [0, HOUR], endSec: [HOUR, 2 * HOUR], value: [2, 3], agentSources: [4, 4] } } });
+  const strip = topicStrip("coding", coding);
+  assert.deepEqual(strip?.slice(0, 4), [0, 0, 1, 1]);
+  assert.deepEqual(topicStrip("agents", coding)?.slice(0, 4), [1, 1, 1, 1]);
+});
+
 test("token bars are scaled to the day's busiest bin, and topics without a lane get no strip", () => {
   const strip = topicStrip("tokens", pulse({
     tokens: { kind: "tokens", buckets: { startSec: [0, 60, 10 * HOUR], endSec: [60, 120, 10 * HOUR + 60], total: [100, 100, 400], output: [], cacheRead: [] } },

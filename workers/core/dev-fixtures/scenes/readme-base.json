@@ -5567,10 +5567,10 @@
         "highlights": [
           {
             "topic": "coding",
-            "value": 24,
+            "value": 17,
             "unit": "hours",
             "atLeast": false,
-            "caption": "coding"
+            "caption": "driver time"
           },
           {
             "topic": "agents",

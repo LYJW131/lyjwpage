@@ -38,7 +38,7 @@ const VIEW_NOTES = {
   siteDeployments: "Site Worker production deployment, recent builds, pageviews and PageSpeed samples",
   health: "Uptime, API cron heartbeat, error counts and real-visitor Web Vitals for this site",
   reporters: "Health of the reporters that push data to this site",
-  pulse: "24h timeline of coding, listening, watching, gaming, charging, activity (large)",
+  pulse: "24h timeline of coding, listening, watching, gaming, charging, activity (large). Coding summary: humanSeconds + bothSeconds is LYJW's driver time (a coding app in front on LYJW's Mac; keyboard activity is not tracked, so LYJW may have stepped away); agentSeconds is agents running without a coding app in front. Report driver time as LYJW's coding time, never the sum of all three",
   digest: "Hourly AI-written summary of LYJW's past 24 hours, derived from the other views (read those for exact numbers)",
 } as const satisfies Record<StatusViewKey, string>;
 

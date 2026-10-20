@@ -4,7 +4,7 @@
   "data": {
     "headline": "代码不停歇",
     "highlights": [
-      { "topic": "coding", "value": 9, "unit": "hours", "atLeast": false, "caption": "coding" },
+      { "topic": "coding", "value": 9, "unit": "hours", "atLeast": false, "caption": "driver time" },
       { "topic": "site", "value": 3, "unit": "count", "atLeast": false, "caption": "commits" }
     ],
     "model": "claude-sonnet-5-5",

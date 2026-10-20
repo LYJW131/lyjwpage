@@ -23,7 +23,7 @@ test("compose reads the situation by rule, lets Clef pick one stored tagline, an
   assert.ok(first.digest.headlines?.every((line) => DIGEST_TAGLINES.agentsLead.includes(line)));
   assert.equal(first.digest.model, "@cf/cloudflare/clef");
   assert.deepEqual(first.digest.highlights.map((item) => item.topic), ["coding", "agents", "tokens"]);
-  assert.deepEqual(first.digest.highlights[0], { topic: "coding", value: 9, unit: "hours", atLeast: false, caption: "coding" });
+  assert.deepEqual(first.digest.highlights[0], { topic: "coding", value: 6, unit: "hours", atLeast: false, caption: "driver time" });
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].questions, {
     tagline: { type: "choice", instructions: TAGLINE_INSTRUCTIONS, criteria: Object.fromEntries(candidates.map((line, index) => [`t${index}`, `${line}｜主线：${DIGEST_SITUATIONS.agentsLead}`])) },
