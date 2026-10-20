@@ -13,7 +13,7 @@ Rule for every PR in scope:
 - Read all of `get_comments`, `get_reviews` and `get_review_comments`. The bots are claude-review, Devin, Codex (chatgpt-codex-connector) and Cursor Bugbot.
 - Each finding needs one of two outcomes: a pushed fix, or a reply on that thread saying why it stays. Resolve the threads that were fixed.
 - A blocking finding (🟥 / red circle / P0–P1 / security) blocks the merge until it is fixed or lyjw agrees on an ask_decision card.
-- After the last push, wait until the bots have reviewed the current head, then re-check everything.
+- After the last push, wait until the bots have reviewed the current head, then re-check everything. Exception (lyjw 2026-10-20, after #500 sat ~80 min): a follow-up push that only touches docs/comments/skills needs no Codex re-review; a code push waits at most 15 min, then merge and note "Codex didn't re-review".
 - Some bots post only after ready_for_review (PR #200 merged with two Devin threads posted 2 min after it went ready). Codex reports "no findings" as a summary table with no threads.
 - Cursor Bugbot is turned off (out of quota, lyjw 2026-10-13 17:39Z): don't wait for it or mention it. Any other bot that could not run is reported as not run, never counted as a pass.
 - Bot findings are claims to judge, not orders (lyjw: "它说的不一定是完全必要的 你得自己判断"). Trace a real path to the failure and weigh the fix's cost. Fix only what is worth it, and reply with the reason on the rest.
