@@ -231,7 +231,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### Pulse 事实时间线
 
 - 时间线只存原始值，档位、颜色、摘要都在展示时现算（`shared/pulse-timeline.ts`）：三条状态道（听、看、玩）是状态区间，听那条另有从 Apple 最近播放推出的别处播放（§1「没人上报的播放」）；充电是实测瓦数样本；活动是 HealthKit 的五分钟步数桶加训练区间。
-- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding.ts#codingBand`）；Clef 的打分只出现在悬停提示里。
+- Coding 不进这条时间线：它的三色带（前台是 coding 应用 / 有 agent 在跑 / 两者同时）读的时候从 Mac 的观测和 Cursor 账号的观测现算（`shared/pulse-coding-features.ts#codingBand`）；Clef 的打分只出现在悬停提示里。
 - Tokens 道：三个来源的 5 分钟 token 桶读的时候相加，画每个桶的 token 处理量（输入 + 输出 + 缓存读 + 缓存写入）的 5 分钟平均，折成每分钟；不是生成速度，「此刻」那个数的口径见 §1「编码用量」（`workers/core/src/pulse.ts#tokensLaneView`）。
 - Pulse 卡的道按 `src/components/live/pulse-card.tsx#LANES`，写章时从上到下是 Coding、Tokens、Listening、Watching、Gaming、Charging、Activity（第 06 章的地层照这个顺序一层一层画，旁白不说几条）；卡上画最近 24 小时（`shared/limits.ts#PULSE_WINDOW_MS`），屋里留 7 天（`PULSE_TTL_MS`），D1 长期保存。
 
@@ -367,7 +367,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 发第一句之前
 
-- 访客发第一条消息时，卡片先在本地回一段隐私说明，先选杂鱼与先知用 DeepSeek 还是 Claude，去向只列 Cloudflare Workers、Workers AI 的 Clef、所选那家厂商与这个浏览器，联网搜索按实际生效的服务写；DeepSeek 阵容里 Clef 选了神时再单独问 Anthropic 那一条，拒绝就由先知答（`workers/ai/README.md`「首页对话」）；点 Accept 之前不发任何对话请求，只在后台先跑 Turnstile（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
+- 访客发第一条消息时，卡片先在本地回一段隐私说明，先选杂鱼与先知用 DeepSeek 还是 Claude，去向只列 Cloudflare Workers、Workers AI 的 Clef 与 Clairic、所选那家厂商与这个浏览器，联网搜索按实际生效的服务写；DeepSeek 阵容里 Clef 选了神时再单独问 Anthropic 那一条，拒绝就由先知答（`workers/ai/README.md`「首页对话」）；点 Accept 之前不发任何对话请求，只在后台先跑 Turnstile（`src/components/god-chat.tsx#ConsentPrompt`、`CONSENT_COPY`）。同意记在浏览器里，对话代码一改就要重新同意（`src/lib/chat-consent.ts`、`scripts/chat-code-version.ts#CHAT_CODE_PATHS`）。
 
 ### 过闸（花钱之前）
 
@@ -430,7 +430,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 上报器：GHCR 与 GitHub Release
 
 - 容器上报器：`.github/workflows/build-reporters.yml#changes` 用 paths-filter 挑出改了的目录；`.github/workflows/build-reporters.yml#build` 只出 `linux/amd64`，合进 main 时打 `latest` 和 `sha-<短哈希>` 推到 GHCR，PR 只 build 不推；`.github/workflows/build-reporters.yml#deploy` 只管 misaka-jp 上的服务：用一把只能执行部署脚本的密钥 ssh 过去，点名 pull、只重建那一个，新容器跑稳后删掉旧镜像（`reporters/misaka-deploy.sh`），再验 `status=running restarts=0`，server-reporter 另验镜像里烧进的提交就是这一版。
-- dsm（emby-reporter）和 n100（playstation-reporter）在内网，Actions 够不着，按各自 README 手动更新（根 `AGENTS.md`「部署流程」）。dsm 那台现在还是现场 build（`docs/ops-facts.md`「机器与部署位置」），所以片中不说「机器只拉镜像」。
+- dsm（emby-reporter）和 n100（playstation-reporter）在内网，Actions 够不着，按各自 README 手动更新（`.claude/rules/reporters.md`）。dsm 那台现在还是现场 build（`docs/ops-facts.md`「机器与部署位置」），所以片中不说「机器只拉镜像」。
 - Mac Telemetry Hub：`reporters/mac-telemetry-hub` 是子模块，main 上的指针一动，macOS runner 就用 Developer ID 签名、`notarytool` 公证、`stapler` 钉上票据，发成本仓库的 Release `hub-build-<运行号>`（`.github/workflows/release-mac-telemetry-hub.yml#release`）；PR 上只走到公证、不发布；没配签名 secret 时整个 job 跳过。
 - 这两个工作流按 `paths` 决定跑不跑（`.github/workflows/build-reporters.yml`、`.github/workflows/release-mac-telemetry-hub.yml` 的 `on.push.paths`）。#308 没改到它们的路径，两个都没跑；片中各画成一条在闸门处划掉、写「没改到」的线。
 
@@ -493,7 +493,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 合并
 
-- 每个 PR 都要 CI 全绿；碰到 Worker 监视路径的，Workers Builds 也要绿；行内评审线程全部解决（`HUMAN.md`「5. PR 与合并」）。在此之上分三档（根 `AGENTS.md`「工作方式」、`HUMAN.md`「5. PR 与合并」）：
+- 大改代码逻辑的 PR 要 CI 全绿；文档、skill 与小改动本地跑过改动涉及的检查就合，不等 CI。碰到 Worker 监视路径的，Workers Builds 也要绿；行内评审线程全部解决（`HUMAN.md`「5. PR 与合并」）。在此之上分三档（根 `AGENTS.md`「工作方式」、`HUMAN.md`「5. PR 与合并」）：
   1. 小改动、文档、skill，以及 lyjw 说过「推进到合并」或明确让推进的事：门槛过了 Claude 自己合，不等机器评审，不再问「合」。
   2. 大改代码逻辑的：另要处理完机器评审，并有判定员的 PASS 盖住当前 head。
   3. 有 UI / UX 变化的：先给 lyjw 看效果（桌面与 375px 截图），lyjw 点头才合；lyjw 明确要求的小改动除外（根 `DESIGN.md`「交付与合并」）。
@@ -519,13 +519,13 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 | 时间 | 名称 | 做什么 |
 |---|---|---|
 | 01:53、07:53、13:53、19:53 | collector 盯防 | 线上只读：看站点公开状态端点与 collector 的 Workers Observability 日志，找告警漏掉的细微异常，顺带分诊别的 Worker 的新错误，两次复现了的开修复草稿 PR（每次最多一个，lyjw 关掉即否决）；写进项目的共享目录 |
-| 03:15 | 记忆镜像同步 | 跑 `pnpm memory:mirror`，有差异开 `docs(memory):` PR，CI 绿就合，没变化不出声 |
+| 03:15 | 记忆镜像同步 | 跑 `pnpm memory:mirror`，有差异开 `docs(memory):` PR，本地 `pnpm docs:check` 过了就合，没变化不出声 |
 | 04:00 | 每日代码审查 | 从上次游标起审 main 的改动，开 `chore(review):` PR，检查与机器评审处理完自己合 |
-| 04:53 | 提炼 skill 与偏差复盘 | 读各线程，把反复出现的做法写成或改进 skill，对照 lyjw 第一次怎么说和最后交付了什么找弯路；开 `docs(skills):` 小 PR，CI 绿就合 |
+| 04:53 | 提炼 skill 与偏差复盘 | 读各线程，把反复出现的做法写成或改进 skill，对照 lyjw 第一次怎么说和最后交付了什么找弯路；开 `docs(skills):` 小 PR，本地 `pnpm docs:check` 过了就合 |
 | 08:41 | Anthropic 官方动态 | 拉 Anthropic 官方博客、文档、更新日志等新内容，逐条判断能否吸收，写进项目的共享目录；不发言、不开 PR |
-| 09:00 | 晨报（不是定时任务） | 项目聊天的 Claude 读上面两份报告，列出要 lyjw 决定的事，之后每小时原地更新，直到 lyjw 开口 |
+| 10:56 | 晨报 | 在「晨报 · 定时任务」线程里汇总上面几个任务的结果，列出要 lyjw 做的事，一天一条；只读 |
 
-出处：`docs/ops-facts.md`「Claude Code 云端 routine」、`HUMAN.md`「8. 定时任务与自动化」。片中夜班的时间轴从 01:53 那一次画起，只画一夜。
+出处：`docs/ops-facts.md`「Claude Code 云端 routine」、`HUMAN.md`「8. 定时任务与自动化」。片中夜班的时间轴从 01:53 那一次画起，只画一夜；片中把晨报画在 09:00，与上表不符。
 
 ### 提交里的 Claude
 

@@ -280,7 +280,7 @@ function Conversation({ className, archive, session: conversation }: { className
           else if (event.type === "seal") meta = { ...meta, seal: event.seal, trace: event.trace, planToken: event.planToken };
           else if (event.type === "pass") human.storePass({ pass: event.pass, expiresAt: event.expiresAt });
           else if (event.type === "card") {
-            meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length }] };
+            meta = { ...meta, cards: [...(meta.cards ?? []), { card: event.card, at: reply.length, ...(event.game && { game: event.game }) }] };
           } else if (event.type === "design" && conversation) {
             // 连同访客这条一起存下：刷新或断线后要靠它补发规划者的回复。
             chatArchive.update(conversation.id, { design: activeChatDesign({ token: event.token, expiresAt: event.expiresAt, remaining: event.remaining }) });
@@ -880,7 +880,7 @@ function SessionList({ archive }: { archive: ChatArchive }) {
 // 隐私说明列出普通对话数据的每个出站去向：两种阵容都用的 workers、clef、browser，加所选阵容那家模型厂商（deepseek 或 anthropicAll）；
 // DeepSeek 阵容里 Clef 选了神时另弹 anthropicGod。GitHub 授权由提交计划时的 GithubConsent 单独说明，设计会话的 Managed Agents 保留规则由进入设计会话时的
 // DESIGN_CONSENT_COPY 单独说明；Turnstile 人机验证不收对话内容，lyjw 定为不列；新增模型供应商、第三方工具或日志出口时同步改三种语言，对话记录的保留期按
-// workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；
+// workers/ai/src/chat/transcripts.ts#TRANSCRIPT_RETENTION_MS 写；Anthropic 与 Clef、Clairic 的保留和训练说法按 docs/ops-facts.md 记的设置与政策写，两边同步；
 // DeepSeek 只写服务器在中国大陆、按其开放平台条款处理，账号的保留与训练设置未核实前不写具体承诺；联网搜索的去向按 /api/chat/usage 回的 webSearch
 // （workers/ai/src/chat/web-search.ts#webSearchServices）写，拿不到时用 searchFallback。
 type ConsentDestination = { name: string; detail: string };
@@ -911,7 +911,7 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     lookupJoin: (services) => `${services.slice(0, -1).join(", ")} or ${services[services.length - 1]}`,
     searchRoles: { both: "web search and page reads", search: "web search", read: "page reads" },
     searchFallback: "the web search service",
-    clef: { name: "Cloudflare Workers AI (Clef router)", detail: "reads your latest message and brief excerpts from recent context to select the appropriate model. Cloudflare does not store this content or use it for training." },
+    clef: { name: "Cloudflare Workers AI (Clef router, Clairic extractor)", detail: "Clef reads your latest message and brief excerpts from recent context to select the appropriate model; Clairic reads your latest message to pick out any game, song or show you name, so the matching status can be looked up first. Cloudflare does not store this content or use it for training." },
     deepseek: { name: "DeepSeek (DeepSeek API)", detail: "receives the full conversation to generate the Small Fry's and the Prophet's replies. DeepSeek's servers are in mainland China, and this data is processed under DeepSeek's open platform terms." },
     anthropicAll: { name: "Anthropic (Claude API)", detail: "receives the full conversation to generate the Small Fry's, the Prophet's and God's replies. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training." },
     anthropicGod: { name: "Anthropic (Claude API)", detail: "receives the full conversation when God answers. Anthropic retains API data for 30 days for safety review (retained longer if flagged); it is not used for training. If you decline, the Prophet answers this message instead." },
@@ -929,7 +929,7 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     lookupJoin: (services) => `${services.slice(0, -1).join("、")} 或 ${services[services.length - 1]}`,
     searchRoles: { both: "联网搜索与读取网页", search: "联网搜索", read: "读取网页" },
     searchFallback: "联网搜索服务",
-    clef: { name: "Cloudflare Workers AI（Clef 路由）", detail: "读取最新消息及上下文的简短摘录，用于路由选择合适的模型。Cloudflare 不存储这些内容，亦不用于模型训练。" },
+    clef: { name: "Cloudflare Workers AI（Clef 路由、Clairic 抽取）", detail: "Clef 读取最新消息及上下文的简短摘录，用于路由选择合适的模型；Clairic 读取最新消息，挑出其中点名的游戏、歌曲或剧集，以便先查对应的状态。Cloudflare 不存储这些内容，亦不用于模型训练。" },
     deepseek: { name: "DeepSeek（DeepSeek API）", detail: "接收完整对话，为「杂鱼」与「先知」生成回复。DeepSeek 的服务器位于中国大陆，数据按 DeepSeek 开放平台条款处理。" },
     anthropicAll: { name: "Anthropic（Claude API）", detail: "接收完整对话，为「杂鱼」「先知」与「神」生成回复。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。" },
     anthropicGod: { name: "Anthropic（Claude API）", detail: "由「神」作答时接收完整对话。Anthropic 保留 API 数据 30 天（仅供安全审查，违规标记数据会保留更久）；数据不用于模型训练。拒绝则这条改由「先知」回答。" },
@@ -947,7 +947,7 @@ const CONSENT_COPY: Record<PlanLanguage, ConsentCopy> = {
     lookupJoin: (services) => services.join("、"),
     searchRoles: { both: "Web 検索とページ取得", search: "Web 検索", read: "ページ取得" },
     searchFallback: "Web 検索サービス",
-    clef: { name: "Cloudflare Workers AI（Clef ルーター）", detail: "最新のメッセージおよび直前の短い会話抜粋を読み取り、最適なモデルを選択します。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
+    clef: { name: "Cloudflare Workers AI（Clef ルーター、Clairic 抽出）", detail: "Clef は最新のメッセージおよび直前の短い会話抜粋を読み取り、最適なモデルを選択します。Clairic は最新のメッセージから名前の挙がったゲーム・曲・作品を取り出し、該当する状態を先に調べられるようにします。Cloudflare がこの内容を保存したり、モデルの学習に使用することはありません。" },
     deepseek: { name: "DeepSeek（DeepSeek API）", detail: "「雑魚」と「預言者」の回答生成のために会話全体を受信します。DeepSeek のサーバーは中国本土にあり、データは DeepSeek オープンプラットフォームの規約に基づいて処理されます。" },
     anthropicAll: { name: "Anthropic（Claude API）", detail: "「雑魚」「預言者」「神」の回答生成のために会話全体を受信します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。" },
     anthropicGod: { name: "Anthropic（Claude API）", detail: "「神」が回答する際に会話全体を受信します。Anthropic は API データを安全確認目的で 30 日間保持します（フラグ適用時は保持期間が延長される場合があります、モデルの学習には不使用）。同意しない場合、このメッセージには「預言者」が回答します。" },
@@ -1260,7 +1260,7 @@ function ReplyBody({
         ),
       };
   const marks = [
-    ...cards.map(({ card, at }) => ({ at, design: true, node: <ChatCard key={card} card={card} entering={live} /> })),
+    ...cards.map(({ card, at, game }) => ({ at, design: true, node: <ChatCard key={game ? `${card}:${game}` : card} card={card} game={game} entering={live} /> })),
     ...(dividerMark ? [dividerMark] : []),
   ].sort((a, b) => a.at - b.at);
   for (const { at, node, design } of marks) {

@@ -11,6 +11,7 @@ test("GitHub links name the page kind and repository", () => {
   assert.equal(describe("https://github.com/LYJW131/lyjwpage/issues/12"), "Issue #12 in the lyjwpage repository on GitHub");
   assert.equal(describe("https://github.com/LYJW131/lyjwpage"), "The lyjwpage repository on GitHub");
   assert.equal(describe("https://github.com/grokkybara[bot]"), "grokkybara[bot]'s profile on GitHub");
+  assert.equal(describe("https://github.com/%E0%A4%A"), "%E0%A4%A's profile on GitHub");
 });
 
 test("known hosts get a site name, unknown hosts fall back to the host", () => {

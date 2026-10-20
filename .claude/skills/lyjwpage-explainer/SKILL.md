@@ -42,14 +42,16 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 - 一位作者一章（或相邻两章），简报照 CHAPTER-BRIEF 填。作者用主模型、effort 用 max：lyjw 要求做动画时这样。
 - 互不依赖的章同时派（后台）。云端作者在同一个工作树里写，各只写自己那章的 `ch<NN>.js` 与 `music/ch<NN>.js`，不提交、不切分支、不用 `git stash`；要动共用文件（`kit.js`、`engine.js`、`i18n.js` 等）写进汇报，由主线程改。Mac 上各开工作树，见 CHAPTER-BRIEF「在哪做」。
 - 复用各章画法的回顾章放最后。
+- 看图交给 Haiku：作者不看图（CHAPTER-BRIEF「怎么自检」），交回联系表路径。主线程每份联系表派一个 Haiku（`model: "haiku"`、`effort: "high"`、后台），提示词：第一句禁止调用 `mcp__hearthbot__` 工具；读 [frame-qa.md](frame-qa.md) 的问题类型和报告格式；说明这是按文件名排的静帧，相邻两格不连续，不报 `glitch`；列出要看的图。主线程只读报告文字，把要改的条目用 SendMessage 转给作者，改完再派 Haiku 只看改过的那几张。
 
-做完：每位作者交回 `check.mjs` 通过的结果、含交界帧的抽帧和汇报。
+做完：每位作者交回 `check.mjs` 通过的结果、含交界帧的抽帧和汇报，Haiku 看过联系表、清单都处理过。
 
 ### 4. 合拢
 
-- 主线程按汇报改共用件、统一提交，逐对核交界：上一章最后一帧接本章第一帧（`stills.mjs`，中英各一组）。
+- 主线程按汇报改共用件、统一提交，逐对核交界：上一章最后一帧接本章第一帧（`stills.mjs`，中英各一组），交界帧派 Haiku 看，提示词同第 3 步。
 - `node docs/explainer/v2/tools/check.mjs` 退出码 0：不带章号查全部已写的章，带 `02` 或 `ch02` 只查那几章，中英都查。
-- `node docs/explainer/v2/tools/en-cjk.mjs <输出.json>`：缺文字为 0；列出的中文逐条判断，只该剩歌名、PR 标题这类数据。
+- `node docs/explainer/v2/tools/en-cjk.mjs <输出.json>`：缺文字为 0；列出的中文逐条判断，只该剩歌名、PR 标题这类数据。也能带章号。
+- 这两条不带章号时整片扫一遍要几分钟：合拢时跑一次，之后只在改了共用件（`kit.js`、`engine.js`、`score.js` 等）时重跑；只改了某章就带那章的章号。
 
 做完：上面两条命令都过，交界逐对看过。
 
@@ -78,8 +80,8 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 4. 机器兜底，和 Haiku 同时跑：
    - `python3 docs/explainer/v2/tools/flicker.py $F/zh <输出.tsv>`：只闪一帧的细小毛病，Haiku 基本看不出来。
    - `node docs/explainer/v2/tools/textlog.mjs <记录.jsonl>`（英文版加 `--lang en`），再 `python3 docs/explainer/v2/tools/textcheck.py <记录.jsonl>`：叠字、出画、单帧跳变。
-5. 判定：主线程逐条打开对应的帧看，记进 scratchpad 里的台账，列为「批、帧、Haiku 说的、判定、依据」，判定只用「已改、设计如此、误报、不改」四种。Haiku 和两个比对工具的输出都是线索，误报不少，不看图不下结论。
-6. 修完先重跑「4. 合拢」里的 `check.mjs` 和 `en-cjk.mjs`，再回到第 1 步：修出框时给字加的限宽（`maxW`）会把字等比缩小，常缩到字号下限以下。
+5. 判定：Haiku 和两个比对工具的输出都是线索，误报不少，要看图核实，看图的也是 Haiku。把这一轮的线索（帧号、类型、描述）分批写成清单，每批派一个 Haiku 复核：逐条打开那一帧，回「属实 / 误报」和一句依据。主线程只读复核结果，记进 scratchpad 里的台账，列为「批、帧、Haiku 说的、复核、判定、依据」，判定只用「已改、设计如此、误报、不改」四种。只有两个 Haiku 说法相反、又关系到改不改时，主线程才自己打开那一帧。
+6. 修完先重跑改过那几章的 `check.mjs` 和 `en-cjk.mjs`（带章号），再回到第 1 步：修出框时给字加的限宽（`maxW`）会把字等比缩小，常缩到字号下限以下。
 
 做完：最近一轮的台账里没有「已改」，比对工具的线索都判过。
 

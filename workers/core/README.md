@@ -276,7 +276,7 @@ Mac / agents 的桶只认起点在报告范围里的（跨着范围起点的那�
 - **Coding 三色带**不另存：读时从 `pulse:coding-observations`、`pulse:cursor-observations` 与云端的
   `pulse:token-buckets:agents-otlp` 现算，切片规则同 Coding 评估特征（每条 Mac 观测撑到下一条或 3 分钟，`available: false` 不算观测）。
   human 是前台为 coding 应用（`desktop.coding`），agent 是有 agent `active`、Cursor 账号最近 5 分钟有活动，
-  或云端 Claude Code 在这个 5 分钟桶里有用量（`shared/pulse-coding.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
+  或云端 Claude Code 在这个 5 分钟桶里有用量（`shared/pulse-coding-features.ts#cloudAgentActivity`；云端只有正证据，没有桶的时段是未知，不画 0）。
   Cursor 那一路的覆盖也算「看得见」：Mac 离线而 Cursor 覆盖着且没有活动时画 0（观测到没有 agent 活动），
   这时前台其实是未知，和 Coding 评估特征的口径一致。不读档位时代的 `pulse:coding`（它让 agent 压过前台，画不出「两者同时」）。
 - **充电瓦数** `pulse:v2:charging` `{t, watts, device?}`，上限 `CHARGING_SAMPLE_CAP`。闸门见 `planChargingSample`：
@@ -307,7 +307,7 @@ cron 落在窗口结束后 `PULSE_SCORE_SETTLE_MS`（`src/pulse-score.ts`，等�
 没有 `AI` 绑定、或本地配了 `DEV_OVERRIDES` / `UPSTREAM_API_URL` 时停用（`src/runtime.ts#isolatedFromSharedWrites`），按 example 配的本地 Worker 不评分。
 
 决策模型不会数数、不会算时长、不比时间戳，所以发给它的 state 是代码算好的命名秒数和次数
-（`shared/pulse-coding.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
+（`shared/pulse-coding-features.ts` 的 `codingWindowFeatures`）：`codingAppSeconds`、`agentActiveSeconds`、
 `concurrentAgentSeconds`、`codingAppAndAgentSeconds`、切换次数、最长连续时长、观测覆盖和前几个应用 / agent，
 没有原始区间或时间戳；判据写在 `instructions` / `criteria` 里。
 
@@ -469,7 +469,7 @@ core 这一轮本地要做的 D1 归档、Clef 打分被隔离开关关着。
 
 本地用 `wrangler.test.toml`：生产配置里的 `deleted_classes` 迁移在空环境下起不来，测试配置有从头开始的迁移链，且没有生产域名和 cron。
 `AI` 绑定只能连远程 Workers AI：`scripts/dev-worker.mjs` 在没有 `CLOUDFLARE_API_TOKEN` 也没有 `wrangler login` 时，把 core 与 ai 的测试配置去掉 `[ai]` 段另存为 `wrangler.test.offline.toml` 再起，否则整个会话起不来；去掉后对话路由走兜底档位。`DEV_WORKER_AI=remote` / `off` 强制选择。
-云端会话启动时 `.claude/hooks/session-start.sh` 跑 `scripts/cloud-dev-vars.mjs`，补上缺的 `workers/core/.dev.vars`（照抄 example）、`workers/ai/.dev.vars`（key 取环境变量 `LYJWPAGE_ANTHROPIC_API_KEY` 与 `LYJWPAGE_DEEPSEEK_API_KEY`，Turnstile 用 Cloudflare 测试密钥，签章密钥随机生成）与根 `.env.local`（Turnstile 测试 site key），已有的文件不动。
+云端会话启动时 `.claude/hooks/session-start.sh` 跑 `scripts/cloud-dev-vars.ts`，补上缺的 `workers/core/.dev.vars`（照抄 example）、`workers/ai/.dev.vars`（key 取环境变量 `LYJWPAGE_ANTHROPIC_API_KEY` 与 `LYJWPAGE_DEEPSEEK_API_KEY`，Turnstile 用 Cloudflare 测试密钥，签章密钥随机生成）与根 `.env.local`（Turnstile 测试 site key），已有的文件不动。
 状态持久化在 `.wrangler/dev-state`（`DEV_WORKER_STATE` 可以另指一个目录），重装或想清库就删它，新目录直接以空状态起。
 
 本地是空库。`.dev.vars` 里的 `UPSTREAM_API_URL` 让 `publicResponse` 按端点整份兜底（`src/public-api.ts#overlayResponse`）：生产回 `ok:true` 的端点整份用生产的，
@@ -501,7 +501,7 @@ pnpm dev:scene --reset                                  # 收尾
 `--age 20m` 把整份快照往回拨，造「首屏快照是旧的」「快照里那首歌已放完」这类态，不用拨浏览器时钟。
 `--capture` 抓下的时刻、ISO 时刻、站点日期都改写成相对令牌（`scripts/dev-fixtures.ts#tokenize`），哪天注入都像刚抓的；字段名以 `Bytes` / `Count` 结尾的大数不算时刻。抓取同时带上整份奖杯目录，注入在 `?titleids=*` 下（`shared/trophy-slice.ts#TROPHY_CATALOG_OVERRIDE_SEARCH`），瓷砖展开与批量预取的 `?titleids=` 请求都由 core 从它现切。Apple 歌单封面是带时效签名的直链，注入时快到期的会按去掉签名的地址从线上同一视图换成新链，换不到的视图列在 `expiredSignedUrls` 里，重抓场景即可。
 注入前摘要的三格按场景里的其他视图重算（调 `workers/ai/src/digest/` 与生成时同一份规则），标题池收成一句：首屏内联脚本和客户端轮换都从池里随机取，一句就没得随机，SSR、浏览器、明暗两次截图看到的是同一份。
-场景缺的状态视图（以及正在听那首的歌词、奖杯目录）会列在输出的 `unpinned` 里，它们仍走生产兜底。根 README 的首页总览图用 `pnpm readme:shots` 按 `readme` 场景截，见 [效果图](../../docs/screenshots.md)。
+场景缺的状态视图（以及正在听那首的歌词、奖杯目录）会列在输出的 `unpinned` 里，它们仍走生产兜底。整页对照截图用 `readme` 场景，见 [效果图](../../docs/screenshots.md)。
 
 ## 验证
 
