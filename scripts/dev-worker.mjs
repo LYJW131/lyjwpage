@@ -5,7 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const AI_CONFIGS = ["workers/core/wrangler.test.toml", "workers/ai/wrangler.test.toml"];
+const AI_CONFIG = "workers/ai/wrangler.test.toml";
 const OFFLINE_NAME = "wrangler.test.offline.toml";
 const AI_SECTION = /^\[ai\]\n(?:[^[\n].*\n)*/m;
 
@@ -29,15 +29,13 @@ export function remoteAiEnabled(env = process.env, home = os.homedir(), exists =
   return wranglerAuthFiles(env, home).some((file) => exists(file));
 }
 
-// AI 绑定只能远程跑，wrangler 没有凭据时整个 dev 会话起不来；去掉它后 core 不评分、ai 路由走兜底档位，其余照常。
-function configPaths(remoteAi) {
-  return AI_CONFIGS.map((relative) => {
-    if (remoteAi) return relative;
-    const source = path.join(ROOT, relative);
-    const offline = path.join(path.dirname(source), OFFLINE_NAME);
-    fs.writeFileSync(offline, withoutAiBinding(fs.readFileSync(source, "utf8")));
-    return path.relative(ROOT, offline);
-  });
+// AI 绑定只能远程跑，wrangler 没有凭据时整个 dev 会话起不来；去掉它后 ai 路由走兜底档位，其余照常。
+function aiConfigPath(remoteAi) {
+  if (remoteAi) return AI_CONFIG;
+  const source = path.join(ROOT, AI_CONFIG);
+  const offline = path.join(path.dirname(source), OFFLINE_NAME);
+  fs.writeFileSync(offline, withoutAiBinding(fs.readFileSync(source, "utf8")));
+  return path.relative(ROOT, offline);
 }
 
 function main(extraArgs) {
@@ -45,12 +43,12 @@ function main(extraArgs) {
   if (!remoteAi) {
     console.warn("[dev:worker] 没有 Cloudflare 凭据，AI 绑定已去掉：本地不跑 Clef。要用就设 CLOUDFLARE_API_TOKEN 或 wrangler login。");
   }
-  const [core, ai] = configPaths(remoteAi);
+  const ai = aiConfigPath(remoteAi);
   const fromCore = (relative) => path.relative(path.join(ROOT, "workers/core"), path.join(ROOT, relative));
   const args = [
     "--dir", "workers/core", "exec", "wrangler", "dev",
     "-c", "../dev-router/wrangler.toml",
-    "-c", fromCore(core),
+    "-c", "wrangler.test.toml",
     "-c", fromCore(ai),
     "-c", "../ingress/wrangler.test.toml",
     "-c", "../collector/wrangler.test.toml",

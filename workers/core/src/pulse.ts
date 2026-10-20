@@ -1,6 +1,5 @@
 import { codingObservationsKey, cursorObservationsKey } from "./coding-pulse";
 import { PULSE_WINDOW_MS } from "@shared/limits";
-import { pulseAssessmentsKey } from "./pulse-assessments";
 import { toColumns } from "@shared/pulse-columns";
 import {
   pulseActivityKey,
@@ -23,7 +22,6 @@ import { coveringPart, parseStoredCodingBuckets, type StoredCodingBuckets } from
 import { codingBucketsKey } from "@shared/coding-store";
 import { CODING_BUCKET_MS, codingRowTokens } from "@shared/coding-usage";
 import { CODING_USAGE_SOURCE_NAMES, isOtlpCodingSource, type CodingUsageSource } from "@shared/coding-usage-sources";
-import { latestPulseAssessments, type PulseAssessment } from "@shared/pulse-assessment";
 import { cloudAgentActivity, codingBand, parseCodingObservation, type CodingObservation } from "@shared/pulse-coding";
 import type { Coverage } from "@shared/pulse-features";
 import { parseCursorObservation, type CursorObservation } from "@shared/pulse-cursor";
@@ -148,25 +146,16 @@ function coveredMs(spans: { from: number; to: number }[]): number {
   return total;
 }
 
-export function codingLaneView(observations: CodingObservation[], cursor: CursorObservation[], assessments: PulseAssessment[], window: PulseWindow, cloudActivity: Coverage[] = []): PulseCodingLane {
+export function codingLaneView(observations: CodingObservation[], cursor: CursorObservation[], window: PulseWindow, cloudActivity: Coverage[] = []): PulseCodingLane {
   const band = codingBand(observations, cursor, window, cloudActivity);
   const rows = band.flatMap((segment) => {
     const at = span(window, segment.from, segment.to);
     return at.endSec > at.startSec ? [{ ...at, value: segment.value, agentSources: segment.agentSources }] : [];
   });
   const total = (value: number) => seconds(band.filter((segment) => segment.value === value).reduce((sum, segment) => sum + segment.to - segment.from, 0));
-  const scored = assessments.filter((row) => row.domain === "coding" && row.to > window.from && row.from < window.to)
-    .map((row) => ({
-      ...span(window, Math.max(window.from, row.from), Math.min(window.to, row.to)),
-      intensity: row.intensity.value,
-      confidence: Math.round(row.intensity.confidence * 100) / 100,
-      mode: row.mode?.value ?? null,
-    }))
-    .filter((row) => row.endSec > row.startSec);
   return {
     kind: "coding",
     segments: toColumns(rows, ["value", "agentSources"] as const),
-    assessments: toColumns(scored, ["intensity", "confidence", "mode"] as const),
     summary: { humanSeconds: total(1), agentSeconds: total(2), bothSeconds: total(3) },
   };
 }
@@ -305,7 +294,6 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     .get(pulseWorkoutsKey())
     .listRange(codingObservationsKey(), -TAIL.coding, -1)
     .listRange(cursorObservationsKey(), -TAIL.cursor, -1)
-    .listRange(pulseAssessmentsKey(), 0, -1)
     .get(codingBucketsKey("mac"))
     .get(codingBucketsKey("agents"))
     .get(codingBucketsKey("agents-otlp"))
@@ -316,18 +304,17 @@ export async function getPulseStatus(now: number = Date.now()): Promise<PulsePay
     closed: parsed(rows[index], (raw) => parseClosedInterval(name, raw)),
     open: parseOpenInterval(name, text(index + 1)),
   });
-  const assessments = latestPulseAssessments(Array.isArray(rows[12]) ? rows[12] as string[] : []);
   const tokenBuckets: TokenBucketSources = {
-    mac: parseStoredCodingBuckets(rows[13]),
-    agents: parseStoredCodingBuckets(rows[14]),
-    "agents-otlp": parseStoredCodingBuckets(rows[15]),
-    "mac-otlp": parseStoredCodingBuckets(rows[16]),
+    mac: parseStoredCodingBuckets(rows[12]),
+    agents: parseStoredCodingBuckets(rows[13]),
+    "agents-otlp": parseStoredCodingBuckets(rows[14]),
+    "mac-otlp": parseStoredCodingBuckets(rows[15]),
   };
   return {
     generatedAt: now,
     window,
     lanes: {
-      coding: codingLaneView(parsed(rows[10], parseCodingObservation), parsed(rows[11], parseCursorObservation), assessments, window,
+      coding: codingLaneView(parsed(rows[10], parseCodingObservation), parsed(rows[11], parseCursorObservation), window,
         cloudAgentActivity(tokenBuckets["agents-otlp"] ?? null)),
       tokens: tokensLaneView(tokenBuckets, window),
       listening: stateLaneView("listening", lane("listening", 0), window, parsed(rows[6], parseListeningTrace)),
