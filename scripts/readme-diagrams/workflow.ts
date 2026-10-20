@@ -57,7 +57,7 @@ export function workflow(lang: Lang): Canvas {
   c.edge([[432, 360], [432, 504], [144, 504]], { end: false });
   c.edge([[720, 408], [720, 504], [432, 504]], { end: false });
   for (const x of [144, 432]) c.dot(x, 504);
-  c.note(576, 504, ["都以 PR 进 main", "everything lands as a PR"], "middle");
+  c.note(576, 504, ["改动都以 PR 进 main", "every change lands as a PR"], "middle");
 
   c.edge([[264, 588], [312, 588]]);
   c.edge([[552, 588], [600, 588]]);
