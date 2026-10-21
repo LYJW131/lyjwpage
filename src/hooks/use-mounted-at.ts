@@ -46,6 +46,9 @@ function subscribeClockGate(gate: ClockGate, listener: () => void): () => void {
   if (!pumpQueued) schedulePump();
   return () => {
     gate.listeners.delete(listener);
+    if (gate.listeners.size || gate.armed) return;
+    const i = armQueue.indexOf(gate);
+    if (i >= 0) armQueue.splice(i, 1);
   };
 }
 
