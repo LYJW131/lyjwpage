@@ -45,14 +45,13 @@
     }
   }
 
-  // add(from, buf) 交出整片第 from 帧起的一段（已做母带、叠好音效）；first() 在盖住播放头的那段交出后调：两条泳道谁先合完不一定，中途还可能拖动，先好的那段不一定在播放头
-  async function play({ url, header, total, sr, now, add, first, sfx }) {
+  // add(from, buf) 交出整片第 from 帧起的一段（已做母带、叠好音效）
+  async function play({ url, header, total, sr, now, add, sfx }) {
     const Sc = window.Score, align = Sc.renderAlignment(sr), warm = Math.ceil(Sc.warmup * sr / align) * align;
     const [gain, bank] = await Promise.all([(async () => tagGain(header || await headerOf(url)) ?? GAIN_GUESS)(), sfx.load()]);
     const before = Math.ceil(sfx.margin[0] * sr), after = Math.ceil(sfx.margin[1] * sr);
     const taken = []; // 已合好或正在合的 [from, to)，按 from 排
     const owner = (f) => taken.find((s) => f >= s.from && f < s.to);
-    const added = [];
     function nextJob() {
       const head = Math.min(total - 1, Math.max(0, Math.floor(now() * sr / align) * align));
       for (const start of [head, 0]) {
@@ -76,9 +75,6 @@
       buf.copyToChannel(L.subarray(job.from - lo, job.to - lo), 0);
       buf.copyToChannel(R.subarray(job.from - lo, job.to - lo), 1);
       add(job.from, buf);
-      added.push(job);
-      const at = Math.min(total - 1, Math.max(0, Math.floor(now() * sr)));
-      if (added.some((s) => at >= s.from && at < s.to)) first();
     }
     const lanes = Math.max(1, Math.min(2, (navigator.hardwareConcurrency || 2) - 1));
     await Promise.all(Array.from({ length: lanes }, async () => {
