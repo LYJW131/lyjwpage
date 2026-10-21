@@ -1,3 +1,4 @@
+import { addDays } from "@shared/github-chart-compact";
 import { zonedDay } from "@shared/heatmap-window";
 import { site } from "@shared/site";
 import type {
@@ -98,6 +99,16 @@ function dayTotals(date: string, totals: DayTotals): CodingUsageDayTotals {
   };
 }
 
+const PRIOR_WEEK_DAYS = 7;
+
+function priorWeekAvg(days: Map<string, DayTotals>, latestDate: string): number | null {
+  const first = addDays(latestDate, -PRIOR_WEEK_DAYS);
+  if (![...days.keys()].some((date) => date <= first)) return null;
+  let tokens = 0;
+  for (let offset = 1; offset <= PRIOR_WEEK_DAYS; offset += 1) tokens += days.get(addDays(latestDate, -offset))?.totalTokens ?? 0;
+  return tokens / PRIOR_WEEK_DAYS;
+}
+
 export function buildCodingUsageView(stored: StoredCodingUsage, updatedAt: number): CodingUsageViews {
   const ids = [...new Set(CODING_USAGE_SOURCE_NAMES.flatMap((source) => Object.keys(stored[source] ?? {})))].sort();
   const yearStart = zonedDay(updatedAt - (CODING_YEAR_KEEP_DAYS - 1) * DAY_MS, site.timezone);
@@ -149,6 +160,7 @@ export function buildCodingUsageView(stored: StoredCodingUsage, updatedAt: numbe
       models: ranked(allModels).slice(0, CODING_AGENT_MODELS).map(([model]) => model),
       latestModel,
       lastDay: latestDate ? dayTotals(latestDate, days.get(latestDate)!) : null,
+      priorWeekAvgTokens: latestDate ? priorWeekAvg(days, latestDate) : null,
       status,
     });
   }

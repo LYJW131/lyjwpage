@@ -44,7 +44,12 @@ export type LimitForecast = {
   lockedMs: number | null;
   percentAtReset: number | null;
   window: Array<[at: number, usedPercent: number]>;
+  lastWeek: LastWeek | null;
 };
+
+// 上一个窗口的收尾：peakPercent 是最高读数；lockedMs 是从读数到 100 到重置的时长，没用完为 null。
+// 超过 LIMIT_HISTORY_HOURLY_DAYS 的历史每天只有一点，lockedMs 只精确到天。
+export type LastWeek = { peakPercent: number; lockedMs: number | null };
 
 function sameWindow(left: number | null, right: number | null) {
   return left != null && right != null && Math.abs(left - right) <= SAME_RESET_SLACK_S;
@@ -91,6 +96,18 @@ export function recentRate(intervals: UsageInterval[], now: number, halfLifeMs =
   return span >= 12 * HOUR_MS ? used / span : null;
 }
 
+export function lastWeekOf(history: LimitHistoryPoint[], startAt: number): LastWeek | null {
+  const points = history
+    .filter(([at, , resetsAt]) => at <= startAt && sameWindow(resetsAt, startAt / 1000))
+    .sort((left, right) => left[0] - right[0]);
+  if (!points.length) return null;
+  const ranOut = points.find(([, used]) => used >= RUN_OUT_PERCENT);
+  return {
+    peakPercent: Math.max(...points.map(([, used]) => used)),
+    lockedMs: ranOut ? startAt - ranOut[0] : null,
+  };
+}
+
 // readAt 是 limit 这份读数的时刻：KV 里的当前读数可能比 D1 归档晚一拍，比它新的归档点不能拿来比。
 export function forecastLimit(
   limit: VibeCodingLimit,
@@ -121,6 +138,7 @@ export function forecastLimit(
     elapsedFraction: elapsed / windowMs,
     evenRate,
     window,
+    lastWeek: lastWeekOf(past, startAt),
   };
   if (ranOutPoint) {
     return {

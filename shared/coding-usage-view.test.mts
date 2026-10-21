@@ -219,3 +219,15 @@ test("上下文档位标记并进基础模型：[1m] 与无标记的同名模型
   const [agent] = buildCodingNowAgents({ "agents-otlp": { agents: [{ id: "claude", lastActivityAt: NOW, model: "claude-opus-5-5[1m]" }] } });
   assert.equal(agent.activity[0].model, "claude-opus-5-5");
 });
+
+test("前 7 天日均：空日按 0 计，历史不满 7 天时不给", () => {
+  const { view } = build({ mac: { claude: ledger("claude", [
+    day("2026-09-21", 700),
+    day("2026-09-25", 70),
+    day("2026-09-27", 140),
+    day("2026-09-28", 999),
+  ]) } });
+  assert.equal(view.agents[0]!.priorWeekAvgTokens, (700 + 70 + 140) / 7);
+  const short = build({ mac: { claude: ledger("claude", [day("2026-09-25", 70), day("2026-09-28", 10)]) } });
+  assert.equal(short.view.agents[0]!.priorWeekAvgTokens, null);
+});

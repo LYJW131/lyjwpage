@@ -99,7 +99,6 @@ export function VibeCodingCard({
               forecast={row.id === "claude" ? weekly.forecast : null}
               newWeek={row.id === "claude" && weekly.newWeek}
               timeZone={weekly.timeZone}
-              now={weekly.now}
             />
           ))}
           <CompactAgents

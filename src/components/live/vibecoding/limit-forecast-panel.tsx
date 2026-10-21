@@ -181,9 +181,13 @@ export function useWeeklyForecast({
 
 export function forecastStats(forecast: LimitForecast | null) {
   const pace = forecast?.rate != null ? forecast.rate / forecast.evenRate : null;
+  const lastWeek = forecast?.lastWeek ?? null;
   return [
-    { label: "Pace", value: pace != null ? `${pace.toFixed(1)}x` : "—", title: "Compared with an even pace" },
-    { label: "Per day", value: forecast?.rate != null ? `${(forecast.rate * DAY_MS).toFixed(1)}%` : "—", title: undefined },
+    {
+      label: "Pace",
+      value: pace != null ? `${pace.toFixed(1)}x` : "—",
+      title: forecast?.rate != null ? `${(forecast.rate * DAY_MS).toFixed(1)}% a day, compared with an even pace` : "Compared with an even pace",
+    },
     {
       label: forecast?.runOutAt != null ? "Locked" : "At reset",
       title: undefined,
@@ -193,6 +197,11 @@ export function forecastStats(forecast: LimitForecast | null) {
           : forecast.lockedMs != null
             ? formatDuration(forecast.lockedMs)
             : `${Math.round(forecast.percentAtReset ?? 0)}%`,
+    },
+    {
+      label: lastWeek?.lockedMs != null ? "Last week locked" : "Last week",
+      title: lastWeek?.lockedMs != null ? "Ran out before the reset" : "Highest reading last week",
+      value: lastWeek == null ? "—" : lastWeek.lockedMs != null ? formatDuration(lastWeek.lockedMs) : `${Math.round(lastWeek.peakPercent)}%`,
     },
   ];
 }

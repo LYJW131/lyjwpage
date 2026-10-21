@@ -96,3 +96,12 @@ test("sampling the chart reads actual use before now, the projection after, and 
   assert.equal(locked.percent, null);
   assert.ok(locked.target! > 0 && locked.target! < 100);
 });
+
+test("last week's peak and lock time come from the readings of the window that ended at this one's start", () => {
+  const previous = readings([30, 60, 90, 100, 100, 100, 100], reset - 7 * 86_400, start - 7 * DAY);
+  const forecast = forecastLimit(weekly(10), [...previous, ...readings([10])], start + DAY)!;
+  assert.deepEqual(forecast.lastWeek, { peakPercent: 100, lockedMs: start - (start - 4 * DAY + 23 * HOUR) });
+  const light = forecastLimit(weekly(10), readings([20, 40, 55], reset - 7 * 86_400, start - 7 * DAY), start + DAY)!;
+  assert.deepEqual(light.lastWeek, { peakPercent: 55, lockedMs: null });
+  assert.equal(forecastLimit(weekly(10), readings([10]), start + DAY)!.lastWeek, null);
+});

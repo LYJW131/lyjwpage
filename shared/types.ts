@@ -194,6 +194,8 @@ export type CodingUsageAgentView = {
   models: string[];
   latestModel: string | null;
   lastDay: CodingUsageDayTotals | null;
+  // lastDay 之前 7 个站点日的日均 totalTokens，空日按 0 计；可缺省：存着的视图要等下次上报重算才带上。
+  priorWeekAvgTokens?: number | null;
   status: CodingUsageSourceStatus[];
 };
 

@@ -4,7 +4,7 @@ import ClaudeCodeText from "@lobehub/icons/es/ClaudeCode/components/Text";
 import NumberFlow from "@/components/ui/number-flow";
 import type { ReactNode } from "react";
 
-import { ForecastBlock, ForecastSummary, forecastStats, formatDuration } from "@/components/live/vibecoding/limit-forecast-panel";
+import { ForecastBlock, ForecastSummary, forecastStats } from "@/components/live/vibecoding/limit-forecast-panel";
 import { LimitTable } from "@/components/live/vibecoding/limit-table";
 import { LIMITS_SILENT, featuredLimitRows } from "@/components/live/vibecoding/limits";
 import { ActiveBadge, FeaturedMark } from "@/components/live/vibecoding/marks";
@@ -53,7 +53,6 @@ export function AgentPanel({
   forecast,
   newWeek,
   timeZone,
-  now,
 }: {
   row: CodingAgentRow;
   macDeclaredOffline: boolean;
@@ -62,7 +61,6 @@ export function AgentPanel({
   forecast: LimitForecast | null;
   newWeek: boolean;
   timeZone: string | undefined;
-  now: number;
 }) {
   const limitsStale = useStale(row.limitsAt, AGENT_LIMITS_STALE_MS, clocks.limits);
   const lastDay = row.usage?.lastDay ?? null;
@@ -75,6 +73,8 @@ export function AgentPanel({
   const cacheHitRate = promptTokens
     ? ((lastDay?.cacheReadTokens ?? 0) / promptTokens) * 100
     : 0;
+  const priorWeekAvg = row.usage?.priorWeekAvgTokens ?? null;
+  const vsWeek = lastDay && priorWeekAvg ? lastDay.totalTokens / priorWeekAvg : null;
   const { active, sources, model } = useAgentActive(row, macDeclaredOffline, clocks);
   const displayModel = model ? displayModelName(model) : "No model";
   const limitRows = featuredLimitRows(limitsStale ? { ...row, limits: [], limitsError: LIMITS_SILENT } : row);
@@ -87,6 +87,9 @@ export function AgentPanel({
             <ClaudeCodeText size={20} className="h-5 w-auto shrink-0" aria-label={row.label} />
           ) : (
             <span className="shrink-0 text-sm font-medium whitespace-nowrap">{row.label}</span>
+          )}
+          {row.plan && (
+            <span className="label-mono truncate text-muted-foreground" title={`Plan ${row.plan.tier}`}>{row.plan.label}</span>
           )}
         </div>
         <span className="flex min-w-0 flex-col items-end gap-1">
@@ -117,19 +120,27 @@ export function AgentPanel({
             />
           ) : <FlowDash />}
         </Stat>
+        <Stat label="Output">
+          {lastDay ? (
+            <NumberFlow
+              {...kiloMega(lastDay.outputTokens)}
+              locales="en-US"
+              format={{ maximumFractionDigits: 1, useGrouping: false }}
+            />
+          ) : <FlowDash />}
+        </Stat>
+        <Stat label="Vs 7-day avg" title="Compared with the daily average of the 7 days before">
+          {vsWeek != null ? `${vsWeek.toFixed(1)}x` : "—"}
+        </Stat>
         <Stat label="API cost" title="At public API prices">
           {lastDay && (lastDay.costComplete || lastDay.apiEquivalentCostUSD > 0)
             ? `$${lastDay.apiEquivalentCostUSD.toFixed(2)}`
             : "—"}
         </Stat>
         <Stat label="Cache hit">{lastDay ? `${cacheHitRate.toFixed(1)}%` : "—"}</Stat>
-        <Stat label="Plan" title={row.plan ? `Plan ${row.plan.tier}` : undefined}>{row.plan?.label ?? "—"}</Stat>
         {forecastStats(forecast).map((stat) => (
           <Stat key={stat.label} label={stat.label} title={stat.title}>{stat.value}</Stat>
         ))}
-        <Stat label="Resets in">
-          {forecast ? formatDuration(Math.max(0, forecast.resetAt - (now || forecast.now))) : "—"}
-        </Stat>
       </div>
 
       <div className="grid gap-6 border-t border-line pt-4 md:grid-cols-2 md:gap-8 lg:pt-5">
