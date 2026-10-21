@@ -58,7 +58,7 @@ D1 是整站的长期历史归档：DO 管实时状态、热数据（`PULSE_TTL_
 - 旧表 `pulse_samples(domain, t, level, hint, until_at, power_w)` 原样冻结。StateHub 仍是实时层的唯一权威，只留 `PULSE_TTL_MS` 那么久，归档保留全部历史。
 - 本地和夹具环境不写归档：`historyArchive` 配了 `DEV_OVERRIDES` 或 `UPSTREAM_API_URL` 就停用，没有 `HISTORY` 绑定也停用。
 - 公开 HTTP 读归档的只有 `GET /api/status/limits/history`：core 按 `shared/limit-history.ts#LIMIT_HISTORY_SERIES` 读 `limit_hours` 与 `limit_snapshots`，给编码卡的周限额预测用，每个 isolate 记一份，`workers/core/src/limit-history.ts#CACHE_MS` 内的请求共用，响应本身是 `no-store`。其余表只作备份；Pulse 的公开那份走 `GET /api/status/pulse`，从 StateHub 的序列里裁最近 24 小时，不读 D1。
-- 建表只在迁移里做，Worker 不会自己建：`pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
+- 建表只在迁移里做，Worker 不会自己建：在仓库根目录先 `cf d1 migrations list <ID> --dir workers/core/migrations` 看还有哪些没应用，核对无误再把 `list` 换成 `apply`。`<ID>` 是 `workers/core/wrangler.toml` 里 `HISTORY` 的 `database_id`（`cf` 只认 ID、不认库名）；已应用记录和 wrangler 用的是同一张默认表 `d1_migrations`。`cf` 的登录与 wrangler 分开，第一次先 `cf auth login`。Workers Builds 不跑 D1 迁移，必须在带 `HISTORY` 绑定的版本部署前先应用，否则第一趟 cron 就会在日志里报表不存在。
 - 回滚就是从 `wrangler.toml` 删掉 `[[d1_databases]]`，归档随即停用，StateHub 与站点行为不变；库和已归档的数据留着，重新加回绑定后从水位线继续。
 
 ## Coding 观测
