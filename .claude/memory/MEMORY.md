@@ -42,6 +42,8 @@
 - Repo memory mirror at `.claude/memory/` via `pnpm memory:mirror`, daily 03:15 routine: [[repo-memory-mirror]].
 - lyjw's old Claude account project: everything merged except #395's 500 ms click grace (agent-picked): [[old-account-project-import]].
 
+- **wrangler → cf CLI:** only D1 migrations and the deploy guard switched (#538); project configs stay on wrangler until cf covers secrets/tail/multi-worker dev: [[cf-cli-migration]].
+
 ## Routines
 - 04:00 daily code review (cursor in issue #185): [[lyjwpage-daily-review-routine]].
 - 04:53 skill-mining + drift review; also turns adopted Codex/Devin Review suggestions into lint/hook/skill constraints (#319): [[skill-mining-routine]].
