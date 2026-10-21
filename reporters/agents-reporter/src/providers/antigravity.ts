@@ -4,8 +4,8 @@ import path from "node:path";
 import { config } from "../config.js";
 import { info } from "../log.js";
 import { scanOAuthClientCandidates, type OAuthClient } from "./antigravity-oauth-client.js";
-import type { AgentRow } from "../site.js";
-import { genericWindows, object, rowFromWindows, text } from "../windows.js";
+import type { AgentLimit, AgentRow } from "../site.js";
+import { object, rowFromWindows, text, unixSeconds } from "../windows.js";
 
 const QUOTA_URL = config.antigravityQuotaUrl;
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -13,7 +13,7 @@ const SKEW_MS = 5 * 60_000;
 const EXPIRED_MESSAGE =
   "Antigravity token expired — run `agy` once or set ANTIGRAVITY_OAUTH_CLIENT_ID/SECRET";
 
-const SLOTS = ["primary_window", "secondary_window", "tertiary_window", "quaternary_window"] as const;
+const NAMED_SLOTS = ["primary", "secondary", "tertiary", "quaternary"] as const;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return object(value);
@@ -38,44 +38,41 @@ function windowLabel(window: string | null): string {
   return window ?? "";
 }
 
-export function normalizeAntigravityQuota(body: unknown): Record<string, unknown> {
+export function normalizeAntigravityQuota(body: unknown): AgentLimit[] {
   const rec = asRecord(body);
   const groups = Array.isArray(rec?.groups) ? rec.groups : [];
-  const node: Record<string, unknown> = {};
-  let i = 0;
+  const limits: AgentLimit[] = [];
   for (const group of groups) {
     const groupRec = asRecord(group);
     if (!groupRec) continue;
     const short = groupShortName(text(groupRec.displayName) ?? "");
     const buckets = Array.isArray(groupRec.buckets) ? groupRec.buckets : [];
     for (const bucket of buckets) {
-      const slot = SLOTS[i];
-      if (!slot) return node;
       const bucketRec = asRecord(bucket);
       if (!bucketRec) continue;
-      const remaining = Number(bucketRec.remainingFraction);
+      // proto3 JSON 省略默认值 0：额度用尽的桶没有 remainingFraction。
+      const remaining = bucketRec.remainingFraction === undefined ? 0 : Number(bucketRec.remainingFraction);
       if (!Number.isFinite(remaining)) continue;
       const window = text(bucketRec.window);
       const seconds = windowSeconds(window);
-      const used = (1 - remaining) * 100;
-      const entry: Record<string, unknown> = {
-        used_percent: used,
-        reset_at: text(bucketRec.resetTime),
+      const n = limits.length;
+      limits.push({
+        key: `antigravity.${NAMED_SLOTS[n] ?? n + 1}`,
         label: `${short} ${windowLabel(window)}`.trim(),
-      };
-      if (seconds != null) entry.limit_window_seconds = seconds;
-      node[slot] = entry;
-      i += 1;
+        group: null,
+        windowMinutes: seconds != null ? seconds / 60 : null,
+        usedPercent: (1 - remaining) * 100,
+        resetsAt: unixSeconds(bucketRec.resetTime),
+      });
     }
   }
-  return node;
+  return limits;
 }
 
 // loadCodeAssist 的档位不是付费订阅；不能拿它替代显式配置的套餐标签。
 export function rowFromAntigravityQuota(body: unknown, planLabel = config.antigravityPlanLabel): AgentRow {
-  const node = normalizeAntigravityQuota(body);
-  if (planLabel) node.plan_label = planLabel;
-  return rowFromWindows("antigravity", node, genericWindows("antigravity", node));
+  const limits = normalizeAntigravityQuota(body);
+  return rowFromWindows("antigravity", planLabel ? { plan_label: planLabel } : {}, limits);
 }
 
 type TokenFile = {
