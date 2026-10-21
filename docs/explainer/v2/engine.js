@@ -95,12 +95,11 @@ void main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)
     }
     return s;
   }
-  const vs = compile(gl.VERTEX_SHADER, VERT);
-
   class Pass {
     constructor(frag) {
       this.prog = gl.createProgram();
-      gl.attachShader(this.prog, vs);
+      // 顶点着色器每个 Pass 现编：WebKit 上 three.js 接管同一上下文后，之前编好的着色器再链接会报「all shaders must use same shading language version」。
+      gl.attachShader(this.prog, compile(gl.VERTEX_SHADER, VERT));
       gl.attachShader(this.prog, compile(gl.FRAGMENT_SHADER, "#version 300 es\n" + COMMON + frag));
       gl.linkProgram(this.prog);
       if (!gl.getProgramParameter(this.prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(this.prog));
