@@ -60,7 +60,8 @@ test("API 路径按数据归属分流：可滞后视图 site 自己读，Apple M
   assert.deepEqual(classifyGatewayRequest("GET", "/api/motion-artwork"), { kind: "collector" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/musickit/token"), { kind: "collector" });
   assert.deepEqual(classifyGatewayRequest("OPTIONS", "/api/lyrics"), { kind: "collector" }, "预检也交给 collector 现判来源");
-  assert.deepEqual(classifyGatewayRequest("PUT", "/api/dev/override/api/status/server"), { kind: "core" });
+  assert.deepEqual(classifyGatewayRequest("PUT", "/api/dev/override/api/status/listening"), { kind: "invalid" }, "生产网关不转发假数据注入");
+  assert.deepEqual(classifyGatewayRequest("GET", "/api/dev/overrides"), { kind: "invalid" });
   assert.deepEqual(classifyGatewayRequest("POST", "/api/chat"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/chat/usage"), { kind: "ai" });
   assert.deepEqual(classifyGatewayRequest("GET", "/api/build/status"), { kind: "ai" });
