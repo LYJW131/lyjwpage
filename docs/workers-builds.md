@@ -12,6 +12,8 @@ GitHub Actions 负责 lint、类型检查、单测与 CodeQL，Worker 发布由 
 
 在 `workers/<名>` 里调 wrangler 一律带 `-c wrangler.toml`：wrangler 向上找配置时按文件名优先，根目录 `site` 的 `wrangler.jsonc` 会压过同目录的 `wrangler.toml`，不带 `-c` 的部署、`secret put`、D1 迁移都会落到 `site` 上。
 
+项目还没迁到 cloudflare.config.ts，不要在仓库里跑 `cf dev`、`cf build`、`cf deploy`、`cf previews deploy`：没有这个文件时 `cf` 会自动配置，改写 `package.json`、`vite.config.ts` 等文件，产出不带本项目入口和绑定的 Worker。资源命令（如 `cf d1 migrations apply`）不读项目配置，可以照常用。迁移用 `cf migrate`（先 `--dry-run`），还差哪些见 [参考文献](./references.md)「Cloudflare 平台」的 `cf` 一条。
+
 | Worker | 构建命令 | 生产部署命令 | 分支预览命令 |
 | --- | --- | --- | --- |
 | `core` | `pnpm --dir workers/core typecheck` | `pnpm --dir workers/core exec wrangler deploy -c wrangler.toml` | `node workers/core/scripts/deploy-preview.mjs` |

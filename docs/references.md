@@ -218,6 +218,11 @@
   - 是什么：Workers AI 上的 System One 抽取模型 `@cf/cloudflare/clairic`，一次前向传播按带类型的字段回值，带 `p_null` 与置信度。
   - 取了什么：首页对话选档时和 Clef 并行问一次 Clairic，抽出访客点名的游戏、歌、番名，作为状态预取的 `query`；门槛按线上实测定。
   - 状态：采用。落在 [router.ts](../workers/ai/src/chat/router.ts) 的 `itemInput`、`parseItem` 与 `PREFETCH_STATUS` 的 `query`。
+- **[cf for Wrangler users](https://developers.cloudflare.com/cf/wrangler/)** 与 **[Wrangler to cf reference](https://developers.cloudflare.com/cf/wrangler/reference/)**（Cloudflare 文档）
+  - 是什么：Cloudflare 的新命令行 `cf`（npm 包 `cf`，beta），覆盖整套公开 API；项目配置换成 cloudflare.config.ts，`cf dev` / `build` / `deploy` 只读它，不读 `wrangler.toml` / `wrangler.jsonc`。
+  - 取了什么：资源命令（D1 迁移等）改用 `cf`，项目的构建、部署、预览和本地开发留在 wrangler；`cf` 的生产部署命令和 `wrangler deploy` 一样由钩子拦下。
+  - 没迁项目配置的原因：`cf` 设不了单个 Secret（分支 Preview 的 `wrangler preview secret put` 没有对应）、不能 `tail`；`r2 objects put` 没有 `--cache-control`（视频发布要 `immutable`）、`d1 query` 没有 `--file`；本地 `pnpm dev:worker` 一次起多个 Worker 的多 `-c` 用法没有对应；站点要换 `@cloudflare/vite-plugin` 的 beta；DO 的 `migrations` 要手改成 `exports` 生命周期；Wrangler 打包方式下 `cf` 仍在底下调 wrangler。
+  - 状态：部分采用。落在 [state-storage.md](./state-storage.md)「长期归档（D1）」与 `scripts/guard-forbidden-commands.mjs#cfDeploy`；迁移注意见 [workers-builds.md](./workers-builds.md)「构建配置」。
 
 ## 联网搜索与文档检索
 

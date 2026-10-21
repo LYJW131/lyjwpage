@@ -401,7 +401,7 @@ StateHub 的三条用一次 `publicRead` 批量读，键取各 mirror 的 `key`�
 回源 R2 由 site Worker 的 `/img` 路由和 ESA 负责，见根 README「图片」；上报器直传图片那个桶的 HEAD 在上报入口），
 以及 `LIVE_PUSH` 与 `STATE` 两个 Durable Object 绑定（迁移只追加新 tag，不改旧的）。`LAG` KV 绑定见 `shared/lag.ts`，这里只读（唯一例外是 cron 写断流检测的翻转状态 `freshness-watch:v1`，见「断流告警」）；`HISTORY` 是长期归档用的 D1 库 `lyjwpage-history`（这里写 Pulse 事实表，收下奖杯信封后写 `trophies`；上报的那几张表由上报入口写，站点部署由采集 Worker 写，见上文「长期归档（D1）」），
 几乎只增不删（活动桶按权威范围替换），公开读路径只有 `limits/history`，建表只在 `migrations/` 里，部署带这个绑定的版本**之前**先手动应用一次
-（`pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，Workers Builds 不跑迁移），
+（命令见 [长期归档](../../docs/state-storage.md#长期归档d1)，Workers Builds 不跑迁移），
 边界与回滚见 [Worker 数据后端与首屏缓存](../../docs/state-storage.md)。
 实时状态存在 StateHub，展示快照存在 `LAG`，凭据存在 `CREDENTIALS`（上报入口写、采集 Worker 读，本 Worker 不绑），site Worker 只读 `LAG` KV 回可滞后视图，不连 StateHub、D1 或凭据 KV（首屏失效走 `SITE_CACHE` Service Binding，没有 HTTP secret）。本 Worker 的代码不读任何 Secret。
 
