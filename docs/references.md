@@ -58,6 +58,10 @@
   - 是什么：开源的 AI 端到端测试框架，测试里混写 `agent.act` 自然语言目标与定位器断言，验证过的 agent 动作录下来下次免模型回放；另有 `e2e explore`（给目标让 agent 自己逛应用报问题）与 `e2e mcp`（给编码 agent 操作运行中的应用）。
   - 取了什么：没取做法。在 lyjw.me 上试跑一次 `e2e explore`（6 步、2.7M token），9 条发现里没有真 bug：报的单位不一致是 lyjw 有意定的，其余是设计取舍或文案意见。教训落在 `HUMAN.md`「1」：外部 agent 报的显示不一致不算明确修复，先查历史。
   - 状态：不采用（lyjw 定的）。测试写法要在 CI 配模型，站点流程少不值得；`e2e mcp` 与 [site-verify.ts](../scripts/site-verify.ts) 重复且没有 WebKit 与首屏跳动检查；explore 一次的成本换不来有效发现。
+- **[The thin orchestrator](https://engineering.fb.com/2026/10/19/ml-applications/thin-orchestrator-ai-agent-architecture/)**（Meta Engineering）
+  - 是什么：Meta 自动化推荐系统新数据列接入的 agent 架构。约 1,300 行的确定性编排器只分类意图、收字段、过检查、委派，不做领域活；14 个上下文隔离、结构统一的子 agent 干活；工作流模板用状态机排阶段；知识文件运行时加载。
+  - 取了什么：没取新做法，用来对照。路由确定、推理概率这条分界，首页对话已经是这样：验人、额度、降级都写死在代码里，只有选档与预取判断交给 Clef，示例问题连 Clef 都不调（[workers/ai/README.md](../workers/ai/README.md)、`workers/ai/src/chat/router.ts#presetRoute`）；项目协作里协调者只分派、线程上下文独立、skill 按需加载，提议知识更新再人审就是 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)。
+  - 状态：不采用。唯一没有的是子 agent 结构统一：skill 数量少，各写各的格式还没造成问题，不为它统一改写。
 
 ## 写 skill 与写给 agent 的文档
 
