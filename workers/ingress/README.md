@@ -64,8 +64,8 @@
 策略只放行登记过的 service token：每个上报方一把（token 清单见 [仓库外事实](../../docs/ops-facts.md)），同一上报方管多个来源时共用一把，
 上报器带 `CF-Access-Client-Id` / `CF-Access-Client-Secret` 两个头。
 Access 在边缘核对，不对直接回 401；放行的请求带着 Access 签的 JWT（`Cf-Access-Jwt-Assertion`）到 Worker，
-`src/access-auth.ts` 再验一遍签名、受众（`ACCESS_AUD`）、签发方（`ACCESS_TEAM_DOMAIN`）和时效 —— workers.dev 那条路不过 Access，
-拿不出合法 JWT。验过之后按 JWT 里的 `common_name`（client id）查 `wrangler.toml` 的 `[vars.ACCESS_CLIENTS]`，只许写登记的来源，
+`src/access-auth.ts` 再验一遍签名、受众（`ACCESS_AUD`）、签发方（`ACCESS_TEAM_DOMAIN`）和时效 —— Worker 关着 workers.dev 与 Preview URL，
+只有这个域名进得来，这一遍是纵深防护。验过之后按 JWT 里的 `common_name`（client id）查 `wrangler.toml` 的 `[vars.ACCESS_CLIENTS]`，只许写登记的来源，
 越权回 403。新增或轮换 token 在 Zero Trust 控制台做，新 token 要加进策略，再把 client id 登记进那张表。不接受 Bearer 密钥。
 
 ## 拆分

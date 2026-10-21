@@ -126,7 +126,7 @@ export function LimitMeter({
   const color = limitColor(usedPercent);
   const baked = useContext(RenderClock) > 0;
   const reset = now ? formatReset(limit.resetsAt, now, baked ? site.timezone : undefined) : null;
-  const unavailable = cappedBy ? fableUnavailableShare(cappedBy, now) : 0;
+  const unavailable = cappedBy ? fableUnavailableShare(cappedBy, usedPercent, now) : 0;
 
   return (
     <div title={unavailable > 0 ? UNAVAILABLE_NOTE : undefined}>

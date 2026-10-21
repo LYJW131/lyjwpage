@@ -432,7 +432,11 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
     case "ai":
       return isProduction(env) ? env.AI_SERVICE.fetch(request) : backendRedirect(env, url);
     case "collector":
-      return isProduction(env) ? env.COLLECTOR_SERVICE.fetch(request) : backendRedirect(env, url);
+      if (!isProduction(env)) return backendRedirect(env, url);
+      if (!(await env.APPLE_LOOKUP_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") ?? "" })).success) {
+        return errorResponse(429, "Too many requests");
+      }
+      return env.COLLECTOR_SERVICE.fetch(request);
     case "error-relay": {
       if (!isSiteOrigin(request)) return errorResponse(403, "Foreign origin");
       if (!(await env.RELAY_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") ?? "" })).success) {

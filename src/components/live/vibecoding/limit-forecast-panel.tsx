@@ -175,7 +175,8 @@ export function useWeeklyForecast({
   const timeZone = baked || !mountedAt ? site.timezone : undefined;
   const points = history?.series.find((series) => series.agent === "claude" && series.key === limit?.key)?.points ?? [];
   const forecast = limit && now ? forecastLimit(limit, points, Math.min(now, limitAt ?? now)) : null;
-  return { forecast, timeZone, now };
+  const newWeek = !forecast && limit?.resetsAt != null && now >= limit.resetsAt * 1000;
+  return { forecast, newWeek, timeZone, now };
 }
 
 export function forecastStats(forecast: LimitForecast | null) {
@@ -196,8 +197,9 @@ export function forecastStats(forecast: LimitForecast | null) {
   ];
 }
 
-function forecastSummary(forecast: LimitForecast | null, timeZone: string | undefined) {
+function forecastSummary(forecast: LimitForecast | null, newWeek: boolean, timeZone: string | undefined) {
   const clock = formatter({ weekday: "short", hour: "numeric", minute: "2-digit" }, timeZone);
+  if (!forecast && newWeek) return { headline: "New week", detail: "Waiting for the first reading" };
   if (!forecast) return { headline: "No forecast yet", detail: "Waiting for a weekly reading" };
   const window = `Used ${Math.round(forecast.usedPercent)}% in ${Math.round(forecast.elapsedFraction * 100)}% of the week`;
   if (forecast.ranOut && forecast.runOutAt != null) {
@@ -210,8 +212,16 @@ function forecastSummary(forecast: LimitForecast | null, timeZone: string | unde
   return { headline: `${Math.round(forecast.percentAtReset ?? 0)}% at reset`, detail: window };
 }
 
-export function ForecastSummary({ forecast, timeZone }: { forecast: LimitForecast | null; timeZone: string | undefined }) {
-  const { headline, detail } = forecastSummary(forecast, timeZone);
+export function ForecastSummary({
+  forecast,
+  newWeek,
+  timeZone,
+}: {
+  forecast: LimitForecast | null;
+  newWeek: boolean;
+  timeZone: string | undefined;
+}) {
+  const { headline, detail } = forecastSummary(forecast, newWeek, timeZone);
   return (
     <div className="grid gap-1.5">
       <div className={cn("text-lg leading-none font-semibold tracking-tight lg:text-xl", forecast?.runOutAt != null && "text-signal-red")}>
@@ -222,11 +232,19 @@ export function ForecastSummary({ forecast, timeZone }: { forecast: LimitForecas
   );
 }
 
-export function ForecastBlock({ forecast, timeZone }: { forecast: LimitForecast | null; timeZone: string | undefined }) {
+export function ForecastBlock({
+  forecast,
+  newWeek,
+  timeZone,
+}: {
+  forecast: LimitForecast | null;
+  newWeek: boolean;
+  timeZone: string | undefined;
+}) {
   return (
     <div className="flex min-w-0 flex-1 flex-col pb-1.5">
       {forecast ? <ForecastChart forecast={forecast} timeZone={timeZone} /> : <div className="grid min-h-40 flex-1 place-items-center border border-dashed border-line px-4 text-center text-xs text-muted-foreground">
-          Forecast appears once the weekly limit is available
+          {newWeek ? "Forecast starts with this week's first reading" : "Forecast appears once the weekly limit is available"}
         </div>}
     </div>
   );
