@@ -215,6 +215,19 @@ function resolveCodexHome(home: string, env: NodeJS.ProcessEnv): string {
   return explicit ? path.resolve(explicit) : path.join(home, ".codex");
 }
 
+function codexClaims(tokens: Record<string, unknown> | null): { accountId: string | null; planType: string | null } {
+  const accessNs = extractOpenAiAuthNamespace(decodeJwtPayload(tokens?.access_token));
+  const idNs = extractOpenAiAuthNamespace(decodeJwtPayload(tokens?.id_token));
+  const accountId =
+    text(tokens?.account_id) ?? text(accessNs?.chatgpt_account_id) ?? text(idNs?.chatgpt_account_id);
+  const planType = (
+    text(accessNs?.chatgpt_plan_type) ??
+    text(idNs?.chatgpt_plan_type) ??
+    ""
+  ).toLowerCase() || null;
+  return { accountId, planType };
+}
+
 async function readCodexAuthBundle(): Promise<CodexAuth | null> {
   const authPath = path.join(resolveCodexHome(config.home, process.env), "auth.json");
   let raw: string;
@@ -236,17 +249,7 @@ async function readCodexAuthBundle(): Promise<CodexAuth | null> {
   const accessToken = text(tokens?.access_token);
   if (!accessToken) return null;
 
-  const accessPayload = decodeJwtPayload(tokens?.access_token);
-  const idPayload = decodeJwtPayload(tokens?.id_token);
-  const accessNs = extractOpenAiAuthNamespace(accessPayload);
-  const idNs = extractOpenAiAuthNamespace(idPayload);
-  const accountId =
-    text(tokens?.account_id) ?? text(accessNs?.chatgpt_account_id) ?? text(idNs?.chatgpt_account_id);
-  const planType = (
-    text(accessNs?.chatgpt_plan_type) ??
-    text(idNs?.chatgpt_plan_type) ??
-    ""
-  ).toLowerCase() || null;
+  const { accountId, planType } = codexClaims(tokens);
 
   return {
     accessToken,
@@ -315,19 +318,44 @@ async function persistRefreshedAuth(
   return merged;
 }
 
-async function resolveCodexAccess(auth: CodexAuth): Promise<CodexAuth> {
-  if (!auth.refreshToken || !isTokenStale(auth.lastRefresh, Date.now(), auth.accessToken)) {
-    return auth;
-  }
-  const tokens = await refreshCodexTokens(auth.refreshToken);
+async function refreshCodexAuth(auth: CodexAuth, refreshToken: string): Promise<CodexAuth> {
+  const tokens = await refreshCodexTokens(refreshToken);
   const authJson = await persistRefreshedAuth(auth.authPath, auth.authJson, tokens);
+  const claims = codexClaims(asRecord(authJson.tokens));
   return {
     ...auth,
     accessToken: tokens.access_token,
+    accountId: claims.accountId ?? auth.accountId,
+    planType: claims.planType ?? auth.planType,
     refreshToken: tokens.refresh_token,
     lastRefresh: text(authJson.last_refresh),
     authJson,
   };
+}
+
+async function resolveCodexAccess(auth: CodexAuth): Promise<CodexAuth> {
+  if (!auth.refreshToken || !isTokenStale(auth.lastRefresh, Date.now(), auth.accessToken)) {
+    return auth;
+  }
+  return refreshCodexAuth(auth, auth.refreshToken);
+}
+
+function fetchCodexUsage(auth: CodexAuth): Promise<Response> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${auth.accessToken}`,
+    Accept: "application/json",
+    "User-Agent": "agents-reporter",
+  };
+  if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
+  return fetch("https://chatgpt.com/backend-api/wham/usage", {
+    method: "GET",
+    headers,
+    signal: AbortSignal.timeout(20_000),
+  });
+}
+
+function codexError(limitsError: string): AgentRow {
+  return { id: "codex", plan: null, limits: [], limitsError };
 }
 
 export async function fetchCodex(): Promise<AgentRow | null> {
@@ -338,35 +366,22 @@ export async function fetchCodex(): Promise<AgentRow | null> {
   try {
     auth = await resolveCodexAccess(bundle);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { id: "codex", plan: null, limits: [], limitsError: message };
+    return codexError(error instanceof Error ? error.message : String(error));
   }
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${auth.accessToken}`,
-    Accept: "application/json",
-    "User-Agent": "agents-reporter",
-  };
-  if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
-
   try {
-    const res = await fetch("https://chatgpt.com/backend-api/wham/usage", {
-      method: "GET",
-      headers,
-      signal: AbortSignal.timeout(20_000),
-    });
+    let res = await fetchCodexUsage(auth);
+    // access token 没到期也可能被服务端作废（如换套餐），401 时刷新一次再试。
+    if (res.status === 401 && auth.refreshToken) {
+      auth = await refreshCodexAuth(auth, auth.refreshToken);
+      res = await fetchCodexUsage(auth);
+    }
     if (res.status === 401 || res.status === 403 || res.status === 404) {
-      return {
-        id: "codex",
-        plan: null,
-        limits: [],
-        limitsError: `Codex API returned ${res.status}`,
-      };
+      return codexError(`Codex API returned ${res.status}`);
     }
     if (!res.ok) throw new Error(`Codex API returned ${res.status}`);
     return rowFromCodexUsage(await res.json(), auth.planType);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { id: "codex", plan: null, limits: [], limitsError: message };
+    return codexError(error instanceof Error ? error.message : String(error));
   }
 }
