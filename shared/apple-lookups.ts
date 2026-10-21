@@ -1,5 +1,5 @@
 import { LYRICS_PATH, MOTION_ARTWORK_PATH } from "@shared/apple-music-paths";
-import { lyricsTtlMs, storedLyrics } from "@shared/lyrics";
+import { lyricsTtlMs, resolveLyrics } from "@shared/lyrics";
 import type { LyricsResult } from "@shared/lyrics-ttml";
 import { motionTtlMs, NO_MOTION, resolveMotionArtwork, type MotionResult } from "@shared/motion-artwork";
 import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
@@ -26,15 +26,17 @@ const lyrics: AppleLookup = {
         400,
       );
     }
-    // 公开路径只读写入时预热的缓存，不现查 Apple：查歌词用的是 lyjw 的订阅身份，任意曲目 ID 都现查等于把它借给所有人。
-    // 没命中回 404 且不缓存，正在听的那首预热完成前浏览器会按失败重试。
-    const result = await storedLyrics(requested);
-    if (!result) return jsonResponse({ songId: requested, lines: [], error: "Lyrics are only served for tracks lyjw is playing" }, 404);
-    return jsonResponse(
-      { songId: requested, ...result },
-      200,
-      Math.round(lyricsTtlMs(result) / 1000),
-    );
+    try {
+      const result = await resolveLyrics(requested);
+      return jsonResponse(
+        { songId: requested, ...result },
+        200,
+        Math.round(lyricsTtlMs(result) / 1000),
+      );
+    } catch (error) {
+      console.error("[lyrics]", error);
+      return jsonResponse({ songId: requested, lines: [] }, 500);
+    }
   },
 };
 
