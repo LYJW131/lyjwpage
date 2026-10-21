@@ -76,18 +76,19 @@ function counts(list: Item[], threshold: number) {
     tp: fire.filter((item) => item.correct && item.needed).length,
     fp: fire.filter((item) => !item.correct).length,
     needed: list.filter((item) => item.needed).length,
+    fired: fire.length,
   };
 }
 
-function rates({ tp, fp, needed }: { tp: number; fp: number; needed: number }) {
+function rates({ tp, fp, needed, fired }: ReturnType<typeof counts>) {
   const precision = tp + fp ? tp / (tp + fp) : 1;
   const recall = needed ? tp / needed : 1;
-  return { precision, recall, f1: precision + recall ? (2 * precision * recall) / (precision + recall) : 0, fired: tp + fp };
+  return { precision, recall, f1: precision + recall ? (2 * precision * recall) / (precision + recall) : 0, fired };
 }
 
 const prf = (list: Item[], threshold: number) => rates(counts(list, threshold));
 
-const GRID = Array.from({ length: 96 }, (_, index) => 0.05 + index * 0.01);
+const GRID = Array.from({ length: 96 }, (_, index) => (5 + index) / 100);
 const MIN_PRECISION = 0.8;
 
 function bestThreshold(list: Item[]): number {
@@ -103,7 +104,7 @@ function bestThreshold(list: Item[]): number {
 function crossValidated(list: Item[]) {
   const folds: Item[][] = [[], [], [], [], []];
   [list.filter((item) => item.needed), list.filter((item) => !item.needed)].forEach((group) => group.forEach((item, index) => folds[index % 5].push(item)));
-  const total = { tp: 0, fp: 0, needed: 0 };
+  const total = { tp: 0, fp: 0, needed: 0, fired: 0 };
   const thresholds: number[] = [];
   folds.forEach((fold, index) => {
     const threshold = bestThreshold(folds.filter((_, other) => other !== index).flat());
@@ -112,6 +113,7 @@ function crossValidated(list: Item[]) {
     total.tp += part.tp;
     total.fp += part.fp;
     total.needed += part.needed;
+    total.fired += part.fired;
   });
   return { ...rates(total), thresholds };
 }
