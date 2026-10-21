@@ -56,6 +56,7 @@
 - Chat tiers: visitor picks a DeepSeek or Claude lineup, God is Fable, consent per vendor, logs kept 30 days; source of truth shared/god-chat-tiers.ts: [[chat-tiers]]. Chat system prompt carries a 6-line lyjw profile (no office job, Mac is a laptop, cloud agents run alone, SGT, hobbies; playful guesses OK if marked) since #493.
 - Architecture diagram validation drops only the bad edge, not the whole diagram (#386).
 - README live SVG cards: all cards live since #416; mobile crop fixed by wrapping each card in an outer SVG (#431), URLs carry `v=` to bust camo (#432; DND card at v=3 after #489/#491). Bump `v=` when the card format changes (no auto-check, lyjw 2026-10-20). Empty data → fixture marked SAMPLE DATA (expected).
+- Desktop PSI CLS 0.004 vs mobile 0 = late classic scrollbar shifting the main column; fixed by `scrollbar-gutter: stable` (#534): [[desktop-cls-scrollbar]].
 - Today Tokens on the Vibe Coding card shows M on purpose (lyjw's choice, e.g. 2195.6M); don't switch to B.
 - New model/data destination/source/Worker: search its existing sibling (e.g. Clef for Clairic) and update every place the sibling appears, incl. chat consent copy (AGENTS.md rule, #482).
 - iOS app paused: only keep its reporting endpoints working.
