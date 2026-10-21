@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow from "@number-flow/react";
+import NumberFlow from "@/components/ui/number-flow";
 import { useEffect } from "react";
 
 import { Card } from "@/components/ui/card";

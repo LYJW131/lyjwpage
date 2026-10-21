@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import NumberFlow, { NumberFlowGroup } from "@/components/ui/number-flow";
 import { useEffect, useState } from "react";
 
 import { CodexActivityIndicator } from "@/components/live/codex-activity-indicator";

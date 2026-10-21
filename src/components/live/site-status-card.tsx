@@ -2,7 +2,7 @@
 
 import CloudflareColor from "@lobehub/icons/es/Cloudflare/components/Color";
 import Github from "@lobehub/icons/es/Github/components/Mono";
-import NumberFlow from "@number-flow/react";
+import NumberFlow from "@/components/ui/number-flow";
 import { Container } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FlowDash } from "@/components/ui/flow-dash";
