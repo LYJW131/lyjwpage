@@ -152,7 +152,7 @@ test("ingest archive: the latest ring reading of a local day wins and history-on
   );
 });
 
-test("ingest archive: limit snapshots keep the last reading per site day and skip failed rows", async () => {
+test("ingest archive: limit snapshots keep the last reading per site day and per UTC hour, and skip failed rows", async () => {
   const world = historyDb();
   const send = (usedPercent: number, receivedAt: number) => archiveIngest(world.db, {
     source: "agents",
@@ -180,6 +180,13 @@ test("ingest archive: limit snapshots keep the last reading per site day and ski
     [
       { date: siteDay(T0), agent: "codex", used_percent: 25, plan: "pro" },
       { date: siteDay(T0 + 86_400_000), agent: "codex", used_percent: 40, plan: "pro" },
+    ],
+  );
+  assert.deepEqual(
+    world.all("SELECT agent, hour_at, used_percent FROM limit_hours ORDER BY hour_at").map((row) => ({ ...row })),
+    [
+      { agent: "codex", hour_at: T0, used_percent: 25 },
+      { agent: "codex", hour_at: T0 + 86_400_000, used_percent: 40 },
     ],
   );
 });

@@ -3,7 +3,7 @@
 import NumberFlow, { NumberFlowGroup } from "@/components/ui/number-flow";
 import { useContext, useEffect, useState, type ReactNode } from "react";
 
-import { LIMIT_ON_PACE_COLOR, LIMIT_OVER_PACE_COLOR, formatReset, limitColor, limitPace, nextTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
+import { LIMIT_ON_PACE_COLOR, LIMIT_OVER_PACE_COLOR, fableUnavailableShare, formatReset, limitColor, limitPace, nextTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
 import { RenderClock, useMountedAt } from "@/hooks/use-mounted-at";
 import { site } from "@shared/site";
 import type { VibeCodingLimit } from "@shared/types";
@@ -23,6 +23,19 @@ export function PaceMarker({ pace, overPace }: { pace: number; overPace: boolean
         style={{ backgroundColor: overPace ? LIMIT_OVER_PACE_COLOR : LIMIT_ON_PACE_COLOR }}
       />
     </span>
+  );
+}
+
+export const UNAVAILABLE_NOTE = "Weekly usage is past Fable's 50% share, so the shaded part of this bar can't be used";
+
+export function UnavailableZone({ share }: { share: number }) {
+  if (share <= 0) return null;
+  return (
+    <span
+      aria-hidden
+      className="limit-unavailable-hatched pointer-events-none absolute inset-y-0 right-0"
+      style={{ width: `${share * 100}%` }}
+    />
   );
 }
 
@@ -75,11 +88,13 @@ export function LimitMeter({
   title,
   href,
   label,
+  cappedBy = null,
 }: {
   limit: VibeCodingLimit;
   title: string;
   href: string | null;
   label: string;
+  cappedBy?: VibeCodingLimit | null;
 }) {
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
@@ -111,9 +126,10 @@ export function LimitMeter({
   const color = limitColor(usedPercent);
   const baked = useContext(RenderClock) > 0;
   const reset = now ? formatReset(limit.resetsAt, now, baked ? site.timezone : undefined) : null;
+  const unavailable = cappedBy ? fableUnavailableShare(cappedBy, now) : 0;
 
   return (
-    <div>
+    <div title={unavailable > 0 ? UNAVAILABLE_NOTE : undefined}>
       {/* NumberFlow 合成基线会撑高行盒，固定行高并居中才能保持两侧限额条对齐。 */}
       <div className="flex h-5 items-center justify-between gap-2">
         <span className="truncate text-xs" title={title}>
@@ -150,6 +166,7 @@ export function LimitMeter({
           className="block h-full transition-[width] duration-700"
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
+        <UnavailableZone share={unavailable} />
         {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
       </UsageMeter>
     </div>

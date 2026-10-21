@@ -23,6 +23,13 @@ ALLOWED_ORIGINS = "https://*.lyjw.workers.dev"
 binding = "LAG"
 id = "00000000000000000000000000000001"
 
+# 本地空库；归档写入照样被 historyArchive 的闸门挡住，只给读归档的端点用。
+[[d1_databases]]
+binding = "HISTORY"
+database_name = "lyjwpage-history"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"
+
 [[durable_objects.bindings]]
 name = "LIVE_PUSH"
 class_name = "LivePushRoom"

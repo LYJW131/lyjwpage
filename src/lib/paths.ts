@@ -5,6 +5,7 @@ export const DESKTOP_PATH = STATUS_VIEWS.desktop.path;
 export const CHARGER_PATH = STATUS_VIEWS.charger.path;
 export const POWERBANK_PATH = STATUS_VIEWS.powerBank.path;
 export const LIMITS_PATH = STATUS_VIEWS.limits.path;
+export const LIMITS_HISTORY_PATH = STATUS_VIEWS.limitsHistory.path;
 export const AGENT_STATUS_PATH = STATUS_VIEWS.agentStatus.path;
 export const CODING_PATH = STATUS_VIEWS.coding.path;
 export const CODING_NOW_PATH = STATUS_VIEWS.codingNow.path;
