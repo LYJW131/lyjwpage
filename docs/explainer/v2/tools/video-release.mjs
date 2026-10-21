@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { launch, openFilm } from "./browser.mjs";
 import { SCORE_PATH_PREFIX, scoreObjectKey, VIDEO_CODECS, VIDEO_LANGS, videoHash, videoObjectKey } from "../../../../scripts/explainer-score.mjs";
 
@@ -29,19 +30,22 @@ const HELP = `用法：node docs/explainer/v2/tools/video-release.mjs [--lang zh
 带 libsvtav1、libx264、libx265、libopus 的 ffmpeg（Homebrew 的就带：brew install ffmpeg）；上传还要 pnpm exec wrangler login。
 配乐要先在 R2 上：改了乐谱的提交合进 main 后由 .github/workflows/explainer-score.yml 渲染上传，等它跑完再出视频。`;
 
-const args = process.argv.slice(2);
-if (args.includes("--help")) {
+let args;
+try {
+  ({ values: args } = parseArgs({
+    options: {
+      help: { type: "boolean" }, lang: { type: "string" }, jobs: { type: "string", default: "3" }, work: { type: "string" },
+      "no-upload": { type: "boolean" }, "dry-run": { type: "boolean" }, until: { type: "string" },
+    },
+    strict: true,
+  }));
+} catch (e) {
+  console.error(`${e.message}\n\n${HELP}`);
+  process.exit(2);
+}
+if (args.help) {
   console.log(HELP);
   process.exit(0);
-}
-const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
-const known = new Set(["--lang", "--jobs", "--work", "--until"]), flags = new Set(["--no-upload", "--dry-run"]);
-for (let i = 0; i < args.length; i++) {
-  if (known.has(args[i])) i++;
-  else if (!flags.has(args[i])) {
-    console.error(`看不懂的参数：${args[i]}\n\n${HELP}`);
-    process.exit(2);
-  }
 }
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -64,17 +68,17 @@ const HEVC_KBPS = 3900;
 const X265 = (pass, stats) => ["-c:v", "libx265", "-preset", "medium", "-b:v", `${HEVC_KBPS}k`, "-pix_fmt", "yuv420p", "-profile:v", "main", "-tag:v", "hvc1", "-x265-params", `pass=${pass}:stats=${stats}:level-idc=40:log-level=error`, ...GOP];
 const VIDEOTOOLBOX = ["-c:v", "hevc_videotoolbox", "-b:v", `${HEVC_KBPS}k`, "-profile:v", "main", "-tag:v", "hvc1", ...GOP];
 
-const langs = args.includes("--lang") ? [opt("--lang")] : VIDEO_LANGS;
+const langs = args.lang === undefined ? VIDEO_LANGS : [args.lang];
 if (!langs.every((l) => VIDEO_LANGS.includes(l))) {
   console.error(`--lang 只认 ${VIDEO_LANGS.join(" / ")}`);
   process.exit(2);
 }
-const jobs = +opt("--jobs", 3), until = args.includes("--until") ? +opt("--until") : null;
+const jobs = +args.jobs, until = args.until === undefined ? null : +args.until;
 if (!(Number.isInteger(jobs) && jobs >= 1 && jobs <= 8) || (until !== null && !(until > 0))) {
   console.error("--jobs 取 1–8 的整数，--until 取正的秒数");
   process.exit(2);
 }
-const upload = !args.includes("--no-upload") && until === null;
+const upload = !args["no-upload"] && until === null;
 
 const run = (cmd, argv, o = {}) => spawnSync(cmd, argv, { encoding: "utf8", maxBuffer: 64 << 20, ...o });
 const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;
@@ -95,14 +99,14 @@ const targets = langs.flatMap((lang) => VIDEO_CODECS.map((codec) => {
 }));
 await Promise.all(targets.map(async (t) => (t.online = await head(t.url))));
 for (const t of targets) console.log(`${t.lang} ${t.codec.padEnd(4)} ${t.key}  线上 ${t.online.status || t.online.error}`);
-if (args.includes("--dry-run")) process.exit(0);
+if (args["dry-run"]) process.exit(0);
 // 只有明确 404 才算没有：查不清时（断网、5xx）不出也不传，免得把已经在的对象覆盖掉（边缘缓存着旧字节，Range 会拼错）
-const unsure = until === null ? targets.filter((t) => ![200, 404].includes(t.online.status)) : [];
+const unsure = upload ? targets.filter((t) => ![200, 404].includes(t.online.status)) : [];
 if (unsure.length) {
   console.error(`查不清线上有没有 ${unsure.map((t) => `${t.lang} ${t.codec}`).join("、")}，网络好了再重跑`);
   process.exit(1);
 }
-const todo = until === null ? targets.filter((t) => t.online.status === 404) : targets;
+const todo = upload ? targets.filter((t) => t.online.status === 404) : targets;
 if (!todo.length) {
   console.log("四份都已经在 R2 上，不用出。");
   process.exit(0);
@@ -126,7 +130,7 @@ if (upload) {
   }
 }
 
-const work = path.resolve(opt("--work", path.join(SRC, "video")));
+const work = path.resolve(args.work ?? path.join(SRC, "video"));
 const dir = path.join(work, until === null ? hash.slice(0, 16) : `${hash.slice(0, 16)}-trial-${until}s`);
 fs.mkdirSync(dir, { recursive: true });
 
@@ -159,7 +163,7 @@ const server = createServer((req, res) => {
   }
   // 页面在没有 __assets 时取 v2/score.mp3：这里换成刚取到的线上那份，不用本地可能过期的
   const f = p === "/v2/score.mp3" ? scoreFile : path.join(ROOT, p);
-  if (req.method !== "GET" || !(f === scoreFile || f.startsWith(ROOT + path.sep)) || !fs.statSync(f, { throwIfNoEntry: false })?.isFile()) {
+  if (req.method !== "GET" || !(f === scoreFile || (f.startsWith(ROOT + path.sep) && !f.startsWith(work + path.sep))) || !fs.statSync(f, { throwIfNoEntry: false })?.isFile()) {
     res.writeHead(404).end();
     return;
   }
