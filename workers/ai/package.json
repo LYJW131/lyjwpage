@@ -14,7 +14,8 @@
     "route:probe": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/route-probe.ts",
     "digest:probe": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/digest-probe.ts",
     "digest:taglines": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/digest-taglines.ts",
-    "designer:setup": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/setup-designer.ts"
+    "designer:setup": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/setup-designer.ts",
+    "prefetch:calibrate": "node --experimental-strip-types --import ../../src/lib/testing/register-alias.mjs scripts/prefetch-calibrate.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250214.0",

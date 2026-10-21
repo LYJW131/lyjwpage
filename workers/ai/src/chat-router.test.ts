@@ -9,6 +9,11 @@ import { isProjectDocKey } from "./tools/project-docs.ts";
 import { WEB_CATEGORIES } from "./chat/web-search.ts";
 
 const user = (content: string): GodChatMessage => ({ role: "user", content });
+const decide = async (...args: Parameters<typeof routeWithClef>) => {
+  const decision = await routeWithClef(...args);
+  delete decision.scores;
+  return decision;
+};
 
 const clef = (answer: unknown, seen?: { input?: { model?: unknown; state?: { latestMessage?: string } } }) =>
   ({
@@ -20,9 +25,9 @@ const clef = (answer: unknown, seen?: { input?: { model?: unknown; state?: { lat
   }) as unknown as Ai;
 
 test("没有 AI 绑定或 Clef 出错时兜底到 Small Fry，不拦访客", async (t) => {
-  assert.deepEqual(await routeWithClef(undefined, [user("hi")]), { route: "flash", source: "fallback" });
+  assert.deepEqual(await decide(undefined, [user("hi")]), { route: "flash", source: "fallback" });
   const warn = t.mock.method(console, "warn", () => {});
-  assert.deepEqual(await routeWithClef(clef(new Error("clef down")), [user("hi")]), { route: "flash", source: "fallback" });
+  assert.deepEqual(await decide(clef(new Error("clef down")), [user("hi")]), { route: "flash", source: "fallback" });
   assert.equal(warn.mock.callCount(), 2);
 });
 
@@ -34,24 +39,24 @@ test("Clef 回的不是登记过的档位时同样兜底", async () => {
     { answers: {} },
     null,
   ]) {
-    assert.deepEqual(await routeWithClef(clef(answer), [user("hi")]), { route: "flash", source: "fallback" });
+    assert.deepEqual(await decide(clef(answer), [user("hi")]), { route: "flash", source: "fallback" });
   }
 });
 
 test("登记过的选项映射出档位与设计标记，来源记 clef", async () => {
-  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "flash" } } }), [user("hi")]), {
+  assert.deepEqual(await decide(clef({ answers: { route: { choice: "flash" } } }), [user("hi")]), {
     route: "flash", source: "clef",
   });
-  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "think" } } }), [user("hi")]), {
+  assert.deepEqual(await decide(clef({ answers: { route: { choice: "think" } } }), [user("hi")]), {
     route: "think", source: "clef",
   });
-  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "design" } } }), [user("hi")]), {
+  assert.deepEqual(await decide(clef({ answers: { route: { choice: "design" } } }), [user("hi")]), {
     route: "think", design: true, source: "clef",
   });
-  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "fable" } } }), [user("hi")]), {
+  assert.deepEqual(await decide(clef({ answers: { route: { choice: "fable" } } }), [user("hi")]), {
     route: "fable", source: "clef",
   });
-  assert.deepEqual(await routeWithClef(clef({ answers: { route: { choice: "refuse" } } }), [user("hi")]), {
+  assert.deepEqual(await decide(clef({ answers: { route: { choice: "refuse" } } }), [user("hi")]), {
     route: "refuse", source: "clef",
   });
 });
@@ -91,7 +96,7 @@ const answered = (route: string, status?: [string, number], doc?: [string, numbe
 });
 
 test("Clef 有把握时把状态与文档的预取带进决定", async () => {
-  assert.deepEqual(await routeWithClef(clef(answered("flash", ["listening", 0.9], ["overview", PREFETCH_MIN_PROBABILITY.doc])), [user("在听什么")]), {
+  assert.deepEqual(await decide(clef(answered("flash", ["listening", 0.9], ["overview", PREFETCH_MIN_PROBABILITY.doc])), [user("在听什么")]), {
     route: "flash", source: "clef",
     prefetch: [
       { name: "get_site_status", input: { views: [...PREFETCH_STATUS.listening.views] } },
@@ -113,7 +118,7 @@ const both = (clefAnswer: unknown, clairic: unknown) =>
 const extracted = (value: string | null, pNull = 0.001, confidence = 0.98) => ({ answers: { item: { type: "text", value, guess: value ?? "x", p_null: pNull, confidence } } });
 
 test("Clairic 抽到具体条目时，能搜的分组在整组之外带 query 再读一次，游戏组另外直接画那款游戏的卡", async () => {
-  assert.deepEqual(await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("《艾尔登法环》")), [user("他最近玩艾尔登法环了吗")]), {
+  assert.deepEqual(await decide(both(answered("flash", ["playing", 0.95]), extracted("《艾尔登法环》")), [user("他最近玩艾尔登法环了吗")]), {
     route: "flash", source: "clef",
     prefetch: [
       { name: "get_site_status", input: { views: [...PREFETCH_STATUS.playing.views] } },
@@ -121,14 +126,14 @@ test("Clairic 抽到具体条目时，能搜的分组在整组之外带 query �
       { name: "show_card", input: { card: "game", game: "艾尔登法环" } },
     ],
   });
-  assert.deepEqual(await routeWithClef(both(answered("flash", ["watching", 0.95]), extracted("葬送的芙莉莲")), [user("他看葬送的芙莉莲了吗")]), {
+  assert.deepEqual(await decide(both(answered("flash", ["watching", 0.95]), extracted("葬送的芙莉莲")), [user("他看葬送的芙莉莲了吗")]), {
     route: "flash", source: "clef",
     prefetch: [
       { name: "get_site_status", input: { views: [...PREFETCH_STATUS.watching.views] } },
       { name: "get_site_status", input: { views: ["watching"], query: "葬送的芙莉莲" } },
     ],
   });
-  assert.deepEqual(await routeWithClef(both(answered("flash", ["limits", 0.95]), extracted("Claude")), [user("Claude 额度还剩多少")]), {
+  assert.deepEqual(await decide(both(answered("flash", ["limits", 0.95]), extracted("Claude")), [user("Claude 额度还剩多少")]), {
     route: "flash", source: "clef",
     prefetch: [{ name: "get_site_status", input: { views: [...PREFETCH_STATUS.limits.views] } }],
   });
@@ -137,28 +142,36 @@ test("Clairic 抽到具体条目时，能搜的分组在整组之外带 query �
 test("Clairic 没把握、抽空或出错时照旧预取整组", async (t) => {
   const plain = { route: "flash", source: "clef", prefetch: [{ name: "get_site_status", input: { views: [...PREFETCH_STATUS.listening.views] } }] };
   for (const clairic of [extracted(null, 0.9), extracted("歌", ITEM_MAX_P_NULL + 0.01), extracted("歌", 0, ITEM_MIN_CONFIDENCE - 0.01), { answers: {} }]) {
-    assert.deepEqual(await routeWithClef(both(answered("flash", ["listening", 0.95]), clairic), [user("在听什么")]), plain);
+    assert.deepEqual(await decide(both(answered("flash", ["listening", 0.95]), clairic), [user("在听什么")]), plain);
   }
   const warn = t.mock.method(console, "warn", () => {});
-  assert.deepEqual(await routeWithClef(both(answered("flash", ["listening", 0.95]), new Error("clairic down")), [user("在听什么")]), plain);
+  assert.deepEqual(await decide(both(answered("flash", ["listening", 0.95]), new Error("clairic down")), [user("在听什么")]), plain);
   assert.equal(warn.mock.callCount(), 1);
 });
 
 test("Clef 没选可搜的状态分组时不等 Clairic", async () => {
   const hanging = { run: async (model: string) => model === "@cf/cloudflare/clairic" ? new Promise(() => {}) : answered("flash", ["none", 0.99]) } as unknown as Ai;
-  assert.deepEqual(await routeWithClef(hanging, [user("你好")]), { route: "flash", source: "clef" });
+  assert.deepEqual(await decide(hanging, [user("你好")]), { route: "flash", source: "clef" });
 });
 
 test("选档日志只记选项、概率与有没有抽到条目，不记访客原文", async (t) => {
   const info = t.mock.method(console, "info", () => {});
   await routeWithClef(both(answered("flash", ["playing", 0.95]), extracted("月姬")), [user("他玩过月姬吗")]);
   const line = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
-  assert.ok(line?.includes('"status":"playing 0.950"') && line.includes('"item":true') && line.includes('"prefetch":3'));
+  assert.ok(line?.includes('"status":{"choice":"playing","p":0.95}') && line.includes('"item":true') && line.includes('"prefetch":3'));
   assert.ok(!line?.includes("月姬"));
   info.mock.resetCalls();
   await routeWithClef(clef({ answers: { route: { choice: "他玩过月姬吗" }, status: { choice: "他玩过月姬吗", probabilities: { "他玩过月姬吗": 1 } } } }), [user("他玩过月姬吗")]);
   const odd = info.mock.calls.map((call) => call.arguments.join(" ")).find((text) => text.startsWith("[god-chat] route"));
-  assert.ok(odd?.includes('"route":"unlisted"') && odd.includes('"status":"unlisted"') && !odd.includes("月姬"));
+  assert.ok(odd?.includes('"route":"unlisted"') && odd.includes('"status":{"choice":"unlisted","p":1}') && !odd.includes("月姬"));
+});
+
+test("决定里带着状态题与文档题的首选和概率，没登记的选项记成 unlisted", async () => {
+  assert.deepEqual((await routeWithClef(clef(answered("flash", ["listening", 0.4], ["secrets", 0.91234])), [user("hi")])).scores, {
+    status: { choice: "listening", p: 0.4 },
+    doc: { choice: "unlisted", p: 0.912 },
+  });
+  assert.equal((await routeWithClef(clef(answered("flash")), [user("hi")])).scores, undefined);
 });
 
 test("parseItem 去掉书名号与引号", () => {
@@ -174,13 +187,13 @@ test("概率不够、选了 none、选项没登记或缺答时不预取", async 
     answered("think", ["weather", 0.99], ["secrets", 0.99]),
     answered("think"),
   ]) {
-    assert.deepEqual(await routeWithClef(clef(answer), [user("hi")]), { route: "think", source: "clef" });
+    assert.deepEqual(await decide(clef(answer), [user("hi")]), { route: "think", source: "clef" });
   }
 });
 
 test("拒答与设计请求不预取", async () => {
-  assert.deepEqual(await routeWithClef(clef(answered("refuse", ["now", 0.99])), [user("hi")]), { route: "refuse", source: "clef" });
-  assert.deepEqual(await routeWithClef(clef(answered("design", ["commits", 0.99], ["overview", 0.99])), [user("hi")]), { route: "think", design: true, source: "clef" });
+  assert.deepEqual(await decide(clef(answered("refuse", ["now", 0.99])), [user("hi")]), { route: "refuse", source: "clef" });
+  assert.deepEqual(await decide(clef(answered("design", ["commits", 0.99], ["overview", 0.99])), [user("hi")]), { route: "think", design: true, source: "clef" });
 });
 
 test("预取分组都是合法的状态视图，一组不超过一次能读的数量；文档选项都是登记过的文档", () => {
