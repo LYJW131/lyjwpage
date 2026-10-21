@@ -199,7 +199,7 @@ void main(){
     const out = NS.drawerOut(b) * 58;
     A.drawer.position.z = out; A.drawerKnob.position.z = out;
     if (b >= AT.icon && b < AT.drop + 0.05) {
-      const k = prog(b, AT.icon, AT.hash, E.out), p = [lerp(900, 1110, k), lerp(1300, 1150, k), 90 + Math.sin(k * Math.PI) * 40];
+      const p = NS.iconAt(b);
       const sk = prog(b, AT.hash, AT.hash + 0.12);
       if (b < AT.hash + 0.12) {
         A.icon.visible = true; A.iconBase.visible = sk < 0.6;
@@ -243,6 +243,7 @@ void main(){
 
     const m = clamp((b - AT.dial) * 4, 0, 60), am = (m / 60) * Math.PI * 2, ah = ((10 + m / 60) / 12) * Math.PI * 2;
     for (const c of A.clocks) { c.mm.rotation.z = -am; c.hh.rotation.z = -ah; }
+    if (A.dial) NS.dial.pose(b, A.dial, A);
     A.vane.rotation.y = NS.vaneYaw(b);
 
     const mb = NS.minuteAt7(b), idx = NS.PLAYS.reduce((acc, p, i) => (mb >= p.start ? i : acc), -1);

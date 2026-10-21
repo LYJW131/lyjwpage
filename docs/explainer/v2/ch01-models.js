@@ -332,7 +332,7 @@
     if (face === "y") { out.position.set(Tw.x + CLOCK_C[0], 50 + CLOCK_C[1], Tw.y + Tw.d + 0.6); }
     else { out.position.set(Tw.x + Tw.w + 0.6, 50 + CLOCK_C[1], Tw.y + Tw.d - CLOCK_C[0]); out.rotation.y = Math.PI / 2; }
     scene.add(out);
-    return { mm, hh };
+    return { mm, hh, g: out };
   }
   function vane() {
     const s = new T.Shape([[-46, -4], [26, -4], [26, -14], [50, 0], [26, 14], [26, 4], [-46, 4], [-56, 14], [-56, -14]].map(([u, v]) => new T.Vector2(u, v)));
@@ -443,6 +443,7 @@
     A.boxes = tokyoBoxes();
     A.hubRing = hubRing();
     A.clocks = [clockFace("y"), clockFace("x")];
+    if (NS.dial) A.dial = NS.dial.build(scene, { paint, prep, gCyl, merge, col, P, face: A.clocks[0].g }, M);
     A.vane = vane();
     A.else = elseScreen();
     A.clawd = clawdModel();

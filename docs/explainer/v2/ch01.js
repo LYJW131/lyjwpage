@@ -177,6 +177,18 @@
     const r = right(v.az), u = up(v), k = 1 / ppuOf(v), a = (sx - 960) * k, c = (540 - sy) * k;
     return { ...v, at: [Pw[0] - r[0] * a - u[0] * c, Pw[1] - r[1] * a - u[1] * c, Pw[2] - u[2] * c] };
   }
+  const fwd = (v) => { const a = v.az * D2R, e = v.el * D2R; return [-Math.sin(a) * Math.cos(e), -Math.cos(a) * Math.cos(e), -Math.sin(e)]; };
+  function screenX(v, Pw) {
+    const f = fwd(v), r = right(v.az), C = add3(v.at, f, -v.d), q = [Pw[0] - C[0], Pw[1] - C[1], Pw[2] - C[2]];
+    return 960 + (FOCAL * (v.zoom ?? 1) * (q[0] * r[0] + q[1] * r[1])) / (q[0] * f[0] + q[1] * f[1] + q[2] * f[2]);
+  }
+  const eave = () => { const T = L().TOWER; return [T.x - 12, T.y + T.d + 12, 50 + T.h]; };
+  // 标题块（标题加副标）放左上角时的右沿，含弹出回弹的 2%；离钟楼尖顶的左檐（按 S0 转回 45° 后算）不到 24 px 就整块挪到右下角，返回 0
+  const SUB = (NS.titleSub = "reporters · collector Worker");
+  function titleRight(x) {
+    const w = 1.02 * Math.max(K.measure(x, tr("ch01.title"), SANS(96, 600)), 4 + K.measure(x, SUB, MONO(30)));
+    return 110 + w + 24 <= screenX(SHOT.S0, eave()) ? 110 + w : 0;
+  }
   const SHOT = {
     S0: { at: [1010, 400, 0], az: 45, el: 33, d: 4150, aper: 10 },
     MAC: { at: [380, 1000, 70], az: 36, el: 27, d: 1290, aper: 24 },
@@ -186,9 +198,18 @@
     HOME: { at: [1330, 330, 40], az: 40, el: 50, d: 1560, aper: 20 },
     TOKYO: { at: [2210, -310, 190], az: 51, el: 27, d: 1320, aper: 24 },
     CODE: { at: [930, 380, 90], az: 45, el: 35, d: 2050, aper: 18 },
-    CLOCK: aim([300, 260, 300], 520, 470, { az: 34, el: 18, d: 1600, aper: 22 }),
+    CLOCK: aim([300, 260, 300], 360, 500, { az: 34, el: 18, d: 1600, aper: 22 }),
     INFER: aim([-1274, -140, 392], 340, 270, { az: 56, el: 26, d: 1880, aper: 20 }),
   };
+  // 钟楼的任务表盘浮出后停在 CLOCK 机位前方：屏幕中心 (sx, sy)、半径约 R px，比机位的落点近 near，面朝镜头再往左偏 yaw 度，看得出盘面的厚度（ch01-dial.js）
+  const DIAL_AT = { sx: 660, sy: 440, R: 215, near: 350, yaw: 18 };
+  NS.DIAL = (() => {
+    const v = SHOT.CLOCK, f = fwd(v), r = [...right(v.az), 0], u = up(v), dep = v.d - DIAL_AT.near, C = add3(v.at, f, -v.d), k = dep / FOCAL;
+    const c = [0, 1, 2].map((i) => C[i] + (f[i] * FOCAL + r[i] * (DIAL_AT.sx - 960) + u[i] * (540 - DIAL_AT.sy)) * k);
+    const cy = Math.cos(DIAL_AT.yaw * D2R), sy = Math.sin(DIAL_AT.yaw * D2R);
+    return { c, r: r.map((q, i) => q * cy - f[i] * sy), u, n: f.map((q, i) => -q * cy - r[i] * sy), R: (DIAL_AT.R * dep) / FOCAL };
+  })();
+  const depthOf = (v, Pw) => { const f = fwd(v), C = add3(v.at, f, -v.d); return (Pw[0] - C[0]) * f[0] + (Pw[1] - C[1]) * f[1] + (Pw[2] - C[2]) * f[2]; };
   const PARK3 = [560, 990, 53];
   const END = { at: PARK3, az: 45, el: 32, d: FOCAL / (Math.SQRT2 * Math.cos(Math.PI / 6)), aper: 22 };
   function truck(v, px) { const r = right(v.az), k = px / ppuOf(v); return { ...v, at: [v.at[0] + r[0] * k, v.at[1] + r[1] * k, v.at[2]] }; }
@@ -214,7 +235,12 @@
     // 盖子宽 108 对上小样的 52 格；小样的框心在屏幕中心上方 2 格（ch00.js#CUT 的 at 比框心低 2 格）
     const d1 = (FOCAL * W.L.LID.w) / (52 * s), lid = { az, el, d: d1, aper: 0 };
     lid.at = add3(c, up(lid), -(2 * s) / (FOCAL / d1));
-    const S = { ...hold(SHOT.S0, E.out(prog(b, BP.pull[1], STOP.S0.t1))), az };
+    let S = { ...hold(SHOT.S0, E.out(prog(b, BP.pull[1], STOP.S0.t1))), az };
+    // 方位还没转回 45° 时钟楼偏左，会贴上左上角的标题块：镜头往左平移到左檐离标题块右沿 24 px（平移量对屏幕 x 是线性的，一步解出）
+    if (NS.titleR) {
+      const need = NS.titleR + 24 - screenX(S, eave());
+      if (need > 0) { const d1 = screenX(truck(S, -need), eave()) - screenX(S, eave()); S = truck(S, (-need * need) / d1); }
+    }
     const k = E.io(prog(b, BP.pull[0], BP.pull[1]));
     if (k <= 0) return { ...lid, zoom: 1 };
     return { at: lerp3(lid.at, S.at, k), az, el: lerp(el, S.el, k), d: Math.exp(lerp(Math.log(d1), Math.log(S.d), k)), zoom: 1, aper: lerp(0, S.aper, k) };
@@ -246,6 +272,8 @@
   const SRC0 = () => { const { PHN, CT3, NAS, CLOUD, TOKYO } = L(); return [[PARK3[0], PARK3[1], 60], [PHN.x, PHN.y + 90, 260], [CT3[0], CT3[1], 80], [NAS.x + 90, NAS.y + 70, 160], [2250, -360, TOKYO.z + 180], [930, 120, CLOUD.z + 60]]; };
   const EXIT0 = [2700, -600, 300];
   const yawOf = (dx, dy) => Math.atan2(-dy, dx);
+  // Mac 的应用图标从 Jev 的出口升到 R2 柜顶上方，在那儿拆成哈希：落点高过柜顶，镜头这边没有东西挡着（ch01-world.js 画图标，ch01-labels.js 的标签跟着它）
+  NS.iconAt = (b) => { const k = prog(b, AT.icon, AT.hash, E.out); return [lerp(900, 1120, k), lerp(1300, 1150, k), lerp(90, 250, k) + Math.sin(k * Math.PI) * 40]; };
   // 风向标指着镜头最近一路甩过去的方向：过去 3 小节里落点的位移按 e^(−Δ/1.2 小节) 衰减相加，取它的方位，再加一点风里的晃
   NS.vaneYaw = (b) => {
     let sx = 1, sy = 0, a = viewAt(b).at;
@@ -385,12 +413,12 @@
     glow(e, head[0], head[1], 150, 0.6 * impact(b, AT.back, 0.25));
   }
   function bubble(x, b) {
-    const k = prog(b, CL.say[0], CL.say[0] + 0.06) * (1 - prog(b, CL.say[1] - 0.04, CL.say[1]));
-    if (k <= 0) return;
+    const k = prog(b, CL.say[0], CL.say[0] + 0.06), out = 1 - E.in(prog(b, CL.say[1] - 0.1, CL.say[1]));
+    if (k <= 0 || out <= 0) return;
     const [sx, sy] = NS.W.proj(...onRail(CL.stand, b).slice(0, 2), NS.W.L.RAIL_Z);
     const str = tr("ch01.clawd"), f = SANS(34, 600), tw = K.measure(x, str, f), pad = 18, bw = tw + pad * 2, bh = 70;
     x.save(); x.translate(sx - 56, sy - 12 * CL.qs - 10); const sc = lerp(0.6, 1, E.outBack(clamp(k * 1.6))); x.scale(sc, sc);
-    const a = clamp(k * 4);
+    const a = clamp(k * 4) * out;
     plate(x, 0, -bh, bw, bh, a);
     x.globalAlpha = a; x.fillStyle = P.plate; x.beginPath(); x.moveTo(18, -2); x.lineTo(6, 20); x.lineTo(42, -2); x.fill(); x.globalAlpha = 1;
     K.text(x, str, pad, -bh + 48, { font: f, color: P.ink, alpha: a, reveal: prog(b, CL.say[0] + 0.01, CL.say[0] + 0.13), perChar: true, fadeIn: false });
@@ -411,11 +439,7 @@
     const hitS = Math.max(impact(b, AT.judged, 0.1), impact(b, AT.merge, 0.12), impact(b, AT.back, 0.12));
     let blur = [0, 0], zoomBlur = 0;
     if (W && W.ready) {
-      if (b < STOP.S0.t1) {
-        const T = W.L.TOWER;
-        W.view(SHOT.S0);
-        NS.eaveX = W.proj(T.x - 12, T.y + T.d + 12, 50 + T.h)[0];
-      }
+      NS.titleR = titleRight(x);
       const v = viewAt(b), v0 = viewAt(b - dt);
       v.zoom = (v.zoom ?? 1) * (1 + 0.01 * hitS);
       W.view(v0);
@@ -424,7 +448,8 @@
       blur = [960 - p0[0], 540 - p0[1]];
       zoomBlur = clamp(Math.log((v0.d / v.d) * (v.zoom / (v0.zoom ?? 1))), -0.2, 0.2);
       W.pose(b);
-      W.draw({ aper: v.aper, focus: v.d });
+      const dk = NS.dialK ? NS.dialK(b) : 0;
+      W.draw({ aper: v.aper, focus: dk > 0 ? lerp(v.d, depthOf(v, NS.DIAL.c), dk) : v.d });
       NS.labels(x, e, b);
       hero(tp, e, b);
       bubble(tp, b);
