@@ -164,7 +164,7 @@ Apple Music 的 user token 读共享凭据 KV（`CREDENTIALS`，Mac 上报器推
 
 绑定：`COLLECTOR_KV`、`LAG`、`CREDENTIALS`、`APPLE_CACHE` 四个 KV，`CORE`（`core` 的 `StateCore`），
 `APPLE_LOOKUPS`（指向本 Worker 自己的 `AppleLookups`），`DIGEST`（`ai` 的 `Digest`，契约 `shared/digest.ts`），D1 `HISTORY`（`lyjwpage-history`）。D1 表结构归 `workers/core/migrations` 管：新表先在 core 那边
-`pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。
+应用（命令见 [长期归档](../../docs/state-storage.md#长期归档d1)），再发布本 Worker。
 
 ## 部署
 

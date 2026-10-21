@@ -6,7 +6,7 @@ import { forbiddenReason } from "./guard-forbidden-commands.mjs";
 
 const blocked = (command) => forbiddenReason(command) !== null;
 
-test("各种写法的 wrangler deploy 与 deploy 脚本都拦", () => {
+test("各种写法的 wrangler deploy、cf deploy 与 deploy 脚本都拦", () => {
   for (const command of [
     "wrangler deploy",
     "npx wrangler deploy -c wrangler.toml",
@@ -18,6 +18,12 @@ test("各种写法的 wrangler deploy 与 deploy 脚本都拦", () => {
     "pnpm --dir workers/collector run deploy",
     "npm run deploy",
     "yarn deploy",
+    "cf deploy",
+    "npx cf deploy --prebuilt --mode production",
+    "pnpm exec cf deploy",
+    "cloudflare deploy",
+    "cf workers deployments create --worker core",
+    "cf workers triggers deploy",
   ]) {
     assert.ok(blocked(command), command);
   }
@@ -29,6 +35,10 @@ test("只读、预览与演练命令不拦", () => {
     "pnpm exec wrangler deployments list",
     "pnpm exec wrangler versions upload",
     "pnpm preview:deploy",
+    "cf deploy --dry-run",
+    "cf previews deploy feat-x",
+    "cf workers deployments list",
+    "cf workers versions create",
     "pnpm deploy ../out",
     'rg -n "wrangler deploy" AGENTS.md',
     "git commit -m '不手跑 wrangler deploy'",

@@ -10,7 +10,7 @@
 - core 不挂 cron，它的定时一轮（pulse 归档、断流告警、心跳）靠本 Worker 每分钟调 `CORE.cronRound`（`src/core-round.ts`）；这一调用停了，那些就全停，站点的 Core 在线行也跟着断。
 - 预览与非生产分支构建关闭：`CORE` 指向生产 `core`，预览版一跑就会往生产状态里写。
 - 新增 `StateCore` 方法先发布 `workers/core`，再发布本 Worker；`DIGEST`（ai 的 `Digest`）同理先发布 `workers/ai`。契约只加不改（`shared/state-core.ts`、`shared/collector.ts`、`shared/digest.ts`）。
-- D1 表结构归 `workers/core/migrations`：新表先在 core 那边 `pnpm --dir workers/core exec wrangler d1 migrations apply lyjwpage-history --remote -c wrangler.toml`，再发布本 Worker。奖杯表由 core 写（`workers/core/src/stores/trophy-history.ts#archiveTrophies`），这里写 `site_deploys` 与 `health_buckets`（后者 core 的定时一轮也写心跳）。
+- D1 表结构归 `workers/core/migrations`：新表先在 core 那边按 [长期归档](../../docs/state-storage.md#长期归档d1) 用 `cf d1 migrations apply` 应用，再发布本 Worker。奖杯表由 core 写（`workers/core/src/stores/trophy-history.ts#archiveTrophies`），这里写 `site_deploys` 与 `health_buckets`（后者 core 的定时一轮也写心跳）。
 - `shared/cache` 在这里背后是 KV（`src/storage-driver.ts`，由 `src/ports.ts` 装上）：TTL 最短 60 秒，KV 读还有最长 60 秒的边缘缓存，两分钟以内要读回的东西不走它；列表、哈希操作直接抛错。
 - Workers Caching 只开在 `AppleLookups` 上（`wrangler.toml#exports`），默认入口和 `Collector` 不开：方法、来源和 CORS 头在默认入口（`src/apple-music-http.ts`）按每次请求判，经自绑定 `APPLE_LOOKUPS` 再进缓存层。缓存键只有 entrypoint、路径与查询串，`AppleLookups` 的响应不许带 CORS 头或随请求头变化的内容。
 - 任务真失败只记一条 `console.error`，内容是 `{ event: "collector-job", job, status, detail, ms }` 的 JSON（`src/registry.ts#runJob`），盯防 routine 按这个结构查；已知外部故障（`outage: true`）同样的结构只记 warn。`uptime-probe` 只在定时轮次落库，手动触发（`Collector.refresh`、`/__dev/run`）不记，否则每格检查数对不上排定次数。
