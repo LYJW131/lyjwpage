@@ -31,7 +31,7 @@
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
 
 ## Tools and environment
-- **Devin CLI can take work** (lyjw 2026-10-20 03:58 SGT, replacing the 00:06 no-Devin rule): cloud threads may dispatch implementation to Devin per skill `lyjwpage-devin-dispatch`; Claude keeps design, acceptance and re-signing; Devin Review on PRs stays in the bot-review gate.
+- **Devin CLI can take work** (lyjw 2026-10-20 03:58 SGT, replacing the 00:06 no-Devin rule): cloud threads may dispatch implementation to Devin per skill `lyjwpage-devin-dispatch`; Claude keeps design, acceptance and re-signing; Devin Review on PRs stays in the bot-review gate. Free tier: one account-wide rate bucket, keep ~6 sessions active: [[devin-free-tier-limit]].
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
 - OpenRouter keyless via egress injection (capped key, Inception models only; anthropic/openai 403): [[openrouter-egress]].
