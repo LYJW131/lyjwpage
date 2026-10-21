@@ -7,25 +7,10 @@
   const { pr, L, SIG, tag, dash, dot, ring, squash, withSquash } = NS.ui;
   const TAU = Math.PI * 2, rr = K.roundRect;
 
-  // 调度表须与 workers/collector/src/registry.ts#JOBS 一致。apple-recent 每分钟登记，任务里再按
-  // apple-recent.ts#appleRecentDue 分闲 / 活跃两档；这里让它在 APPLE_CHANGED 那一分钟看到列表变了。
-  const JOBS = [
-    ["apple-recent", 1, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7], ["github-chart", 10, 1], ["github-repo", 30, 2],
-    ["site-deployments", 1, 0], ["site-analytics", 15, 3], ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4],
-    ["uptime-probe", 1, 0], ["site-health", 5, 4], ["digest", 15, 5], ["avatar-watch", 5, 1],
-  ];
-  const MINUTES = 12;
-  const APPLE_IDLE = 5, APPLE_HOLD = 10, APPLE_CHANGED = 5;
-  const due = (j, m) => (JOBS[j][0] === "apple-recent"
-    ? (m >= APPLE_CHANGED && m < APPLE_CHANGED + APPLE_HOLD) || m % APPLE_IDLE === 0
-    : m % JOBS[j][1] === JOBS[j][2]);
+  const { JOBS, MINUTES, due } = NS.cron;
   function clockLabels(x, e, b) {
-    const st = STOP.CLOCK, { TOWER } = L();
-    const m0 = Math.floor((b - AT.dial) * 4 + 1e-9);
-    if (b >= AT.dial && m0 <= MINUTES) {
-      const k = (b - AT.dial) * 4 - m0;
-      ring(x, TOWER.x + TOWER.w / 2, TOWER.y + TOWER.d / 2, 50 + TOWER.h, 90 + k * 140, SIG(), 3, (1 - k) * 0.7 * live(st, b));
-    }
+    const st = STOP.CLOCK;
+    if (NS.dial) NS.dial.labels(x, e, b);
     const a = live(st, b);
     if (a <= 0) return;
     const X0 = 1000, Y0 = 60, W = 870, RH = 40, top = Y0 + 150;
@@ -33,7 +18,7 @@
     text(x, tr("ch01.f7"), X0 + 28, Y0 + 52, { font: SANS(32), color: P.ink, alpha: a, maxW: W - 150 });
     text(x, tr("ch01.chart"), X0 + 28, Y0 + 98, { font: SANS(28, 500), color: P.ink2, alpha: a });
     const mNow = clamp((b - AT.dial) * 4, 0, MINUTES + 0.999);
-    text(x, `:${String(Math.min(MINUTES, Math.floor(mNow))).padStart(2, "0")}`, X0 + W - 28, Y0 + 52, { font: MONO(32, 600), color: SIG(), align: "right", alpha: a });
+    text(x, `:${String(Math.min(MINUTES, Math.floor(mNow + 1e-9))).padStart(2, "0")}`, X0 + W - 28, Y0 + 52, { font: MONO(32, 600), color: SIG(), align: "right", alpha: a });
     const gx = X0 + 410, cw = (W - 430) / MINUTES;
     JOBS.forEach(([name], j) => {
       const y = top + j * RH;
@@ -44,7 +29,7 @@
         else dot(x, cx, y, hit ? 7 : 4, hit ? rgba(SIG(), 0.25) : P.steel, a);
       }
     });
-    if (b >= AT.dial && mNow < MINUTES) { const cx = gx + Math.floor(mNow) * cw; x.globalAlpha = a * 0.16; x.fillStyle = SIG(); x.fillRect(cx, top - RH / 2, cw, JOBS.length * RH); x.globalAlpha = 1; }
+    if (b >= AT.dial && mNow < MINUTES) { const cx = gx + Math.floor(mNow + 1e-9) * cw; x.globalAlpha = a * 0.16; x.fillStyle = SIG(); x.fillRect(cx, top - RH / 2, cw, JOBS.length * RH); x.globalAlpha = 1; }
     x.globalAlpha = a; x.fillStyle = P.steel; x.fillRect(X0 + 28, top + (JOBS.length - 0.3) * RH, W - 56, 2); x.globalAlpha = 1;
     text(x, tr("ch01.noGate"), X0 + 28, top + (JOBS.length + 0.75) * RH, { font: SANS(28, 500), color: P.ink2, alpha: a, maxW: W - 56 });
   }

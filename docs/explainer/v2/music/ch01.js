@@ -41,7 +41,8 @@
         }
       }
     }
-    const DRUMS = ["", "B", "A", "A", "F", "A", "", "A", "A2", "A", "F", "A", "A2", "A", "A2", "F", "T", "T", "F", "T", "A2", "B", "B", "B2", "B", "B2", "A", "F", ""];
+    // 21–23 小节（钟楼的任务表盘）不走 lo-fi 鼓和贝斯，换成 field-dial 段的轻底鼓、每拍滴答、反拍贝斯和 queue 琶音
+    const DRUMS = ["", "B", "A", "A", "F", "A", "", "A", "A2", "A", "F", "A", "A2", "A", "A2", "F", "T", "T", "F", "T", "A2", "", "", "", "B", "B2", "A", "F", ""];
     DRUMS.forEach((g, bar) => g && drums(bar, GROOVE[g]));
     drums(0, { kick: "X...............", open: "X...............", hat: "....o...o...o.o." });
     drums(6, { kick: "X.......X.x.....", stick: "........X...X...", hat: "..........o.x.o." });
@@ -79,8 +80,8 @@
       s: [[0, 1.8], [2, 1.8]],
       e: [[0, 3.4]],
     };
-    const RH = ["c", "a", "b", "c", "a", "b", "s", "a", "b", "d", "s", "a", "b", "a", "d", "s", "b", "a", "s", "a", "b", "c", "c", "a", "c", "c", "b", "s", "e"];
-    const RHV = (bar) => (bar === 3 ? 0.55 : bar >= 21 && bar <= 25 ? 0.62 : 0.75);
+    const RH = ["c", "a", "b", "c", "a", "b", "s", "a", "b", "d", "s", "a", "b", "a", "d", "s", "b", "a", "s", "a", "b", "c", "c", "c", "c", "c", "b", "s", "e"];
+    const RHV = (bar) => (bar === 3 ? 0.55 : bar >= 21 && bar <= 23 ? 0.45 : bar >= 24 && bar <= 25 ? 0.62 : 0.75);
     RH.forEach((p, bar) => COMP[p].forEach(([beat, dur], i) => rhodes(bar, beat, dur, RHV(bar) * (bar === 19 && i === 0 ? 1.2 : i ? 0.85 : 1))));
 
     // 贝斯：根音落在底鼓上，偶尔带五度、八度
@@ -92,8 +93,8 @@
       H: [[0, 3.5, 0, 0.95]],
       s: [[0, 1.2, 0, 1], [sw(1.5), 0.4, 0, 0.6], [2, 1.2, 0, 0.95], [sw(3.5), 0.4, 0, 0.6]],
     };
-    const BP = ["H", "A", "A", "B", "A", "D", "s", "A", "A", "D", "s", "A", "D", "A", "A", "s", "D", "A", "s", "D", "A", "B", "B", "B", "B", "B", "A", "s", "H"];
-    BP.forEach((p, bar) => BPAT[p].forEach(([beat, dur, iv, v]) => melody.push([bar, beat, dur, name(ROOT[chordAt(bar, beat)] + iv), "lofiBass", v, false])));
+    const BP = ["H", "A", "A", "B", "A", "D", "s", "A", "A", "D", "s", "A", "D", "A", "A", "s", "D", "A", "s", "D", "A", "", "", "", "B", "B", "A", "s", "H"];
+    BP.forEach((p, bar) => p && BPAT[p].forEach(([beat, dur, iv, v]) => melody.push([bar, beat, dur, name(ROOT[chordAt(bar, beat)] + iv), "lofiBass", v, false])));
 
     melody.push(...phrase(3, THEME, "lofiLead", 1, true));
     const lead = (v, list) => list.forEach(([bar, beat, dur, n]) => melody.push([bar, beat, dur, n, "lofiLead", v, false]));
@@ -149,7 +150,9 @@
         sec(13, 15, "field-home", "家里：屋顶掀开时一串风铃，HomePod 放出三个音；两把钥匙各落进各的槽", 0.65),
         sec(16, 17, "field-tokyo", "东京一台主机：三只容器一拍亮一只，电钢高音跟着；开镲进来", 0.75),
         sec(18, 20, "field-usage", "编码用量：三处原始数各一声，18:3 吸气、19:0 合并落灯；主奏接一句", 0.75),
-        sec(21, 23, "field-dial", "钟楼：一拍一分钟，钟摆每拍一响，律动退回半速；21:0.5 风铃（风向标）", 0.5, { clock: "X...x...x...x...", clockVol: 1.4 }),
+        sec(21, 23, "field-dial", "钟楼的任务表盘：一拍一分钟，钟摆每拍一响、到期的指针跟着弹；轻底鼓、反拍贝斯、queue 琶音，电钢只铺长和弦；21:0.5 风铃（风向标）", 0.55,
+          { kick: "X.......X.......", kickKind: "light", duck: 0.45, clock: "X...x...x...x...", clockVol: 1.3,
+            bass: "offbeat", bassVol: 1.1, arp: { p: "queue", lo: 57, inst: "pluckDark", v: 0.36 }, pad: 0.4, lp: 2000 }),
         sec(24, 27, "field-inferred", "没人上报的播放：钟摆接着每拍一响到 25:3；24:1、25:2 新歌排到最前（纸滑），25:3 减去前一首，26:0 两格求交，26:2 翻出 Likely Playing", 0.55,
           { clock: ["X...x...x...x...", "X...x...x...x...", null, null], clockVol: 1.3 }),
         sec(28, 28, "field-launch", "甩回停靠点：28:0 灯亮，Clawd 落下（28:0.32）、28:2.64 跳上火花骑出画面，28:3 起镜头往右甩、一口风跨过剪切点；停在 A7sus4，交给第 02 章 0:0 的 D 小调", 0.35, { pad: 0.5, lp: 1500, padVerb: 0.45 }),

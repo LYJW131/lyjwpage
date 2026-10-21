@@ -68,12 +68,12 @@
     tag(x, tr("ch01.pull"), tx + 70, ty + 12, la, { px: 32 });
     const ta = prog(b, AT.title, AT.title + 0.1, E.out) * a;
     if (ta > 0) {
-      // 标题块在左上角：标题右沿离钟楼尖顶的左檐（按 S0 转回 45° 后的投影）不到 24 px，就整块挪到右下角、右对齐，不缩字号。
-      const tf = SANS(96, 600), left = measure(x, tr("ch01.title"), tf) <= NS.eaveX - 24 - 110, al = left ? "left" : "right";
+      // 左上角放不下（ch01.js#titleRight）就整块挪到右下角、右对齐，不缩字号
+      const tf = SANS(96, 600), left = NS.titleR > 0, al = left ? "left" : "right";
       const [qx, qy] = left ? [110, 196] : [1750, 930];
       x.save(); x.translate(qx, qy); const sc = lerp(0.85, 1, E.outBack(prog(b, AT.title, AT.title + 0.14))); x.scale(sc, sc);
       text(x, tr("ch01.title"), 0, 0, { font: tf, color: P.ink, alpha: ta, align: al });
-      text(x, "reporters · collector Worker", left ? 4 : -4, 64, { font: MONO(30), color: P.ink2, alpha: ta, align: al });
+      text(x, NS.titleSub, left ? 4 : -4, 64, { font: MONO(30), color: P.ink2, alpha: ta, align: al });
       x.restore();
     }
   }
@@ -93,7 +93,9 @@
     if (a <= 0) return;
     const { LAP, ROOM } = L();
     const [sx, sy] = pr(LAP.x + 54, LAP.y, LAP.z + 84);
-    const cw = 420, ch = 132, cx0 = sx - cw / 2 - 40, cy0 = sy - ch - 70;
+    // 歌卡右沿离信封详图（X0）至少 24 px，引线仍从笔记本竖直上去
+    const X0 = 1060, Y0 = 150, W = 810, H = 560;
+    const cw = 420, ch = 132, cx0 = Math.min(sx - cw / 2 - 40, X0 - 24 - cw), cy0 = sy - ch - 70;
     lead(x, [[sx, sy - 6], [sx, cy0 + ch]], a);
     plate(x, cx0, cy0, cw, ch, a);
     text(x, "Apple Music", cx0 + 26, cy0 + 44, { font: MONO(28), color: P.ink2, alpha: a });
@@ -106,7 +108,6 @@
     tag(x, tr("ch01.f1"), hx - 40, hy + 120, a * prog(b, st.t0 + 0.05, st.t0 + 0.2), { px: 30 });
     // 信封详图
     const ca = a * prog(b, AT.card, AT.card + 0.1, E.out);
-    const X0 = 1060, Y0 = 150, W = 810, H = 560;
     if (ca > 0) {
       plate(x, X0, Y0, W, H, ca);
       text(x, tr("ch01.env"), X0 + 34, Y0 + 58, { font: SANS(38, 600), color: P.ink, alpha: ca });
@@ -191,8 +192,8 @@
     const st = STOP.IMG, a = live(st, b);
     if (a <= 0) return;
     const { VAULT, NAS } = L();
-    const [ix, iy] = pr(1000, 1230, 140);
-    tag(x, tr("ch01.icon"), ix - 160, iy - 30, a * win(b, AT.icon, AT.icon + 0.08, AT.hash + 0.4, AT.hash + 0.5), { px: 30, color: P.ink2 });
+    const [ix, iy] = pr(...NS.iconAt(b));
+    tag(x, tr("ch01.icon"), ix + 56, iy + 10, a * win(b, AT.icon, AT.icon + 0.08, AT.hash - 0.04, AT.hash + 0.02), { px: 30, color: P.ink2 });
     const ha = a * prog(b, AT.hash, AT.hash + 0.06);
     const [hx, hy] = pr(1120, 1150, 260);
     if (ha > 0) {
@@ -273,12 +274,14 @@
     }
     const [hx, hy] = pr(...POD3);
     tag(x, "HomePod", hx - 60, hy + 70, a, { px: 28, font: MONO, align: "right" });
-    // 钥匙从各自的设备飞进各自那一行：一行一把，和东京那几个容器同一个画法
+    // 钥匙从各自的设备飞进各自那一行第二行右端的槽。先出的 Home Assistant 在下、后出的 playstation 摞在上面（和东京那几个容器一样往上摞）：
+    // 下面那块只到第一行字那么宽，停在墙上 Home Assistant 小盒的左边；上面那块的引线从 n100 绕过小盒的右上方进牌子，两根引线不交叉
     rows.forEach((r, i) => {
       const ka = a * prog(b, r.t[0], r.t[0] + 0.08);
       if (ka <= 0) return;
-      const lx = 110, ly = 178 + i * 150, w = 920;
-      const [ax, ay] = pr(...r.from), slot = [lx + w - 76, ly - 36];
+      const lx = 110, ly = 272 - i * 132;
+      const w = Math.max(measure(x, `${r.name} → ${r.ep}`, MONO(28)), measure(x, tr(r.what), SANS(30)) + 120) + 40;
+      const [ax, ay] = pr(...r.from), slot = [lx + w - 76, ly + 8];
       lead(x, [[ax, ay], [lx + w - 40, ly - 14]], ka, tone(r.col, 0.3));
       plate(x, lx - 20, ly - 72, w, 112, ka);
       text(x, `${r.name} → ${r.ep}`, lx, ly - 28, { font: MONO(28), color: P.ink, alpha: ka });
@@ -323,16 +326,18 @@
   function codeLabels(x, e, b) {
     const st = STOP.CODE, a = live(st, b);
     if (a <= 0) return;
-    const { RAIL, HUB, CLOUD, TOKYO } = L();
-    const f0 = [pr(RAIL[0][0] + 160, RAIL[0][1] - 160, 54), pr(HUB[0] - 30, HUB[1] + 30, 60)];
-    const c0 = pr(940, 145, CLOUD.z + 10), f1 = [c0, [c0[0], c0[1] + 260], pr(HUB[0], HUB[1], 120)];
-    const f2 = [pr(2150, -330, TOKYO.z + 200), pr(HUB[0] + 30, HUB[1] - 30, 100)];
-    dash(x, f1, P.ink2, 2.6, a * 0.6, [10, 9], -b * 40);
-    dash(x, f2, P.ink2, 2.6, a * 0.6, [10, 9], -b * 40);
+    const { RAIL, HUB } = L();
+    // 三条来源线各从自己的牌子出发（Mac 牌子的右沿、Claude Code 那摞牌子的下沿、Cursor 牌子的左沿），汇到中间的塔顶；牌子的竖直中线在基线上方 9 px
+    const m0 = pr(RAIL[0][0] + 160, RAIL[0][1] - 160, 54), mx = m0[0] - 60, my = m0[1] - 54, f = SANS(30, 600);
+    const cur = 1880 - measure(x, tr("ch01.srcCursor"), f);
+    const f0 = [[mx + measure(x, tr("ch01.srcMac"), f) + 15, my - 9], pr(HUB[0] - 30, HUB[1] + 30, 60)];
+    const f1 = [[1214, 264], pr(HUB[0], HUB[1], 120)];
+    const f2 = [[cur - 15, 715], pr(HUB[0] + 30, HUB[1] - 30, 100)];
+    [f0, f1, f2].forEach((pts) => dash(x, pts, P.ink2, 2.6, a * 0.6, [10, 9], -b * 40));
     tag(x, tr("ch01.cc"), 1190, 120, a, { px: 30 });
     tag(x, "OTLP → /api/ingest/agents/otlp", 1190, 184, a, { px: 28, font: MONO, color: P.ink2 });
     tag(x, tr("ch01.extra"), 1190, 246, a, { px: 28, color: P.ink2 });
-    tag(x, tr("ch01.srcMac"), f0[0][0] - 60, f0[0][1] - 54, a, { px: 30 });
+    tag(x, tr("ch01.srcMac"), mx, my, a, { px: 30 });
     tag(x, tr("ch01.srcCursor"), 1880, 724, a, { px: 30, align: "right" });
     [f0, f1, f2].forEach((pts, i) => {
       const k = prog(b, AT.raw[i], AT.merge, E.io);
