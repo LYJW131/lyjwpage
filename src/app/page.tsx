@@ -61,6 +61,7 @@ import { data } from "react-router";
 
 import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
 import { NO_STORE } from "@/lib/site-policy";
+import { site } from "@shared/site";
 import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
 import { siteContext } from "@/server/site-context";
@@ -246,6 +247,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <Header desktop={loaderData.desktop} desktopIconDataUri={loaderData.desktopIcon} />
 
         <main className="flex-1">
+          <h1 className="sr-only">{site.name}</h1>
           <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
             <Section id="live" className="p-0 sm:p-0">
               <CardBoundary label="Update" silent paths={[APP_VERSION_PATH]}>
