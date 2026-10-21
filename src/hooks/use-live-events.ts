@@ -147,8 +147,24 @@ function subscribeConnection(listener: () => void) {
   return () => connectionListeners.delete(listener);
 }
 
-export function useLiveSocketConnected(): boolean {
-  return useSyncExternalStore(subscribeConnection, () => connected, () => false);
+function subscribeNothing() {
+  return () => {};
+}
+
+function readDisconnected(): boolean {
+  return false;
+}
+
+function readConnected(): boolean {
+  return connected;
+}
+
+export function useLiveSocketConnected(enabled = true): boolean {
+  return useSyncExternalStore(
+    enabled ? subscribeConnection : subscribeNothing,
+    enabled ? readConnected : readDisconnected,
+    readDisconnected,
+  );
 }
 
 function pageVisible(): boolean {

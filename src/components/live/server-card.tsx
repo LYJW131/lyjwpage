@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import NumberFlow, { NumberFlowGroup } from "@/components/ui/number-flow";
 
 import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";

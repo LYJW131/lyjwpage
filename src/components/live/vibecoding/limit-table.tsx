@@ -1,6 +1,6 @@
 "use client";
 
-import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import NumberFlow, { NumberFlowGroup } from "@/components/ui/number-flow";
 import { useContext, useEffect, useState, type ReactNode } from "react";
 
 import { PaceMarker, UNAVAILABLE_NOTE, UnavailableZone } from "@/components/live/vibecoding/limit-meter";

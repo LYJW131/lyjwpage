@@ -1,7 +1,7 @@
 "use client";
 
 import ClaudeCodeText from "@lobehub/icons/es/ClaudeCode/components/Text";
-import NumberFlow from "@number-flow/react";
+import NumberFlow from "@/components/ui/number-flow";
 import type { ReactNode } from "react";
 
 import { ForecastBlock, ForecastSummary, forecastStats, formatDuration } from "@/components/live/vibecoding/limit-forecast-panel";

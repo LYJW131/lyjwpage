@@ -32,7 +32,12 @@ type Clock = {
   settled: boolean;
 };
 
-function useClock(servedAt: number | undefined, first: number | null, second: number | null = null): Clock {
+function useClock(
+  servedAt: number | undefined,
+  first: number | null,
+  second: number | null = null,
+  trackSettled = true,
+): Clock {
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = clockReading(ticked, mountedAt, servedAt);
@@ -48,13 +53,13 @@ function useClock(servedAt: number | undefined, first: number | null, second: nu
       const timer = window.setTimeout(tick, 0);
       return () => window.clearTimeout(timer);
     }
-    const settle = window.setTimeout(() => setChecked(key), 0);
+    const settle = trackSettled ? window.setTimeout(() => setChecked(key), 0) : null;
     const timer = window.setTimeout(tick, advance.delayMs);
     return () => {
-      window.clearTimeout(settle);
+      if (settle !== null) window.clearTimeout(settle);
       window.clearTimeout(timer);
     };
-  }, [first, second, now, key]);
+  }, [first, second, now, key, trackSettled]);
 
   return { now, settled };
 }
@@ -65,7 +70,8 @@ function useClockStale(at: number | null | undefined, windowMs: number, servedAt
 }
 
 export function useStale(at: number | null | undefined, windowMs: number, servedAt?: number) {
-  return useClockStale(at, windowMs, servedAt).stale;
+  const { now } = useClock(servedAt, deadlineOf(at, windowMs), null, false);
+  return isStale({ now, at, windowMs });
 }
 
 export function useConfirmedStale(stale: boolean, validating: boolean, settled = true): boolean {
