@@ -1,8 +1,8 @@
 import { scriptJson } from "@/lib/inline-script";
 
 const MODULE_PRELOAD = /<link rel="modulepreload"[^>]*>/g;
-// 浏览器把大写标签名，以及带空白、属性的结束标签，也当成 script。
-const SCRIPT = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script\b[^>]*>/gi;
+// 浏览器认大写标签名；正文里的 </script 只在后跟空白、/ 或 > 时才结束脚本，结束标签的属性值里可以有 >。
+const SCRIPT = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
 const ATTRIBUTE = /([^\s=/>]+)(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 
 function lowPriority(link: string): string {
