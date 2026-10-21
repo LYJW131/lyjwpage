@@ -139,7 +139,11 @@ function NowWatchingHero({
 
       {position != null && duration ? (
         <div className="hidden shrink-0 flex-col items-end gap-1 self-end tabular-nums sm:flex">
-          <span className={cn("text-2xl font-medium leading-none sm:text-3xl", paused && "text-muted-foreground")}>
+          {/* 靠右对齐的列随位数变宽会整列左移（计入 CLS）；进度不超过总时长，按总时长的字符数预留宽度。 */}
+          <span
+            className={cn("text-right text-2xl font-medium leading-none sm:text-3xl", paused && "text-muted-foreground")}
+            style={{ minWidth: `${formatClock(duration).length}ch` }}
+          >
             {formatClock(position)}
           </span>
           <span className="label-mono text-muted-foreground">/ {formatClock(duration)}</span>
