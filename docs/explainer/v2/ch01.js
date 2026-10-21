@@ -1,97 +1,74 @@
+// 第 01 章：漂浮小岛的立体微缩。模型在 ch01-models.js 搭、ch01-world.js 用 three.js 渲染；字、牌子、火花都画在 2D 层，锚点从 3D 投影过来（ch01-labels.js、ch01-collector.js）。
 // 画面只从 AT 取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
 (() => {
-  const { css } = G;
-  const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, fillRect, envelope, spark, roundRect, sheet, pathAt, pathLen, trailOn, mulberry32, measure } = K;
+  const { E, prog, keys, clamp, lerp, trailOn } = K;
+  const N = 29;
   I18N.add({
     "ch01.title": ["野外观测站", "Field stations"],
     "ch01.n1a": ["上报器在数据源头主动推送；", "Reporters push from the source;"],
     "ch01.n1b": ["第三方接口由采集 Worker 定时拉取。", "a cron Worker polls external APIs."],
-    "ch01.reporters": ["上报器", "Reporters"],
-    "ch01.col": ["采集 Worker", "Collector Worker"],
-    "ch01.extra": ["独立入口", "own endpoint"],
+    "ch01.push": ["上报器 · 主动推送", "Reporters · push"],
+    "ch01.pull": ["采集 Worker · 定时拉取", "Collector Worker · polls"],
     "ch01.f1": ["Mac Telemetry Hub · 菜单栏 App", "Mac Telemetry Hub · menu bar app"],
     "ch01.env": ["信封", "Envelope"],
     "ch01.unsent": ["没变的模块不寄", "unchanged modules stay home"],
+    "ch01.empty": ["空信封 = 心跳", "empty envelope = heartbeat"],
     "ch01.n2a": ["Mac 只寄这一次变了的模块；", "The Mac sends only changed modules;"],
     "ch01.n2b": ["没变化时，每 90 秒寄一封空信封。", "idle: an empty envelope every 90 s."],
-    "ch01.empty": ["空信封 = 心跳", "empty envelope = heartbeat"],
-    "ch01.settle": ["切应用默认先等 400 ms 落定", "App switches settle 400 ms by default"],
-    "ch01.again": ["落定前又切：重新计时", "switched again: restart"],
-    "ch01.n2c": ["前台应用的切换先防抖：", "App switches are debounced:"],
-    "ch01.n2d": ["连切几次，只报最后停住的那个。", "a burst reports only the final app."],
-    "ch01.f1a": ["窗口标题 → Jev", "Window title → Jev"],
     "ch01.wt": ["窗口标题（不上画面）", "window title (not shown)"],
-    "ch01.judge": ["隐私判断", "privacy check"],
+    "ch01.lists": ["应用名单", "App lists"],
+    "ch01.never": ["从不读", "never read"],
+    "ch01.trusted": ["不用问", "no need to ask"],
     "ch01.illus": ["概率条为示意", "bars are illustrative"],
     "ch01.pass": ["放行 → 进信封", "cleared → envelope"],
-    "ch01.owner": ["拿不准 → 交给 lyjw", "unsure → lyjw"],
-    "ch01.n3a": ["窗口标题先经 Jev 做隐私判断；", "Jev screens window titles first;"],
-    "ch01.n3b": ["拿不准的交给 lyjw，放行的才进信封。", "unsure ones go to lyjw."],
-    "ch01.f1b": ["应用图标 → R2", "App icon → R2"],
+    "ch01.lock": ["私密 → 锁定", "private → locked"],
+    "ch01.owner": ["拿不准 → 问 lyjw", "unsure → ask lyjw"],
+    "ch01.n3a": ["窗口标题先过名单，再由 Jev 判断；", "Titles clear app lists, then Jev;"],
+    "ch01.n3b": ["私密的锁住，拿不准的问 lyjw。", "private ones lock; unsure ask lyjw."],
     "ch01.byContent": ["sha256(内容)", "sha256(content)"],
     "ch01.sameKey": ["同一内容，同一个键", "same bytes, same key"],
+    "ch01.onlyKey": ["信封里只有对象键", "the envelope holds just the key"],
+    "ch01.icon": ["Mac 的应用图标", "the Mac's app icon"],
+    "ch01.nas": ["emby-reporter · NAS 上的容器", "emby-reporter · a container on the NAS"],
+    "ch01.poster": ["海报先传 R2", "poster to R2 first"],
+    "ch01.watching": ["再报在看什么", "then what's on"],
     "ch01.n4a": ["图片按内容哈希命名，直传 R2；", "Images go to R2, named by hash;"],
     "ch01.n4b": ["信封里只带对象键。", "the envelope carries only the key."],
     "ch01.f2": ["lyjwpage iOS App · HealthKit 唤醒", "lyjwpage iOS app · woken by HealthKit"],
-    "ch01.rings": ["活动圆环", "Activity rings"],
-    "ch01.workouts": ["训练", "Workouts"],
+    "ch01.rings": ["活动圆环 · 按小时", "Activity rings · hourly"],
+    "ch01.workouts": ["训练 · 一有新记录", "Workouts · at once"],
     "ch01.steps": ["五分钟步数桶", "5-min step buckets"],
     "ch01.n5a": ["iPhone 由 HealthKit 后台唤醒：", "HealthKit wakes the iPhone app:"],
     "ch01.n5b": ["圆环按小时报，训练一有新记录就报。", "rings hourly, workouts at once."],
-    "ch01.f3": ["家里", "At home"],
-    "ch01.f3sub": ["HomePod 经 Home Assistant，PlayStation 由容器上报", "HomePod via Home Assistant; PlayStation via a container"],
-    "ch01.playing": ["在放什么", "what's playing"],
-    "ch01.haKey": ["Home Assistant 的钥匙", "Home Assistant's key"],
-    "ch01.psKey": ["容器自己的钥匙", "the container's own key"],
+    "ch01.hpWhat": ["HomePod 正在放什么", "what the HomePod is playing"],
+    "ch01.psWhat": ["presence、游玩列表、奖杯", "presence, games played, trophies"],
     "ch01.psnLogin": ["PSN 登录态留在本机，只拿来问 Sony", "PSN login stays local, used only with Sony"],
-    "ch01.probe1": ["探测主机醒没醒，", "probe: awake or not?"],
-    "ch01.probe2": ["只定自己的节奏，不上报", "sets pace; never sent"],
-    "ch01.tierRest": ["没醒 · 闲档", "asleep · idle"],
-    "ch01.tierAwake": ["醒着 · 快档", "awake · fast"],
     "ch01.n6a": ["HomePod 由 Home Assistant 代报，", "Home Assistant relays the HomePod;"],
-    "ch01.n6b": ["它那把钥匙只开 /homepod。", "its key opens /homepod only."],
-    "ch01.n7a": ["PlayStation 由 n100 上的容器负责：", "An n100 container covers the PS5:"],
-    "ch01.n7b": ["探测醒没醒，醒了就问 Sony 再上报。", "it probes, asks Sony, then reports."],
-    "ch01.f4sub": ["emby-reporter · NAS 上的容器", "emby-reporter · a container on the NAS"],
-    "ch01.poster": ["① 海报先传 R2", "① poster to R2 first"],
-    "ch01.watching": ["② 再报在看什么", "② then what's on"],
-    "ch01.n8a": ["海报先传 R2，再寄在看的信封；", "Posters reach R2 before the report;"],
-    "ch01.n8b": ["入口核对 R2，缺哪张写进回执。", "the receipt lists any still missing."],
-    "ch01.f5": ["东京的机柜", "The Tokyo rack"],
+    "ch01.n6b": ["PlayStation 由 n100 上的容器代报。", "an n100 container relays PSN."],
+    "ch01.tokyo": ["东京 · 一台主机", "Tokyo · one host"],
     "ch01.srv": ["服务器状态 · 固定每 60 秒", "server status · every 60 s, fixed"],
-    "ch01.lim": ["各家编码工具的限额", "each coding tool's limits"],
-    "ch01.cur": ["Cursor 账号的用量", "Cursor account usage"],
+    "ch01.agents": ["编码工具的限额 · Cursor 账号的用量", "coding-tool limits · Cursor usage"],
     "ch01.quest": ["Quest 在玩什么 · 读 Discord 在线状态", "Quest games · from Discord presence"],
-    "ch01.n9a": ["同一台主机上的几个容器，", "Containers on the same host"],
-    "ch01.n9b": ["各用各的钥匙，各报各的来源。", "each hold their own key and source."],
-    "ch01.f6": ["云端的一小段遥测", "A stretch of cloud telemetry"],
-    "ch01.cc": ["Claude Code 云端", "Claude Code in the cloud"],
-    "ch01.self": ["Claude Code 自己发，不是我们写的上报器", "sent by Claude Code, not by a reporter of ours"],
-    "ch01.n10a": ["云端的 Claude Code 自己发 OTLP，", "Cloud Claude Code emits OTLP itself;"],
-    "ch01.n10b": ["只收累计值，差值在状态核心里算。", "cumulative only; the core diffs it."],
-    "ch01.cu": ["编码用量", "Coding usage"],
+    "ch01.n7a": ["同一台主机上的几个容器，", "Containers on the same host"],
+    "ch01.n7b": ["各用各的钥匙，各报各的来源。", "each hold their own key and source."],
+    "ch01.cc": ["Claude Code 云端 · 自己发 OTLP", "Claude Code in the cloud · emits OTLP"],
+    "ch01.extra": ["独立入口，不是我们写的上报器", "own endpoint, not a reporter of ours"],
     "ch01.srcMac": ["Mac 本机", "the Mac itself"],
-    "ch01.srcCursor": ["容器里的 Cursor", "Cursor, via the container"],
+    "ch01.srcCursor": ["Cursor 账号 · 容器代报", "Cursor account · via a container"],
     "ch01.merge": ["站点这边合并", "merged site-side"],
+    "ch01.cu": ["编码用量", "Coding usage"],
     "ch01.sum": ["三处相加", "all three summed"],
     "ch01.tokRate": ["token 处理量 · 5 分钟平均", "tokens processed · 5-min avg"],
-    "ch01.pulse.coding": ["Coding", "Coding"],
-    "ch01.pulse.tokens": ["Tokens", "Tokens"],
-    "ch01.pulse.listening": ["Listening", "Listening"],
-    "ch01.pulse.watching": ["Watching", "Watching"],
-    "ch01.pulse.window": ["Last 24 hours", "Last 24 hours"],
-    "ch01.n11a": ["编码用量：三处各报原始数，", "Coding usage: three raw feeds;"],
-    "ch01.n11b": ["合计与去重都在站点这边算。", "totals and dedup happen site-side."],
-    "ch01.f7": ["采集 Worker", "The collector Worker"],
-    "ch01.f7sub": ["cron 每分钟触发", "cron trigger, every minute"],
+    "ch01.n8a": ["编码用量：三处各报原始数，", "Coding usage: three raw feeds;"],
+    "ch01.n8b": ["合计与去重都在站点这边算。", "totals and dedup happen site-side."],
+    "ch01.f7": ["采集 Worker · cron 每分钟触发", "Collector Worker · cron every minute"],
     "ch01.noGate": ["不走上报入口：直接交给状态核心，或写 LAG", "Skips ingress: calls the state core, or writes LAG"],
-    "ch01.chart": ["各任务的节奏", "Each job's cadence"],
-    "ch01.perMin": ["一格一分钟", "one cell = one minute"],
-    "ch01.n12a": ["cron 每分钟触发一次采集 Worker，", "A cron trigger fires every minute;"],
-    "ch01.n12b": ["每个任务按自己的节奏去取。", "each job keeps its own pace."],
-    "ch01.f7a": ["没人上报的播放", "Playback no one reports"],
-    "ch01.f7asub": ["别的设备上的 Apple Music：从最近播放推断", "Apple Music on other devices, inferred from recents"],
+    "ch01.chart": ["各任务的节奏 · 一格一分钟", "Each job's cadence · 1 cell = 1 min"],
+    "ch01.n9a": ["cron 每分钟触发一次采集 Worker，", "A cron trigger fires every minute;"],
+    "ch01.n9b": ["每个任务按自己的节奏去取。", "each job keeps its own pace."],
+    "ch01.elsewhere1": ["别的设备上的 Apple Music", "Apple Music on another device"],
     "ch01.noRep": ["放的歌没人上报", "playback isn't reported"],
+    "ch01.col": ["采集 Worker", "Collector Worker"],
     "ch01.apple": ["Apple · 最近播放的歌", "Apple · recently played"],
     "ch01.active": ["列表一变：每 15 秒拉", "list changed: poll every 15 s"],
     "ch01.newTop": ["↑ 开播几秒就排到最前", "↑ tops the list seconds after it starts"],
@@ -101,1259 +78,413 @@
     "ch01.cross": ["两格求交：开播 ± 误差", "overlap: start ± margin"],
     "ch01.chain": ["按时长接成一串", "chained by length"],
     "ch01.page": ["页面上", "On the page"],
-    "ch01.likely": ["LIKELY PLAYING", "LIKELY PLAYING"],
-    "ch01.elsewhere": ["Played elsewhere, estimated", "Played elsewhere, estimated"],
-    "ch01.n13a": ["别的设备放 Apple Music，没人上报；", "No one reports songs elsewhere;"],
-    "ch01.n13b": ["采集 Worker 去拉 Apple 最近播放。", "the collector polls Apple's recents."],
-    "ch01.n14a": ["新歌开播几秒，就排到列表最前；", "A song tops the list seconds in;"],
-    "ch01.n14b": ["按时长接成一串，推出起止和误差。", "lengths chain them: start ± margin."],
+    "ch01.n10a": ["别的设备放 Apple Music，没人上报；", "No one reports songs elsewhere;"],
+    "ch01.n10b": ["采集 Worker 去拉 Apple 最近播放。", "the collector polls Apple's recents."],
+    "ch01.n11a": ["新歌开播几秒，就排到列表最前；", "A song tops the list seconds in;"],
+    "ch01.n11b": ["按时长接成一串，推出起止和误差。", "lengths chain them: start ± margin."],
     "ch01.clawd": ["我跟着这一封走。", "I'll ride along with this one."],
   });
   const tr = (k) => I18N.tr(k);
+  const NS = (window.CH01 = window.CH01 || {});
   const TAU = Math.PI * 2;
-  let plate, ink, emit, paper, top;
   let BARs = (60 / 108) * 4;
   const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
   const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
 
-  const AT = {
-    type: 2.1, flip: 3.0, lit: 3.5, post: 3.75, park: 4.0, breath: 4.5,
-    sw1: 5.0, sw2: 5.25, settle: 5.75,
-    jev: 7.25, judged: 8.0, cleared: 8.25, owner: 8.5,
-    pixels: 9.0, hash: 9.25, drop: 9.5, shut: 9.75, objKey: 9.5,
-    wake: 11.25, outs: [11.5, 11.75, 12.0],
-    homepod: 13.5, haDoor: 14.0, probeLine: 14.5, power: 15.0, probe: 15.25, awake: 15.4, psn: [15.5, 15.75], psDoor: 16.0,
-    poster: 17.5, emby: 18.0,
-    server: 19.25, agents: 19.75, quest: 20.25,
-    otlp: [22.5, 22.75],
-    raw: [24.5, 24.625, 24.75], merge: 25.0, tokens: 25.1,
-    dial: 27.0, back: 34.0, launch: 34.25,
+  const LAT = '"Fredoka ch01"', ZH = '"ZCOOL KuaiLe ch01"', JP = '"Zen Maru Gothic ch01"';
+  const SANS = (px, w = 600) => `${w} ${px.toFixed(2)}px ${LAT}, ${ZH}, ${JP}, sans-serif`;
+  const SONG = (px, w = 700) => `${w} ${px.toFixed(2)}px ${LAT}, ${JP}, sans-serif`;
+  const MONO = (px, w = 500) => `${w} ${px.toFixed(2)}px "Geist Mono", ui-monospace, monospace`;
+
+  const P = {
+    sky0: "#C6CFF2", sky1: "#F0D3E3", sky2: "#FCE7D6",
+    grass: "#CDEAD3", grid: "#B9DEC4", lip: "#A6D6B5", sand: "#F2D3B3", rock: "#C8B8E6",
+    cream: "#FFF5E8", butter: "#F9E0A2", coral: "#F3A595", sky: "#BAD6F2", lilac: "#D6C6F2", mint: "#A6DAC3", rose: "#F6C3D3",
+    wood: "#EFD7B4", steel: "#CBCFE2", pink: "#F7B9CF",
+    ink: "#44315A", ink2: "#7D6A92", plate: "#FFF9F2", shade: "#674C89", screen: "#4A3C64", screenL: "#6E5D8C", envTop: "#FCE3D3",
   };
-
-  const FX = { S0: 960, M1: 2880, M2: 4800, F2: 6720, F3: 8640, F4: 10560, F5: 12480, F6: 14400, CU: 16320, F7: 18240, F7A: 20160 };
-  const STOPS = [["S0", 0, 1.75], ["M1", 2, 6.75], ["M2", 7, 10.75], ["F2", 11, 12.75], ["F3", 13, 16.75], ["F4", 17, 18.75],
-    ["F5", 19, 21.75], ["F6", 22, 23.75], ["CU", 24, 26.75], ["F7", 27, 29.7], ["F7A", 30, 33.7], ["M1", 34, 35]];
-  const CAM = [[0, [FX.S0 - 24, 548, 1.03, 0]]];
-  STOPS.forEach(([k, t0, t1], i) => {
-    if (i > 0) CAM.push([t0, [FX[k], 540, 1, 0], E.io]);
-    CAM.push([t1, [FX[k] + 14, 540, 1.014, 0], i === 0 ? E.out : E.lin]);
-  });
-  const PLATE_RECT = [-200, -80, 21320, 1160];
-  const DATUM = 872;
-
-  function glow(e, cx, cy, r, a) {
-    if (a <= 0) return;
-    const g = e.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, `rgba(255,205,160,${a})`); g.addColorStop(0.3, `rgba(235,135,90,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
-    e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill(); e.restore();
-  }
-  function nar(x, key, px, py, r, a = 1) {
-    if (a <= 0) return;
-    K.narration(x, tr(key), px, py, { px: 60, maxW: 1040, color: css("bone"), reveal: r, alpha: a });
-  }
-  function narPair(x, keyA, keyB, px, r1, r2, io, b) {
-    const a = win(b, io[0], io[1], io[2], io[3]);
-    nar(x, keyA, px, 944, prog(b, r1[0], r1[1]), a);
-    nar(x, keyB, px, 1024, prog(b, r2[0], r2[1]), a);
-  }
-  function dashPath(x, pts, k, w, color, alpha = 1, dash = [8, 7]) {
-    if (k <= 0 || alpha <= 0) return null;
-    x.save(); x.setLineDash(dash); const head = polyline(x, pts, k, w, color, alpha); x.restore();
-    return head;
-  }
-  function arrowHead(x, tx, ty, ang, color, alpha = 1, s = 14) {
-    if (alpha <= 0) return;
-    x.save(); x.globalAlpha = alpha; x.fillStyle = color; x.beginPath();
-    x.moveTo(tx + Math.cos(ang) * 4, ty + Math.sin(ang) * 4);
-    x.lineTo(tx + Math.cos(ang + 2.6) * s, ty + Math.sin(ang + 2.6) * s);
-    x.lineTo(tx + Math.cos(ang - 2.6) * s, ty + Math.sin(ang - 2.6) * s);
-    x.fill(); x.restore();
-  }
-  function arrowPath(x, pts, k, color, alpha = 1, w = 2, dashed = false) {
-    if (k <= 0 || alpha <= 0) return;
-    const head = dashed ? dashPath(x, pts, k, w, color, alpha) : polyline(x, pts, k, w, color, alpha);
-    if (!head) return;
-    const prev = pathAt(pts, Math.max(0, k * pathLen(pts) - 10));
-    arrowHead(x, head[0], head[1], Math.atan2(head[1] - prev[1], head[0] - prev[0]), color, alpha);
-  }
-  function hatch(x, rx, ry, rw, rh, a, gap = 11) {
-    if (a <= 0) return;
-    x.save(); x.beginPath(); x.rect(rx, ry, rw, rh); x.clip();
-    x.globalAlpha = a; x.strokeStyle = css("bone"); x.lineWidth = 1.1; x.beginPath();
-    for (let s = rx - rh; s < rx + rw; s += gap) { x.moveTo(s, ry + rh); x.lineTo(s + rh, ry); }
-    x.stroke(); x.restore();
-  }
-  function box(x, rx, ry, w, h, a, o = {}) {
-    if (a <= 0) return;
-    x.save(); x.globalAlpha = a;
-    if (o.fill !== false) { x.fillStyle = css(o.fill || "ink2"); o.r ? (roundRect(x, rx, ry, w, h, o.r), x.fill()) : x.fillRect(rx, ry, w, h); }
-    x.strokeStyle = o.color || css("bone"); x.lineWidth = o.lw ?? 2.2;
-    if (o.dash) x.setLineDash(o.dash);
-    if (o.r) { roundRect(x, rx, ry, w, h, o.r); x.stroke(); } else x.strokeRect(rx, ry, w, h);
-    x.restore();
-  }
-  function container(x, rx, ry, w, h, a, hot = 0) {
-    if (a <= 0) return;
-    box(x, rx, ry, w, h, a, { color: hot > 0.5 ? css("signalD") : css("bone"), lw: 2 });
-    x.save(); x.globalAlpha = a * 0.45; x.strokeStyle = css("bone"); x.lineWidth = 1; x.beginPath();
-    for (let u = rx + 12; u < rx + w - 6; u += 12) { x.moveTo(u, ry + 7); x.lineTo(u, ry + h - 7); }
-    x.stroke(); x.restore();
-    if (hot > 0) fillRect(x, rx, ry, w, h, css("signalD"), 0.2 * hot * a);
-  }
-  function cabinet(x, rx, ry, w, h, cols, rows, a, open = null) {
-    if (a <= 0) return;
-    box(x, rx, ry, w, h, a, { lw: 2.6 });
-    const cw = (w - 20) / cols, ch = (h - 20) / rows;
-    for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) {
-      if (open && open.k > 0 && open.c === c && open.r === r) continue;
-      const px = rx + 10 + c * cw, py = ry + 10 + r * ch;
-      box(x, px + 4, py + 4, cw - 8, ch - 8, a, { lw: 1.4 });
-      line(x, px + cw / 2 - 12, py + ch / 2, px + cw / 2 + 12, py + ch / 2, 3, css("bone"), a * 0.8);
+  const parse = (c) => (c[0] === "#" ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : c.match(/[\d.]+/g).slice(0, 3).map(Number));
+  const TONES = new Map();
+  function tone(c, k) {
+    const key = c + "|" + k.toFixed(3);
+    let v = TONES.get(key);
+    if (!v) {
+      const a = parse(c), s = parse(P.shade);
+      v = `rgb(${a.map((u, i) => Math.round(u + (s[i] - u) * k)).join(",")})`;
+      TONES.set(key, v);
     }
-    if (!open || open.k <= 0) return;
-    // 拉开的抽屉画在最上层：朝镜头放大、略往下错，两角连回格口。只往下平移会被下一格盖住，像错了半格。
-    const k = open.k, px = rx + 10 + open.c * cw, py = ry + 10 + open.r * ch, col = open.hot ? css("signalD") : css("bone");
-    fillRect(x, px + 4, py + 4, cw - 8, ch - 8, css("ink"), a);
-    const fw = (cw - 8) * (1 + 0.14 * k), fh = (ch - 8) * (1 + 0.14 * k), fx = px + cw / 2 - fw / 2, fy = py + ch / 2 - fh / 2 + 10 * k;
-    line(x, px + 4, py + 4, fx, fy, 1.4, col, a); line(x, px + cw - 4, py + 4, fx + fw, fy, 1.4, col, a);
-    box(x, fx, fy, fw, fh, a, { lw: 1.4, color: col });
-    line(x, fx + fw / 2 - 12, fy + fh / 2, fx + fw / 2 + 12, fy + fh / 2, 3, css("bone"), a * 0.8);
+    return v;
   }
-  function keycard(x, cx, cy, a, hot = false) {
-    if (a <= 0) return;
-    const w = 150, h = 62, col = hot ? css("signalD") : css("bone");
-    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.strokeStyle = col; x.lineWidth = 2.4;
-    roundRect(x, cx - w / 2, cy - h / 2, w, h, 9); x.fill(); x.stroke();
-    x.lineWidth = 1.4; x.strokeRect(cx - w / 2 + 14, cy - 11, 26, 20); x.beginPath(); x.moveTo(cx - w / 2 + 14, cy - 1); x.lineTo(cx - w / 2 + 40, cy - 1); x.stroke();
-    for (let j = 0; j < 3; j++) { x.beginPath(); x.moveTo(cx - 14, cy - 12 + j * 12); x.lineTo(cx + 52 - j * 16, cy - 12 + j * 12); x.stroke(); }
-    x.restore();
-  }
-  function figHead(x, x0, num, name, sub, a, o = {}) {
-    if (a <= 0) return;
-    const head = num ? `FIG. ${num}` : "";
-    const w = head ? measure(x, head, FONT.mono(34, 600)) + 26 : 0;
-    if (head) text(x, head, x0, 118, { font: FONT.mono(34, 600), color: css("bone"), alpha: a });
-    text(x, name, x0 + w, 118, { font: o.mono ? FONT.mono(34, 500) : FONT.cjk(34, 600), color: css("bone"), alpha: a });
-    if (sub) text(x, sub, x0, 162, { font: o.subMono ? FONT.mono(28, 500) : FONT.cjk(28, 600), color: css("ash"), alpha: a, maxW: o.subW });
-    line(x, x0, 186, x0 + (o.rule ?? 640), 186, 1.2, css("bone"), 0.35 * a);
-  }
-  const hex64 = (seed) => { const r = mulberry32(seed); let s = ""; for (let i = 0; i < 64; i++) s += "0123456789abcdef"[Math.floor(r() * 16)]; return s; };
-  const ICON_KEY = hex64(101);
-  const KEY_SHORT = `${ICON_KEY.slice(0, 8)}…${ICON_KEY.slice(-4)}.png`;
+  const rgba = (c, a) => { const [r, g, bb] = parse(c); return `rgba(${r},${g},${bb},${a})`; };
+  const hex = (c) => "#" + parse(c).map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
 
-  function datum(x, cam) {
-    const half = 960 / cam.zoom + 60, x0 = Math.max(-120, cam.x - half), x1 = Math.min(21240, cam.x + half);
-    if (x1 <= x0) return;
-    const bone = css("bone");
-    line(x, x0, DATUM, x1, DATUM, 1.3, bone, 0.32);
-    x.save(); x.strokeStyle = bone; x.lineWidth = 1; x.globalAlpha = 0.22; x.beginPath();
-    for (let u = Math.ceil(x0 / 40) * 40; u <= x1; u += 40) { const big = u % 200 === 0; x.moveTo(u, DATUM); x.lineTo(u, DATUM + (big ? 12 : 6)); }
-    x.stroke(); x.restore();
-  }
-
-  const MAP = { x0: 980, dx: 126, y: 560, s: 1.45 };
-  function pict(x, i, cx, cy, a) {
-    x.save(); x.globalAlpha = a; x.translate(cx, cy); x.scale(MAP.s, MAP.s);
-    x.strokeStyle = css("bone"); x.fillStyle = css("ink2"); x.lineWidth = 2 / MAP.s * 1.2;
-    const R = (rx, ry, w, h, r = 0) => { r ? roundRect(x, rx, ry, w, h, r) : (x.beginPath(), x.rect(rx, ry, w, h)); x.fill(); x.stroke(); };
-    const L = (pts) => { x.beginPath(); pts.forEach(([u, v], j) => (j ? x.lineTo(u, v) : x.moveTo(u, v))); x.stroke(); };
-    if (i === 0) { R(-26, -24, 52, 34); L([[-34, 14], [34, 14]]); }
-    else if (i === 1) R(-14, -27, 28, 54, 7);
-    else if (i === 2) { R(-36, -16, 34, 32, 6); x.beginPath(); x.arc(-19, 0, 5, 0, TAU); x.stroke(); R(6, -12, 30, 24); for (let j = 0; j < 3; j++) L([[13 + j * 8, -5], [13 + j * 8, 5]]); }
-    else if (i === 3) { R(-22, -27, 44, 54); for (let j = 0; j < 3; j++) L([[-12 + j * 12, -18], [-12 + j * 12, 12]]); }
-    else if (i === 4) { R(-37, -12, 22, 24); R(-11, -12, 22, 24); R(15, -12, 22, 24); }
-    else if (i === 5) { x.setLineDash([5, 4]); x.beginPath(); x.rect(-26, -20, 52, 40); x.stroke(); x.setLineDash([]); L([[-14, 0], [-6, -8], [2, 6], [10, -4]]); }
-    else { x.beginPath(); x.arc(0, 0, 26, 0, TAU); x.fill(); x.stroke(); L([[0, -18], [0, 0], [13, 7]]); }
-    x.restore();
-  }
-  function stationS0(x, b) {
-    const bone = css("bone"), ash = css("ash");
-    text(x, "01", 110, 196, { font: FONT.pixel(112), color: css("signalD") });
-    text(x, tr("ch01.title"), 290, 176, { font: FONT.cjk(58, 600), color: bone, reveal: prog(b, 0.02, 0.6) });
-    text(x, "reporters · collector Worker", 292, 226, { font: FONT.mono(28), color: ash, reveal: prog(b, 0.15, 0.75) });
-    line(x, 110, 262, 110 + 990 * prog(b, 0, 0.8, E.outExpo), 262, 1.4, bone, 0.6);
-    const xs = (i) => MAP.x0 + i * MAP.dx, y = MAP.y;
-    const lk = prog(b, 0.25, 0.9, E.io);
-    line(x, xs(0) - 60, y, lerp(xs(0) - 60, xs(6) + 60, lk), y, 1.2, bone, 0.35);
-    for (let i = 0; i < 7; i++) {
-      const a = prog(b, 0.3 + i * 0.07, 0.45 + i * 0.07);
-      if (a <= 0) continue;
-      pict(x, i, xs(i), y, a);
-      text(x, String(i + 1), xs(i), y + 88, { font: FONT.mono(30, 500), color: ash, align: "center", alpha: a });
-    }
-    const brA = prog(b, 0.75, 0.95);
-    if (brA > 0) {
-      const bx0 = xs(0) - 52, bx1 = xs(4) + 60, by = y - 78;
-      polyline(x, [[bx0, by + 14], [bx0, by], [bx1, by], [bx1, by + 14]], 1, 1.4, bone, 0.7 * brA);
-      text(x, tr("ch01.reporters"), (bx0 + bx1) / 2, by - 20, { font: FONT.cjk(32, 600), color: bone, align: "center", alpha: brA });
-      text(x, tr("ch01.col"), xs(6), by - 20, { font: FONT.cjk(32, 600), color: bone, align: "center", alpha: brA });
-      text(x, tr("ch01.extra"), xs(5), y + 134, { font: FONT.cjk(28, 600), color: ash, align: "center", alpha: brA });
-    }
-    narPair(x, "ch01.n1a", "ch01.n1b", 110, [0.3, 0.8], [0.8, 1.3], [0.25, 0.35, 1.72, 1.82], b);
-  }
-
-  const LAP = { x: 2050, y: 212, w: 760, h: 430 };
-  const MENU_H = 44;
-  const WIN = { x: 2135, y: 320, w: 600, h: 236 };
-  const HUB = [LAP.x + LAP.w - 42, LAP.y + 16 + MENU_H / 2];
-  const PARK = [2890, 540];
-  const CARD = { x: 2946, y: 128, w: 836, h: 700 };
-  const OLD = "夜に駆ける", NEW = "アイドル", ARTIST = "YOASOBI";
-  const CELLS = ["desktop", "appleMusic", "chargingDevices", "…"];
-  const APPS = ["Ghostty", "Xcode", "Figma"];
-
-  function cover(x, px, py, s, a) {
-    x.save(); x.globalAlpha = a;
-    x.fillStyle = css("ink"); x.fillRect(px, py, s, s);
-    x.strokeStyle = css("bone"); x.lineWidth = 1.6; x.strokeRect(px, py, s, s);
-    for (let j = 1; j <= 4; j++) { x.globalAlpha = a * (0.55 - j * 0.1); x.beginPath(); x.arc(px + s * 0.5, py + s * 0.52, s * 0.11 * j, 0, TAU); x.stroke(); }
-    x.restore();
-  }
-  const squash = (k) => (k > 0 && k < 1 ? Math.max(0.02, Math.abs(Math.cos(k * Math.PI))) : 1);
-  function withSquash(x, cy, s, draw) { x.save(); x.translate(0, cy); x.scale(1, s); x.translate(0, -cy); draw(); x.restore(); }
-
-  function laptop(x, e, b, k) {
-    const bone = css("bone"), ash = css("ash");
-    const { x: lx, y: ly, w, h } = LAP;
-    polyline(x, [[lx, ly + h], [lx, ly], [lx + w, ly], [lx + w, ly + h]], k, 2.6, bone);
-    polyline(x, [[lx - 52, ly + h], [lx + w + 52, ly + h], [lx + w + 52, ly + h + 26], [lx - 52, ly + h + 26], [lx - 52, ly + h]], k, 2.2, bone);
-    const ik = prog(k, 0.45, 1);
-    if (ik <= 0) return;
-    x.save(); x.globalAlpha = ik; x.fillStyle = css("ink2"); x.fillRect(lx + 16, ly + 16, w - 32, h - 32); x.restore();
-    K.rect(x, lx + 16, ly + 16, w - 32, h - 32, 1.4, bone, ik);
-    hatch(x, lx - 50, ly + h + 2, w + 100, 22, 0.5 * ik, 10);
-    fillRect(x, lx + w / 2 - 60, ly + h, 120, 8, css("ink"), ik); K.rect(x, lx + w / 2 - 60, ly + h, 120, 8, 1.2, bone, ik);
-    line(x, lx + 16, ly + 16 + MENU_H, lx + w - 16, ly + 16 + MENU_H, 1.2, bone, 0.6 * ik);
-    const second = b >= AT.sw2 - 0.05;
-    const swK = second ? prog(b, AT.sw2 - 0.05, AT.sw2 + 0.05) : prog(b, AT.sw1 - 0.05, AT.sw1 + 0.05);
-    const shownApp = APPS[(second ? 1 : 0) + (swK >= 0.5 ? 1 : 0)];
-    withSquash(x, ly + 16 + MENU_H / 2, squash(swK), () => {
-      text(x, shownApp, lx + 40, ly + 16 + MENU_H / 2 + 10, { font: FONT.mono(28, 600), color: bone, alpha: ik });
-    });
-    const blink = Math.max(impact(b, AT.flip, 0.12), impact(b, AT.post, 0.12), impact(b, AT.breath, 0.12), impact(b, AT.settle, 0.12), impact(b, AT.back, 0.12));
-    const hc = blink > 0.3 ? css("signalD") : bone;
-    x.save(); x.globalAlpha = ik; x.strokeStyle = hc; x.lineWidth = 2; x.beginPath(); x.arc(HUB[0], HUB[1], 11, 0, TAU); x.stroke();
-    x.fillStyle = hc; x.beginPath(); x.arc(HUB[0], HUB[1], 3.5, 0, TAU); x.fill();
-    for (const s of [-1, 1]) { x.beginPath(); x.arc(HUB[0], HUB[1], 17, s > 0 ? -0.7 : Math.PI - 0.7, s > 0 ? 0.7 : Math.PI + 0.7); x.stroke(); }
-    x.restore();
-    if (blink > 0.02) glow(e, HUB[0], HUB[1], 60, 0.7 * blink * ik);
-    const wk = prog(k, 0.6, 1);
-    box(x, WIN.x, WIN.y, WIN.w, WIN.h, wk, { fill: "ink", lw: 1.8 });
-    line(x, WIN.x, WIN.y + 30, WIN.x + WIN.w, WIN.y + 30, 1.2, bone, 0.5 * wk);
-    const fk = prog(b, AT.flip - 0.08, AT.flip + 0.08);
-    const title = fk < 0.5 ? OLD : NEW;
-    withSquash(x, WIN.y + 133, squash(fk), () => {
-      cover(x, WIN.x + 24, WIN.y + 54, 158, wk);
-      text(x, title, WIN.x + 214, WIN.y + 118, { font: FONT.cjk(46, 600), color: fk >= 0.5 ? css("signalD") : bone, alpha: wk });
-      text(x, ARTIST, WIN.x + 214, WIN.y + 164, { font: FONT.sans(30, 500), color: ash, alpha: wk });
-    });
-    const px0 = WIN.x + 214, px1 = WIN.x + WIN.w - 30, py = WIN.y + 202;
-    line(x, px0, py, px1, py, 5, bone, 0.22 * wk);
-    const pos = b < AT.flip ? 0.86 : clamp(0.02 + (b - AT.flip) * 0.012);
-    line(x, px0, py, lerp(px0, px1, pos), py, 5, css("signalD"), wk);
-    if (fk > 0.3 && fk < 0.9) glow(e, WIN.x + 380, WIN.y + 110, 150, 0.5 * (1 - Math.abs(fk - 0.6) * 3));
-  }
-
-  function envCard(d, b, a) {
-    if (a <= 0) return;
-    const { x: px, y: py, w, h } = CARD;
-    sheet(d, px, py, w, h, { alpha: a });
-    text(d, tr("ch01.env"), px + 36, py + 64, { font: FONT.cjk(40, 600), alpha: a });
-    text(d, "POST /api/ingest/mac", px + w - 36, py + 62, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: a });
-    line(d, px + 30, py + 90, px + w - 30, py + 90, 1.4, css("pink"), a);
-    const L = [
-      [0, "{"], [1, '"version": 4,'], [1, '"presence": "online",'], [1, '"heartbeatAt": 1790640000000,'],
-      [1, '"activeModules": [ … ],'], [1, '"modules": {'], null, [1, "}"], [0, "}"],
-    ];
-    const t0 = AT.type, step = 0.07;
-    L.forEach((row, i) => {
-      const y = py + 150 + i * 56;
-      const r = prog(b, t0 + i * step, t0 + (i + 1) * step);
-      if (!row) return;
-      text(d, row[1], px + 44 + row[0] * 36, y, { font: FONT.mono(30, 500), color: css("pink"), alpha: a, reveal: r, perChar: r < 1 });
-    });
-    const cy = py + 150 + 6 * 56 - 10, ca = prog(b, t0 + 6 * step, t0 + 7 * step);
-    if (ca > 0) {
-      let cx = px + 80;
-      CELLS.forEach((name, j) => {
-        const cw = measure(d, name, FONT.mono(28, 500)) + 28, hot = name === "appleMusic";
-        const litK = hot ? prog(b, AT.lit, AT.lit + 0.06) : 0;
-        d.save(); d.globalAlpha = a * ca; d.lineWidth = 2;
-        d.strokeStyle = litK > 0.5 ? css("signal") : css("graphite");
-        if (!hot || litK < 0.5) d.setLineDash([6, 5]);
-        roundRect(d, cx, cy - 26, cw, 46, 8);
-        if (litK > 0) { d.save(); d.globalAlpha = a * ca * 0.16 * litK; d.fillStyle = css("signal"); d.fill(); d.restore(); }
-        d.stroke(); d.restore();
-        text(d, name, cx + cw / 2, cy + 7, { font: FONT.mono(28, 500), color: litK > 0.5 ? css("signal") : css("graphite"), align: "center", alpha: a * ca * (litK > 0.5 ? 1 : 0.8) });
-        cx += cw + 12;
-      });
-    }
-    text(d, tr("ch01.unsent"), px + w - 36, py + h - 34, { font: FONT.cjk(28, 600), color: css("graphite"), align: "right", alpha: a * prog(b, AT.lit + 0.05, AT.lit + 0.2) });
-  }
-
-  const BREATH = [2140, 772];
-  function breath(x, e, b) {
-    const a = win(b, AT.park, AT.park + 0.1, 4.85, 4.97);
-    if (a <= 0) return;
-    const [cx, cy] = BREATH, rk = prog(b, AT.breath, AT.breath + 0.55, E.out);
-    envelope(x, cx, cy, 70, css("bone"), { lw: 2.2, fill: css("ink2"), alpha: a });
-    if (rk > 0 && rk < 1) {
-      x.save(); x.globalAlpha = a * (1 - rk) * 0.9; x.strokeStyle = css("bone"); x.lineWidth = 2;
-      x.beginPath(); x.arc(cx, cy, lerp(44, 110, rk), 0, TAU); x.stroke(); x.restore();
-    }
-    const s = 1 + 0.08 * Math.sin(prog(b, AT.breath, AT.breath + 0.55) * Math.PI);
-    x.save(); x.globalAlpha = a * 0.35; x.strokeStyle = css("bone"); x.lineWidth = 1.2; x.setLineDash([4, 5]);
-    x.beginPath(); x.arc(cx, cy, 44 * s, 0, TAU); x.stroke(); x.restore();
-    text(x, "90 s", cx + 150, cy + 14, { font: FONT.mono(44, 600), color: css("bone"), alpha: a });
-    text(x, tr("ch01.empty"), cx + 270, cy + 12, { font: FONT.cjk(30, 600), color: css("ash"), alpha: a });
-  }
-
-  const RUL = { x0: 2110, x1: 2710, y: 790 };
-  function ruler(x, e, b) {
-    const a = win(b, 4.95, 5.05, 6.62, 6.74);
-    if (a <= 0) return;
-    const bone = css("bone"), ash = css("ash"), { x0, x1, y } = RUL;
-    line(x, x0, y, x1, y, 2, bone, a);
-    for (let i = 0; i <= 8; i++) { const u = lerp(x0, x1, i / 8), big = i % 2 === 0; line(x, u, y, u, y - (big ? 18 : 10), big ? 1.8 : 1.2, bone, a * (big ? 0.9 : 0.6)); }
-    text(x, "0", x0, y + 40, { font: FONT.mono(28, 500), color: ash, align: "center", alpha: a });
-    const done = prog(b, AT.settle, AT.settle + 0.05);
-    text(x, "400 ms", x1, y + 40, { font: FONT.mono(28, 600), color: done > 0.5 ? css("signalD") : ash, align: "center", alpha: a });
-    const since = b >= AT.sw2 ? AT.sw2 : AT.sw1;
-    const p = clamp((b - since) / (AT.settle - AT.sw2));
-    const ux = lerp(x0, x1, p);
-    x.save(); x.globalAlpha = a; x.fillStyle = done > 0.5 ? css("signalD") : bone; x.beginPath();
-    x.moveTo(ux, y - 24); x.lineTo(ux - 11, y - 44); x.lineTo(ux + 11, y - 44); x.closePath(); x.fill(); x.restore();
-    if (b > AT.sw1) fillRect(x, x0, y - 3, ux - x0, 6, done > 0.5 ? css("signalD") : bone, a * 0.5);
-    text(x, tr("ch01.settle"), x0, y - 70, { font: FONT.cjk(30, 600), color: done > 0.5 ? css("signalD") : bone, alpha: a });
-    const ag = win(b, AT.sw2, AT.sw2 + 0.06, AT.settle - 0.08, AT.settle);
-    if (ag > 0) text(x, tr("ch01.again"), (x0 + x1) / 2, y + 40, { font: FONT.cjk(28, 600), color: ash, align: "center", alpha: a * ag });
-    if (done > 0) glow(e, x1, y, 70, 0.8 * impact(b, AT.settle, 0.2));
-  }
-
-  function stationM1(x, e, d, b) {
-    const k = prog(b, 1.72, 2.15, E.io);
-    const headA = prog(b, 1.8, 2.05);
-    figHead(x, 1990, 1, "Mac", tr("ch01.f1"), headA, { mono: true });
-    laptop(x, e, b, k);
-    envCard(d, b, win(b, AT.type - 0.05, AT.type, 6.62, 6.72));
-    breath(x, e, b);
-    ruler(x, e, b);
-    narPair(x, "ch01.n2a", "ch01.n2b", 1990, [3.05, 3.5], [4.1, 4.6], [2.95, 3.05, 4.85, 4.97], b);
-    narPair(x, "ch01.n2c", "ch01.n2d", 1990, [5.05, 5.45], [5.45, 5.95], [4.97, 5.07, 6.62, 6.74], b);
-  }
-
-  const WT = { x: 3910, y: 238, w: 760, h: 62 };
-  const JV = { x: 3910, y: 336, w: 760, h: 316 };
-  const QROWS = [430, 482, 534, 586];
+  // 时间：小节:拍写成小节数（3:2 写 3.5）；music/ch01.js 的时刻抄这张表和 STOP，改了两边一起改
+  const AT = {
+    title: 0.7,
+    flip: 3.0, card: 3.12, lit: 3.5, post: 3.55, park: 4.0, breath: 4.3,
+    wt: 5.3, list: 5.62, jev: 5.85, judged: 6.5, cleared: 6.75, lock: 6.875, owner: 7.0,
+    icon: 8.05, hash: 8.3, drop: 8.5, shut: 8.75, poster: 9.05, posterIn: 9.35, emby: 9.75,
+    wake: 11.0, outs: [11.25, 11.5, 11.75], send: 12.25,
+    homepod: 13.35, haKey: [13.55, 13.85], psn: [14.0, 14.3], psKey: [14.35, 14.65],
+    boxes: [16.0, 16.25, 16.5],
+    raw: [18.5, 18.625, 18.75], merge: 19.0, pulse: 19.1,
+    dial: 21.0,
+    back: N - 1, launch: N - 0.75,
+  };
   const PROB = [0.34, 0.81, 0.22, 0.63];
-  const FORK = [4290, 712], PASS = [4056, 788], OWNER = [4524, 788];
-  const REDACT = [140, 92, 210, 120];
-  function redacted(x, rx, cy, a, s = 1) {
-    let u = rx;
-    REDACT.forEach((w) => { fillRect(x, u, cy - 9 * s, w * s, 18 * s, css("bone"), 0.42 * a); u += (w + 16) * s; });
-  }
-  function stationM2Jev(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 6.85, 7.05);
-    if (a <= 0) return;
-    figHead(x, 3910, "1A", tr("ch01.f1a"), null, a, { rule: 760 });
-    text(x, tr("ch01.wt"), WT.x, WT.y - 12, { font: FONT.cjk(28, 600), color: ash, alpha: a });
-    box(x, WT.x, WT.y, WT.w, WT.h, a, { lw: 1.8 });
-    redacted(x, WT.x + 30, WT.y + WT.h / 2, a);
-    arrowPath(x, [[WT.x + WT.w / 2, WT.y + WT.h + 4], [WT.x + WT.w / 2, JV.y - 6]], prog(b, 7.0, 7.2), bone, a, 1.6);
-    box(x, JV.x, JV.y, JV.w, JV.h, a, { lw: 2.2 });
-    text(x, "Jev", JV.x + 30, JV.y + 52, { font: FONT.mono(34, 600), color: bone, alpha: a });
-    text(x, tr("ch01.judge"), JV.x + 110, JV.y + 50, { font: FONT.cjk(28, 600), color: ash, alpha: a });
-    const jd = prog(b, AT.judged, AT.judged + 0.08, E.outExpo);
-    text(x, tr("ch01.illus"), JV.x + JV.w - 30, JV.y + 50, { font: FONT.cjk(28, 600), color: ash, align: "right", alpha: a * jd });
-    const tx0 = JV.x + 60, tx1 = JV.x + JV.w - 40;
-    QROWS.forEach((y, i) => {
-      text(x, `q${i + 1}`, JV.x + 24, y + 8, { font: FONT.mono(20, 500), color: ash, alpha: a, texture: true });
-      line(x, tx0, y, tx1, y, 1.2, bone, 0.3 * a);
-      if (b >= AT.jev && jd <= 0) {
-        const ph = ((b - AT.jev) * 4 * (0.9 + 0.13 * i) + i * 0.37) % 1;
-        const u = lerp(tx0, tx1 - 120, 0.5 - 0.5 * Math.cos(ph * TAU));
-        fillRect(x, u, y - 6, 120, 12, bone, 0.7 * a);
-      }
-      if (jd > 0) {
-        fillRect(x, tx0, y - 8, (tx1 - tx0) * PROB[i] * jd, 16, bone, 0.85 * a);
-        line(x, tx0 + (tx1 - tx0) * PROB[i] * jd, y - 13, tx0 + (tx1 - tx0) * PROB[i] * jd, y + 13, 2, bone, a);
-      }
-    });
-    if (jd > 0.5) glow(e, (tx0 + tx1) / 2, (QROWS[0] + QROWS[3]) / 2, 260, 0.35 * impact(b, AT.judged, 0.2));
-    const fk = prog(b, AT.judged + 0.02, AT.cleared, E.out);
-    if (fk > 0) {
-      polyline(x, [[JV.x + JV.w / 2, JV.y + JV.h], FORK], fk, 1.8, bone, a);
-      x.save(); x.globalAlpha = a * fk; x.fillStyle = css("ink2"); x.strokeStyle = bone; x.lineWidth = 1.8;
-      x.beginPath(); x.moveTo(FORK[0], FORK[1] - 12); x.lineTo(FORK[0] + 12, FORK[1]); x.lineTo(FORK[0], FORK[1] + 12); x.lineTo(FORK[0] - 12, FORK[1]); x.closePath(); x.fill(); x.stroke(); x.restore();
-      arrowPath(x, [FORK, [PASS[0] + 40, FORK[1]], [PASS[0] + 40, PASS[1] - 34]], prog(b, AT.judged + 0.08, AT.cleared, E.out), css("signalD"), a, 2.2);
-      arrowPath(x, [FORK, [OWNER[0] - 40, FORK[1]], [OWNER[0] - 40, OWNER[1] - 38]], prog(b, AT.judged + 0.08, AT.cleared, E.out), bone, a * 0.8, 1.8, true);
-    }
-    const inK = prog(b, AT.cleared, AT.cleared + 0.2, E.io);
-    const pa = prog(b, AT.cleared - 0.1, AT.cleared);
-    if (pa > 0) {
-      envelope(x, PASS[0], PASS[1], 72, inK >= 1 ? css("signalD") : bone, { lw: 2.2, fill: css("ink2"), alpha: a * pa, open: 1 - inK });
-      text(x, tr("ch01.pass"), PASS[0] - 48, PASS[1] + 68, { font: FONT.cjk(28, 600), color: css("signalD"), alpha: a * pa });
-      if (inK > 0 && inK < 1) {
-        const p = pathAt([FORK, [PASS[0] + 40, FORK[1]], [PASS[0] + 40, PASS[1] - 30], [PASS[0], PASS[1] - 10]], inK * 330);
-        fillRect(x, p[0] - 28, p[1] - 6, 56, 12, css("signalD"), a);
-      }
-      if (inK >= 1) glow(e, PASS[0], PASS[1], 80, 0.6 * impact(b, AT.cleared + 0.2, 0.2) + 0.15);
-    }
-    const oa = prog(b, AT.owner - 0.05, AT.owner + 0.08, E.outBack);
-    if (oa > 0) {
-      x.save(); x.translate(OWNER[0], OWNER[1]); x.scale(oa, oa);
-      box(x, -54, -34, 108, 68, a, { r: 12, lw: 2 });
-      text(x, "?", 0, 16, { font: FONT.mono(40, 600), color: bone, align: "center", alpha: a });
-      x.restore();
-      text(x, tr("ch01.owner"), OWNER[0] - 60, OWNER[1] + 68, { font: FONT.cjk(28, 600), color: ash, alpha: a * clamp(oa) });
-    }
-    narPair(x, "ch01.n3a", "ch01.n3b", 3910, [7.05, 7.5], [7.5, 8.2], [7.0, 7.1, 8.85, 8.97], b);
-  }
+  const L = () => NS.W.L;
+  const lerp3 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
 
-  const ICON = { x: 4930, y: 222, cell: 18, n: 10 };
-  const GLYPH = new Set(["2,3", "3,4", "4,5", "3,6", "2,7", "5,7", "6,7", "7,7"]);
-  function iconCells() {
-    const out = [];
-    for (let r = 0; r < ICON.n; r++) for (let c = 0; c < ICON.n; c++) {
-      const corner = (r === 0 || r === ICON.n - 1) && (c === 0 || c === ICON.n - 1);
-      if (!corner) out.push({ r, c, hot: GLYPH.has(`${c},${r}`) });
+  // 窗口标题那块牌子的路线：从 Mac 落到传送带上，穿过 Jev，进放行的托盘
+  function tilePath(k) {
+    const { LAP, EXITS, BELT } = L(), z = BELT.z;
+    const pts = [[LAP.x + 54, LAP.y + 20, LAP.z + 40], [520, 1121, z], [646, 1121, z], [700, 1121, z], [895, 1121, z], [EXITS[0][0] + 8, EXITS[0][1] + 16, z]];
+    const T = [AT.wt, AT.wt + 0.22, AT.list + 0.1, AT.jev, AT.judged + 0.1, AT.cleared];
+    for (let i = 1; i < T.length; i++) if (k < T[i] || i === T.length - 1) {
+      const u = prog(k, T[i - 1], T[i], i === 1 ? E.io : E.lin), p = lerp3(pts[i - 1], pts[i], u);
+      if (i === 1) p[2] += Math.sin(u * Math.PI) * 70;
+      if (i === 5) p[2] += Math.sin(u * Math.PI) * 50;
+      return p;
     }
-    return out;
+    return pts[pts.length - 1];
   }
-  const CELLS_ICON = iconCells();
-  const HASH = [5170, 318];
-  const CAB = { x: 5320, y: 430, w: 380, h: 300, cols: 3, rows: 4 };
-  const SLOT = { c: 1, r: 1 };
-  const slotCenter = () => { const cw = (CAB.w - 20) / CAB.cols, ch = (CAB.h - 20) / CAB.rows; return [CAB.x + 10 + (SLOT.c + 0.5) * cw, CAB.y + 10 + (SLOT.r + 0.5) * ch]; };
-  const OBJ = { x: 4906, y: 556, w: 384, h: 156 };
-  function stationM2Img(x, e, d, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 6.85, 7.05);
-    if (a <= 0) return;
-    figHead(x, 4920, "1B", tr("ch01.f1b"), null, a, { rule: 770 });
-    const ck = prog(b, AT.pixels, AT.hash, E.in);
-    const rnd = mulberry32(7);
-    CELLS_ICON.forEach(({ r, c, hot }) => {
-      const j = rnd();
-      const k = clamp(ck * 1.4 - j * 0.4);
-      const sx = ICON.x + c * ICON.cell, sy = ICON.y + r * ICON.cell;
-      const px = lerp(sx, HASH[0] + j * 60, E.io(k)), py = lerp(sy, HASH[1] - 12, E.io(k));
-      const s = lerp(ICON.cell - 2, 4, k);
-      fillRect(x, px, py, s, s, hot ? css("signalD") : bone, a * (hot ? 0.95 : 0.5) * (1 - prog(k, 0.8, 1)));
-    });
-    text(x, "96×96 PNG", ICON.x, ICON.y + ICON.n * ICON.cell + 44, { font: FONT.mono(28, 500), color: ash, alpha: a * (1 - prog(b, AT.pixels, AT.pixels + 0.15)) });
-    const hk = prog(b, AT.hash - 0.02, AT.hash + 0.2);
-    const fall = prog(b, AT.drop, AT.shut - 0.04, E.in);
-    const [sx, sy] = slotCenter();
-    text(x, "R2", CAB.x, CAB.y - 22, { font: FONT.mono(44, 600), color: bone, alpha: a });
-    text(x, "immutable", CAB.x + CAB.w, CAB.y - 24, { font: FONT.mono(28, 500), color: ash, align: "right", alpha: a });
-    if (hk > 0 && fall < 1) {
-      text(x, tr("ch01.byContent"), HASH[0], HASH[1] - 50, { font: FONT.mono(28, 500), color: ash, alpha: a * hk * (1 - fall) });
-      const hx = lerp(HASH[0], sx - 120, fall), hy = lerp(HASH[1], sy + 8, fall);
-      x.save(); x.translate(hx, hy); x.scale(lerp(1, 0.55, fall), lerp(1, 0.55, fall));
-      // 落进抽屉的路上要穿过「R2」那行表头：垫一块底色压住它，而不是字叠字。
-      const pa = a * prog(fall, 0, 0.08) * (1 - prog(fall, 0.85, 1));
-      if (pa > 0) { x.save(); x.font = FONT.mono(34, 600); const kw = x.measureText(KEY_SHORT).width; x.globalAlpha = pa; x.fillStyle = css("ink2"); roundRect(x, -14, -34, kw + 28, 48, 8); x.fill(); x.restore(); }
-      text(x, KEY_SHORT, 0, 0, { font: FONT.mono(34, 600), color: bone, alpha: a * (1 - prog(fall, 0.85, 1)), reveal: hk, perChar: hk < 1 });
-      x.restore();
-    }
-    const openK = keys(b, [[AT.hash, 0], [AT.hash + 0.12, 1, E.out], [AT.shut - 0.04, 1], [AT.shut + 0.02, 0, E.in]]);
-    cabinet(x, CAB.x, CAB.y, CAB.w, CAB.h, CAB.cols, CAB.rows, a, { ...SLOT, k: openK, hot: true });
-    const shut = impact(b, AT.shut, 0.16);
-    if (shut > 0.02) glow(e, sx, sy, 110, 0.8 * shut);
-    const oa = prog(b, AT.objKey - 0.06, AT.objKey + 0.06, E.outBack);
-    if (oa > 0) {
-      sheet(d, OBJ.x, OBJ.y, OBJ.w, OBJ.h, { alpha: a * clamp(oa), shadow: 18 });
-      envelope(d, OBJ.x + 48, OBJ.y + 44, 52, css("pink"), { lw: 2, fill: css("paper"), alpha: a * clamp(oa) });
-      text(d, "desktop", OBJ.x + 90, OBJ.y + 54, { font: FONT.mono(28, 500), color: css("graphite"), alpha: a * clamp(oa) });
-      text(d, '"iconObjectKey":', OBJ.x + 24, OBJ.y + 102, { font: FONT.mono(28, 500), color: css("pink"), alpha: a * clamp(oa) });
-      text(d, `"${KEY_SHORT}"`, OBJ.x + 24, OBJ.y + 138, { font: FONT.mono(28, 500), color: css("signal"), alpha: a * clamp(oa), reveal: prog(b, AT.objKey, AT.objKey + 0.15), perChar: true });
-      text(x, tr("ch01.sameKey"), OBJ.x, CAB.y + CAB.h + 46, { font: FONT.cjk(28, 600), color: ash, alpha: a * clamp(oa) });
-    }
-    narPair(x, "ch01.n4a", "ch01.n4b", 3910, [9.05, 9.5], [9.5, 10.0], [9.0, 9.1, 10.62, 10.74], b);
-  }
+  const drawerOut = (b) => Math.max(win(b, AT.drop - 0.12, AT.drop - 0.02, AT.shut - 0.06, AT.shut), win(b, AT.posterIn - 0.14, AT.posterIn - 0.04, AT.posterIn + 0.18, AT.posterIn + 0.25));
 
-  const PH = { x: 6100, y: 222, w: 300, h: 610 };
-  const OUT2 = [[6700, 348], [6700, 540], [6700, 728]];
-  function stationF2(x, e, b) {
-    const bone = css("bone");
-    const a = prog(b, 10.85, 11.05);
-    if (a <= 0) return;
-    figHead(x, 5830, 2, "iPhone", tr("ch01.f2"), a, { mono: true });
-    const k = prog(b, 10.9, 11.35, E.io);
-    x.save(); x.globalAlpha = a;
-    x.strokeStyle = bone; x.lineWidth = 2.6; roundRect(x, PH.x, PH.y, PH.w, PH.h, 46); x.save(); x.fillStyle = css("ink2"); x.globalAlpha = a * k; x.fill(); x.restore(); x.stroke();
-    x.restore();
-    const wake = prog(b, AT.wake, AT.wake + 0.1);
-    box(x, PH.x + 16, PH.y + 16, PH.w - 32, PH.h - 32, a * k, { r: 34, lw: 1.4, fill: "ink" });
-    if (wake > 0) { x.save(); roundRect(x, PH.x + 16, PH.y + 16, PH.w - 32, PH.h - 32, 34); x.globalAlpha = a * 0.08 * wake; x.fillStyle = css("bone"); x.fill(); x.restore(); }
-    box(x, PH.x + PH.w / 2 - 44, PH.y + 34, 88, 24, a * k, { r: 12, lw: 1.4, fill: "ink" });
-    for (const [bx, by, bh] of [[PH.x - 6, PH.y + 130, 44], [PH.x - 6, PH.y + 196, 70], [PH.x + PH.w, PH.y + 170, 96]]) box(x, bx, by, 6, bh, a * k, { lw: 1.4 });
-    if (wake > 0) {
-      text(x, "HealthKit", PH.x + PH.w / 2, PH.y + PH.h / 2 + 10, { font: FONT.mono(30, 600), color: css("signalD"), align: "center", alpha: a * wake });
-      const rk = prog(b, AT.wake, AT.wake + 0.5, E.out);
-      if (rk < 1) { x.save(); x.globalAlpha = a * (1 - rk) * 0.8; x.strokeStyle = css("signalD"); x.lineWidth = 2; roundRect(x, PH.x - 30 * rk, PH.y - 30 * rk, PH.w + 60 * rk, PH.h + 60 * rk, 46 + 30 * rk); x.stroke(); x.restore(); }
-      glow(e, PH.x + PH.w / 2, PH.y + PH.h / 2, 220, 0.5 * impact(b, AT.wake, 0.2));
-    }
-    const labels = ["ch01.rings", "ch01.workouts", "ch01.steps"];
-    OUT2.forEach(([ox, oy], i) => {
-      const t = AT.outs[i], ok = prog(b, t - 0.1, t + 0.08, E.out);
-      if (ok <= 0) return;
-      arrowPath(x, [[PH.x + PH.w + 10, oy], [ox - 78, oy]], ok, bone, a * 0.8, 1.6);
-      const ia = a * prog(b, t, t + 0.1);
-      if (i === 0) {
-        [[58, 0.82, css("signalD")], [44, 0.66, bone], [30, 0.9, bone]].forEach(([r, p, c], j) => {
-          x.save(); x.globalAlpha = ia * (j === 2 ? 0.55 : 1); x.strokeStyle = c; x.lineWidth = 9; x.lineCap = "round";
-          x.beginPath(); x.arc(ox, oy, r, -Math.PI / 2, -Math.PI / 2 + TAU * p * prog(b, t, t + 0.25, E.out)); x.stroke();
-          x.globalAlpha = ia * 0.15; x.beginPath(); x.arc(ox, oy, r, 0, TAU); x.stroke(); x.restore();
-        });
-      } else if (i === 1) {
-        x.save(); x.globalAlpha = ia; x.strokeStyle = bone; x.lineWidth = 2.4;
-        x.beginPath(); x.arc(ox, oy + 6, 44, 0, TAU); x.stroke();
-        x.fillStyle = bone; x.fillRect(ox - 10, oy - 52, 20, 10);
-        const ang = -Math.PI / 2 + prog(b, t, t + 0.4) * TAU * 0.7;
-        x.strokeStyle = css("signalD"); x.lineWidth = 3; x.beginPath(); x.moveTo(ox, oy + 6); x.lineTo(ox + Math.cos(ang) * 34, oy + 6 + Math.sin(ang) * 34); x.stroke();
-        x.restore();
-      } else {
-        const r = mulberry32(23);
-        for (let j = 0; j < 12; j++) {
-          const hgt = 12 + r() * 60, bk = prog(b, t + j * 0.012, t + j * 0.012 + 0.1);
-          fillRect(x, ox - 66 + j * 11, oy + 36 - hgt * bk, 8, hgt * bk, j === 11 ? css("signalD") : bone, ia * 0.85);
-        }
-        line(x, ox - 72, oy + 38, ox + 70, oy + 38, 1.2, bone, ia * 0.6);
-      }
-      text(x, tr(labels[i]), ox + 110, oy + 12, { font: FONT.cjk(34, 600), color: bone, alpha: ia });
-    });
-    text(x, "POST /api/ingest/iphone", OUT2[2][0] - 70, 812, { font: FONT.mono(28, 500), color: css("ash"), alpha: a * prog(b, AT.outs[2], AT.outs[2] + 0.15) });
-    narPair(x, "ch01.n5a", "ch01.n5b", 5830, [11.05, 11.5], [11.5, 12.1], [11.0, 11.1, 12.62, 12.74], b);
-  }
+  // 每个机位 [名字, 到位, 起甩]；停住时慢推 1.5%，标注只在本机位到位后亮、起甩前收
+  const STOP = {};
+  [["S0", 0, 2.2], ["MAC", 2.5, 4.95], ["GATE", 5.25, 7.7], ["IMG", 8.0, 10.45], ["PHONE", 10.75, 12.95], ["HOME", 13.25, 15.45],
+    ["TOKYO", 15.75, 17.95], ["CODE", 18.25, 20.7], ["CLOCK", 21.0, 23.7], ["INFER", 24.0, 27.7]].forEach(([k, t0, t1]) => (STOP[k] = { k, t0, t1 }));
+  const live = (st, b, d0 = 0.1, d1 = 0.12) => win(b, st.t0, st.t0 + d0, st.t1 - d1, st.t1);
+  // 镜头进家里之前把屋顶整个掀走，离开时盖回去
+  const roofLift = (b) => E.io(prog(b, STOP.HOME.t0 - 0.3, STOP.HOME.t0 + 0.05)) * (1 - E.io(prog(b, STOP.HOME.t1 + 0.02, STOP.HOME.t1 + 0.3)));
 
-  // 三样凭据分开画，不能混：Home Assistant 的钥匙只开 /homepod；容器自己的钥匙只开 /playstation；
-  // PSN 登录态不是钥匙，留在 n100 上，只拿来问 Sony，不进站点。容器的两条路也分开：往上问 Sony，往下寄到上报入口。
-  // PS5 和 Home Assistant 之间没有线：站点不显示 PS 电源，醒没醒只由容器用 UDP 探测、只定它自己的节奏（FACTS §1）
-  const HP = { x: 7750, y: 336, w: 210, h: 276 };
-  const PS = { x: 8700, y: 286, w: 132, h: 370 };
-  const HA = { x: 8150, y: 440, w: 250, h: 104 };
-  const KEYC = [8275, 664];
-  const HA_DOOR = [8494, 664, "/homepod"];
-  const CT3 = { x: 9215, y: 380, w: 300, h: 66 };
-  const N100 = { x: 9205, y: 462, w: 320, h: 120 };
-  const PROBE_Y = 522, TIER_Y = PROBE_Y + 52;
-  const PROBE = [[N100.x - 10, PROBE_Y], [PS.x + PS.w + 18, PROBE_Y]];
-  const PSNB = { x: 9275, y: 214, w: 230, h: 60 };
-  const PSN_X = PSNB.x + PSNB.w / 2, PSN_LINK = [[PSN_X, 336], [PSN_X, PSNB.y + PSNB.h + 6]];
-  const KEYP = [9228, 720], PS_DOOR = [9340, 720, "/playstation"];
-  function stationF3(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 12.85, 13.05);
-    if (a <= 0) return;
-    figHead(x, 7750, 3, tr("ch01.f3"), tr("ch01.f3sub"), a, { rule: 920 });
-    const dk = prog(b, 12.9, 13.3, E.io);
-    box(x, HP.x, HP.y, HP.w, HP.h, a * dk, { r: 84, lw: 2.6 });
-    x.save(); roundRect(x, HP.x, HP.y, HP.w, HP.h, 84); x.clip(); x.globalAlpha = a * dk * 0.28; x.strokeStyle = bone; x.lineWidth = 1;
-    x.beginPath(); for (let y = HP.y + 20; y < HP.y + HP.h - 10; y += 13) { x.moveTo(HP.x, y); x.lineTo(HP.x + HP.w, y); } x.stroke(); x.restore();
-    const play = b >= AT.homepod;
-    x.save(); x.globalAlpha = a * dk; x.strokeStyle = play ? css("signalD") : bone; x.lineWidth = 2; x.beginPath(); x.ellipse(HP.x + HP.w / 2, HP.y + 26, 54, 9, 0, 0, TAU); x.stroke(); x.restore();
-    if (play) {
-      const beat = ((b - AT.homepod) * 4) % 1;
-      for (let j = 1; j <= 3; j++) {
-        x.save(); x.globalAlpha = a * (0.7 - j * 0.15) * (0.6 + 0.4 * Math.exp(-beat * 3)); x.strokeStyle = bone; x.lineWidth = 2;
-        x.beginPath(); x.arc(HP.x + HP.w / 2, HP.y + HP.h / 2, HP.w / 2 + 14 + j * 18, -0.5, 0.5); x.stroke(); x.restore();
-      }
-      glow(e, HP.x + HP.w / 2, HP.y + 26, 70, 0.4 * impact(b, AT.homepod, 0.2) + 0.12);
-    }
-    text(x, "HomePod", HP.x, HP.y + HP.h + 56, { font: FONT.mono(30, 600), color: bone, alpha: a });
-    text(x, tr("ch01.playing"), HP.x, HP.y + HP.h + 96, { font: FONT.cjk(28, 600), color: ash, alpha: a });
-    const pk = prog(b, 12.95, 13.35, E.io);
-    const on = prog(b, AT.power, AT.power + 0.06);
-    x.save(); x.globalAlpha = a * pk; x.lineWidth = 2.4; x.strokeStyle = bone; x.fillStyle = css("ink2");
-    const cx0 = PS.x + 38, cx1 = PS.x + PS.w - 38;
-    x.beginPath(); x.rect(cx0, PS.y + 20, cx1 - cx0, PS.h - 40); x.fill(); x.stroke();
-    for (const s of [-1, 1]) {
-      const ex = s < 0 ? cx0 : cx1, ox = s < 0 ? PS.x : PS.x + PS.w;
-      x.beginPath(); x.moveTo(ex, PS.y); x.quadraticCurveTo(ox, PS.y + 10, ox + s * 4, PS.y + 90); x.lineTo(ox, PS.y + PS.h - 30); x.quadraticCurveTo(ox, PS.y + PS.h, ex, PS.y + PS.h - 6); x.stroke();
-    }
-    x.restore();
-    if (on > 0) { line(x, cx0 + 3, PS.y + 30, cx0 + 3, PS.y + PS.h - 30, 3, css("signalD"), a * on); line(x, cx1 - 3, PS.y + 30, cx1 - 3, PS.y + PS.h - 30, 3, css("signalD"), a * on); glow(e, (cx0 + cx1) / 2, PS.y + PS.h / 2, 160, 0.45 * impact(b, AT.power, 0.2)); }
-    text(x, "PS5", PS.x, PS.y + PS.h + 50, { font: FONT.mono(30, 600), color: bone, alpha: a });
-    const hk = prog(b, 13.1, 13.4);
-    box(x, HA.x, HA.y, HA.w, HA.h, a * hk, { r: 12, lw: 2.2 });
-    text(x, "Home Assistant", HA.x + HA.w / 2, HA.y + HA.h / 2 + 10, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * hk });
-    dashPath(x, [[HP.x + HP.w + 70, HP.y + HP.h / 2], [HA.x, HA.y + HA.h / 2]], hk, 1.6, bone, a * 0.7);
-    const kk = prog(b, AT.haDoor - 0.25, AT.haDoor - 0.05, E.out);
-    if (kk > 0) {
-      line(x, KEYC[0], HA.y + HA.h, KEYC[0], KEYC[1] - 31, 1.6, bone, a * kk);
-      keycard(x, KEYC[0], KEYC[1], a * kk, b >= AT.haDoor - 0.05 && b < AT.haDoor + 0.6);
-      door(x, e, b, KEYC, HA_DOOR, AT.haDoor, a);
-      text(x, tr("ch01.haKey"), KEYC[0] - 75, KEYC[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * kk });
-    }
-    const nk = prog(b, 13.1, 13.45, E.io);
-    if (nk > 0) {
-      const hot = b >= AT.probeLine - 0.02 ? 1 : 0;
-      box(x, N100.x, N100.y, N100.w, N100.h, a * nk, { lw: 2.6 });
-      hatch(x, N100.x + 16, N100.y + N100.h - 36, N100.w - 32, 22, a * nk * 0.5, 9);
-      text(x, "n100", N100.x + 24, N100.y + 58, { font: FONT.mono(30, 600), color: bone, alpha: a * nk });
-      x.save(); x.globalAlpha = a * nk; x.fillStyle = hot ? css("signalD") : css("ash"); x.beginPath(); x.arc(N100.x + N100.w - 28, N100.y + 28, 5, 0, TAU); x.fill(); x.restore();
-      container(x, CT3.x, CT3.y, CT3.w, CT3.h, a * nk, hot);
-      text(x, "playstation-reporter", CT3.x + CT3.w / 2, CT3.y - 16, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * nk });
-      const uk = prog(b, AT.probeLine - 0.15, AT.probeLine + 0.05, E.out);
-      const mid = (PROBE[0][0] + PROBE[1][0]) / 2;
-      if (uk > 0) {
-        arrowPath(x, PROBE, uk, bone, a * 0.8, 1.6, true);
-        text(x, "UDP", mid, PROBE_Y - 22, { font: FONT.mono(28, 500), color: ash, align: "center", alpha: a * uk });
-        const tk = prog(b, AT.awake - 0.05, AT.awake + 0.05), up = tk >= 0.5;
-        withSquash(x, TIER_Y - 10, squash(tk), () => {
-          text(x, tr(up ? "ch01.tierAwake" : "ch01.tierRest"), mid, TIER_Y, { font: FONT.cjk(28, 600), color: up ? css("signalD") : ash, align: "center", alpha: a * uk });
-        });
-        if (up) glow(e, mid, TIER_Y - 10, 80, 0.5 * impact(b, AT.awake, 0.2));
-      }
-      if (b >= AT.probeLine) {
-        const n = Math.floor((b - AT.probeLine) * 4), sent = AT.probeLine + n / 4, p = (b - sent) * 4;
-        const answered = sent >= AT.probe - 1e-6;
-        const go = clamp(p / 0.5), px = lerp(PROBE[0][0], PROBE[1][0], E.out(go)), fade = answered ? 1 - prog(go, 0.9, 1) : 1 - prog(go, 0.6, 1);
-        if (fade > 0) {
-          x.save(); x.globalAlpha = a * fade; x.fillStyle = css("signalD"); x.beginPath(); x.arc(px, PROBE_Y, 7, 0, TAU); x.fill(); x.restore();
-          glow(e, px, PROBE_Y, 38, 0.5 * fade);
-        }
-        if (answered && p > 0.5) {
-          const bk = clamp((p - 0.5) / 0.45), rx = lerp(PROBE[1][0], PROBE[0][0], E.io(bk)), rf = 1 - prog(bk, 0.85, 1);
-          x.save(); x.globalAlpha = a * rf * 0.9; x.strokeStyle = css("signalD"); x.lineWidth = 2; x.beginPath(); x.arc(rx, PROBE_Y, 7, 0, TAU); x.stroke(); x.restore();
-          glow(e, rx, PROBE_Y, 30, 0.35 * rf);
-        }
-      }
-      const pa = a * prog(b, AT.probeLine, AT.probeLine + 0.1);
-      text(x, tr("ch01.probe1"), mid, TIER_Y + 50, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: pa });
-      text(x, tr("ch01.probe2"), mid, TIER_Y + 88, { font: FONT.cjk(28, 600), color: bone, align: "center", alpha: pa });
-      const asking = b >= AT.psn[0] && b < AT.psn[1];
-      box(x, PSNB.x, PSNB.y, PSNB.w, PSNB.h, a * nk, { r: 8, lw: 2.2, color: asking ? css("signalD") : bone });
-      text(x, "PSN · Sony", PSN_X, PSNB.y + 40, { font: FONT.mono(28, 600), color: asking ? css("signalD") : bone, align: "center", alpha: a * nk });
-      text(x, tr("ch01.psnLogin"), PSNB.x - 18, PSNB.y + 40, { font: FONT.cjk(28, 600), color: ash, align: "right", alpha: a * nk });
-      dashPath(x, PSN_LINK, nk, 1.6, bone, a * 0.7);
-      if (asking) {
-        const q = prog(b, AT.psn[0], AT.psn[1]), k = q < 0.5 ? E.out(q * 2) : 1 - E.out(q * 2 - 1);
-        const py = lerp(PSN_LINK[0][1], PSN_LINK[1][1], k);
-        x.save(); x.globalAlpha = a; x.fillStyle = css("signalD"); x.beginPath(); x.arc(PSN_X, py, 7, 0, TAU); x.fill(); x.restore();
-        glow(e, PSN_X, py, 38, 0.5);
-      }
-      const pk2 = prog(b, AT.psDoor - 0.25, AT.psDoor - 0.05, E.out);
-      if (pk2 > 0) {
-        line(x, KEYP[0], N100.y + N100.h, KEYP[0], KEYP[1] - 31, 1.6, bone, a * pk2);
-        keycard(x, KEYP[0], KEYP[1], a * pk2, b >= AT.psDoor - 0.05 && b < AT.psDoor + 0.6);
-        door(x, e, b, KEYP, PS_DOOR, AT.psDoor, a);
-        text(x, tr("ch01.psKey"), KEYP[0] - 75, KEYP[1] + 84, { font: FONT.cjk(28, 600), color: ash, alpha: a * pk2 });
-      }
-    }
-    narPair(x, "ch01.n6a", "ch01.n6b", 7750, [13.05, 13.45], [13.45, 13.95], [13.0, 13.1, 14.38, 14.48], b);
-    narPair(x, "ch01.n7a", "ch01.n7b", 7750, [14.55, 15.0], [15.0, 15.7], [14.48, 14.58, 16.62, 16.74], b);
-  }
-  function door(x, e, b, key, [dx, dy, label], t, a) {
-    const dk = prog(b, t - 0.12, t, E.out), lit = b >= t, col = lit ? css("signalD") : css("bone");
-    arrowPath(x, [[key[0] + 75, key[1]], [dx - 44, key[1]], [dx - 44, dy], [dx - 8, dy]], dk, col, a, 1.8);
-    text(x, label, dx + 4, dy + 10, { font: FONT.mono(28, 500), color: col, alpha: a * dk });
-    if (lit) glow(e, dx + 60, dy, 70, 0.5 * impact(b, t, 0.18));
-  }
-
-  const NS = { x: 9900, y: 356, w: 390, h: 420 };
-  const CT4 = { x: 9920, y: 262, w: 350, h: 72 };
-  const R2M = { x: 10680, y: 214, w: 180, h: 132 };
-  function stationF4(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 16.85, 17.05);
-    if (a <= 0) return;
-    figHead(x, 9670, 4, "NAS", tr("ch01.f4sub"), a, { mono: true });
-    const k = prog(b, 16.9, 17.25, E.io);
-    box(x, NS.x, NS.y, NS.w, NS.h, a * k, { lw: 2.6 });
-    for (let i = 0; i < 4; i++) {
-      const bx = NS.x + 22 + i * 88, by = NS.y + 36;
-      box(x, bx, by, 72, 300, a * k, { lw: 1.6, fill: "ink" });
-      line(x, bx + 14, by + 250, bx + 58, by + 250, 3, bone, a * k * 0.7);
-      const led = (Math.floor(b * 8 + i * 3) % 5) === 0;
-      x.save(); x.globalAlpha = a * k; x.fillStyle = led ? css("signalD") : css("ash"); x.beginPath(); x.arc(bx + 36, by + 22, 5, 0, TAU); x.fill(); x.restore();
-    }
-    hatch(x, NS.x + 20, NS.y + NS.h - 50, NS.w - 40, 30, a * k * 0.5, 9);
-    container(x, CT4.x, CT4.y, CT4.w, CT4.h, a * k, b >= AT.poster - 0.1 && b < 18.7 ? 1 : 0);
-    text(x, "emby-reporter", CT4.x + CT4.w / 2, CT4.y - 16, { font: FONT.mono(28, 600), color: bone, align: "center", alpha: a * k });
-    cabinet(x, R2M.x, R2M.y, R2M.w, R2M.h, 2, 2, a * k);
-    text(x, "R2", R2M.x + R2M.w + 20, R2M.y + 46, { font: FONT.mono(36, 600), color: bone, alpha: a * k });
-    const pk = prog(b, AT.poster - 0.22, AT.poster, E.io);
-    if (pk > 0 && pk < 1) {
-      const px = lerp(CT4.x + CT4.w + 10, R2M.x + R2M.w / 2, pk), py = lerp(CT4.y + 30, R2M.y + R2M.h / 2, pk) - Math.sin(pk * Math.PI) * 90;
-      const s = lerp(1, 0.5, pk);
-      x.save(); x.translate(px, py); x.scale(s, s); box(x, -45, -68, 90, 136, a, { lw: 2, color: css("signalD") }); text(x, "webp", 0, 10, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: a, texture: true }); x.restore();
-    }
-    if (b >= AT.poster) glow(e, R2M.x + R2M.w / 2, R2M.y + R2M.h / 2, 90, 0.6 * impact(b, AT.poster, 0.18));
-    text(x, tr("ch01.poster"), R2M.x, R2M.y + R2M.h + 50, { font: FONT.cjk(30, 600), color: bone, alpha: a * prog(b, AT.poster, AT.poster + 0.08) });
-    const ek = prog(b, AT.emby - 0.02, AT.emby + 0.3, E.out);
-    if (ek > 0) {
-      const ex = lerp(NS.x + NS.w + 20, R2M.x + 60, ek);
-      arrowPath(x, [[NS.x + NS.w + 8, 600], [R2M.x + 20, 600]], ek, bone, a * 0.7, 1.6);
-      envelope(x, ex, 600, 70, css("signalD"), { lw: 2.2, fill: css("ink2"), alpha: a });
-      text(x, tr("ch01.watching"), R2M.x, 686, { font: FONT.cjk(30, 600), color: bone, alpha: a * prog(b, AT.emby, AT.emby + 0.08) });
-      text(x, "POST /api/ingest/emby", R2M.x, 728, { font: FONT.mono(28, 500), color: ash, alpha: a * prog(b, AT.emby, AT.emby + 0.08) });
-    }
-    narPair(x, "ch01.n8a", "ch01.n8b", 9670, [17.05, 17.5], [17.5, 18.1], [17.0, 17.1, 18.62, 18.74], b);
-  }
-
-  const RK = { x: 11820, y: 212, w: 440, h: 640 };
-  const SRVB = { x: 11850, y: 380, w: 380, h: 236 };
-  const C5 = [0, 1, 2].map((i) => ({ x: 11872, y: 398 + i * 70, w: 300, h: 56 }));
-  const TX5 = RK.x + RK.w + 130;
-  const L5 = [
-    { t: AT.server, ty: 262, name: "server-reporter", lines: ["ch01.srv"], ep: "POST /api/ingest/server" },
-    { t: AT.agents, ty: 496, name: "agents-reporter", lines: ["ch01.lim", "ch01.cur"], ep: "POST /api/ingest/agents" },
-    { t: AT.quest, ty: 716, name: "discord-reporter", lines: ["ch01.quest"], ep: "POST /api/ingest/quest" },
-  ];
-  function stationF5(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 18.85, 19.05);
-    if (a <= 0) return;
-    figHead(x, 11590, 5, tr("ch01.f5"), "misaka-jp", a, { subMono: true });
-    const k = prog(b, 18.9, 19.25, E.io);
-    box(x, RK.x, RK.y, RK.w, RK.h, a * k, { lw: 2.6, fill: "ink" });
-    for (const rx of [RK.x + 16, RK.x + RK.w - 16]) {
-      line(x, rx, RK.y + 10, rx, RK.y + RK.h - 10, 1.6, bone, a * k);
-      for (let y = RK.y + 26; y < RK.y + RK.h - 20; y += 22) { x.save(); x.globalAlpha = a * k * 0.4; x.strokeStyle = bone; x.lineWidth = 1; x.strokeRect(rx - 4, y - 4, 8, 8); x.restore(); }
-    }
-    for (const [y0, hh] of [[RK.y + 30, 56], [RK.y + 100, 56], [RK.y + 424, 56], [RK.y + 494, 56], [RK.y + 564, 60]]) {
-      box(x, RK.x + 30, y0, RK.w - 60, hh, a * k * 0.8, { lw: 1.4 });
-      hatch(x, RK.x + 30, y0, RK.w - 60, hh, a * k * 0.3, 12);
-    }
-    box(x, SRVB.x, SRVB.y, SRVB.w, SRVB.h, a * k, { lw: 2.2 });
-    L5.forEach((l, i) => {
-      const c = C5[i], hot = impact(b, l.t, 0.25);
-      container(x, c.x, c.y, c.w, c.h, a * k, b >= l.t - 0.02 ? Math.max(0.35, hot) : 0);
-      if (b >= l.t) glow(e, c.x + c.w / 2, c.y + c.h / 2, 110, 0.6 * hot);
-      const lk = prog(b, l.t - 0.12, l.t + 0.05, E.out);
-      if (lk <= 0) return;
-      const ay = c.y + c.h / 2, ax = c.x + c.w, vx = RK.x + RK.w + 50;
-      polyline(x, [[ax, ay], [vx, ay], [vx, l.ty], [TX5 - 20, l.ty]], lk, 1.4, bone, a * 0.85);
-      x.save(); x.globalAlpha = a * lk; x.fillStyle = bone; x.beginPath(); x.arc(ax, ay, 5, 0, TAU); x.fill(); x.restore();
-      const ta = a * prog(b, l.t, l.t + 0.08);
-      text(x, l.name, TX5, l.ty + 10, { font: FONT.mono(32, 600), color: bone, alpha: ta });
-      l.lines.forEach((key, j) => text(x, tr(key), TX5, l.ty + 54 + j * 40, { font: FONT.cjk(28, 600), color: bone, alpha: ta }));
-      text(x, l.ep, TX5, l.ty + 54 + l.lines.length * 40, { font: FONT.mono(28, 500), color: ash, alpha: ta });
-    });
-    narPair(x, "ch01.n9a", "ch01.n9b", 11590, [19.05, 19.5], [19.5, 20.1], [19.0, 19.1, 21.62, 21.74], b);
-  }
-
-  const CE = { x: 13590, y: 250, w: 560, h: 470 };
-  const WIRE6 = [[CE.x + CE.w, 486], [14660, 486]];
-  function stationF6(x, e, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 21.85, 22.05);
-    if (a <= 0) return;
-    figHead(x, 13510, 6, tr("ch01.f6"), "Claude Code · OTLP", a, { subMono: true });
-    const k = prog(b, 21.9, 22.25, E.io);
-    x.save(); x.globalAlpha = a * k; x.strokeStyle = bone; x.lineWidth = 2; x.setLineDash([12, 9]); x.strokeRect(CE.x, CE.y, CE.w, CE.h); x.restore();
-    text(x, tr("ch01.cc"), CE.x + 28, CE.y + 52, { font: FONT.cjk(30, 600), color: bone, alpha: a * k });
-    for (let i = 0; i < 3; i++) {
-      const sy = CE.y + 90 + i * 118;
-      box(x, CE.x + 28, sy, CE.w - 56, 92, a * k, { lw: 1.4, fill: "ink" });
-      text(x, "$ claude", CE.x + 50, sy + 40, { font: FONT.pixel(28), color: bone, alpha: a * k });
-      const r = mulberry32(40 + i);
-      for (let j = 0; j < 2; j++) {
-        const w = 80 + r() * 160, show = prog(b, 22.0 + i * 0.1 + j * 0.12, 22.12 + i * 0.1 + j * 0.12);
-        fillRect(x, CE.x + 50 + j * 250, sy + 66, w * show, 8, bone, a * k * 0.35);
-      }
-      if (Math.floor(b * 4) % 2 === 0) fillRect(x, CE.x + 200, sy + 20, 14, 26, bone, a * k * 0.8);
-    }
-    const wk = prog(b, 22.05, 22.3, E.out);
-    polyline(x, WIRE6, wk, 2, bone, a * 0.8);
-    AT.otlp.forEach((t) => {
-      const pk = prog(b, t - 0.2, t + 0.3, E.io);
-      if (pk <= 0 || pk >= 1) return;
-      const [px, py] = pathAt(WIRE6, pk * (pathLen(WIRE6) - 60)), pa = a * (1 - prog(pk, 0.75, 1));
-      box(x, px - 50, py - 24, 100, 48, pa, { r: 8, lw: 2, color: css("signalD") });
-      text(x, "OTLP", px, py + 10, { font: FONT.mono(28, 600), color: css("signalD"), align: "center", alpha: pa });
-      glow(e, px, py, 70, 0.45 * pa);
-    });
-    const ea = a * prog(b, 22.3, 22.45);
-    arrowHead(x, WIRE6[1][0], WIRE6[1][1], 0, bone, ea);
-    text(x, "POST /api/ingest/agents/otlp", 14680, 496, { font: FONT.mono(28, 600), color: bone, alpha: ea });
-    text(x, tr("ch01.extra"), 14680, 440, { font: FONT.cjk(34, 600), color: css("signalD"), alpha: a * prog(b, 22.55, 22.65) });
-    text(x, tr("ch01.self"), CE.x + CE.w + 40, CE.y + CE.h - 10, { font: FONT.cjk(30, 600), color: ash, alpha: a * prog(b, 22.45, 22.6) });
-    narPair(x, "ch01.n10a", "ch01.n10b", 13510, [22.05, 22.5], [22.5, 23.1], [22.0, 22.1, 23.62, 23.74], b);
-  }
-
-  // Tokens 道画的是三处 5 分钟桶相加后的 token 处理量（输入 + 输出 + 缓存读 + 缓存写入，按桶平均到每分钟），不是生成速度（FACTS §1）
-  const SRC_Y = [330, 470, 610];
-  const MERGE = [15960, 470];
-  const PC = { x: 16300, y: 214, w: 860, h: 540 };
-  const LANES = [["ch01.pulse.coding", 0], ["ch01.pulse.tokens", 1], ["ch01.pulse.listening", 0], ["ch01.pulse.watching", 0]];
-  const srcPath = (i) => [[15430, SRC_Y[i]], [15790, SRC_Y[i]], MERGE];
-  function slipIcon(x, cx, cy, a, hot) {
-    box(x, cx - 22, cy - 15, 44, 30, a, { lw: 1.6, color: hot ? css("signalD") : css("bone") });
-    for (let j = 0; j < 3; j++) line(x, cx - 14, cy - 7 + j * 7, cx + 12 - j * 6, cy - 7 + j * 7, 1.2, hot ? css("signalD") : css("bone"), a * 0.8);
-  }
-  function stationCU(x, e, d, b) {
-    const bone = css("bone");
-    const a = prog(b, 23.85, 24.05);
-    if (a <= 0) return;
-    figHead(x, 15430, null, tr("ch01.cu"), null, a, { rule: 1720 });
-    const srcKeys = ["ch01.srcMac", "ch01.cc", "ch01.srcCursor"];
-    SRC_Y.forEach((y, i) => {
-      const t = AT.raw[i];
-      text(x, tr(srcKeys[i]), 15430, y - 22, { font: FONT.cjk(30, 600), color: bone, alpha: a });
-      const pts = srcPath(i);
-      polyline(x, pts, prog(b, 23.85, 24.1, E.out), 1.6, bone, a * 0.6);
-      const pk = prog(b, t, t + 0.25, E.io);
-      if (pk > 0 && pk < 1) { const [px, py] = pathAt(pts, pk * pathLen(pts)); slipIcon(x, px, py, a, true); glow(e, px, py, 60, 0.4); }
-      if (b >= t) glow(e, 15430 + 20, y, 50, 0.5 * impact(b, t, 0.2));
-      if (b >= t + 0.25) polyline(x, pts, 1, 2.2, css("signalD"), a * 0.85);
-    });
-    const mk = prog(b, AT.merge, AT.merge + 0.06);
-    x.save(); x.globalAlpha = a; x.fillStyle = mk > 0.5 ? css("signalD") : css("ink2"); x.strokeStyle = mk > 0.5 ? css("signalD") : bone; x.lineWidth = 2.4;
-    x.beginPath(); x.arc(MERGE[0], MERGE[1], 30, 0, TAU); x.fill(); x.stroke(); x.restore();
-    if (mk > 0) glow(e, MERGE[0], MERGE[1], 140, 0.9 * impact(b, AT.merge, 0.25) + 0.15);
-    text(x, tr("ch01.merge"), MERGE[0] - 30, MERGE[1] + 86, { font: FONT.cjk(30, 600), color: bone, alpha: a * prog(b, AT.merge, AT.merge + 0.1) });
-    narPair(x, "ch01.n11a", "ch01.n11b", 15430, [24.05, 24.5], [25.0, 25.5], [24.0, 24.1, 26.62, 26.74], b);
-    const pa = prog(b, AT.merge + 0.02, AT.merge + 0.2, E.out);
-    arrowPath(x, [[MERGE[0] + 34, MERGE[1]], [PC.x - 6, MERGE[1]]], pa, css("signalD"), a, 2.2);
-    if (pa <= 0) return;
-    const sa = a * prog(b, AT.merge + 0.02, AT.merge + 0.08);
-    sheet(d, PC.x, PC.y, PC.w, PC.h, { alpha: sa });
-    text(d, "Pulse", PC.x + 36, PC.y + 64, { font: FONT.sans(40, 600), alpha: sa });
-    text(d, tr("ch01.pulse.window"), PC.x + PC.w - 36, PC.y + 62, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: sa });
-    line(d, PC.x + 30, PC.y + 90, PC.x + PC.w - 30, PC.y + 90, 1.4, css("pink"), sa);
-    const tx0 = PC.x + 230, tx1 = PC.x + PC.w - 36;
-    LANES.forEach(([key, hot], i) => {
-      const y = PC.y + 160 + i * 100;
-      const col = hot ? css("signal") : css("pink");
-      text(d, tr(key), PC.x + 36, y + 10, { font: FONT.sans(30, 600), color: col, alpha: sa });
-      line(d, tx0, y + 20, tx1, y + 20, 1.2, css("pink"), 0.25 * sa);
-      const r = mulberry32(60 + i);
-      if (hot) {
-        const tk = prog(b, AT.tokens, AT.tokens + 0.3);
-        const n = 44, cw = (tx1 - tx0) / n;
-        for (let j = 0; j < n; j++) {
-          const v = r(), busy = (j > 8 && j < 20) || (j > 29 && j < 41);
-          const hgt = busy ? 10 + v * 34 : v < 0.2 ? 4 + v * 20 : 0;
-          const shown = clamp(tk * n - j);
-          if (hgt > 0 && shown > 0) fillRect(d, tx0 + j * cw + 1, y + 20 - hgt * shown, cw - 3, hgt * shown, css("signal"), sa * 0.9);
-        }
-        text(d, tr("ch01.tokRate"), tx0, y + 58, { font: FONT.cjk(28, 600), color: css("graphite"), alpha: sa * prog(b, AT.tokens + 0.1, AT.tokens + 0.25) });
-        text(d, tr("ch01.sum"), tx1, y - 34, { font: FONT.cjk(28, 600), color: css("signal"), align: "right", alpha: sa * prog(b, AT.tokens + 0.1, AT.tokens + 0.25) });
-      } else {
-        let u = tx0 + r() * 60;
-        while (u < tx1 - 40) { const w = 20 + r() * 110; fillRect(d, u, y + 8, Math.min(w, tx1 - u), 12, css("pink"), 0.35 * sa); u += w + 30 + r() * 90; }
-      }
-    });
-  }
-
-  // 调度表须与 workers/collector/src/registry.ts#JOBS 一致。apple-recent 每分钟登记，任务里再按
-  // apple-recent.ts#appleRecentDue 分闲 / 活跃两档；这里让它在 APPLE_CHANGED 那一分钟看到列表变了。
-  const JOBS = [
-    ["apple-recent", 1, 0], ["provider-status", 1, 0], ["pagespeed", 60, 7],
-    ["github-chart", 10, 1], ["github-repo", 30, 2], ["site-deployments", 1, 0], ["site-analytics", 15, 3],
-    ["cloudflare-deployments", 2, 0], ["cloudflare-metrics", 15, 4], ["uptime-probe", 1, 0], ["site-health", 5, 4],
-    ["digest", 15, 5], ["avatar-watch", 5, 1],
-  ];
-  const MINUTES = 12;
-  const APPLE_IDLE = 5, APPLE_HOLD = 10, APPLE_CHANGED = 5;
-  const due = (j, m) => (JOBS[j][0] === "apple-recent"
-    ? m % APPLE_IDLE === 0 || (m > APPLE_CHANGED && m - APPLE_CHANGED < APPLE_HOLD)
-    : m % JOBS[j][1] === JOBS[j][2]);
-  const DC = [17870, 500], DR = 262;
-  const TC = { x: 18236, y: 174, w: 880, h: 664 };
-  const minuteAt = (b) => Math.floor((b - AT.dial) * 4 + 1e-9);
-  function handSteps(j, b) {
-    if (b < AT.dial) return 0;
-    const bt = Math.min((b - AT.dial) * 4, MINUTES - 1e-6), m = Math.floor(bt);
-    let n = 0;
-    for (let i = 0; i < m; i++) if (due(j, i)) n++;
-    if (due(j, m)) n += E.spring(clamp((bt - m) / 0.55));
-    return n;
-  }
-  function stationF7(x, e, d, b) {
-    const bone = css("bone"), ash = css("ash");
-    const a = prog(b, 26.85, 27.05);
-    if (a <= 0) return;
-    figHead(x, 17350, 7, tr("ch01.f7"), tr("ch01.f7sub"), a, { rule: 720 });
-    text(x, tr("ch01.noGate"), 17350, 214, { font: FONT.cjk(28, 600), color: ash, alpha: a * prog(b, 27.5, 27.7), maxW: 840 });
-    const beatF = Math.max(0, (b - AT.dial) * 4);
-    const m = b < AT.dial ? -1 : Math.min(MINUTES - 1, minuteAt(b));
-    const tickP = b < AT.dial ? 0 : Math.exp(-((beatF % 1) * 60 / 108) / 0.12);
-    const [cx, cy] = DC;
-    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.beginPath(); x.arc(cx, cy, DR, 0, TAU); x.fill(); x.strokeStyle = bone; x.lineWidth = 2.8; x.stroke();
-    x.lineWidth = 1.2; x.globalAlpha = a * 0.5; x.beginPath(); x.arc(cx, cy, DR - 12, 0, TAU); x.stroke(); x.restore();
-    for (let i = 0; i < 60; i++) {
-      const ang = (i / 60) * TAU - Math.PI / 2, big = i % 5 === 0, r0 = DR - (big ? 30 : 20);
-      line(x, cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0, cx + Math.cos(ang) * (DR - 12), cy + Math.sin(ang) * (DR - 12), big ? 2.4 : 1, bone, (big ? 0.85 : 0.35) * a);
-    }
-    if (m >= 0) {
-      text(x, "cron", cx + 56, cy + DR + 34, { font: FONT.mono(28, 500), color: ash, alpha: a });
-      text(x, `:${String(m).padStart(2, "0")}`, cx + 56, cy + DR + 80, { font: FONT.mono(40, 600), color: bone, alpha: a });
-    }
-    JOBS.forEach((job, j) => {
-      const len = DR * (0.4 + (0.46 * j) / (JOBS.length - 1)), ang = -Math.PI / 2 + (j / JOBS.length) * TAU + handSteps(j, b) * (TAU / 12);
-      const ran = m >= 0 && due(j, m) ? Math.exp(-((beatF - m) * 60 / 108) / 0.2) : 0;
-      const tx = cx + Math.cos(ang) * len, ty = cy + Math.sin(ang) * len;
-      line(x, cx, cy, tx, ty, 2, ran > 0.3 ? css("signalD") : bone, a * 0.9);
-      x.save(); x.globalAlpha = a; x.fillStyle = ran > 0.3 ? css("signalD") : css("ink2"); x.strokeStyle = ran > 0.3 ? css("signalD") : bone; x.lineWidth = 1.8;
-      x.beginPath(); x.arc(tx, ty, 8, 0, TAU); x.fill(); x.stroke(); x.restore();
-      if (ran > 0.05) glow(e, tx, ty, 46, 0.7 * ran);
-    });
-    x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(cx, cy, 13, 0, TAU); x.fill(); x.restore();
-    if (tickP > 0.05) glow(e, cx, cy, 90, 0.55 * tickP);
-    const pv = [cx, cy + DR + 10];
-    const pang = b < AT.dial ? 0 : 0.26 * Math.cos(Math.PI * beatF);
-    const bob = [pv[0] + Math.sin(pang) * 70, pv[1] + Math.cos(pang) * 70];
-    line(x, pv[0], pv[1], bob[0], bob[1], 2.4, bone, a);
-    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.strokeStyle = bone; x.lineWidth = 2.2; x.beginPath(); x.arc(bob[0], bob[1], 16, 0, TAU); x.fill(); x.stroke(); x.restore();
-    narPair(x, "ch01.n12a", "ch01.n12b", 17350, [27.3, 27.9], [27.9, 28.6], [27.25, 27.35, 29.62, 29.74], b);
-    const ca = a * prog(b, 27.05, 27.13, E.out);
-    if (ca <= 0) return;
-    sheet(d, TC.x, TC.y, TC.w, TC.h, { alpha: ca });
-    text(d, tr("ch01.chart"), TC.x + 34, TC.y + 60, { font: FONT.cjk(36, 600), alpha: ca });
-    text(d, tr("ch01.perMin"), TC.x + TC.w - 34, TC.y + 58, { font: FONT.cjk(28, 600), color: css("graphite"), align: "right", alpha: ca });
-    line(d, TC.x + 28, TC.y + 86, TC.x + TC.w - 28, TC.y + 86, 1.4, css("pink"), ca);
-    const gx = TC.x + 438, pitch = 34, y0 = TC.y + 148, ROW = 40;
-    [0, 5, 10].forEach((mm) => text(d, `:${String(mm).padStart(2, "0")}`, gx + mm * pitch + 13, TC.y + 122, { font: FONT.mono(28, 500), color: css("graphite"), align: "center", alpha: ca }));
-    if (m >= 0) fillRect(d, gx + m * pitch - 3, y0 - 26, pitch, JOBS.length * ROW + 4, css("pink"), 0.07 * ca);
-    JOBS.forEach(([name], j) => {
-      const y = y0 + j * ROW;
-      const ranNow = m >= 0 && due(j, m) ? Math.exp(-((beatF - m) * 60 / 108) / 0.2) : 0;
-      text(d, name, TC.x + 34, y + 10, { font: FONT.mono(28, 500), color: ranNow > 0.3 ? css("signal") : css("pink"), alpha: ca });
-      for (let mm = 0; mm < MINUTES; mm++) {
-        const cxl = gx + mm * pitch, filled = m >= mm && due(j, mm);
-        d.save(); d.globalAlpha = ca * (filled ? 1 : 0.35); d.strokeStyle = filled ? css("signal") : css("graphite"); d.lineWidth = 1.4; d.strokeRect(cxl, y - 14, 26, 26); d.restore();
-        if (filled) fillRect(d, cxl + 3, y - 11, 20, 20, css("signal"), ca * (mm === m ? 0.6 + 0.4 * ranNow : 0.85));
-      }
-    });
-  }
-
-  // 一拍一分钟，接着表盘走；列表变过之后每拍里每 POLL_EVERY 分钟拉一次。推断照 shared/pulse-listening.ts#inferredPlays：
-  // 窗口先减去上榜滞后 LAG，后一首的窗口再减去前一首的时长，和前一首的窗口求交，交集中点是开播、半宽是理想误差。
-  // PLAYS 的 start 是真正开播的分钟，seen 是第一次看到它的那次拉取；start + LAG 要落在 seen 前一格里，
-  // 两次看到新歌才踩在 30:1、31:2 两拍上（配乐的纸滑），所以第一首的时长要在 4.75–5.25 分钟之间。
-  const IX = FX.F7A - 960;
-  const minuteBar = (m) => AT.dial + m / 4;
-  const PH7 = { x: IX + 110, y: 290, w: 210, h: 400 };
-  const AL = { x: IX + 420, y: 262, w: 540, h: 380 };
-  const IS = { x: IX + 1010, y: 262, w: 850, h: 380 };
-  const PG = { x: IX + 1010, y: 664, w: 850, h: 174 };
-  const POLL_Y = 236;
-  const POLL = [[IX - 140, POLL_Y], [AL.x + AL.w / 2, POLL_Y], [AL.x + AL.w / 2, AL.y - 6]];
-  const POLL_EVERY = 0.25, LAG = 5.5 / 60;
-  const ARTIST7 = "Aimer";
-  const RECENT0 = ["カタオモイ", "蝶々結び", "Brave Shine", "春はゆく"];
-  const PLAYS = [{ title: "Ref:rain", len: 4.836, start: 12.86, seen: 13 }, { title: "残響散歌", len: 3.082, start: 17.696, seen: 18 }];
-  const W1 = [PLAYS[0].seen - POLL_EVERY - LAG, PLAYS[0].seen - LAG];
-  const W2 = [PLAYS[1].seen - POLL_EVERY - LAG, PLAYS[1].seen - LAG];
-  const W2B = [W2[0] - PLAYS[0].len, W2[1] - PLAYS[0].len];
-  const CROSS = [Math.max(W1[0], W2B[0]), Math.min(W1[1], W2B[1])];
-  const EST = (CROSS[0] + CROSS[1]) / 2;
-  const MARGIN_S = Math.ceil(((CROSS[1] - CROSS[0]) / 2) * 60);
-  const T7 = { seen1: minuteBar(PLAYS[0].seen), seen2: minuteBar(PLAYS[1].seen), shift: 31.75, cross: 32.0, chain: 32.1, page: 32.5, out: 33.7 };
+  // 别处那台 iPhone 的播放：一拍一分钟，接着钟楼走，到 FREEZE 定住。推断的算法见 ch01-labels.js 的 inferSheet
   const FREEZE = 19.5;
   const minuteAt7 = (b) => Math.min((b - AT.dial) * 4, FREEZE);
-  const AX0 = IS.x + 160, AX1 = IS.x + IS.w - 36, M0 = 11, M1 = 22;
-  const mx = (m) => lerp(AX0, AX1, (m - M0) / (M1 - M0));
-  const ROW = [IS.y + 170, IS.y + 262], AXIS_Y = IS.y + 322;
+  const PLAYS = [{ title: "Ref:rain", len: 4.836, start: 12.86, seen: 13 }, { title: "残响散歌", len: 3.082, start: 17.696, seen: 18 }];
 
-  function phone7(x, b, a) {
-    if (a <= 0) return;
-    const bone = css("bone"), ash = css("ash");
-    const k = prog(b, 29.9, 30.25, E.io);
-    x.save(); x.globalAlpha = a; x.strokeStyle = bone; x.lineWidth = 2.6; roundRect(x, PH7.x, PH7.y, PH7.w, PH7.h, 40);
-    x.save(); x.fillStyle = css("ink2"); x.globalAlpha = a * k; x.fill(); x.restore(); x.stroke(); x.restore();
-    box(x, PH7.x + 14, PH7.y + 14, PH7.w - 28, PH7.h - 28, a * k, { r: 30, lw: 1.4, fill: "ink" });
-    box(x, PH7.x + PH7.w / 2 - 38, PH7.y + 30, 76, 22, a * k, { r: 11, lw: 1.4, fill: "ink" });
-    const mb = minuteAt7(b);
-    const idx = PLAYS.reduce((n, p, i) => (mb >= p.start ? i : n), -1);
-    const cx = PH7.x + PH7.w / 2;
-    if (idx >= 0) {
-      const p = PLAYS[idx];
-      const fk = prog(b, minuteBar(p.start) - 0.04, minuteBar(p.start) + 0.04);
-      withSquash(x, PH7.y + 200, squash(fk), () => {
-        cover(x, cx - 60, PH7.y + 86, 120, a * k);
-        text(x, p.title, cx, PH7.y + 266, { font: FONT.cjk(40, 600), color: css("signalD"), align: "center", alpha: a });
-        text(x, ARTIST7, cx, PH7.y + 306, { font: FONT.sans(28, 500), color: ash, align: "center", alpha: a });
-      });
-      const px0 = PH7.x + 40, px1 = PH7.x + PH7.w - 40, py = PH7.y + 344;
-      line(x, px0, py, px1, py, 4, bone, 0.22 * a);
-      line(x, px0, py, lerp(px0, px1, clamp((mb - p.start) / p.len)), py, 4, css("signalD"), a);
-    }
-    text(x, "iPhone", PH7.x, PH7.y + PH7.h + 50, { font: FONT.mono(30, 600), color: bone, alpha: a });
-    text(x, tr("ch01.noRep"), PH7.x, PH7.y + PH7.h + 90, { font: FONT.cjk(28, 600), color: ash, alpha: a, maxW: 300 });
-  }
+  Object.assign(NS, { N, tr, P, tone, rgba, impact, win, SANS, SONG, MONO, AT, PROB, STOP, live, tilePath, drawerOut, roofLift, FREEZE, minuteAt7, PLAYS, SIG: "#D97757", SIGD: "#E48E6E", SIGH: "#D97757" });
 
-  function polls7(x, e, b, a) {
-    if (a <= 0) return;
-    const bone = css("bone"), ash = css("ash");
-    const k = prog(b, 29.95, 30.15, E.out);
-    dashPath(x, POLL, k, 1.6, bone, 0.6 * a);
-    arrowHead(x, POLL[2][0], POLL[2][1], Math.PI / 2, bone, a * k * 0.8);
-    text(x, tr("ch01.col"), IX + 70, POLL_Y - 14, { font: FONT.cjk(28, 600), color: bone, alpha: a * k });
-    text(x, tr("ch01.active"), POLL[1][0] + 20, POLL_Y - 14, { font: FONT.cjk(28, 600), color: ash, alpha: a * k, maxW: 520 });
-    for (let q = 12 / POLL_EVERY; q <= FREEZE / POLL_EVERY; q++) {
-      const m = q * POLL_EVERY, tick = Number.isInteger(m);
-      const t = minuteBar(m), pk = prog(b, t - 0.14, t);
-      if (pk > 0 && pk < 1) {
-        const [px, py] = pathAt(POLL, pk * pathLen(POLL));
-        x.save(); x.globalAlpha = a; x.fillStyle = bone; x.beginPath(); x.arc(px, py, tick ? 6 : 4, 0, TAU); x.fill(); x.restore();
-      }
-      if (tick && b >= t) glow(e, POLL[2][0], POLL[2][1], 40, 0.35 * impact(b, t, 0.08) * a);
-    }
-    arrowPath(x, [[PH7.x + PH7.w + 12, PH7.y + 200], [AL.x - 10, PH7.y + 200]], k, bone, a * 0.7, 1.6, true);
+  // 机位 v = { at 画面中心对着的世界点, az 方位, el 仰角（度）, d 距离, zoom, aper 景深光圈 }。视角 26°，FOCAL 是落点处一单位长的屏幕 px × 距离
+  const FOCAL = 540 / Math.tan((13 * Math.PI) / 180);
+  const D2R = Math.PI / 180;
+  const right = (az) => [Math.cos(az * D2R), -Math.sin(az * D2R)];
+  const up = (v) => { const a = v.az * D2R, e = v.el * D2R; return [-Math.sin(e) * Math.sin(a), -Math.sin(e) * Math.cos(a), Math.cos(e)]; };
+  const ppuOf = (v) => FOCAL / v.d;
+  const add3 = (p, d, k) => [p[0] + d[0] * k, p[1] + d[1] * k, p[2] + (d[2] || 0) * k];
+  // aim：让世界点 Pw 落在屏幕 (sx, sy)，按落点那一层的深度算
+  function aim(Pw, sx, sy, v) {
+    const r = right(v.az), u = up(v), k = 1 / ppuOf(v), a = (sx - 960) * k, c = (540 - sy) * k;
+    return { ...v, at: [Pw[0] - r[0] * a - u[0] * c, Pw[1] - r[1] * a - u[1] * c, Pw[2] - u[2] * c] };
   }
-
-  function appleList(d, e, b, a) {
-    if (a <= 0) return;
-    sheet(d, AL.x, AL.y, AL.w, AL.h, { alpha: a });
-    text(d, tr("ch01.apple"), AL.x + 30, AL.y + 56, { font: FONT.cjk(34, 600), alpha: a, maxW: AL.w - 60 });
-    text(d, "/v1/me/recent/played/tracks", AL.x + 30, AL.y + 96, { font: FONT.mono(28, 500), color: css("graphite"), alpha: a, maxW: AL.w - 60 });
-    line(d, AL.x + 26, AL.y + 116, AL.x + AL.w - 26, AL.y + 116, 1.4, css("pink"), a);
-    const v = b >= T7.seen2 ? 2 : b >= T7.seen1 ? 1 : 0;
-    const tSeen = v === 2 ? T7.seen2 : T7.seen1;
-    const list = [...PLAYS.slice(0, v).map((p) => p.title).reverse(), ...RECENT0];
-    const sk = v ? prog(b, tSeen, tSeen + 0.12, E.out) : 1;
-    const hk = v ? 1 - prog(b, tSeen + 0.2, tSeen + 1.1) : 0;
-    const RH = 56, top = AL.y + 162;
-    d.save(); d.beginPath(); d.rect(AL.x + 6, AL.y + 122, AL.w - 12, 3 * RH); d.clip();
-    list.slice(0, 4).forEach((title, i) => {
-      const y = top + (i - (1 - sk)) * RH;
-      const hot = v > 0 && i === 0;
-      if (hot && hk > 0) fillRect(d, AL.x + 16, y - 38, AL.w - 32, RH - 6, css("signal"), 0.14 * hk * a);
-      text(d, String(i + 1), AL.x + 34, y, { font: FONT.mono(28, 500), color: css("graphite"), alpha: a });
-      text(d, title, AL.x + 80, y, { font: FONT.cjk(32, 600), color: hot && hk > 0.3 ? css("signal") : css("pink"), alpha: a });
-      text(d, ARTIST7, AL.x + AL.w - 30, y, { font: FONT.sans(28, 500), color: css("graphite"), align: "right", alpha: a });
-    });
-    d.restore();
-    if (v > 0) glow(e, AL.x + 140, top - 12, 110, 0.45 * impact(b, tSeen, 0.25) * a);
-    text(d, tr("ch01.newTop"), AL.x + 30, AL.y + AL.h - 20, { font: FONT.cjk(28, 600), color: css("graphite"), alpha: a * prog(b, T7.seen1 + 0.1, T7.seen1 + 0.25), maxW: AL.w - 60 });
+  const fwd = (v) => { const a = v.az * D2R, e = v.el * D2R; return [-Math.sin(a) * Math.cos(e), -Math.cos(a) * Math.cos(e), -Math.sin(e)]; };
+  function screenX(v, Pw) {
+    const f = fwd(v), r = right(v.az), C = add3(v.at, f, -v.d), q = [Pw[0] - C[0], Pw[1] - C[1], Pw[2] - C[2]];
+    return 960 + (FOCAL * (v.zoom ?? 1) * (q[0] * r[0] + q[1] * r[1])) / (q[0] * f[0] + q[1] * f[1] + q[2] * f[2]);
   }
-
-  function bracket7(d, m0, m1, y, a, hot, dashed = false) {
-    if (a <= 0) return;
-    const x0 = mx(m0), x1 = mx(m1), h = 36, serif = Math.min(9, (x1 - x0) / 3);
-    fillRect(d, x0, y - h / 2, x1 - x0, h, css("signal"), (hot ? 0.2 : 0.07) * a);
-    const col = hot ? css("signal") : css("graphite");
-    d.save(); if (dashed) d.setLineDash([5, 4]);
-    polyline(d, [[x0 + serif, y - h / 2], [x0, y - h / 2], [x0, y + h / 2], [x0 + serif, y + h / 2]], 1, 2.4, col, a);
-    polyline(d, [[x1 - serif, y - h / 2], [x1, y - h / 2], [x1, y + h / 2], [x1 - serif, y + h / 2]], 1, 2.4, col, a);
-    d.restore();
+  const eave = () => { const T = L().TOWER; return [T.x - 12, T.y + T.d + 12, 50 + T.h]; };
+  // 标题块（标题加副标）放左上角时的右沿，含弹出回弹的 2%；离钟楼尖顶的左檐（按 S0 转回 45° 后算）不到 24 px 就整块挪到右下角，返回 0
+  const SUB = (NS.titleSub = "reporters · collector Worker");
+  function titleRight(x) {
+    const w = 1.02 * Math.max(K.measure(x, tr("ch01.title"), SANS(96, 600)), 4 + K.measure(x, SUB, MONO(30)));
+    return 110 + w + 24 <= screenX(SHOT.S0, eave()) ? 110 + w : 0;
   }
-  // 游标竖线会扫过这两行注：垫一块纸色底，线从字后面过去而不是穿字。底色按面板的透明度画、不跟字一起淡入，
-  // 否则淡入那几帧线会透出来穿字。先画注再画括号，底色不盖括号。
-  function note7(d, str, lx, ly, color, a, k) {
-    if (a <= 0 || k <= 0) return;
-    fillRect(d, lx - 8, ly - 30, measure(d, str, FONT.cjk(28, 600)) + 16, 38, css("paper"), a);
-    text(d, str, lx, ly, { font: FONT.cjk(28, 600), color, alpha: a * k });
-  }
-
-  function inferSheet(d, e, b, a) {
-    if (a <= 0) return;
-    const gr = css("graphite");
-    sheet(d, IS.x, IS.y, IS.w, IS.h, { alpha: a });
-    text(d, tr("ch01.infer"), IS.x + 30, IS.y + 56, { font: FONT.cjk(34, 600), alpha: a });
-    text(d, "inferredPlays", IS.x + IS.w - 30, IS.y + 54, { font: FONT.mono(28, 500), color: gr, align: "right", alpha: a });
-    line(d, IS.x + 26, IS.y + 78, IS.x + IS.w - 26, IS.y + 78, 1.4, css("pink"), a);
-    const mb = minuteAt7(b);
-    line(d, AX0, AXIS_Y, AX1, AXIS_Y, 1.4, css("pink"), 0.6 * a);
-    for (let m = M0; m <= M1; m++) {
-      line(d, mx(m), AXIS_Y - 6, mx(m), AXIS_Y + 6, 1.2, css("pink"), 0.5 * a);
-      if (m % 3 === 0) text(d, `:${m}`, mx(m), AXIS_Y + 38, { font: FONT.mono(28, 500), color: gr, align: "center", alpha: a });
-    }
-    for (let q = 12 / POLL_EVERY; q * POLL_EVERY <= mb; q++) {
-      const m = q * POLL_EVERY;
-      d.save(); d.globalAlpha = a; d.fillStyle = css("signal"); d.beginPath(); d.arc(mx(m), AXIS_Y, Number.isInteger(m) ? 5 : 3, 0, TAU); d.fill(); d.restore();
-    }
-    if (mb >= M0 && b < T7.out) line(d, mx(mb), IS.y + 104, mx(mb), AXIS_Y, 1.2, gr, 0.45 * a);
-    PLAYS.forEach((p, i) => text(d, p.title, IS.x + 30, ROW[i] + 11, { font: FONT.cjk(32, 600), alpha: a * prog(b, minuteBar(p.seen), minuteBar(p.seen) + 0.1) }));
-    const crossK = prog(b, T7.cross, T7.cross + 0.08);
-    const winA = win(b, T7.seen1 + 0.05, T7.seen1 + 0.2, T7.shift - 0.1, T7.shift);
-    note7(d, tr("ch01.win"), mx(W1[0]) - 6, ROW[0] - 32, css("signal"), a, winA);
-    const sk = prog(b, T7.shift, T7.cross, E.io);
-    const m0 = lerp(W2[0], W2B[0], sk), m1 = lerp(W2[1], W2B[1], sk), y = lerp(ROW[1], ROW[0], sk);
-    if (b >= T7.shift) {
-      const str = tr("ch01.shift"), sw = measure(d, str, FONT.cjk(28, 600));
-      // 英文那行比中文长一倍：跟着括号右端走会冲出面板右边，所以不越过面板右内沿。
-      note7(d, str, Math.min(mx(m1) + 14, IS.x + IS.w - 30 - sw), y - 26, gr, a, win(b, T7.shift, T7.shift + 0.08, T7.cross - 0.06, T7.cross));
-    }
-    bracket7(d, W1[0], W1[1], ROW[0], a * prog(b, T7.seen1, T7.seen1 + 0.08, E.out), crossK < 0.5);
-    bracket7(d, W2[0], W2[1], ROW[1], a * prog(b, T7.seen2, T7.seen2 + 0.08, E.out), b < T7.shift);
-    if (b >= T7.shift) bracket7(d, m0, m1, y, a, crossK < 0.5, true);
-    if (crossK > 0) {
-      const x0 = mx(CROSS[0]), x1 = mx(CROSS[1]);
-      fillRect(d, x0, ROW[0] - 24, Math.max(4, x1 - x0), 48, css("signal"), 0.9 * a * crossK);
-      glow(e, (x0 + x1) / 2, ROW[0], 80, 0.6 * impact(b, T7.cross, 0.3) * a);
-      text(d, tr("ch01.cross"), mx(W1[1]) + 70, ROW[0] - 32, { font: FONT.cjk(28, 600), color: css("signal"), alpha: a * prog(b, T7.cross + 0.05, T7.cross + 0.2) });
-    }
-    const ck = prog(b, T7.chain, T7.chain + 0.3, E.out);
-    if (ck > 0) {
-      const s0 = EST, e0 = EST + PLAYS[0].len, e1 = e0 + PLAYS[1].len;
-      const g = s0 + (e1 - s0) * ck;
-      fillRect(d, mx(s0), ROW[0] - 7, mx(Math.min(g, e0)) - mx(s0), 14, css("signal"), 0.85 * a);
-      if (g > e0) {
-        d.save(); d.setLineDash([4, 4]); line(d, mx(e0), ROW[0] + 8, mx(e0), ROW[1] - 8, 1.6, css("signal"), a); d.restore();
-        fillRect(d, mx(e0), ROW[1] - 7, mx(g) - mx(e0), 14, css("signal"), 0.85 * a);
-      }
-      text(d, tr("ch01.chain"), mx(W2[0]) - 22, ROW[1] + 11, { font: FONT.cjk(28, 600), color: gr, align: "right", alpha: a * prog(b, T7.chain + 0.2, T7.chain + 0.35) });
-    }
-  }
-
-  function pageSheet(d, e, b, a) {
-    if (a <= 0) return;
-    const gr = css("graphite");
-    sheet(d, PG.x, PG.y, PG.w, PG.h, { alpha: a });
-    text(d, tr("ch01.page"), PG.x + 30, PG.y + 42, { font: FONT.cjk(28, 600), color: gr, alpha: a });
-    const cx0 = PG.x + 30, cy0 = PG.y + 64;
-    d.save(); d.globalAlpha = a; d.strokeStyle = css("pink"); d.lineWidth = 1.6; d.strokeRect(cx0, cy0, 84, 84);
-    for (let j = 1; j <= 3; j++) { d.globalAlpha = a * (0.6 - j * 0.12); d.beginPath(); d.arc(cx0 + 42, cy0 + 44, 10 * j, 0, TAU); d.stroke(); }
-    d.restore();
-    text(d, tr("ch01.likely"), cx0 + 104, cy0 + 28, { font: FONT.mono(28, 600), color: css("signal"), alpha: a });
-    text(d, PLAYS[1].title, cx0 + 104, cy0 + 78, { font: FONT.cjk(34, 600), alpha: a });
-    d.save(); d.globalAlpha = a; d.strokeStyle = gr; d.lineWidth = 1.6; d.setLineDash([6, 4]); roundRect(d, cx0 + 254, cy0 + 48, 84, 40, 6); d.stroke(); d.restore();
-    text(d, `±${MARGIN_S}s`, cx0 + 296, cy0 + 77, { font: FONT.mono(28, 500), color: gr, align: "center", alpha: a });
-    glow(e, cx0 + 200, cy0 + 20, 120, 0.4 * impact(b, T7.page, 0.3) * a);
-    const lx = PG.x + 400, lw = 420, ly = PG.y + 104;
-    text(d, tr("ch01.pulse.listening"), lx, PG.y + 92, { font: FONT.sans(28, 600), alpha: a });
-    fillRect(d, lx, ly, lw, 22, css("pink"), 0.06 * a);
-    fillRect(d, lx + lw * 0.04, ly, lw * 0.2, 22, css("pink"), 0.4 * a);
-    const hatchSeg = (u0, u1, k) => {
-      if (k <= 0) return;
-      const x0 = lx + lw * u0, w = lw * (u1 - u0) * k;
-      d.save(); d.beginPath(); d.rect(x0, ly, w, 22); d.clip(); d.globalAlpha = a; d.strokeStyle = css("signal"); d.lineWidth = 2;
-      d.beginPath(); for (let s = x0 - 22; s < x0 + w; s += 9) { d.moveTo(s, ly + 22); d.lineTo(s + 22, ly); } d.stroke(); d.restore();
-      line(d, x0 + 1, ly, x0 + 1, ly + 22, 1.6, css("signal"), a);
+  const SHOT = {
+    S0: { at: [1010, 400, 0], az: 45, el: 33, d: 4150, aper: 10 },
+    MAC: { at: [380, 1000, 70], az: 36, el: 27, d: 1290, aper: 24 },
+    GATE: aim([795, 1076, 168], 900, 330, { az: 30, el: 30, d: 1330, aper: 24 }),
+    IMG: { at: [1310, 1110, 70], az: 47, el: 32, d: 1330, aper: 24 },
+    PHONE: { at: [1560, 690, 120], az: 55, el: 25, d: 1320, aper: 24 },
+    HOME: { at: [1330, 330, 40], az: 40, el: 50, d: 1560, aper: 20 },
+    TOKYO: { at: [2210, -310, 190], az: 51, el: 27, d: 1320, aper: 24 },
+    CODE: { at: [930, 380, 90], az: 45, el: 35, d: 2050, aper: 18 },
+    CLOCK: aim([300, 260, 300], 360, 500, { az: 34, el: 18, d: 1600, aper: 22 }),
+    INFER: aim([-1274, -140, 392], 340, 270, { az: 56, el: 26, d: 1880, aper: 20 }),
+  };
+  // 钟楼的任务表盘浮出后停在 CLOCK 机位前方：屏幕中心 (sx, sy)、半径约 R px，比机位的落点近 near，面朝镜头再往左偏 yaw 度，看得出盘面的厚度（ch01-dial.js）
+  const DIAL_AT = { sx: 660, sy: 440, R: 215, near: 350, yaw: 18 };
+  NS.DIAL = (() => {
+    const v = SHOT.CLOCK, f = fwd(v), r = [...right(v.az), 0], u = up(v), dep = v.d - DIAL_AT.near, C = add3(v.at, f, -v.d), k = dep / FOCAL;
+    const c = [0, 1, 2].map((i) => C[i] + (f[i] * FOCAL + r[i] * (DIAL_AT.sx - 960) + u[i] * (540 - DIAL_AT.sy)) * k);
+    const cy = Math.cos(DIAL_AT.yaw * D2R), sy = Math.sin(DIAL_AT.yaw * D2R);
+    return { c, r: r.map((q, i) => q * cy - f[i] * sy), u, n: f.map((q, i) => -q * cy - r[i] * sy), R: (DIAL_AT.R * dep) / FOCAL };
+  })();
+  const depthOf = (v, Pw) => { const f = fwd(v), C = add3(v.at, f, -v.d); return (Pw[0] - C[0]) * f[0] + (Pw[1] - C[1]) * f[1] + (Pw[2] - C[2]) * f[2]; };
+  const PARK3 = [560, 990, 53];
+  const END = { at: PARK3, az: 45, el: 32, d: FOCAL / (Math.SQRT2 * Math.cos(Math.PI / 6)), aper: 22 };
+  function truck(v, px) { const r = right(v.az), k = px / ppuOf(v); return { ...v, at: [v.at[0] + r[0] * k, v.at[1] + r[1] * k, v.at[2]] }; }
+  const hold = (v, k) => ({ ...truck(v, 10 * k), d: v.d / (1 + 0.015 * k) });
+  // 两个机位之间：落点、方位、仰角按缓动走，距离按对数走；中途升高、退远一点再落下（同一种镜头语言，不打转）
+  function move(a, c, k0) {
+    const k = E.io(k0), arc = Math.sin(k * Math.PI);
+    return {
+      at: lerp3(a.at, c.at, k), az: lerp(a.az, c.az, k), el: lerp(a.el, c.el, k) + 7 * arc,
+      d: Math.exp(lerp(Math.log(a.d), Math.log(c.d), k)) * (1 + 0.22 * arc), zoom: 1, aper: lerp(a.aper, c.aper, k),
     };
-    hatchSeg(0.5, 0.74, prog(b, T7.page + 0.05, T7.page + 0.2));
-    hatchSeg(0.745, 0.94, prog(b, T7.page + 0.15, T7.page + 0.3));
-    d.save(); d.beginPath(); d.rect(lx, PG.y + 138, 28, 16); d.clip(); d.globalAlpha = a; d.strokeStyle = css("signal"); d.lineWidth = 2;
-    d.beginPath(); for (let s = lx - 16; s < lx + 28; s += 8) { d.moveTo(s, PG.y + 154); d.lineTo(s + 16, PG.y + 138); } d.stroke(); d.restore();
-    text(d, tr("ch01.elsewhere"), lx + 40, PG.y + 156, { font: FONT.sans(28, 500), color: gr, alpha: a, maxW: lw - 40 });
   }
 
-  function stationF7A(x, e, d, b) {
-    const a = prog(b, 29.85, 30.05);
-    if (a <= 0) return;
-    figHead(x, IX + 70, "7A", tr("ch01.f7a"), tr("ch01.f7asub"), a, { rule: 1780, subW: 1100 });
-    phone7(x, b, a);
-    polls7(x, e, b, a * (1 - prog(b, T7.out, T7.out + 0.1)));
-    appleList(d, e, b, a * prog(b, 29.95, 30.08, E.out));
-    inferSheet(d, e, b, a * prog(b, 30.15, 30.28, E.out));
-    pageSheet(d, e, b, a * prog(b, T7.page, T7.page + 0.08, E.out));
-    narPair(x, "ch01.n13a", "ch01.n13b", IX + 70, [30.05, 30.5], [30.55, 31.05], [29.95, 30.05, 31.88, 32.0], b);
-    narPair(x, "ch01.n14a", "ch01.n14b", IX + 70, [32.05, 32.5], [32.55, 33.05], [32.0, 32.1, 33.62, 33.74], b);
-  }
-
-  const OUT = [PARK, [4700, 540]];
-  function guide(x, b) {
-    const gA = prog(b, AT.back + 0.02, AT.back + 0.16, E.out);
-    if (gA <= 0) return;
-    dashPath(x, [[PARK[0] + 44, 540], [3960, 540]], gA, 1.4, css("bone"), 0.45, [8, 8]);
-    // 标在线下：Clawd 骑着火花沿线跑过去，标在线上会被它整只盖住。
-    text(x, "→ ingest.homepage.lyjw.llc", 3790, 584, { font: FONT.mono(28, 500), color: css("ash"), align: "right", alpha: gA });
-  }
-  function hero(x, e, b) {
-    if (b < AT.post) return;
-    if (b < AT.park) {
-      const k = prog(b, AT.post, AT.park, E.io);
-      const p = [lerp(HUB[0], PARK[0], E.out(k)), lerp(HUB[1] + 30, PARK[1], k)];
-      envelope(x, p[0], p[1], lerp(24, 60, k), css("signalD"), { lw: 2.2, fill: css("ink2") });
-      spark(e, null, p, null, { t: G.t, size: 0.5 });
-      return;
+  // 开头：接第 00 章晒图上的笔记本（ch00.js#CUT 经 share.cut 给首帧的屏幕位置和大小，两边须同步）
+  // 首帧镜头从正前方（方位 0°）微微俯看笔记本：仰角等于盖子后仰的角度，屏幕正对镜头，是一块方方正正的矩形，和晒图小样同处同大；
+  // paint 内蓝底从笔记本往外化开、红线变到笔记本的轮廓上再淡掉，pull 内拉出到 S0 全景，方位在 S0 停留期间转回 45°。
+  const BP = { paint: [0.03, 0.3], morph: [0.02, 0.24], pull: [0.18, 0.7], R0: -45 };
+  const cut00 = () => window.CHAPTERS.find((c) => c.id === "ch00")?.share?.cut;
+  const rotAt = (b) => (b < STOP.S0.t1 ? BP.R0 * (1 - E.out(prog(b, BP.pull[0], STOP.S0.t1))) : 0);
+  function camOpen(b) {
+    const cut = cut00(), s = cut ? cut.s * (1 + cut.rate * b) : 14, az = SHOT.S0.az + rotAt(b);
+    const W = NS.W, c = W.L.lidPoint(W.L.LID.w / 2, W.L.LID.h / 2), el = (W.L.LID_TILT * 180) / Math.PI;
+    // 盖子宽 108 对上小样的 52 格；小样的框心在屏幕中心上方 2 格（ch00.js#CUT 的 at 比框心低 2 格）
+    const d1 = (FOCAL * W.L.LID.w) / (52 * s), lid = { az, el, d: d1, aper: 0 };
+    lid.at = add3(c, up(lid), -(2 * s) / (FOCAL / d1));
+    let S = { ...hold(SHOT.S0, E.out(prog(b, BP.pull[1], STOP.S0.t1))), az };
+    // 方位还没转回 45° 时钟楼偏左，会贴上左上角的标题块：镜头往左平移到左檐离标题块右沿 24 px（平移量对屏幕 x 是线性的，一步解出）
+    if (NS.titleR) {
+      const need = NS.titleR + 24 - screenX(S, eave());
+      if (need > 0) { const d1 = screenX(truck(S, -need), eave()) - screenX(S, eave()); S = truck(S, (-need * need) / d1); }
     }
-    if (b < AT.launch) {
-      guide(x, b);
-      const lit = prog(b, AT.back, AT.back + 0.1);
-      envelope(x, PARK[0], PARK[1], 60, css("signalD"), { lw: 2.2, fill: css("ink2") });
-      spark(e, null, [PARK[0], PARK[1] - 4], null, { t: G.t, size: lerp(0.45, 1.1, lit) });
-      if (lit > 0) glow(e, PARK[0], PARK[1], 150, 0.6 * impact(b, AT.back, 0.25));
-      return;
-    }
-    guide(x, b);
-    const dd = rideD(b);
-    const head = pathAt(OUT, dd);
-    const trail = trailOn(OUT, dd, lerp(80, 520, prog(b, AT.launch, 34.8)), 18);
-    spark(e, x, head, trail, { t: G.t, size: 1.1, lw: 2.4, color: css("signalD") });
-    // 起跑这一帧接停靠时的大小和光晕，不然信封一帧缩一圈、光晕一帧没了。
-    const shrink = prog(b, AT.launch, AT.launch + 0.12, E.out);
-    envelope(x, head[0], head[1], lerp(60, 44, shrink), css("signalD"), { lw: lerp(2.2, 2, shrink), fill: css("ink2"), alpha: 1 - prog(b, CL.leap[0], CL.leap[1] + 0.04) });
-    glow(e, head[0], head[1], 150, 0.6 * impact(b, AT.back, 0.25));
+    const k = E.io(prog(b, BP.pull[0], BP.pull[1]));
+    if (k <= 0) return { ...lid, zoom: 1 };
+    return { at: lerp3(lid.at, S.at, k), az, el: lerp(el, S.el, k), d: Math.exp(lerp(Math.log(d1), Math.log(S.d), k)), zoom: 1, aper: lerp(0, S.aper, k) };
   }
-  // 末端 1100 让 Clawd 在最后两帧前整只出右缘，屏幕上只剩拖尾贴着右边。
-  const rideD = (b) => keys(b, [[AT.launch, 0], [34.98, 1100, E.inExpo]]);
 
-  // 交给第 02 章：骑行时 Clawd 蹲着（pose default、crouch 1、不翻转），屏幕上 18 格宽 126 px，
-  // 中心对着火花亮核，底边比亮核高 7 px；亮核在屏幕 y 540。第 02 章 0:0 照这个从左缘接（ch02.js 的 CL.qRide）。
-  const CL = { drop: [34.0, 34.08], say: [34.09, 34.68], leap: [34.66, 34.77], stand: [3070, 539.3], qs: 7, lift: 7 };
-  function clawdRide(tp, b, z, BAR) {
-    if (b < CL.drop[0]) return;
-    const q = CL.qs / z, [sx, sy] = CL.stand;
+  // 结尾机位：亮核正在屏幕 y 540（交给第 02 章的高度），镜头一小节里从停靠点左 10 px 平移到右 4 px、缩放 1 → 1.014；导轨沿镜头的右方向，在屏幕上是一条水平线
+  // 末端 1100 让 Clawd 在 N − 0.03 左右整只出右缘，之后屏幕上只剩拖尾贴着右边。
+  const rideD = (b) => keys(b, [[AT.launch, 0], [N - 0.02, 1100, E.inExpo]]);
+  // 交给第 02 章的甩镜头：最后 0.25 小节镜头往右 E.inExpo 加速横甩，到 N 走完 dx；骑手、火花加上同一段位移，屏幕上的骑乘轨迹不变。
+  // 末两帧第 02 章的红斜块从右缘进画（ch02.js 的 share.whipBand），N:0（第 02 章 0:0）那一帧它的左下角在 slabX；ch02.js#WHIP 用同一出口速度接着刹停，两边须同步。
+  const WHIP = { t0: N - 0.25, dx: 2200, slabX: 900 };
+  const whipX = (b) => WHIP.dx * E.inExpo(prog(b, WHIP.t0, N));
+  const endView = (b) => ({ ...truck(END, lerp(-10, 4, prog(b, AT.back, N)) + whipX(b)), zoom: lerp(1, 1.014, prog(b, AT.back, N)) });
+  // 轨上一点：从停靠点沿导轨（镜头右方向）走 px 屏幕像素，再加甩镜头的位移
+  const onRail = (px, b) => { const r = right(END.az), k = (px + whipX(b)) / ppuOf(END); return [PARK3[0] + r[0] * k, PARK3[1] + r[1] * k, PARK3[2]]; };
+
+  function viewAt(b) {
+    if (b < STOP.S0.t1) return camOpen(b);
+    const list = Object.values(STOP);
+    for (let i = 1; i < list.length; i++) {
+      const st = list[i], prev = list[i - 1];
+      if (b < st.t0) return move(hold(SHOT[prev.k], 1), SHOT[st.k], prog(b, prev.t1, st.t0));
+      if (b < st.t1) return { ...hold(SHOT[st.k], prog(b, st.t0, st.t1)), zoom: 1 };
+    }
+    if (b < AT.back) return move(hold(SHOT.INFER, 1), endView(AT.back), prog(b, STOP.INFER.t1, AT.back));
+    return endView(b);
+  }
+
+  const SRC0 = () => { const { PHN, CT3, NAS, CLOUD, TOKYO } = L(); return [[PARK3[0], PARK3[1], 60], [PHN.x, PHN.y + 90, 260], [CT3[0], CT3[1], 80], [NAS.x + 90, NAS.y + 70, 160], [2250, -360, TOKYO.z + 180], [930, 120, CLOUD.z + 60]]; };
+  const EXIT0 = [2700, -600, 300];
+  const yawOf = (dx, dy) => Math.atan2(-dy, dx);
+  // Mac 的应用图标从 Jev 的出口升到 R2 柜顶上方，在那儿拆成哈希：落点高过柜顶，镜头这边没有东西挡着（ch01-world.js 画图标，ch01-labels.js 的标签跟着它）
+  NS.iconAt = (b) => { const k = prog(b, AT.icon, AT.hash, E.out); return [lerp(900, 1120, k), lerp(1300, 1150, k), lerp(90, 250, k) + Math.sin(k * Math.PI) * 40]; };
+  // 风向标指着镜头最近一路甩过去的方向：过去 3 小节里落点的位移按 e^(−Δ/1.2 小节) 衰减相加，取它的方位，再加一点风里的晃
+  NS.vaneYaw = (b) => {
+    let sx = 1, sy = 0, a = viewAt(b).at;
+    for (let k = 1; k <= 30; k++) {
+      const p = viewAt(b - k * 0.1).at, w = Math.exp((-(k - 1) * 0.1) / 1.2);
+      sx += (a[0] - p[0]) * w; sy += (a[1] - p[1]) * w; a = p;
+    }
+    return yawOf(sx, sy) + 0.12 * Math.sin(b * 2.1);
+  };
+  // 交给第 02 章：骑行时 Clawd 蹲着（pose default、不翻转），正面 18 格宽 126 px，中心对着火花亮核，底边比亮核高 7 px；第 02 章 0:0 照这个从左缘接（ch02.js 的 CL.qRide）。
+  const CL = { drop: [N - 1, N - 0.92], say: [N - 0.91, N - 0.32], leap: [N - 0.34, N - 0.23], stand: 180, qs: 7, lift: 7 };
+  // 落地的挤压按欠阻尼弹簧的闭式解：A·e^(−t/τ)·cos(ωt)，t 是落地后的秒数
+  const spring = (b, t0, A) => { const t = (b - t0) * BARs; return t < 0 ? 0 : A * Math.exp(-t / 0.09) * Math.cos(t * 30); };
+  function clawdRide(b, BAR) {
+    if (b < CL.drop[0]) return null;
+    const v = NS.cur, ppu = ppuOf(END) * v.zoom, q = CL.qs / ppu, lift = 1 / (ppu * Math.cos(v.el * D2R));
+    const stand = onRail(CL.stand, b), st = [stand[0], stand[1], L().RAIL_Z];
+    // 骑行时正面贴在导轨那一层（往后让半个身子的厚度）：正面的屏幕宽正好 126 px，正面底边比亮核高 7 px
+    const head = onRail(rideD(b), b), back = 2.5 * q, a = v.az * D2R;
+    const ride = [head[0] - Math.sin(a) * back, head[1] - Math.cos(a) * back, head[2] + CL.lift * lift];
     const frameAt = (t0) => Math.floor(((b - t0) * BAR * 1000) / window.Clawd.FRAME_MS + 1e-6);
-    const [hx, hy] = pathAt(OUT, rideD(b)), ride = hy - CL.lift / z;
-    let fr, cx = sx, cy = sy;
+    let fr, pos = st, squash = 0;
     if (b < CL.drop[1]) {
       fr = { pose: "arms-up", offset: 0 };
-      cy = lerp(sy - 660, sy, prog(b, CL.drop[0], CL.drop[1], E.in));
+      pos = [st[0], st[1], st[2] + lerp(660, 0, prog(b, CL.drop[0], CL.drop[1], E.in)) * lift];
     } else if (b < CL.leap[0]) {
       fr = K.clawdSeq("land", b, CL.drop[1], BAR) || { pose: b < CL.say[0] + 0.2 ? "default" : "look-left", offset: 0 };
+      squash = spring(b, CL.drop[1], 0.24);
     } else if (b < CL.leap[1]) {
       const k = prog(b, CL.leap[0], CL.leap[1]), i = frameAt(CL.leap[0]);
       fr = i < 2 ? window.Clawd.SEQ.jump[i] : { pose: "arms-up", offset: 0 };
-      cx = lerp(sx, hx, k);
-      cy = lerp(sy, ride, k) - K.hop(b, CL.leap[0], CL.leap[1], 56);
+      pos = lerp3(st, ride, k); pos[2] += K.hop(b, CL.leap[0], CL.leap[1], 56) * lift;
+      squash = -0.12 * Math.sin(k * Math.PI);
     } else {
       const i = frameAt(CL.leap[1]);
       fr = i < 2 ? window.Clawd.SEQ.land[i] : { pose: "default", offset: 1 };
-      cx = hx; cy = ride;
+      pos = ride; squash = spring(b, CL.leap[1], 0.16);
     }
-    K.clawdFrame(tp, fr, cx, cy, q, { poofColor: css("ash") });
-    const k = prog(b, CL.say[0], CL.say[0] + 0.06) * (1 - prog(b, CL.say[1] - 0.04, CL.say[1]));
-    if (k > 0) K.bubble(tp, tr("ch01.clawd"), sx - 56 / z, sy - 12 * q - 10 / z, { px: 34 / z, k, reveal: prog(b, CL.say[0] + 0.01, CL.say[0] + 0.13) });
+    return { fr, q, pos, yaw: v.az * D2R, squash };
+  }
+  function actors(b, { envAt, clawdPose }) {
+    const { HUB3 } = L();
+    if (b < STOP.S0.t1) SRC0().forEach((p, i) => {
+      for (let j = 0; j < 2; j++) {
+        const t0 = 0.75 + i * 0.1 + j * 0.65, k = prog(b, t0, t0 + 0.7, E.io);
+        if (k <= 0 || k >= 1) continue;
+        const q = lerp3(p, EXIT0, k);
+        q[2] += Math.sin(k * Math.PI) * 300;
+        envAt(q[0], q[1], q[2], 2.6 * (1 - prog(k, 0.85, 1)), yawOf(EXIT0[0] - p[0], EXIT0[1] - p[1]));
+      }
+    });
+    // 那封换歌的信封：从菜单栏的 Hub 图标弹出来，落在导轨上等到结尾；起跑后跟着火花走，Clawd 跳上去时收掉
+    if (b >= AT.post && b < CL.leap[1] + 0.05) {
+      const rail = yawOf(1, -1);
+      if (b < AT.park) {
+        const k = prog(b, AT.post, AT.park, E.io), p = lerp3(HUB3, [PARK3[0], PARK3[1], PARK3[2] - 6], k);
+        envAt(p[0], p[1], p[2] + Math.sin(k * Math.PI) * 120, lerp(0.6, 1.5, E.out(Math.min(1, k * 1.4))), lerp(0, rail, k));
+      } else if (b < AT.launch) envAt(PARK3[0], PARK3[1], PARK3[2] - 6, 1.5, rail);
+      else {
+        const h = onRail(rideD(b), b);
+        envAt(h[0], h[1], h[2] - 6, lerp(1.5, 1.1, prog(b, AT.launch, AT.launch + 0.12, E.out)) * (1 - prog(b, CL.leap[0], CL.leap[1] + 0.04)), rail);
+      }
+    }
+    clawdPose(clawdRide(b, BARs));
+  }
+  NS.actors = actors;
+
+  const rr = K.roundRect;
+  function plate(x, rx, ry, w, h, a, o = {}) {
+    if (a <= 0) return;
+    x.globalAlpha = a * 0.2; x.fillStyle = P.shade; rr(x, rx + 5, ry + 6, w, h, 14); x.fill();
+    x.globalAlpha = a; x.fillStyle = o.fill || P.plate; rr(x, rx, ry, w, h, 14); x.fill();
+    if (o.line) { x.strokeStyle = o.line; x.lineWidth = o.lw ?? 3; x.stroke(); }
+    x.globalAlpha = 1;
+  }
+  function glow(e, cx, cy, r, a) {
+    if (a <= 0.003) return;
+    const g = e.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(255,190,140,${0.85 * a})`); g.addColorStop(0.45, `rgba(230,120,80,${0.28 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
+    e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill();
+  }
+  Object.assign(NS, { plate, glow });
+
+  function blueprint(x, b) {
+    const cut = cut00();
+    if (!cut || b >= BP.paint[1]) return;
+    const W = NS.W, s = cut.s * (1 + cut.rate * b), P0 = (u, v) => [960 + u * s, 540 + (v + 5) * s];
+    const m = E.io(prog(b, BP.morph[0], BP.morph[1])), mix = (a, c) => a.map((p, i) => [lerp(p[0], c[i][0], m), lerp(p[1], c[i][1], m)]);
+    const { LAP, LID, lidPoint } = W.L, pr = (p) => W.proj(...p);
+    const lid = mix([P0(-26, 10), P0(26, 10), P0(26, -24), P0(-26, -24)], [[0, 0], [LID.w, 0], [LID.w, LID.h], [0, LID.h]].map(([u, v]) => pr(lidPoint(u, v))));
+    const key = mix([P0(-34, 14), P0(34, 14)], [[LAP.x, LAP.y + 58, LAP.z], [LAP.x + 108, LAP.y + 58, LAP.z]].map(pr));
+    const c = [(lid[0][0] + lid[2][0]) / 2, (lid[0][1] + lid[2][1]) / 2];
+    const r1 = Math.max(0.5, 2600 * prog(b, BP.paint[0], BP.paint[1]) ** 2), g = x.createRadialGradient(c[0], c[1], Math.max(0, r1 - 300), c[0], c[1], r1);
+    const [br, bg, bb] = parse(cut.bg);
+    g.addColorStop(0, `rgba(${br},${bg},${bb},0)`); g.addColorStop(1, cut.bg);
+    x.globalAlpha = 1; x.fillStyle = g; x.fillRect(0, 0, 1920, 1080);
+    x.globalAlpha = 1 - prog(b, BP.paint[1] - 0.12, BP.paint[1]);
+    x.strokeStyle = cut.line; x.lineWidth = lerp(cut.lw * s, 4, m); x.lineCap = "butt"; x.lineJoin = "miter";
+    x.beginPath(); lid.forEach(([u, v], i) => (i ? x.lineTo(u, v) : x.moveTo(u, v))); x.closePath(); x.moveTo(...key[0]); x.lineTo(...key[1]); x.stroke();
+    x.globalAlpha = 1;
+  }
+  function whipSlab(x, b) {
+    const band = window.CHAPTERS.find((c) => c.id === "ch02")?.share?.whipBand;
+    if (!band || b < WHIP.t0) return;
+    const sx = WHIP.slabX + (WHIP.dx - whipX(b)) * NS.cur.zoom;
+    if (sx > 1920) return;
+    x.globalAlpha = 1; band(x, sx);
+  }
+  function guide(x, dock, b) {
+    const gA = prog(b, AT.back + 0.02, AT.back + 0.16, E.out);
+    if (gA <= 0) return;
+    x.save(); x.globalAlpha = 0.5 * gA; x.strokeStyle = P.ink2; x.lineWidth = 2; x.setLineDash([8, 8]);
+    x.beginPath(); x.moveTo(dock[0] + 44, dock[1]); x.lineTo(dock[0] + 1070, dock[1]); x.stroke(); x.restore();
+    // 标在线下：Clawd 骑着火花沿线跑过去，标在线上会被它整只盖住。
+    NS.tag(x, "→ ingest.homepage.lyjw.llc", dock[0] + 900, dock[1] + 58, gA, { px: 28, font: MONO, align: "right", color: P.ink2 });
+  }
+  function hero(x, e, b) {
+    const W = NS.W, dockG = PARK3;
+    if (b >= AT.post && b < AT.launch) {
+      const k = prog(b, AT.post, AT.park, E.io), p = lerp3(W.L.HUB3, PARK3, k);
+      const [gx, gy] = W.proj(p[0], p[1], p[2] + Math.sin(k * Math.PI) * 120);
+      glow(e, gx, gy, 70 * (NS.cur.zoom || 1), 0.5 * (k < 1 ? 1 : 0.4 + 0.6 * impact(b, AT.back, 0.25)) + 0.5 * impact(b, AT.park, 0.2));
+    }
+    if (b < AT.back) return;
+    const dock = W.proj(...dockG);
+    guide(x, dock, b);
+    if (b < AT.launch) {
+      glow(e, dock[0], dock[1], 150, 0.6 * impact(b, AT.back, 0.25) + 0.2 * prog(b, AT.back, AT.back + 0.1));
+      return;
+    }
+    const dd = rideD(b), head = W.proj(...onRail(dd, b));
+    const trail = trailOn([[0, 0], [1810, 0]], dd, lerp(80, 520, prog(b, AT.launch, N - 0.2)), 18).map(([u]) => W.proj(...onRail(u, b)));
+    K.spark(e, x, head, trail, { t: G.t, size: 1.1, lw: 2.4, color: NS.SIGD });
+    // 浅底上加性的亮核会发白：垫一颗实心的橙核
+    x.globalAlpha = 1; x.fillStyle = NS.SIG; x.beginPath(); x.arc(head[0], head[1], 7, 0, TAU); x.fill();
+    x.fillStyle = "#FFE6D2"; x.beginPath(); x.arc(head[0], head[1], 3.5, 0, TAU); x.fill();
+    glow(e, head[0], head[1], 150, 0.6 * impact(b, AT.back, 0.25));
+  }
+  function bubble(x, b) {
+    const k = prog(b, CL.say[0], CL.say[0] + 0.06), out = 1 - E.in(prog(b, CL.say[1] - 0.1, CL.say[1]));
+    if (k <= 0 || out <= 0) return;
+    const [sx, sy] = NS.W.proj(...onRail(CL.stand, b).slice(0, 2), NS.W.L.RAIL_Z);
+    const str = tr("ch01.clawd"), f = SANS(34, 600), tw = K.measure(x, str, f), pad = 18, bw = tw + pad * 2, bh = 70;
+    x.save(); x.translate(sx - 56, sy - 12 * CL.qs - 10); const sc = lerp(0.6, 1, E.outBack(clamp(k * 1.6))); x.scale(sc, sc);
+    const a = clamp(k * 4) * out;
+    plate(x, 0, -bh, bw, bh, a);
+    x.globalAlpha = a; x.fillStyle = P.plate; x.beginPath(); x.moveTo(18, -2); x.lineTo(6, 20); x.lineTo(42, -2); x.fill(); x.globalAlpha = 1;
+    K.text(x, str, pad, -bh + 48, { font: f, color: P.ink, alpha: a, reveal: prog(b, CL.say[0] + 0.01, CL.say[0] + 0.13), perChar: true, fadeIn: false });
+    x.restore();
   }
 
+  let bg, emit, top;
+  function fallback(x) {
+    const g = x.createLinearGradient(0, 0, 0, 1080);
+    g.addColorStop(0, P.sky0); g.addColorStop(0.58, P.sky1); g.addColorStop(1, P.sky2);
+    x.fillStyle = g; x.fillRect(0, 0, 1920, 1080);
+  }
   function render(f) {
     BARs = f.BAR;
-    const b = f.bar;
-    const { cam, blur, zoomBlur } = K.camera(CAM, b, f.BAR);
-    const hitS = Math.max(impact(b, AT.judged, 0.1), impact(b, AT.shut, 0.1), impact(b, AT.merge, 0.12), impact(b, AT.back, 0.12));
-    cam.zoom *= 1 + 0.012 * hitS;
-    G.setCam(cam);
-    G.fill(plate, { uGridA: 1, uPlate: PLATE_RECT });
-
-    const x = ink.begin(); ink.cam(cam);
-    const e = emit.begin(); emit.cam(cam);
-    const d = paper.begin(); paper.cam(cam);
-    const tp = top.begin(); top.cam(cam);
-
-    const half = 960 / cam.zoom + 400;
-    const seen = (k) => Math.abs(FX[k] - cam.x) < half + 960;
-    datum(x, cam);
-    if (seen("S0")) stationS0(x, b);
-    if (seen("M1")) stationM1(x, e, d, b);
-    if (seen("M2")) { stationM2Jev(x, e, b); stationM2Img(x, e, d, b); }
-    if (seen("F2")) stationF2(x, e, b);
-    if (seen("F3")) stationF3(x, e, b);
-    if (seen("F4")) stationF4(x, e, b);
-    if (seen("F5")) stationF5(x, e, b);
-    if (seen("F6")) stationF6(x, e, b);
-    if (seen("CU")) stationCU(x, e, d, b);
-    if (seen("F7")) stationF7(x, e, d, b);
-    if (seen("F7A")) stationF7A(x, e, d, b);
-    hero(x, e, b);
-    clawdRide(tp, b, cam.zoom, f.BAR);
-
-    G.composite(ink.upload(), { mode: G.MODE.ink, seed: 1.7 });
-    G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.5 });
-    G.composite(paper.upload(), { mode: G.MODE.paper });
+    const b = f.bar, W = NS.W, dt = 1 / 60 / f.BAR;
+    NS.SIG = G.css("signal"); NS.SIGD = G.css("signalD");
+    const x = bg.begin(), e = emit.begin(), tp = top.begin();
+    const hitS = Math.max(impact(b, AT.judged, 0.1), impact(b, AT.merge, 0.12), impact(b, AT.back, 0.12));
+    let blur = [0, 0], zoomBlur = 0;
+    if (W && W.ready) {
+      NS.titleR = titleRight(x);
+      const v = viewAt(b), v0 = viewAt(b - dt);
+      v.zoom = (v.zoom ?? 1) * (1 + 0.01 * hitS);
+      W.view(v0);
+      const p0 = W.proj(...v.at);
+      W.view(v);
+      blur = [960 - p0[0], 540 - p0[1]];
+      zoomBlur = clamp(Math.log((v0.d / v.d) * (v.zoom / (v0.zoom ?? 1))), -0.2, 0.2);
+      W.pose(b);
+      const dk = NS.dialK ? NS.dialK(b) : 0;
+      W.draw({ aper: v.aper, focus: dk > 0 ? lerp(v.d, depthOf(v, NS.DIAL.c), dk) : v.d });
+      NS.labels(x, e, b);
+      hero(tp, e, b);
+      bubble(tp, b);
+      whipSlab(tp, b);
+      blueprint(tp, b);
+    } else {
+      G.clear([0.93, 0.85, 0.88]);
+      fallback(x);
+      NS.cur = { zoom: 1 };
+      NS.narrations(x, b);
+    }
+    G.composite(bg.upload(), { mode: G.MODE.normal });
+    G.composite(emit.upload(), { mode: G.MODE.add, gain: 0.9 });
     G.composite(top.upload(), { mode: G.MODE.normal });
 
-    const sh = hitS * 6;
+    const sh = hitS * 4, p0 = cut00()?.post, pk = p0 ? E.io(prog(b, BP.paint[0], BP.pull[1])) : 1;
+    const pp = (k, v) => (p0 ? lerp(p0[k], v, pk) : v);
     f.post = {
-      bloom: 0.7, threshold: 0.9, halation: 0.28, grain: 0.05, vignette: 0.42, ca: 0.4,
+      bloom: pp("bloom", 0.25), threshold: pp("threshold", 1.0), halation: pp("halation", 0), grain: 0, vignette: pp("vignette", 0.12), ca: 0,
       shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
-      flash: impact(b, AT.judged, 0.1) * 0.04 + impact(b, AT.merge, 0.1) * 0.04, flashCol: [1, 0.8, 0.6],
       blur, zoomBlur,
     };
   }
 
   window.CHAPTERS.push({
-    id: "ch01", title: "ch.01", bars: 35,
-    init() { plate = G.pass(K.PLATE.ink); ink = G.layer("ink"); emit = G.layer("emit", 0.5); paper = G.layer("paper"); top = G.layer("top"); },
+    id: "ch01", title: "ch.01", bars: N,
+    async init() {
+      bg = G.layer("bg"); emit = G.layer("emit", 0.5); top = G.layer("top");
+      await Promise.all([
+        document.fonts.load(`600 40px ${LAT}`, "Field"), document.fonts.load(`500 40px ${LAT}`, "Field"),
+        document.fonts.load(`600 40px ${ZH}`, "野外观测站"), document.fonts.load(`700 40px ${JP}`, "夜に駆ける"),
+      ]);
+      NS.SIGH = hex(G.css("signal"));
+      if (NS.W) NS.W.init();
+    },
     render,
   });
 })();

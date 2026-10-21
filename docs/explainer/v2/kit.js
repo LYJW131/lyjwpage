@@ -26,6 +26,21 @@
     }
     return ks[ks.length - 1][1];
   }
+  const springStep = (x, w, z) => {
+    if (x <= 0) return 0;
+    const wd = w * Math.sqrt(1 - z * z);
+    return 1 - Math.exp(-z * w * x) * (Math.cos(wd * x) + ((z * w) / wd) * Math.sin(wd * x));
+  };
+  // 每个键 [t, v] 表示从 t 起目标换成 v，叠加一条从 t 起步的弹簧（w 单位是弧度每小节，z < 1）。
+  // 阶跃响应在起点的值和速度都是 0，所以换目标时速度连续，经过中间点不停；任意时刻都能直接算出来。
+  function track(t, ks, w = 6, z = 0.95) {
+    let v = Array.isArray(ks[0][1]) ? ks[0][1].slice() : ks[0][1];
+    for (let i = 1; i < ks.length; i++) {
+      const k = springStep(t - ks[i][0], ks[i][2] ?? w, z), a = ks[i - 1][1], c = ks[i][1];
+      v = Array.isArray(v) ? v.map((x, j) => x + (c[j] - a[j]) * k) : v + (c - a) * k;
+    }
+    return v;
+  }
   function mulberry32(a) {
     return function () {
       a |= 0; a = (a + 0x6d2b79f5) | 0;
@@ -438,5 +453,5 @@ void main(){
     };
   }
 
-  window.K = { clamp, lerp, E, prog, keys, mulberry32, hash, FONT, text, narration, measure, line, polyline, rect, fillRect, dashed, envelope, stamp, roundRect, clawd, clawdSeq, clawdFrame, clawdProp, hop, bubble, spark, PLATE, glyph, sheet, checkbox, leader, pathAt, pathLen, trailOn, camera };
+  window.K = { clamp, lerp, E, prog, keys, track, mulberry32, hash, FONT, text, narration, measure, line, polyline, rect, fillRect, dashed, envelope, stamp, roundRect, clawd, clawdSeq, clawdFrame, clawdProp, hop, bubble, spark, PLATE, glyph, sheet, checkbox, leader, pathAt, pathLen, trailOn, camera };
 })();

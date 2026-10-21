@@ -18,6 +18,38 @@
 @font-face{font-family:"Geist";src:url(../fonts/Geist-SemiBold.woff2) format("woff2");font-weight:600}
 @font-face{font-family:"Geist";src:url(../fonts/Geist-Bold.woff2) format("woff2");font-weight:700}
 @font-face{font-family:"Geist Pixel";src:url(../fonts/GeistPixel-Square.woff2) format("woff2")}
+@font-face{font-family:"LXGW Marker Gothic";src:url(../fonts/LXGWMarkerGothic-ch08.woff2) format("woff2")}
+@font-face{font-family:"Noto Serif SC";src:url(../fonts/NotoSerifSC-600-ch04-06.woff2) format("woff2");font-weight:600}
+@font-face{font-family:"Noto Serif SC";src:url(../fonts/NotoSerifSC-900-ch04-06.woff2) format("woff2");font-weight:900}
+@font-face{font-family:"Ma Shan Zheng";src:url(../fonts/MaShanZheng-ch06.woff2) format("woff2");unicode-range:U+2E80-9FFF,U+FF00-FFEF}
+@font-face{font-family:"ZCOOL QingKe HuangYou";src:url(../fonts/ZCOOLQingKeHuangYou-ch05.woff2) format("woff2")}
+@font-face{font-family:"Noto Sans SC ch05";src:url(../fonts/NotoSansSC-700-ch05.woff2) format("woff2");font-weight:700}
+@font-face{font-family:"Jost";src:url(../fonts/Jost-500-ch05.woff2) format("woff2");font-weight:500}
+@font-face{font-family:"Jost";src:url(../fonts/Jost-600-ch05.woff2) format("woff2");font-weight:600}
+@font-face{font-family:"Jost";src:url(../fonts/Jost-800-ch05.woff2) format("woff2");font-weight:800}
+@font-face{font-family:"Ch07 Pixel 12";src:url(../fonts/FusionPixel12px-ch07.woff2) format("woff2")}
+@font-face{font-family:"Ch07 Pixel 8";src:url(../fonts/FusionPixel8px-ch07.woff2) format("woff2")}
+@font-face{font-family:"Noto Sans SC ch07";src:url(../fonts/NotoSansSC-500-ch07.woff2) format("woff2");font-weight:500}
+@font-face{font-family:"Noto Sans SC ch07";src:url(../fonts/NotoSansSC-700-ch07.woff2) format("woff2");font-weight:700}
+@font-face{font-family:"Noto Sans SC ch09";src:url(../fonts/NotoSansSC-500-ch09.woff2) format("woff2");font-weight:500}
+@font-face{font-family:"Noto Sans SC ch09";src:url(../fonts/NotoSansSC-700-ch09.woff2) format("woff2");font-weight:700}
+@font-face{font-family:"Inter ch09";src:url(../fonts/Inter-500-ch09.woff2) format("woff2");font-weight:500}
+@font-face{font-family:"Inter ch09";src:url(../fonts/Inter-700-ch09.woff2) format("woff2");font-weight:700}
+@font-face{font-family:"Noto Serif SC ch03";src:url(../fonts/NotoSerifSC-700-ch03.woff2) format("woff2");font-weight:700}
+@font-face{font-family:"ZCOOL XiaoWei";src:url(../fonts/ZCOOLXiaoWei-ch03.woff2) format("woff2")}
+@font-face{font-family:"Ch03 Marquee";src:url(../fonts/Limelight-ch03.woff2) format("woff2")}
+@font-face{font-family:"Fredoka ch01";src:url(../fonts/Fredoka-ch01.woff2) format("woff2");font-weight:300 700}
+@font-face{font-family:"ZCOOL KuaiLe ch01";src:url(../fonts/ZCOOLKuaiLe-ch01.woff2) format("woff2");font-weight:100 900}
+@font-face{font-family:"Zen Maru Gothic ch01";src:url(../fonts/ZenMaruGothic-700-ch01.woff2) format("woff2");font-weight:700}
+@font-face{font-family:"Noto Sans SC ch02";src:url(../fonts/NotoSansSC-700-ch02.woff2) format("woff2");font-weight:700}
+@font-face{font-family:"Noto Sans SC ch02";src:url(../fonts/NotoSansSC-900-ch02.woff2) format("woff2");font-weight:900}
+@font-face{font-family:"Big Shoulders ch02";src:url(../fonts/BigShoulders-600-ch02.woff2) format("woff2");font-weight:600}
+@font-face{font-family:"Big Shoulders ch02";src:url(../fonts/BigShoulders-900-ch02.woff2) format("woff2");font-weight:900}
+@font-face{font-family:"Big Shoulders Stencil ch02";src:url(../fonts/BigShouldersStencil-900-ch02.woff2) format("woff2");font-weight:900}
+@font-face{font-family:"Noto Sans SC ch00";src:url(../fonts/NotoSansSC-300-ch00.woff2) format("woff2");font-weight:300}
+@font-face{font-family:"Noto Sans SC ch00";src:url(../fonts/NotoSansSC-500-ch00.woff2) format("woff2");font-weight:500}
+@font-face{font-family:"Barlow Semi Condensed ch00";src:url(../fonts/BarlowSemiCondensed-300-ch00.woff2) format("woff2");font-weight:300}
+@font-face{font-family:"Barlow Semi Condensed ch00";src:url(../fonts/BarlowSemiCondensed-500-ch00.woff2) format("woff2");font-weight:500}
 :root{--bg:#0d0c0a;--fg:#ebe8dc;--dim:#8d8980;--accent:#d97757}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:500 13px "Geist Mono",ui-monospace,monospace;overflow:hidden}
@@ -59,8 +91,9 @@ body.export #wrap{inset:0}
       ["plan.js"], ["../clawd.js"], ["score.js", "window.Score=null"],
       ["music/ch00.js", "0"], ["music/ch01.js", "0"], ["music/ch02.js", "0"], ["music/ch03.js", "0"], ["music/ch04.js", "0"],
       ["music/ch05.js", "0"], ["music/ch06.js", "0"], ["music/ch07.js", "0"], ["music/ch08.js", "0"], ["music/ch09.js", "0"], ["music/ch10.js", "0"],
-      ["i18n.js"], ["engine.js"], ["kit.js"],
-      ["ch00.js", "0"], ["ch01.js", "0"], ["ch02.js", "0"], ["ch03.js", "0"], ["ch04.js", "0"],
+      ["i18n.js"], ["engine.js"], ["kit.js"], ["pencil.js"],
+      ["ch00.js", "0"], ["vendor/three.min.js", "0"], ["ch01.js", "0"], ["ch01-models.js", "0"], ["ch01-world.js", "0"], ["ch01-labels.js", "0"], ["ch01-dial.js", "0"], ["ch01-collector.js", "0"], ["ch02.js", "0"], ["ch03.js", "0"], ["ch04.js", "0"],
+      ["ch10-cast.js", "0"], ["ch10-relay.js", "0"], ["ch10-relay2.js", "0"], ["ch10-split.js", "0"], ["ch10-bow.js", "0"],
       ["ch05.js", "0"], ["ch06.js", "0"], ["ch07.js", "0"], ["ch08.js", "0"], ["ch09.js", "0"], ["ch10.js", "0"],
       ["film.js"]
     ];
