@@ -151,7 +151,7 @@ test("占位模型名不进排名、不当模型名、不进年度拆分", () =>
   assert.deepEqual(year.days["2026-09-28"]?.models, [["claude-opus-5", 20]]);
 });
 
-test("年度视图只留最近 380 天里有用量的日子，每天精确的前五", () => {
+test("年度视图只留最近 380 天里有用量的日子，每天列全所有模型", () => {
   const models: Array<[string, number]> = [["a", 6], ["b", 5], ["c", 4], ["d", 3], ["e", 2], ["f", 1]];
   const oldest = new Date(NOW + 8 * 3_600_000 - (CODING_YEAR_KEEP_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
   const tooOld = new Date(NOW + 8 * 3_600_000 - CODING_YEAR_KEEP_DAYS * 86_400_000).toISOString().slice(0, 10);
@@ -160,7 +160,7 @@ test("年度视图只留最近 380 天里有用量的日子，每天精确的前
     agents: { cursor: ledger("cursor", [day("2026-09-28", 7, [["f", 7]])]) },
   });
   assert.deepEqual(Object.keys(year.days), [oldest, "2026-09-28"]);
-  assert.deepEqual(year.days["2026-09-28"], { tokens: 28, models: [["f", 8], ["a", 6], ["b", 5], ["c", 4], ["d", 3]] });
+  assert.deepEqual(year.days["2026-09-28"], { tokens: 28, models: [["f", 8], ["a", 6], ["b", 5], ["c", 4], ["d", 3], ["e", 2]] });
   assert.equal(year.updatedAt, NOW);
 });
 
