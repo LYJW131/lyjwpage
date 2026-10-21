@@ -95,6 +95,15 @@ test("带 todayAtSource 的热力图从数据源的今天往回算最近几天�
   assert.deepEqual(parsed.data.daysSums, { last7Days: 24 + 25 + 26 + 27 + 28 + 29 + 30, last30Days: 465, all: 465 });
 });
 
+test("编码年度图的稀疏 mix 换成最近几天按日期、按模型展开，今天之后与更早的不列", async () => {
+  const models = ["claude-opus-5-5", "swe-2-max"];
+  const mix = [[0, 0, 5], [16, 1, 7], [29, 0, 20, 1, 10], [31, 0, 1]];
+  const io = fakeIO(() => ({ ok: true, data: { origin: "2026-09-01", todayAtSource: "2026-09-30", days: Array(33).fill(1), models, mix } }));
+  const parsed = JSON.parse(section((await run({ views: ["codingYear"] }, io)).text, "codingYear").json);
+  assert.deepEqual(parsed.data.mixLastDays, { "2026-09-17": { "swe-2-max": 7 }, "2026-09-30": { "claude-opus-5-5": 20, "swe-2-max": 10 } });
+  assert.equal("mix" in parsed.data, false);
+});
+
 test("detail=full 保留图片字段，短列表保持原样", async () => {
   const io = fakeIO(() => ({ games: games(3), iconUrl: "https://cdn.example/a.webp" }));
   const full = JSON.parse(section((await run({ views: ["playing"], detail: "full" }, io)).text, "playing").json);

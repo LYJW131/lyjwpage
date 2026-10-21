@@ -41,6 +41,22 @@ function lastDays(origin: string, values: number[]): Record<string, number> {
   return Object.fromEntries(values.slice(from).map((value, index) => [new Date(start + (from + index) * 86_400_000).toISOString().slice(0, 10), value]));
 }
 
+// 编码年度图的 `mix` 是稀疏的 [日偏移, models 下标, token 数, …]，模型照下标查名字容易错位，换成最近几天按日期、按模型展开的 `mixLastDays`。
+function mixLastDays(origin: string, today: number, models: unknown[], mix: unknown[]): Record<string, Record<string, number>> {
+  const start = Date.parse(`${origin}T00:00:00Z`);
+  const out: Record<string, Record<string, number>> = {};
+  for (const row of mix) {
+    if (!Array.isArray(row) || typeof row[0] !== "number" || row[0] > today || row[0] <= today - RECENT_DAYS) continue;
+    const day: Record<string, number> = {};
+    for (let index = 1; index + 1 < row.length; index += 2) {
+      const name = models[row[index]];
+      if (typeof name === "string" && typeof row[index + 1] === "number") day[name] = row[index + 1];
+    }
+    out[new Date(start + row[0] * 86_400_000).toISOString().slice(0, 10)] = day;
+  }
+  return out;
+}
+
 function monthlyTotals(origin: string, values: number[]): Record<string, number> {
   const start = Date.parse(`${origin}T00:00:00Z`);
   const totals: Record<string, number> = {};
@@ -73,6 +89,10 @@ export function withMonthlyTotals(value: unknown): unknown {
       out[`${key}LastDays`] = lastDays(start, past);
       out[`${key}Sums`] = sums(past);
     }
+  }
+  if (today !== undefined && Array.isArray(record.models) && Array.isArray(record.mix)) {
+    out.mixLastDays = mixLastDays(start, today, record.models, record.mix);
+    delete out.mix;
   }
   return out;
 }
