@@ -178,7 +178,7 @@ coding agent 的 token 用量有四个来源。来源只报自己观测到的原
 
 ### 合并规则与出口
 - 同一 agent 有账号级来源时只算它，其余来源的同 agent 账本标 `superseded`、不相加；只有设备级 / 环境级来源时相加（claude 的本机与云端，前提是云端遥测变量只配在云端）。规则在 `shared/coding-usage-sources.ts#resolveCodingUsageSources`。
-- 日子或会话数变了才重算视图与年度（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前十模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与前几名模型；只有状态变了就在存着的视图上换状态，不重扫日行。Mac、agents 采集时刻比存着的旧的账本不收；云端 OTLP 的账本由状态核心按提交顺序做差攒出，不走这道淘汰，也只收 cumulative 时序。存储键与归档见 [coding agent 的 token 用量](../workers/core/README.md#coding-agent-的-token-用量)。
+- 日子或会话数变了才重算视图与年度（`shared/coding-usage-view.ts#buildCodingUsageView`）：合计、全部历史的前十模型、各 agent 最近一个有行的站点日、各来源状态，以及年度视图每天的合计与全部可见模型的 token；只有状态变了就在存着的视图上换状态，不重扫日行。Mac、agents 采集时刻比存着的旧的账本不收；云端 OTLP 的账本由状态核心按提交顺序做差攒出，不走这道淘汰，也只收 cumulative 时序。存储键与归档见 [coding agent 的 token 用量](../workers/core/README.md#coding-agent-的-token-用量)。
 - 三条读出口都在实时层（`workers/core/src/coding-usage.ts`）：
   - `/api/status/coding`：视图原样给，不推送，卡片自己轮询。
   - `/api/status/coding/now`：各 agent 各来源最近一条事件，带 Mac 的存活；变了推 `coding-now`，带整份。
@@ -194,7 +194,7 @@ coding agent 的 token 用量有四个来源。来源只报自己观测到的原
 ### 数据契约与分桶规范
 - **日期分桶**：日行按 `Asia/Shanghai` 站点日划分；时刻一律 epoch 毫秒。
 - **`activeDays` 判定**：全部历史、全部 agent 里当天合计大于 0 的站点日**并集**，而非各来源天数相加。
-- **`modelCount` 判定**：全部历史、全部 agent 里用量大于 0 的模型名去重计数（名字归一与占位名规则同下一条「模型名」）；`coding/year` 的 `models` 只并了一年内每天的前几名，不能当全量。
+- **`modelCount` 判定**：全部历史、全部 agent 里用量大于 0 的模型名去重计数（名字归一与占位名规则同下一条「模型名」）；`coding/year` 的 `models` 只覆盖年度图窗口里的日子，不能当全量。
 - **费用估算**：来源侧按公开 API 定价折算（云端用 Claude Code 自报的费用），站点只相加；`costComplete` 按天判，来源采集失败只体现在来源状态里。仅作为 token 量级参考，不代表实际账单。
 - **模型名**：按来源给的字符串原样分组，不做跨来源别名合并，只去掉末尾的上下文档位标记（如 `[1m]`，`shared/coding-models.ts#codingModelName`）；占位名（`shared/coding-models.ts#HIDDEN_CODING_MODELS`）不进排名、不当模型名展示。
 

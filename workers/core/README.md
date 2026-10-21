@@ -70,12 +70,12 @@
   采集时刻比存着的旧（重发、乱序晚到）的那一格不收；error 那一轮的采集时刻停在上次成功，所以同一时刻上 error 比 ok 新。
   云端 OTLP 的账本是状态核心按提交顺序做差攒出来的，不走这道淘汰（见下面云端那节）。日子或会话数变了才在
   同一次提交里重算视图 `coding:usage:view`（`CodingUsagePayload`：合计、全历史前十模型、各 agent 最近一个有行的日子、
-  各来源状态）与年度视图 `coding:usage:year`（最近 380 天每天的合计与精确前五模型），算法是纯函数
+  各来源状态）与年度视图 `coding:usage:year`（最近 380 天每天的合计与各模型 token），算法是纯函数
   `buildCodingUsageView`；只有状态变了（采集时刻前进、出错 / 恢复）就在存着的视图上换掉那几格状态
   （`applyCodingUsageStatus`），不重扫日行、年度不写。日子变了的那次提交把账本修订号 `coding:usage:revision` 加一、
   改到的账本记下它（同一个事务）；只换状态不动它 —— Mac 每一轮采集都会带来新的采集时刻，D1 归档按修订号挑要重写的
   账本，不按时刻（时刻只取和存着的较大者，入口顺序与提交顺序相反时会停在水位上）。桶同理，每写一份
-  `pulse:token-buckets:revision` 加一。前三、每天前五都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
+  `pulse:token-buckets:revision` 加一。前十模型与每天各模型的 token 都在完整数据上精确累加；`activeDays` 是全部历史、全部 agent 的站点日并集；
   `costComplete` 看所有有 token 的日行，来源采集失败只体现在状态里。首屏标签 `coding` 只在新旧视图的骨架
   （行、总量、常用模型的有无，`shared/home-layout.ts` 的 `codingLayoutKey`）不同时打。
 - **活动**：`coding:activity:<来源>` 整份替换（采集时刻比存着的旧就不收）。拼好整份 `/api/status/coding/now`
