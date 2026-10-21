@@ -98,6 +98,11 @@
 
 ## 模型选择与子代理
 
+- **[How To Use Decision Models for Evals](https://x.com/hamelhusain/status/2112588257104216294)**（Hamel Husain、Antaripa Saha，X Article）
+  - 是什么：Jev、Clef 这类决策模型当评测判官时怎么用：不信默认 0.5 阈值，拿标注数据按精确率、召回率的底线用分层五折选阈值，再看概率校准。
+  - 取了什么：用标注问题集给 Clef 预取两题定阈值、分层五折验证、按分箱与 Brier 看校准，并在同一题集上对比 Jev。
+  - 状态：采用。落在 `workers/ai/scripts/prefetch-calibrate.ts` 与问题集 `workers/ai/scripts/prefetch-cases.json`，阈值是 `workers/ai/src/chat/router.ts#PREFETCH_MIN_PROBABILITY`。
+
 - **[What a task costs on Opus 5.5](https://claude.dev/blog/what-a-task-costs-on-opus-5-5/)**（claude.dev）、**[Using Claude Code: Spending your effort](https://claude.dev/blog/spending-your-effort/)**（claude.dev）、**[Subagents](https://code.claude.com/docs/en/sub-agents)**（Claude Code 文档）
   - 是什么：各类任务的成本、effort 档位怎么选、子代理的 `model` / `effort` 字段。
   - 取了什么：搜索、读日志、读长历史这类出错容易发现的活放 Sonnet 或 Haiku，判断和改代码留在主模型；要验证、有边界情况的用 high；子代理看不到对话，关键规则要在简报里重说。
