@@ -62,6 +62,10 @@
   - 是什么：Meta 自动化推荐系统新数据列接入的 agent 架构。约 1,300 行的确定性编排器只分类意图、收字段、过检查、委派，不做领域活；14 个上下文隔离、结构统一的子 agent 干活；工作流模板用状态机排阶段；知识文件运行时加载。
   - 取了什么：没取新做法，用来对照。路由确定、推理概率这条分界，首页对话已经是这样：验人、额度、降级都写死在代码里，只有选档与预取判断交给 Clef，示例问题连 Clef 都不调（[workers/ai/README.md](../workers/ai/README.md)、`workers/ai/src/chat/router.ts#presetRoute`）；项目协作里协调者只分派、线程上下文独立、skill 按需加载，提议知识更新再人审就是 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)。
   - 状态：不采用。唯一没有的是子 agent 结构统一：skill 数量少，各写各的格式还没造成问题，不为它统一改写。
+- **[Using AI to Delete Code: Agentic Tech Debt Cleanup at Uber](https://www.uber.com/us/en/blog/ai-code-cleanup/)**（Uber Engineering，[推文](https://x.com/ubereng/status/2112604623454470476)）
+  - 是什么：AutoClean 自动删掉已全量上线的 feature flag 留下的死代码。agent 改写，布尔化简经 MCP 交给确定性工具 [PolyglotPiranha](https://github.com/uber/piranha)；CI 红了先跑确定性修复器，再交给只能改限定文件的 agent 修复器；CI 绿后过静态检查与 CodeCourt：每条正确性要求（只删不加、行为不变、不偏离目标 flag、不留 agent 痕迹）各配一个评审 agent，并行跑，全过才给人看。
+  - 取了什么：没取做法，用来对照。站点没有 feature flag；「不留 agent 痕迹」本项目已由根 `AGENTS.md`「文档与注释」和 `pnpm rules:check` 管着。
+  - 状态：待定。CodeCourt 按条拆评审（一条要求一个评审 agent，单 agent 整份清单会漏掉埋在中间的要求）可对照根 [REVIEW.md](../REVIEW.md)；合并门槛还没出现因清单太长而漏检的实例，出现时先把漏的那一条拆成单独的评审提示。
 
 ## 写 skill 与写给 agent 的文档
 
