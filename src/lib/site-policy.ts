@@ -152,6 +152,8 @@ export function archivedAssetHeaders(object: {
 export function classifyGatewayRequest(method: string, pathname: string): GatewayClass {
   if (AI_HTTP_PATHS.has(pathname) || pathname.startsWith(`${MCP_PATH}/`)) return { kind: "ai" };
   if (APPLE_MUSIC_HTTP_PATHS.has(pathname)) return { kind: "collector" };
+  // core 的假数据注入端点只给本地 dev-router 用，生产网关不转发，即便 core 误开了 DEV_OVERRIDES。
+  if (pathname.startsWith("/api/dev/")) return { kind: "invalid" };
   if (pathname === LIVE_SOCKET_PATH || (pathname.startsWith("/api/") && pathname !== APP_VERSION_PATH)) {
     const view = method === "GET" ? lagViewKeyByPath(pathname) : undefined;
     return view ? { kind: "lag-status", view } : { kind: "core" };

@@ -39,7 +39,7 @@ function useLimitReading(limit: VibeCodingLimit, cappedBy: VibeCodingLimit | nul
   const baked = useContext(RenderClock) > 0;
   return {
     usedPercent,
-    unavailable: cappedBy ? fableUnavailableShare(cappedBy, now) : 0,
+    unavailable: cappedBy ? fableUnavailableShare(cappedBy, usedPercent, now) : 0,
     color: limitColor(usedPercent),
     pace,
     overPace: pace != null && usedPercent / 100 > pace,

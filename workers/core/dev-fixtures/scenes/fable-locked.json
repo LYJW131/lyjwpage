@@ -1,5 +1,5 @@
 {
-  "description": "Claude 周限额 80%、Fable 10%：Fable 条右端 60% 不可用",
+  "description": "Claude 周限额 80%、Fable 10%：Fable 条右端 50% 不可用",
   "extends": "readme-base",
   "views": {
     "/api/status/limits": {
