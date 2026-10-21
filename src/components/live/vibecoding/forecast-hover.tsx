@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 
 import { AnchoredTooltip, cellAnchor, type CellAnchor, useHoverDismiss } from "@/components/live/heatmap-hover";
 import { sampleForecast, type LimitForecast } from "@/lib/limit-forecast";
@@ -75,20 +75,21 @@ export function ForecastHover({
   };
 
   const sample = inWindow(at) ? sampleForecast(forecast, at) : null;
-  const clock = new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone });
+  const clock = useMemo(() => new Intl.DateTimeFormat("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone }), [timeZone]);
   const runsOut = forecast.runOutAt != null;
   const dots = sample == null
     ? []
     : [
-        { percent: sample.even, className: "bg-muted-foreground" },
-        sample.target != null && { percent: sample.target, className: "bg-signal-green" },
+        { key: "even", percent: sample.even, className: "bg-muted-foreground" },
+        sample.target != null && { key: "target", percent: sample.target, className: "bg-signal-green" },
         sample.phase === "locked"
-          ? { percent: 100, className: "bg-signal-red" }
+          ? { key: "value", percent: 100, className: "bg-signal-red" }
           : sample.percent != null && {
+              key: "value",
               percent: sample.percent,
               className: sample.phase === "used" ? "bg-foreground" : runsOut ? "bg-signal-red" : "bg-muted-foreground",
             },
-      ].filter((dot): dot is { percent: number; className: string } => Boolean(dot));
+      ].filter((dot): dot is { key: string; percent: number; className: string } => Boolean(dot));
   const top = dots.length ? Math.max(...dots.map((dot) => dot.percent)) : null;
 
   return (
@@ -137,7 +138,7 @@ export function ForecastHover({
           />
           {dots.map((dot) => (
             <span
-              key={dot.className}
+              key={dot.key}
               aria-hidden
               className={cn("pointer-events-none absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface", dot.className)}
               style={{ left: `${x(sample.at)}%`, top: `${y(dot.percent)}%` }}
