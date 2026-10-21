@@ -11,4 +11,4 @@ Done in #538 (merged 2026-10-22): remote D1 migrations use `cf d1 migrations app
 
 Still on wrangler (cf can't yet): single secret put incl. `wrangler preview secret put`, `tail`, `r2 objects put --cache-control` (video-release needs immutable), `d1 query --file`, multi `-c` local dev (`pnpm dev:worker`). Project configs (5 Workers) not migrated: `cf dev/build/deploy` read only cloudflare.config.ts; `cf migrate --dry-run` flags DO `migrations`→`exports` (core, ai), core preview branch, site needs `@cloudflare/vite-plugin@beta`; with the Wrangler bundler cf still runs wrangler underneath. Never run `cf dev/build/deploy` in the repo before migrating: auto-config rewrites package.json/vite.config.ts.
 
-Full migration = decision card in thread「wrangler 换成 cf 命令行」; recheck gaps on new cf releases before re-proposing. Gaps list also in docs/references.md「Cloudflare 平台」.
+lyjw chose 2026-10-22 00:22 SGT: wait until cf covers these gaps before migrating project configs (thread「wrangler 换成 cf 命令行」, recheck scheduled 2026-11-04 10:00 SGT). Recheck gaps on new cf releases before re-proposing. Gaps list also in docs/references.md「Cloudflare 平台」.
