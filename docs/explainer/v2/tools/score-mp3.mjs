@@ -4,7 +4,7 @@ import path from "node:path";
 import { availableParallelism } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { pipeline } from "node:stream/promises";
+import { once } from "node:events";
 import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { scoreInputs } from "../../../../scripts/explainer-score.mjs";
@@ -15,29 +15,38 @@ const workers = Number(process.env.SCORE_WORKERS || Math.min(16, availableParall
 if (!Number.isInteger(workers) || workers < 1 || workers > 16) throw new Error("SCORE_WORKERS must be an integer from 1 to 16");
 const endpoint = `/pcm/${randomUUID()}`;
 let encoder;
+const transfer = { next: 0, bytes: 0, stderr: "", hash: createHash("sha256"), started: 0, done: null };
 const server = createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end("<!doctype html><title>Score render</title>");
     return;
   }
-  if (req.method !== "POST" || req.url !== endpoint || encoder) {
+  const url = new URL(req.url, "http://127.0.0.1"), part = Number(url.searchParams.get("part")), last = url.searchParams.get("last") === "1";
+  if (req.method !== "POST" || url.pathname !== endpoint || part !== transfer.next || (part === 0) === Boolean(encoder)) {
     res.writeHead(404).end();
     return;
   }
-  const started = performance.now(), hash = createHash("sha256");
-  let stderr = "", bytes = 0;
-  encoder = spawn("ffmpeg", ["-v", "error", "-y", "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", "pipe:0", "-codec:a", "libmp3lame", "-b:a", "160k", output], { stdio: ["pipe", "ignore", "pipe"] });
-  encoder.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-8192); });
-  req.on("data", (chunk) => { hash.update(chunk); bytes += chunk.length; });
+  if (part === 0) {
+    transfer.started = performance.now();
+    encoder = spawn("ffmpeg", ["-v", "error", "-y", "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", "pipe:0", "-codec:a", "libmp3lame", "-b:a", "160k", output], { stdio: ["pipe", "ignore", "pipe"] });
+    encoder.stderr.on("data", (chunk) => { transfer.stderr = (transfer.stderr + chunk).slice(-8192); });
+    transfer.done = new Promise((resolve, reject) => {
+      encoder.once("error", reject);
+      encoder.once("close", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${transfer.stderr}`)));
+    });
+    transfer.done.catch(() => {});
+  }
+  transfer.next++;
   try {
-    await Promise.all([
-      pipeline(req, encoder.stdin),
-      new Promise((resolve, reject) => {
-        encoder.once("error", reject);
-        encoder.once("close", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${stderr}`)));
-      }),
-    ]);
-    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ pcmSha256: hash.digest("hex"), pcmBytes: bytes, transferAndMp3EncodingSeconds: (performance.now() - started) / 1000 }));
+    for await (const chunk of req) {
+      transfer.hash.update(chunk);
+      transfer.bytes += chunk.length;
+      if (!encoder.stdin.write(chunk)) await once(encoder.stdin, "drain");
+    }
+    if (!last) return void res.writeHead(204).end();
+    encoder.stdin.end();
+    await transfer.done;
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ pcmSha256: transfer.hash.digest("hex"), pcmBytes: transfer.bytes, transferAndMp3EncodingSeconds: (performance.now() - transfer.started) / 1000 }));
   } catch (error) {
     encoder.kill();
     if (!res.destroyed) res.writeHead(500).end(String(error));
@@ -70,8 +79,14 @@ try {
       pcm.setInt16((i * ch + c) * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true);
     }
     const encoded = performance.now();
-    const response = await fetch(endpoint, { method: "POST", body: pcm.buffer });
-    if (!response.ok) throw new Error(await response.text());
+    // 分块上传：Playwright 把请求体整块转成字符串，整片 PCM 一次 POST 会超过 V8 的字符串上限（ERR_STRING_TOO_LONG）。
+    const CHUNK = 4 << 20, parts = Math.ceil(pcm.byteLength / CHUNK);
+    let response;
+    for (let part = 0; part < parts; part++) {
+      const body = new Uint8Array(pcm.buffer, part * CHUNK, Math.min(CHUNK, pcm.byteLength - part * CHUNK));
+      response = await fetch(`${endpoint}?part=${part}&last=${part + 1 === parts ? 1 : 0}`, { method: "POST", body });
+      if (!response.ok) throw new Error(await response.text());
+    }
     const encoding = await response.json();
     if (encoding.pcmBytes !== pcm.byteLength) throw new Error("Incomplete PCM transfer");
     return { durationSeconds: n / sr, sampleRate: sr, channels: ch, ...encoding, synthesisMs: synthesized - started, pcmEncodingMs: encoded - synthesized, transferAndMp3EncodingMs: performance.now() - encoded };
