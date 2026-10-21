@@ -1,36 +1,78 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { readFile } from "node:fs/promises";
+import { after, before, test } from "node:test";
 import vm from "node:vm";
+import { Miniflare } from "miniflare";
 import { parseFragment, type DefaultTreeAdapterTypes } from "parse5";
+import ts from "typescript";
 
-import { deferModulePreloads } from "@/lib/defer-module-preloads";
+// HTMLRewriter 只在 workerd 里有，测试把源码转成 JS 后装进 Miniflare 跑。
+let worker: Miniflare;
+
+async function compiled(name: string): Promise<string> {
+  const source = await readFile(new URL(`./${name}.ts`, import.meta.url), "utf8");
+  return ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext } }).outputText
+    .replace('"@/lib/inline-script"', '"./inline-script.js"');
+}
+
+before(async () => {
+  worker = new Miniflare({
+    workers: [{
+      config: {
+        name: "defer-module-preloads",
+        compatibilityDate: "2026-10-01",
+        manifest: {
+          mainModule: "main.js",
+          modules: {
+            "main.js": {
+              type: "esm",
+              contents: 'import { deferModulePreloads } from "./defer-module-preloads.js";\n' +
+                "export default { fetch: async (request) => deferModulePreloads(new Response(await request.text())) };",
+            },
+            "defer-module-preloads.js": { type: "esm", contents: await compiled("defer-module-preloads") },
+            "inline-script.js": { type: "esm", contents: await compiled("inline-script") },
+          },
+        },
+      },
+    }],
+  });
+});
+
+after(() => worker.dispose());
+
+async function deferModulePreloads(html: string): Promise<string> {
+  return (await worker.dispatchFetch("http://localhost/", { method: "POST", body: html })).text();
+}
 
 const preloadA = '<link rel="modulepreload" href="/assets/entry.client-A.js"/>';
 const preloadB = '<link rel="modulepreload" href="/assets/page-B.js" crossorigin=""/>';
 const lowA = '<link rel="modulepreload" href="/assets/entry.client-A.js" fetchpriority="low"/>';
 const lowB = '<link rel="modulepreload" href="/assets/page-B.js" crossorigin="" fetchpriority="low"/>';
 
-test("head 里的 modulepreload 按原顺序挪到 </body> 前并降为低优先级，其余不动", () => {
+test("head 里的 modulepreload 按原顺序挪到 </body> 前并降为低优先级，其余不动", async () => {
   const html = `<html><head><link rel="stylesheet" href="/assets/root.css"/>${preloadA}<title>x</title>${preloadB}</head><body><main>hi</main><script type="module">import("/a.js")</script></body></html>`;
   assert.equal(
-    deferModulePreloads(html),
+    await deferModulePreloads(html),
     `<html><head><link rel="stylesheet" href="/assets/root.css"/><title>x</title></head><body><main>hi</main><script type="module">import("/a.js")</script>${lowA}${lowB}</body></html>`,
   );
 });
 
-test("body 里本来就有的 modulepreload 留在原处", () => {
+test("body 里本来就有的 modulepreload 留在原处", async () => {
   const html = `<html><head></head><body>${preloadA}</body></html>`;
-  assert.equal(deferModulePreloads(html), html);
+  assert.equal(await deferModulePreloads(html), html);
 });
 
-test("缺 </head> 或 </body> 时原样返回", () => {
-  assert.equal(deferModulePreloads(`<head>${preloadA}`), `<head>${preloadA}`);
-  assert.equal(deferModulePreloads(`<head>${preloadA}</head>`), `<head>${preloadA}</head>`);
+test("缺 </body> 时预加载降为低优先级接在文档末尾，不丢", async () => {
+  assert.equal(await deferModulePreloads(`<head>${preloadA}`), `<head>${lowA}`);
+  assert.equal(await deferModulePreloads(`<head>${preloadA}</head>`), `<head></head>${lowA}`);
 });
 
-test("已写明 fetchpriority 的 modulepreload 不再改", () => {
+test("已写明 fetchpriority 的 modulepreload 不再改", async () => {
   const explicit = '<link rel="modulepreload" href="/assets/a.js" fetchPriority="high">';
-  assert.equal(deferModulePreloads(`<html><head>${explicit}</head><body></body></html>`), `<html><head></head><body>${explicit}</body></html>`);
+  assert.equal(
+    await deferModulePreloads(`<html><head>${explicit}</head><body></body></html>`),
+    '<html><head></head><body><link rel="modulepreload" href="/assets/a.js" fetchpriority="high"/></body></html>',
+  );
 });
 
 type Element = {
@@ -63,13 +105,13 @@ function markup(elements: Element[]) {
   return elements.map(({ tagName, attributes, textContent }) => ({ tagName, attributes, textContent }));
 }
 
-function startup({
+async function startup({
   hidden = false,
   entryTypes = null,
   module = '<script type="module" async="">import "/assets/entry.client-A.js";</script>',
   preloads = preloadA + preloadB,
 }: { hidden?: boolean; entryTypes?: string[] | null; module?: string; preloads?: string } = {}) {
-  const html = deferModulePreloads(`<html><head>${preloads}</head><body><main>SSR</main>${module}</body></html>`);
+  const html = await deferModulePreloads(`<html><head>${preloads}</head><body><main>SSR</main>${module}</body></html>`);
   const body = html.slice(html.indexOf("<body>") + 6, html.lastIndexOf("</body>"));
   const nodes = parsedElements(body);
   const bootstrap = nodes.find((node) => node.tagName === "script");
@@ -174,8 +216,8 @@ function startup({
   };
 }
 
-test("次帧后只排一个零延时任务，成批激活预加载并原位启动模块，旧回调不重复启动", () => {
-  const run = startup();
+test("次帧后只排一个零延时任务，成批激活预加载并原位启动模块，旧回调不重复启动", async () => {
+  const run = await startup();
   assert.equal(run.html.match(/<link/g), null);
   assert.ok(!run.bootstrap.attributes.some(({ name }) => name === "type"));
   assert.equal(run.replacement(), null);
@@ -213,8 +255,8 @@ test("次帧后只排一个零延时任务，成批激活预加载并原位启�
   assert.deepEqual(run.events, ["preloads", "module"]);
 });
 
-test("LCP 观察可用但不发条目时，入口由上限任务兜底启动", () => {
-  const run = startup({ entryTypes: ["largest-contentful-paint"] });
+test("LCP 观察可用但不发条目时，入口由上限任务兜底启动", async () => {
+  const run = await startup({ entryTypes: ["largest-contentful-paint"] });
   assert.deepEqual(run.events, []);
   assert.equal(run.frames.size, 0);
   assert.deepEqual(run.timerDelays, [3000]);
@@ -225,8 +267,8 @@ test("LCP 观察可用但不发条目时，入口由上限任务兜底启动", (
   assert.equal(run.timers.size, 0);
 });
 
-test("支持其它条目类型但不支持 LCP 时走两帧路径，不排上限任务", () => {
-  const run = startup({ entryTypes: ["paint", "element"] });
+test("支持其它条目类型但不支持 LCP 时走两帧路径，不排上限任务", async () => {
+  const run = await startup({ entryTypes: ["paint", "element"] });
   assert.equal(run.frames.size, 1);
   assert.deepEqual(run.timerDelays, []);
   run.frame();
@@ -237,8 +279,8 @@ test("支持其它条目类型但不支持 LCP 时走两帧路径，不排上限
   assert.equal(run.timers.size, 0);
 });
 
-test("收到 LCP 条目后下一帧启动，重复条目与转入后台都不重复启动", () => {
-  const run = startup({ entryTypes: ["largest-contentful-paint"] });
+test("收到 LCP 条目后下一帧启动，重复条目与转入后台都不重复启动", async () => {
+  const run = await startup({ entryTypes: ["largest-contentful-paint"] });
   assert.equal(run.frames.size, 0);
   run.lcpEntry();
   run.lcpEntry();
@@ -259,8 +301,8 @@ test("收到 LCP 条目后下一帧启动，重复条目与转入后台都不重
   assert.deepEqual(run.events, ["preloads", "module"]);
 });
 
-test("初始后台无需等动画帧，预加载和模块只启动一次", () => {
-  const run = startup({ hidden: true });
+test("初始后台无需等动画帧，预加载和模块只启动一次", async () => {
+  const run = await startup({ hidden: true });
   assert.deepEqual(run.events, ["preloads", "module"]);
   assert.equal(run.frames.size, 0);
   assert.equal(run.timers.size, 0);
@@ -270,9 +312,9 @@ test("初始后台无需等动画帧，预加载和模块只启动一次", () =>
   assert.deepEqual(run.events, ["preloads", "module"]);
 });
 
-test("首帧前或首帧后任务前转入后台会立即启动，取消后的旧回调不重复启动", () => {
+test("首帧前或首帧后任务前转入后台会立即启动，取消后的旧回调不重复启动", async () => {
   for (const afterFirstFrame of [false, true]) {
-    const run = startup();
+    const run = await startup();
     const queuedFrame = [...run.frames.values()][0];
     assert.ok(queuedFrame);
     if (afterFirstFrame) run.frame();
@@ -291,10 +333,10 @@ test("首帧前或首帧后任务前转入后台会立即启动，取消后的�
   }
 });
 
-test("保留 nonce、crossorigin、显式 fetchpriority 与入口脚本文本，不让内嵌标签逃逸 bootstrap", () => {
-  const module = `<script nonce="abc&amp;123" crossorigin="anonymous" fetchpriority="high" async type='module'>const text = "<script><!--"; import "/entry.js";</script>`;
+test("保留 nonce、crossorigin、显式 fetchpriority 与入口脚本文本，不让内嵌标签逃逸 bootstrap", async () => {
+  const module = `<script nonce="abc&amp;123" crossorigin="anonymous" fetchpriority="high" data-q='say "hi"' async type='module'>const text = "<script><!--"; import "/entry.js";</script>`;
   const preloads = '<link rel="modulepreload" href="/x.js?a=1&amp;b=2" crossorigin="use-credentials" fetchpriority="high" nonce="xyz"/>';
-  const run = startup({ module, preloads });
+  const run = await startup({ module, preloads });
   assert.equal(run.bootstrap.attributes.find(({ name }) => name === "nonce")?.value, "abc&123");
   assert.equal((run.html.match(/<\/script>/g) ?? []).length, 1);
   run.frame();
@@ -305,8 +347,8 @@ test("保留 nonce、crossorigin、显式 fetchpriority 与入口脚本文本，
   assert.deepEqual(markup(run.inserted), markup(parsedElements(preloads)));
 });
 
-test("没有 head 预加载时入口仍等首帧后的任务，普通脚本和外部模块脚本保持原样", () => {
-  const run = startup({ preloads: "" });
+test("没有 head 预加载时入口仍等首帧后的任务，普通脚本和外部模块脚本保持原样", async () => {
+  const run = await startup({ preloads: "" });
   assert.equal(run.replacement(), null);
   run.frame();
   run.frame();
@@ -320,11 +362,11 @@ test("没有 head 预加载时入口仍等首帧后的任务，普通脚本和�
     '<script data-type="module" async>window.started=true</script>',
   ]) {
     const html = `<html><head>${preloadA}</head><body>${script}</body></html>`;
-    assert.equal(deferModulePreloads(html), `<html><head></head><body>${script}${lowA}</body></html>`);
+    assert.equal(await deferModulePreloads(html), `<html><head></head><body>${script}${lowA}</body></html>`);
   }
 });
 
-test("大写标签和带空白、属性的结束标签也推迟入口模块", () => {
+test("大写标签和带空白、属性的结束标签也推迟入口模块", async () => {
   const source = 'import "/assets/entry.client-A.js";';
   for (const module of [
     `<SCRIPT type="module" async="">${source}</SCRIPT>`,
@@ -338,7 +380,7 @@ test("大写标签和带空白、属性的结束标签也推迟入口模块", ()
     `<script type="module" async="">${source}</script foo="a>b">`,
     `<script type="module" async="">${source}</script/>`,
   ]) {
-    const run = startup({ module, preloads: preloadA });
+    const run = await startup({ module, preloads: preloadA });
     assert.equal((run.html.match(/<\/script>/g) ?? []).length, 1);
     assert.ok(run.html.endsWith("})();</script></body></html>"));
     assert.equal(run.replacement(), null);
@@ -350,12 +392,12 @@ test("大写标签和带空白、属性的结束标签也推迟入口模块", ()
   }
 });
 
-test("正文里的 </script-foo> 和 </script + 不换行空格 不算结束标签，入口模块整段推迟", () => {
+test("正文里的 </script-foo> 和 </script + 不换行空格 不算结束标签，入口模块整段推迟", async () => {
   for (const source of [
     'const x="</script-foo>"; import "/assets/entry.client-A.js";',
     'const x="</script\u00a0>"; import "/assets/entry.client-A.js";',
   ]) {
-    const run = startup({ module: `<script type="module" async="">${source}</script>`, preloads: preloadA });
+    const run = await startup({ module: `<script type="module" async="">${source}</script>`, preloads: preloadA });
     run.frame();
     run.frame();
     run.task();
@@ -363,10 +405,10 @@ test("正文里的 </script-foo> 和 </script + 不换行空格 不算结束标�
   }
 });
 
-test("<SCRIPT-foo> 自定义元素不算 script，不吞掉后面的入口模块", () => {
+test("<SCRIPT-foo> 自定义元素不算 script，不吞掉后面的入口模块", async () => {
   const source = 'import "/assets/entry.client-A.js";';
   const custom = '<SCRIPT-foo type="module" async="">x</SCRIPT-foo>';
-  const run = startup({ module: `${custom}<script type="module" async="">${source}</script>`, preloads: preloadA });
+  const run = await startup({ module: `${custom}<script type="module" async="">${source}</script>`, preloads: preloadA });
   assert.ok(run.html.includes(custom));
   run.frame();
   run.frame();
@@ -374,8 +416,8 @@ test("<SCRIPT-foo> 自定义元素不算 script，不吞掉后面的入口模块
   assert.equal(run.replacement()?.textContent, source);
 });
 
-test("等 LCP 期间访客先按下就立即启动，不等上限任务", () => {
-  const run = startup({ entryTypes: ["largest-contentful-paint"] });
+test("等 LCP 期间访客先按下就立即启动，不等上限任务", async () => {
+  const run = await startup({ entryTypes: ["largest-contentful-paint"] });
   assert.equal(run.replacement(), null);
   run.inputListeners.get("pointerdown")?.();
   assert.deepEqual(run.events, ["preloads", "module"]);
