@@ -118,7 +118,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
   };
 
   if (decision.route === "refuse") {
-    await record({ route: "refuse", tier: null, source: decision.source, messages: history, reply: REFUSAL, outcome: "refused" });
+    await record({ route: "refuse", tier: null, source: decision.source, scores: decision.scores, messages: history, reply: REFUSAL, outcome: "refused" });
     return new Response(
       new Blob([line({ type: "route", route: "refuse", tier: null }), line({ type: "text", text: REFUSAL })]).stream(),
       { headers },
@@ -197,7 +197,7 @@ export async function handleChat(request: Request, env: Env, io: ToolIO, ctx?: P
           emit({ type: "text", text: "\n\n[The connection to the heavens was lost.]" });
         }
       } finally {
-        await record({ route: wanted, tier: saved.trace?.tier ?? tier, source: decision.source, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
+        await record({ route: wanted, tier: saved.trace?.tier ?? tier, source: decision.source, scores: decision.scores, designSession: design?.sessionId, messages: history, reply, ...saved, ...(abort.signal.aborted && { outcome: "aborted" }) });
         // 访客中断时这条流已被取消，再 close 会抛错。
         if (!abort.signal.aborted) controller.close();
       }

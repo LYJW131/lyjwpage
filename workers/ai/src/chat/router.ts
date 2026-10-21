@@ -98,10 +98,13 @@ export function parseItem(body: unknown): string | undefined {
   return pNull <= ITEM_MAX_P_NULL && confidence >= ITEM_MIN_CONFIDENCE ? value : undefined;
 }
 
+export type PrefetchScores = Partial<Record<keyof typeof PREFETCH_MIN_PROBABILITY, { choice: string; p: number }>>;
+
 export type RouteDecision = {
   route: GodChatRank | "refuse";
   design?: true;
   prefetch?: GodChatPresetCall[];
+  scores?: PrefetchScores;
   source: "clef" | "fallback" | "forced" | "design" | "preset";
 };
 
@@ -154,14 +157,18 @@ export function parsePrefetch(body: unknown, item?: string): GodChatPresetCall[]
   return calls;
 }
 
-// 只记登记过的选项名与概率，不记访客原文与抽到的条目：Observability 收下所有 console 输出。
-function topChoice(body: unknown, question: "status" | "doc"): string | undefined {
-  const answer = object(object(object(body)?.answers)?.[question]);
-  const choice = answer?.choice;
-  if (typeof choice !== "string") return undefined;
-  if (!Object.hasOwn(question === "status" ? PREFETCH_STATUS : PREFETCH_DOC_CRITERIA, choice)) return "unlisted";
-  const probability = object(answer?.probabilities)?.[choice];
-  return typeof probability === "number" ? `${choice} ${probability.toFixed(3)}` : choice;
+// 选项名都是登记过的键，Clef 给了没登记的记成 unlisted；不含访客原文，可以进 Observability 与 ChatLog。
+export function prefetchScores(body: unknown): PrefetchScores {
+  const scores: PrefetchScores = {};
+  for (const question of ["status", "doc"] as const) {
+    const answer = object(object(object(body)?.answers)?.[question]);
+    const choice = answer?.choice;
+    if (typeof choice !== "string") continue;
+    const probability = object(answer?.probabilities)?.[choice];
+    const listed = Object.hasOwn(question === "status" ? PREFETCH_STATUS : PREFETCH_DOC_CRITERIA, choice);
+    scores[question] = { choice: listed ? choice : "unlisted", p: typeof probability === "number" ? Number(probability.toFixed(3)) : 0 };
+  }
+  return scores;
 }
 
 export function wantsItem(body: unknown): boolean {
@@ -187,9 +194,10 @@ export async function routeWithClef(ai: Ai | undefined, messages: GodChatMessage
     const usable = choice !== null && choice !== "refuse" && choice !== "design";
     const found = usable && wantsItem(answer) ? await item : undefined;
     const prefetch = usable ? parsePrefetch(answer, found) : [];
-    console.info("[god-chat] route", JSON.stringify({ route: choice ?? "unlisted", status: topChoice(answer, "status"), doc: topChoice(answer, "doc"), item: found !== undefined, prefetch: prefetch.length }));
+    const scores = prefetchScores(answer);
+    console.info("[god-chat] route", JSON.stringify({ route: choice ?? "unlisted", ...scores, item: found !== undefined, prefetch: prefetch.length }));
     if (!choice) return fallback;
-    const decision: RouteDecision = { ...CLEF_CHOICES[choice], source: "clef" };
+    const decision: RouteDecision = { ...CLEF_CHOICES[choice], source: "clef", ...(Object.keys(scores).length && { scores }) };
     return prefetch.length ? { ...decision, prefetch } : decision;
   } catch (error) {
     console.warn("[god-chat] clef router failed", error);
