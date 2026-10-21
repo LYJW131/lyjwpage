@@ -26,7 +26,7 @@ export default async function handleRequest(
   shellReady = true;
   await body.allReady;
   responseHeaders.set("Content-Type", "text/html");
-  const html = dedupeInlineImages(deferModulePreloads(await new Response(body).text()));
+  const html = dedupeInlineImages(await deferModulePreloads(new Response(body)).text());
   return new Response(html, {
     headers: responseHeaders,
     status: responseStatusCode,
