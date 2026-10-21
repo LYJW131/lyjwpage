@@ -18,7 +18,7 @@ description: lyjwpage 线程里一段活要连着调 5 次以上工具、而结�
 | 照固定清单跑命令、截图、拆帧、拼图、抓多页数据存成文件 | Haiku high | ffmpeg 抽帧加帧差；Observability 翻 6 页存 TSV |
 | 成批读再归纳：讨论串、会话记录、PR 评审、Gmail、长文档、外部文章 | Sonnet medium | 读 30 条评审列出未回复的；读 10 个线程找反复出现的做法 |
 | 全仓找用法、找旧说法、列调用方 | Sonnet medium（`Explore` 也行） | 「改名前列出所有读 `X` 的地方」 |
-| 规格写清、要动多个代码文件或要反复跑命令试错的实现：按给定接口写模块加测试、照方案改一条调用链、复现 bug 并修、跑测量对比 | Devin swe-2-max，照 [lyjwpage-devin-dispatch](../lyjwpage-devin-dispatch/SKILL.md) | 照规格写 `revert-proof.ts` 与测试；造复现命令再修 |
+| 规格写清、要动多个代码文件或要反复跑命令试错的实现：按给定接口写模块加测试、照方案改一条调用链、复现 bug 并修、跑测量对比 | Devin（限额有余用 Fusion High，否则 swe-2-max），照 [lyjwpage-devin-dispatch](../lyjwpage-devin-dispatch/SKILL.md) | 照规格写 `revert-proof.ts` 与测试；造复现命令再修 |
 | 规格写清的小改动：批量改名、同步文档措辞、改一两个文件 | Sonnet high，`isolation: "worktree"` | 改名后同步所有文档引用 |
 | 弄清 lyjw 要什么、设计取舍、找根因、读 diff 判对错、合并与否、给 lyjw 的回复 | 主线程自己 | |
 
