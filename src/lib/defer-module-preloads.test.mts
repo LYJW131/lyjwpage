@@ -350,9 +350,24 @@ test("大写标签和带空白、属性的结束标签也推迟入口模块", ()
   }
 });
 
-test("正文里的 </script-foo> 不算结束标签，入口模块整段推迟", () => {
-  const source = 'const x="</script-foo>"; import "/assets/entry.client-A.js";';
-  const run = startup({ module: `<script type="module" async="">${source}</script>`, preloads: preloadA });
+test("正文里的 </script-foo> 和 </script + 不换行空格 不算结束标签，入口模块整段推迟", () => {
+  for (const source of [
+    'const x="</script-foo>"; import "/assets/entry.client-A.js";',
+    'const x="</script\u00a0>"; import "/assets/entry.client-A.js";',
+  ]) {
+    const run = startup({ module: `<script type="module" async="">${source}</script>`, preloads: preloadA });
+    run.frame();
+    run.frame();
+    run.task();
+    assert.equal(run.replacement()?.textContent, source);
+  }
+});
+
+test("<SCRIPT-foo> 自定义元素不算 script，不吞掉后面的入口模块", () => {
+  const source = 'import "/assets/entry.client-A.js";';
+  const custom = '<SCRIPT-foo type="module" async="">x</SCRIPT-foo>';
+  const run = startup({ module: `${custom}<script type="module" async="">${source}</script>`, preloads: preloadA });
+  assert.ok(run.html.includes(custom));
   run.frame();
   run.frame();
   run.task();
