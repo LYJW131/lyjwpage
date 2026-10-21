@@ -63,4 +63,25 @@ describe("makeMountedAtSource", () => {
       else delete g.requestIdleCallback;
     }
   });
+
+  it("卸载的未放行 gate 出队，不占后来者的空闲回调", () => {
+    type IdleCb = (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void;
+    const scheduled: IdleCb[] = [];
+    const g = globalThis as { requestIdleCallback?: (cb: IdleCb) => number };
+    const prev = g.requestIdleCallback;
+    g.requestIdleCallback = (cb) => scheduled.push(cb);
+    try {
+      const stale = createClockGate();
+      const fresh = createClockGate();
+      const unsubscribe = makeMountedAtSource(stale, 1000).subscribe(() => {});
+      unsubscribe();
+      makeMountedAtSource(fresh, 1000).subscribe(() => {});
+      scheduled[0]({ didTimeout: false, timeRemaining: () => 50 });
+      assert.ok(fresh.armed && !stale.armed);
+      assert.equal(scheduled.length, 1);
+    } finally {
+      if (prev) g.requestIdleCallback = prev;
+      else delete g.requestIdleCallback;
+    }
+  });
 });
