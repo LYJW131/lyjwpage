@@ -58,6 +58,14 @@
   - 是什么：开源的 AI 端到端测试框架，测试里混写 `agent.act` 自然语言目标与定位器断言，验证过的 agent 动作录下来下次免模型回放；另有 `e2e explore`（给目标让 agent 自己逛应用报问题）与 `e2e mcp`（给编码 agent 操作运行中的应用）。
   - 取了什么：没取做法。在 lyjw.me 上试跑一次 `e2e explore`（6 步、2.7M token），9 条发现里没有真 bug：报的单位不一致是 lyjw 有意定的，其余是设计取舍或文案意见。教训落在 `HUMAN.md`「1」：外部 agent 报的显示不一致不算明确修复，先查历史。
   - 状态：不采用（lyjw 定的）。测试写法要在 CI 配模型，站点流程少不值得；`e2e mcp` 与 [site-verify.ts](../scripts/site-verify.ts) 重复且没有 WebKit 与首屏跳动检查；explore 一次的成本换不来有效发现。
+- **[The thin orchestrator](https://engineering.fb.com/2026/10/19/ml-applications/thin-orchestrator-ai-agent-architecture/)**（Meta Engineering）
+  - 是什么：Meta 自动化推荐系统新数据列接入的 agent 架构。约 1,300 行的确定性编排器只分类意图、收字段、过检查、委派，不做领域活；14 个上下文隔离、结构统一的子 agent 干活；工作流模板用状态机排阶段；知识文件运行时加载。
+  - 取了什么：没取新做法，用来对照。路由确定、推理概率这条分界，首页对话已经是这样：验人、额度、降级都写死在代码里，只有选档与预取判断交给 Clef，示例问题连 Clef 都不调（[workers/ai/README.md](../workers/ai/README.md)、`workers/ai/src/chat/router.ts#presetRoute`）；项目协作里协调者只分派、线程上下文独立、skill 按需加载，提议知识更新再人审就是 [lyjwpage-skill-mining](../.claude/skills/lyjwpage-skill-mining/SKILL.md)。
+  - 状态：不采用。唯一没有的是子 agent 结构统一：skill 数量少，各写各的格式还没造成问题，不为它统一改写。
+- **[Using AI to Delete Code: Agentic Tech Debt Cleanup at Uber](https://www.uber.com/us/en/blog/ai-code-cleanup/)**（Uber Engineering，[推文](https://x.com/ubereng/status/2112604623454470476)）
+  - 是什么：AutoClean 自动删掉已全量上线的 feature flag 留下的死代码。agent 改写，布尔化简经 MCP 交给确定性工具 [PolyglotPiranha](https://github.com/uber/piranha)；CI 红了先跑确定性修复器，再交给只能改限定文件的 agent 修复器；CI 绿后过静态检查与 CodeCourt：每条正确性要求（只删不加、行为不变、不偏离目标 flag、不留 agent 痕迹）各配一个评审 agent，并行跑，全过才给人看。
+  - 取了什么：没取做法，用来对照。站点没有 feature flag；「不留 agent 痕迹」本项目已由根 `AGENTS.md`「文档与注释」和 `pnpm rules:check` 管着。
+  - 状态：待定。CodeCourt 按条拆评审（一条要求一个评审 agent，单 agent 整份清单会漏掉埋在中间的要求）可对照根 [REVIEW.md](../REVIEW.md)；合并门槛还没出现因清单太长而漏检的实例，出现时先把漏的那一条拆成单独的评审提示。
 
 ## 写 skill 与写给 agent 的文档
 
@@ -93,6 +101,11 @@
   - 不采用：规范与根 `AGENTS.md`「文档与注释」基本重合；稳定规则只查类型声明与本地链接，`pnpm docs:check` 已覆盖且更多；实验规则在中文文档上误报多。试过整仓接入（PR #428，未合），文档本身没变好，只多一个二进制依赖和一套类型词表。
 
 ## 模型选择与子代理
+
+- **[How To Use Decision Models for Evals](https://x.com/hamelhusain/status/2112588257104216294)**（Hamel Husain、Antaripa Saha，X Article）
+  - 是什么：Jev、Clef 这类决策模型当评测判官时怎么用：不信默认 0.5 阈值，拿标注数据按精确率、召回率的底线用分层五折选阈值，再看概率校准。
+  - 取了什么：用标注问题集给 Clef 预取两题定阈值、分层五折验证、按分箱与 Brier 看校准，并在同一题集上对比 Jev。
+  - 状态：采用。落在 `workers/ai/scripts/prefetch-calibrate.ts` 与问题集 `workers/ai/scripts/prefetch-cases.json`，阈值是 `workers/ai/src/chat/router.ts#PREFETCH_MIN_PROBABILITY`。
 
 - **[What a task costs on Opus 5.5](https://claude.dev/blog/what-a-task-costs-on-opus-5-5/)**（claude.dev）、**[Using Claude Code: Spending your effort](https://claude.dev/blog/spending-your-effort/)**（claude.dev）、**[Subagents](https://code.claude.com/docs/en/sub-agents)**（Claude Code 文档）
   - 是什么：各类任务的成本、effort 档位怎么选、子代理的 `model` / `effort` 字段。

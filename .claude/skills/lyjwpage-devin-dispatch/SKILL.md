@@ -1,6 +1,6 @@
 ---
 name: lyjwpage-devin-dispatch
-description: lyjwpage 云端线程把实现、排查或测量的活派给容器里的 Devin CLI（默认 swe-2-max）时用：每任务一个 git worktree，tmux 交互式可中途追加指令，Claude 写任务书、监控、验收，再把 Devin 的提交重新签名进 PR。规格已定、要动多个代码文件或要反复跑命令试错的实现、复现、测量（lyjwpage-delegate 表里归 Devin 的那一档）时用；lyjw 说「派给 Devin」「让 Devin 去做」「给 Devin 追加指令」「续派」时也用。
+description: lyjwpage 云端线程把实现、排查或测量的活派给容器里的 Devin CLI（限额有余用 Fusion High，用完退回免费的 swe-2-max）时用：每任务一个 git worktree，tmux 交互式可中途追加指令，Claude 写任务书、监控、验收，再把 Devin 的提交重新签名进 PR。规格已定、要动多个代码文件或要反复跑命令试错的实现、复现、测量（lyjwpage-delegate 表里归 Devin 的那一档）时用；lyjw 说「派给 Devin」「让 Devin 去做」「给 Devin 追加指令」「续派」时也用。
 ---
 
 # 云端 Devin CLI 调度
@@ -11,6 +11,14 @@ Claude 定方案、写任务书、验收，Devin 动手。Devin 是外部进程�
 
 - 派：方案和验收判据已经写得出来，剩下的只是动手：按给定接口写模块加测试、照方案改一条调用链、造复现命令再修、跑测量出数字。改动跨多个文件或要多轮「跑、看报错、再改」时最划算。
 - 不派：还要弄清 lyjw 要什么、做设计取舍；一两个文件的小改（Sonnet 或自己做）；只读归纳（Sonnet）；要联网、要凭据、要碰生产的活（沙箱里做不了）；有 UI 变化的活可以派实现，截图与给 lyjw 看图仍由 Claude 做。
+
+## 选模型
+
+lyjw 的 Devin Pro 订阅就是给 Claude 派活开的，不用给 lyjw 留额度。
+
+- **限额有余用 Fusion High**：`fusion-claude-fable-5-1-high-sidekick-swe-2-medium`，即 `/fusion` 菜单里默认主模型（Claude Fable 5.1）的 High 档，配免费的 SWE-2 Medium 副手。派活前跑 `dv usage`，Daily 和 Weekly 的 `used_pct` 都低于 90 就用它；按量计费，每轮都扣限额。
+- **限额用完退回 swe-2-max**：两项任一到 90，或会话停在额度用尽的报错上，新任务用默认的 `swe-2-max`（Free，不扣限额，但有全账号共用的速率桶），跑着的任务在空闲时 `dv model <name> swe-2-max` 换模型接着做，不开新会话。重置时间在 `dv usage` 的 `resets` 里，过了再换回来。
+- 并发两种都开约 6 个、其余排队：免费档开多了一起撞速率桶，Fusion 开多了只是更快烧完限额。
 
 ## 环境
 
@@ -27,7 +35,7 @@ Claude 定方案、写任务书、验收，Devin 动手。Devin 是外部进程�
 
 ```bash
 dv(){ python3 -I .claude/skills/lyjwpage-devin-dispatch/scripts/dv.py "$@"; }   # 云端 shell 是 zsh，DV="python3 …" 加 dv 不分词
-dv start <name> --cwd <worktree> --brief <brief.md> [--nice 10] [--model swe-2-max]
+dv start <name> --cwd <worktree> --brief <brief.md> [--nice 10] [--model <模型>]   # 不传为 swe-2-max（或 $DV_MODEL）
 dv send  <name> -f <followup.md>      # 或 dv send <name> '一句话'；或从 stdin 读
 dv wait  <name> --timeout 3600        # 放进 Bash run_in_background；空闲/退出/需要处理时返回
 dv approve <name>                     # 批准一次写入菜单；路径不在工作区时拒绝执行
@@ -38,6 +46,8 @@ dv key <name> Enter                   # 原样按键（回答它的提问 / 选�
 dv interrupt <name>                   # Esc Esc：停当前这一轮，会话保留
 dv stop <name>                        # /exit；会话 id 仍可 resume
 dv resume <name> -f <next.md>         # tmux 已退出时，无头 `devin -r <id> -p` 续一轮
+dv model <name> <模型>                # 空闲时在原会话里 /model 换模型，之后 resume 也用新模型
+dv usage                              # 临时开一个 Devin 读 /usage，打印 Daily / Weekly 的 used_pct 与重置时间
 dv list
 ```
 
@@ -55,6 +65,8 @@ dv list
 - **多行消息**用 tmux 括号粘贴（`load-buffer` + `paste-buffer -p`），隔 1 秒再按 Enter；紧跟文本的 Enter 会被吞掉。`send` 已这样做并核对文本离开了输入框，不要再补按。
 - **状态标记**：忙 =「Guide Devin while it works」/「esc twice to interrupt」；空闲 = 占位符「Ask Devin to build features…」；刚启动时它和「Starting session…」同时出现，不算空闲。
 - tmux 目标要写成 `=<session>:`（精确匹配加冒号）。
+- **限额**：`/usage` 显示账号的 Daily / Weekly 已用百分比和重置时间（Devin Pro）。一轮极短的 Fusion High 对话让 Daily 从 0 到 1%；同样跑一轮 swe-2-max，百分比不动。额度用尽时屏幕长什么样还没见过，`wait` 会因认不出屏幕返回 4，用 `status` 看。
+- **换模型**：空闲时在输入框敲 `/model <模型 id>` 加一次 Enter，屏幕出现「Model set to …」即生效，会话上下文保留。
 - **会话 id** 是 `snow-chair` 这类名字，在 worktree 里 `devin list --format json` 能查到，`start` 自动记下。tmux 死了也能 `devin -r <id>` 接上。
 - `-p` 立即绑定它后面的参数：`devin -r <id> … -p '<prompt>'` 可以，`devin -p -r <id> …` 报错。长提示用 `--prompt-file`。
 - `-p` 的 stdout 只有最后一条 agent 消息；完整过程在 `--export` 的 JSON（`steps[]`，取 `source` 为 `user` / `agent` 且有 `message` 的项）。导出文件即使叫 `.md` 也是 JSON。
@@ -63,7 +75,7 @@ dv list
 
 1. **建工作区**（每任务一个，放在会话 scratchpad 下）：`git worktree add <scratchpad>/wt/<task> -b devin/<task> <base-sha>`。沙箱里不能联网：依赖要在派活前由 Claude 在 worktree 里 `pnpm install` 好（沙箱外有网），任务书写明不许装新依赖。再在 worktree 里跑一次 `pnpm typecheck`：它会生成 wrangler 与路由类型，Devin 在沙箱里跑 `tsc` 才看得到真实的类型错误，否则它会把真错误当成「缺生成类型的既有问题」。沙箱会在 worktree 里挂出 .bashrc、.gitconfig、.mcp.json、.idea 这类只在沙箱内可见的占位文件：任务书写明只 `git add <路径>`，不许 `git add -A` / `git add .`；`pnpm rules:check` 在沙箱里读到它们会 EACCES，验收时由 Claude 在沙箱外重跑；`wrangler types` 在沙箱里写不了 `~/.config`，要把 `XDG_CONFIG_HOME` / `XDG_CACHE_HOME` 指进 worktree。
 2. **写任务书**：结构见 `references/brief-template.md`。共享规则一份，任务书一份；每条规则写成「不许 X，改做 Y」。
-3. **启动**：`dv start <task> --cwd <worktree> --brief <brief.md> --nice 10`。
+3. **启动**：先 `dv usage` 按「选模型」定模型，再 `dv start <task> --cwd <worktree> --brief <brief.md> --nice 10 --model <模型>`。
 4. **挂唤醒器**：每个任务一个 `dv wait <task> --timeout 3600`，交给 Bash `run_in_background`；返回后看码处理，再挂下一个。不用前台 sleep 轮询，不把命令再套进 `( … ) &`（外层立刻结束，通知不来）。
 5. **纠偏**：方向错了就 `send` 一段说明（发现了什么、改做什么、为什么）。要它马上停，先 `interrupt` 再 `send`。它一空闲就派下一段，不让它闲着。
 6. **收报告**：`dv report <task>`，然后验收。
@@ -82,7 +94,7 @@ dv list
 - **服务断线**（`Connection error … "retryable": true`，退出码 1）：`devin models list` 确认服务回来，再对每个任务 `resume`（tmux 还在就 `send`）一段续跑提示，写明停在哪、哪些输出可能是半截的。不开新会话重派。交互式断线时屏幕显示 `Connection failed (attempt N/4), retrying`，`dv.py` 判为 `neterror`。
 - **编排会话重启**：tmux 里的 Devin 不受影响，`-p` 子进程会被一起杀。重启后先 `dv list`。
 - **sandbox 起不来**：wrapper 退回 deny-only 模式并在 stderr 说明。这时没有文件系统隔离，只派不碰仓库外的小任务，并告诉 lyjw。
-- **模型价格**：派活前 `devin models list` 看 swe-2-max 是否仍标 Free；变成收费先问 lyjw。
+- **模型价格**：`devin models list` 里 swe-2-max 不再标 Free 时，限额用完的退路就没了，告诉 lyjw。Fusion 本来就扣限额，不用问。
 
 ## 硬限制
 

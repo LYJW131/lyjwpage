@@ -1,0 +1,16 @@
+{
+  "description": "Claude 周限额 56%、Fable 10%：Fable 条右端只有 2% 的细条不可用",
+  "extends": "fable-locked",
+  "views": {
+    "/api/status/limits": {
+      "from": "limits-steady.json",
+      "set": {
+        "data.agents.claude.limits": [
+          { "key": "claude.primary", "label": null, "group": null, "windowMinutes": 300, "usedPercent": 37, "resetsAt": 4102444800 },
+          { "key": "weekly_all", "label": null, "group": null, "windowMinutes": 10080, "usedPercent": 56, "resetsAt": 4102444800 },
+          { "key": "claude-weekly-scoped-fable", "label": "Fable only", "group": null, "windowMinutes": 10080, "usedPercent": 10, "resetsAt": 4102444800 }
+        ]
+      }
+    }
+  }
+}

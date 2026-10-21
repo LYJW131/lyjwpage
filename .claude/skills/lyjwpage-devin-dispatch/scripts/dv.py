@@ -14,6 +14,8 @@ Subcommands (run `dv.py <cmd> -h` for flags):
   interrupt NAME                     Esc Esc: stop the current turn, keep the session
   resume NAME [TEXT | -f FILE]       headless follow-up (devin -r ID -p) when tmux is gone
   stop NAME                          /exit, then kill the tmux session if still there
+  model NAME MODEL                   switch a live session's model (/model MODEL)
+  usage                              account quota (Daily / Weekly % used) via a throwaway /usage
   list                               all runs and their states
 
 Permission mode: --mode, else $DV_MODE, else accept-edits — except when `devin` is the
@@ -497,6 +499,58 @@ def cmd_resume(a):
     sys.exit(r.returncode)
 
 
+def cmd_model(a):
+    meta = load(a.name)
+    st, _ = state(meta)
+    if st != 'idle':
+        die(f'{a.name} is {st}; switch the model while it is idle (`interrupt` first if needed)', 4)
+    sh('tmux', 'send-keys', '-t', pane(meta['tmux']), '-l', f'/model {a.model}')
+    time.sleep(1)
+    sh('tmux', 'send-keys', '-t', pane(meta['tmux']), 'Enter')
+    for _ in range(10):
+        time.sleep(1)
+        if any('Model set to' in l for l in tail(screen(meta['tmux']), 15)):
+            meta['model'] = a.model
+            save(meta)
+            print(f'model set to {a.model}')
+            return
+    die('no "Model set to" confirmation; inspect with `status`', 4)
+
+
+def cmd_usage(a):
+    sess = f'dv-usage-{os.getpid()}'
+    tmp = Path(os.environ.get('TMPDIR', '/tmp')) / sess
+    tmp.mkdir(parents=True, exist_ok=True)
+    sh('tmux', 'new-session', '-d', '-s', sess, '-x', '200', '-y', '50', '-c', str(tmp),
+       shlex.join(['devin', '--respect-workspace-trust', 'false']))
+    try:
+        for _ in range(30):
+            time.sleep(1)
+            if IDLE in '\n'.join(screen(sess)):
+                break
+        sh('tmux', 'send-keys', '-t', pane(sess), '-l', '/usage')
+        time.sleep(1)
+        # The first Enter accepts the slash-command completion, the second submits it.
+        for _ in range(2):
+            sh('tmux', 'send-keys', '-t', pane(sess), 'Enter')
+            time.sleep(1)
+        out = {}
+        for _ in range(30):
+            for line in screen(sess):
+                m = re.match(r'^\s*(Daily|Weekly)\b.*?(\d+)% used(?:\s*·\s*(.*\S))?', line)
+                if m:
+                    out[m[1].lower()] = dict(used_pct=int(m[2]), resets=m[3])
+            if len(out) == 2:
+                break
+            time.sleep(1)
+    finally:
+        sh('tmux', 'kill-session', '-t', pane(sess), check=False)
+        shutil.rmtree(tmp, ignore_errors=True)
+    if len(out) < 2:
+        die('could not read Daily/Weekly from /usage', 4)
+    print(json.dumps(out, ensure_ascii=False))
+
+
 def cmd_stop(a):
     meta = load(a.name)
     sess = meta['tmux']
@@ -577,6 +631,12 @@ def main():
     s.set_defaults(fn=cmd_key)
 
     sub.add_parser('list').set_defaults(fn=cmd_list)
+    s = sub.add_parser('model')
+    s.add_argument('name')
+    s.add_argument('model')
+    s.set_defaults(fn=cmd_model)
+
+    sub.add_parser('usage').set_defaults(fn=cmd_usage)
     a = p.parse_args()
     a.fn(a)
 

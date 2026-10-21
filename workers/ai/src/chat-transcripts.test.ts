@@ -14,13 +14,12 @@ registerHooks({
 });
 const { ChatLog, TRANSCRIPT_RETENTION_MS } = await import("./chat/transcripts.ts");
 
-function chatLog() {
-  const db = new DatabaseSync(":memory:");
+function chatLog(db = new DatabaseSync(":memory:")) {
   let alarm: number | null = null;
   const sql = {
     exec(query: string, ...bindings: (string | number | null)[]) {
       const statement = db.prepare(query);
-      const rows = /^\s*select/i.test(query) ? statement.all(...bindings) : (statement.run(...bindings), []);
+      const rows = /^\s*(select|pragma)/i.test(query) ? statement.all(...bindings) : (statement.run(...bindings), []);
       return { one: () => rows[0], toArray: () => rows };
     },
   };
@@ -72,4 +71,14 @@ test("对话记录：到期的行在 alarm 删掉，下一次 alarm 排到剩下
   await log.alarm();
   assert.equal(rows().length, 0);
   assert.equal(alarm(), null);
+});
+
+test("对话记录：旧表补上 scores 列，重建实例不重复加列，Clef 概率按 JSON 存", async () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE transcripts (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, route TEXT NOT NULL, tier TEXT, source TEXT NOT NULL, design_session TEXT, outcome TEXT NOT NULL, messages TEXT NOT NULL, reply TEXT NOT NULL, trace TEXT)");
+  chatLog(db);
+  const { log, rows } = chatLog(db);
+  await log.record({ ...entry, scores: { status: { choice: "listening", p: 0.9 } } });
+  await log.record(entry);
+  assert.deepEqual(rows().map((row) => row.scores), ['{"status":{"choice":"listening","p":0.9}}', null]);
 });

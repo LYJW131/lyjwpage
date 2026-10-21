@@ -3,6 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 import type { GodChatMessage, GodChatTrace } from "@shared/god-chat";
 
 import type { Env } from "../runtime";
+import type { PrefetchScores } from "./router";
 
 // 首页对话隐私说明（src/components/god-chat.tsx#CONSENT_COPY）按这个期限写，改期限要同步改三种语言。
 export const TRANSCRIPT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -17,6 +18,8 @@ export type Transcript = {
   messages: GodChatMessage[];
   reply: string;
   trace?: GodChatTrace;
+  // Clef 对状态题、文档题的首选与概率，校准 PREFETCH_MIN_PROBABILITY 用；示例问题与回落不调 Clef，没有这一项。
+  scores?: PrefetchScores;
   outcome: TranscriptOutcome;
 };
 
@@ -29,6 +32,8 @@ export class ChatLog extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS transcripts (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, route TEXT NOT NULL, tier TEXT, source TEXT NOT NULL, design_session TEXT, outcome TEXT NOT NULL, messages TEXT NOT NULL, reply TEXT NOT NULL, trace TEXT)",
     );
     ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS transcripts_at ON transcripts (at)");
+    const columns = ctx.storage.sql.exec<{ name: string }>("PRAGMA table_info(transcripts)").toArray();
+    if (!columns.some((column) => column.name === "scores")) ctx.storage.sql.exec("ALTER TABLE transcripts ADD COLUMN scores TEXT");
   }
 
   private prune(now: number): void {
@@ -45,8 +50,8 @@ export class ChatLog extends DurableObject<Env> {
     const now = Date.now();
     const messages = entry.messages.map(({ role, content, time }) => ({ role, content, ...(time && { time }) }));
     this.ctx.storage.sql.exec(
-      "INSERT INTO transcripts (at, route, tier, source, design_session, outcome, messages, reply, trace) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      now, entry.route, entry.tier, entry.source, entry.designSession ?? null, entry.outcome, JSON.stringify(messages), entry.reply, entry.trace ? JSON.stringify(entry.trace) : null,
+      "INSERT INTO transcripts (at, route, tier, source, design_session, outcome, messages, reply, trace, scores) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      now, entry.route, entry.tier, entry.source, entry.designSession ?? null, entry.outcome, JSON.stringify(messages), entry.reply, entry.trace ? JSON.stringify(entry.trace) : null, entry.scores ? JSON.stringify(entry.scores) : null,
     );
     this.prune(now);
     if ((await this.ctx.storage.getAlarm()) === null) await this.scheduleNext();

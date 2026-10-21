@@ -47,7 +47,7 @@ test("行：三份按 id 并起来，只在一份里出现的也有一行，缺�
   assert.deepEqual(claude?.activity, []);
   assert.equal(cursor?.usage, null);
   assert.equal(cursor?.limitsAt, null);
-  assert.equal(cursor?.row, "featured");
+  assert.equal(cursor?.row, "compact");
   assert.equal(grok?.label, "Grok Build");
   assert.equal(grok?.usage, null);
   assert.deepEqual(codingAgentRows(null, null, null), []);

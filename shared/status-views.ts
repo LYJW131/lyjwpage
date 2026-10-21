@@ -24,6 +24,7 @@ export const STATUS_VIEWS = {
   coding: { path: "/api/status/coding", layer: "realtime", tag: "coding" },
   codingNow: { path: "/api/status/coding/now", layer: "realtime", tag: "coding-now", event: "coding-now" },
   limits: { path: "/api/status/limits", layer: "lag", tag: "limits", cadenceMs: 5 * 60_000 },
+  limitsHistory: { path: "/api/status/limits/history", layer: "realtime" },
   agentStatus: { path: "/api/status/agent-status", layer: "lag", tag: "agent-status", cadenceMs: 60_000 },
   codingYear: { path: "/api/status/coding/year", layer: "realtime", tag: "coding-year" },
   watching: { path: "/api/status/watching", layer: "realtime", tag: "watching", event: "watching", pushCovers: true },
