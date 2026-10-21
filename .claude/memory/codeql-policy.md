@@ -19,3 +19,5 @@ Current state:
 - **Merge gate:** don't wait for CodeQL on ordinary PRs. The bot-review gate ([[merge-requires-bot-review-pass]]) still covers Devin, Codex, Claude review and Bugbot.
 
 Related: [[lyjwpage-daily-review-routine]], whose prompt still lists CodeQL among the checks to wait for. That entry is stale but harmless.
+
+Cloud sessions get 403 on the code-scanning alerts API, so alert state can't be read there; find the alert number from the fix PR or ask lyjw. Cursor Agent may auto-open `codeql-fix/alert-N` PRs; Devin Review on them tends to find more regex-vs-HTML edge cases (alert #35, fixed in #528, 2026-10-21).
