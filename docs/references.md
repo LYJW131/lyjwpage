@@ -138,6 +138,10 @@
   - 是什么：按关键词检索的设计知识库，覆盖风格、配色、字体和 UX 规则。
   - 取了什么：`--domain ux`、`--domain chart` 的单条规则可以查。它的设计系统生成器与本站风格冲突，不用。项目里不安装。
   - 状态：部分采用。落在 [lyjwpage-ui-design](../.claude/skills/lyjwpage-ui-design/SKILL.md)「外部设计 skill 怎么用」。
+- **[taste-skill](https://github.com/Leonxlnx/taste-skill)**（Leonxlnx，MIT）
+  - 是什么：让 agent 做页面不落「AI 平均脸」的 skill：随机发设计方向、按年份登记被用滥的手法，用真浏览器量页面的 inspect 脚本判 FAIL / WARN；dashboard 走单独的 app-screens 规则和 inspect 的 app 模式。
+  - 取了什么：对 lyjw.me 跑过一次它的 inspect 脚本（app 模式），只取了「页面没有 h1」这一条，首页加了只给读屏和搜索引擎看的标题。其余报告大多与 DESIGN.md 有意的风格冲突（`label-mono` 大写小标签、硬阴影、深色边框、方格纸配色），或是误报（歌单标题里的 emoji、横向滚动条里滚出屏幕的内容）。工具当门禁太吵，不装进项目。
+  - 状态：部分采用。落在 `src/app/page.tsx` 的 `sr-only` 标题。
 - **[frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design)**（Anthropic）、**[Impeccable](https://github.com/pbakaus/impeccable)**（pbakaus）
   - 是什么：前者是给全新页面定视觉方向的 skill；后者带布局、排版命令和反模式检测。
   - 取了什么：前者只在做全新独立页面时参考；后者适合大改版时做一次外部审查。
