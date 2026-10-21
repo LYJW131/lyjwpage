@@ -7,7 +7,7 @@ import { lyricsCacheKey } from "@shared/lyrics";
 import { motionArtworkCacheKey } from "@shared/motion-artwork";
 import { parseAppleMusicUrl } from "@shared/motion-artwork-url";
 import { MemoryKv } from "@shared/testing/memory-kv";
-import { enrichTrack, lyricsToPrewarm, trackKeyOf } from "@shared/track-enrichment";
+import { enrichTrack, trackKeyOf } from "@shared/track-enrichment";
 import type { LocalNowPlaying } from "@shared/types";
 import { withRequestState } from "@shared/request-state";
 
@@ -210,11 +210,4 @@ test("超长歌名的目录缓存键不超过 KV 键长", () => {
   const long = trackLookupCacheKey(music("长".repeat(400)));
   assert.ok(new TextEncoder().encode(`lyjwpage:${long}`).length < 512);
   assert.notEqual(long, trackLookupCacheKey(music("长".repeat(401))));
-});
-
-test("lyrics are prewarmed for the playing track and the queue ahead, since the public endpoint only reads that cache", () => {
-  const enrichment = { trackKey: "k", id: "1500", link: LINK, songId: "1501", artwork: null, hasLyrics: true, upcomingSongIds: ["1502", "1501", "1503"], motion: null };
-  assert.deepEqual(lyricsToPrewarm(enrichment), ["1501", "1502", "1503"]);
-  assert.deepEqual(lyricsToPrewarm({ ...enrichment, hasLyrics: false }), ["1502", "1501", "1503"]);
-  assert.deepEqual(lyricsToPrewarm(null), []);
 });

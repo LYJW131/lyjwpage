@@ -1,6 +1,6 @@
 import { readAppleMusicCredentials } from "@shared/apple-music-auth";
 import { ampFetch, AppleUpstreamError, getWebToken } from "@shared/apple-web-token";
-import { cached, get } from "@shared/apple-cache";
+import { cached } from "@shared/apple-cache";
 import { parseLyricsTtml, type LyricsResult } from "@shared/lyrics-ttml";
 
 export const NO_LYRICS: LyricsResult = { lines: [] };
@@ -18,16 +18,12 @@ function storefront(): string {
 }
 
 export function lyricsCacheKey(songId: string): string {
-  return `lyrics:v5:${storefront()}:${songId}`;
+  return `lyrics:v4:${storefront()}:${songId}`;
 }
 
 export async function resolveLyrics(songId: string): Promise<LyricsResult> {
   if (!/^\d{1,20}$/.test(songId)) throw new AppleUpstreamError("songId 不是目录 ID");
   return cached(lyricsCacheKey(songId), lyricsTtlMs, () => loadLyrics(songId));
-}
-
-export function storedLyrics(songId: string): Promise<LyricsResult | undefined> {
-  return get<LyricsResult>(lyricsCacheKey(songId));
 }
 
 async function loadLyrics(songId: string): Promise<LyricsResult> {
