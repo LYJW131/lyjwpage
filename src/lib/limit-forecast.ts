@@ -176,7 +176,7 @@ export function sampleForecast(forecast: LimitForecast, at: number): ForecastSam
   if (at <= forecast.now) {
     const window = forecast.window;
     const after = window.findIndex(([pointAt]) => pointAt >= at);
-    const [toAt, toUsed] = window[Math.max(0, after)] ?? window.at(-1)!;
+    const [toAt, toUsed] = window[Math.max(0, after)]!;
     const [fromAt, fromUsed] = window[Math.max(0, after - 1)]!;
     const percent = toAt > fromAt ? fromUsed + ((toUsed - fromUsed) * (at - fromAt)) / (toAt - fromAt) : toUsed;
     return { at, phase: "used", percent, target, even };
