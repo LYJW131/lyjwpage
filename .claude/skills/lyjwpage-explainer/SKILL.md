@@ -93,6 +93,7 @@ description: 改 /explainer 讲解动画时用：补最近的新功能、加章�
 ### 7. 合并后
 
 - 改了 `scripts/explainer-score.mjs#scoreInputs` 里的文件，核对 `.github/workflows/explainer-score.yml` 在 main 上这次运行成功（对象已在就跳过上传）。
+- 画面或音效变了（`node scripts/explainer-score.mjs --video` 打印的键和 main 上次不同），配乐工作流跑完后提醒 lyjw 在 Mac 上跑 `node docs/explainer/v2/tools/video-release.mjs` 出片上传（`docs/explainer/README.md`「成片视频」）；传上之前弹窗里的预渲染视频是灰的。
 - 生产核对照 lyjwpage-verify「合并后部署与生产核对」：`deploy-check.ts --expect site`，两个域名的 `/explainer` 都测。
 
 ## 坑
