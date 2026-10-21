@@ -16,16 +16,24 @@ export const ClockGateContext = createContext<ClockGate | null>(null);
 const armQueue: ClockGate[] = [];
 let pumpQueued = false;
 
+// 翻转提交走空闲回调而不走零延时任务：任务链会把每张卡的二次渲染排进 FCP 后的计分窗口。
+// Safari 没有 requestIdleCallback，退回 setTimeout。
+function schedulePump() {
+  pumpQueued = true;
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(pumpArmQueue, { timeout: 2000 });
+  } else {
+    setTimeout(pumpArmQueue, 0);
+  }
+}
+
 function pumpArmQueue() {
   pumpQueued = false;
   const gate = armQueue.shift();
   if (!gate) return;
   gate.armed = true;
   for (const listener of [...gate.listeners]) listener();
-  if (armQueue.length) {
-    pumpQueued = true;
-    setTimeout(pumpArmQueue, 0);
-  }
+  if (armQueue.length) schedulePump();
 }
 
 export function createClockGate(): ClockGate {
@@ -35,10 +43,7 @@ export function createClockGate(): ClockGate {
 function subscribeClockGate(gate: ClockGate, listener: () => void): () => void {
   gate.listeners.add(listener);
   if (!gate.armed && !armQueue.includes(gate)) armQueue.push(gate);
-  if (!pumpQueued) {
-    pumpQueued = true;
-    setTimeout(pumpArmQueue, 0);
-  }
+  if (!pumpQueued) schedulePump();
   return () => {
     gate.listeners.delete(listener);
   };

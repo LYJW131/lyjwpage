@@ -33,4 +33,34 @@ describe("makeMountedAtSource", () => {
     src.getServerSnapshot();
     assert.ok(src.getSnapshot() > 1000);
   });
+
+  it("gate 经 requestIdleCallback 逐个放行", () => {
+    type IdleCb = (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void;
+    type IdleOpts = { timeout?: number };
+    const scheduled: { cb: IdleCb; opts?: IdleOpts }[] = [];
+    const g = globalThis as { requestIdleCallback?: (cb: IdleCb, opts?: IdleOpts) => number };
+    const prev = g.requestIdleCallback;
+    g.requestIdleCallback = (cb, opts) => (scheduled.push({ cb, opts }), scheduled.length);
+    try {
+      const gateA = createClockGate();
+      const gateB = createClockGate();
+      const srcA = makeMountedAtSource(gateA, 1000);
+      const srcB = makeMountedAtSource(gateB, 1000);
+      const fired: string[] = [];
+      srcA.subscribe(() => fired.push("a"));
+      srcB.subscribe(() => fired.push("b"));
+      assert.equal(scheduled.length, 1);
+      assert.deepEqual(scheduled[0].opts, { timeout: 2000 });
+      scheduled[0].cb({ didTimeout: false, timeRemaining: () => 50 });
+      assert.ok(gateA.armed && !gateB.armed);
+      assert.deepEqual(fired, ["a"]);
+      assert.equal(scheduled.length, 2);
+      scheduled[1].cb({ didTimeout: false, timeRemaining: () => 50 });
+      assert.ok(gateB.armed);
+      assert.deepEqual(fired, ["a", "b"]);
+    } finally {
+      if (prev) g.requestIdleCallback = prev;
+      else delete g.requestIdleCallback;
+    }
+  });
 });
