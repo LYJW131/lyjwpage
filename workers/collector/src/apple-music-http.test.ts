@@ -81,7 +81,7 @@ test("the MusicKit token is signed for the asking site only, never cached by the
   assert.deepEqual(await misconfigured.json(), { error: "没有配置 APPLE_MUSIC_TEAM_ID" });
 });
 
-test("the lookup entrypoint answers from APPLE_CACHE without the network and rejects bad input uncached", async () => {
+test("the lookup entrypoint answers only from APPLE_CACHE, never asks Apple for an unwarmed track, and rejects bad input uncached", async () => {
   const kv = new MemoryKv();
   bindEnv({ APPLE_CACHE: kv.asKv() } as Env);
   await kv.put(`lyjwpage:${lyricsCacheKey("1501")}`, JSON.stringify({ lines: [{ startMs: 0, endMs: 1_000, text: "la" }] }));
@@ -91,6 +91,10 @@ test("the lookup entrypoint answers from APPLE_CACHE without the network and rej
   assert.equal(hit.status, 200);
   assert.match(hit.headers.get("Cache-Control") ?? "", /^public, max-age=\d+, s-maxage=\d+$/);
   assert.deepEqual(await hit.json(), { songId: "1501", lines: [{ startMs: 0, endMs: 1_000, text: "la" }] });
+
+  const notPlaying = await serveAppleLookup(new Request(`${SITE}/api/lyrics?song=1502`));
+  assert.equal(notPlaying.status, 404);
+  assert.equal(notPlaying.headers.get("Cache-Control"), "no-store, no-cache, must-revalidate");
 
   const invalid = await serveAppleLookup(new Request(`${SITE}/api/lyrics?song=abc`));
   assert.equal(invalid.status, 400);

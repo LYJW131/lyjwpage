@@ -92,6 +92,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 首屏那首的歌词也从这里取；上报入口在提交前调 `enrichTrack`、收下之后调 `followUpTrack`（见 [ingress README](../ingress/README.md#拆分)）。
 
 - **按需查询**：`/api/lyrics`、`/api/motion-artwork`（实现在 `shared/apple-lookups.ts`）在具名 entrypoint `AppleLookups` 里跑，
+  `/api/lyrics` 只读 `APPLE_CACHE` 里写入时预热的那份，没命中回 404（`no-store`），不拿 lyjw 的订阅身份替任意曲目现查；
   它开了 Workers Caching（`wrangler.toml` 的 `[exports.AppleLookups.cache]`）：按 entrypoint、路径与查询串缓存，不分主机名，
   每次部署从空缓存开始，期限按响应的 `Cache-Control`（出错的响应是 `no-store`，不进缓存）。默认 `fetch` 是挡在它前面的一层，
   预检、方法、来源判断和 CORS 头每次按这次请求现做（`src/apple-music-http.ts`），再经 `APPLE_LOOKUPS` 调 `AppleLookups`，
@@ -101,7 +102,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
 - **写入时补全**：`Collector.enrichTrack(music, upcomingTracks)` 查当前曲目与队列里接下来几首（`shared/playing-queue.ts#PRELOAD_AHEAD`）的目录、当前曲目的动态封面，每段各自限时
   （`shared/track-enrichment.ts` 的 `WRITE_BUDGET`），目录与队列并行、动态封面排在目录之后；某段失败或超时只丢那一段、
   打一条带阶段与曲目的 `[enrichment]` warn，记为未知，不抛错。`Collector.followUpTrack(followUp)` 立即返回，
-  在 `waitUntil` 里预热歌词，写入时有段没查出的在新的请求状态里按 `RETRY_BUDGET` 整份重查一次（`shared/track-enrichment.ts#followUpEnrichment`），
+  在 `waitUntil` 里预热当前曲目与队列接下来几首的歌词，写入时有段没查出的在新的请求状态里按 `RETRY_BUDGET` 整份重查一次（`shared/track-enrichment.ts#followUpEnrichment`），
   查到更多就经 `CORE.commitEnrichmentPatch` 补写（按块合并，见 `shared/track-enrichment.ts#mergeEnrichment`）。
 - Apple 的结果缓存在 `APPLE_CACHE` KV（`shared/apple-cache.ts`）：键以 `STORAGE_PREFIX` 开头，查询按 `APPLE_MUSIC_STOREFRONT` 的店面。
 
