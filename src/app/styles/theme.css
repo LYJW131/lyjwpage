@@ -197,6 +197,11 @@
     scroll-behavior: smooth;
   }
 
+  /* 流式 HTML 首帧只有一屏高、还没有滚动条，后续内容到达后经典滚动条出现，居中的主列会整体左移半个滚动条宽；预留滚动条槽位免掉这次布局偏移（弹窗锁滚动时同理）。 */
+  html {
+    scrollbar-gutter: stable;
+  }
+
   body {
     /* hidden 会把 body 变成滚动容器并破坏 sticky；这里只裁掉横向溢出。 */
     overflow-x: clip;
