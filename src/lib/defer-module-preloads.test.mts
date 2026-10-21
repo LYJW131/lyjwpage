@@ -335,9 +335,12 @@ test("大写标签和带空白、属性的结束标签也推迟入口模块", ()
     `<script type="module" async="">${source}</script >`,
     `<script type="module" async="">${source}</script foo="bar">`,
     `<script type='module' async="">${source}</script\t\n bar>`,
+    `<script type="module" async="">${source}</script foo="a>b">`,
+    `<script type="module" async="">${source}</script/>`,
   ]) {
     const run = startup({ module, preloads: preloadA });
     assert.equal((run.html.match(/<\/script>/g) ?? []).length, 1);
+    assert.ok(run.html.endsWith("})();</script></body></html>"));
     assert.equal(run.replacement(), null);
     run.frame();
     run.frame();
@@ -345,6 +348,15 @@ test("大写标签和带空白、属性的结束标签也推迟入口模块", ()
     assert.equal(run.replacement()?.textContent, source);
     assert.deepEqual(markup(run.inserted), markup(parsedElements(lowA)));
   }
+});
+
+test("正文里的 </script-foo> 不算结束标签，入口模块整段推迟", () => {
+  const source = 'const x="</script-foo>"; import "/assets/entry.client-A.js";';
+  const run = startup({ module: `<script type="module" async="">${source}</script>`, preloads: preloadA });
+  run.frame();
+  run.frame();
+  run.task();
+  assert.equal(run.replacement()?.textContent, source);
 });
 
 test("等 LCP 期间访客先按下就立即启动，不等上限任务", () => {
