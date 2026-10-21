@@ -51,6 +51,7 @@ export function AgentPanel({
   clocks,
   today,
   forecast,
+  newWeek,
   timeZone,
   now,
 }: {
@@ -59,6 +60,7 @@ export function AgentPanel({
   clocks: FirstFrameClocks;
   today: string | null;
   forecast: LimitForecast | null;
+  newWeek: boolean;
   timeZone: string | undefined;
   now: number;
 }) {
@@ -132,7 +134,7 @@ export function AgentPanel({
 
       <div className="grid gap-6 border-t border-line pt-4 md:grid-cols-2 md:gap-8 lg:pt-5">
         <div className="flex min-w-0 flex-col gap-3">
-          <ForecastSummary forecast={forecast} timeZone={timeZone} />
+          <ForecastSummary forecast={forecast} newWeek={newWeek} timeZone={timeZone} />
           <LimitTable
             tall
             className="flex-1 content-between"
@@ -145,7 +147,7 @@ export function AgentPanel({
             agentLabel={row.label}
           />
         </div>
-        <ForecastBlock forecast={forecast} timeZone={timeZone} />
+        <ForecastBlock forecast={forecast} newWeek={newWeek} timeZone={timeZone} />
       </div>
     </div>
   );
