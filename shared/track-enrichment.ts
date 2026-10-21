@@ -129,10 +129,13 @@ export async function enrichTrack(
 }
 
 // 公开的 /api/lyrics 只读这里写进的缓存，队列里接下来几首也要预热，卡片切歌时才有词。
+export function lyricsToPrewarm(enrichment: TrackEnrichment | null): string[] {
+  if (!enrichment) return [];
+  return [...new Set([...(enrichment.hasLyrics && enrichment.songId ? [enrichment.songId] : []), ...enrichment.upcomingSongIds])];
+}
+
 export async function prewarmLyrics(enrichment: TrackEnrichment | null, title: string | null): Promise<void> {
-  if (!enrichment) return;
-  const songIds = new Set([...(enrichment.hasLyrics && enrichment.songId ? [enrichment.songId] : []), ...enrichment.upcomingSongIds]);
-  await Promise.all([...songIds].map((songId) => stage("lyrics", title, LYRICS_PREWARM_TIMEOUT_MS, () => resolveLyrics(songId))));
+  await Promise.all(lyricsToPrewarm(enrichment).map((songId) => stage("lyrics", title, LYRICS_PREWARM_TIMEOUT_MS, () => resolveLyrics(songId))));
 }
 
 // upcomingSongIds 属于算它时的那份队列，同一首歌期间队列可以变：queueMatches 为假（不是同一份队列）时不动已存的队列 ID。
