@@ -33,6 +33,7 @@ export const BUILD_WATCH_PATHS: Record<Worker, WatchPaths> = {
       "shared/coding-models.ts",
       "shared/coding-usage-sources.ts",
       "shared/coding-usage-view.ts",
+      "shared/coding-year.ts",
       "shared/github-chart-compact.ts",
       "shared/heatmap-window.ts",
       "shared/http-origins.ts",
