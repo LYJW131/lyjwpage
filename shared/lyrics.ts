@@ -18,7 +18,7 @@ function storefront(): string {
 }
 
 export function lyricsCacheKey(songId: string): string {
-  return `lyrics:v4:${storefront()}:${songId}`;
+  return `lyrics:v5:${storefront()}:${songId}`;
 }
 
 export async function resolveLyrics(songId: string): Promise<LyricsResult> {
