@@ -218,9 +218,24 @@
       x.restore();
       return out;
     }
+    // 折成几行时取行数不变的最窄栏宽，末行不会只剩一个词；非末行不以一两个字母的短词收尾。
+    function balance(x, str, font, maxW) {
+      const n = wrap(x, str, font, maxW).length;
+      if (n < 2) return wrap(x, str, font, maxW);
+      let lo = maxW / n, hi = maxW;
+      for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (wrap(x, str, font, mid).length > n) lo = mid; else hi = mid; }
+      const lines = wrap(x, str, font, hi);
+      x.save(); x.font = font;
+      for (let i = 0; i < lines.length - 1; i++) {
+        const m = / ([A-Za-z]{1,2})$/.exec(lines[i]), next = m && `${m[1]} ${lines[i + 1]}`;
+        if (m && x.measureText(next).width <= maxW) { lines[i] = lines[i].slice(0, m.index); lines[i + 1] = next; }
+      }
+      x.restore();
+      return lines;
+    }
     // 读到这篇时标题从清样的浅灰一个字一个字压成实墨，像排字机一行行铸出来。
     function headline(x, str, px, py, size, maxW, k, o = {}) {
-      const lines = wrap(x, str, SERIF(size, o.w || 900), maxW), lh = size * (o.lh || 1.18);
+      const font = SERIF(size, o.w || 900), lines = o.balance ? balance(x, str, font, maxW) : wrap(x, str, font, maxW), lh = size * (o.lh || 1.18);
       const total = lines.reduce((s, l) => s + [...l].length, 0);
       let done = 0;
       lines.forEach((l, i) => {
@@ -479,7 +494,8 @@
         if (b >= t + 0.1) cross(x, sx + w / 2, sy + h / 2, 34, prog(b, t + 0.1, t + 0.3) * (1 - prog(b, AT.c.reprint - 0.1, AT.c.reprint)));
       });
       const homeK = prog(b, AT.c.home, AT.c.home + 0.35);
-      hangTag(x, P0.x + 690, P0.y + 104, "home", { k: 1, cut: homeK, sway: 0.06 * Math.sin(b * 2 * Math.PI) * (b < AT.c.home ? 1 : 0) });
+      // 首页的吊牌挂在照片上框的右端：挂低了会压住 page:desktop 那张。
+      hangTag(x, P0.x + 770, P0.y, "home", { k: 1, cut: homeK, sway: 0.06 * Math.sin(b * 2 * Math.PI) * (b < AT.c.home ? 1 : 0) });
       // Clawd 排字：每到一块就蹲下抽走，跳回原位。
       const at = RECAST.reduce((acc, [, t]) => (b >= t - 0.1 ? t : acc), null);
       const ry = at === null ? 0 : RECAST.findIndex(([, t]) => t === at);
@@ -498,11 +514,11 @@
     // ---- D 栏：钟和六块没挂牌的版 ----
     const PHOTO_D = { x: 1940, y: 1930, w: 1240, h: 490 };
     const TIMED = ["github-chart", "pulse", "site-deployments", "cloudflare-workers", "health", "reporters"];
-    function clockPhoto(x, b) {
-      const P0 = PHOTO_D;
+    // 钟和六块按照片的高居中：标题折成两行时照片会变矮（paint 里的 D 栏）。
+    function clockPhoto(x, b, P0) {
       x.save(); x.beginPath(); x.rect(P0.x, P0.y, P0.w, P0.h); x.clip();
       x.fillStyle = tone(0.06, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
-      const cx = P0.x + 230, cy = P0.y + 245, R = 190;
+      const cx = P0.x + 230, cy = P0.y + P0.h / 2, R = Math.min(190, P0.h / 2 - 40);
       shape(x, circP(cx, cy, R + 16), 0.75, INK());
       shape(x, circP(cx, cy, R), 0.04, INK());
       for (let i = 0; i < 60; i++) { const a = (i / 60) * TAU - Math.PI / 2, l = i % 5 ? 10 : 24; rule(x, cx + Math.cos(a) * (R - 8), cy + Math.sin(a) * (R - 8), cx + Math.cos(a) * (R - 8 - l), cy + Math.sin(a) * (R - 8 - l), i % 5 ? 2 : 4); }
@@ -514,7 +530,7 @@
       shape(x, rrP(cx - 66, cy + 76, 132, 48, 6), 0, INK(), { lw: 1.6, base: true });
       T(x, "600 s", cx, cy + 110, { mono: true, size: 36, w: 600, align: "center" });
       TIMED.forEach((id, i) => {
-        const col = i % 2, row = Math.floor(i / 2), sx = P0.x + 500 + col * 370, sy = P0.y + 50 + row * 145, w = 340, h = 100;
+        const col = i % 2, row = Math.floor(i / 2), sx = P0.x + 500 + col * 370, sy = cy - 195 + row * 145, w = 340, h = 100;
         const t = AT.d.ring + i * AT.d.ringStep, kk = prog(b, 9.2, t), done = impact(b, t, 0.12);
         slug(x, sx, sy, w, h, { label: id, size: 28, fresh: b >= t ? 1 - prog(b, t, t + 0.7) : 0 });
         const rx = sx + w - 2, ry = sy + 2;
@@ -529,14 +545,15 @@
 
     // ---- E 栏：回源 503，上一份照发 ----
     const PHOTO_E = { x: 3300, y: 1960, w: 800, h: 200 };
-    function errPhoto(x, b) {
-      const P0 = PHOTO_E;
+    // 导语折成两行时照片会变矮（paint 里的 E 栏）：块和电报贴着上沿排，块上的 pulse 才躲得开斜着盖下来的章。
+    function errPhoto(x, b, P0) {
+      const tight = P0.h < PHOTO_E.h;
       x.save(); x.beginPath(); x.rect(P0.x, P0.y, P0.w, P0.h); x.clip();
       x.fillStyle = tone(0.06, INK()); x.fillRect(P0.x, P0.y, P0.w, P0.h);
-      slug(x, P0.x + 40, P0.y + 50, 300, 96, { label: "pulse", size: 32 });
+      slug(x, P0.x + 40, P0.y + (tight ? 14 : 50), 300, 96, { label: "pulse", size: 32 });
       const k = prog(b, AT.e.wire - 0.3, AT.e.wire, E.out), back = prog(b, AT.e.wire + 0.05, AT.e.wire + 0.35, E.in);
       const tx = lerp(P0.x + P0.w + 40, P0.x + 380, k) + back * 520;
-      x.save(); x.translate(tx, P0.y + 40); x.rotate(-0.05 + back * 0.3);
+      x.save(); x.translate(tx, P0.y + (tight ? 17 : 40)); x.rotate(-0.05 + back * 0.3);
       shape(x, rectP(0, 0, 230, 120), 0, INK(), { lw: 2, base: true });
       T(x, "503", 115, 82, { mono: true, size: 56, w: 700, align: "center", color: spotP() });
       x.restore();
@@ -611,7 +628,9 @@
       pg.fillStyle = b >= AT.c.extra - 0.05 ? spotP() : tone(0.15, INK()); pg.fillRect(C.x, C.y + 10, C.w, 110);
       if (b >= AT.c.extra - 0.05) {
         T(pg, tr("ch04.extra"), C.x + 40, C.y + 98, { size: 84, color: rgba(NEWS) });
-        T(pg, tr("ch04.flip"), C.x + 300, C.y + 88, { size: 52, w: 600, color: rgba(NEWS), maxW: C.w - 340 });
+        // 副题跟在「号外」后面空一截；英文的 EXTRA 比中文宽，中文仍从 300 起。
+        const fx = C.x + Math.max(300, 84 + K.measure(pg, tr("ch04.extra"), SERIF(84, 600)));
+        T(pg, tr("ch04.flip"), fx, C.y + 88, { size: 52, w: 600, color: rgba(NEWS), maxW: C.x + C.w - 40 - fx });
       }
       pg.restore();
       let y = headline(pg, tr("ch04.n2a"), C.x + 30, C.y + 230, 84, 790, prog(b, ...AT.c.head));
@@ -621,16 +640,22 @@
       purge(pg, b);
       rule(pg, D.x - 40, D.y + 10, D.x - 40, D.y + D.h, 1.6);
 
-      headline(pg, tr("ch04.n3a"), D.x + 20, D.y + 120, 84, D.w - 40, prog(b, ...AT.d.head));
-      headline(pg, tr("ch04.n3b"), D.x + 20, D.y + 220, 60, D.w - 40, prog(b, ...AT.d.deck), { w: 600 });
-      clockPhoto(pg, b);
-      T(pg, tr("ch04.capD"), PHOTO_D.x, PHOTO_D.y + PHOTO_D.h + 44, { size: 30, w: 600, maxW: PHOTO_D.w });
+      // 英文标题折成两行：标题上提，导语和照片跟着往下让；照片底边只能往版尾线挪一点，所以变矮。
+      const dWrap = wrap(pg, tr("ch04.n3a"), SERIF(84, 900), D.w - 40).length > 1;
+      let yd = headline(pg, tr("ch04.n3a"), D.x + 20, D.y + (dWrap ? 90 : 120), 84, D.w - 40, prog(b, ...AT.d.head), { balance: true });
+      yd = headline(pg, tr("ch04.n3b"), D.x + 20, yd + 100, 60, D.w - 40, prog(b, ...AT.d.deck), { w: 600 });
+      const PD = dWrap ? { ...PHOTO_D, y: yd + 56, h: PHOTO_D.y + PHOTO_D.h + 16 - (yd + 56) } : PHOTO_D;
+      clockPhoto(pg, b, PD);
+      T(pg, tr("ch04.capD"), PD.x, PD.y + PD.h + (dWrap ? 40 : 44), { size: 30, w: 600, maxW: PD.w });
       rule(pg, Ebox.x - 40, D.y + 10, Ebox.x - 40, D.y + D.h, 1.6);
 
-      let ye = headline(pg, tr("ch04.n4a"), Ebox.x, Ebox.y + 100, 76, Ebox.w - 20, prog(b, ...AT.e.head));
-      headline(pg, tr("ch04.n4b"), Ebox.x, ye + 86, 56, Ebox.w - 20, prog(b, ...AT.e.deck), { w: 600 });
-      errPhoto(pg, b);
-      T(pg, tr("ch04.errata"), Ebox.x, PHOTO_E.y + PHOTO_E.h + 40, { size: 30, w: 600, maxW: Ebox.w - 20, alpha: b >= AT.e.stamp ? 1 : 0.35 });
+      // 英文导语折成两行：标题上提，照片顶边跟着导语往下让；底边不动，更正启事留在 F 栏那条线上方。
+      const eWrap = wrap(pg, tr("ch04.n4b"), SERIF(56, 600), Ebox.w - 20).length > 1;
+      let ye = headline(pg, tr("ch04.n4a"), Ebox.x, Ebox.y + (eWrap ? 90 : 100), 76, Ebox.w - 20, prog(b, ...AT.e.head));
+      ye = headline(pg, tr("ch04.n4b"), Ebox.x, ye + (eWrap ? 80 : 86), 56, Ebox.w - 20, prog(b, ...AT.e.deck), { w: 600, balance: true });
+      const PE = eWrap ? { ...PHOTO_E, y: ye + 40, h: PHOTO_E.y + PHOTO_E.h - (ye + 40) } : PHOTO_E;
+      errPhoto(pg, b, PE);
+      T(pg, tr("ch04.errata"), Ebox.x, PE.y + PE.h + 40, { size: 30, w: 600, maxW: Ebox.w - 20, alpha: b >= AT.e.stamp ? 1 : 0.35 });
       rule(pg, F.x, F.y - 10, F.x + F.w, F.y - 10, 2.4);
       T(pg, tr("ch04.brief"), F.x, F.y + 54, { size: 44 });
       const bk = prog(b, ...AT.f.brief);
@@ -664,7 +689,8 @@
 
       // 回源出错那一下：一枚大章斜着盖在 E 栏上。
       const stk = prog(b, AT.e.stamp - 0.05, AT.e.stamp + 0.1);
-      if (stk > 0) K.stamp(st, tr("ch04.keep"), PHOTO_E.x + 520, PHOTO_E.y + 110, { k: stk, px: 72, rot: -0.12, color: css("signal") });
+      // 照片变矮时（英文）章按导语和更正启事之间的空当定高：英文的章字长，斜着的左端垂得低。
+      if (stk > 0) K.stamp(st, tr("ch04.keep"), PE.x + 520, PE.y + (eWrap ? 48 : 110), { k: stk, px: 72, rot: -0.12, color: css("signal") });
       const wipe = (window.CHAPTERS.find((c) => c.id === "ch05") || {}).share?.wipe;
       if (wipe && b > 13) { tp.save(); tp.setTransform(G.S, 0, 0, G.S, 0, 0); wipe(tp, b - 14); tp.restore(); }
     }

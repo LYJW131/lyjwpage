@@ -1255,11 +1255,14 @@
     const [px, py] = SC(110, 196);
     const ta = prog(b, AT.title, AT.title + 0.1, E.out) * a;
     if (ta > 0) {
-      // 英文标题比中文长：右沿离钟楼尖顶的左檐至少 24 px（转台转回 0 时离得最近，按那时的投影算），放不下就靠 maxW 缩字号
-      const eave = pj(TOWER.x - TOWER_EAVE, TOWER.y + TOWER.d + TOWER_EAVE, 50 + TOWER.h)[0];
-      x.save(); x.translate(px, py); const sc = lerp(0.85, 1, E.outBack(prog(b, AT.title, AT.title + 0.14))); x.scale(sc, sc);
-      text(x, tr("ch01.title"), 0, 0, { font: SANS(96 * s, 600), color: P.ink, alpha: ta, maxW: eave - 24 * s - px });
-      text(x, "reporters · collector Worker", 4 * s, 64 * s, { font: MONO(30 * s), color: P.ink2, alpha: ta });
+      // 标题块在钟楼左边：标题右沿离钟楼尖顶的左檐（按转台转回 0 时的投影）不到 24 px，就整块挪到右下角、右对齐，不缩字号。
+      // 右上角留给往右上飞出岛外的信封，云端那封正好横穿过去；右下角的标题基线和旁白第一行对齐，右沿让开远处那座小岛。
+      const tf = SANS(96 * s, 600), eave = pj(TOWER.x - TOWER_EAVE, TOWER.y + TOWER.d + TOWER_EAVE, 50 + TOWER.h)[0];
+      const left = measure(x, tr("ch01.title"), tf) <= eave - 24 * s - px, al = left ? "left" : "right";
+      const [qx, qy] = left ? [px, py] : SC(1750, 930);
+      x.save(); x.translate(qx, qy); const sc = lerp(0.85, 1, E.outBack(prog(b, AT.title, AT.title + 0.14))); x.scale(sc, sc);
+      text(x, tr("ch01.title"), 0, 0, { font: tf, color: P.ink, alpha: ta, align: al });
+      text(x, "reporters · collector Worker", (left ? 4 : -4) * s, 64 * s, { font: MONO(30 * s), color: P.ink2, alpha: ta, align: al });
       x.restore();
     }
   }
