@@ -77,6 +77,10 @@ test("/img 只放行内容地址键", () => {
   assert.equal(classifyGatewayRequest("GET", "/img/ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789.webp").kind, "invalid");
   assert.equal(classifyGatewayRequest("GET", `/img/${"a".repeat(64)}.exe`).kind, "invalid");
   assert.equal(classifyGatewayRequest("GET", `/img/${"a".repeat(63)}`).kind, "invalid");
+  assert.equal(classifyGatewayRequest("GET", `/img/${"a".repeat(64)}-zh.av1.mp4`).kind, "image-object");
+  for (const key of [`${"a".repeat(64)}.mp4`, `${"a".repeat(64)}-fr.av1.mp4`, `${"a".repeat(64)}-zh.h264.mp4`, `${"a".repeat(64)}-zh.av1.webp`]) {
+    assert.equal(classifyGatewayRequest("GET", `/img/${key}`).kind, "invalid", key);
+  }
 });
 
 test("原始 /img 回源请求剥掉查询串，只带条件头进缓存入口", () => {

@@ -43,12 +43,13 @@ pyftsubset LXGWMarkerGothic-Regular.ttf --text-file=<字表> --flavor=woff2 --la
 
 Chrome 默认版本由工作流的 `SCORE_CHROME_VERSION` 固定，手动运行时可用 `chrome-version` 覆盖。`v2/tools/score-mp3.mjs` 按可用 CPU 自动选择并行数（可用 `SCORE_WORKERS` 指定），输出浏览器准备、合成、PCM 转换、传输与 MP3 编码耗时，工作流另用 ffprobe 核对音频时长、采样率和声道。
 
-CLI 并行渲染将 pad / bass 按 Web Audio 音色参数预渲染并复用，在 PCM 中统一混入 duck 控制；其余音符按 `v2/score.js#RENDER_BATCH_SECONDS` 滚动调度并回收结束的节点，并行段按采样帧对齐，以 `RENDER_WARMUP_SECONDS` 预热混响和反馈延迟。拼接后统一做响度处理与限幅；CLI 只载入配乐输入，PCM 分块 POST 后直接送入 ffmpeg（整片一次上传会超出 Playwright 转字符串的上限），不经过 Base64 或临时 WAV。无效采样会使任务失败。浏览器缺配乐时的 `Score.render()` 保留原生 pad / bass 节点，按窗口调度 duck，不建立整片声部缓存；默认峰值归一直接处理输出缓冲区，避免整片限幅临时数组。
+CLI 并行渲染将 pad / bass 按 Web Audio 音色参数预渲染并复用，在 PCM 中统一混入 duck 控制；其余音符按 `v2/score.js#RENDER_BATCH_SECONDS` 滚动调度并回收结束的节点，并行段按采样帧对齐，以 `RENDER_WARMUP_SECONDS` 预热混响和反馈延迟。拼接后统一做响度处理与限幅；CLI 只载入配乐输入，PCM 分块 POST 后直接送入 ffmpeg（整片一次上传会超出 Playwright 转字符串的上限），不经过 Base64 或临时 WAV。无效采样会使任务失败。默认的峰值归一是整片一个增益（`v2/score.js#peakGain`），`score-mp3.mjs` 把它写进 mp3 的 ID3 `TXXX:master_gain`，浏览器边放边合时按段用它（见下文「边放边合成」）。浏览器里的 `Score.render()` 保留原生 pad / bass 节点，按窗口调度 duck，不建立整片声部缓存；峰值归一直接处理输出缓冲区，避免整片限幅临时数组。
 
 构建不查对象在不在：还没传上或取不到时，播放器在浏览器里现合成；时长和章节表对不上时同样弃用。乐谱改了键就跟着变，不会再放旧配乐。看某次构建该取哪个键：
 
 ```bash
 node scripts/explainer-score.mjs    # 打印当前乐谱对应的 <键>.mp3
+node scripts/explainer-score.mjs --video    # 打印四份成片视频的 /img 路径
 ```
 
 本地试听整片要渲一份，要本机 Chrome、PATH 上带 libmp3lame 的 ffmpeg，以及装好的 `render/` 依赖（见「渲染配乐与音效」）；写出的 `docs/explainer/v2/score.mp3` 只给本地预览用，已在 `.gitignore`：
@@ -61,7 +62,31 @@ node docs/explainer/v2/tools/score-check.mjs --full
 node docs/explainer/v2/tools/score-check.mjs --browser-fallback --full
 ```
 
-本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`；没配 `R2_PUBLIC_BASE_URL` 时 `/img` 不通，配乐走现合成。
+本地 `pnpm dev` 要看 `/explainer`，先跑一次 `node scripts/build-explainer.mjs`；没配 `R2_PUBLIC_BASE_URL` 时 `/img` 不通，弹窗里的预渲染视频和音轨都灰掉，只能实时渲染加实时合成。
+
+### 开播前的弹窗
+
+站点版第一次按播放（底栏按钮、点画面或空格）先弹 `v2/watch.js` 的「怎么看」，三组单选：语言（中文 / English，选了弹窗文案跟着换）、画面（预渲染视频 / 浏览器实时渲染）、声音（只在实时渲染时出现：预渲染音轨 / 实时合成），每项带一行说明。默认中文、预渲染视频；视频还在查、这一版没出或浏览器放不了（按 `v2/watch.js#TYPES` 问 `canPlayType`）时那一项灰掉、说明换成原因，默认落到实时渲染加预渲染音轨；音轨还没传上时声音落到实时合成。查询参数只改默认、弹窗照弹：`?lang=zh|en`、`?video=pre|live`、`?audio=pre|live`，认不出的值不理；不带参数时用上次的选择（localStorage `explainer.watch`）。停帧深链 `?t=`、只排几章的 `?only=` 和导出模式不弹窗，照旧直接取配乐。Esc、点窗外和「取消」都关窗，不开播。
+
+选定后这一次的画面和声音不再变，要换就刷新重选；底栏的语言按钮随时能切，放视频时换成另一种语言的那一版、接着当前时刻放。放视频时画布不再渲染，`<video>` 盖在舞台上、不带原生控件，播放、暂停、拖动和键盘快捷键都走底栏；视频取不到或中途出错就退回实时渲染，从出错的时刻接着放、声音用预渲染音轨。
+
+### 边放边合成
+
+选了实时合成，或预渲染音轨取不到、长度对不上时，`v2/stream.js` 边放边合：先合播放头起的 `FIRST_SECONDS` 秒就出声、`#load` 随之消失，其余按 `BLOCK_SECONDS` 一块、从播放头往后在后台合，合完再回头补前面；拖到还没合的地方就先合那里，合好之前那一段静音。每块从起点前 `Score.warmup`（`v2/score.js#RENDER_WARMUP_SECONDS`）秒开渲、丢掉预热部分，让混响、延迟和没放完的音符先走一遍，块与块的接缝和整片一次渲的一致；块界按 `Score.renderAlignment` 对齐，排在同一条 AudioContext 时间轴上首尾相接（`v2/film.js#addAudio`），开播或拖动时从块中间接进去的那一下淡入 10 ms。母带按块做（`Score.masterRange`），增益取配乐 mp3 里的 `TXXX:master_gain`（取过整条配乐就读那份的头，否则 Range 请求前 4 KB），所以和预渲染音轨一样响；连 mp3 都没有时（本地预览、乐谱刚改还没传上）退到 `GAIN_GUESS`，只是整体略响或略轻。音效按块叠（`v2/film.js#sfxRange`），前后多算 `SFX_MARGIN` 秒，压峰和整片一次叠的一样。`window.__audio()` 等整条合完才返回混音。
+
+### 成片视频
+
+中英各一版，1920×1080、24 fps，AV1 与 HEVC 各一份，在 lyjw 的 Mac 上渲好传到 R2 的 `lyjw-homepage` 桶，页面经同源 `/img/<键>` 取（和配乐一样由 `site` Worker 直出，支持 Range，缓存一年）。对象键是 `<哈希>-<语言>.<编码>.mp4`（`scripts/explainer-score.mjs#videoObjectKey`，`src/lib/site-policy.ts#IMAGE_OBJECT_PATH` 放行这种键），哈希覆盖决定画面和音轨的全部输入（`videoInputs`）：配乐键、`v2/index.html`、`LOAD` 表里的脚本（只管弹窗和播放的 `VIDEO_PLAYER_ONLY` 除外）、样式引用的字体、`v2/sfx/*.mp3` 和出片工具本身。改了其中任何一个键就变，页面不会放旧视频，弹窗里「预渲染视频」灰掉，直到新视频传上。构建把四个路径写进 `window.__assets`（`video/<语言>.<编码>.mp4`），不查对象在不在；弹窗打开时 HEAD 一次。页面按 `<source>` 顺序先试 AV1、再试 HEVC（Safari）。
+
+改了画面的提交合进 main、配乐工作流也跑完后，lyjw 在 Mac 的仓库根目录跑：
+
+```bash
+node docs/explainer/v2/tools/video-release.mjs             # 中英两版共四份，--help 看参数
+node docs/explainer/v2/tools/video-release.mjs --dry-run   # 只打印四个键和线上状态
+node docs/explainer/v2/tools/video-release.mjs --until 10  # 试片：只出前 10 秒，不上传
+```
+
+它先 HEAD 四个键，已在线上的跳过、不覆盖；从线上取这一版的配乐，在页面里叠上音效导出整条音轨；逐帧渲 PNG 存成近无损的中间片（每 10 秒一段），再编 AV1（libsvtav1，配 Opus）和 HEVC（libx265，没有就 hevc_videotoolbox；配 AAC）；用 `pnpm exec wrangler login` 登录过的 wrangler 上传（`video/mp4`、`immutable`），读回 HEAD 核对 200 与大小，最后打印码率、大小和时长。中断后重跑接着做，渲好的段留在 `docs/explainer/v2/video/`（已在 `.gitignore`）。编码参数是文件顶部的 `AV1`、`HEVC_KBPS`、`X265` 等常量，改档次或级别要同步 `v2/watch.js#TYPES` 的 codecs；`wrangler r2 object put` 一次最多传 300 MiB（`MAX_BYTES`），码率按整片时长定在它以内，片子明显变长要跟着降。
 
 ## 中英两版
 

@@ -2,6 +2,7 @@ node_modules
 /public/explainer/
 docs/explainer/artifact.html
 docs/explainer/v2/score.mp3
+docs/explainer/v2/video/
 .pnpm-store/
 .wrangler/
 workers/core/wrangler.preview.json
