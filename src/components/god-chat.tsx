@@ -12,6 +12,7 @@ import { chatConsent, designConsent, vendorConsent } from "@/lib/chat-consent";
 import { askAnswerText } from "@/lib/ask-answer-text";
 import { chatLineup } from "@/lib/chat-lineup";
 import { useHumanCheck } from "@/hooks/use-human-check";
+import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
 import { textLanguage, type PlanLanguage } from "@shared/build-routine";
 import { activeChatDesign, chatArchive, chatResumePoint, designEndReason, chatReplyMessages, designSessionEnded, subscribeChatArchive, type ChatAnswer, type ChatArchive, type ChatBubble, type ChatDesign, type ChatShownCard, type ChatSession, type DesignEndReason } from "@/lib/chat-archive";
 import { cn } from "@/lib/utils";
@@ -115,10 +116,7 @@ function Conversation({ className, archive, session: conversation }: { className
   );
 
   const markdownReady = useChatMarkdownReady();
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages, markdownReady]);
+  useStickToBottom(scrollRef, stickRef, [messages, markdownReady]);
 
   useEffect(() => {
     const el = anchorRef.current;
