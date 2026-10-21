@@ -57,7 +57,7 @@
 
 **一定等你一句话**：
 
-- 生产上的动作：手动触发 Workers Builds 重建（main 构建因 Cloudflare 临时错误失败、重跑同一提交的除外）、`wrangler deploy` 的那个唯一例外、切域名、改 ESA 规则（规则见 AGENTS.md「[禁区](./AGENTS.md#禁区)」与「[部署流程](./AGENTS.md#部署流程)」）。
+- 生产上的动作：手动触发 Workers Builds 重建（main 构建因 Cloudflare 临时错误失败、重跑同一提交的，和推送漏触发构建、补跑 main 最新提交的除外）、`wrangler deploy` 的那个唯一例外、切域名、改 ESA 规则（规则见 AGENTS.md「[禁区](./AGENTS.md#禁区)」与「[部署流程](./AGENTS.md#部署流程)」）。
 - 删除：远端分支、KV 键、D1 数据、账号里的资源。
 - 对外发消息、花钱的东西。
 - 控制台与账号设置：Access 策略、GitHub 仓库设置与分支保护、App 权限、告警规则。
@@ -93,7 +93,7 @@
 ## 6. 部署与「已部署」
 
 - 站点和各 Worker 都走 Workers Builds：合进 main 就自动构建部署，Claude 不手跑 `wrangler deploy`，唯一例外和顺序见 AGENTS.md「[部署流程](./AGENTS.md#部署流程)」。
-- 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。
+- 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。推送根本没触发构建（GitHub webhook 延迟或丢失，Cloudflare 构建列表里没有这个提交）的也不问，Claude 发现了就直接补跑。
 - 上报器哪些合进 main 后自动换镜像、哪些手动，见 [`.claude/rules/reporters.md`](./.claude/rules/reporters.md)；手动的那几个 Claude 会派你电脑上的会话去做。
 - 每次汇报都分清四层：本地改了 / 测试过了 / 已部署 / 在生产上验证过了。合并后每次都核对 `/api/version`；生产行为只在预览测不准的改动上复测（缓存与 Cache-Tag 清除、首屏 SSR、字体、依赖生产 Secret 或绑定的功能），其余以预览验证为准。
 - 跑检查、开浏览器截图、等部署和核对生产这些验证活，Claude 交给更便宜的 Haiku 验证员做，自己只定验什么、看结果。验证员最后签一张分级回执（按提交 SHA 记验到了哪一档：真页面、单测、只过类型），Claude 把它原样贴成 PR 评论，合并前用 `scripts/verify-receipt.ts` 核对它还盖得住当前提交；Claude 不重跑回执里验过的，只抽查一条证据（看一张截图或核一个数）再汇报（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
