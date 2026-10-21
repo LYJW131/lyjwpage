@@ -45,7 +45,7 @@
     }
   }
 
-  // add(from, buf) 交出整片第 from 帧起的一段（已做母带、叠好音效）；first() 在第一段交出后调
+  // add(from, buf) 交出整片第 from 帧起的一段（已做母带、叠好音效）；first() 在播放头那一段交出后调：两条泳道谁先合完不一定，后一段先好时开头还是静音
   async function play({ url, header, total, sr, now, add, first, sfx }) {
     const Sc = window.Score, align = Sc.renderAlignment(sr), warm = Math.ceil(Sc.warmup * sr / align) * align;
     const [gain, bank] = await Promise.all([(async () => tagGain(header || await headerOf(url)) ?? GAIN_GUESS)(), sfx.load()]);
@@ -75,14 +75,15 @@
       buf.copyToChannel(L.subarray(job.from - lo, job.to - lo), 0);
       buf.copyToChannel(R.subarray(job.from - lo, job.to - lo), 1);
       add(job.from, buf);
-      first();
     }
     const lanes = Math.max(1, Math.min(2, (navigator.hardwareConcurrency || 2) - 1));
     await Promise.all(Array.from({ length: lanes }, async () => {
       for (let job = nextJob(); job; job = nextJob()) {
+        const lead = !taken.length;
         taken.push(job);
         taken.sort((a, b) => a.from - b.from);
         await work(job);
+        if (lead) first();
       }
     }));
   }

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 export const SCORE_SOURCE = "docs/explainer/v2";
 // 须与 shared/asset-url.ts#IMAGE_PATH_PREFIX 同步（scripts/explainer-score.test.mjs 核对）
@@ -77,6 +78,13 @@ export function videoAssets(root = SCORE_SOURCE) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  if (process.argv.includes("--video")) for (const [name, url] of Object.entries(videoAssets())) console.log(`${name}\t${url}`);
+  let video;
+  try {
+    ({ values: { video } } = parseArgs({ options: { video: { type: "boolean" } }, strict: true }));
+  } catch (e) {
+    console.error(`${e.message}\n用法：node scripts/explainer-score.mjs [--video]`);
+    process.exit(2);
+  }
+  if (video) for (const [name, url] of Object.entries(videoAssets())) console.log(`${name}\t${url}`);
   else console.log(scoreObjectKey());
 }
