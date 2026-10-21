@@ -97,6 +97,7 @@ export function VibeCodingCard({
               clocks={clocks}
               today={today}
               forecast={row.id === "claude" ? weekly.forecast : null}
+              newWeek={row.id === "claude" && weekly.newWeek}
               timeZone={weekly.timeZone}
               now={weekly.now}
             />
