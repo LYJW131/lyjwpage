@@ -108,20 +108,30 @@
     if (b >= AT.whip2[0] && b < AT.whip2[1]) return 3640 * E.ioExpo(prog(b, AT.whip2[0], AT.whip2[1]));
     return;
   }
+  // 第 01 站整站的横向位移：立体画面（ch10-relay.js#s1world）和 2D 牌子用同一个值，两边才对得上。
+  const ox1 = (b) => (b < AT.whip1[1] ? 1920 - pan(b) : b >= AT.whip2[0] ? -pan(b) : 0);
+  const in1 = (b) => b >= AT.whip1[0] && b < AT.whip2[1];
+  // 第 01 站用第 01 章停住时的后期（照抄 ch01.js#render 的 f.post），进出站跟着甩镜头的进度和别站的 POST0 互相过渡。
+  const POST1 = { bloom: 0.25, threshold: 1.0, halation: 0, grain: 0, vignette: 0.12, ca: 0 };
+  function post1(b) {
+    const k = !in1(b) ? 0 : b < AT.whip1[1] ? pan(b) / 1920 : b >= AT.whip2[0] ? 1 - pan(b) / 3640 : 1;
+    return Object.fromEntries(Object.keys(POST0).map((n) => [n, lerp(POST0[n], POST1[n], k)]));
+  }
   function relay(x, b) {
     const [w0, w1] = AT.whip1, [v0, v1] = AT.whip2;
     if (b < w0) { openFrame(x, b); return; }
+    // 第 01 站的底是 render 先画好的立体画面：这一站不铺底，转场时只把别的画面裁在它旁边。
     if (b < w1) {
       const p = pan(b);
-      x.save(); x.translate(-p, 0); openFrame(x, b); x.restore();
-      x.save(); x.translate(1920 - p, 0); station(0, x, b); x.restore();
+      x.save(); x.beginPath(); x.rect(-100, -100, 2020 - p, 1280); x.clip(); x.translate(-p, 0); openFrame(x, b); x.restore();
+      x.save(); x.beginPath(); x.rect(1920 - p, -100, p + 100, 1280); x.clip(); station(0, x, b, { ox: ox1(b) }); x.restore();
       return;
     }
     if (b < v0) { station(0, x, b); return; }
     if (b < v1) {
       const p = pan(b), sx = 2020 - p;
-      x.fillStyle = rgba(PAL.cPaper); x.fillRect(0, 0, 1920, 1080);
-      x.save(); clipPoly(x, [[-100, -100], [sx + 420, -100], [sx, 1180], [-100, 1180]]); x.translate(-p, 0); station(0, x, b); x.restore();
+      x.save(); clipPoly(x, [[-100, -100], [sx + 420, -100], [sx, 1180], [-100, 1180]]); station(0, x, b, { ox: ox1(b) }); x.restore();
+      x.save(); clipPoly(x, [[sx + 420, -100], [2100, -100], [2100, 1180], [sx, 1180]]); x.fillStyle = rgba(PAL.cPaper); x.fillRect(0, 0, 1920, 1080); x.restore();
       whipBand(x, sx);
       x.save(); clipPoly(x, [[sx + 1600, -100], [2100, -100], [2100, 1180], [sx + 1180, 1180]]); x.translate(3640 - p, 0); station(1, x, b); x.restore();
       return;
@@ -202,7 +212,7 @@
   const narA = (b) => prog(b, AT.st[5] + 0.05, AT.st[5] + 0.15) * (1 - prog(b, AT.flip + 0.02, AT.flip + 0.1));
 
   // ---------- 高潮：十格分屏 ----------
-  const STYLE = [["晒图", "Blueprint"], ["等距小岛", "Isometric island"], ["构成主义海报", "Constructivist poster"], ["橡皮管卡通", "Rubber hose"], ["报纸", "Newspaper"],
+  const STYLE = [["晒图", "Blueprint"], ["立体微缩小岛", "3D miniature island"], ["构成主义海报", "Constructivist poster"], ["橡皮管卡通", "Rubber hose"], ["报纸", "Newspaper"],
     ["剪纸片头", "Paper cutout"], ["水墨", "Ink wash"], ["红白机", "8-bit"], ["彩铅", "Colored pencil"], ["地铁线路图", "Metro map"]];
   I18N.add(Object.fromEntries(STYLE.map((s, i) => [`ch10.style.${i}`, s])));
   const ACCENT = ["#1A4474", "#F3A595", "#CA2A22", "#18150F", "#1E1C1A", "#E5A82E", "#B83626", "#0058F8", "#B2A1D8", "#EE352E"];
@@ -262,8 +272,11 @@
   }
 
   // ---------- 调度 ----------
+  // Layer.begin 只复位变换、透明度和混合，线头、拐角、线宽、虚线会从上一帧带过来（好几处圆头线没包 save）；每帧开头复位，画面才只看时刻。
+  const pen = (l) => { const x = l.ctx; x.lineCap = "butt"; x.lineJoin = "miter"; x.miterLimit = 10; x.lineWidth = 1; x.setLineDash([]); x.lineDashOffset = 0; };
   function render(f) {
     const b = f.bar, S0 = ch("ch00");
+    pen(L); pen(LT);
     if (b >= AT.drop && F10.bow) { F10.bow(f, b, { L, BAR, b00: 5 + (AT.drop - AT.flip) * SLOW }); return; }
     if (b >= AT.flip) { splitFrame(f, b); return; }
     if (b >= AT.ink[0] && S0) {
@@ -274,14 +287,15 @@
       if (b < AT.ink[1]) { G.setCam({ x: 960, y: 540, zoom: 1, rot: 0 }); const x = L.begin(); station(4, x, b); inkEat(x, b); G.composite(L.upload(), { mode: G.MODE.normal }); }
       return;
     }
+    const solid = in1(b) && F10.s1world(b - AT.st[0], ox1(b));
     G.setCam({ x: 960, y: 540, zoom: 1, rot: 0 });
-    G.clear([0.913, 0.896, 0.855]);
+    if (!solid) G.clear([0.913, 0.896, 0.855]);
     const x = L.begin();
     relay(x, b);
     const p = pan(b), p0 = pan(b - 1 / 60 / f.BAR);
     G.composite(L.upload(), { mode: G.MODE.normal });
     const jolt = Math.max(impact(b, AT.whip1[0] + 0.04, 0.1), impact(b, AT.iris[0], 0.1) * 0.6, impact(b, AT.spin[1], 0.1)) * 5;
-    f.post = { ...POST0, blur: [-(p - p0), 0], shake: [Math.sin(f.frame * 1.7) * jolt, Math.cos(f.frame * 2.3) * jolt], flash: impact(b, AT.spin[1], 0.08) * 0.08 };
+    f.post = { ...post1(b), blur: [-(p - p0), 0], shake: [Math.sin(f.frame * 1.7) * jolt, Math.cos(f.frame * 2.3) * jolt], flash: impact(b, AT.spin[1], 0.08) * 0.08 };
   }
 
   window.CHAPTERS.push({

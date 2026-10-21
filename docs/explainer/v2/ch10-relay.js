@@ -1,6 +1,7 @@
-// 终章画风接力的前两站：01 等距小岛、02 构成主义海报，以及各站共用的画法。每站一个 (x, u, o) 画法，
+// 终章画风接力的前两站：01 立体微缩小岛、02 构成主义海报，以及各站共用的画法。每站一个 (x, u, o) 画法，
 // x 是屏幕坐标的画布（1920 × 1080），u 是进站后的小节数，可以为负（转场时下一站提前露面）；o.nar 乘旁白的透明度。
 // 每站自己铺满底色（铺得比画面大，甩镜头平移时不露边），不读别的时间；转场、调度都在 ch10.js。
+// 01 站例外：底是 s1world 先画进 G.scene 的立体画面，s1 不铺底，只画字和牌子。
 (() => {
   const { E, prog, clamp, lerp, hash, FONT } = K;
   const F10 = window.FIN10, { PAL, CLAWD, rgba } = F10;
@@ -62,102 +63,160 @@
     x.stroke(); x.restore();
   }
 
-  // ---------- 01 等距小岛：Mac 寄出 appleMusic ----------
-  const ISO = { ox: 620, oy: 520 };
-  const iso = (X, Y, Z = 0, dz = 0) => [ISO.ox + (X - Y) * 0.866, ISO.oy + (X + Y) * 0.5 - Z - dz];
-  const RAIL = { a: [720, 556], b: [2080, 892] };
-  const RAIL_ROT = Math.atan2(RAIL.b[1] - RAIL.a[1], RAIL.b[0] - RAIL.a[0]);
-  const MODS = ["desktop", "timezone", "appleMusic", "chargingDevices"];
-  const env1 = (x, w) => envelope(x, w, PAL.isoPlate, PAL.isoInk, 4, PAL.isoInk2);
-  function cloud(x, cx, cy, s, a) {
-    x.save(); x.globalAlpha = a; x.fillStyle = "#FFFFFF";
-    for (const [dx, dy, r] of [[-60, 8, 34], [-18, -14, 46], [34, -2, 40], [74, 12, 28]]) { x.beginPath(); x.arc(cx + dx * s, cy + dy * s, r * s, 0, TAU); x.fill(); }
-    x.fillRect(cx - 60 * s, cy + 8 * s, 134 * s, 32 * s);
+  // ---------- 01 立体微缩小岛：借第 01 章的 three.js 世界（window.CH01.W），Mac 寄出 appleMusic ----------
+  // ch10.js 在画 2D 层之前调 s1world；s1 挂在模型上的锚点按同一个机位（view1）投影。
+  // ox 是整站在屏幕上的横向位移（甩镜头）：立体画面靠镜头横移挪过去，屏幕上固定的牌子靠平移挪过去，两边用同一个 ox。
+  const BAR1 = (60 / 108) * 4, D2R = Math.PI / 180, FOV = 26, FOCAL = 540 / Math.tan((FOV / 2) * D2R);
+  const camR = (az) => [Math.cos(az * D2R), -Math.sin(az * D2R)];
+  const camU = (v) => { const a = v.az * D2R, e = v.el * D2R; return [-Math.sin(e) * Math.sin(a), -Math.sin(e) * Math.cos(a), Math.cos(e)]; };
+  const camF = (v) => { const a = v.az * D2R, e = v.el * D2R; return [-Math.sin(a) * Math.cos(e), -Math.cos(a) * Math.cos(e), -Math.sin(e)]; };
+  // 让世界点 Pw 落在屏幕 (sx, sy)，按落点那一层的深度算（同 ch01.js#aim）
+  function aim(Pw, sx, sy, v) {
+    const r = camR(v.az), u = camU(v), k = v.d / FOCAL, a = (sx - 960) * k, c = (540 - sy) * k;
+    return { ...v, at: [Pw[0] - r[0] * a - u[0] * c, Pw[1] - r[1] * a - u[1] * c, Pw[2] - u[2] * c] };
+  }
+  const truck = (v, px) => { const r = camR(v.az), k = (px * v.d) / FOCAL; return { ...v, at: [v.at[0] + r[0] * k, v.at[1] + r[1] * k, v.at[2]] }; };
+  // 和 three 的透视相机同一套投影（视角 FOV、16:9、zoom 1）：2D 层的锚点不靠 s1world 先调过 W.view
+  function proj1(v, P) {
+    const f = camF(v), r = [...camR(v.az), 0], u = camU(v), C = [0, 1, 2].map((i) => v.at[i] - f[i] * v.d);
+    const q = [P[0] - C[0], P[1] - C[1], P[2] - C[2]], z = q[0] * f[0] + q[1] * f[1] + q[2] * f[2];
+    return [960 + (FOCAL * (q[0] * r[0] + q[1] * r[1])) / z, 540 - (FOCAL * (q[0] * u[0] + q[1] * u[1] + q[2] * u[2])) / z];
+  }
+  // 模型坐标照 ch01-models.js 的 L（PARK3 是导轨上的停靠点，导轨沿世界 (1, −1) 方向、顶面高 RAIL_Z）
+  const M1 = () => window.CH01 && window.CH01.W && window.CH01.W.ready ? window.CH01.W : null;
+  const L1 = () => (window.CH01 && window.CH01.models ? window.CH01.models.L : null);
+  // 机位：方位 51° 时导轨在屏幕上几乎水平、往右略低；停靠点落在屏幕 park 处。Clawd 一格 qPx 屏幕 px，信封放大 env 倍
+  const ST1 = { park: [720, 620], az: 51, el: 33, d: 1350, aper: 18, stand: 130, ride: 700, env: 1.8, qPx: 6.6 };
+  const RAIL_DIR = [Math.SQRT1_2, -Math.SQRT1_2], RAIL_YAW = Math.PI / 4;
+  const onRail = (L, s, z) => [L.PARK3[0] + RAIL_DIR[0] * s, L.PARK3[1] + RAIL_DIR[1] * s, z];
+  // 停住时慢推 1.5%、右移 10 px（同第 01 章的 hold）
+  function view1(u, ox) {
+    const L = L1(), k = prog(u, 0, 2.75);
+    const v0 = aim(L.PARK3, ST1.park[0], ST1.park[1], { az: ST1.az, el: ST1.el, d: ST1.d, aper: ST1.aper, fov: FOV, zoom: 1 });
+    return truck({ ...v0, d: v0.d / (1 + 0.015 * k) }, 10 * k - ox);
+  }
+  const spring = (u, t0, A) => { const t = (u - t0) * BAR1; return t < 0 ? 0 : A * Math.exp(-t / 0.09) * Math.cos(t * 30); };
+  // 信封：0.5 从笔记本的屏幕里转着弹出来，0.75 落到停靠点；1.05 起沿导轨越走越快
+  function env1At(u, L) {
+    if (u < 0.5) return null;
+    const z0 = L.RAIL_Z + 1;
+    if (u < 0.75) {
+      const k = E.out(prog(u, 0.5, 0.75)), a = L.lidPoint(L.LID.w / 2, L.LID.h / 2, 10), c = onRail(L, 0, z0);
+      return { p: [lerp(a[0], c[0], k), lerp(a[1], c[1], k), lerp(a[2], z0, k) + 440 * k * (1 - k)], s: lerp(0.45, ST1.env, E.out(clamp(k * 1.5))), yaw: RAIL_YAW - TAU * (1 - k) };
+    }
+    const go = prog(u, 1.05, 2.95), d = (ST1.ride * (0.5 * go * go + 0.38 * go)) / 0.88;
+    return { p: onRail(L, d, z0 + K.hop(u, 0.75, 0.81, 10) - 3 * spring(u, 1.02, 1)), s: ST1.env, yaw: RAIL_YAW };
+  }
+  // Clawd（第 01 章的体素 Clawd）站在停靠点右边的导轨上，0.82 跳上信封，蹲着骑走；正面一直朝镜头
+  function clawd1At(u, L, env) {
+    const q = (ST1.qPx * ST1.d) / FOCAL, st = onRail(L, ST1.stand, L.RAIL_Z), top = env ? env.p[2] + 7.7 * env.s : 0;
+    const frameAt = (t0) => Math.floor(((u - t0) * BAR1 * 1000) / window.Clawd.FRAME_MS + 1e-6);
+    let fr, pos = st, squash = 0;
+    if (u < 0.82 || !env) fr = { pose: u >= 0.5 && u < 0.78 ? "look-left" : "default", offset: 0 };
+    else if (u < 1.02) {
+      const k = prog(u, 0.82, 1.02), i = frameAt(0.82);
+      fr = i < 2 ? window.Clawd.SEQ.jump[i] : { pose: "arms-up", offset: 0 };
+      pos = [lerp(st[0], env.p[0], E.io(k)), lerp(st[1], env.p[1], E.io(k)), lerp(st[2], top, E.io(k)) + K.hop(u, 0.82, 1.02, 46)];
+      squash = -0.12 * Math.sin(k * Math.PI);
+    } else {
+      const i = frameAt(1.02);
+      fr = i < 2 ? window.Clawd.SEQ.land[i] : { pose: "default", offset: 1 };
+      pos = [env.p[0], env.p[1], top]; squash = spring(u, 1.02, 0.16);
+    }
+    return { fr, q, pos, yaw: ST1.az * D2R, squash };
+  }
+  function s1world(u, ox) {
+    const W = M1();
+    if (!W) return false;
+    const L = W.L, v = view1(u, ox), bp = 2.75 + u;
+    W.view(v);
+    // 借第 01 章的时间只为让笔记本屏幕在 0.25 翻面（ch01.js 的 AT.flip 是 3.0）；它的 4.0–5.0 里只有传送带在动，超出就折回 4.0，传送带的相位不跳
+    W.pose(bp < 5 ? bp : 4 + ((bp - 4) % 1), {
+      vaneYaw: 0.7 + 0.12 * Math.sin(u * 2.1),
+      actors: (_, h) => { const e = env1At(u, L); if (e) h.envAt(e.p[0], e.p[1], e.p[2], e.s, e.yaw); h.clawdPose(clawd1At(u, L, e)); },
+    });
+    W.draw({ aper: v.aper, focus: v.d });
+    return true;
+  }
+
+  // 字和牌子照第 01 章（ch01.js#plate、ch01-labels.js 的 tag、macLabels）：奶油色圆角牌，压一块淡紫的影子，不描边
+  const P1 = { ink: PAL.miniInk, ink2: PAL.miniInk2, plate: PAL.miniPlate, shade: PAL.miniShade };
+  const MONO1 = (px) => FONT.mono(px, 500);
+  function plate1(x, rx, ry, w, h, a) {
+    if (a <= 0) return;
+    x.save();
+    x.globalAlpha = a * 0.2; x.fillStyle = P1.shade; K.roundRect(x, rx + 5, ry + 6, w, h, 14); x.fill();
+    x.globalAlpha = a; x.fillStyle = P1.plate; K.roundRect(x, rx, ry, w, h, 14); x.fill();
     x.restore();
   }
+  function tag1(x, str, px, py, a, font, color) {
+    if (a <= 0) return;
+    const tw = K.measure(x, str, font), fs = parseFloat(/(\d+(\.\d+)?)px/.exec(font)[1]);
+    plate1(x, px - tw / 2 - 15, py - fs * 0.95 - 7.5, tw + 30, fs * 1.28 + 15, a);
+    T(x, str, px, py, font, color, { align: "center", alpha: a });
+  }
+  const MODS = ["desktop", "timezone", "appleMusic", "chargingDevices"];
+  const sig = () => G.css("signal");
   function s1(x, u, o = {}) {
-    const g = x.createLinearGradient(0, 0, 0, 1080);
-    g.addColorStop(0, PAL.isoSky0); g.addColorStop(0.55, PAL.isoSky1); g.addColorStop(1, PAL.isoSky2);
-    x.fillStyle = g; x.fillRect(-2400, -600, 6720, 2280);
-    cloud(x, 150 + u * 18, 120, 0.8, 0.75); cloud(x, 1040 - u * 12, 90, 0.65, 0.6); cloud(x, 1720 + u * 10, 600, 0.9, 0.55);
-    const dz = 6 * Math.sin(u * Math.PI);
-    const I = (X, Y, Z = 0) => iso(X, Y, Z, dz);
-    const R = 160, LIP = 36;
-    poly(x, [I(-R, R, -LIP), I(R, R, -LIP), I(R, -R, -LIP), [ISO.ox + 30, ISO.oy + 330 - dz]], "#C8B8E6", PAL.isoInk2, 3);
-    poly(x, [I(-R, R, 0), I(R, R, 0), I(R, R, -LIP), I(-R, R, -LIP)], PAL.isoLip, PAL.isoInk2, 3);
-    poly(x, [I(R, R, 0), I(R, -R, 0), I(R, -R, -LIP), I(R, R, -LIP)], "#8FC4A0", PAL.isoInk2, 3);
-    poly(x, [I(-R, -R), I(R, -R), I(R, R), I(-R, R)], PAL.isoGrass, PAL.isoInk2, 3);
-    x.strokeStyle = "#B9DEC4"; x.lineWidth = 2; x.beginPath();
-    for (let k = -R + 64; k < R; k += 64) { x.moveTo(...I(k, -R)); x.lineTo(...I(k, R)); x.moveTo(...I(-R, k)); x.lineTo(...I(R, k)); }
-    x.stroke();
-    for (const [X, Y, s] of [[110, -110, 1], [-120, -40, 0.8]]) {
-      const [tx, ty] = I(X, Y);
-      x.fillStyle = PAL.isoShade; x.fillRect(tx - 5 * s, ty - 26 * s, 10 * s, 26 * s);
-      poly(x, [[tx - 30 * s, ty - 22 * s], [tx, ty - 96 * s], [tx + 30 * s, ty - 22 * s]], "#9ED3AE", PAL.isoInk2, 3);
+    const ox = o.ox ?? 0, L = L1();
+    // 没有立体画面（three.js 没载入）时只铺第 01 章的天色，牌子照画
+    if (!M1()) {
+      const g = x.createLinearGradient(0, 0, 0, 1080);
+      g.addColorStop(0, PAL.miniSky0); g.addColorStop(0.58, PAL.miniSky1); g.addColorStop(1, PAL.miniSky2);
+      x.fillStyle = g; x.fillRect(-2400, -600, 6720, 2280);
     }
-    // 笔记本：底座在小岛上，屏幕立在后沿。
-    const LX = -40, B = (X, Y, Z) => I(X + LX, Y, Z);
-    poly(x, [B(-60, 40, 0), B(60, 40, 0), B(60, 40, 8), B(-60, 40, 8)], PAL.isoLilac, PAL.isoInk, 3);
-    poly(x, [B(60, -40, 0), B(60, 40, 0), B(60, 40, 8), B(60, -40, 8)], "#BBA8E0", PAL.isoInk, 3);
-    poly(x, [B(-60, -40, 8), B(60, -40, 8), B(60, 40, 8), B(-60, 40, 8)], "#FFF5E8", PAL.isoInk, 3);
-    poly(x, [B(-60, -40, 8), B(60, -40, 8), B(60, -40, 104), B(-60, -40, 104)], PAL.isoInk, PAL.isoInk, 3);
-    const glow = 0.55 + 0.45 * prog(u, 0.45, 0.55) * (1 - prog(u, 0.6, 0.9));
-    poly(x, [B(-50, -40, 18), B(50, -40, 18), B(50, -40, 94), B(-50, -40, 94)], `rgba(243,165,149,${glow})`);
-    const [nx, ny] = B(4, -40, 56);
-    x.fillStyle = PAL.isoPlate; x.beginPath(); x.ellipse(nx - 8, ny + 12, 9, 7, -0.4, 0, TAU); x.fill(); x.fillRect(nx - 1, ny - 22, 4, 34);
-    // 歌名牌：0.25 翻成新歌（数据，照原样不翻译）。
-    const top = B(0, -40, 104), fk = prog(u, 0.15, 0.35), sy = Math.max(0.04, Math.abs(Math.cos(fk * Math.PI)));
-    x.save(); x.setLineDash([8, 8]); x.strokeStyle = PAL.isoInk2; x.lineWidth = 3; x.beginPath(); x.moveTo(top[0], top[1] - 4); x.lineTo(560, 276); x.stroke(); x.restore();
-    x.save(); x.translate(560, 215); x.scale(1, sy); x.translate(-560, -215);
-    rr(x, 368, 164, 400, 112, 26, PAL.isoLilac); rr(x, 360, 156, 400, 112, 26, PAL.isoPlate, PAL.isoInk, 3);
-    T(x, "NOW PLAYING", 560, 196, NF.s1(28, 600), PAL.isoInk2, { align: "center", tracking: 3 });
-    T(x, fk < 0.5 ? "夜に駆ける" : "アイドル", 560, 250, NF.jp(46), PAL.isoInk, { align: "center" });
+    if (L) s1anchored(x, u, L, view1(u, ox));
+    s1screen(x, u, o, ox);
+  }
+  function s1anchored(x, u, L, v) {
+    const pr = (X, Y, Z) => proj1(v, [X, Y, Z]), env = env1At(u, L);
+    // 笔记本屏幕上那一下亮：信封从这里弹出来
+    const scr = pr(...L.lidPoint(L.LID.w / 2, L.LID.h / 2, 4)), ga = prog(u, 0.42, 0.5) * (1 - prog(u, 0.56, 0.8));
+    if (ga > 0) {
+      const gr = x.createRadialGradient(scr[0], scr[1], 0, scr[0], scr[1], 130);
+      gr.addColorStop(0, `rgba(255,214,180,${0.75 * ga})`); gr.addColorStop(0.5, `rgba(240,150,110,${0.25 * ga})`); gr.addColorStop(1, "rgba(240,140,100,0)");
+      x.fillStyle = gr; x.beginPath(); x.arc(scr[0], scr[1], 130, 0, TAU); x.fill();
+    }
+    // 歌名牌：挂在笔记本上方，0.2–0.3 翻成新歌（歌名、歌手是数据，照原样不翻译）
+    const [sx, sy] = pr(L.LAP.x + 54, L.LAP.y, L.LAP.z + 84), cw = 420, chh = 132, cx0 = sx - cw / 2 - 40, cy0 = sy - chh - 70;
+    x.save(); x.globalAlpha = 1; x.strokeStyle = P1.ink2; x.lineWidth = 2.2; x.lineCap = "round"; x.beginPath(); x.moveTo(sx, sy - 6); x.lineTo(sx, cy0 + chh); x.stroke();
+    x.fillStyle = P1.ink2; x.beginPath(); x.arc(sx, sy - 6, 5, 0, TAU); x.fill(); x.restore();
+    plate1(x, cx0, cy0, cw, chh, 1);
+    T(x, "Apple Music", cx0 + 26, cy0 + 44, MONO1(28), P1.ink2);
+    T(x, "YOASOBI", cx0 + cw - 24, cy0 + 44, NF.s1(28, 500), P1.ink2, { align: "right" });
+    const fk = prog(u, 0.2, 0.3), sq = fk > 0 && fk < 1 ? Math.max(0.02, Math.abs(Math.cos(fk * Math.PI))) : 1;
+    x.save(); x.translate(0, cy0 + 94); x.scale(1, sq); x.translate(0, -(cy0 + 94));
+    T(x, fk < 0.5 ? "夜に駆ける" : "アイドル", cx0 + 26, cy0 + 108, NF.jp(44), fk < 0.5 ? P1.ink : sig());
     x.restore();
-    // 信封：0.5 从屏幕里弹出来，落到导轨起点；1.05 起沿导轨越走越快。
-    const out = prog(u, 0.5, 0.75), go = prog(u, 1.05, 2.95), d = 0.5 * go * go + 0.38 * go;
-    let ep = null, er = RAIL_ROT;
-    if (u >= 0.5 && u < 0.75) { ep = arc([top[0], top[1] - 30], [RAIL.a[0], RAIL.a[1] - 40], E.out(out), 120); er = lerp(-TAU, RAIL_ROT, E.out(out)); }
-    else if (u >= 0.75) ep = along([RAIL.a[0], RAIL.a[1] - 40], [RAIL.b[0], RAIL.b[1] - 40], d);
-    // 导轨：紫色的两根轨，等距地斜着出画。
-    x.save(); x.strokeStyle = PAL.isoShade; x.lineCap = "round";
-    const nrm = [-Math.sin(RAIL_ROT), Math.cos(RAIL_ROT)];
-    x.lineWidth = 6; x.beginPath();
-    for (const s of [-14, 14]) { x.moveTo(RAIL.a[0] + nrm[0] * s, RAIL.a[1] + nrm[1] * s); x.lineTo(RAIL.b[0] + nrm[0] * s, RAIL.b[1] + nrm[1] * s); }
-    x.stroke(); x.lineWidth = 4; x.globalAlpha = 0.55; x.beginPath();
-    for (let k = 0; k < 1; k += 0.035) { const p = along(RAIL.a, RAIL.b, k); x.moveTo(p[0] - nrm[0] * 22, p[1] - nrm[1] * 22); x.lineTo(p[0] + nrm[0] * 22, p[1] + nrm[1] * 22); }
-    x.stroke(); x.restore();
-    // Clawd 站在小岛前沿，0.82 跳上信封。
-    const hopK = prog(u, 0.82, 1.02), home = I(110, 110);
-    if (ep) ride(x, 1, ep[0], ep[1], 150, er, u >= 1.02 ? 6 : 0, env1);
-    if (u < 1.02) {
-      const p = hopK > 0 ? arc(home, [ep ? ep[0] : RAIL.a[0], (ep ? ep[1] : RAIL.a[1]) - 48], E.io(hopK), 90) : home;
-      CLAWD[1](x, p[0], p[1], 6, { pose: hopK > 0 ? "arms-up" : u > 0.5 && u < 0.8 ? "look-right" : "default" });
-    }
+    // 跟着信封的模块名
     const la = prog(u, 0.8, 0.95) * (1 - prog(u, 2.4, 2.7));
-    if (ep && u >= 0.75 && la > 0) {
-      x.save(); x.globalAlpha = la; rr(x, ep[0] - 86, ep[1] + 58, 200, 48, 14, PAL.isoPlate, PAL.isoInk, 2.5); x.restore();
-      T(x, "appleMusic", ep[0] + 14, ep[1] + 92, MONO(28), PAL.isoInk, { alpha: la, align: "center" });
-    }
-    // 信封卡：只有 appleMusic 这一格亮。
+    if (env && u >= 0.75 && la > 0) { const pe = pr(env.p[0], env.p[1], env.p[2]); tag1(x, "appleMusic", pe[0], pe[1] + 78, la, MONO1(28), P1.ink); }
+  }
+  function s1screen(x, u, o, ox) {
+    x.save(); x.translate(ox, 0);
+    // 信封卡：只有 appleMusic 这一格亮，别的变成虚线
     const ck = prog(u, 0.3, 0.5, E.outBack);
     if (ck > 0) {
-      x.save(); x.globalAlpha = clamp(ck * 1.5); x.translate(1548, 290); x.scale(lerp(0.85, 1, ck), lerp(0.85, 1, ck)); x.translate(-1548, -290);
-      rr(x, 1250, 120, 616, 360, 28, PAL.isoLilac); rr(x, 1240, 110, 616, 360, 28, PAL.isoPlate, PAL.isoInk, 3);
-      T(x, "POST /api/ingest/mac", 1270, 168, MONO(30), PAL.isoInk, { alpha: clamp(ck * 1.5) });
-      const lit = prog(u, 0.6, 0.7);
+      const ca = clamp(ck * 1.5), s = lerp(0.85, 1, ck), lit = prog(u, 0.6, 0.7);
+      x.save(); x.translate(1548, 290); x.scale(s, s); x.translate(-1548, -290);
+      plate1(x, 1240, 110, 616, 360, ca);
+      T(x, "POST /api/ingest/mac", 1270, 166, MONO1(30), P1.ink, { alpha: ca });
       MODS.forEach((m, i) => {
         const cx = 1262 + (i % 2) * 296, cy = 196 + Math.floor(i / 2) * 86, on = m === "appleMusic";
-        const a = on ? 1 : lerp(1, 0.4, lit);
-        rr(x, cx, cy, 280, 66, 18, on ? (lit > 0 ? "#F3A595" : PAL.isoPlate) : PAL.isoPlate, PAL.isoInk, on ? 3 + 2 * lit : 3);
-        if (!on && lit > 0) { x.save(); x.globalAlpha = 0.5 * lit; x.strokeStyle = PAL.isoInk2; x.lineWidth = 3; x.setLineDash([10, 8]); K.roundRect(x, cx + 6, cy + 6, 268, 54, 14); x.stroke(); x.restore(); }
-        T(x, m, cx + 140, cy + 43, MONO(28), PAL.isoInk, { align: "center", alpha: a * clamp(ck * 1.5) });
+        x.save(); x.globalAlpha = ca; K.roundRect(x, cx, cy, 280, 66, 14);
+        if (on && lit > 0) { x.fillStyle = G.css("signal", 0.18 * lit); x.fill(); x.strokeStyle = sig(); x.lineWidth = 3; x.stroke(); }
+        else { x.globalAlpha = ca * (on ? 1 : lerp(1, 0.7, lit)); if (!on && lit > 0) x.setLineDash([7, 6]); x.strokeStyle = P1.ink2; x.lineWidth = 2.2; x.stroke(); }
+        x.restore();
+        T(x, m, cx + 140, cy + 43, MONO1(28), on && lit > 0 ? sig() : on ? P1.ink : P1.ink2, { align: "center", alpha: ca * (on ? 1 : lerp(1, 0.55, lit)) });
       });
-      T(x, tr("ch10.s1.note"), 1270, 438, NF.s1(30), PAL.isoInk2, { alpha: prog(u, 0.9, 1.05) });
-      T(x, "…", 1826, 438, MONO(30), PAL.isoInk2, { align: "right", alpha: clamp(ck * 1.5) });
+      T(x, tr("ch10.s1.note"), 1270, 436, NF.s1(30), P1.ink2, { alpha: ca * prog(u, 0.9, 1.05) });
+      T(x, "…", 1826, 436, MONO1(30), P1.ink2, { align: "right", alpha: ca });
       x.restore();
     }
-    rr(x, 88, 892, 1090, 128, 30, PAL.isoLilac); rr(x, 80, 884, 1090, 128, 30, PAL.isoPlate, PAL.isoInk, 3);
-    nar(x, "ch10.n1", 122, 970, NF.s1(60), PAL.isoInk, u, 0.25, { ...o, maxW: 1010 });
+    const nw = Math.min(1010, K.measure(x, tr("ch10.n1"), NF.s1(60))), na = (o.nar ?? 1) * prog(u, 0.2, 0.3);
+    plate1(x, 74, 890, nw + 72, 116, na);
+    nar(x, "ch10.n1", 110, 968, NF.s1(60), P1.ink, u, 0.25, { ...o, maxW: 1010 });
+    x.restore();
   }
 
   // ---------- 02 构成主义：入口验 JWT，分进实时那根管 ----------
@@ -257,5 +316,5 @@
     nar(x, "ch10.n2", 116, 994, NF.s2(62), INK, u, 0.25, { ...o, maxW: 1060 });
   }
 
-  Object.assign(F10, { NF, T, nar, bg, poly, rr, envelope, ride, along, arc, check, MONO, LAMP, s2hud, STATIONS: [s1, s2] });
+  Object.assign(F10, { NF, T, nar, bg, poly, rr, envelope, ride, along, arc, check, MONO, LAMP, s2hud, s1world, STATIONS: [s1, s2] });
 })();
