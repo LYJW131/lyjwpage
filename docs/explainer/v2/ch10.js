@@ -1,900 +1,314 @@
+// 第 10 章「一首歌的旅程」：终章。接住第 09 章那根墨线，十种画风的字块拼出标题；信封驮着 Clawd 一站一站走，
+// 每站换成讲过这一站的那一章的画风（画法在 ch10-relay.js、ch10-relay2.js）；翻面那一拍炸成十格分屏（ch10-split.js），
+// 收拢后十只 Clawd 谢幕（ch10-bow.js），最后落回第 00 章第一帧。
 (() => {
-  const { css } = G;
-  const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, fillRect, roundRect, envelope, stamp, spark, glyph, sheet, checkbox, pathAt, pathLen, trailOn, measure } = K;
+  const { E, prog, clamp, lerp, hash } = K;
+  const F10 = window.FIN10, { PAL, CLAWD, chip, rgba } = F10;
   I18N.add({
-    "ch10.title": ["一首歌的旅程", "One song's journey"],
-    "ch10.n1a": ["Mac 只寄出 appleMusic 这一格，", "The Mac sends just appleMusic;"],
-    "ch10.n1b": ["入口验过 JWT，分进实时那根管；", "ingress verifies it, sorts it live;"],
-    "ch10.n2a": ["StateHub 串行落账，交回效果单；", "StateHub commits, returns effects;"],
-    "ch10.n2b": ["回执回入口盖 202，推送同时出发。", "202 goes back as the push goes out."],
-    "ch10.n3a": ["WebSocket 到站，写进 SWR 缓存，", "The WebSocket lands it in SWR,"],
-    "ch10.n3b": ["卡片当场翻面。", "and the card flips."],
-    "ch10.end1": ["谢谢观看", "Thanks for watching"],
-    "ch10.end2": ["讲解 Claude Opus 5.5 · lyjw.me", "Narrated by Claude Opus 5.5 · lyjw.me"],
-    "ch10.c1": ["野外观测站", "Field stations"],
-    "ch10.c2": ["门禁与分拣", "The gate and the sorting desk"],
-    "ch10.c3": ["一间屋子的账房", "A one-room ledger office"],
-    "ch10.c4": ["活字印版", "The type case"],
-    "ch10.c5": ["电报线", "The live wire"],
-    "ch10.c6": ["心电图与地层", "Heartbeat and strata"],
-    "ch10.c7": ["对话", "Chat"],
-    "ch10.c8": ["一句话之后", "After one line"],
-    "ch10.c9": ["发布", "Release"],
-    "ch10.sign": ["等 lyjw 验收", "Waiting on lyjw"],
-    "ch10.keyMac": ["mac 的钥匙", "mac key"],
-    "ch10.limit": ["不超过 4 MiB", "At most 4 MiB"],
-    "ch10.t.rt": ["实时", "Realtime"],
-    "ch10.t.lag": ["可滞后", "Lag"],
-    "ch10.t.d1": ["归档", "Archive"],
-    "ch10.t.cred": ["凭据", "Credentials"],
-    "ch10.l.do": ["状态核心已提交", "State core committed"],
-    "ch10.l.lag": ["LAG 已写", "LAG written"],
-    "ch10.l.cred": ["凭据已写", "Credentials written"],
-    "ch10.ledger": ["StateHub 账本", "StateHub ledger"],
-    "ch10.slip": ["要做的事", "To do"],
-    "ch10.listen": ["广播 listening-now", "push listening-now"],
-    "ch10.noRecast1": ["换歌不重印：", "No recast:"],
-    "ch10.noRecast2": ["交给推送", "push does it"],
-    "ch10.swr": ["浏览器缓存", "browser cache"],
+    "ch10.t0": ["10", "10"], "ch10.t1": ["终", "F"], "ch10.t2": ["章", "I"], "ch10.t3": ["一", "N"], "ch10.t4": ["首", "A"],
+    "ch10.t5": ["歌", "L"], "ch10.t6": ["的", "E"], "ch10.t7": ["旅", "ONE"], "ch10.t8": ["程", "SONG'S"], "ch10.t9": ["！", "JOURNEY"],
+    "ch10.sub": ["mac · appleMusic → Now Playing", "mac · appleMusic → Now Playing"],
+    "ch10.n1": ["Mac 只寄出变了的 appleMusic。", "The Mac mails only appleMusic."],
+    "ch10.n2": ["入口验过 JWT，分进实时那根管。", "The JWT checks out: off to realtime."],
+    "ch10.n3": ["StateHub 串行落账，交回效果单。", "StateHub commits, returns effects."],
+    "ch10.n4": ["换歌不重印首屏，交给推送。", "A song change: no reprint, push it."],
+    "ch10.n5": ["推送沿 /ws 到站，写进 SWR。", "The push rides /ws into SWR."],
+    "ch10.n6": ["卡片当场翻面。", "And the card flips, right there."],
+    "ch10.s1.note": ["没变的模块不寄", "Unchanged modules stay home"],
+    "ch10.s2.rt": ["实时", "Realtime"], "ch10.s2.lag": ["可滞后", "Lag-tolerant"], "ch10.s2.d1": ["归档", "Archive"], "ch10.s2.cred": ["凭据", "Credentials"],
+    "ch10.s2.pass": ["放行", "PASS"],
+    "ch10.s3.ledger": ["StateHub 账本", "StateHub ledger"],
+    "ch10.s3.slip": ["要做的事 · IngestEffect", "To do · IngestEffect"],
+    "ch10.s3.effect": ["listening → 广播 listening-now", "listening → push listening-now"],
+    "ch10.s4.mast": ["首屏日报", "The First Screen"], "ch10.s4.ed": ["实时版", "Live edition"],
+    "ch10.s4.cap": ["图：本报记者 Clawd", "Photo: our reporter, Clawd"],
+    "ch10.s4.note": ["换歌：标签不失效", "New song: the tag stays put"],
   });
   const tr = (k) => I18N.tr(k);
-  const TAU = Math.PI * 2;
-  const BARS = (60 / 108) * 4;
-  const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARS) / hl) * Math.LN2));
-  const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
-  const lay = () => ({ x: G.layer("ink"), e: G.layer("emit", 0.5), d: G.layer("paper"), s: G.layer("stamp"), tp: G.layer("top") });
-  const ch00 = () => (window.CHAPTERS.find((c) => c.id === "ch00") || {}).share;
+  const BAR = (60 / 108) * 4;
+  const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BAR) / hl) * Math.LN2));
+  const ch = (id) => ((window.CHAPTERS || []).find((c) => c.id === id) || {}).share;
 
+  // 拍位（小节）：music/ch10.js 抄的是同一张表，两边一起改。
   const AT = {
-    grow: [0.05, 0.45], pull: [0.2, 0.55], rush1: [0.8, 1.0],
-    songFlip: 1.25, envOut: 1.5, park: 1.625, leave: 1.75,
-    door: 2.0, scale: 2.5, toTubes: [3.0, 3.3], open: 3.5, tube: [3.55, 4.0],
-    commits: [4.0, 4.25, 4.5], slipWrite: 5.0, handout: [5.5, 6.0], split: 6.0,
-    receipt: [6.0, 6.5], lamps: [6.5, 6.75, 7.0], s202: 7.25, plate4: 7.0,
-    push: [6.05, 8.0], pulse: 8.0, swr: 8.5, toPage: [8.75, 9.72], cheer: 9.625,
-    cutHome: 9.75, flip: 10.0, cutTerm: 10.5, endcard: 10.6, celebrate: [10.75, 12.0],
-    pullTerm: [12.5, 13.25], clear: [13.0, 13.4], still: 13.5,
+    chip0: 0.125, chipStep: 0.0625, sub: 0.75, env: [1.0, 1.4], pull: [1.5, 1.875], whip1: [1.875, 2.125],
+    st: [2, 5, 7.5, 9.5, 11.125, 12.75],
+    whip2: [4.75, 5.125], dive: [7.125, 7.5], iris: [7.5, 7.75], spin: [9.25, 9.625], cut: [11.0, 11.375], ink: [12.5, 12.875],
+    flip: 14.0, open: [14.0, 14.42], tutti: 15.0, close: [16.5, 17.0], drop: 17.0,
   };
+  const SLOW = 0.08; // 分屏中间那格把第 00 章翻面之后慢放；5.25 起那一章出大字，17.0 时须停在它之前。
+  const b00 = (b) => 5 + (b - AT.flip);
+  const POST0 = { bloom: 0, threshold: 1.2, halation: 0, grain: 0, vignette: 0, ca: 0 };
 
-  // 06 格必须留在 X 0：本章首帧（镜头 960, 540, 1）只拍到它，要和第 09 章末帧对上。
-  const CELLS = [
-    { n: "01", key: "ch10.c1", X: -12040, W: 1920, paper: false },
-    { n: "02", key: "ch10.c2", X: -9920, W: 2880, paper: true },
-    { n: "03", key: "ch10.c3", X: -6840, W: 2400, paper: false },
-    // tw 限标题宽：04 格那摞铅字（G4）从格内 620 起，英文标题不限宽就压上去。
-    { n: "04", key: "ch10.c4", X: -4240, W: 1440, paper: true, tw: 320 },
-    { n: "05", key: "ch10.c5", X: -2600, W: 2400, paper: false },
-    { n: "06", key: "ch10.c6", X: 0, W: 1920, paper: false },
-    { n: "07", key: "ch10.c7", X: 2120, W: 1440, paper: true },
-    { n: "08", key: "ch10.c8", X: 3760, W: 1440, paper: false },
-    { n: "09", key: "ch10.c9", X: 5400, W: 1440, paper: true },
-  ];
-  const SPINE = 540;
-  const Wx = (i, lx) => CELLS[i].X + lx;
-  const LAST = CELLS[CELLS.length - 1];
-  const PLATE_RECT = [CELLS[0].X - 680, -300, LAST.X + LAST.W + 1480, 1900];
+  let L, LT;
+  const off = { c: null, x: null };
+  // 缩小、旋转的那几帧整页先画在一张全尺寸的画布上再贴：字号检查按画的那一刻量，转着飞进来的报纸不算要读的字。
+  function offscreen() {
+    if (!off.c) { off.c = document.createElement("canvas"); off.x = off.c.getContext("2d"); }
+    if (off.c.width !== G.PW || off.c.height !== G.PH) { off.c.width = G.PW; off.c.height = G.PH; }
+    off.x.setTransform(1, 0, 0, 1, 0, 0); off.x.clearRect(0, 0, G.PW, G.PH); off.x.setTransform(G.S, 0, 0, G.S, 0, 0);
+    off.x.globalAlpha = 1; off.x.globalCompositeOperation = "source-over";
+    return off.x;
+  }
+  const station = (i, x, b, o) => F10.STATIONS[i](x, b - AT.st[i], o);
+  const clipPoly = (x, pts) => { x.beginPath(); pts.forEach(([a, c], i) => (i ? x.lineTo(a, c) : x.moveTo(a, c))); x.closePath(); x.clip(); };
 
-  function glow(e, cx, cy, r, a) {
-    if (a <= 0) return;
-    const g = e.createRadialGradient(cx, cy, 0, cx, cy, r);
-    g.addColorStop(0, `rgba(255,205,160,${a})`); g.addColorStop(0.3, `rgba(235,135,90,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
-    e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill(); e.restore();
-  }
-  function strokePts(x, pts, lw, color, alpha = 1) {
-    if (pts.length < 2 || alpha <= 0) return;
-    x.save(); x.globalAlpha = alpha; x.strokeStyle = color; x.lineWidth = lw; x.lineCap = "round"; x.lineJoin = "round";
-    x.beginPath(); pts.forEach(([u, v], i) => (i ? x.lineTo(u, v) : x.moveTo(u, v))); x.stroke(); x.restore();
-  }
-  function dashPath(x, pts, k, w, color, alpha = 1, dash = [9, 8]) {
-    if (k <= 0 || alpha <= 0) return null;
-    x.save(); x.setLineDash(dash); const head = polyline(x, pts, k, w, color, alpha); x.restore();
-    return head;
-  }
-  function arrowHead(x, tx, ty, ang, color, alpha = 1, s = 14) {
-    if (alpha <= 0) return;
-    x.save(); x.globalAlpha = alpha; x.fillStyle = color; x.beginPath();
-    x.moveTo(tx + Math.cos(ang) * 4, ty + Math.sin(ang) * 4);
-    x.lineTo(tx + Math.cos(ang + 2.6) * s, ty + Math.sin(ang + 2.6) * s);
-    x.lineTo(tx + Math.cos(ang - 2.6) * s, ty + Math.sin(ang - 2.6) * s);
-    x.fill(); x.restore();
-  }
-  const squash = (k) => (k > 0 && k < 1 ? Math.max(0.03, Math.abs(Math.cos(k * Math.PI))) : 1);
-  function withSquash(x, cy, s, draw) { x.save(); x.translate(0, cy); x.scale(1, s); x.translate(0, -cy); draw(); x.restore(); }
-  function cover(x, px, py, s, a, col, fill) {
-    x.save(); x.globalAlpha = a;
-    x.fillStyle = fill; x.fillRect(px, py, s, s);
-    x.strokeStyle = col; x.lineWidth = 1.6; x.strokeRect(px, py, s, s);
-    for (let j = 1; j <= 4; j++) { x.globalAlpha = a * (0.55 - j * 0.1); x.beginPath(); x.arc(px + s * 0.5, py + s * 0.52, s * 0.11 * j, 0, TAU); x.stroke(); }
-    x.restore();
-  }
-  const OLD = "夜に駆ける", NEW = "アイドル", ARTIST = "YOASOBI";
-
-  function cellBase(L, i, a) {
-    const c = CELLS[i], { x, d } = L;
-    if (c.paper) {
-      sheet(d, c.X, 0, c.W, 1080, { alpha: a, shadow: 34 });
-      d.save(); d.globalAlpha = a; d.strokeStyle = css("pink"); d.beginPath(); d.rect(c.X + 2, 2, c.W - 4, 1076); d.clip();
-      for (let u = 40; u < c.W; u += 40) { d.globalAlpha = a * (u % 200 ? 0.035 : 0.075); d.lineWidth = u % 200 ? 1 : 1.3; d.beginPath(); d.moveTo(c.X + u, 0); d.lineTo(c.X + u, 1080); d.stroke(); }
-      for (let v = 40; v < 1080; v += 40) { d.globalAlpha = a * (v % 200 ? 0.035 : 0.075); d.lineWidth = v % 200 ? 1 : 1.3; d.beginPath(); d.moveTo(c.X, v); d.lineTo(c.X + c.W, v); d.stroke(); }
-      d.restore();
-    } else K.rect(x, c.X, 0, c.W, 1080, 2, css("bone"), 0.35 * a);
-  }
-  const FAR = new Set([3, 5, 6, 7, 8]);
-  function cellHead(L, i, a, lit) {
-    const c = CELLS[i], ctx = c.paper ? L.d : L.x;
-    if (a <= 0) return;
-    const col = c.paper ? css("signal") : css("signalD");
-    text(ctx, c.n, c.X + 90, 196, { font: FONT.pixel(112), color: col, alpha: a, texture: FAR.has(i) });
-    text(ctx, tr(c.key), c.X + 270, 176, { font: FONT.cjk(58, 600), color: lit > 0.5 ? col : c.paper ? css("pink") : css("bone"), alpha: a, maxW: c.tw ?? c.W - 330, texture: FAR.has(i) });
-    line(ctx, c.X + 90, 226, c.X + 90 + Math.min(900, c.W - 180), 226, 1.4, c.paper ? css("pink") : css("bone"), 0.5 * a);
-  }
-  function cellMark(L, i, a) {
-    if (a <= 0) return;
-    const c = CELLS[i], ctx = c.paper ? L.d : L.x;
-    text(ctx, c.n, c.X + c.W / 2, 700, { font: FONT.pixel(640), color: c.paper ? css("pink") : css("bone"), align: "center", alpha: 0.14 * a, texture: true });
-  }
-
-  // 此处回顾几何须与 ch06.js 的 Y0、NOW_X、V、UP、DOWN 及拍位规则一致。
-  const NOW_X = 1350, Y0 = 540, V = 200;
-  const UP = [[-98, 0], [0, -220], [34, 46], [62, 0]];
-  const DOWN = [[-16, 0], [0, 104], [14, -22], [30, 0]];
-  const CHECKS = [], KNOCKS = [];
-  for (let k = 0; k <= 60; k += 5) CHECKS.push(k);
-  for (let k = 0; k <= 60; k++) KNOCKS.push(k + 0.5);
-  const PHI0 = 48;
-  function shapeY(shape, dx) {
-    if (dx <= shape[0][0] || dx >= shape[shape.length - 1][0]) return 0;
-    for (let i = 1; i < shape.length; i++) if (dx <= shape[i][0]) {
-      const [x0, y0] = shape[i - 1], [x1, y1] = shape[i];
-      return lerp(y0, y1, (dx - x0) / (x1 - x0));
-    }
-    return 0;
-  }
-  function ecgEvents(phi) {
-    const ev = [];
-    for (const t of CHECKS) if (t <= phi + 2) ev.push({ t, x: NOW_X - (phi - t) * V, s: UP, up: true });
-    for (const t of KNOCKS) if (t <= phi + 2) ev.push({ t, x: NOW_X - (phi - t) * V, s: DOWN, up: false });
-    return ev.filter((v) => v.x + v.s[0][0] < NOW_X && v.x + v.s[v.s.length - 1][0] > -3000);
-  }
-  // 必须同一次 stroke：半透明圆头分段绘制会在接缝叠出亮点。
-  function ecg(L, phi, grow) {
-    const { x, e } = L;
-    const ev = ecgEvents(phi), x0 = -60;
-    const xs = [x0, NOW_X];
-    for (const v of ev) for (const [dx] of v.s) { const u = v.x + dx; if (u > x0 && u < NOW_X) xs.push(u); }
-    xs.sort((a, c) => a - c);
-    const ty = (u) => Y0 + grow * ev.reduce((y, v) => y + shapeY(v.s, u - v.x), 0);
-    x.save(); x.globalAlpha = 0.9; x.strokeStyle = css("bone"); x.lineWidth = 2.4; x.lineCap = "round"; x.lineJoin = "round";
-    x.beginPath(); xs.forEach((u, i) => (i ? x.lineTo(u, ty(u)) : x.moveTo(u, ty(u))));
-    x.moveTo(NOW_X, Y0); x.lineTo(CELLS[5].W, Y0); x.stroke(); x.restore();
-    for (const v of ev) if (phi >= v.t && phi - v.t < 1.2) {
-      const k = Math.exp(-(phi - v.t) * 3.2);
-      glow(e, v.x, Y0 + grow * (v.up ? -220 : 104) * 0.9, v.up ? 110 : 60, (v.up ? 0.8 : 0.45) * k * grow);
-    }
-  }
-  function cell6(L, b, a) {
-    const { x } = L;
-    if (a > 0) for (let j = 0; j < 5; j++) {
-      x.save(); x.globalAlpha = a * (j % 2 ? 0.4 : 0.7); x.fillStyle = css("ink2"); x.fillRect(80, 760 + j * 56, 1760, 56); x.restore();
-      line(x, 80, 760 + j * 56, 1840, 760 + j * 56, 1.2, css("bone"), 0.25 * a);
-    }
-  }
-
-  const LAP = { x: 150, y: 260, w: 760, h: 430 }, MENU_H = 44;
-  const AWIN = { x: 235, y: 368, w: 600, h: 236 };
-  const HUB = [LAP.x + LAP.w - 42, LAP.y + 16 + MENU_H / 2];
-  const PARK = [1060, SPINE];
-  function cell1(L, b, a) {
-    const { x, e } = L, X = CELLS[0].X, bone = css("bone"), ash = css("ash");
-    x.save(); x.translate(X, 0); e.save(); e.translate(X, 0);
-    const { x: lx, y: ly, w, h } = LAP;
-    x.save(); x.globalAlpha = a; x.fillStyle = css("ink2"); x.fillRect(lx + 16, ly + 16, w - 32, h - 32); x.restore();
-    K.rect(x, lx, ly, w, h, 2.6, bone, a); K.rect(x, lx + 16, ly + 16, w - 32, h - 32, 1.4, bone, a);
-    polyline(x, [[lx - 52, ly + h], [lx + w + 52, ly + h], [lx + w + 52, ly + h + 26], [lx - 52, ly + h + 26], [lx - 52, ly + h]], 1, 2.2, bone, a);
-    line(x, lx + 16, ly + 16 + MENU_H, lx + w - 16, ly + 16 + MENU_H, 1.2, bone, 0.6 * a);
-    text(x, "Ghostty", lx + 40, ly + 16 + MENU_H / 2 + 10, { font: FONT.mono(28, 600), color: bone, alpha: a });
-    const blink = Math.max(impact(b, AT.songFlip, 0.12), impact(b, AT.envOut, 0.12));
-    const hc = blink > 0.3 ? css("signalD") : bone;
-    x.save(); x.globalAlpha = a; x.strokeStyle = hc; x.lineWidth = 2; x.beginPath(); x.arc(HUB[0], HUB[1], 11, 0, TAU); x.stroke();
-    x.fillStyle = hc; x.beginPath(); x.arc(HUB[0], HUB[1], 3.5, 0, TAU); x.fill(); x.restore();
-    if (blink > 0.02) glow(e, HUB[0], HUB[1], 60, 0.7 * blink * a);
-    x.save(); x.globalAlpha = a; x.fillStyle = css("ink"); x.fillRect(AWIN.x, AWIN.y, AWIN.w, AWIN.h); x.restore();
-    K.rect(x, AWIN.x, AWIN.y, AWIN.w, AWIN.h, 1.8, bone, a);
-    line(x, AWIN.x, AWIN.y + 30, AWIN.x + AWIN.w, AWIN.y + 30, 1.2, bone, 0.5 * a);
-    const fk = prog(b, AT.songFlip - 0.08, AT.songFlip + 0.08);
-    withSquash(x, AWIN.y + 133, squash(fk), () => {
-      cover(x, AWIN.x + 24, AWIN.y + 54, 158, a, bone, css("ink"));
-      text(x, fk < 0.5 ? OLD : NEW, AWIN.x + 214, AWIN.y + 118, { font: FONT.cjk(46, 600), color: fk >= 0.5 ? css("signalD") : bone, alpha: a });
-      text(x, ARTIST, AWIN.x + 214, AWIN.y + 164, { font: FONT.sans(30, 500), color: ash, alpha: a });
-    });
-    const px0 = AWIN.x + 214, px1 = AWIN.x + AWIN.w - 30, py = AWIN.y + 202;
-    line(x, px0, py, px1, py, 5, bone, 0.22 * a);
-    line(x, px0, py, lerp(px0, px1, fk >= 0.5 ? 0.02 + 0.02 * prog(b, AT.songFlip, 2) : 0.86), py, 5, css("signalD"), a);
-    if (fk > 0.3 && fk < 0.9) glow(e, AWIN.x + 380, AWIN.y + 110, 150, 0.5 * (1 - Math.abs(fk - 0.6) * 3));
-    text(x, "Mac Telemetry Hub", lx - 50, ly + h + 90, { font: FONT.mono(30, 500), color: ash, alpha: a });
-    line(x, PARK[0] + 40, SPINE, CELLS[0].W, SPINE, 2, bone, 0.5 * a);
-    x.restore(); e.restore();
-  }
-
-  const DOORS = ["/mac", "/iphone", "/homepod"];
-  const DX = (i) => 160 + i * 190, DW = 150, DTOP = 330, DH = 360;
-  const LOCK = [DX(0) + DW * 0.8, DTOP + DH * 0.6];
-  // 钥匙卡停在锁下方、偏左：信封和骑在上面的 Clawd 沿 SPINE 从锁旁经过，卡停在锁上会被整只盖住；再往右会压到 /iphone 的门框。
-  const KEYC = [LOCK[0] - 62, LOCK[1] + 72];
-  const SCALE = [1260, 540];
-  const TUBES = [["cred", 1760], ["d1", 2010], ["lag", 2260], ["rt", 2510]];
-  const MOUTH_Y = 330, OPEN_AT = [2140, 250];
-  const LAMPS = [["ch10.l.do", 1800], ["ch10.l.lag", 2080], ["ch10.l.cred", 2360]], LAMP_Y = 860;
-  const S202 = [2330, 690];
-  function door2(d, i, open) {
-    const dx = DX(i), inkC = css("pink");
-    K.rect(d, dx, DTOP, DW, DH, 3, inkC, 1);
-    if (open > 0) fillRect(d, dx + 2, DTOP + 2, DW - 4, DH - 2, inkC, 0.9 * clamp(open * 3));
-    const o = E.out(clamp(open)), ex = dx + DW * (1 - 0.8 * o);
-    d.save(); d.fillStyle = css("paper"); d.strokeStyle = inkC; d.lineWidth = 2.2;
-    d.beginPath(); d.moveTo(dx + 1, DTOP + 1); d.lineTo(ex, DTOP + 1); d.lineTo(ex, DTOP + DH); d.lineTo(dx + 1, DTOP + DH); d.closePath(); d.fill(); d.stroke();
-    const [lx, ly] = [lerp(dx + 1, ex, 0.8), DTOP + DH * 0.6];
-    d.lineWidth = 2; d.beginPath(); d.arc(lx, ly, 9 * (1 - o * 0.5), 0, TAU); d.stroke(); d.restore();
-    text(d, DOORS[i], dx + DW / 2, DTOP - 20, { font: FONT.mono(28, 500), color: inkC, align: "center" });
-  }
-  function keycard2(d, cx, cy, alpha, hot) {
-    if (alpha <= 0) return;
-    const label = tr("ch10.keyMac"), tw = measure(d, label, FONT.cjk(28, 600)), w = Math.max(200, tw + 100), h = 80;
-    d.save(); d.globalAlpha = alpha; d.fillStyle = css("paper"); d.strokeStyle = hot ? css("signal") : css("pink"); d.lineWidth = 3;
-    roundRect(d, cx - w / 2, cy - h / 2, w, h, 10); d.fill(); d.stroke();
-    d.lineWidth = 1.5; d.strokeRect(cx - w / 2 + 16, cy - 13, 28, 22); d.restore();
-    text(d, label, cx - w / 2 + 60, cy + 10, { font: FONT.cjk(28, 600), color: hot ? css("signal") : css("pink"), alpha });
-  }
-  const TUBE_R = 22;
-  function tube2(d, pts, color, lw = 2.2) {
-    const off = (dd) => pts.map((p, i) => {
-      const a = pts[Math.max(0, i - 1)], c = pts[Math.min(pts.length - 1, i + 1)];
-      const dx = c[0] - a[0], dy = c[1] - a[1], Ln = Math.hypot(dx, dy) || 1;
-      return [p[0] - (dy / Ln) * dd, p[1] + (dx / Ln) * dd];
-    });
-    polyline(d, off(-TUBE_R), 1, lw, color); polyline(d, off(TUBE_R), 1, lw, color);
-  }
-  const RT_TUBE = [[2510, MOUTH_Y + 60], [2510, SPINE], [2880, SPINE]];
-  function cell2(L, b, a) {
-    const { d, e, s } = L, X = CELLS[1].X, inkC = css("pink"), gr = css("graphite");
-    for (const c of [d, e, s]) { c.save(); c.translate(X, 0); c.globalAlpha = 1; }
-    line(d, 100, DTOP + DH, 760, DTOP + DH, 2, inkC);
-    const openK = keys(b, [[AT.door, 0], [AT.door + 0.12, 1, E.outExpo], [2.45, 1], [2.6, 0, E.in]]);
-    DOORS.forEach((_, i) => door2(d, i, i === 0 ? openK : 0));
-    const kk = keys(b, [[1.8, [-120, KEYC[1] + 110]], [AT.door, KEYC, E.outExpo], [2.3, KEYC], [2.5, [KEYC[0], KEYC[1] + 40], E.in]]);
-    keycard2(d, kk[0], kk[1], prog(b, 1.8, 1.86) * (1 - prog(b, 2.3, 2.5)), b > 1.95 && b < 2.4);
-    {
-      const [cx, py] = SCALE, cy = py + 140, R = 86;
-      line(d, cx - 170, py, cx + 170, py, 3, inkC); line(d, cx, py, cx, cy - R, 2, inkC);
-      d.save(); d.strokeStyle = inkC; d.lineWidth = 2.5; d.beginPath(); d.arc(cx, cy, R, Math.PI * 0.85, Math.PI * 2.15); d.stroke(); d.restore();
-      for (let j = 0; j <= 10; j++) { const an = Math.PI * (0.85 + 1.3 * j / 10); line(d, cx + Math.cos(an) * (R - 14), cy + Math.sin(an) * (R - 14), cx + Math.cos(an) * R, cy + Math.sin(an) * R, j === 10 ? 4 : 1.5, j === 10 ? css("signal") : inkC); }
-      text(d, "4 MiB", cx + R + 18, cy - 34, { font: FONT.mono(30, 600), color: css("signal") });
-      const wob = b < AT.scale ? 0 : Math.exp(-(b - AT.scale) * 9) * Math.sin((b - AT.scale) * 60) * 0.5;
-      const na = Math.PI * 0.85 + (b < AT.scale ? 0 : 0.1 + wob);
-      line(d, cx, cy, cx + Math.cos(na) * (R - 18), cy + Math.sin(na) * (R - 18), 3, css("signal"));
-      text(d, tr("ch10.limit"), cx, cy + 90, { font: FONT.cjk(34, 600), align: "center" });
-    }
-    // 管名同第 02 章，标在储存图标下面：漏斗口上方要留给信封、胶囊和 Clawd 飞过。
-    TUBES.forEach(([k, tx]) => {
-      const hot = k === "rt", col = hot ? css("signal") : inkC;
-      text(d, tr(`ch10.t.${k}`), tx, 700, { font: FONT.cjk(34, 600), color: col, align: "center" });
-      polyline(d, [[tx - 70, MOUTH_Y], [tx - 22, MOUTH_Y + 60]], 1, 2.4, col); polyline(d, [[tx + 70, MOUTH_Y], [tx + 22, MOUTH_Y + 60]], 1, 2.4, col);
-      if (hot) tube2(d, RT_TUBE, col);
-      else { tube2(d, [[tx, MOUTH_Y + 60], [tx, 560]], col); glyph(d, k, tx, 612, col, 0.9); }
-      const p = hot ? impact(b, AT.open + 0.12, 0.12) : 0;
-      if (p > 0.02) polyline(d, [[tx - 70, MOUTH_Y], [tx + 70, MOUTH_Y]], 1, 4, css("signal"), p);
-    });
-    const bus = LAMP_Y - 90, busEnd = LAMPS[2][1] + 200;
-    line(d, LAMPS[0][1], bus, busEnd, bus, 2.2, inkC);
-    LAMPS.forEach(([k, lx], j) => {
-      const on = prog(b, AT.lamps[j], AT.lamps[j] + 0.06);
-      line(d, lx, LAMP_Y - 44, lx, bus, 2.2, on > 0 ? css("signal") : inkC);
-      d.save(); d.strokeStyle = inkC; d.lineWidth = 3; d.beginPath(); d.arc(lx, LAMP_Y, 40, 0, TAU); d.stroke();
-      if (on > 0) { d.globalAlpha = on; d.fillStyle = css("signal"); d.beginPath(); d.arc(lx, LAMP_Y, 32, 0, TAU); d.fill(); }
-      d.restore();
-      if (on > 0) glow(e, lx, LAMP_Y, 90 * Math.sqrt(L.big), 0.4 * on);
-      text(d, tr(k), lx, LAMP_Y + 80, { font: FONT.cjk(30, 600), align: "center", maxW: 340 });
-    });
-    const fillX = keys(b, [[AT.lamps[0], LAMPS[0][1]], [AT.lamps[1], LAMPS[1][1], E.out], [AT.lamps[2], LAMPS[2][1], E.out], [AT.s202, busEnd, E.io]]);
-    if (b > AT.lamps[0]) line(d, LAMPS[0][1], bus, fillX, bus, 3.4 * L.big, css("signal"));
-    stamp(s, "202", S202[0], S202[1], { k: prog(b, AT.s202, AT.s202 + 0.14), px: 300, rot: -0.09, sub: "Accepted", subPx: 90 });
-    for (const c of [d, e, s]) c.restore();
-  }
-
-  const R3 = { x0: 520, y0: 280, x1: 1080, y1: 780, t: 24 };
-  const DOOR3 = { y0: 490, y1: 590 }, SLOT3 = { y0: 516, y1: 544 };
-  const DESK = { x: 700, y: 430, w: 260, h: 120 }, BOOK = [830, 490], LAMP3 = [930, 456], TRAY = [930, 520];
-  const LED = { x: 1160, y: 60, w: 660, h: 300 }, SLP = { x: 1160, y: 80, w: 660, h: 250 };
-  const BOOTH = { x: 1150, y: 450, w: 160, h: 160 }, MAST = [1620, 720];
-  const QPATH = [[0, SPINE], [490, SPINE], [R3.x0 + R3.t + 40, SPINE], [BOOK[0] - 90, BOOK[1] + 20], BOOK];
-  const Q_FRONT = pathLen(QPATH.slice(0, 2)), Q_BOOK = pathLen(QPATH), GAP = 78;
-  const QUEUE = [{ t: AT.commits[0], src: "mac", what: "desktop" }, { t: AT.commits[1], src: "homepod", what: "nowPlaying" }, { t: AT.commits[2], src: "mac", what: "appleMusic", hero: true }, { t: 99 }, { t: 99 }];
-  function roomPlan3(x) {
-    const bone = css("bone"), { x0, y0, x1, y1, t } = R3;
-    polyline(x, [[x0, DOOR3.y0], [x0, y0], [x1, y0], [x1, SLOT3.y0]], 1, 2.6, bone);
-    polyline(x, [[x1, SLOT3.y1], [x1, y1], [x0, y1], [x0, DOOR3.y1]], 1, 2.6, bone);
-    polyline(x, [[x0 + t, DOOR3.y0], [x0 + t, y0 + t], [x1 - t, y0 + t], [x1 - t, SLOT3.y0]], 1, 1.6, bone);
-    polyline(x, [[x1 - t, SLOT3.y1], [x1 - t, y1 - t], [x0 + t, y1 - t], [x0 + t, DOOR3.y1]], 1, 1.6, bone);
-    x.save(); x.beginPath();
-    for (const [rx, ry, rw, rh] of [[x0, y0, x1 - x0, t], [x0, y1 - t, x1 - x0, t], [x0, y0, t, DOOR3.y0 - y0], [x0, DOOR3.y1, t, y1 - DOOR3.y1], [x1 - t, y0, t, SLOT3.y0 - y0], [x1 - t, SLOT3.y1, t, y1 - SLOT3.y1]]) x.rect(rx, ry, rw, rh);
-    x.clip(); x.globalAlpha = 0.55; x.strokeStyle = bone; x.lineWidth = 1.1; x.beginPath();
-    for (let s = x0 + y0 - 20; s < x1 + y1 + 20; s += 11) { x.moveTo(s - y0, y0); x.lineTo(s - y1, y1); }
-    x.stroke(); x.restore();
-    x.save(); x.strokeStyle = bone; x.lineWidth = 2.4; x.beginPath(); x.moveTo(x0 + t, DOOR3.y1); x.lineTo(x0 + t + 100, DOOR3.y1); x.stroke();
-    x.setLineDash([5, 6]); x.lineWidth = 1.2; x.beginPath(); x.arc(x0 + t, DOOR3.y1, 100, -Math.PI / 2, 0); x.stroke(); x.restore();
-    x.save(); x.fillStyle = css("ink2"); x.fillRect(DESK.x, DESK.y, DESK.w, DESK.h); x.strokeStyle = bone; x.lineWidth = 2.2; x.strokeRect(DESK.x, DESK.y, DESK.w, DESK.h);
-    x.lineWidth = 1.8; roundRect(x, 800, 382, 60, 40, 6); x.stroke();
-    x.lineWidth = 4; x.beginPath(); x.moveTo(804, 378); x.lineTo(856, 378); x.stroke();
-    x.fillStyle = css("paper"); x.globalAlpha = 0.92; x.fillRect(772, 462, 116, 60); x.globalAlpha = 1;
-    x.strokeStyle = css("pink"); x.lineWidth = 1.8; x.strokeRect(772, 462, 116, 60); x.restore();
-    line(x, 830, 462, 830, 522, 1.4, css("pink"));
-    x.save(); x.strokeStyle = bone; x.lineWidth = 1.8; x.beginPath(); x.arc(LAMP3[0], LAMP3[1], 11, 0, TAU); x.stroke();
-    x.strokeRect(TRAY[0] - 22, TRAY[1] - 14, 44, 28); x.restore();
-    for (const y of [SPINE - 44, SPINE + 44]) {
-      line(x, 280, y, 490, y, 1.2, bone, 0.45);
-      for (const px of [280, 350, 420, 490]) { x.save(); x.globalAlpha = 0.7; x.fillStyle = bone; x.beginPath(); x.arc(px, y, 4.5, 0, TAU); x.fill(); x.restore(); }
-    }
-  }
-  function mast3(x, a, pulse) {
-    const bone = css("bone"), [mx, my] = MAST;
-    x.save(); x.globalAlpha = a; x.strokeStyle = bone; x.lineWidth = 2.2; x.fillStyle = css("ink2");
-    x.beginPath(); x.arc(mx, my, 18, 0, TAU); x.fill(); x.stroke(); x.restore();
-    line(x, mx - 12, my - 12, mx + 12, my + 12, 1.6, bone, a); line(x, mx - 12, my + 12, mx + 12, my - 12, 1.6, bone, a);
-    if (pulse > 0.02) for (let j = 1; j <= 3; j++) { x.save(); x.globalAlpha = a * pulse * (1 - j * 0.22); x.strokeStyle = css("signalD"); x.lineWidth = 2.2; x.beginPath(); x.arc(mx, my, 18 + j * 12, -0.6, 0.6); x.stroke(); x.beginPath(); x.arc(mx, my, 18 + j * 12, Math.PI - 0.6, Math.PI + 0.6); x.stroke(); x.restore(); }
-  }
-  function tinySlip(d, px, py, a) {
-    if (a <= 0) return;
-    d.save(); d.globalAlpha = a; d.translate(px, py);
-    d.fillStyle = css("paper"); d.fillRect(-18, -12, 36, 24); d.strokeStyle = css("pink"); d.lineWidth = 1.4; d.strokeRect(-18, -12, 36, 24);
-    for (let j = 0; j < 3; j++) line(d, -12, -5 + j * 6, 8, -5 + j * 6, 1, css("pink"), 0.6);
-    d.restore();
-  }
-  // 同第 03 章：信封上的标签垫一块底色，穿过门弧和墙时读得清。
-  function tag(x, s, cx, cy, color, a) {
-    if (a <= 0) return;
-    const font = FONT.mono(28, 500);
-    x.save(); x.font = font; const w = x.measureText(s).width + 24;
-    x.globalAlpha = a; x.fillStyle = css("ink2"); roundRect(x, cx - w / 2, cy - 30, w, 42, 8); x.fill(); x.restore();
-    text(x, s, cx, cy, { font, color, align: "center", alpha: a });
-  }
-  function cell3(L, b, a) {
-    const { x, e, d, s } = L, X = CELLS[2].X, bone = css("bone"), ash = css("ash");
-    for (const c of [x, e, d, s]) { c.save(); c.translate(X, 0); }
-    roomPlan3(x);
-    const commitFlash = Math.max(...QUEUE.map((q) => impact(b, q.t, 0.1)));
-    glow(e, LAMP3[0], LAMP3[1], 90, 0.35 + 0.3 * commitFlash);
-    text(x, "StateHub · StateCore", R3.x0, R3.y1 + 60, { font: FONT.mono(28, 500), color: ash });
-    const mv = QUEUE.reduce((sum, q) => sum + E.io(prog(b, q.t - 0.2, q.t)), 0);
-    QUEUE.forEach((q, i) => {
-      if (b >= q.t || (q.hero && b < AT.tube[1])) return;
-      const pos = i - mv;
-      const [px, py] = pos >= 0 ? pathAt(QPATH, Q_FRONT - pos * GAP) : pathAt(QPATH, Q_FRONT + -pos * (Q_BOOK - Q_FRONT));
-      if (px < 10) return;
-      envelope(x, px, py, 58, q.hero ? css("signalD") : bone, { lw: 2.2, fill: css("ink2") });
-      if (q.hero) { spark(e, null, [px, py - 6], null, { t: G.t, size: 0.75 }); if (b > q.t - 0.7) tag(x, "mac · appleMusic", px, py - 56, css("signalD"), prog(b, q.t - 0.7, q.t - 0.6) * (1 - prog(pos, -0.4, -0.8))); }
-    });
-    const la = 1 - prog(b, AT.slipWrite - 0.12, AT.slipWrite - 0.04);
-    if (la > 0) {
-      sheet(d, LED.x, LED.y, LED.w, LED.h, { alpha: la });
-      text(d, tr("ch10.ledger"), LED.x + 30, LED.y + 56, { font: FONT.cjk(36, 600), alpha: la });
-      text(d, "SQLite", LED.x + LED.w - 30, LED.y + 54, { font: FONT.mono(28, 500), color: css("graphite"), align: "right", alpha: la });
-      line(d, LED.x + 26, LED.y + 80, LED.x + LED.w - 26, LED.y + 80, 1.4, css("pink"), la);
-      const rows = [["mac", "chargingDevices", -1], ["emby", "watching", -1], ...QUEUE.slice(0, 3).map((q) => [q.src, q.what, q.t, q.hero])];
-      const done = rows.filter((r) => r[2] < 0 || b >= r[2]).slice(-4);
-      done.forEach(([src, what, t, hero], j) => {
-        const y = LED.y + 130 + j * 44, k = t < 0 ? 1 : clamp((b - t) / 0.1);
-        const col = hero ? css("signal") : css("pink");
-        text(d, src, LED.x + 34, y, { font: FONT.mono(30, 500), color: col, alpha: la });
-        text(d, what, LED.x + 260, y, { font: FONT.mono(30, 500), color: col, reveal: k, perChar: k < 1, alpha: la });
-        polyline(d, [[LED.x + LED.w - 60, y - 12], [LED.x + LED.w - 50, y - 2], [LED.x + LED.w - 32, y - 24]], t < 0 ? 1 : clamp((b - t - 0.04) / 0.08), 4, css("signal"), la);
+  // ---------- 开场：接住第 09 章的墨线 ----------
+  const OPEN = { bg: "#F5F3EE", ink: "#121212", home: 760 };
+  function titleChips(x, b, shake) {
+    const rows = I18N.lang === "en" ? [[0, 7, 150, 162], [7, 10, 110, 342]] : [[0, 3, 150, 162], [3, 10, 110, 342]];
+    for (const [i0, i1, px, cy] of rows) {
+      const ws = [];
+      for (let i = i0; i < i1; i++) ws.push(chip(x, i, tr(`ch10.t${i}`), 0, 0, px, { measure: true }));
+      const gap = 16, total = ws.reduce((s, w) => s + w, 0) + gap * (ws.length - 1);
+      let cx = 960 - total / 2;
+      ws.forEach((w, j) => {
+        const i = i0 + j, t0 = AT.chip0 + i * AT.chipStep, k = prog(b, t0, t0 + 0.22);
+        if (k <= 0) { cx += w + gap; return; }
+        const y = lerp(cy - 760, cy, E.outBack(k)), rot = lerp((hash(i + 3) - 0.5) * 0.9, (hash(i + 7) - 0.5) * 0.06, E.out(k));
+        const sx = shake * Math.sin(G.frame * 1.9 + i * 2.1) * 3, sy = shake * Math.cos(G.frame * 2.3 + i) * 2;
+        chip(x, i, tr(`ch10.t${i}`), cx + w / 2 + sx, y + sy, px, { rot, alpha: clamp(k * 3) });
+        cx += w + gap;
       });
     }
-    const sa = prog(b, AT.slipWrite - 0.05, AT.slipWrite + 0.05);
-    if (sa > 0) {
-      sheet(d, SLP.x, SLP.y, SLP.w, SLP.h, { alpha: sa });
-      text(d, tr("ch10.slip"), SLP.x + 30, SLP.y + 56, { font: FONT.cjk(36, 600), alpha: sa });
-      text(d, "IngestEffect", SLP.x + SLP.w - 30, SLP.y + 54, { font: FONT.mono(28), color: css("graphite"), align: "right", alpha: sa });
-      line(d, SLP.x + 26, SLP.y + 78, SLP.x + SLP.w - 26, SLP.y + 78, 1.4, css("pink"), sa);
-      text(d, "listening", SLP.x + 30, SLP.y + 150, { font: FONT.mono(30, 500), alpha: sa });
-      text(d, tr("ch10.listen"), SLP.x + 210, SLP.y + 150, { font: FONT.cjk(30, 600), alpha: sa, reveal: prog(b, AT.slipWrite, AT.slipWrite + 0.3), perChar: true, maxW: SLP.w - 300 });
-      checkbox(d, SLP.x + SLP.w - 76, SLP.y + 120, prog(b, AT.split, AT.split + 0.08), { alpha: sa });
-      stamp(s, "waitUntil", SLP.x + SLP.w - 190, SLP.y + 212, { k: prog(b, AT.split, AT.split + 0.12), px: 48, rot: -0.08 });
-      x.save(); x.globalAlpha = 0.7 * sa; x.strokeStyle = bone; x.lineWidth = 1.4; x.setLineDash([6, 6]);
-      x.beginPath(); x.arc(TRAY[0], TRAY[1], 40, 0, TAU); x.stroke();
-      x.beginPath(); x.moveTo(TRAY[0] + 20, TRAY[1] - 34); x.lineTo(SLP.x + 30, SLP.y + SLP.h); x.stroke(); x.restore();
-    }
-    if (b >= AT.slipWrite && b < AT.split + 0.3) {
-      const k1 = prog(b, AT.handout[0], AT.handout[0] + 0.25, E.in), k2 = prog(b, AT.handout[0] + 0.25, AT.handout[1], E.out);
-      const p = k2 > 0 ? [lerp(R3.x1 - 10, BOOTH.x + 70, k2), 530] : [lerp(TRAY[0], R3.x1 - 10, k1), lerp(TRAY[1], 530, k1)];
-      tinySlip(d, p[0], p[1], prog(b, AT.slipWrite, AT.slipWrite + 0.1) * (1 - prog(b, AT.split + 0.15, AT.split + 0.3)));
-    }
-    x.save(); x.fillStyle = css("ink2"); x.fillRect(BOOTH.x, BOOTH.y, BOOTH.w, BOOTH.h); x.restore();
-    K.rect(x, BOOTH.x, BOOTH.y, BOOTH.w, BOOTH.h, 2.4, bone); K.rect(x, BOOTH.x + 14, BOOTH.y + 14, BOOTH.w - 28, BOOTH.h - 28, 1.4, bone);
-    line(x, R3.x1, SLOT3.y0 - 4, BOOTH.x, SLOT3.y0 - 4, 1.2, bone, 0.6); line(x, R3.x1, SLOT3.y1 + 4, BOOTH.x, SLOT3.y1 + 4, 1.2, bone, 0.6);
-    text(x, "StateCore", BOOTH.x + BOOTH.w / 2, BOOTH.y + BOOTH.h + 44, { font: FONT.mono(30, 500), color: bone, align: "center" });
-    const pulse = b >= AT.split ? Math.exp(-(b - AT.split) * BARS * 1.8) : 0;
-    mast3(x, 1, pulse);
-    text(x, "LivePushRoom", MAST[0], MAST[1] + 64, { font: FONT.mono(30, 500), color: bone, align: "center" });
-    const fa = 1 - prog(b, 7.6, 7.8);
-    if (b >= AT.split) {
-      dashPath(x, [[BOOTH.x + BOOTH.w, 560], [MAST[0] - 26, MAST[1] - 16]], prog(b, AT.split, AT.split + 0.15, E.out), 2, css("signalD"), fa);
-      dashPath(x, [[BOOTH.x, 480], [1115, 480], [1115, 230], [R3.x0 - 60, 230]], prog(b, AT.split, AT.split + 0.3, E.io), 2, css("signalD"), fa);
-      const sec = (b - AT.split) * BARS;
-      for (let j = 0; j < 3; j++) {
-        const Rr = (sec - j * 0.16) * 800;
-        if (Rr <= 20 || Rr > 1300) continue;
-        const fade = Math.pow(1 - Rr / 1300, 1.5);
-        e.save(); e.globalAlpha = 0.5 * fade; e.strokeStyle = "rgba(240,150,105,1)"; e.lineWidth = 5 - j * 1.2; e.beginPath(); e.arc(MAST[0], MAST[1], Rr, 0, TAU); e.stroke(); e.restore();
-      }
-    }
-    line(x, MAST[0] + 18, MAST[1], MAST[0] + 160, MAST[1], 1.6, bone, 0.5);
-    polyline(x, [[MAST[0] + 160, MAST[1]], [MAST[0] + 160, SPINE], [CELLS[2].W, SPINE]], 1, 2, bone, 0.5);
-    for (const c of [x, e, d, s]) c.restore();
   }
-
-  const ch04 = () => (window.CHAPTERS.find((c) => c.id === "ch04") || {}).share;
-  const G4 = { x: 620, y: 110, s: 0.36 };
-  function cell4(L, b) {
-    const { d, e } = L, X = CELLS[3].X, P4 = ch04().P;
-    d.save(); d.translate(X, 0); e.save(); e.translate(X, 0);
-    line(d, 0, SPINE, CELLS[3].W, SPINE, 2, css("pink"), 0.6);
-    const hot = win(b, AT.plate4 - 0.05, AT.plate4 + 0.05, AT.plate4 + 0.6, AT.plate4 + 1.0);
-    for (const { id, tag, r: [u, v, w, h] } of P4) {
-      const px = G4.x + u * G4.s, py = G4.y + v * G4.s, W = w * G4.s - 2, H = h * G4.s - 2;
-      const lit = id === "listening-now" ? hot : 0;
-      d.save(); d.fillStyle = css("paper"); d.shadowColor = "rgba(0,0,0,0.25)"; d.shadowBlur = 4; d.shadowOffsetY = 2; d.fillRect(px, py, W, H); d.restore();
-      K.rect(d, px, py, W, H, lit > 0.3 ? 3 : 1.6, lit > 0.3 ? css("signal") : css("pink"));
-      if (tag) { d.save(); d.strokeStyle = css("pink"); d.lineWidth = 1.2; d.beginPath(); d.moveTo(px + W - 12, py + 4); d.lineTo(px + W - 4, py + 4); d.lineTo(px + W - 4, py + 12); d.stroke(); d.restore(); }
-      if (lit > 0) glow(e, px + W / 2, py + H / 2, 110, 0.45 * lit);
-    }
-    const na = prog(b, AT.plate4, AT.plate4 + 0.1);
-    if (na > 0) {
-      const [u, v, w] = P4.find((p) => p.id === "listening-now").r;
-      polyline(d, [[G4.x + (u + w) * G4.s, G4.y + (v + 26) * G4.s], [1000, G4.y + (v + 26) * G4.s], [1000, 640]], prog(b, AT.plate4, AT.plate4 + 0.15, E.out), 5, css("signal"));
-      // 大字放在字架右边、主线下方，红线的落点正对着它；从左边铺过去会压在字架上。
-      text(d, tr("ch10.noRecast1"), 880, 790, { font: FONT.cjk(86, 600), color: css("signal"), reveal: prog(b, AT.plate4 + 0.05, AT.plate4 + 0.3), maxW: 520 });
-      text(d, tr("ch10.noRecast2"), 880, 910, { font: FONT.cjk(86, 600), color: css("signal"), reveal: prog(b, AT.plate4 + 0.3, AT.plate4 + 0.5), maxW: 520 });
-    }
-    d.restore(); e.restore();
-  }
-
-  const PULSE_X = 420, SWR = { x: 700, y: 640, w: 780, h: 330 }, PW = { x: 1640, y: 600, w: 620, h: 400 };
-  const NP_ROW = [PW.x + 30, PW.y + 190, PW.w - 60, 120];
-  function pulseY(dx, amp) {
-    if (dx < -40 || dx > 120) return 0;
-    const gs = (c, w) => Math.exp(-(((dx - c) / w) ** 2));
-    return amp * (gs(0, 8) - 0.34 * gs(24, 13) + 0.12 * gs(52, 16));
-  }
-  function cell5(L, b) {
-    const { x, e, d } = L, X = CELLS[4].X, bone = css("bone"), ash = css("ash");
-    for (const c of [x, e, d]) { c.save(); c.translate(X, 0); }
-    const amp = b < AT.pulse ? 0 : 112 * E.spring(clamp((b - AT.pulse) / 0.3));
-    const pts = [];
-    for (let u = 0; u <= CELLS[4].W; u += u > PULSE_X - 50 && u < PULSE_X + 130 ? 2 : 40) pts.push([u, SPINE + pulseY(u - PULSE_X, amp)]);
-    const lit = prog(b, 7.55, 7.8);
-    strokePts(e, pts, 9, "rgb(240,150,105)", 0.3 * lit);
-    strokePts(x, pts, 2.4, lit > 0 ? css("signalD") : bone, lit > 0 ? 0.95 : 0.6);
-    text(x, "wss://…/ws", 110, SPINE - 40, { font: FONT.mono(30, 500), color: ash });
-    if (b >= AT.pulse) {
-      glow(e, PULSE_X, SPINE + amp * 0.85, 120, impact(b, AT.pulse, 0.14));
-      text(x, "listening-now", PULSE_X + 20, SPINE - 40, { font: FONT.mono(28, 500), color: css("signalD"), alpha: prog(b, AT.pulse, AT.pulse + 0.08) });
-    }
-    const row = (i) => SWR.y + 136 + i * 60;
-    const sk = prog(b, AT.pulse + 0.05, AT.swr, E.io);
-    if (sk > 0 && sk < 1) {
-      const px = lerp(PULSE_X, SWR.x + 60, sk), py = lerp(SPINE + 130, row(1) - 10, sk) - Math.sin(sk * Math.PI) * 60;
-      const w = measure(d, "listening-now", FONT.mono(30, 500)) + 40;
-      sheet(d, px - w / 2, py - 26, w, 52, { shadow: 12 });
-      text(d, "listening-now", px, py + 11, { font: FONT.mono(30, 500), align: "center" });
-    }
-    sheet(d, SWR.x, SWR.y, SWR.w, SWR.h);
-    text(d, "SWR", SWR.x + 30, SWR.y + 58, { font: FONT.mono(36, 600) });
-    text(d, tr("ch10.swr"), SWR.x + 30 + measure(d, "SWR", FONT.mono(36, 600)) + 16, SWR.y + 56, { font: FONT.cjk(30, 600), color: css("graphite") });
-    text(d, "receivedAt", SWR.x + SWR.w - 30, SWR.y + 56, { font: FONT.mono(28), color: css("graphite"), align: "right" });
-    line(d, SWR.x + 26, SWR.y + 80, SWR.x + SWR.w - 26, SWR.y + 80, 1.4, css("pink"));
-    const wk = prog(b, AT.swr, AT.swr + 0.12);
-    [["/api/status/desktop", "10:35:02"], ["/api/status/listening/now", null], ["/api/status/playing/now", "—"]].forEach(([k, v], i) => {
-      const y = row(i), hero = i === 1;
-      if (hero && wk > 0) fillRect(d, SWR.x + 18, y - 38, SWR.w - 36, 54, css("signal"), 0.14 * wk);
-      text(d, k, SWR.x + 30, y, { font: FONT.mono(28, 500), color: hero && wk > 0 ? css("signal") : css("pink") });
-      if (hero) text(d, wk > 0 ? "10:35:17" : "10:31:40", SWR.x + SWR.w - 30, y, { font: FONT.mono(28, wk > 0 ? 600 : 500), color: wk > 0 ? css("signal") : css("graphite"), align: "right" });
-      else text(d, v, SWR.x + SWR.w - 30, y, { font: FONT.mono(28, 500), color: css("graphite"), align: "right" });
-    });
-    text(d, "mutate(path, data, {revalidate: false})", SWR.x + 30, SWR.y + SWR.h - 26, { font: FONT.mono(28), color: css("graphite"), maxW: SWR.w - 60 });
-    if (wk > 0) glow(e, SWR.x + SWR.w / 2, row(1) - 10, 200, 0.3 * impact(b, AT.swr, 0.2));
-    x.save(); x.fillStyle = css("ink2"); x.fillRect(PW.x, PW.y, PW.w, PW.h); x.restore();
-    K.rect(x, PW.x, PW.y, PW.w, PW.h, 2.2, bone);
-    line(x, PW.x, PW.y + 44, PW.x + PW.w, PW.y + 44, 1.2, bone, 0.6);
-    text(x, "lyjw.me", PW.x + PW.w / 2, PW.y + 32, { font: FONT.mono(28, 500), color: ash, align: "center" });
-    K.rect(x, PW.x + 30, PW.y + 70, 270, 100, 1.4, bone, 0.5); K.rect(x, PW.x + 320, PW.y + 70, 270, 100, 1.4, bone, 0.5);
-    const npHot = b >= AT.toPage[1] - 0.1;
-    K.rect(x, NP_ROW[0], NP_ROW[1], NP_ROW[2], NP_ROW[3], npHot ? 2.8 : 1.6, npHot ? css("signalD") : bone, npHot ? 1 : 0.7);
-    cover(x, NP_ROW[0] + 16, NP_ROW[1] + 16, 88, 0.9, bone, css("ink"));
-    text(x, OLD, NP_ROW[0] + 124, NP_ROW[1] + 64, { font: FONT.cjk(36, 600), color: bone, alpha: 0.9 });
-    K.rect(x, PW.x + 30, PW.y + 330, PW.w - 60, 50, 1.4, bone, 0.4);
-    for (const c of [x, e, d]) c.restore();
-  }
-
-  const R9 = { hx: 360, s: 0.46 };
-  const REL = { head: 1350, bend: [1440, 1650], gate: 1720, lamp: 3000, bracket: 3110 };
-  const REL_ROWS = [[-90, true], [60, true], [240, true], [390, true], [540, true], [690, true], [810, false], [930, false], [1050, false]];
-  const u9 = (x) => R9.hx + (x - REL.head) * R9.s, v9 = (y) => SPINE + (y - SPINE) * R9.s;
-  function cell7(L) {
-    const { d } = L, X = CELLS[6].X, inkC = css("pink"), sig = css("signal");
-    d.save(); d.translate(X, 0);
-    line(d, 0, SPINE, CELLS[6].W, SPINE, 10, inkC);
-    d.save(); d.fillStyle = css("paper"); d.fillRect(140, 300, 560, 520); d.strokeStyle = inkC; d.lineWidth = 8; d.strokeRect(140, 300, 560, 520); d.restore();
-    fillRect(d, 420, 360, 240, 60, inkC);
-    for (const [y, w] of [[470, 380], [540, 300], [610, 340]]) line(d, 190, y, 190 + w, y, 10, inkC);
-    line(d, 180, 760, 660, 760, 8, inkC);
-    [330, 540, 750].forEach((y, j) => {
-      line(d, 700, SPINE, 820, y, 6, j === 2 ? sig : inkC);
-      d.save(); d.fillStyle = css("paper"); d.fillRect(820, y - 70, 480, 140); d.strokeStyle = inkC; d.lineWidth = 8; d.strokeRect(820, y - 70, 480, 140); d.restore();
-      for (let c = 0; c < 4; c++) fillRect(d, 1000 + c * 70, y - 24, 50, 48, c < [2, 4, 3][j] ? (j === 1 ? sig : inkC) : css("paper"));
-    });
-    d.restore();
-  }
-
-  const BR8 = 420, GATE8 = 970;
-  function cell8(L) {
-    const { x, e, tp } = L, X = CELLS[7].X, bone = css("bone"), sig = css("signalD");
-    const dot = (cx, cy, r, fill, lw) => { x.save(); x.fillStyle = fill; x.strokeStyle = bone; x.lineWidth = lw; x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.fill(); if (lw) x.stroke(); x.restore(); };
-    for (const c of [x, e, tp]) { c.save(); c.translate(X, 0); }
-    x.save(); x.strokeStyle = bone; x.lineWidth = 12; x.lineCap = "round"; x.lineJoin = "round"; x.beginPath();
-    x.moveTo(0, SPINE); x.lineTo(CELLS[7].W, SPINE);
-    x.moveTo(180, SPINE); x.bezierCurveTo(310, SPINE, 290, BR8, 420, BR8); x.lineTo(1080, BR8); x.bezierCurveTo(1210, BR8, 1190, SPINE, 1320, SPINE);
-    x.stroke(); x.restore();
-    for (const [cx, cy] of [[80, SPINE], [490, BR8], [600, BR8], [1320, SPINE]]) dot(cx, cy, 18, css("ink2"), 7);
-    for (const dy of [-64, 64]) line(x, GATE8 - 40, BR8 + dy, GATE8 + 40, BR8 + dy, 10, bone);
-    dot(GATE8, BR8 - 108, 30, css("ink2"), 5); dot(GATE8, BR8 - 108, 21, sig, 0);
-    dot(1390, SPINE, 24, sig, 0);
-    glow(e, GATE8, BR8 - 108, 130, 0.6); glow(e, 1390, SPINE, 120, 0.5);
-    K.clawd(tp, 780, BR8 - 6, 13);
-    for (const c of [x, e, tp]) c.restore();
-  }
-
-  function cell9(L) {
-    const { d } = L, X = CELLS[8].X, inkC = css("pink"), gr = css("graphite"), sig = css("signal");
-    const ring = (cx, cy, r, stroke, fill, lw) => { d.save(); d.fillStyle = fill; d.strokeStyle = stroke; d.lineWidth = lw; d.beginPath(); d.arc(cx, cy, r, 0, TAU); d.fill(); d.stroke(); d.restore(); };
-    d.save(); d.translate(X, 0);
-    const hx = u9(REL.head), gx = u9(REL.gate), lx = u9(REL.lamp), [b0, b1] = REL.bend.map(u9);
-    line(d, 0, SPINE, hx, SPINE, 10, inkC);
-    for (let k = 1; k <= 3; k++) ring(hx - k * 92, SPINE, 13, inkC, css("paper"), 5);
-    for (const [y, on] of REL_ROWS) {
-      const ry = v9(y);
-      d.save(); d.strokeStyle = inkC; d.lineWidth = 7; d.lineCap = "round"; d.lineJoin = "round";
-      d.beginPath(); d.moveTo(hx, SPINE); d.lineTo(b0, SPINE); d.bezierCurveTo((b0 + b1) / 2, SPINE, (b0 + b1) / 2, ry, b1, ry); d.lineTo(gx - 18, ry); d.stroke(); d.restore();
-      if (on) line(d, gx + 18, ry, lx - 24, ry, 8, sig);
-      else K.dashed(d, gx + 18, ry, lx - 24, ry, 5, gr, [18, 14]);
-      d.save(); d.fillStyle = css("paper"); d.fillRect(gx - 18, ry - 18, 36, 36); d.strokeStyle = inkC; d.lineWidth = 5; d.strokeRect(gx - 18, ry - 18, 36, 36); d.restore();
-      if (on) polyline(d, [[gx - 9, ry], [gx - 2, ry + 7], [gx + 11, ry - 9]], 1, 5, sig);
-      else line(d, gx - 10, ry, gx + 10, ry, 5, gr);
-      ring(lx, ry, 22, on ? inkC : gr, on ? sig : css("paper"), 5);
-    }
-    ring(hx, SPINE, 16, sig, sig, 1);
-    const bx = u9(REL.bracket);
-    for (const [y0, y1] of [[v9(-90) - 20, v9(390) + 20], [v9(690) - 20, v9(1050) + 20]]) polyline(d, [[bx - 20, y0], [bx, y0], [bx, y1], [bx - 20, y1]], 1, 5, inkC);
-    d.restore();
-  }
-
-  const RT_WORLD = RT_TUBE.map(([u, v]) => [Wx(1, u), v]);
-  const HERO_PATH = [
-    [AT.envOut, [Wx(0, HUB[0]), HUB[1] + 30]], [AT.park, [Wx(0, PARK[0]), PARK[1]]], [AT.leave, [Wx(0, PARK[0]), PARK[1]]],
-    [AT.door, [Wx(1, LOCK[0] - 30), SPINE]], [AT.scale, [Wx(1, SCALE[0]), SCALE[1] - 42]], [AT.toTubes[0], [Wx(1, SCALE[0]), SCALE[1] - 42]],
-    [AT.toTubes[1], [Wx(1, OPEN_AT[0]), OPEN_AT[1]]], [AT.open + 0.05, [Wx(1, OPEN_AT[0]), OPEN_AT[1]]],
-  ];
-  const heroSize = (b) => lerp(24, 64, prog(b, AT.envOut, AT.park));
-  // 秤到开封点这段走一道弧：直线会让信封和骑在上面的 Clawd 擦过「凭据」「归档」的漏斗口。
-  const RISE = [[Wx(1, SCALE[0]), SCALE[1] - 42], [Wx(1, 1800), 100], [Wx(1, OPEN_AT[0]), OPEN_AT[1]]];
-  function heroPos(b) {
-    if (b <= AT.toTubes[0] || b >= AT.toTubes[1]) return keys(b, HERO_PATH);
-    const t = E.io(prog(b, AT.toTubes[0], AT.toTubes[1])), u = 1 - t;
-    return [0, 1].map((i) => u * u * RISE[0][i] + 2 * u * t * RISE[1][i] + t * t * RISE[2][i]);
-  }
-  function heroEnvelope(L, b) {
-    const { tp, e } = L;
-    if (b < AT.envOut || b >= AT.open + 0.1) return;
-    const pos = heroPos(b), size = heroSize(b);
-    const open = prog(b, AT.open - 0.1, AT.open + 0.05);
-    const onPaper = pos[0] >= CELLS[1].X;
-    envelope(tp, pos[0], pos[1], size, onPaper ? css("signal") : css("signalD"), { lw: 2.4, fill: onPaper ? css("paper") : css("ink2"), open, alpha: 1 - prog(b, AT.open + 0.02, AT.open + 0.1) });
-    spark(e, null, [pos[0], pos[1] - 6], null, { t: G.t, size: 0.8 });
-    if (b >= AT.leave && b < AT.door) line(tp, Wx(0, PARK[0]), SPINE, pos[0] - 30, SPINE, 2.4, css("signal"), 0.8);
-  }
-  function heroChip(L, b) {
-    const { tp } = L;
-    const k = prog(b, AT.open, AT.open + 0.12, E.io);
-    if (k <= 0 || k >= 1) return;
-    const sx = Wx(1, OPEN_AT[0]), sy = OPEN_AT[1] - 40, tx = Wx(1, 2510), ty = MOUTH_Y + 20;
-    const cx = lerp(sx, tx, k), cy = lerp(sy, ty, k) - Math.sin(k * Math.PI) * 90;
-    tp.save(); tp.font = FONT.mono(28, 500);
-    const w = tp.measureText("mac · appleMusic").width + 40;
-    tp.fillStyle = css("paper"); tp.strokeStyle = css("signal"); tp.lineWidth = 2; roundRect(tp, cx - w / 2, cy - 26, w, 52, 26); tp.fill(); tp.stroke(); tp.restore();
-    text(tp, "mac · appleMusic", cx, cy + 10, { font: FONT.mono(28, 500), color: css("signal"), align: "center" });
-  }
-  const TUBE_RUN = [[Wx(1, 2510), MOUTH_Y + 30], ...RT_WORLD.slice(1), [Wx(2, 0), SPINE], [Wx(2, 490 - GAP), SPINE]];
-  const TUBE_LEN = pathLen(TUBE_RUN);
-  function tubeSpark(L, b) {
-    if (b < AT.tube[0] || b >= AT.tube[1]) return;
-    const dd = keys(b, [[AT.tube[0], 0], [AT.tube[1], TUBE_LEN, E.io]]);
-    spark2(L, pathAt(TUBE_RUN, dd), trailOn(TUBE_RUN, dd, 420), 1, 3);
-  }
-  const RECEIPT = [[Wx(2, BOOTH.x), 480], [Wx(2, 1115), 480], [Wx(2, 1115), 230], [Wx(2, 0), 230], [Wx(1, 2880), 230], [Wx(1, 2620), 600], [Wx(1, LAMPS[0][1] + 60), LAMP_Y - 90]];
-  const PUSH = [[Wx(2, MAST[0]), MAST[1]], [Wx(2, MAST[0] + 160), MAST[1]], [Wx(2, MAST[0] + 160), SPINE], [Wx(4, PULSE_X), SPINE]];
-  const PUSH_LEN = pathLen(PUSH), RECEIPT_LEN = pathLen(RECEIPT);
-  const PUSH_UP = pathLen(PUSH.slice(0, 3)), along = (wx) => PUSH_UP + (wx - PUSH[2][0]);
-  const pushD = (b) => keys(b, [[AT.push[0], 0], [6.3, PUSH_UP, E.out], [AT.plate4, along(Wx(3, G4.x + 90)), E.lin], [7.75, along(CELLS[4].X), E.lin], [AT.push[1], PUSH_LEN, E.in]]);
-  function splitRun(L, b) {
-    const { d } = L;
-    const rk = prog(b, AT.receipt[0], AT.receipt[1], E.io);
-    const k = L.big;
-    if (rk > 0 && rk < 1) {
-      const [rx, ry] = pathAt(RECEIPT, rk * RECEIPT_LEN);
-      d.save(); d.translate(rx, ry); d.scale(k, k);
-      sheet(d, -110, -36, 220, 68, { shadow: 18 });
-      text(d, "ok · data", 0, 11, { font: FONT.mono(32, 600), align: "center" });
-      d.restore();
-    }
-    if (b >= AT.push[0] && b < AT.push[1] + 0.05) {
-      const dd = pushD(b);
-      spark2(L, pathAt(PUSH, dd), trailOn(PUSH, dd, 700 * k, 20), 1.2 * k, 3.2 * k);
-    }
-  }
-  const TO_PAGE = [[Wx(4, SWR.x + SWR.w - 30), SWR.y + 186], [Wx(4, PW.x - 60), SWR.y + 186], [Wx(4, NP_ROW[0] + 60), NP_ROW[1] + 60]];
-  function toPage(L, b) {
-    if (b < AT.toPage[0] || b >= AT.cutHome) return;
-    const dd = keys(b, [[AT.toPage[0], 0], [AT.toPage[1], pathLen(TO_PAGE), E.io]]);
-    spark2(L, pathAt(TO_PAGE, dd), trailOn(TO_PAGE, dd, 300), 1, 3);
-  }
-
-  function spark2(L, head, trail, size, lw) {
-    spark(L.e, L.tp, head, trail, { t: G.t, size, lw });
-    L.tp.save(); L.tp.fillStyle = css("signal"); L.tp.beginPath(); L.tp.arc(head[0], head[1], 6 * size, 0, TAU); L.tp.fill(); L.tp.restore();
-  }
-
-  // 镜头拉远时格子按 1/zoom 放大，Clawd 在屏幕上不小于 18 格 × 7 px；推近时照常跟着放大。
-  const CQ = 7, FR = window.Clawd.FRAME_MS / 1000 / BARS;
-  const qAt = (b) => CQ / Math.min(1, camAt(b)[2]);
-  const frameAt = (b, t0) => Math.floor((b - t0) / FR + 1e-6);
-  // 两段 hop 对齐 Clawd.SEQ.jump 里两组 arms-up 帧（第 2–4、8–10 帧）。
-  const jumpUp = (b, t0, q) => K.hop(b, t0 + 2 * FR, t0 + 5 * FR, 1.8 * q) + K.hop(b, t0 + 8 * FR, t0 + 11 * FR, 1.2 * q);
-  const onEnv = (b) => { const p = heroPos(b); return [p[0], p[1] - heroSize(b) * 0.32]; };
-  const onPush = (b) => { const p = pathAt(PUSH, pushD(b)); return [p[0], p[1] - qAt(b)]; };
-  // 每段 [起跳, 落地, 落点, 弧高, 横向缓动, 落地后]；落点是脚下的面 [x, y]，或骑乘函数 (b) => 所骑东西的顶边。
-  // 弧高和缓动按画面量过：起落都绕开管口标签、"wss://…/ws" 和账房那格的标题与下划线。
-  const CHASE = [
-    [1.3125, 1.375, [Wx(0, PARK[0] + 180), SPINE], 0, E.lin, { idle: "look-left" }],
-    [1.6875, 1.775, onEnv, 60, E.lin, { seq: [["jump", AT.scale]] }],
-    [3.4375, 3.6875, [Wx(1, 2700), SPINE - TUBE_R], 160, E.out, { idle: "look-right" }],
-    [3.8125, 4.0625, [Wx(2, 1048), R3.y0], 40, (k) => E.io(Math.min(1, k / 0.85)), { idle: "look-left" }],
-    [4.1875, 4.3125, [Wx(2, 830), 422], 20, E.lin, { seq: [["jump", AT.commits[2]], ["look", AT.slipWrite]] }],
-    [5.5, 5.75, [Wx(2, BOOTH.x + BOOTH.w / 2), BOOTH.y], 120, E.lin, { idle: "look-right" }],
-    [6.0, 6.1875, onPush, 70, E.lin, {}],
-    [7.6875, 8.0625, [Wx(4, 1240), SWR.y], 260, E.lin, { seq: [["jump", AT.swr]], idle: "look-right" }],
-    [8.8125, 9.0625, [Wx(4, PW.x + 90), SPINE], 120, E.lin, { seq: [["jump", AT.cheer]] }],
-  ];
-  const surfAt = (to, b) => (typeof to === "function" ? to(b) : to);
-  function chaseAt(b) {
-    let i = -1;
-    while (i + 1 < CHASE.length && b >= CHASE[i + 1][0]) i++;
-    if (i < 0) return null;
-    const C = window.Clawd, [t0, t1, to, h, ease, o] = CHASE[i], q = qAt(b);
-    if (b < t1) {
-      const k = prog(b, t0, t1), end = surfAt(to, t1), n = frameAt(b, t0);
-      if (!i) return { fr: { pose: "arms-up", offset: 0 }, x: end[0], y: lerp(end[1] - 700, end[1], E.in(k)), q };
-      const from = surfAt(CHASE[i - 1][2], t0);
-      return { fr: n < 2 ? C.SEQ.jump[n] : { pose: "arms-up", offset: 0 }, x: lerp(from[0], end[0], ease(k)), y: lerp(from[1], end[1], k) - K.hop(b, t0, t1, h), q };
-    }
-    const ride = typeof to === "function", [x, y] = surfAt(to, b), n = frameAt(b, t1);
-    let fr = n < (ride ? 2 : C.SEQ.land.length) ? C.SEQ.land[n] : null, up = 0;
-    for (const [name, t] of o.seq || []) { const f = K.clawdSeq(name, b, t, BARS); if (f) { fr = f; up = name === "jump" ? jumpUp(b, t, q) : 0; } }
-    return { fr: fr || { pose: ride ? "default" : o.idle || "default", offset: ride ? 1 : 0 }, x, y: y - up, q };
-  }
-  const onPaperX = (wx) => CELLS.some((c) => c.paper && wx >= c.X && wx < c.X + c.W);
-  function clawdChase(L, b) {
-    const c = chaseAt(b);
-    if (!c) return;
-    const { fr, x, y, q } = c;
-    K.clawdFrame(L.tp, fr, x, y + (fr.offset ? 0 : 2 * q), q, { poofColor: onPaperX(x) ? css("graphite") : css("ash") });
-  }
-
-  function gaps(L, zoom) {
-    const lw = Math.max(2.4, 1.6 / zoom);
-    for (let i = 0; i < CELLS.length - 1; i++) line(L.x, CELLS[i].X + CELLS[i].W, SPINE, CELLS[i + 1].X - (CELLS[i + 1].n === "06" ? 60 : 0), SPINE, lw, css("bone"), 0.9);
-  }
-
-  const OVC = [(CELLS[0].X + LAST.X + LAST.W) / 2, 560, (1920 * 0.92) / (LAST.X + LAST.W - CELLS[0].X)];
-  const toScreen = (w, c) => [(w[0] - c[0]) * c[2] + 960, (w[1] - c[1]) * c[2] + 540];
-  function anchored(k, W, p0, p1, z0, z1) {
-    const z = Math.exp(lerp(Math.log(z0), Math.log(z1), k));
-    const p = [lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k)];
-    return [W[0] - (p[0] - 960) / z, W[1] - (p[1] - 540) / z, z, 0];
-  }
-  const C1V = [Wx(0, 960), 560, 1, 0];
-  const C2A = [Wx(1, 1000), 560, 1, 0], C2B = [Wx(1, 1400), 560, 1, 0], C2C = [Wx(1, 2080), 560, 1, 0];
-  const C3V = [Wx(2, 1000), 560, 1, 0];
-  const WIDE = [(Wx(1, 1500) + Wx(4, 700)) / 2, 640, 0.25, 0];
-  const C5V = [Wx(4, 960), 580, 1, 0], C5B = [Wx(4, 1500), 600, 1.05, 0];
-  const NP_W = [Wx(4, NP_ROW[0] + 60), NP_ROW[1] + 60];
-  const PEN = [NOW_X, SPINE];
-  const CAM_B = [
-    [AT.rush1[1], C1V], [AT.leave, [C1V[0] + 14, 560, 1.02, 0], E.lin],
-    [AT.door, C2A, E.io], [2.35, [C2A[0] + 10, 560, 1.01, 0], E.lin], [2.55, C2B, E.io], [3.0, [C2B[0] + 10, 560, 1.01, 0], E.lin],
-    [3.3, C2C, E.io], [3.8, [C2C[0] + 10, 560, 1.01, 0], E.lin],
-    [4.05, C3V, E.io], [6.2, [C3V[0] + 14, 560, 1.02, 0], E.lin],
-    [6.45, WIDE, E.io], [7.4, [WIDE[0], WIDE[1], WIDE[2] * 1.02, 0], E.lin],
-  ];
-  function camAt(b) {
-    if (b < AT.pull[0]) return [960, 540, 1, 0];
-    if (b < AT.pull[1]) return anchored(E.io(prog(b, AT.pull[0], AT.pull[1])), PEN, [NOW_X, SPINE], toScreen(PEN, OVC), 1, OVC[2]);
-    if (b < AT.rush1[0]) return keys(b, [[AT.pull[1], OVC], [AT.rush1[0], [OVC[0], OVC[1], OVC[2] * 1.02, 0], E.lin]]);
-    if (b < AT.rush1[1]) { const c0 = [OVC[0], OVC[1], OVC[2] * 1.02]; return anchored(E.io(prog(b, AT.rush1[0], AT.rush1[1])), [C1V[0], C1V[1]], toScreen([C1V[0], C1V[1]], c0), [960, 540], c0[2], 1); }
-    if (b < 7.4) return keys(b, CAM_B);
-    if (b < 7.8) { const c0 = keys(7.4, CAM_B); return anchored(E.io(prog(b, 7.4, 7.8)), [C5V[0], C5V[1]], toScreen([C5V[0], C5V[1]], c0), [960, 540], c0[2], 1); }
-    if (b < 9.0) return keys(b, [[7.8, C5V], [9.0, [C5V[0] + 12, 580, 1.015, 0], E.lin]]);
-    if (b < 9.45) return keys(b, [[9.0, [C5V[0] + 12, 580, 1.015, 0]], [9.45, C5B, E.io]]);
-    return anchored(E.inExpo(prog(b, 9.45, AT.cutHome)), NP_W, toScreen(NP_W, C5B), [960, 540], C5B[2], 3.2);
-  }
-
-  const NARR = [
-    ["ch10.n1a", 1.05, 1.5, 1.72, false], ["ch10.n1b", 2.05, 2.6, 3.72, true],
-    ["ch10.n2a", 4.1, 4.8, 5.9, false], ["ch10.n2b", 6.02, 6.6, 7.4, false], ["ch10.n3a", 7.85, 8.3, 9.4, false],
-  ];
-  function narration(L, b) {
-    for (const [k, t0, t1, t2, paper] of NARR) {
-      const a = win(b, t0 - 0.05, t0 + 0.05, t2, t2 + 0.1);
-      if (a <= 0) continue;
-      const ctx = paper ? L.d : L.x;
-      ctx.save(); ctx.setTransform(G.S, 0, 0, G.S, 0, 0);
-      K.narration(ctx, tr(k), 110, 1000, { reveal: prog(b, t0, t1), alpha: a, color: paper ? css("pink") : css("bone"), maxW: 1100 });
-      ctx.restore();
-    }
-  }
-  function title(L, b) {
-    const a = win(b, 0.3, 0.45, 0.82, 0.92);
-    if (a <= 0) return;
-    const { x } = L;
-    x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0);
-    text(x, "10", 110, 196, { font: FONT.pixel(112), color: css("signalD"), alpha: a });
-    text(x, tr("ch10.title"), 290, 176, { font: FONT.cjk(58, 600), color: css("bone"), reveal: prog(b, 0.32, 0.6), alpha: a });
-    text(x, "mac · appleMusic → Now Playing", 292, 226, { font: FONT.mono(28), color: css("ash"), reveal: prog(b, 0.4, 0.7), alpha: a });
-    line(x, 110, 262, 110 + 990 * prog(b, 0.35, 0.7, E.outExpo), 262, 1.4, css("bone"), 0.6 * a);
-    text(x, "PLATE 10 · RECAP", G.W - 60, 1000, { font: FONT.mono(30, 600), color: css("bone"), align: "right", alpha: a });
+  function openFrame(x, b) {
+    x.fillStyle = OPEN.bg; x.fillRect(-2400, -600, 6720, 2280);
+    const pull = E.out(prog(b, AT.pull[0], AT.pull[1])), rel = b - AT.pull[1];
+    let vx = OPEN.home, vy = 540;
+    if (b >= AT.pull[0] && rel < 0) { vx -= 230 * pull; vy += 120 * pull; }
+    if (rel >= 0) { vx = OPEN.home - 230; vy = 540 + 120 * Math.cos(rel * BAR * 26) * Math.exp(-rel * BAR * 9); }
+    if (b < AT.pull[0]) { x.fillStyle = OPEN.ink; x.fillRect(-2400, 538.5, 6720, 3); }
+    else { x.strokeStyle = OPEN.ink; x.lineWidth = 3; x.lineJoin = "round"; x.beginPath(); x.moveTo(-2400, 540); x.lineTo(vx, vy); x.lineTo(4320, 540); x.stroke(); }
+    titleChips(x, b, pull * (rel < 0 ? 1 : 0));
+    K.text(x, tr("ch10.sub"), 960, 736, { font: K.FONT.mono(34, 500), color: "#5A5A5A", align: "center", alpha: prog(b, AT.sub, AT.sub + 0.2) });
+    // 信封骑在线上进来；蓄力时被往后拉成 V，放开就射出去。
+    const ek = prog(b, AT.env[0], AT.env[1], E.out);
+    if (ek <= 0) return;
+    let ex = lerp(-220, OPEN.home, ek), ey = 540, rot = 0;
+    if (b >= AT.pull[0]) { ex = vx; ey = vy; rot = Math.atan2(540 - vy, 1920 - vx) * 0.5; }
+    const fly = prog(b, AT.pull[1], AT.pull[1] + 0.2, E.in);
+    if (fly > 0) { ex = lerp(OPEN.home - 230, 2700, fly); ey = lerp(540 + 120, 470, fly); rot = -0.06; }
+    x.save(); x.translate(ex, ey - 37); x.rotate(rot); x.scale(1 + 0.25 * fly, 1 - 0.12 * fly);
+    const h = F10.envelope(x, 110, "#FFFFFF", OPEN.ink, 4);
+    K.clawd(x, 0, -h / 2 + 2, 4.5, { pose: fly > 0 ? "arms-up" : pull > 0.3 ? "default" : b < AT.env[1] ? "look-right" : "default", crouch: pull > 0.3 && fly <= 0 ? 1 : 0, body: "#D77757" });
     x.restore();
   }
 
-  const POST_DARK = { bloom: 0.7, threshold: 0.9, halation: 0.28, grain: 0.05, vignette: 0.42, ca: 0.4 };
-  function plateFrame(f, b) {
-    const { x: X, e: Em, d: D, s: S, tp: T } = lay();
-    const c = camAt(b), c0 = camAt(Math.max(0, b - 1 / 60 / BARS));
-    const hitS = Math.max(impact(b, AT.door, 0.1), impact(b, AT.split, 0.12), impact(b, AT.s202, 0.1), impact(b, AT.pulse, 0.1));
-    const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.014 * hitS), rot: 0 };
-    G.setCam(cam);
-    G.fill(G.pass(K.PLATE.ink), { uGridA: 1, uPlate: PLATE_RECT });
-    const x = X.begin(); X.cam(cam);
-    const e = Em.begin(); Em.cam(cam);
-    const d = D.begin(); D.cam(cam);
-    const s = S.begin(); S.cam(cam);
-    const tp = T.begin(); T.cam(cam);
-    const L = { x, e, d, s, tp, big: clamp(0.8 / cam.zoom, 1, 3.2) };
-    const half = 960 / cam.zoom + 200, seen = (i) => CELLS[i].X < cam.x + half && CELLS[i].X + CELLS[i].W > cam.x - half;
-    const ca = prog(b, 0.12, 0.35);
-    const markA = win(b, 0.35, 0.5, 0.82, 0.95);
-    CELLS.forEach((cell, i) => {
-      if (!seen(i)) return;
-      const a = i === 5 ? prog(b, 0.15, 0.4) : ca;
-      if (a <= 0) return;
-      cellBase(L, i, a);
-      cellMark(L, i, markA);
-      if (i === 5) { cell6(L, b, a); cellHead(L, 5, a, 0); return; }
-      if (a < 1) {
-        cellHead(L, i, a, 0);
-        return;
-      }
-      if (i === 0) cell1(L, b, 1);
-      else if (i === 1) cell2(L, b, 1);
-      else if (i === 2) cell3(L, b, 1);
-      else if (i === 3) cell4(L, b);
-      else if (i === 4) cell5(L, b);
-      else if (i === 6) cell7(L);
-      else if (i === 7) cell8(L);
-      else if (i === 8) cell9(L);
-      const lit = i === 0 ? win(b, 1, 1.1, 1.8, 1.9) : i === 1 ? win(b, 2, 2.1, 3.85, 4) : i === 2 ? win(b, 4, 4.1, 6.2, 6.4) : i === 4 ? win(b, 7.8, 7.9, 9.7, 9.8) : 0;
-      cellHead(L, i, 1, lit);
-    });
-    gaps(L, cam.zoom);
-    if (seen(5)) ecg(L, PHI0 + b * 4, prog(b, AT.grow[0], AT.grow[1], E.io));
-    heroEnvelope(L, b);
-    heroChip(L, b);
-    tubeSpark(L, b);
-    splitRun(L, b);
-    toPage(L, b);
-    clawdChase(L, b);
-    narration(L, b);
-    title(L, b);
-    G.composite(X.upload(), { mode: G.MODE.ink, seed: 6.7 });
-    G.composite(D.upload(), { mode: G.MODE.paper });
-    G.composite(Em.upload(), { mode: G.MODE.add, gain: 1.5 });
-    G.composite(S.upload(), { mode: G.MODE.stamp, seed: 2.9 });
-    G.composite(T.upload(), { mode: G.MODE.normal });
-    const sh = hitS * 6;
-    const zb = Math.log(c[2] / c0[2]);
-    f.post = {
-      ...POST_DARK, shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
-      blur: [(c0[0] - c[0]) * c[2], (c0[1] - c[1]) * c[2]], zoomBlur: Math.max(-0.2, Math.min(0.2, zb)),
-      flash: impact(b, AT.s202, 0.1) * 0.05, flashCol: [1, 0.8, 0.6],
-    };
+  // ---------- 画风接力：开场与六站之间的转场 ----------
+  const ORANGE = "rgb(236,128,72)";
+  function whipBand(x, sx) {
+    const s2 = ch("ch02");
+    if (s2 && s2.whipBand) { s2.whipBand(x, sx); return; }
+    F10.poly(x, [[sx, 1180], [sx + 420, -100], [sx + 1420, -100], [sx + 1000, 1180]], rgba(PAL.cRed));
   }
-
-  // 谢幕的 Clawd 裁在欢迎框上沿与标题栏之间，不压框里的字、标题栏和片尾字卡；AT.clear 之前必须全部缩回，
-  // 末帧才和第 00 章首帧一致。top 是道具最高处离脚底的格数，冒出前、缩回后连道具都藏在上沿以下。
-  const CAST = [
-    { dx: 390, q: 7, prop: "headset", top: 12 }, { dx: 575, q: 8, prop: "hardhat", top: 14 },
-    { dx: 760, q: 6, prop: "magnifier", top: 11 }, { dx: 1050, q: 6, prop: "sign", top: 20 },
-  ];
-  const BOW = { in: 11.0, step: 0.25, rise: 0.12, out: 12.5, outStep: 0.0625, sink: 0.08 };
-  function curtain(Lt, b, S) {
-    const { tp } = Lt, { BOX: box, TW } = S;
-    tp.save(); tp.beginPath(); tp.rect(TW.x, TW.y + TW.bar, TW.w, box.y - TW.y - TW.bar); tp.clip();
-    CAST.forEach((c, i) => {
-      const t0 = BOW.in + i * BOW.step, t1 = t0 + BOW.rise, te = BOW.out + i * BOW.outStep;
-      if (b < t0 || b >= te + BOW.sink) return;
-      const { q } = c, cx = box.x + c.dx, hide = c.top * q;
-      let fr = { pose: "default", offset: 1 }, sink = 0;
-      if (b < t1) { fr = { pose: "arms-up", offset: 0 }; sink = hide * (1 - E.out(prog(b, t0, t1))); }
-      else if (b >= te) sink = hide * E.in(prog(b, te, te + BOW.sink));
-      else fr = K.clawdSeq("celebrate", b, AT.celebrate[1], BARS) || K.clawdSeq("land", b, t1, BARS) || { pose: "default", offset: 0 };
-      const bottom = box.y + (fr.offset ? 0 : 2 * q) + sink - jumpUp(b, AT.celebrate[1], 0.7 * q);
-      K.clawdFrame(tp, fr, cx, bottom, q, { poofColor: css("ash") });
-      const r = K.clawdProp(tp, c.prop, cx, bottom, q, { color: css("bone"), crouch: fr.offset || 0, fill: css("paper"), w: 40, h: 7 });
-      if (c.prop === "sign" && r) text(tp, tr("ch10.sign"), cx, r.y + r.h * 0.74, { font: FONT.cjk(30, 600), color: css("pink"), align: "center", maxW: r.w - 24 });
-    });
-    tp.restore();
+  // 两次甩镜头时画面整体往左平移的量（逻辑像素），relay 照它摆，运动模糊照它算。
+  function pan(b) {
+    if (b >= AT.whip1[0] && b < AT.whip1[1]) return 1920 * E.ioExpo(prog(b, AT.whip1[0], AT.whip1[1]));
+    if (b >= AT.whip2[0] && b < AT.whip2[1]) return 3640 * E.ioExpo(prog(b, AT.whip2[0], AT.whip2[1]));
+    return;
   }
-
-  function endState(b, S) {
-    const st = S.termState(2);
-    const C = window.Clawd, fr = C.FRAME_MS / 1000 / BARS;
-    let cf = { pose: "default", offset: 0, x: 0 };
-    for (const t0 of AT.celebrate) { const i = Math.floor((b - t0) / fr + 1e-6); if (i >= 0 && i < C.SEQ.celebrate.length) cf = C.SEQ.celebrate[i]; }
-    st.clawd = cf; st.say = 0;
-    st.cursor = { line: 2, on: false };
-    st.endcard = { a: prog(b, AT.endcard, AT.endcard + 0.06), reveal: prog(b, AT.endcard, AT.endcard + 0.6), l1: tr("ch10.end1"), l2: tr("ch10.end2") };
-    st.clear = prog(b, AT.clear[0], AT.clear[1]);
-    if (st.clear >= 1) { st.welcome = 0; st.endcard = null; st.typed = 0; st.cursor = { line: 1, on: true }; }
-    return st;
+  // 第 01 站整站的横向位移：立体画面（ch10-relay.js#s1world）和 2D 牌子用同一个值，两边才对得上。
+  const ox1 = (b) => (b < AT.whip1[1] ? 1920 - pan(b) : b >= AT.whip2[0] ? -pan(b) : 0);
+  const in1 = (b) => b >= AT.whip1[0] && b < AT.whip2[1];
+  // 第 01 站用第 01 章停住时的后期（照抄 ch01.js#render 的 f.post），进出站跟着甩镜头的进度和别站的 POST0 互相过渡。
+  const POST1 = { bloom: 0.25, threshold: 1.0, halation: 0, grain: 0, vignette: 0.12, ca: 0 };
+  function post1(b) {
+    const k = !in1(b) ? 0 : b < AT.whip1[1] ? pan(b) / 1920 : b >= AT.whip2[0] ? 1 - pan(b) / 3640 : 1;
+    return Object.fromEntries(Object.keys(POST0).map((n) => [n, lerp(POST0[n], POST1[n], k)]));
   }
-
-  function render(f) {
-    const b = f.bar, S = ch00();
-    if (b < AT.cutHome || !S) { plateFrame(f, Math.min(b, AT.cutHome - 1e-6)); return; }
-    if (b < AT.cutTerm) {
-      const b00 = S.AT.flip + (b - AT.flip);
-      S.paperFrame(f, b00, {
-        hud: false, b0: S.AT.flip + (AT.cutHome - AT.flip),
-        focus: 0.8 * prog(b, AT.flip + 0.05, AT.flip + 0.25),
-        extra: (Lr) => {
-          const a = prog(b, AT.flip + 0.05, AT.flip + 0.12);
-          if (a <= 0) return;
-          Lr.d.save(); Lr.d.setTransform(G.S, 0, 0, G.S, 0, 0);
-          K.narration(Lr.d, tr("ch10.n3b"), 110, 1000, { reveal: prog(b, AT.flip + 0.05, AT.flip + 0.3), alpha: a, maxW: 1100 });
-          Lr.d.restore();
-        },
-      });
+  function relay(x, b) {
+    const [w0, w1] = AT.whip1, [v0, v1] = AT.whip2;
+    if (b < w0) { openFrame(x, b); return; }
+    // 第 01 站的底是 render 先画好的立体画面：这一站不铺底，转场时只把别的画面裁在它旁边。
+    if (b < w1) {
+      const p = pan(b);
+      x.save(); x.beginPath(); x.rect(-100, -100, 2020 - p, 1280); x.clip(); x.translate(-p, 0); openFrame(x, b); x.restore();
+      x.save(); x.beginPath(); x.rect(1920 - p, -100, p + 100, 1280); x.clip(); station(0, x, b, { ox: ox1(b) }); x.restore();
       return;
     }
-    if (b >= AT.still) { S.termFrame(f, S.termState(0)); return; }
-    const zk = E.io(prog(b, AT.pullTerm[0], AT.pullTerm[1]));
-    const cam = { x: 960, y: lerp(600, 540, zk), zoom: lerp(1.12, 1, zk), rot: 0 };
-    S.termFrame(f, endState(b, S), cam, (Lt) => curtain(Lt, b, S));
-    const zk0 = E.io(prog(b - 1 / 60 / BARS, AT.pullTerm[0], AT.pullTerm[1]));
-    f.post.zoomBlur = Math.max(-0.2, Math.min(0.2, Math.log(lerp(1.12, 1, zk) / lerp(1.12, 1, zk0))));
-    f.post.blur = [0, (lerp(600, 540, zk0) - lerp(600, 540, zk)) * cam.zoom];
+    if (b < v0) { station(0, x, b); return; }
+    if (b < v1) {
+      const p = pan(b), sx = 2020 - p;
+      x.save(); clipPoly(x, [[-100, -100], [sx + 420, -100], [sx, 1180], [-100, 1180]]); station(0, x, b, { ox: ox1(b) }); x.restore();
+      x.save(); clipPoly(x, [[sx + 420, -100], [2100, -100], [2100, 1180], [sx, 1180]]); x.fillStyle = rgba(PAL.cPaper); x.fillRect(0, 0, 1920, 1080); x.restore();
+      whipBand(x, sx);
+      x.save(); clipPoly(x, [[sx + 1600, -100], [2100, -100], [2100, 1180], [sx + 1180, 1180]]); x.translate(3640 - p, 0); station(1, x, b); x.restore();
+      return;
+    }
+    if (b < AT.dive[0]) { station(1, x, b); return; }
+    if (b < AT.iris[0]) {
+      const k = prog(b, AT.dive[0], AT.dive[1]), z = lerp(1, 36, E.inExpo(k)), c = F10.along(F10.LAMP, [960, 540], E.io(k));
+      x.save(); x.translate(...c); x.scale(z, z); x.translate(-F10.LAMP[0], -F10.LAMP[1]); station(1, x, b, { hud: false }); x.restore();
+      // 推近时场景从旁白和验票单底下划过（旁白没有底卡，验票单会挡住门楣上的字）：一推就先淡掉，不被推出画。
+      F10.s2hud(x, b - AT.st[1], { nar: 1 - prog(k, 0.04, 0.25), card: 1 - prog(k, 0.04, 0.25) });
+      x.fillStyle = ORANGE; x.globalAlpha = prog(k, 0.55, 0.95); x.fillRect(0, 0, 1920, 1080); x.globalAlpha = 1;
+      return;
+    }
+    if (b < AT.iris[1]) {
+      const r = lerp(0, 1160, E.out(prog(b, AT.iris[0], AT.iris[1])));
+      x.fillStyle = ORANGE; x.fillRect(0, 0, 1920, 1080);
+      x.save(); x.beginPath(); x.arc(960, 540, r, 0, Math.PI * 2); x.clip(); station(2, x, b); x.restore();
+      x.strokeStyle = rgba(PAL.tInk); x.lineWidth = 26; x.beginPath(); x.arc(960, 540, r + 13, 0, Math.PI * 2); x.stroke();
+      return;
+    }
+    if (b < AT.spin[0]) { station(2, x, b); return; }
+    if (b < AT.spin[1]) {
+      station(2, x, b);
+      const k = prog(b, AT.spin[0], AT.spin[1] - 0.075), k2 = prog(b, AT.spin[1] - 0.075, AT.spin[1]);
+      const s = k2 > 0 ? lerp(0.62, 1, E.io(k2)) : lerp(0.04, 0.62, E.out(k)), rot = (1 - E.out(k)) * 3 * Math.PI * 2;
+      const o = offscreen(); station(3, o, b);
+      x.save(); x.translate(960, 540); x.rotate(rot); x.scale(s, s);
+      x.fillStyle = "rgba(24,21,18,0.35)"; x.fillRect(-960 + 18, -540 + 24, 1920, 1080);
+      x.drawImage(off.c, -960, -540, 1920, 1080); x.restore();
+      return;
+    }
+    if (b < AT.cut[0]) { station(3, x, b); return; }
+    if (b < AT.cut[1]) {
+      station(3, x, b);
+      const e = lerp(2140, -420, E.io(prog(b, AT.cut[0], AT.cut[1])));
+      const edge = (dx, seed) => { const pts = []; for (let y = -60; y <= 1140; y += 60) pts.push([e + dx + (y - 540) * 0.12 + (hash(seed + y) - 0.5) * 22, y]); return pts; };
+      const strip = (dx0, dx1, seed, col) => { x.fillStyle = col; x.beginPath(); const a = edge(dx0, seed), c = edge(dx1, seed + 50).reverse(); [...a, ...c].forEach(([p, q], i) => (i ? x.lineTo(p, q) : x.moveTo(p, q))); x.closePath(); x.fill(); };
+      strip(0, 110, 3, rgba(PAL.sRed)); strip(90, 200, 9, rgba(PAL.sMustard)); strip(180, 3000, 17, rgba(PAL.sShade, 0.4));
+      x.save(); const a = edge(200, 23); clipPoly(x, [...a, [3200, 1140], [3200, -60]]); station(4, x, b); x.restore();
+      return;
+    }
+    station(4, x, b);
+    return;
+  }
+  // 第 05 站的剪纸从四边往里被晒图的蓝墨吃掉：先洇一圈蓝边，再把里面挖空，露出底下第 00 章的主页图纸。
+  function inkEat(x, b) {
+    const k = prog(b, AT.ink[0], AT.ink[1]);
+    if (k <= 0) return;
+    const blobs = [];
+    for (let i = 0; i < 9; i++) for (let j = 0; j < 6; j++) {
+      const cx = -60 + i * 255 + (hash(i * 7 + j) - 0.5) * 120, cy = -40 + j * 230 + (hash(i + j * 13) - 0.5) * 110;
+      const d = Math.min(cx, 1920 - cx, cy, 1080 - cy) / 540;
+      blobs.push([cx, cy, clamp(k * 1.7 - d * 0.9) * (220 + 120 * hash(i * 3 + j * 5))]);
+    }
+    x.fillStyle = rgba(PAL.bpDeep, 0.9);
+    for (const [cx, cy, r] of blobs) if (r > 0) { x.beginPath(); x.arc(cx, cy, r * 1.12 + 10, 0, Math.PI * 2); x.fill(); }
+    x.globalCompositeOperation = "destination-out";
+    for (const [cx, cy, r] of blobs) if (r > 0) { x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fill(); }
+    x.globalCompositeOperation = "source-over";
+  }
+
+  // ---------- 00 蓝图主页：借第 00 章的 paperFrame，旁白垫一块蓝底注释框 ----------
+  const F00 = (px) => `500 ${px}px "Barlow Semi Condensed ch00", "Noto Sans SC ch00", sans-serif`;
+  function narExtra(b, a) {
+    return (Lr) => {
+      if (a <= 0) return;
+      const x = Lr.x; x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0); x.globalAlpha = a;
+      x.fillStyle = rgba(PAL.bpBlue, 0.95); x.fillRect(80, 936, 1100, 108);
+      x.strokeStyle = rgba(PAL.bpWhite); x.lineWidth = 2; x.strokeRect(80, 936, 1100, 108);
+      x.strokeStyle = rgba(PAL.bpDim); x.lineWidth = 1; x.strokeRect(88, 944, 1084, 92);
+      x.restore();
+      const d = Lr.d; d.save(); d.setTransform(G.S, 0, 0, G.S, 0, 0);
+      K.text(d, tr("ch10.n6"), 112, 1010, { font: F00(60), color: "#FFFFFF", reveal: prog(b, AT.st[5] + 0.125, AT.st[5] + 0.55), dim: 0.16, perChar: true, alpha: a, maxW: 1040, narration: true });
+      d.restore();
+    };
+  }
+  // 翻面一过就淡掉：中间那格开始往格子里缩时会从下面裁掉旁白。
+  const narA = (b) => prog(b, AT.st[5] + 0.05, AT.st[5] + 0.15) * (1 - prog(b, AT.flip + 0.02, AT.flip + 0.1));
+
+  // ---------- 高潮：十格分屏 ----------
+  const STYLE = [["晒图", "Blueprint"], ["立体微缩小岛", "3D miniature island"], ["构成主义海报", "Constructivist poster"], ["橡皮管卡通", "Rubber hose"], ["报纸", "Newspaper"],
+    ["剪纸片头", "Paper cutout"], ["水墨", "Ink wash"], ["红白机", "8-bit"], ["彩铅", "Colored pencil"], ["地铁线路图", "Metro map"]];
+  I18N.add(Object.fromEntries(STYLE.map((s, i) => [`ch10.style.${i}`, s])));
+  const ACCENT = ["#1A4474", "#F3A595", "#CA2A22", "#18150F", "#1E1C1A", "#E5A82E", "#B83626", "#0058F8", "#B2A1D8", "#EE352E"];
+  function cellK(i, b) {
+    if (b < AT.close[0]) return E.outBack(prog(b, AT.open[0] + 0.06 + i * 0.035, AT.open[0] + 0.42 + i * 0.035));
+    return 1 - E.in(prog(b, AT.close[0] + (9 - i) * 0.025, AT.close[0] + 0.28 + (9 - i) * 0.025));
+  }
+  function cellRect(i, k) {
+    const [sx, sy, sw, sh] = F10.split.SLOTS[i], s = lerp(0.18, 1, k);
+    const cx = lerp(960, sx + sw / 2, k), cy = lerp(540, sy + sh / 2, k);
+    return [cx - (sw * s) / 2, cy - (sh * s) / 2, sw * s, sh * s];
+  }
+  const mix4 = (a, c, k) => a.map((v, i) => lerp(v, c[i], k));
+  // 格子比 16:9 窄：整幅画面等比缩进格子上部（不裁，别章的字不被截），下面剩的那条墨底放格号和画风名。
+  // 贴图绕自己的中心转，所以中心要跟着格子的转角从格心挪开。
+  function cellImg(r, rot) {
+    const ih = r[2] * 9 / 16, oy = (ih - r[3]) / 2, c = Math.cos(rot), s = Math.sin(rot);
+    const cx = r[0] + r[2] / 2 - oy * s, cy = r[1] + r[3] / 2 + oy * c;
+    return [cx - r[2] / 2, cy - ih / 2, r[2], ih];
+  }
+  function splitFrame(f, b) {
+    const Sp = F10.split, S0 = ch("ch00"), secs = (b - AT.flip) * BAR;
+    const ks = Sp.CELLS.map((_, i) => cellK(i, b));
+    ks.forEach((k, i) => { if (k > 0.01) Sp.updateCell(i, secs, BAR); });
+    const m = b < AT.close[0] ? E.io(prog(b, AT.open[0], AT.open[1])) : 1 - E.io(prog(b, AT.close[0] + 0.22, AT.close[1]));
+    const a = narA(b);
+    if (S0) Sp.updateCenter((fc) => S0.paperFrame(fc, 5 + (b - AT.flip) * SLOW, { hud: false, cameo: true, extra: a > 0 ? narExtra(b, a) : undefined }));
+    G.setCam({ x: 960, y: 540, zoom: 1, rot: 0 });
+    G.clear([0.006, 0.006, 0.006]);
+    const x = L.begin();
+    x.fillStyle = "#121212"; x.fillRect(0, 0, 1920, 1080);
+    x.save(); x.translate(960, 540); x.rotate(b * 0.35);
+    ACCENT.forEach((c, i) => { x.fillStyle = c; x.globalAlpha = 0.55; x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, 1400, (i / 10) * Math.PI * 2, ((i + 0.5) / 10) * Math.PI * 2); x.closePath(); x.fill(); });
+    x.restore();
+    ks.forEach((k, i) => { if (k <= 0.01) return; const r = cellRect(i, k); x.save(); x.translate(r[0] + r[2] / 2, r[1] + r[3] / 2); x.rotate((1 - k) * (i % 2 ? 0.4 : -0.4)); x.fillStyle = "rgba(0,0,0,0.45)"; x.fillRect(-r[2] / 2 + 10, -r[3] / 2 + 12, r[2], r[3]); x.restore(); });
+    G.composite(L.upload(), { mode: G.MODE.normal });
+    const RT = Sp.rt();
+    ks.forEach((k, i) => { if (k > 0.01) { const rot = (1 - k) * (i % 2 ? 0.4 : -0.4); Sp.draw(RT.cells[i], cellImg(cellRect(i, k), rot), [0, 0, 1, 1], rot, clamp(k * 4)); } });
+    if (S0) Sp.draw(RT.center, mix4([0, 0, 1920, 1080], Sp.CENTER, m), mix4([0, 0, 1, 1], Sp.CENTER_SRC, m), 0, 1);
+    const t = LT.begin();
+    ks.forEach((k, i) => {
+      const fa = prog(k, 0.88, 1);
+      if (fa <= 0) return;
+      const r = cellRect(i, k), lab = `${String(i).padStart(2, "0")} ${tr(`ch10.style.${i}`)}`, font = K.FONT.cjk(28, 600);
+      t.save(); t.translate(r[0] + r[2] / 2, r[1] + r[3] / 2); t.rotate((1 - k) * (i % 2 ? 0.4 : -0.4)); t.globalAlpha = fa;
+      const ih = r[2] * 9 / 16, bh = r[3] - ih;
+      t.fillStyle = "#121212"; t.fillRect(-r[2] / 2, r[3] / 2 - bh, r[2], bh);
+      t.fillStyle = ACCENT[i]; t.fillRect(-r[2] / 2, r[3] / 2 - bh, 8, bh);
+      t.strokeStyle = "#FFFFFF"; t.lineWidth = 3; t.strokeRect(-r[2] / 2, -r[3] / 2, r[2], r[3]);
+      K.text(t, lab, -r[2] / 2 + 24, r[3] / 2 - bh / 2 + 10, { font, color: "#FFFFFF", alpha: fa });
+      t.restore();
+    });
+    if (m > 0.98) { const [cx, cy, cw, chh] = Sp.CENTER; t.strokeStyle = "#FFFFFF"; t.lineWidth = 3; t.strokeRect(cx, cy, cw, chh); }
+    G.composite(LT.upload(), { mode: G.MODE.normal });
+    const hit = impact(b, AT.flip, 0.12), sh = hit * 7;
+    f.post = { ...ch("ch00").cut.post, shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh], flash: hit * 0.25, flashCol: [1, 0.92, 0.8], blur: [0, 0], zoomBlur: 0 };
+  }
+
+  // ---------- 调度 ----------
+  // Layer.begin 只复位变换、透明度和混合，线头、拐角、线宽、虚线会从上一帧带过来（好几处圆头线没包 save）；每帧开头复位，画面才只看时刻。
+  const pen = (l) => { const x = l.ctx; x.lineCap = "butt"; x.lineJoin = "miter"; x.miterLimit = 10; x.lineWidth = 1; x.setLineDash([]); x.lineDashOffset = 0; };
+  function render(f) {
+    const b = f.bar, S0 = ch("ch00");
+    pen(L); pen(LT);
+    if (b >= AT.drop && F10.bow) { F10.bow(f, b, { L, BAR, b00: 5 + (AT.drop - AT.flip) * SLOW }); return; }
+    if (b >= AT.flip) { splitFrame(f, b); return; }
+    if (b >= AT.ink[0] && S0) {
+      S0.paperFrame(f, b00(b), { hud: false, cameo: true, b0: b00(AT.ink[0]), extra: narExtra(b, narA(b)) });
+      // 第 00 章推镜头的运动模糊也会糊掉贴在屏幕上的旁白：旁白在场时按它的透明度压掉模糊。
+      const keep = 1 - narA(b);
+      f.post = { ...f.post, blur: (f.post.blur || [0, 0]).map((v) => v * keep), zoomBlur: (f.post.zoomBlur || 0) * keep };
+      if (b < AT.ink[1]) { G.setCam({ x: 960, y: 540, zoom: 1, rot: 0 }); const x = L.begin(); station(4, x, b); inkEat(x, b); G.composite(L.upload(), { mode: G.MODE.normal }); }
+      return;
+    }
+    const solid = in1(b) && F10.s1world(b - AT.st[0], ox1(b));
+    G.setCam({ x: 960, y: 540, zoom: 1, rot: 0 });
+    if (!solid) G.clear([0.913, 0.896, 0.855]);
+    const x = L.begin();
+    relay(x, b);
+    const p = pan(b), p0 = pan(b - 1 / 60 / f.BAR);
+    G.composite(L.upload(), { mode: G.MODE.normal });
+    const jolt = Math.max(impact(b, AT.whip1[0] + 0.04, 0.1), impact(b, AT.iris[0], 0.1) * 0.6, impact(b, AT.spin[1], 0.1)) * 5;
+    f.post = { ...post1(b), blur: [-(p - p0), 0], shake: [Math.sin(f.frame * 1.7) * jolt, Math.cos(f.frame * 2.3) * jolt], flash: impact(b, AT.spin[1], 0.08) * 0.08 };
   }
 
   window.CHAPTERS.push({
-    id: "ch10", title: "ch.10", bars: 14,
-    init() { G.pass(K.PLATE.ink); G.pass(K.PLATE.paper); lay(); },
+    id: "ch10", title: "ch.10", bars: 22,
+    async init() {
+      L = G.layer("fin"); LT = G.layer("finTop");
+      await F10.split.initCells();
+      const loads = [];
+      for (let i = 0; i < 10; i++) loads.push(document.fonts.load(F10.FACE[i](40), tr(`ch10.t${i}`) + "图纸"));
+      for (const f of [F10.NF.s1(40), F10.NF.jp(40), F10.NF.s2(40), F10.NF.s2big(40), F10.NF.s3(40), F10.NF.s4(40), F10.NF.s4(40, 600), F10.NF.s5(40), F10.NF.s5b(40), F10.NF.s5b(40, 800), F00(40)])
+        loads.push(document.fonts.load(f, "夜に駆けるアイドル图纸 Ag"));
+      await Promise.all(loads);
+    },
     render,
   });
 })();

@@ -1,596 +1,987 @@
 (() => {
   function make() {
-    const { css } = G;
-    const { E, prog, clamp, lerp, text, FONT, line, polyline, rect, dashed, stamp, spark, checkbox, measure } = K;
+    const { E, prog, lerp } = K;
     I18N.add({
       "ch07.title": ["对话", "Chat"],
-      "ch07.msg1": ["你最近在听什么？", "What are you listening to?"],
-      "ch07.c.label": ["隐私说明", "PRIVACY NOTICE"],
-      "ch07.c.intro": ["先确认对话数据会发到哪里：", "Where this chat sends your data:"],
-      "ch07.c.browser": ["这个浏览器", "This browser"],
+      "ch07.chap": ["第七章", "CHAPTER 7"],
+      "ch07.push": ["PUSH START", "PUSH START"],
+      "ch07.new": ["开始冒险", "NEW GAME"],
+      "ch07.cont": ["继续", "CONTINUE"],
+      "ch07.ph": ["Speak, mortal… (type /)", "Speak, mortal… (type /)"],
+      "ch07.msg1": ["听过「アイドル」吗？从哲学上讲它为什么火？", "Heard アイドル? Philosophically, why's it a hit?"],
+      "ch07.c.label": ["隐私说明", "Privacy notice"],
+      "ch07.c.lineup": ["先选阵容", "Pick a lineup"],
+      "ch07.c.def": ["默认", "default"],
+      "ch07.c.roles": ["杂鱼 · 先知", "Small Fry · Prophet"],
+      "ch07.c.dest": ["数据去向", "Where your data goes"],
+      "ch07.c.browser": ["当前浏览器", "This browser"],
       "ch07.c.accept": ["接受", "Accept"],
       "ch07.c.decline": ["拒绝", "Decline"],
-      "ch07.n1a": ["发第一句之前，先说清数据去哪；", "First, a notice of where data goes;"],
-      "ch07.n1b": ["点了接受，才去验人、发请求。", "nothing is sent until you accept."],
+      "ch07.n1a": ["先选阵容，看清数据去哪；", "Pick a lineup, see where data goes;"],
+      "ch07.n1b": ["点接受之前，不发一条对话请求。", "no chat request before you accept."],
+      "ch07.g.who": ["是人吗？", "Human?"],
       "ch07.g.human": ["验人", "Human check"],
-      "ch07.g.humanSub": ["通行证 · Turnstile", "pass · Turnstile"],
+      "ch07.g.pass": ["通行证 或 Turnstile", "A pass or Turnstile"],
       "ch07.q.r1": ["访客自己的总量", "Your own total"],
       "ch07.q.r2": ["全站路由次数", "Site-wide routing"],
-      "ch07.q.r3": ["至少一档还有空位", "A tier with room"],
-      "ch07.q.foot": ["挡下：回 429，不调 Clef", "Blocked: a 429, Clef never runs"],
+      "ch07.q.r3": ["至少一档有空位", "A tier with room"],
+      "ch07.q.if": ["如果超额：", "If over quota:"],
+      "ch07.q.stop": ["到此为止，不调 Clef", "It stops here; no Clef call"],
+      "ch07.q.cont": ["继续？", "CONTINUE?"],
       "ch07.n2a": ["花钱之前先过闸：验人，再数额度；", "Before any spend: a human check,"],
-      "ch07.n2b": ["被挡下就回 429，不再调 Clef。", "then quotas; blocked means a 429."],
-      "ch07.k.sub": ["Workers AI 上的路由模型", "a router on Workers AI"],
-      "ch07.k.full": ["满了", "Full"],
-      "ch07.k.down": ["往下降一档", "Step down"],
-      "ch07.k.refuse": ["refuse：不调模型，回一句关门话", "refuse: no model, just a closing line"],
-      "ch07.n3a": ["Clef 看问题挑一档模型；", "Clef picks a model tier;"],
-      "ch07.n3b": ["那一档满了，就往下降一档。", "if it's full, it steps down one."],
-      "ch07.t.note": ["只读公开模型", "Read-only, public model"],
+      "ch07.n2b": ["被挡下就回 429，不再调 Clef。", "then quotas. Blocked: a 429, no Clef."],
+      "ch07.k.both": ["同时开工", "Both start at once"],
+      "ch07.k.tier": ["档 → 神", "Tier → God"],
+      "ch07.k.group": ["分组 → listening", "Group → listening"],
+      "ch07.k.pick": ["拾取：", "Picked: "],
+      "ch07.n3a": ["Clef 选档的同时，Clairic 开工，", "As Clef picks a tier, Clairic"],
+      "ch07.n3b": ["挑出这句话里点名的歌、游戏或番名。", "spots any song, game or show named."],
+      "ch07.f.lineup": ["Claude 阵容", "Claude lineup"],
+      "ch07.f.full": ["满员", "FULL"],
+      "ch07.f.down": ["往下一层", "Step down"],
+      "ch07.f.god": ["Fable 5.1 · 神", "Fable 5.1 · God"],
+      "ch07.f.prophet": ["Sonnet 5.5 · 先知", "Sonnet 5.5 · Prophet"],
+      "ch07.f.fry": ["Haiku 5.5 · 杂鱼", "Haiku 5.5 · Small Fry"],
+      "ch07.f.never": ["绝不往上", "Never up"],
+      "ch07.n4a": ["选中的档满了，就往下降一档，", "A full tier steps down one,"],
+      "ch07.n4b": ["只在同一阵容里降，绝不往上。", "within the lineup, never up."],
+      "ch07.t.pre": ["预取", "Prefetch"],
+      "ch07.t.first": ["第一次请求模型之前", "before the first model call"],
+      "ch07.t.again": ["+ 带「アイドル」多读一次", "+ once more, with アイドル"],
+      "ch07.t.game": ["点到游戏：另预取一张游戏卡", "A game: its card is prefetched too"],
+      "ch07.t.err": ["Clairic 出错或超时：只少这一次", "Clairic fails: only that read is lost"],
       "ch07.t.same": ["和浏览器看到的同一份", "The same data the browser gets"],
-      "ch07.t.client": ["外部 AI 客户端", "External AI client"],
-      "ch07.n4a": ["工具只读公开模型，和浏览器同一份；", "Tools read the same public model;"],
-      "ch07.n4b": ["同一套工具也挂在 /mcp 上。", "the same tools are served on /mcp."],
-      "ch07.reply": ["YOASOBI 的「アイドル」，正在放。", "YOASOBI's アイドル, playing now."],
+      "ch07.t.client": ["外部 AI 客户端", "External AI clients"],
+      "ch07.t.set": ["同一套 SITE_TOOLS", "The same SITE_TOOLS"],
+      "ch07.t.no": ["不含要访客确认的工具", "minus visitor-confirmed tools"],
+      "ch07.n5a": ["分组可搜，就带这个名字多读一次；", "A searchable group re-reads with the name;"],
+      "ch07.n5b": ["Clairic 出错或超时，只少这一次。", "if Clairic fails, only that read is lost."],
+      "ch07.n6a": ["工具只读公开模型，和浏览器同一份；", "Tools read the same public model;"],
+      "ch07.n6b": ["同一套工具也挂在 /mcp 上。", "the same tools are served on /mcp."],
+      "ch07.r.reply": ["先说一句：lyjw 此刻就在听。", "First: lyjw is playing it right now."],
+      "ch07.r.now": ["正在听", "NOW PLAYING"],
       "ch07.seal": ["盖章：下一轮只认盖过章的历史", "Sealed: only sealed turns go back in"],
       "ch07.msg2": ["给在听卡加个歌词按钮", "Add a lyrics button to Now Playing"],
-      "ch07.s.box": ["Claude Managed Agents · 只读沙盒", "Claude Managed Agents · read-only sandbox"],
-      "ch07.s.repo": ["main · 匿名克隆", "main · anonymous clone"],
-      "ch07.s.net": ["网络：只放行 github.com", "Network: github.com only"],
-      "ch07.a.q": ["按钮放在哪？", "Where should the button go?"],
-      "ch07.a.o1": ["封面右上角", "Cover, top right"],
-      "ch07.a.o2": ["曲名旁边", "Next to the title"],
+      "ch07.n7a": ["回复正常结束，Worker 盖一枚章；", "Each finished reply gets a seal;"],
+      "ch07.n7b": ["下一轮只认盖过章的历史。", "only sealed turns go back in."],
+      "ch07.d.clef": ["Clef：design → 先知", "Clef: design → Prophet"],
+      "ch07.d.worth": ["值得做。", "Worth doing."],
+      "ch07.d.session": ["设计会话 · Claude Managed Agents", "Design session · Claude Managed Agents"],
+      "ch07.d.arch": ["Opus 5.5 · 规划者", "Opus 5.5 · Architect"],
       "ch07.p.title": ["在听卡加歌词按钮", "Lyrics button on Now Playing"],
-      "ch07.p.rows": ["规格 · 验收 3 项", "Spec · 3 acceptance checks"],
-      "ch07.p.gh": ["先看 GitHub 授权说明", "GitHub consent first"],
-      "ch07.n5a": ["想改站，Sonnet 开一个设计会话；", "Site ideas open a design session;"],
-      "ch07.n5b": ["Opus 只读仓库，出题、出计划。", "Opus reads the repo, asks, plans."],
-      "ch07.b.actions": ["不持有写凭据", "holds no write credentials"],
-      "ch07.b.upload": ["上传改动，Worker 校验后提交", "Uploads; the Worker checks, commits"],
-      "ch07.b.review": ["审查只作参考", "Reviews are advisory"],
+      "ch07.p.issue": ["预填表单 · 自己的账号", "prefilled form · your account"],
+      "ch07.p.build": ["先看 GitHub 授权说明", "GitHub consent first"],
+      "ch07.p.gh": ["同意不保存，用完立即撤销", "Not kept; revoked right after use"],
+      "ch07.p.got": ["获得：GitHub 授权", "Got: GitHub consent"],
+      "ch07.p.gone": ["用完即撤", "Revoked after use"],
+      "ch07.n8a": ["想改站，先知觉得值得才开设计会话；", "Worthy ideas open a design session;"],
+      "ch07.n8b": ["Opus 出计划：开 issue，或开工构建。", "Opus plans: open an issue, or build."],
+      "ch07.b.plan": ["签名计划", "Signed plan"],
+      "ch07.b.pr": ["开 draft PR", "Opens a draft PR"],
+      "ch07.b.code": ["Actions 里的 Claude 按计划写代码", "In Actions, Claude codes to the plan"],
+      "ch07.b.ro": ["只读，拿不到回传凭据", "read-only, no upload credentials"],
+      "ch07.b.pub": ["publish job（不跑 Claude）凭 OIDC 回传", "A publish job (no Claude) uploads via OIDC"],
+      "ch07.b.check": ["Worker 校验路径与大小，GitHub App 提交", "Worker checks paths & size; App commits"],
+      "ch07.b.review": ["Claude 审查只作参考", "Claude's review is advisory"],
       "ch07.b.owner": ["合不合并：lyjw 决定", "Merging: lyjw decides"],
-      "ch07.n6a": ["构建在新分支上开 draft PR，", "A build opens a draft PR;"],
-      "ch07.n6b": ["合不合并，由 lyjw 决定。", "merging is lyjw's call."],
+      "ch07.n9a": ["构建在新分支上开 draft PR，", "A build opens a draft PR;"],
+      "ch07.n9b": ["合不合并，由 lyjw 决定。", "merging is lyjw's call."],
+      "ch07.mat": ["过了门禁再进门", "Pass the gates first"],
+      "ch07.oct": ["OCT", "OCT"],
     });
     const tr = (k) => I18N.tr(k);
-    const TAU = Math.PI * 2;
-    let plate, ink, paperL, emit, stampL, top;
-    let BARs = (60 / 108) * 4;
-    const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
-    const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
+    let top, bgL, glowL, ink, cv = null, c = null, F = null;
+    const mos = [];
+    const ITEM = "アイドル";
 
-    // 拍位和 music/ch07.js 是同一张表。
+    // 拍位和 music/ch07.js 的 AT 是同一张表，两边一起改。
     const AT = {
-      morph: [0.05, 0.6], type1: [0.6, 0.95], send1: 1.0, consent: 1.1, accept: 2.0, verify: [2.1, 2.45], leave: 2.5,
-      human: 3.25, quota: [3.75, 4.0, 4.25], block: 4.5, pass: 4.75,
-      clef: 6.0, full: 6.25, down: 6.5, haiku: 6.75,
-      call: 8.25, data: 8.5, mcp: 9.0, reply: 10.0, seal: 10.25,
-      send2: 10.75, design: 11.0, clone: 11.5, ask: 12.0, answer: 12.25, plan: 12.5, gh: 13.0, build: 13.25,
-      planCommit: 13.75, pr: 14.0, upload: 14.25, implCommit: 14.5, review: 14.75, owner: 15.0,
-      fade: [15.4, 15.85], fin: [15.3, 15.92],
+      crt: [0.03, 0.25], pop: [0.3, 0.45], logo: 0.5, push: [0.5, 0.75], menu: 0.75, pick: 1.25,
+      walk1: [1.75, 1.95], box: 1.875, type1: [2.0, 2.45], send1: 2.5, notice: 2.7, lineup: 2.75, cur: 2.85, claude: 3.1, chose: 3.35,
+      dest: 3.45, rows: [3.5, 3.75, 4.0, 4.25], ts: [2.8, 4.4], opts: 4.5, accept: 5.0, close: 5.125, enter: [5.3, 5.55], door1: 5.6,
+      walk2: [6.0, 6.25], who: [6.3, 6.75], human: 6.6, tick: 6.65, lift: [6.75, 6.95], pass: [6.95, 7.2], quota: [7.25, 7.5, 7.75],
+      blk: 8.0, cont: 8.45, clear: 8.65, exit2: [8.75, 9.15],
+      walk3: [9.25, 9.45], scroll: 9.5, bang: 9.75, mag: [10.0, 10.4], ledger: [10.25, 10.3, 10.45], grab: [10.5, 10.75],
+      point: 12.5, full: 12.75, down: [13.0, 13.1, 13.25, 13.32], door: 13.25, hop: [13.32, 13.45], hand: [13.5, 13.6], never: 13.75,
+      winA: 14.625, pre: [14.75, 15.0], run: [15.25, 15.6], back: [15.75, 16.1], game: 16.25, err: 16.5, winAoff: 16.875,
+      mon: 17.0, same: 17.25, mcp: 17.75, bots: [18.0, 18.2], tools: [18.25, 18.5],
+      reply: [19.3, 19.7], card: 19.5, seal: 20.5, type2: [21.45, 21.85], send2: 21.9,
+      clefD: 22.1, worth: [22.25, 22.75], portal: 22.5, arch: [22.75, 22.9], plan: 23.0, opts2: [23.125, 23.25, 23.375], cur2: 23.75, sel2: 24.0,
+      gh: 24.0625, okGh: 24.25, item: 24.3, poof: 24.625,
+      branch: [25.125, 25.375], c1: 25.5, pr: 25.75, act: 26.0, ro: 26.25, pub: [26.625, 26.875], check: 26.875, c2: 27.0, rev: 27.25, owner: 27.625,
+      boxOff: 28.75, despawn: [28.75, 28.9], scroll2: [28.9, 29.3], shrink: [29.3, 29.35], hole: [29.35, 29.5], eyes: 29.55, mosaic: [29.55, 29.97],
     };
+    const CUTS = [1.75, 6.0, 9.25, 12.0, 14.5, 19.25, 22.0, 25.0];
+    const NAR = [["n1", 2.75, 5.85], ["n2", 6.25, 9.1], ["n3", 9.5, 11.85], ["n4", 12.25, 14.35], ["n5", 14.75, 16.85], ["n6", 17.0, 19.1],
+      ["n7", 19.5, 21.35], ["n8", 22.15, 24.8], ["n9", 25.25, 28.6, AT.owner]];
+    const INPUTS = [["ch07.msg1", AT.box, AT.type1, AT.send1], ["ch07.msg2", 21.4, AT.type2, AT.send2]];
+    const LOG = [["ch07.b.plan", AT.c1], ["ch07.b.pr", AT.pr], ["ch07.b.code", AT.act], ["ch07.b.ro", AT.ro], ["ch07.b.pub", AT.pub[0]],
+      ["ch07.b.check", AT.check], ["ch07.b.review", AT.rev], ["ch07.b.owner", AT.owner]];
 
-    const C = { x: 0, y: -1160, w: 1400, h: 1200 };
-    const IY = -20;
-    const MSG_TOP = C.y + 104, MSG_BOT = IY - 120;
-    const LANE = -500;
+    // 末帧与 ch08.js 首帧相同：屏幕 y 540 是挂灯笼的 main，HEAD 在 x 1350，提交在 COMMITS。
+    // HEAD、COMMITS 照抄 ch08.js 的 Y0、HEAD0、OLD（它们又跟着 ch06.js 的心电图几何）；末帧的大厅照抄 ch08.js 首帧画出的
+    // building、lobby、mainLine（同样的种子和排线参数，笔触才一样），那边改了这里一起改。
+    const HEAD = [1350, 540], COMMITS = [1250, 1050, 850, 650, 450, 250, 50];
 
-    // 末帧与 ch08.js 首帧相同：main 线、提交圆点与 HEAD 的屏幕位置照抄 ch08.js 的 Y0、HEAD0、OLD（它们又跟着 ch06.js 的心电图几何）。
-    const ML = 1500, FIN_X = 1700;
-    const scr = (sx) => FIN_X + sx - 960;
-    const HEAD = [scr(1350), ML];
-    const COMMITS = [1250, 1050, 850, 650, 450, 250, 50].map(scr);
+    // 整章按 384×216 的游戏坐标画，直接画在全分辨率图层上：一个游戏像素是对齐到设备像素的方块（1920 宽时 5×5），
+    // 字不跟着放大，按屏幕分辨率画。KS 是一个游戏像素占几个设备像素，QX 是震屏的横移（游戏像素）。
+    const GW = 384, GH = 216;
+    let KS = 5, QX = 0;
+    const C = { k: "#000000", w: "#fcfcfc", l: "#bcbcbc", g: "#7c7c7c", d: "#404040", D: "#000058", n: "#0000bc", b: "#0058f8", c: "#3cbcfc", p: "#a4e4fc",
+      o: "#d77757", f: "#fca044", y: "#f8b800", u: "#ac7c00", e: "#503000", s: "#fce0a8", r: "#e40058", R: "#a81000", v: "#9878f8", m: "#6844fc", L: "#b8b8f8", G: "#00a800", H: "#58d854" };
+    const PL = P.PAL, LEAF = "#7fa46a", POT = "#c46a45", HOLE = "#2a1d1a", RIB = "#ceb7a3", HRIB = "#b8664c";
+    // 要读的字用思源黑体子集（Noto Sans SC ch07）配 Geist，代码配 Geist Mono；放大的像素字只留给标题、PUSH START、429 这几处大字。
+    // 像素字是 Fusion Pixel 的子集，OFL 保留了这个名字，改过的字体不能再叫它，所以 index.html 里另起名 Ch07 Pixel；只用原生字号（24 是 12 的两倍）。
+    // 小字用 700，笔画约一个游戏像素粗，和像素画的线一样；等宽字同字号偏宽，缩到 0.85 倍，代码名牌才放得进画面给它们留的位置。
+    const face = (s, k) => (k === "pix" ? `${s}px "Ch07 Pixel ${s === 24 ? 12 : s}"`
+      : k === "mono" ? `${s >= 12 ? 500 : 700} ${s * 0.85}px "Geist Mono", "Noto Sans SC ch07", monospace`
+      : `${s >= 12 ? 500 : 700} ${s}px Geist, "Noto Sans SC ch07", sans-serif`);
 
-    const CAM0 = [700, IY, 1];
-    const CV = [-67, -360, 0.6];
-    const GV = [2700, -406, 0.8];
-    const KV = [4700, -420, 0.8];
-    const TV = [6700, -353, 0.7];
-    const SV = [1250, 640, 0.62];
-    const BV = [2400, 1240, 0.62];
-    const FIN = [FIN_X, ML, 1];
-    const drift = (c, dx = 10, k = 1.015) => [c[0] + dx, c[1] + 2, c[2] * k];
-    const CAM = [
-      [AT.morph[0], CAM0], [0.7, CV, E.io], [2.3, drift(CV), E.lin], [2.75, GV, E.io], [5.0, drift(GV), E.lin],
-      [5.4, KV, E.io], [7.6, drift(KV), E.lin], [7.9, TV, E.io], [9.5, drift(TV), E.lin], [9.75, CV, E.io],
-      [11.1, drift(CV, 6), E.lin], [11.35, SV, E.io], [13.3, drift(SV), E.lin], [13.55, BV, E.io],
-      [AT.fin[0], drift(BV), E.lin], [AT.fin[1], FIN, E.io], [16, FIN, E.lin],
+    const on = (b, a, z) => b >= a && b < z;
+    const opened = (b, t, d = 0.0625) => prog(b, t, t + d);
+    const walk = (b, t0, t1, x0, x1) => Math.round(lerp(x0, x1, prog(b, t0, t1)));
+    const bob = (b, t0, t1) => (b > t0 && b < t1 ? Math.floor(b * 16) % 2 : 0);
+    const hopH = (b, t0, t1, h) => Math.round(K.hop(b, t0, t1, h));
+    const blink = (b, n = 4) => Math.floor(b * n) % 2 === 0;
+
+    function px(x, y, w, h) {
+      const x0 = Math.round((x + QX) * KS), y0 = Math.round(y * KS);
+      c.fillRect(x0, y0, Math.round((x + w + QX) * KS) - x0, Math.round((y + h) * KS) - y0);
+    }
+    const R = (x, y, w, h, col) => { if (w <= 0 || h <= 0) return; c.fillStyle = col; px(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+    function T(str, x, y, o = {}) {
+      const { s = 12, col = C.w, reveal = 1, narr = false, tex = false, k } = o;
+      if (!str || reveal <= 0) return 0;
+      c.save(); c.setTransform(KS, 0, 0, KS, QX * KS, 0);
+      const w = K.text(c, str, Math.round(x), Math.round(y), { font: face(s, k), color: col, reveal, perChar: reveal < 1, fadeIn: false, dim: 0, narration: narr, texture: tex });
+      c.restore();
+      return w;
+    }
+    const W = (str, s = 12, k) => Math.ceil(K.measure(c, str, face(s, k)));
+    const TC = (str, cx, y, o = {}) => T(str, cx - Math.floor(W(str, o.s ?? 12, o.k) / 2), y, o);
+
+    function box(x, y, w, h, k = 1, fill = C.n, edge = C.w) {
+      if (k <= 0) return false;
+      x = Math.round(x); w = Math.round(w);
+      const hh = Math.max(6, Math.round(h * Math.min(1, k))), yy = Math.round(y + (h - hh) / 2);
+      R(x + 1, yy, w - 2, hh, C.k); R(x, yy + 1, w, hh - 2, C.k);
+      R(x + 2, yy + 1, w - 4, hh - 2, edge); R(x + 1, yy + 2, w - 2, hh - 4, edge);
+      R(x + 3, yy + 3, w - 6, hh - 6, fill);
+      return k >= 1;
+    }
+    function plate(str, cx, by, o = {}) {
+      const { s = 10, fg = C.e, bg = C.s, edge = C.k, k } = o;
+      const w = W(str, s, k), x = Math.round(cx - w / 2);
+      R(x - 3, by - s, w + 6, s + 3, edge); R(x - 2, by - s + 1, w + 4, s + 1, bg);
+      T(str, x, by, { s, col: fg, k });
+    }
+    function bubble(str, cx, by, s = 12) {
+      const w = W(str, s) + 10, h = s + 7, x = Math.round(cx - w / 2), y = by - h - 3;
+      R(x + 1, y, w - 2, h, C.k); R(x, y + 1, w, h - 2, C.k); R(x + 1, y + 1, w - 2, h - 2, C.w);
+      R(cx - 2, y + h - 1, 5, 1, C.w); R(cx - 3, y + h - 1, 1, 2, C.k); R(cx + 3, y + h - 1, 1, 2, C.k);
+      R(cx - 2, y + h, 5, 1, C.w); R(cx - 1, y + h + 1, 3, 1, C.w); R(cx - 2, y + h + 1, 1, 1, C.k); R(cx + 2, y + h + 1, 1, 1, C.k); R(cx, y + h + 2, 1, 1, C.k);
+      T(str, x + 5, y + h - 4, { s, col: C.k });
+    }
+    function spr(rows, x, y, map = null, flip = false) {
+      x = Math.round(x); y = Math.round(y);
+      const wd = rows[0].length;
+      for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) {
+        const ch = rows[j][i];
+        if (ch === " ") continue;
+        c.fillStyle = (map && map[ch]) || C[ch];
+        px(flip ? x + wd - 1 - i : x + i, y + j, 1, 1);
+      }
+    }
+    function sprS(rows, x, y, k, map = null) {
+      for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) {
+        const ch = rows[j][i];
+        if (ch !== " ") R(x + i * k, y + j * k, k, k, (map && map[ch]) || C[ch]);
+      }
+    }
+    function ln(x0, y0, x1, y1, col) {
+      x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+      c.fillStyle = col;
+      const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+      let err = dx + dy;
+      for (;;) {
+        px(x0, y0, 1, 1);
+        if (x0 === x1 && y0 === y1) break;
+        const e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+      }
+    }
+    function oval(cx, cy, rx, ry, col) {
+      c.fillStyle = col;
+      for (let dy = -ry; dy <= ry; dy++) { const hw = Math.round(rx * Math.sqrt(Math.max(0, 1 - (dy / (ry + 0.5)) ** 2))); px(Math.round(cx) - hw, Math.round(cy) + dy, 2 * hw + 1, 1); }
+    }
+    const disc = (cx, cy, r, col) => oval(cx, cy, r, r, col);
+    function ring(cx, cy, r, col) {
+      c.fillStyle = col;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const d = Math.hypot(dx, dy); if (d <= r + 0.35 && d > r - 0.85) px(Math.round(cx) + dx, Math.round(cy) + dy, 1, 1); }
+    }
+    // 星星和地上的碎点都是纹理：落在字的方框里就不画（holes 是 [x0, y0, x1, y1]）。
+    const inHole = (x, y, holes) => holes.some(([x0, y0, x1, y1]) => x >= x0 && x < x1 && y >= y0 && y < y1);
+    function stars(b, h, seed, holes = []) {
+      for (let i = 0; i < 40; i++) {
+        const t = K.hash(i * 1.7 + Math.floor(b * 4) * 0.37 + seed), x = Math.floor(K.hash(i * 3.17 + seed) * GW), y = Math.floor(K.hash(i * 7.31 + seed + 1) * h);
+        if (t > 0.25 && !inHole(x, y, holes)) R(x, y, 1, 1, t > 0.85 ? C.w : C.g);
+      }
+    }
+    const textBox = (str, x, y, s = 12, pad = 2, k) => [x - pad, y - s - pad, x + W(str, s, k) + pad, y + pad + 2];
+
+    const CUR = ["w   ", "ww  ", "www ", "wwww", "www ", "ww  ", "w   "];
+    const DOWN = ["wwwww", " www ", "  w  "];
+    const UP = ["   w   ", "  www  ", " wwwww ", "wwwwwww", "  www  ", "  www  ", "  www  "];
+    const TICK = ["      w", "     ww", "w   ww ", "ww ww  ", " www   ", "  w    "];
+    const CROSS = ["rr   rr", " rr rr ", "  rrr  ", " rr rr ", "rr   rr"];
+    const ENV = ["kkkkkkkkkkk", "kwlwwwwwlwk", "kwwlwwwlwwk", "kwwwlwlwwwk", "kwwwwowwwwk", "kwwwwwwwwwk", "kwwwwwwwwwk", "kkkkkkkkkkk"];
+    const PAWN = ["  kkkk  ", " kllllk ", " kllllk ", " kllllk ", "  kllk  ", "  kllk  ", " kllllk ", "kllllllk", "kllllllk", "kllllllk", "kkkkkkkk"];
+    const PHAT = ["  k  ", " kdk ", "kdddk"];
+    const KEY = [" yyy      ", "yu uyyyyyy", "yu uy  y y", " yyy      "];
+    const LOCK = [" kkk ", "k   k", "kkkkk", "kyyyk", "kyuyk", "kkkkk"];
+    const SCROLL = ["kkkkkkk", "ksssssk", "kseeesk", "ksssssk", "kkkkkkk"];
+    const SPROUT = ["H H", " G ", " G "];
+    const WIZ = ["     k      ", "    kbk     ", "    kbbk    ", "   kbybk    ", "   kbbbbk   ", "  kbbbbbk   ", "  kbbbbbbk  ", " kbbbbbbbbk ", "kkkkkkkkkkkk"];
+    const WIZ1 = ["   k    ", "  kbk   ", "  kbyk  ", " kbbbk  ", " kbbbbk ", "kkkkkkkk"];
+    const CROWN = ["y   y   y", "yy yyy yy", "yyyyyyyyy", "yryyryyry", "yyyyyyyyy"];
+    const HARD = ["     kkkkkk     ", "    kyyyyyyk    ", "   kyyywyyyyk   ", "  kyyyyyyyyyyk  ", "kyyyyyyyyyyyyyyk", "kkkkkkkkkkkkkkkk"];
+    const MAG = [" kkkk   ", "kpwppk  ", "kwpppk  ", "kppppk  ", "kppppk  ", " kkkkk  ", "     kk ", "      kk"];
+    const BANG = [" kkkkkkkk ", "kwwwwwwwwk", "kwwwrrwwwk", "kwwwrrwwwk", "kwwwrrwwwk", "kwwwwwwwwk", "kwwwrrwwwk", "kwwwwwwwwk", " kkkkkkkk ", "    kwk   ", "     k    "];
+    const QMARK = [" kkkkkkkk ", "kwwwwwwwwk", "kwwwyywwwk", "kwwywwywwk", "kwwwwwywwk", "kwwwwywwwk", "kwwwwwwwwk", "kwwwwywwwk", " kkkkkkkk ", "    kwk   ", "     k    "];
+    const SPEAR = ["  l  ", " lwl ", " lwl ", " lwl ", "  l  "];
+    const FLAME = [
+      ["   r   ", "  rr   ", "  rfr  ", " rffr  ", " rfyfr ", "rffyffr", "rfyyyfr", "rfyyyfr", " rfyfr ", "  rrr  "],
+      ["  r    ", "  rr   ", " rffr  ", " rffr  ", "rfyffr ", "rfyyfr ", "rffyyfr", "rfyyyfr", " rfyfr ", "  rrr  "],
+      ["    r  ", "   rr  ", "  rffr ", "  rfffr", " rffyfr", " rfyyfr", "rffyyfr", "rfyyyfr", " rfyfr ", "  rrr  "],
     ];
-    function camAt(b) {
-      if (b <= CAM[0][0]) return CAM[0][1].slice();
-      for (let i = 1; i < CAM.length; i++) if (b <= CAM[i][0]) {
-        const [t0, v0] = CAM[i - 1], [t1, v1, e = E.io] = CAM[i];
-        const k = e(clamp((b - t0) / (t1 - t0)));
-        return [lerp(v0[0], v1[0], k), lerp(v0[1], v1[1], k), Math.exp(lerp(Math.log(v0[2]), Math.log(v1[2]), k))];
-      }
-      return CAM[CAM.length - 1][1].slice();
-    }
+    const LANT = ["  hhhh  ", " zqqqqz ", "zqjqqjqz", "zqjqqjqz", "zqjqqjqz", "zqjqqjqz", "zqjqqjqz", " zqqqqz ", "  hhhh  "];
+    const HLANT = ["   hhhh   ", "  hhhhhh  ", " zOOOOOOz ", "zOOjOOjOOz", "zOOjOOjOOz", "zOOjOOjOOz", "zOOjOOjOOz", "zOOjOOjOOz", "zOOjOOjOOz", " zOOOOOOz ", "  zOOOOz  ", "   hhhh   "];
+    const LMAP = { h: PL.woodD, z: PL.line, q: PL.cream, j: RIB, O: PL.clawd, g: PL.gold };
+    const HMAP = { ...LMAP, j: HRIB };
+    const GMAP = { ...LMAP, q: PL.gold, j: "#c99a3c" };
 
-    function glow(e, cx, cy, r, a) {
-      if (a <= 0) return;
-      const g = e.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, `rgba(255,200,150,${a})`); g.addColorStop(0.35, `rgba(235,130,85,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
-      e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill(); e.restore();
-    }
-    function dot(x, cx, cy, r, fill, stroke, lw, a = 1) {
-      if (a <= 0) return;
-      x.save(); x.globalAlpha = a; x.fillStyle = fill; x.strokeStyle = stroke; x.lineWidth = lw;
-      x.beginPath(); x.arc(cx, cy, r, 0, TAU); if (fill) x.fill(); if (lw > 0) x.stroke(); x.restore();
-    }
-    function tick(x, cx, cy, s, k, a = 1) {
-      polyline(x, [[cx - 0.5 * s, cy], [cx - 0.12 * s, cy + 0.38 * s], [cx + 0.6 * s, cy - 0.5 * s]], k, s * 0.16, css("signal"), a);
-    }
-    function lamp(x, e, cx, cy, r, on, a = 1) {
-      if (a <= 0) return;
-      dot(x, cx, cy, r, css("paper"), css("pink"), r * 0.13, a);
-      if (on > 0) { dot(x, cx, cy, r * 0.78, css("signal"), null, 0, a * on); glow(e, cx, cy, r * 2.6, 0.5 * on * a); }
-    }
-    function card(d, px, py, w, h, a, sy = 1, lw = 2.4) {
-      if (a <= 0) return;
-      d.save(); d.globalAlpha = a; d.translate(px, py); d.scale(1, Math.max(0.001, sy));
-      d.shadowColor = "rgba(0,0,0,0.28)"; d.shadowBlur = 18; d.shadowOffsetY = 7;
-      d.fillStyle = css("paper"); d.fillRect(0, 0, w, h);
-      d.shadowColor = "transparent"; d.strokeStyle = css("pink"); d.lineWidth = lw; d.strokeRect(0, 0, w, h);
-      d.restore();
-    }
-    function pill(d, px, py, w, h, label, font, a, o = {}) {
-      if (a <= 0) return;
-      d.save(); d.globalAlpha = a;
-      K.roundRect(d, px, py, w, h, h * 0.22);
-      if (o.fill) { d.fillStyle = o.fill; d.fill(); }
-      d.strokeStyle = o.stroke || css("pink"); d.lineWidth = 2.4; d.stroke(); d.restore();
-      text(d, label, px + w / 2, py + h * 0.68, { font, color: o.color || css("pink"), align: "center", alpha: a, maxW: w - 24 });
-    }
-    function arrowHead(x, tx, ty, ang, color, a = 1, s = 18) {
-      if (a <= 0) return;
-      x.save(); x.globalAlpha = a; x.fillStyle = color; x.beginPath();
-      x.moveTo(tx + Math.cos(ang) * 4, ty + Math.sin(ang) * 4);
-      x.lineTo(tx + Math.cos(ang + 2.6) * s, ty + Math.sin(ang + 2.6) * s);
-      x.lineTo(tx + Math.cos(ang - 2.6) * s, ty + Math.sin(ang - 2.6) * s);
-      x.fill(); x.restore();
-    }
-    function screen(x, draw) { x.save(); x.setTransform(G.S, 0, 0, G.S, 0, 0); draw(); x.restore(); }
-    function nar(x, key, row, r, a) {
-      if (a <= 0) return;
-      screen(x, () => K.narration(x, tr(key), 110, row ? 1024 : 944, { reveal: r, alpha: a, dim: 0.12, maxW: 1040 }));
-    }
-    function title(x, b) {
-      const a = prog(b, 0.3, 0.75, E.out) * (1 - prog(b, 2.3, 2.6));
-      if (a <= 0) return;
-      screen(x, () => {
-        text(x, "07", 110, 196, { font: FONT.pixel(112), color: css("signal"), alpha: a });
-        text(x, tr("ch07.title"), 290, 176, { font: FONT.cjk(58, 600), reveal: prog(b, 0.35, 0.8), alpha: a });
-        text(x, "Talk to God · ai Worker · Clef · Claude", 292, 226, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.45, 1.0), alpha: a });
-        line(x, 110, 262, 110 + 850 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("pink"), a);
-      });
-    }
-
-    // 一条消息的去向：章内小节 → 世界坐标；拖尾从同一个函数往回取，画面仍是时间的纯函数。
-    const MSG = [
-      [AT.leave, [C.x + C.w, LANE]], [3.0, [2000, LANE], E.io], [3.3, [2000, LANE]], [3.55, [2420, LANE], E.io],
-      [AT.pass, [2420, LANE]], [5.0, [3350, LANE], E.io], [5.6, [3900, LANE], E.io], [AT.clef, [4400, LANE], E.io],
-      [6.15, [4750, -600], E.io], [AT.down, [4750, -600]], [AT.haiku, [4750, -320], E.io],
-    ];
-    // 火花沿画出来的折线走，进了 SITE_TOOLS 卡就藏在卡里，从卡底出来再往下：斜穿卡面会划过卡上的字。
-    const CALL = [[8.0, [5550, -320]], [8.104, [5900, -320]], [8.146, [5900, -460]], [AT.call, [6250, -460], E.out]];
-    const CALL_OUT = [[8.36, [6750, -230]], [AT.data, [6750, -60], E.io]];
-    const BACK = [[AT.data + 0.05, [6750, -126]], [8.8, [6750, -230], E.io]];
-    const MCP = [[AT.mcp, [7680, -870]], [9.3, [7200, -560], E.io]];
-    function along(path, b) {
-      if (b <= path[0][0]) return path[0][1];
-      for (let i = 1; i < path.length; i++) if (b <= path[i][0]) {
-        const [t0, p0] = path[i - 1], [t1, p1, e = E.lin] = path[i];
-        const k = e(clamp((b - t0) / (t1 - t0)));
-        return [lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k)];
-      }
-      return path[path.length - 1][1];
-    }
-    function runner(Ly, path, b, size = 0.9) {
-      const t0 = path[0][0], t1 = path[path.length - 1][0];
-      if (b < t0 || b > t1 + 0.02) return;
-      const head = along(path, b);
-      const trail = [];
-      // 拐角那一下落在两次取样之间时补进拐点：只连取样点，拖尾会斜着抄近路，离开画出来的折线。
-      for (let i = 14; i >= 1; i--) {
-        const ta = Math.max(t0, b - i * 0.012), tb = Math.max(t0, b - (i - 1) * 0.012);
-        trail.push(along(path, ta));
-        for (const [tk, pk] of path) if (tk > ta && tk < tb) trail.push(pk);
-      }
-      spark(Ly.e, Ly.tp, head, trail, { t: G.t, size, lw: 3 });
-      dot(Ly.tp, head[0], head[1], 6.5 * size, css("signal"), null, 0);
-    }
-
-    function bubble(d, str, right, y, a, o = {}) {
-      if (a <= 0) return 0;
-      const f = FONT.cjk(52, 600), w = measure(d, str, f) + 64, h = 96;
-      const px = right - w;
-      d.save(); d.globalAlpha = a; d.fillStyle = css("pink"); K.roundRect(d, px, y, w, h, 18); d.fill(); d.restore();
-      text(d, str, px + 32, y + 64, { font: f, color: css("paper"), alpha: a, reveal: o.reveal ?? 1 });
-      return h;
-    }
-    const DEST = ["Cloudflare Workers", "Cloudflare Turnstile", "Workers AI · Clef", "Anthropic · Claude API", "GitHub", "ch07.c.browser"];
-    function consent(d, b, y0, a) {
-      if (a <= 0) return;
-      const gr = css("graphite");
-      text(d, tr("ch07.c.label"), C.x + 60, y0 + 50, { font: FONT.mono(48, 600), color: gr, alpha: a });
-      text(d, tr("ch07.c.intro"), C.x + 60, y0 + 124, { font: FONT.cjk(50, 600), alpha: a, maxW: C.w - 120 });
-      DEST.forEach((s, j) => {
-        const r = prog(b, AT.consent + 0.1 + j * 0.08, AT.consent + 0.3 + j * 0.08);
-        dot(d, C.x + 84, y0 + 186 + j * 62, 6, css("pink"), null, 0, a * r);
-        text(d, s.startsWith("ch07.") ? tr(s) : s, C.x + 110, y0 + 202 + j * 62, { font: s.startsWith("ch07.") ? FONT.cjk(48, 600) : FONT.mono(48, 500), alpha: a, reveal: r });
-      });
-      const by = y0 + 202 + DEST.length * 62 + 10, hit = prog(b, AT.accept, AT.accept + 0.06);
-      pill(d, C.x + 60, by, 300, 84, tr("ch07.c.accept"), FONT.cjk(46, 600), a, { fill: hit > 0 ? css("signal") : css("pink"), stroke: hit > 0 ? css("signal") : css("pink"), color: css("paper") });
-      pill(d, C.x + 390, by, 300, 84, tr("ch07.c.decline"), FONT.cjk(46, 600), a);
-    }
-    function nowCard(d, px, py, w, h, a) {
-      if (a <= 0) return;
-      card(d, px, py, w, h, a, 1, 2);
-      const s = h - 60;
-      d.save(); d.globalAlpha = a; d.fillStyle = css("pink"); d.globalAlpha = 0.12 * a; d.fillRect(px + 30, py + 30, s, s);
-      d.globalAlpha = a; d.strokeStyle = css("pink"); d.lineWidth = 2; d.strokeRect(px + 30, py + 30, s, s);
-      for (let j = 1; j <= 3; j++) { d.globalAlpha = a * (0.5 - j * 0.1); d.beginPath(); d.arc(px + 30 + s / 2, py + 30 + s / 2, s * 0.13 * j, 0, TAU); d.stroke(); }
-      d.restore();
-      text(d, "NOW PLAYING", px + s + 64, py + 72, { font: FONT.mono(40, 600), color: css("graphite"), alpha: a, texture: true });
-      text(d, "アイドル", px + s + 64, py + 136, { font: FONT.cjk(56, 600), alpha: a });
-      text(d, "YOASOBI", px + s + 64, py + 192, { font: FONT.mono(48, 500), color: css("graphite"), alpha: a });
-    }
-
-    function chatCard(Ly, b) {
-      const { x, d, s } = Ly, gr = css("graphite");
-      const ca = prog(b, 0.25, 0.55);
-      card(d, C.x, C.y, C.w, C.h, ca, 1, 2.6);
-      if (ca > 0) {
-        text(d, "TALK TO GOD", C.x + 48, C.y + 72, { font: FONT.mono(48, 600), color: gr, alpha: ca });
-        line(d, C.x + 30, C.y + 104, C.x + C.w - 30, C.y + 104, 1.4, css("pink"), ca);
-      }
-
-      const k = prog(b, AT.morph[0], AT.morph[1], E.io);
-      const x0 = lerp(CAM0[0] - 960, C.x + 40, k), x1 = lerp(CAM0[0] + 960, C.x + C.w - 40, k);
-      line(d, x0, IY, x1, IY, 3, css("pink"));
-      const box = prog(b, 0.45, 0.65);
-      if (box > 0) {
-        line(d, C.x + 40, IY, C.x + 40, IY - 100 * box, 3, css("pink"));
-        line(d, C.x + C.w - 40, IY, C.x + C.w - 40, IY - 100 * box, 3, css("pink"));
-        if (box >= 1) line(d, C.x + 40, IY - 100, C.x + C.w - 40, IY - 100, 3, css("pink"));
-      }
-      const msg1 = tr("ch07.msg1"), typed = prog(b, AT.type1[0], AT.type1[1]);
-      const inText = b < AT.send1 && typed > 0 ? [...msg1].slice(0, Math.ceil(typed * [...msg1].length)).join("") : "";
-      const vk = prog(b, AT.verify[0], AT.verify[0] + 0.05) * (1 - prog(b, AT.verify[1], AT.verify[1] + 0.05));
-      const idle = box * (b > AT.send1 + 0.05 && vk <= 0 ? 1 : 0) * (b < AT.send1 ? 0 : 1);
-      if (inText) text(d, inText, C.x + 80, IY - 32, { font: FONT.cjk(52, 600) });
-      if (vk > 0) text(d, "Verifying you are human…", C.x + 80, IY - 34, { font: FONT.mono(46, 500), color: gr, alpha: vk });
-      else if (idle > 0 && (b < AT.send2 - 0.15 || b > AT.send2 + 0.05)) text(d, "Speak, mortal… (type /)", C.x + 80, IY - 34, { font: FONT.mono(46, 500), color: gr, alpha: 0.6 * idle * (b > AT.send2 ? prog(b, AT.send2 + 0.05, AT.send2 + 0.15) : 1) });
-      const caretX = C.x + 84 + (inText ? measure(d, inText, FONT.cjk(52, 600)) : 0);
-      const cx = lerp(CAM0[0] + 390, caretX, k), cy = lerp(IY, IY - 50, k);
-      if (k < 0.9) dot(d, cx, cy, 9, css("signal"), null, 0, 1 - prog(k, 0.6, 0.9));
-      if (k > 0.6 && b < AT.send1 && Math.floor(b * 8) % 2 === 0) K.fillRect(d, cx, IY - 78, 5, 56, css("signal"), prog(k, 0.6, 0.9));
-
-      d.save(); d.beginPath(); d.rect(C.x, MSG_TOP, C.w, MSG_BOT - MSG_TOP); d.clip();
-      const scroll = 700 * prog(b, AT.send2 - 0.15, AT.send2 + 0.05, E.io);
-      const oldA = 1 - prog(b, AT.send2 - 0.1, AT.send2 + 0.05);
-      const by = MSG_TOP + 40 - scroll;
-      bubble(d, msg1, C.x + C.w - 50, by, prog(b, AT.send1, AT.send1 + 0.08) * oldA);
-      const cA = win(b, AT.consent, AT.consent + 0.08, AT.accept + 0.1, AT.accept + 0.25);
-      consent(d, b, by + 140, cA);
-      const rA = prog(b, AT.reply - 0.1, AT.reply) * oldA;
-      if (rA > 0) {
-        text(d, "HAIKU · SMALL FRY", C.x + 60, by + 196, { font: FONT.mono(48, 600), color: gr, alpha: rA });
-        text(d, tr("ch07.reply"), C.x + 60, by + 276, { font: FONT.cjk(52, 600), alpha: rA, reveal: prog(b, AT.reply - 0.08, AT.reply + 0.15), maxW: C.w - 120 });
-        nowCard(d, C.x + 60, by + 330, 940, 250, prog(b, AT.reply + 0.05, AT.reply + 0.15) * oldA);
-      }
-      const b2 = MSG_TOP + 40 + 700 - scroll;
-      bubble(d, tr("ch07.msg2"), C.x + C.w - 50, b2, prog(b, AT.send2, AT.send2 + 0.08));
-      const dk = prog(b, AT.design, AT.design + 0.12, E.out);
-      if (dk > 0) {
-        const dy = b2 + 210, mid = C.x + C.w / 2, lab = "DESIGN SESSION · ARCHITECT TAKES OVER";
-        const lw = measure(d, lab, FONT.mono(48, 600)) + 60;
-        line(d, mid - (C.w / 2 - 50) * dk, dy, mid + (C.w / 2 - 50) * dk, dy, 2.4, css("signal"));
-        card(d, mid - lw / 2, dy - 46, lw, 92, dk, 1, 2);
-        text(d, lab, mid, dy + 16, { font: FONT.mono(48, 600), color: css("signal"), align: "center", alpha: dk });
-      }
-      d.restore();
-
-      const sk = prog(b, AT.seal, AT.seal + 0.14);
-      if (sk > 0 && b < AT.send2) {
-        // 印章跟着消息一起上滑，和消息一样裁在消息区里，不压到标题栏上。
-        s.save(); s.beginPath(); s.rect(C.x - 400, MSG_TOP, C.w + 800, MSG_BOT - MSG_TOP); s.clip();
-        stamp(s, "SEAL", C.x + 1180, by + 470, { k: sk, px: 84, rot: -0.1 });
-        s.restore();
-        const la = prog(b, AT.seal + 0.05, AT.seal + 0.15) * oldA;
-        K.leader(x, C.x + 1060, by + 500, tr("ch07.seal"), -1220, 150, { font: FONT.cjk(52, 600), color: css("pink"), alpha: la });
-      }
-    }
-
-    function gates(Ly, b, a) {
-      const { x, d, e, s } = Ly, gr = css("graphite");
-      if (a <= 0) return;
-      line(x, C.x + C.w, LANE, 3900, LANE, 4, css("pink"), a);
-      d.save(); d.globalAlpha = a; d.fillStyle = css("paper"); d.fillRect(1976, LANE - 24, 48, 48); d.restore();
-      rect(d, 1976, LANE - 24, 48, 48, 3, css("pink"), a);
-      tick(d, 2000, LANE + 2, 36, prog(b, AT.human, AT.human + 0.08), a);
-      text(d, tr("ch07.g.human"), 2000, LANE - 70, { font: FONT.cjk(52, 600), align: "center", alpha: a });
-      text(d, tr("ch07.g.humanSub"), 2000, LANE + 104, { font: FONT.mono(42, 500), color: gr, align: "center", alpha: a });
-      const Q = { x: 2300, y: -900, w: 1100, h: 780 };
-      card(d, Q.x, Q.y, Q.w, Q.h, a);
-      text(d, "ChatQuota", Q.x + 50, Q.y + 84, { font: FONT.mono(56, 600), alpha: a });
-      text(d, "admitVisitor", Q.x + Q.w - 50, Q.y + 84, { font: FONT.mono(40, 500), color: gr, align: "right", alpha: a });
-      line(d, Q.x + 30, Q.y + 116, Q.x + Q.w - 30, Q.y + 116, 1.4, css("pink"), a);
-      ["ch07.q.r1", "ch07.q.r2", "ch07.q.r3"].forEach((key, j) => {
-        const y = Q.y + 230 + j * 130, t = AT.quota[j];
-        checkbox(d, Q.x + 60, y - 40, prog(b, t, t + 0.08), { size: 52, alpha: a });
-        text(d, tr(key), Q.x + 150, y, { font: FONT.cjk(50, 600), alpha: a * lerp(0.55, 1, prog(b, t, t + 0.08)) });
-      });
-      text(d, tr("ch07.q.foot"), Q.x + 60, Q.y + Q.h - 60, { font: FONT.cjk(44, 600), color: gr, alpha: a * prog(b, AT.block - 0.1, AT.block), maxW: Q.w - 400 });
-      stamp(s, "429", Q.x + Q.w - 200, Q.y + 330, { k: prog(b, AT.block, AT.block + 0.14), px: 96, rot: -0.12, sub: "Too many prayers", subPx: 40, alpha: a });
-      const ga = a * prog(b, AT.pass, AT.pass + 0.05);
-      if (ga > 0) glow(e, Q.x + Q.w, LANE, 90, 0.5 * ga * impact(b, AT.pass, 0.3));
-    }
-
-    const TIERS = [
-      { id: "Fable", persona: "God", y: -880, used: 2 },
-      { id: "Sonnet", persona: "Prophet", y: -600, used: 6 },
-      { id: "Haiku", persona: "Small Fry", y: -320, used: 3 },
-    ];
-    function clef(Ly, b, a) {
-      const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
-      if (a <= 0) return;
-      card(d, 3900, -640, 500, 280, a);
-      // 标题和副标分在 LANE 两边：消息的火花沿 LANE 横穿这张卡。
-      text(d, "Clef", 4150, -530, { font: FONT.sans(72, 600), align: "center", alpha: a });
-      text(d, tr("ch07.k.sub"), 4150, -432, { font: FONT.cjk(40, 600), color: gr, align: "center", alpha: a, maxW: 470 });
-      const pick = prog(b, AT.clef, AT.clef + 0.08), downK = prog(b, AT.down, AT.down + 0.2, E.io);
-      TIERS.forEach((t, j) => {
-        const on = j === 1 ? pick * (1 - downK) : j === 2 ? prog(b, AT.haiku, AT.haiku + 0.06) : 0;
-        polyline(x, [[4400, LANE], [4560, LANE], [4560, t.y], [4750, t.y]], 1, 3, on > 0 ? sig : gr, a * (on > 0 ? 1 : 0.6));
-        card(d, 4750, t.y - 100, 800, 200, a);
-        text(d, t.id, 4800, t.y - 6, { font: FONT.mono(60, 600), alpha: a });
-        text(d, t.persona, 4800, t.y + 60, { font: FONT.mono(44, 500), color: gr, alpha: a });
-        const fill = t.used + (j === 2 ? prog(b, AT.haiku, AT.haiku + 0.06) : 0);
-        for (let c = 0; c < 6; c++) {
-          const cx = 5170 + c * 56, on2 = c < Math.floor(fill + 1e-6);
-          d.save(); d.globalAlpha = a; d.fillStyle = on2 ? (j === 1 && b >= AT.full ? sig : css("pink")) : css("paper"); d.fillRect(cx, t.y - 30, 40, 60);
-          d.strokeStyle = css("pink"); d.lineWidth = 2; d.strokeRect(cx, t.y - 30, 40, 60); d.restore();
-        }
-        if (j === 2) lamp(d, e, 5500, t.y - 64, 18, prog(b, AT.haiku, AT.haiku + 0.06), a);
-      });
-      const fk = prog(b, AT.full, AT.full + 0.06);
-      if (fk > 0) text(d, tr("ch07.k.full"), 5470, -722, { font: FONT.cjk(48, 600), color: sig, align: "right", alpha: a * fk });
-      if (downK > 0) {
-        const head = polyline(x, [[5620, -560], [5620, -380]], downK, 4, sig, a);
-        if (downK >= 1) arrowHead(x, head[0], head[1], Math.PI / 2, sig, a);
-        // 离箭头只留 24：再往右，这一段镜头下英文「Step down」就贴到画面右边了。
-        text(x, tr("ch07.k.down"), 5644, -455, { font: FONT.cjk(44, 600), color: sig, alpha: a * downK });
-      }
-      text(x, tr("ch07.k.refuse"), 4750, -110, { font: FONT.cjk(42, 600), color: gr, alpha: a * prog(b, 6.9, 7.1), maxW: 900 });
-    }
-
-    function tools(Ly, b, a) {
-      const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
-      if (a <= 0) return;
-      polyline(x, [[5550, -320], [5900, -320], [5900, -460], [6250, -460]], 1, 3, b >= 8.0 ? sig : gr, a * 0.9);
-      const T = { x: 6250, y: -720, w: 1000, h: 490 };
-      card(d, T.x, T.y, T.w, T.h, a);
-      text(d, "SITE_TOOLS", T.x + 50, T.y + 84, { font: FONT.mono(54, 600), alpha: a });
-      line(d, T.x + 30, T.y + 116, T.x + T.w - 30, T.y + 116, 1.4, css("pink"), a);
-      const hot = win(b, AT.call - 0.05, AT.call, AT.data + 0.4, AT.data + 0.5);
-      if (hot > 0) K.fillRect(d, T.x + 30, T.y + 150, T.w - 60, 76, sig, 0.14 * hot * a);
-      text(d, "get_site_status", T.x + 60, T.y + 206, { font: FONT.mono(50, 500), color: hot > 0.5 ? sig : css("pink"), alpha: a });
-      text(d, "read_project_doc", T.x + 60, T.y + 296, { font: FONT.mono(50, 500), alpha: a });
-      text(d, tr("ch07.t.note"), T.x + 60, T.y + 410, { font: FONT.cjk(46, 600), color: gr, alpha: a });
-      line(x, 6750, -230, 6750, -80, 3, css("pink"), a);
-      text(x, "PUBLIC_STATUS", 6720, -150, { font: FONT.mono(42, 500), color: gr, align: "right", alpha: a });
-      card(d, 6450, -80, 600, 130, a);
-      text(d, "core · PublicStatus", 6750, -2, { font: FONT.mono(46, 600), align: "center", alpha: a });
-      const sa = prog(b, 8.8, 8.9) * a;
-      text(x, tr("ch07.t.same"), 7090, 0, { font: FONT.cjk(44, 600), color: sig, alpha: sa });
-      if (b >= AT.data && b < 9.1) {
-        const p = along(BACK, b);
-        pill(Ly.tp, p[0] + 30, p[1] - 40, 370, 74, "listening/now", FONT.mono(42, 500), prog(b, AT.data, AT.data + 0.05) * (1 - prog(b, 8.8, 9.0)) * a, { fill: css("paper"), color: sig, stroke: sig });
-      }
-      const ma = prog(b, AT.mcp - 0.15, AT.mcp) * a;
-      if (ma > 0) {
-        card(d, 7420, -1010, 560, 130, ma);
-        text(d, tr("ch07.t.client"), 7700, -930, { font: FONT.cjk(46, 600), align: "center", alpha: ma, maxW: 520 });
-        const head = polyline(x, [[7680, -880], [7680, -800], [7200, -800], [7200, -735]], prog(b, AT.mcp, AT.mcp + 0.25, E.io), 3, sig, ma);
-        if (head && b > AT.mcp + 0.25) arrowHead(x, head[0], head[1], Math.PI / 2, sig, ma);
-        text(x, "POST /mcp", 7250, -820, { font: FONT.mono(46, 600), color: sig, alpha: ma });
-        glow(e, 7200, -735, 80, 0.5 * impact(b, AT.mcp + 0.25, 0.3) * ma);
-      }
-    }
-
-    const SB = { x: 0, y: 260, w: 1400, h: 800 };
-    const ASK = { x: 1550, y: 280, w: 900, h: 270 };
-    const PLAN = { x: 1550, y: 590, w: 900, h: 460 };
-    function sandbox(Ly, b, a) {
-      const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
-      if (a <= 0) return;
-      const ok = prog(b, AT.design + 0.2, AT.design + 0.35);
-      if (ok <= 0) return;
-      const sa = a * ok;
-      K.dashed(x, SB.x, SB.y, SB.x + SB.w, SB.y, 3, css("pink"), [16, 12], sa);
-      K.dashed(x, SB.x, SB.y + SB.h, SB.x + SB.w, SB.y + SB.h, 3, css("pink"), [16, 12], sa);
-      K.dashed(x, SB.x, SB.y, SB.x, SB.y + SB.h, 3, css("pink"), [16, 12], sa);
-      K.dashed(x, SB.x + SB.w, SB.y, SB.x + SB.w, SB.y + SB.h, 3, css("pink"), [16, 12], sa);
-      text(x, tr("ch07.s.box"), SB.x + 40, SB.y - 30, { font: FONT.cjk(50, 600), alpha: sa, maxW: SB.w - 40 });
-      card(d, SB.x + 50, SB.y + 70, 560, 220, sa);
-      text(d, "Opus", SB.x + 90, SB.y + 166, { font: FONT.sans(72, 600), alpha: sa });
-      text(d, "Architect", SB.x + 90, SB.y + 240, { font: FONT.mono(48, 500), color: gr, alpha: sa });
-      card(d, SB.x + 790, SB.y + 70, 560, 220, sa);
-      text(d, "LYJW131/lyjwpage", SB.x + 820, SB.y + 166, { font: FONT.mono(46, 600), alpha: sa, maxW: 500 });
-      text(d, tr("ch07.s.repo"), SB.x + 820, SB.y + 240, { font: FONT.cjk(46, 600), color: gr, alpha: sa, maxW: 500 });
-      const ck = prog(b, AT.clone, AT.clone + 0.2, E.io);
-      if (ck > 0) {
-        const head = polyline(x, [[SB.x + 780, SB.y + 180], [SB.x + 620, SB.y + 180]], ck, 4, sig, sa);
-        if (ck >= 1) arrowHead(x, head[0], head[1], Math.PI, sig, sa);
-      }
-      const rows = [["read", true], ["glob", true], ["grep", true], ["write", false], ["edit", false]];
-      rows.forEach(([name, on], j) => {
-        const r = prog(b, AT.clone + 0.1 + j * 0.06, AT.clone + 0.2 + j * 0.06) * sa;
-        const px = SB.x + 60 + j * 262, py = SB.y + 420;
-        text(x, name, px + 60, py, { font: FONT.mono(48, 500), color: on ? css("pink") : gr, alpha: r });
-        if (on) tick(x, px + 20, py - 16, 38, r > 0 ? 1 : 0, r);
-        else { line(x, px + 4, py - 32, px + 40, py + 4, 4, gr, r); line(x, px + 40, py - 32, px + 4, py + 4, 4, gr, r); }
-      });
-      text(x, tr("ch07.s.net"), SB.x + 60, SB.y + 560, { font: FONT.cjk(48, 600), alpha: sa * prog(b, AT.clone + 0.45, AT.clone + 0.55) });
-      text(x, "ask_visitor · propose_build", SB.x + 60, SB.y + 680, { font: FONT.mono(46, 500), color: gr, alpha: sa * prog(b, AT.ask - 0.1, AT.ask) });
-
-      const ak = prog(b, AT.ask, AT.ask + 0.12, E.outBack);
-      card(d, ASK.x, ASK.y, ASK.w, ASK.h, sa * clamp(ak * 3), ak);
-      if (ak > 0.9) {
-        text(d, "ask_visitor", ASK.x + 40, ASK.y + 66, { font: FONT.mono(46, 600), color: sig, alpha: sa });
-        text(d, tr("ch07.a.q"), ASK.x + 40, ASK.y + 140, { font: FONT.cjk(50, 600), alpha: sa, maxW: ASK.w - 80 });
-        const pickK = prog(b, AT.answer, AT.answer + 0.05);
-        pill(d, ASK.x + 40, ASK.y + 170, 400, 72, tr("ch07.a.o1"), FONT.cjk(44, 600), sa, pickK > 0 ? { fill: css("pink"), color: css("paper") } : {});
-        pill(d, ASK.x + 460, ASK.y + 170, 400, 72, tr("ch07.a.o2"), FONT.cjk(44, 600), sa);
-      }
-      architect(Ly.tp, b, sa);
-      const pk = prog(b, AT.plan, AT.plan + 0.12, E.outBack);
-      card(d, PLAN.x, PLAN.y, PLAN.w, PLAN.h, sa * clamp(pk * 3), pk);
-      if (pk > 0.9) {
-        text(d, "propose_build", PLAN.x + 40, PLAN.y + 66, { font: FONT.mono(46, 600), color: sig, alpha: sa });
-        text(d, tr("ch07.p.title"), PLAN.x + 40, PLAN.y + 146, { font: FONT.cjk(52, 600), alpha: sa, maxW: PLAN.w - 80 });
-        text(d, tr("ch07.p.rows"), PLAN.x + 40, PLAN.y + 216, { font: FONT.cjk(46, 600), color: gr, alpha: sa, maxW: PLAN.w - 80 });
-        text(d, "src/components/live/…", PLAN.x + 40, PLAN.y + 280, { font: FONT.mono(46, 500), color: gr, alpha: sa });
-        const gk = prog(b, AT.gh, AT.gh + 0.08);
-        if (gk > 0) {
-          K.fillRect(d, PLAN.x + 30, PLAN.y + 306, PLAN.w - 60, 60, sig, 0.12 * gk * sa);
-          tick(d, PLAN.x + 64, PLAN.y + 336, 30, prog(b, AT.gh + 0.12, AT.gh + 0.2), sa);
-          text(d, tr("ch07.p.gh"), PLAN.x + 104, PLAN.y + 352, { font: FONT.cjk(44, 600), alpha: sa * gk, maxW: PLAN.w - 150 });
-        }
-        const hit = prog(b, AT.build, AT.build + 0.05);
-        pill(d, PLAN.x + 40, PLAN.y + 378, 390, 68, "Open issue", FONT.mono(46, 600), sa);
-        pill(d, PLAN.x + 470, PLAN.y + 378, 390, 68, "Start build", FONT.mono(46, 600), sa, hit > 0 ? { fill: sig, stroke: sig, color: css("paper") } : {});
-        glow(e, PLAN.x + 665, PLAN.y + 412, 140, 0.45 * impact(b, AT.build, 0.3) * sa);
-      }
-    }
-
-    // Opus · Architect 是 Opus 卡右半边戴安全帽的 Clawd，不压卡上的字；裁在卡里，从卡底边冒出来。
-    const ARC = { cx: SB.x + 488, base: SB.y + 276, q: 9, rise: [11.26, 11.46] };
-    const CLAWD_FRAME_S = window.Clawd.FRAME_MS / 1000;
-    function architect(tp, b, a) {
-      const k = prog(b, ARC.rise[0], ARC.rise[1]);
-      if (k <= 0 || a <= 0) return;
-      const { cx, q } = ARC;
-      const fr = k < 1 ? { pose: "arms-up", offset: 0 }
-        : K.clawdSeq("jump", b, AT.plan, BARs) || K.clawdSeq("look", b, AT.clone, BARs) || { pose: "default", offset: 0 };
-      // 两段 hop 对齐 Clawd.SEQ.jump 里两组 arms-up 帧（第 2–4、8–10 帧）。
-      const f = CLAWD_FRAME_S / BARs, j0 = AT.plan;
-      const up = K.hop(b, j0 + 2 * f, j0 + 5 * f, 16) + K.hop(b, j0 + 8 * f, j0 + 11 * f, 10);
-      const bottom = ARC.base + (1 - E.outBack(k)) * 170 - up;
-      tp.save(); tp.beginPath(); tp.rect(SB.x + 52, SB.y + 72, 556, 216); tp.clip();
-      K.clawdFrame(tp, fr, cx, bottom, q, { alpha: a, poofColor: css("graphite") });
-      K.clawdProp(tp, "hardhat", cx, bottom, q, { color: css("pink"), ink: css("paper"), crouch: fr.offset || 0, alpha: a });
-      tp.restore();
-    }
-
-    const BR_Y = 1250, BR_X1 = 3300, PLAN_X = 2600, IMPL_X = 3050;
-    const PR = { x: 3330, y: 1190, w: 430, h: 120 };
-    const RT = { x: 2830, y: 870, w: 680, h: 170 };
-    function history(x, e, b) {
-      line(x, FIN_X - 960 - 150, ML, HEAD[0], ML, 3, css("pink"));
-      for (const cx of COMMITS) dot(x, cx, ML, 9, css("paper"), css("pink"), 2.6);
-      dot(x, HEAD[0], ML, 14, css("signal"), null, 0);
-    }
-    function build(Ly, b, a) {
-      const { x, d, e } = Ly, gr = css("graphite"), sig = css("signal");
-      if (a <= 0) return;
-      const bk = prog(b, 13.55, 13.75, E.io);
-      const pts = [[HEAD[0], ML]];
-      for (let i = 1; i <= 16; i++) { const t = i / 16, u = 1 - t; pts.push([u * u * u * HEAD[0] + 3 * u * u * t * 2250 + 3 * u * t * t * 2250 + t * t * t * 2400, u * u * u * ML + 3 * u * u * t * ML + 3 * u * t * t * BR_Y + t * t * t * BR_Y]); }
-      pts.push([BR_X1, BR_Y]);
-      polyline(x, pts, bk, 4, css("pink"), a);
-      text(x, "claude/build-<runId>", 2420, BR_Y + 80, { font: FONT.mono(46, 500), alpha: a * prog(b, 13.7, 13.8) });
-      const pc = prog(b, AT.planCommit, AT.planCommit + 0.05);
-      dot(x, PLAN_X, BR_Y, 12, css("paper"), css("pink"), 3, a * pc);
-      text(x, "builds/<runId>.md", PLAN_X, BR_Y - 44, { font: FONT.mono(44, 500), color: gr, align: "center", alpha: a * pc });
-      const pr = prog(b, AT.pr, AT.pr + 0.1, E.outBack);
-      card(d, PR.x, PR.y, PR.w, PR.h, a * clamp(pr * 3), pr);
-      if (pr > 0.9) text(d, "draft PR", PR.x + PR.w / 2, PR.y + 78, { font: FONT.mono(54, 600), align: "center", alpha: a });
-      const ra = prog(b, AT.pr + 0.1, AT.upload) * a;
-      card(d, RT.x, RT.y, RT.w, RT.h, ra);
-      if (ra > 0) {
-        text(d, "Actions · Claude Code", RT.x + 40, RT.y + 76, { font: FONT.mono(46, 600), alpha: ra, maxW: RT.w - 80 });
-        text(d, tr("ch07.b.actions"), RT.x + 40, RT.y + 140, { font: FONT.cjk(44, 600), color: gr, alpha: ra, maxW: RT.w - 80 });
-      }
-      const uk = prog(b, AT.upload, AT.implCommit, E.io);
-      if (uk > 0) {
-        K.dashed(x, IMPL_X, RT.y + RT.h, IMPL_X, lerp(RT.y + RT.h, BR_Y - 14, uk), 3, sig, [12, 9], a);
-        if (uk >= 1) arrowHead(x, IMPL_X, BR_Y - 14, Math.PI / 2, sig, a);
-        text(x, tr("ch07.b.upload"), IMPL_X + 30, 1140, { font: FONT.cjk(44, 600), color: sig, alpha: a * prog(b, AT.upload, AT.upload + 0.1), maxW: 760 });
-      }
-      const ic = prog(b, AT.implCommit, AT.implCommit + 0.05);
-      dot(x, IMPL_X, BR_Y, 12, sig, null, 0, a * ic);
-      glow(e, IMPL_X, BR_Y, 80, 0.5 * impact(b, AT.implCommit, 0.3) * a);
-      text(x, tr("ch07.b.review"), PR.x, PR.y + PR.h + 76, { font: FONT.cjk(46, 600), color: gr, alpha: a * prog(b, AT.review, AT.review + 0.1) });
-      text(x, tr("ch07.b.owner"), PR.x, PR.y + PR.h + 140, { font: FONT.cjk(46, 600), alpha: a * prog(b, AT.owner, AT.owner + 0.1) });
-    }
-
-    const PLATE_RECT = [-1700, -1300, 8200, 1900];
-    function render(f) {
-      BARs = f.BAR;
-      const b = f.bar;
-      const c = camAt(b), c0 = camAt(b - 1 / 60 / f.BAR);
-      const hitS = Math.max(impact(b, AT.accept, 0.1) * 0.5, impact(b, AT.block, 0.1), impact(b, AT.seal, 0.1), impact(b, AT.build, 0.12) * 0.6);
-      const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.012 * hitS), rot: 0 };
-      G.setCam(cam);
-      G.fill(plate, { uGridA: prog(b, 0.05, 0.6) * (1 - prog(b, AT.fade[0], AT.fin[1] - 0.02)), uPlate: PLATE_RECT });
-
-      const x = ink.begin(); ink.cam(cam);
-      const d = paperL.begin(); paperL.cam(cam);
-      const e = emit.begin(); emit.cam(cam);
-      const s = stampL.begin(); stampL.cam(cam);
-      const tp = top.begin(); top.cam(cam);
-      const Ly = { x, d, e, s, tp };
-
-      const keep = 1 - prog(b, AT.fade[0], AT.fade[1]);
-      const cardA = (1 - prog(b, 11.25, 11.45)) * (b < 13.3 ? 1 : 0);
-      if (cardA > 0) { d.save(); d.globalAlpha = cardA; chatCard(Ly, b); d.restore(); }
-      gates(Ly, b, prog(b, 2.4, 2.7) * (1 - prog(b, 5.3, 5.5)));
-      clef(Ly, b, prog(b, 4.8, 5.2) * (1 - prog(b, 7.75, 8.0)));
-      tools(Ly, b, prog(b, 7.6, 7.9) * (1 - prog(b, 9.6, 9.8)));
-      runner(Ly, MSG, b);
-      runner(Ly, CALL, b, 0.8);
-      runner(Ly, CALL_OUT, b, 0.8);
-      runner(Ly, MCP, b, 0.7);
-      sandbox(Ly, b, 1 - prog(b, 13.4, 13.6));
-      if (b >= 13.3) { history(x, e, b); build(Ly, b, keep); }
-
-      title(x, b);
-      nar(x, "ch07.n1a", 0, prog(b, 1.1, 1.6), win(b, 1.05, 1.15, 2.35, 2.45));
-      nar(x, "ch07.n1b", 1, prog(b, 1.6, 2.2), win(b, 1.05, 1.15, 2.35, 2.45));
-      nar(x, "ch07.n2a", 0, prog(b, 3.1, 3.6), win(b, 3.05, 3.15, 5.2, 5.3));
-      nar(x, "ch07.n2b", 1, prog(b, 3.6, 4.4), win(b, 3.05, 3.15, 5.2, 5.3));
-      nar(x, "ch07.n3a", 0, prog(b, 5.55, 6.0), win(b, 5.5, 5.6, 7.6, 7.7));
-      nar(x, "ch07.n3b", 1, prog(b, 6.25, 6.8), win(b, 5.5, 5.6, 7.6, 7.7));
-      nar(x, "ch07.n4a", 0, prog(b, 8.0, 8.6), win(b, 7.95, 8.05, 9.6, 9.7));
-      nar(x, "ch07.n4b", 1, prog(b, 8.9, 9.4), win(b, 7.95, 8.05, 9.6, 9.7));
-      nar(x, "ch07.n5a", 0, prog(b, 11.35, 11.9), win(b, 11.3, 11.4, 13.35, 13.45));
-      nar(x, "ch07.n5b", 1, prog(b, 11.9, 12.6), win(b, 11.3, 11.4, 13.35, 13.45));
-      nar(x, "ch07.n6a", 0, prog(b, 13.6, 14.1), win(b, 13.55, 13.65, 15.3, 15.4));
-      nar(x, "ch07.n6b", 1, prog(b, 14.9, 15.2), win(b, 13.55, 13.65, 15.3, 15.4));
-
-      G.composite(ink.upload(), { mode: G.MODE.ink, seed: 3.7 });
-      G.composite(paperL.upload(), { mode: G.MODE.paper });
-      G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.4 });
-      G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 6.2 });
-      G.composite(top.upload(), { mode: G.MODE.normal });
-
-      const sh = hitS * 6;
-      f.post = {
-        bloom: 0.55, threshold: 0.95, halation: 0.18, grain: 0.042, vignette: 0.26, ca: 0.35,
-        shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
-        blur: [(c0[0] - c[0]) * c[2], (c0[1] - c[1]) * c[2]], zoomBlur: clamp(Math.log(c[2] / c0[2]), -0.2, 0.2),
+    // Clawd 的格子出自 ../clawd.js：18 列 × 6 行，每格宽 q、高 2q；q = 2 时是 36×24 个游戏像素。
+    function clawd(cx, bottom, q = 2, o = {}) {
+      const { pose = "default", crouch = 0, flip = false, body = C.o, clipR = 1e9, prop = null } = o;
+      const { body: B, eyes: EY } = window.Clawd.cells(pose, crouch);
+      const x0 = Math.round(cx - 9 * q), y0 = Math.round(bottom - 12 * q);
+      const put = (list, col) => {
+        c.fillStyle = col;
+        for (const [qx, qy] of list) { const x = x0 + (flip ? 17 - qx : qx) * q, w = Math.min(q, clipR - x); if (w > 0) px(x, y0 + qy * 2 * q, w, 2 * q); }
       };
+      put(B, body); put(EY, C.k);
+      const hx = Math.round(cx), hy = y0 + crouch * 2 * q;
+      if (prop === "wiz") spr(WIZ, hx - 6, hy - 8);
+      else if (prop === "wiz1") spr(WIZ1, hx - 4, hy - 5);
+      else if (prop === "crown") spr(CROWN, hx - 4, hy - 5);
+      else if (prop === "hard") spr(HARD, hx - 8, hy - 5);
+      else if (prop === "sprout") spr(SPROUT, hx - 1, hy - 3);
     }
-    function init() { plate = G.pass(K.PLATE.paper); ink = G.layer("ink"); paperL = G.layer("paper"); emit = G.layer("emit", 0.5); stampL = G.layer("stamp"); top = G.layer("top"); }
+    // 不是 Claude 的角色（守卫、Clef、Clairic、跑腿的 Worker）画成小人，免得和 Clawd 混。
+    function chibi(cx, bottom, o) {
+      const { robe, trim = robe, skin = C.s, hat = null, face = 0, monocle = false } = o;
+      cx = Math.round(cx); bottom = Math.round(bottom);
+      const hy = bottom - 18;
+      R(cx - 6, bottom - 2, 5, 2, C.k); R(cx + 1, bottom - 2, 5, 2, C.k);
+      R(cx - 7, bottom - 13, 14, 11, C.k); R(cx - 6, bottom - 12, 12, 10, robe); R(cx - 1, bottom - 12, 2, 10, trim);
+      R(cx - 8, bottom - 9, 2, 3, C.k); R(cx + 6, bottom - 9, 2, 3, C.k); R(cx - 7, bottom - 8, 1, 1, skin); R(cx + 6, bottom - 8, 1, 1, skin);
+      if (hat === "hood") { disc(cx, hy, 7, C.k); disc(cx, hy, 6, robe); R(cx - 1, hy - 9, 2, 3, robe); R(cx - 1, hy - 10, 2, 1, C.k); disc(cx + face, hy + 1, 4, skin); }
+      else { disc(cx, hy, 6, C.k); disc(cx, hy, 5, skin); }
+      R(cx - 3 + face, hy, 1, 2, C.k); R(cx + 2 + face, hy, 1, 2, C.k);
+      if (monocle) { R(cx + 1 + face, hy - 2, 3, 1, C.y); R(cx + 1 + face, hy + 2, 3, 1, C.y); R(cx + face, hy - 1, 1, 3, C.y); R(cx + 4 + face, hy - 1, 1, 3, C.y); }
+      if (hat === "helm") {
+        for (let dy = -6; dy <= -1; dy++) { const hw = Math.round(Math.sqrt(36 - dy * dy)); R(cx - hw, hy + dy, 2 * hw + 1, 1, dy === -6 ? C.k : C.l); }
+        R(cx - 6, hy - 1, 13, 1, C.d); R(cx - 1, hy - 10, 2, 4, C.r);
+      } else if (hat === "cap") {
+        for (let dy = -6; dy <= -2; dy++) { const hw = Math.round(Math.sqrt(36 - dy * dy)); R(cx - hw, hy + dy, 2 * hw + 1, 1, dy === -6 ? C.k : C.c); }
+        R(cx - 7 + face * 4, hy - 2, 15, 1, C.k); R(cx - 1, hy - 5, 2, 2, C.w);
+      } else if (hat === "beret") {
+        for (let dy = -7; dy <= -3; dy++) { const hw = Math.round(Math.sqrt(49 - dy * dy)); R(cx - hw, hy + dy, 2 * hw + 1, 1, dy === -7 ? C.k : C.b); }
+        R(cx, hy - 9, 1, 2, C.k); R(cx + 3, hy - 6, 1, 1, C.y);
+      }
+    }
+    function dashes(x0, x1, y, b, col, dir = -1) {
+      const off = Math.floor(b * 64) % 6;
+      c.fillStyle = col;
+      for (let x = x0 + (dir < 0 ? 6 - off : off); x < x1; x += 6) px(x, y, 3, 1);
+    }
+    function spinner(cx, cy, b) {
+      const i0 = Math.floor(b * 16) % 8;
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; R(cx + Math.round(Math.cos(a) * 4), cy + Math.round(Math.sin(a) * 4), 1, 1, i === i0 ? C.w : i === (i0 + 7) % 8 ? C.l : C.g); }
+    }
+    function quake(b) {
+      for (const t of [AT.lift[1], AT.blk, AT.full, AT.seal, AT.item]) if (b >= t && b < t + 0.06) return F.frame % 2 ? 1 : -1;
+      return 0;
+    }
+    function fadeAt(b) {
+      let a = 0;
+      for (const t of CUTS) {
+        if (b >= t - 0.125 && b < t) a = Math.max(a, (b - t + 0.125) / 0.125);
+        else if (b >= t && b < t + 0.125) a = Math.max(a, 1 - (b - t) / 0.125);
+      }
+      return Math.round(a * 4) / 4;
+    }
+
+    // 0 · 标题：第 06 章的横线成了显像管开机那一道亮线，笔尖那一点跳起来变成 Clawd。
+    // AT.crt 之前那一帧（白线、橙点的位置与颜色）须与 ch06.js 的 inkNight 收尾末帧同步。
+    function sTitle(b) {
+      R(0, 0, GW, GH, C.k);
+      if (b < AT.crt[0]) { R(0, 107, GW, 2, C.w); R(268, 106, 4, 4, C.o); return; }
+      const half = Math.max(1, Math.round(108 * prog(b, AT.crt[0], AT.crt[1], E.out))), cy0 = Math.round((108 - half) * KS);
+      c.save(); c.beginPath(); c.rect(0, cy0, c.canvas.width, Math.round((108 + half) * KS) - cy0); c.clip();
+      const ly = -Math.round(36 * (1 - prog(b, AT.logo, AT.logo + 0.125, E.out))), t = tr("ch07.title"), sub = "Talk to God · ai Worker · Clef · Claude";
+      const pushX = 192 - Math.floor(W(tr("ch07.push"), 8, "pix") / 2), holes = [];
+      if (b >= AT.logo) holes.push(textBox(tr("ch07.chap"), 32, 46 + ly, 10), [28, 50 + ly, 38 + W(t, 24, "pix"), 82 + ly], textBox(sub, 32, 94, 10, 2, "mono"));
+      if (on(b, ...AT.push)) holes.push(textBox(tr("ch07.push"), pushX, 146, 8, 2, "pix"));
+      stars(b, 104, 3, holes);
+      for (let i = 0; i < 26; i++) {
+        const x = Math.floor(K.hash(i * 5.3 + 9) * GW), y = 112 + Math.floor(K.hash(i * 2.9 + 4) * 96);
+        if (!inHole(x, y, holes) && !inHole(x + 1, y, holes)) R(x, y, 2, 1, C.d);
+      }
+      R(0, 107, GW, 2, C.w);
+      if (b >= AT.logo) {
+        T(tr("ch07.chap"), 32, 46 + ly, { s: 10, col: C.f });
+        T(t, 34, 78 + ly, { s: 24, col: C.n, k: "pix" }); T(t, 32, 76 + ly, { s: 24, k: "pix" });
+        T(sub, 32, 94, { s: 10, col: C.l, reveal: prog(b, AT.logo + 0.125, AT.push[1]), k: "mono" });
+      }
+      c.restore();
+      if (half < 108) { R(0, 107 - half, GW, 1, C.l); R(0, 108 + half, GW, 1, C.l); }
+      const [p0, p1] = AT.pop;
+      if (b < p0) R(268, 106, 4, 4, C.o);
+      else {
+        const pose = b < p1 ? "arms-up" : on(b, AT.menu, AT.pick) ? (blink(b) ? "look-left" : "look-right") : on(b, AT.pick, AT.pick + 0.25) ? "arms-up" : "default";
+        clawd(270, 107 - hopH(b, p0, p1, 22) - hopH(b, AT.pick, AT.pick + 0.125, 6), b < p0 + 0.04 ? 1 : 2, { pose });
+        if (on(b, p1, p1 + 0.08)) { R(244, 104, 3, 2, C.g); R(294, 104, 3, 2, C.g); R(240, 101, 2, 2, C.d); R(299, 101, 2, 2, C.d); }
+      }
+      if (on(b, ...AT.push) && blink(b, 8)) T(tr("ch07.push"), pushX, 146, { s: 8, k: "pix" });
+      if (box(140, 122, 104, 40, opened(b, AT.menu))) {
+        const sel = b >= AT.pick && blink(b, 16);
+        T(tr("ch07.new"), 160, 138, { col: sel ? C.y : C.w });
+        T(tr("ch07.cont"), 160, 154, { col: C.g });
+        if (blink(b) || b >= AT.pick) spr(CUR, 150, 131, sel ? { w: C.y } : null);
+      }
+    }
+
+    // 1 · 神殿门口：隐私说明。消息先举在 Clawd 头上，点接受之后才带进门。
+    function sTemple(b) {
+      R(0, 0, GW, 152, C.D); stars(b, 90, 11);
+      disc(334, 28, 8, C.s); disc(338, 25, 7, C.D);
+      R(0, 152, GW, 64, C.d); R(0, 152, GW, 1, C.g);
+      for (let i = 0; i < 25; i++) { R(i * 16, 155, 13, 3, C.g); R(i * 16 + 8, 160, 13, 3, C.g); }
+      for (let i = 0; i < 3; i++) { R(116 - i * 4, 140 + i * 4, 152 + i * 8, 4, C.l); R(116 - i * 4, 143 + i * 4, 152 + i * 8, 1, C.g); }
+      for (const x of [122, 154, 218, 250]) {
+        R(x, 60, 12, 80, C.l); R(x + 9, 60, 3, 80, C.g); R(x + 3, 62, 1, 76, C.g); R(x + 6, 62, 1, 76, C.g);
+        R(x - 2, 56, 16, 4, C.w); R(x - 2, 59, 16, 1, C.g); R(x - 2, 136, 16, 4, C.w);
+      }
+      R(108, 46, 168, 10, C.w); R(108, 54, 168, 2, C.g);
+      for (let y = 22; y < 46; y++) { const hw = Math.round(((y - 22) / 24) * 86); R(192 - hw, y, 2 * hw, 1, C.l); R(192 - hw, y, 2, 1, C.g); R(192 + hw - 2, y, 2, 1, C.g); }
+      R(158, 33, 68, 13, C.y); R(159, 34, 66, 11, C.e); TC("Talk to God", 192, 43, { s: 10, col: C.y });
+      R(174, 98, 36, 42, C.g); for (let y = 84; y < 98; y++) { const hw = Math.round(Math.sqrt(Math.max(0, 324 - (98 - y) ** 2))); R(192 - hw, y, 2 * hw, 1, C.g); }
+      R(176, 100, 32, 40, C.k); for (let y = 86; y < 100; y++) { const hw = Math.round(Math.sqrt(Math.max(0, 256 - (100 - y) ** 2))); R(192 - hw, y, 2 * hw, 1, C.k); }
+      if (on(b, AT.enter[1], AT.door1 + 0.2)) R(180, 104, 24, 36, C.e);
+      for (const tx of [92, 292]) {
+        R(tx - 1, 122, 3, 30, C.u); R(tx - 6, 118, 13, 4, C.e); R(tx - 5, 122, 11, 1, C.k);
+        spr(FLAME[Math.floor(b * 12 + tx) % 3], tx - 3, 108);
+      }
+      if (b < AT.door1) {
+        let x = walk(b, AT.walk1[0], AT.walk1[1], -20, 150), y = 152;
+        if (b >= AT.enter[0]) { x = walk(b, AT.enter[0], AT.enter[1], 150, 192); y = 152 - 4 * Math.min(3, Math.floor(prog(b, AT.enter[0], AT.enter[1]) * 4)); }
+        y -= bob(b, ...AT.walk1) + bob(b, ...AT.enter);
+        const hold = b >= AT.send1;
+        clawd(x, y, 2, { pose: hold ? "arms-up" : "default" });
+        if (hold) spr(ENV, x - 5, y - 33 - (b < AT.send1 + 0.06 ? 3 : 0));
+      }
+      if (box(24, 4, 336, 156, opened(b, AT.notice) * (1 - prog(b, AT.close, AT.close + 0.0625)))) notice(b);
+    }
+    function lineupCard(x, y, kind, b) {
+      const chosen = kind === 1 && b >= AT.chose, hov = b >= AT.cur && (kind === 1) === (b >= AT.claude);
+      box(x, y, 140, 50, 1, C.k, chosen ? C.y : hov ? C.w : C.g);
+      const name = kind ? "Claude" : "DeepSeek";
+      T(name, x + 8, y + 14, { s: 10 });
+      if (!kind) T(tr("ch07.c.def"), x + 14 + W(name, 10), y + 14, { s: 10, col: C.c });
+      const j = chosen ? hopH(b, AT.chose, AT.chose + 0.125, 4) : 0;
+      if (!kind) { spr(PAWN, x + 26, y + 22); spr(PAWN, x + 58, y + 22); spr(PHAT, x + 59, y + 19); }
+      else { clawd(x + 30, y + 33 - j, 1, { prop: "sprout" }); clawd(x + 62, y + 33 - j, 1, { prop: "wiz1" }); }
+      T(tr("ch07.c.roles"), x + 8, y + 45, { s: 10, col: C.l });
+      if (hov && (blink(b) || chosen)) spr(CUR, x - 8, y + 20, chosen ? { w: C.y } : null);
+    }
+    function notice(b) {
+      T(tr("ch07.c.label"), 36, 21);
+      T("Turnstile", 334 - W("Turnstile", 8), 19, { s: 8, col: C.l });
+      if (b >= AT.ts[1]) spr(TICK, 341, 13, { w: C.H }); else spinner(344, 16, b);
+      if (b >= AT.lineup) {
+        T(tr("ch07.c.lineup"), 36, 37, { s: 10, col: C.y });
+        lineupCard(44, 42, 0, b); lineupCard(200, 42, 1, b);
+      }
+      if (b >= AT.dest) {
+        T(tr("ch07.c.dest"), 36, 106, { s: 10, col: C.y });
+        ["Cloudflare Workers", "Workers AI · Clef · Clairic", "Anthropic · Claude API", tr("ch07.c.browser")].forEach((s, i) => {
+          if (b < AT.rows[i]) return;
+          const x = i % 2 ? 200 : 44, y = 120 + Math.floor(i / 2) * 14;
+          R(x - 7, y - 6, 3, 3, C.c); T(s, x, y, { s: 10 });
+        });
+      }
+      if (b >= AT.opts) {
+        const flash = b >= AT.accept && blink(b, 16);
+        T(tr("ch07.c.accept"), 144, 152, { col: flash ? C.y : C.w }); T(tr("ch07.c.decline"), 216, 152, { col: C.l });
+        if (b >= AT.accept || blink(b)) spr(CUR, 135, 144, flash ? { w: C.y } : null);
+      }
+    }
+
+    // 2 · 城门：城头的守卫问「是人吗」（通行证或 Turnstile），闸门升起；ChatQuota 三道额度一项一项打勾；超额就是 429 的「继续？」。
+    // 城楼的砖缝按城楼左上角对齐，Clawd 穿过门洞后把两根门柱重画一遍盖住它，看起来是从门洞里穿过去的。
+    function stone(x0, y0, w, h) {
+      R(x0, y0, w, h, C.l);
+      for (let y = y0; y < y0 + h; y++) {
+        const r = Math.floor((y - 20) / 6);
+        if ((y - 20) % 6 === 0) { R(x0, y, w, 1, C.g); continue; }
+        for (let x = x0; x < x0 + w; x++) if ((((x - 166 - (r % 2) * 6) % 12) + 12) % 12 === 0) R(x, y, 1, 1, C.g);
+      }
+    }
+    const archHW = (y) => (y >= 104 ? 18 : Math.round(Math.sqrt(Math.max(0, 324 - (104 - y) ** 2))));
+    function sGate(b) {
+      R(0, 0, GW, 152, C.D); stars(b, 56, 23);
+      const gy = Math.round(24 * prog(b, AT.pass[0], AT.pass[0] + 0.1));
+      chibi(248, 64 + gy, { robe: C.b, trim: C.y, hat: "helm", face: -1 });
+      R(237, 30 + gy, 1, 34, C.u); spr(SPEAR, 235, 25 + gy);
+      R(0, 64, GW, 88, C.g);
+      for (let y = 64, r = 0; y < 152; y += 8, r++) { R(0, y, GW, 1, C.d); for (let x = (r % 2) * 8; x < GW; x += 16) R(x, y, 1, 8, C.d); }
+      for (let x = 0; x < GW; x += 16) { R(x, 56, 10, 8, C.g); R(x, 56, 10, 1, C.l); R(x + 9, 56, 1, 8, C.d); }
+      R(0, 64, GW, 1, C.l);
+      R(0, 152, GW, 64, C.e);
+      for (let i = 0; i < 40; i++) R(Math.floor(K.hash(i * 1.3 + 2) * GW), 154 + Math.floor(K.hash(i * 4.1) * 11), 2, 1, C.u);
+      stone(166, 20, 52, 132);
+      for (const mx of [166, 188, 210]) { stone(mx, 12, 8, 8); R(mx, 12, 8, 1, C.w); }
+      R(164, 12, 2, 140, C.d); R(218, 12, 2, 140, C.d);
+      const top0 = 86 - Math.round(70 * prog(b, AT.lift[0], AT.lift[1], E.io));
+      for (let y = 86; y < 152; y++) {
+        const hw = archHW(y);
+        R(192 - hw, y, 2 * hw, 1, C.k);
+        if (y < top0 || y >= top0 + 66) continue;
+        if ((y - top0) % 16 === 8) R(192 - hw, y, 2 * hw, 1, C.g);
+        for (let x = 177; x < 210; x += 6) if (Math.abs(x - 192) < hw) R(x, y, 2, 1, y === top0 + 65 ? C.w : C.l);
+      }
+      let x = walk(b, AT.walk2[0], AT.walk2[1], -20, 138);
+      if (b >= AT.pass[0]) x = walk(b, AT.pass[0], AT.pass[1], 138, 270);
+      if (b >= AT.exit2[0]) x = walk(b, AT.exit2[0], AT.exit2[1], 270, 420);
+      const y = 152 - bob(b, ...AT.walk2) - bob(b, ...AT.pass) - bob(b, ...AT.exit2);
+      clawd(x, y, 2, { pose: "arms-up" }); spr(ENV, x - 5, y - 33);
+      stone(166, 86, 8, 66); stone(210, 86, 8, 66); R(164, 86, 2, 66, C.d); R(218, 86, 2, 66, C.d);
+      if (on(b, ...AT.who)) bubble(tr("ch07.g.who"), 248, 34);
+      const h1 = tr("ch07.g.human"), h2 = tr("ch07.g.pass"), hw = Math.max(W(h1), W(h2, 10)) + 40;
+      if (box(8, 6, hw, 40, opened(b, AT.human))) {
+        T(h1, 18, 22); T(h2, 18, 38, { s: 10, col: C.l });
+        if (b >= AT.tick) spr(TICK, 8 + hw - 17, 13, { w: C.H });
+      }
+      const rows = ["ch07.q.r1", "ch07.q.r2", "ch07.q.r3"].map(tr), head = "ChatQuota.admitVisitor";
+      const qw = Math.max(W(head, 10, "mono"), ...rows.map((s) => W(s, 10) + 14)) + 24, qx = 378 - qw;
+      if (box(qx, 6, qw, 74, opened(b, AT.pass[1]))) {
+        T(head, qx + 12, 21, { s: 10, col: C.c, k: "mono" });
+        rows.forEach((s, i) => {
+          const ry = 38 + i * 15, done = b >= AT.quota[i];
+          R(qx + 12, ry - 8, 9, 9, C.w); R(qx + 13, ry - 7, 7, 7, C.n);
+          if (done) spr(TICK, qx + 13, ry - 7, { w: C.H });
+          T(s, qx + 26, ry, { s: 10, col: done ? C.w : C.l });
+        });
+      }
+      const pk = opened(b, AT.blk) * (1 - prog(b, AT.clear, AT.clear + 0.0625));
+      if (pk > 0) { c.globalAlpha = 0.5; R(0, 0, GW, GH, C.k); c.globalAlpha = 1; }
+      if (box(84, 40, 216, 112, pk, C.k)) {
+        T(tr("ch07.q.if"), 96, 58, { s: 10, col: C.l });
+        TC("429", 192, 90, { s: 24, col: C.r, k: "pix" });
+        TC("Too many prayers.", 192, 106, { s: 10 });
+        TC(tr("ch07.q.stop"), 192, 122, { s: 10, col: C.l });
+        if (b >= AT.cont) {
+          const t = tr("ch07.q.cont"), w = W(t), x0 = 192 - Math.floor((w + 10) / 2);
+          T(t, x0, 142);
+          if (blink(b)) spr(CUR, x0 + w + 6, 135);
+        }
+      }
+    }
+
+    // 3a · 旅店柜台：Clef（掌柜，记档次和分组）与 Clairic（鉴定师，从这句话里捡出点名的名字）同时开工。
+    function sInn(b) {
+      R(0, 0, GW, 152, C.u);
+      for (let y = 0, r = 0; y < 112; y += 12, r++) { R(0, y + 11, GW, 1, C.e); for (let x = (r % 3) * 37; x < GW; x += 111) R(x, y, 1, 12, C.e); }
+      R(8, 56, 40, 36, C.e); R(11, 59, 34, 30, C.D); R(27, 59, 2, 30, C.e); R(11, 73, 34, 2, C.e);
+      R(16, 64, 1, 1, C.w); R(37, 82, 1, 1, C.l); disc(39, 65, 3, C.s);
+      for (const sy of [72, 96]) {
+        R(334, sy, 46, 3, C.e);
+        for (let i = 0; i < 5; i++) { const h = 5 + (i % 3) * 2; R(337 + i * 9, sy - h, 5, h, [C.r, C.G, C.c, C.y, C.v][i % 5]); R(338 + i * 9, sy - h, 1, 1, C.w); }
+      }
+      R(22, 0, 1, 8, C.k); R(18, 8, 9, 10, C.k); R(19, 9, 7, 8, blink(b, 6) ? C.y : C.f);
+      R(0, 152, GW, 64, C.e); for (let y = 157; y < 216; y += 6) R(0, y, GW, 1, C.u);
+      chibi(156, 118, { robe: C.b, trim: C.w, hat: "beret" });
+      chibi(246, 118, { robe: C.m, trim: C.v, hat: "hood", monocle: true });
+      R(56, 112, 284, 3, C.s); R(56, 115, 284, 37, C.u); R(56, 115, 284, 1, C.e);
+      for (let x = 56; x <= 340; x += 40) R(x, 118, 1, 32, C.e);
+      R(56, 150, 284, 2, C.e);
+      plate("Clef", 156, 138); plate("Clairic", 246, 138);
+      const cx = walk(b, AT.walk3[0], AT.walk3[1], -20, 92), cy = 152 - bob(b, ...AT.walk3), put = b >= AT.scroll;
+      clawd(cx, cy, 2, { pose: put ? "default" : "arms-up" });
+      if (!put) spr(ENV, cx - 5, cy - 33);
+      else if (b < AT.scroll + 0.125) spr(ENV, 116, 104);
+      const m = tr("ch07.msg1"), mw = W(m) + 20, sx = 192 - Math.floor(mw / 2), i0 = m.indexOf(ITEM);
+      const ix = sx + 10 + Math.floor(K.measure(c, m.slice(0, Math.max(0, i0)), face(12))), iw = W(ITEM);
+      if (box(sx, 28, mw, 22, opened(b, AT.scroll), C.s, C.e)) {
+        if (b >= AT.grab[0] && i0 >= 0) R(ix - 1, 32, iw + 1, 14, C.y);
+        T(m, sx + 10, 43, { col: C.e });
+        if (on(b, ...AT.mag)) {
+          const lx = Math.round(lerp(sx + 12, sx + mw - 12, prog(b, ...AT.mag, E.io))), ly = 37;
+          ring(lx, ly, 7, C.k); ring(lx, ly, 6, C.p); ln(lx + 5, ly + 5, lx + 9, ly + 9, C.e); ln(lx + 6, ly + 5, lx + 10, ly + 9, C.e);
+        }
+      }
+      if (on(b, AT.bang, AT.bang + 0.45)) { spr(BANG, 151, 81); spr(BANG, 241, 81); }
+      const both = tr("ch07.k.both"), bw = W(both) + 24;
+      if (box(192 - Math.floor(bw / 2), 4, bw, 21, opened(b, AT.bang + 0.0625))) TC(both, 192, 19);
+      const l1 = tr("ch07.k.tier"), l2 = tr("ch07.k.group"), lw = Math.max(W(l1, 10), W(l2, 10)) + 24;
+      if (box(190 - lw, 52, lw, 31, opened(b, AT.ledger[0]))) {
+        if (b >= AT.ledger[1]) T(l1, 202 - lw, 65, { s: 10 });
+        if (b >= AT.ledger[2]) T(l2, 202 - lw, 78, { s: 10 });
+      }
+      const pk = tr("ch07.k.pick"), pw = W(pk + ITEM, 10) + 24, tx = 214 + W(pk, 10);
+      if (box(202, 52, pw, 31, opened(b, AT.grab[0]))) {
+        T(pk, 214, 72, { s: 10 });
+        if (b >= AT.grab[1]) T(ITEM, tx, 72, { s: 10, col: C.y });
+      }
+      if (on(b, ...AT.grab) && i0 >= 0) {
+        const k = prog(b, ...AT.grab, E.io), fx = Math.round(lerp(ix, tx, k)), fy = Math.round(lerp(43, 72, k)), fw = W(ITEM, 10);
+        R(fx - 3, fy - 11, fw + 6, 15, C.y); R(fx - 2, fy - 10, fw + 4, 13, C.k);
+        T(ITEM, fx, fy, { s: 10, col: C.y });
+      }
+    }
+
+    // 3b · 三层客栈：同一阵容三档一层一层。Clef 指的神那层门口挂着满员，就下楼到先知那层，绝不往上；右边一栏是招牌。
+    const FLOORS = [{ y1: 54, bg: C.L, prop: "crown", key: "ch07.f.god" }, { y1: 98, bg: C.v, prop: "wiz", key: "ch07.f.prophet" }, { y1: 142, bg: C.s, prop: "sprout", key: "ch07.f.fry" }];
+    function stairs(xTop, yTop) { for (let i = 0; i < 11; i++) { const sx = xTop - 4 * (i + 1), sy = yTop + 4 * i; R(sx, sy, 4, 4, C.e); R(sx, sy, 4, 1, C.u); } }
+    function sFloors(b) {
+      R(0, 0, GW, GH, C.D);
+      stars(b, 150, 31, [textBox("Clef", 4, 24, 8, 3), [20, 18, 30, 34]]);
+      R(0, 146, GW, 70, C.d);
+      R(30, 8, 274, 140, C.e);
+      const got = b >= AT.hand[1];
+      FLOORS.forEach((fl, i) => {
+        const y0 = fl.y1 - 40, name = tr(fl.key);
+        R(36, y0, 160, 40, fl.bg); R(200, y0, 98, 40, C.g);
+        R(196, y0, 4, 40, C.e);
+        if (i === 1 && b >= AT.door) R(196, fl.y1 - 26, 4, 26, C.k); else { R(196, fl.y1 - 26, 4, 26, C.u); R(197, fl.y1 - 14, 1, 2, C.y); }
+        clawd(166, fl.y1, 2, { prop: fl.prop });
+        if (i === 0) for (const [k, [sx, sy]] of [[146, 24], [157, 18], [177, 19], [189, 27]].entries()) if (blink(b + k * 0.13, 8)) R(sx, sy, 1, 1, C.w);
+        plate(name, 40 + Math.ceil(W(name, 10) / 2) + 3, y0 + 12, { fg: C.w, bg: C.n });
+      });
+      if (got) spr(ENV, 176, 80);
+      stairs(298, 58); stairs(298, 102);
+      plate(tr("ch07.f.lineup"), 343, 17, { fg: C.y, bg: C.k, edge: C.y });
+      if (b >= AT.point) {
+        if (blink(b, 8) || b >= AT.full) spr(CUR.map((r) => r.replace(/w/g, "y")), 22, 27);
+        T("Clef", 4, 24, { s: 8, col: C.y });
+      }
+      if (b >= AT.full) {
+        const fu = tr("ch07.f.full"), fw = W(fu, 10) + 8, fx = 343 - Math.floor(fw / 2), sy = 44 - (b < AT.full + 0.06 ? 2 : 0);
+        R(304, 26, fx + fw - 300, 2, C.e); R(fx + 3, 28, 1, sy - 39, C.e); R(fx + fw - 4, 28, 1, sy - 39, C.e);
+        R(fx - 1, sy - 11, fw + 2, 15, C.k); R(fx, sy - 10, fw, 13, C.r); T(fu, fx + 4, sy, { s: 10 });
+      }
+      let hx = 236, hy = 54;
+      if (b >= AT.down[0]) hx = walk(b, AT.down[0], AT.down[1], 236, 290);
+      if (b >= AT.down[1]) { const k = prog(b, AT.down[1], AT.down[2]); hx = Math.round(lerp(290, 254, k)); hy = 54 + 4 * Math.floor(k * 11); }
+      if (b >= AT.down[2]) { hx = walk(b, AT.down[2], AT.down[3], 254, 216); hy = 98; }
+      if (b >= AT.hop[0]) { hx = walk(b, ...AT.hop, 216, 206); hy = 98 - hopH(b, ...AT.hop, 8); }
+      const moving = on(b, AT.down[0], AT.down[3]);
+      clawd(hx, hy - (moving ? Math.floor(b * 16) % 2 : 0), 2, { pose: on(b, AT.hand[0], AT.hand[1] + 0.1) ? "arms-up" : "default", flip: b >= AT.down[2] });
+      if (b < AT.hand[0]) spr(ENV, hx - 5, hy - 33);
+      else if (b < AT.hand[1]) { const k = prog(b, ...AT.hand); spr(ENV, Math.round(lerp(hx - 5, 176, k)), Math.round(lerp(hy - 33, 80, k))); }
+      const dn = tr("ch07.f.down"), dw = W(dn, 10) + 26;
+      if (box(380 - dw, 64, dw, 19, opened(b, AT.down[0]))) { T(dn, 392 - dw, 77, { s: 10 }); spr(DOWN, 368, 72); }
+      if (b >= AT.never) {
+        const nv = tr("ch07.f.never"), nw = W(nv, 10) + 34;
+        if (box(380 - nw, 108, nw, 19, opened(b, AT.never))) { T(nv, 392 - nw, 121, { s: 10 }); spr(UP, 363, 113); ln(361, 112, 371, 122, C.r); ln(362, 112, 372, 122, C.r); }
+      }
+    }
+
+    // 4 · 街上：模型开口之前，跑腿的 Worker 先去 core 的档案馆把预取读回来；镜头再往右走，同一座档案馆也给浏览器看，同一套工具也挂在 /mcp 上。
+    function archive(X) {
+      const x0 = X(236);
+      R(x0, 104, 96, 48, C.l);
+      for (let y = 104, r = 0; y < 152; y += 6, r++) { R(x0, y, 96, 1, C.g); for (let x = x0 + (r % 2) * 8; x < x0 + 96; x += 16) R(x, y, 1, 6, C.g); }
+      R(x0 - 6, 98, 108, 6, C.w); R(x0 - 6, 103, 108, 1, C.g);
+      for (const wx of [X(244), X(304)]) { R(wx, 112, 22, 16, C.e); for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) R(wx + 2 + i * 7, 114 + j * 7, 5, 4, (i + j) % 2 ? C.s : C.l); }
+      R(X(274), 128, 20, 24, C.e); R(X(276), 130, 16, 22, C.k);
+      plate("core · PublicStatus", X(284), 97, { fg: C.e, bg: C.s, k: "mono" });
+    }
+    function sStreet(b) {
+      const cam = Math.round(136 * prog(b, AT.mon, AT.mon + 0.25, E.io)), X = (wx) => Math.round(wx - cam);
+      R(0, 0, GW, 152, C.D); stars(b, 80, 41);
+      R(0, 152, GW, 64, C.d); R(0, 152, GW, 1, C.g);
+      for (let y = 70; y < 92; y++) { const hw = Math.round(((y - 70) / 22) * 62); R(X(58) - hw, y, 2 * hw, 1, C.R); }
+      R(X(0), 92, 116, 60, C.u); R(X(0), 92, 116, 2, C.e);
+      R(X(6), 102, 104, 50, C.s); R(X(6), 102, 104, 1, C.e);
+      clawd(X(44), 152, 2, { prop: "wiz" });
+      R(X(28), 136, 36, 3, C.e); R(X(30), 139, 2, 13, C.e); R(X(60), 139, 2, 13, C.e);
+      if (b >= AT.back[1]) { spr(SCROLL, X(32), 131); spr(SCROLL, X(41), 131); }
+      clawd(X(88), 152, 2, {});
+      archive(X);
+      R(X(175), 112, 2, 40, C.u); plate("PUBLIC_STATUS", X(176), 112, { s: 8, k: "mono" });
+      let px = 128, face = 1, inside = false;
+      if (b >= AT.run[0]) px = walk(b, ...AT.run, 128, 284);
+      if (b >= AT.run[1]) inside = b < AT.back[0];
+      if (b >= AT.back[0]) { px = walk(b, ...AT.back, 284, 128); face = b < AT.back[1] ? -1 : 1; }
+      const py = 152 - bob(b, ...AT.run) - bob(b, ...AT.back);
+      if (!inside) chibi(X(px), py, { robe: C.G, trim: C.H, hat: "cap", face });
+      if (on(b, AT.back[0], AT.back[1] + 0.05)) { spr(SCROLL, X(px) - 8, py - 32); spr(SCROLL, X(px) + 1, py - 32); }
+      if (b >= AT.mon) {
+        const mx = X(362);
+        R(mx + 16, 136, 4, 14, C.g); R(mx + 10, 150, 16, 2, C.g);
+        R(mx, 112, 36, 26, C.l); R(mx + 2, 114, 32, 22, C.k);
+        R(mx + 4, 116, 12, 8, C.o); R(mx + 18, 116, 14, 3, C.c); R(mx + 18, 121, 10, 3, C.l); R(mx + 4, 126, 28, 2, C.g); R(mx + 4, 130, 20, 2, C.g);
+        dashes(X(332), mx, 124, b, C.y, 1);
+      }
+      const t1 = tr("ch07.t.pre"), t2 = tr("ch07.t.first");
+      const rowsA = [["get_site_status · listening", AT.pre[0], C.w, "mono"], [tr("ch07.t.again"), AT.pre[1], C.w], [tr("ch07.t.game"), AT.game, C.c], [tr("ch07.t.err"), AT.err, C.c]];
+      const aw = Math.max(W(t1) + 8 + W(t2, 10), ...rowsA.map((r) => W(r[0], 10, r[3]))) + 24;
+      if (box(8, 4, aw, 80, opened(b, AT.winA) * (1 - prog(b, AT.winAoff, AT.winAoff + 0.0625)))) {
+        T(t1, 20, 19, { col: C.y }); T(t2, 28 + W(t1), 19, { s: 10, col: C.l });
+        rowsA.forEach(([s, t, col, k], i) => T(s, 20, 35 + i * 14, { s: 10, col, reveal: prog(b, t, t + 0.1), k }));
+      }
+      const same = tr("ch07.t.same"), sw = W(same) + 24;
+      if (box(8, 4, sw, 21, opened(b, AT.same))) T(same, 20, 19);
+      const r1 = tr("ch07.t.set"), r2 = tr("ch07.t.no"), mw = Math.max(W("POST /mcp", 12, "mono"), W(r1, 10), W(r2, 10)) + 24;
+      if (box(378 - mw, 30, mw, 52, opened(b, AT.mcp))) {
+        T("POST /mcp", 390 - mw, 45, { col: C.y, k: "mono" });
+        T(r1, 390 - mw, 60, { s: 10, reveal: prog(b, AT.tools[0], AT.tools[0] + 0.1) });
+        T(r2, 390 - mw, 73, { s: 10, col: C.l, reveal: prog(b, AT.tools[1], AT.tools[1] + 0.1) });
+      }
+      if (b >= AT.bots[0]) {
+        for (const [i, tx] of [[0, 450], [1, 474]]) {
+          const rx = X(walk(b, ...AT.bots, 540 + i * 24, tx)), ry = 152 - bob(b, ...AT.bots);
+          R(rx - 5, ry - 18, 10, 8, C.k); R(rx - 4, ry - 17, 8, 6, C.l); R(rx - 2, ry - 15, 1, 2, C.c); R(rx + 1, ry - 15, 1, 2, C.c);
+          R(rx, ry - 21, 1, 3, C.k); R(rx - 1, ry - 22, 3, 1, C.r);
+          R(rx - 6, ry - 10, 12, 8, C.k); R(rx - 5, ry - 9, 10, 6, C.g); R(rx - 4, ry - 2, 3, 2, C.k); R(rx + 1, ry - 2, 3, 2, C.k);
+        }
+        const cl = tr("ch07.t.client"), cw = W(cl, 10), cx = X(462) - Math.floor(cw / 2);
+        R(cx - 4, 153, cw + 8, 12, C.k); T(cl, cx, 163, { s: 10, col: C.y });
+      }
+    }
+
+    // 5 · 回到对话卡：先知回复、show_card 画一张在听卡（主题在这里唱），回复正常结束时盖章，也就是存档。
+    function sChat(b) {
+      R(0, 0, GW, GH, C.k); stars(b, 166, 57);
+      box(8, 4, 368, 158, 1);
+      T("Talk to God", 20, 18, { s: 10, col: C.l }); R(11, 23, 362, 1, C.g);
+      const m1 = tr("ch07.msg1"), w1 = W(m1) + 12;
+      R(365 - w1, 28, w1 - 2, 18, C.o); R(364 - w1, 29, w1, 16, C.o); T(m1, 370 - w1, 41);
+      if (b >= AT.reply[0]) { clawd(27, 62, 1, { prop: "wiz1" }); T(tr("ch07.f.prophet"), 42, 60, { s: 10, col: C.c }); }
+      T(tr("ch07.r.reply"), 20, 78, { reveal: prog(b, ...AT.reply) });
+      if (b >= AT.card) {
+        box(20, 86, 200, 46, 1, C.k, C.l);
+        R(26, 92, 32, 34, C.m); for (let i = 0; i < 8; i++) R(26 + i * 4, 92, 2, 34, i % 2 ? C.r : C.v); disc(42, 109, 9, C.k); disc(42, 109, 7, C.f); disc(42, 109, 2, C.k);
+        T(tr("ch07.r.now"), 64, 100, { s: 10, col: C.c }); T(ITEM, 64, 115); T("YOASOBI", 64, 127, { s: 10, col: C.l });
+        const h = F.hit("bell", 0.12);
+        for (let i = 0; i < 3; i++) { const bh = 2 + Math.round((4 + 3 * Math.sin(b * 37 + i * 2)) * (0.4 + 0.6 * h)); R(196 + i * 5, 126 - bh, 3, bh, C.H); }
+      }
+      if (b >= AT.seal) {
+        const r = Math.round(lerp(16, 10, prog(b, AT.seal, AT.seal + 0.04)));
+        disc(252, 108, r + 1, C.k); disc(252, 108, r, C.R); ring(252, 108, r - 2, C.r); spr(TICK, 249, 105, { w: C.w });
+      }
+      if (b >= AT.seal + 0.08 && b < AT.send2) T(tr("ch07.seal"), 20, 150, { s: 10, col: C.y, reveal: prog(b, AT.seal + 0.08, AT.seal + 0.2) });
+      if (b >= AT.send2) { const m2 = tr("ch07.msg2"), w2 = W(m2) + 12; R(365 - w2, 138, w2 - 2, 18, C.o); R(364 - w2, 139, w2, 16, C.o); T(m2, 370 - w2, 151); }
+    }
+
+    // 6 · 先知的塔：值得做才开 start_design 的传送门，Opus 规划者出来递计划卡；GitHub 授权是一件用完就没的道具。
+    function sTower(b) {
+      R(0, 0, GW, 152, C.m);
+      for (let y = 0, r = 0; y < 152; y += 10, r++) { R(0, y + 9, GW, 1, C.v); for (let x = (r % 2) * 14; x < GW; x += 28) R(x, y, 1, 10, C.v); }
+      disc(38, 64, 17, C.e); disc(38, 64, 15, C.D); R(37, 49, 2, 30, C.e); R(23, 63, 30, 2, C.e); R(30, 56, 1, 1, C.w); R(46, 71, 1, 1, C.w);
+      R(0, 152, GW, 64, C.e); R(0, 152, GW, 1, C.u);
+      for (const kx of [16, 168]) { R(kx - 2, 132, 5, 20, C.w); R(kx - 4, 150, 9, 2, C.u); spr(FLAME[Math.floor(b * 12 + kx) % 3], kx - 3, 121); }
+      const itemOn = on(b, AT.item, AT.poof);
+      clawd(52, 152, 2, { pose: itemOn ? "arms-up" : "default" });
+      clawd(108, 152, 2, { prop: "wiz", flip: true });
+      if (b >= AT.portal) {
+        const k = prog(b, AT.portal, AT.portal + 0.125), ph = Math.floor(b * 12);
+        for (let i = 0; i < 4; i++) {
+          const rx = Math.round((15 - i * 3.5) * k), ry = Math.round((22 - i * 5) * k);
+          if (rx > 0 && ry > 0) oval(268, 128, rx, ry, [C.w, C.L, C.v, C.k][(i + ph) % 4]);
+        }
+        oval(268, 128, Math.round(4 * k), Math.round(8 * k), C.k);
+        if (k >= 1) plate("start_design", 268, 101, { fg: C.L, bg: C.k, edge: C.L, k: "mono" });
+      }
+      if (b >= AT.arch[0]) {
+        const ax = walk(b, ...AT.arch, 268, 204);
+        clawd(ax, 152 - bob(b, ...AT.arch), 2, { prop: "hard", flip: true });
+        const an = tr("ch07.d.arch");
+        if (b >= AT.arch[1]) plate(an, Math.min(204, 247 - Math.ceil(W(an, 10) / 2)), 117, { fg: C.w, bg: C.k, edge: C.y });
+      }
+      if (on(b, ...AT.worth)) bubble(tr("ch07.d.worth"), 108, 116);
+      const cd = tr("ch07.d.clef"), cw = W(cd, 10) + 24;
+      if (box(8, 4, cw, 19, opened(b, AT.clefD))) T(cd, 20, 17, { s: 10 });
+      const se = tr("ch07.d.session"), sw = W(se, 10) + 24;
+      if (box(378 - sw, 4, sw, 19, opened(b, AT.arch[0]))) T(se, 390 - sw, 17, { s: 10, col: C.y });
+      if (box(64, 26, 256, 64, opened(b, AT.plan) * (1 - prog(b, AT.item - 0.0625, AT.item)))) {
+        T(tr("ch07.p.title"), 76, 42, { col: C.y, reveal: prog(b, AT.opts2[0], AT.opts2[0] + 0.1) });
+        if (b >= AT.opts2[1]) { T("Open issue", 84, 62); T(tr("ch07.p.issue"), 92 + W("Open issue"), 62, { s: 10, col: C.l }); }
+        if (b >= AT.opts2[2]) { T("Start build", 84, 80); T(tr("ch07.p.build"), 92 + W("Start build"), 80, { s: 10, col: C.l }); }
+        const flash = b >= AT.sel2 && blink(b, 16);
+        if (b >= AT.opts2[1] && (blink(b) || b >= AT.sel2)) spr(CUR, 75, b >= AT.cur2 ? 73 : 55, flash ? { w: C.y } : null);
+      }
+      const g1 = tr("ch07.p.gh"), gw = W(g1, 10) + 28, gx = 192 - Math.floor(gw / 2);
+      if (box(gx, 56, gw, 38, opened(b, AT.gh) * (1 - prog(b, AT.item - 0.0625, AT.item)))) {
+        T(g1, gx + 14, 71, { s: 10 });
+        const ok = b >= AT.okGh && blink(b, 16);
+        T(tr("ch07.c.accept"), gx + 26, 88, { col: ok ? C.y : C.w });
+        if (blink(b) || b >= AT.okGh) spr(CUR, gx + 16, 81, ok ? { w: C.y } : null);
+      }
+      if (itemOn) sprS(KEY, 42, 116 - Math.round(8 * prog(b, AT.item, AT.item + 0.08)), 2);
+      if (on(b, AT.poof, AT.poof + 0.15)) { const k = Math.floor(prog(b, AT.poof, AT.poof + 0.15) * 3); for (const [dx, dy] of [[-6, -3], [6, -3], [-3, 4], [4, 4]]) R(52 + dx * (k + 1) / 2 - 1, 112 + dy * (k + 1) / 2 - 1, 3 - k, 3 - k, C.l); }
+      const got = b < AT.poof ? tr("ch07.p.got") : tr("ch07.p.gone"), gtw = W(got) + 24;
+      if (box(192 - Math.floor(gtw / 2), 30, gtw, 21, opened(b, AT.item) * (1 - prog(b, AT.poof + 0.25, AT.poof + 0.3125)))) TC(got, 192, 45, { col: b < AT.poof ? C.y : C.w });
+    }
+
+    // 7 · 一楼大厅（第 08 章那间屋子的 8 位版）：从 HEAD 分出构建分支，构建日志一行一行往上滚。
+    const wireY = (wx) => { const k = ((((wx + 80) % 80) + 80) % 80) / 80; return 98 + Math.round(3.6 * 4 * k * (1 - k)); };
+    function pxLobby(cx, b, eyes) {
+      const X = (wx) => Math.round(wx - cx);
+      R(0, 0, GW, 143, PL.wall);
+      for (let y = 6, r = 0; y < 138; y += 12, r++) for (let wx = Math.floor(cx / 24) * 24 - 24 + (r % 2) * 12; wx < cx + GW + 24; wx += 24) { const x = X(wx); R(x, y, 1, 1, PL.wallD); R(x + 1, y + 1, 1, 1, PL.wallD); R(x + 2, y + 2, 1, 1, PL.wallD); }
+      R(0, 0, GW, 1, PL.line); R(X(344), 0, 32, 1, "#3e2a2c"); R(X(347), 0, 1, 1, PL.woodD); R(X(373), 0, 1, 1, PL.woodD);
+      R(0, 143, GW, 9, PL.cream); R(0, 143, GW, 1, PL.line); R(0, 151, GW, 1, PL.line);
+      R(0, 152, GW, 64, PL.floor);
+      [166, 183, 201, 222].reduce((prev, py, r) => {
+        R(0, py, GW, 1, PL.woodD);
+        for (let wx = Math.floor(cx / 104) * 104 - 104 + (r % 2) * 52; wx < cx + GW; wx += 104) R(X(wx), prev + 1, 1, py - prev - 1, PL.woodD);
+        return py;
+      }, 152);
+      const KX = X(328);
+      R(KX, 48, 40, 39, PL.line); R(KX + 1, 49, 38, 37, PL.paper); R(KX + 1, 49, 38, 10, PL.red); R(KX + 1, 59, 38, 1, PL.line); R(KX + 19, 46, 2, 3, PL.red);
+      T(tr("ch07.oct"), KX + 20 - Math.floor(W(tr("ch07.oct"), 8) / 2), 57, { s: 8, col: PL.cream, tex: true });
+      for (let i = 0; i < 21; i++) R(KX + 4 + (i % 7) * 5, 66 + Math.floor(i / 7) * 7, 2, 2, PL.ink);
+      R(KX + 32, 71, 6, 1, PL.red); R(KX + 32, 76, 6, 1, PL.red); R(KX + 31, 72, 1, 4, PL.red); R(KX + 38, 72, 1, 4, PL.red);
+      const HX = X(284);
+      for (let y = 134; y < 152; y++) { const dy = 143 - y, hw = y >= 143 ? 9 : Math.round(Math.sqrt(81 - dy * dy)); R(HX - hw, y, 2 * hw, 1, HOLE); }
+      if (eyes) { R(X(280), 144, 2, 4, PL.moon); R(X(285), 144, 2, 4, PL.moon); }
+      const MX = X(196);
+      for (let y = 176; y < 191; y++) { const hw = Math.round(lerp(36, 42, (y - 176) / 14)); R(MX - hw - 1, y, 2 * hw + 2, 1, PL.line); R(MX - hw, y, 2 * hw, 1, PL.teal); }
+      R(MX - 33, 179, 66, 1, PL.cream); R(MX - 37, 188, 74, 1, PL.cream);
+      const PX = X(42);
+      for (let i = 0; i < 5; i++) { const an = -Math.PI / 2 + (i - 2) * 0.45, lx = PX + Math.round(Math.cos(an) * 12), ly = 128 + Math.round(Math.sin(an) * 10); oval(lx, ly, 5, 11, PL.line); oval(lx, ly, 4, 10, LEAF); }
+      for (let y = 136; y < 152; y++) { const hw = Math.round(lerp(10, 8, (y - 136) / 16)); R(PX - hw, y, 2 * hw, 1, PL.line); R(PX - hw + 1, y, 2 * hw - 2, 1, POT); }
+      R(PX - 10, 136, 20, 1, PL.line);
+      for (let x = 0; x < GW; x++) R(x, wireY(x + cx), 1, 1, PL.line);
+      for (let n = Math.floor(cx / 80) * 80; n < cx + GW + 80; n += 80) R(X(n) - 1, 97, 3, 3, PL.woodD);
+      for (const sx of COMMITS) { const wx = sx / 5, x = X(wx); R(x, wireY(wx) + 1, 1, 103 - wireY(wx) - 1, PL.line); spr(LANT, x - 4, 103, LMAP); }
+      const hx = X(HEAD[0] / 5);
+      for (let dy = -17; dy <= 17; dy++) for (let dx = -17; dx <= 17; dx++) {
+        const d = Math.hypot(dx, dy);
+        if ((d > 8 && d <= 12 && (dx + dy) % 2 === 0) || (d > 12 && d <= 17 && dx % 2 === 0 && dy % 2 === 0)) R(hx + dx, 108 + dy, 1, 1, PL.moon);
+      }
+      R(hx, wireY(HEAD[0] / 5) + 1, 1, 102 - wireY(HEAD[0] / 5) - 1, PL.line); spr(HLANT, hx - 5, 102, HMAP);
+    }
+    function lamp(x, y, k) { if (k <= 0) return; R(x, 93, 1, y - 93, PL.line); spr(LANT, x - 4, y + (k < 1 ? 2 : 0), GMAP); }
+    function build(b, cx) {
+      const X = (wx) => Math.round(wx - cx), pts = [[270, 99], [284, 92], [560, 92]];
+      let left = (14 + 276) * prog(b, ...AT.branch);
+      for (let i = 1; i < pts.length && left > 0; i++) {
+        const [ax, ay] = pts[i - 1], [bx, by] = pts[i], d = Math.hypot(bx - ax, by - ay), k = Math.min(1, left / d);
+        ln(X(ax), ay, X(lerp(ax, bx, k)), lerp(ay, by, k), PL.red); ln(X(ax), ay + 1, X(lerp(ax, bx, k)), lerp(ay, by, k) + 1, PL.red);
+        left -= d;
+      }
+      if (b >= AT.branch[1]) plate("claude/build-<runId>", X(424), 88, { s: 8, fg: PL.red, bg: PL.cream, edge: PL.line, k: "mono" });
+      lamp(X(316), 95, prog(b, AT.c1, AT.c1 + 0.04));
+      if (b >= AT.c1) plate("builds/<runId>.md", X(316), 117, { s: 8, fg: PL.ink, bg: PL.cream, edge: PL.line, k: "mono" });
+      if (b >= AT.pr) { const fx = X(480); R(fx, 70, 1, 22, PL.line); R(fx + 1, 70, 40, 11, PL.red); R(fx + 2, 71, 38, 9, PL.cream); T("draft PR", fx + 4, 78, { s: 8, col: PL.red }); }
+      if (b >= AT.act) {
+        R(X(388), 136, 44, 3, PL.woodD); R(X(390), 139, 2, 13, PL.woodD); R(X(428), 139, 2, 13, PL.woodD);
+        R(X(396), 118, 26, 18, PL.line); R(X(398), 120, 22, 14, PL.ink);
+        for (let i = 0; i < 4; i++) R(X(400), 122 + i * 3, 4 + Math.floor(K.hash(i + Math.floor(b * 8)) * 14), 1, PL.teal);
+        clawd(X(450), 152, 2, { prop: "hard", flip: true, pose: blink(b, 8) ? "default" : "arms-up" });
+      }
+      if (b >= AT.ro) spr(LOCK, X(407), 110);
+      if (b >= AT.pub[0]) {
+        R(X(436), 104, 10, 8, PL.line); R(X(437), 105, 8, 6, PL.teal); R(X(439), 107, 4, 2, PL.cream);
+        if (b < AT.pub[1]) {
+          const k = prog(b, ...AT.pub), seg = k < 0.5 ? [[409, 118], [441, 108], k * 2] : [[441, 108], [404, 96], k * 2 - 1];
+          R(X(lerp(seg[0][0], seg[1][0], seg[2])) - 1, Math.round(lerp(seg[0][1], seg[1][1], seg[2])) - 1, 3, 3, PL.gold);
+        }
+      }
+      lamp(X(404), 95, prog(b, AT.c2, AT.c2 + 0.04));
+      if (b >= AT.rev) {
+        const rx = walk(b, AT.rev, AT.rev + 0.1, 560, 520);
+        clawd(X(rx), 152 - hopH(b, AT.rev, AT.rev + 0.1, 6), 2, { flip: true });
+        spr(MAG, X(rx) - 22, 128, null, true);
+      }
+      if (b >= AT.owner && (blink(b, 8) || b >= AT.owner + 0.25)) spr(QMARK, X(526), 64);
+    }
+    function sLobby(b) {
+      const cx = Math.round(lerp(160, 0, prog(b, ...AT.scroll2, E.io)));
+      pxLobby(cx, b, b >= AT.eyes);
+      if (b < AT.despawn[0] || (b < AT.despawn[1] && blink(b, 32))) build(b, cx);
+      if (b < AT.hole[1]) {
+        const small = b >= AT.shrink[1] || (on(b, ...AT.shrink) && blink(b, 64));
+        const wx = walk(b, ...AT.hole, 236, 292), clip = Math.round(275 - cx);
+        clawd(Math.round(wx - cx), 152 - bob(b, ...AT.hole), small ? 1 : 2, { flip: true, clipR: b >= AT.hole[0] ? clip : 1e9 });
+      }
+      const lk = opened(b, AT.c1 - 0.0625) * (1 - prog(b, AT.despawn[0], AT.despawn[0] + 0.0625));
+      // 日志窗只留三行，下沿停在日历的钉子上面，日历不被挡一半。
+      if (box(8, 1, 368, 44, lk)) {
+        const shown = LOG.filter(([, t]) => b >= t).slice(-3);
+        shown.forEach(([key, t], i) => {
+          const last = i === shown.length - 1;
+          T(tr(key), 20, 15 + i * 12, { s: 10, col: key === "ch07.b.owner" ? C.y : last ? C.w : C.l, reveal: prog(b, t, t + 0.1) });
+        });
+      }
+    }
+
+    function narBox(b) {
+      if (!box(4, 166, 376, 46, opened(b, AT.box) * (1 - prog(b, AT.boxOff, AT.boxOff + 0.0625)))) return;
+      for (const [key, t0, [ta, tb], ts] of INPUTS) {
+        if (b < t0 || b >= ts) continue;
+        const s = [...tr(key)], shown = s.slice(0, Math.floor(prog(b, ta, tb) * s.length + 1e-6)).join("");
+        if (b < ta) T(tr("ch07.ph"), 16, 184, { col: C.l }); else T(shown, 16, 184);
+        if (blink(b, 8)) R(17 + (b < ta ? 0 : W(shown)), 174, 2, 12, C.o);
+        return;
+      }
+      for (const [id, t0, t1, tbAt] of NAR) {
+        if (b < t0 || b >= t1) continue;
+        const A = tr(`ch07.${id}a`), B = tr(`ch07.${id}b`), na = [...A].length, nb = [...B].length;
+        const da = tbAt ? 0.3 : (0.5 * na) / (na + nb), db = tbAt ? 0.3 : (0.5 * nb) / (na + nb), tb = tbAt ?? t0 + da;
+        T(A, 16, 184, { reveal: prog(b, t0, t0 + da), narr: true });
+        T(B, 16, 201, { reveal: prog(b, tb, tb + db), narr: true });
+        if (b >= tb + db && blink(b)) spr(DOWN, 366, 203);
+        return;
+      }
+    }
+    function scene(b) {
+      if (b < CUTS[0]) sTitle(b);
+      else if (b < CUTS[1]) sTemple(b);
+      else if (b < CUTS[2]) sGate(b);
+      else if (b < CUTS[3]) sInn(b);
+      else if (b < CUTS[4]) sFloors(b);
+      else if (b < CUTS[5]) sStreet(b);
+      else if (b < CUTS[6]) sChat(b);
+      else if (b < CUTS[7]) sTower(b);
+      else sLobby(b);
+    }
+    function game(b) {
+      c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1;
+      KS = c.canvas.width / GW; QX = 0;
+      R(0, 0, GW, GH, C.k);
+      c.save(); QX = quake(b);
+      scene(b);
+      QX = 0; c.restore();
+      const fa = fadeAt(b);
+      if (fa > 0) { c.globalAlpha = fa; R(0, 0, GW, GH, C.k); c.globalAlpha = 1; }
+      narBox(b);
+    }
+
+    // 末尾：8 位大厅按 5、4、3、2 个屏幕像素一格逐级变细，最后一档就是第 08 章首帧的彩铅大厅。
+    const GROUND = 760, BX0 = -400, NAIL = 400;
+    const WALLT = { ang: 0.42, w: 3, len: 120, lite: 0.62, dark: 0.2, darkShare: 0.45, a0: 0.45, a1: 0.9, dens: 1.5, jit: 0.05 };
+    const FLOORT = { ang: -0.3, w: 3.6, len: 90, lite: 0.35, dark: 0.18, darkShare: 0.5, a0: 0.35, a1: 0.7, dens: 1.2, jit: 0.06 };
+    const wireP = (px) => { const k = ((((px - BX0) % NAIL) + NAIL) % NAIL) / NAIL; return 490 + 18 * 4 * k * (1 - k); };
+    function pencilLobby(w, g, x) {
+      const PAL = PL;
+      P.fill(w, P.rect(-80, GROUND, 2080, 440), "#a7c184", { edge: 0, line: false, tile: { ang: 1.4, w: 3, len: 30, dens: 1.4, jit: 0.4 } });
+      P.fill(w, P.rect(-80, GROUND + 4, 2080, 440), PAL.floor, { edge: 0, line: false, tile: FLOORT });
+      w.save(); w.beginPath(); w.rect(-80, GROUND, 2080, 400); w.clip();
+      w.strokeStyle = PAL.woodD; w.globalAlpha = 0.45; w.lineWidth = 2.6;
+      for (let r = 0, py = GROUND + 70; py < 1160; r++, py += 78 + r * 6) {
+        w.beginPath(); w.moveTo(-80, py); w.lineTo(2000, py + 2); w.stroke();
+        for (let px = Math.floor(-80 / 520) * 520 + (r % 2) * 260; px < 2000; px += 520) { w.beginPath(); w.moveTo(px, py - 76 - r * 6 + 4); w.lineTo(px + 2, py); w.stroke(); }
+      }
+      w.restore();
+      P.fill(w, P.rect(BX0, -2680, 6200, GROUND + 2680), "#d6bf9b", { edge: 12, lw: 4, seed: 501, tile: { w: 4, len: 80, lite: 0.3, dark: 0.16 } });
+      P.fill(w, P.rect(-320, 0, 6040, GROUND), PAL.wall, { edge: 14, lw: 3.6, seed: 511, tile: WALLT });
+      P.fill(w, P.rect(-320, GROUND - 44, 6040, 44), PAL.cream, { edge: 5, lw: 2.6, seed: 13, tile: { lite: 0.2, dark: 0.1, a0: 0.2, a1: 0.4 } });
+      P.fill(w, P.rect(1720, -80, 160, 80), "#3e2a2c", { edge: 0, lw: 3, seed: 506, flat: true });
+      for (const lx of [1736, 1864]) P.seg(w, lx, -80, lx, 0, 5, PAL.woodD, 0.9, lx);
+      P.halo(g, HEAD[0], HEAD[1], 120, 0.7);
+      const cx = 1640, cy = 240;
+      P.note(x, cx, cy, 200, 196, { seed: 3, tape: false, pin: true, rot: 0.02 });
+      P.fill(x, P.rect(cx, cy, 200, 52), PAL.red, { edge: 4, lw: 3, seed: 4 });
+      P.text(x, tr("ch07.oct"), cx + 100, cy + 42, { size: 40, color: PAL.cream, align: "center", texture: true });
+      for (let i = 0; i < 21; i++) P.text(x, String(i + 6), cx + 14 + (i % 7) * 26, cy + 90 + Math.floor(i / 7) * 36, { size: 20, color: PAL.ink, texture: true });
+      P.contour(x, P.ellipse(cx + 14 + 6 * 26 + 9, cy + 90 + 36 - 10, 20, 17).pts, { color: PAL.red, w: 3, seed: 5, corners: false });
+      const hole = [[1374, GROUND + 4], [1374, 714]];
+      for (let i = 1; i < 12; i++) { const an = Math.PI + (i / 12) * Math.PI; hole.push([1420 + 46 * Math.cos(an), 714 + 46 * Math.sin(an)]); }
+      hole.push([1466, 714], [1466, GROUND + 4]);
+      P.fill(x, P.polyShape(hole), HOLE, { edge: 0, lw: 3, seed: 321, flat: true });
+      for (const ex of [1406, 1430]) { x.save(); x.fillStyle = PAL.moon; K.roundRect(x, ex - 4, 721, 8, 18, 3); x.fill(); x.restore(); }
+      x.save(); x.translate(980, 916); x.scale(1, 0.82);
+      P.fill(x, P.polyShape([[-180, -44], [180, -44], [210, 44], [-210, 44]]), PAL.teal, { edge: 8, lw: 3, seed: 322, shadow: [0, 10, 0.3], tile: { w: 4, len: 20, dens: 1.6, jit: 0.9 } });
+      P.contour(x, [[-160, -30], [160, -30], [184, 30], [-184, 30]], { color: PAL.cream, w: 3, alpha: 0.7, seed: 323 });
+      P.text(x, tr("ch07.mat"), 0, 16, { size: 42, color: PAL.cream, align: "center", maxW: 330 });
+      x.restore();
+      P.fill(x, P.polyShape([[160, 680], [260, 680], [248, 760], [172, 760]]), POT, { edge: 5, lw: 3, seed: 324, shade: [-10, 0, 0.5] });
+      for (let i = 0; i < 5; i++) { const an = -Math.PI / 2 + (i - 2) * 0.45; P.fill(x, P.ellipse(210 + Math.cos(an) * 60, 640 + Math.sin(an) * 50, 22, 48), LEAF, { edge: 5, lw: 2.6, seed: 325 + i, shade: [-6, 0, 0.5] }); }
+      const pts = [];
+      for (let px = -120; px <= 2040; px += 25) pts.push([px, wireP(px)]);
+      P.line(x, pts, 1, 3, PAL.line, 0.85, 7);
+      for (let nx = 0; nx <= 2040; nx += NAIL) P.fill(x, P.ellipse(nx, 490, 7), PAL.woodD, { edge: 2, lw: 2, seed: nx, flat: true });
+      [...COMMITS, HEAD[0]].forEach((lx, i) => {
+        const head = lx === HEAD[0], r = head ? 26 : 20, ly = HEAD[1], seed = 600 + i * 11;
+        P.seg(x, lx, wireP(lx), lx, ly - r * 1.15, 2.4, PAL.line, 0.9, seed);
+        P.fill(x, P.rect(lx - r * 0.55, ly - r * 1.18, r * 1.1, r * 0.3), PAL.woodD, { edge: 2, lw: 2, seed: seed + 1 });
+        P.fill(x, P.ellipse(lx, ly, r, r * 1.15), head ? PAL.clawd : PAL.cream, { alpha: 1, edge: r * 0.25, lw: 2.4, seed: seed + 2, tile: { w: Math.max(2, r * 0.25), len: r * 1.4 } });
+        for (const s of [-0.5, 0.5]) P.contour(x, P.ellipse(lx + s * r * 0.3, ly, r * 0.42, r * 1.1).pts, { color: PAL.woodD, w: 1.6, alpha: 0.4, seed: seed + 3, corners: false });
+        P.fill(x, P.rect(lx - r * 0.45, ly + r * 1.05, r * 0.9, r * 0.24), PAL.woodD, { edge: 2, lw: 2, seed: seed + 4 });
+      });
+    }
+    function pencilInto(m) {
+      const k = m.w / 1920;
+      m.c.setTransform(1, 0, 0, 1, 0, 0); m.c.globalAlpha = 1; m.c.fillStyle = PL.wall; m.c.fillRect(0, 0, m.w, m.cv.height);
+      m.c.setTransform(k, 0, 0, k, 0, 0);
+      pencilLobby(m.c, m.c, m.c);
+    }
+
+    function render(f) {
+      F = f;
+      const b = f.bar, [m0, m1] = AT.mosaic, endK = prog(b, m0, m1);
+      G.setCam({ x: 960, y: 540, zoom: 1, rot: 0 });
+      G.clear(P.toLin(P.hex(PL.wall)));
+      const step = b < m0 ? -1 : Math.min(4, Math.floor(endK * 5));
+      if (step < 4) {
+        const tp = top.begin();
+        tp.save(); tp.imageSmoothingEnabled = false;
+        if (step >= 0) { pencilInto(mos[step]); tp.drawImage(mos[step].cv, 0, 0, 1920, 1080); }
+        const pix = step < 0 ? 1 : 1 - prog(b, m0, m0 + 0.07);
+        if (pix >= 1) { c = tp; game(b); }
+        else if (pix > 0) {
+          // K.text 自己设 globalAlpha，淡出不能靠给图层设透明度：先画在同样大小的离屏画布上，再带透明度贴上去。
+          const tc = tp.canvas;
+          if (!cv || cv.width !== tc.width || cv.height !== tc.height) { cv = document.createElement("canvas"); cv.width = tc.width; cv.height = tc.height; }
+          c = cv.getContext("2d"); game(b);
+          tp.setTransform(1, 0, 0, 1, 0, 0); tp.globalAlpha = pix; tp.drawImage(cv, 0, 0);
+        }
+        tp.restore();
+        G.composite(top.upload(), { mode: G.MODE.normal });
+      } else {
+        const w = bgL.begin(), g = glowL.begin(), x = ink.begin();
+        pencilLobby(w, g, x);
+        G.composite(bgL.upload(), { mode: G.MODE.normal });
+        G.composite(glowL.upload(), { mode: G.MODE.normal });
+        G.composite(ink.upload(), { mode: G.MODE.normal });
+      }
+      f.post = { bloom: 0, threshold: 1.2, halation: 0, ca: 0, grain: 0.03 * endK, vignette: lerp(0.12, 0.16, endK), shake: [0, 0], blur: [0, 0], zoomBlur: 0 };
+    }
+
+    async function init() {
+      top = G.layer("top"); bgL = G.layer("bg"); glowL = G.layer("emit", 0.5); ink = G.layer("ink");
+      if (!mos.length) for (const w of [384, 480, 640, 960]) { const m = document.createElement("canvas"); m.width = w; m.height = (w * 9) / 16; mos.push({ cv: m, c: m.getContext("2d"), w }); }
+      await Promise.all([
+        document.fonts.load(face(24, "pix"), "对话 Chat 429"), document.fonts.load(face(8, "pix"), "PUSH START"),
+        ...[12, 10].flatMap((s) => [document.fonts.load(face(s), "对话 Ag"), document.fonts.load(face(s, "mono"), "Ag")]),
+        document.fonts.load(P.FONT.hand(42), "过了门禁再进门 OCT 19 Pass"),
+      ]);
+      // 排线图块第一次用到才生成：空闲时先在小画布上把末帧画一遍，图块就进了 pencil.js 的缓存，变彩铅那几帧不卡。
+      (window.requestIdleCallback || ((fn) => setTimeout(fn, 50)))(() => pencilInto(mos[0]));
+    }
     return { init, render };
   }
 
   let impl = null;
   window.CHAPTERS.push({
-    id: "ch07", title: "ch.07", bars: 16,
-    init() { impl = impl || make(); impl.init(); },
+    id: "ch07", title: "ch.07", bars: 30,
+    async init() { impl = impl || make(); await impl.init(); },
     render(f) { impl.render(f); },
   });
 })();

@@ -22,6 +22,23 @@
 
 `scripts/build-explainer.mjs` 在 `pnpm build` 时从 `v2/` 生成 `public/explainer/`（不进仓库）：入口 `index.html` 保持原名，`workers/site/src/index.ts` 把 `/explainer` 落到构建期生成的 explainer 静态资产；页面载入的脚本（`v2/index.html` 的 `LOAD` 表）和内联样式引用的字体按内容哈希改名放进 `a/`，缓存一年；配乐不进仓库，见下一段。页面和 `v2/film.js` 经注入的 `window.__assets` 查哈希名；本地预览和写章工具没有这张表，用原名。`LOAD` 表里还没写的章不发布，站点上是占位画面。
 
+第 04、06、08 章的故事音效是 `v2/sfx/` 里的录音（freesound 上的 CC0 / CC BY 录音，经 [Openverse](https://api.openverse.org) 检索，用 [earshot](https://github.com/Leonxlnx/earshot) 按听感排名挑选，署名在 `v2/sfx/CREDITS.txt`）。时刻写在 `v2/music/ch04.js`、`v2/music/ch06.js`、`v2/music/ch08.js` 的 `SFX`，配乐合成或取到之后由 `v2/film.js#withSfx` 叠上去，所以 R2 上的配乐里没有它们；渐强类音效按 `v2/score.js` 的 `SFX_LEAD` 提前起，让最响的一下落在卡点上，叠完只在超过 -2 dBFS 的地方压峰；构建脚本把 `v2/sfx/*.mp3` 一起按内容哈希发布。
+
+第 01 章的立体模型用 three.js 0.186.1 渲染：`v2/vendor/three.min.js` 是只含 `v2/vendor/three-entry.mjs` 所列导出的 IIFE 包（全局名 `THREE`，许可附在文件末尾），和 `LOAD` 表里别的脚本一样按内容哈希发布。`v2/ch01-models.js`、`v2/ch01-world.js` 用到新的 three 导出时先加进入口文件，再在仓库根目录重建：
+
+```bash
+d=$(mktemp -d) && npm --prefix $d i three@0.186.1 esbuild@0.25.12 && NODE_PATH=$d/node_modules $d/node_modules/.bin/esbuild docs/explainer/v2/vendor/three-entry.mjs --bundle --minify --format=iife --global-name=THREE --outfile=docs/explainer/v2/vendor/three.min.js
+```
+
+第 08 章的手写字体是霞鹜漫黑（`fonts/LXGWMarkerGothic-ch08.woff2`，许可 `fonts/LXGWMarkerGothic-OFL.txt`），只切了这一章用到的字。`v2/ch08.js` 里加了新字要重切，不然新字退回系统字体；源文件取 [lxgw/LxgwMarkerGothic](https://github.com/lxgw/LxgwMarkerGothic) 的 `fonts/ttf/LXGWMarkerGothic-Regular.ttf`，字表是 `v2/ch08.js` 里全部非 ASCII 字符加上可打印 ASCII：
+
+```bash
+python3 -m pip install fonttools brotli
+pyftsubset LXGWMarkerGothic-Regular.ttf --text-file=<字表> --flavor=woff2 --layout-features='*' --output-file=docs/explainer/fonts/LXGWMarkerGothic-ch08.woff2
+```
+
+第 04 章报纸版的标题字和第 06 章水墨版的标签字是思源宋体 600 与 900 两档（`fonts/NotoSerifSC-600-ch04-06.woff2`、`fonts/NotoSerifSC-900-ch04-06.woff2`，许可 `fonts/NotoSerifSC-OFL.txt`），只含这两章的字：字表是 `v2/ch04.js`、`v2/ch06.js` 去掉整行注释后的全部非 ASCII 字符加上可打印 ASCII，交给 Google Fonts 的 `css2?family=Noto+Serif+SC:wght@<字重>&text=<字表>` 取回切好的 woff2。第 06 章的毛笔楷是马善政（`fonts/MaShanZheng-ch06.woff2`，许可 `fonts/MaShanZheng-OFL.txt`），字表只取 `v2/ch06.js`，同法用 `family=Ma+Shan+Zheng` 取回；`v2/index.html` 给它限了汉字的 `unicode-range`，旁白里的拉丁字母落到思源宋体。第 05 章剪纸版的大字是站酷庆科黄油体（`fonts/ZCOOLQingKeHuangYou-ch05.woff2`），中文标注与旁白是思源黑体 700（`fonts/NotoSansSC-700-ch05.woff2`，字体名 `Noto Sans SC ch05`），英文是 Jost 500 / 600 / 800（`fonts/Jost-{500,600,800}-ch05.woff2`），许可各在同目录的 `<族名>-OFL.txt`；字表只取 `v2/ch05.js`，同法用 Google Fonts 取回。第 07 章像素版要读的字是思源黑体 500 与 700（`fonts/NotoSansSC-{500,700}-ch07.woff2`，字体名 `Noto Sans SC ch07`，许可 `fonts/NotoSansSC-OFL.txt`），拉丁字母和代码用页面上已有的 Geist、Geist Mono；字表只取 `v2/ch07.js`，同法用 Google Fonts 逐档取回。标题「对话」「Chat」、PUSH START 和大号 429 用 [Fusion Pixel](https://github.com/TakWolf/fusion-pixel-font) 的 12 / 8 px（`fonts/FusionPixel{12,8}px-ch07.woff2`，许可 `fonts/FusionPixel-OFL.txt`），只切这几个字，用 `pyftsubset` 从发行版的字体切；OFL 保留了 Fusion Pixel 这个名字，子集的内部名和 `v2/index.html` 里的字体族名改叫 Ch07 Pixel。第 00 章晒图版的字是 Barlow Semi Condensed 300 / 500（`fonts/BarlowSemiCondensed-{300,500}-ch00.woff2`，字体名 `Barlow Semi Condensed ch00`，许可 `fonts/BarlowSemiCondensed-OFL.txt`），中文和歌名里的假名落到思源黑体 300 / 500（`fonts/NotoSansSC-{300,500}-ch00.woff2`，字体名 `Noto Sans SC ch00`，许可 `fonts/NotoSansSC-OFL.txt`），终端和代码用页面上已有的 Geist Mono；字表只取 `v2/ch00.js`，同法用 Google Fonts 逐档取回。第 01 章立体微缩小岛版的标题、牌子与旁白是 Fredoka（可变字重 300–700，`fonts/Fredoka-ch01.woff2`，字体名 `Fredoka ch01`）和站酷快乐体（`fonts/ZCOOLKuaiLe-ch01.woff2`，字体名 `ZCOOL KuaiLe ch01`），日文歌名是 Zen Maru Gothic 700（`fonts/ZenMaruGothic-700-ch01.woff2`，字体名 `Zen Maru Gothic ch01`），许可各在同目录的 `<族名>-OFL.txt`，端点与字段用页面上已有的 Geist Mono。前两份的字表是 `v2/ch01.js` 和 `v2/ch01-*.js` 去掉整行注释后的全部非 ASCII 字符加可打印 ASCII。Zen Maru Gothic 只取三样：含假名的字符串里的字、纯汉字的歌名「残響散歌」、→↑♪ 三个符号（前两份子集里没有这三个符号，字体栈会落到它）。三份都用 Google Fonts 逐个取回（`Fredoka:wght@300..700`、`ZCOOL+KuaiLe`、`Zen+Maru+Gothic:wght@700`）。第 02 章构成主义海报版的中文是思源黑体 700 / 900（`fonts/NotoSansSC-{700,900}-ch02.woff2`，字体名 `Noto Sans SC ch02`，许可 `fonts/NotoSansSC-OFL.txt`），英文与数字是 Big Shoulders 600 / 900（`fonts/BigShoulders-{600,900}-ch02.woff2`，取 `opsz` 28 与 72 两个静态实例），闸号和 403、400、202 三块章用 Big Shoulders Stencil 900（`fonts/BigShouldersStencil-900-ch02.woff2`，只切 0–9）；两款同属 Big Shoulders 项目，许可都是 `fonts/BigShoulders-OFL.txt`，OFL 没有保留字体名，子集不用改名。字表只取 `v2/ch02.js` 去掉整行注释后的全部非 ASCII 字符加上可打印 ASCII，同法用 Google Fonts 逐档取回（Big Shoulders 写成 `css2?family=Big+Shoulders:opsz,wght@28,600&text=<字表>` 这样带光学尺寸）。第 03 章橡皮管卡通版的字卡大字是站酷小薇（`fonts/ZCOOLXiaoWei-ch03.woff2`），标注与旁白是思源宋体 700（`fonts/NotoSerifSC-700-ch03.woff2`，字体名 `Noto Serif SC ch03`），英文大字和牌子标题是 Limelight（`fonts/Limelight-ch03.woff2`），许可各在同目录的 `<族名>-OFL.txt`（思源宋体用 `fonts/NotoSerifSC-OFL.txt`）；字表只取 `v2/ch03.js`，同法用 Google Fonts 取回。OFL 保留了 Limelight 这个名字，子集的内部名和 `v2/index.html` 里的字体族名改叫 Ch03 Marquee（fontTools 改 name 表）。第 09 章地铁线路图版的拉丁字母是 Inter 500 / 700（`fonts/Inter-{500,700}-ch09.woff2`，字体名 `Inter ch09`，许可 `fonts/Inter-OFL.txt`），中文是思源黑体 500 / 700（`fonts/NotoSansSC-{500,700}-ch09.woff2`，字体名 `Noto Sans SC ch09`，许可 `fonts/NotoSansSC-OFL.txt`），代码用页面上已有的 Geist Mono；字表只取 `v2/ch09.js`，同法用 Google Fonts 逐档取回。第 10 章（`v2/ch10*.js` 六个文件）不另带字体，借第 00–09 章的子集；这些子集的字表是各自那一章加上第 10 章全部文件的字，用 Google Fonts 取回的照旧，第 08 章的霞鹜漫黑照旧从 GitHub 发行版的 TTF 用 `pyftsubset` 切（Google Fonts 上的是旧版本，字形不一样）。
+
 站点版的整片配乐放在 R2，不进仓库。对象键是乐谱输入（`scripts/explainer-score.mjs#scoreInputs`：Clawd 动作时序、章节表、合成器、各章乐谱和渲染脚本）的 sha256，页面经 `/img/<键>.mp3` 取它（同图片一样由 `site` Worker 经 R2 绑定直出、`lyjw131.com` 经 ESA 回源）。改了这些文件的提交进了 main，`.github/workflows/explainer-score.yml` 渲染并上传（分支不自动渲染，预览上现合成；可对内部开发分支手动运行）；同一个键已经在 R2 就跳过，对象传上后不覆盖，main 连续推送时只留最后一次在渲。上传用仓库 secret `R2_SCORE_ACCESS_KEY_ID` / `R2_SCORE_SECRET_ACCESS_KEY`，渲染那一步不带凭据。
 
 Chrome 默认版本由工作流的 `SCORE_CHROME_VERSION` 固定，手动运行时可用 `chrome-version` 覆盖。`v2/tools/score-mp3.mjs` 按可用 CPU 自动选择并行数（可用 `SCORE_WORKERS` 指定），输出浏览器准备、合成、PCM 转换、传输与 MP3 编码耗时，工作流另用 ffprobe 核对音频时长、采样率和声道。
@@ -116,6 +133,6 @@ python3 $R/build-artifact.py docs/explainer/index.html docs/explainer/artifact.h
 
 - 事实以仓库代码为准，核对基线与出处见 [FACTS.md](FACTS.md)。站点架构有变动时，先重核它。
 - 延迟只说「8 月实测 0.32–0.49 s」。
-- 窗口标题的隐私判断只说到这一层：Jev 参与判断，拿不准的交给 lyjw，只有放行的标题才进信封。不写判据；Jev 面板上的概率条是示意值。
+- 窗口标题的隐私判断只说到这一层：先过两份应用名单（「从不读」「不用问」），其余由 TypeSafe System One 上的 Jev 判断；放行的进信封，私密的锁定，拿不准的问 lyjw。不写判据（题面、阈值、名单内容）；Jev 面板上的概率条是示意值。
 - 站点自检相关画面不出现 Cloudflare 账号 ID、真实报错和可用率数字。
 - 歌词一律用占位。

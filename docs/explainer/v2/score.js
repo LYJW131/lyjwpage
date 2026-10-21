@@ -50,6 +50,8 @@
   const phrase = (bar, notes, inst, v, theme = false) => notes.map(([b, d, n]) => [bar, b, d, n, inst, v, theme]);
   const KEY_PRE = 0.06;
   const WHOOSH_LEN = { tube: 0.95, fork: 1.25, down: 2 * BEAT, whip: 0.62 };
+  // 渐强类音效（和插头、碰杯这种最响一下在后面的）提前起，让最响的那一下落在卡点上；秒数是 earshot 量的 sfx/ 各文件峰值时刻，换音效文件要重量
+  const SFX_LEAD = { whoosh: 0.068, plug: 0.278, tube: 0.478, glass: 0.315, valve: 0.826, zip: 0.128 };
   const HELP = { THEME, withNotes, phrase, midi, CHORD, BASS, ARP, BAR, BEAT };
 
   function placeholderPart(p) {
@@ -152,6 +154,8 @@
       N.push({ kind: "mel", t, dur: d * BEAT, m: midi(n), inst, v, theme, bar: c.bar0 + bar, tone: c.tone.bell, pan: inst === "pluck" ? c.tone.pluckPan : 0, post: inPost(c, t) });
     }
     for (const c of chapters) for (const s of c.d.story || []) N.push({ ...s, bar: c.bar0 + s.bar, t: at(c.bar0 + s.bar, s.beat) });
+    const SFX = [];
+    for (const c of chapters) for (const s of c.d.sfx || []) SFX.push({ ...s, lead: (SFX_LEAD[s.name] || 0) / (s.rate || 1), t: at(c.bar0 + s.bar, s.beat) });
     N.sort((a, b) => a.t - b.t);
     const SWEEPS = [];
     for (const c of chapters) for (const s of c.d.sweeps || []) SWEEPS.push({ t0: at(c.bar0 + s.at[0], s.at[1] || 0), t1: at(c.bar0 + s.down[0], s.down[1] || 0), t2: at(c.bar0 + s.up[0], s.up[1] || 0), f: s.f });
@@ -187,7 +191,7 @@
       RISERS: N.filter((n) => (n.kind === "whoosh" && n.tube === "down") || n.kind === "swell").map((n) => ({ t: n.t, len: n.kind === "swell" ? BEAT : WHOOSH_LEN.down })),
     };
     Object.assign(window.Score, {
-      bars: BARS, duration: DURATION, events, notes: N,
+      bars: BARS, duration: DURATION, events, notes: N, sfx: SFX,
       sections: SECTIONS.map((s) => ({ id: s.id, name: s.name, chapter: chapters.find((c) => s.from >= c.bar0 && s.from < c.bar0 + c.bars).id, from: s.from, to: s.to, t0: at(s.from), t1: at(s.to + 1), energy: s.energy })),
       chords: SEGMENTS.map((s) => ({ t: s.t, end: s.end, name: s.chord })),
       chapters: chapters.map((c) => ({ id: c.id, bar0: c.bar0, bars: c.bars, t0: at(c.bar0), placeholder: c.placeholder })),
@@ -257,6 +261,10 @@
     }
     return 0;
   }
+  // 第 05 章剪刀样本里两刃合拢的时刻；播放时按它提前起，合拢落在拍上。不能大于 KEY_PRE：分批排程只往前看那么远。
+  const jazzSnipAt = 0.05;
+  // 第 02 章军鼓倚音（flam）比主击早的秒数；播放时按它提前起，主击落在拍上。同样不能大于 KEY_PRE。
+  const marchFlamAt = 0.028;
   const SAMPLE_BANKS = new Map();
   function samplesFor(sr) {
     if (SAMPLE_BANKS.has(sr)) return SAMPLE_BANKS.get(sr);
@@ -622,7 +630,721 @@
       return finish(d, 0.0005);
     });
 
+    // 第 07 章的红白机音色（chip 开头的只给 music/ch07.js 用）：两路方波按占空比 1/8、1/4、1/2，32 级阶梯三角波，15 位移位寄存器噪声。
+    // 方波读限带的单周期波表（谐波只叠到 16 kHz，高音不混叠）；音量按红白机的 16 级量化，再用 1 ms 平滑掉台阶的咔哒声。
+    const CHIP_TAB = 2048, chipTabs = new Map();
+    const CHIP_COS = Float32Array.from({ length: CHIP_TAB }, (_, i) => Math.cos(TAU * i / CHIP_TAB));
+    const CHIP_TRI = Float32Array.from({ length: 32 }, (_, i) => (i < 16 ? 15 - i : i - 16) / 7.5 - 1);
+    const chipTab = (duty, f) => {
+      const top = Math.max(1, Math.floor(16000 / f)), k = duty + ":" + top;
+      if (!chipTabs.has(k)) {
+        const tb = new Float32Array(CHIP_TAB + 1);
+        for (let h = 1; h <= top; h++) { const a = Math.sin(Math.PI * h * duty) / h; if (Math.abs(a) > 1e-6) for (let i = 0; i <= CHIP_TAB; i++) tb[i] += a * CHIP_COS[(h * i) % CHIP_TAB]; }
+        chipTabs.set(k, norm(tb));
+      }
+      return chipTabs.get(k);
+    };
+    const chipLook = (tb) => (ph) => { const x = ph * CHIP_TAB, i = x | 0; return tb[i] + (tb[i + 1] - tb[i]) * (x - i); };
+    const chipTriWave = (ph) => CHIP_TRI[(ph * 32) | 0];
+    const CHIP_SM = 1 - Math.exp(-1 / (0.001 * sr)), chipLevel = (v) => Math.round(clamp(v, 0, 1) * 15) / 15;
+    function chipRun(n, fOf, wave, envOf) {
+      const d = new Float32Array(n);
+      let ph = 0, e = 0;
+      for (let i = 0; i < n; i++) { const t = i / sr; e += CHIP_SM * (chipLevel(envOf(t)) - e); d[i] = wave(ph) * e; ph += fOf(t) / sr; ph -= Math.floor(ph); }
+      return d;
+    }
+    function chipNoise(n, rateOf, metal, envOf) {
+      const d = new Float32Array(n);
+      let reg = 1, acc = 0, out = 1, e = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        acc += rateOf(t) / sr;
+        while (acc >= 1) { acc -= 1; const bit = (reg ^ (reg >> (metal ? 6 : 1))) & 1; reg = (reg >> 1) | (bit << 14); out = reg & 1 ? -1 : 1; }
+        e += CHIP_SM * (chipLevel(envOf(t)) - e);
+        d[i] = out * e;
+      }
+      return d;
+    }
+    const CHIP_DUTY = { chipLead: 0.5, chipPulse: 0.25, chipArp: 0.125, p2: 0.5, p4: 0.25, p8: 0.125 };
+    const chipNote = (inst, m, len) => get(`chip:${inst}:${m}:${len}`, () => {
+      const f0 = hz(m), tri = inst === "chipTri", wave = tri ? chipTriWave : chipLook(chipTab(CHIP_DUTY[inst], f0 * 1.012));
+      const fOf = inst === "chipLead" && len > 0.4 ? (t) => f0 * Math.pow(2, (0.2 / 12) * Math.sin(TAU * 5.5 * t) * clamp((t - 0.25) / 0.2, 0, 1)) : () => f0;
+      const envOf = tri ? (t) => (t < len ? 1 : 0) : inst === "chipArp" ? (t) => (t < len ? Math.exp(-t / (0.45 * len + 0.03)) : 0) : (t) => (t < len ? 0.6 + 0.4 * Math.exp(-t / 0.1) : 0);
+      return finish(chipRun(Math.round((len + 0.01) * sr), fOf, wave, envOf), tri ? 0.002 : 0.0006);
+    });
+    const CHIP_DRUM = { kick: [0.24, 46, 190, 0.1], tom: [0.3, 90, 260, 0.13], snare: [0.22, 11000, 0.07], hat: [0.06, 90000, 0.014], open: [0.24, 90000, 0.08], crash: [1, 30000, 0.32] };
+    const chipDrum = (kind) => get("chip:d:" + kind, () => {
+      const c = CHIP_DRUM[kind], n = Math.round(c[0] * sr);
+      if (c.length === 4) {
+        const d = chipRun(n, (t) => c[1] + (c[2] - c[1]) * Math.exp(-t / 0.03), chipTriWave, (t) => Math.exp(-t / c[3])), z = chipNoise(n, () => 6000, false, () => 1);
+        for (let i = 0; i < n; i++) d[i] += 0.45 * z[i] * Math.exp(-i / sr / 0.005);
+        return finish(d, 0.0002);
+      }
+      const d = chipNoise(n, () => c[1], false, (t) => Math.exp(-t / c[2]));
+      if (kind === "snare") { const body = chipRun(n, (t) => 180 + 120 * Math.exp(-t / 0.02), chipLook(chipTab(0.5, 300)), (t) => Math.exp(-t / 0.03)); for (let i = 0; i < n; i++) d[i] = 0.75 * d[i] + 0.5 * body[i]; }
+      if (kind === "hat" || kind === "open") biquad(d, "hp", 5000);
+      return finish(d, 0.0002);
+    });
+    // 一段一段接起来的音效，写法「波形,秒,起,止,包络;…」：波形 p8 p4 p2 是三种占空比的方波、t 三角波（起止是 MIDI 音高，可带小数，滑音），
+    // n / m 是长 / 短周期噪声（起止是移位寄存器的时钟 Hz），r 休止；包络 f 平、d 衰减、u 渐强。每段末尾 2 ms 收掉，免得接缝咔哒。
+    const chipFx = (spec) => get("chip:fx:" + spec, () => {
+      const segs = spec.split(";").map((s) => s.split(","));
+      const d = new Float32Array(Math.round((segs.reduce((a, s) => a + +s[1], 0) + 0.01) * sr)), tail = Math.round(0.002 * sr);
+      let at0 = 0;
+      for (const [w, sec, a, b = a, env = "f"] of segs) {
+        const len = +sec, n = Math.round(len * sr), i0 = Math.round(at0 * sr), from = +a, to = +b;
+        at0 += len;
+        if (w === "r") continue;
+        const envOf = env === "d" ? (t) => Math.exp(-t / (0.4 * len + 0.01)) : env === "u" ? (t) => Math.min(1, t / len) : () => 1;
+        const seg = w === "n" || w === "m" ? chipNoise(n, (t) => from * Math.pow(to / from, t / len), w === "m", envOf)
+          : chipRun(n, (t) => hz(from + (to - from) * (t / len)), w === "t" ? chipTriWave : chipLook(chipTab(CHIP_DUTY[w], hz(Math.max(from, to)) * 1.01)), envOf);
+        for (let i = 0; i < n && i0 + i < d.length; i++) d[i0 + i] += seg[i] * Math.min(1, (n - i) / tail);
+      }
+      return finish(d, 0.0005);
+    });
+    // jC：第 06 章收尾心电图拉平那一声长「嘀」（只给 music/ch06.js 用，len 以秒计）：正弦一点点长出奇次谐波，到头已接近方波，
+    // 第 07 章 0:0 同音的方波（music/ch07.js 开头那一声）接着响，听着是同一个音换了音色。
+    const jCflat = (m, len) => get("jCflat:" + m + ":" + len, () => {
+      const f = hz(m), d = arr(len + 0.06), n = d.length;
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, q = Math.min(1, t / len) ** 2;
+        ph += TAU * f / sr;
+        const odd = Math.sin(3 * ph) / 3 + Math.sin(5 * ph) / 5 + Math.sin(7 * ph) / 7 + Math.sin(9 * ph) / 9;
+        d[i] = (Math.sin(ph) + q * odd) * Math.min(1, t / 0.02) * (t < len ? 1 : Math.exp(-(t - len) / 0.012));
+      }
+      return finish(d, 0.0005);
+    });
+    // 第 05 章的冷爵士（jazz 开头的只给 music/ch05.js 用）：拨弦低音提琴、颤音琴、Harmon 弱音小号、铜管短和弦，刷子鼓、叮叮镲、响指、邦戈、剪刀。
+    // 颤音琴的泛音按真琴键 1 : 4 : 9.9 调，颤音 5.5 Hz；弱音小号是加法合成的铜管谐波再过一道 1.65 kHz 的窄鼻音带通。
+    const jazzBass = (m, len) => get(`jazz:b:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.15), n = d.length, r = mulberry32(2000 + m), r0 = Math.round(len * sr);
+      for (const [k, amp, tau] of [[1, 1, 0.8], [2, 0.55, 0.3], [3, 0.3, 0.16], [4, 0.14, 0.09], [5, 0.07, 0.06]]) partial(d, f * k * (1 + 0.0007 * (k - 1)), amp, tau, r() * TAU);
+      const th = nz(n, 2100 + m, "lp", 900), tn = Math.min(n, Math.round(0.03 * sr));
+      for (let i = 0; i < tn; i++) d[i] += 0.45 * th[i] * Math.exp(-i / sr / 0.008);
+      for (let i = r0; i < n; i++) d[i] *= Math.exp(-(i - r0) / sr / 0.035);
+      return finish(d, 0.0015);
+    });
+    const jazzVibes = (m, len) => get(`jazz:v:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 1), n = d.length, r = mulberry32(2200 + m), d0 = Math.round(len * sr);
+      for (const [k, amp, tau] of [[1, 1, 1.8], [4, 0.2, 0.3], [9.9, 0.05, 0.06]]) partial(d, f * k, amp, tau, r() * TAU);
+      const ml = nz(n, 2300 + m, "bp", 1500, 0.8), mn = Math.min(n, Math.round(0.012 * sr));
+      for (let i = 0; i < mn; i++) d[i] += 0.12 * ml[i] * (1 - i / mn);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, trem = 1 - 0.3 * (0.5 - 0.5 * Math.cos(TAU * 5.5 * t)) * Math.min(1, t / 0.2);
+        d[i] *= trem * (i < d0 ? 1 : Math.exp(-(i - d0) / sr / 0.22));
+      }
+      return finish(d, 0.0008);
+    });
+    const jazzHarmon = (m, len) => get(`jazz:h:${m}:${len}`, () => {
+      const f0 = hz(m), d = arr(len + 0.12), n = d.length, br = nz(n, 2400 + m, "bp", 2600, 1);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, vib = t > 0.16 ? 0.005 * Math.sin(TAU * 5.3 * (t - 0.16)) * Math.min(1, (t - 0.16) / 0.2) : 0;
+        ph += TAU * f0 * (1 - 0.025 * Math.exp(-t / 0.035) + vib) / sr;
+        let y = 0.2 * br[i];
+        for (let k = 1; k <= 9; k++) y += Math.sin(k * ph) / Math.pow(k, 0.8);
+        d[i] = y * Math.min(1, t / 0.03) * (t < len ? 1 : Math.exp(-(t - len) / 0.035));
+      }
+      biquad(d, "hp", 650); biquad(d, "bp", 1650, 1.2); biquad(d, "lp", 4500);
+      return finish(d, 0.002);
+    });
+    const jazzStab = (m, len) => get(`jazz:s:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.1), n = d.length, r = mulberry32(2500 + m);
+      for (const det of [-0.005, 0.004, 0]) for (let k = 1; k * f < 5000; k++) partial(d, f * (1 + det) * k, 1 / k, 10, r() * TAU);
+      const blat = sweepBp(Float32Array.from(d), (t) => 900 + 3200 * Math.exp(-t / 0.07), 0.9);
+      norm(biquad(d, "lp", 1600));
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        d[i] = (0.65 * d[i] + 0.45 * blat[i]) * Math.min(1, t / 0.01) * (0.7 + 0.3 * Math.exp(-t / 0.05)) * (t < len ? 1 : Math.exp(-(t - len) / 0.05));
+      }
+      return finish(d, 0.001);
+    });
+    const jazzRide = (v) => get("jazz:ride:" + v, () => {
+      const d = arr(1.6), n = d.length, r = mulberry32(2600 + v);
+      for (let k = 0; k < 40; k++) { const f = 420 * Math.pow(2, r() * 4.3); partial(d, f, (0.4 + r()) * Math.sqrt(420 / f), 0.35 + 0.9 * r(), r() * TAU); }
+      norm(d);
+      const ping = nz(n, 2610 + v, "bp", 5400, 1.2), hiss = nz(n, 2620 + v, "hp", 6500);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] += 0.7 * ping[i] * Math.exp(-t / 0.01) + 0.22 * hiss[i] * Math.exp(-t / 0.5); }
+      biquad(d, "hp", 2000);
+      return finish(d, 0.0003);
+    });
+    const jazzBrush = (kind) => get("jazz:brush:" + kind, () => {
+      if (kind === "sweep") {
+        const L = BEAT * 1.05, d = sweepBp(nz(Math.round(L * sr), 2700), (t) => 2000 + 2400 * Math.sin(Math.PI * t / L), 0.6), n = d.length;
+        for (let i = 0; i < n; i++) { const x = i / n; d[i] *= Math.pow(Math.sin(Math.PI * x), 1.4) * (0.55 + 0.45 * x); }
+        return finish(d, 0.002);
+      }
+      const d = arr(0.25), n = d.length, a = nz(n, 2710, "bp", 3000, 0.6), b = nz(n, 2711, "bp", 850, 1);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = a[i] * Math.exp(-t / 0.055) + 0.3 * b[i] * Math.exp(-t / 0.03); }
+      return finish(d, 0.0005);
+    });
+    const jazzKick = () => get("jazz:kick", () => {
+      const d = arr(0.5), n = d.length;
+      let ph = 0;
+      for (let i = 0; i < n; i++) { const t = i / sr; ph += TAU * (50 + 28 * Math.exp(-t / 0.025)) / sr; d[i] = Math.sin(ph) * Math.exp(-t / 0.16) * Math.min(1, t / 0.003); }
+      return finish(d, 0.0005);
+    });
+    const jazzChick = () => get("jazz:chick", () => {
+      const d = arr(0.12), n = d.length, a = nz(n, 2800, "hp", 6000), b = nz(n, 2801, "bp", 8500, 1.5);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = (0.6 * a[i] + 0.5 * b[i]) * Math.exp(-t / 0.02) * Math.min(1, t / 0.002); }
+      return finish(d, 0.0005);
+    });
+    const jazzSnap = () => get("jazz:snap", () => {
+      const d = arr(0.15), n = d.length, a = nz(n, 2900, "bp", 2300, 1.6), b = nz(n, 2901, "hp", 5000);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = a[i] * Math.exp(-t / 0.013) + 0.45 * b[i] * Math.exp(-t / 0.0025) + 0.35 * Math.sin(TAU * 1800 * t) * Math.exp(-t / 0.009); }
+      return finish(d, 0.0002);
+    });
+    const jazzBongo = (hi) => get("jazz:bongo:" + (hi ? 1 : 0), () => {
+      const f0 = hi ? 430 : 290, f1 = hi ? 370 : 240, tau = hi ? 0.085 : 0.12, d = arr(0.4), n = d.length, slap = nz(n, hi ? 3001 : 3000, "bp", 1800, 1);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += TAU * (f1 + (f0 - f1) * Math.exp(-t / 0.02)) / sr;
+        d[i] = (Math.sin(ph) + 0.25 * Math.sin(2.3 * ph)) * Math.exp(-t / tau) * Math.min(1, t / 0.002) + 0.35 * slap[i] * Math.exp(-t / 0.006);
+      }
+      return finish(d, 0.0003);
+    });
+    const jazzRim = () => get("jazz:rim", () => {
+      const d = arr(0.15), n = d.length, a = nz(n, 3100, "bp", 1800, 1.4);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = 0.6 * Math.sin(TAU * 1650 * t) * Math.exp(-t / 0.012) + 0.45 * Math.sin(TAU * 430 * t) * Math.exp(-t / 0.02) + 0.5 * a[i] * Math.exp(-t / 0.004); }
+      return finish(d, 0.0002);
+    });
+    const jazzSnip = () => get("jazz:snip", () => {
+      const P = jazzSnipAt, d = arr(0.3), n = d.length, sc = nz(n, 3200, "hp", 4500), ck = nz(n, 3201, "bp", 6500, 1.5);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        let y = t < P ? 0.35 * sc[i] * Math.pow(t / P, 2) : 0;
+        if (t >= P) { const u = t - P; y += ck[i] * Math.exp(-u / 0.004) + 0.4 * Math.sin(TAU * 3800 * u) * Math.exp(-u / 0.03) + 0.25 * Math.sin(TAU * 5900 * u) * Math.exp(-u / 0.02); }
+        d[i] = y;
+      }
+      return finish(d, 0.001);
+    });
+    // 第 09 章的 Kraftwerk 式 motorik（metro 开头的只给 music/ch09.js 用）：鼓机、轨缝的咔嗒、方波贝斯、十六分的模拟音序器、弦乐机、带滑音的主奏，
+    // 外加报站铃、翻牌和列车员的哨子。锯齿与方波用 PolyBLEP 去混叠，起始相位按种子定，串行和并行渲染逐样本一致。
+    const metroBlep = (p, dt) => {
+      if (p < dt) { const u = p / dt; return u + u - u * u - 1; }
+      if (p > 1 - dt) { const u = (p - 1) / dt; return u * u + u + u + 1; }
+      return 0;
+    };
+    function metroOsc(n, fOf, saw, seed) {
+      const d = new Float32Array(n);
+      let p = mulberry32(seed)();
+      for (let i = 0; i < n; i++) {
+        const dt = Math.min(0.45, fOf(i / sr) / sr);
+        d[i] = saw ? 2 * p - 1 - metroBlep(p, dt) : (p < 0.5 ? 1 : -1) + metroBlep(p, dt) - metroBlep((p + 0.5) % 1, dt);
+        p += dt; p -= Math.floor(p);
+      }
+      return d;
+    }
+    const metroKick = () => get("metro:kick", () => {
+      const d = arr(0.45), n = d.length, cl = nz(n, 4001, "bp", 3000, 1);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += TAU * (48 + 120 * Math.exp(-t / 0.018)) / sr;
+        d[i] = Math.sin(ph) * Math.exp(-t / 0.22) * Math.min(1, t / 0.001) + 0.16 * cl[i] * Math.exp(-t / 0.002);
+      }
+      return finish(d, 0.0002);
+    });
+    const metroSnare = () => get("metro:snare", () => {
+      const d = arr(0.36), n = d.length, a = nz(n, 4011, "bp", 1700, 0.6), b = nz(n, 4012, "hp", 6000);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        d[i] = 0.6 * (Math.sin(TAU * 190 * t) + 0.45 * Math.sin(TAU * 345 * t)) * Math.exp(-t / 0.035) + 0.85 * a[i] * Math.exp(-t / 0.1) + 0.3 * b[i] * Math.exp(-t / 0.03);
+      }
+      return finish(d, 0.0003);
+    });
+    const METRO_HAT = [263, 400, 421, 474, 587, 845];
+    const metroHat = (open) => get("metro:hat:" + (open ? 1 : 0), () => {
+      const d = arr(open ? 0.32 : 0.08), n = d.length;
+      for (const f of METRO_HAT) { const df = (2 * f) / sr; let p = 0; for (let i = 0; i < n; i++) { d[i] += p < 0.5 ? 1 : -1; p += df; p -= Math.floor(p); } }
+      biquad(d, "bp", 9500, 0.9); biquad(d, "hp", 7000);
+      for (let i = 0; i < n; i++) d[i] *= Math.exp(-i / sr / (open ? 0.1 : 0.018));
+      return finish(d, 0.0002);
+    });
+    const metroClack = (k) => get("metro:clack:" + k, () => {
+      const d = arr(0.22), n = d.length, r = mulberry32(4030 + k), s = k ? 0.84 : 1, z = nz(n, 4040 + k, "bp", 2600, 0.8);
+      for (const [f, a, tau] of [[170, 1, 0.045], [930, 0.42, 0.03], [1390, 0.34, 0.025], [2240, 0.22, 0.018], [3170, 0.14, 0.01]]) partial(d, f * s, a, tau, r() * TAU);
+      for (let i = 0; i < n; i++) d[i] += 0.55 * z[i] * Math.exp(-i / sr / 0.005);
+      return finish(d, 0.0002);
+    });
+    const metroBass = (m, len) => get(`metro:bass:${m}:${len}`, () => {
+      const f = hz(m), n = Math.round((len + 0.05) * sr), sq = metroOsc(n, () => f, false, 4100 + m), d = new Float32Array(n);
+      const sus = (t) => 1 - 0.3 * Math.min(1, t / 0.25);
+      let s1 = 0, s2 = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, g = 1 - Math.exp((-TAU * (180 + 1500 * Math.exp(-t / 0.06))) / sr);
+        s1 += g * (sq[i] - s1); s2 += g * (s1 - s2);
+        d[i] = (0.85 * s2 + 0.5 * Math.sin(TAU * f * t)) * (t < len ? sus(t) : sus(len) * Math.exp(-(t - len) / 0.012));
+      }
+      return finish(d, 0.0015);
+    });
+    const metroSeq = (m, len) => get(`metro:seq:${m}:${len}`, () => {
+      const f = hz(m), n = Math.round((len + 0.08) * sr), sw = metroOsc(n, () => f, true, 4200 + m), d = new Float32Array(n), dec = 0.4 * len + 0.03;
+      let lo = 0, bp = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, g = 2 * Math.sin((Math.PI * (450 + 2800 * Math.exp(-t / 0.04))) / sr);
+        lo += g * bp; const hi = sw[i] - lo - 0.55 * bp; bp += g * hi;
+        d[i] = lo * Math.exp(-Math.min(t, len) / dec) * (t < len ? 1 : Math.exp(-(t - len) / 0.015));
+      }
+      return finish(d, 0.0005);
+    });
+    const metroStr = (m, len) => get(`metro:str:${m}:${len}`, () => {
+      const f = hz(m), rel = 0.7, n = Math.round((len + rel) * sr), d = new Float32Array(n);
+      [[-0.0065, 4.7], [0, 5.3], [0.006, 6.1]].forEach(([det, vr], j) => {
+        const o = metroOsc(n, (t) => f * (1 + det + 0.003 * Math.sin(TAU * vr * t + 2 * j)), true, 4300 + 3 * m + j);
+        for (let i = 0; i < n; i++) d[i] += o[i];
+      });
+      biquad(d, "lp", Math.min(3200, 900 + 3 * f), 0.6); biquad(d, "hp", 160);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] *= Math.min(1, t / 0.32) * (t < len ? 1 : Math.exp(-(t - len) / (rel / 4))); }
+      return finish(d, 0.002);
+    });
+    const metroLead = (m, len, from) => get(`metro:lead:${m}:${len}:${from}`, () => {
+      const f1 = hz(m), f0 = hz(from), n = Math.round((len + 0.3) * sr), d = new Float32Array(n);
+      const fOf = (t) => f0 * Math.pow(f1 / f0, Math.min(1, t / 0.075)) * (1 + 0.005 * Math.sin(TAU * 5.4 * t) * clamp((t - 0.22) / 0.3, 0, 1));
+      const a = metroOsc(n, fOf, true, 4400 + m), q = metroOsc(n, (t) => 1.003 * fOf(t), false, 4500 + m);
+      let lo = 0, bp = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, g = 2 * Math.sin((Math.PI * (1100 + 1700 * Math.exp(-t / 0.15))) / sr);
+        lo += g * bp; const hi = 0.6 * a[i] + 0.5 * q[i] - lo - 0.75 * bp; bp += g * hi;
+        d[i] = lo * Math.min(1, t / 0.01) * (t < len ? 1 : Math.exp(-(t - len) / 0.08));
+      }
+      return finish(d, 0.001);
+    });
+    const metroChime = (m) => get("metro:chime:" + m, () => {
+      const f = hz(m), d = arr(1.8), r = mulberry32(4600 + m);
+      for (const [k, a, tau] of [[1, 1, 1.0], [2, 0.3, 0.5], [3.01, 0.12, 0.25], [4.16, 0.07, 0.12], [5.43, 0.04, 0.06]]) partial(d, f * k, a, tau, r() * TAU);
+      return finish(d, 0.004);
+    });
+    const metroFlap = (k) => get("metro:flap:" + k, () => {
+      const d = arr(0.3), n = d.length, r = mulberry32(4700 + k), z = nz(n, 4710 + k, "bp", 2300, 1.1);
+      const hits = Array.from({ length: 8 }, (_, j) => [j * 0.028 + 0.006 * r(), 1 - 0.1 * j]);
+      for (let i = 0; i < n; i++) { const t = i / sr; let e = 0; for (const [tb, ab] of hits) if (t >= tb) e += ab * Math.exp(-(t - tb) / 0.0035); d[i] = z[i] * e; }
+      return finish(d, 0.0002);
+    });
+    const metroWhistle = () => get("metro:whistle", () => {
+      const d = arr(0.7), n = d.length, br = nz(n, 4800, "bp", 3100, 1.5);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, tr = 0.5 + 0.5 * Math.sin(TAU * 26 * t);
+        ph += (TAU * 2950 * (1 + 0.03 * tr)) / sr;
+        d[i] = (Math.sin(ph) * (0.55 + 0.45 * tr) + 0.3 * br[i]) * Math.min(1, t / 0.025) * (t < 0.55 ? 1 : Math.exp(-(t - 0.55) / 0.03));
+      }
+      return finish(d, 0.001);
+    });
+    // 第 03 章 1930 年代的热爵士（toon 开头的只给 music/ch03.js 用）：大号、酒馆钢琴、班卓、单簧管、带搋子弱音的小号，
+    // 毡槌大鼓、老式小鼓、滚奏、捂镲、木鱼、滑哨和锅碗瓢盆。钢琴每个音两根弦各偏 6 音分，拍频就是酒馆钢琴的那种颤；
+    // 小号的「哇」是一道从 450 Hz 扫到 1.6 kHz 的带通，wob 为 1 时按 4.5 Hz 一开一合（哭腔的长音）。
+    const toonTuba = (m, len) => get(`toon:tuba:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.12), n = d.length, bz = nz(n, 5000 + m, "bp", 520, 1.2);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, br = 0.3 + 0.55 * Math.exp(-t / 0.07);
+        ph += (TAU * f * (1 - 0.025 * Math.exp(-t / 0.025))) / sr;
+        let y = 0, a = 1;
+        for (let k = 1; k <= 8; k++) { y += (Math.sin(k * ph) * a) / k; a *= br; }
+        d[i] = (y + 0.12 * bz[i] * Math.exp(-t / 0.03)) * Math.min(1, t / 0.016) * (0.7 + 0.3 * Math.exp(-t / 0.12)) * (t < len ? 1 : Math.exp(-(t - len) / 0.035));
+      }
+      return finish(d, 0.002);
+    });
+    const toonPiano = (m, len) => get(`toon:piano:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.5), n = d.length, r = mulberry32(5100 + m), d0 = Math.round(len * sr), dec = clamp(1.4 * Math.sqrt(262 / f), 0.35, 2.2);
+      for (const det of [-0.0035, 0.0035]) for (let k = 1; k <= 9; k++) partial(d, f * k * Math.sqrt(1 + 0.0003 * k * k) * (1 + det), Math.pow(0.55, k - 1) * (k === 2 ? 1.3 : 1), dec / Math.pow(k, 0.8), r() * TAU);
+      const hm = nz(n, 5150 + m, "bp", Math.min(4000, 900 + 2 * f), 1.1), hn = Math.min(n, Math.round(0.025 * sr));
+      for (let i = 0; i < hn; i++) d[i] += 0.5 * hm[i] * Math.exp(-i / sr / 0.006);
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.07);
+      return finish(d, 0.0006);
+    });
+    const toonBanjo = (m, len) => get(`toon:banjo:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.3), n = d.length, r = mulberry32(5200 + m), d0 = Math.round(len * sr);
+      for (let k = 1; k <= 14; k++) partial(d, f * k * (1 + 0.0008 * k), Math.abs(Math.sin(0.19 * Math.PI * k)) / Math.sqrt(k), 0.3 / Math.sqrt(k), r() * TAU);
+      norm(d);
+      const pk = nz(n, 5250 + m, "hp", 3500), hd = nz(n, 5260 + m, "bp", 1900, 2.5);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = d[i] * (0.65 + 0.35 * Math.exp(-t / 0.02)) + 0.28 * pk[i] * Math.exp(-t / 0.003) + 0.22 * hd[i] * Math.exp(-t / 0.05); }
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.03);
+      return finish(d, 0.0003);
+    });
+    const TOON_CLAR = [1, 0.06, 0.45, 0.05, 0.25, 0.03, 0.14, 0.02, 0.07];
+    const toonClar = (m, len) => get(`toon:clar:${m}:${len}`, () => {
+      const f0 = hz(m), d = arr(len + 0.1), n = d.length, br = nz(n, 5300 + m, "bp", 2400, 0.8);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, vk = clamp((t - 0.16) / 0.25, 0, 1), vib = Math.sin(TAU * 5.6 * t) * vk;
+        ph += (TAU * f0 * (1 - 0.04 * Math.exp(-t / 0.04) + 0.0065 * vib)) / sr;
+        let y = 0;
+        for (let k = 0; k < TOON_CLAR.length; k++) y += TOON_CLAR[k] * Math.sin((k + 1) * ph);
+        d[i] = (y * (1 + 0.1 * vib) + 0.05 * br[i]) * Math.min(1, t / 0.03) * (t < len ? 1 : Math.exp(-(t - len) / 0.045));
+      }
+      biquad(d, "lp", 5000);
+      return finish(d, 0.002);
+    });
+    const toonWah = (m, len, wob) => get(`toon:wah:${m}:${len}:${wob}`, () => {
+      const f0 = hz(m), d = arr(len + 0.1), n = d.length;
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, vib = wob ? 0.01 * Math.sin(TAU * 4.5 * t) * Math.min(1, t / 0.25) : 0.004 * Math.sin(TAU * 5.2 * t) * clamp((t - 0.15) / 0.2, 0, 1);
+        ph += (TAU * f0 * (1 - 0.03 * Math.exp(-t / 0.035) + vib)) / sr;
+        let y = 0;
+        for (let k = 1; k <= 12; k++) y += Math.sin(k * ph) / Math.pow(k, 0.7);
+        d[i] = y * Math.min(1, t / 0.02) * (t < len ? 1 : Math.exp(-(t - len) / 0.05));
+      }
+      const open = wob ? (t) => 0.5 - 0.5 * Math.cos(TAU * 4.5 * t) : (t) => Math.min(1, t / 0.12) * (t < len ? 1 : Math.exp(-(t - len) / 0.05));
+      const w = sweepBp(Float32Array.from(d), (t) => 450 + 1150 * open(t), 2.4);
+      norm(biquad(d, "lp", 900));
+      for (let i = 0; i < n; i++) d[i] = 0.75 * w[i] + 0.3 * d[i];
+      return finish(d, 0.002);
+    });
+    const toonKick = () => get("toon:kick", () => {
+      const d = arr(0.6), n = d.length, sk = nz(n, 5400, "lp", 400);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * (56 + 34 * Math.exp(-t / 0.025))) / sr;
+        d[i] = (Math.sin(ph) + 0.25 * Math.sin(2.3 * ph)) * Math.exp(-t / 0.22) * Math.min(1, t / 0.003) + 0.5 * sk[i] * Math.exp(-t / 0.025);
+      }
+      return finish(d, 0.0008);
+    });
+    const toonSnare = () => get("toon:snare", () => {
+      const d = arr(0.32), n = d.length, a = nz(n, 5410, "bp", 1900, 0.7), b = nz(n, 5411, "hp", 4000);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        d[i] = 0.5 * (Math.sin(TAU * 205 * t) + 0.5 * Math.sin(TAU * 320 * t)) * Math.exp(-t / 0.028) + 0.75 * a[i] * Math.exp(-t / 0.06) + 0.3 * b[i] * Math.exp(-t / 0.11);
+      }
+      return finish(d, 0.0004);
+    });
+    const toonRoll = (len) => get("toon:roll:" + len, () => {
+      const rate = 26, last = Math.floor(len * rate), d = arr(len + 0.15), n = d.length, a = nz(n, 5420, "bp", 2300, 0.8), b = nz(n, 5421, "hp", 4500), r = mulberry32(5422);
+      const amp = Array.from({ length: last + 1 }, () => 0.75 + 0.25 * r());
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, k = Math.min(Math.floor(t * rate), last);
+        d[i] = (0.8 * a[i] + 0.35 * b[i]) * amp[k] * Math.exp(-(t - k / rate) / 0.016) * (0.25 + 0.75 * Math.min(1, t / len));
+      }
+      return finish(d, 0.002);
+    });
+    const toonChoke = () => get("toon:choke", () => {
+      const d = arr(0.22), n = d.length, r = mulberry32(5430);
+      for (let k = 0; k < 28; k++) partial(d, 2600 * Math.pow(2, r() * 2.2), 0.4 + r(), 0.05 + 0.08 * r(), r() * TAU);
+      norm(d);
+      const z = nz(n, 5431, "hp", 6000);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = (0.55 * d[i] + 0.6 * z[i]) * Math.exp(-t / 0.05) * Math.min(1, t / 0.0008); }
+      biquad(d, "hp", 2500);
+      return finish(d, 0.0002);
+    });
+    const toonBlock = (hi) => get("toon:block:" + (hi ? 1 : 0), () => {
+      const f = hi ? 1180 : 820, d = arr(0.12), n = d.length, r = mulberry32(5440 + (hi ? 1 : 0)), z = nz(n, 5442, "bp", 3000, 1.2);
+      for (const [k, a, tau] of [[1, 1, 0.032], [2.46, 0.3, 0.016], [3.95, 0.12, 0.009]]) partial(d, f * k, a, tau, r() * TAU);
+      for (let i = 0; i < n; i++) d[i] += 0.35 * z[i] * Math.exp(-i / sr / 0.0015);
+      return finish(d, 0.0002);
+    });
+    const toonWhistle = (from, to, len) => get(`toon:whistle:${from}:${to}:${len}`, () => {
+      const f0 = hz(from), f1 = hz(to), d = arr(len + 0.08), n = d.length, br = nz(n, 5450, "bp", 2600, 0.7);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, k = clamp(t / len, 0, 1), s = k * k * (3 - 2 * k);
+        ph += (TAU * f0 * Math.pow(f1 / f0, s) * (1 + 0.005 * Math.sin(TAU * 6.5 * t))) / sr;
+        d[i] = (Math.sin(ph) + 0.1 * Math.sin(2 * ph) + 0.06 * br[i]) * Math.min(1, t / 0.015) * (t < len ? 1 : Math.exp(-(t - len) / 0.02));
+      }
+      return finish(d, 0.002);
+    });
+    const toonPans = () => get("toon:pans", () => {
+      const d = arr(1.1), n = d.length, r = mulberry32(5460);
+      [[0, 1], [0.05, 0.75], [0.12, 0.6], [0.21, 0.45], [0.33, 0.35], [0.48, 0.22]].forEach(([t0, a], j) => {
+        const o = Math.round(t0 * sr), m = n - o, part = new Float32Array(m), z = nz(m, 5461 + j, "bp", 1400 + 2600 * r(), 0.8);
+        for (let k = 0; k < 7; k++) partial(part, 280 + 3400 * r(), 0.4 + r(), 0.04 + 0.3 * r(), r() * TAU);
+        norm(part);
+        for (let i = 0; i < m; i++) d[o + i] += a * (part[i] * Math.exp(-i / sr / 0.25) + 0.6 * z[i] * Math.exp(-i / sr / 0.025));
+      });
+      return finish(d, 0.0004);
+    });
+    // 第 01 章的 lo-fi hip hop（lofi 开头的只给 music/ch01.js 用）：闷一点的底鼓、边击（side-stick）、沙沙的踩镲，
+    // Rhodes 电钢（两对 FM，起音带一点「叮」）、柔的三角波主奏（慢颤音加一点走带的抖）、暖的合成器贝斯，唱片底噪和风铃。
+    const lofiKick = () => get("lofi:kick", () => {
+      const d = arr(0.5), n = d.length, th = nz(n, 6000, "lp", 900);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * (47 + 68 * Math.exp(-t / 0.035))) / sr;
+        d[i] = Math.tanh(1.8 * Math.sin(ph) * Math.exp(-t / 0.24) * Math.min(1, t / 0.002)) + 0.22 * th[i] * Math.exp(-t / 0.012);
+      }
+      biquad(d, "lp", 2800);
+      return finish(d, 0.0008);
+    });
+    const lofiStick = () => get("lofi:stick", () => {
+      const d = arr(0.18), n = d.length, r = mulberry32(6010), z = nz(n, 6011, "bp", 2400, 1.3);
+      for (const [f, a, tau] of [[430, 1, 0.028], [1060, 0.55, 0.017], [1730, 0.38, 0.011], [2950, 0.18, 0.006]]) partial(d, f, a, tau, r() * TAU);
+      for (let i = 0; i < n; i++) d[i] += 0.55 * z[i] * Math.exp(-i / sr / 0.004);
+      biquad(d, "lp", 6000);
+      return finish(d, 0.0002);
+    });
+    const lofiHat = (open) => get("lofi:hat:" + (open ? 1 : 0), () => {
+      const d = arr(open ? 0.4 : 0.09), n = d.length, a = nz(n, 6020 + (open ? 1 : 0), "hp", 6500), r = mulberry32(6022), m = new Float32Array(n);
+      for (let k = 0; k < 6; k++) partial(m, 4200 + r() * 5000, 0.3 + 0.4 * r(), open ? 0.12 : 0.025, r() * TAU);
+      norm(m);
+      for (let i = 0; i < n; i++) { const t = i / sr; d[i] = (0.8 * a[i] + 0.35 * m[i]) * Math.exp(-t / (open ? 0.12 : 0.022)) * Math.min(1, t / 0.0006); }
+      biquad(d, "lp", 9000);
+      return finish(d, 0.0002);
+    });
+    const lofiRhodes = (m, len) => get(`lofi:rh:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.6), n = d.length, dec = clamp(2.2 * Math.pow(220 / f, 0.35), 0.8, 3), d0 = Math.round(len * sr);
+      let p1 = 0, p2 = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, I = 1.1 * Math.exp(-t / 0.09) + 0.28;
+        p1 += (TAU * f) / sr; p2 += (TAU * f * 1.0017) / sr;
+        const body = Math.sin(p1 + I * Math.sin(p1)) + 0.5 * Math.sin(p2 + 0.6 * I * Math.sin(p2));
+        const tine = 0.18 * Math.sin(4 * p1 + 0.8 * Math.exp(-t / 0.02) * Math.sin(p1)) * Math.exp(-t / 0.05);
+        d[i] = Math.tanh(1.2 * (body + tine)) * Math.exp(-t / dec) * (1 + 0.12 * Math.sin(TAU * 4.6 * t)) * Math.min(1, t / 0.004);
+      }
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.09);
+      biquad(d, "lp", 3800);
+      return finish(d, 0.0008);
+    });
+    const lofiLead = (m, len) => get(`lofi:lead:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.3), n = d.length, d0 = Math.round(len * sr);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, vib = 0.007 * Math.sin(TAU * 5.2 * t) * clamp((t - 0.22) / 0.25, 0, 1) + 0.0025 * Math.sin(TAU * 0.6 * t);
+        ph += (TAU * f * (1 + vib)) / sr;
+        let y = 0.18 * Math.sin(2 * ph);
+        for (let k = 1; k <= 9; k += 2) y += (Math.sin(k * ph) / (k * k)) * (k % 4 === 1 ? 1 : -1);
+        d[i] = y * Math.min(1, t / 0.035);
+      }
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.12);
+      biquad(d, "lp", 2600);
+      return finish(d, 0.002);
+    });
+    const lofiBass = (m, len) => get(`lofi:bass:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.15), n = d.length, d0 = Math.round(len * sr);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * f * (1 + 0.03 * Math.exp(-t / 0.02))) / sr;
+        d[i] = Math.tanh(1.6 * (Math.sin(ph) + 0.3 * Math.sin(2 * ph) + 0.1 * Math.sin(3 * ph))) * Math.min(1, t / 0.006) * (0.8 + 0.2 * Math.exp(-t / 0.15));
+      }
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.05);
+      biquad(d, "lp", 1100);
+      return finish(d, 0.001);
+    });
+    // 一小节长、比一小节多出 30 ms：每小节起一段，前后两段交叠着淡入淡出，接缝听不出来
+    const lofiCrackle = (k) => get("lofi:crackle:" + k, () => {
+      const d = arr(BAR + 0.03), n = d.length, r = mulberry32(6100 + k), hiss = nz(n, 6110 + k, "bp", 4200, 0.6), f = Math.round(0.03 * sr);
+      for (let i = 0; i < n; i++) d[i] = 0.06 * hiss[i];
+      const click = (a, tau) => { const i0 = Math.floor(r() * (n - 400)), s = r() < 0.5 ? -1 : 1, T = tau * sr; for (let q = 0; q < 300; q++) d[i0 + q] += s * a * Math.exp(-q / T); };
+      for (let j = Math.round(40 * BAR); j > 0; j--) click(0.05 + 0.15 * r(), 0.0001 + 0.0002 * r());
+      for (let j = r() < 0.4 ? 2 : 1; j > 0; j--) click(0.55 + 0.3 * r(), 0.0003 + 0.0005 * r());
+      biquad(d, "hp", 900); biquad(d, "lp", 7000);
+      for (let i = 0; i < f; i++) { d[i] *= i / f; d[n - 1 - i] *= i / f; }
+      return norm(d);
+    });
+    const LOFI_CHIME = ["D6", "F6", "G6", "A6", "C7", "D7", "F7"];
+    const lofiChime = (k) => get("lofi:chime:" + k, () => {
+      const d = arr(3.6), n = d.length, r = mulberry32(6200 + k);
+      let t0 = 0;
+      for (let j = 0; j < 7; j++) {
+        const f = hz(midi(LOFI_CHIME[Math.floor(r() * LOFI_CHIME.length)])), o = Math.round(t0 * sr), part = new Float32Array(n - o), a = 0.5 + 0.5 * r();
+        for (const [ratio, amp, tau] of [[1, 1, 1.4], [2.76, 0.4, 0.5], [5.4, 0.18, 0.18], [8.93, 0.08, 0.07]]) partial(part, f * ratio, amp, tau, r() * TAU);
+        for (let i = 0; i < part.length; i++) d[o + i] += a * part[i];
+        t0 += 0.08 + 0.28 * r();
+      }
+      return finish(d, 0.001);
+    });
+    // 第 00 章的 Steve Reich 式简约派（reich 开头的只给 music/ch00.js 用）：硬槌马林巴、两个人的拍手（Clapping Music 那种），
+    // 一口气里按八分音符一下一下送出的长音（Music for 18 Musicians 里单簧管和人声的渐强渐弱）、钢片琴。错相由乐谱排，这里只出单音。
+    const reichMarimba = (m) => get("reich:mb:" + m, () => {
+      const f = hz(m), tau = 0.42 * Math.pow(330 / f, 0.45), d = arr(Math.min(1.4, tau * 5)), n = d.length, r = mulberry32(7100 + m);
+      for (const [k, amp, tk] of [[1, 1, tau], [1.0035, 0.1, tau * 0.6], [3.99, 0.36, tau * 0.22], [10.1, 0.09, 0.02]]) partial(d, f * k, amp, tk, r() * TAU);
+      const th = nz(n, 7150 + m, "bp", 2200, 0.9), pn = Math.min(n, Math.round(0.012 * sr));
+      for (let i = 0; i < pn; i++) d[i] += 0.4 * th[i] * Math.exp(-i / sr / 0.0018);
+      return finish(d, 0.0006);
+    });
+    const reichClap = (k) => get("reich:clap:" + k, () => {
+      const d = arr(0.3), n = d.length, z = nz(n, 7200 + k, "bp", k ? 1450 : 1100, 0.9), air = nz(n, 7210 + k, "hp", 4200);
+      const taps = [0, 0.007, 0.0155, 0.024].map((t0, j) => [t0 + 0.0012 * j * k, 1 - 0.15 * j]), last = taps[taps.length - 1][0];
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        let e = 0;
+        for (const [t0, a] of taps) if (t >= t0) e += a * Math.exp(-(t - t0) / 0.0028);
+        if (t >= last) e += 0.55 * Math.exp(-(t - last) / 0.055);
+        d[i] = z[i] * e + 0.22 * air[i] * Math.min(1, e);
+      }
+      return finish(d, 0.0002);
+    });
+    // 每个八分音符送一次气：每一下鼓起的包络两头都回到底，一下接一下没有台阶，不出咔哒声。
+    const reichBreath = (m, len, depth) => get(`reich:br:${m}:${len}:${depth}`, () => {
+      const f = hz(m), n = Math.round((len + 0.02) * sr), d = new Float32Array(n), r = mulberry32(7300 + m), P = BEAT / 2;
+      const H = [[1, 1], [2, 0.06], [3, 0.42], [5, 0.2], [7, 0.09], [9, 0.04]].filter(([k]) => f * k < sr * 0.45);
+      const ph0 = H.map(() => r() * TAU), br = nz(n, 7310 + m, "bp", Math.min(6000, f * 4), 0.6);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, x = (t % P) / P, sw = Math.pow(Math.sin(Math.PI * Math.min(1, t / len)), 1.2);
+        const e = sw * (1 - depth + depth * Math.pow(x, 0.25) * Math.pow(1 - x, 1.5) / 0.488);
+        let s = 0;
+        for (let j = 0; j < H.length; j++) s += H[j][1] * Math.sin(H[j][0] * ph + ph0[j]);
+        d[i] = (s + 0.05 * br[i]) * e;
+        ph += TAU * f * (1 + 0.0025 * Math.sin(TAU * 4.6 * t)) / sr;
+      }
+      return finish(d, 0.004);
+    });
+    const reichCelesta = (m) => get("reich:cel:" + m, () => {
+      const f = hz(m), d = arr(1.8), n = d.length, r = mulberry32(7400 + m);
+      for (const [k, amp, tk] of [[1, 1, 0.85], [2, 0.28, 0.32], [3, 0.08, 0.14], [5.43, 0.06, 0.05], [8.9, 0.03, 0.02]]) partial(d, f * k, amp, tk, r() * TAU);
+      const th = nz(n, 7410 + m, "hp", 4500), pn = Math.min(n, Math.round(0.006 * sr));
+      for (let i = 0; i < pn; i++) d[i] += 0.14 * th[i] * Math.exp(-i / sr / 0.001);
+      return finish(d, 0.0012);
+    });
+    // 第 02 章的工业进行曲（march 开头的只给 music/ch02.js 用）：音乐会大鼓、带响弦的军鼓（flam 带一记倚音）与滚奏、对镲、
+    // 铁砧（自由梁的振动模式 1 : 2.756 : 5.404 : 8.933）、机器的哐当声，低音铜管断奏、圆号、开放音小号（颤音晚起）、低音区钢琴、震音弦乐。
+    // 铜管都是加法合成的谐波，起音那一下最亮、随后收暗，听着是吹出来的而不是按出来的。
+    const marchDrum = () => get("march:drum", () => {
+      const d = arr(1.6), n = d.length, r = mulberry32(7000), th = nz(n, 7001, "lp", 240);
+      for (const [k, a, tau] of [[1.59, 0.32, 0.3], [2.14, 0.2, 0.2], [2.3, 0.14, 0.16], [2.65, 0.1, 0.12], [3.16, 0.06, 0.08]]) partial(d, 54 * k, a, tau, r() * TAU);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * (52 + 26 * Math.exp(-t / 0.04))) / sr;
+        d[i] += Math.sin(ph) * Math.exp(-t / 0.5) * Math.min(1, t / 0.006) + 0.45 * th[i] * Math.exp(-t / 0.035);
+      }
+      return finish(d, 0.0008);
+    });
+    const marchSnare = (flam) => get("march:snare:" + (flam ? 1 : 0), () => {
+      const P = flam ? marchFlamAt : 0, d = arr(0.5 + P), n = d.length;
+      const wires = nz(n, 7010, "bp", 3400, 0.6), body = nz(n, 7011, "bp", 1100, 1.1), crack = nz(n, 7012, "hp", 5500);
+      const stroke = (t0, a) => {
+        for (let i = Math.round(t0 * sr); i < n; i++) {
+          const t = i / sr - t0;
+          d[i] += a * (0.5 * (Math.sin(TAU * 185 * t) + 0.45 * Math.sin(TAU * 297 * t)) * Math.exp(-t / 0.032) + 0.85 * wires[i] * Math.exp(-t / 0.13)
+            + 0.4 * body[i] * Math.exp(-t / 0.045) + 0.45 * crack[i] * Math.exp(-t / 0.0035));
+        }
+      };
+      if (flam) stroke(0, 0.38);
+      stroke(P, 1);
+      return finish(d, 0.0003);
+    });
+    const marchRoll = (len, cres) => get(`march:roll:${len}:${cres}`, () => {
+      const rate = 28, last = Math.floor(len * rate), d = arr(len + 0.25), n = d.length, r = mulberry32(7020);
+      const a = nz(n, 7021, "bp", 3200, 0.6), b = nz(n, 7022, "bp", 1000, 1), amp = Array.from({ length: last + 1 }, () => 0.72 + 0.28 * r());
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, k = Math.min(Math.floor(t * rate), last), x = Math.min(1, t / len);
+        const shape = cres ? 0.12 + 0.88 * x * x : 0.55 + 0.45 * Math.sin(Math.PI * x);
+        d[i] = (0.85 * a[i] + 0.3 * b[i]) * amp[k] * Math.exp(-(t - k / rate) / 0.022) * shape;
+      }
+      return finish(d, 0.002);
+    });
+    const marchCymbal = (short) => get("march:cym:" + (short ? 1 : 0), () => {
+      const d = arr(short ? 0.7 : 2.8), n = d.length, r = mulberry32(7030);
+      for (let k = 0; k < 64; k++) { const f = 320 * Math.pow(2, r() * 5.2); partial(d, f, (0.3 + r()) * Math.pow(320 / f, 0.35), 0.35 + 1.5 * r(), r() * TAU); }
+      norm(d);
+      const hiss = nz(n, 7031, "hp", 4200), bite = nz(n, 7032, "bp", 5500, 0.8);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        let y = (0.75 * d[i] + 0.4 * hiss[i] * Math.exp(-t / 0.8)) * Math.min(1, t / 0.01) + 0.55 * bite[i] * Math.exp(-t / 0.018);
+        if (t > 0.009) y += 0.35 * bite[i] * Math.exp(-(t - 0.009) / 0.014);
+        if (short && t > 0.28) y *= Math.exp(-(t - 0.28) / 0.04);
+        d[i] = y;
+      }
+      biquad(d, "hp", 450);
+      return finish(d, 0.0005);
+    });
+    const marchAnvil = (m) => get("march:anvil:" + m, () => {
+      const f = hz(m), d = arr(1.5), n = d.length, r = mulberry32(7040 + m), click = nz(n, 7039, "hp", 5000);
+      for (const [k, a, tau] of [[1, 1, 0.6], [1.0025, 0.35, 0.5], [2.756, 0.55, 0.28], [5.404, 0.3, 0.12], [8.933, 0.15, 0.06]]) partial(d, f * k, a, tau, r() * TAU);
+      for (let i = 0; i < n; i++) d[i] += 0.55 * click[i] * Math.exp(-i / sr / 0.0012);
+      return finish(d, 0.0002);
+    });
+    // k 每加 1 高一个全音，k = 4 是原音高。
+    const marchClank = (k) => get("march:clank:" + k, () => {
+      const s = Math.pow(2, (k - 4) / 6), d = arr(0.75), n = d.length, r = mulberry32(7140 + k), z = nz(n, 7160 + k, "bp", 1700 * s, 0.9);
+      for (const [f, a, tau] of [[300, 1, 0.13], [710, 0.7, 0.085], [1090, 0.55, 0.06], [1650, 0.4, 0.045], [2420, 0.25, 0.03]]) partial(d, f * s, a, tau, r() * TAU);
+      norm(d);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        ph += (TAU * (68 + 95 * Math.exp(-t / 0.018))) / sr;
+        d[i] = 0.55 * d[i] + 0.8 * Math.sin(ph) * Math.exp(-t / 0.08) * Math.min(1, t / 0.001) + 0.5 * z[i] * Math.exp(-t / 0.006);
+      }
+      return finish(d, 0.0002);
+    });
+    const marchTbn = (m, len) => get(`march:tbn:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.15), n = d.length, bz = nz(n, 7400 + m, "bp", 650, 1);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, br = 0.5 + 0.38 * Math.exp(-t / 0.05);
+        ph += (TAU * f * (1 - 0.022 * Math.exp(-t / 0.018))) / sr;
+        let y = 0, a = 1;
+        for (let k = 1; k <= 24 && k * f < 8000; k++) { y += (Math.sin(k * ph) * a) / Math.sqrt(k); a *= br; }
+        d[i] = (y + 0.1 * bz[i] * Math.exp(-t / 0.025)) * Math.min(1, t / 0.01) * (0.7 + 0.3 * Math.exp(-t / 0.07)) * (t < len ? 1 : Math.exp(-(t - len) / 0.035));
+      }
+      return finish(d, 0.0015);
+    });
+    const marchHorn = (m, len) => get(`march:horn:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.3), n = d.length;
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, br = 0.4 + 0.25 * Math.exp(-t / 0.08);
+        ph += (TAU * f * (1 - 0.012 * Math.exp(-t / 0.03))) / sr;
+        let y = 0, a = 1;
+        for (let k = 1; k <= 10 && k * f < 6000; k++) { y += Math.sin(k * ph) * a; a *= br; }
+        d[i] = y * Math.min(1, t / 0.025) * (t < len ? 1 : Math.exp(-(t - len) / 0.08));
+      }
+      biquad(d, "lp", 2600);
+      return finish(d, 0.002);
+    });
+    const marchTpt = (m, len) => get(`march:tpt:${m}:${len}`, () => {
+      const f0 = hz(m), d = arr(len + 0.15), n = d.length, br = nz(n, 7300 + m, "bp", 3000, 0.9);
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, vk = clamp((t - 0.28) / 0.25, 0, 1), vs = Math.sin(TAU * 5.6 * t) * vk;
+        ph += (TAU * f0 * (1 - 0.03 * Math.exp(-t / 0.025) + 0.0055 * vs)) / sr;
+        const b = 0.55 + 0.25 * Math.exp(-t / 0.05) + 0.06 * vs;
+        let y = 0, a = 1;
+        for (let k = 1; k <= 12 && k * f0 < 12000; k++) { y += Math.sin(k * ph) * a; a *= b; }
+        d[i] = (y + 0.04 * br[i]) * Math.min(1, t / 0.018) * (t < len ? 1 : Math.exp(-(t - len) / 0.05));
+      }
+      biquad(d, "hp", 300); biquad(d, "lp", 7000);
+      return finish(d, 0.0015);
+    });
+    const marchPiano = (m, len) => get(`march:piano:${m}:${len}`, () => {
+      const f = hz(m), d = arr(len + 0.4), n = d.length, r = mulberry32(7100 + m), d0 = Math.round(len * sr), dec = clamp(2.4 * Math.sqrt(110 / f), 0.6, 4);
+      for (const det of [-0.0012, 0.0012]) for (let k = 1; k <= 18 && k * f < 7000; k++) partial(d, f * k * Math.sqrt(1 + 0.0002 * k * k) * (1 + det), Math.pow(0.74, k - 1) * (k === 2 ? 1.25 : 1), dec / Math.pow(k, 0.7), r() * TAU);
+      const hm = nz(n, 7180 + m, "bp", Math.min(3000, 500 + 4 * f), 0.9), hn = Math.min(n, Math.round(0.03 * sr));
+      for (let i = 0; i < hn; i++) d[i] += 0.3 * hm[i] * Math.exp(-i / sr / 0.008);
+      for (let i = d0; i < n; i++) d[i] *= Math.exp(-(i - d0) / sr / 0.12);
+      biquad(d, "lp", 3600);
+      return finish(d, 0.0008);
+    });
+    // 锯齿用 PolyBLEP 去混叠，起始相位按种子定，串行和并行渲染逐样本一致。
+    const marchSaw = (n, f, seed) => {
+      const d = new Float32Array(n), dt = f / sr;
+      let p = mulberry32(seed)();
+      for (let i = 0; i < n; i++) {
+        let y = 2 * p - 1;
+        if (p < dt) { const u = p / dt; y -= u + u - u * u - 1; }
+        else if (p > 1 - dt) { const u = (p - 1) / dt; y -= u * u + u + u + 1; }
+        d[i] = y; p += dt; p -= Math.floor(p);
+      }
+      return d;
+    };
+    // 震音按三十二分音符一弓，起音落在拍格上。
+    const marchStr = (m, len) => get(`march:str:${m}:${len}`, () => {
+      const f = hz(m), rel = 0.5, n = Math.round((len + rel) * sr), d = new Float32Array(n), r = mulberry32(7200 + m), rate = 8 / BEAT;
+      [-0.006, 0, 0.0055].forEach((det, j) => { const o = marchSaw(n, f * (1 + det), 7210 + 3 * m + j); for (let i = 0; i < n; i++) d[i] += o[i]; });
+      biquad(d, "lp", Math.min(3000, 700 + 4 * f), 0.6); biquad(d, "hp", 140);
+      const amp = Array.from({ length: Math.ceil((len + rel) * rate) + 1 }, () => 0.75 + 0.25 * r());
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, k = Math.floor(t * rate), x = t * rate - k;
+        d[i] *= (0.5 + 0.5 * amp[k] * Math.exp(-x / 0.4)) * Math.min(1, t / 0.08) * (t < len ? 1 : Math.exp(-(t - len) / (rel / 4)));
+      }
+      return finish(d, 0.002);
+    });
     const bank = { kick, snare, type, flip, clock, stamp, ding, key, lamp, pluck, bell, whoosh, fork, down, swell, slip, broadcast, flipHit, glass, marimba, kalimba, morse, gate, off, whip, knock, ping, clear, hop };
+    Object.assign(bank, { chipNote, chipDrum, chipFx });
+    Object.assign(bank, { jCflat });
+    Object.assign(bank, { jazzBass, jazzVibes, jazzHarmon, jazzStab, jazzRide, jazzBrush, jazzKick, jazzChick, jazzSnap, jazzBongo, jazzRim, jazzSnip });
+    Object.assign(bank, { metroKick, metroSnare, metroHat, metroClack, metroBass, metroSeq, metroStr, metroLead, metroChime, metroFlap, metroWhistle });
+    Object.assign(bank, { toonTuba, toonPiano, toonBanjo, toonClar, toonWah, toonKick, toonSnare, toonRoll, toonChoke, toonBlock, toonWhistle, toonPans });
+    Object.assign(bank, { lofiKick, lofiStick, lofiHat, lofiRhodes, lofiLead, lofiBass, lofiCrackle, lofiChime });
+    Object.assign(bank, { reichMarimba, reichClap, reichBreath, reichCelesta });
+    Object.assign(bank, { marchDrum, marchSnare, marchRoll, marchCymbal, marchAnvil, marchClank, marchTbn, marchHorn, marchTpt, marchPiano, marchStr });
     SAMPLE_BANKS.set(sr, bank);
     return bank;
   }
@@ -821,6 +1543,118 @@
     // 这几件的电平按隔离渲染的 LUFS-M（400 ms 窗）对到同一位置上别的剧情音；拇指琴对到马林巴弹同一段主题；knock 频谱偏低，同样响度下比 tick 听着轻，所以高约 3 dB。改音色要重新对
     const GLASS_G = 0.62, MARIMBA_G = 0.42, KALIMBA_G = 0.42, KNOCK_G = 0.092, WHIP_G = 0.75, MORSE_G = 0.21, GATE_G = 0.49, OFF_G = 0.19, PING_G = [0.84, 0.25], CLEAR_G = 0.13, HOP_G = 0.24;
     const TUBE_PAN = [-0.7, -0.25, 0.25, 0.7];
+    // 第 07 章红白机音色：[电平, 声像, 混响, 延迟]；方波的有效值比正弦高得多，电平按整章响度对到前后两章。
+    const CHIP_INST = { chipLead: [0.34, 0.12, 0.1, 0.16], chipPulse: [0.23, -0.4, 0.06, 0.12], chipArp: [0.21, 0.42, 0.05, 0.2], chipTri: [0.63, 0, 0, 0] };
+    const CHIP_DRUM_G = { kick: 1.05, tom: 0.84, snare: 0.63, hat: 0.27, open: 0.25, crash: 0.34 }, CHIP_FX_G = 0.63;
+    const JC_FLAT_G = 0.22;
+    // 第 05 章冷爵士：乐器 [电平, 声像, 混响, 延迟]、鼓件 [电平, 声像, 混响]，电平按整章响度对到前后两章。
+    // 低音提琴走 mel 总线、不走 bus.bass：那条只在串行渲染里跟着 duck 自动化，并行渲染不跟，两种渲染会对不上。
+    const jazzVoice = { jazzBass: [1.12, -0.05, 0.06, 0], jazzVibes: [0.47, 0.22, 0.3, 0.06], jazzHarmon: [0.7, -0.18, 0.3, 0.12], jazzStab: [0.22, 0.08, 0.22, 0] };
+    const jazzKit = { ride: [0.46, 0.3, 0.12], sweep: [0.26, -0.1, 0.08], tap: [0.34, -0.1, 0.08], kick: [0.62, 0, 0.05], chick: [0.34, -0.3, 0.05], snap: [0.43, 0, 0.25], bongo: [0.34, 0.25, 0.15], rim: [0.34, 0.05, 0.1], snip: [0.47, 0, 0.15] };
+    function jazzMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = jazzVoice[n.inst];
+      play(S[n.inst](n.m, Math.round(n.dur * 1000) / 1000), t, { g: g * n.v, pan, to, verbAmt, delayAmt: n.theme ? 0.22 : delayAmt });
+    }
+    function jazzHit(n, t) {
+      const [g, pan, verbAmt] = jazzKit[n.what], o = { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: bus.drums, verbAmt };
+      if (n.what === "ride") play(S.jazzRide(n.i ?? 0), t, o);
+      else if (n.what === "sweep" || n.what === "tap") play(S.jazzBrush(n.what), t, o);
+      else if (n.what === "bongo") play(S.jazzBongo(!!n.hi), t, o);
+      else if (n.what === "snip") play(S.jazzSnip(), t, { ...o, to: bus.fx, pre: jazzSnipAt });
+      else play(S[{ kick: "jazzKick", chick: "jazzChick", snap: "jazzSnap", rim: "jazzRim" }[n.what]](), t, o);
+    }
+    // 第 09 章 motorik：鼓件与音效 [电平, 声像, 混响]、音色 [样本, 电平, 声像, 混响, 延迟]，电平按整章响度对到前后两章。
+    // 都写在 story 里（kind: "metro"，len 以拍计）：主奏的滑音要知道上一个音（from），melody 的元组装不下。
+    // 贝斯同样走 mel 总线、不走 bus.bass，理由见上面低音提琴那条。
+    const METRO_KIT = { kick: [0.95, 0, 0.04], snare: [0.42, 0.06, 0.22], hat: [0.16, 0.28, 0.04], open: [0.13, 0.28, 0.08], clack: [0.26, -0.3, 0.1], flap: [0.3, -0.2, 0.05], chime: [0.3, 0.12, 0.35], whistle: [0.16, -0.35, 0.25] };
+    const METRO_VOICE = { bass: ["metroBass", 0.36, 0, 0.02, 0], seq: ["metroSeq", 0.15, 0.3, 0.1, 0.18], str: ["metroStr", 0.09, -0.2, 0.3, 0], lead: ["metroLead", 0.28, 0.06, 0.25, 0.22] };
+    function metroHit(n, t) {
+      if (METRO_VOICE[n.what]) {
+        const [fn, g, pan, verbAmt, delayAmt] = METRO_VOICE[n.what], len = Math.round(n.len * BEAT * 1000) / 1000;
+        play(n.what === "lead" ? S.metroLead(n.m, len, n.from ?? n.m) : S[fn](n.m, len), t, { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: bus.mel, verbAmt, delayAmt });
+        return;
+      }
+      const [g, pan, verbAmt] = METRO_KIT[n.what], fx = n.what === "flap" || n.what === "chime" || n.what === "whistle";
+      const o = { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: fx ? bus.fx : bus.drums, verbAmt, delayAmt: n.what === "chime" ? 0.16 : 0 };
+      if (n.what === "kick") play(S.metroKick(), t, o);
+      else if (n.what === "snare") play(S.metroSnare(), t, o);
+      else if (n.what === "hat" || n.what === "open") play(S.metroHat(n.what === "open"), t, o);
+      else if (n.what === "clack") play(S.metroClack(n.i ?? 0), t, o);
+      else if (n.what === "flap") play(S.metroFlap(n.i ?? 0), t, o);
+      else if (n.what === "chime") play(S.metroChime(n.m), t, o);
+      else if (n.what === "whistle") play(S.metroWhistle(), t, o);
+    }
+    // 第 03 章热爵士：乐器 [电平, 声像, 混响, 延迟]（toonWahLong 是同一把小号按 4.5 Hz 开合的长音），
+    // 鼓件与音效 [电平, 声像, 混响]，写在 story 里（kind: "toon"，len 以拍计，post 为真时绕开母线扫频）。电平按整章响度对到前后两章。
+    // 大号同样走 mel 总线、不走 bus.bass，理由见上面低音提琴那条。
+    const toonVoice = { toonTuba: [0.85, 0, 0.05, 0], toonPiano: [0.37, -0.25, 0.18, 0], toonBanjo: [0.2, 0.3, 0.1, 0], toonClar: [0.61, 0.12, 0.28, 0.1], toonWah: [0.55, -0.15, 0.22, 0.06], toonWahLong: [0.55, -0.15, 0.22, 0.06] };
+    const toonKit = { kick: [0.67, 0, 0.04], snare: [0.34, 0.05, 0.12], roll: [0.3, 0.05, 0.15], choke: [0.3, 0.25, 0.1], block: [0.37, -0.3, 0.08], whistle: [0.24, 0.2, 0.2], pans: [0.55, 0, 0.25] };
+    function toonMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = toonVoice[n.inst], len = Math.round(n.dur * 1000) / 1000;
+      const buf = n.inst === "toonWah" || n.inst === "toonWahLong" ? S.toonWah(n.m, len, n.inst === "toonWahLong" ? 1 : 0) : S[n.inst](n.m, len);
+      play(buf, t, { g: g * n.v, pan, to, verbAmt, delayAmt: n.theme ? 0.2 : delayAmt });
+    }
+    function toonHit(n, t) {
+      const [g, pan, verbAmt] = toonKit[n.what], len = Math.round((n.len ?? 1) * BEAT * 1000) / 1000;
+      const o = { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: n.post ? bus.fxPost : n.what === "whistle" || n.what === "pans" ? bus.fx : bus.drums, verbAmt };
+      if (n.what === "roll") play(S.toonRoll(len), t, o);
+      else if (n.what === "block") play(S.toonBlock(!!n.hi), t, o);
+      else if (n.what === "whistle") play(S.toonWhistle(n.from, n.to, len), t, o);
+      else play(S[{ kick: "toonKick", snare: "toonSnare", choke: "toonChoke", pans: "toonPans" }[n.what]](), t, o);
+    }
+    // 第 01 章 lo-fi：乐器 [电平, 声像, 混响, 延迟]（电钢按音高往两边摊开一点），鼓件与底噪、风铃 [电平, 声像, 混响]，
+    // 鼓件写在 story 里（kind: "lofi"）。电平按整章响度对到前后两章。贝斯同样走 mel 总线、不走 bus.bass，理由见上面低音提琴那条。
+    const lofiVoice = { lofiRhodes: [0.23, -0.08, 0.22, 0.08], lofiLead: [0.42, 0.1, 0.3, 0.22], lofiBass: [0.4, 0, 0.02, 0] };
+    const lofiKit = { kick: [0.7, 0, 0.03], stick: [0.68, 0.12, 0.12], hat: [0.33, 0.3, 0.04], open: [0.27, 0.3, 0.08], crackle: [0.42, 0, 0], chime: [0.22, -0.35, 0.5] };
+    function lofiMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = lofiVoice[n.inst];
+      play(S[n.inst](n.m, Math.round(n.dur * 1000) / 1000), t, { g: g * n.v, pan: n.inst === "lofiRhodes" ? pan + (n.m - 62) * 0.012 : pan, to, verbAmt, delayAmt: n.theme ? 0.24 : delayAmt });
+    }
+    function lofiHit(n, t) {
+      const [g, pan, verbAmt] = lofiKit[n.what], fx = n.what === "crackle" || n.what === "chime";
+      const o = { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: fx ? bus.fx : bus.drums, verbAmt, delayAmt: n.what === "chime" ? 0.2 : 0 };
+      if (n.what === "kick") play(S.lofiKick(), t, o);
+      else if (n.what === "stick") play(S.lofiStick(), t, o);
+      else if (n.what === "hat" || n.what === "open") play(S.lofiHat(n.what === "open"), t, o);
+      else if (n.what === "crackle") play(S.lofiCrackle(n.i ?? 0), t, o);
+      else if (n.what === "chime") play(S.lofiChime(n.i ?? 0), t, o);
+    }
+    // 第 00 章简约派：钢片琴唱主题走 melody（乐器 [电平, 声像, 混响, 延迟]）；其余写在 story 里（kind: "reich"，len 以拍计），
+    // 音色 [样本, 电平, 声像, 混响, 延迟]、拍手 [电平, 混响]（两个人一左一右）。电平按整章响度对到前后两章。
+    // 低音的长音同样走 mel 总线、不走 bus.bass，理由见上面低音提琴那条。
+    const reichVoice = { reichCelesta: [0.5, 0.15, 0.4, 0.22] };
+    const REICH_VOICE = { mb: ["reichMarimba", 0.34, -0.35, 0.18, 0.05], mb2: ["reichMarimba", 0.34, 0.35, 0.18, 0.05], cel: ["reichCelesta", 0.5, 0.15, 0.4, 0.22], breath: ["reichBreath", 0.16, 0, 0.35, 0], bass: ["reichBreath", 0.5, 0, 0.12, 0] };
+    const REICH_CLAP = [0.65, 0.12];
+    function reichMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = reichVoice[n.inst];
+      play(S[n.inst](n.m), t, { g: g * n.v, pan, to, verbAmt, delayAmt });
+    }
+    function reichHit(n, t) {
+      if (n.what === "clap") { play(S.reichClap(n.i ?? 0), t, { g: REICH_CLAP[0] * (n.v ?? 1), pan: n.pan ?? (n.i ? 0.45 : -0.45), to: bus.drums, verbAmt: REICH_CLAP[1] }); return; }
+      const [fn, g, pan, verbAmt, delayAmt] = REICH_VOICE[n.what];
+      const buf = fn === "reichBreath" ? S.reichBreath(n.m, Math.round((n.len ?? 4) * BEAT * 1000) / 1000, n.depth ?? 0.6) : S[fn](n.m);
+      play(buf, t, { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: bus.mel, verbAmt, delayAmt });
+    }
+
+    // 第 02 章工业进行曲：乐器 [电平, 声像, 混响, 延迟]，鼓件与金属声 [电平, 声像, 混响]，鼓件写在 story 里（kind: "march"，len 以拍计，
+    // cres 为真时滚奏一路渐强，post 为真时绕开母线扫频）。电平按整章响度对到前后两章。低音铜管同样走 mel 总线、不走 bus.bass，理由见上面低音提琴那条。
+    const marchVoice = { marchTbn: [0.84, -0.12, 0.12, 0], marchHorn: [0.43, 0.22, 0.26, 0], marchTpt: [0.62, 0.1, 0.26, 0.06], marchPiano: [0.95, -0.25, 0.16, 0], marchStr: [0.22, 0, 0.32, 0] };
+    const marchKit = { drum: [0.78, 0, 0.12], snare: [0.67, 0.08, 0.1], flam: [0.67, 0.08, 0.1], roll: [0.56, 0.08, 0.14], cymbal: [0.4, 0.2, 0.22], choke: [0.34, 0.2, 0.1], anvil: [0.47, -0.3, 0.22], clank: [0.67, 0.25, 0.1] };
+    function marchMel(n, t, to) {
+      const [g, pan, verbAmt, delayAmt] = marchVoice[n.inst];
+      play(S[n.inst](n.m, Math.round(n.dur * 1000) / 1000), t, { g: g * n.v, pan, to, verbAmt, delayAmt: n.theme ? 0.2 : delayAmt });
+    }
+    function marchHit(n, t) {
+      const [g, pan, verbAmt] = marchKit[n.what], fx = n.what === "anvil" || n.what === "clank";
+      const o = { g: g * (n.v ?? 1), pan: n.pan ?? pan, to: n.post ? bus.fxPost : fx ? bus.fx : bus.drums, verbAmt };
+      if (n.what === "drum") play(S.marchDrum(), t, o);
+      else if (n.what === "snare") play(S.marchSnare(0), t, o);
+      else if (n.what === "flam") play(S.marchSnare(1), t, { ...o, pre: marchFlamAt });
+      else if (n.what === "roll") play(S.marchRoll(Math.round((n.len ?? 1) * BEAT * 1000) / 1000, n.cres ? 1 : 0), t, o);
+      else if (n.what === "cymbal" || n.what === "choke") play(S.marchCymbal(n.what === "choke"), t, o);
+      else if (n.what === "anvil") play(S.marchAnvil(n.m), t, { ...o, delayAmt: 0.1 });
+      else if (n.what === "clank") play(S.marchClank(n.i ?? 4), t, o);
+    }
 
     let next = 0, controlAt = 0;
     return (until = Infinity) => {
@@ -863,6 +1697,12 @@
             else if (n.inst === "glass") play(S.glass(n.m), t, { g: GLASS_G * n.v, pan: 0, to, verbAmt: 0.35, delayAmt: 0.22 });
             else if (n.inst === "marimba") play(S.marimba(n.m), t, { g: MARIMBA_G * n.v, pan: -0.1, to, verbAmt: 0.3, delayAmt: 0.12 });
             else if (n.inst === "kalimba") play(S.kalimba(n.m), t, { g: KALIMBA_G * n.v, pan: n.arp ? n.pan : 0.1, to, verbAmt: 0.3, delayAmt: 0.18 });
+            else if (CHIP_INST[n.inst]) { const [cg, cp, cv, cd] = CHIP_INST[n.inst]; play(S.chipNote(n.inst, n.m, Math.round(n.dur * 1000) / 1000), t, { g: cg * n.v, pan: cp, to, verbAmt: cv, delayAmt: cd }); }
+            else if (jazzVoice[n.inst]) jazzMel(n, t, to);
+            else if (toonVoice[n.inst]) toonMel(n, t, to);
+            else if (lofiVoice[n.inst]) lofiMel(n, t, to);
+            else if (reichVoice[n.inst]) reichMel(n, t, to);
+            else if (marchVoice[n.inst]) marchMel(n, t, to);
             else
               play(S.pluck(n.m, n.inst), t, { g: (n.theme ? 0.34 : 0.3) * n.v, pan: n.pan ?? 0, to, verbAmt: n.inst === "pluck" ? 0.22 : 0.28, delayAmt: n.theme ? 0.32 : n.inst === "pluckMute" ? 0.3 : 0.18 });
             break;
@@ -891,6 +1731,15 @@
           case "ping": play(S.ping(n.m, n.late), t, { g: n.late ? PING_G[1] : PING_G[0], pan: n.pan ?? 0, verbAmt: n.late ? 0.5 : 0.25, delayAmt: 0.12 }); break;
           case "clear": play(S.clear(), t, { g: CLEAR_G, verbAmt: 0.3 }); break;
           case "hop": play(S.hop(n.m), t, { g: HOP_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.25, delayAmt: 0.15 }); break;
+          case "chipDrum": play(S.chipDrum(n.drum), t, { g: CHIP_DRUM_G[n.drum] * (n.v ?? 1), pan: n.pan ?? 0, to: bus.drums, verbAmt: 0.03 }); break;
+          case "chipFx": play(S.chipFx(n.fx), t, { g: CHIP_FX_G * (n.v ?? 1), pan: n.pan ?? 0, verbAmt: 0.1, delayAmt: n.echo ?? 0 }); break;
+          case "jCflat": play(S.jCflat(n.m, Math.round(n.len * BEAT * 1000) / 1000), t, { g: JC_FLAT_G, verbAmt: 0.2 }); break;
+          case "jazz": jazzHit(n, t); break;
+          case "metro": metroHit(n, t); break;
+          case "toon": toonHit(n, t); break;
+          case "lofi": lofiHit(n, t); break;
+          case "reich": reichHit(n, t); break;
+          case "march": marchHit(n, t); break;
         }
       }
     };

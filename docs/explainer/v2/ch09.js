@@ -1,538 +1,788 @@
+// 画面只从这里取时间，不读配乐的音符表（score.js 加载失败时这一章照样画得出来）。
+// 这一章画成 Vignelli、Beck 式的地铁线路图：线只走横、竖、45°，转角同一个半径；站是黑圈白点，换乘站是胶囊或白色连桥。
+// 线按平台分组配色：GitHub Actions 一组冷色在主轴上方，Workers Builds 一组暖色在下方；这次没改到监视路径的线灰掉，写「本次不停站」。
 (() => {
-  function make() {
-    const { css } = G;
-    const { E, prog, keys, clamp, lerp, text, FONT, line, polyline, rect, dashed, stamp, spark, roundRect, checkbox, pathAt, pathLen, trailOn } = K;
-    const SHA_OLD = "a451a72", SHA_NEW = "cf92f7c";
-    // 页面焊进的是上一次 site 部署的提交：7d35661 之后到 a451a72 只改了文档与记忆，site 没有重建（FACTS §10）。
-    const SHA_PAGE = "7d35661";
-    I18N.add({
-      "ch09.title": ["发布", "Release"],
-      "ch09.diff": ["这次改到的路径", "Paths this merge touched"],
-      "ch09.n1a": ["合进 main，几条流水线同时触发；", "A merge to main fans out at once;"],
-      "ch09.n1b": ["设了监视路径的，没改到就不跑。", "watch paths decide who sits out."],
-      "ch09.always": ["每次推到 main", "every push to main"],
-      "ch09.skip": ["没改到", "untouched"],
-      "ch09.t.hub": ["Hub 发布", "Hub release"],
-      "ch09.t.img": ["上报器镜像", "Reporter images"],
-      "ch09.m.esa": ["阿里云 ESA", "Alibaba Cloud ESA"],
-      "ch09.m.card": ["GitHub Actions · 部署成功之后", "GitHub Actions · after a green deploy"],
-      "ch09.m.r1": ["刷新 ESA 首页并预热", "Purge the ESA home page, then warm it"],
-      "ch09.m.r2": [`等两个域名的 /api/version 都答出 ${SHA_NEW}`, `Wait until both domains serve ${SHA_NEW}`],
-      "ch09.m.r2s": ["等不到就不通知，页面靠定时自查兜底", "Times out? No notice; pages poll on their own"],
-      "ch09.m.r3": ["通知上报入口（ingress Worker）", "Notify the ingress Worker"],
-      "ch09.m.retry": ["失败重试，最长 10 分钟", "retries for up to 10 min"],
-      "ch09.n5a": ["部署成功才刷新 ESA 首页；", "ESA is purged only after the deploy;"],
-      "ch09.n5b": ["先等两个域名换好，再通知页面。", "pages hear after both are polled."],
-      "ch09.p.room": ["推送房间", "push room"],
-      "ch09.p.bare": ["不带数据", "no payload"],
-      "ch09.p.fg": ["前台", "Foreground"],
-      "ch09.p.bg": ["后台标签页", "Hidden tab"],
-      "ch09.p.reload": ["自己刷新", "reloads itself"],
-      "ch09.p.foot1": ["收不到通知也没关系：", "No push? Pages still ask"],
-      "ch09.p.foot2": ["每 30 分钟、切回前台时各问一次", "every 30 min and on refocus."],
-      "ch09.n6a": ["页面收到 version，自己去问版本：", "Pages hear “version” and re-check:"],
-      "ch09.n6b": ["前台弹出提示，后台的旧页自己刷新。", "visible: a prompt; hidden: a reload."],
-    });
-    const tr = (k) => I18N.tr(k);
-    const TAU = Math.PI * 2;
-    let plate, ink, paperL, emit, stampL, top;
-    let BARs = (60 / 108) * 4;
-    const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
-    const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
-    const E2 = (t) => t * t;
+  const { E, prog, clamp, lerp, text, measure, hash } = K;
+  const SHA_OLD = "a451a72", SHA_NEW = "cf92f7c";
+  // 页面焊进的是上一次 site 部署的提交：7d35661 之后到 a451a72 只改了文档与记忆，site 没有重建（FACTS §10）。
+  const SHA_PAGE = "7d35661";
+  I18N.add({
+    "ch09.title": ["发布", "Release"],
+    "ch09.dep": ["发车", "Departures"],
+    "ch09.diff": ["这次改到的路径", "Paths this merge touched"],
+    "ch09.here": ["您在这里", "You are here"],
+    "ch09.lastStop": ["上次 site 停靠", "last site stop"],
+    "ch09.n1a": ["合进 main，几条流水线同时发车；", "A merge to main fans out at once;"],
+    "ch09.n1b": ["设了监视路径的，没改到就不跑。", "watch paths decide who sits out."],
+    "ch09.n2a": ["Workers Builds 并行，不保证先后；", "Builds run in parallel, unordered;"],
+    "ch09.n2b": ["所以 Worker 之间的契约只加不改。", "so Worker contracts only ever grow."],
+    "ch09.n3a": ["部署成功才刷新 ESA 首页；", "ESA is purged only after the deploy;"],
+    "ch09.n3b": ["先等两个域名换好，再通知页面。", "pages hear once both domains switch."],
+    "ch09.n4a": ["页面收到 version，自己去问版本：", "Pages hear “version” and re-check:"],
+    "ch09.n4b": ["前台弹出提示，后台的旧页自己刷新。", "visible: a prompt; hidden: a reload."],
+    "ch09.every": ["每次推到 main", "every push to main"],
+    "ch09.jsts": ["改到 JS/TS", "JS/TS changed"],
+    "ch09.skip": ["没改到", "untouched"],
+    "ch09.noStop": ["本次不停站", "Not stopping this time"],
+    "ch09.t.hub": ["Hub 发布", "Hub release"],
+    "ch09.t.img": ["上报器镜像", "Reporter images"],
+    "ch09.t.purge": ["刷新与通知", "Purge & notify"],
+    "ch09.sched": ["另有定时班次：每天两次", "also runs twice daily"],
+    "ch09.contract": ["契约只加不改", "Contracts only grow"],
+    "ch09.callee": ["被调用方先上线", "callees go live first"],
+    "ch09.xfer": ["换乘 · check_run", "Transfer · check_run"],
+    "ch09.origin": ["源站 · Production", "Origin · Production"],
+    "ch09.j.dep": ["等 lyjw.me 换版", "wait for lyjw.me"],
+    "ch09.j.purge1": ["刷新 ESA 首页", "purge ESA home"],
+    "ch09.j.purge2": ["再请求一次预热", "then warm it up"],
+    "ch09.j.notify": ["等两个域名，再通知", "wait for both, then notify"],
+    "ch09.retry": ["失败重试，最长 10 分钟", "retries for up to 10 min"],
+    "ch09.esa": ["阿里云 ESA", "Alibaba Cloud ESA"],
+    "ch09.cache": ["首页缓存", "cached home page"],
+    "ch09.ingress": ["上报入口", "Ingress Worker"],
+    "ch09.room": ["推送房间", "Push room"],
+    "ch09.bare": ["不带数据", "no payload"],
+    "ch09.fg": ["前台", "Foreground"],
+    "ch09.bg": ["后台标签页", "Hidden tab"],
+    "ch09.reload": ["自己刷新", "reloads itself"],
+    "ch09.foot1": ["收不到通知也没关系：", "No push? Pages still ask"],
+    "ch09.foot2": ["每 30 分钟、切回前台时各问一次", "every 30 min and on refocus."],
+    "ch09.legend": ["图例", "Legend"],
+    "ch09.l.station": ["车站", "Station"],
+    "ch09.l.xfer": ["换乘站", "Interchange"],
+    "ch09.l.term": ["终点站亮灯：这一项成功", "Lit terminal: that job succeeded"],
+    "ch09.l.skip": ["本次不停站：没改到监视路径", "Not stopping: no watched path changed"],
+    "ch09.l.push": ["推送：上报入口 → 推送房间", "Push: ingress → push room"],
+    "ch09.l.film": ["本片也坐 1 号线：docs/explainer/v2/*", "This film rides line 1 too: docs/explainer/v2/*"],
+  });
+  const tr = (k) => I18N.tr(k);
+  const L = (s) => (s.startsWith("ch09.") ? tr(s) : s);
+  const TAU = Math.PI * 2;
+  let page;
+  let BARs = (60 / 108) * 4;
+  const impact = (b, at, hl = 0.09) => (b < at ? 0 : Math.exp((-((b - at) * BARs) / hl) * Math.LN2));
+  const win = (b, a0, a1, b0, b1) => prog(b, a0, a1) * (1 - prog(b, b0, b1));
+  const SANS = (px, w = 700) => `${w} ${px.toFixed(1)}px "Inter ch09", "Noto Sans SC ch09", sans-serif`;
+  const MONO = (px, w = 500) => `${w} ${px.toFixed(1)}px "Geist Mono", "Noto Sans SC ch09", monospace`;
+  const C = {
+    bg: "#F5F3EE", ink: "#121212", ink2: "#5A5852", rule: "#D9D6CE", gray: "#B6B4AE", grayT: "#8E8C86", white: "#FFFFFF",
+    led: "#FFB000", board: "#161616", here: "#D52B1E", clawd: "#D77757", cap: "#1F2D5A", paddle: "#00933C", purge: "#8E3FA8", push: "#6D6E71",
+  };
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const mix = (a, b2, k) => { if (k <= 0) return a; if (k >= 1) return b2; const p = rgb(a), q = rgb(b2); return `rgb(${p.map((v, i) => Math.round(lerp(v, q[i], k))).join(",")})`; };
 
-    // 拍位和 music/ch09.js 是同一张表；run 里各条亮灯的先后照 cf92f7c 那几项检查的真实完成顺序。
-    const AT = {
-      type: 0.25, stroke: 0.0625, enter: 1.0, headHop: 0.125, pull: [1.45, 1.9], fan: [1.5, 1.95], gate0: 2.0, gateStep: 0.0625,
-      run: {
-        collector: { pips: [2.625, 2.8125], lamp: 3.0 },
-        ingress: { pips: [2.625, 2.875], lamp: 3.125 },
-        core: { pips: [2.625, 2.9375], lamp: 3.25 },
-        ci: { pips: [2.375, 2.625, 2.875, 3.125], lamp: 3.375 },
-        codeql: { pips: [2.625, 3.0625], lamp: 3.5 },
-      },
-      whip: 3.75,
-      land: 4.0, status: 4.25, purge: 4.5, warm: [4.75, 4.95], r1: 4.9, dom: [5.0, 5.25], r2: 5.5,
-      verify: { in: [4.6875, 4.8125], turn: 4.875, drop: [5.0, 5.125], hop: [5.25, 5.3125], out: [5.5625, 5.6875] },
-      notify: 6.0, ingress: 6.5, core: 6.75, ring: 7.0, ask: 7.5, card: 8.0, reload: 8.5,
-      full: [9.0, 9.3], dive: [9.5, 9.92], fade: [9.5, 9.85],
-    };
+  // 拍位和 music/ch09.js 的 AT 是同一张表；终点站亮灯的先后照 cf92f7c 上这几项检查的真实完成顺序，只有 site 放在落地那一拍（FACTS §10）。
+  const AT = {
+    type: 0.125, board: [0.25, 0.875], diff: 0.625, head: 1.0, push: [1.0625, 1.4375], cap: [1.5, 1.9375],
+    clawd: 1.25, paddle: 1.75, whistle: 2.0, draw: [2.0, 2.625], gate0: 2.25, gateStep: 0.0625, depart: 3.0,
+    term: { collector: 4.5, ingress: 4.75, core: 5.25, ci: 5.5, codeql: 6.5 },
+    contract: 6.0, sched: 6.75, whip: [7.625, 8.0],
+    land: 8.0, xfer: 8.25, me: 8.5, hop1: 8.625, dep: 8.75, purge: 9.25, warm: 9.45, esa: 9.75, com: 10.0, hop2: 10.125, notify: 10.25, leave: 10.625,
+    ing: 11.25, core: 11.5, room: 11.75, ring: 12.0, ask: 12.5, card: 13.0, reload: 13.5, foot: 13.25,
+    full: [14.25, 14.75], dive: [16.0, 16.75], fade: [16.0, 16.4], thin: [16.15, 16.7],
+  };
+  const NAR = { n1: 3.0, n2: 5.65, n3: 8.15, n4: 11.35 };
+  const NAR_OUT = { n1: 5.55, n2: 7.55, n3: 10.7, n4: 14.2 };
 
-    // ch08.js 的末帧照抄这里的 Y0、HEAD、COMMITS，两章接缝才能对齐。
-    const Y0 = 540;
-    const HEAD = [1350, Y0];
-    const COMMITS = [1250, 1050, 850, 650, 450, 250, 50];
+  // ch08.js 的末帧照抄这里的 Y0、HEAD、COMMITS，以及 C.bg / C.ink / C.white、LW 和 commitStations 里站圈的半径（它的 C9、LW9、R9），两章接缝才能对齐。
+  const Y0 = 540;
+  const HEAD = [1350, Y0];
+  const COMMITS = [1250, 1050, 850, 650, 450, 250, 50];
+  // main 的第一父链（GitHub 读回），从 HEAD 往前数。
+  const SHAS = [SHA_OLD, "a6323be", "325b131", SHA_PAGE, "f3abe2b", "fcab866", "cc48db2"];
+  const LW = 16, RAD = 40, PITCH = 26, GAP = 130, BR = 44;
+  const X = { bullet: 1960, gate: 2200, work: 2850, deploy: 3450, term: 4000 };
+  const ORIGIN = [4900, Y0], PY = 240, ME = [5600, Y0], ESA = [6100, 840], COM = [6600, 840];
+  const PST = { dep: 5600, purge: 6100, notify: 6600 };
+  const ING = [7800, Y0], CORE = [8500, Y0], ROOM = [9100, Y0];
+  const TERM_R = 20, ING_W = 48, ROOM_R = 44, CAR = 48;
+  const PB = [5050, PY], SB = [7920, Y0];
+  const WFG = { x: 9500, y: 150, w: 800, h: 370 }, WBG = { x: 9500, y: 640, w: 800, h: 350 };
 
-    const GATE_X = 1720, LAMP_X = 3000, BRACKET_X = 3110;
-    const MX = 4000;
-    const O = [MX + 400, Y0], ESA = [MX + 1400, 840], L = [MX + 2400, Y0], C = [MX + 2400, 840], BEND = [MX + 700, 840];
-    const BUILD_X = 4060;
-    const TRACKS = [
-      { id: "hub", y: -90, name: "ch09.t.hub", gate: "", on: false },
-      { id: "img", y: 60, name: "ch09.t.img", gate: "", on: false },
-      { id: "codeql", y: 240, name: "CodeQL", gate: null, on: true, ...AT.run.codeql },
-      { id: "ci", y: 390, name: "CI", gate: null, on: true, ...AT.run.ci },
-      // site 的火花越走越快：甩镜头时领着镜头落到源站。
-      { id: "site", y: Y0, name: "site Worker", gate: "shared/…", on: true, pips: [], lamp: AT.land, ease: E2 },
-      { id: "core", y: 690, name: "core", gate: "shared/…", on: true, ...AT.run.core },
-      { id: "ingress", y: 810, name: "ingress", gate: "shared/…", on: true, ...AT.run.ingress },
-      { id: "collector", y: 930, name: "collector", gate: "workers/collector/…", on: true, ...AT.run.collector },
-      { id: "ai", y: 1050, name: "ai", gate: "", on: false },
-    ];
-    function branchPts(y, x1) {
-      const pts = [[HEAD[0], Y0], [1440, Y0]];
-      if (y !== Y0) for (let i = 1; i <= 18; i++) {
-        const t = i / 18, u = 1 - t;
-        pts.push([u * u * u * 1440 + 3 * u * u * t * 1545 + 3 * u * t * t * 1545 + t * t * t * 1650, u * u * u * Y0 + 3 * u * u * t * Y0 + 3 * u * t * t * y + t * t * t * y]);
-      }
-      pts.push([x1, y]);
-      return pts;
-    }
-    for (const [i, tk] of TRACKS.entries()) {
-      tk.pts = branchPts(tk.y, tk.id === "site" ? O[0] - 30 : LAMP_X - 26);
-      tk.len = pathLen(tk.pts);
-      tk.dGate = pathLen(branchPts(tk.y, GATE_X));
-      tk.tGate = AT.gate0 + i * AT.gateStep;
-      const n = tk.pips ? tk.pips.length : 0;
-      tk.pipX = Array.from({ length: n }, (_, j) => lerp(GATE_X + 260, LAMP_X - 200, n === 1 ? 0.5 : j / (n - 1)));
-    }
-    const dAtX = (tk, px) => tk.dGate + (px - GATE_X);
+  const LINES = [
+    { id: "hub", k: -4, color: "#00838F", b: "H", name: "ch09.t.hub", skip: true },
+    { id: "img", k: -3, color: "#5C6BC0", b: "R", name: "ch09.t.img", skip: true },
+    { id: "codeql", k: -2, color: "#0098D4", b: "Q", name: "CodeQL", gate: "ch09.jsts", work: "analyze" },
+    { id: "ci", k: -1, color: "#0039A6", b: "C", name: "CI", gate: "ch09.every", work: "check" },
+    { id: "site", k: 0, color: "#EE352E", b: "1", name: "site", gate: "shared/*", work: "pnpm build", deploy: "wrangler deploy" },
+    { id: "core", k: 1, color: "#FF6319", b: "2", name: "core", gate: "shared/*", work: "typecheck", deploy: "wrangler deploy" },
+    { id: "ingress", k: 2, color: "#FCCC0A", b: "3", name: "ingress", gate: "shared/*", work: "typecheck", deploy: "wrangler deploy", dark: true },
+    { id: "collector", k: 3, color: "#996633", b: "4", name: "collector", gate: "workers/collector/*", work: "typecheck", deploy: "wrangler deploy" },
+    { id: "ai", k: 4, color: "#E37BA8", b: "5", name: "ai", skip: true },
+  ];
+  const SITE = LINES[4];
+  // 各条到站的小节；车在站上停半拍再走（keyframes 的默认停站）。
+  const SCHED = {
+    codeql: { gate: 3.25, work: 4.5, term: AT.term.codeql },
+    ci: { gate: 3.25, work: 4.25, term: AT.term.ci },
+    site: { gate: 3.25, work: 4.0, deploy: 5.25 },
+    core: { gate: 3.25, work: 3.875, deploy: 4.5, term: AT.term.core },
+    ingress: { gate: 3.25, work: 3.75, deploy: 4.25, term: AT.term.ingress },
+    collector: { gate: 3.25, work: 3.625, deploy: 4.0, term: AT.term.collector },
+  };
 
-    const CARD = { x: MX + 950, y: -200, w: 1420, h: 500 };
-    const CARD_ROW = (j) => CARD.y + 176 + j * 118;
-    const ING = { x: MX + 2450, y: 70, w: 400, h: 100 }, CORE = { x: MX + 3250, y: 70, w: 400, h: 100 }, MAST = [MX + 4050, 120];
-    const FG = { x: MX + 3700, y: 320, w: 800, h: 320 }, BG = { x: MX + 3700, y: 720, w: 800, h: 260 };
-
-    const CAM0 = [960, 540, 1];
-    const FAN = [2250, 540, 0.6];
-    const MAP = [MX + 1230, 520, 0.7];
-    const PGV = [MX + 3550, 560, 0.8];
-    const FULL = [4250, 460, 0.21];
-    // 末帧接 ch10.js 首帧：别的都退掉，只剩屏幕 y 540 一条整宽 3 px 墨线。
-    const FIN = [MX + 1400, Y0, 1];
-    const drift = (c, dx = 10, k = 1.015) => [c[0] + dx, c[1] + 2, c[2] * k];
-    const CAM = [
-      [0, CAM0], [AT.pull[0], drift(CAM0, 0), E.lin], [AT.pull[1], FAN, E.io], [AT.whip, drift(FAN, 10, 1.012), E.lin],
-      [AT.land, MAP, E.io], [6.25, drift(MAP, 10, 1.01), E.lin],
-      [6.5, PGV, E.io], [AT.full[0], drift(PGV, 10, 1.01), E.lin], [AT.full[1], FULL, E.io], [AT.dive[0], drift(FULL, 0, 1.012), E.lin],
-      [AT.dive[1], FIN, E.io], [10, FIN, E.lin],
-    ];
-    function camAt(b) {
-      if (b <= CAM[0][0]) return CAM[0][1].slice();
-      for (let i = 1; i < CAM.length; i++) if (b <= CAM[i][0]) {
-        const [t0, v0] = CAM[i - 1], [t1, v1, e = E.io] = CAM[i];
-        const k = e(clamp((b - t0) / (t1 - t0)));
-        return [lerp(v0[0], v1[0], k), lerp(v0[1], v1[1], k), Math.exp(lerp(Math.log(v0[2]), Math.log(v1[2]), k))];
-      }
-      return CAM[CAM.length - 1][1].slice();
+  // 折线按同一半径倒圆角后采成密点，按弧长取位置；车和逐段画出都用它。
+  function roundPath(pts, r = RAD) {
+    const out = [pts[0].slice()];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[i], [cx, cy] = pts[i + 1];
+      const l1 = Math.hypot(bx - ax, by - ay), l2 = Math.hypot(cx - bx, cy - by);
+      const u = [(bx - ax) / l1, (by - ay) / l1], v = [(cx - bx) / l2, (cy - by) / l2];
+      const cr = u[0] * v[1] - u[1] * v[0], th = Math.acos(clamp(u[0] * v[0] + u[1] * v[1], -1, 1));
+      if (Math.abs(cr) < 1e-6) { out.push([bx, by]); continue; }
+      const t = r * Math.tan(th / 2), s = Math.sign(cr);
+      const p1 = [bx - u[0] * t, by - u[1] * t], ox = p1[0] - u[1] * s * r, oy = p1[1] + u[0] * s * r;
+      const a0 = Math.atan2(p1[1] - oy, p1[0] - ox), n = Math.max(3, Math.ceil((th * r) / 5));
+      for (let j = 0; j <= n; j++) { const a = a0 + s * th * (j / n); out.push([ox + r * Math.cos(a), oy + r * Math.sin(a)]); }
     }
-    const at = (c, sx, sy) => [c[0] + (sx - 960) / c[2], c[1] + (sy - 540) / c[2]];
-
-    function glow(e, cx, cy, r, a) {
-      if (a <= 0) return;
-      const g = e.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, `rgba(255,200,150,${a})`); g.addColorStop(0.35, `rgba(235,130,85,${0.45 * a})`); g.addColorStop(1, "rgba(230,110,70,0)");
-      e.save(); e.fillStyle = g; e.beginPath(); e.arc(cx, cy, r, 0, TAU); e.fill(); e.restore();
+    out.push(pts[pts.length - 1].slice());
+    const cum = [0];
+    for (let i = 1; i < out.length; i++) cum.push(cum[i - 1] + Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]));
+    const end = pts[pts.length - 1][0];
+    return { pts: out, cum, len: cum[cum.length - 1], dx: (px) => cum[cum.length - 1] - (end - px) };
+  }
+  function ptAt(P, d) {
+    const { pts, cum } = P;
+    d = clamp(d, 0, P.len);
+    let i = 1;
+    while (i < pts.length - 1 && cum[i] < d) i++;
+    const a = cum[i - 1], k = (d - a) / (cum[i] - a || 1), p = pts[i - 1], q = pts[i];
+    return [lerp(p[0], q[0], k), lerp(p[1], q[1], k), Math.atan2(q[1] - p[1], q[0] - p[0])];
+  }
+  function strokeRange(x, P, d0, d1, w, color, alpha = 1, dash = null) {
+    if (alpha <= 0 || d1 <= d0) return;
+    const { pts, cum } = P;
+    x.save(); x.globalAlpha *= alpha; x.strokeStyle = color; x.lineWidth = w; x.lineCap = "butt"; x.lineJoin = "round";
+    if (dash) x.setLineDash(dash);
+    x.beginPath();
+    let started = false;
+    for (let i = 1; i < pts.length; i++) {
+      if (cum[i] < d0) continue;
+      const a = cum[i - 1], c2 = cum[i], p = pts[i - 1], q = pts[i];
+      if (!started) { const k = (Math.max(d0, a) - a) / (c2 - a || 1); x.moveTo(lerp(p[0], q[0], k), lerp(p[1], q[1], k)); started = true; }
+      if (c2 >= d1) { const k = (d1 - a) / (c2 - a || 1); x.lineTo(lerp(p[0], q[0], k), lerp(p[1], q[1], k)); break; }
+      x.lineTo(q[0], q[1]);
     }
-    function tick(x, cx, cy, s, k, a = 1) {
-      polyline(x, [[cx - 0.5 * s, cy], [cx - 0.12 * s, cy + 0.38 * s], [cx + 0.6 * s, cy - 0.5 * s]], k, s * 0.16, css("signal"), a);
-    }
-    function dot(x, cx, cy, r, fill, stroke, lw, a = 1) {
-      if (a <= 0) return;
-      x.save(); x.globalAlpha = a; x.fillStyle = fill; x.strokeStyle = stroke; x.lineWidth = lw;
-      x.beginPath(); x.arc(cx, cy, r, 0, TAU); if (fill) x.fill(); if (lw > 0) x.stroke(); x.restore();
-    }
-    function pip(x, cx, cy, r, on, a = 1) { dot(x, cx, cy, r, on > 0 ? css("signal") : css("paper"), on > 0 ? css("signal") : css("pink"), r * 0.32, a); }
-    function lamp(x, e, cx, cy, r, on, a = 1) {
-      if (a <= 0) return;
-      dot(x, cx, cy, r, css("paper"), css("pink"), r * 0.13, a);
-      if (on > 0) { dot(x, cx, cy, r * 0.78, css("signal"), null, 0, a * on); glow(e, cx, cy, r * 2.6, 0.5 * on * a); }
-    }
-    function gate(x, gx, gy, on, k, a, hot = false) {
-      x.save(); x.globalAlpha = a; x.fillStyle = css("paper"); x.fillRect(gx - 22, gy - 22, 44, 44); x.restore();
-      rect(x, gx - 22, gy - 22, 44, 44, 3, css("pink"), a);
-      if (on) tick(x, gx, gy + 2, 34, k, a);
-      else if (k > 0) line(x, gx - 13, gy, gx - 13 + 26 * k, gy, 4, hot ? css("signal") : css("graphite"), a);
-    }
-    function dashPts(x, pts, k, w, color, a = 1, dash = [10, 9]) {
-      if (k <= 0 || a <= 0) return null;
-      x.save(); x.setLineDash(dash); const head = polyline(x, pts, k, w, color, a); x.restore();
-      return head;
-    }
-    function sparkAt(Ly, pts, d, size = 0.8, trail = 200, lw = 3) {
-      const head = pathAt(pts, d);
-      spark(Ly.e, Ly.x, head, trailOn(pts, d, trail, 16), { t: G.t, size, lw });
-      dot(Ly.x, head[0], head[1], 6.5 * size, css("signal"), null, 0);
-      return head;
-    }
-    function nar(x, key, c, row, r, a) {
-      if (a <= 0) return;
-      const [px, py] = at(c, 110, row ? 1024 : 944);
-      K.narration(x, tr(key), px, py, { px: 60 / c[2], maxW: 1040 / c[2], reveal: r, alpha: a, dim: 0.12 });
-    }
-    function card(d, px, py, w, h, a, sy = 1) {
-      if (a <= 0) return;
-      d.save(); d.globalAlpha = a; d.translate(px, py); d.scale(1, Math.max(0.001, sy));
-      d.shadowColor = "rgba(0,0,0,0.28)"; d.shadowBlur = 18; d.shadowOffsetY = 7;
-      d.fillStyle = css("paper"); d.fillRect(0, 0, w, h);
-      d.shadowColor = "transparent"; d.strokeStyle = css("pink"); d.lineWidth = 2.4; d.strokeRect(0, 0, w, h);
-      d.restore();
-    }
-    const lbl = (k) => (k.startsWith("ch09.") ? tr(k) : k);
-    const fontOf = (k, px, w = 600) => (k.startsWith("ch09.") ? FONT.cjk(px, w) : FONT.mono(px, w === 600 ? 500 : w));
-
-    function history(x, e, b) {
-      const inkC = css("pink");
-      line(x, -150, Y0, HEAD[0], Y0, 3, inkC);
-      for (const cx of COMMITS) dot(x, cx, Y0, 9, css("paper"), inkC, 2.6);
-      const hit = impact(b, AT.enter, 0.2);
-      dot(x, HEAD[0], Y0 - K.hop(b, AT.enter, AT.enter + AT.headHop, 36), 14, css("signal"), null, 0);
-      if (hit > 0.02) { dot(x, HEAD[0], Y0, 14 + 30 * (1 - hit), null, css("signal"), 2.4, hit); glow(e, HEAD[0], Y0, 90, 0.6 * hit); }
-    }
-    const MERGE = "PR #308 → main";
-    function typed(str, n) {
-      let out = "", k = 0;
-      for (const ch of str) {
-        if (ch !== " ") { if (k >= n) break; k++; }
-        out += ch;
-      }
-      return out;
-    }
-    function mergeLines(x, b, a) {
-      if (a <= 0) return;
-      const strokes = b < AT.type ? 0 : Math.floor((b - AT.type) / AT.stroke + 1e-6) + 1;
-      text(x, typed(MERGE, strokes), 560, 420, { font: FONT.mono(44, 500), alpha: a * prog(b, 0.12, 0.2) });
-      const ea = prog(b, AT.enter, AT.enter + 0.05) * a;
-      text(x, `${SHA_OLD}..${SHA_NEW}  main -> main`, 560, 476, { font: FONT.mono(32), color: css("graphite"), alpha: ea });
-      text(x, SHA_NEW, HEAD[0], Y0 + 64, { font: FONT.mono(30, 600), color: css("signal"), align: "center", alpha: ea });
-    }
-    const DIFF = ["shared/site-deployments-types.ts", "workers/collector/…", "workers/core/README.md"];
-    function diffCard(d, b, a) {
-      const k = prog(b, 0.35, 0.5, E.outBack);
-      if (k <= 0 || a <= 0) return;
-      const px = 180, py = 660, w = 1000, h = 292;
-      card(d, px, py, w, h, a, k);
-      if (k < 0.9) return;
-      text(d, tr("ch09.diff"), px + 36, py + 64, { font: FONT.cjk(40, 600), alpha: a, maxW: w - 72 });
-      line(d, px + 30, py + 90, px + w - 30, py + 90, 1.4, css("pink"), a);
-      DIFF.forEach((s, j) => text(d, s, px + 36, py + 150 + j * 52, { font: FONT.mono(38, 500), alpha: a, reveal: prog(b, 0.45 + j * 0.06, 0.62 + j * 0.06) }));
-    }
-    function title(x, b, a) {
-      const k = prog(b, 0.3, 0.75, E.out) * a;
-      if (k <= 0) return;
-      text(x, "09", 110, 196, { font: FONT.pixel(112), color: css("signal"), alpha: k });
-      text(x, tr("ch09.title"), 290, 176, { font: FONT.cjk(58, 600), reveal: prog(b, 0.35, 0.8), alpha: k });
-      text(x, "main → GitHub Actions · Workers Builds", 292, 226, { font: FONT.mono(28), color: css("graphite"), reveal: prog(b, 0.45, 1.0), alpha: k });
-      line(x, 110, 262, 110 + 1000 * prog(b, 0.35, 1.0, E.outExpo), 262, 1.4, css("pink"), k);
-    }
-
-    function fan(Ly, b, a) {
-      const { x, e } = Ly, inkC = css("pink"), gr = css("graphite");
-      if (b < AT.fan[0] || a <= 0) return;
-      for (const [i, tk] of TRACKS.entries()) {
-        const kk = tk.id === "site" ? 1 : prog(b, AT.fan[0] + 0.03 * i, AT.fan[1] + 0.03 * i, E.io);
-        if (kk <= 0) continue;
-        const gk = prog(b, tk.tGate, tk.tGate + 0.05);
-        if (!tk.on && gk > 0) {
-          polyline(x, branchPts(tk.y, GATE_X - 22), 1, 4, inkC, a);
-          dashed(x, GATE_X + 22, tk.y, LAMP_X - 26, tk.y, 3, gr, [10, 9], 0.8 * a);
-        } else if (tk.id !== "site") polyline(x, tk.pts, kk, 4, inkC, a);
-        if (kk < 0.55) continue;
-        const la = prog(kk, 0.55, 1) * a;
-        gate(x, GATE_X, tk.y, tk.on, gk, la);
-        const nw = text(x, lbl(tk.name), GATE_X + 50, tk.y - 22, { font: fontOf(tk.name, 52, 600), alpha: la });
-        if (gk > 0) {
-          const why = tk.gate === null ? tr("ch09.always") : tk.on ? tk.gate : tr("ch09.skip");
-          text(x, why, GATE_X + 50 + nw + 30, tk.y - 22, { font: tk.gate ? FONT.mono(48, 500) : FONT.cjk(48, 600), color: tk.on ? css("signal") : gr, alpha: la, reveal: prog(b, tk.tGate, tk.tGate + 0.25), maxW: LAMP_X - GATE_X - nw - 140 });
-        }
-        if (!tk.on) { if (gk > 0) dot(x, LAMP_X, tk.y, 24, css("paper"), gr, 2.4, 0.8 * la); continue; }
-        const end = tk.id === "site" ? tk.len : dAtX(tk, LAMP_X - 26);
-        const d = keys(b, [[tk.tGate, tk.dGate], ...tk.pips.map((pt, j) => [pt, dAtX(tk, tk.pipX[j]), E.io]), [tk.lamp, end, tk.ease || E.io]]);
-        tk.pipX.forEach((px, j) => pip(x, px, tk.y, 11, prog(b, tk.pips[j], tk.pips[j] + 0.03), la));
-        if (b >= tk.tGate) {
-          polyline(x, tk.pts, d / tk.len, 4.4, css("signal"), a);
-          if (b < tk.lamp) sparkAt(Ly, tk.pts, d);
-        }
-        if (tk.id !== "site") lamp(x, e, LAMP_X, tk.y, 26, prog(b, tk.lamp, tk.lamp + 0.05), la);
-      }
-      const ga = prog(b, AT.fan[1] - 0.1, AT.fan[1] + 0.15) * a;
-      if (ga <= 0) return;
-      const brace = (y0, y1) => { line(x, BRACKET_X, y0, BRACKET_X, y1, 2.2, inkC, ga); line(x, BRACKET_X - 16, y0, BRACKET_X, y0, 2.2, inkC, ga); line(x, BRACKET_X - 16, y1, BRACKET_X, y1, 2.2, inkC, ga); };
-      brace(-140, 420); brace(660, 1080);
-      text(x, "GitHub Actions", BRACKET_X - 16, -186, { font: FONT.mono(50, 600), alpha: ga });
-      text(x, "Workers Builds", BRACKET_X - 16, 1160, { font: FONT.mono(50, 600), alpha: ga });
-    }
-
-    function station(x, cx, cy, a, o = {}) {
-      dot(x, cx, cy, o.r ?? 18, css("paper"), o.hot ? css("signal") : css("pink"), o.lw ?? 6, a);
-    }
-    function pageIcon(x, cx, cy, col, a, s = 1) {
-      if (a <= 0) return;
-      x.save(); x.globalAlpha = a; x.translate(cx, cy); x.scale(s, s);
-      x.fillStyle = css("paper"); x.strokeStyle = col; x.lineWidth = 3;
-      x.beginPath(); x.moveTo(-22, -30); x.lineTo(10, -30); x.lineTo(22, -18); x.lineTo(22, 30); x.lineTo(-22, 30); x.closePath(); x.fill(); x.stroke();
-      for (let j = 0; j < 3; j++) { x.beginPath(); x.moveTo(-12, -12 + j * 12); x.lineTo(12 - (j === 2 ? 10 : 0), -12 + j * 12); x.stroke(); }
-      x.restore();
-    }
-    const LW = 14;
-    // 域名标签让开 Clawd 从 lyjw.me 线跳到 lyjw131.com 线的那一竖条（VX ± 9q，外加放大镜）。
-    const DOMAIN_X = L[0] - 190;
-    function axis(x, b, a, finK) {
-      const inkC = css("pink");
-      if (b >= AT.fan[0]) polyline(x, [[HEAD[0], Y0], [O[0], Y0]], prog(b, AT.fan[0], AT.fan[1], E.io), lerp(4, 3, finK), inkC);
-      line(x, O[0], Y0, L[0], Y0, lerp(LW, 3, finK), inkC);
-      line(x, L[0], Y0, FG.x, Y0, LW, inkC, a);
-      polyline(x, [O, BEND, ESA, C, [BG.x, C[1]]], 1, LW, css("signal"), a);
-    }
-    function landing(Ly, b, a) {
-      const { x, d, s, e } = Ly, inkC = css("pink"), gr = css("graphite");
-      if (a <= 0) return;
-      pip(x, BUILD_X, Y0, 13, prog(b, AT.land - 0.1, AT.land - 0.08), a);
-      text(x, "pnpm build", BUILD_X, Y0 - 40, { font: FONT.mono(44, 500), align: "center", alpha: a });
-      const oHot = prog(b, AT.land, AT.land + 0.05);
-      station(x, O[0], O[1], a, { r: 30, lw: 7, hot: oHot > 0 });
-      if (oHot > 0) { dot(x, O[0], O[1], 22, css("signal"), null, 0, oHot * a); glow(e, O[0], O[1], 150, 0.55 * oHot * (0.6 + 0.4 * impact(b, AT.land, 0.4)) * a); }
-      text(x, "site Worker · Production", O[0] + 40, O[1] - 52, { font: FONT.mono(46, 600), alpha: a });
-      station(x, ESA[0], ESA[1], a, { hot: b >= AT.purge && b < AT.warm[1] + 0.1 });
-      station(x, L[0], L[1], a);
-      station(x, C[0], C[1], a);
-      text(x, tr("ch09.m.esa"), ESA[0] - 34, ESA[1] - 34, { font: FONT.mono(46, 600), align: "right", alpha: a, maxW: 560 });
-      text(x, "lyjw.me", DOMAIN_X, L[1] + 72, { font: FONT.mono(46, 600), align: "right", alpha: a });
-      text(x, "lyjw131.com", DOMAIN_X, C[1] + 72, { font: FONT.mono(46, 600), color: css("signal"), align: "right", alpha: a });
-      const oldA = 1 - prog(b, AT.purge + 0.05, AT.purge + 0.2);
-      pageIcon(x, ESA[0], ESA[1] + 96, inkC, a * oldA);
-      if (b >= AT.purge && oldA > 0) {
-        const k = prog(b, AT.purge, AT.purge + 0.08);
-        line(x, ESA[0] - 28, ESA[1] + 66, ESA[0] - 28 + 56 * k, ESA[1] + 126, 4, css("signal"), a * oldA);
-        line(x, ESA[0] + 28, ESA[1] + 66, ESA[0] + 28 - 56 * k, ESA[1] + 126, 4, css("signal"), a * oldA);
-      }
-      stamp(s, "purge", ESA[0] + 150, ESA[1] + 110, { k: prog(b, AT.purge, AT.purge + 0.12), px: 44, rot: -0.12, alpha: a });
-      const wk = prog(b, AT.warm[0], AT.warm[1], E.io);
-      if (wk > 0 && wk < 1) {
-        const path = [[O[0] + 40, O[1] + 90], [BEND[0] + 30, BEND[1] + 96], [ESA[0], ESA[1] + 96]];
-        pageIcon(x, ...pathAt(path, wk * pathLen(path)), css("signal"), a, 0.8);
-      }
-      if (wk >= 1) pageIcon(x, ESA[0], ESA[1] + 96, css("signal"), a);
-      tick(x, L[0] + 66, L[1] - 14, 64, prog(b, AT.dom[0], AT.dom[0] + 0.1, E.out), a);
-      tick(x, C[0] + 66, C[1] - 14, 64, prog(b, AT.dom[1], AT.dom[1] + 0.1, E.out), a);
-      glow(e, L[0], L[1], 110, 0.45 * impact(b, AT.dom[0], 0.3) * a);
-      glow(e, C[0], C[1], 110, 0.45 * impact(b, AT.dom[1], 0.3) * a);
-      const sy = CARD.y + 250;
-      dashPts(x, [[O[0], O[1] - 100], [O[0], sy], [CARD.x, sy]], prog(b, AT.status, AT.status + 0.2, E.io), 2.6, inkC, a);
-      text(x, "check_run", O[0] + 24, sy - 20, { font: FONT.mono(42, 500), color: gr, alpha: a * prog(b, AT.status + 0.1, AT.status + 0.2), maxW: CARD.x - O[0] - 40 });
-      const ca = prog(b, AT.status + 0.1, AT.status + 0.25, E.outBack);
-      if (ca <= 0) return;
-      card(d, CARD.x, CARD.y, CARD.w, CARD.h, a, ca);
-      if (ca < 0.9) return;
-      text(d, tr("ch09.m.card"), CARD.x + 40, CARD.y + 66, { font: FONT.cjk(44, 600), alpha: a, maxW: CARD.w - 80 });
-      line(d, CARD.x + 30, CARD.y + 96, CARD.x + CARD.w - 30, CARD.y + 96, 1.4, inkC, a);
-      const rows = [["ch09.m.r1", "PurgeCaches", AT.r1], ["ch09.m.r2", "ch09.m.r2s", AT.r2], ["ch09.m.r3", "POST /api/internal/site-deployed", AT.notify]];
-      rows.forEach(([lab, sub, t], j) => {
-        const y = CARD_ROW(j);
-        checkbox(d, CARD.x + 40, y - 36, prog(b, t, t + 0.08), { size: 44, alpha: a });
-        const lw = text(d, tr(lab), CARD.x + 106, y, { font: FONT.cjk(42, 600), alpha: a, maxW: CARD.w - 150 });
-        text(d, lbl(sub), CARD.x + 106, y + 48, { font: fontOf(sub, 40), color: gr, alpha: a, maxW: CARD.w - 150 });
-        if (j === 2) text(d, tr("ch09.m.retry"), CARD.x + CARD.w - 40, y, { font: FONT.cjk(40, 600), color: gr, align: "right", alpha: a, maxW: CARD.w - 190 - lw });
-      });
-    }
-
-    const VQ = 6, VX = L[0] - 110, VY = [L[1] - LW / 2, C[1] - LW / 2];
-    const V_PATH = [
-      [0, L[0] + 320, VY[0]], [...AT.verify.in, VX, VY[0], 110], [...AT.verify.drop, VX, VY[1], 50],
-      [...AT.verify.hop, VX, VY[1], 34], [...AT.verify.out, L[0] + 340, VY[1], 130],
-    ];
-    function walk(path, b) {
-      let px = path[0][1], py = path[0][2], landT = -9;
-      for (let i = 1; i < path.length; i++) {
-        const [t0, t1, x1, y1, h] = path[i];
-        if (b >= t1) { px = x1; py = y1; landT = t1; continue; }
-        if (b > t0) {
-          const k = E.io((b - t0) / (t1 - t0));
-          return { x: lerp(px, x1, k), y: lerp(py, y1, k) - K.hop(b, t0, t1, h), air: true, landT };
-        }
-        break;
-      }
-      return { x: px, y: py, air: false, landT };
-    }
-    function verifier(Ly, b) {
-      const { tp } = Ly;
-      if (b < AT.verify.in[0] || b >= AT.verify.out[1]) return;
-      const st = walk(V_PATH, b);
-      const look = b >= AT.verify.hop[1] + 0.1 ? AT.verify.hop[1] + 0.1 : b >= AT.verify.turn && b < AT.verify.drop[0] ? AT.verify.turn : null;
-      const fr = st.air ? { pose: "arms-up", offset: 0 } : (look !== null && K.clawdSeq("look", b, look, BARs)) || K.clawdSeq("land", b, st.landT, BARs) || { pose: "default", offset: 0 };
-      const flip = b < AT.verify.turn, bottom = st.y + 2 * VQ;
-      K.clawdFrame(tp, fr, st.x, bottom, VQ, { flip, poofColor: css("graphite") });
-      K.clawdProp(tp, "magnifier", st.x, bottom, VQ, { color: css("pink"), crouch: fr.offset || 0, flip });
-    }
-
-    function mast(x, mx, my, a, hot = 0) {
-      if (a <= 0) return;
-      const inkC = css("pink");
-      dot(x, mx, my, 22, css("paper"), inkC, 2.8, a);
-      line(x, mx - 14, my - 14, mx + 14, my + 14, 2.2, inkC, a); line(x, mx - 14, my + 14, mx + 14, my - 14, 2.2, inkC, a);
-      if (hot > 0.02) for (let j = 1; j <= 3; j++) {
-        x.save(); x.globalAlpha = a * hot * (1 - j * 0.22); x.strokeStyle = css("signal"); x.lineWidth = 2.6;
-        x.beginPath(); x.arc(mx, my, 22 + j * 13, -0.6, 0.6); x.stroke(); x.beginPath(); x.arc(mx, my, 22 + j * 13, Math.PI - 0.6, Math.PI + 0.6); x.stroke();
-        x.restore();
-      }
-    }
-    function box(x, B, label, on, a) {
-      if (a <= 0) return;
-      x.save(); x.globalAlpha = a; x.fillStyle = css("paper"); x.strokeStyle = on > 0 ? css("signal") : css("pink"); x.lineWidth = 3;
-      roundRect(x, B.x, B.y, B.w, B.h, 10); x.fill(); x.stroke(); x.restore();
-      text(x, label, B.x + B.w / 2, B.y + B.h / 2 + 14, { font: FONT.mono(40, 600), color: on > 0 ? css("signal") : css("pink"), align: "center", alpha: a, maxW: B.w - 30 });
-    }
-    function browser(d, W, host, a, dim, fresh) {
-      if (a <= 0) return;
-      card(d, W.x, W.y, W.w, W.h, a);
-      d.save(); d.globalAlpha = a * 0.08; d.fillStyle = css("pink"); d.fillRect(W.x, W.y, W.w, 56); d.restore();
-      line(d, W.x, W.y + 56, W.x + W.w, W.y + 56, 1.6, css("pink"), a);
-      for (let j = 0; j < 3; j++) dot(d, W.x + 30 + j * 28, W.y + 28, 8, css("paper"), css("pink"), 1.8, a);
-      text(d, host, W.x + 128, W.y + 41, { font: FONT.mono(36, 600), alpha: a * (1 - 0.4 * dim) });
-      const ix = W.x + 24, iy = W.y + 80, iw = W.w - 48, ih = W.h - 104;
-      for (const [u, v, w, h] of [[0, 0, 0.62, 1], [0.66, 0, 0.34, 0.46], [0.66, 0.54, 0.34, 0.46]]) {
-        const cy = iy + v * ih, isNew = fresh > 0 && cy < iy + ih * fresh;
-        d.save(); d.globalAlpha = a * (1 - 0.45 * dim); d.strokeStyle = isNew ? css("signal") : css("pink"); d.lineWidth = 2;
-        d.strokeRect(ix + u * iw, cy, w * iw - 10, h * ih - 10); d.restore();
-      }
-      if (fresh > 0 && fresh < 1) line(d, W.x + 10, iy + ih * fresh, W.x + W.w - 10, iy + ih * fresh, 3, css("signal"), a);
-    }
-    function updateCard(d, px, py, w, h, k, a) {
-      if (k <= 0 || a <= 0) return;
-      card(d, px, py, w, h, a, E.outBack(k));
-      const ta = clamp((k - 0.5) * 2) * a;
-      if (ta <= 0) return;
-      text(d, "UPDATE", px + 24, py + 46, { font: FONT.mono(36, 600), color: css("graphite"), alpha: ta, tracking: 3 });
-      text(d, "DISMISS ×", px + w - 24, py + 46, { font: FONT.mono(36, 500), color: css("graphite"), align: "right", alpha: ta });
-      line(d, px, py + 66, px + w, py + 66, 1.4, css("pink"), ta * 0.6);
-      dot(d, px + 36, py + 118, 10, css("signal"), null, 0, ta);
-      text(d, "New version", px + 60, py + 134, { font: FONT.sans(44, 600), alpha: ta });
-      text(d, `${SHA_PAGE} → ${SHA_NEW}`, px + 36, py + 196, { font: FONT.mono(38, 500), color: css("graphite"), alpha: ta });
-      d.save(); d.globalAlpha = ta; d.fillStyle = css("pink"); roundRect(d, px + w - 210, py + 96, 180, 70, 10); d.fill(); d.restore();
-      text(d, "Reload", px + w - 120, py + 144, { font: FONT.sans(38, 600), color: css("paper"), align: "center", alpha: ta });
-    }
-    const NOTIFY = [[CARD.x + CARD.w, CARD_ROW(2) - 12], [ING.x - 50, CARD_ROW(2) - 12], [ING.x - 50, ING.y + ING.h / 2], [ING.x, ING.y + ING.h / 2]];
-    const BIND = [[ING.x + ING.w, ING.y + ING.h / 2], [CORE.x, CORE.y + CORE.h / 2]];
-    const TO_MAST = [[CORE.x + CORE.w, CORE.y + CORE.h / 2], [MAST[0] - 24, MAST[1]]];
-    function notify(Ly, b, a) {
-      const { x, d, e } = Ly, gr = css("graphite");
-      if (a <= 0) return;
-      const nk = prog(b, AT.notify, AT.ingress - 0.05, E.io);
-      polyline(x, NOTIFY, nk, 2.4, css("pink"), a);
-      if (nk > 0 && nk < 1) sparkAt(Ly, NOTIFY, nk * pathLen(NOTIFY), 0.8, 220);
-      const inA = prog(b, AT.ingress - 0.15, AT.ingress - 0.05) * a;
-      box(x, ING, "ingress Worker", prog(b, AT.ingress, AT.ingress + 0.05), inA);
-      text(x, "internal:site-deployed", ING.x + ING.w / 2, ING.y + ING.h + 50, { font: FONT.mono(36), color: gr, align: "center", alpha: inA });
-      dashPts(x, BIND, 1, 2.6, css("pink"), inA);
-      text(x, "Service Binding", (BIND[0][0] + BIND[1][0]) / 2, BIND[0][1] - 22, { font: FONT.mono(36, 500), color: gr, align: "center", alpha: inA, maxW: CORE.x - ING.x - ING.w - 20 });
-      const bk = prog(b, AT.ingress, AT.core, E.io);
-      if (bk > 0 && bk < 1) sparkAt(Ly, BIND, bk * pathLen(BIND), 0.8, 160);
-      box(x, CORE, "StateCore", prog(b, AT.core, AT.core + 0.05), inA);
-      text(x, "broadcastVersion()", CORE.x + CORE.w / 2, CORE.y + CORE.h + 50, { font: FONT.mono(36), color: gr, align: "center", alpha: inA });
-      polyline(x, TO_MAST, 1, 2.4, css("pink"), inA);
-      const mk = prog(b, AT.core, AT.ring, E.io);
-      if (mk > 0 && mk < 1) sparkAt(Ly, TO_MAST, mk * pathLen(TO_MAST), 0.8, 140);
-      mast(x, MAST[0], MAST[1], inA, Math.max(impact(b, AT.ring, 0.3), win(b, AT.ring, AT.ring + 0.05, AT.ring + 0.6, AT.ring + 0.9)));
-      text(x, "LivePushRoom", MAST[0], MAST[1] + 78, { font: FONT.mono(38, 600), align: "center", alpha: inA });
-      text(x, tr("ch09.p.room"), MAST[0], MAST[1] + 122, { font: FONT.cjk(36, 600), color: gr, align: "center", alpha: inA });
-      const va = prog(b, AT.ring, AT.ring + 0.1) * a;
-      text(x, "version", MAST[0] + 72, MAST[1] - 40, { font: FONT.mono(44, 600), color: css("signal"), alpha: va });
-      text(x, tr("ch09.p.bare"), MAST[0] + 72, MAST[1] + 6, { font: FONT.cjk(36, 600), color: gr, alpha: va, maxW: 330 });
-      if (b >= AT.ring && b < AT.ring + 1.2) {
-        const sec = (b - AT.ring) * BARs;
-        for (let j = 0; j < 3; j++) {
-          const rr = (sec - j * 0.16) * 800;
-          if (rr <= 30 || rr > 1100) continue;
-          const fade = Math.pow(1 - rr / 1100, 1.4);
-          e.save(); e.globalAlpha = 0.5 * fade * a; e.strokeStyle = "rgba(240,150,105,1)"; e.lineWidth = 8 - j * 2;
-          e.beginPath(); e.arc(MAST[0], MAST[1], rr, 0, TAU); e.stroke(); e.restore();
-          x.save(); x.globalAlpha = 0.45 * fade * a; x.strokeStyle = css("signal"); x.lineWidth = 2.4;
-          x.beginPath(); x.arc(MAST[0], MAST[1], rr, 0, TAU); x.stroke(); x.restore();
-        }
-      }
-      const wa = prog(b, AT.notify - 0.2, AT.notify) * a;
-      const fresh = prog(b, AT.reload, AT.reload + 0.3, E.io);
-      browser(d, FG, "lyjw.me", wa, 0, 0);
-      browser(d, BG, "lyjw131.com", wa, 1 - fresh, fresh);
-      text(x, tr("ch09.p.fg"), FG.x, FG.y - 20, { font: FONT.cjk(36, 600), alpha: wa });
-      text(x, tr("ch09.p.bg"), BG.x, BG.y - 20, { font: FONT.cjk(36, 600), color: gr, alpha: wa });
-      const qa = prog(b, AT.ask, AT.ask + 0.1) * a;
-      const ask = `GET /api/version → ${SHA_NEW}`;
-      text(x, ask, FG.x + FG.w, FG.y - 20, { font: FONT.mono(36, 500), color: css("signal"), align: "right", alpha: qa, maxW: FG.w - 140 });
-      text(x, ask, BG.x + BG.w, BG.y - 20, { font: FONT.mono(36, 500), color: css("signal"), align: "right", alpha: qa * (1 - prog(b, AT.reload, AT.reload + 0.08)), maxW: BG.w - 260 });
-      text(x, tr("ch09.p.reload"), BG.x + BG.w, BG.y - 20, { font: FONT.cjk(36, 600), color: css("signal"), align: "right", alpha: prog(b, AT.reload + 0.04, AT.reload + 0.12) * a });
-      updateCard(d, FG.x + 20, FG.y + 72, FG.w - 40, 226, prog(b, AT.card, AT.card + 0.28), a);
-      const fa = prog(b, AT.reload + 0.1, AT.reload + 0.3) * a;
-      text(x, tr("ch09.p.foot1"), BG.x + BG.w, BG.y + BG.h + 62, { font: FONT.cjk(36, 600), color: gr, align: "right", alpha: fa, maxW: 780 });
-      text(x, tr("ch09.p.foot2"), BG.x + BG.w, BG.y + BG.h + 110, { font: FONT.cjk(36, 600), color: gr, align: "right", alpha: fa, maxW: 780 });
-    }
-
-    const PLATE_RECT = [-600, -700, 9000, 1700];
-    function plateFrame(x, b, a) {
-      const k = prog(b, AT.full[0] + 0.1, AT.full[1] + 0.05, E.out) * a;
-      if (k <= 0) return;
-      rect(x, -200, -420, 8900, 1760, 5, css("pink"), k);
-      text(x, "PLATE 09 · RELEASE", 8640, 1280, { font: FONT.mono(140, 600), align: "right", alpha: k });
-    }
-
-    function render(f) {
-      BARs = f.BAR;
-      const b = f.bar;
-      const c = camAt(b), c0 = camAt(b - 1 / 60 / f.BAR);
-      const hitS = Math.max(impact(b, AT.enter, 0.12) * 0.6, impact(b, AT.land, 0.14), impact(b, AT.purge, 0.1) * 0.6, impact(b, AT.card, 0.12) * 0.6);
-      const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.014 * hitS), rot: 0 };
-      G.setCam(cam);
-      G.fill(plate, { uGridA: prog(b, 0.05, 0.6), uPlate: PLATE_RECT });
-
-      const x = ink.begin(); ink.cam(cam);
-      const d = paperL.begin(); paperL.cam(cam);
-      const e = emit.begin(); emit.cam(cam);
-      const s = stampL.begin(); stampL.cam(cam);
-      const tp = top.begin(); top.cam(cam);
-      const Ly = { x, d, e, s, tp };
-
-      const keep = 1 - prog(b, AT.fade[0], AT.fade[1]);
-      const finK = prog(b, AT.dive[0], AT.dive[1], E.io);
-      const openA = clamp(1 - prog(b, AT.pull[0], AT.pull[0] + 0.3) + prog(b, AT.full[0], AT.full[1])) * keep;
-      title(x, b, openA);
-      mergeLines(x, b, openA);
-      diffCard(d, b, openA);
-      axis(x, b, keep, finK);
-      history(x, e, b);
-      fan(Ly, b, keep);
-      landing(Ly, b, keep);
-      verifier(Ly, b);
-      notify(Ly, b, keep);
-      plateFrame(x, b, keep);
-
-      nar(x, "ch09.n1a", FAN, 0, prog(b, 1.95, 2.45), win(b, 1.9, 2.0, 3.6, 3.7));
-      nar(x, "ch09.n1b", FAN, 1, prog(b, 2.45, 3.0), win(b, 1.9, 2.0, 3.6, 3.7));
-      nar(x, "ch09.n5a", MAP, 0, prog(b, 4.1, 4.6), win(b, 4.05, 4.15, 6.2, 6.3));
-      nar(x, "ch09.n5b", MAP, 1, prog(b, 4.6, 5.4), win(b, 4.05, 4.15, 6.2, 6.3));
-      nar(x, "ch09.n6a", PGV, 0, prog(b, 6.6, 7.2), win(b, 6.55, 6.65, 8.9, 9.0));
-      nar(x, "ch09.n6b", PGV, 1, prog(b, 7.2, 8.1), win(b, 6.55, 6.65, 8.9, 9.0));
-
-      G.composite(ink.upload(), { mode: G.MODE.ink, seed: 5.3 });
-      G.composite(paperL.upload(), { mode: G.MODE.paper });
-      G.composite(emit.upload(), { mode: G.MODE.add, gain: 1.4 });
-      G.composite(stampL.upload(), { mode: G.MODE.stamp, seed: 4.1 });
-      G.composite(top.upload(), { mode: G.MODE.normal });
-
-      const sh = hitS * 6;
-      f.post = {
-        bloom: 0.55, threshold: 0.95, halation: 0.18, grain: 0.042, vignette: 0.26, ca: 0.35,
-        shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
-        blur: [(c0[0] - c[0]) * c[2], (c0[1] - c[1]) * c[2]], zoomBlur: clamp(Math.log(c[2] / c0[2]), -0.2, 0.2),
-      };
-    }
-    function init() { plate = G.pass(K.PLATE.paper); ink = G.layer("ink"); paperL = G.layer("paper"); emit = G.layer("emit", 0.5); stampL = G.layer("stamp"); top = G.layer("top"); }
-    return { init, render };
+    x.stroke(); x.restore();
+  }
+  function keyframes(depart, stops, d0 = 0) {
+    const out = [[depart, d0]];
+    stops.forEach(([t, d, e = E.io, dw = 0.125], i) => { out.push([t, d, e]); if (dw && i < stops.length - 1) out.push([t + dw, d, E.lin]); });
+    return out;
+  }
+  function posAt(kf, b) {
+    if (b <= kf[0][0]) return kf[0][1];
+    for (let i = 1; i < kf.length; i++) if (b <= kf[i][0]) { const [t0, d0] = kf[i - 1], [t1, d1, e = E.io] = kf[i]; return lerp(d0, d1, e(clamp((b - t0) / (t1 - t0 || 1e-9)))); }
+    return kf[kf.length - 1][1];
   }
 
-  let impl = null;
+  // 列车在线路标右边 10 px 处出现，停在终点站圈前 10 px：车身不从标底下穿过，也不压站圈和站圈右边的站名。
+  const startAfter = (bx) => bx + BR + 10 + CAR;
+  const stopBefore = (cx, r) => cx - r - 10 - CAR;
+  for (const ln of LINES) {
+    const k = ln.k, a = Math.abs(k), yb = Y0 + PITCH * k, yt = Y0 + GAP * k;
+    const pts = [[HEAD[0], yb]];
+    // 平行的一束往外分：外圈先拐，内圈的拐点往后错 PITCH·(√2 − 1)，斜段之间的垂直间距才和平行段一样。
+    if (k) { const xs = 1420 + (4 - a) * PITCH * (Math.SQRT2 - 1); pts.push([xs, yb], [xs + Math.abs(yt - yb), yt]); }
+    pts.push([ln.id === "site" ? ME[0] : X.term, yt]);
+    ln.y = yt; ln.P = roundPath(pts);
+    ln.tg = AT.gate0 + LINES.indexOf(ln) * AT.gateStep;
+    const s = SCHED[ln.id];
+    if (!s) continue;
+    const stops = [[s.gate, ln.P.dx(X.gate)], [s.work, ln.P.dx(X.work)]];
+    if (s.deploy) stops.push([s.deploy, ln.P.dx(X.deploy)]);
+    if (ln === SITE) stops.push([7.75, ln.P.dx(4600), E.in, 0], [AT.land, ln.P.dx(ORIGIN[0]), E.out], [8.45, ln.P.dx(stopBefore(ME[0], TERM_R))]);
+    else stops.push([s.term, ln.P.dx(stopBefore(X.term, TERM_R))]);
+    ln.kf = keyframes(AT.depart, stops, ln.P.dx(startAfter(X.bullet)));
+  }
+  const MAIN = roundPath([[-3200, Y0], [HEAD[0], Y0]]);
+  const BRANCH = roundPath([[ORIGIN[0], Y0], [5000, Y0], [5300, 840], [COM[0], 840]]);
+  const PLINE = roundPath([[ORIGIN[0], PY], [7300, PY], [7600, Y0], [ING[0], Y0]]);
+  const SLINE = roundPath([[ING[0], Y0], [ROOM[0], Y0]]);
+  // P 线从源站水平出发，三站都在第一段上，离起点的弧长就是横坐标之差。
+  const onP = (px) => px - ORIGIN[0];
+  const TP = keyframes(8.3, [[8.7, onP(PST.dep), E.io, 0.25], [AT.purge, onP(PST.purge), E.io, 0.7], [AT.notify, onP(PST.notify), E.io, 0.375], [AT.ing, PLINE.dx(stopBefore(ING[0], ING_W))]], onP(startAfter(PB[0])));
+  const TW = keyframes(AT.warm, [[AT.esa, BRANCH.dx(ESA[0]), E.io, 0.0625], [AT.com, BRANCH.dx(stopBefore(COM[0], TERM_R))]]);
+  const TS = keyframes(11.3125, [[AT.core, CORE[0] - ING[0], E.io, 0.0625], [AT.room, SLINE.dx(stopBefore(ROOM[0], ROOM_R))]], startAfter(SB[0]) - ING[0]);
+
+  const CAM0 = [960, 540, 1];
+  const CB = [2880, 660, 0.59];
+  const CC = [6050, 580, 0.58];
+  const CD = [8800, 575, 0.62];
+  const FULL = [5150, 1975, 0.175];
+  // 末帧接 ch10.js 首帧：别的都退掉，只剩 1 号线收成屏幕 y 540 一条整宽 3 px 墨线。
+  const FIN = [4250, Y0, 1];
+  const drift = (c, dx = 30, k = 1.015) => [c[0] + dx, c[1] + 2, c[2] * k];
+  const CAM = [
+    [0, CAM0], [AT.draw[0], drift(CAM0, 12, 1.012), E.lin], [AT.draw[1], CB, E.io], [AT.whip[0], drift(CB, 40), E.lin],
+    [AT.whip[1], CC, E.io], [10.75, drift(CC, 40), E.lin], [11.25, CD, E.io], [AT.full[0], drift(CD, 40), E.lin],
+    [AT.full[1], FULL, E.io], [AT.dive[0], drift(FULL, 20, 1.02), E.lin], [AT.dive[1], FIN, E.io], [17, FIN, E.lin],
+  ];
+  function camAt(b) {
+    if (b <= CAM[0][0]) return CAM[0][1].slice();
+    for (let i = 1; i < CAM.length; i++) if (b <= CAM[i][0]) {
+      const [t0, v0] = CAM[i - 1], [t1, v1, e = E.io] = CAM[i];
+      const k = e(clamp((b - t0) / (t1 - t0)));
+      return [lerp(v0[0], v1[0], k), lerp(v0[1], v1[1], k), Math.exp(lerp(Math.log(v0[2]), Math.log(v1[2]), k))];
+    }
+    return CAM[CAM.length - 1][1].slice();
+  }
+
+  function T(x, str, px, py, size, o = {}) {
+    return text(x, str, px, py, { ...o, font: o.mono ? MONO(size, o.w || 500) : SANS(size, o.w || 700), color: o.color || C.ink });
+  }
+  function rrect(x, rx, ry, rw, rh, r) { K.roundRect(x, rx, ry, rw, rh, Math.min(r, rw / 2, rh / 2)); }
+  function dot(x, cx, cy, r, lit, color, a = 1, ring = C.ink) {
+    if (a <= 0) return;
+    x.save(); x.globalAlpha *= a;
+    x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.fillStyle = ring; x.fill();
+    x.beginPath(); x.arc(cx, cy, r * 0.6, 0, TAU); x.fillStyle = mix(C.white, color, lit); x.fill();
+    x.restore();
+  }
+  function pulse(x, cx, cy, b, t0, color, r0 = 18, a = 1) {
+    const k = prog(b, t0, t0 + 0.3);
+    if (k <= 0 || k >= 1 || a <= 0) return;
+    x.save(); x.globalAlpha *= a * (1 - k); x.strokeStyle = color; x.lineWidth = 5;
+    // 只往外扩 14：再大就扫到站名底边。
+    x.beginPath(); x.arc(cx, cy, lerp(r0, r0 + 14, E.out(k)), 0, TAU); x.stroke(); x.restore();
+  }
+  function bullet(x, cx, cy, r, ch, color, dark, a = 1, size = r * 1.08) {
+    if (a <= 0) return;
+    x.save(); x.globalAlpha *= a; x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.fillStyle = color; x.fill(); x.restore();
+    T(x, ch, cx, cy + size * 0.36, size, { color: dark ? C.ink : C.white, align: "center", alpha: a });
+  }
+  function tick(x, cx, cy, s, color, a = 1, lw = s * 0.22) {
+    if (a <= 0) return;
+    x.save(); x.globalAlpha *= a; x.strokeStyle = color; x.lineWidth = lw; x.lineCap = "round"; x.lineJoin = "round";
+    x.beginPath(); x.moveTo(cx - 0.5 * s, cy); x.lineTo(cx - 0.12 * s, cy + 0.38 * s); x.lineTo(cx + 0.55 * s, cy - 0.45 * s); x.stroke(); x.restore();
+  }
+  function trainAt(x, P, d, color, a = 1) {
+    if (a <= 0) return;
+    const [px, py, an] = ptAt(P, d);
+    x.save(); x.globalAlpha *= a; x.translate(px, py); x.rotate(an);
+    rrect(x, -CAR, -16, 2 * CAR, 32, 16); x.fillStyle = C.white; x.fill(); x.lineWidth = 5; x.strokeStyle = C.ink; x.stroke();
+    x.fillStyle = color; rrect(x, 18, -9, 16, 18, 4); x.fill();
+    x.restore();
+  }
+  function blackSign(x, rx, ry, rw, rh, a) {
+    if (a <= 0) return;
+    x.save(); x.globalAlpha *= a; x.fillStyle = C.ink; x.fillRect(rx, ry, rw, rh);
+    // 纽约地铁的站牌：黑底上沿下面压一道细白线。
+    x.fillStyle = C.white; x.fillRect(rx + 14, ry + 12, rw - 28, 3); x.restore();
+  }
+
+  function nar(x, ka, kb, cam, t0, t1, b) {
+    const a = win(b, t0, t0 + 0.12, t1 - 0.12, t1);
+    if (a <= 0) return;
+    const s = 1 / cam[2], px = cam[0] + (110 - 960) * s, y1 = cam[1] + (944 - 540) * s, y2 = cam[1] + (1024 - 540) * s;
+    const f = SANS(60 * s, 700), maxW = 1160 * s;
+    const w = Math.min(maxW, Math.max(measure(x, tr(ka), f), measure(x, tr(kb), f)));
+    blackSign(x, px - 34 * s, y1 - 92 * s, w + 68 * s, 214 * s, a);
+    text(x, tr(ka), px, y1, { font: f, color: C.white, reveal: prog(b, t0 + 0.05, t0 + 0.75), dim: 0.18, perChar: true, alpha: a, maxW, narration: true });
+    text(x, tr(kb), px, y2, { font: f, color: C.white, reveal: prog(b, t0 + 0.75, t0 + 1.5), dim: 0.18, perChar: true, alpha: a, maxW, narration: true });
+  }
+
+  // 翻牌：每格上下两片，先乱翻几下再落定；落定前的字只当纹理。
+  const FLAPS = "0123456789ABCDEFHKMNPRSTVWXYZ#:.";
+  function flapRow(x, str, x0, y0, cw, chh, t0, step, b, a) {
+    [...str].forEach((c, i) => {
+      const cx = x0 + i * (cw + 4);
+      x.save(); x.globalAlpha *= a;
+      x.fillStyle = "#2C2C2C"; x.fillRect(cx, y0, cw, chh / 2);
+      x.fillStyle = "#202020"; x.fillRect(cx, y0 + chh / 2, cw, chh / 2);
+      x.fillStyle = C.board; x.fillRect(cx, y0 + chh / 2 - 1.5, cw, 3);
+      x.restore();
+      const ts = t0 + i * step;
+      if (c === " " || b < ts - 0.2) return;
+      const done = b >= ts, ch = done ? c : FLAPS[Math.floor(hash(i * 13 + Math.floor(b * 64)) * FLAPS.length)];
+      T(x, ch, cx + cw / 2, y0 + chh * 0.74, chh * 0.72, { mono: true, w: 600, color: C.led, align: "center", alpha: a, texture: !done });
+    });
+  }
+  function led(x, bx, by, w, h, from, to, tf, b, a) {
+    if (a <= 0) return;
+    x.save(); x.globalAlpha *= a; x.fillStyle = C.board; rrect(x, bx, by, w, h, 10); x.fill();
+    x.beginPath(); x.rect(bx + 6, by + 6, w - 12, h - 12); x.clip();
+    const k = prog(b, tf, tf + 0.14, E.io), size = h * 0.6, ty = by + h * 0.72;
+    if (k < 1) T(x, from, bx + w / 2, ty - k * h, size, { mono: true, w: 600, color: C.led, align: "center", alpha: a * (1 - k) });
+    if (k > 0) T(x, to, bx + w / 2, ty + (1 - k) * h, size, { mono: true, w: 600, color: C.led, align: "center", alpha: a * k });
+    x.restore();
+  }
+
+  function clawdAt(x, cx, bottom, q, pose, a = 1, flip = false) {
+    K.clawd(x, cx, bottom, q, { pose, body: C.clawd, eye: C.ink, alpha: a, flip });
+  }
+  function conductor(x, b, a) {
+    if (a <= 0) return;
+    const q = 8, cx = 1130, rise = E.outBack(prog(b, AT.clawd, AT.clawd + 0.2)), base = 800 + (1 - rise) * 40;
+    const up = b >= AT.paddle, pose = up ? "arms-up" : b > AT.clawd + 0.5 ? "look-right" : "default";
+    const aa = a * clamp(rise * 1.5);
+    clawdAt(x, cx, base, q, pose, aa);
+    const top = base - 12 * q;
+    x.save(); x.globalAlpha *= aa;
+    x.fillStyle = C.cap; rrect(x, cx - 6 * q, top - 2.6 * q, 11 * q, 2.8 * q, 0.8 * q); x.fill();
+    x.fillStyle = C.ink; x.fillRect(cx + 1 * q, top - 0.3 * q, 6.5 * q, 0.9 * q);
+    x.fillStyle = C.led; x.fillRect(cx - 0.6 * q, top - 2.0 * q, 1.4 * q, 1.2 * q);
+    if (up) {
+      const lift = E.outBack(prog(b, AT.paddle, AT.paddle + 0.15)), hx = cx + 8.6 * q, hy = top + 1.6 * q, ex = hx + 1.6 * q, ey = hy - 6 * q * lift;
+      x.strokeStyle = C.ink; x.lineWidth = 0.7 * q; x.lineCap = "round";
+      x.beginPath(); x.moveTo(hx, hy); x.lineTo(ex, ey); x.stroke();
+      x.beginPath(); x.arc(ex, ey - 2.4 * q, 2.6 * q, 0, TAU); x.fillStyle = C.white; x.fill(); x.lineWidth = 0.5 * q; x.stroke();
+      x.beginPath(); x.arc(ex, ey - 2.4 * q, 1.5 * q, 0, TAU); x.fillStyle = C.paddle; x.fill();
+    }
+    const w = prog(b, AT.whistle, AT.whistle + 0.4);
+    if (w > 0 && w < 1) {
+      x.strokeStyle = C.ink; x.lineWidth = 0.5 * q; x.lineCap = "round";
+      for (let i = 0; i < 3; i++) {
+        const k = clamp(w * 1.6 - i * 0.25), r = (2 + i * 1.6 + 2 * k) * q;
+        if (k <= 0) continue;
+        x.globalAlpha = aa * (1 - w);
+        x.beginPath(); x.arc(cx - 7.5 * q, top + 5 * q, r, Math.PI * 0.8, Math.PI * 1.2); x.stroke();
+      }
+    }
+    x.restore();
+  }
+
+  function departure(x, b, sa) {
+    if (sa <= 0) return;
+    const ta = sa * prog(b, 0.25, 0.45);
+    if (ta > 0) {
+      blackSign(x, 60, 70, 1280, 112, ta);
+      T(x, tr("ch09.title"), 96, 150, 66, { color: C.white, alpha: ta, reveal: prog(b, 0.3, 0.6), perChar: true });
+      LINES.forEach((ln, i) => {
+        const g = prog(b, ln.tg, ln.tg + 0.1) * (ln.skip ? 1 : 0);
+        bullet(x, 910 + i * 50, 126, 22, ln.b, mix(ln.color, C.gray, g), ln.dark && !g, ta * prog(b, 0.4 + i * 0.03, 0.55 + i * 0.03), 28);
+      });
+      T(x, "main → GitHub Actions · Workers Builds", 96, 226, 30, { mono: true, color: C.ink2, alpha: ta, reveal: prog(b, 0.45, 0.8) });
+    }
+    const ba = sa * prog(b, 0.2, 0.3);
+    if (ba > 0) {
+      x.save(); x.globalAlpha *= ba; x.fillStyle = C.board; rrect(x, 60, 262, 840, 184, 10); x.fill(); x.restore();
+      T(x, tr("ch09.dep"), 88, 302, 30, { color: C.white, alpha: ba });
+      flapRow(x, `18:52 PR #308 → main`, 82, 318, 36, 64, AT.board[0], (AT.board[1] - AT.board[0]) / 20, b, ba);
+      T(x, `${SHA_OLD}..${SHA_NEW}  main -> main`, 88, 424, 28, { mono: true, color: C.white, alpha: ba, reveal: prog(b, AT.push[0], AT.push[1]) });
+    }
+    const da = sa * prog(b, AT.diff, AT.diff + 0.15);
+    if (da > 0) {
+      const slide = (1 - E.out(prog(b, AT.diff, AT.diff + 0.2))) * 30;
+      x.save(); x.globalAlpha *= da; x.translate(0, slide);
+      x.fillStyle = C.white; x.fillRect(60, 700, 840, 236); x.lineWidth = 4; x.strokeStyle = C.ink; x.strokeRect(60, 700, 840, 236);
+      x.fillStyle = C.ink; x.fillRect(60, 700, 840, 58);
+      x.restore();
+      T(x, tr("ch09.diff"), 88, 740 + slide, 30, { color: C.white, alpha: da });
+      ["shared/site-deployments-types.ts", "workers/collector/…", "workers/core/README.md"].forEach((p, i) =>
+        T(x, p, 88, 806 + i * 46 + slide, 28, { mono: true, alpha: da, reveal: prog(b, AT.diff + 0.1 + i * 0.08, AT.diff + 0.25 + i * 0.08) }));
+    }
+  }
+  function headMarks(x, b, a) {
+    const ha = a * win(b, AT.head, AT.head + 0.1, 1.45, 1.6);
+    if (ha <= 0) return;
+    x.save(); x.globalAlpha *= ha; x.strokeStyle = C.here; x.lineWidth = 6;
+    x.beginPath(); x.arc(HEAD[0], HEAD[1], 30 + 10 * impact(b, AT.head, 0.12), 0, TAU); x.stroke(); x.restore();
+    T(x, tr("ch09.here"), 1392, 614, 32, { color: C.here, alpha: ha });
+    T(x, SHA_NEW, 1384, 496, 44, { mono: true, w: 600, alpha: ha });
+  }
+
+  function lineColor(ln, b) { return ln.skip ? mix(ln.color, C.gray, prog(b, ln.tg, ln.tg + 0.1)) : ln.color; }
+  function lines(x, b, ra) {
+    strokeRange(x, MAIN, 0, MAIN.len, LW, C.ink, ra);
+    const stub = 70 * prog(b, AT.cap[0], AT.cap[1], E.out);
+    for (const ln of [...LINES].sort((p, q) => Number(!p.skip) - Number(!q.skip))) {
+      if (ln === SITE) continue;
+      const d1 = Math.max(stub, lerp(70, ln.P.len, E.out(prog(b, AT.draw[0] + (4 - Math.abs(ln.k)) * 0.02, AT.draw[1]))) * (b >= AT.draw[0] ? 1 : 0));
+      if (ln.skip) {
+        const g = prog(b, ln.tg, ln.tg + 0.1);
+        strokeRange(x, ln.P, 0, d1, LW, ln.color, ra * (1 - g));
+        strokeRange(x, ln.P, 0, d1, LW * 0.75, C.gray, ra * g, [22, 14]);
+      } else strokeRange(x, ln.P, 0, d1, LW, ln.color, ra);
+    }
+    const thin = prog(b, AT.thin[0], AT.thin[1], E.io);
+    const sd = Math.max(stub, lerp(70, SITE.P.len, E.out(prog(b, AT.draw[0] + 0.08, AT.draw[1]))) * (b >= AT.draw[0] ? 1 : 0));
+    strokeRange(x, BRANCH, 0, BRANCH.len * prog(b, 2.3, AT.draw[1] + 0.1), LW, SITE.color, ra);
+    strokeRange(x, SITE.P, 0, sd, lerp(LW, 3, thin), mix(SITE.color, C.ink, thin), 1);
+    strokeRange(x, PLINE, 0, PLINE.len * E.out(prog(b, AT.xfer, AT.xfer + 0.35)), LW, C.purge, ra);
+    strokeRange(x, SLINE, 0, SLINE.len * E.out(prog(b, AT.ing, AT.ing + 0.2)), LW, C.push, ra);
+    // 站外换乘画成虚线：P 线上的三站各连到它们要等、要刷新的那一站。
+    const ta = ra * prog(b, AT.xfer + 0.15, AT.xfer + 0.35);
+    if (ta > 0) {
+      x.save(); x.globalAlpha *= ta; x.strokeStyle = C.purge; x.lineWidth = 5; x.setLineDash([12, 12]);
+      for (const [sx, ty] of [[PST.dep, ME[1]], [PST.purge, ESA[1]], [PST.notify, COM[1]]]) { x.beginPath(); x.moveTo(sx, PY + 20); x.lineTo(sx, ty - 22); x.stroke(); }
+      x.restore();
+    }
+  }
+
+  function headCapsule(x, b, ra) {
+    const k = prog(b, AT.cap[0], AT.cap[1], E.io), pop = 1 + 0.35 * impact(b, AT.head, 0.12);
+    const r = lerp(15, 22, k) * (k > 0 ? 1 : pop), h = 2 * 4 * PITCH * k;
+    x.save(); x.globalAlpha *= ra;
+    rrect(x, HEAD[0] - r, HEAD[1] - h / 2 - r, 2 * r, h + 2 * r, r); x.fillStyle = C.ink; x.fill();
+    const ri = r - 6;
+    rrect(x, HEAD[0] - ri, HEAD[1] - h / 2 - ri, 2 * ri, h + 2 * ri, ri); x.fillStyle = C.white; x.fill();
+    x.restore();
+  }
+  function commitStations(x, b, ra, aA) {
+    COMMITS.forEach((cx, i) => {
+      dot(x, cx, Y0, 15, 0, C.white, ra);
+      const t0 = AT.type + (COMMITS.length - 1 - i) * 0.0625, la = aA * prog(b, t0, t0 + 0.1);
+      if (la <= 0) return;
+      const lx = Math.max(cx, 24 + measure(x, SHAS[i], MONO(28)) / 2);
+      T(x, SHAS[i], lx, 598, 28, { mono: true, color: C.ink2, align: "center", alpha: la });
+      if (SHAS[i] === SHA_PAGE) T(x, tr("ch09.lastStop"), cx, 634, 28, { w: 500, color: C.ink2, align: "center", alpha: la });
+    });
+  }
+
+  function lineStations(x, b, ra, ba) {
+    const show = prog(b, 2.3, 2.55), ts = prog(b, 2.45, 2.6), la = ba * show;
+    T(x, "GitHub Actions", X.bullet - BR, Y0 + GAP * -4 - 100, 48, { mono: true, color: C.ink2, alpha: la });
+    T(x, "Workers Builds", X.bullet - BR, Y0 + GAP * 4 + 90, 48, { mono: true, color: C.ink2, alpha: la });
+    for (const ln of LINES) {
+      const y = ln.y, col = lineColor(ln, b), g = ln.skip ? prog(b, ln.tg, ln.tg + 0.1) : 0;
+      const gs = prog(b, ln.tg, ln.tg + 0.08), ga = ba * gs;
+      if (ln.skip) {
+        dot(x, X.gate, y, 15, 0, C.gray, ra * prog(b, 2.2, 2.35), mix(C.ink, C.gray, g));
+        x.save(); x.globalAlpha *= ra * gs; x.fillStyle = C.grayT; x.fillRect(X.gate - 9, y - 2.5, 18, 5); x.restore();
+        T(x, tr("ch09.skip"), X.gate - 14, y - 34, 50, { color: C.grayT, alpha: ga, reveal: prog(b, ln.tg, ln.tg + 0.12) });
+        T(x, tr("ch09.noStop"), X.work - 14, y - 34, 50, { color: C.grayT, alpha: ga, reveal: prog(b, ln.tg + 0.04, ln.tg + 0.2) });
+        dot(x, X.term, y, TERM_R, 0, C.gray, ra * ts, mix(C.ink, C.gray, g));
+        T(x, L(ln.name), X.term + 40, y + 18, 52, { color: mix(C.ink, C.grayT, g), alpha: ba * ts });
+        continue;
+      }
+      const s = SCHED[ln.id];
+      dot(x, X.gate, y, 15, prog(b, ln.tg, ln.tg + 0.06), col, ra * prog(b, 2.2, 2.35));
+      pulse(x, X.gate, y, b, ln.tg, col, 18, ra);
+      T(x, L(ln.gate), X.gate - 14, y - 34, ln.gate.startsWith("ch09.") ? 50 : 48, { mono: !ln.gate.startsWith("ch09."), alpha: ga, reveal: prog(b, ln.tg, ln.tg + 0.12) });
+      for (const [key, px] of [["work", X.work], ["deploy", X.deploy]]) {
+        if (!ln[key]) continue;
+        dot(x, px, y, 15, prog(b, s[key], s[key] + 0.06), col, ra * show);
+        pulse(x, px, y, b, s[key], col, 18, ra);
+        T(x, ln[key], px - 14, y - 34, 48, { mono: true, alpha: la });
+      }
+      if (ln === SITE) continue;
+      dot(x, X.term, y, TERM_R, prog(b, s.term, s.term + 0.06), col, ra * ts);
+      pulse(x, X.term, y, b, s.term, col, 22, ra);
+      x.save(); x.globalAlpha *= ra * ts; x.fillStyle = C.ink; x.fillRect(X.term + TERM_R, y - 22, 7, 44); x.restore();
+      const nw = T(x, L(ln.name), X.term + 40, y + 18, 52, { alpha: ba * ts });
+      tick(x, X.term + 40 + nw + 30, y + 2, 34, C.ink, ba * prog(b, s.term, s.term + 0.08));
+    }
+    // CodeQL 另有定时触发（codeql.yml 的 schedule），画成线路图上的一行小注。
+    const q = LINES[2], na = ba * prog(b, AT.sched, AT.sched + 0.15);
+    if (na > 0) {
+      x.save(); x.globalAlpha *= na; x.strokeStyle = C.ink2; x.lineWidth = 4;
+      x.beginPath(); x.arc(3168, q.y - 50, 16, 0, TAU); x.stroke();
+      x.beginPath(); x.moveTo(3168, q.y - 50); x.lineTo(3168, q.y - 60); x.moveTo(3168, q.y - 50); x.lineTo(3176, q.y - 46); x.stroke(); x.restore();
+      T(x, tr("ch09.sched"), 3200, q.y - 34, 48, { w: 500, color: C.ink2, alpha: na, reveal: prog(b, AT.sched, AT.sched + 0.25) });
+    }
+  }
+  function contract(x, b, ra) {
+    const a = ra * prog(b, AT.contract, AT.contract + 0.12);
+    if (a <= 0) return;
+    const bx = 3730, by = 1130, bw = 660, bh = 300, slide = (1 - E.out(prog(b, AT.contract, AT.contract + 0.2))) * 40;
+    x.save(); x.globalAlpha *= a; x.translate(0, slide);
+    x.fillStyle = C.white; x.fillRect(bx, by, bw, bh); x.lineWidth = 4; x.strokeStyle = C.ink; x.strokeRect(bx, by, bw, bh);
+    x.fillStyle = C.ink; x.fillRect(bx, by, bw, 68); x.restore();
+    T(x, tr("ch09.contract"), bx + 26, by + 50 + slide, 48, { color: C.white, alpha: a });
+    T(x, "shared/state-core.ts", bx + 26, by + 132 + slide, 48, { mono: true, alpha: a });
+    T(x, "shared/collector.ts", bx + 26, by + 192 + slide, 48, { mono: true, alpha: a });
+    T(x, tr("ch09.callee"), bx + 26, by + 264 + slide, 48, { w: 500, color: C.ink2, alpha: a });
+  }
+
+  function landing(x, b, ra, ca) {
+    const sa = ra * prog(b, AT.whip[0], AT.whip[0] + 0.2), pa = prog(b, AT.xfer, AT.xfer + 0.15);
+    // 源站是 1 号线和 P 线的换乘站，画成伦敦图上那种白色连桥。
+    if (pa > 0) {
+      x.save(); x.globalAlpha *= sa * pa;
+      x.fillStyle = C.ink; x.fillRect(ORIGIN[0] - 16, PY, 32, Y0 - PY);
+      x.fillStyle = C.white; x.fillRect(ORIGIN[0] - 10, PY, 20, Y0 - PY);
+      x.restore();
+    }
+    dot(x, ORIGIN[0], Y0, 24, prog(b, AT.land, AT.land + 0.06), SITE.color, sa);
+    pulse(x, ORIGIN[0], Y0, b, AT.land, SITE.color, 26, ra);
+    dot(x, ORIGIN[0], PY, 24, prog(b, AT.xfer, AT.xfer + 0.1), C.purge, sa * pa);
+    T(x, "site Worker", ORIGIN[0] + 52, 404, 52, { alpha: sa });
+    T(x, tr("ch09.origin"), ORIGIN[0] + 52, 462, 50, { w: 500, color: C.ink2, alpha: sa });
+    const xa = ra * pa;
+    if (xa > 0) {
+      blackSign(x, 4660, 30, 720, 150, xa);
+      T(x, tr("ch09.xfer"), 4690, 98, 50, { color: C.white, alpha: xa });
+      T(x, "Workers Builds: site", 4690, 156, 50, { mono: true, color: C.white, alpha: xa });
+      tick(x, 5336, 140, 30, C.white, xa);
+    }
+    // 两个终点站，各挂一块显示屏：答出来的版本。
+    dot(x, ME[0], Y0, TERM_R, prog(b, 8.45, 8.5), SITE.color, sa);
+    pulse(x, ME[0], Y0, b, 8.45, SITE.color, 22, ra);
+    x.save(); x.globalAlpha *= sa; x.fillStyle = C.ink; x.fillRect(ME[0] + TERM_R, Y0 - 22, 7, 44); x.restore();
+    T(x, "lyjw.me", ME[0] + 44, Y0 + 20, 56, { alpha: sa });
+    led(x, ME[0] + 44, 396, 270, 88, SHA_PAGE, SHA_NEW, AT.me, b, sa);
+    dot(x, ESA[0], ESA[1], 18, prog(b, AT.esa, AT.esa + 0.06), SITE.color, sa);
+    pulse(x, ESA[0], ESA[1], b, AT.esa, SITE.color, 20, ra);
+    T(x, tr("ch09.esa"), ESA[0] - 40, ESA[1] + 82, 52, { alpha: sa });
+    dot(x, COM[0], COM[1], TERM_R, prog(b, AT.com - 0.05, AT.com), SITE.color, sa);
+    pulse(x, COM[0], COM[1], b, AT.com, SITE.color, 22, ra);
+    x.save(); x.globalAlpha *= sa; x.fillStyle = C.ink; x.fillRect(COM[0] + TERM_R, COM[1] - 22, 7, 44); x.restore();
+    T(x, "lyjw131.com", COM[0] + 44, COM[1] + 20, 56, { alpha: sa });
+    led(x, COM[0] + 44, 696, 270, 88, SHA_PAGE, SHA_NEW, AT.com, b, sa);
+    // ESA 手上的首页缓存：刷新时打叉，预热的车到了换成新的一份。
+    const px = 5800, py = 650, fresh = prog(b, AT.esa, AT.esa + 0.1), cross = win(b, AT.purge, AT.purge + 0.06, AT.esa - 0.05, AT.esa);
+    T(x, tr("ch09.cache"), px - 24, py + 92, 50, { w: 500, color: C.ink2, align: "right", alpha: sa });
+    x.save(); x.globalAlpha *= sa;
+    x.fillStyle = C.white; x.fillRect(px, py, 140, 150); x.lineWidth = 5; x.strokeStyle = C.ink; x.strokeRect(px, py, 140, 150);
+    for (let i = 0; i < 4; i++) { x.fillStyle = mix(C.gray, C.ink, fresh); x.fillRect(px + 20, py + 26 + i * 30, i === 0 ? 100 : 80 - i * 8, 12); }
+    if (cross > 0) {
+      x.globalAlpha *= cross; x.strokeStyle = C.ink; x.lineWidth = 12; x.lineCap = "butt";
+      x.beginPath(); x.moveTo(px - 16, py - 16); x.lineTo(px + 156, py + 166); x.moveTo(px + 156, py - 16); x.lineTo(px - 16, py + 166); x.stroke();
+    }
+    x.restore();
+    tick(x, px + 112, py + 126, 40, C.ink, sa * fresh);
+    // P 线：GitHub Actions 的 purge-esa，三站就是工作流里的三个 job。
+    const st = [
+      [PST.dep, "deployment", AT.dep, ["ch09.j.dep"]],
+      [PST.purge, "purge", AT.purge, ["ch09.j.purge1", "ch09.j.purge2"]],
+      [PST.notify, "notify", AT.notify, ["ch09.j.notify", "POST /api/internal/site-deployed", "ch09.retry"]],
+    ];
+    const la = ca * prog(b, AT.xfer + 0.15, AT.xfer + 0.35);
+    for (const [sx, job, t0, rows] of st) {
+      dot(x, sx, PY, 15, prog(b, t0, t0 + 0.06), C.purge, ra * pa);
+      pulse(x, sx, PY, b, t0, C.purge, 18, ra);
+      // 三个 job 名顶端对齐成一行，像时刻表的表头；说明照执行顺序往下排。
+      T(x, job, sx - 14, PY - 202, 50, { mono: true, w: 600, alpha: la });
+      rows.forEach((k, i) => T(x, L(k), sx - 14, PY - 146 + i * 56, 50, k.startsWith("ch09.") ? { w: 500, color: C.ink2, alpha: la } : { mono: true, alpha: la }));
+    }
+  }
+  // 拿放大镜的 Clawd 就是合并后跑的 deploy-check：两个域名先后答出新版本，它各跳一下（FACTS §11）。
+  function verifier(x, b, ra) {
+    const a = ra * win(b, AT.xfer, AT.xfer + 0.15, 10.5, 10.62);
+    if (a <= 0) return;
+    const q = 7, cx = 6350, right = b >= 9.9, hy = K.hop(b, AT.hop1, AT.hop1 + 0.2, 34) + K.hop(b, AT.hop2, AT.hop2 + 0.2, 34);
+    const base = 690 - hy + (1 - E.outBack(prog(b, AT.xfer, AT.xfer + 0.2))) * 30;
+    const pose = hy > 4 ? "arms-up" : right ? "look-right" : "look-left";
+    clawdAt(x, cx, base, q, pose, a, !right);
+    K.clawdProp(x, "magnifier", cx, base, q, { color: C.ink, alpha: a, flip: !right });
+  }
+
+  function notify(x, b, ra) {
+    const sa = ra * prog(b, AT.xfer + 0.3, AT.xfer + 0.5);
+    x.save(); x.globalAlpha *= sa;
+    rrect(x, ING[0] - ING_W, ING[1] - 23, 2 * ING_W, 46, 23); x.fillStyle = C.ink; x.fill();
+    rrect(x, ING[0] - ING_W + 6, ING[1] - 17, 2 * ING_W - 12, 34, 17); x.fillStyle = mix(C.white, C.purge, prog(b, AT.ing, AT.ing + 0.06) * 0.35); x.fill();
+    x.restore();
+    pulse(x, ING[0], ING[1], b, AT.ing, C.purge, 30, ra);
+    T(x, tr("ch09.ingress"), ING[0] - 40, 398, 52, { alpha: sa });
+    x.save(); x.globalAlpha *= sa; x.lineWidth = 4; x.strokeStyle = C.ink; rrect(x, ING[0] - 48, 420, 712, 60, 10); x.stroke(); x.restore();
+    T(x, "internal:site-deployed", ING[0] - 34, 464, 48, { mono: true, alpha: sa });
+    tick(x, ING[0] + 630, 448, 30, C.ink, ra * prog(b, AT.ing, AT.ing + 0.08));
+    T(x, "Service Binding", 7990, 612, 48, { mono: true, color: C.ink2, alpha: ra * prog(b, AT.ing, AT.ing + 0.2) });
+    dot(x, CORE[0], CORE[1], 18, prog(b, AT.core, AT.core + 0.06), C.push, sa);
+    pulse(x, CORE[0], CORE[1], b, AT.core, C.push, 20, ra);
+    T(x, "StateCore", CORE[0] - 14, 410, 52, { alpha: sa });
+    T(x, "broadcastVersion()", CORE[0] - 14, 470, 48, { mono: true, alpha: sa });
+    x.save(); x.globalAlpha *= sa;
+    x.beginPath(); x.arc(ROOM[0], ROOM[1], ROOM_R, 0, TAU); x.fillStyle = C.ink; x.fill();
+    x.beginPath(); x.arc(ROOM[0], ROOM[1], ROOM_R - 7, 0, TAU); x.fillStyle = C.white; x.fill();
+    x.fillStyle = C.ink; x.fillRect(ROOM[0] - 20, ROOM[1] - 9, 11, 18);
+    x.beginPath(); x.moveTo(ROOM[0] - 9, ROOM[1] - 9); x.lineTo(ROOM[0] + 12, ROOM[1] - 22); x.lineTo(ROOM[0] + 12, ROOM[1] + 22); x.lineTo(ROOM[0] - 9, ROOM[1] + 9); x.closePath(); x.fill();
+    x.restore();
+    T(x, tr("ch09.room"), ROOM[0] - 14, 400, 52, { alpha: sa });
+    T(x, "LivePushRoom", ROOM[0] - 14, 460, 48, { mono: true, alpha: sa });
+    // 喇叭的声波只在 ±0.55 弧度、半径 120 以内：上面是房间的名字，下面是 version 牌。
+    for (let i = 0; i < 3; i++) {
+      const k = prog(b, AT.ring + i * 0.08, AT.ring + 0.45 + i * 0.08);
+      if (k <= 0 || k >= 1) continue;
+      x.save(); x.globalAlpha *= ra * (1 - k); x.strokeStyle = C.ink; x.lineWidth = 7; x.lineCap = "round";
+      x.beginPath(); x.arc(ROOM[0], ROOM[1], lerp(58, 120, E.out(k)), -0.55, 0.55); x.stroke(); x.restore();
+    }
+    const va = ra * prog(b, AT.ring, AT.ring + 0.1);
+    if (va > 0) {
+      x.save(); x.globalAlpha *= va; x.fillStyle = C.ink; rrect(x, ROOM[0] - 60, 604, 252, 68, 34); x.fill(); x.restore();
+      T(x, "version", ROOM[0] + 66, 652, 50, { mono: true, w: 600, color: C.white, align: "center", alpha: va });
+      T(x, tr("ch09.bare"), ROOM[0] - 54, 732, 48, { w: 500, color: C.ink2, alpha: va });
+    }
+    browser(x, b, WFG, "lyjw.me", false, ra);
+    browser(x, b, WBG, "lyjw131.com", true, ra);
+    const fa = ra * prog(b, AT.foot, AT.foot + 0.15);
+    T(x, tr("ch09.foot1"), WBG.x, 1052, 48, { w: 500, color: C.ink2, alpha: fa, reveal: prog(b, AT.foot, AT.foot + 0.3) });
+    T(x, tr("ch09.foot2"), WBG.x, 1110, 48, { w: 500, color: C.ink2, alpha: fa, reveal: prog(b, AT.foot + 0.25, AT.foot + 0.6) });
+  }
+  function browser(x, b, w, host, hidden, ra) {
+    const a = ra * prog(b, AT.xfer + 0.3, AT.xfer + 0.5);
+    if (a <= 0) return;
+    const frame = hidden ? C.ink2 : C.ink, top = w.y + 64;
+    const la = T(x, tr(hidden ? "ch09.bg" : "ch09.fg"), w.x, w.y - 24, 48, { alpha: a });
+    x.save(); x.globalAlpha *= a;
+    rrect(x, w.x, w.y, w.w, w.h, 18); x.fillStyle = C.white; x.fill();
+    x.save(); x.clip();
+    x.fillStyle = hidden ? "#E2E0D9" : "#ECEAE4"; x.fillRect(w.x, w.y, w.w, 64);
+    for (let i = 0; i < 3; i++) { x.beginPath(); x.arc(w.x + 32 + i * 28, w.y + 32, 9, 0, TAU); x.fillStyle = C.gray; x.fill(); }
+    const card = hidden ? 0 : 200 * E.out(prog(b, AT.card, AT.card + 0.25));
+    const wipe = hidden ? prog(b, AT.reload, AT.reload + 0.3, E.io) : 0;
+    for (let i = 0; i < 5; i++) {
+      const yy = top + 24 + card + i * 52;
+      const fresh = hidden && yy < top + wipe * (w.h - 64);
+      x.fillStyle = fresh ? "#CFCCC4" : "#E4E1DA";
+      x.fillRect(w.x + 26, yy, (i % 2 ? 0.55 : 0.82) * (w.w - 52), 30);
+    }
+    if (wipe > 0 && wipe < 1) { x.fillStyle = C.ink; x.fillRect(w.x, top + wipe * (w.h - 64) - 3, w.w, 6); }
+    x.restore();
+    rrect(x, w.x, w.y, w.w, w.h, 18); x.lineWidth = 5; x.strokeStyle = frame; x.stroke();
+    x.restore();
+    T(x, host, w.x + 120, w.y + 46, 48, { mono: true, color: hidden ? C.ink2 : C.ink, alpha: a });
+    // 窗框往外闪只扩 16：再大就碰到窗口上方的标签。
+    const pv = ra * prog(b, AT.ring + 0.15, AT.ring + 0.22);
+    if (pv > 0) {
+      const pw = 225, px = w.x + w.w - 18 - pw;
+      x.save(); x.globalAlpha *= pv; x.fillStyle = C.ink; rrect(x, px, w.y + 6, pw, 52, 26); x.fill(); x.restore();
+      T(x, "version", px + pw / 2, w.y + 48, 46, { mono: true, w: 600, color: C.white, align: "center", alpha: pv });
+      const k = prog(b, AT.ring + 0.15, AT.ring + 0.45);
+      if (k > 0 && k < 1) {
+        const g = lerp(4, 16, E.out(k));
+        x.save(); x.globalAlpha *= ra * (1 - k); x.strokeStyle = frame; x.lineWidth = 6;
+        rrect(x, w.x - g, w.y - g, w.w + 2 * g, w.h + 2 * g, 18 + g); x.stroke(); x.restore();
+      }
+    }
+    const qa = ra * prog(b, AT.ask, AT.ask + 0.1);
+    if (qa > 0) {
+      x.save(); x.globalAlpha *= qa; x.fillStyle = C.white; x.fillRect(w.x + 8, w.y + w.h - 70, w.w - 16, 62); x.restore();
+      T(x, `GET /api/version → ${SHA_NEW}`, w.x + 24, w.y + w.h - 24, 48, { mono: true, alpha: qa, reveal: prog(b, AT.ask, AT.ask + 0.2) });
+    }
+    if (hidden) {
+      const ra2 = ra * prog(b, AT.reload, AT.reload + 0.1);
+      if (ra2 > 0) {
+        const cx = w.x + la + 54, cy = w.y - 40, sp = prog(b, AT.reload, AT.reload + 0.5) * TAU;
+        x.save(); x.globalAlpha *= ra2; x.strokeStyle = C.ink; x.lineWidth = 5; x.lineCap = "round";
+        x.beginPath(); x.arc(cx, cy, 15, sp, sp + 4.9); x.stroke();
+        const ex = cx + 15 * Math.cos(sp + 4.9), ey = cy + 15 * Math.sin(sp + 4.9);
+        x.beginPath(); x.moveTo(ex - 8, ey - 2); x.lineTo(ex, ey); x.lineTo(ex + 2, ey - 9); x.stroke(); x.restore();
+        T(x, tr("ch09.reload"), cx + 32, w.y - 24, 48, { alpha: ra2 });
+      }
+      return;
+    }
+    const k = prog(b, AT.card, AT.card + 0.25, E.out);
+    if (k <= 0) return;
+    const cy = top + 10, ch = 190 * k;
+    x.save(); x.globalAlpha *= ra; x.beginPath(); x.rect(w.x + 14, cy, w.w - 28, ch); x.clip();
+    x.fillStyle = C.white; x.fillRect(w.x + 14, cy, w.w - 28, 190); x.lineWidth = 4; x.strokeStyle = C.ink; x.strokeRect(w.x + 16, cy + 2, w.w - 32, 186);
+    x.fillStyle = "#EFEDE7"; x.fillRect(w.x + 18, cy + 4, w.w - 36, 52);
+    x.restore();
+    if (k < 0.6) return;
+    const ca = ra * prog(b, AT.card + 0.15, AT.card + 0.25);
+    T(x, "UPDATE", w.x + 34, cy + 44, 46, { mono: true, w: 600, alpha: ca });
+    T(x, "DISMISS ×", w.x + w.w - 34, cy + 44, 46, { mono: true, color: C.ink2, align: "right", alpha: ca });
+    x.save(); x.globalAlpha *= ca; x.beginPath(); x.arc(w.x + 44, cy + 98, 8, 0, TAU); x.fillStyle = C.gray; x.fill(); x.restore();
+    T(x, "New version", w.x + 64, cy + 114, 48, { w: 500, alpha: ca });
+    x.save(); x.globalAlpha *= ca; x.fillStyle = "#EFEDE7"; x.fillRect(w.x + 30, cy + 132, 486, 50); x.restore();
+    T(x, `${SHA_PAGE} → ${SHA_NEW}`, w.x + 42, cy + 170, 46, { mono: true, alpha: ca });
+    x.save(); x.globalAlpha *= ca; x.fillStyle = C.ink; rrect(x, w.x + w.w - 228, cy + 128, 196, 56, 8); x.fill(); x.restore();
+    T(x, "Reload", w.x + w.w - 130, cy + 170, 46, { w: 600, color: C.white, align: "center", alpha: ca });
+  }
+
+  // 车停到终点站前就淡掉，让出终点站那盏灯。
+  function trains(x, b, ra) {
+    const run = (P, kf, color) => {
+      const t0 = kf[0][0], t1 = kf[kf.length - 1][0];
+      if (b >= t0) trainAt(x, P, posAt(kf, b), color, ra * prog(b, t0, t0 + 0.06) * (1 - prog(b, t1, t1 + 0.1)));
+    };
+    for (const ln of LINES) if (ln.kf) run(ln.P, ln.kf, ln.color);
+    run(PLINE, TP, C.purge);
+    run(BRANCH, TW, SITE.color);
+    run(SLINE, TS, C.push);
+  }
+  function lineBullets(x, b, ra) {
+    for (const ln of LINES) {
+      const g = ln.skip ? prog(b, ln.tg, ln.tg + 0.1) : 0;
+      bullet(x, X.bullet, ln.y, BR, ln.b, lineColor(ln, b), ln.dark && !g, ra * prog(b, 2.15, 2.35));
+    }
+    bullet(x, PB[0], PB[1], BR, "P", C.purge, false, ra * prog(b, AT.xfer, AT.xfer + 0.15));
+    bullet(x, SB[0], SB[1], BR, "S", C.push, false, ra * prog(b, AT.ing, AT.ing + 0.2));
+  }
+
+  function legend(x, b, ra) {
+    const a = ra * prog(b, AT.full[0] + 0.15, AT.full[1]);
+    if (a <= 0) return;
+    blackSign(x, 0, 1650, 4400, 480, a);
+    T(x, tr("ch09.title"), 120, 2010, 300, { color: C.white, alpha: a });
+    T(x, "main → GitHub Actions · Workers Builds", 0, 2420, 170, { mono: true, color: C.ink2, alpha: a });
+    const sym = [
+      ["ch09.l.station", (cy, al) => dot(x, 200, cy, 70, 0, C.white, al)],
+      ["ch09.l.xfer", (cy, al) => { x.save(); x.globalAlpha *= al; rrect(x, 80, cy - 70, 240, 140, 70); x.fillStyle = C.ink; x.fill(); rrect(x, 102, cy - 48, 196, 96, 48); x.fillStyle = C.white; x.fill(); x.restore(); }],
+      ["ch09.l.term", (cy, al) => { dot(x, 160, cy, 80, 1, SITE.color, al); x.save(); x.globalAlpha *= al; x.fillStyle = C.ink; x.fillRect(250, cy - 90, 34, 180); x.restore(); }],
+      ["ch09.l.skip", (cy, al) => { x.save(); x.globalAlpha *= al; x.strokeStyle = C.gray; x.lineWidth = 60; x.setLineDash([90, 56]); x.beginPath(); x.moveTo(0, cy); x.lineTo(400, cy); x.stroke(); x.restore(); }],
+      ["ch09.l.push", (cy, al) => bullet(x, 200, cy, 110, "S", C.push, false, al, 170)],
+    ];
+    const row = (i) => a * prog(b, AT.full[1] - 0.2 + i * 0.05, AT.full[1] - 0.05 + i * 0.05);
+    sym.forEach(([k, draw], i) => {
+      const base = 2740 + i * 280, al = row(i);
+      if (al <= 0) return;
+      draw(base - 58, al);
+      T(x, tr(k), 520, base, 170, { w: 500, alpha: al });
+    });
+    T(x, tr("ch09.legend"), 5000, 1860, 190, { alpha: a });
+    const cols = [["GitHub Actions", 5000, [LINES[3], LINES[2], { b: "P", color: C.purge, name: "ch09.t.purge" }, LINES[1], LINES[0]]], ["Workers Builds", 7700, LINES.slice(4)]];
+    for (const [head, cx, list] of cols) {
+      T(x, head, cx, 2160, 170, { mono: true, color: C.ink2, alpha: a });
+      list.forEach((ln, i) => {
+        const base = 2440 + i * 260, ra2 = row(i);
+        bullet(x, cx + 110, base - 58, 110, ln.b, ln.skip ? C.gray : ln.color, ln.dark && !ln.skip, ra2, 170);
+        T(x, L(ln.name), cx + 270, base, 170, { w: ln.skip ? 500 : 700, color: ln.skip ? C.grayT : C.ink, alpha: ra2 });
+      });
+    }
+    T(x, tr("ch09.l.film"), 5000, 3880, 170, { w: 500, color: C.ink2, alpha: row(6) });
+    T(x, "PLATE 09 · RELEASE", 10150, 4120, 170, { mono: true, color: C.ink2, align: "right", alpha: row(7) });
+  }
+
+  function render(f) {
+    BARs = f.BAR;
+    const b = f.bar;
+    const c = camAt(b), c0 = camAt(b - 1 / 60 / f.BAR);
+    const hitS = Math.max(impact(b, AT.land, 0.12), impact(b, 0, 0.1) * 0.5);
+    const cam = { x: c[0], y: c[1], zoom: c[2] * (1 + 0.01 * hitS), rot: 0 };
+    G.setCam(cam);
+    G.clear([0.913, 0.896, 0.855]);
+    const x = page.begin();
+    x.fillStyle = C.bg; x.fillRect(0, 0, G.W, G.H);
+    page.cam(cam);
+
+    const ra = 1 - prog(b, AT.fade[0], AT.fade[1]);
+    // 各段的字只在自己的机位和最后的整张图里出现，免得半截字露在下一个机位的边上。
+    const inE = prog(b, AT.full[0] + 0.1, AT.full[1]);
+    const sa = ra * clamp(1 - prog(b, 2.0, 2.3) + inE);
+    const ba = ra * clamp(1 - prog(b, AT.whip[0], AT.whip[0] + 0.25) + inE);
+    const ca = ra * clamp(1 - prog(b, 10.75, 11.0) + inE);
+    lines(x, b, ra);
+    headCapsule(x, b, ra);
+    commitStations(x, b, ra, sa);
+    lineStations(x, b, ra, ba);
+    landing(x, b, ra, ca);
+    notify(x, b, ra);
+    trains(x, b, ra);
+    lineBullets(x, b, ra);
+    departure(x, b, sa);
+    headMarks(x, b, ra);
+    contract(x, b, ra * clamp(1 - prog(b, 7.5, 7.7) + inE));
+    conductor(x, b, ra * (1 - prog(b, 2.6, 2.8)));
+    verifier(x, b, ra);
+    legend(x, b, ra);
+    nar(x, "ch09.n1a", "ch09.n1b", CB, NAR.n1, NAR_OUT.n1, b);
+    nar(x, "ch09.n2a", "ch09.n2b", CB, NAR.n2, NAR_OUT.n2, b);
+    nar(x, "ch09.n3a", "ch09.n3b", CC, NAR.n3, NAR_OUT.n3, b);
+    nar(x, "ch09.n4a", "ch09.n4b", CD, NAR.n4, NAR_OUT.n4, b);
+
+    G.composite(page.upload(), { mode: G.MODE.normal });
+    const sh = hitS * 4;
+    f.post = {
+      bloom: 0, threshold: 1.2, halation: 0, grain: 0, vignette: 0, ca: 0,
+      shake: [Math.sin(f.frame * 1.7) * sh, Math.cos(f.frame * 2.3) * sh],
+      blur: [(c0[0] - c[0]) * c[2], (c0[1] - c[1]) * c[2]],
+      zoomBlur: clamp(Math.log(c[2] / c0[2]), -0.2, 0.2),
+    };
+  }
+
   window.CHAPTERS.push({
-    id: "ch09", title: "ch.09", bars: 10,
-    init() { impl = impl || make(); impl.init(); },
-    render(f) { impl.render(f); },
+    id: "ch09", title: "ch.09", bars: 17,
+    async init() {
+      page = G.layer("bg");
+      await Promise.all([
+        document.fonts.load(`700 40px "Noto Sans SC ch09"`, "发布"), document.fonts.load(`500 40px "Noto Sans SC ch09"`, "发布"),
+        document.fonts.load(`700 40px "Inter ch09"`, "Release"), document.fonts.load(`500 40px "Inter ch09"`, "Release"),
+      ]);
+    },
+    render,
   });
 })();
