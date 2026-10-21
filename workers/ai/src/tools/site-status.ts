@@ -4,6 +4,7 @@ import { STATUS_VIEWS, type StatusViewKey } from "@shared/status-views";
 import type { NowListeningPayload } from "@shared/types";
 
 import { base64url, decodeBase64url } from "../crypto";
+import { codingYearForModel } from "./coding-year-shape";
 import { MERGE_GAP_SEC, pulseForModel } from "./pulse-shape";
 import type { SiteTool, ToolLedger } from "./registry";
 import { collectLists, normalize, PAGE_SIZE, strip, withMonthlyTotals, type PagedList } from "./status-shape";
@@ -24,7 +25,7 @@ const VIEW_NOTES = {
   nowListening: "Song playing right now: reported by the Mac or HomePod (music), or inferred on another device from Apple Music play history (elsewhere); idle only covers the Mac and HomePod",
   coding: "AI coding token totals and API-equivalent cost since tracking began, top models and per-agent totals; no per-day numbers (those are in codingYear)",
   codingNow: `Which coding agents (Claude Code, Codex, Cursor…) were active recently. Each activity's source says where it ran: mac = on LYJW's Mac; mac-otlp = an agent's built-in telemetry on LYJW's Mac (Devin CLI); agents-otlp = built-in telemetry from cloud sessions (Claude Code, Devin CLI); agents = the vendor's cloud (e.g. Cursor background agents). Cloud agents run on their own (scheduled jobs, long tasks), so only activity on the Mac (mac or mac-otlp) with an unlocked desktop suggests LYJW is at the computer. lastActivityAt is the latest report from a session that keeps reporting while it works: the site shows an agent as in use right now when that is within the last ${CODING_ACTIVE_WINDOW_MS / 60_000} minutes (ignoring mac and mac-otlp while the Mac has declared itself offline), so describe such an agent as working now, not as last active some minutes ago`,
-  codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date, every model's tokens per day for those 14 days (mixLastDays) and ready-made 7-day / 30-day / all sums (large)",
+  codingYear: "Daily coding token totals over the past year, with per-month totals, the last 14 days by date, every model's tokens per day in modelsByDay (newest first, paged; query a date like 2026-09-10 or a model name to find older days) and ready-made 7-day / 30-day / all sums (large)",
   limits: "Coding agent account plans and rate-limit windows",
   limitsHistory: "Past readings of Claude Code's weekly all-models limit: hourly for the last 8 days, daily before that over three weeks. Each point is [at, usedPercent, resetsAt]; these tuple times are not converted: at is epoch milliseconds and resetsAt is Unix seconds",
   agentStatus: "Status pages of AI providers (operational / incidents)",
@@ -163,6 +164,7 @@ export function nowListeningHint(data: unknown, now: number): string | null {
 
 const VIEW_SHAPES: Partial<Record<StatusViewKey, (data: unknown) => unknown>> = {
   pulse: pulseForModel,
+  codingYear: codingYearForModel,
 };
 
 const VIEW_HINTS: Partial<Record<StatusViewKey, (data: unknown, now: number) => string | null>> = {
