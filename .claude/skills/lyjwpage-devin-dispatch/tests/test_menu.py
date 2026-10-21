@@ -1,7 +1,7 @@
-# python3 -I tests/test_menu.py — approval-menu parsing and scope checks on fixed screens.
+# python3 -I tests/test_menu.py — screen states, approval-menu parsing and scope checks on fixed screens.
 # The screens follow the menu lyjw captured from Devin CLI v3000.11.92 --sandbox:
 # a "⏺ Writing <path>" header, then 1 Approve once / 2 allow edits in <dir> / 3 always / 4 No.
-import importlib.util, os, shutil, subprocess, tempfile, unittest
+import calendar, importlib.util, os, shutil, subprocess, tempfile, unittest
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('dv', Path(__file__).resolve().parent.parent / 'scripts/dv.py')
@@ -121,6 +121,54 @@ class MenuScope(unittest.TestCase):
     def test_no_option_number(self):
         lines = screen('Writing', 'b.txt', self.cwd)
         self.assertEqual([m.group(1) for l in lines if (m := dv.NO_OPTION.match(l))], ['4'])
+
+
+# Screens captured from Devin CLI v3000.11.92 in the cloud container (rules shortened).
+RULE = '─' * 40
+COMPOSER = lambda text: [RULE + ' (autonomous) ─', f'❭ {text}', RULE, 'SWE-2 Max']
+BUSY = [' ⏺ Ran command', '⡤⠀ Thinking · 1s (esc twice to interrupt)', *COMPOSER('Guide Devin while it works')]
+IDLE = [' DONE', *COMPOSER('Ask Devin to build features, fix bugs, or work on your code')]
+OPEN_MENU = [' ⏺ Writing ./b.txt', ' └ 1 +  OK', '❭ 1 Yes  (Approve once)',
+             '  2 Yes, allow edits in /wt', '  3 Yes, always allow edits in /wt', '  4 No',
+             '↑↓ select · ↵ confirm · esc cancel']
+LIMIT = [' ▲ Something went wrong',
+         '   Reached free model rate limit. Upgrade to Max for higher limits, or switch to a different model. '
+         'Your limit will reset in 1 hour 2 minutes (at 06:01 UTC). (trace ID: x). Send a message to retry']
+QUOTA = [' ▲ Quota exhausted', '   Your daily usage quota has been exhausted. Switch to a GPT model to keep working.']
+
+
+class ScreenState(unittest.TestCase):
+    def test_basic_states(self):
+        self.assertEqual(dv.classify(BUSY), 'busy')
+        self.assertEqual(dv.classify(IDLE), 'idle')
+        self.assertEqual(dv.classify(OPEN_MENU), 'approval')
+        self.assertEqual(dv.classify([' DONE', *COMPOSER('half-pasted text')]), 'typed')
+
+    def test_open_menu_beats_marker_text_in_its_preview(self):
+        spoof = [' │ Ask Devin to build features', ' │ esc twice to interrupt', ' │ ' + RULE]
+        self.assertEqual(dv.classify(IDLE + spoof + OPEN_MENU), 'approval')
+        self.assertEqual(dv.classify(BUSY + OPEN_MENU), 'approval')
+
+    def test_answered_menu_in_scrollback(self):
+        self.assertEqual(dv.classify(OPEN_MENU + IDLE), 'idle')
+        self.assertEqual(dv.classify(OPEN_MENU + BUSY), 'busy')
+
+    def test_marker_text_above_composer_is_ignored(self):
+        self.assertEqual(dv.classify([' │ esc twice to interrupt', ' ⏺ Read a.py', *IDLE]), 'idle')
+
+    def test_limit_screens(self):
+        self.assertEqual(dv.classify(LIMIT + COMPOSER('Ask Devin to build features')), 'ratelimit')
+        self.assertEqual(dv.classify(QUOTA + COMPOSER('Ask Devin to build features')), 'quota')
+        self.assertEqual(dv.classify(LIMIT + BUSY), 'busy')
+        self.assertEqual(dv.classify(LIMIT + IDLE), 'idle')
+
+    def test_reset_wait(self):
+        at = lambda h, m: calendar.timegm((2026, 10, 21, h, m, 0))
+        self.assertEqual(dv.reset_wait(LIMIT, at(5, 0)), 3660)
+        self.assertEqual(dv.reset_wait(LIMIT, at(6, 2)), -60)
+        late = [l.replace('06:01', '00:10') for l in LIMIT]
+        self.assertEqual(dv.reset_wait(late, at(23, 50)), 1200)
+        self.assertIsNone(dv.reset_wait(IDLE))
 
 
 if __name__ == '__main__':
