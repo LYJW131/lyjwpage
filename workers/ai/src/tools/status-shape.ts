@@ -31,6 +31,7 @@ function contains(value: unknown, needle: string): boolean {
 // 热力图类视图是 origin 起逐日的数值数组，模型按下标数日期既费步数又容易数错（实测关思考的 Flash 画「最近 7 天」错位一天），
 // 所以附上按月合计 `<数组名>ByMonth`、最近 RECENT_DAYS 天的逐日值 `<数组名>LastDays`（键是日期）与现成的合计
 // `<数组名>Sums`：关思考的 Flash 心算一长串数字会算错（实测「最近 7 天」少算 6 亿），给好的合计就不必它加。
+// 派生字段排在原始数组前面：超长视图从尾部截断，先丢的应是模型用不上的原始逐日数组。
 // 「最近」从数据源的今天 `todayAtSource` 往回数：编码热力图补满 53 周，今天之后的格子是 0，不能按数组末尾算。
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RECENT_DAYS = 14;
@@ -63,18 +64,19 @@ export function withMonthlyTotals(value: unknown): unknown {
   const start = typeof record.from === "string" && DAY.test(record.from) ? record.from : record.origin;
   const out = Object.fromEntries(Object.entries(record).map(([key, child]) => [key, withMonthlyTotals(child)]));
   if (typeof start !== "string" || !DAY.test(start)) return out;
+  const derived: Record<string, unknown> = {};
   const today = typeof record.todayAtSource === "string" && DAY.test(record.todayAtSource)
     ? Math.round((Date.parse(`${record.todayAtSource}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000)
     : undefined;
   for (const [key, child] of Object.entries(record)) {
     if (Array.isArray(child) && child.length && child.every((item) => typeof item === "number")) {
       const past = today === undefined || today < 0 ? child : child.slice(0, today + 1);
-      out[`${key}ByMonth`] = monthlyTotals(start, child);
-      out[`${key}LastDays`] = lastDays(start, past);
-      out[`${key}Sums`] = sums(past);
+      derived[`${key}ByMonth`] = monthlyTotals(start, child);
+      derived[`${key}LastDays`] = lastDays(start, past);
+      derived[`${key}Sums`] = sums(past);
     }
   }
-  return out;
+  return { ...derived, ...out };
 }
 
 const isScalarList = (value: unknown[]) => value.length > 0 && value.every((item) => item === null || typeof item !== "object");

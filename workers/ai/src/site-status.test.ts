@@ -95,6 +95,25 @@ test("带 todayAtSource 的热力图从数据源的今天往回算最近几天�
   assert.deepEqual(parsed.data.daysSums, { last7Days: 24 + 25 + 26 + 27 + 28 + 29 + 30, last30Days: 465, all: 465 });
 });
 
+test("编码年度图的稀疏 mix 换成按日期展开、新的在前的 modelsByDay，排在原始数组前面，今天之后的不列，query 能按日期或模型名找更早的日子", async () => {
+  const models = ["claude-opus-5-5", "swe-2-max"];
+  const mix = [[0, 0, 5], [16, 1, 7], [29, 0, 20, 1, 10], [31, 0, 1]];
+  const io = fakeIO(() => ({ ok: true, data: { origin: "2026-09-01", todayAtSource: "2026-09-30", days: Array(33).fill(1), models, mix } }));
+  const parsed = JSON.parse(section((await run({ views: ["codingYear"] }, io)).text, "codingYear").json);
+  const keys = Object.keys(parsed.data);
+  assert.ok(keys.indexOf("modelsByDay") < keys.indexOf("days") && keys.indexOf("daysSums") < keys.indexOf("days"), "派生字段排在会先被截掉的原始数组前面");
+  assert.deepEqual(parsed.data.modelsByDay, [
+    { date: "2026-09-30", models: [{ model: "claude-opus-5-5", tokens: 20 }, { model: "swe-2-max", tokens: 10 }] },
+    { date: "2026-09-17", models: [{ model: "swe-2-max", tokens: 7 }] },
+    { date: "2026-09-01", models: [{ model: "claude-opus-5-5", tokens: 5 }] },
+  ]);
+  assert.equal("mix" in parsed.data, false);
+  const old = JSON.parse(section((await run({ views: ["codingYear"], query: "2026-09-01" }, io)).text, "codingYear").json);
+  assert.deepEqual(old.data.modelsByDay.items, [{ date: "2026-09-01", models: [{ model: "claude-opus-5-5", tokens: 5 }] }]);
+  const byModel = JSON.parse(section((await run({ views: ["codingYear"], query: "swe-2-max" }, io)).text, "codingYear").json);
+  assert.deepEqual(byModel.data.modelsByDay.items.map((day: { date: string }) => day.date), ["2026-09-30", "2026-09-17"]);
+});
+
 test("detail=full 保留图片字段，短列表保持原样", async () => {
   const io = fakeIO(() => ({ games: games(3), iconUrl: "https://cdn.example/a.webp" }));
   const full = JSON.parse(section((await run({ views: ["playing"], detail: "full" }, io)).text, "playing").json);

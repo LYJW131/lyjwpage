@@ -36,7 +36,6 @@ export type CodingUsageViews = { view: CodingUsagePayload; year: CodingUsageYear
 export const CODING_TOP_MODELS = 10;
 export const CODING_AGENT_MODELS = 20;
 export const CODING_YEAR_KEEP_DAYS = 380;
-export const CODING_YEAR_TOP_MODELS = 5;
 export const CODING_ACTIVE_WINDOW_MS = 5 * 60_000;
 
 const DAY_MS = 86_400_000;
@@ -164,7 +163,7 @@ export function buildCodingUsageView(stored: StoredCodingUsage, updatedAt: numbe
     days: Object.fromEntries([...byDate]
       .filter(([date, day]) => date >= yearStart && day.totalTokens > 0)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([date, day]) => [date, { tokens: day.totalTokens, models: ranked(day.models).slice(0, CODING_YEAR_TOP_MODELS) }])),
+      .map(([date, day]) => [date, { tokens: day.totalTokens, models: ranked(day.models) }])),
   };
   return { view, year };
 }
