@@ -54,29 +54,38 @@ async function run(model: string, out: string) {
   console.log(`${model}: ${rows.length} 条，${rows.filter((row) => row.error).length} 条出错 → ${out}`);
 }
 
-// 预取当且仅当选中项不是 none 且概率不低于阈值；选中项在标注的可接受集合里算预取对了。
-// 召回的分母是标注里需要预取的题数，所以选错或选 none 的漏预取也算进去。
+// 预取当且仅当选中项不是 none 且概率不低于阈值。needed 是标注里非预取不可的题；标注同时接受 none 和具体选项的题可预取可不预取，
+// 预取对了既不算命中也不算误报，预取错了照样算误报。模型漏答这题按不预取算，召回的分母因此不变。
 type Item = { p: number; prefetchable: boolean; correct: boolean; needed: boolean };
 
 function items(rows: Row[], question: Question): Item[] {
   const labels = new Map(cases.map((entry) => [entry.q, entry[question]]));
   return rows.flatMap((row) => {
-    const answer = row[question];
     const label = labels.get(row.q);
-    if (!answer?.choice || !label) return [];
-    const p = answer.probabilities?.[answer.choice] ?? 0;
-    return [{ p, prefetchable: answer.choice !== "none", correct: label.includes(answer.choice), needed: !label.includes("none") }];
+    if (!label) return [];
+    const needed = !label.includes("none");
+    const answer = row[question];
+    if (!answer?.choice) return [{ p: 0, prefetchable: false, correct: false, needed }];
+    return [{ p: answer.probabilities?.[answer.choice] ?? 0, prefetchable: answer.choice !== "none", correct: label.includes(answer.choice), needed }];
   });
 }
 
-function prf(list: Item[], threshold: number) {
+function counts(list: Item[], threshold: number) {
   const fire = list.filter((item) => item.prefetchable && item.p >= threshold);
-  const tp = fire.filter((item) => item.correct).length;
-  const needed = list.filter((item) => item.needed).length;
-  const precision = fire.length ? tp / fire.length : 1;
-  const recall = needed ? tp / needed : 1;
-  return { precision, recall, f1: precision + recall ? (2 * precision * recall) / (precision + recall) : 0, fired: fire.length };
+  return {
+    tp: fire.filter((item) => item.correct && item.needed).length,
+    fp: fire.filter((item) => !item.correct).length,
+    needed: list.filter((item) => item.needed).length,
+  };
 }
+
+function rates({ tp, fp, needed }: { tp: number; fp: number; needed: number }) {
+  const precision = tp + fp ? tp / (tp + fp) : 1;
+  const recall = needed ? tp / needed : 1;
+  return { precision, recall, f1: precision + recall ? (2 * precision * recall) / (precision + recall) : 0, fired: tp + fp };
+}
+
+const prf = (list: Item[], threshold: number) => rates(counts(list, threshold));
 
 const GRID = Array.from({ length: 96 }, (_, index) => 0.05 + index * 0.01);
 const MIN_PRECISION = 0.8;
@@ -94,22 +103,22 @@ function bestThreshold(list: Item[]): number {
 function crossValidated(list: Item[]) {
   const folds: Item[][] = [[], [], [], [], []];
   [list.filter((item) => item.needed), list.filter((item) => !item.needed)].forEach((group) => group.forEach((item, index) => folds[index % 5].push(item)));
-  let tp = 0, fired = 0, needed = 0;
+  const total = { tp: 0, fp: 0, needed: 0 };
   const thresholds: number[] = [];
   folds.forEach((fold, index) => {
     const threshold = bestThreshold(folds.filter((_, other) => other !== index).flat());
     thresholds.push(threshold);
-    const fire = fold.filter((item) => item.prefetchable && item.p >= threshold);
-    fired += fire.length;
-    tp += fire.filter((item) => item.correct).length;
-    needed += fold.filter((item) => item.needed).length;
+    const part = counts(fold, threshold);
+    total.tp += part.tp;
+    total.fp += part.fp;
+    total.needed += part.needed;
   });
-  const precision = fired ? tp / fired : 1, recall = needed ? tp / needed : 1;
-  return { precision, recall, f1: precision + recall ? (2 * precision * recall) / (precision + recall) : 0, thresholds };
+  return { ...rates(total), thresholds };
 }
 
 // 选中项概率当作「选对了」的置信度看：Brier 越低越好，分箱看平均概率与实际对的比例差多少。
-function calibration(list: Item[]) {
+function calibration(all: Item[]) {
+  const list = all.filter((item) => item.p > 0);
   const brier = list.reduce((sum, item) => sum + (item.p - Number(item.correct)) ** 2, 0) / list.length;
   const sorted = [...list].sort((a, b) => a.p - b.p);
   const size = Math.ceil(sorted.length / 5);
@@ -136,7 +145,8 @@ function score(files: string[]) {
       const best = prf(list, tuned);
       const cv = crossValidated(list);
       const cal = calibration(list);
-      console.log(`### ${question}：首选准确率 ${pct(list.filter((item) => item.correct).length / list.length)}（${list.length} 题）`);
+      const missing = ok.filter((row) => !row[question]?.choice).length;
+      console.log(`### ${question}：首选准确率 ${pct(list.filter((item) => item.correct).length / list.length)}（${list.length} 题${missing ? `，${missing} 题模型漏答、按不预取算` : ""}）`);
       console.log(`- 现阈值 ${PREFETCH_MIN_PROBABILITY[question]}：精确 ${pct(current.precision)} 召回 ${pct(current.recall)} F1 ${current.f1.toFixed(2)}，预取 ${current.fired} 次`);
       console.log(`- 全集最优 ${tuned.toFixed(2)}（精确 ≥ ${pct(MIN_PRECISION)}）：精确 ${pct(best.precision)} 召回 ${pct(best.recall)} F1 ${best.f1.toFixed(2)}`);
       console.log(`- 五折验证：精确 ${pct(cv.precision)} 召回 ${pct(cv.recall)} F1 ${cv.f1.toFixed(2)}，各折阈值 ${cv.thresholds.map((value) => value.toFixed(2)).join(" ")}`);
