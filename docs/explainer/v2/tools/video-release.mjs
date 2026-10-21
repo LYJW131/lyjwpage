@@ -163,7 +163,7 @@ const server = createServer((req, res) => {
   }
   // 页面在没有 __assets 时取 v2/score.mp3：这里换成刚取到的线上那份，不用本地可能过期的
   const f = p === "/v2/score.mp3" ? scoreFile : path.join(ROOT, p);
-  if (req.method !== "GET" || !(f === scoreFile || (f.startsWith(ROOT + path.sep) && !f.startsWith(work + path.sep))) || !fs.statSync(f, { throwIfNoEntry: false })?.isFile()) {
+  if (req.method !== "GET" || !(f === scoreFile || (f.startsWith(ROOT + path.sep) && !f.startsWith(dir + path.sep))) || !fs.statSync(f, { throwIfNoEntry: false })?.isFile()) {
     res.writeHead(404).end();
     return;
   }
