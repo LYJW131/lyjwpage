@@ -129,6 +129,13 @@
     const s = { from, buf };
     segs.push(s);
     startSeg(s);
+    checkHeard();
+  }
+  // 载入提示等到播放头底下有声音才收：边放边合时段的先后不定，还可能拖到已合好或没合的地方
+  let heard = null;
+  function checkHeard() {
+    const f = Math.floor(now() * SR);
+    if (heard && segs.some((s) => f >= s.from && f < s.from + s.buf.length)) { heard(); heard = null; }
   }
   function play() {
     if (ext) { ext.play(); ui(); return; }
@@ -169,6 +176,7 @@
     T = t;
     dirty = true;
     if (was) play();
+    checkHeard();
     ui();
   }
 
@@ -307,14 +315,14 @@
     return buf;
   }
 
-  // kind："score" 先取预渲染的整条配乐（取不到或长度对不上就现合成），"synth" 直接现合成；ready 在第一段能放时兑现，done 在整条都有了时兑现
+  // kind："score" 先取预渲染的整条配乐（取不到或长度对不上就现合成），"synth" 直接现合成；ready 在播放头底下有声音时兑现，done 在整条都有了时兑现
   let job = null, complete = false, mixed = null;
   function loadAudio(kind) {
     if (job) return job;
     const load = $("load");
     load.style.display = "";
     let first;
-    const ready = new Promise((resolve) => (first = resolve));
+    const ready = new Promise((resolve) => (first = heard = resolve));
     const done = (async () => {
       const url = (window.__assets || {})["score.mp3"] || "score.mp3";
       let header = null;
@@ -337,7 +345,7 @@
       if (!Sc || !Sc.render) return;
       window.__audioSource = "synth";
       try {
-        if (window.Stream) await window.Stream.play({ url, header, total: TOTAL, sr: SR, now, add: addAudio, first, sfx: { load: loadSfx, mix: sfxRange, margin: SFX_MARGIN } });
+        if (window.Stream) await window.Stream.play({ url, header, total: TOTAL, sr: SR, now, add: addAudio, sfx: { load: loadSfx, mix: sfxRange, margin: SFX_MARGIN } });
         else addAudio(0, await withSfx(await Sc.render()));
       } catch (e) { console.error("配乐合成失败", e); }
     })().finally(() => { complete = true; first(); });
