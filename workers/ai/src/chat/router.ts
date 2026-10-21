@@ -58,9 +58,9 @@ export const PREFETCH_STATUS = {
 type PrefetchStatus = keyof typeof PREFETCH_STATUS;
 
 // 猜错了就是白塞一份输入 token、还可能把模型带偏，所以只在 Clef 给选中项的概率够高时才预取，其余照旧由模型自己调工具。
-// 文档题有二十多个选项，概率摊得薄：用 route:probe 在线上 Clef 跑代表性问题，选对的文档多在 0.45–0.77，状态题选对的在 0.9 以上，
-// 所以两题阈值分开定。
-export const PREFETCH_MIN_PROBABILITY = { status: 0.6, doc: 0.45 } as const;
+// 两题阈值用 prefetch:calibrate 在 scripts/prefetch-cases.json 上量出来：Clef 选错的和选对的概率大段重叠，阈值往上提漏掉的对题比挡掉的错题多；
+// 漏预取要模型自己多调一轮工具，错预取只多读一份，所以有意压低。改判据或换模型后重跑一遍再定。
+export const PREFETCH_MIN_PROBABILITY = { status: 0.45, doc: 0.3 } as const;
 
 const PREFETCH_DOC_CRITERIA: Record<ProjectDocKey | "none", string> = {
   ...(Object.fromEntries(Object.entries(PROJECT_DOCS).map(([key, doc]) => [key, doc.note])) as Record<ProjectDocKey, string>),
