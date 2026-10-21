@@ -160,7 +160,8 @@ void main(){
     const m = A.env[envN++];
     m.visible = true; m.position.set(X, Z, Y); m.scale.setScalar(s); m.rotation.set(0, yaw, 0);
   }
-  function pose(b) {
+  // o.actors、o.vaneYaw 让第 10 章借这个世界时自己摆信封与 Clawd、自己定风向标；第 01 章不传。
+  function pose(b, o = {}) {
     const AT = NS.AT;
     envN = 0;
     for (const m of A.env) m.visible = false;
@@ -244,7 +245,7 @@ void main(){
     const m = clamp((b - AT.dial) * 4, 0, 60), am = (m / 60) * Math.PI * 2, ah = ((10 + m / 60) / 12) * Math.PI * 2;
     for (const c of A.clocks) { c.mm.rotation.z = -am; c.hh.rotation.z = -ah; }
     if (A.dial) NS.dial.pose(b, A.dial, A);
-    A.vane.rotation.y = NS.vaneYaw(b);
+    A.vane.rotation.y = o.vaneYaw ?? NS.vaneYaw(b);
 
     const mb = NS.minuteAt7(b), idx = NS.PLAYS.reduce((acc, p, i) => (mb >= p.start ? i : acc), -1);
     A.else.art.visible = idx >= 0; A.else.fill.visible = idx >= 0;
@@ -253,7 +254,7 @@ void main(){
       A.else.fill.scale.z = Math.max(0.01, 80 * clamp((mb - NS.PLAYS[idx].start) / NS.PLAYS[idx].len));
     }
 
-    NS.actors(b, { envAt, clawdPose });
+    (o.actors || NS.actors)(b, { envAt, clawdPose });
   }
 
   NS.W = {

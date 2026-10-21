@@ -10,7 +10,7 @@
   // 各章的底色与墨色，取值抄各章文件（ch00 BLUE/DEEP/WHITE、ch01 P、ch02 PAPER/INK/RED、ch03 C、ch05 GROUND/MUSTARD、ch06 PAPER/VERM、ch07 C、pencil.js PAL、ch09 C）。
   const PAL = {
     bpBlue: [26, 68, 116], bpDeep: [17, 51, 92], bpWhite: [236, 243, 250], bpPale: [168, 196, 228], bpDim: [112, 148, 194],
-    isoSky0: "#C6CFF2", isoSky1: "#F0D3E3", isoSky2: "#FCE7D6", isoInk: "#44315A", isoInk2: "#7D6A92", isoPlate: "#FFF9F2", isoLilac: "#D6C6F2", isoGrass: "#CDEAD3", isoLip: "#A6D6B5", isoShade: "#674C89",
+    miniSky0: "#C6CFF2", miniSky1: "#F0D3E3", miniSky2: "#FCE7D6", miniInk: "#44315A", miniInk2: "#7D6A92", miniPlate: "#FFF9F2", miniLilac: "#D6C6F2", miniShade: "#674C89", miniCoral: "#F3A595",
     cPaper: [236, 229, 214], cInk: [26, 24, 22], cRed: [202, 42, 34], cGray: [104, 99, 92],
     tFilm: [238, 232, 216], tLight: [207, 200, 185], tMid: [152, 145, 133], tDark: [90, 84, 76], tInk: [24, 21, 18], tCard: [12, 11, 10], tCream: [244, 238, 224],
     nPaper: [233, 227, 211], nInk: [30, 28, 26],
@@ -97,19 +97,19 @@
       fillEyes(x, cs, X0, Y0, q, rgba(PAL.bpWhite));
       x.strokeStyle = rgba(PAL.bpWhite); x.lineWidth = Math.max(1.4, 0.24 * q); x.lineCap = "square"; outline(x, cs, X0, Y0, q);
     }),
-    // 01 等距方块：每格一块小方块，正面橙、顶面亮、右侧面暗（往右上斜着挤出去）。
+    // 01 立体微缩：第 01 章的体素 Clawd（ch01-world.js#clawdPose）正对镜头、略往下看，露出正面和顶面，正面上亮下暗，脚下一团淡紫的软影。
     (x, cx, bottom, q, o = {}) => frameOf(x, cx, bottom, q, o, (cs, X0, Y0) => {
-      const d = q * 0.62;
-      for (const [u, v] of cs.body) {
-        const L = X0 + u * q, T = Y0 + v * 2 * q, R = L + q, B = T + 2 * q;
-        if (!cs.on.has(u * 16 + v - 1)) { x.fillStyle = "#F6B9A0"; x.beginPath(); x.moveTo(L, T); x.lineTo(L + d, T - d); x.lineTo(R + d, T - d); x.lineTo(R, T); x.fill(); }
-        if (!cs.on.has((u + 1) * 16 + v)) { x.fillStyle = "#A7563E"; x.beginPath(); x.moveTo(R, T); x.lineTo(R + d, T - d); x.lineTo(R + d, B - d); x.lineTo(R, B); x.fill(); }
-      }
-      x.fillStyle = "#D97757"; x.fill(silhouette(cs, X0, Y0, q, 0.5));
-      x.strokeStyle = "rgba(120,52,38,0.35)"; x.lineWidth = Math.max(1, q * 0.08); x.beginPath();
-      for (const [u, v] of cs.body) { x.rect(X0 + u * q, Y0 + v * 2 * q, q, 2 * q); }
+      x.fillStyle = "rgba(103,76,137,0.22)"; x.beginPath(); x.ellipse(0.6 * q, 0.2 * q, 9.6 * q, 1.5 * q, 0, 0, TAU); x.fill();
+      const t = 1.4 * q;
+      x.fillStyle = "#F4AE92";
+      for (const [u, v] of cs.body) if (!cs.on.has(u * 16 + v - 1)) x.fillRect(X0 + u * q - 0.3, Y0 + v * 2 * q - t, q + 0.6, t + 0.6);
+      const g = x.createLinearGradient(0, Y0, 0, Y0 + 12 * q);
+      g.addColorStop(0, "#E9805F"); g.addColorStop(1, "#C45B40");
+      x.fillStyle = g; x.fill(silhouette(cs, X0, Y0, q, 0.5));
+      x.strokeStyle = "rgba(110,44,30,0.16)"; x.lineWidth = Math.max(1, q * 0.1); x.beginPath();
+      for (const [u, v] of cs.body) if (cs.on.has((u + 1) * 16 + v)) { x.moveTo(X0 + (u + 1) * q, Y0 + v * 2 * q); x.lineTo(X0 + (u + 1) * q, Y0 + (v + 1) * 2 * q); }
       x.stroke();
-      fillEyes(x, cs, X0, Y0, q, "#2B1E2E");
+      fillEyes(x, cs, X0, Y0, q, "#1E1424");
     }),
     // 02 海报剪纸：橙纸压在错开的墨影上。
     (x, cx, bottom, q, o = {}) => frameOf(x, cx, bottom, q, o, (cs, X0, Y0) => {
@@ -232,9 +232,10 @@
       x.strokeStyle = rgba(PAL.bpDim); x.lineWidth = 1.4; x.strokeRect(L + 8, Tp + 8, w - 16, h - 16);
       T(rgba(PAL.bpWhite));
     } else if (style === 1) {
-      x.fillStyle = PAL.isoLilac; K.roundRect(x, L + px * 0.1, Tp + px * 0.12, w, h, px * 0.22); x.fill();
-      x.fillStyle = PAL.isoPlate; K.roundRect(x, L, Tp, w, h, px * 0.22); x.fill();
-      T(PAL.isoInk);
+      x.fillStyle = rgba(PAL.miniShade, 0.2); K.roundRect(x, L + px * 0.05, Tp + px * 0.2, w, h, px * 0.22); x.fill();
+      x.fillStyle = PAL.miniLilac; K.roundRect(x, L, Tp + px * 0.09, w, h, px * 0.22); x.fill();
+      x.fillStyle = PAL.miniPlate; K.roundRect(x, L, Tp, w, h, px * 0.22); x.fill();
+      T(PAL.miniInk);
     } else if (style === 2) {
       x.fillStyle = rgba(PAL.cInk); x.fillRect(L + px * 0.1, Tp + px * 0.1, w, h);
       x.fillStyle = rgba(PAL.cRed); x.fillRect(L, Tp, w, h);

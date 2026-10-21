@@ -61,7 +61,7 @@
     ev(AT.whip1, { kind: "whoosh", tube: "whip", pan: -0.4, panTo: 0.7 });
     ev(AT.whip1, { kind: "march", what: "cymbal", v: 0.6 });
 
-    // ---------- 2–5 · 01 等距小岛：lo-fi，电钢垫底，lofiLead 唱主题 ----------
+    // ---------- 2–5 · 01 立体微缩小岛：lo-fi，电钢垫底，lofiLead 唱主题 ----------
     const LOFI = { k: { kind: "lofi", what: "kick" }, s: { kind: "lofi", what: "stick" }, h: { kind: "lofi", what: "hat" } };
     for (let bar = 2; bar <= 4; bar++) {
       drums(bar, { k: "X.....x...X.....", s: "....X.......X...", h: "x.x.x.x.x.x.x.xo" }, LOFI, 0, bar === 4 ? 12 : 16);
@@ -202,7 +202,7 @@
       harm,
       sections: [
         { from: 0, to: 1, id: "fin-open", name: "0:0 接住第 09 章的 motorik：boom、底鼓、贝斯 D；十块字各落一声那一章的乐器；1.5 蓄力，1.875 甩出去", energy: 0.45, pad: 0, lp: 1800, padVerb: 0 },
-        { from: 2, to: 4, id: "fin-iso", name: "01 等距小岛：lo-fi，lofiLead 2:2 唱主题；4:3 甩镜头", energy: 0.55, pad: 0.25, lp: 1600, padVerb: 0.3 },
+        { from: 2, to: 4, id: "fin-iso", name: "01 立体微缩小岛：lo-fi，lofiLead 2:2 唱主题；4:3 甩镜头", energy: 0.55, pad: 0.25, lp: 1600, padVerb: 0.3 },
         { from: 5, to: 6, id: "fin-march", name: "02 构成主义：进行曲，小号 5:0 吹主题；验 JWT 四声、盖章、抬杆、齿轮、冲进灯", energy: 0.7, pad: 0.2, lp: 2200, padVerb: 0.25 },
         { from: 7, to: 8, id: "fin-toon", name: "7:2 光圈张开，橡皮管卡通：大号、班卓、单簧管接主题；纸条折成纸飞机", energy: 0.7, pad: 0.15, lp: 2200, padVerb: 0.2 },
         { from: 9, to: 10, id: "fin-press", name: "9:1 头版转着飞进来，9:2.5 拍平；轮转机的钟摆，闷音拨弦唱主题，10:1 推送出发", energy: 0.6, pad: 0.25, lp: 1800, padVerb: 0.3 },

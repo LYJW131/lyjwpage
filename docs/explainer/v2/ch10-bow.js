@@ -6,7 +6,7 @@
   I18N.add({
     "ch10.end1": ["谢谢观看", "Thanks for watching"],
     "ch10.end2": ["讲解 Claude Opus 5.5 · lyjw.me", "Narrated by Claude Opus 5.5 · lyjw.me"],
-    ...Object.fromEntries([["晒图", "Blueprint"], ["等距", "Isometric"], ["海报", "Poster"], ["卡通", "Cartoon"], ["报纸", "Newsprint"],
+    ...Object.fromEntries([["晒图", "Blueprint"], ["微缩", "Miniature"], ["海报", "Poster"], ["卡通", "Cartoon"], ["报纸", "Newsprint"],
       ["剪纸", "Cutout"], ["水墨", "Ink wash"], ["像素", "8-bit"], ["彩铅", "Pencil"], ["地铁", "Metro"]].map((s, i) => [`ch10.short.${i}`, s])),
   });
   const tr = (k) => I18N.tr(k);
@@ -16,8 +16,8 @@
     bow1: 18.25, bowStep: 0.0625, bow2: 19.25, cheer: 19.75, leave: 20.25, leaveStep: 0.012, leaveLen: 0.2, lift: 20.5, liftStep: 0.05, still: 21.5,
   };
   const W = 192;
-  const CURT = [rgba(PAL.bpBlue), PAL.isoSky0, rgba(PAL.cPaper), rgba(PAL.tCard), rgba(PAL.nPaper), rgba(PAL.sMustard), rgba(PAL.wPaper), PAL.pxBlue, PAL.pcWall, PAL.mBg];
-  const VAL = [rgba(PAL.bpWhite), "#F3A595", rgba(PAL.cRed), rgba(PAL.tCream), rgba(PAL.nInk), rgba(PAL.sRed), rgba(PAL.wVerm), PAL.pxSky, PAL.pcSticky, PAL.mRed];
+  const CURT = [rgba(PAL.bpBlue), PAL.miniSky0, rgba(PAL.cPaper), rgba(PAL.tCard), rgba(PAL.nPaper), rgba(PAL.sMustard), rgba(PAL.wPaper), PAL.pxBlue, PAL.pcWall, PAL.mBg];
+  const VAL = [rgba(PAL.bpWhite), PAL.miniCoral, rgba(PAL.cRed), rgba(PAL.tCream), rgba(PAL.nInk), rgba(PAL.sRed), rgba(PAL.wVerm), PAL.pxSky, PAL.pcSticky, PAL.mRed];
   const DARK = [true, false, false, true, false, false, false, true, false, false];
   const SANS = (px, w = 700) => (I18N.lang === "en" ? `${w} ${px}px "Inter ch09", sans-serif` : `${w} ${px}px "Noto Sans SC ch09", "Inter ch09", sans-serif`);
   // 鞠躬：0.08 小节弯下去，停一下，再直起来。
