@@ -21,6 +21,7 @@
 - `v2/ch07.js` 末帧 ⇄ `v2/ch08.js` 首帧：几何（`HEAD`、`COMMITS` 抄 `Y0`、`HEAD0`、`OLD`）和大厅的画法、种子都照抄，改一边另一边跟上，用 `stills.mjs` 对交界两帧。
 - `v2/ch10.js` 借的别章 `share`：`ch00` 的 `termFrame`、`termState`、`paperFrame`、`cut.post`，`ch02` 的 `whipBand`；第 01 站（`v2/ch10-relay.js#s1world`）借第 01 章的 `window.CH01`：three.js 世界 `W`（`view`、`draw`，`pose` 的 `actors` / `vaneYaw` 两个覆盖项）和模型坐标 `models.L`；分屏（`v2/ch10-split.js`）调各章自己的 `render`，各章 `bars` 与 `CELLS` 的起点要在章内。改这些导出两边一起改。
 - 配乐不入库：`scripts/explainer-score.mjs#scoreInputs` 列的文件决定 R2 上的对象键，合进 main 后由 `.github/workflows/explainer-score.yml` 渲染上传（`README.md`「站点版」）。合成配乐时新读了别的文件，要加进 `scoreInputs` 和工作流的 `paths`，否则改了它键不变、线上放旧配乐。
+- 成片视频也不入库：`scripts/explainer-score.mjs#videoInputs` 决定视频键（`README.md`「成片视频」），`LOAD` 表里的脚本自动算进去；画面新读了表外的文件要加进 `videoInputs`，只管弹窗和播放、不影响导出帧与 `window.__audio()` 的脚本才放进 `VIDEO_PLAYER_ONLY`。`v2/tools/video-release.mjs` 的编码档次与级别 ⇄ `v2/watch.js#TYPES` 的 codecs；视频键的格式 ⇄ `src/lib/site-policy.ts#IMAGE_OBJECT_PATH`（`scripts/explainer-score.test.mjs` 核对）。键变了的提交合进 main 后，要 lyjw 在 Mac 上重跑出片命令，弹窗里的预渲染视频才可选。
 
 ## 环境
 

@@ -63,7 +63,10 @@ export const SITE_ASSET_ROUTES: ReadonlyMap<string, SiteAssetRoute> = new Map([
   ["/pwa/icon-512.png", { asset: `${SITE_ASSETS_PREFIX}/icon-512.png`, cacheControl: STABLE_ASSET_CACHE_CONTROL }],
 ]);
 
-const IMAGE_OBJECT_PATH = new RegExp(`^${IMAGE_PATH_PREFIX}/([a-f0-9]{64}\\.(?:png|webp|jpe?g|mp3))$`);
+// 讲解片的配乐与成片视频也放在这里，键由 scripts/explainer-score.mjs 生成（scripts/explainer-score.test.mjs 核对）
+const IMAGE_OBJECT_PATH = new RegExp(
+  `^${IMAGE_PATH_PREFIX}/([a-f0-9]{64}(?:\\.(?:png|webp|jpe?g|mp3)|-(?:zh|en)\\.(?:av1|hevc)\\.mp4))$`,
+);
 
 export function imageObjectKeyFromPath(pathname: string): string | null {
   const match = IMAGE_OBJECT_PATH.exec(pathname);
