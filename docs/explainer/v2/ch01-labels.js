@@ -14,7 +14,8 @@
     if (a <= 0) return 0;
     const fs = o.px ?? 30, f = (o.font || SANS)(fs, o.w ?? 600);
     const tw = Math.min(measure(x, str, f), o.maxW ?? 1e9), pad = 15;
-    const x0 = o.align === "center" ? px - tw / 2 : o.align === "right" ? px - tw : px;
+    let x0 = o.align === "center" ? px - tw / 2 : o.align === "right" ? px - tw : px;
+    if (o.fit) { const dx = Math.min(0, 1920 - 36 - pad - tw - x0); x0 += dx; px += dx; }
     plate(x, x0 - pad, py - fs * 0.95 - pad * 0.5, tw + pad * 2, fs * 1.28 + pad, a, o);
     text(x, str, px, py, { font: f, color: o.color || P.ink, align: o.align, alpha: a, maxW: o.maxW });
     return tw;
@@ -211,7 +212,7 @@
       text(x, `"iconObjectKey": "${ICON_KEY.slice(0, 6)}…png"`, X0 + 28, Y0 + 100, { font: MONO(28), color: SIG(), alpha: oa });
     }
     const [nx, ny] = pr(NAS.x + NAS.w, NAS.y + NAS.d / 2, NAS.h + 40);
-    tag(x, tr("ch01.nas"), nx - 120, ny - 150, a * prog(b, AT.poster - 0.2, AT.poster - 0.1), { px: 30, color: P.ink2 });
+    tag(x, tr("ch01.nas"), nx - 120, ny - 150, a * prog(b, AT.poster - 0.2, AT.poster - 0.1), { px: 30, color: P.ink2, fit: true });
     const num = (n, str, px, py, t) => {
       const na = a * prog(b, t, t + 0.06);
       if (na <= 0) return;
