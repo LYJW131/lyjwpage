@@ -97,44 +97,86 @@
     G.post(f.post);
   }
 
-  let ac = null, buffer = null, src = null, playing = false, ctxT0 = 0;
+
+  // 声音按段排在同一条 AudioContext 时间轴上：整条配乐是一段，边放边合（stream.js）时合好一段接一段，段界按整帧对齐、无缝接上
+  const SR = (Sc && Sc.sampleRate) || 48000, TOTAL = Sc && Sc.duration ? Math.ceil((Sc.duration + Sc.tail) * SR) : 0;
+  let ac = null, playing = false, ctxT0 = 0, clockFallback = null, ext = null;
+  const segs = [], live = new Set();
   const outLat = () => (ac ? (ac.outputLatency || 0) + (ac.baseLatency || 0) : 0);
-  function clock() { return playing && ac ? ac.currentTime - ctxT0 - outLat() : T; }
+  const isPlaying = () => (ext ? ext.playing() : playing);
+  function startSeg(s) {
+    if (!playing || !ac) return;
+    const begin = ctxT0 + s.from / SR, lead = ac.currentTime + 0.03;
+    if (begin + s.buf.duration <= lead) return;
+    const src = ac.createBufferSource();
+    src.buffer = s.buf;
+    if (begin >= lead) {
+      src.connect(ac.destination);
+      src.start(begin);
+    } else {
+      // 从一段中间接进来（开播、拖动、这一段合得晚了）：淡入 10 ms，免得咔哒一声
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0, lead);
+      g.gain.linearRampToValueAtTime(1, lead + 0.01);
+      src.connect(g);
+      g.connect(ac.destination);
+      src.start(lead, lead - begin);
+    }
+    live.add(src);
+    src.onended = () => live.delete(src);
+  }
+  function addAudio(from, buf) {
+    const s = { from, buf };
+    segs.push(s);
+    startSeg(s);
+    checkHeard();
+  }
+  // 载入提示等到播放头底下有声音才收：边放边合时段的先后不定，还可能拖到已合好或没合的地方
+  let heard = null;
+  function checkHeard() {
+    const f = Math.floor(now() * SR);
+    if (heard && segs.some((s) => f >= s.from && f < s.from + s.buf.length)) { heard(); heard = null; }
+  }
   function play() {
+    if (ext) { ext.play(); ui(); return; }
     if (playing) return;
     if (T >= DURATION - 0.05) T = 0;
     playing = true;
-    if (buffer) {
-      ac = ac || new AudioContext({ sampleRate: buffer.sampleRate });
-      ac.resume();
-      src = ac.createBufferSource();
-      src.buffer = buffer;
-      src.connect(ac.destination);
-      src.start(0, T);
+    // 声音还没好也先在点击里把 AudioContext 建起来：Safari 只在用户手势里放行，之后合好的段才出得了声
+    try { ac = ac || new AudioContext({ sampleRate: SR }); ac.resume(); } catch { ac = null; }
+    if (ac) {
+      T = Math.round(T * SR) / SR;
       ctxT0 = ac.currentTime - T;
+      for (const s of segs) startSeg(s);
     } else {
-      ac = null;
       const p0 = performance.now() - T * 1000;
       clockFallback = () => (performance.now() - p0) / 1000;
     }
     ui();
   }
-  let clockFallback = null;
   function pause() {
+    if (ext) { ext.pause(); ui(); return; }
     if (!playing) return;
     T = now();
     playing = false;
-    if (src) { try { src.stop(); } catch {} src = null; }
+    for (const s of live) { try { s.stop(); } catch {} }
+    live.clear();
     clockFallback = null;
     ui();
   }
-  function now() { return playing ? (buffer ? clock() : clockFallback()) : T; }
+  function now() {
+    if (ext) return ext.now();
+    return playing ? (ac ? ac.currentTime - ctxT0 - outLat() : clockFallback()) : T;
+  }
   function seek(t) {
+    t = Math.max(0, Math.min(DURATION - 1e-3, t));
+    if (ext) { ext.seek(t); ui(); return; }
     const was = playing;
     if (was) pause();
-    T = Math.max(0, Math.min(DURATION - 1e-3, t));
+    T = t;
     dirty = true;
     if (was) play();
+    checkHeard();
     ui();
   }
 
@@ -157,19 +199,55 @@
       l.style.visibility = l.scrollWidth > room ? "hidden" : "";
     });
   }
+  let shownPlaying = false;
   function ui() {
-    $("play").textContent = playing ? I18N.tr("ui.pause") : I18N.tr("ui.play");
+    shownPlaying = isPlaying();
+    $("play").textContent = shownPlaying ? I18N.tr("ui.pause") : I18N.tr("ui.play");
     $("lang").textContent = I18N.tr("ui.lang");
   }
-  $("play").onclick = () => (playing ? pause() : play());
-  $("lang").onclick = () => { I18N.set(I18N.lang === "zh" ? "en" : "zh"); dirty = true; ui(); fitLabels(); };
+  function setLang(l) {
+    I18N.set(l);
+    dirty = true;
+    ui();
+    fitLabels();
+    if (ext) ext.lang(I18N.lang);
+  }
+
+  // 第一次播放先问怎么看（watch.js）；停帧深链（?t=）、只排几章的预览（?only=）和导出照旧，不弹窗
+  const asking = !EXPORT && !params.has("t") && !only && !!window.Watch;
+  let chosen = !asking;
+  function toggle() {
+    if (!chosen) { window.Watch.open({ params, start }); return; }
+    isPlaying() ? pause() : play();
+  }
+  // 弹窗在「开始」的点击里同步调它：浏览器只在用户手势里放行出声
+  // 视频取不到时 watch.js 会再调一次，带上视频放到的时刻 t，改回实时渲染
+  function start(choice) {
+    chosen = true;
+    if (ext) ext.pause();
+    ext = null;
+    if (choice.lang !== I18N.lang) setLang(choice.lang);
+    if (Number.isFinite(choice.t)) T = Math.max(0, Math.min(DURATION - 1e-3, choice.t));
+    ext = choice.video || null;
+    if (ext) {
+      ext.seek(T);
+      // 视频中途取不到会改回实时渲染，那时已不在用户手势里：AudioContext 先在这次点击里建好再挂起
+      try { ac = ac || new AudioContext({ sampleRate: SR }); ac.suspend(); } catch { ac = null; }
+    } else loadAudio(choice.audio);
+    dirty = true;
+    play();
+  }
+  $("play").onclick = toggle;
+  $("lang").onclick = () => setLang(I18N.lang === "zh" ? "en" : "zh");
+  wrap.addEventListener("click", toggle);
   let dragging = false;
   const scrubTo = (e) => { const r = scrub.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * DURATION); };
   scrub.addEventListener("pointerdown", (e) => { dragging = true; scrub.setPointerCapture(e.pointerId); scrubTo(e); });
   scrub.addEventListener("pointermove", (e) => dragging && scrubTo(e));
   scrub.addEventListener("pointerup", () => (dragging = false));
   window.addEventListener("keydown", (e) => {
-    if (e.key === " ") { e.preventDefault(); playing ? pause() : play(); }
+    if (document.querySelector("dialog[open]")) return;
+    if (e.key === " ") { e.preventDefault(); toggle(); }
     else if (e.key === "ArrowRight") seek(now() + (e.shiftKey ? 5 : 1));
     else if (e.key === "ArrowLeft") seek(now() - (e.shiftKey ? 5 : 1));
     else if (e.key === ".") seek(now() + 1 / 60);
@@ -183,44 +261,97 @@
   let lastDrawn = -1;
   function loop() {
     const t = now();
-    if (playing && t >= DURATION) { pause(); T = DURATION - 1e-3; }
+    if (!ext && playing && t >= DURATION) { pause(); T = DURATION - 1e-3; }
+    if (isPlaying() !== shownPlaying) ui();
     if (dirty || t !== lastDrawn) {
-      render(Math.min(t, DURATION - 1e-3));
+      // 放预渲染视频时画布不再画，片尾余音那两秒的时间显示停在片长
+      if (!ext) render(Math.min(t, DURATION - 1e-3));
       lastDrawn = t; dirty = false;
-      fill.style.width = `${(t / DURATION) * 100}%`;
-      $("time").textContent = `${fmt(t)} / ${fmt(DURATION)}`;
+      const shown = Math.min(t, DURATION);
+      fill.style.width = `${(shown / DURATION) * 100}%`;
+      $("time").textContent = `${fmt(shown)} / ${fmt(DURATION)}`;
     }
     requestAnimationFrame(loop);
   }
 
-  // 音效是现成的录音（sfx/<名字>.mp3），按 Score.sfx 的时刻叠在配乐上；配乐峰值归一到 -1 dBFS，叠完超过就整体压回去。
-  async function withSfx(buf) {
-    const cues = (Sc && Sc.sfx) || [];
-    if (!buf || !cues.length) return buf;
-    const A = window.__assets || {}, sr = buf.sampleRate, ctx = new OfflineAudioContext(2, 1, sr), dec = {};
-    await Promise.all([...new Set(cues.map((c) => c.name))].map(async (n) => {
-      try { dec[n] = await ctx.decodeAudioData(await (await fetch(A[`sfx/${n}.mp3`] || `sfx/${n}.mp3`)).arrayBuffer()); } catch (e) { console.error(`音效 ${n} 载入失败`, e); }
-    }));
-    const L = buf.getChannelData(0), R = buf.getChannelData(1);
-    for (const c of cues) {
+  // 音效是现成的录音（sfx/<名字>.mp3），按 Score.sfx 的时刻叠在配乐上；配乐峰值归一到 -1 dBFS，叠完超过就压回去。
+  const CUES = (Sc && Sc.sfx) || [];
+  let sfxBank = null;
+  function loadSfx() {
+    sfxBank = sfxBank || (async () => {
+      const A = window.__assets || {}, ctx = new OfflineAudioContext(2, 1, SR), dec = {};
+      await Promise.all([...new Set(CUES.map((c) => c.name))].map(async (n) => {
+        try { dec[n] = await ctx.decodeAudioData(await (await fetch(A[`sfx/${n}.mp3`] || `sfx/${n}.mp3`)).arrayBuffer()); } catch (e) { console.error(`音效 ${n} 载入失败`, e); }
+      }));
+      return dec;
+    })();
+    return sfxBank;
+  }
+  // L、R 是整片（共 total 帧）第 from 帧起的一段。只在叠出 -2 dBFS 的那几下压峰（5 ms 线性压下、80 ms 回升），不按最高峰把整条混音缩小；-2 是给插值后的真峰留 1 dB。
+  // 某一帧压多少只看它前 80 ms、后 5 ms：按段做时前后各多给 SFX_MARGIN 秒，段里的部分就和整片一次做的一样
+  const SFX_MARGIN = [0.1, 0.01];
+  function sfxRange(dec, L, R, from, total) {
+    for (const c of CUES) {
       const smp = dec[c.name];
       if (!smp) continue;
       const a = smp.getChannelData(0), b = smp.numberOfChannels > 1 ? smp.getChannelData(1) : a, rate = c.rate || 1;
       const th = ((c.pan || 0) + 1) * Math.PI / 4, gl = c.v * Math.cos(th) * Math.SQRT2, gr = c.v * Math.sin(th) * Math.SQRT2;
-      const i0 = Math.round((c.t - (c.lead || 0)) * sr), n = Math.min(Math.floor((a.length - 1) / rate), L.length - i0);
-      for (let i = Math.max(0, -i0); i < n; i++) {
-        const p = i * rate, k = p | 0, f = p - k;
-        L[i0 + i] += gl * (a[k] + (a[k + 1] - a[k]) * f);
-        R[i0 + i] += gr * (b[k] + (b[k + 1] - b[k]) * f);
+      const i0 = Math.round((c.t - (c.lead || 0)) * SR), n = Math.min(Math.floor((a.length - 1) / rate), total - i0, from + L.length - i0);
+      for (let i = Math.max(0, -i0, from - i0); i < n; i++) {
+        const p = i * rate, k = p | 0, f = p - k, j = i0 + i - from;
+        L[j] += gl * (a[k] + (a[k + 1] - a[k]) * f);
+        R[j] += gr * (b[k] + (b[k + 1] - b[k]) * f);
       }
     }
-    // 只在叠出 -2 dBFS 的那几下压峰（5 ms 线性压下、80 ms 回升），不按最高峰把整条混音缩小；-2 是给插值后的真峰留 1 dB
     const ceil = Math.pow(10, -2 / 20), g = new Float32Array(L.length).fill(1);
     for (let i = 0; i < g.length; i++) { const v = Math.max(Math.abs(L[i]), Math.abs(R[i])); if (v > ceil) g[i] = ceil / v; }
-    for (let i = 1; i < g.length; i++) g[i] = Math.min(g[i], g[i - 1] + 1 / (0.08 * sr));
-    for (let i = g.length - 2; i >= 0; i--) g[i] = Math.min(g[i], g[i + 1] + 1 / (0.005 * sr));
+    for (let i = 1; i < g.length; i++) g[i] = Math.min(g[i], g[i - 1] + 1 / (0.08 * SR));
+    for (let i = g.length - 2; i >= 0; i--) g[i] = Math.min(g[i], g[i + 1] + 1 / (0.005 * SR));
     for (let i = 0; i < g.length; i++) { L[i] *= g[i]; R[i] *= g[i]; }
+  }
+  async function withSfx(buf) {
+    if (!buf || !CUES.length) return buf;
+    sfxRange(await loadSfx(), buf.getChannelData(0), buf.getChannelData(1), 0, buf.length);
     return buf;
+  }
+
+  // kind："score" 先取预渲染的整条配乐（取不到或长度对不上就现合成），"synth" 直接现合成；ready 在播放头底下有声音时兑现，done 在整条都有了时兑现
+  let job = null, complete = false, mixed = null;
+  function loadAudio(kind) {
+    if (job) return job;
+    const load = $("load");
+    load.style.display = "";
+    let first;
+    const ready = new Promise((resolve) => (first = heard = resolve));
+    const done = (async () => {
+      const url = (window.__assets || {})["score.mp3"] || "score.mp3";
+      let header = null;
+      if (kind === "score") {
+        try {
+          const r = await fetch(url);
+          if (r.ok) {
+            const bytes = await r.arrayBuffer();
+            header = new Uint8Array(bytes.slice(0, 4096));
+            const buf = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(bytes);
+            if (!Sc || Math.abs(buf.duration - (Sc.duration + Sc.tail)) < 0.5) {
+              addAudio(0, await withSfx(buf));
+              window.__audioSource = "score";
+              return;
+            }
+            console.warn("score.mp3 的长度和现在的章节表对不上，改成现合成");
+          }
+        } catch {}
+      }
+      if (!Sc || !Sc.render) return;
+      window.__audioSource = "synth";
+      try {
+        if (window.Stream) await window.Stream.play({ url, header, total: TOTAL, sr: SR, now, add: addAudio, sfx: { load: loadSfx, mix: sfxRange, margin: SFX_MARGIN } });
+        else addAudio(0, await withSfx(await Sc.render()));
+      } catch (e) { console.error("配乐合成失败", e); }
+    })().finally(() => { complete = true; first(); });
+    ready.then(() => (load.style.display = "none"));
+    job = { ready, done };
+    return job;
   }
 
   const FONTS = ['500 20px Geist', '600 20px Geist', '700 20px Geist', '400 20px "Geist Mono"', '500 20px "Geist Mono"', '600 20px "Geist Mono"', '700 20px "Geist Mono"', '20px "Geist Pixel"'];
@@ -235,23 +366,8 @@
     fitLabels();
     if (!EXPORT) {
       requestAnimationFrame(loop);
-      let got = null;
-      try {
-        const r = await fetch((window.__assets || {})["score.mp3"] || "score.mp3");
-        if (r.ok) {
-          const buf = await new OfflineAudioContext(2, 48000, 48000).decodeAudioData(await r.arrayBuffer());
-          if (!Sc || Math.abs(buf.duration - (Sc.duration + Sc.tail)) < 0.5) got = buf;
-          else console.warn("score.mp3 的长度和现在的章节表对不上，改成现合成");
-        }
-      } catch {}
-      if (!got && Sc && Sc.render) { try { got = await Sc.render(); } catch (e) { console.error("配乐合成失败", e); } }
-      got = await withSfx(got);
-      document.getElementById("load").style.display = "none";
-      const wasPlaying = playing, t = now();
-      if (wasPlaying) pause();
-      buffer = got;
-      T = t;
-      if (wasPlaying) play();
+      if (chosen) loadAudio("score");
+      else $("load").style.display = "none";
     }
     return true;
   })();
@@ -259,5 +375,15 @@
   window.__duration = DURATION;
   window.__chapters = chapters.map((c) => ({ id: c.id, t0: c.t0, t1: c.t1, bars: c.bars, placeholder: !!c.placeholder }));
   window.__BAR = BAR;
-  window.__audio = () => buffer;
+  window.__loadAudio = (kind = "score") => loadAudio(kind).done;
+  // 整条混音：边放边合时等全部合完才有
+  window.__audio = () => {
+    if (!complete || !segs.length) return null;
+    if (segs.length === 1) return segs[0].buf;
+    if (!mixed) {
+      mixed = new AudioBuffer({ length: TOTAL, sampleRate: SR, numberOfChannels: 2 });
+      for (const s of segs) for (let c = 0; c < 2; c++) mixed.copyToChannel(s.buf.getChannelData(c), c, s.from);
+    }
+    return mixed;
+  };
 })();

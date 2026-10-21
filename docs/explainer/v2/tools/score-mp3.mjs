@@ -21,14 +21,16 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end("<!doctype html><title>Score render</title>");
     return;
   }
-  const url = new URL(req.url, "http://127.0.0.1"), part = Number(url.searchParams.get("part")), last = url.searchParams.get("last") === "1";
+  const url = new URL(req.url, "http://127.0.0.1"), part = Number(url.searchParams.get("part")), last = url.searchParams.get("last") === "1", gain = url.searchParams.get("gain");
   if (req.method !== "POST" || url.pathname !== endpoint || part !== transfer.next || (part === 0) === Boolean(encoder)) {
     res.writeHead(404).end();
     return;
   }
   if (part === 0) {
     transfer.started = performance.now();
-    encoder = spawn("ffmpeg", ["-v", "error", "-y", "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", "pipe:0", "-codec:a", "libmp3lame", "-b:a", "160k", output], { stdio: ["pipe", "ignore", "pipe"] });
+    // 母带增益写进 ID3（TXXX:master_gain）：浏览器边放边合时按段用同一个增益，和这份 mp3 一样响（v2/stream.js 读）。ffmpeg 在第一块到时启动，所以每块 URL 都带 gain。
+    const tag = gain ? ["-metadata", `master_gain=${gain}`] : [];
+    encoder = spawn("ffmpeg", ["-v", "error", "-y", "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", "pipe:0", "-codec:a", "libmp3lame", "-b:a", "160k", ...tag, output], { stdio: ["pipe", "ignore", "pipe"] });
     encoder.stderr.on("data", (chunk) => { transfer.stderr = (transfer.stderr + chunk).slice(-8192); });
     transfer.done = new Promise((resolve, reject) => {
       encoder.once("error", reject);
@@ -68,7 +70,8 @@ try {
   console.log(`Score inputs ready; rendering with ${workers} workers`);
   const result = await page.evaluate(async ({ workers, endpoint }) => {
     const started = performance.now();
-    const buf = await window.Score.renderParallel({ workers });
+    const buf = await window.Score.renderParallel({ workers, raw: true }), gain = window.Score.peakGain(buf);
+    window.Score.master(buf, gain);
     const synthesized = performance.now();
     const n = buf.length, ch = buf.numberOfChannels, sr = buf.sampleRate;
     if (ch !== 2 || sr !== 48000) throw new Error("Expected 48 kHz stereo audio");
@@ -84,12 +87,12 @@ try {
     let response;
     for (let part = 0; part < parts; part++) {
       const body = new Uint8Array(pcm.buffer, part * CHUNK, Math.min(CHUNK, pcm.byteLength - part * CHUNK));
-      response = await fetch(`${endpoint}?part=${part}&last=${part + 1 === parts ? 1 : 0}`, { method: "POST", body });
+      response = await fetch(`${endpoint}?part=${part}&last=${part + 1 === parts ? 1 : 0}${gain == null ? "" : `&gain=${gain}`}`, { method: "POST", body });
       if (!response.ok) throw new Error(await response.text());
     }
     const encoding = await response.json();
     if (encoding.pcmBytes !== pcm.byteLength) throw new Error("Incomplete PCM transfer");
-    return { durationSeconds: n / sr, sampleRate: sr, channels: ch, ...encoding, synthesisMs: synthesized - started, pcmEncodingMs: encoded - synthesized, transferAndMp3EncodingMs: performance.now() - encoded };
+    return { durationSeconds: n / sr, sampleRate: sr, channels: ch, masterGain: gain, ...encoding, synthesisMs: synthesized - started, pcmEncodingMs: encoded - synthesized, transferAndMp3EncodingMs: performance.now() - encoded };
   }, { workers, endpoint });
   const finished = performance.now();
   const metrics = {
@@ -102,6 +105,7 @@ try {
     durationSeconds: result.durationSeconds,
     sampleRate: result.sampleRate,
     channels: result.channels,
+    masterGain: result.masterGain,
     pcmSha256: result.pcmSha256,
     bytes: fs.statSync(output).size,
     seconds: {

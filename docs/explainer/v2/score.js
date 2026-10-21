@@ -1794,24 +1794,38 @@
     }
     return [oL, oR];
   }
-  function master(buf) {
-    const sr = buf.sampleRate, L = buf.getChannelData(0), R = buf.getChannelData(1), ceil = Math.pow(10, CEIL_DB / 20);
-    let out;
-    if (TARGET_LUFS == null) {
-      let pk = 0;
-      for (let i = 0; i < L.length; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i]));
-      // 峰值归一已保证不超过上限，无需分配整片的 lookahead 限幅工作数组。
-      const gain = pk > 0 ? ceil / pk : 1;
-      for (const channel of [L, R]) for (let i = 0; i < channel.length; i++) channel[i] = clamp(channel[i] * gain, -ceil, ceil);
-      out = [L, R];
-    } else {
-      let g = Math.pow(10, (TARGET_LUFS - loudness(L, R, sr)) / 20);
-      out = limit(L, R, sr, g, ceil);
-      g *= Math.pow(10, (TARGET_LUFS - loudness(out[0], out[1], sr)) / 20);
-      out = limit(L, R, sr, g, ceil);
-    }
+  // 峰值归一的增益只取决于整片：边放边合时拿不到整片，取配乐 mp3 里 tools/score-mp3.mjs 写下的这个值，按段交给 masterRange
+  function peakGain(buf) {
+    if (TARGET_LUFS != null) return null;
+    const L = buf.getChannelData(0), R = buf.getChannelData(1);
+    let pk = 0;
+    for (let i = 0; i < L.length; i++) pk = Math.max(pk, Math.abs(L[i]), Math.abs(R[i]));
+    return pk > 0 ? Math.pow(10, CEIL_DB / 20) / pk : 1;
+  }
+  function fadeTail(d, from, total, sr) {
     const f = Math.round(0.25 * sr);
-    for (const d of out) for (let i = 0; i < f; i++) d[d.length - f + i] *= 1 - (i + 1) / f;
+    for (let k = Math.max(from, total - f); k < from + d.length && k < total; k++) d[k - from] *= 1 - (k - (total - f) + 1) / f;
+  }
+  // L、R 是整片第 from 帧起的一段；整片一次做和按段做逐样本一样
+  function masterRange(L, R, from, total, sr, gain) {
+    const ceil = Math.pow(10, CEIL_DB / 20);
+    for (const channel of [L, R]) {
+      for (let i = 0; i < channel.length; i++) channel[i] = clamp(channel[i] * gain, -ceil, ceil);
+      fadeTail(channel, from, total, sr);
+    }
+  }
+  function master(buf, gain = peakGain(buf)) {
+    const sr = buf.sampleRate, L = buf.getChannelData(0), R = buf.getChannelData(1), ceil = Math.pow(10, CEIL_DB / 20);
+    // 峰值归一已保证不超过上限，无需分配整片的 lookahead 限幅工作数组。
+    if (TARGET_LUFS == null) {
+      masterRange(L, R, 0, L.length, sr, gain);
+      return buf;
+    }
+    let g = Math.pow(10, (TARGET_LUFS - loudness(L, R, sr)) / 20);
+    let out = limit(L, R, sr, g, ceil);
+    g *= Math.pow(10, (TARGET_LUFS - loudness(out[0], out[1], sr)) / 20);
+    out = limit(L, R, sr, g, ceil);
+    for (const d of out) fadeTail(d, 0, d.length, sr);
     buf.copyToChannel(out[0], 0); buf.copyToChannel(out[1], 1);
     return buf;
   }
@@ -1821,7 +1835,8 @@
     const sr = opts.sampleRate || SAMPLE_RATE;
     const workers = opts.workers ?? 4;
     if (!Number.isInteger(workers) || workers < 1 || workers > 16) throw new Error("workers must be an integer from 1 to 16");
-    const voices = (opts.precomputeVoices || opts.offset) ? await prepareVoices(sr, workers, score) : null;
+    // 带 offset 默认用整片声部缓存（并行段逐样本对齐）；浏览器边放边合传 precomputeVoices: false，不建整片缓存，靠预热收敛
+    const voices = (opts.precomputeVoices ?? !!opts.offset) ? await prepareVoices(sr, workers, score) : null;
     const ctx = new OfflineAudioContext(2, opts.frames ?? Math.ceil((score.DURATION + TAIL) * sr), sr);
     const enqueue = schedule(ctx, opts, voices, score), batchSeconds = opts.batchSeconds ?? RENDER_BATCH_SECONDS;
     if (batchSeconds > 0) {
@@ -1842,13 +1857,19 @@
     return opts.raw || opts.solo || opts.stage ? buf : master(buf);
   }
 
+  // 分段渲染的起点要落在渲染量子和 duck 控制点的公倍数上，各段的自动化才和整片一次渲的对得上
+  function renderAlignment(sr) {
+    const gcd = (a, b) => b ? gcd(b, a % b) : a;
+    const controlFrames = sr / gcd(sr, DUCK_RATE);
+    return RENDER_QUANTUM_FRAMES * controlFrames / gcd(RENDER_QUANTUM_FRAMES, controlFrames);
+  }
+
   async function renderParallel(opts = {}) {
     const score = B;
     if (!score) throw new Error("先调 Score.build(plan)");
     const sr = opts.sampleRate || SAMPLE_RATE, length = Math.ceil((score.DURATION + TAIL) * sr), workers = opts.workers ?? 8;
     if (!Number.isInteger(workers) || workers < 1 || workers > 16) throw new Error("workers must be an integer from 1 to 16");
-    const gcd = (a, b) => b ? gcd(b, a % b) : a;
-    const controlFrames = sr / gcd(sr, DUCK_RATE), alignment = RENDER_QUANTUM_FRAMES * controlFrames / gcd(RENDER_QUANTUM_FRAMES, controlFrames);
+    const alignment = renderAlignment(sr);
     await prepareVoices(sr, workers, score);
     const out = new AudioBuffer({ length, sampleRate: sr, numberOfChannels: 2 });
     // 预热包含音符尾音、混响与反馈延迟；丢弃预热区，整片拼好后只做一次母带。
@@ -1865,6 +1886,7 @@
   window.Score = {
     BPM, BAR, BEAT, tail: TAIL, sampleRate: SAMPLE_RATE,
     build, render, renderParallel, env, at, loudness,
+    master, masterRange, peakGain, renderAlignment, warmup: RENDER_WARMUP_SECONDS,
     theme: THEME.map(([beat, dur, note]) => ({ beat, dur, note })),
   };
 })();
