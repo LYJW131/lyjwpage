@@ -227,6 +227,10 @@
   - 取了什么：资源命令（D1 迁移等）改用 `cf`，项目的构建、部署、预览和本地开发留在 wrangler；`cf` 的生产部署命令和 `wrangler deploy` 一样由钩子拦下。
   - 没迁项目配置的原因：`cf` 设不了单个 Secret（分支 Preview 的 `wrangler preview secret put` 没有对应）、不能 `tail`；`r2 objects put` 没有 `--cache-control`（视频发布要 `immutable`）、`d1 query` 没有 `--file`；本地 `pnpm dev:worker` 一次起多个 Worker 的多 `-c` 用法没有对应；站点要换 `@cloudflare/vite-plugin` 的 beta；DO 的 `migrations` 要手改成 `exports` 生命周期；Wrangler 打包方式下 `cf` 仍在底下调 wrangler。
   - 状态：部分采用。落在 [state-storage.md](./state-storage.md)「长期归档（D1）」与 `scripts/guard-forbidden-commands.mjs#cfDeploy`；迁移注意见 [workers-builds.md](./workers-builds.md)「构建配置」。
+- **[HTMLRewriter](https://developers.cloudflare.com/workers/runtime-apis/html-rewriter/)**（Cloudflare 文档）与 **[Miniflare](https://developers.cloudflare.com/workers/testing/miniflare/)**（Cloudflare 文档）
+  - 是什么：Workers 内置的流式 HTML 改写器（底层 lol-html，按 HTML 规范切词），用 CSS 选择器挑元素后增删属性和内容；Miniflare 在 Node 里起 workerd 跑 Worker 代码。
+  - 取了什么：SSR 出 HTML 后挪 modulepreload、推迟入口模块交给 HTMLRewriter，不再用正则切标签，大小写、结束标签带属性或空白、自定义元素这类边界由规范切词处理；它给的属性值是未解码原文，重拼标签只转义双引号。单测在 Miniflare 里跑同一份源码。
+  - 状态：采用。落在 [defer-module-preloads.ts](../src/lib/defer-module-preloads.ts) 与 [defer-module-preloads.test.mts](../src/lib/defer-module-preloads.test.mts)。
 
 ## 联网搜索与文档检索
 
