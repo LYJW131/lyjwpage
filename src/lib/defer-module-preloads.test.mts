@@ -79,6 +79,7 @@ function startup({
   const timers = new Map<number, () => void>();
   const timerDelays: number[] = [];
   const listeners = new Map<string, () => void>();
+  const inputListeners = new Map<string, () => void>();
   const inserted: Element[] = [];
   const events: string[] = [];
   let replacement: Element | null = null;
@@ -116,6 +117,14 @@ function startup({
   };
   vm.runInNewContext(bootstrap.textContent, {
     document,
+    addEventListener(name: string, callback: () => void, capture: boolean) {
+      assert.equal(capture, true);
+      inputListeners.set(name, callback);
+    },
+    removeEventListener(name: string, callback: () => void) {
+      assert.equal(inputListeners.get(name), callback);
+      inputListeners.delete(name);
+    },
     performance: { getEntriesByName: () => [] },
     ...(entryTypes ? {
       PerformanceObserver: class {
@@ -140,7 +149,7 @@ function startup({
     clearTimeout(id: number) { timers.delete(id); },
   });
   return {
-    html, bootstrap, frames, timers, timerDelays, listeners, inserted, events,
+    html, bootstrap, frames, timers, timerDelays, listeners, inputListeners, inserted, events,
     frameCount() { return nextFrame; },
     replacement() { return replacement; },
     lcpEntry() { observerCallback?.(); },
@@ -311,4 +320,15 @@ test("没有 head 预加载时入口仍等首帧后的任务，普通脚本和�
     const html = `<html><head>${preloadA}</head><body>${script}</body></html>`;
     assert.equal(deferModulePreloads(html), `<html><head></head><body>${script}${lowA}</body></html>`);
   }
+});
+
+test("等 LCP 期间访客先按下就立即启动，不等上限任务", () => {
+  const run = startup({ entryTypes: ["largest-contentful-paint"] });
+  assert.equal(run.replacement(), null);
+  run.inputListeners.get("pointerdown")?.();
+  assert.deepEqual(run.events, ["preloads", "module"]);
+  assert.equal(run.timers.size, 0);
+  assert.equal(run.inputListeners.size, 0);
+  run.lcpEntry();
+  assert.deepEqual(run.events, ["preloads", "module"]);
 });
