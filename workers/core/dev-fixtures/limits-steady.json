@@ -13,9 +13,10 @@
         "updatedAt": "$now-60000"
       },
       "codex": {
-        "plan": { "tier": "prolite", "label": "Pro Lite" },
+        "plan": { "tier": "plus", "label": "Plus" },
         "limits": [
-          { "key": "codex.primary", "label": null, "group": "session", "windowMinutes": 300, "usedPercent": 64, "resetsAt": null }
+          { "key": "codex.primary", "label": null, "group": "session", "windowMinutes": 300, "usedPercent": 64, "resetsAt": null },
+          { "key": "codex.secondary", "label": null, "group": "weekly", "windowMinutes": 10080, "usedPercent": 31, "resetsAt": null }
         ],
         "limitsError": null,
         "updatedAt": "$now-60000"

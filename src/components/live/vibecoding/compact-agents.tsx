@@ -14,7 +14,7 @@ import { agentUsageLabel, agentUsageUrl } from "@/lib/agent-usage-url";
 import type { CodingAgentRow } from "@/lib/coding-agents";
 import { AGENT_LIMITS_STALE_MS } from "@shared/freshness";
 
-const EXPAND_BEFORE_LINK = new Set(["cursor"]);
+const EXPAND_BEFORE_LINK = new Set(["codex", "cursor"]);
 
 function CompactAgentRow({
   row,

@@ -35,6 +35,10 @@ const FEATURED_LIMITS: Record<
     { slot: "weekly", title: "Weekly" },
     { slot: "fable", title: "Fable" },
   ],
+  codex: [
+    { slot: "session", title: "5-hour" },
+    { slot: "weekly", title: "Weekly" },
+  ],
   cursor: [
     { slot: "cursor.secondary", title: "Cursor models" },
     { slot: "cursor.tertiary", title: "Other models" },
