@@ -10,7 +10,7 @@ import { Cloud } from "lucide-react";
 import type { ComponentType } from "react";
 import { MODEL_ICON_MAPPINGS, MODEL_ICONS_VERSION } from "virtual:model-icons";
 
-import { ClaudeSpinner } from "@/components/live/claude-spinner";
+import { ClaudeCodeMascot } from "@/components/live/claude-code-mascot";
 import { CodexActivityIndicator, CodexMark } from "@/components/live/codex-activity-indicator";
 import { MacBookProIcon } from "@/components/ui/device-icons";
 import { codingSourceLabel, codingSourceOnMac, type CodingActivityEntry, type CodingAgentRow } from "@/lib/coding-agents";
@@ -129,7 +129,7 @@ export function RankMark({ rank }: { rank: number }) {
 }
 
 export function FeaturedMark({ row, active }: { row: Pick<CodingAgentRow, "id" | "icon" | "label">; active: boolean }) {
-  if (row.id === "claude") return <ClaudeSpinner active={active} />;
+  if (row.id === "claude") return <ClaudeCodeMascot size={24} animated={active} />;
   if (active) return <CodexActivityIndicator active />;
   return (
     <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>

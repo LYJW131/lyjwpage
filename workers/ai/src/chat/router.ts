@@ -43,7 +43,7 @@ const ROUTE_INSTRUCTIONS =
 
 export const PREFETCH_STATUS = {
   now: { views: ["desktop", "codingNow", "nowListening", "playingNow"], criterion: "What LYJW is doing or busy with right now in general, or whether LYJW is online or at the computer." },
-  listening: { query: ["listening"], views: ["nowListening", "listening"], criterion: "What music LYJW listens to now or lately, or whether LYJW has listened to a specific song, artist or album." },
+  listening: { query: ["listening"], views: ["nowListening", "listening", "pulse"], criterion: "What music LYJW listens to now or lately, or whether LYJW has listened to a specific song, artist or album." },
   playing: { card: "game", query: ["playing", "trophies"], views: ["playingNow", "playing", "questNow"], criterion: "What games LYJW plays now or lately on PlayStation, Steam or Quest, or whether LYJW has played a specific game." },
   trophies: { card: "game", query: ["trophies", "playing"], views: ["trophies", "playing"], criterion: "LYJW's PlayStation trophies or game achievements." },
   watching: { query: ["watching"], views: ["nowWatching", "watching"], criterion: "What anime, shows or movies LYJW watches now or lately, or whether LYJW has watched a specific one." },
@@ -58,9 +58,9 @@ export const PREFETCH_STATUS = {
 type PrefetchStatus = keyof typeof PREFETCH_STATUS;
 
 // 猜错了就是白塞一份输入 token、还可能把模型带偏，所以只在 Clef 给选中项的概率够高时才预取，其余照旧由模型自己调工具。
-// 文档题有二十多个选项，概率摊得薄：用 route:probe 在线上 Clef 跑代表性问题，选对的文档多在 0.45–0.77，状态题选对的在 0.9 以上，
-// 所以两题阈值分开定。
-export const PREFETCH_MIN_PROBABILITY = { status: 0.6, doc: 0.45 } as const;
+// 用 prefetch:calibrate 在 scripts/prefetch-cases.json 上量：Clef 选错与选对的概率大段重叠，提阈值漏掉的对题比挡掉的错题多，题集上不设阈值最好。
+// 留的这条线压在题集里 Clef 选中具体项时的最低概率之下，只挡比题集更没把握的选择；改判据或换模型后重跑再定。
+export const PREFETCH_MIN_PROBABILITY = { status: 0.45, doc: 0.3 } as const;
 
 const PREFETCH_DOC_CRITERIA: Record<ProjectDocKey | "none", string> = {
   ...(Object.fromEntries(Object.entries(PROJECT_DOCS).map(([key, doc]) => [key, doc.note])) as Record<ProjectDocKey, string>),
@@ -98,10 +98,13 @@ export function parseItem(body: unknown): string | undefined {
   return pNull <= ITEM_MAX_P_NULL && confidence >= ITEM_MIN_CONFIDENCE ? value : undefined;
 }
 
+export type PrefetchScores = Partial<Record<keyof typeof PREFETCH_MIN_PROBABILITY, { choice: string; p: number }>>;
+
 export type RouteDecision = {
   route: GodChatRank | "refuse";
   design?: true;
   prefetch?: GodChatPresetCall[];
+  scores?: PrefetchScores;
   source: "clef" | "fallback" | "forced" | "design" | "preset";
 };
 
@@ -154,14 +157,18 @@ export function parsePrefetch(body: unknown, item?: string): GodChatPresetCall[]
   return calls;
 }
 
-// 只记登记过的选项名与概率，不记访客原文与抽到的条目：Observability 收下所有 console 输出。
-function topChoice(body: unknown, question: "status" | "doc"): string | undefined {
-  const answer = object(object(object(body)?.answers)?.[question]);
-  const choice = answer?.choice;
-  if (typeof choice !== "string") return undefined;
-  if (!Object.hasOwn(question === "status" ? PREFETCH_STATUS : PREFETCH_DOC_CRITERIA, choice)) return "unlisted";
-  const probability = object(answer?.probabilities)?.[choice];
-  return typeof probability === "number" ? `${choice} ${probability.toFixed(3)}` : choice;
+// 选项名都是登记过的键，Clef 给了没登记的记成 unlisted；不含访客原文，可以进 Observability 与 ChatLog。
+export function prefetchScores(body: unknown): PrefetchScores {
+  const scores: PrefetchScores = {};
+  for (const question of ["status", "doc"] as const) {
+    const answer = object(object(object(body)?.answers)?.[question]);
+    const choice = answer?.choice;
+    if (typeof choice !== "string") continue;
+    const probability = object(answer?.probabilities)?.[choice];
+    const listed = Object.hasOwn(question === "status" ? PREFETCH_STATUS : PREFETCH_DOC_CRITERIA, choice);
+    scores[question] = { choice: listed ? choice : "unlisted", p: typeof probability === "number" ? Number(probability.toFixed(3)) : 0 };
+  }
+  return scores;
 }
 
 export function wantsItem(body: unknown): boolean {
@@ -187,9 +194,10 @@ export async function routeWithClef(ai: Ai | undefined, messages: GodChatMessage
     const usable = choice !== null && choice !== "refuse" && choice !== "design";
     const found = usable && wantsItem(answer) ? await item : undefined;
     const prefetch = usable ? parsePrefetch(answer, found) : [];
-    console.info("[god-chat] route", JSON.stringify({ route: choice ?? "unlisted", status: topChoice(answer, "status"), doc: topChoice(answer, "doc"), item: found !== undefined, prefetch: prefetch.length }));
+    const scores = prefetchScores(answer);
+    console.info("[god-chat] route", JSON.stringify({ route: choice ?? "unlisted", ...scores, item: found !== undefined, prefetch: prefetch.length }));
     if (!choice) return fallback;
-    const decision: RouteDecision = { ...CLEF_CHOICES[choice], source: "clef" };
+    const decision: RouteDecision = { ...CLEF_CHOICES[choice], source: "clef", ...(Object.keys(scores).length && { scores }) };
     return prefetch.length ? { ...decision, prefetch } : decision;
   } catch (error) {
     console.warn("[god-chat] clef router failed", error);
