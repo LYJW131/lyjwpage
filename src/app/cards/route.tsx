@@ -231,11 +231,13 @@ const CARDS: Record<string, ReadmeCard> = {
   "vibe-coding": {
     label: "Vibe Coding",
     width: FULL_WIDTH,
-    height: 834,
+    height: 1032,
     async render(status) {
-      const [coding, codingNow, limits] = await Promise.all([status("coding"), status("codingNow"), status("limits")]);
+      const [coding, codingNow, limits, history] = await Promise.all([
+        status("coding"), status("codingNow"), status("limits"), status("limitsHistory"),
+      ]);
       return {
-        element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={limits} />,
+        element: <VibeCodingCard fallback={coding} nowFallback={codingNow} limitsFallback={limits} historyFallback={history} />,
         sample: false,
       };
     },

@@ -197,8 +197,8 @@ test("Devin's delta windows are counted once each: a resent window is dropped, C
     const buckets = parseStoredCodingBuckets(await storage.get(codingBucketsKey("agents-otlp")))!;
     const rows = buckets.windows.flatMap((window) => window.agents);
     assert.equal(rows.filter((row) => row.id === "devin").reduce((sum, row) => sum + row.inputTokens, 0), 11_787);
-    assert.deepEqual(cloudAgentActivity({ ...buckets, windows: buckets.windows.map((window) => ({ ...window, agents: window.agents.filter((row) => row.id === "devin") })) }), [],
-      "cloudActiveSeconds counts Claude's cloud threads only");
+    assert.notDeepEqual(cloudAgentActivity({ ...buckets, windows: buckets.windows.map((window) => ({ ...window, agents: window.agents.filter((row) => row.id === "devin") })) }), [],
+      "cloud Devin CLI runs count as cloud agent work");
 
     const activity = parseStoredActivity(await storage.get(codingActivityKey("agents-otlp")))!;
     assert.deepEqual(activity.agents.map((agent) => [agent.id, agent.lastActivityAt]), [["claude", NOW + 6_000], ["devin", NOW + 5_000]]);

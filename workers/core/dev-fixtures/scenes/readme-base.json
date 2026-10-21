@@ -2486,6 +2486,14 @@
       },
       "updatedAt": "$now-254764"
     },
+    "/api/status/limits/history": {
+      "ok": true,
+      "data": {
+        "days": 21,
+        "hourlyDays": 8,
+        "series": []
+      }
+    },
     "/api/status/agent-status": {
       "ok": true,
       "data": {

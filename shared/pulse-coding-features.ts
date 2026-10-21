@@ -9,8 +9,7 @@ export const CODING_OBSERVATION_HOLD_MS = 3 * 60_000;
 // 云端没有在线心跳，只有用量桶这一正证据：有用量的桶算 agent 在跑，没有桶是未知而非空闲。
 export function cloudAgentActivity(store: StoredCodingBuckets | null): Coverage[] {
   if (!store) return [];
-  // agents-otlp 里也有云端环境跑的 Devin CLI；云端 agent 带只算 Claude 的云端线程。
-  return mergeCoverage(store.windows.flatMap((window) => window.agents.some((row) => row.id === "claude" && codingRowTokens(row) > 0)
+  return mergeCoverage(store.windows.flatMap((window) => window.agents.some((row) => codingRowTokens(row) > 0)
     ? [{ from: window.from, to: Math.min(window.from + CODING_BUCKET_MS, store.receivedAt) }] : []));
 }
 

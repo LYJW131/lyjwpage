@@ -24,6 +24,7 @@
 - 构建派发的 `event_type` 与 `client_payload` 键（`src/build/handlers.ts#dispatchBuild`）、`src/build/actions-oidc.ts#BUILD_WORKFLOW_REF`、`buildWorkflowAudience`、`BUILD_REPO_ID`、`BUILD_REPO_OWNER_ID` 与 OIDC 声明 ⇄ `.github/workflows/build.yml` 的触发、文件路径、payload 环境变量与校验，以及 `scripts/build-actions.ts`；`src/build-workflow-contract.test.ts` 只核对键名、触发与路径。
 - `shared/digest.ts` ⇄ `workers/collector/src/jobs/digest.ts`：契约只加不改，ai 先发布；ai 只能 `import type` 它，它不在 ai 的构建监视路径里。
 - `DESIGN_WEB_HOSTS` ⇄ Managed Agents environment 的 `allowed_hosts`：web 工具的 `allowed_domains` 列了环境没放行的主机，建会话直接 400；先用 `lyjwpage-chat` 工作区的 key 跑 `pnpm designer:setup` 更新环境，再发布 Worker。
+- 写给模型的工具说明与提示词（`src/tools/` 里的 `description`、`src/chat/prompts.ts`）⇄ 产出那份数据的代码：讲数据语义的句子（阈值含不含等于、「正在」这类状态词、单位、截断丢哪一段）改了哪边，都逐句对照另一边。
 - 模型档位与配额 ⇄ `shared/god-chat-tiers.ts`；NDJSON、历史与卡片事件 ⇄ `shared/god-chat.ts`、浏览器消费者及验签逻辑。改模型路由判据先验证代表性输入，不凭提示词文字推断模型表现。
 
 ## 本地开发与验证
