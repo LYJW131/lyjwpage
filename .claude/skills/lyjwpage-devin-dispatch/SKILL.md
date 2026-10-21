@@ -18,7 +18,7 @@ lyjw 的 Devin Pro 订阅就是给 Claude 派活开的，不用给 lyjw 留额�
 
 - **限额有余用 Fusion High**：`fusion-claude-fable-5-1-high-sidekick-swe-2-medium`，即 `/fusion` 菜单里默认主模型（Claude Fable 5.1）的 High 档，配免费的 SWE-2 Medium 副手。派活前跑 `dv usage`，Daily 和 Weekly 的 `used_pct` 都低于 90 就用它；按量计费，每轮都扣限额。
 - **限额用完退回 swe-2-max**：两项任一到 90，或会话停在额度用尽的报错上，新任务用默认的 `swe-2-max`（Free，不扣限额，但有全账号共用的速率桶），跑着的任务在空闲时 `dv model <name> swe-2-max` 换模型接着做，不开新会话。重置时间在 `dv usage` 的 `resets` 里，过了再换回来。
-- 并发两种都开约 6 个、其余排队：免费档开多了一起撞速率桶，Fusion 开多了只是更快烧完限额。
+- 并发两种都开约 6 个、其余排队：免费档开多了一起撞速率桶，Fusion 开多了只是更快烧完限额。排队按「已 `start`、还没 `stop`」的会话数算（`dv list` 里不是 `exited` / `gone` 的行），不按 `busy` 算：停在批准菜单、限流中、刚交完活等验收的会话都不显示 `busy`，按忙闲数会一口气放进全部任务。
 
 ## 环境
 
@@ -37,7 +37,7 @@ lyjw 的 Devin Pro 订阅就是给 Claude 派活开的，不用给 lyjw 留额�
 dv(){ python3 -I .claude/skills/lyjwpage-devin-dispatch/scripts/dv.py "$@"; }   # 云端 shell 是 zsh，DV="python3 …" 加 dv 不分词
 dv start <name> --cwd <worktree> --brief <brief.md> [--nice 10] [--model <模型>]   # 不传为 swe-2-max（或 $DV_MODEL）
 dv send  <name> -f <followup.md>      # 或 dv send <name> '一句话'；或从 stdin 读
-dv wait  <name> --timeout 3600        # 放进 Bash run_in_background；空闲/退出/需要处理时返回
+dv wait  <name> --timeout 3600        # 放进 Bash run_in_background；空闲/退出/需要处理/额度用尽时返回，免费档限流时自己等到重置再续
 dv approve <name>                     # 批准一次写入菜单；路径不在工作区时拒绝执行
 dv deny <name> ['给 Devin 的话']       # 菜单选 No，再告诉它只能写工作区（不给文字时用默认说明）
 dv status <name>                      # 状态 + 屏幕尾部 + 导出里最后一条 agent 消息
@@ -57,15 +57,16 @@ dv list
 - 返回 4 且原因是 `outside the worktree` 或认不出路径时，默认 `dv deny <name>`：选 No，再告诉它只能写工作区。确需写工作区外的文件，由 Claude 自己写，不替 Devin 批。**不选 always allow，不切 bypass**：那是改 Devin 的持久配置。
 - 菜单开着时 `send` 会拒绝（粘贴的文字会落进菜单），先 `approve` 或 `deny`。
 - 运行状态在 `$DV_RUNS`（默认 `~/.claude/devin-dispatch/runs`）下按任务名分目录：meta、`--export` 的 JSON（Devin 每轮重写）、退出码。tmux 会话名是 `dv-<name>`。
-- `wait` 的返回码：`0` 空闲（打印最后一轮回复），`3` 已退出，`4` 停在提问、菜单、断线重试或认不出的屏幕超过 `--attention` 秒，`124` 超时。返回 4 时用 `status` 看屏幕并处理，不能放着：没人回答的提问会让它一直等。
+- `wait` 的返回码：`0` 空闲（打印最后一轮回复），`3` 已退出，`4` 停在提问、菜单、断线重试或认不出的屏幕超过 `--attention` 秒，`5` 额度用尽（`quota`），或限流的重置时间超出 `--timeout` / 读不出，`124` 超时。返回 4 时用 `status` 看屏幕并处理，不能放着：没人回答的提问会让它一直等。返回 5 且是额度用尽时，按「选模型」`dv model <name> swe-2-max` 再 `dv send <name> 继续`。
+- **免费档限流**（`ratelimit`）：速率桶全账号共用，所有会话屏幕上是同一个重置时间（`reset in 1 hour 2 minutes (at 06:01 UTC)`），提前重试只会再撞。`wait` 读出重置时间，睡到重置后 30 秒，再发一句续跑，最多每 2 分钟一次；`status` 打印还剩几秒。不用另写轮询脚本。
 
 ### 已实测的机制（Devin CLI v3000.11.92）
 
 - **忙时追加**：输入框占位符是「Guide Devin while it works」。发进去的消息在当前工具调用结束后送达，不用等空闲。
 - **多行消息**用 tmux 括号粘贴（`load-buffer` + `paste-buffer -p`），隔 1 秒再按 Enter；紧跟文本的 Enter 会被吞掉。`send` 已这样做并核对文本离开了输入框，不要再补按。
-- **状态标记**：忙 =「Guide Devin while it works」/「esc twice to interrupt」；空闲 = 占位符「Ask Devin to build features…」；刚启动时它和「Starting session…」同时出现，不算空闲。
+- **状态标记**：只看屏幕底部的输入框区域（倒数第二条横线的上一行到底）。忙 = 输入框上一行「Thinking · 1s (esc twice to interrupt)」或占位符「Guide Devin while it works」；空闲 = 占位符「Ask Devin to build features…」；刚启动时它和「Starting session…」同时出现，不算空闲。打开的批准菜单会替换掉输入框：屏幕上最后一个「Approve once」之后没有横线就是 `approval`，最先判。菜单的写入预览和 Devin 读过的文件里可能就有这些标记字样（审计 dv.py 时出现过），所以不能按全屏搜。
 - tmux 目标要写成 `=<session>:`（精确匹配加冒号）。
-- **限额**：`/usage` 显示账号的 Daily / Weekly 已用百分比和重置时间（Devin Pro）。一轮极短的 Fusion High 对话让 Daily 从 0 到 1%；同样跑一轮 swe-2-max，百分比不动。额度用尽时屏幕长什么样还没见过，`wait` 会因认不出屏幕返回 4，用 `status` 看。
+- **限额**：`/usage` 显示账号的 Daily / Weekly 已用百分比和重置时间（Devin Pro）。一轮极短的 Fusion High 对话让 Daily 从 0 到 1%；同样跑一轮 swe-2-max，百分比不动。额度用尽时输入框上方是「▲ Quota exhausted / Your daily usage quota has been exhausted…」，`dv.py` 判为 `quota`，`wait` 返回 5。启动横幅也会写「Pro · N% remaining (resets in …)」。
 - **换模型**：空闲时在输入框敲 `/model <模型 id>` 加一次 Enter，屏幕出现「Model set to …」即生效，会话上下文保留。
 - **会话 id** 是 `snow-chair` 这类名字，在 worktree 里 `devin list --format json` 能查到，`start` 自动记下。tmux 死了也能 `devin -r <id>` 接上。
 - `-p` 立即绑定它后面的参数：`devin -r <id> … -p '<prompt>'` 可以，`devin -p -r <id> …` 报错。长提示用 `--prompt-file`。
@@ -92,7 +93,7 @@ dv list
 ## 出事怎么办
 
 - **服务断线**（`Connection error … "retryable": true`，退出码 1）：`devin models list` 确认服务回来，再对每个任务 `resume`（tmux 还在就 `send`）一段续跑提示，写明停在哪、哪些输出可能是半截的。不开新会话重派。交互式断线时屏幕显示 `Connection failed (attempt N/4), retrying`，`dv.py` 判为 `neterror`。
-- **编排会话重启**：tmux 里的 Devin 不受影响，`-p` 子进程会被一起杀。重启后先 `dv list`。
+- **编排会话重启**：tmux 里的 Devin 不受影响，`-p` 子进程会被一起杀。重启后先 `dv list`。云端容器本身重启时 tmux 和跑着的 Devin 一起没了，正在跑的任务要重派。
 - **sandbox 起不来**：wrapper 退回 deny-only 模式并在 stderr 说明。这时没有文件系统隔离，只派不碰仓库外的小任务，并告诉 lyjw。
 - **模型价格**：`devin models list` 里 swe-2-max 不再标 Free 时，限额用完的退路就没了，告诉 lyjw。Fusion 本来就扣限额，不用问。
 

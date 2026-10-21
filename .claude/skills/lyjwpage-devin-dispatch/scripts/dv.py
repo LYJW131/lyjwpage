@@ -6,7 +6,8 @@ Subcommands (run `dv.py <cmd> -h` for flags):
   send NAME [TEXT | -f FILE]         append input (works while Devin is busy; queued
                                      until its next tool boundary), verified
   status NAME                        state + screen tail + last agent message
-  wait NAME [--timeout S]            block until idle / exited / needs attention
+  wait NAME [--timeout S]            block until idle / exited / needs attention; holds through a
+                                     free-tier rate limit and nudges once it resets
   report NAME [-n N | --all]         agent messages from the --export JSON
   key NAME KEY...                    raw tmux keys (answer an approval menu: `key NAME 1`)
   approve NAME                       approve the pending write menu once, only for an in-scope path
@@ -42,6 +43,10 @@ IDLE = 'Ask Devin to build features'
 STARTING = 'Starting session'
 NETERR = ('Connection failed', 'Connection error')  # retries in place; input waits until it recovers
 APPROVAL = 'Approve once'
+RATE_LIMIT = 'free model rate limit'
+QUOTA = ('Quota exhausted', 'usage quota has been exhausted')
+LIMIT_NUDGE = 'The rate limit has reset. Continue exactly where you left off.'
+RESET_AT = re.compile(r'reset in [^()]*\(at (\d\d):(\d\d) UTC\)')
 WRITE_TOOL = re.compile(r'^\s*(?:⏺\s*)?(?:Writing|Editing)\s+(\S.*?)\s*$')
 ALLOW_DIR = re.compile(r'allow edits in\s+(\S.*?)\s*$')
 NO_OPTION = re.compile(r'^\W*(\d+)[.)]?\s+No\b')
@@ -156,26 +161,47 @@ def state(meta):
     if not tmux_alive(sess) or pane_dead(sess):
         return ('exited' if code.exists() else 'gone'), []
     lines = screen(sess)
-    joined = '\n'.join(lines)
+    return classify(lines), lines
+
+
+def classify(lines):
+    rules = [i for i, l in enumerate(lines) if l.lstrip().startswith('──')]
+    # An open menu replaces the composer, so no rule follows it; an answered one lingers in the
+    # scrollback above a live composer. Marker text anywhere else on screen (a write preview, a
+    # file Devin read) proves nothing, so busy/idle are read only from the composer region.
+    menu = max((i for i, l in enumerate(lines) if APPROVAL in l), default=None)
+    if menu is not None and not any(r > menu for r in rules):
+        return 'approval'
+    if len(rules) < 2:
+        return 'attention'
+    bottom = '\n'.join(lines[max(0, rules[-2] - 1):])
     box = input_box(lines) or ''
+    if any(b in bottom for b in BUSY):
+        return 'busy'
     # Only an error right above the composer is live; once Devin recovers, its next
     # tool header lands below the old error line.
-    rules = [i for i, l in enumerate(lines) if l.lstrip().startswith('──')]
-    above = [l for l in lines[:rules[-2]] if l.strip()][-2:] if len(rules) >= 2 else []
-    if any(e in l for e in NETERR for l in above):
-        return 'neterror', lines
-    if any(b in joined for b in BUSY):
-        return 'busy', lines
-    if IDLE in joined and STARTING not in joined:
-        # A pasted but unsent message sits in the box instead of the placeholder.
-        return ('idle' if box.startswith(IDLE) or not box else 'typed'), lines
-    if STARTING in joined:
-        return 'starting', lines
-    # Checked only after the busy/idle markers: an open menu replaces the composer, while an
-    # answered one can linger in the scrollback above a live composer.
-    if APPROVAL in joined:
-        return 'approval', lines
-    return 'attention', lines  # a question, approval prompt, menu or error
+    above = '\n'.join([l for l in lines[:rules[-2]] if l.strip()][-2:])
+    if any(e in above for e in NETERR):
+        return 'neterror'
+    last = above.rsplit('\n', 1)[-1]
+    if RATE_LIMIT in last:
+        return 'ratelimit'
+    if any(q in last for q in QUOTA):
+        return 'quota'
+    if box.startswith(IDLE):
+        return 'starting' if STARTING in above + bottom else 'idle'
+    return 'typed' if box else 'attention'  # typed: a pasted but unsent message sits in the box
+
+
+def reset_wait(lines, now=None):
+    """Seconds until the rate-limit reset named on screen (UTC clock time), or None."""
+    ms = RESET_AT.findall('\n'.join(lines))
+    if not ms:
+        return None
+    now = time.gmtime(now)
+    left = (int(ms[-1][0]) * 60 + int(ms[-1][1])) * 60 - (now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec)
+    # The screen gives only HH:MM, so pick the nearest occurrence: a reset just passed, not one 24 h away.
+    return (left + 43200) % 86400 - 43200
 
 
 def wrapped_path(lines, i):
@@ -308,7 +334,10 @@ def cmd_send(a):
         die(f'{a.name} is {st}; use `resume` for a headless follow-up', 3)
     if st == 'approval':
         die(f'{a.name} is on an approval menu; `approve` or `deny` it first (pasted text would land in the menu)', 4)
-    text = read_text(a).strip('\n')
+    send_text(meta, read_text(a).strip('\n'), st)
+
+
+def send_text(meta, text, st):
     if not text:
         die('empty message')
     sess = meta['tmux']
@@ -340,6 +369,8 @@ def cmd_status(a):
     st, lines = state(meta)
     code = run_dir(a.name) / 'exit.code'
     print(f'state: {st}' + (f' (exit {code.read_text().strip()})' if code.exists() else ''))
+    if st == 'ratelimit':
+        print(f'rate limit resets in {reset_wait(lines)}s')
     print(f'session: {meta.get("session_id")}  tmux: {meta["tmux"]}  cwd: {meta["cwd"]}')
     if lines:
         print('--- screen')
@@ -402,12 +433,33 @@ def cmd_wait(a):
     meta = load(a.name)
     t0 = time.time()
     idle_seen = attn_since = last_hash = approved_hash = None
+    nudged = 0
     while True:
         st, lines = state(meta)
         now = time.time()
         if st in ('exited', 'gone'):
             print(f'wait: {st}')
             sys.exit(3)
+        if st == 'quota':
+            print(f'wait: quota exhausted; `dv model {a.name} swe-2-max`, then `dv send {a.name}` to continue')
+            print('\n'.join(tail(lines, 8)))
+            sys.exit(5)
+        if st == 'ratelimit' and now - nudged > 120:
+            # The free-tier bucket is account-wide: every session shows the same reset time and
+            # retrying earlier only burns attempts, so hold until it passes, then nudge once.
+            left = reset_wait(lines, now)
+            if left is not None and now + max(left, 0) + 30 - t0 <= a.timeout:
+                if left > -30:
+                    print(f'wait: rate-limited, holding {max(left, 0) + 30}s', flush=True)
+                    time.sleep(max(left, 0) + 30)
+                send_text(meta, LIMIT_NUDGE, st)
+                meta['nudges'] = meta.get('nudges', 0) + 1
+                save(meta)
+                nudged = time.time()
+                continue
+            print(f'wait: rate-limited past --timeout ({"reset unreadable" if left is None else f"{left}s left"})')
+            print('\n'.join(tail(lines, 8)))
+            sys.exit(5)
         h = hash(tuple(l for l in lines if 'esc twice to interrupt' not in l))
         # The same menu still on screen after an approval is a stale render or a menu
         # that ignored Enter: fall through to the attention timer instead of pressing again.
