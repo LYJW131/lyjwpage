@@ -1,0 +1,403 @@
+<meta charset="utf-8">
+<title>{{TITLE}}</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Noto+Serif+SC:wght@400;600&display=swap">
+<style>
+:root {
+  --bg: #fbfbf9; --fg: #1d1f23; --muted: #6a6d73; --line: #dedfdc; --accent: #2f4f7f; --soft: #f1f1ed; --warn: #8a5a12;
+  --serif: "Source Serif 4", "Noto Serif SC", "Songti SC", serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #18191b; --fg: #e3e3e0; --muted: #9a9c9f; --line: #333538; --accent: #8fb0e0; --soft: #212225; --warn: #d9a75a; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #18191b; --fg: #e3e3e0; --muted: #9a9c9f; --line: #333538; --accent: #8fb0e0; --soft: #212225; --warn: #d9a75a; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--serif); font-size: 16.5px; line-height: 1.8; font-variant-numeric: tabular-nums; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+h1, h2, h3, p, ul, ol, pre { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button, textarea, input { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+a:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 140px max(16px, env(safe-area-inset-left, 0px)); }
+
+.top { display: flex; flex-direction: column; gap: 12px; padding-block: 56px 28px; }
+.kicker { font-size: 14px; color: var(--muted); font-style: italic; }
+h1 { font-weight: 400; font-size: clamp(32px, 6vw, 48px); line-height: 1.2; letter-spacing: -.01em; text-wrap: balance; }
+.lead { max-width: 62ch; color: var(--muted); font-style: italic; }
+.metas { display: flex; flex-wrap: wrap; gap: 4px 28px; color: var(--muted); font-size: 15px; }
+.metas b { font-weight: 600; color: var(--fg); margin-right: 6px; }
+
+.tree { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.tree .tree { border-top: 0; margin: 4px 0 0 1.4em; padding-left: 14px; border-left: 1px solid var(--line); }
+.claim { border-bottom: 1px solid var(--line); }
+.tree .tree .claim { border-bottom: 0; }
+.row { display: grid; grid-template-columns: 3.2em 1fr auto; column-gap: 8px; width: 100%; text-align: left; padding: 14px 0; align-items: baseline; }
+.tree .tree .row { padding: 8px 0; }
+.row .n { color: var(--accent); font-style: italic; font-size: 15px; }
+.row .t { min-width: 0; }
+.claim.cut > .row .t { text-decoration: line-through; color: var(--muted); }
+.row .marks { display: flex; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.row .ask-mark { color: var(--accent); }
+.row .ask-mark.open { color: var(--warn); }
+.row .chev { display: inline-block; width: 1em; text-align: center; transition: transform .15s; }
+.claim.open > .row .chev { transform: rotate(90deg); }
+.body { display: none; padding: 0 0 18px 3.6em; }
+.tree .tree .body { padding-left: 3.6em; }
+.claim.open > .body { display: block; }
+.body > * + * { margin-top: 14px; }
+.cap { font-size: 13px; color: var(--muted); font-style: italic; margin-bottom: 4px; }
+
+.ex { font-size: 14.5px; }
+.ex table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.6; }
+.ex th, .ex td { text-align: left; padding: 5px 10px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ex th { font-weight: 600; color: var(--muted); font-size: 13px; }
+.ex .arrow { color: var(--muted); }
+.mock { width: 100%; border: 1px solid var(--line); border-radius: 0; background: #fff; display: block; min-height: 80px; }
+pre, .code { font-family: var(--mono); font-size: 13px; line-height: 1.65; background: var(--soft); overflow-x: auto; }
+pre { padding: 10px 12px; white-space: pre; }
+.code { padding: 6px 0; }
+.code .ln { display: grid; grid-template-columns: 3.4em 1fr; }
+.code .ln > button { color: var(--muted); text-align: right; padding-right: 10px; font-family: var(--mono); font-size: 12px; }
+.code .ln > button:hover, .code .ln.noted > button { color: var(--accent); }
+.code .ln code { white-space: pre; padding-right: 12px; }
+.code .ln.noted code { box-shadow: inset 2px 0 var(--accent); }
+.code .note { grid-column: 2; padding: 4px 12px 8px 0; }
+.loc { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+.files li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.files .loc { overflow-wrap: anywhere; }
+.files .chg { color: var(--muted); }
+textarea.schema { width: 100%; min-height: 8em; font-family: var(--mono); font-size: 13px; line-height: 1.65; background: var(--soft); border: 1px solid var(--line); padding: 10px 12px; resize: vertical; }
+textarea.schema.edited { border-color: var(--accent); }
+textarea.say { width: 100%; min-height: 2.6em; font-size: 15px; background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 4px 0; resize: vertical; }
+.tools { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 14px; color: var(--muted); }
+.tools button:hover { color: var(--accent); }
+.tools button[aria-pressed="true"] { color: var(--warn); }
+
+.ask { border-left: 2px solid var(--accent); padding: 10px 0 12px 14px; }
+.ask.answered { border-left-color: var(--line); }
+.ask .q { font-weight: 600; }
+.ask .q .tag { color: var(--accent); font-weight: 400; font-style: italic; margin-right: 8px; }
+.ask .why { font-size: 14px; color: var(--muted); font-style: italic; margin-top: 2px; }
+.ask ul { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ask label { display: grid; grid-template-columns: 1.4em 1fr; cursor: pointer; }
+.ask input { margin: 7px 0 0; accent-color: var(--accent); }
+.ask .lbl { font-weight: 600; }
+.ask .lbl em { font-weight: 400; font-size: 13px; color: var(--muted); margin-left: 6px; }
+.ask .eff { grid-column: 2; font-size: 14.5px; color: var(--muted); }
+.ask textarea { margin-top: 8px; }
+
+.bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); z-index: 5; }
+.bar .in { max-width: 860px; margin: 0 auto; display: flex; align-items: center; gap: 8px 20px; flex-wrap: wrap; font-size: 15px; }
+.bar .count { color: var(--muted); }
+.bar .count b { color: var(--fg); font-weight: 600; }
+.bar .sp { flex: 1; }
+.bar button { color: var(--accent); }
+.bar button.primary { border: 1px solid var(--accent); padding: 2px 14px; }
+.bar button:disabled { color: var(--muted); cursor: default; }
+
+.reply { margin-top: 48px; display: none; }
+.reply.show { display: block; }
+.reply h2 { font-weight: 600; font-size: 22px; margin-bottom: 6px; }
+.reply pre { white-space: pre-wrap; font-size: 13px; margin-top: 12px; }
+.reply .tools { margin-top: 10px; }
+.status { font-size: 14px; color: var(--muted); font-style: italic; margin-top: 8px; min-height: 1.6em; }
+@media (max-width: 600px) {
+  .body, .tree .tree .body { padding-left: 0; }
+  .tree .tree { margin-left: .4em; padding-left: 10px; }
+  .row { grid-template-columns: 2.6em 1fr auto; }
+}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <p class="kicker" id="kicker"></p>
+  <h1 id="title"></h1>
+  <p class="lead" id="summary"></p>
+  <div class="metas" id="metas"></div>
+  <p class="lead">折叠着读就是摘要。点开一条看证据和下一层。带 ◆ 的条目有要你定的事；不点开也能直接在底栏跳过去答。</p>
+</header>
+<ol class="tree" id="tree"></ol>
+<section class="reply" id="reply">
+  <h2>答复</h2>
+  <p class="lead">按「提交」保存到页面，Claude 从页面直接读。保存不了时复制下来贴回线程。</p>
+  <pre id="replyText"></pre>
+  <div class="tools"><button type="button" id="save">提交</button><button type="button" id="copy">复制</button></div>
+  <p class="status" id="status" role="status"></p>
+</section>
+</div>
+<nav class="bar" aria-label="决定">
+  <div class="in">
+    <span class="count" id="count"></span>
+    <button type="button" id="next">下一个没看的 ◆</button>
+    <span class="sp"></span>
+    <button type="button" class="primary" id="compose">生成答复</button>
+  </div>
+</nav>
+
+<script type="application/json" id="plan">{{PLAN}}</script>
+<script>
+(() => {
+  const plan = JSON.parse(document.getElementById("plan").textContent);
+  const KEY = "html-plan:" + plan.id;
+  const blank = () => ({ choice: {}, note: {}, seen: {}, open: {}, cut: {}, claimNote: {}, lineNote: {}, schema: {} });
+  let state = blank();
+  try { const saved = JSON.parse(localStorage.getItem(KEY) || "null"); if (saved) state = Object.assign(blank(), saved); } catch {}
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} };
+
+  const el = (tag, attrs = {}, ...kids) => {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === "class") node.className = v;
+      else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+      else node.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid != null && kid !== false) node.append(kid);
+    return node;
+  };
+
+  const claims = new Map();
+  const numbers = new Map();
+  const parents = new Map();
+  const index = (list, prefix, parent) => list.forEach((c, i) => {
+    const n = prefix + (i + 1);
+    claims.set(c.id, c); numbers.set(c.id, n); parents.set(c.id, parent);
+    index(c.children || [], n + ".", c.id);
+  });
+  index(plan.claims, "", null);
+  const decisions = plan.decisions || [];
+  const decisionsUnder = (id) => decisions.filter((d) => d.under === id);
+  const decisionNo = (d) => decisions.indexOf(d) + 1;
+  const subtreeDecisions = (c) => [...decisionsUnder(c.id), ...(c.children || []).flatMap(subtreeDecisions)];
+  const chosen = (d) => state.choice[d.id] ?? d.default;
+
+  document.getElementById("kicker").textContent = plan.kicker || "计划书";
+  document.getElementById("title").textContent = plan.title;
+  document.getElementById("summary").textContent = plan.summary;
+  document.getElementById("metas").append(
+    el("span", {}, el("b", {}, String(plan.claims.length)), "条要点"),
+    el("span", {}, el("b", {}, String(decisions.length)), "个决定"),
+  );
+
+  const mocks = [];
+  const fitFrame = (frame) => { try { const body = frame.contentDocument.body; if (body.offsetParent === null && !frame.offsetHeight) return; frame.style.height = Math.ceil(body.getBoundingClientRect().height + 26) + "px"; } catch {} };
+  const MOCK_BASE = "<style>body{margin:12px;font:14px/1.5 system-ui,-apple-system,'PingFang SC',sans-serif;color:#1d1f23;background:#fff}</style>";
+  const mockHtml = (ex) => MOCK_BASE + (Array.isArray(ex.html) ? (ex.html[ex.by ? chosen(decisions.find((d) => d.id === ex.by)) : 0] || ex.html[0]) : ex.html);
+
+  const table = (head, rows) => el("table", {}, head ? el("thead", {}, el("tr", {}, head.map((h) => el("th", {}, h)))) : null, el("tbody", {}, rows.map((r) => el("tr", {}, r.map((cell) => el("td", {}, cell))))));
+
+  const loc = (file, symbol, line) => el("p", { class: "loc" }, file + (symbol ? "#" + symbol : "") + (line ? " · 第 " + line + " 行起" : ""));
+
+  const codeBlock = (c, ex) => {
+    const start = ex.line || 1;
+    const box = el("div", { class: "code" });
+    ex.text.split("\n").forEach((text, i) => {
+      const key = c.id + ":" + (start + i);
+      const row = el("div", { class: "ln" + (state.lineNote[key] ? " noted" : "") });
+      const area = () => {
+        const t = el("textarea", { class: "say", placeholder: "对这一行说点什么", "aria-label": "第 " + (start + i) + " 行评论" });
+        t.value = state.lineNote[key] || "";
+        t.addEventListener("input", () => { state.lineNote[key] = t.value; row.classList.toggle("noted", !!t.value.trim()); if (!t.value.trim()) delete state.lineNote[key]; persist(); });
+        return el("div", { class: "note" }, t);
+      };
+      row.append(el("button", { type: "button", title: "评论这一行", onclick: () => { const open = row.querySelector(".note"); if (open) open.remove(); else { const n = area(); row.append(n); n.querySelector("textarea").focus(); } } }, String(start + i)), el("code", {}, text || " "));
+      if (state.lineNote[key]) row.append(area());
+      box.append(row);
+    });
+    return box;
+  };
+
+  const exhibit = (c) => {
+    const ex = c.exhibit;
+    if (!ex) return null;
+    const cap = { mock: "草图", states: "状态", table: "对照", calls: "调用", schema: "数据结构 · 可直接改", code: "代码 · 点行号评论", files: "改哪些文件" }[ex.kind] || ex.kind;
+    const wrap = el("div", { class: "ex" }, el("p", { class: "cap" }, cap));
+    if (ex.kind === "mock") {
+      const frame = el("iframe", { class: "mock", sandbox: "allow-same-origin", title: "草图", style: ex.height ? "height:" + ex.height + "px" : null });
+      frame.addEventListener("load", () => { if (!ex.height) fitFrame(frame); });
+      frame.srcdoc = mockHtml(ex);
+      mocks.push({ frame, ex });
+      wrap.append(frame);
+    } else if (ex.kind === "states") {
+      wrap.append(table(["从", "当", "到"], ex.rows.map(([a, e, b]) => [a, e, b])));
+    } else if (ex.kind === "table") {
+      wrap.append(table(ex.head, ex.rows));
+    } else if (ex.kind === "calls") {
+      wrap.append(el("pre", {}, ex.text));
+    } else if (ex.kind === "schema") {
+      const t = el("textarea", { class: "schema", spellcheck: "false", "aria-label": "数据结构" });
+      t.value = state.schema[c.id] ?? ex.text;
+      t.classList.toggle("edited", t.value !== ex.text);
+      t.addEventListener("input", () => { if (t.value === ex.text) delete state.schema[c.id]; else state.schema[c.id] = t.value; t.classList.toggle("edited", t.value !== ex.text); persist(); });
+      wrap.append(t);
+    } else if (ex.kind === "code") {
+      if (ex.file) wrap.append(loc(ex.file, ex.symbol, ex.line));
+      wrap.append(codeBlock(c, ex));
+    } else if (ex.kind === "files") {
+      wrap.append(el("ul", { class: "files" }, ex.files.map((f) => el("li", {}, el("span", { class: "loc" }, f.file + (f.symbol ? "#" + f.symbol : "")), el("span", { class: "chg" }, f.change)))));
+    }
+    return wrap;
+  };
+
+  const askFrame = (d) => {
+    const frame = el("div", { class: "ask", id: "ask-" + d.id, "data-ask": d.id });
+    const name = "d-" + d.id;
+    frame.append(
+      el("p", { class: "q" }, el("span", { class: "tag" }, "◆" + decisionNo(d)), d.q),
+      d.why ? el("p", { class: "why" }, "推荐默认项：" + d.why) : null,
+      el("ul", {}, d.options.map((o, i) => {
+        const input = el("input", { type: "radio", name, value: String(i) });
+        input.checked = chosen(d) === i;
+        input.addEventListener("change", () => { state.choice[d.id] = i; state.seen[d.id] = true; persist(); refresh(); });
+        return el("li", {}, el("label", {}, input, el("span", { class: "lbl" }, o.label, i === d.default ? el("em", {}, "默认") : null), el("span", { class: "eff" }, o.effect)));
+      })),
+    );
+    const t = el("textarea", { class: "say", placeholder: "补充（可不填）", "aria-label": "◆" + decisionNo(d) + " 补充" });
+    t.value = state.note[d.id] || "";
+    t.addEventListener("input", () => { state.note[d.id] = t.value; state.seen[d.id] = true; persist(); refresh(); });
+    frame.append(t);
+    return frame;
+  };
+
+  const renderClaim = (c) => {
+    const li = el("li", { class: "claim" + (state.open[c.id] ? " open" : "") + (state.cut[c.id] ? " cut" : ""), id: "c-" + c.id });
+    const asks = subtreeDecisions(c);
+    const marks = el("span", { class: "marks" }, asks.map((d) => el("span", { class: "ask-mark", "data-mark": d.id }, "◆" + decisionNo(d))), el("span", { class: "chev", "aria-hidden": "true" }, "›"));
+    const row = el("button", { type: "button", class: "row", "aria-expanded": String(!!state.open[c.id]), onclick: () => toggle(c.id) }, el("span", { class: "n" }, numbers.get(c.id)), el("span", { class: "t" }, c.text), marks);
+    const body = el("div", { class: "body" });
+    body.append(exhibit(c));
+    decisionsUnder(c.id).forEach((d) => body.append(askFrame(d)));
+    if (c.children && c.children.length) body.append(el("ol", { class: "tree" }, c.children.map(renderClaim)));
+    const say = el("textarea", { class: "say", placeholder: "对这一条说点什么", "aria-label": numbers.get(c.id) + " 评论", hidden: !state.claimNote[c.id] });
+    say.value = state.claimNote[c.id] || "";
+    say.addEventListener("input", () => { state.claimNote[c.id] = say.value; if (!say.value.trim()) delete state.claimNote[c.id]; persist(); });
+    const talk = el("button", { type: "button", onclick: () => { say.hidden = false; say.focus(); } }, "评论");
+    const cut = el("button", { type: "button", "aria-pressed": String(!!state.cut[c.id]), onclick: () => { state.cut[c.id] = !state.cut[c.id]; if (!state.cut[c.id]) delete state.cut[c.id]; persist(); li.classList.toggle("cut", !!state.cut[c.id]); cut.setAttribute("aria-pressed", String(!!state.cut[c.id])); cut.textContent = state.cut[c.id] ? "恢复这条" : "不做这条"; } }, state.cut[c.id] ? "恢复这条" : "不做这条");
+    body.append(el("div", { class: "tools" }, talk, cut), say);
+    li.append(row, body);
+    return li;
+  };
+
+  const toggle = (id, force) => {
+    const li = document.getElementById("c-" + id);
+    const open = force ?? !li.classList.contains("open");
+    li.classList.toggle("open", open);
+    li.querySelector(":scope > .row").setAttribute("aria-expanded", String(open));
+    if (open) state.open[id] = true; else delete state.open[id];
+    persist();
+    if (open) li.querySelectorAll(":scope > .body > .ex iframe").forEach((f) => { const m = mocks.find((x) => x.frame === f); if (m && !m.ex.height) fitFrame(f); });
+  };
+
+  const reveal = (d) => {
+    let id = d.under;
+    const chain = [];
+    while (id) { chain.unshift(id); id = parents.get(id); }
+    chain.forEach((cid) => toggle(cid, true));
+    const frame = document.getElementById("ask-" + d.id);
+    frame.scrollIntoView({ behavior: "smooth", block: "center" });
+    frame.querySelector("input:checked, input")?.focus({ preventScroll: true });
+  };
+
+  document.getElementById("tree").append(...plan.claims.map(renderClaim));
+
+  const seenObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting && e.intersectionRatio >= .6) { const id = e.target.dataset.ask; if (!state.seen[id]) { state.seen[id] = true; persist(); refresh(); } }
+  }, { threshold: [.6] });
+  document.querySelectorAll("[data-ask]").forEach((n) => seenObserver.observe(n));
+
+  const refresh = () => {
+    const seen = decisions.filter((d) => state.seen[d.id]).length;
+    const count = document.getElementById("count");
+    count.replaceChildren(el("b", {}, seen + "/" + decisions.length), " 个决定看过");
+    document.getElementById("next").disabled = seen === decisions.length;
+    for (const d of decisions) {
+      document.querySelectorAll('[data-mark="' + d.id + '"]').forEach((m) => { m.classList.toggle("open", !state.seen[d.id]); m.title = state.seen[d.id] ? "看过" : "还没看"; });
+      document.getElementById("ask-" + d.id)?.classList.toggle("answered", !!state.seen[d.id]);
+    }
+    for (const m of mocks) if (m.ex.by && Array.isArray(m.ex.html)) { const html = mockHtml(m.ex); if (m.frame.srcdoc !== html) m.frame.srcdoc = html; }
+    if (document.getElementById("reply").classList.contains("show")) document.getElementById("replyText").textContent = compose();
+  };
+
+  document.getElementById("next").addEventListener("click", () => { const d = decisions.find((x) => !state.seen[x.id]); if (d) reveal(d); });
+
+  const firstLine = (s) => s.trim().split("\n").join("\n  ");
+  const compose = () => {
+    const out = ["# 计划书答复：" + plan.title, "", "计划 id：" + plan.id, ""];
+    out.push("## 决定", "");
+    for (const d of decisions) {
+      const i = chosen(d);
+      const mark = state.choice[d.id] != null && state.choice[d.id] !== d.default ? "改选" : state.seen[d.id] ? "默认，看过" : "默认，没打开";
+      out.push("- ◆" + decisionNo(d) + " " + d.q + " → " + d.options[i].label + "（" + mark + "）");
+      if (state.note[d.id]?.trim()) out.push("  补充：" + firstLine(state.note[d.id]));
+    }
+    const edits = Object.entries(state.schema);
+    if (edits.length) {
+      out.push("", "## 改动", "");
+      for (const [id, text] of edits) out.push("- " + numbers.get(id) + " 数据结构改成：", "", "```", text, "```", "");
+    }
+    const cuts = Object.keys(state.cut).filter((id) => state.cut[id]);
+    if (cuts.length) {
+      out.push("", "## 不做", "");
+      for (const id of cuts) out.push("- " + numbers.get(id) + " " + claims.get(id).text);
+    }
+    const notes = [];
+    for (const [id, text] of Object.entries(state.claimNote)) if (text.trim()) notes.push("- " + numbers.get(id) + " " + claims.get(id).text + "：" + firstLine(text));
+    for (const [key, text] of Object.entries(state.lineNote)) {
+      if (!text.trim()) continue;
+      const [id, line] = key.split(":");
+      const ex = claims.get(id).exhibit;
+      const code = ex.text.split("\n")[Number(line) - (ex.line || 1)] || "";
+      notes.push("- " + numbers.get(id) + " " + (ex.file || "代码") + " 第 " + line + " 行 `" + code.trim() + "`：" + firstLine(text));
+    }
+    if (notes.length) out.push("", "## 评论", "", ...notes);
+    return out.join("\n").replace(/\n{3,}/g, "\n\n") + "\n";
+  };
+
+  const status = (msg) => { document.getElementById("status").textContent = msg; };
+  document.getElementById("compose").addEventListener("click", () => {
+    const box = document.getElementById("reply");
+    box.classList.add("show");
+    document.getElementById("replyText").textContent = compose();
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  document.getElementById("copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(compose()); status("已复制。贴回线程即可。"); }
+    catch { status("复制没成功。手动选中上面的文字复制。"); }
+  });
+
+  let db = null;
+  const saveBtn = document.getElementById("save");
+  saveBtn.disabled = true;
+  saveBtn.title = "正在连接页面存储";
+  window.claude?.use?.("db").then(async (handle) => {
+    db = handle;
+    if (!db) { saveBtn.title = "这里存不了，用「复制」"; return; }
+    saveBtn.disabled = false;
+    saveBtn.title = "";
+    try {
+      const snap = await db.doc("plan/answers").get();
+      const data = snap.exists ? snap.data() : null;
+      if (data?.submittedAt && data.planId === plan.id) status("上次提交于 " + new Date(data.submittedAt).toLocaleString("zh-CN", { timeZone: "Asia/Singapore", hour12: false }) + " (SGT)。再提交会覆盖。");
+    } catch {}
+  }).catch(() => { saveBtn.title = "这里存不了，用「复制」"; });
+  saveBtn.addEventListener("click", async () => {
+    if (!db) return;
+    saveBtn.disabled = true;
+    status("提交中…");
+    try {
+      const submittedAt = new Date().toISOString();
+      await db.doc("plan/answers").set({ planId: plan.id, submittedAt, markdown: compose(), state: JSON.parse(JSON.stringify(state)) });
+      status("已提交，" + new Date(submittedAt).toLocaleString("zh-CN", { timeZone: "Asia/Singapore", hour12: false }) + " (SGT)。回线程说一声「答完了」，Claude 就去读。");
+    } catch (err) {
+      status("提交没成功（" + (err?.code || err?.message || "未知错误") + "）。用「复制」贴回线程。");
+    } finally { saveBtn.disabled = false; }
+  });
+
+  refresh();
+})();
+</script>
