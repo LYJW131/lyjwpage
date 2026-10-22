@@ -4,10 +4,30 @@ import { extOf, HELPER_SCOPE, JSX_EXTS, loadTs, TS_PARSE_EXTS, type Issue } from
 
 export const ALLOWED_FETCH_HOSTS = new Set(["api.music.apple.com"]);
 
-const FETCH_CALLS = new Set(["fetch", "sendBeacon", "EventSource", "WebSocket"]);
-const ABSOLUTE_URL_RE = /^\s*(?:https?|wss?):\/\/([a-zA-Z0-9.-]+)/;
+const FETCH_CALLS = new Set(["fetch", "sendBeacon", "EventSource", "WebSocket", "Request"]);
+const NETWORK_SCHEMES = new Set(["http", "https", "ws", "wss"]);
 const MERGE_CALLS = new Set(["cn", "clsx", "classNames", "twMerge"]);
 const JSON_OBJECT_IMPL = "shared/json.ts";
+
+// 按 WHATWG URL 取真实 host，不手写前缀正则：scheme 大小写、userinfo、`//` 与 `\\` 分隔都交给 URL 解析。
+// 能认出是绝对地址却证明不了 host 在允许列表里（含 userinfo、host 被模板或拼接截断、解析失败）一律不放行。
+const absoluteTarget = (raw: string, complete: boolean): { label: string; allowed: boolean } | null => {
+  let lead = 0;
+  while (lead < raw.length && raw.charCodeAt(lead) <= 0x20) lead++;
+  const text = raw.slice(lead).replace(/[\t\n\r]/g, "").replace(/\\/g, "/");
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(text)?.[1]?.toLowerCase();
+  const protocolRelative = text.startsWith("//");
+  if (!protocolRelative && !(scheme !== undefined && (NETWORK_SCHEMES.has(scheme) || text.slice(scheme.length + 1).startsWith("//")))) return null;
+  const unproven = { label: text.slice(0, 60), allowed: false };
+  if (!complete && !/[/?#]/.test(text.replace(/^(?:[a-z][a-z0-9+.-]*:)?\/*/i, ""))) return unproven;
+  try {
+    const url = protocolRelative ? new URL(text, "https://placeholder.invalid") : new URL(text);
+    if (url.username || url.password) return unproven;
+    return { label: url.hostname, allowed: ALLOWED_FETCH_HOSTS.has(url.hostname) };
+  } catch {
+    return unproven;
+  }
+};
 
 export function checkFetchHost(file: string, text: string) {
   const ext = extOf(file);
@@ -15,10 +35,24 @@ export function checkFetchHost(file: string, text: string) {
   const ts = loadTs();
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const issues: Issue[] = [];
-  const literalText = (arg: TS.Expression) => {
-    if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) return arg.text;
-    if (ts.isTemplateExpression(arg)) return arg.head.text;
+  const literalPrefix = (arg: TS.Expression): { text: string; complete: boolean } | null => {
+    if (ts.isParenthesizedExpression(arg)) return literalPrefix(arg.expression);
+    if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) return { text: arg.text, complete: true };
+    if (ts.isTemplateExpression(arg)) return { text: arg.head.text, complete: false };
+    if (ts.isBinaryExpression(arg) && arg.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const left = literalPrefix(arg.left);
+      return left && { text: left.text, complete: false };
+    }
     return null;
+  };
+  const requestTarget = (arg: TS.Expression): { label: string; allowed: boolean } | null => {
+    const inner = ts.isParenthesizedExpression(arg) ? arg.expression : arg;
+    if (ts.isNewExpression(inner) && ts.isIdentifier(inner.expression) && inner.expression.text === "URL" && inner.arguments?.length) {
+      const [input, base] = inner.arguments;
+      return requestTarget(input) ?? (base ? requestTarget(base) : null);
+    }
+    const prefix = literalPrefix(inner);
+    return prefix && absoluteTarget(prefix.text, prefix.complete);
   };
   const visit = (node: TS.Node) => {
     if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments && node.arguments.length > 0) {
@@ -26,11 +60,10 @@ export function checkFetchHost(file: string, text: string) {
       const name = ts.isIdentifier(callee) ? callee.text
         : ts.isPropertyAccessExpression(callee) ? callee.name.text : null;
       if (name && FETCH_CALLS.has(name)) {
-        const raw = literalText(node.arguments[0]);
-        const match = raw && ABSOLUTE_URL_RE.exec(raw);
-        if (match && !ALLOWED_FETCH_HOSTS.has(match[1])) {
+        const target = requestTarget(node.arguments[0]);
+        if (target && !target.allowed) {
           const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-          issues.push({ file, line: line + 1, rule: "site-fetch-host", message: `站点不字面量请求主机 ${match[1]}：后端调用走 backendUrl / workerUrl(PUBLIC_BACKEND_URL)，经 Service Binding 分流（跨域 fetch 会改写 CF-Connecting-IP，限流失效）；第三方 API 进后端 Worker，浏览器必须直连的登记进 rules-check 的 ALLOWED_FETCH_HOSTS（AGENTS.md「禁区」）。` });
+          issues.push({ file, line: line + 1, rule: "site-fetch-host", message: `站点不字面量请求主机 ${target.label}（证明不了在允许列表内也算）：后端调用走 backendUrl / workerUrl(PUBLIC_BACKEND_URL)，经 Service Binding 分流（跨域 fetch 会改写 CF-Connecting-IP，限流失效）；第三方 API 进后端 Worker，浏览器必须直连的登记进 rules-check 的 ALLOWED_FETCH_HOSTS（AGENTS.md「禁区」）。` });
         }
       }
     }

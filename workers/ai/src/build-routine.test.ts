@@ -17,7 +17,7 @@ for (const path of [".github/workflows/ci.yml", ".claude/settings.json", "AGENTS
 }
 
 test("allowed paths cover source, docs, assets, worker source and tests", () => {
-  for (const path of ["src/app/[slug]/page.tsx", "public/photo.png", "docs/design.md", "shared/types.ts", "workers/ai/src/tools/a.ts", "src/tests/route.test.ts"]) assert.equal(allowedBuildPath(path), true);
+  for (const path of ["src/app/[slug]/page.tsx", "public/photo.png", "docs/layout.md", "shared/types.ts", "workers/ai/src/tools/a.ts", "src/tests/route.test.ts"]) assert.equal(allowedBuildPath(path), true);
 });
 
 test("plans validate all fields and protected paths in prose", () => {

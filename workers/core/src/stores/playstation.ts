@@ -1,4 +1,5 @@
-import { PLAYING_TAG, TROPHIES_TAG } from "@shared/live-events";
+import { INGEST_FUTURE_SKEW_MS } from "@shared/freshness";
+import { PLAYING_TAG,TROPHIES_TAG } from "@shared/live-events";
 import { getPlaystationPlayedGames, getPlaystationPresence, getPlaystationTrophies } from "../playstation-store";
 import { summarizeTrophies, trophiesContent } from "@shared/trophies";
 import type {
@@ -44,9 +45,11 @@ export async function commitPreparedPlaystationReport(prepared: PreparedPlaystat
   const tags: string[] = [];
 
   // 晚到的信封 receivedAt 是现在。旧 observedAt 若落库，会按到达时刻把游戏道倒回去。
-  const presenceFresh = incomingPresence != null && (previousPresence == null || incomingPresence.observedAt > previousPresence.observedAt);
-  const playedGamesFresh = incomingPlayedGames != null && (previousPlayedGames == null || incomingPlayedGames.observedAt > previousPlayedGames.observedAt);
-  const trophiesFresh = incomingTrophies != null && (previousTrophies == null || incomingTrophies.observedAt > previousTrophies.observedAt);
+  // 超前接收时刻的水位按 0 算：已落库的毒值不会否决之后的真实上报。
+  const plausibleAt = (observedAt: number) => (observedAt > receivedAt + INGEST_FUTURE_SKEW_MS ? 0 : observedAt);
+  const presenceFresh = incomingPresence != null && (previousPresence == null || plausibleAt(incomingPresence.observedAt) > plausibleAt(previousPresence.observedAt));
+  const playedGamesFresh = incomingPlayedGames != null && (previousPlayedGames == null || plausibleAt(incomingPlayedGames.observedAt) > plausibleAt(previousPlayedGames.observedAt));
+  const trophiesFresh = incomingTrophies != null && (previousTrophies == null || plausibleAt(incomingTrophies.observedAt) > plausibleAt(previousTrophies.observedAt));
   let presenceChanged = false;
   let playedGamesChanged = false;
   let trophiesChanged = false;

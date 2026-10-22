@@ -4,7 +4,7 @@ import { parseArgs } from "node:util";
 import { BUILD_WATCH_PATHS, workersFor } from "./build-watch-paths.ts";
 import { buildCoverage, summarizeChecks } from "./pr-gate/checks.ts";
 import { decide } from "./pr-gate/decide.ts";
-import { changedPaths, client, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull, type Review, type ReviewComment, type IssueComment, type Status } from "./pr-gate/github.ts";
+import { changedPaths, client, isTrustedAuthor, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull, type Review, type ReviewComment, type IssueComment, type Status } from "./pr-gate/github.ts";
 import { reviewerSummary } from "./pr-gate/reviewers.ts";
 import { buildThreads, threadResolution } from "./pr-gate/threads.ts";
 import { tierOf } from "./pr-gate/tier.ts";
@@ -25,7 +25,9 @@ ready 只管机器核得了的门槛；分档提示写着要 lyjw 看图点头�
 
 JSON 里有：
   head、draft、mergeable、labels / baselineException
-  tier          按改动路径分档：docs（只改 md 与 .claude/ 下的非脚本文件）、ui（界面）、logic（逻辑）、ui+logic；
+  author        PR 作者的 login、数字 id、是不是 lyjw 的账号（trusted）；不是的整个 PR 按逻辑档走回执与判定，--need、--no-judge 不放行
+  tier          按改动路径分档：docs（只改 md 与 .claude/ 下的非可执行文件）、ui（界面）、logic（逻辑，含 .claude 的 settings、launch、hooks、feature-map，
+                docs/ 下的脚本与依赖清单，public/ 下的 js、html、_headers）、ui+logic；
                 决定默认的 --need 与 --judge，hint 写这一档的合并门槛
   checks        head 上每项检查（check run 与 commit status，同名只认最新），pending 与 failing 单列；
                 REQUIRED_CHECKS 里的检查 head 上还没出现时不算 ready
@@ -43,9 +45,9 @@ JSON 里有：
 
 选项：
   --pr <号>            PR 号（必填）
-  --need <等级|none>   回执至少要到的等级，覆盖分档的默认（ui 要 live-ui-verified，logic 要 unit-test-verified，docs 不要回执）
+  --need <等级|none>   回执至少要到的等级，覆盖分档的默认（ui 要 live-ui-verified，logic 要 unit-test-verified，docs 不要回执）；作者不是 lyjw 的账号时不生效
   --judge / --no-judge 要不要等机器评审并要一条 PASS 的判定，覆盖分档的默认（logic 默认要）；
-                       主线程判为小改动时用 --no-judge
+                       主线程判为小改动时用 --no-judge；作者不是 lyjw 的账号时不生效
   --help               显示本说明
 
 回执与判定的补丁比对用本地 git：先 git fetch origin main。`;
@@ -69,9 +71,10 @@ export async function gate(
     threadResolution(gh, pr),
   ]);
   const paths = changedPaths(files);
-  const tier = tierOf(paths);
-  const wantNeed = need === undefined ? tier.need : need;
-  const wantJudge = judge ?? tier.judge;
+  const trustedAuthor = isTrustedAuthor(pull);
+  const tier = tierOf(paths, { trustedAuthor });
+  const wantNeed = trustedAuthor && need !== undefined ? need : tier.need;
+  const wantJudge = trustedAuthor ? (judge ?? tier.judge) : true;
   const [builds, receipt, rules] = await Promise.all([
     buildCoverage({ gh, files: paths, head, headRuns: runs.check_runs ?? [], commits: commits.map((commit) => commit.sha) }),
     wantNeed === null
@@ -96,6 +99,7 @@ export async function gate(
     draft: pull.draft ?? false,
     mergeable: pull.mergeable,
     mergeableState: pull.mergeable_state ?? null,
+    author: { login: pull.user?.login ?? null, id: pull.user?.id ?? null, trusted: trustedAuthor },
     labels,
     baselineException: labels.includes("baseline-exception"),
     tier: { ...tier, need: wantNeed, judge: wantJudge },

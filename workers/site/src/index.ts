@@ -27,6 +27,7 @@ import {
   readImageBytes,
   variantShape,
 } from "@/lib/image-proxy";
+import { remoteImageDataUri } from "@/lib/remote-image";
 import { LYRICS_PATH } from "@shared/apple-music-paths";
 import type { LyricsResult } from "@shared/lyrics-ttml";
 import { STALE_NEXT_SCRIPT, archivedAssetKeys, isStaleNextScript } from "@/lib/asset-archive";
@@ -369,13 +370,11 @@ export class RenderedSite extends WorkerEntrypoint<Env> implements SiteCacheRpc 
       asset: async (src) => {
         try {
           const target = new URL(src, "https://site.internal");
+          if (target.origin !== "https://site.internal") return await remoteImageDataUri(target.href);
           const init = { signal: AbortSignal.timeout(FIRST_SCREEN_FETCH_TIMEOUT_MS) };
-          const response =
-            target.origin !== "https://site.internal"
-              ? await fetch(target, init)
-              : imageObjectKeyFromPath(target.pathname)
-                ? await ctx.exports.ImageVariants.fetch(imageObjectRequest(new Request(target, init)))
-                : await env.ASSETS.fetch(new Request(target, init));
+          const response = imageObjectKeyFromPath(target.pathname)
+            ? await ctx.exports.ImageVariants.fetch(imageObjectRequest(new Request(target, init)))
+            : await env.ASSETS.fetch(new Request(target, init));
           if (!response.ok) console.warn("[site-asset] inline failed", { host: target.host, status: response.status });
           return await dataUri(response, "application/octet-stream");
         } catch (error) {

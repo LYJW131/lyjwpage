@@ -10,6 +10,9 @@ export const BOTS: Record<string, string> = {
 
 export const CODEX_MAX_ROUNDS = 3;
 
+// claude 的评审以「## Code review」汇总评论交付，devin 只交 pull review；报错、@claude 问答这类普通评论不算审过一次。
+const REVIEW_COMMENT: Partial<Record<string, RegExp>> = { claude: /^## Code review/m, devin: /(?!)/ };
+
 type CodexState = { commit_sha?: string | null; status?: string | null };
 
 function codexState(comments: IssueComment[]): CodexState | null {
@@ -40,7 +43,8 @@ export function reviewerSummary(reviews: Review[], comments: IssueComment[], hea
   const reviewers: Reviewer[] = [];
   for (const [login, bot] of Object.entries(BOTS)) {
     const own = reviews.filter((review) => review.user?.login === login && review.commit_id);
-    const commented = comments.some((comment) => comment.user?.login === login);
+    const marker = REVIEW_COMMENT[bot];
+    const commented = comments.some((comment) => comment.user?.login === login && (!marker || marker.test(comment.body ?? "")));
     if (own.length === 0 && !commented) continue;
     let lastReviewed = own.at(-1)?.commit_id ?? null;
     let codex = {};

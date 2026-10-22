@@ -1,4 +1,5 @@
 import { IMAGE_OBJECT_KEY, IMAGE_PATH_PREFIX } from "@shared/asset-url";
+import { PSN_AVATAR_HOST } from "@shared/psn-image";
 import { BodyTooLargeError, readBoundedBytes } from "@shared/read-bounded-bytes";
 
 export const IMAGE_PROXY_PATH = "/image";
@@ -19,7 +20,7 @@ export type ImageFit = (typeof IMAGE_FIT_VALUES)[number];
 
 export const EXACT_IMAGE_HOSTS = new Set([
   "avatars.githubusercontent.com",
-  "psn-rsc.prod.dl.playstation.net",
+  PSN_AVATAR_HOST,
 ]);
 
 export const SUFFIX_IMAGE_HOSTS = ["blobstore.apple.com", "mzstatic.com"];
@@ -38,7 +39,10 @@ function isIpLiteralHost(host: string): boolean {
   return IPV4_LITERAL.test(host) || host.startsWith("[") || host === "::1";
 }
 
-export function parseImageSource(raw: string | null | undefined): URL | null {
+export function parseImageSource(
+  raw: string | null | undefined,
+  allowHost: (hostname: string) => boolean = allowedImageHost,
+): URL | null {
   if (!raw) return null;
   let url: URL;
   try {
@@ -52,7 +56,7 @@ export function parseImageSource(raw: string | null | undefined): URL | null {
   const host = url.hostname.toLowerCase();
   if (!host || host === "localhost" || host.endsWith(".localhost")) return null;
   if (isIpLiteralHost(host)) return null;
-  if (!allowedImageHost(host)) return null;
+  if (!allowHost(host)) return null;
   return url;
 }
 
@@ -144,6 +148,7 @@ export async function fetchImageUpstream(
   source: URL,
   fetchImpl: typeof fetch = fetch,
   deadline = Date.now() + IMAGE_UPSTREAM_TIMEOUT_MS,
+  allowHost: (hostname: string) => boolean = allowedImageHost,
 ): Promise<Response> {
   let url = source;
   for (let hop = 0; hop <= IMAGE_MAX_REDIRECTS; hop += 1) {
@@ -157,7 +162,7 @@ export async function fetchImageUpstream(
     const location = response.headers.get("location");
     if (response.status >= 300 && response.status < 400 && location) {
       await response.body?.cancel().catch(() => undefined);
-      const next = parseImageSource(new URL(location, url).href);
+      const next = parseImageSource(new URL(location, url).href, allowHost);
       if (!next) throw new ImagePolicyError("source");
       url = next;
       continue;

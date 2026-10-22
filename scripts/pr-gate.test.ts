@@ -18,6 +18,8 @@ const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
 const OLDER = "c".repeat(40);
 const lyjw = { login: "LYJW131", id: 153256373 };
+const stranger = { login: "evil-contributor", id: 999 };
+const trusted = { trustedAuthor: true };
 const codex = { login: "chatgpt-codex-connector[bot]", id: 199175422 };
 const devin = { login: "devin-ai-integration[bot]", id: 158243242 };
 const claude = { login: "claude[bot]", id: 209825114 };
@@ -33,17 +35,62 @@ const build = (worker: string, conclusion: string | null, extra: Partial<CheckRu
 });
 
 test("分档：只改 md 与 .claude 是 docs，界面与逻辑按路径分，默认的回执等级与判定跟着档走", () => {
-  const docs = tierOf(["README.md", "docs/workers-builds.md", "docs/architecture.json", ".claude/skills/x/feature-map.json", "DESIGN.md"]);
+  const docs = tierOf(["README.md", "docs/workers-builds.md", "docs/architecture.json", ".claude/skills/x/SKILL.md", ".claude/rules/images.md", "DESIGN.md"], trusted);
   assert.deepEqual([docs.name, docs.need, docs.judge], ["docs", null, false]);
-  const ui = tierOf(["src/components/card.tsx", "src/app/site.css", "public/sw.js", "docs/explainer/v2/index.html", "docs/a.md"]);
+  const ui = tierOf(["src/components/card.tsx", "src/app/site.css", "public/icon.png", "docs/explainer/v2/index.html", "docs/explainer/v2/tools/x.mjs", "docs/a.md"], trusted);
   assert.deepEqual([ui.name, ui.need, ui.judge, ui.logic], ["ui", "live-ui-verified", false, []]);
-  const logic = tierOf(["src/lib/x.ts", "src/app/api/version/route.ts", "workers/core/src/a.ts", "scripts/pr-gate.ts"]);
+  const logic = tierOf(["src/lib/x.ts", "src/app/api/version/route.ts", "workers/core/src/a.ts", "scripts/pr-gate.ts"], trusted);
   assert.deepEqual([logic.name, logic.need, logic.judge, logic.ui], ["logic", "unit-test-verified", true, []]);
-  const skillScripts = tierOf([".claude/skills/x/check.py", ".claude/skills/x/errors-query.js", ".claude/skills/x/SKILL.md"]);
+  const skillScripts = tierOf([".claude/skills/x/check.py", ".claude/skills/x/errors-query.js", ".claude/skills/x/SKILL.md"], trusted);
   assert.deepEqual(skillScripts.logic, [".claude/skills/x/check.py", ".claude/skills/x/errors-query.js"]);
-  const both = tierOf(["src/components/card.tsx", "shared/json.ts"]);
+  const both = tierOf(["src/components/card.tsx", "shared/json.ts"], trusted);
   assert.deepEqual([both.name, both.need, both.judge], ["ui+logic", "live-ui-verified", true]);
   assert.match(both.hint, /lyjw 看图点头/);
+});
+
+test("分档：改会话执行什么命令的 .claude 配置与 hooks 按逻辑档，不论扩展名", () => {
+  for (const file of [".claude/settings.json", ".claude/settings.local.json", ".claude/launch.json", ".claude/hooks/run.bash", ".claude/hooks/run", ".claude/skills/x/feature-map.json"]) {
+    const tier = tierOf([file], trusted);
+    assert.deepEqual([file, tier.name, tier.need, tier.judge], [file, "logic", "unit-test-verified", true]);
+  }
+  assert.equal(tierOf([".claude/skills/x/SKILL.md", ".claude/rules/images.md", ".claude/memory/a.md"], trusted).name, "docs");
+});
+
+test("分档：docs/ 下的脚本与依赖清单按逻辑档，docs 下的 md 仍是 docs，讲解动画 v2 仍是 ui", () => {
+  for (const file of [
+    "docs/explainer/render/serve.mjs",
+    "docs/explainer/render/build-artifact.py",
+    "docs/explainer/render/run.sh",
+    "docs/explainer/render/lib/x.js",
+    "docs/explainer/render/package.json",
+    "docs/explainer/render/pnpm-lock.yaml",
+    "docs/explainer/render/node_modules/playwright-core/index.mjs",
+  ]) {
+    const tier = tierOf([file], trusted);
+    assert.deepEqual([file, tier.name, tier.judge], [file, "logic", true]);
+  }
+  assert.equal(tierOf(["docs/explainer/AGENTS.md", "docs/ops-facts.md", "docs/diagrams/a.svg"], trusted).name, "docs");
+  const v2 = tierOf(["docs/explainer/v2/music/ch08.js", "docs/explainer/v2/tools/x.mjs"], trusted);
+  assert.deepEqual([v2.name, v2.need, v2.judge], ["ui", "live-ui-verified", false]);
+});
+
+test("分档：public/ 下的 js、html、_headers 按逻辑档，纯图片仍是界面档", () => {
+  for (const file of ["public/sw.js", "public/_headers", "public/offline.html", "public/evil/x.mjs", "public/sub/_headers"]) {
+    const tier = tierOf([file], trusted);
+    assert.deepEqual([file, tier.name, tier.judge], [file, "logic", true]);
+  }
+  const images = tierOf(["public/icon.png", "public/cards/a.svg"], trusted);
+  assert.deepEqual([images.name, images.need, images.judge], ["ui", "live-ui-verified", false]);
+  const mixed = tierOf(["public/icon.png", "public/sw.js"], trusted);
+  assert.deepEqual([mixed.name, mixed.ui, mixed.logic], ["ui+logic", ["public/icon.png"], ["public/sw.js"]]);
+});
+
+test("分档：作者不是 lyjw 的账号时，只改 md 也升到逻辑档，界面档也要判定", () => {
+  const docs = tierOf(["AGENTS.md", ".claude/skills/x/SKILL.md"], { trustedAuthor: false });
+  assert.deepEqual([docs.name, docs.need, docs.judge, docs.logic], ["logic", "unit-test-verified", true, ["AGENTS.md", ".claude/skills/x/SKILL.md"]]);
+  assert.match(docs.hint, /作者不是 lyjw 的账号/);
+  const ui = tierOf(["src/components/card.tsx"], { trustedAuthor: false });
+  assert.deepEqual([ui.name, ui.need, ui.judge], ["ui", "live-ui-verified", true]);
 });
 
 test("严重度：Codex 徽章、Claude 圆圈、Devin 种类与圆圈、其他机器人的文字标签", () => {
@@ -199,7 +246,7 @@ function fakeFetch(routes: Record<string, unknown>) {
 
 function pullRoutes(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    "pulls/7": { number: 7, title: "t", state: "open", draft: false, mergeable: true, mergeable_state: "clean", head: { sha: HEAD }, labels: [] },
+    "pulls/7": { number: 7, title: "t", state: "open", draft: false, mergeable: true, mergeable_state: "clean", head: { sha: HEAD }, labels: [], user: lyjw },
     "pulls/7/files": FILES(["docs/a.md"]),
     "pulls/7/commits": [{ sha: HEAD }],
     "pulls/7/reviews": [],
@@ -222,7 +269,7 @@ test("只改文档、CI 绿、线程都解决时 ready，不要回执", async ()
 
 test("逻辑档：检查在跑、线程没解决、Codex 没审到 head、没回执与判定，逐条进 todo", async () => {
   const routes = pullRoutes({
-    "pulls/7": { number: 7, title: "t", state: "open", draft: true, mergeable: false, mergeable_state: "dirty", head: { sha: HEAD }, labels: [{ name: "baseline-exception" }] },
+    "pulls/7": { number: 7, title: "t", state: "open", draft: true, mergeable: false, mergeable_state: "dirty", head: { sha: HEAD }, labels: [{ name: "baseline-exception" }], user: lyjw },
     "pulls/7/files": FILES(["workers/collector/src/a.ts"]),
     "pulls/7/reviews": [{ user: codex, commit_id: OLD }],
     "pulls/7/comments": [{ id: 11, user: codex, body: codexBody("P1"), html_url: "u", path: "a.ts", line: 1, created_at: "2026-10-19T00:00:00Z" }],
@@ -284,6 +331,52 @@ test("--no-judge 与 --need 覆盖分档；线程解决状态读不到时进 tod
   assert.match(result.todo[0], /拿不到评审线程的解决状态/);
 });
 
+test("作者：输出带作者与是否可信；不是 lyjw 账号的只改文档 PR 不 ready，--need none 与 --no-judge 也不放行", async () => {
+  const own = await gate({ pr: 7 }, { fetch: fakeFetch(pullRoutes()), patchId: () => null });
+  assert.deepEqual(own.author, { login: "LYJW131", id: 153256373, trusted: true });
+  assert.equal(own.ready, true);
+
+  for (const user of [stranger, { login: "LYJW131", id: 1 }, null, undefined]) {
+    const routes = pullRoutes({
+      "pulls/7": { number: 7, title: "t", state: "open", draft: false, mergeable: true, mergeable_state: "clean", head: { sha: HEAD }, labels: [], user },
+      "pulls/7/files": FILES(["AGENTS.md", ".claude/skills/lyjwpage-verify/SKILL.md"]),
+    });
+    const result = await gate({ pr: 7, need: null, judge: false }, { fetch: fakeFetch(routes), patchId: () => null });
+    assert.equal(result.author.trusted, false);
+    assert.deepEqual([result.tier.name, result.tier.need, result.tier.judge], ["logic", "unit-test-verified", true]);
+    assert.equal(result.ready, false);
+    const todo = result.todo.join("\n");
+    assert.match(todo, /没有验证回执/);
+    assert.match(todo, /Codex 还没审到 head/);
+  }
+});
+
+test("claude 与 devin 的普通评论不算审过一次，要 pull review 或「## Code review」汇总评论", async () => {
+  const stray = reviewerSummary(
+    [],
+    [
+      { user: claude, body: "Claude encountered an error" },
+      { user: claude, body: "Sure, @lyjw 这样改。" },
+      { user: devin, body: "## Code review\n\nDevin session started." },
+    ],
+    HEAD,
+  );
+  assert.deepEqual(stray, []);
+  assert.deepEqual(reviewerSummary([], [{ user: claude, body: "<!-- x -->\r\n## Code review\r\n\nNo issues found." }], HEAD).map((r) => r.bot), ["claude"]);
+  assert.deepEqual(reviewerSummary([{ user: devin, commit_id: OLD }], [], HEAD).map((r) => r.bot), ["devin"]);
+
+  const routes = pullRoutes({
+    "pulls/7/files": FILES(["workers/collector/src/a.ts"]),
+    "issues/7/comments": [
+      { user: claude, body: "Something went wrong" },
+      { user: devin, body: "Devin session failed to start." },
+    ],
+  });
+  const todo = (await gate({ pr: 7, need: null }, { fetch: fakeFetch(routes), patchId: () => null })).todo.join("\n");
+  assert.match(todo, /claude 还没评审这个 PR/);
+  assert.match(todo, /devin 还没评审这个 PR/);
+});
+
 test("命令行：缺 --pr、等级写错、未知选项都按用法错误退出 2", () => {
   const script = new URL("./pr-gate.ts", import.meta.url).pathname;
   for (const args of [[], ["--pr"], ["--pr", "7", "--need", "live"], ["--pr", "7", "--level", "live-ui-verified"]]) {
@@ -295,7 +388,7 @@ test("命令行：缺 --pr、等级写错、未知选项都按用法错误退出
 test("规则漂移：分支起点以来 main 改了规则文件时进 notes 不挡 ready，读不到时只记 error", async () => {
   const START = "d".repeat(40);
   const routes = pullRoutes({
-    "pulls/7": { number: 7, title: "t", state: "open", draft: false, mergeable: true, head: { sha: HEAD }, base: { ref: "main" }, labels: [] },
+    "pulls/7": { number: 7, title: "t", state: "open", draft: false, mergeable: true, head: { sha: HEAD }, base: { ref: "main" }, labels: [], user: lyjw },
     "pulls/7/commits": [{ sha: HEAD, parents: [{ sha: START }] }],
     [`compare/${START}...main`]: {
       files: [...FILES(["AGENTS.md", "src/lib/x.ts", ".claude/skills/lyjwpage-verify/SKILL.md", ".claude/rules/images.md"]), { filename: "docs/x.md", previous_filename: "workers/ai/AGENTS.md" }],
