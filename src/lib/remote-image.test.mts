@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ImagePolicyError, ImageUpstreamError } from "./image-proxy.ts";
+import { ImagePolicyError, ImageUpstreamError, parseImageSource } from "./image-proxy.ts";
 import { remoteImageDataUri } from "./remote-image.ts";
 
 const png = new Uint8Array([137, 80, 78, 71]);
@@ -49,4 +49,22 @@ test("远程内联：重定向出白名单、超大响应都拒绝", async () =>
     pull(controller) { controller.enqueue(new Uint8Array(1024 * 1024)); },
   })));
   await assert.rejects(remoteImageDataUri(ALLOWED, streamed.impl), ImageUpstreamError);
+});
+
+test("远程内联：PSN 带尺寸图床与 Quest 封面链可内联，公开 /image 代理仍不认这些主机", async () => {
+  for (const src of ["https://image.api.playstation.com/x.png?w=224&h=224", "https://psnobj.prod.dl.playstation.net/x.png"]) {
+    const { impl } = recordingFetch(() => new Response(png, { headers: { "Content-Type": "image/png" } }));
+    assert.match(await remoteImageDataUri(src, impl), /^data:image\/png;base64,/, src);
+  }
+  const quest = "https://www.oculus.com/rich_presence/image/1/";
+  const hops = [
+    new Response(null, { status: 302, headers: { Location: "https://scontent-ord5-1.oculuscdn.com/v/x.webp" } }),
+    new Response(png, { headers: { "Content-Type": "image/webp" } }),
+  ];
+  const chain = recordingFetch(() => hops.shift()!);
+  assert.match(await remoteImageDataUri(quest, chain.impl), /^data:image\/webp;base64,/);
+  assert.deepEqual(chain.calls, [quest, "https://scontent-ord5-1.oculuscdn.com/v/x.webp"]);
+  for (const src of ["https://media.discordapp.net/external/a/https/www.oculus.com/x", "https://image.api.playstation.com/x.png", quest]) {
+    assert.equal(parseImageSource(src), null, src);
+  }
 });
