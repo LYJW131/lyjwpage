@@ -65,10 +65,15 @@ run_gate() {
 }
 
 gates=(lint typecheck workspace_tests script_tests docs design rules copy baselines)
-status=0
+pids=()
 for gate in "${gates[@]}"; do
   echo "Starting $gate"
-  run_gate "$gate" || status=1
+  run_gate "$gate" &
+  pids+=("$!")
+done
+status=0
+for pid in "${pids[@]}"; do
+  wait "$pid" || status=1
 done
 for gate in "${gates[@]}"; do
   echo "::group::$gate"
