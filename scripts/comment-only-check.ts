@@ -44,8 +44,9 @@
 // 「«注释»」，与空行不同。判定宁滥勿缺：`///`、`/**` 写法都认，`@ts-*` 与 `__PURE__` 在注释里任何位置都算。
 // 代价：紧挨着指令的那行代码被重新排版、指令与目标行之间加了普通注释或空行，也报「指令性注释有改动」。
 //
-// 已知局限：Swift 的正则字面量里若含 `//`（如 `#/a//b/#`），后半段会被当成行注释；
-// 不在 TS_DIRECTIVES、SWIFT_DIRECTIVES 里的注释一律按普通注释处理。
+// Swift 的 `#/…/#` 正则字面量（井号个数不限）按转义读完；正文里含 `//`、`/*`、`*/` 时注释边界无法证明，
+// 两边任一边出现就报解析失败，不给结论。不带井号的 `/…/` 正则字面量不认得。
+// 已知局限：不在 TS_DIRECTIVES、SWIFT_DIRECTIVES 里的注释一律按普通注释处理。
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -86,7 +87,8 @@ export function compareContents({ ts, file, before, after, loose = false }: { ts
   } else {
     return { status: "unsupported" };
   }
-  if (b.errors.length > a.errors.length) return { status: "parse-error", detail: b.errors.slice(0, 3).join("\n") };
+  const unprovable = ext === SWIFT_EXTENSION ? [...b.errors, ...a.errors] : b.errors.length > a.errors.length ? b.errors : [];
+  if (unprovable.length > 0) return { status: "parse-error", detail: unprovable.slice(0, 3).join("\n") };
   if ((a.key ?? a.code) !== (b.key ?? b.code)) return { status: "code", before: a.code, after: b.code };
   if (JSON.stringify(a.directives) !== JSON.stringify(b.directives)) {
     return { status: "directive", before: a.directives, after: b.directives };

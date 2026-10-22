@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { classifyRequest, consoleClean, consoleProblems, documentCommit, findJumps, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseArgs, parseWidths, requiredCardIds, resolvePlaywright, skewVerdict, staleAssetHtml, textJumps, updateOrigin } from "./site-verify.ts";
+import { classifyRequest, consoleClean, consoleProblems, documentCommit, findJumps, isEnvNoise, loadFeatureMap, navOrigin, newSink, parseCommand, parseWidths, requiredCardIds, resolvePlaywright, skewVerdict, staleAssetHtml, textJumps, updateOrigin } from "./site-verify.ts";
 import { STATUS_VIEWS } from "../shared/status-views.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -19,17 +19,30 @@ function run(args: string[]) {
   return spawnSync("node", [SCRIPT, ...args], { cwd: ROOT, encoding: "utf8", timeout: 60_000 });
 }
 
+function runAsync(args: string[]) {
+  return new Promise<{ status: number | string | null | undefined; stdout: string; stderr: string }>((resolve) => {
+    execFile("node", [SCRIPT, ...args], { cwd: ROOT, encoding: "utf8", timeout: 60_000 }, (error, stdout, stderr) => resolve({ status: error ? error.code : 0, stdout, stderr }));
+  });
+}
+
+async function servePage(t: { after: (fn: () => void) => void }, html: string) {
+  const server = http.createServer((_, res) => res.writeHead(200, { "content-type": "text/html" }).end(html));
+  await new Promise<void>((resolve) => server.listen(0, () => resolve()));
+  t.after(() => server.close());
+  return `http://localhost:${(server.address() as AddressInfo).port}`;
+}
+
 function headlessChromeCount() {
   const result = spawnSync("pgrep", ["-if", "chrom.*--headless"], { encoding: "utf8" });
   return result.status === 0 ? result.stdout.trim().split("\n").filter(Boolean).length : 0;
 }
 
-test("parseArgs 解析 --key value、--key=value、布尔开关与位置参数", () => {
-  const { flags, positional } = parseArgs(["cards", "--url", "http://x:1", "--theme=dark", "--list", "--card", "a,b"]);
-  assert.deepEqual(positional, ["cards"]);
+test("parseCommand 按子命令解析 --key value、--key=value 与布尔开关", () => {
+  const { command, flags } = parseCommand(["cards", "--url", "http://x:1/", "--theme=dark", "--ssr", "--card", "a,b"]);
+  assert.equal(command, "cards");
   assert.equal(flags.url, "http://x:1");
   assert.equal(flags.theme, "dark");
-  assert.equal(flags.list, true);
+  assert.equal(flags.ssr, true);
   assert.equal(flags.card, "a,b");
 });
 
@@ -127,11 +140,45 @@ test("--help 退出 0 并列出全部子命令", () => {
 test("shot 的 --card 缺值时退出 2，不退成整页截图", (t) => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-card-"));
   t.after(() => fs.rmSync(out, { recursive: true, force: true }));
-  const result = run(["shot", "--url", "data:text/html,<title>x</title>", "--out", out, "--card"]);
+  const result = run(["shot", "--url", "http://localhost:1", "--out", out, "--card"]);
   assert.equal(result.status, 2);
-  assert.match(JSON.parse(result.stdout).error, /--card 后面缺卡片 id/);
+  assert.match(JSON.parse(result.stdout).error, /--card/);
   assert.deepEqual(fs.readdirSync(out), []);
 });
+
+const REJECTED_ARGS: [string, string[], RegExp][] = [
+  ["数值选项缺值", ["shot", "--out", "/tmp/sv-never", "--settle"], /--settle/],
+  ["数值选项给非数字", ["shot", "--out", "/tmp/sv-never", "--settle", "abc"], /--settle .*abc/],
+  ["数值选项越界", ["shot", "--out", "/tmp/sv-never", "--dpr", "99"], /--dpr/],
+  ["数值选项给非整数宽度", ["cards", "--width", "12.5"], /--width/],
+  ["reload 的 --latency 非数字", ["reload", "--out", "/tmp/sv-never", "--latency", "abc"], /--latency/],
+  ["reload 的 --skew 非数字", ["reload", "--out", "/tmp/sv-never", "--skew", "abc"], /--skew/],
+  ["枚举值拼错", ["shot", "--out", "/tmp/sv-never", "--theme", "darkk"], /--theme/],
+  ["both 只有 shot 认", ["cards", "--theme", "both"], /--theme/],
+  ["引擎值拼错", ["skew", "--engine", "firefox"], /--engine/],
+  ["选项名拼错", ["reload", "--out", "/tmp/sv-never", "--engin", "webkit"], /--engin/],
+  ["未知选项", ["shot", "--out", "/tmp/sv-never", "--unknown-flag", "1"], /--unknown-flag/],
+  ["别的子命令的选项", ["cards", "--out", "/tmp/sv-never"], /--out/],
+  ["skew 的 --old-html 缺值", ["skew", "--old-html"], /--old-html/],
+  ["选项后紧跟另一个选项", ["skew", "--old-html", "--engine", "webkit"], /--old-html/],
+  ["布尔选项带值", ["shot", "--out", "/tmp/sv-never", "--ssr=x"], /--ssr/],
+  ["多余位置参数", ["shot", "extra", "--out", "/tmp/sv-never"], /extra/],
+  ["子命令不在最前", ["--url", "http://localhost:1", "cards"], /子命令要放在最前面/],
+  ["--url 不是 http(s)", ["doctor", "--url", "file:///etc/passwd"], /--url/],
+  ["--url 没有协议", ["doctor", "--url", "localhost:3211"], /--url/],
+  ["--url 是 data:", ["cards", "--url", "data:text/html,<title>x</title>"], /--url/],
+];
+
+for (const [name, args, pattern] of REJECTED_ARGS) {
+  test(`参数收口：${name}退出 2 并说明用法`, () => {
+    const result = run(args);
+    assert.equal(result.status, 2, result.stderr || result.stdout);
+    const body = JSON.parse(result.stdout);
+    assert.equal(body.ok, false);
+    assert.match(body.error, pattern);
+    assert.ok(body.next);
+  });
+}
 
 test("未知子命令退出 2，输出带 next 的 JSON 错误", () => {
   const result = run(["bogus"]);
@@ -178,8 +225,9 @@ test("consoleProblems 把 sink 脏处写成给人看的列表", () => {
 test("cards 找不到 required 卡片：退出码 1、ok:false 带 next，且不遗留 headless Chrome", async (t) => {
   const pw = await resolvePlaywright();
   if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器清理路径验不了");
+  const url = await servePage(t, "<title>empty</title>");
   const before = headlessChromeCount();
-  const result = run(["cards", "--url", "data:text/html,<title>empty</title>", "--settle", "500"]);
+  const result = await runAsync(["cards", "--url", url, "--settle", "500"]);
   assert.equal(result.status, 1, result.stderr || result.stdout);
   const body = JSON.parse(result.stdout);
   assert.equal(body.ok, false);
@@ -192,9 +240,10 @@ test("cards 找不到 required 卡片：退出码 1、ok:false 带 next，且不
 test("shot 控制台脏时退出码 1 且 next 指明哪张图什么原因", async (t) => {
   const pw = await resolvePlaywright();
   if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器路径验不了");
+  const url = await servePage(t, "<script>throw new Error('boom')</script>");
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-"));
   try {
-    const result = run(["shot", "--url", "data:text/html,<script>throw new Error('boom')</script>", "--widths", "375", "--out", out, "--settle", "500"]);
+    const result = await runAsync(["shot", "--url", url, "--widths", "375", "--out", out, "--settle", "500"]);
     assert.equal(result.status, 1, result.stderr || result.stdout);
     const body = JSON.parse(result.stdout);
     assert.equal(body.ok, false);
@@ -207,11 +256,12 @@ test("shot 控制台脏时退出码 1 且 next 指明哪张图什么原因", asy
 test("shot 失败时删掉同名旧图，不留上一轮产物冒充证据", async (t) => {
   const pw = await resolvePlaywright();
   if (!pw) return t.skip("本机解不到 playwright / playwright-core，浏览器路径验不了");
+  const url = await servePage(t, "<title>empty</title>");
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-"));
   try {
     const stale = path.join(out, "digest-375x812-light.png");
     fs.writeFileSync(stale, "上一轮旧图");
-    const result = run(["shot", "--url", "data:text/html,<title>empty</title>", "--widths", "375", "--card", "digest", "--out", out, "--settle", "300"]);
+    const result = await runAsync(["shot", "--url", url, "--widths", "375", "--card", "digest", "--out", out, "--settle", "300"]);
     assert.equal(result.status, 1, result.stderr || result.stdout);
     assert.equal(fs.existsSync(stale), false, "失败时旧图必须先被删掉");
     assert.equal(JSON.parse(result.stdout).shots[0].file, null);
@@ -265,6 +315,20 @@ test("reload 抓到首帧后才改的时间文字，退出码 1", async (t) => {
     server.close();
     fs.rmSync(out, { recursive: true, force: true });
   }
+});
+
+test("reload 只清自己写的帧与 settled.png，--out 里别的文件和子目录原样保留", async (t) => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "site-verify-out-"));
+  t.after(() => fs.rmSync(out, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(out, "sub"));
+  fs.writeFileSync(path.join(out, "keep.txt"), "别人的文件");
+  fs.writeFileSync(path.join(out, "sub", "nested.txt"), "别人的文件");
+  fs.writeFileSync(path.join(out, "frame-003-120ms.png"), "上一轮帧");
+  fs.writeFileSync(path.join(out, "settled.png"), "上一轮图");
+  const result = await runAsync(["reload", "--url", "http://localhost:1", "--out", out, "--watch", "100"]);
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.deepEqual(fs.readdirSync(out).sort(), ["keep.txt", "sub"]);
+  assert.equal(fs.readFileSync(path.join(out, "sub", "nested.txt"), "utf8"), "别人的文件");
 });
 
 test("staleAssetHtml 把 JS / CSS 指纹换成不存在的，字体与别的路径不动", () => {

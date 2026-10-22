@@ -5,12 +5,13 @@ type Segment = { kind: "code" | "string"; text: string };
 
 export const SWIFT_EXTENSION = ".swift";
 
-export function stripSwift(text: string): { code: string; comments: string[]; spans: SwiftSpan[]; segments: Segment[] } {
+export function stripSwift(text: string): { code: string; comments: string[]; spans: SwiftSpan[]; segments: Segment[]; errors: string[] } {
   let i = 0;
   let out = "";
   const comments: string[] = [];
   const spans: SwiftSpan[] = [];
   const strings: [number, number][] = [];
+  const errors: string[] = [];
   let stringDepth = 0;
   const n = text.length;
 
@@ -62,6 +63,28 @@ export function stripSwift(text: string): { code: string; comments: string[]; sp
     if (stringDepth === 0) strings.push([from, out.length]);
   };
 
+  const regexLiteral = (hashes: number) => {
+    const start = i;
+    const closing = "#".repeat(hashes);
+    out += closing + "/";
+    i += hashes + 1;
+    let closed = false;
+    while (i < n) {
+      const ch = text[i];
+      out += ch;
+      i++;
+      if (ch === "\\" && i < n) { out += text[i++]; continue; }
+      if (ch === "/" && text.startsWith(closing, i)) {
+        out += closing;
+        i += hashes;
+        closed = true;
+        break;
+      }
+    }
+    const body = text.slice(start, i);
+    if (!closed || /\/\/|\/\*|\*\//.test(body)) errors.push(`正则字面量 ${body.slice(0, 30)} 无法证明注释边界`);
+  };
+
   const code = (untilParen: boolean) => {
     let depth = 0;
     while (i < n) {
@@ -89,6 +112,10 @@ export function stripSwift(text: string): { code: string; comments: string[]; sp
           out += "#".repeat(hashes);
           i += hashes;
           string(hashes, from);
+          continue;
+        }
+        if (hashes > 0 && text[i + hashes] === "/") {
+          regexLiteral(hashes);
           continue;
         }
         out += text.slice(i, i + hashes);
@@ -119,7 +146,7 @@ export function stripSwift(text: string): { code: string; comments: string[]; sp
     at = to;
   }
   if (at < out.length) segments.push({ kind: "code", text: out.slice(at) });
-  return { code: out, comments, spans, segments };
+  return { code: out, comments, spans, segments, errors };
 }
 
 const SWIFT_DIRECTIVES = /\b(?:swiftlint|swiftformat|sourcery|periphery)\s*:|\bswift-format-ignore\b/;
@@ -127,7 +154,7 @@ const SWIFT_DIRECTIVES = /\b(?:swiftlint|swiftformat|sourcery|periphery)\s*:|\bs
 const STRING_SLOT = "\u0000";
 
 export function normalizeSwift(text: string, { loose = false } = {}): Normalized {
-  const { code, comments, spans, segments } = stripSwift(text);
+  const { code, comments, spans, segments, errors } = stripSwift(text);
   const strings: string[] = [];
   const skeleton = segments
     .map((segment) => {
@@ -151,5 +178,5 @@ export function normalizeSwift(text: string, { loose = false } = {}): Normalized
   const directives = bindDirectives(text, ranges, (range) => SWIFT_DIRECTIVES.test(range.text), (range) => significant[range.at]);
   const shebang = /^#!.*/.exec(text)?.[0];
   if (shebang) directives.unshift(shebang);
-  return { code: shown, key: JSON.stringify([flat, strings]), directives, errors: [] };
+  return { code: shown, key: JSON.stringify([flat, strings]), directives, errors };
 }

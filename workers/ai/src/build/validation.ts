@@ -1,27 +1,48 @@
 import { BUILD_PLAN_LIMITS, BUILD_UPLOAD_LIMITS, type BuildPlan, type BuildUpload } from "@shared/build-routine";
+import { PROJECT_DOCS } from "../tools/project-docs";
 
 const PROTECTED_PATH_SEGMENTS = new Set([
   ".git", ".github", ".claude", "agents.md", "agents.override.md", "claude.md", "claude.local.md", "gemini.md",
   ".cursor", ".cursorrules", ".codex", ".agents", ".gemini", ".vscode", ".devcontainer", ".husky", ".idea",
   "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "scripts", ".gitmodules",
+  "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "bun.lock", "bun.lockb",
 ]);
+
+// 规则与政策文档会被后续 agent 当指令读；PROJECT_DOCS 里的文档逐字进访客对话和 /mcp 的模型上下文。
+const PROTECTED_DOC_NAMES = new Set(["human.md", "review.md", "design.md", "glossary.md"]);
+const PROTECTED_DOC_PATHS = new Set([
+  "docs/ops-facts.md",
+  "docs/api-contracts.md",
+  ...Object.values(PROJECT_DOCS).flatMap((doc) => "repo" in doc ? [] : [doc.path.toLowerCase()]),
+]);
+
+const SCRIPT_SUFFIX = /\.(?:[cm]?[jt]sx?|py|sh)$/i;
+const PUBLIC_EXECUTABLE = /\.(?:[cm]?js|html?)$/i;
+const PUBLIC_HEADER_FILES = new Set(["_headers", "_redirects"]);
 
 function protectedPathSegment(segment: string): boolean {
   const lower = segment.toLowerCase();
-  return PROTECTED_PATH_SEGMENTS.has(lower) || lower.startsWith(".windsurf") || /^wrangler.*\.(?:toml|jsonc?)$/.test(lower) || /^(?:next|vite|react-router)\.config\./.test(lower);
+  return PROTECTED_PATH_SEGMENTS.has(lower) || PROTECTED_DOC_NAMES.has(lower) || lower.startsWith(".windsurf") || /^wrangler.*\.(?:toml|jsonc?)$/.test(lower) || /^(?:next|vite|react-router)\.config\./.test(lower);
+}
+
+function protectedBuildPath(path: string): boolean {
+  return path.split("/").some(protectedPathSegment) || PROTECTED_DOC_PATHS.has(path.toLowerCase());
 }
 
 export function allowedBuildPath(path: string): boolean {
   if (!path || path.length > 240 || !/^[A-Za-z0-9_@().[\] /-]+$/.test(path) || path.trim() !== path) return false;
   const segments = path.split("/");
   if (segments.some((part) => !part || part === "." || part === "..")) return false;
-  if (segments.some(protectedPathSegment)) return false;
+  if (protectedBuildPath(path)) return false;
+  if (path.startsWith("docs/") && SCRIPT_SUFFIX.test(path)) return false;
+  const name = segments[segments.length - 1].toLowerCase();
+  if (path.startsWith("public/") && (PUBLIC_EXECUTABLE.test(path) || PUBLIC_HEADER_FILES.has(name))) return false;
   return /^(?:src|public|docs|shared)\//.test(path) || /^workers\/[^/]+\/src\//.test(path) || markdownDoc(path);
 }
 
-// 文档改了也只是文字，PR 里单列给人审；agent 指令文件已被受保护名挡掉，上报器单独部署不放开。
+// 普通文档改了只是文字，PR 里单列给人审；指令与上下文文档由受保护名挡掉，上报器单独部署不放开。
 export function markdownDoc(path: string): boolean {
-  return /\.md$/i.test(path) && !path.split("/").some((segment) => segment.toLowerCase() === "reporters");
+  return /\.md$/i.test(path) && !protectedBuildPath(path) && !path.split("/").some((segment) => segment.toLowerCase() === "reporters");
 }
 
 // 拒绝原因原样回给规划者：笼统的「计划无效」会让它不知道改哪里，一条回复的工具轮数就这样耗完。
@@ -42,7 +63,10 @@ export function checkBuildPlan(value: unknown): { plan: BuildPlan } | { error: s
   const text = `${cleanTitle}\n${spec}\n${acceptance.join("\n")}`;
   const mentionedPaths = text.match(/(?:\.[\w-]+|[\w-]+)(?:\/[\w.@()[\]-]+)+|(?:agents(?:\.override)?|claude(?:\.local)?|gemini)\.md|package\.json|pnpm-(?:lock\.yaml|workspace\.yaml)|\.npmrc|wrangler[^\s`]*\.(?:toml|jsonc?)|(?:next|vite|react-router)\.config\.[\w]+|\.gitmodules|\.(?:github|claude|cursor(?:rules)?|codex|agents|gemini|vscode|windsurf[\w.-]*|devcontainer|husky|idea)/gi) ?? [];
   // 句末标点会被一起匹配进最后一段（「…/AGENTS.md.」），比对前去掉，否则加个句号就能绕过。
-  const protectedMention = mentionedPaths.find((path) => path.split("/").map((segment) => segment.replace(/[.,;:]+$/, "")).some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters"));
+  const protectedMention = mentionedPaths.find((path) => {
+    const segments = path.split("/").map((segment) => segment.replace(/[.,;:]+$/, ""));
+    return PROTECTED_DOC_PATHS.has(segments.join("/").toLowerCase()) || segments.some((segment) => protectedPathSegment(segment) || segment.toLowerCase() === "reporters");
+  });
   if (protectedMention) return { error: `The title, spec or acceptance names ${JSON.stringify(protectedMention)}, a protected file or directory. Describe the behavior without naming agent instructions, dependency manifests, CI, scripts, deploy config or reporters.` };
   return { plan: { title: cleanTitle, spec: spec.trim(), acceptance: acceptance.map((item) => (item as string).trim()), paths: [...new Set(paths as string[])] } };
 }

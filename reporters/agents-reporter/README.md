@@ -112,8 +112,18 @@ Codex / Grok 的 token 由上报器自己刷新，写回各自凭据目录里的
 ## cursor / devin / antigravity
 
 各家 CLI 装进镜像：用于登录，Claude 与 `agy` 安装包还提供 OAuth 配置，`devin` 提供版本号。限额运行时直打接口。
-CLI 各占一层、排在源码之前，按 `Dockerfile#CLI_EPOCH` 刷新：CI 默认给 ISO 周，所以只改源码时复用缓存，CLI 最多旧一周；
-要立刻装最新版，手动运行 `build-reporters.yml` 并填 `cli_epoch`。
+CLI 各占一层、排在源码之前，版本固定在 Dockerfile 的 `ARG`（`CLAUDE_CODE_VERSION`、`CODEX_VERSION`、`GROK_VERSION`、
+`CURSOR_AGENT_VERSION`、`AGY_VERSION`、`DEVIN_VERSION`），两个基础镜像按摘要固定；只改源码时 CLI 层全部命中缓存，CLI 不会自己变新。
+cursor、`agy`、`devin` 下载版本化地址后核对 Dockerfile 里写死的散列（`*_SHA256_*` / `AGY_SHA512_*`，各带 x86_64 与 aarch64），
+任何一步失败都让 build 失败。
+
+升级一家 CLI：改它的版本 `ARG`；cursor / `agy` / `devin` 另用 `curl` 下载新版本的 Linux 包，`sha256sum`（`agy` 用 `sha512sum`）
+重算两种架构的散列并一起改。已知入口：npm 用 `npm view <包> dist-tags`；cursor 版本取自 `https://cursor.com/install` 脚本里的 `DOWNLOAD_URL`
+（下载包 `https://downloads.cursor.com/lab/<版本>/linux/<x64|arm64>/agent-cli-package.tar.gz`）；`agy` 取自
+`https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_<amd64|arm64>.json` 的 `url`（版本是 URL 里的
+`<版本>-<构建号>` 段，同时同步 `ANTIGRAVITY_CLI_VERSION` 默认值）；`devin` 取自 `https://static.devin.ai/cli/current/manifest.json`。
+这些清单只用来找版本，散列要自己下载算出再提交，不照抄清单。基础镜像摘要用 `docker buildx imagetools inspect node:24-alpine`
+（`node:24-bookworm-slim` 同理）取。
 
 **cursor。** Linux 上 `agent login` 把 JWT 写到 `/data/.config/cursor/auth.json` 的 `accessToken`（也可
 用 `CURSOR_AUTH_TOKEN` 直接注入）。限额打 `api2.cursor.sh` 的
@@ -186,8 +196,7 @@ token 文件里没有，而且 `agy` 自己每次跑都只在内存里刷、不�
 
 cursor-agent（自带一个 node）和 agy 都是 glibc 二进制，alpine 加 `gcompat` 实测跑不起来（缺 `fcntl64` /
 `__open`），所以运行段是 `node:24-bookworm-slim`。agy 不走它的安装脚本（脚本按 libc 选清单，musl 那份不存在），
-Dockerfile 按 `linux_<arch>` 的清单自己下载、校验 sha512。装不上时 build 不会失败（`|| true`），只是那一家
-登录不了，登录时看 `docker compose run` 的报错。
+Dockerfile 按固定版本的 `linux_<arch>` 包自己下载、校验 sha512。下载或散列校验失败时 build 直接失败，不再跳过那一家。
 
 ## DRY_RUN
 

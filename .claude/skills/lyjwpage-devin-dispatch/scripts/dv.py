@@ -25,8 +25,7 @@ Under the wrapper's --sandbox Devin still shows an approval menu before its edit
 tools run. Those tools run in the CLI process, outside the sandbox, so the menu is the only
 boundary for them. Runs started under the wrapper record auto_approve, and `wait` then
 approves a menu once (never "always") only when the path it names resolves inside the
-worktree or the repo's git common dir (minus hooks/ and config) and the menu's "allow edits
-in" directory is that file's directory; any other menu, including one whose path cannot be
+worktree (never its .git) and the menu's "allow edits in" directory is that file's directory; any other menu, including one whose path cannot be
 read or wraps onto a second line, makes `wait` return 4 for the orchestrator to `deny`.
 
 Run state lives in $DV_RUNS (default ~/.claude/devin-dispatch/runs)/NAME/:
@@ -238,27 +237,24 @@ def under(path, root):
     return path == root or path.startswith(root.rstrip('/') + '/')
 
 
-def in_scope(path, cwd, common):
+def in_scope(path, cwd):
     r = resolve(path, cwd)
     if r is None:
         return False
     cwd = os.path.realpath(cwd)
-    # Checked before the worktree prefix: in a plain checkout the common dir sits inside cwd.
-    if r == os.path.join(cwd, '.git'):
-        return False
-    if common:
-        common = os.path.realpath(common)
-        if under(r, os.path.join(common, 'hooks')) or r == os.path.join(common, 'config'):
-            return False
-    return under(r, cwd) or bool(common) and under(r, common)
+    # No git common dir: it holds files git follows (worktrees/*/commondir, objects/info/alternates,
+    # packed-refs, refs/**, HEAD, config.worktrees), and rewriting one redirects or runs code in
+    # every later git command. Git state is written by Devin's sandboxed `git`, not this tool.
+    # In a plain checkout the same holds for .git, which lies inside cwd.
+    return under(r, cwd) and not under(r, os.path.join(cwd, '.git'))
 
 
-def menu_verdict(lines, cwd, common):
+def menu_verdict(lines, cwd):
     paths = menu_paths(lines)
     if not paths:
         return False, 'no single-line Writing/Editing path above the menu'
     target, allow = paths
-    if not in_scope(target, cwd, common):
+    if not in_scope(target, cwd):
         return False, f'outside the worktree: {target}'
     # The Mac menu offers the target's own directory, the cloud sandbox the worktree root; a wrapped or cut target fails this.
     t, a = resolve(target, cwd), allow and resolve(allow, cwd)
@@ -267,13 +263,8 @@ def menu_verdict(lines, cwd, common):
     return True, target
 
 
-def git_common_dir(cwd):
-    r = sh('git', '-C', str(cwd), 'rev-parse', '--path-format=absolute', '--git-common-dir', check=False)
-    return os.path.realpath(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
-
-
 def verdict(meta, lines):
-    return menu_verdict(lines, meta['cwd'], meta.get('git_common') or git_common_dir(meta['cwd']))
+    return menu_verdict(lines, meta['cwd'])
 
 
 def tail(lines, n=25):
@@ -303,8 +294,7 @@ def cmd_start(a):
     sh('tmux', 'set-option', '-t', pane(sess), 'history-limit', '50000', check=False)
     meta = dict(name=a.name, tmux=sess, cwd=str(cwd), brief=str(brief), model=a.model,
                 mode=a.mode, export=str(export), started=time.time(), last_send=time.time(),
-                session_id=None, auto_approve=a.auto_approve, approvals=0,
-                git_common=git_common_dir(cwd))
+                session_id=None, auto_approve=a.auto_approve, approvals=0)
     save(meta)
     for _ in range(30):  # the session id shows up once Devin has written its first state
         time.sleep(2)
@@ -332,8 +322,8 @@ def cmd_send(a):
     st, _ = state(meta)
     if st in ('exited', 'gone'):
         die(f'{a.name} is {st}; use `resume` for a headless follow-up', 3)
-    if st == 'approval':
-        die(f'{a.name} is on an approval menu; `approve` or `deny` it first (pasted text would land in the menu)', 4)
+    if st in ('approval', 'attention'):
+        die(f'{a.name} is on a menu or question ({st}); `approve`, `deny` or `key` it first (pasted text would land in it)', 4)
     send_text(meta, read_text(a).strip('\n'), st)
 
 
@@ -348,6 +338,11 @@ def send_text(meta, text, st):
     time.sleep(1.0)  # an Enter sent right after the text gets swallowed
     first = text.splitlines()[0].strip()[:40]
     for attempt in range(2):
+        # Enter on a menu that opened since the entry check would pick its default, "Approve once",
+        # with no scope check; an open menu or question means the composer is gone.
+        now, lines = state(meta)
+        if now in ('approval', 'attention') or input_box(lines) is None:
+            die(f'screen is {now} with no composer; not pressing Enter. Inspect with `status`', 4)
         sh('tmux', 'send-keys', '-t', pane(sess), 'Enter')
         time.sleep(2.0)
         box = input_box(screen(sess)) or ''

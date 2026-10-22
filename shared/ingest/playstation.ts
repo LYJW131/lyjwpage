@@ -1,3 +1,4 @@
+import { INGEST_FUTURE_SKEW_MS } from "@shared/freshness";
 import { object } from "@shared/json";
 import { normalizeTrophies } from "@shared/trophies";
 import { normalizePlaystationPlayedGames, normalizePlaystationPresence } from "@shared/playstation";
@@ -10,6 +11,13 @@ export type PreparedPlaystationReport = {
   trophies: ReturnType<typeof normalizeTrophies> | null;
 };
 
+function notFromFuture<T extends { observedAt: number }>(section: T | null, receivedAt: number, name: string): T | null {
+  if (section && section.observedAt > receivedAt + INGEST_FUTURE_SKEW_MS) {
+    throw new Error(`PlayStation ${name} 的 observedAt 晚于接收时刻`);
+  }
+  return section;
+}
+
 export function preparePlaystationReport(input: unknown, receivedAt = Date.now()): PreparedPlaystationReport {
   const envelope = object(input);
   if (!envelope || envelope.version !== 1) {
@@ -19,10 +27,12 @@ export function preparePlaystationReport(input: unknown, receivedAt = Date.now()
   return {
     source: "playstation",
     receivedAt,
-    presence: "presence" in envelope ? normalizePlaystationPresence(envelope.presence) : null,
-    playedGames: "playedGames" in envelope
-      ? normalizePlaystationPlayedGames(envelope.playedGames)
-      : null,
-    trophies: "trophies" in envelope ? normalizeTrophies(envelope.trophies) : null,
+    presence: notFromFuture("presence" in envelope ? normalizePlaystationPresence(envelope.presence) : null, receivedAt, "presence"),
+    playedGames: notFromFuture(
+      "playedGames" in envelope ? normalizePlaystationPlayedGames(envelope.playedGames) : null,
+      receivedAt,
+      "playedGames",
+    ),
+    trophies: notFromFuture("trophies" in envelope ? normalizeTrophies(envelope.trophies) : null, receivedAt, "trophies"),
   };
 }

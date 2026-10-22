@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { getImageObjectKeys } from "./emby-store";
+import { getPlaystationTrophies } from "./playstation-store";
 import { FakeStorage, installTestStorage } from "@shared/testing/fake-storage";
 import { mirror as telemetryMirror } from "@shared/telemetry";
 
@@ -125,6 +126,30 @@ test("PlayStation trophies push the summary only when the catalog content change
     assert.equal(Object.hasOwn(summary.titles[0]!, "trophies"), false);
     assert.deepEqual(summary.earned, { platinum: 0, gold: 0, silver: 0, bronze: 1 });
     assert.equal(summary.recent[0]?.trophyName, "First");
+  } finally { installTestStorage(null); }
+});
+
+test("PlayStation trophies stored with a future observedAt do not veto later honest reports", async () => {
+  installTestStorage(new FakeStorage());
+  const env = testEnv();
+  const poisoned = NOW + 10 * 365 * 86_400_000;
+  const ingest = async (observedAt: number, receivedAt: number, earned: boolean) => commit(env, await inRequest(env, () =>
+    prepareIngest("playstation", { version: 1, trophies: trophiesReport(observedAt, earned) }, receivedAt)));
+  try {
+    assert.equal((await ingest(poisoned, poisoned, false)).ok, true);
+    assert.equal((await ingest(NOW, NOW, true)).ok, true);
+    const stored = await inRequest(env, () => getPlaystationTrophies());
+    assert.equal(stored?.observedAt, NOW);
+    assert.equal(stored?.profile.earned.bronze, 1);
+  } finally { installTestStorage(null); }
+});
+
+test("PlayStation ingest refuses an observedAt ahead of the receive time", async () => {
+  installTestStorage(new FakeStorage());
+  const env = testEnv();
+  try {
+    await assert.rejects(inRequest(env, () =>
+      prepareIngest("playstation", { version: 1, trophies: trophiesReport(NOW + 3_600_000, false) }, NOW)), /observedAt/);
   } finally { installTestStorage(null); }
 });
 

@@ -1,7 +1,6 @@
-const SIZED_HOSTS = new Set([
-  "image.api.playstation.com",
-  "psnobj.prod.dl.playstation.net",
-]);
+import { PSN_AVATAR_HOST, PSN_SIZED_IMAGE_HOSTS } from "@shared/psn-image";
+
+const SIZED_HOSTS = new Set(PSN_SIZED_IMAGE_HOSTS);
 
 export function playstationImage(
   url: string | null | undefined,
@@ -20,8 +19,6 @@ export function playstationImage(
   parsed.searchParams.set("h", dimension);
   return parsed.toString();
 }
-
-const AVATAR_HOST = "psn-rsc.prod.dl.playstation.net";
 
 const AVATAR_FILE = /_(xl|l|m|s)(\.[a-z0-9]+)$/i;
 
@@ -52,7 +49,7 @@ export function playstationAvatar(
   } catch {
     return url;
   }
-  if (parsed.hostname !== AVATAR_HOST) return url;
+  if (parsed.hostname !== PSN_AVATAR_HOST) return url;
   const match = parsed.pathname.match(AVATAR_FILE);
   if (!match) return url;
   const current = match[1].toLowerCase() as AvatarSize;
@@ -70,7 +67,7 @@ export function playstationAvatarNeedsOptimizing(
   if (!url || !sized || sized !== url) return false;
   try {
     const parsed = new URL(url);
-    if (parsed.hostname !== AVATAR_HOST) return false;
+    if (parsed.hostname !== PSN_AVATAR_HOST) return false;
     return !AVATAR_FILE.test(parsed.pathname);
   } catch {
     return false;

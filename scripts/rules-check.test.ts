@@ -38,7 +38,7 @@ test("烤交付域的 /img/ 绝对地址被拦，同源相对路径放行", () =
 test("src/ 里字面量主机调用被拦，允许列表与 backendUrl 放行", () => {
   assert.deepEqual(rules("src/lib/x.ts", 'await fetch("https://api.lyjw.example/api/status");'), ["site-fetch-host@1"]);
   assert.deepEqual(rules("src/lib/x.ts", 'new WebSocket("wss://backend.example/ws");'), ["site-fetch-host@1"]);
-  assert.equal(rules("src/lib/x.ts", 'await fetch(`https://api.music.apple.com${path}`);\nawait fetch(backendUrl("/api/status/x"));').length, 0);
+  assert.equal(rules("src/lib/x.ts", 'await fetch(`https://api.music.apple.com/${path}`);\nawait fetch(backendUrl("/api/status/x"));').length, 0);
   // src/ 之外的目录不受这条约束（checkFile 按路径分派；checkFetchHost 本身只管字面量）
   assert.equal(rules("workers/core/src/x.ts", 'await fetch("https://example.com/")').length, 0);
   assert.equal(checkFetchHost("workers/core/src/x.ts", 'await fetch("https://example.com/")').length, 1);
@@ -49,6 +49,55 @@ test("fetch 分行写字面量主机也拦，成员调用与模板串同样查�
   assert.deepEqual(rules("src/lib/x.ts", 'navigator.sendBeacon(\n  "https://track.example/e"\n);'), ["site-fetch-host@1"]);
   assert.deepEqual(rules("src/lib/x.ts", 'new WebSocket(\n  `wss://backend.example/ws`\n);'), ["site-fetch-host@1"]);
   assert.equal(rules("src/lib/x.ts", 'await fetch(\n  "https://api.music.apple.com/x"\n);\nawait fetch(\n  backendUrl("/api/x")\n);').length, 0);
+});
+
+test("字面量主机按 URL 语义取真实 host：userinfo、协议相对、大小写、反斜杠、模板与拼接都拦", () => {
+  const blocked = [
+    'fetch("https://api.music.apple.com@evil.example/x")',
+    'fetch("https://api.music.apple.com:443@evil.example/x")',
+    'fetch("//evil.example/x")',
+    'fetch("\\\\\\\\evil.example/x")',
+    'fetch("/\\\\evil.example/x")',
+    'fetch("HTTPS://evil.example/x")',
+    'fetch("https:\\\\evil.example/x")',
+    'fetch("https:evil.example/x")',
+    'fetch("  \\thttps://evil.example/x")',
+    'fetch("https://api.music.apple.com.evil.example/x")',
+    'fetch("https://API.MUSIC.APPLE.COM.evil.example/x")',
+    'fetch(`https://${"evil"}.example/x`)',
+    'fetch(`https://api.music.apple.com${suffix}/x`)',
+    'fetch(`https://api.music.apple.com${path}`)',
+    'fetch("https://" + host + "/x")',
+    'fetch(("https://evil.example/") + path)',
+    'fetch(new Request("https://evil.example/x"))',
+    'fetch(new URL("https://evil.example/x"))',
+    'fetch(new URL(path, "https://evil.example"))',
+    'new EventSource("https://api.music.apple.com@evil.example/s")',
+    'new WebSocket("wss://api.music.apple.com@evil.example")',
+    'navigator.sendBeacon("https://api.music.apple.com@evil.example/e", "x")',
+    'fetch("https://")',
+  ];
+  for (const code of blocked) assert.deepEqual(rules("src/lib/x.ts", code), ["site-fetch-host@1"], code);
+});
+
+test("允许列表内的字面量主机（大小写、端口、模板与拼接带路径分隔）与相对路径放行", () => {
+  const allowed = [
+    'fetch("https://api.music.apple.com/v1/catalog")',
+    'fetch("HTTPS://API.MUSIC.APPLE.COM/v1/catalog")',
+    'fetch("https://api.music.apple.com:443/v1")',
+    'fetch("//api.music.apple.com/v1")',
+    'fetch(`https://api.music.apple.com/v1/${id}`)',
+    'fetch("https://api.music.apple.com/v1/" + id)',
+    'fetch(`https://api.music.apple.com?x=${id}`)',
+    'fetch("/api/status")',
+    'fetch("data:text/plain,hi")',
+    'new Request("/api/status")',
+    'new URL("/x", location.origin)',
+    'fetch(new URL(path, "https://api.music.apple.com"))',
+    'new URL("https://github.com/login/oauth/authorize")',
+    'fetch(url)',
+  ];
+  for (const code of allowed) assert.deepEqual(rules("src/lib/x.ts", code), [], code);
 });
 
 test("隐藏滚动条两句缺一不可", () => {

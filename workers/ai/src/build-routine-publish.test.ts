@@ -28,7 +28,7 @@ test("GitHub publishing preserves the plan tree and appends the implementation t
   const patch = calls.find((call) => call.path.endsWith("/pulls/12") && call.method === "PATCH");
   assert.doesNotMatch(String(patch?.body?.body), /Review closely/);
   const extra = githubFixture();
-  const extraFiles = [{ path: "src/lib/extra.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "shared/collector.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "workers/ai/README.md", mode: "100644" as const, content: btoa("# ai") }];
+  const extraFiles = [{ path: "src/lib/extra.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "shared/collector.ts", mode: "100644" as const, content: btoa("export {};") }, { path: "workers/ai/NOTES.md", mode: "100644" as const, content: btoa("# ai") }];
   await createBuildPullRequest(new GithubBuildApi("fixture", extra.fetcher), await stored(), { ...upload, files: [...upload.files, ...extraFiles] });
   const patched = String(extra.calls.find((call) => call.path.endsWith("/pulls/12") && call.method === "PATCH")?.body?.body);
   assert.match(patched, /## Review closely/);
