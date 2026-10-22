@@ -10,7 +10,7 @@ const EXEC_PATHS = [
   /^docs\/(?:.*\/)?(?:package\.json|pnpm-lock\.yaml)$/,
   /^docs\/(?!explainer\/v2\/).*\.(?:[cm]?[jt]sx?|py|sh)$/,
   /^public\/(?:.*\/)?(?:_headers|_redirects)$/,
-  /^public\/.*\.(?:[cm]?[jt]sx?|html?)$/,
+  /^public\/.*\.(?:[cm]?[jt]sx?|html?|xht(?:ml)?|svg|xml)$/,
 ];
 
 export function tierOf(files: string[], { trustedAuthor }: { trustedAuthor: boolean }) {

@@ -28,7 +28,7 @@ for (const path of [
 }
 
 test("source, asset, documentation, shared, and worker roots still admit ordinary files and colocated tests", () => {
-  for (const path of ["src/app/[slug]/page.tsx", "public/card.svg", "docs/card.md", "shared/card.ts", "workers/ai/src/card.ts", "src/card.test.mts", "workers/core/src/card.spec.ts"]) {
+  for (const path of ["src/app/[slug]/page.tsx", "public/card.png", "docs/card.md", "shared/card.ts", "workers/ai/src/card.ts", "src/card.test.mts", "workers/core/src/card.spec.ts"]) {
     assert.equal(allowedBuildPath(path), true, path);
     assert.equal(parseBuildUpload({ ...upload, files: [{ ...upload.files[0], path }] }, [path]).files[0].path, path);
   }
@@ -134,7 +134,7 @@ for (const path of [
   });
 }
 
-for (const path of ["public/sw.js", "public/app/x.js", "public/x.mjs", "public/_headers", "public/sub/_headers", "public/_redirects", "public/offline.html", "public/a/b.htm"]) {
+for (const path of ["public/sw.js", "public/app/x.js", "public/x.mjs", "public/_headers", "public/sub/_headers", "public/_redirects", "public/offline.html", "public/a/b.htm", "public/badge.svg", "public/a.xhtml", "public/a.xht", "public/feed.xml"]) {
   test(`public/ rejects executable and header files: ${path}`, () => {
     assert.equal(allowedBuildPath(path), false);
     assert.equal(parseBuildPlan({ ...plan, paths: [path] }), null);
@@ -143,7 +143,7 @@ for (const path of ["public/sw.js", "public/app/x.js", "public/x.mjs", "public/_
 }
 
 test("docs/ and public/ still admit markdown and images, and script suffixes stay fine under src/", () => {
-  for (const path of ["docs/card.md", "docs/img/card.png", "docs/img/card.svg", "public/card.svg", "public/img/card.webp", "src/x.sh.md", "src/lib/x.mjs", "workers/ai/src/x.js"]) {
+  for (const path of ["docs/card.md", "docs/img/card.png", "docs/img/card.svg", "public/card.png", "public/img/card.webp", "src/x.sh.md", "src/lib/x.mjs", "workers/ai/src/x.js"]) {
     assert.equal(allowedBuildPath(path), true, path);
   }
   assert.equal(parseBuildUpload({ ...upload, files: [], deletions: ["docs/card.md"] }, ["docs/"]).deletions[0], "docs/card.md");
