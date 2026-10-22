@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { config } from "../config.js";
 import { info } from "../log.js";
@@ -12,6 +14,8 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SKEW_MS = 5 * 60_000;
 const EXPIRED_MESSAGE =
   "Antigravity token expired — run `agy` once or set ANTIGRAVITY_OAUTH_CLIENT_ID/SECRET";
+
+const FALLBACK_AGY_VERSION = "1.4.5";
 
 const NAMED_SLOTS = ["primary", "secondary", "tertiary", "quaternary"] as const;
 
@@ -211,13 +215,27 @@ async function refreshAntigravityToken(file: TokenFile, home = config.home): Pro
   return accessToken;
 }
 
+let agyVersion: Promise<string> | null = null;
+
+// daily-cloudcode-pa 按 User-Agent 里的 agy 版本决定回几组：不带版本或版本旧只回 Claude and GPT 一组，Gemini 与 Argon 整组消失。
+export function antigravityUserAgent(version: string): string {
+  return `antigravity/cli/${version}`;
+}
+
+function agyClientVersion(): Promise<string> {
+  agyVersion ??= promisify(execFile)(config.agyBin, ["--version"], { timeout: 5_000 })
+    .then(({ stdout }) => /\d+\.\d+\.\d+/.exec(stdout)?.[0] ?? FALLBACK_AGY_VERSION)
+    .catch(() => FALLBACK_AGY_VERSION);
+  return agyVersion;
+}
+
 async function retrieveQuota(accessToken: string): Promise<{ status: number; body: unknown }> {
   const res = await fetch(QUOTA_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
-      "User-Agent": "antigravity/cli (agents-reporter)",
+      "User-Agent": antigravityUserAgent(await agyClientVersion()),
     },
     body: JSON.stringify({ project: "aicode-consumers" }),
     signal: AbortSignal.timeout(20_000),

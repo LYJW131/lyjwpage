@@ -176,7 +176,7 @@ Cursor 的此刻速率。闲着时不单独查，限额那一轮拉用量时顺�
 `Devin session expired — run \`devin auth login --force-manual-token-flow\` to re-authenticate.`。没登录就不发这一行。
 
 **antigravity。** 登录态在 `/data/.gemini/antigravity-cli/antigravity-oauth-token`。上报器打
-`daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向
+`daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`（Antigravity 实际使用的后端端点）。这个端点按 User-Agent 里的 agy 版本决定回几组，版本旧或不带版本只回 Claude and GPT 一组，所以 UA 带镜像里 `agy --version` 的版本（`src/providers/antigravity.ts#antigravityUserAgent`）。到期前 `src/providers/antigravity.ts#SKEW_MS` 或接口回 401 时向
 `oauth2.googleapis.com/token` 刷新并原子写回。刷新要的 client_id / client_secret 是 `agy` 二进制里的常量，
 token 文件里没有，而且 `agy` 自己每次跑都只在内存里刷、不写回文件 —— 所以光读文件永远是过期的。
 镜像里本来就装着 `agy`，上报器启动时把它扫一遍捞出候选（各两个，IDE 一套 CLI 一套，分不清谁配谁），
