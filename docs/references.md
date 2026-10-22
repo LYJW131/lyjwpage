@@ -96,10 +96,10 @@
   - 不借：硬门禁。整仓试拆一遍，约四分之一的拆分只为过线，可读性变差。
   - 状态：部分采用。软规则落在根 [AGENTS.md](../AGENTS.md)「工作方式」。
 
-- **[html-plan](https://x.com/trq212/status/2107192901537329354)**（Thariq，Claude Code 团队，X 帖子；描述见 [aitop.news](https://aitop.news/item/41250) 与 [note.com 的试用记](https://note.com/masa_wunder/n/n29b09dec1896)）
-  - 是什么：让 Claude Code 把计划写成一页交互式 HTML：主张树分三层（能看到什么、怎么做、在哪），每条配一件展品，带默认项的决定挂在相关主张下，读者在页面上作答、一次交回；附带的检查挡住 Claude 写计划时的常见毛病。
-  - 取了什么：主张树、层级与展品、决定的上限与默认项、答复里区分改选和没打开、答复当数据读。没读源码，只照公开描述复刻；另加了第三层文件与符号在仓库里的核对，答复存进 Artifact 的页面存储由 Claude 直接读。
-  - 状态：部分采用。落在 [lyjwpage-html-plan](../.claude/skills/lyjwpage-html-plan/SKILL.md) 与 [html-plan.ts](../scripts/html-plan.ts)。
+- **[html-plan](https://github.com/anthropics/claude-plugins-community/tree/main/html-plan)**（Thariq，Claude Code 团队，[发布推文](https://x.com/trq212/status/2107192901537329354)）
+  - 是什么：Claude Code 插件，把计划写成一页交互式 HTML：主张树分三层（能看到什么、怎么做、在哪），每条配一件展品，带默认项的决定挂在相关主张下，读者在页面上作答、按 Respond 一次交回；插件自带的打包脚本查树的形状、从仓库读真代码进页面。
+  - 取了什么：整个插件照用，由 `.claude/settings.json` 的 `enabledPlugins` 启用。本项目只改正文语言（中文短句）、等答复时先做能撤回的部分、产物放项目共享目录并发成 Artifact。先按公开描述复刻过一版（模板加检查脚本），对照原版后删掉，没进仓库。
+  - 状态：采用。约定落在 [lyjwpage-html-plan](../.claude/skills/lyjwpage-html-plan/SKILL.md)。
 
 - **[seiso](https://github.com/scarletkc/seiso)**（scarletkc，含 [Seiso 规范](https://seiso.fog.moe/latest/convention)）
   - 是什么：给 AI 写、人和 agent 读的项目文档定的 Markdown 规范，配一个 Rust 写的 linter：每篇声明一种类型、一个事实一个出处、长期文档不写易变值、指针写到文件或符号、例外写理由。
