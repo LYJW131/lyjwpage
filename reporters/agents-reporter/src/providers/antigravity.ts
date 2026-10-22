@@ -21,7 +21,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function groupShortName(displayName: string): string {
   const trimmed = displayName.trim();
-  if (/^gemini/i.test(trimmed)) return "Gemini";
+  if (/^gemini( models?)?$/i.test(trimmed)) return "Gemini";
   if (/claude/i.test(trimmed) && /gpt/i.test(trimmed)) return "Claude & GPT";
   return trimmed.replace(/\s+models?$/i, "");
 }
@@ -69,10 +69,28 @@ export function normalizeAntigravityQuota(body: unknown): AgentLimit[] {
   return limits;
 }
 
+export function unreadGroups(body: unknown): string[] {
+  const groups = asRecord(body)?.groups;
+  if (!Array.isArray(groups)) return [];
+  const unread: string[] = [];
+  for (const group of groups) {
+    const rec = asRecord(group);
+    const name = text(rec?.displayName) ?? "?";
+    const buckets = Array.isArray(rec?.buckets) ? rec.buckets : [];
+    const first = asRecord(buckets[0]);
+    if (first && Number.isFinite(Number(first.remainingFraction ?? 0))) continue;
+    unread.push(`${name} [${Object.keys(rec ?? {}).join(",")}] ${Object.keys(first ?? {}).join(",")}`);
+  }
+  return unread;
+}
+
 // loadCodeAssist 的档位不是付费订阅；不能拿它替代显式配置的套餐标签。
 export function rowFromAntigravityQuota(body: unknown, planLabel = config.antigravityPlanLabel): AgentRow {
   const limits = normalizeAntigravityQuota(body);
-  return rowFromWindows("antigravity", planLabel ? { plan_label: planLabel } : {}, limits);
+  const row = rowFromWindows("antigravity", planLabel ? { plan_label: planLabel } : {}, limits);
+  const unread = unreadGroups(body);
+  if (row.limitsError == null && unread.length > 0) row.limitsError = `Antigravity 有分组没读出窗口：${unread.join("; ")}`;
+  return row;
 }
 
 type TokenFile = {
