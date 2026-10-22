@@ -5,7 +5,7 @@ import type { GodChatMessage, GodChatTrace } from "@shared/god-chat";
 import type { Env } from "../runtime";
 import type { PrefetchScores } from "./router";
 
-// 首页对话隐私说明（src/components/god-chat.tsx#CONSENT_COPY）按这个期限写，改期限要同步改三种语言。
+// 首页对话隐私说明（src/components/god-chat/consent.tsx#CONSENT_COPY）按这个期限写，改期限要同步改三种语言。
 export const TRANSCRIPT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type TranscriptOutcome = "complete" | "incomplete" | "failed" | "aborted" | "refused";

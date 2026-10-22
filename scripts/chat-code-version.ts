@@ -5,6 +5,7 @@ import { join, relative, sep } from "node:path";
 // 这些路径的内容一变，访客就得重新同意对话的隐私说明；测试文件不算。
 export const CHAT_CODE_PATHS = [
   "src/components/god-chat.tsx",
+  "src/components/god-chat",
   "src/components/chat-card.tsx",
   "src/components/chat-card",
   "src/components/chat-markdown.tsx",
