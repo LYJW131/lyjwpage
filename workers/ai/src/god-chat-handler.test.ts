@@ -65,6 +65,9 @@ test("各档的 SDK 请求都启用消息级 effort，工具续跑继承强度�
         assert.deepEqual(body.messages.filter((m) => m.role === "system"), [{ role: "system", content: [], output_config: { effort: info.effort } }]);
         const domain = body.tools?.filter((tool) => "name" in tool && ["anime_search", "game_search"].includes(tool.name)) ?? [];
         assert.equal(domain.length, 2);
+        assert.equal(headers.get("anthropic-version"), "2026-10-21");
+        assert.equal(headers.get("authorization"), `Bearer ${deepseek ? env.DEEPSEEK_API_KEY : env.ANTHROPIC_API_KEY}`);
+        assert.equal(headers.get("x-api-key"), null);
         if (deepseek) {
           assert.ok(body.tools?.every((tool) => tool.type !== "tool_search_tool_bm25_20251119"));
           assert.ok(domain.every((tool) => "defer_loading" in tool && tool.defer_loading === false));
