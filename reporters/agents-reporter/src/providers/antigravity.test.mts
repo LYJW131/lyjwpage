@@ -81,3 +81,21 @@ test("rowFromAntigravityQuota 带套餐标签", () => {
   assert.equal(row.limits.length, 4);
   assert.equal(row.plan?.label, "Google AI Pro");
 });
+
+test("Argon 组不和 Gemini 组撞名", () => {
+  const limits = normalizeAntigravityQuota({
+    groups: [{ displayName: "Gemini 4 Argon", buckets: [{ window: "weekly", resetTime: "2026-09-05T04:51:12Z", remainingFraction: 1 }] }],
+  });
+  assert.equal(limits[0]?.label, "Gemini 4 Argon Weekly");
+});
+
+test("读不出窗口的分组写进 limitsError，带字段名方便定位", () => {
+  const row = rowFromAntigravityQuota({
+    groups: [
+      ...quota.groups,
+      { displayName: "Gemini 4 Argon", models: [{ remainingAmount: "5" }] },
+    ],
+  });
+  assert.equal(row.limits.length, 4);
+  assert.match(row.limitsError ?? "", /Gemini 4 Argon \[displayName,models\]/);
+});
