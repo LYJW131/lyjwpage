@@ -11,10 +11,6 @@
   "src/components/dev-toggles.tsx": [
     "开发环境调试：切换"
   ],
-  "src/components/god-chat.tsx": [
-    "Steam ストア",
-    "Steam 商店"
-  ],
   "src/components/live/media-pair.tsx": [
     "开发环境调试：切换 Charger 面板可见性",
     "开发环境调试：切换 Power Bank 面板可见性"
