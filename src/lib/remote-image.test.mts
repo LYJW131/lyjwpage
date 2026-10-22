@@ -52,7 +52,11 @@ test("远程内联：重定向出白名单、超大响应都拒绝", async () =>
 });
 
 test("远程内联：PSN 带尺寸图床与 Quest 封面链可内联，公开 /image 代理仍不认这些主机", async () => {
-  for (const src of ["https://image.api.playstation.com/x.png?w=224&h=224", "https://psnobj.prod.dl.playstation.net/x.png"]) {
+  for (const src of [
+    "https://image.api.playstation.com/x.png?w=224&h=224",
+    "https://psnobj.prod.dl.playstation.net/x.png",
+    "https://cdn.discordapp.com/app-assets/123/cover.png?size=256",
+  ]) {
     const { impl } = recordingFetch(() => new Response(png, { headers: { "Content-Type": "image/png" } }));
     assert.match(await remoteImageDataUri(src, impl), /^data:image\/png;base64,/, src);
   }

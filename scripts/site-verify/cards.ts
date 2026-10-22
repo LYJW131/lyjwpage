@@ -132,7 +132,6 @@ export async function cmdCards(flags: Flags) {
 export async function cmdShot(flags: Flags) {
   const out = stringFlag(flags.out) ?? fail("shot 需要 --out <目录>", "例子：shot --url http://localhost:3291 --widths 1280,375 --out /tmp/shots", 2);
   const map = loadFeatureMap();
-  if (flags.card === true) fail("--card 后面缺卡片 id", `可选：${map ? Object.keys(map.cards).join(", ") : "功能地图读不到"}`, 2);
   const card = stringFlag(flags.card);
   const cardEntry = card ? map?.cards?.[card] : null;
   if (card && !cardEntry) fail(`未知卡片 id：${card}`, `可选：${map ? Object.keys(map.cards).join(", ") : "功能地图读不到"}`, 2);
