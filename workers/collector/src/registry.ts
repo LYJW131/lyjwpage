@@ -62,6 +62,14 @@ function outcome(job: Job, status: CollectorJobOutcome["status"], detail: string
 
 export const HEAD_START_MS = 3_000;
 
+// 平台会把超时或被取消的一轮约 15 分钟后带着原来的 scheduledTime 重投；照跑会用旧时间覆盖 LAG 的 updatedAt，core 随即误报 stale。
+// 下一分钟的正常一轮会补上，所以迟到超过这个时长的整轮跳过。
+export const LATE_ROUND_MS = 2 * 60_000;
+
+export function isLateRound(scheduledTime: number, now = Date.now()): boolean {
+  return now - scheduledTime > LATE_ROUND_MS;
+}
+
 export async function runScheduled(
   env: Env,
   scheduledTime: number,
