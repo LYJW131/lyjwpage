@@ -17,7 +17,7 @@ const PROTECTED_DOC_PATHS = new Set([
 ]);
 
 const SCRIPT_SUFFIX = /\.(?:[cm]?[jt]sx?|py|sh)$/i;
-const PUBLIC_EXECUTABLE = /\.(?:[cm]?js|html?)$/i;
+const PUBLIC_EXECUTABLE = /\.(?:[cm]?js|html?|xht(?:ml)?|svg|xml)$/i;
 const PUBLIC_HEADER_FILES = new Set(["_headers", "_redirects"]);
 
 function protectedPathSegment(segment: string): boolean {
