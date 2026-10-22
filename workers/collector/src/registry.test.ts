@@ -5,7 +5,7 @@ import { ACTIVE_COLLECTOR_JOBS, COLLECTOR_JOBS, RETIRED_COLLECTOR_JOBS } from "@
 
 import type { Env } from "./env";
 import type { Job } from "./job";
-import { JOBS, dueJobs, runJob, runNamed, runScheduled } from "./registry";
+import { JOBS, dueJobs, isLateRound, runJob, runNamed, runScheduled } from "./registry";
 import { isDue } from "./schedule";
 
 const at = (iso: string) => Date.parse(iso);
@@ -111,4 +111,11 @@ test("retired job names stay callable as skipped and never join the schedule", a
   for (let m = 0; m < 60; m++) {
     assert.ok(dueJobs(hour + m * 60_000).every((job) => !(RETIRED_COLLECTOR_JOBS as readonly string[]).includes(job.name)));
   }
+});
+
+test("平台约 15 分钟后带原 scheduledTime 重投的一轮算迟到，准点或晚几秒开跑的不算", () => {
+  const scheduled = at("2026-10-21T08:03:29Z");
+  assert.equal(isLateRound(scheduled, scheduled + 1_500), false);
+  assert.equal(isLateRound(scheduled, scheduled + 60_000), false);
+  assert.equal(isLateRound(scheduled, at("2026-10-21T08:18:33Z")), true);
 });
