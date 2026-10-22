@@ -66,6 +66,10 @@
   - 是什么：AutoClean 自动删掉已全量上线的 feature flag 留下的死代码。agent 改写，布尔化简经 MCP 交给确定性工具 [PolyglotPiranha](https://github.com/uber/piranha)；CI 红了先跑确定性修复器，再交给只能改限定文件的 agent 修复器；CI 绿后过静态检查与 CodeCourt：每条正确性要求（只删不加、行为不变、不偏离目标 flag、不留 agent 痕迹）各配一个评审 agent，并行跑，全过才给人看。
   - 取了什么：没取做法，用来对照。站点没有 feature flag；「不留 agent 痕迹」本项目已由根 `AGENTS.md`「文档与注释」和 `pnpm rules:check` 管着。
   - 状态：待定。CodeCourt 按条拆评审（一条要求一个评审 agent，单 agent 整份清单会漏掉埋在中间的要求）可对照根 [REVIEW.md](../REVIEW.md)；合并门槛还没出现因清单太长而漏检的实例，出现时先把漏的那一条拆成单独的评审提示。
+- **[Chris Tate 讲他的云端 agent 网络](https://x.com/ctatedev/status/2112612486549577993)**（Chris Tate，Vercel，X；引用他的[前一条](https://x.com/ctatedev/status/2112586219733262557)）
+  - 是什么：从本地 agent 走到云端 agent 加子 agent 的一张图。每个 agent 一个沙箱，可以再生 agent、互发消息；沙箱外的控制器建子 agent、转消息、执行要授权的操作，GitHub 与 Slack 权限只给控制器（[Vercel Connect](https://vercel.com/docs/connect)），GitHub 写操作要审批；模型请求经凭据代理出站时才加密钥（[Sandbox 防火墙与凭据代理](https://vercel.com/docs/sandbox/concepts/firewall)）；子 agent 另开不跑 agent 的测试沙箱。
+  - 取了什么：没取新做法，用来对照。Claude 项目的协调者加线程就是他的控制器加 agent 图；云端出站代理给 X、Exa、OpenRouter 注入密钥是同一种凭据代理；GitHub 写操作由 PR 门禁与合并分档管着；测试沙箱对应分支预览（`docs/workers-builds.md`「分支预览」）。
+  - 状态：不采用。没有缺的部件。
 
 ## 写 skill 与写给 agent 的文档
 
