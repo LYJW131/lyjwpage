@@ -30,6 +30,6 @@ claude plugin install html-plan@claude-community --scope project
   node <插件 skill 目录>/runtime/pack.mjs /mnt/project-files/html-plan/<名字>.html --root . --artifact
   ```
 
-  用 Artifact 发布生成的 `<名字>.artifact.html`。同一份计划改版用同一个文件路径重发，链接不变。发布前看一眼 pack 列出的「code from … is now inside the page」，不该进页面的文件不放。
+  页面 `<head>` 里加一行 `<style>html body { background: var(--paper); color: var(--ink); }</style>`：Artifact 外壳会给 body 涂浅色底，原版只给 html 上底色，深色模式下就成了浅底配浅字。用 Artifact 发布生成的 `<名字>.artifact.html`。同一份计划改版用同一个文件路径重发，链接不变。发布前看一眼 pack 列出的「code from … is now inside the page」，不该进页面的文件不放。
 - 交接：线程里发一句话加链接，说几个决定、默认怎么走。lyjw 按 Respond、Copy response，把答复贴回线程。
 - 等答复时照根 `AGENTS.md`「工作方式」：照默认项先做能撤回的部分（建分支、写代码、开草稿 PR），不可撤回的等答复。这条替代原版的「答复到之前不动手」。
