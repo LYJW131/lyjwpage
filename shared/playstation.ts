@@ -1,4 +1,5 @@
 import { number, object, text } from "@shared/json";
+import { psnImageUrl } from "@shared/psn-image";
 import type {
   PlaystationGame,
   PlaystationNowPlaying,
@@ -69,7 +70,7 @@ export function normalizeNowPlaying(value: unknown): PlaystationNowPlaying | nul
     title: requiredText(row, "title", "PlayStation presence.playing"),
     format: nullableText(row, "format", "PlayStation presence.playing"),
     launchPlatform: nullableText(row, "launchPlatform", "PlayStation presence.playing"),
-    iconUrl: nullableText(row, "iconUrl", "PlayStation presence.playing"),
+    iconUrl: psnImageUrl(nullableText(row, "iconUrl", "PlayStation presence.playing")),
   };
 }
 
@@ -104,7 +105,7 @@ export function normalizeGame(value: unknown, index: number): PlaystationGame {
     firstPlayedAt: nullableNumber(row, "firstPlayedAt", context),
     lastPlayedAt: nullableNumber(row, "lastPlayedAt", context),
     playDurationMs: nullableNumber(row, "playDurationMs", context),
-    imageUrl: nullableText(row, "imageUrl", context),
+    imageUrl: psnImageUrl(nullableText(row, "imageUrl", context)),
     service: nullableText(row, "service", context),
     preOrder: requiredBoolean(row, "preOrder", context),
   };

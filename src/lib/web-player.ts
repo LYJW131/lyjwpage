@@ -195,7 +195,7 @@ export async function fetchCatalogTracks(
 
   try {
     const token = await fetchDeveloperToken();
-    const res = await fetch(`https://api.music.apple.com${path}`, {
+    const res = await fetch(new URL(path, "https://api.music.apple.com"), {
       headers: {
         Authorization: `Bearer ${token.token}`,
       },

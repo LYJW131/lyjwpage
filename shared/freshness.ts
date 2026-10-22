@@ -14,6 +14,9 @@ export const AGENT_LIMITS_STALE_MS = 185 * 60_000;
 // 判活窗口锚定 playstation-reporter 的 IDLE_TICK_INTERVAL_MS，覆盖多轮闲档，并留出兜底轮询余量（心跳只落库不广播，浏览器要等下一次轮询才看到新 observedAt）；闲档降频前先放宽并部署此窗口。
 export const PLAYSTATION_STALE_MS = 95 * 60_000;
 
+// 上报声称的 observedAt 允许超前接收时刻的时钟偏差；超出即拒收，否则它会成为新鲜度水位，把之后的真实上报全判成旧的。
+export const INGEST_FUTURE_SKEW_MS = 60_000;
+
 // 覆盖 server-reporter 多轮上报及 KV 可见延迟，避免漏报即闪断；调长其 INTERVAL_MS 前先放宽并部署此窗口。
 export const SERVER_STALE_MS = 10 * 60_000;
 

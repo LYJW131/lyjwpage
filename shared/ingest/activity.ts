@@ -1,3 +1,4 @@
+import { INGEST_FUTURE_SKEW_MS } from "@shared/freshness";
 import { number, object, text } from "@shared/json";
 import type { ActivityHistory, ActivityHistoryBucket, ActivityReport } from "@shared/activity";
 
@@ -64,7 +65,6 @@ function normalizeCurrent(row: Record<string, unknown>, receivedAt: number): Act
 
 const BUCKET_MS = 5 * 60_000;
 const MAX_HISTORY_MS = 25 * 60 * 60_000;
-const CLOCK_SKEW_MS = 60_000;
 
 // HealthKit 重聚合会抖动末位小数；量化防止每次上报重写整窗历史。
 function nullableAmount(value: unknown, decimals: number): number | null {
@@ -81,7 +81,7 @@ function normalizeHistory(input: unknown, receivedAt: number): ActivityHistory {
   const from = number(history.from);
   const to = number(history.to);
   if (typeof from !== "number" || typeof to !== "number" || !Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || from >= to ||
-      from % BUCKET_MS !== 0 || to % BUCKET_MS !== 0 || to - from > MAX_HISTORY_MS || to > receivedAt + CLOCK_SKEW_MS) {
+      from % BUCKET_MS !== 0 || to % BUCKET_MS !== 0 || to - from > MAX_HISTORY_MS || to > receivedAt + INGEST_FUTURE_SKEW_MS) {
     throw new Error("活动上报的 history 必须是已结束且不超过 25 小时的五分钟对齐范围");
   }
   if (!Array.isArray(history.buckets)) throw new Error("活动上报的 history.buckets 必须是数组");
