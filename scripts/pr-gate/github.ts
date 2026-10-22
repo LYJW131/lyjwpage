@@ -1,3 +1,5 @@
+import { TRUSTED_AUTHOR_IDS } from "../verify-receipt.ts";
+
 export const REPO = "LYJW131/lyjwpage";
 const API = "https://api.github.com";
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -18,6 +20,7 @@ export type Pull = {
   head: { sha: string };
   base?: { ref: string };
   labels?: { name: string }[];
+  user?: User;
 };
 export type PrFile = { filename: string; previous_filename?: string };
 export type CheckRun = { id?: number; name: string; status: string; conclusion: string | null; started_at?: string | null; html_url?: string };
@@ -61,6 +64,8 @@ export function client(fetchImpl: FetchLike) {
   return { get, all, graphql };
 }
 export type Client = ReturnType<typeof client>;
+
+export const isTrustedAuthor = (pull: Pull) => TRUSTED_AUTHOR_IDS.has(pull.user?.id ?? 0);
 
 export function changedPaths(files: PrFile[]) {
   return files.flatMap((file) => (file.previous_filename ? [file.filename, file.previous_filename] : [file.filename]));

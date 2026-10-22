@@ -19,10 +19,6 @@ on:
       - reporters/discord-reporter/**
       - .github/workflows/build-reporters.yml
   workflow_dispatch:
-    inputs:
-      cli_epoch:
-        description: 填任意新值强制重装 agents-reporter 的 CLI 层；留空按 ISO 周
-        required: false
 
 permissions:
   contents: read
@@ -105,11 +101,6 @@ jobs:
             type=sha,prefix=sha-
             type=ref,event=pr
 
-      - id: epoch
-        env:
-          OVERRIDE: ${{ inputs.cli_epoch }}
-        run: echo "value=${OVERRIDE:-$(date -u +%G-W%V)}" >> "$GITHUB_OUTPUT"
-
       # mode=max 会把 CLI 的大体积中间层写进 Actions 缓存并挤满额度，必须用 mode=min。
       - uses: docker/build-push-action@v7
         with:
@@ -120,7 +111,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             GIT_SHA=${{ github.sha }}
-            CLI_EPOCH=${{ steps.epoch.outputs.value }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=min
 

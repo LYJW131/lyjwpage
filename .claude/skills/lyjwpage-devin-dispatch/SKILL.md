@@ -53,9 +53,9 @@ dv list
 
 - 无头 `resume` 碰到写入菜单会直接拒（非交互，没人批），只能读和跑命令；所以验收（含沙箱外重跑全量 `pnpm typecheck`）通过前不 `stop`，要改文件的续轮用 `send`。
 - 在 wrapper 下 `start` 不传 `--mode`，模式由 wrapper 定；要别的模式用 `DV_MODE` 覆盖。
-- 沙箱里即使是 dangerous，Devin 用编辑 / 写文件工具前仍会停在批准菜单（`1 Yes (Approve once)` / `2 Yes, allow edits in <目录>` / … / `No`）。这些工具不受沙箱约束，菜单就是边界。在 wrapper 下启动的任务默认 `--auto-approve`：`wait` 取菜单上方最近的 `⏺ Writing <path>` / `Editing <path>`，相对路径按 worktree 解析、`realpath` 去掉 `..` 和符号链接后，落在 worktree 或该仓库的 git common dir（`hooks/`、`config` 除外）里，且第 2 项 `allow edits in <目录>` 是目标文件所在目录（Mac 上的菜单）或 worktree 根（云端沙箱的菜单），才按 Enter 批准一次；同一屏不重复按，计数记在 meta。路径不在范围内、认不出（没有写入标题、被截断、标题后面跟着缩进的折行）或缺 allow 行时不批，`wait` 立即返回 4 并写明原因。
+- 沙箱里即使是 dangerous，Devin 用编辑 / 写文件工具前仍会停在批准菜单（`1 Yes (Approve once)` / `2 Yes, allow edits in <目录>` / … / `No`）。这些工具不受沙箱约束，菜单就是边界。在 wrapper 下启动的任务默认 `--auto-approve`：`wait` 取菜单上方最近的 `⏺ Writing <path>` / `Editing <path>`，相对路径按 worktree 解析、`realpath` 去掉 `..` 和符号链接后，落在 worktree 里（git common dir 与 `.git` 不在内：里面的 `worktrees/*/commondir`、`objects/info/alternates`、`packed-refs`、`refs/**`、`HEAD` 被改写会让之后每条 git 命令改道或执行代码，git 状态只由 Devin 沙箱里的 `git` 命令写），且第 2 项 `allow edits in <目录>` 是目标文件所在目录（Mac 上的菜单）或 worktree 根（云端沙箱的菜单），才按 Enter 批准一次；同一屏不重复按，计数记在 meta。路径不在范围内、认不出（没有写入标题、被截断、标题后面跟着缩进的折行）或缺 allow 行时不批，`wait` 立即返回 4 并写明原因。
 - 返回 4 且原因是 `outside the worktree` 或认不出路径时，默认 `dv deny <name>`：选 No，再告诉它只能写工作区。确需写工作区外的文件，由 Claude 自己写，不替 Devin 批。**不选 always allow，不切 bypass**：那是改 Devin 的持久配置。
-- 菜单开着时 `send` 会拒绝（粘贴的文字会落进菜单），先 `approve` 或 `deny`。
+- 菜单或提问开着（`approval` / `attention`）时 `send` 会拒绝（粘贴的文字会落进去），先 `approve`、`deny` 或 `key`。每次按 Enter 前 `send` 都重抓一次屏幕，输入框不见了或已经是菜单 / 提问就退出 4，不按 Enter：Enter 会选中菜单默认的 Approve once，绕过路径检查。
 - 运行状态在 `$DV_RUNS`（默认 `~/.claude/devin-dispatch/runs`）下按任务名分目录：meta、`--export` 的 JSON（Devin 每轮重写）、退出码。tmux 会话名是 `dv-<name>`。
 - `wait` 的返回码：`0` 空闲（打印最后一轮回复），`3` 已退出，`4` 停在提问、菜单、断线重试或认不出的屏幕超过 `--attention` 秒，`5` 额度用尽（`quota`），或限流的重置时间超出 `--timeout` / 读不出，`124` 超时。返回 4 时用 `status` 看屏幕并处理，不能放着：没人回答的提问会让它一直等。返回 5 且是额度用尽时，按「选模型」`dv model <name> swe-2-max` 再 `dv send <name> 继续`。
 - **免费档限流**（`ratelimit`）：速率桶全账号共用，所有会话屏幕上是同一个重置时间（`reset in 1 hour 2 minutes (at 06:01 UTC)`），提前重试只会再撞。`wait` 读出重置时间，睡到重置后 30 秒，再发一句续跑，最多每 2 分钟一次；`status` 打印还剩几秒。不用另写轮询脚本。

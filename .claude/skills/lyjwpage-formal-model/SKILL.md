@@ -38,11 +38,13 @@ description: lyjwpage 里查竞态、顺序、重试类 bug 时用：复现不�
 ### 2. 跑 TLC
 
 ```sh
-curl -sSL -o tla2tools.jar https://github.com/tlaplus/tlaplus/releases/latest/download/tla2tools.jar
+curl -fsSL -o tla2tools.jar https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
+echo "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  tla2tools.jar" | sha256sum -c - && \
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC -workers auto -config X.cfg X.tla
 ```
 
 - jar 放 scratchpad。云端容器自带 `java`。
+- 版本和散列固定在上面这两行，散列不对就不运行。升级时改版本号，自己下载新 jar 用 `sha256sum` 重算散列再一起提交，不照抄 release 页面上的值。
 - 输出 `No error has been found` 为通过；反例打印为 `Invariant <名> is violated` 加逐步的状态序列。
 - 证明检查会失败：加 `CONSTANT MUT`，每个取值对应一处故意的代码错误（例：去掉某个判断）。`MUT = "none"` 必须通过，每个改坏变体都必须报错。有变体没报错，要么模型漏了东西，要么那处另有保护，写明是哪处。
 

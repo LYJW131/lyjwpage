@@ -1,5 +1,6 @@
 import { number, object, text } from "@shared/json";
 import { foldService } from "@shared/playstation-entitlements";
+import { psnImageUrl } from "@shared/psn-image";
 import type { PlaystationGame } from "@shared/types";
 import { addTrophyCounts, emptyTrophyCounts } from "@shared/trophy-counts";
 import {
@@ -60,11 +61,6 @@ function nullableText(
   return requiredText(row, field, context);
 }
 
-// PSN 图床会返回 http URL，必须升级为 https 避免混合内容被拦。
-function httpsUrl(value: string | null): string | null {
-  return value ? value.replace(/^http:\/\//i, "https://") : null;
-}
-
 function requiredBoolean(
   row: Record<string, unknown>,
   field: string,
@@ -97,7 +93,7 @@ function normalizeProfile(value: unknown): TrophyProfile {
   }
   return {
     onlineId: requiredText(row, "onlineId", "PlayStation trophies.profile"),
-    avatarUrl: httpsUrl(nullableText(row, "avatarUrl", "PlayStation trophies.profile")),
+    avatarUrl: psnImageUrl(nullableText(row, "avatarUrl", "PlayStation trophies.profile")),
     plus: requiredBoolean(row, "plus", "PlayStation trophies.profile"),
     level: requiredNumber(row, "level", "PlayStation trophies.profile"),
     tier: requiredNumber(row, "tier", "PlayStation trophies.profile"),
@@ -118,7 +114,7 @@ function normalizeGroup(value: unknown, index: number, titleId: string): TrophyG
   return {
     id: requiredText(row, "id", context),
     name: requiredText(row, "name", context),
-    iconUrl: httpsUrl(nullableText(row, "iconUrl", context)),
+    iconUrl: psnImageUrl(nullableText(row, "iconUrl", context)),
     progress,
     defined: normalizeCounts(row.defined, `${context}.defined`),
     earned: normalizeCounts(row.earned, `${context}.earned`),
@@ -149,7 +145,7 @@ function normalizeTrophy(value: unknown, index: number, titleId: string): Trophy
     type: normalizeTrophyType(row.type, context),
     name: requiredText(row, "name", context),
     detail: nullableText(row, "detail", context),
-    iconUrl: httpsUrl(nullableText(row, "iconUrl", context)),
+    iconUrl: psnImageUrl(nullableText(row, "iconUrl", context)),
     hidden: requiredBoolean(row, "hidden", context),
     groupId: requiredText(row, "groupId", context),
     earned: requiredBoolean(row, "earned", context),
@@ -181,7 +177,7 @@ function normalizeTitle(value: unknown, index: number): TrophyTitle {
     name: requiredText(row, "name", context),
     localizedName: nullableText(row, "localizedName", context),
     titleIds: normalizeTitleIds(row.titleIds, context),
-    iconUrl: httpsUrl(nullableText(row, "iconUrl", context)),
+    iconUrl: psnImageUrl(nullableText(row, "iconUrl", context)),
     platform: requiredText(row, "platform", context),
     progress,
     defined: normalizeCounts(row.defined, `${context}.defined`),

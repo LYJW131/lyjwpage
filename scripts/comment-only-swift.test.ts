@@ -140,8 +140,33 @@ test("stripSwift：字符串里的 // 和 /* 原样留在代码里", () => {
   }
 });
 
-test("已知局限：Swift 正则字面量里的 // 会被当成行注释（文件头有说明）", () => {
-  const { code, comments } = stripSwift("let re = #/a//b/#\nlet x = 1\n");
-  assert.deepEqual(comments, ["//b/#"]);
-  assert.ok(code.includes("let x = 1"));
+test("Swift 正则字面量里含 // 或 /*：不给仅注释结论，两边任一边出现都报解析失败", () => {
+  const payloads: [string, string][] = [
+    ["let re = #/a//b/#; let x = 1\n", "let re = #/a//b/#; let x = 2\n"],
+    ["let re = #/[/*]/#\nlet x = 1\nlet y = 2\n", "let re = #/[/*]/#\nlet x = 9\nlet y = 8\n"],
+    ["let re = ##/a//b/##; let x = 1\n", "let re = ##/a//b/##; let x = 2\n"],
+    ["let re = #/a//b/#\nlet x = 1\n", "let re = #/a//b/# // 注释\nlet x = 1\n"],
+  ];
+  for (const [before, after] of payloads) {
+    assert.equal(status("a.swift", before, after), "parse-error", after);
+    assert.equal(status("a.swift", after, before), "parse-error", before);
+  }
+  assert.equal(status("a.swift", "let x = 1\n", "let re = #/a//b/#\nlet x = 1\n"), "parse-error");
+  assert.equal(status("a.swift", "let re = #/a//b/#\n", "let re = #/a//b/#\n"), "unchanged");
+  assert.ok(stripSwift("let re = #/a//b/#\n").errors.length > 0);
+});
+
+test("Swift 正则字面量：不含注释分隔符的照常比较，转义与井号个数按字面量读完", () => {
+  assert.equal(status("a.swift", "let re = #/a\\d+/#\nlet x = 1\n", "// 说明\nlet re = #/a\\d+/# // 尾\nlet x = 1\n"), "comment-only");
+  assert.equal(status("a.swift", "let re = #/a\\d+/#\nlet x = 1\n", "let re = #/a\\d+/#\nlet x = 2\n"), "code");
+  assert.equal(status("a.swift", "let re = #/a\\d+/#\n", "let re = #/a\\w+/#\n"), "code");
+  const { code, comments, errors } = stripSwift("let re = ##/a/#b\\/c/##; let x = 1 // 尾\n");
+  assert.deepEqual(errors, []);
+  assert.deepEqual(comments, ["// 尾"]);
+  assert.ok(code.includes("##/a/#b\\/c/##; let x = 1"));
+  assert.deepEqual(stripSwift("let a = #\"x//y\"#\n").errors, []);
+});
+
+test("Swift 正则字面量没写完：不给结论", () => {
+  assert.equal(status("a.swift", "let re = #/abc\nlet x = 1\n", "let re = #/abc\nlet x = 2\n"), "parse-error");
 });

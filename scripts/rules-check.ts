@@ -5,7 +5,8 @@
 //   img-baked-url  不烧 `/img/` 交付域：R2 图片一律同源相对路径（shared/asset-url.ts#publicAssetPath），
 //                  需要绝对地址的场合（OG、RSS）读环境变量
 //   site-fetch-host 站点 src/ 里的网络调用不写字面量主机：后端调用走 backendUrl / workerUrl
-//                  （PUBLIC_BACKEND_URL），浏览器必须直连的第三方主机在 ALLOWED_FETCH_HOSTS 登记
+//                  （PUBLIC_BACKEND_URL），浏览器必须直连的第三方主机在 ALLOWED_FETCH_HOSTS 登记；
+//                  host 按 URL 语义解析，fetch / Request 等的首参（含其中 new URL 的两个参数）证明不了在允许列表内即报
 //   scrollbar-pair 隐藏滚动条两句缺一不可：scrollbar-none 管 Firefox，
 //                  [&::-webkit-scrollbar]:hidden 管 Chromium（DESIGN.md「滚动区」）
 //   manual-sleep   scripts/、shared/、workers/<x>/src/ 里等一段时间一律用

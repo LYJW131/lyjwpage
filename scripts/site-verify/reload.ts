@@ -217,8 +217,9 @@ export async function cmdReload(flags: Flags) {
   const watch = Number(flags.watch || 5000);
   const grace = Number(flags.grace ?? 100);
   const latency = Number(flags.latency ?? 100);
-  fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
+  // 只清本工具自己写的文件：--out 可能指到别人的目录，不能整目录删。
+  for (const name of fs.readdirSync(out)) if (/^(frame-\d+-\d+ms|settled)\.png$/.test(name)) fs.rmSync(path.join(out, name), { force: true });
 
   const pw = await resolvePlaywright() ?? fail("解不到 playwright / playwright-core", PLAYWRIGHT_NEXT);
   const sink = newSink();

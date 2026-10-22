@@ -4,13 +4,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { cmdCards, cmdDoctor, cmdShot } from "./site-verify/cards.ts";
-import { DEFAULT_URL, errorText, ExitError, fail, parseArgs, print, ROOT, WORKER_URL, type Flags } from "./site-verify/cli.ts";
+import { errorText, ExitError, fail, parseCommand, print, ROOT, WORKER_URL, type Flags } from "./site-verify/cli.ts";
 import { cmdReload } from "./site-verify/reload.ts";
 import { cmdSkew } from "./site-verify/skew.ts";
 
 export { HIDE_DEV_UI, launchBrowser, resolvePlaywright } from "./site-verify/browser.ts";
 export { loadFeatureMap, requiredCardIds, type FeatureMap } from "./site-verify/cards.ts";
-export { parseArgs, parseWidths } from "./site-verify/cli.ts";
+export { parseCommand, parseWidths } from "./site-verify/cli.ts";
 export { classifyRequest, consoleClean, consoleProblems, isEnvNoise, navOrigin, newSink, updateOrigin, type Sink } from "./site-verify/console-sink.ts";
 export { findJumps, textJumps } from "./site-verify/reload.ts";
 export { documentCommit, skewVerdict, staleAssetHtml } from "./site-verify/skew.ts";
@@ -30,7 +30,7 @@ const HELP = `site-verify — 站点验证共用脚本（lyjwpage-verify）
   override  夹具注入，转发给 scripts/dev-override.ts（成套注入用 pnpm dev:scene）；--dry-run 只打印命令不执行
 
 公共选项：
-  --url <url>         被测站点（默认 http://localhost:3211，或 DEV_SITE_PORT 环境变量）
+  --url <url>         被测站点，只收 http(s)（默认 http://localhost:3211，或 DEV_SITE_PORT 环境变量）
   --compact           JSON 输出压成单行
   --chrome <path>     Chrome 可执行文件（也可设 SITE_VERIFY_CHROME）
 
@@ -124,9 +124,7 @@ function cmdOverride(flags: Flags) {
 }
 
 async function main() {
-  const parsed = parseArgs(process.argv.slice(2));
-  const command = parsed.positional[0] ?? (parsed.flags.help ? "help" : null);
-  const flags: Flags = { ...parsed.flags, url: String(parsed.flags.url || DEFAULT_URL).replace(/\/+$/, "") };
+  const { command, flags } = parseCommand(process.argv.slice(2));
   if (!command || command === "help" || flags.help === true) {
     process.stdout.write(HELP);
     if (!command && !flags.help) process.exitCode = 2;

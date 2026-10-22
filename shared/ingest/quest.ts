@@ -1,3 +1,4 @@
+import { INGEST_FUTURE_SKEW_MS } from "@shared/freshness";
 import { object } from "@shared/json";
 import type { QuestPlaying, QuestPresence } from "@shared/quest";
 
@@ -30,7 +31,7 @@ export function prepareQuestReport(input: unknown, receivedAt = Date.now()): Pre
   const envelope = object(input);
   const presence = object(envelope?.presence);
   const observedAt = timestamp(presence?.observedAt);
-  if (envelope?.version !== 1 || !presence || !observedAt || observedAt > receivedAt + 60_000 || !("playing" in presence)) {
+  if (envelope?.version !== 1 || !presence || !observedAt || observedAt > receivedAt + INGEST_FUTURE_SKEW_MS || !("playing" in presence)) {
     throw new Error("Invalid Quest presence envelope");
   }
   const discordStatus = presence.discordStatus;

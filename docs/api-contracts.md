@@ -13,7 +13,7 @@
 | 状态查询 | `/api/status/X` 表示列表 / 历史，`/api/status/X/now` 表示此刻 | `listening` + `listening/now`，`watching` + `watching/now`；两者同时存在时成对命名 |
 | 推送事件 | 跟随状态 URL，`/` 替换为 `-` | 列表为 `X`，此刻为 `X-now`；事件和端点含义一致 |
 | 大小写 | URL 段全小写，JSON 字段 camelCase | `/api/status/powerbank` 与视图键 `powerBank` 各守其约定 |
-| 跨来源字段 | 同一概念同名、同单位，单位写进字段名 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成 |
+| 跨来源字段 | 同一概念同名、同单位，单位写进字段名 | Mac / HomePod 的 `LocalNowPlaying` 共用 `positionMs`、`durationMs`、`repeatOne`、`observedAt`；`observedAt` 为 epoch 毫秒，秒转毫秒在上报侧完成；PlayStation、Quest、服务器上报的 `observedAt` 超前接收时刻超过 `shared/freshness.ts#INGEST_FUTURE_SKEW_MS` 即拒收 |
 | 图片键 | R2 内容地址使用 `objectKey`，来源侧键用明确名称 | `posterKey`、`backdropKey`、`iconHash`，避免含义不明的 `key` |
 
 设计契约：同一类数据可以有多个来源。来源只上报自己观测到的原始事实；合并、去重、排名等派生量在站点侧一处计算。消费者不关心数据来自哪个上报器，新增来源只加生产者和入口校验，不改消费者。例：coding agent 的 token 用量来自 Mac、Claude Code 云端和容器里的 Cursor；gaming 泳道同时有 PlayStation 与 Quest。
