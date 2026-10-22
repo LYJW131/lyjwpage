@@ -74,12 +74,12 @@ test("分档：docs/ 下的脚本与依赖清单按逻辑档，docs 下的 md �
   assert.deepEqual([v2.name, v2.need, v2.judge], ["ui", "live-ui-verified", false]);
 });
 
-test("分档：public/ 下的 js、html、_headers 按逻辑档，纯图片仍是界面档", () => {
-  for (const file of ["public/sw.js", "public/_headers", "public/offline.html", "public/evil/x.mjs", "public/sub/_headers"]) {
+test("分档：public/ 下的 js、html、svg、xml、_headers 按逻辑档，位图仍是界面档", () => {
+  for (const file of ["public/sw.js", "public/_headers", "public/offline.html", "public/evil/x.mjs", "public/sub/_headers", "public/cards/a.svg", "public/a.xhtml", "public/feed.xml"]) {
     const tier = tierOf([file], trusted);
     assert.deepEqual([file, tier.name, tier.judge], [file, "logic", true]);
   }
-  const images = tierOf(["public/icon.png", "public/cards/a.svg"], trusted);
+  const images = tierOf(["public/icon.png", "public/cards/a.webp"], trusted);
   assert.deepEqual([images.name, images.need, images.judge], ["ui", "live-ui-verified", false]);
   const mixed = tierOf(["public/icon.png", "public/sw.js"], trusted);
   assert.deepEqual([mixed.name, mixed.ui, mixed.logic], ["ui+logic", ["public/icon.png"], ["public/sw.js"]]);
