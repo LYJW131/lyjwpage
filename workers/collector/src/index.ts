@@ -9,7 +9,7 @@ import { serveAppleLookup, serveAppleMusic } from "./apple-music-http";
 import { driveCoreRound } from "./core-round";
 import { enrichTrack, followUpTrack } from "./enrichment";
 import type { Env } from "./env";
-import { runNamed, runScheduled } from "./registry";
+import { isLateRound, runNamed, runScheduled } from "./registry";
 import { installCollectorPorts } from "./ports";
 import { bindEnv } from "./runtime";
 
@@ -43,6 +43,10 @@ const notFound = () => Response.json({ ok: false, error: "Not Found" }, { status
 
 const collector = {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    if (isLateRound(controller.scheduledTime)) {
+      console.warn(JSON.stringify({ event: "collector-late-round", scheduledTime: controller.scheduledTime, lateMs: Date.now() - controller.scheduledTime }));
+      return;
+    }
     await Promise.all([
       runScheduled(bindEnv(env), controller.scheduledTime),
       driveCoreRound(env.CORE, controller.scheduledTime),
