@@ -72,7 +72,7 @@ PR 关闭时 `.github/workflows/preview-core-worker.yml` 检出默认分支，�
 
 ## 构建监视路径
 
-生产触发（`main`）的包含与排除路径见 `scripts/build-watch-paths.ts#BUILD_WATCH_PATHS`，core、site 分支 Preview 的见同文件的 `PREVIEW_WATCH_PATHS`；ai、ingress、collector 没有分支构建，PR 上不会出现它们的检查。这两份常量是控制台配置的仓库内副本，Cloudflare 不读它们：改了要经 Builds API 同步控制台并读回核对（方式见 [仓库外事实](./ops-facts.md)），控制台先改的也要回写常量。监视路径跟随生产运行依赖。
+生产触发（`main`）的包含与排除路径见 `scripts/build-watch-paths.ts#BUILD_WATCH_PATHS`，core、site 分支 Preview 的见同文件的 `PREVIEW_WATCH_PATHS`；ai、ingress、collector 没有分支构建，PR 上不会出现它们的检查。这两份常量是控制台配置的仓库内副本，Cloudflare 不读它们：改了要经 Builds API 同步控制台并读回核对（方式见 [仓库外事实](./ops-facts.md)），控制台先改的也要回写常量。监视路径跟随生产运行依赖：ai 从入口出发的运行时 import 闭包有文件不在 `BUILD_WATCH_PATHS.ai` 里时，`scripts/build-watch-paths.test.ts` 失败（CI 的脚本测试）。
 
 路径相对于仓库根目录；Cloudflare 先剔除命中排除路径的文件，剩下的再看包含路径，`*` 匹配任意字符，目录末尾的 `*` 包含子目录。规则按每次推送改到的文件判断：一个 PR 的最后一次推送只改了文档时，head 上没有构建检查是正常的。合并后要等哪些构建由 `scripts/deploy-check.ts --expect auto` 按同一份常量算，PR 上该有哪些由 `scripts/pr-gate.ts` 算。
 
