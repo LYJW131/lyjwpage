@@ -211,13 +211,14 @@ async function refreshAntigravityToken(file: TokenFile, home = config.home): Pro
   return accessToken;
 }
 
+// 服务端按 UA 里的 agy 版本决定放出几组（旧版本只回 Claude & GPT 一组）。
 async function retrieveQuota(accessToken: string): Promise<{ status: number; body: unknown }> {
   const res = await fetch(QUOTA_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
-      "User-Agent": "antigravity/cli (agents-reporter)",
+      "User-Agent": `antigravity/cli/${config.antigravityCliVersion}`,
     },
     body: JSON.stringify({ project: "aicode-consumers" }),
     signal: AbortSignal.timeout(20_000),
