@@ -78,6 +78,8 @@ export const config = {
     process.env.ANTIGRAVITY_QUOTA_URL?.trim() ||
     "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
 
+  antigravityCliVersion: process.env.ANTIGRAVITY_CLI_VERSION?.trim() || "1.4.5",
+
   antigravityOAuth: {
     clientId: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID?.trim() ?? "",
     clientSecret: process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET?.trim() ?? "",

@@ -64,6 +64,7 @@ Cursor 用量不按家分档：有哪家到期才有这一轮，每轮都顺带�
 | `CURSOR_AUTH_TOKEN` | | 直接注入 Cursor JWT。没有就读 `$XDG_CONFIG_HOME/cursor/auth.json`（默认 `/data/.config/cursor/auth.json`） |
 | `ANTIGRAVITY_PLAN_LABEL` | | Antigravity 的订阅名，如 `Google AI Pro`。配额接口不带订阅（IDE 里那句来自 Windsurf 那套 language server 问 aicode.googleapis.com 的 gRPC，CLI 从不显示；`loadCodeAssist` 回的 free-tier 是 Code Assist 档位不是订阅），只能人工指定；空 = 不渲染套餐 |
 | `ANTIGRAVITY_QUOTA_URL` | | 可选覆盖。默认 `https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary` |
+| `ANTIGRAVITY_CLI_VERSION` | | 可选。配额请求的 User-Agent 写成 `antigravity/cli/<版本>`，服务端按版本放出 Gemini 与 Argon 分组，写得太旧只回 Claude & GPT 一组。默认见 `src/config.ts#config.antigravityCliVersion`，agy 升级后同步 |
 | `ANTIGRAVITY_OAUTH_CLIENT_ID` | | 可选。不填时上报器启动会从镜像里的 `agy` 二进制扫出候选、刷新时逐对试，登录完就够。填了就直接用。**不写进仓库** |
 | `ANTIGRAVITY_OAUTH_CLIENT_SECRET` | | 同上 |
 | `AGY_BIN` | | 扫 OAuth 常量用的 `agy` 路径，默认 `agy`（镜像里在 `/usr/local/bin`） |
