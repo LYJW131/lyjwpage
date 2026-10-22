@@ -1,5 +1,6 @@
 # lyjwpage project
 - Owner: lyjw (GitHub LYJW131). Chinese. Repo https://github.com/LYJW131/lyjwpage (personal site). Goal: keep evolving the site on cutting-edge tech.
+- **Production domain is `https://lyjw.me`.** `lyjw.dev` is ONLY the branch-preview domain (`<branch>.preview.lyjw.dev`); bare lyjw.dev is not the site. lyjw corrected threads twice (2026-10-22 00:5x and 19:36 SGT): [[prod-domain-lyjw-me]].
 
 ## How lyjw wants us to work (put the relevant ones in every brief)
 - **Call lyjw "lyjw"** in every third-person reference (docs, skills, memory, PRs, reports, briefs); never 站主/owner/用户/他/they/real name. Direct chat address stays "你". (2026-10-14, #313)
@@ -12,6 +13,8 @@
 - **Don't over-engineer** (lyjw 2026-10-15: "你过度设计了 提示词改一下就行了"; also dropped the post-deploy PageSpeed check as unnecessary). Pick the smallest change that does the job. Small code additions are not a cost worth weighing (lyjw 2026-10-20 00:06 SGT).
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
+- **Do it yourself if a tool can** (lyjw 2026-10-22 04:43 SGT "以后手上有工具能做尽量不要来叫我了", after a thread asked lyjw to edit Cloudflare watch paths it could change via Cloudflare MCP): before asking lyjw to do a step (dashboard setting, config, command), check whether MCP/API/CLI/RC can do it, and do it. Only ask for what truly needs lyjw's hands or a decision.
+- **Never ask lyjw to paste/run terminal commands** (lyjw 2026-10-22 14:24 SGT "别再让我粘贴命令执行了…这很蠢", after the Antigravity thread asked for command after command). Run them yourself via Mac Remote Control; if Mac auto mode blocks a step, ask lyjw for one approval click in that Mac session (or a permission rule), not to run it by hand.
 - **Links as markdown** `[text](url)`, never bare URLs next to Chinese: [[links-as-markdown]].
 - **Never auto-resolve shipped threads;** only lyjw resolves.
 - **Merge autonomy:** small changes or work lyjw asked to push get merged without waiting. Big-direction changes need lyjw's go. References-only docs edits (docs/references.md, memory mirror) go straight in: lyjw 2026-10-19 16:11 SGT "参考小改直接推main". Cloud push to main is refused by the proxy, so open the PR, resolve threads and merge at once without waiting for CI. CI waits by tier (lyjw 2026-10-20 「行」): docs and small fixes merge after local checks, only big logic changes wait for CI: [[merge-ci-wait-tiers]].
@@ -32,12 +35,12 @@
 
 ## Tools and environment
 - **Devin CLI can take work** (lyjw 2026-10-20 03:58 SGT, replacing the 00:06 no-Devin rule): cloud threads may dispatch implementation to Devin per skill `lyjwpage-devin-dispatch`; Claude keeps design, acceptance and re-signing; Devin Review on PRs stays in the bot-review gate. Model: Fusion High while Pro quota lasts (lyjw 2026-10-21 15:59 SGT: the plan is for Claude's dispatching, don't save quota), swe-2-max fallback; keep ~6 sessions active: [[devin-free-tier-limit]].
-- Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
+- Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes and credential-file reads (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
 - OpenRouter keyless via egress injection (capped key, Inception models only; anthropic/openai 403): [[openrouter-egress]].
 - misaka.io API via egress injection (api.misaka.io/v3/, added 2026-10-20): only `/v3/mc2/metrics/account-throughput` returns data so far (NRT04 instance traffic, 24h curve; strip email/name before showing). Thread「misaka.io 代理能拿到什么」.
 - Cloud egress proxy injects keys for TypeSafe System One (Jev), Exa and Parallel. Jev also on Workers AI as `typesafe/jev` (AI Gateway `default`, BYOK; follows `jev-latest`, log the version per answer).
-- **Site previews:** `<branch>.preview.lyjw.dev` only (no login, noindex, #318). lyjw shut down `*-site.lyjw.workers.dev` entirely 2026-10-15; never use those URLs: [[preview-access-removed]].
+- **Site previews:** `<branch>.preview.lyjw.dev` only (no login, noindex, #318). Production is lyjw.me, not lyjw.dev. lyjw shut down `*-site.lyjw.workers.dev` entirely 2026-10-15; never use those URLs: [[preview-access-removed]].
 - Collector manual run: GitHub Actions "Run Collector Jobs".
 - Repo memory mirror at `.claude/memory/` via `pnpm memory:mirror`, daily 03:15 routine: [[repo-memory-mirror]].
 - lyjw's old Claude account project: everything merged except #395's 500 ms click grace (agent-picked): [[old-account-project-import]].
