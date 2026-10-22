@@ -217,8 +217,8 @@ importers:
   workers/ai:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: 0.134.0
-        version: 0.134.0(zod@4.4.3)
+        specifier: 1.1.0
+        version: 1.1.0(zod@4.4.3)
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250214.0
@@ -319,8 +319,8 @@ packages:
       react: ^0.14.0 || ^15.0.1 || ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^0.14.0 || ^15.0.1 || ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  '@anthropic-ai/sdk@0.134.0':
-    resolution: {integrity: sha512-j0DNXXKUKkr3kKyVR/I3pPWVv93g7vgHjgGYgh9uCXv5IKoXZPWmTwXKiVq/SZSbhBaD3KmtKhIszzt8dBnzog==}
+  '@anthropic-ai/sdk@1.1.0':
+    resolution: {integrity: sha512-Op/fKMsfVwFCfObc87leLOFlORE0RjOvLzRzPCWWLI7Ww6bobpKR6YmYC8ZYgulRh+m2a/3/61VUXoWHFtCXIw==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -5062,7 +5062,7 @@ snapshots:
       react-dom: 19.3.0(react@19.3.0)
       throttle-debounce: 5.0.2
 
-  '@anthropic-ai/sdk@0.134.0(zod@4.4.3)':
+  '@anthropic-ai/sdk@1.1.0(zod@4.4.3)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       json-schema-to-ts: 3.1.1
