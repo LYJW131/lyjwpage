@@ -496,6 +496,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   <details> 明细：| 项 | 检查 | 结果 | 证据 | 全表 </details>
   ```
 
+- 按 PR 号手动重跑走 `.github/workflows/verify-dispatch.yml`，不在 verify.yml 上挂 `workflow_dispatch`（那个事件在默认分支的缓存写权限里跑，而验证会检出并执行 PR head）。手动入口只把重跑标记写进描述（`scripts/verify-action/body.ts#stampRerun`，`scripts/verify-action/body.ts#visibleBody` 会剥掉，不算清单或原话改动），从而触发 verify.yml 的 `pull_request` `edited`。
+
 - 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.ts#LEVELS`、`scripts/verify-receipt.ts#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。
 - SHA 不手抄：publish job 用 `scripts/verify-receipt.ts#signStamp` 展开完整 SHA、核等级。脚本只读第二行的 JSON（`scripts/verify-receipt.ts#stampLine`），第一行中文只给人看；JSON 里的 `body` 是 PR 描述摘要，之后改了清单或原话，旧回执与判定作废（`scripts/verify-action/report.ts#receiptComment`）。
 - 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 lyjw131[bot]（按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。

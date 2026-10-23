@@ -8,16 +8,30 @@ const CHECKLIST_HEADING = /^#{2,4}\s*验证清单\s*$/;
 const WORDS_HEADING = /^#{2,4}\s*lyjw\s*原话\s*$/;
 const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 
-// Devin 会在描述末尾补徽章块，不算描述改动。别的 HTML 注释不删：正则认不全 Markdown 的代码与注释，删错会吞掉看得见的清单；不删只会让注释里的改动也作废回执、注释里的条目也照验，两头都偏保守
+// 两块机器写的注释不算描述改动：Devin 徽章，以及 verify-dispatch 用来触发 pull_request edited 的重跑标记。
+// 别的 HTML 注释不删：正则认不全 Markdown 的代码与注释，删错会吞掉看得见的清单；不删只会让注释里的改动也作废回执、注释里的条目也照验，两头都偏保守
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
+const RERUN = /<!-- verify-rerun-begin -->[\s\S]*?<!-- verify-rerun-end -->/g;
+const RERUN_ID = /^\d+-\d+$/;
 
-// 删到不再变，免得两块徽章交错拼出一块新的
-function dropBadge(text: string) {
+// 删到不再变，免得两块机器注释交错拼出一块新的
+function dropMachineNotes(text: string) {
   for (let prev = ""; prev !== text; ) {
     prev = text;
-    text = text.replace(BADGE, "");
+    text = text.replace(BADGE, "").replace(RERUN, "");
   }
   return text;
+}
+
+export function visibleBody(body: string | null | undefined) {
+  return dropMachineNotes(body ?? "");
+}
+
+export function stampRerun(body: string | null | undefined, id: string) {
+  if (!RERUN_ID.test(id)) throw new Error("重跑标记要是 运行号-尝试号");
+  const base = (body ?? "").replace(RERUN, "").trimEnd();
+  const block = `<!-- verify-rerun-begin -->\n${id}\n<!-- verify-rerun-end -->`;
+  return `${base}${base.length === 0 ? "" : "\n\n"}${block}\n`;
 }
 
 // 分隔线可能是清单或原话内部的分组，只有其后再没有条目和引文时才当作描述的页脚截掉
@@ -39,7 +53,7 @@ function section(lines: string[], heading: RegExp) {
 }
 
 export function parseBody(body: string | null | undefined) {
-  const lines = dropBadge(body ?? "").split(/\r?\n/);
+  const lines = visibleBody(body).split(/\r?\n/);
   const checklistLines = section(lines, CHECKLIST_HEADING);
   const texts = new Map<string, string[]>();
   for (const line of checklistLines ?? []) {
@@ -57,6 +71,6 @@ export function parseBody(body: string | null | undefined) {
 // publish 把这个摘要写进评论，verify-receipt.ts 拿当前描述重算比对。
 export function bodyDigest(body: string | null | undefined) {
   const { checklist, words } = parseBody(body);
-  const text = words ?? dropBadge(body ?? "").trim();
+  const text = words ?? visibleBody(body).trim();
   return createHash("sha256").update(JSON.stringify({ checklist, words: text })).digest("hex");
 }

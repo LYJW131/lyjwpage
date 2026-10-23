@@ -1,0 +1,38 @@
+name: Verify Dispatch
+
+# 手动重跑的入口。workflow_dispatch 在所选分支的缓存写权限里跑，所以这里只检出本工作流所在的提交，
+# 不检出、不执行 PR head；只把重跑标记写进描述，让 verify.yml 的 pull_request edited 在 PR 的缓存范围里跑。
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: verify-dispatch-${{ inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  kick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: node scripts/verify-dispatch.ts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          VERIFY_RERUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}

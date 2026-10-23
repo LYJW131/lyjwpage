@@ -63,7 +63,7 @@ test("等级不够、blocked、过期的回执都不通过并写下一步", () =
   assert.match(evaluate({ ...base, receipt: { sha: HEAD, level: "type-check-only" } }).next ?? "", /低于要求/);
   assert.match(evaluate({ ...base, receipt: { sha: HEAD, level: "verifier-blocked" } }).next ?? "", /不是通过/);
   assert.match(evaluate({ ...base, receipt: { sha: OLD, level: "live-ui-verified" } }).next ?? "", /按新 head 跑完/);
-  assert.match(evaluate({ ...base, receipt: null }).next ?? "", /没有验证回执/);
+  assert.match(evaluate({ ...base, receipt: null }).next ?? "", /没有验证回执[\s\S]*verify-dispatch\.yml/);
 });
 
 test("--judge 时还要 PASS 的判定盖住 head", () => {

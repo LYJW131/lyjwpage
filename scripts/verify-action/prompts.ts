@@ -1,4 +1,4 @@
-import type { ChecklistItem } from "./body.ts";
+import { visibleBody, type ChecklistItem } from "./body.ts";
 
 type Common = { pr: number; title: string; head: string; base: string; files: string[] };
 
@@ -51,7 +51,7 @@ ${items}
 export function judgePrompt({ pr, title, head, base, files, words, body }: Common & { words: string | null; body: string }) {
   const asks = words
     ? `lyjw 的原话（PR 描述「lyjw 原话」一节，原样）：\n${words}`
-    : `PR 描述里没有「lyjw 原话」一节。下面是 PR 描述全文，按它推断 lyjw 要什么，并在 asks 里第一条写明「PR 没附原话」：\n${body}`;
+    : `PR 描述里没有「lyjw 原话」一节。下面是 PR 描述全文，按它推断 lyjw 要什么，并在 asks 里第一条写明「PR 没附原话」：\n${visibleBody(body).trim()}`;
   return `你是 lyjwpage 的判定员，在 GitHub Action 里只读运行：不改文件、不提交、不在 GitHub 上评论。这段代码不是你写的。
 
 PR #${pr}「${title}」，head ${head}。工作区已检出这个提交，PR 的目标分支 origin/${base} 已取回。Action 启动时把 .claude/、CLAUDE.md 等换回 main 上的版本（PR 改过的在 .claude-pr/；AGENTS.md、REVIEW.md 不换），git status 里这些改动是 Action 做的，不用报。改动的文件：
