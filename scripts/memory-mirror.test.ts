@@ -85,12 +85,15 @@ test("凭据检测：各家 token、分隔符与大小写变体、哈希密钥�
   for (const [text, label] of cases) assert.ok(findSecrets(text).includes(label), `${text} -> ${findSecrets(text)}`);
 });
 
-test("凭据检测：中文行文里的 token 说明与 40 位提交哈希不误报", () => {
+test("凭据检测：中文行文里的 token 说明、提交哈希、带前缀的资源 ID 与 shell 默认值不误报", () => {
   for (const benign of [
     "token: write\u2060，在全新的会话里",
     "推送 token：只读，不写",
     "`merge_method`、`commit_title`",
     "sha 5e077b49f0c5260d92dc70a1b2c3d4e5f6a7b8c9 与 trig_01C9Jj2Ax3WUm4XxxEke67SY",
+    "workspace wrkspc_01EKGUJQbX9gKyF1ohp8WmUo.",
+    "thread cmsg_013ffYdQA2e4EWP3dvhZV6Pv3aMJrsR2xpA2B8eTvc9Ly8",
+    'Stop runs `TOKENS_API_TOKEN="${TOKENS_API_TOKEN:-egress-proxy}" tokens cloud submit`.',
   ]) assert.deepEqual(findSecrets(benign), [], benign);
 });
 
