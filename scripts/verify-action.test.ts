@@ -217,10 +217,15 @@ test("脚本跑的两项：只在改了 scripts/、src/、shared/ 的测试又�
   assert.deepEqual(receipt.split("\n").slice(3, 6), ["全过：V1", "", "脚本：CI check 通过"]);
 });
 
-test("注释删到不再变：嵌套拼出的注释删净，没闭合的 <!-- 只删记号、后文照算；表格单元先转义反斜杠再转义竖线", () => {
-  const body = "## 验证清单\n- V1：<!<!---->-- 藏起来 -->看得见\n- V2：示例 `<!--` 没闭合\n- V3：照样算";
-  assert.deepEqual(parseBody(body).checklist, [{ id: "V1", text: "看得见" }, { id: "V2", text: "示例 `` 没闭合" }, { id: "V3", text: "照样算" }]);
+test("注释删到不再变：嵌套拼出的注释删净，代码示例里的注释记号原样留下，没闭合的记号不吞后文", () => {
+  const body = "## 验证清单\n- V1：<!<!---->-- 藏起来 -->看得见\n- V2：示例 `<!--` 没闭合\n- V3：照样算\n<!-- 普通注释 -->\n```\n<!-- 围栏里的\n```\n- V4：围栏后面<!-- 真没闭合\n- V5：也算";
+  assert.deepEqual(parseBody(body).checklist.map((item) => item.text), ["看得见", "示例 `<!--` 没闭合", "照样算", "围栏后面 真没闭合", "也算"]);
   assert.notEqual(bodyDigest(body), bodyDigest(body.replace("照样算", "改过了")));
-  const receipt = receiptComment({ stamp: { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) }, report: { model: "m", level: "unit-test-verified", rows: [{ id: "V1", check: "a\\|b", result: "PASS", evidence: "e" }], notVerified: [] }, checklist: [], problems: [], claimed: "unit-test-verified", shots: [], runUrl: "u" });
-  assert.ok(receipt.split("\n").includes("| V1 | a\\\\\\|b | PASS | e |"));
+  assert.notEqual(bodyDigest(body), bodyDigest(body.replace("也算", "改过了")));
+});
+
+test("表格单元只把竖线前的反斜杠加倍再转义竖线，别处的反斜杠原样", () => {
+  const rows = [{ id: "V1", check: "a\\|b", result: "PASS", evidence: "`C:\\dir` 与 `\\d+`" }];
+  const receipt = receiptComment({ stamp: { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) }, report: { model: "m", level: "unit-test-verified", rows, notVerified: [] }, checklist: [], problems: [], claimed: "unit-test-verified", shots: [], runUrl: "u" });
+  assert.ok(receipt.split("\n").includes("| V1 | a\\\\\\|b | PASS | `C:\\dir` 与 `\\d+` |"));
 });
