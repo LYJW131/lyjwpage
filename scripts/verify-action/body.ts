@@ -11,11 +11,12 @@ const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 // Devin 会在描述末尾补徽章块，不算描述改动
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
 
-// 删到不再变：一遍删不净嵌套拼出来的注释（如 <!<!---->--），没闭合的注释在 GitHub 上会把后文整段藏起来，这里也删到末尾
+// 删到不再变：一遍删不净嵌套拼出来的注释（如 <!<!---->--）。没闭合的 <!-- 只删记号不删后文：它可能是代码示例里的字，删到末尾会吞掉后面的清单与原话
 function stripComments(text: string) {
   for (let prev = ""; prev !== text; ) {
     prev = text;
-    text = text.replace(BADGE, "").replace(/<!--[\s\S]*?(?:-->|$)/g, "");
+    text = text.replace(BADGE, "").replace(/<!--[\s\S]*?-->/g, "");
+    if (text === prev) text = text.replace(/<!--/g, "");
   }
   return text;
 }
