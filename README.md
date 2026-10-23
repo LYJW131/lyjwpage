@@ -44,12 +44,16 @@
   <img src="https://lyjw.me/readme/desktop-marks-light.svg" alt="页头前台应用的四种品牌标识与窗口标题的出现、变化与消失" width="798">
 </picture>
 
-**每日摘要**
+**Cloudflare 故障横幅**：站点依赖的 Cloudflare 组件严重故障时出现在首页最上方，带持续时间。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark&amp;v=2">
-  <img src="https://lyjw.me/cards/digest.svg?v=2" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="530">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/cloudflare-outage.svg?theme=dark&amp;v=1">
+  <img src="https://lyjw.me/cards/cloudflare-outage.svg?v=1" alt="Cloudflare 故障横幅：受影响组件与已持续时长" width="100%">
 </picture>
+
+**个人信息与每日摘要**
+
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/contact.svg?theme=dark&amp;v=1"><img src="https://lyjw.me/cards/contact.svg?v=1" alt="个人信息卡片：GitHub 头像、用户名、邮箱与一年的 Token 热力图" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark&amp;v=3"><img src="https://lyjw.me/cards/digest.svg?v=3" alt="每日摘要卡片：标语、编码与 agent 时长和 token 数，右侧 24 小时表盘" width="50%"></picture></p>
 
 **Emby 正在播放**
 

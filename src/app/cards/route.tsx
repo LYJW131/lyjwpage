@@ -2,10 +2,12 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { SWRConfig } from "swr";
 
+import { ContactCard } from "@/components/contact-card";
 import { GodChat } from "@/components/god-chat";
 import { ActivityCard } from "@/components/live/activity-card";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
 import { ChargerCard } from "@/components/live/charger-card";
+import { CloudflareOutageRow } from "@/components/live/cloudflare-outage-row";
 import { DigestCard } from "@/components/live/digest-card";
 import { FocusNowCard } from "@/components/live/focus-now-card";
 import { ListeningCard } from "@/components/live/listening-card";
@@ -22,13 +24,11 @@ import { PsPlusSprite } from "@/components/trophies/ps-plus";
 import { trophyRowKey } from "@/components/trophies/trophy-details";
 import { RenderClock } from "@/hooks/use-mounted-at";
 import { trophiesTilePath } from "@/lib/paths";
+import { githubAvatarDataUri } from "@/lib/github-avatar-inline";
 import { artworkPlaceholders } from "@/lib/artwork-placeholder";
 import { inlineChargerIcon } from "@/lib/charger-icon-inline";
-import { IMAGE_PROXY_PATH, imageWidthBucket } from "@/lib/image-proxy";
-import { playstationImage } from "@/lib/playstation-image";
 import { FIRST_SCREEN_UNAVAILABLE, type FirstScreen } from "@/lib/first-screen";
 import { NO_STORE } from "@/lib/site-policy";
-import { stripScripts } from "@/lib/strip-scripts";
 import { timezoneAbbreviation } from "@/lib/timezone-display";
 import { siteContext, type SiteServices } from "@/server/site-context";
 import { stampNow } from "@shared/fixture-time";
@@ -36,9 +36,10 @@ import { chargingFeedClockStale, liveChargingFeed } from "@shared/freshness";
 import { chargerActive, liveTrack, powerBankActive } from "@shared/home-layout";
 import { site as siteConfig } from "@shared/site";
 import type { StatusViewKey } from "@shared/status-views";
+import type { AgentStatusPayload } from "@shared/agent-status-types";
 import type { StatusResponse, TrophiesSummaryPayload } from "@shared/types";
-import type { QuestNow } from "@shared/quest";
 
+import cloudflareOutageFixture from "../../../workers/core/dev-fixtures/agent-status-cloudflare-outage.json";
 import chargerFixture from "../../../workers/core/dev-fixtures/charger-macbook-iphone.json";
 import focusFixture from "../../../workers/core/dev-fixtures/focus-now-sleep.json";
 import questFixture from "../../../workers/core/dev-fixtures/quest-now-playing.json";
@@ -47,6 +48,7 @@ import powerBankFixture from "../../../workers/core/dev-fixtures/powerbank-charg
 import serverFixture from "../../../workers/core/dev-fixtures/server-traffic.json";
 import watchingFixture from "../../../workers/core/dev-fixtures/watching-now.json";
 import cardsCss from "./readme-cards.css?inline";
+import { inlineImages, inlineQuestCover } from "./inline-images";
 
 import type { Route } from "./+types/route";
 
@@ -61,6 +63,7 @@ const SHADOW_PAD = 4;
 // 须与 src/components/live/media-pair.tsx#SLOT_PX 同步：充电头、充电宝与正在听那一排的槽高。
 const MEDIA_SLOT_PX = 396;
 const FOCUS_HEIGHT = 46;
+const DIGEST_HEIGHT = 202;
 const QUEST_HEIGHT = 98;
 
 type Theme = "light" | "dark";
@@ -92,10 +95,38 @@ const chargingLive = <T extends Parameters<typeof liveChargingFeed>[0]>(feed: T,
   liveChargingFeed(feed, chargingFeedClockStale(feed, now));
 
 const CARDS: Record<string, ReadmeCard> = {
+  "cloudflare-outage": {
+    label: "Cloudflare Outage",
+    width: FULL_WIDTH,
+    height: FOCUS_HEIGHT,
+    annotate: (html, note) => html.replace(/(<span class="hidden md:inline">· <\/span>[\s\S]*?)(<\/div>)/, `$1 · ${note}$2`),
+    async render(status, _site, now) {
+      const live = await status("agentStatus");
+      const { value, sample } = orSample(
+        live,
+        (data) => data.agents.some((agent) => agent.id === "cloudflare" && agent.indicator === "major_outage" && !agent.stale),
+        { ok: true, data: cloudflareOutageFixture },
+        now,
+      );
+      return { element: <CloudflareOutageRow fallback={value as StatusResponse<AgentStatusPayload>} />, sample };
+    },
+  },
+  contact: {
+    label: "Contact",
+    width: HALF_WIDTH,
+    height: DIGEST_HEIGHT,
+    pair: "left",
+    annotate: (html) => html,
+    async render(status, site) {
+      const [avatar, chart, year] = await Promise.all([githubAvatarDataUri(site), status("githubChart"), status("codingYear")]);
+      return { element: <ContactCard avatarDataUri={avatar} chartFallback={chart} yearFallback={year} />, sample: false };
+    },
+  },
   digest: {
     label: "In Brief",
     width: HALF_WIDTH,
-    height: 202,
+    height: DIGEST_HEIGHT,
+    pair: "right",
     async render(status) {
       const [digest, pulse, timezone] = await Promise.all([status("digest"), status("pulse"), status("timezone")]);
       return { element: <DigestCard fallback={digest} pulseFallback={pulse} timezoneFallback={timezone} />, sample: false };
@@ -320,65 +351,16 @@ const CSS = freezeWidthQueries(cardsCss.replace(/@font-face\s*{[^}]*}/g, "")) +
   // 奖杯展开面板的高度在浏览器里量出来再动画过去，SSR 时是 0。
   "#playstation-trophies{height:auto!important}" +
   // 勿扰图标在浏览器里挂载后才上色，静态图直接画上色后的样子。
-  ".focus-icon .tint{opacity:1}";
-
-const unescapeAttribute = (value: string) =>
-  value.replaceAll("&quot;", '"').replaceAll("&#x27;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+  ".focus-icon .tint{opacity:1}" +
+  // 热力图切换挂在 <html data-heatmap> 上，图片里没有 <html>，按首页默认画 Tokens 那一面。
+  '.heatmap-panel[data-heatmap-panel="tokens"]{display:block!important}' +
+  '.heatmap-tab[data-heatmap-tab="tokens"]{background-color:var(--muted)!important;color:var(--foreground)!important}';
 
 // NumberFlow 的数字在声明式 Shadow DOM 里，XML 文档不解析 <template shadowrootmode>；去掉模板，留下它给的纯文本读数与配套样式。
 const flattenNumberFlow = (html: string) => html.replace(/<template\b[^>]*\sshadowrootmode="open"[^>]*>[\s\S]*?<\/template\s*>/g, "");
 
 // HTML 解析器自己认 <svg>，XML 里不写 xmlns 的 <svg> 落进 XHTML 命名空间，图标与图表就整个不画。
 const svgNamespaces = (html: string) => html.replace(/<svg\b(?![^>]*\sxmlns=)/g, '<svg xmlns="http://www.w3.org/2000/svg"');
-
-// <img> 里的 SVG 不跑脚本、不取外部资源，内联脚本删掉，图片换成 data URI。
-// 页面上走图片优化器的图（如 Apple Music 预签名封面）src 是同源的 `/image?url=…&w=<显示宽>`，出图时取回原图地址和宽度自己缩放。
-function originalSource(src: string, width: number): [string, number] {
-  if (!src.startsWith(`${IMAGE_PROXY_PATH}?`)) return [src, width];
-  const params = new URLSearchParams(src.slice(IMAGE_PROXY_PATH.length + 1));
-  return [params.get("url") ?? src, width || Number(params.get("w") ?? 0)];
-}
-
-// Discord 的外链代理把原图地址写在路径里（/external/<签名>/https/<原地址>）；代理拒绝 Worker 时退回原地址，只认 Meta 自家的 Quest 封面。
-const discordExternalOrigin = (url: string) => {
-  const path = /^https:\/\/media\.discordapp\.net\/external\/[^/]+\/https\/(www\.oculus\.com\/.+)$/.exec(url)?.[1];
-  return path ? `https://${path}` : null;
-};
-
-async function inlineQuestCover(site: SiteServices, quest: StatusResponse<QuestNow>): Promise<StatusResponse<QuestNow>> {
-  const playing = quest.ok ? quest.data.playing : null;
-  if (!quest.ok || !playing?.largeImageUrl) return quest;
-  const origin = discordExternalOrigin(playing.largeImageUrl);
-  const cover = (await site.asset(playing.largeImageUrl)) ?? (origin ? await site.asset(origin) : null);
-  return { ...quest, data: { ...quest.data, playing: { ...playing, largeImageUrl: cover } } };
-}
-
-async function inlineImages(html: string, site: SiteServices): Promise<string> {
-  const widths = new Map<string, number>();
-  for (const [tag] of html.matchAll(/<img\b[^>]*>/g)) {
-    const src = /\ssrc="([^"]+)"/.exec(tag)?.[1];
-    if (!src || src.startsWith("data:")) continue;
-    widths.set(src, Math.max(widths.get(src) ?? 0, Number(/\swidth="(\d+)"/.exec(tag)?.[1] ?? 0)));
-  }
-  // 封面原图常比显示尺寸大几倍：光栅图按显示宽度取 2 倍，PlayStation 图床自带缩放参数，其余走图片变体，取不到（不在白名单）再原样内嵌。
-  const inlined = await Promise.all(
-    [...widths].map(async ([src, shown]) => {
-      const [url, width] = originalSource(unescapeAttribute(src), shown);
-      const sized = width > 0 ? playstationImage(url, width * 2) : url;
-      const resized =
-        width > 0 && sized === url && !/\.svg(\?|$)/.test(url)
-          ? await site.image(url, imageWidthBucket(width * 2), "scale-down")
-          : null;
-      return [src, resized ?? (await site.asset(sized ?? url))] as const;
-    }),
-  );
-  // 卡片作为 <image> 套在外层里，WebKit 对异步解码或懒加载的图解完不重画，大图就一直空着；统一同步解码、不懒加载。
-  let out = stripScripts(html)
-    .replace(/\s(?:srcSet|loading|decoding)="[^"]*"/g, "")
-    .replace(/<img\b/g, '<img decoding="sync"');
-  for (const [src, data] of inlined) out = out.replaceAll(`"${src}"`, `"${data ?? ""}"`);
-  return out;
-}
 
 function capturedAt(now: number): string {
   const time = new Intl.DateTimeFormat("en-US", {
