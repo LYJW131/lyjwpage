@@ -3,8 +3,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { isTestFile, prove, type Proof } from "../revert-proof.ts";
 
-// 默认命令（node --test 加别名）跑得动的测试；Worker 与上报器的测试各有自己的命令，脚本不替它们证明
-const PROOF_TEST = /^(scripts|src|shared)\/.+\.test\.m?[jt]s$/;
+// 默认命令（node --test 加别名）在仓库根跑得动的测试：Worker 的测试命令与它同形，只差工作目录；上报器各有工具链，脚本不替它们证明
+const PROOF_TEST = /^(scripts|src|shared|workers\/[\w-]+)\/.+\.test\.m?[jt]s$/;
 const PROOF_TIMEOUT_MS = 240_000;
 
 export const PROOF_VERDICTS: Record<string, string> = {

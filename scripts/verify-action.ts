@@ -35,7 +35,7 @@ const HELP = `用法：node scripts/verify-action.ts <子命令> --pr <号> [选
 
   plan                         分档：need（回执至少的等级，空 = 不用验）、judge、ui、head、branch、base
   proof --base REF [--out-dir DIR]
-                               撤回证明：PR 改了 scripts/、src/、shared/ 下的测试又改了别的文件时，跑 revert-proof；
+                               撤回证明：PR 改了 scripts/、src/、shared/、workers/*/ 下的测试又改了别的文件时，跑 revert-proof；
                                结果写进 DIR/work/revert-proof.json，摘要输出成 proof。不读 GitHub、不要令牌
   ci --head SHA [--timeout-min N]
                                等 head 上 CI 的 check 跑完（默认 20 分钟，工作流里给 5），输出它的结论（没跑完是 pending，没有是 none）

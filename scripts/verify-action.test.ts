@@ -201,10 +201,11 @@ test("staleRead：描述或目标分支在读之后改了、成功却没交回�
   assert.equal(staleRead("", "failure", current), false);
 });
 
-test("脚本跑的两项：只在改了 scripts/、src/、shared/ 的测试又改了别的文件时做撤回证明；回执那一行只认表里的值", () => {
+test("脚本跑的两项：只在改了 scripts/、src/、shared/、workers/*/ 的测试又改了别的文件时做撤回证明；回执那一行只认表里的值", () => {
   assert.deepEqual(proofPlan(["scripts/a.ts", "scripts/a.test.ts"]), { tests: ["scripts/a.test.ts"], skip: null });
   assert.deepEqual(proofPlan(["scripts/a.test.ts", "scripts/fixtures/x.json"]).skip, "only-tests");
-  assert.deepEqual(proofPlan(["workers/core/src/a.ts", "workers/core/src/a.test.ts"]).skip, "no-tests");
+  assert.deepEqual(proofPlan(["workers/core/src/a.ts", "workers/core/src/a.test.ts"]), { tests: ["workers/core/src/a.test.ts"], skip: null });
+  assert.deepEqual(proofPlan(["reporters/x/src/a.ts", "reporters/x/src/a.test.ts"]).skip, "no-tests");
   assert.deepEqual(proofPlan(["scripts/a.mjs", "scripts/a.test.mjs"]), { tests: ["scripts/a.test.mjs"], skip: null });
   assert.deepEqual(proofPlan(["scripts/old.ts", "scripts/a.test.ts", "scripts/gone.test.ts"], (file) => file !== "scripts/old.ts" && file !== "scripts/gone.test.ts"), { tests: ["scripts/a.test.ts"], skip: null });
   assert.equal(machineLine({ proof: { verdict: "error", tests: [] } }), "脚本：撤回证明：脚本没跑成，看 Action 日志");
