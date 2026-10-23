@@ -27,6 +27,7 @@ export function Footer() {
           </a>
         )}
         {buildTime && <span>Built {buildTime}</span>}
+        <span data-verify-test="ui">Verify test</span>
         <OnlineCount />
       </div>
       {EXTRA_TEXT ? (
