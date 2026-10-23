@@ -44,9 +44,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v tokens >/dev/null && TZ=Asia/Singapore TOKENS_API_TOKEN=\"${TOKENS_API_TOKEN:-egress-proxy}\" tokens cloud submit >/dev/null 2>&1; true",
-            "async": true,
-            "timeout": 30
+            "command": "command -v tokens >/dev/null && TZ=Asia/Singapore TOKENS_API_TOKEN=\"${TOKENS_API_TOKEN:-egress-proxy}\" timeout 30 tokens cloud submit >/dev/null 2>&1; true",
+            "async": true
           }
         ]
       }
