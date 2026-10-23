@@ -140,7 +140,7 @@ export function AgentPanel({
             className="flex-1 content-between"
             items={limitRows.map((item) =>
               item.kind === "limit"
-                ? { key: item.key, title: item.title, limit: item.limit, cappedBy: item.cappedBy }
+                ? { key: item.key, title: item.title, limit: item.limit, cap: item.cap }
                 : { key: item.key, title: item.title, limit: null, reason: item.reason },
             )}
             href={agentUsageUrl(row.id)}
