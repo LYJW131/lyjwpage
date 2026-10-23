@@ -49,6 +49,8 @@ test("report 只列 ≥0.7 的，调用失败时写明没有建议", () => {
   assert.match(failed.title, /调用失败/);
   assert.equal(failed.complete, false);
   assert.equal(report([{ ...item, p: 0.1 }], { truncated: 3 }).complete, false);
+  const partial = report([{ ...item, p: 0.9 }, { ...item, line: 9, p: null }], { error: "Jev 只答了 1 / 2 条" });
+  assert.equal(partial.title, "1 条新注释可能该删（另有 1 条 Jev 没答）");
 });
 
 test("commentAdvice 只在 neutral 时给建议", () => {
@@ -75,15 +77,15 @@ test("collect 跳过基准里原样有过的尾注释，只问真正新增的", 
   const dir = mkdtempSync(join(tmpdir(), "comment-check-"));
   const run = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd: dir, encoding: "utf8" });
   run("init", "-q", "-b", "main");
-  writeFileSync(join(dir, "x.ts"), "export const timeout = 1000; // 旧的约束说明\n");
+  writeFileSync(join(dir, "x.ts"), "export const timeout = 1000; // 旧的约束说明\n// 保持顺序\nexport const a = 1;\n");
   run("add", ".");
   run("commit", "-qm", "base");
-  writeFileSync(join(dir, "x.ts"), "export const timeout = 2000; // 旧的约束说明\n// 新加的一条\nexport const b = 1;\n");
+  writeFileSync(join(dir, "x.ts"), "export const timeout = 2000; // 旧的约束说明\n// 保持顺序\nexport const a = 1;\n// 新加的一条\nexport const b = 1;\n// 保持顺序\nexport const c = 1;\n");
   run("commit", "-qam", "head");
   const cwd = process.cwd();
   process.chdir(dir);
   try {
-    assert.deepEqual(collect(ts, "HEAD^", "HEAD").map((item) => item.comment), ["// 新加的一条"]);
+    assert.deepEqual(collect(ts, "HEAD^", "HEAD").map((item) => item.comment), ["// 新加的一条", "// 保持顺序"]);
   } finally {
     process.chdir(cwd);
   }

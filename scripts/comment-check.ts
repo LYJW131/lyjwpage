@@ -117,9 +117,18 @@ export function collect(ts: typeof TS, base: string, head: string) {
   for (const [file, added] of addedLines(diff)) {
     if (SKIP.some((re) => re.test(file)) || !TS_EXTENSIONS.has(path.extname(file).toLowerCase())) continue;
     const before = git(["show", `${from}:${file}`], { allowFail: true });
-    // 只改了同一行代码时 diff 也把原样的尾注释算进新增行：基准里一字不差有过的不再问
-    const existing = new Set(findComments(ts, file, before, new Set(before.split("\n").map((_, i) => i + 1))).map((item) => item.comment.trim()));
-    found.push(...findComments(ts, file, git(["show", `${head}:${file}`]), added).filter((item) => !existing.has(item.comment.trim())));
+    const after = git(["show", `${head}:${file}`]);
+    const every = (text: string) => findComments(ts, file, text, new Set(text.split("\n").map((_, i) => i + 1))).map((item) => item.comment.trim());
+    // 只改了同一行代码时 diff 也把原样的尾注释算进新增行：同一段文字在 head 里比基准多出几处，才问几处
+    const extra = new Map<string, number>();
+    for (const text of every(after)) extra.set(text, (extra.get(text) ?? 0) + 1);
+    for (const text of every(before)) extra.set(text, (extra.get(text) ?? 0) - 1);
+    for (const item of findComments(ts, file, after, added)) {
+      const left = extra.get(item.comment.trim()) ?? 0;
+      if (left <= 0) continue;
+      extra.set(item.comment.trim(), left - 1);
+      found.push(item);
+    }
   }
   return found;
 }
@@ -163,7 +172,9 @@ export type Scored = Found & { p: number | null };
 export function report(scored: Scored[], { error, truncated }: { error?: string; truncated?: number } = {}) {
   const flagged = scored.filter((item) => (item.p ?? 0) >= YES).sort((a, b) => (b.p ?? 0) - (a.p ?? 0));
   const unsure = scored.filter((item) => item.p !== null && item.p > NO && item.p < YES);
-  const title = error ? "Jev 调用失败，没有建议" : truncated && !flagged.length ? `${truncated} 条超出上限没问` : flagged.length ? `${flagged.length} 条新注释可能该删` : "新注释没有该删的";
+  const unanswered = scored.filter((item) => item.p === null).length;
+  const gaps = [unanswered && `${unanswered} 条 Jev 没答`, truncated && `${truncated} 条超出上限没问`].filter(Boolean).join("，");
+  const title = flagged.length ? `${flagged.length} 条新注释可能该删${gaps ? `（另有 ${gaps}）` : ""}` : error && !scored.some((item) => item.p !== null) ? "Jev 调用失败，没有建议" : gaps ? `没问全：${gaps}` : "新注释没有该删的";
   const lines = [
     `给写代码的线程的建议，不挡合并：逐条对照根 AGENTS.md「文档与注释」自己判断删还是留。`,
     "",
