@@ -119,6 +119,20 @@ test("参数错抛成用法错误，主入口据此退出 2", async () => {
   }
 });
 
+test("切口拼回的 <!-- 删干净，没闭合的只删起手", () => {
+  const plain = "要支持筛选\n## 验证清单\n- V1：a";
+  for (const prefix of ["<!<!--x-->-->", "<!<!--x-->--", "<!-->", "<!--->"]) {
+    assert.equal(bodyDigest(`${prefix}${plain}`), bodyDigest(plain), prefix);
+  }
+  assert.equal(bodyDigest("a<!<!--x-->-->b<!<!--y-->-->c"), bodyDigest("abc"));
+  assert.equal(parseBody("## 验证清单\n- V1：a<!<!--x-->-->b").checklist[0].text, "ab");
+  assert.equal(parseBody("## lyjw 原话\n> <!<!--x-->-->要 a").words, "> 要 a");
+  assert.equal(parseBody("## 验证清单\n- V1：已修 `<!--`（abc）").checklist[0].text, "已修 ``（abc）");
+  const unclosed = "<!--\n## 验证清单\n- V1：a";
+  assert.equal(bodyDigest(unclosed), bodyDigest("\n## 验证清单\n- V1：a"));
+  assert.deepEqual(parseBody(unclosed).checklist, [{ id: "V1", text: "a" }]);
+});
+
 test("bodyDigest：有原话时只看清单与原话，没原话时看全文，Devin 徽章不算", async () => {
   const withWords = "说明\n## 验证清单\n- V1：a\n## lyjw 原话\n> 要 a";
   assert.equal(await bodyDigest(withWords), await bodyDigest(withWords.replace("说明", "说明改了")));

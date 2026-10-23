@@ -1,5 +1,6 @@
 // 不用 shared/sha256.ts：访客设计流程能改 shared/，这里会进带写权限和密钥的 job
 import { createHash } from "node:crypto";
+import { stripHtmlComments } from "../strip-html.ts";
 
 export type ChecklistItem = { id: string; text: string };
 
@@ -10,6 +11,11 @@ const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 
 // Devin 会在描述末尾补徽章块，不算描述改动
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
+
+// 徽章先整段删：注释先删的话起止标记没了，中间的内容留在描述里。
+function withoutComments(text: string) {
+  return stripHtmlComments(text.replace(BADGE, ""));
+}
 
 // 分隔线可能是清单或原话内部的分组，只有其后再没有条目和引文时才当作描述的页脚截掉
 function dropFooter(lines: string[]) {
@@ -27,7 +33,7 @@ function section(lines: string[], heading: RegExp) {
 }
 
 export function parseBody(body: string | null | undefined) {
-  const lines = (body ?? "").replace(BADGE, "").replace(/<!--[\s\S]*?-->/g, "").split(/\r?\n/);
+  const lines = withoutComments(body ?? "").split(/\r?\n/);
   const checklistLines = section(lines, CHECKLIST_HEADING);
   const checklist: ChecklistItem[] = [];
   for (const line of checklistLines ?? []) {
@@ -42,6 +48,6 @@ export function parseBody(body: string | null | undefined) {
 // publish 把这个摘要写进评论，verify-receipt.ts 拿当前描述重算比对。
 export function bodyDigest(body: string | null | undefined) {
   const { checklist, words } = parseBody(body);
-  const text = words ?? (body ?? "").replace(BADGE, "").replace(/<!--[\s\S]*?-->/g, "").trim();
+  const text = words ?? withoutComments(body ?? "").trim();
   return createHash("sha256").update(JSON.stringify({ checklist, words: text })).digest("hex");
 }
