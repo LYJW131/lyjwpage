@@ -17,26 +17,18 @@ import type { StatusResponse } from "@shared/types";
 function Outage({ affected, since }: { affected: string; since: number }) {
   const now = useNow();
   return (
-    <div className="flex min-h-11 items-center gap-3 p-4 sm:gap-4 md:gap-2 md:px-4 md:py-2 lg:px-5">
-      <CloudflareIcon size={20} className="size-7 shrink-0 md:size-5" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-row md:items-center md:gap-2">
-        <div className="flex min-w-0 items-center gap-2 text-base font-semibold sm:text-lg leading-tight md:shrink-0 md:text-sm">
-          <StatusDot tone="alert" />
-          <span className="truncate">
-            Cloudflare <span className="text-signal-red">Outage</span>
-          </span>
-        </div>
-        <div className="truncate text-sm text-muted-foreground">
-          <span className="hidden md:inline">· </span>
-          Live data may lag · {affected}
-        </div>
+    <div className="flex flex-col items-center gap-1 p-4 text-center md:py-3 lg:px-5">
+      <div className="flex max-w-full items-center gap-2 text-base font-semibold leading-tight sm:text-lg">
+        <CloudflareIcon size={20} className="size-6 shrink-0" />
+        <StatusDot tone="alert" />
+        <span className="truncate">
+          Cloudflare <span className="text-signal-red">Outage</span>
+        </span>
+        <span className="shrink-0 text-signal-red" suppressHydrationWarning>
+          {elapsed(Math.max(0, now - since))}
+        </span>
       </div>
-      <span
-        className="shrink-0 text-xl font-semibold leading-none text-signal-red sm:text-3xl md:text-sm"
-        suppressHydrationWarning
-      >
-        {elapsed(Math.max(0, now - since))}
-      </span>
+      <div className="max-w-full truncate text-sm text-muted-foreground">Live data may lag · {affected}</div>
     </div>
   );
 }
