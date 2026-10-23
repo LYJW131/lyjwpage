@@ -82,14 +82,14 @@
   2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动过了第 1 条就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。点头用一张决策卡问你，点「OK，合并」就行，要改哪里再打字。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Codex 审过之后再推的，只改文档或注释就不等它复审；改了代码的等它最多 15 分钟，没来就照常合，汇报里说一句。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。任何一家机器评审到第三轮还在这次改动里报新的阻塞问题，Claude 不再逐条打补丁，先重看方法，用一句话告诉你换不换。修评审发现时同类一次修完。评审代理报什么、不报什么写在 [REVIEW.md](./REVIEW.md)。
-  5. Claude 判为大改动、在 PR 描述写了「判定：要」的 PR，每次推送由 Verify Action 派一个没写这段代码的判定员判做没做完；小改动不叫判定员，结论按 head SHA 由 bot 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
+  5. Claude 判为大改动、贴了 `needs-judge` 标签的 PR，每次推送由 Verify Action 派一个没写这段代码的判定员判做没做完；小改动不叫判定员，结论按 head SHA 由 bot 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
   6. 三份存量基线（`scripts/mjs-baseline.json`、`scripts/design-scale-baseline.json`、`scripts/ui-copy-baseline.json`）只许比 main 少，PR 里多出一条 CI 就红（`pnpm baselines:check`）。确属合规例外的，Claude 在 PR 里写明理由、停下等你；你同意就给 PR 打上 `baseline-exception` 标签，CI 自动重跑放行；放行只对打标签那一次有效，之后再推送要摘了重打，免得批准后又塞进别的条目。这个标签只由你打，Claude 不打。
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
 - PR 上的 `tier: docs / ui / logic / ui+logic` 标签由 `lyjw131[bot]` 自动贴，方便你在列表里看档位；门槛每次按改动路径现算，不读这个标签。改了验证员、门槛或这个贴标签的代码的 PR 另贴红色 `verifier-changed`：这种 PR 的回执与判定出自被改过的那份，你定了不堵，只标出来，合并前你看一眼。
 - 只为试一下、不打算合的测试 PR，标题末尾加「（测试，不合并）」，认的是括号里的「不合并」。`lyjw131[bot]` 会贴上黑色的 `do-not-merge` 标签，`Do Not Merge` 这一项检查一直是红的，`pr-gate` 不放行，合并钩子也拦（`.github/workflows/do-not-merge.yml`）。标签只加不摘：你手动贴上也一样拦。真要合，先改掉标题，再摘掉标签。
 - 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。
 - 上面「文档、skill 和小改动」的轻门槛只给你的账号开的 PR：别人开的 PR，或碰到 `.claude/` 的 settings、launch、hooks、`feature-map.json`、`docs/` 下的脚本与依赖清单、`public/` 下的 js、html、svg、xml、`_headers`，`pr-gate.ts` 一律按大改逻辑算，要回执与判定。
-- 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式按 PR 里的非合并提交数：少于 3 个压缩合并，3 个及以上用 merge commit（钩子 `scripts/guard-merge-method.ts` 拦不合的调用，也拦带 `do-not-merge` 标签的 PR，以及 Action 签的回执与判定没盖住 head 的 PR：回执等级按分档定，界面档要 `live-ui-verified`，逻辑档要 `unit-test-verified`，Claude 降不了档；写了「判定：要」的还要判定 PASS，head 上有 FAIL 判定的也拦；验不到时交你手动合）；main 有分支保护，不直推。分支落后时把 main 合进来，不 rebase。
+- 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式按 PR 里的非合并提交数：少于 3 个压缩合并，3 个及以上用 merge commit（钩子 `scripts/guard-merge-method.ts` 拦不合的调用，也拦带 `do-not-merge` 标签的 PR，以及 Action 签的回执与判定没盖住 head 的 PR：回执等级按分档定，界面档要 `live-ui-verified`，逻辑档要 `unit-test-verified`，Claude 降不了档；贴了 `needs-judge` 的还要判定 PASS，head 上有 FAIL 判定的也拦；验不到时交你手动合）；main 有分支保护，不直推。分支落后时把 main 合进来，不 rebase。
 - 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并（或压缩）提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 lyjwpage-verify「[3. PR 合并门槛](./.claude/skills/lyjwpage-verify/SKILL.md#3-pr-合并门槛主线程跑-pr-gatets自己判断)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。提交以你的身份、用你的钥签名，Claude 只出现在 Co-Authored-By 里；会话自带的钩子把这种提交报成 Unverified、让改成 Claude 的邮箱，是误报，不照做（见 AGENTS.md「[禁区](./AGENTS.md#禁区)」）。
 - 做完上线的线程不标成已解决：它留在你的「等你」列表里等你验收，你回一句或说「关」才收起。
 

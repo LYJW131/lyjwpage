@@ -5,8 +5,8 @@ import path from "node:path";
 import { test } from "node:test";
 import { tierOf } from "./pr-gate/tier.ts";
 import { bodyDigest } from "./verify-action/body.ts";
-import { judgeComment, judgeVerdict, main, parseBody, planOf, receiptComment, reconcile, shotLinks, stampDigest } from "./verify-action.ts";
-import { digestLine, parseComments } from "./verify-receipt.ts";
+import { judgeComment, judgeVerdict, main, parseBody, planOf, receiptComment, reconcile, shotLinks } from "./verify-action.ts";
+import { parseComments, stampLine } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
 
@@ -31,10 +31,7 @@ test("parseBody 取验证清单的 V 条目与 lyjw 原话，别的节和注释�
     { id: "V2", text: "`pnpm test` 绿" },
   ]);
   assert.equal(words, "> 把卡片换个位置");
-  assert.deepEqual(parseBody(null), { checklist: [], words: null, judgeAsked: false });
-  assert.equal(parseBody(body).judgeAsked, false);
-  assert.equal(parseBody("说明\n判定：要\n").judgeAsked, true);
-  assert.equal(parseBody("<!-- 判定：要 -->").judgeAsked, false);
+  assert.deepEqual(parseBody(null), { checklist: [], words: null });
 });
 
 const row = (id: string, result: string) => ({ id, check: id, result, evidence: "e" });
@@ -77,10 +74,11 @@ test("planOf：草稿、已关闭与只改文档的不验，界面档等预览�
   assert.equal(planOf(pull({ state: "closed" }), tierOf(["src/components/a.tsx"], trusted)).judge, false);
 });
 
-test("评论第一行就是签好的回执与判定行，表格里的竖线与换行被转义", () => {
-  const firstLine = `验证回执 ${HEAD}：verifier-blocked`;
+test("评论第一行给人看、第二行是机器读的 JSON，parseComments 认得出来；表格里的竖线与换行被转义", () => {
+  const digest = "b".repeat(64);
+  const stamp = { sha: HEAD, level: "verifier-blocked", body: digest };
   const receipt = receiptComment({
-    firstLine,
+    stamp,
     report: { model: "claude-haiku", level: "live-ui-verified", rows: [{ id: "V1", check: "a|b", result: "PASS", evidence: "x\ny" }], notVerified: [] },
     checklist: [{ id: "V1", text: "" }, { id: "V2", text: "" }],
     problems: ["V2 没有对应的检查行"],
@@ -89,17 +87,19 @@ test("评论第一行就是签好的回执与判定行，表格里的竖线与�
     runUrl: "https://example.test/run",
   });
   const lines = receipt.split("\n");
-  assert.equal(lines[0], firstLine);
+  assert.deepEqual(lines.slice(0, 2), [`验证回执 ${HEAD}：verifier-blocked`, stampLine(stamp)]);
   assert.ok(lines.includes("| V1 | a\\|b | PASS | x<br>y |"));
   assert.match(receipt, /验证员自报 live-ui-verified，按清单对照改记 verifier-blocked/);
   assert.match(receipt, /<img src="https:\/\/example.test\/home-375.png"/);
   const judge = judgeComment({
-    firstLine: `判定 ${HEAD}：FAIL`,
+    stamp: { sha: HEAD, verdict: "FAIL", body: digest },
     report: { model: "claude-opus", verdict: "FAIL", asks: [{ ask: "换位置", met: false, evidence: "没改" }], regressions: [], fixes: ["换位置"] },
     runUrl: "https://example.test/run",
   });
   assert.equal(judge.split("\n")[0], `判定 ${HEAD}：FAIL`);
   assert.match(judge, /\| 换位置 \| 否 \| 没改 \|/);
+  const parsed = parseComments([{ user: { id: 41898282 }, body: receipt }, { user: { id: 41898282 }, body: judge }]);
+  assert.deepEqual([parsed.receipt?.level, parsed.receipt?.body, parsed.judge?.verdict], ["verifier-blocked", digest, "FAIL"]);
 });
 
 test("shotLinks 只收安全文件名的 PNG，按名排序并转义", () => {
@@ -111,14 +111,6 @@ test("shotLinks 只收安全文件名的 PNG，按名排序并转义", () => {
   ]);
   assert.deepEqual(shotLinks("", "https://raw.test/d"), []);
   fs.rmSync(dir, { recursive: true });
-});
-
-test("stampDigest 把描述摘要放第二行，parseComments 两样都认得", () => {
-  const digest = "b".repeat(64);
-  const body = stampDigest(`判定 ${HEAD}：PASS\n\n表格`, digest);
-  assert.deepEqual(body.split("\n").slice(0, 2), [`判定 ${HEAD}：PASS`, digestLine(digest)]);
-  const { judge } = parseComments([{ user: { id: 41898282 }, body }]);
-  assert.deepEqual([judge?.verdict, judge?.body], ["PASS", digest]);
 });
 
 test("参数错抛成用法错误，主入口据此退出 2", async () => {
@@ -151,6 +143,6 @@ test("judgeVerdict：自报 PASS 但有没做到或缺依据的要求、有回�
   assert.equal(judgeVerdict(judge({ asks: [{ ask: "a", met: true, evidence: " " }] })), "FAIL");
   assert.equal(judgeVerdict(judge({ asks: [{ ask: "", met: true, evidence: "e" }] })), "FAIL");
   assert.equal(judgeVerdict(judge({ fixes: ["f"] })), "FAIL");
-  const comment = judgeComment({ firstLine: `判定 ${HEAD}：FAIL`, report: judge({ regressions: ["r"] }), runUrl: "u" });
+  const comment = judgeComment({ stamp: { sha: HEAD, verdict: "FAIL", body: "b".repeat(64) }, report: judge({ regressions: ["r"] }), runUrl: "u" });
   assert.match(comment, /判定员自报 PASS，.*改记 FAIL/);
 });

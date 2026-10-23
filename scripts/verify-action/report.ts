@@ -1,4 +1,4 @@
-import { digestLine, LEVELS, PASSING_RANK } from "../verify-receipt.ts";
+import { LEVELS, PASSING_RANK, stampLine, stampTitle, type Stamp } from "../verify-receipt.ts";
 import type { ChecklistItem } from "./body.ts";
 
 export const RESULTS = ["PASS", "FAIL", "SKIPPED"] as const;
@@ -98,8 +98,10 @@ export function reconcile(checklist: ChecklistItem[], report: VerifierReport, { 
 
 const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>").trim() || "—";
 
+const header = (stamp: Stamp) => [stampTitle(stamp), stampLine(stamp)];
+
 export function receiptComment({
-  firstLine,
+  stamp,
   report,
   checklist,
   problems,
@@ -107,7 +109,7 @@ export function receiptComment({
   shots,
   runUrl,
 }: {
-  firstLine: string;
+  stamp: Stamp;
   report: VerifierReport;
   checklist: ChecklistItem[];
   problems: string[];
@@ -115,10 +117,10 @@ export function receiptComment({
   shots: { name: string; url: string }[];
   runUrl: string;
 }) {
-  const lines = [firstLine, "", "| 项 | 检查 | 结果 | 证据 |", "| --- | --- | --- | --- |"];
+  const lines = [...header(stamp), "", "| 项 | 检查 | 结果 | 证据 |", "| --- | --- | --- | --- |"];
   for (const row of report.rows) lines.push(`| ${cell(row.id)} | ${cell(row.check)} | ${cell(row.result)} | ${cell(row.evidence)} |`);
   lines.push("", `没验到：${report.notVerified.length ? report.notVerified.map((item) => `\n- ${item}`).join("") : "无"}`);
-  const level = firstLine.split(/[：:]/).pop()?.trim();
+  const level = stamp.level;
   lines.push(
     "",
     checklist.length === 0
@@ -142,23 +144,17 @@ export function judgeVerdict(report: JudgeReport) {
   return report.verdict === "PASS" && complete && report.regressions.length === 0 && report.fixes.length === 0 ? "PASS" : "FAIL";
 }
 
-export function judgeComment({ firstLine, report, runUrl }: { firstLine: string; report: JudgeReport; runUrl: string }) {
-  const lines = [firstLine, "", "| lyjw 要的 | 做到了 | 依据 |", "| --- | --- | --- |"];
+export function judgeComment({ stamp, report, runUrl }: { stamp: Stamp; report: JudgeReport; runUrl: string }) {
+  const lines = [...header(stamp), "", "| lyjw 要的 | 做到了 | 依据 |", "| --- | --- | --- |"];
   for (const ask of report.asks) lines.push(`| ${cell(ask.ask)} | ${ask.met ? "是" : "否"} | ${cell(ask.evidence)} |`);
   lines.push("", `回归：${report.regressions.length ? report.regressions.map((item) => `\n- ${item}`).join("") : "没发现"}`);
   if (report.fixes.length > 0) lines.push("", `要修：${report.fixes.map((item) => `\n- ${item}`).join("")}`);
-  const verdict = firstLine.split(/[：:]/).pop()?.trim();
+  const verdict = stamp.verdict;
   if (verdict !== report.verdict) lines.push("", `判定员自报 ${report.verdict}，明细里有没做到、没写依据的要求，或有回归、待修项（或没列要求），改记 ${verdict}。`);
   lines.push("", `判定员：${report.model}，只读 lyjw 原话与 diff，没写这段代码，没看验证员的证据（[Action 运行](${runUrl})）`);
   return lines.join("\n");
 }
 
-// 摘要放第二行：第一行留给 verify-receipt.ts 认的回执行或判定行。
-export function stampDigest(comment: string, digest: string) {
-  const [first, ...rest] = comment.split("\n");
-  return [first, digestLine(digest), ...rest].join("\n");
-}
-
-export function blockedComment({ firstLine, reason, runUrl }: { firstLine: string; reason: string; runUrl: string }) {
-  return [firstLine, "", `没验到：${reason}`, "", `验证员：没跑成（[Action 运行](${runUrl})）`].join("\n");
+export function blockedComment({ stamp, reason, runUrl }: { stamp: Stamp; reason: string; runUrl: string }) {
+  return [...header(stamp), "", `没验到：${reason}`, "", `验证员：没跑成（[Action 运行](${runUrl})）`].join("\n");
 }

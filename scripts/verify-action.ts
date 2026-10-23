@@ -7,9 +7,9 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { buildCoverage } from "./pr-gate/checks.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type Client, type FetchLike, type PrFile, type Pull } from "./pr-gate/github.ts";
-import { tierOf } from "./pr-gate/tier.ts";
+import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
-import { signLine } from "./verify-receipt.ts";
+import { signStamp } from "./verify-receipt.ts";
 import { bodyDigest, parseBody } from "./verify-action/body.ts";
 import { judgePrompt, verifierPrompt } from "./verify-action/prompts.ts";
 import {
@@ -19,14 +19,13 @@ import {
   judgeVerdict,
   receiptComment,
   reconcile,
-  stampDigest,
   VERIFIER_SCHEMA,
   type JudgeReport,
   type VerifierReport,
 } from "./verify-action/report.ts";
 
 export { parseBody } from "./verify-action/body.ts";
-export { reconcile, receiptComment, judgeComment, judgeVerdict, stampDigest } from "./verify-action/report.ts";
+export { reconcile, receiptComment, judgeComment, judgeVerdict } from "./verify-action/report.ts";
 
 const HELP = `用法：node scripts/verify-action.ts <子命令> --pr <号> [选项]
 给 .github/workflows/verify.yml 用：验证员与判定员在 GitHub Action 里跑，回执与判定由 github-actions[bot] 发成 PR 评论。
@@ -58,7 +57,7 @@ function setOutput(name: string, value: string) {
 async function load(gh: Client, pr: number) {
   const pull = await gh.get<FullPull>(`pulls/${pr}`);
   const files = changedPaths(await gh.all<PrFile>(`pulls/${pr}/files`));
-  return { pull, files, tier: tierOf(files, { trustedAuthor: isTrustedAuthor(pull), judgeAsked: parseBody(pull.body).judgeAsked }) };
+  return { pull, files, tier: tierOf(files, { trustedAuthor: isTrustedAuthor(pull), judgeAsked: judgeAsked(pull) }) };
 }
 
 export function planOf(pull: FullPull, tier: ReturnType<typeof tierOf>) {
@@ -162,31 +161,29 @@ async function publish(
   }
   const { checklist } = parseBody(pull.body);
   const digest = await bodyDigest(pull.body);
+  const stamp = (parts: { level?: string; verdict?: string }) => ({ ...signStamp({ ref: opts.head, ...parts }), body: digest });
   const comments: string[] = [];
   if (opts.verifyResult && opts.verifyResult !== "skipped") {
     const report = opts.verifyResult === "success" ? parsed<VerifierReport>(process.env.VERIFY_OUTPUT) : null;
     if (report && Array.isArray(report.rows)) {
       const shots = shotLinks(opts.shotsDir, opts.shotsUrl);
       const { level, claimed, problems } = reconcile(checklist, { ...report, notVerified: report.notVerified ?? [] }, { shots: shots.length });
-      const firstLine = signLine({ ref: opts.head, level });
-      comments.push(receiptComment({ firstLine, report, checklist, problems, claimed, shots, runUrl: opts.runUrl }));
+      comments.push(receiptComment({ stamp: stamp({ level }), report, checklist, problems, claimed, shots, runUrl: opts.runUrl }));
     } else {
       const reason = opts.verifyResult === "success" ? "验证员没交回结构化结果" : `验证 job 的结论是 ${opts.verifyResult}`;
-      comments.push(blockedComment({ firstLine: signLine({ ref: opts.head, level: "verifier-blocked" }), reason, runUrl: opts.runUrl }));
+      comments.push(blockedComment({ stamp: stamp({ level: "verifier-blocked" }), reason, runUrl: opts.runUrl }));
     }
   }
   if (opts.judgeResult && opts.judgeResult !== "skipped") {
     const report = opts.judgeResult === "success" ? parsed<JudgeReport>(process.env.JUDGE_OUTPUT) : null;
     if (report && (report.verdict === "PASS" || report.verdict === "FAIL")) {
       const full = { ...report, asks: report.asks ?? [], regressions: report.regressions ?? [], fixes: report.fixes ?? [] };
-      const firstLine = signLine({ ref: opts.head, verdict: judgeVerdict(full) });
-      comments.push(judgeComment({ firstLine, report: full, runUrl: opts.runUrl }));
+      comments.push(judgeComment({ stamp: stamp({ verdict: judgeVerdict(full) }), report: full, runUrl: opts.runUrl }));
     } else {
       comments.push(`判定员没跑成（判定 job 的结论是 ${opts.judgeResult}），这个 head 没有判定。[Action 运行](${opts.runUrl})`);
     }
   }
-  for (const comment of comments) {
-    const body = stampDigest(comment, digest);
+  for (const body of comments) {
     await gh.post(`issues/${pr}/comments`, { body });
     console.log(body.split("\n", 1)[0]);
   }

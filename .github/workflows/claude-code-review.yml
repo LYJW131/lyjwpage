@@ -2,12 +2,12 @@ name: Claude Code Review
 
 on:
   pull_request:
-    # code-review 插件见到 PR 上已有 Claude 评论就退出，后续推送触发只会空跑
-    types: [opened, ready_for_review]
+    # code-review 插件见到 PR 上已有 Claude 评论就退出，后续推送触发只会空跑；贴 needs-judge 也触发一次，线程常在开 PR 之后才贴
+    types: [opened, ready_for_review, labeled]
 
 jobs:
   claude-review:
-
+    if: github.event.action != 'labeled' || github.event.label.name == 'needs-judge'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,7 +26,7 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      # 插件扫得深（多文件改动派约 8 个子代理），只审要判定的 PR（描述写了「判定：要」或作者不是 lyjw 的账号）
+      # 插件扫得深（多文件改动派约 8 个子代理），只审要判定的 PR（贴了 needs-judge 标签或作者不是 lyjw 的账号）
       - name: Tier
         id: tier
         run: node scripts/pr-tier.ts --pr "$PR"

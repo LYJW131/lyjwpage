@@ -15,19 +15,37 @@ const REQUEST_TIMEOUT_MS = 30_000;
 export const LEVELS = ["live-ui-verified", "unit-test-verified", "type-check-only", "verifier-blocked", "verifier-failed"];
 export const PASSING_RANK: Record<string, number> = { "live-ui-verified": 3, "unit-test-verified": 2, "type-check-only": 1 };
 
-const RECEIPT_LINE = new RegExp(`^验证回执 ([0-9a-f]{40})[：:]\\s*(${LEVELS.join("|")})\\s*$`);
-const JUDGE_LINE = /^判定 ([0-9a-f]{40})[：:]\s*(PASS|FAIL)\s*$/;
-const BODY_LINE = /^<!-- 描述摘要 ([0-9a-f]{64}) -->\s*$/m;
-export const digestLine = (digest: string) => `<!-- 描述摘要 ${digest} -->`;
-
 const VERDICTS = ["PASS", "FAIL"];
+
+// 契约：回执与判定评论里机器只读这一行 JSON（body 是 PR 描述摘要，见 verify-action/body.ts#bodyDigest）；评论第一行的中文只给人看。
+const STAMP_LINE = /^<!-- verify-stamp (\{.*\}) -->$/m;
+export type Stamp = { sha: string; level?: string; verdict?: string; body: string };
+export const stampLine = (stamp: Stamp) => `<!-- verify-stamp ${JSON.stringify(stamp)} -->`;
+export const stampTitle = ({ sha, level, verdict }: Omit<Stamp, "body">) => (level !== undefined ? `验证回执 ${sha}：${level}` : `判定 ${sha}：${verdict}`);
+
+function readStamp(text: string): Stamp | null {
+  const match = STAMP_LINE.exec(text);
+  if (!match) return null;
+  let stamp: Partial<Stamp>;
+  try {
+    stamp = JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+  if (typeof stamp.sha !== "string" || !/^[0-9a-f]{40}$/.test(stamp.sha)) return null;
+  if (typeof stamp.body !== "string" || !/^[0-9a-f]{64}$/.test(stamp.body)) return null;
+  const level = typeof stamp.level === "string" && LEVELS.includes(stamp.level) ? stamp.level : undefined;
+  const verdict = typeof stamp.verdict === "string" && VERDICTS.includes(stamp.verdict) ? stamp.verdict : undefined;
+  if ((level === undefined) === (verdict === undefined)) return null;
+  return { sha: stamp.sha, body: stamp.body, ...(level !== undefined ? { level } : { verdict }) };
+}
 
 const HELP = `用法：
   NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check --pr <号> [选项]
   node scripts/verify-receipt.ts sign --sha <提交> (--level <等级> | --verdict PASS|FAIL)
 
-sign 打印回执或判定的第一行：SHA 由 git rev-parse 展开成完整 40 位，等级只收五档之一。
-Verify Action 的 publish job 用它拼回执与判定的第一行，不手抄 SHA。退出码 0 成功、2 参数错或提交不存在。
+sign 打印回执或判定给人看的第一行：SHA 由 git rev-parse 展开成完整 40 位，等级只收五档之一。
+Verify Action 的 publish job 用同一套校验拼评论，check 只读评论里的 verify-stamp JSON 行，不读这行中文。退出码 0 成功、2 参数错或提交不存在。
 
 check 查 PR 评论里 github-actions[bot] 发的最新「验证回执」与「判定」还盖不盖得住当前 head。
 输出 JSON，pass 为假时 next 写下一步；退出码 0 通过、1 不通过、2 参数错。
@@ -57,16 +75,16 @@ export type Evaluation = {
   next: string | null;
 };
 
-export function signLine(
+export function signStamp(
   { ref, level, verdict }: { ref: string; level?: string; verdict?: string },
   revParse: (ref: string) => string = gitRevParse,
-) {
+): Omit<Stamp, "body"> {
   if ((level === undefined) === (verdict === undefined)) throw new Error("--level 与 --verdict 二选一");
   if (level !== undefined && !LEVELS.includes(level)) throw new Error(`等级只收 ${LEVELS.join("、")}`);
   if (verdict !== undefined && !VERDICTS.includes(verdict)) throw new Error("判定只收 PASS、FAIL");
   const sha = revParse(ref);
   if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`${ref} 展开不成完整 SHA`);
-  return level !== undefined ? `验证回执 ${sha}：${level}` : `判定 ${sha}：${verdict}`;
+  return level !== undefined ? { sha, level } : { sha, verdict };
 }
 
 function gitRevParse(ref: string) {
@@ -82,13 +100,11 @@ export function parseComments(comments: Comment[]) {
   let judge: Judge | null = null;
   for (const comment of comments) {
     if (!RECEIPT_SIGNER_IDS.has(comment.user?.id ?? 0)) continue;
-    const text = comment.body ?? "";
-    const first = text.split("\n", 1)[0].trim();
-    const body = BODY_LINE.exec(text)?.[1] ?? null;
-    const r = RECEIPT_LINE.exec(first);
-    if (r) receipt = { sha: r[1], level: r[2], body, url: comment.html_url ?? null };
-    const j = JUDGE_LINE.exec(first);
-    if (j) judge = { sha: j[1], verdict: j[2], body, url: comment.html_url ?? null };
+    const stamp = readStamp(comment.body ?? "");
+    if (!stamp) continue;
+    const url = comment.html_url ?? null;
+    if (stamp.level !== undefined) receipt = { sha: stamp.sha, level: stamp.level, body: stamp.body, url };
+    else if (stamp.verdict !== undefined) judge = { sha: stamp.sha, verdict: stamp.verdict, body: stamp.body, url };
   }
   return { receipt, judge };
 }
@@ -153,7 +169,7 @@ export function evaluate({
     }
   } else if (judge?.verdict === "FAIL" && coverage(judge.sha, head, patchId) !== "stale") {
     result.judge = { ...judge, coverage: coverage(judge.sha, head, patchId) };
-    problems.push("没要求判定，但当前 head 上的判定是 FAIL：修完判定员列的项再推送，或在验证清单外说明为什么不算");
+    problems.push("没要求判定，但当前 head 上的判定是 FAIL：修完判定员列的项再推送");
   }
 
   result.pass = problems.length === 0;
@@ -226,7 +242,7 @@ function sign(args: string[]) {
   try {
     const { values } = parseArgs({ args, strict: true, options: SIGN_OPTIONS });
     if (values.sha === undefined) throw new Error("缺 --sha");
-    console.log(signLine({ ref: values.sha, level: values.level, verdict: values.verdict }));
+    console.log(stampTitle(signStamp({ ref: values.sha, level: values.level, verdict: values.verdict })));
     return 0;
   } catch (error) {
     console.error(`${(error as Error).message}\n${USAGE}`);

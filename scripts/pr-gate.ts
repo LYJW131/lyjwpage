@@ -7,9 +7,8 @@ import { decide } from "./pr-gate/decide.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull, type Review, type ReviewComment, type IssueComment, type Status } from "./pr-gate/github.ts";
 import { reviewerSummary } from "./pr-gate/reviewers.ts";
 import { buildThreads, threadResolution } from "./pr-gate/threads.ts";
-import { tierOf, verifierFiles } from "./pr-gate/tier.ts";
+import { judgeAsked, tierOf, verifierFiles } from "./pr-gate/tier.ts";
 import { ruleDrift } from "./rule-drift.ts";
-import { parseBody } from "./verify-action/body.ts";
 import { check as checkReceipt, PASSING_RANK } from "./verify-receipt.ts";
 
 export { buildCoverage } from "./pr-gate/checks.ts";
@@ -47,7 +46,7 @@ JSON 里有：
 选项：
   --pr <号>            PR 号（必填）
   --need <等级|none>   回执至少要到的等级，覆盖分档的默认（ui 要 live-ui-verified，logic 要 unit-test-verified，docs 不要回执）；作者不是 lyjw 的账号时不生效
-  --judge / --no-judge 要不要等机器评审并要一条 PASS 的判定，覆盖默认（PR 描述写了「判定：要」才要）；
+  --judge / --no-judge 要不要等机器评审并要一条 PASS 的判定，覆盖默认（PR 贴了 needs-judge 标签才要）；
                        作者不是 lyjw 的账号时不生效。
                        --need 只改这份输出：合并钩子 guard-merge-method.ts 照分档默认的等级要回执
   --help               显示本说明
@@ -74,7 +73,7 @@ export async function gate(
   ]);
   const paths = changedPaths(files);
   const trustedAuthor = isTrustedAuthor(pull);
-  const tier = tierOf(paths, { trustedAuthor, judgeAsked: parseBody(pull.body).judgeAsked });
+  const tier = tierOf(paths, { trustedAuthor, judgeAsked: judgeAsked(pull) });
   const wantNeed = trustedAuthor && need !== undefined ? need : tier.need;
   const wantJudge = trustedAuthor ? (judge ?? tier.judge) : true;
   const [builds, receipt, rules] = await Promise.all([

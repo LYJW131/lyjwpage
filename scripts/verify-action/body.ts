@@ -3,11 +3,10 @@ import { createHash } from "node:crypto";
 
 export type ChecklistItem = { id: string; text: string };
 
-// 契约：PR 描述里这两节的标题与条目格式、叫判定员的「判定：要」一行，线程写 PR 时照 lyjwpage-verify「验证清单」写；改格式要同步那一节。
+// 契约：PR 描述里这两节的标题与条目格式，线程写 PR 时照 lyjwpage-verify「验证清单」写；改格式要同步那一节。
 const CHECKLIST_HEADING = /^#{2,4}\s*验证清单\s*$/;
 const WORDS_HEADING = /^#{2,4}\s*lyjw\s*原话\s*$/;
 const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
-const JUDGE_ASK = /^\s*判定\s*[：:]\s*要\s*$/;
 
 // Devin 会在描述末尾补徽章块，不算描述改动
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
@@ -36,7 +35,7 @@ export function parseBody(body: string | null | undefined) {
     if (match && !checklist.some((item) => item.id === match[1])) checklist.push({ id: match[1], text: match[2] });
   }
   const words = section(lines, WORDS_HEADING)?.join("\n").trim() || null;
-  return { checklist, words, judgeAsked: lines.some((line) => JUDGE_ASK.test(line)) };
+  return { checklist, words };
 }
 
 // 回执与判定只对签发时判定员和验证员读到的内容算数：有原话时是清单与原话，没原话时判定员读全文，就按全文。

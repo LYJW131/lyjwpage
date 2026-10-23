@@ -268,9 +268,9 @@ test("只改文档、CI 绿、线程都解决时 ready，不要回执", async ()
   assert.equal(result.ready, true);
 });
 
-test("逻辑档 PR 写了「判定：要」：检查在跑、线程没解决、Codex 没审到 head、没回执与判定，逐条进 todo", async () => {
+test("逻辑档 PR 贴了 needs-judge：检查在跑、线程没解决、Codex 没审到 head、没回执与判定，逐条进 todo", async () => {
   const routes = pullRoutes({
-    "pulls/7": { number: 7, title: "t", state: "open", draft: true, mergeable: false, mergeable_state: "dirty", head: { sha: HEAD }, labels: [{ name: "baseline-exception" }], user: lyjw, body: "改动\n\n判定：要" },
+    "pulls/7": { number: 7, title: "t", state: "open", draft: true, mergeable: false, mergeable_state: "dirty", head: { sha: HEAD }, labels: [{ name: "baseline-exception" }, { name: "needs-judge" }], user: lyjw },
     "pulls/7/files": FILES(["workers/collector/src/a.ts"]),
     "pulls/7/reviews": [{ user: codex, commit_id: OLD }],
     "pulls/7/comments": [{ id: 11, user: codex, body: codexBody("P1"), html_url: "u", path: "a.ts", line: 1, created_at: "2026-10-19T00:00:00Z" }],

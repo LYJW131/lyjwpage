@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { mergeMethodReason, receiptReason } from "./guard-merge-method.ts";
-import { digestLine } from "./verify-receipt.ts";
+import { stampLine, stampTitle } from "./verify-receipt.ts";
 import { bodyDigest } from "./verify-action/body.ts";
 
 const SHA = "6ed909e3c64a6fca7e2a172841db0278a479efc8";
@@ -42,9 +42,9 @@ test("带 do-not-merge 标签、读不到标签或没给 PR 号都拦下", () =>
 const HEAD = "a".repeat(40);
 const BOT = { id: 41898282 };
 
-function fakeFetch(files: string[], comments: { user: { id: number }; body: string }[], { author = 153256373, body = "" } = {}) {
+function fakeFetch(files: string[], comments: { user: { id: number }; body: string }[], { author = 153256373, labels = [] as string[] } = {}) {
   const routes: Record<string, unknown> = {
-    "pulls/7": { number: 7, head: { sha: HEAD }, body, user: { id: author } },
+    "pulls/7": { number: 7, head: { sha: HEAD }, body: "", labels: labels.map((name) => ({ name })), user: { id: author } },
     "pulls/7/files": files.map((filename) => ({ filename })),
     "issues/7/comments": comments,
   };
@@ -57,32 +57,35 @@ function fakeFetch(files: string[], comments: { user: { id: number }; body: stri
   };
 }
 
-const signed = async (first: string, body = "") => ({ user: BOT, body: `${first}\n${digestLine(await bodyDigest(body))}\n` });
+const stamped = async (stamp: { level?: string; verdict?: string }) => {
+  const full = { sha: HEAD, ...stamp, body: await bodyDigest("") };
+  return `${stampTitle(full)}\n${stampLine(full)}\n`;
+};
+const signed = async (stamp: { level?: string; verdict?: string }) => ({ user: BOT, body: await stamped(stamp) });
 
-test("receiptReason：回执等级按分档，判定只在 PR 写了「判定：要」时要，文档档不要", async () => {
+test("receiptReason：回执等级按分档，判定只在 PR 贴了 needs-judge 时要，文档档不要", async () => {
   assert.equal(await receiptReason(7, { fetch: fakeFetch(["docs/a.md"], []) }), null);
   const none = (await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], []) })) ?? "";
   assert.match(none, /logic 档.*unit-test-verified/);
   assert.doesNotMatch(none, /判定 PASS/);
-  const receipt = await signed(`验证回执 ${HEAD}：unit-test-verified`);
+  const receipt = await signed({ level: "unit-test-verified" });
   assert.equal(await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [receipt]) }), null);
   assert.match((await receiptReason(7, { fetch: fakeFetch(["src/components/a.tsx"], [receipt]) })) ?? "", /ui 档.*live-ui-verified/);
 
-  const body = "改动\n\n判定：要";
-  const askedReceipt = await signed(`验证回执 ${HEAD}：unit-test-verified`, body);
-  assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [askedReceipt], { body }) })) ?? "", /判定 PASS/);
-  const pass = await signed(`判定 ${HEAD}：PASS`, body);
-  assert.equal(await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [askedReceipt, pass], { body }) }), null);
+  const labels = ["needs-judge"];
+  assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [receipt], { labels }) })) ?? "", /判定 PASS/);
+  const pass = await signed({ verdict: "PASS" });
+  assert.equal(await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [receipt, pass], { labels }) }), null);
 });
 
 test("receiptReason：没要判定，head 上有 FAIL 判定也拦", async () => {
-  const receipt = await signed(`验证回执 ${HEAD}：unit-test-verified`);
-  const fail = await signed(`判定 ${HEAD}：FAIL`);
+  const receipt = await signed({ level: "unit-test-verified" });
+  const fail = await signed({ verdict: "FAIL" });
   assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [receipt, fail]) })) ?? "", /判定是 FAIL/);
 });
 
 test("receiptReason：lyjw 账号贴的同格式评论不算，读不到 GitHub 就拦", async () => {
-  const forged = { user: { id: 153256373 }, body: `${`验证回执 ${HEAD}：unit-test-verified`}\n${digestLine(await bodyDigest(""))}` };
+  const forged = { user: { id: 153256373 }, body: await stamped({ level: "unit-test-verified" }) };
   assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [forged]) })) ?? "", /logic 档/);
   assert.match((await receiptReason(8, { fetch: fakeFetch(["scripts/a.ts"], []) })) ?? "", /读不到 #8 的回执/);
 });
