@@ -60,6 +60,8 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      # WIF 用 GitHub OIDC 换 Anthropic token。这些 job 跑 PR 代码，PR 代码也能要到 OIDC token：有意接受（PR 都锁着），ai Worker 只认 main 上 build.yml 签的 token
+      id-token: write
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
@@ -121,7 +123,11 @@ jobs:
           # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 计费开关同 claude.yml
+          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || vars.ANTHROPIC_FEDERATION_RULE_ID == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
+          anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
+          anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'
@@ -162,6 +168,7 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      id-token: write
     env:
       EFFORT: medium
       OUT: verify-ab
@@ -175,6 +182,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      id-token: write
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
@@ -203,7 +211,11 @@ jobs:
           # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 计费开关同 claude.yml
+          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || vars.ANTHROPIC_FEDERATION_RULE_ID == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
+          anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
+          anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'
