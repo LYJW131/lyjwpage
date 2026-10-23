@@ -1,0 +1,41 @@
+{
+  "description": "Claude Max 20x，周限额 84%、5 小时 11%：5 小时条右端约 33% 不可用",
+  "extends": "readme-base",
+  "views": {
+    "/api/status/limits": {
+      "from": "limits-steady.json",
+      "set": {
+        "data.agents.claude.plan": {
+          "tier": "default_claude_max_20x",
+          "label": "Max 20x"
+        },
+        "data.agents.claude.limits": [
+          {
+            "key": "claude.primary",
+            "label": null,
+            "group": null,
+            "windowMinutes": 300,
+            "usedPercent": 11,
+            "resetsAt": 4102444800
+          },
+          {
+            "key": "weekly_all",
+            "label": null,
+            "group": null,
+            "windowMinutes": 10080,
+            "usedPercent": 84,
+            "resetsAt": 4102444800
+          },
+          {
+            "key": "claude-weekly-scoped-fable",
+            "label": "Fable only",
+            "group": null,
+            "windowMinutes": 10080,
+            "usedPercent": 3,
+            "resetsAt": 4102444800
+          }
+        ]
+      }
+    }
+  }
+}

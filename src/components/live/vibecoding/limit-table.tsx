@@ -3,18 +3,18 @@
 import NumberFlow, { NumberFlowGroup } from "@/components/ui/number-flow";
 import { useContext, useEffect, useState, type ReactNode } from "react";
 
-import { PaceMarker, UNAVAILABLE_NOTE, UnavailableZone } from "@/components/live/vibecoding/limit-meter";
-import { fableUnavailableShare, formatReset, limitColor, limitPace, nextTickDelay, paceTickInterval } from "@/components/live/vibecoding/limits";
+import { PaceMarker, UnavailableZone } from "@/components/live/vibecoding/limit-meter";
+import { formatReset, limitColor, limitPace, nextTickDelay, paceTickInterval, unavailableShare, type WeeklyCap } from "@/components/live/vibecoding/limits";
 import { RenderClock, useMountedAt } from "@/hooks/use-mounted-at";
 import { site } from "@shared/site";
 import type { VibeCodingLimit } from "@shared/types";
 import { cn } from "@/lib/utils";
 
 export type LimitTableItem =
-  | { key: string; title: string; limit: VibeCodingLimit; cappedBy?: VibeCodingLimit | null }
+  | { key: string; title: string; limit: VibeCodingLimit; cap?: WeeklyCap | null }
   | { key: string; title: string; limit: null; reason: string };
 
-function useLimitReading(limit: VibeCodingLimit, cappedBy: VibeCodingLimit | null) {
+function useLimitReading(limit: VibeCodingLimit, cap: WeeklyCap | null) {
   const mountedAt = useMountedAt();
   const [ticked, setTicked] = useState(0);
   const now = ticked || mountedAt;
@@ -39,7 +39,7 @@ function useLimitReading(limit: VibeCodingLimit, cappedBy: VibeCodingLimit | nul
   const baked = useContext(RenderClock) > 0;
   return {
     usedPercent,
-    unavailable: cappedBy ? fableUnavailableShare(cappedBy, usedPercent, now) : 0,
+    unavailable: unavailableShare(cap, limit, usedPercent, now),
     color: limitColor(usedPercent),
     pace,
     overPace: pace != null && usedPercent / 100 > pace,
@@ -93,21 +93,21 @@ const NAME = "col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 sm:col-a
 const TRACK = "col-span-2 row-start-2 sm:col-auto sm:row-auto";
 const PERCENT = "col-start-2 row-start-1 text-right font-mono text-xs tabular-nums sm:col-auto sm:row-auto";
 
-function LimitCells({ limit, cappedBy, title, href, label, tall }: { limit: VibeCodingLimit; cappedBy: VibeCodingLimit | null; title: string; href: string | null; label: string; tall?: boolean }) {
-  const { usedPercent, unavailable, color, pace, overPace, reset } = useLimitReading(limit, cappedBy);
+function LimitCells({ limit, cap, title, href, label, tall }: { limit: VibeCodingLimit; cap: WeeklyCap | null; title: string; href: string | null; label: string; tall?: boolean }) {
+  const { usedPercent, unavailable, color, pace, overPace, reset } = useLimitReading(limit, cap);
   return (
     <div className={ITEM}>
-      <span className={NAME} title={unavailable > 0 ? UNAVAILABLE_NOTE : title}>
+      <span className={NAME} title={unavailable > 0 ? cap?.note : title}>
         <span className="truncate text-xs">{title}</span>
         <span className="text-2xs whitespace-nowrap text-muted-foreground sm:hidden">
           <ResetText reset={reset} />
         </span>
       </span>
       <span className={cn("grid min-w-0 sm:contents", TRACK)}>
-        <Track href={href} label={unavailable > 0 ? `${label}. ${UNAVAILABLE_NOTE}` : label} tall={tall}>
+        <Track href={href} label={unavailable > 0 ? `${label}. ${cap?.note}` : label} tall={tall}>
           <span className="block h-full transition-[width] duration-700" style={{ width: `${usedPercent}%`, backgroundColor: color }} />
           <UnavailableZone share={unavailable} />
-          {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
+          {pace != null && pace < 1 - unavailable && <PaceMarker pace={pace} overPace={overPace} />}
         </Track>
       </span>
       <span className={PERCENT} style={{ color }}>
@@ -138,7 +138,7 @@ export function LimitTable({
     <div className={cn("grid grid-cols-1 gap-y-3 sm:grid-cols-[auto_minmax(3rem,1fr)_auto_auto] sm:items-center sm:gap-x-3 sm:gap-y-0", className)}>
       {items.map((item) =>
         item.limit ? (
-          <LimitCells key={item.key} limit={item.limit} cappedBy={item.cappedBy ?? null} title={item.title} href={href} label={`${agentLabel} usage, ${item.title}`} tall={tall} />
+          <LimitCells key={item.key} limit={item.limit} cap={item.cap ?? null} title={item.title} href={href} label={`${agentLabel} usage, ${item.title}`} tall={tall} />
         ) : (
           <div key={item.key} className={ITEM}>
             <span className={NAME} title={item.reason}>

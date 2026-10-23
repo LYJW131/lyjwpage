@@ -454,6 +454,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - `.github/workflows/preview-core-worker.yml`：PR 关闭时删掉那个分支的 core Worker Preview。
 - `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。
 - `.github/workflows/pr-tier-label.yml`：PR 打开或推送后，以 `lyjw131[bot]` 给 PR 贴 `tier: <档位>` 标签，改过验证员相关文件的另贴 `verifier-changed`（`scripts/pr-tier.ts`），只供查看，门槛不读它，不参与发布。
+- `.github/workflows/do-not-merge.yml`：PR 标题括号里写了「不合并」时（如「（测试，不合并）」），以 `lyjw131[bot]` 贴 `do-not-merge` 标签（只加不摘）；带这个标签或标题时 `do-not-merge` 检查失败，合并钩子 `scripts/guard-merge-method.ts` 用 `gh` 读标签，带标签或读不到都拦。
 - `.github/workflows/codeql-autofix.yml`（main 上的 CodeQL 跑完后为告警开修复）、`.github/workflows/explainer-score.yml`（只在讲解片配乐的输入改动时渲染上传配乐）、`.github/workflows/collector-refresh.yml`（手动触发）、`.github/workflows/avatar-sync.yml`（采集 Worker 的 avatar-watch 派发，只提交新哈希，见 §1）、`.github/workflows/issue-labels.yml`（新 issue）、`.github/workflows/build.yml`（访客构建的 `repository_dispatch`）：自己都不部署站点或 Worker。
 
 ## 11 工作流：站是怎么被造出来的（第 08 章「一句话之后」）
@@ -505,7 +506,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   2. 大改代码逻辑的：另要处理完机器评审，并有判定员的 PASS 盖住当前 head。
   3. 有 UI / UX 变化的：先给 lyjw 看效果（桌面与 375px 截图），lyjw 点头才合；lyjw 明确要求的小改动除外（根 `DESIGN.md`「交付与合并」）。
 - 大方向、大改动也等 lyjw 点头（`HUMAN.md`「3. 什么 Claude 自己定，什么来问你」）。片中三道闸各过一个 PR：文档、界面两个是示意，第二档过的是 #308。第一档的闸牌要写成「本地检查过就合」一类，不能写「CI 绿就合」：这一档不等 CI。
-- 不 rebase：PR 里少于 3 个非合并提交压缩合并，3 个及以上用 merge commit（`scripts/merge-message.ts#mergeMethodFor`，钩子 `scripts/guard-merge-method.ts` 拦不合的合并）。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出的 `merge_method`、`commit_title`、`commit_message` 与 `expectedHeadSha`（本地验过的 HEAD，PR 上多出没验过的提交时合并失败）原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
+- 不 rebase：PR 里少于 3 个非合并提交压缩合并，3 个及以上用 merge commit（`scripts/merge-message.ts#mergeMethodFor`，钩子 `scripts/guard-merge-method.ts` 拦不合的合并，也拦带 `do-not-merge` 标签的 PR）。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出的 `merge_method`、`commit_title`、`commit_message` 与 `expectedHeadSha`（本地验过的 HEAD，PR 上多出没验过的提交时合并失败）原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
 - 站点状态卡的 Commits 一栏靠这些尾注显示参与者：collector 从 GitHub 取最近提交（`shared/github-repo.ts#fetchRecentCommits`），卡上列最近几条（`src/components/live/repo-contributions.tsx#COMMIT_LIMIT`），把 main 同步进分支的合并不显示（`src/lib/recent-commits.ts#recentCommitsFrom`）。每条先写提交的人（线程的提交是「LYJW131 committed <相对时间>」），下一行写 agent「with claude (<尾注里的模型名>)」：名字是 agent 的 GitHub 账号，前面一排 16px 头像，按尾注邮箱从 `shared/commit-authors.ts#AGENTS` 认（`src/components/live/repo-contributions.tsx#CommitByline`）。片中首页提交卡省掉了模型名与头像，只画「LYJW131 committed」「with claude」和短 SHA。
 
 ### 合并之后：怎么算已部署

@@ -9,6 +9,7 @@ test("合法的 reporter 块原样收下", () => {
   assert.deepEqual(reporterBlockOf({ reporter: block }), block);
   assert.deepEqual(reporterBlockOf({ reporter: { ...block, commit: null } }), { ...block, commit: null });
   assert.deepEqual(reporterBlockOf({ reporter: { ...block, rttMs: null } }), { ...block, rttMs: null });
+  assert.deepEqual(reporterBlockOf({ reporter: { ...block, errors: 3 } }), { ...block, errors: 3 });
 });
 
 test("旧版没带、字段写坏的一律当没有，不抛错拒掉整封", () => {
@@ -19,5 +20,7 @@ test("旧版没带、字段写坏的一律当没有，不抛错拒掉整封", ()
   assert.equal(reporterBlockOf({ reporter: { ...block, pushes: 1.5 } }), null);
   assert.equal(reporterBlockOf({ reporter: { ...block, rttMs: undefined } }), null);
   assert.equal(reporterBlockOf({ reporter: { ...block, rttMs: -3 } }), null);
+  assert.equal(reporterBlockOf({ reporter: { ...block, errors: -1 } }), null);
+  assert.equal(reporterBlockOf({ reporter: { ...block, errors: null } }), null);
   assert.equal(reporterBlockOf({ reporter: { ...block, start: block.end + 1 } }), null);
 });

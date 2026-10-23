@@ -6,7 +6,7 @@ import { useId, type ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
-import { activityDayCount, activityDistanceKm } from "@/lib/activity-display";
+import { activityDayCount, activityDistanceKm, activityFlights } from "@/lib/activity-display";
 import { ACTIVITY_STALE_MS } from "@shared/freshness";
 import { ACTIVITY_PATH } from "@/lib/paths";
 import type { ActivityPayload, StatusResponse } from "@shared/types";
@@ -230,7 +230,7 @@ export function ActivityCard({
 
   const steps = data ? activityDayCount(current, data.steps) : null;
   const distance = data ? activityDistanceKm(current, data.distanceMeters) : null;
-  const flights = data ? activityDayCount(current, data.flightsClimbed) : null;
+  const flights = data ? activityFlights(current, data.flightsClimbed, data.steps) : null;
   const extras: Extra[] = [
     { label: "Steps", value: steps == null ? null : <NumberFlow value={steps} locales="en-US" /> },
     { label: "Distance", value: distance },
