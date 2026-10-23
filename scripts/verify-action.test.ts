@@ -74,12 +74,12 @@ test("planOf：草稿、已关闭与只改文档的不验，界面档等预览�
   assert.equal(planOf(pull({ state: "closed" }), tierOf(["src/components/a.tsx"], trusted)).judge, false);
 });
 
-test("评论第一行给人看、第二行是机器读的 JSON，parseComments 认得出来；表格里的竖线与换行被转义", () => {
+test("评论第一行给人看、第二行是机器读的 JSON，parseComments 认得出来；表格里的竖线、反斜杠与换行被转义", () => {
   const digest = "b".repeat(64);
   const stamp = { sha: HEAD, level: "verifier-blocked", body: digest };
   const receipt = receiptComment({
     stamp,
-    report: { model: "claude-haiku", level: "live-ui-verified", rows: [{ id: "V1", check: "a|b", result: "PASS", evidence: "x\ny" }], notVerified: [] },
+    report: { model: "claude-haiku", level: "live-ui-verified", rows: [{ id: "V1", check: "a|b", result: "PASS", evidence: "x\ny" }, { id: "X1", check: "a\\|b\\", result: "PASS", evidence: "line\\end" }], notVerified: [] },
     checklist: [{ id: "V1", text: "" }, { id: "V2", text: "" }],
     problems: ["V2 没有对应的检查行"],
     claimed: "live-ui-verified",
@@ -89,6 +89,7 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   const lines = receipt.split("\n");
   assert.deepEqual(lines.slice(0, 2), [`验证回执 ${HEAD}：verifier-blocked`, stampLine(stamp)]);
   assert.ok(lines.includes("| V1 | a\\|b | PASS | x<br>y |"));
+  assert.ok(lines.includes("| X1 | a\\\\\\|b\\\\ | PASS | line\\\\end |"));
   assert.match(receipt, /验证员自报 live-ui-verified，按清单对照改记 verifier-blocked/);
   assert.match(receipt, /<img src="https:\/\/example.test\/home-375.png"/);
   const judge = judgeComment({

@@ -96,7 +96,7 @@ export function reconcile(checklist: ChecklistItem[], report: VerifierReport, { 
   return { level, claimed, problems };
 }
 
-const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>").trim() || "—";
+const cell = (text: string) => text.replace(/[\\|]/g, "\\$&").replace(/\r?\n/g, "<br>").trim() || "—";
 
 const header = (stamp: Stamp) => [stampTitle(stamp), stampLine(stamp)];
 
