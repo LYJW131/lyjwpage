@@ -10,7 +10,7 @@ const REPO = "LYJW131/lyjwpage";
 export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
 // 回执和判定只认 lyjw131[bot]（GitHub App 的机器人账号）：由 .github/workflows/verify.yml 的 publish job 拿 App 令牌发；
 // github-actions[bot] 任何工作流都能冒充，线程用 lyjw 的账号发的同格式评论也不算。
-// 持有密钥的 verify、judge job 从 PR 检出跑这个文件，只能 import scripts/ 下的，所以 ID 写死（同 docs/ops-facts.md 的 lyjw131[bot] 用户 ID）
+// verify、judge job 带着 Claude 的令牌从 PR 检出跑这个文件，只能 import scripts/ 下的，所以 ID 写死（同 docs/ops-facts.md 的 lyjw131[bot] 用户 ID）
 export const RECEIPT_SIGNER_IDS = new Set([338272049]);
 const REQUEST_TIMEOUT_MS = 30_000;
 
