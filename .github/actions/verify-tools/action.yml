@@ -1,0 +1,61 @@
+name: Verify tools
+description: Playwright 浏览器与 bubblewrap 沙箱，带缓存
+
+inputs:
+  browsers:
+    description: 装 Playwright 的 Chromium 与 WebKit
+    default: "false"
+  playwright-version:
+    default: 1.63.0
+
+runs:
+  using: composite
+  steps:
+    - id: image
+      shell: bash
+      run: echo "key=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+    # PR 上的运行只能读默认分支的缓存，自己存的只有这个 PR 用得上：默认分支的那份由 verify-cache.yml 存
+    - id: browsers
+      if: inputs.browsers == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ inputs.playwright-version }}-chromium-webkit
+    - id: debs
+      uses: actions/cache@v6
+      with:
+        path: ~/sandbox-debs
+        key: sandbox-debs-${{ steps.image.outputs.key }}
+    - if: inputs.browsers == 'true'
+      shell: bash
+      run: |
+        npm install -g "playwright@$PLAYWRIGHT_VERSION"
+        [ "$HIT" = true ] || timeout 300 playwright install chromium webkit
+      env:
+        HIT: ${{ steps.browsers.outputs.cache-hit }}
+        PLAYWRIGHT_VERSION: ${{ inputs.playwright-version }}
+    # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程、socat 给沙盒转发网络，缺了 claude 装不起来或 Bash 起不来。
+    # 缓存的 .deb 按 runner 镜像版本存，同一镜像上直接 dpkg 装，省掉 apt-get update。
+    # runner 默认的 azure 镜像时常卡住不报错：timeout 要放在 sudo 里面才杀得掉 apt-get、放开 dpkg 锁；重试前从镜像表删掉 azure
+    - shell: bash
+      run: |
+        debs=~/sandbox-debs
+        if ! { compgen -G "$debs/*.deb" > /dev/null && sudo dpkg -i "$debs"/*.deb; }; then
+          mkdir -p "$debs/partial"
+          fetch() { sudo timeout -k 10 180 sh -c "apt-get update -qq && apt-get install -y --no-install-recommends -o Dir::Cache::archives=$debs bubblewrap socat"; }
+          fetch || {
+            sudo dpkg --configure -a
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            fetch
+          }
+          sudo rm -rf "$debs/partial" "$debs/lock"
+          sudo chown -R "$USER" "$debs"
+        fi
+    # Ubuntu 24.04 的 AppArmor 默认不许 bwrap 建用户命名空间，照 build.yml「Prepare the sandbox」只给 bwrap 放行
+    - shell: bash
+      run: |
+        if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+          printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' | sudo tee /etc/apparmor.d/bwrap > /dev/null
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap
+        fi
+        bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --die-with-parent true || { echo "::error::bubblewrap cannot create namespaces."; exit 1; }
