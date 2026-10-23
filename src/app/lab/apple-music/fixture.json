@@ -1,0 +1,230 @@
+{
+  "year": 2026,
+  "songCount": 100,
+  "topSongs": [
+    {
+      "rank": 1,
+      "title": "crossing field",
+      "artist": "LiSA",
+      "album": "LANDSPACE",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/1a/bd/87/1abd87ff-cc79-6e6f-e5c5-662c9fb7c93d/jacket_SVWC07964B00Z_550.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/crossing-field/1538284651?i=1538284654",
+      "loved": false
+    },
+    {
+      "rank": 2,
+      "title": "ミッドナイト・リフレクション",
+      "artist": "NOMELON NOLEMON",
+      "album": "HALO - EP",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b6/4a/63/b64a633f-a9f0-18e9-f81a-9d0f5e25aef5/199350865336.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/%E3%83%9F%E3%83%83%E3%83%89%E3%83%8A%E3%82%A4%E3%83%88-%E3%83%AA%E3%83%95%E3%83%AC%E3%82%AF%E3%82%B7%E3%83%A7%E3%83%B3/1818784232?i=1818784494",
+      "loved": true
+    },
+    {
+      "rank": 3,
+      "title": "Catch the Moment",
+      "artist": "LiSA",
+      "album": "LiTTLE DEViL PARADE",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/11/05/ad/1105adba-1ede-4f31-f5cd-25f74c01b8ef/4547366312348.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/catch-the-moment/1538285604?i=1538285606",
+      "loved": false
+    },
+    {
+      "rank": 4,
+      "title": "Revenge of B",
+      "artist": "B KOMACHI RUBY(CV: YURIE IGOMA), ARIMA KANA(CV: MEGUMI HAN), MEMCHO (CV: RUMI OKUBO)",
+      "album": "Song from Tv Series \"【Oshi No Ko】 \" Vol.5",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/3a/b0/a2/3ab0a271-0558-6c7a-d8cf-9276f8d12162/PA00209489_2_237141_jacket.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/revenge-of-b/1866463537?i=1866463539",
+      "loved": true
+    },
+    {
+      "rank": 5,
+      "title": "きえない",
+      "artist": "NOMELON NOLEMON",
+      "album": "HALO - EP",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b6/4a/63/b64a633f-a9f0-18e9-f81a-9d0f5e25aef5/199350865336.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/%E3%81%8D%E3%81%88%E3%81%AA%E3%81%84/1818784232?i=1818784638",
+      "loved": false
+    },
+    {
+      "rank": 6,
+      "title": "Chatter Chatter",
+      "artist": "Houshou Marine & Hoshimachi Suisei",
+      "album": "Chatter Chatter - Single",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/1e/57/75/1e577529-6c69-df15-e125-bddbdce440e2/ticket.eyhrqhpi.png/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/chatter-chatter/1878677301?i=1878677327",
+      "loved": false
+    },
+    {
+      "rank": 7,
+      "title": "HALO",
+      "artist": "NOMELON NOLEMON",
+      "album": "HALO - EP",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b6/4a/63/b64a633f-a9f0-18e9-f81a-9d0f5e25aef5/199350865336.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/halo/1818784232?i=1818784643",
+      "loved": true
+    },
+    {
+      "rank": 8,
+      "title": "きみの惑星",
+      "artist": "NOMELON NOLEMON",
+      "album": "HALO - EP",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b6/4a/63/b64a633f-a9f0-18e9-f81a-9d0f5e25aef5/199350865336.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/%E3%81%8D%E3%81%BF%E3%81%AE%E6%83%91%E6%98%9F/1818784232?i=1818784647",
+      "loved": true
+    },
+    {
+      "rank": 9,
+      "title": "PROVANT (feat. Jean-Ken Johnny & TAKUMA)",
+      "artist": "SawanoHiroyuki[nZk]",
+      "album": "PROVANT - EP",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/ae/ac/ed/aeaced0e-4b09-9825-32f6-8b79eaa1bc32/4547366793970.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/provant-feat-jean-ken-johnny-takuma/1858500506?i=1858500507",
+      "loved": true
+    },
+    {
+      "rank": 10,
+      "title": "GHOST",
+      "artist": "Hoshimachi Suisei",
+      "album": "GHOST - Single",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/24/55/49/245549db-1e4d-bc80-55f0-cfba324e63e5/4580625827474_art.png/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/ghost/1562662494?i=1562662497",
+      "loved": false
+    }
+  ],
+  "artistCount": 20,
+  "topArtists": [
+    {
+      "rank": 1,
+      "name": "LiSA",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/AMCArtistImages221/v4/f5/7b/11/f57b1143-52d7-16f4-b2e2-5c8dc6f661c3/ami_U003aidentity_U003af7fe5397d193305ef7f645abb56cd90b-2026-10-05T04-08-53.946Z_cropped.png/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/artist/lisa/573943518",
+      "genre": "动画"
+    },
+    {
+      "rank": 2,
+      "name": "NOMELON NOLEMON",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/AMCArtistImages221/v4/61/a3/b6/61a3b692-e1f0-93c5-b5ef-feb343d6bb7e/ami-identity-bc8653dca863d83806ab198e91aa9c84-2025-01-19T06-37-30.270Z_cropped.png/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/artist/nomelon-nolemon/1576692494",
+      "genre": "J-Pop"
+    },
+    {
+      "rank": 3,
+      "name": "Hoshimachi Suisei",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/AMCArtistImages221/v4/33/b7/12/33b71234-9a80-bb43-ba51-90957936aa67/ami-identity-e6d23ad47868d1a630f4c3d23676d80b-2024-11-14T13-08-57.789Z_cropped.png/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/artist/hoshimachi-suisei/1503670948",
+      "genre": "J-Pop"
+    },
+    {
+      "rank": 4,
+      "name": "Aimer",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/AMCArtistImages211/v4/d8/15/23/d8152345-7d8b-226e-79e0-3599da275c6e/ami-identity-54f701b8b197c76a0b9fa55ea5989664-2025-06-28T14-13-25.583Z_cropped.png/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/artist/aimer/569972619",
+      "genre": "J-Pop"
+    },
+    {
+      "rank": 5,
+      "name": "ReoNa",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/AMCArtistImages221/v4/6e/86/fd/6e86fd04-f52a-09a8-654a-aa120c45235d/ami_U003aidentity_U003a2f964781b3f95c5d1cbfe7f53c5f72d8-2026-10-03T11-09-44.240Z_cropped.png/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/artist/reona/1401871894",
+      "genre": "动画"
+    },
+    {
+      "rank": 6,
+      "name": "泽野弘之",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Features221/v4/9b/03/9b/9b039b21-66d1-2195-03a2-9f0d1f744708/mzl.wzkhrxcq.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/artist/%E6%B3%BD%E9%87%8E%E5%BC%98%E4%B9%8B/156620523",
+      "genre": "原声音乐"
+    }
+  ],
+  "latestReleases": [
+    {
+      "artist": "LiSA",
+      "title": "ソフィリア - Single",
+      "releaseDate": "2026-09-25",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/24/ca/ea/24caeabf-db7b-211d-98d8-ad7053cb7b4b/4547366848823.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/%E3%82%BD%E3%83%95%E3%82%A3%E3%83%AA%E3%82%A2-single/6810550459"
+    },
+    {
+      "artist": "NOMELON NOLEMON",
+      "title": "ユラリユレル / DAYS! - EP",
+      "releaseDate": "2026-08-12",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/86/83/98/868398a9-5a7b-d5d4-fa23-b1447fe7decc/4547366842258.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/%E3%83%A6%E3%83%A9%E3%83%AA%E3%83%A6%E3%83%AC%E3%83%AB-days-ep/6793851911"
+    },
+    {
+      "artist": "Hoshimachi Suisei",
+      "title": "GUM&DROP - Single",
+      "releaseDate": "2026-08-31",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/70/25/8c/70258cd8-92c8-1640-615a-afd3c9542f06/4547366834413.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/gum-drop-single/6800641659"
+    },
+    {
+      "artist": "Aimer",
+      "title": "Live to Survive - Single",
+      "releaseDate": "2026-07-01",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/58/14/7d/58147d99-b3fc-f121-ca4d-4e3f9bae3fee/4547366833393.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/live-to-survive-single/6781660767"
+    },
+    {
+      "artist": "ReoNa",
+      "title": "Lv.1 職業:人間 (Special Edition) - EP",
+      "releaseDate": "2026-08-26",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/0b/95/f0/0b95f0f7-2a86-08d0-56c9-bc4b49132dbe/4547366843941.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/lv-1-%E8%81%B7%E6%A5%AD-%E4%BA%BA%E9%96%93-special-edition-ep/6802137051"
+    },
+    {
+      "artist": "泽野弘之",
+      "title": "Fate/strange Fake Original Soundtrack",
+      "releaseDate": "2026-04-01",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/d3/8a/9b/d38a9bea-8304-6cb0-a2f4-7317089f36a1/4534530164513.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/fate-strange-fake-original-soundtrack/1886067919"
+    }
+  ],
+  "albumCount": 15,
+  "topAlbums": [
+    {
+      "rank": 1,
+      "title": "HALO - EP",
+      "artist": "NOMELON NOLEMON",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b6/4a/63/b64a633f-a9f0-18e9-f81a-9d0f5e25aef5/199350865336.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/halo-ep/1818784232"
+    },
+    {
+      "rank": 2,
+      "title": "LANDSPACE",
+      "artist": "LiSA",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/1a/bd/87/1abd87ff-cc79-6e6f-e5c5-662c9fb7c93d/jacket_SVWC07964B00Z_550.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/landspace/1538284651"
+    },
+    {
+      "rank": 3,
+      "title": "星の消えた夜に",
+      "artist": "Aimer",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/c1/3e/2b/c13e2b74-a875-b20f-d37f-5603eb0d2031/4547366543063.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/%E6%98%9F%E3%81%AE%E6%B6%88%E3%81%88%E3%81%9F%E5%A4%9C%E3%81%AB/1597687739"
+    },
+    {
+      "rank": 4,
+      "title": "LiTTLE DEViL PARADE",
+      "artist": "LiSA",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/11/05/ad/1105adba-1ede-4f31-f5cd-25f74c01b8ef/4547366312348.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/little-devil-parade/1538285604"
+    },
+    {
+      "rank": 5,
+      "title": "forget-me-not - Single",
+      "artist": "ReoNa",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c7/25/31/c7253132-13c9-764c-1e27-9f75895f65d8/jacket_VVXX00376B00Z_550.jpg/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/forget-me-not-single/1538286824"
+    },
+    {
+      "rank": 6,
+      "title": "Cosmic Princess Kaguya!",
+      "artist": "Cosmic Princess Kaguya!",
+      "artwork": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/b3/1b/50/b31b50d3-c70b-3272-bfea-e370638593b3/4550752693389_cover.png/{w}x{h}bb.jpg",
+      "url": "https://music.apple.com/cn/album/cosmic-princess-kaguya/1869843536"
+    }
+  ]
+}

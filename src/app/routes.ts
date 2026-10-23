@@ -4,6 +4,7 @@ export default [
   index("page.tsx"),
   route("github-callback", "github-callback/page.tsx"),
   route("local/charging", "local/charging/page.tsx"),
+  route("lab/apple-music", "lab/apple-music/page.tsx"),
   route("manifest.webmanifest", "manifest.ts"),
   route("api/version", "api/version/route.ts"),
   route("cards/:card", "cards/route.tsx"),
