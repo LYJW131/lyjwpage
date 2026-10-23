@@ -7,6 +7,7 @@
         "commit": "6cb0ed2f3a1e",
         "pushes": 718,
         "rttMs": 184,
+        "errors": 0,
         "start": "$now-43220000",
         "end": "$now-20000",
         "lastPushAt": "$now-20000"
@@ -15,6 +16,7 @@
         "commit": "6cb0ed2f3a1e",
         "pushes": 131,
         "rttMs": 1260,
+        "errors": 2,
         "start": "$now-43440000",
         "end": "$now-240000",
         "lastPushAt": "$now-240000"

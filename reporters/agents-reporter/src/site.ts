@@ -1,9 +1,10 @@
 import type { CodingActivityReport, CodingTokenBucketReport, CodingUsageReport } from "./coding-usage.js";
 import { config } from "./config.js";
-import { failure, recovered } from "./log.js";
+import { countFailures, failure, recovered } from "./log.js";
 import { createPushLedger } from "./push-ledger.js";
 
 const ledger = createPushLedger(config.pushLedgerPath, config.reporterCommit, (error) => failure("push-ledger", error));
+countFailures(() => ledger.failed());
 
 export type AgentLimit = {
   key: string;

@@ -5425,6 +5425,7 @@
             "commit": "9144be16065ba28d89e657787ac00b0e73271921",
             "pushes": 725,
             "rttMs": 602,
+            "errors": 0,
             "start": "$now-43207496",
             "end": "$now-7496",
             "lastPushAt": "$now-7125"
@@ -5433,6 +5434,7 @@
             "commit": "27c0d365b0ccb5c7dec4e0ff3666e9aad32e1324",
             "pushes": 245,
             "rttMs": 754,
+            "errors": 2,
             "start": "$now-43385726",
             "end": "$now-185726",
             "lastPushAt": "$now-185704"

@@ -3,14 +3,12 @@
 import CloudflareColor from "@lobehub/icons/es/Cloudflare/components/Color";
 import Github from "@lobehub/icons/es/Github/components/Mono";
 import NumberFlow from "@/components/ui/number-flow";
-import { Container } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { FlowDash } from "@/components/ui/flow-dash";
 import { colorForContributor, CONTRIBUTOR_LIMIT, RepoContributions } from "@/components/live/repo-contributions";
 import { formatUptime } from "@/components/live/server-card";
 import { UptimeStrip } from "@/components/live/uptime-strip";
 import { useStale } from "@/hooks/use-stale";
-import { dateTimeText } from "@/lib/date-time-text";
 import { fieldPerformanceScore } from "@/lib/field-score";
 import {
   AGENT_LIMITS_STALE_MS,
@@ -23,8 +21,9 @@ import {
   SITE_ANALYTICS_STALE_MS,
   SITE_DEPLOYMENTS_STALE_MS,
 } from "@shared/freshness";
-import type { ReporterName, ReporterStat, ReportersPayload } from "@shared/reporter-ledger";
+import type { ReportersPayload } from "@shared/reporter-ledger";
 import { useStatus } from "@/hooks/use-status";
+import { CollectionWindow, CommitSha, ErrBadge, number, ReporterTile, time } from "@/components/live/site-status-parts";
 import { CLOUDFLARE_WORKERS, type CloudflareWorkersPayload } from "@shared/cloudflare-workers-types";
 import { CLOUDFLARE_WORKERS_PATH, GITHUB_REPO_PATH, REPORTERS_PATH, HEALTH_PATH, SERVER_PATH, SITE_DEPLOYMENTS_PATH } from "@/lib/paths";
 import type { ErrorSeries, HealthBlock, HealthPayload } from "@shared/health-types";
@@ -33,25 +32,7 @@ import type { GithubRepoPayload, ServerPayload, StatusResponse } from "@shared/t
 import type { LighthouseVitals, SiteDeployment, SiteDeploymentsPayload } from "@shared/site-deployments-types";
 import { cn } from "@/lib/utils";
 
-const number = new Intl.NumberFormat("en-US");
-const timeDate = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, month: "short", day: "numeric" });
-const timeClock = new Intl.DateTimeFormat("en-US", { timeZone: site.timezone, hour: "2-digit", minute: "2-digit", hour12: false });
-const time = { format: (at: number | Date) => dateTimeText(at, timeDate, timeClock) };
 const cpu = (ms: number | null | undefined) => ms == null ? "—" : ms < 1 ? `${Math.round(ms * 1000)}µs` : ms < 10 ? `${Number(ms.toFixed(1))}ms` : `${Math.round(ms)}ms`;
-
-function CollectionWindow({ start, end }: { start?: number; end?: number }) {
-  if (start == null || end == null) return null;
-  const minutes = Math.round((end - start) / 60_000);
-  const duration = minutes % 1440 === 0 ? `${minutes / 1440}d` : minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
-  return <span className="ml-auto whitespace-nowrap" title={`${time.format(start)} — ${time.format(end)} · UTC+8`}>Last {duration}</span>;
-}
-
-function CommitSha({ commit }: { commit: { sha: string; branch: string | null; message: string | null } | null | undefined }) {
-  if (!commit) return null;
-  return <a href={`${site.repo}/commit/${commit.sha}`} target="_blank" rel="noreferrer"
-    title={commit.message ? `${commit.branch ?? "main"} · ${commit.message}` : commit.branch ?? undefined}
-    className="-mt-2 ml-auto shrink-0 pt-2 font-mono text-2xs text-muted-foreground hover:text-foreground hover:underline">{commit.sha.slice(0, 7)}</a>;
-}
 
 function Stat({ label, value, title, prefix }: { label: string; value?: number | null; title?: string; prefix?: string }) {
   return (
@@ -77,43 +58,13 @@ function vital(value: number | null | undefined, unit: string) {
 const scoreTone = (score: number | null | undefined) =>
   score == null ? "text-muted-foreground" : score >= 90 ? "text-emerald-600 dark:text-emerald-400" : score >= 50 ? "text-amber-600" : "text-red-500";
 
-function Fact({ label, value, title, className }: { label: string; value: string; title?: string; className?: string }) {
-  return <span className="whitespace-nowrap" title={title}>{label} <span className={cn("text-foreground", className)}>{value}</span></span>;
-}
-
 const fieldValues = (vitals: HealthPayload["vitals"]) => ({
   lcpMs: vitals?.lcpP75Ms, tbtMs: vitals?.inpP75Ms, cls: vitals?.clsP75, fcpMs: vitals?.fcpP75Ms, ttfbMs: vitals?.ttfbP75Ms,
 });
 
 function ErrorCount({ series, title }: { series: ErrorSeries | undefined; title: string }) {
   if (!series) return null;
-  return <span title={`${title} · ${number.format(series.count7d)} in 7d · ${number.format(series.unresolved)} active ${series.unresolved === 1 ? "issue" : "issues"} · Workers Observability, sampled`}
-    className={cn("shrink-0 text-2xs tabular-nums", series.count12h ? "text-signal-red" : "text-muted-foreground")}>
-    {number.format(series.count12h)} err
-  </span>;
-}
-
-const rtt = (ms: number | null | undefined) => ms == null ? "—" : ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
-
-function ReporterTile({ name, stat, staleMs, servedAt, title }: {
-  name: ReporterName; stat: ReporterStat | null | undefined; staleMs: number;
-  servedAt: number | undefined;
-  title?: string;
-}) {
-  const stale = useStale(stat?.lastPushAt, staleMs, servedAt);
-  return <li className="bg-surface px-4 py-2.5 lg:px-5" title={title}>
-    <div className="flex min-w-0 items-center gap-1.5 text-2xs leading-4">
-      <Container size={12} className="shrink-0" aria-hidden />
-      <a href={`${site.repo}/tree/main/reporters/${name}`} target="_blank" rel="noreferrer" className="-my-1 min-w-0 truncate py-1 hover:underline">{name}</a>
-      {stat && stale && <span className="shrink-0 text-2xs text-signal-red">offline</span>}
-      <CommitSha commit={stat?.commit ? { sha: stat.commit, branch: null, message: `${name} image` } : null} />
-    </div>
-    <div className="mt-1 flex gap-x-3 text-2xs tabular-nums text-muted-foreground">
-      <Fact label="Push" value={stat ? number.format(stat.pushes) : "—"} title="Reports this reporter pushed successfully" />
-      <Fact label="RTT" value={rtt(stat?.rttMs)} title="Median round trip of a successful push to the core Worker" />
-      <CollectionWindow start={stat?.start} end={stat?.end} />
-    </div>
-  </li>;
+  return <ErrBadge count={series.count12h} title={`${title} · ${number.format(series.count7d)} in 7d · ${number.format(series.unresolved)} active ${series.unresolved === 1 ? "issue" : "issues"} · Workers Observability, sampled`} />;
 }
 
 export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallback, healthFallback, serverFallback, reportersFallback, className }: {
@@ -235,7 +186,8 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
               <div className="flex min-w-0 items-center gap-1.5 text-2xs leading-4">
                 <span className="flex shrink-0"><CloudflareColor size={14} /></span>
                 <a href={`${CLOUDFLARE_DASH_URL}/workers/services/view/${name}/production`} target="_blank" rel="noreferrer" className="relative shrink-0 before:absolute before:inset-x-0 before:-inset-y-1 hover:underline">{name}</a>
-                {name === "core" && <ErrorCount series={coreErrors} title="Backend Worker errors in the last 12h (core, ai, ingress, collector)" />}
+                {name === "core" ? <ErrorCount series={coreErrors} title="Backend Worker errors in the last 12h (core, ai, ingress, collector)" />
+                  : <ErrBadge count={metrics?.errors} title="Invocations that ended in an error (uncaught exception or exceeded limit) in the window · Workers Analytics" />}
                 <CommitSha commit={deployment?.commit} />
               </div>
               <div className="mt-1 flex gap-x-3 text-2xs tabular-nums text-muted-foreground">
