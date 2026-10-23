@@ -277,9 +277,9 @@ export function ConsentPrompt({ text, lineup: choice, onChoose, onAccept, onDecl
   );
 }
 
-export type VendorPending = { lineup: GodChatLineup; text: string | null; from: "god" | "switch" };
+export type VendorPending = { lineup: GodChatLineup; text: string | null; from: "god" | "send" };
 
-// 只列一家厂商：神档要用 Anthropic（from god，带着那条消息），或切到还没同意过的阵容（from switch）。
+// 只列一家厂商：神档要用 Anthropic（from god），或用还没同意过的阵容发消息（from send）；都带着那条消息。
 export function VendorConsentPrompt({ pending, onAccept, onDecline }: { pending: VendorPending; onAccept: () => void; onDecline: () => void }) {
   const copy = CONSENT_COPY[textLanguage(pending.text ?? "")];
   const destination = pending.lineup === "deepseek" ? copy.deepseek : pending.from === "god" ? copy.anthropicGod : copy.anthropicAll;
