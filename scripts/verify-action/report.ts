@@ -98,7 +98,8 @@ export function reconcile(checklist: ChecklistItem[], report: VerifierReport, { 
   return { level, claimed, problems };
 }
 
-const cell = (text: string) => text.replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>").trim() || "—";
+// GFM 拆表格时成对的反斜杠先互相抵掉，竖线前有奇数个反斜杠就会被当成分隔符：只把竖线前那串加倍再转义竖线，别处的反斜杠（代码里的正则、路径）不动
+const cell = (text: string) => text.replace(/(\\*)\|/g, (_, slashes: string) => `${slashes}${slashes}\\|`).replace(/\r?\n/g, "<br>").trim() || "—";
 
 const header = (stamp: Stamp) => [stampTitle(stamp), stampLine(stamp)];
 

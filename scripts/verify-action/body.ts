@@ -8,8 +8,17 @@ const CHECKLIST_HEADING = /^#{2,4}\s*验证清单\s*$/;
 const WORDS_HEADING = /^#{2,4}\s*lyjw\s*原话\s*$/;
 const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 
-// Devin 会在描述末尾补徽章块，不算描述改动
+// Devin 会在描述末尾补徽章块，不算描述改动。别的 HTML 注释不删：正则认不全 Markdown 的代码与注释，删错会吞掉看得见的清单；不删只会让注释里的改动也作废回执、注释里的条目也照验，两头都偏保守
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
+
+// 删到不再变，免得两块徽章交错拼出一块新的
+function dropBadge(text: string) {
+  for (let prev = ""; prev !== text; ) {
+    prev = text;
+    text = text.replace(BADGE, "");
+  }
+  return text;
+}
 
 // 分隔线可能是清单或原话内部的分组，只有其后再没有条目和引文时才当作描述的页脚截掉
 function dropFooter(lines: string[]) {
@@ -18,22 +27,28 @@ function dropFooter(lines: string[]) {
   return lines.slice(0, rule);
 }
 
+// 同名标题可能不止一处（比如注释里留着旧清单），全部收进来，宁可多验不漏验
 function section(lines: string[], heading: RegExp) {
-  const start = lines.findIndex((line) => heading.test(line.trim()));
-  if (start < 0) return null;
-  const rest = lines.slice(start + 1);
-  const end = rest.findIndex((line) => /^#{1,4}\s/.test(line));
-  return dropFooter(end < 0 ? rest : rest.slice(0, end));
+  const starts = lines.flatMap((line, index) => (heading.test(line.trim()) ? [index] : []));
+  if (starts.length === 0) return null;
+  return starts.flatMap((start) => {
+    const rest = lines.slice(start + 1);
+    const end = rest.findIndex((line) => /^#{1,4}\s/.test(line));
+    return dropFooter(end < 0 ? rest : rest.slice(0, end));
+  });
 }
 
 export function parseBody(body: string | null | undefined) {
-  const lines = (body ?? "").replace(BADGE, "").replace(/<!--[\s\S]*?-->/g, "").split(/\r?\n/);
+  const lines = dropBadge(body ?? "").split(/\r?\n/);
   const checklistLines = section(lines, CHECKLIST_HEADING);
-  const checklist: ChecklistItem[] = [];
+  const texts = new Map<string, string[]>();
   for (const line of checklistLines ?? []) {
     const match = ITEM.exec(line);
-    if (match && !checklist.some((item) => item.id === match[1])) checklist.push({ id: match[1], text: match[2] });
+    if (!match) continue;
+    const seen = texts.get(match[1]) ?? [];
+    if (!seen.includes(match[2])) texts.set(match[1], [...seen, match[2]]);
   }
+  const checklist: ChecklistItem[] = [...texts].map(([id, parts]) => ({ id, text: parts.join("；") }));
   const words = section(lines, WORDS_HEADING)?.join("\n").trim() || null;
   return { checklist, words };
 }
@@ -42,6 +57,6 @@ export function parseBody(body: string | null | undefined) {
 // publish 把这个摘要写进评论，verify-receipt.ts 拿当前描述重算比对。
 export function bodyDigest(body: string | null | undefined) {
   const { checklist, words } = parseBody(body);
-  const text = words ?? (body ?? "").replace(BADGE, "").replace(/<!--[\s\S]*?-->/g, "").trim();
+  const text = words ?? dropBadge(body ?? "").trim();
   return createHash("sha256").update(JSON.stringify({ checklist, words: text })).digest("hex");
 }
