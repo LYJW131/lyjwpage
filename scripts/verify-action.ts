@@ -117,7 +117,7 @@ async function waitPreview(gh: Client, pr: number, timeoutMin: number) {
 async function prompt(gh: Client, pr: number, role: string, preview: string, outDir: string) {
   const { pull, files, tier } = await load(gh, pr);
   const { checklist, words } = parseBody(pull.body);
-  const common = { pr, title: pull.title, head: pull.head.sha, files };
+  const common = { pr, title: pull.title, head: pull.head.sha, base: pull.base?.ref ?? "main", files };
   if (role === "verifier") {
     fs.mkdirSync(path.join(outDir, "shots"), { recursive: true });
     fs.mkdirSync(path.join(outDir, "work"), { recursive: true });
