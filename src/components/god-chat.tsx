@@ -431,6 +431,14 @@ function Conversation({ className, archive, session: conversation }: { className
       human.prepare();
       return;
     }
+    const current = chatLineup.getSnapshot();
+    if (!vendorConsent[current].getSnapshot()) {
+      setVendorPending({ lineup: current, text: text.trim(), from: "send" });
+      setDraft("");
+      setError(null);
+      human.prepare();
+      return;
+    }
     void send(text, undefined, anthropic);
   }
 
@@ -448,20 +456,26 @@ function Conversation({ className, archive, session: conversation }: { className
     if (!pending) return;
     setVendorPending(null);
     vendorConsent[pending.lineup].accept();
-    if (pending.from === "switch") chatLineup.choose(pending.lineup);
     if (pending.text) ask(pending.text);
   }
 
   function declineVendor() {
     const pending = vendorPending;
     setVendorPending(null);
-    if (pending?.text) ask(pending.text, "deny");
+    if (!pending?.text) return;
+    if (pending.from === "god") return ask(pending.text, "deny");
+    setDraft((current) => current || pending.text || "");
+    setError(CONSENT_COPY[textLanguage(pending.text)].declined);
   }
 
-  // 首次访客还没看过隐私说明，切了再在那份说明里确认；已同意过基础说明的，切到没同意过的厂商先弹那一家。
+  // 切阵容不弹说明，等点发送时再按那条消息的语言弹没同意过的厂商。
   function chooseLineup(next: GodChatLineup) {
-    if (!chatConsent.getSnapshot() || vendorConsent[next].getSnapshot()) chatLineup.choose(next);
-    else setVendorPending({ lineup: next, text: null, from: "switch" });
+    chatLineup.choose(next);
+    if (vendorPending?.from === "send" && vendorPending.text) {
+      const text = vendorPending.text;
+      setVendorPending(null);
+      ask(text);
+    }
   }
 
   function declineConsent() {
