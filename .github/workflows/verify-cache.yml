@@ -1,0 +1,33 @@
+name: Verify Cache
+
+# Verify 只在 PR 上跑，PR 存的缓存别的 PR 读不到；这里在默认分支上存一份浏览器和沙箱 .deb 给所有 PR 读。
+# 每天跑一次：七天没人读的缓存会被清，沙箱 .deb 的键还跟着 runner 镜像版本换
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/actions/verify-tools/**
+      - .github/workflows/verify-cache.yml
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: ./.github/actions/verify-tools
+        with:
+          browsers: "true"

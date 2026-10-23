@@ -42,6 +42,7 @@ export function tierOf(files: string[], { trustedAuthor, judgeAsked = false }: {
 // PR 改了它们，回执与标记就出自被改过的那份；lyjw 定了不堵，只标出来。
 const VERIFIER_PATHS = [
   /^\.github\/workflows\/verify\.yml$/,
+  /^\.github\/actions\/verify-tools\//,
   /^scripts\/verify-action(?:\.ts|\/)/,
   /^scripts\/verify-receipt\.ts$/,
   /^scripts\/pr-gate(?:\.ts|\/)/,
