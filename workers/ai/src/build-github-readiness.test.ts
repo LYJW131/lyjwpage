@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PLAN_LABELS } from "@shared/build-routine";
-import { BuildBlockedError, markBuildReady, prepareBuildPullRequest, reconcileBuild, recoverBuildPublication } from "./build/github.ts";
+import { BuildBlockedError, markBuildReady, reconcileBuild, recoverBuildPublication } from "./build/github.ts";
 import { baseSha, prepared, published, runId } from "./build/testing/preparation-fixture.ts";
 
 test("plan-only drafts preserve active and failure phases during reconciliation", async () => {
@@ -85,23 +85,11 @@ test("ready publication recovery rejects missing review details without replacin
   assert.equal(setup.state.pr!.body, `Edited description\n\n<!-- build-run:${runId} -->`);
 });
 
-test("historical PR reconciliation accepts only the exact legacy run footer and preserves strict new-draft ownership", async () => {
+test("reconciliation identifies the PR only by the build-run marker, never by the translated footer", async () => {
   for (const labels of Object.values(PLAN_LABELS)) {
     const setup = await prepared();
-    delete setup.stored.state.pr!.draft;
     setup.stored.state.phase = "pr_open";
-    setup.state.pr!.draft = false;
     setup.state.pr!.body = `Confirmed plan\n\n${labels.buildRun(runId)}`;
-    const patch = await reconcileBuild(setup.api, setup.stored.state);
-    assert.equal(patch.phase, "pr_open");
-    assert.equal(patch.pr?.draft, undefined);
-    setup.stored.state = { ...setup.stored.state, ...patch };
-    assert.equal((await reconcileBuild(setup.api, setup.stored.state)).phase, "pr_open");
-    setup.state.pr!.user.id = 1;
     await assert.rejects(() => reconcileBuild(setup.api, setup.stored.state), BuildBlockedError);
-    setup.state.pr!.user.id = 338272049;
-    setup.stored.state.pr!.draft = true;
-    await assert.rejects(() => reconcileBuild(setup.api, setup.stored.state), BuildBlockedError);
-    await assert.rejects(() => prepareBuildPullRequest(setup.api, setup.stored), BuildBlockedError);
   }
 });

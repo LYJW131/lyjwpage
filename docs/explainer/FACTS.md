@@ -452,8 +452,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - `.github/workflows/deploy-pages.yml`：只在它自己改动或手动触发时，把 GitHub Pages 发成跳到 README 架构图的转址页，和站点无关。
 - `.github/workflows/preview-core-worker.yml`：PR 关闭时删掉那个分支的 core Worker Preview。
-- `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。
-- `.github/workflows/pr-tier-label.yml`：PR 打开或推送后，以 `lyjw131[bot]` 给 PR 贴 `tier: <档位>` 标签（`scripts/pr-tier.ts`），只供查看，门槛不读它，不参与发布。
+- `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。
+- `.github/workflows/pr-tier-label.yml`：PR 打开或推送后，以 `lyjw131[bot]` 给 PR 贴 `tier: <档位>` 标签，改过验证员相关文件的另贴 `verifier-changed`（`scripts/pr-tier.ts`），只供查看，门槛不读它，不参与发布。
 - `.github/workflows/do-not-merge.yml`：一次性测试 PR 开的时候就贴 `do-not-merge` 标签；带这个标签时 `do-not-merge` 检查失败，合并钩子 `scripts/guard-merge-method.ts` 用 `gh` 读标签，带标签或读不到都拦。
 - `.github/workflows/codeql-autofix.yml`（main 上的 CodeQL 跑完后为告警开修复）、`.github/workflows/explainer-score.yml`（只在讲解片配乐的输入改动时渲染上传配乐）、`.github/workflows/collector-refresh.yml`（手动触发）、`.github/workflows/avatar-sync.yml`（采集 Worker 的 avatar-watch 派发，只提交新哈希，见 §1）、`.github/workflows/issue-labels.yml`（新 issue）、`.github/workflows/build.yml`（访客构建的 `repository_dispatch`）：自己都不部署站点或 Worker。
 
@@ -483,19 +483,21 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 验证与回执
 
 - 主线程决定验什么、判断结果；Haiku 验证员只跑检查、交回证据，不改文件、不在 GitHub 上评论、不合并。浏览器取证用 `scripts/site-verify.ts`，宽度至少 1280 桌面与 375 手机，375 另用 WebKit 截一张（`.claude/skills/lyjwpage-verify/SKILL.md`「派法」「2. UI 浏览器端到端」）。
-- 验证员在报告末尾签回执，主线程把它原样发成一条 PR 评论，第一行不动（同文件「回执」）：
+- PR 上的验证员在 GitHub Action 里跑（`.github/workflows/verify.yml#verify`），照 PR 描述的「验证清单」验；回执由同一工作流的 publish job 以 github-actions[bot] 发成 PR 评论，第一行不动（同文件「PR 上的验证：Verify Action」「回执」）：
 
   ```
   验证回执 <被验提交的完整 SHA>：<等级>
-  证据：<截图路径、命令与退出码、生产 URL，一项一行>
-  没验到：<原样照抄报告里那一栏，没有写「无」>
-  验证员：<模型 ID>，没写这段代码
+  <!-- verify-stamp {"sha":"<完整 SHA>","level":"<等级>","body":"<PR 描述里清单与原话的 sha256>"} -->
+
+  | 项 | 检查 | 结果 | 证据 |
+  没验到：<报告里那一栏，没有写「无」>
+  对照清单：<清单逐项对照的结论>
   ```
 
 - 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.ts#LEVELS`、`scripts/verify-receipt.ts#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。
-- SHA 不手抄：第一行用 `node scripts/verify-receipt.ts sign --sha <提交> --level <等级>` 的输出原样粘贴，它用 `git rev-parse` 展开完整 SHA、只收五档等级；脚本按 SHA 认回执，错一位整张作废（同文件「回执」、`scripts/verify-receipt.ts#signLine`）。
-- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 lyjw 两个账号（LYJW131、An0nCh1hayaa，按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#TRUSTED_AUTHOR_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
-- 大改代码逻辑的 PR 合并前再派判定员：一个没写这段代码的 agent，只拿 lyjw 的原话、PR 号与 head 的完整 SHA、验证员的证据表，自己读 diff，判做没做到、有没有回归。主线程把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，FAIL 不合；这一行也不手写，用 `node scripts/verify-receipt.ts sign --sha <head> --verdict PASS`（或 `FAIL`）的输出（同文件「3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有」、`scripts/verify-receipt.ts#JUDGE_LINE`）。
+- SHA 不手抄：publish job 用 `scripts/verify-receipt.ts#signStamp` 展开完整 SHA、核等级。脚本只读第二行的 JSON（`scripts/verify-receipt.ts#stampLine`），第一行中文只给人看；JSON 里的 `body` 是 PR 描述摘要，之后改了清单或原话，旧回执与判定作废（`scripts/verify-action/report.ts#receiptComment`）。
+- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 github-actions[bot]（按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
+- 贴了 `needs-judge` 标签的 PR（线程判为大改动时贴，`scripts/pr-gate/tier.ts#JUDGE_LABEL`）每次推送，同一工作流另派一个 Opus 判定员和验证员并行（`.github/workflows/verify.yml#judge`）：没写这段代码，只拿 PR 描述里的 lyjw 原话、PR 号与 head，自己读 diff，判做没做到、有没有回归。publish job 把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，第二行同样是 `verify-stamp` JSON（`"verdict"` 代替 `"level"`），FAIL 不合（同文件「3b. 大改动的 PR：由没写代码的 Opus 判做完没有」）。
 
 ### 合并
 
@@ -504,7 +506,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   2. 大改代码逻辑的：另要处理完机器评审，并有判定员的 PASS 盖住当前 head。
   3. 有 UI / UX 变化的：先给 lyjw 看效果（桌面与 375px 截图），lyjw 点头才合；lyjw 明确要求的小改动除外（根 `DESIGN.md`「交付与合并」）。
 - 大方向、大改动也等 lyjw 点头（`HUMAN.md`「3. 什么 Claude 自己定，什么来问你」）。片中三道闸各过一个 PR：文档、界面两个是示意，第二档过的是 #308。第一档的闸牌要写成「本地检查过就合」一类，不能写「CI 绿就合」：这一档不等 CI。
-- 不 rebase：PR 里少于 3 个非合并提交压缩合并，3 个及以上用 merge commit（`scripts/merge-message.ts#mergeMethodFor`，钩子 `scripts/guard-merge-method.ts` 拦不合的合并，也拦带 `do-not-merge` 标签的 PR）。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出的 `merge_method`、`commit_title`、`commit_message` 与 `expectedHeadSha`（本地验过的 HEAD，PR 上多出没验过的提交时合并失败）原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
+- 不 rebase：PR 里少于 3 个非合并提交压缩合并，3 个及以上用 merge commit（`scripts/merge-message.ts#mergeMethodFor`，钩子 `scripts/guard-merge-method.ts` 拦不合的合并，也拦带 `do-not-merge` 标签的 PR；回执没按分档等级（`scripts/pr-gate/tier.ts#tierOf`）盖住 head、贴了 `needs-judge` 却没有 PASS 判定或 head 上有 FAIL 判定时只提醒、不拦（`scripts/guard-merge-method.ts#receiptReason`））。合并前在 PR 分支上 `git fetch origin main`，跑 `pnpm merge-message <PR 号> "<PR 标题>"`，输出的 `merge_method`、`commit_title`、`commit_message` 与 `expectedHeadSha`（本地验过的 HEAD，PR 上多出没验过的提交时合并失败）原样交给合并接口：标题是 `<PR 标题> (#N)`；正文逐行列 PR 内各非合并提交的主题，空一行后是去重的 `Co-Authored-By`（取自各提交的尾注和作者），只留认得出身份（agent 或 GitHub noreply）且不是 lyjw 自己的（`scripts/merge-message.ts#mergeMessage`、`shared/commit-authors.ts#authorFromTrailer`、根 `AGENTS.md`「部署流程」）。
 - 站点状态卡的 Commits 一栏靠这些尾注显示参与者：collector 从 GitHub 取最近提交（`shared/github-repo.ts#fetchRecentCommits`），卡上列最近几条（`src/components/live/repo-contributions.tsx#COMMIT_LIMIT`），把 main 同步进分支的合并不显示（`src/lib/recent-commits.ts#recentCommitsFrom`）。每条先写提交的人（线程的提交是「LYJW131 committed <相对时间>」），下一行写 agent「with claude (<尾注里的模型名>)」：名字是 agent 的 GitHub 账号，前面一排 16px 头像，按尾注邮箱从 `shared/commit-authors.ts#AGENTS` 认（`src/components/live/repo-contributions.tsx#CommitByline`）。片中首页提交卡省掉了模型名与头像，只画「LYJW131 committed」「with claude」和短 SHA。
 
 ### 合并之后：怎么算已部署

@@ -13,6 +13,7 @@ import {
   tierOf,
   type CheckRun,
 } from "./pr-gate.ts";
+import { verifierFiles } from "./pr-gate/tier.ts";
 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
@@ -20,6 +21,7 @@ const OLDER = "c".repeat(40);
 const lyjw = { login: "LYJW131", id: 153256373 };
 const stranger = { login: "evil-contributor", id: 999 };
 const trusted = { trustedAuthor: true };
+const asked = { trustedAuthor: true, judgeAsked: true };
 const codex = { login: "chatgpt-codex-connector[bot]", id: 199175422 };
 const devin = { login: "devin-ai-integration[bot]", id: 158243242 };
 const claude = { login: "claude[bot]", id: 209825114 };
@@ -34,24 +36,26 @@ const build = (worker: string, conclusion: string | null, extra: Partial<CheckRu
   ...extra,
 });
 
-test("分档：只改 md 与 .claude 是 docs，界面与逻辑按路径分，默认的回执等级与判定跟着档走", () => {
+test("分档：只改 md 与 .claude 是 docs，界面与逻辑按路径分，回执等级跟着档走，判定只在 PR 要了时叫", () => {
   const docs = tierOf(["README.md", "docs/workers-builds.md", "docs/architecture.json", ".claude/skills/x/SKILL.md", ".claude/rules/images.md", "DESIGN.md"], trusted);
   assert.deepEqual([docs.name, docs.need, docs.judge], ["docs", null, false]);
   const ui = tierOf(["src/components/card.tsx", "src/app/site.css", "public/icon.png", "docs/explainer/v2/index.html", "docs/explainer/v2/tools/x.mjs", "docs/a.md"], trusted);
   assert.deepEqual([ui.name, ui.need, ui.judge, ui.logic], ["ui", "live-ui-verified", false, []]);
   const logic = tierOf(["src/lib/x.ts", "src/app/api/version/route.ts", "workers/core/src/a.ts", "scripts/pr-gate.ts"], trusted);
-  assert.deepEqual([logic.name, logic.need, logic.judge, logic.ui], ["logic", "unit-test-verified", true, []]);
+  assert.deepEqual([logic.name, logic.need, logic.judge, logic.ui], ["logic", "unit-test-verified", false, []]);
+  assert.equal(tierOf(["src/lib/x.ts"], asked).judge, true);
+  assert.equal(tierOf(["docs/a.md"], asked).judge, false);
   const skillScripts = tierOf([".claude/skills/x/check.py", ".claude/skills/x/errors-query.js", ".claude/skills/x/SKILL.md"], trusted);
   assert.deepEqual(skillScripts.logic, [".claude/skills/x/check.py", ".claude/skills/x/errors-query.js"]);
   const both = tierOf(["src/components/card.tsx", "shared/json.ts"], trusted);
-  assert.deepEqual([both.name, both.need, both.judge], ["ui+logic", "live-ui-verified", true]);
+  assert.deepEqual([both.name, both.need, both.judge], ["ui+logic", "live-ui-verified", false]);
   assert.match(both.hint, /lyjw 看图点头/);
 });
 
 test("分档：改会话执行什么命令的 .claude 配置与 hooks 按逻辑档，不论扩展名", () => {
   for (const file of [".claude/settings.json", ".claude/settings.local.json", ".claude/launch.json", ".claude/hooks/run.bash", ".claude/hooks/run", ".claude/skills/x/feature-map.json"]) {
     const tier = tierOf([file], trusted);
-    assert.deepEqual([file, tier.name, tier.need, tier.judge], [file, "logic", "unit-test-verified", true]);
+    assert.deepEqual([file, tier.name, tier.need], [file, "logic", "unit-test-verified"]);
   }
   assert.equal(tierOf([".claude/skills/x/SKILL.md", ".claude/rules/images.md", ".claude/memory/a.md"], trusted).name, "docs");
 });
@@ -66,8 +70,7 @@ test("分档：docs/ 下的脚本与依赖清单按逻辑档，docs 下的 md �
     "docs/explainer/render/pnpm-lock.yaml",
     "docs/explainer/render/node_modules/playwright-core/index.mjs",
   ]) {
-    const tier = tierOf([file], trusted);
-    assert.deepEqual([file, tier.name, tier.judge], [file, "logic", true]);
+    assert.deepEqual([file, tierOf([file], trusted).name], [file, "logic"]);
   }
   assert.equal(tierOf(["docs/explainer/AGENTS.md", "docs/ops-facts.md", "docs/diagrams/a.svg"], trusted).name, "docs");
   const v2 = tierOf(["docs/explainer/v2/music/ch08.js", "docs/explainer/v2/tools/x.mjs"], trusted);
@@ -76,8 +79,7 @@ test("分档：docs/ 下的脚本与依赖清单按逻辑档，docs 下的 md �
 
 test("分档：public/ 下的 js、html、svg、xml、_headers 按逻辑档，位图仍是界面档", () => {
   for (const file of ["public/sw.js", "public/_headers", "public/offline.html", "public/evil/x.mjs", "public/sub/_headers", "public/cards/a.svg", "public/a.xhtml", "public/feed.xml"]) {
-    const tier = tierOf([file], trusted);
-    assert.deepEqual([file, tier.name, tier.judge], [file, "logic", true]);
+    assert.deepEqual([file, tierOf([file], trusted).name], [file, "logic"]);
   }
   const images = tierOf(["public/icon.png", "public/cards/a.webp"], trusted);
   assert.deepEqual([images.name, images.need, images.judge], ["ui", "live-ui-verified", false]);
@@ -267,9 +269,9 @@ test("只改文档、CI 绿、线程都解决时 ready，不要回执", async ()
   assert.equal(result.ready, true);
 });
 
-test("逻辑档：检查在跑、线程没解决、Codex 没审到 head、没回执与判定，逐条进 todo", async () => {
+test("逻辑档 PR 贴了 needs-judge：检查在跑、线程没解决、Codex 没审到 head、没回执与判定，逐条进 todo", async () => {
   const routes = pullRoutes({
-    "pulls/7": { number: 7, title: "t", state: "open", draft: true, mergeable: false, mergeable_state: "dirty", head: { sha: HEAD }, labels: [{ name: "baseline-exception" }], user: lyjw },
+    "pulls/7": { number: 7, title: "t", state: "open", draft: true, mergeable: false, mergeable_state: "dirty", head: { sha: HEAD }, labels: [{ name: "baseline-exception" }, { name: "needs-judge" }], user: lyjw },
     "pulls/7/files": FILES(["workers/collector/src/a.ts"]),
     "pulls/7/reviews": [{ user: codex, commit_id: OLD }],
     "pulls/7/comments": [{ id: 11, user: codex, body: codexBody("P1"), html_url: "u", path: "a.ts", line: 1, created_at: "2026-10-19T00:00:00Z" }],
@@ -312,11 +314,11 @@ test("要判定时 Claude review 与 Devin 都得审过一次，盖没盖住 hea
     "pulls/7/files": FILES(["workers/collector/src/a.ts"]),
     "pulls/7/reviews": [{ user: devin, commit_id: OLD }],
   });
-  const missing = (await gate({ pr: 7, need: null }, { fetch: fakeFetch(routes), patchId: () => null })).todo.join("\n");
+  const missing = (await gate({ pr: 7, need: null, judge: true }, { fetch: fakeFetch(routes), patchId: () => null })).todo.join("\n");
   assert.match(missing, /claude 还没评审这个 PR/);
   assert.doesNotMatch(missing, /devin 还没评审/);
   const both = pullRoutes({ ...routes, "issues/7/comments": [{ user: claude, body: "## Code review\n\nNo issues found." }] });
-  const todo = (await gate({ pr: 7, need: null }, { fetch: fakeFetch(both), patchId: () => null })).todo.join("\n");
+  const todo = (await gate({ pr: 7, need: null, judge: true }, { fetch: fakeFetch(both), patchId: () => null })).todo.join("\n");
   assert.doesNotMatch(todo, /还没评审这个 PR/);
 });
 
@@ -372,7 +374,7 @@ test("claude 与 devin 的普通评论不算审过一次，要 pull review 或�
       { user: devin, body: "Devin session failed to start." },
     ],
   });
-  const todo = (await gate({ pr: 7, need: null }, { fetch: fakeFetch(routes), patchId: () => null })).todo.join("\n");
+  const todo = (await gate({ pr: 7, need: null, judge: true }, { fetch: fakeFetch(routes), patchId: () => null })).todo.join("\n");
   assert.match(todo, /claude 还没评审这个 PR/);
   assert.match(todo, /devin 还没评审这个 PR/);
 });
@@ -404,4 +406,9 @@ test("规则漂移：分支起点以来 main 改了规则文件时进 notes 不�
 
   const unknown = await gate({ pr: 7 }, { fetch: fakeFetch(pullRoutes()), patchId: () => null });
   assert.deepEqual([unknown.ruleDrift.files, unknown.ruleDrift.error, unknown.ready], [[], "读不到分支起点", true]);
+});
+
+test("verifierFiles：验证链本身、合并钩子及其依赖、判定员照读的根 AGENTS.md 与 REVIEW.md 都算", () => {
+  const files = ["AGENTS.md", "REVIEW.md", "scripts/merge-message.ts", "shared/commit-authors.ts", "scripts/verify-action/report.ts", "docs/explainer/AGENTS.md", "src/lib/x.ts"];
+  assert.deepEqual(verifierFiles(files), ["AGENTS.md", "REVIEW.md", "scripts/merge-message.ts", "shared/commit-authors.ts", "scripts/verify-action/report.ts"]);
 });

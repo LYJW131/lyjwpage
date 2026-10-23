@@ -82,14 +82,14 @@
   2. 只有大改代码逻辑的 PR 才等机器评审；UI、文档、skill 和小改动过了第 1 条就合。但凡有 UI / UX 变化的改动，合进 main 前先给你看效果、等你点头；你明确要求的小改动除外。点头用一张决策卡问你，点「OK，合并」就行，要改哪里再打字。要等的 PR，讨论区里每条机器评审（Claude review、Devin、Codex）要么改了，要么回了为什么不改；最后一次推送后再核一遍。Codex 审过之后再推的，只改文档或注释就不等它复审；改了代码的等它最多 15 分钟，没来就照常合，汇报里说一句。Cursor Bugbot 你关掉了，不等它、也不报它没跑；它真跑出来的意见照常处理。
   3. 机器说的不一定对：Claude 自己判断值不值得改并回复理由；安全类的发现等你拍板。
   4. Codex 每个 PR 最多三轮，之后不再请它看。任何一家机器评审到第三轮还在这次改动里报新的阻塞问题，Claude 不再逐条打补丁，先重看方法，用一句话告诉你换不换。修评审发现时同类一次修完。评审代理报什么、不报什么写在 [REVIEW.md](./REVIEW.md)。
-  5. 要等机器评审的那类 PR，合并前再派一个没写这段代码的 agent 判做没做完，结论按 head SHA 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
+  5. Claude 判为大改动、贴了 `needs-judge` 标签的 PR，每次推送由 Verify Action 派一个没写这段代码的判定员判做没做完；小改动不叫判定员，结论按 head SHA 由 bot 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
   6. 三份存量基线（`scripts/mjs-baseline.json`、`scripts/design-scale-baseline.json`、`scripts/ui-copy-baseline.json`）只许比 main 少，PR 里多出一条 CI 就红（`pnpm baselines:check`）。确属合规例外的，Claude 在 PR 里写明理由、停下等你；你同意就给 PR 打上 `baseline-exception` 标签，CI 自动重跑放行；放行只对打标签那一次有效，之后再推送要摘了重打，免得批准后又塞进别的条目。这个标签只由你打，Claude 不打。
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
-- PR 上的 `tier: docs / ui / logic / ui+logic` 标签由 `lyjw131[bot]` 自动贴，方便你在列表里看档位；门槛每次按改动路径现算，不读这个标签。
+- PR 上的 `tier: docs / ui / logic / ui+logic` 标签由 `lyjw131[bot]` 自动贴，方便你在列表里看档位；门槛每次按改动路径现算，不读这个标签。改了验证员、门槛、合并钩子、这个贴标签的代码，或判定员照读的根 `AGENTS.md`、`REVIEW.md` 的 PR 另贴红色 `verifier-changed`：这种 PR 的回执与判定出自被改过的那份，你定了不堵，只标出来，合并前你看一眼。
 - 只为试一下、不打算合的测试 PR，Claude 开的时候就贴上黑色的 `do-not-merge` 标签：`Do Not Merge` 这一项检查一直是红的，`pr-gate` 不放行，合并钩子也拦（`.github/workflows/do-not-merge.yml`）。脚本只认标签，不读标题。你手动贴上也一样拦；真要合，摘掉标签。
 - 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。
-- 上面「文档、skill 和小改动」的轻门槛只给你的账号开的 PR：别人开的 PR，或碰到 `.claude/` 的 settings、launch、hooks、`feature-map.json`、`docs/` 下的脚本与依赖清单、`public/` 下的 js、html、svg、xml、`_headers`，`pr-gate.ts` 一律按大改逻辑算，要回执与判定。
-- 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式按 PR 里的非合并提交数：少于 3 个压缩合并，3 个及以上用 merge commit（钩子 `scripts/guard-merge-method.ts` 拦不合的调用，也拦带 `do-not-merge` 标签的 PR）；main 有分支保护，不直推。分支落后时把 main 合进来，不 rebase。
+- 上面「文档、skill 和小改动」的轻门槛只给你的账号开的 PR：别人开的 PR，或碰到 `.claude/` 的 settings、launch、hooks、`feature-map.json`、`docs/` 下的脚本与依赖清单、`public/` 下的 js、html、svg、xml、`_headers`，`pr-gate.ts` 一律按逻辑档算，要 `unit-test-verified` 回执；判定员和机器评审，别人开的 PR 都要，你的账号开的只在 Claude 判为大改、贴了 `needs-judge` 时要。
+- 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式按 PR 里的非合并提交数：少于 3 个压缩合并，3 个及以上用 merge commit（钩子 `scripts/guard-merge-method.ts` 拦不合的调用，也拦带 `do-not-merge` 标签的 PR；Action 签的回执与判定没盖住 head 时只提醒、不拦：回执等级按分档定，界面档要 `live-ui-verified`，逻辑档要 `unit-test-verified`，贴了 `needs-judge` 的还要判定 PASS。提醒会弹给你看，Claude 照样能合，合了要在汇报里说差哪一项、为什么还合）；main 有分支保护，不直推。分支落后时把 main 合进来，不 rebase。
 - 提交信息是 `type(scope): 中文描述`，尾注带 Co-Authored-By 和会话链接；合并（或压缩）提交的标题用 PR 标题加编号，正文汇总各提交的协作者行，怎么生成见 lyjwpage-verify「[3. PR 合并门槛](./.claude/skills/lyjwpage-verify/SKILL.md#3-pr-合并门槛主线程跑-pr-gatets自己判断)」。站点的 Commits 卡片就靠这些行显示哪些 agent 和模型参与了。提交以你的身份、用你的钥签名，Claude 只出现在 Co-Authored-By 里；会话自带的钩子把这种提交报成 Unverified、让改成 Claude 的邮箱，是误报，不照做（见 AGENTS.md「[禁区](./AGENTS.md#禁区)」）。
 - 做完上线的线程不标成已解决：它留在你的「等你」列表里等你验收，你回一句或说「关」才收起。
 
@@ -99,7 +99,7 @@
 - 两次合并挨得近时 Workers Builds 并行构建，生产可能停在旧提交。所以「已部署」的标准是 `/api/version` 返回的 commit 等于 main 上最近一次碰到站点监视路径的提交；只改文档的合并不触发构建，版本不变是正常的。发现落后，补救是重建 main 的构建，这是生产动作，Claude 会先问你；构建本身因 Cloudflare 临时错误失败、重跑同一提交的不问。推送根本没触发构建（GitHub webhook 延迟或丢失，Cloudflare 构建列表里没有这个提交）的也不问，Claude 发现了就直接补跑。
 - 上报器哪些合进 main 后自动换镜像、哪些手动，见 [`.claude/rules/reporters.md`](./.claude/rules/reporters.md)；手动的那几个 Claude 会派你电脑上的会话去做。
 - 每次汇报都分清四层：本地改了 / 测试过了 / 已部署 / 在生产上验证过了。合并后每次都核对 `/api/version`；生产行为只在预览测不准的改动上复测（缓存与 Cache-Tag 清除、首屏 SSR、字体、依赖生产 Secret 或绑定的功能），其余以预览验证为准。
-- 跑检查、开浏览器截图、等部署和核对生产这些验证活，Claude 交给更便宜的 Haiku 验证员做，自己只定验什么、看结果。验证员最后签一张分级回执（按提交 SHA 记验到了哪一档：真页面、单测、只过类型），Claude 把它原样贴成 PR 评论，合并前用 `scripts/verify-receipt.ts` 核对它还盖得住当前提交；Claude 不重跑回执里验过的，只抽查一条证据（看一张截图或核一个数）再汇报（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
+- PR 上的验证在 GitHub 上跑（`.github/workflows/verify.yml`）：Claude 开 PR 时在描述里写「验证清单」和你的原话，每次推送 Action 派 Haiku 照清单验（界面改动在分支预览上截桌面、手机和 WebKit 图），Claude 判为大改动的同时派 Opus 判定员对照你的原话判做没做到。回执和判定由 github-actions[bot] 贴成 PR 评论，截图嵌在评论里，你看图点头就在那儿看；合并前 `scripts/verify-receipt.ts` 只认这个 bot 贴的，Claude 自己贴的不算。Claude 不重跑回执里验过的，只抽查一条证据（看一张截图或核一个数）再汇报。没开 PR 时的检查、等部署和核对生产，Claude 仍交给 Haiku 子代理（见 `.claude/skills/lyjwpage-verify/SKILL.md`）。
 - 所有等待（CI、机器评审、部署、后台循环）都有上限，到点记失败、附上最后看到的状态，接着做不依赖它的事，不会无声卡住（见 `lyjwpage-verify`「等待要有上限」）。
 
 ## 7. Claude 怎么向你汇报
