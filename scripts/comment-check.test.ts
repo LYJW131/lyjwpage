@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { addedLines, basePaths, buildRequests, collect, COMMENT_MARKER, commentBody, findComments, main, report } from "./comment-check.ts";
+import { addedLines, basePaths, buildRequests, collect, COMMENT_AUTHOR, COMMENT_MARKER, commentBody, findComments, main, report } from "./comment-check.ts";
 import { loadTypeScript } from "./comment-only-check.ts";
 import { COMMENT_CHECK, commentAdvice } from "./pr-gate/checks.ts";
 
@@ -109,7 +109,30 @@ test("commentBody 把超长结论截在 GitHub 评论上限之内", () => {
   assert.match(body, /截断/);
 });
 
-test("--pr 不是正整数时按参数错误退出 2", async () => {
-  assert.equal(await main(["--pr", "foo"]), 2);
-  assert.equal(await main(["--pr", "0"]), 2);
+test("--post 要配正整数的 --pr，--pr 单用也按参数错误退出 2", async () => {
+  assert.equal(await main(["--post", "x.json", "--pr", "foo"]), 2);
+  assert.equal(await main(["--post", "x.json", "--pr", "0"]), 2);
+  assert.equal(await main(["--pr", "3"]), 2);
+});
+
+test("--post 只认 lyjw131[bot] 的标记评论：有就原地改，没有且这次没问到注释就不新开", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const file = join(mkdtempSync(join(tmpdir(), "comment-post-")), "result.json");
+  const run = async (asked: boolean, comments: object[]) => {
+    writeFileSync(file, JSON.stringify({ sha: "b".repeat(40), text: "## 标题\n\n正文", asked }));
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? "GET"} ${url.replace(/^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+/, "")}`);
+      return new Response(init?.method ? "{}" : JSON.stringify(comments), { status: 200 });
+    }) as typeof fetch;
+    assert.equal(await main(["--post", file, "--pr", "7"], fetchImpl), 0);
+    return calls;
+  };
+  const old = { id: 1, user: { login: "github-actions[bot]" }, body: `${COMMENT_MARKER}\n旧` };
+  const mine = { id: 2, user: { login: COMMENT_AUTHOR }, body: `${COMMENT_MARKER}\n上一次` };
+  assert.deepEqual(await run(false, [old, mine]), ["GET /issues/7/comments?per_page=100&page=1", "PATCH /issues/comments/2"]);
+  assert.deepEqual(await run(false, [old]), ["GET /issues/7/comments?per_page=100&page=1"]);
+  assert.deepEqual(await run(true, [old]), ["GET /issues/7/comments?per_page=100&page=1", "POST /issues/7/comments"]);
 });

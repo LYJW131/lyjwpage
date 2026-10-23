@@ -454,7 +454,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 - `.github/workflows/preview-core-worker.yml`：PR 关闭时删掉那个分支的 core Worker Preview。
 - `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。
 - `.github/workflows/pr-tier-label.yml`：PR 打开或推送后，以 `lyjw131[bot]` 给 PR 贴 `tier: <档位>` 标签，改过验证员相关文件的另贴 `verifier-changed`（`scripts/pr-tier.ts`），只供查看，门槛不读它，不参与发布。
-- `.github/workflows/comment-check.yml`：改了 JS / TS 的 PR 上，Jev 逐条判断新增注释该不该删（`scripts/comment-check.ts`），建一项 `Comment check (Jev)` 检查，有该删的为 neutral；问过注释时在 PR 上原地更新一条评论；只是建议，不参与发布。
+- `.github/workflows/comment-check.yml`：改了 JS / TS 的 PR 上，Jev 逐条判断新增注释该不该删（`scripts/comment-check.ts`），建一项 `Comment check (Jev)` 检查，有该删的或没问全为 neutral；问过注释时，另一个只跑默认分支脚本的 job 以 `lyjw131[bot]` 在 PR 上原地更新一条评论；只是建议，不参与发布。
 - `.github/workflows/do-not-merge.yml`：一次性测试 PR 开的时候就贴 `do-not-merge` 标签；带这个标签时 `do-not-merge` 检查失败，合并钩子 `scripts/guard-merge-method.ts` 用 `gh` 读标签，带标签或读不到都拦。
 - `.github/workflows/codeql-autofix.yml`（main 上的 CodeQL 跑完后为告警开修复）、`.github/workflows/explainer-score.yml`（只在讲解片配乐的输入改动时渲染上传配乐）、`.github/workflows/collector-refresh.yml`（手动触发）、`.github/workflows/avatar-sync.yml`（采集 Worker 的 avatar-watch 派发，只提交新哈希，见 §1）、`.github/workflows/issue-labels.yml`（新 issue）、`.github/workflows/build.yml`（访客构建的 `repository_dispatch`）：自己都不部署站点或 Worker。
 

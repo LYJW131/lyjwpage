@@ -27,7 +27,6 @@ jobs:
     permissions:
       contents: read
       checks: write
-      pull-requests: write
     steps:
       # 默认检出 PR 的合并提交：第一个父提交就是此刻的 base，两者相比正好是 PR 带来的改动
       - uses: actions/checkout@v5
@@ -42,10 +41,9 @@ jobs:
       # 只是建议：装依赖、调 Jev 或建检查出错都不让 job 变红，免得 pr-gate 把它当成要修的失败
       - run: pnpm install --frozen-lockfile
         continue-on-error: true
-      - run: node scripts/comment-check.ts --base HEAD^1 --head HEAD --out "$RUNNER_TEMP/comment-check.json" --check-run "$HEAD_SHA" --pr "$PR"
+      - run: node scripts/comment-check.ts --base HEAD^1 --head HEAD --out "$RUNNER_TEMP/comment-check.json" --check-run "$HEAD_SHA"
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR: ${{ github.event.pull_request.number }}
           GITHUB_TOKEN: ${{ github.token }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
         continue-on-error: true
@@ -56,3 +54,41 @@ jobs:
           path: ${{ runner.temp }}/comment-check.json
           if-no-files-found: ignore
           retention-days: 14
+
+  comment:
+    needs: jev
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # 这个 job 拿 App 私钥，只跑默认分支上的脚本，PR 的代码碰不到；PR 那边只交来一份结论 JSON
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        id: result
+        continue-on-error: true
+        with:
+          name: comment-check
+          path: ${{ runner.temp }}/result
+      - uses: actions/create-github-app-token@v3
+        if: steps.result.outcome == 'success'
+        id: app
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-issues: write
+      - name: Comment as lyjw131[bot]
+        if: steps.result.outcome == 'success'
+        run: node scripts/comment-check.ts --post "$RUNNER_TEMP/result/comment-check.json" --pr "$PR"
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+        continue-on-error: true

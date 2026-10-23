@@ -12,15 +12,16 @@ import { loadTypeScript } from "./comment-only-check.ts";
 import { COMMENT_CHECK as CHECK_NAME } from "./pr-gate/checks.ts";
 import { TS_EXTENSIONS, collectTsComments, isTsDirective } from "./comment-only/typescript.ts";
 
-const HELP = `用法：node scripts/comment-check.ts [--base <ref>] [--head <ref>] [--out <文件.json>] [--check-run <sha>] [--pr <号>]
+const HELP = `用法：node scripts/comment-check.ts [--base <ref>] [--head <ref>] [--out <文件.json>] [--check-run <sha>]
+      node scripts/comment-check.ts --post <文件.json> --pr <号>
 让 TypeSafe Jev 逐条看 <base> 与 <head> 的合并基点以来新增的 JS / TS 注释，按根 AGENTS.md「文档与注释」判断该不该删。
 结果是给写代码的线程的建议：自己逐条判断删还是留，不挡合并。
   --base       默认 origin/main
   --head       默认 HEAD，只看已提交的改动
-  --out        把每条注释和 Jev 的概率写成 JSON
-  --check-run  在这个提交上建 Check run「Comment check (Jev)」，有该删的结论为 neutral、否则 success；要 GITHUB_TOKEN（checks: write）
-  --pr         问过至少一条注释时，在这个 PR 上发一条评论写结论，之后原地更新同一条；要 GITHUB_TOKEN（pull-requests: write）
-TYPESAFE_API_KEY 调 Jev（云端出口代理会自动带上）。退出码 0 跑完（含 Jev 调用失败，只在输出里写明）、2 参数或 git 出错。`;
+  --out        把每条注释、Jev 的概率和结论写成 JSON，交给 --post
+  --check-run  在这个提交上建 Check run「Comment check (Jev)」，有该删的或没问全（Jev 出错、少答、超出条数上限）时结论为 neutral，否则 success；要 GITHUB_TOKEN（checks: write）
+  --post       读 --out 写下的 JSON，只发评论，不碰 git 和 Jev：问过至少一条注释时在 --pr 上以 lyjw131[bot] 发一条评论写结论，之后原地更新同一条；要 lyjw131 App 的 GITHUB_TOKEN（issues: write）
+TYPESAFE_API_KEY 调 Jev（云端出口代理会自动带上）。退出码 0 跑完（含 Jev 调用失败，只在输出里写明）、1 发评论失败、2 参数或 git 出错。`;
 
 export const JEV_MODEL = "jev-1.14.0";
 const ENDPOINT = "https://api.typesafe.ai/v1/systemone";
@@ -209,7 +210,11 @@ export function commentBody(sha: string, text: string) {
   return `${COMMENT_MARKER}\n${body}\n\n<sub>按 ${sha.slice(0, 7)} 更新，每次推送原地改这一条。</sub>`;
 }
 
-type IssueComment = { id: number; body?: string | null; user?: { type?: string } | null };
+export const COMMENT_AUTHOR = "lyjw131[bot]";
+
+type IssueComment = { id: number; body?: string | null; user?: { login?: string } | null };
+
+export type CommentResult = { sha: string; text: string; asked: boolean };
 
 async function upsertComment(pr: number, body: string, { create }: { create: boolean }, fetchImpl: typeof fetch) {
   const repo = process.env.GITHUB_REPOSITORY ?? "LYJW131/lyjwpage";
@@ -220,7 +225,7 @@ async function upsertComment(pr: number, body: string, { create }: { create: boo
     const response = await fetchImpl(`${api}/issues/${pr}/comments?per_page=100&page=${page}`, { headers, signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`读 PR 评论失败：HTTP ${response.status}`);
     const batch = (await response.json()) as IssueComment[];
-    existing = batch.find((item) => item.user?.type === "Bot" && item.body?.startsWith(COMMENT_MARKER));
+    existing = batch.find((item) => item.user?.login === COMMENT_AUTHOR && item.body?.startsWith(COMMENT_MARKER));
     if (batch.length < 100) break;
   }
   if (!existing && !create) return;
@@ -269,6 +274,7 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
       head: { type: "string", default: "HEAD" },
       out: { type: "string", default: "" },
       "check-run": { type: "string", default: "" },
+      post: { type: "string", default: "" },
       pr: { type: "string", default: "" },
       help: { type: "boolean", default: false },
     },
@@ -277,9 +283,28 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
     console.log(HELP);
     return 0;
   }
-  const pr = values.pr ? Number(values.pr) : null;
-  if (pr !== null && !(Number.isInteger(pr) && pr > 0)) {
-    console.error(`--pr 要正整数，收到 ${values.pr}`);
+  if (values.post) {
+    const pr = Number(values.pr);
+    if (!(Number.isInteger(pr) && pr > 0)) {
+      console.error(`--post 要配正整数的 --pr，收到 ${values.pr || "空"}`);
+      return 2;
+    }
+    const result = JSON.parse(fs.readFileSync(values.post, "utf8")) as Partial<CommentResult>;
+    if (typeof result.sha !== "string" || typeof result.text !== "string" || typeof result.asked !== "boolean") {
+      console.error(`${values.post} 里缺 sha、text 或 asked`);
+      return 2;
+    }
+    // 这次没问到注释就不新开评论，已有的那条照样改成这次的结论，免得留着上一次的建议
+    try {
+      await upsertComment(pr, commentBody(result.sha, result.text), { create: result.asked }, fetchImpl);
+    } catch (caught) {
+      console.error((caught as Error).message);
+      return 1;
+    }
+    return 0;
+  }
+  if (values.pr) {
+    console.error("--pr 只配 --post 用");
     return 2;
   }
   const all = collect(loadTypeScript(process.cwd()), values.base, values.head);
@@ -296,20 +321,13 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
   const scored: Scored[] = found.map((item, index) => ({ ...item, p: scores.get(index) ?? null }));
   const result = report(scored, { error, truncated: all.length - found.length });
   const text = `## ${CHECK_NAME}：${result.title}\n\n${result.summary}`;
-  if (values.out) fs.writeFileSync(values.out, JSON.stringify({ model: JEV_MODEL, error, comments: scored }, null, 1));
+  const sha = values["check-run"] || git(["rev-parse", values.head]).trim();
+  if (values.out) fs.writeFileSync(values.out, JSON.stringify({ model: JEV_MODEL, error, sha, text, asked: found.length > 0, comments: scored }, null, 1));
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
   console.log(text);
   if (values["check-run"]) {
     try {
       await publish(values["check-run"], result, fetchImpl);
-    } catch (caught) {
-      console.error((caught as Error).message);
-    }
-  }
-  // 这次没问到注释就不新开评论，已有的那条照样改成这次的结论，免得留着上一次的建议
-  if (pr) {
-    try {
-      await upsertComment(pr, commentBody(values["check-run"] || git(["rev-parse", values.head]).trim(), text), { create: found.length > 0 }, fetchImpl);
     } catch (caught) {
       console.error((caught as Error).message);
     }
