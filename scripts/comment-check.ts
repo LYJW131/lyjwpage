@@ -201,8 +201,12 @@ export function report(scored: Scored[], { error, truncated }: { error?: string;
 
 export const COMMENT_MARKER = "<!-- comment-check-jev -->";
 
+const COMMENT_TEXT_LIMIT = 60_000;
+
 export function commentBody(sha: string, text: string) {
-  return `${COMMENT_MARKER}\n${text.replace(/^## /, "### ")}\n\n<sub>按 ${sha.slice(0, 7)} 更新，每次推送原地改这一条。</sub>`;
+  const heading = text.replace(/^## /, "### ");
+  const body = heading.length > COMMENT_TEXT_LIMIT ? `${heading.slice(0, COMMENT_TEXT_LIMIT)}\n\n…太长截断了，全部条目看这次运行上传的产物。` : heading;
+  return `${COMMENT_MARKER}\n${body}\n\n<sub>按 ${sha.slice(0, 7)} 更新，每次推送原地改这一条。</sub>`;
 }
 
 type IssueComment = { id: number; body?: string | null; user?: { type?: string } | null };
@@ -273,6 +277,11 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
     console.log(HELP);
     return 0;
   }
+  const pr = values.pr ? Number(values.pr) : null;
+  if (pr !== null && !(Number.isInteger(pr) && pr > 0)) {
+    console.error(`--pr 要正整数，收到 ${values.pr}`);
+    return 2;
+  }
   const all = collect(loadTypeScript(process.cwd()), values.base, values.head);
   const found = all.slice(0, MAX_COMMENTS);
   let error: string | undefined;
@@ -298,9 +307,9 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
     }
   }
   // 这次没问到注释就不新开评论，已有的那条照样改成这次的结论，免得留着上一次的建议
-  if (values.pr) {
+  if (pr) {
     try {
-      await upsertComment(Number(values.pr), commentBody(values["check-run"] || git(["rev-parse", values.head]).trim(), text), { create: found.length > 0 }, fetchImpl);
+      await upsertComment(pr, commentBody(values["check-run"] || git(["rev-parse", values.head]).trim(), text), { create: found.length > 0 }, fetchImpl);
     } catch (caught) {
       console.error((caught as Error).message);
     }

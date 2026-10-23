@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { addedLines, basePaths, buildRequests, collect, COMMENT_MARKER, commentBody, findComments, report } from "./comment-check.ts";
+import { addedLines, basePaths, buildRequests, collect, COMMENT_MARKER, commentBody, findComments, main, report } from "./comment-check.ts";
 import { loadTypeScript } from "./comment-only-check.ts";
 import { COMMENT_CHECK, commentAdvice } from "./pr-gate/checks.ts";
 
@@ -101,4 +101,15 @@ test("commentBody 以标记开头，好让下一次推送找到同一条原地�
   assert.ok(body.startsWith(COMMENT_MARKER));
   assert.match(body, /### Comment check \(Jev\)/);
   assert.match(body, /aaaaaaa/);
+});
+
+test("commentBody 把超长结论截在 GitHub 评论上限之内", () => {
+  const body = commentBody("a".repeat(40), `## 标题\n\n${"x".repeat(100_000)}`);
+  assert.ok(body.length < 65_536);
+  assert.match(body, /截断/);
+});
+
+test("--pr 不是正整数时按参数错误退出 2", async () => {
+  assert.equal(await main(["--pr", "foo"]), 2);
+  assert.equal(await main(["--pr", "0"]), 2);
 });
