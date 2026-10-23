@@ -15,7 +15,7 @@
 - **Waits have timeouts:** 15 min for hand loops, `--timeout` for deploys; confirm the target exists first; on timeout record FAIL and move on: [[waits-have-timeouts]].
 - **Re-run transient build/deploy failures without asking.**
 - **Do it yourself if a tool can** (lyjw 2026-10-22): check MCP/API/CLI/RC before asking lyjw; ask only for what needs lyjw's hands or a decision.
-- **Never ask lyjw to paste/run terminal commands** (lyjw 2026-10-22「这很蠢」): use Mac Remote Control; if its auto mode blocks a step, ask for one approval click (or a permission rule).
+- **Never ask lyjw to paste/run terminal commands** (lyjw 2026-10-22「这很蠢」): use Mac Remote Control; if its auto mode blocks a step, ask for one approval click (or a permission rule). Exception: when the Mac is offline lyjw may ask for the command to paste (2026-10-24 01:48 SGT「你直接给我命令 我直接贴mac上」).
 - **Plans needing lyjw's decisions → interactive HTML plan page** via the original html-plan plugin, not a replica (lyjw 2026-10-23; skill `lyjwpage-html-plan`, #557): [[html-plan-skill]].
 - **Links as markdown** `[text](url)`, never bare URLs next to Chinese: [[links-as-markdown]].
 - **Never auto-resolve shipped threads;** only lyjw resolves (or asks to: "存档讨论串" = resolve it).
@@ -26,13 +26,14 @@
 - **Bot review only for real logic changes**: read every Devin Review/Codex/Claude review, fix or reply; Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]]. Merge commits via `pnpm merge-message` ([[merge-commit-format]]); check /api/version after merge; a push that started no build gets rebuilt at once without asking ([[workers-builds-parallel-race]]).
 - **Post-merge prod checks:** every merge checks /api/version only. Real prod behavior test only for cache/Cache-Tag purge, first-screen SSR, fonts, or features needing prod secrets/bindings.
 - **Verification → Haiku 5.5 high worker** per skill `lyjwpage-verify`; lead spot-checks one item: [[verification-haiku-worker]]. First-screen/font/cache/SSR changes also run `site-verify reload` (Chromium + WebKit): [[first-screen-reload-check]]. Explainers: [[explainer-author-effort]], [[explainer-3d-real-ui]]; animation frames are accepted by Haiku (#490).
-- **Verify in GitHub Actions** (#572 merged; receipt gaps only warn, never block; receipts posted as lyjw131[bot]): [[verify-in-actions-plan]]; independent review said 需先修: [[verify-action-review-572]]. Official claude-review fix (Opus orchestrator, logic tier only): [[claude-review-hollow]]. `lyjw131[bot]` labels `tier: …` (display only, #586) and `verifier-changed` (mark, don't block).
+- **Verify in GitHub Actions** (#572 merged; receipt gaps only warn, never block; receipts posted as lyjw131[bot]): [[verify-in-actions-plan]]; independent review said 需先修: [[verify-action-review-572]]. Official claude-review fix (Opus orchestrator, logic tier only): [[claude-review-hollow]]. `lyjw131[bot]` labels `tier: …` (display only, #586) and `verifier-changed` (mark, don't block). Verifier high vs medium effort A/B runs in parallel (`verify-ab` job, #625; lyjw「ab测试并行一段时间」), receipt uses high.
+- **Claude Actions auth: Anthropic WIF (GitHub OIDC) switch, API-billed** (lyjw 2026-10-24, #625; test workflow anthropic-wif-test, manual, #627): repo vars ANTHROPIC_FEDERATION_RULE_ID / ORGANIZATION_ID / SERVICE_ACCOUNT_ID / WORKSPACE_ID; rule `lyjwpage-actions`, subject prefix uses GitHub's ID form `repo:LYJW131@153256373/lyjwpage@1331086735:*`. Switch back to subscription: `CLAUDE_AUTH=oauth`. build.yml implementation job stays on subscription. lyjw rejected static API keys. **Blocker (2026-10-24 04:00 SGT):** token exchange and direct API/CLI calls work, but any request with `CLAUDE_CODE_ENTRYPOINT=claude-code-github-action` (hardcoded by claude-code-action) gets 400 "Credit balance is too low". Thread advised switching back to oauth and asking Anthropic; don't spoof the entrypoint.
 - **Throwaway test PRs:** apply the `do-not-merge` label when opening (scripts read the label, never the title; lyjw 2026-10-23「还有之前那个测试pr不合并也是」); its check stays red, pr-gate and the merge hook block it (HUMAN.md).
 - **Chat testing never asks lyjw to send homepage test chats;** use direct API calls, the Turnstile test key, or read ChatLog via Cloudflare Code Mode MCP's DO query API (workers/ai/README.md).
 - **Decision cards:** coordinator re-posts any thread's open card in project chat and relays lyjw's choice.
 - **No task board;** progress lives in threads.
 - **Hand-offs carry lyjw's constraints;** route a follow-up once; later relay overrides: [[handoff-carry-user-constraints]].
-- **Secrets** are piped on the Mac with `rotate-secret`; never ask lyjw to paste values: [[credentials-pipe-only]].
+- **Secrets** are piped on the Mac with `rotate-secret`; never ask lyjw to paste values: [[credentials-pipe-only]]. Memory never holds usable secrets and IDs aren't confidential: fix over-eager secret checks rather than rewording memory (lyjw 2026-10-24 03:43 SGT).
 - **Commit identity:** commits are as lyjw (signed), Claude only Co-Authored-By: [[commit-identity-signing]].
 - **X/Twitter:** call api.x.com directly (proxy injects creds): [[x-api-via-proxy]].
 - HUMAN.md is the lyjw-facing collaboration guide; keep it in sync with new rules.
@@ -41,7 +42,8 @@
 - **Devin CLI can take work** (lyjw 2026-10-20) per skill `lyjwpage-devin-dispatch`; Claude keeps design, acceptance and re-signing; model and quota: [[devin-free-tier-limit]].
 - Mac RC folder ~/Developer/lyjwpage; its auto mode blocks prod deploys/CF config writes, credential-file reads and remote branch deletes (lyjw may need to click). misaka-jp via dsm jump host; agents-reporter docker at /opt/lyjwpage.
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
-- Egress-injected APIs (no keys in the container): OpenRouter (capped, Inception only: [[openrouter-egress]]), misaka.io (only `/v3/mc2/metrics/account-throughput`; strip email/name), Gemini ([[gemini-video-qa-result]]), Apple Music ([[apple-music-user-api]]), TypeSafe System One (Jev; also Workers AI `typesafe/jev`), Exa, Parallel.
+- Egress-injected APIs (no keys in the container): OpenRouter (capped, Inception only: [[openrouter-egress]]), misaka.io (only `/v3/mc2/metrics/account-throughput`; strip email/name), Gemini ([[gemini-video-qa-result]]), Apple Music ([[apple-music-user-api]]), TypeSafe System One (Jev; also Workers AI `typesafe/jev`), Exa, Parallel, tokens.ci (`/api/submit`).
+- **tokens.ci cloud hook** (#626, from lyjw's missuo/tokens PR #89): cloud sessions install tokens-cli and run `tokens cloud submit` each turn; the tokens.ci Network secret is on env <cloud env> (added and verified 2026-10-24).
 - **Site previews:** `<branch>.preview.lyjw.dev` only (no login, noindex). Never use `*-site.lyjw.workers.dev`: [[preview-access-removed]].
 - Collector manual run: GitHub Actions "Run Collector Jobs".
 - Repo memory mirror at `.claude/memory/` via `pnpm memory:mirror`, daily 03:15 routine: [[repo-memory-mirror]].
@@ -62,6 +64,7 @@
 - **Git history slimming: parked** (lyjw 2026-10-23「先记下 之后想做再说」): [[repo-history-slim]].
 - Chat tiers, consent and log retention: [[chat-tiers]].
 - **DO locations** (2026-10-23): StateHub KIX, LivePushRoom NRT, ChatQuota NRT, AnthropicEgress jp-0 KIX, ChatLog SEA, BuildCoordinator DFW: [[do-physical-locations]].
+- **Workers Issues alert emails stay as-is** (lyjw 2026-10-23 23:50 SGT「不用了」): platform DO/D1 storage errors are not downgraded to warn.
 - Small settled site decisions (README live cards `v=`, Today Tokens in M, no LICENSE, type assertions, legacy R2 assets, digest pools, dial sizes, Claude limit card, HealthKit nulls, Issues alerts): [[site-small-decisions]].
 - Desktop CLS fixed by `scrollbar-gutter: stable` (#534): [[desktop-cls-scrollbar]].
 - New model/data destination/source/Worker: update every place its sibling appears, incl. chat consent copy (AGENTS.md, #482).
@@ -74,7 +77,7 @@
 - Devin CLI token usage via Devin's own OTel into `mac-otlp` / `agents-otlp` (#453, #456): [[pulse-tokens-lane-coverage]].
 - Not adopting (don't re-propose; reasons in the file): Mercury 3 chat, tester-army, seiso, site-AI OTel, Max credit, CF AI Search, post-deploy PageSpeed, Jev or Gemini as checkers or PR verifier, main-CI split, skip-CI on docs PRs, larger runners. Formal verification only on demand (`lyjwpage-formal-model`): [[not-adopting]].
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 维持现状): [[reporter-otel-decision]].
-- **Jev comment check (#610):** advisory check run `Comment check (Jev)` on PR comments, 10 per call, notes in pr-gate: [[jev-comment-check]].
+- **Jev comment check (#610):** advisory check run `Comment check (Jev)` plus one lyjw131[bot] PR comment updated in place (needs pull-requests write, #620): [[jev-comment-check]].
 - Chat context prefetch (#384): Clef picks site status / project doc to prefetch in the routing call (thresholds status 0.45, doc 0.3): [[idea-jev-context-prefetch]].
 - Chat web search (#355): Exa `fast` only, Bangumi/Steam tools: [[chat-web-search]].
 - .mjs→TS migration; `pnpm rules:check` blocks new `scripts/*.mjs`: [[mjs-to-ts-migration]].
