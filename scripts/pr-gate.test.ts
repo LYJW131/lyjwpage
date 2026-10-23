@@ -298,6 +298,13 @@ test("逻辑档 PR 贴了 needs-judge：检查在跑、线程没解决、Codex �
   }
 });
 
+test("verify-ab 只记数据：失败或还在跑都不进 todo", async () => {
+  const runs = { check_runs: [{ name: "check", status: "completed", conclusion: "success" }, { name: "verify-ab", status: "completed", conclusion: "failure" }] };
+  const result = await gate({ pr: 7 }, { fetch: fakeFetch(pullRoutes({ [`commits/${HEAD}/check-runs`]: runs })), patchId: () => null });
+  assert.deepEqual(result.todo, []);
+  assert.equal(result.ready, true);
+});
+
 test("head 上还没有 CI 的 check 时不 ready", async () => {
   const result = await gate({ pr: 7 }, { fetch: fakeFetch(pullRoutes({ [`commits/${HEAD}/check-runs`]: { check_runs: [] } })), patchId: () => null });
   assert.equal(result.ready, false);

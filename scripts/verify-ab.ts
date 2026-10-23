@@ -38,9 +38,17 @@ export function summarize(effort: string, messages: Message[], structured?: Mess
 }
 
 function main() {
-  const { values } = parseArgs({
-    options: { effort: { type: "string" }, "execution-file": { type: "string" }, out: { type: "string" }, help: { type: "boolean" } },
-  });
+  let values;
+  try {
+    ({ values } = parseArgs({
+      strict: true,
+      options: { effort: { type: "string" }, "execution-file": { type: "string" }, out: { type: "string" }, help: { type: "boolean" } },
+    }));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    console.error(HELP);
+    process.exit(2);
+  }
   if (values.help || !values.effort || !values.out) {
     console.log(HELP);
     process.exit(values.help ? 0 : 2);
