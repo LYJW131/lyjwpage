@@ -57,8 +57,8 @@ export type JudgeReport = {
   fixes: string[];
 };
 
-// 验证员自报的等级不直接用：清单里每一项都要有 PASS 行，有 FAIL 就是 verifier-failed，漏项、SKIPPED、没有检查行或 PASS 没写证据就是 verifier-blocked。
-export function reconcile(checklist: ChecklistItem[], report: VerifierReport) {
+// 验证员自报的等级不直接用：清单里每一项都要有 PASS 行，有 FAIL 就是 verifier-failed，漏项、SKIPPED、没有检查行、PASS 没写证据或界面档没截图就是 verifier-blocked。
+export function reconcile(checklist: ChecklistItem[], report: VerifierReport, { shots }: { shots?: number } = {}) {
   const problems: string[] = [];
   let failed = report.rows.some((row) => row.result === "FAIL");
   let blocked = false;
@@ -85,6 +85,10 @@ export function reconcile(checklist: ChecklistItem[], report: VerifierReport) {
     }
   }
   const claimed = LEVELS.includes(report.level) ? report.level : "verifier-blocked";
+  if (claimed === "live-ui-verified" && shots === 0) {
+    blocked = true;
+    problems.push("live-ui-verified 没有截图上传成功");
+  }
   let level = claimed;
   if (failed) level = "verifier-failed";
   else if (blocked && (PASSING_RANK[claimed] ?? 0) > 0) level = "verifier-blocked";
@@ -131,11 +135,18 @@ export function receiptComment({
   return lines.join("\n");
 }
 
+// 判定员的结论不直接用：明细里有没做到的要求或有回归，就按 FAIL 签。
+export function judgeVerdict(report: JudgeReport) {
+  return report.verdict === "PASS" && report.asks.length > 0 && report.asks.every((ask) => ask.met === true) && report.regressions.length === 0 ? "PASS" : "FAIL";
+}
+
 export function judgeComment({ firstLine, report, runUrl }: { firstLine: string; report: JudgeReport; runUrl: string }) {
   const lines = [firstLine, "", "| lyjw 要的 | 做到了 | 依据 |", "| --- | --- | --- |"];
   for (const ask of report.asks) lines.push(`| ${cell(ask.ask)} | ${ask.met ? "是" : "否"} | ${cell(ask.evidence)} |`);
   lines.push("", `回归：${report.regressions.length ? report.regressions.map((item) => `\n- ${item}`).join("") : "没发现"}`);
   if (report.fixes.length > 0) lines.push("", `要修：${report.fixes.map((item) => `\n- ${item}`).join("")}`);
+  const verdict = firstLine.split(/[：:]/).pop()?.trim();
+  if (verdict !== report.verdict) lines.push("", `判定员自报 ${report.verdict}，明细里有没做到的要求或回归（或没列要求），改记 ${verdict}。`);
   lines.push("", `判定员：${report.model}，只读 lyjw 原话与 diff，没写这段代码，没看验证员的证据（[Action 运行](${runUrl})）`);
   return lines.join("\n");
 }

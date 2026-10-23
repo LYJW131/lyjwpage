@@ -23,7 +23,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 - `plan`：按 `pr-gate` 的分档（`scripts/pr-gate/tier.ts#tierOf`）定回执至少的等级；只改文档与 skill 的不验。
 - `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。
 - `judge`：逻辑档（含作者不是 lyjw 账号的 PR）同时派 Opus（effort high）当判定员，和验证员并行，见「3b」。
-- `publish`：截图推到孤立分支 `verify-shots`、嵌进评论；按清单对照验证员的结果定回执等级（`scripts/verify-action/report.ts#reconcile`：清单某项 FAIL 记 `verifier-failed`，漏项或 SKIPPED 记 `verifier-blocked`），再以 github-actions[bot] 发回执与判定两条评论。PR 的 head 已经变了就什么都不发。
+- `publish`：截图推到孤立分支 `verify-shots`、嵌进评论；按清单对照验证员的结果定回执等级（`scripts/verify-action/report.ts#reconcile`：清单某项 FAIL 记 `verifier-failed`；漏项、SKIPPED、没有检查行、PASS 没写证据、`live-ui-verified` 没有截图都记 `verifier-blocked`）；判定按明细收口（`judgeVerdict`：有没做到的要求或回归就签 FAIL）。再以 github-actions[bot] 发回执与判定两条评论。PR 的 head 已经变了就什么都不发。
 
 开 PR 时（以及要求变了时）在描述里写这两节，标题照抄，格式由 `scripts/verify-action/body.ts#parseBody` 解析：
 

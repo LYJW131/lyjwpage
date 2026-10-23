@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { tierOf } from "./pr-gate/tier.ts";
 import { bodyDigest } from "./verify-action/body.ts";
-import { judgeComment, main, parseBody, planOf, receiptComment, reconcile, shotLinks, stampDigest } from "./verify-action.ts";
+import { judgeComment, judgeVerdict, main, parseBody, planOf, receiptComment, reconcile, shotLinks, stampDigest } from "./verify-action.ts";
 import { digestLine, parseComments } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -51,6 +51,9 @@ test("reconcile：清单每项都要有 PASS 行，FAIL 记 verifier-failed，�
   const bare = reconcile(checklist, report([row("V1", "PASS"), { ...row("V2", "PASS"), evidence: " " }]));
   assert.deepEqual([bare.level, bare.problems], ["verifier-blocked", ["V2 是 PASS 但没写证据"]]);
   assert.equal(reconcile([], report([], "verifier-failed")).level, "verifier-failed");
+  const noShots = reconcile(checklist, report([row("V1", "PASS"), row("V2", "PASS")]), { shots: 0 });
+  assert.deepEqual([noShots.level, noShots.problems], ["verifier-blocked", ["live-ui-verified 没有截图上传成功"]]);
+  assert.equal(reconcile(checklist, report([row("V1", "PASS"), row("V2", "PASS")], "unit-test-verified"), { shots: 0 }).level, "unit-test-verified");
 });
 
 test("planOf：草稿、已关闭与只改文档的不验，界面档等预览，逻辑档要判定", () => {
@@ -127,4 +130,14 @@ test("bodyDigest：有原话时只看清单与原话，没原话时看全文，D
   assert.notEqual(await bodyDigest(plain), await bodyDigest(`${plain}\n还要支持导出`));
   const badge = "\n<!-- devin-review-badge-begin -->\n<a href=\"x\">Devin</a>\n<!-- devin-review-badge-end -->";
   assert.equal(await bodyDigest(plain), await bodyDigest(`${plain}${badge}`));
+});
+
+test("judgeVerdict：自报 PASS 但有没做到的要求、有回归或没列要求，都按 FAIL 签", () => {
+  const judge = (extra: object) => ({ model: "m", verdict: "PASS", asks: [{ ask: "a", met: true, evidence: "e" }], regressions: [], fixes: [], ...extra });
+  assert.equal(judgeVerdict(judge({})), "PASS");
+  assert.equal(judgeVerdict(judge({ asks: [{ ask: "a", met: false, evidence: "e" }] })), "FAIL");
+  assert.equal(judgeVerdict(judge({ regressions: ["r"] })), "FAIL");
+  assert.equal(judgeVerdict(judge({ asks: [] })), "FAIL");
+  const comment = judgeComment({ firstLine: `判定 ${HEAD}：FAIL`, report: judge({ regressions: ["r"] }), runUrl: "u" });
+  assert.match(comment, /判定员自报 PASS，.*改记 FAIL/);
 });

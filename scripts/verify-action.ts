@@ -16,6 +16,7 @@ import {
   blockedComment,
   JUDGE_SCHEMA,
   judgeComment,
+  judgeVerdict,
   receiptComment,
   reconcile,
   stampDigest,
@@ -25,7 +26,7 @@ import {
 } from "./verify-action/report.ts";
 
 export { parseBody } from "./verify-action/body.ts";
-export { reconcile, receiptComment, judgeComment, stampDigest } from "./verify-action/report.ts";
+export { reconcile, receiptComment, judgeComment, judgeVerdict, stampDigest } from "./verify-action/report.ts";
 
 const HELP = `用法：node scripts/verify-action.ts <子命令> --pr <号> [选项]
 给 .github/workflows/verify.yml 用：验证员与判定员在 GitHub Action 里跑，回执与判定由 github-actions[bot] 发成 PR 评论。
@@ -165,9 +166,10 @@ async function publish(
   if (opts.verifyResult && opts.verifyResult !== "skipped") {
     const report = opts.verifyResult === "success" ? parsed<VerifierReport>(process.env.VERIFY_OUTPUT) : null;
     if (report && Array.isArray(report.rows)) {
-      const { level, claimed, problems } = reconcile(checklist, { ...report, notVerified: report.notVerified ?? [] });
+      const shots = shotLinks(opts.shotsDir, opts.shotsUrl);
+      const { level, claimed, problems } = reconcile(checklist, { ...report, notVerified: report.notVerified ?? [] }, { shots: shots.length });
       const firstLine = signLine({ ref: opts.head, level });
-      comments.push(receiptComment({ firstLine, report, checklist, problems, claimed, shots: shotLinks(opts.shotsDir, opts.shotsUrl), runUrl: opts.runUrl }));
+      comments.push(receiptComment({ firstLine, report, checklist, problems, claimed, shots, runUrl: opts.runUrl }));
     } else {
       const reason = opts.verifyResult === "success" ? "验证员没交回结构化结果" : `验证 job 的结论是 ${opts.verifyResult}`;
       comments.push(blockedComment({ firstLine: signLine({ ref: opts.head, level: "verifier-blocked" }), reason, runUrl: opts.runUrl }));
@@ -176,8 +178,9 @@ async function publish(
   if (opts.judgeResult && opts.judgeResult !== "skipped") {
     const report = opts.judgeResult === "success" ? parsed<JudgeReport>(process.env.JUDGE_OUTPUT) : null;
     if (report && (report.verdict === "PASS" || report.verdict === "FAIL")) {
-      const firstLine = signLine({ ref: opts.head, verdict: report.verdict });
-      comments.push(judgeComment({ firstLine, report: { ...report, asks: report.asks ?? [], regressions: report.regressions ?? [], fixes: report.fixes ?? [] }, runUrl: opts.runUrl }));
+      const full = { ...report, asks: report.asks ?? [], regressions: report.regressions ?? [], fixes: report.fixes ?? [] };
+      const firstLine = signLine({ ref: opts.head, verdict: judgeVerdict(full) });
+      comments.push(judgeComment({ firstLine, report: full, runUrl: opts.runUrl }));
     } else {
       comments.push(`判定员没跑成（判定 job 的结论是 ${opts.judgeResult}），这个 head 没有判定。[Action 运行](${opts.runUrl})`);
     }
