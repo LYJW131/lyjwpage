@@ -17,3 +17,9 @@ test("traffic uses decimal tiers and the pair shares the total's tier", () => {
   assert.equal(formatBytes(DECIMAL_TIERS, 1.5e9), "1.5 GB");
   assert.equal(formatBytes(DECIMAL_TIERS, 0), "0 MB");
 });
+
+test("binary tiers switch to TB for multi-terabyte disks", () => {
+  const TiB = 1024 ** 4;
+  assert.equal(formatBytes(BINARY_TIERS, 2 * TiB), "2.20 TB");
+  assert.equal(formatBytePair(BINARY_TIERS, 512 * GiB, 4 * TiB), "0.55 / 4.40 TB");
+});

@@ -2,6 +2,7 @@ type Tier = { div: number; unit: string; digits: number };
 
 // 内存和磁盘跟操作系统一样按 1024 进位；流量配额是十进制，用 DECIMAL_TIERS。
 export const BINARY_TIERS: readonly Tier[] = [
+  { div: 1e12, unit: "TB", digits: 2 },
   { div: 1024 ** 3, unit: "GB", digits: 1 },
   { div: 1024 ** 2, unit: "MB", digits: 0 },
 ];
