@@ -138,12 +138,15 @@ test("bodyDigest：有原话时只看清单与原话，没原话时看全文，D
   assert.equal(grouped.words, "> 要 a\n\n---\n\n> 还要 b");
 });
 
-test("judgeVerdict：自报 PASS 但有没做到的要求、有回归或没列要求，都按 FAIL 签", () => {
+test("judgeVerdict：自报 PASS 但有没做到或缺依据的要求、有回归、有待修项或没列要求，都按 FAIL 签", () => {
   const judge = (extra: object) => ({ model: "m", verdict: "PASS", asks: [{ ask: "a", met: true, evidence: "e" }], regressions: [], fixes: [], ...extra });
   assert.equal(judgeVerdict(judge({})), "PASS");
   assert.equal(judgeVerdict(judge({ asks: [{ ask: "a", met: false, evidence: "e" }] })), "FAIL");
   assert.equal(judgeVerdict(judge({ regressions: ["r"] })), "FAIL");
   assert.equal(judgeVerdict(judge({ asks: [] })), "FAIL");
+  assert.equal(judgeVerdict(judge({ asks: [{ ask: "a", met: true, evidence: " " }] })), "FAIL");
+  assert.equal(judgeVerdict(judge({ asks: [{ ask: "", met: true, evidence: "e" }] })), "FAIL");
+  assert.equal(judgeVerdict(judge({ fixes: ["f"] })), "FAIL");
   const comment = judgeComment({ firstLine: `判定 ${HEAD}：FAIL`, report: judge({ regressions: ["r"] }), runUrl: "u" });
   assert.match(comment, /判定员自报 PASS，.*改记 FAIL/);
 });

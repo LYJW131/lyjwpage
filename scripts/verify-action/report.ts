@@ -138,7 +138,8 @@ export function receiptComment({
 
 // 判定员的结论不直接用：明细里有没做到的要求或有回归，就按 FAIL 签。
 export function judgeVerdict(report: JudgeReport) {
-  return report.verdict === "PASS" && report.asks.length > 0 && report.asks.every((ask) => ask.met === true) && report.regressions.length === 0 ? "PASS" : "FAIL";
+  const complete = report.asks.length > 0 && report.asks.every((ask) => ask.met === true && ask.ask.trim() !== "" && ask.evidence.trim() !== "");
+  return report.verdict === "PASS" && complete && report.regressions.length === 0 && report.fixes.length === 0 ? "PASS" : "FAIL";
 }
 
 export function judgeComment({ firstLine, report, runUrl }: { firstLine: string; report: JudgeReport; runUrl: string }) {
@@ -147,7 +148,7 @@ export function judgeComment({ firstLine, report, runUrl }: { firstLine: string;
   lines.push("", `回归：${report.regressions.length ? report.regressions.map((item) => `\n- ${item}`).join("") : "没发现"}`);
   if (report.fixes.length > 0) lines.push("", `要修：${report.fixes.map((item) => `\n- ${item}`).join("")}`);
   const verdict = firstLine.split(/[：:]/).pop()?.trim();
-  if (verdict !== report.verdict) lines.push("", `判定员自报 ${report.verdict}，明细里有没做到的要求或回归（或没列要求），改记 ${verdict}。`);
+  if (verdict !== report.verdict) lines.push("", `判定员自报 ${report.verdict}，明细里有没做到、没写依据的要求，或有回归、待修项（或没列要求），改记 ${verdict}。`);
   lines.push("", `判定员：${report.model}，只读 lyjw 原话与 diff，没写这段代码，没看验证员的证据（[Action 运行](${runUrl})）`);
   return lines.join("\n");
 }
