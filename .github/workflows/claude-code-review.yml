@@ -21,7 +21,32 @@ jobs:
         with:
           fetch-depth: 1
 
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      # 插件扫得深（多文件改动派约 8 个子代理），只审合并门槛要等机器评审的逻辑档 PR
+      - name: Tier
+        id: tier
+        run: |
+          node --input-type=module -e '
+          import { appendFileSync } from "node:fs";
+          import { changedPaths, client, isTrustedAuthor } from "./scripts/pr-gate/github.ts";
+          import { tierOf } from "./scripts/pr-gate/tier.ts";
+          const gh = client(fetch);
+          const pr = process.env.PR;
+          const pull = await gh.get(`pulls/${pr}`);
+          const tier = tierOf(changedPaths(await gh.all(`pulls/${pr}/files`)), { trustedAuthor: isTrustedAuthor(pull) });
+          console.log(`tier=${tier.name} judge=${tier.judge}`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `judge=${tier.judge}\n`);
+          '
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+
       - name: Run Claude Code Review
+        if: steps.tier.outputs.judge == 'true'
         id: claude-review
         uses: anthropics/claude-code-action@v1
         env:
