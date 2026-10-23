@@ -52,7 +52,7 @@ export function mergeMethodReason(input: MergeInput, count: (sha: string) => num
     return `读不到 #${pr} 的标签，判不了是不是 ${DO_NOT_MERGE_LABEL} 的测试 PR：先 gh auth status 确认 gh 已登录，再合并。`;
   }
   if (current.includes(DO_NOT_MERGE_LABEL)) {
-    return `#${pr} 带着 ${DO_NOT_MERGE_LABEL} 标签（标题括号里写了「不合并」的测试 PR）：不合，用完关掉；确实要合，先改掉标题并摘掉标签。`;
+    return `#${pr} 带着 ${DO_NOT_MERGE_LABEL} 标签（一次性测试 PR）：不合，用完关掉；确实要合，先摘掉标签。`;
   }
   const expected = mergeMethodFor(commits);
   if (input.merge_method === expected) return null;
