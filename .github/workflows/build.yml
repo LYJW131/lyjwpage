@@ -62,8 +62,8 @@ jobs:
       - name: Review the plan
         env:
           # 计费开关同 verify.yml
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ vars.CLAUDE_AUTH != 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
-          ANTHROPIC_API_KEY: ${{ vars.CLAUDE_AUTH == 'api' && secrets.ANTHROPIC_API_KEY || '' }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ (vars.CLAUDE_AUTH == 'oauth' || secrets.ANTHROPIC_API_KEY == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          ANTHROPIC_API_KEY: ${{ vars.CLAUDE_AUTH != 'oauth' && secrets.ANTHROPIC_API_KEY || '' }}
           DISABLE_AUTOUPDATER: "1"
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
         run: |
@@ -207,8 +207,8 @@ jobs:
         timeout-minutes: 18
         env:
           # 计费开关同 verify.yml
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ vars.CLAUDE_AUTH != 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
-          ANTHROPIC_API_KEY: ${{ vars.CLAUDE_AUTH == 'api' && secrets.ANTHROPIC_API_KEY || '' }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ (vars.CLAUDE_AUTH == 'oauth' || secrets.ANTHROPIC_API_KEY == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          ANTHROPIC_API_KEY: ${{ vars.CLAUDE_AUTH != 'oauth' && secrets.ANTHROPIC_API_KEY || '' }}
           DISABLE_AUTOUPDATER: "1"
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
         run: |
