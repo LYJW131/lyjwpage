@@ -2,7 +2,7 @@ name: Do Not Merge
 
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
 
 permissions: {}
 
@@ -11,44 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 标题括号里写了「不合并」（如「（测试，不合并）」）的一次性测试 PR 由 lyjw131[bot] 贴 do-not-merge；带这个标签这一项就红，pr-gate 不 ready，合并钩子（scripts/guard-merge-method.ts）拦下。
-  # 标签只加不摘：lyjw 手动贴的也算数，要合先改标题再手动摘标签。
+  # 一次性测试 PR 开的时候就贴 do-not-merge 标签；带着它这一项就红，pr-gate 不 ready，合并钩子（scripts/guard-merge-method.ts）拦下。
   # 不设成分支保护的必需检查：avatar-sync.yml 开完 PR 当场就合，等不到这一项
   do-not-merge:
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    permissions:
-      contents: read
-    env:
-      TITLE: ${{ github.event.pull_request.title }}
-      HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'do-not-merge') }}
+    permissions: {}
     steps:
-      - id: mark
-        run: |
-          # 只认同一对括号里的：描述这个功能本身的标题也会提到「不合并」
-          if python3 -c 'import os, re, sys; sys.exit(0 if re.search(r"[（(][^（）()]*不合并[^（）()]*[）)]", os.environ["TITLE"]) else 1)'; then
-            echo "title=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "title=false" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/create-github-app-token@v3
-        if: steps.mark.outputs.title == 'true' && env.HAS_LABEL != 'true'
-        id: app
-        with:
-          client-id: Iv23liSmKTDKh0bxIfzB
-          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
-          permission-issues: write
-          permission-pull-requests: write
-      - name: Apply do-not-merge as lyjw131[bot]
-        if: steps.app.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          gh label create do-not-merge --repo "$GITHUB_REPOSITORY" --color 000000 --description "Throwaway test PR; merging is blocked" --force
-          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/labels" -f "labels[]=do-not-merge" --silent
       - name: Block merge
-        if: steps.mark.outputs.title == 'true' || env.HAS_LABEL == 'true'
+        if: contains(github.event.pull_request.labels.*.name, 'do-not-merge')
         run: |
-          echo "::error::这是不合并的测试 PR（标题括号里写了「不合并」或带 do-not-merge 标签）。要合先改掉标题并摘掉标签。"
+          echo "::error::这是不合并的测试 PR（带 do-not-merge 标签）。要合先摘掉标签。"
           exit 1
