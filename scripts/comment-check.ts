@@ -20,7 +20,7 @@ const HELP = `用法：node scripts/comment-check.ts [--base <ref>] [--head <ref
   --head       默认 HEAD，只看已提交的改动
   --out        把每条注释、Jev 的概率和结论写成 JSON，交给 --post
   --check-run  在这个提交上建 Check run「Comment check (Jev)」，有该删的或没问全（Jev 出错、少答、超出条数上限）时结论为 neutral，否则 success；要 GITHUB_TOKEN（checks: write）
-  --post       读 --out 写下的 JSON，只发评论，不碰 git 和 Jev：问过至少一条注释时在 --pr 上以 lyjw131[bot] 发一条评论写结论，之后原地更新同一条；要 lyjw131 App 的 GITHUB_TOKEN（issues: write）
+  --post       读 --out 写下的 JSON，只发评论，不碰 git 和 Jev：问过至少一条注释时在 --pr 上以 lyjw131[bot] 发一条评论写结论，之后原地更新同一条；要 lyjw131 App 的 GITHUB_TOKEN（issues: write 与 pull-requests: write）
 TYPESAFE_API_KEY 调 Jev（云端出口代理会自动带上）。退出码 0 跑完（含 Jev 调用失败，只在输出里写明）、1 发评论失败、2 参数或 git 出错。`;
 
 export const JEV_MODEL = "jev-1.14.0";
