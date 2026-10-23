@@ -75,7 +75,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/verify-tools
-        timeout-minutes: 12
+        timeout-minutes: 14
         with:
           browsers: "true"
       # WebKit 的系统依赖（一百多个 apt 包）只在界面档装。runner 默认的 azure 镜像时常卡住不报错（一次挂了 40 分钟）：
