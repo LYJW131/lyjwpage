@@ -27,7 +27,7 @@
 - **Post-merge prod checks:** every merge checks /api/version only. Real prod behavior test only for cache/Cache-Tag purge, first-screen SSR, fonts, or features needing prod secrets/bindings.
 - **Verification → Haiku 5.5 high worker** per skill `lyjwpage-verify`; lead spot-checks one item: [[verification-haiku-worker]]. First-screen/font/cache/SSR changes also run `site-verify reload` (Chromium + WebKit): [[first-screen-reload-check]]. Explainers: [[explainer-author-effort]], [[explainer-3d-real-ui]]; animation frames are accepted by Haiku (#490).
 - **Verify in GitHub Actions** (#572; ask lyjw before merging it; test with extra test PRs first): [[verify-in-actions-plan]]; independent review said 需先修: [[verify-action-review-572]]. Official claude-review fix (Opus orchestrator, logic tier only): [[claude-review-hollow]]. `lyjw131[bot]` labels `tier: …` (display only, #586) and `verifier-changed` (mark, don't block).
-- **Throwaway test PRs:** end the title with 「（测试，不合并）」; `lyjw131[bot]` adds `do-not-merge`, its check stays red, pr-gate and the merge hook block it (#604, HUMAN.md).
+- **Throwaway test PRs:** apply the `do-not-merge` label when opening (scripts read the label, never the title; lyjw 2026-10-23「还有之前那个测试pr不合并也是」); its check stays red, pr-gate and the merge hook block it (HUMAN.md).
 - **Chat testing never asks lyjw to send homepage test chats;** use direct API calls, the Turnstile test key, or read ChatLog via Cloudflare Code Mode MCP's DO query API (workers/ai/README.md).
 - **Decision cards:** coordinator re-posts any thread's open card in project chat and relays lyjw's choice.
 - **No task board;** progress lives in threads.
