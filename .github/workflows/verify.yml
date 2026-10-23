@@ -268,7 +268,7 @@ jobs:
           client-id: Iv23liSmKTDKh0bxIfzB
           private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
           permission-issues: write
-          permission-pull-requests: read
+          permission-pull-requests: write
       - name: Publish as lyjw131[bot]
         run: >-
           node scripts/verify-action.ts publish --pr "$PR" --head "$HEAD"
