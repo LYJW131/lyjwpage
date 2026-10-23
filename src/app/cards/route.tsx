@@ -32,7 +32,7 @@ import { NO_STORE } from "@/lib/site-policy";
 import { timezoneAbbreviation } from "@/lib/timezone-display";
 import { siteContext, type SiteServices } from "@/server/site-context";
 import { stampNow } from "@shared/fixture-time";
-import { chargingFeedClockStale, liveChargingFeed } from "@shared/freshness";
+import { AGENT_STATUS_STALE_MS, chargingFeedClockStale, liveChargingFeed } from "@shared/freshness";
 import { chargerActive, liveTrack, powerBankActive } from "@shared/home-layout";
 import { site as siteConfig } from "@shared/site";
 import type { StatusViewKey } from "@shared/status-views";
@@ -104,7 +104,10 @@ const CARDS: Record<string, ReadmeCard> = {
       const live = await status("agentStatus");
       const { value, sample } = orSample(
         live,
-        (data) => data.agents.some((agent) => agent.id === "cloudflare" && agent.indicator === "major_outage" && !agent.stale),
+        // 与 CloudflareOutageRow 的显示条件一致：快照过期或没有起点时横幅不画，改用夹具。
+        (data) =>
+          now - data.fetchedAt <= AGENT_STATUS_STALE_MS &&
+          data.agents.some((agent) => agent.id === "cloudflare" && agent.indicator === "major_outage" && !agent.stale && agent.outageSince != null),
         { ok: true, data: cloudflareOutageFixture },
         now,
       );
