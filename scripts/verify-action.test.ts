@@ -119,6 +119,17 @@ test("参数错抛成用法错误，主入口据此退出 2", async () => {
   }
 });
 
+test("叠出来的 HTML 注释删干净，没闭合的 <!-- 留在原文里", () => {
+  const body = ["## 验证清单", "- V1：a", "<!<!--x-->--", "- V2：藏在注释里", "-->", "## lyjw 原话", "> 要 a <!-- 原样留着"].join("\n");
+  const parsed = parseBody(body);
+  assert.deepEqual(parsed.checklist.map((item) => item.id), ["V1"]);
+  assert.equal(parsed.words, "> 要 a <!-- 原样留着");
+  assert.equal(parseBody("## 验证清单\n- V1：看 <!<!--x-->--> 首页").checklist[0]?.text, "看  首页");
+  assert.equal(parseBody("## lyjw 原话\n> <!--> 留着").words, ">  留着");
+  const visible = "要支持筛选\n## 验证清单\n- V1：a";
+  assert.equal(bodyDigest(visible), bodyDigest(`${visible}\n<!<!--x-->--\n还要支持导出\n-->`));
+});
+
 test("bodyDigest：有原话时只看清单与原话，没原话时看全文，Devin 徽章不算", async () => {
   const withWords = "说明\n## 验证清单\n- V1：a\n## lyjw 原话\n> 要 a";
   assert.equal(await bodyDigest(withWords), await bodyDigest(withWords.replace("说明", "说明改了")));

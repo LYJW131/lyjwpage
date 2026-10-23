@@ -11,6 +11,17 @@ const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 // Devin 会在描述末尾补徽章块，不算描述改动
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
 
+// <!<!--x-->--> 删一遍剩 <!-->，所以连空注释 <!-->、<!---> 一起删到不再缩短。没闭合的 <!-- 留着。
+function stripComments(body: string) {
+  let text = body.replace(BADGE, "");
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<!--(?:-?>|[\s\S]*?-->)/g, "");
+  } while (text !== previous);
+  return text;
+}
+
 // 分隔线可能是清单或原话内部的分组，只有其后再没有条目和引文时才当作描述的页脚截掉
 function dropFooter(lines: string[]) {
   const rule = lines.findLastIndex((line) => /^-{3,}\s*$/.test(line));
@@ -27,7 +38,7 @@ function section(lines: string[], heading: RegExp) {
 }
 
 export function parseBody(body: string | null | undefined) {
-  const lines = (body ?? "").replace(BADGE, "").replace(/<!--[\s\S]*?-->/g, "").split(/\r?\n/);
+  const lines = stripComments(body ?? "").split(/\r?\n/);
   const checklistLines = section(lines, CHECKLIST_HEADING);
   const checklist: ChecklistItem[] = [];
   for (const line of checklistLines ?? []) {
@@ -42,6 +53,6 @@ export function parseBody(body: string | null | undefined) {
 // publish 把这个摘要写进评论，verify-receipt.ts 拿当前描述重算比对。
 export function bodyDigest(body: string | null | undefined) {
   const { checklist, words } = parseBody(body);
-  const text = words ?? (body ?? "").replace(BADGE, "").replace(/<!--[\s\S]*?-->/g, "").trim();
+  const text = words ?? stripComments(body ?? "").trim();
   return createHash("sha256").update(JSON.stringify({ checklist, words: text })).digest("hex");
 }
