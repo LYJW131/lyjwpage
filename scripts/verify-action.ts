@@ -28,7 +28,7 @@ export { parseBody } from "./verify-action/body.ts";
 export { reconcile, receiptComment, judgeComment, judgeVerdict } from "./verify-action/report.ts";
 
 const HELP = `用法：node scripts/verify-action.ts <子命令> --pr <号> [选项]
-给 .github/workflows/verify.yml 用：验证员与判定员在 GitHub Action 里跑，回执与判定由 github-actions[bot] 发成 PR 评论。
+给 .github/workflows/verify.yml 用：验证员与判定员在 GitHub Action 里跑，回执与判定由 lyjw131[bot] 发成 PR 评论。
 读 GitHub 用 GITHUB_TOKEN；在 Action 外跑时云端要加 NODE_USE_ENV_PROXY=1。输出写进 GITHUB_OUTPUT（没有就打印）。
 退出码 0 成功、1 读写 GitHub 出错、2 参数错。
 

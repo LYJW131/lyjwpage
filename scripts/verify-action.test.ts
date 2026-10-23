@@ -98,7 +98,7 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   });
   assert.equal(judge.split("\n")[0], `判定 ${HEAD}：FAIL`);
   assert.match(judge, /\| 换位置 \| 否 \| 没改 \|/);
-  const parsed = parseComments([{ user: { id: 41898282 }, body: receipt }, { user: { id: 41898282 }, body: judge }]);
+  const parsed = parseComments([{ user: { id: 338272049 }, body: receipt }, { user: { id: 338272049 }, body: judge }]);
   assert.deepEqual([parsed.receipt?.level, parsed.receipt?.body, parsed.judge?.verdict], ["verifier-blocked", digest, "FAIL"]);
 });
 

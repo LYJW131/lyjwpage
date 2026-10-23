@@ -48,7 +48,7 @@
 
 ## 验证
 
-主线程只定验什么、判结果。PR 上的验证由 [`verify.yml`](../.github/workflows/verify.yml) 在 GitHub Action 里跑：PR 描述写「验证清单」与「lyjw 原话」，Haiku 验证员照清单验，线程判为大改动、贴了 `needs-judge` 标签的同时派 Opus 判定员对照原话判；回执按提交 SHA 记每项验到了哪一档（真页面、单测、只过类型），和判定一起由 github-actions[bot] 贴成 PR 评论，合并前 [`scripts/verify-receipt.ts`](../scripts/verify-receipt.ts) 只认这个 bot 的，并核对还盖得住当前提交。没开 PR 时的检查、轮询部署这些长输出的活交给 Haiku 子代理。做法见 [`lyjwpage-verify`](../.claude/skills/lyjwpage-verify/SKILL.md)。
+主线程只定验什么、判结果。PR 上的验证由 [`verify.yml`](../.github/workflows/verify.yml) 在 GitHub Action 里跑：PR 描述写「验证清单」与「lyjw 原话」，Haiku 验证员照清单验，线程判为大改动、贴了 `needs-judge` 标签的同时派 Opus 判定员对照原话判；回执按提交 SHA 记每项验到了哪一档（真页面、单测、只过类型），和判定一起由 lyjw131[bot] 贴成 PR 评论，合并前 [`scripts/verify-receipt.ts`](../scripts/verify-receipt.ts) 只认这个 bot 的，并核对还盖得住当前提交。没开 PR 时的检查、轮询部署这些长输出的活交给 Haiku 子代理。做法见 [`lyjwpage-verify`](../.claude/skills/lyjwpage-verify/SKILL.md)。
 
 验证以外的机械活（成批读讨论串与评审、全仓搜、照规格的改动、只等 CI 或部署结束、不做核对的纯等待）同样不留在主线程：按 [`lyjwpage-delegate`](../.claude/skills/lyjwpage-delegate/SKILL.md) 派给 Sonnet / Haiku 子代理或后台命令。
 
