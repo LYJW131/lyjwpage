@@ -87,6 +87,10 @@ test("Cloudflare 站点依赖组件故障时记录起点：首次取故障开始
   const second = await collectAgentStatus(carried, fetchOutage, Date.parse("2026-10-23T17:05:00Z"));
   assert.equal(row(second, "cloudflare").outageSince, 1);
 
+  const staleCarried = { ...second, agents: second.agents.map((agent) => (agent.id === "cloudflare" ? { ...agent, stale: true } : agent)) };
+  const afterStale = await collectAgentStatus(staleCarried, fetchOutage, Date.parse("2026-10-23T17:06:00Z"));
+  assert.equal(row(afterStale, "cloudflare").outageSince, Date.parse("2026-10-23T15:47:08Z"));
+
   const recovered = await collectAgentStatus(second, pages(), Date.parse("2026-10-23T18:00:00Z"));
   assert.equal("outageSince" in row(recovered, "cloudflare"), false);
 });

@@ -79,7 +79,7 @@ async function load(
 function withOutageSince(row: AgentStatusRow, prior: AgentStatusRow | undefined, now: number): AgentStatusRow {
   const { outageSince: fromIncident, ...rest } = row;
   if (row.indicator !== "major_outage") return rest;
-  const carried = prior?.indicator === "major_outage" ? prior.outageSince : undefined;
+  const carried = prior?.indicator === "major_outage" && !prior.stale ? prior.outageSince : undefined;
   return { ...rest, outageSince: carried ?? fromIncident ?? now };
 }
 

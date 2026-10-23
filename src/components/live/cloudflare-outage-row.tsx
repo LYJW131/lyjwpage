@@ -48,13 +48,13 @@ export function CloudflareOutageRow({ fallback }: { fallback: StatusResponse<Age
     row?.components
       .filter((component) => component.indicator === "major_outage")
       .map((component) => component.name)
-      .join(", ") || row?.incidents[0]?.title;
+      .join(", ");
 
   return (
     <NowReveal revealKey="cloudflare-outage">
       {since != null ? (
         <Card id="cloudflare-outage" className="scroll-mt-28">
-          <Outage affected={affected ?? "Services degraded"} since={since} />
+          <Outage affected={affected || "Services degraded"} since={since} />
         </Card>
       ) : null}
     </NowReveal>
