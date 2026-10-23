@@ -38,7 +38,7 @@ export function tierOf(files: string[], { trustedAuthor, judgeAsked = false }: {
   };
 }
 
-// verify-action.ts 与 verify-receipt.ts 连同它们 import 的分档、构建覆盖与预览地址都算验证员本身，贴 verifier-changed 标签的代码和查回执的合并钩子（连同它 import 的合并信息生成）也算：
+// verify-action.ts 与 verify-receipt.ts 连同它们 import 的分档、构建覆盖与预览地址都算验证员本身，贴 verifier-changed 标签的代码、查回执的合并钩子（连同它 import 的合并信息生成），以及判定员照着读的根 AGENTS.md、REVIEW.md 也算：
 // PR 改了它们，回执与标记就出自被改过的那份；lyjw 定了不堵，只标出来。
 const VERIFIER_PATHS = [
   /^\.github\/workflows\/verify\.yml$/,
@@ -54,6 +54,8 @@ const VERIFIER_PATHS = [
   /^scripts\/guard-merge-method\.ts$/,
   /^scripts\/merge-message\.ts$/,
   /^shared\/commit-authors\.ts$/,
+  /^AGENTS\.md$/,
+  /^REVIEW\.md$/,
 ];
 
 export const verifierFiles = (files: string[]) => files.filter((file) => VERIFIER_PATHS.some((re) => re.test(file)));

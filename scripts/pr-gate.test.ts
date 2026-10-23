@@ -13,6 +13,7 @@ import {
   tierOf,
   type CheckRun,
 } from "./pr-gate.ts";
+import { verifierFiles } from "./pr-gate/tier.ts";
 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
@@ -405,4 +406,9 @@ test("规则漂移：分支起点以来 main 改了规则文件时进 notes 不�
 
   const unknown = await gate({ pr: 7 }, { fetch: fakeFetch(pullRoutes()), patchId: () => null });
   assert.deepEqual([unknown.ruleDrift.files, unknown.ruleDrift.error, unknown.ready], [[], "读不到分支起点", true]);
+});
+
+test("verifierFiles：验证链本身、合并钩子及其依赖、判定员照读的根 AGENTS.md 与 REVIEW.md 都算", () => {
+  const files = ["AGENTS.md", "REVIEW.md", "scripts/merge-message.ts", "shared/commit-authors.ts", "scripts/verify-action/report.ts", "docs/explainer/AGENTS.md", "src/lib/x.ts"];
+  assert.deepEqual(verifierFiles(files), ["AGENTS.md", "REVIEW.md", "scripts/merge-message.ts", "shared/commit-authors.ts", "scripts/verify-action/report.ts"]);
 });

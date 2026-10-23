@@ -127,6 +127,7 @@ async function prompt(gh: Client, pr: number, role: string, preview: string, out
     setOutput("prompt", judgePrompt({ ...common, words, body: pull.body ?? "" }));
     setOutput("schema", JSON.stringify(JUDGE_SCHEMA));
   }
+  setOutput("digest", await bodyDigest(pull.body));
 }
 
 function parsed<T>(raw: string | undefined): T | null {
@@ -163,7 +164,13 @@ async function publish(
   const digest = await bodyDigest(pull.body);
   const stamp = (parts: { level?: string; verdict?: string }) => ({ ...signStamp({ ref: opts.head, ...parts }), body: digest });
   const comments: string[] = [];
-  if (opts.verifyResult && opts.verifyResult !== "skipped") {
+  // 描述在验证员或判定员读过之后又改了：结果对不上新描述，不签；改描述触发的新运行会重做
+  const readOld = (read: string | undefined, role: string) => {
+    if (!read || read === digest) return false;
+    console.log(`${role}读的是改之前的 PR 描述，这次不发`);
+    return true;
+  };
+  if (opts.verifyResult && opts.verifyResult !== "skipped" && !readOld(process.env.VERIFY_DIGEST, "验证员")) {
     const report = opts.verifyResult === "success" ? parsed<VerifierReport>(process.env.VERIFY_OUTPUT) : null;
     if (report && Array.isArray(report.rows)) {
       const shots = shotLinks(opts.shotsDir, opts.shotsUrl);
@@ -174,7 +181,7 @@ async function publish(
       comments.push(blockedComment({ stamp: stamp({ level: "verifier-blocked" }), reason, runUrl: opts.runUrl }));
     }
   }
-  if (opts.judgeResult && opts.judgeResult !== "skipped") {
+  if (opts.judgeResult && opts.judgeResult !== "skipped" && !readOld(process.env.JUDGE_DIGEST, "判定员")) {
     const report = opts.judgeResult === "success" ? parsed<JudgeReport>(process.env.JUDGE_OUTPUT) : null;
     if (report && (report.verdict === "PASS" || report.verdict === "FAIL")) {
       const full = { ...report, asks: report.asks ?? [], regressions: report.regressions ?? [], fixes: report.fixes ?? [] };
