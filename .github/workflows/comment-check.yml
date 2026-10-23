@@ -87,6 +87,8 @@ jobs:
           client-id: Iv23liSmKTDKh0bxIfzB
           private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
           permission-issues: write
+          # 评论发在 PR 上，App token 光有 issues 写权限会 403
+          permission-pull-requests: write
       - name: Comment as lyjw131[bot]
         if: steps.app.outcome == 'success'
         run: node scripts/comment-check.ts --post "$RUNNER_TEMP/result/comment-check.json" --pr "$PR"
