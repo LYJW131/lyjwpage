@@ -5,7 +5,6 @@ import CloudflareIcon from "@lobehub/icons/es/Cloudflare/components/Color";
 import { elapsed, useNow } from "@/components/live/focus-now-card";
 import { NowReveal } from "@/components/live/now-reveal";
 import { Card } from "@/components/ui/card";
-import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
@@ -20,7 +19,6 @@ function Outage({ affected, since }: { affected: string; since: number }) {
     <div className="flex flex-col items-center gap-1 p-4 text-center md:py-3 lg:px-5">
       <div className="flex max-w-full items-center gap-2 text-base font-semibold leading-tight sm:text-lg">
         <CloudflareIcon size={20} className="size-6 shrink-0" />
-        <StatusDot tone="alert" />
         <span className="truncate">
           Cloudflare <span className="text-signal-red">Outage</span>
         </span>
