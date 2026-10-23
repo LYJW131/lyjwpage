@@ -222,6 +222,8 @@ test("注释删到不再变：嵌套拼出的注释删净，代码示例里的�
   assert.deepEqual(parseBody(body).checklist.map((item) => item.text), ["看得见", "示例 `<!--` 没闭合", "照样算", "围栏后面 真没闭合", "也算"]);
   assert.notEqual(bodyDigest(body), bodyDigest(body.replace("照样算", "改过了")));
   assert.notEqual(bodyDigest(body), bodyDigest(body.replace("也算", "改过了")));
+  const hidden = "说明 \\`\n<!--\n## 验证清单\n- V1：假的检查\n-->\n说明 \\`\n## 验证清单\n- V1：真正的检查";
+  assert.deepEqual(parseBody(hidden).checklist, [{ id: "V1", text: "真正的检查" }]);
 });
 
 test("表格单元只把竖线前的反斜杠加倍再转义竖线，别处的反斜杠原样", () => {

@@ -11,8 +11,8 @@ const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 // Devin 会在描述末尾补徽章块，不算描述改动
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
 
-// 从左往右谁先出现谁算：反引号包住的是代码示例，原样保留（GitHub 也照字面显示）；代码外的注释才删
-const CODE = "(`+)[\\s\\S]*?\\1";
+// 从左往右谁先出现谁算：反引号包住的是代码示例，原样保留（GitHub 也照字面显示）；代码外的注释才删。\` 是字面反引号，不开代码
+const CODE = "(?<!\\\\)(`+)[\\s\\S]*?\\1";
 const COMMENT = new RegExp(`${CODE}|<!--[\\s\\S]*?-->`, "g");
 const OPENER = new RegExp(`${CODE}|<!--`, "g");
 const keepCode = (match: string, ticks?: string) => (ticks ? match : "");
