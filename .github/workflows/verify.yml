@@ -72,10 +72,12 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # 下载偶尔卡死不报错（一次挂了 40 分钟），每次限 5 分钟、重试一次
       - name: Install Playwright browsers
+        timeout-minutes: 12
         run: |
           npm install -g "playwright@$PLAYWRIGHT_VERSION"
-          playwright install --with-deps chromium webkit
+          timeout 300 playwright install --with-deps chromium webkit || timeout 300 playwright install --with-deps chromium webkit
       - id: preview
         if: needs.plan.outputs.ui == 'true'
         run: node scripts/verify-action.ts wait-preview --pr "$PR" --timeout-min 20
