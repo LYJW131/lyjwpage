@@ -251,6 +251,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <h1 className="sr-only">{site.name}</h1>
           <div className="mx-auto my-3.5 w-[calc(100%-2rem)] max-w-5xl sm:my-4">
             <Section id="live" className="p-0 sm:p-0">
+              <CardBoundary label="Cloudflare Outage" silent paths={READS.agentStatus}>
+                <CloudflareOutageRow fallback={loaderData.agentStatus} />
+              </CardBoundary>
               <CardBoundary label="Update" silent paths={[APP_VERSION_PATH]}>
                 <AppVersionCard />
               </CardBoundary>
@@ -277,9 +280,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </CardBoundary>
               <CardBoundary label="Focus" silent paths={READS.focusNow}>
                 <FocusNowCard nowFallback={loaderData.focusNow} />
-              </CardBoundary>
-              <CardBoundary label="Cloudflare Outage" silent paths={READS.agentStatus}>
-                <CloudflareOutageRow fallback={loaderData.agentStatus} />
               </CardBoundary>
               <CardBoundary label="Now Playing" silent paths={READS.questNow}>
                 <QuestNowCard nowFallback={loaderData.questNow} />
