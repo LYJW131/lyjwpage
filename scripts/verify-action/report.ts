@@ -1,4 +1,4 @@
-import { LEVELS, PASSING_RANK } from "../verify-receipt.ts";
+import { digestLine, LEVELS, PASSING_RANK } from "../verify-receipt.ts";
 import type { ChecklistItem } from "./body.ts";
 
 export const RESULTS = ["PASS", "FAIL", "SKIPPED"] as const;
@@ -12,6 +12,7 @@ export const VERIFIER_SCHEMA = {
     level: { type: "string", enum: LEVELS },
     rows: {
       type: "array",
+      minItems: 1,
       items: {
         type: "object",
         required: ["id", "check", "result", "evidence"],
@@ -19,7 +20,7 @@ export const VERIFIER_SCHEMA = {
           id: { type: "string" },
           check: { type: "string" },
           result: { type: "string", enum: RESULTS },
-          evidence: { type: "string" },
+          evidence: { type: "string", minLength: 1 },
         },
       },
     },
@@ -56,11 +57,21 @@ export type JudgeReport = {
   fixes: string[];
 };
 
-// 验证员自报的等级不直接用：清单里每一项都要有 PASS 行，有 FAIL 就是 verifier-failed，漏项或 SKIPPED 就是 verifier-blocked。
+// 验证员自报的等级不直接用：清单里每一项都要有 PASS 行，有 FAIL 就是 verifier-failed，漏项、SKIPPED、没有检查行或 PASS 没写证据就是 verifier-blocked。
 export function reconcile(checklist: ChecklistItem[], report: VerifierReport) {
   const problems: string[] = [];
   let failed = report.rows.some((row) => row.result === "FAIL");
   let blocked = false;
+  if (report.rows.length === 0) {
+    blocked = true;
+    problems.push("没有任何检查行");
+  }
+  for (const row of report.rows) {
+    if (row.result === "PASS" && !row.evidence?.trim()) {
+      blocked = true;
+      problems.push(`${row.id} 是 PASS 但没写证据`);
+    }
+  }
   for (const item of checklist) {
     const row = report.rows.find((candidate) => candidate.id === item.id);
     if (!row) {
@@ -127,6 +138,12 @@ export function judgeComment({ firstLine, report, runUrl }: { firstLine: string;
   if (report.fixes.length > 0) lines.push("", `要修：${report.fixes.map((item) => `\n- ${item}`).join("")}`);
   lines.push("", `判定员：${report.model}，只读 lyjw 原话与 diff，没写这段代码，没看验证员的证据（[Action 运行](${runUrl})）`);
   return lines.join("\n");
+}
+
+// 摘要放第二行：第一行留给 verify-receipt.ts 认的回执行或判定行。
+export function stampDigest(comment: string, digest: string) {
+  const [first, ...rest] = comment.split("\n");
+  return [first, digestLine(digest), ...rest].join("\n");
 }
 
 export function blockedComment({ firstLine, reason, runUrl }: { firstLine: string; reason: string; runUrl: string }) {

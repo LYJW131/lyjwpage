@@ -35,6 +35,7 @@ jobs:
           # 默认隐藏模型过程，看不出审查有没有真派子代理、读 diff
           show_full_output: true
           prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # 只放行发评论工具时，插件读 PR 与派子代理的调用被拒，审查会不读 diff 就回 No issues found
-          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Glob,Grep,Task,Agent"'
+          # 只放行发评论工具时，插件读 PR 与派子代理的调用被拒，审查会不读 diff 就回 No issues found。
+          # 默认的 Sonnet 当编排者时不照插件派子代理，自己读一两个文件就下结论；编排交给 Opus。
+          claude_args: '--model opus --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Glob,Grep,Task,Agent"'
 

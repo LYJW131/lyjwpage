@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { bodyDigest } from "./verify-action/body.ts";
 
 const REPO = "LYJW131/lyjwpage";
 // lyjw 的两个账号（LYJW131、云端会话用的 An0nCh1hayaa），按数字 id 认而不按 login：login 改名后可被别人注册。
@@ -16,6 +17,8 @@ export const PASSING_RANK: Record<string, number> = { "live-ui-verified": 3, "un
 
 const RECEIPT_LINE = new RegExp(`^验证回执 ([0-9a-f]{40})[：:]\\s*(${LEVELS.join("|")})\\s*$`);
 const JUDGE_LINE = /^判定 ([0-9a-f]{40})[：:]\s*(PASS|FAIL)\s*$/;
+const BODY_LINE = /^<!-- 描述摘要 ([0-9a-f]{64}) -->\s*$/m;
+export const digestLine = (digest: string) => `<!-- 描述摘要 ${digest} -->`;
 
 const VERDICTS = ["PASS", "FAIL"];
 
@@ -41,8 +44,8 @@ check 的选项：
 比补丁要用本地 git：先 git fetch origin main。`;
 
 type Comment = { user?: { id?: number } | null; body?: string | null; html_url?: string | null };
-type Receipt = { sha: string; level: string; url?: string | null };
-type Judge = { sha: string; verdict: string; url?: string | null };
+type Receipt = { sha: string; level: string; body?: string | null; url?: string | null };
+type Judge = { sha: string; verdict: string; body?: string | null; url?: string | null };
 type Coverage = "exact" | "carried" | "stale";
 type PatchId = (sha: string) => string | null;
 
@@ -79,11 +82,13 @@ export function parseComments(comments: Comment[]) {
   let judge: Judge | null = null;
   for (const comment of comments) {
     if (!RECEIPT_SIGNER_IDS.has(comment.user?.id ?? 0)) continue;
-    const first = (comment.body ?? "").split("\n", 1)[0].trim();
+    const text = comment.body ?? "";
+    const first = text.split("\n", 1)[0].trim();
+    const body = BODY_LINE.exec(text)?.[1] ?? null;
     const r = RECEIPT_LINE.exec(first);
-    if (r) receipt = { sha: r[1], level: r[2], url: comment.html_url ?? null };
+    if (r) receipt = { sha: r[1], level: r[2], body, url: comment.html_url ?? null };
     const j = JUDGE_LINE.exec(first);
-    if (j) judge = { sha: j[1], verdict: j[2], url: comment.html_url ?? null };
+    if (j) judge = { sha: j[1], verdict: j[2], body, url: comment.html_url ?? null };
   }
   return { receipt, judge };
 }
@@ -111,6 +116,7 @@ export function evaluate({
   need,
   wantJudge,
   patchId,
+  body,
 }: {
   head: string;
   receipt: Receipt | null;
@@ -118,6 +124,7 @@ export function evaluate({
   need: string;
   wantJudge: boolean;
   patchId: PatchId;
+  body?: string;
 }): Evaluation {
   const result: Evaluation = { head, receipt: null, judge: null, pass: false, next: null };
   const problems: string[] = [];
@@ -131,6 +138,7 @@ export function evaluate({
     if (rank === 0) problems.push(`回执等级是 ${receipt.level}：不是通过，修好后推送，或环境恢复后重跑 Verify Action`);
     else if (rank < PASSING_RANK[need]) problems.push(`回执等级 ${receipt.level} 低于要求的 ${need}：在 PR 描述的验证清单里补上能验到 ${need} 的项，重跑 Verify Action`);
     if (receiptCoverage === "stale") problems.push(`回执按的 ${receipt.sha.slice(0, 7)} 和当前 head 的补丁不同：等 Verify Action 按新 head 跑完`);
+    if (body !== undefined && receipt.body !== body) problems.push("回执之后 PR 描述的验证清单或 lyjw 原话改过（或回执没带描述摘要）：等 Verify Action 按新描述跑完");
   }
 
   if (wantJudge) {
@@ -141,6 +149,7 @@ export function evaluate({
       result.judge = { ...judge, coverage: judgeCoverage };
       if (judge.verdict !== "PASS") problems.push("判定是 FAIL：修完判定员列的项再推送，Action 会重判");
       if (judgeCoverage === "stale") problems.push(`判定按的 ${judge.sha.slice(0, 7)} 和当前 head 的补丁不同：等 Verify Action 按新 head 重判`);
+      if (body !== undefined && judge.body !== body) problems.push("判定之后 PR 描述的验证清单或 lyjw 原话改过（或判定没带描述摘要）：等 Verify Action 按新描述重判");
     }
   }
 
@@ -190,14 +199,15 @@ export async function check(
 ) {
   const fetchImpl: FetchLike = deps.fetch ?? fetch;
   const patchId = deps.patchId ?? gitPatchId;
-  const head = ((await github(`pulls/${pr}`, fetchImpl)) as { head: { sha: string } }).head.sha;
+  const pull = (await github(`pulls/${pr}`, fetchImpl)) as { head: { sha: string }; body?: string | null };
+  const head = pull.head.sha;
   const comments: Comment[] = [];
   for (let page = 1; ; page += 1) {
     const batch = (await github(`issues/${pr}/comments?per_page=100&page=${page}`, fetchImpl)) as Comment[];
     comments.push(...batch);
     if (batch.length < 100) break;
   }
-  return { pr, ...evaluate({ head, ...parseComments(comments), need, wantJudge, patchId }) };
+  return { pr, ...evaluate({ head, ...parseComments(comments), need, wantJudge, patchId, body: await bodyDigest(pull.body) }) };
 }
 
 const USAGE = "用法：check --pr <号> [--need 等级] [--judge]，或 sign --sha <提交> (--level 等级 | --verdict PASS|FAIL)；见 --help";

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
-import { check, coverage, evaluate, parseComments, patchDigest, signLine } from "./verify-receipt.ts";
+import { bodyDigest } from "./verify-action/body.ts";
+import { check, coverage, digestLine, evaluate, parseComments, patchDigest, signLine } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
@@ -66,18 +67,23 @@ test("--judge 时还要 PASS 的判定盖住 head", () => {
   assert.equal(evaluate({ ...base, judge: { sha: HEAD, verdict: "PASS" } }).pass, true);
 });
 
-test("check 读 PR head 与分页评论", async () => {
-  const fetch = async (url: string) => {
-    if (url.endsWith("/pulls/7")) return { ok: true, json: async () => ({ head: { sha: HEAD } }) };
+test("check 读 PR head、描述与分页评论，描述在回执之后改过就不算", async () => {
+  const signed = "## 验证清单\n- V1：单测绿";
+  const fetchWith = (prBody: string) => async (url: string) => {
+    if (url.endsWith("/pulls/7")) return { ok: true, json: async () => ({ head: { sha: HEAD }, body: prBody }) };
     const page = Number(new URL(url).searchParams.get("page"));
     const body = page === 1
       ? Array.from({ length: 100 }, () => ({ body: "普通评论" }))
-      : [{ user: owner, body: `验证回执 ${HEAD}：unit-test-verified` }];
+      : [{ user: owner, body: `验证回执 ${HEAD}：unit-test-verified\n${digestLine(await bodyDigest(signed))}` }];
     return { ok: true, json: async () => body };
   };
-  const result = await check({ pr: 7, need: "unit-test-verified", wantJudge: false }, { fetch, patchId: patchIds({}) });
+  const args = { pr: 7, need: "unit-test-verified", wantJudge: false };
+  const result = await check(args, { fetch: fetchWith(`${signed}\n\n说明改了不算`), patchId: patchIds({}) });
   assert.equal(result.pass, true);
   assert.equal(result.receipt?.coverage, "exact");
+  const edited = await check(args, { fetch: fetchWith("## 验证清单\n- V1：单测绿\n- V2：加了一项"), patchId: patchIds({}) });
+  assert.equal(edited.pass, false);
+  assert.match(edited.next ?? "", /描述的验证清单或 lyjw 原话改过/);
 });
 
 test("patchDigest 只忽略行号，空白和二进制内容变了都算补丁变了", () => {

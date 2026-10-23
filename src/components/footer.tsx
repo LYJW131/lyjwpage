@@ -8,7 +8,7 @@ const EXTRA_HREF = process.env.FOOTER_EXTRA_HREF?.trim() ?? "";
 
 export function Footer() {
   return (
-    <footer className="mx-auto mb-6 w-[calc(100%-2rem)] max-w-5xl">
+    <footer data-verify-probe="1" className="mx-auto mb-6 w-[calc(100%-2rem)] max-w-5xl">
       <div
         className={cn(
           "label-mono flex flex-wrap items-center justify-center gap-x-2 gap-y-2 border-t border-line px-4 pt-4 text-muted-foreground [&>*+*]:before:mr-2 [&>*+*]:before:text-muted-foreground/50 [&>*+*]:before:content-['·']",

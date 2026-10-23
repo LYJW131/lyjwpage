@@ -18,7 +18,15 @@ export { CODEX_MAX_ROUNDS, reviewerSummary, type Reviewer } from "./pr-gate/revi
 export { buildThreads, severityOf, type Level } from "./pr-gate/threads.ts";
 export { tierOf } from "./pr-gate/tier.ts";
 
-const VERIFIER_PATHS = [/^\.github\/workflows\/verify\.yml$/, /^scripts\/verify-action(?:\.ts|\/)/, /^scripts\/verify-receipt\.ts$/];
+// verify-action.ts 与 verify-receipt.ts 连同它们 import 的分档、构建覆盖与预览地址都算验证员本身
+const VERIFIER_PATHS = [
+  /^\.github\/workflows\/verify\.yml$/,
+  /^scripts\/verify-action(?:\.ts|\/)/,
+  /^scripts\/verify-receipt\.ts$/,
+  /^scripts\/pr-gate(?:\.ts|\/)/,
+  /^scripts\/preview-worker-name\.ts$/,
+  /^scripts\/build-watch-paths\.ts$/,
+];
 
 const HELP = `用法：NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr <号> [--need <等级|none>] [--judge | --no-judge]
 

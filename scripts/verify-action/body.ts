@@ -1,3 +1,5 @@
+import { sha256Hex } from "../../shared/sha256.ts";
+
 export type ChecklistItem = { id: string; text: string };
 
 // 契约：PR 描述里这两节的标题与条目格式，线程写 PR 时照 lyjwpage-verify「验证清单」写；改格式要同步那一节。
@@ -23,4 +25,9 @@ export function parseBody(body: string | null | undefined) {
   }
   const words = section(lines, WORDS_HEADING)?.join("\n").trim() || null;
   return { checklist, words };
+}
+
+// 回执与判定只对签发时的清单与原话算数：publish 把这个摘要写进评论，verify-receipt.ts 拿当前描述重算比对。
+export function bodyDigest(body: string | null | undefined) {
+  return sha256Hex(JSON.stringify(parseBody(body)));
 }

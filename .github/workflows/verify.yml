@@ -12,8 +12,9 @@ on:
 
 permissions: {}
 
+# 只改标题或指派人的 edited 进另一个组：组在 job 的 if 之前就生效，同组会顶掉正在跑的验证
 concurrency:
-  group: verify-${{ github.event.pull_request.number || inputs.pr }}
+  group: verify-${{ github.event.pull_request.number || inputs.pr }}${{ github.event.action == 'edited' && github.event.changes.body == null && '-noop' || '' }}
   cancel-in-progress: true
 
 env:
@@ -195,10 +196,12 @@ jobs:
           done
           git add "$dir"
           git commit -qm "verify shots $dir"
+          pushed=
           for attempt in 1 2 3; do
-            git push -q origin HEAD:verify-shots && break
+            git push -q origin HEAD:verify-shots && { pushed=1; break; }
             git fetch -q --depth 1 origin verify-shots && git rebase -q FETCH_HEAD
           done
+          [ -n "$pushed" ] || { echo "::warning::截图没推上 verify-shots，回执不嵌图"; exit 0; }
           echo "dir=$repo/$dir" >> "$GITHUB_OUTPUT"
           echo "url=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/verify-shots/$dir" >> "$GITHUB_OUTPUT"
         env:

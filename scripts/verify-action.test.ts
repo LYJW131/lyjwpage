@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { tierOf } from "./pr-gate/tier.ts";
-import { judgeComment, parseBody, planOf, receiptComment, reconcile, shotLinks } from "./verify-action.ts";
+import { judgeComment, main, parseBody, planOf, receiptComment, reconcile, shotLinks, stampDigest } from "./verify-action.ts";
+import { digestLine, parseComments } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
 
@@ -44,6 +45,10 @@ test("reconcile：清单每项都要有 PASS 行，FAIL 记 verifier-failed，�
   assert.deepEqual([missing.level, missing.problems], ["verifier-blocked", ["V2 没有对应的检查行"]]);
   assert.equal(reconcile(checklist, report([row("V1", "PASS"), row("V2", "SKIPPED")])).level, "verifier-blocked");
   assert.equal(reconcile([], report([], "made-up-level")).level, "verifier-blocked");
+  const empty = reconcile([], report([]));
+  assert.deepEqual([empty.level, empty.problems], ["verifier-blocked", ["没有任何检查行"]]);
+  const bare = reconcile(checklist, report([row("V1", "PASS"), { ...row("V2", "PASS"), evidence: " " }]));
+  assert.deepEqual([bare.level, bare.problems], ["verifier-blocked", ["V2 是 PASS 但没写证据"]]);
   assert.equal(reconcile([], report([], "verifier-failed")).level, "verifier-failed");
 });
 
@@ -98,4 +103,18 @@ test("shotLinks 只收安全文件名的 PNG，按名排序并转义", () => {
   ]);
   assert.deepEqual(shotLinks("", "https://raw.test/d"), []);
   fs.rmSync(dir, { recursive: true });
+});
+
+test("stampDigest 把描述摘要放第二行，parseComments 两样都认得", () => {
+  const digest = "b".repeat(64);
+  const body = stampDigest(`判定 ${HEAD}：PASS\n\n表格`, digest);
+  assert.deepEqual(body.split("\n").slice(0, 2), [`判定 ${HEAD}：PASS`, digestLine(digest)]);
+  const { judge } = parseComments([{ user: { id: 41898282 }, body }]);
+  assert.deepEqual([judge?.verdict, judge?.body], ["PASS", digest]);
+});
+
+test("参数错抛成用法错误，主入口据此退出 2", async () => {
+  for (const argv of [["plan"], ["plan", "--pr", "7", "--nope"], ["prompt", "--pr", "7", "--role", "x"], ["publish", "--pr", "7", "--head", "abc"], ["bogus", "--pr", "7"]]) {
+    await assert.rejects(main(argv, async () => assert.fail("不该读 GitHub")), (error: Error) => error.constructor.name === "UsageError", argv.join(" "));
+  }
 });

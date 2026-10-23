@@ -10,7 +10,7 @@ import { changedPaths, client, isTrustedAuthor, type CheckRun, type Client, type
 import { tierOf } from "./pr-gate/tier.ts";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
 import { signLine } from "./verify-receipt.ts";
-import { parseBody } from "./verify-action/body.ts";
+import { bodyDigest, parseBody } from "./verify-action/body.ts";
 import { judgePrompt, verifierPrompt } from "./verify-action/prompts.ts";
 import {
   blockedComment,
@@ -18,25 +18,29 @@ import {
   judgeComment,
   receiptComment,
   reconcile,
+  stampDigest,
   VERIFIER_SCHEMA,
   type JudgeReport,
   type VerifierReport,
 } from "./verify-action/report.ts";
 
 export { parseBody } from "./verify-action/body.ts";
-export { reconcile, receiptComment, judgeComment } from "./verify-action/report.ts";
+export { reconcile, receiptComment, judgeComment, stampDigest } from "./verify-action/report.ts";
 
 const HELP = `用法：node scripts/verify-action.ts <子命令> --pr <号> [选项]
 给 .github/workflows/verify.yml 用：验证员与判定员在 GitHub Action 里跑，回执与判定由 github-actions[bot] 发成 PR 评论。
 读 GitHub 用 GITHUB_TOKEN；在 Action 外跑时云端要加 NODE_USE_ENV_PROXY=1。输出写进 GITHUB_OUTPUT（没有就打印）。
+退出码 0 成功、1 读写 GitHub 出错、2 参数错。
 
   plan                         分档：need（回执至少的等级，空 = 不用验）、judge、ui、head、branch
   wait-preview [--timeout-min N]  等站点分支预览部署到 head（默认 20 分钟），输出 preview 地址；没就绪输出空
   prompt --role verifier|judge [--preview URL] [--out-dir DIR]
                                输出 prompt 与 schema（结构化结果的 JSON Schema）
   publish --head SHA --run-url URL [--verify-result R] [--judge-result R] [--shots-dir DIR] [--shots-url URL]
-                               读环境变量 VERIFY_OUTPUT / JUDGE_OUTPUT（两个 job 的结构化结果），对照清单定回执等级，发回执与判定评论；
+                               读环境变量 VERIFY_OUTPUT / JUDGE_OUTPUT（两个 job 的结构化结果），对照清单定回执等级，发回执与判定评论（第二行是 PR 描述的摘要）；
                                head 已不是 PR 当前 head 时什么都不发`;
+
+class UsageError extends Error {}
 
 type FullPull = Pull & { head: { sha: string; ref: string }; body?: string | null; draft?: boolean };
 
@@ -156,6 +160,7 @@ async function publish(
     return;
   }
   const { checklist } = parseBody(pull.body);
+  const digest = await bodyDigest(pull.body);
   const comments: string[] = [];
   if (opts.verifyResult && opts.verifyResult !== "skipped") {
     const report = opts.verifyResult === "success" ? parsed<VerifierReport>(process.env.VERIFY_OUTPUT) : null;
@@ -177,7 +182,8 @@ async function publish(
       comments.push(`判定员没跑成（判定 job 的结论是 ${opts.judgeResult}），这个 head 没有判定。[Action 运行](${opts.runUrl})`);
     }
   }
-  for (const body of comments) {
+  for (const comment of comments) {
+    const body = stampDigest(comment, digest);
     await gh.post(`issues/${pr}/comments`, { body });
     console.log(body.split("\n", 1)[0]);
   }
@@ -198,23 +204,28 @@ const OPTIONS = {
   help: { type: "boolean", default: false },
 } as const;
 
-async function main(argv: string[], fetchImpl: FetchLike = fetch) {
+export async function main(argv: string[], fetchImpl: FetchLike = fetch) {
   const [command, ...args] = argv;
-  const { values } = parseArgs({ args, strict: true, options: OPTIONS });
+  let values;
+  try {
+    ({ values } = parseArgs({ args, strict: true, options: OPTIONS }));
+  } catch (error) {
+    throw new UsageError((error as Error).message);
+  }
   if (values.help || command === "--help" || !command) {
     console.log(HELP);
     return 0;
   }
   const pr = Number(values.pr);
-  if (!Number.isInteger(pr) || pr <= 0) throw new Error("缺 --pr");
+  if (!Number.isInteger(pr) || pr <= 0) throw new UsageError("缺 --pr");
   const gh = client(fetchImpl);
   if (command === "plan") await plan(gh, pr);
   else if (command === "wait-preview") await waitPreview(gh, pr, Number(values["timeout-min"]) || 20);
   else if (command === "prompt") {
-    if (!["verifier", "judge"].includes(values.role)) throw new Error("--role 只收 verifier、judge");
+    if (!["verifier", "judge"].includes(values.role)) throw new UsageError("--role 只收 verifier、judge");
     await prompt(gh, pr, values.role, values.preview, values["out-dir"] || path.join(process.env.RUNNER_TEMP ?? "/tmp", "verify-out"));
   } else if (command === "publish") {
-    if (!/^[0-9a-f]{40}$/.test(values.head)) throw new Error("--head 要完整 40 位 SHA");
+    if (!/^[0-9a-f]{40}$/.test(values.head)) throw new UsageError("--head 要完整 40 位 SHA");
     await publish(gh, pr, {
       head: values.head,
       runUrl: values["run-url"],
@@ -223,7 +234,7 @@ async function main(argv: string[], fetchImpl: FetchLike = fetch) {
       shotsDir: values["shots-dir"],
       shotsUrl: values["shots-url"],
     });
-  } else throw new Error(`不认识的子命令 ${command}`);
+  } else throw new UsageError(`不认识的子命令 ${command}`);
   return 0;
 }
 
@@ -231,7 +242,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
     process.exitCode = await main(process.argv.slice(2));
   } catch (error) {
-    console.error(`${(error as Error).message}\n${HELP}`);
-    process.exitCode = 1;
+    const usage = error instanceof UsageError;
+    console.error(usage ? `${error.message}\n${HELP}` : (error as Error).message);
+    process.exitCode = usage ? 2 : 1;
   }
 }
