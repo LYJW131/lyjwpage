@@ -12,3 +12,9 @@ lyjw (2026-10-13 13:13): "有ui/ux变化的改动进main,只要不是明确要�
 **Why:** lyjw judges UI by eye; agent-picked spacing drifted (header label 12px vs body 20px, 10px text, off-scale half steps) and recent cards felt off.
 
 **How to apply:** before any site UI work read DESIGN.md and use the lyjwpage-ui-design skill. A PR with any UI/UX change waits for lyjw's explicit OK after screenshots, even when CI is green; this overrides [[ui-prs-merge-without-bot-review]] and [[push-to-merge-authorizes-merge]] for UI. Docs-only PRs (including DESIGN.md text) still merge on green CI. Spec-violation fixes from the DESIGN.md audit are follow-up PRs that need lyjw's go.
+
+Asking and exceptions:
+- Cloud review asks wait until the branch preview (`<branch>.preview.lyjw.dev`) has deployed, then ping lyjw with the link (2026-10-21).
+- Ask for the UI OK with a decision card that has an "OK / 合并" option, not by asking lyjw to type 同意 (lyjw 2026-10-23 17:34 SGT: usually it is OK; lyjw types only when something needs changing).
+- Clear bug fixes and small changes merge without asking, UI included (2026-10-20). "Clear fix" = behavior broken; a display inconsistency is not one: check `git log -S` for an intentional choice first (HUMAN.md #495).
+- Contrast fixes change oklch lightness only: [[ink-tokens-keep-chroma]]. Subtle tweaks get before/after overlays: [[ui-before-after-reference-lines]].
