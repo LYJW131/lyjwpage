@@ -1,4 +1,4 @@
-import { BUILD_REPO, branchForRun, PLAN_LABELS, type BuildRun } from "@shared/build-routine";
+import { BUILD_REPO, branchForRun, type BuildRun } from "@shared/build-routine";
 import type { StoredRun } from "./coordinator";
 import { GithubRequestError, validSha, type GithubBuildApi } from "./github-api";
 
@@ -20,14 +20,13 @@ export function planPath(run: StoredRun): string { return `builds/${run.state.ru
 export function assertBuildIdentity(run: StoredRun): void {
   if (!/^[a-f0-9]{32}$/.test(run.state.runId) || run.state.branch !== branchForRun(run.state.runId) || !validSha(run.baseSha)) throw new BuildBlockedError("The build branch identity is invalid.");
 }
-export function confirmedPullRequest(pr: GithubPullRequest, run: BuildRun, allowedHeads?: readonly string[], allowLegacyMarker = false): NonNullable<BuildRun["pr"]> {
+export function confirmedPullRequest(pr: GithubPullRequest, run: BuildRun, allowedHeads?: readonly string[]): NonNullable<BuildRun["pr"]> {
   const marker = pr.body?.includes(buildMarker(run));
-  const legacy = !marker && allowLegacyMarker && Object.values(PLAN_LABELS).some((labels) => pr.body?.includes(labels.buildRun(run.runId)));
   if (!Number.isSafeInteger(pr.number) || pr.number < 1 || pr.html_url !== `https://github.com/${BUILD_REPO}/pull/${pr.number}` || !validSha(pr.head?.sha)
     || pr.head.ref !== run.branch || pr.head.repo?.full_name !== BUILD_REPO || pr.base?.ref !== "main" || pr.base.repo?.full_name !== BUILD_REPO
     || pr.user?.id !== 338272049 || pr.user.login !== BUILD_COMMIT_IDENTITY.name || pr.user.type !== "Bot"
-    || !marker && !legacy || run.pr && pr.number !== run.pr.number || allowedHeads && !allowedHeads.includes(pr.head.sha)) throw new BuildBlockedError("The pull request does not match this build.");
-  return { number: pr.number, url: pr.html_url, headSha: pr.head.sha, ...(!legacy && { draft: pr.draft }) };
+    || !marker || run.pr && pr.number !== run.pr.number || allowedHeads && !allowedHeads.includes(pr.head.sha)) throw new BuildBlockedError("The pull request does not match this build.");
+  return { number: pr.number, url: pr.html_url, headSha: pr.head.sha, draft: pr.draft };
 }
 export async function branchHead(api: GithubBuildApi, branch: string): Promise<string | null> {
   try {
