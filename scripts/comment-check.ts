@@ -48,9 +48,8 @@ const CRITERIA = {
 export type Found = { file: string; line: number; endLine: number; comment: string; code: string };
 type Answer = { type: string; noul?: number };
 
-function git(args: string[], { allowFail = false } = {}) {
+function git(args: string[]) {
   const result = spawnSync("git", args, { encoding: "utf8", maxBuffer: 1 << 28 });
-  if (result.status !== 0 && allowFail) return "";
   if (result.status !== 0) throw new Error(`git ${args.join(" ")} 失败：${result.stderr.trim()}`);
   return result.stdout;
 }
@@ -73,6 +72,16 @@ export function addedLines(diff: string) {
     }
   }
   return added;
+}
+
+export function basePaths(diff: string) {
+  const paths = new Map<string, string>();
+  let from: string | null = null;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("--- ")) from = line === "--- /dev/null" ? null : line.slice(4).replace(/^a\//, "");
+    else if (line.startsWith("+++ ") && from && line !== "+++ /dev/null") paths.set(line.slice(4).replace(/^b\//, ""), from);
+  }
+  return paths;
 }
 
 export function findComments(ts: typeof TS, file: string, text: string, added: Set<number>): Found[] {
@@ -114,9 +123,11 @@ export function collect(ts: typeof TS, base: string, head: string) {
   const from = git(["merge-base", base, head]).trim();
   const diff = git(["diff", "-U0", "--no-color", "--diff-filter=AMR", from, head]);
   const found: Found[] = [];
+  const bases = basePaths(diff);
   for (const [file, added] of addedLines(diff)) {
     if (SKIP.some((re) => re.test(file)) || !TS_EXTENSIONS.has(path.extname(file).toLowerCase())) continue;
-    const before = git(["show", `${from}:${file}`], { allowFail: true });
+    const base = bases.get(file);
+    const before = base ? git(["show", `${from}:${base}`]) : "";
     const after = git(["show", `${head}:${file}`]);
     const every = (text: string) => findComments(ts, file, text, new Set(text.split("\n").map((_, i) => i + 1))).map((item) => item.comment.trim());
     // 只改了同一行代码时 diff 也把原样的尾注释算进新增行：同一段文字在 head 里比基准多出几处，才问几处

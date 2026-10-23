@@ -41,6 +41,11 @@ async function main(argv: string[]) {
     const answers = await Promise.all(buildRequests(found).map((body) => ask(body)));
     const p: number[] = [];
     for (const batch of answers) for (const [key, answer] of Object.entries(batch)) if (typeof answer.noul === "number") p[Number(key.slice(1))] = answer.noul;
+    const missing = cases.length - p.filter((value) => typeof value === "number").length;
+    if (missing > 0) {
+      console.error(`第 ${run} 次 Jev 少答了 ${missing} 条，不算指标`);
+      return 1;
+    }
     console.log(`\n第 ${run} 次：${cases.length} 条，该删 ${cases.filter((item) => item.delete).length}`);
     for (const row of THRESHOLDS.map((t) => score(cases, p, t))) console.log(`  ≥${row.threshold}  精确率 ${row.precision.toFixed(2)}  召回率 ${row.recall.toFixed(2)}  （对 ${row.tp}，误报 ${row.fp}，漏 ${row.fn}）`);
     cases.forEach((item, i) => {

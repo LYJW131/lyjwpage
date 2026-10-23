@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { addedLines, buildRequests, collect, findComments, report } from "./comment-check.ts";
+import { addedLines, basePaths, buildRequests, collect, findComments, report } from "./comment-check.ts";
 import { loadTypeScript } from "./comment-only-check.ts";
 import { COMMENT_CHECK, commentAdvice } from "./pr-gate/checks.ts";
 
@@ -11,6 +11,11 @@ const ts = loadTypeScript(process.cwd());
 test("addedLines 按 -U0 的 hunk 头记下新文件里新增的行号", () => {
   const diff = ["diff --git a/x.ts b/x.ts", "--- a/x.ts", "+++ b/x.ts", "@@ -3,0 +4,2 @@", "+a", "+b", "@@ -9 +11 @@", "-c", "+d", "+++ /dev/null"].join("\n");
   assert.deepEqual([...(addedLines(diff).get("x.ts") ?? [])], [4, 5, 11]);
+});
+
+test("basePaths 认出重命名前的路径，新增文件没有基准", () => {
+  const diff = ["--- a/old.ts", "+++ b/new.ts", "@@ -1 +1 @@", "--- /dev/null", "+++ b/fresh.ts", "@@ -0,0 +1 @@"].join("\n");
+  assert.deepEqual([...basePaths(diff)], [["new.ts", "old.ts"]]);
 });
 
 test("findComments 只取碰到新增行的注释，连续的 // 合成一条，指令性注释与字符串里的 // 不算", () => {
