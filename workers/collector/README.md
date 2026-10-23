@@ -59,6 +59,7 @@ cron 每分钟响一次，按登记表（`src/registry.ts`）挑出这一分钟�
   报错数是遥测查询按 `$metadata.service` 分组的 error 级事件数，按采样率放大的估计值，并排除 `*.workers.dev` 上的分支预览（`shared/health-cloudflare.ts`）。
   Cloudflare 部署逐个 Worker 查，单个查不到只空那一格（某个 Worker 还没部署时就是这样），
   全部查不到才算失败。
+- **Cloudflare 故障行**：首页 `cloudflare-outage-row.tsx` 在 `cloudflare` 行为 `major_outage` 时显示，持续时间读 `AgentStatusRow.outageSince`（`withOutageSince`：沿用上一轮，首次看到取活跃故障开始时间，再没有取采集时刻；恢复即清除）。
 - **厂商状态**已登记的各家（`src/agent-status-parse.ts` 的 `FALLBACK`）各自降级：某一家失败沿用上一轮那一行并标 `stale`；
   全部失败是这边出不去，整轮抛错、不写，记成任务失败。上一轮是 KV 里那份，同一 isolate 里自己上一轮写的更新时用它
   （KV 读可能落后一分钟）。

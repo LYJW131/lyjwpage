@@ -10,6 +10,7 @@ type StatuspageIncident = {
   impact: string | null;
   url: string;
   updatedAt: string | null;
+  startedAt: string | null;
   body: string;
   componentNames: string[];
 };
@@ -127,6 +128,7 @@ function parseStatuspage(body: string, pageUrl: string): {
       impact: text(record.impact),
       url: text(record.shortlink) ?? `${pageUrl}/incidents/${id}`,
       updatedAt: iso(text(record.updated_at) ?? (Number.isFinite(latest?.at) ? new Date(latest.at).toISOString() : null)),
+      startedAt: iso(text(record.started_at) ?? text(record.created_at)),
       body: clip(latest?.body ?? ""),
       componentNames,
     };
@@ -189,10 +191,15 @@ export function statuspageRow(
       ? [parsed.page, ...incidentIndicators]
       : [...componentIndicators, ...incidentIndicators];
   const missing = selected.length === 0 && !wholePage;
+  const indicator = missing ? "unavailable" : worst(indicators);
+  const started = active
+    .map((incident) => (incident.startedAt ? Date.parse(incident.startedAt) : Number.NaN))
+    .filter(Number.isFinite);
   return {
     id,
     name,
-    indicator: missing ? "unavailable" : worst(indicators),
+    indicator,
+    ...(indicator === "major_outage" && started.length ? { outageSince: Math.min(...started) } : {}),
     statusUrl: pageUrl,
     components: selected.map((component) => ({ name: component.name, indicator: component.indicator })),
     incidents: [...active, ...scheduled].slice(0, MAX_INCIDENTS).map(toPublicIncident),

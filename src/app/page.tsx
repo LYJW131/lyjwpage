@@ -19,6 +19,7 @@ import { PulseCard } from "@/components/live/pulse-card";
 import { NowWatchingCard } from "@/components/live/now-watching-card";
 import { QuestNowCard } from "@/components/live/quest-now-card";
 import { FocusNowCard } from "@/components/live/focus-now-card";
+import { CloudflareOutageRow } from "@/components/live/cloudflare-outage-row";
 import { AgentStatusCard } from "@/components/live/agent-status-card";
 import { VibeCodingCard } from "@/components/live/vibecoding-card";
 import { WatchingRow } from "@/components/live/watching-card";
@@ -276,6 +277,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </CardBoundary>
               <CardBoundary label="Focus" silent paths={READS.focusNow}>
                 <FocusNowCard nowFallback={loaderData.focusNow} />
+              </CardBoundary>
+              <CardBoundary label="Cloudflare Outage" silent paths={READS.agentStatus}>
+                <CloudflareOutageRow fallback={loaderData.agentStatus} />
               </CardBoundary>
               <CardBoundary label="Now Playing" silent paths={READS.questNow}>
                 <QuestNowCard nowFallback={loaderData.questNow} />

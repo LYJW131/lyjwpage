@@ -40,6 +40,8 @@ export type AgentStatusRow = {
   incidents: AgentIncident[];
   note: string | null;
   stale: boolean;
+  // indicator 为 major_outage 时才有：epoch 毫秒，沿用上一轮；首次看到才取活跃故障的开始时间，再没有就取采集时刻。
+  outageSince?: number;
 };
 
 export type AgentStatusPayload = {

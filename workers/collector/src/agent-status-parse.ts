@@ -76,6 +76,13 @@ async function load(
   }
 }
 
+function withOutageSince(row: AgentStatusRow, prior: AgentStatusRow | undefined, now: number): AgentStatusRow {
+  const { outageSince: fromIncident, ...rest } = row;
+  if (row.indicator !== "major_outage") return rest;
+  const carried = prior?.indicator === "major_outage" ? prior.outageSince : undefined;
+  return { ...rest, outageSince: carried ?? fromIncident ?? now };
+}
+
 export async function collectAgentStatus(
   previous: AgentStatusPayload | null,
   fetchText: FetchText,
@@ -155,10 +162,10 @@ export async function collectAgentStatus(
     ),
   ]);
   if (failed.size === Object.keys(FALLBACK).length) throw new Error("status pages all unreachable");
-  return {
-    fetchedAt: now,
-    agents: [claude, codex, cursor, grok, typesafe, devin, apple, github, cloudflare],
-  };
+  const agents = [claude, codex, cursor, grok, typesafe, devin, apple, github, cloudflare].map((row) =>
+    withOutageSince(row, previous?.agents.find((agent) => agent.id === row.id), now),
+  );
+  return { fetchedAt: now, agents };
 }
 
 export function agentStatusFingerprint(payload: AgentStatusPayload | null): string {
