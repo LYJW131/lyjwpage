@@ -117,6 +117,7 @@ export function receiptComment({
   problems,
   claimed,
   shots,
+  machine,
   runUrl,
 }: {
   stamp: Stamp;
@@ -125,13 +126,15 @@ export function receiptComment({
   problems: string[];
   claimed: string;
   shots: { name: string; url: string }[];
+  machine?: string | null;
   runUrl: string;
 }) {
   const lines = [...header(stamp), ""];
   const open = report.rows.filter((row) => row.result !== "PASS");
   const ids = report.rows.map((row) => row.id).join(" ");
-  if (open.length === 0) lines.push((PASSING_RANK[stamp.level] ?? 0) > 0 ? `全过：${ids}` : `检查行都是 PASS，但记 ${stamp.level}：${ids}`);
+  if (open.length === 0) lines.push((PASSING_RANK[stamp.level ?? ""] ?? 0) > 0 ? `全过：${ids}` : `检查行都是 PASS，但记 ${stamp.level}：${ids}`);
   else lines.push("没过：", ...open.map((row) => `- ${row.id} ${row.result}：${brief(row.check)}（${brief(row.evidence)}）`));
+  if (machine) lines.push("", machine);
   if (report.notVerified.length > 0) {
     const shown = report.notVerified.slice(0, MAX_NOT_VERIFIED).map((item) => `- ${brief(item)}`);
     const more = report.notVerified.length - shown.length;

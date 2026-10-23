@@ -15,7 +15,8 @@ export function verifierPrompt({
   preview,
   checklist,
   outDir,
-}: Common & { tier: string; need: string; preview: string | null; checklist: ChecklistItem[]; outDir: string }) {
+  proof,
+}: Common & { tier: string; need: string; preview: string | null; checklist: ChecklistItem[]; outDir: string; proof: string | null }) {
   const ui = tier.includes("ui");
   const site = preview
     ? `站点分支预览：${preview}（已部署到 head，或 head 之后只多了不碰站点的提交）。界面检查在它上面做。`
@@ -40,7 +41,7 @@ ${site}
 ${items}
 
 清单之外，读 diff 补查清单漏掉的、和改动直接相关的行为，行 id 用 X1、X2……
-本地门禁：CI 会跑全套 lint、typecheck、测试与 docs:check、rules:check，你不重跑这些；只跑覆盖改动行为的那几个单测当证据，清单点名要的除外。时间花在读代码、对照文档、找副作用上。修 bug 并补了回归测试的，照 skill 做撤回证明。
+本地门禁：CI 会跑全套 lint、typecheck、测试与 docs:check、rules:check，你不重跑这些；只跑覆盖改动行为的那几个单测当证据，清单点名要的除外。时间花在读代码、对照文档、找副作用上。撤回证明由 Action 在你之前用脚本跑过，你不重跑：${proof ?? "这次没改脚本能跑的测试，没跑。"}原始结果在 ${outDir}/work/revert-proof.json，判断「修复有没有被测试抓住」时引用它。
 
 这些是有意的安排，不算没验到，notVerified 里不写：没跑全量 lint、typecheck、测试、build 与 docs:check、rules:check（CI 跑）；Verify Action 自己的发评论、推截图（在你之后才跑）；不碰界面时没开浏览器；环境里没有外部服务的密钥（要调外部服务的检查标 SKIPPED，一句话说明）；没装 actionlint（改了工作流就用 YAML 解析加读 diff 代替）；bubblewrap 沙箱已在上一步自检，你在沙箱里，再套一层 bwrap 会失败，不用试。
 

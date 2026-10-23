@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { tierOf } from "./pr-gate/tier.ts";
 import { bodyDigest } from "./verify-action/body.ts";
 import { judgeComment, judgeVerdict, main, parseBody, planOf, receiptComment, reconcile, shotLinks, staleRead } from "./verify-action.ts";
+import { machineLine, proofPlan } from "./verify-action/machine.ts";
 import { parseComments, stampLine } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -66,6 +67,7 @@ test("planOf：草稿、已关闭与只改文档的不验，界面档等预览�
     tier: "ui",
     head: HEAD,
     branch: "claude/x",
+    base: "main",
   });
   assert.deepEqual([planOf(pull(), tierOf(["workers/core/src/a.ts"], trusted))].map((p) => [p.need, p.judge, p.ui]), [["unit-test-verified", false, false]]);
   assert.equal(planOf(pull(), tierOf(["workers/core/src/a.ts"], { ...trusted, judgeAsked: true })).judge, true);
@@ -194,4 +196,16 @@ test("staleRead：描述或目标分支在读之后改了、成功却没交回�
   assert.equal(staleRead("dev@abc", "failure", current), true);
   assert.equal(staleRead(undefined, "success", current), true);
   assert.equal(staleRead("", "failure", current), false);
+});
+
+test("脚本跑的两项：只在改了 scripts/、src/、shared/ 的测试又改了别的文件时做撤回证明；回执那一行只认表里的值", () => {
+  assert.deepEqual(proofPlan(["scripts/a.ts", "scripts/a.test.ts"]), { tests: ["scripts/a.test.ts"], skip: null });
+  assert.deepEqual(proofPlan(["scripts/a.test.ts", "scripts/fixtures/x.json"]).skip, "only-tests");
+  assert.deepEqual(proofPlan(["workers/core/src/a.ts", "workers/core/src/a.test.ts"]).skip, "no-tests");
+  assert.equal(machineLine({ ci: "success", proof: { verdict: "proved", tests: ["scripts/a.test.ts"] } }), "脚本：CI check 通过；撤回证明：撤回改动后新测试报红、HEAD 上转绿（`scripts/a.test.ts`）");
+  assert.equal(machineLine({ ci: "<img>", proof: { verdict: "PASS", tests: [] } }), null);
+  assert.equal(machineLine({ proof: { verdict: "not-red", tests: ["scripts/`a`.test.ts", "scripts/b.test.ts"] } }), "脚本：撤回证明：撤回改动后新测试仍通过（不是修 bug 的 PR 就正常）（`scripts/b.test.ts`）");
+  const stamp = { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) };
+  const receipt = receiptComment({ stamp, report: { model: "m", level: "unit-test-verified", rows: [{ id: "V1", check: "c", result: "PASS", evidence: "e" }], notVerified: [] }, checklist: [], problems: [], claimed: "unit-test-verified", shots: [], machine: "脚本：CI check 通过", runUrl: "u" });
+  assert.deepEqual(receipt.split("\n").slice(3, 6), ["全过：V1", "", "脚本：CI check 通过"]);
 });
