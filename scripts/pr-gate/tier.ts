@@ -27,7 +27,7 @@ export function tierOf(files: string[], { trustedAuthor }: { trustedAuthor: bool
     name,
     ui,
     logic,
-    need: ui.length > 0 ? "live-ui-verified" : logic.length > 0 || !trustedAuthor ? "unit-test-verified" : null,
+    need: ui.length > 0 ? "live-ui-verified" : logic.length > 0 && !trustedAuthor ? "unit-test-verified" : null,
     judge: logic.length > 0 || !trustedAuthor,
     hint: hints.join("；"),
   };
