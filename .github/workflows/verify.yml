@@ -62,7 +62,7 @@ jobs:
       checks: read
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
-      digest: ${{ steps.prompt.outputs.digest }}
+      read: ${{ steps.prompt.outputs.read }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -153,7 +153,7 @@ jobs:
       pull-requests: read
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
-      digest: ${{ steps.prompt.outputs.digest }}
+      read: ${{ steps.prompt.outputs.read }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -272,7 +272,7 @@ jobs:
           JUDGE_RESULT: ${{ needs.judge.result }}
           VERIFY_OUTPUT: ${{ needs.verify.outputs.result }}
           JUDGE_OUTPUT: ${{ needs.judge.outputs.result }}
-          VERIFY_DIGEST: ${{ needs.verify.outputs.digest }}
-          JUDGE_DIGEST: ${{ needs.judge.outputs.digest }}
+          VERIFY_READ: ${{ needs.verify.outputs.read }}
+          JUDGE_READ: ${{ needs.judge.outputs.read }}
           SHOTS_DIR: ${{ steps.shots.outputs.dir }}
           SHOTS_URL: ${{ steps.shots.outputs.url }}

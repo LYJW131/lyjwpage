@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { tierOf } from "./pr-gate/tier.ts";
 import { bodyDigest } from "./verify-action/body.ts";
-import { judgeComment, judgeVerdict, main, parseBody, planOf, receiptComment, reconcile, shotLinks } from "./verify-action.ts";
+import { judgeComment, judgeVerdict, main, parseBody, planOf, receiptComment, reconcile, shotLinks, staleRead } from "./verify-action.ts";
 import { parseComments, stampLine } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -145,4 +145,13 @@ test("judgeVerdict：自报 PASS 但有没做到或缺依据的要求、有回�
   assert.equal(judgeVerdict(judge({ fixes: ["f"] })), "FAIL");
   const comment = judgeComment({ stamp: { sha: HEAD, verdict: "FAIL", body: "b".repeat(64) }, report: judge({ regressions: ["r"] }), runUrl: "u" });
   assert.match(comment, /判定员自报 PASS，.*改记 FAIL/);
+});
+
+test("staleRead：描述或目标分支在读之后改了、成功却没交回读到的版本都不签", () => {
+  const current = "main@abc";
+  assert.equal(staleRead(current, "success", current), false);
+  assert.equal(staleRead("main@old", "success", current), true);
+  assert.equal(staleRead("dev@abc", "failure", current), true);
+  assert.equal(staleRead(undefined, "success", current), true);
+  assert.equal(staleRead("", "failure", current), false);
 });
