@@ -18,7 +18,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 
 ## PR 上的验证：Verify Action
 
-`.github/workflows/verify.yml` 在 PR 打开、推送、转为待审、改了描述时跑（草稿不跑，同一 PR 的新运行顶掉旧的），也能在 Actions 页按 PR 号手动跑。脚本是 `scripts/verify-action.ts`（`--help` 看子命令）。
+`.github/workflows/verify.yml` 在 PR 打开、推送、转为待审、改了描述或目标分支时跑（草稿不跑，同一 PR 的新运行顶掉旧的），也能在 Actions 页按 PR 号手动跑。脚本是 `scripts/verify-action.ts`（`--help` 看子命令）。
 
 - `plan`：按 `pr-gate` 的分档（`scripts/pr-gate/tier.ts#tierOf`）定回执至少的等级；只改文档与 skill 的不验。
 - `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。
@@ -146,7 +146,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 
 写代码的线程不判自己的活。逻辑档（`tier` 含 `logic`，或作者不是 lyjw 的账号）的 PR，Verify Action 每次推送都派一个 Opus（effort high）判定员，和验证员并行跑（lyjw 定的：不等验证员，每次推送都判）。
 
-- 判定员只拿 PR 描述里的「lyjw 原话」、PR 号与 head，自己读 PR 相对目标分支的 diff（`git diff origin/<目标分支>...HEAD`）和调用方。它回答两件事：diff 是否做到了 lyjw 要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）。结论 `PASS` 或 `FAIL`，FAIL 列出要修的项。「证据表里有没有没验到却算通过的项」由 publish 按清单对照来查（见「PR 上的验证」）。
+- 判定员只拿 PR 描述里的「lyjw 原话」、PR 号与 head，自己读 PR 相对目标分支的 diff（`git diff origin/<目标分支>...HEAD`）和调用方。它回答两件事：diff 是否做到了 lyjw 要的（逐条对照原话）；有没有改出回归（读调用方，需要时在目标分支和 head 上跑同一个场景对照）。结论 `PASS` 或 `FAIL`，FAIL 列出要修的项。「证据表里有没有没验到却算通过的项」由 publish 按清单对照来查（见「PR 上的验证」）。
 - 判定员只读，不看验证员的证据。结论由 publish job 发成评论，第一行是 `判定 <head 完整 SHA>：PASS`（或 `FAIL`）。
 - 结论只对那个 SHA 的补丁有效：只把 main 合进了分支、补丁没变的照旧算数，补丁变了 Action 会按新 head 重判。FAIL 的项修完再推，不和判定员争；确实判错了（比如误读了 lyjw 原话），在 PR 评论里写明依据，交 lyjw 定。
 - 判断活仍归主线程：机器评审意见改不改、失败的根因、合不合，由主线程照第 3 节定。

@@ -99,7 +99,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIEW: ${{ steps.preview.outputs.preview }}
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程，runner 上没有它 claude 直接装不起来
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程，runner 上没有它 claude 直接装不起来；
+      # Ubuntu 24.04 的 AppArmor 默认不许 bwrap 建用户命名空间，照 build.yml「Prepare the sandbox」只给 bwrap 放行
       - name: Install bubblewrap
         timeout-minutes: 8
         run: |
@@ -109,7 +110,11 @@ jobs:
             sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
             bwrap_deps
           }
-          bwrap --unshare-pid --ro-bind / / true
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' | sudo tee /etc/apparmor.d/bwrap > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --die-with-parent true || { echo "::error::bubblewrap cannot create namespaces."; exit 1; }
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:
@@ -161,7 +166,8 @@ jobs:
         run: node scripts/verify-action.ts prompt --role judge --pr "$PR"
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程，runner 上没有它 claude 直接装不起来
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程，runner 上没有它 claude 直接装不起来；
+      # Ubuntu 24.04 的 AppArmor 默认不许 bwrap 建用户命名空间，照 build.yml「Prepare the sandbox」只给 bwrap 放行
       - name: Install bubblewrap
         timeout-minutes: 8
         run: |
@@ -171,7 +177,11 @@ jobs:
             sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
             bwrap_deps
           }
-          bwrap --unshare-pid --ro-bind / / true
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' | sudo tee /etc/apparmor.d/bwrap > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --die-with-parent true || { echo "::error::bubblewrap cannot create namespaces."; exit 1; }
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:
