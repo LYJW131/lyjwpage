@@ -12,3 +12,5 @@ Bound to the session of thread「晨报 · 定时任务」 (find the id with lis
 Content: 要你做的 / 隔夜合并 / 失败与没读到 / Anthropic 动态 (only absorbable items). It reads list_project_prs, list_thread_sessions, #185, skill-mining runs/, superfan-collector/<date>.md, anthropic-updates/<date>.md. One post per day, no hourly in-place updates (lyjw 2026-10-20 01:57 SGT: "在这里的话 就不用我不开口就更新了 就11点一次就行"). Read-only: no PRs, no merges.
 
 Same session also did the 2026-10-20 prompt trim of the review / skill-mining / memory-mirror / collector routines (new texts kept in /mnt/project-files/routine-prompts/). Siblings: [[lyjwpage-daily-review-routine]], [[anthropic-updates-routine]], [[collector-superfan-routine]], [[skill-mining-routine]].
+
+Since 2026-10-23 06:38 SGT (lyjw「处理定时任务吧」, thread「Token 效率复盘」) the prompt has the session dispatch a Sonnet medium worker that reads everything and drafts the report; the session only re-checks listed PRs and posts. Prompt text: /mnt/project-files/routine-prompts/morning-report.txt. See [[token-efficiency-review]].
