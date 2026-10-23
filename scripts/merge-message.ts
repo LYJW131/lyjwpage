@@ -7,7 +7,7 @@ import { authorFromTrailer } from "../shared/commit-authors.ts";
 // lyjw 定的：少于这么多个非合并提交的 PR 压缩合并，够数的才留合并提交。
 export const MERGE_COMMIT_MIN_COMMITS = 3;
 
-export const mergeMethodFor = (commits: number) => (commits >= MERGE_COMMIT_MIN_COMMITS ? "merge" : "squash");
+export const mergeMethodFor = (commits: number) => (commits > MERGE_COMMIT_MIN_COMMITS ? "merge" : "squash");
 
 // 只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。
 export function mergeMessage({

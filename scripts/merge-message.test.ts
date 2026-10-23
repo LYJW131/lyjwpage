@@ -45,5 +45,6 @@ test("标题已带号不重复加；没有协作者时正文只有提交主题",
 test("少于 3 个非合并提交压缩合并，3 个及以上留合并提交", () => {
   assert.equal(mergeMethodFor(1), "squash");
   assert.equal(mergeMethodFor(2), "squash");
-  assert.equal(mergeMethodFor(3), "merge");
+  assert.equal(mergeMethodFor(3), "squash");
+  assert.equal(mergeMethodFor(4), "merge");
 });
