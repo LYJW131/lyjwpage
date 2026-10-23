@@ -202,6 +202,9 @@ test("脚本跑的两项：只在改了 scripts/、src/、shared/ 的测试又�
   assert.deepEqual(proofPlan(["scripts/a.ts", "scripts/a.test.ts"]), { tests: ["scripts/a.test.ts"], skip: null });
   assert.deepEqual(proofPlan(["scripts/a.test.ts", "scripts/fixtures/x.json"]).skip, "only-tests");
   assert.deepEqual(proofPlan(["workers/core/src/a.ts", "workers/core/src/a.test.ts"]).skip, "no-tests");
+  assert.deepEqual(proofPlan(["scripts/a.mjs", "scripts/a.test.mjs"]), { tests: ["scripts/a.test.mjs"], skip: null });
+  assert.deepEqual(proofPlan(["scripts/old.ts", "scripts/a.test.ts", "scripts/gone.test.ts"], (file) => file !== "scripts/old.ts" && file !== "scripts/gone.test.ts"), { tests: ["scripts/a.test.ts"], skip: null });
+  assert.equal(machineLine({ proof: { verdict: "error", tests: [] } }), "脚本：撤回证明：脚本没跑成，看 Action 日志");
   assert.equal(machineLine({ ci: "success", proof: { verdict: "proved", tests: ["scripts/a.test.ts"] } }), "脚本：CI check 通过；撤回证明：撤回改动后新测试报红、HEAD 上转绿（`scripts/a.test.ts`）");
   assert.equal(machineLine({ ci: "<img>", proof: { verdict: "PASS", tests: [] } }), null);
   assert.equal(machineLine({ proof: { verdict: "not-red", tests: ["scripts/`a`.test.ts", "scripts/b.test.ts"] } }), "脚本：撤回证明：撤回改动后新测试仍通过（不是修 bug 的 PR 就正常）（`scripts/b.test.ts`）");

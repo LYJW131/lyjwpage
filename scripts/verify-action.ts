@@ -128,7 +128,7 @@ async function prompt(gh: Client, pr: number, role: string, preview: string, out
     fs.mkdirSync(path.join(outDir, "shots"), { recursive: true });
     fs.mkdirSync(path.join(outDir, "work"), { recursive: true });
     const p = planOf(pull, tier);
-    const proof = parsed<{ summary?: ProofSummary }>(readIfExists(path.join(outDir, "work", "revert-proof.json")))?.summary ?? null;
+    const proof = parsed<{ summary?: ProofSummary }>(readIfExists(path.join(outDir, "work", "revert-proof.json")))?.summary ?? { verdict: "error", tests: [] };
     setOutput("prompt", verifierPrompt({ ...common, tier: tier.name, need: p.need, preview: preview || null, checklist, outDir, proof: machineLine({ proof })?.replace(/^脚本：/, "") ?? null }));
     setOutput("schema", JSON.stringify(VERIFIER_SCHEMA));
   } else {
@@ -142,11 +142,13 @@ const readMark = (base: string, digest: string) => `${base}@${digest}`;
 
 const readIfExists = (file: string) => (fs.existsSync(file) ? fs.readFileSync(file, "utf8") : undefined);
 
+// 先写一份 error 占位：这一步被超时杀掉或抛错时，验证员读到的是「没跑成」，不会当成没改测试
 function proofStep(base: string, outDir: string) {
-  const root = process.cwd();
-  const { summary, proof } = runProof(root, base);
-  fs.mkdirSync(path.join(outDir, "work"), { recursive: true });
-  fs.writeFileSync(path.join(outDir, "work", "revert-proof.json"), JSON.stringify({ summary, proof }, null, 2));
+  const file = path.join(outDir, "work", "revert-proof.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ summary: { verdict: "error", tests: [] }, proof: null }));
+  const { summary, proof } = runProof(process.cwd(), base);
+  fs.writeFileSync(file, JSON.stringify({ summary, proof }, null, 2));
   console.log(machineLine({ proof: summary }));
   setOutput("proof", JSON.stringify(summary));
 }

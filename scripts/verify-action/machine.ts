@@ -4,7 +4,7 @@ import path from "node:path";
 import { isTestFile, prove, type Proof } from "../revert-proof.ts";
 
 // 默认命令（node --test 加别名）跑得动的测试；Worker 与上报器的测试各有自己的命令，脚本不替它们证明
-const PROOF_TEST = /^(scripts|src|shared)\/.+\.test\.m?ts$/;
+const PROOF_TEST = /^(scripts|src|shared)\/.+\.test\.m?[jt]s$/;
 const PROOF_TIMEOUT_MS = 240_000;
 
 export const PROOF_VERDICTS: Record<string, string> = {
@@ -14,6 +14,7 @@ export const PROOF_VERDICTS: Record<string, string> = {
   "not-green": "HEAD 上新测试没通过",
   "only-tests": "只改了测试，没有可撤回的改动",
   "no-tests": "没改脚本能跑的测试",
+  error: "脚本没跑成，看 Action 日志",
 };
 
 export const CI_STATES: Record<string, string> = {
@@ -27,8 +28,8 @@ export const CI_STATES: Record<string, string> = {
 
 export type ProofSummary = { verdict: string; tests: string[] };
 
-export function proofPlan(changed: string[]) {
-  const tests = changed.filter((file) => PROOF_TEST.test(file));
+export function proofPlan(changed: string[], exists: (file: string) => boolean = () => true) {
+  const tests = changed.filter((file) => PROOF_TEST.test(file) && exists(file));
   if (tests.length === 0) return { tests, skip: "no-tests" };
   const keep = new Set(tests);
   if (changed.every((file) => isTestFile(file, keep))) return { tests, skip: "only-tests" };
@@ -36,10 +37,8 @@ export function proofPlan(changed: string[]) {
 }
 
 export function runProof(root: string, base: string): { summary: ProofSummary; proof: Proof | null } {
-  const changed = execFileSync("git", ["diff", "--name-only", "--no-renames", "--diff-filter=d", `${base}...HEAD`], { cwd: root, encoding: "utf8" })
-    .split("\n")
-    .filter((file) => file && existsSync(path.join(root, file)));
-  const { tests, skip } = proofPlan(changed);
+  const changed = execFileSync("git", ["diff", "--name-only", "--no-renames", `${base}...HEAD`], { cwd: root, encoding: "utf8" }).split("\n").filter(Boolean);
+  const { tests, skip } = proofPlan(changed, (file) => existsSync(path.join(root, file)));
   if (skip) return { summary: { verdict: skip, tests }, proof: null };
   const proof = prove({ root, tests, base, timeoutMs: PROOF_TIMEOUT_MS });
   return { summary: { verdict: proof.verdict, tests }, proof };
