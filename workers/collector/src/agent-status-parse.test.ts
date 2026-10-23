@@ -58,6 +58,16 @@ test("Cloudflare 站点依赖组件故障时记录起点：首次取故障开始
     ],
     incidents: [
       {
+        id: "older-minor",
+        name: "Durable Objects slow",
+        status: "investigating",
+        impact: "minor",
+        started_at: "2026-10-23T14:00:00Z",
+        shortlink: "https://www.cloudflarestatus.com/incidents/older-minor",
+        components: [{ name: "Durable Objects" }],
+        incident_updates: [{ body: "Slow.", created_at: "2026-10-23T14:05:00Z" }],
+      },
+      {
         id: "net",
         name: "Network connectivity issues",
         status: "monitoring",

@@ -192,7 +192,13 @@ export function statuspageRow(
       : [...componentIndicators, ...incidentIndicators];
   const missing = selected.length === 0 && !wholePage;
   const indicator = missing ? "unavailable" : worst(indicators);
+  const majorNames = new Set(selected.filter((c) => c.indicator === "major_outage").map((c) => c.name));
   const started = active
+    .filter(
+      (incident) =>
+        rollupIndicator(incident.impact) === "major_outage" ||
+        incident.componentNames.some((component) => majorNames.has(component)),
+    )
     .map((incident) => (incident.startedAt ? Date.parse(incident.startedAt) : Number.NaN))
     .filter(Number.isFinite);
   return {
