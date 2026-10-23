@@ -167,7 +167,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 
 ## 回执
 
-验证员签回执，主线程按回执办事，不把回执里已经验过的检查再跑一遍（借自 poteto 的验证账本，见 `docs/references.md`）。PR 上的回执由 Verify Action 签发，评论第一行与下面相同，第二行是机器读的 `<!-- verify-stamp {"sha":…,"level":…,"body":…} -->`，脚本只认这一行；正文只摆「全过」或没过的项、至多三条「没验到」，证据截短，全表折进「明细」（`scripts/verify-action/report.ts#receiptComment`）；没开 PR 时派的验证员照下面的格式把回执写在报告最后一段：
+验证员签回执，主线程按回执办事，不把回执里已经验过的检查再跑一遍（借自 poteto 的验证账本，见 `docs/references.md`）。PR 上的回执由 Verify Action 签发，评论第一行与下面相同，第二行是机器读的 `<!-- verify-stamp {"sha":…,"level":…,"body":…} -->`，脚本只认这一行；正文只摆「全过」或没过的项、至多三条「没验到」，检查与证据截短，全表与截掉的原文折进「明细」（`scripts/verify-action/report.ts#receiptComment`）；没开 PR 时派的验证员照下面的格式把回执写在报告最后一段：
 
 ```
 验证回执 <被验提交的完整 SHA>：<等级>

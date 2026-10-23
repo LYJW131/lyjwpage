@@ -74,7 +74,7 @@ test("planOf：草稿、已关闭与只改文档的不验，界面档等预览�
   assert.equal(planOf(pull({ state: "closed" }), tierOf(["src/components/a.tsx"], trusted)).judge, false);
 });
 
-test("评论第一行给人看、第二行是机器读的 JSON，parseComments 认得出来；表格里的竖线与换行被转义、证据压成一行", () => {
+test("评论第一行给人看、第二行是机器读的 JSON，parseComments 认得出来；表格里的竖线与换行被转义", () => {
   const digest = "b".repeat(64);
   const stamp = { sha: HEAD, level: "verifier-blocked", body: digest };
   const receipt = receiptComment({
@@ -88,7 +88,7 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   });
   const lines = receipt.split("\n");
   assert.deepEqual(lines.slice(0, 2), [`验证回执 ${HEAD}：verifier-blocked`, stampLine(stamp)]);
-  assert.ok(lines.includes("| V1 | a\\|b<br>c | PASS | x y |"));
+  assert.ok(lines.includes("| V1 | a\\|b<br>c | PASS | x<br>y |"));
   assert.match(receipt, /验证员自报 live-ui-verified，按清单对照改记 verifier-blocked/);
   assert.match(receipt, /<img src="https:\/\/example.test\/home-375.png"/);
   const judge = judgeComment({
@@ -120,7 +120,9 @@ test("回执正文只摆结论：全过一行列 id，没过的逐条列出，�
   assert.doesNotMatch(summary, /V1|X1 PASS/);
   assert.match(summary, /没验到：\n- a\n- b\n- c\n- 另有 1 条，见下面明细/);
   assert.match(fail.slice(fail.indexOf("<details>")), /没验到（全部）：\n- a\n- b\n- c\n- d/);
-  assert.ok(!fail.includes(long));
+  assert.ok(fail.slice(fail.indexOf("<details>")).includes(long));
+  const cut = receiptComment({ ...base, report: { model: "m", level: "unit-test-verified", rows, notVerified: [long] } });
+  assert.match(cut.slice(cut.indexOf("<details>")), new RegExp(`没验到（全部）：\\n- ${long}`));
   const blocked = receiptComment({ ...base, stamp: { ...stamp, level: "verifier-blocked" }, problems: ["V2 没有对应的检查行"], report: { model: "m", level: "unit-test-verified", rows, notVerified: [] } });
   assert.equal(blocked.split("\n")[3], "检查行都是 PASS，但记 verifier-blocked：V1 X1");
   assert.match(blocked, /问题：V2 没有对应的检查行。/);

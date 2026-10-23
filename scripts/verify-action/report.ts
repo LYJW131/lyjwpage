@@ -109,7 +109,7 @@ const brief = (text: string) => {
 
 const details = (summary: string, table: string[]) => ["<details>", `<summary>${summary}</summary>`, "", ...table, "", "</details>"];
 
-// 评论只摆结论和没过的项，全表折叠、证据截短：主线程与 lyjw 一眼看完，原文在验证员的 work 目录与 Action 日志里
+// 正文只摆结论和没过的项、截短；原文全部折进明细，截短不丢信息
 export function receiptComment({
   stamp,
   report,
@@ -144,8 +144,8 @@ export function receiptComment({
     lines.push("");
     for (const shot of shots.slice(0, MAX_SHOTS)) lines.push(`<img src="${shot.url}" alt="${shot.name}" width="360">`);
   }
-  const table = ["| 项 | 检查 | 结果 | 证据 |", "| --- | --- | --- | --- |", ...report.rows.map((row) => `| ${cell(row.id)} | ${cell(row.check)} | ${cell(row.result)} | ${cell(brief(row.evidence))} |`)];
-  if (report.notVerified.length > MAX_NOT_VERIFIED) table.push("", "没验到（全部）：", ...report.notVerified.map((item) => `- ${item}`));
+  const table = ["| 项 | 检查 | 结果 | 证据 |", "| --- | --- | --- | --- |", ...report.rows.map((row) => `| ${cell(row.id)} | ${cell(row.check)} | ${cell(row.result)} | ${cell(row.evidence)} |`)];
+  if (report.notVerified.length > MAX_NOT_VERIFIED || report.notVerified.some((item) => brief(item) !== item)) table.push("", "没验到（全部）：", ...report.notVerified.map((item) => `- ${item}`));
   lines.push("", ...details(`明细（${report.rows.length} 项）`, table));
   lines.push("", `验证员：${report.model}，没写这段代码（[Action 运行](${runUrl})）`);
   return lines.join("\n");
@@ -165,7 +165,7 @@ export function judgeComment({ stamp, report, runUrl }: { stamp: Stamp; report: 
   if (report.regressions.length > 0) lines.push("", "回归：", ...report.regressions.map((item) => `- ${brief(item)}`));
   if (report.fixes.length > 0) lines.push("", "要修：", ...report.fixes.map((item) => `- ${brief(item)}`));
   if (stamp.verdict !== report.verdict) lines.push("", `判定员自报 ${report.verdict}，明细里有没做到、没写依据的要求，或有回归、待修项（或没列要求），改记 ${stamp.verdict}。`);
-  const table = ["| lyjw 要的 | 做到了 | 依据 |", "| --- | --- | --- |", ...report.asks.map((ask) => `| ${cell(ask.ask)} | ${ask.met ? "是" : "否"} | ${cell(brief(ask.evidence))} |`)];
+  const table = ["| lyjw 要的 | 做到了 | 依据 |", "| --- | --- | --- |", ...report.asks.map((ask) => `| ${cell(ask.ask)} | ${ask.met ? "是" : "否"} | ${cell(ask.evidence)} |`)];
   lines.push("", ...details(`逐条（${report.asks.length} 条）`, table));
   lines.push("", `判定员：${report.model}，只读 lyjw 原话与 diff，没写这段代码，没看验证员的证据（[Action 运行](${runUrl})）`);
   return lines.join("\n");
