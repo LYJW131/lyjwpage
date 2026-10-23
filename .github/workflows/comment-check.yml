@@ -1,0 +1,96 @@
+name: Comment Check
+
+# 只给写代码的线程一份建议：Check run 有该删的注释时是 neutral，不挡合并，pr-gate 把它列进 notes；问过注释时另在 PR 上原地更新一条评论
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "**.ts"
+      - "**.tsx"
+      - "**.mts"
+      - "**.cts"
+      - "**.js"
+      - "**.jsx"
+      - "**.mjs"
+      - "**.cjs"
+
+permissions: {}
+
+concurrency:
+  group: comment-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  jev:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      # 默认检出 PR 的合并提交：第一个父提交就是此刻的 base，两者相比正好是 PR 带来的改动
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      # 只是建议：装依赖、调 Jev 或建检查出错都不让 job 变红，免得 pr-gate 把它当成要修的失败
+      - run: pnpm install --frozen-lockfile
+        continue-on-error: true
+      - run: node scripts/comment-check.ts --base HEAD^1 --head HEAD --out "$RUNNER_TEMP/comment-check.json" --check-run "$HEAD_SHA"
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comment-check
+          path: ${{ runner.temp }}/comment-check.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  comment:
+    needs: jev
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # 这个 job 拿 App 私钥，只跑默认分支上的脚本，PR 的代码碰不到；PR 那边只交来一份结论 JSON
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        id: result
+        continue-on-error: true
+        with:
+          name: comment-check
+          path: ${{ runner.temp }}/result
+      # fork 来的 PR 拿不到私钥；换 token 或发评论出错都不让 job 变红，免得 pr-gate 当成要修的失败
+      - uses: actions/create-github-app-token@v3
+        if: steps.result.outcome == 'success' && github.event.pull_request.head.repo.full_name == github.repository
+        id: app
+        continue-on-error: true
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-issues: write
+      - name: Comment as lyjw131[bot]
+        if: steps.app.outcome == 'success'
+        run: node scripts/comment-check.ts --post "$RUNNER_TEMP/result/comment-check.json" --pr "$PR"
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+        continue-on-error: true

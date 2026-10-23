@@ -2,7 +2,7 @@
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { BUILD_WATCH_PATHS, workersFor } from "./build-watch-paths.ts";
-import { buildCoverage, summarizeChecks } from "./pr-gate/checks.ts";
+import { buildCoverage, commentAdvice, summarizeChecks } from "./pr-gate/checks.ts";
 import { decide } from "./pr-gate/decide.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull, type Review, type ReviewComment, type IssueComment, type Status } from "./pr-gate/github.ts";
 import { reviewerSummary } from "./pr-gate/reviewers.ts";
@@ -41,6 +41,7 @@ JSON 里有：
   receipt       scripts/verify-receipt.ts check 的结果（--need、--judge 见下）
   ruleDrift     分支起点（PR 第一个提交的父提交）以来 main 上改过的规则文件（AGENTS.md、DESIGN.md、HUMAN.md、REVIEW.md、.claude/skills/ 与 .claude/rules/ 下的 md）；
                 不为空时 notes 提示对一遍新规则，不影响 ready
+  notes         不挡合并的提示，含 Comment check (Jev) 列出的可能该删的新注释（scripts/comment-check.ts）
   ready / todo  todo 每条一句：缺什么、去哪做
 
 选项：
@@ -91,6 +92,8 @@ export async function gate(
   const reviewers = reviewerSummary(reviews, issueComments, head);
   const labels = (pull.labels ?? []).map((label) => label.name);
   const verdict = decide({ pull, tier, checks, builds, threads, reviewers, receipt, judge: wantJudge });
+  const advice = commentAdvice(runs.check_runs ?? []);
+  if (advice) verdict.notes.push(advice);
   const changedVerifier = verifierFiles(paths);
   if (changedVerifier.length > 0) verdict.notes.push(`这个 PR 改了验证员本身（${changedVerifier.join("、")}）：pull_request 触发的 Verify Action 里验证与判定跑的是分支上的这份（签发的 publish 只跑 main 上的脚本），结论出自被改过的验证员，合并前交 lyjw 看一眼`);
   if (rules.files.length > 0) verdict.notes.push(`分支开工后 main 上改了规则文件（${rules.files.join("、")}）：重读改动的部分，拿 PR 的改动对一遍新规则`);
