@@ -26,7 +26,7 @@
 - **Bot review only for real logic changes**: read every Devin Review/Codex/Claude review, fix or reply; Codex ≤3 rounds; Bugbot off: [[merge-requires-bot-review-pass]]. Merge commits via `pnpm merge-message` ([[merge-commit-format]]); check /api/version after merge; a push that started no build gets rebuilt at once without asking ([[workers-builds-parallel-race]]).
 - **Post-merge prod checks:** every merge checks /api/version only. Real prod behavior test only for cache/Cache-Tag purge, first-screen SSR, fonts, or features needing prod secrets/bindings.
 - **Verification → Haiku 5.5 high worker** per skill `lyjwpage-verify`; lead spot-checks one item: [[verification-haiku-worker]]. First-screen/font/cache/SSR changes also run `site-verify reload` (Chromium + WebKit): [[first-screen-reload-check]]. Explainers: [[explainer-author-effort]], [[explainer-3d-real-ui]]; animation frames are accepted by Haiku (#490).
-- **Verify in GitHub Actions** (#572; ask lyjw before merging it; test with extra test PRs first): [[verify-in-actions-plan]]; independent review said 需先修: [[verify-action-review-572]]. Official claude-review fix (Opus orchestrator, logic tier only): [[claude-review-hollow]]. `lyjw131[bot]` labels `tier: …` (display only, #586) and `verifier-changed` (mark, don't block).
+- **Verify in GitHub Actions** (#572 merged; receipt gaps only warn, never block; receipts posted as lyjw131[bot]): [[verify-in-actions-plan]]; independent review said 需先修: [[verify-action-review-572]]. Official claude-review fix (Opus orchestrator, logic tier only): [[claude-review-hollow]]. `lyjw131[bot]` labels `tier: …` (display only, #586) and `verifier-changed` (mark, don't block).
 - **Throwaway test PRs:** apply the `do-not-merge` label when opening (scripts read the label, never the title; lyjw 2026-10-23「还有之前那个测试pr不合并也是」); its check stays red, pr-gate and the merge hook block it (HUMAN.md).
 - **Chat testing never asks lyjw to send homepage test chats;** use direct API calls, the Turnstile test key, or read ChatLog via Cloudflare Code Mode MCP's DO query API (workers/ai/README.md).
 - **Decision cards:** coordinator re-posts any thread's open card in project chat and relays lyjw's choice.
@@ -73,6 +73,7 @@
 - Devin CLI token usage via Devin's own OTel into `mac-otlp` / `agents-otlp` (#453, #456): [[pulse-tokens-lane-coverage]].
 - Not adopting (don't re-propose; reasons in the file): Mercury 3 chat, tester-army, seiso, site-AI OTel, Max credit, CF AI Search, post-deploy PageSpeed, Jev or Gemini as checkers or PR verifier, main-CI split, skip-CI on docs PRs, larger runners. Formal verification only on demand (`lyjwpage-formal-model`): [[not-adopting]].
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 维持现状): [[reporter-otel-decision]].
+- **Jev comment check (#610):** advisory check run `Comment check (Jev)` on PR comments, 10 per call, notes in pr-gate: [[jev-comment-check]].
 - Chat context prefetch (#384): Clef picks site status / project doc to prefetch in the routing call (thresholds status 0.45, doc 0.3): [[idea-jev-context-prefetch]].
 - Chat web search (#355): Exa `fast` only, Bangumi/Steam tools: [[chat-web-search]].
 - .mjs→TS migration; `pnpm rules:check` blocks new `scripts/*.mjs`: [[mjs-to-ts-migration]].
