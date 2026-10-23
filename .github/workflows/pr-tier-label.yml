@@ -1,0 +1,67 @@
+name: PR Tier Label
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: pr-tier-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # 标签只给 lyjw 看：门槛每次按改动路径现算（scripts/pr-gate/tier.ts#tierOf），不读标签，标错了也放不过门槛
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - id: tier
+        run: node scripts/pr-tier.ts --pr "$PR"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+      - name: Apply labels as lyjw131[bot]
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+          TIER: ${{ steps.tier.outputs.name }}
+          VERIFIER: ${{ steps.tier.outputs.verifier }}
+        run: |
+          case "$TIER" in
+            docs) color=0075ca; text="Docs and skills only" ;;
+            ui) color=d876e3; text="Touches the site UI" ;;
+            logic) color=fbca04; text="Changes code logic" ;;
+            ui+logic) color=d93f0b; text="Changes UI and code logic" ;;
+            *) echo "::error::认不出的档位 $TIER"; exit 1 ;;
+          esac
+          want="tier: $TIER"
+          repo="repos/$GITHUB_REPOSITORY"
+          gh label create "$want" --repo "$GITHUB_REPOSITORY" --color "$color" --description "$text" --force
+          flag=verifier-changed
+          gh label create "$flag" --repo "$GITHUB_REPOSITORY" --color b60205 --description "Changes the verifier, gate or this labeler; receipts come from the changed copy" --force
+          gh api "$repo/issues/$PR/labels" --jq '.[].name' | while IFS= read -r name; do
+            case "$name" in
+              "tier: "*) [ "$name" = "$want" ] || gh api -X DELETE "$repo/issues/$PR/labels/$(jq -rn --arg n "$name" '$n|@uri')" --silent ;;
+              "$flag") [ "$VERIFIER" = true ] || gh api -X DELETE "$repo/issues/$PR/labels/$flag" --silent ;;
+            esac
+          done
+          gh api -X POST "$repo/issues/$PR/labels" -f "labels[]=$want" --silent
+          [ "$VERIFIER" != true ] || gh api -X POST "$repo/issues/$PR/labels" -f "labels[]=$flag" --silent

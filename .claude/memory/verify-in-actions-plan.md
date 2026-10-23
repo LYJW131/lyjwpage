@@ -1,17 +1,23 @@
 ---
 name: verify-in-actions-plan
-description: Discussed 2026-10-23 moving Haiku verifier + Opus judge into GitHub Actions; lyjw chose parallel judge; not built yet
+description: Verify Action (Haiku verifier + parallel Opus judge in GitHub Actions, bot-signed receipts) built in PR #572; facts learned while testing it
 metadata:
   type: project
 ---
 
-Thread「独立验证员何时出场」2026-10-23 15:45–15:54 SGT: lyjw floated moving the Haiku verification flow into a GitHub Action (started as "只是讨论一下").
+lyjw 2026-10-23 16:03 SGT asked to move the verifier fully into GitHub Actions, test it, and debug the hollow claude-review. Built in PR #572 (`.github/workflows/verify.yml`, `scripts/verify-action.ts`). How it works lives in skill `lyjwpage-verify`「PR 上的验证：Verify Action」; don't duplicate it here.
 
-Shape agreed so far:
-- Thread pushes with a fixed-format 验证清单 + lyjw's original words in the PR body.
-- After the branch site preview deploys, an Action runs Haiku (lyjw's setup-token, subscription quota, like claude-code-review.yml): browser checks on `<branch>.preview.lyjw.dev`, desktop/375/WebKit shots attached to PR, reload/revert-proof when needed, bot-signed receipt; `verify-receipt.ts` would trust only the bot for receipts, so threads can't self-sign. Docs/skill-only PRs skip.
-- Logic-tier PRs: Opus judge runs **in parallel** with Haiku (lyjw 07:54Z「并行跑」), answering only "did it do what lyjw asked / regressions"; a light step reconciles evidence table vs checklist afterwards. Cost accepted: Opus per push on weekly quota.
-- lyjw: money and visitor-PR security are not concerns (PRs locked; visitors only via the design flow). Actions queue stalls are GitHub flakiness, not our job count (one CI = 1 job ~1.5–2 min).
-- Gaps: states needing `dev:scene` fixtures can't be shown on preview; real-device checks stay with lyjw.
+Decisions lyjw made (don't re-ask):
+- **Ask lyjw before the final merge of #572** (lyjw 2026-10-23 16:32 SGT「这个pr最终合并前先问我」).
+- PR body carries「## 验证清单」(V1…) and「## lyjw 原话」; the Action verifies against them.
+- Money is fine (setup-token, subscription quota). Visitor-PR security is not a concern (PRs locked; visitors only via the design flow).
+- Opus judge runs **in parallel** with the Haiku verifier on logic-tier PRs (「并行跑」).
 
-Status: discussion only, nothing built as of 2026-10-23. Related: [[verification-haiku-worker]], [[merge-requires-bot-review-pass]].
+Facts learned from real runs (2026-10-23):
+- First end-to-end run (39923479225) took ~4.5 min; both models found real bugs (empty-evidence receipts, title-edit cancelling verification).
+- claude-code-action restores `.claude/`, `CLAUDE.md` etc. from main on PRs ("PR head is untrusted"); PR copies land in `.claude-pr/`. So the verifier follows main's skill; skill edits take effect after merge.
+- Workflow-level `concurrency` applies before job `if`, so a no-op `edited` event must go to a different group.
+- `actions/setup-node` auto package-manager cache fails without pnpm installed: set `package-manager-cache: false` on jobs that skip pnpm.
+- Receipts carry `<!-- 描述摘要 <sha256> -->` on line 2; editing the checklist or lyjw's words voids old receipts.
+
+Code-review diagnosis: [[claude-review-hollow]]. Related: [[verification-haiku-worker]], [[merge-requires-bot-review-pass]].

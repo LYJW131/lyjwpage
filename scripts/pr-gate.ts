@@ -7,7 +7,7 @@ import { decide } from "./pr-gate/decide.ts";
 import { changedPaths, client, isTrustedAuthor, type CheckRun, type FetchLike, type PatchId, type PrFile, type Pull, type Review, type ReviewComment, type IssueComment, type Status } from "./pr-gate/github.ts";
 import { reviewerSummary } from "./pr-gate/reviewers.ts";
 import { buildThreads, threadResolution } from "./pr-gate/threads.ts";
-import { tierOf } from "./pr-gate/tier.ts";
+import { tierOf, verifierFiles } from "./pr-gate/tier.ts";
 import { ruleDrift } from "./rule-drift.ts";
 import { check as checkReceipt, PASSING_RANK } from "./verify-receipt.ts";
 
@@ -17,16 +17,6 @@ export type { CheckRun } from "./pr-gate/github.ts";
 export { CODEX_MAX_ROUNDS, reviewerSummary, type Reviewer } from "./pr-gate/reviewers.ts";
 export { buildThreads, severityOf, type Level } from "./pr-gate/threads.ts";
 export { tierOf } from "./pr-gate/tier.ts";
-
-// verify-action.ts 与 verify-receipt.ts 连同它们 import 的分档、构建覆盖与预览地址都算验证员本身
-const VERIFIER_PATHS = [
-  /^\.github\/workflows\/verify\.yml$/,
-  /^scripts\/verify-action(?:\.ts|\/)/,
-  /^scripts\/verify-receipt\.ts$/,
-  /^scripts\/pr-gate(?:\.ts|\/)/,
-  /^scripts\/preview-worker-name\.ts$/,
-  /^scripts\/build-watch-paths\.ts$/,
-];
 
 const HELP = `用法：NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr <号> [--need <等级|none>] [--judge | --no-judge]
 
@@ -100,8 +90,8 @@ export async function gate(
   const reviewers = reviewerSummary(reviews, issueComments, head);
   const labels = (pull.labels ?? []).map((label) => label.name);
   const verdict = decide({ pull, tier, checks, builds, threads, reviewers, receipt, judge: wantJudge });
-  const verifierFiles = paths.filter((file) => VERIFIER_PATHS.some((re) => re.test(file)));
-  if (verifierFiles.length > 0) verdict.notes.push(`这个 PR 改了验证员本身（${verifierFiles.join("、")}）：pull_request 触发的 Verify Action 跑的是分支上的这份，回执与判定出自被改过的验证员，合并前交 lyjw 看一眼`);
+  const changedVerifier = verifierFiles(paths);
+  if (changedVerifier.length > 0) verdict.notes.push(`这个 PR 改了验证员本身（${changedVerifier.join("、")}）：pull_request 触发的 Verify Action 跑的是分支上的这份，回执与判定出自被改过的验证员，合并前交 lyjw 看一眼`);
   if (rules.files.length > 0) verdict.notes.push(`分支开工后 main 上改了规则文件（${rules.files.join("、")}）：重读改动的部分，拿 PR 的改动对一遍新规则`);
   return {
     pr,

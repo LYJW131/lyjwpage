@@ -16,7 +16,7 @@
 | `film.js` | 启动、导出接口（`window.__seek` 等）、页面内播放器 |
 | `render/` | 渲染、混音、抽帧自检、播放器测试 |
 
-四个配乐 `music-{chip,piano,lofi,pluck}.mp3`（128 kbps）随页面入库；发布到 Artifact 用的 `artifact.html` 是生成物，不进仓库。
+四个配乐 `music-{chip,piano,lofi,pluck}.mp3`（128 kbps）不进仓库（已在 `.gitignore`），本地预览或发布前按「渲染配乐与音效」渲出来放到这个目录；发布到 Artifact 用的 `artifact.html` 也是生成物，不进仓库。
 
 ## 站点版
 
@@ -148,7 +148,7 @@ node $R/phone2.mjs "$H" /tmp/phone.png                 # 375 / 390 手机布局
 
 ## 发布
 
-`render/build-artifact.py` 从 `index.html` 生成 `artifact.html`，去掉 doctype/html/head/body 外壳。发布时把它和这个目录下的脚本、字体、四个 mp3 一起发布为 claude.ai 上的私有 Artifact。站点上的 `/explainer`（v2）随 main 自动部署，见「站点版」。
+`render/build-artifact.py` 从 `index.html` 生成 `artifact.html`，去掉 doctype/html/head/body 外壳。发布时把它和这个目录下的脚本、字体、渲好的四个 mp3 一起发布为 claude.ai 上的私有 Artifact。站点上的 `/explainer`（v2）随 main 自动部署，见「站点版」。
 
 ```bash
 python3 $R/build-artifact.py docs/explainer/index.html docs/explainer/artifact.html
