@@ -128,6 +128,7 @@ jobs:
           anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
           anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
           anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
+          anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'
@@ -216,6 +217,7 @@ jobs:
           anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
           anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
           anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
+          anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'

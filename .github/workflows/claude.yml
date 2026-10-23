@@ -49,6 +49,7 @@ jobs:
           anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
           anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
           anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
+          anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
 
           additional_permissions: |
             actions: read
