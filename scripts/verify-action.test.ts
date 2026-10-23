@@ -216,3 +216,10 @@ test("脚本跑的两项：只在改了 scripts/、src/、shared/ 的测试又�
   const receipt = receiptComment({ stamp, report: { model: "m", level: "unit-test-verified", rows: [{ id: "V1", check: "c", result: "PASS", evidence: "e" }], notVerified: [] }, checklist: [], problems: [], claimed: "unit-test-verified", shots: [], machine: "脚本：CI check 通过", runUrl: "u" });
   assert.deepEqual(receipt.split("\n").slice(3, 6), ["全过：V1", "", "脚本：CI check 通过"]);
 });
+
+test("注释删到不再变：嵌套拼出的与没闭合的注释都不留下 <!--；表格单元先转义反斜杠再转义竖线", () => {
+  const body = "## 验证清单\n- V1：<!<!---->-- 藏起来 -->看得见\n- V2：后面<!-- 没闭合\n- V3：不该出现";
+  assert.deepEqual(parseBody(body).checklist, [{ id: "V1", text: "看得见" }, { id: "V2", text: "后面" }]);
+  const receipt = receiptComment({ stamp: { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) }, report: { model: "m", level: "unit-test-verified", rows: [{ id: "V1", check: "a\\|b", result: "PASS", evidence: "e" }], notVerified: [] }, checklist: [], problems: [], claimed: "unit-test-verified", shots: [], runUrl: "u" });
+  assert.ok(receipt.split("\n").includes("| V1 | a\\\\\\|b | PASS | e |"));
+});
