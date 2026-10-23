@@ -42,6 +42,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 - 清单写成验证员不看对话也能照做的样子：页面或命令、宽度与主题、预期数值。内容同「派法」简报模板的第 2、3 栏。
 - 清单只写要读代码、开页面或下判断的项：某个行为成立、某段文字与代码一致、某个副作用不存在。CI 的 `check` 会跑的（eslint、typecheck、`docs:check`、`rules:check`、全量单测）不写进清单；覆盖改动行为的单测至多写一项，让验证员拿它定 `unit-test-verified`。
 - 验证员在清单之外还会按 diff 补查（行 id 用 X1、X2……），但清单漏掉的你想看的行为，它不一定想得到。
+- 描述里的 HTML 注释照样算：注释里的条目也会被验，同名标题都收、同编号条目接在一起（`scripts/verify-action/body.ts#parseBody`）。旧清单直接删，不要注释掉留着。
 - 没写清单时验证员按 diff 自己挑检查，回执评论里会注明；没写原话时判定员按 PR 描述推断，并在第一条写明。
 - 回执和判定只对签发时的清单与原话算数（没写原话时按描述全文；摘要记在评论里机器读的 `verify-stamp` JSON 行）：之后改了，旧的作废，等 Action 按新描述重跑；只改标题不重跑。
 - 验证员与判定员读的 `.claude/`、`CLAUDE.md` 是 main 上的（claude-code-action 对 PR 一律换回 base 的），PR 里改的 skill 合并后才生效；`AGENTS.md`、`REVIEW.md` 不换，读的是 PR 里的。

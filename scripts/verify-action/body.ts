@@ -27,12 +27,15 @@ function dropFooter(lines: string[]) {
   return lines.slice(0, rule);
 }
 
+// 同名标题可能不止一处（比如注释里留着旧清单），全部收进来，宁可多验不漏验
 function section(lines: string[], heading: RegExp) {
-  const start = lines.findIndex((line) => heading.test(line.trim()));
-  if (start < 0) return null;
-  const rest = lines.slice(start + 1);
-  const end = rest.findIndex((line) => /^#{1,4}\s/.test(line));
-  return dropFooter(end < 0 ? rest : rest.slice(0, end));
+  const starts = lines.flatMap((line, index) => (heading.test(line.trim()) ? [index] : []));
+  if (starts.length === 0) return null;
+  return starts.flatMap((start) => {
+    const rest = lines.slice(start + 1);
+    const end = rest.findIndex((line) => /^#{1,4}\s/.test(line));
+    return dropFooter(end < 0 ? rest : rest.slice(0, end));
+  });
 }
 
 export function parseBody(body: string | null | undefined) {
@@ -41,7 +44,10 @@ export function parseBody(body: string | null | undefined) {
   const checklist: ChecklistItem[] = [];
   for (const line of checklistLines ?? []) {
     const match = ITEM.exec(line);
-    if (match && !checklist.some((item) => item.id === match[1])) checklist.push({ id: match[1], text: match[2] });
+    if (!match) continue;
+    const same = checklist.find((item) => item.id === match[1]);
+    if (!same) checklist.push({ id: match[1], text: match[2] });
+    else if (!same.text.split("；").includes(match[2])) same.text += `；${match[2]}`;
   }
   const words = section(lines, WORDS_HEADING)?.join("\n").trim() || null;
   return { checklist, words };

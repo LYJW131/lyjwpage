@@ -11,7 +11,7 @@ import { parseComments, stampLine } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
 
-test("parseBody 取验证清单的 V 条目与 lyjw 原话，别的节和注释不算", () => {
+test("parseBody 取验证清单的 V 条目与 lyjw 原话，别的节不算，同编号的条目接在一起", () => {
   const body = [
     "<!-- claude-projects-attribution -->",
     "说明",
@@ -19,7 +19,7 @@ test("parseBody 取验证清单的 V 条目与 lyjw 原话，别的节和注释�
     "- V1：首页 375px 上 Pulse 卡在 Vibe Coding 卡上方",
     "- V2: `pnpm test` 绿",
     "- 没编号的不算",
-    "- V1：重复的编号只认第一条",
+    "- V1：重复的编号接在后面",
     "## lyjw 原话",
     "> 把卡片换个位置",
     "",
@@ -28,7 +28,7 @@ test("parseBody 取验证清单的 V 条目与 lyjw 原话，别的节和注释�
   ].join("\n");
   const { checklist, words } = parseBody(body);
   assert.deepEqual(checklist, [
-    { id: "V1", text: "首页 375px 上 Pulse 卡在 Vibe Coding 卡上方" },
+    { id: "V1", text: "首页 375px 上 Pulse 卡在 Vibe Coding 卡上方；重复的编号接在后面" },
     { id: "V2", text: "`pnpm test` 绿" },
   ]);
   assert.equal(words, "> 把卡片换个位置");
@@ -217,12 +217,15 @@ test("脚本跑的两项：只在改了 scripts/、src/、shared/ 的测试又�
   assert.deepEqual(receipt.split("\n").slice(3, 6), ["全过：V1", "", "脚本：CI check 通过"]);
 });
 
-test("描述里的 HTML 注释不删：注释里的条目照验，改注释也作废回执，看得见的条目一条不丢", () => {
+test("描述里的 HTML 注释不删：注释里的条目照验，改注释也作废回执，看得见的条目一条不丢；同名标题与同编号条目都收进来", () => {
   const body = "## 验证清单\n- V1：示例 `<!--` 没闭合\n- V2：照样算 <!-- 说明 -->\n```html\n<!-- 围栏里的\n```\n- V3：围栏后面也算";
   assert.deepEqual(parseBody(body).checklist.map((item) => item.id), ["V1", "V2", "V3"]);
   assert.notEqual(bodyDigest(body), bodyDigest(body.replace("说明", "改过的说明")));
   const words = "## lyjw 原话\n> 演示 `before\n> <!-- important -->\n> after`";
   assert.notEqual(bodyDigest(words), bodyDigest(words.replace("important", "changed")));
+  const shadow = "<!--\n## 验证清单\n- V1：旧检查\n-->\n## 验证清单\n- V1：实际检查\n- V2：另一条\n## lyjw 原话\n> 需求";
+  assert.deepEqual(parseBody(shadow).checklist, [{ id: "V1", text: "旧检查；实际检查" }, { id: "V2", text: "另一条" }]);
+  assert.notEqual(bodyDigest(shadow), bodyDigest(shadow.replace("实际检查", "改过的检查")));
 });
 
 test("表格单元只把竖线前的反斜杠加倍再转义竖线，别处的反斜杠原样", () => {
