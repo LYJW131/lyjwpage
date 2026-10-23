@@ -1,0 +1,49 @@
+name: Verify dispatch
+
+# workflow_dispatch 能写默认分支的 Actions 缓存。这里不检出 PR 的 head、不装依赖、不跑 PR 上的命令，
+# 只在默认分支上跑 scripts/verify-kick.ts：给 PR 贴上 run-verify 再揭掉，由 verify.yml 的 pull_request 去跑 PR 的代码。
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  kick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require the default branch
+        env:
+          DEFAULT_REF: ${{ format('refs/heads/{0}', github.event.repository.default_branch) }}
+        run: |
+          if [ "$GITHUB_REF" != "$DEFAULT_REF" ]; then
+            echo "::error::在默认分支上跑这个工作流，当前是 $GITHUB_REF"
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      # GITHUB_TOKEN 发出的 labeled 不会再开工作流，所以用 lyjw131[bot] 贴标签
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+      - run: node scripts/verify-kick.ts --pr "$PR"
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ inputs.pr }}
+          DEFAULT_REF: ${{ format('refs/heads/{0}', github.event.repository.default_branch) }}
