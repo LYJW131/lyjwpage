@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { addedLines, basePaths, buildRequests, collect, findComments, report } from "./comment-check.ts";
+import { addedLines, basePaths, buildRequests, collect, COMMENT_MARKER, commentBody, findComments, report } from "./comment-check.ts";
 import { loadTypeScript } from "./comment-only-check.ts";
 import { COMMENT_CHECK, commentAdvice } from "./pr-gate/checks.ts";
 
@@ -94,4 +94,11 @@ test("collect 跳过基准里原样有过的尾注释，只问真正新增的", 
   } finally {
     process.chdir(cwd);
   }
+});
+
+test("commentBody 以标记开头，好让下一次推送找到同一条原地改", () => {
+  const body = commentBody("a".repeat(40), "## Comment check (Jev)：新注释没有该删的\n\n正文");
+  assert.ok(body.startsWith(COMMENT_MARKER));
+  assert.match(body, /### Comment check \(Jev\)/);
+  assert.match(body, /aaaaaaa/);
 });

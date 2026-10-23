@@ -85,7 +85,7 @@
   5. 要等机器评审的那类 PR，合并前再派一个没写这段代码的 agent 判做没做完，结论按 head SHA 记在 PR 评论里，判 FAIL 不合；之后只把 main 合进分支、补丁没变的，结论照旧算数（做法见 `lyjwpage-verify`「3b」与「回执」）。
   6. 三份存量基线（`scripts/mjs-baseline.json`、`scripts/design-scale-baseline.json`、`scripts/ui-copy-baseline.json`）只许比 main 少，PR 里多出一条 CI 就红（`pnpm baselines:check`）。确属合规例外的，Claude 在 PR 里写明理由、停下等你；你同意就给 PR 打上 `baseline-exception` 标签，CI 自动重跑放行；放行只对打标签那一次有效，之后再推送要摘了重打，免得批准后又塞进别的条目。这个标签只由你打，Claude 不打。
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
-- 改了 JS / TS 的 PR 上有一项 `Comment check (Jev)`：Jev 逐条看新增注释，可能该删的列在检查详情里，结论是 neutral，不挡合并；Claude 自己判断删还是留。
+- 改了 JS / TS 的 PR 上有一项 `Comment check (Jev)`：Jev 逐条看新增注释，可能该删的列在检查详情里，结论是 neutral，不挡合并；Jev 看过注释时还会在 PR 上发一条评论写结论，之后每次推送原地更新同一条。Claude 自己判断删还是留。
 - PR 上的 `tier: docs / ui / logic / ui+logic` 标签由 `lyjw131[bot]` 自动贴，方便你在列表里看档位；门槛每次按改动路径现算，不读这个标签。
 - 只为试一下、不打算合的测试 PR，标题末尾加「（测试，不合并）」，认的是括号里的「不合并」。`lyjw131[bot]` 会贴上黑色的 `do-not-merge` 标签，`Do Not Merge` 这一项检查一直是红的，`pr-gate` 不放行，合并钩子也拦（`.github/workflows/do-not-merge.yml`）。标签只加不摘：你手动贴上也一样拦。真要合，先改掉标题，再摘掉标签。
 - 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。

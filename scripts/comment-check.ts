@@ -12,13 +12,14 @@ import { loadTypeScript } from "./comment-only-check.ts";
 import { COMMENT_CHECK as CHECK_NAME } from "./pr-gate/checks.ts";
 import { TS_EXTENSIONS, collectTsComments, isTsDirective } from "./comment-only/typescript.ts";
 
-const HELP = `用法：node scripts/comment-check.ts [--base <ref>] [--head <ref>] [--out <文件.json>] [--check-run <sha>]
+const HELP = `用法：node scripts/comment-check.ts [--base <ref>] [--head <ref>] [--out <文件.json>] [--check-run <sha>] [--pr <号>]
 让 TypeSafe Jev 逐条看 <base> 与 <head> 的合并基点以来新增的 JS / TS 注释，按根 AGENTS.md「文档与注释」判断该不该删。
 结果是给写代码的线程的建议：自己逐条判断删还是留，不挡合并。
   --base       默认 origin/main
   --head       默认 HEAD，只看已提交的改动
   --out        把每条注释和 Jev 的概率写成 JSON
   --check-run  在这个提交上建 Check run「Comment check (Jev)」，有该删的结论为 neutral、否则 success；要 GITHUB_TOKEN（checks: write）
+  --pr         问过至少一条注释时，在这个 PR 上发一条评论写结论，之后原地更新同一条；要 GITHUB_TOKEN（pull-requests: write）
 TYPESAFE_API_KEY 调 Jev（云端出口代理会自动带上）。退出码 0 跑完（含 Jev 调用失败，只在输出里写明）、2 参数或 git 出错。`;
 
 export const JEV_MODEL = "jev-1.14.0";
@@ -185,7 +186,7 @@ export function report(scored: Scored[], { error, truncated }: { error?: string;
   const unsure = scored.filter((item) => item.p !== null && item.p > NO && item.p < YES);
   const unanswered = scored.filter((item) => item.p === null).length;
   const gaps = [unanswered && `${unanswered} 条 Jev 没答`, truncated && `${truncated} 条超出上限没问`].filter(Boolean).join("，");
-  const title = flagged.length ? `${flagged.length} 条新注释可能该删${gaps ? `（另有 ${gaps}）` : ""}` : error && !scored.some((item) => item.p !== null) ? "Jev 调用失败，没有建议" : gaps ? `没问全：${gaps}` : "新注释没有该删的";
+  const title = flagged.length ? `${flagged.length} 条新注释可能该删${gaps ? `（另有 ${gaps}）` : ""}` : error && !scored.some((item) => item.p !== null) ? "Jev 调用失败，没有建议" : gaps ? `没问全：${gaps}` : scored.length ? "新注释没有该删的" : "没有新增注释";
   const lines = [
     `给写代码的线程的建议，不挡合并：逐条对照根 AGENTS.md「文档与注释」自己判断删还是留。`,
     "",
@@ -196,6 +197,36 @@ export function report(scored: Scored[], { error, truncated }: { error?: string;
     lines.push("", `- \`${item.file}:${item.line}\` ${item.p?.toFixed(2)}`, "", "  ```", ...item.comment.split("\n").map((text) => `  ${text}`), "  ```");
   }
   return { title, summary: lines.join("\n"), flagged, complete: !error && !truncated };
+}
+
+export const COMMENT_MARKER = "<!-- comment-check-jev -->";
+
+export function commentBody(sha: string, text: string) {
+  return `${COMMENT_MARKER}\n${text.replace(/^## /, "### ")}\n\n<sub>按 ${sha.slice(0, 7)} 更新，每次推送原地改这一条。</sub>`;
+}
+
+type IssueComment = { id: number; body?: string | null; user?: { type?: string } | null };
+
+async function upsertComment(pr: number, body: string, { create }: { create: boolean }, fetchImpl: typeof fetch) {
+  const repo = process.env.GITHUB_REPOSITORY ?? "LYJW131/lyjwpage";
+  const api = `https://api.github.com/repos/${repo}`;
+  const headers = { accept: "application/vnd.github+json", authorization: `Bearer ${process.env.GITHUB_TOKEN ?? ""}`, "content-type": "application/json" };
+  let existing: IssueComment | undefined;
+  for (let page = 1; !existing; page += 1) {
+    const response = await fetchImpl(`${api}/issues/${pr}/comments?per_page=100&page=${page}`, { headers, signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`读 PR 评论失败：HTTP ${response.status}`);
+    const batch = (await response.json()) as IssueComment[];
+    existing = batch.find((item) => item.user?.type === "Bot" && item.body?.startsWith(COMMENT_MARKER));
+    if (batch.length < 100) break;
+  }
+  if (!existing && !create) return;
+  const response = await fetchImpl(existing ? `${api}/issues/comments/${existing.id}` : `${api}/issues/${pr}/comments`, {
+    method: existing ? "PATCH" : "POST",
+    headers,
+    body: JSON.stringify({ body }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`写 PR 评论失败：HTTP ${response.status} ${(await response.text()).slice(0, 300)}`);
 }
 
 async function publish(sha: string, result: ReturnType<typeof report>, fetchImpl: typeof fetch) {
@@ -234,6 +265,7 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
       head: { type: "string", default: "HEAD" },
       out: { type: "string", default: "" },
       "check-run": { type: "string", default: "" },
+      pr: { type: "string", default: "" },
       help: { type: "boolean", default: false },
     },
   });
@@ -261,6 +293,14 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
   if (values["check-run"]) {
     try {
       await publish(values["check-run"], result, fetchImpl);
+    } catch (caught) {
+      console.error((caught as Error).message);
+    }
+  }
+  // 这次没问到注释就不新开评论，已有的那条照样改成这次的结论，免得留着上一次的建议
+  if (values.pr) {
+    try {
+      await upsertComment(Number(values.pr), commentBody(values["check-run"] || git(["rev-parse", values.head]).trim(), text), { create: found.length > 0 }, fetchImpl);
     } catch (caught) {
       console.error((caught as Error).message);
     }
