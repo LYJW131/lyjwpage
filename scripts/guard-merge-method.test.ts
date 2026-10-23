@@ -40,7 +40,7 @@ test("带 do-not-merge 标签、读不到标签或没给 PR 号都拦下", () =>
 });
 
 const HEAD = "a".repeat(40);
-const BOT = { id: 41898282 };
+const BOT = { id: 338272049 };
 
 function fakeFetch(files: string[], comments: { user: { id: number }; body: string }[], { author = 153256373, labels = [] as string[] } = {}) {
   const routes: Record<string, unknown> = {

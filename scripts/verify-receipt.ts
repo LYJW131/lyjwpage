@@ -8,8 +8,10 @@ import { bodyDigest } from "./verify-action/body.ts";
 const REPO = "LYJW131/lyjwpage";
 // lyjw 的两个账号（LYJW131、云端会话用的 An0nCh1hayaa），按数字 id 认而不按 login：login 改名后可被别人注册。
 export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
-// 回执和判定只认 github-actions[bot]：由 .github/workflows/verify.yml 的 publish job 发，线程用 lyjw 的账号发的同格式评论不算。
-export const RECEIPT_SIGNER_IDS = new Set([41898282]);
+// 回执和判定只认 lyjw131[bot]（GitHub App 的机器人账号）：由 .github/workflows/verify.yml 的 publish job 拿 App 令牌发；
+// github-actions[bot] 任何工作流都能冒充，线程用 lyjw 的账号发的同格式评论也不算。
+// 有写权限的 job 从 PR 检出跑这个文件，只能 import scripts/ 下的，所以 ID 写死（同 docs/ops-facts.md 的 lyjw131[bot] 用户 ID）
+export const RECEIPT_SIGNER_IDS = new Set([338272049]);
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const LEVELS = ["live-ui-verified", "unit-test-verified", "type-check-only", "verifier-blocked", "verifier-failed"];
@@ -47,7 +49,7 @@ const HELP = `用法：
 sign 打印回执或判定给人看的第一行：SHA 由 git rev-parse 展开成完整 40 位，等级只收五档之一。
 Verify Action 的 publish job 用同一套校验拼评论，check 只读评论里的 verify-stamp JSON 行，不读这行中文。退出码 0 成功、2 参数错或提交不存在。
 
-check 查 PR 评论里 github-actions[bot] 发的最新「验证回执」与「判定」还盖不盖得住当前 head。
+check 查 PR 评论里 lyjw131[bot] 发的最新「验证回执」与「判定」还盖不盖得住当前 head。
 输出 JSON，pass 为假时 next 写下一步；退出码 0 通过、1 不通过、2 参数错。
 
 check 的选项：

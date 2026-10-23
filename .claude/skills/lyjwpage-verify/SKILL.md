@@ -23,7 +23,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 - `plan`：按 `pr-gate` 的分档（`scripts/pr-gate/tier.ts#tierOf`）定回执至少的等级；只改文档与 skill 的不验。
 - `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。
 - `judge`：PR 贴了 `needs-judge` 标签（或作者不是 lyjw 的账号）时同时派 Opus（effort high）当判定员，和验证员并行，见「3b」。
-- `publish`：截图推到孤立分支 `verify-shots`、嵌进评论；按清单对照验证员的结果定回执等级（`scripts/verify-action/report.ts#reconcile`：清单某项 FAIL 记 `verifier-failed`；漏项、SKIPPED、没有检查行、PASS 没写证据、`live-ui-verified` 没有截图都记 `verifier-blocked`）；判定按明细收口（`judgeVerdict`：没列要求、有没做到或没写依据的要求、有回归或待修项，都签 FAIL）。再以 github-actions[bot] 发回执与判定两条评论。PR 的 head 已经变了就什么都不发；验证员或判定员读过之后描述或目标分支又改了，或 job 成功却没交回读到的版本，那一条不发（`scripts/verify-action.ts#staleRead`；改描述或目标分支触发的新运行会重做）。
+- `publish`：截图推到孤立分支 `verify-shots`、嵌进评论；按清单对照验证员的结果定回执等级（`scripts/verify-action/report.ts#reconcile`：清单某项 FAIL 记 `verifier-failed`；漏项、SKIPPED、没有检查行、PASS 没写证据、`live-ui-verified` 没有截图都记 `verifier-blocked`）；判定按明细收口（`judgeVerdict`：没列要求、有没做到或没写依据的要求、有回归或待修项，都签 FAIL）。再以 lyjw131[bot] 发回执与判定两条评论（publish job 拿 App 令牌，只跑默认分支上的脚本，PR 改的 publish 逻辑合进 main 后才生效）。PR 的 head 已经变了就什么都不发；验证员或判定员读过之后描述或目标分支又改了，或 job 成功却没交回读到的版本，那一条不发（`scripts/verify-action.ts#staleRead`；改描述或目标分支触发的新运行会重做）。
 
 开 PR 时（以及要求变了时）在描述里写这两节，标题照抄，格式由 `scripts/verify-action/body.ts#parseBody` 解析：
 
@@ -180,7 +180,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 - 等级只能写下面五档之一，原样照抄，不自拟新名字（如 `local-ui-verified`）：本地开发服务器或本地生产构建上的真页面检查属于 `live-ui-verified`，没上生产写进「没验到」。
 - 等级从高到低：`live-ui-verified`（在真页面上按 lyjw 会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，改动涉及的单测与门禁也要跑过并列进证据，同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
 - 改了行为的不收 `type-check-only`。UI 改动要 `live-ui-verified`；后端与脚本至少 `unit-test-verified`。
-- PR 上只认 github-actions[bot] 发的回执与判定（Verify Action 的 publish job，按数字 id 认，见 `scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`）；线程用 lyjw 的账号贴的同格式评论不算，主线程不自签、不转贴子代理的回执。没开 PR 时派的验证员的回执随汇报交给 lyjw。
+- PR 上只认 lyjw131[bot] 发的回执与判定（Verify Action 的 publish job，按数字 id 认，见 `scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`）；线程用 lyjw 的账号贴的同格式评论不算，主线程不自签、不转贴子代理的回执。没开 PR 时派的验证员的回执随汇报交给 lyjw。
 - 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check --pr <号> --need <等级>`（贴了 `needs-judge` 的 PR 加 `--judge`；没加时 head 上的 FAIL 判定也不放行）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（逐字节相同，含空白与二进制，只忽略行号；`carried`），就照旧算数；补丁变了（`stale`）就等 Action 按新 head 重验。
 - 回执只说「验过什么、到什么程度」，不替主线程判断合不合；合并门槛照第 3 节与「3b」。
 

@@ -7,12 +7,12 @@ import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stamp
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
 const patchIds = (map: Record<string, string>) => (sha: string) => map[sha] ?? null;
-const owner = { id: 41898282 };
+const owner = { id: 338272049 };
 const lyjw = { id: 153256373 };
 const DIGEST = "c".repeat(64);
 const stamp = (extra: Partial<Stamp>) => stampLine({ sha: HEAD, body: DIGEST, ...extra });
 
-test("parseComments 每类只认 github-actions[bot] 发的最新一条 JSON 戳，中文行、lyjw 账号自签的与不合格式的戳都不算", () => {
+test("parseComments 每类只认 lyjw131[bot] 发的最新一条 JSON 戳，中文行、lyjw 账号自签的与不合格式的戳都不算", () => {
   const { receipt, judge } = parseComments([
     { user: owner, body: `验证回执 ${OLD}：type-check-only\n${stamp({ sha: OLD, level: "type-check-only" })}` },
     { user: owner, body: `说明\n${stamp({ level: "unit-test-verified" })}\n证据：…` },
