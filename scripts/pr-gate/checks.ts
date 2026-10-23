@@ -2,6 +2,13 @@ import { PREVIEW_WATCH_PATHS, watches, workersFor, type Worker } from "../build-
 import { changedPaths, type CheckRun, type Client, type PrFile, type Status } from "./github.ts";
 
 const BUILD_PREFIX = "Workers Builds: ";
+export const COMMENT_CHECK = "Comment check (Jev)";
+
+export function commentAdvice(runs: CheckRun[]) {
+  const run = newestByName(runs).get(COMMENT_CHECK);
+  if (run?.status !== "completed" || run.conclusion !== "neutral") return null;
+  return `${COMMENT_CHECK}：${run.output?.title ?? "有新注释可能该删"}（建议，不挡合并）。逐条对照 AGENTS.md「文档与注释」判断删还是留：${run.html_url ?? ""}`;
+}
 
 export function newestByName(runs: CheckRun[]) {
   const newest = new Map<string, CheckRun>();

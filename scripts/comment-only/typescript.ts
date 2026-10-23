@@ -23,7 +23,7 @@ const TS_DIRECTIVES = [
 ];
 const JS_JSDOC_TYPES = /@(type|typedef|param|returns?|template|satisfies|import|callback|this|enum|extends|augments|implements|overload)\b[^*]*\{/;
 
-function isTsDirective(comment: string, kind: TsKind): boolean {
+export function isTsDirective(comment: string, kind: TsKind): boolean {
   if (TS_DIRECTIVES.some((re) => re.test(comment))) return true;
   return (kind === "JS" || kind === "JSX") && JS_JSDOC_TYPES.test(comment);
 }
@@ -39,7 +39,7 @@ function allTokens(sf: TS.SourceFile): TS.Node[] {
   return tokens;
 }
 
-function collectTsComments(ts: typeof TS, sf: TS.SourceFile): CommentRange[] {
+export function collectTsComments(ts: typeof TS, sf: TS.SourceFile): CommentRange[] {
   const seen = new Map<number, CommentRange>();
   const text = sf.text;
   const add = (ranges: TS.CommentRange[] | undefined) => {

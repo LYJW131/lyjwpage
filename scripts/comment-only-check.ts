@@ -121,7 +121,7 @@ function git(repo: string, args: string[], { allowFail = false } = {}): string |
   return result.stdout;
 }
 
-function loadTypeScript(repo: string): typeof TS {
+export function loadTypeScript(repo: string): typeof TS {
   const candidates = [repo, path.dirname(fileURLToPath(import.meta.url)), process.env.COMMENT_ONLY_REPO, process.cwd()].filter((base): base is string => Boolean(base));
   for (const base of candidates) {
     try {

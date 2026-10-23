@@ -1,0 +1,744 @@
+[
+ {
+  "file": "src/app/entry.client.tsx",
+  "comment": "// 水合报错的消息只有 React 错误码和文档链接；换成按错误码归组的固定消息，组件栈当 stack 才指得出哪棵树没对上。",
+  "code": "installGlobalErrorReporting();\n\n// 水合报错的消息只有 React 错误码和文档链接；换成按错误码归组的固定消息，组件栈当 stack 才指得出哪棵树没对上。\nfunction reportRecoverableError(error: unknown, componentStack: string | undefined) {\n  console.error(error);\n  const message = error instanceof Error ? error.message : String(error);\n  const code = /#(\\d+)/.exec(message)?.[1] ?? \"unknown\";\n  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : null;\n  const report = new Error(`Hydration fell back to client rendering (${code})`);\n  report.name = \"HydrationFallback\";\n  if (componentStack) report.stack = `${report.name}: ${report.message}${componentStack}`;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/rule-drift.ts",
+  "comment": "// GitHub compare 最多返回 COMPARE_FILE_LIMIT 个文件，到了上限说明列表可能不全。",
+  "code": "    const changed = compare.files ?? [];\n    const files = changed.flatMap((file) => [file.filename, file.previous_filename ?? []].flat()).filter(isRulePath);\n    // GitHub compare 最多返回 COMPARE_FILE_LIMIT 个文件，到了上限说明列表可能不全。\n    const error = changed.length >= COMPARE_FILE_LIMIT ? `main 上改动超过 ${COMPARE_FILE_LIMIT} 个文件，列表可能不全，用 git diff 自己看` : null;\n    return { since, files, error };\n  } catch (error) {\n    return { since, files: [], error: (error as Error).message };\n  }\n}\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/charging-settling.ts",
+  "comment": "// 必须覆盖上报器完整追发窗口及往返余量，否则最后的稳定读数会错过推送。",
+  "code": "\n\n// 必须覆盖上报器完整追发窗口及往返余量，否则最后的稳定读数会错过推送。\nexport const SETTLING_MS = 35_000;\n\nexport function settlingKey(device: string) {\n  return key(device, \"structuralAt\");\n}\n\nexport type ChargingDevice = \"charger\" | \"powerbank\";\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/lib/asset-archive.ts",
+  "comment": "// 只有 Vercel 时期的旧 HTML 会请求 /_next/static/：那时的部署多数已被 Vercel 删掉，文件找不回来，\n// 构建时间又写进了 JS 文件名，重建也对不上。缺档的脚本换成这段：强制重取当前页面换掉 HTTP 缓存里的旧 HTML，再刷新。\n// 同一标签冷却期内只刷一次，多个缺档脚本不会连环触发；会话存储读写不了就不刷，免得记不住冷却而刷成环。\n// 重取挂住时到时也刷新，且只刷一次。",
+  "code": "export const STALE_NEXT_FETCH_TIMEOUT_MS = 4_000;\n\n// 只有 Vercel 时期的旧 HTML 会请求 /_next/static/：那时的部署多数已被 Vercel 删掉，文件找不回来，\n// 构建时间又写进了 JS 文件名，重建也对不上。缺档的脚本换成这段：强制重取当前页面换掉 HTTP 缓存里的旧 HTML，再刷新。\n// 同一标签冷却期内只刷一次，多个缺档脚本不会连环触发；会话存储读写不了就不刷，免得记不住冷却而刷成环。\n// 重取挂住时到时也刷新，且只刷一次。\nexport const STALE_NEXT_SCRIPT =\n  `(function(){if(navigator.onLine===false)return;var k=${JSON.stringify(STALE_NEXT_RELOAD_KEY)},n=Date.now(),g=false;` +\n  `try{var l=Number(sessionStorage.getItem(k)||0);if(n-l>=0&&n-l<${STALE_NEXT_COOLDOWN_MS})return;` +\n  `sessionStorage.setItem(k,String(n));if(sessionStorage.getItem(k)!==String(n))return}catch(e){return}` +\n  `function go(){if(g)return;g=true;location.reload()}var t=setTimeout(go,${STALE_NEXT_FETCH_TIMEOUT_MS});` +\n  `fetch(location.href,{cache:\"reload\",credentials:\"same-origin\"}).then(function(r){return r.text()})` +\n  `.catch(function(){}).then(function(){clearTimeout(t);go()})})();`;\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/freshness.ts",
+  "comment": "// SWR 对前台回源节流，重复切换可能不发请求，等待必须有上限。",
+  "code": "}\n\n// SWR 对前台回源节流，重复切换可能不发请求，等待必须有上限。\nexport const RESUME_REFETCH_GRACE_MS = 1_000;\n\nexport function resumeTimedOut(state: ResumeState): ResumeState {\n  return state.resuming && !state.sawValidating ? { ...state, resuming: false } : state;\n}\n\nexport type StaleHoldInput = {\n  stale: boolean;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。",
+  "code": "// outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。\nexport const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;\n// 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。\nexport const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;\nexport const BUILD_PROGRESS_LIMITS = { messageChars: 200, blockedChars: 600 } as const;\n\nexport type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };\n// issueRef 写进预填 issue 的隐藏标记，Worker 凭它在 GitHub 上认出这份计划的 issue；早于它的存档计划没有这个字段。\nexport type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number; issueRef?: string };\nexport type BuildIssueLookup = { issue: GithubIssueResult | null };\nexport type BuildFireResult = { runId: string; branch: string; statusToken: string; run?: BuildRun };",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/revert-proof.ts",
+  "comment": "// 在 node --test 里调用时会继承 NODE_TEST_CONTEXT，子进程的 node --test 就把结果报给外层而不按失败退出。",
+  "code": "}\n\n// 在 node --test 里调用时会继承 NODE_TEST_CONTEXT，子进程的 node --test 就把结果报给外层而不按失败退出。\nfunction runTests(cwd: string, cmd: string, timeoutMs: number): RunResult {\n  const env = { ...process.env };\n  delete env.NODE_TEST_CONTEXT;\n  const result = spawnSync(\"sh\", [\"-c\", cmd], { cwd, env, encoding: \"utf8\", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });\n  const output = `${result.stdout ?? \"\"}${result.stderr ?? \"\"}${result.error ? `\\n${result.error.message}` : \"\"}`;\n  return summarize(result.status, output);\n}\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/site-verify.test.ts",
+  "comment": "// about:blank / data: 没有有效 origin，不改写（沿用跳转后的真实域）",
+  "code": "  assert.equal(current.origin, \"https://lyjw.me\");\n  assert.equal(classifyRequest(\"https://lyjw.me/api/status/pulse\", 500, current.origin), \"same-origin\");\n  // about:blank / data: 没有有效 origin，不改写（沿用跳转后的真实域）\n  updateOrigin(current, \"about:blank\");\n  assert.equal(current.origin, \"https://lyjw.me\");\n  assert.equal(navOrigin(\"data:text/html,<p>x</p>\"), null);\n});\n\ntest(\"isEnvNoise：ws 失败消息必须含 426 才豁免\", () => {\n  assert.ok(isEnvNoise(\"WebSocket connection to 'wss://lyjw.me/ws' failed: Unexpected response code: 426\"));\n  assert.ok(!isEnvNoise(\"WebSocket connection to 'wss://lyjw.me/ws' failed: Unexpected response code: 401\"));",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/apple-music.ts",
+  "comment": "// 两个状态码指向两台机器：401 是 Worker 自签那份不被认，403 是 Mac 推来的 user token 不再有效",
+  "code": "  if (!response.ok) {\n    const body = (await response.text()).slice(0, 300);\n    // 两个状态码指向两台机器：401 是 Worker 自签那份不被认，403 是 Mac 推来的 user token 不再有效\n    if (response.status === 401) {\n      throw new Error(`Apple Music 拒绝了 Worker 自签的 developer token（401，检查 APPLE_MUSIC_TEAM_ID / KEY_ID / PRIVATE_KEY 是否同一套）：${body}`);\n    }\n    if (response.status === 403) {\n      throw new Error(`Music-User-Token 已失效，需要在 Mac 上报器里重新授权 Apple Music（403）：${body}`);\n    }\n    throw new Error(`Apple Music 返回 ${response.status}：${body}`);\n  }",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/http-origins.ts",
+  "comment": "// 浏览器的同源 GET / HEAD 不带 Origin，只带 Sec-Fetch-Site: same-origin（页面脚本改不了这个头）；这时来源就是请求自己的源。\n// site 经 Service Binding 转发时原样带着请求 URL，所以后端看到的仍是站点的源。",
+  "code": "}\n\n// 浏览器的同源 GET / HEAD 不带 Origin，只带 Sec-Fetch-Site: same-origin（页面脚本改不了这个头）；这时来源就是请求自己的源。\n// site 经 Service Binding 转发时原样带着请求 URL，所以后端看到的仍是站点的源。\nexport function requestOrigin(request: Request): string | null {\n  const origin = request.headers.get(\"Origin\");\n  if (origin) return origin;\n  return request.headers.get(\"Sec-Fetch-Site\") === \"same-origin\" ? new URL(request.url).origin : null;\n}\n\nexport function isAllowedOrigin(request: Request, env: OriginEnv): boolean {\n  const allowed = getAllowedOrigins(env);",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/ui-copy-check.test.ts",
+  "comment": "// import specifier 是字符串节点，按现状计入（真实代码不会有）",
+  "code": "test(\"正则字面量与 import 路径不拦\", () => {\n  const hits = scan(\"src/lib/x.ts\", 'import x from \"@/lib/模块\";\\nconst re = /[一-龥]/;\\nconst s = \"English only\";');\n  assert.equal(hits.length, 1); // import specifier 是字符串节点，按现状计入（真实代码不会有）\n  assert.equal(hits[0].line, 1);\n});\n\ntest(\"tsx 与 ts 分别按 ScriptKind 解析\", () => {\n  assert.equal(scan(\"src/lib/x.ts\", \"const t = <string>v;\").length, 0); // ts 里 <string> 是断言不是 JSX\n  assert.equal(scan(\"src/lib/x.tsx\", \"const t = <div>确定</div>;\").length, 1);\n});\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/site-verify/reload.ts",
+  "comment": "// 只拖慢真正走网络的请求（含重新验证），命中内存 / 磁盘缓存的不受影响，正好区分长缓存与每次重新验证的资源。",
+  "code": "  const frames: { t: number; data: string }[] = [];\n  const cdp = await page.context().newCDPSession(page);\n  // 只拖慢真正走网络的请求（含重新验证），命中内存 / 磁盘缓存的不受影响，正好区分长缓存与每次重新验证的资源。\n  if (latency) await cdp.send(\"Network.emulateNetworkConditions\", { offline: false, latency, downloadThroughput: -1, uploadThroughput: -1 });\n  cdp.on(\"Page.screencastFrame\", async (frame) => {\n    frames.push({ t: frame.metadata.timestamp * 1000, data: frame.data });\n    await cdp.send(\"Page.screencastFrameAck\", { sessionId: frame.sessionId }).catch(() => {});\n  });\n  await cdp.send(\"Page.startScreencast\", { format: \"png\", everyNthFrame: 1 });\n  await page.reload({ waitUntil: \"commit\" });\n  await page.waitForTimeout(watch);",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// issueRef 写进预填 issue 的隐藏标记，Worker 凭它在 GitHub 上认出这份计划的 issue；早于它的存档计划没有这个字段。",
+  "code": "\nexport type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };\n// issueRef 写进预填 issue 的隐藏标记，Worker 凭它在 GitHub 上认出这份计划的 issue；早于它的存档计划没有这个字段。\nexport type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number; issueRef?: string };\nexport type BuildIssueLookup = { issue: GithubIssueResult | null };\nexport type BuildFireResult = { runId: string; branch: string; statusToken: string; run?: BuildRun };\nexport const BUILD_PHASES = [\"triggered\", \"running\", \"uploaded\", \"validated\", \"blocked\", \"pr_open\", \"merged\", \"closed\", \"timeout\", \"failed\"] as const;\nexport type BuildPhase = (typeof BUILD_PHASES)[number];\nexport const BUILD_ACTIVE_PHASES: readonly BuildPhase[] = [\"triggered\", \"running\", \"uploaded\", \"validated\"];\nexport const BUILD_FAILED_PHASES: readonly BuildPhase[] = [\"blocked\", \"failed\", \"timeout\"];\nexport const BUILD_CLOSED_PHASES: readonly BuildPhase[] = [\"merged\", \"closed\"];",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/coding-usage-sources.ts",
+  "comment": "// 同一个 OTLP 入口，由 ingress 按验过的 Access 凭据（lyjwpage-mac）分到这里：Mac 上 agent 自带遥测推来的用量。",
+  "code": "  agents: { scope: \"account\", ingest: \"/api/ingest/agents\", otlp: false },\n  \"agents-otlp\": { scope: \"environment\", ingest: \"/api/ingest/agents/otlp\", otlp: true },\n  // 同一个 OTLP 入口，由 ingress 按验过的 Access 凭据（lyjwpage-mac）分到这里：Mac 上 agent 自带遥测推来的用量。\n  \"mac-otlp\": { scope: \"device\", ingest: \"/api/ingest/agents/otlp\", otlp: true },\n} as const satisfies Record<CodingUsageSource, { scope: CodingUsageScope; ingest: string; otlp: boolean }>;\n\nexport type OtlpCodingSource = { [K in CodingUsageSource]: (typeof CODING_USAGE_SOURCES)[K][\"otlp\"] extends true ? K : never }[CodingUsageSource];\n\nexport const CODING_USAGE_SOURCE_NAMES = Object.keys(CODING_USAGE_SOURCES) as CodingUsageSource[];\n\n// OTLP 来源没有扫描覆盖区间，只有收到的时刻。",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/apple-music-lookup.ts",
+  "comment": "// 先要精确的。设备报的专辑名通常和目录一致（实测 Music.app 给的就是\n    // 「HALO - EP」这种完整形式），退化到包含判断只是为了容忍上游把\n    // 「- Single」这类后缀截掉的情况 —— 而且只在艺人也对得上时才肯退化",
+  "code": "\n  if (wantedAlbum) {\n    // 先要精确的。设备报的专辑名通常和目录一致（实测 Music.app 给的就是\n    // 「HALO - EP」这种完整形式），退化到包含判断只是为了容忍上游把\n    // 「- Single」这类后缀截掉的情况 —— 而且只在艺人也对得上时才肯退化\n    const exact = candidates.find(\n      (song) => normalizeForMatch(song.attributes?.albumName) === wantedAlbum,\n    );\n    if (exact) return exact;\n    if (!artistMatched) return undefined;\n    const contained = candidates.find((song) => {\n      const found = normalizeForMatch(song.attributes?.albumName);\n      return found.includes(wantedAlbum) || wantedAlbum.includes(found);",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/ingest/homepod.ts",
+  "comment": "// buffering 仍属于播放，归为 stopped 会让曲目在短暂缓冲时消失。",
+  "code": "\n  const rawState = text(row.state)?.toLowerCase();\n  // buffering 仍属于播放，归为 stopped 会让曲目在短暂缓冲时消失。\n  const state =\n    rawState === \"playing\" || rawState === \"buffering\"\n      ? \"playing\"\n      : rawState === \"paused\"\n        ? \"paused\"\n        : \"stopped\";\n  const title = text(row.title);\n  const artist = text(row.artist);",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/site-verify/browser.ts",
+  "comment": "// 屏外卡片用 content-visibility 延迟布局，先滚一遍再量。",
+  "code": "}\n\n// 屏外卡片用 content-visibility 延迟布局，先滚一遍再量。\nconst SCROLL_SWEEP = `(async () => {\n  for (let y = 0; y < document.body.scrollHeight + 1200; y += 600) {\n    scrollTo(0, y);\n    await new Promise((resolve) => setTimeout(resolve, 60));\n  }\n  scrollTo(0, 0);\n})()`;\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/rules-check/ast-rules.ts",
+  "comment": "// 按 WHATWG URL 取真实 host，不手写前缀正则：scheme 大小写、userinfo、`//` 与 `\\\\` 分隔都交给 URL 解析。\n// 能认出是绝对地址却证明不了 host 在允许列表里（含 userinfo、host 被模板或拼接截断、解析失败）一律不放行。",
+  "code": "const JSON_OBJECT_IMPL = \"shared/json.ts\";\n\n// 按 WHATWG URL 取真实 host，不手写前缀正则：scheme 大小写、userinfo、`//` 与 `\\\\` 分隔都交给 URL 解析。\n// 能认出是绝对地址却证明不了 host 在允许列表里（含 userinfo、host 被模板或拼接截断、解析失败）一律不放行。\nconst absoluteTarget = (raw: string, complete: boolean): { label: string; allowed: boolean } | null => {\n  let lead = 0;\n  while (lead < raw.length && raw.charCodeAt(lead) <= 0x20) lead++;\n  const text = raw.slice(lead).replace(/[\\t\\n\\r]/g, \"\").replace(/\\\\/g, \"/\");\n  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(text)?.[1]?.toLowerCase();\n  const protocolRelative = text.startsWith(\"//\");\n  if (!protocolRelative && !(scheme !== undefined && (NETWORK_SCHEMES.has(scheme) || text.slice(scheme.length + 1).startsWith(\"//\")))) return null;\n  const unproven = { label: text.slice(0, 60), allowed: false };",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/ingest/r2-assets.ts",
+  "comment": "// 正缓存必须过期，否则桶清空后仍会确认已删除的对象。",
+  "code": "}\n\n// 正缓存必须过期，否则桶清空后仍会确认已删除的对象。\nconst CONFIRMED_TTL_MS = 5 * 60_000;\nconst confirmed = new Map<string, number>();\n\nexport function resetStoredImageCacheForTests(): void {\n  confirmed.clear();\n}\n\nexport async function hasStoredImage(bucket: ImageBucket, objectKey: string): Promise<boolean> {",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/ui-copy-check.test.ts",
+  "comment": "// a 的头尾两段 + b 一整条无插值模板",
+  "code": "test(\"模板字符串各段都查；假名也拦\", () => {\n  const hits = scan(\"src/lib/x.ts\", \"const a = `前缀${x}后缀`;\\nconst b = `ログインしてください`;\\nconst c = `all english ${y}`;\");\n  assert.equal(hits.length, 3); // a 的头尾两段 + b 一整条无插值模板\n});\n\ntest(\"正则字面量与 import 路径不拦\", () => {\n  const hits = scan(\"src/lib/x.ts\", 'import x from \"@/lib/模块\";\\nconst re = /[一-龥]/;\\nconst s = \"English only\";');\n  assert.equal(hits.length, 1); // import specifier 是字符串节点，按现状计入（真实代码不会有）\n  assert.equal(hits[0].line, 1);\n});\n",
+  "delete": true,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/build-watch-paths.ts",
+  "comment": "// Cloudflare 的规则：路径相对仓库根，`*` 匹配任意个字符（含 `/`）；先剔除命中排除的，剩下的再看包含。",
+  "code": "};\n\n// Cloudflare 的规则：路径相对仓库根，`*` 匹配任意个字符（含 `/`）；先剔除命中排除的，剩下的再看包含。\nfunction pattern(rule: string) {\n  return new RegExp(`^${rule.split(\"*\").map((part) => part.replace(/[.+?^${}()|[\\]\\\\]/g, \"\\\\$&\")).join(\".*\")}$`);\n}\n\nexport function watches(paths: WatchPaths, file: string) {\n  if (paths.exclude.some((rule) => pattern(rule).test(file))) return false;\n  return paths.include.some((rule) => pattern(rule).test(file));\n}",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/merge-message.ts",
+  "comment": "// lyjw 定的：少于这么多个非合并提交的 PR 压缩合并，够数的才留合并提交。",
+  "code": "import { authorFromTrailer } from \"../shared/commit-authors.ts\";\n\n// lyjw 定的：少于这么多个非合并提交的 PR 压缩合并，够数的才留合并提交。\nexport const MERGE_COMMIT_MIN_COMMITS = 3;\n\nexport const mergeMethodFor = (commits: number) => (commits >= MERGE_COMMIT_MIN_COMMITS ? \"merge\" : \"squash\");\n\n// 只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。\nexport function mergeMessage({\n  number,\n  title,",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/god-chat.ts",
+  "comment": "// 响应体是 NDJSON，每行一个事件；首行总是 route（refuse 时 tier 为 null），views 是 get_site_status 读取的视图键。\n// doc 是 read_project_doc 的一次读取：doc 为文档键，path 为仓库内路径（别的仓库带 owner/repo 前缀），url 为 GitHub 页面，section 为实际读到的章节标题（没读章节或没匹配上时缺省）。\n// design 和 plan 的 token 各自签名；计划 token 同时进该轮历史签章，不能移到另一条回复里。\n// card 是 show_card 要画的卡片，画在回复里收到这一行时正文已到的位置；同一条回复里同一张卡片只发一次。\n// game 卡另带 game：游玩列表里那款游戏的 titleId，由 Worker 按模型给的游戏名查出；同一款游戏一条回复里只发一次。\n// thinking 是模型思考的摘要（不是原文），只给界面在等正文时显示，不进对话历史；分几轮想时轮与轮之间补一个空行。\n// step 是设计会话里规划者在沙盒中的一步（搜代码、跑命令）的一行英文说明，只给界面显示进度，不进对话历史。\n// served 只在给出最终答案的那一轮由 Anthropic 的拒答兜底模型答成（没被拒）时出现，回复末尾一次，model 是那个模型的 id。",
+  "code": "}\n\n// 响应体是 NDJSON，每行一个事件；首行总是 route（refuse 时 tier 为 null），views 是 get_site_status 读取的视图键。\n// doc 是 read_project_doc 的一次读取：doc 为文档键，path 为仓库内路径（别的仓库带 owner/repo 前缀），url 为 GitHub 页面，section 为实际读到的章节标题（没读章节或没匹配上时缺省）。\n// design 和 plan 的 token 各自签名；计划 token 同时进该轮历史签章，不能移到另一条回复里。\n// card 是 show_card 要画的卡片，画在回复里收到这一行时正文已到的位置；同一条回复里同一张卡片只发一次。\n// game 卡另带 game：游玩列表里那款游戏的 titleId，由 Worker 按模型给的游戏名查出；同一款游戏一条回复里只发一次。\n// thinking 是模型思考的摘要（不是原文），只给界面在等正文时显示，不进对话历史；分几轮想时轮与轮之间补一个空行。\n// step 是设计会话里规划者在沙盒中的一步（搜代码、跑命令）的一行英文说明，只给界面显示进度，不进对话历史。\n// served 只在给出最终答案的那一轮由 Anthropic 的拒答兜底模型答成（没被拒）时出现，回复末尾一次，model 是那个模型的 id。\nexport type GodChatEvent =\n  | { type: \"route\"; route: GodChatRoute; tier: GodChatServedTier | null; downgradedFrom?: GodChatTier }\n  | { type: \"served\"; model: string }\n  | { type: \"text\"; text: string }\n  | { type: \"thinking\"; text: string }\n  | ({ type: \"design\" } & GodChatDesign)\n  | ({ type: \"plan\" } & BuildProposal)\n  | { type: \"ask\"; questions: GodChatQuestion[] }",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/digest.ts",
+  "comment": "// 按 unit 写的裸数，取粗方式与事实清单相同；排版归站点。count 是完整的数（42M 写 42000000），hours 可带 .5。",
+  "code": "export type DigestHighlight = {\n  topic: DigestTopic;\n  // 按 unit 写的裸数，取粗方式与事实清单相同；排版归站点。count 是完整的数（42M 写 42000000），hours 可带 .5。\n  value: number;\n  unit: DigestUnit;\n  // 来源列表到了条数上限、窗口里可能还有没列出的：实际至少是 value。\n  atLeast: boolean;\n  // 接在数字后面的英文小写图例，如 \"driver time\"、\"music\"、\"agent time\"。\n  caption: string;\n};\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/ingest/telemetry.ts",
+  "comment": "// 失败须留到对应提交阶段再抛，不能撤销更早模块已承诺的写入。",
+  "code": "    appleMusicCredentials?: { musicUserToken: string };\n  };\n  // 失败须留到对应提交阶段再抛，不能撤销更早模块已承诺的写入。\n  failure?: {\n    stage: \"beforeCharging\" | \"beforeDesktop\" | \"beforeTimezone\" | \"beforeAppleMusic\" | \"beforeAppleMusicCredentials\";\n    message: string;\n  };\n};\n\n\nfunction milliseconds(value: unknown, fallback = Date.now()) {",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// 计划正文跟随对话语言，issue 与 PR 的固定文案跟随计划：先剔除行内代码与路径，中日文按字数比拉丁字母更「重」，标识符里的\n// 拉丁字母不该把中文计划判成英文，英文计划里引用的几个中文歌名也不该把它判成中文；假名占比高才算日文。",
+  "code": "export type PlanLanguage = \"zh\" | \"ja\" | \"en\";\n\n// 计划正文跟随对话语言，issue 与 PR 的固定文案跟随计划：先剔除行内代码与路径，中日文按字数比拉丁字母更「重」，标识符里的\n// 拉丁字母不该把中文计划判成英文，英文计划里引用的几个中文歌名也不该把它判成中文；假名占比高才算日文。\nexport function planLanguage(plan: Pick<BuildPlan, \"title\" | \"spec\" | \"acceptance\">): PlanLanguage {\n  return textLanguage(`${plan.title}\\n${plan.spec}\\n${plan.acceptance.join(\"\\n\")}`.replace(/`[^`\\n]*`|\\S*\\/\\S*/g, \" \"));\n}\n\n// 访客看到的说明跟标题走：规格里夹着大量英文路径与标识符，标题最能代表访客的语言。\nexport function visitorLanguage(plan: Pick<BuildPlan, \"title\">): PlanLanguage {\n  return textLanguage(plan.title);\n}",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/ingest/emby.ts",
+  "comment": "// 进度用本站接收时刻作锚，避免上报器时钟偏差被算进播放进度。",
+  "code": "  const reported = reportItem(raw.item);\n  const item = reported ? normalize(reported) : null;\n  // 进度用本站接收时刻作锚，避免上报器时钟偏差被算进播放进度。\n  const state: EmbyNowPlaying = {\n    itemId,\n    paused: raw.paused === true,\n    positionTicks: number(raw.positionTicks) ?? 0,\n    runTimeTicks: number(raw.runTimeTicks) ?? 0,\n    client: label(raw.client),\n    deviceName: label(raw.deviceName),\n    playMethod: playMethod(raw.playMethod),",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/deploy-check.ts",
+  "comment": "// commit 等于目标：已上线；目标是 commit 的祖先：被之后的部署覆盖，同样算通过；否则还停在旧版本。",
+  "code": "}\n\n// commit 等于目标：已上线；目标是 commit 的祖先：被之后的部署覆盖，同样算通过；否则还停在旧版本。\nexport async function classifyVersion(commit: string | null, sha: string, isAncestor: IsAncestor): Promise<VersionState> {\n  if (!commit) return \"unreadable\";\n  if (commit === sha) return \"live\";\n  if (await isAncestor(sha, commit)) return \"superseded\";\n  return \"stale\";\n}\n\nfunction githubHeaders(): Record<string, string> {",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/credentials.ts",
+  "comment": "// 凭据与公开状态分开命名空间，避免公开读取路径的键表错误泄露令牌。",
+  "code": "// 凭据与公开状态分开命名空间，避免公开读取路径的键表错误泄露令牌。\n\nexport const CREDENTIAL_KEYS = {\n  appleMusic: \"apple-music:v1\",\n} as const;\n\nexport type StoredAppleMusicCredentials = {\n  musicUserToken: string;\n  receivedAt: number;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/god-chat-tiers.ts",
+  "comment": "// 有意的取舍：回复上限随档位放大。Sonnet、Fable 用 low 控成本和等待；DeepSeek 的 effort 只有 low / high 两档（medium 映射到 high）。\n// Opus 不在路由与额度里，只在已开启的设计会话里作答，强度 medium。thinking 为 false 的档整条回复关掉思考，effort 不生效。\n// serverFallback：该型号支持服务端拒答兜底（beta 头与 fallbacks 参数），只有 Anthropic 的型号有。",
+  "code": "export type GodChatProvider = \"anthropic\" | \"deepseek\";\n\n// 有意的取舍：回复上限随档位放大。Sonnet、Fable 用 low 控成本和等待；DeepSeek 的 effort 只有 low / high 两档（medium 映射到 high）。\n// Opus 不在路由与额度里，只在已开启的设计会话里作答，强度 medium。thinking 为 false 的档整条回复关掉思考，effort 不生效。\n// serverFallback：该型号支持服务端拒答兜底（beta 头与 fallbacks 参数），只有 Anthropic 的型号有。\nexport type GodChatTierInfo = { model: string; label: string; persona: string; provider: GodChatProvider; thinking: boolean; effort: GodChatEffort; maxTokens: number; serverFallback: boolean };\n\nexport const GOD_CHAT_TIER_INFO: Record<GodChatServedTier, GodChatTierInfo> = {\n  flash: { model: \"deepseek-flash\", label: \"DeepSeek Flash\", persona: \"Small Fry\", provider: \"deepseek\", thinking: false, effort: \"low\", maxTokens: 4096, serverFallback: false },\n  think: { model: \"deepseek-flash\", label: \"DeepSeek Flash Thinking\", persona: \"Prophet\", provider: \"deepseek\", thinking: true, effort: \"low\", maxTokens: 8192, serverFallback: false },\n  haiku: { model: \"claude-haiku-5-5\", label: \"Haiku 5.5\", persona: \"Small Fry\", provider: \"anthropic\", thinking: true, effort: \"medium\", maxTokens: 2048, serverFallback: false },\n  sonnet: { model: \"claude-sonnet-5-5\", label: \"Sonnet 5.5\", persona: \"Prophet\", provider: \"anthropic\", thinking: true, effort: \"low\", maxTokens: 4096, serverFallback: true },\n  fable: { model: \"claude-fable-5-1\", label: \"Fable 5.1\", persona: \"God\", provider: \"anthropic\", thinking: true, effort: \"low\", maxTokens: 8192, serverFallback: true },",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// A short, bounded planning session limits paid Opus work independently of ordinary chat quotas.",
+  "code": "export const BUILD_REPO = \"LYJW131/lyjwpage\";\n\n// A short, bounded planning session limits paid Opus work independently of ordinary chat quotas.\nexport const BUILD_DESIGN_LIMITS = { ttlMs: 30 * 60_000, maxTurns: 12, windowMs: 60 * 60_000, everyone: 20 } as const;\nexport const BUILD_TOKEN_MAX_CHARS = 64_000;\nexport const BUILD_PLAN_TTL_MS = 60 * 60_000;\nexport const BUILD_TIMEOUT_MS = 45 * 60_000;\nexport const BUILD_STATUS_TTL_MS = 30 * 24 * 60 * 60_000;\nexport const BUILD_RECONCILE_MS = 60_000;\n// 计划过期后仍可凭计划令牌确认它的 issue 这么久：访客可能在过期前打开表单、过期后才提交。\nexport const BUILD_ISSUE_LOOKUP_GRACE_MS = 24 * 60 * 60_000;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/site-verify/browser.ts",
+  "comment": "// 「Failed to load resource」不带 URL，具体哪条失败由下面的 response 监听记。",
+  "code": "    const text = msg.text();\n    if (isEnvNoise(text)) return push(sink.envNoise, text);\n    // 「Failed to load resource」不带 URL，具体哪条失败由下面的 response 监听记。\n    if (/Failed to load resource/.test(text)) return;\n    if (msg.type() === \"error\") push(sink.errors, text);\n    else if (msg.type() === \"warning\") push(sink.warnings, text);\n  });\n  page.on(\"pageerror\", (error) => push(sink.pageErrors, String(error)));\n  page.on(\"response\", (response) => {\n    if (response.status() < 400) return;\n    const url = response.url();",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/strip-html.ts",
+  "comment": "// 删一遍会在切口两侧重新拼出 <!-- 或 <script（如 <!<!--x-->-->、<scrip<script>t>），所以删到不再缩短。\n// <!--> 与 <!---> 是空注释；没闭合的只删 <!-- 本身：回复常在行内代码里写 <!--，吞到结尾会连后面的修复 SHA 一起删掉。",
+  "code": "}\n\n// 删一遍会在切口两侧重新拼出 <!-- 或 <script（如 <!<!--x-->-->、<scrip<script>t>），所以删到不再缩短。\n// <!--> 与 <!---> 是空注释；没闭合的只删 <!-- 本身：回复常在行内代码里写 <!--，吞到结尾会连后面的修复 SHA 一起删掉。\nexport function stripHtmlComments(text: string) {\n  return untilStable(text, /<!--(?:-?>|[\\s\\S]*?-->)?/g);\n}\n\nexport function stripHtmlTags(text: string) {\n  return untilStable(text, /<[^<>]+>/g);\n}\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/site-verify/console-sink.ts",
+  "comment": "// 导航目的地的 origin；about:blank / data: / chrome-error: 这类没有有效 origin 的返回 null，由调用方决定保不保留旧值。",
+  "code": "}\n\n// 导航目的地的 origin；about:blank / data: / chrome-error: 这类没有有效 origin 的返回 null，由调用方决定保不保留旧值。\nexport function navOrigin(url: string): string | null {\n  const origin = new URL(url).origin;\n  return origin === \"null\" ? null : origin;\n}\n\nexport function updateOrigin(current: { origin: string | null }, url: string): string | null {\n  const origin = navOrigin(url);\n  if (origin) current.origin = origin;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/rules-check/ast-rules.ts",
+  "comment": "// 同一串类名才谈得上配对：JSX 的 className 属性是一个单元（其中 cn()/clsx() 的参数一起算），\n// 没有 className 包裹时以最外层的类名合并调用为单元，都不是就按单个字符串字面量判断。",
+  "code": "}\n\n// 同一串类名才谈得上配对：JSX 的 className 属性是一个单元（其中 cn()/clsx() 的参数一起算），\n// 没有 className 包裹时以最外层的类名合并调用为单元，都不是就按单个字符串字面量判断。\nexport function checkScrollbarPair(file: string, text: string) {\n  const ext = extOf(file);\n  if (!TS_PARSE_EXTS.has(ext)) return [];\n  const ts = loadTs();\n  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, JSX_EXTS.has(ext) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);\n  const isClassNameAttr = (node: TS.Node) => ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === \"className\";\n  const isMergeCall = (node: TS.Node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && MERGE_CALLS.has(node.expression.text);\n  const unitOf = (node: TS.Node) => {",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/health-cloudflare.ts",
+  "comment": "// Web Analytics 的时长分位数单位是微秒；没有样本时返回 0，取不到时返回负数，两种都不当成真实数值。",
+  "code": "}`;\n\n// Web Analytics 的时长分位数单位是微秒；没有样本时返回 0，取不到时返回负数，两种都不当成真实数值。\nfunction microsToMs(value: unknown): number | null {\n  const micros = num(value);\n  return micros > 0 ? Math.round(micros / 1000) : null;\n}\n\nexport function parseFieldVitals(raw: unknown): FieldVitals {\n  const body = record(raw);\n  if (Array.isArray(body.errors) && body.errors.length) throw new Error(\"Web Analytics 查询失败\");",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/apple-music.ts",
+  "comment": "// link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把\n    // 「搜过了但没匹配上」这个结论也缓存住，不然每次都会重搜一遍",
+  "code": "    }\n\n    // link 存空串而不是 null：cached 用 undefined 判未命中，空串才能把\n    // 「搜过了但没匹配上」这个结论也缓存住，不然每次都会重搜一遍\n    return {\n      link: hit?.attributes?.url ?? \"\",\n      artwork: hit?.attributes?.artwork?.url ?? null,\n      id: albumId,\n      songId: hit?.id ?? null,\n      hasLyrics: hit?.attributes?.hasLyrics === true,\n    };\n  });",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。",
+  "code": "export const BUILD_PLAN_LIMITS = { titleChars: 100, specChars: 6000, acceptanceItems: 8, acceptanceChars: 300, paths: 30 } as const;\nexport const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone: 10 } } as const;\n// outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。\nexport const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;\n// 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。\nexport const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;\nexport const BUILD_PROGRESS_LIMITS = { messageChars: 200, blockedChars: 600 } as const;\n\nexport type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };\n// issueRef 写进预填 issue 的隐藏标记，Worker 凭它在 GitHub 上认出这份计划的 issue；早于它的存档计划没有这个字段。\nexport type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number; issueRef?: string };",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/site-verify/reload.ts",
+  "comment": "// 只清本工具自己写的文件：--out 可能指到别人的目录，不能整目录删。",
+  "code": "  const latency = Number(flags.latency ?? 100);\n  fs.mkdirSync(out, { recursive: true });\n  // 只清本工具自己写的文件：--out 可能指到别人的目录，不能整目录删。\n  for (const name of fs.readdirSync(out)) if (/^(frame-\\d+-\\d+ms|settled)\\.png$/.test(name)) fs.rmSync(path.join(out, name), { force: true });\n\n  const pw = await resolvePlaywright() ?? fail(\"解不到 playwright / playwright-core\", PLAYWRIGHT_NEXT);\n  const sink = newSink();\n  let browser: PwBrowser;\n  try {\n    browser = (await launchEngine(pw.api, flags)).browser;\n  } catch (error) {",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/ingest/telemetry.ts",
+  "comment": "// iconHash 标识应用图标，iconObjectKey 标识已上传字节；合并会混淆无图标与待补传。",
+  "code": "    throw new Error(\"desktop.iconHash 必须是 SHA-256 十六进制字符串\");\n  }\n  // iconHash 标识应用图标，iconObjectKey 标识已上传字节；合并会混淆无图标与待补传。\n  const iconObjectKey = text(row.iconObjectKey);\n  if (iconObjectKey != null && !IMAGE_OBJECT_KEY.test(iconObjectKey)) {\n    throw new Error(\"desktop.iconObjectKey 必须是 <sha256>.png 或 <sha256>.webp\");\n  }\n  if (iconObjectKey != null && iconHash == null) {\n    throw new Error(\"desktop.iconObjectKey 必须和 iconHash 一起上报\");\n  }\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/digest.ts",
+  "comment": "// 三到五个汉字、不带标点的中文短标题，点出这一天的主线。",
+  "code": "\nexport type DigestPayload = {\n  // 三到五个汉字、不带标点的中文短标题，点出这一天的主线。\n  headline: string;\n  // 站点轮换显示的标题池，headline 在首位，条目与 headline 同格式、互不重复；旧记录没有这一项，只显示 headline。\n  headlines?: string[];\n  // 按情境规则挑出的两到三格，最重要的在前，topic 互不重复；可选项不足两格时可以更少。\n  highlights: DigestHighlight[];\n  // 谁定的标题：从文案库里挑中它的模型（如 \"@cf/cloudflare/clef\"），或按规则直接取用时为 \"rules\"。\n  model: string;\n  // 规则判断这 24 小时没什么值得写：headline 为空、highlights 为空，站点照旧显示时钟卡。",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/design-scale-check.ts",
+  "comment": "// 变少不算失败：访客构建（.github/build/implement.md）只能改 src/，写不了这份基线。",
+  "code": "    process.exit(1);\n  }\n  // 变少不算失败：访客构建（.github/build/implement.md）只能改 src/，写不了这份基线。\n  if (shrank.length > 0) {\n    console.log(`存量变少：${shrank.map(({ token, before, after }) => `${token} ${before} → ${after}`).join(\"，\")}。跑 \\`pnpm design:scale --update\\` 收紧基线。`);\n  }\n  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);\n  console.log(`design:scale 通过（存量 ${total} 处，未增加）`);\n}\n\nif (import.meta.url === pathToFileURL(process.argv[1] ?? \"\").href) main();",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/digest.ts",
+  "comment": "// 接在数字后面的英文小写图例，如 \"driver time\"、\"music\"、\"agent time\"。",
+  "code": "  // 来源列表到了条数上限、窗口里可能还有没列出的：实际至少是 value。\n  atLeast: boolean;\n  // 接在数字后面的英文小写图例，如 \"driver time\"、\"music\"、\"agent time\"。\n  caption: string;\n};\n\nexport type DigestPayload = {\n  // 三到五个汉字、不带标点的中文短标题，点出这一天的主线。\n  headline: string;\n  // 站点轮换显示的标题池，headline 在首位，条目与 headline 同格式、互不重复；旧记录没有这一项，只显示 headline。\n  headlines?: string[];",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// 访客看到的说明跟标题走：规格里夹着大量英文路径与标识符，标题最能代表访客的语言。",
+  "code": "}\n\n// 访客看到的说明跟标题走：规格里夹着大量英文路径与标识符，标题最能代表访客的语言。\nexport function visitorLanguage(plan: Pick<BuildPlan, \"title\">): PlanLanguage {\n  return textLanguage(plan.title);\n}\n\nexport function textLanguage(text: string): PlanLanguage {\n  const kana = text.match(/[\\u3040-\\u30ff]/g)?.length ?? 0;\n  const han = text.match(/[\\u4e00-\\u9fff]/g)?.length ?? 0;\n  const latin = text.match(/[A-Za-z]/g)?.length ?? 0;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/docs-check.ts",
+  "comment": "// 有路径落在符号链接后面（pnpm 的 node_modules）时整批被拒：逐个问，问不了的当没命中",
+  "code": "      } catch (error) {\n        if ((error as { status?: number }).status === 1) return hits;\n        // 有路径落在符号链接后面（pnpm 的 node_modules）时整批被拒：逐个问，问不了的当没命中\n        for (const one of paths) {\n          try {\n            for (const hit of checkIgnore([one])) hits.add(hit);\n          } catch {\n          }\n        }\n      }\n      return hits;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/cache.ts",
+  "comment": "// 存储契约要求 TTL 是正整数（shared/storage-contract 的 validTtl）：带小数的 TTL\n  // （比如按半衰期除出来的 x.5 毫秒）整条 set 都会被拒。约束在这层收口（向上取整，\n  // 再设个下限），不指望每个调用方自己取整。",
+  "code": "\nexport async function put<T>(k: string, value: T, ttlMs: number) {\n  // 存储契约要求 TTL 是正整数（shared/storage-contract 的 validTtl）：带小数的 TTL\n  // （比如按半衰期除出来的 x.5 毫秒）整条 set 都会被拒。约束在这层收口（向上取整，\n  // 再设个下限），不指望每个调用方自己取整。\n  const ttl = Math.max(1_000, Math.ceil(ttlMs));\n  await getStorage().set(key(\"cache\", k), JSON.stringify(value), { ttlMs: ttl });\n}\n\nexport async function remove(k: string) {\n  await getStorage().remove(key(\"cache\", k));\n}\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/dev-scene.ts",
+  "comment": "// 原始值数组压成一行：Pulse 的列式数组逐项换行会让快照膨胀几倍、diff 也没法看。",
+  "code": "}\n\n// 原始值数组压成一行：Pulse 的列式数组逐项换行会让快照膨胀几倍、diff 也没法看。\nexport function formatScene(scene: Scene): string {\n  const pretty = JSON.stringify(scene, null, 2).replace(/\\[\\s+([^[\\]{}]*?)\\s+\\]/g, (_, items: string) => `[${items.replace(/\\n\\s*/g, \" \")}]`);\n  return `${pretty}\\n`;\n}\n\n// 奖杯明细按 ?titleids= 查，组合随可见瓷砖变；场景注入整份目录，core 按请求现切（public-api.ts#matchOverride）。\nexport function trophyTitleIds(views: Map<string, Envelope> | Record<string, Envelope>): string[] {\n  const get = (endpoint: string) => (views instanceof Map ? views.get(endpoint) : views[endpoint]);",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/coding-buckets.ts",
+  "comment": "// 一份报告只替换它声明的 agent：同一来源下的 agent 各报各的范围和采集时刻（Cursor 与 Devin 都走 agents），互不冲掉、互不挡。\n// 报告首桶可能只覆盖后半截，不能用这份局部计数覆盖已有的完整桶。",
+  "code": "}\n\n// 一份报告只替换它声明的 agent：同一来源下的 agent 各报各的范围和采集时刻（Cursor 与 Devin 都走 agents），互不冲掉、互不挡。\n// 报告首桶可能只覆盖后半截，不能用这份局部计数覆盖已有的完整桶。\nexport function mergeBucketReport(\n  previous: StoredCodingBuckets | null,\n  report: CodingTokenBucketReport,\n  receivedAt: number,\n): StoredCodingBuckets | null {\n  const declared = new Set(report.agents.map((agent) => agent.id));\n  if (previous && (declared.size === 0\n    ? report.collectedAt < previous.collectedAt",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/chat-html-preview.tsx",
+  "comment": "// 和正文里的 Markdown 链接一样只在访客点击时打开：图示里的脚本自己发消息，没有点击就开不了标签页。\n      // 用户激活对整页有效，所以还要求焦点在这块图示上，访客点站点别处时图示脚本借不到这次激活。",
+  "code": "      if (next !== null) setHeight(next);\n      const link = visualLink(data?.[HTML_VISUAL_OPEN_KEY]);\n      // 和正文里的 Markdown 链接一样只在访客点击时打开：图示里的脚本自己发消息，没有点击就开不了标签页。\n      // 用户激活对整页有效，所以还要求焦点在这块图示上，访客点站点别处时图示脚本借不到这次激活。\n      if (link && navigator.userActivation?.isActive && document.activeElement === frameRef.current) confirmExternalOpen(link);\n    };\n    window.addEventListener(\"message\", onMessage);\n    return () => window.removeEventListener(\"message\", onMessage);\n  }, []);\n\n  const doc = scheme !== null && source.trim() !== \"\" ? htmlVisualDocument(pushed ? \"\" : source, readTheme(scheme), window.location.origin) : null;\n  return (",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/live/listening/hero.tsx",
+  "comment": "// 统一 transition 会覆盖 variant 中的非对称时长。",
+  "code": "            animate=\"animate\"\n            exit=\"exit\"\n            // 统一 transition 会覆盖 variant 中的非对称时长。\n            transition={reduced ? STATIC_TRANSITION : undefined}\n          >\n            <div\n              className={cn(\n                \"h-full rounded-md\",\n                showSideLyrics || showSideNext\n                  ? \"flex gap-3 md:grid md:grid-cols-2 md:gap-0\"\n                  : \"flex gap-3\",",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/chat-html-preview.tsx",
+  "comment": "// 跨源样式表读不了规则，站点字体都在自家样式表里。",
+  "code": "      for (const rule of Array.from(sheet.cssRules)) if (rule instanceof CSSFontFaceRule) rules.push(rule.cssText);\n    } catch {\n      // 跨源样式表读不了规则，站点字体都在自家样式表里。\n    }\n  }\n  return rules.join(\"\");\n}\n\nfunction readTheme(scheme: \"light\" | \"dark\"): HtmlVisualTheme {\n  const root = getComputedStyle(document.documentElement);\n  const vars = Object.fromEntries(Object.entries(HTML_VISUAL_THEME_VARS).map(([name, source]) => [name, root.getPropertyValue(source).trim()]));",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/app/entry.server.tsx",
+  "comment": "// 壳之后的错误由 Suspense 边界交给客户端重渲，页面仍可用：不改状态码，只不让这份降级 HTML 进缓存。",
+  "code": "    {\n      onError(error: unknown) {\n        // 壳之后的错误由 Suspense 边界交给客户端重渲，页面仍可用：不改状态码，只不让这份降级 HTML 进缓存。\n        if (shellReady) responseHeaders.set(\"Cache-Control\", NO_STORE);\n        else responseStatusCode = 500;\n        console.error(error);\n      },\n    },\n  );\n  shellReady = true;\n  await body.allReady;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/build-plan-card.tsx",
+  "comment": "// 查不到就等下一轮：卡片照旧开着两个出口，访客随时能改选构建。",
+  "code": "        }\n      } catch {\n        // 查不到就等下一轮：卡片照旧开着两个出口，访客随时能改选构建。\n      } finally {\n        if (controller === current) controller = null;\n      }\n    };\n    checkIssueRef.current = () => void check();\n    const observer = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; void check(); });\n    observer.observe(element);\n    const timer = setInterval(() => void check(), BUILD_ISSUE_POLL_MS);",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/health.ts",
+  "comment": "// 连带窗口前最近的一格一起读（pruneChecks 总给每个序列留着一格）：summarizeBuckets 据此知道序列早于窗口，停机跨过窗口起点时，窗口开头那段照算漏跑。",
+  "code": "}\n\n// 连带窗口前最近的一格一起读（pruneChecks 总给每个序列留着一格）：summarizeBuckets 据此知道序列早于窗口，停机跨过窗口起点时，窗口开头那段照算漏跑。\nexport async function readBuckets(db: HealthReadDb, series: HealthSeriesSpec, now: number): Promise<HealthBucket[]> {\n  const today = Math.floor(now / DAY_MS) * DAY_MS;\n  const { results } = await db.prepare(\n    \"SELECT hour_start, success, failure, first_at, last_at, last_ok FROM health_buckets WHERE series = ?1 AND hour_start >= \" +\n      \"COALESCE((SELECT MAX(hour_start) FROM health_buckets WHERE series = ?1 AND hour_start < ?2), ?2) ORDER BY hour_start\",\n  ).bind(series.name, today - (HEALTH_DAYS - 1) * DAY_MS).all<BucketRow>();\n  return results.map((row) => ({\n    hourStart: row.hour_start,",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/cloudflare-workers.ts",
+  "comment": "// 改密钥、控制台上传生成的版本没有构建记录，但代码和它前一个版本一样：\n    // 顺着版本号往前找最近一个有构建的。列表查不到只是没有这条回退。",
+  "code": "      } catch { return null; }\n    })),\n    // 改密钥、控制台上传生成的版本没有构建记录，但代码和它前一个版本一样：\n    // 顺着版本号往前找最近一个有构建的。列表查不到只是没有这条回退。\n    Promise.all(CLOUDFLARE_WORKERS.map(async ({ name }) => {\n      try {\n        return parseVersionList(await request(`${scripts}/${name}/versions?per_page=${VERSION_LOOKBACK}`));\n      } catch { return []; }\n    })),\n  ]);\n  const versionIds = [...new Set([\n    ...deployments.flatMap((deployment) => deployment?.versions.map((version) => version.id) ?? []),",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/coding-models.ts",
+  "comment": "// 上下文档位标记（Claude Code 的 `claude-opus-5-5[1m]`）不是另一个模型，合计与排名并进基础名。",
+  "code": "export const HIDDEN_CODING_MODELS: ReadonlySet<string> = new Set([\"\", \"unknown\", \"codex-auto-review\", \"<synthetic>\"]);\n\n// 上下文档位标记（Claude Code 的 `claude-opus-5-5[1m]`）不是另一个模型，合计与排名并进基础名。\nconst CONTEXT_MARKER = /\\[\\d+[km]\\]$/i;\n\nexport function codingModelName(model: string): string {\n  return model.replace(CONTEXT_MARKER, \"\");\n}\n\nexport function isVisibleCodingModel(model: string | null | undefined): model is string {\n  return typeof model === \"string\" && !HIDDEN_CODING_MODELS.has(model);",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// 预填参数对应 .github/ISSUE_TEMPLATE/improvement.yml 的字段 id；issue 与 PR 正文的小节标题同用一套文案，须与表单字段同步。",
+  "code": "}\n\n// 预填参数对应 .github/ISSUE_TEMPLATE/improvement.yml 的字段 id；issue 与 PR 正文的小节标题同用一套文案，须与表单字段同步。\nexport const PLAN_LABELS = {\n  en: {\n    request: \"Request\",\n    acceptance: \"Acceptance criteria\",\n    paths: \"Planned paths\",\n    review: \"Review closely\",\n    reasons: { outside: \"outside the plan\", contract: \"shared contract\", auth: \"build or auth code\", prompt: \"chat prompts\", docs: \"documentation outside docs/\" },\n    requestedBy: (account: string) => `Requested by @${account}.`,",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/build-plan-card.tsx",
+  "comment": "// 授权弹窗还开着时访客仍可改选 Open issue（会关掉弹窗）；登录完成、Worker 正在受理构建时才两边都锁。",
+  "code": "  const choiceClosed = !proposalChoiceOpen(proposal, now) || inactive;\n  const disabled = inactive || !proposalBuildOpen(proposal, now) || working !== null;\n  // 授权弹窗还开着时访客仍可改选 Open issue（会关掉弹窗）；登录完成、Worker 正在受理构建时才两边都锁。\n  const issueDisabled = choiceClosed || working === \"preparing\";\n  const [lookupRejected, setLookupRejected] = useState(false);\n  const awaitingIssue = Boolean(ISSUE_URL && proposal.issueRef && proposal.issueOpened && !used && !lookupRejected && now < proposal.expiresAt + BUILD_ISSUE_LOOKUP_GRACE_MS);\n  const latest = useRef({ proposal, onChange });\n  useEffect(() => { latest.current = { proposal, onChange }; });\n\n  // 只有滚到视口里的卡片才轮询：同一 IP 的构建请求共用 BUILD_REQUEST_LIMIT，存档里的旧卡片不该把它耗光。\n  useEffect(() => {",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/pulse-listening.ts",
+  "comment": "// 正在放的歌在容器里可能出现不止一次：取往前连对最长的那处，两处一样长又指向不同的下一首就不猜。放到最后一首不猜（不知道是否整单循环）。",
+  "code": "}\n\n// 正在放的歌在容器里可能出现不止一次：取往前连对最长的那处，两处一样长又指向不同的下一首就不猜。放到最后一首不猜（不知道是否整单循环）。\nfunction nextInOrder(session: Song[], container: PlayingContainer | null): { song: Song; basis: \"order\" } | null {\n  const tracks = container?.tracks ?? [];\n  let best: { run: number; song: Song } | null = null;\n  let tied = false;\n  for (let index = 0; index + 1 < tracks.length; index += 1) {\n    let run = 0;\n    while (run < session.length && run <= index && sameTrack(session[session.length - 1 - run], tracks[index - run])) run += 1;\n    if (run < NEXT_IN_ORDER_MIN_RUN || (best && run < best.run)) continue;",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/chat-card/layout.tsx",
+  "comment": "// R2 里的海报经图片变体出小图，不拉原图；变体按内容哈希永久缓存。",
+  "code": "}\n\n// R2 里的海报经图片变体出小图，不拉原图；变体按内容哈希永久缓存。\nconst POSTER_WIDTH = 240;\nconst PREVIEW_WIDTH = 32;\n\nexport function posterImage(url: string | null | undefined) {\n  if (!url || !imageSourceFromInternalPath(url)) return { src: url ?? null };\n  return { src: optimizerImagePath(url, POSTER_WIDTH, 75), preview: optimizerImagePath(url, PREVIEW_WIDTH, 50) };\n}\n",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/god-chat/message-parts.tsx",
+  "comment": "// 分隔线本身带确认框，恒显示；线后的文字、卡片和交接都属于设计内容，由 showDesignContent 统一把守。",
+  "code": "  const parts: ReactNode[] = [];\n  let from = 0;\n  // 分隔线本身带确认框，恒显示；线后的文字、卡片和交接都属于设计内容，由 showDesignContent 统一把守。\n  const dividerMark = designAt === undefined\n    ? null\n    : {\n        at: designAt,\n        design: false,\n        node: (\n          <Fragment key=\"design\">\n            <DesignDivider />",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/god-chat/consent.tsx",
+  "comment": "// 第一行选杂鱼与先知用哪家，和头部开关是同一个选择；去向列表只列那一家。第二行接受或拒绝。",
+  "code": "}\n\n// 第一行选杂鱼与先知用哪家，和头部开关是同一个选择；去向列表只列那一家。第二行接受或拒绝。\nexport function ConsentPrompt({ text, lineup: choice, onChoose, onAccept, onDecline }: { text: string; lineup: GodChatLineup; onChoose: (lineup: GodChatLineup) => void; onAccept: (lineup: GodChatLineup) => void; onDecline: () => void }) {\n  const copy = CONSENT_COPY[textLanguage(text)];\n  const webSearch = useWebSearch();\n  const destinations = [copy.workers(lookupServices(copy, webSearch)), copy.clef, choice === \"claude\" ? copy.anthropicAll : copy.deepseek, copy.browser];\n  return (\n    <ConsentFrame copy={copy} text={text} destinations={destinations}>\n      <div role=\"radiogroup\" aria-label=\"Models for the Small Fry and the Prophet\" className=\"flex flex-wrap items-center gap-2\">\n        {LINEUP_OPTIONS.map((option) => (",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/cloudflare-workers.ts",
+  "comment": "// 汇总不带 status / 时间维度：直接取整段窗口的 P50，不能平均各小时的 P50。",
+  "code": "const API = \"https://api.cloudflare.com/client/v4\";\n\n// 汇总不带 status / 时间维度：直接取整段窗口的 P50，不能平均各小时的 P50。\nexport const WORKERS_METRICS_QUERY = `\nquery WorkersMetrics($account: string, $start: Time, $end: Time) {\n  viewer { accounts(filter: { accountTag: $account }) {\n    summary: workersInvocationsAdaptive(limit: 10, filter: {\n      scriptName_in: ${JSON.stringify(CLOUDFLARE_WORKERS.map(({ name }) => name))},\n      datetime_geq: $start, datetime_lt: $end\n    }) {\n      dimensions { scriptName }",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/coding-store.ts",
+  "comment": "// 会话摘要会过期，按 agent 累计的 sessionCounts 不能随摘要删除而减少。\n// series 是累计序列上次的值；windows 是 delta 序列已经计到的时刻，起点早于它的窗口是重发。",
+  "code": "export type StoredCodingActivity = CodingActivityReport & { receivedAt: number };\n\n// 会话摘要会过期，按 agent 累计的 sessionCounts 不能随摘要删除而减少。\n// series 是累计序列上次的值；windows 是 delta 序列已经计到的时刻，起点早于它的窗口是重发。\nexport type StoredOtlpCounters = {\n  series: Record<string, { value: number; seenAt: number }>;\n  windows: Record<string, { until: number; seenAt: number }>;\n  sessions: Record<string, number>;\n  sessionCounts: Record<string, number>;\n};\n\nfunction json(raw: unknown): Record<string, unknown> | null {",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/rules-check.test.ts",
+  "comment": "// 39ab64f7 之前的形态：图片地址带交付域",
+  "code": "\ntest(\"git 历史里的真实旧错误形态会被拦下\", () => {\n  // 39ab64f7 之前的形态：图片地址带交付域\n  assert.deepEqual(rules(\"src/lib/x.ts\", 'return `cdn/img/${key}.webp`;'), [\"img-baked-url@1\"]);\n  // 全仓注释清理前（43ef5895 / 24a4d324）的形态：裸待办标记\n  assert.deepEqual(rules(\"src/lib/x.ts\", \"// TODO: 接新接口\"), [\"todo-ticket@1\"]);\n  // uptime-strip 修掉的那类问题不在这条脚本里（design:scale 管 radius），这里不重复报\n  assert.equal(checkScrollbarPair(\"src/components/x.tsx\", 'className=\"rounded-[2px]\"').length, 0);\n});\n\ntest(\"手写 sleep 被拦：具名封装、内联、改名 resolve、块里暂存 timer、无参回调\", () => {",
+  "delete": true,
+  "source": "repo"
+ },
+ {
+  "file": "workers/ai/src/build/validation.ts",
+  "comment": "// 拒绝原因原样回给规划者：笼统的「计划无效」会让它不知道改哪里，一条回复的工具轮数就这样耗完。",
+  "code": "}\n\n// 拒绝原因原样回给规划者：笼统的「计划无效」会让它不知道改哪里，一条回复的工具轮数就这样耗完。\nexport function checkBuildPlan(value: unknown): { plan: BuildPlan } | { error: string } {\n  const limits = BUILD_PLAN_LIMITS;\n  if (!value || typeof value !== \"object\") return { error: \"The plan must be an object with title, spec, acceptance and paths.\" };\n  const { title, spec, acceptance, paths } = value as Record<string, unknown>;\n  if (typeof title !== \"string\" || typeof spec !== \"string\" || !Array.isArray(acceptance) || !Array.isArray(paths)) return { error: \"title and spec must be strings; acceptance and paths must be arrays.\" };\n  const cleanTitle = title.replace(/\\s+/g, \" \").trim();\n  if (!cleanTitle || cleanTitle.length > limits.titleChars) return { error: `title must be 1 to ${limits.titleChars} characters; it has ${cleanTitle.length}.` };\n  if (!spec.trim() || spec.length > limits.specChars) return { error: `spec must be 1 to ${limits.specChars} characters; it has ${spec.length}. Shorten it.` };",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/ingest/telemetry.ts",
+  "comment": "// 不在前台切换热路径做 R2 HEAD，避免图片存储慢响应拖住整封上报。",
+  "code": "  if (row.iconData != null) throw new Error(\"desktop.iconData 已停用，请由上报器直传 R2\");\n\n  // 不在前台切换热路径做 R2 HEAD，避免图片存储慢响应拖住整封上报。\n  return {\n    activity: {\n      applicationName,\n      bundleIdentifier,\n      windowTitle,\n      iconObjectKey: null,\n      observedAt: milliseconds(row.observedAt, receivedAt),\n    },",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/components/chat-markdown.tsx",
+  "comment": "// 回复和思考摘要里的图片只给链接不加载：模型（或经联网搜索读到的注入文本）能把对话内容拼进图片 URL，浏览器渲染即发请求，无需点击就外带出去。",
+  "code": "    </a>\n  ),\n  // 回复和思考摘要里的图片只给链接不加载：模型（或经联网搜索读到的注入文本）能把对话内容拼进图片 URL，浏览器渲染即发请求，无需点击就外带出去。\n  img: ({ src, alt }) => <ImageLink src={src} alt={alt} />,\n  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,\n  table: ({ children }) => (\n    <div className=\"scrollbar-none my-2 overflow-x-auto [&::-webkit-scrollbar]:hidden\">\n      <table className=\"w-full border-collapse text-xs\">{children}</table>\n    </div>\n  ),\n};",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "scripts/site-verify/reload.ts",
+  "comment": "// 同一处文字反复变（歌词、进度、数字滚动）算常动；只变一两次的是跳动。",
+  "code": "const DIFF_THRESHOLD = 6;\n\n// 同一处文字反复变（歌词、进度、数字滚动）算常动；只变一两次的是跳动。\nexport function textJumps(changes: TextChange[], { grace = 100, liveMin = 3 } = {}) {\n  const byWhere = new Map<string, TextChange[]>();\n  for (const change of changes) {\n    if (change.at <= grace) continue;\n    byWhere.set(change.where, [...(byWhere.get(change.where) ?? []), change]);\n  }\n  const jumps: TextChange[] = [];\n  const live: { where: string; count: number; sample: string | undefined }[] = [];",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "shared/god-chat.ts",
+  "comment": "// 校验与提示词共用这组上限。超出的部分按 OpenUI 的做法丢掉或截断、其余照画（docs/references.md「OpenUI」）：过长的文字截断加省略号，\n// 过多的条目只留前面的，不合格的条目、序列、节点只丢那一项；只有剩下的撑不起一张图（结构不对、条目不够）时才整块退回成代码。\n// 提示词仍把上限原样告诉模型，截掉的内容访客看不到。",
+  "code": "export const GOD_CHAT_VISUAL_KINDS = Object.keys(GOD_CHAT_VISUAL_EXAMPLES) as GodChatVisualKind[];\nexport const GOD_CHAT_CHART_SERIES = 4;\n// 校验与提示词共用这组上限。超出的部分按 OpenUI 的做法丢掉或截断、其余照画（docs/references.md「OpenUI」）：过长的文字截断加省略号，\n// 过多的条目只留前面的，不合格的条目、序列、节点只丢那一项；只有剩下的撑不起一张图（结构不对、条目不够）时才整块退回成代码。\n// 提示词仍把上限原样告诉模型，截掉的内容访客看不到。\nexport const GOD_CHAT_VISUAL_LIMITS = {\n  stats: 4,\n  barLabels: 16,\n  columnLabels: 24,\n  linePoints: 60,\n  timeline: 12,\n  media: 12,\n  short: 40,",
+  "delete": false,
+  "source": "repo"
+ },
+ {
+  "file": "src/app/entry.client.tsx",
+  "comment": "// 安装全局错误上报，调用方是 entry.client",
+  "code": "installGlobalErrorReporting();\n\n// 安装全局错误上报，调用方是 entry.client\nfunction reportRecoverableError(error: unknown, componentStack: string | undefined) {\n  console.error(error);\n  const message = error instanceof Error ? error.message : String(error);\n  const code = /#(\\d+)/.exec(message)?.[1] ?? \"unknown\";\n  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : null;\n  const report = new Error(`Hydration fell back to client rendering (${code})`);\n  report.name = \"HydrationFallback\";\n  if (componentStack) report.stack = `${report.name}: ${report.message}${componentStack}`;",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/rule-drift.ts",
+  "comment": "// 由 pr-gate 调用",
+  "code": "    const changed = compare.files ?? [];\n    const files = changed.flatMap((file) => [file.filename, file.previous_filename ?? []].flat()).filter(isRulePath);\n    // 由 pr-gate 调用\n    const error = changed.length >= COMPARE_FILE_LIMIT ? `main 上改动超过 ${COMPARE_FILE_LIMIT} 个文件，列表可能不全，用 git diff 自己看` : null;\n    return { since, files, error };\n  } catch (error) {\n    return { since, files: [], error: (error as Error).message };\n  }\n}\n",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/charging-settling.ts",
+  "comment": "// 稳定窗口 35 秒",
+  "code": "\n\n// 稳定窗口 35 秒\nexport const SETTLING_MS = 35_000;\n\nexport function settlingKey(device: string) {\n  return key(device, \"structuralAt\");\n}\n\nexport type ChargingDevice = \"charger\" | \"powerbank\";\n",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "src/lib/asset-archive.ts",
+  "comment": "// 4 秒超时",
+  "code": "export const STALE_NEXT_FETCH_TIMEOUT_MS = 4_000;\n\n// 4 秒超时\nexport const STALE_NEXT_SCRIPT =\n  `(function(){if(navigator.onLine===false)return;var k=${JSON.stringify(STALE_NEXT_RELOAD_KEY)},n=Date.now(),g=false;` +\n  `try{var l=Number(sessionStorage.getItem(k)||0);if(n-l>=0&&n-l<${STALE_NEXT_COOLDOWN_MS})return;` +\n  `sessionStorage.setItem(k,String(n));if(sessionStorage.getItem(k)!==String(n))return}catch(e){return}` +\n  `function go(){if(g)return;g=true;location.reload()}var t=setTimeout(go,${STALE_NEXT_FETCH_TIMEOUT_MS});` +\n  `fetch(location.href,{cache:\"reload\",credentials:\"same-origin\"}).then(function(r){return r.text()})` +\n  `.catch(function(){}).then(function(){clearTimeout(t);go()})})();`;\n",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/freshness.ts",
+  "comment": "// 恢复后重新拉取的宽限时间",
+  "code": "}\n\n// 恢复后重新拉取的宽限时间\nexport const RESUME_REFETCH_GRACE_MS = 1_000;\n\nexport function resumeTimedOut(state: ResumeState): ResumeState {\n  return state.resuming && !state.sawValidating ? { ...state, resuming: false } : state;\n}\n\nexport type StaleHoldInput = {\n  stale: boolean;",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// 改自 PR #512 的上限",
+  "code": "// outsidePlanFiles：计划没列到、但为了契约或测试必须一起改的文件，放行这么多个（Markdown 文档不计），PR 正文的重点审查一节列出。\nexport const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;\n// 改自 PR #512 的上限\nexport const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;\nexport const BUILD_PROGRESS_LIMITS = { messageChars: 200, blockedChars: 600 } as const;\n\nexport type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };\n// issueRef 写进预填 issue 的隐藏标记，Worker 凭它在 GitHub 上认出这份计划的 issue；早于它的存档计划没有这个字段。\nexport type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number; issueRef?: string };\nexport type BuildIssueLookup = { issue: GithubIssueResult | null };\nexport type BuildFireResult = { runId: string; branch: string; statusToken: string; run?: BuildRun };",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/revert-proof.ts",
+  "comment": "// 跑测试",
+  "code": "}\n\n// 跑测试\nfunction runTests(cwd: string, cmd: string, timeoutMs: number): RunResult {\n  const env = { ...process.env };\n  delete env.NODE_TEST_CONTEXT;\n  const result = spawnSync(\"sh\", [\"-c\", cmd], { cwd, env, encoding: \"utf8\", timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });\n  const output = `${result.stdout ?? \"\"}${result.stderr ?? \"\"}${result.error ? `\\n${result.error.message}` : \"\"}`;\n  return summarize(result.status, output);\n}\n",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/apple-music.ts",
+  "comment": "// 响应不成功时读出前 300 个字符",
+  "code": "  if (!response.ok) {\n    const body = (await response.text()).slice(0, 300);\n    // 响应不成功时读出前 300 个字符\n    if (response.status === 401) {\n      throw new Error(`Apple Music 拒绝了 Worker 自签的 developer token（401，检查 APPLE_MUSIC_TEAM_ID / KEY_ID / PRIVATE_KEY 是否同一套）：${body}`);\n    }\n    if (response.status === 403) {\n      throw new Error(`Music-User-Token 已失效，需要在 Mac 上报器里重新授权 Apple Music（403）：${body}`);\n    }\n    throw new Error(`Apple Music 返回 ${response.status}：${body}`);\n  }",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/http-origins.ts",
+  "comment": "// 取请求的 Origin 头",
+  "code": "}\n\n// 取请求的 Origin 头\nexport function requestOrigin(request: Request): string | null {\n  const origin = request.headers.get(\"Origin\");\n  if (origin) return origin;\n  return request.headers.get(\"Sec-Fetch-Site\") === \"same-origin\" ? new URL(request.url).origin : null;\n}\n\nexport function isAllowedOrigin(request: Request, env: OriginEnv): boolean {\n  const allowed = getAllowedOrigins(env);",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/site-verify/reload.ts",
+  "comment": "// 2026-10-20 加的延迟模拟",
+  "code": "  const frames: { t: number; data: string }[] = [];\n  const cdp = await page.context().newCDPSession(page);\n  // 2026-10-20 加的延迟模拟\n  if (latency) await cdp.send(\"Network.emulateNetworkConditions\", { offline: false, latency, downloadThroughput: -1, uploadThroughput: -1 });\n  cdp.on(\"Page.screencastFrame\", async (frame) => {\n    frames.push({ t: frame.metadata.timestamp * 1000, data: frame.data });\n    await cdp.send(\"Page.screencastFrameAck\", { sessionId: frame.sessionId }).catch(() => {});\n  });\n  await cdp.send(\"Page.startScreencast\", { format: \"png\", everyNthFrame: 1 });\n  await page.reload({ waitUntil: \"commit\" });\n  await page.waitForTimeout(watch);",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// ---- 类型定义 ----",
+  "code": "\nexport type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };\n// ---- 类型定义 ----\nexport type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number; issueRef?: string };\nexport type BuildIssueLookup = { issue: GithubIssueResult | null };\nexport type BuildFireResult = { runId: string; branch: string; statusToken: string; run?: BuildRun };\nexport const BUILD_PHASES = [\"triggered\", \"running\", \"uploaded\", \"validated\", \"blocked\", \"pr_open\", \"merged\", \"closed\", \"timeout\", \"failed\"] as const;\nexport type BuildPhase = (typeof BUILD_PHASES)[number];\nexport const BUILD_ACTIVE_PHASES: readonly BuildPhase[] = [\"triggered\", \"running\", \"uploaded\", \"validated\"];\nexport const BUILD_FAILED_PHASES: readonly BuildPhase[] = [\"blocked\", \"failed\", \"timeout\"];\nexport const BUILD_CLOSED_PHASES: readonly BuildPhase[] = [\"merged\", \"closed\"];",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/coding-usage-sources.ts",
+  "comment": "// 之前 mac-otlp 走单独的入口，后来改成和 agents-otlp 共用",
+  "code": "  agents: { scope: \"account\", ingest: \"/api/ingest/agents\", otlp: false },\n  \"agents-otlp\": { scope: \"environment\", ingest: \"/api/ingest/agents/otlp\", otlp: true },\n  // 之前 mac-otlp 走单独的入口，后来改成和 agents-otlp 共用\n  \"mac-otlp\": { scope: \"device\", ingest: \"/api/ingest/agents/otlp\", otlp: true },\n} as const satisfies Record<CodingUsageSource, { scope: CodingUsageScope; ingest: string; otlp: boolean }>;\n\nexport type OtlpCodingSource = { [K in CodingUsageSource]: (typeof CODING_USAGE_SOURCES)[K][\"otlp\"] extends true ? K : never }[CodingUsageSource];\n\nexport const CODING_USAGE_SOURCE_NAMES = Object.keys(CODING_USAGE_SOURCES) as CodingUsageSource[];\n\n// OTLP 来源没有扫描覆盖区间，只有收到的时刻。",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/apple-music-lookup.ts",
+  "comment": "// 精确匹配专辑名",
+  "code": "\n  if (wantedAlbum) {\n    // 精确匹配专辑名\n    const exact = candidates.find(\n      (song) => normalizeForMatch(song.attributes?.albumName) === wantedAlbum,\n    );\n    if (exact) return exact;\n    if (!artistMatched) return undefined;\n    const contained = candidates.find((song) => {\n      const found = normalizeForMatch(song.attributes?.albumName);\n      return found.includes(wantedAlbum) || wantedAlbum.includes(found);",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/ingest/homepod.ts",
+  "comment": "// 把状态转成小写",
+  "code": "\n  const rawState = text(row.state)?.toLowerCase();\n  // 把状态转成小写\n  const state =\n    rawState === \"playing\" || rawState === \"buffering\"\n      ? \"playing\"\n      : rawState === \"paused\"\n        ? \"paused\"\n        : \"stopped\";\n  const title = text(row.title);\n  const artist = text(row.artist);",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/site-verify/browser.ts",
+  "comment": "// 滚动页面",
+  "code": "}\n\n// 滚动页面\nconst SCROLL_SWEEP = `(async () => {\n  for (let y = 0; y < document.body.scrollHeight + 1200; y += 600) {\n    scrollTo(0, y);\n    await new Promise((resolve) => setTimeout(resolve, 60));\n  }\n  scrollTo(0, 0);\n})()`;\n",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/rules-check/ast-rules.ts",
+  "comment": "// TODO: 支持更多协议",
+  "code": "const JSON_OBJECT_IMPL = \"shared/json.ts\";\n\n// TODO: 支持更多协议\nconst absoluteTarget = (raw: string, complete: boolean): { label: string; allowed: boolean } | null => {\n  let lead = 0;\n  while (lead < raw.length && raw.charCodeAt(lead) <= 0x20) lead++;\n  const text = raw.slice(lead).replace(/[\\t\\n\\r]/g, \"\").replace(/\\\\/g, \"/\");\n  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(text)?.[1]?.toLowerCase();\n  const protocolRelative = text.startsWith(\"//\");\n  if (!protocolRelative && !(scheme !== undefined && (NETWORK_SCHEMES.has(scheme) || text.slice(scheme.length + 1).startsWith(\"//\")))) return null;\n  const unproven = { label: text.slice(0, 60), allowed: false };",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/ingest/r2-assets.ts",
+  "comment": "// 确认缓存 5 分钟",
+  "code": "}\n\n// 确认缓存 5 分钟\nconst CONFIRMED_TTL_MS = 5 * 60_000;\nconst confirmed = new Map<string, number>();\n\nexport function resetStoredImageCacheForTests(): void {\n  confirmed.clear();\n}\n\nexport async function hasStoredImage(bucket: ImageBucket, objectKey: string): Promise<boolean> {",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/build-watch-paths.ts",
+  "comment": "// 把规则转成正则",
+  "code": "};\n\n// 把规则转成正则\nfunction pattern(rule: string) {\n  return new RegExp(`^${rule.split(\"*\").map((part) => part.replace(/[.+?^${}()|[\\]\\\\]/g, \"\\\\$&\")).join(\".*\")}$`);\n}\n\nexport function watches(paths: WatchPaths, file: string) {\n  if (paths.exclude.some((rule) => pattern(rule).test(file))) return false;\n  return paths.include.some((rule) => pattern(rule).test(file));\n}",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/merge-message.ts",
+  "comment": "// 合并提交最少提交数",
+  "code": "import { authorFromTrailer } from \"../shared/commit-authors.ts\";\n\n// 合并提交最少提交数\nexport const MERGE_COMMIT_MIN_COMMITS = 3;\n\nexport const mergeMethodFor = (commits: number) => (commits >= MERGE_COMMIT_MIN_COMMITS ? \"merge\" : \"squash\");\n\n// 只收认得出的身份（agent 或 GitHub noreply）：个人邮箱认不出是谁，可能就是仓库主人自己。\nexport function mergeMessage({\n  number,\n  title,",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/god-chat.ts",
+  "comment": "// 给 #384 的预取用",
+  "code": "}\n\n// 给 #384 的预取用\nexport type GodChatEvent =\n  | { type: \"route\"; route: GodChatRoute; tier: GodChatServedTier | null; downgradedFrom?: GodChatTier }\n  | { type: \"served\"; model: string }\n  | { type: \"text\"; text: string }\n  | { type: \"thinking\"; text: string }\n  | ({ type: \"design\" } & GodChatDesign)\n  | ({ type: \"plan\" } & BuildProposal)\n  | { type: \"ask\"; questions: GodChatQuestion[] }",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/digest.ts",
+  "comment": "// 摘要高亮",
+  "code": "export type DigestHighlight = {\n  topic: DigestTopic;\n  // 摘要高亮\n  value: number;\n  unit: DigestUnit;\n  // 来源列表到了条数上限、窗口里可能还有没列出的：实际至少是 value。\n  atLeast: boolean;\n  // 接在数字后面的英文小写图例，如 \"driver time\"、\"music\"、\"agent time\"。\n  caption: string;\n};\n",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/ingest/telemetry.ts",
+  "comment": "/* ===== failure ===== */",
+  "code": "    appleMusicCredentials?: { musicUserToken: string };\n  };\n  /* ===== failure ===== */\n  failure?: {\n    stage: \"beforeCharging\" | \"beforeDesktop\" | \"beforeTimezone\" | \"beforeAppleMusic\" | \"beforeAppleMusicCredentials\";\n    message: string;\n  };\n};\n\n\nfunction milliseconds(value: unknown, fallback = Date.now()) {",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// 判断计划语言，见第 63 行注释",
+  "code": "export type PlanLanguage = \"zh\" | \"ja\" | \"en\";\n\n// 判断计划语言，见第 63 行注释\nexport function planLanguage(plan: Pick<BuildPlan, \"title\" | \"spec\" | \"acceptance\">): PlanLanguage {\n  return textLanguage(`${plan.title}\\n${plan.spec}\\n${plan.acceptance.join(\"\\n\")}`.replace(/`[^`\\n]*`|\\S*\\/\\S*/g, \" \"));\n}\n\n// 访客看到的说明跟标题走：规格里夹着大量英文路径与标识符，标题最能代表访客的语言。\nexport function visitorLanguage(plan: Pick<BuildPlan, \"title\">): PlanLanguage {\n  return textLanguage(plan.title);\n}",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/ingest/emby.ts",
+  "comment": "// 构造状态对象",
+  "code": "  const reported = reportItem(raw.item);\n  const item = reported ? normalize(reported) : null;\n  // 构造状态对象\n  const state: EmbyNowPlaying = {\n    itemId,\n    paused: raw.paused === true,\n    positionTicks: number(raw.positionTicks) ?? 0,\n    runTimeTicks: number(raw.runTimeTicks) ?? 0,\n    client: label(raw.client),\n    deviceName: label(raw.deviceName),\n    playMethod: playMethod(raw.playMethod),",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/deploy-check.ts",
+  "comment": "// 读不到提交就返回 unreadable",
+  "code": "}\n\n// 读不到提交就返回 unreadable\nexport async function classifyVersion(commit: string | null, sha: string, isAncestor: IsAncestor): Promise<VersionState> {\n  if (!commit) return \"unreadable\";\n  if (commit === sha) return \"live\";\n  if (await isAncestor(sha, commit)) return \"superseded\";\n  return \"stale\";\n}\n\nfunction githubHeaders(): Record<string, string> {",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/credentials.ts",
+  "comment": "// 凭据键",
+  "code": "// 凭据键\n\nexport const CREDENTIAL_KEYS = {\n  appleMusic: \"apple-music:v1\",\n} as const;\n\nexport type StoredAppleMusicCredentials = {\n  musicUserToken: string;\n  receivedAt: number;",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/god-chat-tiers.ts",
+  "comment": "// FIXME 以后统一",
+  "code": "export type GodChatProvider = \"anthropic\" | \"deepseek\";\n\n// FIXME 以后统一\nexport type GodChatTierInfo = { model: string; label: string; persona: string; provider: GodChatProvider; thinking: boolean; effort: GodChatEffort; maxTokens: number; serverFallback: boolean };\n\nexport const GOD_CHAT_TIER_INFO: Record<GodChatServedTier, GodChatTierInfo> = {\n  flash: { model: \"deepseek-flash\", label: \"DeepSeek Flash\", persona: \"Small Fry\", provider: \"deepseek\", thinking: false, effort: \"low\", maxTokens: 4096, serverFallback: false },\n  think: { model: \"deepseek-flash\", label: \"DeepSeek Flash Thinking\", persona: \"Prophet\", provider: \"deepseek\", thinking: true, effort: \"low\", maxTokens: 8192, serverFallback: false },\n  haiku: { model: \"claude-haiku-5-5\", label: \"Haiku 5.5\", persona: \"Small Fry\", provider: \"anthropic\", thinking: true, effort: \"medium\", maxTokens: 2048, serverFallback: false },\n  sonnet: { model: \"claude-sonnet-5-5\", label: \"Sonnet 5.5\", persona: \"Prophet\", provider: \"anthropic\", thinking: true, effort: \"low\", maxTokens: 4096, serverFallback: true },\n  fable: { model: \"claude-fable-5-1\", label: \"Fable 5.1\", persona: \"God\", provider: \"anthropic\", thinking: true, effort: \"low\", maxTokens: 8192, serverFallback: true },",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// 本次改成 30 分钟",
+  "code": "export const BUILD_REPO = \"LYJW131/lyjwpage\";\n\n// 本次改成 30 分钟\nexport const BUILD_DESIGN_LIMITS = { ttlMs: 30 * 60_000, maxTurns: 12, windowMs: 60 * 60_000, everyone: 20 } as const;\nexport const BUILD_TOKEN_MAX_CHARS = 64_000;\nexport const BUILD_PLAN_TTL_MS = 60 * 60_000;\nexport const BUILD_TIMEOUT_MS = 45 * 60_000;\nexport const BUILD_STATUS_TTL_MS = 30 * 24 * 60 * 60_000;\nexport const BUILD_RECONCILE_MS = 60_000;\n// 计划过期后仍可凭计划令牌确认它的 issue 这么久：访客可能在过期前打开表单、过期后才提交。\nexport const BUILD_ISSUE_LOOKUP_GRACE_MS = 24 * 60 * 60_000;",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/site-verify/browser.ts",
+  "comment": "// 过滤加载失败的消息",
+  "code": "    const text = msg.text();\n    if (isEnvNoise(text)) return push(sink.envNoise, text);\n    // 过滤加载失败的消息\n    if (/Failed to load resource/.test(text)) return;\n    if (msg.type() === \"error\") push(sink.errors, text);\n    else if (msg.type() === \"warning\") push(sink.warnings, text);\n  });\n  page.on(\"pageerror\", (error) => push(sink.pageErrors, String(error)));\n  page.on(\"response\", (response) => {\n    if (response.status() < 400) return;\n    const url = response.url();",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/strip-html.ts",
+  "comment": "// 去掉 HTML 注释",
+  "code": "}\n\n// 去掉 HTML 注释\nexport function stripHtmlComments(text: string) {\n  return untilStable(text, /<!--(?:-?>|[\\s\\S]*?-->)?/g);\n}\n\nexport function stripHtmlTags(text: string) {\n  return untilStable(text, /<[^<>]+>/g);\n}\n",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/site-verify/console-sink.ts",
+  "comment": "// 获取导航 origin",
+  "code": "}\n\n// 获取导航 origin\nexport function navOrigin(url: string): string | null {\n  const origin = new URL(url).origin;\n  return origin === \"null\" ? null : origin;\n}\n\nexport function updateOrigin(current: { origin: string | null }, url: string): string | null {\n  const origin = navOrigin(url);\n  if (origin) current.origin = origin;",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/health-cloudflare.ts",
+  "comment": "// 微秒转毫秒",
+  "code": "}`;\n\n// 微秒转毫秒\nfunction microsToMs(value: unknown): number | null {\n  const micros = num(value);\n  return micros > 0 ? Math.round(micros / 1000) : null;\n}\n\nexport function parseFieldVitals(raw: unknown): FieldVitals {\n  const body = record(raw);\n  if (Array.isArray(body.errors) && body.errors.length) throw new Error(\"Web Analytics 查询失败\");",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/apple-music.ts",
+  "comment": "// 返回结果",
+  "code": "    }\n\n    // 返回结果\n    return {\n      link: hit?.attributes?.url ?? \"\",\n      artwork: hit?.attributes?.artwork?.url ?? null,\n      id: albumId,\n      songId: hit?.id ?? null,\n      hasLyrics: hit?.attributes?.hasLyrics === true,\n    };\n  });",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/build-routine.ts",
+  "comment": "// 构建上限",
+  "code": "export const BUILD_PLAN_LIMITS = { titleChars: 100, specChars: 6000, acceptanceItems: 8, acceptanceChars: 300, paths: 30 } as const;\nexport const BUILD_QUOTA = { windowMs: 60 * 60_000, fire: { account: 3, everyone: 10 } } as const;\n// 构建上限\nexport const BUILD_UPLOAD_LIMITS = { files: 80, fileBytes: 512 * 1024, totalBytes: 2 * 1024 * 1024, requestBytes: 3 * 1024 * 1024, messageChars: 2000, outsidePlanFiles: 5 } as const;\n// 截图存进站点 R2 图片桶、永久以 /img/<objectKey> 公开，每次构建的张数和单张字节都要有上限。\nexport const BUILD_SCREENSHOT_LIMITS = { count: 6, bytes: 2 * 1024 * 1024, captionChars: 80 } as const;\nexport const BUILD_PROGRESS_LIMITS = { messageChars: 200, blockedChars: 600 } as const;\n\nexport type BuildPlan = { title: string; spec: string; acceptance: string[]; paths: string[] };\n// issueRef 写进预填 issue 的隐藏标记，Worker 凭它在 GitHub 上认出这份计划的 issue；早于它的存档计划没有这个字段。\nexport type BuildProposal = { plan: BuildPlan; token: string; expiresAt: number; issueRef?: string };",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "scripts/site-verify/reload.ts",
+  "comment": "// 创建输出目录",
+  "code": "  const latency = Number(flags.latency ?? 100);\n  fs.mkdirSync(out, { recursive: true });\n  // 创建输出目录\n  for (const name of fs.readdirSync(out)) if (/^(frame-\\d+-\\d+ms|settled)\\.png$/.test(name)) fs.rmSync(path.join(out, name), { force: true });\n\n  const pw = await resolvePlaywright() ?? fail(\"解不到 playwright / playwright-core\", PLAYWRIGHT_NEXT);\n  const sink = newSink();\n  let browser: PwBrowser;\n  try {\n    browser = (await launchEngine(pw.api, flags)).browser;\n  } catch (error) {",
+  "delete": true,
+  "source": "planted"
+ },
+ {
+  "file": "shared/ingest/telemetry.ts",
+  "comment": "// 校验 iconObjectKey",
+  "code": "    throw new Error(\"desktop.iconHash 必须是 SHA-256 十六进制字符串\");\n  }\n  // 校验 iconObjectKey\n  const iconObjectKey = text(row.iconObjectKey);\n  if (iconObjectKey != null && !IMAGE_OBJECT_KEY.test(iconObjectKey)) {\n    throw new Error(\"desktop.iconObjectKey 必须是 <sha256>.png 或 <sha256>.webp\");\n  }\n  if (iconObjectKey != null && iconHash == null) {\n    throw new Error(\"desktop.iconObjectKey 必须和 iconHash 一起上报\");\n  }\n",
+  "delete": true,
+  "source": "planted"
+ }
+]
