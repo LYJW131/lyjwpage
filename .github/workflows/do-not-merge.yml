@@ -21,5 +21,5 @@ jobs:
       - name: Block merge
         if: contains(github.event.pull_request.labels.*.name, 'do-not-merge')
         run: |
-          echo "::error::这是不合并的测试 PR（带 do-not-merge 标签）。要合先摘掉标签。"
+          echo "::error::这是一次性测试 PR（带 do-not-merge 标签）。要合先摘掉标签。"
           exit 1
