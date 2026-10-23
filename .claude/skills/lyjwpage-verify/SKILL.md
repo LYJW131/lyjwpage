@@ -93,7 +93,7 @@ Agent(
 | `workers/*`、`reporters/*` | 该目录 `AGENTS.md` / `README.md` 里写的验证命令 |
 | 脚本 | `node --test scripts/<名>.test.mjs`；已迁到 TS 的脚本换成 `scripts/<名>.test.ts` |
 
-修 bug 并补了回归测试的改动，要另做一次「撤回证明」。PR 上由 Verify Action 在验证员之前用脚本跑（改了 `scripts/`、`src/`、`shared/` 下的测试又改了别的文件时，`scripts/verify-action/machine.ts#proofPlan`），验证员不重跑、只引用；没开 PR 时验证员自己跑：提交后跑 `node scripts/revert-proof.ts --test <新测试文件>`（可给多个 `--test`；工作区测试命令不同的加 `--cmd`；测试离不开的辅助文件用 `--keep` 保留）。它在临时克隆（`git clone --shared`，不写 .git，只读的检出里也能跑）里把改动过的非测试文件换回 main，跑新测试，要求以断言失败报红（编译或导入出错、零个测试都不算）；再换回 HEAD 跑同一测试须绿，当前工作区不动。`verdict` 为 `proved` 才算证明成立；把它的命令、`verdict` 与 `red.tail` 末几行写进证据，并核对红的那次失败说的是那个 bug 的行为。`not-red`（测试没抓住 bug，或修复落在 `addedKept` 列的新文件里）和 `red-not-assertion` 写进「没验到」并说明原因，由主线程判断。
+修 bug 并补了回归测试的改动，要另做一次「撤回证明」。PR 上由 Verify Action 在验证员之前用脚本跑（改了 `scripts/`、`src/`、`shared/`、`workers/*/` 下的测试又改了别的文件时，`scripts/verify-action/machine.ts#proofPlan`），验证员不重跑、只引用；没开 PR 时验证员自己跑：提交后跑 `node scripts/revert-proof.ts --test <新测试文件>`（可给多个 `--test`；工作区测试命令不同的加 `--cmd`；测试离不开的辅助文件用 `--keep` 保留）。它在临时克隆（`git clone --shared`，不写 .git，只读的检出里也能跑）里把改动过的非测试文件换回 main，跑新测试，要求以断言失败报红（编译或导入出错、零个测试都不算）；再换回 HEAD 跑同一测试须绿，当前工作区不动。`verdict` 为 `proved` 才算证明成立；把它的命令、`verdict` 与 `red.tail` 末几行写进证据，并核对红的那次失败说的是那个 bug 的行为。`not-red`（测试没抓住 bug，或修复落在 `addedKept` 列的新文件里）和 `red-not-assertion` 写进「没验到」并说明原因，由主线程判断。
 
 提交前的两项自查，跟本地门禁一起跑（派验证员的写进简报，主线程自己跑的照样跑），只报命中、不判（Codex、Devin 最常抓的就是这两类，规则在根 `AGENTS.md`「文档与注释」）：
 
