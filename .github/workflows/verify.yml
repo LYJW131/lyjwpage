@@ -127,8 +127,10 @@ jobs:
           allowed_bots: '*'
           show_full_output: true
           prompt: ${{ steps.prompt.outputs.prompt }}
+          # Bash 沙箱只许写工作目录与 $TMPDIR，产物目录在 runner.temp 下，不加进来截图和 work/ 都写不进去
           claude_args: >-
             --model haiku --effort ${{ env.EFFORT }}
+            --add-dir ${{ runner.temp }}/verify-out
             --allowedTools "Bash,Read,Write,Glob,Grep"
             --json-schema '${{ steps.prompt.outputs.schema }}'
       - if: always()
