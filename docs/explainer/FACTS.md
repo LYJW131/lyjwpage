@@ -475,7 +475,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 ### 机器评审
 
-- 在 PR 上发言的评审机器人有三个：Claude review（`claude[bot]`，`.github/workflows/claude-code-review.yml#claude-review`，只在 PR 打开和转为待审时跑）、Codex（`chatgpt-codex-connector[bot]`，推送后也自动再审一轮）、Devin Review（`devin-ai-integration[bot]`）。Cursor Bugbot 已被 lyjw 关掉；`cloudflare-workers-and-pages[bot]` 只贴分支预览链接，不算评审（`HUMAN.md`「5. PR 与合并」、`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛（验证员汇总，主线程判断）」）。
+- 在 PR 上发言的评审机器人有三个：Claude review（`claude[bot]`，`.github/workflows/claude-code-review.yml#claude-review`，只在逻辑档 PR 打开和转为待审时跑，分档同 `scripts/pr-gate/tier.ts#tierOf` 的 `judge`）、Codex（`chatgpt-codex-connector[bot]`，推送后也自动再审一轮）、Devin Review（`devin-ai-integration[bot]`）。Cursor Bugbot 已被 lyjw 关掉；`cloudflare-workers-and-pages[bot]` 只贴分支预览链接，不算评审（`HUMAN.md`「5. PR 与合并」、`.claude/skills/lyjwpage-verify/SKILL.md`「3. PR 合并门槛（验证员汇总，主线程判断）」）。
 - 机器人不分改动类型都会来审，但只有大改代码逻辑的 PR 才等它们：每条意见要么改，要么回复为什么不改，最后一次推送后再核一遍；机器说的不一定对，Claude 自己判断，安全类等 lyjw 拍板；Codex 每个 PR 最多三轮（`HUMAN.md`「5. PR 与合并」）。main 的分支保护要求行内评审线程全部解决才能合（`docs/ops-facts.md`「GitHub」）。
 
 ### 验证与回执
