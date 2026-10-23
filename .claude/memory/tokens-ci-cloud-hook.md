@@ -1,12 +1,12 @@
 ---
 name: tokens-ci-cloud-hook
-description: lyjwpage cloud sessions report token usage to tokens.ci via SessionStart/Stop hooks (#626); credential is meant to come from a Network secret
+description: Cloud sessions and project threads report token usage to tokens.ci via a user-level Stop hook installed by the env setup script (#636)
 metadata:
   type: project
 ---
 
-lyjw contributed Claude Code cloud support to missuo/tokens (PR #89, merged 2026-10-23). lyjwpage #626 (merged 2026-10-24 02:50 SGT) adds its hooks to `.claude/settings.json`: SessionStart installs `tokens-cli@latest` in cloud only; Stop runs `TZ=Asia/Singapore TOKENS_API_TOKEN="${TOKENS_API_TOKEN:-egress-proxy}" tokens cloud submit`.
+lyjw contributed Claude Code cloud support to missuo/tokens (PR #89). Project threads don't run repo hooks ([[thread-sessions-skip-repo-hooks]]), so since #636 (merged 2026-10-24 05:50 SGT) the tokens.ci Stop hook lives in `scripts/cloud/claude-user-settings.json`; env <cloud env>'s Setup script (copy in `scripts/cloud/setup.sh`, lyjw added it 2026-10-24 05:56 SGT) installs `tokens-cli` and curls that json to `/root/.claude/settings.json`. Verified in a thread that hooks in that file do fire. The Stop hook is async with `timeout 30`.
 
-Credential plan (lyjw asked env var vs egress proxy; recommended proxy): Network secret on env `<cloud env>`, host `tokens.ci`, path `/api/submit`, header `Authorization`, prefix `Bearer`. Verified 2026-10-24 that the proxy overwrites an existing placeholder Bearer (openrouter.ai with `Bearer placeholder` → 200).
+Credential: Network secret on <cloud env> (host `tokens.ci`, path `/api/submit`, Bearer), recorded in `docs/ops-facts.md`. Verified: placeholder-Bearer request went 401 → 400 after the secret was added.
 
-**Pending:** lyjw adds the secret; then in a fresh cloud session confirm the device "Claude Code cloud" appears on tokens.ci and register the fact in `docs/ops-facts.md`, flip `docs/references.md` entry to 采用.
+**Pending:** confirm uploads from a new thread on tokens.ci (lyjw to check).
