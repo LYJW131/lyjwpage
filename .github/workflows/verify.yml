@@ -99,12 +99,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIEW: ${{ steps.preview.outputs.preview }}
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程，runner 上没有它 claude 直接装不起来；
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程、socat 给沙盒转发网络，缺了 claude 装不起来或 Bash 起不来；
       # Ubuntu 24.04 的 AppArmor 默认不许 bwrap 建用户命名空间，照 build.yml「Prepare the sandbox」只给 bwrap 放行
-      - name: Install bubblewrap
+      - name: Install sandbox deps
         timeout-minutes: 8
         run: |
-          bwrap_deps() { sudo timeout -k 10 180 sh -c 'apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap'; }
+          bwrap_deps() { sudo timeout -k 10 180 sh -c 'apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap socat'; }
           bwrap_deps || {
             sudo dpkg --configure -a
             sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
@@ -166,12 +166,12 @@ jobs:
         run: node scripts/verify-action.ts prompt --role judge --pr "$PR"
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程，runner 上没有它 claude 直接装不起来；
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程、socat 给沙盒转发网络，缺了 claude 装不起来或 Bash 起不来；
       # Ubuntu 24.04 的 AppArmor 默认不许 bwrap 建用户命名空间，照 build.yml「Prepare the sandbox」只给 bwrap 放行
-      - name: Install bubblewrap
+      - name: Install sandbox deps
         timeout-minutes: 8
         run: |
-          bwrap_deps() { sudo timeout -k 10 180 sh -c 'apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap'; }
+          bwrap_deps() { sudo timeout -k 10 180 sh -c 'apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap socat'; }
           bwrap_deps || {
             sudo dpkg --configure -a
             sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
