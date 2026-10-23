@@ -554,7 +554,7 @@ GraphQL 的 `scriptName_in` 跟着它），不公开账号内其他 Worker；还
 ## 常驻上报器账本
 
 misaka-jp 上的 server-reporter 与 agents-reporter 每封报文顶上带一个 `reporter` 块：镜像提交（Actions 以 `GIT_SHA`
-烧进 `REPORTER_COMMIT`）、窗口内（`push-ledger.ts` 的 `WINDOW_MS`）推成功几封（含这一封）、这些封往返的中位数 `rttMs`、窗口起止。次数和延迟由
+烧进 `REPORTER_COMMIT`）、窗口内（`push-ledger.ts` 的 `WINDOW_MS`）推成功几封（含这一封）、这些封往返的中位数 `rttMs`、上报器自己 `failure()` 记下的错误次数 `errors`（推送失败、采集失败、站点拒收等，没带的旧镜像缺这一项）、窗口起止。次数、延迟和错误数由
 上报器自己数（两边同一份 `push-ledger.ts`），上报入口只校验、把最新一份加上收到的时刻写进可滞后层（每个上报器一条，
 `reporter:server-reporter:v1` / `reporter:agents-reporter:v1`），由 `GET /api/status/reporters` 给卡片服务区最后两格。块写坏或上报器没带都当没有，不因此拒掉整封上报。
 

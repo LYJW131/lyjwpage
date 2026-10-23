@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { accumulate, cycleBounds, shiftMonth } from "../dist/traffic.js";
-import { BUCKET_MS, countPushes, recordPush, WINDOW_MS as LEDGER_WINDOW_MS } from "../dist/push-ledger.js";
+import { BUCKET_MS, countPushes, recordError, recordPush, WINDOW_MS as LEDGER_WINDOW_MS } from "../dist/push-ledger.js";
 import { cpuPercent } from "../dist/system.js";
 import { parseAs } from "../dist/geo.js";
 
@@ -81,6 +81,17 @@ test("推送账本：RTT 取窗口内中位数，偶数封取中间两封的均�
   assert.equal(countPushes(buckets, t0 + BUCKET_MS).rttMs, 160);
   assert.equal(countPushes([], t0).rttMs, null);
   assert.equal(countPushes(buckets, t0 + LEDGER_WINDOW_MS + BUCKET_MS).rttMs, 250);
+});
+
+test("推送账本：错误次数按格累加，跟推送一样滚出窗口", () => {
+  const t0 = 1_790_200_200_000;
+  let buckets = recordError([], t0);
+  buckets = recordError(buckets, t0 + 1_000);
+  buckets = recordPush(buckets, t0 + 2_000, 100);
+  buckets = recordError(buckets, t0 + BUCKET_MS);
+  assert.deepEqual(countPushes(buckets, t0 + BUCKET_MS), { pushes: 1, rttMs: 100, errors: 3, start: Math.floor(t0 / BUCKET_MS) * BUCKET_MS });
+  assert.equal(countPushes(buckets, t0 + LEDGER_WINDOW_MS + BUCKET_MS).errors, 1);
+  assert.equal(countPushes([], t0).errors, 0);
 });
 
 test("CPU 占用与 AS 行解析", () => {

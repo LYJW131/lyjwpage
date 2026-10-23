@@ -17,12 +17,11 @@ Decisions lyjw made (don't re-ask):
 
 Facts learned from real runs (2026-10-23):
 - First end-to-end run (39923479225) took ~4.5 min; both models found real bugs (empty-evidence receipts, title-edit cancelling verification).
-- claude-code-action restores `.claude/`, `CLAUDE.md` etc. from main on PRs ("PR head is untrusted"); PR copies land in `.claude-pr/`. So the verifier follows main's skill; skill edits take effect after merge.
+- claude-code-action restores `.claude/`, `CLAUDE.md` etc. from main on PRs ("PR head is untrusted"); PR copies land in `.claude-pr/`. So the verifier follows main's skill; skill edits take effect after merge. It does NOT restore `AGENTS.md`, `REVIEW.md` or nested `AGENTS.md`; root `CLAUDE.md` is just `@AGENTS.md`, so a PR's AGENTS.md edits steer its own verifier/judge at once.
 - Workflow-level `concurrency` applies before job `if`, so a no-op `edited` event must go to a different group.
 - `actions/setup-node` auto package-manager cache fails without pnpm installed: set `package-manager-cache: false` on jobs that skip pnpm.
 - The runner's azure apt mirror stalls often (one run hung 40+ min; #593's test run again). `timeout` outside `sudo` leaves apt-get alive holding the dpkg lock, so retries fail. verify.yml now installs browsers without deps, installs apt deps only on UI-tier PRs, with `sudo timeout` and a retry that drops the azure mirror.
-- Scripts run in jobs with write tokens or secrets (verify-action, pr-tier, pr-gate) must not import `shared/`: the visitor design flow may write `shared/` (`workers/ai/src/build/validation.ts#allowedBuildPath`) but not `scripts/` (independent review of #572, F1). Claude steps that run PR code set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'` (F2).
 - Verifier/judge diff against the PR's base branch, not origin/main (stacked test PRs mixed in base commits).
 - Receipts carry `<!-- 描述摘要 <sha256> -->` on line 2; editing the checklist or lyjw's words voids old receipts.
 
-Code-review diagnosis: [[claude-review-hollow]]. Related: [[verification-haiku-worker]], [[merge-requires-bot-review-pass]].
+Independent review (verdict 需先修) and the security rules it produced: [[verify-action-review-572]]. Code-review diagnosis: [[claude-review-hollow]]. Related: [[verification-haiku-worker]], [[merge-requires-bot-review-pass]].

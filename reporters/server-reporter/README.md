@@ -13,7 +13,7 @@ TypeScript / Node，和 [agents-reporter](../agents-reporter) 同一套结构（
 | CPU / 负载 / 内存 / 磁盘 / 网速 / 运行时间 | 固定每分钟一轮（`INTERVAL_MS`） | **每轮都推**。这份快照本身就是心跳，站点按信封的 `updatedAt` 判断上报器还活着没有 |
 | 公网 IP 的 Location / ISP / ASN | 地址变了才查，否则按 `src/geo.ts#GEO_TTL_MS` 缓存 | 跟着上面那份一起推。查的是网卡上的地址，不是「我访问某个 what-is-my-ip 看到的出口」 |
 | 计费周期内的累计流量 | 每轮把这一段的增量并进去 | 跟着一起推。攒不住（状态文件写不进）时报 `null`，卡片上那一栏整行不出现 |
-| 推送账本（`reporter` 块） | 站点回 ok 才记一笔，按 `BUCKET_MS` 分格存在 `PUSH_LEDGER_PATH` | 每封都带：镜像提交（Actions 以 `GIT_SHA` 烧进 `REPORTER_COMMIT`）、窗口（`WINDOW_MS`）内推成功几封（含这一封）、这些封往返的中位数（`rttMs`，从发出到读完回执，不含这一封）、窗口起止。站点卡片服务区据此显示 Push、RTT 和线上跑的哪一版。和 agents-reporter 同一份 `push-ledger.ts`，常量见 `src/push-ledger.ts#WINDOW_MS`、`src/push-ledger.ts#BUCKET_MS` |
+| 推送账本（`reporter` 块） | 站点回 ok 才记一笔推送，`failure()` 每调一次记一笔错误，按 `BUCKET_MS` 分格存在 `PUSH_LEDGER_PATH` | 每封都带：镜像提交（Actions 以 `GIT_SHA` 烧进 `REPORTER_COMMIT`）、窗口（`WINDOW_MS`）内推成功几封（含这一封）、这些封往返的中位数（`rttMs`，从发出到读完回执，不含这一封）、窗口内 `failure()` 记下的错误次数（`errors`，推送失败、采集失败等都算，agents-reporter 每家限额取不到也记一笔；只记在内存里，下一次推成功时随账本落盘）、窗口起止。站点卡片服务区据此显示 Push、RTT、Err 和线上跑的哪一版。和 agents-reporter 同一份 `push-ledger.ts`，常量见 `src/push-ledger.ts#WINDOW_MS`、`src/push-ledger.ts#BUCKET_MS` |
 
 CPU 占用和网卡速率都是这一段间隔的平均，不是「这一瞬间的尖峰」：上一轮 `/proc` 的读数留着，这一轮做差。第一封在启动后约 1 秒就发出去，卡片不必干等一个完整间隔。
 
