@@ -99,6 +99,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIEW: ${{ steps.preview.outputs.preview }}
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程，runner 上没有它 claude 直接装不起来
+      - name: Install bubblewrap
+        timeout-minutes: 8
+        run: |
+          bwrap_deps() { sudo timeout -k 10 180 sh -c 'apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap'; }
+          bwrap_deps || {
+            sudo dpkg --configure -a
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            bwrap_deps
+          }
+          bwrap --unshare-pid --ro-bind / / true
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:
@@ -150,6 +161,17 @@ jobs:
         run: node scripts/verify-action.ts prompt --role judge --pr "$PR"
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程，runner 上没有它 claude 直接装不起来
+      - name: Install bubblewrap
+        timeout-minutes: 8
+        run: |
+          bwrap_deps() { sudo timeout -k 10 180 sh -c 'apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap'; }
+          bwrap_deps || {
+            sudo dpkg --configure -a
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            bwrap_deps
+          }
+          bwrap --unshare-pid --ro-bind / / true
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:
