@@ -74,12 +74,12 @@ test("planOf：草稿、已关闭与只改文档的不验，界面档等预览�
   assert.equal(planOf(pull({ state: "closed" }), tierOf(["src/components/a.tsx"], trusted)).judge, false);
 });
 
-test("评论第一行给人看、第二行是机器读的 JSON，parseComments 认得出来；表格里的竖线与换行被转义", () => {
+test("评论第一行给人看、第二行是机器读的 JSON，parseComments 认得出来；表格里的竖线与换行被转义、证据压成一行", () => {
   const digest = "b".repeat(64);
   const stamp = { sha: HEAD, level: "verifier-blocked", body: digest };
   const receipt = receiptComment({
     stamp,
-    report: { model: "claude-haiku", level: "live-ui-verified", rows: [{ id: "V1", check: "a|b", result: "PASS", evidence: "x\ny" }], notVerified: [] },
+    report: { model: "claude-haiku", level: "live-ui-verified", rows: [{ id: "V1", check: "a|b\nc", result: "PASS", evidence: "x\ny" }], notVerified: [] },
     checklist: [{ id: "V1", text: "" }, { id: "V2", text: "" }],
     problems: ["V2 没有对应的检查行"],
     claimed: "live-ui-verified",
@@ -88,7 +88,7 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   });
   const lines = receipt.split("\n");
   assert.deepEqual(lines.slice(0, 2), [`验证回执 ${HEAD}：verifier-blocked`, stampLine(stamp)]);
-  assert.ok(lines.includes("| V1 | a\\|b | PASS | x<br>y |"));
+  assert.ok(lines.includes("| V1 | a\\|b<br>c | PASS | x y |"));
   assert.match(receipt, /验证员自报 live-ui-verified，按清单对照改记 verifier-blocked/);
   assert.match(receipt, /<img src="https:\/\/example.test\/home-375.png"/);
   const judge = judgeComment({
@@ -120,7 +120,10 @@ test("回执正文只摆结论：全过一行列 id，没过的逐条列出，�
   assert.doesNotMatch(summary, /V1|X1 PASS/);
   assert.match(summary, /没验到：\n- a\n- b\n- c\n- 另有 1 条，见下面明细/);
   assert.match(fail.slice(fail.indexOf("<details>")), /没验到（全部）：\n- a\n- b\n- c\n- d/);
-  assert.ok(fail.includes(long));
+  assert.ok(!fail.includes(long));
+  const blocked = receiptComment({ ...base, stamp: { ...stamp, level: "verifier-blocked" }, problems: ["V2 没有对应的检查行"], report: { model: "m", level: "unit-test-verified", rows, notVerified: [] } });
+  assert.equal(blocked.split("\n")[3], "检查行都是 PASS，但记 verifier-blocked：V1 X1");
+  assert.match(blocked, /问题：V2 没有对应的检查行。/);
 });
 
 test("判定正文：全做到时一行带过，没做到的与回归列出来，逐条表折叠", () => {
@@ -132,6 +135,9 @@ test("判定正文：全做到时一行带过，没做到的与回归列出来�
   assert.match(summary, /没做到：\n- 换位置（没改）/);
   assert.match(summary, /回归：\n- r/);
   assert.doesNotMatch(summary, /- a（e）/);
+  const noEvidence = judgeComment({ stamp: { ...stamp, verdict: "FAIL" }, report: { model: "m", verdict: "PASS", asks: [{ ask: "a", met: true, evidence: "" }], regressions: [], fixes: [] }, runUrl: "u" });
+  assert.doesNotMatch(noEvidence, /都做到/);
+  assert.match(noEvidence, /判定员自报 PASS[^\n]*改记 FAIL/);
 });
 
 test("shotLinks 只收安全文件名的 PNG，按名排序并转义", () => {

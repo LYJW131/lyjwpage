@@ -109,7 +109,7 @@ const brief = (text: string) => {
 
 const details = (summary: string, table: string[]) => ["<details>", `<summary>${summary}</summary>`, "", ...table, "", "</details>"];
 
-// 评论只摆结论和没过的项，全表折叠：主线程与 lyjw 一眼看完，完整证据在 Action 日志与 verify-out artifact 里
+// 评论只摆结论和没过的项，全表折叠、证据截短：主线程与 lyjw 一眼看完，原文在验证员的 work 目录与 Action 日志里
 export function receiptComment({
   stamp,
   report,
@@ -129,7 +129,8 @@ export function receiptComment({
 }) {
   const lines = [...header(stamp), ""];
   const open = report.rows.filter((row) => row.result !== "PASS");
-  if (open.length === 0) lines.push(`全过：${report.rows.map((row) => row.id).join(" ")}`);
+  const ids = report.rows.map((row) => row.id).join(" ");
+  if (open.length === 0) lines.push((PASSING_RANK[stamp.level] ?? 0) > 0 ? `全过：${ids}` : `检查行都是 PASS，但记 ${stamp.level}：${ids}`);
   else lines.push("没过：", ...open.map((row) => `- ${row.id} ${row.result}：${brief(row.check)}（${brief(row.evidence)}）`));
   if (report.notVerified.length > 0) {
     const shown = report.notVerified.slice(0, MAX_NOT_VERIFIED).map((item) => `- ${brief(item)}`);
@@ -137,13 +138,13 @@ export function receiptComment({
     lines.push("", "没验到：", ...shown, ...(more > 0 ? [`- 另有 ${more} 条，见下面明细`] : []));
   }
   if (checklist.length === 0) lines.push("", "PR 描述里没有「验证清单」，验证员按 diff 自己挑的检查。");
-  else if (problems.length > 0) lines.push("", `对照清单：${problems.join("；")}。`);
+  if (problems.length > 0) lines.push("", `问题：${problems.join("；")}。`);
   if (stamp.level !== claimed) lines.push("", `验证员自报 ${claimed}，按清单对照改记 ${stamp.level}。`);
   if (shots.length > 0) {
     lines.push("");
     for (const shot of shots.slice(0, MAX_SHOTS)) lines.push(`<img src="${shot.url}" alt="${shot.name}" width="360">`);
   }
-  const table = ["| 项 | 检查 | 结果 | 证据 |", "| --- | --- | --- | --- |", ...report.rows.map((row) => `| ${cell(row.id)} | ${cell(row.check)} | ${cell(row.result)} | ${cell(row.evidence)} |`)];
+  const table = ["| 项 | 检查 | 结果 | 证据 |", "| --- | --- | --- | --- |", ...report.rows.map((row) => `| ${cell(row.id)} | ${cell(row.check)} | ${cell(row.result)} | ${cell(brief(row.evidence))} |`)];
   if (report.notVerified.length > MAX_NOT_VERIFIED) table.push("", "没验到（全部）：", ...report.notVerified.map((item) => `- ${item}`));
   lines.push("", ...details(`明细（${report.rows.length} 项）`, table));
   lines.push("", `验证员：${report.model}，没写这段代码（[Action 运行](${runUrl})）`);
@@ -159,12 +160,12 @@ export function judgeVerdict(report: JudgeReport) {
 export function judgeComment({ stamp, report, runUrl }: { stamp: Stamp; report: JudgeReport; runUrl: string }) {
   const lines = [...header(stamp), ""];
   const unmet = report.asks.filter((ask) => !ask.met);
-  if (unmet.length === 0 && report.regressions.length === 0) lines.push(`要求 ${report.asks.length} 条都做到，没发现回归。`);
+  if (stamp.verdict === "PASS") lines.push(`要求 ${report.asks.length} 条都做到，没发现回归。`);
   if (unmet.length > 0) lines.push("没做到：", ...unmet.map((ask) => `- ${brief(ask.ask)}（${brief(ask.evidence)}）`));
   if (report.regressions.length > 0) lines.push("", "回归：", ...report.regressions.map((item) => `- ${brief(item)}`));
   if (report.fixes.length > 0) lines.push("", "要修：", ...report.fixes.map((item) => `- ${brief(item)}`));
   if (stamp.verdict !== report.verdict) lines.push("", `判定员自报 ${report.verdict}，明细里有没做到、没写依据的要求，或有回归、待修项（或没列要求），改记 ${stamp.verdict}。`);
-  const table = ["| lyjw 要的 | 做到了 | 依据 |", "| --- | --- | --- |", ...report.asks.map((ask) => `| ${cell(ask.ask)} | ${ask.met ? "是" : "否"} | ${cell(ask.evidence)} |`)];
+  const table = ["| lyjw 要的 | 做到了 | 依据 |", "| --- | --- | --- |", ...report.asks.map((ask) => `| ${cell(ask.ask)} | ${ask.met ? "是" : "否"} | ${cell(brief(ask.evidence))} |`)];
   lines.push("", ...details(`逐条（${report.asks.length} 条）`, table));
   lines.push("", `判定员：${report.model}，只读 lyjw 原话与 diff，没写这段代码，没看验证员的证据（[Action 运行](${runUrl})）`);
   return lines.join("\n");

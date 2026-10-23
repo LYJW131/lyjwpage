@@ -60,7 +60,7 @@ ${asks}
 
 自己读 \`git diff origin/${base}...HEAD\` 和改动代码的调用方，回答两件事：
 1. diff 是否做到了 lyjw 要的：把原话拆成逐条要求，每条给出做到没有和依据（文件与行）。
-2. 有没有改出回归：读调用方；需要时用 \`git clone -q --shared --no-checkout . "$TMPDIR/base" && git -C "$TMPDIR/base" checkout -q --detach "$(git rev-parse origin/${base})"\` 取一份目标分支（.git 是只读的，\`git worktree add\` 会失败），在它和 head 上跑同一个相关测试或场景对照。
+2. 有没有改出回归：读调用方；需要时用 \`git clone -q --shared --no-checkout . "$TMPDIR/base" && git -C "$TMPDIR/base" checkout -q --detach "$(git rev-parse origin/${base})"\` 取一份目标分支（.git 是只读的，\`git worktree add\` 会失败；克隆里没有依赖，跑测试前在里面 \`pnpm install --frozen-lockfile --prefer-offline\`），在它和 head 上跑同一个相关测试或场景对照。
 仓库规矩在根 AGENTS.md 与 REVIEW.md。只判功能与回归，不评风格；CI 拦得住的（lint、类型、格式）不报。
 
 按给定的 JSON schema 交结果：model 写你的模型 ID；verdict 是 PASS 或 FAIL；asks 每条一项，evidence 一句话写文件与行；regressions 写发现的回归（没有就空数组）；FAIL 时 fixes 列出要修的项。`;
