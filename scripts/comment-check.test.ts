@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { addedLines, buildRequests, findComments, report } from "./comment-check.ts";
+import { addedLines, buildRequests, collect, findComments, report } from "./comment-check.ts";
 import { loadTypeScript } from "./comment-only-check.ts";
 import { COMMENT_CHECK, commentAdvice } from "./pr-gate/checks.ts";
 
@@ -60,5 +60,27 @@ test("标注集每条都有该删与否的标签和代码上下文", () => {
   for (const item of cases) {
     assert.equal(typeof item.delete, "boolean");
     assert.ok(item.code.includes(item.comment.split("\n")[0] ?? ""), item.comment);
+  }
+});
+
+test("collect 跳过基准里原样有过的尾注释，只问真正新增的", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { spawnSync } = await import("node:child_process");
+  const dir = mkdtempSync(join(tmpdir(), "comment-check-"));
+  const run = (...args: string[]) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd: dir, encoding: "utf8" });
+  run("init", "-q", "-b", "main");
+  writeFileSync(join(dir, "x.ts"), "export const timeout = 1000; // 旧的约束说明\n");
+  run("add", ".");
+  run("commit", "-qm", "base");
+  writeFileSync(join(dir, "x.ts"), "export const timeout = 2000; // 旧的约束说明\n// 新加的一条\nexport const b = 1;\n");
+  run("commit", "-qam", "head");
+  const cwd = process.cwd();
+  process.chdir(dir);
+  try {
+    assert.deepEqual(collect(ts, "HEAD^", "HEAD").map((item) => item.comment), ["// 新加的一条"]);
+  } finally {
+    process.chdir(cwd);
   }
 });

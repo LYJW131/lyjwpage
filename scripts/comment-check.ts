@@ -48,8 +48,9 @@ const CRITERIA = {
 export type Found = { file: string; line: number; endLine: number; comment: string; code: string };
 type Answer = { type: string; noul?: number };
 
-function git(args: string[]) {
+function git(args: string[], { allowFail = false } = {}) {
   const result = spawnSync("git", args, { encoding: "utf8", maxBuffer: 1 << 28 });
+  if (result.status !== 0 && allowFail) return "";
   if (result.status !== 0) throw new Error(`git ${args.join(" ")} 失败：${result.stderr.trim()}`);
   return result.stdout;
 }
@@ -83,13 +84,15 @@ export function findComments(ts: typeof TS, file: string, text: string, added: S
   const lineOf = (pos: number) => sf.getLineAndCharacterOfPosition(pos).line + 1;
   const ranges = collectTsComments(ts, sf)
     .filter((range) => !isTsDirective(range.text, kind))
-    .map((range) => ({ ...range, first: lineOf(range.start), last: lineOf(Math.max(range.start, range.end - 1)) }));
+    .map((range) => {
+      const at = sf.getLineAndCharacterOfPosition(range.start);
+      return { ...range, first: at.line + 1, last: lineOf(Math.max(range.start, range.end - 1)), ownLine: !lines[at.line]?.slice(0, at.character).trim() };
+    });
   // 连续几行的 // 是同一段话，合成一条再问，免得 Jev 只看见半句
   const blocks: (typeof ranges)[] = [];
   for (const range of ranges) {
     const prev = blocks.at(-1)?.at(-1);
-    const ownLine = !lines[range.first - 1]?.slice(0, sf.getLineAndCharacterOfPosition(range.start).character).trim();
-    if (prev && ownLine && range.text.startsWith("//") && prev.text.startsWith("//") && range.first === prev.last + 1) blocks.at(-1)?.push(range);
+    if (prev?.ownLine && range.ownLine && range.text.startsWith("//") && prev.text.startsWith("//") && range.first === prev.last + 1) blocks.at(-1)?.push(range);
     else blocks.push([range]);
   }
   return blocks
@@ -113,7 +116,10 @@ export function collect(ts: typeof TS, base: string, head: string) {
   const found: Found[] = [];
   for (const [file, added] of addedLines(diff)) {
     if (SKIP.some((re) => re.test(file)) || !TS_EXTENSIONS.has(path.extname(file).toLowerCase())) continue;
-    found.push(...findComments(ts, file, git(["show", `${head}:${file}`]), added));
+    const before = git(["show", `${from}:${file}`], { allowFail: true });
+    // 只改了同一行代码时 diff 也把原样的尾注释算进新增行：基准里一字不差有过的不再问
+    const existing = new Set(findComments(ts, file, before, new Set(before.split("\n").map((_, i) => i + 1))).map((item) => item.comment.trim()));
+    found.push(...findComments(ts, file, git(["show", `${head}:${file}`]), added).filter((item) => !existing.has(item.comment.trim())));
   }
   return found;
 }
@@ -220,6 +226,7 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
   try {
     const answers = await Promise.all(buildRequests(found).map((body) => ask(body, fetchImpl)));
     for (const batch of answers) for (const [key, answer] of Object.entries(batch)) if (typeof answer.noul === "number") scores.set(Number(key.slice(1)), answer.noul);
+    if (scores.size < found.length) error = `Jev 只答了 ${scores.size} / ${found.length} 条`;
   } catch (caught) {
     error = (caught as Error).message;
   }

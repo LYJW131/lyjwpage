@@ -38,12 +38,15 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      # 只是建议：装依赖、调 Jev 或建检查出错都不让 job 变红，免得 pr-gate 把它当成要修的失败
       - run: pnpm install --frozen-lockfile
+        continue-on-error: true
       - run: node scripts/comment-check.ts --base HEAD^1 --head HEAD --out "$RUNNER_TEMP/comment-check.json" --check-run "$HEAD_SHA"
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GITHUB_TOKEN: ${{ github.token }}
           TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        continue-on-error: true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
