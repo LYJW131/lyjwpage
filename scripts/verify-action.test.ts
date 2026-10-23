@@ -217,17 +217,12 @@ test("脚本跑的两项：只在改了 scripts/、src/、shared/ 的测试又�
   assert.deepEqual(receipt.split("\n").slice(3, 6), ["全过：V1", "", "脚本：CI check 通过"]);
 });
 
-test("注释删到不再变：嵌套拼出的注释删净，代码示例里的注释记号原样留下，没闭合的记号不吞后文", () => {
-  const body = "## 验证清单\n- V1：<!<!---->-- 藏起来 -->看得见\n- V2：示例 `<!--` 没闭合\n- V3：照样算\n<!-- 普通注释 -->\n```\n<!-- 围栏里的\n```\n- V4：围栏后面<!-- 真没闭合\n- V5：也算";
-  assert.deepEqual(parseBody(body).checklist.map((item) => item.text), ["看得见", "示例 `<!--` 没闭合", "照样算", "围栏后面 真没闭合", "也算"]);
-  assert.notEqual(bodyDigest(body), bodyDigest(body.replace("照样算", "改过了")));
-  assert.notEqual(bodyDigest(body), bodyDigest(body.replace("也算", "改过了")));
-  const hidden = "说明 \\`\n<!--\n## 验证清单\n- V1：假的检查\n-->\n说明 \\`\n## 验证清单\n- V1：真正的检查";
-  assert.deepEqual(parseBody(hidden).checklist, [{ id: "V1", text: "真正的检查" }]);
-  const split = "## 验证清单\n- V1：用 ` 开头 <!-- 注释里的\n- V9：藏起来的假检查 -->\n- V2：`code`";
-  assert.deepEqual(parseBody(split).checklist.map((item) => item.id), ["V1", "V2"]);
-  const slashes = ["", "\\", "\\\\", "\\\\\\"].map((run) => parseBody(`## 验证清单\n- V1：前缀 ${run}\`<!--\` 后文`).checklist[0].text);
-  assert.deepEqual(slashes, ["前缀 `<!--` 后文", "前缀 \\`` 后文", "前缀 \\\\`<!--` 后文", "前缀 \\\\\\`` 后文"]);
+test("描述里的 HTML 注释不删：注释里的条目照验，改注释也作废回执，看得见的条目一条不丢", () => {
+  const body = "## 验证清单\n- V1：示例 `<!--` 没闭合\n- V2：照样算 <!-- 说明 -->\n```html\n<!-- 围栏里的\n```\n- V3：围栏后面也算";
+  assert.deepEqual(parseBody(body).checklist.map((item) => item.id), ["V1", "V2", "V3"]);
+  assert.notEqual(bodyDigest(body), bodyDigest(body.replace("说明", "改过的说明")));
+  const words = "## lyjw 原话\n> 演示 `before\n> <!-- important -->\n> after`";
+  assert.notEqual(bodyDigest(words), bodyDigest(words.replace("important", "changed")));
 });
 
 test("表格单元只把竖线前的反斜杠加倍再转义竖线，别处的反斜杠原样", () => {

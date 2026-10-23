@@ -8,22 +8,14 @@ const CHECKLIST_HEADING = /^#{2,4}\s*验证清单\s*$/;
 const WORDS_HEADING = /^#{2,4}\s*lyjw\s*原话\s*$/;
 const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 
-// Devin 会在描述末尾补徽章块，不算描述改动
+// Devin 会在描述末尾补徽章块，不算描述改动。别的 HTML 注释不删：正则认不全 Markdown 的代码与注释，删错会吞掉看得见的清单；不删只会让注释里的改动也作废回执、注释里的条目也照验，两头都偏保守
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
 
-// 从左往右谁先出现谁算：代码示例原样保留（GitHub 也照字面显示），代码外的注释才删。
-// 行内代码只在一行内配对（CommonMark 的代码不跨段落与列表项，跨行配对会把两行之间的注释当代码留下）；前面紧挨奇数个反斜杠的反引号是字面字符，不开代码
-const CODE = "^(`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?(?:^\\1[ \\t\\r]*$|(?![\\s\\S]))|(?<=(?:^|[^\\\\])(?:\\\\\\\\)*)(`+)[^\\n]*?\\2";
-const COMMENT = new RegExp(`${CODE}|<!--[\\s\\S]*?-->`, "gm");
-const OPENER = new RegExp(`${CODE}|<!--`, "gm");
-const keepCode = (match: string, fence?: string, ticks?: string) => (fence || ticks ? match : "");
-
-// 删到不再变：一遍删不净嵌套拼出来的注释（如 <!<!---->--）。没闭合的开头记号只删记号不删后文，删到末尾会吞掉后面的清单与原话
-function stripComments(text: string) {
+// 删到不再变，免得两块徽章交错拼出一块新的
+function dropBadge(text: string) {
   for (let prev = ""; prev !== text; ) {
     prev = text;
-    text = text.replace(BADGE, "").replace(COMMENT, keepCode);
-    if (text === prev) text = text.replace(OPENER, keepCode);
+    text = text.replace(BADGE, "");
   }
   return text;
 }
@@ -44,7 +36,7 @@ function section(lines: string[], heading: RegExp) {
 }
 
 export function parseBody(body: string | null | undefined) {
-  const lines = stripComments(body ?? "").split(/\r?\n/);
+  const lines = dropBadge(body ?? "").split(/\r?\n/);
   const checklistLines = section(lines, CHECKLIST_HEADING);
   const checklist: ChecklistItem[] = [];
   for (const line of checklistLines ?? []) {
@@ -59,6 +51,6 @@ export function parseBody(body: string | null | undefined) {
 // publish 把这个摘要写进评论，verify-receipt.ts 拿当前描述重算比对。
 export function bodyDigest(body: string | null | undefined) {
   const { checklist, words } = parseBody(body);
-  const text = words ?? stripComments(body ?? "").trim();
+  const text = words ?? dropBadge(body ?? "").trim();
   return createHash("sha256").update(JSON.stringify({ checklist, words: text })).digest("hex");
 }
