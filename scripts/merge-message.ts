@@ -42,7 +42,7 @@ export function mergeMessage({
     seen.add(key);
     trailers.push(`Co-Authored-By: ${name} <${email}>`);
   }
-  const summary = subjects.map((subject) => `- ${subject}`).join("\n");
+  const summary = [...new Set(subjects)].map((subject) => `- ${subject}`).join("\n");
   return {
     commit_title: commitTitle,
     commit_message: [summary, trailers.join("\n")].filter(Boolean).join("\n\n"),
@@ -53,7 +53,7 @@ const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" 
 const lines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
 
 function main(argv: string[]) {
-  const [number, title, base = "origin/main"] = argv;
+  const [number, title, base = process.env.MERGE_MESSAGE_BASE ?? "origin/main"] = argv;
   if (!/^\d+$/.test(number ?? "") || !title?.trim()) {
     console.error('用法：pnpm merge-message <PR 号> "<PR 标题>" [基线，默认 origin/main]');
     process.exit(2);

@@ -25,7 +25,7 @@ export type Pull = {
 export type PrFile = { filename: string; previous_filename?: string };
 export type CheckRun = { id?: number; name: string; status: string; conclusion: string | null; started_at?: string | null; html_url?: string };
 export type Status = { context: string; state: string; target_url?: string | null };
-export type Review = { user?: User; commit_id?: string | null };
+export type Review = { user?: User; commit_id?: string | null; state?: string | null };
 export type ReviewComment = {
   id: number;
   in_reply_to_id?: number;

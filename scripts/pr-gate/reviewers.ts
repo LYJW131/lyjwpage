@@ -42,7 +42,8 @@ export type Reviewer = {
 export function reviewerSummary(reviews: Review[], comments: IssueComment[], head: string): Reviewer[] {
   const reviewers: Reviewer[] = [];
   for (const [login, bot] of Object.entries(BOTS)) {
-    const own = reviews.filter((review) => review.user?.login === login && review.commit_id);
+    // 被驳回的评审不算审过：作者推了修复后 lyjw 会驳回旧评审，留着它会把旧 head 记成审过。
+    const own = reviews.filter((review) => review.user?.login === login && review.commit_id || review.state !== "DISMISSED");
     const marker = REVIEW_COMMENT[bot];
     const commented = comments.some((comment) => comment.user?.login === login && (!marker || marker.test(comment.body ?? "")));
     if (own.length === 0 && !commented) continue;
