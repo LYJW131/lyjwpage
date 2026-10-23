@@ -11,6 +11,7 @@ import { expireStatusTags } from "./live-platform";
 import { prepareIngest, type CoreCommand } from "@shared/ingest/prepare";
 
 import { commitPreparedIngest } from "./ingest-handlers";
+import { immediatePurgeHub } from "./testing/ingest-harness";
 import { requestStore, type Env } from "./runtime";
 
 
@@ -22,6 +23,7 @@ function testEnv(overrides: Partial<Env> = {}): Env {
       idFromName: () => null,
       get: () => ({ broadcast: async () => {} }),
     } as unknown as Env["LIVE_PUSH"],
+    STATE: immediatePurgeHub(),
     ...overrides,
   } as Env;
 }

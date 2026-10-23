@@ -11,6 +11,7 @@ import {
   type ListeningEffect,
 } from "./ingest-effects";
 import { requestStore, type Env } from "./runtime";
+import { immediatePurgeHub } from "./testing/ingest-harness";
 
 const EVENT: LiveEvent = { type: "presence", payload: null };
 const ONLINE: LiveEvent = { type: "online", payload: { online: 3 } };
@@ -72,6 +73,7 @@ function fakeEnv() {
       get: () => ({ broadcast: async (raw: string) => { broadcasts.push(raw); } }),
     },
     SITE_CACHE: { invalidate: async (tags: string[]) => { invalidated.push(tags); } },
+    STATE: immediatePurgeHub(),
   } as unknown as Env;
   return { env, broadcasts, invalidated };
 }

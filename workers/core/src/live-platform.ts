@@ -15,13 +15,25 @@ export function afterResponse(work: () => Promise<void>): Promise<void> {
 
 const REVALIDATE_TIMEOUT_MS = 5_000;
 
+// 各处的失效都先交给 StateHub 排队，由它的 alarm 按 purge-throttle.ts 的节奏合并成一轮再清，不在这里直接清。
 export async function expireStatusTags(tags: readonly string[]): Promise<void> {
   const valid = filterStatusTags(tags);
   if (!valid.length) return;
+  const { env } = currentContext();
+  try {
+    await env.STATE.get(env.STATE.idFromName("global")).requestStatusPurge(valid);
+  } catch (error) {
+    console.error("[revalidate] queue", error instanceof Error ? error.message : String(error));
+  }
+}
+
+export async function purgeStatusTags(tags: readonly string[]): Promise<boolean> {
+  const valid = filterStatusTags(tags);
+  if (!valid.length) return true;
   const service = currentContext().env.SITE_CACHE;
   if (!service) {
     console.warn("[revalidate] SITE_CACHE is not configured");
-    return;
+    return true;
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -32,8 +44,10 @@ export async function expireStatusTags(tags: readonly string[]): Promise<void> {
       }),
     ]);
     console.log("[revalidate]", valid.join(","));
+    return true;
   } catch (error) {
     console.error("[revalidate]", error instanceof Error ? error.message : String(error));
+    return false;
   } finally {
     if (timer) clearTimeout(timer);
   }
