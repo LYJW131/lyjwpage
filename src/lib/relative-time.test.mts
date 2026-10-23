@@ -12,6 +12,12 @@ test("相对时间按 GitHub 的档位：分钟、小时、天、周，超过一
   assert.equal(ago(1 * 86_400_000), "yesterday");
   assert.equal(ago(3 * 86_400_000), "3 days ago");
   assert.equal(ago(8 * 86_400_000), "last week");
-  assert.equal(ago(40 * 86_400_000), "on Aug 4");
+  assert.equal(ago(40 * 86_400_000), "last month");
   assert.equal(ago(400 * 86_400_000), "on Aug 9, 2025");
+});
+
+test("older than a month but within a year reads in months", () => {
+  const now = Date.UTC(2026, 9, 23, 12);
+  assert.equal(formatRelativeTime(now - 65 * 86_400_000, now), "2 months ago");
+  assert.equal(formatRelativeTime(now - 200 * 86_400_000, now), "6 months ago");
 });

@@ -14,6 +14,7 @@ export function formatRelativeTime(atMs: number, nowMs: number): string {
   if (diff < HOUR) return relative.format(-Math.floor(diff / MINUTE), "minute");
   if (diff < DAY) return relative.format(-Math.floor(diff / HOUR), "hour");
   if (diff < 7 * DAY) return relative.format(-Math.floor(diff / DAY), "day");
+  if (diff < 365 * DAY) return relative.format(-Math.floor(diff / (30 * DAY)), "month");
   if (diff < 30 * DAY) return relative.format(-Math.floor(diff / (7 * DAY)), "week");
   const at = new Date(atMs);
   const sameYear = at.getUTCFullYear() === new Date(nowMs).getUTCFullYear();
