@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergeMessage, mergeMethodFor } from "./merge-message.ts";
+import { mergeMessage, mergeMethodFor, parseCli } from "./merge-message.ts";
 
 test("标题用 PR 标题加号，正文汇总去重后的协作者：跳过仓库主人，只收认得出的身份", () => {
   const result = mergeMessage({
@@ -46,4 +46,13 @@ test("少于 3 个非合并提交压缩合并，3 个及以上留合并提交", 
   assert.equal(mergeMethodFor(1), "squash");
   assert.equal(mergeMethodFor(2), "squash");
   assert.equal(mergeMethodFor(3), "merge");
+});
+
+test("参数：PR 号与标题必填，基线可选，多给参数或未知选项按用法错误抛出", () => {
+  assert.deepEqual(parseCli(["12", "fix: x"]), { number: "12", title: "fix: x", base: "origin/main" });
+  assert.deepEqual(parseCli(["12", "fix: x", "origin/dev"]), { number: "12", title: "fix: x", base: "origin/dev" });
+  assert.throws(() => parseCli(["12"]));
+  assert.throws(() => parseCli(["x", "fix: x"]));
+  assert.throws(() => parseCli(["12", "fix: x", "origin/main", "extra"]));
+  assert.throws(() => parseCli(["12", "fix: x", "--base", "origin/main"]));
 });

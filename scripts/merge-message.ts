@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
 
 import { authorFromTrailer } from "../shared/commit-authors.ts";
 
@@ -52,12 +53,24 @@ export function mergeMessage({
 const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" });
 const lines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
 
+const USAGE = '用法：pnpm merge-message <PR 号> "<PR 标题>" [基线，默认 origin/main]';
+
+export function parseCli(argv: string[]) {
+  const { positionals } = parseArgs({ args: argv, strict: true, allowPositionals: true, options: {} });
+  const [number, title, base = "origin/main", ...extra] = positionals;
+  if (!/^\d+$/.test(number ?? "") || !title?.trim() || extra.length > 0) throw new Error(USAGE);
+  return { number, title, base };
+}
+
 function main(argv: string[]) {
-  const [number, title, base = "origin/main"] = argv;
-  if (!/^\d+$/.test(number ?? "") || !title?.trim()) {
-    console.error('用法：pnpm merge-message <PR 号> "<PR 标题>" [基线，默认 origin/main]');
+  let cli: ReturnType<typeof parseCli>;
+  try {
+    cli = parseCli(argv);
+  } catch (error) {
+    console.error((error as Error).message === USAGE ? USAGE : `${(error as Error).message}\n${USAGE}`);
     process.exit(2);
   }
+  const { number, title, base } = cli;
   const range = `${base}..HEAD`;
   const remote = git("remote", "get-url", "origin").trim();
   const subjects = lines(git("log", "--reverse", "--no-merges", "--format=%s", range));
