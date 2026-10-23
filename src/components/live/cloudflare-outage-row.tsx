@@ -24,6 +24,9 @@ function Outage({ affected, since }: { affected: string; since: number }) {
         <span className="truncate">
           Cloudflare <span className="text-signal-red">Outage</span>
         </span>
+        <span className="shrink-0 font-normal text-muted-foreground" aria-hidden>
+          ·
+        </span>
         <span className="shrink-0 text-signal-red" suppressHydrationWarning>
           {elapsed(Math.max(0, now - since))}
         </span>
