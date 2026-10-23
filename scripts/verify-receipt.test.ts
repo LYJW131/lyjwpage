@@ -68,7 +68,7 @@ test("--judge 时还要 PASS 的判定盖住 head", () => {
 });
 
 test("check 读 PR head、描述与分页评论，描述在回执之后改过就不算", async () => {
-  const signed = "## 验证清单\n- V1：单测绿";
+  const signed = "## 验证清单\n- V1：单测绿\n## lyjw 原话\n> 修好";
   const fetchWith = (prBody: string) => async (url: string) => {
     if (url.endsWith("/pulls/7")) return { ok: true, json: async () => ({ head: { sha: HEAD }, body: prBody }) };
     const page = Number(new URL(url).searchParams.get("page"));
@@ -78,10 +78,10 @@ test("check 读 PR head、描述与分页评论，描述在回执之后改过就
     return { ok: true, json: async () => body };
   };
   const args = { pr: 7, need: "unit-test-verified", wantJudge: false };
-  const result = await check(args, { fetch: fetchWith(`${signed}\n\n说明改了不算`), patchId: patchIds({}) });
+  const result = await check(args, { fetch: fetchWith(`说明改了不算\n${signed}`), patchId: patchIds({}) });
   assert.equal(result.pass, true);
   assert.equal(result.receipt?.coverage, "exact");
-  const edited = await check(args, { fetch: fetchWith("## 验证清单\n- V1：单测绿\n- V2：加了一项"), patchId: patchIds({}) });
+  const edited = await check(args, { fetch: fetchWith(signed.replace("单测绿", "单测绿\n- V2：加了一项")), patchId: patchIds({}) });
   assert.equal(edited.pass, false);
   assert.match(edited.next ?? "", /描述的验证清单或 lyjw 原话改过/);
 });

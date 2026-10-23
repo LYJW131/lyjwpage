@@ -27,7 +27,13 @@ export function parseBody(body: string | null | undefined) {
   return { checklist, words };
 }
 
-// 回执与判定只对签发时的清单与原话算数：publish 把这个摘要写进评论，verify-receipt.ts 拿当前描述重算比对。
+// Devin 会在描述末尾补徽章块，不算描述改动
+const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
+
+// 回执与判定只对签发时判定员和验证员读到的内容算数：有原话时是清单与原话，没原话时判定员读全文，就按全文。
+// publish 把这个摘要写进评论，verify-receipt.ts 拿当前描述重算比对。
 export function bodyDigest(body: string | null | undefined) {
-  return sha256Hex(JSON.stringify(parseBody(body)));
+  const { checklist, words } = parseBody(body);
+  const text = words ?? (body ?? "").replace(BADGE, "").replace(/<!--[\s\S]*?-->/g, "").trim();
+  return sha256Hex(JSON.stringify({ checklist, words: text }));
 }

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { tierOf } from "./pr-gate/tier.ts";
+import { bodyDigest } from "./verify-action/body.ts";
 import { judgeComment, main, parseBody, planOf, receiptComment, reconcile, shotLinks, stampDigest } from "./verify-action.ts";
 import { digestLine, parseComments } from "./verify-receipt.ts";
 
@@ -117,4 +118,13 @@ test("参数错抛成用法错误，主入口据此退出 2", async () => {
   for (const argv of [["plan"], ["plan", "--pr", "7", "--nope"], ["prompt", "--pr", "7", "--role", "x"], ["publish", "--pr", "7", "--head", "abc"], ["bogus", "--pr", "7"]]) {
     await assert.rejects(main(argv, async () => assert.fail("不该读 GitHub")), (error: Error) => error.constructor.name === "UsageError", argv.join(" "));
   }
+});
+
+test("bodyDigest：有原话时只看清单与原话，没原话时看全文，Devin 徽章不算", async () => {
+  const withWords = "说明\n## 验证清单\n- V1：a\n## lyjw 原话\n> 要 a";
+  assert.equal(await bodyDigest(withWords), await bodyDigest(withWords.replace("说明", "说明改了")));
+  const plain = "要支持筛选\n## 验证清单\n- V1：a";
+  assert.notEqual(await bodyDigest(plain), await bodyDigest(`${plain}\n还要支持导出`));
+  const badge = "\n<!-- devin-review-badge-begin -->\n<a href=\"x\">Devin</a>\n<!-- devin-review-badge-end -->";
+  assert.equal(await bodyDigest(plain), await bodyDigest(`${plain}${badge}`));
 });
