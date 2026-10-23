@@ -25,17 +25,6 @@ const labelsOf = (pr: number) =>
 
 export function mergeMethodReason(input: MergeInput, count: (sha: string) => number, labels: (pr: number) => string[] = () => []): string | null {
   if (String(input.owner).toLowerCase() !== REPO.owner || String(input.repo).toLowerCase() !== REPO.repo) return null;
-  const pr = Number(input.pullNumber);
-  // 读不到标签（没装或没登录 gh）就放过：标签在时 do-not-merge 检查是红的，pr-gate 也不会 ready
-  let current: string[] = [];
-  try {
-    if (Number.isInteger(pr) && pr > 0) current = labels(pr);
-  } catch {
-    current = [];
-  }
-  if (current.includes(DO_NOT_MERGE_LABEL)) {
-    return `#${pr} 带着 ${DO_NOT_MERGE_LABEL} 标签（标题括号里写了「不合并」的测试 PR）：不合，用完关掉；确实要合，先改掉标题并摘掉标签。`;
-  }
   const sha = input.expectedHeadSha;
   if (typeof sha !== "string" || !/^[0-9a-f]{40}$/i.test(sha)) {
     return "合并 lyjwpage 的 PR 要带 pnpm merge-message 给的 expectedHeadSha（40 位）。";
@@ -48,6 +37,17 @@ export function mergeMethodReason(input: MergeInput, count: (sha: string) => num
   }
   if (!Number.isInteger(commits) || commits < 1) {
     return `origin/main..${sha} 里没有非合并提交：先 git fetch origin main 再跑 pnpm merge-message。`;
+  }
+  const pr = Number(input.pullNumber);
+  if (!Number.isInteger(pr) || pr <= 0) return "合并调用里没有 PR 号（pullNumber）。";
+  let current: string[];
+  try {
+    current = labels(pr);
+  } catch {
+    return `读不到 #${pr} 的标签，判不了是不是 ${DO_NOT_MERGE_LABEL} 的测试 PR：先 gh auth status 确认 gh 已登录，再合并。`;
+  }
+  if (current.includes(DO_NOT_MERGE_LABEL)) {
+    return `#${pr} 带着 ${DO_NOT_MERGE_LABEL} 标签（标题括号里写了「不合并」的测试 PR）：不合，用完关掉；确实要合，先改掉标题并摘掉标签。`;
   }
   const expected = mergeMethodFor(commits);
   if (input.merge_method === expected) return null;

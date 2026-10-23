@@ -4,7 +4,7 @@ import test from "node:test";
 import { mergeMethodReason } from "./guard-merge-method.ts";
 
 const SHA = "6ed909e3c64a6fca7e2a172841db0278a479efc8";
-const base = { owner: "LYJW131", repo: "lyjwpage", expectedHeadSha: SHA };
+const base = { owner: "LYJW131", repo: "lyjwpage", pullNumber: 7, expectedHeadSha: SHA };
 
 test("少于 3 个提交只放行压缩合并", () => {
   assert.equal(mergeMethodReason({ ...base, merge_method: "squash" }, () => 2), null);
@@ -29,9 +29,10 @@ test("别的仓库不管", () => {
   assert.equal(mergeMethodReason({ owner: "someone", repo: "other", merge_method: "rebase" }, () => 1), null);
 });
 
-test("带 do-not-merge 标签的 PR 一律拦下，读不到标签时只按合并方式判", () => {
-  const input = { ...base, pullNumber: 7, merge_method: "squash" };
+test("带 do-not-merge 标签、读不到标签或没给 PR 号都拦下", () => {
+  const input = { ...base, merge_method: "squash" };
   assert.match(mergeMethodReason(input, () => 1, () => ["tier: logic", "do-not-merge"]) ?? "", /do-not-merge/);
   assert.equal(mergeMethodReason(input, () => 1, () => ["tier: logic"]), null);
-  assert.equal(mergeMethodReason(input, () => 1, () => { throw new Error("gh: not logged in"); }), null);
+  assert.match(mergeMethodReason(input, () => 1, () => { throw new Error("gh: not logged in"); }) ?? "", /gh auth status/);
+  assert.match(mergeMethodReason({ ...input, pullNumber: undefined }, () => 1) ?? "", /pullNumber/);
 });
