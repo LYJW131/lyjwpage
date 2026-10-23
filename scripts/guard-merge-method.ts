@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { mergeMethodFor } from "./merge-message.ts";
 import { changedPaths, client, isTrustedAuthor, type FetchLike, type PatchId, type PrFile, type Pull } from "./pr-gate/github.ts";
 import { tierOf } from "./pr-gate/tier.ts";
+import { parseBody } from "./verify-action/body.ts";
 import { check as checkReceipt } from "./verify-receipt.ts";
 
 const REPO = { owner: "lyjw131", repo: "lyjwpage" };
@@ -59,13 +60,13 @@ export function mergeMethodReason(input: MergeInput, count: (sha: string) => num
   return `这个 PR 有 ${commits} 个非合并提交，merge_method 要用 ${expected}（少于 3 个压缩合并，3 个及以上用合并提交），照 pnpm merge-message 输出的 merge_method 传。`;
 }
 
-// 按分档的默认门槛查，不收 pr-gate 的 --need、--no-judge：线程不能替自己的 PR 降档
+// 回执等级按分档的默认门槛查，不收 pr-gate 的 --need；判定只在 PR 描述写了「判定：要」或作者不是 lyjw 的账号时要
 export async function receiptReason(pr: number, deps: { fetch?: FetchLike; patchId?: PatchId } = {}): Promise<string | null> {
   const fetchImpl = deps.fetch ?? fetch;
   try {
     const gh = client(fetchImpl);
     const [pull, files] = await Promise.all([gh.get<Pull>(`pulls/${pr}`), gh.all<PrFile>(`pulls/${pr}/files`)]);
-    const tier = tierOf(changedPaths(files), { trustedAuthor: isTrustedAuthor(pull) });
+    const tier = tierOf(changedPaths(files), { trustedAuthor: isTrustedAuthor(pull), judgeAsked: parseBody(pull.body).judgeAsked });
     if (tier.need === null) return null;
     const result = await checkReceipt({ pr, need: tier.need, wantJudge: tier.judge }, { fetch: fetchImpl, patchId: deps.patchId });
     if (result.pass) return null;

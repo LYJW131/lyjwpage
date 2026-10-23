@@ -21,6 +21,7 @@ export type Pull = {
   base?: { ref: string };
   labels?: { name: string }[];
   user?: User;
+  body?: string | null;
 };
 export type PrFile = { filename: string; previous_filename?: string };
 export type CheckRun = { id?: number; name: string; status: string; conclusion: string | null; started_at?: string | null; html_url?: string };

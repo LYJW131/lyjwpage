@@ -31,7 +31,10 @@ test("parseBody 取验证清单的 V 条目与 lyjw 原话，别的节和注释�
     { id: "V2", text: "`pnpm test` 绿" },
   ]);
   assert.equal(words, "> 把卡片换个位置");
-  assert.deepEqual(parseBody(null), { checklist: [], words: null });
+  assert.deepEqual(parseBody(null), { checklist: [], words: null, judgeAsked: false });
+  assert.equal(parseBody(body).judgeAsked, false);
+  assert.equal(parseBody("说明\n判定：要\n").judgeAsked, true);
+  assert.equal(parseBody("<!-- 判定：要 -->").judgeAsked, false);
 });
 
 const row = (id: string, result: string) => ({ id, check: id, result, evidence: "e" });
@@ -56,7 +59,7 @@ test("reconcile：清单每项都要有 PASS 行，FAIL 记 verifier-failed，�
   assert.equal(reconcile(checklist, report([row("V1", "PASS"), row("V2", "PASS")], "unit-test-verified"), { shots: 0 }).level, "unit-test-verified");
 });
 
-test("planOf：草稿、已关闭与只改文档的不验，界面档等预览，逻辑档要判定", () => {
+test("planOf：草稿、已关闭与只改文档的不验，界面档等预览，PR 要了才判定", () => {
   const trusted = { trustedAuthor: true };
   const pull = (extra: object = {}) => ({ number: 7, title: "t", state: "open", mergeable: true, head: { sha: HEAD, ref: "claude/x" }, ...extra });
   assert.deepEqual(planOf(pull(), tierOf(["src/components/a.tsx"], trusted)), {
@@ -67,7 +70,8 @@ test("planOf：草稿、已关闭与只改文档的不验，界面档等预览�
     head: HEAD,
     branch: "claude/x",
   });
-  assert.deepEqual([planOf(pull(), tierOf(["workers/core/src/a.ts"], trusted))].map((p) => [p.need, p.judge, p.ui]), [["unit-test-verified", true, false]]);
+  assert.deepEqual([planOf(pull(), tierOf(["workers/core/src/a.ts"], trusted))].map((p) => [p.need, p.judge, p.ui]), [["unit-test-verified", false, false]]);
+  assert.equal(planOf(pull(), tierOf(["workers/core/src/a.ts"], { ...trusted, judgeAsked: true })).judge, true);
   assert.equal(planOf(pull(), tierOf(["docs/a.md"], trusted)).need, "");
   assert.equal(planOf(pull({ draft: true }), tierOf(["src/components/a.tsx"], trusted)).need, "");
   assert.equal(planOf(pull({ state: "closed" }), tierOf(["src/components/a.tsx"], trusted)).judge, false);

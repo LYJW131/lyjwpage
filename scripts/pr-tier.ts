@@ -4,9 +4,10 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { changedPaths, client, isTrustedAuthor, type PrFile, type Pull } from "./pr-gate/github.ts";
 import { tierOf, verifierFiles } from "./pr-gate/tier.ts";
+import { parseBody } from "./verify-action/body.ts";
 
 const USAGE = `用法：node scripts/pr-tier.ts --pr <号>
-按改动路径给 PR 分档（scripts/pr-gate/tier.ts#tierOf），输出 name（docs、ui、logic、ui+logic）、judge 与 verifier（改没改验证员本身），写进 GITHUB_OUTPUT（没有就只打印）。
+按改动路径给 PR 分档（scripts/pr-gate/tier.ts#tierOf），输出 name（docs、ui、logic、ui+logic）、judge（作者不是 lyjw 的账号，或 PR 描述写了「判定：要」）与 verifier（改没改验证员本身），写进 GITHUB_OUTPUT（没有就只打印）。
 读 GitHub 用 GITHUB_TOKEN；在 Action 外跑时云端要加 NODE_USE_ENV_PROXY=1。退出码 0 成功、1 读 GitHub 出错、2 参数错。`;
 
 export async function main(argv: string[]) {
@@ -22,7 +23,7 @@ export async function main(argv: string[]) {
   const gh = client(fetch);
   const pull = await gh.get<Pull>(`pulls/${pr}`);
   const paths = changedPaths(await gh.all<PrFile>(`pulls/${pr}/files`));
-  const tier = tierOf(paths, { trustedAuthor: isTrustedAuthor(pull) });
+  const tier = tierOf(paths, { trustedAuthor: isTrustedAuthor(pull), judgeAsked: parseBody(pull.body).judgeAsked });
   const lines = [`name=${tier.name}`, `judge=${tier.judge}`, `verifier=${verifierFiles(paths).length > 0}`];
   console.log(lines.join(" "));
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, lines.map((line) => `${line}\n`).join(""));

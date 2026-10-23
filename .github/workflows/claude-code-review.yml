@@ -26,7 +26,7 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      # 插件扫得深（多文件改动派约 8 个子代理），只审合并门槛要等机器评审的逻辑档 PR
+      # 插件扫得深（多文件改动派约 8 个子代理），只审要判定的 PR（描述写了「判定：要」或作者不是 lyjw 的账号）
       - name: Tier
         id: tier
         run: node scripts/pr-tier.ts --pr "$PR"

@@ -9,6 +9,7 @@ import { reviewerSummary } from "./pr-gate/reviewers.ts";
 import { buildThreads, threadResolution } from "./pr-gate/threads.ts";
 import { tierOf, verifierFiles } from "./pr-gate/tier.ts";
 import { ruleDrift } from "./rule-drift.ts";
+import { parseBody } from "./verify-action/body.ts";
 import { check as checkReceipt, PASSING_RANK } from "./verify-receipt.ts";
 
 export { buildCoverage } from "./pr-gate/checks.ts";
@@ -46,9 +47,9 @@ JSON 里有：
 选项：
   --pr <号>            PR 号（必填）
   --need <等级|none>   回执至少要到的等级，覆盖分档的默认（ui 要 live-ui-verified，logic 要 unit-test-verified，docs 不要回执）；作者不是 lyjw 的账号时不生效
-  --judge / --no-judge 要不要等机器评审并要一条 PASS 的判定，覆盖分档的默认（logic 默认要）；
-                       主线程判为小改动时用 --no-judge；作者不是 lyjw 的账号时不生效。
-                       两个选项都只改这份输出：合并钩子 guard-merge-method.ts 照分档默认要回执与判定
+  --judge / --no-judge 要不要等机器评审并要一条 PASS 的判定，覆盖默认（PR 描述写了「判定：要」才要）；
+                       作者不是 lyjw 的账号时不生效。
+                       --need 只改这份输出：合并钩子 guard-merge-method.ts 照分档默认的等级要回执
   --help               显示本说明
 
 回执与判定的补丁比对用本地 git：先 git fetch origin main。`;
@@ -73,7 +74,7 @@ export async function gate(
   ]);
   const paths = changedPaths(files);
   const trustedAuthor = isTrustedAuthor(pull);
-  const tier = tierOf(paths, { trustedAuthor });
+  const tier = tierOf(paths, { trustedAuthor, judgeAsked: parseBody(pull.body).judgeAsked });
   const wantNeed = trustedAuthor && need !== undefined ? need : tier.need;
   const wantJudge = trustedAuthor ? (judge ?? tier.judge) : true;
   const [builds, receipt, rules] = await Promise.all([

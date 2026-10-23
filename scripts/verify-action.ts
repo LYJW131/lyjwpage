@@ -58,7 +58,7 @@ function setOutput(name: string, value: string) {
 async function load(gh: Client, pr: number) {
   const pull = await gh.get<FullPull>(`pulls/${pr}`);
   const files = changedPaths(await gh.all<PrFile>(`pulls/${pr}/files`));
-  return { pull, files, tier: tierOf(files, { trustedAuthor: isTrustedAuthor(pull) }) };
+  return { pull, files, tier: tierOf(files, { trustedAuthor: isTrustedAuthor(pull), judgeAsked: parseBody(pull.body).judgeAsked }) };
 }
 
 export function planOf(pull: FullPull, tier: ReturnType<typeof tierOf>) {
