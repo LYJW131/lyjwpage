@@ -107,7 +107,7 @@ function LimitCells({ limit, cap, title, href, label, tall }: { limit: VibeCodin
         <Track href={href} label={unavailable > 0 ? `${label}. ${cap?.note}` : label} tall={tall}>
           <span className="block h-full transition-[width] duration-700" style={{ width: `${usedPercent}%`, backgroundColor: color }} />
           <UnavailableZone share={unavailable} />
-          {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
+          {pace != null && pace < 1 - unavailable && <PaceMarker pace={pace} overPace={overPace} />}
         </Track>
       </span>
       <span className={PERCENT} style={{ color }}>
