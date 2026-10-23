@@ -1,0 +1,49 @@
+name: Verify Dispatch
+
+# 手跑入口。不检出、不执行 PR 上的代码：workflow_dispatch 能写默认分支的 Actions 缓存。
+# GITHUB_TOKEN 打的标签不会再触发工作流，所以用 lyjw131[bot]；verify.yml 只认这个账号贴的 reverify。
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: verify-dispatch-${{ inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+      - name: Retrigger Verify on the pull request
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ inputs.pr }}
+          LABEL: reverify
+        run: |
+          set -euo pipefail
+          case "$PR" in
+            ''|*[!0-9]*) echo "::error::PR 号须是数字"; exit 1 ;;
+          esac
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq .number >/dev/null
+          gh label create "$LABEL" --repo "$GITHUB_REPOSITORY" --color 1d76db --description "Retrigger Verify on this pull request" --force
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/issues/${PR}/labels/${LABEL}" >/dev/null 2>&1 || true
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/labels" -f "labels[]=${LABEL}" --silent
+          if ! gh api --method DELETE "repos/${GITHUB_REPOSITORY}/issues/${PR}/labels/${LABEL}" >/dev/null 2>&1; then
+            echo "::warning::reverify 还在 PR 上，下次手跑会先摘掉"
+          fi
+          echo "已让 lyjw131[bot] 给 PR #${PR} 贴过 reverify，Verify 会在 pull_request 里跑"

@@ -11,11 +11,14 @@ permissions:
 
 concurrency:
   # main 按提交分组：同组只留一个排队运行，按 ref 分组时连推三次会顶掉中间那个；main 上每个提交都要有结论，红了才查得到是哪个提交引入的。
-  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  # reverify 是 Verify 的手跑标签，进另一组：组在 job 的 if 之前就生效，同组会顶掉正在跑的 CI。
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}${{ github.event.label.name == 'reverify' && '-noop' || '' }}
   cancel-in-progress: true
 
 jobs:
   check:
+    # 推送和同步没有 label，比较为真；只有 reverify 不跑，免得手跑 Verify 把正在跑的 CI 顶掉
+    if: github.event.label.name != 'reverify'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
