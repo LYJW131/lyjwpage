@@ -18,3 +18,5 @@ Cost (2026-10-23): on multi-file #580 Opus ran the full plugin flow, 8 subagents
 Testing trap: with the Claude App token (no `github_token`), claude-code-action skips the run when the workflow file differs from main ("Workflow validation failed"). So a review-workflow change can only be tested after it merges; test PRs #574–576 were skipped this way. Passing `github_token` to bypass it was refused by auto mode; don't retry.
 
 Related: [[verify-in-actions-plan]], [[merge-requires-bot-review-pass]].
+
+Recheck of full logs (2026-10-23 22:06 SGT, runs on #578–#610; none since, as every later PR was lyjw's and not labelled `needs-judge`): the orchestrator was always Opus 5.5. 13 runs reviewed; 4 more stopped early because the PR was already merged or a draft. Of the 13 that reviewed, 6 ran the full plugin fan-out (5–8 subagents, Opus+Sonnet+Haiku; $0.79–1.77, 65–149 s) and 7 had Opus review alone after a Haiku eligibility check (0–2 subagents; $0.28–0.50, 37–55 s). The 17 runs cost about $11 in API-equivalent terms. The hollow-review bug did not recur: 8 runs posted findings, and the "No issues found" runs had read the diff.

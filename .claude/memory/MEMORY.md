@@ -61,6 +61,7 @@
 ## Decisions and state
 - **Git history slimming: parked** (lyjw 2026-10-23「先记下 之后想做再说」): [[repo-history-slim]].
 - Chat tiers, consent and log retention: [[chat-tiers]].
+- **DO locations** (2026-10-23): StateHub KIX, LivePushRoom NRT, ChatQuota NRT, AnthropicEgress jp-0 KIX, ChatLog SEA, BuildCoordinator DFW: [[do-physical-locations]].
 - Small settled site decisions (README live cards `v=`, Today Tokens in M, no LICENSE, type assertions, legacy R2 assets, digest pools, dial sizes, Claude limit card, HealthKit nulls, Issues alerts): [[site-small-decisions]].
 - Desktop CLS fixed by `scrollbar-gutter: stable` (#534): [[desktop-cls-scrollbar]].
 - New model/data destination/source/Worker: update every place its sibling appears, incl. chat consent copy (AGENTS.md, #482).

@@ -13,3 +13,5 @@ Labelled set `scripts/comment-check-cases.json`: 70 random repo comments (2 labe
 - Background: before this, only TODO tickets and JSDoc were enforced (`pnpm rules:check`); the three-kinds rule relied on self-check and bot review.
 
 Fits the Jev pattern from the thread「Jev 能用在哪里」: fixed question, high volume, wrong answer cheap, labelled data for thresholds. Related: [[jev-verify-trial]], [[jev-vision-qa-result]].
+
+Gotcha (fixed #620, 2026-10-23): the `comment` step is continue-on-error, so a failed post shows green; the App token needs `permission-pull-requests: write` (issues alone gave 403 on #619). If no Jev comment appears, read the comment job log first.

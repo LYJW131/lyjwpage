@@ -20,4 +20,4 @@ Current state:
 
 Related: [[lyjwpage-daily-review-routine]], whose prompt still lists CodeQL among the checks to wait for. That entry is stale but harmless.
 
-Cloud sessions get 403 on the code-scanning alerts API, so alert state can't be read there; find the alert number from the fix PR or ask lyjw. Cursor Agent may auto-open `codeql-fix/alert-N` PRs; Devin Review on them tends to find more regex-vs-HTML edge cases (alert #35, fixed in #528, 2026-10-21).
+Cloud sessions get 403 on the code-scanning alerts API. Read alerts through Mac Remote Control with lyjw's gh login (`gh api repos/LYJW131/lyjwpage/code-scanning/alerts?state=open`); worked 2026-10-23 for alerts #36–#38 without an approval click. Cursor Agent may auto-open `codeql-fix/alert-N` PRs; Devin Review on them tends to find more regex-vs-HTML edge cases (alert #35, fixed in #528, 2026-10-21).
