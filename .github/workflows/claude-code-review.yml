@@ -42,7 +42,9 @@ jobs:
           # 插件把子代理派到后台，Action 收到第一个 result 就退出，审查会显示成功却什么都不发
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 计费开关同 verify.yml
+          claude_code_oauth_token: ${{ vars.CLAUDE_AUTH != 'api' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_api_key: ${{ vars.CLAUDE_AUTH == 'api' && secrets.ANTHROPIC_API_KEY || '' }}
           allowed_bots: 'cursor,lyjw131'
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
