@@ -19,7 +19,7 @@ export function verifierPrompt({
 }: Common & { tier: string; need: string; preview: string | null; checklist: ChecklistItem[]; outDir: string; proof: string | null }) {
   const ui = tier.includes("ui");
   const site = preview
-    ? `站点分支预览：${preview}（已部署到 head，或 head 之后只多了不碰站点的提交）。界面检查在它上面做。`
+    ? `站点分支预览：${preview}（已部署到 head，或 head 之后只多了不碰站点的提交）。界面检查在它上面做。要看此刻没发生的状态时，先用 Playwright 的 \`page.route\` 改那个状态端点的响应：它只改浏览器发的请求，首屏 SSR 的数据不变，要等页面在浏览器里重取（轮询或切回前台）后再看。只有首屏那一帧非看不可时才起 \`pnpm dev:worker\` / \`pnpm dev:local\` 注夹具（起一次要几分钟）。`
     : ui
       ? "站点分支预览没就绪。界面检查改在本地起：`pnpm dev`（连生产 Worker，地址 http://localhost:3211），后台起、跑完关掉。"
       : "这次不碰站点界面，不用开浏览器，除非清单点名要。";
