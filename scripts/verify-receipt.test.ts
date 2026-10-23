@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { bodyDigest } from "./verify-action/body.ts";
 import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stampLine, stampTitle, type Stamp } from "./verify-receipt.ts";
@@ -63,7 +64,18 @@ test("等级不够、blocked、过期的回执都不通过并写下一步", () =
   assert.match(evaluate({ ...base, receipt: { sha: HEAD, level: "type-check-only" } }).next ?? "", /低于要求/);
   assert.match(evaluate({ ...base, receipt: { sha: HEAD, level: "verifier-blocked" } }).next ?? "", /不是通过/);
   assert.match(evaluate({ ...base, receipt: { sha: OLD, level: "live-ui-verified" } }).next ?? "", /按新 head 跑完/);
-  assert.match(evaluate({ ...base, receipt: null }).next ?? "", /没有验证回执/);
+  const missing = evaluate({ ...base, receipt: null }).next ?? "";
+  assert.match(missing, /没有验证回执/);
+  assert.match(missing, /重跑该 PR 已有的那次 Verify/);
+  assert.doesNotMatch(missing, /手动跑一次/);
+});
+
+test("Verify 只在 pull_request 上跑，不挂能写默认分支缓存的手动触发", () => {
+  const workflow = readFileSync(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8");
+  const triggers = workflow.split(/^jobs:/m)[0] ?? "";
+  assert.match(triggers, /^on:\n {2}pull_request:/m);
+  assert.doesNotMatch(triggers, /^\s*workflow_dispatch:/m);
+  assert.doesNotMatch(workflow, /inputs\.pr/);
 });
 
 test("--judge 时还要 PASS 的判定盖住 head", () => {
