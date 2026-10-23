@@ -31,7 +31,7 @@ import {
   planSyncUpcomingQueue,
   shouldKeepNaturalNext,
 } from "@/lib/web-player-sync";
-import { describe, isPlayInterrupted, mkSafe, isPlaybackActive, localPositionMs, localSongId, isPlaybackLive, waitUntilPlaying, playSafe, changeToSong, syncUpcomingQueue } from "@/lib/musickit-playback";
+import { describe, isPlayInterrupted, mkSafe, isPlaybackActive, localPositionMs, localSongId, waitUntilPlaying, playSafe, changeToSong, syncUpcomingQueue } from "@/lib/musickit-playback";
 import { trackPositionMs } from "@/lib/track-position";
 import type { ListeningItem, LocalNowPlaying } from "@shared/types";
 import {
@@ -544,7 +544,7 @@ export function useWebPlayerState(): WebPlayer {
                 if (latest.track?.state === "playing" && latest.songId) return;
                 const local = localSongId(inst);
                 if (latest.songId && local && latest.songId !== local) return;
-                if (isPlaybackLive(inst)) await mkSafe(() => inst.pause());
+                if (isPlaybackActive(inst)) await mkSafe(() => inst.pause());
               });
             }, 3_500);
           };
@@ -612,7 +612,7 @@ export function useWebPlayerState(): WebPlayer {
             }
 
             if (track.state !== "playing") {
-              if (isPlaybackLive(inst)) await mkSafe(() => inst.pause());
+              if (isPlaybackActive(inst)) await mkSafe(() => inst.pause());
               if (
                 needsResync(
                   localPositionMs(inst),
@@ -642,7 +642,7 @@ export function useWebPlayerState(): WebPlayer {
               return;
             }
 
-            if (!isPlaybackLive(inst)) {
+            if (!isPlaybackActive(inst)) {
               await playSafe(inst);
               await waitUntilPlaying(inst, () => !syncIsCurrent(generation, revision));
               if (!syncIsCurrent(generation, revision)) return;
@@ -673,7 +673,7 @@ export function useWebPlayerState(): WebPlayer {
               syncLagMsRef.current = playbackLagMs(latestHostPosition, localNow);
             }
             if (!syncIsCurrent(generation, revision)) return;
-            if (!isPlaybackLive(inst)) await playSafe(inst);
+            if (!isPlaybackActive(inst)) await playSafe(inst);
 
             syncReadySongIdRef.current = hostSongId;
             syncHasFollowedRef.current = true;

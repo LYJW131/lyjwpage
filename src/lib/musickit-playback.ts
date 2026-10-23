@@ -45,10 +45,6 @@ export function localSongId(music: MusicKitInstance): string | null {
   return catalogItemId(music.nowPlayingItem?.id);
 }
 
-export function isPlaybackLive(music: MusicKitInstance): boolean {
-  return isPlaybackActive(music);
-}
-
 export function waitUntilPlaying(
   music: MusicKitInstance,
   cancelled: () => boolean,
@@ -85,7 +81,7 @@ export async function changeToSong(
   const at = mediaItemIndex(music.queue?.items ?? [], songId);
   if (at >= 0) {
     try {
-      if (isPlaybackLive(music)) await mkSafe(() => music.pause());
+      if (isPlaybackActive(music)) await mkSafe(() => music.pause());
       if (cancelled()) return;
       await music.changeToMediaAtIndex(at);
       return;
@@ -119,7 +115,7 @@ export async function syncUpcomingQueue(
 
   // MusicKit 无公开 clear-tail API；重装当前曲清尾时须恢复位置，避免取消同步后自由播放回到歌头。
   const position = localPositionMs(music);
-  const wasLive = isPlaybackLive(music);
+  const wasLive = isPlaybackActive(music);
   await mkSafe(() => music.stop());
   if (cancelled()) return true;
   await mkSafe(() => music.setQueue({ song: current }));
