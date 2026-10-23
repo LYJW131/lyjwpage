@@ -13,7 +13,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && ! command -v tokens >/dev/null && npm i -g tokens-cli@latest >/dev/null 2>&1; true"
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && ! command -v tokens >/dev/null && npm i -g tokens-cli@latest >/dev/null 2>&1; true",
+            "async": true,
+            "timeout": 120
           }
         ]
       }
@@ -43,7 +45,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -v tokens >/dev/null && TZ=Asia/Singapore TOKENS_API_TOKEN=\"${TOKENS_API_TOKEN:-egress-proxy}\" tokens cloud submit >/dev/null 2>&1; true"
+            "command": "command -v tokens >/dev/null && TZ=Asia/Singapore TOKENS_API_TOKEN=\"${TOKENS_API_TOKEN:-egress-proxy}\" tokens cloud submit >/dev/null 2>&1; true",
+            "async": true,
+            "timeout": 30
           }
         ]
       }
