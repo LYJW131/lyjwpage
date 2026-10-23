@@ -28,3 +28,10 @@ test("缺 expectedHeadSha、数不出提交或数出 0 个都拦下", () => {
 test("别的仓库不管", () => {
   assert.equal(mergeMethodReason({ owner: "someone", repo: "other", merge_method: "rebase" }, () => 1), null);
 });
+
+test("带 do-not-merge 标签的 PR 一律拦下，读不到标签时只按合并方式判", () => {
+  const input = { ...base, pullNumber: 7, merge_method: "squash" };
+  assert.match(mergeMethodReason(input, () => 1, () => ["tier: logic", "do-not-merge"]) ?? "", /do-not-merge/);
+  assert.equal(mergeMethodReason(input, () => 1, () => ["tier: logic"]), null);
+  assert.equal(mergeMethodReason(input, () => 1, () => { throw new Error("gh: not logged in"); }), null);
+});

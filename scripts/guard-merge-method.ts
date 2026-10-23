@@ -7,13 +7,35 @@ import { mergeMethodFor } from "./merge-message.ts";
 
 const REPO = { owner: "lyjw131", repo: "lyjwpage" };
 
-type MergeInput = { owner?: unknown; repo?: unknown; merge_method?: unknown; expectedHeadSha?: unknown };
+type MergeInput = { owner?: unknown; repo?: unknown; pullNumber?: unknown; merge_method?: unknown; expectedHeadSha?: unknown };
+
+export const DO_NOT_MERGE_LABEL = "do-not-merge";
 
 const countCommits = (sha: string, cwd: string) =>
   Number(execFileSync("git", ["rev-list", "--count", "--no-merges", `origin/main..${sha}`], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim());
 
-export function mergeMethodReason(input: MergeInput, count: (sha: string) => number): string | null {
+const labelsOf = (pr: number) =>
+  JSON.parse(
+    execFileSync("gh", ["api", `repos/${REPO.owner}/${REPO.repo}/issues/${pr}/labels`, "--jq", "[.[].name]"], {
+      encoding: "utf8",
+      timeout: 15_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }),
+  ) as string[];
+
+export function mergeMethodReason(input: MergeInput, count: (sha: string) => number, labels: (pr: number) => string[] = () => []): string | null {
   if (String(input.owner).toLowerCase() !== REPO.owner || String(input.repo).toLowerCase() !== REPO.repo) return null;
+  const pr = Number(input.pullNumber);
+  // 读不到标签（没装或没登录 gh）就放过：标签在时 do-not-merge 检查是红的，pr-gate 也不会 ready
+  let current: string[] = [];
+  try {
+    if (Number.isInteger(pr) && pr > 0) current = labels(pr);
+  } catch {
+    current = [];
+  }
+  if (current.includes(DO_NOT_MERGE_LABEL)) {
+    return `#${pr} 带着 ${DO_NOT_MERGE_LABEL} 标签（标题写了「不合并」的测试 PR）：不合，用完关掉；确实要合，先改掉标题里的「不合并」并摘掉标签。`;
+  }
   const sha = input.expectedHeadSha;
   if (typeof sha !== "string" || !/^[0-9a-f]{40}$/i.test(sha)) {
     return "合并 lyjwpage 的 PR 要带 pnpm merge-message 给的 expectedHeadSha（40 位）。";
@@ -41,7 +63,7 @@ function main() {
     process.exit(2);
   }
   const cwd = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const reason = mergeMethodReason(input.tool_input ?? {}, (sha) => countCommits(sha, cwd));
+  const reason = mergeMethodReason(input.tool_input ?? {}, (sha) => countCommits(sha, cwd), labelsOf);
   if (reason === null) return;
   process.stderr.write(`已拦下：${reason}\n`);
   process.exit(2);
