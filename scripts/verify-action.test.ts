@@ -226,6 +226,7 @@ test("描述里的 HTML 注释不删：注释里的条目照验，改注释也�
   const shadow = "<!--\n## 验证清单\n- V1：旧检查\n-->\n## 验证清单\n- V1：实际检查\n- V2：另一条\n## lyjw 原话\n> 需求";
   assert.deepEqual(parseBody(shadow).checklist, [{ id: "V1", text: "旧检查；实际检查" }, { id: "V2", text: "另一条" }]);
   assert.notEqual(bodyDigest(shadow), bodyDigest(shadow.replace("实际检查", "改过的检查")));
+  assert.deepEqual(parseBody("## 验证清单\n- V1：a；b\n- V1：a；b").checklist, [{ id: "V1", text: "a；b" }]);
 });
 
 test("表格单元只把竖线前的反斜杠加倍再转义竖线，别处的反斜杠原样", () => {

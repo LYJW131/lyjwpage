@@ -41,14 +41,14 @@ function section(lines: string[], heading: RegExp) {
 export function parseBody(body: string | null | undefined) {
   const lines = dropBadge(body ?? "").split(/\r?\n/);
   const checklistLines = section(lines, CHECKLIST_HEADING);
-  const checklist: ChecklistItem[] = [];
+  const texts = new Map<string, string[]>();
   for (const line of checklistLines ?? []) {
     const match = ITEM.exec(line);
     if (!match) continue;
-    const same = checklist.find((item) => item.id === match[1]);
-    if (!same) checklist.push({ id: match[1], text: match[2] });
-    else if (!same.text.split("；").includes(match[2])) same.text += `；${match[2]}`;
+    const seen = texts.get(match[1]) ?? [];
+    if (!seen.includes(match[2])) texts.set(match[1], [...seen, match[2]]);
   }
+  const checklist: ChecklistItem[] = [...texts].map(([id, parts]) => ({ id, text: parts.join("；") }));
   const words = section(lines, WORDS_HEADING)?.join("\n").trim() || null;
   return { checklist, words };
 }
