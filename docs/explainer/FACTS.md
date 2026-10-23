@@ -452,7 +452,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - `.github/workflows/deploy-pages.yml`：只在它自己改动或手动触发时，把 GitHub Pages 发成跳到 README 架构图的转址页，和站点无关。
 - `.github/workflows/preview-core-worker.yml`：PR 关闭时删掉那个分支的 core Worker Preview。
-- `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。`.github/workflows/anthropic-wif-test.yml`：手动触发，试一次 GitHub OIDC 换 Anthropic token（Claude Action 的计费开关），不参与发布。`.github/actions/claude-unmarked`：走 WIF 计费时给上面三个工作流的 claude-code-action 换一个启动脚本，去掉 `CLAUDE_CODE_ENTRYPOINT` 与 `CLAUDE_CODE_ACTION` 两个来源标记（带着它们 API 误报余额不足，anthropics/claude-code-action#1901）。
+- `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。`.github/workflows/anthropic-wif-test.yml`：手动触发，试一次 GitHub OIDC 换 Anthropic token（Claude Action 的计费开关），不参与发布。上面三个工作流走 WIF 计费时，`unmarked` 步骤给 claude-code-action 换一个启动脚本，去掉 `CLAUDE_CODE_ENTRYPOINT` 与 `CLAUDE_CODE_ACTION` 两个来源标记（带着它们 API 误报余额不足，anthropics/claude-code-action#1901）。
 - `.github/workflows/verify-cache.yml`：每天和 `.github/actions/verify-tools` 改动合进 main 时，在默认分支上存一份 Playwright 浏览器和沙箱 bubblewrap、socat 的 .deb 缓存；Verify 只在 PR 上跑，PR 自己存的缓存别的 PR 读不到，不参与发布。
 - `.github/workflows/pr-tier-label.yml`：PR 打开或推送后，以 `lyjw131[bot]` 给 PR 贴 `tier: <档位>` 标签，改过验证员相关文件的另贴 `verifier-changed`（`scripts/pr-tier.ts`），只供查看，门槛不读它，不参与发布。
 - `.github/workflows/comment-check.yml`：改了 JS / TS 的 PR 上，Jev 逐条判断新增注释该不该删（`scripts/comment-check.ts`），建一项 `Comment check (Jev)` 检查，有该删的或没问全为 neutral；问过注释时，另一个只跑默认分支脚本的 job 以 `lyjw131[bot]` 在 PR 上原地更新一条评论；只是建议，不参与发布。
