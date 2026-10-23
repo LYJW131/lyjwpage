@@ -11,12 +11,15 @@ import { collectIngestEffects, type IngestEffect } from "./ingest-effects";
 import { historyArchive, requestStore, type Env } from "./runtime";
 import { PulseArchiveState, type ArchiveStream, type PulseArchiveSnapshot } from "./pulse-archive";
 import { DEV_OVERRIDE_TTL_MS, overrideIndexStorageKey, overrideStorageKey } from "./dev-overrides";
-import { LAG_REPURGE_DELAY_MS, lagStatusTags, queueRepurge, takeDueRepurge, type RepurgeQueue } from "./lag-repurge";
-import { expireStatusTags } from "./live-platform";
+import { LAG_REPURGE_DELAY_MS, lagStatusTags, queueRepurge, type RepurgeQueue } from "./lag-repurge";
+import { purgeStatusTags } from "./live-platform";
+import { addPending, planPurge, purgeSlot } from "./purge-throttle";
 
 export type PulseTick = { archive: PulseArchiveSnapshot };
 
 const REPURGE_KEY = "lag-repurge";
+const PENDING_PURGE_KEY = "purge-pending";
+const PURGE_FLUSHED_KEY = "purge-flushed-at";
 
 type CommitIngestWire =
   | { ready: true; ok: true; json: string; error: null; effects: IngestEffect[] }
@@ -134,18 +137,37 @@ export class StateHub extends DurableObject<Env> {
     });
   }
 
-  private async flushStatusRepurge(): Promise<number | null> {
-    const { due, next } = await this.ctx.storage.transaction(async (txn) => {
-      const taken = takeDueRepurge((await txn.get<RepurgeQueue>(REPURGE_KEY)) ?? {}, Date.now());
-      if (taken.next === null) await txn.delete(REPURGE_KEY);
-      else await txn.put(REPURGE_KEY, taken.rest);
-      return taken;
+  async requestStatusPurge(tags: readonly string[]): Promise<void> {
+    if (!tags.length) return;
+    await this.ctx.storage.transaction(async (txn) => {
+      await txn.put(PENDING_PURGE_KEY, addPending((await txn.get<string[]>(PENDING_PURGE_KEY)) ?? [], tags));
+      const at = purgeSlot((await txn.get<number>(PURGE_FLUSHED_KEY)) ?? 0, Date.now());
+      const current = await txn.getAlarm();
+      if (current === null || current > at) await txn.setAlarm(at);
     });
-    if (due.length) {
-      console.log("[lag-repurge]", due.join(","));
-      await withRequestState(() => requestStore.run({ env: this.env, ctx: this.ctx }, () => expireStatusTags(due)));
-    }
-    return next;
+  }
+
+  // 认领与记下这一轮的时间在同一个事务里，清除的 RPC 在事务外等；期间进来的失效只会排进下一轮。
+  private async flushStatusPurge(): Promise<number | null> {
+    const { due, next } = await this.ctx.storage.transaction(async (txn) => {
+      const plan = planPurge({
+        pending: (await txn.get<string[]>(PENDING_PURGE_KEY)) ?? [],
+        lag: (await txn.get<RepurgeQueue>(REPURGE_KEY)) ?? {},
+        flushedAt: (await txn.get<number>(PURGE_FLUSHED_KEY)) ?? 0,
+      }, Date.now());
+      if (plan.due.length) {
+        await txn.put(PENDING_PURGE_KEY, plan.state.pending);
+        if (Object.keys(plan.state.lag).length) await txn.put(REPURGE_KEY, plan.state.lag);
+        else await txn.delete(REPURGE_KEY);
+        await txn.put(PURGE_FLUSHED_KEY, plan.state.flushedAt);
+      }
+      return plan;
+    });
+    if (!due.length) return next;
+    const purged = await withRequestState(() => requestStore.run({ env: this.env, ctx: this.ctx }, () => purgeStatusTags(due)));
+    if (purged) return next;
+    await this.requestStatusPurge(due);
+    return (await this.ctx.storage.getAlarm()) ?? next;
   }
 
   private async scheduleAlarm(at: number): Promise<void> {
@@ -159,7 +181,7 @@ export class StateHub extends DurableObject<Env> {
   }
   async alarm(): Promise<void> {
     const removed = this.database.purgeExpired();
-    const repurgeAt = await this.flushStatusRepurge();
+    const repurgeAt = await this.flushStatusPurge();
     const housekeepingAt = Date.now() + (removed === 1000 ? 1000 : 60 * 60_000);
     await this.scheduleAlarm(repurgeAt === null ? housekeepingAt : Math.min(repurgeAt, housekeepingAt));
   }

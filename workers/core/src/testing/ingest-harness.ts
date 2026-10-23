@@ -4,6 +4,7 @@ import type { CoreCommand } from "@shared/ingest/prepare";
 
 import { collectIngestEffects, type CollectedIngest } from "../ingest-effects";
 import { commitPreparedIngest } from "../ingest-handlers";
+import { purgeStatusTags } from "../live-platform";
 import { requestStore, type Env } from "../runtime";
 
 export const NOW = 1_800_000_000_000;
@@ -14,12 +15,21 @@ export function envelope(modules: Record<string, unknown>, activeModules: string
   return { version: 4, presence: "online", heartbeatAt: NOW, activeModules, modules };
 }
 
+// 真的 StateHub 会排队、按节奏再清；测试里排进去就立刻清，断言照旧落在 SITE_CACHE 上。
+export function immediatePurgeHub(): Env["STATE"] {
+  return {
+    idFromName: () => null,
+    get: () => ({ requestStatusPurge: async (tags: readonly string[]) => { await purgeStatusTags(tags); } }),
+  } as unknown as Env["STATE"];
+}
+
 export function testEnv(): Env {
   return {
     LIVE_PUSH: {
       idFromName: () => null,
       get: () => ({ broadcast: async () => { throw new Error("DO commit must not broadcast"); } }),
     } as unknown as Env["LIVE_PUSH"],
+    STATE: immediatePurgeHub(),
   } as Env;
 }
 

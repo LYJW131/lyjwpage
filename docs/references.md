@@ -211,6 +211,10 @@
   - 是什么：Worker 版本 ID 默认是缓存键的一部分，`cross_version_cache` 要显式打开。
   - 取了什么：解释了为什么每次部署后首页从空缓存开始；不开 `cross_version_cache`，改成没有快照的卡按降级信封渲染、那份首页 `no-store`。
   - 状态：采用。落在 [state-storage.md](./state-storage.md) 首屏一节与 [card-boundary.tsx](../src/components/card-boundary.tsx)。
+- **[Workers Caching 的 purge 限流](https://developers.cloudflare.com/workers/cache/purge/#rate-limits)** 与 **[purge 限额表](https://developers.cloudflare.com/cache/how-to/purge-cache/#hostname-tag-prefix-url-and-purge-everything-limits)**（Cloudflare 文档）
+  - 是什么：`ctx.cache.purge()` 与区域 purge API 共用限流，但 Workers Caching 不论套餐都按 Free 档：按标签清除每账号每分钟 5 次、桶容量 25，被拒时 `success` 为 `false`、错误码 1134。
+  - 取了什么：core 不再每次布局变化就清，标签先排进 StateHub，由 alarm 合成一轮再清，两轮至少隔一个间隔；一轮清两个入口，间隔按补充速率留余量定。
+  - 状态：采用。落在 [purge-throttle.ts](../workers/core/src/purge-throttle.ts) 的 `PURGE_MIN_INTERVAL_MS` 与 [state-hub.ts](../workers/core/src/state-hub.ts) 的 `requestStatusPurge`。
 - **Cloudflare Access 的 Instant Auth（`auto_redirect_to_identity`）**（Cloudflare 控制台设置，讨论里没留链接）
   - 是什么：只允许一种登录方式时跳过选择页，直接跳到身份提供方。
   - 取了什么：站点分支预览用它省掉登录方式选择页，点开预览直接登录。
