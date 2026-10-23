@@ -21,6 +21,7 @@ Facts learned from real runs (2026-10-23):
 - Workflow-level `concurrency` applies before job `if`, so a no-op `edited` event must go to a different group.
 - `actions/setup-node` auto package-manager cache fails without pnpm installed: set `package-manager-cache: false` on jobs that skip pnpm.
 - The runner's azure apt mirror stalls often (one run hung 40+ min; #593's test run again). `timeout` outside `sudo` leaves apt-get alive holding the dpkg lock, so retries fail. verify.yml now installs browsers without deps, installs apt deps only on UI-tier PRs, with `sudo timeout` and a retry that drops the azure mirror.
+- Scripts run in jobs with write tokens or secrets (verify-action, pr-tier, pr-gate) must not import `shared/`: the visitor design flow may write `shared/` (`workers/ai/src/build/validation.ts#allowedBuildPath`) but not `scripts/` (independent review of #572, F1). Claude steps that run PR code set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'` (F2).
 - Verifier/judge diff against the PR's base branch, not origin/main (stacked test PRs mixed in base commits).
 - Receipts carry `<!-- 描述摘要 <sha256> -->` on line 2; editing the checklist or lyjw's words voids old receipts.
 

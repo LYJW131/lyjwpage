@@ -40,7 +40,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 - 验证员在清单之外还会按 diff 补查（行 id 用 X1、X2……），但清单漏掉的你想看的行为，它不一定想得到。
 - 没写清单时验证员按 diff 自己挑检查，回执评论里会注明；没写原话时判定员按 PR 描述推断，并在第一条写明。
 - 回执和判定只对签发时的清单与原话算数（没写原话时按描述全文；评论第二行藏着描述摘要）：之后改了，旧的作废，等 Action 按新描述重跑；只改标题不重跑。
-- 验证员与判定员读的 `.claude/`、`CLAUDE.md` 是 main 上的（claude-code-action 对 PR 一律换回 base 的），PR 里改的 skill 合并后才生效。
+- 验证员与判定员读的 `.claude/`、`CLAUDE.md` 是 main 上的（claude-code-action 对 PR 一律换回 base 的），PR 里改的 skill 合并后才生效；`AGENTS.md`、`REVIEW.md` 不换，读的是 PR 里的。
 - 回执是 `verifier-blocked` / `verifier-failed` 或等级不够：看评论里的证据与「没验到」，修代码或补清单后推送（改描述也会重跑）。环境问题（预览没部署、Action 自己出错）在 Actions 页重跑那一次。
 - Action 验不到的（只有 `dev:scene` 夹具才有的状态、真机行为），写进 PR 描述交给 lyjw；不在线程里自签回执顶替，自签的不算数。
 
@@ -146,7 +146,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 
 写代码的线程不判自己的活。逻辑档（`tier` 含 `logic`，或作者不是 lyjw 的账号）的 PR，Verify Action 每次推送都派一个 Opus（effort high）判定员，和验证员并行跑（lyjw 定的：不等验证员，每次推送都判）。
 
-- 判定员只拿 PR 描述里的「lyjw 原话」、PR 号与 head，自己读 `git diff origin/main...HEAD` 和调用方。它回答两件事：diff 是否做到了 lyjw 要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）。结论 `PASS` 或 `FAIL`，FAIL 列出要修的项。「证据表里有没有没验到却算通过的项」由 publish 按清单对照来查（见「PR 上的验证」）。
+- 判定员只拿 PR 描述里的「lyjw 原话」、PR 号与 head，自己读 PR 相对目标分支的 diff（`git diff origin/<目标分支>...HEAD`）和调用方。它回答两件事：diff 是否做到了 lyjw 要的（逐条对照原话）；有没有改出回归（读调用方，需要时在 main 和 head 上跑同一个场景对照）。结论 `PASS` 或 `FAIL`，FAIL 列出要修的项。「证据表里有没有没验到却算通过的项」由 publish 按清单对照来查（见「PR 上的验证」）。
 - 判定员只读，不看验证员的证据。结论由 publish job 发成评论，第一行是 `判定 <head 完整 SHA>：PASS`（或 `FAIL`）。
 - 结论只对那个 SHA 的补丁有效：只把 main 合进了分支、补丁没变的照旧算数，补丁变了 Action 会按新 head 重判。FAIL 的项修完再推，不和判定员争；确实判错了（比如误读了 lyjw 原话），在 PR 评论里写明依据，交 lyjw 定。
 - 判断活仍归主线程：机器评审意见改不改、失败的根因、合不合，由主线程照第 3 节定。

@@ -27,7 +27,7 @@ export function verifierPrompt({
     : "PR 描述里没写验证清单：自己读 diff，按 skill 的检查清单挑和改动相关的检查。";
   return `你是 lyjwpage 的验证员，在 GitHub Action 里运行。你只执行检查、交回证据：不改仓库里的文件、不提交、不推送、不在 GitHub 上评论。检查失败就带证据报告，不要去修。不要往好里说，不确定就给原始数值。
 
-被验的 PR：#${pr}「${title}」，head ${head}。工作区已检出这个提交，PR 的目标分支 origin/${base} 已取回，\`git diff origin/${base}...HEAD\` 就是这次改动。Action 启动时把 .claude/、CLAUDE.md 等换回 main 上的版本（PR 改过的在 .claude-pr/），git status 里这些改动是 Action 做的，不用报。改动的文件：
+被验的 PR：#${pr}「${title}」，head ${head}。工作区已检出这个提交，PR 的目标分支 origin/${base} 已取回，\`git diff origin/${base}...HEAD\` 就是这次改动。Action 启动时把 .claude/、CLAUDE.md 等换回 main 上的版本（PR 改过的在 .claude-pr/；AGENTS.md、REVIEW.md 不换），git status 里这些改动是 Action 做的，不用报。改动的文件：
 ${fileList(files)}
 
 分档：${tier}，回执至少要到 ${need}。
@@ -51,7 +51,7 @@ export function judgePrompt({ pr, title, head, base, files, words, body }: Commo
     : `PR 描述里没有「lyjw 原话」一节。下面是 PR 描述全文，按它推断 lyjw 要什么，并在 asks 里第一条写明「PR 没附原话」：\n${body}`;
   return `你是 lyjwpage 的判定员，在 GitHub Action 里只读运行：不改文件、不提交、不在 GitHub 上评论。这段代码不是你写的。
 
-PR #${pr}「${title}」，head ${head}。工作区已检出这个提交，PR 的目标分支 origin/${base} 已取回。Action 启动时把 .claude/、CLAUDE.md 等换回 main 上的版本（PR 改过的在 .claude-pr/），git status 里这些改动是 Action 做的，不用报。改动的文件：
+PR #${pr}「${title}」，head ${head}。工作区已检出这个提交，PR 的目标分支 origin/${base} 已取回。Action 启动时把 .claude/、CLAUDE.md 等换回 main 上的版本（PR 改过的在 .claude-pr/；AGENTS.md、REVIEW.md 不换），git status 里这些改动是 Action 做的，不用报。改动的文件：
 ${fileList(files)}
 
 ${asks}
