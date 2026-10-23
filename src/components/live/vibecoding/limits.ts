@@ -102,15 +102,15 @@ export function compactLimit(row: Pick<CodingAgentRow, "limits">, now: number) {
 }
 
 type FeaturedLimitRow =
-  | { kind: "limit"; key: string; title: string; limit: VibeCodingLimit; cappedBy: VibeCodingLimit | null }
+  | { kind: "limit"; key: string; title: string; limit: VibeCodingLimit; cap: WeeklyCap | null }
   | { kind: "unavailable"; key: string; title: string; reason: string };
 
-export function featuredLimitRows(row: Pick<CodingAgentRow, "id" | "limits" | "limitsError">): FeaturedLimitRow[] {
+export function featuredLimitRows(row: Pick<CodingAgentRow, "id" | "plan" | "limits" | "limitsError">): FeaturedLimitRow[] {
   const slots = Object.hasOwn(FEATURED_LIMITS, row.id) ? FEATURED_LIMITS[row.id]! : [];
   return slots.map(({ slot, title }) => {
     const limit = pickSlotLimit(row.limits, slot);
     if (limit) {
-      return { kind: "limit" as const, key: slot, title, limit, cappedBy: slot === "fable" ? weeklyLimit(row) : null };
+      return { kind: "limit" as const, key: slot, title, limit, cap: weeklyCap(row, slot) };
     }
     return {
       kind: "unavailable" as const, key: slot, title,
@@ -123,17 +123,39 @@ export function isFableLimit(limit: VibeCodingLimit) {
   return isNamedLimit(limit, "fable");
 }
 
-// Fable 条拉满对应周限额的这个百分比。
-const FABLE_WEEKLY_SHARE_PERCENT = 50;
+export type WeeklyCap = { weekly: VibeCodingLimit; sharePercent: number; note: string };
 
-// Fable 用量也计入周限额。周限额剩下的折成 Fable 条宽后不够 Fable 自己剩下的，差出的右端这一段永远用不到；返回它占条宽的比例。
-export function fableUnavailableShare(weekly: VibeCodingLimit | null, fableUsedPercent: number, now: number) {
-  if (!weekly) return 0;
+// 条拉满对应周限额的百分比。Fable 是 50%；5 小时窗口按 lyjw 的经验值：Pro 与 Max 5x 一周约 7 个窗口，Max 20x 的 5 小时是 20 倍、周限额只有 10 倍，所以翻倍。没见过的套餐不画。
+const FABLE_WEEKLY_SHARE_PERCENT = 50;
+const SESSION_WEEKLY_SHARE_PERCENT: Readonly<Record<string, number>> = {
+  "Pro": 100 / 7,
+  "Max 5x": 100 / 7,
+  "Max 20x": 200 / 7,
+};
+
+const FABLE_UNAVAILABLE_NOTE = "Weekly usage is past Fable's 50% share, so the shaded part of this bar can't be used";
+const SESSION_UNAVAILABLE_NOTE = "Weekly quota left is less than this window, so the shaded part of this bar can't be used";
+
+function weeklyCap(row: Pick<CodingAgentRow, "id" | "plan" | "limits">, slot: FeaturedLimitSlot): WeeklyCap | null {
+  const sharePercent =
+    slot === "fable" ? FABLE_WEEKLY_SHARE_PERCENT
+    : slot === "session" && row.id === "claude" && row.plan && Object.hasOwn(SESSION_WEEKLY_SHARE_PERCENT, row.plan.label) ? SESSION_WEEKLY_SHARE_PERCENT[row.plan.label]!
+    : null;
+  if (sharePercent == null) return null;
+  const weekly = weeklyLimit(row);
+  if (!weekly) return null;
+  return { weekly, sharePercent, note: slot === "fable" ? FABLE_UNAVAILABLE_NOTE : SESSION_UNAVAILABLE_NOTE };
+}
+
+// 这条的用量也计入周限额。周限额剩下的折成条宽后不够这条自己剩下的，差出的右端这一段永远用不到；返回它占条宽的比例。
+export function unavailableShare(cap: Pick<WeeklyCap, "weekly" | "sharePercent"> | null, usedPercent: number, now: number) {
+  if (!cap) return 0;
+  const { weekly, sharePercent } = cap;
   const expired = weekly.resetsAt != null && weekly.resetsAt * 1000 <= now;
   const weeklyLeft = 100 - (expired ? 0 : weekly.usedPercent);
-  const fableLeft = 100 - fableUsedPercent;
-  const reachable = (weeklyLeft * 100) / FABLE_WEEKLY_SHARE_PERCENT;
-  return Math.min(1, Math.max(0, (fableLeft - reachable) / 100));
+  const left = 100 - usedPercent;
+  const reachable = (weeklyLeft * 100) / sharePercent;
+  return Math.min(1, Math.max(0, (left - reachable) / 100));
 }
 
 export function hasFeaturedLimits(id: string) {
