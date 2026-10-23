@@ -452,7 +452,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - `.github/workflows/deploy-pages.yml`：只在它自己改动或手动触发时，把 GitHub Pages 发成跳到 README 架构图的转址页，和站点无关。
 - `.github/workflows/preview-core-worker.yml`：PR 关闭时删掉那个分支的 core Worker Preview。
-- `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。
+- `.github/workflows/claude.yml`、`.github/workflows/claude-code-review.yml`：PR 与 issue 上的 Claude Code，不参与发布。`.github/workflows/verify.yml`：PR 上的验证员与判定员，只往孤立分支 `verify-shots` 推截图，不参与发布。
 - `.github/workflows/codeql-autofix.yml`（main 上的 CodeQL 跑完后为告警开修复）、`.github/workflows/explainer-score.yml`（只在讲解片配乐的输入改动时渲染上传配乐）、`.github/workflows/collector-refresh.yml`（手动触发）、`.github/workflows/avatar-sync.yml`（采集 Worker 的 avatar-watch 派发，只提交新哈希，见 §1）、`.github/workflows/issue-labels.yml`（新 issue）、`.github/workflows/build.yml`（访客构建的 `repository_dispatch`）：自己都不部署站点或 Worker。
 
 ## 11 工作流：站是怎么被造出来的（第 08 章「一句话之后」）
@@ -481,7 +481,7 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 ### 验证与回执
 
 - 主线程决定验什么、判断结果；Haiku 验证员只跑检查、交回证据，不改文件、不在 GitHub 上评论、不合并。浏览器取证用 `scripts/site-verify.ts`，宽度至少 1280 桌面与 375 手机，375 另用 WebKit 截一张（`.claude/skills/lyjwpage-verify/SKILL.md`「派法」「2. UI 浏览器端到端」）。
-- 验证员在报告末尾签回执，主线程把它原样发成一条 PR 评论，第一行不动（同文件「回执」）：
+- PR 上的验证员在 GitHub Action 里跑（`.github/workflows/verify.yml#verify`），照 PR 描述的「验证清单」验；回执由同一工作流的 publish job 以 github-actions[bot] 发成 PR 评论，第一行不动（同文件「PR 上的验证：Verify Action」「回执」）：
 
   ```
   验证回执 <被验提交的完整 SHA>：<等级>
@@ -492,8 +492,8 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
 - 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.ts#LEVELS`、`scripts/verify-receipt.ts#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。
 - SHA 不手抄：第一行用 `node scripts/verify-receipt.ts sign --sha <提交> --level <等级>` 的输出原样粘贴，它用 `git rev-parse` 展开完整 SHA、只收五档等级；脚本按 SHA 认回执，错一位整张作废（同文件「回执」、`scripts/verify-receipt.ts#signLine`）。
-- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 lyjw 两个账号（LYJW131、An0nCh1hayaa，按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#TRUSTED_AUTHOR_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
-- 大改代码逻辑的 PR 合并前再派判定员：一个没写这段代码的 agent，只拿 lyjw 的原话、PR 号与 head 的完整 SHA、验证员的证据表，自己读 diff，判做没做到、有没有回归。主线程把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，FAIL 不合；这一行也不手写，用 `node scripts/verify-receipt.ts sign --sha <head> --verdict PASS`（或 `FAIL`）的输出（同文件「3b. 大改代码逻辑的 PR：由没写代码的 agent 判做完没有」、`scripts/verify-receipt.ts#JUDGE_LINE`）。
+- 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 github-actions[bot]（按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
+- 逻辑档的 PR 每次推送，同一工作流另派一个 Opus 判定员和验证员并行（`.github/workflows/verify.yml#judge`）：没写这段代码，只拿 PR 描述里的 lyjw 原话、PR 号与 head，自己读 diff，判做没做到、有没有回归。publish job 把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，FAIL 不合；这一行由 `scripts/verify-receipt.ts#signLine` 拼（同文件「3b. 逻辑档的 PR：由没写代码的 Opus 判做完没有」、`scripts/verify-receipt.ts#JUDGE_LINE`）。
 
 ### 合并
 

@@ -39,7 +39,7 @@ lyjw 和 Claude 在线程、PR、文档里共用的词。每条一句话说是�
 | 每日审查 | 每天对 main 新改动跑 /code-review 与 /simplify 的定时任务 | `docs/ops-facts.md`「Claude Code 云端 routine」 |
 | 园丁 | 每日审查里专找正在被复制的坏写法的一步，发现记进缓冲 issue | `docs/references.md` |
 | 提炼 skill | 从线程里提炼流程、复盘需求偏差的定时任务 | `.claude/skills/lyjwpage-skill-mining/SKILL.md` |
-| 验证员 / 回执 | 派去跑检查的 Haiku，和它签的检查结果表 | `.claude/skills/lyjwpage-verify/SKILL.md` |
+| 验证员 / 回执 | 跑检查的 Haiku（PR 上在 Verify Action 里跑），和它签的检查结果表 | `.claude/skills/lyjwpage-verify/SKILL.md` |
 | 机器评审 | PR 上 Claude、Devin、Codex 的自动评审 | `HUMAN.md`「5. PR 与合并」 |
 | 门禁 | CI 必须通过的检查清单 | `.github/workflows/ci.yml` |
 | 基线 | 存量违规的清单，只许减不许增 | 根 `AGENTS.md`「规则 → 由什么强制」 |

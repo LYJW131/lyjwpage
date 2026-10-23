@@ -16,7 +16,7 @@ export function workflow(lang: Lang): Canvas {
   c.lines(chat, [[["接每句话，分派线程", "Takes every message"], "title"], [["转贴各线程的决策卡", "re-posts decision cards"], "cap"]]);
   const thread = c.card({ x: C1, y: 312, w: COL, h: 144 }, ["线程", "Thread"], "Claude", "claude");
   c.lines(thread, [[["一件事一个线程", "One thread per task"], "title"], [["一个分支，做到上线", "own branch, through deploy"], "cap"]], 64);
-  c.chip({ x: thread.x, y: thread.y + 64, w: thread.w, h: 40 }, ["Haiku 验证员", "Haiku verifier"], null, ["按提交签分级回执", "graded receipt per commit"], "claude");
+  c.chip({ x: thread.x, y: thread.y + 64, w: thread.w, h: 40 }, ["验证清单", "Verify checklist"], null, ["写进 PR 描述", "written in the PR body"], "claude");
 
   const routines = c.card({ x: C2, y: 168, w: COL, h: 192 }, ["定时任务", "Routines"], null, "claude");
   c.rows(routines, [
@@ -34,7 +34,7 @@ export function workflow(lang: Lang): Canvas {
   c.lines(build, [[["先审计划，再实现", "Review plan, then build"], "title"], [["build.yml · 无写凭据", "build.yml · no write token"], "cap"]]);
 
   const pr = c.card({ x: C1, y: 528, w: COL, h: 120 }, "PR", null, "flow");
-  c.lines(pr, [[["分支预览", "Branch preview"], "title"], ["*.preview.lyjw.dev", "cap"], [["UI 在预览上验", "UI checked here"], "cap"]]);
+  c.lines(pr, [[["Verify Action", "Verify Action"], "title"], [["Haiku 照清单在预览上验", "Haiku checks the preview"], "cap"], [["Opus 判定 · bot 签回执", "Opus judges · bot signs"], "cap"]]);
   const gate = c.card({ x: C2, y: 528, w: COL, h: 120 }, ["合并门槛", "Merge gate"], null, "flow");
   c.rows(gate, [
     [["CI 门禁", "CI"], ["lint · 测试 · 检查", "lint · tests · rules"]],

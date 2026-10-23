@@ -6,17 +6,18 @@ import { check, coverage, evaluate, parseComments, patchDigest, signLine } from 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
 const patchIds = (map: Record<string, string>) => (sha: string) => map[sha] ?? null;
-const owner = { id: 153256373 };
-const cloud = { id: 300701323 };
+const owner = { id: 41898282 };
+const lyjw = { id: 153256373 };
 
-test("parseComments 每类只认 lyjw 两个账号发的最新一条，第一行不对格式的不算", () => {
+test("parseComments 每类只认 github-actions[bot] 发的最新一条，lyjw 账号自签的与第一行不对格式的不算", () => {
   const { receipt, judge } = parseComments([
     { user: owner, body: `验证回执 ${OLD}：type-check-only` },
     { user: owner, body: `顺便说一句\n验证回执 ${HEAD}：live-ui-verified` },
     { user: owner, body: `验证回执 ${HEAD}：unit-test-verified\n证据：…` },
     { user: owner, body: `判定 ${HEAD}：FAIL` },
-    { user: cloud, body: `判定 ${HEAD}: PASS` },
-    { user: { id: 1 }, body: `判定 ${OLD}：FAIL` },
+    { user: owner, body: `判定 ${HEAD}: PASS` },
+    { user: lyjw, body: `验证回执 ${HEAD}：live-ui-verified` },
+    { user: { id: 300701323 }, body: `判定 ${OLD}：FAIL` },
     { body: `验证回执 ${OLD}：live-ui-verified` },
   ]);
   assert.deepEqual([receipt?.sha, receipt?.level], [HEAD, "unit-test-verified"]);
@@ -47,7 +48,7 @@ test("等级不够、blocked、过期的回执都不通过并写下一步", () =
   const base = { head: HEAD, judge: null, need: "unit-test-verified", wantJudge: false, patchId: patchIds({}) };
   assert.match(evaluate({ ...base, receipt: { sha: HEAD, level: "type-check-only" } }).next ?? "", /低于要求/);
   assert.match(evaluate({ ...base, receipt: { sha: HEAD, level: "verifier-blocked" } }).next ?? "", /不是通过/);
-  assert.match(evaluate({ ...base, receipt: { sha: OLD, level: "live-ui-verified" } }).next ?? "", /重派验证员/);
+  assert.match(evaluate({ ...base, receipt: { sha: OLD, level: "live-ui-verified" } }).next ?? "", /按新 head 跑完/);
   assert.match(evaluate({ ...base, receipt: null }).next ?? "", /没有验证回执/);
 });
 

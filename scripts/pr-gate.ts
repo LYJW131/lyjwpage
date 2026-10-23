@@ -18,6 +18,8 @@ export { CODEX_MAX_ROUNDS, reviewerSummary, type Reviewer } from "./pr-gate/revi
 export { buildThreads, severityOf, type Level } from "./pr-gate/threads.ts";
 export { tierOf } from "./pr-gate/tier.ts";
 
+const VERIFIER_PATHS = [/^\.github\/workflows\/verify\.yml$/, /^scripts\/verify-action(?:\.ts|\/)/, /^scripts\/verify-receipt\.ts$/];
+
 const HELP = `用法：NODE_USE_ENV_PROXY=1 node scripts/pr-gate.ts --pr <号> [--need <等级|none>] [--judge | --no-judge]
 
 合并前一条命令读全 PR 的门槛状态，只读，输出一份 JSON；退出码 0 ready、1 不 ready 或读不到 GitHub、2 参数错。
@@ -90,6 +92,8 @@ export async function gate(
   const reviewers = reviewerSummary(reviews, issueComments, head);
   const labels = (pull.labels ?? []).map((label) => label.name);
   const verdict = decide({ pull, tier, checks, builds, threads, reviewers, receipt, judge: wantJudge });
+  const verifierFiles = paths.filter((file) => VERIFIER_PATHS.some((re) => re.test(file)));
+  if (verifierFiles.length > 0) verdict.notes.push(`这个 PR 改了验证员本身（${verifierFiles.join("、")}）：pull_request 触发的 Verify Action 跑的是分支上的这份，回执与判定出自被改过的验证员，合并前交 lyjw 看一眼`);
   if (rules.files.length > 0) verdict.notes.push(`分支开工后 main 上改了规则文件（${rules.files.join("、")}）：重读改动的部分，拿 PR 的改动对一遍新规则`);
   return {
     pr,

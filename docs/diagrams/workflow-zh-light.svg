@@ -52,8 +52,8 @@
 <text class="cap" x="40" y="391">一个分支，做到上线</text>
 <rect class="chip" x="40.5" y="408.5" width="207" height="39"/>
 <rect class="m-claude" x="50" y="417" width="8" height="8"/>
-<text class="body" x="66" y="425">Haiku 验证员</text>
-<text class="small" x="50" y="439">按提交签分级回执</text>
+<text class="body" x="66" y="425">验证清单</text>
+<text class="small" x="50" y="439">写进 PR 描述</text>
 <rect class="shadow" x="315" y="171" width="240" height="192"/>
 <rect class="card" x="312.5" y="168.5" width="239" height="191"/>
 <rect class="head" x="313" y="169" width="238" height="31"/>
@@ -101,9 +101,9 @@
 <path class="rule" d="M25 560.5H263"/>
 <rect class="m-flow" x="40" y="540" width="8" height="8"/>
 <text class="label" x="56" y="548">PR</text>
-<text class="title" x="40" y="590">分支预览</text>
-<text class="cap" x="40" y="610">*.preview.lyjw.dev</text>
-<text class="cap" x="40" y="628">UI 在预览上验</text>
+<text class="title" x="40" y="590">Verify Action</text>
+<text class="cap" x="40" y="610">Haiku 照清单在预览上验</text>
+<text class="cap" x="40" y="628">Opus 判定 · bot 签回执</text>
 <rect class="shadow" x="315" y="531" width="240" height="120"/>
 <rect class="card" x="312.5" y="528.5" width="239" height="119"/>
 <rect class="head" x="313" y="529" width="238" height="31"/>

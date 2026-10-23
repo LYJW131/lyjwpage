@@ -5,9 +5,10 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const REPO = "LYJW131/lyjwpage";
-// 回执和判定由主线程用 lyjw 的两个账号之一发（LYJW131、云端会话用的 An0nCh1hayaa）；别人发的同格式评论不算。
-// 按数字 id 认而不按 login：login 改名后可被别人注册。
+// lyjw 的两个账号（LYJW131、云端会话用的 An0nCh1hayaa），按数字 id 认而不按 login：login 改名后可被别人注册。
 export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
+// 回执和判定只认 github-actions[bot]：由 .github/workflows/verify.yml 的 publish job 发，线程用 lyjw 的账号发的同格式评论不算。
+export const RECEIPT_SIGNER_IDS = new Set([41898282]);
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export const LEVELS = ["live-ui-verified", "unit-test-verified", "type-check-only", "verifier-blocked", "verifier-failed"];
@@ -23,9 +24,9 @@ const HELP = `用法：
   node scripts/verify-receipt.ts sign --sha <提交> (--level <等级> | --verdict PASS|FAIL)
 
 sign 打印回执或判定的第一行：SHA 由 git rev-parse 展开成完整 40 位，等级只收五档之一。
-验证员与判定员把这一行原样贴进报告，不手抄 SHA。退出码 0 成功、2 参数错或提交不存在。
+Verify Action 的 publish job 用它拼回执与判定的第一行，不手抄 SHA。退出码 0 成功、2 参数错或提交不存在。
 
-check 查 PR 评论里最新的「验证回执」与「判定」还盖不盖得住当前 head，主线程据此决定要不要再验。
+check 查 PR 评论里 github-actions[bot] 发的最新「验证回执」与「判定」还盖不盖得住当前 head。
 输出 JSON，pass 为假时 next 写下一步；退出码 0 通过、1 不通过、2 参数错。
 
 check 的选项：
@@ -77,7 +78,7 @@ export function parseComments(comments: Comment[]) {
   let receipt: Receipt | null = null;
   let judge: Judge | null = null;
   for (const comment of comments) {
-    if (!TRUSTED_AUTHOR_IDS.has(comment.user?.id ?? 0)) continue;
+    if (!RECEIPT_SIGNER_IDS.has(comment.user?.id ?? 0)) continue;
     const first = (comment.body ?? "").split("\n", 1)[0].trim();
     const r = RECEIPT_LINE.exec(first);
     if (r) receipt = { sha: r[1], level: r[2], url: comment.html_url ?? null };
@@ -122,24 +123,24 @@ export function evaluate({
   const problems: string[] = [];
 
   if (!receipt) {
-    problems.push("没有验证回执：派验证员，回执第一行照 lyjwpage-verify「回执」的格式发成 PR 评论");
+    problems.push("没有验证回执：等 Verify Action 跑完（PR 转为待审或推送时触发），没跑就在 Actions 页对 verify.yml 手动跑一次");
   } else {
     const receiptCoverage = coverage(receipt.sha, head, patchId);
     result.receipt = { ...receipt, coverage: receiptCoverage };
     const rank = PASSING_RANK[receipt.level] ?? 0;
-    if (rank === 0) problems.push(`回执等级是 ${receipt.level}：不是通过，修好或环境恢复后重派验证员`);
-    else if (rank < PASSING_RANK[need]) problems.push(`回执等级 ${receipt.level} 低于要求的 ${need}：让验证员补验到 ${need}`);
-    if (receiptCoverage === "stale") problems.push(`回执按的 ${receipt.sha.slice(0, 7)} 和当前 head 的补丁不同：按新 head 重派验证员`);
+    if (rank === 0) problems.push(`回执等级是 ${receipt.level}：不是通过，修好后推送，或环境恢复后重跑 Verify Action`);
+    else if (rank < PASSING_RANK[need]) problems.push(`回执等级 ${receipt.level} 低于要求的 ${need}：在 PR 描述的验证清单里补上能验到 ${need} 的项，重跑 Verify Action`);
+    if (receiptCoverage === "stale") problems.push(`回执按的 ${receipt.sha.slice(0, 7)} 和当前 head 的补丁不同：等 Verify Action 按新 head 跑完`);
   }
 
   if (wantJudge) {
     if (!judge) {
-      problems.push("没有判定：按 lyjwpage-verify「3b」派判定员");
+      problems.push("没有判定：等 Verify Action 的判定 job 跑完");
     } else {
       const judgeCoverage = coverage(judge.sha, head, patchId);
       result.judge = { ...judge, coverage: judgeCoverage };
-      if (judge.verdict !== "PASS") problems.push("判定是 FAIL：修完判定员列的项再判");
-      if (judgeCoverage === "stale") problems.push(`判定按的 ${judge.sha.slice(0, 7)} 和当前 head 的补丁不同：按新 head 重判`);
+      if (judge.verdict !== "PASS") problems.push("判定是 FAIL：修完判定员列的项再推送，Action 会重判");
+      if (judgeCoverage === "stale") problems.push(`判定按的 ${judge.sha.slice(0, 7)} 和当前 head 的补丁不同：等 Verify Action 按新 head 重判`);
     }
   }
 
