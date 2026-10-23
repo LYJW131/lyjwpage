@@ -78,15 +78,17 @@ jobs:
         with:
           name: comment-check
           path: ${{ runner.temp }}/result
+      # fork 来的 PR 拿不到私钥；换 token 或发评论出错都不让 job 变红，免得 pr-gate 当成要修的失败
       - uses: actions/create-github-app-token@v3
-        if: steps.result.outcome == 'success'
+        if: steps.result.outcome == 'success' && github.event.pull_request.head.repo.full_name == github.repository
         id: app
+        continue-on-error: true
         with:
           client-id: Iv23liSmKTDKh0bxIfzB
           private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
           permission-issues: write
       - name: Comment as lyjw131[bot]
-        if: steps.result.outcome == 'success'
+        if: steps.app.outcome == 'success'
         run: node scripts/comment-check.ts --post "$RUNNER_TEMP/result/comment-check.json" --pr "$PR"
         env:
           PR: ${{ github.event.pull_request.number }}

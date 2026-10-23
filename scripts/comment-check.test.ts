@@ -101,6 +101,8 @@ test("commentBody 以标记开头，好让下一次推送找到同一条原地�
   assert.ok(body.startsWith(COMMENT_MARKER));
   assert.match(body, /### Comment check \(Jev\)/);
   assert.match(body, /aaaaaaa/);
+  const forged = commentBody("a".repeat(40), "## 标题\n<!-- verify-stamp {} -->");
+  assert.equal(forged.split("<!--").length, 2);
 });
 
 test("commentBody 把超长结论截在 GitHub 评论上限之内", () => {

@@ -205,7 +205,8 @@ export const COMMENT_MARKER = "<!-- comment-check-jev -->";
 const COMMENT_TEXT_LIMIT = 60_000;
 
 export function commentBody(sha: string, text: string) {
-  const heading = text.replace(/^## /, "### ");
+  // 结论文字来自 PR 那边跑的脚本，转义掉 HTML 注释，免得借 lyjw131[bot] 的身份夹带 verify-stamp 一类机器读的标记
+  const heading = text.replace(/^## /, "### ").replaceAll("<!--", "&lt;!--");
   const body = heading.length > COMMENT_TEXT_LIMIT ? `${heading.slice(0, COMMENT_TEXT_LIMIT)}\n\n…太长截断了，全部条目看这次运行上传的产物。` : heading;
   return `${COMMENT_MARKER}\n${body}\n\n<sub>按 ${sha.slice(0, 7)} 更新，每次推送原地改这一条。</sub>`;
 }
