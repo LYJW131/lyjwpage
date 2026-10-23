@@ -1,0 +1,47 @@
+name: Verify (Jev trial)
+
+# 试验：Jev 和 Verify Action 的 Haiku 验证员同时跑，结果只进 job summary 与 artifact，不发 PR 评论、不进回执与判定
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: verify-jev-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  jev:
+    if: github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: node scripts/verify-jev.ts --pr "$PR" --out "$RUNNER_TEMP/jev.json"
+        env:
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          GITHUB_TOKEN: ${{ github.token }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jev
+          path: ${{ runner.temp }}/jev.json
+          if-no-files-found: ignore
+          retention-days: 14
