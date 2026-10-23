@@ -42,9 +42,11 @@ jobs:
           # 插件把子代理派到后台，Action 收到第一个 result 就退出，审查会显示成功却什么都不发
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
         with:
-          # 计费开关同 verify.yml
-          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || secrets.ANTHROPIC_API_KEY == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
-          anthropic_api_key: ${{ vars.CLAUDE_AUTH != 'oauth' && secrets.ANTHROPIC_API_KEY || '' }}
+          # 计费：仓库变量 ANTHROPIC_FEDERATION_RULE_ID 有值就用 GitHub OIDC 联合认证走 API 按量计费（WIF，无静态 key）；变量 CLAUDE_AUTH=oauth 或没配 WIF 时走订阅的 setup token
+          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || vars.ANTHROPIC_FEDERATION_RULE_ID == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
+          anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
+          anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
           allowed_bots: 'cursor,lyjw131'
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'

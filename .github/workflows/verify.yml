@@ -121,9 +121,7 @@ jobs:
           # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
-          # 计费：有 Actions Secret ANTHROPIC_API_KEY 就按量计费；仓库变量 CLAUDE_AUTH=oauth 或没有这个 secret 时走订阅的 setup token
-          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || secrets.ANTHROPIC_API_KEY == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
-          anthropic_api_key: ${{ vars.CLAUDE_AUTH != 'oauth' && secrets.ANTHROPIC_API_KEY || '' }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'
@@ -205,9 +203,7 @@ jobs:
           # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
-          # 计费开关同 verify.yml
-          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || secrets.ANTHROPIC_API_KEY == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
-          anthropic_api_key: ${{ vars.CLAUDE_AUTH != 'oauth' && secrets.ANTHROPIC_API_KEY || '' }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'
