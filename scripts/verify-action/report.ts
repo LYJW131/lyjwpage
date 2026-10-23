@@ -79,6 +79,7 @@ export function reconcile(checklist: ChecklistItem[], report: VerifierReport, { 
       problems.push(`${item.id} 没有对应的检查行`);
     } else if (row.result === "FAIL") {
       failed = true;
+      problems.push(`${item.id} 是 FAIL`);
     } else if (row.result !== "PASS") {
       blocked = true;
       problems.push(`${item.id} 结果是 ${row.result}`);
