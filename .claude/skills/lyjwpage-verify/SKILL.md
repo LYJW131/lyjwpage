@@ -18,7 +18,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 
 ## PR 上的验证：Verify Action
 
-`.github/workflows/verify.yml` 在 PR 打开、推送、转为待审、改了描述或目标分支时跑（草稿不跑，同一 PR 的新运行顶掉旧的），也能在 Actions 页按 PR 号手动跑。脚本是 `scripts/verify-action.ts`（`--help` 看子命令）。
+`.github/workflows/verify.yml` 在 PR 打开、推送、转为待审、改了描述或目标分支时跑（草稿不跑，同一 PR 的新运行顶掉旧的）。不挂按 PR 号手动触发：那个触发能写默认分支缓存，而验证会检出并执行 PR 的代码。环境没跑成时在 Actions 页重跑已有的那次 pull_request 运行；一次都没有就改描述或再推送。脚本是 `scripts/verify-action.ts`（`--help` 看子命令）。
 
 - `plan`：按 `pr-gate` 的分档（`scripts/pr-gate/tier.ts#tierOf`）定回执至少的等级；只改文档与 skill 的不验。
 - `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。
@@ -46,7 +46,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 - 没写清单时验证员按 diff 自己挑检查，回执评论里会注明；没写原话时判定员按 PR 描述推断，并在第一条写明。
 - 回执和判定只对签发时的清单与原话算数（没写原话时按描述全文；摘要记在评论里机器读的 `verify-stamp` JSON 行）：之后改了，旧的作废，等 Action 按新描述重跑；只改标题不重跑。
 - 验证员与判定员读的 `.claude/`、`CLAUDE.md` 是 main 上的（claude-code-action 对 PR 一律换回 base 的），PR 里改的 skill 合并后才生效；`AGENTS.md`、`REVIEW.md` 不换，读的是 PR 里的。
-- 回执是 `verifier-blocked` / `verifier-failed` 或等级不够：看评论里的证据与「没验到」，修代码或补清单后推送（改描述也会重跑）。环境问题（预览没部署、Action 自己出错）在 Actions 页重跑那一次。
+- 回执是 `verifier-blocked` / `verifier-failed` 或等级不够：看评论里的证据与「没验到」，修代码或补清单后推送（改描述也会重跑）。环境问题（预览没部署、Action 自己出错）在 Actions 页重跑已有的那次 pull_request 运行。
 - Action 验不到的（只有 `dev:scene` 夹具才有的状态、真机行为），写进 PR 描述交给 lyjw；不在线程里自签回执顶替，自签的不算数。
 
 ## 等待要有上限
