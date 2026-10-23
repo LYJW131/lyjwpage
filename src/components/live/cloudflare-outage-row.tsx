@@ -20,7 +20,7 @@ function Outage({ affected, since }: { affected: string; since: number }) {
     <div className="flex min-h-11 items-center gap-3 p-4 sm:gap-4 md:gap-2 md:px-4 md:py-2 lg:px-5">
       <CloudflareIcon size={20} className="size-7 shrink-0 md:size-5" />
       <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-row md:items-center md:gap-2">
-        <div className="flex items-center gap-2 truncate text-base font-semibold sm:text-lg leading-tight md:shrink-0 md:text-sm">
+        <div className="flex min-w-0 items-center gap-2 text-base font-semibold sm:text-lg leading-tight md:shrink-0 md:text-sm">
           <StatusDot tone="alert" />
           <span className="truncate">
             Cloudflare <span className="text-signal-red">Outage</span>
