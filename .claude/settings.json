@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/guard-merge-method.ts\""
+            "command": "NODE_USE_ENV_PROXY=1 node \"$CLAUDE_PROJECT_DIR/scripts/guard-merge-method.ts\""
           }
         ]
       }

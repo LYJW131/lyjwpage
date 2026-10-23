@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mergeMethodReason } from "./guard-merge-method.ts";
+import { mergeMethodReason, receiptReason } from "./guard-merge-method.ts";
+import { digestLine } from "./verify-receipt.ts";
+import { bodyDigest } from "./verify-action/body.ts";
 
 const SHA = "6ed909e3c64a6fca7e2a172841db0278a479efc8";
 const base = { owner: "LYJW131", repo: "lyjwpage", pullNumber: 7, expectedHeadSha: SHA };
@@ -35,4 +37,42 @@ test("带 do-not-merge 标签、读不到标签或没给 PR 号都拦下", () =>
   assert.equal(mergeMethodReason(input, () => 1, () => ["tier: logic"]), null);
   assert.match(mergeMethodReason(input, () => 1, () => { throw new Error("gh: not logged in"); }) ?? "", /gh auth status/);
   assert.match(mergeMethodReason({ ...input, pullNumber: undefined }, () => 1) ?? "", /pullNumber/);
+});
+
+const HEAD = "a".repeat(40);
+const BOT = { id: 41898282 };
+
+function fakeFetch(files: string[], comments: { user: { id: number }; body: string }[], author = 153256373) {
+  const routes: Record<string, unknown> = {
+    "pulls/7": { number: 7, head: { sha: HEAD }, body: "", user: { id: author } },
+    "pulls/7/files": files.map((filename) => ({ filename })),
+    "issues/7/comments": comments,
+  };
+  return async (url: string) => {
+    const [key, query = ""] = url.replace("https://api.github.com/repos/LYJW131/lyjwpage/", "").split("?");
+    const page = Number(/(?:^|&)page=(\d+)/.exec(query)?.[1] ?? 1);
+    if (!(key in routes)) return { ok: false, status: 404, json: async () => ({}) };
+    const body = routes[key];
+    return { ok: true, json: async () => (Array.isArray(body) && page > 1 ? [] : body) };
+  };
+}
+
+const signed = async (first: string) => ({ user: BOT, body: `${first}\n${digestLine(await bodyDigest(""))}\n` });
+
+test("receiptReason：按分档默认要回执与判定，文档档不要", async () => {
+  assert.equal(await receiptReason(7, { fetch: fakeFetch(["docs/a.md"], []) }), null);
+  assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], []) })) ?? "", /logic 档.*unit-test-verified、判定 PASS/);
+  const receipt = await signed(`验证回执 ${HEAD}：unit-test-verified`);
+  const none = await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], []) });
+  const noJudge = await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [receipt]) });
+  assert.ok(noJudge !== null && noJudge !== none, noJudge ?? "");
+  const judge = await signed(`判定 ${HEAD}：PASS`);
+  assert.equal(await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [receipt, judge]) }), null);
+  assert.match((await receiptReason(7, { fetch: fakeFetch(["src/components/a.tsx"], [receipt, judge]) })) ?? "", /ui 档.*live-ui-verified/);
+});
+
+test("receiptReason：lyjw 账号贴的同格式评论不算，读不到 GitHub 就拦", async () => {
+  const forged = { user: { id: 153256373 }, body: `${`验证回执 ${HEAD}：unit-test-verified`}\n${digestLine(await bodyDigest(""))}` };
+  assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [forged]) })) ?? "", /logic 档/);
+  assert.match((await receiptReason(8, { fetch: fakeFetch(["scripts/a.ts"], []) })) ?? "", /读不到 #8 的回执/);
 });

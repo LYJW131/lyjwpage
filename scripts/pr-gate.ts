@@ -47,7 +47,8 @@ JSON 里有：
   --pr <号>            PR 号（必填）
   --need <等级|none>   回执至少要到的等级，覆盖分档的默认（ui 要 live-ui-verified，logic 要 unit-test-verified，docs 不要回执）；作者不是 lyjw 的账号时不生效
   --judge / --no-judge 要不要等机器评审并要一条 PASS 的判定，覆盖分档的默认（logic 默认要）；
-                       主线程判为小改动时用 --no-judge；作者不是 lyjw 的账号时不生效
+                       主线程判为小改动时用 --no-judge；作者不是 lyjw 的账号时不生效。
+                       两个选项都只改这份输出：合并钩子 guard-merge-method.ts 照分档默认要回执与判定
   --help               显示本说明
 
 回执与判定的补丁比对用本地 git：先 git fetch origin main。`;
