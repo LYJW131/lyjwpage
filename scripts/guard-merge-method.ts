@@ -59,7 +59,8 @@ export function mergeMethodReason(input: MergeInput, count: (sha: string) => num
   return `这个 PR 有 ${commits} 个非合并提交，merge_method 要用 ${expected}（少于 3 个压缩合并，3 个及以上用合并提交），照 pnpm merge-message 输出的 merge_method 传。`;
 }
 
-// 回执等级按分档的默认门槛查，不收 pr-gate 的 --need；判定只在 PR 贴了 needs-judge 标签或作者不是 lyjw 的账号时要
+// 回执等级按分档的默认门槛查，不收 pr-gate 的 --need；判定只在 PR 贴了 needs-judge 标签或作者不是 lyjw 的账号时要。
+// 回执不够只提醒不拦：验证员会一直标出已接受的取舍，硬拦就只能让 lyjw 手动合
 export async function receiptReason(pr: number, deps: { fetch?: FetchLike; patchId?: PatchId } = {}): Promise<string | null> {
   const fetchImpl = deps.fetch ?? fetch;
   try {
@@ -85,10 +86,20 @@ async function main() {
   }
   const cwd = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
   const tool = input.tool_input ?? {};
-  const reason = mergeMethodReason(tool, (sha) => countCommits(sha, cwd), labelsOf) ?? (isLyjwpage(tool) ? await receiptReason(Number(tool.pullNumber)) : null);
-  if (reason === null) return;
-  process.stderr.write(`已拦下：${reason}\n`);
-  process.exit(2);
+  const reason = mergeMethodReason(tool, (sha) => countCommits(sha, cwd), labelsOf);
+  if (reason !== null) {
+    process.stderr.write(`已拦下：${reason}\n`);
+    process.exit(2);
+  }
+  const advice = isLyjwpage(tool) ? await receiptReason(Number(tool.pullNumber)) : null;
+  if (advice === null) return;
+  const notice = `回执提醒（不拦）：${advice}`;
+  process.stdout.write(
+    JSON.stringify({
+      systemMessage: notice,
+      hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: `${notice}。合并后在汇报里告诉 lyjw 这一条。` },
+    }),
+  );
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();
