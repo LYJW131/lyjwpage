@@ -78,13 +78,13 @@ test("receiptReason：回执等级按分档，判定只在 PR 贴了 needs-judge
   assert.equal(await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [receipt, pass], { labels }) }), null);
 });
 
-test("receiptReason：没要判定，head 上有 FAIL 判定也拦", async () => {
+test("receiptReason：没要判定，head 上有 FAIL 判定也提醒", async () => {
   const receipt = await signed({ level: "unit-test-verified" });
   const fail = await signed({ verdict: "FAIL" });
   assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [receipt, fail]) })) ?? "", /判定是 FAIL/);
 });
 
-test("receiptReason：lyjw 账号贴的同格式评论不算，读不到 GitHub 就拦", async () => {
+test("receiptReason：lyjw 账号贴的同格式评论不算，读不到 GitHub 也提醒", async () => {
   const forged = { user: { id: 153256373 }, body: await stamped({ level: "unit-test-verified" }) };
   assert.match((await receiptReason(7, { fetch: fakeFetch(["scripts/a.ts"], [forged]) })) ?? "", /logic 档/);
   assert.match((await receiptReason(8, { fetch: fakeFetch(["scripts/a.ts"], []) })) ?? "", /读不到 #8 的回执/);
