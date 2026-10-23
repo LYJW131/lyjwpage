@@ -11,6 +11,7 @@ import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
 import { previewWorkerOrigin, SITE_PREVIEW_WORKER_SCRIPT } from "./preview-worker-name.ts";
 import { signStamp } from "./verify-receipt.ts";
 import { bodyDigest, parseBody } from "./verify-action/body.ts";
+import { machineLine, runProof, type ProofSummary } from "./verify-action/machine.ts";
 import { judgePrompt, verifierPrompt } from "./verify-action/prompts.ts";
 import {
   blockedComment,
@@ -32,12 +33,17 @@ const HELP = `用法：node scripts/verify-action.ts <子命令> --pr <号> [选
 读 GitHub 用 GITHUB_TOKEN；在 Action 外跑时云端要加 NODE_USE_ENV_PROXY=1。输出写进 GITHUB_OUTPUT（没有就打印）。
 退出码 0 成功、1 读写 GitHub 出错、2 参数错。
 
-  plan                         分档：need（回执至少的等级，空 = 不用验）、judge、ui、head、branch
+  plan                         分档：need（回执至少的等级，空 = 不用验）、judge、ui、head、branch、base
+  proof --base REF [--out-dir DIR]
+                               撤回证明：PR 改了 scripts/、src/、shared/ 下的测试又改了别的文件时，跑 revert-proof；
+                               结果写进 DIR/work/revert-proof.json，摘要输出成 proof。不读 GitHub、不要令牌
+  ci --head SHA [--timeout-min N]
+                               等 head 上 CI 的 check 跑完（默认 20 分钟，工作流里给 5），输出它的结论（没跑完是 pending，没有是 none）
   wait-preview [--timeout-min N]  等站点分支预览部署到 head（默认 20 分钟），输出 preview 地址；没就绪输出空
   prompt --role verifier|judge [--preview URL] [--out-dir DIR]
                                输出 prompt 与 schema（结构化结果的 JSON Schema）
   publish --head SHA --run-url URL [--verify-result R] [--judge-result R] [--shots-dir DIR] [--shots-url URL]
-                               读环境变量 VERIFY_OUTPUT / JUDGE_OUTPUT（两个 job 的结构化结果），对照清单定回执等级，发回执与判定评论（第二行是 PR 描述的摘要）；
+                               读环境变量 VERIFY_OUTPUT / JUDGE_OUTPUT（两个 job 的结构化结果）与 CI_OUTPUT / PROOF_OUTPUT（脚本跑的两项），对照清单定回执等级，发回执与判定评论（第二行是 PR 描述的摘要）；
                                head 已不是 PR 当前 head 时什么都不发`;
 
 class UsageError extends Error {}
@@ -69,6 +75,7 @@ export function planOf(pull: FullPull, tier: ReturnType<typeof tierOf>) {
     tier: tier.name,
     head: pull.head.sha,
     branch: pull.head.ref,
+    base: pull.base?.ref ?? "main",
   };
 }
 
@@ -121,7 +128,8 @@ async function prompt(gh: Client, pr: number, role: string, preview: string, out
     fs.mkdirSync(path.join(outDir, "shots"), { recursive: true });
     fs.mkdirSync(path.join(outDir, "work"), { recursive: true });
     const p = planOf(pull, tier);
-    setOutput("prompt", verifierPrompt({ ...common, tier: tier.name, need: p.need, preview: preview || null, checklist, outDir }));
+    const proof = parsed<{ summary?: ProofSummary }>(readIfExists(path.join(outDir, "work", "revert-proof.json")))?.summary ?? { verdict: "error", tests: [] };
+    setOutput("prompt", verifierPrompt({ ...common, tier: tier.name, need: p.need, preview: preview || null, checklist, outDir, proof: machineLine({ proof })?.replace(/^脚本：/, "") ?? null }));
     setOutput("schema", JSON.stringify(VERIFIER_SCHEMA));
   } else {
     setOutput("prompt", judgePrompt({ ...common, words, body: pull.body ?? "" }));
@@ -131,6 +139,34 @@ async function prompt(gh: Client, pr: number, role: string, preview: string, out
 }
 
 const readMark = (base: string, digest: string) => `${base}@${digest}`;
+
+const readIfExists = (file: string) => (fs.existsSync(file) ? fs.readFileSync(file, "utf8") : undefined);
+
+// 先写一份 error 占位：这一步被超时杀掉或抛错时，验证员读到的是「没跑成」，不会当成没改测试
+function proofStep(base: string, outDir: string) {
+  const file = path.join(outDir, "work", "revert-proof.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ summary: { verdict: "error", tests: [] }, proof: null }));
+  const { summary, proof } = runProof(process.cwd(), base);
+  fs.writeFileSync(file, JSON.stringify({ summary, proof }, null, 2));
+  console.log(machineLine({ proof: summary }));
+  setOutput("proof", JSON.stringify(summary));
+}
+
+async function ciStep(gh: Client, head: string, timeoutMin: number) {
+  const deadline = Date.now() + timeoutMin * 60_000;
+  for (;;) {
+    const runs = (await gh.get<{ check_runs?: CheckRun[] }>(`commits/${head}/check-runs?check_name=check&per_page=100`)).check_runs ?? [];
+    const latest = [...runs].sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""))[0];
+    const state = latest?.status === "completed" ? (latest.conclusion ?? "none") : latest ? "pending" : "none";
+    if ((state !== "pending" && state !== "none") || Date.now() > deadline) {
+      console.log(`CI check：${state}`);
+      setOutput("ci", state);
+      return;
+    }
+    await sleep(POLL_MS);
+  }
+}
 
 // 读过之后描述或目标分支又改了，结果对不上现在的 PR，不签，由改动触发的新运行重做；job 成功却没交回读到的版本同样不签。
 // job 在读之前就挂了时没有这一项，照常发 blocked
@@ -181,7 +217,8 @@ async function publish(
     if (report && Array.isArray(report.rows)) {
       const shots = shotLinks(opts.shotsDir, opts.shotsUrl);
       const { level, claimed, problems } = reconcile(checklist, { ...report, notVerified: report.notVerified ?? [] }, { shots: shots.length });
-      comments.push(receiptComment({ stamp: stamp({ level }), report, checklist, problems, claimed, shots, runUrl: opts.runUrl }));
+      const machine = machineLine({ ci: process.env.CI_OUTPUT, proof: parsed<ProofSummary>(process.env.PROOF_OUTPUT) });
+      comments.push(receiptComment({ stamp: stamp({ level }), report, checklist, problems, claimed, shots, machine, runUrl: opts.runUrl }));
     } else {
       const reason = opts.verifyResult === "success" ? "验证员没交回结构化结果" : `验证 job 的结论是 ${opts.verifyResult}`;
       comments.push(blockedComment({ stamp: stamp({ level: "verifier-blocked" }), reason, runUrl: opts.runUrl }));
@@ -214,6 +251,7 @@ const OPTIONS = {
   "judge-result": { type: "string", default: "" },
   "shots-dir": { type: "string", default: "" },
   "shots-url": { type: "string", default: "" },
+  base: { type: "string", default: "" },
   help: { type: "boolean", default: false },
 } as const;
 
@@ -221,6 +259,8 @@ const COMMAND_OPTIONS: Record<string, string[]> = {
   plan: ["pr"],
   "wait-preview": ["pr", "timeout-min"],
   prompt: ["pr", "role", "preview", "out-dir"],
+  proof: ["pr", "base", "out-dir"],
+  ci: ["pr", "head", "timeout-min"],
   publish: ["pr", "head", "run-url", "verify-result", "judge-result", "shots-dir", "shots-url"],
 };
 
@@ -245,11 +285,19 @@ export async function main(argv: string[], fetchImpl: FetchLike = fetch) {
   const timeoutMin = Number(values["timeout-min"]);
   if (!(timeoutMin > 0)) throw new UsageError("--timeout-min 要正数");
   const gh = client(fetchImpl);
+  const outDir = values["out-dir"] || path.join(process.env.RUNNER_TEMP ?? "/tmp", "verify-out");
   if (command === "plan") await plan(gh, pr);
+  else if (command === "proof") {
+    if (!values.base) throw new UsageError("缺 --base");
+    proofStep(values.base, outDir);
+  } else if (command === "ci") {
+    if (!/^[0-9a-f]{40}$/.test(values.head)) throw new UsageError("--head 要完整 40 位 SHA");
+    await ciStep(gh, values.head, timeoutMin);
+  }
   else if (command === "wait-preview") await waitPreview(gh, pr, timeoutMin);
   else if (command === "prompt") {
     if (!["verifier", "judge"].includes(values.role)) throw new UsageError("--role 只收 verifier、judge");
-    await prompt(gh, pr, values.role, values.preview, values["out-dir"] || path.join(process.env.RUNNER_TEMP ?? "/tmp", "verify-out"));
+    await prompt(gh, pr, values.role, values.preview, outDir);
   } else if (command === "publish") {
     if (!/^[0-9a-f]{40}$/.test(values.head)) throw new UsageError("--head 要完整 40 位 SHA");
     await publish(gh, pr, {

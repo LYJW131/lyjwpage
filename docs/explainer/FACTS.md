@@ -491,9 +491,9 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
   验证回执 <被验提交的完整 SHA>：<等级>
   <!-- verify-stamp {"sha":"<完整 SHA>","level":"<等级>","body":"<PR 描述里清单与原话的 sha256>"} -->
 
-  | 项 | 检查 | 结果 | 证据 |
-  没验到：<报告里那一栏，没有写「无」>
-  对照清单：<清单逐项对照的结论>
+  全过：V1 V2 …（有没过的就写「没过：」，逐项一行，检查与证据各截短）
+  没验到：<至多三条，每条截短；多的与原文折进明细；没有就不写>
+  <details> 明细：| 项 | 检查 | 结果 | 证据 | 全表 </details>
   ```
 
 - 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.ts#LEVELS`、`scripts/verify-receipt.ts#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。

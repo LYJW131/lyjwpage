@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { tierOf } from "./pr-gate/tier.ts";
 import { bodyDigest } from "./verify-action/body.ts";
 import { judgeComment, judgeVerdict, main, parseBody, planOf, receiptComment, reconcile, shotLinks, staleRead } from "./verify-action.ts";
+import { machineLine, proofPlan } from "./verify-action/machine.ts";
 import { parseComments, stampLine } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
@@ -66,6 +67,7 @@ test("planOf：草稿、已关闭与只改文档的不验，界面档等预览�
     tier: "ui",
     head: HEAD,
     branch: "claude/x",
+    base: "main",
   });
   assert.deepEqual([planOf(pull(), tierOf(["workers/core/src/a.ts"], trusted))].map((p) => [p.need, p.judge, p.ui]), [["unit-test-verified", false, false]]);
   assert.equal(planOf(pull(), tierOf(["workers/core/src/a.ts"], { ...trusted, judgeAsked: true })).judge, true);
@@ -79,7 +81,7 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   const stamp = { sha: HEAD, level: "verifier-blocked", body: digest };
   const receipt = receiptComment({
     stamp,
-    report: { model: "claude-haiku", level: "live-ui-verified", rows: [{ id: "V1", check: "a|b", result: "PASS", evidence: "x\ny" }], notVerified: [] },
+    report: { model: "claude-haiku", level: "live-ui-verified", rows: [{ id: "V1", check: "a|b\nc", result: "PASS", evidence: "x\ny" }], notVerified: [] },
     checklist: [{ id: "V1", text: "" }, { id: "V2", text: "" }],
     problems: ["V2 没有对应的检查行"],
     claimed: "live-ui-verified",
@@ -88,7 +90,7 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   });
   const lines = receipt.split("\n");
   assert.deepEqual(lines.slice(0, 2), [`验证回执 ${HEAD}：verifier-blocked`, stampLine(stamp)]);
-  assert.ok(lines.includes("| V1 | a\\|b | PASS | x<br>y |"));
+  assert.ok(lines.includes("| V1 | a\\|b<br>c | PASS | x<br>y |"));
   assert.match(receipt, /验证员自报 live-ui-verified，按清单对照改记 verifier-blocked/);
   assert.match(receipt, /<img src="https:\/\/example.test\/home-375.png"/);
   const judge = judgeComment({
@@ -100,6 +102,49 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   assert.match(judge, /\| 换位置 \| 否 \| 没改 \|/);
   const parsed = parseComments([{ user: { id: 338272049 }, body: receipt }, { user: { id: 338272049 }, body: judge }]);
   assert.deepEqual([parsed.receipt?.level, parsed.receipt?.body, parsed.judge?.verdict], ["verifier-blocked", digest, "FAIL"]);
+});
+
+test("回执正文只摆结论：全过一行列 id，没过的逐条列出，没验到至多 3 条，全表折叠在 details 里", () => {
+  const stamp = { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) };
+  const base = { stamp, checklist: [{ id: "V1", text: "" }], problems: [], claimed: "unit-test-verified", shots: [], runUrl: "u" };
+  const rows = [{ id: "V1", check: "单测", result: "PASS", evidence: "exit 0" }, { id: "X1", check: "eslint", result: "PASS", evidence: "exit 0" }];
+  const pass = receiptComment({ ...base, report: { model: "m", level: "unit-test-verified", rows, notVerified: [] } });
+  assert.equal(pass.split("\n")[3], "全过：V1 X1");
+  assert.doesNotMatch(pass, /没验到/);
+  assert.match(pass, /<details>\n<summary>明细（2 项）<\/summary>[\s\S]*\| X1 \| eslint \| PASS \| exit 0 \|[\s\S]*<\/details>/);
+  const long = "很长的证据".repeat(60);
+  const fail = receiptComment({
+    ...base,
+    report: { model: "m", level: "verifier-failed", rows: [...rows, { id: "X2", check: "注释", result: "FAIL", evidence: long }], notVerified: ["a", "b", "c", "d"] },
+  });
+  const summary = fail.slice(0, fail.indexOf("<details>"));
+  assert.match(summary, /没过：\n- X2 FAIL：注释（很长的证据[^）]*…）/);
+  assert.doesNotMatch(summary, /V1|X1 PASS/);
+  assert.match(summary, /没验到：\n- a\n- b\n- c\n- 另有 1 条，见下面明细/);
+  assert.match(fail.slice(fail.indexOf("<details>")), /没验到（全部）：\n- a\n- b\n- c\n- d/);
+  assert.ok(fail.slice(fail.indexOf("<details>")).includes(long));
+  const cut = receiptComment({ ...base, report: { model: "m", level: "unit-test-verified", rows, notVerified: [long] } });
+  assert.match(cut.slice(cut.indexOf("<details>")), new RegExp(`没验到（全部）：\\n- ${long}`));
+  const blocked = receiptComment({ ...base, stamp: { ...stamp, level: "verifier-blocked" }, problems: ["V2 没有对应的检查行"], report: { model: "m", level: "unit-test-verified", rows, notVerified: [] } });
+  assert.equal(blocked.split("\n")[3], "检查行都是 PASS，但记 verifier-blocked：V1 X1");
+  assert.match(blocked, /问题：V2 没有对应的检查行。/);
+});
+
+test("判定正文：全做到时一行带过，没做到的与回归列出来，逐条表折叠", () => {
+  const stamp = { sha: HEAD, verdict: "PASS", body: "b".repeat(64) };
+  const ok = judgeComment({ stamp, report: { model: "m", verdict: "PASS", asks: [{ ask: "a", met: true, evidence: "e" }], regressions: [], fixes: [] }, runUrl: "u" });
+  assert.equal(ok.split("\n")[3], "要求 1 条都做到，没发现回归。");
+  const bad = judgeComment({ stamp: { ...stamp, verdict: "FAIL" }, report: { model: "m", verdict: "FAIL", asks: [{ ask: "a", met: true, evidence: "e" }, { ask: "换位置", met: false, evidence: "没改" }], regressions: ["r"], fixes: [] }, runUrl: "u" });
+  const summary = bad.slice(0, bad.indexOf("<details>"));
+  assert.match(summary, /没做到：\n- 换位置（没改）/);
+  assert.match(summary, /回归：\n- r/);
+  assert.doesNotMatch(summary, /- a（e）/);
+  const noEvidence = judgeComment({ stamp: { ...stamp, verdict: "FAIL" }, report: { model: "m", verdict: "PASS", asks: [{ ask: "a", met: true, evidence: "" }], regressions: [], fixes: [] }, runUrl: "u" });
+  assert.doesNotMatch(noEvidence, /都做到/);
+  const longRegression = "很长的回归".repeat(40);
+  const cut = judgeComment({ stamp: { ...stamp, verdict: "FAIL" }, report: { model: "m", verdict: "FAIL", asks: [{ ask: "a", met: true, evidence: "e" }], regressions: [longRegression], fixes: [] }, runUrl: "u" });
+  assert.ok(cut.slice(cut.indexOf("<details>")).includes(longRegression));
+  assert.match(noEvidence, /判定员自报 PASS[^\n]*改记 FAIL/);
 });
 
 test("shotLinks 只收安全文件名的 PNG，按名排序并转义", () => {
@@ -154,4 +199,19 @@ test("staleRead：描述或目标分支在读之后改了、成功却没交回�
   assert.equal(staleRead("dev@abc", "failure", current), true);
   assert.equal(staleRead(undefined, "success", current), true);
   assert.equal(staleRead("", "failure", current), false);
+});
+
+test("脚本跑的两项：只在改了 scripts/、src/、shared/ 的测试又改了别的文件时做撤回证明；回执那一行只认表里的值", () => {
+  assert.deepEqual(proofPlan(["scripts/a.ts", "scripts/a.test.ts"]), { tests: ["scripts/a.test.ts"], skip: null });
+  assert.deepEqual(proofPlan(["scripts/a.test.ts", "scripts/fixtures/x.json"]).skip, "only-tests");
+  assert.deepEqual(proofPlan(["workers/core/src/a.ts", "workers/core/src/a.test.ts"]).skip, "no-tests");
+  assert.deepEqual(proofPlan(["scripts/a.mjs", "scripts/a.test.mjs"]), { tests: ["scripts/a.test.mjs"], skip: null });
+  assert.deepEqual(proofPlan(["scripts/old.ts", "scripts/a.test.ts", "scripts/gone.test.ts"], (file) => file !== "scripts/old.ts" && file !== "scripts/gone.test.ts"), { tests: ["scripts/a.test.ts"], skip: null });
+  assert.equal(machineLine({ proof: { verdict: "error", tests: [] } }), "脚本：撤回证明：脚本没跑成，看 Action 日志");
+  assert.equal(machineLine({ ci: "success", proof: { verdict: "proved", tests: ["scripts/a.test.ts"] } }), "脚本：CI check 通过；撤回证明：撤回改动后新测试报红、HEAD 上转绿（`scripts/a.test.ts`）");
+  assert.equal(machineLine({ ci: "<img>", proof: { verdict: "PASS", tests: [] } }), null);
+  assert.equal(machineLine({ proof: { verdict: "not-red", tests: ["scripts/`a`.test.ts", "scripts/b.test.ts"] } }), "脚本：撤回证明：撤回改动后新测试仍通过（不是修 bug 的 PR 就正常）（`scripts/b.test.ts`）");
+  const stamp = { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) };
+  const receipt = receiptComment({ stamp, report: { model: "m", level: "unit-test-verified", rows: [{ id: "V1", check: "c", result: "PASS", evidence: "e" }], notVerified: [] }, checklist: [], problems: [], claimed: "unit-test-verified", shots: [], machine: "脚本：CI check 通过", runUrl: "u" });
+  assert.deepEqual(receipt.split("\n").slice(3, 6), ["全过：V1", "", "脚本：CI check 通过"]);
 });

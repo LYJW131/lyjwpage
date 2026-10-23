@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkFetchHost, checkFile, checkScriptsMjs, checkScrollbarPair, checkTodo } from "./rules-check.ts";
+import { checkFetchHost, checkFile, checkScriptsMjs, checkScrollbarPair, checkTodo, isRegularFile } from "./rules-check.ts";
 
 const rules = (file: string, text: string) => checkFile(file, text).map((issue) => `${issue.rule}@${issue.line}`);
 
@@ -242,4 +242,11 @@ test("内联脚本 JSON 的小于号转义在 src/lib/inline-script.ts 以外手
   assert.deepEqual(rules("src/components/live/digest-card.tsx", `const a = 1;\n${copy}`), ["inline-script-json@2"]);
   assert.equal(rules("src/lib/inline-script.ts", copy).length, 0);
   assert.equal(rules("src/lib/html-preview.ts", 'const e = (v: string) => v.replace(/</g, "&lt;");').length, 0);
+});
+
+test("只收普通文件：字符设备（Action 里被换掉的 .mcp.json）、目录与不存在的路径都跳过", () => {
+  assert.equal(isRegularFile("package.json"), true);
+  assert.equal(isRegularFile("/dev/null"), false);
+  assert.equal(isRegularFile("scripts"), false);
+  assert.equal(isRegularFile("no-such-file"), false);
 });

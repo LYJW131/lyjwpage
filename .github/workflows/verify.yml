@@ -36,6 +36,7 @@ jobs:
       judge: ${{ steps.plan.outputs.judge }}
       ui: ${{ steps.plan.outputs.ui }}
       head: ${{ steps.plan.outputs.head }}
+      base: ${{ steps.plan.outputs.base }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -62,6 +63,9 @@ jobs:
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
+      # proof 步骤被杀或抛错时没有输出，记成 error，回执里照样显示「没跑成」
+      proof: ${{ steps.proof.outputs.proof || (steps.proof.outcome == 'failure' && '{"verdict":"error","tests":[]}') || '' }}
+      ci: ${{ steps.ci.outputs.ci }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -95,6 +99,13 @@ jobs:
         run: node scripts/verify-action.ts wait-preview --pr "$PR" --timeout-min 20
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # 脚本能跑的不交给模型：撤回证明在这里跑，结果写进提示词与回执。这一步跑 PR 的测试，不给令牌
+      - id: proof
+        timeout-minutes: 10
+        continue-on-error: true
+        run: node scripts/verify-action.ts proof --pr "$PR" --base "origin/$BASE" --out-dir "$RUNNER_TEMP/verify-out"
+        env:
+          BASE: ${{ needs.plan.outputs.base }}
       - id: prompt
         run: node scripts/verify-action.ts prompt --role verifier --pr "$PR" --preview "$PREVIEW" --out-dir "$RUNNER_TEMP/verify-out"
         env:
@@ -117,6 +128,14 @@ jobs:
             --model haiku --effort high
             --allowedTools "Bash,Read,Write,Glob,Grep"
             --json-schema '${{ steps.prompt.outputs.schema }}'
+      - id: ci
+        if: always()
+        timeout-minutes: 6
+        continue-on-error: true
+        run: node scripts/verify-action.ts ci --pr "$PR" --head "$HEAD" --timeout-min 5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.plan.outputs.head }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -251,6 +270,8 @@ jobs:
           VERIFY_OUTPUT: ${{ needs.verify.outputs.result }}
           JUDGE_OUTPUT: ${{ needs.judge.outputs.result }}
           VERIFY_READ: ${{ needs.verify.outputs.read }}
+          CI_OUTPUT: ${{ needs.verify.outputs.ci }}
+          PROOF_OUTPUT: ${{ needs.verify.outputs.proof }}
           JUDGE_READ: ${{ needs.judge.outputs.read }}
           SHOTS_DIR: ${{ steps.shots.outputs.dir }}
           SHOTS_URL: ${{ steps.shots.outputs.url }}

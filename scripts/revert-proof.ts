@@ -8,7 +8,7 @@ import { parseArgs } from "node:util";
 
 const HELP = `用法：node scripts/revert-proof.ts --test <测试文件> [选项]
 
-撤回证明：在临时 worktree 里把改动过的非测试文件换回基线版本，跑新测试，要求它以断言失败报红；
+撤回证明：在临时克隆里把改动过的非测试文件换回基线版本，跑新测试，要求它以断言失败报红；
 再换回 HEAD 跑同一测试，要求通过。不动当前工作区，证明按 HEAD 的提交做（未提交的改动不算）。
 输出 JSON；退出码 0 证明成立、1 不成立、2 参数错。
 
@@ -16,7 +16,7 @@ const HELP = `用法：node scripts/revert-proof.ts --test <测试文件> [选�
   --test <路径>      回归测试文件，相对仓库根；可给多次（必填）
   --keep <路径>      其他也保持 HEAD 版本的文件（测试夹具、测试专用的辅助文件）；可给多次
   --base <引用>      基线，默认 origin/main（取它与 HEAD 的 merge-base）
-  --cmd <命令>       跑测试的 shell 命令，在 worktree 根执行；默认
+  --cmd <命令>       跑测试的 shell 命令，在临时克隆的根执行；默认
                      node --test --experimental-strip-types --import ./src/lib/testing/register-alias.mjs <测试文件>
   --timeout <秒>     每次跑测试的上限，默认 300
   --help             显示本说明
@@ -64,7 +64,7 @@ export function verdictOf(red: RunResult, green: RunResult | null): Pick<Proof, 
   return { verdict: "proved", next: null };
 }
 
-// worktree 里没有依赖：把主检出里各包的 node_modules 链过去，跑测试与主检出用同一份依赖。
+// 临时克隆里没有依赖：把主检出里各包的 node_modules 链过去，跑测试与主检出用同一份依赖。
 function linkNodeModules(root: string, tree: string) {
   const dirs = [".", ...["workers", "reporters", "packages", "apps"].flatMap((group) =>
     existsSync(path.join(root, group)) ? readdirSync(path.join(root, group)).map((name) => path.join(group, name)) : [])];
@@ -105,7 +105,8 @@ export function prove(
 
   const tree = mkdtempSync(path.join(tmpdir(), "revert-proof-"));
   try {
-    git(root, ["worktree", "add", "--detach", "--force", tree, head]);
+    git(root, ["clone", "-q", "--shared", "--no-checkout", root, tree]);
+    git(tree, ["checkout", "-q", "--detach", head]);
     linkNodeModules(root, tree);
     if (reverted.length > 0) git(tree, ["checkout", mergeBase, "--", ...reverted]);
     const red = runTests(tree, command, timeoutMs);
@@ -119,12 +120,7 @@ export function prove(
     }
     return { base: mergeBase, head, reverted, addedKept, red, green, ...verdictOf(red, green) };
   } finally {
-    try {
-      git(root, ["worktree", "remove", "--force", tree]);
-    } catch {
-      rmSync(tree, { recursive: true, force: true });
-      git(root, ["worktree", "prune"]);
-    }
+    rmSync(tree, { recursive: true, force: true });
   }
 }
 

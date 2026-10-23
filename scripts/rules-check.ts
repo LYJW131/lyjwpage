@@ -29,7 +29,7 @@
 //
 // 退出码：有违例为 1。测试见 scripts/rules-check.test.ts。
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -75,8 +75,11 @@ export function checkScriptsMjs(files: string[], baseline: string[]): Issue[] {
 function trackedFiles(root: string) {
   return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8" })
     .split("\0")
-    .filter((file) => file && existsSync(path.join(root, file)));
+    .filter((file) => file && isRegularFile(path.join(root, file)));
 }
+
+// Verify Action 里 claude-code-action 把 .mcp.json 换成字符设备，读它会 EACCES：只收普通文件
+export const isRegularFile = (file: string) => statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
 
 function trackedSources(root: string) {
   return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8" })
@@ -85,7 +88,7 @@ function trackedSources(root: string) {
       if (!file || all.indexOf(file) !== index) return false;
       if (!CODE_EXTS.has(extOf(file))) return false;
       if (TEST_OR_FIXTURE.test(file)) return false;
-      return existsSync(path.join(root, file));
+      return isRegularFile(path.join(root, file));
     });
 }
 

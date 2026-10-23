@@ -22,6 +22,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 
 - `plan`：按 `pr-gate` 的分档（`scripts/pr-gate/tier.ts#tierOf`）定回执至少的等级；只改文档与 skill 的不验。
 - `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。
+- `verify` 里脚本能跑的不交给 Haiku：Haiku 之前先跑撤回证明（上面「1. 本地门禁」那段），之后读 head 上 CI `check` 的结论（最多等 5 分钟，不等 CI 才启动），两项写进回执的「脚本：」一行（`scripts/verify-action/machine.ts#machineLine`），不影响回执等级。
 - `judge`：PR 贴了 `needs-judge` 标签（或作者不是 lyjw 的账号）时同时派 Opus（effort high）当判定员，和验证员并行，见「3b」。
 - `publish`：截图推到孤立分支 `verify-shots`、嵌进评论；按清单对照验证员的结果定回执等级（`scripts/verify-action/report.ts#reconcile`：清单某项 FAIL 记 `verifier-failed`；漏项、SKIPPED、没有检查行、PASS 没写证据、`live-ui-verified` 没有截图都记 `verifier-blocked`）；判定按明细收口（`judgeVerdict`：没列要求、有没做到或没写依据的要求、有回归或待修项，都签 FAIL）。再以 lyjw131[bot] 发回执与判定两条评论（publish job 拿 App 令牌，只跑默认分支上的脚本，PR 改的 publish 逻辑合进 main 后才生效）。PR 的 head 已经变了就什么都不发；验证员或判定员读过之后描述或目标分支又改了，或 job 成功却没交回读到的版本，那一条不发（`scripts/verify-action.ts#staleRead`；改描述或目标分支触发的新运行会重做）。
 
@@ -39,6 +40,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 - 你判断是大改动时，开 PR 后给它贴 `needs-judge` 标签（`scripts/pr-gate/tier.ts#JUDGE_LABEL`）：Action 派 Opus 判定员、Claude review 审一次，合并要等判定 PASS 与机器评审。小改动不贴（lyjw 定的：要不要叫 Opus 由线程判断）。脚本只看标签，不读描述里的文字。
 
 - 清单写成验证员不看对话也能照做的样子：页面或命令、宽度与主题、预期数值。内容同「派法」简报模板的第 2、3 栏。
+- 清单只写要读代码、开页面或下判断的项：某个行为成立、某段文字与代码一致、某个副作用不存在。CI 的 `check` 会跑的（eslint、typecheck、`docs:check`、`rules:check`、全量单测）不写进清单；覆盖改动行为的单测至多写一项，让验证员拿它定 `unit-test-verified`。
 - 验证员在清单之外还会按 diff 补查（行 id 用 X1、X2……），但清单漏掉的你想看的行为，它不一定想得到。
 - 没写清单时验证员按 diff 自己挑检查，回执评论里会注明；没写原话时判定员按 PR 描述推断，并在第一条写明。
 - 回执和判定只对签发时的清单与原话算数（没写原话时按描述全文；摘要记在评论里机器读的 `verify-stamp` JSON 行）：之后改了，旧的作废，等 Action 按新描述重跑；只改标题不重跑。
@@ -90,7 +92,7 @@ Agent(
 | `workers/*`、`reporters/*` | 该目录 `AGENTS.md` / `README.md` 里写的验证命令 |
 | 脚本 | `node --test scripts/<名>.test.mjs`；已迁到 TS 的脚本换成 `scripts/<名>.test.ts` |
 
-修 bug 并补了回归测试的改动，验证员另做一次「撤回证明」：提交后跑 `node scripts/revert-proof.ts --test <新测试文件>`（可给多个 `--test`；工作区测试命令不同的加 `--cmd`；测试离不开的辅助文件用 `--keep` 保留）。它在临时 worktree 里把改动过的非测试文件换回 main，跑新测试，要求以断言失败报红（编译或导入出错、零个测试都不算）；再换回 HEAD 跑同一测试须绿，当前工作区不动。`verdict` 为 `proved` 才算证明成立；把它的命令、`verdict` 与 `red.tail` 末几行写进证据，并核对红的那次失败说的是那个 bug 的行为。`not-red`（测试没抓住 bug，或修复落在 `addedKept` 列的新文件里）和 `red-not-assertion` 写进「没验到」并说明原因，由主线程判断。
+修 bug 并补了回归测试的改动，要另做一次「撤回证明」。PR 上由 Verify Action 在验证员之前用脚本跑（改了 `scripts/`、`src/`、`shared/` 下的测试又改了别的文件时，`scripts/verify-action/machine.ts#proofPlan`），验证员不重跑、只引用；没开 PR 时验证员自己跑：提交后跑 `node scripts/revert-proof.ts --test <新测试文件>`（可给多个 `--test`；工作区测试命令不同的加 `--cmd`；测试离不开的辅助文件用 `--keep` 保留）。它在临时克隆（`git clone --shared`，不写 .git，只读的检出里也能跑）里把改动过的非测试文件换回 main，跑新测试，要求以断言失败报红（编译或导入出错、零个测试都不算）；再换回 HEAD 跑同一测试须绿，当前工作区不动。`verdict` 为 `proved` 才算证明成立；把它的命令、`verdict` 与 `red.tail` 末几行写进证据，并核对红的那次失败说的是那个 bug 的行为。`not-red`（测试没抓住 bug，或修复落在 `addedKept` 列的新文件里）和 `red-not-assertion` 写进「没验到」并说明原因，由主线程判断。
 
 提交前的两项自查，跟本地门禁一起跑（派验证员的写进简报，主线程自己跑的照样跑），只报命中、不判（Codex、Devin 最常抓的就是这两类，规则在根 `AGENTS.md`「文档与注释」）：
 
@@ -167,7 +169,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 
 ## 回执
 
-验证员签回执，主线程按回执办事，不把回执里已经验过的检查再跑一遍（借自 poteto 的验证账本，见 `docs/references.md`）。PR 上的回执由 Verify Action 签发，评论第一行与下面相同，第二行是机器读的 `<!-- verify-stamp {"sha":…,"level":…,"body":…} -->`，脚本只认这一行；没开 PR 时派的验证员照下面的格式把回执写在报告最后一段：
+验证员签回执，主线程按回执办事，不把回执里已经验过的检查再跑一遍（借自 poteto 的验证账本，见 `docs/references.md`）。PR 上的回执由 Verify Action 签发，评论第一行与下面相同，第二行是机器读的 `<!-- verify-stamp {"sha":…,"level":…,"body":…} -->`，脚本只认这一行；正文只摆「全过」或没过的项、至多三条「没验到」，检查与证据截短，全表与截掉的原文折进「明细」（`scripts/verify-action/report.ts#receiptComment`）；没开 PR 时派的验证员照下面的格式把回执写在报告最后一段：
 
 ```
 验证回执 <被验提交的完整 SHA>：<等级>
@@ -178,7 +180,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 
 - 第一行不手写：用 `node scripts/verify-receipt.ts sign --sha <简报给的 SHA> --level <等级>` 的输出原样粘贴。它用 `git rev-parse` 展开完整 SHA、只收下面五档等级，提交不存在或等级写错就退出 2。手抄过 40 位 SHA 会错字，脚本按 SHA 认回执，错一位整张作废。
 - 等级只能写下面五档之一，原样照抄，不自拟新名字（如 `local-ui-verified`）：本地开发服务器或本地生产构建上的真页面检查属于 `live-ui-verified`，没上生产写进「没验到」。
-- 等级从高到低：`live-ui-verified`（在真页面上按 lyjw 会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，改动涉及的单测与门禁也要跑过并列进证据，同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
+- 等级从高到低：`live-ui-verified`（在真页面上按 lyjw 会用的方式跑过：开发服务器、Workers 预览或生产）、`unit-test-verified`（覆盖改动行为的测试跑过）、`type-check-only`（只过了类型、lint、构建）。高等级包含低等级：签 `live-ui-verified` 的，覆盖改动的单测也要跑过并列进证据（PR 上 lint、类型这类门禁由 CI 跑，结论由脚本记在回执「脚本：」一行，合并前 `pr-gate.ts` 另查 CI；没开 PR 时验证员自己跑改动涉及的门禁），同时改了页面和后端的 PR 不能只测页面就签这一档。没跑成写 `verifier-blocked`（环境问题，环境好了重派），跑出问题写 `verifier-failed`（先修，修完重派）；这两档都不算通过。CI 绿只是验证员的一项输入，不算回执。
 - 改了行为的不收 `type-check-only`。UI 改动要 `live-ui-verified`；后端与脚本至少 `unit-test-verified`。
 - PR 上只认 lyjw131[bot] 发的回执与判定（Verify Action 的 publish job，按数字 id 认，见 `scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`）；线程用 lyjw 的账号贴的同格式评论不算，主线程不自签、不转贴子代理的回执。没开 PR 时派的验证员的回执随汇报交给 lyjw。
 - 合并前跑 `NODE_USE_ENV_PROXY=1 node scripts/verify-receipt.ts check --pr <号> --need <等级>`（贴了 `needs-judge` 的 PR 加 `--judge`；没加时 head 上的 FAIL 判定也不放行）。它取 PR 评论里最新的回执与判定：按的就是当前 head（`exact`），或者只把 main 合进了分支、相对 main 的补丁没变（逐字节相同，含空白与二进制，只忽略行号；`carried`），就照旧算数；补丁变了（`stale`）就等 Action 按新 head 重验。
