@@ -486,13 +486,15 @@ PlayStation 的 presence、游玩列表和奖杯由 `reporters/playstation-repor
 
   ```
   验证回执 <被验提交的完整 SHA>：<等级>
-  证据：<截图路径、命令与退出码、生产 URL，一项一行>
-  没验到：<原样照抄报告里那一栏，没有写「无」>
-  验证员：<模型 ID>，没写这段代码
+  <!-- 描述摘要 <PR 描述里清单与原话的 sha256> -->
+
+  | 项 | 检查 | 结果 | 证据 |
+  没验到：<报告里那一栏，没有写「无」>
+  对照清单：<清单逐项对照的结论>
   ```
 
 - 等级只能是五个值之一：算通过的三档从高到低是 `live-ui-verified`、`unit-test-verified`、`type-check-only`；`verifier-blocked`（环境问题）与 `verifier-failed`（跑出问题）不算通过（`scripts/verify-receipt.ts#LEVELS`、`scripts/verify-receipt.ts#PASSING_RANK`）。UI 改动要 `live-ui-verified`，后端与脚本至少 `unit-test-verified`。片中的等级梯子照这五个值画。
-- SHA 不手抄：第一行用 `node scripts/verify-receipt.ts sign --sha <提交> --level <等级>` 的输出原样粘贴，它用 `git rev-parse` 展开完整 SHA、只收五档等级；脚本按 SHA 认回执，错一位整张作废（同文件「回执」、`scripts/verify-receipt.ts#signLine`）。
+- SHA 不手抄：第一行由 publish job 用 `scripts/verify-receipt.ts#signLine` 拼，脚本按 SHA 认回执，错一位整张作废；第二行是 PR 描述摘要，之后改了清单或原话，旧回执与判定作废（`scripts/verify-receipt.ts#digestLine`、`scripts/verify-action/report.ts#receiptComment`）。
 - 合并前跑 `node scripts/verify-receipt.ts check --pr <号> --need <等级>`，要等机器评审的 PR 加 `--judge`。它只认 github-actions[bot]（按数字 id）发的回执与判定，输出 JSON：通过时 `pass` 为 true、退出码 0，回执的 `coverage` 是 `exact`（就是当前 head）或 `carried`（只把 main 合进了分支，相对 main 的补丁逐字节没变）；补丁变了是 `stale`，要重验（`scripts/verify-receipt.ts#RECEIPT_SIGNER_IDS`、`scripts/verify-receipt.ts#coverage`、`scripts/verify-receipt.ts#evaluate`）。片中的命令行省掉了 `--need` 与 `--judge`，输出只画 `coverage` 与 `pass` 两项。
 - 逻辑档的 PR 每次推送，同一工作流另派一个 Opus 判定员和验证员并行（`.github/workflows/verify.yml#judge`）：没写这段代码，只拿 PR 描述里的 lyjw 原话、PR 号与 head，自己读 diff，判做没做到、有没有回归。publish job 把结论发成 PR 评论，第一行 `判定 <head 完整 SHA>：PASS` 或 `FAIL`，FAIL 不合；这一行由 `scripts/verify-receipt.ts#signLine` 拼（同文件「3b. 逻辑档的 PR：由没写代码的 Opus 判做完没有」、`scripts/verify-receipt.ts#JUDGE_LINE`）。
 

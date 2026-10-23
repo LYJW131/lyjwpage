@@ -42,6 +42,9 @@ const VERIFIER_PATHS = [
   /^scripts\/pr-gate(?:\.ts|\/)/,
   /^scripts\/preview-worker-name\.ts$/,
   /^scripts\/build-watch-paths\.ts$/,
+  /^scripts\/rule-drift\.ts$/,
+  /^scripts\/strip-html\.ts$/,
+  /^shared\/sha256\.ts$/,
   /^scripts\/pr-tier\.ts$/,
   /^\.github\/workflows\/pr-tier-label\.yml$/,
 ];
