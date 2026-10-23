@@ -24,6 +24,7 @@ export const CI_STATES: Record<string, string> = {
   timed_out: "超时",
   pending: "发评论时还没跑完",
   none: "head 上没有",
+  error: "没查到，看 Action 日志",
 };
 
 export type ProofSummary = { verdict: string; tests: string[] };

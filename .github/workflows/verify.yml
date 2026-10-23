@@ -63,9 +63,9 @@ jobs:
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
-      # proof 步骤被杀或抛错时没有输出，记成 error，回执里照样显示「没跑成」
+      # proof、ci 步骤被杀或抛错时没有输出，记成 error，回执里照样显示「没跑成」「没查到」
       proof: ${{ steps.proof.outputs.proof || (steps.proof.outcome == 'failure' && '{"verdict":"error","tests":[]}') || '' }}
-      ci: ${{ steps.ci.outputs.ci }}
+      ci: ${{ steps.ci.outputs.ci || (steps.ci.outcome == 'failure' && 'error') || '' }}
     steps:
       - uses: actions/checkout@v5
         with:
