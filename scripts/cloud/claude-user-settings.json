@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "r=\"${CLAUDE_PROJECT_DIR:-$PWD}\"; mkdir -p \"$HOME/.claude/skills\"; for s in \"$r\"/.claude/skills/*/; do [ -d \"$s\" ] && ln -sfn \"${s%/}\" \"$HOME/.claude/skills/\"; done; true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
