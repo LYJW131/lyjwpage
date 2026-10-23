@@ -149,7 +149,7 @@ export function evaluate({
   const problems: string[] = [];
 
   if (!receipt) {
-    problems.push("没有验证回执：等 Verify Action 跑完（PR 转为待审或推送时触发），没跑就在 Actions 页对 verify.yml 手动跑一次");
+    problems.push("没有验证回执：等 Verify Action 跑完（PR 转为待审或推送时触发），跑失败就在 Actions 页重跑那次 pull_request 运行；没有运行或上次是空跑就再推一次或改 PR 描述");
   } else {
     const receiptCoverage = coverage(receipt.sha, head, patchId);
     result.receipt = { ...receipt, coverage: receiptCoverage };

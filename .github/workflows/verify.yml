@@ -1,24 +1,20 @@
 name: Verify
 
+# 不接 workflow_dispatch：手动触发落在默认分支上，能写它的 Actions 缓存，而 verify / judge 会检出并执行 PR head。
+# 跑失败就重跑那次 pull_request 运行；还没有运行，或上次是只改标题、贴无关标签的空跑，就再推一次或改 PR 描述。
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: PR number
-        required: true
-        type: string
 
 permissions: {}
 
 # 只改标题或指派人的 edited（描述和目标分支都没变）、贴摘 needs-judge 以外的标签，进另一个组：组在 job 的 if 之前就生效，同组会顶掉正在跑的验证
 concurrency:
-  group: verify-${{ github.event.pull_request.number || inputs.pr }}${{ ((github.event.action == 'edited' && github.event.changes.body == null && github.event.changes.base == null) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'needs-judge')) && '-noop' || '' }}
+  group: verify-${{ github.event.pull_request.number }}${{ ((github.event.action == 'edited' && github.event.changes.body == null && github.event.changes.base == null) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'needs-judge')) && '-noop' || '' }}
   cancel-in-progress: true
 
 env:
-  PR: ${{ github.event.pull_request.number || inputs.pr }}
+  PR: ${{ github.event.pull_request.number }}
 
 jobs:
   plan:
