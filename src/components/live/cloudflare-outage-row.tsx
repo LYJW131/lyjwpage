@@ -16,23 +16,26 @@ import type { StatusResponse } from "@shared/types";
 function Outage({ affected, since }: { affected: string; since: number }) {
   const now = useNow();
   return (
-    <div className="flex min-h-11 items-center gap-3 p-4 sm:gap-4 md:gap-2 md:px-4 md:py-2 lg:px-5">
-      <CloudflareIcon size={20} className="size-7 shrink-0 md:size-5" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-row md:items-center md:gap-2">
-        <div className="truncate text-base font-semibold sm:text-lg leading-tight md:shrink-0 md:text-sm md:font-medium">
+    <div className="flex flex-col items-center gap-1 p-4 text-center md:py-3 lg:px-5">
+      <div className="flex max-w-full items-center gap-2 text-base font-semibold leading-tight sm:text-lg">
+        <CloudflareIcon size={20} className="size-6 shrink-0" />
+        <span className="truncate">
           Cloudflare <span className="text-signal-red">Outage</span>
-        </div>
-        <div className="truncate text-sm text-muted-foreground">
-          <span className="hidden md:inline">· </span>
-          {affected}
-        </div>
+        </span>
+        <span className="shrink-0 font-normal text-muted-foreground" aria-hidden>
+          ·
+        </span>
+        <span className="shrink-0 text-signal-red" suppressHydrationWarning>
+          {elapsed(Math.max(0, now - since))}
+        </span>
       </div>
-      <span
-        className="shrink-0 text-xl font-medium leading-none sm:text-3xl md:text-sm"
-        suppressHydrationWarning
-      >
-        {elapsed(Math.max(0, now - since))}
-      </span>
+      <div className="flex max-w-full flex-col items-center gap-1 text-sm text-muted-foreground md:flex-row md:gap-2">
+        <span className="shrink-0">Some features may not work</span>
+        <span className="hidden md:inline" aria-hidden>
+          ·
+        </span>
+        <span className="max-w-full truncate">{affected}</span>
+      </div>
     </div>
   );
 }
@@ -53,7 +56,7 @@ export function CloudflareOutageRow({ fallback }: { fallback: StatusResponse<Age
   return (
     <NowReveal revealKey="cloudflare-outage" top>
       {since != null ? (
-        <Card id="cloudflare-outage" className="scroll-mt-28">
+        <Card id="cloudflare-outage" className="alert-card scroll-mt-28">
           <Outage affected={affected || "Services degraded"} since={since} />
         </Card>
       ) : null}

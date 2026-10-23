@@ -14,6 +14,12 @@
   box-shadow: 3px 3px 0 var(--paper-shadow);
 }
 
+.alert-card {
+  --paper-shadow: var(--alert-shadow);
+  border-color: var(--signal-red);
+  background-color: var(--alert-surface);
+}
+
 button.paper-card {
   transition:
     border-color 120ms ease,

@@ -63,6 +63,7 @@ const SHADOW_PAD = 4;
 // 须与 src/components/live/media-pair.tsx#SLOT_PX 同步：充电头、充电宝与正在听那一排的槽高。
 const MEDIA_SLOT_PX = 396;
 const FOCUS_HEIGHT = 46;
+const OUTAGE_HEIGHT = 74;
 const DIGEST_HEIGHT = 202;
 const QUEST_HEIGHT = 98;
 
@@ -98,8 +99,8 @@ const CARDS: Record<string, ReadmeCard> = {
   "cloudflare-outage": {
     label: "Cloudflare Outage",
     width: FULL_WIDTH,
-    height: FOCUS_HEIGHT,
-    annotate: (html, note) => html.replace(/(<span class="hidden md:inline">· <\/span>[\s\S]*?)(<\/div>)/, `$1 · ${note}$2`),
+    height: OUTAGE_HEIGHT,
+    annotate: (html, note) => html.replace(/(Some features may not work[\s\S]*?)(<\/span><\/div>)/, `$1 · ${note}$2`),
     async render(status, _site, now) {
       const live = await status("agentStatus");
       const { value, sample } = orSample(
