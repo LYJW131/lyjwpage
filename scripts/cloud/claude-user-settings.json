@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p \"$HOME/.claude\"; for d in skills agents; do [ -d \"$CLAUDE_PROJECT_DIR/.claude/$d\" ] && { [ -L \"$HOME/.claude/$d\" ] || [ ! -e \"$HOME/.claude/$d\" ]; } && ln -sfn \"$CLAUDE_PROJECT_DIR/.claude/$d\" \"$HOME/.claude/$d\"; done; true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
