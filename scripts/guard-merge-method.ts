@@ -4,6 +4,9 @@ import fs from "node:fs";
 import { pathToFileURL } from "node:url";
 
 import { mergeMethodFor } from "./merge-message.ts";
+import { changedPaths, client, isTrustedAuthor, type FetchLike, type PatchId, type PrFile, type Pull } from "./pr-gate/github.ts";
+import { judgeAsked, tierOf } from "./pr-gate/tier.ts";
+import { check as checkReceipt } from "./verify-receipt.ts";
 
 const REPO = { owner: "lyjw131", repo: "lyjwpage" };
 
@@ -23,8 +26,10 @@ const labelsOf = (pr: number) =>
     }),
   ) as string[];
 
+const isLyjwpage = (input: MergeInput) => String(input.owner).toLowerCase() === REPO.owner && String(input.repo).toLowerCase() === REPO.repo;
+
 export function mergeMethodReason(input: MergeInput, count: (sha: string) => number, labels: (pr: number) => string[] = () => []): string | null {
-  if (String(input.owner).toLowerCase() !== REPO.owner || String(input.repo).toLowerCase() !== REPO.repo) return null;
+  if (!isLyjwpage(input)) return null;
   const sha = input.expectedHeadSha;
   if (typeof sha !== "string" || !/^[0-9a-f]{40}$/i.test(sha)) {
     return "合并 lyjwpage 的 PR 要带 pnpm merge-message 给的 expectedHeadSha（40 位）。";
@@ -54,7 +59,24 @@ export function mergeMethodReason(input: MergeInput, count: (sha: string) => num
   return `这个 PR 有 ${commits} 个非合并提交，merge_method 要用 ${expected}（少于 3 个压缩合并，3 个及以上用合并提交），照 pnpm merge-message 输出的 merge_method 传。`;
 }
 
-function main() {
+// 回执等级按分档的默认门槛查，不收 pr-gate 的 --need；判定只在 PR 贴了 needs-judge 标签或作者不是 lyjw 的账号时要。
+// 回执不够只提醒不拦：验证员会一直标出已接受的取舍，硬拦就只能让 lyjw 手动合
+export async function receiptReason(pr: number, deps: { fetch?: FetchLike; patchId?: PatchId } = {}): Promise<string | null> {
+  const fetchImpl = deps.fetch ?? fetch;
+  try {
+    const gh = client(fetchImpl);
+    const [pull, files] = await Promise.all([gh.get<Pull>(`pulls/${pr}`), gh.all<PrFile>(`pulls/${pr}/files`)]);
+    const tier = tierOf(changedPaths(files), { trustedAuthor: isTrustedAuthor(pull), judgeAsked: judgeAsked(pull) });
+    if (tier.need === null) return null;
+    const result = await checkReceipt({ pr, need: tier.need, wantJudge: tier.judge }, { fetch: fetchImpl, patchId: deps.patchId });
+    if (result.pass) return null;
+    return `#${pr} 是 ${tier.name} 档，要 Verify Action 签的回执到 ${tier.need}${tier.judge ? "、判定 PASS" : ""}，盖住当前 head：${result.next ?? "还没有"}`;
+  } catch (error) {
+    return `读不到 #${pr} 的回执（${(error as Error).message}），判不了能不能合：云端确认钩子带着 NODE_USE_ENV_PROXY=1，再合并。`;
+  }
+}
+
+async function main() {
   let input: { tool_input?: MergeInput };
   try {
     input = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -63,10 +85,21 @@ function main() {
     process.exit(2);
   }
   const cwd = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
-  const reason = mergeMethodReason(input.tool_input ?? {}, (sha) => countCommits(sha, cwd), labelsOf);
-  if (reason === null) return;
-  process.stderr.write(`已拦下：${reason}\n`);
-  process.exit(2);
+  const tool = input.tool_input ?? {};
+  const reason = mergeMethodReason(tool, (sha) => countCommits(sha, cwd), labelsOf);
+  if (reason !== null) {
+    process.stderr.write(`已拦下：${reason}\n`);
+    process.exit(2);
+  }
+  const advice = isLyjwpage(tool) ? await receiptReason(Number(tool.pullNumber)) : null;
+  if (advice === null) return;
+  const notice = `回执提醒（不拦）：${advice}`;
+  process.stdout.write(
+    JSON.stringify({
+      systemMessage: notice,
+      hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: `${notice}。合并后在汇报里告诉 lyjw 这一条。` },
+    }),
+  );
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();

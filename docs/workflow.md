@@ -14,7 +14,7 @@
 - **项目聊天里的协调 Claude**：接 lyjw 的每句话，新需求开线程，跟进转给对应线程，答项目层面的问题。
 - **线程 Claude**：一件事一个线程、一个分支 `claude/project-thread-<id>`，从调研做到合并和上线核对。只在有结果、卡住或要 lyjw 决定时回复，平时只刷状态行。分叉用决策卡问，按推荐项先往下做。
 - **lyjw Mac 上的会话**（Remote Control）：凭据、ssh 到自家机器、lyjw 的 `gh` 与浏览器登录态都在这里做，派法见 [`lyjwpage-mac-session`](../.claude/skills/lyjwpage-mac-session/SKILL.md)。
-- **子代理**：翻文档、读长历史派 Sonnet / Haiku；验证一律派 Haiku 验证员（见下文「验证」）。
+- **子代理**：翻文档、读长历史派 Sonnet / Haiku；PR 上的验证由 Verify Action 跑，其余验证派 Haiku 验证员（见下文「验证」）。
 
 所有 Claude 共享一份项目记忆：lyjw 定的规矩、做过的决定写进去一次，之后每个线程都遵守。仓库里有去掉凭据和私有链接的镜像 [`.claude/memory/`](../.claude/memory/MEMORY.md)，由 `pnpm memory:mirror` 同步。
 
@@ -48,7 +48,7 @@
 
 ## 验证
 
-主线程只定验什么、判结果；跑命令、开浏览器截图、轮询部署这些长输出的活交给 Haiku 验证员，做法见 [`lyjwpage-verify`](../.claude/skills/lyjwpage-verify/SKILL.md)。验证员最后签一张分级回执，按提交 SHA 记每项验到了哪一档（真页面、单测、只过类型），贴成 PR 评论；合并前 [`scripts/verify-receipt.ts`](../scripts/verify-receipt.ts) 核对回执还盖得住当前提交。
+主线程只定验什么、判结果。PR 上的验证由 [`verify.yml`](../.github/workflows/verify.yml) 在 GitHub Action 里跑：PR 描述写「验证清单」与「lyjw 原话」，Haiku 验证员照清单验，线程判为大改动、贴了 `needs-judge` 标签的同时派 Opus 判定员对照原话判；回执按提交 SHA 记每项验到了哪一档（真页面、单测、只过类型），和判定一起由 github-actions[bot] 贴成 PR 评论，合并前 [`scripts/verify-receipt.ts`](../scripts/verify-receipt.ts) 只认这个 bot 的，并核对还盖得住当前提交。没开 PR 时的检查、轮询部署这些长输出的活交给 Haiku 子代理。做法见 [`lyjwpage-verify`](../.claude/skills/lyjwpage-verify/SKILL.md)。
 
 验证以外的机械活（成批读讨论串与评审、全仓搜、照规格的改动、只等 CI 或部署结束、不做核对的纯等待）同样不留在主线程：按 [`lyjwpage-delegate`](../.claude/skills/lyjwpage-delegate/SKILL.md) 派给 Sonnet / Haiku 子代理或后台命令。
 

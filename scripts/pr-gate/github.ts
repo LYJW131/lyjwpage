@@ -61,7 +61,8 @@ export function client(fetchImpl: FetchLike) {
   };
   const graphql = (query: string, variables: Record<string, unknown>) =>
     request<{ data?: unknown; errors?: unknown }>(`${API}/graphql`, { method: "POST", body: JSON.stringify({ query, variables }) });
-  return { get, all, graphql };
+  const post = <T>(path: string, body: unknown) => request<T>(`${API}/repos/${REPO}/${path}`, { method: "POST", body: JSON.stringify(body) });
+  return { get, all, graphql, post };
 }
 export type Client = ReturnType<typeof client>;
 

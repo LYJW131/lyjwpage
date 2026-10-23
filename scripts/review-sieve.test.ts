@@ -34,31 +34,22 @@ test("SHA 不在本 PR 的提交里不算采纳，粘在别的字母数字里的
   assert.equal(classify(at, [reply("见 xe2495e5 与 e2495e5z")], [], commits).verdict, "uncertain");
 });
 
-test("说成立但没写 SHA 的是可能采纳：下一个提交修取回复之后那个，已修取回复之前那个", () => {
-  const future = classify(at, [reply("成立，下一个提交（尚未推送）修：拒答时带 refused。")], [], commits);
-  assert.equal(future.verdict, "uncertain");
-  assert.match(future.evidence, /「成立」/);
-  assert.equal(future.candidate, "780d632 fix(ai): 对话记录按实际作答档位记");
-  const done = classify(at, [reply("已改：只对 data URI 用 sync。")], [], commits);
-  assert.equal(done.verdict, "uncertain");
-  assert.equal(done.candidate, "e2495e5 fix(ai): 拒答记为 refused");
-});
-
-test("说不改、复现不出、保持现状，或者根本没回复，都是未采纳", () => {
-  for (const body of ["这条不改。", "实测复现不出来，先放着。", "保持现状：与旧行为一致。", "这条不在本 PR 修。", "有意如此：只播一次。"]) {
-    assert.equal(classify(at, [reply(body)], [], commits).verdict, "notAdopted", body);
+test("没写本 PR 里晚于建议的 SHA 的回复一律交给模型读原文，不按字面判采纳与否", () => {
+  for (const body of ["成立，下一个提交修。", "这条不改。", "实测复现不出来，先放着。", "保持现状：与旧行为一致。"]) {
+    const result = classify(at, [reply(body)], [], commits);
+    assert.equal(result.verdict, "uncertain", body);
+    assert.equal(result.candidate, "e2495e5 fix(ai): 拒答记为 refused；780d632 fix(ai): 对话记录按实际作答档位记", body);
   }
+  assert.equal(classify(at, [reply("已改。", "2026-10-17T08:00:00Z")], [], commits).candidate, "6de3704 feat(ai): 首页对话记录存进 ChatLog");
+  assert.equal(classify(at, [reply("已改。", "2026-10-17T09:00:00Z")], [], commits).candidate, "780d632 fix(ai): 对话记录按实际作答档位记");
   const silent = classify(at, [], [], commits);
   assert.deepEqual([silent.verdict, silent.evidence, silent.reply], ["notAdopted", "没有回复", null]);
-  assert.equal(classify(at, [reply("已修：行为不改变，只补了测试。")], [], commits).verdict, "uncertain");
 });
 
-test("同一线程里最后表态的回复说了算；有 SHA 又说不改的交给模型读原文", () => {
-  const replies = [reply("属实：这个取舍交给 lyjw 定。", "2026-10-17T08:19:00Z"), reply("lyjw 定了保持现状。", "2026-10-17T09:00:00Z")];
-  assert.equal(classify(at, replies, [], commits).verdict, "notAdopted");
-  const mixed = classify(at, [reply("保持现状。`e2495e5` 在注释里写明了这个取舍。")], [], commits);
-  assert.equal(mixed.verdict, "uncertain");
-  assert.match(mixed.evidence, /e2495e5 在本 PR 提交里，但回复也说「保持现状」/);
+test("同一线程里取最后一条写了本 PR SHA 的回复作证据", () => {
+  const replies = [reply("见 e2495e5。", "2026-10-17T08:19:00Z"), reply("补充：780d632 也改了。", "2026-10-17T09:00:00Z")];
+  const result = classify(at, replies, [], commits);
+  assert.deepEqual([result.verdict, result.reply?.body], ["adopted", "补充：780d632 也改了。"]);
 });
 
 test("没有行内回复、之后有普通评论的标可能采纳，指向那条评论", () => {

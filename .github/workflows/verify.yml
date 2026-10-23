@@ -1,0 +1,278 @@
+name: Verify
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+        type: string
+
+permissions: {}
+
+# 只改标题或指派人的 edited（描述和目标分支都没变）、贴摘 needs-judge 以外的标签，进另一个组：组在 job 的 if 之前就生效，同组会顶掉正在跑的验证
+concurrency:
+  group: verify-${{ github.event.pull_request.number || inputs.pr }}${{ ((github.event.action == 'edited' && github.event.changes.body == null && github.event.changes.base == null) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'needs-judge')) && '-noop' || '' }}
+  cancel-in-progress: true
+
+env:
+  PR: ${{ github.event.pull_request.number || inputs.pr }}
+  PLAYWRIGHT_VERSION: 1.63.0
+
+jobs:
+  plan:
+    # 只改标题不重验；改了描述（验证清单、lyjw 原话）、目标分支或 needs-judge 标签才重跑
+    if: >-
+      (github.event.action != 'edited' || github.event.changes.body != null || github.event.changes.base != null) &&
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'needs-judge')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      need: ${{ steps.plan.outputs.need }}
+      judge: ${{ steps.plan.outputs.judge }}
+      ui: ${{ steps.plan.outputs.ui }}
+      head: ${{ steps.plan.outputs.head }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - id: plan
+        run: node scripts/verify-action.ts plan --pr "$PR"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  verify:
+    needs: plan
+    if: needs.plan.outputs.need != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # 只读令牌：验证员能跑任意命令，回执由 publish job 发
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    outputs:
+      result: ${{ steps.claude.outputs.structured_output }}
+      read: ${{ steps.prompt.outputs.read }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.plan.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        timeout-minutes: 5
+        run: |
+          npm install -g "playwright@$PLAYWRIGHT_VERSION"
+          playwright install chromium webkit
+      # WebKit 的系统依赖（一百多个 apt 包）只在界面档装。runner 默认的 azure 镜像时常卡住不报错（一次挂了 40 分钟）：
+      # timeout 要放在 sudo 里面才杀得掉 apt-get、放开 dpkg 锁；重试前从镜像表删掉 azure，走 archive.ubuntu.com
+      - name: Install browser system deps
+        if: needs.plan.outputs.ui == 'true'
+        timeout-minutes: 12
+        run: |
+          deps() { sudo timeout -k 10 300 "$(command -v playwright)" install-deps chromium webkit; }
+          deps || {
+            sudo dpkg --configure -a
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            deps
+          }
+      - id: preview
+        if: needs.plan.outputs.ui == 'true'
+        run: node scripts/verify-action.ts wait-preview --pr "$PR" --timeout-min 20
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - id: prompt
+        run: node scripts/verify-action.ts prompt --role verifier --pr "$PR" --preview "$PREVIEW" --out-dir "$RUNNER_TEMP/verify-out"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PREVIEW: ${{ steps.preview.outputs.preview }}
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程、socat 给沙盒转发网络，缺了 claude 装不起来或 Bash 起不来；
+      # Ubuntu 24.04 的 AppArmor 默认不许 bwrap 建用户命名空间，照 build.yml「Prepare the sandbox」只给 bwrap 放行
+      - name: Install sandbox deps
+        timeout-minutes: 8
+        run: |
+          bwrap_deps() { sudo timeout -k 10 180 sh -c 'apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap socat'; }
+          bwrap_deps || {
+            sudo dpkg --configure -a
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            bwrap_deps
+          }
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' | sudo tee /etc/apparmor.d/bwrap > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --die-with-parent true || { echo "::error::bubblewrap cannot create namespaces."; exit 1; }
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+          # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
+          allowed_bots: '*'
+          show_full_output: true
+          prompt: ${{ steps.prompt.outputs.prompt }}
+          claude_args: >-
+            --model haiku --effort high
+            --allowedTools "Bash,Read,Write,Glob,Grep"
+            --json-schema '${{ steps.prompt.outputs.schema }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verify-out
+          path: ${{ runner.temp }}/verify-out
+          if-no-files-found: ignore
+          retention-days: 14
+
+  judge:
+    needs: plan
+    if: needs.plan.outputs.judge == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      result: ${{ steps.claude.outputs.structured_output }}
+      read: ${{ steps.prompt.outputs.read }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.plan.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: prompt
+        run: node scripts/verify-action.ts prompt --role judge --pr "$PR"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB 要 bubblewrap 隔离子进程、socat 给沙盒转发网络，缺了 claude 装不起来或 Bash 起不来；
+      # Ubuntu 24.04 的 AppArmor 默认不许 bwrap 建用户命名空间，照 build.yml「Prepare the sandbox」只给 bwrap 放行
+      - name: Install sandbox deps
+        timeout-minutes: 8
+        run: |
+          bwrap_deps() { sudo timeout -k 10 180 sh -c 'apt-get update -qq && apt-get install -y --no-install-recommends bubblewrap socat'; }
+          bwrap_deps || {
+            sudo dpkg --configure -a
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            bwrap_deps
+          }
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' 'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' | sudo tee /etc/apparmor.d/bwrap > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --die-with-parent true || { echo "::error::bubblewrap cannot create namespaces."; exit 1; }
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+          # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
+          allowed_bots: '*'
+          show_full_output: true
+          prompt: ${{ steps.prompt.outputs.prompt }}
+          claude_args: >-
+            --model opus --effort high
+            --allowedTools "Bash,Read,Glob,Grep"
+            --json-schema '${{ steps.prompt.outputs.schema }}'
+
+  publish:
+    needs: [plan, verify, judge]
+    if: ${{ !cancelled() && needs.plan.outputs.need != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.plan.outputs.head }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        if: needs.verify.result == 'success'
+        continue-on-error: true
+        with:
+          name: verify-out
+          path: ${{ runner.temp }}/verify-out
+      # 截图推到孤立分支 verify-shots，评论里按 raw 地址嵌图；这个分支不碰任何构建监视路径
+      - id: shots
+        run: |
+          shopt -s nullglob
+          files=("$RUNNER_TEMP"/verify-out/shots/*.png)
+          [ ${#files[@]} -gt 0 ] || exit 0
+          dir="pr-$PR/${HEAD:0:7}-$GITHUB_RUN_ID"
+          repo="$RUNNER_TEMP/shots-repo"
+          git init -q "$repo"
+          cd "$repo"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git fetch -q --depth 1 origin verify-shots; then git checkout -q -b verify-shots FETCH_HEAD; else git checkout -q --orphan verify-shots; fi
+          mkdir -p "$dir"
+          for file in "${files[@]:0:12}"; do
+            name=$(basename "$file" | tr -c 'A-Za-z0-9._\n-' '_')
+            cp "$file" "$dir/$name"
+          done
+          git add "$dir"
+          git commit -qm "verify shots $dir"
+          pushed=
+          for attempt in 1 2 3; do
+            git push -q origin HEAD:verify-shots && { pushed=1; break; }
+            git fetch -q --depth 1 origin verify-shots && git rebase -q FETCH_HEAD
+          done
+          [ -n "$pushed" ] || { echo "::warning::截图没推上 verify-shots，回执不嵌图"; exit 0; }
+          echo "dir=$repo/$dir" >> "$GITHUB_OUTPUT"
+          echo "url=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/verify-shots/$dir" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.plan.outputs.head }}
+      - run: >-
+          node scripts/verify-action.ts publish --pr "$PR" --head "$HEAD"
+          --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          --verify-result "$VERIFY_RESULT" --judge-result "$JUDGE_RESULT"
+          --shots-dir "$SHOTS_DIR" --shots-url "$SHOTS_URL"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD: ${{ needs.plan.outputs.head }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          JUDGE_RESULT: ${{ needs.judge.result }}
+          VERIFY_OUTPUT: ${{ needs.verify.outputs.result }}
+          JUDGE_OUTPUT: ${{ needs.judge.outputs.result }}
+          VERIFY_READ: ${{ needs.verify.outputs.read }}
+          JUDGE_READ: ${{ needs.judge.outputs.read }}
+          SHOTS_DIR: ${{ steps.shots.outputs.dir }}
+          SHOTS_URL: ${{ steps.shots.outputs.url }}

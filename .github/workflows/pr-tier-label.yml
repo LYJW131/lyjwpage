@@ -38,11 +38,12 @@ jobs:
           private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
           permission-issues: write
           permission-pull-requests: write
-      - name: Apply tier label as lyjw131[bot]
+      - name: Apply labels as lyjw131[bot]
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR: ${{ github.event.pull_request.number }}
           TIER: ${{ steps.tier.outputs.name }}
+          VERIFIER: ${{ steps.tier.outputs.verifier }}
         run: |
           case "$TIER" in
             docs) color=0075ca; text="Docs and skills only" ;;
@@ -54,9 +55,13 @@ jobs:
           want="tier: $TIER"
           repo="repos/$GITHUB_REPOSITORY"
           gh label create "$want" --repo "$GITHUB_REPOSITORY" --color "$color" --description "$text" --force
+          flag=verifier-changed
+          gh label create "$flag" --repo "$GITHUB_REPOSITORY" --color b60205 --description "Changes the verifier, gate or this labeler; receipts come from the changed copy" --force
           gh api "$repo/issues/$PR/labels" --jq '.[].name' | while IFS= read -r name; do
             case "$name" in
               "tier: "*) [ "$name" = "$want" ] || gh api -X DELETE "$repo/issues/$PR/labels/$(jq -rn --arg n "$name" '$n|@uri')" --silent ;;
+              "$flag") [ "$VERIFIER" = true ] || gh api -X DELETE "$repo/issues/$PR/labels/$flag" --silent ;;
             esac
           done
           gh api -X POST "$repo/issues/$PR/labels" -f "labels[]=$want" --silent
+          [ "$VERIFIER" != true ] || gh api -X POST "$repo/issues/$PR/labels" -f "labels[]=$flag" --silent

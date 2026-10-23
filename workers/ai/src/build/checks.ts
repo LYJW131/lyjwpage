@@ -83,7 +83,7 @@ async function latestReview(api: GithubBuildApi, number: number): Promise<Review
 export async function reconcileBuild(api: GithubBuildApi, run: BuildRun): Promise<Partial<BuildRun>> {
   if (!run.pr || BUILD_CLOSED_PHASES.includes(run.phase)) return {};
   const pr = await api.repo<GithubPullRequest>(`/pulls/${run.pr.number}`);
-  const confirmed = confirmedPullRequest(pr, run, undefined, run.pr.draft === undefined);
+  const confirmed = confirmedPullRequest(pr, run);
   const result: Partial<BuildRun> = { phase: pr.merged ? "merged" : pr.state === "closed" ? "closed" : run.phase, pr: confirmed, reconciledAt: Date.now(), githubUpdatedAt: Date.parse(pr.updated_at) || undefined };
   if (result.phase === "merged" || result.phase === "closed") return result;
   result.ci = { state: "unknown", updatedAt: Date.now() };
