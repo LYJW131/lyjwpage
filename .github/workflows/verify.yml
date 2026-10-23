@@ -60,13 +60,18 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      # WIF 用 GitHub OIDC 换 Anthropic token。这些 job 跑 PR 代码，PR 代码也能要到 OIDC token：有意接受（PR 都锁着），ai Worker 只认 main 上 build.yml 签的 token
+      id-token: write
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
       # proof、ci 步骤被杀或抛错时没有输出，记成 error，回执里照样显示「没跑成」「没查到」
       proof: ${{ steps.proof.outputs.proof || (steps.proof.outcome == 'failure' && '{"verdict":"error","tests":[]}') || '' }}
       ci: ${{ steps.ci.outputs.ci || (steps.ci.outcome == 'failure' && 'error') || '' }}
-    steps:
+    env:
+      EFFORT: high
+      OUT: verify-out
+    steps: &verify-steps
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.plan.outputs.head }}
@@ -118,18 +123,28 @@ jobs:
           # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 计费开关同 claude.yml
+          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || vars.ANTHROPIC_FEDERATION_RULE_ID == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
+          anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
+          anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
+          anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'
           show_full_output: true
           prompt: ${{ steps.prompt.outputs.prompt }}
           claude_args: >-
-            --model haiku --effort high
+            --model haiku --effort ${{ env.EFFORT }}
             --allowedTools "Bash,Read,Write,Glob,Grep"
             --json-schema '${{ steps.prompt.outputs.schema }}'
+      - if: always()
+        run: node scripts/verify-ab.ts --effort "$EFFORT" --execution-file "$EXECUTION_FILE" --out "$RUNNER_TEMP/verify-out/work/ab.json"
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+          STRUCTURED_OUTPUT: ${{ steps.claude.outputs.structured_output }}
       - id: ci
-        if: always()
+        if: always() && env.EFFORT == 'high'
         timeout-minutes: 6
         continue-on-error: true
         run: node scripts/verify-action.ts ci --pr "$PR" --head "$HEAD" --timeout-min 5
@@ -139,10 +154,26 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: verify-out
+          name: ${{ env.OUT }}
           path: ${{ runner.temp }}/verify-out
           if-no-files-found: ignore
           retention-days: 14
+
+  # effort 对比：同一份提示词用 medium 再跑一遍，只记进 job 摘要与 verify-ab artifact，回执与 publish 不读它
+  verify-ab:
+    needs: plan
+    if: needs.plan.outputs.need != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      id-token: write
+    env:
+      EFFORT: medium
+      OUT: verify-ab
+    steps: *verify-steps
 
   judge:
     needs: plan
@@ -152,6 +183,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      id-token: write
     outputs:
       result: ${{ steps.claude.outputs.structured_output }}
       read: ${{ steps.prompt.outputs.read }}
@@ -180,7 +212,12 @@ jobs:
           # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 计费开关同 claude.yml
+          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || vars.ANTHROPIC_FEDERATION_RULE_ID == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
+          anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
+          anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
+          anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'

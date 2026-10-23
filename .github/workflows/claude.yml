@@ -44,7 +44,12 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 计费：仓库变量 ANTHROPIC_FEDERATION_RULE_ID 有值就用 GitHub OIDC 联合认证走 API 按量计费（WIF，无静态 key）；变量 CLAUDE_AUTH=oauth 或没配 WIF 时走订阅的 setup token
+          claude_code_oauth_token: ${{ (vars.CLAUDE_AUTH == 'oauth' || vars.ANTHROPIC_FEDERATION_RULE_ID == '') && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          anthropic_federation_rule_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID || '' }}
+          anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
+          anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
+          anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
 
           additional_permissions: |
             actions: read

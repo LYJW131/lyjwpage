@@ -3,6 +3,8 @@ import { changedPaths, type CheckRun, type Client, type PrFile, type Status } fr
 
 const BUILD_PREFIX = "Workers Builds: ";
 export const COMMENT_CHECK = "Comment check (Jev)";
+// 只记数据的对照实验 job，结论不挡合并（verify.yml 的 verify-ab）
+export const EXPERIMENT_CHECKS = new Set(["verify-ab"]);
 
 export function commentAdvice(runs: CheckRun[]) {
   const run = newestByName(runs).get(COMMENT_CHECK);
@@ -26,7 +28,7 @@ const built = (run: CheckRun) => run.status === "completed" && run.conclusion ==
 
 export function summarizeChecks(runs: CheckRun[], statuses: Status[]) {
   const items = [
-    ...[...newestByName(runs).values()].map((run) => ({
+    ...[...newestByName(runs).values()].filter((run) => !EXPERIMENT_CHECKS.has(run.name)).map((run) => ({
       name: run.name,
       result: run.status === "completed" ? run.conclusion ?? "unknown" : run.status,
       done: run.status === "completed",
