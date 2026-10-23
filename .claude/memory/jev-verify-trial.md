@@ -12,4 +12,6 @@ Trial PRs #597 (correct), #598 (planted bug a test catches), #599 (UI copy chang
 - Jev: #598 caught (bug 0.74, asks_done 0.21); #600 only borderline (bug 0.65, asks_done 0.30); #597/#599 clean; blind to #599's layout issue (needs rendering). ~0.2 s, ~1.5k tokens.
 - Noise on 14 merged PRs ×3 runs: no bug ≥0.7, asks_done never ≤0.3, but 5/14 land bug 0.3–0.7; runs vary ≤0.07 (0.16 once).
 
+Images (same day, lyjw asked): on #599's footer crops, narrow nouls written knowing the bug ("SHA and DEPLOYED on two lines?", "line starts with a stray ·?") hit 0.95/0.92 vs ≤0.06 on clean shots; the generic "layout problem?" gave 0.67 on a clean control. Data: /mnt/project-files/jev-verify-trial/.
+
 **How to apply:** Jev can't run tests or look at pages, so it can't replace Haiku; at most a cheap early signal. Don't wire it into gates without lyjw. Related: [[jev-vision-qa-result]], [[verify-in-actions-plan]].
