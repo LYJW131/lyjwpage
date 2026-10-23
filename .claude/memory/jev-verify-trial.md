@@ -14,4 +14,6 @@ Trial PRs #597 (correct), #598 (planted bug a test catches), #599 (UI copy chang
 
 Images (same day, lyjw asked): on #599's footer crops, narrow nouls written knowing the bug ("SHA and DEPLOYED on two lines?", "line starts with a stray ·?") hit 0.95/0.92 vs ≤0.06 on clean shots; the generic "layout problem?" gave 0.67 on a clean control. Data: /mnt/project-files/jev-verify-trial/.
 
-**How to apply:** Jev can't run tests or look at pages, so it can't replace Haiku; at most a cheap early signal. Don't wire it into gates without lyjw. Related: [[jev-vision-qa-result]], [[verify-in-actions-plan]].
+Decision: lyjw 2026-10-23 18:17 SGT「好 不进main 记录测试结果」. #596-#600 closed unmerged.
+
+**How to apply:** Jev can't run tests or look at pages, so it can't replace Haiku; at most a cheap early signal. Not adopted; don't re-propose it as a verifier. Related: [[jev-vision-qa-result]], [[verify-in-actions-plan]].
