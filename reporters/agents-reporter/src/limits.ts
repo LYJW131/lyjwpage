@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { refreshClaudeOauth } from "./claude-oauth.js";
 import { config, type AgentId } from "./config.js";
-import { info } from "./log.js";
+import { failure, info, recovered } from "./log.js";
 import { fetchAntigravity, rowFromAntigravityQuota } from "./providers/antigravity.js";
 import {
   fetchClaude,
@@ -96,11 +96,11 @@ export async function collectAgents(ids: readonly AgentId[] = config.agentIds): 
   const agents: AgentRow[] = [];
   for (const [index, result] of settled.entries()) {
     const id = ids[index] ?? "unknown";
-    if (result.status === "fulfilled") {
-      if (result.value) agents.push(result.value);
-      continue;
-    }
-    agents.push(errorRow(id, result.reason));
+    const row = result.status === "fulfilled" ? result.value : errorRow(id, result.reason);
+    if (!row) continue;
+    if (row.limitsError) failure(`limits:${id}`, new Error(row.limitsError));
+    else recovered(`limits:${id}`);
+    agents.push(row);
   }
   return agents;
 }

@@ -1,8 +1,9 @@
 import { config } from "./config.js";
-import { failure } from "./log.js";
+import { countFailures, failure } from "./log.js";
 import { createPushLedger, type ReporterBlock } from "./push-ledger.js";
 
 const ledger = createPushLedger(config.pushLedgerPath, config.reporterCommit, (error) => failure("push-ledger", error));
+countFailures(() => ledger.failed());
 
 export function reporterBlock(): Promise<ReporterBlock> {
   return ledger.block();
