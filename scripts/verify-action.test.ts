@@ -114,7 +114,7 @@ test("shotLinks 只收安全文件名的 PNG，按名排序并转义", () => {
 });
 
 test("参数错抛成用法错误，主入口据此退出 2", async () => {
-  for (const argv of [["plan"], ["plan", "--pr", "7", "--nope"], ["prompt", "--pr", "7", "--role", "x"], ["publish", "--pr", "7", "--head", "abc"], ["bogus", "--pr", "7"]]) {
+  for (const argv of [["plan"], ["plan", "--pr", "7", "--nope"], ["prompt", "--pr", "7", "--role", "x"], ["publish", "--pr", "7", "--head", "abc"], ["bogus", "--pr", "7"], ["plan", "--pr", "7", "--head", "x"], ["wait-preview", "--pr", "7", "--timeout-min", "0"], ["wait-preview", "--pr", "7", "--timeout-min", "abc"]]) {
     await assert.rejects(main(argv, async () => assert.fail("不该读 GitHub")), (error: Error) => error.constructor.name === "UsageError", argv.join(" "));
   }
 });

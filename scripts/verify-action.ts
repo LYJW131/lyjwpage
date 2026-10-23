@@ -211,11 +211,18 @@ const OPTIONS = {
   help: { type: "boolean", default: false },
 } as const;
 
+const COMMAND_OPTIONS: Record<string, string[]> = {
+  plan: ["pr"],
+  "wait-preview": ["pr", "timeout-min"],
+  prompt: ["pr", "role", "preview", "out-dir"],
+  publish: ["pr", "head", "run-url", "verify-result", "judge-result", "shots-dir", "shots-url"],
+};
+
 export async function main(argv: string[], fetchImpl: FetchLike = fetch) {
   const [command, ...args] = argv;
-  let values;
+  let values, tokens;
   try {
-    ({ values } = parseArgs({ args, strict: true, options: OPTIONS }));
+    ({ values, tokens } = parseArgs({ args, strict: true, options: OPTIONS, tokens: true }));
   } catch (error) {
     throw new UsageError((error as Error).message);
   }
@@ -223,11 +230,17 @@ export async function main(argv: string[], fetchImpl: FetchLike = fetch) {
     console.log(HELP);
     return 0;
   }
+  const allowed = COMMAND_OPTIONS[command];
+  if (!allowed) throw new UsageError(`不认识的子命令 ${command}`);
+  const stray = tokens.find((token) => token.kind === "option" && !allowed.includes(token.name));
+  if (stray?.kind === "option") throw new UsageError(`${command} 不收 --${stray.name}`);
   const pr = Number(values.pr);
   if (!Number.isInteger(pr) || pr <= 0) throw new UsageError("缺 --pr");
+  const timeoutMin = Number(values["timeout-min"]);
+  if (!(timeoutMin > 0)) throw new UsageError("--timeout-min 要正数");
   const gh = client(fetchImpl);
   if (command === "plan") await plan(gh, pr);
-  else if (command === "wait-preview") await waitPreview(gh, pr, Number(values["timeout-min"]) || 20);
+  else if (command === "wait-preview") await waitPreview(gh, pr, timeoutMin);
   else if (command === "prompt") {
     if (!["verifier", "judge"].includes(values.role)) throw new UsageError("--role 只收 verifier、judge");
     await prompt(gh, pr, values.role, values.preview, values["out-dir"] || path.join(process.env.RUNNER_TEMP ?? "/tmp", "verify-out"));
@@ -241,7 +254,7 @@ export async function main(argv: string[], fetchImpl: FetchLike = fetch) {
       shotsDir: values["shots-dir"],
       shotsUrl: values["shots-url"],
     });
-  } else throw new UsageError(`不认识的子命令 ${command}`);
+  }
   return 0;
 }
 
