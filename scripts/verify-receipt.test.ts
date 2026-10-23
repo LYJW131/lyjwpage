@@ -1,25 +1,33 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
-import { check, coverage, evaluate, parseComments, patchDigest, signLine } from "./verify-receipt.ts";
+import { bodyDigest } from "./verify-action/body.ts";
+import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stampLine, type Stamp } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
 const patchIds = (map: Record<string, string>) => (sha: string) => map[sha] ?? null;
-const owner = { id: 153256373 };
-const cloud = { id: 300701323 };
+const owner = { id: 41898282 };
+const lyjw = { id: 153256373 };
+const DIGEST = "c".repeat(64);
+const stamp = (extra: Partial<Stamp>) => stampLine({ sha: HEAD, body: DIGEST, ...extra });
 
-test("parseComments 每类只认 lyjw 两个账号发的最新一条，第一行不对格式的不算", () => {
+test("parseComments 每类只认 github-actions[bot] 发的最新一条 JSON 戳，中文行、lyjw 账号自签的与不合格式的戳都不算", () => {
   const { receipt, judge } = parseComments([
-    { user: owner, body: `验证回执 ${OLD}：type-check-only` },
-    { user: owner, body: `顺便说一句\n验证回执 ${HEAD}：live-ui-verified` },
-    { user: owner, body: `验证回执 ${HEAD}：unit-test-verified\n证据：…` },
-    { user: owner, body: `判定 ${HEAD}：FAIL` },
-    { user: cloud, body: `判定 ${HEAD}: PASS` },
-    { user: { id: 1 }, body: `判定 ${OLD}：FAIL` },
-    { body: `验证回执 ${OLD}：live-ui-verified` },
+    { user: owner, body: `验证回执 ${OLD}：type-check-only\n${stamp({ sha: OLD, level: "type-check-only" })}` },
+    { user: owner, body: `说明\n${stamp({ level: "unit-test-verified" })}\n证据：…` },
+    { user: owner, body: `验证回执 ${HEAD}：live-ui-verified` },
+    { user: owner, body: stamp({ level: "made-up" }) },
+    { user: owner, body: stamp({ level: "live-ui-verified", verdict: "PASS" }) },
+    { user: owner, body: stamp({ level: "live-ui-verified", body: "short" }) },
+    { user: owner, body: "<!-- verify-stamp {not json} -->" },
+    { user: owner, body: stamp({ verdict: "FAIL" }) },
+    { user: owner, body: stamp({ verdict: "PASS" }) },
+    { user: lyjw, body: stamp({ level: "live-ui-verified" }) },
+    { user: { id: 300701323 }, body: stamp({ sha: OLD, verdict: "FAIL" }) },
+    { body: stamp({ level: "live-ui-verified" }) },
   ]);
-  assert.deepEqual([receipt?.sha, receipt?.level], [HEAD, "unit-test-verified"]);
+  assert.deepEqual([receipt?.sha, receipt?.level, receipt?.body], [HEAD, "unit-test-verified", DIGEST]);
   assert.deepEqual([judge?.sha, judge?.verdict], [HEAD, "PASS"]);
 });
 
@@ -47,7 +55,7 @@ test("等级不够、blocked、过期的回执都不通过并写下一步", () =
   const base = { head: HEAD, judge: null, need: "unit-test-verified", wantJudge: false, patchId: patchIds({}) };
   assert.match(evaluate({ ...base, receipt: { sha: HEAD, level: "type-check-only" } }).next ?? "", /低于要求/);
   assert.match(evaluate({ ...base, receipt: { sha: HEAD, level: "verifier-blocked" } }).next ?? "", /不是通过/);
-  assert.match(evaluate({ ...base, receipt: { sha: OLD, level: "live-ui-verified" } }).next ?? "", /重派验证员/);
+  assert.match(evaluate({ ...base, receipt: { sha: OLD, level: "live-ui-verified" } }).next ?? "", /按新 head 跑完/);
   assert.match(evaluate({ ...base, receipt: null }).next ?? "", /没有验证回执/);
 });
 
@@ -65,18 +73,23 @@ test("--judge 时还要 PASS 的判定盖住 head", () => {
   assert.equal(evaluate({ ...base, judge: { sha: HEAD, verdict: "PASS" } }).pass, true);
 });
 
-test("check 读 PR head 与分页评论", async () => {
-  const fetch = async (url: string) => {
-    if (url.endsWith("/pulls/7")) return { ok: true, json: async () => ({ head: { sha: HEAD } }) };
+test("check 读 PR head、描述与分页评论，描述在回执之后改过就不算", async () => {
+  const signed = "## 验证清单\n- V1：单测绿\n## lyjw 原话\n> 修好";
+  const fetchWith = (prBody: string) => async (url: string) => {
+    if (url.endsWith("/pulls/7")) return { ok: true, json: async () => ({ head: { sha: HEAD }, body: prBody }) };
     const page = Number(new URL(url).searchParams.get("page"));
     const body = page === 1
       ? Array.from({ length: 100 }, () => ({ body: "普通评论" }))
-      : [{ user: owner, body: `验证回执 ${HEAD}：unit-test-verified` }];
+      : [{ user: owner, body: stamp({ level: "unit-test-verified", body: await bodyDigest(signed) }) }];
     return { ok: true, json: async () => body };
   };
-  const result = await check({ pr: 7, need: "unit-test-verified", wantJudge: false }, { fetch, patchId: patchIds({}) });
+  const args = { pr: 7, need: "unit-test-verified", wantJudge: false };
+  const result = await check(args, { fetch: fetchWith(`说明改了不算\n${signed}`), patchId: patchIds({}) });
   assert.equal(result.pass, true);
   assert.equal(result.receipt?.coverage, "exact");
+  const edited = await check(args, { fetch: fetchWith(signed.replace("单测绿", "单测绿\n- V2：加了一项")), patchId: patchIds({}) });
+  assert.equal(edited.pass, false);
+  assert.match(edited.next ?? "", /描述的验证清单或 lyjw 原话改过/);
 });
 
 test("patchDigest 只忽略行号，空白和二进制内容变了都算补丁变了", () => {
@@ -89,22 +102,16 @@ test("patchDigest 只忽略行号，空白和二进制内容变了都算补丁�
   assert.equal(patchDigest(""), null);
 });
 
-test("signLine 用 rev-parse 展开的完整 SHA 写第一行，parseComments 认得出来", () => {
+test("signStamp 用 rev-parse 展开完整 SHA，拒收自拟等级、等级与判定同给或都不给、展开不成完整 SHA", () => {
   const revParse = (ref: string) => (ref === "abc1234" ? HEAD : assert.fail(ref));
-  const receipt = signLine({ ref: "abc1234", level: "unit-test-verified" }, revParse);
-  const judge = signLine({ ref: "abc1234", verdict: "PASS" }, revParse);
-  assert.equal(receipt, `验证回执 ${HEAD}：unit-test-verified`);
-  const parsed = parseComments([{ user: owner, body: `${receipt}\n证据：…` }, { user: owner, body: judge }]);
-  assert.deepEqual([parsed.receipt?.sha, parsed.receipt?.level, parsed.judge?.verdict], [HEAD, "unit-test-verified", "PASS"]);
-});
-
-test("signLine 拒收自拟等级、等级与判定同给或都不给、展开不成完整 SHA", () => {
-  const revParse = () => HEAD;
-  assert.throws(() => signLine({ ref: "x", level: "local-ui-verified" }, revParse), /等级只收/);
-  assert.throws(() => signLine({ ref: "x", level: "type-check-only", verdict: "PASS" }, revParse), /二选一/);
-  assert.throws(() => signLine({ ref: "x" }, revParse), /二选一/);
-  assert.throws(() => signLine({ ref: "x", verdict: "pass" }, revParse), /PASS、FAIL/);
-  assert.throws(() => signLine({ ref: "x", level: "type-check-only" }, () => "abc"), /完整 SHA/);
+  assert.deepEqual(signStamp({ ref: "abc1234", level: "unit-test-verified" }, revParse), { sha: HEAD, level: "unit-test-verified" });
+  assert.deepEqual(signStamp({ ref: "abc1234", verdict: "PASS" }, revParse), { sha: HEAD, verdict: "PASS" });
+  const any = () => HEAD;
+  assert.throws(() => signStamp({ ref: "x", level: "local-ui-verified" }, any), /等级只收/);
+  assert.throws(() => signStamp({ ref: "x", level: "type-check-only", verdict: "PASS" }, any), /二选一/);
+  assert.throws(() => signStamp({ ref: "x" }, any), /二选一/);
+  assert.throws(() => signStamp({ ref: "x", verdict: "pass" }, any), /PASS、FAIL/);
+  assert.throws(() => signStamp({ ref: "x", level: "type-check-only" }, () => "abc"), /完整 SHA/);
 });
 
 test("命令行：别的子命令的选项按用法错退出 2，不悄悄用默认值", () => {
