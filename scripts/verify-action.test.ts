@@ -224,6 +224,8 @@ test("注释删到不再变：嵌套拼出的注释删净，代码示例里的�
   assert.notEqual(bodyDigest(body), bodyDigest(body.replace("也算", "改过了")));
   const hidden = "说明 \\`\n<!--\n## 验证清单\n- V1：假的检查\n-->\n说明 \\`\n## 验证清单\n- V1：真正的检查";
   assert.deepEqual(parseBody(hidden).checklist, [{ id: "V1", text: "真正的检查" }]);
+  const split = "## 验证清单\n- V1：用 ` 开头 <!-- 注释里的\n- V9：藏起来的假检查 -->\n- V2：`code`";
+  assert.deepEqual(parseBody(split).checklist.map((item) => item.id), ["V1", "V2"]);
   const slashes = ["", "\\", "\\\\", "\\\\\\"].map((run) => parseBody(`## 验证清单\n- V1：前缀 ${run}\`<!--\` 后文`).checklist[0].text);
   assert.deepEqual(slashes, ["前缀 `<!--` 后文", "前缀 \\`` 后文", "前缀 \\\\`<!--` 后文", "前缀 \\\\\\`` 后文"]);
 });

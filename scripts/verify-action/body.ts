@@ -11,11 +11,12 @@ const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 // Devin 会在描述末尾补徽章块，不算描述改动
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
 
-// 从左往右谁先出现谁算：反引号包住的是代码示例，原样保留（GitHub 也照字面显示）；代码外的注释才删。前面紧挨奇数个反斜杠的反引号是字面字符，不开代码
-const CODE = "(?<=(?:^|[^\\\\])(?:\\\\\\\\)*)(`+)[\\s\\S]*?\\1";
-const COMMENT = new RegExp(`${CODE}|<!--[\\s\\S]*?-->`, "g");
-const OPENER = new RegExp(`${CODE}|<!--`, "g");
-const keepCode = (match: string, ticks?: string) => (ticks ? match : "");
+// 从左往右谁先出现谁算：代码示例原样保留（GitHub 也照字面显示），代码外的注释才删。
+// 行内代码只在一行内配对（CommonMark 的代码不跨段落与列表项，跨行配对会把两行之间的注释当代码留下）；前面紧挨奇数个反斜杠的反引号是字面字符，不开代码
+const CODE = "^(`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?(?:^\\1[ \\t\\r]*$|(?![\\s\\S]))|(?<=(?:^|[^\\\\])(?:\\\\\\\\)*)(`+)[^\\n]*?\\2";
+const COMMENT = new RegExp(`${CODE}|<!--[\\s\\S]*?-->`, "gm");
+const OPENER = new RegExp(`${CODE}|<!--`, "gm");
+const keepCode = (match: string, fence?: string, ticks?: string) => (fence || ticks ? match : "");
 
 // 删到不再变：一遍删不净嵌套拼出来的注释（如 <!<!---->--）。没闭合的开头记号只删记号不删后文，删到末尾会吞掉后面的清单与原话
 function stripComments(text: string) {
