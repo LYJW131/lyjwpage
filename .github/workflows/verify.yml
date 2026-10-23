@@ -1,31 +1,27 @@
 name: Verify
 
+# 不挂 workflow_dispatch。那个事件在默认分支上写得了 Actions 缓存，而 verify / judge 会检出并执行 PR head。
+# 按 PR 号手动重跑走 verify-dispatch.yml：只贴 reverify，运行仍是下面的 pull_request，缓存作用域在 PR 上。
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: PR number
-        required: true
-        type: string
 
 permissions: {}
 
-# 只改标题或指派人的 edited（描述和目标分支都没变）、贴摘 needs-judge 以外的标签，进另一个组：组在 job 的 if 之前就生效，同组会顶掉正在跑的验证
+# 只改标题或指派人的 edited（描述和目标分支都没变）、贴摘 needs-judge 以外的标签，进另一个组：组在 job 的 if 之前就生效，同组会顶掉正在跑的验证。贴上 reverify 不进这个组；摘掉它要进，免得 verify-dispatch.yml 摘标签时把刚触发的验证顶掉
 concurrency:
-  group: verify-${{ github.event.pull_request.number || inputs.pr }}${{ ((github.event.action == 'edited' && github.event.changes.body == null && github.event.changes.base == null) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'needs-judge')) && '-noop' || '' }}
+  group: verify-${{ github.event.pull_request.number }}${{ ((github.event.action == 'edited' && github.event.changes.body == null && github.event.changes.base == null) || ((github.event.action == 'labeled' || github.event.action == 'unlabeled') && github.event.label.name != 'needs-judge' && (github.event.action != 'labeled' || github.event.label.name != 'reverify'))) && '-noop' || '' }}
   cancel-in-progress: true
 
 env:
-  PR: ${{ github.event.pull_request.number || inputs.pr }}
+  PR: ${{ github.event.pull_request.number }}
 
 jobs:
   plan:
-    # 只改标题不重验；改了描述（验证清单、lyjw 原话）、目标分支或 needs-judge 标签才重跑
+    # 只改标题不重验；改了描述（验证清单、lyjw 原话）、目标分支、needs-judge 的贴摘，或贴上 reverify 才重跑
     if: >-
       (github.event.action != 'edited' || github.event.changes.body != null || github.event.changes.base != null) &&
-      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'needs-judge')
+      ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'needs-judge' || (github.event.action == 'labeled' && github.event.label.name == 'reverify'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -1,0 +1,44 @@
+name: Verify Dispatch
+
+# 按 PR 号重跑验证。只贴标签，不检出、不执行 PR 上的代码，也不读写 Actions 缓存。
+# 触发后的运行是 verify.yml 的 pull_request，缓存作用域在 PR 上，写不到默认分支。
+# 标签用 App 令牌贴：GITHUB_TOKEN 贴的标签不会再触发工作流。贴上就摘，免得留在 PR 上；摘掉触发的 unlabeled 在 verify.yml 里是空跑，不会顶掉刚起来的验证。
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: verify-dispatch-${{ inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+      - name: Retrigger Verify
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ inputs.pr }}
+        run: |
+          [[ "$PR" =~ ^[1-9][0-9]{0,8}$ ]] || { echo "::error::PR number must be a positive integer"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .number >/dev/null
+          gh label create reverify --repo "$GITHUB_REPOSITORY" --color ededed --description "Retrigger Verify; removed immediately" --force
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/reverify" --silent || true
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/labels" -f "labels[]=reverify" --silent
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/reverify" --silent

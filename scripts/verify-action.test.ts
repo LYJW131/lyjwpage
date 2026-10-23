@@ -230,6 +230,24 @@ test("描述里的 HTML 注释不删：注释里的条目照验，改注释也�
   assert.deepEqual(parseBody("## 验证清单\n- V1：a；b\n- V1：a；b").checklist, [{ id: "V1", text: "a；b" }]);
 });
 
+test("执行 PR 代码的验证工作流不挂 workflow_dispatch，手动重跑只贴 reverify", () => {
+  const verify = fs.readFileSync(new URL("../.github/workflows/verify.yml", import.meta.url), "utf8");
+  const dispatch = fs.readFileSync(new URL("../.github/workflows/verify-dispatch.yml", import.meta.url), "utf8");
+  const trigger = /\non:\n([\s\S]*?)\npermissions:/.exec(verify)?.[1] ?? "";
+  assert.match(trigger, /pull_request:/);
+  assert.doesNotMatch(trigger, /workflow_dispatch/);
+  assert.match(verify, /needs\.plan\.outputs\.head/);
+  assert.match(verify, /github\.event\.action != 'labeled' \|\| github\.event\.label\.name != 'reverify'/);
+  assert.match(verify, /github\.event\.action == 'labeled' && github\.event\.label\.name == 'reverify'/);
+  assert.match(dispatch, /workflow_dispatch:/);
+  assert.match(dispatch, /PR: \$\{\{ inputs\.pr \}\}/);
+  assert.equal(dispatch.split("inputs.pr").length - 1, 2);
+  const run = dispatch.split("run: |")[1] ?? "";
+  assert.doesNotMatch(run, /\$\{\{/);
+  assert.doesNotMatch(dispatch, /actions\/checkout|actions\/cache|git fetch|git checkout|cache:/);
+  assert.match(run, /labels\[\]=reverify/);
+});
+
 test("表格单元只把竖线前的反斜杠加倍再转义竖线，别处的反斜杠原样", () => {
   const rows = [{ id: "V1", check: "a\\|b", result: "PASS", evidence: "`C:\\dir` 与 `\\d+`" }];
   const receipt = receiptComment({ stamp: { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) }, report: { model: "m", level: "unit-test-verified", rows, notVerified: [] }, checklist: [], problems: [], claimed: "unit-test-verified", shots: [], runUrl: "u" });
