@@ -20,7 +20,8 @@ Facts learned from real runs (2026-10-23):
 - claude-code-action restores `.claude/`, `CLAUDE.md` etc. from main on PRs ("PR head is untrusted"); PR copies land in `.claude-pr/`. So the verifier follows main's skill; skill edits take effect after merge.
 - Workflow-level `concurrency` applies before job `if`, so a no-op `edited` event must go to a different group.
 - `actions/setup-node` auto package-manager cache fails without pnpm installed: set `package-manager-cache: false` on jobs that skip pnpm.
-- `playwright install --with-deps` once hung 40+ min silently; the step now has a 5-min timeout with one retry.
+- The runner's azure apt mirror stalls often (one run hung 40+ min; #593's test run again). `timeout` outside `sudo` leaves apt-get alive holding the dpkg lock, so retries fail. verify.yml now installs browsers without deps, installs apt deps only on UI-tier PRs, with `sudo timeout` and a retry that drops the azure mirror.
+- Verifier/judge diff against the PR's base branch, not origin/main (stacked test PRs mixed in base commits).
 - Receipts carry `<!-- 描述摘要 <sha256> -->` on line 2; editing the checklist or lyjw's words voids old receipts.
 
 Code-review diagnosis: [[claude-review-hollow]]. Related: [[verification-haiku-worker]], [[merge-requires-bot-review-pass]].
