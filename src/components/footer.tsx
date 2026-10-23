@@ -26,7 +26,7 @@ export function Footer() {
             {commit.short}
           </a>
         )}
-        {buildTime && <span>Built {buildTime}</span>}
+        {buildTime && <span>Deployed {buildTime}</span>}
         <OnlineCount />
       </div>
       {EXTRA_TEXT ? (
