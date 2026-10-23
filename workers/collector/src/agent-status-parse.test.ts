@@ -7,7 +7,7 @@ import {
   collectAgentStatus,
 } from "./agent-status-parse.ts";
 import type { AgentStatusPayload } from "@shared/agent-status-types.ts";
-import { pages, row } from "./testing/agent-status-pages.ts";
+import { pages, row, summary } from "./testing/agent-status-pages.ts";
 
 test("一家失败时留着上一轮，其它家照常更新", async () => {
   const first = await collectAgentStatus(null, pages(), 1_000);
@@ -47,4 +47,50 @@ test("九家全失败整轮抛错，不拿沿用的旧行冒充新检查", async
   await assert.rejects(collectAgentStatus(previous, async () => { throw new Error("offline"); }, 61_000));
   const partial = await collectAgentStatus(previous, pages({ [AGENT_STATUS_URLS.apple]: new Error("503") }), 61_000);
   assert.equal(row(partial, "apple").stale, true);
+});
+
+test("Cloudflare 站点依赖组件故障时记录起点：首次取故障开始时间，之后沿用，恢复即清除", async () => {
+  const outage = summary({
+    status: { indicator: "major", description: "Partial System Outage" },
+    components: [
+      { name: "Workers", status: "major_outage" },
+      { name: "Durable Objects", status: "operational" },
+    ],
+    incidents: [
+      {
+        id: "older-minor",
+        name: "Durable Objects slow",
+        status: "investigating",
+        impact: "minor",
+        started_at: "2026-10-23T14:00:00Z",
+        shortlink: "https://www.cloudflarestatus.com/incidents/older-minor",
+        components: [{ name: "Durable Objects" }],
+        incident_updates: [{ body: "Slow.", created_at: "2026-10-23T14:05:00Z" }],
+      },
+      {
+        id: "net",
+        name: "Network connectivity issues",
+        status: "monitoring",
+        impact: "major",
+        started_at: "2026-10-23T15:47:08Z",
+        shortlink: "https://www.cloudflarestatus.com/incidents/net",
+        components: [{ name: "Workers" }],
+        incident_updates: [{ body: "Monitoring.", created_at: "2026-10-23T16:00:00Z" }],
+      },
+    ],
+  });
+  const fetchOutage = pages({ [AGENT_STATUS_URLS.cloudflare]: outage });
+  const first = await collectAgentStatus(null, fetchOutage, Date.parse("2026-10-23T17:00:00Z"));
+  assert.equal(row(first, "cloudflare").outageSince, Date.parse("2026-10-23T15:47:08Z"));
+
+  const carried = { ...first, agents: first.agents.map((agent) => (agent.id === "cloudflare" ? { ...agent, outageSince: 1 } : agent)) };
+  const second = await collectAgentStatus(carried, fetchOutage, Date.parse("2026-10-23T17:05:00Z"));
+  assert.equal(row(second, "cloudflare").outageSince, 1);
+
+  const staleCarried = { ...second, agents: second.agents.map((agent) => (agent.id === "cloudflare" ? { ...agent, stale: true } : agent)) };
+  const afterStale = await collectAgentStatus(staleCarried, fetchOutage, Date.parse("2026-10-23T17:06:00Z"));
+  assert.equal(row(afterStale, "cloudflare").outageSince, Date.parse("2026-10-23T15:47:08Z"));
+
+  const recovered = await collectAgentStatus(second, pages(), Date.parse("2026-10-23T18:00:00Z"));
+  assert.equal("outageSince" in row(recovered, "cloudflare"), false);
 });

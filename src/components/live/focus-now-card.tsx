@@ -18,14 +18,14 @@ const MODE_NAMES: Record<FocusMode, string> = {
   mindfulness: "Mindfulness",
 };
 
-function elapsed(ms: number): string {
+export function elapsed(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
   const hours = Math.floor(minutes / 60);
   return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }
 
 // 服务端与客户端各取一次当前时刻，跨分钟边界时两边差一分钟，只压这一处文字的水合告警。
-function useNow(): number {
+export function useNow(): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
