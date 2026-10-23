@@ -72,8 +72,8 @@
   - 状态：不采用。没有缺的部件。
 - **[Tokens 云端会话上报](https://github.com/missuo/tokens/blob/main/docs/cloud-sessions.md)**（missuo/tokens，lyjw 提的 [PR #89](https://github.com/missuo/tokens/pull/89)）
   - 是什么：AI 编程用量排行榜 [tokens.ci](https://tokens.ci) 的 CLI。`tokens cloud submit` 在 Claude Code 云端会话里按会话 id 的哈希当设备上报 token 总量，同一会话恢复到新 VM 时合并、不重复计。
-  - 取了什么：文档里的两个钩子。SessionStart 只在云端装 CLI，Stop 每轮结束上报一次；本地会话找不到云端会话 id，什么都不做。改动有两处：`TZ` 写死在命令里，按 SGT 分日，不动整个环境的时区；`TOKENS_API_TOKEN` 没设时填占位值，让 CLI 照常发请求，打算由云端环境的 Network secret 在出站时把真 token 换进 `Authorization`。
-  - 状态：部分采用。钩子落在 [`.claude/settings.json`](../.claude/settings.json) 的 `SessionStart` 与 `Stop`。云端凭据配置核对后登记进 [ops-facts.md](./ops-facts.md)，这里再改成采用。
+  - 取了什么：Stop 钩子每轮结束上报一次（后台跑，外包 `timeout`），本地会话找不到云端会话 id，什么都不做；CLI 在 Setup script 里装一次，不用 SessionStart 钩子。改动有两处：`TZ` 写死在命令里，按 SGT 分日，不动整个环境的时区；`TOKENS_API_TOKEN` 没设时填占位值，让 CLI 照常发请求，打算由云端环境的 Network secret 在出站时把真 token 换进 `Authorization`。
+  - 状态：采用。项目讨论串不跑仓库级钩子，所以 Stop 钩子放在用户级设置 [`scripts/cloud/claude-user-settings.json`](../scripts/cloud/claude-user-settings.json)，由 [`scripts/cloud/setup.sh`](../scripts/cloud/setup.sh) 写进 `~/.claude/settings.json`。云端凭据配置见 [ops-facts.md](./ops-facts.md)。
 
 ## 写 skill 与写给 agent 的文档
 

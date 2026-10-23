@@ -8,15 +8,6 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && ! command -v tokens >/dev/null && npm i -g tokens-cli@latest >/dev/null 2>&1; true",
-            "timeout": 120
-          }
-        ]
       }
     ],
     "PreToolUse": [
@@ -35,17 +26,6 @@
           {
             "type": "command",
             "command": "NODE_USE_ENV_PROXY=1 node \"$CLAUDE_PROJECT_DIR/scripts/guard-merge-method.ts\""
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "command -v tokens >/dev/null && TZ=Asia/Singapore TOKENS_API_TOKEN=\"${TOKENS_API_TOKEN:-egress-proxy}\" timeout 30 tokens cloud submit >/dev/null 2>&1; true",
-            "async": true
           }
         ]
       }
