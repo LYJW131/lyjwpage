@@ -90,7 +90,7 @@ Agent(
 | `workers/*`、`reporters/*` | 该目录 `AGENTS.md` / `README.md` 里写的验证命令 |
 | 脚本 | `node --test scripts/<名>.test.mjs`；已迁到 TS 的脚本换成 `scripts/<名>.test.ts` |
 
-修 bug 并补了回归测试的改动，验证员另做一次「撤回证明」：提交后跑 `node scripts/revert-proof.ts --test <新测试文件>`（可给多个 `--test`；工作区测试命令不同的加 `--cmd`；测试离不开的辅助文件用 `--keep` 保留）。它在临时 worktree 里把改动过的非测试文件换回 main，跑新测试，要求以断言失败报红（编译或导入出错、零个测试都不算）；再换回 HEAD 跑同一测试须绿，当前工作区不动。`verdict` 为 `proved` 才算证明成立；把它的命令、`verdict` 与 `red.tail` 末几行写进证据，并核对红的那次失败说的是那个 bug 的行为。`not-red`（测试没抓住 bug，或修复落在 `addedKept` 列的新文件里）和 `red-not-assertion` 写进「没验到」并说明原因，由主线程判断。
+修 bug 并补了回归测试的改动，验证员另做一次「撤回证明」：提交后跑 `node scripts/revert-proof.ts --test <新测试文件>`（可给多个 `--test`；工作区测试命令不同的加 `--cmd`；测试离不开的辅助文件用 `--keep` 保留）。它在临时克隆（`git clone --shared`，不写 .git，只读的检出里也能跑）里把改动过的非测试文件换回 main，跑新测试，要求以断言失败报红（编译或导入出错、零个测试都不算）；再换回 HEAD 跑同一测试须绿，当前工作区不动。`verdict` 为 `proved` 才算证明成立；把它的命令、`verdict` 与 `red.tail` 末几行写进证据，并核对红的那次失败说的是那个 bug 的行为。`not-red`（测试没抓住 bug，或修复落在 `addedKept` 列的新文件里）和 `red-not-assertion` 写进「没验到」并说明原因，由主线程判断。
 
 提交前的两项自查，跟本地门禁一起跑（派验证员的写进简报，主线程自己跑的照样跑），只报命中、不判（Codex、Devin 最常抓的就是这两类，规则在根 `AGENTS.md`「文档与注释」）：
 
@@ -167,7 +167,7 @@ node scripts/site-verify.ts shot --url http://localhost:3211 --card pulse --them
 
 ## 回执
 
-验证员签回执，主线程按回执办事，不把回执里已经验过的检查再跑一遍（借自 poteto 的验证账本，见 `docs/references.md`）。PR 上的回执由 Verify Action 签发，评论第一行与下面相同，第二行是机器读的 `<!-- verify-stamp {"sha":…,"level":…,"body":…} -->`，脚本只认这一行；没开 PR 时派的验证员照下面的格式把回执写在报告最后一段：
+验证员签回执，主线程按回执办事，不把回执里已经验过的检查再跑一遍（借自 poteto 的验证账本，见 `docs/references.md`）。PR 上的回执由 Verify Action 签发，评论第一行与下面相同，第二行是机器读的 `<!-- verify-stamp {"sha":…,"level":…,"body":…} -->`，脚本只认这一行；正文只摆「全过」或没过的项、至多三条「没验到」，证据截短，全表折进「明细」（`scripts/verify-action/report.ts#receiptComment`）；没开 PR 时派的验证员照下面的格式把回执写在报告最后一段：
 
 ```
 验证回执 <被验提交的完整 SHA>：<等级>

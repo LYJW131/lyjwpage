@@ -42,7 +42,9 @@ ${items}
 清单之外，读 diff 补查清单漏掉的、和改动直接相关的行为，行 id 用 X1、X2……
 本地门禁：CI 会跑全套 lint、typecheck 与测试，你只跑和改动直接相关的几项当证据（相关单测、改动文件的 eslint）。修 bug 并补了回归测试的，照 skill 做撤回证明。
 
-最后按给定的 JSON schema 交结果：model 写你的模型 ID；level 照 skill「回执」的五档规则定；rows 每行一个检查，evidence 写命令与退出码、输出末几行、数值、截图文件名；notVerified 写没验到的及原因。`;
+这些是有意的安排，不算没验到，notVerified 里不写：没跑全量 lint、typecheck、测试、build 与 docs:check、rules:check（CI 跑）；Verify Action 自己的发评论、推截图（在你之后才跑）；不碰界面时没开浏览器；环境里没有外部服务的密钥（要调外部服务的检查标 SKIPPED，一句话说明）；没装 actionlint（改了工作流就用 YAML 解析加读 diff 代替）；bubblewrap 沙箱已在上一步自检，你在沙箱里，再套一层 bwrap 会失败，不用试。
+
+最后按给定的 JSON schema 交结果：model 写你的模型 ID；level 照 skill「回执」的五档规则定；rows 每行一个检查，evidence 只写一句：命令、退出码与关键数字或截图文件名，不贴输出原文（原文放 ${outDir}/work/）；notVerified 至多 3 条，只写和这次改动有关、本该验却没验到的，每条一句。`;
 }
 
 export function judgePrompt({ pr, title, head, base, files, words, body }: Common & { words: string | null; body: string }) {
@@ -58,8 +60,8 @@ ${asks}
 
 自己读 \`git diff origin/${base}...HEAD\` 和改动代码的调用方，回答两件事：
 1. diff 是否做到了 lyjw 要的：把原话拆成逐条要求，每条给出做到没有和依据（文件与行）。
-2. 有没有改出回归：读调用方；需要时用 \`git worktree add /tmp/base origin/${base}\` 在目标分支和 head 上跑同一个相关测试或场景对照。
+2. 有没有改出回归：读调用方；需要时用 \`git clone -q --shared --no-checkout . "$TMPDIR/base" && git -C "$TMPDIR/base" checkout -q --detach "$(git rev-parse origin/${base})"\` 取一份目标分支（.git 是只读的，\`git worktree add\` 会失败），在它和 head 上跑同一个相关测试或场景对照。
 仓库规矩在根 AGENTS.md 与 REVIEW.md。只判功能与回归，不评风格；CI 拦得住的（lint、类型、格式）不报。
 
-按给定的 JSON schema 交结果：model 写你的模型 ID；verdict 是 PASS 或 FAIL；asks 每条一项；regressions 写发现的回归（没有就空数组）；FAIL 时 fixes 列出要修的项。`;
+按给定的 JSON schema 交结果：model 写你的模型 ID；verdict 是 PASS 或 FAIL；asks 每条一项，evidence 一句话写文件与行；regressions 写发现的回归（没有就空数组）；FAIL 时 fixes 列出要修的项。`;
 }

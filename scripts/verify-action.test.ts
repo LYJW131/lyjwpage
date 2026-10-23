@@ -102,6 +102,38 @@ test("评论第一行给人看、第二行是机器读的 JSON，parseComments �
   assert.deepEqual([parsed.receipt?.level, parsed.receipt?.body, parsed.judge?.verdict], ["verifier-blocked", digest, "FAIL"]);
 });
 
+test("回执正文只摆结论：全过一行列 id，没过的逐条列出，没验到至多 3 条，全表折叠在 details 里", () => {
+  const stamp = { sha: HEAD, level: "unit-test-verified", body: "b".repeat(64) };
+  const base = { stamp, checklist: [{ id: "V1", text: "" }], problems: [], claimed: "unit-test-verified", shots: [], runUrl: "u" };
+  const rows = [{ id: "V1", check: "单测", result: "PASS", evidence: "exit 0" }, { id: "X1", check: "eslint", result: "PASS", evidence: "exit 0" }];
+  const pass = receiptComment({ ...base, report: { model: "m", level: "unit-test-verified", rows, notVerified: [] } });
+  assert.equal(pass.split("\n")[3], "全过：V1 X1");
+  assert.doesNotMatch(pass, /没验到/);
+  assert.match(pass, /<details>\n<summary>明细（2 项）<\/summary>[\s\S]*\| X1 \| eslint \| PASS \| exit 0 \|[\s\S]*<\/details>/);
+  const long = "很长的证据".repeat(60);
+  const fail = receiptComment({
+    ...base,
+    report: { model: "m", level: "verifier-failed", rows: [...rows, { id: "X2", check: "注释", result: "FAIL", evidence: long }], notVerified: ["a", "b", "c", "d"] },
+  });
+  const summary = fail.slice(0, fail.indexOf("<details>"));
+  assert.match(summary, /没过：\n- X2 FAIL：注释（很长的证据[^）]*…）/);
+  assert.doesNotMatch(summary, /V1|X1 PASS/);
+  assert.match(summary, /没验到：\n- a\n- b\n- c\n- 另有 1 条，见下面明细/);
+  assert.match(fail.slice(fail.indexOf("<details>")), /没验到（全部）：\n- a\n- b\n- c\n- d/);
+  assert.ok(fail.includes(long));
+});
+
+test("判定正文：全做到时一行带过，没做到的与回归列出来，逐条表折叠", () => {
+  const stamp = { sha: HEAD, verdict: "PASS", body: "b".repeat(64) };
+  const ok = judgeComment({ stamp, report: { model: "m", verdict: "PASS", asks: [{ ask: "a", met: true, evidence: "e" }], regressions: [], fixes: [] }, runUrl: "u" });
+  assert.equal(ok.split("\n")[3], "要求 1 条都做到，没发现回归。");
+  const bad = judgeComment({ stamp: { ...stamp, verdict: "FAIL" }, report: { model: "m", verdict: "FAIL", asks: [{ ask: "a", met: true, evidence: "e" }, { ask: "换位置", met: false, evidence: "没改" }], regressions: ["r"], fixes: [] }, runUrl: "u" });
+  const summary = bad.slice(0, bad.indexOf("<details>"));
+  assert.match(summary, /没做到：\n- 换位置（没改）/);
+  assert.match(summary, /回归：\n- r/);
+  assert.doesNotMatch(summary, /- a（e）/);
+});
+
 test("shotLinks 只收安全文件名的 PNG，按名排序并转义", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "shots-"));
   for (const name of ["b-375.png", "a-1280.png", "notes.txt", "bad name.png"]) fs.writeFileSync(path.join(dir, name), "");
