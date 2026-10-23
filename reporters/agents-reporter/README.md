@@ -281,3 +281,5 @@ ssh -J dsm misaka-jp 'cd /opt/lyjwpage && docker compose pull agents-reporter &&
 - 「配了但取不到」发空 `limits` 加非空 `limitsError`。不要把上一次的好值再发一遍。
 
 活动 URL 由 `src/config.ts#config.cadence.activityUrl` 生成。
+
+演示：这一行只为让测试 PR 触发「Build reporters」工作流，不合并。

@@ -26,7 +26,8 @@ export function Footer() {
             {commit.short}
           </a>
         )}
-        {buildTime && <span>Built {buildTime}</span>}
+        {/* 演示用：测试 PR 改一处页脚文案，让界面档验证截图 */}
+        {buildTime && <span>Built at {buildTime}</span>}
         <OnlineCount />
       </div>
       {EXTRA_TEXT ? (
