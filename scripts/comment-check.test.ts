@@ -44,7 +44,11 @@ test("report 只列 ≥0.7 的，调用失败时写明没有建议", () => {
   assert.equal(result.flagged.length, 1);
   assert.match(result.summary, /x\.ts:3/);
   assert.doesNotMatch(result.summary, /x\.ts:9/);
-  assert.match(report([{ ...item, p: null }], { error: "HTTP 500" }).title, /调用失败/);
+  assert.equal(result.complete, true);
+  const failed = report([{ ...item, p: null }], { error: "HTTP 500" });
+  assert.match(failed.title, /调用失败/);
+  assert.equal(failed.complete, false);
+  assert.equal(report([{ ...item, p: 0.1 }], { truncated: 3 }).complete, false);
 });
 
 test("commentAdvice 只在 neutral 时给建议", () => {

@@ -30,9 +30,14 @@ async function main(argv: string[]) {
     console.log(USAGE);
     return 0;
   }
+  const runs = Number(values.runs);
+  if (!Number.isInteger(runs) || runs < 1 || runs > 10) {
+    console.error(`--runs 要 1 到 10 的整数\n${USAGE}`);
+    return 2;
+  }
   const cases = JSON.parse(fs.readFileSync(values.cases, "utf8")) as Case[];
   const found = cases.map((item) => ({ ...item, line: 1, endLine: 1 }));
-  for (let run = 1; run <= Number(values.runs); run += 1) {
+  for (let run = 1; run <= runs; run += 1) {
     const answers = await Promise.all(buildRequests(found).map((body) => ask(body)));
     const p: number[] = [];
     for (const batch of answers) for (const [key, answer] of Object.entries(batch)) if (typeof answer.noul === "number") p[Number(key.slice(1))] = answer.noul;

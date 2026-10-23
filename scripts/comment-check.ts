@@ -163,7 +163,7 @@ export type Scored = Found & { p: number | null };
 export function report(scored: Scored[], { error, truncated }: { error?: string; truncated?: number } = {}) {
   const flagged = scored.filter((item) => (item.p ?? 0) >= YES).sort((a, b) => (b.p ?? 0) - (a.p ?? 0));
   const unsure = scored.filter((item) => item.p !== null && item.p > NO && item.p < YES);
-  const title = error ? "Jev 调用失败，没有建议" : flagged.length ? `${flagged.length} 条新注释可能该删` : "新注释没有该删的";
+  const title = error ? "Jev 调用失败，没有建议" : truncated && !flagged.length ? `${truncated} 条超出上限没问` : flagged.length ? `${flagged.length} 条新注释可能该删` : "新注释没有该删的";
   const lines = [
     `给写代码的线程的建议，不挡合并：逐条对照根 AGENTS.md「文档与注释」自己判断删还是留。`,
     "",
@@ -173,7 +173,7 @@ export function report(scored: Scored[], { error, truncated }: { error?: string;
   for (const item of flagged) {
     lines.push("", `- \`${item.file}:${item.line}\` ${item.p?.toFixed(2)}`, "", "  ```", ...item.comment.split("\n").map((text) => `  ${text}`), "  ```");
   }
-  return { title, summary: lines.join("\n"), flagged };
+  return { title, summary: lines.join("\n"), flagged, complete: !error && !truncated };
 }
 
 async function publish(sha: string, result: ReturnType<typeof report>, fetchImpl: typeof fetch) {
@@ -185,7 +185,7 @@ async function publish(sha: string, result: ReturnType<typeof report>, fetchImpl
       name: CHECK_NAME,
       head_sha: sha,
       status: "completed",
-      conclusion: result.flagged.length ? "neutral" : "success",
+      conclusion: result.complete && !result.flagged.length ? "success" : "neutral",
       output: {
         title: result.title,
         summary: result.summary.slice(0, 65_000),
@@ -236,7 +236,13 @@ export async function main(argv: string[], fetchImpl: typeof fetch = fetch) {
   if (values.out) fs.writeFileSync(values.out, JSON.stringify({ model: JEV_MODEL, error, comments: scored }, null, 1));
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n`);
   console.log(text);
-  if (values["check-run"]) await publish(values["check-run"], result, fetchImpl);
+  if (values["check-run"]) {
+    try {
+      await publish(values["check-run"], result, fetchImpl);
+    } catch (caught) {
+      console.error((caught as Error).message);
+    }
+  }
   return 0;
 }
 
