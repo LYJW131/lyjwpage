@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { bodyDigest } from "./verify-action/body.ts";
-import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stampLine, type Stamp } from "./verify-receipt.ts";
+import { check, coverage, evaluate, parseComments, patchDigest, signStamp, stampLine, stampTitle, type Stamp } from "./verify-receipt.ts";
 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
@@ -10,21 +10,28 @@ const patchIds = (map: Record<string, string>) => (sha: string) => map[sha] ?? n
 const owner = { id: 338272049 };
 const lyjw = { id: 153256373 };
 const DIGEST = "c".repeat(64);
-const stamp = (extra: Partial<Stamp>) => stampLine({ sha: HEAD, body: DIGEST, ...extra });
+const stamp = (extra: Partial<Stamp>) => {
+  const full = { sha: HEAD, body: DIGEST, ...extra };
+  return `${stampTitle(full)}\n${stampLine(full)}`;
+};
 
-test("parseComments 每类只认 lyjw131[bot] 发的最新一条 JSON 戳，中文行、lyjw 账号自签的与不合格式的戳都不算", () => {
+test("parseComments 每类只认 lyjw131[bot] 发的最新一条第二行 JSON 戳，中文行、别的行上的戳、lyjw 账号或 github-actions[bot] 发的与不合格式的戳都不算", () => {
   const { receipt, judge } = parseComments([
-    { user: owner, body: `验证回执 ${OLD}：type-check-only\n${stamp({ sha: OLD, level: "type-check-only" })}` },
-    { user: owner, body: `说明\n${stamp({ level: "unit-test-verified" })}\n证据：…` },
+    { user: owner, body: stamp({ sha: OLD, level: "type-check-only" }) },
+    { user: owner, body: `${stamp({ level: "unit-test-verified" })}\n证据：…` },
+    { user: owner, body: stampLine({ sha: HEAD, body: DIGEST, level: "live-ui-verified" }) },
+    { user: owner, body: `Jev 的意见\n说明\n${stampLine({ sha: HEAD, body: DIGEST, level: "live-ui-verified" })}` },
     { user: owner, body: `验证回执 ${HEAD}：live-ui-verified` },
     { user: owner, body: stamp({ level: "made-up" }) },
     { user: owner, body: stamp({ level: "live-ui-verified", verdict: "PASS" }) },
     { user: owner, body: stamp({ level: "live-ui-verified", body: "short" }) },
-    { user: owner, body: "<!-- verify-stamp {not json} -->" },
+    { user: owner, body: "标题\n<!-- verify-stamp {not json} -->" },
     { user: owner, body: stamp({ verdict: "FAIL" }) },
     { user: owner, body: stamp({ verdict: "PASS" }) },
     { user: lyjw, body: stamp({ level: "live-ui-verified" }) },
     { user: { id: 300701323 }, body: stamp({ sha: OLD, verdict: "FAIL" }) },
+    { user: { id: 41898282 }, body: stamp({ level: "live-ui-verified" }) },
+    { user: { id: 41898282 }, body: stamp({ verdict: "FAIL" }) },
     { body: stamp({ level: "live-ui-verified" }) },
   ]);
   assert.deepEqual([receipt?.sha, receipt?.level, receipt?.body], [HEAD, "unit-test-verified", DIGEST]);

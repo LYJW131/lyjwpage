@@ -10,7 +10,7 @@ const REPO = "LYJW131/lyjwpage";
 export const TRUSTED_AUTHOR_IDS = new Set([153256373, 300701323]);
 // 回执和判定只认 lyjw131[bot]（GitHub App 的机器人账号）：由 .github/workflows/verify.yml 的 publish job 拿 App 令牌发；
 // github-actions[bot] 任何工作流都能冒充，线程用 lyjw 的账号发的同格式评论也不算。
-// 有写权限的 job 从 PR 检出跑这个文件，只能 import scripts/ 下的，所以 ID 写死（同 docs/ops-facts.md 的 lyjw131[bot] 用户 ID）
+// 持有密钥的 verify、judge job 从 PR 检出跑这个文件，只能 import scripts/ 下的，所以 ID 写死（同 docs/ops-facts.md 的 lyjw131[bot] 用户 ID）
 export const RECEIPT_SIGNER_IDS = new Set([338272049]);
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -19,14 +19,15 @@ export const PASSING_RANK: Record<string, number> = { "live-ui-verified": 3, "un
 
 const VERDICTS = ["PASS", "FAIL"];
 
-// 契约：回执与判定评论里机器只读这一行 JSON（body 是 PR 描述摘要，见 verify-action/body.ts#bodyDigest）；评论第一行的中文只给人看。
-const STAMP_LINE = /^<!-- verify-stamp (\{.*\}) -->$/m;
+// 契约：回执与判定评论里机器只读第二行的这行 JSON（body 是 PR 描述摘要，见 verify-action/body.ts#bodyDigest）；第一行的中文只给人看。
+// 只认第二行：同一个 lyjw131[bot] 发的评论正文里会带验证员证据、Jev 意见这类 PR 能左右的文字，别处的戳行一律不算
+const STAMP_LINE = /^<!-- verify-stamp (\{.*\}) -->$/;
 export type Stamp = { sha: string; level?: string; verdict?: string; body: string };
 export const stampLine = (stamp: Stamp) => `<!-- verify-stamp ${JSON.stringify(stamp)} -->`;
 export const stampTitle = ({ sha, level, verdict }: Omit<Stamp, "body">) => (level !== undefined ? `验证回执 ${sha}：${level}` : `判定 ${sha}：${verdict}`);
 
 function readStamp(text: string): Stamp | null {
-  const match = STAMP_LINE.exec(text);
+  const match = STAMP_LINE.exec(text.split("\n")[1] ?? "");
   if (!match) return null;
   let stamp: Partial<Stamp>;
   try {
