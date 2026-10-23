@@ -42,7 +42,6 @@
 - Cloud Anthropic test key: `ANTHROPIC_API_KEY="$LYJWPAGE_ANTHROPIC_API_KEY"`; never print it. Cloud env gaps: [[cloud-env-gaps]].
 - OpenRouter keyless via egress injection (capped key, Inception models only): [[openrouter-egress]].
 - misaka.io API via egress injection (api.misaka.io/v3/): only `/v3/mc2/metrics/account-throughput` returns data (strip email/name before showing).
-- Jev 1.14 as second PR verifier beside Haiku (2026-10-23, test only, draft #596): fast, quiet, catches some diff bugs, blind to runtime/UI: [[jev-verify-trial]].
 - Gemini API via egress injection (2026-10-23): explainer QA trial not adopted: [[gemini-video-qa-result]].
 - Apple Music user API via egress injection (api.music.apple.com /v1/): Replay via `GET /v1/me/music-summaries?filter[year]=latest&views=top-songs,top-artists,top-albums` (100 songs ranked, no play counts, only 2026 has data). Read Apple docs by appending `.md` to the page URL (lyjw 2026-10-23; no Context7, no third-party MCP). Endpoint list: /mnt/project-files/apple-music-api/endpoints.md. Trial cards at /lab/apple-music on a branch. Thread「Apple Music 年度最爱歌曲」.
 - Cloud egress proxy injects keys for TypeSafe System One (Jev), Exa and Parallel. Jev also on Workers AI as `typesafe/jev`.
@@ -83,7 +82,7 @@
 - Claude limit card: 5-hour bar has a dead zone like Fable's (lyjw mapping: Pro/Max 5x 5h ≈ 1/7 week, Max 20x ≈ 2/7; unknown plans not drawn), #594.
 - Build pipeline on GitHub Actions: [[build-actions-migration]]. Avatar auto-rebuild: [[avatar-watch-restored]]. CodeQL: [[codeql-policy]].
 - Devin CLI token usage via Devin's own OTel into `mac-otlp` / `agents-otlp` (#453, #456): [[pulse-tokens-lane-coverage]].
-- Not adopting (don't re-propose): Mercury 3 for chat, tester-army/e2e, seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed, Jev as explainer image checker ([[jev-vision-qa-result]]), Gemini as explainer video checker, main-CI split (2026-10-22), skipping CI on docs PRs (2026-10-23), Blacksmith / GitHub larger runners (2026-10-23: org-only; public repo's ubuntu-latest is already free 4-core). Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
+- Not adopting (don't re-propose): Mercury 3 for chat, tester-army/e2e, seiso, site-AI OTel export, Max-plan credit, Cloudflare AI Search, post-deploy PageSpeed, Jev as explainer image checker ([[jev-vision-qa-result]]), Jev as PR verifier beside Haiku (lyjw 2026-10-23 18:17 SGT「不进main 记录测试结果」, [[jev-verify-trial]]), Gemini as explainer video checker, main-CI split (2026-10-22), skipping CI on docs PRs (2026-10-23), Blacksmith / GitHub larger runners (2026-10-23: org-only; public repo's ubuntu-latest is already free 4-core). Formal verification only on demand via skill `lyjwpage-formal-model`: [[not-adopting]].
 - **No OTel/OTLP migration of reporter telemetry** (lyjw 2026-10-19 维持现状): [[reporter-otel-decision]].
 - Workers Issues email alerts: scanner-probe issues ignored, threshold unchanged.
 - Chat context prefetch (#384): Clef picks site status / project doc to prefetch in the routing call (thresholds status 0.45, doc 0.3): [[idea-jev-context-prefetch]].
