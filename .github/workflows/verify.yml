@@ -12,9 +12,9 @@ on:
 
 permissions: {}
 
-# 只改标题或指派人的 edited 进另一个组：组在 job 的 if 之前就生效，同组会顶掉正在跑的验证
+# 只改标题或指派人的 edited（描述和目标分支都没变）进另一个组：组在 job 的 if 之前就生效，同组会顶掉正在跑的验证
 concurrency:
-  group: verify-${{ github.event.pull_request.number || inputs.pr }}${{ github.event.action == 'edited' && github.event.changes.body == null && '-noop' || '' }}
+  group: verify-${{ github.event.pull_request.number || inputs.pr }}${{ github.event.action == 'edited' && github.event.changes.body == null && github.event.changes.base == null && '-noop' || '' }}
   cancel-in-progress: true
 
 env:
@@ -23,8 +23,8 @@ env:
 
 jobs:
   plan:
-    # 只改标题不重验；改了描述（验证清单、lyjw 原话）才重跑
-    if: github.event.action != 'edited' || github.event.changes.body != null
+    # 只改标题不重验；改了描述（验证清单、lyjw 原话）或目标分支才重跑
+    if: github.event.action != 'edited' || github.event.changes.body != null || github.event.changes.base != null
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -103,6 +103,8 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+          # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -152,6 +154,8 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
+          # 验证员会跑 PR 的代码：子进程的环境去掉订阅令牌
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
