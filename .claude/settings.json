@@ -14,7 +14,6 @@
           {
             "type": "command",
             "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && ! command -v tokens >/dev/null && npm i -g tokens-cli@latest >/dev/null 2>&1; true",
-            "async": true,
             "timeout": 120
           }
         ]
