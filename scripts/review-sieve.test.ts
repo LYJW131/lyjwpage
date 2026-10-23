@@ -38,9 +38,10 @@ test("没写本 PR 里晚于建议的 SHA 的回复一律交给模型读原文�
   for (const body of ["成立，下一个提交修。", "这条不改。", "实测复现不出来，先放着。", "保持现状：与旧行为一致。"]) {
     const result = classify(at, [reply(body)], [], commits);
     assert.equal(result.verdict, "uncertain", body);
-    assert.equal(result.candidate, "e2495e5 fix(ai): 拒答记为 refused", body);
+    assert.equal(result.candidate, "e2495e5 fix(ai): 拒答记为 refused；780d632 fix(ai): 对话记录按实际作答档位记", body);
   }
   assert.equal(classify(at, [reply("已改。", "2026-10-17T08:00:00Z")], [], commits).candidate, "6de3704 feat(ai): 首页对话记录存进 ChatLog");
+  assert.equal(classify(at, [reply("已改。", "2026-10-17T09:00:00Z")], [], commits).candidate, "780d632 fix(ai): 对话记录按实际作答档位记");
   const silent = classify(at, [], [], commits);
   assert.deepEqual([silent.verdict, silent.evidence, silent.reply], ["notAdopted", "没有回复", null]);
 });

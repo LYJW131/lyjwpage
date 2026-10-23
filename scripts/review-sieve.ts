@@ -135,11 +135,11 @@ export function shaHits(text: string, commits: PrCommit[]) {
   return { hits, misses };
 }
 
-// 修复常是先提交、再回复、最后推送，所以先取回复之前最后一个提交。
+// 修复可能在回复之前（先提交再回复）也可能在之后（回复说下一个提交修），两边相邻的都给出，由模型读原文挑。
 function candidateCommit(reply: { at: string }, commits: PrCommit[]) {
   const own = commits.filter((c) => !c.merge).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  const pick = own.filter((c) => !later(c.at, reply.at)).at(-1) ?? own.find((c) => later(c.at, reply.at));
-  return pick ? `${pick.sha.slice(0, 7)} ${clip(pick.subject, 60)}` : "本 PR 没有提交";
+  const picks = [own.filter((c) => !later(c.at, reply.at)).at(-1), own.find((c) => later(c.at, reply.at))].filter((c) => c !== undefined);
+  return picks.length ? picks.map((c) => `${c.sha.slice(0, 7)} ${clip(c.subject, 60)}`).join("；") : "本 PR 没有提交";
 }
 
 export function classify(suggestionAt: string, replies: Reply[], general: Reply[], commits: PrCommit[]) {
