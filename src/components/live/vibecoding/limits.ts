@@ -147,11 +147,12 @@ function weeklyCap(row: Pick<CodingAgentRow, "id" | "plan" | "limits">, slot: Fe
   return { weekly, sharePercent, note: slot === "fable" ? FABLE_UNAVAILABLE_NOTE : SESSION_UNAVAILABLE_NOTE };
 }
 
-// 这条的用量也计入周限额。周限额剩下的折成条宽后不够这条自己剩下的，差出的右端这一段永远用不到；返回它占条宽的比例。
-export function unavailableShare(cap: Pick<WeeklyCap, "weekly" | "sharePercent"> | null, usedPercent: number, now: number) {
+// 这条的用量也计入周限额。周限额剩下的折成条宽后不够这条自己剩下的，差出的右端这一段在这条重置前用不到；返回它占条宽的比例。周限额先于这条重置时，新一周的额度还能用上，不算死区。
+export function unavailableShare(cap: Pick<WeeklyCap, "weekly" | "sharePercent"> | null, limit: Pick<VibeCodingLimit, "resetsAt">, usedPercent: number, now: number) {
   if (!cap) return 0;
   const { weekly, sharePercent } = cap;
   const expired = weekly.resetsAt != null && weekly.resetsAt * 1000 <= now;
+  if (!expired && weekly.resetsAt != null && limit.resetsAt != null && weekly.resetsAt < limit.resetsAt) return 0;
   const weeklyLeft = 100 - (expired ? 0 : weekly.usedPercent);
   const left = 100 - usedPercent;
   const reachable = (weeklyLeft * 100) / sharePercent;
