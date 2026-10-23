@@ -23,7 +23,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.223
         env:
           # 插件把子代理派到后台，Action 收到第一个 result 就退出，审查会显示成功却什么都不发
           CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
