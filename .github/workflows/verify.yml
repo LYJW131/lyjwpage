@@ -116,6 +116,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PREVIEW: ${{ steps.preview.outputs.preview }}
+      - id: unmarked
+        if: vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID != ''
+        uses: ./.github/actions/claude-unmarked
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:
@@ -129,6 +132,7 @@ jobs:
           anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
           anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
           anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
+          path_to_claude_code_executable: ${{ steps.unmarked.outputs.path }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'
@@ -205,6 +209,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - uses: ./.github/actions/verify-tools
         timeout-minutes: 8
+      - id: unmarked
+        if: vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID != ''
+        uses: ./.github/actions/claude-unmarked
       - id: claude
         uses: anthropics/claude-code-action@v1
         env:
@@ -218,6 +225,7 @@ jobs:
           anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
           anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
           anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
+          path_to_claude_code_executable: ${{ steps.unmarked.outputs.path }}
           github_token: ${{ github.token }}
           # 提示词是固定模板，PR 描述只作数据进来；Devin、Cursor 开的 PR 也要验
           allowed_bots: '*'

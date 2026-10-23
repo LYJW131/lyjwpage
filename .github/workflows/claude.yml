@@ -40,6 +40,9 @@ jobs:
       # 先按 main 的锁文件装好；PR 分支的锁文件不同时，Claude 自己会再装一次。
       - run: pnpm install --frozen-lockfile
 
+      - id: unmarked
+        if: vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID != ''
+        uses: ./.github/actions/claude-unmarked
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -50,6 +53,7 @@ jobs:
           anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
           anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
           anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
+          path_to_claude_code_executable: ${{ steps.unmarked.outputs.path }}
 
           additional_permissions: |
             actions: read

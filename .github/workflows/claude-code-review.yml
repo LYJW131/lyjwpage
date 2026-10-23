@@ -34,6 +34,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
 
+      - id: unmarked
+        if: steps.tier.outputs.judge == 'true' && vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_FEDERATION_RULE_ID != ''
+        uses: ./.github/actions/claude-unmarked
       - name: Run Claude Code Review
         if: steps.tier.outputs.judge == 'true'
         id: claude-review
@@ -48,6 +51,7 @@ jobs:
           anthropic_organization_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_ORGANIZATION_ID || '' }}
           anthropic_service_account_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_SERVICE_ACCOUNT_ID || '' }}
           anthropic_workspace_id: ${{ vars.CLAUDE_AUTH != 'oauth' && vars.ANTHROPIC_WORKSPACE_ID || '' }}
+          path_to_claude_code_executable: ${{ steps.unmarked.outputs.path }}
           allowed_bots: 'cursor,lyjw131'
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
