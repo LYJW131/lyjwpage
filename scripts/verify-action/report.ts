@@ -169,6 +169,8 @@ export function judgeComment({ stamp, report, runUrl }: { stamp: Stamp; report: 
   if (report.fixes.length > 0) lines.push("", "要修：", ...report.fixes.map((item) => `- ${brief(item)}`));
   if (stamp.verdict !== report.verdict) lines.push("", `判定员自报 ${report.verdict}，明细里有没做到、没写依据的要求，或有回归、待修项（或没列要求），改记 ${stamp.verdict}。`);
   const table = ["| lyjw 要的 | 做到了 | 依据 |", "| --- | --- | --- |", ...report.asks.map((ask) => `| ${cell(ask.ask)} | ${ask.met ? "是" : "否"} | ${cell(ask.evidence)} |`)];
+  const cut = [...report.regressions, ...report.fixes].some((item) => brief(item) !== item);
+  if (cut) table.push("", "回归与要修（原文）：", ...[...report.regressions, ...report.fixes].map((item) => `- ${item}`));
   lines.push("", ...details(`逐条（${report.asks.length} 条）`, table));
   lines.push("", `判定员：${report.model}，只读 lyjw 原话与 diff，没写这段代码，没看验证员的证据（[Action 运行](${runUrl})）`);
   return lines.join("\n");

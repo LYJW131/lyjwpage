@@ -79,7 +79,7 @@ function trackedFiles(root: string) {
 }
 
 // Verify Action 里 claude-code-action 把 .mcp.json 换成字符设备，读它会 EACCES：只收普通文件
-const isRegularFile = (file: string) => statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
+export const isRegularFile = (file: string) => statSync(file, { throwIfNoEntry: false })?.isFile() ?? false;
 
 function trackedSources(root: string) {
   return execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8" })

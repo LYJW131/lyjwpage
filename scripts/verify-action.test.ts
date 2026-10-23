@@ -141,6 +141,9 @@ test("判定正文：全做到时一行带过，没做到的与回归列出来�
   assert.doesNotMatch(summary, /- a（e）/);
   const noEvidence = judgeComment({ stamp: { ...stamp, verdict: "FAIL" }, report: { model: "m", verdict: "PASS", asks: [{ ask: "a", met: true, evidence: "" }], regressions: [], fixes: [] }, runUrl: "u" });
   assert.doesNotMatch(noEvidence, /都做到/);
+  const longRegression = "很长的回归".repeat(40);
+  const cut = judgeComment({ stamp: { ...stamp, verdict: "FAIL" }, report: { model: "m", verdict: "FAIL", asks: [{ ask: "a", met: true, evidence: "e" }], regressions: [longRegression], fixes: [] }, runUrl: "u" });
+  assert.ok(cut.slice(cut.indexOf("<details>")).includes(longRegression));
   assert.match(noEvidence, /判定员自报 PASS[^\n]*改记 FAIL/);
 });
 

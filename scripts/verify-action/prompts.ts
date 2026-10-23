@@ -41,9 +41,9 @@ ${site}
 ${items}
 
 清单之外，读 diff 补查清单漏掉的、和改动直接相关的行为，行 id 用 X1、X2……
-本地门禁：CI 会跑全套 lint、typecheck、测试与 docs:check、rules:check，你不重跑这些；只跑覆盖改动行为的那几个单测当证据，清单点名要的除外。时间花在读代码、对照文档、找副作用上。撤回证明由 Action 在你之前用脚本跑过，你不重跑：${proof ?? "结果读不出来。"}结论是「脚本没跑成」时，在 notVerified 里写一句「撤回证明没跑成」。原始结果在 ${outDir}/work/revert-proof.json，判断「修复有没有被测试抓住」时引用它。
+本地门禁：CI 会跑全套 lint、typecheck、测试与 docs:check、rules:check，你不重跑这些；只跑覆盖改动行为的那几个单测当证据，清单点名要的除外。时间花在读代码、对照文档、找副作用上。撤回证明由 Action 在你之前用脚本跑过，你不重跑。${proof ?? "撤回证明：结果读不出来"}。结论是「脚本没跑成」时，在 notVerified 里写一句「撤回证明没跑成」。原始结果在 ${outDir}/work/revert-proof.json，判断「修复有没有被测试抓住」时引用它。
 
-这些是有意的安排，不算没验到，notVerified 里不写：没跑全量 lint、typecheck、测试、build 与 docs:check、rules:check（CI 跑）；Verify Action 自己的发评论、推截图（在你之后才跑）；不碰界面时没开浏览器；环境里没有外部服务的密钥（要调外部服务的检查标 SKIPPED，一句话说明）；没装 actionlint（改了工作流就用 YAML 解析加读 diff 代替）；bubblewrap 沙箱已在上一步自检，你在沙箱里，再套一层 bwrap 会失败，不用试。
+这些是有意的安排，不算没验到，notVerified 里不写：没跑全量 lint、typecheck、测试与 docs:check、rules:check（CI 跑；CI 不跑 build，改了构建、路由或缓存的照清单跑）；Verify Action 自己的发评论、推截图（在你之后才跑）；不碰界面时没开浏览器；环境里没有外部服务的密钥（要调外部服务的检查标 SKIPPED，一句话说明）；没装 actionlint（改了工作流就用 YAML 解析加读 diff 代替）；bubblewrap 沙箱已在上一步自检，你在沙箱里，再套一层 bwrap 会失败，不用试。
 
 最后按给定的 JSON schema 交结果：model 写你的模型 ID；level 照 skill「回执」的五档规则定；rows 每行一个检查，evidence 只写一句：命令、退出码与关键数字或截图文件名，不贴输出原文（原文放 ${outDir}/work/）；notVerified 至多 3 条，只写和这次改动有关、本该验却没验到的，每条一句。`;
 }
