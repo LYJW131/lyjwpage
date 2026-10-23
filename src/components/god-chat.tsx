@@ -432,7 +432,9 @@ function Conversation({ className, archive, session: conversation }: { className
       return;
     }
     const current = chatLineup.getSnapshot();
-    if (!vendorConsent[current].getSnapshot()) {
+    // 设计回合由 Worker 固定交给 Opus，不经当前阵容，不必问阵容那家。
+    const designTurn = designConsent.getSnapshot() && activeChatDesign(conversation?.design) !== undefined;
+    if (!designTurn && !vendorConsent[current].getSnapshot()) {
       setVendorPending({ lineup: current, text: text.trim(), from: "send" });
       setDraft("");
       setError(null);
