@@ -11,12 +11,19 @@ const ITEM = /^\s*[-*]\s*(V\d+)\s*[：:.、]\s*(.+?)\s*$/;
 // Devin 会在描述末尾补徽章块，不算描述改动
 const BADGE = /<!-- devin-review-badge-begin -->[\s\S]*?<!-- devin-review-badge-end -->/g;
 
+// 分隔线可能是清单或原话内部的分组，只有其后再没有条目和引文时才当作描述的页脚截掉
+function dropFooter(lines: string[]) {
+  const rule = lines.findLastIndex((line) => /^-{3,}\s*$/.test(line));
+  if (rule < 0 || lines.slice(rule + 1).some((line) => /^\s*(?:[-*+]\s|>)/.test(line))) return lines;
+  return lines.slice(0, rule);
+}
+
 function section(lines: string[], heading: RegExp) {
   const start = lines.findIndex((line) => heading.test(line.trim()));
   if (start < 0) return null;
   const rest = lines.slice(start + 1);
-  const end = rest.findIndex((line) => /^#{1,4}\s/.test(line) || /^-{3,}\s*$/.test(line));
-  return end < 0 ? rest : rest.slice(0, end);
+  const end = rest.findIndex((line) => /^#{1,4}\s/.test(line));
+  return dropFooter(end < 0 ? rest : rest.slice(0, end));
 }
 
 export function parseBody(body: string | null | undefined) {
