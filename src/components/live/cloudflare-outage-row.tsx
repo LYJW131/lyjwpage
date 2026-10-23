@@ -5,6 +5,7 @@ import CloudflareIcon from "@lobehub/icons/es/Cloudflare/components/Color";
 import { elapsed, useNow } from "@/components/live/focus-now-card";
 import { NowReveal } from "@/components/live/now-reveal";
 import { Card } from "@/components/ui/card";
+import { StatusDot } from "@/components/ui/status-dot";
 import { useLiveEvents } from "@/hooks/use-live-events";
 import { useStale } from "@/hooks/use-stale";
 import { useStatus } from "@/hooks/use-status";
@@ -19,16 +20,19 @@ function Outage({ affected, since }: { affected: string; since: number }) {
     <div className="flex min-h-11 items-center gap-3 p-4 sm:gap-4 md:gap-2 md:px-4 md:py-2 lg:px-5">
       <CloudflareIcon size={20} className="size-7 shrink-0 md:size-5" />
       <div className="flex min-w-0 flex-1 flex-col gap-1 md:flex-row md:items-center md:gap-2">
-        <div className="truncate text-base font-semibold sm:text-lg leading-tight md:shrink-0 md:text-sm md:font-medium">
-          Cloudflare <span className="text-signal-red">Outage</span>
+        <div className="flex items-center gap-2 truncate text-base font-semibold sm:text-lg leading-tight md:shrink-0 md:text-sm">
+          <StatusDot tone="alert" />
+          <span className="truncate">
+            Cloudflare <span className="text-signal-red">Outage</span>
+          </span>
         </div>
         <div className="truncate text-sm text-muted-foreground">
           <span className="hidden md:inline">· </span>
-          {affected}
+          Live data may lag · {affected}
         </div>
       </div>
       <span
-        className="shrink-0 text-xl font-medium leading-none sm:text-3xl md:text-sm"
+        className="shrink-0 text-xl font-semibold leading-none text-signal-red sm:text-3xl md:text-sm"
         suppressHydrationWarning
       >
         {elapsed(Math.max(0, now - since))}
@@ -53,7 +57,7 @@ export function CloudflareOutageRow({ fallback }: { fallback: StatusResponse<Age
   return (
     <NowReveal revealKey="cloudflare-outage" top>
       {since != null ? (
-        <Card id="cloudflare-outage" className="scroll-mt-28">
+        <Card id="cloudflare-outage" className="alert-card scroll-mt-28">
           <Outage affected={affected || "Services degraded"} since={since} />
         </Card>
       ) : null}
