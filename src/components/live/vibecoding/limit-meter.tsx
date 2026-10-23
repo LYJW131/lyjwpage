@@ -165,7 +165,7 @@ export function LimitMeter({
           style={{ width: `${usedPercent}%`, backgroundColor: color }}
         />
         <UnavailableZone share={unavailable} />
-        {pace != null && <PaceMarker pace={pace} overPace={overPace} />}
+        {pace != null && pace < 1 - unavailable && <PaceMarker pace={pace} overPace={overPace} />}
       </UsageMeter>
     </div>
   );
