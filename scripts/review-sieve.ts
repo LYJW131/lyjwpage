@@ -71,29 +71,6 @@ type FetchLike = (url: string, init: { headers: Record<string, string>; signal: 
   json(): Promise<unknown>;
 }>;
 
-const NOT_ADOPTED = [
-  /不改(?![变动善进])/,
-  /(?:不用|无需|不需要|不必)改/,
-  /不在(?:本|这个|此)\s*PR/,
-  /(?:保持|保留|维持)现状/,
-  /有意(?:如此|为之|这样|的取舍)/,
-  /复现不出|无法复现|没能复现/,
-  /不成立|不属实|不采纳/,
-  /拆到\s*#\d+/,
-  /另开|单独开/,
-  /won't fix|not (?:going to )?fix|by design|intentional/i,
-];
-const ADOPTED = [
-  /成立/,
-  /属实/,
-  /说得对/,
-  /^对[，,：:]/,
-  /采纳|确实/,
-  /已(?:修|改|补|加|删|撤|换|去掉|同步|更新|处理)/,
-  /下(?:一个?|个|次)(?:代码)?(?:提交|推送)/,
-  /\b(?:fixed|addressed|done)\b|good catch/i,
-];
-const FUTURE = /下(?:一个?|个|次)|尚未推送|待推送|即将推送|随后推送|稍后/;
 const SUMMARY = [
   /^#{2,3}\s*💡\s*Codex Review\b/,
   /^## Codex Review Summary/,
@@ -144,7 +121,6 @@ export function botOf(user: User | undefined) {
 }
 
 const trusted = (user: User | undefined) => TRUSTED_AUTHOR_IDS.has(user?.id ?? 0);
-const firstMatch = (patterns: RegExp[], text: string) => patterns.map((re) => re.exec(text)?.[0]).find(Boolean) ?? null;
 const later = (a: string, b: string) => Date.parse(a) > Date.parse(b);
 
 export function shaHits(text: string, commits: PrCommit[]) {
@@ -159,12 +135,10 @@ export function shaHits(text: string, commits: PrCommit[]) {
   return { hits, misses };
 }
 
-// 「下一个提交修」的修复在回复之后；「已修」不写 SHA 时，常是先提交、再回复、最后推送，修复在回复之前。
-function candidateCommit(reply: { at: string; text: string }, commits: PrCommit[]) {
+// 修复常是先提交、再回复、最后推送，所以先取回复之前最后一个提交。
+function candidateCommit(reply: { at: string }, commits: PrCommit[]) {
   const own = commits.filter((c) => !c.merge).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  const next = own.find((c) => later(c.at, reply.at));
-  const previous = own.filter((c) => !later(c.at, reply.at)).at(-1);
-  const pick = FUTURE.test(reply.text) ? (next ?? previous) : (previous ?? next);
+  const pick = own.filter((c) => !later(c.at, reply.at)).at(-1) ?? own.find((c) => later(c.at, reply.at));
   return pick ? `${pick.sha.slice(0, 7)} ${clip(pick.subject, 60)}` : "本 PR 没有提交";
 }
 
@@ -175,8 +149,6 @@ export function classify(suggestionAt: string, replies: Reply[], general: Reply[
   const all = shaHits(texts.map((t) => t.text).join("\n"), commits);
   if (all.hits.length) {
     const holder = texts.findLast((t) => shaHits(t.text, commits).hits.length)!;
-    const refusal = texts.map((t) => firstMatch(NOT_ADOPTED, t.text)).find(Boolean);
-    if (refusal) return { verdict: "uncertain" as const, evidence: `${all.hits.join(" ")} 在本 PR 提交里，但回复也说「${refusal}」`, reply: holder };
     const fresh = all.hits.filter((token) => {
       const commit = commits.find((c) => c.sha.toLowerCase().startsWith(token));
       return commit !== undefined && later(commit.at, suggestionAt);
@@ -186,17 +158,9 @@ export function classify(suggestionAt: string, replies: Reply[], general: Reply[
       : { verdict: "uncertain" as const, evidence: `${all.hits.join(" ")} 在本 PR 提交里，但都早于这条建议`, reply: holder, candidate: candidateCommit(holder, commits) };
   }
   const unmatched = all.misses.length ? `；${all.misses.join(" ")} 不在本 PR 提交里` : "";
-  for (const t of [...texts].reverse()) {
-    const refusal = firstMatch(NOT_ADOPTED, t.text);
-    if (refusal) return { verdict: "notAdopted" as const, evidence: `「${refusal}」`, reply: t };
-    const accept = firstMatch(ADOPTED, t.text);
-    if (accept) {
-      return { verdict: "uncertain" as const, evidence: `「${accept}」，没写本 PR 里的 SHA${unmatched}`, reply: t, candidate: candidateCommit(t, commits) };
-    }
-  }
   if (texts.length) {
     const last = texts.at(-1)!;
-    return { verdict: "uncertain" as const, evidence: `回复没命中关键词${unmatched}`, reply: last, candidate: candidateCommit(last, commits) };
+    return { verdict: "uncertain" as const, evidence: `回复没写本 PR 里晚于建议的 SHA${unmatched}`, reply: last, candidate: candidateCommit(last, commits) };
   }
   const after = general.filter((g) => later(g.at, suggestionAt));
   if (after.length) {
