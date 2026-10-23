@@ -1,0 +1,29 @@
+{
+  "fetchedAt": "$now",
+  "agents": [
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "indicator": "major_outage",
+      "statusUrl": "https://www.cloudflarestatus.com",
+      "components": [
+        { "name": "Workers", "indicator": "major_outage" },
+        { "name": "Durable Objects", "indicator": "major_outage" },
+        { "name": "KV", "indicator": "operational" }
+      ],
+      "incidents": [
+        {
+          "id": "workers-errors",
+          "title": "Elevated errors on Workers and Durable Objects",
+          "status": "Investigating",
+          "url": "https://www.cloudflarestatus.com",
+          "updatedAt": "$iso",
+          "body": "Some Workers and Durable Objects requests are failing."
+        }
+      ],
+      "note": null,
+      "stale": false,
+      "outageSince": "$now-2460000"
+    }
+  ]
+}

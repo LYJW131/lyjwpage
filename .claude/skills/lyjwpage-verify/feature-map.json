@@ -108,7 +108,7 @@
       "component": "src/components/live/agent-status-card.tsx",
       "selector": "#agent-status",
       "endpoints": {
-        "/api/status/agent-status": ["agent-status-boundary.json", "agent-status-degraded.json", "agent-status-empty.json", "agent-status-stale.json"]
+        "/api/status/agent-status": ["agent-status-boundary.json", "agent-status-cloudflare-outage.json", "agent-status-degraded.json", "agent-status-empty.json", "agent-status-stale.json"]
       },
       "conditional": false,
       "proves": "各家 coding agent provider 的状态行渲染，degraded 时能看到非绿状态"

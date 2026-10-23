@@ -44,12 +44,16 @@ The cards below are rendered live by the site as SVG, follow the system light or
   <img src="https://lyjw.me/readme/desktop-marks-light.svg" alt="Brand marks for the header's front app, and the window title appearing, changing and disappearing" width="798">
 </picture>
 
-**Daily digest**
+**Cloudflare outage banner**: appears at the top of the homepage, with its duration, when a Cloudflare component the site depends on has a major outage.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark&amp;v=2">
-  <img src="https://lyjw.me/cards/digest.svg?v=2" alt="Daily digest card: a tagline, coding and agent hours and tokens, with a 24-hour dial" width="530">
+  <source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/cloudflare-outage.svg?theme=dark&amp;v=1">
+  <img src="https://lyjw.me/cards/cloudflare-outage.svg?v=1" alt="Cloudflare outage banner: affected components and how long the outage has lasted" width="100%">
 </picture>
+
+**Profile and daily digest**
+
+<p><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/contact.svg?theme=dark&amp;v=1"><img src="https://lyjw.me/cards/contact.svg?v=1" alt="Profile card: GitHub avatar, username, email and a one-year token heatmap" width="50%"></picture><picture><source media="(prefers-color-scheme: dark)" srcset="https://lyjw.me/cards/digest.svg?theme=dark&amp;v=3"><img src="https://lyjw.me/cards/digest.svg?v=3" alt="Daily digest card: a tagline, coding and agent hours and tokens, with a 24-hour dial" width="50%"></picture></p>
 
 **Now watching on Emby**
 
