@@ -169,7 +169,7 @@ export function SiteStatusCard({ githubFallback, siteFallback, cloudflareFallbac
         <ul className="grid h-full auto-rows-fr grid-cols-1 gap-px bg-line sm:grid-cols-2">
           <li className="bg-surface px-4 py-2.5 lg:px-5" title={siteDeployments?.activeVersions.length ? `Serving ${siteDeployments.activeVersions.map(v => `${v.id.slice(0, 8)} ${v.percentage}%`).join(" / ")}` : undefined}>
             <div className="flex items-center gap-1.5 text-2xs leading-4">
-              <a href={`${CLOUDFLARE_DASH_URL}/workers/services/view/site/production`} target="_blank" rel="noreferrer" className="relative flex items-center gap-1.5 before:absolute before:inset-x-0 before:-inset-y-1 hover:underline"><CloudflareColor size={11} />Site</a>
+              <a href={`${CLOUDFLARE_DASH_URL}/workers/services/view/site/production`} target="_blank" rel="noreferrer" className="relative flex items-center gap-1.5 before:absolute before:inset-x-0 before:-inset-y-1 hover:underline"><CloudflareColor size={11} />site</a>
               <ErrorCount series={siteErrors} title="Site errors in the last 12h (browser + worker)" />
               <CommitSha commit={production?.commit} />
             </div>
