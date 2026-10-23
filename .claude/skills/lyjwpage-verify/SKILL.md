@@ -18,7 +18,7 @@ description: lyjwpage 里任何验证步骤都用它：改完后的本地门禁�
 
 ## PR 上的验证：Verify Action
 
-`.github/workflows/verify.yml` 在 PR 打开、推送、转为待审、改了描述或目标分支时跑（草稿不跑，同一 PR 的新运行顶掉旧的），也能在 Actions 页按 PR 号手动跑。脚本是 `scripts/verify-action.ts`（`--help` 看子命令）。
+`.github/workflows/verify.yml` 在 PR 打开、推送、转为待审、改了描述或目标分支时跑（草稿不跑，同一 PR 的新运行顶掉旧的）。没跑或要重跑时，在 Actions 页跑 Verify rerun（`.github/workflows/verify-rerun.yml`）并填 PR 号：它给 PR 贴上 `rerun-verify` 再摘掉，验证仍由 verify.yml 以 pull_request 跑。verify.yml 不挂 `workflow_dispatch`，免得在默认分支的缓存范围里执行 PR 的代码。脚本是 `scripts/verify-action.ts`（`--help` 看子命令）。
 
 - `plan`：按 `pr-gate` 的分档（`scripts/pr-gate/tier.ts#tierOf`）定回执至少的等级；只改文档与 skill 的不验。
 - `verify`：Haiku（effort high）当验证员，工作方法就是本文件的「检查清单」与「回执」。界面档先等站点分支预览部署到 head（上限 20 分钟），在 `<预览名>.preview.lyjw.dev` 上验；预览没就绪就在 runner 里起 `pnpm dev`。令牌只读，不能评论、不能推送。

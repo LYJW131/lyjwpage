@@ -1,0 +1,57 @@
+name: Verify rerun
+
+# 只把 verify.yml 重新触发成 pull_request。不检出 PR，也不跑 PR 里的命令：那些事若放在这次手动触发里，缓存写进的是默认分支。
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: verify-rerun-${{ inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  rerun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      # GITHUB_TOKEN 贴的标签不会再触发 pull_request，换成 lyjw131[bot] 的令牌才会把 verify.yml 跑起来
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          client-id: Iv23liSmKTDKh0bxIfzB
+          private-key: ${{ secrets.AVATAR_APP_PRIVATE_KEY }}
+          permission-issues: write
+          permission-pull-requests: write
+      - name: Queue Verify on the pull request
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          LABEL: rerun-verify
+        run: |
+          set -euo pipefail
+          case "$PR" in
+            *[!0-9]*|'') echo "::error::PR 号须是数字"; exit 1 ;;
+          esac
+          view=$(gh pr view "$PR" --json state,isDraft --jq '[.state, .isDraft] | @tsv')
+          read -r state draft <<<"$view"
+          if [ "$state" != OPEN ]; then
+            echo "::error::PR 没开着，验证不会跑"
+            exit 1
+          fi
+          if [ "$draft" = true ]; then
+            echo "::error::草稿不跑验证，先转为待审"
+            exit 1
+          fi
+          gh label create "$LABEL" --color 6e7781 --description "Starts Verify on this pull request. Removed after the run is queued." --force
+          gh pr edit "$PR" --remove-label "$LABEL" || true
+          gh pr edit "$PR" --add-label "$LABEL"
+          gh pr edit "$PR" --remove-label "$LABEL" || echo "::warning::没摘掉 $LABEL，下次重跑会先摘再贴"
+          echo "PR #$PR 已排队：Verify 会按 pull_request 跑"
