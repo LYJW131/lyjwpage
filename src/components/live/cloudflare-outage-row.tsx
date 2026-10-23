@@ -29,7 +29,13 @@ function Outage({ affected, since }: { affected: string; since: number }) {
           {elapsed(Math.max(0, now - since))}
         </span>
       </div>
-      <div className="max-w-full truncate text-sm text-muted-foreground">Live data may lag · {affected}</div>
+      <div className="flex max-w-full flex-col items-center gap-1 text-sm text-muted-foreground md:flex-row md:gap-2">
+        <span className="shrink-0">Some features may not work</span>
+        <span className="hidden md:inline" aria-hidden>
+          ·
+        </span>
+        <span className="max-w-full truncate">{affected}</span>
+      </div>
     </div>
   );
 }

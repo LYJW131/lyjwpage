@@ -100,7 +100,7 @@ const CARDS: Record<string, ReadmeCard> = {
     label: "Cloudflare Outage",
     width: FULL_WIDTH,
     height: OUTAGE_HEIGHT,
-    annotate: (html, note) => html.replace(/(Live data may lag · [\s\S]*?)(<\/div>)/, `$1 · ${note}$2`),
+    annotate: (html, note) => html.replace(/(Some features may not work[\s\S]*?)(<\/span><\/div>)/, `$1 · ${note}$2`),
     async render(status, _site, now) {
       const live = await status("agentStatus");
       const { value, sample } = orSample(
