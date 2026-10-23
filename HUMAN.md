@@ -86,7 +86,7 @@
   6. 三份存量基线（`scripts/mjs-baseline.json`、`scripts/design-scale-baseline.json`、`scripts/ui-copy-baseline.json`）只许比 main 少，PR 里多出一条 CI 就红（`pnpm baselines:check`）。确属合规例外的，Claude 在 PR 里写明理由、停下等你；你同意就给 PR 打上 `baseline-exception` 标签，CI 自动重跑放行；放行只对打标签那一次有效，之后再推送要摘了重打，免得批准后又塞进别的条目。这个标签只由你打，Claude 不打。
   7. main 的分支保护要求 PR 里的行内评审线程都解决了才能合；其余设置的现状见 ops-facts 的「[GitHub](./docs/ops-facts.md#github)」。
 - PR 上的 `tier: docs / ui / logic / ui+logic` 标签由 `lyjw131[bot]` 自动贴，方便你在列表里看档位；门槛每次按改动路径现算，不读这个标签。
-- 只为试一下、不打算合的测试 PR，标题里写「不合并」。`lyjw131[bot]` 会贴上黑色的 `do-not-merge` 标签，`Do Not Merge` 这一项检查一直是红的，`pr-gate` 不放行，合并钩子也拦（`.github/workflows/do-not-merge.yml`）。标签只加不摘：你手动贴上也一样拦。真要合，先改掉标题里的「不合并」，再摘掉标签。
+- 只为试一下、不打算合的测试 PR，标题末尾加「（测试，不合并）」，认的是括号里的「不合并」。`lyjw131[bot]` 会贴上黑色的 `do-not-merge` 标签，`Do Not Merge` 这一项检查一直是红的，`pr-gate` 不放行，合并钩子也拦（`.github/workflows/do-not-merge.yml`）。标签只加不摘：你手动贴上也一样拦。真要合，先改掉标题，再摘掉标签。
 - 这些门槛里机器核得了的部分（检查、冲突、该有的 Workers Builds、评审线程、Codex 轮数与 Claude review、Devin 审没审过、回执与判定），Claude 用 `scripts/pr-gate.ts` 一条命令读全，再自己判断；你点没点头它不判断。
 - 上面「文档、skill 和小改动」的轻门槛只给你的账号开的 PR：别人开的 PR，或碰到 `.claude/` 的 settings、launch、hooks、`feature-map.json`、`docs/` 下的脚本与依赖清单、`public/` 下的 js、html、svg、xml、`_headers`，`pr-gate.ts` 一律按大改逻辑算，要回执与判定。
 - 谁合：按上面「一眼看完」那条，该等你点头的等你说「合」，其余 Claude 在门槛过了后自己合。合并方式按 PR 里的非合并提交数：少于 3 个压缩合并，3 个及以上用 merge commit（钩子 `scripts/guard-merge-method.ts` 拦不合的调用，也拦带 `do-not-merge` 标签的 PR）；main 有分支保护，不直推。分支落后时把 main 合进来，不 rebase。

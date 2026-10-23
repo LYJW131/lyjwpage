@@ -34,7 +34,7 @@ export function mergeMethodReason(input: MergeInput, count: (sha: string) => num
     current = [];
   }
   if (current.includes(DO_NOT_MERGE_LABEL)) {
-    return `#${pr} 带着 ${DO_NOT_MERGE_LABEL} 标签（标题写了「不合并」的测试 PR）：不合，用完关掉；确实要合，先改掉标题里的「不合并」并摘掉标签。`;
+    return `#${pr} 带着 ${DO_NOT_MERGE_LABEL} 标签（标题括号里写了「不合并」的测试 PR）：不合，用完关掉；确实要合，先改掉标题并摘掉标签。`;
   }
   const sha = input.expectedHeadSha;
   if (typeof sha !== "string" || !/^[0-9a-f]{40}$/i.test(sha)) {
