@@ -12,3 +12,5 @@ Formal verification update (lyjw 2026-10-20 02:03 SGT): standing checks stay rej
 Site Worker image fetching stays in the site Worker (lyjw 2026-10-22 22:01 SGT「不搬了」): README card inlining (`src/lib/remote-image.ts`) and the `/image` proxy fetch allowlisted public image hosts directly. Devin Review flagged it on #554 as breaking the「站点侧不写后端」rule. It is not a breach in spirit: no secrets, no state, no IP rate limits involved. Don't move it to collector/core, and answer the same bot finding with this.
 
 Jev 1.14 as a second PR verifier beside the Haiku Verify Action (lyjw 2026-10-23 18:17 SGT「不进main」): fast and near-free but reads only the diff, borderline on a bug the test locks in, generic image questions noisy. Details [[jev-verify-trial]].
+
+Also not adopting: tester-army / e2e suites; Jev as explainer image checker ([[jev-vision-qa-result]]); Gemini as explainer video checker ([[gemini-video-qa-result]]); splitting main CI (2026-10-22); skipping CI on docs PRs (2026-10-23); Blacksmith or GitHub larger runners (2026-10-23: org-only; the public repo's ubuntu-latest is already a free 4-core runner).
